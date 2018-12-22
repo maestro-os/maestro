@@ -2,11 +2,11 @@
 #include "tty/tty.h"
 #include "vga/vga.h"
 
-void kernel_main(const void* boot_infos)
+void kernel_main(const void* bi)
 {
-	(void) boot_infos;
+	const boot_info_t boot_info = get_boot_info(bi);
+	(void) boot_info;
 
-	// TODO
 	vga_clear();
 
 	const char* str = "Hello world!";
