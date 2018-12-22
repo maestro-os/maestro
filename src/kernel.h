@@ -45,6 +45,14 @@ inline void vga_putchar(const char c, const size_t x, const size_t y)
 	vga_putchar_color(c, VGA_DEFAULT_COLOR, x, y);
 }
 
+void vga_putstr_color(const char* str, const uint8_t color,
+	const size_t x, const size_t y);
+
+inline void vga_putstr(const char* str, const size_t x, const size_t y)
+{
+	vga_putstr_color(str, VGA_DEFAULT_COLOR, x, y);
+}
+
 size_t strlen(const char* str);
 
 #endif

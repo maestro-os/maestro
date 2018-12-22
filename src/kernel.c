@@ -3,5 +3,6 @@
 void kernel_main()
 {
 	// TODO
-	vga_putchar('H', 0, 0);
+	vga_init();
+	vga_putstr("Hello world!", 0, 0);
 }

@@ -17,6 +17,8 @@ C_OBJ := $(patsubst %.c, %.o, $(C_SRC))
 
 OBJ := $(ASM_OBJ) $(C_OBJ)
 
+all: $(NAME) iso
+
 $(NAME): $(OBJ)
 	$(CC) $(CFLAGS) $(LINK_FLAGS) -T $(LINKER) -o $(NAME) $(OBJ)
 
@@ -25,15 +27,15 @@ $(NAME): $(OBJ)
 
 iso: $(NAME).iso
 
-$(NAME).iso:
-	mkdir -p iso/boot/grub/
-	cp $(NAME) iso/boot/
-	cp grub.cfg iso/boot/grub/
-	grub-mkrescue -o $(NAME).iso iso/
+$(NAME).iso: $(NAME)
+	mkdir -p iso/boot/grub
+	cp $(NAME) iso/boot
+	cp grub.cfg iso/boot/grub
+	grub-mkrescue -o $(NAME).iso iso
 
 clean:
 	rm -f $(OBJ)
-	rm -rf iso/boot/grub/
+	rm -rf iso
 
 fclean: clean
 	rm -f $(NAME)
