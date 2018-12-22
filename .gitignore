@@ -1,2 +1,5 @@
-kernel
 *.o
+iso/
+
+kernel
+kernel.iso

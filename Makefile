@@ -23,10 +23,22 @@ $(NAME): $(OBJ)
 %.o: %.[cs]
 	$(CC) $(CFLAGS) -c $< -o $@
 
+iso: $(NAME).iso
+
+$(NAME).iso:
+	mkdir -p iso/boot/grub/
+	cp $(NAME) iso/boot/
+	cp grub.cfg iso/boot/grub/
+	grub-mkrescue -o $(NAME).iso iso/
+
 clean:
 	rm -f $(OBJ)
+	rm -rf iso/boot/grub/
 
 fclean: clean
 	rm -f $(NAME)
+	rm -f $(NAME).iso
 
 re: fclean all
+
+.PHONY: iso clean fclean re
