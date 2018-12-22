@@ -1,7 +1,6 @@
 NAME = kernel
 
 CC = i686-elf-gcc
-CA = i686-elf-as
 
 CFLAGS = -ffreestanding -O2 -Wall -Wextra -Werror
 LINK_FLAGS = -nostdlib -lgcc
@@ -21,7 +20,7 @@ OBJ := $(ASM_OBJ) $(C_OBJ)
 $(NAME): $(OBJ)
 	$(CC) $(CFLAGS) $(LINK_FLAGS) -T $(LINKER) -o $(NAME) $(OBJ)
 
-$(OBJ): $(SRC)
+%.o: %.[cs]
 	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:
