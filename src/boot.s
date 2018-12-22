@@ -20,14 +20,28 @@ stack_top:
 .global _start
 .type _start, @function
 
-_start:
-	mov $stack_top, %esp
+kernel_init:
+	# TODO
 
-	call kernel_main
+	ret
 
+kernel_halt:
 	cli
 halt_loop:
 	hlt
 	jmp halt_loop
+
+	ret
+
+_start:
+	mov $stack_top, %esp
+
+	call kernel_init
+	call _init
+
+	call kernel_main
+
+	call _fini
+	call kernel_halt
 
 .size _start, . - _start
