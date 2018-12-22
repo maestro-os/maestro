@@ -2,8 +2,10 @@
 #include "tty/tty.h"
 #include "vga/vga.h"
 
-void kernel_main()
+void kernel_main(const void* boot_infos)
 {
+	(void) boot_infos;
+
 	// TODO
 	vga_clear();
 

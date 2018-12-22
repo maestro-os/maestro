@@ -1,16 +1,20 @@
-.SET ALIGN,		1 << 0
-.SET MEMINFO,	1 << 1
-.set FLAGS,		ALIGN | MEMINFO
-.set MAGIC,		0x1BADB002
-.set CHECKSUM,	-(MAGIC + FLAGS)
+.set MAGIC,			0xE85250D6
+.set ARCHITECTURE,	0
+.set HEADER_LENGTH,	16
+.set CHECKSUM,		-(MAGIC + ARCHITECTURE + HEADER_LENGTH)
+.set TAGS,			0
 
 .section .multiboot
+
 .align 4
 .long MAGIC
-.long FLAGS
+.long ARCHITECTURE
+.long HEADER_LENGTH
 .long CHECKSUM
+.long TAGS
 
 .section .bss
+
 .align 16
 stack_bottom: .skip 16384
 stack_top:
@@ -36,9 +40,12 @@ halt_loop:
 _start:
 	mov $stack_top, %esp
 
+	push %ebx # TODO Usefull?
 	call kernel_init
 	call _init
+	pop %ebx # TODO Usefull?
 
+	mov %ebx, %esp
 	call kernel_main
 
 	call _fini
