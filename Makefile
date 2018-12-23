@@ -2,7 +2,7 @@ NAME = kernel
 
 CC = i686-elf-gcc
 
-CFLAGS = -ffreestanding -O2 -Wall -Wextra -Werror -nostdlib -lgcc
+CFLAGS = -ffreestanding -O2 -Wall -Wextra -Werror -nostdlib -lgcc -g
 
 LINKER = linker.ld
 

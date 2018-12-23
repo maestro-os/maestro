@@ -3,12 +3,9 @@
 
 # include "../libc/string.h"
 
-# define VGA_WIDTH     80
-# define VGA_HEIGHT    25
+# define TEXT_DEFAULT_COLOR     VGA_COLOR_WHITE | (VGA_COLOR_BLACK << 4)
 
-# define VGA_DEFAULT_COLOR     VGA_COLOR_WHITE | (VGA_COLOR_BLACK << 4)
-
-typedef enum vga_color
+typedef enum text_color
 {
 	VGA_COLOR_BLACK = 0,
 	VGA_COLOR_BLUE = 1,
@@ -28,18 +25,18 @@ typedef enum vga_color
 	VGA_COLOR_WHITE = 15
 } vga_color_t;
 
-inline uint8_t vga_entry_color(const vga_color_t fg, const vga_color_t bg)
+inline uint8_t text_entry_color(const vga_color_t fg, const vga_color_t bg)
 {
 	return fg | (bg << 4);
 }
 
-void vga_clear();
-void vga_putchar_color(const char c, const uint8_t color,
+void text_clear();
+void text_putchar_color(const char c, const uint8_t color,
 	const size_t x, const size_t y);
 
-inline void vga_putchar(const char c, const size_t x, const size_t y)
+inline void text_putchar(const char c, const size_t x, const size_t y)
 {
-	vga_putchar_color(c, VGA_DEFAULT_COLOR, x, y);
+	text_putchar_color(c, TEXT_DEFAULT_COLOR, x, y);
 }
 
 #endif
