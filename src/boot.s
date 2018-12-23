@@ -1,5 +1,3 @@
-.section .multiboot
-
 .align 8
 
 .set MULTIBOOT_MAGIC,			0xE85250D6
@@ -20,6 +18,11 @@
 .set MULTIBOOT_HEADER_TAG_RELOCATABLE,			10
 
 .set STACK_SIZE,	16384
+
+.section .text
+
+.global _start
+.type _start, @function
 
 header:
 	.long MULTIBOOT_MAGIC
@@ -58,20 +61,6 @@ framebuffer_tag_end:
 	.long 8
 header_end:
 
-.section .bss
-
-.align 8
-
-stack_bottom:
-	.skip STACK_SIZE
-stack_top:
-edata:
-
-.section .text
-
-.global _start
-.type _start, @function
-
 _start:
 	jmp multiboot_entry
 
@@ -104,4 +93,14 @@ halt_loop:
 	ret
 
 .size _start, . - _start
+
+.section .bss
+
+.align 8
+
+stack_bottom:
+	.skip STACK_SIZE
+stack_top:
+edata:
+
 end:
