@@ -1,11 +1,10 @@
 #include "kernel.h"
 #include "tty/tty.h"
-#include "vga/vga.h"
+#include "framebuffer/framebuffer.h"
 
 void kernel_main(const void* bi)
 {
-	const boot_info_t boot_info = get_boot_info(bi);
-	(void) boot_info;
+	boot_info = load_boot_info(bi);
 
 	vga_clear();
 

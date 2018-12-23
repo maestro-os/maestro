@@ -1,17 +1,30 @@
 .set MAGIC,			0xE85250D6
 .set ARCHITECTURE,	0
-.set HEADER_LENGTH,	16
+.set HEADER_LENGTH,	(header_end - header)
 .set CHECKSUM,		-(MAGIC + ARCHITECTURE + HEADER_LENGTH)
-.set TAGS,			0
 
 .section .multiboot
 
-.align 4
-.long MAGIC
-.long ARCHITECTURE
-.long HEADER_LENGTH
-.long CHECKSUM
-.long TAGS
+.align 8
+
+header:
+	.long MAGIC
+	.long ARCHITECTURE
+	.long HEADER_LENGTH
+	.long CHECKSUM
+
+info_req:
+	.short 1
+	.short 0
+	.long (info_req_end - info_req)
+	.long 8
+
+info_req_end:
+	.short 0
+	.short 0
+	.long 8
+
+header_end:
 
 .section .bss
 
@@ -29,14 +42,6 @@ kernel_init:
 
 	ret
 
-kernel_halt:
-	cli
-halt_loop:
-	hlt
-	jmp halt_loop
-
-	ret
-
 _start:
 	mov $stack_top, %esp
 
@@ -49,6 +54,10 @@ _start:
 	call kernel_main
 
 	call _fini
-	call kernel_halt
+
+	cli
+halt_loop:
+	hlt
+	jmp halt_loop
 
 .size _start, . - _start

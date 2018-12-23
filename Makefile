@@ -53,4 +53,7 @@ re: fclean all
 test: $(NAME)
 	qemu-system-i386 -kernel kernel
 
-.PHONY: iso clean fclean re
+debug: $(NAME)
+	qemu-system-i386 -kernel kernel -s -S
+
+.PHONY: iso clean fclean re test debug

@@ -68,7 +68,7 @@ static inline void get_framebuffer_info(boot_info_t* info, const void* bi)
 	bi += sizeof(uint8_t);
 }
 
-boot_info_t get_boot_info(const void* bi)
+boot_info_t load_boot_info(const void* bi)
 {
 	boot_info_t boot_info;
 	bzero(&boot_info, sizeof(boot_info));

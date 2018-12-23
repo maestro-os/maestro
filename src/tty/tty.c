@@ -1,5 +1,5 @@
 #include "tty.h"
-#include "../vga/vga.h"
+#include "../framebuffer/framebuffer.h"
 
 void tty_write(const char* buffer, const size_t size)
 {
