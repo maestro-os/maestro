@@ -1,6 +1,4 @@
-.align 8
-
-.set MULTIBOOT_MAGIC,			0xE85250D6
+.set MULTIBOOT_MAGIC,			0xe85250d6
 .set MULTIBOOT_ARCHITECTURE,	0
 .set HEADER_LENGTH,				(header_end - header)
 .set CHECKSUM,					-(MULTIBOOT_MAGIC + MULTIBOOT_ARCHITECTURE + HEADER_LENGTH)
@@ -19,10 +17,15 @@
 
 .set STACK_SIZE,	16384
 
-.section .text
+.text
 
-.global _start
-.type _start, @function
+.globl start, _start
+
+start:
+_start:
+	jmp multiboot_entry
+
+.align 8
 
 header:
 	.long MULTIBOOT_MAGIC
@@ -61,9 +64,6 @@ framebuffer_tag_end:
 	.long 8
 header_end:
 
-_start:
-	jmp multiboot_entry
-
 kernel_init:
 	# TODO
 
@@ -72,17 +72,16 @@ kernel_init:
 multiboot_entry:
 	mov $stack_top, %esp
 
+	pushl $0
+	popf
+
 	push %ebx
 	call kernel_init
 	call _init
 	pop %ebx
 
-	pushl $0
-	popf
-
 	push %ebx
 	call kernel_main
-
 	call _fini
 
 	cli
@@ -101,6 +100,6 @@ halt_loop:
 stack_bottom:
 	.skip STACK_SIZE
 stack_top:
-edata:
 
+edata:
 end:

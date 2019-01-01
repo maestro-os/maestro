@@ -3,6 +3,10 @@
 
 # include "../libc/string.h"
 
+# define TEXT_BUFFER	0xb8000
+# define TEXT_WIDTH		0xb8000
+# define TEXT_HEIGHT	0xb8000
+
 # define TEXT_DEFAULT_COLOR     VGA_COLOR_WHITE | (VGA_COLOR_BLACK << 4)
 
 typedef enum text_color
