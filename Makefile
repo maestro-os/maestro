@@ -1,7 +1,6 @@
-NAME = kernel
+NAME = crumbleos
 
 CC = i686-elf-gcc
-
 CFLAGS = -ffreestanding -O2 -Wall -Wextra -Werror -nostdlib -lgcc -g
 
 LINKER = linker.ld
@@ -51,9 +50,9 @@ fclean: clean
 re: fclean all
 
 test: $(NAME)
-	qemu-system-i386 -kernel kernel
+	qemu-system-i386 -cdrom $(NAME).iso
 
 debug: $(NAME)
-	qemu-system-i386 -kernel kernel -s -S
+	qemu-system-i386 -cdrom $(NAME).iso -s -S
 
-.PHONY: iso clean fclean re test debug
+.PHONY: all iso clean fclean re test debug

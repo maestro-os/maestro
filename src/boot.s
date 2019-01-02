@@ -19,30 +19,31 @@
 
 .text
 
-.globl start, _start
+.global start, _start
 
 start:
 _start:
 	jmp multiboot_entry
 
 .align 8
-
 header:
 	.long MULTIBOOT_MAGIC
 	.long MULTIBOOT_ARCHITECTURE
 	.long HEADER_LENGTH
 	.long CHECKSUM
 
+.align 8
 address_tag:
 	.short MULTIBOOT_HEADER_TAG_ADDRESS
 	.short 1
 	.long (address_tag_end - address_tag)
 	.long header
-	.long _start
+	.long start
 	.long edata
 	.long end
 address_tag_end:
 
+.align 8
 entry_address_tag:
 	.short MULTIBOOT_HEADER_TAG_ENTRY_ADDRESS
 	.short 1
@@ -50,6 +51,7 @@ entry_address_tag:
 	.long multiboot_entry
 entry_address_tag_end:
 
+.align 8
 framebuffer_tag:
 	.short MULTIBOOT_HEADER_TAG_FRAMEBUFFER
 	.short 1
@@ -59,6 +61,7 @@ framebuffer_tag:
 	.long 0
 framebuffer_tag_end:
 
+.align 8
 	.short MULTIBOOT_HEADER_TAG_END
 	.short 0
 	.long 8
@@ -89,8 +92,6 @@ halt_loop:
 	hlt
 	jmp halt_loop
 
-	ret
-
 .size _start, . - _start
 
 .section .bss
@@ -101,5 +102,5 @@ stack_bottom:
 	.skip STACK_SIZE
 stack_top:
 
-edata:
 end:
+edata:

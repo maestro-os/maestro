@@ -1,5 +1,5 @@
 *.o
 iso/
 
-kernel
-kernel.iso
+crumbleos
+*.iso
