@@ -18,7 +18,6 @@
 .set STACK_SIZE,	16384
 
 .text
-
 .global start, _start
 
 start:
@@ -38,9 +37,9 @@ address_tag:
 	.short 1
 	.long (address_tag_end - address_tag)
 	.long header
-	.long start
-	.long edata
-	.long end
+	.long _start
+	.long 0
+	.long bss_end
 address_tag_end:
 
 .align 8
@@ -80,12 +79,12 @@ multiboot_entry:
 
 	push %ebx
 	call kernel_init
-	call _init
+	#call _init
 	pop %ebx
 
 	push %ebx
 	call kernel_main
-	call _fini
+	#call _fini
 
 	cli
 halt_loop:
@@ -101,6 +100,4 @@ halt_loop:
 stack_bottom:
 	.skip STACK_SIZE
 stack_top:
-
-end:
-edata:
+bss_end:

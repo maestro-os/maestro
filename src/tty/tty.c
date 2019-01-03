@@ -1,12 +1,12 @@
 #include "../kernel.h"
 #include "tty.h"
-#include "../framebuffer/framebuffer.h"
+#include "../vga/vga.h"
 
 void tty_init()
 {
 	// TODO Switch from graphical to text mode if needed
 
-	text_clear();
+	vga_clear();
 }
 
 void tty_write(const char* buffer, const size_t size)
@@ -28,7 +28,7 @@ void tty_write(const char* buffer, const size_t size)
 			}
 
 			default: {
-				text_putchar(buffer[i], cursor_x, cursor_y);
+				vga_putchar(buffer[i], cursor_x, cursor_y);
 
 				if(cursor_x + 1 < boot_info.framebuffer_width) {
 					++cursor_x;
