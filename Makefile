@@ -39,6 +39,9 @@ $(NAME).iso: $(NAME)
 	cp grub.cfg iso/boot/grub
 	grub-mkrescue -o $(NAME).iso iso
 
+tags:
+	ctags -R src/ --languages=c,c++
+
 clean:
 	rm -f $(INTERNAL_OBJ)
 	rm -rf iso
