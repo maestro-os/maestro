@@ -11,4 +11,7 @@ boot_info_t load_boot_info(const void* bi);
 __attribute__((__noreturn__))
 void abort();
 
+uint8_t inb(const uint16_t port);
+void outb(const uint16_t port, const uint8_t value);
+
 #endif

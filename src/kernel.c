@@ -9,7 +9,6 @@ void kernel_main(const void* bi)
 
 	// boot_info = load_boot_info(bi);
 
-	//const char* str = "Hello world!";
-	//for(size_t i = 0; i < 10; ++i) tty_write(str, strlen(str));
-	vga_putchar('H', 0, 0);
+	const char* str = "Hello world!";
+	for(size_t i = 0; i < 100; ++i) tty_write(str, strlen(str));
 }

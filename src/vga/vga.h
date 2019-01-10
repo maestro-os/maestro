@@ -35,6 +35,7 @@ inline uint8_t vga_entry_color(const vga_color_t fg, const vga_color_t bg)
 }
 
 void vga_clear();
+void vga_move_cursor(const unsigned short x, const unsigned short y);
 void vga_putchar_color(const char c, const uint8_t color,
 	const size_t x, const size_t y);
 

@@ -31,16 +31,16 @@ header:
 	.long HEADER_LENGTH
 	.long CHECKSUM
 
-.align 8
-address_tag:
-	.short MULTIBOOT_HEADER_TAG_ADDRESS
-	.short 1
-	.long (address_tag_end - address_tag)
-	.long header
-	.long _start
-	.long 0
-	.long bss_end
-address_tag_end:
+#.align 8
+#address_tag:
+#	.short MULTIBOOT_HEADER_TAG_ADDRESS
+#	.short 1
+#	.long (address_tag_end - address_tag)
+#	.long header
+#	.long _start
+#	.long 0
+#	.long bss_end
+#address_tag_end:
 
 .align 8
 entry_address_tag:
@@ -50,15 +50,15 @@ entry_address_tag:
 	.long multiboot_entry
 entry_address_tag_end:
 
-.align 8
-framebuffer_tag:
-	.short MULTIBOOT_HEADER_TAG_FRAMEBUFFER
-	.short 1
-	.long (framebuffer_tag_end - framebuffer_tag)
-	.long 0
-	.long 0
-	.long 0
-framebuffer_tag_end:
+#.align 8
+#framebuffer_tag:
+#	.short MULTIBOOT_HEADER_TAG_FRAMEBUFFER
+#	.short 1
+#	.long (framebuffer_tag_end - framebuffer_tag)
+#	.long 0
+#	.long 0
+#	.long 0
+#framebuffer_tag_end:
 
 .align 8
 	.short MULTIBOOT_HEADER_TAG_END
@@ -79,12 +79,12 @@ multiboot_entry:
 
 	push %ebx
 	call kernel_init
-	#call _init
+	call _init
 	pop %ebx
 
 	push %ebx
 	call kernel_main
-	#call _fini
+	call _fini
 
 	cli
 halt_loop:
