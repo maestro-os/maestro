@@ -3,6 +3,8 @@
 
 # include "libc/string.h"
 
+# define KERNEL_MAGIC
+
 typedef struct gdt_descriptor
 {
 	uint16_t size;
@@ -16,9 +18,6 @@ typedef struct gdt_table
 
 __attribute__((noreturn))
 void panic(const char* reason);
-
-__attribute__((noreturn))
-void abort();
 
 __attribute__((noreturn))
 void kernel_halt();
