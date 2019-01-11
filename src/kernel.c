@@ -10,7 +10,19 @@ void kernel_main(const void* bi)
 	tty_init();
 
 	// TODO test
-	const char* str = "\tHllo world!";
-	for(size_t i = 0; i < 100; ++i)
-		tty_write(str, strlen(str));
+	tty_write("Hello world!", 12);
+}
+
+__attribute((noreturn))
+void panic(const char* reason)
+{
+	const char* message = "--- KERNEL PANIC ---\n\nKernel has been forced to halt due to internal problem, sorry :/\nReason: ";
+	const char* second_message = "\n\nIf you belive this is a bug on the kernel side, please feel free to report it.";
+
+	tty_init();
+	tty_write(message, strlen(message));
+	tty_write(reason, strlen(reason));
+	tty_write(second_message, strlen(second_message));
+
+	kernel_halt();
 }

@@ -1,7 +1,7 @@
 NAME = crumbleos
 
 CC = i686-elf-gcc
-CFLAGS = -ffreestanding -O2 -Wall -Wextra -Werror -nostdlib -lgcc -g
+CFLAGS = -nostdlib -ffreestanding -fstack-protector-strong -Wall -Wextra -Werror -O2 -lgcc -g
 
 LINKER = linker.ld
 

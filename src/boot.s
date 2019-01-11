@@ -71,6 +71,14 @@ kernel_init:
 
 	ret
 
+.global kernel_halt
+
+kernel_halt:
+	cli
+halt_loop:
+	hlt
+	jmp halt_loop
+
 multiboot_entry:
 	mov $stack_top, %esp
 
@@ -86,10 +94,7 @@ multiboot_entry:
 	call kernel_main
 	call _fini
 
-	cli
-halt_loop:
-	hlt
-	jmp halt_loop
+	call kernel_halt
 
 .size _start, . - _start
 
