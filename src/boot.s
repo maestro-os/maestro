@@ -67,7 +67,7 @@ entry_address_tag_end:
 header_end:
 
 kernel_init:
-	lgdt gdt_info
+	# TODO
 
 	ret
 
@@ -85,26 +85,21 @@ multiboot_entry:
 	pushl $0
 	popf
 
+	push %eax
 	push %ebx
 	call kernel_init
 	call _init
 	pop %ebx
+	pop %eax
 
 	push %ebx
-	push $gdt_info
+	push %eax
 	call kernel_main
 	call _fini
 
 	call kernel_halt
 
 .size _start, . - _start
-
-.section .data
-
-gdt_start:
-gdt_info:
-	.short gdt_info - gdt_start - 1
-	.long gdt_start
 
 .section .bss
 

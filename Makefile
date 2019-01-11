@@ -8,16 +8,19 @@ LINKER = linker.ld
 ASM_SRC := $(shell find src/ -type f -name "*.s" -and ! -name "crti.s" -and ! -name "crtn.s")
 C_SRC := $(shell find src/ -type f -name "*.c")
 
+DIRS := $(shell find src/ -type d)
+OBJ_DIRS := $(patsubst src/%, obj/%, $(DIRS))
+
 SRC := $(ASM_SRC) $(C_SRC)
 
-CRTI_OBJ = src/crti.o
+CRTI_OBJ = obj/crti.s.o
 CRTBEGIN_OBJ := $(shell $(CC) $(CFLAGS) -print-file-name=crtbegin.o)
 
-ASM_OBJ := $(patsubst %.s, %.o, $(ASM_SRC))
-C_OBJ := $(patsubst %.c, %.o, $(C_SRC))
+ASM_OBJ := $(patsubst src/%.s, obj/%.s.o, $(ASM_SRC))
+C_OBJ := $(patsubst src/%.c, obj/%.c.o, $(C_SRC))
 
 CRTEND_OBJ := $(shell $(CC) $(CFLAGS) -print-file-name=crtend.o)
-CRTN_OBJ = src/crtn.o
+CRTN_OBJ = obj/crtn.s.o
 
 OBJ := $(ASM_OBJ) $(C_OBJ) 
 INTERNAL_OBJ := $(CRTI_OBJ) $(OBJ) $(CRTN_OBJ)
@@ -25,10 +28,16 @@ OBJ_LINK_LIST := $(CRTI_OBJ) $(CRTBEGIN_OBJ) $(OBJ) $(CRTEND_OBJ) $(CRTN_OBJ)
 
 all: $(NAME) iso
 
-$(NAME): $(INTERNAL_OBJ)
+$(NAME): $(OBJ_DIRS) $(INTERNAL_OBJ)
 	$(CC) $(CFLAGS) -T $(LINKER) -o $(NAME) $(OBJ_LINK_LIST)
 
-%.o: %.[cs]
+$(OBJ_DIRS):
+	mkdir -p $(OBJ_DIRS)
+
+obj/%.s.o: src/%.s
+	$(CC) $(CFLAGS) -c $< -o $@
+
+obj/%.c.o: src/%.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
 iso: $(NAME).iso
@@ -43,8 +52,9 @@ tags:
 	ctags -R src/ --languages=c,c++
 
 clean:
-	rm -f $(INTERNAL_OBJ)
-	rm -rf iso
+	rm -rf obj/
+	rm -rf iso/
+	rm -f tags
 
 fclean: clean
 	rm -f $(NAME)

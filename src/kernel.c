@@ -2,16 +2,19 @@
 #include "multiboot.h"
 #include "tty/tty.h"
 
-void kernel_main(const void* bi, const gdt_descriptor_t* gdt)
+void kernel_main(const unsigned long magic, const void* bi)
 {
-	(void) bi;
-	// boot_info = load_boot_info(bi);
-
-	(void) gdt;
-
 	tty_init();
 
-	// TODO test
+	if(magic != MULTIBOOT2_BOOTLOADER_MAGIC) {
+		panic("Non Multiboot2-compliant bootloader!");
+		return ;
+	}
+
+	(void) bi;
+	// TODO Load multiboot2 tags
+
+	// test
 	tty_write("Hello world!", 12);
 }
 
