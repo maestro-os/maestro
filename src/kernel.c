@@ -1,11 +1,13 @@
 #include "kernel.h"
+#include "multiboot.h"
 #include "tty/tty.h"
-#include "vga/vga.h"
 
-void kernel_main(const void* bi)
+void kernel_main(const void* bi, const gdt_descriptor_t* gdt)
 {
 	(void) bi;
 	// boot_info = load_boot_info(bi);
+
+	(void) gdt;
 
 	tty_init();
 

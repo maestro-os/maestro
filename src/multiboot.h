@@ -53,5 +53,9 @@ typedef struct boot_info
 	uint8_t framebuffer_type;
 } boot_info_t;
 
+boot_info_t boot_info;
+
+boot_info_t load_boot_info(const void* bi);
+
 # endif
 #endif

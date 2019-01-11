@@ -1,12 +1,18 @@
 #ifndef KERNEL_H
 # define KERNEL_H
 
-# include "multiboot.h"
 # include "libc/string.h"
 
-boot_info_t boot_info;
+typedef struct gdt_descriptor
+{
+	uint16_t size;
+	uint32_t offset;
+} gdt_descriptor_t;
 
-boot_info_t load_boot_info(const void* bi);
+typedef struct gdt_table
+{
+	// TODO
+} gdt_table_t;
 
 __attribute__((noreturn))
 void panic(const char* reason);
