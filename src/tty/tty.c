@@ -22,6 +22,8 @@ void tty_init()
 void tty_clear()
 {
 	vga_clear();
+	cursor_x = 0;
+	cursor_y = 0;
 }
 
 void tty_move_cursor(size_t* x, size_t* y)
@@ -46,9 +48,6 @@ void tty_putchar(const char c, size_t* cursor_x, size_t* cursor_y)
 
 void tty_write(const char* buffer, const size_t size)
 {
-	static size_t cursor_x = 0;
-	static size_t cursor_y = 0;
-
 	// TODO Scrolling
 	for(size_t i = 0; i < size; ++i) {
 		switch(buffer[i]) {

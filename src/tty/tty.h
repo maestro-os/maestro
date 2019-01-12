@@ -5,6 +5,9 @@
 
 # define TAB_SIZE	4
 
+size_t cursor_x;
+size_t cursor_y;
+
 void tty_init();
 void tty_clear();
 void tty_putchar(const char c, size_t* cursor_x, size_t* cursor_y);

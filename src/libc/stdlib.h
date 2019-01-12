@@ -7,6 +7,9 @@
 #  define ABORT_INSTRUCTION	// TODO
 # endif
 
+int atoi(const char* nptr);
+long atol(const char* nptr);
+
 void exit(int status);
 
 __attribute__((noreturn))
