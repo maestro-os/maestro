@@ -42,7 +42,7 @@ boot_info_t read_boot_tags(const void* ptr)
 			default: {}
 		}
 
-		tag += (tag->size + 7) & ~7;
+		tag = (multiboot_tag_t*) ((uint8_t*) tag + ((tag->size + 7) & ~7));
 	}
 
 	return data;

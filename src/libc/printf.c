@@ -26,6 +26,8 @@ static const char* next_specifier(const char* format, specifier_t* specifier)
 	if(!(*format)) return (NULL);
 
 	// TODO Parse the specifier
+	specifier->size = 2;
+	specifier->type = format[1];
 
 	return format;
 }
@@ -36,18 +38,35 @@ static inline int putchar(const char c)
 	return 1;
 }
 
-static inline int putint(int n, const int base)
+static inline int putint(int n, const size_t base)
 {
 	if(n < 0) {
 		putchar('-');
 		n = -n; // TODO OVERFLOW!
 	}
 
+	if((unsigned int) n >= base) {
+		return putint(n / base, base) + putchar('0' + (n % base));
+	} else {
+		return putchar('0' + (n % base));
+	}
+}
+
+static inline int putuint(unsigned int n, const size_t base)
+{
 	if(n >= base) {
 		return putint(n / base, base) + putchar('0' + (n % base));
 	} else {
 		return putchar('0' + (n % base));
 	}
+}
+
+static inline int putstr(const char* str)
+{
+	const size_t len = strlen(str);
+
+	tty_write(str, len);
+	return len;
 }
 
 static int signed_decimal(const specifier_t* specifier, va_list* args)
@@ -58,11 +77,29 @@ static int signed_decimal(const specifier_t* specifier, va_list* args)
 	return putint(va_arg(*args, int), 10);
 }
 
+static int unsigned_decimal(const specifier_t* specifier, va_list* args)
+{
+	// TODO Alignements, etc...
+	(void) specifier;
+
+	return putuint(va_arg(*args, int), 10);
+}
+
+static int string(const specifier_t* specifier, va_list* args)
+{
+	// TODO Alignements, etc...
+	(void) specifier;
+
+	return putstr(va_arg(*args, const char*));
+}
+
 static int handle_specifier(const specifier_t* specifier, va_list* args)
 {
 	static handler_t handlers[] = {
 		{'d', signed_decimal},
 		{'i', signed_decimal},
+		{'u', unsigned_decimal},
+		{'s', string}
 	};
 
 	if(specifier->type == '%') {

@@ -4,6 +4,8 @@
 # include "multiboot.h"
 # include "libc/string.h"
 
+# define KERNEL_VERSION	"0.1"
+
 # define KERNEL_MAGIC
 
 __attribute__((noreturn))
