@@ -2,17 +2,21 @@
 #include "multiboot.h"
 #include "tty/tty.h"
 
-void kernel_main(const unsigned long magic, const void* bi)
+void kernel_main(const unsigned long magic, const void* ptr)
 {
 	tty_init();
 
 	if(magic != MULTIBOOT2_BOOTLOADER_MAGIC) {
 		panic("Non Multiboot2-compliant bootloader!");
-		return ;
+		return;
 	}
 
-	(void) bi;
-	// TODO Load multiboot2 tags
+	if(((uintptr_t) ptr) & 7) {
+		panic("Boot informations structure's address is not aligned!");
+		return;
+	}
+
+	read_boot_tags(ptr);
 
 	// test
 	tty_write("Hello world!", 12);
