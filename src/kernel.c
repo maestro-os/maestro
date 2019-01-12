@@ -1,6 +1,7 @@
 #include "kernel.h"
-#include "multiboot.h"
 #include "tty/tty.h"
+
+#include "libc/stdio.h"
 
 void kernel_main(const unsigned long magic, const void* ptr)
 {
@@ -16,22 +17,19 @@ void kernel_main(const unsigned long magic, const void* ptr)
 		return;
 	}
 
+	printf("Booting kernel...\n");
+	printf("Retrieving Multiboot data...\n");
+
 	read_boot_tags(ptr);
 
-	// test
-	tty_write("Hello world!", 12);
+	// TODO
 }
 
 __attribute((noreturn))
 void panic(const char* reason)
 {
-	const char* message = "--- KERNEL PANIC ---\n\nKernel has been forced to halt due to internal problem, sorry :/\nReason: ";
-	const char* second_message = "\n\nIf you belive this is a bug on the kernel side, please feel free to report it.";
-
 	tty_init();
-	tty_write(message, strlen(message));
-	tty_write(reason, strlen(reason));
-	tty_write(second_message, strlen(second_message));
+	printf("--- KERNEL PANIC ---\n\nKernel has been forced to halt due to internal problem, sorry :/\nReason: %s\n\nIf you belive this is a bug on the kernel side, please feel free to report it.", reason);
 
 	kernel_halt();
 }

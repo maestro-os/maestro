@@ -1,20 +1,10 @@
 #ifndef KERNEL_H
 # define KERNEL_H
 
+# include "multiboot.h"
 # include "libc/string.h"
 
 # define KERNEL_MAGIC
-
-typedef struct gdt_descriptor
-{
-	uint16_t size;
-	uint32_t offset;
-} gdt_descriptor_t;
-
-typedef struct gdt_table
-{
-	// TODO
-} gdt_table_t;
 
 __attribute__((noreturn))
 void panic(const char* reason);
