@@ -17,7 +17,7 @@
 
 .set STACK_SIZE,	16384
 
-.text
+.section .text
 .global start, _start
 
 start:
@@ -30,17 +30,6 @@ header:
 	.long MULTIBOOT_ARCHITECTURE
 	.long HEADER_LENGTH
 	.long CHECKSUM
-
-#.align 8
-#address_tag:
-#	.short MULTIBOOT_HEADER_TAG_ADDRESS
-#	.short 1
-#	.long (address_tag_end - address_tag)
-#	.long header
-#	.long _start
-#	.long 0
-#	.long bss_end
-#address_tag_end:
 
 .align 8
 entry_address_tag:
@@ -66,8 +55,34 @@ entry_address_tag_end:
 	.long 8
 header_end:
 
-kernel_init:
+gdt_start:
+	.long 0
+
 	# TODO
+
+gdt:
+	.short gdt - gdt_start - 1
+	.long gdt_start
+
+flush_gdt:
+	lgdt gdt
+	jmp $0x08, $complete_flush
+complete_flush:
+	mov $0x10, %ax
+    mov %ds, %ax
+    mov %es, %ax
+    mov %fs, %ax
+    mov %gs, %ax
+    mov %ss, %ax
+
+	ret
+
+kernel_init:
+	cli
+	call flush_gdt
+	mov %eax, %cr0
+	or $1, %al
+	mov %cr0, %eax
 
 	ret
 
@@ -99,8 +114,6 @@ multiboot_entry:
 
 	call kernel_halt
 
-.size _start, . - _start
-
 .section .bss
 
 .align 8
@@ -108,4 +121,3 @@ multiboot_entry:
 stack_bottom:
 	.skip STACK_SIZE
 stack_top:
-bss_end:
