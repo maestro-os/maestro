@@ -3,7 +3,7 @@
 
 #include "libc/stdio.h"
 
-void kernel_main(const unsigned long magic, const void* ptr)
+void kernel_main(const unsigned long magic, const void *ptr)
 {
 	tty_init();
 
@@ -29,7 +29,7 @@ void kernel_main(const unsigned long magic, const void* ptr)
 }
 
 __attribute((noreturn))
-void panic(const char* reason)
+void panic(const char *reason)
 {
 	tty_init();
 	printf("--- KERNEL PANIC ---\n\nKernel has been forced to halt due to internal problem, sorry :/\nReason: %s\n\nIf you belive this is a bug on the kernel side, please feel free to report it.", reason);

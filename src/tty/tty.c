@@ -26,7 +26,7 @@ void tty_clear()
 	cursor_y = 0;
 }
 
-void tty_move_cursor(size_t* x, size_t* y)
+void tty_move_cursor(size_t *x, size_t *y)
 {
 	if(*x >= VGA_WIDTH) {
 		*x = 0;
@@ -36,7 +36,7 @@ void tty_move_cursor(size_t* x, size_t* y)
 	vga_move_cursor(*x, *y);
 }
 
-void tty_putchar(const char c, size_t* cursor_x, size_t* cursor_y)
+void tty_putchar(const char c, size_t *cursor_x, size_t *cursor_y)
 {
 	vga_putchar(c, *cursor_x, *cursor_y);
 
@@ -46,7 +46,7 @@ void tty_putchar(const char c, size_t* cursor_x, size_t* cursor_y)
 
 // TODO tty_putstr
 
-void tty_write(const char* buffer, const size_t size)
+void tty_write(const char *buffer, const size_t size)
 {
 	// TODO Scrolling
 	for(size_t i = 0; i < size; ++i) {

@@ -55,34 +55,36 @@ entry_address_tag_end:
 	.long 8
 header_end:
 
-gdt_start:
-	.long 0
-
-	# TODO
-
-gdt:
-	.short gdt - gdt_start - 1
-	.long gdt_start
+.global switch_protected
 
 flush_gdt:
 	lgdt gdt
 	jmp $0x08, $complete_flush
 complete_flush:
 	mov $0x10, %ax
-    mov %ds, %ax
-    mov %es, %ax
-    mov %fs, %ax
-    mov %gs, %ax
-    mov %ss, %ax
+	mov %ds, %ax
+	mov %es, %ax
+	mov %fs, %ax
+	mov %gs, %ax
+	mov %ss, %ax
 
 	ret
 
-kernel_init:
+switch_protected:
+	push gdt_start
+	push gdt
+	call create_gdt
+
 	cli
 	call flush_gdt
 	mov %eax, %cr0
 	or $1, %al
 	mov %cr0, %eax
+
+	ret
+
+kernel_init:
+	call switch_protected
 
 	ret
 
@@ -121,3 +123,14 @@ multiboot_entry:
 stack_bottom:
 	.skip STACK_SIZE
 stack_top:
+
+.section .data
+
+.align 8
+
+gdt_start:
+	.skip 65536
+
+gdt:
+	.short 0
+	.long gdt_start

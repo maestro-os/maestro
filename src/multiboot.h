@@ -336,8 +336,8 @@ typedef struct multiboot_tag_load_base_addr
 
 typedef struct boot_info_t
 {
-	const char* cmdline;
-	const char* loader_name;
+	const char *cmdline;
+	const char *loader_name;
 
 	uint32_t mem_lower;
 	uint32_t mem_upper;
@@ -345,6 +345,6 @@ typedef struct boot_info_t
 	// TODO
 } boot_info_t;
 
-boot_info_t read_boot_tags(const void* ptr);
+boot_info_t read_boot_tags(const void *ptr);
 
 #endif
