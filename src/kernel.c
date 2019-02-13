@@ -3,7 +3,7 @@
 
 #include "libc/stdio.h"
 
-void kernel_main(const unsigned long magic, const void *ptr)
+void kernel_main(const void *kernel, const unsigned long magic, const void *ptr)
 {
 	tty_init();
 
@@ -18,6 +18,7 @@ void kernel_main(const unsigned long magic, const void *ptr)
 	}
 
 	printf("Booting crumbleos kernel version %s...\n", KERNEL_VERSION);
+	printf("Kernel is loaded at address %p\n", kernel);
 	printf("Retrieving Multiboot data...\n");
 
 	const boot_info_t boot_info = read_boot_tags(ptr);

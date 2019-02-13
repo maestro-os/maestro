@@ -1,3 +1,5 @@
+kernel:
+
 .set MULTIBOOT_MAGIC,			0xe85250d6
 .set MULTIBOOT_ARCHITECTURE,	0
 .set HEADER_LENGTH,				(header_end - header)
@@ -84,7 +86,7 @@ switch_protected:
 	ret
 
 kernel_init:
-	call switch_protected
+	#call switch_protected
 
 	ret
 
@@ -111,6 +113,7 @@ multiboot_entry:
 
 	push %ebx
 	push %eax
+	push kernel
 	call kernel_main
 	call _fini
 

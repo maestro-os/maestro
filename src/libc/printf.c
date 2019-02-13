@@ -55,7 +55,7 @@ static inline int putint(int n, const size_t base)
 static inline int putuint(unsigned int n, const size_t base)
 {
 	if(n >= base) {
-		return putint(n / base, base) + putchar('0' + (n % base));
+		return putuint(n / base, base) + putchar('0' + (n % base));
 	} else {
 		return putchar('0' + (n % base));
 	}
@@ -93,13 +93,22 @@ static int string(const specifier_t* specifier, va_list* args)
 	return putstr(va_arg(*args, const char*));
 }
 
+static int pointer(const specifier_t* specifier, va_list* args)
+{
+	// TODO Alignements, etc...
+	(void) specifier;
+
+	return putstr("0x") + putuint((unsigned) va_arg(*args, void*), 16); // TODO Long?
+}
+
 static int handle_specifier(const specifier_t* specifier, va_list* args)
 {
 	static handler_t handlers[] = {
 		{'d', signed_decimal},
 		{'i', signed_decimal},
 		{'u', unsigned_decimal},
-		{'s', string}
+		{'s', string},
+		{'p', pointer}
 	};
 
 	if(specifier->type == '%') {
