@@ -38,6 +38,12 @@ static inline int putchar(const char c)
 	return 1;
 }
 
+static inline char get_char(int n)
+{
+	if(n < 0) n = -n;
+	return (n < 10 ? '0' : 'a' - 10) + n;
+}
+
 static inline int putint(int n, const size_t base)
 {
 	if(n < 0)
@@ -48,11 +54,11 @@ static inline int putint(int n, const size_t base)
 
 	if((unsigned int) n >= base)
 	{
-		return putint(n / base, base) + putchar('0' + (n % base));
+		return putint(n / base, base) + putchar(get_char(n % base));
 	}
 	else
 	{
-		return putchar('0' + (n % base));
+		return putchar(get_char(n % base));
 	}
 }
 
@@ -60,11 +66,11 @@ static inline int putuint(unsigned int n, const size_t base)
 {
 	if(n >= base)
 	{
-		return putuint(n / base, base) + putchar('0' + (n % base));
+		return putuint(n / base, base) + putchar(get_char(n % base));
 	}
 	else
 	{
-		return putchar('0' + (n % base));
+		return putchar(get_char(n % base));
 	}
 }
 
@@ -105,7 +111,7 @@ static int pointer(const specifier_t *specifier, va_list *args)
 	// TODO Alignements, etc...
 	(void) specifier;
 
-	return putstr("0x") + putuint((unsigned) va_arg(*args, void *), 16); // TODO Long?
+	return putstr("0x") + putuint((unsigned) va_arg(*args, void *), 16);
 }
 
 static int handle_specifier(const specifier_t *specifier, va_list *args)

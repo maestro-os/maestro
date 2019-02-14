@@ -55,13 +55,13 @@ typedef struct gdt
 
 typedef uint64_t global_descriptor_t;
 
+uint8_t inb(const uint16_t port);
+void outb(const uint16_t port, const uint8_t value);
+
 __attribute__((noreturn))
 void panic(const char *reason);
 
 __attribute__((noreturn))
 void kernel_halt();
-
-uint8_t inb(const uint16_t port);
-void outb(const uint16_t port, const uint8_t value);
 
 #endif

@@ -1,4 +1,5 @@
 #include "kernel.h"
+#include "syscall/syscall.h"
 #include "tty/tty.h"
 
 #include "libc/stdio.h"
@@ -10,13 +11,11 @@ void kernel_main(const void *kernel, const unsigned long magic, const void *ptr)
 	if(magic != MULTIBOOT2_BOOTLOADER_MAGIC)
 	{
 		panic("Non Multiboot2-compliant bootloader!");
-		return;
 	}
 
 	if(((uintptr_t) ptr) & 7)
 	{
 		panic("Boot informations structure's address is not aligned!");
-		return;
 	}
 
 	printf("Booting crumbleos kernel version %s...\n", KERNEL_VERSION);
@@ -29,6 +28,18 @@ void kernel_main(const void *kernel, const unsigned long magic, const void *ptr)
 	printf("Bootloader name: %s\n", boot_info.loader_name);
 	printf("Memory lower bound: %u\n", boot_info.mem_lower);
 	printf("Memory upper bound: %u\n", boot_info.mem_upper);
+
+	if((boot_info.mem_upper * 1024) <= 0x200000)
+	{
+		panic("No heap space for kernel!");
+	}
+
+	kernel_heap_end = (void *) (boot_info.mem_upper * 1024) - 0x200000;
+
+	printf("\nKernel heap space has a size of: %i byte(s)\n",
+		kernel_heap_end - KERNEL_HEAP_BEGIN);
+
+	// TODO
 }
 
 __attribute((noreturn))
