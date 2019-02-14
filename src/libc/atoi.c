@@ -1,6 +1,6 @@
 #include "stdlib.h"
 
-int atoi(const char* nptr)
+int atoi(const char *nptr)
 {
 	while(*nptr && *nptr <= ' ') ++nptr;
 
@@ -9,7 +9,8 @@ int atoi(const char* nptr)
 
 	int n = 0;
 
-	while(*nptr >= '0' && *nptr <= '9') {
+	while(*nptr >= '0' && *nptr <= '9')
+	{
 		n *= 10;
 		n += *(nptr++) - '0';
 	}

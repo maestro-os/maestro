@@ -1,6 +1,6 @@
 #include "stdlib.h"
 
-long atol(const char* nptr)
+long atol(const char *nptr)
 {
 	while(*nptr && *nptr <= ' ') ++nptr;
 
@@ -9,7 +9,8 @@ long atol(const char* nptr)
 
 	long n = 0;
 
-	while(*nptr >= '0' && *nptr <= '9') {
+	while(*nptr >= '0' && *nptr <= '9')
+	{
 		n *= 10;
 		n += *(nptr++) - '0';
 	}

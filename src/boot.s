@@ -27,6 +27,32 @@ _start:
 	jmp multiboot_entry
 
 .align 8
+
+gdt_start:
+gdt_null:
+	.quad 0
+
+gdt_code:
+	.word 0xffff
+	.word 0
+	.byte 0
+	.byte 0b10011010
+	.byte 0b11001111
+	.byte 0
+
+gdt_data:
+	.word 0xffff
+	.word 0
+	.byte 0
+	.byte 0b10010010
+	.byte 0b11001111
+	.byte 0
+
+gdt:
+	.word gdt - gdt_start - 1
+	.long gdt_start
+
+.align 8
 header:
 	.long MULTIBOOT_MAGIC
 	.long MULTIBOOT_ARCHITECTURE
@@ -59,11 +85,16 @@ header_end:
 
 .global switch_protected
 
-flush_gdt:
+switch_protected:
+	cli
 	lgdt gdt
-	jmp $0x08, $complete_flush
+	mov %eax, %cr0
+	or $1, %al
+	mov %cr0, %eax
+
+	jmp $0x8, $complete_flush
 complete_flush:
-	mov $0x10, %ax
+	mov $0x8, %ax
 	mov %ds, %ax
 	mov %es, %ax
 	mov %fs, %ax
@@ -72,21 +103,8 @@ complete_flush:
 
 	ret
 
-switch_protected:
-	push gdt_start
-	push gdt
-	call create_gdt
-
-	cli
-	call flush_gdt
-	mov %eax, %cr0
-	or $1, %al
-	mov %cr0, %eax
-
-	ret
-
 kernel_init:
-	#call switch_protected
+	call switch_protected
 
 	ret
 
@@ -126,14 +144,3 @@ multiboot_entry:
 stack_bottom:
 	.skip STACK_SIZE
 stack_top:
-
-.section .data
-
-.align 8
-
-gdt_start:
-	.skip 65536
-
-gdt:
-	.short 0
-	.long gdt_start

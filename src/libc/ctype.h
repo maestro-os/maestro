@@ -11,7 +11,13 @@ inline int isalpha(int c)
 	return ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z'));
 }
 
-int iscntrl(int c);
+int iscntrl(int c)
+{
+	(void)c;
+	// TODO
+
+	return 0;
+}
 
 inline int isdigit(int c)
 {
@@ -33,7 +39,13 @@ inline int isprint(int c)
 	return (c >= ' ' && c < 0x7f);
 }
 
-int ispunct(int c);
+int ispunct(int c)
+{
+	(void) c;
+	// TODO
+
+	return 0;
+}
 
 inline int isspace(int c)
 {
@@ -45,13 +57,25 @@ inline int isupper(int c)
 	return (c >= 'A' && c <= 'Z');
 }
 
-int isxdigit(int c);
+int isxdigit(int c)
+{
+	(void) c;
+	// TODO
+
+	return 0;
+}
 
 inline int isascii(int c)
 {
 	return ((c & ~0x7f) == 0);
 }
 
-int isblank(int c);
+int isblank(int c)
+{
+	(void) c;
+	// TODO
+
+	return 0;
+}
 
 #endif

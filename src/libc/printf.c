@@ -15,10 +15,10 @@ typedef struct specifier
 typedef struct handler
 {
 	char c;
-	int (*f)(const specifier_t*, va_list*);
+	int (*f)(const specifier_t *, va_list *);
 } handler_t;
 
-static const char* next_specifier(const char* format, specifier_t* specifier)
+static const char *next_specifier(const char *format, specifier_t *specifier)
 {
 	bzero(specifier, sizeof(specifier_t));
 
@@ -40,28 +40,35 @@ static inline int putchar(const char c)
 
 static inline int putint(int n, const size_t base)
 {
-	if(n < 0) {
+	if(n < 0)
+	{
 		putchar('-');
 		n = -n; // TODO OVERFLOW!
 	}
 
-	if((unsigned int) n >= base) {
+	if((unsigned int) n >= base)
+	{
 		return putint(n / base, base) + putchar('0' + (n % base));
-	} else {
+	}
+	else
+	{
 		return putchar('0' + (n % base));
 	}
 }
 
 static inline int putuint(unsigned int n, const size_t base)
 {
-	if(n >= base) {
+	if(n >= base)
+	{
 		return putuint(n / base, base) + putchar('0' + (n % base));
-	} else {
+	}
+	else
+	{
 		return putchar('0' + (n % base));
 	}
 }
 
-static inline int putstr(const char* str)
+static inline int putstr(const char *str)
 {
 	const size_t len = strlen(str);
 
@@ -69,7 +76,7 @@ static inline int putstr(const char* str)
 	return len;
 }
 
-static int signed_decimal(const specifier_t* specifier, va_list* args)
+static int signed_decimal(const specifier_t *specifier, va_list *args)
 {
 	// TODO Alignements, etc...
 	(void) specifier;
@@ -77,7 +84,7 @@ static int signed_decimal(const specifier_t* specifier, va_list* args)
 	return putint(va_arg(*args, int), 10);
 }
 
-static int unsigned_decimal(const specifier_t* specifier, va_list* args)
+static int unsigned_decimal(const specifier_t *specifier, va_list *args)
 {
 	// TODO Alignements, etc...
 	(void) specifier;
@@ -85,23 +92,23 @@ static int unsigned_decimal(const specifier_t* specifier, va_list* args)
 	return putuint(va_arg(*args, int), 10);
 }
 
-static int string(const specifier_t* specifier, va_list* args)
+static int string(const specifier_t *specifier, va_list *args)
 {
 	// TODO Alignements, etc...
 	(void) specifier;
 
-	return putstr(va_arg(*args, const char*));
+	return putstr(va_arg(*args, const char *));
 }
 
-static int pointer(const specifier_t* specifier, va_list* args)
+static int pointer(const specifier_t *specifier, va_list *args)
 {
 	// TODO Alignements, etc...
 	(void) specifier;
 
-	return putstr("0x") + putuint((unsigned) va_arg(*args, void*), 16); // TODO Long?
+	return putstr("0x") + putuint((unsigned) va_arg(*args, void *), 16); // TODO Long?
 }
 
-static int handle_specifier(const specifier_t* specifier, va_list* args)
+static int handle_specifier(const specifier_t *specifier, va_list *args)
 {
 	static handler_t handlers[] = {
 		{'d', signed_decimal},
@@ -111,12 +118,14 @@ static int handle_specifier(const specifier_t* specifier, va_list* args)
 		{'p', pointer}
 	};
 
-	if(specifier->type == '%') {
+	if(specifier->type == '%')
+	{
 		putchar('%');
 		return 1;
 	}
 
-	for(size_t i = 0; i < sizeof(handlers) / sizeof(handler_t); ++i) {
+	for(size_t i = 0; i < sizeof(handlers) / sizeof(handler_t); ++i)
+	{
 		const handler_t* h = handlers + i;
 		if(h->c == specifier->type) return h->f(specifier, args);
 	}
@@ -125,17 +134,18 @@ static int handle_specifier(const specifier_t* specifier, va_list* args)
 	return 0;
 }
 
-int printf(const char* format, ...)
+int printf(const char *format, ...)
 {
 	int total = 0;
 	va_list args;
-	const char* s;
+	const char *s;
 	specifier_t specifier;
 	size_t len;
 
 	va_start(args, format);
 
-	while(*format) {
+	while(*format)
+	{
 		s = next_specifier(format, &specifier);
 		len	= (s ? (size_t) (s - format) : strlen(format));
 

@@ -7,12 +7,14 @@ void kernel_main(const void *kernel, const unsigned long magic, const void *ptr)
 {
 	tty_init();
 
-	if(magic != MULTIBOOT2_BOOTLOADER_MAGIC) {
+	if(magic != MULTIBOOT2_BOOTLOADER_MAGIC)
+	{
 		panic("Non Multiboot2-compliant bootloader!");
 		return;
 	}
 
-	if(((uintptr_t) ptr) & 7) {
+	if(((uintptr_t) ptr) & 7)
+	{
 		panic("Boot informations structure's address is not aligned!");
 		return;
 	}

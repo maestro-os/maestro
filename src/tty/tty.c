@@ -28,7 +28,8 @@ void tty_clear()
 
 void tty_move_cursor(size_t *x, size_t *y)
 {
-	if(*x >= VGA_WIDTH) {
+	if(*x >= VGA_WIDTH)
+	{
 		*x = 0;
 		++(*y);
 	}
@@ -49,28 +50,34 @@ void tty_putchar(const char c, size_t *cursor_x, size_t *cursor_y)
 void tty_write(const char *buffer, const size_t size)
 {
 	// TODO Scrolling
-	for(size_t i = 0; i < size; ++i) {
-		switch(buffer[i]) {
-			case '\t': {
+	for(size_t i = 0; i < size; ++i)
+	{
+		switch(buffer[i])
+		{
+			case '\t':
+			{
 				cursor_x += (TAB_SIZE - (cursor_x % TAB_SIZE));
 				tty_move_cursor(&cursor_x, &cursor_y);
 				break;
 			}
 
-			case '\n': {
+			case '\n':
+			{
 				cursor_x = 0;
 				++cursor_y;
 				tty_move_cursor(&cursor_x, &cursor_y);
 				break;
 			}
 
-			case '\r': {
+			case '\r':
+			{
 				cursor_x = 0;
 				tty_move_cursor(&cursor_x, &cursor_y);
 				break;
 			}
 
-			default: {
+			default:
+			{
 				tty_putchar(buffer[i], &cursor_x, &cursor_y);
 				break;
 			}

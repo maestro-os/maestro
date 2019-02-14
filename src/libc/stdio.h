@@ -3,6 +3,6 @@
 
 # include "stdarg.h"
 
-int printf(const char* format, ...);
+int printf(const char *format, ...);
 
 #endif

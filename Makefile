@@ -63,7 +63,7 @@ fclean: clean
 re: fclean all
 
 test: $(NAME)
-	qemu-system-i386 -cdrom $(NAME).iso
+	qemu-system-i386 -cdrom $(NAME).iso -d int
 
 debug: $(NAME)
 	qemu-system-i386 -cdrom $(NAME).iso -s -S
