@@ -3,7 +3,7 @@
 
 # include "../libc/string.h"
 
-# define VGA_BUFFER	0xb8000
+# define VGA_BUFFER	(void *) 0xb8000
 # define VGA_WIDTH	80
 # define VGA_HEIGHT	24
 

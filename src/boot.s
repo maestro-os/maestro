@@ -1,5 +1,3 @@
-kernel:
-
 .set MULTIBOOT_MAGIC,			0xe85250d6
 .set MULTIBOOT_ARCHITECTURE,	0
 .set HEADER_LENGTH,				(header_end - header)
@@ -47,6 +45,30 @@ gdt_data:
 	.byte 0b10010010
 	.byte 0b11001111
 	.byte 0
+
+#gdt_bios:
+#	.word 0x10
+#	.word 0
+#	.byte 0
+#	.byte 0b10010000
+#	.byte 0b11000000
+#	.byte 0
+
+#gdt_code:
+#	.word 0
+#	.word 0x10000
+#	.byte 0
+#	.byte 0b10011010
+#	.byte 0b11001000
+#	.byte 0
+
+#gdt_data:
+#	.word 0xffff
+#	.word 0
+#	.byte 0
+#	.byte 0b10000010
+#	.byte 0b11001111
+#	.byte 0b10000000
 
 gdt:
 	.word gdt - gdt_start - 1
@@ -131,7 +153,6 @@ multiboot_entry:
 
 	push %ebx
 	push %eax
-	push kernel
 	call kernel_main
 	call _fini
 

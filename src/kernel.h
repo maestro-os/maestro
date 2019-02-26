@@ -10,9 +10,6 @@
 
 # define GD_NULL	0
 
-# define GD_16BITS_MASK	0x1000000000000
-# define GD_32BITS_MASK	~0
-
 # define GD_LIMIT_MASK		0x10
 # define GD_LIMIT_MASK_2	(0x4 >> GD_LIMIT_MASK)
 # define GD_BASE_MASK		0x18
@@ -47,6 +44,14 @@
 
 # define GD_FLAGS_NYBBLE_GRANULARITY_4K			0b00000001
 
+# define KERNEL_HEAP_BEGIN	(void *) 0x200000
+# define KERNEL_HEAP_SIZE	0x100000
+# define MEM_PAGE_SIZE		0x1000
+
+# define MEM_STATE_FREE		0
+# define MEM_STATE_USED		0b01
+# define MEM_STATE_HEADER	0b10
+
 typedef struct gdt
 {
 	uint16_t size;
@@ -54,6 +59,26 @@ typedef struct gdt
 } gdt_t;
 
 typedef uint64_t global_descriptor_t;
+
+typedef enum mem_state
+{
+	MEM_FREE,
+	MEM_USED
+} mem_state_t;
+
+typedef struct mem_node
+{
+	mem_state_t state;
+	size_t size;
+
+	struct mem_node	*next;
+} mem_node_t;
+
+void *memory_end;
+
+void mm_init();
+void *mm_find_free(void *ptr, size_t size);
+void mm_free(void *ptr);
 
 uint8_t inb(const uint16_t port);
 void outb(const uint16_t port, const uint8_t value);

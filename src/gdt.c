@@ -13,7 +13,7 @@ static global_descriptor_t create_gd(const uint32_t limit,
 	gd |= (uint64_t) access >> GD_ACCESS_OFFSET;
 	gd |= (uint64_t) flags >> GD_FLAGS_OFFSET;
 
-	return gd & GD_32BITS_MASK;
+	return gd;
 }
 
 void create_gdt(gdt_t *gdt, global_descriptor_t *gdt_start)

@@ -11,6 +11,11 @@ void *realloc(void *ptr, size_t size)
 	}
 
 	// TODO
+	free(ptr);
 
-	return NULL;
+	if(!(ptr = malloc(size)))
+		return NULL;
+
+	// TODO Copy previous data
+	return ptr;
 }

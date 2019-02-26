@@ -1,10 +1,9 @@
 #include "kernel.h"
-#include "syscall/syscall.h"
 #include "tty/tty.h"
 
 #include "libc/stdio.h"
 
-void kernel_main(const void *kernel, const unsigned long magic, const void *ptr)
+void kernel_main(const unsigned long magic, const void *ptr)
 {
 	tty_init();
 
@@ -19,25 +18,26 @@ void kernel_main(const void *kernel, const unsigned long magic, const void *ptr)
 	}
 
 	printf("Booting crumbleos kernel version %s...\n", KERNEL_VERSION);
-	printf("Kernel is loaded at address %p\n", kernel);
-	printf("Retrieving Multiboot data...\n");
+	printf("Retrieving Multiboot2 data...\n");
 
 	const boot_info_t boot_info = read_boot_tags(ptr);
 
 	printf("Command line: %s\n", boot_info.cmdline);
 	printf("Bootloader name: %s\n", boot_info.loader_name);
-	printf("Memory lower bound: %u\n", boot_info.mem_lower);
-	printf("Memory upper bound: %u\n", boot_info.mem_upper);
+	printf("Memory lower bound: %u KB\n", boot_info.mem_lower);
+	printf("Memory upper bound: %u KB\n", boot_info.mem_upper);
 
-	if((boot_info.mem_upper * 1024) <= 0x200000)
+	memory_end = (void *) (boot_info.mem_upper * 1024);
+
+	if(memory_end <= KERNEL_HEAP_BEGIN + KERNEL_HEAP_SIZE)
 	{
-		panic("No heap space for kernel!");
+		panic("Not enough heap space for kernel!");
 	}
 
-	kernel_heap_end = (void *) (boot_info.mem_upper * 1024) - 0x200000;
+	printf("Available memory: %p bytes\n", memory_end);
+	printf("Kernel memory manager initialization...\n");
 
-	printf("\nKernel heap space has a size of: %i byte(s)\n",
-		kernel_heap_end - KERNEL_HEAP_BEGIN);
+	mm_init();
 
 	// TODO
 }
