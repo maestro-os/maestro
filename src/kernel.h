@@ -104,7 +104,7 @@ typedef struct mem_node
 
 void *memory_end;
 
-void load_idt(idt_t *idt);
+void init_idt(idt_t *idt);
 
 void mm_init();
 void *mm_find_free(void *ptr, size_t size);

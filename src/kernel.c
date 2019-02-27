@@ -4,16 +4,17 @@
 #include "libc/stdio.h"
 
 void kernel_main(const unsigned long magic,
-	const void *boot_info, void *idt)
+	const void *multiboot_ptr, void *idt)
 {
 	tty_init();
 
+	// TODO Add first Multiboot version support
 	if(magic != MULTIBOOT2_BOOTLOADER_MAGIC)
 	{
 		panic("Non Multiboot2-compliant bootloader!");
 	}
 
-	if(((uintptr_t) boot_info) & 7)
+	if(((uintptr_t) multiboot_ptr) & 7)
 	{
 		panic("Boot informations structure's address is not aligned!");
 	}
@@ -21,7 +22,7 @@ void kernel_main(const unsigned long magic,
 	printf("Booting crumbleos kernel version %s...\n", KERNEL_VERSION);
 	printf("Retrieving Multiboot2 data...\n");
 
-	const boot_info_t boot_info = read_boot_tags(boot_info);
+	const boot_info_t boot_info = read_boot_tags(multiboot_ptr);
 
 	printf("Command line: %s\n", boot_info.cmdline);
 	printf("Bootloader name: %s\n", boot_info.loader_name);
@@ -39,6 +40,10 @@ void kernel_main(const unsigned long magic,
 	printf("Kernel memory manager initialization...\n");
 
 	mm_init();
+
+	printf("Interruptions initialization...\n");
+
+	init_idt(idt);
 
 	// TODO
 }

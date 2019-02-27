@@ -1,4 +1,4 @@
-#include "kernel.h"
+#include "../kernel.h"
 
 extern int load_idt();
 
@@ -19,9 +19,10 @@ extern int irq13();
 extern int irq14();
 extern int irq15();
 
-void load_idt(idt_t *idt)
+void init_idt(idt_t *idt)
 {
 	interrupt_descriptor_t *id = (void *) idt->base;
+	(void)id;
 	// TODO
 
 	idt->limit = 0; // TODO

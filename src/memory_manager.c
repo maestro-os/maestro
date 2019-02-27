@@ -1,4 +1,5 @@
 #include "kernel.h"
+#include "libc/errno.h"
 
 void mm_init()
 {
@@ -40,6 +41,7 @@ void *mm_find_free(void *ptr, size_t size)
 		return n + sizeof(mem_node_t);
 	}
 
+	errno = ENOMEM;
 	return NULL;
 }
 

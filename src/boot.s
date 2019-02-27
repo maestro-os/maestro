@@ -108,13 +108,16 @@ multiboot_entry:
 
 	call kernel_halt
 
-.section .bss
+.section .data
 
 .align 8
 
-stack_bottom:
-	.skip STACK_SIZE
-stack_top:
+idt_start:
+	.skip 8 * 256
+
+idt:
+	.word 0
+	.long idt_start
 
 .align 8
 
@@ -166,11 +169,10 @@ gdt:
 	.word gdt - gdt_start - 1
 	.long gdt_start
 
+.section .bss
+
 .align 8
 
-idt_start:
-	.skip 8 * 256
-
-idt:
-	.word 0
-	.long idt_start
+stack_bottom:
+	.skip STACK_SIZE
+stack_top:
