@@ -25,56 +25,6 @@ _start:
 	jmp multiboot_entry
 
 .align 8
-
-gdt_start:
-gdt_null:
-	.quad 0
-
-gdt_code:
-	.word 0xffff
-	.word 0
-	.byte 0
-	.byte 0b10011010
-	.byte 0b11001111
-	.byte 0
-
-gdt_data:
-	.word 0xffff
-	.word 0
-	.byte 0
-	.byte 0b10010010
-	.byte 0b11001111
-	.byte 0
-
-#gdt_bios:
-#	.word 0x10
-#	.word 0
-#	.byte 0
-#	.byte 0b10010000
-#	.byte 0b11000000
-#	.byte 0
-
-#gdt_code:
-#	.word 0
-#	.word 0x10000
-#	.byte 0
-#	.byte 0b10011010
-#	.byte 0b11001000
-#	.byte 0
-
-#gdt_data:
-#	.word 0xffff
-#	.word 0
-#	.byte 0
-#	.byte 0b10000010
-#	.byte 0b11001111
-#	.byte 0b10000000
-
-gdt:
-	.word gdt - gdt_start - 1
-	.long gdt_start
-
-.align 8
 header:
 	.long MULTIBOOT_MAGIC
 	.long MULTIBOOT_ARCHITECTURE
@@ -165,3 +115,62 @@ multiboot_entry:
 stack_bottom:
 	.skip STACK_SIZE
 stack_top:
+
+.align 8
+
+gdt_start:
+gdt_null:
+	.quad 0
+
+gdt_code:
+	.word 0xffff
+	.word 0
+	.byte 0
+	.byte 0b10011010
+	.byte 0b11001111
+	.byte 0
+
+gdt_data:
+	.word 0xffff
+	.word 0
+	.byte 0
+	.byte 0b10010010
+	.byte 0b11001111
+	.byte 0
+
+#gdt_bios:
+#	.word 0x10
+#	.word 0
+#	.byte 0
+#	.byte 0b10010000
+#	.byte 0b11000000
+#	.byte 0
+
+#gdt_code:
+#	.word 0
+#	.word 0x10000
+#	.byte 0
+#	.byte 0b10011010
+#	.byte 0b11001000
+#	.byte 0
+
+#gdt_data:
+#	.word 0xffff
+#	.word 0
+#	.byte 0
+#	.byte 0b10000010
+#	.byte 0b11001111
+#	.byte 0b10000000
+
+gdt:
+	.word gdt - gdt_start - 1
+	.long gdt_start
+
+.align 8
+
+idt_start:
+	.skip 8 * 256
+
+idt:
+	.word 0
+	.long idt_start
