@@ -75,7 +75,7 @@ void idt_init()
 		| ID_PRIVILEGE_RING_0 | ID_PRESENT); // TODO Selector
 
 	idt_t idt;
-	idt.limit = sizeof(interrupt_descriptor_t) * 48; // TODO
+	idt.limit = sizeof(id);
 	idt.base = (uint32_t) id;
 
 	idt_load(&idt);
