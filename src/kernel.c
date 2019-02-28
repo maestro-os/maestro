@@ -1,5 +1,6 @@
 #include "kernel.h"
 #include "tty/tty.h"
+#include "idt/idt.h"
 
 #include "libc/stdio.h"
 

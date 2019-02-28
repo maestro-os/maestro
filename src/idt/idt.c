@@ -1,21 +1,27 @@
 #include "../kernel.h"
+#include "../pic/pic.h"
+#include "idt.h"
 
-extern int irq0();
-extern int irq1();
-extern int irq2();
-extern int irq3();
-extern int irq4();
-extern int irq5();
-extern int irq6();
-extern int irq7();
-extern int irq8();
-extern int irq9();
-extern int irq10();
-extern int irq11();
-extern int irq12();
-extern int irq13();
-extern int irq14();
-extern int irq15();
+static void remap_PIC()
+{
+	// TODO Detect if APIC is present
+
+	unsigned char master_mask, slave_mask;
+	master_mask = inb(PIC_MASTER_DATA);
+	slave_mask = inb(PIC_SLAVE_DATA);
+
+	pic_init();
+	outb(PIC_MASTER_DATA, 0x20);
+	outb(PIC_SLAVE_DATA, 0x28);
+	outb(PIC_MASTER_DATA, 4);
+	outb(PIC_SLAVE_DATA, 2);
+
+	outb(PIC_MASTER_DATA, 0x1);
+	outb(PIC_SLAVE_DATA, 0x1);
+
+	outb(PIC_MASTER_DATA, master_mask);
+	outb(PIC_SLAVE_DATA, slave_mask);
+}
 
 static interrupt_descriptor_t create_id(const void *offset,
 	const uint16_t selector, const uint8_t type_attr)
@@ -32,7 +38,7 @@ static interrupt_descriptor_t create_id(const void *offset,
 
 void idt_init()
 {
-	// TODO PIC remapping
+	remap_PIC();
 
 	interrupt_descriptor_t id[48];
 	id[32] = create_id(irq0, 0x8, ID_TYPE_GATE_INTERRUPT32
