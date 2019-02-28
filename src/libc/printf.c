@@ -38,51 +38,66 @@ static inline int putchar(const char c)
 	return 1;
 }
 
-static inline char get_char(int n)
+static inline char get_number_char(const int n)
 {
 	if(n < 0) n = -n;
 	return (n < 10 ? '0' : 'a' - 10) + n;
 }
 
-static inline int putint(int n, const size_t base)
+static inline int putint(const int n, const unsigned base)
 {
+	if(n >= (int) base || n <= -((int) base))
+	{
+		return putint(n / base, base) + putchar(get_number_char(n % base));
+	}
+
 	if(n < 0)
 	{
 		putchar('-');
-		n = -n; // TODO OVERFLOW!
+		n = -n;
 	}
 
-	if((unsigned int) n >= base)
-	{
-		return putint(n / base, base) + putchar(get_char(n % base));
-	}
-	else
-	{
-		return putchar(get_char(n % base));
-	}
+	return putchar(get_number_char(n % base));
 }
 
-static inline int putuint(unsigned int n, const size_t base)
+static inline int putuint(const unsigned int n, const unsigned base)
 {
 	if(n >= base)
 	{
-		return putuint(n / base, base) + putchar(get_char(n % base));
+		return putuint(n / base, base) + putchar(get_number_char(n % base));
 	}
 	else
 	{
-		return putchar(get_char(n % base));
+		return putchar(get_number_char(n % base));
 	}
+}
+
+static inline int putfloat(const unsigned int n, const unsigned base)
+{
+	(void) n;
+	(void) base;
+	// TODO
+
+	return 0;
 }
 
 static inline int putstr(const char *str)
 {
-	const size_t len = strlen(str);
-
+	const auto len = strlen(str);
 	tty_write(str, len);
+
 	return len;
 }
 
-static int signed_decimal(const specifier_t *specifier, va_list *args)
+static int char_handler(const specifier_t *specifier, va_list *args)
+{
+	// TODO Alignements, etc...
+	(void) specifier;
+
+	return putchar(va_arg(*args, char));
+}
+
+static int signed_decimal_handler(const specifier_t *specifier, va_list *args)
 {
 	// TODO Alignements, etc...
 	(void) specifier;
@@ -90,7 +105,7 @@ static int signed_decimal(const specifier_t *specifier, va_list *args)
 	return putint(va_arg(*args, int), 10);
 }
 
-static int unsigned_decimal(const specifier_t *specifier, va_list *args)
+static int unsigned_decimal_handler(const specifier_t *specifier, va_list *args)
 {
 	// TODO Alignements, etc...
 	(void) specifier;
@@ -98,7 +113,15 @@ static int unsigned_decimal(const specifier_t *specifier, va_list *args)
 	return putuint(va_arg(*args, int), 10);
 }
 
-static int string(const specifier_t *specifier, va_list *args)
+static int float_handler(const specifier_t *specifier, va_list *args)
+{
+	// TODO Alignements, etc...
+	(void) specifier;
+
+	return putfloat(va_arg(*args, float));
+}
+
+static int string_handler(const specifier_t *specifier, va_list *args)
 {
 	// TODO Alignements, etc...
 	(void) specifier;
@@ -106,7 +129,15 @@ static int string(const specifier_t *specifier, va_list *args)
 	return putstr(va_arg(*args, const char *));
 }
 
-static int pointer(const specifier_t *specifier, va_list *args)
+static int pointer_handler(const specifier_t *specifier, va_list *args)
+{
+	// TODO Alignements, etc...
+	(void) specifier;
+
+	return putstr("0x") + putuint((unsigned) va_arg(*args, void *), 16);
+}
+
+static int hexadecimal_handler(const specifier_t *specifier, va_list *args)
 {
 	// TODO Alignements, etc...
 	(void) specifier;
@@ -117,11 +148,14 @@ static int pointer(const specifier_t *specifier, va_list *args)
 static int handle_specifier(const specifier_t *specifier, va_list *args)
 {
 	static handler_t handlers[] = {
-		{'d', signed_decimal},
-		{'i', signed_decimal},
-		{'u', unsigned_decimal},
-		{'s', string},
-		{'p', pointer}
+		{'d', signed_decimal_handler},
+		{'i', signed_decimal_handler},
+		{'u', unsigned_decimal_handler},
+		{'f', float_handler},
+		{'c', char_handler},
+		{'s', string_handler},
+		{'p', pointer_handler},
+		{'x', hexadecimal_handler}
 	};
 
 	if(specifier->type == '%')
