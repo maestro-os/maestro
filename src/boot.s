@@ -112,15 +112,6 @@ multiboot_entry:
 
 .align 8
 
-idt_start:
-	.skip 8 * 256
-
-idt:
-	.word 0
-	.long idt_start
-
-.align 8
-
 gdt_start:
 gdt_null:
 	.quad 0

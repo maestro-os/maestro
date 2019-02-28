@@ -76,7 +76,7 @@ typedef uint64_t global_descriptor_t;
 typedef struct idt
 {
 	uint16_t limit;
-	const uint32_t base;
+	uint32_t base;
 } idt_t;
 
 typedef struct interrupt_descriptor
@@ -104,7 +104,8 @@ typedef struct mem_node
 
 void *memory_end;
 
-void init_idt(idt_t *idt);
+void idt_init();
+extern int idt_load(const idt_t *idt);
 
 void mm_init();
 void *mm_find_free(void *ptr, size_t size);

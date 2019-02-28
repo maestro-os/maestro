@@ -3,8 +3,7 @@
 
 #include "libc/stdio.h"
 
-void kernel_main(const unsigned long magic,
-	const void *multiboot_ptr, void *idt)
+void kernel_main(const unsigned long magic, const void *multiboot_ptr)
 {
 	tty_init();
 
@@ -43,7 +42,7 @@ void kernel_main(const unsigned long magic,
 
 	printf("Interruptions initialization...\n");
 
-	init_idt(idt);
+	idt_init();
 
 	// TODO
 }
