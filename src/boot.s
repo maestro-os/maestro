@@ -60,9 +60,9 @@ header_end:
 switch_protected:
 	cli
 	lgdt gdt
-	mov %eax, %cr0
-	or $1, %al
 	mov %cr0, %eax
+	or $1, %al
+	mov %eax, %cr0
 
 	jmp $0x8, $complete_flush
 complete_flush:
@@ -77,7 +77,6 @@ complete_flush:
 
 kernel_init:
 	call switch_protected
-
 	ret
 
 .global kernel_halt
@@ -104,8 +103,8 @@ multiboot_entry:
 	push %ebx
 	push %eax
 	call kernel_main
-	call _fini
 
+	call _fini
 	call kernel_halt
 
 .section .data

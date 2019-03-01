@@ -38,13 +38,13 @@ static inline int putchar(const char c)
 	return 1;
 }
 
-static inline char get_number_char(const int n)
+static inline char get_number_char(int n)
 {
 	if(n < 0) n = -n;
 	return (n < 10 ? '0' : 'a' - 10) + n;
 }
 
-static inline int putint(const int n, const unsigned base)
+static inline int putint(int n, const unsigned base)
 {
 	if(n >= (int) base || n <= -((int) base))
 	{
@@ -72,10 +72,9 @@ static inline int putuint(const unsigned int n, const unsigned base)
 	}
 }
 
-static inline int putfloat(const unsigned int n, const unsigned base)
+static inline int putfloat(const unsigned int n)
 {
 	(void) n;
-	(void) base;
 	// TODO
 
 	return 0;
@@ -83,7 +82,7 @@ static inline int putfloat(const unsigned int n, const unsigned base)
 
 static inline int putstr(const char *str)
 {
-	const auto len = strlen(str);
+	const size_t len = strlen(str);
 	tty_write(str, len);
 
 	return len;

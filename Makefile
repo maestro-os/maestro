@@ -68,4 +68,7 @@ test: $(NAME)
 debug: $(NAME)
 	qemu-system-i386 -cdrom $(NAME).iso -s -S
 
+bochs:
+	bochs
+
 .PHONY: all iso clean fclean re test debug

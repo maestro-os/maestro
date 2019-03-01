@@ -45,18 +45,6 @@
 # define GD_FLAGS_SIZE_16BITS		0b0000
 # define GD_FLAGS_SIZE_32BITS		0b0100
 
-# define ID_TYPE_GATE_TASK			0b01010000
-# define ID_TYPE_GATE_INTERRUPT16	0b01100000
-# define ID_TYPE_GATE_TRAP16		0b01110000
-# define ID_TYPE_GATE_INTERRUPT32	0b11100000
-# define ID_TYPE_GATE_TRAP32		0b11110000
-# define ID_TYPE_S					0b00001000
-# define ID_PRIVILEGE_RING_0		0b00000000
-# define ID_PRIVILEGE_RING_1		0b00000010
-# define ID_PRIVILEGE_RING_2		0b00000100
-# define ID_PRIVILEGE_RING_3		0b00000110
-# define ID_PRESENT					0b00000001
-
 # define KERNEL_HEAP_BEGIN	((void *) 0x200000)
 # define KERNEL_HEAP_SIZE	0x100000
 # define MEM_PAGE_SIZE		0x1000
@@ -72,21 +60,6 @@ typedef struct gdt
 } gdt_t;
 
 typedef uint64_t global_descriptor_t;
-
-typedef struct idt
-{
-	uint16_t limit;
-	uint32_t base;
-} idt_t;
-
-typedef struct interrupt_descriptor
-{
-	uint16_t offset;
-	uint16_t selector;
-	uint8_t zero;
-	uint8_t type_attr;
-	uint16_t offset_2;
-} interrupt_descriptor_t;
 
 typedef enum mem_state
 {
