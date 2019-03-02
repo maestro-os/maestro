@@ -66,4 +66,14 @@ void idt_init()
 		+ (((unsigned long) id & 0xffff) << 16);
 	idt_ptr[1] = ((unsigned long) id) >> 16;
 	idt_load(idt_ptr);
+
+	set_interrupts_state(true);
+}
+
+void set_interrupts_state(const int enabled)
+{
+	if(enabled)
+		asm("sti");
+	else
+		asm("cli");
 }

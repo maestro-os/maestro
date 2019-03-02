@@ -1,6 +1,7 @@
 #include "kernel.h"
 #include "tty/tty.h"
 #include "idt/idt.h"
+#include "keyboard/keyboard.h"
 
 #include "libc/stdio.h"
 
@@ -44,6 +45,10 @@ void kernel_main(const unsigned long magic, const void *multiboot_ptr)
 	printf("Interruptions initialization...\n");
 
 	idt_init();
+
+	printf("Keyboard initialization...\n");
+
+	keyboard_init();
 
 	// TODO
 }

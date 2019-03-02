@@ -6,8 +6,11 @@ void irq0_handler()
 	pic_EOI(0x0);
 }
 
+#include "../libc/stdio.h"
+
 void irq1_handler()
 {
+	printf("KEYBOARD!\n");
 	// TODO
 	pic_EOI(0x1);
 }

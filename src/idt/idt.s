@@ -133,5 +133,4 @@ irq15:
 idt_load:
 	mov 4(%esp), %edx
 	lidt (%edx)
-	sti
 	ret
