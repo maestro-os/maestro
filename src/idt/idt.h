@@ -13,12 +13,6 @@
 # define ID_PRIVILEGE_RING_3		0b00000110
 # define ID_PRESENT					0b00000001
 
-typedef struct idt
-{
-	uint16_t limit;
-	uint32_t base;
-} idt_t;
-
 typedef struct interrupt_descriptor
 {
 	uint16_t offset;
@@ -29,7 +23,7 @@ typedef struct interrupt_descriptor
 } interrupt_descriptor_t;
 
 void idt_init();
-extern int idt_load(const idt_t *idt);
+extern int idt_load(const void *idt);
 
 extern int irq0();
 extern int irq1();

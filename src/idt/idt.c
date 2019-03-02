@@ -2,7 +2,7 @@
 #include "../pic/pic.h"
 #include "idt.h"
 
-interrupt_descriptor_t id[286];
+interrupt_descriptor_t id[48];
 
 static void remap_PIC()
 {
@@ -33,19 +33,17 @@ static interrupt_descriptor_t create_id(const void *address,
 	id.selector = selector;
 	//id.zero = 0;
 	id.type_attr = type_attr;
-	id.offset_2 = (((unsigned long) address) & 0xffff0000) >> sizeof(id.offset);
+	id.offset_2 = (((unsigned long) address) & 0xffff0000)
+		>> sizeof(id.offset) * 8;
 
 	return id;
 }
-
-#include "../libc/stdio.h"
 
 void idt_init()
 {
 	remap_PIC();
 
 	// TODO Fix macros
-	bzero(id, sizeof(id));
 	id[32] = create_id(irq0, 0x8, 0x8e); // TODO Selector
 	id[33] = create_id(irq1, 0x8, 0x8e); // TODO Selector
 	id[34] = create_id(irq2, 0x8, 0x8e); // TODO Selector
@@ -63,10 +61,9 @@ void idt_init()
 	id[46] = create_id(irq14, 0x8, 0x8e); // TODO Selector
 	id[47] = create_id(irq15, 0x8, 0x8e); // TODO Selector
 
-	idt_t idt;
-	idt.limit = sizeof(id) - 1;
-	idt.base = (uint32_t) id;
-	idt_load(&idt);
-
-	//asm("int $0x20");
+	unsigned long idt_ptr[2];
+	idt_ptr[0] = sizeof(interrupt_descriptor_t) * 48
+		+ (((unsigned long) id & 0xffff) << 16);
+	idt_ptr[1] = ((unsigned long) id) >> 16;
+	idt_load(idt_ptr);
 }
