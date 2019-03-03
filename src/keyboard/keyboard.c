@@ -4,16 +4,41 @@
 
 #include "../libc/stdio.h"
 
+static uint8_t ps2_command(const uint8_t command)
+{
+	uint8_t response;
+	uint8_t attempts = 0;
+
+	do
+	{
+		outb(PS2_COMMAND, command);
+	}
+	while((response = inb(PS2_DATA)) == KEYBOARD_RESEND && ++attempts < 3);
+
+	return response;
+}
+
+static inline void disable_devices()
+{
+	outb(PS2_COMMAND, 0xad);
+	outb(PS2_COMMAND, 0xa7);
+}
+
+static inline void enable_keyboard()
+{
+	outb(PS2_COMMAND, 0xae);
+}
+
 static inline uint8_t get_config_byte()
 {
 	outb(PS2_COMMAND, 0x20);
-	return inb(0x60);
+	return inb(PS2_DATA);
 }
 
 static inline void set_config_byte(const uint8_t config_byte)
 {
-	outb(PS2_COMMAND, 0x60);
 	outb(PS2_DATA, config_byte);
+	outb(PS2_COMMAND, 0x60);
 }
 
 static int test_controller()
@@ -48,31 +73,36 @@ static int test_device()
 	}
 }
 
-void keyboard_init()
+static int ps2_init()
 {
-	outb(PS2_COMMAND, 0xad);
-	outb(PS2_COMMAND, 0xa7);
+	disable_devices();
 
 	inb(PS2_DATA);
 
 	set_config_byte(get_config_byte() & 0b10111100);
 
-	if(!test_controller()) return;
-	if(!test_device()) return;
+	return (test_controller() && test_device());
+}
 
-	outb(PS2_COMMAND, 0xae);
+void keyboard_init()
+{
+	if(!ps2_init()) return;
 
-	set_config_byte(get_config_byte() | 0b00000001);
+	enable_keyboard();
 
-	outb(PS2_COMMAND, 0xff);
+	outb(PS2_DATA, 0b00011111);
+	ps2_command(0xf3);
 
-	if(inb(PS2_DATA) == 0xfc)
+	// TODO
+	if(ps2_command(0xf4) != KEYBOARD_ACK)
 	{
-		printf("Failed to reset PS/2 controller D:\n");
-		return;
+		printf("Failed to enable keyboard! D:\n");
+	}
+	else
+	{
+		printf("Keyboard enabled! :D\n");
 	}
 
-	printf("PS/2 reset: OK :D\n");
-
+	set_config_byte(get_config_byte() | 0b00000001);
 	set_interrupts_state(1);
 }

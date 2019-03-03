@@ -71,4 +71,4 @@ debug: $(NAME)
 bochs:
 	bochs
 
-.PHONY: all iso clean fclean re test debug
+.PHONY: all iso clean fclean re test debug bochs
