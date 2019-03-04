@@ -4,7 +4,7 @@
 
 #include "../libc/stdio.h"
 
-static uint8_t ps2_command(const uint8_t command)
+uint8_t keyboard_command(const uint8_t command)
 {
 	uint8_t response;
 	uint8_t attempts = 0;
@@ -18,30 +18,30 @@ static uint8_t ps2_command(const uint8_t command)
 	return response;
 }
 
-static inline void disable_devices()
+void disable_devices()
 {
 	outb(PS2_COMMAND, 0xad);
 	outb(PS2_COMMAND, 0xa7);
 }
 
-static inline void enable_keyboard()
+void enable_keyboard()
 {
 	outb(PS2_COMMAND, 0xae);
 }
 
-static inline uint8_t get_config_byte()
+uint8_t get_config_byte()
 {
 	outb(PS2_COMMAND, 0x20);
 	return inb(PS2_DATA);
 }
 
-static inline void set_config_byte(const uint8_t config_byte)
+void set_config_byte(const uint8_t config_byte)
 {
 	outb(PS2_DATA, config_byte);
 	outb(PS2_COMMAND, 0x60);
 }
 
-static int test_controller()
+int test_controller()
 {
 	outb(PS2_COMMAND, 0xaa);
 
@@ -57,7 +57,7 @@ static int test_controller()
 	}
 }
 
-static int test_device()
+int test_device()
 {
 	outb(PS2_COMMAND, 0xab);
 
@@ -73,7 +73,7 @@ static int test_device()
 	}
 }
 
-static int ps2_init()
+int ps2_init()
 {
 	disable_devices();
 
@@ -91,10 +91,10 @@ void keyboard_init()
 	enable_keyboard();
 
 	outb(PS2_DATA, 0b00011111);
-	ps2_command(0xf3);
+	keyboard_command(0xf3);
 
 	// TODO
-	if(ps2_command(0xf4) != KEYBOARD_ACK)
+	if(keyboard_command(0xf4) != KEYBOARD_ACK)
 	{
 		printf("Failed to enable keyboard! D:\n");
 	}

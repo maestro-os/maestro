@@ -77,6 +77,9 @@ typedef struct mem_node
 
 void *memory_end;
 
+extern int check_a20();
+void enable_a20();
+
 void mm_init();
 void *mm_find_free(void *ptr, size_t size);
 void mm_free(void *ptr);

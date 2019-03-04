@@ -21,6 +21,14 @@ void kernel_main(const unsigned long magic, const void *multiboot_ptr)
 	}
 
 	printf("Booting crumbleos kernel version %s...\n", KERNEL_VERSION);
+	printf("Checking A20 line...");
+
+	if(!check_a20())
+	{
+		printf("A20 line not enabled. Enabling...");
+		enable_a20();
+	}
+
 	printf("Retrieving Multiboot2 data...\n");
 
 	const boot_info_t boot_info = read_boot_tags(multiboot_ptr);
