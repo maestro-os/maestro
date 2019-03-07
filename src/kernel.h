@@ -87,6 +87,8 @@ void mm_free(void *ptr);
 uint8_t inb(const uint16_t port);
 void outb(const uint16_t port, const uint8_t value);
 
+void error_handler(const int error);
+
 __attribute__((noreturn))
 void panic(const char *reason);
 

@@ -1,6 +1,6 @@
 #include "../kernel.h"
+#include "ps2.h"
 #include "../idt/idt.h"
-#include "keyboard.h"
 
 #include "../libc/stdio.h"
 

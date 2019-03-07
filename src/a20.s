@@ -1,13 +1,13 @@
 .global check_a20
 
-check_a20
-	pushad
+check_a20:
+	pusha
 	mov $0x112345, %edi
 	mov $0x012345, %esi
 	mov (%edi), %edi
 	mov (%esi), %esi
 	cmpsd
-	popad
+	popa
 	jne a20_enabled
 	xor %eax, %eax
 	ret
