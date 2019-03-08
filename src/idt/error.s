@@ -35,224 +35,224 @@
 
 error0:
 	pusha
-	mov $0x0, %eax
+	push $0x0
 	call error_handler
 	popa
 	iret
 
 error1:
 	pusha
-	mov $0x1, %eax
+	push $0x1
 	call error_handler
 	popa
 	iret
 
 error2:
 	pusha
-	mov $0x2, %eax
+	push $0x2
 	call error_handler
 	popa
 	iret
 
 error3:
 	pusha
-	mov $0x3, %eax
+	push $0x3
 	call error_handler
 	popa
 	iret
 
 error4:
 	pusha
-	mov $0x4, %eax
+	push $0x4
 	call error_handler
 	popa
 	iret
 
 error5:
 	pusha
-	mov $0x5, %eax
+	push $0x5
 	call error_handler
 	popa
 	iret
 
 error6:
 	pusha
-	mov $0x6, %eax
+	push $0x6
 	call error_handler
 	popa
 	iret
 
 error7:
 	pusha
-	mov $0x7, %eax
+	push $0x7
 	call error_handler
 	popa
 	iret
 
 error8:
 	pusha
-	mov $0x8, %eax
+	push $0x8
 	call error_handler
 	popa
 	iret
 
 error9:
 	pusha
-	mov $0x9, %eax
+	push $0x9
 	call error_handler
 	popa
 	iret
 
 error10:
 	pusha
-	mov $0xa, %eax
+	push $0xa
 	call error_handler
 	popa
 	iret
 
 error11:
 	pusha
-	mov $0xb, %eax
+	push $0xb
 	call error_handler
 	popa
 	iret
 
 error12:
 	pusha
-	mov $0xc, %eax
+	push $0xc
 	call error_handler
 	popa
 	iret
 
 error13:
 	pusha
-	mov $0xd, %eax
+	push $0xd
 	call error_handler
 	popa
 	iret
 
 error14:
 	pusha
-	mov $0xe, %eax
+	push $0xe
 	call error_handler
 	popa
 	iret
 
 error15:
 	pusha
-	mov $0xf, %eax
+	push $0xf
 	call error_handler
 	popa
 	iret
 
 error16:
 	pusha
-	mov $0x10, %eax
+	push $0x10
 	call error_handler
 	popa
 	iret
 
 error17:
 	pusha
-	mov $0x11, %eax
+	push $0x11
 	call error_handler
 	popa
 	iret
 
 error18:
 	pusha
-	mov $0x12, %eax
+	push $0x12
 	call error_handler
 	popa
 	iret
 
 error19:
 	pusha
-	mov $0x13, %eax
+	push $0x13
 	call error_handler
 	popa
 	iret
 
 error20:
 	pusha
-	mov $0x14, %eax
+	push $0x14
 	call error_handler
 	popa
 	iret
 
 error21:
 	pusha
-	mov $0x15, %eax
+	push $0x15
 	call error_handler
 	popa
 	iret
 
 error22:
 	pusha
-	mov $0x16, %eax
+	push $0x16
 	call error_handler
 	popa
 	iret
 
 error23:
 	pusha
-	mov $0x17, %eax
+	push $0x17
 	call error_handler
 	popa
 	iret
 
 error24:
 	pusha
-	mov $0x18, %eax
+	push $0x18
 	call error_handler
 	popa
 	iret
 
 error25:
 	pusha
-	mov $0x19, %eax
+	push $0x19
 	call error_handler
 	popa
 	iret
 
 error26:
 	pusha
-	mov $0x1a, %eax
+	push $0x1a
 	call error_handler
 	popa
 	iret
 
 error27:
 	pusha
-	mov $0x1b, %eax
+	push $0x1b
 	call error_handler
 	popa
 	iret
 
 error28:
 	pusha
-	mov $0x1c, %eax
+	push $0x1c
 	call error_handler
 	popa
 	iret
 
 error29:
 	pusha
-	mov $0x1d, %eax
+	push $0x1d
 	call error_handler
 	popa
 	iret
 
 error30:
 	pusha
-	mov $0x1e, %eax
+	push $0x1e
 	call error_handler
 	popa
 	iret
 
 error31:
 	pusha
-	mov $0x1f, %eax
+	push $0x1f
 	call error_handler
 	popa
 	iret
