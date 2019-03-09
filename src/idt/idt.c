@@ -1,8 +1,8 @@
 #include "../kernel.h"
-#include "../pic/pic.h"
 #include "idt.h"
+#include "../pic/pic.h"
 
-interrupt_descriptor_t id[48];
+static interrupt_descriptor_t id[48];
 
 static void remap_PIC()
 {

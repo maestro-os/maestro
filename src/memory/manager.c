@@ -1,5 +1,5 @@
-#include "kernel.h"
-#include "libc/errno.h"
+#include "memory.h"
+#include "../libc/errno.h"
 
 void mm_init()
 {

@@ -1,5 +1,6 @@
 #include "kernel.h"
 #include "tty/tty.h"
+#include "memory/memory.h"
 #include "idt/idt.h"
 #include "ps2/ps2.h"
 

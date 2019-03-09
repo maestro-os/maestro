@@ -1,6 +1,6 @@
-#include "kernel.h"
-#include "ps2/ps2.h"
-#include "idt/idt.h"
+#include "memory.h"
+#include "../idt/idt.h"
+#include "../ps2/ps2.h"
 
 static void in_enable_a20()
 {

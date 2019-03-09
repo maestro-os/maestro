@@ -1,4 +1,4 @@
-#include "kernel.h"
+#include "memory.h"
 
 static global_descriptor_t create_gd(const uint32_t limit,
 	const uint32_t base, const uint8_t access, const uint8_t flags)
