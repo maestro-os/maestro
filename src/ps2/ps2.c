@@ -4,6 +4,7 @@
 
 #include "../libc/stdio.h"
 
+// TODO Timeout
 static uint8_t keyboard_command(const uint8_t command)
 {
 	uint8_t response;
@@ -13,11 +14,13 @@ static uint8_t keyboard_command(const uint8_t command)
 	{
 		outb(PS2_DATA, command);
 	}
-	while((response = inb(PS2_DATA)) == KEYBOARD_RESEND && ++attempts < 3);
+	while((response = inb(PS2_DATA)) == KEYBOARD_RESEND
+		&& ++attempts < PS2_MAX_ATTEMPTS);
 
 	return response;
 }
 
+// TODO Timeout
 static uint8_t keyboard_command_data(const uint8_t command, const uint8_t data)
 {
 	uint8_t response;
@@ -28,41 +31,22 @@ static uint8_t keyboard_command_data(const uint8_t command, const uint8_t data)
 		outb(PS2_DATA, command);
 		outb(PS2_DATA, data);
 	}
-	while((response = inb(PS2_DATA)) == KEYBOARD_RESEND && ++attempts < 3);
+	while((response = inb(PS2_DATA)) == KEYBOARD_RESEND
+		&& ++attempts < PS2_MAX_ATTEMPTS);
 
 	return response;
 }
 
-static int test_controller()
+static inline bool test_controller()
 {
 	outb(PS2_COMMAND, 0xaa);
-
-	if(inb(PS2_DATA) == 0x55)
-	{
-		printf("PS/2 controller: OK :D\n");
-		return 1;
-	}
-	else
-	{
-		printf("PS/2 controller: KO D:\n");
-		return 0;
-	}
+	return (inb(PS2_DATA) == 0x55);
 }
 
-static int test_device()
+static inline bool test_device()
 {
 	outb(PS2_COMMAND, 0xab);
-
-	if(inb(PS2_DATA) == 0x00)
-	{
-		printf("PS/2 first device: OK :D\n");
-		return 1;
-	}
-	else
-	{
-		printf("PS/2 first device: KO D:\n");
-		return 0;
-	}
+	return (inb(PS2_DATA) == 0x00);
 }
 
 void disable_devices()
@@ -76,22 +60,20 @@ void enable_keyboard()
 	outb(PS2_COMMAND, 0xae);
 }
 
-uint8_t get_config_byte()
+static inline uint8_t get_config_byte()
 {
 	outb(PS2_COMMAND, 0x20);
 	return inb(PS2_DATA);
 }
 
-void set_config_byte(const uint8_t config_byte)
+static inline void set_config_byte(const uint8_t config_byte)
 {
 	outb(PS2_COMMAND, 0x60);
 	outb(PS2_DATA, config_byte);
 }
 
-void ps2_init()
+static void in_ps2_init()
 {
-	set_interrupts_state(0);
-
 	// TODO Check if existing using ACPI
 	disable_devices();
 
@@ -99,29 +81,29 @@ void ps2_init()
 
 	set_config_byte(get_config_byte() & 0b10111100);
 
-	if(test_controller() && test_device())
+	if(!test_controller())
 	{
-		enable_keyboard();
-
-		// TODO
-		if(keyboard_command_data(0xf3, 0b00000000) == KEYBOARD_ACK
-			&& keyboard_command(0xf4) == KEYBOARD_ACK)
-		{
-			printf("Keyboard enabled! :D\n");
-		}
-		else
-		{
-			printf("Failed to enable keyboard! D:\n");
-			return;
-		}
-
-		set_config_byte(get_config_byte() | 0b00000001);
-
-		if(test_controller())
-		{
-			test_device();
-		}
+		printf("PS/2 controller: KO D:\n");
+		return;
 	}
 
-	set_interrupts_state(1);
+	if(keyboard_command(0xf4) != KEYBOARD_ACK)
+	{
+		printf("Failed to enable keyboard!\n");
+		return;
+	}
+
+	// TODO
+	(void)keyboard_command_data;
+
+	if(!test_device())
+	{
+		printf("PS/2 first device: KO D:\n");
+		return;
+	}
+}
+
+void ps2_init()
+{
+	idt_setup_wrap(in_ps2_init);
 }

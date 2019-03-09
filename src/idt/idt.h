@@ -25,7 +25,8 @@ typedef struct interrupt_descriptor
 void idt_init();
 extern int idt_load(const void *idt);
 
-void set_interrupts_state(const int enabled);
+void idt_set_state(const bool enabled);
+void idt_setup_wrap(void (*handler)());
 
 // TODO Return int?
 extern void irq0();

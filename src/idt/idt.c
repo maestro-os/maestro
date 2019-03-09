@@ -100,13 +100,24 @@ void idt_init()
 	idt_ptr[1] = ((unsigned long) id) >> 16;
 	idt_load(idt_ptr);
 
-	set_interrupts_state(true);
+	idt_set_state(true);
 }
 
-void set_interrupts_state(const int enabled)
+void idt_set_state(const bool enabled)
 {
 	if(enabled)
+	{
 		asm("sti");
+	}
 	else
+	{
 		asm("cli");
+	}
+}
+
+void idt_setup_wrap(void (*handler)())
+{
+	idt_set_state(false);
+	handler();
+	idt_set_state(true);
 }

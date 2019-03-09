@@ -2,10 +2,8 @@
 #include "ps2/ps2.h"
 #include "idt/idt.h"
 
-void enable_a20()
+static void in_enable_a20()
 {
-	set_interrupts_state(0);
-
 	disable_devices();
 
 	outb(PS2_COMMAND, 0xd0);
@@ -15,6 +13,9 @@ void enable_a20()
 	outb(PS2_DATA, in | 0b10);
 
 	enable_keyboard();
+}
 
-	set_interrupts_state(1);
+void enable_a20()
+{
+	idt_setup_wrap(in_enable_a20);
 }
