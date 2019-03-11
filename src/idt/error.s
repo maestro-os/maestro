@@ -1,3 +1,5 @@
+.text
+
 .global error0
 .global error1
 .global error2

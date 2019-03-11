@@ -8,6 +8,8 @@
 
 # define KERNEL_MAGIC
 
+typedef uint16_t pid_t;
+
 uint8_t inb(const uint16_t port);
 void outb(const uint16_t port, const uint8_t value);
 

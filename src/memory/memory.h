@@ -40,19 +40,25 @@
 # define GD_FLAGS_SIZE_16BITS		0b0000
 # define GD_FLAGS_SIZE_32BITS		0b0100
 
-# define PAGING_PAGE_SIZE		0b10000010
-# define PAGING_ACCESSED		0b00100000
-# define PAGING_CACHE_DISABLE	0b00010000
-# define PAGING_WRITE_THROUGH	0b00001000
-# define PAGING_USER			0b00000100
-# define PAGING_WRITE			0b00000010
-# define PAGING_PRESENT			0b00000001
+# define PAGING_DIR_PAGE_SIZE		0b10000010
+# define PAGING_DIR_ACCESSED		0b00100000
+# define PAGING_DIR_CACHE_DISABLE	0b00010000
+# define PAGING_DIR_WRITE_THROUGH	0b00001000
+# define PAGING_DIR_USER			0b00000100
+# define PAGING_DIR_WRITE			0b00000010
+# define PAGING_DIR_PRESENT			0b00000001
 
-// TODO Page table macros
+# define PAGING_TABLE_GLOBAL		0b100000000
+# define PAGING_TABLE_DIRTY			0b001000000
+# define PAGING_TABLE_ACCESSED		0b000100000
+# define PAGING_TABLE_CACHE_DISABLE	0b000010000
+# define PAGING_TABLE_WRITE_THROUGH	0b000001000
+# define PAGING_TABLE_USER			0b000000100
+# define PAGING_TABLE_WRITE			0b000000010
+# define PAGING_TABLE_PRESENT		0b000000001
 
-# define KERNEL_HEAP_BEGIN	((void *) 0x200000)
-# define KERNEL_HEAP_SIZE	0x100000
-# define MEM_PAGE_SIZE		0x1000
+# define HEAP_BEGIN	((void *) 0x200000)
+# define PAGE_SIZE	0x1000
 
 # define MEM_STATE_FREE		0
 # define MEM_STATE_USED		0b01
@@ -66,31 +72,39 @@ typedef struct gdt
 
 typedef uint64_t global_descriptor_t;
 
-typedef enum mem_state
+typedef struct page
 {
-	MEM_FREE,
-	MEM_USED
-} mem_state_t;
+	size_t directory_entry;
+	size_t table_entry;
 
-typedef struct mem_node
-{
-	mem_state_t state;
-	size_t size;
-
-	struct mem_node	*next;
-} mem_node_t;
+	pid_t pid;
+} page_t;
 
 void *memory_end;
+
+typedef struct memory_block
+{
+	void *left;
+	void *right;
+} memory_block_t;
 
 extern int check_a20();
 void enable_a20();
 
 void paging_init();
-void *paging_get_addr(const size_t directory_entry,
-	const size_t page_entry);
+
+void *paging_get_addr(const page_t *page);
+page_t paging_get_page(const void *addr);
+
+uint32_t *paging_get_table(const size_t i);
+void paging_set_table(const size_t i, const uint32_t *table,
+	const uint16_t flags);
 
 void mm_init();
-void *mm_find_free(void *ptr, size_t size);
-void mm_free(void *ptr);
+
+size_t mm_required_pages(const size_t length);
+page_t *mm_find_free_pages(void *hint, const size_t count);
+
+void mm_free(void *addr);
 
 #endif

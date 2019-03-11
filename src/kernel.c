@@ -76,14 +76,15 @@ void kernel_main(const unsigned long magic, const void *multiboot_ptr)
 
 	memory_end = (void *) (boot_info.mem_upper * 1024);
 
-	if(memory_end <= KERNEL_HEAP_BEGIN + KERNEL_HEAP_SIZE)
+	if(memory_end <= HEAP_BEGIN)
 	{
-		panic("Not enough heap space for kernel!");
+		panic("Not enough space for heap!");
 	}
 
 	printf("Available memory: %p bytes\n", memory_end);
 	printf("Kernel memory manager initialization...\n");
 
+	paging_init();
 	mm_init();
 
 	printf("Interruptions initialization...\n");

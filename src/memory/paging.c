@@ -3,27 +3,55 @@
 static uint32_t page_directory[1024] __attribute__((aligned(4096)));
 static uint32_t first_page_table[1024] __attribute__((aligned(4096)));
 
-static inline void paging_blank_directory()
+static inline void blank_directory()
 {
-	memset(page_directory, 0b10, sizeof(page_directory));
+	memset(page_directory, PAGING_DIR_WRITE, sizeof(page_directory));
 }
 
-static void paging_enable()
+static void fill_first_table()
 {
-	// TODO
+	for(size_t i = 0; i < 1024; ++i)
+	{
+		first_page_table[i] = (i * 0x1000)
+			| (PAGING_TABLE_WRITE | PAGING_TABLE_PRESENT);
+	}
 }
+
+extern void paging_enable(const void *directory);
 
 void paging_init()
 {
-	paging_blank_directory();
-	// TODO
-	(void) first_page_table;
+	blank_directory();
 
-	paging_enable();
+	fill_first_table();
+	paging_set_table(0, first_page_table,
+		PAGING_DIR_WRITE | PAGING_DIR_PRESENT);
+
+	paging_enable(page_directory);
 }
 
-void *paging_get_addr(const size_t directory_entry,
-	const size_t page_entry)
+void *paging_get_addr(const page_t *page)
 {
-	return (void *) (((directory_entry * 1024) + page_entry) * 4);
+	if(!page) return NULL;
+	return (void *) (((page->directory_entry * 1024) + page->table_entry) * 4);
+}
+
+page_t paging_get_page(const void *addr)
+{
+	page_t page;
+	page.directory_entry = ((uintptr_t) addr / 4) / 1024;
+	page.table_entry = ((uintptr_t) addr / 4) % 1024;
+
+	return page;
+}
+
+uint32_t *paging_get_table(const size_t i)
+{
+	return page_directory + i;
+}
+
+void paging_set_table(const size_t i, const uint32_t *table,
+	const uint16_t flags)
+{
+	page_directory[i] = ((uint32_t) table) | flags;
 }
