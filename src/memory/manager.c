@@ -1,12 +1,16 @@
 #include "memory.h"
 
 #include "../libc/errno.h"
-// TODO #include "../libc/math.h"
+#include "../libc/math.h"
 
 static inline size_t get_max_level()
 {
-	// TODO return log2(memory_end / PAGE_SIZE);
-	return 0;
+	return log2(memory_end / PAGE_SIZE);
+}
+
+static inline size_t get_level_size(const size_t level)
+{
+	return pow(2, level);
 }
 
 void mm_init()
@@ -16,9 +20,20 @@ void mm_init()
 	root->right = NULL;
 
 	size_t level = get_max_level();
+	memory_block_t *prev = root;
+
+	// TODO Do not recompute level size each time?
+	while(get_level_size(level - 1) > KERNEL_MIN)
+	{
+		memory_block_t *block = prev + sizeof(memory_block_t);
+		block->left = NULL;
+		block->RIGHT = NULL;
+
+		prev->left = block;
+		prev = block;
+	}
 
 	// TODO
-	(void) level;
 }
 
 size_t mm_required_pages(const size_t length)

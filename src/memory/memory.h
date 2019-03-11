@@ -59,6 +59,7 @@
 
 # define HEAP_BEGIN	((void *) 0x200000)
 # define PAGE_SIZE	0x1000
+# define KERNEL_MIN	0x300000
 
 # define MEM_STATE_FREE		0
 # define MEM_STATE_USED		0b01
