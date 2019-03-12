@@ -81,7 +81,17 @@ typedef struct page
 {
 	size_t directory_entry;
 	size_t table_entry;
+
+	pid_t owner;
 } page_t;
+
+typedef struct mem_node
+{
+	page_t *page;
+
+	struct mem_list *left;
+	struct mem_list *right;
+} mem_list_t;
 
 extern int check_a20();
 void enable_a20();
