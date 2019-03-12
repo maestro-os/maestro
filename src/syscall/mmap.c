@@ -13,7 +13,8 @@ void *mmap(void *addr, size_t length, int prot, int flags,
 	(void) prot;
 	(void) flags;
 
-	const page_t *page = mm_find_free_pages(addr, mm_required_pages(length));
+	// TODO pid
+	const page_t *page = mm_alloc_pages(0, addr, mm_required_pages(length));
 
 	if(!page)
 	{

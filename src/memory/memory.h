@@ -57,9 +57,11 @@
 # define PAGING_TABLE_WRITE			0b000000010
 # define PAGING_TABLE_PRESENT		0b000000001
 
-# define HEAP_BEGIN	((void *) 0x200000)
-# define PAGE_SIZE	0x1000
-# define KERNEL_MIN	0x300000
+# define PAGE_SIZE			0x1000
+# define MEMORY_BLOCK_SIZE	0x10000
+# define KERNEL_RESERVED	((void *) 0x200000)
+
+# define FREE_BLOCK_PID		(~((pid_t) 0))
 
 # define MEM_STATE_FREE		0
 # define MEM_STATE_USED		0b01
@@ -73,21 +75,13 @@ typedef struct gdt
 
 typedef uint64_t global_descriptor_t;
 
+void *memory_end;
+
 typedef struct page
 {
 	size_t directory_entry;
 	size_t table_entry;
-
-	pid_t pid;
 } page_t;
-
-void *memory_end;
-
-typedef struct memory_block
-{
-	void *left;
-	void *right;
-} memory_block_t;
 
 extern int check_a20();
 void enable_a20();
@@ -104,7 +98,7 @@ void paging_set_table(const size_t i, const uint32_t *table,
 void mm_init();
 
 size_t mm_required_pages(const size_t length);
-page_t *mm_find_free_pages(void *hint, const size_t count);
+page_t *mm_alloc_pages(const pid_t pid, void *hint, const size_t count);
 
 void mm_free(void *addr);
 

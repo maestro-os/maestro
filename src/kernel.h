@@ -5,8 +5,9 @@
 # include "libc/string.h"
 
 # define KERNEL_VERSION	"0.1"
-
 # define KERNEL_MAGIC
+
+# define PROCESS_MAX_PID	32768
 
 typedef uint16_t pid_t;
 

@@ -76,9 +76,9 @@ void kernel_main(const unsigned long magic, const void *multiboot_ptr)
 
 	memory_end = (void *) (boot_info.mem_upper * 1024);
 
-	if(memory_end <= HEAP_BEGIN)
+	if(memory_end <= KERNEL_RESERVED)
 	{
-		panic("Not enough space for heap!");
+		panic("Not enough space for kernel!");
 	}
 
 	printf("Available memory: %p bytes\n", memory_end);
