@@ -57,9 +57,15 @@
 # define PAGING_TABLE_WRITE			0b000000010
 # define PAGING_TABLE_PRESENT		0b000000001
 
-# define PAGE_SIZE			0x1000
-# define MEMORY_BLOCK_SIZE	0x10000
-# define KERNEL_RESERVED	((void *) 0x200000)
+# define PAGING_FLAGS_MASK	0b111111111111
+
+# define TABLES_COUNT		0x400
+# define PAGES_PER_TABLE	0x400
+
+# define PAGE_SIZE				0x1000
+# define MEMORY_BLOCK_SIZE		0x10000
+# define KERNEL_RESERVED_PAGES	512
+# define KERNEL_RESERVED		((void *) PAGE_SIZE * KERNEL_RESERVED_PAGES)
 
 # define FREE_BLOCK_PID		(~((pid_t) 0))
 
@@ -81,8 +87,6 @@ typedef struct page
 {
 	size_t directory_entry;
 	size_t table_entry;
-
-	pid_t owner;
 } page_t;
 
 typedef struct mem_node
@@ -105,7 +109,12 @@ uint32_t *paging_get_table(const size_t i);
 void paging_set_table(const size_t i, const uint32_t *table,
 	const uint16_t flags);
 
+void *paging_alloc(const size_t count, const uint16_t flags);
+
 void mm_init();
+
+void *kmalloc(const size_t size);
+void kfree(void *ptr);
 
 size_t mm_required_pages(const size_t length);
 page_t *mm_alloc_pages(const pid_t pid, void *hint, const size_t count);
