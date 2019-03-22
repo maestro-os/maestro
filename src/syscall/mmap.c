@@ -13,14 +13,14 @@ void *mmap(void *addr, size_t length, int prot, int flags,
 	(void) prot;
 	(void) flags;
 
-	// TODO pid
-	const page_t *page = mm_alloc_pages(0, addr, mm_required_pages(length));
+	// TODO Pages allocation
+	(void) addr;
 
-	if(!page)
+	/*if(!page)
 	{
 		errno = ENOMEM;
 		return NULL;
-	}
+	}*/
 
 	// TODO
 	(void) fd;

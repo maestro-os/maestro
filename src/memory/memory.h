@@ -40,24 +40,25 @@
 # define GD_FLAGS_SIZE_16BITS		0b0000
 # define GD_FLAGS_SIZE_32BITS		0b0100
 
-# define PAGING_DIR_PAGE_SIZE		0b10000010
-# define PAGING_DIR_ACCESSED		0b00100000
-# define PAGING_DIR_CACHE_DISABLE	0b00010000
-# define PAGING_DIR_WRITE_THROUGH	0b00001000
-# define PAGING_DIR_USER			0b00000100
-# define PAGING_DIR_WRITE			0b00000010
-# define PAGING_DIR_PRESENT			0b00000001
+# define PAGING_TABLE_PAGE_SIZE		0b10000010
+# define PAGING_TABLE_ACCESSED		0b00100000
+# define PAGING_TABLE_CACHE_DISABLE	0b00010000
+# define PAGING_TABLE_WRITE_THROUGH	0b00001000
+# define PAGING_TABLE_USER			0b00000100
+# define PAGING_TABLE_WRITE			0b00000010
+# define PAGING_TABLE_PRESENT		0b00000001
 
-# define PAGING_TABLE_GLOBAL		0b100000000
-# define PAGING_TABLE_DIRTY			0b001000000
-# define PAGING_TABLE_ACCESSED		0b000100000
-# define PAGING_TABLE_CACHE_DISABLE	0b000010000
-# define PAGING_TABLE_WRITE_THROUGH	0b000001000
-# define PAGING_TABLE_USER			0b000000100
-# define PAGING_TABLE_WRITE			0b000000010
-# define PAGING_TABLE_PRESENT		0b000000001
+# define PAGING_PAGE_GLOBAL			0b100000000
+# define PAGING_PAGE_DIRTY			0b001000000
+# define PAGING_PAGE_ACCESSED		0b000100000
+# define PAGING_PAGE_CACHE_DISABLE	0b000010000
+# define PAGING_PAGE_WRITE_THROUGH	0b000001000
+# define PAGING_PAGE_USER			0b000000100
+# define PAGING_PAGE_WRITE			0b000000010
+# define PAGING_PAGE_PRESENT		0b000000001
 
 # define PAGING_FLAGS_MASK	0b111111111111
+# define PAGING_ADDR_MASK	~((uint32_t) PAGING_FLAGS_MASK)
 
 # define TABLES_COUNT		0x400
 # define PAGES_PER_TABLE	0x400
@@ -65,7 +66,7 @@
 # define PAGE_SIZE				0x1000
 # define MEMORY_BLOCK_SIZE		0x10000
 # define KERNEL_RESERVED_PAGES	512
-# define KERNEL_RESERVED		((void *) PAGE_SIZE * KERNEL_RESERVED_PAGES)
+# define KERNEL_RESERVED		((void *) (PAGE_SIZE * KERNEL_RESERVED_PAGES))
 
 # define FREE_BLOCK_PID		(~((pid_t) 0))
 
@@ -83,33 +84,14 @@ typedef uint64_t global_descriptor_t;
 
 void *memory_end;
 
-typedef struct page
-{
-	size_t directory_entry;
-	size_t table_entry;
-} page_t;
-
-typedef struct mem_node
-{
-	page_t *page;
-
-	struct mem_list *left;
-	struct mem_list *right;
-} mem_list_t;
-
 extern int check_a20();
 void enable_a20();
 
 void paging_init();
 
-void *paging_get_addr(const page_t *page);
-page_t paging_get_page(const void *addr);
-
-uint32_t *paging_get_table(const size_t i);
-void paging_set_table(const size_t i, const uint32_t *table,
+uint32_t *paging_get_page(const size_t i);
+size_t paging_alloc(const size_t hint, const size_t count,
 	const uint16_t flags);
-
-void *paging_alloc(const size_t count, const uint16_t flags);
 
 void mm_init();
 
@@ -117,8 +99,6 @@ void *kmalloc(const size_t size);
 void kfree(void *ptr);
 
 size_t mm_required_pages(const size_t length);
-page_t *mm_alloc_pages(const pid_t pid, void *hint, const size_t count);
-
-void mm_free(void *addr);
+// TODO Memory allocation and free
 
 #endif
