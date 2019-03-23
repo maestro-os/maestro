@@ -62,17 +62,13 @@
 
 # define TABLES_COUNT		0x400
 # define PAGES_PER_TABLE	0x400
+# define TOTAL_PAGES		(TABLES_COUNT * PAGES_PER_TABLE)
 
 # define PAGE_SIZE				0x1000
 # define KERNEL_RESERVED		((void *) (PAGE_SIZE * PAGES_PER_TABLE))
 
-# define PAGES_ADDR	0x400000
-
-# define FREE_BLOCK_PID		(~((pid_t) 0))
-
-# define MEM_STATE_FREE		0
-# define MEM_STATE_USED		0b01
-# define MEM_STATE_HEADER	0b10
+# define TABLES_ADDR	((void *) 0x400000)
+# define TABLES_SIZE	(TABLES_COUNT * PAGES_PER_TABLE)
 
 typedef struct gdt
 {
