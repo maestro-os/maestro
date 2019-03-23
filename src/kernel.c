@@ -82,7 +82,7 @@ void kernel_main(const unsigned long magic, const void *multiboot_ptr)
 	}
 
 	printf("Available memory: %p bytes\n", memory_end);
-	printf("Kernel memory manager initialization...\n");
+	printf("Memory manager initialization...\n");
 
 	paging_init();
 	mm_init();

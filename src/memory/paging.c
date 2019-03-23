@@ -9,7 +9,7 @@ extern void paging_enable(const void *directory);
 void paging_init()
 {
 	bzero(page_directory, sizeof(page_directory));
-	bzero(TABLES_ADDR, TABLES_SIZE);
+	bzero(tables, TABLES_SIZE);
 
 	for(size_t i = 0; i < TABLES_COUNT; ++i)
 		page_directory[i] = ((PAGE_SIZE * i) & PAGING_ADDR_MASK)
@@ -17,16 +17,16 @@ void paging_init()
 
 	size_t i = 0;
 
-	while(i < PAGES_PER_TABLE)
+	while(i < (PAGES_PER_TABLE * 2))
 	{
-		((uint32_t *) TABLES_ADDR)[i] = (i * PAGE_SIZE)
+		tables[i] = (i * PAGE_SIZE)
 			| (PAGING_PAGE_WRITE | PAGING_PAGE_PRESENT);
 		++i;
 	}
 
 	while(i < (TABLES_COUNT * PAGES_PER_TABLE))
 	{
-		((uint32_t *) TABLES_ADDR)[i] = (i * PAGE_SIZE) | PAGING_PAGE_WRITE;
+		tables[i] = (i * PAGE_SIZE);
 		++i;
 	}
 
