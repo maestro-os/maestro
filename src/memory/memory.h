@@ -64,9 +64,9 @@
 # define PAGES_PER_TABLE	0x400
 
 # define PAGE_SIZE				0x1000
-# define MEMORY_BLOCK_SIZE		0x10000
-# define KERNEL_RESERVED_PAGES	512
-# define KERNEL_RESERVED		((void *) (PAGE_SIZE * KERNEL_RESERVED_PAGES))
+# define KERNEL_RESERVED		((void *) (PAGE_SIZE * PAGES_PER_TABLE))
+
+# define PAGES_ADDR	0x400000
 
 # define FREE_BLOCK_PID		(~((pid_t) 0))
 
@@ -89,9 +89,8 @@ void enable_a20();
 
 void paging_init();
 
-uint32_t *paging_get_page(const size_t i);
-size_t paging_alloc(const size_t hint, const size_t count,
-	const uint16_t flags);
+void *paging_alloc(const void *hint, const size_t count, const uint16_t flags);
+void paging_free(const void *page, const size_t count);
 
 void mm_init();
 
