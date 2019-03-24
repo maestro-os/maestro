@@ -12,8 +12,8 @@ void paging_init()
 	bzero(tables, TABLES_SIZE);
 
 	for(size_t i = 0; i < TABLES_COUNT; ++i)
-		page_directory[i] = ((PAGE_SIZE * i) & PAGING_ADDR_MASK)
-			| (PAGING_TABLE_PRESENT | PAGING_TABLE_WRITE);
+		page_directory[i] = (((uintptr_t) TABLES_ADDR + (PAGE_SIZE * i))
+			& PAGING_ADDR_MASK) | (PAGING_TABLE_PRESENT | PAGING_TABLE_WRITE);
 
 	size_t i = 0;
 
