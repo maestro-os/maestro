@@ -92,6 +92,7 @@ void mm_init();
 size_t mm_required_pages(const size_t length);
 
 void *kmalloc(const size_t size);
+void *krealloc(void *ptr, const size_t size);
 void kfree(void *ptr);
 
 void *mm_alloc(const pid_t pid, void *hint, const size_t length,

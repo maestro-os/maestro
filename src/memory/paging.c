@@ -102,8 +102,9 @@ void *paging_alloc(const void *hint, const size_t count, const uint16_t flags)
 	const size_t begin_page = find_free_pages((size_t) hint / PAGE_SIZE, count);
 	if(begin_page == (size_t) -1) return NULL;
 
-	const uint16_t table_flags = get_tables_flags(flags);
-	set_pages(begin_page, count, table_flags, flags);
+	const uint16_t f = flags | PAGING_PAGE_PRESENT;
+	const uint16_t table_flags = get_tables_flags(f);
+	set_pages(begin_page, count, table_flags, f);
 
 	return (void *) (begin_page * PAGE_SIZE);
 }
