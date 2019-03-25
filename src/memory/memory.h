@@ -89,11 +89,14 @@ void *paging_alloc(const void *hint, const size_t count, const uint16_t flags);
 void paging_free(const void *page, const size_t count);
 
 void mm_init();
+size_t mm_required_pages(const size_t length);
 
 void *kmalloc(const size_t size);
 void kfree(void *ptr);
 
-size_t mm_required_pages(const size_t length);
-// TODO Memory allocation and free
+void *mm_alloc(const pid_t pid, void *hint, const size_t length,
+	const uint16_t flags);
+void mm_free(void *ptr);
+void mm_free_pid(const pid_t pid);
 
 #endif

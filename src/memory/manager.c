@@ -5,6 +5,12 @@ void mm_init()
 	// TODO
 }
 
+size_t mm_required_pages(const size_t length)
+{
+	const size_t pages = (length / PAGE_SIZE);
+	return (length % PAGE_SIZE == 0 ? pages : pages + 1);
+}
+
 void *kmalloc(const size_t size)
 {
 	if(size == 0) return NULL;
@@ -26,8 +32,26 @@ void kfree(void *ptr)
 	(void) ptr;
 }
 
-size_t mm_required_pages(const size_t length)
+void *mm_alloc(const pid_t pid, void *hint, const size_t length,
+	const uint16_t flags)
 {
-	const size_t pages = (length / PAGE_SIZE);
-	return (length % PAGE_SIZE == 0 ? pages : pages + 1);
+	// TODO Use kmalloc
+	(void) pid;
+	(void) hint;
+	(void) length;
+	(void) flags;
+
+	return NULL;
+}
+
+void mm_free(void *ptr)
+{
+	// TODO Use kfree
+	(void) ptr;
+}
+
+void mm_free_pid(const pid_t pid)
+{
+	// TODO Use kfree
+	(void) pid;
 }
