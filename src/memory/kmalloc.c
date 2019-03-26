@@ -1,12 +1,13 @@
 #include "memory.h"
-#include "alloc_internal.h"
+#include "kalloc_internal.h"
 
 malloc_chunk_t *new_chunks()
 {
-	void *ptr = paging_alloc(NULL, 1, 0);
-	bzero(ptr, PAGE_SIZE);
+	// TODO void *ptr = paging_alloc(NULL, 1, 0);
+	//bzero(ptr, PAGE_SIZE);
 
-	return ptr;
+	//return ptr;
+	return NULL;
 }
 
 void *kmalloc(const size_t size)

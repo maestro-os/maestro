@@ -60,44 +60,43 @@
 # define PAGING_FLAGS_MASK	0b111111111111
 # define PAGING_ADDR_MASK	~((uint32_t) PAGING_FLAGS_MASK)
 
-# define TABLES_COUNT		0x400
-# define PAGES_PER_TABLE	0x400
-# define TOTAL_PAGES		(TABLES_COUNT * PAGES_PER_TABLE)
+# define PAGING_DIRECTORY_SIZE	0x400
+# define PAGING_TABLE_SIZE		0x400
 
-# define PAGE_SIZE				0x1000
-# define KERNEL_RESERVED		((void *) (PAGE_SIZE * PAGES_PER_TABLE))
+# define PAGE_SIZE			0x1000
+# define KERNEL_RESERVED	((void *) (PAGE_SIZE * PAGING_TABLE_SIZE))
 
-# define TABLES_ADDR	((void *) 0x400000)
-# define TABLES_SIZE	(TABLES_COUNT * PAGES_PER_TABLE)
-
-typedef struct gdt
-{
-	uint16_t size;
-	uint32_t offset;
-} gdt_t;
-
-typedef uint64_t global_descriptor_t;
+# define MM_READ	0b001
+# define MM_WRITE	0b001
+# define MM_EXEC	0b010
+# define MM_USER	0b100
 
 void *memory_end;
 
-extern int check_a20();
+extern bool check_a20();
 void enable_a20();
-
-void paging_init();
-
-void *paging_alloc(const void *hint, const size_t count, const uint16_t flags);
-void paging_free(const void *page, const size_t count);
-
-void mm_init();
-size_t mm_required_pages(const size_t length);
 
 void *kmalloc(const size_t size);
 void *krealloc(void *ptr, const size_t size);
 void kfree(void *ptr);
 
-void *mm_alloc(const pid_t pid, void *hint, const size_t length,
-	const uint16_t flags);
-void mm_free(void *ptr);
-void mm_free_pid(const pid_t pid);
+void paging_create_directory(uint32_t *directory);
+uint32_t *paging_directory_get_table(uint32_t *directory, const size_t table);
+void paging_directory_set_table(uint32_t *directory, const size_t table,
+	void *table_ptr, const uint16_t flags);
+uint32_t *paging_table_get_page(uint32_t *table, const size_t page);
+void paging_table_set_page(uint32_t *table, const size_t page,
+	void *virtual_addr, const uint16_t flags);
+
+void *paging_physaddr(void *directory, void *virtaddr);
+void paging_map(void *directory, void *physaddr, void *virtaddr,
+	const uint16_t table_flags, const uint16_t page_flags);
+
+extern void paging_enable(const void *directory);
+extern void paging_disable();
+
+void mm_init();
+void *mm_map(void *hint, const size_t pages, const uint8_t flags);
+void mm_munmap(void *ptr);
 
 #endif

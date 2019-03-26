@@ -1,7 +1,5 @@
-#ifndef ALLOC_INTERNAL_H
-# define ALLOC_INTERNAL_H
-
-# define LARGE_THRESHOLD	// TODO
+#ifndef KALLOC_INTERNAL_H
+# define KALLOC_INTERNAL_H
 
 typedef struct malloc_chunk
 {
