@@ -106,13 +106,9 @@ void idt_init()
 void idt_set_state(const bool enabled)
 {
 	if(enabled)
-	{
 		asm("sti");
-	}
 	else
-	{
 		asm("cli");
-	}
 }
 
 void idt_setup_wrap(void (*handler)())

@@ -1,6 +1,8 @@
 #ifndef KALLOC_INTERNAL_H
 # define KALLOC_INTERNAL_H
 
+# define HEAP_BEGIN	((void *) 0x400000)
+
 typedef struct malloc_chunk
 {
 	size_t size;

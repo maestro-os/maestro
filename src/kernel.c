@@ -47,14 +47,10 @@ void kernel_main(const unsigned long magic, const void *multiboot_ptr)
 
 	// TODO Add first Multiboot version support
 	if(magic != MULTIBOOT2_BOOTLOADER_MAGIC)
-	{
 		panic("Non Multiboot2-compliant bootloader!");
-	}
 
 	if(((uintptr_t) multiboot_ptr) & 7)
-	{
 		panic("Boot informations structure's address is not aligned!");
-	}
 
 	printf("Booting crumbleos kernel version %s...\n", KERNEL_VERSION);
 	printf("Checking A20 line...\n");
@@ -77,9 +73,7 @@ void kernel_main(const unsigned long magic, const void *multiboot_ptr)
 	memory_end = (void *) (boot_info.mem_upper * 1024);
 
 	if(memory_end <= KERNEL_RESERVED)
-	{
-		panic("Not enough space for kernel!");
-	}
+		panic("Not enough memory for kernel!");
 
 	printf("Available memory: %p bytes\n", memory_end);
 	printf("Memory manager initialization...\n");

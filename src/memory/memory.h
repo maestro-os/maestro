@@ -66,19 +66,10 @@
 # define PAGE_SIZE			0x1000
 # define KERNEL_RESERVED	((void *) (PAGE_SIZE * PAGING_TABLE_SIZE))
 
-# define MM_READ	0b001
-# define MM_WRITE	0b001
-# define MM_EXEC	0b010
-# define MM_USER	0b100
-
 void *memory_end;
 
 extern bool check_a20();
 void enable_a20();
-
-void *kmalloc(const size_t size);
-void *krealloc(void *ptr, const size_t size);
-void kfree(void *ptr);
 
 void paging_create_directory(uint32_t *directory);
 uint32_t *paging_directory_get_table(uint32_t *directory, const size_t table);
@@ -96,7 +87,12 @@ extern void paging_enable(const void *directory);
 extern void paging_disable();
 
 void mm_init();
-void *mm_map(void *hint, const size_t pages, const uint8_t flags);
-void mm_munmap(void *ptr);
+void *mm_alloc_pages(void *hint, const size_t pages);
+void mm_free_pages(void *ptr, const size_t pages);
+// TODO
+
+void *kmalloc(const size_t size);
+void *krealloc(void *ptr, const size_t size);
+void kfree(void *ptr);
 
 #endif
