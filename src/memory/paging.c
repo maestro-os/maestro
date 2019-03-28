@@ -1,10 +1,6 @@
 #include "memory.h"
+#include "memory_internal.h"
 #include "../util/util.h"
-
-void paging_create_directory(uint32_t *directory)
-{
-	bzero(directory, sizeof(uint32_t) * PAGING_DIRECTORY_SIZE);
-}
 
 uint32_t *paging_directory_get_table(uint32_t *directory, const size_t table)
 {
@@ -25,10 +21,10 @@ uint32_t *paging_table_get_page(uint32_t *table, const size_t page)
 }
 
 void paging_table_set_page(uint32_t *table, const size_t page,
-	void *virtual_addr, const uint16_t flags)
+	void *physaddr, const uint16_t flags)
 {
 	uint32_t *p = paging_table_get_page(table, page);
-	*p = ((uintptr_t) virtual_addr & PAGING_ADDR_MASK)
+	*p = ((uintptr_t) physaddr & PAGING_ADDR_MASK)
 		| (flags & PAGING_FLAGS_MASK);
 }
 
