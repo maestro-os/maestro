@@ -3,9 +3,6 @@
 
 # include "../kernel.h"
 
-# define KALLOC_ALIGNED	0b01
-# define KALLOC_FAST	0b10
-
 # define PAGE_SIZE			0x1000
 
 # define HEAP_BEGIN ((void *) 0x400000)
@@ -45,6 +42,10 @@ void paging_set_page(uint32_t *directory, const size_t page,
 extern void paging_enable(const uint32_t *directory);
 extern void paging_disable();
 
-// TODO
+void *kmalloc(const size_t size);
+void *krealloc(void *ptr, const size_t size);
+void kfree(void *ptr);
+
+// TODO Processes memory
 
 #endif
