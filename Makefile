@@ -7,6 +7,7 @@ LINKER = linker.ld
 
 ASM_SRC := $(shell find src/ -type f -name "*.s" -and ! -name "crti.s" -and ! -name "crtn.s")
 C_SRC := $(shell find src/ -type f -name "*.c")
+HDR := $(shell find src/ -type f -name "*.h")
 
 DIRS := $(shell find src/ -type d)
 OBJ_DIRS := $(patsubst src/%, obj/%, $(DIRS))
@@ -26,7 +27,7 @@ OBJ := $(ASM_OBJ) $(C_OBJ)
 INTERNAL_OBJ := $(CRTI_OBJ) $(OBJ) $(CRTN_OBJ)
 OBJ_LINK_LIST := $(CRTI_OBJ) $(CRTBEGIN_OBJ) $(OBJ) $(CRTEND_OBJ) $(CRTN_OBJ)
 
-all: $(NAME) iso
+all: tags $(NAME) iso
 
 $(NAME): $(OBJ_DIRS) $(INTERNAL_OBJ)
 	$(CC) $(CFLAGS) -T $(LINKER) -o $(NAME) $(OBJ_LINK_LIST)
@@ -34,10 +35,10 @@ $(NAME): $(OBJ_DIRS) $(INTERNAL_OBJ)
 $(OBJ_DIRS):
 	mkdir -p $(OBJ_DIRS)
 
-obj/%.s.o: src/%.s
+obj/%.s.o: src/%.s $(HDR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-obj/%.c.o: src/%.c
+obj/%.c.o: src/%.c $(HDR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 iso: $(NAME).iso
@@ -49,7 +50,7 @@ $(NAME).iso: $(NAME)
 	grub-mkrescue -o $(NAME).iso iso
 
 tags:
-	ctags -R src/ --languages=c,c++
+	ctags -R --languages=c,c++ src/
 
 clean:
 	rm -rf obj/

@@ -1,66 +1,82 @@
 #include "memory.h"
 #include "memory_internal.h"
-#include "../util/util.h"
 
-uint32_t *paging_directory_get_table(uint32_t *directory, const size_t table)
+static inline uint32_t *get_entry(const uint32_t *table, const size_t entry)
 {
-	return directory + table;
+	return (uint32_t *) (table[entry] & PAGING_ADDR_MASK);
 }
 
-void paging_directory_set_table(uint32_t *directory, const size_t table,
-	void *table_ptr, const uint16_t flags)
+bool paging_is_allocated(const uint32_t *directory,
+	const void *ptr, const size_t length)
 {
-	uint32_t *t = paging_directory_get_table(directory, table);
-	*t = ((uintptr_t) table_ptr & PAGING_ADDR_MASK)
-		| (flags & PAGING_FLAGS_MASK);
+	const size_t page = ptr_to_page(ptr);
+
+	for(size_t i = 0; i < length; ++i)
+		if(!(*paging_get_page(directory, page + i) & PAGING_PAGE_PRESENT))
+			return false;
+
+	return true;
 }
 
-uint32_t *paging_table_get_page(uint32_t *table, const size_t page)
+static void *paging_find_free(uint32_t *directory, const size_t length)
 {
-	return table + page;
+	// TODO
+	(void) directory;
+	(void) length;
+
+	return NULL;
 }
 
-void paging_table_set_page(uint32_t *table, const size_t page,
-	void *physaddr, const uint16_t flags)
+void *paging_alloc(uint32_t *directory, void *hint,
+	const size_t length, const paging_flags_t flags)
 {
-	uint32_t *p = paging_table_get_page(table, page);
-	*p = ((uintptr_t) physaddr & PAGING_ADDR_MASK)
-		| (flags & PAGING_FLAGS_MASK);
+	// TODO
+	(void) directory;
+	(void) hint;
+	(void) length;
+	(void) flags;
+	(void) paging_find_free;
+
+	return NULL;
 }
 
-void *paging_physaddr(void *directory, void *virtaddr)
+void paging_free(uint32_t *directory, void *ptr, const size_t length)
+{
+	// TODO
+	(void) directory;
+	(void) ptr;
+	(void) length;
+}
+
+uint32_t *paging_get_page(const uint32_t *directory, const size_t page)
 {
 	if(!directory) return NULL;
 
-	const size_t dir_index = (uintptr_t) virtaddr >> 22;
-	const size_t tab_index = (uintptr_t) virtaddr >> 12 & 0x3ff;
+	const size_t t = page / PAGING_DIRECTORY_SIZE;
+	const size_t p = page % PAGING_TABLE_SIZE;
 
-	const uint32_t *t = paging_directory_get_table(directory, dir_index);
-	if(!(*t & PAGING_TABLE_PRESENT)) return NULL;
-
-	uint32_t *p = paging_table_get_page((void *) (*t & PAGING_ADDR_MASK),
-		tab_index);
-	if(!(*p & PAGING_PAGE_PRESENT)) return NULL;
-
-	return (void *) (*p & PAGING_ADDR_MASK);
+	if(!(directory[t] & PAGING_TABLE_PRESENT)) return NULL;
+	return get_entry(directory, t) + p;
 }
 
-void paging_map(void *directory, void *physaddr, void *virtaddr,
-	const uint16_t table_flags, const uint16_t page_flags)
+void paging_set_page(uint32_t *directory, const size_t page,
+	void *physaddr, const paging_flags_t flags)
 {
-	if(!directory || (uintptr_t) physaddr & 12
-		|| (uintptr_t )virtaddr & 12) return;
+	if(!directory) return;
 
-	const size_t dir_index = (uintptr_t) virtaddr >> 22;
-	const size_t tab_index = (uintptr_t) virtaddr >> 12 & 0x3ff;
+	const size_t t = page / PAGING_DIRECTORY_SIZE;
+	const size_t p = page % PAGING_TABLE_SIZE;
 
-	const uint32_t *t = paging_directory_get_table(directory, dir_index);
-	// TODO Check if table is present, else create one
-	// TODO Mark table as present
-	(void) table_flags;
+	if(!(directory[t] & PAGING_TABLE_PRESENT))
+	{
+		void *ptr;
+		if(!(ptr = physical_alloc())) return;
+		bzero(ptr, PAGE_SIZE);
 
-	uint32_t *p = paging_table_get_page((void *) (*t & PAGING_ADDR_MASK),
-		tab_index);
+		directory[t] = (uintptr_t) ptr
+			| PAGING_TABLE_PRESENT | (flags & 0b111111);
+	}
 
-	*p = ((uintptr_t) physaddr | (page_flags & PAGING_FLAGS_MASK));
+	get_entry(directory, t)[p] |= ((uintptr_t) physaddr & PAGING_ADDR_MASK)
+		| (flags & PAGING_FLAGS_MASK);
 }
