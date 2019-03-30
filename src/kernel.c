@@ -43,6 +43,9 @@ static const char *errors[] = {
 
 void kernel_main(const unsigned long magic, const void *multiboot_ptr)
 {
+	// TODO Fix
+	if(!check_a20()) enable_a20();
+
 	tty_init();
 
 	// TODO Add first Multiboot version support
@@ -53,14 +56,6 @@ void kernel_main(const unsigned long magic, const void *multiboot_ptr)
 		panic("Boot informations structure's address is not aligned!");
 
 	printf("Booting crumbleos kernel version %s...\n", KERNEL_VERSION);
-	printf("Checking A20 line...\n");
-
-	if(!check_a20())
-	{
-		printf("A20 line not enabled. Enabling...\n");
-		enable_a20();
-	}
-
 	printf("Retrieving Multiboot2 data...\n");
 
 	const boot_info_t boot_info = read_boot_tags(multiboot_ptr);

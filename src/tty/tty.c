@@ -1,32 +1,32 @@
-#include "../kernel.h"
 #include "tty.h"
-#include "../vga/vga.h"
 
-/*static void tty_enable_cursor()
+static void init_ttys()
 {
-	outb(0x3d4, 0x0a);
-	outb(0x3d5, inb(0x3d5) & 0xc0);
+	bzero(ttys, sizeof(ttys));
 
-	outb(0x3d4, 0x0b);
-	outb(0x3d5, (inb(0x3d5) & 0xc1) | 15);
-}*/
+	for(size_t i = 0; i < TTYS_COUNT; ++i)
+		ttys[i].current_color = VGA_DEFAULT_COLOR;
+}
 
 void tty_init()
 {
-	// TODO Switch from graphical to text mode if needed
+	init_ttys();
+	switch_tty(0);
 
 	tty_clear();
-	//tty_enable_cursor();
+	vga_enable_cursor();
 }
 
 void tty_clear()
 {
+	bzero(&current_tty->history, sizeof(current_tty->history));
 	vga_clear();
-	cursor_x = 0;
-	cursor_y = 0;
+
+	current_tty->cursor_x = 0;
+	current_tty->cursor_y = 0;
 }
 
-void tty_move_cursor(size_t *x, size_t *y)
+void tty_move_cursor(vgapos_t *x, vgapos_t *y)
 {
 	if(*x >= VGA_WIDTH)
 	{
@@ -37,48 +37,57 @@ void tty_move_cursor(size_t *x, size_t *y)
 	vga_move_cursor(*x, *y);
 }
 
-void tty_putchar(const char c, size_t *cursor_x, size_t *cursor_y)
+void tty_putchar(const char c, vgapos_t *cursor_x, vgapos_t *cursor_y)
 {
-	vga_putchar(c, *cursor_x, *cursor_y);
+	vga_putchar_color(c, current_tty->current_color, *cursor_x, *cursor_y);
 
 	++(*cursor_x);
 	tty_move_cursor(cursor_x, cursor_y);
 }
 
-// TODO tty_putstr
-
-void tty_write(const char *buffer, const size_t size)
+void tty_write(const char *buffer, const size_t count)
 {
+	if(!buffer || count == 0) return;
+
+	vgapos_t *cursor_x = &current_tty->cursor_x;
+	vgapos_t *cursor_y = &current_tty->cursor_y;
+
 	// TODO Scrolling
-	for(size_t i = 0; i < size; ++i)
+	for(size_t i = 0; i < count; ++i)
 	{
 		switch(buffer[i])
 		{
 			case '\t':
 			{
-				cursor_x += (TAB_SIZE - (cursor_x % TAB_SIZE));
-				tty_move_cursor(&cursor_x, &cursor_y);
+				*cursor_x += (TAB_SIZE - (*cursor_x % TAB_SIZE));
+				tty_move_cursor(cursor_x, cursor_y);
 				break;
 			}
 
 			case '\n':
 			{
-				cursor_x = 0;
-				++cursor_y;
-				tty_move_cursor(&cursor_x, &cursor_y);
+				*cursor_x = 0;
+				++(*cursor_y);
+				tty_move_cursor(cursor_x, cursor_y);
 				break;
 			}
 
 			case '\r':
 			{
-				cursor_x = 0;
-				tty_move_cursor(&cursor_x, &cursor_y);
+				*cursor_x = 0;
+				tty_move_cursor(cursor_x, cursor_y);
+				break;
+			}
+
+			case ANSI_ESCAPE:
+			{
+				ansi_handle(current_tty, buffer, &i, count);
 				break;
 			}
 
 			default:
 			{
-				tty_putchar(buffer[i], &cursor_x, &cursor_y);
+				tty_putchar(buffer[i], cursor_x, cursor_y);
 				break;
 			}
 		}

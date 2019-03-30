@@ -1,45 +1,49 @@
 #ifndef VGA_H
 # define VGA_H
 
+# include "../kernel.h"
 # include "../libc/string.h"
 
-# define VGA_BUFFER	(void *) 0xb8000
-# define VGA_WIDTH	80
-# define VGA_HEIGHT	24
+# define VGA_WIDTH			80
+# define VGA_HEIGHT			24
+# define VGA_BUFFER			((void *) 0xb8000)
+# define VGA_BUFFER_SIZE	(VGA_WIDTH * VGA_HEIGHT * sizeof(uint16_t))
 
-# define VGA_DEFAULT_COLOR     VGA_COLOR_WHITE | (VGA_COLOR_BLACK << 4)
+# define VGA_COLOR_BLACK			0x0
+# define VGA_COLOR_BLUE				0x1
+# define VGA_COLOR_GREEN			0x2
+# define VGA_COLOR_CYAN				0x3
+# define VGA_COLOR_RED				0x4
+# define VGA_COLOR_MAGENTA			0x5
+# define VGA_COLOR_BROWN			0x6
+# define VGA_COLOR_LIGHT_GREY		0x7
+# define VGA_COLOR_DARK_GREY		0x8
+# define VGA_COLOR_LIGHT_BLUE		0x9
+# define VGA_COLOR_LIGHT_GREEN		0xa
+# define VGA_COLOR_LIGHT_CYAN		0xb
+# define VGA_COLOR_LIGHT_RED		0xc
+# define VGA_COLOR_LIGHT_MAGENTA	0xd
+# define VGA_COLOR_LIGHT_BROWN		0xe
+# define VGA_COLOR_WHITE			0xf
 
-typedef enum
-{
-	VGA_COLOR_BLACK = 0,
-	VGA_COLOR_BLUE = 1,
-	VGA_COLOR_GREEN = 2,
-	VGA_COLOR_CYAN = 3,
-	VGA_COLOR_RED = 4,
-	VGA_COLOR_MAGENTA = 5,
-	VGA_COLOR_BROWN = 6,
-	VGA_COLOR_LIGHT_GREY = 7,
-	VGA_COLOR_DARK_GREY = 8,
-	VGA_COLOR_LIGHT_BLUE = 9,
-	VGA_COLOR_LIGHT_GREEN = 10,
-	VGA_COLOR_LIGHT_CYAN = 11,
-	VGA_COLOR_LIGHT_RED = 12,
-	VGA_COLOR_LIGHT_MAGENTA = 13,
-	VGA_COLOR_LIGHT_BROWN = 14,
-	VGA_COLOR_WHITE = 15
-} vga_color_t;
+# define VGA_DEFAULT_COLOR     (VGA_COLOR_WHITE | (VGA_COLOR_BLACK << 4))
 
-inline uint8_t vga_entry_color(const vga_color_t fg, const vga_color_t bg)
+typedef uint8_t vgacolor_t;
+typedef uint16_t vgapos_t;
+
+inline vgacolor_t vga_entry_color(const vgacolor_t fg, const vgacolor_t bg)
 {
 	return fg | (bg << 4);
 }
 
 void vga_clear();
-void vga_move_cursor(const unsigned short x, const unsigned short y);
+void vga_enable_cursor();
+void vga_disable_cursor();
+void vga_move_cursor(const vgapos_t x, const vgapos_t y);
 void vga_putchar_color(const char c, const uint8_t color,
-	const size_t x, const size_t y);
+	const vgapos_t x, const vgapos_t y);
 
-inline void vga_putchar(const char c, const size_t x, const size_t y)
+inline void vga_putchar(const char c, const vgapos_t x, const vgapos_t y)
 {
 	vga_putchar_color(c, VGA_DEFAULT_COLOR, x, y);
 }
