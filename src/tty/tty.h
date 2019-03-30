@@ -33,6 +33,11 @@ inline void switch_tty(const uint8_t tty)
 }
 
 void tty_init();
+
+void tty_reset_attrs(tty_t *tty);
+void tty_set_fgcolor(tty_t *tty, const vgacolor_t color);
+void tty_set_bgcolor(tty_t *tty, const vgacolor_t color);
+
 void tty_clear();
 void tty_putchar(const char c, vgapos_t *cursor_x, vgapos_t *cursor_y);
 void tty_move_cursor(vgapos_t *x, vgapos_t *y);

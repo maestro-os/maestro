@@ -23,12 +23,12 @@
 # define VGA_COLOR_LIGHT_CYAN		0xb
 # define VGA_COLOR_LIGHT_RED		0xc
 # define VGA_COLOR_LIGHT_MAGENTA	0xd
-# define VGA_COLOR_LIGHT_BROWN		0xe
+# define VGA_COLOR_YELLOW			0xe
 # define VGA_COLOR_WHITE			0xf
 
 # define VGA_DEFAULT_COLOR     (VGA_COLOR_WHITE | (VGA_COLOR_BLACK << 4))
 
-typedef uint8_t vgacolor_t;
+typedef int8_t vgacolor_t;
 typedef uint16_t vgapos_t;
 
 inline vgacolor_t vga_entry_color(const vgacolor_t fg, const vgacolor_t bg)

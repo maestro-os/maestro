@@ -17,6 +17,24 @@ void tty_init()
 	vga_enable_cursor();
 }
 
+void tty_reset_attrs(tty_t *tty)
+{
+	tty->current_color = VGA_DEFAULT_COLOR;
+	// TODO
+}
+
+void tty_set_fgcolor(tty_t *tty, const vgacolor_t color)
+{
+	tty->current_color &= ~((vgacolor_t) 0xff);
+	tty->current_color |= color;
+}
+
+void tty_set_bgcolor(tty_t *tty, const vgacolor_t color)
+{
+	tty->current_color &= ~((vgacolor_t) (0xff << 4));
+	tty->current_color |= color << 4;
+}
+
 void tty_clear()
 {
 	bzero(&current_tty->history, sizeof(current_tty->history));
