@@ -1,8 +1,4 @@
-#include "../kernel.h"
 #include "ps2.h"
-#include "../idt/idt.h"
-
-#include "../libc/stdio.h"
 
 // TODO Timeout
 static uint8_t keyboard_command(const uint8_t command)
