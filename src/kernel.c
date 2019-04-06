@@ -79,7 +79,7 @@ void kernel_main(const unsigned long magic, const void *multiboot_ptr)
 
 	idt_init();
 
-	printf("Keyboard initialization...\n");
+	printf("PS2 controller initialization...\n");
 
 	ps2_init();
 
