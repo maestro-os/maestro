@@ -6,8 +6,7 @@ static mem_chunk_t *new_chunk(mem_chunk_t *chunks)
 {
 	mem_chunk_t *c = chunks;
 	if(c)
-		while(c->next)
-			c = c->next;
+		while(c->next) c = c->next;
 
 	mem_chunk_t *ret;
 

@@ -3,7 +3,7 @@
 
 # include "../kernel.h"
 
-# define PAGE_SIZE			0x1000
+# define PAGE_SIZE	0x1000
 
 # define HEAP_BEGIN ((void *) 0x400000)
 
@@ -18,6 +18,7 @@ void enable_a20();
 void physical_init();
 size_t physical_available();
 void *physical_alloc();
+bool physical_alloc2(size_t pages, void (*f)(void *, void *), void *handle);
 void physical_free(void *ptr);
 
 inline void *page_to_ptr(const size_t page)
