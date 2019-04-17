@@ -42,6 +42,24 @@ static const char *errors[] = {
 	"Unknown"
 };
 
+static driver_t drivers[] = {
+	{"PS/2", ps2_init}
+};
+
+static inline void init_driver(const driver_t *driver)
+{
+	if(!driver) return;
+
+	printf("%s driver initialization...\n", driver->name);
+	driver->init_func();
+}
+
+static inline void init_drivers()
+{
+	for(size_t i = 0; i < sizeof(drivers) / sizeof(*drivers); ++i)
+		init_driver(drivers + i);
+}
+
 void kernel_main(const unsigned long magic, const void *multiboot_ptr)
 {
 	// TODO Fix
@@ -79,9 +97,9 @@ void kernel_main(const unsigned long magic, const void *multiboot_ptr)
 	idt_init();
 	process_init();
 
-	printf("PS/2 driver initialization...\n");
+	printf("Drivers initialization...\n");
 
-	ps2_init();
+	init_drivers();
 
 	// TODO
 }

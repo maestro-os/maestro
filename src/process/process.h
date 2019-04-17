@@ -9,14 +9,14 @@ typedef int16_t pid_t;
 
 typedef struct
 {
-	pid_t pid;
+	pid_t pid, parent;
 	// TODO data
 
-	uint32_t *paging_dir;
+	uint32_t *page_dir;
 } process_t;
 
 void process_init();
-pid_t kfork();
+pid_t kfork(const pid_t parent);
 process_t *get_process(const pid_t pid);
 
 #endif
