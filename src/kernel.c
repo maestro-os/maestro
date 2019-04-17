@@ -2,6 +2,7 @@
 #include "tty/tty.h"
 #include "memory/memory.h"
 #include "idt/idt.h"
+#include "process/process.h"
 #include "ps2/ps2.h"
 
 #include "libc/stdio.h"
@@ -71,15 +72,14 @@ void kernel_main(const unsigned long magic, const void *multiboot_ptr)
 		panic("Not enough memory for kernel!");
 
 	printf("Available memory: %p bytes\n", memory_end);
-	printf("Memory manager initialization...\n");
+	printf("Basic components initialization...\n");
 
 	physical_init();
-
-	printf("Interruptions initialization...\n");
-
+	// TODO
 	idt_init();
+	process_init();
 
-	printf("PS2 controller initialization...\n");
+	printf("PS/2 driver initialization...\n");
 
 	ps2_init();
 

@@ -1,9 +1,10 @@
 #include "linked_list.h"
+#include "../memory/memory.h"
 
 static list_t *alloc_node(void *content)
 {
 	list_t *l;
-	if(!(l = (list_t *) malloc(sizeof(list_t)))) return NULL;
+	if(!(l = (list_t *) kmalloc(sizeof(list_t)))) return NULL;
 
 	l->content = content;
 	l->next = NULL;
@@ -94,15 +95,22 @@ void list_push_front(list_t **l, void *content)
 
 void list_pop_front(list_t **l)
 {
-	(void) l;
-	// TODO
+	if(!l || !*l) return;
+
+	list_t *tmp = (*l)->next;
+	free((*l)->content);
+	free(*l);
+	*l = tmp;
 }
 
 void list_popf_front(list_t **l, void (*f)(void *))
 {
-	(void) l;
-	(void) f;
-	// TODO
+	if(!l || !*l || !f) return;
+
+	list_t *tmp = (*l)->next;
+	f((*l)->content);
+	free(*l);
+	*l = tmp;
 }
 
 void list_push_back(list_t **l, void *content)
@@ -123,41 +131,94 @@ void list_push_back(list_t **l, void *content)
 
 void list_pop_back(list_t **l)
 {
-	(void) l;
-	// TODO
+	if(!l || !*l) return;
+	list_t *tmp = *l, *prev = NULL;
+
+	while(tmp->next)
+	{
+		prev = tmp;
+		tmp = tmp->next;
+	}
+
+	free(tmp->content);
+	free(tmp);
+	prev->next = NULL;
 }
 
 void list_popf_back(list_t **l, void (*f)(void *))
 {
-	(void) l;
-	(void) f;
-	// TODO
+	if(!l || !*l || !f) return;
+	list_t *tmp = *l, *prev = NULL;
+
+	while(tmp->next)
+	{
+		prev = tmp;
+		tmp = tmp->next;
+	}
+
+	prev->next = NULL;
+	f(tmp->content);
+	free(tmp);
 }
 
-void list_delete(list_t **l, size_t i)
+void list_del(list_t **l, size_t i)
 {
-	(void) l;
-	(void) i;
-	// TODO
+	if(!l || !*l) return;
+	list_t *tmp = *l, *prev = NULL;
+
+	while(i-- > 0 && tmp)
+	{
+		prev = tmp;
+		tmp = tmp->next;
+	}
+
+	if(!tmp) return;
+	prev->next = tmp->next;
+	free(tmp->content);
+	free(tmp);
 }
 
-void list_deletef(list_t **l, size_t i, void (*f)(void *))
+void list_delf(list_t **l, size_t i, void (*f)(void *))
 {
-	(void) l;
-	(void) i;
-	(void) f;
-	// TODO
+	if(!l || !*l || !f) return;
+	list_t *tmp = *l, *prev = NULL;
+
+	while(i-- > 0 && tmp)
+	{
+		prev = tmp;
+		tmp = tmp->next;
+	}
+
+	if(!tmp) return;
+	prev->next = tmp->next;
+	f(tmp->content);
+	free(tmp);
 }
 
-void list_deleteall(list_t **l)
+void list_delall(list_t **l)
 {
-	(void) l;
-	// TODO
+	if(!l || !*l) return;
+	list_t *t = *l, *tmp;
+
+	while(t)
+	{
+		tmp = t->next;
+		free(tmp->content);
+		free(tmp);
+		t = tmp;
+	}
 }
 
-void list_deleteallf(list_t **l, void (*f)(void *))
+void list_delallf(list_t **l, void (*f)(void *))
 {
-	(void) l;
-	(void) f;
-	// TODO
+	if(!l || !*l || !f) return;
+	list_t *t = *l, *tmp;
+
+	while(t)
+	{
+		tmp = t->next;
+		f(tmp->content);
+		free(tmp);
+		t = tmp;
+	}
 }

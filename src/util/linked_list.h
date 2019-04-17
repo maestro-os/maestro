@@ -20,9 +20,9 @@ void list_popf_front(list_t **l, void (*f)(void *));
 void list_push_back(list_t **l, void *content);
 void list_pop_back(list_t **l);
 void list_popf_back(list_t **l, void (*f)(void *));
-void list_delete(list_t **l, size_t i);
-void list_deletef(list_t **l, size_t i, void (*f)(void *));
-void list_deleteall(list_t **l);
-void list_deleteallf(list_t **l, void (*f)(void *));
+void list_del(list_t **l, size_t i);
+void list_delf(list_t **l, size_t i, void (*f)(void *));
+void list_delall(list_t **l);
+void list_delallf(list_t **l, void (*f)(void *));
 
 #endif

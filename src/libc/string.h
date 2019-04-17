@@ -6,7 +6,7 @@
 # include <stdint.h>
 
 // TODO
-typedef size_t off_t ;
+typedef size_t off_t;
 
 // TODO Must be placed in `strings.h`
 void bzero(void *s, size_t n);

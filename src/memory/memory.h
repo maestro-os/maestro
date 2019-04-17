@@ -47,6 +47,4 @@ void *kmalloc(const size_t size);
 void *krealloc(void *ptr, const size_t size);
 void kfree(void *ptr);
 
-// TODO Processes memory
-
 #endif
