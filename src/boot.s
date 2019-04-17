@@ -115,7 +115,7 @@ gdt_start:
 gdt_null:
 	.quad 0
 
-gdt_code:
+gdt_kernel_code:
 	.word 0xffff
 	.word 0
 	.byte 0
@@ -123,11 +123,27 @@ gdt_code:
 	.byte 0b11001111
 	.byte 0
 
-gdt_data:
+gdt_kernel_data:
 	.word 0xffff
 	.word 0
 	.byte 0
 	.byte 0b10010010
+	.byte 0b11001111
+	.byte 0
+
+gdt_user_code:
+	.word 0xffff
+	.word 0
+	.byte 0
+	.byte 0b11111010
+	.byte 0b11001111
+	.byte 0
+
+gdt_user_data:
+	.word 0xffff
+	.word 0
+	.byte 0
+	.byte 0b11110010
 	.byte 0b11001111
 	.byte 0
 
