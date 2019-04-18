@@ -17,20 +17,20 @@ static process_t *insert_process(list_t *node, const pid_t pid)
 	if(!node || pid <= 0) return NULL;
 
 	process_t *process;
-	if(!(process = (process_t *) kmalloc(sizeof(process_t)))) return NULL;
+	if(!(process = kmalloc(sizeof(process_t)))) return NULL;
 	bzero(process, sizeof(process));
 
-	if(!(process->page_dir = physical_alloc()))
+	if(!(process->page_dir = kmalloc(PAGE_SIZE))) // TODO Must be aligned
 	{
-		kfree((void *) process);
+		kfree(process);
 		return NULL;
 	}
 
 	list_t *l;
-	if(!(l = (list_t *) kmalloc(sizeof(list_t))))
+	if(!(l = kmalloc(sizeof(list_t))))
 	{
-		physical_free(process->page_dir);
-		kfree((void *) process);
+		kfree(process->page_dir);
+		kfree(process);
 		return NULL;
 	}
 	bzero(l, sizeof(list_t));
