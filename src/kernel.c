@@ -94,7 +94,7 @@ void kernel_main(const unsigned long magic, const void *multiboot_ptr)
 	printf("Available memory: %p bytes\n", memory_end);
 	printf("Basic components initialization...\n");
 
-	buddy_init();
+	// TODO buddy_init();
 	// TODO
 	idt_init();
 	process_init();

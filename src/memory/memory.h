@@ -3,11 +3,10 @@
 
 # include "../kernel.h"
 
-# define PAGE_SIZE			0x1000
-# define BLOCK_SIZE			0x10000
-# define PAGES_PER_BLOCK	(BLOCK_SIZE / PAGE_SIZE)
-
+# define PAGE_SIZE	0x1000
 # define HEAP_BEGIN ((void *) 0x400000)
+
+# define MAX_BUDDY_NODES(order)	(pow2(order + 2) - 1)
 
 # define PAGING_TABLE_PAGE_SIZE		0b10000000
 # define PAGING_TABLE_ACCESSED		0b00100000
@@ -33,42 +32,34 @@
 # define PAGING_TABLE_SIZE		0x400
 # define PAGING_TOTAL_PAGES		(PAGING_DIRECTORY_SIZE * PAGING_TABLE_SIZE)
 
-typedef uint16_t paging_flags_t;
-typedef uint8_t kmalloc_flags_t;
+# define PAGETOPTR(page)	((void *) page * PAGE_SIZE)
+# define PTRTOPAGE(ptr)		((uintptr_t) ptr / PAGE_SIZE)
 
 void *memory_end;
 
 extern bool check_a20();
 void enable_a20();
 
-typedef enum
-{
-	FREE,
-	RESERVED,
-	USED
-} buddy_state_t;
+typedef size_t buddy_order_t;
 
-typedef struct
+typedef struct buddy_alloc
 {
-	buddy_state_t state;
-	void *ptr;
+	void *begin;
 	size_t size;
-} buddy_t;
 
-void buddy_init();
-buddy_t *buddy_get(void *ptr);
-buddy_t *buddy_alloc(const size_t blocks);
-void buddy_free(buddy_t *buddy);
+	// TODO Buddies storage
 
-inline void *page_to_ptr(const size_t page)
-{
-	return (void *) (page * PAGE_SIZE);
-}
+	struct buddy_alloc *next;
+} buddy_alloc_t;
 
-inline size_t ptr_to_page(const void *ptr)
-{
-	return (uintptr_t) ptr / PAGE_SIZE;
-}
+buddy_alloc_t *allocators;
+
+// TODO buddy_order_t alloc_max_order(const buddy_alloc_t *alloc);
+// TODO size_t alloc_get_metadata_size(const buddy_alloc_t *alloc);
+
+// TODO Buddy allocation
+
+typedef uint16_t paging_flags_t;
 
 void *paging_alloc(uint32_t *directory, void *hint,
 	const size_t length, const paging_flags_t flags);
@@ -79,6 +70,8 @@ void paging_set_page(uint32_t *directory, const size_t page,
 
 extern void paging_enable(const uint32_t *directory);
 extern void paging_disable();
+
+typedef uint8_t kmalloc_flags_t;
 
 void *kmalloc(const size_t size);
 void *krealloc(void *ptr, const size_t size);

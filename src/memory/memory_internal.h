@@ -3,6 +3,8 @@
 
 # define CHK_ISFREE(chunk)	(chunk->flags == 0)
 
+// TODO
+
 typedef uint8_t chunk_flags_t;
 
 typedef struct mem_chunk_tag
