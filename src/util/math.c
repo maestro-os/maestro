@@ -1,5 +1,7 @@
 #include "util.h"
 
+__attribute__((const))
+__attribute__((hot))
 unsigned pow2(const unsigned n)
 {
 	if(n == 0) return 1;

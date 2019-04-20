@@ -1,10 +1,9 @@
 #include "util.h"
+#include "../memory/memory.h"
 
 #define UNIT_SIZE		   	(sizeof(char))
 #define UNIT(bitmap, index)	(bitmap + (index / UNIT_SIZE))
 #define INNER_INDEX(index)	(UNIT_SIZE - (index % UNIT_SIZE) - 1)
-
-#define IS_ALIGNED(ptr)	(((intptr_t) (ptr) & (sizeof(long) - 1)) == 0)
 
 #define RIGHT_MASK(out, mask_type, size)\
 	out = 0;\
@@ -55,7 +54,8 @@ void bitmap_set_range(char *bitmap, const size_t begin, const size_t end)
 
 	if((end - begin) / 8 >= sizeof(mask))
 	{
-		while((i + sizeof(tiny_mask)) * 8 < end && !IS_ALIGNED(bitmap + i))
+		while((i + sizeof(tiny_mask)) * 8 < end
+			&& !IS_ALIGNED(bitmap + i, PAGE_SIZE))
 		{
 			*UNIT(bitmap, i) = tiny_mask;
 			i += sizeof(tiny_mask);
@@ -98,7 +98,8 @@ void bitmap_clear_range(char *bitmap, const size_t begin, const size_t end)
 
 	if((end - begin) / 8 >= sizeof(mask))
 	{
-		while((i + sizeof(*bitmap)) * 8 < end && !IS_ALIGNED(bitmap + i))
+		while((i + sizeof(*bitmap)) * 8 < end
+			&& !IS_ALIGNED(bitmap + i, PAGE_SIZE))
 		{
 			*UNIT(bitmap, i) = 0;
 			i += sizeof(*bitmap);

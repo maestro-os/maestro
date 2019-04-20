@@ -48,6 +48,7 @@ static driver_t drivers[] = {
 	{"PS/2", ps2_init}
 };
 
+__attribute__((cold))
 static inline void init_driver(const driver_t *driver)
 {
 	if(!driver) return;
@@ -56,12 +57,14 @@ static inline void init_driver(const driver_t *driver)
 	driver->init_func();
 }
 
+__attribute__((cold))
 static inline void init_drivers()
 {
 	for(size_t i = 0; i < sizeof(drivers) / sizeof(*drivers); ++i)
 		init_driver(drivers + i);
 }
 
+__attribute__((cold))
 void kernel_main(const unsigned long magic, const void *multiboot_ptr)
 {
 	// TODO Fix
@@ -116,6 +119,7 @@ void error_handler(const int error)
 	panic(errors[error]);
 }
 
+__attribute__((cold))
 __attribute((noreturn))
 void panic(const char *reason)
 {

@@ -3,10 +3,15 @@
 
 # include "../libc/string.h"
 
-# define BIT_SIZEOF(expr)	(sizeof(expr) * 8)
+# define IS_ALIGNED(ptr, n)	(((intptr_t) (ptr) & ((n) - 1)) == 0)
+# define ALIGN_DOWN(ptr, n)	((void *) ((intptr_t) (ptr)\
+	& ~((intptr_t) (n) - 1)))
+# define ALIGN_UP(ptr, n)	(ALIGN_DOWN(ptr, n) + (n))
 
-bool is_aligned(const void *ptr, const size_t n);
-void *align(void *ptr, const size_t n);
+# define UPPER_DIVISION(n0, n1)	((n0) % (n1) == 0\
+	? (n0) / (n1) : (n0) / (n1) + 1)
+
+# define BIT_SIZEOF(expr)	(sizeof(expr) * 8)
 
 unsigned pow2(const unsigned n);
 
