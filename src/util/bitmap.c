@@ -39,6 +39,15 @@ void bitmap_clear(char *bitmap, const size_t index)
 }
 
 __attribute__((hot))
+void bitmap_toggle(char *bitmap, const size_t index)
+{
+	if(bitmap_get(bitmap, index))
+		bitmap_clear(bitmap, index);
+	else
+		bitmap_set(bitmap, index);
+}
+
+__attribute__((hot))
 void bitmap_set_range(char *bitmap, const size_t begin, const size_t end)
 {
 	long mask;

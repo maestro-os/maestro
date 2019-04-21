@@ -1,6 +1,5 @@
 #include "memory.h"
 
-__attribute__((cold))
 static size_t largest_alloc()
 {
 	size_t i = BLOCK_SIZE;
@@ -9,7 +8,6 @@ static size_t largest_alloc()
 	return i;
 }
 
-__attribute__((cold))
 static size_t get_buddies_count()
 {
 	size_t covered = 0;
@@ -26,7 +24,20 @@ static size_t get_buddies_count()
 	return buddies_count;
 }
 
-__attribute__((cold))
+static buddy_order_t alloc_max_order(const size_t size)
+{
+	buddy_order_t order = 0;
+	size_t i = PAGE_SIZE;
+
+	while(i < size)
+	{
+		++order;
+		i *= 2;
+	}
+
+	return order;
+}
+
 void buddy_init()
 {
 	void *ptr = HEAP_BEGIN;
@@ -49,31 +60,19 @@ void buddy_init()
 		}
 		else
 			a->size = largest;
+		a->max_order = alloc_max_order(a->size);
 
 		ptr += sizeof(buddy_alloc_t);
 
-		const size_t s = ALLOC_META_SIZE(alloc_max_order(a));
+		const size_t s = ALLOC_META_SIZE(alloc_max_order(a->size));
 		bzero((a->states = ptr), s);
 		ptr += s;
 
 		a->next = (i + 1 < buddies_count ? ptr : NULL);
 		prev = a;
+
+		if(!prev) allocators = a;
 	}
 
 	buddy_reserve_blocks(UPPER_DIVISION((uintptr_t) ptr, BLOCK_SIZE));
-}
-
-__attribute__((hot))
-buddy_order_t alloc_max_order(const buddy_alloc_t *alloc)
-{
-	buddy_order_t order = 0;
-	size_t i = PAGE_SIZE;
-
-	while(i < alloc->size)
-	{
-		++order;
-		i *= 2;
-	}
-
-	return order;
 }

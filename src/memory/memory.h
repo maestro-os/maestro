@@ -3,20 +3,9 @@
 
 # include "../kernel.h"
 # include "../util/util.h"
+# include "buddy.h"
 
-# define PAGE_SIZE		0x100
-// TODO Use pages instead of blocks?
-# define BLOCK_SIZE		0x1000
-# define HEAP_BEGIN		((void *) 0x400000)
-# define BUDDY_MIN_SIZE	0x100000
-
-# define MAX_BUDDY_NODES(order)	(pow2((order) + 1) - 1)
-// TODO Add informations for every page?
-# define ALLOC_META_SIZE(order)	(UPPER_DIVISION(MAX_BUDDY_NODES(order)\
-	* sizeof(buddy_state_t), 8))
-
-# define ORDERTOSIZE(order)					(BLOCK_SIZE * pow2(order))
-# define BUDDY_INDEX(max_order, order, i)	((max_order) - (order) + (i))
+# define PAGE_SIZE		0x1000
 
 # define PAGING_TABLE_PAGE_SIZE		0b10000000
 # define PAGING_TABLE_ACCESSED		0b00100000
@@ -51,12 +40,13 @@ extern bool check_a20();
 void enable_a20();
 
 typedef size_t buddy_order_t;
-typedef int16_t buddy_state_t;
+typedef char buddy_state_t;
 
 typedef struct buddy_alloc
 {
 	void *begin;
 	size_t size;
+	buddy_order_t max_order;
 
 	buddy_state_t *states;
 
@@ -66,7 +56,6 @@ typedef struct buddy_alloc
 buddy_alloc_t *allocators;
 
 void buddy_init();
-buddy_order_t alloc_max_order(const buddy_alloc_t *alloc);
 
 void buddy_reserve_blocks(const size_t count);
 void *buddy_alloc(const size_t pages);
