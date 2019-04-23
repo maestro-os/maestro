@@ -18,11 +18,6 @@
 .set STACK_SIZE,	16384
 
 .section .text
-.global start, _start
-
-start:
-_start:
-	jmp multiboot_entry
 
 .align 8
 header:
