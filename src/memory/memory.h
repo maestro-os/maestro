@@ -44,18 +44,14 @@ typedef char buddy_state_t;
 
 typedef struct buddy_alloc
 {
-	void *begin;
 	size_t size;
 	buddy_order_t max_order;
-
 	buddy_state_t *states;
-
-	struct buddy_alloc *next;
 } buddy_alloc_t;
 
-buddy_alloc_t *allocators;
+buddy_alloc_t *allocator;
 
-void buddy_init();
+void alloc_init();
 
 void buddy_reserve_blocks(const size_t count);
 void *buddy_alloc(const size_t pages);
