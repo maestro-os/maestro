@@ -1,5 +1,4 @@
 #include "memory.h"
-#include "memory_internal.h"
 
 __attribute__((hot))
 static inline void buddy_toggle(buddy_alloc_t *alloc,
