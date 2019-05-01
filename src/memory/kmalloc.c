@@ -1,5 +1,4 @@
 #include "memory.h"
-#include "memory_internal.h"
 #include "../libc/errno.h"
 
 void *kmalloc(const size_t size)

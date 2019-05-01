@@ -39,37 +39,15 @@ void *memory_end;
 extern bool check_a20();
 void enable_a20();
 
-typedef size_t buddy_order_t;
-typedef char buddy_state_t;
-
-typedef struct buddy_alloc
-{
-	size_t size;
-	buddy_order_t max_order;
-	buddy_state_t *states;
-} buddy_alloc_t;
-
-buddy_alloc_t *allocator;
-
-void alloc_init();
-
+void buddy_init();
 void buddy_reserve_blocks(const size_t count);
-void *buddy_alloc(const size_t pages);
-void buddy_free(const void *ptr, const size_t pages);
+void *buddy_alloc(const size_t order);
+void buddy_free(void *ptr);
 
-typedef uint16_t paging_flags_t;
-
-void *paging_alloc(uint32_t *directory, void *hint,
-	const size_t length, const paging_flags_t flags);
-void paging_free(uint32_t *directory, void *ptr, const size_t length);
-uint32_t *paging_get_page(const uint32_t *directory, const size_t page);
-void paging_set_page(uint32_t *directory, const size_t page,
-	void *physaddr, const paging_flags_t flags);
+// TODO vmalloc, etc...
 
 extern void paging_enable(const uint32_t *directory);
 extern void paging_disable();
-
-typedef uint8_t kmalloc_flags_t;
 
 void *kmalloc(const size_t size);
 void *krealloc(void *ptr, const size_t size);

@@ -1,6 +1,6 @@
 #include "memory.h"
 
-static size_t alloc_size()
+/*static size_t alloc_size()
 {
 	size_t i = BLOCK_SIZE;
 	while(i < (size_t) memory_end) i <<= 1;
@@ -37,4 +37,4 @@ void alloc_init()
 	ptr += s;
 
 	buddy_reserve_blocks(UPPER_DIVISION((uintptr_t) ptr, BLOCK_SIZE));
-}
+}*/
