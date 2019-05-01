@@ -74,10 +74,10 @@ void kernel_main(const unsigned long magic, const void *multiboot_ptr)
 
 	// TODO Add first Multiboot version support
 	if(magic != MULTIBOOT2_BOOTLOADER_MAGIC)
-		panic("Non Multiboot2-compliant bootloader!");
+		PANIC("Non Multiboot2-compliant bootloader!");
 
 	if(((uintptr_t) multiboot_ptr) & 7)
-		panic("Boot informations structure's address is not aligned!");
+		PANIC("Boot informations structure's address is not aligned!");
 
 	printf("Booting crumbleos kernel version %s...\n", KERNEL_VERSION);
 	printf("Retrieving Multiboot2 data...\n");
@@ -92,7 +92,7 @@ void kernel_main(const unsigned long magic, const void *multiboot_ptr)
 	memory_end = (void *) (boot_info.mem_upper * 1024);
 
 	if(memory_end < HEAP_BEGIN)
-		panic("Not enough memory for kernel!");
+		PANIC("Not enough memory for kernel!");
 
 	printf("Available memory: %p bytes\n", memory_end);
 	printf("Basic components initialization...\n");
@@ -113,18 +113,31 @@ void kernel_main(const unsigned long magic, const void *multiboot_ptr)
 
 void error_handler(const int error)
 {
-	if(error > 0x1f) panic("Unknown");
+	if(error > 0x1f) PANIC("Unknown");
 
 	// TODO Check if caused by process
-	panic(errors[error]);
+	PANIC(errors[error]);
+}
+
+__attribute__((cold))
+static void print_panic(const char *reason)
+{
+	tty_init();
+	printf("--- KERNEL PANIC ---\n\nKernel has been forced to halt due to internal problem, sorry :/\nReason: %s\n\nIf you belive this is a bug on the kernel side, please feel free to report it.\n\n", reason);
 }
 
 __attribute__((cold))
 __attribute((noreturn))
-void panic(const char *reason)
+void kernel_panic(const char *reason)
 {
-	tty_init();
-	printf("--- KERNEL PANIC ---\n\nKernel has been forced to halt due to internal problem, sorry :/\nReason: %s\n\nIf you belive this is a bug on the kernel side, please feel free to report it.", reason);
+	print_panic(reason);
+	kernel_halt();
+}
 
+__attribute__((noreturn))
+void kernel_panic_(const char *reason, const char *file, const int line)
+{
+	print_panic(reason);
+	printf("-- DEBUG --\nFile: %s; Line: %i", file, line);
 	kernel_halt();
 }

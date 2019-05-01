@@ -5,5 +5,5 @@ __attribute__((noreturn))
 void __stack_chk_fail()
 {
 	// TODO abort(); if user-space
-	panic("Stack smashing detected!");
+	PANIC("Stack smashing detected!");
 }
