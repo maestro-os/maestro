@@ -11,8 +11,7 @@
 # define SIZETOORDER(size)	((size) / BLOCK_SIZE)
 
 # define BUDDY_INDEX(max_order, order, i)	((max_order) - (order) + (i))
-// TODO
-# define BUDDY_PARENT(i)					(0)
+# define BUDDY_PARENT(i)					(((i) + 1) / 2 - 1)
 
 # define HEAP_BEGIN_VAL	0x400000
 # define HEAP_BEGIN		((void *) HEAP_BEGIN_VAL)
