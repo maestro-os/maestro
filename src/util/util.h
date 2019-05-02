@@ -7,6 +7,8 @@
 # define ALIGN_DOWN(ptr, n)	((void *) ((intptr_t) (ptr)\
 	& ~((intptr_t) (n) - 1)))
 # define ALIGN_UP(ptr, n)	(ALIGN_DOWN(ptr, n) + (n))
+# define ALIGN(ptr, n)		(IS_ALIGNED((ptr), (n)) ? (ptr)\
+	: ALIGN_UP((ptr), (n)))
 
 # define UPPER_DIVISION(n0, n1)	((n0) % (n1) == 0\
 	? (n0) / (n1) : (n0) / (n1) + 1)

@@ -1,7 +1,9 @@
-tags
-
+*.a
 *.o
 iso/
-
 crumbleos
 *.iso
+
+*.swp
+
+tags

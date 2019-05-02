@@ -2,7 +2,6 @@
 # define MEMORY_H
 
 # include "../kernel.h"
-# include "../util/util.h"
 # include "buddy.h"
 
 # define PAGE_SIZE		0x1000
@@ -40,7 +39,7 @@ extern bool check_a20();
 void enable_a20();
 
 void buddy_init();
-void buddy_reserve_blocks(const size_t count);
+void buddy_set_block(const size_t i, const size_t order, const int used);
 void *buddy_alloc(const size_t order);
 void buddy_free(void *ptr);
 
