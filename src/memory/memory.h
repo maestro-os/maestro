@@ -42,13 +42,14 @@ void buddy_init();
 void *buddy_alloc(const size_t order);
 void buddy_free(void *ptr);
 
+void slab_init();
+void *kmalloc(const size_t size);
+void *krealloc(void *ptr, const size_t size);
+void kfree(void *ptr);
+
 // TODO vmalloc, etc...
 
 extern void paging_enable(const uint32_t *directory);
 extern void paging_disable();
-
-void *kmalloc(const size_t size);
-void *krealloc(void *ptr, const size_t size);
-void kfree(void *ptr);
 
 #endif

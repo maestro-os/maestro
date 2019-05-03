@@ -95,9 +95,13 @@ void kernel_main(const unsigned long magic, const void *multiboot_ptr)
 		PANIC("Not enough memory for kernel!");
 
 	printf("Available memory: %p bytes\n", memory_end);
-	printf("Basic components initialization...\n");
+	printf("Memory management initialization...\n");
 
 	buddy_init();
+	slab_init();
+
+	printf("Basic components initialization...\n");
+
 	idt_init();
 	process_init();
 
