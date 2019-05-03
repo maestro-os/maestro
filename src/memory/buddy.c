@@ -1,6 +1,7 @@
 #include "memory.h"
 
-static size_t buddy_size, max_order;
+static size_t buddy_size;
+static buddy_order_t max_order;
 static char *states;
 
 // TODO Free list
@@ -50,17 +51,49 @@ void buddy_init()
 	// TODO Alloc free list
 }
 
-void buddy_set_block(const size_t i, const size_t order, const int used)
+int buddy_get_block(const size_t i, const buddy_order_t order)
+{
+	if(order > max_order) return 1;
+	return bitmap_get(states, BUDDY_INDEX(max_order, order, i));
+}
+
+void buddy_set_block(const size_t i, const buddy_order_t order, const int used)
 {
 	if(order > max_order) return;
 	size_t index = BUDDY_INDEX(max_order, order, i);
+
+	// TODO Set/clear parent? (clear if both children are free)
 
 	if (used)
 		bitmap_set(states, index);
 	else
 		bitmap_clear(states, index);
 
-	if(i > 0) buddy_set_block(BUDDY_PARENT(i), order + 1, used);
+	if(order > 0)
+	{
+		buddy_set_block(i * 2, order - 1, used);
+		buddy_set_block(i * 2 + 1, order - 1, used);
+	}
+}
+
+static size_t find_buddy(const size_t order)
+{
+	for(size_t i = 0; i < BLOCKS_COUNT(max_order, order); ++i)
+	{
+		if(!buddy_get_block(i, order))
+			return i;
+	}
+
+	return BUDDY_NULL;
+}
+
+static size_t split_block(const buddy_order_t order, const size_t i,
+	const size_t n)
+{
+	if(order == 0 || n == 0) return BUDDY_NULL;
+
+	buddy_set_block(order, i, 1);
+	return split_block(order - 1, i * 2, n - 1);
 }
 
 __attribute__((hot))
@@ -68,9 +101,17 @@ void *buddy_alloc(const size_t order)
 {
 	// TODO Check free list
 	// TODO If no block large enough is in free list, look for a block in buddies
-	(void) order;
 
-	return NULL;
+	size_t buddy;
+	buddy_order_t n = 0;
+
+	do
+		buddy = find_buddy(order + n);
+	while((buddy == BUDDY_NULL) && (order + ++n < max_order));
+
+	if(buddy == BUDDY_NULL) return NULL;
+	if(n == 0) return BUDDY_PTR(order, buddy);
+	return BUDDY_PTR(order - n, split_block(order + n, buddy, n));
 }
 
 __attribute__((hot))

@@ -39,7 +39,6 @@ extern bool check_a20();
 void enable_a20();
 
 void buddy_init();
-void buddy_set_block(const size_t i, const size_t order, const int used);
 void *buddy_alloc(const size_t order);
 void buddy_free(void *ptr);
 
