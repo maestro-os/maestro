@@ -28,6 +28,9 @@
 
 # define VGA_DEFAULT_COLOR     (VGA_COLOR_WHITE | (VGA_COLOR_BLACK << 4))
 
+# define CURSOR_START	0
+# define CURSOR_END		15
+
 typedef int8_t vgacolor_t;
 typedef uint16_t vgapos_t;
 
