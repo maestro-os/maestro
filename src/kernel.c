@@ -1,5 +1,6 @@
 #include "kernel.h"
 #include "tty/tty.h"
+#include "cpu/cpu.h"
 #include "memory/memory.h"
 #include "idt/idt.h"
 #include "process/process.h"
@@ -80,14 +81,18 @@ void kernel_main(const unsigned long magic, const void *multiboot_ptr)
 		PANIC("Boot informations structure's address is not aligned!");
 
 	printf("Booting crumbleos kernel version %s...\n", KERNEL_VERSION);
+	printf("Retrieving CPU informations...\n");
+
+	cpuid();
+
 	printf("Retrieving Multiboot2 data...\n");
 
 	const boot_info_t boot_info = read_boot_tags(multiboot_ptr);
 
 	printf("Command line: %s\n", boot_info.cmdline);
 	printf("Bootloader name: %s\n", boot_info.loader_name);
-	printf("Memory lower bound: %u KB\n", boot_info.mem_lower);
-	printf("Memory upper bound: %u KB\n", boot_info.mem_upper);
+	printf("Memory lower bound: %u KB\n", (unsigned) boot_info.mem_lower);
+	printf("Memory upper bound: %u KB\n", (unsigned) boot_info.mem_upper);
 
 	memory_end = (void *) (boot_info.mem_upper * 1024);
 
