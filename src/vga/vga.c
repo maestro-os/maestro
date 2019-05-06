@@ -2,7 +2,11 @@
 
 void vga_clear()
 {
-	bzero(VGA_BUFFER, VGA_BUFFER_SIZE);
+	const uint16_t c = (uint16_t) ' ' | ((uint16_t) VGA_DEFAULT_COLOR << 8);
+
+	// TODO Optimization
+	for(size_t i = 0; i < VGA_WIDTH * VGA_HEIGHT; ++i)
+		*((uint16_t *) VGA_BUFFER + i) = c;
 }
 
 void vga_enable_cursor()

@@ -41,6 +41,7 @@ void tty_clear()
 
 	current_tty->cursor_x = 0;
 	current_tty->cursor_y = 0;
+	vga_move_cursor(0, 0);
 }
 
 static void tty_correct_pos(vgapos_t *x, vgapos_t *y)
