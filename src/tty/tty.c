@@ -12,8 +12,8 @@ static void init_ttys()
 void tty_init()
 {
 	init_ttys();
-	tty_clear();
 	vga_enable_cursor();
+	tty_clear();
 }
 
 void tty_reset_attrs(tty_t *tty)
