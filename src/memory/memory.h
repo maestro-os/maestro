@@ -2,8 +2,9 @@
 # define MEMORY_H
 
 # include "../kernel.h"
-# include "buddy.h"
-# include "slab.h"
+# include "buddy/buddy.h"
+# include "slab/slab.h"
+# include "../util/util.h"
 
 # define PAGE_SIZE		0x1000
 

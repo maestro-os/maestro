@@ -1,4 +1,4 @@
-#include "memory.h"
+#include "buddy.h"
 
 static size_t buddy_size;
 static buddy_order_t max_order;

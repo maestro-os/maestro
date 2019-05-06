@@ -1,4 +1,4 @@
-#include "memory.h"
+#include "slab.h"
 
 void slab_init()
 {

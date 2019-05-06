@@ -1,7 +1,7 @@
 #ifndef BUDDY_H
 # define BUDDY_H
 
-# include "../util/util.h"
+# include "../memory.h"
 
 # define BUDDY_STATES_SIZE(size)	(UPPER_DIVISION((size), 8))
 # define BUDDY_NULL					((size_t) -1)
