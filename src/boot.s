@@ -104,6 +104,9 @@ multiboot_entry:
 
 .section .data
 
+.global gdt_user_code
+.global gdt_user_data
+
 .align 8
 
 gdt_start:

@@ -18,6 +18,7 @@
 
 typedef uint16_t buddy_order_t;
 
+void buddy_init();
 buddy_order_t buddy_get_order(const size_t size);
 int buddy_get_block(const size_t i, const buddy_order_t order);
 void buddy_set_block(const size_t i, const buddy_order_t order, const int used);

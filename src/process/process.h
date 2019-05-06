@@ -7,6 +7,8 @@
 
 typedef int16_t pid_t;
 
+extern void switch_user_mode();
+
 typedef struct
 {
 	pid_t pid, parent;

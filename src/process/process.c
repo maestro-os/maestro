@@ -69,8 +69,6 @@ static process_t *create_process(const pid_t parent)
 	return NULL;
 }
 
-extern void switch_user_mode();
-
 // TODO Make atomic
 pid_t kfork(const pid_t parent)
 {
