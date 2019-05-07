@@ -46,7 +46,7 @@ cache_t *cache_create(const char *name, const size_t objsize,
 	while((size_t) POW2(order) < pages) order <<= 1;
 	pages = POW2(order);
 	size = pages * PAGE_SIZE;
-	// TODO Increase objsize up to cache capacity?
+	// TODO Increase objects_count up to cache capacity?
 
 	void *mem;
 	if(!(mem = buddy_alloc(order))) return NULL;
@@ -62,8 +62,23 @@ cache_t *cache_create(const char *name, const size_t objsize,
 	cache->objsize = objsize;
 	cache->objects_count = objects_count;
 	cache->slabs = pages;
+
+	// TODO Fill slabs_*
+
 	cache->ctor = ctor;
 	cache->dtor = dtor;
+
+	if(cache->ctor)
+	{
+		object_t *obj = cache->slabs_free.free_objs;
+
+		while(obj)
+		{
+			cache->ctor(obj + sizeof(object_t), cache->objsize);
+			obj = obj->next;
+		}
+	}
+
 	return cache;
 }
 
@@ -75,10 +90,23 @@ void cache_shrink(cache_t *cache)
 
 void *cache_alloc(cache_t *cache)
 {
-	// TODO
-	(void) cache;
+	if(!cache) return NULL;
+	spin_lock(&cache->spinlock);
 
-	return NULL;
+	object_t *obj;
+
+	if((obj = cache->slabs_partial.free_objs))
+		cache->slabs_partial.free_objs = obj->next;
+	else if((obj = cache->slabs_free.free_objs))
+		cache->slabs_free.free_objs = obj->next;
+	else
+	{
+		spin_unlock(&cache->spinlock);
+		return NULL;
+	}
+
+	spin_unlock(&cache->spinlock);
+	return obj;
 }
 
 void cache_free(cache_t *cache, void *obj)

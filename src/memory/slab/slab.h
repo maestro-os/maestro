@@ -5,7 +5,6 @@
 # include "../../util/util.h"
 # include "../../libc/string.h"
 
-# define OBJ_FREE	0b0
 # define OBJ_USED	0b1
 
 # define SLAB_CACHE_NAME	"slab_caches"
@@ -15,18 +14,13 @@ typedef uint8_t object_state;
 typedef struct object
 {
 	object_state state;
+	// TODO
 } object_t;
-
-typedef struct free_object
-{
-	object_state state;
-	object_t *next;
-} free_object_t;
 
 // TODO Use a linked list of slabs in order to be able to extend caches?
 typedef struct slabs
 {
-	object_t *objs;
+	object_t *free_objs;
 	size_t used;
 } slabs_t;
 
