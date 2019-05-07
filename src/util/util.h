@@ -23,4 +23,9 @@ void bitmap_toggle(char *bitmap, const size_t index);
 void bitmap_set_range(char *bitmap, const size_t begin, const size_t end);
 void bitmap_clear_range(char *bitmap, const size_t begin, const size_t end);
 
+typedef uint8_t spinlock_t;
+
+extern void spin_lock(spinlock_t *spinlock);
+extern void spin_unlock(spinlock_t *spinlock);
+
 #endif
