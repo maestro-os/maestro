@@ -10,8 +10,10 @@
 # define BUDDY_PTR(order, i)				((i != BUDDY_NULL)\
 	? (void *) (POW2(order) * PAGE_SIZE * (i)) : NULL)
 
-# define BLOCKS_COUNT(max_order, order)\
+# define PAGES_COUNT(max_order, order)\
 	((size_t) POW2((max_order) - (order)))
+# define BLOCK_SIZE(max_order, order)\
+	(PAGES_COUNT(max_order, order) * PAGE_SIZE)
 
 # define HEAP_BEGIN_VAL	0x400000
 # define HEAP_BEGIN		((void *) HEAP_BEGIN_VAL)

@@ -16,6 +16,10 @@
 
 # define BIT_SIZEOF(expr)	(sizeof(expr) * 8)
 
+# define OFFSET_OF(type, field)			((size_t) &(((type *) 0)->field))
+# define CONTAINER_OF(ptr, type, field)	((void *) (ptr)\
+	- OFFSET_OF(type, field))
+
 int bitmap_get(char *bitmap, const size_t index);
 void bitmap_set(char *bitmap, const size_t index);
 void bitmap_clear(char *bitmap, const size_t index);

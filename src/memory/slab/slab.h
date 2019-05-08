@@ -9,6 +9,10 @@
 
 # define SLAB_CACHE_NAME	"slab_caches"
 
+# define OBJ_TOTAL_SIZE(objsize)	(sizeof(object_t) + (objsize))
+# define OBJ_CONTENT(ptr)			((ptr) + sizeof(object_t))
+# define OBJ_NEXT(curr, size)		((curr) + OBJ_TOTAL_SIZE(size))
+
 typedef uint8_t object_state;
 
 typedef struct object
@@ -17,29 +21,30 @@ typedef struct object
 	// TODO
 } object_t;
 
-// TODO Use a linked list of slabs in order to be able to extend caches?
-typedef struct slabs
+typedef struct slab
 {
 	object_t *free_objs;
 	size_t used;
-} slabs_t;
+
+	struct slab *next;
+} slab_t;
 
 typedef struct cache
 {
 	const char *name;
+	spinlock_t spinlock;
 
 	size_t objsize;
 	size_t objects_count;
 	size_t slabs;
 
-	slabs_t slabs_full;
-	slabs_t slabs_partial;
-	slabs_t slabs_free;
+	slab_t *slabs_full;
+	slab_t *slabs_partial;
+	slab_t *slabs_free;
 
-	void (*ctor)(void *, const size_t);
-	void (*dtor)(void *, const size_t);
+	void (*ctor)(void *, size_t);
+	void (*dtor)(void *, size_t);
 
-	spinlock_t spinlock;
 	struct cache *next;
 } cache_t;
 
@@ -47,9 +52,8 @@ void slab_init();
 
 cache_t *cache_getall();
 cache_t *cache_get(const char *name);
-cache_t *cache_create(const char *name, const size_t objsize,
-	const size_t objects_count, void (*ctor)(void *, size_t),
-		void (*dtor)(void *, size_t));
+cache_t *cache_create(const char *name, size_t objsize, size_t objects_count,
+	void (*ctor)(void *, size_t), void (*dtor)(void *, size_t));
 void cache_shrink(cache_t *cache);
 void *cache_alloc(cache_t *cache);
 void cache_free(cache_t *cache, void *obj);

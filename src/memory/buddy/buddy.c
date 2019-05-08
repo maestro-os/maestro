@@ -78,7 +78,7 @@ void buddy_set_block(const size_t i, const buddy_order_t order, const int used)
 
 static size_t find_buddy(const size_t order)
 {
-	for(size_t i = 0; i < BLOCKS_COUNT(max_order, order); ++i)
+	for(size_t i = 0; i < PAGES_COUNT(max_order, order); ++i)
 	{
 		if(!buddy_get_block(i, order))
 			return i;
@@ -112,6 +112,13 @@ void *buddy_alloc(const size_t order)
 	if(buddy == BUDDY_NULL) return NULL;
 	if(n == 0) return BUDDY_PTR(order, buddy);
 	return BUDDY_PTR(order - n, split_block(order + n, buddy, n));
+}
+
+void *buddy_alloc_zero(const size_t order)
+{
+	void *ptr = buddy_alloc(order);
+	bzero(ptr, BLOCK_SIZE(max_order, order));
+	return ptr;
 }
 
 __attribute__((hot))

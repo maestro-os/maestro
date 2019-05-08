@@ -41,6 +41,7 @@ extern bool check_a20();
 void enable_a20();
 
 void *buddy_alloc(const size_t order);
+void *buddy_alloc_zero(const size_t order);
 void buddy_free(void *ptr);
 
 void *kmalloc(const size_t size);
