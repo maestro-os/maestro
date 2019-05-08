@@ -7,7 +7,8 @@
 
 # define OBJ_USED	0b1
 
-# define SLAB_CACHE_NAME	"slab_caches"
+# define CACHES_CACHE_NAME	"slab_caches"
+# define CACHES_CACHE_ORDER	1
 
 # define OBJ_TOTAL_SIZE(objsize)	(sizeof(object_t) + (objsize))
 # define OBJ_CONTENT(ptr)			((ptr) + sizeof(object_t))
@@ -34,9 +35,9 @@ typedef struct cache
 	const char *name;
 	spinlock_t spinlock;
 
+	size_t slabs;
 	size_t objsize;
 	size_t objects_count;
-	size_t slabs;
 
 	slab_t *slabs_full;
 	slab_t *slabs_partial;

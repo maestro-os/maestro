@@ -1,16 +1,33 @@
 #include "slab.h"
 
+#include "../../libc/stdio.h"
+
 static cache_t *caches;
 static cache_t *caches_cache;
 
 void slab_init()
 {
-	caches = NULL;
-	caches_cache = NULL;
-	// TODO Create a cache for caches
-	// TODO Create a cache for slabs?
+	caches = caches_cache = buddy_alloc_zero(CACHES_CACHE_ORDER);
+	if(!caches_cache) PANIC("Cannot allocate cache for slab allocator!");
 
-	// TODO Create kmalloc caches
+	caches_cache->name = CACHES_CACHE_NAME;
+	caches_cache->slabs = POW2(CACHES_CACHE_ORDER);
+	caches_cache->objsize = sizeof(cache_t);
+	const size_t size = caches_cache->slabs * PAGE_SIZE;
+	caches_cache->objects_count = (size - sizeof(cache_t))
+		/ caches_cache->objsize;
+
+	void *ptr = (void *) caches_cache + sizeof(cache_t);
+	slab_t *prev = NULL;
+
+	while(ptr < (void *) caches_cache + size)
+	{
+		if(prev) prev->next = ptr;
+		ptr = ALIGN_UP(ptr, PAGE_SIZE);
+		prev = ptr;
+	}
+
+	// TODO Create a cache for slabs?
 }
 
 cache_t *cache_getall()
@@ -45,7 +62,7 @@ cache_t *cache_create(const char *name, size_t objsize, size_t objects_count,
 	size_t pages = UPPER_DIVISION(size, PAGE_SIZE);
 
 	size_t order = 1;
-	while((size_t) POW2(order) < pages) order <<= 1;
+	while((size_t) POW2(order) < pages) ++order;
 	pages = POW2(order);
 	size = pages * PAGE_SIZE;
 	// TODO Increase objects_count up to cache capacity?
@@ -61,14 +78,14 @@ cache_t *cache_create(const char *name, size_t objsize, size_t objects_count,
 	}
 
 	cache->name = name;
+	cache->slabs = pages;
 	cache->objsize = objsize;
 	cache->objects_count = objects_count;
-	cache->slabs = pages;
 
-	void *ptr = (void *) cache + sizeof(cache_t);
+	void *ptr = mem;
 	slab_t *prev = NULL;
 
-	while(ptr < (void *) cache + size)
+	while(ptr < (void *) mem + size)
 	{
 		if(prev) prev->next = ptr;
 		ptr = ALIGN_UP(ptr, PAGE_SIZE); // TODO Adapt to the number of pages required for a single object

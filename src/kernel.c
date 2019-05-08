@@ -2,6 +2,7 @@
 #include "tty/tty.h"
 #include "cpu/cpu.h"
 #include "memory/memory.h"
+#include "memory/kmalloc_internal.h"
 #include "idt/idt.h"
 #include "process/process.h"
 #include "ps2/ps2.h"
@@ -104,6 +105,7 @@ void kernel_main(const unsigned long magic, const void *multiboot_ptr)
 
 	buddy_init();
 	slab_init();
+	kmalloc_init();
 
 	printf("Basic components initialization...\n");
 
