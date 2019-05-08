@@ -7,7 +7,7 @@ spin_lock:
 
 spin:
 	mov $1, %eax
-	xchg %eax, 8(%esp)
+	xchg %eax, 8(%ebp)
 	test %eax, %eax
 	jnz spin
 
@@ -20,7 +20,7 @@ spin_unlock:
 	mov %esp, %ebp
 
 	xor %eax, %eax
-	xchg %eax, 8(%esp)
+	xchg %eax, 8(%ebp)
 
 	mov %ebp, %esp
 	pop %ebp
