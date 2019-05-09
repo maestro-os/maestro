@@ -4,7 +4,9 @@
 # include "memory.h"
 # include "slab/slab.h"
 
-cache_t *kmalloc_caches[7];
+# define KMALLOC_CACHES_COUNT	7
+
+cache_t *kmalloc_caches[KMALLOC_CACHES_COUNT];
 
 void kmalloc_init();
 

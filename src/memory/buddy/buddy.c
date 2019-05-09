@@ -60,23 +60,16 @@ int buddy_get_block(const size_t i, const buddy_order_t order)
 void buddy_set_block(const size_t i, const buddy_order_t order, const int used)
 {
 	if(order > max_order) return;
-	size_t index = BUDDY_INDEX(max_order, order, i);
+	const size_t index = BUDDY_INDEX(max_order, order, i);
 
-	// TODO Set/clear parent? (clear if both children are free)
-
-	if (used)
+	if(used)
 		bitmap_set(states, index);
 	else
 		bitmap_clear(states, index);
-
-	if(order > 0)
-	{
-		buddy_set_block(i * 2, order - 1, used);
-		buddy_set_block(i * 2 + 1, order - 1, used);
-	}
 }
 
-static size_t find_buddy(const size_t order)
+__attribute__((hot))
+static size_t find_buddy(const buddy_order_t order)
 {
 	for(size_t i = 0; i < PAGES_COUNT(max_order, order); ++i)
 	{
@@ -87,13 +80,12 @@ static size_t find_buddy(const size_t order)
 	return BUDDY_NULL;
 }
 
+__attribute__((hot))
 static size_t split_block(const buddy_order_t order, const size_t i,
 	const size_t n)
 {
-	if(order == 0 || n == 0) return BUDDY_NULL;
-
-	buddy_set_block(order, i, 1);
-	return split_block(order - 1, i * 2, n - 1);
+	buddy_set_block(i, order, 1);
+	return (n == 0 ? i : split_block(order - 1, i * 2, n - 1));
 }
 
 __attribute__((hot))
@@ -111,7 +103,7 @@ void *buddy_alloc(const size_t order)
 
 	if(buddy == BUDDY_NULL) return NULL;
 	if(n == 0) return BUDDY_PTR(order, buddy);
-	return BUDDY_PTR(order - n, split_block(order + n, buddy, n));
+	return BUDDY_PTR(order, split_block(order + n, buddy, n));
 }
 
 void *buddy_alloc_zero(const size_t order)

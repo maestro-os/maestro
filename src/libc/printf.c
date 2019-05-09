@@ -47,9 +47,7 @@ static inline char get_number_char(int n)
 static inline int putint(int n, const unsigned base)
 {
 	if(n >= (int) base || n <= -((int) base))
-	{
 		return putint(n / base, base) + putchar(get_number_char(n % base));
-	}
 
 	if(n < 0)
 	{
@@ -63,13 +61,9 @@ static inline int putint(int n, const unsigned base)
 static inline int putuint(const unsigned int n, const unsigned base)
 {
 	if(n >= base)
-	{
 		return putuint(n / base, base) + putchar(get_number_char(n % base));
-	}
 	else
-	{
 		return putchar(get_number_char(n % base));
-	}
 }
 
 static inline int putfloat(const unsigned int n)

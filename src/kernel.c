@@ -107,6 +107,22 @@ void kernel_main(const unsigned long magic, const void *multiboot_ptr)
 	slab_init();
 	kmalloc_init();
 
+#ifdef KERNEL_DEBUG
+	printf("--- Slab allocator caches ---\n");
+	printf("<name> <slabs> <objsize> <objects_count>\n");
+
+	cache_t *c = cache_getall();
+
+	while(c)
+	{
+		printf("%s %u %u %u\n", c->name, (unsigned )c->slabs,
+			(unsigned) c->objsize, (unsigned) c->objects_count); // TODO Use %zu
+		c = c->next;
+	}
+
+	printf("\n");
+#endif
+
 	printf("Basic components initialization...\n");
 
 	idt_init();

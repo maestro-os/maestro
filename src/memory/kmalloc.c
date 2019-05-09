@@ -20,11 +20,26 @@ void kmalloc_init()
 	// TODO More kmalloc caches?
 }
 
+static cache_t *get_cache(const size_t size)
+{
+	for(size_t i = 0; i < KMALLOC_CACHES_COUNT; ++i)
+	{
+		if(!kmalloc_caches[i]) continue;
+
+		if(kmalloc_caches[i]->objsize >= size)
+			return kmalloc_caches[i];
+	}
+
+	return NULL;
+}
+
 void *kmalloc(const size_t size)
 {
 	if(size == 0) return NULL;
 	errno = 0;
 
-	// TODO
-	return NULL;
+	cache_t *cache = get_cache(size);
+	if(!cache) return NULL; // TODO Alloc new cache or dedicated pages?
+
+	return cache_alloc(cache);
 }

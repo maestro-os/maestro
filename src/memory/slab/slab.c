@@ -1,7 +1,5 @@
 #include "slab.h"
 
-#include "../../libc/stdio.h"
-
 static cache_t *caches;
 static cache_t *caches_cache;
 
@@ -95,8 +93,11 @@ cache_t *cache_create(const char *name, size_t objsize, size_t objects_count,
 	cache->ctor = ctor;
 	cache->dtor = dtor;
 
-	if(!cache->ctor)
-		return cache;
+	cache_t *c = caches;
+	while(c->next) c = c->next;
+	c->next = cache;
+
+	if(!cache->ctor) return cache;
 
 	slab_t *slab = cache->slabs_free;
 
@@ -139,8 +140,10 @@ void *cache_alloc(cache_t *cache)
 		return NULL;
 	}
 
+	obj->state |= OBJ_USED;
+
 	spin_unlock(&cache->spinlock);
-	return obj;
+	return OBJ_CONTENT(obj);
 }
 
 void cache_free(cache_t *cache, void *obj)
