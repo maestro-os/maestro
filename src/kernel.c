@@ -67,7 +67,8 @@ static inline void init_drivers()
 }
 
 __attribute__((cold))
-void kernel_main(const unsigned long magic, const void *multiboot_ptr)
+void kernel_main(const unsigned long magic, void *multiboot_ptr,
+	void *kernel_end)
 {
 	// TODO Fix
 	if(!check_a20()) enable_a20();
@@ -84,7 +85,8 @@ void kernel_main(const unsigned long magic, const void *multiboot_ptr)
 	printf("Booting crumbleos kernel version %s...\n", KERNEL_VERSION);
 	printf("Retrieving CPU informations...\n");
 
-	cpuid();
+	// TODO
+	//cpuid();
 
 	printf("Retrieving Multiboot2 data...\n");
 
@@ -95,17 +97,28 @@ void kernel_main(const unsigned long magic, const void *multiboot_ptr)
 	printf("Memory lower bound: %u KB\n", (unsigned) boot_info.mem_lower);
 	printf("Memory upper bound: %u KB\n", (unsigned) boot_info.mem_upper);
 
-	memory_end = (void *) (boot_info.mem_upper * 1024);
+	heap_begin = kernel_end;
+	heap_end = (void *) (boot_info.mem_upper * 1024);
+	available_memory = heap_end - heap_begin;
 
-	if(memory_end < HEAP_BEGIN)
-		PANIC("Not enough memory for kernel!");
-
-	printf("Available memory: %p bytes\n", memory_end);
+	printf("Available memory: %u bytes (%u pages)\n",
+		(unsigned) available_memory, (unsigned) available_memory / PAGE_SIZE);
 	printf("Memory management initialization...\n");
 
-	buddy_init();
-	slab_init();
-	kmalloc_init();
+#ifdef KERNEL_DEBUG
+	printf("--- Memory mapping ---\n");
+	printf("<begin> <end> <type>\n");
+
+	for(size_t i = 0; i < memory_maps_count; ++i)
+	{
+		const multiboot_mmap_entry_t *t = memory_maps + i;
+		printf("- %p %p %s\n", (void *) (uintptr_t) t->addr,
+			(void *) (uintptr_t) t->addr + t->len, memmap_type(t->type));
+	}
+#endif
+
+	//buddy_init();
+	//slab_init();
 
 #ifdef KERNEL_DEBUG
 	printf("--- Slab allocator caches ---\n");
@@ -122,6 +135,8 @@ void kernel_main(const unsigned long magic, const void *multiboot_ptr)
 
 	printf("\n");
 #endif
+
+	//kmalloc_init();
 
 	printf("Basic components initialization...\n");
 

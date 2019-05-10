@@ -69,7 +69,10 @@ test: iso
 debug: iso
 	qemu-system-i386 -cdrom $(NAME).iso -s -S
 
-bochs:
+bochs: iso
 	bochs
+
+virtualbox: iso
+	virtualbox
 
 .PHONY: all iso clean fclean re test debug bochs

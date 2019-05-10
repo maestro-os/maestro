@@ -3,26 +3,19 @@
 
 # include "../memory.h"
 
-# define BUDDY_STATES_SIZE(size)	(UPPER_DIVISION((size), 8))
-# define BUDDY_NULL					((size_t) -1)
+# define BUDDY_NULL				((size_t) -1)
+# define BUDDY_SIZE(order)		(POW2(order) * PAGE_SIZE)
+# define BUDDY_PTR(index)		((i != BUDDY_NULL)\
+	? (void *) ((i) * PAGE_SIZE) : NULL)
+# define BLOCK_SIZE(order)		(POW2(order) * PAGE_SIZE)
 
-# define BUDDY_INDEX(max_order, order, i)	((max_order) - (order) + (i))
-# define BUDDY_PTR(order, i)				((i != BUDDY_NULL)\
-	? (void *) (POW2(order) * PAGE_SIZE * (i)) : NULL)
+# define BUDDY_STATE(order, use)	(((order) << 1) | (use & 1))
+# define BUDDY_STATE_ORDER(state)	((state) >> 1)
+# define BUDDY_STATE_USE(state)		((state) & 1)
 
-# define PAGES_COUNT(max_order, order)\
-	((size_t) POW2((max_order) - (order)))
-# define BLOCK_SIZE(max_order, order)\
-	(PAGES_COUNT(max_order, order) * PAGE_SIZE)
-
-# define HEAP_BEGIN_VAL	0x400000
-# define HEAP_BEGIN		((void *) HEAP_BEGIN_VAL)
-
-typedef uint16_t buddy_order_t;
+typedef uint32_t buddy_order_t;
+typedef uint32_t buddy_state_t;
 
 void buddy_init();
-buddy_order_t buddy_get_order(const size_t size);
-int buddy_get_block(const size_t i, const buddy_order_t order);
-void buddy_set_block(const size_t i, const buddy_order_t order, const int used);
 
 #endif

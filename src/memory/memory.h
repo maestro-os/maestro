@@ -35,10 +35,16 @@
 # define PAGETOPTR(page)	((void *) (page) * PAGE_SIZE)
 # define PTRTOPAGE(ptr)		((uintptr_t) (ptr) / PAGE_SIZE)
 
-void *memory_end;
+void *heap_begin, *heap_end;
+size_t available_memory;
+
+size_t memory_maps_count;
+multiboot_mmap_entry_t *memory_maps;
 
 extern bool check_a20();
 void enable_a20();
+
+const char *memmap_type(const uint32_t type);
 
 void *buddy_alloc(const size_t order);
 void *buddy_alloc_zero(const size_t order);

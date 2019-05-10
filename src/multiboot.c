@@ -1,4 +1,5 @@
 #include "multiboot.h"
+#include "memory/memory.h"
 
 boot_info_t read_boot_tags(const void *ptr)
 {
@@ -41,6 +42,16 @@ boot_info_t read_boot_tags(const void *ptr)
 			case MULTIBOOT_TAG_TYPE_BOOTDEV:
 			{
 				// TODO
+				break;
+			}
+
+			case MULTIBOOT_TAG_TYPE_MMAP:
+			{
+				multiboot_tag_mmap_t *t = (multiboot_tag_mmap_t *) tag;
+				memory_maps_count = (t->size - sizeof(multiboot_tag_mmap_t))
+					/ t->entry_size;
+				memory_maps = t->entries;
+
 				break;
 			}
 

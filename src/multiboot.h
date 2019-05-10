@@ -4,8 +4,8 @@
 # include "libc/string.h"
 
 # define MULTIBOOT2_BOOTLOADER_MAGIC			0x36d76289
-
 # define MULTIBOOT_TAG_ALIGN					8
+
 # define MULTIBOOT_TAG_TYPE_END					0
 # define MULTIBOOT_TAG_TYPE_CMDLINE				1
 # define MULTIBOOT_TAG_TYPE_BOOT_LOADER_NAME	2
