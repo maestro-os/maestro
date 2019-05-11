@@ -1,10 +1,27 @@
 #include "buddy.h"
+#include "../../idt/idt.h"
 
 static buddy_order_t max_order;
 static size_t buddy_size;
 static buddy_state_t *states;
 
 // TODO Free list
+
+static spinlock_t spinlock;
+
+__attribute__((hot))
+static inline void lock()
+{
+	idt_set_state(false);
+	spin_lock(&spinlock);
+}
+
+__attribute__((hot))
+static inline void unlock()
+{
+	spin_unlock(&spinlock);
+	idt_set_state(true);
+}
 
 __attribute__((hot))
 static buddy_order_t buddy_get_order(const size_t size)
@@ -57,9 +74,11 @@ static void buddy_set_state(const size_t index, const buddy_order_t order,
 __attribute__((cold))
 void buddy_init()
 {
-	max_order = buddy_get_order((size_t) heap_end);
-	buddy_size = BUDDY_SIZE(max_order);
+	max_order = buddy_get_order(available_memory);
+	buddy_size = BLOCK_SIZE(max_order); // TODO Take metadata into account
 	states = heap_begin;
+
+	spinlock = 0;
 
 	/*const size_t states_size = POW2(max_order) * sizeof(buddy_state_t);
 	bzero(states, states_size);
@@ -116,12 +135,14 @@ static size_t find_free(const size_t index, const buddy_order_t order)
 		// TODO Return block
 	}*/
 
-	return BUDDY_NULL;
+	return BLOCK_NULL;
 }
 
 __attribute__((hot))
 void *buddy_alloc(const size_t order)
 {
+	lock();
+
 	// TODO
 	(void) order;
 	(void) find_free;
@@ -140,6 +161,7 @@ void *buddy_alloc(const size_t order)
 	if(n == 0) return BUDDY_PTR(order, buddy);
 	return BUDDY_PTR(order, split_block(order + n, buddy, n));*/
 
+	unlock();
 	return NULL;
 }
 
@@ -153,6 +175,10 @@ void *buddy_alloc_zero(const size_t order)
 __attribute__((hot))
 void buddy_free(void *ptr)
 {
+	lock();
+
 	// TODO
 	(void) ptr;
+
+	unlock();
 }

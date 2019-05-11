@@ -1,6 +1,6 @@
 #include "memory.h"
 
-const char *map_type(const uint32_t type)
+const char *memmap_type(const uint32_t type)
 {
 	switch(type)
 	{

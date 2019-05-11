@@ -94,8 +94,6 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 
 	printf("Command line: %s\n", boot_info.cmdline);
 	printf("Bootloader name: %s\n", boot_info.loader_name);
-	printf("Memory lower bound: %u KB\n", (unsigned) boot_info.mem_lower);
-	printf("Memory upper bound: %u KB\n", (unsigned) boot_info.mem_upper);
 
 	heap_begin = kernel_end;
 	heap_end = (void *) (boot_info.mem_upper * 1024);
@@ -115,6 +113,8 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 		printf("- %p %p %s\n", (void *) (uintptr_t) t->addr,
 			(void *) (uintptr_t) t->addr + t->len, memmap_type(t->type));
 	}
+
+	printf("\n");
 #endif
 
 	//buddy_init();

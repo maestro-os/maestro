@@ -160,4 +160,6 @@ stack_bottom:
 	.skip STACK_SIZE
 stack_top:
 
+.global kernel_end
+
 kernel_end:
