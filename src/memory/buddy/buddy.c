@@ -4,6 +4,7 @@
 static buddy_order_t max_order;
 static size_t buddy_size;
 static buddy_state_t *states;
+void *buddy_begin;
 
 // TODO Free list
 
@@ -78,25 +79,17 @@ void buddy_init()
 	buddy_size = BLOCK_SIZE(max_order); // TODO Take metadata into account
 	states = heap_begin;
 
-	spinlock = 0;
+	const size_t metadata_size = METADATA_SIZE(max_order);
+	bzero(states, metadata_size);
+	buddy_begin = ALIGN_UP(states + metadata_size, PAGE_SIZE);
 
-	/*const size_t states_size = POW2(max_order) * sizeof(buddy_state_t);
-	bzero(states, states_size);
-	states[0] = BUDDY_STATE(max_order, 0);
-
-	void *available_begin = ALIGN_UP(states + states_size, PAGE_SIZE);
-	const size_t begin_order = buddy_get_order((size_t) available_begin);
-	buddy_set_state(0, begin_order, 1);
-
-	void *available_end = ALIGN_DOWN(memory_end, PAGE_SIZE);
-	size_t end_order = buddy_get_order(buddy_size - (size_t) available_end);
-	if((size_t) POW2(end_order) > (size_t) available_end) --end_order;
-
-	const size_t end_index = ((uintptr_t) available_end / PAGE_SIZE)
-		- POW2(end_order);
-	buddy_set_state(end_index, end_order, 1);*/
+	void *buddy_end = ALIGN_DOWN(heap_end, PAGE_SIZE);
+	// TODO Set end blocks used
+	(void) buddy_end;
 
 	// TODO Free list
+
+	spinlock = 0;
 }
 
 __attribute__((hot))

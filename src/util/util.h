@@ -20,6 +20,14 @@
 # define CONTAINER_OF(ptr, type, field)	((void *) (ptr)\
 	- OFFSET_OF(type, field))
 
+inline unsigned log2(const unsigned n)
+{
+	unsigned r = 0;
+	while((unsigned) POW2(r) < n) ++r;
+
+	return r;
+}
+
 int bitmap_get(char *bitmap, const size_t index);
 void bitmap_set(char *bitmap, const size_t index);
 void bitmap_clear(char *bitmap, const size_t index);

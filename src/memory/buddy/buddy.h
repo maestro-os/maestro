@@ -9,14 +9,22 @@
 	? (void *) buddy_begin + ((i) * PAGE_SIZE) : NULL)
 # define BLOCK_BUDDY(index, size)	((index) ^ (size))
 
-# define BUDDY_STATE(order, use)	(((order) << 1) | (use & 1))
-# define BUDDY_STATE_ORDER(state)	((state) >> 1)
-# define BUDDY_STATE_USE(state)		((state) & 1)
+# define NODES_COUNT(max_order)			(POW2((max_order) + 1) - 1)
+# define METADATA_SIZE(max_order)		(NODES_COUNT(max_order)\
+	* sizeof(buddy_state_t))
+# define NODE_ORDER(max_order, node)	((max_order) - log2((node) + 1))
+# define NODE_PARENT(node)				(((node) + 1) / 2 - 1)
+# define NODE_LEFT(node)				((node) * 2 + 1)
+# define NODE_RIGHT(node)				((node) * 2 + 2)
+# define NODE_BUDDY(node)				((node) & 1 == 0\
+	? (node) - 1 : (node) + 1)
+
+# define NODE_STATE_FREE	0
+# define NODE_STATE_PARTIAL	1
+# define NODE_STATE_FULL	2
 
 typedef uint32_t buddy_order_t;
 typedef uint32_t buddy_state_t;
-
-void *buddy_begin;
 
 void buddy_init();
 
