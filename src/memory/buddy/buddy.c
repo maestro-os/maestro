@@ -1,10 +1,10 @@
 #include "buddy.h"
 #include "../../idt/idt.h"
 
-static buddy_order_t max_order;
+static block_order_t max_order;
 static size_t buddy_size;
-static buddy_state_t *states;
-void *buddy_begin;
+static block_state_t *states;
+static void *buddy_begin;
 
 // TODO Free list
 
@@ -25,9 +25,9 @@ static inline void unlock()
 }
 
 __attribute__((hot))
-static buddy_order_t buddy_get_order(const size_t size)
+static block_order_t buddy_get_order(const size_t size)
 {
-	buddy_order_t order = 0;
+	block_order_t order = 0;
 	size_t i = PAGE_SIZE;
 
 	while(i < size)
@@ -38,39 +38,6 @@ static buddy_order_t buddy_get_order(const size_t size)
 
 	return order;
 }
-
-/*__attribute__((hot))
-static void buddy_set_state(const size_t index, const buddy_order_t order,
-	const int used)
-{
-	// TODO
-	(void) index;
-	(void) order;
-	(void) used;
-
-	const size_t size = POW2(order);
-
-	if(used)
-	{
-		if(order + 1 < max_order)
-			buddy_set_state(index, order + 1, 1);
-
-		states[index] = BUDDY_STATE(order, 1);
-		states[index ^ size] = BUDDY_STATE(order, 0);
-	}
-	else
-	{
-		states[index] = BUDDY_STATE(order, 0);
-
-		if(BUDDY_STATE_USED(states[index]) == 0
-			&& BUDDY_STATE_USED(states[index ^ size]) == 0
-				&& order < max_order)
-		{
-			const size_t i = (index < (index ^ size) ? index : (index ^ size));
-			buddy_set_state(i, order + 1, 0);
-		}
-	}
-}*/
 
 __attribute__((cold))
 void buddy_init()
@@ -93,42 +60,104 @@ void buddy_init()
 }
 
 __attribute__((hot))
-static inline void split_block(const size_t index)
+static size_t find_free(const size_t index, const block_order_t order,
+	const bool is_buddy)
 {
-	// TODO
-	(void) index;
+	if(order > max_order) return BLOCK_NULL;
 
-	/*const size_t order = BUDDY_STATE_ORDER(state[index]);
-	state[index] = BUDDY_STATE(order - 1, 0);
-	state[index ^ POW2(order)] = BUDDY_STATE(order - 1, 0);*/
-}
+	const block_order_t block_order = NODE_ORDER(max_order, index);
+	const block_state_t block_state = states[index];
 
-__attribute__((hot))
-static size_t find_free(const size_t index, const buddy_order_t order)
-{
-	(void) index;
-	(void) order;
-
-	/*const buddy_order_t o = BUDDY_STATE_ORDER(state[index]);
-	const size_t size = POW2(o);
-	const int u = BUDDY_STATE_USE(state[index]);
-
-	if(u)
+	if(block_order < max_order)
 	{
-		if(order == max_order)
-			return BUDDY_NULL;
+		switch(block_state)
+		{
+			case NODE_STATE_FULL:
+			{
+				if(!is_buddy)
+					return find_free(NODE_BUDDY(index), order, true);
 
-		// Stack overflow?
-		return find_free(index ^ size, order);
+				break;
+			}
+
+			case NODE_STATE_PARTIAL:
+			{
+				if(block_order > order)
+					return find_free(NODE_LEFT(index), order, false);
+				else if(block_order == order)
+				{
+					if(!is_buddy)
+						return find_free(NODE_BUDDY(index), order, true);
+				}
+
+				break;
+			}
+
+			case NODE_STATE_FREE:
+			{
+				if(block_order > order)
+					return find_free(NODE_LEFT(index), order, false);
+				else if(block_order == order)
+					return index;
+
+				break;
+			}
+		}
 	}
 	else
 	{
-		// TODO Split until obtaining a block small enough
-		// TODO Mark as used
-		// TODO Return block
-	}*/
+		switch(block_state)
+		{
+			case NODE_STATE_FULL: break;
+
+			case NODE_STATE_PARTIAL:
+			{
+				if(block_order > order)
+					return find_free(NODE_LEFT(index), order, false);
+
+				break;
+			}
+
+			case NODE_STATE_FREE:
+			{
+				if(block_order > order)
+					return find_free(NODE_LEFT(index), order, false);
+				else if(block_order == order)
+					return index;
+
+				break;
+			}
+		}
+	}
 
 	return BLOCK_NULL;
+}
+
+__attribute__((hot))
+static void set_block_state_(const size_t index)
+{
+	if(NODE_ORDER(max_order, index) >= max_order) return;
+
+	const block_state_t left_state = states[NODE_LEFT(index)];
+	const block_state_t right_state = states[NODE_RIGHT(index)];
+
+	if(left_state == NODE_STATE_FREE && right_state == NODE_STATE_FREE)
+		states[index] = NODE_STATE_FREE;
+	else if(left_state == NODE_STATE_FULL && right_state == NODE_STATE_FULL)
+		states[index] = NODE_STATE_FULL;
+	else
+		states[index] = NODE_STATE_PARTIAL;
+
+	set_block_state_(NODE_PARENT(index));
+}
+
+__attribute__((hot))
+static void set_block_state(const size_t index, const block_state_t state)
+{
+	states[index] = state;
+
+	if(NODE_ORDER(max_order, index) < max_order)
+		set_block_state_(NODE_PARENT(index));
 }
 
 __attribute__((hot))
@@ -136,26 +165,20 @@ void *buddy_alloc(const size_t order)
 {
 	lock();
 
-	// TODO
-	(void) order;
-	(void) find_free;
-
 	// TODO Check free list
-	// TODO If no block large enough is in free list, look for a block in buddies
 
-	/*size_t buddy;
-	buddy_order_t n = 0;
+	const size_t block = find_free(0, order, false);
 
-	do
-		buddy = find_buddy(order + n);
-	while((buddy == BUDDY_NULL) && (order + ++n < max_order));
+	if(block == BLOCK_NULL)
+	{
+		unlock();
+		return NULL;
+	}
 
-	if(buddy == BUDDY_NULL) return NULL;
-	if(n == 0) return BUDDY_PTR(order, buddy);
-	return BUDDY_PTR(order, split_block(order + n, buddy, n));*/
+	set_block_state(block, NODE_STATE_FULL);
 
 	unlock();
-	return NULL;
+	return BLOCK_PTR(block);
 }
 
 void *buddy_alloc_zero(const size_t order)
@@ -170,7 +193,7 @@ void buddy_free(void *ptr)
 {
 	lock();
 
-	// TODO
+	// TODO Set block state to free
 	(void) ptr;
 
 	unlock();
