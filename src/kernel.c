@@ -95,12 +95,6 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	printf("Command line: %s\n", boot_info.cmdline);
 	printf("Bootloader name: %s\n", boot_info.loader_name);
 
-	heap_begin = kernel_end;
-	heap_end = (void *) (boot_info.mem_upper * 1024);
-	available_memory = heap_end - heap_begin;
-
-	printf("Available memory: %u bytes (%u pages)\n",
-		(unsigned) available_memory, (unsigned) available_memory / PAGE_SIZE);
 	printf("Memory management initialization...\n");
 
 #ifdef KERNEL_DEBUG
@@ -117,7 +111,15 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	printf("\n");
 #endif
 
-	//buddy_init();
+	heap_begin = kernel_end;
+	heap_end = (void *) (boot_info.mem_upper * 1024);
+	available_memory = heap_end - heap_begin;
+
+	printf("Available memory: %u bytes (%u pages)\n",
+		(unsigned) available_memory, (unsigned) available_memory / PAGE_SIZE);
+	printf("Kernel end: %p; Heap end: %p\n", kernel_end, heap_end);
+
+	buddy_init();
 	//slab_init();
 
 #ifdef KERNEL_DEBUG
@@ -148,6 +150,8 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	init_drivers();
 
 	// TODO Test
+	printf("%p\n", buddy_alloc(0));
+	printf("%p\n", buddy_alloc(0));
 	errno = 0;
 	printf("pid: %i, errno: %i\n", (int) kfork(0), (int) errno);
 }

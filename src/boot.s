@@ -95,7 +95,7 @@ multiboot_entry:
 	pop %ebx
 	pop %eax
 
-	push $kernel_end
+	pushl $kernel_end
 	push %ebx
 	push %eax
 	call kernel_main
@@ -159,6 +159,8 @@ gdt:
 stack_bottom:
 	.skip STACK_SIZE
 stack_top:
+
+.section .bss
 
 .global kernel_end
 

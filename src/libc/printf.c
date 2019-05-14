@@ -66,6 +66,14 @@ static inline int putuint(const unsigned int n, const unsigned base)
 		return putchar(get_number_char(n % base));
 }
 
+static inline int putptr(const uintptr_t n)
+{
+	if(n >= 16)
+		return putptr(n / 16) + putchar(get_number_char(n % 16));
+	else
+		return putchar(get_number_char(n % 16));
+}
+
 static inline int putfloat(const unsigned int n)
 {
 	(void) n;
@@ -127,7 +135,7 @@ static int pointer_handler(const specifier_t *specifier, va_list *args)
 	// TODO Alignements, etc...
 	(void) specifier;
 
-	return putstr("0x") + putuint((unsigned) va_arg(*args, void *), 16);
+	return putstr("0x") + putptr((uintptr_t) va_arg(*args, void *));
 }
 
 static int hexadecimal_handler(const specifier_t *specifier, va_list *args)

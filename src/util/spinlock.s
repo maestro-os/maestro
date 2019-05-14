@@ -21,7 +21,8 @@ spin_unlock:
 	mov %esp, %ebp
 
 	xor %eax, %eax
-	xchg %eax, 8(%ebp)
+	mov 8(%ebp), %ebx
+	xchg %eax, (%ebx)
 
 	mov %ebp, %esp
 	pop %ebp

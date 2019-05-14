@@ -6,12 +6,8 @@
 # include "../vga/vga.h"
 
 # define TTYS_COUNT		8
-
-# define HISTORY_LINES	100
-# define HISTORY_SIZE	(VGA_WIDTH * HISTORY_LINES)
-
-# define TAB_SIZE	4
-
+# define HISTORY_LINES	128
+# define TAB_SIZE		4
 # define ANSI_ESCAPE	0x1b
 
 typedef struct tty
@@ -21,7 +17,7 @@ typedef struct tty
 
 	vgacolor_t current_color;
 
-	uint16_t history[HISTORY_SIZE];
+	uint16_t history[HISTORY_LINES][VGA_WIDTH];
 } tty_t;
 
 tty_t ttys[TTYS_COUNT];
