@@ -1,9 +1,10 @@
 #include "util.h"
 
-unsigned ulog2(const unsigned n)
+unsigned floor_log2(const unsigned n)
 {
 	unsigned r = 0;
-	while((unsigned) POW2(r + 1) < n) ++r;
+	while(POW2(r) < n) ++r;
+	if(POW2(r) > n) --r;
 
 	return r;
 }

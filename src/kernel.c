@@ -120,6 +120,9 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	printf("Kernel end: %p; Heap end: %p\n", kernel_end, heap_end);
 
 	buddy_init();
+
+	printf("Buddy allocator begin: %p\n", buddy_begin);
+
 	//slab_init();
 
 #ifdef KERNEL_DEBUG
@@ -150,8 +153,9 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	init_drivers();
 
 	// TODO Test
-	printf("%p\n", buddy_alloc(0));
-	printf("%p\n", buddy_alloc(0));
+	printf("- %p -\n", buddy_alloc(0));
+	printf("- %p -\n", buddy_alloc(0));
+	printf("- %p -\n", buddy_alloc(1));
 	errno = 0;
 	printf("pid: %i, errno: %i\n", (int) kfork(0), (int) errno);
 }

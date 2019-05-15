@@ -1,12 +1,9 @@
 #include "buddy.h"
 #include "../../idt/idt.h"
 
-#include "../../libc/stdio.h"
-
 static block_order_t max_order;
 static size_t buddy_size;
 static block_state_t *states;
-static void *buddy_begin;
 
 // TODO Free list
 
@@ -44,8 +41,6 @@ static block_order_t buddy_get_order(const size_t size)
 __attribute__((hot))
 static void set_block_state_(const size_t index)
 {
-	if(NODE_ORDER(max_order, index) >= max_order) return;
-
 	const block_state_t left_state = states[NODE_LEFT(index)];
 	const block_state_t right_state = states[NODE_RIGHT(index)];
 
@@ -56,7 +51,8 @@ static void set_block_state_(const size_t index)
 	else
 		states[index] = NODE_STATE_PARTIAL;
 
-	set_block_state_(NODE_PARENT(index));
+	if(NODE_ORDER(max_order, index) < max_order)
+		set_block_state_(NODE_PARENT(index));
 }
 
 __attribute__((hot))
@@ -97,70 +93,53 @@ static size_t find_free(const size_t index, const block_order_t order,
 	const block_order_t block_order = NODE_ORDER(max_order, index);
 	const block_state_t block_state = states[index];
 
-	if(block_order < max_order)
+	if(block_order < order
+		|| (block_order == 0 && block_state != NODE_STATE_FREE))
+		return BLOCK_NULL;
+
+	switch(block_state)
 	{
-		switch(block_state)
+		case NODE_STATE_FREE:
 		{
-			case NODE_STATE_FULL:
-			{
-				if(!is_buddy)
-					return find_free(NODE_BUDDY(index), order, true);
+			if(block_order > order)
+				return find_free(NODE_LEFT(index), order, false);
+			else if(block_order == order)
+				return index;
+			else
+				return BLOCK_NULL;
 
-				break;
-			}
-
-			case NODE_STATE_PARTIAL:
-			{
-				if(block_order > order)
-					return find_free(NODE_LEFT(index), order, false);
-				else if(block_order == order)
-				{
-					if(!is_buddy)
-						return find_free(NODE_BUDDY(index), order, true);
-				}
-
-				break;
-			}
-
-			case NODE_STATE_FREE:
-			{
-				if(block_order > order)
-					return find_free(NODE_LEFT(index), order, false);
-				else if(block_order == order)
-					return index;
-
-				break;
-			}
+			break;
 		}
+
+		case NODE_STATE_PARTIAL:
+		{
+			if(block_order > order)
+			{
+				size_t i;
+
+				if((i = find_free(NODE_LEFT(index),
+					order, false)) != BLOCK_NULL)
+					return i;
+				else if((i = find_free(NODE_RIGHT(index),
+					order, false)) != BLOCK_NULL)
+					return i;
+			}
+			else if(block_order < order)
+				return BLOCK_NULL;
+
+			break;
+		}
+
+		case NODE_STATE_FULL: break;
 	}
+
+	if(block_order < max_order && !is_buddy)
+		return find_free(NODE_BUDDY(index), order, true);
 	else
-	{
-		switch(block_state)
-		{
-			case NODE_STATE_FULL: break;
-
-			case NODE_STATE_PARTIAL:
-			{
-				if(block_order > order)
-					return find_free(NODE_LEFT(index), order, false);
-
-				break;
-			}
-
-			case NODE_STATE_FREE:
-			{
-				if(block_order > order)
-					return find_free(NODE_LEFT(index), order, false);
-				else if(block_order == order)
-					return index;
-
-				break;
-			}
-		}
-	}
-
-	return BLOCK_NULL;
+		return BLOCK_NULL;
 }
+
+#include "../../libc/stdio.h"
 
 __attribute__((hot))
 void *buddy_alloc(const size_t order)
@@ -175,7 +154,9 @@ void *buddy_alloc(const size_t order)
 		set_block_state(block, NODE_STATE_FULL);
 
 	unlock();
-	return NODE_PTR(block);
+	printf("%p\n", buddy_begin);
+	printf("%u -> %u * %u;", (unsigned)block, (unsigned)NODE_LOCATION(block), (unsigned)BLOCK_SIZE(NODE_ORDER(max_order, block)));
+	return NODE_PTR(max_order, block);
 }
 
 void *buddy_alloc_zero(const size_t order)

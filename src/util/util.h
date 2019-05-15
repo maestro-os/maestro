@@ -12,7 +12,7 @@
 
 # define UPPER_DIVISION(n0, n1)	((n0) % (n1) == 0\
 	? (n0) / (n1) : (n0) / (n1) + 1)
-# define POW2(n)				(1 << (n))
+# define POW2(n)				(((typeof(n)) 1) << (n))
 
 # define BIT_SIZEOF(expr)	(sizeof(expr) * 8)
 
@@ -20,7 +20,7 @@
 # define CONTAINER_OF(ptr, type, field)	((void *) (ptr)\
 	- OFFSET_OF(type, field))
 
-unsigned ulog2(const unsigned n);
+unsigned floor_log2(const unsigned n);
 
 int bitmap_get(char *bitmap, const size_t index);
 void bitmap_set(char *bitmap, const size_t index);

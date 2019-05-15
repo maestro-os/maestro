@@ -9,23 +9,28 @@
 # define NODES_COUNT(max_order)			(POW2((max_order) + 1) - 1)
 # define METADATA_SIZE(max_order)		(NODES_COUNT(max_order)\
 	* sizeof(block_state_t))
-# define NODE_ORDER(max_order, node)	((max_order) - ulog2((node) + 1))
+# define NODE_ORDER(max_order, node)	((max_order) - floor_log2((node) + 1))
 # define NODE_PARENT(node)				(((node) + 1) / 2 - 1)
 # define NODE_LEFT(node)				((node) * 2 + 1)
 # define NODE_RIGHT(node)				((node) * 2 + 2)
 # define NODE_BUDDY(node)				(((node) & 1) == 0\
 	? (node) - 1 : (node) + 1)
-# define NODE_LOCATION(index)			((((index) + 1)\
-	% (1 << ulog2((index) + 1))))
-# define NODE_PTR(index)				((index) != BLOCK_NULL\
-	? (void *) buddy_begin + (NODE_LOCATION(index) * PAGE_SIZE) : NULL)
+
+// TODO Try to optimize
+# define NODE_LOCATION(index)			(((index) % (1\
+	<< floor_log2((index) + 1))))
+# define NODE_PTR(max_order, index)		((index) == BLOCK_NULL ? NULL\
+	: (buddy_begin + (NODE_LOCATION(index)\
+		* BLOCK_SIZE(NODE_ORDER(max_order, index)))))
 
 # define NODE_STATE_FREE	0
 # define NODE_STATE_PARTIAL	1
 # define NODE_STATE_FULL	2
 
 typedef uint32_t block_order_t;
-typedef uint32_t block_state_t;
+typedef uint8_t block_state_t;
+
+void *buddy_begin;
 
 void buddy_init();
 
