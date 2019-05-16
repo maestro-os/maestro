@@ -17,10 +17,10 @@
 	? (node) - 1 : (node) + 1)
 
 // TODO Try to optimize
-# define NODE_LOCATION(index)			(((index) % (1\
-	<< floor_log2((index) + 1))))
-# define NODE_PTR(max_order, index)		((index) == BLOCK_NULL ? NULL\
-	: (buddy_begin + (NODE_LOCATION(index)\
+# define NODE_LOCATION(index)			((((index) + 1)\
+	% (POW2(floor_log2((index) + 1)))))
+# define NODE_PTR(buddy_begin, max_order, index)\
+	((index) == BLOCK_NULL ? NULL : ((buddy_begin) + (NODE_LOCATION(index)\
 		* BLOCK_SIZE(NODE_ORDER(max_order, index)))))
 
 # define NODE_STATE_FREE	0

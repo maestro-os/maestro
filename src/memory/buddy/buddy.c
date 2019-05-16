@@ -139,8 +139,6 @@ static size_t find_free(const size_t index, const block_order_t order,
 		return BLOCK_NULL;
 }
 
-#include "../../libc/stdio.h"
-
 __attribute__((hot))
 void *buddy_alloc(const size_t order)
 {
@@ -149,14 +147,13 @@ void *buddy_alloc(const size_t order)
 	// TODO Check free list
 
 	const size_t block = find_free(0, order, false);
+	void *ptr = NODE_PTR(buddy_begin, max_order, block);
 
 	if(block != BLOCK_NULL)
 		set_block_state(block, NODE_STATE_FULL);
 
-	unlock();
-	printf("%p\n", buddy_begin);
-	printf("%u -> %u * %u;", (unsigned)block, (unsigned)NODE_LOCATION(block), (unsigned)BLOCK_SIZE(NODE_ORDER(max_order, block)));
-	return NODE_PTR(max_order, block);
+	unlock(); // TODO Doing NODE_PTR after unlock gives a bad value
+	return ptr;
 }
 
 void *buddy_alloc_zero(const size_t order)

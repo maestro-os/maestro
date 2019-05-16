@@ -153,9 +153,6 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	init_drivers();
 
 	// TODO Test
-	printf("- %p -\n", buddy_alloc(0));
-	printf("- %p -\n", buddy_alloc(0));
-	printf("- %p -\n", buddy_alloc(1));
 	errno = 0;
 	printf("pid: %i, errno: %i\n", (int) kfork(0), (int) errno);
 }
