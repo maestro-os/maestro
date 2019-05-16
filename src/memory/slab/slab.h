@@ -8,7 +8,7 @@
 # define OBJ_USED	0b1
 
 # define CACHES_CACHE_NAME	"slab_caches"
-# define CACHES_CACHE_ORDER	1
+# define CACHES_CACHE_ORDER	0
 
 # define OBJ_TOTAL_SIZE(objsize)	(sizeof(object_t) + (objsize))
 # define OBJ_CONTENT(ptr)			((ptr) + sizeof(object_t))

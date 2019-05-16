@@ -152,7 +152,7 @@ void *buddy_alloc(const size_t order)
 	if(block != BLOCK_NULL)
 		set_block_state(block, NODE_STATE_FULL);
 
-	unlock(); // TODO Doing NODE_PTR after unlock gives a bad value
+	unlock(); // TODO Doing NODE_PTR after unlock gives a bad value from NODE_PTR
 	return ptr;
 }
 

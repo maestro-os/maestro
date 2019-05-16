@@ -94,6 +94,9 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 
 	printf("Command line: %s\n", boot_info.cmdline);
 	printf("Bootloader name: %s\n", boot_info.loader_name);
+	printf("Basic components initialization...\n");
+
+	idt_init();
 
 	printf("Memory management initialization...\n");
 
@@ -123,7 +126,8 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 
 	printf("Buddy allocator begin: %p\n", buddy_begin);
 
-	//slab_init();
+	slab_init();
+	kmalloc_init();
 
 #ifdef KERNEL_DEBUG
 	printf("--- Slab allocator caches ---\n");
@@ -141,11 +145,8 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	printf("\n");
 #endif
 
-	//kmalloc_init();
+	printf("Processes initialization...\n");
 
-	printf("Basic components initialization...\n");
-
-	idt_init();
 	process_init();
 
 	printf("Drivers initialization...\n");

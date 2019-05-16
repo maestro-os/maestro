@@ -53,6 +53,8 @@ static inline size_t required_size(const size_t objsize,
 	return sizeof(cache_t) + OBJ_TOTAL_SIZE(objsize) * objects_count;
 }
 
+#include "../../libc/stdio.h"
+
 cache_t *cache_create(const char *name, size_t objsize, size_t objects_count,
 	void (*ctor)(void *, size_t), void (*dtor)(void *, size_t))
 {
@@ -105,6 +107,7 @@ cache_t *cache_create(const char *name, size_t objsize, size_t objects_count,
 	{
 		object_t *obj = slab->free_objs;
 
+		// TODO Infinite loop
 		while(obj)
 		{
 			cache->ctor(OBJ_CONTENT(obj), cache->objsize);
@@ -126,23 +129,24 @@ void cache_shrink(cache_t *cache)
 void *cache_alloc(cache_t *cache)
 {
 	if(!cache) return NULL;
-	spin_lock(&cache->spinlock);
+	spin_lock(&(cache->spinlock));
 
 	object_t *obj;
 
-	if((obj = cache->slabs_partial->free_objs))
+	if(cache->slabs_partial && (obj = cache->slabs_partial->free_objs))
 		cache->slabs_partial->free_objs = OBJ_NEXT(obj, cache->objsize);
-	else if((obj = cache->slabs_free->free_objs))
+	else if(cache->slabs_free && (obj = cache->slabs_free->free_objs))
 		cache->slabs_free->free_objs = OBJ_NEXT(obj, cache->objsize);
 	else
 	{
-		spin_unlock(&cache->spinlock);
+		spin_unlock(&(cache->spinlock));
 		return NULL;
 	}
 
 	obj->state |= OBJ_USED;
+	// TODO Move slab (free -> partial or partial -> full)
 
-	spin_unlock(&cache->spinlock);
+	spin_unlock(&(cache->spinlock));
 	return OBJ_CONTENT(obj);
 }
 
