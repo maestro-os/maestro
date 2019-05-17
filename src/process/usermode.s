@@ -1,6 +1,6 @@
-.global switch_user_mode
+.global switch_usermode
 
-switch_user_mode:
+switch_usermode:
 	mov gdt_user_data, %ax
 	mov %ax, %ds
 	mov %ax, %es

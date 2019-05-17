@@ -33,7 +33,7 @@ static void cache_init(cache_t *cache, void *mem)
 	}
 }
 
-__attribute__((hot))
+__attribute__((cold))
 void slab_init()
 {
 	caches = caches_cache = buddy_alloc_zero(CACHES_CACHE_ORDER);

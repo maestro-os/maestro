@@ -1,6 +1,8 @@
 #include "buddy.h"
 #include "../../idt/idt.h"
 
+// TODO Crashes happen when allocating the whole memory
+
 static block_order_t max_order;
 static size_t buddy_size;
 static block_state_t *states;
@@ -46,24 +48,22 @@ static void set_block_state_(const size_t index)
 	const block_state_t left_state = states[NODE_LEFT(index)];
 	const block_state_t right_state = states[NODE_RIGHT(index)];
 
-	if(left_state == NODE_STATE_FREE && right_state == NODE_STATE_FREE)
+	if((left_state | right_state) == NODE_STATE_FREE)
 		states[index] = NODE_STATE_FREE;
-	else if(left_state == NODE_STATE_FULL && right_state == NODE_STATE_FULL)
+	else if((left_state & right_state) == NODE_STATE_FULL)
 		states[index] = NODE_STATE_FULL;
 	else
 		states[index] = NODE_STATE_PARTIAL;
 
-	if(NODE_ORDER(max_order, index) < max_order)
-		set_block_state_(NODE_PARENT(index));
+	if(index > 0) set_block_state_(NODE_PARENT(index));
 }
 
 __attribute__((hot))
-static void set_block_state(const size_t index, const block_state_t state)
+static inline void set_block_state(const size_t index,
+	const block_state_t state)
 {
 	states[index] = state;
-
-	if(NODE_ORDER(max_order, index) < max_order)
-		set_block_state_(NODE_PARENT(index));
+	if(index > 0) set_block_state_(NODE_PARENT(index));
 }
 
 __attribute__((cold))
@@ -139,7 +139,7 @@ static size_t find_free(const size_t index, const block_order_t order,
 		case NODE_STATE_FULL: break;
 	}
 
-	if(block_order < max_order && !is_buddy)
+	if(index > 0 && !is_buddy)
 		return find_free(NODE_BUDDY(index), order, true);
 	else
 		return BLOCK_NULL;

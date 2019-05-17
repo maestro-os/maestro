@@ -1,51 +1,76 @@
 #include "process.h"
 #include "../memory/memory.h"
+#include "../libc/errno.h"
 #include "../util/linked_list.h"
 
-#define LIST_PROCESS(list)	((process_t *) list->content)
-#define LIST_PID(list)		(LIST_PROCESS(list)->pid)
-
+static cache_t *processes_cache;
 static list_t *processes;
 
+__attribute__((cold))
 void process_init()
 {
+	processes_cache = cache_create("processes", sizeof(process_t), PID_MAX,
+		NULL, bzero);
+	if(!processes_cache) PANIC("Cannot allocate cache for processes!");
+
 	processes = NULL;
 }
 
-static process_t *insert_process(list_t *node, const pid_t pid)
+__attribute__((hot))
+static process_t *insert_process(list_t **node, const pid_t pid)
 {
-	if(!node || pid <= 0) return NULL;
+	if(!node || pid <= 0)
+	{
+		errno = EINVAL;
+		return NULL;
+	}
 
 	process_t *process;
-	if(!(process = kmalloc(sizeof(process_t)))) return NULL;
-	bzero(process, sizeof(process));
-
-	if(!(process->page_dir = kmalloc(PAGE_SIZE))) // TODO Must be aligned
+	if(!(process = cache_alloc(processes_cache)))
 	{
-		kfree(process);
+		errno = ENOMEM;
+		return NULL;
+	}
+
+	if(!(process->page_dir = buddy_alloc(0)))
+	{
+		errno = ENOMEM;
+		cache_free(processes_cache, process);
 		return NULL;
 	}
 
 	list_t *l;
 	if(!(l = kmalloc(sizeof(list_t))))
 	{
+		errno = ENOMEM;
 		kfree(process->page_dir);
 		kfree(process);
 		return NULL;
 	}
-	bzero(l, sizeof(list_t));
+
 	l->content = process;
 
-	list_t *tmp = node->next;
-	node->next = l;
-	l->next = tmp;
+	if(*node)
+	{
+		list_t *tmp = *node;
+		*node = l;
+		l->next = tmp;
+	}
+	else
+		*node = l;
 
 	return process;
 }
 
+__attribute__((hot))
 static process_t *create_process(const pid_t parent)
 {
-	if(parent < 0) return NULL;
+	if(parent < 0)
+	{
+		errno = EINVAL;
+		return NULL;
+	}
+
 	list_t *l = processes;
 
 	if(parent > 0)
@@ -61,28 +86,43 @@ static process_t *create_process(const pid_t parent)
 	{
 		const pid_t pid = LIST_PID(l);
 		if(!l->next || LIST_PID(l->next) > pid + 1)
-			return insert_process(l, pid + 1);
+			return insert_process(&l, pid + 1);
 
 		l = l->next;
 	}
 
-	return NULL;
+	// TODO Potential pid collision?
+	return insert_process(&l, parent + 1);
 }
 
-// TODO Make atomic
+// TODO Spinlock
+__attribute__((hot))
 pid_t kfork(const pid_t parent)
 {
-	process_t *process;
-	if(!(process = create_process(parent))) return -1;
+	errno = 0;
 
-	paging_enable(process->page_dir);
-	// TODO Switch to user mode
+	process_t *process;
+	if(!(process = create_process(parent)))
+		return -1;
+
+	// TODO Fill page directory and enable now?
+	// paging_enable(process->page_dir);
+	// TODO Switch to user mode now?
+	// switch_usermode();
+
 	return process->pid;
 }
 
 process_t *get_process(const pid_t pid)
 {
-	if(pid == 0) return NULL;
+	errno = 0;
+
+	if(pid <= 0)
+	{
+		errno = EINVAL;
+		return NULL;
+	}
+
 	// TODO
 
 	return NULL;
