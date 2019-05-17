@@ -2,9 +2,8 @@
 
 void vga_clear()
 {
-	const uint16_t c = VGA_DEFAULT_COLOR << 8;
-
 	// TODO Optimization
+	const uint16_t c = VGA_DEFAULT_COLOR << 8;
 	for(size_t i = 0; i < VGA_WIDTH * VGA_HEIGHT; ++i)
 		*((uint16_t *) VGA_BUFFER + i) = c;
 }

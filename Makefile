@@ -49,8 +49,8 @@ $(NAME).iso: $(NAME)
 	cp grub.cfg iso/boot/grub
 	grub-mkrescue -o $(NAME).iso iso
 
-tags:
-	ctags -R --languages=c,c++ src/
+tags: $(SRC) $(HDR)
+	ctags $(SRC) $(HDR)
 
 clean:
 	rm -rf obj/

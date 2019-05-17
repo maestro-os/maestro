@@ -1,148 +1,133 @@
 #include "tty.h"
+#include "../libc/string.h"
 
-static void init_ttys()
+__attribute__((cold))
+void tty_init()
 {
 	bzero(ttys, sizeof(ttys));
 	for(size_t i = 0; i < TTYS_COUNT; ++i)
 		ttys[i].current_color = VGA_DEFAULT_COLOR;
 
 	switch_tty(0);
-}
 
-void tty_init()
-{
-	init_ttys();
 	vga_enable_cursor();
 	tty_clear();
 }
 
+__attribute__((hot))
 void tty_reset_attrs(tty_t *tty)
 {
 	tty->current_color = VGA_DEFAULT_COLOR;
 	// TODO
 }
 
+__attribute__((hot))
 void tty_set_fgcolor(tty_t *tty, const vgacolor_t color)
 {
 	tty->current_color &= ~((vgacolor_t) 0xff);
 	tty->current_color |= color;
 }
 
+__attribute__((hot))
 void tty_set_bgcolor(tty_t *tty, const vgacolor_t color)
 {
 	tty->current_color &= ~((vgacolor_t) (0xff << 4));
 	tty->current_color |= color << 4;
 }
 
-void tty_clear()
+__attribute__((hot))
+static inline void update_tty(tty_t *tty)
 {
-	bzero(&current_tty->history, sizeof(current_tty->history));
-	vga_clear();
-
-	current_tty->cursor_x = 0;
-	current_tty->cursor_y = 0;
-	vga_move_cursor(0, 0);
+	memcpy(VGA_BUFFER, tty->history + (VGA_WIDTH * tty->screen_y),
+		VGA_WIDTH * VGA_HEIGHT); // TODO Stop copy if goes outside of history
+	vga_move_cursor(tty->cursor_x, tty->cursor_y);
 }
 
-static void tty_correct_pos(vgapos_t *x, vgapos_t *y)
+__attribute__((hot))
+void tty_clear(tty_t *tty)
 {
-	if(*x >= VGA_WIDTH)
-	{
-		const vgapos_t p = *x;
+	tty->cursor_x = 0;
+	tty->cursor_y = 0;
+	tty->screen_y = 0;
 
-		*x = p % VGA_WIDTH;
-		*y += p / VGA_WIDTH;
+	// TODO Optimization
+	const uint16_t c = VGA_DEFAULT_COLOR << 8;
+	for(size_t i = 0; i < sizeof(current_tty->history); ++i)
+		*((uint16_t *) VGA_BUFFER + i) = c;
+
+	update_tty(tty);
+}
+
+__attribute__((hot))
+static void tty_fix_pos(tty_t *tty)
+{
+	if(tty->cursor_x >= VGA_WIDTH)
+	{
+		const vgapos_t p = tty->cursor_x;
+		tty->cursor_x = p % VGA_WIDTH;
+		tty->cursor_y += p / VGA_WIDTH;
+	}
+
+	// TODO if(cursor_y < 0) -> make vgapos_t signed?
+
+	if(tty->cursor_y > VGA_HEIGHT)
+	{
+		tty->screen_y += tty->cursor_y - VGA_HEIGHT;
+		tty->cursor_y = VGA_HEIGHT - 1;
 	}
 }
 
-void tty_putchar(const char c, vgapos_t *cursor_x, vgapos_t *cursor_y)
+__attribute__((hot))
+void tty_putchar(const char c, tty_t *tty, const bool update)
 {
 	switch(c)
 	{
 		case '\t':
 		{
-			*cursor_x += (TAB_SIZE - (*cursor_x % TAB_SIZE));
+			tty->cursor_x += (TAB_SIZE - (tty->cursor_x % TAB_SIZE));
 			break;
 		}
 
 		case '\n':
 		{
-			*cursor_x = 0;
-			++(*cursor_y);
+			tty->cursor_x = 0;
+			++(tty->cursor_y);
 			break;
 		}
 
 		case '\r':
 		{
-			*cursor_x = 0;
+			tty->cursor_x = 0;
 			break;
 		}
 
 		default:
 		{
-			vga_putchar_color(c, current_tty->current_color,
-				*cursor_x, *cursor_y);
-			++(*cursor_x);
+			const vgapos_t pos = (tty->screen_y + tty->cursor_y) * VGA_WIDTH
+				+ tty->cursor_x;
+			tty->history[pos] = (uint16_t) c
+				| ((uint16_t) tty->current_color << 8);
+			++(tty->cursor_x);
 			break;
 		}
 	}
 
-	tty_correct_pos(cursor_x, cursor_y);
-	// TODO History
-
-	vga_move_cursor(*cursor_x, *cursor_y);
-	// TODO Scrolling
+	tty_fix_pos(tty);
+	if(update) update_tty(tty);
 }
 
-void tty_write(const char *buffer, const size_t count)
+__attribute__((hot))
+void tty_write(const char *buffer, const size_t count, tty_t *tty)
 {
-	if(!buffer || count == 0) return;
-
-	vgapos_t *cursor_x = &(current_tty->cursor_x);
-	vgapos_t *cursor_y = &(current_tty->cursor_y);
+	if(!buffer || count == 0 || !tty) return;
 
 	for(size_t i = 0; i < count; ++i)
 	{
-		switch(buffer[i])
-		{
-			case '\t':
-			{
-				*cursor_x += (TAB_SIZE - (*cursor_x % TAB_SIZE));
-				break;
-			}
+		if(buffer[i] != ANSI_ESCAPE)
+			tty_putchar(buffer[i], tty, false);
+		else
+			ansi_handle(tty, buffer, &i, count);
 
-			case '\n':
-			{
-				*cursor_x = 0;
-				++(*cursor_y);
-				break;
-			}
-
-			case '\r':
-			{
-				*cursor_x = 0;
-				break;
-			}
-
-			case ANSI_ESCAPE:
-			{
-				ansi_handle(current_tty, buffer, &i, count);
-				break;
-			}
-
-			default:
-			{
-				vga_putchar_color(buffer[i], current_tty->current_color,
-					*cursor_x, *cursor_y);
-				++(*cursor_x);
-				break;
-			}
-		}
-
-		tty_correct_pos(cursor_x, cursor_y);
-		// TODO History
+		update_tty(tty);
 	}
-
-	vga_move_cursor(*cursor_x, *cursor_y);
-	// TODO Scrolling
 }

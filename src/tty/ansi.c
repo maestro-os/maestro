@@ -239,7 +239,7 @@ void ansi_handle(tty_t *tty, const char *buffer, size_t *i, const size_t count)
 
 	if(*i >= count)
 	{
-		tty_write(buffer + *i - 1, 1); // TODO putchar on this specific `tty`
+		tty_write(buffer + *i - 1, 1, tty);
 		return;
 	}
 

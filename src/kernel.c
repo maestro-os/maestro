@@ -100,7 +100,7 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 
 	printf("Memory management initialization...\n");
 
-/*#ifdef KERNEL_DEBUG
+#ifdef KERNEL_DEBUG
 	printf("--- Memory mapping ---\n");
 	printf("<begin> <end> <type>\n");
 
@@ -112,7 +112,7 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	}
 
 	printf("\n");
-#endif*/
+#endif
 
 	heap_begin = kernel_end;
 	heap_end = (void *) (boot_info.mem_upper * 1024);

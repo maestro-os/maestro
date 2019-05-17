@@ -33,7 +33,7 @@ static process_t *alloc_process(const pid_t pid, const pid_t parent)
 		return NULL;
 	}
 
-	if(!(process->page_dir = buddy_alloc(0)))
+	if(parent > 0 && !(process->page_dir = buddy_alloc(0)))
 	{
 		errno = ENOMEM;
 		cache_free(processes_cache, process);

@@ -34,7 +34,7 @@ static const char *next_specifier(const char *format, specifier_t *specifier)
 
 static inline int putchar(const char c)
 {
-	tty_write(&c, 1);
+	tty_write(&c, 1, current_tty);
 	return 1;
 }
 
@@ -85,7 +85,7 @@ static inline int putfloat(const unsigned int n)
 static inline int putstr(const char *str)
 {
 	const size_t len = strlen(str);
-	tty_write(str, len);
+	tty_write(str, len, current_tty);
 
 	return len;
 }
@@ -190,7 +190,7 @@ int printf(const char *format, ...)
 		s = next_specifier(format, &specifier);
 		len	= (s ? (size_t) (s - format) : strlen(format));
 
-		tty_write(format, len);
+		tty_write(format, len, current_tty);
 		format += len;
 		total += len;
 
