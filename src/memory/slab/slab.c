@@ -3,6 +3,37 @@
 static cache_t *caches;
 static cache_t *caches_cache;
 
+__attribute__((hot))
+static void cache_init(cache_t *cache, void *mem)
+{
+	const size_t size = caches_cache->slabs * PAGE_SIZE;
+	slab_t *slab = cache->slabs_free;
+	slab_t *prev_slab = NULL;
+
+	while((void *) slab < (void *) mem + size)
+	{
+		if(prev_slab) prev_slab->next = slab;
+
+		object_t *obj = slab->free_list = (void *) slab + sizeof(slab_t);
+		object_t *prev_obj = NULL;
+
+		while((void *) obj < (void *) slab + PAGE_SIZE)
+		{
+			if(prev_obj) prev_obj->next_free = obj;
+
+			if(cache->ctor)
+				cache->ctor(OBJ_CONTENT(obj), cache->objsize);
+
+			prev_obj = obj;
+			obj = OBJ_NEXT(obj, cache->objsize);
+		}
+
+		prev_slab = slab;
+		slab = ALIGN_UP(slab, PAGE_SIZE); // TODO Adapt to the number of pages required for a single object
+	}
+}
+
+__attribute__((hot))
 void slab_init()
 {
 	caches = caches_cache = buddy_alloc_zero(CACHES_CACHE_ORDER);
@@ -14,25 +45,20 @@ void slab_init()
 	const size_t size = caches_cache->slabs * PAGE_SIZE;
 	caches_cache->objects_count = (size - sizeof(cache_t))
 		/ caches_cache->objsize;
+	caches_cache->slabs_free = (void *) caches_cache + sizeof(cache_t);
 
-	void *ptr = (void *) caches_cache + sizeof(cache_t);
-	slab_t *prev = NULL;
-
-	while(ptr < (void *) caches_cache + size)
-	{
-		if(prev) prev->next = ptr;
-		ptr = ALIGN_UP(ptr, PAGE_SIZE);
-		prev = ptr;
-	}
+	cache_init(caches_cache, caches_cache);
 
 	// TODO Create a cache for slabs?
 }
 
+__attribute__((hot))
 cache_t *cache_getall()
 {
 	return caches;
 }
 
+__attribute__((hot))
 cache_t *cache_get(const char *name)
 {
 	cache_t *c = caches;
@@ -47,12 +73,15 @@ cache_t *cache_get(const char *name)
 	return NULL;
 }
 
+__attribute__((hot))
 static inline size_t required_size(const size_t objsize,
 	const size_t objects_count)
 {
 	return sizeof(cache_t) + OBJ_TOTAL_SIZE(objsize) * objects_count;
 }
 
+// TODO Spinlock
+__attribute__((hot))
 cache_t *cache_create(const char *name, size_t objsize, size_t objects_count,
 	void (*ctor)(void *, size_t), void (*dtor)(void *, size_t))
 {
@@ -65,13 +94,13 @@ cache_t *cache_create(const char *name, size_t objsize, size_t objects_count,
 	size = pages * PAGE_SIZE;
 	// TODO Increase objects_count up to cache capacity?
 
-	void *mem;
-	if(!(mem = buddy_alloc_zero(order))) return NULL;
-
 	cache_t *cache;
-	if(!(cache = cache_alloc(caches_cache)))
+	if(!(cache = cache_alloc(caches_cache))) return NULL;
+
+	void *mem;
+	if(!(mem = buddy_alloc_zero(order)))
 	{
-		buddy_free(mem);
+		cache_free(caches_cache, cache);
 		return NULL;
 	}
 
@@ -79,75 +108,62 @@ cache_t *cache_create(const char *name, size_t objsize, size_t objects_count,
 	cache->slabs = pages;
 	cache->objsize = objsize;
 	cache->objects_count = objects_count;
-
-	void *ptr = mem;
-	slab_t *prev = NULL;
-
-	while(ptr < (void *) mem + size)
-	{
-		if(prev) prev->next = ptr;
-		ptr = ALIGN_UP(ptr, PAGE_SIZE); // TODO Adapt to the number of pages required for a single object
-		prev = ptr;
-	}
-
+	cache->slabs_free = mem;
 	cache->ctor = ctor;
 	cache->dtor = dtor;
+
+	cache_init(cache, mem);
 
 	cache_t *c = caches;
 	while(c->next) c = c->next;
 	c->next = cache;
 
-	if(!cache->ctor) return cache;
-
-	slab_t *slab = cache->slabs_free;
-
-	while(slab)
-	{
-		object_t *obj = slab->free_objs;
-
-		// TODO Infinite loop
-		while(obj)
-		{
-			cache->ctor(OBJ_CONTENT(obj), cache->objsize);
-			obj = OBJ_NEXT(obj, objsize);
-		}
-
-		slab = slab->next;
-	}
-
 	return cache;
 }
 
+// TODO Spinlock
+__attribute__((hot))
 void cache_shrink(cache_t *cache)
 {
 	// TODO
 	(void) cache;
 }
 
+// TODO Spinlock
+__attribute__((hot))
 void *cache_alloc(cache_t *cache)
 {
 	if(!cache) return NULL;
-	spin_lock(&(cache->spinlock));
+	//spin_lock(&(cache->spinlock));
 
-	object_t *obj;
+	object_t *obj = NULL;
 
-	if(cache->slabs_partial && (obj = cache->slabs_partial->free_objs))
-		cache->slabs_partial->free_objs = OBJ_NEXT(obj, cache->objsize);
-	else if(cache->slabs_free && (obj = cache->slabs_free->free_objs))
-		cache->slabs_free->free_objs = OBJ_NEXT(obj, cache->objsize);
+	if(cache->slabs_partial && cache->slabs_partial->free_list)
+	{
+		obj = cache->slabs_partial->free_list;
+		cache->slabs_partial->free_list = obj->next_free;
+	}
+	else if(cache->slabs_free && cache->slabs_free->free_list)
+	{
+		obj = cache->slabs_free->free_list;
+		cache->slabs_free->free_list = obj->next_free;
+	}
 	else
 	{
-		spin_unlock(&(cache->spinlock));
+		// TODO Alloc new slab(s)?
+		// TODO spin_unlock(&(cache->spinlock));
 		return NULL;
 	}
 
 	obj->state |= OBJ_USED;
 	// TODO Move slab (free -> partial or partial -> full)
 
-	spin_unlock(&(cache->spinlock));
+	//spin_unlock(&(cache->spinlock));
 	return OBJ_CONTENT(obj);
 }
 
+// TODO Spinlock
+__attribute__((hot))
 void cache_free(cache_t *cache, void *obj)
 {
 	// TODO
@@ -155,6 +171,8 @@ void cache_free(cache_t *cache, void *obj)
 	(void) obj;
 }
 
+// TODO Spinlock
+__attribute__((hot))
 void cache_destroy(cache_t *cache)
 {
 	// TODO

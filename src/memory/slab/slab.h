@@ -11,21 +11,23 @@
 # define CACHES_CACHE_ORDER	0
 
 # define OBJ_TOTAL_SIZE(objsize)	(sizeof(object_t) + (objsize))
-# define OBJ_CONTENT(ptr)			((ptr) + sizeof(object_t))
-# define OBJ_NEXT(curr, size)		((curr) + OBJ_TOTAL_SIZE(size))
+# define OBJ_FIRST(slab)			((object_t *) (slab) + sizeof(slab_t))
+# define OBJ_CONTENT(ptr)			((void *) (ptr) + sizeof(object_t))
+# define OBJ_NEXT(ptr, objsize)		((ptr) + OBJ_TOTAL_SIZE(objsize))
 
 typedef uint8_t object_state;
 
 typedef struct object
 {
 	object_state state;
-	// TODO
+
+	struct object *next_free;
 } object_t;
 
 typedef struct slab
 {
-	object_t *free_objs;
 	size_t used;
+	object_t *free_list;
 
 	struct slab *next;
 } slab_t;

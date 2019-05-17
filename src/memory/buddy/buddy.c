@@ -12,15 +12,17 @@ static spinlock_t spinlock;
 __attribute__((hot))
 static inline void lock()
 {
-	idt_set_state(false);
-	spin_lock(&spinlock);
+	// TODO fix
+	/*idt_set_state(false);
+	spin_lock(&spinlock);*/
 }
 
 __attribute__((hot))
 static inline void unlock()
 {
-	spin_unlock(&spinlock);
-	idt_set_state(true);
+	// TODO fix
+	/*spin_unlock(&spinlock);
+	idt_set_state(true);*/
 }
 
 __attribute__((hot))
@@ -76,9 +78,11 @@ void buddy_init()
 	buddy_begin = ALIGN_UP(states + metadata_size, PAGE_SIZE);
 
 	void *buddy_end = ALIGN_DOWN(heap_end, PAGE_SIZE);
-	size_t end = (uintptr_t) (buddy_begin - heap_end) / PAGE_SIZE;
+	const size_t end_begin = NODES_COUNT(max_order - 1)
+		+ ((uintptr_t) buddy_end / PAGE_SIZE);
+	const size_t end_end = NODES_COUNT(max_order);
 
-	for(size_t i = (uintptr_t) buddy_end / PAGE_SIZE; i < end; ++i)
+	for(size_t i = end_begin; i < end_end; ++i)
 		set_block_state(i, NODE_STATE_FULL);
 
 	// TODO Free list
@@ -166,12 +170,13 @@ void *buddy_alloc_zero(const size_t order)
 	return ptr;
 }
 
+// TODO Fix
 __attribute__((hot))
 void buddy_free(void *ptr)
 {
 	lock();
 
-	size_t index = (uintptr_t) ptr / PAGE_SIZE;
+	size_t index = NODES_COUNT(max_order - 1) + ((uintptr_t) ptr / PAGE_SIZE);
 	size_t order = 0;
 
 	while(order < max_order && states[index] != NODE_STATE_FULL)

@@ -6,7 +6,7 @@
 # define BLOCK_NULL					(~((size_t) 0))
 # define BLOCK_SIZE(order)			(POW2(order) * PAGE_SIZE)
 
-# define NODES_COUNT(max_order)			(POW2((max_order) + 1) - 1)
+# define NODES_COUNT(order)				(POW2((order) + 1) - 1)
 # define METADATA_SIZE(max_order)		(NODES_COUNT(max_order)\
 	* sizeof(block_state_t))
 # define NODE_ORDER(max_order, node)	((max_order) - floor_log2((node) + 1))
