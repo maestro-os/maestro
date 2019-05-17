@@ -76,8 +76,10 @@ void buddy_init()
 	buddy_begin = ALIGN_UP(states + metadata_size, PAGE_SIZE);
 
 	void *buddy_end = ALIGN_DOWN(heap_end, PAGE_SIZE);
-	// TODO Set end blocks used from buddy_end to heap_end
-	(void) buddy_end;
+	size_t end = (uintptr_t) (buddy_begin - heap_end) / PAGE_SIZE;
+
+	for(size_t i = (uintptr_t) buddy_end / PAGE_SIZE; i < end; ++i)
+		set_block_state(i, NODE_STATE_FULL);
 
 	// TODO Free list
 
@@ -169,8 +171,17 @@ void buddy_free(void *ptr)
 {
 	lock();
 
-	// TODO Set block state to free
-	(void) ptr;
+	size_t index = (uintptr_t) ptr / PAGE_SIZE;
+	size_t order = 0;
+
+	while(order < max_order && states[index] != NODE_STATE_FULL)
+	{
+		index = NODE_PARENT(index);
+		++order;
+	}
+
+	set_block_state(index, NODE_STATE_FREE);
+	// TODO Add to free list if necessary
 
 	unlock();
 }

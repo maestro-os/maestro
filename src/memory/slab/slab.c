@@ -53,8 +53,6 @@ static inline size_t required_size(const size_t objsize,
 	return sizeof(cache_t) + OBJ_TOTAL_SIZE(objsize) * objects_count;
 }
 
-#include "../../libc/stdio.h"
-
 cache_t *cache_create(const char *name, size_t objsize, size_t objects_count,
 	void (*ctor)(void *, size_t), void (*dtor)(void *, size_t))
 {
