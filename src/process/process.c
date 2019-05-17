@@ -1,10 +1,9 @@
 #include "process.h"
 #include "../memory/memory.h"
 #include "../libc/errno.h"
-#include "../util/linked_list.h"
 
 static cache_t *processes_cache;
-static list_t *processes;
+static process_t *processes;
 
 __attribute__((cold))
 void process_init()
@@ -17,9 +16,11 @@ void process_init()
 }
 
 __attribute__((hot))
-static process_t *insert_process(list_t **node, const pid_t pid)
+static process_t *alloc_process(const pid_t pid, const pid_t parent)
 {
-	if(!node || pid <= 0)
+	errno = 0;
+
+	if(pid <= 0)
 	{
 		errno = EINVAL;
 		return NULL;
@@ -39,25 +40,8 @@ static process_t *insert_process(list_t **node, const pid_t pid)
 		return NULL;
 	}
 
-	list_t *l;
-	if(!(l = kmalloc(sizeof(list_t))))
-	{
-		errno = ENOMEM;
-		kfree(process->page_dir);
-		kfree(process);
-		return NULL;
-	}
-
-	l->content = process;
-
-	if(*node)
-	{
-		list_t *tmp = *node;
-		*node = l;
-		l->next = tmp;
-	}
-	else
-		*node = l;
+	process->pid = pid;
+	process->parent = parent;
 
 	return process;
 }
@@ -65,34 +49,40 @@ static process_t *insert_process(list_t **node, const pid_t pid)
 __attribute__((hot))
 static process_t *create_process(const pid_t parent)
 {
-	if(parent < 0)
-	{
-		errno = EINVAL;
-		return NULL;
-	}
-
-	list_t *l = processes;
+	errno = 0;
+	process_t *p;
 
 	if(parent > 0)
 	{
-		while(l->next)
+		if(!(p = get_process(parent)))
 		{
-			if(LIST_PID(l) == parent) break;
-			l = l->next;
+			errno = ESRCH;
+			return NULL;
 		}
-	}
 
-	while(l)
+		while(p->next && p->next->pid - p->pid > 1)
+			p = p->next;
+	}
+	else
+		p = processes;
+
+	const pid_t pid = (p ? p->pid + 1 : 1);
+	process_t *new_proc;
+	if(!(new_proc = alloc_process(pid, parent))) return NULL;
+
+	if(p)
 	{
-		const pid_t pid = LIST_PID(l);
-		if(!l->next || LIST_PID(l->next) > pid + 1)
-			return insert_process(&l, pid + 1);
+		process_t *tmp = p->next;
 
-		l = l->next;
+		p->next = new_proc;
+		tmp->prev = new_proc;
+		new_proc->next = tmp;
+		new_proc->prev = p;
 	}
+	else
+		processes = new_proc;
 
-	// TODO Potential pid collision?
-	return insert_process(&l, parent + 1);
+	return new_proc;
 }
 
 // TODO Spinlock
@@ -100,6 +90,12 @@ __attribute__((hot))
 pid_t kfork(const pid_t parent)
 {
 	errno = 0;
+
+	if(parent < 0)
+	{
+		errno = EINVAL;
+		return -1;
+	}
 
 	process_t *process;
 	if(!(process = create_process(parent)))
@@ -123,7 +119,15 @@ process_t *get_process(const pid_t pid)
 		return NULL;
 	}
 
-	// TODO
+	process_t *p = processes;
 
+	while(p)
+	{
+		if(p->pid == pid)
+			return p;
+		p = p->next;
+	}
+
+	errno = ESRCH;
 	return NULL;
 }

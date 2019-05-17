@@ -3,21 +3,21 @@
 
 # include <stdint.h>
 
-# define PID_MAX	32768
-
-# define LIST_PROCESS(list)	((process_t *) list->content)
-# define LIST_PID(list)		(LIST_PROCESS(list)->pid)
+# define PID_MAX			32768
 
 typedef int16_t pid_t;
 
 extern void switch_usermode();
 
-typedef struct
+typedef struct process
 {
 	pid_t pid, parent;
 	// TODO data
 
 	uint32_t *page_dir;
+
+	struct process *next;
+	struct process *prev;
 } process_t;
 
 void process_init();
