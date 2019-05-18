@@ -5,7 +5,7 @@ void *memmove(void *dest, const void *src, size_t n)
 {
 	size_t i;
 
-	if((uintptr_t) dest % sizeof(long) == 0
+	/*if((uintptr_t) dest % sizeof(long) == 0
 		&& (uintptr_t) src % sizeof(long) == 0
 		&& n % sizeof(long) == 0)
 	{
@@ -33,7 +33,7 @@ void *memmove(void *dest, const void *src, size_t n)
 		}
 	}
 	else
-	{
+	{*/
 		if(dest < src)
 		{
 			i = 0;
@@ -52,11 +52,11 @@ void *memmove(void *dest, const void *src, size_t n)
 			{
 				*((char *) dest + (i - sizeof(char)))
 					= *((char *) src + (i - sizeof(char)));
-				i -= sizeof(long);
+				i -= sizeof(char);
 			}
 			while(i != 0);
 		}
-	}
+	//}
 
 	return dest;
 }

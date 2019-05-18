@@ -11,7 +11,7 @@ void tty_init()
 	switch_tty(0);
 
 	vga_enable_cursor();
-	tty_clear();
+	tty_clear(current_tty);
 }
 
 __attribute__((hot))
@@ -36,10 +36,25 @@ void tty_set_bgcolor(tty_t *tty, const vgacolor_t color)
 }
 
 __attribute__((hot))
+static void tty_clear_portion(uint16_t *ptr, const size_t size)
+{
+	const uint16_t c = VGA_DEFAULT_COLOR << 8;
+
+	// TODO Optimization
+	for(size_t i = 0; i < size; ++i)
+		ptr[i] = c;
+}
+
+__attribute__((hot))
 static inline void update_tty(tty_t *tty)
 {
-	memcpy(VGA_BUFFER, tty->history + (VGA_WIDTH * tty->screen_y),
-		VGA_WIDTH * VGA_HEIGHT); // TODO Stop copy if goes outside of history
+	if(tty->screen_y + VGA_HEIGHT <= HISTORY_LINES)
+		memcpy(VGA_BUFFER, tty->history + (VGA_WIDTH * tty->screen_y),
+			VGA_WIDTH * VGA_HEIGHT * sizeof(uint16_t));
+	else
+		memcpy(VGA_BUFFER, tty->history + (VGA_WIDTH * tty->screen_y),
+			VGA_WIDTH * (HISTORY_LINES - tty->screen_y) * sizeof(uint16_t));
+
 	vga_move_cursor(tty->cursor_x, tty->cursor_y);
 }
 
@@ -50,11 +65,7 @@ void tty_clear(tty_t *tty)
 	tty->cursor_y = 0;
 	tty->screen_y = 0;
 
-	// TODO Optimization
-	const uint16_t c = VGA_DEFAULT_COLOR << 8;
-	for(size_t i = 0; i < sizeof(current_tty->history); ++i)
-		*((uint16_t *) VGA_BUFFER + i) = c;
-
+	tty_clear_portion(tty->history, sizeof(tty->history) / sizeof(uint16_t));
 	update_tty(tty);
 }
 
@@ -70,10 +81,21 @@ static void tty_fix_pos(tty_t *tty)
 
 	// TODO if(cursor_y < 0) -> make vgapos_t signed?
 
-	if(tty->cursor_y > VGA_HEIGHT)
+	if(tty->cursor_y >= VGA_HEIGHT)
 	{
-		tty->screen_y += tty->cursor_y - VGA_HEIGHT;
+		tty->screen_y += (tty->cursor_y - VGA_HEIGHT) + 1;
 		tty->cursor_y = VGA_HEIGHT - 1;
+	}
+
+	if(tty->screen_y + VGA_HEIGHT >= HISTORY_LINES)
+	{
+		const size_t diff = VGA_WIDTH * (tty->screen_y - HISTORY_LINES + 1);
+		const size_t size = sizeof(tty->history) - (diff * sizeof(uint16_t));
+
+		memmove(tty->history, tty->history + (diff * sizeof(uint16_t)), size);
+		tty_clear_portion(tty->history + size, diff);
+
+		tty->screen_y = HISTORY_LINES - VGA_HEIGHT + 1;
 	}
 }
 
