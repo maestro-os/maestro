@@ -4,7 +4,6 @@
 // TODO Crashes happen when allocating the whole memory
 
 static block_order_t max_order;
-static size_t buddy_size;
 static block_state_t *states;
 
 // TODO Free list
@@ -31,12 +30,12 @@ __attribute__((hot))
 static block_order_t buddy_get_order(const size_t size)
 {
 	block_order_t order = 0;
-	size_t i = PAGE_SIZE;
+	size_t i = 1;
 
-	while(i < size)
+	while(i < size / PAGE_SIZE)
 	{
-		++order;
 		i <<= 1;
+		++order;
 	}
 
 	return order;
@@ -70,7 +69,6 @@ __attribute__((cold))
 void buddy_init()
 {
 	max_order = buddy_get_order(available_memory);
-	buddy_size = BLOCK_SIZE(max_order); // TODO Take metadata into account
 	states = heap_begin;
 
 	const size_t metadata_size = METADATA_SIZE(max_order);

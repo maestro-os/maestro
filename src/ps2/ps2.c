@@ -7,9 +7,7 @@ static uint8_t keyboard_command(const uint8_t command)
 	uint8_t attempts = 0;
 
 	do
-	{
 		outb(PS2_DATA, command);
-	}
 	while((response = inb(PS2_DATA)) == KEYBOARD_RESEND
 		&& ++attempts < PS2_MAX_ATTEMPTS);
 
