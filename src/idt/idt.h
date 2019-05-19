@@ -79,6 +79,4 @@ extern void error29();
 extern void error30();
 extern void error31();
 
-void end_of_interrupt(const uint8_t irq);
-
 #endif

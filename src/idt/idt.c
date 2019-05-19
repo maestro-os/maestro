@@ -4,34 +4,14 @@
 
 static interrupt_descriptor_t id[48];
 
-static void remap_PIC()
-{
-	// TODO Detect if APIC is present
-
-	unsigned char master_mask, slave_mask;
-	master_mask = inb(PIC_MASTER_DATA);
-	slave_mask = inb(PIC_SLAVE_DATA);
-
-	pic_init();
-	outb(PIC_MASTER_DATA, 0x20);
-	outb(PIC_SLAVE_DATA, 0x28);
-	outb(PIC_MASTER_DATA, 4);
-	outb(PIC_SLAVE_DATA, 2);
-
-	outb(PIC_MASTER_DATA, 0x1);
-	outb(PIC_SLAVE_DATA, 0x1);
-
-	outb(PIC_MASTER_DATA, master_mask);
-	outb(PIC_SLAVE_DATA, slave_mask);
-}
-
 static interrupt_descriptor_t create_id(const void *address,
 	const uint16_t selector, const uint8_t type_attr)
 {
 	interrupt_descriptor_t id;
+	bzero(&id, sizeof(interrupt_descriptor_t));
+
 	id.offset = ((unsigned long) address) & 0xffff;
 	id.selector = selector;
-	//id.zero = 0;
 	id.type_attr = type_attr;
 	id.offset_2 = (((unsigned long) address) & 0xffff0000)
 		>> sizeof(id.offset) * 8;
@@ -41,7 +21,7 @@ static interrupt_descriptor_t create_id(const void *address,
 
 void idt_init()
 {
-	remap_PIC();
+	pic_init(0x20, 0x28);
 
 	// TODO Fix macros
 	id[0x0] = create_id(error0, 0x8, 0x8e); // TODO Selector
@@ -95,8 +75,7 @@ void idt_init()
 	id[0x2f] = create_id(irq15, 0x8, 0x8e); // TODO Selector
 
 	unsigned long idt_ptr[2];
-	idt_ptr[0] = sizeof(interrupt_descriptor_t) * 48
-		+ (((unsigned long) id & 0xffff) << 16);
+	idt_ptr[0] = sizeof(id) + (((unsigned long) id & 0xffff) << 16);
 	idt_ptr[1] = ((unsigned long) id) >> 16;
 	idt_load(idt_ptr);
 

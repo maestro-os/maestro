@@ -1,12 +1,11 @@
 #include "../pic/pic.h"
+#include "../libc/stdio.h"
 
 void irq0_handler()
 {
 	// TODO
 	pic_EOI(0x0);
 }
-
-#include "../libc/stdio.h"
 
 void irq1_handler()
 {
