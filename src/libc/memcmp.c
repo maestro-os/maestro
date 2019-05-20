@@ -1,6 +1,7 @@
 #include "string.h"
 
 // TODO Rewrite
+__attribute__((hot))
 int memcmp(const void *s1, const void *s2, size_t n)
 {
 	size_t i = 0;

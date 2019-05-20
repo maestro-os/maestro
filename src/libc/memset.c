@@ -1,9 +1,19 @@
 #include "string.h"
 
-// TODO Rewrite
-void *memset(void *s, const int c, size_t n)
+__attribute__((hot))
+void *memset(void *s, int c, size_t n)
 {
-	for(size_t i = 0; i < n; ++i) *((char *) s + i) = c;
+	void *begin = s;
+	void *end = begin + n;
 
-	return s;
+	const long field = make_field(c);
+
+	while(s < end && (s & (sizeof(long) - 1) != 0))
+		*(((char *) s)++) = c;
+	while(s < (end & ~((intptr_t) 7)) && (s & (sizeof(long) - 1) == 0))
+		*(((long *) s)++) = val;
+	while(s < end)
+		*(((char *) s)++) = c;
+
+	return begin;
 }

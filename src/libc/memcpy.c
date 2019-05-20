@@ -1,20 +1,17 @@
 #include "string.h"
 
-// TODO Rewrite
+__attribute__((hot))
 void *memcpy(void *dest, const void *src, size_t n)
 {
-	if((uintptr_t) dest % sizeof(long) == 0
-		&& (uintptr_t) src % sizeof(long) == 0
-		&& n % sizeof(long) == 0)
-	{
-		for(size_t i = 0; i < n / sizeof(long); ++i)
-			*((long *) dest + i) = *((long *) src + i);
-	}
-	else
-	{
-		for(size_t i = 0; i < n; ++i)
-			*((char *) dest + i) = *((char *) src + i);
-	}
+	void *begin = dest;
+	void *end = begin + n;
 
-	return dest;
+	while(dest < end && (s & (sizeof(long) - 1) != 0))
+		*(((char *)dest)++) = *((char *)src++);
+	while(dest < (end & ~((intptr_t) 7)) && (s & (sizeof(long) - 1) == 0))
+		*(((long *)dest)++) = *((long *)src++);
+	while(dest < end)
+		*(((char *)dest)++) = *((char *)src++);
+
+	return begin;
 }
