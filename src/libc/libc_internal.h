@@ -2,7 +2,6 @@
 # define _LIB_INTERNAL_H
 
 __attribute__((hot))
-__attribute__((inline))
 __attribute__((const))
 inline long make_field(const int c)
 {
