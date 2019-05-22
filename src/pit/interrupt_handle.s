@@ -12,12 +12,12 @@ lock:
 
 interrupt_handle:
 	mov $1, %eax
-	xchg ($lock), %eax
+	xchg (lock), %eax
 
 	ret
 
 interrupt_done:
 	xor %eax, %eax
-	mov %eax, ($lock)
+	mov %eax, (lock)
 
 	ret
