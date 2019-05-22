@@ -24,11 +24,12 @@ void pit_set_count(const uint16_t count)
 }
 
 __attribute__((hot))
-void pit_schedule(const unsigned ms, void (*handler)(void *), void *data)
+void pit_schedule(const unsigned duration, const unsigned repeat,
+	void (*handler)(void *), void *data)
 {
-	if(ms == 0)
+	if(duration == 0)
 	{
-		handler(data);
+		if(repeat > 0) handler(data);
 		return;
 	}
 
@@ -36,7 +37,9 @@ void pit_schedule(const unsigned ms, void (*handler)(void *), void *data)
 	schedule_t *s;
 	if(!(s = kmalloc(sizeof(s)))) return;
 
-	s->ms = ms;
+	s->base_duration = duration;
+	s->remain = duration;
+	s->repeat = repeat;
 	s->handler = handler;
 	s->data = data;
 
@@ -56,19 +59,24 @@ void pit_interrupt()
 
 	while(s)
 	{
-		if(--(s->ms) == 0)
+		if(--(s->remain) == 0)
 		{
 			s->handler(s->data);
 
-			if(s == schedules)
+			if(s->repeat != 0 && --(s->repeat) == 0)
 			{
-				tmp = s->next;
-				schedules = tmp;
-			}
-			else if(prev)
-				prev->next = s->next;
+				if(s == schedules)
+				{
+					tmp = s->next;
+					schedules = tmp;
+				}
+				else if(prev)
+					prev->next = s->next;
 
-			kfree(s);
+				kfree(s);
+			}
+			else
+				s->remain = s->base_duration;
 		}
 
 		prev = s;

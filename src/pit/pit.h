@@ -32,7 +32,7 @@
 
 typedef struct schedule
 {
-	unsigned ms;
+	unsigned base_duration, remain, repeat;
 	void (*handler)(void *);
 	void *data;
 
@@ -51,12 +51,14 @@ inline void pit_set_frequency(const unsigned frequency)
 	pit_set_count(c);
 }
 
-void pit_schedule(const unsigned ms, void (*handler)(void *), void *data);
+void pit_schedule(const unsigned duration, const unsigned repeat,
+	void (*handler)(void *), void *data);
+
 void pit_interrupt();
 
 void beep(const unsigned frequency);
 void stop_beep();
 
-void beep_during(const unsigned frequency, const unsigned ms);
+void beep_during(const unsigned frequency, const unsigned duration);
 
 #endif
