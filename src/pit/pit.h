@@ -7,6 +7,7 @@
 # define PIT_CHANNEL_1	0x41
 # define PIT_CHANNEL_2	0x42
 # define PIT_COMMAND	0x43
+# define BEEPER_ENABLE	0x61
 
 # define PIT_SELECT_CHANNEL_0	0x0
 # define PIT_SELECT_CHANNEL_1	0x40
@@ -28,7 +29,7 @@
 void pit_init();
 void pit_set_count(const uint16_t count);
 
-void beep(const uint16_t pitch);
+void beep(const unsigned frequency);
 void stop_beep();
 
 #endif

@@ -8,8 +8,10 @@
 #include "ps2/ps2.h"
 
 #include "libc/stdio.h"
+
 // TODO temporary
 #include "libc/errno.h"
+#include "pit/pit.h"
 
 static const char *errors[] = {
 	"Divide-by-zero Error",
@@ -97,6 +99,7 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	printf("Basic components initialization...\n");
 
 	idt_init();
+	pit_init();
 
 	printf("Memory management initialization...\n");
 
