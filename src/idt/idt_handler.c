@@ -1,4 +1,5 @@
 #include "../pic/pic.h"
+#include "../pit/pit.h"
 #include "../libc/stdio.h"
 
 void irq0_handler()

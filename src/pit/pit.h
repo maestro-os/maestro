@@ -2,6 +2,8 @@
 # define PIT_H
 
 # include "../kernel.h"
+# include "../memory/memory.h"
+# include "../util/util.h"
 
 # define PIT_CHANNEL_0	0x40
 # define PIT_CHANNEL_1	0x41
@@ -30,7 +32,8 @@
 
 typedef struct schedule
 {
-	void (*hanlder)(void *);
+	unsigned ms;
+	void (*handler)(void *);
 	void *data;
 
 	struct schedule *next;
@@ -43,7 +46,7 @@ __attribute__((hot))
 inline void pit_set_frequency(const unsigned frequency)
 {
 	unsigned c;
-	if((c = UPPER_DIVISON(BASE_FREQUENCY, frequency)) & ~0xffff) c = 0;
+	if((c = UPPER_DIVISION(BASE_FREQUENCY, frequency)) & ~0xffff) c = 0;
 
 	pit_set_count(c);
 }

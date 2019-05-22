@@ -13,7 +13,6 @@ void pit_init()
 		| PIT_MODE_3);
 
 	schedules = NULL;
-	interrupt_handle = false;
 }
 
 // TODO cli?
@@ -31,6 +30,7 @@ void pit_schedule(const unsigned ms, void (*handler)(void *), void *data)
 	schedule_t *s;
 	if (!(s = kmalloc(sizeof(s)))) return;
 
+	s->ms = ms;
 	s->handler = handler;
 	s->data = data;
 
