@@ -16,3 +16,17 @@ void stop_beep()
 {
 	outb(BEEPER_ENABLE, inb(BEEPER_ENABLE) & 0xfc);
 }
+
+__attribute__((hot))
+void beep_during(const unsigned frequency, const unsigned ms)
+{
+	beep(frequency);
+	pit_schedule(ms, stop_hook, NULL);
+}
+
+__attribute__((hot))
+static void stop_hook(void *data)
+{
+	(void) data;
+	stop_beep();
+}

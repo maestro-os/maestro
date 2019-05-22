@@ -57,4 +57,6 @@ void pit_interrupt();
 void beep(const unsigned frequency);
 void stop_beep();
 
+void beep_during(const unsigned frequency, const unsigned ms);
+
 #endif
