@@ -3,7 +3,7 @@
 .align 8
 
 lock:
-	.byte 0
+	.word 0
 
 .section .text
 
@@ -11,13 +11,13 @@ lock:
 .global interrupt_done
 
 interrupt_handle:
-	mov $1, %al
-	xchg (lock), %al
+	mov $1, %eax
+	xchg ($lock), %eax
 
 	ret
 
 interrupt_done:
-	xor %al, %al
-	mov %al, (lock)
+	xor %eax, %eax
+	mov %eax, ($lock)
 
 	ret
