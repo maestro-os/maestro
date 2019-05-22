@@ -3,7 +3,7 @@
 
 void irq0_handler()
 {
-	// TODO
+	pit_interrupt();
 	pic_EOI(0x0);
 }
 

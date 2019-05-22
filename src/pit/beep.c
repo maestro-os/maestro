@@ -3,7 +3,7 @@
 __attribute__((hot))
 void beep(const unsigned frequency)
 {
-	const unsigned div = 1193180 / frequency;
+	const unsigned div = BASE_FREQUENCY / frequency;
 	outb(PIT_CHANNEL_2, div & 0xff);
 	outb(PIT_CHANNEL_2, (div >> 8) & 0xff);
 
