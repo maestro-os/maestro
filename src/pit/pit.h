@@ -51,9 +51,9 @@ inline void pit_set_frequency(const unsigned frequency)
 	pit_set_count(c);
 }
 
+void pit_sleep(const unsigned duration);
 void pit_schedule(const unsigned duration, const unsigned repeat,
 	void (*handler)(void *), void *data);
-
 void pit_interrupt();
 
 void beep(const unsigned frequency);

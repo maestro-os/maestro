@@ -10,6 +10,9 @@
 # define TAB_SIZE		4
 # define ANSI_ESCAPE	0x1b
 
+# define BELL_FREQUENCY	1000
+# define BELL_DURATION	500
+
 typedef struct tty
 {
 	vgapos_t cursor_x;
