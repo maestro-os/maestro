@@ -1,4 +1,5 @@
 #include "tty.h"
+#include "../pit/pit.h"
 #include "../libc/string.h"
 
 __attribute__((cold))
@@ -104,6 +105,12 @@ void tty_putchar(const char c, tty_t *tty, const bool update)
 {
 	switch(c)
 	{
+		case '\b':
+		{
+			beep_during(BELL_FREQUENCY, BELL_DURATION);
+			break;
+		}
+
 		case '\t':
 		{
 			tty->cursor_x += (TAB_SIZE - (tty->cursor_x % TAB_SIZE));

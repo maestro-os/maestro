@@ -51,6 +51,7 @@ inline void pit_set_frequency(const unsigned frequency)
 	pit_set_count(c);
 }
 
+void pit_sleep(const unsigned ms);
 void pit_schedule(const unsigned ms, void (*handler)(void *), void *data);
 void pit_interrupt();
 

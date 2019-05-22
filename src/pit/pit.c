@@ -24,6 +24,15 @@ void pit_set_count(const uint16_t count)
 }
 
 __attribute__((hot))
+void pit_sleep(const unsigned ms)
+{
+	// TODO
+	(void) ms;
+	/*while()
+		asm("hlt");*/
+}
+
+__attribute__((hot))
 void pit_schedule(const unsigned ms, void (*handler)(void *), void *data)
 {
 	if(ms == 0)
