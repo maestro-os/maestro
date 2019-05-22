@@ -1,4 +1,3 @@
-#include "../kernel.h"
 #include "pic.h"
 
 void pic_init(const uint8_t offset1, const uint8_t offset2)

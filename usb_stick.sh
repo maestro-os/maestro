@@ -7,5 +7,5 @@ new_label=crumbleos
 
 if sudo mkfs.vfat -F 32 -n $new_label -I $device;
 then
-	sudo grub-install --root-directory=$media --no-floppy --recheck --force $device
+	sudo grub-install --root-directory=$media --target=i386-pc --no-floppy --recheck --force $device
 fi

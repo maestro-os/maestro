@@ -168,7 +168,7 @@ void *buddy_alloc_zero(const size_t order)
 	return ptr;
 }
 
-// TODO Fix
+// TODO Fix?
 __attribute__((hot))
 void buddy_free(void *ptr)
 {

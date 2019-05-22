@@ -1,4 +1,4 @@
-.text
+.section .text
 
 .global irq0
 .global irq1
