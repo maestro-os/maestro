@@ -8,6 +8,6 @@
 
 extern void cpuid_init(uint8_t *highest_call, char *manufacturer);
 
-void cpuid();
+void cpuid(void);
 
 #endif

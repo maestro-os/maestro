@@ -26,7 +26,7 @@ static uint8_t ps2_command(const uint8_t command,
 
 __attribute__((hot))
 __attribute__((const))
-static inline bool test_controller()
+static inline bool test_controller(void)
 {
 	return (ps2_command(0xaa, CONTROLLER_TEST_PASS) == CONTROLLER_TEST_PASS
 		&& inb(PS2_DATA) == 0x55);
@@ -34,7 +34,7 @@ static inline bool test_controller()
 
 __attribute__((hot))
 __attribute__((const))
-static inline bool test_device()
+static inline bool test_device(void)
 {
 	return (ps2_command(0xab, KEYBOARD_TEST_PASS) == KEYBOARD_TEST_PASS
 		&& inb(PS2_DATA) == 0x00);
@@ -42,7 +42,7 @@ static inline bool test_device()
 
 __attribute__((hot))
 __attribute__((const))
-void ps2_disable_devices()
+void ps2_disable_devices(void)
 {
 	outb(PS2_COMMAND, 0xad);
 	outb(PS2_COMMAND, 0xa7);
@@ -60,7 +60,7 @@ bool ps2_enable_keyboard(void)
 
 __attribute__((hot))
 __attribute__((const))
-static inline uint8_t get_config_byte()
+static inline uint8_t get_config_byte(void)
 {
 	outb(PS2_COMMAND, 0x20); // TODO Use ps2_command without expected response?
 	return inb(PS2_DATA);
@@ -75,7 +75,7 @@ static inline void set_config_byte(const uint8_t config_byte)
 }
 
 __attribute__((cold))
-static void in_ps2_init()
+static void in_ps2_init(void)
 {
 	// TODO Check if existing using ACPI
 	ps2_disable_devices();
@@ -105,7 +105,7 @@ static void in_ps2_init()
 	}
 }
 
-void ps2_init()
+void ps2_init(void)
 {
 	idt_setup_wrap(in_ps2_init);
 }

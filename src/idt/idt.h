@@ -22,7 +22,7 @@ typedef struct interrupt_descriptor
 	uint16_t offset_2;
 } interrupt_descriptor_t;
 
-void idt_init();
+void idt_init(void);
 extern int idt_load(const void *idt);
 
 void idt_set_state(const bool enabled);

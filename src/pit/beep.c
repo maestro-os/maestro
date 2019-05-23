@@ -12,7 +12,7 @@ void beep(const unsigned frequency)
 }
 
 __attribute__((hot))
-void stop_beep()
+void stop_beep(void)
 {
 	outb(BEEPER_ENABLE, inb(BEEPER_ENABLE) & 0xfc);
 }

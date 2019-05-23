@@ -39,9 +39,9 @@ inline vgacolor_t vga_entry_color(const vgacolor_t fg, const vgacolor_t bg)
 	return fg | (bg << 4);
 }
 
-void vga_clear();
-void vga_enable_cursor();
-void vga_disable_cursor();
+void vga_clear(void);
+void vga_enable_cursor(void);
+void vga_disable_cursor(void);
 void vga_move_cursor(const vgapos_t x, const vgapos_t y);
 void vga_putchar_color(const char c, const uint8_t color,
 	const vgapos_t x, const vgapos_t y);

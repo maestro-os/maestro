@@ -3,7 +3,7 @@
 static schedule_t *schedules;
 
 __attribute__((cold))
-void pit_init()
+void pit_init(void)
 {
 	outb(PIT_COMMAND, PIT_SELECT_CHANNEL_0 | PIT_ACCESS_LOBYTE_HIBYTE
 		| PIT_MODE_0);
@@ -54,11 +54,11 @@ void pit_schedule(const unsigned duration, const unsigned repeat,
 	schedules = s;
 }
 
-extern bool interrupt_handle();
-extern void interrupt_done();
+extern bool interrupt_handle(void);
+extern void interrupt_done(void);
 
 __attribute__((hot))
-void pit_interrupt()
+void pit_interrupt(void)
 {
 	if(interrupt_handle() == 0) return;
 

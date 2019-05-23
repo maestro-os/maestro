@@ -1,6 +1,6 @@
 #include "vga.h"
 
-void vga_clear()
+void vga_clear(void)
 {
 	// TODO Optimization
 	const uint16_t c = VGA_DEFAULT_COLOR << 8;
@@ -8,7 +8,7 @@ void vga_clear()
 		*((uint16_t *) VGA_BUFFER + i) = c;
 }
 
-void vga_enable_cursor()
+void vga_enable_cursor(void)
 {
 	outb(0x3d4, 0x0a);
 	outb(0x3d5, (inb(0x3d5) & 0xc0) | CURSOR_START);
@@ -17,7 +17,7 @@ void vga_enable_cursor()
 	outb(0x3d5, (inb(0x3d5) & 0xe0) | CURSOR_END);
 }
 
-void vga_disable_cursor()
+void vga_disable_cursor(void)
 {
 	outb(0x3D4, 0x0A);
 	outb(0x3D5, 0x20);

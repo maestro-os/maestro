@@ -62,7 +62,7 @@ static inline void init_driver(const driver_t *driver)
 }
 
 __attribute__((cold))
-static inline void init_drivers()
+static inline void init_drivers(void)
 {
 	for(size_t i = 0; i < sizeof(drivers) / sizeof(*drivers); ++i)
 		init_driver(drivers + i);

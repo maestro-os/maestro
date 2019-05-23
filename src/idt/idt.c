@@ -19,7 +19,7 @@ static interrupt_descriptor_t create_id(const void *address,
 	return id;
 }
 
-void idt_init()
+void idt_init(void)
 {
 	pic_init(0x20, 0x28);
 

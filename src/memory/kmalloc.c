@@ -1,7 +1,7 @@
 #include "kmalloc_internal.h"
 #include "../libc/errno.h"
 
-void kmalloc_init()
+void kmalloc_init(void)
 {
 	kmalloc_caches[0] = cache_create("kmalloc8", 8, PAGE_SIZE / 8,
 		NULL, bzero);

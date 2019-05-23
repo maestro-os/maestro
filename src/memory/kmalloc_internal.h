@@ -8,6 +8,6 @@
 
 cache_t *kmalloc_caches[KMALLOC_CACHES_COUNT];
 
-void kmalloc_init();
+void kmalloc_init(void);
 
 #endif

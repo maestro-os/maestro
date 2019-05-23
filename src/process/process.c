@@ -6,7 +6,7 @@ static cache_t *processes_cache;
 static process_t *processes;
 
 __attribute__((cold))
-void process_init()
+void process_init(void)
 {
 	processes_cache = cache_create("processes", sizeof(process_t), PID_MAX,
 		NULL, bzero);

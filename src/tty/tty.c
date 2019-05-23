@@ -3,7 +3,7 @@
 #include "../libc/string.h"
 
 __attribute__((cold))
-void tty_init()
+void tty_init(void)
 {
 	bzero(ttys, sizeof(ttys));
 	for(size_t i = 0; i < TTYS_COUNT; ++i)

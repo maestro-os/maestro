@@ -23,9 +23,9 @@
 # define DATA_LINE_STK_LOW	0x03
 # define DATA_LINE_STK_HIGH	0x04
 
-void ps2_disable_devices();
-bool ps2_enable_keyboard();
+void ps2_disable_devices(void);
+bool ps2_enable_keyboard(void);
 
-void ps2_init();
+void ps2_init(void);
 
 #endif

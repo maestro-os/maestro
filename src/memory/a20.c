@@ -2,7 +2,7 @@
 #include "../idt/idt.h"
 #include "../ps2/ps2.h"
 
-void enable_a20()
+void enable_a20(void)
 {
 	idt_set_state(false);
 	ps2_disable_devices();

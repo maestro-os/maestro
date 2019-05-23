@@ -32,6 +32,6 @@ typedef uint8_t block_state_t;
 
 void *buddy_begin;
 
-void buddy_init();
+void buddy_init(void);
 
 #endif

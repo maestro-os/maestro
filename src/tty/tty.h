@@ -32,13 +32,13 @@ inline void switch_tty(const uint8_t tty)
 	current_tty = ttys + tty;
 }
 
-void tty_init();
+void tty_init(void);
 
 void tty_reset_attrs(tty_t *tty);
 void tty_set_fgcolor(tty_t *tty, const vgacolor_t color);
 void tty_set_bgcolor(tty_t *tty, const vgacolor_t color);
 
-void tty_clear();
+void tty_clear(tty_t *tty);
 void tty_putchar(const char c, tty_t *tty, const bool update);
 void tty_write(const char *buffer, const size_t count, tty_t *tty);
 

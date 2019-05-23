@@ -51,9 +51,9 @@ typedef struct cache
 	struct cache *next;
 } cache_t;
 
-void slab_init();
+void slab_init(void);
 
-cache_t *cache_getall();
+cache_t *cache_getall(void);
 cache_t *cache_get(const char *name);
 cache_t *cache_create(const char *name, size_t objsize, size_t objects_count,
 	void (*ctor)(void *, size_t), void (*dtor)(void *, size_t));

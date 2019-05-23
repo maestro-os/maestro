@@ -41,8 +41,8 @@ size_t available_memory;
 size_t memory_maps_count;
 multiboot_mmap_entry_t *memory_maps;
 
-extern bool check_a20();
-void enable_a20();
+extern bool check_a20(void);
+void enable_a20(void);
 
 const char *memmap_type(const uint32_t type);
 
@@ -57,6 +57,6 @@ void kfree(void *ptr);
 // TODO vmalloc, etc...
 
 extern void paging_enable(const uint32_t *directory);
-extern void paging_disable();
+extern void paging_disable(void);
 
 #endif

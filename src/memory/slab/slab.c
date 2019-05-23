@@ -34,7 +34,7 @@ static void cache_init(cache_t *cache, void *mem)
 }
 
 __attribute__((cold))
-void slab_init()
+void slab_init(void)
 {
 	caches = caches_cache = buddy_alloc_zero(CACHES_CACHE_ORDER);
 	if(!caches_cache) PANIC("Cannot allocate cache for slab allocator!");
@@ -53,7 +53,7 @@ void slab_init()
 }
 
 __attribute__((hot))
-cache_t *cache_getall()
+cache_t *cache_getall(void)
 {
 	return caches;
 }

@@ -11,7 +11,7 @@ static block_state_t *states;
 static spinlock_t spinlock;
 
 __attribute__((hot))
-static inline void lock()
+static inline void lock(void)
 {
 	// TODO fix
 	/*idt_set_state(false);
@@ -19,7 +19,7 @@ static inline void lock()
 }
 
 __attribute__((hot))
-static inline void unlock()
+static inline void unlock(void)
 {
 	// TODO fix
 	/*spin_unlock(&spinlock);
@@ -66,7 +66,7 @@ static inline void set_block_state(const size_t index,
 }
 
 __attribute__((cold))
-void buddy_init()
+void buddy_init(void)
 {
 	max_order = buddy_get_order(available_memory);
 	states = heap_begin;

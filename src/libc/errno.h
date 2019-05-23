@@ -137,7 +137,7 @@
 
 typedef int errno_t;
 
-errno_t *__errno_location();
+errno_t *__errno_location(void);
 # define errno	(*__errno_location())
 
 #endif

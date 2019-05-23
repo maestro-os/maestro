@@ -7,7 +7,7 @@
 
 typedef int16_t pid_t;
 
-extern void switch_usermode();
+extern void switch_usermode(void);
 
 typedef struct process
 {
@@ -20,7 +20,7 @@ typedef struct process
 	struct process *prev;
 } process_t;
 
-void process_init();
+void process_init(void);
 pid_t kfork(const pid_t parent);
 process_t *get_process(const pid_t pid);
 

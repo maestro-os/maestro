@@ -28,6 +28,6 @@ __attribute__((noreturn))
 void kernel_panic_(const char *reason, const char *file, const int line);
 
 __attribute__((noreturn))
-void kernel_halt();
+extern void kernel_halt(void);
 
 #endif

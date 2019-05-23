@@ -21,6 +21,6 @@ void *reallocarray(void *ptr, size_t nmemb, size_t size);
 void exit(int status);
 
 __attribute__((noreturn))
-void abort();
+void abort(void);
 
 #endif

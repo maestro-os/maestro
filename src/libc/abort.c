@@ -1,7 +1,7 @@
 #include "stdlib.h"
 
 __attribute__((noreturn))
-void abort()
+void abort(void)
 {
 	ABORT_INSTRUCTION;
 	exit(127);

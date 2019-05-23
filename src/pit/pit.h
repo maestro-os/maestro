@@ -39,7 +39,7 @@ typedef struct schedule
 	struct schedule *next;
 } schedule_t;
 
-void pit_init();
+void pit_init(void);
 void pit_set_count(const uint16_t count);
 
 __attribute__((hot))
@@ -54,10 +54,10 @@ inline void pit_set_frequency(const unsigned frequency)
 void pit_sleep(const unsigned duration);
 void pit_schedule(const unsigned duration, const unsigned repeat,
 	void (*handler)(void *), void *data);
-void pit_interrupt();
+void pit_interrupt(void);
 
 void beep(const unsigned frequency);
-void stop_beep();
+void stop_beep(void);
 
 void beep_during(const unsigned frequency, const unsigned duration);
 
