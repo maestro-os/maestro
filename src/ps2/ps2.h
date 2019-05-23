@@ -11,11 +11,20 @@
 
 # define PS2_MAX_ATTEMPTS	3
 
+# define CONTROLLER_TEST_PASS	0x55
+# define CONTROLLER_TEST_FAIL	0xfc
+
 # define KEYBOARD_ACK		0xfa
 # define KEYBOARD_RESEND	0xf4
 
-void disable_devices();
-void enable_keyboard();
+# define KEYBOARD_TEST_PASS	0x00
+# define CLK_LINE_STK_LOW	0x01
+# define CLK_LINE_STK_HIGH	0x02
+# define DATA_LINE_STK_LOW	0x03
+# define DATA_LINE_STK_HIGH	0x04
+
+void ps2_disable_devices();
+bool ps2_enable_keyboard();
 
 void ps2_init();
 

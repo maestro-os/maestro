@@ -24,12 +24,10 @@ void pit_set_count(const uint16_t count)
 }
 
 __attribute__((hot))
-void pit_sleep(const unsigned ms)
+void pit_sleep(const unsigned duration)
 {
 	// TODO
-	(void) ms;
-	/*while()
-		asm("hlt");*/
+	(void) duration;
 }
 
 __attribute__((hot))
