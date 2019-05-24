@@ -69,6 +69,27 @@ static inline bool test_device(void)
 	return (ps2_command(0xab, KEYBOARD_TEST_PASS) == KEYBOARD_TEST_PASS);
 }
 
+// TODO Timeout
+__attribute__((hot))
+__attribute__((const))
+static inline bool keyboard_send(const uint8_t data)
+{
+	uint8_t response;
+	uint8_t attempts = 0;
+
+	while(attempts++ < PS2_MAX_ATTEMPTS)
+	{
+		wait_write();
+		outb(PS2_DATA, data);
+
+		wait_read();
+		if((response = inb(PS2_DATA)) == KEYBOARD_RESEND)
+			break;
+	}
+
+	return (response == KEYBOARD_RESEND);
+}
+
 __attribute__((hot))
 __attribute__((const))
 void ps2_disable_devices(void)
@@ -88,20 +109,14 @@ bool ps2_enable_keyboard(void)
 
 	// TODO LEDs
 
-	if(ps2_command(0xf0, KEYBOARD_ACK) != KEYBOARD_ACK)
-		return false;
+	//if(!keyboard_send(0xf0) || !keyboard_send(2))
+	//	return false;
 
-	wait_write();
-	outb(PS2_DATA, 2);
+	//if(!keyboard_send(0xf3) || !keyboard_send(0))
+	//	return false;
 
-	if(ps2_command(0xf3, KEYBOARD_ACK) != KEYBOARD_ACK)
-		return false;
-
-	wait_write();
-	outb(PS2_DATA, 0);
-
-	if(ps2_command(0xf4, KEYBOARD_ACK) != KEYBOARD_ACK)
-		return false;
+	//if(!keyboard_send(0xf4))
+	//	return false;
 
 	return true;
 }
@@ -144,17 +159,19 @@ static void in_ps2_init(void)
 		return;
 	}
 
+	if(!test_device())
+	{
+		printf("PS/2 first device: KO D:\n");
+		return;
+	}
+
 	if(!ps2_enable_keyboard())
 	{
 		printf("Failed to enable keyboard!\n");
 		return;
 	}
 
-	if(!test_device())
-	{
-		printf("PS/2 first device: KO D:\n");
-		return;
-	}
+	set_config_byte(get_config_byte() | 0b1);
 }
 
 void ps2_init(void)

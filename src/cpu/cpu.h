@@ -1,6 +1,7 @@
 #ifndef CPU_H
 # define CPU_H
 
+# include "../io.h"
 # include "../libc/stdio.h"
 # include "../libc/string.h"
 
@@ -9,5 +10,6 @@
 extern void cpuid_init(uint8_t *highest_call, char *manufacturer);
 
 void cpuid(void);
+void cpu_reset(void);
 
 #endif
