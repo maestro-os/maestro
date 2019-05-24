@@ -5,7 +5,7 @@
 #include "memory/kmalloc_internal.h"
 #include "idt/idt.h"
 #include "process/process.h"
-#include "ps2/ps2.h"
+#include "device/device.h"
 
 #include "libc/stdio.h"
 
@@ -66,13 +66,6 @@ static inline void init_drivers(void)
 {
 	for(size_t i = 0; i < sizeof(drivers) / sizeof(*drivers); ++i)
 		init_driver(drivers + i);
-}
-
-__attribute__((hot))
-static inline void keyboard_handler(const uint8_t key)
-{
-	// TODO
-	printf("%u ", key);
 }
 
 __attribute__((cold))
@@ -165,7 +158,7 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 
 	printf("Keyboard initialization...\n");
 
-	ps2_set_keyboard_hook(keyboard_handler);
+	keyboard_init();
 
 	// TODO Test
 	errno = 0;

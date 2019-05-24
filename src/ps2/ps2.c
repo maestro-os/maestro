@@ -189,8 +189,8 @@ void ps2_set_keyboard_hook(void (*hook)(const uint8_t))
 }
 
 __attribute__((hot))
-void ps2_keyboard_event(const uint8_t key)
+void ps2_keyboard_event(const uint8_t code)
 {
 	if(keyboard_hook)
-		keyboard_hook(key);
+		keyboard_hook(code);
 }
