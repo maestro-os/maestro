@@ -168,13 +168,13 @@ void *buddy_alloc_zero(const size_t order)
 	return ptr;
 }
 
-// TODO Fix?
 __attribute__((hot))
 void buddy_free(void *ptr)
 {
 	lock();
 
-	size_t index = NODES_COUNT(max_order - 1) + ((uintptr_t) ptr / PAGE_SIZE);
+	size_t index = NODES_COUNT(max_order - 1)
+		+ ((uintptr_t) (ptr - buddy_begin) / PAGE_SIZE);
 	size_t order = 0;
 
 	while(order < max_order && states[index] != NODE_STATE_FULL)
