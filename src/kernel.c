@@ -68,6 +68,13 @@ static inline void init_drivers(void)
 		init_driver(drivers + i);
 }
 
+__attribute__((hot))
+static inline void keyboard_handler(const uint8_t key)
+{
+	// TODO
+	printf("%u ", key);
+}
+
 __attribute__((cold))
 void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	void *kernel_end)
@@ -156,9 +163,15 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 
 	init_drivers();
 
+	printf("Keyboard initialization...\n");
+
+	ps2_set_keyboard_hook(keyboard_handler);
+
 	// TODO Test
 	errno = 0;
 	printf("pid: %i, errno: %i\n", (int) kfork(0), (int) errno);
+
+	kernel_loop();
 }
 
 void error_handler(const int error)

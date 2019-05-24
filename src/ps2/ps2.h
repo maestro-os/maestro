@@ -27,5 +27,7 @@ void ps2_disable_devices(void);
 bool ps2_enable_keyboard(void);
 
 void ps2_init(void);
+void ps2_set_keyboard_hook(void (*hook)(const uint8_t));
+void ps2_keyboard_event(const uint8_t key);
 
 #endif

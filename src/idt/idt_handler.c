@@ -1,6 +1,6 @@
 #include "../pic/pic.h"
 #include "../pit/pit.h"
-#include "../libc/stdio.h"
+#include "../ps2/ps2.h"
 
 void irq0_handler()
 {
@@ -10,8 +10,7 @@ void irq0_handler()
 
 void irq1_handler()
 {
-	printf("KEYBOARD!\n");
-	// TODO
+	ps2_keyboard_event(inb(0x60));
 	pic_EOI(0x1);
 }
 

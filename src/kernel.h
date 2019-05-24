@@ -23,6 +23,9 @@ typedef struct
 void error_handler(const int error);
 
 __attribute__((noreturn))
+extern void kernel_loop(void);
+
+__attribute__((noreturn))
 void kernel_panic(const char *reason);
 __attribute__((noreturn))
 void kernel_panic_(const char *reason, const char *file, const int line);

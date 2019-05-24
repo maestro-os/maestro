@@ -74,13 +74,14 @@ kernel_init:
 	call switch_protected
 	ret
 
+.global kernel_loop
 .global kernel_halt
 
 kernel_halt:
 	cli
-halt_loop:
+kernel_loop:
 	hlt
-	jmp halt_loop
+	jmp kernel_loop
 
 multiboot_entry:
 	mov $stack_top, %esp
@@ -100,8 +101,8 @@ multiboot_entry:
 	push %eax
 	call kernel_main
 
-	call _fini
 	call kernel_halt
+	call _fini
 
 .section .data
 

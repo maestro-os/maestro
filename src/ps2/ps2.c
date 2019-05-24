@@ -1,5 +1,7 @@
 #include "ps2.h"
 
+static void (*keyboard_hook)(const uint8_t) = NULL;
+
 __attribute__((hot))
 __attribute__((const))
 static inline bool can_read(void)
@@ -174,7 +176,21 @@ static void in_ps2_init(void)
 	set_config_byte(get_config_byte() | 0b1);
 }
 
+__attribute__((cold))
 void ps2_init(void)
 {
 	idt_setup_wrap(in_ps2_init);
+}
+
+__attribute__((cold))
+void ps2_set_keyboard_hook(void (*hook)(const uint8_t))
+{
+	keyboard_hook = hook;
+}
+
+__attribute__((hot))
+void ps2_keyboard_event(const uint8_t key)
+{
+	if(keyboard_hook)
+		keyboard_hook(key);
 }
