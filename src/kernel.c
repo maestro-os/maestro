@@ -148,10 +148,6 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	printf("\n");
 #endif
 
-	printf("Processes initialization...\n");
-
-	process_init();
-
 	printf("Drivers initialization...\n");
 
 	init_drivers();
@@ -159,6 +155,13 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	printf("Keyboard initialization...\n");
 
 	keyboard_init();
+	keyboard_set_input_hook(tty_input_hook);
+	keyboard_set_ctrl_hook(tty_ctrl_hook);
+	keyboard_set_erase_hook(tty_erase_hook);
+
+	printf("Processes initialization...\n");
+
+	process_init();
 
 	// TODO Test
 	errno = 0;

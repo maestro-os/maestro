@@ -160,3 +160,25 @@ void tty_write(const char *buffer, const size_t count, tty_t *tty)
 		update_tty(tty);
 	}
 }
+
+// TODO Implement streams and termcaps
+
+__attribute__((hot))
+void tty_input_hook(const char c)
+{
+	// TODO
+	(void) c;
+}
+
+__attribute__((hot))
+void tty_ctrl_hook(const key_code_t code)
+{
+	// TODO
+	(void) code;
+}
+
+__attribute__((hot))
+void tty_erase_hook(void)
+{
+	// TODO
+}

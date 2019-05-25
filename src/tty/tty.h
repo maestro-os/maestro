@@ -2,8 +2,9 @@
 # define TTY_H
 
 # include "../kernel.h"
-# include "../libc/string.h"
 # include "../vga/vga.h"
+# include "../device/device.h"
+# include "../libc/string.h"
 
 # define TTYS_COUNT		8
 # define HISTORY_LINES	128
@@ -44,5 +45,9 @@ void tty_write(const char *buffer, const size_t count, tty_t *tty);
 
 void ansi_handle(tty_t *tty, const char *buffer,
 	size_t *i, const size_t count);
+
+void tty_input_hook(const char c);
+void tty_ctrl_hook(const key_code_t code);
+void tty_erase_hook(void);
 
 #endif
