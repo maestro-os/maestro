@@ -13,6 +13,8 @@ void process_init(void)
 	if(!processes_cache) PANIC("Cannot allocate cache for processes!");
 
 	processes = NULL;
+
+	// TODO Setup TSS
 }
 
 __attribute__((hot))
@@ -101,10 +103,10 @@ pid_t kfork(const pid_t parent)
 	if(!(process = create_process(parent)))
 		return -1;
 
-	// TODO Fill page directory and enable now?
-	// paging_enable(process->page_dir);
-	// TODO Switch to user mode now?
-	// switch_usermode();
+	if(process->page_dir)
+		paging_enable(process->page_dir);
+
+	switch_usermode();
 
 	return process->pid;
 }
