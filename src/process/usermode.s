@@ -12,5 +12,8 @@ switch_usermode:
 	push %eax
 	pushf
 	push gdt_user_code
-	# TODO Push function ptr?
+	push usermode_jump
 	iret
+
+usermode_jump: # TODO Return after switch_protected
+	ret

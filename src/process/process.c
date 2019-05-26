@@ -15,6 +15,7 @@ void process_init(void)
 	processes = NULL;
 
 	// TODO Setup TSS
+	// TODO CPU time divison (timing, philosophers, etc...)
 }
 
 __attribute__((hot))

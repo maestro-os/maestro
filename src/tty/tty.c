@@ -167,7 +167,7 @@ __attribute__((hot))
 void tty_input_hook(const char c)
 {
 	// TODO
-	(void) c;
+	printf("%c", c);
 }
 
 __attribute__((hot))

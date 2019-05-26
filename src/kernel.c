@@ -4,14 +4,15 @@
 #include "memory/memory.h"
 #include "memory/kmalloc_internal.h"
 #include "idt/idt.h"
+#include "pit/pit.h"
 #include "process/process.h"
 #include "device/device.h"
+#include "ata/ata.h"
 
 #include "libc/stdio.h"
 
 // TODO temporary
 #include "libc/errno.h"
-#include "pit/pit.h"
 
 static const char *errors[] = {
 	"Divide-by-zero Error",
@@ -49,7 +50,8 @@ static const char *errors[] = {
 };
 
 static driver_t drivers[] = {
-	{"PS/2", ps2_init}
+	{"PS/2", ps2_init},
+	{"ATA", ata_init}
 };
 
 __attribute__((cold))
