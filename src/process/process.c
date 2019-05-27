@@ -5,6 +5,33 @@
 static cache_t *processes_cache;
 static process_t *processes;
 
+static tss_entry_t tss_entry;
+
+// TODO Execute before GDT load?
+__attribute__((cold))
+static void tss_init(void)
+{
+	const uint32_t base = (uint32_t) &tss_entry;
+	const uint64_t limit = base + sizeof(tss_entry_t);
+	const uint8_t flags = 0x40;
+	const uint8_t access = 0x86;
+
+	void *tss_gdt = tss_gdt_entry();
+	bzero(tss_gdt, sizeof(uint64_t));
+	*((uint16_t *) (tss_gdt)) = limit & 0xffff;
+	*((uint16_t *) (tss_gdt + 2)) = base & 0xffff;
+	*((uint8_t *) (tss_gdt + 4)) = (base >> 16) & 0xff;
+	*((uint8_t *) (tss_gdt + 5)) = access;
+	*((uint8_t *) (tss_gdt + 6)) = ((limit >> 16) & 0xf) | (flags << 4);
+	*((uint8_t *) (tss_gdt + 7)) = (base >> 24) & 0xff;
+
+	bzero(&tss_entry, sizeof(tss_entry_t));
+	tss_entry.ss0 = 0x10;
+	asm volatile("mov %%esp, %0" : "=a"(tss_entry.esp0));
+
+	tss_flush();
+}
+
 __attribute__((cold))
 void process_init(void)
 {
@@ -14,7 +41,7 @@ void process_init(void)
 
 	processes = NULL;
 
-	// TODO Setup TSS
+	tss_init();
 	// TODO CPU time divison (timing, philosophers, etc...)
 }
 
@@ -107,7 +134,7 @@ pid_t kfork(const pid_t parent)
 	if(process->page_dir)
 		paging_enable(process->page_dir);
 
-	switch_usermode();
+	// TODO switch_usermode();
 
 	return process->pid;
 }

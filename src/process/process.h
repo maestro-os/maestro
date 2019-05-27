@@ -52,6 +52,9 @@ struct tss_entry
 
 typedef struct tss_entry tss_entry_t;
 
+extern void *tss_gdt_entry(void);
+extern void tss_flush(void);
+
 void process_init(void);
 process_t *get_process(const pid_t pid);
 

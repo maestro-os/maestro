@@ -187,7 +187,7 @@ static void print_panic(const char *reason)
 	printf("--- KERNEL PANIC ---\n\n");
 	printf("Kernel has been forced to halt due to internal problem, sorry :/\n");
 	printf("Reason: %s\n\n", reason);
-	printf("If you belive this is a bug on the kernel side, please feel free to report it.\n\n");
+	printf("If you belive this is a bug on the kernel side, please feel free to report it.\n");
 }
 
 __attribute__((cold))
@@ -203,6 +203,6 @@ __attribute__((noreturn))
 void kernel_panic_(const char *reason, const char *file, const int line)
 {
 	print_panic(reason);
-	printf("-- DEBUG --\nFile: %s; Line: %i", file, line);
+	printf("\n-- DEBUG --\nFile: %s; Line: %i", file, line);
 	kernel_halt();
 }

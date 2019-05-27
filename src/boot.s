@@ -108,6 +108,7 @@ multiboot_entry:
 
 .global gdt_user_code
 .global gdt_user_data
+.global gdt_tss
 
 .align 8
 
@@ -147,11 +148,15 @@ gdt_user_data:
 	.byte 0b11001111
 	.byte 0
 
-# TODO TSS
+gdt_tss:
+	.quad 0
 
 gdt:
 	.word gdt - gdt_start - 1
 	.long gdt_start
+
+.global TSS_INDEX
+.set TSS_INDEX, (gdt_tss - gdt_start)
 
 .section .bss
 

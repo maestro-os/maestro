@@ -15,5 +15,5 @@ switch_usermode:
 	push usermode_jump
 	iret
 
-usermode_jump: # TODO Return after switch_protected
+usermode_jump:
 	ret
