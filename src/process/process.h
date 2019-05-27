@@ -56,9 +56,9 @@ extern void *tss_gdt_entry(void);
 extern void tss_flush(void);
 
 void process_init(void);
-process_t *get_process(const pid_t pid);
-
 pid_t kfork(const pid_t parent);
+process_t *get_process(const pid_t pid);
+void process_tick(void);
 extern void switch_usermode(void);
 
 #endif

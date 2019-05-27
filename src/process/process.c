@@ -12,7 +12,7 @@ __attribute__((cold))
 static void tss_init(void)
 {
 	const uint32_t base = (uint32_t) &tss_entry;
-	const uint64_t limit = base + sizeof(tss_entry_t);
+	const uint64_t limit = sizeof(tss_entry_t);
 	const uint8_t flags = 0x40;
 	const uint8_t access = 0x86;
 
@@ -22,7 +22,7 @@ static void tss_init(void)
 	*((uint16_t *) (tss_gdt + 2)) = base & 0xffff;
 	*((uint8_t *) (tss_gdt + 4)) = (base >> 16) & 0xff;
 	*((uint8_t *) (tss_gdt + 5)) = access;
-	*((uint8_t *) (tss_gdt + 6)) = ((limit >> 16) & 0xf) | (flags << 4);
+	*((uint8_t *) (tss_gdt + 6)) = ((limit >> 16) & 0xf) | flags;
 	*((uint8_t *) (tss_gdt + 7)) = (base >> 24) & 0xff;
 
 	bzero(&tss_entry, sizeof(tss_entry_t));
@@ -134,8 +134,6 @@ pid_t kfork(const pid_t parent)
 	if(process->page_dir)
 		paging_enable(process->page_dir);
 
-	// TODO switch_usermode();
-
 	return process->pid;
 }
 
@@ -160,4 +158,9 @@ process_t *get_process(const pid_t pid)
 
 	errno = ESRCH;
 	return NULL;
+}
+
+void process_tick(void)
+{
+	// TODO
 }

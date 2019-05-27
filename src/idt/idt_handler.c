@@ -1,10 +1,12 @@
 #include "../pic/pic.h"
 #include "../pit/pit.h"
+#include "../process/process.h"
 #include "../ps2/ps2.h"
 
 void irq0_handler()
 {
 	pit_interrupt();
+	process_tick();
 	pic_EOI(0x0);
 }
 
