@@ -3,8 +3,7 @@
 
 # include "../ps2/ps2.h"
 
-// TODO
-# define KEYS_COUNT			85
+# define KEYS_COUNT			0xbe
 # define EXTRA_KEYS_CODE	0xe0
 
 # define SCAN1_PRESS_ESC			0x1
@@ -92,7 +91,47 @@
 # define SCAN1_PRESS_KEYPAD_DOT		0x53
 # define SCAN1_PRESS_F11			0x57
 # define SCAN1_PRESS_F12			0x58
-// TODO Handle extra keys
+
+# define SCAN1_PRESS_PREVIOUS_TRACK	0x10
+# define SCAN1_PRESS_NEXT_TRACK		0x19
+# define SCAN1_PRESS_KEYPAD_ENTER	0x1c
+# define SCAN1_PRESS_RIGHT_CONTROL	0x1d
+# define SCAN1_PRESS_MUTE			0x20
+# define SCAN1_PRESS_CALCULATOR		0x21
+# define SCAN1_PRESS_PLAY			0x22
+# define SCAN1_PRESS_STOP			0x24
+# define SCAN1_PRESS_VOLUME_DOWN	0x2e
+# define SCAN1_PRESS_VOLUME_UP		0x30
+# define SCAN1_PRESS_WWW_HOME		0x32
+# define SCAN1_PRESS_KEYPAD_SLASH	0x35
+# define SCAN1_PRESS_RIGHT_ALT		0x38
+# define SCAN1_PRESS_HOME			0x47
+# define SCAN1_PRESS_CURSOR_UP		0x48
+# define SCAN1_PRESS_PAGE_UP		0x49
+# define SCAN1_PRESS_CURSOR_LEFT	0x4b
+# define SCAN1_PRESS_CURSOR_RIGHT	0x4d
+# define SCAN1_PRESS_END			0x4f
+# define SCAN1_PRESS_CURSOR_DOWN	0x50
+# define SCAN1_PRESS_PAGE_DOWN		0x51
+# define SCAN1_PRESS_INSERT			0x52
+# define SCAN1_PRESS_DELETE			0x53
+# define SCAN1_PRESS_LEFT_GUI		0x5b
+# define SCAN1_PRESS_RIGHT_GUI		0x5c
+# define SCAN1_PRESS_APPS			0x5d
+# define SCAN1_PRESS_POWER			0x5e
+# define SCAN1_PRESS_SLEEP			0x5f
+# define SCAN1_PRESS_WAKE			0x63
+# define SCAN1_PRESS_WWW_SEARCH		0x65
+# define SCAN1_PRESS_WWW_FAVORITES	0x66
+# define SCAN1_PRESS_WWW_REFRESH	0x67
+# define SCAN1_PRESS_WWW_STOP		0x68
+# define SCAN1_PRESS_WWW_FORWARD	0x69
+# define SCAN1_PRESS_WWW_BACK		0x6a
+# define SCAN1_PRESS_MY_COMPUTER	0x6b
+# define SCAN1_PRESS_EMAIL			0x6c
+# define SCAN1_PRESS_MEDIA_SELECT	0x6d
+
+// TODO Pause and print screen
 
 # define SCAN1_RELEASE_ESC				0x81
 # define SCAN1_RELEASE_1				0x82
@@ -179,7 +218,47 @@
 # define SCAN1_RELEASE_KEYPAD_DOT		0xd3
 # define SCAN1_RELEASE_F11				0xd7
 # define SCAN1_RELEASE_F12				0xd8
-// TODO Handle extra keys
+
+# define SCAN1_RELEASE_PREVIOUS_TRACK	0x90
+# define SCAN1_RELEASE_NEXT_TRACK		0x99
+# define SCAN1_RELEASE_KEYPAD_ENTER		0x9c
+# define SCAN1_RELEASE_RIGHT_CONTROL	0x9d
+# define SCAN1_RELEASE_MUTE				0xa0
+# define SCAN1_RELEASE_CALCULATOR		0xa1
+# define SCAN1_RELEASE_PLAY				0xa2
+# define SCAN1_RELEASE_STOP				0xa4
+# define SCAN1_RELEASE_VOLUME_DOWN		0xae
+# define SCAN1_RELEASE_VOLUME_UP		0xb0
+# define SCAN1_RELEASE_WWW_HOME			0xb2
+# define SCAN1_RELEASE_KEYPAD_SLASH		0xb5
+# define SCAN1_RELEASE_RIGHT_ALT		0xb8
+# define SCAN1_RELEASE_HOME				0xc7
+# define SCAN1_RELEASE_CURSOR_UP		0xc8
+# define SCAN1_RELEASE_PAGE_UP			0xc9
+# define SCAN1_RELEASE_CURSOR_LEFT		0xcb
+# define SCAN1_RELEASE_CURSOR_RIGHT		0xcd
+# define SCAN1_RELEASE_END				0xcf
+# define SCAN1_RELEASE_CURSOR_DOWN		0xd0
+# define SCAN1_RELEASE_PAGE_DOWN		0xd1
+# define SCAN1_RELEASE_INSERT			0xd2
+# define SCAN1_RELEASE_DELETE			0xd3
+# define SCAN1_RELEASE_LEFT_GUI			0xdb
+# define SCAN1_RELEASE_RIGHT_GUI		0xdc
+# define SCAN1_RELEASE_APPS				0xdd
+# define SCAN1_RELEASE_POWER			0xde
+# define SCAN1_RELEASE_SLEEP			0xdf
+# define SCAN1_RELEASE_WAKE				0xe3
+# define SCAN1_RELEASE_WWW_SEARCH		0xe5
+# define SCAN1_RELEASE_WWW_FAVORITES	0xe6
+# define SCAN1_RELEASE_WWW_REFRESH		0xe7
+# define SCAN1_RELEASE_WWW_STOP			0xe8
+# define SCAN1_RELEASE_WWW_FORWARD		0xe9
+# define SCAN1_RELEASE_WWW_BACK			0xea
+# define SCAN1_RELEASE_MY_COMPUTER		0xeb
+# define SCAN1_RELEASE_EMAIL			0xec
+# define SCAN1_RELEASE_MEDIA_SELECT		0xed
+
+// TODO Pause and print screen
 
 # define KEY_ESC			0x00
 # define KEY_1				0x01
@@ -266,7 +345,47 @@
 # define KEY_KEYPAD_DOT		0x52
 # define KEY_F11			0x56
 # define KEY_F12			0x57
-// TODO Handle extra keys
+
+# define KEY_PREVIOUS_TRACK	0x60
+# define KEY_NEXT_TRACK		0x69
+# define KEY_KEYPAD_ENTER	0x6c
+# define KEY_RIGHT_CONTROL	0x6d
+# define KEY_MUTE			0x70
+# define KEY_CALCULATOR		0x71
+# define KEY_PLAY			0x72
+# define KEY_STOP			0x74
+# define KEY_VOLUME_DOWN	0x7e
+# define KEY_VOLUME_UP		0x80
+# define KEY_WWW_HOME		0x82
+# define KEY_KEYPAD_SLASH	0x85
+# define KEY_RIGHT_ALT		0x88
+# define KEY_HOME			0x97
+# define KEY_CURSOR_UP		0x98
+# define KEY_PAGE_UP		0x99
+# define KEY_CURSOR_LEFT	0x9b
+# define KEY_CURSOR_RIGHT	0x9d
+# define KEY_END			0x9f
+# define KEY_CURSOR_DOWN	0xa0
+# define KEY_PAGE_DOWN		0xa1
+# define KEY_INSERT			0xa2
+# define KEY_DELETE			0xa3
+# define KEY_LEFT_GUI		0xab
+# define KEY_RIGHT_GUI		0xac
+# define KEY_APPS			0xad
+# define KEY_POWER			0xae
+# define KEY_SLEEP			0xaf
+# define KEY_WAKE			0xb3
+# define KEY_WWW_SEARCH		0xb5
+# define KEY_WWW_FAVORITES	0xb6
+# define KEY_WWW_REFRESH	0xb7
+# define KEY_WWW_STOP		0xb8
+# define KEY_WWW_FORWARD	0xb9
+# define KEY_WWW_BACK		0xba
+# define KEY_MY_COMPUTER	0xbb
+# define KEY_EMAIL			0xbc
+# define KEY_MEDIA_SELECT	0xbd
+
+// TODO Pause and print screen
 
 # define KEY_STATE_PRESSED	1
 # define KEY_STATE_RELEASED	0

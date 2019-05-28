@@ -7,13 +7,6 @@ void (*ctrl_hook)(const key_code_t);
 void (*erase_hook)();
 
 __attribute__((hot))
-static void handle_extra_key(const key_code_t code)
-{
-	// TODO
-	(void) code;
-}
-
-__attribute__((hot))
 static void type_key(const key_code_t code)
 {
 	if(code == KEY_BACKSPACE)
@@ -33,6 +26,17 @@ static void type_key(const key_code_t code)
 
 	if(input_hook)
 		input_hook(c);
+}
+__attribute__((hot))
+static void handle_extra_key(const key_code_t code)
+{
+	if(code < 0x90)
+	{
+		key_states[code - 0x10 + 0x60] = KEY_STATE_PRESSED;
+		type_key(code - 0x1);
+	}
+	else
+		key_states[code - 0x90 + 0x60] = KEY_STATE_RELEASED;
 }
 
 __attribute__((hot))
