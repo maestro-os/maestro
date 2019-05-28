@@ -1,6 +1,9 @@
 #ifndef CMOS_H
 # define CMOS_H
 
+# include "../kernel.h"
+# include <stdint.h>
+
 # define CMOS_COMMAND			0x70
 # define CMOS_DATA				0x71
 
