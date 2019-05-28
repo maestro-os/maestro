@@ -7,7 +7,7 @@ tss_gdt_entry:
 	ret
 
 tss_flush:
-	mov TSS_INDEX, %ax
+	mov TSS_OFFSET, %ax
 	ltr %ax
 
 	ret

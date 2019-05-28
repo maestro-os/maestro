@@ -50,8 +50,6 @@ entry_address_tag_end:
 	.long 8
 header_end:
 
-.global switch_protected
-
 switch_protected:
 	cli
 	lgdt gdt
@@ -155,8 +153,8 @@ gdt:
 	.word gdt - gdt_start - 1
 	.long gdt_start
 
-.global TSS_INDEX
-.set TSS_INDEX, (gdt_tss - gdt_start)
+.global TSS_OFFSET
+.set TSS_OFFSET, (gdt_tss - gdt_start)
 
 .section .bss
 

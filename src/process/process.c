@@ -7,7 +7,6 @@ static process_t *processes;
 
 static tss_entry_t tss_entry;
 
-// TODO Execute before GDT load?
 __attribute__((cold))
 static void tss_init(void)
 {

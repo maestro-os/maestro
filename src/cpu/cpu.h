@@ -1,7 +1,7 @@
 #ifndef CPU_H
 # define CPU_H
 
-# include "../io.h"
+# include "../kernel.h"
 # include "../libc/stdio.h"
 # include "../libc/string.h"
 

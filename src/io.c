@@ -1,4 +1,4 @@
-#include "io.h"
+#include "kernel.h"
 
 __attribute__((hot))
 __attribute__((const))

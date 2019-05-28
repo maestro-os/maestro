@@ -2,7 +2,6 @@
 # define KERNEL_H
 
 # include "multiboot.h"
-# include "io.h"
 # include "libc/string.h"
 
 # define KERNEL_VERSION	"0.1"
@@ -19,6 +18,9 @@ typedef struct
 	const char *name;
 	void (*init_func)();
 } driver_t;
+
+uint8_t inb(const uint16_t port);
+void outb(const uint16_t port, const uint8_t value);
 
 void error_handler(const int error);
 
