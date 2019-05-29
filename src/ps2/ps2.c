@@ -91,6 +91,13 @@ static inline bool keyboard_send(const uint8_t data)
 }
 
 __attribute__((hot))
+static void clear_buffer(void)
+{
+	while(can_read())
+		inb(PS2_DATA);
+}
+
+__attribute__((hot))
 void ps2_disable_devices(void)
 {
 	wait_write();
@@ -145,7 +152,7 @@ static void in_ps2_init(void)
 {
 	// TODO Check if existing using ACPI
 	ps2_disable_devices();
-	inb(PS2_DATA);
+	clear_buffer();
 
 	set_config_byte(get_config_byte() & 0b10111100);
 	printf("PS/2 Dual Channel: %s\n",
@@ -170,6 +177,7 @@ static void in_ps2_init(void)
 	}
 
 	set_config_byte(get_config_byte() | 0b1);
+	clear_buffer();
 }
 
 __attribute__((cold))

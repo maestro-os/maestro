@@ -169,6 +169,7 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	errno = 0;
 	printf("pid: %i, errno: %i\n", (int) kfork(0), (int) errno);
 
+	idt_set_state(true);
 	kernel_loop();
 }
 

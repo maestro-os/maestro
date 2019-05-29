@@ -2,9 +2,9 @@
 
 static key_state_t key_states[KEYS_COUNT];
 
-void (*input_hook)(const char);
-void (*ctrl_hook)(const key_code_t);
-void (*erase_hook)();
+void (*input_hook)(const char) = NULL;
+void (*ctrl_hook)(const key_code_t) = NULL;
+void (*erase_hook)() = NULL;
 
 __attribute__((hot))
 static void type_key(const key_code_t code)
@@ -75,10 +75,6 @@ void keyboard_init(void)
 {
 	ps2_set_keyboard_hook(keyboard_handler);
 	bzero(key_states, sizeof(key_states));
-
-	input_hook = NULL;
-	ctrl_hook = NULL;
-	erase_hook = NULL;
 }
 
 __attribute__((hot))
