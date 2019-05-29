@@ -2,12 +2,12 @@
 .global tss_flush
 
 tss_gdt_entry:
-	mov gdt_tss, %eax
+	movl $gdt_tss, %eax
 
 	ret
 
 tss_flush:
-	mov TSS_OFFSET, %ax
+	movw $TSS_OFFSET, %ax
 	ltr %ax
 
 	ret

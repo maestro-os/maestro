@@ -4,8 +4,8 @@
 
 static interrupt_descriptor_t id[48];
 
-static interrupt_descriptor_t create_id(const void *address,
-	const uint16_t selector, const uint8_t type_attr)
+static interrupt_descriptor_t create_id(void *address, const uint16_t selector,
+	const uint8_t type_attr)
 {
 	interrupt_descriptor_t id;
 	bzero(&id, sizeof(interrupt_descriptor_t));

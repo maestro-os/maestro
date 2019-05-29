@@ -1,5 +1,4 @@
 #include "process.h"
-#include "../memory/memory.h"
 #include "../libc/errno.h"
 
 static cache_t *processes_cache;
@@ -11,23 +10,20 @@ __attribute__((cold))
 static void tss_init(void)
 {
 	const uint32_t base = (uint32_t) &tss_entry;
-	const uint64_t limit = sizeof(tss_entry_t);
-	const uint8_t flags = 0x40;
-	const uint8_t access = 0x86;
+	const unsigned limit = sizeof(tss_entry_t) - 1;
+	const uint8_t flags = 0x4;
+	const uint8_t access = 0x89;
 
-	void *tss_gdt = tss_gdt_entry();
-	bzero(tss_gdt, sizeof(uint64_t));
-	*((uint16_t *) (tss_gdt)) = limit & 0xffff;
-	*((uint16_t *) (tss_gdt + 2)) = base & 0xffff;
-	*((uint8_t *) (tss_gdt + 4)) = (base >> 16) & 0xff;
-	*((uint8_t *) (tss_gdt + 5)) = access;
-	*((uint8_t *) (tss_gdt + 6)) = ((limit >> 16) & 0xf) | flags;
-	*((uint8_t *) (tss_gdt + 7)) = (base >> 24) & 0xff;
+	gdt_entry_t *tss_gdt = tss_gdt_entry();
+	bzero(tss_gdt, sizeof(gdt_entry_t));
+	tss_gdt->limit_low = limit & 0xffff;
+	tss_gdt->base_low = base & 0xffff;
+	tss_gdt->base_mid = (base >> 16) & 0xff;
+	tss_gdt->access = access;
+	tss_gdt->flags_limit = ((limit >> 16) & 0xf) | (flags << 4);
+	tss_gdt->base_high = (base >> 24) & 0xff;
 
 	bzero(&tss_entry, sizeof(tss_entry_t));
-	tss_entry.ss0 = 0x10;
-	asm volatile("mov %%esp, %0" : "=a"(tss_entry.esp0));
-
 	tss_flush();
 }
 

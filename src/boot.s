@@ -153,7 +153,12 @@ gdt:
 	.word gdt - gdt_start - 1
 	.long gdt_start
 
+.global USER_CODE_OFFSET
+.global USER_DATA_OFFSET
 .global TSS_OFFSET
+
+.set USER_CODE_OFFSET, (gdt_user_code - gdt_start)
+.set USER_DATA_OFFSET, (gdt_user_data - gdt_start)
 .set TSS_OFFSET, (gdt_tss - gdt_start)
 
 .section .bss

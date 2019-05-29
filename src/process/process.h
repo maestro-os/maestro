@@ -1,6 +1,9 @@
 #ifndef PROCESS_H
 # define PROCESS_H
 
+# include "../gdt/gdt.h"
+# include "../memory/memory.h"
+
 # include <stdint.h>
 
 # define PID_MAX	32768
