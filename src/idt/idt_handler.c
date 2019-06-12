@@ -5,7 +5,6 @@
 
 void irq0_handler()
 {
-	pit_interrupt();
 	process_tick();
 	pic_EOI(0x0);
 }

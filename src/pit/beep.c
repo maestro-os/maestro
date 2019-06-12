@@ -18,15 +18,8 @@ void stop_beep(void)
 }
 
 __attribute__((hot))
-static void stop_hook(void *data)
-{
-	(void) data;
-	stop_beep();
-}
-
-__attribute__((hot))
 void beep_during(const unsigned frequency, const unsigned duration)
 {
 	beep(frequency);
-	pit_schedule(duration, 1, stop_hook, NULL);
+	pit_sleep(duration);
 }

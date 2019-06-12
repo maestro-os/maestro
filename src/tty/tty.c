@@ -188,7 +188,7 @@ void tty_erase(tty_t *tty, size_t count)
 	if(tty->prompted_chars == 0) return;
 	if(count > tty->prompted_chars) count = tty->prompted_chars;
 
-	// TODO
+	// TODO Tabs
 
 	tty_cursor_backward(tty, count, 0);
 
@@ -237,6 +237,7 @@ void tty_input_hook(const key_code_t code)
 
 			case KEY_W:
 			{
+				// TODO Multiple lines
 				tty_erase(current_tty, current_tty->prompted_chars);
 				break;
 			}

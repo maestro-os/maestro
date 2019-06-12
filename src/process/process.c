@@ -2,7 +2,7 @@
 #include "../libc/errno.h"
 
 static cache_t *processes_cache;
-static process_t *processes;
+static process_t *processes, *current_process;
 
 static tss_entry_t tss_entry;
 
@@ -35,6 +35,7 @@ void process_init(void)
 	if(!processes_cache) PANIC("Cannot allocate cache for processes!");
 
 	processes = NULL;
+	current_process = NULL;
 
 	tss_init();
 	// TODO CPU time divison (timing, philosophers, etc...)
@@ -125,10 +126,6 @@ pid_t kfork(const pid_t parent)
 	process_t *process;
 	if(!(process = create_process(parent)))
 		return -1;
-
-	if(process->page_dir)
-		paging_enable(process->page_dir);
-
 	return process->pid;
 }
 
@@ -155,7 +152,39 @@ process_t *get_process(const pid_t pid)
 	return NULL;
 }
 
+__attribute__((hot))
+static void suspend_process(process_t *process)
+{
+	if(!process) return;
+
+	// TODO
+}
+
+__attribute__((hot))
+static void resume_process(process_t *process)
+{
+	if(!process) return;
+
+	// TODO
+	//if(process->page_dir)
+		//paging_enable(process->page_dir);
+}
+
 void process_tick(void)
 {
-	// TODO
+	// TODO Multicore handling
+
+	if(current_process)
+	{
+		suspend_process(current_process);
+
+		if(current_process->next)
+			current_process = current_process->next;
+		else
+			current_process = processes;
+	}
+	else
+		current_process = processes;
+
+	resume_process(current_process);
 }

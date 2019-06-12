@@ -1,7 +1,8 @@
 #include "pit.h"
 
-static schedule_t *schedules;
+static unsigned current_frequency;
 
+// TODO cli?
 __attribute__((cold))
 void pit_init(void)
 {
@@ -11,8 +12,6 @@ void pit_init(void)
 
 	outb(PIT_COMMAND, PIT_SELECT_CHANNEL_2 | PIT_ACCESS_LOBYTE_HIBYTE
 		| PIT_MODE_3);
-
-	schedules = NULL;
 }
 
 // TODO cli?
@@ -24,71 +23,19 @@ void pit_set_count(const uint16_t count)
 }
 
 __attribute__((hot))
+void pit_set_frequency(const unsigned frequency)
+{
+	current_frequency = frequency;
+
+	unsigned c;
+	if((c = UPPER_DIVISION(BASE_FREQUENCY, frequency)) & ~0xffff) c = 0;
+
+	pit_set_count(c);
+}
+
+__attribute__((hot))
 void pit_sleep(const unsigned duration)
 {
 	// TODO
 	(void) duration;
-}
-
-__attribute__((hot))
-void pit_schedule(const unsigned duration, const unsigned repeat,
-	void (*handler)(void *), void *data)
-{
-	if(duration == 0)
-	{
-		if(repeat > 0) handler(data);
-		return;
-	}
-
-	// TODO Dedicated cache for schedulers?
-	schedule_t *s;
-	if(!(s = kmalloc(sizeof(s)))) return;
-
-	s->base_duration = duration;
-	s->remain = duration;
-	s->repeat = repeat;
-	s->handler = handler;
-	s->data = data;
-
-	s->next = schedules;
-	schedules = s;
-}
-
-extern bool interrupt_handle(void);
-extern void interrupt_done(void);
-
-__attribute__((hot))
-void pit_interrupt(void)
-{
-	if(interrupt_handle() == 0) return;
-
-	schedule_t *s = schedules, *tmp, *prev = NULL;
-
-	while(s)
-	{
-		if(--(s->remain) == 0)
-		{
-			s->handler(s->data);
-
-			if(s->repeat != 0 && --(s->repeat) == 0)
-			{
-				if(s == schedules)
-				{
-					tmp = s->next;
-					schedules = tmp;
-				}
-				else if(prev)
-					prev->next = s->next;
-
-				kfree(s);
-			}
-			else
-				s->remain = s->base_duration;
-		}
-
-		prev = s;
-		s = s->next;
-	}
-
-	interrupt_done();
 }
