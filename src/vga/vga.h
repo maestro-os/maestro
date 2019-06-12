@@ -32,7 +32,7 @@
 # define CURSOR_END		15
 
 typedef int8_t vgacolor_t;
-typedef uint16_t vgapos_t;
+typedef int16_t vgapos_t;
 
 inline vgacolor_t vga_entry_color(const vgacolor_t fg, const vgacolor_t bg)
 {

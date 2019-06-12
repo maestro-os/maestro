@@ -1,8 +1,9 @@
 #include "device.h"
 
 static key_state_t key_states[KEYS_COUNT];
+static bool capslock_state = false;
 
-void (*input_hook)(const char) = NULL;
+void (*input_hook)(const key_code_t) = NULL;
 void (*ctrl_hook)(const key_code_t) = NULL;
 void (*erase_hook)() = NULL;
 
@@ -11,21 +12,22 @@ static void type_key(const key_code_t code)
 {
 	if(code == KEY_BACKSPACE)
 	{
-		if(erase_hook)
-			erase_hook();
+		if(erase_hook) erase_hook();
 		return;
 	}
+	else if(code == KEY_CAPSLOCK)
+		capslock_state = !capslock_state;
 
 	// TODO Arrows, etc...
 
-	// TODO Caps Lock
-	const bool shift = keyboard_get_state(KEY_LEFT_SHIFT)
-		|| keyboard_get_state(KEY_RIGHT_SHIFT);
-	const char c = keyboard_get_char(code, shift);
-	if(!c) return;
-
-	if(input_hook)
-		input_hook(c);
+	if(keyboard_get_char(code, keyboard_is_shift_enabled()))
+	{
+		if(input_hook) input_hook(code);
+	}
+	else
+	{
+		if(ctrl_hook) ctrl_hook(code);
+	}
 }
 __attribute__((hot))
 static void handle_extra_key(const key_code_t code)
@@ -78,9 +80,30 @@ void keyboard_init(void)
 }
 
 __attribute__((hot))
-key_state_t keyboard_get_state(const size_t key)
+key_state_t keyboard_get_state(const key_code_t key)
 {
 	return key_states[key];
+}
+
+__attribute__((hot))
+bool keyboard_is_ctrl_enabled(void)
+{
+	return keyboard_get_state(KEY_LEFT_CTRL)
+		|| keyboard_get_state(KEY_RIGHT_CTRL);
+}
+
+__attribute__((hot))
+bool keyboard_is_shift_enabled(void)
+{
+	const bool shift = keyboard_get_state(KEY_LEFT_SHIFT)
+			|| keyboard_get_state(KEY_RIGHT_SHIFT);
+	return (capslock_state ? !shift : shift);
+}
+
+__attribute__((hot))
+bool keyboard_is_capslock_enabled(void)
+{
+	return capslock_state;
 }
 
 __attribute__((hot))
@@ -100,6 +123,7 @@ char keyboard_get_char(const key_code_t code, const bool shift)
 		case KEY_0: return (shift ? ')' : '0');
 		case KEY_MINUS: return (shift ? '_' : '-');
 		case KEY_EQUAL: return (shift ? '+' : '=');
+		case KEY_TAB: return '\t';
 		case KEY_Q: return (shift ? 'Q' : 'q');
 		case KEY_W: return (shift ? 'W' : 'w');
 		case KEY_E: return (shift ? 'E' : 'e');
@@ -157,7 +181,7 @@ char keyboard_get_char(const key_code_t code, const bool shift)
 }
 
 __attribute__((cold))
-void keyboard_set_input_hook(void (*hook)(const char))
+void keyboard_set_input_hook(void (*hook)(const key_code_t))
 {
 	input_hook = hook;
 }

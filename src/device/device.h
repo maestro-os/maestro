@@ -349,7 +349,7 @@
 # define KEY_PREVIOUS_TRACK	0x60
 # define KEY_NEXT_TRACK		0x69
 # define KEY_KEYPAD_ENTER	0x6c
-# define KEY_RIGHT_CONTROL	0x6d
+# define KEY_RIGHT_CTRL		0x6d
 # define KEY_MUTE			0x70
 # define KEY_CALCULATOR		0x71
 # define KEY_PLAY			0x72
@@ -394,10 +394,13 @@ typedef uint8_t key_code_t;
 typedef uint8_t key_state_t;
 
 void keyboard_init(void);
-key_state_t keyboard_get_state(const size_t key);
+key_state_t keyboard_get_state(const key_code_t key);
+bool keyboard_is_ctrl_enabled(void);
+bool keyboard_is_shift_enabled(void);
+bool keyboard_is_capslock_enabled(void);
 char keyboard_get_char(const key_code_t code, const bool shift);
 
-void keyboard_set_input_hook(void (*hook)(const char));
+void keyboard_set_input_hook(void (*hook)(const key_code_t));
 void keyboard_set_ctrl_hook(void (*hook)(const key_code_t));
 void keyboard_set_erase_hook(void (*hook)(void));
 
