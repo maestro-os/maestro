@@ -10,6 +10,7 @@ static inline bool can_read(void)
 }
 
 __attribute__((hot))
+__attribute__((const))
 static inline void wait_read(void)
 {
 	while(!can_read())
@@ -26,6 +27,7 @@ static inline bool can_write(void)
 }
 
 __attribute__((hot))
+__attribute__((const))
 static inline void wait_write(void)
 {
 	while(!can_write())
@@ -98,6 +100,7 @@ static void clear_buffer(void)
 }
 
 __attribute__((hot))
+__attribute__((const))
 void ps2_disable_devices(void)
 {
 	wait_write();
@@ -139,6 +142,7 @@ static inline uint8_t get_config_byte(void)
 }
 
 __attribute__((hot))
+__attribute__((const))
 static inline void set_config_byte(const uint8_t config_byte)
 {
 	wait_write();
@@ -152,6 +156,7 @@ static void in_ps2_init(void)
 {
 	// TODO Check if existing using ACPI
 	ps2_disable_devices();
+	//inb(PS2_DATA);
 	clear_buffer();
 
 	set_config_byte(get_config_byte() & 0b10111100);
