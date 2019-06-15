@@ -39,7 +39,25 @@ void *kmalloc(const size_t size)
 	errno = 0;
 
 	cache_t *cache = get_cache(size);
-	if(!cache) return NULL; // TODO Alloc new cache or dedicated pages?
+	void *ptr;
 
-	return cache_alloc(cache);
+	if(cache)
+		ptr = cache_alloc(cache);
+	else
+	{
+		// TODO Use unused space for further allocations
+		ptr = buddy_alloc(buddy_get_order(size));
+	}
+
+	if(!ptr)
+		errno = ENOMEM;
+	return ptr;
+}
+
+void *kmalloc_zero(const size_t size)
+{
+	void *ptr = kmalloc(size);
+	bzero(ptr, size);
+
+	return ptr;
 }

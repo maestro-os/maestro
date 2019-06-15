@@ -1,7 +1,7 @@
 #include "util.h"
 #include "../memory/memory.h"
 
-#define UNIT_SIZE		   	(sizeof(char))
+#define UNIT_SIZE		   	(sizeof(uint8_t))
 #define UNIT(bitmap, index)	(bitmap + (index / UNIT_SIZE))
 #define INNER_INDEX(index)	(UNIT_SIZE - (index % UNIT_SIZE) - 1)
 
@@ -21,25 +21,25 @@
 	}
 
 __attribute__((hot))
-int bitmap_get(char *bitmap, const size_t index)
+int bitmap_get(uint8_t *bitmap, const size_t index)
 {
 	return (*UNIT(bitmap, index) >> INNER_INDEX(index)) & 0b1;
 }
 
 __attribute__((hot))
-void bitmap_set(char *bitmap, const size_t index)
+void bitmap_set(uint8_t *bitmap, const size_t index)
 {
 	*UNIT(bitmap, index) |= (0b1 << INNER_INDEX(index));
 }
 
 __attribute__((hot))
-void bitmap_clear(char *bitmap, const size_t index)
+void bitmap_clear(uint8_t *bitmap, const size_t index)
 {
 	*UNIT(bitmap, index) &= ~(0b1 << INNER_INDEX(index));
 }
 
 __attribute__((hot))
-void bitmap_toggle(char *bitmap, const size_t index)
+void bitmap_toggle(uint8_t *bitmap, const size_t index)
 {
 	if(bitmap_get(bitmap, index))
 		bitmap_clear(bitmap, index);
@@ -48,10 +48,10 @@ void bitmap_toggle(char *bitmap, const size_t index)
 }
 
 __attribute__((hot))
-void bitmap_set_range(char *bitmap, const size_t begin, const size_t end)
+void bitmap_set_range(uint8_t *bitmap, const size_t begin, const size_t end)
 {
 	long mask;
-	const char tiny_mask = ~((char) 0);
+	const uint8_t tiny_mask = ~((uint8_t) 0);
 	size_t i = begin / BIT_SIZEOF(*bitmap);
 
 	if(begin % UNIT_SIZE != 0)
@@ -88,12 +88,12 @@ void bitmap_set_range(char *bitmap, const size_t begin, const size_t end)
 	if(end % UNIT_SIZE != 0)
 	{
 		LEFT_MASK(mask, mask, INNER_INDEX(end));
-		*UNIT(bitmap, begin) |= mask;
+		*UNIT(bitmap, i) |= mask;
 	}
 }
 
 __attribute__((hot))
-void bitmap_clear_range(char *bitmap, const size_t begin, const size_t end)
+void bitmap_clear_range(uint8_t *bitmap, const size_t begin, const size_t end)
 {
 	long mask;
 	size_t i = begin / BIT_SIZEOF(*bitmap);
@@ -130,6 +130,25 @@ void bitmap_clear_range(char *bitmap, const size_t begin, const size_t end)
 	if(end % UNIT_SIZE != 0)
 	{
 		LEFT_MASK(mask, mask, INNER_INDEX(end));
-		*UNIT(bitmap, begin) &= ~mask;
+		*UNIT(bitmap, i) &= ~mask;
 	}
+}
+
+size_t bitmap_first_clear(uint8_t *bitmap, const size_t bitmap_size)
+{
+	size_t i = 0;
+	while(i * UNIT_SIZE < bitmap_size && bitmap[i] == 0xff) ++i;
+
+	if(i * UNIT_SIZE >= bitmap_size)
+		return bitmap_size;
+
+	uint8_t c = bitmap[i];
+	size_t j = 0;
+	while(c & (1 << 7))
+	{
+		c <<= 1;
+		++j;
+	}
+
+	return i * UNIT_SIZE + j;
 }

@@ -70,6 +70,12 @@ static inline void init_drivers(void)
 		init_driver(drivers + i);
 }
 
+static void test_process()
+{
+	printf("Test process runned!");
+	// TODO Let's see what happens when returning this function
+}
+
 __attribute__((cold))
 void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	void *kernel_end)
@@ -167,7 +173,8 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 
 	// TODO Test
 	errno = 0;
-	printf("pid: %i, errno: %i\n", (int) kfork(0), (int) errno);
+	process_t *proc = new_process(NULL, test_process);
+	printf("pid: %i, errno: %i\n", (int) proc->pid, (int) errno);
 
 	idt_set_state(true);
 	kernel_loop();

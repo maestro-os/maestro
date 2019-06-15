@@ -27,7 +27,7 @@ static inline void unlock(void)
 }
 
 __attribute__((hot))
-static block_order_t buddy_get_order(const size_t size)
+block_order_t buddy_get_order(const size_t size)
 {
 	block_order_t order = 0;
 	size_t i = 1;
@@ -144,7 +144,7 @@ static size_t find_free(const size_t index, const block_order_t order,
 }
 
 __attribute__((hot))
-void *buddy_alloc(const size_t order)
+void *buddy_alloc(const block_order_t order)
 {
 	lock();
 
@@ -156,11 +156,11 @@ void *buddy_alloc(const size_t order)
 	if(block != BLOCK_NULL)
 		set_block_state(block, NODE_STATE_FULL);
 
-	unlock(); // TODO Doing NODE_PTR after unlock gives a bad value from NODE_PTR
+	unlock(); // TODO Doing NODE_PTR after unlock gives a bad value
 	return ptr;
 }
 
-void *buddy_alloc_zero(const size_t order)
+void *buddy_alloc_zero(const block_order_t order)
 {
 	void *ptr = buddy_alloc(order);
 	bzero(ptr, BLOCK_SIZE(order));

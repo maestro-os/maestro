@@ -35,6 +35,9 @@
 # define PAGETOPTR(page)	((void *) (page) * PAGE_SIZE)
 # define PTRTOPAGE(ptr)		((uintptr_t) (ptr) / PAGE_SIZE)
 
+typedef uint32_t block_order_t;
+typedef uint32_t *vmem_t;
+
 void *heap_begin, *heap_end;
 size_t available_memory;
 
@@ -46,17 +49,27 @@ void enable_a20(void);
 
 const char *memmap_type(const uint32_t type);
 
-void *buddy_alloc(const size_t order);
-void *buddy_alloc_zero(const size_t order);
+block_order_t buddy_get_order(const size_t size);
+void *buddy_alloc(const block_order_t order);
+void *buddy_alloc_zero(const block_order_t order);
 void buddy_free(void *ptr);
 
+void *clone_page(void *ptr);
+
 void *kmalloc(const size_t size);
+void *kmalloc_zero(const size_t size);
 void *krealloc(void *ptr, const size_t size);
 void kfree(void *ptr);
 
-// TODO vmalloc, etc...
+vmem_t vmem_init(void);
+vmem_t vmem_clone(vmem_t vmem, const bool mem_dup);
+void *vmem_translate(vmem_t vmem, void *ptr);
+void *vmem_alloc_pages(vmem_t vmem, const size_t pages);
+void vmem_free_pages(vmem_t vmem, const size_t pages, const bool mem_free);
+void vmem_free(vmem_t vmem, const bool mem_free);
 
-extern void paging_enable(const uint32_t *directory);
+extern void paging_enable(const vmem_t vmem);
+extern void tlb_reload(void);
 extern void paging_disable(void);
 
 #endif

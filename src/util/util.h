@@ -22,12 +22,13 @@
 
 unsigned floor_log2(const unsigned n);
 
-int bitmap_get(char *bitmap, const size_t index);
-void bitmap_set(char *bitmap, const size_t index);
-void bitmap_clear(char *bitmap, const size_t index);
-void bitmap_toggle(char *bitmap, const size_t index);
-void bitmap_set_range(char *bitmap, const size_t begin, const size_t end);
-void bitmap_clear_range(char *bitmap, const size_t begin, const size_t end);
+int bitmap_get(uint8_t *bitmap, const size_t index);
+void bitmap_set(uint8_t *bitmap, const size_t index);
+void bitmap_clear(uint8_t *bitmap, const size_t index);
+void bitmap_toggle(uint8_t *bitmap, const size_t index);
+void bitmap_set_range(uint8_t *bitmap, const size_t begin, const size_t end);
+void bitmap_clear_range(uint8_t *bitmap, const size_t begin, const size_t end);
+size_t bitmap_first_clear(uint8_t *bitmap, const size_t bitmap_size);
 
 typedef uint8_t spinlock_t;
 

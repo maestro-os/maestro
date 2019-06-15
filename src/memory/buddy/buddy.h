@@ -27,7 +27,6 @@
 # define NODE_STATE_PARTIAL	1
 # define NODE_STATE_FULL	2
 
-typedef uint32_t block_order_t;
 typedef uint8_t block_state_t;
 
 void *buddy_begin;
