@@ -56,7 +56,6 @@ void process_init(void)
 	bitmap_set(pids_bitmap, 0);
 
 	tss_init();
-	// TODO CPU time divison (timing, philosophers, etc...)
 }
 
 __attribute__((hot))
@@ -96,6 +95,7 @@ process_t *new_process(process_t *parent, void (*begin)())
 	new_proc->pid = pid;
 	new_proc->parent = parent;
 	new_proc->begin = begin;
+	new_proc->tss.eip = (uintptr_t) begin;
 
 	// TODO Set child in parent (alloc child)
 
@@ -187,13 +187,69 @@ static void init_process(process_t *process)
 	if(vmem)
 	{
 		process->page_dir = vmem;
+		process->tss.cr3 = (uintptr_t) vmem;
 		process->state = WAITING;
 	}
 }
 
+__attribute__((hot))
+static process_t *first_running_process(void)
+{
+	process_t *p = processes;
+	while(p && p->state != RUNNING)
+		p = p->next;
+
+	return p;
+}
+
+__attribute__((hot))
+static process_t *next_waiting_process(process_t *process)
+{
+	process_t *p = process;
+
+	do
+	{
+		if(!(p = p->next))
+			p = processes;
+	}
+	while(p != process && p->state != RUNNING);
+
+	return (p == process ? NULL : p);
+}
+
+__attribute__((hot))
+static void switch_processes(void)
+{
+	if(!processes)
+		return;
+
+	process_t *p;
+	if(!(p = first_running_process()))
+	{
+		if(processes->state == WAITING)
+			p = processes;
+		else
+			p = next_waiting_process(processes);
+	}
+	else
+	{
+		p->state = WAITING;
+		p = next_waiting_process(p);
+	}
+
+	if(!p)
+		return;
+
+	// TODO Enable paging on kernel?
+	p->state = RUNNING;
+	tss_entry = p->tss;
+	context_switch((void *) tss_entry.esp, (void *) tss_entry.eip);
+}
+
 void process_tick(void)
 {
-	// TODO If run on every core at once: spinlock
+	// TODO Multicore handling
+	switch_processes();
 
 	process_t *p = processes;
 
@@ -207,16 +263,9 @@ void process_tick(void)
 				break;
 			}
 
-			case RUNNING:
-			{
-				// TODO Switch to next process
-				// TODO Pay attention to multiple cores! (is it enabled?)
-				break;
-			}
-
 			case BLOCKED:
 			{
-				// TODO Unblock if needed
+				// TODO Unblock if needed?
 				break;
 			}
 
@@ -225,6 +274,4 @@ void process_tick(void)
 
 		p = p->next;
 	}
-
-	// TODO If spinlock, unlock
 }

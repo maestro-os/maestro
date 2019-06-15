@@ -114,6 +114,7 @@ typedef struct process
 	child_t *children;
 
 	vmem_t page_dir;
+	tss_entry_t tss;
 	signal_t *signals_queue;
 
 	void (*begin)();
@@ -134,6 +135,6 @@ process_t *get_process(const pid_t pid);
 void del_process(process_t *process, const bool children);
 
 void process_tick(void);
-extern void context_switch(void);
+extern void context_switch(void *esp, void *eip);
 
 #endif
