@@ -70,11 +70,12 @@ static inline void init_drivers(void)
 		init_driver(drivers + i);
 }
 
-static void test_process()
+// TODO Remove
+/*static void test_process()
 {
 	printf("Test process runned!");
 	// TODO Let's see what happens when returning this function
-}
+}*/
 
 __attribute__((cold))
 void kernel_main(const unsigned long magic, void *multiboot_ptr,
@@ -87,10 +88,10 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 
 	// TODO Add first Multiboot version support
 	if(magic != MULTIBOOT2_BOOTLOADER_MAGIC)
-		PANIC("Non Multiboot2-compliant bootloader!");
+		PANIC("Non Multiboot2-compliant bootloader!", 0);
 
 	if(((uintptr_t) multiboot_ptr) & 7)
-		PANIC("Boot informations structure's address is not aligned!");
+		PANIC("Boot informations structure's address is not aligned!", 0);
 
 	printf("Booting crumbleos kernel version %s...\n", KERNEL_VERSION);
 	printf("Retrieving CPU informations...\n");
@@ -172,45 +173,49 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	process_init();
 
 	// TODO Test
-	errno = 0;
-	process_t *proc = new_process(NULL, test_process);
-	printf("pid: %i, errno: %i\n", (int) proc->pid, (int) errno);
+	//errno = 0;
+	//process_t *proc = new_process(NULL, test_process);
+	//printf("pid: %i, errno: %i\n", (int) proc->pid, (int) errno);
 
 	idt_set_state(true);
 	kernel_loop();
 }
 
-void error_handler(const int error)
+void error_handler(const unsigned error, const uint32_t error_code)
 {
-	if(error > 0x1f) PANIC("Unknown");
+	if(error > 0x1f) PANIC("Unknown", error_code);
 
 	// TODO Check if caused by process
-	PANIC(errors[error]);
+	PANIC(errors[error], error_code);
 }
 
 __attribute__((cold))
-static void print_panic(const char *reason)
+static void print_panic(const char *reason, const uint32_t code)
 {
 	tty_init();
 	printf("--- KERNEL PANIC ---\n\n");
-	printf("Kernel has been forced to halt due to internal problem, sorry :/\n");
-	printf("Reason: %s\n\n", reason);
-	printf("If you believe this is a bug on the kernel side, please feel free to report it.\n");
+	printf("Kernel has been forced to halt due to internal problem,\
+ sorry :/\n");
+	printf("Reason: %s\n", reason);
+	printf("Error code: %u\n\n", (unsigned) code); // TODO Hexadecimal
+	printf("If you believe this is a bug on the kernel side,\
+ please feel free to report it.\n");
 }
 
 __attribute__((cold))
 __attribute((noreturn))
-void kernel_panic(const char *reason)
+void kernel_panic(const char *reason, const uint32_t code)
 {
-	print_panic(reason);
+	print_panic(reason, code);
 	kernel_halt();
 }
 
 __attribute__((cold))
 __attribute__((noreturn))
-void kernel_panic_(const char *reason, const char *file, const int line)
+void kernel_panic_(const char *reason, const uint32_t code,
+	const char *file, const int line)
 {
-	print_panic(reason);
+	print_panic(reason, code);
 	printf("\n-- DEBUG --\nFile: %s; Line: %i", file, line);
 	kernel_halt();
 }

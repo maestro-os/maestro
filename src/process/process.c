@@ -47,12 +47,12 @@ void process_init(void)
 		NULL, bzero);
 
 	if(!processes_cache || !children_cache)
-		PANIC("Cannot allocate caches for processes!");
+		PANIC("Cannot allocate caches for processes!", 0);
 
 	processes = NULL;
 
 	if(!(pids_bitmap = kmalloc_zero(PIDS_BITMAP_SIZE)))
-		PANIC("Cannot allocate PIDs bitmap!");
+		PANIC("Cannot allocate PIDs bitmap!", 0);
 	bitmap_set(pids_bitmap, 0);
 
 	tss_init();

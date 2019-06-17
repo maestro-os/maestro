@@ -8,9 +8,9 @@
 # define KERNEL_MAGIC
 
 # ifdef KERNEL_DEBUG
-#  define PANIC(reason)	kernel_panic_(reason, __FILE__, __LINE__)
+#  define PANIC(reason, code)	kernel_panic_(reason, code, __FILE__, __LINE__)
 # else
-#  define PANIC(reason)	kernel_panic(reason)
+#  define PANIC(reason, code)	kernel_panic(reason, code)
 # endif
 
 typedef struct
@@ -22,15 +22,16 @@ typedef struct
 uint8_t inb(const uint16_t port);
 void outb(const uint16_t port, const uint8_t value);
 
-void error_handler(const int error);
+void error_handler(const unsigned error, const uint32_t error_code);
 
 __attribute__((noreturn))
 extern void kernel_loop(void);
 
 __attribute__((noreturn))
-void kernel_panic(const char *reason);
+void kernel_panic(const char *reason, const uint32_t code);
 __attribute__((noreturn))
-void kernel_panic_(const char *reason, const char *file, const int line);
+void kernel_panic_(const char *reason, const uint32_t code,
+	const char *file, const int line);
 
 __attribute__((noreturn))
 extern void kernel_halt(void);

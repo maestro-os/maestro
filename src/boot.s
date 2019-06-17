@@ -104,8 +104,6 @@ multiboot_entry:
 
 .section .data
 
-.global gdt_user_code
-.global gdt_user_data
 .global gdt_tss
 
 .align 8
@@ -153,10 +151,14 @@ gdt:
 	.word gdt - gdt_start - 1
 	.long gdt_start
 
+.global KERNEL_CODE_OFFSET
+.global KERNEL_USER_OFFSET
 .global USER_CODE_OFFSET
 .global USER_DATA_OFFSET
 .global TSS_OFFSET
 
+.set KERNEL_CODE_OFFSET, (gdt_kernel_code - gdt_start)
+.set KERNEL_DATA_OFFSET, (gdt_kernel_data - gdt_start)
 .set USER_CODE_OFFSET, (gdt_user_code - gdt_start)
 .set USER_DATA_OFFSET, (gdt_user_data - gdt_start)
 .set TSS_OFFSET, (gdt_tss - gdt_start)

@@ -1,12 +1,6 @@
 .global context_switch
 
 context_switch:
-	push %ebp
-	mov %esp, %ebp
-
-	mov 8(%esp), %ebx
-	mov 16(%esp), %ecx
-
 	mov $USER_DATA_OFFSET, %ax
 	mov %ax, %ds
 	mov %ax, %es
@@ -14,16 +8,10 @@ context_switch:
 	mov %ax, %gs
 
 	push $USER_DATA_OFFSET
-	push %ebx
+	push 8(%esp)
 	pushf
 	push $USER_CODE_OFFSET
-	push %ecx
+	push 16(%esp)
 
 	iret
-
-	# TODO Useful? \/
-
-	mov %ebp, %esp
-	pop %ebp
-
 	ret
