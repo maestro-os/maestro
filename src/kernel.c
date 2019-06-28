@@ -82,7 +82,8 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	void *kernel_end)
 {
 	// TODO Fix
-	if(!check_a20()) enable_a20();
+	if(!check_a20())
+		enable_a20();
 
 	tty_init();
 
@@ -183,7 +184,8 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 
 void error_handler(const unsigned error, const uint32_t error_code)
 {
-	if(error > 0x1f) PANIC("Unknown", error_code);
+	if(error > 0x1f)
+		PANIC("Unknown", error_code);
 
 	// TODO Check if caused by process
 	PANIC(errors[error], error_code);

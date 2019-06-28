@@ -15,6 +15,18 @@
 .set MULTIBOOT_HEADER_TAG_ENTRY_ADDRESS_EFI64,	9
 .set MULTIBOOT_HEADER_TAG_RELOCATABLE,			10
 
+.global GDT_KERNEL_CODE_OFFSET
+.global GDT_KERNEL_USER_OFFSET
+.global GDT_USER_CODE_OFFSET
+.global GDT_USER_DATA_OFFSET
+.global GDT_TSS_OFFSET
+
+.set GDT_KERNEL_CODE_OFFSET, (gdt_kernel_code - gdt_start)
+.set GDT_KERNEL_DATA_OFFSET, (gdt_kernel_data - gdt_start)
+.set GDT_USER_CODE_OFFSET, (gdt_user_code - gdt_start)
+.set GDT_USER_DATA_OFFSET, (gdt_user_data - gdt_start)
+.set GDT_TSS_OFFSET, (gdt_tss - gdt_start)
+
 .set STACK_SIZE,	16384
 
 .section .text
@@ -33,16 +45,6 @@ entry_address_tag:
 	.long (entry_address_tag_end - entry_address_tag)
 	.long multiboot_entry
 entry_address_tag_end:
-
-#.align 8
-#framebuffer_tag:
-#	.short MULTIBOOT_HEADER_TAG_FRAMEBUFFER
-#	.short 1
-#	.long (framebuffer_tag_end - framebuffer_tag)
-#	.long 0
-#	.long 0
-#	.long 0
-#framebuffer_tag_end:
 
 .align 8
 	.short MULTIBOOT_HEADER_TAG_END
@@ -151,18 +153,6 @@ gdt:
 	.word gdt - gdt_start - 1
 	.long gdt_start
 
-.global KERNEL_CODE_OFFSET
-.global KERNEL_USER_OFFSET
-.global USER_CODE_OFFSET
-.global USER_DATA_OFFSET
-.global TSS_OFFSET
-
-.set KERNEL_CODE_OFFSET, (gdt_kernel_code - gdt_start)
-.set KERNEL_DATA_OFFSET, (gdt_kernel_data - gdt_start)
-.set USER_CODE_OFFSET, (gdt_user_code - gdt_start)
-.set USER_DATA_OFFSET, (gdt_user_data - gdt_start)
-.set TSS_OFFSET, (gdt_tss - gdt_start)
-
 .section .bss
 
 .align 8
@@ -170,8 +160,6 @@ gdt:
 stack_bottom:
 	.skip STACK_SIZE
 stack_top:
-
-.section .bss
 
 .global kernel_end
 

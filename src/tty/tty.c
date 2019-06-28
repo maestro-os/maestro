@@ -102,13 +102,14 @@ static void tty_fix_pos(tty_t *tty)
 
 	if(tty->screen_y + VGA_HEIGHT >= HISTORY_LINES)
 	{
-		const size_t diff = VGA_WIDTH * (tty->screen_y - HISTORY_LINES + 1);
+		const size_t diff = VGA_WIDTH * (HISTORY_LINES
+			- (tty->screen_y + VGA_HEIGHT) + 1);
 		const size_t size = sizeof(tty->history) - (diff * sizeof(uint16_t));
 
 		memmove(tty->history, tty->history + (diff * sizeof(uint16_t)), size);
-		tty_clear_portion(tty->history + size, diff);
+		tty_clear_portion(tty->history + (size / sizeof(uint16_t)), diff);
 
-		tty->screen_y = HISTORY_LINES - VGA_HEIGHT + 1;
+		tty->screen_y = HISTORY_LINES - VGA_HEIGHT;
 	}
 }
 

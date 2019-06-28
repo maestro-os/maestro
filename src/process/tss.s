@@ -7,7 +7,7 @@ tss_gdt_entry:
 	ret
 
 tss_flush:
-	movw $TSS_OFFSET, %ax
+	movw $GDT_TSS_OFFSET, %ax
 	ltr %ax
 
 	ret
