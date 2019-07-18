@@ -15,6 +15,8 @@
 .set MULTIBOOT_HEADER_TAG_ENTRY_ADDRESS_EFI64,	9
 .set MULTIBOOT_HEADER_TAG_RELOCATABLE,			10
 
+.global switch_protected
+
 .global GDT_KERNEL_CODE_OFFSET
 .global GDT_KERNEL_USER_OFFSET
 .global GDT_USER_CODE_OFFSET
@@ -61,12 +63,12 @@ switch_protected:
 
 	jmp $0x8, $complete_flush
 complete_flush:
-	mov $0x8, %ax
-	mov %ds, %ax
-	mov %es, %ax
-	mov %fs, %ax
-	mov %gs, %ax
-	mov %ss, %ax
+	mov $0x10, %ax
+	mov %ax, %ds
+	mov %ax, %es
+	mov %ax, %fs
+	mov %ax, %gs
+	mov %ax, %ss
 
 	ret
 
@@ -77,11 +79,15 @@ kernel_init:
 .global kernel_loop
 .global kernel_halt
 
-kernel_halt:
-	cli
 kernel_loop:
+	sti
 	hlt
 	jmp kernel_loop
+
+kernel_halt:
+	cli
+	hlt
+	jmp kernel_halt
 
 multiboot_entry:
 	mov $stack_top, %esp
@@ -134,7 +140,7 @@ gdt_user_code:
 	.word 0xffff
 	.word 0
 	.byte 0
-	.byte 0b11111010
+	.byte 0b11111110
 	.byte 0b11001111
 	.byte 0
 

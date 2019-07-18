@@ -6,13 +6,12 @@ static unsigned current_frequency;
 __attribute__((cold))
 void pit_init(void)
 {
-	// TODO Fix
-	//outb(PIT_COMMAND, PIT_SELECT_CHANNEL_0 | PIT_ACCESS_LOBYTE_HIBYTE
-		//| PIT_MODE_2);
-	pit_set_frequency(1000);
+	outb(PIT_COMMAND, PIT_SELECT_CHANNEL_0 | PIT_ACCESS_LOBYTE_HIBYTE
+		| PIT_MODE_4);
+	pit_set_frequency(1); // TODO Change
 
 	outb(PIT_COMMAND, PIT_SELECT_CHANNEL_2 | PIT_ACCESS_LOBYTE_HIBYTE
-		| PIT_MODE_3);
+		| PIT_MODE_4);
 }
 
 // TODO cli?

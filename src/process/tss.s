@@ -1,6 +1,8 @@
 .global tss_gdt_entry
 .global tss_flush
 
+.extern switch_protected
+
 tss_gdt_entry:
 	movl $gdt_tss, %eax
 

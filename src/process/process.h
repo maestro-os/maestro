@@ -114,7 +114,10 @@ typedef struct process
 	child_t *children;
 
 	vmem_t page_dir;
+	void *user_stack;
+	void *kernel_stack;
 	tss_entry_t tss;
+
 	signal_t *signals_queue;
 
 	void (*begin)();

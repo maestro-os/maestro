@@ -21,9 +21,9 @@ __attribute__((cold))
 static void tss_init(void)
 {
 	const uint32_t base = (uint32_t) &tss_entry;
-	const unsigned limit = sizeof(tss_entry_t) - 1;
-	const uint8_t flags = 0x4;
-	const uint8_t access = 0x89;
+	const unsigned limit = sizeof(tss_entry_t);
+	const uint8_t flags = 0b0100;
+	const uint8_t access = 0b10001001;
 
 	gdt_entry_t *tss_gdt = tss_gdt_entry();
 	bzero(tss_gdt, sizeof(gdt_entry_t));
@@ -183,13 +183,26 @@ static void init_process(process_t *process)
 		vmem = vmem_clone(process->parent->page_dir, true);
 	else
 		vmem = vmem_init();
+	if(!vmem)
+		return;
 
-	if(vmem)
+	void *user_stack = NULL, *kernel_stack = NULL;
+	// TODO Change default stack size (and allow stack grow)
+	if(!(user_stack = vmem_alloc_pages(vmem, 0))
+		|| !(kernel_stack = vmem_alloc_pages(vmem, 0)))
 	{
-		process->page_dir = vmem;
-		process->tss.cr3 = (uintptr_t) vmem;
-		process->state = WAITING;
+		vmem_free(vmem, false);
+		buddy_free(user_stack);
+		buddy_free(kernel_stack);
+		return;
 	}
+
+	process->page_dir = vmem;
+	process->user_stack = user_stack;
+	process->kernel_stack = kernel_stack;
+	process->tss.cr3 = (uintptr_t) vmem;
+	process->tss.esp = (uintptr_t) user_stack + PAGE_SIZE - 1; // TODO
+	process->state = WAITING;
 }
 
 __attribute__((hot))

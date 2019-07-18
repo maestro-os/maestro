@@ -8,10 +8,9 @@ context_switch:
 	mov %ax, %gs
 
 	push $GDT_USER_DATA_OFFSET
-	push 8(%esp)
+	push 4(%esp)
 	pushf
 	push $GDT_USER_CODE_OFFSET
-	push 16(%esp)
+	push 8(%esp)
 
 	iret
-	ret

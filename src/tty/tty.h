@@ -17,7 +17,7 @@
 
 # define ANSI_ESCAPE	0x1b
 
-# define BELL_FREQUENCY	1000
+# define BELL_FREQUENCY	2000
 # define BELL_DURATION	500
 
 typedef struct tty

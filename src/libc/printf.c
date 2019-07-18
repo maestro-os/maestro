@@ -157,6 +157,7 @@ static int handle_specifier(const specifier_t *specifier, va_list *args)
 		{'s', string_handler},
 		{'p', pointer_handler},
 		{'x', hexadecimal_handler}
+		// TODO
 	};
 
 	if(specifier->type == '%')

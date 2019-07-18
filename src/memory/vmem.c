@@ -1,5 +1,7 @@
 #include "memory.h"
 
+// TODO Handle shared memory (use free flag into page table entry)
+
 __attribute__((hot))
 static inline vmem_t new_vmem_obj(void)
 {
@@ -110,11 +112,29 @@ void *vmem_alloc_pages(vmem_t vmem, const size_t pages)
 	if(!vmem)
 		return NULL;
 
-	// TODO
-	(void) vmem;
-	(void) pages;
+	void *ptr;
+	if(!(ptr = buddy_alloc(pages)))
+		return NULL;
 
-	return NULL;
+	const uintptr_t table = ((uintptr_t) ptr >> 12) & 0x3ff;
+	const uintptr_t page = ((uintptr_t) ptr >> 22) & 0x3ff;
+
+	if(!(vmem[table] & PAGING_TABLE_PRESENT))
+	{
+		vmem_t table_ptr;
+		if(!(table_ptr = new_vmem_obj()))
+		{
+			buddy_free(ptr);
+			return (NULL);
+		}
+
+		// TODO vmem[table] with table
+	}
+
+	// TODO Set table entry
+	(void) page;
+
+	return ptr;
 }
 
 __attribute__((hot))

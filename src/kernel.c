@@ -71,11 +71,13 @@ static inline void init_drivers(void)
 }
 
 // TODO Remove
-/*static void test_process()
+void test_process()
 {
 	printf("Test process runned!");
+	while (1)
+		;
 	// TODO Let's see what happens when returning this function
-}*/
+}
 
 __attribute__((cold))
 void kernel_main(const unsigned long magic, void *multiboot_ptr,
@@ -174,9 +176,9 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	process_init();
 
 	// TODO Test
-	//errno = 0;
-	//process_t *proc = new_process(NULL, test_process);
-	//printf("pid: %i, errno: %i\n", (int) proc->pid, (int) errno);
+	errno = 0;
+	process_t *proc = new_process(NULL, test_process);
+	printf("pid: %i, errno: %i\n", (int) proc->pid, (int) errno);
 
 	idt_set_state(true);
 	kernel_loop();
@@ -199,7 +201,7 @@ static void print_panic(const char *reason, const uint32_t code)
 	printf("Kernel has been forced to halt due to internal problem,\
  sorry :/\n");
 	printf("Reason: %s\n", reason);
-	printf("Error code: %u\n\n", (unsigned) code); // TODO Hexadecimal
+	printf("Error code: %x\n\n", (unsigned) code);
 	printf("If you believe this is a bug on the kernel side,\
  please feel free to report it.\n");
 }
