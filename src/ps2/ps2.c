@@ -1,16 +1,15 @@
 #include "ps2.h"
 
 static void (*keyboard_hook)(const uint8_t) = NULL;
+static int8_t leds_state = 0;
 
 __attribute__((hot))
-__attribute__((const))
 static inline bool can_read(void)
 {
 	return inb(PS2_STATUS) & 0b1;
 }
 
 __attribute__((hot))
-__attribute__((const))
 static inline void wait_read(void)
 {
 	while(!can_read())
@@ -20,14 +19,12 @@ static inline void wait_read(void)
 }
 
 __attribute__((hot))
-__attribute__((const))
 static inline bool can_write(void)
 {
 	return !(inb(PS2_STATUS) & 0b10);
 }
 
 __attribute__((hot))
-__attribute__((const))
 static inline void wait_write(void)
 {
 	while(!can_write())
@@ -58,14 +55,12 @@ static uint8_t ps2_command(const uint8_t command,
 }
 
 __attribute__((hot))
-__attribute__((const))
 static inline bool test_controller(void)
 {
 	return (ps2_command(0xaa, CONTROLLER_TEST_PASS) == CONTROLLER_TEST_PASS);
 }
 
 __attribute__((hot))
-__attribute__((const))
 static inline bool test_device(void)
 {
 	return (ps2_command(0xab, KEYBOARD_TEST_PASS) == KEYBOARD_TEST_PASS);
@@ -73,7 +68,6 @@ static inline bool test_device(void)
 
 // TODO Timeout
 __attribute__((hot))
-__attribute__((const))
 static inline bool keyboard_send(const uint8_t data)
 {
 	uint8_t response;
@@ -85,11 +79,11 @@ static inline bool keyboard_send(const uint8_t data)
 		outb(PS2_DATA, data);
 
 		wait_read();
-		if((response = inb(PS2_DATA)) == KEYBOARD_RESEND)
+		if((response = inb(PS2_DATA)) == KEYBOARD_ACK)
 			break;
 	}
 
-	return (response == KEYBOARD_RESEND);
+	return (response == KEYBOARD_ACK);
 }
 
 __attribute__((hot))
@@ -100,7 +94,6 @@ static void clear_buffer(void)
 }
 
 __attribute__((hot))
-__attribute__((const))
 void ps2_disable_devices(void)
 {
 	wait_write();
@@ -110,28 +103,24 @@ void ps2_disable_devices(void)
 }
 
 __attribute__((hot))
-__attribute__((const))
 bool ps2_enable_keyboard(void)
 {
 	wait_write();
 	outb(PS2_COMMAND, 0xae);
 
-	// TODO LEDs
+	if(!keyboard_send(0xf0) || !keyboard_send(1))
+		return false;
 
-	//if(!keyboard_send(0xf0) || !keyboard_send(2))
-	//	return false;
+	if(!keyboard_send(0xf3) || !keyboard_send(0))
+		return false;
 
-	//if(!keyboard_send(0xf3) || !keyboard_send(0))
-	//	return false;
-
-	//if(!keyboard_send(0xf4))
-	//	return false;
+	if(!keyboard_send(0xf4))
+		return false;
 
 	return true;
 }
 
 __attribute__((hot))
-__attribute__((const))
 static inline uint8_t get_config_byte(void)
 {
 	wait_write();
@@ -142,7 +131,6 @@ static inline uint8_t get_config_byte(void)
 }
 
 __attribute__((hot))
-__attribute__((const))
 static inline void set_config_byte(const uint8_t config_byte)
 {
 	wait_write();
@@ -202,4 +190,17 @@ void ps2_keyboard_event(const uint8_t code)
 {
 	if(keyboard_hook)
 		keyboard_hook(code);
+}
+
+__attribute__((hot))
+int8_t ps2_get_leds_state(void)
+{
+	return leds_state;
+}
+
+__attribute__((hot))
+void ps2_set_leds_state(const int8_t state)
+{
+	if(keyboard_send(0xed))
+		keyboard_send(leds_state = state);
 }

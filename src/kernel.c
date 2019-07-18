@@ -71,10 +71,10 @@ static inline void init_drivers(void)
 }
 
 // TODO Remove
-void test_process()
+static void test_process()
 {
-	printf("Test process runned!");
-	while (1)
+	printf("Test process runned!\n");
+	while(1)
 		;
 	// TODO Let's see what happens when returning this function
 }
