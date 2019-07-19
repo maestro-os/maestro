@@ -1,5 +1,5 @@
-#include "string.h"
-#include "libc_internal.h"
+#include <libc/string.h>
+#include <libc/libc_internal.h>
 
 __attribute__((hot))
 void *memset(void *s, int c, size_t n)

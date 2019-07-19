@@ -1,7 +1,7 @@
 #ifndef UTIL_H
 # define UTIL_H
 
-# include "../libc/string.h"
+# include <libc/string.h>
 
 # define IS_ALIGNED(ptr, n)	(((intptr_t) (ptr) & ((n) - 1)) == 0)
 # define ALIGN_DOWN(ptr, n)	((void *) ((intptr_t) (ptr)\

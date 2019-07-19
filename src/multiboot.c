@@ -1,5 +1,5 @@
-#include "multiboot.h"
-#include "memory/memory.h"
+#include <multiboot.h>
+#include <memory/memory.h>
 
 boot_info_t read_boot_tags(const void *ptr)
 {

@@ -1,10 +1,10 @@
 #ifndef TTY_H
 # define TTY_H
 
-# include "../kernel.h"
-# include "../vga/vga.h"
-# include "../device/device.h"
-# include "../libc/string.h"
+# include <kernel.h>
+# include <vga/vga.h>
+# include <device/device.h>
+# include <libc/string.h>
 
 # define TTYS_COUNT		8
 # define HISTORY_LINES	128

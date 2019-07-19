@@ -1,6 +1,6 @@
-#include "tty.h"
-#include "../pit/pit.h"
-#include "../libc/string.h"
+#include <tty/tty.h>
+#include <pit/pit.h>
+#include <libc/string.h>
 
 __attribute__((cold))
 void tty_init(void)

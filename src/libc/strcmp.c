@@ -1,4 +1,4 @@
-#include "string.h"
+#include <libc/string.h>
 
 // TODO Optimize
 int strcmp(const char *s1, const char *s2)

@@ -5,8 +5,6 @@
 # include <stddef.h>
 # include <stdint.h>
 
-# include "sys/types.h"
-
 // TODO Must be placed in `strings.h`
 void bzero(void *s, size_t n);
 

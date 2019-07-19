@@ -1,4 +1,4 @@
-#include "cmos.h"
+#include <cmos/cmos.h>
 
 __attribute__((hot))
 static void cmos_select(const uint8_t reg)

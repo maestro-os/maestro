@@ -1,4 +1,4 @@
-#include "pit.h"
+#include <pit/pit.h>
 
 __attribute__((hot))
 void beep(const unsigned frequency)

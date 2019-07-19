@@ -5,23 +5,26 @@ CFLAGS = -nostdlib -ffreestanding -fstack-protector-strong -Wall -Wextra -Werror
 
 LINKER = linker.ld
 
-ASM_SRC := $(shell find src/ -type f -name "*.s" -and ! -name "crti.s" -and ! -name "crtn.s")
-C_SRC := $(shell find src/ -type f -name "*.c")
-HDR := $(shell find src/ -type f -name "*.h")
+SRC_DIR = src/
+OBJ_DIR = obj/
 
-DIRS := $(shell find src/ -type d)
-OBJ_DIRS := $(patsubst src/%, obj/%, $(DIRS))
+ASM_SRC := $(shell find $(SRC_DIR) -type f -name "*.s" -and ! -name "crti.s" -and ! -name "crtn.s")
+C_SRC := $(shell find $(SRC_DIR) -type f -name "*.c")
+HDR := $(shell find $(SRC_DIR) -type f -name "*.h")
+
+DIRS := $(shell find $(SRC_DIR) -type d)
+OBJ_DIRS := $(patsubst $(SRC_DIR)%, $(OBJ_DIR)%, $(DIRS))
 
 SRC := $(ASM_SRC) $(C_SRC)
 
-CRTI_OBJ = obj/crti.s.o
+CRTI_OBJ = $(OBJ_DIR)crti.s.o
 CRTBEGIN_OBJ := $(shell $(CC) $(CFLAGS) -print-file-name=crtbegin.o)
 
-ASM_OBJ := $(patsubst src/%.s, obj/%.s.o, $(ASM_SRC))
-C_OBJ := $(patsubst src/%.c, obj/%.c.o, $(C_SRC))
+ASM_OBJ := $(patsubst $(SRC_DIR)%.s, $(OBJ_DIR)%.s.o, $(ASM_SRC))
+C_OBJ := $(patsubst $(SRC_DIR)%.c, $(OBJ_DIR)%.c.o, $(C_SRC))
 
 CRTEND_OBJ := $(shell $(CC) $(CFLAGS) -print-file-name=crtend.o)
-CRTN_OBJ = obj/crtn.s.o
+CRTN_OBJ = $(OBJ_DIR)crtn.s.o
 
 OBJ := $(ASM_OBJ) $(C_OBJ) 
 INTERNAL_OBJ := $(CRTI_OBJ) $(OBJ) $(CRTN_OBJ)
@@ -35,11 +38,11 @@ $(NAME): $(OBJ_DIRS) $(INTERNAL_OBJ)
 $(OBJ_DIRS):
 	mkdir -p $(OBJ_DIRS)
 
-obj/%.s.o: src/%.s $(HDR)
-	$(CC) $(CFLAGS) -c $< -o $@
+$(OBJ_DIR)%.s.o: $(SRC_DIR)%.s $(HDR)
+	$(CC) $(CFLAGS) -I $(SRC_DIR) -c $< -o $@
 
-obj/%.c.o: src/%.c $(HDR)
-	$(CC) $(CFLAGS) -c $< -o $@
+$(OBJ_DIR)%.c.o: $(SRC_DIR)%.c $(HDR)
+	$(CC) $(CFLAGS) -I $(SRC_DIR) -c $< -o $@
 
 iso: $(NAME).iso
 

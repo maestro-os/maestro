@@ -1,4 +1,4 @@
-#include "errno.h"
+#include <libc/errno.h>
 
 errno_t *__errno_location(void)
 {

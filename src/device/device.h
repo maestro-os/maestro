@@ -1,7 +1,7 @@
 #ifndef DEVICE_H
 # define DEVICE_H
 
-# include "../ps2/ps2.h"
+# include <ps2/ps2.h>
 
 # define KEYS_COUNT			0xbe
 # define EXTRA_KEYS_CODE	0xe0

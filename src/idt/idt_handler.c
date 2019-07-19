@@ -1,7 +1,7 @@
-#include "../pic/pic.h"
-#include "../pit/pit.h"
-#include "../process/process.h"
-#include "../ps2/ps2.h"
+#include <pic/pic.h>
+#include <pit/pit.h>
+#include <process/process.h>
+#include <ps2/ps2.h>
 
 void irq0_handler()
 {

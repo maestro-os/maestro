@@ -1,7 +1,7 @@
 #ifndef PIC_H
 # define PIC_H
 
-#include "../kernel.h"
+# include <kernel.h>
 
 # define PIC_MASTER_COMMAND	0x20
 # define PIC_MASTER_DATA	0x21

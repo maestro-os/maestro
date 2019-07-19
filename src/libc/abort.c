@@ -1,4 +1,4 @@
-#include "stdlib.h"
+#include <libc/stdlib.h>
 
 __attribute__((noreturn))
 void abort(void)

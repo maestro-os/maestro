@@ -1,5 +1,5 @@
-#include "stdlib.h"
-#include "errno.h"
+#include <libc/stdlib.h>
+#include <libc/errno.h>
 
 void *reallocarray(void *ptr, size_t nmemb, size_t size)
 {

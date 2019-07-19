@@ -1,5 +1,5 @@
-#include "kmalloc_internal.h"
-#include "../libc/errno.h"
+#include <memory/kmalloc_internal.h>
+#include <libc/errno.h>
 
 void kmalloc_init(void)
 {

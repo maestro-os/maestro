@@ -1,4 +1,4 @@
-#include "pit.h"
+#include <pit/pit.h>
 
 static unsigned current_frequency;
 

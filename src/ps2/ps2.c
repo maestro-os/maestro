@@ -1,4 +1,4 @@
-#include "ps2.h"
+#include <ps2/ps2.h>
 
 static void (*keyboard_hook)(const uint8_t) = NULL;
 static int8_t leds_state = 0;

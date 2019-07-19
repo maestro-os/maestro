@@ -1,4 +1,4 @@
-#include "tty.h"
+#include <tty/tty.h>
 
 static uint8_t get_nbr(const char *buffer, size_t *i, const size_t count)
 {

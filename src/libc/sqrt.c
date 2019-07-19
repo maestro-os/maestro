@@ -1,4 +1,4 @@
-#include "math.h"
+#include <libc/math.h>
 
 // TODO errno
 double sqrt(double x)

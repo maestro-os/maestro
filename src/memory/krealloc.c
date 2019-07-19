@@ -1,4 +1,4 @@
-#include "memory.h"
+#include <memory/memory.h>
 
 void *krealloc(void *ptr, const size_t size)
 {

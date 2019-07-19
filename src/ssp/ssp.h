@@ -1,7 +1,7 @@
 #ifndef SSP_H
 # define SSP_H
 
-# include "../libc/string.h"
+# include <libc/string.h>
 
 // TODO Use randomly generated values
 # if UINTPTR_MAX == UINT32_MAX

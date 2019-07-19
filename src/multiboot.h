@@ -1,7 +1,7 @@
 #ifndef MULTIBOOT_H
 # define MULTIBOOT_H
 
-# include "libc/string.h"
+# include <libc/string.h>
 
 # define MULTIBOOT2_BOOTLOADER_MAGIC			0x36d76289
 # define MULTIBOOT_TAG_ALIGN					8

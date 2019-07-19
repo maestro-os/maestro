@@ -1,6 +1,6 @@
-#include "memory.h"
-#include "../idt/idt.h"
-#include "../ps2/ps2.h"
+#include <memory/memory.h>
+#include <idt/idt.h>
+#include <ps2/ps2.h>
 
 void enable_a20(void)
 {

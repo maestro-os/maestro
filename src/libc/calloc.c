@@ -1,5 +1,5 @@
-#include "stdlib.h"
-#include "errno.h"
+#include <libc/stdlib.h>
+#include <libc/errno.h>
 
 void *calloc(size_t nmemb, size_t size)
 {

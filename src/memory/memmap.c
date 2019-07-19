@@ -1,4 +1,4 @@
-#include "memory.h"
+#include <memory/memory.h>
 
 const char *memmap_type(const uint32_t type)
 {

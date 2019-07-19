@@ -1,9 +1,9 @@
 #ifndef SLAB_H
 # define SLAB_H
 
-# include "../memory.h"
-# include "../../util/util.h"
-# include "../../libc/string.h"
+# include <memory/memory.h>
+# include <util/util.h>
+# include <libc/string.h>
 
 # define OBJ_USED	0b1
 

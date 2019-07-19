@@ -1,4 +1,4 @@
-#include "string.h"
+#include <libc/string.h>
 
 // TODO Rewrite
 __attribute__((hot))

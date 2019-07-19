@@ -1,4 +1,4 @@
-#include "string.h"
+#include <libc/string.h>
 
 // TODO Rewrite
 size_t strlen(const char *s)

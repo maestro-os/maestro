@@ -1,5 +1,5 @@
-#include "buddy.h"
-#include "../../idt/idt.h"
+#include <memory/buddy/buddy.h>
+#include <idt/idt.h>
 
 // TODO Crashes happen when allocating the whole memory
 

@@ -1,9 +1,9 @@
 #ifndef PIT_H
 # define PIT_H
 
-# include "../kernel.h"
-# include "../memory/memory.h"
-# include "../util/util.h"
+# include <kernel.h>
+# include <memory/memory.h>
+# include <util/util.h>
 
 # define PIT_CHANNEL_0	0x40
 # define PIT_CHANNEL_1	0x41

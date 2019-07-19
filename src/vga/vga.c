@@ -1,4 +1,4 @@
-#include "vga.h"
+#include <vga/vga.h>
 
 void vga_clear(void)
 {

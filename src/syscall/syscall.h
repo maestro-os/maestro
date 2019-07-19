@@ -1,10 +1,11 @@
 #ifndef SYSCALL_H
 # define SYSCALL_H
 
-# include "../memory/memory.h"
+# include <memory/memory.h>
 
-# include "../libc/errno.h"
-# include "../libc/string.h"
+# include <libc/errno.h>
+# include <libc/string.h>
+# include <libc/sys/types.h>
 
 # define MAP_FAILED	((void *) -1)
 

@@ -1,9 +1,9 @@
 #ifndef CPU_H
 # define CPU_H
 
-# include "../kernel.h"
-# include "../libc/stdio.h"
-# include "../libc/string.h"
+# include <kernel.h>
+# include <libc/stdio.h>
+# include <libc/string.h>
 
 # define MANUFACTURER_ID_LENGTH	12
 

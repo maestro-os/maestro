@@ -1,5 +1,5 @@
-#include "util.h"
-#include "../memory/memory.h"
+#include <util/util.h>
+#include <memory/memory.h>
 
 #define UNIT_SIZE		   	(sizeof(uint8_t))
 #define UNIT(bitmap, index)	(bitmap + (index / UNIT_SIZE))

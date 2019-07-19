@@ -1,4 +1,4 @@
-#include "math.h"
+#include <libc/math.h>
 
 double log(double x)
 {

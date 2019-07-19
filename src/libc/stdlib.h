@@ -1,7 +1,7 @@
 #ifndef _STDLIB_H
 # define _STDLIB_H
 
-# include "string.h"
+# include <libc/string.h>
 
 # ifdef KERNEL_MAGIC
 #  define ABORT_INSTRUCTION	panic("Aborted")

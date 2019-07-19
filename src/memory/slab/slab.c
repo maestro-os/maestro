@@ -1,4 +1,4 @@
-#include "slab.h"
+#include <memory/slab/slab.h>
 
 static cache_t *caches;
 static cache_t *caches_cache;

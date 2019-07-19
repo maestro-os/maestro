@@ -1,5 +1,5 @@
-#include "stdio.h"
-#include "../tty/tty.h"
+#include <libc/stdio.h>
+#include <tty/tty.h>
 
 typedef struct specifier
 {
@@ -95,7 +95,7 @@ static int char_handler(const specifier_t *specifier, va_list *args)
 	// TODO Alignements, etc...
 	(void) specifier;
 
-	return putchar(va_arg(*args, char));
+	return putchar(va_arg(*args, int));
 }
 
 static int signed_decimal_handler(const specifier_t *specifier, va_list *args)
@@ -119,7 +119,7 @@ static int float_handler(const specifier_t *specifier, va_list *args)
 	// TODO Alignements, etc...
 	(void) specifier;
 
-	return putfloat(va_arg(*args, float));
+	return putfloat(va_arg(*args, double));
 }
 
 static int string_handler(const specifier_t *specifier, va_list *args)

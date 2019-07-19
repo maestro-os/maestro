@@ -1,4 +1,4 @@
-#include "string.h"
+#include <libc/string.h>
 
 __attribute__((hot))
 void bzero(void *s, size_t n)

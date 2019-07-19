@@ -1,4 +1,4 @@
-#include "ata.h"
+#include <ata/ata.h>
 
 __attribute__((cold))
 void ata_init(void)

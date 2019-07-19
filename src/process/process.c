@@ -1,5 +1,5 @@
-#include "process.h"
-#include "../libc/errno.h"
+#include <process/process.h>
+#include <libc/errno.h>
 
 static cache_t *processes_cache;
 static cache_t *children_cache;

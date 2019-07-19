@@ -1,4 +1,4 @@
-#include "stdlib.h"
+#include <libc/stdlib.h>
 
 int atoi(const char *nptr)
 {

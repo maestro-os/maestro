@@ -1,8 +1,8 @@
 #ifndef VGA_H
 # define VGA_H
 
-# include "../kernel.h"
-# include "../libc/string.h"
+# include <kernel.h>
+# include <libc/string.h>
 
 # define VGA_WIDTH			80
 # define VGA_HEIGHT			25

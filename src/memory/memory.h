@@ -1,10 +1,10 @@
 #ifndef MEMORY_H
 # define MEMORY_H
 
-# include "../kernel.h"
-# include "buddy/buddy.h"
-# include "slab/slab.h"
-# include "../util/util.h"
+# include <kernel.h>
+# include <memory/buddy/buddy.h>
+# include <memory/slab/slab.h>
+# include <util/util.h>
 
 # define PAGE_SIZE		0x1000
 

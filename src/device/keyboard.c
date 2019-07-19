@@ -1,4 +1,4 @@
-#include "device.h"
+#include <device/device.h>
 
 static key_state_t key_states[KEYS_COUNT];
 static bool capslock_state = false;

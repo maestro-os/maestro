@@ -1,4 +1,4 @@
-#include "string.h"
+#include <libc/string.h>
 
 __attribute__((hot))
 void *memcpy(void *dest, const void *src, size_t n)

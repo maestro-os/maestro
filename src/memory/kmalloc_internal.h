@@ -1,8 +1,8 @@
 #ifndef KMALLOC_INTERNAL
 # define KMALLOC_INTERNAL
 
-# include "memory.h"
-# include "slab/slab.h"
+# include <memory/memory.h>
+# include <memory/slab/slab.h>
 
 # define KMALLOC_CACHES_COUNT	7
 

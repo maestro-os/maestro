@@ -1,5 +1,5 @@
-#include "stdlib.h"
-#include "../memory/memory.h"
+#include <libc/stdlib.h>
+#include <memory/memory.h>
 
 void free(void *ptr)
 {

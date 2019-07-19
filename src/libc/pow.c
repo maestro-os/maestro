@@ -1,5 +1,5 @@
-#include "math.h"
-#include "string.h"
+#include <libc/math.h>
+#include <libc/string.h>
 
 // TODO Add not-round and negative y handling
 double pow(double x, double y)

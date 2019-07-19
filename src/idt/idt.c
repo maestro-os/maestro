@@ -1,6 +1,6 @@
-#include "../kernel.h"
-#include "idt.h"
-#include "../pic/pic.h"
+#include <kernel.h>
+#include <idt/idt.h>
+#include <pic/pic.h>
 
 static interrupt_descriptor_t id[48];
 

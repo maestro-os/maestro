@@ -1,7 +1,7 @@
 #ifndef BUDDY_H
 # define BUDDY_H
 
-# include "../memory.h"
+# include <memory/memory.h>
 
 # define BLOCK_NULL					(~((size_t) 0))
 # define BLOCK_SIZE(order)			(POW2(order) * PAGE_SIZE)
