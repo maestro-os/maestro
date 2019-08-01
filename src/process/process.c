@@ -256,7 +256,7 @@ static void switch_processes(void)
 	// TODO Enable paging on kernel?
 	p->state = RUNNING;
 	tss_entry = p->tss;
-	context_switch((void *) tss_entry.esp0, (void *) tss_entry.eip);
+	context_switch((void *) tss_entry.esp, (void *) tss_entry.eip);
 }
 
 void process_tick(void)

@@ -22,6 +22,7 @@
 .global GDT_USER_CODE_OFFSET
 .global GDT_USER_DATA_OFFSET
 .global GDT_TSS_OFFSET
+.global gdt
 
 .set GDT_KERNEL_CODE_OFFSET, (gdt_kernel_code - gdt_start)
 .set GDT_KERNEL_DATA_OFFSET, (gdt_kernel_data - gdt_start)
@@ -140,7 +141,7 @@ gdt_user_code:
 	.word 0xffff
 	.word 0
 	.byte 0
-	.byte 0b11111110
+	.byte 0b11111010
 	.byte 0b11001111
 	.byte 0
 

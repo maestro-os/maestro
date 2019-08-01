@@ -1,16 +1,30 @@
 .global context_switch
 
 context_switch:
+	push %ebp
+	mov %esp, %ebp
+
+	xor %eax, %eax
 	mov $GDT_USER_DATA_OFFSET, %ax
+	or $3, %ax
 	mov %ax, %ds
 	mov %ax, %es
 	mov %ax, %fs
 	mov %ax, %gs
 
-	push $GDT_USER_DATA_OFFSET
-	push 4(%esp)
+	push %eax
+	push 8(%ebp)
+
 	pushf
-	push $GDT_USER_CODE_OFFSET
-	push 8(%esp)
+
+	xor %eax, %eax
+	mov $GDT_USER_CODE_OFFSET, %ax
+	or $3, %ax
+	push %eax
+	push 12(%ebp)
 
 	iret
+
+	mov %ebp, %esp
+	pop %ebp
+	ret
