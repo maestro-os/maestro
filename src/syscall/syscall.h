@@ -28,6 +28,9 @@ typedef sys_ret_t (*sys_handler_t)(const sys_info_t *);
 sys_ret_t syscall_handler(const sys_info_t *info);
 
 sys_ret_t sys_write(const sys_info_t *info);
+sys_ret_t sys_fork(const sys_info_t *info);
+sys_ret_t sys_exit(const sys_info_t *info);
+sys_ret_t sys_waitpid(const sys_info_t *info);
 // TODO
 
 #endif
