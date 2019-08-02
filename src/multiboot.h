@@ -345,6 +345,6 @@ typedef struct boot_info_t
 	// TODO
 } boot_info_t;
 
-boot_info_t read_boot_tags(const void *ptr);
+void read_boot_tags(void *ptr, boot_info_t *info);
 
 #endif

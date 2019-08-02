@@ -22,15 +22,14 @@ void pit_set_count(const uint16_t count)
 	outb(PIT_CHANNEL_0, (count >> 8) & 0xff);
 }
 
-#include "../libc/stdio.h"
 __attribute__((hot))
 void pit_set_frequency(const unsigned frequency)
 {
-	current_frequency = frequency;
-
 	unsigned c;
-	if((c = UPPER_DIVISION(BASE_FREQUENCY, frequency)) & ~0xffff) c = 0;
 
+	current_frequency = frequency;
+	if((c = UPPER_DIVISION(BASE_FREQUENCY, frequency)) & ~0xffff)
+		c = 0;
 	pit_set_count(c);
 }
 

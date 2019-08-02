@@ -1,9 +1,12 @@
 #include <pic/pic.h>
 
+__attribute__((cold))
 void pic_init(const uint8_t offset1, const uint8_t offset2)
 {
-	const int8_t mask1 = inb(PIC_MASTER_DATA);
-	const int8_t mask2 = inb(PIC_SLAVE_DATA);
+	int8_t mask1, mask2;
+
+	mask1 = inb(PIC_MASTER_DATA);
+	mask2 = inb(PIC_SLAVE_DATA);
 
 	// TODO io_wait?
 	outb(PIC_MASTER_COMMAND, ICW1_INIT | ICW1_ICW4);
@@ -22,6 +25,7 @@ void pic_init(const uint8_t offset1, const uint8_t offset2)
 	outb(PIC_SLAVE_DATA, mask2);
 }
 
+__attribute__((hot))
 void pic_EOI(const uint8_t irq)
 {
 	if(irq >= 0x8)

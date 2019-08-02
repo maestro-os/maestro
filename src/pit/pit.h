@@ -31,13 +31,13 @@
 # define BASE_FREQUENCY	1193180
 
 void pit_init(void);
-void pit_set_count(const uint16_t count);
-void pit_set_frequency(const unsigned frequency);
+void pit_set_count(uint16_t count);
+void pit_set_frequency(unsigned frequency);
 
-void pit_sleep(const unsigned duration);
+void pit_sleep(unsigned duration);
 
-void beep(const unsigned frequency);
+void beep(unsigned frequency);
 void stop_beep(void);
-void beep_during(const unsigned frequency, const unsigned duration);
+void beep_during(unsigned frequency, unsigned duration);
 
 #endif

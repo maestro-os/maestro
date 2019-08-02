@@ -2,7 +2,7 @@
 
 void kfree(void *ptr)
 {
-	if(!ptr) return;
-
+	if(!ptr)
+		return;
 	// TODO
 }

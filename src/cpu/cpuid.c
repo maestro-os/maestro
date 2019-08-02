@@ -9,5 +9,5 @@ void cpuid(void)
 	cpuid_init(&highest_call, manufacturer);
 
 	printf("CPU manufacturer: %s\n", manufacturer);
-	// TODO
+	// TODO EFLAGS
 }

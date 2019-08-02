@@ -54,11 +54,44 @@ static driver_t drivers[] = {
 	{"ATA", ata_init}
 };
 
+__attribute__((hot))
+static void print_memory_mapping(void)
+{
+	const multiboot_mmap_entry_t *t;
+
+	printf("--- Memory mapping ---\n");
+	printf("<begin> <end> <type>\n");
+	for(size_t i = 0; i < memory_maps_count; ++i)
+	{
+		t = memory_maps + i;
+		printf("- %p %p %s\n", (void *) (uintptr_t) t->addr,
+			(void *) (uintptr_t) t->addr + t->len, memmap_type(t->type));
+	}
+	printf("\n");
+}
+
+__attribute__((hot))
+static void print_slabs(void)
+{
+	cache_t *c;
+
+	printf("--- Slab allocator caches ---\n");
+	printf("<name> <slabs> <objsize> <objects_count>\n");
+	c = cache_getall();
+	while(c)
+	{
+		printf("%s %u %u %u\n", c->name, (unsigned) c->slabs,
+			(unsigned) c->objsize, (unsigned) c->objects_count); // TODO Use %zu
+		c = c->next;
+	}
+	printf("\n");
+}
+
 __attribute__((cold))
 static inline void init_driver(const driver_t *driver)
 {
-	if(!driver) return;
-
+	if(!driver)
+		return;
 	printf("%s driver initialization...\n", driver->name);
 	driver->init_func();
 }
@@ -66,7 +99,8 @@ static inline void init_driver(const driver_t *driver)
 __attribute__((cold))
 static inline void init_drivers(void)
 {
-	for(size_t i = 0; i < sizeof(drivers) / sizeof(*drivers); ++i)
+	size_t i = 0;
+	for(; i < sizeof(drivers) / sizeof(*drivers); ++i)
 		init_driver(drivers + i);
 }
 
@@ -109,29 +143,25 @@ __attribute__((cold))
 void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	void *kernel_end)
 {
+	boot_info_t boot_info;
+
 	// TODO Fix
 	if(!check_a20())
 		enable_a20();
-
 	tty_init();
 
 	// TODO Add first Multiboot version support
 	if(magic != MULTIBOOT2_BOOTLOADER_MAGIC)
 		PANIC("Non Multiboot2-compliant bootloader!", 0);
-
 	if(((uintptr_t) multiboot_ptr) & 7)
 		PANIC("Boot informations structure's address is not aligned!", 0);
 
 	printf("Booting crumbleos kernel version %s...\n", KERNEL_VERSION);
 	printf("Retrieving CPU informations...\n");
-
-	// TODO
-	//cpuid();
+	// TODO cpuid();
 
 	printf("Retrieving Multiboot2 data...\n");
-
-	const boot_info_t boot_info = read_boot_tags(multiboot_ptr);
-
+	read_boot_tags(multiboot_ptr, &boot_info);
 	printf("Command line: %s\n", boot_info.cmdline);
 	printf("Bootloader name: %s\n", boot_info.loader_name);
 	printf("Basic components initialization...\n");
@@ -140,21 +170,9 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	pit_init();
 
 	printf("Memory management initialization...\n");
-
 #ifdef KERNEL_DEBUG
-	printf("--- Memory mapping ---\n");
-	printf("<begin> <end> <type>\n");
-
-	for(size_t i = 0; i < memory_maps_count; ++i)
-	{
-		const multiboot_mmap_entry_t *t = memory_maps + i;
-		printf("- %p %p %s\n", (void *) (uintptr_t) t->addr,
-			(void *) (uintptr_t) t->addr + t->len, memmap_type(t->type));
-	}
-
-	printf("\n");
+	print_memory_mapping();
 #endif
-
 	heap_begin = kernel_end;
 	heap_end = (void *) (boot_info.mem_upper * 1024);
 	available_memory = heap_end - heap_begin;
@@ -162,43 +180,24 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	printf("Available memory: %u bytes (%u pages)\n",
 		(unsigned) available_memory, (unsigned) available_memory / PAGE_SIZE);
 	printf("Kernel end: %p; Heap end: %p\n", kernel_end, heap_end);
-
 	buddy_init();
-
 	printf("Buddy allocator begin: %p\n", buddy_begin);
-
 	slab_init();
 	kmalloc_init();
-
 #ifdef KERNEL_DEBUG
-	printf("--- Slab allocator caches ---\n");
-	printf("<name> <slabs> <objsize> <objects_count>\n");
-
-	cache_t *c = cache_getall();
-
-	while(c)
-	{
-		printf("%s %u %u %u\n", c->name, (unsigned) c->slabs,
-			(unsigned) c->objsize, (unsigned) c->objects_count); // TODO Use %zu
-		c = c->next;
-	}
-
-	printf("\n");
+	print_slabs();
 #endif
 
 	printf("Drivers initialization...\n");
-
 	init_drivers();
 
 	printf("Keyboard initialization...\n");
-
 	keyboard_init();
 	keyboard_set_input_hook(tty_input_hook);
 	keyboard_set_ctrl_hook(tty_ctrl_hook);
 	keyboard_set_erase_hook(tty_erase_hook);
 
 	printf("Processes initialization...\n");
-
 	process_init();
 
 	// TODO Test

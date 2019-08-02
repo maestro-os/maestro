@@ -10,6 +10,5 @@ const char *memmap_type(const uint32_t type)
 		case MULTIBOOT_MEMORY_NVS: return "Hibernate";
 		case MULTIBOOT_MEMORY_BADRAM: return "Bad RAM";
 	}
-
 	return NULL;
 }

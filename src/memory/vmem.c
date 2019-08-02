@@ -24,11 +24,9 @@ static void free_page_table(vmem_t table, const bool mem)
 		{
 			if(!(table[i] & PAGING_PAGE_PRESENT))
 				continue;
-
 			buddy_free((void *) (table[i] & PAGING_ADDR_MASK));
 		}
 	}
-
 	buddy_free(table);
 }
 
@@ -36,22 +34,21 @@ __attribute__((hot))
 static vmem_t clone_page_table(vmem_t from, const bool mem_dup)
 {
 	vmem_t v;
-	if((v = new_vmem_obj()))
+	size_t i;
+	void *old_page, *new_page;
+
+	if(!(v = new_vmem_obj()))
+		return NULL;
+	for(i = 0; i < PAGING_TABLE_SIZE; ++i)
 	{
-		for(size_t i = 0; i < PAGING_TABLE_SIZE; ++i)
-		{
-			if(!(from[i] & PAGING_PAGE_PRESENT))
-				continue;
-
-			void *old_page = (void *) (from[i] & PAGING_ADDR_MASK);
-			void *new_page = (mem_dup ? clone_page(old_page) : old_page);
-			if(!new_page)
-				goto fail;
-
-			v[i] = ((uint32_t) new_page) | (from[i] & PAGING_FLAGS_MASK);
-		}
+		if(!(from[i] & PAGING_PAGE_PRESENT))
+			continue;
+		old_page = (void *) (from[i] & PAGING_ADDR_MASK);
+		new_page = (mem_dup ? clone_page(old_page) : old_page);
+		if(!new_page)
+			goto fail;
+		v[i] = ((uint32_t) new_page) | (from[i] & PAGING_FLAGS_MASK);
 	}
-
 	return v;
 
 fail:
@@ -62,26 +59,21 @@ fail:
 __attribute__((hot))
 vmem_t vmem_clone(vmem_t vmem, const bool mem_dup)
 {
-	if(!vmem)
-		return NULL;
-
 	vmem_t v;
-	if((v = vmem_init()))
+	size_t i;
+	void *old_table, *new_table;
+
+	if(!vmem || !(v = vmem_init()))
+		return NULL;
+	for(i = 0; i < PAGING_DIRECTORY_SIZE; ++i)
 	{
-		for(size_t i = 0; i < PAGING_DIRECTORY_SIZE; ++i)
-		{
-			if(!(vmem[i] & PAGING_TABLE_PRESENT))
-				continue;
-
-			void *old_table_ptr = (void *) (vmem[i] & PAGING_ADDR_MASK);
-			void *new_table_ptr;
-			if(!(new_table_ptr = clone_page_table(old_table_ptr, mem_dup)))
-				goto fail;
-
-			v[i] = ((uint32_t) new_table_ptr) | (vmem[i] & PAGING_FLAGS_MASK);
-		}
+		if(!(vmem[i] & PAGING_TABLE_PRESENT))
+			continue;
+		old_table = (void *) (vmem[i] & PAGING_ADDR_MASK);
+		if(!(new_table = clone_page_table(old_table, mem_dup)))
+			goto fail;
+		v[i] = ((uint32_t) new_table) | (vmem[i] & PAGING_FLAGS_MASK);
 	}
-
 	return v;
 
 fail:
@@ -92,17 +84,17 @@ fail:
 __attribute__((hot))
 void *vmem_translate(vmem_t vmem, void *ptr)
 {
-	const uintptr_t remain = (uintptr_t) ptr & 0xfff;
-	const uintptr_t table = ((uintptr_t) ptr >> 12) & 0x3ff;
-	const uintptr_t page = ((uintptr_t) ptr >> 22) & 0x3ff;
+	uintptr_t remain, table, page;
+	vmem_t table_obj;
 
+	remain = (uintptr_t) ptr & 0xfff;
+	table = ((uintptr_t) ptr >> 12) & 0x3ff;
+	page = ((uintptr_t) ptr >> 22) & 0x3ff;
 	if(!(vmem[table] & PAGING_TABLE_PRESENT))
 		return NULL;
-
-	vmem_t table_obj = (void *) (vmem[table] & PAGING_ADDR_MASK);
+	table_obj = (void *) (vmem[table] & PAGING_ADDR_MASK);
 	if(!(table_obj[page] & PAGING_PAGE_PRESENT))
 		return NULL;
-
 	return (void *) ((table_obj[page] & PAGING_ADDR_MASK) | remain);
 }
 
@@ -119,31 +111,25 @@ bool vmem_contains(vmem_t vmem, const void *ptr, const size_t size)
 __attribute__((hot))
 void *vmem_alloc_pages(vmem_t vmem, const size_t pages)
 {
-	if(!vmem)
-		return NULL;
-
 	void *ptr;
-	if(!(ptr = buddy_alloc(pages)))
+	uintptr_t table, page;
+	vmem_t table_ptr;
+
+	if(!vmem || !(ptr = buddy_alloc(pages)))
 		return NULL;
-
-	const uintptr_t table = ((uintptr_t) ptr >> 12) & 0x3ff;
-	const uintptr_t page = ((uintptr_t) ptr >> 22) & 0x3ff;
-
+	table = ((uintptr_t) ptr >> 12) & 0x3ff;
+	page = ((uintptr_t) ptr >> 22) & 0x3ff;
 	if(!(vmem[table] & PAGING_TABLE_PRESENT))
 	{
-		vmem_t table_ptr;
 		if(!(table_ptr = new_vmem_obj()))
 		{
 			buddy_free(ptr);
 			return (NULL);
 		}
-
 		// TODO vmem[table] with table
 	}
-
 	// TODO Set table entry
 	(void) page;
-
 	return ptr;
 }
 
@@ -152,9 +138,7 @@ void vmem_free_pages(vmem_t vmem, const size_t pages, const bool mem_free)
 {
 	if(!vmem)
 		return;
-
 	// TODO
-	(void) vmem;
 	(void) pages;
 	(void) mem_free;
 }
@@ -162,16 +146,15 @@ void vmem_free_pages(vmem_t vmem, const size_t pages, const bool mem_free)
 __attribute__((hot))
 void vmem_free(vmem_t vmem, const bool mem_free)
 {
+	size_t i;
+
 	if(!vmem)
 		return;
-
-	for(size_t i = 0; i < PAGING_DIRECTORY_SIZE; ++i)
+	for(i = 0; i < PAGING_DIRECTORY_SIZE; ++i)
 	{
 		if(!(vmem[i] & PAGING_TABLE_PRESENT))
 			continue;
-
 		free_page_table((void *) (vmem[i] & PAGING_ADDR_MASK), mem_free);
 	}
-
 	buddy_free(vmem);
 }

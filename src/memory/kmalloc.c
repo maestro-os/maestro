@@ -1,6 +1,7 @@
 #include <memory/kmalloc_internal.h>
 #include <libc/errno.h>
 
+__attribute__((cold))
 void kmalloc_init(void)
 {
 	kmalloc_caches[0] = cache_create("kmalloc8", 8, PAGE_SIZE / 8,
@@ -20,44 +21,48 @@ void kmalloc_init(void)
 	// TODO More kmalloc caches?
 }
 
+__attribute__((hot))
 static cache_t *get_cache(const size_t size)
 {
-	for(size_t i = 0; i < KMALLOC_CACHES_COUNT; ++i)
-	{
-		if(!kmalloc_caches[i]) continue;
+	size_t i;
 
+	for(i = 0; i < KMALLOC_CACHES_COUNT; ++i)
+	{
+		if(!kmalloc_caches[i])
+			continue;
 		if(kmalloc_caches[i]->objsize >= size)
 			return kmalloc_caches[i];
 	}
-
 	return NULL;
 }
 
+__attribute__((hot))
 void *kmalloc(const size_t size)
 {
-	if(size == 0) return NULL;
-	errno = 0;
-
-	cache_t *cache = get_cache(size);
+	cache_t *cache;
 	void *ptr;
 
-	if(cache)
+	if(size == 0)
+		return NULL;
+	errno = 0;
+	if((cache = get_cache(size)))
 		ptr = cache_alloc(cache);
 	else
 	{
 		// TODO Use unused space for further allocations
 		ptr = buddy_alloc(buddy_get_order(size));
 	}
-
 	if(!ptr)
 		errno = ENOMEM;
 	return ptr;
 }
 
+__attribute__((hot))
 void *kmalloc_zero(const size_t size)
 {
-	void *ptr = kmalloc(size);
-	bzero(ptr, size);
+	void *ptr;
 
+	if((ptr = kmalloc(size)))
+		bzero(ptr, size);
 	return ptr;
 }

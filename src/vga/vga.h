@@ -34,7 +34,7 @@
 typedef int8_t vgacolor_t;
 typedef int16_t vgapos_t;
 
-inline vgacolor_t vga_entry_color(const vgacolor_t fg, const vgacolor_t bg)
+inline vgacolor_t vga_entry_color(vgacolor_t fg, vgacolor_t bg)
 {
 	return fg | (bg << 4);
 }
@@ -42,11 +42,10 @@ inline vgacolor_t vga_entry_color(const vgacolor_t fg, const vgacolor_t bg)
 void vga_clear(void);
 void vga_enable_cursor(void);
 void vga_disable_cursor(void);
-void vga_move_cursor(const vgapos_t x, const vgapos_t y);
-void vga_putchar_color(const char c, const uint8_t color,
-	const vgapos_t x, const vgapos_t y);
+void vga_move_cursor(vgapos_t x, vgapos_t y);
+void vga_putchar_color(char c, uint8_t color, vgapos_t x, vgapos_t y);
 
-inline void vga_putchar(const char c, const vgapos_t x, const vgapos_t y)
+inline void vga_putchar(char c, vgapos_t x, vgapos_t y)
 {
 	vga_putchar_color(c, VGA_DEFAULT_COLOR, x, y);
 }

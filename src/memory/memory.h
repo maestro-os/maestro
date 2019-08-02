@@ -47,29 +47,29 @@ multiboot_mmap_entry_t *memory_maps;
 extern bool check_a20(void);
 void enable_a20(void);
 
-const char *memmap_type(const uint32_t type);
+const char *memmap_type(uint32_t type);
 
-block_order_t buddy_get_order(const size_t size);
-void *buddy_alloc(const block_order_t order);
-void *buddy_alloc_zero(const block_order_t order);
+block_order_t buddy_get_order(size_t size);
+void *buddy_alloc(block_order_t order);
+void *buddy_alloc_zero(block_order_t order);
 void buddy_free(void *ptr);
 
 void *clone_page(void *ptr);
 
-void *kmalloc(const size_t size);
-void *kmalloc_zero(const size_t size);
-void *krealloc(void *ptr, const size_t size);
+void *kmalloc(size_t size);
+void *kmalloc_zero(size_t size);
+void *krealloc(void *ptr, size_t size);
 void kfree(void *ptr);
 
 vmem_t vmem_init(void);
-vmem_t vmem_clone(vmem_t vmem, const bool mem_dup);
+vmem_t vmem_clone(vmem_t vmem, bool mem_dup);
 void *vmem_translate(vmem_t vmem, void *ptr);
-bool vmem_contains(vmem_t vmem, const void *ptr, const size_t size);
-void *vmem_alloc_pages(vmem_t vmem, const size_t pages);
-void vmem_free_pages(vmem_t vmem, const size_t pages, const bool mem_free);
-void vmem_free(vmem_t vmem, const bool mem_free);
+bool vmem_contains(vmem_t vmem, const void *ptr, size_t size);
+void *vmem_alloc_pages(vmem_t vmem, size_t pages);
+void vmem_free_pages(vmem_t vmem, size_t pages, bool mem_free);
+void vmem_free(vmem_t vmem, bool mem_free);
 
-extern void paging_enable(const vmem_t vmem);
+extern void paging_enable(vmem_t vmem);
 extern void tlb_reload(void);
 extern void paging_disable(void);
 

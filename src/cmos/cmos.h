@@ -31,6 +31,6 @@ const char *floppy_types[] = {
 };
 
 uint8_t cmos_detect_floppy(void);
-uint8_t cmos_get_time(const uint8_t reg);
+uint8_t cmos_get_time(uint8_t reg);
 
 #endif
