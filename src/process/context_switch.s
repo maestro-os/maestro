@@ -1,7 +1,7 @@
 .global context_switch
 
 context_switch:
-	push %ebp
+	push %ebp # TODO Remove junk on stack (possible leak on stack)
 	mov %esp, %ebp
 
 	xor %eax, %eax

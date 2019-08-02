@@ -64,6 +64,7 @@ void kfree(void *ptr);
 vmem_t vmem_init(void);
 vmem_t vmem_clone(vmem_t vmem, const bool mem_dup);
 void *vmem_translate(vmem_t vmem, void *ptr);
+bool vmem_contains(vmem_t vmem, const void *ptr, const size_t size);
 void *vmem_alloc_pages(vmem_t vmem, const size_t pages);
 void vmem_free_pages(vmem_t vmem, const size_t pages, const bool mem_free);
 void vmem_free(vmem_t vmem, const bool mem_free);

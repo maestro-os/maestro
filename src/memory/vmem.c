@@ -107,6 +107,16 @@ void *vmem_translate(vmem_t vmem, void *ptr)
 }
 
 __attribute__((hot))
+bool vmem_contains(vmem_t vmem, const void *ptr, const size_t size)
+{
+	// TODO
+	(void) vmem;
+	(void) ptr;
+	(void) size;
+	return true;
+}
+
+__attribute__((hot))
 void *vmem_alloc_pages(vmem_t vmem, const size_t pages)
 {
 	if(!vmem)

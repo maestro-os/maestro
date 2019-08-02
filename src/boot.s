@@ -18,11 +18,12 @@
 .global switch_protected
 
 .global GDT_KERNEL_CODE_OFFSET
-.global GDT_KERNEL_USER_OFFSET
+.global GDT_KERNEL_DATA_OFFSET
 .global GDT_USER_CODE_OFFSET
 .global GDT_USER_DATA_OFFSET
 .global GDT_TSS_OFFSET
 .global gdt
+.global gdt_tss
 
 .set GDT_KERNEL_CODE_OFFSET, (gdt_kernel_code - gdt_start)
 .set GDT_KERNEL_DATA_OFFSET, (gdt_kernel_data - gdt_start)
@@ -112,8 +113,6 @@ multiboot_entry:
 	call _fini
 
 .section .data
-
-.global gdt_tss
 
 .align 8
 

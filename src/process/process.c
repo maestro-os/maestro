@@ -96,6 +96,13 @@ process_t *new_process(process_t *parent, void (*begin)())
 	new_proc->parent = parent;
 	new_proc->begin = begin;
 	new_proc->tss.eip = (uintptr_t) begin;
+	new_proc->tss.ss0 = 0x10; // TODO
+	new_proc->tss.es = 0x23; // TODO
+	new_proc->tss.cs = 0x18; // TODO
+	new_proc->tss.ss = 0x23; // TODO
+	new_proc->tss.ds = 0x23; // TODO
+	new_proc->tss.fs = 0x23; // TODO
+	new_proc->tss.gs = 0x23; // TODO
 
 	// TODO Set child in parent (alloc child)
 
@@ -201,6 +208,7 @@ static void init_process(process_t *process)
 	process->user_stack = user_stack;
 	process->kernel_stack = kernel_stack;
 	process->tss.cr3 = (uintptr_t) vmem;
+	process->tss.esp0 = (uintptr_t) kernel_stack + PAGE_SIZE - 1; // TODO
 	process->tss.esp = (uintptr_t) user_stack + PAGE_SIZE - 1; // TODO
 	process->state = WAITING;
 }

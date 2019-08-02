@@ -70,13 +70,39 @@ static inline void init_drivers(void)
 		init_driver(drivers + i);
 }
 
+ssize_t write(int fildes, const void *buf, size_t nbyte);
+
+/*static void putchar(char c)
+{
+	write(0, &c, 1);
+}
+
+static void putnbr(int n)
+{
+	if(n < 0)
+	{
+		putchar('-');
+		n = -n;
+	}
+	if(n > 9)
+		putnbr(n / 10);
+	putchar('0' + (n % 10));
+}*/
+
 // TODO Remove
 static void test_process()
 {
-	printf("Test process runned!\n");
+	// TODO Single step analysis (infinite loop)
+	/*ssize_t i;
+	for(size_t j = 0; j < 1000; ++j)
+		i = write(0, "Hello world!\r", 13);*/
+	// TODO Writes `-0`?
+	/*i = write(0, NULL, 13);
+	putnbr(i);*/
+	write(0, "Hello world!\r", 13);
 	while(1)
 		;
-	// TODO Let's see what happens when returning this function
+	// TODO Protect when returning (Triple fault)
 }
 
 __attribute__((cold))
@@ -152,7 +178,7 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 
 	while(c)
 	{
-		printf("%s %u %u %u\n", c->name, (unsigned )c->slabs,
+		printf("%s %u %u %u\n", c->name, (unsigned) c->slabs,
 			(unsigned) c->objsize, (unsigned) c->objects_count); // TODO Use %zu
 		c = c->next;
 	}
@@ -176,6 +202,7 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	process_init();
 
 	// TODO Test
+	idt_set_state(false);
 	errno = 0;
 	process_t *proc = new_process(NULL, test_process);
 	printf("pid: %i, errno: %i\n", (int) proc->pid, (int) errno);

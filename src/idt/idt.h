@@ -13,6 +13,8 @@
 # define ID_PRIVILEGE_RING_3		0b00000110
 # define ID_PRESENT					0b00000001
 
+# define SYSCALL_VECTOR				0x80
+
 typedef struct interrupt_descriptor
 {
 	uint16_t offset;
@@ -28,7 +30,6 @@ extern int idt_load(const void *idt);
 void idt_set_state(const bool enabled);
 void idt_setup_wrap(void (*handler)());
 
-// TODO Return int?
 extern void irq0();
 extern void irq1();
 extern void irq2();
@@ -78,5 +79,7 @@ extern void error28();
 extern void error29();
 extern void error30();
 extern void error31();
+
+extern void syscall();
 
 #endif
