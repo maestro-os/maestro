@@ -4,5 +4,6 @@ void kfree(void *ptr)
 {
 	if(!ptr)
 		return;
-	// TODO
+	// TODO Get cache for ptr
+	// TODO Free from cache
 }

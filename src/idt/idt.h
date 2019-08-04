@@ -13,6 +13,9 @@
 # define ID_PRIVILEGE_RING_3		0b00000110
 # define ID_PRESENT					0b00000001
 
+# define CLI()	asm("cli")
+# define STI()	asm("sti")
+
 # define SYSCALL_VECTOR				0x80
 
 typedef struct interrupt_descriptor
@@ -26,9 +29,6 @@ typedef struct interrupt_descriptor
 
 void idt_init(void);
 extern int idt_load(const void *idt);
-
-void idt_set_state(const bool enabled);
-void idt_setup_wrap(void (*handler)());
 
 extern void irq0();
 extern void irq1();

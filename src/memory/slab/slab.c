@@ -79,7 +79,6 @@ static inline size_t required_size(const size_t objsize,
 	return sizeof(cache_t) + OBJ_TOTAL_SIZE(objsize) * objects_count;
 }
 
-// TODO Spinlock
 __attribute__((hot))
 cache_t *cache_create(const char *name, size_t objsize, size_t objects_count,
 	void (*ctor)(void *, size_t), void (*dtor)(void *, size_t))
@@ -112,6 +111,7 @@ cache_t *cache_create(const char *name, size_t objsize, size_t objects_count,
 	cache->ctor = ctor;
 	cache->dtor = dtor;
 	cache_init(cache, mem);
+	// TODO Spinlock? Insert in beginning?
 	c = caches;
 	while(c->next)
 		c = c->next;
@@ -119,17 +119,17 @@ cache_t *cache_create(const char *name, size_t objsize, size_t objects_count,
 	return cache;
 }
 
-// TODO Spinlock
 __attribute__((hot))
 void cache_shrink(cache_t *cache)
 {
 	if(!cache)
 		return;
+	lock(&cache->spinlock);
 	// TODO
 	(void) cache;
+	unlock(&cache->spinlock);
 }
 
-// TODO Spinlock
 __attribute__((hot))
 void *cache_alloc(cache_t *cache)
 {
@@ -137,7 +137,7 @@ void *cache_alloc(cache_t *cache)
 
 	if(!cache)
 		return NULL;
-	//spin_lock(&(cache->spinlock));
+	lock(&cache->spinlock);
 	if(cache->slabs_partial && cache->slabs_partial->free_list)
 	{
 		obj = cache->slabs_partial->free_list;
@@ -151,32 +151,34 @@ void *cache_alloc(cache_t *cache)
 	else
 	{
 		// TODO Alloc new slab(s)?
-		// TODO spin_unlock(&(cache->spinlock));
+		unlock(&cache->spinlock);
 		return NULL;
 	}
 	obj->state |= OBJ_USED;
 	// TODO Move slab (free -> partial or partial -> full)
-	//spin_unlock(&(cache->spinlock));
+	unlock(&cache->spinlock);
 	return OBJ_CONTENT(obj);
 }
 
-// TODO Spinlock
 __attribute__((hot))
 void cache_free(cache_t *cache, void *obj)
 {
 	if(!cache || !obj)
 		return;
+	lock(&cache->spinlock);
 	// TODO
 	(void) cache;
 	(void) obj;
+	unlock(&cache->spinlock);
 }
 
-// TODO Spinlock
 __attribute__((hot))
 void cache_destroy(cache_t *cache)
 {
 	if(!cache)
 		return;
+	lock(&cache->spinlock);
 	// TODO
 	(void) cache;
+	unlock(&cache->spinlock);
 }

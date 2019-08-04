@@ -3,8 +3,9 @@
 __attribute__((hot))
 void bzero(void *s, size_t n)
 {
-	void *end = s + n;
+	void *end;
 
+	end = s + n;
 	while(s < end && (((intptr_t) s & (sizeof(long) - 1)) != 0))
 		*((char *) s++) = 0;
 	while(s < (void *) ((intptr_t) end & ~((intptr_t) 7))

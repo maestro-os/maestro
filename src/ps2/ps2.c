@@ -140,11 +140,13 @@ static inline void set_config_byte(const uint8_t config_byte)
 }
 
 __attribute__((cold))
-static void in_ps2_init(void)
+void ps2_init(void)
 {
+	CLI();
 	// TODO Check if existing using ACPI
 	ps2_disable_devices();
-	//inb(PS2_DATA);
+	// TODO Discard buffer?
+	// inb(PS2_DATA);
 	clear_buffer();
 
 	set_config_byte(get_config_byte() & 0b10111100);
@@ -171,12 +173,7 @@ static void in_ps2_init(void)
 
 	set_config_byte(get_config_byte() | 0b1);
 	clear_buffer();
-}
-
-__attribute__((cold))
-void ps2_init(void)
-{
-	idt_setup_wrap(in_ps2_init);
+	STI();
 }
 
 __attribute__((cold))

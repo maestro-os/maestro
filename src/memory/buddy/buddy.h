@@ -27,10 +27,16 @@
 # define NODE_STATE_PARTIAL	1
 # define NODE_STATE_FULL	2
 
+typedef uint32_t block_order_t;
 typedef uint8_t block_state_t;
 
 void *buddy_begin;
 
 void buddy_init(void);
+block_order_t buddy_get_order(size_t size);
+
+void *buddy_alloc(block_order_t order);
+void *buddy_alloc_zero(block_order_t order);
+void buddy_free(void *ptr);
 
 #endif

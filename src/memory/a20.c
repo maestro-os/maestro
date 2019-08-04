@@ -2,11 +2,12 @@
 #include <idt/idt.h>
 #include <ps2/ps2.h>
 
+__attribute__((cold))
 void enable_a20(void)
 {
 	uint8_t in;
 
-	idt_set_state(false);
+	CLI();
 	ps2_disable_devices();
 
 	outb(PS2_COMMAND, 0xd0);

@@ -35,24 +35,27 @@
 # define PAGETOPTR(page)	((void *) (page) * PAGE_SIZE)
 # define PTRTOPAGE(ptr)		((uintptr_t) (ptr) / PAGE_SIZE)
 
-typedef uint32_t block_order_t;
 typedef uint32_t *vmem_t;
+
+typedef struct
+{
+	size_t reserved;
+	size_t system;
+	size_t allocated;
+	size_t swap;
+	size_t free;
+} mem_usage_t;
 
 void *heap_begin, *heap_end;
 size_t available_memory;
 
-size_t memory_maps_count;
-multiboot_mmap_entry_t *memory_maps;
+extern size_t memory_maps_count;
+extern multiboot_mmap_entry_t *memory_maps;
 
 extern bool check_a20(void);
 void enable_a20(void);
 
 const char *memmap_type(uint32_t type);
-
-block_order_t buddy_get_order(size_t size);
-void *buddy_alloc(block_order_t order);
-void *buddy_alloc_zero(block_order_t order);
-void buddy_free(void *ptr);
 
 void *clone_page(void *ptr);
 
@@ -72,5 +75,7 @@ void vmem_free(vmem_t vmem, bool mem_free);
 extern void paging_enable(vmem_t vmem);
 extern void tlb_reload(void);
 extern void paging_disable(void);
+
+void get_memory_usage(mem_usage_t *usage);
 
 #endif

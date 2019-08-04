@@ -82,20 +82,5 @@ void idt_init(void)
 	idt_ptr[1] = ((unsigned long) id) >> 16;
 	idt_load(idt_ptr);
 
-	idt_set_state(true);
-}
-
-void idt_set_state(const bool enabled)
-{
-	if(enabled)
-		asm("sti");
-	else
-		asm("cli");
-}
-
-void idt_setup_wrap(void (*handler)())
-{
-	idt_set_state(false);
-	handler();
-	idt_set_state(true);
+	STI();
 }

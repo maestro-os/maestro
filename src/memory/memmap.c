@@ -1,5 +1,8 @@
 #include <memory/memory.h>
 
+size_t memory_maps_count = 0;
+multiboot_mmap_entry_t *memory_maps = NULL;
+
 const char *memmap_type(const uint32_t type)
 {
 	switch(type)

@@ -54,15 +54,20 @@ static driver_t drivers[] = {
 	{"ATA", ata_init}
 };
 
+#ifdef KERNEL_DEBUG
 __attribute__((hot))
 static void print_memory_mapping(void)
 {
+	size_t i = 0;
 	const multiboot_mmap_entry_t *t;
 
 	printf("--- Memory mapping ---\n");
 	printf("<begin> <end> <type>\n");
-	for(size_t i = 0; i < memory_maps_count; ++i)
+	if(!memory_maps)
+		return;
+	for(; i < memory_maps_count; ++i)
 	{
+		// TODO Fix
 		t = memory_maps + i;
 		printf("- %p %p %s\n", (void *) (uintptr_t) t->addr,
 			(void *) (uintptr_t) t->addr + t->len, memmap_type(t->type));
@@ -86,6 +91,30 @@ static void print_slabs(void)
 	}
 	printf("\n");
 }
+
+__attribute__((hot))
+static void print_mem_usage(void)
+{
+	mem_usage_t usage;
+	size_t total;
+
+	get_memory_usage(&usage);
+	total = (size_t) heap_end;
+	// TODO Use %zu and print floats
+	printf("--- Memory usage ---\n");
+	printf("total: %i bytes\n", (int) total);
+	printf("reserved: %i bytes (%i%%)\n", (int) usage.reserved,
+		(int) ((float) usage.reserved / total * 100));
+	printf("system: %i bytes (%i%%)\n", (int) usage.system,
+		(int) ((float) usage.system / total * 100));
+	printf("allocated: %i bytes (%i%%)\n", (int) usage.allocated,
+		(int) ((float) usage.allocated / total * 100));
+	printf("swap: %i bytes (%i%%)\n", (int) usage.swap,
+		(int) ((float) usage.swap / total * 100));
+	printf("free: %i bytes (%i%%)\n", (int) usage.free,
+		(int) ((float) usage.free / total * 100));
+}
+#endif
 
 __attribute__((cold))
 static inline void init_driver(const driver_t *driver)
@@ -168,13 +197,17 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	printf("Processes initialization...\n");
 	process_init();
 
+#ifdef KERNEL_DEBUG
+	print_mem_usage();
+#endif
+
 	// TODO Test
-	idt_set_state(false);
+	CLI();
 	errno = 0;
 	process_t *proc = new_process(NULL, test_process);
 	printf("pid: %i, errno: %i\n", (int) proc->pid, (int) errno);
 
-	idt_set_state(true);
+	STI();
 	kernel_loop();
 }
 

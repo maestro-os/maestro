@@ -30,9 +30,11 @@ void bitmap_set_range(uint8_t *bitmap, const size_t begin, const size_t end);
 void bitmap_clear_range(uint8_t *bitmap, const size_t begin, const size_t end);
 size_t bitmap_first_clear(uint8_t *bitmap, const size_t bitmap_size);
 
-typedef uint8_t spinlock_t;
+typedef int spinlock_t;
 
 extern void spin_lock(spinlock_t *spinlock);
 extern void spin_unlock(spinlock_t *spinlock);
+void lock(spinlock_t *spinlock);
+void unlock(spinlock_t *spinlock);
 
 #endif
