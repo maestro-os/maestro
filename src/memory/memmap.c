@@ -1,5 +1,8 @@
 #include <memory/memory.h>
 
+void *heap_begin, *heap_end;
+size_t available_memory;
+
 size_t memory_maps_count = 0;
 multiboot_mmap_entry_t *memory_maps = NULL;
 

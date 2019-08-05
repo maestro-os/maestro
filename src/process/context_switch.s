@@ -23,8 +23,7 @@ context_switch:
 	push %eax
 	push 12(%ebp)
 
+	push $0x0
+	call pic_EOI
+	add $4, %esp
 	iret
-
-	mov %ebp, %esp
-	pop %ebp
-	ret

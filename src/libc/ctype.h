@@ -1,14 +1,19 @@
 #ifndef _CTYPE_H
 # define _CTYPE_H
 
-inline int isalnum(int c)
-{
-	return (isalpha(c) || isdigit(c));
-}
-
 inline int isalpha(int c)
 {
 	return ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z'));
+}
+
+inline int isdigit(int c)
+{
+	return (c >= '0' && c <= '9');
+}
+
+inline int isalnum(int c)
+{
+	return (isalpha(c) || isdigit(c));
 }
 
 int iscntrl(int c)
@@ -17,11 +22,6 @@ int iscntrl(int c)
 	// TODO
 
 	return 0;
-}
-
-inline int isdigit(int c)
-{
-	return (c >= '0' && c <= '9');
 }
 
 inline int isgraph(int c)

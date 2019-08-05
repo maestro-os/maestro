@@ -161,8 +161,11 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	read_boot_tags(multiboot_ptr, &boot_info);
 	printf("Command line: %s\n", boot_info.cmdline);
 	printf("Bootloader name: %s\n", boot_info.loader_name);
-	printf("Basic components initialization...\n");
+	memory_maps_count = boot_info.memory_maps_count;
+	memory_maps = boot_info.memory_maps;
+	// TODO Fix: `memory_maps` is NULL
 
+	printf("Basic components initialization...\n");
 	idt_init();
 	pit_init();
 

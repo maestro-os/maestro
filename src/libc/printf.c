@@ -1,4 +1,6 @@
+#include <libc/ctype.h>
 #include <libc/stdio.h>
+#include <libc/stdlib.h>
 #include <tty/tty.h>
 
 typedef struct specifier
@@ -6,7 +8,9 @@ typedef struct specifier
 	size_t size;
 
 	uint8_t flags;
+	bool parameter_width;
 	size_t width;
+	bool parameter_precision;
 	size_t precision;
 	uint8_t length;
 	char type;
@@ -18,18 +22,54 @@ typedef struct handler
 	int (*f)(const specifier_t *, va_list *);
 } handler_t;
 
+static void skip_nbr(const char **str)
+{
+	while(**str && isdigit(**str))
+		++(*str);
+}
+
 static const char *next_specifier(const char *format, specifier_t *specifier)
 {
+	const char *begin;
+
 	bzero(specifier, sizeof(specifier_t));
-
-	while(*format && *format != '%') ++format;
-	if(!(*format)) return (NULL);
-
-	// TODO Parse the specifier
-	specifier->size = 2;
-	specifier->type = format[1];
-
-	return format;
+	while(*format && *format != '%')
+		++format;
+	if(!*format)
+		return NULL;
+	begin = format;
+	++format;
+	if(memchr("-+ 0#", *format, 1))
+		specifier->flags = *(format++);
+	if(*format == '*')
+	{
+		specifier->parameter_width = true;
+		++format;
+	}
+	else
+	{
+		specifier->width = atoi(format);
+		skip_nbr(&format);
+	}
+	if(*format == '.')
+	{
+		++format;
+		if(*format == '*')
+		{
+			specifier->parameter_width = true;
+			++format;
+		}
+		else
+		{
+			specifier->width = atoi(format);
+			skip_nbr(&format);
+		}
+	}
+	// TODO
+	specifier->type = *format;
+	++format;
+	specifier->size = format - begin;
+	return begin;
 }
 
 static inline int putchar(const char c)

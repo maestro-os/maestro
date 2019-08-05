@@ -22,7 +22,7 @@ static void putnbr(int n)
 	putchar('0' + (n % 10));
 }*/
 
-/*static void fork_bomb(void)
+static void fork_bomb(void)
 {
 	pid_t pid;
 	int status;
@@ -39,19 +39,11 @@ static void putnbr(int n)
 		waitpid(pid, &status, 0);
 		_exit(status); // TODO EXITSTATUS
 	}
-}*/
+}
 
 void test_process(void)
 {
-	// TODO Single step analysis (infinite loop)
-	/*ssize_t i;
-	for(size_t j = 0; j < 1000; ++j)
-		i = write(0, "Hello world!\r", 13);*/
-	// TODO Writes `-0`?
-	/*i = write(0, NULL, 13);
-	putnbr(i);*/
-	// TODO fork_bomb();
-	write(0, "Hello world!\n", 13);
+	fork_bomb();
 	while(1)
 		;
 	// TODO Protect when returning (Triple fault)

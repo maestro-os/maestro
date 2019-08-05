@@ -1,25 +1,28 @@
 #include <pit/pit.h>
+#include <idt/idt.h>
 
 static unsigned current_frequency;
 
-// TODO cli?
 __attribute__((cold))
 void pit_init(void)
 {
+	CLI();
 	outb(PIT_COMMAND, PIT_SELECT_CHANNEL_0 | PIT_ACCESS_LOBYTE_HIBYTE
 		| PIT_MODE_4);
 	pit_set_frequency(1); // TODO Change
 
 	outb(PIT_COMMAND, PIT_SELECT_CHANNEL_2 | PIT_ACCESS_LOBYTE_HIBYTE
 		| PIT_MODE_4);
+	STI();
 }
 
-// TODO cli?
 __attribute__((hot))
 void pit_set_count(const uint16_t count)
 {
+	CLI();
 	outb(PIT_CHANNEL_0, count & 0xff);
 	outb(PIT_CHANNEL_0, (count >> 8) & 0xff);
+	STI();
 }
 
 __attribute__((hot))

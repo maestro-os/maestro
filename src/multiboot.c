@@ -43,9 +43,9 @@ static void handle_tag(multiboot_tag_t *tag, boot_info_t *info)
 		case MULTIBOOT_TAG_TYPE_MMAP:
 		{
 			t = (multiboot_tag_mmap_t *) tag;
-			memory_maps_count = (t->size - sizeof(multiboot_tag_mmap_t))
+			info->memory_maps_count = (t->size - sizeof(multiboot_tag_mmap_t))
 				/ t->entry_size;
-			memory_maps = t->entries;
+			info->memory_maps = t->entries;
 			break;
 		}
 
@@ -59,7 +59,7 @@ void read_boot_tags(void *ptr, boot_info_t *info)
 {
 	multiboot_tag_t *tag;
 
-	if(!info)
+	if(!ptr || !info)
 		return;
 	bzero(info, sizeof(info));
 	tag = ptr + 8;

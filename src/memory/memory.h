@@ -46,8 +46,8 @@ typedef struct
 	size_t free;
 } mem_usage_t;
 
-void *heap_begin, *heap_end;
-size_t available_memory;
+extern void *heap_begin, *heap_end;
+extern size_t available_memory;
 
 extern size_t memory_maps_count;
 extern multiboot_mmap_entry_t *memory_maps;

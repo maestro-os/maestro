@@ -104,10 +104,11 @@ multiboot_entry:
 	pop %ebx
 	pop %eax
 
-	pushl $kernel_end
+	push $kernel_end
 	push %ebx
 	push %eax
 	call kernel_main
+	add $12, %esp
 
 	call kernel_halt
 	call _fini
