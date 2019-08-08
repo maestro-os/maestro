@@ -1,4 +1,7 @@
 #include <memory/slab/slab.h>
+#include <libc/errno.h>
+
+// TODO Set errnos
 
 static cache_t *caches;
 static cache_t *caches_cache;
@@ -136,7 +139,10 @@ void *cache_alloc(cache_t *cache)
 	object_t *obj = NULL;
 
 	if(!cache)
+	{
+		errno = EINVAL;
 		return NULL;
+	}
 	lock(&cache->spinlock);
 	if(cache->slabs_partial && cache->slabs_partial->free_list)
 	{

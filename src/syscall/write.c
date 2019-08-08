@@ -12,7 +12,7 @@ sys_ret_t sys_write(const sys_info_t *info)
 	fildes = info->ebx;
 	buf = TO_PTR(info->ecx);
 	nbyte = info->edx;
-	if(!buf || !vmem_contains(NULL, buf, nbyte)) // TODO Get vmem from process
+	if(!buf || !vmem_contains(get_running_process()->page_dir, buf, nbyte))
 	{
 		// TODO Set errno
 		return -1;

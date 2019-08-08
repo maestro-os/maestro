@@ -1,20 +1,38 @@
 #include <process/process.h>
 #include <libc/errno.h>
 
+// TODO remove
+#include <libc/stdio.h>
+
+// TODO lock when doing something
+// TODO Set errnos
+// TODO Multicore handling
+
 static cache_t *processes_cache;
 static cache_t *children_cache;
-static process_t *processes;
+static process_t *processes = NULL;
 
 static uint8_t *pids_bitmap;
 
 static tss_entry_t tss_entry;
+static process_t *running_process = NULL;
 
 __attribute__((hot))
-static void process_ctor(void *ptr, size_t size)
+static void process_ctor(void *ptr, const size_t size)
 {
+	process_t *p;
+
 	bzero(ptr, size);
+	p = ptr;
 	if(CREATED != 0)
-		((process_t *) ptr)->state = CREATED;
+		p->state = CREATED;
+	p->tss.ss0 = 0x10;
+	p->tss.es = 0x23;
+	p->tss.cs = 0x18;
+	p->tss.ss = 0x23;
+	p->tss.ds = 0x23;
+	p->tss.fs = 0x23;
+	p->tss.gs = 0x23;
 }
 
 __attribute__((cold))
@@ -45,11 +63,8 @@ void process_init(void)
 		process_ctor, bzero);
 	children_cache = cache_create("process_children", sizeof(child_t), PID_MAX,
 		NULL, bzero);
-
 	if(!processes_cache || !children_cache)
 		PANIC("Cannot allocate caches for processes!", 0);
-
-	processes = NULL;
 
 	if(!(pids_bitmap = kmalloc_zero(PIDS_BITMAP_SIZE)))
 		PANIC("Cannot allocate PIDs bitmap!", 0);
@@ -61,10 +76,12 @@ void process_init(void)
 __attribute__((hot))
 static pid_t alloc_pid(void)
 {
-	// TODO Use a last_pid variable to avoid searching from the first pid
-	const pid_t pid = bitmap_first_clear(pids_bitmap, PIDS_BITMAP_SIZE);
-	if(pid >= (pid_t) PIDS_BITMAP_SIZE) return -1;
+	pid_t pid;
 
+	// TODO Use a last_pid variable to avoid searching from the first pid
+	pid = bitmap_first_clear(pids_bitmap, PIDS_BITMAP_SIZE);
+	if(pid >= (pid_t) PIDS_BITMAP_SIZE)
+		return -1;
 	bitmap_set(pids_bitmap, pid);
 	return pid;
 }
@@ -79,78 +96,115 @@ static void free_pid(const pid_t pid)
 __attribute__((hot))
 process_t *new_process(process_t *parent, void (*begin)())
 {
-	errno = 0;
-
 	pid_t pid;
-	process_t *new_proc;
+	process_t *new_proc, *p;
 
+	errno = 0;
 	if((pid = alloc_pid()) < 0
 		|| !(new_proc = cache_alloc(processes_cache)))
 	{
+		printf("PROCESS ALLOC FAIL!\n");
 		free_pid(pid);
 		errno = ENOMEM;
 		return NULL;
 	}
-
 	new_proc->pid = pid;
 	new_proc->parent = parent;
 	new_proc->begin = begin;
 	new_proc->tss.eip = (uintptr_t) begin;
-	new_proc->tss.ss0 = 0x10; // TODO
-	new_proc->tss.es = 0x23; // TODO
-	new_proc->tss.cs = 0x18; // TODO
-	new_proc->tss.ss = 0x23; // TODO
-	new_proc->tss.ds = 0x23; // TODO
-	new_proc->tss.fs = 0x23; // TODO
-	new_proc->tss.gs = 0x23; // TODO
-
-	// TODO Set child in parent (alloc child)
-
+	process_add_child(parent, new_proc);
+	if(errno)
+	{
+		// TODO Free all
+		return NULL;
+	}
 	if(processes)
 	{
-		process_t *p = processes;
+		p = processes;
 		while(p->next && p->next->pid < pid)
 			p = p->next;
-
 		new_proc->next = p->next;
 		p->next = new_proc;
 	}
 	else
 		processes = new_proc;
-
 	return new_proc;
 }
 
+__attribute__((hot))
 process_t *get_process(const pid_t pid)
 {
-	errno = 0;
+	process_t *p;
 
+	errno = 0;
+	p = processes;
 	if(pid <= 0)
 	{
 		errno = EINVAL;
 		return NULL;
 	}
-
-	process_t *p = processes;
-
 	while(p)
 	{
 		if(p->pid == pid)
 			return p;
 		p = p->next;
 	}
-
 	errno = ESRCH;
 	return NULL;
 }
 
 __attribute__((hot))
+process_t *get_running_process(void)
+{
+	return running_process;
+}
+
+__attribute__((hot))
+process_t *process_clone(process_t *proc)
+{
+	process_t *p;
+
+	if(!proc)
+	{
+		errno = EINVAL;
+		return NULL;
+	}
+	if(!(p = new_process(proc, (void *) proc->tss.eip)))
+		return NULL;
+	if(!(p->page_dir = vmem_clone(proc->page_dir, true)))
+	{
+		del_process(p, false);
+		return NULL;
+	}
+	return p;
+}
+
+__attribute__((hot))
+void process_add_child(process_t *parent, process_t *child)
+{
+	child_t *c;
+
+	if(!parent || !child)
+		return;
+	if(!(c = cache_alloc(children_cache)))
+	{
+		errno = ENOMEM;
+		return;
+	}
+	c->next = parent->children;
+	c->process = child;
+	parent->children = c;
+}
+
+__attribute__((hot))
 void del_process(process_t *process, const bool children)
 {
-	if(!process) return;
-
 	child_t *c, *next;
 
+	if(!process)
+		return;
+	if(running_process == process)
+		running_process = NULL;
 	if(process->parent)
 	{
 		c = process->parent->children;
@@ -165,17 +219,16 @@ void del_process(process_t *process, const bool children)
 			c = next;
 		}
 	}
-
 	c = process->children;
 	while(c)
 	{
 		next = c->next;
+		// TODO Send signal instead
 		if(children)
 			del_process(c->process, true);
 		cache_free(children_cache, c);
 		c = next;
 	}
-
 	vmem_free(process->page_dir, true);
 	// TODO Free `signals_queue`
 	cache_free(processes_cache, process);
@@ -185,6 +238,7 @@ __attribute__((hot))
 static void init_process(process_t *process)
 {
 	vmem_t vmem;
+	void *user_stack = NULL, *kernel_stack = NULL;
 
 	if(process->parent)
 		vmem = vmem_clone(process->parent->page_dir, true);
@@ -192,8 +246,6 @@ static void init_process(process_t *process)
 		vmem = vmem_init();
 	if(!vmem)
 		return;
-
-	void *user_stack = NULL, *kernel_stack = NULL;
 	// TODO Change default stack size (and allow stack grow)
 	if(!(user_stack = vmem_alloc_pages(vmem, 0))
 		|| !(kernel_stack = vmem_alloc_pages(vmem, 0)))
@@ -203,7 +255,6 @@ static void init_process(process_t *process)
 		buddy_free(kernel_stack);
 		return;
 	}
-
 	process->page_dir = vmem;
 	process->user_stack = user_stack;
 	process->kernel_stack = kernel_stack;
@@ -216,35 +267,36 @@ static void init_process(process_t *process)
 __attribute__((hot))
 static process_t *first_running_process(void)
 {
-	process_t *p = processes;
+	process_t *p;
+
+	p = processes;
 	while(p && p->state != RUNNING)
 		p = p->next;
-
 	return p;
 }
 
 __attribute__((hot))
 static process_t *next_waiting_process(process_t *process)
 {
-	process_t *p = process;
+	process_t *p;
 
+	p = process;
 	do
 	{
 		if(!(p = p->next))
 			p = processes;
 	}
 	while(p != process && p->state != RUNNING);
-
 	return (p == process ? NULL : p);
 }
 
 __attribute__((hot))
 static void switch_processes(void)
 {
+	process_t *p;
+
 	if(!processes)
 		return;
-
-	process_t *p;
 	if(!(p = first_running_process()))
 	{
 		if(processes->state == WAITING)
@@ -257,23 +309,21 @@ static void switch_processes(void)
 		p->state = WAITING;
 		p = next_waiting_process(p);
 	}
-
 	if(!p)
 		return;
-
 	// TODO Enable paging on kernel?
 	p->state = RUNNING;
 	tss_entry = p->tss;
+	running_process = p;
 	context_switch((void *) tss_entry.esp, (void *) tss_entry.eip);
 }
 
 void process_tick(void)
 {
-	// TODO Multicore handling
+	process_t *p;
+
+	p = processes;
 	switch_processes();
-
-	process_t *p = processes;
-
 	while(p)
 	{
 		switch(p->state)
@@ -292,7 +342,6 @@ void process_tick(void)
 
 			default: break;
 		}
-
 		p = p->next;
 	}
 }

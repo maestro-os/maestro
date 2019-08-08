@@ -2,7 +2,13 @@
 
 sys_ret_t sys_fork(const sys_info_t *info)
 {
-	// TODO
+	process_t *proc, *child;
+
 	(void) info;
-	return 0;
+	proc = get_running_process();
+	if(!(child = process_clone(proc)))
+		return -ENOMEM;
+	child->tss.eax = 0;
+	// TODO Increment %eip from one instruction? (on `child`)
+	return child->pid;
 }

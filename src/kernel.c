@@ -183,9 +183,6 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	printf("Buddy allocator begin: %p\n", buddy_begin);
 	slab_init();
 	kmalloc_init();
-#ifdef KERNEL_DEBUG
-	print_slabs();
-#endif
 
 	printf("Drivers initialization...\n");
 	init_drivers();
@@ -201,6 +198,7 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 
 #ifdef KERNEL_DEBUG
 	print_mem_usage();
+	print_slabs();
 #endif
 
 	// TODO Test

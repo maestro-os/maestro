@@ -1,6 +1,8 @@
 #include <memory/buddy/buddy.h>
 #include <idt/idt.h>
 
+// TODO Set errnos
+
 static block_order_t max_order;
 static block_state_t *states;
 
@@ -166,4 +168,18 @@ void buddy_free(void *ptr)
 	set_block_state(index, NODE_STATE_FREE);
 	// TODO Add to free list if necessary
 	unlock(&spinlock);
+}
+
+__attribute__((hot))
+static size_t count_allocated_pages(const size_t index)
+{
+	// TODO Count every allocated page, excluding unusable ones
+	(void) index;
+	return 0;
+}
+
+__attribute__((hot))
+inline size_t allocated_pages(void)
+{
+	return count_allocated_pages(0);
 }

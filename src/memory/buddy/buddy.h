@@ -39,4 +39,6 @@ void *buddy_alloc(block_order_t order);
 void *buddy_alloc_zero(block_order_t order);
 void buddy_free(void *ptr);
 
+size_t allocated_pages(void);
+
 #endif

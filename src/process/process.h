@@ -135,6 +135,9 @@ extern void tss_flush(void);
 void process_init(void);
 process_t *new_process(process_t *parent, void (*begin)());
 process_t *get_process(const pid_t pid);
+process_t *get_running_process(void);
+process_t *process_clone(process_t *proc);
+void process_add_child(process_t *parent, process_t *child);
 void del_process(process_t *process, const bool children);
 
 void process_tick(void);

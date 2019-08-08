@@ -2,6 +2,7 @@
 # define SYSCALL_H
 
 # include <memory/memory.h>
+# include <process/process.h>
 
 # include <libc/errno.h>
 # include <libc/string.h>

@@ -30,7 +30,7 @@ void get_memory_usage(mem_usage_t *usage)
 	remaining -= usage->reserved;
 	usage->system = (size_t) buddy_begin - 0x100000;
 	remaining -= usage->system;
-	// TODO Add every allocated block for `allocated`
+	usage->allocated = allocated_pages() * PAGE_SIZE;
 	remaining -= usage->allocated;
 	// TODO `swap`
 	remaining -= usage->swap;
