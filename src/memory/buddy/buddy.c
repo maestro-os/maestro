@@ -1,8 +1,6 @@
 #include <memory/buddy/buddy.h>
 #include <idt/idt.h>
 
-// TODO Crashes happen when allocating the whole memory
-
 static block_order_t max_order;
 static block_state_t *states;
 
@@ -25,21 +23,24 @@ block_order_t buddy_get_order(const size_t size)
 }
 
 __attribute__((hot))
-static void set_block_state_(const size_t index)
+static void update_block_state(size_t index)
 {
-	block_state_t left_state;
-	block_state_t right_state;
+	block_state_t left_state, right_state;
 
-	left_state = states[NODE_LEFT(index)];
-	right_state = states[NODE_RIGHT(index)];
-	if((left_state | right_state) == NODE_STATE_FREE)
-		states[index] = NODE_STATE_FREE;
-	else if((left_state & right_state) == NODE_STATE_FULL)
-		states[index] = NODE_STATE_FULL;
-	else
-		states[index] = NODE_STATE_PARTIAL;
-	if(index > 0)
-		set_block_state_(NODE_PARENT(index));
+	while(1)
+	{
+		left_state = states[NODE_LEFT(index)];
+		right_state = states[NODE_RIGHT(index)];
+		if((left_state | right_state) == NODE_STATE_FREE)
+			states[index] = NODE_STATE_FREE;
+		else if((left_state & right_state) == NODE_STATE_FULL)
+			states[index] = NODE_STATE_FULL;
+		else
+			states[index] = NODE_STATE_PARTIAL;
+		if(index == 0)
+			break;
+		index = NODE_PARENT(index);
+	}
 }
 
 __attribute__((hot))
@@ -48,7 +49,7 @@ static inline void set_block_state(const size_t index,
 {
 	states[index] = state;
 	if(index > 0)
-		set_block_state_(NODE_PARENT(index));
+		update_block_state(NODE_PARENT(index));
 }
 
 __attribute__((cold))
@@ -67,9 +68,8 @@ void buddy_init(void)
 
 	buddy_end = ALIGN_DOWN(heap_end, PAGE_SIZE);
 	end_begin = NODES_COUNT(max_order - 1)
-		+ ((uintptr_t) buddy_end / PAGE_SIZE);
+		+ ((uintptr_t) (buddy_end - buddy_begin) / PAGE_SIZE);
 	end_end = NODES_COUNT(max_order);
-
 	for(i = end_begin; i < end_end; ++i)
 		set_block_state(i, NODE_STATE_FULL);
 
@@ -109,11 +109,7 @@ static size_t find_free(const size_t index, const block_order_t order,
 		{
 			if(block_order <= order)
 				break;
-			if((i = find_free(NODE_LEFT(index),
-				order, false)) != BLOCK_NULL)
-				return i;
-			else if((i = find_free(NODE_RIGHT(index),
-				order, false)) != BLOCK_NULL)
+			if((i = find_free(NODE_LEFT(index), order, false)) != BLOCK_NULL)
 				return i;
 		}
 
@@ -135,12 +131,12 @@ void *buddy_alloc(const block_order_t order)
 	block = find_free(0, order, false);
 	if(block != BLOCK_NULL)
 	{
-		ptr = NODE_PTR(buddy_begin, max_order, block);
 		set_block_state(block, NODE_STATE_FULL);
+		ptr = NODE_PTR(buddy_begin, max_order, block);
 	}
 	else
 		ptr = NULL;
-	unlock(&spinlock); // TODO Doing NODE_PTR after unlock gives a bad value?
+	unlock(&spinlock);
 	return ptr;
 }
 

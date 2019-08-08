@@ -147,7 +147,6 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 		enable_a20();
 	tty_init();
 
-	// TODO Add first Multiboot version support
 	if(magic != MULTIBOOT2_BOOTLOADER_MAGIC)
 		PANIC("Non Multiboot2-compliant bootloader!", 0);
 	if(((uintptr_t) multiboot_ptr) & 7)
