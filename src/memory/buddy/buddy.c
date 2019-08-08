@@ -92,7 +92,7 @@ static size_t find_free(const size_t index, const block_order_t order,
 	if(block_order < order)
 		return BLOCK_NULL;
 	block_state = states[index];
-	if(block_order == 0 && block_state != NODE_STATE_FREE)
+	if(block_order == 0 && block_state == NODE_STATE_FULL)
 		return BLOCK_NULL;
 	switch(block_state)
 	{
