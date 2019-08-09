@@ -18,6 +18,8 @@ typedef struct chunk
 } chunk_t;
 
 extern spinlock_t kmalloc_spinlock;
+// TODO Use flags on function calls instead?
+extern int kmalloc_buddy;
 
 chunk_t *get_chunk(void *ptr);
 chunk_t *get_free_chunk(size_t size);

@@ -1,7 +1,8 @@
 #include <memory/kmalloc/kmalloc.h>
 #include <libc/errno.h>
 
-spinlock_t kmalloc_spinlock;
+spinlock_t kmalloc_spinlock = 0;
+int kmalloc_buddy = 0;
 
 __attribute__((section("bss")))
 static chunk_t *buckets[BUCKETS_COUNT];
@@ -43,11 +44,18 @@ static void coalesce_chunks(chunk_t *chunk)
 	begin->next = end;
 }
 
+static void *_alloc_block(const size_t pages)
+{
+	if(kmalloc_buddy)
+		return buddy_alloc(buddy_get_order(pages * PAGE_SIZE));
+	return pages_alloc(pages);
+}
+
 static void alloc_block(chunk_t **bucket)
 {
 	chunk_t *ptr;
 
-	if(!(ptr = pages_alloc(1)))
+	if(!(ptr = _alloc_block(1)))
 		return;
 	ptr->next = *bucket;
 	ptr->size = PAGE_SIZE - sizeof(chunk_t);
@@ -62,7 +70,7 @@ static void *large_alloc(const size_t size)
 
 	total_size = sizeof(chunk_t) + size;
 	pages = UPPER_DIVISION(total_size, PAGE_SIZE);
-	if((chunk = pages_alloc(pages)))
+	if((chunk = _alloc_block(pages)))
 	{
 		chunk->size = pages * PAGE_SIZE + sizeof(chunk_t);
 		chunk->next = large_chunks;
@@ -131,5 +139,5 @@ void free_chunk(chunk_t *chunk)
 		chunk->next->prev = chunk->prev;
 	chunk->used = 0;
 	coalesce_chunks(chunk);
-	// TODO If page is empty, free it
+	// TODO If page is empty, free it (use buddy_free if kmalloc_buddy)
 }
