@@ -2,7 +2,6 @@
 #include <tty/tty.h>
 #include <cpu/cpu.h>
 #include <memory/memory.h>
-#include <memory/kmalloc_internal.h>
 #include <idt/idt.h>
 #include <pit/pit.h>
 #include <process/process.h>
@@ -182,7 +181,6 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	buddy_init();
 	printf("Buddy allocator begin: %p\n", buddy_begin);
 	slab_init();
-	kmalloc_init();
 
 	printf("Drivers initialization...\n");
 	init_drivers();

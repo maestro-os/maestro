@@ -3,6 +3,7 @@
 
 # include <kernel.h>
 # include <memory/buddy/buddy.h>
+# include <memory/kmalloc/kmalloc.h>
 # include <memory/slab/slab.h>
 # include <util/util.h>
 
@@ -58,11 +59,6 @@ void enable_a20(void);
 const char *memmap_type(uint32_t type);
 
 void *clone_page(void *ptr);
-
-void *kmalloc(size_t size);
-void *kmalloc_zero(size_t size);
-void *krealloc(void *ptr, size_t size);
-void kfree(void *ptr);
 
 vmem_t vmem_init(void);
 vmem_t vmem_clone(vmem_t vmem, bool mem_dup);

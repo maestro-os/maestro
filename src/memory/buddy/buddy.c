@@ -1,5 +1,6 @@
 #include <memory/buddy/buddy.h>
 #include <idt/idt.h>
+#include <libc/errno.h>
 
 // TODO Set errnos
 
@@ -137,7 +138,10 @@ void *buddy_alloc(const block_order_t order)
 		ptr = NODE_PTR(buddy_begin, max_order, block);
 	}
 	else
+	{
+		errno = ENOMEM;
 		ptr = NULL;
+	}
 	unlock(&spinlock);
 	return ptr;
 }
