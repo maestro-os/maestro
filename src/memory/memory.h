@@ -60,6 +60,9 @@ const char *memmap_type(uint32_t type);
 
 void *clone_page(void *ptr);
 
+void *pages_alloc(size_t n);
+void pages_free(void *ptr, size_t n);
+
 vmem_t vmem_init(void);
 vmem_t vmem_clone(vmem_t vmem, bool mem_dup);
 void *vmem_translate(vmem_t vmem, void *ptr);

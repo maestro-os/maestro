@@ -14,7 +14,7 @@ void *kmalloc(const size_t size)
 		errno = ENOMEM;
 		return NULL;
 	}
-	alloc_chunk(chunk);
+	alloc_chunk(chunk, size);
 	return CHUNK_CONTENT(chunk);
 }
 

@@ -2,6 +2,7 @@
 # define KMALLOC_H
 
 # include <memory/memory.h>
+# include <util/util.h>
 
 # define CHUNK_CONTENT(chunk)	((void *) (chunk) + sizeof(chunk_t))
 
@@ -16,9 +17,11 @@ typedef struct chunk
 	uint8_t used;
 } chunk_t;
 
+extern spinlock_t kmalloc_spinlock;
+
 chunk_t *get_chunk(void *ptr);
 chunk_t *get_free_chunk(size_t size);
-void alloc_chunk(chunk_t *chunk);
+void alloc_chunk(chunk_t *chunk, size_t size);
 void free_chunk(chunk_t *chunk);
 
 void *kmalloc(size_t size);

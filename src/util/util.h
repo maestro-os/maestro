@@ -9,6 +9,8 @@
 # define ALIGN_UP(ptr, n)	(ALIGN_DOWN(ptr, n) + (n))
 # define ALIGN(ptr, n)		(IS_ALIGNED((ptr), (n)) ? (ptr)\
 	: ALIGN_UP((ptr), (n)))
+# define SAME_PAGE(p0, p1)	(ALIGN_DOWN(p0, PAGE_SIZE)\
+	== ALIGN_DOWN(p1, PAGE_SIZE))
 
 # define UPPER_DIVISION(n0, n1)	((n0) % (n1) == 0\
 	? (n0) / (n1) : (n0) / (n1) + 1)
