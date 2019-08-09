@@ -8,28 +8,24 @@
 # define OBJ_USED	0b1
 
 # define CACHES_CACHE_NAME	"slab_caches"
-# define CACHES_CACHE_ORDER	0
 
 # define OBJ_TOTAL_SIZE(objsize)	(sizeof(object_t) + (objsize))
 # define OBJ_FIRST(slab)			((object_t *) (slab) + sizeof(slab_t))
 # define OBJ_CONTENT(ptr)			((void *) (ptr) + sizeof(object_t))
-# define OBJ_NEXT(ptr, objsize)		((ptr) + OBJ_TOTAL_SIZE(objsize))
 
 typedef uint8_t object_state;
 
 typedef struct object
 {
+	struct object *next;
 	object_state state;
-
-	struct object *next_free;
 } object_t;
 
 typedef struct slab
 {
-	size_t used;
-	object_t *free_list;
-
 	struct slab *next;
+	object_t *first_object;
+	object_t *last_object;
 } slab_t;
 
 typedef struct cache
