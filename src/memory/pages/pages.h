@@ -5,10 +5,14 @@
 
 # define FREE_LIST_SIZE	16
 
+// TODO Rename buddy to block
+
 typedef struct pages_alloc
 {
 	struct pages_alloc *next;
 	struct pages_alloc *prev;
+	struct pages_alloc *buddy_next;
+	struct pages_alloc *buddy_prev;
 	struct pages_alloc *next_buddy;
 	struct pages_alloc *prev_buddy;
 

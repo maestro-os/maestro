@@ -9,7 +9,7 @@ static block_state_t *states;
 
 // TODO Free list
 
-static spinlock_t spinlock;
+static spinlock_t spinlock = 0;
 
 __attribute__((hot))
 block_order_t buddy_get_order(const size_t size)
@@ -77,8 +77,6 @@ void buddy_init(void)
 		set_block_state(i, NODE_STATE_FULL);
 
 	// TODO Free list
-
-	spinlock = 0;
 }
 
 __attribute__((hot))

@@ -1,12 +1,12 @@
-#include <memory/memory.h>
+#include <memory/kmalloc/kmalloc.h>
 
-void *krealloc(void *ptr, const size_t size)
+void *krealloc(void *ptr, const size_t size, const int flags)
 {
 	if(!ptr)
-		return kmalloc(size);
+		return kmalloc(size, flags);
 	if(size == 0)
 	{
-		kfree(ptr);
+		kfree(ptr, flags);
 		return NULL;
 	}
 	// TODO

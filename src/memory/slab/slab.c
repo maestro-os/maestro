@@ -9,7 +9,7 @@ static cache_t *caches_cache;
 __attribute__((cold))
 void slab_init(void)
 {
-	if(!(caches_cache = kmalloc_zero(sizeof(cache_t))))
+	if(!(caches_cache = kmalloc_zero(sizeof(cache_t), 0)))
 		PANIC("Failed to initialize slab allocator!", 0);
 	caches_cache->name = CACHES_CACHE_NAME;
 	caches_cache->objsize = sizeof(cache_t);

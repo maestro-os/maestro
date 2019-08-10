@@ -66,7 +66,7 @@ void process_init(void)
 	if(!processes_cache || !children_cache)
 		PANIC("Cannot allocate caches for processes!", 0);
 
-	if(!(pids_bitmap = kmalloc_zero(PIDS_BITMAP_SIZE)))
+	if(!(pids_bitmap = kmalloc_zero(PIDS_BITMAP_SIZE, 0)))
 		PANIC("Cannot allocate PIDs bitmap!", 0);
 	bitmap_set(pids_bitmap, 0);
 

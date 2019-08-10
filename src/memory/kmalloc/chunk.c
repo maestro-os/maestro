@@ -2,7 +2,6 @@
 #include <libc/errno.h>
 
 spinlock_t kmalloc_spinlock = 0;
-int kmalloc_buddy = 0;
 
 __attribute__((section("bss")))
 static chunk_t *buckets[BUCKETS_COUNT];
@@ -44,18 +43,19 @@ static void coalesce_chunks(chunk_t *chunk)
 	begin->next = end;
 }
 
-static void *_alloc_block(const size_t pages)
+static void *_alloc_block(const size_t pages, const int flags)
 {
-	if(kmalloc_buddy)
+	if(flags & KMALLOC_BUDDY)
 		return buddy_alloc(buddy_get_order(pages * PAGE_SIZE));
-	return pages_alloc(pages);
+	else
+		return pages_alloc(pages);
 }
 
-static void alloc_block(chunk_t **bucket)
+static void alloc_block(chunk_t **bucket, const int flags)
 {
 	chunk_t *ptr;
 
-	if(!(ptr = _alloc_block(1)))
+	if(!(ptr = _alloc_block(1, flags)))
 		return;
 	ptr->next = *bucket;
 	ptr->size = PAGE_SIZE - sizeof(chunk_t);
@@ -63,14 +63,14 @@ static void alloc_block(chunk_t **bucket)
 	coalesce_chunks(ptr);
 }
 
-static void *large_alloc(const size_t size)
+static void *large_alloc(const size_t size, const int flags)
 {
 	size_t total_size, pages;
 	chunk_t *chunk;
 
 	total_size = sizeof(chunk_t) + size;
 	pages = UPPER_DIVISION(total_size, PAGE_SIZE);
-	if((chunk = _alloc_block(pages)))
+	if((chunk = _alloc_block(pages, flags)))
 	{
 		chunk->size = pages * PAGE_SIZE + sizeof(chunk_t);
 		chunk->next = large_chunks;
@@ -89,7 +89,7 @@ static chunk_t *bucket_get_free_chunk(chunk_t **bucket, const size_t size)
 	return c;
 }
 
-chunk_t *get_free_chunk(const size_t size)
+chunk_t *get_free_chunk(const size_t size, const int flags)
 {
 	size_t i = 0;
 	chunk_t **bucket, *c;
@@ -99,10 +99,10 @@ chunk_t *get_free_chunk(const size_t size)
 	if(i < BUCKETS_COUNT)
 		bucket = buckets + i;
 	else
-		return large_alloc(size);
+		return large_alloc(size, flags);
 	if(!(c = bucket_get_free_chunk(bucket, size)))
 	{
-		alloc_block(bucket);
+		alloc_block(bucket, flags);
 		if(!errno)
 			return NULL;
 		c = bucket_get_free_chunk(bucket, size);
@@ -129,7 +129,7 @@ void alloc_chunk(chunk_t *chunk, const size_t size)
 	chunk->used = 1;
 }
 
-void free_chunk(chunk_t *chunk)
+void free_chunk(chunk_t *chunk, const int flags)
 {
 	if(!chunk)
 		return;
@@ -139,5 +139,6 @@ void free_chunk(chunk_t *chunk)
 		chunk->next->prev = chunk->prev;
 	chunk->used = 0;
 	coalesce_chunks(chunk);
-	// TODO If page is empty, free it (use buddy_free if kmalloc_buddy)
+	// TODO If page is empty, free it
+	(void) flags;
 }
