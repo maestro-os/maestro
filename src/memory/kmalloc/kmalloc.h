@@ -9,6 +9,11 @@
 # define BUCKETS_COUNT	6
 # define SMALLER_BUCKET	8
 
+# define CHUNK_FLAG_USED	0b01
+# define CHUNK_FLAG_BUDDY	0b10
+
+# define CHUNK_IS_USED(chunk)	((chunk)->flags & CHUNK_FLAG_USED)
+
 # define KMALLOC_BUDDY	0b1
 
 typedef struct chunk
@@ -16,7 +21,7 @@ typedef struct chunk
 	struct chunk *prev;
 	struct chunk *next;
 	size_t size;
-	uint8_t used;
+	int8_t flags;
 } chunk_t;
 
 extern spinlock_t kmalloc_spinlock;
