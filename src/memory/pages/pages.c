@@ -1,9 +1,9 @@
 #include <memory/pages/pages.h>
 
-static pages_alloc_t *allocs = NULL;
+pages_alloc_t *allocs = NULL;
 
 __attribute__((section("bss")))
-static pages_alloc_t *free_list[FREE_LIST_SIZE];
+pages_alloc_t *free_list[FREE_LIST_SIZE];
 
 static spinlock_t spinlock = 0;
 
@@ -20,7 +20,7 @@ static size_t get_larger_free_order(void)
 	return larger;
 }
 
-static void update_free_list(pages_alloc_t *alloc)
+void update_free_list(pages_alloc_t *alloc)
 {
 	size_t order;
 
@@ -32,52 +32,7 @@ static void update_free_list(pages_alloc_t *alloc)
 	free_list[order] = alloc;
 }
 
-static pages_alloc_t *get_nearest_buddy(void *ptr)
-{
-	// TODO Avoid doing in linear time
-	pages_alloc_t *a;
-
-	a = allocs;
-	while(a)
-	{
-		if(ptr >= a->buddy && (!a->next_buddy || ptr < a->next_buddy->buddy))
-			return a;
-		a = a->next_buddy;
-	}
-	return NULL;
-}
-
-static void set_next_buddy(pages_alloc_t *alloc, pages_alloc_t *next)
-{
-	pages_alloc_t *a;
-
-	if(!alloc || alloc == next)
-		return;
-	a = next;
-	while(a)
-	{
-		a->prev_buddy = alloc;
-		a = a->buddy_next;
-	}
-	alloc->next_buddy = next;
-}
-
-static void set_prev_buddy(pages_alloc_t *alloc, pages_alloc_t *prev)
-{
-	pages_alloc_t *a;
-
-	if(!alloc || alloc == prev)
-		return;
-	a = prev;
-	while(a)
-	{
-		a->next_buddy = alloc;
-		a = a->buddy_next;
-	}
-	alloc->prev_buddy = prev;
-}
-
-static pages_alloc_t *find_alloc(const size_t pages)
+pages_alloc_t *find_alloc(const size_t pages)
 {
 	size_t i;
 	pages_alloc_t *a;
@@ -89,63 +44,6 @@ static pages_alloc_t *find_alloc(const size_t pages)
 	while(a && a->available_pages < pages)
 		a = a->next;
 	return a;
-}
-
-static void sort_alloc(pages_alloc_t *alloc)
-{
-	pages_alloc_t *a;
-
-	if(alloc->next)
-		alloc->next->prev = alloc->prev;
-	if(alloc->prev)
-		alloc->prev->next = alloc->next;
-	if((a = find_alloc(alloc->available_pages)))
-	{
-		if(a != alloc)
-		{
-			alloc->next = a;
-			alloc->prev = a->prev;
-			if(a->next)
-				a->next->prev = alloc;
-			if(a->prev)
-				a->prev->next = alloc;
-		}
-	}
-	else
-	{
-		alloc->next = NULL;
-		alloc->prev = NULL;
-		allocs = alloc;
-	}
-	update_free_list(alloc);
-}
-
-static void sort_buddy(pages_alloc_t *alloc)
-{
-	pages_alloc_t *a;
-
-	if(!(a = get_nearest_buddy(alloc->buddy)) || a == alloc)
-		return;
-	if(a->buddy < alloc->buddy)
-	{
-		set_next_buddy(alloc, a->next_buddy);
-		set_prev_buddy(alloc, a);
-	}
-	else
-	{
-		set_prev_buddy(alloc, a->prev_buddy);
-		set_next_buddy(alloc, a);
-	}
-}
-
-static void delete_buddy(pages_alloc_t *alloc)
-{
-	if(!alloc->buddy_next && !alloc->buddy_prev)
-		return;
-	set_next_buddy(alloc->prev_buddy, alloc->next_buddy);
-	set_prev_buddy(alloc->next_buddy, alloc->prev_buddy);
-	buddy_free((void *) alloc->buddy);
-	kfree((void *) alloc, KMALLOC_BUDDY);
 }
 
 static void delete_alloc(pages_alloc_t *alloc)
@@ -200,40 +98,6 @@ static void *alloc_pages(pages_alloc_t *alloc, const size_t pages)
 	sort_alloc(alloc);
 	update_free_list(alloc);
 	return ptr;
-}
-
-static void split_prev(pages_alloc_t *alloc, void *ptr, const size_t pages)
-{
-	pages_alloc_t *a;
-
-	if(!(a = kmalloc(sizeof(pages_alloc_t), KMALLOC_BUDDY)))
-		return;
-	a->next_buddy = alloc->next_buddy;
-	a->prev_buddy = alloc->prev_buddy;
-	a->buddy_next = alloc;
-	if((a->buddy_prev = alloc->buddy_prev))
-		alloc->buddy_prev->buddy_next = a;
-	alloc->buddy_prev = a;
-	a->ptr = ptr;
-	a->available_pages = pages;
-	sort_alloc(a);
-}
-
-static void split_next(pages_alloc_t *alloc, void *ptr, const size_t pages)
-{
-	pages_alloc_t *a;
-
-	if(!(a = kmalloc(sizeof(pages_alloc_t), KMALLOC_BUDDY)))
-		return;
-	a->next_buddy = alloc->next_buddy;
-	a->prev_buddy = alloc->prev_buddy;
-	a->buddy_prev = alloc;
-	if((a->buddy_next = alloc->buddy_next))
-		alloc->buddy_next->buddy_prev = a;
-	alloc->buddy_next = a;
-	a->ptr = ptr;
-	a->available_pages = pages;
-	sort_alloc(a);
 }
 
 // TODO Debug every case
