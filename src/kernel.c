@@ -180,17 +180,6 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	printf("Kernel end: %p; Heap end: %p\n", kernel_end, heap_end);
 	buddy_init();
 	printf("Buddy allocator begin: %p\n", buddy_begin);
-
-	while(1)
-	{
-		void *ptr;
-		ptr = pages_alloc(1);
-		printf("%p, ", ptr);
-		pages_free(ptr, 0);
-	}
-	printf("dafuq?\n");
-	kernel_halt();
-
 	slab_init();
 
 	printf("Drivers initialization...\n");
