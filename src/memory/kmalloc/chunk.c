@@ -10,9 +10,24 @@ static chunk_t *large_chunks;
 
 chunk_t *get_chunk(void *ptr)
 {
+	size_t i;
+	chunk_t *c;
+
 	if(!ptr)
 		return NULL;
-	// TODO
+	// TODO Optimize
+	for(i = 0; i < BUCKETS_COUNT; ++i)
+	{
+		if(!buckets[i])
+			continue;
+		c = buckets[i];
+		while(c)
+		{
+			if(CHUNK_CONTENT(c) == ptr)
+				return c;
+			c = c->next;
+		}
+	}
 	return NULL;
 }
 
@@ -63,7 +78,6 @@ static void alloc_block(chunk_t **bucket, const int flags)
 	if(flags & KMALLOC_BUDDY)
 		ptr->flags |= CHUNK_FLAG_BUDDY;
 	*bucket = ptr;
-	coalesce_chunks(ptr);
 }
 
 static void *large_alloc(const size_t size, const int flags)
@@ -92,7 +106,7 @@ static chunk_t *bucket_get_free_chunk(chunk_t **bucket, const size_t size,
 	c = *bucket;
 	if(flags & KMALLOC_BUDDY)
 	{
-		while(c && (CHUNK_IS_USED(c) || (c->flags & CHUNK_FLAG_BUDDY)
+		while(c && (CHUNK_IS_USED(c) || !(c->flags & CHUNK_FLAG_BUDDY)
 			|| c->size < size))
 			c = c->next;
 	}
@@ -138,7 +152,6 @@ void alloc_chunk(chunk_t *chunk, const size_t size)
 		next->flags = chunk->flags & ~CHUNK_FLAG_USED;
 		chunk->next = next;
 	}
-	chunk->size = size;
 	chunk->flags |= CHUNK_FLAG_USED;
 }
 

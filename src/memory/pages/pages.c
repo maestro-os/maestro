@@ -1,5 +1,8 @@
 #include <memory/pages/pages.h>
 
+// TODO remove
+#include <libc/stdio.h>
+
 static pages_alloc_t *allocs = NULL;
 
 __attribute__((section("bss")))
@@ -40,7 +43,7 @@ static pages_alloc_t *get_nearest_buddy(void *ptr)
 	a = allocs;
 	while(a)
 	{
-		if(ptr >= a->buddy && (!a->next_buddy && ptr < a->next_buddy->buddy))
+		if(ptr >= a->buddy && (!a->next_buddy || ptr < a->next_buddy->buddy))
 			return a;
 		a = a->next;
 	}
@@ -52,12 +55,16 @@ static pages_alloc_t *find_alloc(const size_t pages)
 	size_t i;
 	pages_alloc_t *a;
 
+	printf("find_alloc\n");
 	if((i = buddy_get_order(pages * PAGE_SIZE)) >= FREE_LIST_SIZE)
 		i = get_larger_free_order();
+	printf("a\n");
 	if(!(a = free_list[i]))
 		a = allocs;
+	printf("b\n");
 	while(a && a->available_pages < pages)
 		a = a->next;
+	printf("c\n");
 	return a;
 }
 
@@ -144,6 +151,7 @@ static pages_alloc_t *alloc_buddy(const size_t pages)
 {
 	pages_alloc_t *alloc, *a;
 
+	printf("alloc_buddy\n");
 	if(!(alloc = kmalloc_zero(sizeof(pages_alloc_t), KMALLOC_BUDDY)))
 		return NULL;
 	if(!(alloc->buddy = buddy_alloc(buddy_get_order(pages * PAGE_SIZE))))
@@ -284,7 +292,7 @@ void *pages_alloc(const size_t n)
 
 	if(n == 0)
 		return NULL;
-	if((alloc = find_alloc(n)) && !(alloc = alloc_buddy(n)))
+	if((alloc = find_alloc(n)) || (alloc = alloc_buddy(n)))
 		ptr = alloc_pages(alloc, n);
 	return ptr;
 }
