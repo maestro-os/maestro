@@ -98,11 +98,11 @@ static void tty_fix_pos(tty_t *tty)
 	}
 	if(tty->screen_y < 0)
 		tty->screen_y = 0;
-	if(tty->screen_y + VGA_HEIGHT >= HISTORY_LINES)
+	if(tty->screen_y + VGA_HEIGHT > HISTORY_LINES)
 	{
 		diff = (tty->screen_y + VGA_HEIGHT - HISTORY_LINES) * VGA_WIDTH;
 		size = sizeof(tty->history) - (diff * sizeof(uint16_t));
-		memmove(tty->history, tty->history + (diff * sizeof(uint16_t)), size);
+		memmove(tty->history, tty->history + diff, size);
 		tty_clear_portion(tty->history + (size / sizeof(uint16_t)), diff);
 		tty->screen_y = HISTORY_LINES - VGA_HEIGHT;
 	}
