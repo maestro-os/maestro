@@ -51,7 +51,7 @@ typedef struct multiboot_header_tag_information_request
 	uint16_t type;
 	uint16_t flags;
 	uint32_t size;
-	uint32_t *requests;
+	uint32_t requests[0];
 } multiboot_header_tag_information_request_t;
 
 typedef struct multiboot_header_tag_address
@@ -134,7 +134,7 @@ typedef struct multiboot_tag_string
 {
 	uint32_t type;
 	uint32_t size;
-	char *string;
+	char string[0];
 } multiboot_tag_string_t;
 
 typedef struct multiboot_tag_module
@@ -143,7 +143,7 @@ typedef struct multiboot_tag_module
 	uint32_t size;
 	uint32_t mod_start;
 	uint32_t mod_end;
-	char *cmdline;
+	char cmdline[0];
 } multiboot_tag_module_t;
 
 typedef struct multiboot_tag_basic_meminfo
@@ -169,7 +169,7 @@ typedef struct multiboot_tag_mmap
 	uint32_t size;
 	uint32_t entry_size;
 	uint32_t entry_version;
-	struct multiboot_mmap_entry *entries;
+	struct multiboot_mmap_entry entries[0];
 } multiboot_tag_mmap_t;
 
 typedef struct multiboot_vbe_info_block
@@ -219,7 +219,7 @@ typedef struct multiboot_tag_framebuffer
 		struct
 		{
 			uint16_t framebuffer_palette_num_colors;
-			struct multiboot_color *framebuffer_palette;
+			struct multiboot_color framebuffer_palette[0];
 		};
 
 		struct
@@ -241,7 +241,7 @@ typedef struct multiboot_tag_elf_sections
 	uint32_t num;
 	uint32_t entsize;
 	uint32_t shndx;
-	char *sections;
+	char sections[0];
 } multiboot_tag_elf_sections_t;
 
 typedef struct multiboot_tag_apm
@@ -280,28 +280,28 @@ typedef struct multiboot_tag_smbios
 	uint8_t major;
 	uint8_t minor;
 	uint8_t reserved[6];
-	uint8_t *tables;
+	uint8_t tables[0];
 } multiboot_tag_smbios_t;
 
 typedef struct multiboot_tag_old_acpi
 {
 	uint32_t type;
 	uint32_t size;
-	uint8_t *rsdp;
+	uint8_t rsdp[0];
 } multiboot_tag_old_acpi_t;
 
 typedef struct multiboot_tag_new_acpi
 {
 	uint32_t type;
 	uint32_t size;
-	uint8_t *rsdp;
+	uint8_t rsdp[0];
 } multiboot_tag_new_acpi_t;
 
 typedef struct multiboot_tag_network
 {
 	uint32_t type;
 	uint32_t size;
-	uint8_t *dhcpack;
+	uint8_t dhcpack[0];
 } multiboot_tag_network_t;
 
 typedef struct multiboot_tag_efi_mmap
@@ -310,7 +310,7 @@ typedef struct multiboot_tag_efi_mmap
 	uint32_t size;
 	uint32_t descr_size;
 	uint32_t descr_vers;
-	uint8_t *efi_mmap;
+	uint8_t efi_mmap[0];
 } multiboot_tag_efi_mmap_t;
 
 typedef struct multiboot_tag_efi32_ih

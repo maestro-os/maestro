@@ -64,9 +64,8 @@ static void print_memory_mapping(void)
 	if(!memory_maps)
 		return;
 	t = memory_maps;
-	while(t < memory_maps + memory_maps_size)
+	while((void *) t < memory_maps + memory_maps_size)
 	{
-		// TODO Fix
 		printf("- %p %p %s\n", (void *) (uintptr_t) t->addr,
 			(void *) (uintptr_t) t->addr + t->len, memmap_type(t->type));
 		t = (void *) t + memory_maps_entry_size;
@@ -162,7 +161,6 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	memory_maps_size = boot_info.memory_maps_size;
 	memory_maps_entry_size = boot_info.memory_maps_entry_size;
 	memory_maps = boot_info.memory_maps;
-	// TODO Fix: `memory_maps` is NULL
 
 	printf("Basic components initialization...\n");
 	idt_init();

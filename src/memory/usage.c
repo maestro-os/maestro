@@ -9,7 +9,7 @@ static size_t get_reserved_memory(void)
 	if(!memory_maps)
 		return 0;
 	t = memory_maps;
-	while(t < memory_maps + memory_maps_size)
+	while((void *) t < memory_maps + memory_maps_size)
 	{
 		if(t->type != MULTIBOOT_MEMORY_AVAILABLE)
 			n += t->len;

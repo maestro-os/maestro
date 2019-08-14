@@ -53,7 +53,7 @@ extern size_t available_memory;
 
 extern size_t memory_maps_size;
 extern size_t memory_maps_entry_size;
-extern multiboot_mmap_entry_t *memory_maps;
+extern void *memory_maps;
 
 extern bool check_a20(void);
 void enable_a20(void);
