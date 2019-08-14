@@ -3,6 +3,9 @@
 
 # include <multiboot.h>
 # include <libc/string.h>
+# ifdef KERNEL_DEBUG
+#  include <libc/stdio.h>
+# endif
 
 # define KERNEL_VERSION	"0.1"
 # define KERNEL_MAGIC

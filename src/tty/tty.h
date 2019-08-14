@@ -37,13 +37,9 @@ typedef struct tty
 tty_t ttys[TTYS_COUNT];
 tty_t *current_tty;
 
-inline void switch_tty(const uint8_t tty)
-{
-	current_tty = ttys + tty;
-}
-
 void tty_init(void);
 
+void tty_switch(uint8_t tty);
 void tty_reset_attrs(tty_t *tty);
 void tty_set_fgcolor(tty_t *tty, const vgacolor_t color);
 void tty_set_bgcolor(tty_t *tty, const vgacolor_t color);

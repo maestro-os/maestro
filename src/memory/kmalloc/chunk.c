@@ -62,9 +62,9 @@ static void coalesce_chunks(chunk_t *chunk)
 static void *_alloc_block(const size_t pages, const int flags)
 {
 	if(flags & KMALLOC_BUDDY)
-		return buddy_alloc(buddy_get_order(pages * PAGE_SIZE));
+		return buddy_alloc_zero(buddy_get_order(pages * PAGE_SIZE));
 	else
-		return pages_alloc(pages);
+		return pages_alloc_zero(pages);
 }
 
 static void alloc_block(chunk_t **bucket, const int flags)
@@ -73,10 +73,11 @@ static void alloc_block(chunk_t **bucket, const int flags)
 
 	if(!(ptr = _alloc_block(1, flags)))
 		return;
-	ptr->next = *bucket;
 	ptr->size = PAGE_SIZE - sizeof(chunk_t);
 	if(flags & KMALLOC_BUDDY)
 		ptr->flags |= CHUNK_FLAG_BUDDY;
+	if((ptr->next = *bucket))
+		ptr->next->prev = ptr;
 	*bucket = ptr;
 }
 
@@ -111,7 +112,8 @@ static chunk_t *bucket_get_free_chunk(chunk_t **bucket, const size_t size,
 			c = c->next;
 	}
 	else
-		while(c && (CHUNK_IS_USED(c) || c->size < size))
+		while(c && (CHUNK_IS_USED(c) || (c->flags & CHUNK_FLAG_BUDDY)
+			|| c->size < size))
 			c = c->next;
 	return c;
 }
@@ -130,8 +132,6 @@ chunk_t *get_free_chunk(const size_t size, const int flags)
 	if(!(c = bucket_get_free_chunk(bucket, size, flags)))
 	{
 		alloc_block(bucket, flags);
-		if(errno)
-			return NULL;
 		c = bucket_get_free_chunk(bucket, size, flags);
 	}
 	return c;

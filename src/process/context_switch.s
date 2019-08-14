@@ -26,4 +26,6 @@ context_switch:
 	push $0x0
 	call pic_EOI
 	add $4, %esp
+
+	sti
 	iret

@@ -341,7 +341,8 @@ typedef struct boot_info_t
 
 	uint32_t mem_lower;
 	uint32_t mem_upper;
-	size_t memory_maps_count;
+	size_t memory_maps_size;
+	size_t memory_maps_entry_size;
 	multiboot_mmap_entry_t *memory_maps;
 
 	// TODO

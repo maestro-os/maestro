@@ -1,9 +1,9 @@
 #include <util/util.h>
 #include <memory/memory.h>
 
-#define UNIT_SIZE		   	(sizeof(uint8_t))
-#define UNIT(bitmap, index)	(bitmap + (index / UNIT_SIZE))
-#define INNER_INDEX(index)	(UNIT_SIZE - (index % UNIT_SIZE) - 1)
+#define UNIT_SIZE		   	(BIT_SIZEOF(uint8_t))
+#define UNIT(bitmap, index)	((bitmap) + ((index) / UNIT_SIZE))
+#define INNER_INDEX(index)	(UNIT_SIZE - ((index) % UNIT_SIZE) - 1)
 
 #define RIGHT_MASK(out, mask_type, size)\
 	out = 0;\
@@ -19,6 +19,8 @@
 		out |= 0b1 << (BIT_SIZEOF(mask_type) - 1);\
 		out >>= 1;\
 	}
+
+// TODO Protect and clean every function
 
 __attribute__((hot))
 int bitmap_get(uint8_t *bitmap, const size_t index)
@@ -137,18 +139,18 @@ void bitmap_clear_range(uint8_t *bitmap, const size_t begin, const size_t end)
 size_t bitmap_first_clear(uint8_t *bitmap, const size_t bitmap_size)
 {
 	size_t i = 0;
-	while(i * UNIT_SIZE < bitmap_size && bitmap[i] == 0xff) ++i;
+	uint8_t c;
+	size_t j = 0;
 
+	while(i * UNIT_SIZE < bitmap_size && bitmap[i] == 0xff)
+		++i;
 	if(i * UNIT_SIZE >= bitmap_size)
 		return bitmap_size;
-
-	uint8_t c = bitmap[i];
-	size_t j = 0;
+	c = bitmap[i];
 	while(c & (1 << 7))
 	{
 		c <<= 1;
 		++j;
 	}
-
 	return i * UNIT_SIZE + j;
 }

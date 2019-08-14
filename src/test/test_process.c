@@ -3,6 +3,7 @@
 int write(int fildes, const void *buf, size_t nbyte);
 pid_t fork(void);
 void _exit(int status);
+pid_t getpid(void);
 pid_t waitpid(pid_t pid, int *wstatus, int options);
 
 static void putchar(char c)
@@ -22,7 +23,7 @@ static void putnbr(int n)
 	putchar('0' + (n % 10));
 }
 
-static void fork_bomb(void)
+/*static void fork_bomb(void)
 {
 	pid_t pid;
 	int status;
@@ -36,18 +37,28 @@ static void fork_bomb(void)
 		return;
 	}
 	if(pid == 0)
+	{
+		write(0, "child\n", 6);
 		fork_bomb();
+	}
 	else
 	{
+		putnbr(pid);
+		write(0, "parent\n", 7);
 		waitpid(pid, &status, 0);
 		_exit(status); // TODO EXITSTATUS
 	}
-}
+}*/
 
 void test_process(void)
 {
-	write(0, "BEGIN\n", 6);
-	fork_bomb();
+	pid_t pid;
+
+	// write(0, "BEGIN\n", 6);
+	// fork_bomb();
+	pid = getpid();
+	putnbr(pid);
+	write(0, "\n", 1);
 	while(1)
 		;
 	// TODO Protect when returning (Triple fault)

@@ -10,9 +10,15 @@ void tty_init(void)
 	bzero(ttys, sizeof(ttys));
 	for(i = 0; i < TTYS_COUNT; ++i)
 		ttys[i].current_color = VGA_DEFAULT_COLOR;
-	switch_tty(0);
+	tty_switch(0);
 	vga_enable_cursor();
 	tty_clear(current_tty);
+}
+
+__attribute__((hot))
+void tty_switch(const uint8_t tty)
+{
+	current_tty = ttys + tty;
 }
 
 __attribute__((hot))

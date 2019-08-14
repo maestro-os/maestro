@@ -128,6 +128,7 @@ void *buddy_alloc(const block_order_t order)
 	void *ptr;
 
 	lock(&spinlock);
+	errno = 0;
 	// TODO Check free list
 	block = find_free(0, order, false);
 	if(block != BLOCK_NULL)

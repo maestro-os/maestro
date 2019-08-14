@@ -1,9 +1,6 @@
 #include <process/process.h>
 #include <libc/errno.h>
 
-// TODO remove
-#include <libc/stdio.h>
-
 // TODO lock when doing something
 // TODO Set errnos
 // TODO Multicore handling
@@ -103,12 +100,12 @@ process_t *new_process(process_t *parent, void (*begin)())
 	if((pid = alloc_pid()) < 0
 		|| !(new_proc = cache_alloc(processes_cache)))
 	{
-		printf("PROCESS ALLOC FAIL!\n");
 		free_pid(pid);
 		errno = ENOMEM;
 		return NULL;
 	}
 	new_proc->pid = pid;
+	new_proc->state = CREATED;
 	new_proc->parent = parent;
 	new_proc->begin = begin;
 	new_proc->tss.eip = (uintptr_t) begin;
@@ -194,6 +191,26 @@ void process_add_child(process_t *parent, process_t *child)
 	c->next = parent->children;
 	c->process = child;
 	parent->children = c;
+}
+
+__attribute__((hot))
+void process_exit(process_t *proc, const int status)
+{
+	if(!proc)
+		return;
+	proc->exit_status = status;
+	proc->state = TERMINATED;
+	if(running_process)
+		running_process = NULL;
+}
+
+__attribute__((hot))
+void process_kill(process_t *proc, const int sig)
+{
+	if(!proc)
+		return;
+	// TODO
+	(void) sig;
 }
 
 __attribute__((hot))
@@ -286,7 +303,7 @@ static process_t *next_waiting_process(process_t *process)
 		if(!(p = p->next))
 			p = processes;
 	}
-	while(p != process && p->state != RUNNING);
+	while(p != process && p->state != WAITING);
 	return (p == process ? NULL : p);
 }
 

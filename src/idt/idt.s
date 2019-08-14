@@ -40,96 +40,112 @@ irq0:
 	pusha
 	call irq0_handler
 	popa
+	sti
 	iret
 
 irq1:
 	pusha
 	call irq1_handler
 	popa
+	sti
 	iret
 
 irq2:
 	pusha
 	call irq2_handler
 	popa
+	sti
 	iret
 
 irq3:
 	pusha
 	call irq3_handler
 	popa
+	sti
 	iret
 
 irq4:
 	pusha
 	call irq4_handler
 	popa
+	sti
 	iret
 
 irq5:
 	pusha
 	call irq5_handler
 	popa
+	sti
 	iret
 
 irq6:
 	pusha
 	call irq6_handler
 	popa
+	sti
 	iret
 
 irq7:
 	pusha
 	call irq7_handler
 	popa
+	sti
 	iret
 
 irq8:
 	pusha
 	call irq8_handler
 	popa
+	sti
 	iret
 
 irq9:
 	pusha
 	call irq9_handler
 	popa
+	sti
 	iret
 
 irq10:
 	pusha
 	call irq10_handler
 	popa
+	sti
 	iret
 
 irq11:
 	pusha
 	call irq11_handler
 	popa
+	sti
 	iret
 
 irq12:
 	pusha
 	call irq12_handler
 	popa
+	sti
 	iret
 
 irq13:
 	pusha
 	call irq13_handler
 	popa
+	sti
 	iret
 
 irq14:
 	pusha
 	call irq14_handler
 	popa
+	sti
 	iret
 
 irq15:
 	pusha
 	call irq15_handler
 	popa
+	sti
 	iret
 
 idt_load:

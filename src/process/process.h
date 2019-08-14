@@ -119,6 +119,7 @@ typedef struct process
 	tss_entry_t tss;
 
 	signal_t *signals_queue;
+	int exit_status;
 
 	void (*begin)();
 } process_t;
@@ -138,6 +139,8 @@ process_t *get_process(const pid_t pid);
 process_t *get_running_process(void);
 process_t *process_clone(process_t *proc);
 void process_add_child(process_t *parent, process_t *child);
+void process_exit(process_t *proc, int status);
+void process_kill(process_t *proc, int sig);
 void del_process(process_t *process, const bool children);
 
 void process_tick(void);

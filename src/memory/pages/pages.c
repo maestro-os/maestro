@@ -7,17 +7,17 @@ pages_alloc_t *free_list[FREE_LIST_SIZE];
 
 static spinlock_t spinlock = 0;
 
-static size_t get_larger_free_order(void)
+static size_t get_largest_free_order(void)
 {
-	size_t i = 0, larger = 0;
+	size_t i = 0, largest = 0;
 
 	while(i < FREE_LIST_SIZE)
 	{
 		if(free_list[i])
-			larger = i;
+			largest = i;
 		++i;
 	}
-	return larger;
+	return largest;
 }
 
 void update_free_list(pages_alloc_t *alloc)
@@ -38,7 +38,7 @@ pages_alloc_t *find_alloc(const size_t pages)
 	pages_alloc_t *a;
 
 	if((i = buddy_get_order(pages * PAGE_SIZE)) >= FREE_LIST_SIZE)
-		i = get_larger_free_order();
+		i = get_largest_free_order();
 	if(!(a = free_list[i]))
 		a = allocs;
 	while(a && a->available_pages < pages)
@@ -143,6 +143,8 @@ void *pages_alloc(const size_t n)
 		return NULL;
 	if((alloc = find_alloc(n)) || (alloc = alloc_buddy(n)))
 		ptr = alloc_pages(alloc, n);
+	if(ptr && ptr < buddy_begin)
+		kernel_halt();
 	return ptr;
 }
 

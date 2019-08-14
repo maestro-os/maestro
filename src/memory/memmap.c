@@ -3,7 +3,8 @@
 void *heap_begin, *heap_end;
 size_t available_memory;
 
-size_t memory_maps_count = 0;
+size_t memory_maps_size = 0;
+size_t memory_maps_entry_size = 0;
 multiboot_mmap_entry_t *memory_maps = NULL;
 
 const char *memmap_type(const uint32_t type)

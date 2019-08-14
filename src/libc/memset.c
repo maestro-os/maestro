@@ -6,9 +6,9 @@ void *memset(void *s, int c, size_t n)
 {
 	void *begin = s;
 	void *end = begin + n;
+	long field;
 
-	const long field = make_field(c);
-
+	field = make_field(c);
 	while(s < end && (((intptr_t) s & (sizeof(long) - 1)) != 0))
 		*((char *) s++) = c;
 	while(s < (void *) ((intptr_t) end & ~((intptr_t) 7))
@@ -16,6 +16,5 @@ void *memset(void *s, int c, size_t n)
 		*((long *) s++) = field;
 	while(s < end)
 		*((char *) s++) = c;
-
 	return begin;
 }

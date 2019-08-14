@@ -57,19 +57,19 @@ static driver_t drivers[] = {
 __attribute__((hot))
 static void print_memory_mapping(void)
 {
-	size_t i = 0;
 	const multiboot_mmap_entry_t *t;
 
 	printf("--- Memory mapping ---\n");
 	printf("<begin> <end> <type>\n");
 	if(!memory_maps)
 		return;
-	for(; i < memory_maps_count; ++i)
+	t = memory_maps;
+	while(t < memory_maps + memory_maps_size)
 	{
 		// TODO Fix
-		t = memory_maps + i;
 		printf("- %p %p %s\n", (void *) (uintptr_t) t->addr,
 			(void *) (uintptr_t) t->addr + t->len, memmap_type(t->type));
+		t = (void *) t + memory_maps_entry_size;
 	}
 	printf("\n");
 }
@@ -85,7 +85,7 @@ static void print_slabs(void)
 	while(c)
 	{
 		printf("%s %u %u %u\n", c->name, (unsigned) c->slabs,
-			(unsigned) c->objsize, (unsigned) c->objects_count); // TODO Use %zu
+			(unsigned) c->objsize, (unsigned) c->objcount); // TODO Use %zu
 		c = c->next;
 	}
 	printf("\n");
@@ -159,7 +159,8 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	read_boot_tags(multiboot_ptr, &boot_info);
 	printf("Command line: %s\n", boot_info.cmdline);
 	printf("Bootloader name: %s\n", boot_info.loader_name);
-	memory_maps_count = boot_info.memory_maps_count;
+	memory_maps_size = boot_info.memory_maps_size;
+	memory_maps_entry_size = boot_info.memory_maps_entry_size;
 	memory_maps = boot_info.memory_maps;
 	// TODO Fix: `memory_maps` is NULL
 
@@ -203,6 +204,9 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	CLI();
 	errno = 0;
 	process_t *proc = new_process(NULL, test_process);
+	printf("pid: %i, errno: %i\n", (int) proc->pid, (int) errno);
+	errno = 0;
+	proc = new_process(NULL, test_process);
 	printf("pid: %i, errno: %i\n", (int) proc->pid, (int) errno);
 
 	STI();

@@ -3,17 +3,17 @@
 // TODO Separate bad ram and reserved?
 static size_t get_reserved_memory(void)
 {
-	size_t i = 0, n;
+	size_t n = 0;
 	const multiboot_mmap_entry_t *t;
 
 	if(!memory_maps)
 		return 0;
-	n = 0;
-	for(; i < memory_maps_count; ++i)
+	t = memory_maps;
+	while(t < memory_maps + memory_maps_size)
 	{
-		t = memory_maps + i;
 		if(t->type != MULTIBOOT_MEMORY_AVAILABLE)
 			n += t->len;
+		t = (void *) t + memory_maps_entry_size;
 	}
 	return n;
 }

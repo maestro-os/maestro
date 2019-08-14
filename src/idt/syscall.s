@@ -22,10 +22,6 @@ syscall:
 	add $32, %esp
 	push %eax
 
-	push $0x80
-	call pic_EOI
-	add $4, %esp
-
 	xor %eax, %eax
 	mov $GDT_USER_DATA_OFFSET, %ax
 	or $3, %ax
@@ -34,5 +30,11 @@ syscall:
 	mov %ax, %fs
 	mov %ax, %gs
 
+	push $0x80
+	call pic_EOI
+	add $4, %esp
+
 	pop %eax
+
+	sti
 	iret
