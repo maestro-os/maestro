@@ -1,4 +1,5 @@
 #include <memory/memory.h>
+#include <libc/errno.h>
 
 // TODO Handle shared memory (use free flag into page table entry)
 
@@ -10,33 +11,23 @@ static inline vmem_t new_vmem_obj(void)
 	return buddy_alloc_zero(0);
 }
 
-// TODO Optimize
 __attribute__((hot))
 void vmem_kernel(void)
 {
 	size_t i, j;
-	vmem_t vmem;
 
 	if(!(kernel_vmem = new_vmem_obj()))
 		goto fail;
 	for(i = 0; i < 1024; ++i)
-	{
-		if(!(vmem = new_vmem_obj()))
-		{
-			// TODO Free all
-			goto fail;
-		}
 		for(j = 0; j < 1024; ++j)
-			vmem[j] = (PAGE_SIZE * (i * 1024 + j))
-				| (PAGING_PAGE_WRITE | PAGING_PAGE_PRESENT);
-		kernel_vmem[i] = ((uintptr_t) vmem)
-			| (PAGING_TABLE_WRITE | PAGING_TABLE_PRESENT);
-	}
+			vmem_identity(kernel_vmem, (void *) (PAGE_SIZE * (i * 1024 + j)));
+	if(errno)
+		goto fail;
 	paging_enable(kernel_vmem);
-	return;
 
 fail:
 	// TODO Error
+	// TODO Free all
 	return;
 }
 
@@ -48,10 +39,30 @@ vmem_t vmem_init(void)
 }
 
 __attribute__((hot))
+void vmem_identity(vmem_t vmem, void *page)
+{
+	const int flags = PAGING_TABLE_WRITE | PAGING_TABLE_PRESENT;
+	size_t t, p;
+	vmem_t v;
+
+	t = ((uintptr_t) page >> 22) & 0x3ff;
+	p = ((uintptr_t) page >> 12) & 0x3ff;
+	if(!(vmem[t] & PAGING_TABLE_PRESENT))
+	{
+		if(!(v = new_vmem_obj()))
+			return;
+		vmem[t] = (uintptr_t) v | flags;
+	}
+	v[p] = (uintptr_t) page | flags;
+}
+
+__attribute__((hot))
 static void free_page_table(vmem_t table, const bool mem)
 {
 	size_t i;
 
+	if(!table)
+		return;
 	if(mem)
 	{
 		for(i = 0; i < 1024; ++i)
@@ -71,7 +82,7 @@ static vmem_t clone_page_table(vmem_t from, const bool mem_dup)
 	size_t i;
 	void *old_page, *new_page;
 
-	if(!(v = new_vmem_obj()))
+	if(!from || !(v = new_vmem_obj()))
 		return NULL;
 	for(i = 0; i < 1024; ++i)
 	{
@@ -121,9 +132,11 @@ void *vmem_translate(vmem_t vmem, void *ptr)
 	uintptr_t remain, table, page;
 	vmem_t table_obj;
 
+	if(!vmem)
+		return NULL;
 	remain = (uintptr_t) ptr & 0xfff;
-	table = ((uintptr_t) ptr >> 12) & 0x3ff;
-	page = ((uintptr_t) ptr >> 22) & 0x3ff;
+	table = ((uintptr_t) ptr >> 22) & 0x3ff;
+	page = ((uintptr_t) ptr >> 12) & 0x3ff;
 	if(!(vmem[table] & PAGING_TABLE_PRESENT))
 		return NULL;
 	table_obj = (void *) (vmem[table] & PAGING_ADDR_MASK);
@@ -135,6 +148,8 @@ void *vmem_translate(vmem_t vmem, void *ptr)
 __attribute__((hot))
 bool vmem_contains(vmem_t vmem, const void *ptr, const size_t size)
 {
+	if(!vmem)
+		return false;
 	// TODO
 	(void) vmem;
 	(void) ptr;
@@ -149,7 +164,7 @@ void *vmem_alloc_pages(vmem_t vmem, const size_t pages)
 	uintptr_t table, page;
 	vmem_t table_ptr;
 
-	if(!vmem || !(ptr = buddy_alloc(pages)))
+	if(!vmem || !(ptr = pages_alloc_zero(pages)))
 		return NULL;
 	table = ((uintptr_t) ptr >> 12) & 0x3ff;
 	page = ((uintptr_t) ptr >> 22) & 0x3ff;

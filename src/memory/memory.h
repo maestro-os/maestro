@@ -62,6 +62,7 @@ void *clone_page(void *ptr);
 
 void vmem_kernel(void);
 vmem_t vmem_init(void);
+void vmem_identity(vmem_t vmem, void *page);
 vmem_t vmem_clone(vmem_t vmem, bool mem_dup);
 void *vmem_translate(vmem_t vmem, void *ptr);
 bool vmem_contains(vmem_t vmem, const void *ptr, size_t size);

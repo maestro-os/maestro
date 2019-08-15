@@ -283,17 +283,6 @@ static void init_process(process_t *process)
 }
 
 __attribute__((hot))
-static process_t *first_running_process(void)
-{
-	process_t *p;
-
-	p = processes;
-	while(p && p->state != RUNNING)
-		p = p->next;
-	return p;
-}
-
-__attribute__((hot))
 static process_t *next_waiting_process(process_t *process)
 {
 	process_t *p;
@@ -315,21 +304,14 @@ static void switch_processes(void)
 
 	if(!processes)
 		return;
-	if(!(p = first_running_process()))
-	{
-		if(processes->state == WAITING)
-			p = processes;
-		else
-			p = next_waiting_process(processes);
-	}
-	else
+	if((p = running_process))
 	{
 		p->state = WAITING;
-		p = next_waiting_process(p);
+		p->tss = tss_entry;
+		running_process = NULL;
 	}
-	if(!p)
+	if(!(p = next_waiting_process(p)))
 		return;
-	// TODO Enable paging on kernel?
 	p->state = RUNNING;
 	tss_entry = p->tss;
 	running_process = p;
@@ -341,7 +323,6 @@ void process_tick(void)
 	process_t *p;
 
 	p = processes;
-	switch_processes();
 	while(p)
 	{
 		switch(p->state)
@@ -362,4 +343,5 @@ void process_tick(void)
 		}
 		p = p->next;
 	}
+	switch_processes();
 }
