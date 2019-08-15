@@ -179,6 +179,7 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	printf("Kernel end: %p; Heap end: %p\n", kernel_end, heap_end);
 	buddy_init();
 	printf("Buddy allocator begin: %p\n", buddy_begin);
+	vmem_kernel();
 	slab_init();
 
 	printf("Drivers initialization...\n");

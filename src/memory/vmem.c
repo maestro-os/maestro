@@ -2,10 +2,42 @@
 
 // TODO Handle shared memory (use free flag into page table entry)
 
+vmem_t kernel_vmem;
+
 __attribute__((hot))
 static inline vmem_t new_vmem_obj(void)
 {
 	return buddy_alloc_zero(0);
+}
+
+// TODO Optimize
+__attribute__((hot))
+void vmem_kernel(void)
+{
+	size_t i, j;
+	vmem_t vmem;
+
+	if(!(kernel_vmem = new_vmem_obj()))
+		goto fail;
+	for(i = 0; i < 1024; ++i)
+	{
+		if(!(vmem = new_vmem_obj()))
+		{
+			// TODO Free all
+			goto fail;
+		}
+		for(j = 0; j < 1024; ++j)
+			vmem[j] = (PAGE_SIZE * (i * 1024 + j))
+				| (PAGING_PAGE_WRITE | PAGING_PAGE_PRESENT);
+		kernel_vmem[i] = ((uintptr_t) vmem)
+			| (PAGING_TABLE_WRITE | PAGING_TABLE_PRESENT);
+	}
+	paging_enable(kernel_vmem);
+	return;
+
+fail:
+	// TODO Error
+	return;
 }
 
 __attribute__((hot))
@@ -18,9 +50,11 @@ vmem_t vmem_init(void)
 __attribute__((hot))
 static void free_page_table(vmem_t table, const bool mem)
 {
+	size_t i;
+
 	if(mem)
 	{
-		for(size_t i = 0; i < PAGING_TABLE_SIZE; ++i)
+		for(i = 0; i < 1024; ++i)
 		{
 			if(!(table[i] & PAGING_PAGE_PRESENT))
 				continue;
@@ -39,7 +73,7 @@ static vmem_t clone_page_table(vmem_t from, const bool mem_dup)
 
 	if(!(v = new_vmem_obj()))
 		return NULL;
-	for(i = 0; i < PAGING_TABLE_SIZE; ++i)
+	for(i = 0; i < 1024; ++i)
 	{
 		if(!(from[i] & PAGING_PAGE_PRESENT))
 			continue;
@@ -65,7 +99,7 @@ vmem_t vmem_clone(vmem_t vmem, const bool mem_dup)
 
 	if(!vmem || !(v = vmem_init()))
 		return NULL;
-	for(i = 0; i < PAGING_DIRECTORY_SIZE; ++i)
+	for(i = 0; i < 1024; ++i)
 	{
 		if(!(vmem[i] & PAGING_TABLE_PRESENT))
 			continue;
@@ -150,7 +184,7 @@ void vmem_free(vmem_t vmem, const bool mem_free)
 
 	if(!vmem)
 		return;
-	for(i = 0; i < PAGING_DIRECTORY_SIZE; ++i)
+	for(i = 0; i < 1024; ++i)
 	{
 		if(!(vmem[i] & PAGING_TABLE_PRESENT))
 			continue;

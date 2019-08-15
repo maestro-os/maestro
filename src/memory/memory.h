@@ -30,10 +30,6 @@
 # define PAGING_FLAGS_MASK	0b111111111111
 # define PAGING_ADDR_MASK	~((uint32_t) PAGING_FLAGS_MASK)
 
-# define PAGING_DIRECTORY_SIZE	0x400
-# define PAGING_TABLE_SIZE		0x400
-# define PAGING_TOTAL_PAGES		(PAGING_DIRECTORY_SIZE * PAGING_TABLE_SIZE)
-
 # define PAGETOPTR(page)	((void *) (page) * PAGE_SIZE)
 # define PTRTOPAGE(ptr)		((uintptr_t) (ptr) / PAGE_SIZE)
 
@@ -55,6 +51,8 @@ extern size_t memory_maps_size;
 extern size_t memory_maps_entry_size;
 extern void *memory_maps;
 
+extern vmem_t kernel_vmem;
+
 extern bool check_a20(void);
 void enable_a20(void);
 
@@ -62,6 +60,7 @@ const char *memmap_type(uint32_t type);
 
 void *clone_page(void *ptr);
 
+void vmem_kernel(void);
 vmem_t vmem_init(void);
 vmem_t vmem_clone(vmem_t vmem, bool mem_dup);
 void *vmem_translate(vmem_t vmem, void *ptr);

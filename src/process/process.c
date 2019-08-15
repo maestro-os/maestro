@@ -8,10 +8,11 @@
 static cache_t *processes_cache;
 static cache_t *children_cache;
 static process_t *processes = NULL;
-
 static uint8_t *pids_bitmap;
 
+__attribute__((aligned(4096)))
 static tss_entry_t tss_entry;
+
 static process_t *running_process = NULL;
 
 __attribute__((hot))
