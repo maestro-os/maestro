@@ -3,7 +3,7 @@
 // TODO temporary
 #include <tty/tty.h>
 
-sys_ret_t sys_write(const sys_info_t *info)
+sys_ret_t sys_write(process_t *process, const sys_info_t *info)
 {
 	int fildes;
 	const void *buf;
@@ -19,6 +19,7 @@ sys_ret_t sys_write(const sys_info_t *info)
 	}
 	// TODO Write to `fildes`
 	(void) fildes;
+	(void) process;
 	tty_write(buf, nbyte, current_tty);
 	return nbyte;
 }

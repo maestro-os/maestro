@@ -24,15 +24,15 @@ struct sys_info
 
 typedef struct sys_info sys_info_t;
 typedef int32_t sys_ret_t;
-typedef sys_ret_t (*sys_handler_t)(const sys_info_t *);
+typedef sys_ret_t (*sys_handler_t)(process_t *, const sys_info_t *);
 
 sys_ret_t syscall_handler(const sys_info_t *info);
 
-sys_ret_t sys_write(const sys_info_t *info);
-sys_ret_t sys_fork(const sys_info_t *info);
-sys_ret_t sys_exit(const sys_info_t *info);
-sys_ret_t sys_getpid(const sys_info_t *info);
-sys_ret_t sys_waitpid(const sys_info_t *info);
+sys_ret_t sys_write(process_t *process, const sys_info_t *info);
+sys_ret_t sys_fork(process_t *process, const sys_info_t *info);
+sys_ret_t sys_exit(process_t *process, const sys_info_t *info);
+sys_ret_t sys_getpid(process_t *process, const sys_info_t *info);
+sys_ret_t sys_waitpid(process_t *process, const sys_info_t *info);
 // TODO
 
 #endif

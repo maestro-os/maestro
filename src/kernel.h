@@ -2,6 +2,8 @@
 # define KERNEL_H
 
 # include <multiboot.h>
+# include <gdt.h>
+
 # include <libc/string.h>
 # ifdef KERNEL_DEBUG
 #  include <libc/stdio.h>

@@ -1,7 +1,7 @@
 #ifndef PROCESS_H
 # define PROCESS_H
 
-# include <gdt/gdt.h>
+# include <kernel.h>
 # include <memory/memory.h>
 
 # include <libc/sys/types.h>
@@ -79,6 +79,7 @@ typedef enum
 	WAITING,
 	RUNNING,
 	BLOCKED,
+	STOPPED,
 	TERMINATED
 } process_state_t;
 
@@ -107,7 +108,7 @@ typedef struct process
 	struct process *next;
 
 	pid_t pid;
-	process_state_t state;
+	process_state_t state, prev_state;
 	uid_t owner_id;
 
 	struct process *parent;
@@ -117,8 +118,9 @@ typedef struct process
 	void *user_stack;
 	void *kernel_stack;
 	tss_entry_t tss;
+	bool syscalling;
 
-	signal_t *signals_queue;
+	signal_t *signals_queue, *last_signal;
 	int exit_status;
 
 	void (*begin)();
@@ -138,12 +140,14 @@ process_t *new_process(process_t *parent, void (*begin)());
 process_t *get_process(const pid_t pid);
 process_t *get_running_process(void);
 process_t *process_clone(process_t *proc);
+void process_set_state(process_t *process, process_state_t state);
 void process_add_child(process_t *parent, process_t *child);
 void process_exit(process_t *proc, int status);
 void process_kill(process_t *proc, int sig);
 void del_process(process_t *process, const bool children);
 
 void process_tick(void);
-extern void context_switch(void *esp, void *eip);
+extern void context_switch(void *esp, void *eip,
+	uint16_t data_selector, uint16_t code_selector);
 
 #endif

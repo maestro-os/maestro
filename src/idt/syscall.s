@@ -3,6 +3,7 @@
 .global syscall
 
 syscall:
+	cli
 	push %ebp
 	push %edi
 	push %esi
@@ -30,11 +31,6 @@ syscall:
 	mov %ax, %fs
 	mov %ax, %gs
 
-	push $0x80
-	call pic_EOI
-	add $4, %esp
-
 	pop %eax
-
 	sti
 	iret

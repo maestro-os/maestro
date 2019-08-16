@@ -23,7 +23,7 @@ void vmem_kernel(void)
 			vmem_identity(kernel_vmem, (void *) (PAGE_SIZE * (i * 1024 + j)));
 	if(errno)
 		goto fail;
-	paging_enable(kernel_vmem);
+	// TODO paging_enable(kernel_vmem);
 
 fail:
 	// TODO Error

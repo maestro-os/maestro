@@ -1,12 +1,11 @@
 #include <syscall/syscall.h>
 
-sys_ret_t sys_fork(const sys_info_t *info)
+sys_ret_t sys_fork(process_t *process, const sys_info_t *info)
 {
-	process_t *proc, *child;
+	process_t *child;
 
 	(void) info;
-	proc = get_running_process();
-	if(!(child = process_clone(proc)))
+	if(!(child = process_clone(process)))
 		return -ENOMEM;
 	child->tss.eax = 0;
 	// TODO Increment %eip from one instruction? (on `child`)

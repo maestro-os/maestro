@@ -90,7 +90,7 @@ static void print_slabs(void)
 	printf("\n");
 }
 
-__attribute__((hot))
+/*__attribute__((hot))
 static void print_mem_usage(void)
 {
 	mem_usage_t usage;
@@ -111,7 +111,7 @@ static void print_mem_usage(void)
 		(int) ((float) usage.swap / total * 100));
 	printf("free: %i bytes (%i%%)\n", (int) usage.free,
 		(int) ((float) usage.free / total * 100));
-}
+}*/
 #endif
 
 __attribute__((cold))
@@ -179,7 +179,7 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	printf("Kernel end: %p; Heap end: %p\n", kernel_end, heap_end);
 	buddy_init();
 	printf("Buddy allocator begin: %p\n", buddy_begin);
-	vmem_kernel();
+	// TODO Fix vmem_kernel();
 	slab_init();
 
 	printf("Drivers initialization...\n");
@@ -195,18 +195,15 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	process_init();
 
 #ifdef KERNEL_DEBUG
-	print_mem_usage();
+	// TODO Copy multiboot infos before kernel image
+	// print_mem_usage();
 	print_slabs();
 #endif
 
 	// TODO Test
 	CLI();
-	errno = 0;
-	process_t *proc = new_process(NULL, test_process);
-	printf("pid: %i, errno: %i\n", (int) proc->pid, (int) errno);
-	errno = 0;
-	proc = new_process(NULL, test_process);
-	printf("pid: %i, errno: %i\n", (int) proc->pid, (int) errno);
+	for(size_t i = 0; i < 2; ++i)
+		new_process(NULL, test_process);
 
 	STI();
 	kernel_loop();

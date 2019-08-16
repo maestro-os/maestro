@@ -23,7 +23,10 @@ static void process_ctor(void *ptr, const size_t size)
 	bzero(ptr, size);
 	p = ptr;
 	if(CREATED != 0)
+	{
 		p->state = CREATED;
+		p->prev_state = CREATED;
+	}
 	p->tss.ss0 = 0x10;
 	p->tss.es = 0x23;
 	p->tss.cs = 0x18;
@@ -106,7 +109,6 @@ process_t *new_process(process_t *parent, void (*begin)())
 		return NULL;
 	}
 	new_proc->pid = pid;
-	new_proc->state = CREATED;
 	new_proc->parent = parent;
 	new_proc->begin = begin;
 	new_proc->tss.eip = (uintptr_t) begin;
@@ -177,6 +179,28 @@ process_t *process_clone(process_t *proc)
 	return p;
 }
 
+// TODO Pay attention to interrupts happening during this function? (setting to blocked during a syscall)
+__attribute__((hot))
+void process_set_state(process_t *process, const process_state_t state)
+{
+	if(!process)
+		return;
+	if(state == RUNNING)
+	{
+		if(running_process)
+		{
+			process_set_state(running_process, WAITING);
+			running_process->tss = tss_entry;
+		}
+		tss_entry = process->tss;
+		running_process = process;
+	}
+	else if(state == BLOCKED && process == running_process)
+		running_process = NULL;
+	process->prev_state = process->state;
+	process->state = state;
+}
+
 __attribute__((hot))
 void process_add_child(process_t *parent, process_t *child)
 {
@@ -200,18 +224,33 @@ void process_exit(process_t *proc, const int status)
 	if(!proc)
 		return;
 	proc->exit_status = status;
-	proc->state = TERMINATED;
-	if(running_process)
+	process_set_state(proc, TERMINATED);
+	if(running_process == proc)
 		running_process = NULL;
 }
 
+// TODO Limit on signals?
 __attribute__((hot))
 void process_kill(process_t *proc, const int sig)
 {
+	signal_t *s;
+
 	if(!proc)
 		return;
+	if(!(s = kmalloc_zero(sizeof(signal_t), 0))) // TODO Use a cache
+		return; // TODO Return fail?
+	s->si_signo = sig;
 	// TODO
-	(void) sig;
+	if(proc->last_signal)
+	{
+		proc->last_signal->next = s;
+		proc->last_signal = s;
+	}
+	else
+	{
+		proc->signals_queue = s;
+		proc->last_signal = s;
+	}
 }
 
 __attribute__((hot))
@@ -252,6 +291,7 @@ void del_process(process_t *process, const bool children)
 	cache_free(processes_cache, process);
 }
 
+// TODO Alloc when the process is created (because of `fork`) (or block parent?)
 __attribute__((hot))
 static void init_process(process_t *process)
 {
@@ -265,8 +305,8 @@ static void init_process(process_t *process)
 	if(!vmem)
 		return;
 	// TODO Change default stack size (and allow stack grow)
-	if(!(user_stack = vmem_alloc_pages(vmem, 0))
-		|| !(kernel_stack = vmem_alloc_pages(vmem, 0)))
+	if(!(user_stack = vmem_alloc_pages(vmem, 1))
+		|| !(kernel_stack = vmem_alloc_pages(vmem, 1)))
 	{
 		vmem_free(vmem, false);
 		buddy_free(user_stack);
@@ -279,7 +319,7 @@ static void init_process(process_t *process)
 	process->tss.cr3 = (uintptr_t) vmem;
 	process->tss.esp0 = (uintptr_t) kernel_stack + PAGE_SIZE - 1; // TODO
 	process->tss.esp = (uintptr_t) user_stack + PAGE_SIZE - 1; // TODO
-	process->state = WAITING;
+	process_set_state(process, WAITING);
 }
 
 __attribute__((hot))
@@ -287,6 +327,8 @@ static process_t *next_waiting_process(process_t *process)
 {
 	process_t *p;
 
+	if(!process && !(process = processes))
+		return NULL;
 	p = process;
 	do
 	{
@@ -294,9 +336,10 @@ static process_t *next_waiting_process(process_t *process)
 			p = processes;
 	}
 	while(p != process && p->state != WAITING);
-	return (p == process ? NULL : p);
+	return (p->state == WAITING ? p : NULL);
 }
 
+// TODO Fix: Process resumes to the beginning
 __attribute__((hot))
 static void switch_processes(void)
 {
@@ -304,18 +347,15 @@ static void switch_processes(void)
 
 	if(!processes)
 		return;
-	if((p = running_process))
-	{
-		p->state = WAITING;
-		p->tss = tss_entry;
-		running_process = NULL;
-	}
-	if(!(p = next_waiting_process(p)))
+	if(!(p = next_waiting_process(running_process)))
 		return;
-	p->state = RUNNING;
-	tss_entry = p->tss;
-	running_process = p;
-	context_switch((void *) tss_entry.esp, (void *) tss_entry.eip);
+	process_set_state(p, RUNNING);
+	if(p->syscalling)
+		context_switch((void *) tss_entry.esp0, (void *) tss_entry.eip,
+			GDT_KERNEL_DATA_OFFSET, GDT_KERNEL_CODE_OFFSET);
+	else
+		context_switch((void *) tss_entry.esp, (void *) tss_entry.eip,
+			GDT_USER_DATA_OFFSET | 3, GDT_USER_CODE_OFFSET | 3);
 }
 
 void process_tick(void)
