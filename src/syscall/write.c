@@ -3,15 +3,15 @@
 // TODO temporary
 #include <tty/tty.h>
 
-sys_ret_t sys_write(process_t *process, const sys_info_t *info)
+sys_ret_t sys_write(process_t *process, const regs_t *registers)
 {
 	int fildes;
 	const void *buf;
 	size_t nbyte;
 
-	fildes = info->ebx;
-	buf = TO_PTR(info->ecx);
-	nbyte = info->edx;
+	fildes = registers->ebx;
+	buf = TO_PTR(registers->ecx);
+	nbyte = registers->edx;
 	if(!buf || !vmem_contains(get_running_process()->page_dir, buf, nbyte))
 	{
 		// TODO Set errno

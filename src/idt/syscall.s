@@ -5,12 +5,28 @@
 syscall:
 	cli
 	push %ebp
+	mov %esp, %ebp
+
 	push %edi
 	push %esi
 	push %edx
 	push %ecx
 	push %ebx
 	push %eax
+
+	mov %ebp, %eax
+	add $8, %eax
+	push %eax
+
+	push 4(%ebp)
+
+	mov %ebp, %eax
+	add $20, %eax
+	push %eax
+
+	mov %ebp, %eax
+	sub $4, %eax
+	push (%eax)
 
 	mov $GDT_KERNEL_DATA_OFFSET, %ax
 	mov %ax, %ds
@@ -20,17 +36,17 @@ syscall:
 
 	push %esp
 	call syscall_handler
-	add $32, %esp
-	push %eax
+	add $44, %esp
 
-	xor %eax, %eax
-	mov $GDT_USER_DATA_OFFSET, %ax
-	or $3, %ax
-	mov %ax, %ds
-	mov %ax, %es
-	mov %ax, %fs
-	mov %ax, %gs
+	xor %ebx, %ebx
+	mov $GDT_USER_DATA_OFFSET, %bx
+	or $3, %bx
+	mov %bx, %ds
+	mov %bx, %es
+	mov %bx, %fs
+	mov %bx, %gs
 
-	pop %eax
+	mov %ebp, %esp
+	pop %ebp
 	sti
 	iret

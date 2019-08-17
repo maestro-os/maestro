@@ -11,7 +11,7 @@ static process_t *processes = NULL;
 static uint8_t *pids_bitmap;
 
 __attribute__((aligned(4096)))
-static tss_entry_t tss_entry;
+static tss_entry_t tss;
 
 static process_t *running_process = NULL;
 
@@ -27,24 +27,18 @@ static void process_ctor(void *ptr, const size_t size)
 		p->state = CREATED;
 		p->prev_state = CREATED;
 	}
-	p->tss.ss0 = 0x10;
-	p->tss.es = 0x23;
-	p->tss.cs = 0x18;
-	p->tss.ss = 0x23;
-	p->tss.ds = 0x23;
-	p->tss.fs = 0x23;
-	p->tss.gs = 0x23;
 }
 
 __attribute__((cold))
 static void tss_init(void)
 {
-	const uint32_t base = (uint32_t) &tss_entry;
+	const uint32_t base = (uint32_t) &tss;
 	const unsigned limit = sizeof(tss_entry_t);
 	const uint8_t flags = 0b0100;
 	const uint8_t access = 0b10001001;
+	gdt_entry_t *tss_gdt;
 
-	gdt_entry_t *tss_gdt = tss_gdt_entry();
+	tss_gdt = tss_gdt_entry();
 	bzero(tss_gdt, sizeof(gdt_entry_t));
 	tss_gdt->limit_low = limit & 0xffff;
 	tss_gdt->base_low = base & 0xffff;
@@ -53,7 +47,7 @@ static void tss_init(void)
 	tss_gdt->flags_limit = ((limit >> 16) & 0xf) | (flags << 4);
 	tss_gdt->base_high = (base >> 24) & 0xff;
 
-	bzero(&tss_entry, sizeof(tss_entry_t));
+	bzero(&tss, sizeof(tss_entry_t));
 	tss_flush();
 }
 
@@ -111,7 +105,6 @@ process_t *new_process(process_t *parent, void (*begin)())
 	new_proc->pid = pid;
 	new_proc->parent = parent;
 	new_proc->begin = begin;
-	new_proc->tss.eip = (uintptr_t) begin;
 	process_add_child(parent, new_proc);
 	if(errno)
 	{
@@ -169,7 +162,7 @@ process_t *process_clone(process_t *proc)
 		errno = EINVAL;
 		return NULL;
 	}
-	if(!(p = new_process(proc, (void *) proc->tss.eip)))
+	if(!(p = new_process(proc, (void *) proc->regs_state.eip)))
 		return NULL;
 	if(!(p->page_dir = vmem_clone(proc->page_dir, true)))
 	{
@@ -188,14 +181,12 @@ void process_set_state(process_t *process, const process_state_t state)
 	if(state == RUNNING)
 	{
 		if(running_process)
-		{
 			process_set_state(running_process, WAITING);
-			running_process->tss = tss_entry;
-		}
-		tss_entry = process->tss;
+		tss.esp0 = (uint32_t) process->kernel_stack + (PAGE_SIZE - 1);
 		running_process = process;
 	}
-	else if(state == BLOCKED && process == running_process)
+	else if((state == WAITING || state == BLOCKED)
+		&& process == running_process)
 		running_process = NULL;
 	process->prev_state = process->state;
 	process->state = state;
@@ -230,6 +221,8 @@ void process_exit(process_t *proc, const int status)
 }
 
 // TODO Limit on signals?
+// TODO Perform signals directly?
+// TODO What if a signal is already being executed?
 __attribute__((hot))
 void process_kill(process_t *proc, const int sig)
 {
@@ -316,9 +309,8 @@ static void init_process(process_t *process)
 	process->page_dir = vmem;
 	process->user_stack = user_stack;
 	process->kernel_stack = kernel_stack;
-	process->tss.cr3 = (uintptr_t) vmem;
-	process->tss.esp0 = (uintptr_t) kernel_stack + PAGE_SIZE - 1; // TODO
-	process->tss.esp = (uintptr_t) user_stack + PAGE_SIZE - 1; // TODO
+	process->regs_state.esp = (uintptr_t) user_stack + (PAGE_SIZE - 1);
+	process->regs_state.eip = (uintptr_t) process->begin;
 	process_set_state(process, WAITING);
 }
 
@@ -339,7 +331,7 @@ static process_t *next_waiting_process(process_t *process)
 	return (p->state == WAITING ? p : NULL);
 }
 
-// TODO Fix: Process resumes to the beginning
+// TODO Do not use kernel_vmem for process's syscalls?
 __attribute__((hot))
 static void switch_processes(void)
 {
@@ -350,18 +342,28 @@ static void switch_processes(void)
 	if(!(p = next_waiting_process(running_process)))
 		return;
 	process_set_state(p, RUNNING);
+	tss.ss0 = GDT_KERNEL_DATA_OFFSET;
 	if(p->syscalling)
-		context_switch((void *) tss_entry.esp0, (void *) tss_entry.eip,
+	{
+		tss.cr3 = (uintptr_t) kernel_vmem;
+		context_switch((void *) p->regs_state.esp, (void *) p->regs_state.eip,
 			GDT_KERNEL_DATA_OFFSET, GDT_KERNEL_CODE_OFFSET);
+	}
 	else
-		context_switch((void *) tss_entry.esp, (void *) tss_entry.eip,
+	{
+		tss.cr3 = (uintptr_t) p->page_dir;
+		context_switch((void *) p->regs_state.esp, (void *) p->regs_state.eip,
 			GDT_USER_DATA_OFFSET | 3, GDT_USER_CODE_OFFSET | 3);
+	}
 }
 
-void process_tick(void)
+__attribute__((hot))
+void process_tick(const regs_t *registers)
 {
 	process_t *p;
 
+	if(running_process)
+		running_process->regs_state = *registers;
 	p = processes;
 	while(p)
 	{

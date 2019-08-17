@@ -3,75 +3,28 @@
 
 # include <kernel.h>
 # include <memory/memory.h>
-
-# include <libc/sys/types.h>
-# include <stdint.h>
+# include <process/tss.h>
+# include <process/signal.h>
 
 # define PID_MAX			32768
 # define PIDS_BITMAP_SIZE	(PID_MAX / BIT_SIZEOF(char))
 
-# define SIGHUP		1
-# define SIGINT		2
-# define SIGQUIT	3
-# define SIGILL		4
-# define SIGTRAP	5
-# define SIGABRT	6
-# define SIGBUS		7
-# define SIGFPE		8
-# define SIGKILL	9
-# define SIGUSR1	10
-# define SIGSEGV	11
-# define SIGUSR2	12
-# define SIGPIPE	13
-# define SIGALRM	14
-# define SIGTERM	15
-# define SIGCHLD	17
-# define SIGCONT	18
-# define SIGSTOP	19
-# define SIGTSTP	20
-# define SIGTTIN	21
-# define SIGTTOU	22
-# define SIGURG		23
-# define SIGXCPU	24
-# define SIGXFSZ	25
-# define SIGVTALRM	26
-# define SIGPROF	27
-# define SIGPOLL	29
-# define SIGSYS		31
-
 __attribute__((packed))
-struct tss_entry
+struct regs
 {
-	uint32_t prev_tss;
-	uint32_t esp0;
-	uint32_t ss0;
-	uint32_t esp1;
-	uint32_t ss1;
-	uint32_t esp2;
-	uint32_t ss2;
-	uint32_t cr3;
-	uint32_t eip;
-	uint32_t eflags;
-	uint32_t eax;
-	uint32_t ecx;
-	uint32_t edx;
-	uint32_t ebx;
-	uint32_t esp;
-	uint32_t ebp;
-	uint32_t esi;
-	uint32_t edi;
-	uint32_t es;
-	uint32_t cs;
-	uint32_t ss;
-	uint32_t ds;
-	uint32_t fs;
-	uint32_t gs;
-	uint32_t ldt;
-	uint16_t trap;
-	uint16_t iomap_base;
+	int32_t ebp;
+	int32_t esp;
+	int32_t eip;
+	int32_t eflags;
+	int32_t eax;
+	int32_t ebx;
+	int32_t ecx;
+	int32_t edx;
+	int32_t esi;
+	int32_t edi;
 };
 
-typedef struct tss_entry tss_entry_t;
+typedef struct regs regs_t;
 
 typedef enum
 {
@@ -84,24 +37,6 @@ typedef enum
 } process_state_t;
 
 typedef struct child child_t;
-
-typedef struct signal
-{
-	struct signal *next;
-
-	int si_signo;
-	int si_code;
-	int si_errno;
-
-	pid_t si_pid;
-	uid_t si_uid;
-	void *si_addr;
-	int si_status;
-
-	long si_band;
-
-	// TODO si_value
-} signal_t;
 
 typedef struct process
 {
@@ -117,7 +52,7 @@ typedef struct process
 	vmem_t page_dir;
 	void *user_stack;
 	void *kernel_stack;
-	tss_entry_t tss;
+	regs_t regs_state;
 	bool syscalling;
 
 	signal_t *signals_queue, *last_signal;
@@ -146,7 +81,7 @@ void process_exit(process_t *proc, int status);
 void process_kill(process_t *proc, int sig);
 void del_process(process_t *process, const bool children);
 
-void process_tick(void);
+void process_tick(const regs_t *registers);
 extern void context_switch(void *esp, void *eip,
 	uint16_t data_selector, uint16_t code_selector);
 

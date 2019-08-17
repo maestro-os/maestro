@@ -179,7 +179,7 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	printf("Kernel end: %p; Heap end: %p\n", kernel_end, heap_end);
 	buddy_init();
 	printf("Buddy allocator begin: %p\n", buddy_begin);
-	// TODO Fix vmem_kernel();
+	vmem_kernel();
 	slab_init();
 
 	printf("Drivers initialization...\n");
@@ -202,7 +202,7 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 
 	// TODO Test
 	CLI();
-	for(size_t i = 0; i < 2; ++i)
+	for(size_t i = 0; i < 1; ++i)
 		new_process(NULL, test_process);
 
 	STI();

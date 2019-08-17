@@ -3,12 +3,6 @@
 #include <process/process.h>
 #include <ps2/ps2.h>
 
-void irq0_handler()
-{
-	process_tick();
-	pic_EOI(0x0);
-}
-
 void irq1_handler()
 {
 	ps2_keyboard_event(inb(0x60));

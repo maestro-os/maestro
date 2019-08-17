@@ -33,6 +33,10 @@
 # define PAGETOPTR(page)	((void *) (page) * PAGE_SIZE)
 # define PTRTOPAGE(ptr)		((uintptr_t) (ptr) / PAGE_SIZE)
 
+# define ADDR_TABLE(addr)	(((uintptr_t) (addr) >> 22) & 0x3ff)
+# define ADDR_PAGE(addr)	(((uintptr_t) (addr) >> 12) & 0x3ff)
+# define ADDR_REMAIN(addr)	((uintptr_t) (addr) & 0xfff)
+
 typedef uint32_t *vmem_t;
 
 typedef struct
@@ -63,6 +67,7 @@ void *clone_page(void *ptr);
 void vmem_kernel(void);
 vmem_t vmem_init(void);
 void vmem_identity(vmem_t vmem, void *page);
+void vmem_map(vmem_t vmem, void *physaddr, void *virtaddr);
 vmem_t vmem_clone(vmem_t vmem, bool mem_dup);
 void *vmem_translate(vmem_t vmem, void *ptr);
 bool vmem_contains(vmem_t vmem, const void *ptr, size_t size);

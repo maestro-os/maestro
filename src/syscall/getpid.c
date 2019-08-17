@@ -1,7 +1,7 @@
 #include <syscall/syscall.h>
 
-sys_ret_t sys_getpid(process_t *process, const sys_info_t *info)
+sys_ret_t sys_getpid(process_t *process, const regs_t *registers)
 {
-	(void) info;
+	(void) registers;
 	return process->pid;
 }

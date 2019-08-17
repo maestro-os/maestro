@@ -19,16 +19,18 @@ void vmem_kernel(void)
 	if(!(kernel_vmem = new_vmem_obj()))
 		goto fail;
 	for(i = 0; i < 1024; ++i)
+	{
 		for(j = 0; j < 1024; ++j)
+		{
 			vmem_identity(kernel_vmem, (void *) (PAGE_SIZE * (i * 1024 + j)));
-	if(errno)
-		goto fail;
+			if(errno)
+				goto fail;
+		}
+	}
 	// TODO paging_enable(kernel_vmem);
 
 fail:
-	// TODO Error
-	// TODO Free all
-	return;
+	PANIC("Cannot initialize kernel virtual memory!", 0);
 }
 
 __attribute__((hot))
@@ -41,19 +43,25 @@ vmem_t vmem_init(void)
 __attribute__((hot))
 void vmem_identity(vmem_t vmem, void *page)
 {
-	const int flags = PAGING_TABLE_WRITE | PAGING_TABLE_PRESENT;
-	size_t t, p;
+	vmem_map(vmem, page, page);
+}
+
+__attribute__((hot))
+void vmem_map(vmem_t vmem, void *physaddr, void *virtaddr)
+{
+	const int table_flags = PAGING_TABLE_WRITE | PAGING_TABLE_PRESENT;
+	const int page_flags = PAGING_PAGE_WRITE | PAGING_PAGE_PRESENT;
+	size_t t;
 	vmem_t v;
 
-	t = ((uintptr_t) page >> 22) & 0x3ff;
-	p = ((uintptr_t) page >> 12) & 0x3ff;
+	t = ADDR_TABLE(virtaddr);
 	if(!(vmem[t] & PAGING_TABLE_PRESENT))
 	{
 		if(!(v = new_vmem_obj()))
 			return;
-		vmem[t] = (uintptr_t) v | flags;
+		vmem[t] = (uintptr_t) v | table_flags;
 	}
-	v[p] = (uintptr_t) page | flags;
+	v[ADDR_PAGE(virtaddr)] = (uintptr_t) physaddr | page_flags;
 }
 
 __attribute__((hot))
@@ -129,14 +137,14 @@ fail:
 __attribute__((hot))
 void *vmem_translate(vmem_t vmem, void *ptr)
 {
-	uintptr_t remain, table, page;
+	uintptr_t table, page, remain;
 	vmem_t table_obj;
 
 	if(!vmem)
 		return NULL;
-	remain = (uintptr_t) ptr & 0xfff;
-	table = ((uintptr_t) ptr >> 22) & 0x3ff;
-	page = ((uintptr_t) ptr >> 12) & 0x3ff;
+	table = ADDR_TABLE(ptr);
+	page = ADDR_PAGE(ptr);
+	remain = ADDR_REMAIN(ptr);
 	if(!(vmem[table] & PAGING_TABLE_PRESENT))
 		return NULL;
 	table_obj = (void *) (vmem[table] & PAGING_ADDR_MASK);
@@ -166,8 +174,8 @@ void *vmem_alloc_pages(vmem_t vmem, const size_t pages)
 
 	if(!vmem || !(ptr = pages_alloc_zero(pages)))
 		return NULL;
-	table = ((uintptr_t) ptr >> 12) & 0x3ff;
-	page = ((uintptr_t) ptr >> 22) & 0x3ff;
+	table = ADDR_TABLE(ptr);
+	page = ADDR_PAGE(ptr);
 	if(!(vmem[table] & PAGING_TABLE_PRESENT))
 	{
 		if(!(table_ptr = new_vmem_obj()))
