@@ -4,6 +4,7 @@
 #include <memory/memory.h>
 #include <idt/idt.h>
 #include <pit/pit.h>
+#include <acpi/acpi.h>
 #include <process/process.h>
 #include <device/device.h>
 #include <ata/ata.h>
@@ -179,8 +180,12 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	printf("Kernel end: %p; Heap end: %p\n", kernel_end, heap_end);
 	buddy_init();
 	printf("Buddy allocator begin: %p\n", buddy_begin);
-	vmem_kernel();
 	slab_init();
+	// TODO Fix vmem_kernel();
+
+	printf("ACPI initialization...\n");
+	acpi_init();
+	kernel_halt();
 
 	printf("Drivers initialization...\n");
 	init_drivers();
