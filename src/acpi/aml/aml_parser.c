@@ -1,69 +1,54 @@
 #include <acpi/aml/aml_parser.h>
 
+static aml_node_t *named_obj(const char **src, size_t *len)
+{
+	// TODO
+	(void) src;
+	(void) len;
+	return NULL;
+}
+
+static aml_node_t *object(const char **src, size_t *len)
+{
+	return parse_either(src, len, 2, namespace_modifier_obj, named_obj);
+}
+
+static aml_node_t *term_obj(const char **src, size_t *len)
+{
+	return parse_either(src, len, 3, object, type1_opcode, type2_opcode);
+}
+
 static aml_node_t *term_list(const char **src, size_t *len)
 {
-	// TODO
-	(void) src;
-	(void) len;
-	return NULL;
-}
+	const char *s;
+	size_t l;
+	aml_node_t *node, *n, *children = NULL, *last_child = NULL;
 
-static aml_node_t *table_signature(const char **src, size_t *len)
-{
-	return parse_node(src, len, 1, dword_data);
-}
-
-static aml_node_t *table_length(const char **src, size_t *len)
-{
-	return parse_node(src, len, 1, dword_data);
-}
-
-static aml_node_t *spec_compliance(const char **src, size_t *len)
-{
-	return parse_node(src, len, 1, byte_data);
-}
-
-static aml_node_t *checksum(const char **src, size_t *len)
-{
-	return parse_node(src, len, 1, byte_data);
-}
-
-static aml_node_t *OEM_id(const char **src, size_t *len)
-{
-	// TODO
-	(void) src;
-	(void) len;
-	return NULL;
-}
-
-static aml_node_t *OEM_tableid(const char **src, size_t *len)
-{
-	// TODO
-	(void) src;
-	(void) len;
-	return NULL;
-}
-
-static aml_node_t *OEM_revision(const char **src, size_t *len)
-{
-	return parse_node(src, len, 1, dword_data);
-}
-
-static aml_node_t *creator_id(const char **src, size_t *len)
-{
-	return parse_node(src, len, 1, dword_data);
-}
-
-static aml_node_t *creator_revision(const char **src, size_t *len)
-{
-	return parse_node(src, len, 1, dword_data);
-}
-
-static aml_node_t *def_block_header(const char **src, size_t *len)
-{
-	return parse_node(src, len, 9, table_signature, table_length,
-		spec_compliance, checksum, OEM_id, OEM_tableid, OEM_revision,
-			creator_id, creator_revision);
+	s = *src;
+	l = *len;
+	if(!(node = NEW_NODE()))
+		return NULL;
+	errno = 0;
+	while((n = term_obj(src, len)))
+	{
+		if(!last_child)
+			last_child = children = n;
+		else
+		{
+			last_child->next = n;
+			last_child = n;
+		}
+	}
+	node->children = children;
+	if(errno)
+	{
+		ast_free(node);
+		*src = s;
+		*len = l;
+		return NULL;
+	}
+	else
+		return node;
 }
 
 static aml_node_t *aml_code(const char **src, size_t *len)

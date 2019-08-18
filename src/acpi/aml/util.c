@@ -5,13 +5,13 @@ static aml_node_t *do_parse(const char **src, size_t *len,
 {
 	const char *s;
 	size_t l;
-	aml_node_t *node, *children, *last_child = NULL;
+	aml_node_t *node, *children = NULL, *last_child = NULL;
 
 	s = *src;
 	l = *len;
 	while(n-- > 0)
 	{
-		node = va_arg(ap, aml_node_t *(*)(const char **, size_t *))(src, len);
+		node = va_arg(ap, parse_func_t)(src, len);
 		if(!node)
 			goto fail;
 		if(!last_child)
@@ -26,7 +26,7 @@ static aml_node_t *do_parse(const char **src, size_t *len,
 	return children;
 
 fail:
-	// TODO Free all
+	ast_free(children);
 	*src = s;
 	*len = l;
 	return NULL;
@@ -40,7 +40,7 @@ aml_node_t *parse_node(const char **src, size_t *len, const size_t n, ...)
 	va_start(ap, n);
 	if(!(children = do_parse(src, len, n, ap)) || !(node = NEW_NODE()))
 	{
-		// TODO Free `children`
+		ast_free(children);
 		return NULL;
 	}
 	node->children = children;
@@ -53,6 +53,54 @@ aml_node_t *parse_serie(const char **src, size_t *len, const size_t n, ...)
 
 	va_start(ap, n);
 	return do_parse(src, len, n, ap);
+}
+
+aml_node_t *parse_string(const char **src, size_t *len,
+	size_t str_len, const parse_func_t f)
+{
+	aml_node_t *node, *children = NULL, *last_child = NULL;
+
+	while(str_len-- > 0)
+	{
+		if(!(node = f(src, len)))
+			goto fail;
+		if(!last_child)
+			last_child = children = node;
+		else
+		{
+			last_child->next = node;
+			last_child = node;
+		}
+		if(!*(node->data))
+			break;
+	}
+	return children;
+
+fail:
+	ast_free(children);
+	return NULL;
+}
+
+aml_node_t *parse_either(const char **src, size_t *len, size_t n, ...)
+{
+	const char *s;
+	size_t l;
+	va_list ap;
+	aml_node_t *node;
+
+	s = *src;
+	l = *len;
+	va_start(ap, n);
+	while(n-- > 0 && !(node = va_arg(ap, parse_func_t)(src, len)))
+	{
+		if(errno)
+		{
+			*src = s;
+			*len = l;
+			return NULL;
+		}
+	}
+	return node;
 }
 
 // TODO Add a `last_child` variable into node for fast insertion
