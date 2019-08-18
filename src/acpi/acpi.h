@@ -45,6 +45,7 @@ struct acpi_sdt_header
 	uint32_t creator_revision;
 };
 
+__attribute__((packed))
 struct generic_address_structure
 {
   uint8_t address_space;
@@ -75,6 +76,14 @@ struct madt
 	// TODO
 };
 
+__attribute__((packed))
+struct dsdt
+{
+	struct acpi_sdt_header header;
+	char src[0];
+};
+
+__attribute__((packed))
 struct fadt
 {
 	struct acpi_sdt_header header;
@@ -129,12 +138,12 @@ struct fadt
 	uint64_t X_firmware_control;
 	uint64_t X_dsdt;
 
-	struct generic_address_structure X_PM1a_eventblock;
-	struct generic_address_structure X_PM1b_eventblock;
-	struct generic_address_structure X_PM1a_controlblock;
-	struct generic_address_structure X_PM1b_controlblock;
-	struct generic_address_structure X_PM2_controlblock;
-	struct generic_address_structure X_PM_timerblock;
+	struct generic_address_structure X_PM1a_event_block;
+	struct generic_address_structure X_PM1b_event_block;
+	struct generic_address_structure X_PM1a_control_block;
+	struct generic_address_structure X_PM1b_control_block;
+	struct generic_address_structure X_PM2_control_block;
+	struct generic_address_structure X_PM_timer_block;
 	struct generic_address_structure X_GPE0_block;
 	struct generic_address_structure X_GPE1_block;
 };
@@ -146,6 +155,7 @@ typedef struct generic_address_structure generic_address_structure_t;
 typedef struct rsdt rsdt_t;
 typedef struct xsdt xsdt_t;
 typedef struct madt madt_t;
+typedef struct dsdt dsdt_t;
 typedef struct fadt fadt_t;
 
 typedef struct table_handle
@@ -159,10 +169,12 @@ int checksum_check(void *desc, const size_t size);
 
 rsdp_desc_t *rsdp_find(void);
 void handle_rsdt(rsdt_t *rsdt);
+void handle_dsdt(dsdt_t *dsdt);
 void handle_xsdt(xsdt_t *xsdt);
 
 void handle_madt(madt_t *madt);
 void handle_fadt(fadt_t *fadt);
+void handle_dsdt(dsdt_t *dsdt);
 
 void acpi_init(void);
 

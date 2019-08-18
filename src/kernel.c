@@ -185,7 +185,6 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 
 	printf("ACPI initialization...\n");
 	acpi_init();
-	kernel_halt();
 
 	printf("Drivers initialization...\n");
 	init_drivers();

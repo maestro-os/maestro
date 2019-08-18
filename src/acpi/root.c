@@ -2,6 +2,7 @@
 
 static table_handle_t handles[] = {
 	{"APIC", (void *) handle_madt},
+	{"DSDT", (void *) handle_dsdt},
 	{"FACP", (void *) handle_fadt}
 	// TODO
 };
