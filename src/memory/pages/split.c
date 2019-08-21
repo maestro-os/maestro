@@ -9,6 +9,7 @@ void split_prev(pages_alloc_t *alloc, void *ptr, const size_t pages)
 	if(!(a = kmalloc(sizeof(pages_alloc_t), KMALLOC_BUDDY)))
 		return;
 	a->next_buddy = alloc->next_buddy;
+	a->prev_buddy = alloc->prev_buddy;
 	a->buddy_next = alloc;
 	if((a->buddy_prev = alloc->buddy_prev))
 		alloc->buddy_prev->buddy_next = a;
@@ -27,6 +28,7 @@ void split_next(pages_alloc_t *alloc, void *ptr, const size_t pages)
 	if(!(a = kmalloc(sizeof(pages_alloc_t), KMALLOC_BUDDY)))
 		return;
 	a->next_buddy = alloc->next_buddy;
+	a->prev_buddy = alloc->prev_buddy;
 	a->buddy_prev = alloc;
 	if((a->buddy_next = alloc->buddy_next))
 		alloc->buddy_next->buddy_prev = a;

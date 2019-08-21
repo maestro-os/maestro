@@ -14,6 +14,7 @@ typedef struct pages_alloc
 	struct pages_alloc *buddy_next;
 	struct pages_alloc *buddy_prev;
 	struct pages_alloc *next_buddy;
+	struct pages_alloc *prev_buddy;
 
 	void *buddy;
 	size_t buddy_pages;
@@ -27,6 +28,7 @@ extern pages_alloc_t *free_list[FREE_LIST_SIZE];
 
 pages_alloc_t *get_nearest_buddy(void *ptr);
 void set_next_buddy(pages_alloc_t *alloc, pages_alloc_t *next);
+void set_prev_buddy(pages_alloc_t *alloc, pages_alloc_t *prev);
 void delete_buddy(pages_alloc_t *alloc);
 
 void sort_alloc(pages_alloc_t *alloc);
