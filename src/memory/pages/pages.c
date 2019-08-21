@@ -57,10 +57,6 @@ static void delete_alloc(pages_alloc_t *alloc)
 		delete_buddy(alloc);
 		return;
 	}
-	if(alloc->prev_buddy)
-		alloc->prev_buddy->next_buddy = alloc->prev_buddy;
-	if(alloc->next_buddy)
-		alloc->next_buddy->prev_buddy = alloc->next_buddy;
 	if(alloc->buddy_prev)
 		alloc->buddy_prev->buddy_next = alloc->buddy_next;
 	if(alloc->buddy_next)

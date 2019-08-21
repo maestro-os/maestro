@@ -38,13 +38,7 @@ void sort_buddy(pages_alloc_t *alloc)
 	if(!alloc || !(a = get_nearest_buddy(alloc->buddy)) || a == alloc)
 		return;
 	if(a->buddy < alloc->buddy)
-	{
 		set_next_buddy(alloc, a->next_buddy);
-		set_prev_buddy(alloc, a);
-	}
 	else
-	{
-		set_prev_buddy(alloc, a->prev_buddy);
 		set_next_buddy(alloc, a);
-	}
 }
