@@ -1,4 +1,5 @@
 #include <acpi/aml/aml_parser.h>
+#include <stdarg.h>
 
 static aml_node_t *do_parse(const char **src, size_t *len,
 	size_t n, va_list ap)

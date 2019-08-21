@@ -1,4 +1,5 @@
 #include <acpi/acpi.h>
+#include <libc/stdio.h>
 
 void acpi_init(void)
 {
