@@ -67,8 +67,9 @@ static void print_memory_mapping(void)
 	t = memory_maps;
 	while((void *) t < memory_maps + memory_maps_size)
 	{
-		printf("- %p %p %s\n", (void *) (uintptr_t) t->addr,
-			(void *) (uintptr_t) t->addr + t->len, memmap_type(t->type));
+		if(t->addr + t->len < ((uint64_t) 1 << (4 * 8)))
+			printf("- %p %p %s\n", (void *) (uintptr_t) t->addr,
+				(void *) (uintptr_t) t->addr + t->len, memmap_type(t->type));
 		t = (void *) t + memory_maps_entry_size;
 	}
 	printf("\n");

@@ -11,7 +11,8 @@ static size_t get_reserved_memory(void)
 	t = memory_maps;
 	while((void *) t < memory_maps + memory_maps_size)
 	{
-		if(t->type != MULTIBOOT_MEMORY_AVAILABLE)
+		if(t->addr + t->len < ((uint64_t) 1 << (4 * 8))
+			&& t->type != MULTIBOOT_MEMORY_AVAILABLE)
 			n += t->len;
 		t = (void *) t + memory_maps_entry_size;
 	}

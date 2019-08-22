@@ -1,6 +1,7 @@
 #include <memory/memory.h>
 #include <libc/errno.h>
 
+// TODO Use `kernel_vmem` to hide holes in memory?
 // TODO Handle shared memory (use free flag into page table entry)
 
 vmem_t kernel_vmem;

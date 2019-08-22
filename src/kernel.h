@@ -25,7 +25,9 @@ typedef struct
 } driver_t;
 
 uint8_t inb(uint16_t port);
+uint16_t inw(uint16_t port);
 void outb(uint16_t port, uint8_t value);
+void outw(uint16_t port, uint16_t value);
 
 void error_handler(unsigned error, uint32_t error_code);
 
