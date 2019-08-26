@@ -1,7 +1,7 @@
 # System calls
 
 System calls allow processes to interact with the kernel.
-For example, it can allow to:
+For example, they can allow to:
 - Open and read/write files
 - Create processes
 - Use the filesystem

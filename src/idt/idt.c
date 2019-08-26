@@ -81,6 +81,4 @@ void idt_init(void)
 	idt_ptr[0] = sizeof(id) + (((unsigned long) id & 0xffff) << 16);
 	idt_ptr[1] = ((unsigned long) id) >> 16;
 	idt_load(idt_ptr);
-
-	STI();
 }

@@ -3,7 +3,7 @@
 
 void lock(spinlock_t *spinlock)
 {
-	CLI();
+	// TODO CLI();
 	// TODO spin_lock(spinlock);
 	(void) spinlock;
 }
@@ -12,5 +12,5 @@ void unlock(spinlock_t *spinlock)
 {
 	// TODO spin_unlock(spinlock);
 	(void) spinlock;
-	STI();
+	// TODO Do not restore `STI();` if it wasn't enabled in the first place
 }

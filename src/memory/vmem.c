@@ -18,19 +18,27 @@ void vmem_kernel(void)
 	size_t i, j;
 
 	if(!(kernel_vmem = new_vmem_obj()))
+	{
+		printf("BLEH");
 		goto fail;
+	}
 	for(i = 0; i < 1024; ++i)
 	{
 		for(j = 0; j < 1024; ++j)
 		{
 			vmem_identity(kernel_vmem, (void *) (PAGE_SIZE * (i * 1024 + j)));
 			if(errno)
+			{
+				printf("BLUH %i %i", (int)i, (int)j);
 				goto fail;
+			}
 		}
 	}
 	// TODO paging_enable(kernel_vmem);
+	return;
 
 fail:
+	// kernel_halt();
 	PANIC("Cannot initialize kernel virtual memory!", 0);
 }
 

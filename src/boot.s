@@ -31,7 +31,7 @@
 .set GDT_USER_DATA_OFFSET, (gdt_user_data - gdt_start)
 .set GDT_TSS_OFFSET, (gdt_tss - gdt_start)
 
-.set STACK_SIZE,	16384
+.set STACK_SIZE,	32768
 
 .section .text
 

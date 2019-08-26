@@ -13,7 +13,6 @@ void pit_init(void)
 
 	outb(PIT_COMMAND, PIT_SELECT_CHANNEL_2 | PIT_ACCESS_LOBYTE_HIBYTE
 		| PIT_MODE_4);
-	STI();
 }
 
 __attribute__((hot))
@@ -22,7 +21,6 @@ void pit_set_count(const uint16_t count)
 	CLI();
 	outb(PIT_CHANNEL_0, count & 0xff);
 	outb(PIT_CHANNEL_0, (count >> 8) & 0xff);
-	STI();
 }
 
 __attribute__((hot))

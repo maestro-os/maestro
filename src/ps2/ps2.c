@@ -142,38 +142,31 @@ static inline void set_config_byte(const uint8_t config_byte)
 __attribute__((cold))
 void ps2_init(void)
 {
-	CLI();
 	// TODO Check if existing using ACPI
 	ps2_disable_devices();
 	// TODO Discard buffer?
 	// inb(PS2_DATA);
 	clear_buffer();
-
 	set_config_byte(get_config_byte() & 0b10111100);
 	printf("PS/2 Dual Channel: %s\n",
 		((get_config_byte() & 0b100000) ? "no" : "yes"));
-
 	if(!test_controller())
 	{
 		printf("PS/2 controller: KO D:\n");
 		return;
 	}
-
 	if(!test_device())
 	{
 		printf("PS/2 first device: KO D:\n");
 		return;
 	}
-
 	if(!ps2_enable_keyboard())
 	{
 		printf("Failed to enable keyboard!\n");
 		return;
 	}
-
 	set_config_byte(get_config_byte() | 0b1);
 	clear_buffer();
-	STI();
 }
 
 __attribute__((cold))
