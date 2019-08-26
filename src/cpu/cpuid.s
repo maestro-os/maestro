@@ -2,7 +2,14 @@
 
 .text
 
+.global cpuid_available
 .global cpuid_init
+
+cpuid_available:
+	pushf
+	pop %eax
+	and $0x200000, %eax
+	ret
 
 cpuid_init:
 	push %ebp

@@ -154,7 +154,7 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 
 	printf("Booting crumbleos kernel version %s...\n", KERNEL_VERSION);
 	printf("Retrieving CPU informations...\n");
-	// TODO cpuid();
+	cpuid();
 
 	printf("Retrieving Multiboot2 data...\n");
 	read_boot_tags(multiboot_ptr, &boot_info);
@@ -182,7 +182,7 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	buddy_init();
 	printf("Buddy allocator begin: %p\n", buddy_begin);
 	slab_init();
-	// TODO Fix vmem_kernel();
+	vmem_kernel();
 
 	printf("ACPI initialization...\n");
 	acpi_init();
