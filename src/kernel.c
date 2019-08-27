@@ -49,6 +49,41 @@ static const char *errors[] = {
 	"Unknown"
 };
 
+static int error_signals[] = {
+	SIGFPE,
+	SIGTRAP, // TODO
+	SIGINT, // TODO
+	SIGTRAP,
+	-1, // TODO
+	-1, // TODO
+	SIGILL,
+	SIGFPE,
+	-1,
+	-1,
+	-1,
+	-1,
+	-1,
+	-1,
+	SIGSEGV,
+	-1,
+	SIGFPE,
+	-1, // TODO
+	-1,
+	SIGFPE,
+	-1,
+	-1,
+	-1,
+	-1,
+	-1,
+	-1,
+	-1,
+	-1,
+	-1,
+	-1,
+	-1,
+	-1
+};
+
 static driver_t drivers[] = {
 	{"PS/2", ps2_init},
 	{"ATA", ata_init}
@@ -216,11 +251,20 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 
 void error_handler(const unsigned error, const uint32_t error_code)
 {
-	if(error > 0x1f)
-		PANIC("Unknown", error_code);
+	process_t *process;
+	int sig;
 
-	// TODO Check if caused by process
-	PANIC(errors[error], error_code);
+	if(error > 0x1f)
+	{
+		PANIC("Unknown", error_code);
+		return;
+	}
+	if(!(process = get_running_process()) || (sig = error_signals[error]) < 0)
+	{
+		PANIC(errors[error], error_code);
+		return;
+	}
+	process_kill(process, sig);
 }
 
 __attribute__((cold))

@@ -7,6 +7,8 @@
 
 static cache_t *processes_cache;
 static cache_t *children_cache;
+static cache_t *signals_cache;
+
 static process_t *processes = NULL;
 static uint8_t *pids_bitmap;
 
@@ -58,7 +60,9 @@ void process_init(void)
 		process_ctor, bzero);
 	children_cache = cache_create("process_children", sizeof(child_t), PID_MAX,
 		NULL, bzero);
-	if(!processes_cache || !children_cache)
+	signals_cache = cache_create("signals", sizeof(signal_t), PID_MAX,
+		NULL, bzero);
+	if(!processes_cache || !children_cache || !signals_cache)
 		PANIC("Cannot allocate caches for processes!", 0);
 
 	if(!(pids_bitmap = kmalloc_zero(PIDS_BITMAP_SIZE, 0)))
@@ -230,8 +234,22 @@ void process_kill(process_t *proc, const int sig)
 
 	if(!proc)
 		return;
-	if(!(s = kmalloc_zero(sizeof(signal_t), 0))) // TODO Use a cache
-		return; // TODO Return fail?
+	if(sig == SIGKILL)
+	{
+		del_process(proc, false);
+		return;
+	}
+	if(sig == SIGSTOP)
+	{
+		proc->state = STOPPED;
+		// TODO Wait until process switch or perform it now?
+		return;
+	}
+	// TODO Get action for signal
+	// TODO If ignore, return
+	// TODO If default, exec default action
+	if(!(s = cache_alloc(signals_cache)))
+		return;
 	s->si_signo = sig;
 	// TODO
 	if(proc->last_signal)
@@ -273,9 +291,10 @@ void del_process(process_t *process, const bool children)
 	while(c)
 	{
 		next = c->next;
-		// TODO Send signal instead
 		if(children)
 			del_process(c->process, true);
+		else
+			c->process->parent = NULL;
 		cache_free(children_cache, c);
 		c = next;
 	}

@@ -20,12 +20,12 @@ sys_ret_t syscall_handler(const regs_t *registers)
 	sys_ret_t ret;
 
 	id = registers->eax;
+	process = get_running_process();// TODO Check if NULL?
 	if(id >= SYSCALLS_COUNT || !(h = sys_handlers[id]))
 	{
-		// TODO Bad syscall. Kill process?
+		// TODO Send SIGSYS to process
 		return -1;
 	}
-	process = get_running_process();// TODO Check if NULL?
 	process->regs_state = *registers;
 	process->syscalling = true;
 	STI();

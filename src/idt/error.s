@@ -40,6 +40,7 @@ error0:
 	push $0
 	push $0x0
 	call error_handler
+	add $8, %esp
 	popa
 	iret
 
@@ -48,6 +49,7 @@ error1:
 	push $0
 	push $0x1
 	call error_handler
+	add $8, %esp
 	popa
 	iret
 
@@ -56,6 +58,7 @@ error2:
 	push $0
 	push $0x2
 	call error_handler
+	add $8, %esp
 	popa
 	iret
 
@@ -64,6 +67,7 @@ error3:
 	push $0
 	push $0x3
 	call error_handler
+	add $8, %esp
 	popa
 	iret
 
@@ -72,6 +76,7 @@ error4:
 	push $0
 	push $0x4
 	call error_handler
+	add $8, %esp
 	popa
 	iret
 
@@ -80,6 +85,7 @@ error5:
 	push $0
 	push $0x5
 	call error_handler
+	add $8, %esp
 	popa
 	iret
 
@@ -88,6 +94,7 @@ error6:
 	push $0
 	push $0x6
 	call error_handler
+	add $8, %esp
 	popa
 	iret
 
@@ -96,6 +103,7 @@ error7:
 	push $0
 	push $0x7
 	call error_handler
+	add $8, %esp
 	popa
 	iret
 
@@ -105,6 +113,7 @@ error8:
 	push %eax
 	push $0x8
 	call error_handler
+	add $8, %esp
 	popa
 	iret
 
@@ -113,6 +122,7 @@ error9:
 	push $0
 	push $0x9
 	call error_handler
+	add $8, %esp
 	popa
 	iret
 
@@ -122,6 +132,7 @@ error10:
 	push %eax
 	push $0xa
 	call error_handler
+	add $8, %esp
 	popa
 	iret
 
@@ -131,6 +142,7 @@ error11:
 	push %eax
 	push $0xb
 	call error_handler
+	add $8, %esp
 	popa
 	iret
 
@@ -140,6 +152,7 @@ error12:
 	push %eax
 	push $0xc
 	call error_handler
+	add $8, %esp
 	popa
 	iret
 
@@ -149,6 +162,7 @@ error13:
 	push %eax
 	push $0xd
 	call error_handler
+	add $8, %esp
 	popa
 	iret
 
@@ -158,6 +172,7 @@ error14:
 	push %eax
 	push $0xe
 	call error_handler
+	add $8, %esp
 	popa
 	iret
 
@@ -166,6 +181,7 @@ error15:
 	push $0
 	push $0xf
 	call error_handler
+	add $8, %esp
 	popa
 	iret
 
@@ -174,16 +190,17 @@ error16:
 	push $0
 	push $0x10
 	call error_handler
+	add $8, %esp
 	popa
 	iret
 
 error17:
 	pop %eax
 	pusha
-	push $0
 	push %eax
 	push $0x11
 	call error_handler
+	add $8, %esp
 	popa
 	iret
 
@@ -192,6 +209,7 @@ error18:
 	push $0
 	push $0x12
 	call error_handler
+	add $8, %esp
 	popa
 	iret
 
@@ -200,6 +218,7 @@ error19:
 	push $0
 	push $0x13
 	call error_handler
+	add $8, %esp
 	popa
 	iret
 
@@ -208,6 +227,7 @@ error20:
 	push $0
 	push $0x14
 	call error_handler
+	add $8, %esp
 	popa
 	iret
 
@@ -216,6 +236,7 @@ error21:
 	push $0
 	push $0x15
 	call error_handler
+	add $8, %esp
 	popa
 	iret
 
@@ -224,6 +245,7 @@ error22:
 	push $0
 	push $0x16
 	call error_handler
+	add $8, %esp
 	popa
 	iret
 
@@ -232,6 +254,7 @@ error23:
 	push $0
 	push $0x17
 	call error_handler
+	add $8, %esp
 	popa
 	iret
 
@@ -240,6 +263,7 @@ error24:
 	push $0
 	push $0x18
 	call error_handler
+	add $8, %esp
 	popa
 	iret
 
@@ -248,6 +272,7 @@ error25:
 	push $0
 	push $0x19
 	call error_handler
+	add $8, %esp
 	popa
 	iret
 
@@ -256,6 +281,7 @@ error26:
 	push $0
 	push $0x1a
 	call error_handler
+	add $8, %esp
 	popa
 	iret
 
@@ -264,6 +290,7 @@ error27:
 	push $0
 	push $0x1b
 	call error_handler
+	add $8, %esp
 	popa
 	iret
 
@@ -272,6 +299,7 @@ error28:
 	push $0
 	push $0x1c
 	call error_handler
+	add $8, %esp
 	popa
 	iret
 
@@ -280,6 +308,7 @@ error29:
 	push $0
 	push $0x1d
 	call error_handler
+	add $8, %esp
 	popa
 	iret
 
@@ -289,6 +318,7 @@ error30:
 	push %eax
 	push $0x1e
 	call error_handler
+	add $8, %esp
 	popa
 	iret
 
@@ -297,5 +327,6 @@ error31:
 	push $0
 	push $0x1f
 	call error_handler
+	add $8, %esp
 	popa
 	iret
