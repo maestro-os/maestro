@@ -21,6 +21,7 @@ __attribute__((hot))
 static void process_ctor(void *ptr, const size_t size)
 {
 	process_t *p;
+	size_t i = 0;
 
 	bzero(ptr, size);
 	p = ptr;
@@ -29,6 +30,8 @@ static void process_ctor(void *ptr, const size_t size)
 		p->state = CREATED;
 		p->prev_state = CREATED;
 	}
+	while(i < SIG_MAX)
+		p->sigactions[i++].sa_handler = SIG_DFL;
 }
 
 __attribute__((cold))
@@ -60,7 +63,7 @@ void process_init(void)
 		process_ctor, bzero);
 	children_cache = cache_create("process_children", sizeof(child_t), PID_MAX,
 		NULL, bzero);
-	signals_cache = cache_create("signals", sizeof(signal_t), PID_MAX,
+	signals_cache = cache_create("signals", sizeof(siginfo_t), PID_MAX,
 		NULL, bzero);
 	if(!processes_cache || !children_cache || !signals_cache)
 		PANIC("Cannot allocate caches for processes!", 0);
@@ -231,26 +234,21 @@ __attribute__((hot))
 void process_kill(process_t *proc, const int sig)
 {
 	signal_t *s;
+	sigaction_t *action;
 
 	if(!proc)
 		return;
-	if(sig == SIGKILL)
+	if(sig == SIGKILL || sig == SIGSTOP
+		|| (action = proc->sigactions + sig)->sa_handler == SIG_DFL)
 	{
-		del_process(proc, false);
+		signal_default(proc, sig);
 		return;
 	}
-	if(sig == SIGSTOP)
-	{
-		proc->state = STOPPED;
-		// TODO Wait until process switch or perform it now?
+	if(action->sa_handler == SIG_IGN)
 		return;
-	}
-	// TODO Get action for signal
-	// TODO If ignore, return
-	// TODO If default, exec default action
 	if(!(s = cache_alloc(signals_cache)))
 		return;
-	s->si_signo = sig;
+	s->info.si_signo = sig;
 	// TODO
 	if(proc->last_signal)
 	{

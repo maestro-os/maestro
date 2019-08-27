@@ -55,6 +55,7 @@ typedef struct process
 	regs_t regs_state;
 	bool syscalling;
 
+	sigaction_t sigactions[SIG_MAX];
 	signal_t *signals_queue, *last_signal;
 	int exit_status;
 

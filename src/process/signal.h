@@ -1,6 +1,7 @@
 #ifndef SIGNAL_H
 # define SIGNAL_H
 
+# include <kernel.h>
 # include <libc/sys/types.h>
 
 # define SIGHUP		1
@@ -32,15 +33,22 @@
 # define SIGPOLL	29
 # define SIGSYS		31
 
+# define SIG_MAX	32
+
 # define SIG_DFL	((sighandler_t) 0)
 # define SIG_IGN	((sighandler_t) 1)
 
 typedef void (*sighandler_t)(int);
+typedef int sigset_t;
 
-typedef struct signal
+union sigval
 {
-	struct signal *next;
+	int sival_int;
+	void *sival_ptr;
+};
 
+typedef struct siginfo
+{
 	int si_signo;
 	int si_code;
 	int si_errno;
@@ -52,7 +60,25 @@ typedef struct signal
 
 	long si_band;
 
-	// TODO si_value
+	union sigval si_value;
+} siginfo_t;
+
+typedef struct sigaction
+{
+	void (*sa_handler)(int);
+	sigset_t sa_mask;
+	int sa_flags;
+	void (*sa_sigaction)(int, siginfo_t *, void *);
+} sigaction_t;
+
+typedef struct signal
+{
+	struct signal *next;
+	siginfo_t info;
 } signal_t;
+
+typedef struct process process_t;
+
+void signal_default(process_t *proc, const int sig);
 
 #endif
