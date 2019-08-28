@@ -29,18 +29,17 @@ uint16_t inw(uint16_t port);
 void outb(uint16_t port, uint8_t value);
 void outw(uint16_t port, uint16_t value);
 
-void error_handler(unsigned error, uint32_t error_code);
-
 __attribute__((noreturn))
 extern void kernel_loop(void);
+__attribute__((noreturn))
+extern void kernel_halt(void);
+
+void error_handler(unsigned error, uint32_t error_code);
 
 __attribute__((noreturn))
 void kernel_panic(const char *reason, uint32_t code);
 __attribute__((noreturn))
 void kernel_panic_(const char *reason, uint32_t code,
 	const char *file, int line);
-
-__attribute__((noreturn))
-extern void kernel_halt(void);
 
 #endif

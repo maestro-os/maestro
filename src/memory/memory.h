@@ -66,6 +66,7 @@ void memmap_init(const boot_info_t *info, void *kernel_end);
 void memmap_print(void);
 const char *memmap_type(uint32_t type);
 
+void print_mem_amount(size_t amount);
 void *clone_page(void *ptr);
 
 vmem_t vmem_init(void);

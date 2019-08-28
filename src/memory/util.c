@@ -1,5 +1,33 @@
 #include <memory/memory.h>
 
+static const char *units[] = {
+	"KB", "MB", "GB", "TB", "EB", "ZB", "YB"
+};
+
+// TODO Use %zu
+void print_mem_amount(size_t amount)
+{
+	size_t n = 0;
+
+	if(amount == 1)
+	{
+		printf("1 byte");
+		return;
+	}
+	if(amount < 1024)
+	{
+		printf("%i bytes", (int) amount);
+		return;
+	}
+	amount /= 1024;
+	while(amount >= 1024 && n < sizeof(units) / sizeof(const char *))
+	{
+		amount /= 1024;
+		++n;
+	}
+	printf("%i %s", (int) amount, units[n]);
+}
+
 __attribute__((hot))
 void *clone_page(void *ptr)
 {

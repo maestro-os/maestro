@@ -1,6 +1,8 @@
 #include <memory/kmalloc/kmalloc.h>
 #include <libc/errno.h>
 
+// TODO Fix prev field?
+
 spinlock_t kmalloc_spinlock = 0;
 
 __attribute__((section("bss")))
@@ -111,12 +113,7 @@ static chunk_t *bucket_get_free_chunk(chunk_t **bucket, const size_t size,
 	{
 		while(c && (CHUNK_IS_USED(c) || !(c->flags & CHUNK_FLAG_BUDDY)
 			|| c->size < size))
-		{
-			printf("-> %p; ptr: %p; prev: %p; next: %p\n", c, &c->next, c->prev, c->next);
-			if((void *)c < buddy_begin)
-				kernel_halt();
 			c = c->next;
-		}
 	}
 	else
 		while(c && (CHUNK_IS_USED(c) || (c->flags & CHUNK_FLAG_BUDDY)
@@ -152,7 +149,7 @@ void alloc_chunk(chunk_t *chunk, const size_t size)
 		return;
 	if(chunk->size + sizeof(chunk_t) > size)
 	{
-		next = (void *) chunk + size;
+		next = (void *) chunk + sizeof(chunk_t) + size;
 		next->prev = chunk;
 		if((next->next = chunk->next))
 			next->next->prev = next;
