@@ -4,6 +4,7 @@
 # include <memory/memory.h>
 # include <util/util.h>
 
+# define CHUNK_HEAD(chunk)		((void *) (chunk) - sizeof(chunk_t))
 # define CHUNK_CONTENT(chunk)	((void *) (chunk) + sizeof(chunk_t))
 
 # define BUCKETS_COUNT	6

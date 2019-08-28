@@ -9,6 +9,7 @@
 # include <util/util.h>
 
 # define PAGE_SIZE		0x1000
+# define KERNEL_BEGIN	((void *) 0x100000)
 
 # define PAGING_TABLE_PAGE_SIZE		0b10000000
 # define PAGING_TABLE_ACCESSED		0b00100000
@@ -48,26 +49,30 @@ typedef struct
 	size_t free;
 } mem_usage_t;
 
-extern void *heap_begin, *heap_end;
-extern size_t available_memory;
-
 extern size_t memory_maps_size;
 extern size_t memory_maps_entry_size;
 extern void *memory_maps;
+
+extern void *memory_end;
+extern void *heap_begin, *heap_end;
+extern size_t available_memory;
 
 extern vmem_t kernel_vmem;
 
 extern bool check_a20(void);
 void enable_a20(void);
 
+void memmap_init(const boot_info_t *info, void *kernel_end);
+void memmap_print(void);
 const char *memmap_type(uint32_t type);
 
 void *clone_page(void *ptr);
 
-void vmem_kernel(void);
 vmem_t vmem_init(void);
-void vmem_identity(vmem_t vmem, void *page);
-void vmem_map(vmem_t vmem, void *physaddr, void *virtaddr);
+void vmem_kernel(void);
+void vmem_identity(vmem_t vmem, void *page, int flags);
+void vmem_identity_range(vmem_t vmem, void *from, void *to, int flags);
+void vmem_map(vmem_t vmem, void *physaddr, void *virtaddr, int flags);
 vmem_t vmem_clone(vmem_t vmem, bool mem_dup);
 void *vmem_translate(vmem_t vmem, void *ptr);
 bool vmem_contains(vmem_t vmem, const void *ptr, size_t size);
@@ -77,6 +82,7 @@ void vmem_free(vmem_t vmem, bool mem_free);
 
 extern void paging_enable(vmem_t vmem);
 extern void tlb_reload(void);
+extern void *cr2_get(void);
 extern void paging_disable(void);
 
 void get_memory_usage(mem_usage_t *usage);

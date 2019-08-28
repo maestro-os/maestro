@@ -221,7 +221,7 @@ void process_exit(process_t *proc, const int status)
 {
 	if(!proc)
 		return;
-	proc->exit_status = status;
+	proc->status = status;
 	process_set_state(proc, TERMINATED);
 	if(running_process == proc)
 		running_process = NULL;
@@ -362,13 +362,13 @@ static void switch_processes(void)
 	tss.ss0 = GDT_KERNEL_DATA_OFFSET;
 	if(p->syscalling)
 	{
-		tss.cr3 = (uintptr_t) kernel_vmem;
+		paging_enable(kernel_vmem);
 		context_switch((void *) p->regs_state.esp, (void *) p->regs_state.eip,
 			GDT_KERNEL_DATA_OFFSET, GDT_KERNEL_CODE_OFFSET);
 	}
 	else
 	{
-		tss.cr3 = (uintptr_t) p->page_dir;
+		paging_enable(p->page_dir);
 		context_switch((void *) p->regs_state.esp, (void *) p->regs_state.eip,
 			GDT_USER_DATA_OFFSET | 3, GDT_USER_CODE_OFFSET | 3);
 	}

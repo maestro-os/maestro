@@ -56,7 +56,8 @@ static void coalesce_chunks(chunk_t *chunk)
 		chunk = chunk->next;
 	}
 	begin->size = size;
-	begin->next = end;
+	if((begin->next = end))
+		begin->next->prev = begin;
 }
 
 static void *_alloc_block(const size_t pages, const int flags)
@@ -93,7 +94,8 @@ static void *large_alloc(const size_t size, const int flags)
 		chunk->size = pages * PAGE_SIZE + sizeof(chunk_t);
 		if(flags & KMALLOC_BUDDY)
 			chunk->flags |= CHUNK_FLAG_BUDDY;
-		chunk->next = large_chunks;
+		if((chunk->next = large_chunks))
+			chunk->next->prev = chunk;
 		large_chunks = chunk;
 	}
 	return chunk;
@@ -109,7 +111,12 @@ static chunk_t *bucket_get_free_chunk(chunk_t **bucket, const size_t size,
 	{
 		while(c && (CHUNK_IS_USED(c) || !(c->flags & CHUNK_FLAG_BUDDY)
 			|| c->size < size))
+		{
+			printf("-> %p; ptr: %p; prev: %p; next: %p\n", c, &c->next, c->prev, c->next);
+			if((void *)c < buddy_begin)
+				kernel_halt();
 			c = c->next;
+		}
 	}
 	else
 		while(c && (CHUNK_IS_USED(c) || (c->flags & CHUNK_FLAG_BUDDY)
@@ -147,7 +154,8 @@ void alloc_chunk(chunk_t *chunk, const size_t size)
 	{
 		next = (void *) chunk + size;
 		next->prev = chunk;
-		next->next = chunk->next;
+		if((next->next = chunk->next))
+			next->next->prev = next;
 		next->size = chunk->size - size - sizeof(chunk_t);
 		next->flags = chunk->flags & ~CHUNK_FLAG_USED;
 		chunk->next = next;

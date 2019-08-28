@@ -2,6 +2,7 @@
 #include <libc/errno.h>
 
 // TODO Use `kernel_vmem` to hide holes in memory?
+// TODO Add stack spaces
 // TODO Handle shared memory (use free flag into page table entry)
 
 vmem_t kernel_vmem;
@@ -13,21 +14,31 @@ static inline vmem_t new_vmem_obj(void)
 }
 
 __attribute__((hot))
+vmem_t vmem_init(void)
+{
+	vmem_t vmem;
+
+	if(!(vmem = new_vmem_obj()))
+		return NULL;
+	// TODO Use the same page table for every object
+	vmem_identity_range(vmem, KERNEL_BEGIN, heap_begin, PAGING_PAGE_USER);
+	if(errno)
+	{
+		// TODO Free all
+		return NULL;
+	}
+	return vmem;
+}
+
+__attribute__((hot))
 void vmem_kernel(void)
 {
-	size_t i, j;
-
 	if(!(kernel_vmem = new_vmem_obj()))
 		goto fail;
-	for(i = 0; i < 1024; ++i)
-	{
-		for(j = 0; j < 1024; ++j)
-		{
-			vmem_identity(kernel_vmem, (void *) (PAGE_SIZE * (i * 1024 + j)));
-			if(errno)
-				goto fail;
-		}
-	}
+	vmem_identity_range(kernel_vmem, NULL, KERNEL_BEGIN, PAGING_PAGE_WRITE);
+	vmem_identity_range(kernel_vmem,
+		KERNEL_BEGIN, heap_begin, PAGING_PAGE_WRITE);
+	vmem_identity_range(kernel_vmem, heap_begin, memory_end, PAGING_PAGE_WRITE);
 	paging_enable(kernel_vmem);
 	return;
 
@@ -36,26 +47,35 @@ fail:
 }
 
 __attribute__((hot))
-vmem_t vmem_init(void)
+void vmem_identity(vmem_t vmem, void *page, const int flags)
 {
-	// TODO Default pages?
-	return new_vmem_obj();
+	vmem_map(vmem, page, page, flags);
 }
 
 __attribute__((hot))
-void vmem_identity(vmem_t vmem, void *page)
+void vmem_identity_range(vmem_t vmem, void *from, void *to, int flags)
 {
-	vmem_map(vmem, page, page);
+	void *ptr;
+
+	for(ptr = from; ptr < to; ptr += PAGE_SIZE)
+	{
+		vmem_identity(vmem, ptr, flags);
+		if(errno)
+		{
+			// TODO Free all
+		}
+	}
 }
 
 __attribute__((hot))
-void vmem_map(vmem_t vmem, void *physaddr, void *virtaddr)
+void vmem_map(vmem_t vmem, void *physaddr, void *virtaddr, const int flags)
 {
-	const int table_flags = PAGING_TABLE_WRITE | PAGING_TABLE_PRESENT;
-	const int page_flags = PAGING_PAGE_WRITE | PAGING_PAGE_PRESENT;
+	int table_flags, page_flags;
 	size_t t;
 	vmem_t v;
 
+	table_flags = PAGING_TABLE_PRESENT | flags;
+	page_flags = PAGING_PAGE_PRESENT | flags;
 	t = ADDR_TABLE(virtaddr);
 	if(!(vmem[t] & PAGING_TABLE_PRESENT))
 	{

@@ -57,7 +57,7 @@ typedef struct process
 
 	sigaction_t sigactions[SIG_MAX];
 	signal_t *signals_queue, *last_signal;
-	int exit_status;
+	int status;
 
 	void (*begin)();
 } process_t;

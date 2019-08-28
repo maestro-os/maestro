@@ -91,26 +91,6 @@ static driver_t drivers[] = {
 
 #ifdef KERNEL_DEBUG
 __attribute__((hot))
-static void print_memory_mapping(void)
-{
-	const multiboot_mmap_entry_t *t;
-
-	printf("--- Memory mapping ---\n");
-	printf("<begin> <end> <type>\n");
-	if(!memory_maps)
-		return;
-	t = memory_maps;
-	while((void *) t < memory_maps + memory_maps_size)
-	{
-		if(t->addr + t->len < ((uint64_t) 1 << (4 * 8)))
-			printf("- %p %p %s\n", (void *) (uintptr_t) t->addr,
-				(void *) (uintptr_t) t->addr + t->len, memmap_type(t->type));
-		t = (void *) t + memory_maps_entry_size;
-	}
-	printf("\n");
-}
-
-__attribute__((hot))
 static void print_slabs(void)
 {
 	cache_t *c;
@@ -195,22 +175,17 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	read_boot_tags(multiboot_ptr, &boot_info);
 	printf("Command line: %s\n", boot_info.cmdline);
 	printf("Bootloader name: %s\n", boot_info.loader_name);
-	memory_maps_size = boot_info.memory_maps_size;
-	memory_maps_entry_size = boot_info.memory_maps_entry_size;
-	memory_maps = boot_info.memory_maps;
 
 	printf("Basic components initialization...\n");
 	idt_init();
 	pit_init();
 
 	printf("Memory management initialization...\n");
+	memmap_init(&boot_info, kernel_end);
 #ifdef KERNEL_DEBUG
-	print_memory_mapping();
+	memmap_print();
+	printf("\n");
 #endif
-	heap_begin = kernel_end;
-	heap_end = (void *) (boot_info.mem_upper * 1024);
-	available_memory = heap_end - heap_begin;
-
 	printf("Available memory: %u bytes (%u pages)\n",
 		(unsigned) available_memory, (unsigned) available_memory / PAGE_SIZE);
 	printf("Kernel end: %p; Heap end: %p\n", kernel_end, heap_end);
@@ -265,6 +240,7 @@ void error_handler(const unsigned error, const uint32_t error_code)
 		return;
 	}
 	process_kill(process, sig);
+	// TODO Do not return to process if not running anymore
 }
 
 __attribute__((cold))
@@ -275,7 +251,8 @@ static void print_panic(const char *reason, const uint32_t code)
 	printf("Kernel has been forced to halt due to internal problem,\
  sorry :/\n");
 	printf("Reason: %s\n", reason);
-	printf("Error code: %x\n\n", (unsigned) code);
+	printf("Error code: %x\n", (unsigned) code);
+	printf("CR2: %p\n\n", cr2_get());
 	printf("If you believe this is a bug on the kernel side,\
  please feel free to report it.\n");
 }

@@ -4,36 +4,45 @@
 // TODO Remove
 #define TODO	termination
 
-static void termination(process_t *proc)
+static void termination(process_t *proc, const int sig)
+{
+	// TODO Kill children?
+	(void) sig;
+	proc->status = 0; // TODO
+	proc->state = TERMINATED;
+}
+
+static void stop(process_t *proc, const int sig)
+{
+	// TODO Set status
+	// TODO
+	(void) proc;
+	(void) sig;
+}
+
+static void cont(process_t *proc, const int sig)
 {
 	// TODO
 	(void) proc;
+	(void) sig;
 }
 
-static void stop(process_t *proc)
+static inline void sigkill_dfl(process_t *proc, const int sig)
 {
-	// TODO
+	// TODO Terminate process. Not children. Make children orphan. Set exit status
 	(void) proc;
+	(void) sig;
 }
 
-static void cont(process_t *proc)
+static inline void sigstop_dfl(process_t *proc, const int sig)
 {
-	// TODO
-	(void) proc;
-}
-
-static inline void sigkill_dfl(process_t *proc)
-{
-	del_process(proc, false);
-}
-
-static inline void sigstop_dfl(process_t *proc)
-{
+	// TODO Set status
+	(void) sig;
 	proc->state = STOPPED;
 	// TODO Wait until process switch or perform it now?
 }
 
-static void (*funcs[])(process_t *) = {
+static void (*funcs[])(process_t *, int) = {
 	[SIGHUP] = termination,
 	[SIGINT] = termination,
 	[SIGQUIT] = TODO,
@@ -67,9 +76,9 @@ static void (*funcs[])(process_t *) = {
 __attribute__((hot))
 void signal_default(process_t *proc, const int sig)
 {
-	void (*func)(process_t *);
+	void (*func)(process_t *, int);
 
 	if(!proc || sig >= SIG_MAX || !(func = funcs[sig]))
 		return;
-	func(proc);
+	func(proc, sig);
 }

@@ -143,8 +143,6 @@ void *pages_alloc(const size_t n)
 		return NULL;
 	if((alloc = find_alloc(n)) || (alloc = alloc_buddy(n)))
 		ptr = alloc_pages(alloc, n);
-	if(ptr && ptr < buddy_begin)
-		kernel_halt();
 	return ptr;
 }
 

@@ -2,6 +2,7 @@
 
 .global paging_enable
 .global tlb_reload
+.global cr2_get
 .global paging_disable
 
 paging_enable:
@@ -25,6 +26,10 @@ tlb_reload:
 	movl %cr3, %eax
 	movl %eax, %cr3
 	pop %eax
+	ret
+
+cr2_get:
+	mov %cr2, %eax
 	ret
 
 paging_disable:
