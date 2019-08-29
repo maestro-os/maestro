@@ -2,6 +2,8 @@
 #include <idt/idt.h>
 #include <pic/pic.h>
 
+// TODO Pay attention to the stack that is to be used when handling an interrupt
+
 static interrupt_descriptor_t id[0x81];
 
 static interrupt_descriptor_t create_id(void *address, const uint16_t selector,
@@ -21,6 +23,8 @@ static interrupt_descriptor_t create_id(void *address, const uint16_t selector,
 
 void idt_init(void)
 {
+	unsigned long idt_ptr[2];
+
 	pic_init(0x20, 0x28);
 
 	// TODO Fix macros
@@ -77,7 +81,6 @@ void idt_init(void)
 
 	id[SYSCALL_VECTOR] = create_id(syscall, 0x8, 0xee);
 
-	unsigned long idt_ptr[2];
 	idt_ptr[0] = sizeof(id) + (((unsigned long) id & 0xffff) << 16);
 	idt_ptr[1] = ((unsigned long) id) >> 16;
 	idt_load(idt_ptr);

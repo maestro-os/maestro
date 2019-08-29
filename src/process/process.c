@@ -12,7 +12,8 @@ static cache_t *signals_cache;
 static process_t *processes = NULL;
 static uint8_t *pids_bitmap;
 
-__attribute__((aligned(4096)))
+__ATTR_PAGE_ALIGNED
+__ATTR_BSS
 static tss_entry_t tss;
 
 static process_t *running_process = NULL;
@@ -353,6 +354,9 @@ __attribute__((hot))
 static void switch_processes(void)
 {
 	process_t *p;
+	vmem_t vmem;
+	void *esp, *eip;
+	int data_selector, code_selector;
 
 	if(!processes)
 		return;
@@ -362,16 +366,21 @@ static void switch_processes(void)
 	tss.ss0 = GDT_KERNEL_DATA_OFFSET;
 	if(p->syscalling)
 	{
-		paging_enable(kernel_vmem);
-		context_switch((void *) p->regs_state.esp, (void *) p->regs_state.eip,
-			GDT_KERNEL_DATA_OFFSET, GDT_KERNEL_CODE_OFFSET);
+		vmem = kernel_vmem;
+		esp = (void *) p->regs_state.esp;
+		data_selector = GDT_KERNEL_DATA_OFFSET;
+		code_selector =  GDT_KERNEL_CODE_OFFSET;
 	}
 	else
 	{
-		paging_enable(p->page_dir);
-		context_switch((void *) p->regs_state.esp, (void *) p->regs_state.eip,
-			GDT_USER_DATA_OFFSET | 3, GDT_USER_CODE_OFFSET | 3);
+		vmem = p->page_dir;
+		esp = (void *) p->regs_state.esp;
+		data_selector = GDT_USER_DATA_OFFSET | 3;
+		code_selector = GDT_USER_CODE_OFFSET | 3;
 	}
+	eip = (void *) p->regs_state.eip;
+	paging_enable(vmem);
+	context_switch(esp, eip, data_selector, code_selector);
 }
 
 __attribute__((hot))
@@ -379,6 +388,7 @@ void process_tick(const regs_t *registers)
 {
 	process_t *p;
 
+	paging_enable(kernel_vmem);
 	if(running_process)
 		running_process->regs_state = *registers;
 	p = processes;

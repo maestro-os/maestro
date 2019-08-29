@@ -2,6 +2,7 @@
 #include <libc/errno.h>
 
 // TODO Use `kernel_vmem` to hide holes in memory?
+// TODO Disable read on kernel .text and .rodata
 // TODO Add stack spaces
 // TODO Handle shared memory (use free flag into page table entry)
 
@@ -21,7 +22,8 @@ vmem_t vmem_init(void)
 	if(!(vmem = new_vmem_obj()))
 		return NULL;
 	// TODO Use the same page table for every object
-	vmem_identity_range(vmem, KERNEL_BEGIN, heap_begin, PAGING_PAGE_USER);
+	vmem_identity_range(vmem, KERNEL_BEGIN, heap_begin,
+		PAGING_PAGE_USER | PAGING_PAGE_WRITE);
 	if(errno)
 	{
 		// TODO Free all
@@ -36,14 +38,19 @@ void vmem_kernel(void)
 	if(!(kernel_vmem = new_vmem_obj()))
 		goto fail;
 	vmem_identity_range(kernel_vmem, NULL, KERNEL_BEGIN, PAGING_PAGE_WRITE);
-	vmem_identity_range(kernel_vmem,
-		KERNEL_BEGIN, heap_begin, PAGING_PAGE_WRITE);
+	vmem_identity_range(kernel_vmem, KERNEL_BEGIN, heap_begin,
+		PAGING_PAGE_WRITE);
 	vmem_identity_range(kernel_vmem, heap_begin, memory_end, PAGING_PAGE_WRITE);
 	paging_enable(kernel_vmem);
 	return;
 
 fail:
 	PANIC("Cannot initialize kernel virtual memory!", 0);
+}
+
+void vmem_kernel_restore(void)
+{
+	paging_enable(kernel_vmem);
 }
 
 __attribute__((hot))
@@ -191,24 +198,17 @@ __attribute__((hot))
 void *vmem_alloc_pages(vmem_t vmem, const size_t pages)
 {
 	void *ptr;
-	uintptr_t table, page;
-	vmem_t table_ptr;
 
 	if(!vmem || !(ptr = pages_alloc_zero(pages)))
 		return NULL;
-	table = ADDR_TABLE(ptr);
-	page = ADDR_PAGE(ptr);
-	if(!(vmem[table] & PAGING_TABLE_PRESENT))
+	// TODO Map at specific places for stacks
+	vmem_identity_range(vmem, ptr, ptr + (pages * PAGE_SIZE),
+		PAGING_PAGE_USER | PAGING_PAGE_WRITE);
+	if(errno)
 	{
-		if(!(table_ptr = new_vmem_obj()))
-		{
-			buddy_free(ptr);
-			return (NULL);
-		}
-		// TODO vmem[table] with table
+		pages_free(ptr, pages);
+		return NULL;
 	}
-	// TODO Set table entry
-	(void) page;
 	return ptr;
 }
 

@@ -2,7 +2,7 @@
 
 pages_alloc_t *allocs = NULL;
 
-__attribute__((section("bss")))
+__ATTR_BSS
 pages_alloc_t *free_list[FREE_LIST_SIZE];
 
 static spinlock_t spinlock = 0;

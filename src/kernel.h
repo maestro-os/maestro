@@ -3,6 +3,7 @@
 
 # include <multiboot.h>
 # include <gdt.h>
+# include <util/attr.h>
 
 # include <libc/string.h>
 # ifdef KERNEL_DEBUG

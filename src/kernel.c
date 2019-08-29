@@ -150,6 +150,5 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	for(size_t i = 0; i < 1; ++i)
 		new_process(NULL, test_process);
 
-	STI();
 	kernel_loop();
 }

@@ -5,9 +5,9 @@
 
 spinlock_t kmalloc_spinlock = 0;
 
-__attribute__((section("bss")))
+__ATTR_BSS
 static chunk_t *buckets[BUCKETS_COUNT];
-__attribute__((section("bss")))
+__ATTR_BSS
 static chunk_t *large_chunks;
 
 chunk_t *get_chunk(void *ptr)

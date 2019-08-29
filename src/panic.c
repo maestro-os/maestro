@@ -72,23 +72,26 @@ static int error_signals[] = {
 	-1
 };
 
+// TODO Check if in process using segment selector(s)?
 void error_handler(const unsigned error, const uint32_t error_code)
 {
 	process_t *process;
 	int sig;
 
+	vmem_kernel_restore();
 	if(error > 0x1f)
 	{
 		PANIC("Unknown", error_code);
 		return;
 	}
-	if(!(process = get_running_process()) || (sig = error_signals[error]) < 0)
+	if(!(process = get_running_process())
+		|| (sig = error_signals[error]) < 0)
 	{
 		PANIC(errors[error], error_code);
 		return;
 	}
 	process_kill(process, sig);
-	// TODO Do not return to process if not running anymore
+	kernel_loop();
 }
 
 __attribute__((cold))
