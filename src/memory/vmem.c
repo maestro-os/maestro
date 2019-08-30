@@ -77,20 +77,19 @@ void vmem_identity_range(vmem_t vmem, void *from, void *to, int flags)
 __attribute__((hot))
 void vmem_map(vmem_t vmem, void *physaddr, void *virtaddr, const int flags)
 {
-	int table_flags, page_flags;
 	size_t t;
 	vmem_t v;
 
-	table_flags = PAGING_TABLE_PRESENT | flags;
-	page_flags = PAGING_PAGE_PRESENT | flags;
 	t = ADDR_TABLE(virtaddr);
 	if(!(vmem[t] & PAGING_TABLE_PRESENT))
 	{
 		if(!(v = new_vmem_obj()))
 			return;
-		vmem[t] = (uintptr_t) v | table_flags;
+		vmem[t] = (uintptr_t) v | PAGING_TABLE_PRESENT | flags;
 	}
-	v[ADDR_PAGE(virtaddr)] = (uintptr_t) physaddr | page_flags;
+	v = (void *) (vmem[t] & PAGING_ADDR_MASK);
+	v[ADDR_PAGE(virtaddr)] = (uintptr_t) physaddr
+		| PAGING_PAGE_PRESENT | flags;
 }
 
 __attribute__((hot))

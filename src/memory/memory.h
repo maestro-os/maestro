@@ -85,6 +85,7 @@ void vmem_free(vmem_t vmem, bool mem_free);
 extern void paging_enable(vmem_t vmem);
 extern void tlb_reload(void);
 extern void *cr2_get(void);
+extern void *cr3_get(void);
 extern void paging_disable(void);
 
 void get_memory_usage(mem_usage_t *usage);

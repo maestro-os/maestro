@@ -316,6 +316,7 @@ static void init_process(process_t *process)
 	if(!vmem)
 		return;
 	// TODO Change default stack size (and allow stack grow)
+	// TODO Do not allow access to kernel_stack in user space?
 	if(!(user_stack = vmem_alloc_pages(vmem, 1))
 		|| !(kernel_stack = vmem_alloc_pages(vmem, 1)))
 	{

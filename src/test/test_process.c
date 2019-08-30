@@ -56,12 +56,11 @@ void test_process(void)
 
 	// write(0, "BEGIN\n", 6);
 	// fork_bomb();
-	while(1)
+	for(size_t i = 0; i < 10; ++i)
 	{
 		write(0, "pid: ", 5);
 		pid = getpid();
 		putnbr(pid);
 		write(0, "\n", 1);
 	}
-	// TODO Protect when returning (Triple fault)
 }
