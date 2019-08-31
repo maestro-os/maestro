@@ -345,7 +345,10 @@ typedef struct boot_info_t
 	size_t memory_maps_entry_size;
 	multiboot_mmap_entry_t *memory_maps;
 
-	multiboot_tag_elf_sections_t *elf_sections;
+	uint32_t elf_num;
+	uint32_t elf_entsize;
+	uint32_t elf_shndx;
+	void *elf_sections;
 
 	// TODO
 } boot_info_t;

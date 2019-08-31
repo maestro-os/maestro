@@ -99,7 +99,7 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	buddy_init();
 	printf("Buddy allocator begin: %p\n", buddy_begin);
 	slab_init();
-	vmem_kernel();
+	vmem_kernel(&boot_info);
 
 	printf("ACPI initialization...\n");
 	acpi_init();
@@ -119,7 +119,6 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 #ifdef KERNEL_DEBUG
 	print_mem_usage();
 	print_slabs();
-	kernel_halt();
 #endif
 
 	// TODO Test

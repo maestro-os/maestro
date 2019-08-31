@@ -1,4 +1,5 @@
 #include <memory/memory.h>
+#include <elf/elf.h>
 #include <libc/errno.h>
 
 // TODO Use `kernel_vmem` to hide holes in memory?
@@ -32,14 +33,36 @@ vmem_t vmem_init(void)
 	return vmem;
 }
 
-__attribute__((hot))
-void vmem_kernel(void)
+__attribute__((cold))
+static void protect_section(elf_section_header_t *hdr, const char *name)
 {
-	if(!(kernel_vmem = new_vmem_obj()))
+	void *ptr;
+	size_t pages;
+
+	(void) name;
+	if(hdr->sh_flags & SHF_WRITE || hdr->sh_addralign != PAGE_SIZE)
+		return;
+	ptr = (void *) hdr->sh_addr;
+	pages = UPPER_DIVISION(hdr->sh_size, PAGE_SIZE);
+	vmem_identity_range(kernel_vmem, ptr, ptr + (pages * PAGE_SIZE), 0);
+}
+
+__attribute__((cold))
+static void protect_kernel(boot_info_t *info)
+{
+	iterate_sections(info->elf_sections,
+		info->elf_num, info->elf_shndx, info->elf_entsize, protect_section);
+}
+
+__attribute__((cold))
+void vmem_kernel(boot_info_t *info)
+{
+	if(!info || !(kernel_vmem = new_vmem_obj()))
 		goto fail;
 	vmem_identity_range(kernel_vmem, NULL, KERNEL_BEGIN, PAGING_PAGE_WRITE);
 	vmem_identity_range(kernel_vmem, KERNEL_BEGIN, heap_begin,
 		PAGING_PAGE_WRITE);
+	protect_kernel(info);
 	vmem_identity_range(kernel_vmem, heap_begin, memory_end, PAGING_PAGE_WRITE);
 	paging_enable(kernel_vmem);
 	return;

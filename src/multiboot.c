@@ -17,6 +17,7 @@ size_t multiboot_tags_size(void *ptr)
 static void handle_tag(multiboot_tag_t *tag, boot_info_t *info)
 {
 	multiboot_tag_mmap_t *mmap_tag;
+	multiboot_tag_elf_sections_t *elf_tag;
 
 	switch(tag->type)
 	{
@@ -64,7 +65,11 @@ static void handle_tag(multiboot_tag_t *tag, boot_info_t *info)
 
 		case MULTIBOOT_TAG_TYPE_ELF_SECTIONS:
 		{
-			info->elf_sections = (multiboot_tag_elf_sections_t *) tag;
+			elf_tag = (multiboot_tag_elf_sections_t *) tag;
+			info->elf_num = elf_tag->num;
+			info->elf_entsize = elf_tag->entsize;
+			info->elf_shndx = elf_tag->shndx;
+			info->elf_sections = elf_tag->sections;
 			break;
 		}
 
