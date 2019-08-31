@@ -70,7 +70,7 @@ test: iso
 	qemu-system-i386 -cdrom $(NAME).iso -d int -soundhw pcspk
 
 debug: iso
-	qemu-system-i386 -cdrom $(NAME).iso -s -S -soundhw pcspk
+	qemu-system-i386 -cdrom $(NAME).iso -d int -s -S -soundhw pcspk
 
 bochs: iso
 	bochs

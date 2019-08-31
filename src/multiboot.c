@@ -1,9 +1,22 @@
 #include <multiboot.h>
 #include <memory/memory.h>
 
+size_t multiboot_tags_size(void *ptr)
+{
+	multiboot_tag_t *tag;
+
+	if(!ptr)
+		return 0;
+	tag = ptr + 8;
+	while(tag->type != MULTIBOOT_TAG_TYPE_END)
+		tag = (multiboot_tag_t *) ((uint8_t *) tag + ((tag->size + 7) & ~7));
+	tag = (multiboot_tag_t *) ((uint8_t *) tag + ((tag->size + 7) & ~7));
+	return (size_t) ((void *) tag - ptr);
+}
+
 static void handle_tag(multiboot_tag_t *tag, boot_info_t *info)
 {
-	multiboot_tag_mmap_t *t;
+	multiboot_tag_mmap_t *mmap_tag;
 
 	switch(tag->type)
 	{
@@ -42,10 +55,16 @@ static void handle_tag(multiboot_tag_t *tag, boot_info_t *info)
 
 		case MULTIBOOT_TAG_TYPE_MMAP:
 		{
-			t = (multiboot_tag_mmap_t *) tag;
-			info->memory_maps_size = t->size;
-			info->memory_maps_entry_size = t->entry_size;
-			info->memory_maps = t->entries;
+			mmap_tag = (multiboot_tag_mmap_t *) tag;
+			info->memory_maps_size = mmap_tag->size;
+			info->memory_maps_entry_size = mmap_tag->entry_size;
+			info->memory_maps = mmap_tag->entries;
+			break;
+		}
+
+		case MULTIBOOT_TAG_TYPE_ELF_SECTIONS:
+		{
+			info->elf_sections = (multiboot_tag_elf_sections_t *) tag;
 			break;
 		}
 

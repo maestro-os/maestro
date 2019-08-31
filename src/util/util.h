@@ -15,6 +15,8 @@
 # define UPPER_DIVISION(n0, n1)	((n0) % (n1) == 0\
 	? (n0) / (n1) : (n0) / (n1) + 1)
 # define POW2(n)				(((typeof(n)) 1) << (n))
+# define MIN(n0, n1)			((n0) < (n1) ? (n0) : (n1))
+# define MAX(n0, n1)			((n0) > (n1) ? (n0) : (n1))
 
 # define BIT_SIZEOF(expr)	(sizeof(expr) * 8)
 

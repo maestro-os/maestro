@@ -51,15 +51,22 @@ static void *get_memory_end(void)
 }
 
 __attribute__((cold))
-void memmap_init(const boot_info_t *info, void *kernel_end)
+void memmap_init(const boot_info_t *info,
+	void *multiboot_ptr, void *kernel_end)
 {
+	void *multiboot_tags_end;
+
+	multiboot_tags_end = multiboot_ptr + multiboot_tags_size(multiboot_ptr);
+
 	memory_maps_size = info->memory_maps_size;
 	memory_maps_entry_size = info->memory_maps_entry_size;
 	memory_maps = info->memory_maps;
 
 	memory_end = get_memory_end();
-	heap_begin = ALIGN_UP(kernel_end, PAGE_SIZE);
+	heap_begin = ALIGN_UP(MAX(multiboot_tags_end, kernel_end), PAGE_SIZE);
 	heap_end = ALIGN_DOWN((void *) (info->mem_upper * 1024), PAGE_SIZE);
+	if(heap_begin >= heap_end)
+		PANIC("Invalid memory map!", 0);
 	available_memory = heap_end - heap_begin;
 }
 

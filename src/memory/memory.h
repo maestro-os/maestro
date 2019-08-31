@@ -62,7 +62,8 @@ extern vmem_t kernel_vmem;
 extern bool check_a20(void);
 void enable_a20(void);
 
-void memmap_init(const boot_info_t *info, void *kernel_end);
+void memmap_init(const boot_info_t *info,
+	void *multiboot_ptr, void *kernel_end);
 void memmap_print(void);
 const char *memmap_type(uint32_t type);
 
@@ -88,6 +89,9 @@ extern void *cr2_get(void);
 extern void *cr3_get(void);
 extern void paging_disable(void);
 
+# ifdef KERNEL_DEBUG
 void get_memory_usage(mem_usage_t *usage);
+# endif
+void print_mem_usage(void);
 
 #endif

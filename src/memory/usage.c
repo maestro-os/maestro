@@ -37,3 +37,27 @@ void get_memory_usage(mem_usage_t *usage)
 	remaining -= usage->swap;
 	usage->free = remaining;
 }
+
+#ifdef KERNEL_DEBUG
+void print_mem_usage(void)
+{
+	mem_usage_t usage;
+	size_t total;
+
+	get_memory_usage(&usage);
+	total = (size_t) heap_end;
+	// TODO Use %zu and print floats
+	printf("--- Memory usage ---\n");
+	printf("total: %i bytes\n", (int) total);
+	printf("reserved: %i bytes (%i%%)\n", (int) usage.reserved,
+		(int) ((float) usage.reserved / total * 100));
+	printf("system: %i bytes (%i%%)\n", (int) usage.system,
+		(int) ((float) usage.system / total * 100));
+	printf("allocated: %i bytes (%i%%)\n", (int) usage.allocated,
+		(int) ((float) usage.allocated / total * 100));
+	printf("swap: %i bytes (%i%%)\n", (int) usage.swap,
+		(int) ((float) usage.swap / total * 100));
+	printf("free: %i bytes (%i%%)\n", (int) usage.free,
+		(int) ((float) usage.free / total * 100));
+}
+#endif
