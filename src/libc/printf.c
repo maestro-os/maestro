@@ -3,7 +3,7 @@
 #include <libc/stdlib.h>
 #include <tty/tty.h>
 
-typedef struct specifier
+typedef struct
 {
 	size_t size;
 
@@ -16,7 +16,7 @@ typedef struct specifier
 	char type;
 } specifier_t;
 
-typedef struct handler
+typedef struct
 {
 	char c;
 	int (*f)(const specifier_t *, va_list *);
@@ -80,7 +80,8 @@ static inline int putchar(const char c)
 
 static inline char get_number_char(int n)
 {
-	if(n < 0) n = -n;
+	if(n < 0)
+		n = -n;
 	return (n < 10 ? '0' : 'a' - 10) + n;
 }
 
@@ -88,13 +89,11 @@ static inline int putint(int n, const unsigned base)
 {
 	if(n >= (int) base || n <= -((int) base))
 		return putint(n / base, base) + putchar(get_number_char(n % base));
-
 	if(n < 0)
 	{
 		putchar('-');
 		n = -n;
 	}
-
 	return putchar(get_number_char(n % base));
 }
 
@@ -124,9 +123,10 @@ static inline int putfloat(const unsigned int n)
 
 static inline int putstr(const char *str)
 {
-	const size_t len = strlen(str);
-	tty_write(str, len, current_tty);
+	size_t len;
 
+	len = strlen(str);
+	tty_write(str, len, current_tty);
 	return len;
 }
 
@@ -134,7 +134,6 @@ static int char_handler(const specifier_t *specifier, va_list *args)
 {
 	// TODO Alignements, etc...
 	(void) specifier;
-
 	return putchar(va_arg(*args, int));
 }
 
@@ -142,7 +141,6 @@ static int signed_decimal_handler(const specifier_t *specifier, va_list *args)
 {
 	// TODO Alignements, etc...
 	(void) specifier;
-
 	return putint(va_arg(*args, int), 10);
 }
 
@@ -150,7 +148,6 @@ static int unsigned_decimal_handler(const specifier_t *specifier, va_list *args)
 {
 	// TODO Alignements, etc...
 	(void) specifier;
-
 	return putuint(va_arg(*args, int), 10);
 }
 
@@ -158,7 +155,6 @@ static int float_handler(const specifier_t *specifier, va_list *args)
 {
 	// TODO Alignements, etc...
 	(void) specifier;
-
 	return putfloat(va_arg(*args, double));
 }
 
@@ -166,7 +162,6 @@ static int string_handler(const specifier_t *specifier, va_list *args)
 {
 	// TODO Alignements, etc...
 	(void) specifier;
-
 	return putstr(va_arg(*args, const char *));
 }
 
@@ -174,7 +169,6 @@ static int pointer_handler(const specifier_t *specifier, va_list *args)
 {
 	// TODO Alignements, etc...
 	(void) specifier;
-
 	return putstr("0x") + putptr((uintptr_t) va_arg(*args, void *));
 }
 
@@ -182,7 +176,6 @@ static int hexadecimal_handler(const specifier_t *specifier, va_list *args)
 {
 	// TODO Alignements, etc...
 	(void) specifier;
-
 	return putstr("0x") + putuint((unsigned) va_arg(*args, void *), 16);
 }
 
@@ -199,19 +192,20 @@ static int handle_specifier(const specifier_t *specifier, va_list *args)
 		{'x', hexadecimal_handler}
 		// TODO
 	};
+	size_t i = 0;
+	const handler_t *h;
 
 	if(specifier->type == '%')
 	{
 		putchar('%');
 		return 1;
 	}
-
-	for(size_t i = 0; i < sizeof(handlers) / sizeof(handler_t); ++i)
+	while(i < sizeof(handlers) / sizeof(handler_t))
 	{
-		const handler_t* h = handlers + i;
-		if(h->c == specifier->type) return h->f(specifier, args);
+		h = handlers + i++;
+		if(h->c == specifier->type)
+			return h->f(specifier, args);
 	}
-
 	// TODO Do something?
 	return 0;
 }
@@ -225,20 +219,17 @@ int printf(const char *format, ...)
 	size_t len;
 
 	va_start(args, format);
-
 	while(*format)
 	{
 		s = next_specifier(format, &specifier);
 		len	= (s ? (size_t) (s - format) : strlen(format));
-
 		tty_write(format, len, current_tty);
 		format += len;
 		total += len;
-
-		if(s) total += handle_specifier(&specifier, &args);
+		if(s)
+			total += handle_specifier(&specifier, &args);
 		format += specifier.size;
 	}
-
 	va_end(args);
 	return total;
 }

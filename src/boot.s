@@ -25,6 +25,13 @@
 .global gdt
 .global gdt_tss
 
+.global kernel_loop
+.global kernel_halt
+
+.global stack_top
+
+.global kernel_end
+
 .set GDT_KERNEL_CODE_OFFSET, (gdt_kernel_code - gdt_start)
 .set GDT_KERNEL_DATA_OFFSET, (gdt_kernel_data - gdt_start)
 .set GDT_USER_CODE_OFFSET, (gdt_user_code - gdt_start)
@@ -77,9 +84,6 @@ complete_flush:
 kernel_init:
 	call switch_protected
 	ret
-
-.global kernel_loop
-.global kernel_halt
 
 kernel_loop:
 	sti
@@ -167,7 +171,5 @@ gdt:
 stack_bottom:
 	.skip STACK_SIZE
 stack_top:
-
-.global kernel_end
 
 kernel_end:

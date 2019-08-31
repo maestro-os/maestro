@@ -147,7 +147,7 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 
 	// TODO Test
 	CLI();
-	for(size_t i = 0; i < 1; ++i)
+	for(size_t i = 0; i < 2; ++i)
 		new_process(NULL, test_process);
 
 	kernel_loop();

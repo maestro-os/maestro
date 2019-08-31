@@ -190,7 +190,6 @@ void process_set_state(process_t *process, const process_state_t state)
 	{
 		if(running_process)
 			process_set_state(running_process, WAITING);
-		tss.esp0 = (uint32_t) process->kernel_stack + (PAGE_SIZE - 1);
 		running_process = process;
 	}
 	else if((state == WAITING || state == BLOCKED)
@@ -356,8 +355,8 @@ static void switch_processes(void)
 {
 	process_t *p;
 	vmem_t vmem;
-	void *esp, *eip;
 	int data_selector, code_selector;
+	void *esp, *eip;
 
 	if(!processes)
 		return;
@@ -365,20 +364,20 @@ static void switch_processes(void)
 		return;
 	process_set_state(p, RUNNING);
 	tss.ss0 = GDT_KERNEL_DATA_OFFSET;
+	tss.esp0 = (uint32_t) p->kernel_stack + (PAGE_SIZE - 1);
 	if(p->syscalling)
 	{
 		vmem = kernel_vmem;
-		esp = (void *) p->regs_state.esp;
 		data_selector = GDT_KERNEL_DATA_OFFSET;
-		code_selector =  GDT_KERNEL_CODE_OFFSET;
+		code_selector = GDT_KERNEL_CODE_OFFSET;
 	}
 	else
 	{
 		vmem = p->page_dir;
-		esp = (void *) p->regs_state.esp;
 		data_selector = GDT_USER_DATA_OFFSET | 3;
 		code_selector = GDT_USER_CODE_OFFSET | 3;
 	}
+	esp = (void *) p->regs_state.esp;
 	eip = (void *) p->regs_state.eip;
 	paging_enable(vmem);
 	context_switch(esp, eip, data_selector, code_selector);
@@ -389,7 +388,7 @@ void process_tick(const regs_t *registers)
 {
 	process_t *p;
 
-	paging_enable(kernel_vmem);
+	vmem_kernel_restore();
 	if(running_process)
 		running_process->regs_state = *registers;
 	p = processes;

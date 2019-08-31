@@ -19,6 +19,7 @@
 
 .global idt_load
 
+.extern stack_top
 .extern pic_EOI
 .extern irq1_handler
 .extern irq2_handler
@@ -40,6 +41,7 @@ irq0:
 	cli
 	push %ebp
 	mov %esp, %ebp
+	mov $stack_top, %esp
 	pusha
 
 	push %edi

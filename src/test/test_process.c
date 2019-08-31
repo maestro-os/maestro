@@ -23,6 +23,11 @@ static void putnbr(int n)
 	putchar('0' + (n % 10));
 }
 
+static void putstr(const char *s)
+{
+	write(0, s, strlen(s));
+}
+
 /*static void fork_bomb(void)
 {
 	pid_t pid;
@@ -58,7 +63,15 @@ void test_process(void)
 	// fork_bomb();
 	for(size_t i = 0; i < 10; ++i)
 	{
-		write(0, "pid: ", 5);
+		write(0, "pid a: ", 7);
+		pid = getpid();
+		putnbr(pid);
+		write(0, "\n", 1);
+	}
+	putstr("Hello world!\n");
+	for(size_t i = 0; i < 10; ++i)
+	{
+		write(0, "pid b: ", 7);
 		pid = getpid();
 		putnbr(pid);
 		write(0, "\n", 1);
