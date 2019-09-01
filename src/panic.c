@@ -80,16 +80,9 @@ void error_handler(const unsigned error, const uint32_t error_code)
 
 	vmem_kernel_restore();
 	if(error > 0x1f)
-	{
 		PANIC("Unknown", error_code);
-		return;
-	}
-	if(!(process = get_running_process())
-		|| (sig = error_signals[error]) < 0)
-	{
+	if(!(process = get_running_process()) || (sig = error_signals[error]) < 0)
 		PANIC(errors[error], error_code);
-		return;
-	}
 	process_kill(process, sig);
 	kernel_loop();
 }

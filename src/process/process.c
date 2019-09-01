@@ -349,6 +349,19 @@ static process_t *next_waiting_process(process_t *process)
 	return (p->state == WAITING ? p : NULL);
 }
 
+__attribute__((hot))
+static void restore_registers(const regs_t *regs)
+{
+	tss.ebp = regs->ebp;
+	tss.eflags = regs->eflags;
+	tss.eax = regs->eax;
+	tss.ebx = regs->ebx;
+	tss.ecx = regs->ecx;
+	tss.edx = regs->edx;
+	tss.esi = regs->esi;
+	tss.edi = regs->edi;
+}
+
 // TODO Do not use kernel_vmem for process's syscalls?
 __attribute__((hot))
 static void switch_processes(void)
@@ -363,8 +376,6 @@ static void switch_processes(void)
 	if(!(p = next_waiting_process(running_process)))
 		return;
 	process_set_state(p, RUNNING);
-	tss.ss0 = GDT_KERNEL_DATA_OFFSET;
-	tss.esp0 = (uint32_t) p->kernel_stack + (PAGE_SIZE - 1);
 	if(p->syscalling)
 	{
 		vmem = kernel_vmem;
@@ -379,6 +390,9 @@ static void switch_processes(void)
 	}
 	esp = (void *) p->regs_state.esp;
 	eip = (void *) p->regs_state.eip;
+	tss.ss0 = GDT_KERNEL_DATA_OFFSET;
+	tss.esp0 = (uint32_t) p->kernel_stack + (PAGE_SIZE - 1);
+	restore_registers(&p->regs_state);
 	paging_enable(vmem);
 	context_switch(esp, eip, data_selector, code_selector);
 }
