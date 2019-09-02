@@ -5,6 +5,7 @@
 #include <idt/idt.h>
 #include <pit/pit.h>
 #include <acpi/acpi.h>
+#include <pci/pci.h>
 #include <process/process.h>
 #include <device/device.h>
 #include <ata/ata.h>
@@ -103,6 +104,12 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 
 	printf("ACPI initialization...\n");
 	acpi_init();
+
+	// TODO PCIe
+	// TODO Use PCI only if ACPI is unavailable or failed
+	printf("PCI initialization...\n");
+	pci_scan();
+	kernel_halt(); // TODO Remove
 
 	printf("Drivers initialization...\n");
 	init_drivers();
