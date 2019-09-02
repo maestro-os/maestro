@@ -1,5 +1,8 @@
 #include <pci/pci.h>
 
+static cache_t *pci_cache = NULL;
+static pci_function_t *functions = NULL;
+
 uint16_t pci_config_readword(const uint8_t bus, const uint8_t device,
 	const uint8_t func, const uint8_t offset)
 {
@@ -27,16 +30,36 @@ uint16_t pci_get_header_type(const uint8_t bus, const uint8_t device)
 static int pci_check_function(const uint8_t bus, const uint8_t device,
 	const uint8_t func)
 {
+	uint16_t vendor_id;
+	pci_function_t *function;
 	uint16_t word;
-	uint8_t class_code, subclass;
 
-	if(pci_get_vendor_id(bus, device, func) == 0xffff)
+	if((vendor_id = pci_get_vendor_id(bus, device, func)) == 0xffff)
 		return 0;
+	if(!(function = cache_alloc(pci_cache)))
+	{
+		// TODO Error
+		return 0;
+	}
+	function->bus = bus;
+	function->device = device;
+	function->function = func;
+	function->vendor_id = vendor_id;
+	function->device_id = pci_get_device_id(bus, device);
 	word = pci_config_readword(bus, device, func, 0xa);
-	class_code = (word >> 8) & 0xff;
-	subclass = word & 0xff;
-	printf("class_code: %i; subclass: %i\n", class_code, subclass);
-	// TODO
+	function->class_code = (word >> 8) & 0xff;
+	function->subclass = word & 0xff;
+	word = pci_config_readword(bus, device, func, 0x8);
+	function->prog_if = (word >> 8) & 0xff;
+	function->revision_id = word & 0xff;
+	// TODO interrupt_line and interrupt_pin
+	if(functions)
+	{
+		function->next = functions;
+		functions = function;
+	}
+	else
+		functions = function;
 	return 1;
 }
 
@@ -52,10 +75,7 @@ static int pci_check_device(const uint8_t bus, const uint8_t device)
 	if(pci_get_header_type(bus, device) & 0x80)
 	{
 		for(func = 1; func < 8; ++func)
-		{
-			if(pci_check_function(bus, device, func))
-				printf("CCCC\n");
-		}
+			pci_check_function(bus, device, func);
 	}
 	return 1;
 }
@@ -67,23 +87,17 @@ static int pic_check_bus(const uint8_t bus)
 	if(pci_get_vendor_id(bus, 0, 0) == 0xffff)
 		return 0;
 	for(device = 0; device < 32; ++device)
-	{
-		if(pci_check_device(bus, device))
-			printf("BBBB\n");
-	}
+		pci_check_device(bus, device);
 	return 1;
 }
 
-// TODO Save peripherals
 void pci_scan(void)
 {
 	uint16_t bus;
 
-	// TODO
-	printf("scan\n");
+	if(!pci_cache && !(pci_cache = cache_create("pci", sizeof(pci_function_t),
+		1, bzero, NULL)))
+		PANIC("Cannot allocate caches for PCI!", 0);
 	for(bus = 0; bus < 256; ++bus)
-	{
-		if(pic_check_bus(bus))
-			printf("AAAA\n");
-	}
+		pic_check_bus(bus);
 }
