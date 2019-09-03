@@ -29,10 +29,15 @@ typedef struct pci_function
 	uint8_t prog_if;
 	uint8_t revision_id;
 
+	uint32_t bar0;
+	uint32_t bar1;
+
 	uint8_t interrupt_line;
 	uint8_t interrupt_pin;
 } pci_function_t;
 
+uint16_t pci_config_readlong(uint8_t bus, uint8_t device,
+	uint8_t func, uint8_t offset);
 uint16_t pci_config_readword(uint8_t bus, uint8_t device,
 	uint8_t func, uint8_t offset);
 
@@ -41,5 +46,7 @@ uint16_t pic_get_device_id(uint8_t bus, uint8_t device);
 uint16_t pic_get_header_type(uint8_t bus, uint8_t device);
 
 void pci_scan(void);
+
+pci_function_t *pci_get_all(void);
 
 #endif

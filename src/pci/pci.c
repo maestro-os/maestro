@@ -3,6 +3,14 @@
 static cache_t *pci_cache = NULL;
 static pci_function_t *functions = NULL;
 
+uint16_t pci_config_readlong(const uint8_t bus, const uint8_t device,
+	const uint8_t func, const uint8_t offset)
+{
+	outl(PCI_CONFIG_ADDRESS, ((uint32_t) bus << 16) | ((uint32_t) device << 11)
+		| ((uint32_t) func << 8) | ((uint32_t) offset & 0xfc) | 0x80000000);
+	return inl(PCI_CONFIG_DATA);
+}
+
 uint16_t pci_config_readword(const uint8_t bus, const uint8_t device,
 	const uint8_t func, const uint8_t offset)
 {
@@ -32,7 +40,7 @@ static int pci_check_function(const uint8_t bus, const uint8_t device,
 {
 	uint16_t vendor_id;
 	pci_function_t *function;
-	uint16_t word;
+	uint32_t i;
 
 	if((vendor_id = pci_get_vendor_id(bus, device, func)) == 0xffff)
 		return 0;
@@ -46,49 +54,46 @@ static int pci_check_function(const uint8_t bus, const uint8_t device,
 	function->function = func;
 	function->vendor_id = vendor_id;
 	function->device_id = pci_get_device_id(bus, device);
-	word = pci_config_readword(bus, device, func, 0xa);
-	function->class_code = (word >> 8) & 0xff;
-	function->subclass = word & 0xff;
-	word = pci_config_readword(bus, device, func, 0x8);
-	function->prog_if = (word >> 8) & 0xff;
-	function->revision_id = word & 0xff;
+	i = pci_config_readword(bus, device, func, 0xa);
+	function->class_code = (i >> 8) & 0xff;
+	function->subclass = i & 0xff;
+	i = pci_config_readword(bus, device, func, 0x8);
+	function->prog_if = (i >> 8) & 0xff;
+	function->revision_id = i & 0xff;
+	function->bar0 = pci_config_readlong(bus, device, func, 0x10);
+	function->bar1 = pci_config_readlong(bus, device, func, 0x14);
 	// TODO interrupt_line and interrupt_pin
-	if(functions)
-	{
-		function->next = functions;
-		functions = function;
-	}
-	else
-		functions = function;
+	function->next = functions;
+	functions = function;
 	return 1;
 }
 
-static int pci_check_device(const uint8_t bus, const uint8_t device)
+static void pci_check_device(const uint8_t bus, const uint8_t device)
 {
 	uint16_t vendor_id;
 	uint8_t func = 0;
 
 	if((vendor_id = pci_get_vendor_id(bus, device, func)) == 0xffff)
-		return 0;
+		return;
 	if(!(pci_check_function(bus, device, func)))
-		return 0;
+		return;
 	if(pci_get_header_type(bus, device) & 0x80)
 	{
 		for(func = 1; func < 8; ++func)
 			pci_check_function(bus, device, func);
 	}
-	return 1;
+	return;
 }
 
-static int pic_check_bus(const uint8_t bus)
+static void pic_check_bus(const uint8_t bus)
 {
 	uint8_t device;
 
 	if(pci_get_vendor_id(bus, 0, 0) == 0xffff)
-		return 0;
+		return;
 	for(device = 0; device < 32; ++device)
 		pci_check_device(bus, device);
-	return 1;
+	return;
 }
 
 void pci_scan(void)
@@ -100,4 +105,9 @@ void pci_scan(void)
 		PANIC("Cannot allocate caches for PCI!", 0);
 	for(bus = 0; bus < 256; ++bus)
 		pic_check_bus(bus);
+}
+
+pci_function_t *pci_get_all(void)
+{
+	return functions;
 }

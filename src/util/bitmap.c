@@ -23,7 +23,7 @@
 // TODO Protect and clean every function
 
 __attribute__((hot))
-int bitmap_get(uint8_t *bitmap, const size_t index)
+int bitmap_get(const uint8_t *bitmap, const size_t index)
 {
 	return (*UNIT(bitmap, index) >> INNER_INDEX(index)) & 0b1;
 }
@@ -136,7 +136,7 @@ void bitmap_clear_range(uint8_t *bitmap, const size_t begin, const size_t end)
 	}
 }
 
-size_t bitmap_first_clear(uint8_t *bitmap, const size_t bitmap_size)
+size_t bitmap_first_clear(const uint8_t *bitmap, const size_t bitmap_size)
 {
 	size_t i = 0;
 	uint8_t c;

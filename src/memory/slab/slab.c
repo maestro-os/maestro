@@ -95,6 +95,7 @@ static slab_t *alloc_slab(cache_t *cache)
 	return slab;
 }
 
+// TODO Fix
 __attribute__((hot))
 void *cache_alloc(cache_t *cache)
 {
@@ -112,6 +113,7 @@ void *cache_alloc(cache_t *cache)
 	// TODO Protect?
 	i = bitmap_first_clear(SLAB_BITMAP(slab), cache->objcount);
 	bitmap_set(SLAB_BITMAP(slab), i);
+	--slab->available;
 	if(slab->available == 0)
 	{
 		unlink_slab(slab);

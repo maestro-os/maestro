@@ -6,7 +6,7 @@
 
 # define OBJ_USED	0b1
 
-# define CACHES_CACHE_NAME	"slab_caches"
+# define CACHES_CACHE_NAME	"caches"
 
 # define SLAB_BITMAP(slab)			((void *) (slab) + sizeof(slab_t))
 # define SLAB_OBJ(cache, slab, i)	(SLAB_BITMAP(slab)\

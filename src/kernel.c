@@ -21,7 +21,21 @@ static driver_t drivers[] = {
 };
 
 #ifdef KERNEL_DEBUG
-__attribute__((hot))
+static void print_devices(void)
+{
+	pci_function_t *f;
+
+	f = pci_get_all();
+	while(f)
+	{
+		printf("- vendor_id: %x; device_id: %x; class_code: %x; subclass: %x; \
+prog_if: %x; revision_id: %x; bar0: %x; bar1: %x\n",
+			f->vendor_id, f->device_id, f->class_code, f->subclass,
+				f->prog_if, f->revision_id, (int) f->bar0, (int) f->bar1);
+		f = f->next;
+	}
+}
+
 static void print_slabs(void)
 {
 	cache_t *c;
@@ -109,7 +123,11 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	// TODO Use PCI only if ACPI is unavailable or failed
 	printf("PCI initialization...\n");
 	pci_scan();
+
+#ifdef KERNEL_DEBUG
 	kernel_halt(); // TODO Remove
+	print_devices();
+#endif
 
 	printf("Drivers initialization...\n");
 	init_drivers();
