@@ -101,7 +101,7 @@ void pci_scan(void)
 	uint16_t bus;
 
 	if(!pci_cache && !(pci_cache = cache_create("pci", sizeof(pci_function_t),
-		1, bzero, NULL)))
+		32, bzero, NULL)))
 		PANIC("Cannot allocate caches for PCI!", 0);
 	for(bus = 0; bus < 256; ++bus)
 		pic_check_bus(bus);

@@ -147,7 +147,7 @@ size_t bitmap_first_clear(const uint8_t *bitmap, const size_t bitmap_size)
 	if(i * UNIT_SIZE >= bitmap_size)
 		return bitmap_size;
 	c = bitmap[i];
-	while(c & (1 << 7))
+	while(c & (1 << 7) && i * UNIT_SIZE + j < bitmap_size)
 	{
 		c <<= 1;
 		++j;

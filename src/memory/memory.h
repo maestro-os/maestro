@@ -38,6 +38,8 @@
 # define ADDR_PAGE(addr)	(((uintptr_t) (addr) >> 12) & 0x3ff)
 # define ADDR_REMAIN(addr)	((uintptr_t) (addr) & 0xfff)
 
+// TODO Extensive testing on every allocators
+
 typedef uint32_t *vmem_t;
 
 typedef struct

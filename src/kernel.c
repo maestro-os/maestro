@@ -66,8 +66,10 @@ __attribute__((cold))
 static inline void init_drivers(void)
 {
 	size_t i = 0;
-	for(; i < sizeof(drivers) / sizeof(*drivers); ++i)
-		init_driver(drivers + i);
+
+	// TODO Load drivers according to detected devices
+	while(i < sizeof(drivers) / sizeof(*drivers))
+		init_driver(drivers + i++);
 }
 
 // TODO Remove
@@ -125,7 +127,6 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	pci_scan();
 
 #ifdef KERNEL_DEBUG
-	kernel_halt(); // TODO Remove
 	print_devices();
 #endif
 

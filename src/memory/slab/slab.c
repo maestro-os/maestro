@@ -1,8 +1,6 @@
 #include <memory/slab/slab.h>
 #include <libc/errno.h>
 
-// TODO Set errnos
-
 static cache_t *caches;
 static cache_t *caches_cache;
 
@@ -95,7 +93,6 @@ static slab_t *alloc_slab(cache_t *cache)
 	return slab;
 }
 
-// TODO Fix
 __attribute__((hot))
 void *cache_alloc(cache_t *cache)
 {
@@ -110,7 +107,6 @@ void *cache_alloc(cache_t *cache)
 		if(!(slab = alloc_slab(cache)))
 			return NULL;
 	}
-	// TODO Protect?
 	i = bitmap_first_clear(SLAB_BITMAP(slab), cache->objcount);
 	bitmap_set(SLAB_BITMAP(slab), i);
 	--slab->available;
