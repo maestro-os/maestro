@@ -26,6 +26,7 @@ static void print_devices(void)
 	pci_function_t *f;
 
 	f = pci_get_all();
+	printf("PCI devices:\n");
 	while(f)
 	{
 		printf("- vendor_id: %x; device_id: %x; class_code: %x; subclass: %x; \
@@ -34,6 +35,7 @@ prog_if: %x; revision_id: %x; bar0: %x; bar1: %x\n",
 				f->prog_if, f->revision_id, (int) f->bar0, (int) f->bar1);
 		f = f->next;
 	}
+	printf("\n");
 }
 
 static void print_slabs(void)
@@ -132,6 +134,7 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 
 	printf("Drivers initialization...\n");
 	init_drivers();
+	kernel_halt();
 
 	printf("Keyboard initialization...\n");
 	keyboard_init();

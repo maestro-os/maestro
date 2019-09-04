@@ -1,6 +1,8 @@
 #ifndef ATA_H
 # define ATA_H
 
+# include <kernel.h>
+
 # define ATA_PRIMARY_BUS	0x1f0
 # define ATA_PRIMARY_CTRL	0x3f6
 # define ATA_SECONDARY_BUS	0x170
@@ -39,6 +41,11 @@
 # define ATA_STATUS_RDY		0b01000000
 # define ATA_STATUS_BSY		0b10000000
 
+# define ATA_CMD_IDENTIFY	0xec
+
+# define ATA_SECTOR_SIZE	0x200
+
 void ata_init(void);
+void ata_reset(uint16_t ctrl_bus);
 
 #endif
