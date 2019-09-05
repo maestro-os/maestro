@@ -3,6 +3,8 @@
 
 # include <kernel.h>
 
+# include <libc/sys/types.h>
+
 # define ATA_PRIMARY_BUS	0x1f0
 # define ATA_PRIMARY_CTRL	0x3f6
 # define ATA_SECONDARY_BUS	0x170
@@ -41,11 +43,33 @@
 # define ATA_STATUS_RDY		0b01000000
 # define ATA_STATUS_BSY		0b10000000
 
-# define ATA_CMD_IDENTIFY	0xec
+# define ATA_CMD_IDENTIFY		0xec
+# define ATA_CMD_READ_SECTORS	0x20
+# define ATA_CMD_WRITE_SECTORS	0x30
 
+// TODO Might be different from disk to disk
 # define ATA_SECTOR_SIZE	0x200
 
+# define ATA_TYPE_UNKNOWN	0x0
+# define ATA_TYPE_PATA		0x1
+# define ATA_TYPE_PATAPI	0x2
+# define ATA_TYPE_SATA		0x3
+# define ATA_TYPE_SATAPI	0x4
+
+typedef struct ata_device
+{
+	uint16_t bus;
+	uint16_t ctrl;
+
+	// TODO
+} ata_device_t;
+
 void ata_init(void);
-void ata_reset(uint16_t ctrl_bus);
+void ata_init_device(ata_device_t *dev);
+int ata_get_type(const ata_device_t *dev, int slave);
+int ata_read(const ata_device_t *dev, int slave, size_t lba,
+	void *buff, size_t sectors);
+// TODO ata_write
+void ata_reset(const ata_device_t *dev);
 
 #endif

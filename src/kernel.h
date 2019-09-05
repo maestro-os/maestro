@@ -22,7 +22,7 @@
 typedef struct
 {
 	const char *name;
-	void (*init_func)();
+	void (*init_func)(void);
 } driver_t;
 
 uint8_t inb(uint16_t port);
