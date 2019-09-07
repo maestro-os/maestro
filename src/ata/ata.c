@@ -1,15 +1,48 @@
 #include <ata/ata.h>
 
+static cache_t *devices_cache;
+ata_device_t *devices = NULL;
+
 __attribute__((cold))
 void ata_init(void)
 {
-	ata_device_t dev;
-
-	bzero(&dev, sizeof(ata_device_t));
-	dev.bus = ATA_PRIMARY_BUS;
-	dev.ctrl = ATA_PRIMARY_CTRL;
-	ata_init_device(&dev);
+	if(!(devices_cache = cache_create("ata_devices", sizeof(ata_device_t), 32,
+		bzero, NULL)))
+	{
+		// TODO Error (failed to init driver)
+		return;
+	}
+	devices = ata_init_device(ATA_PRIMARY_BUS, ATA_PRIMARY_CTRL);
+	// TODO Check error
+	// TODO Use PCI to get every devices
 	// TODO Printfs
+}
+
+__attribute__((hot))
+static inline int ata_has_err(ata_device_t *dev)
+{
+	return (inb(dev->bus + ATA_STATUS_REG) & ATA_STATUS_ERR);
+}
+
+__attribute__((hot))
+void ata_irq(void)
+{
+	// TODO Check which device did the interrupt
+	devices->wait_irq = 0;
+}
+
+__attribute__((hot))
+void ata_err_check(void)
+{
+	ata_device_t *d;
+
+	d = devices;
+	while(d)
+	{
+		if(d->wait_irq && ata_has_err(d))
+			d->wait_irq = 0;
+		d = d->next;
+	}
 }
 
 static inline void ata_wait(const uint16_t port)
@@ -54,14 +87,11 @@ static inline int ata_identify(const uint16_t bus, const int slave,
 	if(inb(bus + ATA_CYLINDER_LOW_REG) || inb(bus + ATA_CYLINDER_HIGH_REG))
 		return 0;
 	do
-	{
 		status = inb(bus + ATA_STATUS_REG);
-	}
 	while(!(status & ATA_STATUS_ERR) && !(status & ATA_STATUS_DRQ));
 	// TODO Some ATAPI devices doesn't set ERR on abort
 	if(status & ATA_STATUS_ERR)
 		return 0;
-	bzero(init_data, 256 * sizeof(uint16_t));
 	for(i = 0; i < 256; ++i)
 		init_data[i] = inw(bus + ATA_DATA_REG);
 	return 1;
@@ -78,22 +108,27 @@ static inline int ata_supports_lba48(const uint16_t *data)
 }
 
 // TODO Put printfs out of this functions
-void ata_init_device(ata_device_t *dev)
+ata_device_t *ata_init_device(const uint16_t bus, const uint16_t ctrl)
 {
+	ata_device_t *dev;
 	uint16_t init_data[256];
 	uint32_t sectors = 0;
 
-	if(!dev)
-		return;
-	if(ata_check_floating_bus(dev->bus))
+	if(!(dev = cache_alloc(devices_cache)))
+		return NULL;
+	dev->bus = bus;
+	dev->ctrl = ctrl;
+	if(ata_check_floating_bus(bus))
 	{
 		printf("ATA floating bus detected\n");
-		return;
+		cache_free(devices_cache, dev);
+		return NULL;
 	}
-	if(!ata_identify(dev->bus, 0, init_data))
+	if(!ata_identify(bus, 0, init_data))
 	{
 		printf("ATA identify failed\n");
-		return;
+		cache_free(devices_cache, dev);
+		return NULL;
 	}
 	if((sectors = ata_lba28_sectors(init_data)) != 0)
 		printf("ATA LBA28 sectors: %u\n", (unsigned) sectors);
@@ -105,6 +140,7 @@ void ata_init_device(ata_device_t *dev)
 	printf("ATA disk size: %u bytes\n", (unsigned) sectors * ATA_SECTOR_SIZE);
 	// TODO Set data in struct
 	printf("ATA initialized!\n");
+	return dev;
 }
 
 int ata_get_type(const ata_device_t *dev, const int slave)
@@ -130,13 +166,14 @@ int ata_get_type(const ata_device_t *dev, const int slave)
 }
 
 // TODO Set errnos?
-int ata_read(const ata_device_t *dev, const int slave, const size_t lba,
+int ata_read(ata_device_t *dev, const int slave, const size_t lba,
 	void *buff, const size_t sectors)
 {
-	size_t i;
+	size_t i, j;
 
 	if(!dev || !buff || sectors > 0xff)
 		return -1;
+	lock(&dev->spinlock);
 	outb(dev->bus + ATA_DRIVE_REG, (slave ? 0xe0 : 0xf0)
 		| ((lba >> 24) & 0xf));
 	outb(dev->bus + ATA_SECTOR_COUNT_REG, (uint8_t) sectors);
@@ -146,12 +183,24 @@ int ata_read(const ata_device_t *dev, const int slave, const size_t lba,
 	outb(dev->bus + ATA_COMMAND_REG, ATA_CMD_READ_SECTORS);
 	for(i = 0; i < sectors; ++i)
 	{
-		// TODO Wait for IRQ (or poll?)
-		// TODO `return -1;` on error
-		// TODO Read
+		dev->wait_irq = 1;
+		while(dev->wait_irq)
+			asm("hlt");
+		if(ata_has_err(dev)) // TODO Also check if ready
+		{
+			// TODO Clear err?
+			unlock(&dev->spinlock);
+			return -1;
+		}
+		for(j = 0; j < 256; ++j)
+		{
+			*((uint16_t *) buff) = inw(dev->bus + ATA_DATA_REG);
+			buff += sizeof(uint16_t);
+		}
 		if(i >= sectors)
 			ata_wait(dev->ctrl);
 	}
+	unlock(&dev->spinlock);
 	return 0;
 }
 

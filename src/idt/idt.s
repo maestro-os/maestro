@@ -67,6 +67,9 @@ irq0:
 
 	push %esp
 	call process_tick
+
+	call ata_err_check
+
 	push $0x0
 	call pic_EOI
 	add $48, %esp

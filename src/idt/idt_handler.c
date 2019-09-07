@@ -2,6 +2,7 @@
 #include <pit/pit.h>
 #include <process/process.h>
 #include <ps2/ps2.h>
+#include <ata/ata.h>
 
 void irq1_handler()
 {
@@ -83,7 +84,7 @@ void irq13_handler()
 
 void irq14_handler()
 {
-	// TODO
+	ata_irq();
 	pic_EOI(0xe);
 }
 
