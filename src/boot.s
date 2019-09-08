@@ -25,6 +25,7 @@
 .global gdt
 .global gdt_tss
 
+.global kernel_wait
 .global kernel_loop
 .global kernel_halt
 
@@ -83,6 +84,10 @@ complete_flush:
 
 kernel_init:
 	call switch_protected
+	ret
+
+kernel_wait:
+	hlt
 	ret
 
 kernel_loop:

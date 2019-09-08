@@ -138,6 +138,10 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	// TODO remove
 	char buff[ATA_SECTOR_SIZE];
 	bzero(buff, sizeof(buff));
+	//strcpy(buff, "Hello world!\n");
+	//STI();
+	//ata_write(devices, 0, 0, buff, 1);
+	//bzero(buff, sizeof(buff));
 	STI();
 	const int status = ata_read(devices, 0, 0, buff, 1);
 	printf("status: %i\n", status);

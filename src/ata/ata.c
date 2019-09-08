@@ -3,6 +3,8 @@
 static cache_t *devices_cache;
 ata_device_t *devices = NULL;
 
+// TODO Optimize I/O
+
 __attribute__((cold))
 void ata_init(void)
 {
@@ -27,8 +29,11 @@ static inline int ata_has_err(ata_device_t *dev)
 __attribute__((hot))
 void ata_irq(void)
 {
+	ata_device_t *dev;
+
 	// TODO Check which device did the interrupt
-	devices->wait_irq = 0;
+	dev = devices;
+	dev->wait_irq = 0;
 }
 
 __attribute__((hot))
@@ -58,9 +63,22 @@ static inline int ata_check_floating_bus(const uint16_t bus)
 	return (inb(bus + ATA_REG_STATUS) == 0xff);
 }
 
+static inline int ata_is_ready(const uint16_t bus)
+{
+	return (inb(bus + ATA_REG_STATUS) & ATA_STATUS_RDY);
+}
+
 static inline int ata_is_busy(const uint16_t bus)
 {
 	return (inb(bus + ATA_REG_STATUS) & ATA_STATUS_BSY);
+}
+
+static inline void ata_wait_ready(ata_device_t *dev)
+{
+	dev->wait_irq = 1;
+	while(dev->wait_irq && !ata_is_ready(dev->bus)) // TODO Is it even entering the loop?
+		kernel_wait();
+	dev->wait_irq = 0;
 }
 
 static inline void ata_command(const uint16_t bus, const uint8_t cmd)
@@ -188,10 +206,8 @@ int ata_read(ata_device_t *dev, const int slave, const size_t lba,
 	ata_command(dev->bus, ATA_CMD_READ_SECTORS);
 	for(i = 0; i < sectors; ++i)
 	{
-		dev->wait_irq = 1;
-		while(dev->wait_irq)
-			asm("hlt");
-		if(ata_has_err(dev)) // TODO Also check if ready
+		ata_wait_ready(dev);
+		if(ata_has_err(dev))
 		{
 			// TODO Clear err?
 			unlock(&dev->spinlock);
@@ -213,12 +229,36 @@ int ata_read(ata_device_t *dev, const int slave, const size_t lba,
 int ata_write(ata_device_t *dev, const int slave, const size_t lba,
 	const void *buff, const size_t sectors)
 {
+	size_t i, j;
+
 	if(!dev || !buff || sectors > 0xff)
 		return -1;
 	lock(&dev->spinlock);
-	// TODO
-	(void) slave;
-	(void) lba;
+	outb(dev->bus + ATA_REG_DRIVE, (slave ? 0xe0 : 0xf0)
+		| ((lba >> 24) & 0xf));
+	outb(dev->bus + ATA_REG_SECTOR_COUNT, (uint8_t) sectors);
+	outb(dev->bus + ATA_REG_SECTOR_NUMBER, (uint8_t) lba);
+	outb(dev->bus + ATA_REG_CYLINDER_LOW, (uint8_t) (lba >> 8));
+	outb(dev->bus + ATA_REG_CYLINDER_HIGH, (uint8_t) (lba >> 16));
+	ata_command(dev->bus, ATA_CMD_READ_SECTORS);
+	for(i = 0; i < sectors; ++i)
+	{
+		ata_wait_ready(dev);
+		if(ata_has_err(dev))
+		{
+			// TODO Clear err?
+			unlock(&dev->spinlock);
+			return -1;
+		}
+		for(j = 0; j < 256; ++j)
+		{
+			outw(dev->bus + ATA_REG_DATA, *((uint16_t *) buff));
+			buff += sizeof(uint16_t);
+		}
+		if(i >= sectors)
+			ata_wait(dev->ctrl); // TODO Shorter delay (`jmp $+2` needed)
+	}
+	ata_command(dev->bus, ATA_CMD_WRITE_SECTORS);
 	unlock(&dev->spinlock);
 	return 0;
 }
@@ -229,7 +269,7 @@ void ata_reset(const ata_device_t *dev)
 
 	if(!dev)
 		return;
-	reg = dev->ctrl + ATA_CTRL_DEVICE_CONTROL_REG;
+	reg = dev->ctrl + ATA_CTRL_DEVICE_CONTROL;
 	outb(reg, inb(reg) | 0b100);
 	outb(reg, inb(reg) & ~0b100);
 }
