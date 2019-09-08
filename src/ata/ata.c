@@ -21,7 +21,7 @@ void ata_init(void)
 __attribute__((hot))
 static inline int ata_has_err(ata_device_t *dev)
 {
-	return (inb(dev->bus + ATA_STATUS_REG) & ATA_STATUS_ERR);
+	return (inb(dev->bus + ATA_REG_STATUS) & ATA_STATUS_ERR);
 }
 
 __attribute__((hot))
@@ -55,17 +55,22 @@ static inline void ata_wait(const uint16_t port)
 
 static inline int ata_check_floating_bus(const uint16_t bus)
 {
-	return (inb(bus + ATA_STATUS_REG) == 0xff);
+	return (inb(bus + ATA_REG_STATUS) == 0xff);
 }
 
 static inline int ata_is_busy(const uint16_t bus)
 {
-	return (inb(bus + ATA_STATUS_REG) & ATA_STATUS_BSY);
+	return (inb(bus + ATA_REG_STATUS) & ATA_STATUS_BSY);
+}
+
+static inline void ata_command(const uint16_t bus, const uint8_t cmd)
+{
+	outb(bus + ATA_REG_COMMAND, cmd);
 }
 
 static inline void ata_select_drive(const uint16_t bus, const int slave)
 {
-	outb(bus + ATA_DRIVE_REG, slave ? 0xa0 : 0xb0);
+	outb(bus + ATA_REG_DRIVE, slave ? 0xa0 : 0xb0);
 }
 
 static inline int ata_identify(const uint16_t bus, const int slave,
@@ -75,25 +80,25 @@ static inline int ata_identify(const uint16_t bus, const int slave,
 	size_t i;
 
 	ata_select_drive(bus, slave);
-	outb(bus + ATA_SECTOR_COUNT_REG, 0x0);
-	outb(bus + ATA_SECTOR_NUMBER_REG, 0x0);
-	outb(bus + ATA_CYLINDER_LOW_REG, 0x0);
-	outb(bus + ATA_CYLINDER_HIGH_REG, 0x0);
-	outb(bus + ATA_COMMAND_REG, ATA_CMD_IDENTIFY);
-	if((status = inb(bus + ATA_STATUS_REG)) == 0)
+	outb(bus + ATA_REG_SECTOR_COUNT, 0x0);
+	outb(bus + ATA_REG_SECTOR_NUMBER, 0x0);
+	outb(bus + ATA_REG_CYLINDER_LOW, 0x0);
+	outb(bus + ATA_REG_CYLINDER_HIGH, 0x0);
+	ata_command(bus, ATA_CMD_IDENTIFY);
+	if((status = inb(bus + ATA_REG_STATUS)) == 0)
 		return 0;
 	while(ata_is_busy(bus))
 		;
-	if(inb(bus + ATA_CYLINDER_LOW_REG) || inb(bus + ATA_CYLINDER_HIGH_REG))
+	if(inb(bus + ATA_REG_CYLINDER_LOW) || inb(bus + ATA_REG_CYLINDER_HIGH))
 		return 0;
 	do
-		status = inb(bus + ATA_STATUS_REG);
+		status = inb(bus + ATA_REG_STATUS);
 	while(!(status & ATA_STATUS_ERR) && !(status & ATA_STATUS_DRQ));
 	// TODO Some ATAPI devices doesn't set ERR on abort
 	if(status & ATA_STATUS_ERR)
 		return 0;
 	for(i = 0; i < 256; ++i)
-		init_data[i] = inw(bus + ATA_DATA_REG);
+		init_data[i] = inw(bus + ATA_REG_DATA);
 	return 1;
 }
 
@@ -152,8 +157,8 @@ int ata_get_type(const ata_device_t *dev, const int slave)
 	ata_reset(dev);
 	ata_select_drive(dev->bus, slave);
 	ata_wait(dev->ctrl);
-	cl = inb(dev->bus + ATA_CYLINDER_LOW_REG);
-	ch = inb(dev->bus + ATA_CYLINDER_HIGH_REG);
+	cl = inb(dev->bus + ATA_REG_CYLINDER_LOW);
+	ch = inb(dev->bus + ATA_REG_CYLINDER_HIGH);
 	if(cl == 0 && ch == 0)
 		return ATA_TYPE_PATA;
 	if(cl == 0x14 && ch == 0xeb)
@@ -174,13 +179,13 @@ int ata_read(ata_device_t *dev, const int slave, const size_t lba,
 	if(!dev || !buff || sectors > 0xff)
 		return -1;
 	lock(&dev->spinlock);
-	outb(dev->bus + ATA_DRIVE_REG, (slave ? 0xe0 : 0xf0)
+	outb(dev->bus + ATA_REG_DRIVE, (slave ? 0xe0 : 0xf0)
 		| ((lba >> 24) & 0xf));
-	outb(dev->bus + ATA_SECTOR_COUNT_REG, (uint8_t) sectors);
-	outb(dev->bus + ATA_SECTOR_NUMBER_REG, (uint8_t) lba);
-	outb(dev->bus + ATA_CYLINDER_LOW_REG, (uint8_t) (lba >> 8));
-	outb(dev->bus + ATA_CYLINDER_HIGH_REG, (uint8_t) (lba >> 16));
-	outb(dev->bus + ATA_COMMAND_REG, ATA_CMD_READ_SECTORS);
+	outb(dev->bus + ATA_REG_SECTOR_COUNT, (uint8_t) sectors);
+	outb(dev->bus + ATA_REG_SECTOR_NUMBER, (uint8_t) lba);
+	outb(dev->bus + ATA_REG_CYLINDER_LOW, (uint8_t) (lba >> 8));
+	outb(dev->bus + ATA_REG_CYLINDER_HIGH, (uint8_t) (lba >> 16));
+	ata_command(dev->bus, ATA_CMD_READ_SECTORS);
 	for(i = 0; i < sectors; ++i)
 	{
 		dev->wait_irq = 1;
@@ -194,7 +199,7 @@ int ata_read(ata_device_t *dev, const int slave, const size_t lba,
 		}
 		for(j = 0; j < 256; ++j)
 		{
-			*((uint16_t *) buff) = inw(dev->bus + ATA_DATA_REG);
+			*((uint16_t *) buff) = inw(dev->bus + ATA_REG_DATA);
 			buff += sizeof(uint16_t);
 		}
 		if(i >= sectors)
@@ -204,7 +209,19 @@ int ata_read(ata_device_t *dev, const int slave, const size_t lba,
 	return 0;
 }
 
-// TODO ata_write
+// TODO Set errnos?
+int ata_write(ata_device_t *dev, const int slave, const size_t lba,
+	const void *buff, const size_t sectors)
+{
+	if(!dev || !buff || sectors > 0xff)
+		return -1;
+	lock(&dev->spinlock);
+	// TODO
+	(void) slave;
+	(void) lba;
+	unlock(&dev->spinlock);
+	return 0;
+}
 
 void ata_reset(const ata_device_t *dev)
 {

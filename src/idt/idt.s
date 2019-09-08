@@ -19,7 +19,6 @@
 
 .global idt_load
 
-.extern stack_top
 .extern pic_EOI
 .extern irq1_handler
 .extern irq2_handler
@@ -37,11 +36,11 @@
 .extern irq14_handler
 .extern irq15_handler
 
+# TODO Change stack?
 irq0:
 	cli
 	push %ebp
 	mov %esp, %ebp
-	mov $stack_top, %esp
 	pusha
 
 	push %edi
@@ -58,26 +57,26 @@ irq0:
 	push 4(%ebp)
 
 	mov %ebp, %eax
-	add $20, %eax
+	add $20, %eax # TODO Check
 	push %eax
 
 	mov %ebp, %eax
-	sub $4, %eax
+	sub $4, %eax # TODO Check
 	push (%eax)
 
 	push %esp
 	call process_tick
+	add $44, %esp
 
 	call ata_err_check
 
 	push $0x0
 	call pic_EOI
-	add $48, %esp
+	add $4, %esp
 
 	popa
 	mov %ebp, %esp
 	pop %ebp
-
 	sti
 	iret
 

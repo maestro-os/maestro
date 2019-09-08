@@ -88,6 +88,8 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	if(!check_a20())
 		enable_a20();
 	tty_init();
+	idt_init();
+	pit_init();
 
 	if(magic != MULTIBOOT2_BOOTLOADER_MAGIC)
 		PANIC("Non Multiboot2-compliant bootloader!", 0);
@@ -102,10 +104,6 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	read_boot_tags(multiboot_ptr, &boot_info);
 	printf("Command line: %s\n", boot_info.cmdline);
 	printf("Bootloader name: %s\n", boot_info.loader_name);
-
-	printf("Basic components initialization...\n");
-	idt_init();
-	pit_init();
 
 	printf("Memory management initialization...\n");
 	memmap_init(&boot_info, multiboot_ptr, kernel_end);
@@ -141,7 +139,7 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	char buff[ATA_SECTOR_SIZE];
 	bzero(buff, sizeof(buff));
 	STI();
-	const int status = ata_read(devices, 0, 2048, buff, 1);
+	const int status = ata_read(devices, 0, 0, buff, 1);
 	printf("status: %i\n", status);
 	tty_write(buff, sizeof(buff), current_tty);
 	kernel_halt();
