@@ -136,15 +136,15 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	init_drivers();
 
 	// TODO remove
-	char buff[ATA_SECTOR_SIZE];
-	bzero(buff, sizeof(buff));
-	//strcpy(buff, "Hello world!\n");
-	//STI();
-	//ata_write(devices, 0, 0, buff, 1);
-	//bzero(buff, sizeof(buff));
 	STI();
-	const int status = ata_read(devices, 0, 0, buff, 1);
-	printf("status: %i\n", status);
+	char buff[ATA_SECTOR_SIZE * 2];
+	ata_read(devices, 0, 0, buff, 2);
+	strcpy(buff, "Hello world!\n");
+	tty_write(buff, sizeof(buff), current_tty);
+	printf("----------------END\n");
+	ata_write(devices, 0, 0, buff, 2);
+	bzero(buff, sizeof(buff));
+	ata_read(devices, 0, 0, buff, 1);
 	tty_write(buff, sizeof(buff), current_tty);
 	kernel_halt();
 

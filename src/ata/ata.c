@@ -189,6 +189,9 @@ int ata_get_type(const ata_device_t *dev, const int slave)
 }
 
 // TODO Set errnos?
+// TODO sectors == 0
+// TODO Doesn't work when lba > 0
+// TODO Crashes with more than 1 sector
 int ata_read(ata_device_t *dev, const int slave, const size_t lba,
 	void *buff, const size_t sectors)
 {
@@ -226,6 +229,9 @@ int ata_read(ata_device_t *dev, const int slave, const size_t lba,
 }
 
 // TODO Set errnos?
+// TODO sectors == 0
+// TODO Doesn't work when lba > 0
+// TODO Doesn't work with more than 1 sector
 int ata_write(ata_device_t *dev, const int slave, const size_t lba,
 	const void *buff, const size_t sectors)
 {
@@ -255,10 +261,8 @@ int ata_write(ata_device_t *dev, const int slave, const size_t lba,
 			outw(dev->bus + ATA_REG_DATA, *((uint16_t *) buff));
 			buff += sizeof(uint16_t);
 		}
-		if(i >= sectors)
-			ata_wait(dev->ctrl); // TODO Shorter delay (`jmp $+2` needed)
 	}
-	ata_command(dev->bus, ATA_CMD_WRITE_SECTORS);
+	ata_command(dev->bus, ATA_CMD_CACHE_FLUSH);
 	unlock(&dev->spinlock);
 	return 0;
 }
