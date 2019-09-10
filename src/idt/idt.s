@@ -36,7 +36,6 @@
 .extern irq14_handler
 .extern irq15_handler
 
-# TODO Change stack?
 irq0:
 	cli
 	push %ebp
@@ -50,19 +49,10 @@ irq0:
 	push %ebx
 	push %eax
 
-	mov %ebp, %eax
-	add $8, %eax
-	push %eax
-
+	push 12(%ebp)
 	push 4(%ebp)
-
-	mov %ebp, %eax
-	add $20, %eax # TODO Check
-	push %eax
-
-	mov %ebp, %eax
-	sub $4, %eax # TODO Check
-	push (%eax)
+	push 16(%ebp)
+	push (%ebp)
 
 	push %esp
 	call process_tick

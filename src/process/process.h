@@ -84,6 +84,6 @@ void del_process(process_t *process, const bool children);
 
 void process_tick(const regs_t *registers);
 extern void context_switch(void *esp, void *eip,
-	uint16_t data_selector, uint16_t code_selector);
+	uint16_t data_selector, uint16_t code_selector, vmem_t vmem);
 
 #endif

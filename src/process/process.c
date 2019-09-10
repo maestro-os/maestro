@@ -393,8 +393,7 @@ static void switch_processes(void)
 	tss.ss0 = GDT_KERNEL_DATA_OFFSET;
 	tss.esp0 = (uint32_t) p->kernel_stack + (PAGE_SIZE - 1);
 	restore_registers(&p->regs_state);
-	paging_enable(vmem);
-	context_switch(esp, eip, data_selector, code_selector);
+	context_switch(esp, eip, data_selector, code_selector, vmem);
 }
 
 __attribute__((hot))

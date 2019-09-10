@@ -2,6 +2,7 @@
 
 context_switch:
 	mov %esp, %ebp
+	mov $stack_top, %esp
 
 	mov 12(%ebp), %eax
 	mov %ax, %ds
@@ -15,6 +16,10 @@ context_switch:
 
 	push 16(%ebp)
 	push 8(%ebp)
+
+	push 20(%ebp)
+	call paging_enable
+	add $4, %esp
 
 	push $0x0
 	call pic_EOI
