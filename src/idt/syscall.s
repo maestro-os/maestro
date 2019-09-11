@@ -14,19 +14,10 @@ syscall:
 	push %ebx
 	push %eax
 
-	mov %ebp, %eax
-	add $8, %eax
-	push %eax
-
+	push 12(%ebp)
 	push 4(%ebp)
-
-	mov %ebp, %eax
-	add $20, %eax
-	push %eax
-
-	mov %ebp, %eax
-	sub $4, %eax
-	push (%eax)
+	push 16(%ebp)
+	push (%ebp)
 
 	mov $GDT_KERNEL_DATA_OFFSET, %ax
 	mov %ax, %ds

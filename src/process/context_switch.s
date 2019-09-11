@@ -17,10 +17,16 @@ context_switch:
 	push 16(%ebp)
 	push 8(%ebp)
 
+	mov 16(%ebp), %eax
+	and $0b11, %eax
+	cmp $0x0, %eax
+	je do_context_switch
+
 	push 20(%ebp)
 	call paging_enable
 	add $4, %esp
 
+do_context_switch:
 	push $0x0
 	call pic_EOI
 	add $4, %esp

@@ -63,15 +63,7 @@ void test_process(void)
 	// fork_bomb();
 	for(size_t i = 0; i < 10; ++i)
 	{
-		write(0, "pid a: ", 7);
-		pid = getpid();
-		putnbr(pid);
-		write(0, "\n", 1);
-	}
-	putstr("Hello world!\n");
-	for(size_t i = 0; i < 10; ++i)
-	{
-		write(0, "pid b: ", 7);
+		putstr("pid: ");
 		pid = getpid();
 		putnbr(pid);
 		write(0, "\n", 1);

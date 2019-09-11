@@ -62,8 +62,8 @@ void vmem_kernel(boot_info_t *info)
 	vmem_identity_range(kernel_vmem, NULL, KERNEL_BEGIN, PAGING_PAGE_WRITE);
 	vmem_identity_range(kernel_vmem, KERNEL_BEGIN, heap_begin,
 		PAGING_PAGE_WRITE);
-	protect_kernel(info);
 	vmem_identity_range(kernel_vmem, heap_begin, memory_end, PAGING_PAGE_WRITE);
+	protect_kernel(info);
 	paging_enable(kernel_vmem);
 	return;
 

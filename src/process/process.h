@@ -83,6 +83,8 @@ void process_kill(process_t *proc, int sig);
 void del_process(process_t *process, const bool children);
 
 void process_tick(const regs_t *registers);
+
+__attribute__((noreturn))
 extern void context_switch(void *esp, void *eip,
 	uint16_t data_selector, uint16_t code_selector, vmem_t vmem);
 

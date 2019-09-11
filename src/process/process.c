@@ -352,6 +352,7 @@ static process_t *next_waiting_process(process_t *process)
 __attribute__((hot))
 static void restore_registers(const regs_t *regs)
 {
+	tss.esp = regs->esp;
 	tss.ebp = regs->ebp;
 	tss.eflags = regs->eflags;
 	tss.eax = regs->eax;
@@ -369,7 +370,6 @@ static void switch_processes(void)
 	process_t *p;
 	vmem_t vmem;
 	int data_selector, code_selector;
-	void *esp, *eip;
 
 	if(!processes)
 		return;
@@ -388,12 +388,12 @@ static void switch_processes(void)
 		data_selector = GDT_USER_DATA_OFFSET | 3;
 		code_selector = GDT_USER_CODE_OFFSET | 3;
 	}
-	esp = (void *) p->regs_state.esp;
-	eip = (void *) p->regs_state.eip;
 	tss.ss0 = GDT_KERNEL_DATA_OFFSET;
+	tss.ss = GDT_USER_DATA_OFFSET;
 	tss.esp0 = (uint32_t) p->kernel_stack + (PAGE_SIZE - 1);
 	restore_registers(&p->regs_state);
-	context_switch(esp, eip, data_selector, code_selector, vmem);
+	context_switch((void *) p->regs_state.esp, (void *) p->regs_state.eip,
+		data_selector, code_selector, vmem);
 }
 
 __attribute__((hot))
