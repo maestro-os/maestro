@@ -368,32 +368,26 @@ __attribute__((hot))
 static void switch_processes(void)
 {
 	process_t *p;
-	vmem_t vmem;
-	int data_selector, code_selector;
 
 	if(!processes)
 		return;
 	if(!(p = next_waiting_process(running_process)))
 		return;
 	process_set_state(p, RUNNING);
-	if(p->syscalling)
-	{
-		vmem = kernel_vmem;
-		data_selector = GDT_KERNEL_DATA_OFFSET;
-		code_selector = GDT_KERNEL_CODE_OFFSET;
-	}
-	else
-	{
-		vmem = p->page_dir;
-		data_selector = GDT_USER_DATA_OFFSET | 3;
-		code_selector = GDT_USER_CODE_OFFSET | 3;
-	}
 	tss.ss0 = GDT_KERNEL_DATA_OFFSET;
 	tss.ss = GDT_USER_DATA_OFFSET;
 	tss.esp0 = (uint32_t) p->kernel_stack + (PAGE_SIZE - 1);
-	restore_registers(&p->regs_state);
-	context_switch((void *) p->regs_state.esp, (void *) p->regs_state.eip,
-		data_selector, code_selector, vmem);
+	if(!p->syscalling)
+	{
+		restore_registers(&p->regs_state);
+		context_switch((void *) p->regs_state.esp, (void *) p->regs_state.eip,
+			GDT_USER_DATA_OFFSET | 3, GDT_USER_CODE_OFFSET | 3, p->page_dir);
+	}
+	else
+	{
+		kernel_switch(&p->regs_state,
+			GDT_USER_DATA_OFFSET, GDT_USER_CODE_OFFSET);
+	}
 }
 
 __attribute__((hot))
