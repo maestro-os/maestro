@@ -122,7 +122,6 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	acpi_init();
 
 	// TODO PCIe
-	// TODO Use PCI only if ACPI is unavailable or failed
 	printf("PCI initialization...\n");
 	pci_scan();
 #ifdef KERNEL_DEBUG

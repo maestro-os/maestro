@@ -2,6 +2,7 @@
 #include <tty/tty.h>
 #include <process/process.h>
 
+__ATTR_RODATA
 static const char *errors[] = {
 	"Divide-by-zero Error",
 	"Debug",
@@ -37,6 +38,7 @@ static const char *errors[] = {
 	"Unknown"
 };
 
+__ATTR_RODATA
 static int error_signals[] = {
 	SIGFPE,
 	SIGTRAP, // TODO
@@ -51,7 +53,7 @@ static int error_signals[] = {
 	-1,
 	-1,
 	-1,
-	-1,
+	SIGSEGV,
 	SIGSEGV,
 	-1,
 	SIGFPE,
