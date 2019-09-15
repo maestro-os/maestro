@@ -102,6 +102,7 @@ kernel_halt:
 
 multiboot_entry:
 	mov $stack_top, %esp
+	xor %ebp, %ebp
 
 	pushl $0
 	popf

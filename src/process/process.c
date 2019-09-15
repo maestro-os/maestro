@@ -349,20 +349,6 @@ static process_t *next_waiting_process(process_t *process)
 	return (p->state == WAITING ? p : NULL);
 }
 
-__attribute__((hot))
-static void restore_registers(const regs_t *regs)
-{
-	tss.esp = regs->esp;
-	tss.ebp = regs->ebp;
-	tss.eflags = regs->eflags;
-	tss.eax = regs->eax;
-	tss.ebx = regs->ebx;
-	tss.ecx = regs->ecx;
-	tss.edx = regs->edx;
-	tss.esi = regs->esi;
-	tss.edi = regs->edi;
-}
-
 // TODO Do not use kernel_vmem for process's syscalls?
 __attribute__((hot))
 static void switch_processes(void)
@@ -377,17 +363,28 @@ static void switch_processes(void)
 	tss.ss0 = GDT_KERNEL_DATA_OFFSET;
 	tss.ss = GDT_USER_DATA_OFFSET;
 	tss.esp0 = (uint32_t) p->kernel_stack + (PAGE_SIZE - 1);
-	if(!p->syscalling)
+	printf("-----------\n");
+	printf("ebp: %p\n", (void *) p->regs_state.ebp);
+	printf("esp: %p\n", (void *) p->regs_state.esp);
+	printf("eip: %p\n", (void *) p->regs_state.eip);
+	printf("eax: %p\n", (void *) p->regs_state.eax);
+	printf("ebx: %p\n", (void *) p->regs_state.ebx);
+	printf("ecx: %p\n", (void *) p->regs_state.ecx);
+	printf("edx: %p\n", (void *) p->regs_state.edx);
+	printf("esi: %p\n", (void *) p->regs_state.esi);
+	printf("edi: %p\n", (void *) p->regs_state.edi);
+	static int i = 0;
+	if(i++ > 2)
 	{
-		restore_registers(&p->regs_state);
-		context_switch((void *) p->regs_state.esp, (void *) p->regs_state.eip,
-			GDT_USER_DATA_OFFSET | 3, GDT_USER_CODE_OFFSET | 3, p->page_dir);
+		print_callstack((void *) p->regs_state.ebp, 16);
+		kernel_halt();
 	}
-	else
-	{
+	if(p->syscalling)
 		kernel_switch(&p->regs_state,
 			GDT_USER_DATA_OFFSET, GDT_USER_CODE_OFFSET);
-	}
+	else
+		context_switch(&p->regs_state,
+			GDT_USER_DATA_OFFSET | 3, GDT_USER_CODE_OFFSET | 3, p->page_dir);
 }
 
 __attribute__((hot))

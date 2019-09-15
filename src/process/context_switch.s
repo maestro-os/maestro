@@ -6,24 +6,38 @@ context_switch:
 	mov %esp, %ebp
 	mov $stack_top, %esp # TODO remove?
 
-	mov 12(%ebp), %eax
+	mov 8(%ebp), %eax
 	mov %ax, %ds
 	mov %ax, %es
 	mov %ax, %fs
 	mov %ax, %gs
 
-	push %eax
-	push 4(%ebp)
-	pushf
-	push 16(%ebp)
-	push 8(%ebp)
+	mov 4(%ebp), %eax
+	mov 20(%eax), %ebx
+	mov 24(%eax), %ecx
+	mov 28(%eax), %edx
+	mov 32(%eax), %esi
+	mov 36(%eax), %edi
 
-	push 20(%ebp)
+	push 8(%ebp)
+	push 4(%eax)
+	pushf # TODO Restore process's eflags?
+	push 12(%ebp)
+	push 8(%eax)
+
+	push 16(%ebp)
+	mov (%eax), %ebp
+	mov 16(%eax), %eax
+
+	pusha
+	push 32(%esp)
 	call paging_enable
 	add $4, %esp
 
 	push $0x0
 	call pic_EOI
+	add $4, %esp
+	popa
 	add $4, %esp
 
 	sti
@@ -45,9 +59,12 @@ kernel_switch:
 	mov 36(%eax), %edi
 	mov 16(%eax), %eax
 
-	push $0x0
-	call pic_EOI
-	add $4, %esp
+	# TODO
+	#pusha
+	#push $0x0
+	#call pic_EOI
+	#add $4, %esp
+	#popa
 
 	sti
 	ret

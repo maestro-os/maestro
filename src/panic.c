@@ -117,7 +117,11 @@ __attribute__((noreturn))
 void kernel_panic_(const char *reason, const uint32_t code,
 	const char *file, const int line)
 {
+	void *ebp;
+
 	print_panic(reason, code);
-	printf("\n-- DEBUG --\nFile: %s; Line: %i", file, line);
+	printf("\n-- DEBUG --\nFile: %s; Line: %i\n", file, line);
+	GET_EBP(ebp);
+	print_callstack(ebp, 8);
 	kernel_halt();
 }

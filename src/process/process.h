@@ -85,7 +85,7 @@ void del_process(process_t *process, const bool children);
 void process_tick(const regs_t *registers);
 
 __attribute__((noreturn))
-extern void context_switch(void *esp, void *eip,
+extern void context_switch(const regs_t *regs,
 	uint16_t data_selector, uint16_t code_selector, vmem_t vmem);
 __attribute__((noreturn))
 extern void kernel_switch(const regs_t *regs,
