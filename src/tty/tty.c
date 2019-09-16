@@ -2,6 +2,12 @@
 #include <pit/pit.h>
 #include <libc/string.h>
 
+// TODO Sanity checks
+
+__ATTR_BSS
+tty_t ttys[TTYS_COUNT];
+tty_t *current_tty = NULL;
+
 __attribute__((cold))
 void tty_init(void)
 {
@@ -12,6 +18,7 @@ void tty_init(void)
 		ttys[i].current_color = VGA_DEFAULT_COLOR;
 	tty_switch(0);
 	vga_enable_cursor();
+	current_tty = ttys;
 	tty_clear(current_tty);
 }
 
@@ -19,27 +26,34 @@ __attribute__((hot))
 void tty_switch(const uint8_t tty)
 {
 	current_tty = ttys + tty;
+	// TODO Update on screen
 }
 
 __attribute__((hot))
 void tty_reset_attrs(tty_t *tty)
 {
+	spin_lock(&tty->spinlock);
 	tty->current_color = VGA_DEFAULT_COLOR;
 	// TODO
+	spin_unlock(&tty->spinlock);
 }
 
 __attribute__((hot))
 void tty_set_fgcolor(tty_t *tty, const vgacolor_t color)
 {
+	spin_lock(&tty->spinlock);
 	tty->current_color &= ~((vgacolor_t) 0xff);
 	tty->current_color |= color;
+	spin_unlock(&tty->spinlock);
 }
 
 __attribute__((hot))
 void tty_set_bgcolor(tty_t *tty, const vgacolor_t color)
 {
+	spin_lock(&tty->spinlock);
 	tty->current_color &= ~((vgacolor_t) (0xff << 4));
 	tty->current_color |= color << 4;
+	spin_unlock(&tty->spinlock);
 }
 
 __attribute__((hot))
@@ -67,11 +81,13 @@ static inline void update_tty(tty_t *tty)
 __attribute__((hot))
 void tty_clear(tty_t *tty)
 {
+	spin_lock(&tty->spinlock);
 	tty->cursor_x = 0;
 	tty->cursor_y = 0;
 	tty->screen_y = 0;
 	tty_clear_portion(tty->history, sizeof(tty->history) / sizeof(uint16_t));
 	update_tty(tty);
+	spin_unlock(&tty->spinlock);
 }
 
 __attribute__((hot))
@@ -115,7 +131,7 @@ static void tty_fix_pos(tty_t *tty)
 }
 
 __attribute__((hot))
-void tty_cursor_forward(tty_t *tty, const size_t x, const size_t y)
+static void tty_cursor_forward(tty_t *tty, const size_t x, const size_t y)
 {
 	tty->cursor_x += x;
 	tty->cursor_y += y;
@@ -123,7 +139,7 @@ void tty_cursor_forward(tty_t *tty, const size_t x, const size_t y)
 }
 
 __attribute__((hot))
-void tty_cursor_backward(tty_t *tty, const size_t x, const size_t y)
+static void tty_cursor_backward(tty_t *tty, const size_t x, const size_t y)
 {
 	tty->cursor_x -= x;
 	tty->cursor_y -= y;
@@ -131,7 +147,7 @@ void tty_cursor_backward(tty_t *tty, const size_t x, const size_t y)
 }
 
 __attribute__((hot))
-void tty_newline(tty_t *tty)
+static void tty_newline(tty_t *tty)
 {
 	tty->cursor_x = 0;
 	++(tty->cursor_y);
@@ -141,6 +157,7 @@ void tty_newline(tty_t *tty)
 __attribute__((hot))
 void tty_putchar(const char c, tty_t *tty, const bool update)
 {
+	spin_lock(&tty->spinlock);
 	switch(c)
 	{
 		case '\b':
@@ -179,6 +196,7 @@ void tty_putchar(const char c, tty_t *tty, const bool update)
 	tty_fix_pos(tty);
 	if(update)
 		update_tty(tty);
+	spin_unlock(&tty->spinlock);
 }
 
 __attribute__((hot))
@@ -187,8 +205,12 @@ void tty_erase(tty_t *tty, size_t count)
 	vgapos_t begin;
 	size_t i;
 
+	spin_lock(&tty->spinlock);
 	if(tty->prompted_chars == 0)
+	{
+		spin_unlock(&tty->spinlock);
 		return;
+	}
 	if(count > tty->prompted_chars)
 		count = tty->prompted_chars;
 	// TODO Tabs
@@ -199,6 +221,7 @@ void tty_erase(tty_t *tty, size_t count)
 	if(!tty->freeze)
 		update_tty(tty);
 	tty->prompted_chars -= count;
+	spin_unlock(&tty->spinlock);
 }
 
 __attribute__((hot))
@@ -219,6 +242,7 @@ void tty_write(const char *buffer, const size_t count, tty_t *tty)
 }
 
 // TODO Implement streams and termcaps
+// TODO Spinlock?
 
 __attribute__((hot))
 void tty_input_hook(const key_code_t code)

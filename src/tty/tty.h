@@ -31,11 +31,12 @@ typedef struct tty
 	uint16_t history[VGA_WIDTH * HISTORY_LINES];
 
 	size_t prompted_chars;
-	bool freeze;
+	bool freeze; // TODO
+
+	spinlock_t spinlock;
 } tty_t;
 
-tty_t ttys[TTYS_COUNT];
-tty_t *current_tty;
+extern tty_t *current_tty;
 
 void tty_init(void);
 
@@ -45,9 +46,6 @@ void tty_set_fgcolor(tty_t *tty, const vgacolor_t color);
 void tty_set_bgcolor(tty_t *tty, const vgacolor_t color);
 
 void tty_clear(tty_t *tty);
-void tty_cursor_forward(tty_t *tty, const size_t x, const size_t y);
-void tty_cursor_backward(tty_t *tty, const size_t x, const size_t y);
-void tty_newline(tty_t *tty);
 void tty_putchar(const char c, tty_t *tty, const bool update);
 void tty_erase(tty_t *tty, size_t count);
 void tty_write(const char *buffer, const size_t count, tty_t *tty);

@@ -9,7 +9,7 @@ void pit_init(void)
 	CLI();
 	outb(PIT_COMMAND, PIT_SELECT_CHANNEL_0 | PIT_ACCESS_LOBYTE_HIBYTE
 		| PIT_MODE_4);
-	pit_set_frequency(100); // TODO Change
+	pit_set_frequency(1); // TODO Change
 
 	outb(PIT_COMMAND, PIT_SELECT_CHANNEL_2 | PIT_ACCESS_LOBYTE_HIBYTE
 		| PIT_MODE_4);

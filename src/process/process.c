@@ -330,7 +330,6 @@ static void init_process(process_t *process)
 	process->regs_state.esp = (uintptr_t) user_stack + (PAGE_SIZE - 1);
 	process->regs_state.eip = (uintptr_t) process->begin;
 	process_set_state(process, WAITING);
-	printf("pid: %i user: %p kernel: %p\n", process->pid, process->user_stack, process->kernel_stack);
 }
 
 __attribute__((hot))
