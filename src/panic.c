@@ -1,5 +1,6 @@
 #include <kernel.h>
 #include <tty/tty.h>
+#include <pic/pic.h>
 #include <process/process.h>
 
 __ATTR_RODATA
@@ -91,6 +92,7 @@ void error_handler(const unsigned error, const uint32_t error_code)
 		// TODO Check eip for `hlt` instruction (exiting process)
 	}
 	process_kill(process, sig);
+	pic_EOI(error);
 	kernel_loop();
 }
 

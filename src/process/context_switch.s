@@ -59,12 +59,11 @@ kernel_switch:
 	mov 36(%eax), %edi
 	mov 16(%eax), %eax
 
-	# TODO
-	#pusha
-	#push $0x0
-	#call pic_EOI
-	#add $4, %esp
-	#popa
+	pusha
+	push $0x0
+	call pic_EOI
+	add $4, %esp
+	popa
 
 	sti
 	ret
