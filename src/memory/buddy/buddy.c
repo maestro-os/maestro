@@ -127,7 +127,7 @@ void *buddy_alloc(const block_order_t order)
 	size_t block;
 	void *ptr;
 
-	lock(&spinlock);
+	spin_lock(&spinlock);
 	errno = 0;
 	// TODO Check free list
 	block = find_free(0, order, false);
@@ -141,7 +141,7 @@ void *buddy_alloc(const block_order_t order)
 		errno = ENOMEM;
 		ptr = NULL;
 	}
-	unlock(&spinlock);
+	spin_unlock(&spinlock);
 	return ptr;
 }
 
@@ -160,7 +160,7 @@ void buddy_free(void *ptr)
 	size_t index;
 	size_t order = 0;
 
-	lock(&spinlock);
+	spin_lock(&spinlock);
 	index = NODES_COUNT(max_order - 1)
 		+ ((uintptr_t) (ptr - buddy_begin) / PAGE_SIZE);
 	while(order < max_order && states[index] != NODE_STATE_FULL)
@@ -170,7 +170,7 @@ void buddy_free(void *ptr)
 	}
 	set_block_state(index, NODE_STATE_FREE);
 	// TODO Add to free list if necessary
-	unlock(&spinlock);
+	spin_unlock(&spinlock);
 }
 
 __attribute__((hot))

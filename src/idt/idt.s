@@ -51,7 +51,21 @@ irq0:
 
 	push 12(%ebp)
 	push 4(%ebp)
+
+	cmp $0x8, 8(%ebp)
+	je ring0
+	jmp ring3
+
+ring0:
+	mov %ebp, %eax
+	add $32, %eax
+	push %eax
+	jmp esp_end
+
+ring3:
 	push 16(%ebp)
+
+esp_end:
 	push (%ebp)
 
 	push %esp

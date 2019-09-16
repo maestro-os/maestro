@@ -86,6 +86,10 @@ void error_handler(const unsigned error, const uint32_t error_code)
 	if(!(process = get_running_process()) || process->syscalling
 		|| (sig = error_signals[error]) < 0)
 		PANIC(errors[error], error_code);
+	if(error == 0xd)
+	{
+		// TODO Check eip for `hlt` instruction (exiting process)
+	}
 	process_kill(process, sig);
 	kernel_loop();
 }

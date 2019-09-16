@@ -38,7 +38,5 @@ typedef int spinlock_t;
 
 extern void spin_lock(spinlock_t *spinlock);
 extern void spin_unlock(spinlock_t *spinlock);
-void lock(spinlock_t *spinlock);
-void unlock(spinlock_t *spinlock);
 
 #endif

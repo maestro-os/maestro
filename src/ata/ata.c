@@ -199,7 +199,7 @@ int ata_read(ata_device_t *dev, const int slave, const size_t lba,
 
 	if(!dev || !buff || sectors > 0xff)
 		return -1;
-	lock(&dev->spinlock);
+	spin_lock(&dev->spinlock);
 	outb(dev->bus + ATA_REG_DRIVE, (slave ? 0xe0 : 0xf0)
 		| ((lba >> 24) & 0xf));
 	outb(dev->bus + ATA_REG_SECTOR_COUNT, (uint8_t) sectors);
@@ -213,7 +213,7 @@ int ata_read(ata_device_t *dev, const int slave, const size_t lba,
 		if(ata_has_err(dev))
 		{
 			// TODO Clear err?
-			unlock(&dev->spinlock);
+			spin_unlock(&dev->spinlock);
 			return -1;
 		}
 		for(j = 0; j < 256; ++j)
@@ -224,7 +224,7 @@ int ata_read(ata_device_t *dev, const int slave, const size_t lba,
 		if(i >= sectors)
 			ata_wait(dev->ctrl);
 	}
-	unlock(&dev->spinlock);
+	spin_unlock(&dev->spinlock);
 	return 0;
 }
 
@@ -239,7 +239,7 @@ int ata_write(ata_device_t *dev, const int slave, const size_t lba,
 
 	if(!dev || !buff || sectors > 0xff)
 		return -1;
-	lock(&dev->spinlock);
+	spin_lock(&dev->spinlock);
 	outb(dev->bus + ATA_REG_DRIVE, (slave ? 0xe0 : 0xf0)
 		| ((lba >> 24) & 0xf));
 	outb(dev->bus + ATA_REG_SECTOR_COUNT, (uint8_t) sectors);
@@ -253,7 +253,7 @@ int ata_write(ata_device_t *dev, const int slave, const size_t lba,
 		if(ata_has_err(dev))
 		{
 			// TODO Clear err?
-			unlock(&dev->spinlock);
+			spin_unlock(&dev->spinlock);
 			return -1;
 		}
 		for(j = 0; j < 256; ++j)
@@ -263,7 +263,7 @@ int ata_write(ata_device_t *dev, const int slave, const size_t lba,
 		}
 	}
 	ata_command(dev->bus, ATA_CMD_CACHE_FLUSH);
-	unlock(&dev->spinlock);
+	spin_unlock(&dev->spinlock);
 	return 0;
 }
 

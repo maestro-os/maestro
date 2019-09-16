@@ -135,10 +135,10 @@ void cache_shrink(cache_t *cache)
 {
 	if(!cache)
 		return;
-	lock(&cache->spinlock);
+	spin_lock(&cache->spinlock);
 	// TODO
 	(void) cache;
-	unlock(&cache->spinlock);
+	spin_unlock(&cache->spinlock);
 }
 
 __attribute__((hot))
@@ -146,11 +146,11 @@ void cache_free(cache_t *cache, void *obj)
 {
 	if(!cache || !obj)
 		return;
-	lock(&cache->spinlock);
+	spin_lock(&cache->spinlock);
 	// TODO
 	(void) cache;
 	(void) obj;
-	unlock(&cache->spinlock);
+	spin_unlock(&cache->spinlock);
 }
 
 __attribute__((hot))
@@ -158,8 +158,8 @@ void cache_destroy(cache_t *cache)
 {
 	if(!cache)
 		return;
-	lock(&cache->spinlock);
+	spin_lock(&cache->spinlock);
 	// TODO
 	(void) cache;
-	unlock(&cache->spinlock);
+	spin_unlock(&cache->spinlock);
 }

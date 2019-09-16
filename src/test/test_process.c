@@ -68,4 +68,5 @@ void test_process(void)
 		putnbr(pid);
 		write(0, "\n", 1);
 	}
+	asm("hlt");
 }

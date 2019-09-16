@@ -330,6 +330,7 @@ static void init_process(process_t *process)
 	process->regs_state.esp = (uintptr_t) user_stack + (PAGE_SIZE - 1);
 	process->regs_state.eip = (uintptr_t) process->begin;
 	process_set_state(process, WAITING);
+	printf("pid: %i user: %p kernel: %p\n", process->pid, process->user_stack, process->kernel_stack);
 }
 
 __attribute__((hot))
@@ -349,7 +350,6 @@ static process_t *next_waiting_process(process_t *process)
 	return (p->state == WAITING ? p : NULL);
 }
 
-// TODO Do not use kernel_vmem for process's syscalls?
 __attribute__((hot))
 static void switch_processes(void)
 {
@@ -363,22 +363,6 @@ static void switch_processes(void)
 	tss.ss0 = GDT_KERNEL_DATA_OFFSET;
 	tss.ss = GDT_USER_DATA_OFFSET;
 	tss.esp0 = (uint32_t) p->kernel_stack + (PAGE_SIZE - 1);
-	printf("-----------\n");
-	printf("ebp: %p\n", (void *) p->regs_state.ebp);
-	printf("esp: %p\n", (void *) p->regs_state.esp);
-	printf("eip: %p\n", (void *) p->regs_state.eip);
-	printf("eax: %p\n", (void *) p->regs_state.eax);
-	printf("ebx: %p\n", (void *) p->regs_state.ebx);
-	printf("ecx: %p\n", (void *) p->regs_state.ecx);
-	printf("edx: %p\n", (void *) p->regs_state.edx);
-	printf("esi: %p\n", (void *) p->regs_state.esi);
-	printf("edi: %p\n", (void *) p->regs_state.edi);
-	static int i = 0;
-	if(i++ > 2)
-	{
-		print_callstack((void *) p->regs_state.ebp, 16);
-		kernel_halt();
-	}
 	if(p->syscalling)
 		kernel_switch(&p->regs_state,
 			GDT_USER_DATA_OFFSET, GDT_USER_CODE_OFFSET);

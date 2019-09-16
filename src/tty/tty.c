@@ -2,9 +2,6 @@
 #include <pit/pit.h>
 #include <libc/string.h>
 
-static spinlock_t spinlock = 0;
-// TODO
-
 __attribute__((cold))
 void tty_init(void)
 {
@@ -209,12 +206,8 @@ void tty_write(const char *buffer, const size_t count, tty_t *tty)
 {
 	size_t i;
 
-	lock(&spinlock);
 	if(!buffer || count == 0 || !tty)
-	{
-		unlock(&spinlock);
 		return;
-	}
 	for(i = 0; i < count; ++i)
 	{
 		if(buffer[i] != ANSI_ESCAPE)
@@ -223,7 +216,6 @@ void tty_write(const char *buffer, const size_t count, tty_t *tty)
 			ansi_handle(tty, buffer, &i, count);
 		update_tty(tty);
 	}
-	unlock(&spinlock);
 }
 
 // TODO Implement streams and termcaps

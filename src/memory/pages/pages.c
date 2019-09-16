@@ -150,10 +150,10 @@ void *pages_alloc_zero(const size_t n)
 {
 	void *ptr;
 
-	lock(&spinlock);
+	spin_lock(&spinlock);
 	if((ptr = pages_alloc(n)))
 		bzero(ptr, n * PAGE_SIZE);
-	unlock(&spinlock);
+	spin_unlock(&spinlock);
 	return ptr;
 }
 
@@ -163,8 +163,8 @@ void pages_free(void *ptr, const size_t n)
 
 	if(!ptr || n == 0)
 		return;
-	lock(&spinlock);
+	spin_lock(&spinlock);
 	if((alloc = get_nearest_buddy(ptr)))
 		free_pages(alloc, ptr, n);
-	unlock(&spinlock);
+	spin_unlock(&spinlock);
 }
