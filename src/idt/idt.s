@@ -58,7 +58,7 @@ irq0:
 
 ring0:
 	mov %ebp, %eax
-	add $32, %eax
+	add $16, %eax
 	push %eax
 	jmp esp_end
 
