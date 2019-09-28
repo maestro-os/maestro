@@ -1,7 +1,6 @@
 #include <process/process.h>
 #include <libc/errno.h>
 
-// TODO lock when doing something
 // TODO Set errnos
 // TODO Multicore handling
 
@@ -17,6 +16,8 @@ __ATTR_BSS
 static tss_entry_t tss;
 
 static process_t *running_process = NULL;
+
+// TODO static spinlock_t spinlock = 0;
 
 __attribute__((hot))
 static void process_ctor(void *ptr, const size_t size)
@@ -229,7 +230,7 @@ void process_exit(process_t *proc, const int status)
 
 // TODO Limit on signals?
 // TODO Perform signals directly?
-// TODO What if a signal is already being executed?
+// TODO Execute signal later?
 __attribute__((hot))
 void process_kill(process_t *proc, const int sig)
 {

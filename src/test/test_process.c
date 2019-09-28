@@ -37,19 +37,19 @@ static void putstr(const char *s)
 	if((pid = fork()) < 0)
 	{
 		putnbr(-pid);
-		write(0, "END\n", 4);
+		putstr("END\n");
 		_exit(1);
 		return;
 	}
 	if(pid == 0)
 	{
-		write(0, "child\n", 6);
+		putstr("child\n");
 		fork_bomb();
 	}
 	else
 	{
 		putnbr(pid);
-		write(0, "parent\n", 7);
+		putstr("parent\n");
 		waitpid(pid, &status, 0);
 		_exit(status); // TODO EXITSTATUS
 	}
@@ -59,9 +59,8 @@ void test_process(void)
 {
 	pid_t pid;
 
-	// write(0, "BEGIN\n", 6);
-	// fork_bomb();
-	//for(size_t i = 0; i < 100; ++i)
+	/*write(0, "BEGIN\n", 6);
+	fork_bomb();*/
 	while(1)
 	{
 		putstr("pid: ");

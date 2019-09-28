@@ -3,7 +3,6 @@
 #include <libc/errno.h>
 
 // TODO Use `kernel_vmem` to hide holes in memory?
-// TODO Disable read on kernel .text and .rodata
 // TODO Add stack spaces
 // TODO Handle shared memory (use free flag into page table entry)
 
@@ -22,14 +21,7 @@ vmem_t vmem_init(void)
 
 	if(!(vmem = new_vmem_obj()))
 		return NULL;
-	// TODO Use the same page table for every object
-	vmem_identity_range(vmem, KERNEL_BEGIN, heap_begin,
-		PAGING_PAGE_USER | PAGING_PAGE_WRITE);
-	if(errno)
-	{
-		// TODO Free all
-		return NULL;
-	}
+	memcpy(vmem, kernel_vmem, PAGE_SIZE);
 	return vmem;
 }
 
@@ -44,7 +36,8 @@ static void protect_section(elf_section_header_t *hdr, const char *name)
 		return;
 	ptr = (void *) hdr->sh_addr;
 	pages = UPPER_DIVISION(hdr->sh_size, PAGE_SIZE);
-	vmem_identity_range(kernel_vmem, ptr, ptr + (pages * PAGE_SIZE), 0);
+	vmem_identity_range(kernel_vmem, ptr, ptr + (pages * PAGE_SIZE),
+		PAGING_PAGE_USER);
 }
 
 __attribute__((cold))
