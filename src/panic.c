@@ -2,6 +2,7 @@
 #include <tty/tty.h>
 #include <pic/pic.h>
 #include <process/process.h>
+#include <debug/debug.h>
 
 __ATTR_RODATA
 static const char *errors[] = {

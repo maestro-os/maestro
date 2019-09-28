@@ -2,7 +2,6 @@
 # define ATA_H
 
 # include <kernel.h>
-
 # include <libc/sys/types.h>
 
 # define ATA_PRIMARY_BUS	0x1f0

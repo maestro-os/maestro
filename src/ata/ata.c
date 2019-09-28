@@ -1,4 +1,5 @@
 #include <ata/ata.h>
+#include <memory/memory.h>
 
 static cache_t *devices_cache;
 ata_device_t *devices = NULL;

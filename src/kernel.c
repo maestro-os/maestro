@@ -13,6 +13,7 @@
 #include <libc/stdio.h>
 
 // TODO temporary
+#include <pic/pic.h>
 #include <libc/errno.h>
 
 static driver_t drivers[] = {

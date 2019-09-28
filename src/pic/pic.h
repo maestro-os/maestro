@@ -26,6 +26,6 @@
 # define PIC_COMMAND_EOI	0x20
 
 void pic_init(uint8_t offset1, uint8_t offset2);
-void pic_EOI(uint8_t irq);
+void pic_EOI(unsigned irq);
 
 #endif

@@ -68,11 +68,11 @@ ring3:
 esp_end:
 	push (%ebp)
 
+	call ata_err_check
+
 	push %esp
 	call process_tick
 	add $44, %esp
-
-	call ata_err_check
 
 	push $0x0
 	call pic_EOI

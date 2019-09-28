@@ -1,4 +1,5 @@
 #include <pci/pci.h>
+#include <memory/memory.h>
 
 static cache_t *pci_cache = NULL;
 static pci_function_t *functions = NULL;

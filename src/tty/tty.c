@@ -155,9 +155,8 @@ static void tty_newline(tty_t *tty)
 }
 
 __attribute__((hot))
-void tty_putchar(const char c, tty_t *tty, const bool update)
+static void tty_putchar(const char c, tty_t *tty, const bool update)
 {
-	spin_lock(&tty->spinlock);
 	switch(c)
 	{
 		case '\b':
@@ -196,6 +195,27 @@ void tty_putchar(const char c, tty_t *tty, const bool update)
 	tty_fix_pos(tty);
 	if(update)
 		update_tty(tty);
+}
+
+__attribute__((hot))
+void tty_write(const char *buffer, const size_t count, tty_t *tty)
+{
+	size_t i;
+
+	spin_lock(&tty->spinlock);
+	if(!buffer || count == 0 || !tty)
+	{
+		spin_unlock(&tty->spinlock);
+		return;
+	}
+	for(i = 0; i < count; ++i)
+	{
+		if(buffer[i] != ANSI_ESCAPE)
+			tty_putchar(buffer[i], tty, false);
+		else
+			ansi_handle(tty, buffer, &i, count);
+		update_tty(tty);
+	}
 	spin_unlock(&tty->spinlock);
 }
 
@@ -222,23 +242,6 @@ void tty_erase(tty_t *tty, size_t count)
 		update_tty(tty);
 	tty->prompted_chars -= count;
 	spin_unlock(&tty->spinlock);
-}
-
-__attribute__((hot))
-void tty_write(const char *buffer, const size_t count, tty_t *tty)
-{
-	size_t i;
-
-	if(!buffer || count == 0 || !tty)
-		return;
-	for(i = 0; i < count; ++i)
-	{
-		if(buffer[i] != ANSI_ESCAPE)
-			tty_putchar(buffer[i], tty, false);
-		else
-			ansi_handle(tty, buffer, &i, count);
-		update_tty(tty);
-	}
 }
 
 // TODO Implement streams and termcaps

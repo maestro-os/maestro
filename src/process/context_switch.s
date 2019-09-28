@@ -21,7 +21,8 @@ context_switch:
 
 	push 8(%ebp)
 	push 4(%eax)
-	pushf # TODO Restore process's eflags?
+	pushf
+	orl $512, (%esp)
 	push 12(%ebp)
 	push 8(%eax)
 
@@ -40,7 +41,6 @@ context_switch:
 	popa
 	add $4, %esp
 
-	sti
 	iret
 
 kernel_switch:

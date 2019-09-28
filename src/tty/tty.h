@@ -5,6 +5,7 @@
 # include <vga/vga.h>
 # include <device/device.h>
 # include <libc/string.h>
+# include <util/util.h>
 
 # define TTYS_COUNT		8
 # define HISTORY_LINES	128
@@ -46,9 +47,8 @@ void tty_set_fgcolor(tty_t *tty, const vgacolor_t color);
 void tty_set_bgcolor(tty_t *tty, const vgacolor_t color);
 
 void tty_clear(tty_t *tty);
-void tty_putchar(const char c, tty_t *tty, const bool update);
-void tty_erase(tty_t *tty, size_t count);
 void tty_write(const char *buffer, const size_t count, tty_t *tty);
+void tty_erase(tty_t *tty, size_t count);
 
 void ansi_handle(tty_t *tty, const char *buffer,
 	size_t *i, const size_t count);

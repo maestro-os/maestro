@@ -26,7 +26,7 @@ void pic_init(const uint8_t offset1, const uint8_t offset2)
 }
 
 __attribute__((hot))
-void pic_EOI(const uint8_t irq)
+void pic_EOI(const unsigned irq)
 {
 	if(irq >= 0x8)
 		outb(PIC_SLAVE_COMMAND, PIC_COMMAND_EOI);
