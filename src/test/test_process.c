@@ -61,12 +61,15 @@ void test_process(void)
 
 	// write(0, "BEGIN\n", 6);
 	// fork_bomb();
-	for(size_t i = 0; i < 10; ++i)
+	//for(size_t i = 0; i < 100; ++i)
+	while(1)
 	{
 		putstr("pid: ");
 		pid = getpid();
 		putnbr(pid);
 		write(0, "\n", 1);
 	}
+	while(1)
+		;
 	asm("hlt");
 }

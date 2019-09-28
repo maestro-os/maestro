@@ -1,6 +1,8 @@
 .global context_switch
 .global kernel_switch
 
+.section .text
+
 context_switch:
 	cli
 	mov %esp, %ebp
@@ -46,12 +48,17 @@ context_switch:
 kernel_switch:
 	cli
 
+	push $0x0
+	call pic_EOI
+	add $4, %esp
+
 	mov 4(%esp), %eax
-	mov (%eax), %ebp
-	mov 4(%eax), %esp
-	push 8(%eax)
 	push 12(%eax)
 	popf
+	mov (%eax), %ebp
+	mov 4(%eax), %esp
+	mov 8(%eax), %ebx
+	mov %ebx, jmp_addr
 	mov 20(%eax), %ebx
 	mov 24(%eax), %ecx
 	mov 28(%eax), %edx
@@ -59,11 +66,10 @@ kernel_switch:
 	mov 36(%eax), %edi
 	mov 16(%eax), %eax
 
-	pusha
-	push $0x0
-	call pic_EOI
-	add $4, %esp
-	popa
-
 	sti
-	ret
+	jmp *jmp_addr
+
+.section .data
+
+jmp_addr:
+	.long 0
