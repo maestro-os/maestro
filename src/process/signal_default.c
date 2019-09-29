@@ -4,6 +4,8 @@
 // TODO Remove
 #define TODO	termination
 
+// TODO Handle multicore
+
 static void termination(process_t *proc, const int sig)
 {
 	// TODO Kill children?
@@ -15,16 +17,16 @@ static void termination(process_t *proc, const int sig)
 static void stop(process_t *proc, const int sig)
 {
 	// TODO Set status
-	// TODO
-	(void) proc;
 	(void) sig;
+	process_set_state(proc, STOPPED);
 }
 
 static void cont(process_t *proc, const int sig)
 {
-	// TODO
-	(void) proc;
-	(void) sig;
+	// TODO Set status?
+	(void)sig;
+	if(proc->state == STOPPED)
+		process_set_state(proc, WAITING);
 }
 
 static inline void sigkill_dfl(process_t *proc, const int sig)

@@ -355,9 +355,7 @@ static void switch_processes(void)
 {
 	process_t *p;
 
-	if(!processes)
-		return;
-	if(!(p = next_waiting_process(running_process)))
+	if(!processes || !(p = next_waiting_process(running_process)))
 		return;
 	process_set_state(p, RUNNING);
 	tss.ss0 = GDT_KERNEL_DATA_OFFSET;

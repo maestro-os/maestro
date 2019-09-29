@@ -28,23 +28,22 @@ static void putstr(const char *s)
 	write(0, s, strlen(s));
 }
 
-/*static void fork_bomb(void)
+static void fork_bomb(void)
 {
 	pid_t pid;
 	int status;
 
-	write(0, "fork\n", 5);
+	putstr("fork\n");
 	if((pid = fork()) < 0)
 	{
-		putnbr(-pid);
 		putstr("END\n");
 		_exit(1);
-		return;
 	}
 	if(pid == 0)
 	{
 		putstr("child\n");
 		fork_bomb();
+		_exit(0);
 	}
 	else
 	{
@@ -53,22 +52,22 @@ static void putstr(const char *s)
 		waitpid(pid, &status, 0);
 		_exit(status); // TODO EXITSTATUS
 	}
-}*/
+}
 
 void test_process(void)
 {
-	pid_t pid;
+	//pid_t pid;
 
-	/*write(0, "BEGIN\n", 6);
-	fork_bomb();*/
-	if((pid = getpid()) == 1)
-		*((char *)0x0) = 42;
-	while(1)
+	putstr("BEGIN\n");
+	fork_bomb();
+	//pid = getpid();
+	// TODO Fix: segfaulting process makes GPF happen over and over
+	/*while(1)
 	{
 		putstr("pid: ");
 		putnbr(pid);
 		putchar('\n');
-	}
+	}*/
 	while(1)
 		;
 	asm("hlt");

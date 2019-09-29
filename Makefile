@@ -69,6 +69,9 @@ re: fclean all
 test: iso
 	qemu-system-i386 -cdrom $(NAME).iso -d int -soundhw pcspk
 
+cputest: iso
+	qemu-system-i386 -cdrom $(NAME).iso -d int,cpu -soundhw pcspk >cpu_out 2>&1
+
 debug: iso
 	qemu-system-i386 -cdrom $(NAME).iso -d int -s -S -soundhw pcspk
 
