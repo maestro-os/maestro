@@ -141,11 +141,15 @@ static vmem_t clone_page_table(vmem_t from, const bool mem_dup)
 	{
 		if(!(from[i] & PAGING_PAGE_PRESENT))
 			continue;
-		old_page = (void *) (from[i] & PAGING_ADDR_MASK);
-		new_page = (mem_dup ? clone_page(old_page) : old_page);
-		if(!new_page)
-			goto fail;
-		v[i] = ((uint32_t) new_page) | (from[i] & PAGING_FLAGS_MASK);
+		if((from[i] & PAGING_TABLE_USER))
+		{
+			old_page = (void *) (from[i] & PAGING_ADDR_MASK);
+			if(!(new_page = (mem_dup ? clone_page(old_page) : old_page)))
+				goto fail;
+			v[i] = ((uint32_t) new_page) | (from[i] & PAGING_FLAGS_MASK);
+		}
+		else
+			v[i] = from[i];
 	}
 	return v;
 
@@ -167,10 +171,15 @@ vmem_t vmem_clone(vmem_t vmem, const bool mem_dup)
 	{
 		if(!(vmem[i] & PAGING_TABLE_PRESENT))
 			continue;
-		old_table = (void *) (vmem[i] & PAGING_ADDR_MASK);
-		if(!(new_table = clone_page_table(old_table, mem_dup)))
-			goto fail;
-		v[i] = ((uint32_t) new_table) | (vmem[i] & PAGING_FLAGS_MASK);
+		if((vmem[i] & PAGING_TABLE_USER))
+		{
+			old_table = (void *) (vmem[i] & PAGING_ADDR_MASK);
+			if(!(new_table = clone_page_table(old_table, mem_dup)))
+				goto fail;
+			v[i] = ((uint32_t) new_table) | (vmem[i] & PAGING_FLAGS_MASK);
+		}
+		else
+			v[i] = vmem[i];
 	}
 	return v;
 
