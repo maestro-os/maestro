@@ -363,12 +363,12 @@ static void switch_processes(void)
 	tss.ss0 = GDT_KERNEL_DATA_OFFSET;
 	tss.ss = GDT_USER_DATA_OFFSET;
 	tss.esp0 = (uint32_t) p->kernel_stack + (PAGE_SIZE - 1);
+	paging_enable(p->page_dir);
 	if(p->syscalling)
-		kernel_switch(&p->regs_state,
-			GDT_USER_DATA_OFFSET, GDT_USER_CODE_OFFSET);
+		kernel_switch(&p->regs_state);
 	else
 		context_switch(&p->regs_state,
-			GDT_USER_DATA_OFFSET | 3, GDT_USER_CODE_OFFSET | 3, p->page_dir);
+			GDT_USER_DATA_OFFSET | 3, GDT_USER_CODE_OFFSET | 3);
 }
 
 __attribute__((hot))
@@ -376,7 +376,6 @@ void process_tick(const regs_t *registers)
 {
 	process_t *p;
 
-	vmem_kernel_restore();
 	if(running_process)
 		running_process->regs_state = *registers;
 	p = processes;

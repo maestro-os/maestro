@@ -33,10 +33,6 @@ context_switch:
 	mov 16(%eax), %eax
 
 	pusha
-	push 32(%esp)
-	call paging_enable
-	add $4, %esp
-
 	push $0x0
 	call pic_EOI
 	add $4, %esp

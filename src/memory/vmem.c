@@ -101,8 +101,9 @@ void vmem_map(vmem_t vmem, void *physaddr, void *virtaddr, const int flags)
 	{
 		if(!(v = new_vmem_obj()))
 			return;
-		vmem[t] = (uintptr_t) v | PAGING_TABLE_PRESENT | flags;
+		vmem[t] = (uintptr_t) v;
 	}
+	vmem[t] |= PAGING_TABLE_PRESENT | flags;
 	v = (void *) (vmem[t] & PAGING_ADDR_MASK);
 	v[ADDR_PAGE(virtaddr)] = (uintptr_t) physaddr
 		| PAGING_PAGE_PRESENT | flags;

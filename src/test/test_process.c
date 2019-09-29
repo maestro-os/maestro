@@ -61,12 +61,13 @@ void test_process(void)
 
 	/*write(0, "BEGIN\n", 6);
 	fork_bomb();*/
+	if((pid = getpid()) == 1)
+		*((char *)0x0) = 42;
 	while(1)
 	{
 		putstr("pid: ");
-		pid = getpid();
 		putnbr(pid);
-		write(0, "\n", 1);
+		putchar('\n');
 	}
 	while(1)
 		;

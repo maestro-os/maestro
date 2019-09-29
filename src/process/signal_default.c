@@ -9,7 +9,7 @@ static void termination(process_t *proc, const int sig)
 	// TODO Kill children?
 	(void) sig;
 	proc->status = 0; // TODO
-	proc->state = TERMINATED;
+	process_set_state(proc, TERMINATED);
 }
 
 static void stop(process_t *proc, const int sig)

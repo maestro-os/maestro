@@ -86,9 +86,8 @@ void process_tick(const regs_t *registers);
 
 __attribute__((noreturn))
 extern void context_switch(const regs_t *regs,
-	uint16_t data_selector, uint16_t code_selector, vmem_t vmem);
-__attribute__((noreturn))
-extern void kernel_switch(const regs_t *regs,
 	uint16_t data_selector, uint16_t code_selector);
+__attribute__((noreturn))
+extern void kernel_switch(const regs_t *regs);
 
 #endif
