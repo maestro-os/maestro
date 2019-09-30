@@ -1,6 +1,10 @@
 #include <process/process.h>
 #include <libc/errno.h>
 
+// TODO
+#include <debug/debug.h>
+#include <tty/tty.h>
+
 // TODO Set errnos
 // TODO Multicore handling
 
@@ -113,7 +117,7 @@ process_t *new_process(process_t *parent, void (*begin)())
 	}
 	new_proc->pid = pid;
 	new_proc->parent = parent;
-	new_proc->begin = begin;
+	new_proc->regs_state.eip = (uintptr_t) begin;
 	process_add_child(parent, new_proc);
 	if(errno)
 	{
@@ -173,6 +177,7 @@ process_t *process_clone(process_t *proc)
 	}
 	if(!(p = new_process(proc, (void *) proc->regs_state.eip)))
 		return NULL;
+	memcpy(&p->regs_state, &proc->regs_state, sizeof(regs_t));
 	if(!(p->page_dir = vmem_clone(proc->page_dir, true)))
 	{
 		del_process(p, false);
@@ -181,7 +186,7 @@ process_t *process_clone(process_t *proc)
 	return p;
 }
 
-// TODO Pay attention to interrupts happening during this function? (setting to blocked during a syscall)
+// TODO Pay attention to interrupts happening during this function?
 __attribute__((hot))
 void process_set_state(process_t *process, const process_state_t state)
 {
@@ -193,8 +198,7 @@ void process_set_state(process_t *process, const process_state_t state)
 			process_set_state(running_process, WAITING);
 		running_process = process;
 	}
-	else if((state == WAITING || state == BLOCKED)
-		&& process == running_process)
+	else if(process == running_process)
 		running_process = NULL;
 	process->prev_state = process->state;
 	process->state = state;
@@ -309,27 +313,23 @@ static void init_process(process_t *process)
 	vmem_t vmem;
 	void *user_stack = NULL, *kernel_stack = NULL;
 
-	if(process->parent)
-		vmem = vmem_clone(process->parent->page_dir, true);
-	else
-		vmem = vmem_init();
-	if(!vmem)
-		return;
-	// TODO Change default stack size (and allow stack grow)
-	// TODO Do not allow access to kernel_stack in user space?
-	if(!(user_stack = vmem_alloc_pages(vmem, 1))
-		|| !(kernel_stack = vmem_alloc_pages(vmem, 1)))
+	if(!process->page_dir)
 	{
-		vmem_free(vmem, false);
-		buddy_free(user_stack);
-		buddy_free(kernel_stack);
-		return;
+		// TODO Change default stack size (and allow stack grow)
+		// TODO Do not allow access to kernel_stack in user space?
+		if(!(vmem = vmem_init()) || !(user_stack = vmem_alloc_pages(vmem, 1))
+			|| !(kernel_stack = vmem_alloc_pages(vmem, 1)))
+		{
+			vmem_free(vmem, false);
+			buddy_free(user_stack);
+			buddy_free(kernel_stack);
+			return;
+		}
+		process->page_dir = vmem;
+		process->user_stack = user_stack;
+		process->kernel_stack = kernel_stack;
+		process->regs_state.esp = (uintptr_t) user_stack + (PAGE_SIZE - 1);
 	}
-	process->page_dir = vmem;
-	process->user_stack = user_stack;
-	process->kernel_stack = kernel_stack;
-	process->regs_state.esp = (uintptr_t) user_stack + (PAGE_SIZE - 1);
-	process->regs_state.eip = (uintptr_t) process->begin;
 	process_set_state(process, WAITING);
 }
 

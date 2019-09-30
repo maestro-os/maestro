@@ -5,6 +5,7 @@
 // TODO Use `kernel_vmem` to hide holes in memory?
 // TODO Add stack spaces
 // TODO Handle shared memory (use free flag into page table entry)
+// TODO Pay attention to USER flag
 
 vmem_t kernel_vmem;
 

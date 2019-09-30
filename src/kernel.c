@@ -118,6 +118,9 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	printf("Buddy allocator begin: %p\n", buddy_begin);
 	slab_init();
 	vmem_kernel(&boot_info);
+#ifdef KERNEL_DEBUG
+	print_slabs();
+#endif
 
 	printf("ACPI initialization...\n");
 	acpi_init();
@@ -141,15 +144,13 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	printf("Processes initialization...\n");
 	process_init();
 
-#ifdef KERNEL_DEBUG
-	print_mem_usage();
-	print_slabs();
-#endif
-
-	// TODO Test
+	// TODO Remove
 	CLI();
 	for(size_t i = 0; i < 1; ++i)
 		new_process(NULL, test_process);
+
+	// TODO Remove
+	print_mem_usage();
 
 	kernel_loop();
 }

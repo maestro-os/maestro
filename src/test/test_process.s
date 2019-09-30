@@ -64,6 +64,17 @@ getpid:
 	pop %ebp
 	ret
 
+getppid:
+	push %ebp
+	mov %esp, %ebp
+
+	mov $0x4, %eax
+	int $0x80
+
+	mov %ebp, %esp
+	pop %ebp
+	ret
+
 waitpid:
 	push %ebp
 	mov %esp, %ebp
@@ -72,7 +83,7 @@ waitpid:
 	push %ecx
 	push %edx
 
-	mov $0x4, %eax
+	mov $0x5, %eax
 	mov 8(%ebp), %ebx
 	mov 12(%ebp), %ecx
 	mov 16(%ebp), %edx

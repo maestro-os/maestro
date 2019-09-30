@@ -58,8 +58,6 @@ typedef struct process
 	sigaction_t sigactions[SIG_MAX];
 	signal_t *signals_queue, *last_signal;
 	int status;
-
-	void (*begin)();
 } process_t;
 
 struct child

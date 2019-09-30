@@ -11,6 +11,7 @@ static sys_handler_t sys_handlers[] = {
 	sys_fork,
 	sys_exit,
 	sys_getpid,
+	sys_getppid,
 	sys_waitpid
 };
 

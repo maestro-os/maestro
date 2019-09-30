@@ -19,6 +19,7 @@ sys_ret_t sys_write(process_t *process, const regs_t *registers);
 sys_ret_t sys_fork(process_t *process, const regs_t *registers);
 sys_ret_t sys_exit(process_t *process, const regs_t *registers);
 sys_ret_t sys_getpid(process_t *process, const regs_t *registers);
+sys_ret_t sys_getppid(process_t *process, const regs_t *registers);
 sys_ret_t sys_waitpid(process_t *process, const regs_t *registers);
 // TODO
 

@@ -7,6 +7,7 @@
 
 static block_order_t max_order;
 static block_state_t *states;
+static size_t end;
 
 // TODO Free list
 
@@ -61,7 +62,7 @@ void buddy_init(void)
 {
 	size_t metadata_size;
 	void *buddy_end;
-	size_t end_begin, end_end;
+	size_t end_end;
 	size_t i;
 
 	max_order = buddy_get_order(available_memory);
@@ -71,10 +72,10 @@ void buddy_init(void)
 	buddy_begin = ALIGN_UP(states + metadata_size, PAGE_SIZE);
 
 	buddy_end = ALIGN_DOWN(heap_end, PAGE_SIZE);
-	end_begin = NODES_COUNT(max_order - 1)
+	end = NODES_COUNT(max_order - 1)
 		+ ((uintptr_t) (buddy_end - buddy_begin) / PAGE_SIZE);
 	end_end = NODES_COUNT(max_order);
-	for(i = end_begin; i < end_end; ++i)
+	for(i = end; i < end_end; ++i)
 		set_block_state(i, NODE_STATE_FULL);
 
 	// TODO Free list
@@ -177,9 +178,15 @@ void buddy_free(void *ptr)
 __attribute__((hot))
 static size_t count_allocated_pages(const size_t index)
 {
-	// TODO Count every allocated page, excluding unusable ones
-	(void) index;
-	return 0;
+	size_t order;
+
+	if(index >= end)
+		return 0;
+	order = NODE_ORDER(max_order, index);
+	if(order == 0 && states[index] == NODE_STATE_FULL)
+		return 1;
+	return count_allocated_pages(NODE_LEFT(index))
+		+ count_allocated_pages(NODE_RIGHT(index));
 }
 
 __attribute__((hot))

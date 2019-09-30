@@ -1,7 +1,6 @@
 #include <process/signal.h>
 #include <process/process.h>
 
-// TODO Remove
 #define TODO	termination
 
 // TODO Handle multicore
@@ -44,7 +43,7 @@ static inline void sigstop_dfl(process_t *proc, const int sig)
 	// TODO Wait until process switch or perform it now?
 }
 
-static void (*funcs[])(process_t *, int) = {
+static void (*const funcs[])(process_t *, int) = {
 	[SIGHUP] = termination,
 	[SIGINT] = termination,
 	[SIGQUIT] = TODO,

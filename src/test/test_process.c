@@ -4,6 +4,7 @@ int write(int fildes, const void *buf, size_t nbyte);
 pid_t fork(void);
 void _exit(int status);
 pid_t getpid(void);
+pid_t getppid(void);
 pid_t waitpid(pid_t pid, int *wstatus, int options);
 
 static void putchar(char c)
@@ -28,7 +29,7 @@ static void putstr(const char *s)
 	write(0, s, strlen(s));
 }
 
-static void fork_bomb(void)
+/*static void fork_bomb(void)
 {
 	pid_t pid;
 	int status;
@@ -52,22 +53,28 @@ static void fork_bomb(void)
 		waitpid(pid, &status, 0);
 		_exit(status); // TODO EXITSTATUS
 	}
-}
+}*/
 
 void test_process(void)
 {
-	//pid_t pid;
+	pid_t pid;
 
 	putstr("BEGIN\n");
-	fork_bomb();
-	//pid = getpid();
-	// TODO Fix: segfaulting process makes GPF happen over and over
-	/*while(1)
+	//fork_bomb();
+	if((pid = fork()) < 0)
+		putstr("err\n");
+	else if(pid)
 	{
-		putstr("pid: ");
+		putstr("parent: ");
 		putnbr(pid);
 		putchar('\n');
-	}*/
+	}
+	else
+	{
+		putstr("child: ");
+		putnbr(getpid());
+		putchar('\n');
+	}
 	while(1)
 		;
 	asm("hlt");
