@@ -12,16 +12,15 @@ static cache_t *processes_cache;
 static cache_t *children_cache;
 static cache_t *signals_cache;
 
-static process_t *processes = NULL;
+static process_t *volatile processes = NULL;
+static process_t *volatile running_process = NULL;
 static uint8_t *pids_bitmap;
 
 __ATTR_PAGE_ALIGNED
 __ATTR_BSS
 static tss_entry_t tss;
 
-static process_t *running_process = NULL;
-
-// TODO static spinlock_t spinlock = 0;
+static spinlock_t spinlock = 0;
 
 __attribute__((hot))
 static void process_ctor(void *ptr, const size_t size)
@@ -100,19 +99,20 @@ static void free_pid(const pid_t pid)
 	bitmap_clear(pids_bitmap, pid);
 }
 
-// TODO Spinlock
 __attribute__((hot))
 process_t *new_process(process_t *parent, void (*begin)())
 {
 	pid_t pid;
 	process_t *new_proc, *p;
 
+	spin_lock(&spinlock);
 	errno = 0;
 	if((pid = alloc_pid()) < 0
 		|| !(new_proc = cache_alloc(processes_cache)))
 	{
 		free_pid(pid);
 		errno = ENOMEM;
+		spin_unlock(&spinlock);
 		return NULL;
 	}
 	new_proc->pid = pid;
@@ -122,6 +122,7 @@ process_t *new_process(process_t *parent, void (*begin)())
 	if(errno)
 	{
 		// TODO Free all
+		spin_unlock(&spinlock);
 		return NULL;
 	}
 	if(processes)
@@ -134,6 +135,7 @@ process_t *new_process(process_t *parent, void (*begin)())
 	}
 	else
 		processes = new_proc;
+	spin_unlock(&spinlock);
 	return new_proc;
 }
 
@@ -142,20 +144,26 @@ process_t *get_process(const pid_t pid)
 {
 	process_t *p;
 
+	spin_lock(&spinlock);
 	errno = 0;
 	p = processes;
 	if(pid <= 0)
 	{
 		errno = EINVAL;
+		spin_unlock(&spinlock);
 		return NULL;
 	}
 	while(p)
 	{
 		if(p->pid == pid)
+		{
+			spin_unlock(&spinlock);
 			return p;
+		}
 		p = p->next;
 	}
 	errno = ESRCH;
+	spin_unlock(&spinlock);
 	return NULL;
 }
 
@@ -177,7 +185,6 @@ process_t *process_clone(process_t *proc)
 	}
 	if(!(p = new_process(proc, (void *) proc->regs_state.eip)))
 		return NULL;
-	memcpy(&p->regs_state, &proc->regs_state, sizeof(regs_t));
 	if(!(p->page_dir = vmem_clone(proc->page_dir, true)))
 	{
 		del_process(p, false);
@@ -186,12 +193,12 @@ process_t *process_clone(process_t *proc)
 	return p;
 }
 
-// TODO Pay attention to interrupts happening during this function?
 __attribute__((hot))
 void process_set_state(process_t *process, const process_state_t state)
 {
 	if(!process)
 		return;
+	spin_lock(&spinlock);
 	if(state == RUNNING)
 	{
 		if(running_process)
@@ -202,6 +209,7 @@ void process_set_state(process_t *process, const process_state_t state)
 		running_process = NULL;
 	process->prev_state = process->state;
 	process->state = state;
+	spin_unlock(&spinlock);
 }
 
 __attribute__((hot))
@@ -211,14 +219,17 @@ void process_add_child(process_t *parent, process_t *child)
 
 	if(!parent || !child)
 		return;
+	spin_lock(&parent->spinlock);
 	if(!(c = cache_alloc(children_cache)))
 	{
 		errno = ENOMEM;
+		spin_unlock(&parent->spinlock);
 		return;
 	}
 	c->next = parent->children;
 	c->process = child;
 	parent->children = c;
+	spin_unlock(&parent->spinlock);
 }
 
 __attribute__((hot))
@@ -226,10 +237,12 @@ void process_exit(process_t *proc, const int status)
 {
 	if(!proc)
 		return;
+	spin_lock(&proc->spinlock);
 	proc->status = status;
 	process_set_state(proc, TERMINATED);
 	if(running_process == proc)
 		running_process = NULL;
+	spin_unlock(&proc->spinlock);
 }
 
 // TODO Limit on signals?
@@ -243,16 +256,19 @@ void process_kill(process_t *proc, const int sig)
 
 	if(!proc)
 		return;
+	spin_lock(&proc->spinlock);
 	if(sig == SIGKILL || sig == SIGSTOP
 		|| (action = proc->sigactions + sig)->sa_handler == SIG_DFL)
 	{
 		signal_default(proc, sig);
+		spin_unlock(&proc->spinlock);
 		return;
 	}
-	if(action->sa_handler == SIG_IGN)
+	if(action->sa_handler == SIG_IGN || !(s = cache_alloc(signals_cache)))
+	{
+		spin_unlock(&proc->spinlock);
 		return;
-	if(!(s = cache_alloc(signals_cache)))
-		return;
+	}
 	s->info.si_signo = sig;
 	// TODO
 	if(proc->last_signal)
@@ -265,6 +281,7 @@ void process_kill(process_t *proc, const int sig)
 		proc->signals_queue = s;
 		proc->last_signal = s;
 	}
+	spin_unlock(&proc->spinlock);
 }
 
 __attribute__((hot))
@@ -274,6 +291,7 @@ void del_process(process_t *process, const bool children)
 
 	if(!process)
 		return;
+	spin_lock(&spinlock);
 	if(running_process == process)
 		running_process = NULL;
 	if(process->parent)
@@ -304,6 +322,7 @@ void del_process(process_t *process, const bool children)
 	vmem_free(process->page_dir, true);
 	// TODO Free `signals_queue`
 	cache_free(processes_cache, process);
+	spin_unlock(&spinlock);
 }
 
 // TODO Alloc when the process is created (because of `fork`) (or block parent?)

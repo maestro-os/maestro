@@ -1,6 +1,7 @@
 #include <process/signal.h>
 #include <process/process.h>
 
+// TODO Remove
 #define TODO	termination
 
 // TODO Handle multicore
