@@ -87,6 +87,7 @@ kernel_init:
 	ret
 
 kernel_wait:
+	sti
 	hlt
 	ret
 

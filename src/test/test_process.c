@@ -7,7 +7,7 @@ pid_t getpid(void);
 pid_t getppid(void);
 pid_t waitpid(pid_t pid, int *wstatus, int options);
 
-static void putchar(char c)
+/*static void putchar(char c)
 {
 	write(0, &c, 1);
 }
@@ -22,7 +22,7 @@ static void putnbr(int n)
 	if(n > 9)
 		putnbr(n / 10);
 	putchar('0' + (n % 10));
-}
+}*/
 
 static void putstr(const char *s)
 {
@@ -57,11 +57,11 @@ static void putstr(const char *s)
 
 void test_process(void)
 {
-	pid_t pid;
+	//pid_t pid;
 
 	putstr("BEGIN\n");
 	//fork_bomb();
-	if((pid = fork()) < 0)
+	/*if((pid = fork()) < 0)
 		putstr("err\n");
 	else if(pid)
 	{
@@ -74,7 +74,7 @@ void test_process(void)
 		putstr("child: ");
 		putnbr(getpid());
 		putchar('\n');
-	}
+	}*/
 	while(1)
 		;
 	asm("hlt");

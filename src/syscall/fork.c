@@ -1,9 +1,5 @@
 #include <syscall/syscall.h>
 
-// TODO Remove
-#include <debug/debug.h>
-#include <tty/tty.h>
-
 sys_ret_t sys_fork(process_t *process, const regs_t *registers)
 {
 	process_t *child;

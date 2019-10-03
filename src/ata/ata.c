@@ -247,7 +247,7 @@ int ata_write(ata_device_t *dev, const int slave, const size_t lba,
 	outb(dev->bus + ATA_REG_SECTOR_NUMBER, (uint8_t) lba);
 	outb(dev->bus + ATA_REG_CYLINDER_LOW, (uint8_t) (lba >> 8));
 	outb(dev->bus + ATA_REG_CYLINDER_HIGH, (uint8_t) (lba >> 16));
-	ata_command(dev->bus, ATA_CMD_READ_SECTORS);
+	ata_command(dev->bus, ATA_CMD_WRITE_SECTORS);
 	for(i = 0; i < sectors; ++i)
 	{
 		ata_wait_ready(dev);

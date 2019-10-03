@@ -8,8 +8,6 @@
 # include <libc/string.h>
 # include <libc/sys/types.h>
 
-# define TO_PTR(val)	((void *) (val))
-
 typedef int32_t sys_ret_t;
 typedef sys_ret_t (*sys_handler_t)(process_t *, const regs_t *);
 

@@ -22,7 +22,8 @@ static driver_t drivers[] = {
 };
 
 #ifdef KERNEL_DEBUG
-static void print_devices(void)
+// TODO Uncomment
+/*static void print_devices(void)
 {
 	pci_function_t *f;
 
@@ -37,7 +38,7 @@ prog_if: %x; revision_id: %x; bar0: %x; bar1: %x\n",
 		f = f->next;
 	}
 	printf("\n");
-}
+}*/
 
 static void print_slabs(void)
 {
@@ -129,7 +130,8 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	printf("PCI initialization...\n");
 	pci_scan();
 #ifdef KERNEL_DEBUG
-	print_devices();
+	// TODO Uncomment
+	//print_devices();
 #endif
 
 	printf("Drivers initialization...\n");
