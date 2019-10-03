@@ -4,7 +4,6 @@
 # define LOG22	0.30102999566
 
 # define abs(i)		(i < 0 ? -i : i)
-
 # define min(a, b)	(a <= b ? a : b)
 # define max(a, b)	(a >= b ? a : b)
 

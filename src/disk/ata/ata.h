@@ -63,6 +63,8 @@ typedef struct ata_device
 	uint16_t bus;
 	uint16_t ctrl;
 
+	char slave;
+
 	// TODO
 
 	spinlock_t spinlock;
@@ -76,11 +78,9 @@ void ata_irq(void);
 void ata_err_check(void);
 
 ata_device_t *ata_init_device(const uint16_t bus, const uint16_t ctrl);
-int ata_get_type(const ata_device_t *dev, int slave);
-int ata_read(ata_device_t *dev, int slave, size_t lba,
-	void *buff, size_t sectors);
-int ata_write(ata_device_t *dev, int slave, size_t lba,
-	const void *buff, size_t sectors);
+int ata_get_type(const ata_device_t *dev);
+int ata_read(ata_device_t *dev, size_t lba, void *buff, size_t sectors);
+int ata_write(ata_device_t *dev, size_t lba, const void *buff, size_t sectors);
 void ata_reset(const ata_device_t *dev);
 
 #endif

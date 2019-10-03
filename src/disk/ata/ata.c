@@ -1,5 +1,6 @@
 #include <disk/ata/ata.h>
 #include <memory/memory.h>
+#include <libc/errno.h>
 
 static cache_t *devices_cache;
 ata_device_t *devices = NULL;
@@ -87,37 +88,37 @@ static inline void ata_command(const uint16_t bus, const uint8_t cmd)
 	outb(bus + ATA_REG_COMMAND, cmd);
 }
 
-static inline void ata_select_drive(const uint16_t bus, const int slave)
+static inline void ata_select_drive(const ata_device_t *dev)
 {
-	outb(bus + ATA_REG_DRIVE, slave ? 0xa0 : 0xb0);
+	outb(dev->bus + ATA_REG_DRIVE, (dev->slave ? 0xa0 : 0xb0));
 }
 
-static inline int ata_identify(const uint16_t bus, const int slave,
-	uint16_t *init_data)
+static inline int ata_identify(ata_device_t *dev, uint16_t *init_data)
 {
 	uint8_t status;
 	size_t i;
 
-	ata_select_drive(bus, slave);
-	outb(bus + ATA_REG_SECTOR_COUNT, 0x0);
-	outb(bus + ATA_REG_SECTOR_NUMBER, 0x0);
-	outb(bus + ATA_REG_CYLINDER_LOW, 0x0);
-	outb(bus + ATA_REG_CYLINDER_HIGH, 0x0);
-	ata_command(bus, ATA_CMD_IDENTIFY);
-	if((status = inb(bus + ATA_REG_STATUS)) == 0)
+	ata_select_drive(dev);
+	outb(dev->bus + ATA_REG_SECTOR_COUNT, 0x0);
+	outb(dev->bus + ATA_REG_SECTOR_NUMBER, 0x0);
+	outb(dev->bus + ATA_REG_CYLINDER_LOW, 0x0);
+	outb(dev->bus + ATA_REG_CYLINDER_HIGH, 0x0);
+	ata_command(dev->bus, ATA_CMD_IDENTIFY);
+	if((status = inb(dev->bus + ATA_REG_STATUS)) == 0)
 		return 0;
-	while(ata_is_busy(bus))
+	while(ata_is_busy(dev->bus))
 		;
-	if(inb(bus + ATA_REG_CYLINDER_LOW) || inb(bus + ATA_REG_CYLINDER_HIGH))
+	if(inb(dev->bus + ATA_REG_CYLINDER_LOW)
+		|| inb(dev->bus + ATA_REG_CYLINDER_HIGH))
 		return 0;
 	do
-		status = inb(bus + ATA_REG_STATUS);
+		status = inb(dev->bus + ATA_REG_STATUS);
 	while(!(status & ATA_STATUS_ERR) && !(status & ATA_STATUS_DRQ));
 	// TODO Some ATAPI devices doesn't set ERR on abort
 	if(status & ATA_STATUS_ERR)
 		return 0;
 	for(i = 0; i < 256; ++i)
-		init_data[i] = inw(bus + ATA_REG_DATA);
+		init_data[i] = inw(dev->bus + ATA_REG_DATA);
 	return 1;
 }
 
@@ -148,7 +149,7 @@ ata_device_t *ata_init_device(const uint16_t bus, const uint16_t ctrl)
 		cache_free(devices_cache, dev);
 		return NULL;
 	}
-	if(!ata_identify(bus, 0, init_data))
+	if(!ata_identify(dev, init_data))
 	{
 		printf("ATA identify failed\n");
 		cache_free(devices_cache, dev);
@@ -167,14 +168,14 @@ ata_device_t *ata_init_device(const uint16_t bus, const uint16_t ctrl)
 	return dev;
 }
 
-int ata_get_type(const ata_device_t *dev, const int slave)
+int ata_get_type(const ata_device_t *dev)
 {
 	unsigned cl, ch;
 
 	if(!dev)
 		return ATA_TYPE_UNKNOWN;
 	ata_reset(dev);
-	ata_select_drive(dev->bus, slave);
+	ata_select_drive(dev);
 	ata_wait(dev->ctrl);
 	cl = inb(dev->bus + ATA_REG_CYLINDER_LOW);
 	ch = inb(dev->bus + ATA_REG_CYLINDER_HIGH);
@@ -189,19 +190,17 @@ int ata_get_type(const ata_device_t *dev, const int slave)
 	return ATA_TYPE_UNKNOWN;
 }
 
-// TODO Set errnos?
-// TODO sectors == 0
-// TODO Doesn't work when lba > 0
-// TODO Crashes with more than 1 sector
-int ata_read(ata_device_t *dev, const int slave, const size_t lba,
+// TODO Set errnos
+int ata_read(ata_device_t *dev, const size_t lba,
 	void *buff, const size_t sectors)
 {
 	size_t i, j;
 
-	if(!dev || !buff || sectors > 0xff)
+	if(!dev || !buff || sectors == 0 || sectors > 0xff)
 		return -1;
 	spin_lock(&dev->spinlock);
-	outb(dev->bus + ATA_REG_DRIVE, (slave ? 0xe0 : 0xf0)
+	errno = 0;
+	outb(dev->bus + ATA_REG_DRIVE, (dev->slave ? 0xe0 : 0xf0)
 		| ((lba >> 24) & 0xf));
 	outb(dev->bus + ATA_REG_SECTOR_COUNT, (uint8_t) sectors);
 	outb(dev->bus + ATA_REG_SECTOR_NUMBER, (uint8_t) lba);
@@ -229,19 +228,17 @@ int ata_read(ata_device_t *dev, const int slave, const size_t lba,
 	return 0;
 }
 
-// TODO Set errnos?
-// TODO sectors == 0
-// TODO Doesn't work when lba > 0
-// TODO Doesn't work with more than 1 sector
-int ata_write(ata_device_t *dev, const int slave, const size_t lba,
+// TODO Set errnos
+int ata_write(ata_device_t *dev, const size_t lba,
 	const void *buff, const size_t sectors)
 {
 	size_t i, j;
 
-	if(!dev || !buff || sectors > 0xff)
+	if(!dev || !buff || sectors == 0 || sectors > 0xff)
 		return -1;
 	spin_lock(&dev->spinlock);
-	outb(dev->bus + ATA_REG_DRIVE, (slave ? 0xe0 : 0xf0)
+	errno = 0;
+	outb(dev->bus + ATA_REG_DRIVE, (dev->slave ? 0xe0 : 0xf0)
 		| ((lba >> 24) & 0xf));
 	outb(dev->bus + ATA_REG_SECTOR_COUNT, (uint8_t) sectors);
 	outb(dev->bus + ATA_REG_SECTOR_NUMBER, (uint8_t) lba);

@@ -30,6 +30,13 @@ typedef struct
 	uint32_t sectors;
 } mbr_partition_t;
 
+// TODO Implement Extended Partitions
+// TODO Implement GPT
+
+void mbr_etop(const mbr_entry_t entry, mbr_partition_t *partition);
+void mbr_ptoe(mbr_partition_t *partition, mbr_entry_t entry);
+
 void mbr_read(ata_device_t *dev, size_t lba, mbr_partition_t *partitions);
+void mbr_write(ata_device_t *dev, size_t lba, mbr_t *mbr);
 
 #endif
