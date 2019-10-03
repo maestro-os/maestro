@@ -8,7 +8,7 @@
 #include <pci/pci.h>
 #include <process/process.h>
 #include <device/device.h>
-#include <ata/ata.h>
+#include <disk/ata/ata.h>
 
 #include <libc/stdio.h>
 

@@ -1,4 +1,4 @@
-#include <ata/ata.h>
+#include <disk/ata/ata.h>
 #include <memory/memory.h>
 
 static cache_t *devices_cache;

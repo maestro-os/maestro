@@ -2,7 +2,7 @@
 #include <pit/pit.h>
 #include <process/process.h>
 #include <ps2/ps2.h>
-#include <ata/ata.h>
+#include <disk/ata/ata.h>
 
 void irq1_handler()
 {
