@@ -19,18 +19,14 @@
 # define CMOS_DAY_OF_MONTH_REGISTER	0x07
 # define CMOS_MONTH_REGISTER		0x08
 # define CMOS_YEAR_REGISTER			0x09
+# define CMOS_CENTURY_REGISTER		0x32
 // TODO Detect century register with ACPI
 
-const char *floppy_types[] = {
-	"no drive",
-	"360 KB 5.25 drive",
-	"1.2 MB 5.25 drive",
-	"720 KB 3.5 drive",
-	"1.44 MB 3.5 drive",
-	"2.88 MB 3.5 drive"
-};
+# define CMOS_STATUS_A				0xa
+# define CMOS_STATUS_B				0xb
 
 uint8_t cmos_detect_floppy(void);
+const char *cmos_get_floppy_string(uint8_t type);
 uint8_t cmos_get_time(uint8_t reg);
 
 #endif

@@ -13,6 +13,7 @@
 #include <libc/stdio.h>
 
 // TODO temporary
+#include <cmos/cmos.h>
 #include <pic/pic.h>
 #include <libc/errno.h>
 
