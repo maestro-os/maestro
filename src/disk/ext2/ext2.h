@@ -3,8 +3,10 @@
 
 # include <kernel.h>
 # include <disk/disk.h>
+# include <cmos/cmos.h>
 
-# define EXT2_BEGIN_SECTOR	2
+# define EXT2_BEGIN_SECTOR			2
+# define EXT2_SUPERBLOCK_SECTORS	2
 
 # define EXT2_SIGNATURE	0xef53
 
@@ -20,6 +22,12 @@
 # define EXT2_OS_ID_MASIX		2
 # define EXT2_OS_ID_FREEBSD		3
 # define EXT2_OS_ID_OTHER		4
+
+# define MOUNT_STATE_ERROR			0
+# define MOUNT_STATE_DISK_ERROR		1
+# define MOUNT_STATE_MOUNTED		2
+# define MOUNT_STATE_READONLY		3
+# define MOUNT_STATE_NEEDS_CHECK	4
 
 __attribute__((packed))
 struct ext2_superblock
@@ -54,13 +62,18 @@ struct ext2_superblock
 __attribute__((packed))
 struct ext2_extended_superblock
 {
-	ext2_superblock superblock;
+	struct ext2_superblock base;
 	// TODO
 };
+
+// TODO All structures
 
 typedef struct ext2_superblock ext2_superblock_t;
 typedef struct ext2_extended_superblock ext2_extended_superblock_t;
 
+// TODO ext2_create
+int ext2_mount(void);
+int ext2_consistency_check(void);
 // TODO
 
 #endif

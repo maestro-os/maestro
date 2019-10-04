@@ -25,27 +25,44 @@ void mbr_ptoe(mbr_partition_t *partition, mbr_entry_t entry)
 	*(uint32_t *) (entry + 12) = partition->sectors;
 }
 
-void mbr_read(ata_device_t *dev, size_t lba, mbr_partition_t *partitions)
+void mbr_init(mbr_t *mbr)
+{
+	if(!mbr)
+		return;
+	bzero(mbr + 6, sizeof(mbr) - 8);
+	mbr->boot_signature = MBR_SIGNATURE;
+}
+
+int mbr_read(ata_device_t *dev, const size_t lba, mbr_partition_t *partitions)
 {
 	char buff[ATA_SECTOR_SIZE];
 	mbr_t mbr;
 	size_t i;
 
 	if(!dev || !partitions)
-		return;
-	ata_read(dev, lba, buff, 1);
+		return -1;
+	if(ata_read(dev, lba, buff, 1) < 0)
+		return -1;
 	memcpy(&mbr, buff + MBR_PARTITION_TABLE_OFFSET, sizeof(mbr_t));
+	if(mbr.boot_signature != MBR_SIGNATURE)
+		return -1;
 	for(i = 0; i < MBR_ENTRIES_COUNT; ++i)
 		mbr_etop(mbr.entries[i], partitions + i);
+	return 0;
 }
 
-void mbr_write(ata_device_t *dev, size_t lba, mbr_t *mbr)
+int mbr_write(ata_device_t *dev, const size_t lba, mbr_t *mbr)
 {
 	char buff[ATA_SECTOR_SIZE];
 
 	if(!dev || !mbr)
-		return;
-	ata_read(dev, lba, buff, 1);
+		return -1;
+	if(ata_read(dev, lba, buff, 1) < 0)
+		return -1;
 	memcpy(buff + MBR_PARTITION_TABLE_OFFSET, mbr, sizeof(mbr_t));
-	ata_write(dev, lba, buff, 1);
+	if(mbr->boot_signature != MBR_SIGNATURE)
+		return -1;
+	if(ata_write(dev, lba, buff, 1) < 0)
+		return -1;
+	return 0;
 }

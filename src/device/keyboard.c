@@ -17,17 +17,14 @@ static void type_key(const key_code_t code)
 	}
 	else if(code == KEY_CAPSLOCK)
 		capslock_state = !capslock_state;
-
 	// TODO Arrows, etc...
-
 	if(keyboard_get_char(code, keyboard_is_shift_enabled()))
 	{
-		if(input_hook) input_hook(code);
+		if(input_hook)
+			input_hook(code);
 	}
-	else
-	{
-		if(ctrl_hook) ctrl_hook(code);
-	}
+	else if(ctrl_hook)
+		ctrl_hook(code);
 }
 __attribute__((hot))
 static void handle_extra_key(const key_code_t code)
