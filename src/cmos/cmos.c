@@ -50,6 +50,12 @@ uint8_t cmos_read_register(const uint8_t reg)
 	return inb(CMOS_DATA);
 }
 
+void cmos_write_register(const uint8_t reg, const uint8_t value)
+{
+	cmos_select(reg);
+	outb(reg, value);
+}
+
 uint8_t cmos_get_time(const uint8_t reg)
 {
 	cmos_wait_ready();

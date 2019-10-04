@@ -151,13 +151,12 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	process_init();
 
 	// TODO Remove
-	/*CLI();
+	CLI();
 	for(size_t i = 0; i < 1; ++i)
 		new_process(NULL, test_process);
 
 	// TODO Remove
-	print_mem_usage();*/
-	printf("curr_time: %u\n", (unsigned)time_get());
+	print_mem_usage();
 
 	kernel_loop();
 }

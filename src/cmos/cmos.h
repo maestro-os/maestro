@@ -2,6 +2,7 @@
 # define CMOS_H
 
 # include <kernel.h>
+# include <idt/idt.h>
 # include <stdint.h>
 
 # define CMOS_COMMAND			0x70
@@ -35,6 +36,7 @@ typedef uint32_t time_t;
 uint8_t cmos_detect_floppy(void);
 const char *cmos_get_floppy_string(uint8_t type);
 uint8_t cmos_read_register(uint8_t reg);
+void cmos_write_register(uint8_t reg, uint8_t value);
 uint8_t cmos_get_time(uint8_t reg);
 
 void time_init(void);

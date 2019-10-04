@@ -23,12 +23,25 @@ static time_t get_seconds(const time_t month, const time_t year)
 }
 
 // TODO Fix
+static void enable_rtc(void)
+{
+	int enabled;
+	uint8_t prev;
+
+	enabled = interrupt_is_enabled();
+	CLI();
+	prev = cmos_read_register(CMOS_STATUS_B);
+	cmos_write_register(CMOS_STATUS_B, prev | 0x40);
+	if(enabled)
+		STI();
+}
+
+// TODO Fix
 void time_init(void)
 {
 	time_t seconds, minutes, hours, day, month, year, century;
 	uint8_t status_b;
 
-	// TODO Enable IRQ8
 	seconds = cmos_get_time(CMOS_SECONDS_REGISTER);
 	minutes = cmos_get_time(CMOS_MINUTES_REGISTER);
 	hours = cmos_get_time(CMOS_HOURS_REGISTER);
@@ -53,10 +66,14 @@ void time_init(void)
 		hours = ((hours & 0x7f) + 12) % 24;
 	current_time = seconds + (minutes * 60) + (hours * 3600)
 		+ (day * 86400) + get_seconds(month, century * 100 + year);
+	// TODO enable_rtc();
+	(void) enable_rtc;
+	// TODO Change RTC frequency?
 }
 
 void time_update(void)
 {
+	printf("time update\n");
 	// TODO Update time with PIT
 	// TODO Use a variable to store approximation due to frequency of the PIT
 }

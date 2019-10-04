@@ -82,4 +82,6 @@ extern void error31();
 
 extern void syscall();
 
+extern int interrupt_is_enabled(void);
+
 #endif
