@@ -2,7 +2,6 @@
 # define ATA_H
 
 # include <kernel.h>
-# include <libc/sys/types.h>
 
 # define ATA_PRIMARY_BUS	0x1f0
 # define ATA_PRIMARY_CTRL	0x3f6
@@ -64,6 +63,8 @@ typedef struct ata_device
 	uint16_t ctrl;
 
 	char slave;
+	char lba48;
+	size_t sectors;
 
 	// TODO
 

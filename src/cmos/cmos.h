@@ -24,9 +24,21 @@
 
 # define CMOS_STATUS_A				0xa
 # define CMOS_STATUS_B				0xb
+# define CMOS_STATUS_C				0xc
+
+# define EPOCH_YEAR			1970
+# define BCD_TO_BINARY(bcd)	((((bcd) & 0xf0) >> 1) + (((bcd) & 0xf0) >> 3)\
+	+ ((bcd) & 0xf))
+
+typedef uint32_t time_t;
 
 uint8_t cmos_detect_floppy(void);
 const char *cmos_get_floppy_string(uint8_t type);
+uint8_t cmos_read_register(uint8_t reg);
 uint8_t cmos_get_time(uint8_t reg);
+
+void time_init(void);
+void time_update(void);
+time_t time_get(void);
 
 #endif

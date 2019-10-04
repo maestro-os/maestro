@@ -38,14 +38,20 @@ static int cmos_check_update(void)
 static void cmos_wait_ready(void)
 {
 	// TODO Wait for IRQ8
+	while(!cmos_check_update())
+		;
 	while(cmos_check_update())
 		;
 }
 
-__attribute__((hot))
-uint8_t cmos_get_time(const uint8_t reg)
+uint8_t cmos_read_register(const uint8_t reg)
 {
 	cmos_select(reg);
-	cmos_wait_ready();
 	return inb(CMOS_DATA);
+}
+
+uint8_t cmos_get_time(const uint8_t reg)
+{
+	cmos_wait_ready();
+	return cmos_read_register(reg);
 }

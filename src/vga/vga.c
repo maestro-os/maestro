@@ -5,7 +5,6 @@ void vga_clear(void)
 	const uint16_t c = VGA_DEFAULT_COLOR << 8;
 	size_t i;
 
-	// TODO Optimization
 	for(i = 0; i < VGA_WIDTH * VGA_HEIGHT; ++i)
 		*((uint16_t *) VGA_BUFFER + i) = c;
 }
@@ -20,8 +19,8 @@ void vga_enable_cursor(void)
 
 void vga_disable_cursor(void)
 {
-	outb(0x3D4, 0x0A);
-	outb(0x3D5, 0x20);
+	outb(0x3d4, 0x0a);
+	outb(0x3d5, 0x20);
 }
 
 void vga_move_cursor(const vgapos_t x, const vgapos_t y)

@@ -417,4 +417,6 @@ void process_tick(const regs_t *registers)
 		p = p->next;
 	}
 	switch_processes();
+	if(!processes)
+		kernel_halt();
 }

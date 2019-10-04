@@ -2,7 +2,6 @@
 #include <idt/idt.h>
 #include <libc/errno.h>
 
-// TODO Set errnos
 // TODO Fix: Infinite loop if memory is full
 
 static block_order_t max_order;

@@ -34,10 +34,7 @@ void pit_init(void);
 void pit_set_count(uint16_t count);
 void pit_set_frequency(unsigned frequency);
 
-void pit_sleep(unsigned duration);
-
 void beep(unsigned frequency);
 void stop_beep(void);
-void beep_during(unsigned frequency, unsigned duration);
 
 #endif

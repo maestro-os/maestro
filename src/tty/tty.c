@@ -161,7 +161,7 @@ static void tty_putchar(const char c, tty_t *tty, const bool update)
 	{
 		case '\b':
 		{
-			beep_during(BELL_FREQUENCY, BELL_DURATION);
+			// TODO Beep
 			break;
 		}
 

@@ -2,7 +2,6 @@
 # define SIGNAL_H
 
 # include <kernel.h>
-# include <libc/sys/types.h>
 
 # define SIGHUP		1
 # define SIGINT		2
@@ -38,8 +37,13 @@
 # define SIG_DFL	((sighandler_t) 0)
 # define SIG_IGN	((sighandler_t) 1)
 
+typedef int pid_t;
 typedef void (*sighandler_t)(int);
 typedef int sigset_t;
+
+// TODO Move to user handling
+typedef int uid_t;
+typedef int gid_t;
 
 union sigval
 {

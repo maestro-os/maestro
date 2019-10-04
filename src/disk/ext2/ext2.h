@@ -4,6 +4,8 @@
 # include <kernel.h>
 # include <disk/disk.h>
 
+# define EXT2_BEGIN_SECTOR	2
+
 # define EXT2_SIGNATURE	0xef53
 
 # define EXT2_STATE_CLEAN	1

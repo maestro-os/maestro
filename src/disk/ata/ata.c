@@ -5,7 +5,7 @@
 static cache_t *devices_cache;
 ata_device_t *devices = NULL;
 
-// TODO Optimize I/O
+// TODO Handle bad sectors
 
 __attribute__((cold))
 void ata_init(void)
@@ -13,7 +13,7 @@ void ata_init(void)
 	if(!(devices_cache = cache_create("ata_devices", sizeof(ata_device_t), 32,
 		bzero, NULL)))
 	{
-		// TODO Error (failed to init driver)
+		PANIC("Failed to initialize ATA driver!", 0);
 		return;
 	}
 	devices = ata_init_device(ATA_PRIMARY_BUS, ATA_PRIMARY_CTRL);
@@ -78,7 +78,7 @@ static inline int ata_is_busy(const uint16_t bus)
 static inline void ata_wait_ready(ata_device_t *dev)
 {
 	dev->wait_irq = 1;
-	while(dev->wait_irq && !ata_is_ready(dev->bus)) // TODO Is it even entering the loop?
+	while(dev->wait_irq && !ata_is_ready(dev->bus))
 		kernel_wait();
 	dev->wait_irq = 0;
 }
@@ -132,39 +132,23 @@ static inline int ata_supports_lba48(const uint16_t *data)
 	return (data[83] & 0b10000000000);
 }
 
-// TODO Put printfs out of this functions
 ata_device_t *ata_init_device(const uint16_t bus, const uint16_t ctrl)
 {
 	ata_device_t *dev;
 	uint16_t init_data[256];
-	uint32_t sectors = 0;
 
 	if(!(dev = cache_alloc(devices_cache)))
 		return NULL;
 	dev->bus = bus;
 	dev->ctrl = ctrl;
-	if(ata_check_floating_bus(bus))
+	if(ata_check_floating_bus(bus) || !ata_identify(dev, init_data)
+		|| (dev->sectors = ata_lba28_sectors(init_data)) != 0)
 	{
-		printf("ATA floating bus detected\n");
 		cache_free(devices_cache, dev);
 		return NULL;
 	}
-	if(!ata_identify(dev, init_data))
-	{
-		printf("ATA identify failed\n");
-		cache_free(devices_cache, dev);
-		return NULL;
-	}
-	if((sectors = ata_lba28_sectors(init_data)) != 0)
-		printf("ATA LBA28 sectors: %u\n", (unsigned) sectors);
 	if(ata_supports_lba48(init_data))
-	{
-		printf("ATA LBA48 supported\n");
-		// TODO Get sectors
-	}
-	printf("ATA disk size: %u bytes\n", (unsigned) sectors * ATA_SECTOR_SIZE);
-	// TODO Set data in struct
-	printf("ATA initialized!\n");
+		dev->lba48 = 1;
 	return dev;
 }
 
