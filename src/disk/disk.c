@@ -128,6 +128,7 @@ int disk_read(const size_t sector, char *buff, const size_t sectors_count)
 	if(!current_device || !read_func)
 		return -1;
 	spin_lock(&spinlock);
+	errno = 0;
 	for(i = 0; i < sectors_count; i += 0xff)
 		read_func(current_device, start_lba + sector + i,
 			buff + (i * ATA_SECTOR_SIZE), min(sectors_count - i, 0xff));
@@ -145,6 +146,7 @@ int disk_write(const size_t sector, const char *buff,
 	if(!current_device || !write_func)
 		return -1;
 	spin_lock(&spinlock);
+	errno = 0;
 	for(i = 0; i < sectors_count; i += 0xff)
 		write_func(current_device, start_lba + sector + i,
 			buff + (i * ATA_SECTOR_SIZE), min(sectors_count - i, 0xff));

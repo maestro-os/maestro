@@ -36,11 +36,11 @@ void mbr_init(disk_t *dev)
 		return;
 	disk_select_disk(dev);
 	if(disk_read(0, buff, 1) < 0)
-		return;
+		return; // TODO Panic?
 	mbr = (void *) buff + MBR_PARTITION_TABLE_OFFSET;
 	bzero(mbr + 6, sizeof(mbr) - 8);
 	mbr->boot_signature = MBR_SIGNATURE;
-	disk_write(0, buff, 1);
+	disk_write(0, buff, 1); // TODO Protect
 }
 
 int mbr_read(disk_t *dev, const size_t lba, mbr_partition_t *partitions)

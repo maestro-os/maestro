@@ -5,6 +5,8 @@
 # include <disk/ata/ata.h>
 # include <disk/partition/partition.h>
 
+// TODO Check for fail on every I/O
+
 typedef enum
 {
 	DISK_TYPE_UNKNOWN,

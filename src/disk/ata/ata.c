@@ -149,7 +149,7 @@ ata_device_t *ata_init_device(const uint16_t bus, const uint16_t ctrl)
 	dev->bus = bus;
 	dev->ctrl = ctrl;
 	if(ata_check_floating_bus(bus) || !ata_identify(dev, init_data)
-		|| (dev->sectors = ata_lba28_sectors(init_data)) != 0)
+		|| (dev->sectors = ata_lba28_sectors(init_data)) == 0)
 	{
 		cache_free(ata_cache, dev);
 		return NULL;

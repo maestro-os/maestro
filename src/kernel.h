@@ -8,6 +8,7 @@
 
 # include <libc/string.h>
 # ifdef KERNEL_DEBUG
+#  include <libc/errno.h>
 #  include <libc/stdio.h>
 # endif
 

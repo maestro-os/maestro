@@ -2,30 +2,43 @@
 
 // TODO Spinlock on each disk?
 
-static void partition_table_create(disk_t *dev)
+static void partition_table_create(disk_t *disk)
 {
 	// TODO Create GPT instead
-	mbr_init(dev);
+	mbr_init(disk);
 }
 
 void partition_read_table(disk_t *disk)
 {
+	char buff[ATA_SECTOR_SIZE];
+	mbr_t *mbr;
+
 	if(!disk)
 		return;
-	// TODO If no partition table, create one (GPT)
-	// TODO
+	disk_select_disk(disk);
+	if(disk_read(0, buff, 1) < 0)
+	{
+		// TODO
+	}
+	mbr = (void *) buff + MBR_PARTITION_TABLE_OFFSET;
+	if(mbr->boot_signature != MBR_SIGNATURE)
+	{
+		partition_table_create(disk);
+		return;
+	}
+	// TODO Check for GPT
 }
 
 partition_t *partition_create(disk_t *dev,
 	const partition_type_t partition_type)
 {
 	if(!dev)
-		return 0;
-	// TODO If no partition table, create one (GPT)
+		return NULL;
+	// TODO If no partition table, create one
 	(void) partition_table_create;
 	// TODO
 	(void) partition_type;
-	return 0;
+	return NULL;
 }
 
 partition_t *partition_get(disk_t *dev, const partition_id_t id)
