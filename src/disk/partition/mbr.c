@@ -1,5 +1,7 @@
 #include <disk/partition/partition.h>
 
+// TODO Spinlock on disk?
+
 void mbr_etop(const mbr_entry_t entry, mbr_partition_t *partition)
 {
 	if(!entry || !partition)
@@ -33,7 +35,7 @@ void mbr_init(mbr_t *mbr)
 	mbr->boot_signature = MBR_SIGNATURE;
 }
 
-int mbr_read(ata_device_t *dev, const size_t lba, mbr_partition_t *partitions)
+int mbr_read(disk_t *dev, const size_t lba, mbr_partition_t *partitions)
 {
 	char buff[ATA_SECTOR_SIZE];
 	mbr_t mbr;
@@ -41,7 +43,8 @@ int mbr_read(ata_device_t *dev, const size_t lba, mbr_partition_t *partitions)
 
 	if(!dev || !partitions)
 		return -1;
-	if(ata_read(dev, lba, buff, 1) < 0)
+	disk_select_disk(dev);
+	if(disk_read(lba, buff, 1) < 0)
 		return -1;
 	memcpy(&mbr, buff + MBR_PARTITION_TABLE_OFFSET, sizeof(mbr_t));
 	if(mbr.boot_signature != MBR_SIGNATURE)
@@ -51,18 +54,19 @@ int mbr_read(ata_device_t *dev, const size_t lba, mbr_partition_t *partitions)
 	return 0;
 }
 
-int mbr_write(ata_device_t *dev, const size_t lba, mbr_t *mbr)
+int mbr_write(disk_t *dev, const size_t lba, mbr_t *mbr)
 {
 	char buff[ATA_SECTOR_SIZE];
 
 	if(!dev || !mbr)
 		return -1;
-	if(ata_read(dev, lba, buff, 1) < 0)
+	disk_select_disk(dev);
+	if(disk_read(lba, buff, 1) < 0)
 		return -1;
 	memcpy(buff + MBR_PARTITION_TABLE_OFFSET, mbr, sizeof(mbr_t));
 	if(mbr->boot_signature != MBR_SIGNATURE)
 		return -1;
-	if(ata_write(dev, lba, buff, 1) < 0)
+	if(disk_write(lba, buff, 1) < 0)
 		return -1;
 	return 0;
 }
