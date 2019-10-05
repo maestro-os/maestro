@@ -35,13 +35,7 @@ typedef struct
 
 typedef struct disk disk_t;
 typedef uint16_t partition_id_t;
-
-typedef enum
-{
-	PARTITION_TYPE_UNKNOWN,
-	PARTITION_TYPE_MBR,
-	PARTITION_TYPE_GPT
-} partition_type_t;
+typedef uint8_t partition_type_t;
 
 typedef struct partition
 {

@@ -18,7 +18,7 @@ void partition_read_table(disk_t *disk)
 	disk_select_disk(disk);
 	if(disk_read(0, buff, 1) < 0)
 	{
-		// TODO
+		// TODO Error
 	}
 	mbr = (void *) buff + MBR_PARTITION_TABLE_OFFSET;
 	if(mbr->boot_signature != MBR_SIGNATURE)
@@ -32,11 +32,27 @@ void partition_read_table(disk_t *disk)
 partition_t *partition_create(disk_t *dev,
 	const partition_type_t partition_type)
 {
+	char buff[ATA_SECTOR_SIZE];
+	mbr_t *mbr;
+
 	if(!dev)
 		return NULL;
-	// TODO If no partition table, create one
-	(void) partition_table_create;
-	// TODO
+	disk_select_disk(disk);
+	if(disk_read(0, buff, 1) < 0)
+	{
+		// TODO Error
+	}
+	mbr = (void *) buff + MBR_PARTITION_TABLE_OFFSET;
+	if(mbr->boot_signature != MBR_SIGNATURE)
+	{
+		partition_table_create(disk);
+		if(disk_read(0, buff, 1) < 0)
+		{
+			// TODO Error
+		}
+	}
+	// TODO Check for GPT
+	// TODO Create partition
 	(void) partition_type;
 	return NULL;
 }

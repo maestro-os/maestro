@@ -71,8 +71,9 @@ static inline int ata_is_busy(const uint16_t bus)
 static inline void ata_wait_ready(ata_device_t *dev)
 {
 	dev->wait_irq = 1;
-	while(dev->wait_irq && !ata_is_ready(dev->bus))
-		kernel_wait();
+	// TODO Fix: IRQ not sent
+	while(/*dev->wait_irq && */!ata_is_ready(dev->bus))
+		/*kernel_wait()*/;
 	dev->wait_irq = 0;
 }
 
@@ -212,8 +213,6 @@ int ata_read(ata_device_t *dev, const size_t lba,
 			*((uint16_t *) buff) = inw(dev->bus + ATA_REG_DATA);
 			buff += sizeof(uint16_t);
 		}
-		if(i >= sectors)
-			ata_wait(dev->ctrl);
 	}
 	spin_unlock(&dev->spinlock);
 	return 0;
