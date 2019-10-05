@@ -16,6 +16,8 @@ typedef struct partition partition_t;
 
 typedef struct disk
 {
+	struct disk *next;
+
 	disk_type_t type;
 	void *disk_struct;
 
@@ -28,8 +30,9 @@ typedef struct disk
 typedef int (*disk_read_func_t)(void *, size_t, void *, size_t);
 typedef int (*disk_write_func_t)(void *, size_t, const void *, size_t);
 
-// TODO Use PCI to make disks list
+extern disk_t *disks;
 
+void disk_init(void);
 void disk_select_disk(const disk_t *disk);
 void disk_select_partition(const partition_t *partition);
 int disk_read(size_t sector, char *buff, size_t sectors_count);

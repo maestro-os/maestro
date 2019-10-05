@@ -1,10 +1,10 @@
 #include <pic/pic.h>
-#include <ps2/ps2.h>
+#include <keyboard/ps2/ps2.h>
 #include <disk/ata/ata.h>
 
 void irq1_handler()
 {
-	ps2_keyboard_event(inb(0x60));
+	ps2_keyboard_event();
 	pic_EOI(0x1);
 }
 

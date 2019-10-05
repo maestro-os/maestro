@@ -6,9 +6,10 @@
 #include <pit/pit.h>
 #include <acpi/acpi.h>
 #include <pci/pci.h>
-#include <process/process.h>
-#include <device/device.h>
+#include <keyboard/keyboard.h>
 #include <disk/ata/ata.h>
+#include <disk/disk.h>
+#include <process/process.h>
 
 #include <libc/stdio.h>
 
@@ -140,6 +141,9 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 
 	printf("Drivers initialization...\n");
 	init_drivers();
+
+	printf("Disks initialization...\n");
+	disk_init();
 
 	printf("Keyboard initialization...\n");
 	keyboard_init();

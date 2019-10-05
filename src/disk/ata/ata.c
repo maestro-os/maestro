@@ -2,24 +2,17 @@
 #include <memory/memory.h>
 #include <libc/errno.h>
 
-static cache_t *devices_cache;
-ata_device_t *devices = NULL;
+static cache_t *ata_cache;
+ata_device_t *ata_devices = NULL;
 
 // TODO Handle bad sectors
 
 __attribute__((cold))
 void ata_init(void)
 {
-	if(!(devices_cache = cache_create("ata_devices", sizeof(ata_device_t), 32,
+	if(!(ata_cache = cache_create("ata", sizeof(ata_device_t), 32,
 		bzero, NULL)))
-	{
 		PANIC("Failed to initialize ATA driver!", 0);
-		return;
-	}
-	devices = ata_init_device(ATA_PRIMARY_BUS, ATA_PRIMARY_CTRL);
-	// TODO Check error
-	// TODO Use PCI to get every devices
-	// TODO Printfs
 }
 
 __attribute__((hot))
@@ -34,7 +27,7 @@ void ata_irq(void)
 	ata_device_t *dev;
 
 	// TODO Check which device did the interrupt
-	dev = devices;
+	dev = ata_devices;
 	dev->wait_irq = 0;
 }
 
@@ -43,7 +36,7 @@ void ata_err_check(void)
 {
 	ata_device_t *d;
 
-	d = devices;
+	d = ata_devices;
 	while(d)
 	{
 		if(d->wait_irq && ata_has_err(d))
@@ -132,23 +125,37 @@ static inline int ata_supports_lba48(const uint16_t *data)
 	return (data[83] & 0b10000000000);
 }
 
+static void insert_device(ata_device_t *dev)
+{
+	ata_device_t *d;
+
+	if((d = ata_devices))
+	{
+		while(d->next)
+			d = d->next;
+		d->next = dev;
+	}
+	else
+		ata_devices = dev;
+}
+
 ata_device_t *ata_init_device(const uint16_t bus, const uint16_t ctrl)
 {
 	ata_device_t *dev;
 	uint16_t init_data[256];
 
-	if(!(dev = cache_alloc(devices_cache)))
-		return NULL;
+	if(!(dev = cache_alloc(ata_cache)))
+		return NULL; // TODO Panic?
 	dev->bus = bus;
 	dev->ctrl = ctrl;
 	if(ata_check_floating_bus(bus) || !ata_identify(dev, init_data)
 		|| (dev->sectors = ata_lba28_sectors(init_data)) != 0)
 	{
-		cache_free(devices_cache, dev);
+		cache_free(ata_cache, dev);
 		return NULL;
 	}
-	if(ata_supports_lba48(init_data))
-		dev->lba48 = 1;
+	dev->lba48 = ata_supports_lba48(init_data);
+	insert_device(dev);
 	return dev;
 }
 

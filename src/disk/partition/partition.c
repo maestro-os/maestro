@@ -2,12 +2,27 @@
 
 // TODO Spinlock on each disk?
 
+static void partition_table_create(disk_t *dev)
+{
+	// TODO Create GPT instead
+	mbr_init(dev);
+}
+
+void partition_read_table(disk_t *disk)
+{
+	if(!disk)
+		return;
+	// TODO If no partition table, create one (GPT)
+	// TODO
+}
+
 partition_t *partition_create(disk_t *dev,
 	const partition_type_t partition_type)
 {
 	if(!dev)
 		return 0;
 	// TODO If no partition table, create one (GPT)
+	(void) partition_table_create;
 	// TODO
 	(void) partition_type;
 	return 0;

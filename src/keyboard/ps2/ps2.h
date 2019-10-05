@@ -35,6 +35,6 @@ void ps2_set_keyboard_hook(void (*hook)(const uint8_t));
 int8_t ps2_get_leds_state(void);
 void ps2_set_leds_state(const int8_t state);
 
-void ps2_keyboard_event(const uint8_t code);
+void ps2_keyboard_event(void);
 
 #endif

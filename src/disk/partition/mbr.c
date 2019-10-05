@@ -27,12 +27,20 @@ void mbr_ptoe(mbr_partition_t *partition, mbr_entry_t entry)
 	*(uint32_t *) (entry + 12) = partition->sectors;
 }
 
-void mbr_init(mbr_t *mbr)
+void mbr_init(disk_t *dev)
 {
-	if(!mbr)
+	char buff[ATA_SECTOR_SIZE];
+	mbr_t *mbr;
+
+	if(!dev)
 		return;
+	disk_select_disk(dev);
+	if(disk_read(0, buff, 1) < 0)
+		return;
+	mbr = (void *) buff + MBR_PARTITION_TABLE_OFFSET;
 	bzero(mbr + 6, sizeof(mbr) - 8);
 	mbr->boot_signature = MBR_SIGNATURE;
+	disk_write(0, buff, 1);
 }
 
 int mbr_read(disk_t *dev, const size_t lba, mbr_partition_t *partitions)

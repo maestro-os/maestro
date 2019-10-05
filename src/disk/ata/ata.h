@@ -72,7 +72,7 @@ typedef struct ata_device
 	int wait_irq;
 } ata_device_t;
 
-extern ata_device_t *devices;
+extern ata_device_t *ata_devices;
 
 void ata_init(void);
 void ata_irq(void);

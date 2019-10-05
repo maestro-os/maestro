@@ -1,4 +1,4 @@
-#include <ps2/ps2.h>
+#include <keyboard/ps2/ps2.h>
 
 static void (*keyboard_hook)(const uint8_t) = NULL;
 static int8_t leds_state = 0;
@@ -176,10 +176,10 @@ void ps2_set_keyboard_hook(void (*hook)(const uint8_t))
 }
 
 __attribute__((hot))
-void ps2_keyboard_event(const uint8_t code)
+void ps2_keyboard_event(void)
 {
 	if(keyboard_hook)
-		keyboard_hook(code);
+		keyboard_hook(inb(0x60));
 }
 
 __attribute__((hot))

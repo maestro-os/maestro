@@ -3,7 +3,7 @@
 
 # include <kernel.h>
 # include <vga/vga.h>
-# include <device/device.h>
+# include <keyboard/keyboard.h>
 # include <libc/string.h>
 # include <util/util.h>
 
