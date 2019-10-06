@@ -53,14 +53,9 @@ typedef struct partition
 // TODO Implement Extended Partitions
 // TODO Implement GPT
 
+void mbr_create(disk_t *dev);
 void mbr_etop(const mbr_entry_t entry, mbr_partition_t *partition);
 void mbr_ptoe(mbr_partition_t *partition, void *entry);
-
-void mbr_init(disk_t *dev);
-
-// TODO Remove?
-int mbr_read(disk_t *dev, size_t lba, mbr_partition_t *partitions);
-int mbr_write(disk_t *dev, size_t lba, mbr_t *mbr);
 
 void partition_init(void);
 void partition_read_table(disk_t *disk);

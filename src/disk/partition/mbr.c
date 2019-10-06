@@ -2,6 +2,22 @@
 
 // TODO Spinlock on disk?
 
+void mbr_create(disk_t *dev)
+{
+	char buff[ATA_SECTOR_SIZE];
+	mbr_t *mbr;
+
+	if(!dev)
+		return;
+	disk_select_disk(dev);
+	if(disk_read(0, buff, 1) < 0)
+		return; // TODO Panic?
+	mbr = (void *) buff + MBR_PARTITION_TABLE_OFFSET;
+	bzero(mbr + 6, sizeof(mbr) - 8);
+	mbr->boot_signature = MBR_SIGNATURE;
+	disk_write(0, buff, 1); // TODO Protect
+}
+
 void mbr_etop(const mbr_entry_t entry, mbr_partition_t *partition)
 {
 	if(!entry || !partition)
@@ -28,56 +44,4 @@ void mbr_ptoe(mbr_partition_t *partition, void *entry)
 	memcpy(e + 5, ((void *) &partition->chs_addr_last) + 1, 3);
 	*(uint32_t *) (e + 8) = partition->start_lba;
 	*(uint32_t *) (e + 12) = partition->sectors;
-}
-
-void mbr_init(disk_t *dev)
-{
-	char buff[ATA_SECTOR_SIZE];
-	mbr_t *mbr;
-
-	if(!dev)
-		return;
-	disk_select_disk(dev);
-	if(disk_read(0, buff, 1) < 0)
-		return; // TODO Panic?
-	mbr = (void *) buff + MBR_PARTITION_TABLE_OFFSET;
-	bzero(mbr + 6, sizeof(mbr) - 8);
-	mbr->boot_signature = MBR_SIGNATURE;
-	disk_write(0, buff, 1); // TODO Protect
-}
-
-int mbr_read(disk_t *dev, const size_t lba, mbr_partition_t *partitions)
-{
-	char buff[ATA_SECTOR_SIZE];
-	mbr_t mbr;
-	size_t i;
-
-	if(!dev || !partitions)
-		return -1;
-	disk_select_disk(dev);
-	if(disk_read(lba, buff, 1) < 0)
-		return -1;
-	memcpy(&mbr, buff + MBR_PARTITION_TABLE_OFFSET, sizeof(mbr_t));
-	if(mbr.boot_signature != MBR_SIGNATURE)
-		return -1;
-	for(i = 0; i < MBR_ENTRIES_COUNT; ++i)
-		mbr_etop(mbr.entries[i], partitions + i);
-	return 0;
-}
-
-int mbr_write(disk_t *dev, const size_t lba, mbr_t *mbr)
-{
-	char buff[ATA_SECTOR_SIZE];
-
-	if(!dev || !mbr)
-		return -1;
-	disk_select_disk(dev);
-	if(disk_read(lba, buff, 1) < 0)
-		return -1;
-	memcpy(buff + MBR_PARTITION_TABLE_OFFSET, mbr, sizeof(mbr_t));
-	if(mbr->boot_signature != MBR_SIGNATURE)
-		return -1;
-	if(disk_write(lba, buff, 1) < 0)
-		return -1;
-	return 0;
 }
