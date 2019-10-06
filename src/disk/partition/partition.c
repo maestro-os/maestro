@@ -87,6 +87,9 @@ void partition_read_table(disk_t *disk)
 		mbr_to_partition(disk, i, mbr->entries[i]); // TODO Check for errno
 }
 
+// TODO Remove
+#include <tty/tty.h>
+
 partition_t *partition_create(disk_t *dev, const partition_type_t type)
 {
 	char buff[ATA_SECTOR_SIZE];
@@ -98,32 +101,35 @@ partition_t *partition_create(disk_t *dev, const partition_type_t type)
 		return NULL;
 	disk_select_disk(dev);
 	if(disk_read(0, buff, 1) < 0)
-	{
-		// TODO Error
-	}
+		goto fail;
 	mbr = (void *) buff + MBR_PARTITION_TABLE_OFFSET;
 	if(mbr->boot_signature != MBR_SIGNATURE)
 	{
 		partition_table_create(dev);
 		if(disk_read(0, buff, 1) < 0)
-		{
-			// TODO Error
-		}
+			goto fail;
 	}
 	// TODO Check for GPT
 	if(!(partition = cache_alloc(partitions_cache))
 		|| !(mbr_partition = cache_alloc(mbr_partitions_cache)))
-	{
-		cache_free(partitions_cache, partition);
-		return NULL;
-	}
+		goto fail;
 	partition->id = 0; // TODO
 	partition->type = type;
 	partition->partition_struct = mbr_partition;
 	partition->start_lba = 0; // TODO
 	partition->sectors = 0; // TODO
+	mbr_partition->partition_type = type;
+	mbr_partition->start_lba = 0; // TODO
+	mbr_partition->sectors = 0; // TODO
+	mbr_ptoe(mbr_partition, mbr->entries + partition->id);
+	if(disk_write(0, buff, 1) < 0)
+		goto fail;
 	insert_partition(dev, partition);
 	return partition;
+
+fail:
+	cache_free(partitions_cache, partition);
+	return NULL;
 }
 
 partition_t *partition_get(disk_t *dev, const partition_id_t id)

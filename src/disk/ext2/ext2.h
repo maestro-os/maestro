@@ -5,6 +5,7 @@
 # include <disk/disk.h>
 # include <cmos/cmos.h>
 
+# define EXT2_PARTITION_TYPE		0x83
 # define EXT2_BEGIN_SECTOR			2
 # define EXT2_SUPERBLOCK_SECTORS	2
 

@@ -54,7 +54,7 @@ typedef struct partition
 // TODO Implement GPT
 
 void mbr_etop(const mbr_entry_t entry, mbr_partition_t *partition);
-void mbr_ptoe(mbr_partition_t *partition, mbr_entry_t entry);
+void mbr_ptoe(mbr_partition_t *partition, void *entry);
 
 void mbr_init(disk_t *dev);
 

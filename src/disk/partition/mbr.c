@@ -15,16 +15,19 @@ void mbr_etop(const mbr_entry_t entry, mbr_partition_t *partition)
 	partition->sectors = *(uint32_t *) (entry + 12);
 }
 
-void mbr_ptoe(mbr_partition_t *partition, mbr_entry_t entry)
+void mbr_ptoe(mbr_partition_t *partition, void *entry)
 {
+	char *e;
+
 	if(!partition || !entry)
 		return;
-	entry[0] = partition->attrs;
-	memcpy(entry + 1, ((void *) &partition->chs_addr) + 1, 3);
-	entry[4] = partition->partition_type;
-	memcpy(entry + 5, ((void *) &partition->chs_addr_last) + 1, 3);
-	*(uint32_t *) (entry + 8) = partition->start_lba;
-	*(uint32_t *) (entry + 12) = partition->sectors;
+	e = entry;
+	e[0] = partition->attrs;
+	memcpy(e + 1, ((void *) &partition->chs_addr) + 1, 3);
+	e[4] = partition->partition_type;
+	memcpy(e + 5, ((void *) &partition->chs_addr_last) + 1, 3);
+	*(uint32_t *) (e + 8) = partition->start_lba;
+	*(uint32_t *) (e + 12) = partition->sectors;
 }
 
 void mbr_init(disk_t *dev)
