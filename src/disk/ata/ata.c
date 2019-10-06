@@ -182,7 +182,6 @@ int ata_get_type(const ata_device_t *dev)
 	return ATA_TYPE_UNKNOWN;
 }
 
-// TODO Set errnos
 int ata_read(ata_device_t *dev, const size_t lba,
 	void *buff, const size_t sectors)
 {
@@ -205,6 +204,7 @@ int ata_read(ata_device_t *dev, const size_t lba,
 		if(ata_has_err(dev))
 		{
 			// TODO Clear err?
+			errno = EIO;
 			spin_unlock(&dev->spinlock);
 			return -1;
 		}
@@ -213,12 +213,20 @@ int ata_read(ata_device_t *dev, const size_t lba,
 			*((uint16_t *) buff) = inw(dev->bus + ATA_REG_DATA);
 			buff += sizeof(uint16_t);
 		}
+		if(i + 1 < sectors)
+			ata_wait(dev->bus);
 	}
 	spin_unlock(&dev->spinlock);
 	return 0;
 }
 
-// TODO Set errnos
+static void ata_flush(ata_device_t *dev)
+{
+	ata_command(dev->bus, ATA_CMD_CACHE_FLUSH);
+	while(inb(dev->bus + ATA_REG_STATUS) & ATA_STATUS_BSY)
+		;
+}
+
 int ata_write(ata_device_t *dev, const size_t lba,
 	const void *buff, const size_t sectors)
 {
@@ -241,6 +249,7 @@ int ata_write(ata_device_t *dev, const size_t lba,
 		if(ata_has_err(dev))
 		{
 			// TODO Clear err?
+			errno = EIO;
 			spin_unlock(&dev->spinlock);
 			return -1;
 		}
@@ -249,8 +258,10 @@ int ata_write(ata_device_t *dev, const size_t lba,
 			outw(dev->bus + ATA_REG_DATA, *((uint16_t *) buff));
 			buff += sizeof(uint16_t);
 		}
+		if(i + 1 < sectors)
+			ata_wait(dev->bus);
 	}
-	ata_command(dev->bus, ATA_CMD_CACHE_FLUSH);
+	ata_flush(dev);
 	spin_unlock(&dev->spinlock);
 	return 0;
 }
