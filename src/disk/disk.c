@@ -3,7 +3,7 @@
 #include <libc/errno.h>
 #include <libc/math.h>
 
-static cache_t *disks_cache, *partitions_cache;
+static cache_t *disks_cache = NULL, *partitions_cache = NULL;
 disk_t *disks = NULL;
 
 static void *current_device = NULL;
@@ -54,6 +54,7 @@ void disk_init(void)
 	if(!(partitions_cache = cache_create("partitions", sizeof(partition_t),
 		32, bzero, NULL)))
 		PANIC("Failed to initialize disks manager!", 0);
+	partition_init();
 	// TODO Use PCI to make disks list
 	disk_new_ata(ATA_PRIMARY_BUS, ATA_PRIMARY_CTRL);
 }

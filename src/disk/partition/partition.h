@@ -57,11 +57,14 @@ void mbr_etop(const mbr_entry_t entry, mbr_partition_t *partition);
 void mbr_ptoe(mbr_partition_t *partition, mbr_entry_t entry);
 
 void mbr_init(disk_t *dev);
+
+// TODO Remove?
 int mbr_read(disk_t *dev, size_t lba, mbr_partition_t *partitions);
 int mbr_write(disk_t *dev, size_t lba, mbr_t *mbr);
 
+void partition_init(void);
 void partition_read_table(disk_t *disk);
-partition_t *partition_create(disk_t *dev, partition_type_t partition_type);
+partition_t *partition_create(disk_t *dev, partition_type_t type);
 partition_t *partition_get(disk_t *dev, partition_id_t id);
 void parition_move(partition_t *partition, size_t lba);
 void parition_resize(partition_t *partition, size_t sectors);
