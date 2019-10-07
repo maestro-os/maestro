@@ -126,7 +126,7 @@ struct ext2_inode
 	uint32_t disk_sectors;
 	uint32_t flags;
 	uint32_t os_specific_1;
-	uint32_t direct_block_pointers[12]
+	uint32_t direct_block_pointers[12];
 	uint32_t singly_indirect_block;
 	uint32_t doubly_indirect_block;
 	uint32_t triply_indirect_block;

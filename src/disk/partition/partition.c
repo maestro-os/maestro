@@ -20,7 +20,7 @@ void partition_init(void)
 static void partition_table_create(disk_t *disk)
 {
 	// TODO Create GPT instead
-	mbr_create(disk);
+	mbr_create_table(disk);
 }
 
 static void insert_partition(disk_t *disk, partition_t *partition)

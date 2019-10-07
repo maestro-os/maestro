@@ -35,7 +35,7 @@ typedef struct
 
 typedef struct disk disk_t;
 
-typedef struct
+typedef enum
 {
 	PARTITION_TABLE_TYPE_MBR,
 	PARTITION_TABLE_TYPE_GPT
