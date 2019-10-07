@@ -1,6 +1,8 @@
 #include <disk/partition/partition.h>
 #include <memory/memory.h>
 
+// TODO Move MBR related stuff outside of this file
+
 static cache_t *partitions_cache = NULL, *mbr_partitions_cache = NULL;
 
 // TODO Spinlock on each disk?
@@ -87,9 +89,6 @@ void partition_read_table(disk_t *disk)
 		mbr_to_partition(disk, i, mbr->entries[i]); // TODO Check for errno
 }
 
-// TODO Remove
-#include <tty/tty.h>
-
 partition_t *partition_create(disk_t *dev, const partition_type_t type)
 {
 	char buff[ATA_SECTOR_SIZE];
@@ -113,9 +112,10 @@ partition_t *partition_create(disk_t *dev, const partition_type_t type)
 	if(!(partition = cache_alloc(partitions_cache))
 		|| !(mbr_partition = cache_alloc(mbr_partitions_cache)))
 		goto fail;
+	partition->table_type = PARTITION_TABLE_TYPE_MBR;
+	partition->partition_struct = mbr_partition;
 	partition->id = 0; // TODO
 	partition->type = type;
-	partition->partition_struct = mbr_partition;
 	partition->start_lba = 0; // TODO
 	partition->sectors = 0; // TODO
 	mbr_partition->partition_type = type;
@@ -148,22 +148,30 @@ partition_t *partition_get(disk_t *dev, const partition_id_t id)
 	return NULL;
 }
 
-// TODO Check if overlapping
-void parition_move(partition_t *partition, const size_t lba)
+void partition_move(partition_t *partition, const size_t lba)
 {
-	if(!partition ||!partition->disk)
+	if(!partition ||!partition->disk || !partition->partition_struct)
 		return;
-	// TODO
-	(void) lba;
+	partition->start_lba = lba;
+	if(partition->table_type == PARTITION_TABLE_TYPE_MBR)
+	{
+		((mbr_partition_t *) partition->partition_struct)->start_lba = lba;
+		// TODO Rewrite on disk
+	}
+	// TODO Handle GPT
 }
 
-// TODO Check if overlapping
-void parition_resize(partition_t *partition, const size_t sectors)
+void partition_resize(partition_t *partition, const size_t sectors)
 {
-	if(!partition ||!partition->disk)
+	if(!partition || !partition->disk || !partition->partition_struct)
 		return;
-	// TODO
-	(void) sectors;
+	partition->sectors = sectors;
+	if(partition->table_type == PARTITION_TABLE_TYPE_MBR)
+	{
+		((mbr_partition_t *) partition->partition_struct)->sectors = sectors;
+		// TODO Rewrite on disk
+	}
+	// TODO Handle GPT
 }
 
 void partition_remove(partition_t *partition)

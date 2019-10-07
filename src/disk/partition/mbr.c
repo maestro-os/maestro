@@ -2,7 +2,7 @@
 
 // TODO Spinlock on disk?
 
-void mbr_create(disk_t *dev)
+void mbr_create_table(disk_t *dev)
 {
 	char buff[ATA_SECTOR_SIZE];
 	mbr_t *mbr;

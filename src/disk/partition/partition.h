@@ -34,6 +34,13 @@ typedef struct
 } mbr_partition_t;
 
 typedef struct disk disk_t;
+
+typedef struct
+{
+	PARTITION_TABLE_TYPE_MBR,
+	PARTITION_TABLE_TYPE_GPT
+} partition_table_type_t;
+
 typedef uint16_t partition_id_t;
 typedef uint8_t partition_type_t;
 
@@ -42,10 +49,11 @@ typedef struct partition
 	struct partition *next;
 	disk_t *disk;
 
-	partition_id_t id;
-	partition_type_t type;
+	partition_table_type_t table_type;
 	void *partition_struct;
 
+	partition_id_t id;
+	partition_type_t type;
 	size_t start_lba;
 	size_t sectors;
 } partition_t;
@@ -53,7 +61,7 @@ typedef struct partition
 // TODO Implement Extended Partitions
 // TODO Implement GPT
 
-void mbr_create(disk_t *dev);
+void mbr_create_table(disk_t *dev);
 void mbr_etop(const mbr_entry_t entry, mbr_partition_t *partition);
 void mbr_ptoe(mbr_partition_t *partition, void *entry);
 
@@ -61,8 +69,8 @@ void partition_init(void);
 void partition_read_table(disk_t *disk);
 partition_t *partition_create(disk_t *dev, partition_type_t type);
 partition_t *partition_get(disk_t *dev, partition_id_t id);
-void parition_move(partition_t *partition, size_t lba);
-void parition_resize(partition_t *partition, size_t sectors);
+void partition_move(partition_t *partition, size_t lba);
+void partition_resize(partition_t *partition, size_t sectors);
 void partition_remove(partition_t *partition);
 
 #endif

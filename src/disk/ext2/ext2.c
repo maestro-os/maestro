@@ -33,6 +33,11 @@ static int ext2_check_superblock(const ext2_superblock_t *superblock)
 	return (readonly ? MOUNT_STATE_READONLY : MOUNT_STATE_MOUNTED);
 }
 
+void ext2_create(void)
+{
+	// TODO
+}
+
 int ext2_mount(void)
 {
 	char buff[ATA_SECTOR_SIZE * EXT2_SUPERBLOCK_SECTORS];
