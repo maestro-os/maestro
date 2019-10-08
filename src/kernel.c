@@ -6,16 +6,16 @@
 #include <pit/pit.h>
 #include <acpi/acpi.h>
 #include <pci/pci.h>
-#include <keyboard/keyboard.h>
+#include <cmos/cmos.h>
 #include <disk/ata/ata.h>
 #include <disk/disk.h>
+#include <keyboard/keyboard.h>
 #include <process/process.h>
 
 #include <libc/stdio.h>
 
 // TODO temporary
-#include <cmos/cmos.h>
-#include <pic/pic.h>
+#include <disk/ext2/ext2.h>
 #include <libc/errno.h>
 
 static driver_t drivers[] = {
@@ -155,12 +155,21 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	process_init();
 
 	// TODO Remove
-	CLI();
+	/*CLI();
 	for(size_t i = 0; i < 1; ++i)
-		new_process(NULL, test_process);
+		new_process(NULL, test_process);*/
 
 	// TODO Remove
 	print_mem_usage();
+
+	partition_create(disks, EXT2_PARTITION_TYPE);
+
+	char buff[ATA_SECTOR_SIZE];
+	bzero(buff, sizeof(buff));
+	disk_select_disk(disks);
+	if(disk_read(0, buff, 1) < 0)
+		printf("disk read err\n");
+	tty_write(buff, sizeof(buff), current_tty);
 
 	kernel_loop();
 }
