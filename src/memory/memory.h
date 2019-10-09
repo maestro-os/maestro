@@ -91,9 +91,9 @@ extern void *cr2_get(void);
 extern void *cr3_get(void);
 extern void paging_disable(void);
 
-# ifdef KERNEL_DEBUG
 void get_memory_usage(mem_usage_t *usage);
-# endif
+# ifdef KERNEL_DEBUG
 void print_mem_usage(void);
+# endif
 
 #endif

@@ -73,7 +73,6 @@ void time_init(void)
 
 void time_update(void)
 {
-	printf("time update\n");
 	// TODO Update time with PIT
 	// TODO Use a variable to store approximation due to frequency of the PIT
 }

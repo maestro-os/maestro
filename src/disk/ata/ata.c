@@ -87,7 +87,7 @@ static inline void ata_select_drive(const ata_device_t *dev)
 	outb(dev->bus + ATA_REG_DRIVE, (dev->slave ? 0xa0 : 0xb0));
 }
 
-static inline int ata_identify(ata_device_t *dev, uint16_t *init_data)
+static int ata_identify(ata_device_t *dev, uint16_t *init_data)
 {
 	uint8_t status;
 	size_t i;
@@ -149,6 +149,7 @@ ata_device_t *ata_init_device(const uint16_t bus, const uint16_t ctrl)
 		return NULL; // TODO Panic?
 	dev->bus = bus;
 	dev->ctrl = ctrl;
+	bzero(init_data, sizeof(init_data));
 	if(ata_check_floating_bus(bus) || !ata_identify(dev, init_data)
 		|| (dev->sectors = ata_lba28_sectors(init_data)) == 0)
 	{

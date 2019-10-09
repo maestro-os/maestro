@@ -93,7 +93,7 @@ partition_t *partition_create(disk_t *dev, const partition_type_t type)
 {
 	char buff[ATA_SECTOR_SIZE];
 	mbr_t *mbr;
-	partition_t *partition;
+	partition_t *partition = NULL;
 	mbr_partition_t *mbr_partition;
 
 	if(!dev)

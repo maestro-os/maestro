@@ -13,7 +13,7 @@ void mbr_create_table(disk_t *dev)
 	if(disk_read(0, buff, 1) < 0)
 		return; // TODO Panic?
 	mbr = (void *) buff + MBR_PARTITION_TABLE_OFFSET;
-	bzero(mbr + 6, sizeof(mbr) - 8);
+	bzero((void *) mbr + 6, sizeof(mbr) - 8);
 	mbr->boot_signature = MBR_SIGNATURE;
 	disk_write(0, buff, 1); // TODO Protect
 }

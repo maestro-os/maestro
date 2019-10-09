@@ -159,8 +159,9 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	for(size_t i = 0; i < 1; ++i)
 		new_process(NULL, test_process);*/
 
-	// TODO Remove
+#ifdef KERNEL_DEBUG
 	print_mem_usage();
+#endif
 
 	partition_create(disks, EXT2_PARTITION_TYPE);
 

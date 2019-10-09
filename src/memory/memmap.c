@@ -1,4 +1,5 @@
 #include <memory/memory.h>
+#include <libc/stdio.h>
 
 size_t memory_maps_size = 0;
 size_t memory_maps_entry_size = 0;

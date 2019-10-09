@@ -1,4 +1,5 @@
 #include <memory/memory.h>
+#include <libc/stdio.h>
 
 static const char *units[] = {
 	"KB", "MB", "GB", "TB", "EB", "ZB", "YB"
