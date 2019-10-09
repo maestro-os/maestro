@@ -15,7 +15,8 @@ static aml_node_t *object(const char **src, size_t *len)
 
 static aml_node_t *term_obj(const char **src, size_t *len)
 {
-	return parse_either(src, len, 3, object, type1_opcode, type2_opcode);
+	return parse_either(src, len, 4, namespace_modifier_obj,
+		object, type1_opcode, type2_opcode);
 }
 
 static aml_node_t *term_list(const char **src, size_t *len)
@@ -24,11 +25,12 @@ static aml_node_t *term_list(const char **src, size_t *len)
 	size_t l;
 	aml_node_t *node, *n, *children = NULL, *last_child = NULL;
 
-	s = *src;
-	l = *len;
+	errno = 0;
 	if(!(node = NEW_NODE()))
 		return NULL;
-	errno = 0;
+	s = *src;
+	l = *len;
+	// TODO Do in recursive
 	while((n = term_obj(src, len)))
 	{
 		if(!last_child)

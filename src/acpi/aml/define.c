@@ -2,10 +2,23 @@
 
 static aml_node_t *def_alias(const char **src, size_t *len)
 {
-	// TODO
-	(void) src;
-	(void) len;
-	return NULL;
+	const char *s;
+	size_t l;
+	aml_node_t *node;
+
+	if(*len < 1 || **src != ALIAS_OP)
+		return NULL;
+	s = *src;
+	l = *len;
+	++(*src);
+	--(*len);
+	if(!(node = parse_node(src, len, 2, name_string, name_string)))
+	{
+		*src = s;
+		*len = l;
+		return NULL;
+	}
+	return node;
 }
 
 static aml_node_t *def_name(const char **src, size_t *len)

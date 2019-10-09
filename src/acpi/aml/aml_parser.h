@@ -6,6 +6,10 @@
 
 # define NEW_NODE()	(kmalloc_zero(sizeof(aml_node_t), 0))
 
+# define ALIAS_OP	0x06
+# define NAME_OP	0x08
+# define SCOPE_OP	0x10
+
 typedef struct aml_node
 {
 	struct aml_node *children;
@@ -29,6 +33,8 @@ aml_node_t *byte_data(const char **src, size_t *len);
 aml_node_t *word_data(const char **src, size_t *len);
 aml_node_t *dword_data(const char **src, size_t *len);
 aml_node_t *qword_data(const char **src, size_t *len);
+
+aml_node_t *name_string(const char **src, size_t *len);
 
 aml_node_t *def_block_header(const char **src, size_t *len);
 
