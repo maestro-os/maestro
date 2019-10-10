@@ -23,18 +23,44 @@ static aml_node_t *def_alias(const char **src, size_t *len)
 
 static aml_node_t *def_name(const char **src, size_t *len)
 {
-	// TODO
-	(void) src;
-	(void) len;
-	return NULL;
+	const char *s;
+	size_t l;
+	aml_node_t *node;
+
+	if(*len < 1 || **src != NAME_OP)
+		return NULL;
+	s = *src;
+	l = *len;
+	++(*src);
+	--(*len);
+	if(!(node = parse_node(src, len, 2, name_string, data_ref_object)))
+	{
+		*src = s;
+		*len = l;
+		return NULL;
+	}
+	return node;
 }
 
 static aml_node_t *def_scope(const char **src, size_t *len)
 {
-	// TODO
-	(void) src;
-	(void) len;
-	return NULL;
+	const char *s;
+	size_t l;
+	aml_node_t *node;
+
+	if(*len < 1 || **src != SCOPE_OP)
+		return NULL;
+	s = *src;
+	l = *len;
+	++(*src);
+	--(*len);
+	if(!(node = parse_node(src, len, 3, pkg_length, name_string, term_list)))
+	{
+		*src = s;
+		*len = l;
+		return NULL;
+	}
+	return node;
 }
 
 aml_node_t *namespace_modifier_obj(const char **src, size_t *len)

@@ -19,7 +19,7 @@ static aml_node_t *term_obj(const char **src, size_t *len)
 		object, type1_opcode, type2_opcode);
 }
 
-static aml_node_t *term_list(const char **src, size_t *len)
+aml_node_t *term_list(const char **src, size_t *len)
 {
 	const char *s;
 	size_t l;
