@@ -18,4 +18,7 @@ int strcmp(const char *s1, const char *s2);
 char *strcpy(char *dest, const char *src);
 size_t strlen(const char *s);
 
+char *strdup(const char *s);
+char *strndup(const char *s, size_t n);
+
 #endif

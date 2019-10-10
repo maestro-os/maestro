@@ -26,7 +26,7 @@ static aml_node_t *term_list(const char **src, size_t *len)
 	aml_node_t *node, *n, *children = NULL, *last_child = NULL;
 
 	errno = 0;
-	if(!(node = NEW_NODE()))
+	if(!(node = node_new(NULL, 0)))
 		return NULL;
 	s = *src;
 	l = *len;

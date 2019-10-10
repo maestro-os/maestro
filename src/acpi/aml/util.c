@@ -39,7 +39,7 @@ aml_node_t *parse_node(const char **src, size_t *len, const size_t n, ...)
 	aml_node_t *children, *node = NULL;
 
 	va_start(ap, n);
-	if(!(children = do_parse(src, len, n, ap)) || !(node = NEW_NODE()))
+	if(!(children = do_parse(src, len, n, ap)) || !(node = node_new(NULL, 0)))
 	{
 		ast_free(children);
 		return NULL;
@@ -104,6 +104,20 @@ aml_node_t *parse_either(const char **src, size_t *len, size_t n, ...)
 	return node;
 }
 
+aml_node_t *node_new(const char *data, const size_t length)
+{
+	aml_node_t *node;
+
+	if(!(node = kmalloc_zero(sizeof(aml_node_t), 0)))
+		return NULL;
+	if(!(node->data = strndup(data, length)))
+	{
+		kfree((void *) node, 0);
+		return NULL;
+	}
+	return node;
+}
+
 // TODO Add a `last_child` variable into node for fast insertion
 void node_add_child(aml_node_t *node, aml_node_t *child)
 {
@@ -124,6 +138,9 @@ void node_add_child(aml_node_t *node, aml_node_t *child)
 
 void node_free(aml_node_t *node)
 {
+	if(!node)
+		return;
+	kfree((void *) node->data, 0);
 	kfree((void *) node, 0);
 }
 
