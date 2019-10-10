@@ -8,6 +8,9 @@
 # define NAME_OP	0x08
 # define SCOPE_OP	0x10
 
+# define DUAL_NAME_PREFIX	0x2e
+# define MULTI_NAME_PREFIX	0x2f
+
 # define IS_LEAD_NAME_CHAR(c)	(((c) >= 'A' && (c) <= 'Z') || (c) == '_')
 # define IS_DIGIT_CHAR(c)		((c) >= '0' && (c) <= '9')
 # define IS_NAME_CHAR(c)		(IS_LEAD_NAME_CHAR(c) || IS_DIGIT_CHAR(c))
@@ -20,6 +23,7 @@ typedef struct aml_node
 	struct aml_node *next;
 
 	const char *data;
+	size_t data_length;
 } aml_node_t;
 
 typedef aml_node_t *(*parse_func_t)(const char **, size_t *);

@@ -107,14 +107,18 @@ aml_node_t *parse_either(const char **src, size_t *len, size_t n, ...)
 aml_node_t *node_new(const char *data, const size_t length)
 {
 	aml_node_t *node;
+	char *buff;
 
 	if(!(node = kmalloc_zero(sizeof(aml_node_t), 0)))
 		return NULL;
-	if(!(node->data = strndup(data, length)))
+	if(!(buff = kmalloc(length, 0)))
 	{
 		kfree((void *) node, 0);
 		return NULL;
 	}
+	memcpy(buff, data, length);
+	node->data = buff;
+	node->data_length = length;
 	return node;
 }
 
