@@ -58,6 +58,32 @@ aml_node_t *parse_serie(const char **src, size_t *len, const size_t n, ...)
 	return do_parse(src, len, n, ap);
 }
 
+aml_node_t *parse_list(enum node_type type, const char **src, size_t *len,
+	parse_func_t f)
+{
+	aml_node_t *node, *n, *prev, *nod;
+
+	if(!(node = node_new(type, NULL, 0)))
+		return NULL;
+	if(!(n = f(src, len)))
+		return node;
+	node_add_child(node, n);
+	prev = node;
+	while((n = f(src, len)))
+	{
+		if(!(nod = node_new(type, NULL, 0)))
+		{
+			node_free(n);
+			ast_free(node);
+			return NULL;
+		}
+		node_add_child(nod, n);
+		node_add_child(prev, nod);
+		prev = nod;
+	}
+	return node;
+}
+
 aml_node_t *parse_string(const char **src, size_t *len,
 	size_t str_len, const parse_func_t f)
 {

@@ -359,6 +359,8 @@ typedef aml_node_t *(*parse_func_t)(const char **, size_t *);
 aml_node_t *parse_node(enum node_type type, const char **src, size_t *len,
 	size_t n, ...);
 aml_node_t *parse_serie(const char **src, size_t *len, size_t n, ...);
+aml_node_t *parse_list(enum node_type type, const char **src, size_t *len,
+	parse_func_t f);
 aml_node_t *parse_string(const char **src, size_t *len,
 	size_t str_len, parse_func_t f);
 aml_node_t *parse_either(const char **src, size_t *len, size_t n, ...);
@@ -373,7 +375,13 @@ aml_node_t *word_data(const char **src, size_t *len);
 aml_node_t *dword_data(const char **src, size_t *len);
 aml_node_t *qword_data(const char **src, size_t *len);
 
+aml_node_t *name_seg(const char **src, size_t *len);
 aml_node_t *name_string(const char **src, size_t *len);
+
+aml_node_t *access_type(const char **src, size_t *len);
+aml_node_t *access_attrib(const char **src, size_t *len);
+aml_node_t *extended_access_attrib(const char **src, size_t *len);
+aml_node_t *access_length(const char **src, size_t *len);
 
 aml_node_t *def_block_header(const char **src, size_t *len);
 

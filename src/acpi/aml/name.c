@@ -25,7 +25,7 @@ static aml_node_t *prefix_path(const char **src, size_t *len)
 	return node;
 }
 
-static aml_node_t *name_seg(const char **src, size_t *len)
+aml_node_t *name_seg(const char **src, size_t *len)
 {
 	char buff[4];
 	size_t i = 1;
