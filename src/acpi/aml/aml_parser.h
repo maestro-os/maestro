@@ -4,9 +4,11 @@
 # include <memory/memory.h>
 # include <libc/errno.h>
 
-# define ALIAS_OP	0x06
-# define NAME_OP	0x08
-# define SCOPE_OP	0x10
+# define ALIAS_OP		0x06
+# define NAME_OP		0x08
+# define SCOPE_OP		0x10
+# define EXT_OP_PREFIX	0x5b
+# define BANK_FIELD_OP	((char) 0x87)
 
 # define DUAL_NAME_PREFIX	0x2e
 # define MULTI_NAME_PREFIX	0x2f
@@ -68,7 +70,6 @@ enum node_type
 	ONE_OP,
 	ONES_OP,
 	REVISION_OP,
-	EXT_OP_PREFIX,
 	PKG_LENGTH,
 	PKG_LEAD_BYTE,
 	OBJECT,
@@ -83,7 +84,6 @@ enum node_type
 	DEF_SCOPE,
 	NAMED_OBJ,
 	DEF_BANK_FIELD,
-	BANK_FIELD_OP,
 	BANK_VALUE,
 	FIELD_FLAGS,
 	FIELD_LIST,
@@ -380,6 +380,12 @@ aml_node_t *def_block_header(const char **src, size_t *len);
 aml_node_t *pkg_length(const char **src, size_t *len);
 
 aml_node_t *namespace_modifier_obj(const char **src, size_t *len);
+
+aml_node_t *def_bank_field(const char **src, size_t *len);
+aml_node_t *bank_value(const char **src, size_t *len);
+
+aml_node_t *field_flags(const char **src, size_t *len);
+aml_node_t *field_list(const char **src, size_t *len);
 
 aml_node_t *named_obj(const char **src, size_t *len);
 
