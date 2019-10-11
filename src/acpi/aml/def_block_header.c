@@ -2,22 +2,22 @@
 
 static aml_node_t *table_signature(const char **src, size_t *len)
 {
-	return parse_node(src, len, 1, dword_data);
+	return parse_node(TABLE_SIGNATURE, src, len, 1, dword_data);
 }
 
 static aml_node_t *table_length(const char **src, size_t *len)
 {
-	return parse_node(src, len, 1, dword_data);
+	return parse_node(TABLE_LENGTH, src, len, 1, dword_data);
 }
 
 static aml_node_t *spec_compliance(const char **src, size_t *len)
 {
-	return parse_node(src, len, 1, byte_data);
+	return parse_node(SPEC_COMPLIANCE, src, len, 1, byte_data);
 }
 
 static aml_node_t *checksum(const char **src, size_t *len)
 {
-	return parse_node(src, len, 1, byte_data);
+	return parse_node(CHECK_SUM, src, len, 1, byte_data);
 }
 
 static aml_node_t *OEM_id_(const char **src, size_t *len)
@@ -27,7 +27,7 @@ static aml_node_t *OEM_id_(const char **src, size_t *len)
 
 static aml_node_t *OEM_id(const char **src, size_t *len)
 {
-	return parse_node(src, len, 1, OEM_id_);
+	return parse_node(OEM_ID, src, len, 1, OEM_id_);
 }
 
 static aml_node_t *OEM_tableid_(const char **src, size_t *len)
@@ -37,27 +37,27 @@ static aml_node_t *OEM_tableid_(const char **src, size_t *len)
 
 static aml_node_t *OEM_tableid(const char **src, size_t *len)
 {
-	return parse_node(src, len, 1, OEM_tableid_);
+	return parse_node(OEM_TABLE_ID, src, len, 1, OEM_tableid_);
 }
 
 static aml_node_t *OEM_revision(const char **src, size_t *len)
 {
-	return parse_node(src, len, 1, dword_data);
+	return parse_node(OEM_REVISION, src, len, 1, dword_data);
 }
 
 static aml_node_t *creator_id(const char **src, size_t *len)
 {
-	return parse_node(src, len, 1, dword_data);
+	return parse_node(CREATOR_ID, src, len, 1, dword_data);
 }
 
 static aml_node_t *creator_revision(const char **src, size_t *len)
 {
-	return parse_node(src, len, 1, dword_data);
+	return parse_node(CREATOR_REVISION, src, len, 1, dword_data);
 }
 
 aml_node_t *def_block_header(const char **src, size_t *len)
 {
-	return parse_node(src, len, 9, table_signature, table_length,
-		spec_compliance, checksum, OEM_id, OEM_tableid, OEM_revision,
-			creator_id, creator_revision);
+	return parse_node(DEF_BLOCK_HEADER, src, len,
+		9, table_signature, table_length, spec_compliance, checksum,
+			OEM_id, OEM_tableid, OEM_revision, creator_id, creator_revision);
 }

@@ -1,13 +1,5 @@
 #include <acpi/aml/aml_parser.h>
 
-static aml_node_t *named_obj(const char **src, size_t *len)
-{
-	// TODO
-	(void) src;
-	(void) len;
-	return NULL;
-}
-
 static aml_node_t *object(const char **src, size_t *len)
 {
 	return parse_either(src, len, 2, namespace_modifier_obj, named_obj);
@@ -15,8 +7,8 @@ static aml_node_t *object(const char **src, size_t *len)
 
 static aml_node_t *term_obj(const char **src, size_t *len)
 {
-	return parse_either(src, len, 4, namespace_modifier_obj,
-		object, type1_opcode, type2_opcode);
+	return parse_either(src, len,
+		4, namespace_modifier_obj, object, type1_opcode, type2_opcode);
 }
 
 aml_node_t *term_list(const char **src, size_t *len)
@@ -26,7 +18,7 @@ aml_node_t *term_list(const char **src, size_t *len)
 	aml_node_t *node, *n, *children = NULL, *last_child = NULL;
 
 	errno = 0;
-	if(!(node = node_new(NULL, 0)))
+	if(!(node = node_new(TERM_LIST, NULL, 0)))
 		return NULL;
 	s = *src;
 	l = *len;
@@ -55,7 +47,7 @@ aml_node_t *term_list(const char **src, size_t *len)
 
 static aml_node_t *aml_code(const char **src, size_t *len)
 {
-	return parse_node(src, len, 2, def_block_header, term_list);
+	return parse_node(AML_CODE, src, len, 2, def_block_header, term_list);
 }
 
 aml_node_t *aml_parse(const char *src, size_t len)

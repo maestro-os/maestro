@@ -12,7 +12,7 @@ static aml_node_t *def_alias(const char **src, size_t *len)
 	l = *len;
 	++(*src);
 	--(*len);
-	if(!(node = parse_node(src, len, 2, name_string, name_string)))
+	if(!(node = parse_node(DEF_ALIAS, src, len, 2, name_string, name_string)))
 	{
 		*src = s;
 		*len = l;
@@ -33,7 +33,8 @@ static aml_node_t *def_name(const char **src, size_t *len)
 	l = *len;
 	++(*src);
 	--(*len);
-	if(!(node = parse_node(src, len, 2, name_string, data_ref_object)))
+	if(!(node = parse_node(DEF_NAME, src, len,
+		2, name_string, data_ref_object)))
 	{
 		*src = s;
 		*len = l;
@@ -54,7 +55,8 @@ static aml_node_t *def_scope(const char **src, size_t *len)
 	l = *len;
 	++(*src);
 	--(*len);
-	if(!(node = parse_node(src, len, 3, pkg_length, name_string, term_list)))
+	if(!(node = parse_node(DEF_SCOPE, src, len,
+		3, pkg_length, name_string, term_list)))
 	{
 		*src = s;
 		*len = l;
@@ -65,5 +67,6 @@ static aml_node_t *def_scope(const char **src, size_t *len)
 
 aml_node_t *namespace_modifier_obj(const char **src, size_t *len)
 {
+	// TODO Make a node?
 	return parse_either(src, len, 3, def_alias, def_name, def_scope);
 }

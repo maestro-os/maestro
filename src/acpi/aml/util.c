@@ -33,13 +33,15 @@ fail:
 	return NULL;
 }
 
-aml_node_t *parse_node(const char **src, size_t *len, const size_t n, ...)
+aml_node_t *parse_node(enum node_type type, const char **src, size_t *len,
+	const size_t n, ...)
 {
 	va_list ap;
 	aml_node_t *children, *node = NULL;
 
 	va_start(ap, n);
-	if(!(children = do_parse(src, len, n, ap)) || !(node = node_new(NULL, 0)))
+	if(!(children = do_parse(src, len, n, ap))
+		|| !(node = node_new(type, NULL, 0)))
 	{
 		ast_free(children);
 		return NULL;
@@ -104,7 +106,7 @@ aml_node_t *parse_either(const char **src, size_t *len, size_t n, ...)
 	return node;
 }
 
-aml_node_t *node_new(const char *data, const size_t length)
+aml_node_t *node_new(enum node_type type, const char *data, size_t length)
 {
 	aml_node_t *node;
 	char *buff;
@@ -117,6 +119,7 @@ aml_node_t *node_new(const char *data, const size_t length)
 		return NULL;
 	}
 	memcpy(buff, data, length);
+	node->type = type;
 	node->data = buff;
 	node->data_length = length;
 	return node;

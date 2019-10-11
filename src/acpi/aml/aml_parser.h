@@ -30,6 +30,7 @@ enum node_type
 	OEM_REVISION,
 	CREATOR_ID,
 	CREATOR_REVISION,
+	ROOT_CHAR,
 	NAME_SEG,
 	NAME_STRING,
 	PREFIX_PATH,
@@ -58,8 +59,8 @@ enum node_type
 	BYTE_LIST,
 	BYTE_DATA,
 	WORD_DATA,
-	D_WORD_DATA,
-	Q_WORD_DATA,
+	DWORD_DATA,
+	QWORD_DATA,
 	ASCII_CHAR_LIST,
 	ASCII_CHAR,
 	NULL_CHAR,
@@ -355,13 +356,14 @@ typedef struct aml_node
 
 typedef aml_node_t *(*parse_func_t)(const char **, size_t *);
 
-aml_node_t *parse_node(const char **src, size_t *len, size_t n, ...);
+aml_node_t *parse_node(enum node_type type, const char **src, size_t *len,
+	size_t n, ...);
 aml_node_t *parse_serie(const char **src, size_t *len, size_t n, ...);
 aml_node_t *parse_string(const char **src, size_t *len,
 	size_t str_len, parse_func_t f);
 aml_node_t *parse_either(const char **src, size_t *len, size_t n, ...);
 
-aml_node_t *node_new(const char *data, size_t length);
+aml_node_t *node_new(enum node_type type, const char *data, size_t length);
 void node_add_child(aml_node_t *node, aml_node_t *child);
 void node_free(aml_node_t *node);
 void ast_free(aml_node_t *ast);
@@ -378,6 +380,8 @@ aml_node_t *def_block_header(const char **src, size_t *len);
 aml_node_t *pkg_length(const char **src, size_t *len);
 
 aml_node_t *namespace_modifier_obj(const char **src, size_t *len);
+
+aml_node_t *named_obj(const char **src, size_t *len);
 
 aml_node_t *data_ref_object(const char **src, size_t *len);
 
