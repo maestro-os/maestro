@@ -6,7 +6,8 @@ aml_node_t *def_bank_field(const char **src, size_t *len)
 	size_t l;
 	aml_node_t *node;
 
-	if(*len < 2 || (*src)[0] != EXT_OP_PREFIX || (*src)[1] != BANK_FIELD_OP)
+	if(*len < 2 || (*src)[0] != EXT_OP_PREFIX
+		|| (uint8_t) (*src)[1] != BANK_FIELD_OP)
 		return NULL;
 	s = *src;
 	l = *len;

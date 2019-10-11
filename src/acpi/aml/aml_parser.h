@@ -4,11 +4,15 @@
 # include <memory/memory.h>
 # include <libc/errno.h>
 
-# define ALIAS_OP		0x06
-# define NAME_OP		0x08
-# define SCOPE_OP		0x10
-# define EXT_OP_PREFIX	0x5b
-# define BANK_FIELD_OP	((char) 0x87)
+# define ALIAS_OP		((uint8_t) 0x06)
+# define NAME_OP		((uint8_t) 0x08)
+# define SCOPE_OP		((uint8_t) 0x10)
+# define EXT_OP_PREFIX	((uint8_t) 0x5b)
+# define BANK_FIELD_OP	((uint8_t) 0x87)
+# define CONTINUE_OP	((uint8_t) 0x9f)
+# define NOOP_OP		((uint8_t) 0xa3)
+# define BREAK_OP		((uint8_t) 0xa5)
+# define BREAKPOINT_OP	((uint8_t) 0xcc)
 
 # define DUAL_NAME_PREFIX	0x2e
 # define MULTI_NAME_PREFIX	0x2f
@@ -150,26 +154,20 @@ enum node_type
 	FIELD_ELEMENT,
 	TYPE1_OPCODE,
 	DEF_BREAK,
-	BREAK_OP,
 	DEF_BREAK_POINT,
-	BREAK_POINT_OP,
 	DEF_CONTINUE,
-	CONTINUE_OP,
 	DEF_ELSE,
-	ELSE_OP,
 	DEF_FATAL,
 	FATAL_OP,
 	FATAL_TYPE,
 	FATAL_CODE,
 	FATAL_ARG,
 	DEF_IF_ELSE,
-	IF_OP,
 	PREDICATE,
 	DEF_LOAD,
 	LOAD_OP,
 	DDB_HANDLE_OBJECT,
 	DEF_NOOP,
-	NOOP_OP,
 	DEF_NOTIFY,
 	NOTIFY_OP,
 	NOTIFY_OBJECT,
