@@ -35,10 +35,12 @@ static void disk_new_ata(const uint16_t bus, const uint16_t ctrl)
 	disk_t *disk;
 	ata_device_t *d;
 
+	if(!(d = ata_init_device(bus, ctrl)))
+		return;
 	if(!(disk = cache_alloc(disks_cache)))
 		PANIC("Cannot allocate memory for hard disk", 0);
 	disk->type = DISK_TYPE_ATA;
-	disk->disk_struct = (d = ata_init_device(bus, ctrl));
+	disk->disk_struct = d;
 	disk->sectors = d->sectors;
 	disk->sector_size = ATA_SECTOR_SIZE;
 	partition_read_table(disk);

@@ -2,7 +2,7 @@
 #include <memory/memory.h>
 #include <libc/errno.h>
 
-static cache_t *ata_cache;
+static cache_t *ata_cache = NULL;
 ata_device_t *ata_devices = NULL;
 
 // TODO Handle bad sectors
