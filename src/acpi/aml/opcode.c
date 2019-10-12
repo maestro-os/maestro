@@ -27,6 +27,14 @@ aml_node_t *def_continue(const char **src, size_t *len)
 	return parse_op(DEF_CONTINUE, CONTINUE_OP, src, len);
 }
 
+aml_node_t *def_else(const char **src, size_t *len)
+{
+	// TODO
+	(void) src;
+	(void) len;
+	return NULL;
+}
+
 aml_node_t *def_fatal(const char **src, size_t *len)
 {
 	// TODO
@@ -36,6 +44,26 @@ aml_node_t *def_fatal(const char **src, size_t *len)
 }
 
 aml_node_t *def_ifelse(const char **src, size_t *len)
+{
+	const char *s;
+	size_t l;
+	aml_node_t *node;
+
+	if(*len < 1 || (uint8_t) **src != IF_OP)
+		return NULL;
+	s = *src;
+	l = *len;
+	if(!(node = parse_node(DEF_IF_ELSE, src, len,
+		4, pkg_length, predicate, term_list, def_else)))
+	{
+		*src = s;
+		*len = l;
+		return NULL;
+	}
+	return node;
+}
+
+aml_node_t *predicate(const char **src, size_t *len)
 {
 	// TODO
 	(void) src;

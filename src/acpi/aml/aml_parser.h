@@ -10,6 +10,7 @@
 # define EXT_OP_PREFIX	((uint8_t) 0x5b)
 # define BANK_FIELD_OP	((uint8_t) 0x87)
 # define CONTINUE_OP	((uint8_t) 0x9f)
+# define IF_OP			((uint8_t) 0xa0)
 # define NOOP_OP		((uint8_t) 0xa3)
 # define BREAK_OP		((uint8_t) 0xa5)
 # define BREAKPOINT_OP	((uint8_t) 0xcc)
@@ -396,6 +397,24 @@ aml_node_t *field_list(const char **src, size_t *len);
 aml_node_t *named_obj(const char **src, size_t *len);
 
 aml_node_t *data_ref_object(const char **src, size_t *len);
+
+aml_node_t *def_break(const char **src, size_t *len);
+aml_node_t *def_breakpoint(const char **src, size_t *len);
+aml_node_t *def_continue(const char **src, size_t *len);
+aml_node_t *def_else(const char **src, size_t *len);
+aml_node_t *def_fatal(const char **src, size_t *len);
+aml_node_t *def_ifelse(const char **src, size_t *len);
+aml_node_t *predicate(const char **src, size_t *len);
+aml_node_t *def_load(const char **src, size_t *len);
+aml_node_t *def_noop(const char **src, size_t *len);
+aml_node_t *def_notify(const char **src, size_t *len);
+aml_node_t *def_release(const char **src, size_t *len);
+aml_node_t *def_reset(const char **src, size_t *len);
+aml_node_t *def_return(const char **src, size_t *len);
+aml_node_t *def_signal(const char **src, size_t *len);
+aml_node_t *def_sleep(const char **src, size_t *len);
+aml_node_t *def_stall(const char **src, size_t *len);
+aml_node_t *def_while(const char **src, size_t *len);
 
 aml_node_t *type1_opcode(const char **src, size_t *len);
 aml_node_t *type2_opcode(const char **src, size_t *len);

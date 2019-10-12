@@ -151,7 +151,6 @@ aml_node_t *node_new(enum node_type type, const char *data, size_t length)
 	return node;
 }
 
-// TODO Add a `last_child` variable into node for fast insertion
 void node_add_child(aml_node_t *node, aml_node_t *child)
 {
 	aml_node_t *n;
