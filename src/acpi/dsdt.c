@@ -15,6 +15,7 @@ void handle_dsdt(dsdt_t *dsdt)
 	if(!dsdt || !checksum_check(dsdt, dsdt->header.length))
 		return;
 	len = dsdt->header.length - sizeof(dsdt->header);
-	ast = aml_parse(dsdt->src, len);
+	if(!(ast = aml_parse(dsdt->src, len)))
+		PANIC("Failed to parse AML code!\n", 0);
 	exec_aml(ast);
 }

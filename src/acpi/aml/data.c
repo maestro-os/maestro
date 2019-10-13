@@ -6,7 +6,6 @@ aml_node_t *byte_data(const char **src, size_t *len)
 
 	if(*len < 1 || !(node = node_new(BYTE_DATA, *src, 1)))
 		return NULL;
-	node->data = *src;
 	++(*src);
 	--(*len);
 	return node;
