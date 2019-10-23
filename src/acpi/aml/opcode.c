@@ -14,17 +14,17 @@ static aml_node_t *parse_op(enum node_type type, const uint8_t op,
 
 aml_node_t *def_break(const char **src, size_t *len)
 {
-	return parse_op(DEF_BREAK, BREAK_OP, src, len);
+	return parse_op(AML_DEF_BREAK, BREAK_OP, src, len);
 }
 
 aml_node_t *def_breakpoint(const char **src, size_t *len)
 {
-	return parse_op(DEF_BREAK_POINT, BREAKPOINT_OP, src, len);
+	return parse_op(AML_DEF_BREAK_POINT, BREAKPOINT_OP, src, len);
 }
 
 aml_node_t *def_continue(const char **src, size_t *len)
 {
-	return parse_op(DEF_CONTINUE, CONTINUE_OP, src, len);
+	return parse_op(AML_DEF_CONTINUE, CONTINUE_OP, src, len);
 }
 
 aml_node_t *def_else(const char **src, size_t *len)
@@ -53,7 +53,7 @@ aml_node_t *def_ifelse(const char **src, size_t *len)
 		return NULL;
 	s = *src;
 	l = *len;
-	if(!(node = parse_node(DEF_IF_ELSE, src, len,
+	if(!(node = parse_node(AML_DEF_IF_ELSE, src, len,
 		4, pkg_length, predicate, term_list, def_else)))
 	{
 		*src = s;
@@ -81,7 +81,7 @@ aml_node_t *def_load(const char **src, size_t *len)
 
 aml_node_t *def_noop(const char **src, size_t *len)
 {
-	return parse_op(DEF_NOOP, NOOP_OP, src, len);
+	return parse_op(AML_DEF_NOOP, NOOP_OP, src, len);
 }
 
 aml_node_t *def_notify(const char **src, size_t *len)

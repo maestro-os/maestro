@@ -1,4 +1,6 @@
-^\<*_H\>
+_H\>
+^AML_*
+^ACPI_ENTRIES_COUNT
 ^MULTIBOOT_TAG_*
 ^multiboot_header_tag*
 ^multiboot_tag*
