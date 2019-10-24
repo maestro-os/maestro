@@ -366,6 +366,7 @@ aml_node_t *parse_either(const char **src, size_t *len, size_t n, ...);
 
 aml_node_t *node_new(enum node_type type, const char *data, size_t length);
 void node_add_child(aml_node_t *node, aml_node_t *child);
+void ast_print(const aml_node_t *ast);
 void node_free(aml_node_t *node);
 void ast_free(aml_node_t *ast);
 

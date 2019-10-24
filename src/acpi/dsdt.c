@@ -4,6 +4,7 @@
 static void exec_aml(aml_node_t *ast)
 {
 	// TODO
+	ast_print(ast);
 	(void) ast;
 }
 
