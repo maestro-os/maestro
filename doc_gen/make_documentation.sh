@@ -9,8 +9,9 @@ names=`echo $proto | awk '{print $4}'`
 echo $proto | while read f;
 do
 {
-	n=`echo $f | awk '{print $1}'`
-	p='TODO' # TODO Must be the entire prototype (currently, only the first line is in the variable)
+	unset IFS
+	n="`echo $f | awk '{print $1}'`"
+	p=`echo \`echo $f | awk '{$1=$2=$3=$4=""; print $0}'\` | xargs echo`
 	echo "\`\`\`
 $p
 \`\`\`
