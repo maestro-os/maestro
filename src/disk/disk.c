@@ -1,7 +1,6 @@
 #include <disk/disk.h>
 #include <memory/memory.h>
 #include <libc/errno.h>
-#include <libc/math.h>
 
 static cache_t *disks_cache = NULL, *partitions_cache = NULL;
 disk_t *disks = NULL;
@@ -134,7 +133,7 @@ int disk_read(const size_t sector, char *buff, const size_t sectors_count)
 	errno = 0;
 	for(i = 0; i < sectors_count; i += 0xff)
 		read_func(current_device, start_lba + sector + i,
-			buff + (i * ATA_SECTOR_SIZE), min(sectors_count - i, 0xff));
+			buff + (i * ATA_SECTOR_SIZE), MIN(sectors_count - i, 0xff));
 	spin_unlock(&spinlock);
 	return (errno ? -1 : 0);
 }
@@ -152,7 +151,7 @@ int disk_write(const size_t sector, const char *buff,
 	errno = 0;
 	for(i = 0; i < sectors_count; i += 0xff)
 		write_func(current_device, start_lba + sector + i,
-			buff + (i * ATA_SECTOR_SIZE), min(sectors_count - i, 0xff));
+			buff + (i * ATA_SECTOR_SIZE), MIN(sectors_count - i, 0xff));
 	spin_unlock(&spinlock);
 	return (errno ? -1 : 0);
 }
