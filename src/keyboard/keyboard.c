@@ -1,5 +1,6 @@
 #include <keyboard/keyboard.h>
 
+__ATTR_BSS
 static key_state_t key_states[KEYS_COUNT];
 static bool capslock_state = false;
 
@@ -12,19 +13,21 @@ static void type_key(const key_code_t code)
 {
 	if(code == KEY_BACKSPACE)
 	{
-		if(erase_hook) erase_hook();
+		if(erase_hook)
+			erase_hook();
 		return;
 	}
-	else if(code == KEY_CAPSLOCK)
+	if(code == KEY_CAPSLOCK)
+	{
 		capslock_state = !capslock_state;
-	// TODO Arrows, etc...
-	if(keyboard_get_char(code, keyboard_is_shift_enabled()))
+		return;
+	}
+	if(keyboard_get_char(code, keyboard_is_shifting()))
 	{
 		if(input_hook)
 			input_hook(code);
+		return;
 	}
-	else if(ctrl_hook)
-		ctrl_hook(code);
 }
 __attribute__((hot))
 static void handle_extra_key(const key_code_t code)
@@ -32,7 +35,9 @@ static void handle_extra_key(const key_code_t code)
 	if(code < 0x90)
 	{
 		key_states[code - 0x10 + 0x60] = KEY_STATE_PRESSED;
-		type_key(code - 0x1);
+		// TODO Handle keyboard `Enter` and `/`
+		if(ctrl_hook)
+			ctrl_hook(code - 0x10 + 0x60);
 	}
 	else
 		key_states[code - 0x90 + 0x60] = KEY_STATE_RELEASED;
@@ -60,12 +65,10 @@ static void keyboard_handler(const key_code_t code)
 		extra_keys = true;
 		return;
 	}
-
 	if(extra_keys)
 		handle_extra_key(code);
 	else
 		handle_normal_key(code);
-
 	extra_keys = false;
 }
 
@@ -73,7 +76,6 @@ __attribute__((cold))
 void keyboard_init(void)
 {
 	ps2_set_keyboard_hook(keyboard_handler);
-	bzero(key_states, sizeof(key_states));
 }
 
 __attribute__((hot))
@@ -83,24 +85,32 @@ key_state_t keyboard_get_state(const key_code_t key)
 }
 
 __attribute__((hot))
-bool keyboard_is_ctrl_enabled(void)
+bool keyboard_is_ctrl_pressed(void)
 {
 	return keyboard_get_state(KEY_LEFT_CTRL)
 		|| keyboard_get_state(KEY_RIGHT_CTRL);
 }
 
 __attribute__((hot))
-bool keyboard_is_shift_enabled(void)
+bool keyboard_is_shift_pressed(void)
 {
-	const bool shift = keyboard_get_state(KEY_LEFT_SHIFT)
-			|| keyboard_get_state(KEY_RIGHT_SHIFT);
-	return (capslock_state ? !shift : shift);
+	return keyboard_get_state(KEY_LEFT_SHIFT)
+		|| keyboard_get_state(KEY_RIGHT_SHIFT);
 }
 
 __attribute__((hot))
 bool keyboard_is_capslock_enabled(void)
 {
 	return capslock_state;
+}
+
+__attribute__((hot))
+bool keyboard_is_shifting(void)
+{
+	bool shift;
+
+	shift = keyboard_is_shift_pressed();
+	return (capslock_state ? !shift : shift);
 }
 
 __attribute__((hot))

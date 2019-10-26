@@ -395,9 +395,10 @@ typedef uint8_t key_state_t;
 
 void keyboard_init(void);
 key_state_t keyboard_get_state(const key_code_t key);
-bool keyboard_is_ctrl_enabled(void);
-bool keyboard_is_shift_enabled(void);
+bool keyboard_is_ctrl_pressed(void);
+bool keyboard_is_shift_pressed(void);
 bool keyboard_is_capslock_enabled(void);
+bool keyboard_is_shifting(void);
 char keyboard_get_char(const key_code_t code, const bool shift);
 
 void keyboard_set_input_hook(void (*hook)(const key_code_t));

@@ -32,7 +32,7 @@ typedef struct tty
 	uint16_t history[VGA_WIDTH * HISTORY_LINES];
 
 	size_t prompted_chars;
-	bool freeze; // TODO
+	bool update;
 
 	spinlock_t spinlock;
 } tty_t;

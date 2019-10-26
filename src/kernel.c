@@ -163,14 +163,15 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	print_mem_usage();
 #endif
 
-	partition_create(disks, EXT2_PARTITION_TYPE);
+	// TODO Remove
+	/*partition_create(disks, EXT2_PARTITION_TYPE);
 
 	char buff[ATA_SECTOR_SIZE];
 	bzero(buff, sizeof(buff));
 	disk_select_disk(disks);
 	if(disk_read(0, buff, 1) < 0)
 		printf("disk read err\n");
-	tty_write(buff, sizeof(buff), current_tty);
+	tty_write(buff, sizeof(buff), current_tty);*/
 
 	kernel_loop();
 }

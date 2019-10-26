@@ -33,7 +33,7 @@ context_switch:
 	mov 16(%eax), %eax
 
 	pusha
-	push $0x8
+	push $0x0
 	call pic_EOI
 	add $4, %esp
 	popa
@@ -44,7 +44,7 @@ context_switch:
 kernel_switch:
 	cli
 
-	push $0x8
+	push $0x0
 	call pic_EOI
 	add $4, %esp
 

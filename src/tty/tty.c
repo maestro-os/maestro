@@ -15,18 +15,32 @@ void tty_init(void)
 
 	bzero(ttys, sizeof(ttys));
 	for(i = 0; i < TTYS_COUNT; ++i)
+	{
 		ttys[i].current_color = VGA_DEFAULT_COLOR;
+		ttys[i].update = 1;
+	}
 	tty_switch(0);
-	vga_enable_cursor();
-	current_tty = ttys;
-	tty_clear(current_tty);
+}
+
+__attribute__((hot))
+static inline void update_tty(tty_t *tty)
+{
+	if(tty->screen_y + VGA_HEIGHT <= HISTORY_LINES)
+		memcpy(VGA_BUFFER, tty->history + (VGA_WIDTH * tty->screen_y),
+			VGA_WIDTH * VGA_HEIGHT * sizeof(uint16_t));
+	else
+		memcpy(VGA_BUFFER, tty->history + (VGA_WIDTH * tty->screen_y),
+			VGA_WIDTH * (HISTORY_LINES - tty->screen_y) * sizeof(uint16_t));
+	vga_move_cursor(tty->cursor_x, tty->cursor_y);
 }
 
 __attribute__((hot))
 void tty_switch(const uint8_t tty)
 {
 	current_tty = ttys + tty;
-	// TODO Update on screen
+	vga_enable_cursor();
+	vga_move_cursor(0, 0);
+	update_tty(current_tty);
 }
 
 __attribute__((hot))
@@ -64,18 +78,6 @@ static void tty_clear_portion(uint16_t *ptr, const size_t size)
 	// TODO Optimization
 	for(i = 0; i < size; ++i)
 		ptr[i] = EMPTY_CHAR;
-}
-
-__attribute__((hot))
-static inline void update_tty(tty_t *tty)
-{
-	if(tty->screen_y + VGA_HEIGHT <= HISTORY_LINES)
-		memcpy(VGA_BUFFER, tty->history + (VGA_WIDTH * tty->screen_y),
-			VGA_WIDTH * VGA_HEIGHT * sizeof(uint16_t));
-	else
-		memcpy(VGA_BUFFER, tty->history + (VGA_WIDTH * tty->screen_y),
-			VGA_WIDTH * (HISTORY_LINES - tty->screen_y) * sizeof(uint16_t));
-	vga_move_cursor(tty->cursor_x, tty->cursor_y);
 }
 
 __attribute__((hot))
@@ -155,7 +157,7 @@ static void tty_newline(tty_t *tty)
 }
 
 __attribute__((hot))
-static void tty_putchar(const char c, tty_t *tty, const bool update)
+static void tty_putchar(const char c, tty_t *tty)
 {
 	switch(c)
 	{
@@ -193,7 +195,7 @@ static void tty_putchar(const char c, tty_t *tty, const bool update)
 		}
 	}
 	tty_fix_pos(tty);
-	if(update)
+	if(tty->update)
 		update_tty(tty);
 }
 
@@ -211,7 +213,7 @@ void tty_write(const char *buffer, const size_t count, tty_t *tty)
 	for(i = 0; i < count; ++i)
 	{
 		if(buffer[i] != ANSI_ESCAPE)
-			tty_putchar(buffer[i], tty, false);
+			tty_putchar(buffer[i], tty);
 		else
 			ansi_handle(tty, buffer, &i, count);
 		update_tty(tty);
@@ -238,7 +240,7 @@ void tty_erase(tty_t *tty, size_t count)
 	begin = HISTORY_POS(tty->screen_y, tty->cursor_x, tty->cursor_y);
 	for(i = begin; i < begin + count; ++i)
 		tty->history[i] = EMPTY_CHAR;
-	if(!tty->freeze)
+	if(tty->update)
 		update_tty(tty);
 	tty->prompted_chars -= count;
 	spin_unlock(&tty->spinlock);
@@ -250,16 +252,15 @@ void tty_erase(tty_t *tty, size_t count)
 __attribute__((hot))
 void tty_input_hook(const key_code_t code)
 {
-	bool shift;
 	char c;
 
-	if(keyboard_is_ctrl_enabled())
+	if(keyboard_is_ctrl_pressed())
 	{
 		switch(code)
 		{
 			case KEY_Q:
 			{
-				current_tty->freeze = false;
+				current_tty->update = 0;
 				update_tty(current_tty);
 				break;
 			}
@@ -273,7 +274,7 @@ void tty_input_hook(const key_code_t code)
 
 			case KEY_S:
 			{
-				current_tty->freeze = true;
+				current_tty->update = 1;
 				break;
 			}
 
@@ -281,10 +282,8 @@ void tty_input_hook(const key_code_t code)
 		}
 		return;
 	}
-
-	shift = keyboard_is_shift_enabled();
-	c = keyboard_get_char(code, shift);
-	tty_putchar(c, current_tty, !current_tty->freeze);
+	c = keyboard_get_char(code, keyboard_is_shifting());
+	tty_putchar(c, current_tty);
 	if(c == '\n')
 		current_tty->prompted_chars = 0;
 	else
@@ -294,8 +293,25 @@ void tty_input_hook(const key_code_t code)
 __attribute__((hot))
 void tty_ctrl_hook(const key_code_t code)
 {
-	// TODO
-	(void) code;
+	if(keyboard_is_shift_pressed())
+	{
+		if(code == KEY_PAGE_UP)
+		{
+			if(current_tty->screen_y > 0)
+			{
+				--(current_tty->screen_y);
+				update_tty(current_tty);
+			}
+		}
+		else if(code == KEY_PAGE_DOWN)
+		{
+			if(current_tty->screen_y + VGA_HEIGHT < HISTORY_LINES)
+			{
+				++(current_tty->screen_y);
+				update_tty(current_tty);
+			}
+		}
+	}
 }
 
 __attribute__((hot))
