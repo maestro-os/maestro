@@ -19,7 +19,7 @@ aml_node_t *pkg_length(const char **src, size_t *len)
 	aml_node_t *node, *child;
 	int i = 0, n;
 
-	if(!(node = node_new(AML_PKG_LENGTH, NULL, 0)))
+	if(!(node = node_new(AML_PKG_LENGTH, *src, 0)))
 		return NULL;
 	s = *src;
 	l = *len;

@@ -348,6 +348,7 @@ typedef struct aml_node
 	struct aml_node *next;
 
 	enum node_type type;
+	const void *ptr;
 
 	const char *data;
 	size_t data_length;
@@ -369,6 +370,10 @@ void node_add_child(aml_node_t *node, aml_node_t *child);
 void ast_print(const aml_node_t *ast);
 void node_free(aml_node_t *node);
 void ast_free(aml_node_t *ast);
+
+uint8_t aml_get_byte(aml_node_t *node);
+uint16_t aml_get_word(aml_node_t *node);
+uint32_t aml_get_dword(aml_node_t *node);
 
 aml_node_t *byte_data(const char **src, size_t *len);
 aml_node_t *word_data(const char **src, size_t *len);

@@ -360,7 +360,7 @@ aml_node_t *parse_node(enum node_type type, const char **src, size_t *len,
 
 	va_start(ap, n);
 	if(!(children = do_parse(src, len, n, ap))
-		|| !(node = node_new(type, NULL, 0)))
+		|| !(node = node_new(type, *src, 0)))
 	{
 		ast_free(children);
 		return NULL;
@@ -382,7 +382,7 @@ aml_node_t *parse_list(enum node_type type, const char **src, size_t *len,
 {
 	aml_node_t *node, *n, *prev, *nod;
 
-	if(!(node = node_new(type, NULL, 0)))
+	if(!(node = node_new(type, *src, 0)))
 		return NULL;
 	if(!(n = f(src, len)))
 		return node;
@@ -451,7 +451,8 @@ aml_node_t *parse_either(const char **src, size_t *len, size_t n, ...)
 	return node;
 }
 
-aml_node_t *node_new(enum node_type type, const char *data, size_t length)
+aml_node_t *node_new(const enum node_type type, const char *data,
+	const size_t length)
 {
 	aml_node_t *node;
 	char *buff;
@@ -459,6 +460,7 @@ aml_node_t *node_new(enum node_type type, const char *data, size_t length)
 	if(!(node = kmalloc_zero(sizeof(aml_node_t), 0)))
 		return NULL;
 	node->type = type;
+	node->ptr = data;
 	if(!data || length <= 0)
 		return node;
 	if(!(buff = kmalloc(length, 0)))

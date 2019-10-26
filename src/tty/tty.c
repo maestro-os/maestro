@@ -260,7 +260,7 @@ void tty_input_hook(const key_code_t code)
 		{
 			case KEY_Q:
 			{
-				current_tty->update = 0;
+				current_tty->update = 1;
 				update_tty(current_tty);
 				break;
 			}
@@ -274,7 +274,7 @@ void tty_input_hook(const key_code_t code)
 
 			case KEY_S:
 			{
-				current_tty->update = 1;
+				current_tty->update = 0;
 				break;
 			}
 

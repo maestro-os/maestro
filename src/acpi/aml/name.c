@@ -56,7 +56,7 @@ static aml_node_t *dual_name_path(const char **src, size_t *len)
 	s = *src;
 	l = *len;
 	if(!(c0 = name_seg(src, len)) || !(c1 = name_seg(src, len))
-		|| !(node = node_new(DUAL_NAME_PREFIX, NULL, 0)))
+		|| !(node = node_new(DUAL_NAME_PREFIX, *src, 0)))
 	{
 		*src = s;
 		*len = l;
@@ -76,7 +76,7 @@ static aml_node_t *multi_name_path(const char **src, size_t *len)
 	size_t i = 0, n;
 
 	if(*len < 2 || **src != MULTI_NAME_PREFIX
-		|| !(node = node_new(MULTI_NAME_PREFIX, NULL, 0)))
+		|| !(node = node_new(MULTI_NAME_PREFIX, *src, 0)))
 		return NULL;
 	s = *src;
 	l = *len;
@@ -117,7 +117,7 @@ aml_node_t *name_string(const char **src, size_t *len)
 	const char *s;
 	size_t l;
 
-	if(!(node = node_new(AML_NAME_STRING, NULL, 0)))
+	if(!(node = node_new(AML_NAME_STRING, *src, 0)))
 		return NULL;
 	s = *src;
 	l = *len;
