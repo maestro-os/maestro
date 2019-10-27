@@ -176,7 +176,7 @@ static int hexadecimal_handler(const specifier_t *specifier, va_list *args)
 {
 	// TODO Alignements, etc...
 	(void) specifier;
-	return putstr("0x") + putuint((unsigned) va_arg(*args, void *), 16);
+	return putuint((unsigned) va_arg(*args, void *), 16);
 }
 
 static int handle_specifier(const specifier_t *specifier, va_list *args)

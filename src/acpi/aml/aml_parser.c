@@ -8,7 +8,8 @@ static aml_node_t *object(const char **src, size_t *len)
 
 static aml_node_t *term_obj(const char **src, size_t *len)
 {
-	return parse_either(AML_TERM_OBJ, src, len, 3, object, type1_opcode, type2_opcode);
+	return parse_either(AML_TERM_OBJ, src, len, 3, object,
+		type1_opcode, type2_opcode);
 }
 
 aml_node_t *term_list(const char **src, size_t *len)
@@ -47,7 +48,7 @@ aml_node_t *term_list(const char **src, size_t *len)
 
 static aml_node_t *aml_code(const char **src, size_t *len)
 {
-	return parse_node(AML_CODE, src, len, 2, def_block_header, term_list);
+	return parse_node(AML_CODE, src, len, 1, term_list);
 }
 
 aml_node_t *aml_parse(const char *src, size_t len)

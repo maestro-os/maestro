@@ -4,16 +4,20 @@
 # include <memory/memory.h>
 # include <libc/errno.h>
 
+# include <libc/stdio.h> // TODO rm
+
 # define ALIAS_OP		((uint8_t) 0x06)
 # define NAME_OP		((uint8_t) 0x08)
 # define SCOPE_OP		((uint8_t) 0x10)
-# define EXT_OP_PREFIX	((uint8_t) 0x5b)
 # define BANK_FIELD_OP	((uint8_t) 0x87)
 # define CONTINUE_OP	((uint8_t) 0x9f)
 # define IF_OP			((uint8_t) 0xa0)
 # define NOOP_OP		((uint8_t) 0xa3)
 # define BREAK_OP		((uint8_t) 0xa5)
 # define BREAKPOINT_OP	((uint8_t) 0xcc)
+
+# define EXT_OP_PREFIX	((uint8_t) 0x5b)
+# define OP_REGION_OP	((uint8_t) 0x80)
 
 # define DUAL_NAME_PREFIX	0x2e
 # define MULTI_NAME_PREFIX	0x2f
@@ -388,8 +392,6 @@ aml_node_t *access_type(const char **src, size_t *len);
 aml_node_t *access_attrib(const char **src, size_t *len);
 aml_node_t *extended_access_attrib(const char **src, size_t *len);
 aml_node_t *access_length(const char **src, size_t *len);
-
-aml_node_t *def_block_header(const char **src, size_t *len);
 
 aml_node_t *pkg_length(const char **src, size_t *len);
 

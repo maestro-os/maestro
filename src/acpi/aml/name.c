@@ -4,7 +4,7 @@ static aml_node_t *root_char(const char **src, size_t *len)
 {
 	aml_node_t *node;
 
-	if(*len < 1 || IS_ROOT_CHAR(**src)
+	if(*len < 1 || !IS_ROOT_CHAR(**src)
 		|| !(node = node_new(AML_ROOT_CHAR, *src, 1)))
 		return NULL;
 	++(*src);
@@ -16,12 +16,14 @@ static aml_node_t *prefix_path(const char **src, size_t *len)
 {
 	aml_node_t *node;
 
-	if(*len < 1 || IS_PREFIX_CHAR(**src)
-		|| !(node = node_new(AML_PREFIX_PATH, *src, 1)))
+	if(!(node = node_new(AML_PREFIX_PATH, *src, 1)))
 		return NULL;
-	++(*src);
-	--(*len);
-	node->children = prefix_path(src, len);
+	if(*len >= 1 && IS_PREFIX_CHAR(**src))
+	{
+		++(*src);
+		--(*len);
+		node->children = prefix_path(src, len); // TODO Check errno
+	}
 	return node;
 }
 
@@ -58,6 +60,7 @@ static aml_node_t *dual_name_path(const char **src, size_t *len)
 	if(!(c0 = name_seg(src, len)) || !(c1 = name_seg(src, len))
 		|| !(node = node_new(DUAL_NAME_PREFIX, *src, 0)))
 	{
+		// TODO Free c0 and c1
 		*src = s;
 		*len = l;
 		return NULL;
@@ -101,7 +104,9 @@ static aml_node_t *null_name(const char **src, size_t *len)
 {
 	if(*len < 1 || **src)
 		return NULL;
-	return node_new(AML_NULL_NAME, *src, *len);
+	++(*src);
+	--(*len);
+	return node_new(AML_NULL_NAME, *src, 1);
 }
 
 static aml_node_t *name_path(const char **src, size_t *len)
