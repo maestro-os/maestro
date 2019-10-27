@@ -10,5 +10,6 @@
 
 void print_regs(const regs_t *regs);
 void print_callstack(void *ebp, size_t max_depth);
+void print_memory(const char *src, size_t n);
 
 #endif

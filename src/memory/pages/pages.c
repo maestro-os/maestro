@@ -1,4 +1,5 @@
 #include <memory/pages/pages.h>
+#include <util/attr.h>
 
 pages_alloc_t *allocs = NULL;
 

@@ -1,7 +1,7 @@
 #ifndef MEMORY_H
 # define MEMORY_H
 
-# include <kernel.h>
+# include <multiboot.h>
 # include <memory/buddy/buddy.h>
 # include <memory/pages/pages.h>
 # include <memory/kmalloc/kmalloc.h>

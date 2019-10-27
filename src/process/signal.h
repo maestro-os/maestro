@@ -1,8 +1,6 @@
 #ifndef SIGNAL_H
 # define SIGNAL_H
 
-# include <kernel.h>
-
 # define SIGHUP		1
 # define SIGINT		2
 # define SIGQUIT	3

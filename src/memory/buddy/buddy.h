@@ -3,6 +3,8 @@
 
 # include <memory/memory.h>
 
+# include <libc/string.h>
+
 # define BLOCK_NULL					(~((size_t) 0))
 # define BLOCK_SIZE(order)			(POW2(order) * PAGE_SIZE)
 

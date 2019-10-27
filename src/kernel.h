@@ -10,6 +10,7 @@
 # ifdef KERNEL_DEBUG
 #  include <libc/errno.h>
 #  include <libc/stdio.h>
+#  include <debug/debug.h>
 # endif
 
 # define KERNEL_VERSION	"0.1"

@@ -1,3 +1,4 @@
+#include <kernel.h>
 #include <memory/memory.h>
 #include <libc/stdio.h>
 

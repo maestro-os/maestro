@@ -1,9 +1,6 @@
 #include <acpi/aml/aml_parser.h>
 #include <stdarg.h>
 
-// TODO rm
-#include <debug/debug.h>
-
 #ifdef KERNEL_DEBUG
 static const char *node_types[] = {
 	[AML_CODE] = "AML_CODE",
@@ -501,6 +498,8 @@ void node_add_child(aml_node_t *node, aml_node_t *child)
 }
 
 #ifdef KERNEL_DEBUG
+#include <tty/tty.h> // TODO remove
+
 static void print_tabs(size_t n)
 {
 	while(n--)
@@ -514,7 +513,9 @@ static void ast_print_(const aml_node_t *ast, const size_t level)
 	if(!ast)
 		return;
 	print_tabs(level);
-	printf("- %s: %s\n", node_types[ast->type], ast->data);
+	printf("- %s: ", node_types[ast->type]);
+	tty_write(ast->data, ast->data_length, current_tty); // TODO Use printf precision
+	printf("\n");
 	a = ast->children;
 	while(a)
 	{

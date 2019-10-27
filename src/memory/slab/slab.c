@@ -1,3 +1,4 @@
+#include <kernel.h>
 #include <memory/slab/slab.h>
 #include <libc/errno.h>
 

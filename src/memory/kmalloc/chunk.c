@@ -1,5 +1,6 @@
 #include <memory/kmalloc/kmalloc.h>
 #include <libc/errno.h>
+#include <util/attr.h>
 
 // TODO Fix prev field?
 

@@ -1,4 +1,7 @@
 #include <memory/memory.h>
+#ifdef KERNEL_DEBUG
+# include <libc/stdio.h>
+#endif
 
 // TODO Separate bad ram and reserved?
 static size_t get_reserved_memory(void)

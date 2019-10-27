@@ -1,7 +1,7 @@
 #ifndef PROCESS_H
 # define PROCESS_H
 
-# include <kernel.h>
+# include <gdt.h>
 # include <memory/memory.h>
 # include <process/tss.h>
 # include <process/signal.h>
