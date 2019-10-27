@@ -1,6 +1,9 @@
 #include <acpi/aml/aml_parser.h>
 #include <stdarg.h>
 
+// TODO rm
+#include <debug/debug.h>
+
 #ifdef KERNEL_DEBUG
 static const char *node_types[] = {
 	[AML_CODE] = "AML_CODE",
@@ -359,10 +362,10 @@ aml_node_t *parse_node(enum node_type type, const char **src, size_t *len,
 	aml_node_t *children, *node = NULL;
 
 	va_start(ap, n);
-	if(!(children = do_parse(src, len, n, ap))
-		|| !(node = node_new(type, *src, 0)))
+	if(!(node = node_new(type, *src, 0))
+		|| !(children = do_parse(src, len, n, ap)))
 	{
-		ast_free(children);
+		node_free(node);
 		return NULL;
 	}
 	node->children = children;
@@ -429,26 +432,32 @@ fail:
 	return NULL;
 }
 
-aml_node_t *parse_either(const char **src, size_t *len, size_t n, ...)
+aml_node_t *parse_either(const enum node_type type, const char **src,
+	size_t *len, size_t n, ...)
 {
 	const char *s;
 	size_t l;
 	va_list ap;
-	aml_node_t *node;
+	aml_node_t *node, *child;
 
 	s = *src;
 	l = *len;
 	va_start(ap, n);
-	while(n-- > 0 && !(node = va_arg(ap, parse_func_t)(src, len)))
-	{
+	if(!(node = node_new(type, *src, 0)))
+		return NULL;
+	while(n-- > 0 && !(child = va_arg(ap, parse_func_t)(src, len)))
 		if(errno)
-		{
-			*src = s;
-			*len = l;
-			return NULL;
-		}
-	}
+			goto fail;
+	if(!child)
+		goto fail;
+	node_add_child(node, child);
 	return node;
+
+fail:
+	node_free(node);
+	*src = s;
+	*len = l;
+	return NULL;
 }
 
 aml_node_t *node_new(const enum node_type type, const char *data,

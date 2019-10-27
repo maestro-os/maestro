@@ -106,8 +106,7 @@ static aml_node_t *null_name(const char **src, size_t *len)
 
 static aml_node_t *name_path(const char **src, size_t *len)
 {
-	// TODO Make a node?
-	return parse_either(src, len,
+	return parse_either(AML_NAME_PATH, src, len,
 		4, name_seg, dual_name_path, multi_name_path, null_name);
 }
 

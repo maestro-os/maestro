@@ -11,9 +11,11 @@ static inline void aml_get_header(aml_node_t *ast, aml_block_header_t *hdr)
 
 static int aml_check_header(aml_block_header_t *hdr)
 {
+	// TODO Check signature?
 	if(hdr->table_length != sizeof(aml_block_header_t))
 		return 0;
-	// TODO Check checksum
+	if(!checksum_check(hdr, hdr->table_length))
+		return 0;
 	return 1;
 }
 
@@ -38,7 +40,8 @@ void handle_dsdt(dsdt_t *dsdt)
 	aml_get_header(ast, &hdr);
 	if(!aml_check_header(&hdr))
 	{
-		// TODO Error/Panic
+		// TODO Panic
+		printf("invalid AML header\n");
 	}
 	exec_aml(ast);
 }

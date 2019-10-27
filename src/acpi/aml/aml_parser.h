@@ -363,7 +363,8 @@ aml_node_t *parse_list(enum node_type type, const char **src, size_t *len,
 	parse_func_t f);
 aml_node_t *parse_string(const char **src, size_t *len,
 	size_t str_len, parse_func_t f);
-aml_node_t *parse_either(const char **src, size_t *len, size_t n, ...);
+aml_node_t *parse_either(enum node_type type, const char **src,
+	size_t *len, size_t n, ...);
 
 aml_node_t *node_new(enum node_type type, const char *data, size_t length);
 void node_add_child(aml_node_t *node, aml_node_t *child);

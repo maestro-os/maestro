@@ -2,6 +2,7 @@
 #include <pit/pit.h>
 #include <libc/string.h>
 
+// TODO Handle cursor when scrolling up/down
 // TODO Sanity checks
 
 __ATTR_BSS

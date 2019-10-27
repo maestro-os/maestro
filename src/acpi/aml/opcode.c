@@ -150,9 +150,10 @@ aml_node_t *def_while(const char **src, size_t *len)
 
 aml_node_t *type1_opcode(const char **src, size_t *len)
 {
-	return parse_either(src, len, 15, def_break, def_breakpoint, def_continue,
-		def_fatal, def_ifelse, def_load, def_noop, def_notify, def_release,
-			def_reset, def_return, def_signal, def_sleep, def_stall, def_while);
+	return parse_either(AML_TYPE1_OPCODE, src, len,
+		15, def_break, def_breakpoint, def_continue, def_fatal, def_ifelse,
+			def_load, def_noop, def_notify, def_release, def_reset, def_return,
+				def_signal, def_sleep, def_stall, def_while);
 }
 
 aml_node_t *type2_opcode(const char **src, size_t *len)

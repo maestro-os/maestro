@@ -68,6 +68,6 @@ static aml_node_t *def_scope(const char **src, size_t *len)
 
 aml_node_t *namespace_modifier_obj(const char **src, size_t *len)
 {
-	// TODO Make a node?
-	return parse_either(src, len, 3, def_alias, def_name, def_scope);
+	return parse_either(AML_NAME_SPACE_MODIFIER_OBJ, src, len,
+		3, def_alias, def_name, def_scope);
 }
