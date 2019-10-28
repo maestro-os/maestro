@@ -102,11 +102,16 @@ static aml_node_t *multi_name_path(const char **src, size_t *len)
 
 static aml_node_t *null_name(const char **src, size_t *len)
 {
+	aml_node_t *node;
+
 	if(*len < 1 || **src)
 		return NULL;
-	++(*src);
-	--(*len);
-	return node_new(AML_NULL_NAME, *src, 1);
+	if((node = node_new(AML_NULL_NAME, *src, 1)))
+	{
+		++(*src);
+		--(*len);
+	}
+	return node;
 }
 
 static aml_node_t *name_path(const char **src, size_t *len)

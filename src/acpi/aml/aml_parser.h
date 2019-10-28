@@ -4,29 +4,47 @@
 # include <memory/memory.h>
 # include <libc/errno.h>
 
+# include <debug/debug.h> // TODO rm
 # include <libc/stdio.h> // TODO rm
 
-# define ALIAS_OP		((uint8_t) 0x06)
-# define NAME_OP		((uint8_t) 0x08)
-# define SCOPE_OP		((uint8_t) 0x10)
-# define BANK_FIELD_OP	((uint8_t) 0x87)
-# define CONTINUE_OP	((uint8_t) 0x9f)
-# define IF_OP			((uint8_t) 0xa0)
-# define NOOP_OP		((uint8_t) 0xa3)
-# define BREAK_OP		((uint8_t) 0xa5)
-# define BREAKPOINT_OP	((uint8_t) 0xcc)
+# define ZERO_OP			((char) 0x00)
+# define ONE_OP				((char) 0x01)
+# define ALIAS_OP			((char) 0x06)
+# define NAME_OP			((char) 0x08)
+# define SCOPE_OP			((char) 0x10)
+# define REVISION_OP		((char) 0x30)
+# define BANK_FIELD_OP		((char) 0x87)
+# define CONTINUE_OP		((char) 0x9f)
+# define IF_OP				((char) 0xa0)
+# define NOOP_OP			((char) 0xa3)
+# define BREAK_OP			((char) 0xa5)
+# define BREAKPOINT_OP		((char) 0xcc)
+# define ONES_OP			((char) 0xff)
 
-# define EXT_OP_PREFIX	((uint8_t) 0x5b)
-# define OP_REGION_OP	((uint8_t) 0x80)
+# define EXT_OP_PREFIX		((char) 0x5b)
+# define OP_REGION_OP		((char) 0x80)
 
-# define DUAL_NAME_PREFIX	0x2e
-# define MULTI_NAME_PREFIX	0x2f
+# define ARG0_OP			((char) 0x68)
+# define ARG6_OP			((char) 0x6e)
+# define LOCAL0_OP			((char) 0x60)
+# define LOCAL7_OP			((char) 0x67)
+
+# define DUAL_NAME_PREFIX	((char) 0x2e)
+# define MULTI_NAME_PREFIX	((char) 0x2f)
+
+# define BYTE_PREFIX		((char) 0x0a)
+# define WORD_PREFIX		((char) 0x0b)
+# define DWORD_PREFIX		((char) 0x0c)
+# define QWORD_PREFIX		((char) 0x0e)
+# define STRING_PREFIX		((char) 0x0d)
 
 # define IS_LEAD_NAME_CHAR(c)	(((c) >= 'A' && (c) <= 'Z') || (c) == '_')
 # define IS_DIGIT_CHAR(c)		((c) >= '0' && (c) <= '9')
 # define IS_NAME_CHAR(c)		(IS_LEAD_NAME_CHAR(c) || IS_DIGIT_CHAR(c))
 # define IS_ROOT_CHAR(c)		((c) == '\\')
 # define IS_PREFIX_CHAR(c)		((c) == '^')
+# define IS_ARG_OP(c)			((c) >= ARG0_OP && (c) <= ARG6_OP)
+# define IS_LOCAL_OP(c)			((c) >= LOCAL0_OP && (c) <= LOCAL7_OP)
 
 enum node_type
 {
@@ -60,10 +78,10 @@ enum node_type
 	AML_BYTE_PREFIX,
 	AML_WORD_CONST,
 	AML_WORD_PREFIX,
-	AML_D_WORD_CONST,
-	AML_D_WORD_PREFIX,
-	AML_Q_WORD_CONST,
-	AML_Q_WORD_PREFIX,
+	AML_DWORD_CONST,
+	AML_DWORD_PREFIX,
+	AML_QWORD_CONST,
+	AML_QWORD_PREFIX,
 	AML_STRING,
 	AML_STRING_PREFIX,
 	AML_CONST_OBJ,
@@ -380,10 +398,13 @@ uint8_t aml_get_byte(aml_node_t *node);
 uint16_t aml_get_word(aml_node_t *node);
 uint32_t aml_get_dword(aml_node_t *node);
 
+aml_node_t *data_object(const char **src, size_t *len);
 aml_node_t *byte_data(const char **src, size_t *len);
 aml_node_t *word_data(const char **src, size_t *len);
 aml_node_t *dword_data(const char **src, size_t *len);
 aml_node_t *qword_data(const char **src, size_t *len);
+
+aml_node_t *string(const char **src, size_t *len);
 
 aml_node_t *name_seg(const char **src, size_t *len);
 aml_node_t *name_string(const char **src, size_t *len);
@@ -404,6 +425,7 @@ aml_node_t *field_flags(const char **src, size_t *len);
 aml_node_t *field_list(const char **src, size_t *len);
 
 aml_node_t *named_obj(const char **src, size_t *len);
+aml_node_t *def_op_region(const char **src, size_t *len);
 
 aml_node_t *data_ref_object(const char **src, size_t *len);
 
@@ -425,10 +447,19 @@ aml_node_t *def_sleep(const char **src, size_t *len);
 aml_node_t *def_stall(const char **src, size_t *len);
 aml_node_t *def_while(const char **src, size_t *len);
 
+aml_node_t *def_buffer(const char **src, size_t *len);
+aml_node_t *def_package(const char **src, size_t *len);
+aml_node_t *def_var_package(const char **src, size_t *len);
+
 aml_node_t *type1_opcode(const char **src, size_t *len);
 aml_node_t *type2_opcode(const char **src, size_t *len);
 
+aml_node_t *arg_obj(const char **src, size_t *len);
+aml_node_t *local_obj(const char **src, size_t *len);
+
 aml_node_t *term_list(const char **src, size_t *len);
+aml_node_t *term_arg(const char **src, size_t *len);
+
 aml_node_t *aml_parse(const char *src, const size_t len);
 
 #endif

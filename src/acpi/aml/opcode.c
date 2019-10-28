@@ -49,7 +49,7 @@ aml_node_t *def_ifelse(const char **src, size_t *len)
 	size_t l;
 	aml_node_t *node;
 
-	if(*len < 1 || (uint8_t) **src != IF_OP)
+	if(*len < 1 || **src != IF_OP)
 		return NULL;
 	s = *src;
 	l = *len;
@@ -154,6 +154,30 @@ aml_node_t *type1_opcode(const char **src, size_t *len)
 		15, def_break, def_breakpoint, def_continue, def_fatal, def_ifelse,
 			def_load, def_noop, def_notify, def_release, def_reset, def_return,
 				def_signal, def_sleep, def_stall, def_while);
+}
+
+aml_node_t *def_buffer(const char **src, size_t *len)
+{
+	// TODO
+	(void) src;
+	(void) len;
+	return NULL;
+}
+
+aml_node_t *def_package(const char **src, size_t *len)
+{
+	// TODO
+	(void) src;
+	(void) len;
+	return NULL;
+}
+
+aml_node_t *def_var_package(const char **src, size_t *len)
+{
+	// TODO
+	(void) src;
+	(void) len;
+	return NULL;
 }
 
 aml_node_t *type2_opcode(const char **src, size_t *len)
