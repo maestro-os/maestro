@@ -633,11 +633,28 @@ aml_node_t *type2_opcode(const char **src, size_t *len)
 		{1, WAIT_OP, def_wait},
 		{0, XOR_OP, def_xor}
 	};
+	int ext_prefix;
+	uint8_t opcode;
+	size_t i;
 
-	// TODO Check in list
-	(void) funcs;
-	(void) src;
-	(void) len;
-	// TODO If none of the list, check method_invocation
+	if(*len < 1)
+		return NULL;
+	if((ext_prefix = (**src == EXT_OP_PREFIX)))
+	{
+		if(*len < 2)
+			return NULL;
+		opcode = (*src)[0];
+	}
+	else
+		opcode = (*src)[1];
+	for(i = 0; i < sizeof(funcs) / sizeof(*funcs); ++i)
+	{
+		if(ext_prefix != funcs[i].ext_prefix)
+			continue;
+		if(opcode != funcs[i].op)
+			continue;
+		return parse_node(AML_TYPE2_OPCODE, src, len, 1, funcs[i].func);
+	}
+	// TODO Check method_invocation
 	return NULL;
 }
