@@ -156,7 +156,279 @@ aml_node_t *type1_opcode(const char **src, size_t *len)
 				def_signal, def_sleep, def_stall, def_while);
 }
 
+aml_node_t *def_acquire(const char **src, size_t *len)
+{
+	// TODO
+	(void) src;
+	(void) len;
+	return NULL;
+}
+
+aml_node_t *def_add(const char **src, size_t *len)
+{
+	// TODO
+	(void) src;
+	(void) len;
+	return NULL;
+}
+
+aml_node_t *def_and(const char **src, size_t *len)
+{
+	// TODO
+	(void) src;
+	(void) len;
+	return NULL;
+}
+
 aml_node_t *def_buffer(const char **src, size_t *len)
+{
+	// TODO
+	(void) src;
+	(void) len;
+	return NULL;
+}
+
+aml_node_t *def_concat(const char **src, size_t *len)
+{
+	// TODO
+	(void) src;
+	(void) len;
+	return NULL;
+}
+
+aml_node_t *def_concat_res(const char **src, size_t *len)
+{
+	// TODO
+	(void) src;
+	(void) len;
+	return NULL;
+}
+
+aml_node_t *def_cond_ref_of(const char **src, size_t *len)
+{
+	// TODO
+	(void) src;
+	(void) len;
+	return NULL;
+}
+
+aml_node_t *def_copy_object(const char **src, size_t *len)
+{
+	// TODO
+	(void) src;
+	(void) len;
+	return NULL;
+}
+
+aml_node_t *def_decrement(const char **src, size_t *len)
+{
+	// TODO
+	(void) src;
+	(void) len;
+	return NULL;
+}
+
+aml_node_t *def_deref_of(const char **src, size_t *len)
+{
+	// TODO
+	(void) src;
+	(void) len;
+	return NULL;
+}
+
+aml_node_t *def_divide(const char **src, size_t *len)
+{
+	// TODO
+	(void) src;
+	(void) len;
+	return NULL;
+}
+
+aml_node_t *def_find_set_left_bit(const char **src, size_t *len)
+{
+	// TODO
+	(void) src;
+	(void) len;
+	return NULL;
+}
+
+aml_node_t *def_find_set_right_bit(const char **src, size_t *len)
+{
+	// TODO
+	(void) src;
+	(void) len;
+	return NULL;
+}
+
+aml_node_t *def_from_bcd(const char **src, size_t *len)
+{
+	// TODO
+	(void) src;
+	(void) len;
+	return NULL;
+}
+
+aml_node_t *def_increment(const char **src, size_t *len)
+{
+	// TODO
+	(void) src;
+	(void) len;
+	return NULL;
+}
+
+aml_node_t *def_index(const char **src, size_t *len)
+{
+	// TODO
+	(void) src;
+	(void) len;
+	return NULL;
+}
+
+aml_node_t *def_l_and(const char **src, size_t *len)
+{
+	// TODO
+	(void) src;
+	(void) len;
+	return NULL;
+}
+
+aml_node_t *def_l_equal(const char **src, size_t *len)
+{
+	// TODO
+	(void) src;
+	(void) len;
+	return NULL;
+}
+
+aml_node_t *def_l_greater(const char **src, size_t *len)
+{
+	// TODO
+	(void) src;
+	(void) len;
+	return NULL;
+}
+
+aml_node_t *def_l_greater_equal(const char **src, size_t *len)
+{
+	// TODO
+	(void) src;
+	(void) len;
+	return NULL;
+}
+
+aml_node_t *def_l_less(const char **src, size_t *len)
+{
+	// TODO
+	(void) src;
+	(void) len;
+	return NULL;
+}
+
+aml_node_t *def_l_less_equal(const char **src, size_t *len)
+{
+	// TODO
+	(void) src;
+	(void) len;
+	return NULL;
+}
+
+aml_node_t *def_mid(const char **src, size_t *len)
+{
+	// TODO
+	(void) src;
+	(void) len;
+	return NULL;
+}
+
+aml_node_t *def_l_not(const char **src, size_t *len)
+{
+	// TODO
+	(void) src;
+	(void) len;
+	return NULL;
+}
+
+aml_node_t *def_l_not_equal(const char **src, size_t *len)
+{
+	// TODO
+	(void) src;
+	(void) len;
+	return NULL;
+}
+
+aml_node_t *def_load_table(const char **src, size_t *len)
+{
+	// TODO
+	(void) src;
+	(void) len;
+	return NULL;
+}
+
+aml_node_t *def_l_or(const char **src, size_t *len)
+{
+	// TODO
+	(void) src;
+	(void) len;
+	return NULL;
+}
+
+aml_node_t *def_match(const char **src, size_t *len)
+{
+	// TODO
+	(void) src;
+	(void) len;
+	return NULL;
+}
+
+aml_node_t *def_mod(const char **src, size_t *len)
+{
+	// TODO
+	(void) src;
+	(void) len;
+	return NULL;
+}
+
+aml_node_t *def_multiply(const char **src, size_t *len)
+{
+	// TODO
+	(void) src;
+	(void) len;
+	return NULL;
+}
+
+aml_node_t *def_n_and(const char **src, size_t *len)
+{
+	// TODO
+	(void) src;
+	(void) len;
+	return NULL;
+}
+
+aml_node_t *def_n_or(const char **src, size_t *len)
+{
+	// TODO
+	(void) src;
+	(void) len;
+	return NULL;
+}
+
+aml_node_t *def_not(const char **src, size_t *len)
+{
+	// TODO
+	(void) src;
+	(void) len;
+	return NULL;
+}
+
+aml_node_t *def_object_type(const char **src, size_t *len)
+{
+	// TODO
+	(void) src;
+	(void) len;
+	return NULL;
+}
+
+aml_node_t *def_or(const char **src, size_t *len)
 {
 	// TODO
 	(void) src;
@@ -180,10 +452,192 @@ aml_node_t *def_var_package(const char **src, size_t *len)
 	return NULL;
 }
 
-aml_node_t *type2_opcode(const char **src, size_t *len)
+aml_node_t *def_ref_of(const char **src, size_t *len)
 {
 	// TODO
 	(void) src;
 	(void) len;
+	return NULL;
+}
+
+aml_node_t *def_shift_left(const char **src, size_t *len)
+{
+	// TODO
+	(void) src;
+	(void) len;
+	return NULL;
+}
+
+aml_node_t *def_shift_right(const char **src, size_t *len)
+{
+	// TODO
+	(void) src;
+	(void) len;
+	return NULL;
+}
+
+aml_node_t *def_size_of(const char **src, size_t *len)
+{
+	// TODO
+	(void) src;
+	(void) len;
+	return NULL;
+}
+
+aml_node_t *def_store(const char **src, size_t *len)
+{
+	// TODO
+	(void) src;
+	(void) len;
+	return NULL;
+}
+
+aml_node_t *def_subtract(const char **src, size_t *len)
+{
+	// TODO
+	(void) src;
+	(void) len;
+	return NULL;
+}
+
+aml_node_t *def_timer(const char **src, size_t *len)
+{
+	// TODO
+	(void) src;
+	(void) len;
+	return NULL;
+}
+
+aml_node_t *def_to_bcd(const char **src, size_t *len)
+{
+	// TODO
+	(void) src;
+	(void) len;
+	return NULL;
+}
+
+aml_node_t *def_to_buffer(const char **src, size_t *len)
+{
+	// TODO
+	(void) src;
+	(void) len;
+	return NULL;
+}
+
+aml_node_t *def_to_decimal_string(const char **src, size_t *len)
+{
+	// TODO
+	(void) src;
+	(void) len;
+	return NULL;
+}
+
+aml_node_t *def_to_hex_string(const char **src, size_t *len)
+{
+	// TODO
+	(void) src;
+	(void) len;
+	return NULL;
+}
+
+aml_node_t *def_to_integer(const char **src, size_t *len)
+{
+	// TODO
+	(void) src;
+	(void) len;
+	return NULL;
+}
+
+aml_node_t *def_to_string(const char **src, size_t *len)
+{
+	// TODO
+	(void) src;
+	(void) len;
+	return NULL;
+}
+
+aml_node_t *def_wait(const char **src, size_t *len)
+{
+	// TODO
+	(void) src;
+	(void) len;
+	return NULL;
+}
+
+aml_node_t *def_xor(const char **src, size_t *len)
+{
+	// TODO
+	(void) src;
+	(void) len;
+	return NULL;
+}
+
+aml_node_t *type2_opcode(const char **src, size_t *len)
+{
+	static struct
+	{
+		char ext_prefix;
+		const uint8_t op;
+		aml_node_t *(*func)(const char **, size_t *);
+	} funcs[] = {
+		{1, ACQUIRE_OP, def_acquire},
+		{0, ADD_OP, def_add},
+		{0, AND_OP, def_and},
+		{0, BUFFER_OP, def_buffer},
+		{0, CONCAT_OP, def_concat},
+		{0, CONCAT_RES_OP, def_concat_res},
+		{1, COND_REF_OF_OP, def_cond_ref_of},
+		{0, COPY_OBJECT_OP, def_copy_object},
+		{0, DECREMENT_OP, def_decrement},
+		{0, DEREF_OF_OP, def_deref_of},
+		{0, DIVIDE_OP, def_divide},
+		{0, FIND_SET_LEFT_BIT_OP, def_find_set_left_bit},
+		{0, FIND_SET_RIGHT_BIT_OP, def_find_set_right_bit},
+		{1, FROM_BCD_OP, def_from_bcd},
+		{0, INCREMENT_OP, def_increment},
+		{0, INDEX_OP, def_index},
+		{0, L_AND_OP, def_l_and},
+		{0, L_EQUAL_OP, def_l_equal},
+		{0, L_GREATER_OP, def_l_greater},
+		{0, 0x00, def_l_greater_equal}, // TODO Not op
+		{0, L_LESS_OP, def_l_less},
+		{0, 0x00, def_l_less_equal}, // TODO Not op
+		{0, MID_OP, def_mid}, // TODO
+		{0, L_NOT_OP, def_l_not},
+		{0, 0x00, def_l_not_equal}, // TODO Not op
+		{1, LOAD_TABLE_OP, def_load_table},
+		{0, L_OR_OP, def_l_or},
+		{0, MATCH_OP, def_match},
+		{0, MOD_OP, def_mod},
+		{0, MULTIPLY_OP, def_multiply},
+		{0, N_AND_OP, def_n_and},
+		{0, N_OR_OP, def_n_or},
+		{0, NOT_OP, def_not},
+		{0, OBJECT_TYPE_OP, def_object_type},
+		{0, OR_OP, def_or},
+		{0, PACKAGE_OP, def_package},
+		{0, VAR_PACKAGE_OP, def_var_package},
+		{0, REF_OF_OP, def_ref_of},
+		{0, SHIFT_LEFT_OP, def_shift_left},
+		{0, SHIFT_RIGHT_OP, def_shift_right},
+		{0, SIZE_OF_OP, def_size_of},
+		{0, STORE_OP, def_store},
+		{0, SUBTRACT_OP, def_subtract},
+		{1, TIMER_OP, def_timer},
+		{1, TO_BCD_OP, def_to_bcd},
+		{0, TO_BUFFER_OP, def_to_buffer},
+		{0, TO_DECIMAL_STRING_OP, def_to_decimal_string},
+		{0, TO_HEX_STRING_OP, def_to_hex_string},
+		{0, TO_INTEGER_OP, def_to_integer},
+		{0, TO_STRING_OP, def_to_string},
+		{1, WAIT_OP, def_wait},
+		{0, XOR_OP, def_xor}
+	};
+
+	// TODO Check in list
+	(void) funcs;
+	(void) src;
+	(void) len;
+	// TODO If none of the list, check method_invocation
 	return NULL;
 }

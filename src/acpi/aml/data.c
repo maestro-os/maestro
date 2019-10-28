@@ -24,7 +24,7 @@ static aml_node_t *word_const(const char **src, size_t *len)
 	size_t l;
 	aml_node_t *node;
 
-	if(*len < 2 || **src != WORD_PREFIX)
+	if(*len < 3 || **src != WORD_PREFIX)
 		return NULL;
 	s = (*src)++;
 	l = (*len)--;
@@ -42,7 +42,7 @@ static aml_node_t *dword_const(const char **src, size_t *len)
 	size_t l;
 	aml_node_t *node;
 
-	if(*len < 2 || **src != DWORD_PREFIX)
+	if(*len < 5 || **src != DWORD_PREFIX)
 		return NULL;
 	s = (*src)++;
 	l = (*len)--;
@@ -60,7 +60,7 @@ static aml_node_t *qword_const(const char **src, size_t *len)
 	size_t l;
 	aml_node_t *node;
 
-	if(*len < 2 || **src != QWORD_PREFIX)
+	if(*len < 9 || **src != QWORD_PREFIX)
 		return NULL;
 	s = (*src)++;
 	l = (*len)--;
@@ -74,9 +74,20 @@ static aml_node_t *qword_const(const char **src, size_t *len)
 
 static aml_node_t *const_obj(const char **src, size_t *len)
 {
+	const char *s;
+	size_t l;
+	aml_node_t *node;
+
 	if(*len < 1 || (**src != ZERO_OP && **src != ONE_OP && **src != ONES_OP))
 		return NULL;
-	return node_new(AML_CONST_OBJ, *src, 1);
+	s = (*src)++;
+	l = (*len)--;
+	if(!(node = node_new(AML_CONST_OBJ, *src, 1)))
+	{
+		*src = s;
+		*len = l;
+	}
+	return node;
 }
 
 static aml_node_t *revision_op(const char **src, size_t *len)
