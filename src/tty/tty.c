@@ -2,7 +2,6 @@
 #include <pit/pit.h>
 #include <libc/string.h>
 
-// TODO Handle cursor when scrolling up/down
 // TODO Sanity checks
 
 __ATTR_BSS
@@ -19,6 +18,7 @@ void tty_init(void)
 	{
 		ttys[i].current_color = VGA_DEFAULT_COLOR;
 		ttys[i].update = 1;
+		tty_clear(ttys + i);
 	}
 	tty_switch(0);
 }
@@ -26,6 +26,8 @@ void tty_init(void)
 __attribute__((hot))
 static inline void update_tty(tty_t *tty)
 {
+	if(tty != current_tty)
+		return;
 	if(tty->screen_y + VGA_HEIGHT <= HISTORY_LINES)
 		memcpy(VGA_BUFFER, tty->history + (VGA_WIDTH * tty->screen_y),
 			VGA_WIDTH * VGA_HEIGHT * sizeof(uint16_t));
@@ -291,9 +293,11 @@ void tty_input_hook(const key_code_t code)
 		++(current_tty->prompted_chars);
 }
 
+// TODO Handle cursor when scrolling up/down
 __attribute__((hot))
 void tty_ctrl_hook(const key_code_t code)
 {
+	// TODO Check if update is enabled?
 	if(keyboard_is_shift_pressed())
 	{
 		if(code == KEY_PAGE_UP)

@@ -53,7 +53,7 @@ typedef struct process
 	void *user_stack;
 	void *kernel_stack;
 	regs_t regs_state;
-	bool syscalling;
+	char syscalling;
 
 	sigaction_t sigactions[SIG_MAX];
 	signal_t *signals_queue, *last_signal;
@@ -73,14 +73,14 @@ extern void tss_flush(void);
 
 void process_init(void);
 process_t *new_process(process_t *parent, void (*begin)());
-process_t *get_process(const pid_t pid);
+process_t *get_process(pid_t pid);
 process_t *get_running_process(void);
 process_t *process_clone(process_t *proc);
 void process_set_state(process_t *process, process_state_t state);
 void process_add_child(process_t *parent, process_t *child);
 void process_exit(process_t *proc, int status);
 void process_kill(process_t *proc, int sig);
-void del_process(process_t *process, const bool children);
+void del_process(process_t *process, int children);
 
 void process_tick(const regs_t *registers);
 

@@ -8,10 +8,13 @@ typedef struct
 	size_t size;
 
 	uint8_t flags;
-	bool parameter_width;
+
+	char parameter_width;
 	size_t width;
-	bool parameter_precision;
+
+	char parameter_precision;
 	size_t precision;
+
 	uint8_t length;
 	char type;
 } specifier_t;
@@ -43,7 +46,7 @@ static const char *next_specifier(const char *format, specifier_t *specifier)
 		specifier->flags = *(format++);
 	if(*format == '*')
 	{
-		specifier->parameter_width = true;
+		specifier->parameter_width = 1;
 		++format;
 	}
 	else
@@ -56,7 +59,7 @@ static const char *next_specifier(const char *format, specifier_t *specifier)
 		++format;
 		if(*format == '*')
 		{
-			specifier->parameter_width = true;
+			specifier->parameter_width = 1;
 			++format;
 		}
 		else

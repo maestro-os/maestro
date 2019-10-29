@@ -110,7 +110,7 @@ void vmem_map(vmem_t vmem, void *physaddr, void *virtaddr, const int flags)
 }
 
 __attribute__((hot))
-static void free_page_table(vmem_t table, const bool mem)
+static void free_page_table(vmem_t table, const int mem)
 {
 	size_t i;
 
@@ -129,7 +129,7 @@ static void free_page_table(vmem_t table, const bool mem)
 }
 
 __attribute__((hot))
-static vmem_t clone_page_table(vmem_t from, const bool mem_dup)
+static vmem_t clone_page_table(vmem_t from, const int mem_dup)
 {
 	vmem_t v;
 	size_t i;
@@ -159,7 +159,7 @@ fail:
 }
 
 __attribute__((hot))
-vmem_t vmem_clone(vmem_t vmem, const bool mem_dup)
+vmem_t vmem_clone(vmem_t vmem, const int mem_dup)
 {
 	vmem_t v;
 	size_t i;
@@ -184,7 +184,7 @@ vmem_t vmem_clone(vmem_t vmem, const bool mem_dup)
 	return v;
 
 fail:
-	vmem_free(v, false);
+	vmem_free(v, 0);
 	return NULL;
 }
 
@@ -208,15 +208,15 @@ void *vmem_translate(vmem_t vmem, void *ptr)
 }
 
 __attribute__((hot))
-bool vmem_contains(vmem_t vmem, const void *ptr, const size_t size)
+int vmem_contains(vmem_t vmem, const void *ptr, const size_t size)
 {
 	if(!vmem)
-		return false;
+		return 0;
 	// TODO
 	(void) vmem;
 	(void) ptr;
 	(void) size;
-	return true;
+	return 1;
 }
 
 __attribute__((hot))
@@ -238,7 +238,7 @@ void *vmem_alloc_pages(vmem_t vmem, const size_t pages)
 }
 
 __attribute__((hot))
-void vmem_free_pages(vmem_t vmem, const size_t pages, const bool mem_free)
+void vmem_free_pages(vmem_t vmem, const size_t pages, const int mem_free)
 {
 	if(!vmem)
 		return;
@@ -248,7 +248,7 @@ void vmem_free_pages(vmem_t vmem, const size_t pages, const bool mem_free)
 }
 
 __attribute__((hot))
-void vmem_free(vmem_t vmem, const bool mem_free)
+void vmem_free(vmem_t vmem, const int mem_free)
 {
 	size_t i;
 

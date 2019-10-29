@@ -61,7 +61,7 @@ extern size_t available_memory;
 
 extern vmem_t kernel_vmem;
 
-extern bool check_a20(void);
+extern int check_a20(void);
 void enable_a20(void);
 
 void memmap_init(const boot_info_t *info,
@@ -78,12 +78,12 @@ void vmem_kernel_restore(void); // TODO remove?
 void vmem_identity(vmem_t vmem, void *page, int flags);
 void vmem_identity_range(vmem_t vmem, void *from, void *to, int flags);
 void vmem_map(vmem_t vmem, void *physaddr, void *virtaddr, int flags);
-vmem_t vmem_clone(vmem_t vmem, bool mem_dup);
+vmem_t vmem_clone(vmem_t vmem, int mem_dup);
 void *vmem_translate(vmem_t vmem, void *ptr);
-bool vmem_contains(vmem_t vmem, const void *ptr, size_t size);
+int vmem_contains(vmem_t vmem, const void *ptr, size_t size);
 void *vmem_alloc_pages(vmem_t vmem, size_t pages);
-void vmem_free_pages(vmem_t vmem, size_t pages, bool mem_free);
-void vmem_free(vmem_t vmem, bool mem_free);
+void vmem_free_pages(vmem_t vmem, size_t pages, int mem_free);
+void vmem_free(vmem_t vmem, int mem_free);
 
 extern void paging_enable(vmem_t vmem);
 extern void tlb_reload(void);

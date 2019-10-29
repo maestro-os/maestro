@@ -31,10 +31,10 @@ sys_ret_t syscall_handler(const regs_t *registers)
 		kernel_loop();
 	}
 	process->regs_state = *registers;
-	process->syscalling = true;
+	process->syscalling = 1;
 	STI();
 	ret = h(process, registers);
 	CLI();
-	process->syscalling = false;
+	process->syscalling = 0;
 	return ret;
 }

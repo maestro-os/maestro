@@ -2,7 +2,7 @@
 
 __ATTR_BSS
 static key_state_t key_states[KEYS_COUNT];
-static bool capslock_state = false;
+static int capslock_state = 0;
 
 void (*input_hook)(const key_code_t) = NULL;
 void (*ctrl_hook)(const key_code_t) = NULL;
@@ -58,18 +58,18 @@ static void handle_normal_key(const key_code_t code)
 __attribute__((hot))
 static void keyboard_handler(const key_code_t code)
 {
-	static bool extra_keys = false;
+	static int extra_keys = 0;
 
 	if(!extra_keys && code == EXTRA_KEYS_CODE)
 	{
-		extra_keys = true;
+		extra_keys = 1;
 		return;
 	}
 	if(extra_keys)
 		handle_extra_key(code);
 	else
 		handle_normal_key(code);
-	extra_keys = false;
+	extra_keys = 0;
 }
 
 __attribute__((cold))
@@ -85,36 +85,36 @@ key_state_t keyboard_get_state(const key_code_t key)
 }
 
 __attribute__((hot))
-bool keyboard_is_ctrl_pressed(void)
+int keyboard_is_ctrl_pressed(void)
 {
 	return keyboard_get_state(KEY_LEFT_CTRL)
 		|| keyboard_get_state(KEY_RIGHT_CTRL);
 }
 
 __attribute__((hot))
-bool keyboard_is_shift_pressed(void)
+int keyboard_is_shift_pressed(void)
 {
 	return keyboard_get_state(KEY_LEFT_SHIFT)
 		|| keyboard_get_state(KEY_RIGHT_SHIFT);
 }
 
 __attribute__((hot))
-bool keyboard_is_capslock_enabled(void)
+int keyboard_is_capslock_enabled(void)
 {
 	return capslock_state;
 }
 
 __attribute__((hot))
-bool keyboard_is_shifting(void)
+int keyboard_is_shifting(void)
 {
-	bool shift;
+	int shift;
 
 	shift = keyboard_is_shift_pressed();
 	return (capslock_state ? !shift : shift);
 }
 
 __attribute__((hot))
-char keyboard_get_char(const key_code_t code, const bool shift)
+char keyboard_get_char(const key_code_t code, const int shift)
 {
 	switch(code)
 	{

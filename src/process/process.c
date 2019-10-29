@@ -185,9 +185,9 @@ process_t *process_clone(process_t *proc)
 	}
 	if(!(p = new_process(proc, (void *) proc->regs_state.eip)))
 		return NULL;
-	if(!(p->page_dir = vmem_clone(proc->page_dir, true)))
+	if(!(p->page_dir = vmem_clone(proc->page_dir, 1)))
 	{
-		del_process(p, false);
+		del_process(p, 0);
 		return NULL;
 	}
 	return p;
@@ -285,7 +285,7 @@ void process_kill(process_t *proc, const int sig)
 }
 
 __attribute__((hot))
-void del_process(process_t *process, const bool children)
+void del_process(process_t *process, const int children)
 {
 	child_t *c, *next;
 
@@ -312,14 +312,14 @@ void del_process(process_t *process, const bool children)
 	while(c)
 	{
 		next = c->next;
-		if(children)
-			del_process(c->process, true);
+		if(children) // TODO Usefull?
+			del_process(c->process, 1);
 		else
 			c->process->parent = NULL;
 		cache_free(children_cache, c);
 		c = next;
 	}
-	vmem_free(process->page_dir, true);
+	vmem_free(process->page_dir, 1);
 	// TODO Free `signals_queue`
 	cache_free(processes_cache, process);
 	spin_unlock(&spinlock);
@@ -339,7 +339,7 @@ static void init_process(process_t *process)
 		if(!(vmem = vmem_init()) || !(user_stack = vmem_alloc_pages(vmem, 1))
 			|| !(kernel_stack = vmem_alloc_pages(vmem, 1)))
 		{
-			vmem_free(vmem, false);
+			vmem_free(vmem, 0);
 			buddy_free(user_stack);
 			buddy_free(kernel_stack);
 			return;
