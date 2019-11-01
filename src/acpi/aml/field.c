@@ -85,8 +85,9 @@ static aml_node_t *connect_field(const char **src, size_t *len)
 
 static aml_node_t *field_element(const char **src, size_t *len)
 {
-	return parse_node(AML_FIELD_ELEMENT, src, len, 5, named_field, reserved_field,
-		access_field, extended_access_field, connect_field);
+	return parse_either(AML_FIELD_ELEMENT, src, len,
+		5, named_field, reserved_field, access_field,
+			extended_access_field, connect_field);
 }
 
 aml_node_t *field_list(const char **src, size_t *len)

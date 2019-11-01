@@ -29,22 +29,29 @@ static aml_node_t *prefix_path(const char **src, size_t *len)
 
 aml_node_t *name_seg(const char **src, size_t *len)
 {
+	const char *s;
+	size_t l;
 	char buff[4];
-	size_t i = 1;
+	size_t i = 0;
+	aml_node_t *node;
 
 	if(*len < 1 || !IS_LEAD_NAME_CHAR(**src))
 		return NULL;
+	s = *src;
+	l = *len;
 	memset(buff, '_', sizeof(buff));
-	buff[0] = **src;
-	++(*src);
-	--(*len);
-	while(i < 4 && *len > 0 && IS_NAME_CHAR(**src))
+	while(i < sizeof(buff) && *len > 0 && IS_NAME_CHAR(**src))
 	{
 		buff[i++] = **src;
 		++(*src);
 		--(*len);
 	}
-	return node_new(AML_NAME_SEG, buff, sizeof(buff));
+	if(!(node = node_new(AML_NAME_SEG, buff, sizeof(buff))))
+	{
+		*src = s;
+		*len = l;
+	}
+	return node;
 }
 
 static aml_node_t *dual_name_path(const char **src, size_t *len)
@@ -100,7 +107,7 @@ static aml_node_t *multi_name_path(const char **src, size_t *len)
 	return node;
 }
 
-static aml_node_t *null_name(const char **src, size_t *len)
+aml_node_t *null_name(const char **src, size_t *len)
 {
 	aml_node_t *node;
 
@@ -112,6 +119,14 @@ static aml_node_t *null_name(const char **src, size_t *len)
 		--(*len);
 	}
 	return node;
+}
+
+aml_node_t *super_name(const char **src, size_t *len)
+{
+	// TODO
+	(void) src;
+	(void) len;
+	return NULL;
 }
 
 static aml_node_t *name_path(const char **src, size_t *len)

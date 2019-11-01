@@ -1,5 +1,15 @@
 #include <acpi/aml/aml_parser.h>
 
+static aml_node_t *operand(const char **src, size_t *len)
+{
+	return parse_node(AML_OPERAND, src, len, 1, term_arg);
+}
+
+static aml_node_t *target(const char **src, size_t *len)
+{
+	return parse_either(AML_TARGET, src, len, 2, super_name, null_name);
+}
+
 static aml_node_t *parse_op(enum node_type type, const uint8_t op,
 	const char **src, size_t *len)
 {
@@ -526,26 +536,59 @@ aml_node_t *def_to_buffer(const char **src, size_t *len)
 
 aml_node_t *def_to_decimal_string(const char **src, size_t *len)
 {
-	// TODO
-	(void) src;
-	(void) len;
-	return NULL;
+	const char *s;
+	size_t l;
+	aml_node_t *node;
+
+	if(*len < 1 || **src != TO_DECIMAL_STRING_OP)
+		return NULL;
+	s = (*src)++;
+	l = (*len)++;
+	if(!(node = parse_node(AML_DEF_TO_DECIMAL_STRING, src, len,
+		2, operand, target)))
+	{
+		*src = s;
+		*len = l;
+	}
+	return node;
 }
 
 aml_node_t *def_to_hex_string(const char **src, size_t *len)
 {
-	// TODO
-	(void) src;
-	(void) len;
-	return NULL;
+	const char *s;
+	size_t l;
+	aml_node_t *node;
+
+	if(*len < 1 || **src != TO_HEX_STRING_OP)
+		return NULL;
+	s = (*src)++;
+	l = (*len)++;
+	if(!(node = parse_node(AML_DEF_TO_HEX_STRING, src, len,
+		2, operand, target)))
+	{
+		*src = s;
+		*len = l;
+	}
+	return node;
 }
 
 aml_node_t *def_to_integer(const char **src, size_t *len)
 {
-	// TODO
-	(void) src;
-	(void) len;
-	return NULL;
+	const char *s;
+	size_t l;
+	aml_node_t *node;
+
+	if(*len < 1 || **src != TO_INTEGER_OP)
+		return NULL;
+	s = (*src)++;
+	l = (*len)++;
+	if(!(node = parse_node(AML_DEF_TO_INTEGER, src, len,
+		2, operand, target)))
+	{
+		*src = s;
+		*len = l;
+	}
+	return node;
 }
 
 aml_node_t *def_to_string(const char **src, size_t *len)

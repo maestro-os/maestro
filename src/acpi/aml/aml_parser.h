@@ -14,8 +14,9 @@
 # define SCOPE_OP				((char) 0x10)
 # define BUFFER_OP				((char) 0x11)
 # define PACKAGE_OP				((char) 0x12)
-# define VAR_PACKAGE_OP			((char) 0x13)
 # define COND_REF_OF_OP			((char) 0x12)
+# define VAR_PACKAGE_OP			((char) 0x13)
+# define METHOD_OP				((char) 0x14)
 # define LOAD_TABLE_OP			((char) 0x1f)
 # define ACQUIRE_OP				((char) 0x23)
 # define WAIT_OP				((char) 0x25)
@@ -41,6 +42,7 @@
 # define XOR_OP					((char) 0x7f)
 # define NOT_OP					((char) 0x80)
 # define FIND_SET_LEFT_BIT_OP	((char) 0x81)
+# define FIELD_OP				((char) 0x81)
 # define FIND_SET_RIGHT_BIT_OP	((char) 0x82)
 # define DEREF_OF_OP			((char) 0x83)
 # define CONCAT_RES_OP			((char) 0x84)
@@ -456,6 +458,8 @@ aml_node_t *qword_data(const char **src, size_t *len);
 aml_node_t *string(const char **src, size_t *len);
 
 aml_node_t *name_seg(const char **src, size_t *len);
+aml_node_t *null_name(const char **src, size_t *len);
+aml_node_t *super_name(const char **src, size_t *len);
 aml_node_t *name_string(const char **src, size_t *len);
 
 aml_node_t *access_type(const char **src, size_t *len);
