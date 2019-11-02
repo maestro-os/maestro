@@ -4,7 +4,6 @@
 
 #include <libc/stdio.h> // TODO remove
 
-// TODO Fix prev field?
 // TODO Fix buckets (probably inefficient currently)
 
 spinlock_t kmalloc_spinlock = 0;
@@ -37,31 +36,18 @@ chunk_t *get_chunk(void *ptr)
 
 static void coalesce_chunks(chunk_t *chunk)
 {
-	chunk_t *begin, *end;
-	size_t size = 0;
-
 	if(CHUNK_IS_USED(chunk))
 		return;
-	begin = chunk;
-	end = chunk;
-	while(begin->prev && !CHUNK_IS_USED(begin->prev)
-		&& SAME_PAGE(begin, begin->prev))
-		begin = begin->prev;
-	while(end && !CHUNK_IS_USED(end) && SAME_PAGE(end, end->prev))
-		end = end->next;
-	if(begin == end)
-		return;
-	chunk = begin;
-	while(chunk != end)
+	if(chunk->next && !CHUNK_IS_USED(chunk->next)
+		&& SAME_PAGE(chunk, chunk->next))
 	{
-		size += chunk->size;
-		if(chunk->next != end)
-			size += sizeof(chunk_t);
-		chunk = chunk->next;
+		chunk->size += chunk->next->size;
+		if((chunk->next = chunk->next->next))
+			chunk->next->prev = chunk;
 	}
-	begin->size = size;
-	if((begin->next = end))
-		begin->next->prev = begin;
+	if(chunk->prev && !CHUNK_IS_USED(chunk->prev)
+		&& SAME_PAGE(chunk, chunk->prev))
+		coalesce_chunks(chunk->prev);
 }
 
 static void *_alloc_block(const size_t pages, const int flags)
@@ -164,10 +150,6 @@ void free_chunk(chunk_t *chunk, const int flags)
 {
 	if(!chunk)
 		return;
-	if(chunk->prev)
-		chunk->prev->next = chunk->next;
-	if(chunk->next)
-		chunk->next->prev = chunk->prev;
 	chunk->flags &= ~CHUNK_FLAG_USED;
 	coalesce_chunks(chunk);
 	// TODO If page is empty, free it
