@@ -23,6 +23,7 @@
 # define FROM_BCD_OP			((char) 0x28)
 # define TO_BCD_OP				((char) 0x29)
 # define REVISION_OP			((char) 0x30)
+# define DEBUG_OP				((char) 0x31)
 # define TIMER_OP				((char) 0x33)
 # define STORE_OP				((char) 0x70)
 # define REF_OF_OP				((char) 0x71)
@@ -458,6 +459,7 @@ aml_node_t *qword_data(const char **src, size_t *len);
 aml_node_t *string(const char **src, size_t *len);
 
 aml_node_t *name_seg(const char **src, size_t *len);
+aml_node_t *simple_name(const char **src, size_t *len);
 aml_node_t *null_name(const char **src, size_t *len);
 aml_node_t *super_name(const char **src, size_t *len);
 aml_node_t *name_string(const char **src, size_t *len);
@@ -506,12 +508,15 @@ aml_node_t *def_var_package(const char **src, size_t *len);
 
 aml_node_t *type1_opcode(const char **src, size_t *len);
 aml_node_t *type2_opcode(const char **src, size_t *len);
+aml_node_t *type6_opcode(const char **src, size_t *len);
 
 aml_node_t *arg_obj(const char **src, size_t *len);
 aml_node_t *local_obj(const char **src, size_t *len);
 
 aml_node_t *term_list(const char **src, size_t *len);
 aml_node_t *term_arg(const char **src, size_t *len);
+
+aml_node_t *debug_obj(const char **src, size_t *len);
 
 aml_node_t *aml_parse(const char *src, const size_t len);
 

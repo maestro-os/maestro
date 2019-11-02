@@ -20,7 +20,7 @@ aml_node_t *string(const char **src, size_t *len)
 	if(*len < 2 || **src != STRING_PREFIX)
 		return NULL;
 	s = (*src)++;
-	l = (*len)++;
+	l = (*len)--;
 	if((n = string_length(*src, *len)) == 0
 		|| !(node = node_new(AML_STRING, *src, n + 1)))
 	{

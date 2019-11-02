@@ -543,7 +543,7 @@ aml_node_t *def_to_decimal_string(const char **src, size_t *len)
 	if(*len < 1 || **src != TO_DECIMAL_STRING_OP)
 		return NULL;
 	s = (*src)++;
-	l = (*len)++;
+	l = (*len)--;
 	if(!(node = parse_node(AML_DEF_TO_DECIMAL_STRING, src, len,
 		2, operand, target)))
 	{
@@ -562,7 +562,7 @@ aml_node_t *def_to_hex_string(const char **src, size_t *len)
 	if(*len < 1 || **src != TO_HEX_STRING_OP)
 		return NULL;
 	s = (*src)++;
-	l = (*len)++;
+	l = (*len)--;
 	if(!(node = parse_node(AML_DEF_TO_HEX_STRING, src, len,
 		2, operand, target)))
 	{
@@ -581,7 +581,7 @@ aml_node_t *def_to_integer(const char **src, size_t *len)
 	if(*len < 1 || **src != TO_INTEGER_OP)
 		return NULL;
 	s = (*src)++;
-	l = (*len)++;
+	l = (*len)--;
 	if(!(node = parse_node(AML_DEF_TO_INTEGER, src, len,
 		2, operand, target)))
 	{
@@ -699,5 +699,13 @@ aml_node_t *type2_opcode(const char **src, size_t *len)
 		return parse_node(AML_TYPE2_OPCODE, src, len, 1, funcs[i].func);
 	}
 	// TODO Check method_invocation
+	return NULL;
+}
+
+aml_node_t *type6_opcode(const char **src, size_t *len)
+{
+	// TODO
+	(void) src;
+	(void) len;
 	return NULL;
 }

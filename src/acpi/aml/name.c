@@ -107,6 +107,12 @@ static aml_node_t *multi_name_path(const char **src, size_t *len)
 	return node;
 }
 
+aml_node_t *simple_name(const char **src, size_t *len)
+{
+	return parse_either(AML_SIMPLE_NAME, src, len,
+		3, name_string, arg_obj, local_obj);
+}
+
 aml_node_t *null_name(const char **src, size_t *len)
 {
 	aml_node_t *node;
@@ -123,10 +129,8 @@ aml_node_t *null_name(const char **src, size_t *len)
 
 aml_node_t *super_name(const char **src, size_t *len)
 {
-	// TODO
-	(void) src;
-	(void) len;
-	return NULL;
+	return parse_either(AML_SUPER_NAME, src, len,
+		3, simple_name, debug_obj, type6_opcode);
 }
 
 static aml_node_t *name_path(const char **src, size_t *len)

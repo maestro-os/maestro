@@ -75,7 +75,7 @@ static aml_node_t *def_field(const char **src, size_t *len)
 	s = *src;
 	l = *len;
 	*src += 2;
-	*len += 2;
+	*len -= 2;
 	if(!(node = parse_node(AML_DEF_FIELD, src, len,
 		4, pkg_length, name_string, field_flags, field_list)))
 	{
@@ -99,7 +99,7 @@ static aml_node_t *def_method(const char **src, size_t *len)
 	if(*len < 1 || **src != METHOD_OP)
 		return NULL;
 	s = (*src)++;
-	l = (*len)++;
+	l = (*len)--;
 	if(!(node = parse_node(AML_DEF_METHOD, src, len,
 		4, pkg_length, name_string, method_flags, term_list)))
 	{
