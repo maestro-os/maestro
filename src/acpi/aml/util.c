@@ -486,9 +486,8 @@ void node_add_child(aml_node_t *node, aml_node_t *child)
 
 	if(!node || !child)
 		return;
-	if(node->children)
+	if((n = node->children))
 	{
-		n = node->children;
 		while(n->next)
 			n = n->next;
 		n->next = child;

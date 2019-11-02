@@ -45,6 +45,7 @@
 # define FIND_SET_LEFT_BIT_OP	((char) 0x81)
 # define FIELD_OP				((char) 0x81)
 # define FIND_SET_RIGHT_BIT_OP	((char) 0x82)
+# define DEVICE_OP				((char) 0x82)
 # define DEREF_OF_OP			((char) 0x83)
 # define CONCAT_RES_OP			((char) 0x84)
 # define MOD_OP					((char) 0x85)

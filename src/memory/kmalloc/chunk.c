@@ -26,7 +26,7 @@ chunk_t *get_chunk(void *ptr)
 		c = buckets[i];
 		while(c)
 		{
-			if(CHUNK_CONTENT(c) == ptr)
+			if(c->content == ptr)
 				return c;
 			c = c->next;
 		}
@@ -127,13 +127,14 @@ chunk_t *get_free_chunk(const size_t size, const int flags)
 	return c;
 }
 
+// TODO error if chunk is not large enough?
 void alloc_chunk(chunk_t *chunk, const size_t size)
 {
 	chunk_t *next;
 
 	if(!chunk)
 		return;
-	if(chunk->size + sizeof(chunk_t) > size)
+	if(chunk->size - size > sizeof(chunk_t))
 	{
 		next = (void *) chunk + sizeof(chunk_t) + size;
 		next->prev = chunk;
@@ -143,6 +144,7 @@ void alloc_chunk(chunk_t *chunk, const size_t size)
 		next->flags = chunk->flags & ~CHUNK_FLAG_USED;
 		chunk->next = next;
 	}
+	chunk->size = size;
 	chunk->flags |= CHUNK_FLAG_USED;
 }
 

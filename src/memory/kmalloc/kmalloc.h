@@ -4,8 +4,7 @@
 # include <memory/memory.h>
 # include <util/util.h>
 
-# define CHUNK_HEAD(chunk)		((void *) (chunk) - sizeof(chunk_t))
-# define CHUNK_CONTENT(chunk)	((void *) (chunk) + sizeof(chunk_t))
+# define CHUNK_HEAD(ptr)	(CONTAINER_OF(ptr, chunk_t, content))
 
 # define BUCKETS_COUNT	6
 # define SMALLER_BUCKET	8
@@ -21,8 +20,11 @@ typedef struct chunk
 {
 	struct chunk *prev;
 	struct chunk *next;
+
 	size_t size;
 	int8_t flags;
+
+	char content[0];
 } chunk_t;
 
 extern spinlock_t kmalloc_spinlock;

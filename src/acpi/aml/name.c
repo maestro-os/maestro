@@ -27,6 +27,7 @@ static aml_node_t *prefix_path(const char **src, size_t *len)
 	return node;
 }
 
+// TODO Is buffer needed?
 aml_node_t *name_seg(const char **src, size_t *len)
 {
 	const char *s;

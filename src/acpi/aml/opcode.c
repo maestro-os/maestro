@@ -242,10 +242,20 @@ aml_node_t *def_copy_object(const char **src, size_t *len)
 
 aml_node_t *def_decrement(const char **src, size_t *len)
 {
-	// TODO
-	(void) src;
-	(void) len;
-	return NULL;
+	const char *s;
+	size_t l;
+	aml_node_t *node;
+
+	if(*len < 1 || **src != DECREMENT_OP)
+		return NULL;
+	s = (*src)++;
+	l = (*len)--;
+	if(!(node = parse_node(AML_DEF_DECREMENT, src, len, 1, super_name)))
+	{
+		*src = s;
+		*len = l;
+	}
+	return node;
 }
 
 static aml_node_t *obj_reference(const char **src, size_t *len)
@@ -305,10 +315,20 @@ aml_node_t *def_from_bcd(const char **src, size_t *len)
 
 aml_node_t *def_increment(const char **src, size_t *len)
 {
-	// TODO
-	(void) src;
-	(void) len;
-	return NULL;
+	const char *s;
+	size_t l;
+	aml_node_t *node;
+
+	if(*len < 1 || **src != INCREMENT_OP)
+		return NULL;
+	s = (*src)++;
+	l = (*len)--;
+	if(!(node = parse_node(AML_DEF_INCREMENT, src, len, 1, super_name)))
+	{
+		*src = s;
+		*len = l;
+	}
+	return node;
 }
 
 static aml_node_t *buff_pkg_str_obj(const char **src, size_t *len)

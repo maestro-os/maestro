@@ -15,7 +15,7 @@ void *kmalloc(const size_t size, const int flags)
 		return NULL;
 	}
 	alloc_chunk(chunk, size);
-	return CHUNK_CONTENT(chunk);
+	return chunk->content;
 }
 
 __attribute__((hot))
