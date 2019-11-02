@@ -138,7 +138,8 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 #endif
 
 	printf("Clock initialization...\n");
-	time_init();
+	// TODO Optimize
+	// time_init();
 
 	printf("Drivers initialization...\n");
 	init_drivers();

@@ -2,7 +2,10 @@
 #include <libc/errno.h>
 #include <util/attr.h>
 
+#include <libc/stdio.h> // TODO remove
+
 // TODO Fix prev field?
+// TODO Fix buckets (probably inefficient currently)
 
 spinlock_t kmalloc_spinlock = 0;
 
@@ -16,13 +19,11 @@ chunk_t *get_chunk(void *ptr)
 	size_t i;
 	chunk_t *c;
 
-	if(!ptr)
+	if(!ptr || ptr < buddy_begin)
 		return NULL;
 	// TODO Optimize
 	for(i = 0; i < BUCKETS_COUNT; ++i)
 	{
-		if(!buckets[i])
-			continue;
 		c = buckets[i];
 		while(c)
 		{
@@ -71,18 +72,19 @@ static void *_alloc_block(const size_t pages, const int flags)
 		return pages_alloc_zero(pages);
 }
 
-static void alloc_block(chunk_t **bucket, const int flags)
+static chunk_t *alloc_block(chunk_t **bucket, const int flags)
 {
 	chunk_t *ptr;
 
 	if(!(ptr = _alloc_block(1, flags)))
-		return;
+		return NULL;
 	ptr->size = PAGE_SIZE - sizeof(chunk_t);
 	if(flags & KMALLOC_BUDDY)
 		ptr->flags |= CHUNK_FLAG_BUDDY;
 	if((ptr->next = *bucket))
 		ptr->next->prev = ptr;
 	*bucket = ptr;
+	return ptr;
 }
 
 static void *large_alloc(const size_t size, const int flags)
@@ -135,10 +137,7 @@ chunk_t *get_free_chunk(const size_t size, const int flags)
 	else
 		return large_alloc(size, flags);
 	if(!(c = bucket_get_free_chunk(bucket, size, flags)))
-	{
-		alloc_block(bucket, flags);
-		c = bucket_get_free_chunk(bucket, size, flags);
-	}
+		c = alloc_block(bucket, flags);
 	return c;
 }
 

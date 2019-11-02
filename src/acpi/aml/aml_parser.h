@@ -68,6 +68,7 @@
 # define MID_OP					((char) 0x9e)
 # define CONTINUE_OP			((char) 0x9f)
 # define IF_OP					((char) 0xa0)
+# define WHILE_OP				((char) 0xa2)
 # define NOOP_OP				((char) 0xa3)
 # define BREAK_OP				((char) 0xa5)
 # define BREAKPOINT_OP			((char) 0xcc)

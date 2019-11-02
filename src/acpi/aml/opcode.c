@@ -75,10 +75,9 @@ aml_node_t *def_ifelse(const char **src, size_t *len)
 
 aml_node_t *predicate(const char **src, size_t *len)
 {
-	// TODO
-	(void) src;
-	(void) len;
-	return NULL;
+	printf("predicate\n");
+	print_memory(*src, 16);
+	return parse_node(AML_PREDICATE, src, len, 1, term_arg);
 }
 
 aml_node_t *def_load(const char **src, size_t *len)
@@ -152,10 +151,21 @@ aml_node_t *def_stall(const char **src, size_t *len)
 
 aml_node_t *def_while(const char **src, size_t *len)
 {
-	// TODO
-	(void) src;
-	(void) len;
-	return NULL;
+	const char *s;
+	size_t l;
+	aml_node_t *node;
+
+	if(*len < 1 || **src != WHILE_OP)
+		return NULL;
+	s = (*src)++;
+	l = (*len)--;
+	if(!(node = parse_node(AML_DEF_WHILE, src, len,
+		3, pkg_length, predicate, term_list)))
+	{
+		*src = s;
+		*len = l;
+	}
+	return node;
 }
 
 aml_node_t *type1_opcode(const char **src, size_t *len)
@@ -238,12 +248,27 @@ aml_node_t *def_decrement(const char **src, size_t *len)
 	return NULL;
 }
 
+static aml_node_t *obj_reference(const char **src, size_t *len)
+{
+	return parse_either(AML_OBJ_REFERENCE, src, len, 2, term_arg, string);
+}
+
 aml_node_t *def_deref_of(const char **src, size_t *len)
 {
-	// TODO
-	(void) src;
-	(void) len;
-	return NULL;
+	const char *s;
+	size_t l;
+	aml_node_t *node;
+
+	if(*len < 1 || **src != DEREF_OF_OP)
+		return NULL;
+	s = (*src)++;
+	l = (*len)--;
+	if(!(node = parse_node(AML_DEF_DEREF_OF, src, len, 1, obj_reference)))
+	{
+		*src = s;
+		*len = l;
+	}
+	return node;
 }
 
 aml_node_t *def_divide(const char **src, size_t *len)
@@ -286,36 +311,87 @@ aml_node_t *def_increment(const char **src, size_t *len)
 	return NULL;
 }
 
+static aml_node_t *buff_pkg_str_obj(const char **src, size_t *len)
+{
+	return parse_node(AML_BUFF_PKG_STR_OBJ, src, len, 1, term_arg);
+}
+
+static aml_node_t *index_value(const char **src, size_t *len)
+{
+	return parse_node(AML_INDEX_VALUE, src, len, 1, term_arg);
+}
+
 aml_node_t *def_index(const char **src, size_t *len)
 {
-	// TODO
-	(void) src;
-	(void) len;
-	return NULL;
+	const char *s;
+	size_t l;
+	aml_node_t *node;
+
+	if(*len < 1 || **src != INDEX_OP)
+		return NULL;
+	s = (*src)++;
+	l = (*len)--;
+	if(!(node = parse_node(AML_DEF_INDEX, src, len,
+		3, buff_pkg_str_obj, index_value, target)))
+	{
+		*src = s;
+		*len = l;
+	}
+	return node;
 }
 
 aml_node_t *def_l_and(const char **src, size_t *len)
 {
-	// TODO
-	(void) src;
-	(void) len;
-	return NULL;
+	const char *s;
+	size_t l;
+	aml_node_t *node;
+
+	if(*len < 1 || **src != L_AND_OP)
+		return NULL;
+	s = (*src)++;
+	l = (*len)--;
+	if(!(node = parse_node(AML_DEF_L_AND, src, len, 2, operand, operand)))
+	{
+		*src = s;
+		*len = l;
+	}
+	return node;
 }
 
 aml_node_t *def_l_equal(const char **src, size_t *len)
 {
-	// TODO
-	(void) src;
-	(void) len;
-	return NULL;
+	const char *s;
+	size_t l;
+	aml_node_t *node;
+
+	if(*len < 1 || **src != L_EQUAL_OP)
+		return NULL;
+	s = (*src)++;
+	l = (*len)--;
+	if(!(node = parse_node(AML_DEF_L_EQUAL, src, len, 2, operand, operand)))
+	{
+		*src = s;
+		*len = l;
+	}
+	return node;
 }
 
 aml_node_t *def_l_greater(const char **src, size_t *len)
 {
-	// TODO
-	(void) src;
-	(void) len;
-	return NULL;
+	const char *s;
+	size_t l;
+	aml_node_t *node;
+
+	if(*len < 1 || **src != L_GREATER_OP)
+		return NULL;
+	s = (*src)++;
+	l = (*len)--;
+	if(!(node = parse_node(AML_DEF_L_GREATER, src, len, 2, operand, operand)))
+	{
+		*src = s;
+		*len = l;
+	}
+	return node;
 }
 
 aml_node_t *def_l_greater_equal(const char **src, size_t *len)
@@ -328,10 +404,20 @@ aml_node_t *def_l_greater_equal(const char **src, size_t *len)
 
 aml_node_t *def_l_less(const char **src, size_t *len)
 {
-	// TODO
-	(void) src;
-	(void) len;
-	return NULL;
+	const char *s;
+	size_t l;
+	aml_node_t *node;
+
+	if(*len < 1 || **src != L_LESS_OP)
+		return NULL;
+	s = (*src)++;
+	l = (*len)--;
+	if(!(node = parse_node(AML_DEF_L_LESS, src, len, 2, operand, operand)))
+	{
+		*src = s;
+		*len = l;
+	}
+	return node;
 }
 
 aml_node_t *def_l_less_equal(const char **src, size_t *len)
@@ -488,26 +574,57 @@ aml_node_t *def_shift_right(const char **src, size_t *len)
 
 aml_node_t *def_size_of(const char **src, size_t *len)
 {
-	// TODO
-	(void) src;
-	(void) len;
-	return NULL;
+	const char *s;
+	size_t l;
+	aml_node_t *node;
+
+	if(*len < 1 || **src != SIZE_OF_OP)
+		return NULL;
+	s = (*src)++;
+	l = (*len)--;
+	if(!(node = parse_node(AML_DEF_SIZE_OF, src, len, 1, super_name)))
+	{
+		*src = s;
+		*len = l;
+	}
+	return node;
 }
 
 aml_node_t *def_store(const char **src, size_t *len)
 {
-	// TODO
-	(void) src;
-	(void) len;
-	return NULL;
+	const char *s;
+	size_t l;
+	aml_node_t *node;
+
+	if(*len < 1 || **src != STORE_OP)
+		return NULL;
+	s = (*src)++;
+	l = (*len)--;
+	if(!(node = parse_node(AML_DEF_STORE, src, len, 2, term_arg, super_name)))
+	{
+		*src = s;
+		*len = l;
+	}
+	return node;
 }
 
 aml_node_t *def_subtract(const char **src, size_t *len)
 {
-	// TODO
-	(void) src;
-	(void) len;
-	return NULL;
+	const char *s;
+	size_t l;
+	aml_node_t *node;
+
+	if(*len < 1 || **src != SUBTRACT_OP)
+		return NULL;
+	s = (*src)++;
+	l = (*len)--;
+	if(!(node = parse_node(AML_DEF_SUBTRACT, src, len,
+		3, operand, operand, target)))
+	{
+		*src = s;
+		*len = l;
+	}
+	return node;
 }
 
 aml_node_t *def_timer(const char **src, size_t *len)
@@ -528,10 +645,20 @@ aml_node_t *def_to_bcd(const char **src, size_t *len)
 
 aml_node_t *def_to_buffer(const char **src, size_t *len)
 {
-	// TODO
-	(void) src;
-	(void) len;
-	return NULL;
+	const char *s;
+	size_t l;
+	aml_node_t *node;
+
+	if(*len < 1 || **src != TO_BUFFER_OP)
+		return NULL;
+	s = (*src)++;
+	l = (*len)--;
+	if(!(node = parse_node(AML_DEF_TO_BUFFER, src, len, 2, operand, target)))
+	{
+		*src = s;
+		*len = l;
+	}
+	return node;
 }
 
 aml_node_t *def_to_decimal_string(const char **src, size_t *len)
@@ -686,10 +813,10 @@ aml_node_t *type2_opcode(const char **src, size_t *len)
 	{
 		if(*len < 2)
 			return NULL;
-		opcode = (*src)[0];
+		opcode = (*src)[1];
 	}
 	else
-		opcode = (*src)[1];
+		opcode = (*src)[0];
 	for(i = 0; i < sizeof(funcs) / sizeof(*funcs); ++i)
 	{
 		if(ext_prefix != funcs[i].ext_prefix)

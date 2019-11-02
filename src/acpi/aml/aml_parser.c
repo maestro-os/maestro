@@ -21,6 +21,7 @@ aml_node_t *term_list(const char **src, size_t *len)
 	aml_node_t *node, *n, *children = NULL, *last_child = NULL;
 
 	errno = 0;
+	printf("term_list\n");
 	if(!(node = node_new(AML_TERM_LIST, NULL, 0)))
 		return NULL;
 	s = *src;
@@ -50,6 +51,8 @@ aml_node_t *term_list(const char **src, size_t *len)
 
 aml_node_t *term_arg(const char **src, size_t *len)
 {
+	printf("term_arg\n");
+	print_memory(*src, 16);
 	return parse_either(AML_TERM_ARG, src, len,
 		4, type2_opcode, data_object, arg_obj, local_obj);
 }
