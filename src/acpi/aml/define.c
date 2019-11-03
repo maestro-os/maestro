@@ -17,7 +17,6 @@ static aml_node_t *def_alias(const char **src, size_t *len)
 	{
 		*src = s;
 		*len = l;
-		return NULL;
 	}
 	return node;
 }
@@ -39,7 +38,6 @@ static aml_node_t *def_name(const char **src, size_t *len)
 	{
 		*src = s;
 		*len = l;
-		return NULL;
 	}
 	return node;
 }
@@ -61,7 +59,6 @@ static aml_node_t *def_scope(const char **src, size_t *len)
 	{
 		*src = s;
 		*len = l;
-		return NULL;
 	}
 	return node;
 }

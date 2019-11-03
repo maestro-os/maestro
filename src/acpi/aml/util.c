@@ -2,6 +2,8 @@
 #include <stdarg.h>
 
 #ifdef KERNEL_DEBUG
+# include <tty/tty.h>
+
 static const char *node_types[] = {
 	[AML_CODE] = "AML_CODE",
 	[AML_DEF_BLOCK_HEADER] = "DEF_BLOCK_HEADER",
@@ -497,8 +499,6 @@ void node_add_child(aml_node_t *node, aml_node_t *child)
 }
 
 #ifdef KERNEL_DEBUG
-#include <tty/tty.h> // TODO remove
-
 static void print_tabs(size_t n)
 {
 	while(n--)

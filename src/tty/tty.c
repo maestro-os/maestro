@@ -3,6 +3,7 @@
 #include <libc/string.h>
 
 // TODO Sanity checks
+// TODO Implement streams and termcaps
 
 __ATTR_BSS
 tty_t ttys[TTYS_COUNT];
@@ -55,6 +56,7 @@ void tty_reset_attrs(tty_t *tty)
 	spin_unlock(&tty->spinlock);
 }
 
+// TODO Already locked if called from ANSI code
 __attribute__((hot))
 void tty_set_fgcolor(tty_t *tty, const vgacolor_t color)
 {
@@ -64,6 +66,7 @@ void tty_set_fgcolor(tty_t *tty, const vgacolor_t color)
 	spin_unlock(&tty->spinlock);
 }
 
+// TODO Already locked if called from ANSI code
 __attribute__((hot))
 void tty_set_bgcolor(tty_t *tty, const vgacolor_t color)
 {
@@ -217,8 +220,9 @@ void tty_write(const char *buffer, const size_t count, tty_t *tty)
 	{
 		if(buffer[i] != ANSI_ESCAPE)
 			tty_putchar(buffer[i], tty);
-		else
-			ansi_handle(tty, buffer, &i, count);
+		// TODO Handle ANSI + spinlocks
+		/*else
+			ansi_handle(tty, buffer, &i, count);*/
 		update_tty(tty);
 	}
 	spin_unlock(&tty->spinlock);
@@ -249,9 +253,7 @@ void tty_erase(tty_t *tty, size_t count)
 	spin_unlock(&tty->spinlock);
 }
 
-// TODO Implement streams and termcaps
-// TODO Spinlock?
-
+// TODO Spinlock
 __attribute__((hot))
 void tty_input_hook(const key_code_t code)
 {
@@ -294,6 +296,7 @@ void tty_input_hook(const key_code_t code)
 }
 
 // TODO Handle cursor when scrolling up/down
+// TODO Spinlock
 __attribute__((hot))
 void tty_ctrl_hook(const key_code_t code)
 {

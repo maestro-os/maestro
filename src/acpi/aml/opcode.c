@@ -10,6 +10,11 @@ static aml_node_t *target(const char **src, size_t *len)
 	return parse_either(AML_TARGET, src, len, 2, super_name, null_name);
 }
 
+aml_node_t *obj_reference(const char **src, size_t *len)
+{
+	return parse_either(AML_OBJ_REFERENCE, src, len, 2, term_arg, string);
+}
+
 static aml_node_t *parse_op(enum node_type type, const uint8_t op,
 	const char **src, size_t *len)
 {
@@ -256,11 +261,6 @@ aml_node_t *def_decrement(const char **src, size_t *len)
 		*len = l;
 	}
 	return node;
-}
-
-static aml_node_t *obj_reference(const char **src, size_t *len)
-{
-	return parse_either(AML_OBJ_REFERENCE, src, len, 2, term_arg, string);
 }
 
 aml_node_t *def_deref_of(const char **src, size_t *len)

@@ -1,4 +1,5 @@
 #include <acpi/acpi.h>
+#include <libc/stdio.h>
 
 static int check_acpi_mode(const fadt_t *fadt)
 {

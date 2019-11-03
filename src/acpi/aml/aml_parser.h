@@ -444,7 +444,9 @@ aml_node_t *parse_either(enum node_type type, const char **src,
 
 aml_node_t *node_new(enum node_type type, const char *data, size_t length);
 void node_add_child(aml_node_t *node, aml_node_t *child);
+# ifdef KERNEL_DEBUG
 void ast_print(const aml_node_t *ast);
+# endif
 void node_free(aml_node_t *node);
 void ast_free(aml_node_t *ast);
 
@@ -507,6 +509,8 @@ aml_node_t *def_while(const char **src, size_t *len);
 aml_node_t *def_buffer(const char **src, size_t *len);
 aml_node_t *def_package(const char **src, size_t *len);
 aml_node_t *def_var_package(const char **src, size_t *len);
+
+aml_node_t *obj_reference(const char **src, size_t *len);
 
 aml_node_t *type1_opcode(const char **src, size_t *len);
 aml_node_t *type2_opcode(const char **src, size_t *len);
