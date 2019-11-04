@@ -2,7 +2,7 @@
 #include <stdarg.h>
 
 #ifdef KERNEL_DEBUG
-# include <tty/tty.h>
+# include <tty/tty.h> // TODO remove
 
 static const char *node_types[] = {
 	[AML_CODE] = "AML_CODE",
@@ -499,10 +499,10 @@ void node_add_child(aml_node_t *node, aml_node_t *child)
 }
 
 #ifdef KERNEL_DEBUG
-static void print_tabs(size_t n)
+static void print_indent(size_t n)
 {
 	while(n--)
-		printf("\t");
+		printf(" ");
 }
 
 static void ast_print_(const aml_node_t *ast, const size_t level)
@@ -511,7 +511,7 @@ static void ast_print_(const aml_node_t *ast, const size_t level)
 
 	if(!ast)
 		return;
-	print_tabs(level);
+	print_indent(level);
 	printf("- %s: ", node_types[ast->type]);
 	tty_write(ast->data, ast->data_length, current_tty); // TODO Use printf precision
 	printf("\n");
