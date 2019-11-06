@@ -70,21 +70,8 @@ aml_node_t *def_fatal(const char **src, size_t *len)
 
 aml_node_t *def_ifelse(const char **src, size_t *len)
 {
-	const char *s;
-	size_t l;
-	aml_node_t *node;
-
-	if(*len < 1 || **src != IF_OP)
-		return NULL;
-	s = (*src)++;
-	l = (*len)--;
-	if(!(node = parse_node(AML_DEF_IF_ELSE, src, len,
-		4, pkg_length, predicate, term_list, def_else)))
-	{
-		*src = s;
-		*len = l;
-	}
-	return node;
+	return parse_operation(0, IF_OP, AML_DEF_IF_ELSE, src, len,
+		4, pkg_length, predicate, term_list, def_else);
 }
 
 aml_node_t *predicate(const char **src, size_t *len)
@@ -136,20 +123,8 @@ static aml_node_t *arg_object(const char **src, size_t *len)
 
 aml_node_t *def_return(const char **src, size_t *len)
 {
-	const char *s;
-	size_t l;
-	aml_node_t *node;
-
-	if(*len < 1 || **src != RETURN_OP)
-		return NULL;
-	s = (*src)++;
-	l = (*len)--;
-	if(!(node = parse_node(AML_DEF_RETURN, src, len, 1, arg_object)))
-	{
-		*src = s;
-		*len = l;
-	}
-	return node;
+	return parse_operation(0, RETURN_OP, AML_DEF_RETURN, src, len,
+		1, arg_object);
 }
 
 aml_node_t *def_signal(const char **src, size_t *len)
@@ -178,21 +153,8 @@ aml_node_t *def_stall(const char **src, size_t *len)
 
 aml_node_t *def_while(const char **src, size_t *len)
 {
-	const char *s;
-	size_t l;
-	aml_node_t *node;
-
-	if(*len < 1 || **src != WHILE_OP)
-		return NULL;
-	s = (*src)++;
-	l = (*len)--;
-	if(!(node = parse_node(AML_DEF_WHILE, src, len,
-		3, pkg_length, predicate, term_list)))
-	{
-		*src = s;
-		*len = l;
-	}
-	return node;
+	return parse_operation(0, WHILE_OP, AML_DEF_WHILE, src, len,
+		3, pkg_length, predicate, term_list);
 }
 
 aml_node_t *type1_opcode(const char **src, size_t *len)
@@ -213,40 +175,14 @@ aml_node_t *def_acquire(const char **src, size_t *len)
 
 aml_node_t *def_add(const char **src, size_t *len)
 {
-	const char *s;
-	size_t l;
-	aml_node_t *node;
-
-	if(*len < 1 || **src != ADD_OP)
-		return NULL;
-	s = (*src)++;
-	l = (*len)--;
-	if(!(node = parse_node(AML_DEF_ADD, src, len,
-		3, operand, operand, target)))
-	{
-		*src = s;
-		*len = l;
-	}
-	return node;
+	return parse_operation(0, ADD_OP, AML_DEF_ADD, src, len,
+		3, operand, operand, target);
 }
 
 aml_node_t *def_and(const char **src, size_t *len)
 {
-	const char *s;
-	size_t l;
-	aml_node_t *node;
-
-	if(*len < 1 || **src != AND_OP)
-		return NULL;
-	s = (*src)++;
-	l = (*len)--;
-	if(!(node = parse_node(AML_DEF_AND, src, len,
-		3, operand, operand, target)))
-	{
-		*src = s;
-		*len = l;
-	}
-	return node;
+	return parse_operation(0, AND_OP, AML_DEF_AND, src, len,
+		3, operand, operand, target);
 }
 
 static aml_node_t *buffer_size(const char **src, size_t *len)
@@ -297,38 +233,14 @@ aml_node_t *def_copy_object(const char **src, size_t *len)
 
 aml_node_t *def_decrement(const char **src, size_t *len)
 {
-	const char *s;
-	size_t l;
-	aml_node_t *node;
-
-	if(*len < 1 || **src != DECREMENT_OP)
-		return NULL;
-	s = (*src)++;
-	l = (*len)--;
-	if(!(node = parse_node(AML_DEF_DECREMENT, src, len, 1, super_name)))
-	{
-		*src = s;
-		*len = l;
-	}
-	return node;
+	return parse_operation(0, DECREMENT_OP, AML_DEF_DECREMENT, src, len,
+		1, super_name);
 }
 
 aml_node_t *def_deref_of(const char **src, size_t *len)
 {
-	const char *s;
-	size_t l;
-	aml_node_t *node;
-
-	if(*len < 1 || **src != DEREF_OF_OP)
-		return NULL;
-	s = (*src)++;
-	l = (*len)--;
-	if(!(node = parse_node(AML_DEF_DEREF_OF, src, len, 1, obj_reference)))
-	{
-		*src = s;
-		*len = l;
-	}
-	return node;
+	return parse_operation(0, DEREF_OF_OP, AML_DEF_DEREF_OF, src, len,
+		1, obj_reference);
 }
 
 aml_node_t *def_divide(const char **src, size_t *len)
@@ -365,20 +277,8 @@ aml_node_t *def_from_bcd(const char **src, size_t *len)
 
 aml_node_t *def_increment(const char **src, size_t *len)
 {
-	const char *s;
-	size_t l;
-	aml_node_t *node;
-
-	if(*len < 1 || **src != INCREMENT_OP)
-		return NULL;
-	s = (*src)++;
-	l = (*len)--;
-	if(!(node = parse_node(AML_DEF_INCREMENT, src, len, 1, super_name)))
-	{
-		*src = s;
-		*len = l;
-	}
-	return node;
+	return parse_operation(0, INCREMENT_OP, AML_DEF_INCREMENT, src, len,
+		1, super_name);
 }
 
 static aml_node_t *buff_pkg_str_obj(const char **src, size_t *len)
@@ -393,75 +293,26 @@ static aml_node_t *index_value(const char **src, size_t *len)
 
 aml_node_t *def_index(const char **src, size_t *len)
 {
-	const char *s;
-	size_t l;
-	aml_node_t *node;
-
-	if(*len < 1 || **src != INDEX_OP)
-		return NULL;
-	s = (*src)++;
-	l = (*len)--;
-	if(!(node = parse_node(AML_DEF_INDEX, src, len,
-		3, buff_pkg_str_obj, index_value, target)))
-	{
-		*src = s;
-		*len = l;
-	}
-	return node;
+	return parse_operation(0, INDEX_OP, AML_DEF_INDEX, src, len,
+		3, buff_pkg_str_obj, index_value, target);
 }
 
 aml_node_t *def_l_and(const char **src, size_t *len)
 {
-	const char *s;
-	size_t l;
-	aml_node_t *node;
-
-	if(*len < 1 || **src != L_AND_OP)
-		return NULL;
-	s = (*src)++;
-	l = (*len)--;
-	if(!(node = parse_node(AML_DEF_L_AND, src, len, 2, operand, operand)))
-	{
-		*src = s;
-		*len = l;
-	}
-	return node;
+	return parse_operation(0, L_AND_OP, AML_DEF_L_AND, src, len,
+		2, operand, operand);
 }
 
 aml_node_t *def_l_equal(const char **src, size_t *len)
 {
-	const char *s;
-	size_t l;
-	aml_node_t *node;
-
-	if(*len < 1 || **src != L_EQUAL_OP)
-		return NULL;
-	s = (*src)++;
-	l = (*len)--;
-	if(!(node = parse_node(AML_DEF_L_EQUAL, src, len, 2, operand, operand)))
-	{
-		*src = s;
-		*len = l;
-	}
-	return node;
+	return parse_operation(0, L_EQUAL_OP, AML_DEF_L_EQUAL, src, len,
+		2, operand, operand);
 }
 
 aml_node_t *def_l_greater(const char **src, size_t *len)
 {
-	const char *s;
-	size_t l;
-	aml_node_t *node;
-
-	if(*len < 1 || **src != L_GREATER_OP)
-		return NULL;
-	s = (*src)++;
-	l = (*len)--;
-	if(!(node = parse_node(AML_DEF_L_GREATER, src, len, 2, operand, operand)))
-	{
-		*src = s;
-		*len = l;
-	}
-	return node;
+	return parse_operation(0, L_GREATER_OP, AML_DEF_L_GREATER, src, len,
+		2, operand, operand);
 }
 
 aml_node_t *def_l_greater_equal(const char **src, size_t *len)
@@ -474,20 +325,8 @@ aml_node_t *def_l_greater_equal(const char **src, size_t *len)
 
 aml_node_t *def_l_less(const char **src, size_t *len)
 {
-	const char *s;
-	size_t l;
-	aml_node_t *node;
-
-	if(*len < 1 || **src != L_LESS_OP)
-		return NULL;
-	s = (*src)++;
-	l = (*len)--;
-	if(!(node = parse_node(AML_DEF_L_LESS, src, len, 2, operand, operand)))
-	{
-		*src = s;
-		*len = l;
-	}
-	return node;
+	return parse_operation(0, L_LESS_OP, AML_DEF_L_LESS, src, len,
+		2, operand, operand);
 }
 
 aml_node_t *def_l_less_equal(const char **src, size_t *len)
@@ -532,20 +371,8 @@ aml_node_t *def_load_table(const char **src, size_t *len)
 
 aml_node_t *def_l_or(const char **src, size_t *len)
 {
-	const char *s;
-	size_t l;
-	aml_node_t *node;
-
-	if(*len < 1 || **src != L_OR_OP)
-		return NULL;
-	s = (*src)++;
-	l = (*len)--;
-	if(!(node = parse_node(AML_DEF_L_OR, src, len, 2, operand, operand)))
-	{
-		*src = s;
-		*len = l;
-	}
-	return node;
+	return parse_operation(0, L_OR_OP, AML_DEF_L_OR, src, len,
+		2, operand, operand);
 }
 
 aml_node_t *def_match(const char **src, size_t *len)
@@ -643,95 +470,32 @@ static aml_node_t *shift_count(const char **src, size_t *len)
 
 aml_node_t *def_shift_left(const char **src, size_t *len)
 {
-	const char *s;
-	size_t l;
-	aml_node_t *node;
-
-	if(*len < 1 || **src != SHIFT_LEFT_OP)
-		return NULL;
-	s = (*src)++;
-	l = (*len)--;
-	if(!(node = parse_node(AML_DEF_SHIFT_LEFT, src, len,
-		1, operand, shift_count, target)))
-	{
-		*src = s;
-		*len = l;
-	}
-	return node;
+	return parse_operation(0, SHIFT_LEFT_OP, AML_DEF_SHIFT_LEFT, src, len,
+		3, operand, shift_count, target);
 }
 
 aml_node_t *def_shift_right(const char **src, size_t *len)
 {
-	const char *s;
-	size_t l;
-	aml_node_t *node;
-
-	if(*len < 1 || **src != SHIFT_RIGHT_OP)
-		return NULL;
-	s = (*src)++;
-	l = (*len)--;
-	if(!(node = parse_node(AML_DEF_SHIFT_RIGHT, src, len,
-		3, operand, shift_count, target)))
-	{
-		*src = s;
-		*len = l;
-	}
-	return node;
+	return parse_operation(0, SHIFT_RIGHT_OP, AML_DEF_SHIFT_RIGHT, src, len,
+		3, operand, shift_count, target);
 }
 
 aml_node_t *def_size_of(const char **src, size_t *len)
 {
-	const char *s;
-	size_t l;
-	aml_node_t *node;
-
-	if(*len < 1 || **src != SIZE_OF_OP)
-		return NULL;
-	s = (*src)++;
-	l = (*len)--;
-	if(!(node = parse_node(AML_DEF_SIZE_OF, src, len, 1, super_name)))
-	{
-		*src = s;
-		*len = l;
-	}
-	return node;
+	return parse_operation(0, SIZE_OF_OP, AML_DEF_SIZE_OF, src, len,
+		1, super_name);
 }
 
 aml_node_t *def_store(const char **src, size_t *len)
 {
-	const char *s;
-	size_t l;
-	aml_node_t *node;
-
-	if(*len < 1 || **src != STORE_OP)
-		return NULL;
-	s = (*src)++;
-	l = (*len)--;
-	if(!(node = parse_node(AML_DEF_STORE, src, len, 2, term_arg, super_name)))
-	{
-		*src = s;
-		*len = l;
-	}
-	return node;
+	return parse_operation(0, STORE_OP, AML_DEF_STORE, src, len,
+		2, term_arg, super_name);
 }
 
 aml_node_t *def_subtract(const char **src, size_t *len)
 {
-	const char *s;
-	size_t l;
-	aml_node_t *node;
-
-	if(*len < 1 || **src != SUBTRACT_OP)
-		return NULL;
-	s = (*src)++;
-	l = (*len)--;
-	if(!(node = parse_node(AML_DEF_SUBTRACT, src, len,
-		3, operand, operand, target)))
-	{
-		*src = s;
-		*len = l;
-	}
-	return node;
+	return parse_operation(0, SUBTRACT_OP, AML_DEF_SUBTRACT, src, len,
+		3, operand, operand, target);
 }
 
 aml_node_t *def_timer(const char **src, size_t *len)
@@ -752,77 +516,26 @@ aml_node_t *def_to_bcd(const char **src, size_t *len)
 
 aml_node_t *def_to_buffer(const char **src, size_t *len)
 {
-	const char *s;
-	size_t l;
-	aml_node_t *node;
-
-	if(*len < 1 || **src != TO_BUFFER_OP)
-		return NULL;
-	s = (*src)++;
-	l = (*len)--;
-	if(!(node = parse_node(AML_DEF_TO_BUFFER, src, len, 2, operand, target)))
-	{
-		*src = s;
-		*len = l;
-	}
-	return node;
+	return parse_operation(0, TO_BUFFER_OP, AML_DEF_TO_BUFFER, src, len,
+		2, operand, target);
 }
 
 aml_node_t *def_to_decimal_string(const char **src, size_t *len)
 {
-	const char *s;
-	size_t l;
-	aml_node_t *node;
-
-	if(*len < 1 || **src != TO_DECIMAL_STRING_OP)
-		return NULL;
-	s = (*src)++;
-	l = (*len)--;
-	if(!(node = parse_node(AML_DEF_TO_DECIMAL_STRING, src, len,
-		2, operand, target)))
-	{
-		*src = s;
-		*len = l;
-	}
-	return node;
+	return parse_operation(0, TO_DECIMAL_STRING_OP, AML_DEF_TO_DECIMAL_STRING,
+		src, len, 2, operand, target);
 }
 
 aml_node_t *def_to_hex_string(const char **src, size_t *len)
 {
-	const char *s;
-	size_t l;
-	aml_node_t *node;
-
-	if(*len < 1 || **src != TO_HEX_STRING_OP)
-		return NULL;
-	s = (*src)++;
-	l = (*len)--;
-	if(!(node = parse_node(AML_DEF_TO_HEX_STRING, src, len,
-		2, operand, target)))
-	{
-		*src = s;
-		*len = l;
-	}
-	return node;
+	return parse_operation(0, TO_HEX_STRING_OP, AML_DEF_TO_HEX_STRING,
+		src, len, 2, operand, target);
 }
 
 aml_node_t *def_to_integer(const char **src, size_t *len)
 {
-	const char *s;
-	size_t l;
-	aml_node_t *node;
-
-	if(*len < 1 || **src != TO_INTEGER_OP)
-		return NULL;
-	s = (*src)++;
-	l = (*len)--;
-	if(!(node = parse_node(AML_DEF_TO_INTEGER, src, len,
-		2, operand, target)))
-	{
-		*src = s;
-		*len = l;
-	}
-	return node;
+	return parse_operation(0, TO_INTEGER_OP, AML_DEF_TO_INTEGER, src, len,
+		2, operand, target);
 }
 
 aml_node_t *def_to_string(const char **src, size_t *len)
