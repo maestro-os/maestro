@@ -90,6 +90,11 @@ static aml_node_t *const_obj(const char **src, size_t *len)
 	return node;
 }
 
+aml_node_t *byte_list(const char **src, size_t *len, const size_t n)
+{
+	return parse_fixed_list(AML_BYTE_LIST, src, len, byte_data, n);
+}
+
 static aml_node_t *revision_op(const char **src, size_t *len)
 {
 	aml_node_t *node;

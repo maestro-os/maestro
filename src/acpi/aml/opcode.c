@@ -192,10 +192,36 @@ static aml_node_t *buffer_size(const char **src, size_t *len)
 
 aml_node_t *def_buffer(const char **src, size_t *len)
 {
-	// TODO
-	(void) src;
-	(void) len;
-	(void) buffer_size;
+	const char *s;
+	size_t l;
+	aml_node_t *node = NULL, *n0 = NULL, *n1 = NULL, *n2 = NULL;
+	size_t buff_size;
+
+	if(*len < 1 || **src != BUFFER_OP)
+		return NULL;
+	s = (*src)++;
+	l = (*len)--;
+	if(!(node = node_new(AML_DEF_BUFFER, *src, 0)))
+		goto fail;
+	if(!(n0 = pkg_length(src, len)))
+		goto fail;
+	if(!(n1 = buffer_size(src, len)))
+		goto fail;
+	buff_size = aml_get_integer(n1->children);
+	if(!(n2 = byte_list(src, len, buff_size)))
+		goto fail;
+	node_add_child(node, n0);
+	node_add_child(node, n1);
+	node_add_child(node, n2);
+	return node;
+
+fail:
+	*src = s;
+	*len = l;
+	ast_free(n0);
+	ast_free(n1);
+	ast_free(n2);
+	ast_free(node);
 	return NULL;
 }
 

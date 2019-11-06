@@ -460,6 +460,7 @@ uint8_t aml_get_byte(aml_node_t *node);
 uint16_t aml_get_word(aml_node_t *node);
 uint32_t aml_get_dword(aml_node_t *node);
 
+aml_node_t *byte_list(const char **src, size_t *len, const size_t n);
 aml_node_t *data_object(const char **src, size_t *len);
 aml_node_t *byte_data(const char **src, size_t *len);
 aml_node_t *word_data(const char **src, size_t *len);
@@ -533,5 +534,8 @@ aml_node_t *term_arg(const char **src, size_t *len);
 aml_node_t *debug_obj(const char **src, size_t *len);
 
 aml_node_t *aml_parse(const char *src, const size_t len);
+
+aml_node_t *aml_search(aml_node_t *node, enum node_type type);
+int aml_get_integer(aml_node_t *node);
 
 #endif
