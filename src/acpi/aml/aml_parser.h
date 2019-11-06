@@ -69,8 +69,10 @@
 # define MID_OP					((char) 0x9e)
 # define CONTINUE_OP			((char) 0x9f)
 # define IF_OP					((char) 0xa0)
+# define ELSE_OP				((char) 0xa1)
 # define WHILE_OP				((char) 0xa2)
 # define NOOP_OP				((char) 0xa3)
+# define RETURN_OP				((char) 0xa4)
 # define BREAK_OP				((char) 0xa5)
 # define BREAKPOINT_OP			((char) 0xcc)
 # define ONES_OP				((char) 0xff)
@@ -437,10 +439,14 @@ aml_node_t *parse_node(enum node_type type, const char **src, size_t *len,
 aml_node_t *parse_serie(const char **src, size_t *len, size_t n, ...);
 aml_node_t *parse_list(enum node_type type, const char **src, size_t *len,
 	parse_func_t f);
+aml_node_t *parse_fixed_list(enum node_type type, const char **src, size_t *len,
+	parse_func_t f, size_t i);
 aml_node_t *parse_string(const char **src, size_t *len,
 	size_t str_len, parse_func_t f);
 aml_node_t *parse_either(enum node_type type, const char **src,
 	size_t *len, size_t n, ...);
+aml_node_t *parse_operation(int ext_op, char op, enum node_type type,
+	const char **src, size_t *len, size_t n, ...);
 
 aml_node_t *node_new(enum node_type type, const char *data, size_t length);
 void node_add_child(aml_node_t *node, aml_node_t *child);
@@ -511,6 +517,8 @@ aml_node_t *def_package(const char **src, size_t *len);
 aml_node_t *def_var_package(const char **src, size_t *len);
 
 aml_node_t *obj_reference(const char **src, size_t *len);
+
+aml_node_t *method_invocation(const char **src, size_t *len);
 
 aml_node_t *type1_opcode(const char **src, size_t *len);
 aml_node_t *type2_opcode(const char **src, size_t *len);

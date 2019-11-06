@@ -17,6 +17,6 @@ void handle_dsdt(dsdt_t *dsdt)
 	len = dsdt->header.length - sizeof(dsdt->header);
 	if(!(ast = aml_parse(dsdt->src, len)))
 		PANIC("Failed to parse AML code!\n", 0);
-	ast_print(ast);
+	// TODO ast_print(ast);
 	exec_aml(ast);
 }

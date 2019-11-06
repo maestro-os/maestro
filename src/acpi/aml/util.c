@@ -354,7 +354,7 @@ fail:
 	return NULL;
 }
 
-aml_node_t *parse_node(enum node_type type, const char **src, size_t *len,
+aml_node_t *parse_node(const enum node_type type, const char **src, size_t *len,
 	const size_t n, ...)
 {
 	va_list ap;
@@ -379,7 +379,7 @@ aml_node_t *parse_serie(const char **src, size_t *len, const size_t n, ...)
 	return do_parse(src, len, n, ap);
 }
 
-aml_node_t *parse_list(enum node_type type, const char **src, size_t *len,
+aml_node_t *parse_list(const enum node_type type, const char **src, size_t *len,
 	parse_func_t f)
 {
 	aml_node_t *node, *n, *prev, *nod;
@@ -391,6 +391,32 @@ aml_node_t *parse_list(enum node_type type, const char **src, size_t *len,
 	node_add_child(node, n);
 	prev = node;
 	while((n = f(src, len)))
+	{
+		if(!(nod = node_new(type, NULL, 0)))
+		{
+			node_free(n);
+			ast_free(node);
+			return NULL;
+		}
+		node_add_child(nod, n);
+		node_add_child(prev, nod);
+		prev = nod;
+	}
+	return node;
+}
+
+aml_node_t *parse_fixed_list(const enum node_type type,
+	const char **src, size_t *len, parse_func_t f, size_t i)
+{
+	aml_node_t *node, *n, *prev, *nod;
+
+	if(!(node = node_new(type, *src, 0)))
+		return NULL;
+	if(!(n = f(src, len)))
+		return node;
+	node_add_child(node, n);
+	prev = node;
+	while(i-- > 0 && (n = f(src, len)))
 	{
 		if(!(nod = node_new(type, NULL, 0)))
 		{
@@ -457,6 +483,44 @@ fail:
 	*src = s;
 	*len = l;
 	return NULL;
+}
+
+aml_node_t *parse_operation(const int ext_op, const char op,
+	const enum node_type type, const char **src, size_t *len,
+		const size_t n, ...)
+{
+	const char *s;
+	size_t l;
+	va_list ap;
+	aml_node_t *children, *node = NULL;
+
+	if(ext_op)
+	{
+		if(*len < 2 || (*src)[0] != EXT_OP_PREFIX || (*src)[1] != op)
+			return NULL;
+		s = *src;
+		l = *len;
+		*src += 2;
+		*len -= 2;
+	}
+	else
+	{
+		if(*len < 1 || **src != op)
+			return NULL;
+		s = (*src)++;
+		l = (*len)--;
+	}
+	va_start(ap, n);
+	if(!(node = node_new(type, *src, 0))
+		|| !(children = do_parse(src, len, n, ap)))
+	{
+		*src = s;
+		*len = l;
+		node_free(node);
+		return NULL;
+	}
+	node->children = children;
+	return node;
 }
 
 aml_node_t *node_new(const enum node_type type, const char *data,
