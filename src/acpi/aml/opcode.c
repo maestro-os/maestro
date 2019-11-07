@@ -100,12 +100,15 @@ aml_node_t *def_notify(const char **src, size_t *len)
 	return NULL;
 }
 
+static aml_node_t *mutex_object(const char **src, size_t *len)
+{
+	return parse_node(AML_MUTEX_OBJECT, src, len, 1, super_name);
+}
+
 aml_node_t *def_release(const char **src, size_t *len)
 {
-	// TODO
-	(void) src;
-	(void) len;
-	return NULL;
+	return parse_operation(1, RELEASE_OP, AML_DEF_RELEASE, src, len,
+		1, mutex_object);
 }
 
 aml_node_t *def_reset(const char **src, size_t *len)
@@ -165,12 +168,15 @@ aml_node_t *type1_opcode(const char **src, size_t *len)
 				def_signal, def_sleep, def_stall, def_while);
 }
 
+static aml_node_t *timeout(const char **src, size_t *len)
+{
+	return parse_node(AML_DEF_ACQUIRE, src, len, 1, word_data);
+}
+
 aml_node_t *def_acquire(const char **src, size_t *len)
 {
-	// TODO
-	(void) src;
-	(void) len;
-	return NULL;
+	return parse_operation(1, ACQUIRE_OP, AML_DEF_ACQUIRE, src, len,
+		2, mutex_object, timeout);
 }
 
 aml_node_t *def_add(const char **src, size_t *len)
@@ -465,12 +471,26 @@ aml_node_t *def_or(const char **src, size_t *len)
 	return NULL;
 }
 
+static aml_node_t *num_elements(const char **src, size_t *len)
+{
+	return parse_node(AML_NUM_ELEMENTS, src, len, 1, byte_data);
+}
+
+static aml_node_t *package_element(const char **src, size_t *len)
+{
+	return parse_either(AML_PACKAGE_ELEMENT, src, len,
+		2, data_ref_object, name_string);
+}
+
+static aml_node_t *package_element_list(const char **src, size_t *len)
+{
+	return parse_list(AML_PACKAGE_ELEMENT_LIST, src, len, package_element);
+}
+
 aml_node_t *def_package(const char **src, size_t *len)
 {
-	// TODO
-	(void) src;
-	(void) len;
-	return NULL;
+	return parse_operation(0, PACKAGE_OP, AML_DEF_PACKAGE, src, len,
+		3, pkg_length, num_elements, package_element_list);
 }
 
 aml_node_t *def_var_package(const char **src, size_t *len)

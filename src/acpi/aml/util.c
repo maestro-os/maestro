@@ -412,9 +412,6 @@ aml_node_t *parse_fixed_list(const enum node_type type,
 
 	if(!(node = node_new(type, *src, 0)))
 		return NULL;
-	if(!(n = f(src, len)))
-		return node;
-	node_add_child(node, n);
 	prev = node;
 	while(i-- > 0 && (n = f(src, len)))
 	{
@@ -428,6 +425,7 @@ aml_node_t *parse_fixed_list(const enum node_type type,
 		node_add_child(prev, nod);
 		prev = nod;
 	}
+	// TODO Check for error
 	return node;
 }
 

@@ -8,10 +8,8 @@ static aml_node_t *def_alias(const char **src, size_t *len)
 
 	if(*len < 1 || **src != ALIAS_OP)
 		return NULL;
-	s = *src;
-	l = *len;
-	++(*src);
-	--(*len);
+	s = (*src)++;
+	l = (*len)--;
 	if(!(node = parse_node(AML_DEF_ALIAS, src, len,
 		2, name_string, name_string)))
 	{
@@ -29,10 +27,8 @@ static aml_node_t *def_name(const char **src, size_t *len)
 
 	if(*len < 1 || **src != NAME_OP)
 		return NULL;
-	s = *src;
-	l = *len;
-	++(*src);
-	--(*len);
+	s = (*src)++;
+	l = (*len)--;
 	if(!(node = parse_node(AML_DEF_NAME, src, len,
 		2, name_string, data_ref_object)))
 	{
@@ -50,10 +46,8 @@ static aml_node_t *def_scope(const char **src, size_t *len)
 
 	if(*len < 1 || **src != SCOPE_OP)
 		return NULL;
-	s = *src;
-	l = *len;
-	++(*src);
-	--(*len);
+	s = (*src)++;
+	l = (*len)--;
 	if(!(node = parse_node(AML_DEF_SCOPE, src, len,
 		3, pkg_length, name_string, term_list)))
 	{

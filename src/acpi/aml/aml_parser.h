@@ -9,6 +9,7 @@
 
 # define ZERO_OP				((char) 0x00)
 # define ONE_OP					((char) 0x01)
+# define MUTEX_OP				((char) 0x01)
 # define ALIAS_OP				((char) 0x06)
 # define NAME_OP				((char) 0x08)
 # define SCOPE_OP				((char) 0x10)
@@ -20,6 +21,7 @@
 # define LOAD_TABLE_OP			((char) 0x1f)
 # define ACQUIRE_OP				((char) 0x23)
 # define WAIT_OP				((char) 0x25)
+# define RELEASE_OP				((char) 0x27)
 # define FROM_BCD_OP			((char) 0x28)
 # define TO_BCD_OP				((char) 0x29)
 # define REVISION_OP			((char) 0x30)

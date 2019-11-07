@@ -130,6 +130,17 @@ static aml_node_t *def_method(const char **src, size_t *len)
 	return node;
 }
 
+static aml_node_t *sync_flags(const char **src, size_t *len)
+{
+	return parse_node(AML_SYNC_FLAGS, src, len, 1, byte_data);
+}
+
+static aml_node_t *def_mutex(const char **src, size_t *len)
+{
+	return parse_operation(1, MUTEX_OP, AML_DEF_MUTEX, src, len,
+		2, name_string, sync_flags);
+}
+
 static aml_node_t *def_power_res(const char **src, size_t *len)
 {
 	// TODO
@@ -154,12 +165,14 @@ static aml_node_t *def_thermal_zone(const char **src, size_t *len)
 	return NULL;
 }
 
+// TODO Cleanup
 aml_node_t *named_obj(const char **src, size_t *len)
 {
 	return parse_either(AML_NAMED_OBJ, src, len,
-		13, def_bank_field, def_create_bit_field, def_create_byte_field,
+		14, def_bank_field, def_create_bit_field, def_create_byte_field,
 			def_create_dword_field, def_create_field, def_create_qword_field,
 				def_create_word_field, def_data_region, def_device,
-					def_external, def_field, def_method, def_op_region,
-						def_power_res, def_processor, def_thermal_zone);
+					def_external, def_field, def_method, def_mutex,
+						def_op_region, def_power_res, def_processor,
+							def_thermal_zone);
 }

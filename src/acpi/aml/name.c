@@ -59,22 +59,18 @@ static aml_node_t *dual_name_path(const char **src, size_t *len)
 {
 	const char *s;
 	size_t l;
-	aml_node_t *c0, *c1, *node;
+	aml_node_t *node;
 
 	if(*len < 1 || **src != DUAL_NAME_PREFIX)
 		return NULL;
-	s = *src;
-	l = *len;
-	if(!(c0 = name_seg(src, len)) || !(c1 = name_seg(src, len))
-		|| !(node = node_new(DUAL_NAME_PREFIX, *src, 0)))
+	s = (*src)++;
+	l = (*len)--;
+	if(!(node = parse_node(AML_DUAL_NAME_PATH, src, len,
+		2, name_seg, name_seg)))
 	{
-		// TODO Free c0 and c1
 		*src = s;
 		*len = l;
-		return NULL;
 	}
-	node_add_child(node, c0);
-	node_add_child(node, c1);
 	return node;
 }
 
