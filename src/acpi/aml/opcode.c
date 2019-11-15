@@ -449,10 +449,8 @@ aml_node_t *def_n_or(const char **src, size_t *len)
 
 aml_node_t *def_not(const char **src, size_t *len)
 {
-	// TODO
-	(void) src;
-	(void) len;
-	return NULL;
+	return parse_operation(0, NOT_OP, AML_DEF_NOT, src, len,
+		2, operand, target);
 }
 
 aml_node_t *def_object_type(const char **src, size_t *len)
@@ -493,12 +491,15 @@ aml_node_t *def_package(const char **src, size_t *len)
 		3, pkg_length, num_elements, package_element_list);
 }
 
+static aml_node_t *var_num_elements(const char **src, size_t *len)
+{
+	return parse_node(AML_VAR_NUM_ELEMENTS, src, len, 1, term_arg);
+}
+
 aml_node_t *def_var_package(const char **src, size_t *len)
 {
-	// TODO
-	(void) src;
-	(void) len;
-	return NULL;
+	return parse_operation(0, VAR_PACKAGE_OP, AML_DEF_VAR_PACKAGE, src, len,
+		3, pkg_length, var_num_elements, package_element_list);
 }
 
 aml_node_t *def_ref_of(const char **src, size_t *len)
