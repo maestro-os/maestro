@@ -48,7 +48,7 @@ static aml_node_t *def_scope(const char **src, size_t *len)
 		return NULL;
 	s = (*src)++;
 	l = (*len)--;
-	if(!(node = parse_node(AML_DEF_SCOPE, src, len,
+	if(!(node = parse_explicit(AML_DEF_SCOPE, src, len,
 		3, pkg_length, name_string, term_list)))
 	{
 		*src = s;

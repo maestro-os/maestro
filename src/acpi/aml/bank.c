@@ -12,7 +12,7 @@ aml_node_t *def_bank_field(const char **src, size_t *len)
 	l = *len;
 	*src += 2;
 	*len -= 2;
-	if(!(node = parse_node(AML_DEF_BANK_FIELD, src, len,
+	if(!(node = parse_explicit(AML_DEF_BANK_FIELD, src, len,
 		6, pkg_length, name_string, name_string, bank_value,
 			field_flags, field_list)))
 	{

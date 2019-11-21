@@ -10,43 +10,15 @@ static aml_node_t *term_obj(const char **src, size_t *len)
 {
 	printf("term_obj:\n");
 	print_memory(*src, 16);
-	return parse_either(AML_TERM_OBJ, src, len, 3, object,
-		type1_opcode, type2_opcode);
+	return parse_either(AML_TERM_OBJ, src, len,
+		3, object, type1_opcode, type2_opcode);
 }
 
 aml_node_t *term_list(const char **src, size_t *len)
 {
-	const char *s;
-	size_t l;
-	aml_node_t *node, *n, *children = NULL, *last_child = NULL;
-
-	errno = 0;
-	printf("term_list\n");
-	if(!(node = node_new(AML_TERM_LIST, NULL, 0)))
-		return NULL;
-	s = *src;
-	l = *len;
-	// TODO Do in recursive
-	while((n = term_obj(src, len)))
-	{
-		if(!last_child)
-			last_child = children = n;
-		else
-		{
-			last_child->next = n;
-			last_child = n;
-		}
-	}
-	node->children = children;
-	if(errno)
-	{
-		ast_free(node);
-		*src = s;
-		*len = l;
-		return NULL;
-	}
-	else
-		return node;
+	printf("term_list:\n");
+	print_memory(*src, 16);
+	return parse_list(AML_TERM_LIST, src, len, term_obj);
 }
 
 aml_node_t *term_arg(const char **src, size_t *len)

@@ -47,3 +47,23 @@ int aml_get_integer(aml_node_t *node)
 	}
 	return 0;
 }
+
+size_t aml_pkg_length_get(const aml_node_t *node)
+{
+	const aml_node_t *lead, *byte;
+	size_t n, i = 0, len = 0;
+
+	if(!node || node->type != AML_PKG_LENGTH)
+		return 0;
+	if(!(lead = node->children) || lead->type != AML_PKG_LEAD_BYTE)
+		return 0;
+	if((n = (lead->data[0] >> 6) & 0b11) == 0)
+		return lead->data[0];
+	byte = lead->next;
+	while(i++ < n)
+	{
+		len = (len << 8) | (byte->data[0] & 0xff);
+		byte = byte->next;
+	}
+	return (len << 4) | (lead->data[0] & 0b1111);
+}

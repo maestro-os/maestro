@@ -52,7 +52,8 @@ aml_node_t *def_else(const char **src, size_t *len)
 		return node_new(AML_DEF_ELSE, *src, 0);
 	s = (*src)++;
 	l = (*len)--;
-	if(!(node = parse_node(AML_DEF_ELSE, src, len, 2, pkg_length, term_list)))
+	if(!(node = parse_explicit(AML_DEF_ELSE, src, len,
+		2, pkg_length, term_list)))
 	{
 		*src = s;
 		*len = l;
@@ -162,6 +163,8 @@ aml_node_t *def_while(const char **src, size_t *len)
 
 aml_node_t *type1_opcode(const char **src, size_t *len)
 {
+	printf("type1_opcode:\n");
+	print_memory(*src, 16);
 	return parse_either(AML_TYPE1_OPCODE, src, len,
 		15, def_break, def_breakpoint, def_continue, def_fatal, def_ifelse,
 			def_load, def_noop, def_notify, def_release, def_reset, def_return,

@@ -68,7 +68,7 @@ static aml_node_t *def_device(const char **src, size_t *len)
 	l = *len;
 	*src += 2;
 	*len -= 2;
-	if(!(node = parse_node(AML_DEF_DEVICE, src, len,
+	if(!(node = parse_explicit(AML_DEF_DEVICE, src, len,
 		3, pkg_length, name_string, term_list)))
 	{
 		*src = s;
@@ -97,7 +97,7 @@ static aml_node_t *def_field(const char **src, size_t *len)
 	l = *len;
 	*src += 2;
 	*len -= 2;
-	if(!(node = parse_node(AML_DEF_FIELD, src, len,
+	if(!(node = parse_explicit(AML_DEF_FIELD, src, len,
 		4, pkg_length, name_string, field_flags, field_list)))
 	{
 		*src = s;
@@ -113,21 +113,8 @@ static aml_node_t *method_flags(const char **src, size_t *len)
 
 static aml_node_t *def_method(const char **src, size_t *len)
 {
-	const char *s;
-	size_t l;
-	aml_node_t *node;
-
-	if(*len < 1 || **src != METHOD_OP)
-		return NULL;
-	s = (*src)++;
-	l = (*len)--;
-	if(!(node = parse_node(AML_DEF_METHOD, src, len,
-		4, pkg_length, name_string, method_flags, term_list)))
-	{
-		*src = s;
-		*len = l;
-	}
-	return node;
+	return parse_operation(0, METHOD_OP, AML_DEF_METHOD, src, len,
+		4, pkg_length, name_string, method_flags, term_list);
 }
 
 static aml_node_t *sync_flags(const char **src, size_t *len)

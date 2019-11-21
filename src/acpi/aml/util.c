@@ -371,6 +371,40 @@ aml_node_t *parse_node(const enum node_type type, const char **src, size_t *len,
 	return node;
 }
 
+aml_node_t *parse_explicit(const enum node_type type,
+	const char **src, size_t *len, size_t n, ...)
+{
+	va_list ap;
+	aml_node_t *nod, *node = NULL, *children;
+	const char *base_src;
+	size_t base_len, length, l;
+
+	va_start(ap, n);
+	base_src = *src;
+	base_len = *len;
+	if(!(nod = va_arg(ap, parse_func_t)(src, len)))
+		return NULL;
+	printf("-> %u\n", (unsigned)(base_len - *len));
+	printf("=> %u\n", (unsigned)aml_pkg_length_get(nod));
+	l = length = aml_pkg_length_get(nod) - (base_len - *len);
+	if(l > base_len)
+	{
+		printf("%u > %u\n", (unsigned)l, (unsigned)base_len);
+		kernel_halt();
+	}
+	if(!(node = node_new(type, *src, 0))
+		|| !(children = do_parse(src, &l, n - 1, ap)))
+	{
+		node_free(node);
+		*src = base_src;
+		*len = base_len;
+		return NULL;
+	}
+	nod->next = children;
+	node->children = nod;
+	return node;
+}
+
 aml_node_t *parse_serie(const char **src, size_t *len, const size_t n, ...)
 {
 	va_list ap;
@@ -386,15 +420,12 @@ aml_node_t *parse_list(const enum node_type type, const char **src, size_t *len,
 
 	if(!(node = node_new(type, *src, 0)))
 		return NULL;
-	if(!(n = f(src, len)))
-		return node;
-	node_add_child(node, n);
-	prev = node;
+	prev = NULL;
 	while((n = f(src, len)))
 	{
-		if(!(nod = node_new(type, NULL, 0)))
+		if(!(nod = node_new(type, *src, 0)))
 		{
-			node_free(n);
+			ast_free(n);
 			ast_free(node);
 			return NULL;
 		}

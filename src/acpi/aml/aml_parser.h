@@ -438,6 +438,8 @@ typedef aml_node_t *(*parse_func_t)(const char **, size_t *);
 
 aml_node_t *parse_node(enum node_type type, const char **src, size_t *len,
 	size_t n, ...);
+aml_node_t *parse_explicit(enum node_type type, const char **src, size_t *len,
+	size_t n, ...);
 aml_node_t *parse_serie(const char **src, size_t *len, size_t n, ...);
 aml_node_t *parse_list(enum node_type type, const char **src, size_t *len,
 	parse_func_t f);
@@ -539,5 +541,6 @@ aml_node_t *aml_parse(const char *src, const size_t len);
 
 aml_node_t *aml_search(aml_node_t *node, enum node_type type);
 int aml_get_integer(aml_node_t *node);
+size_t aml_pkg_length_get(const aml_node_t *node);
 
 #endif
