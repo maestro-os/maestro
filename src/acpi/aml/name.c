@@ -1,161 +1,138 @@
 #include <acpi/aml/aml_parser.h>
 
-static aml_node_t *root_char(const char **src, size_t *len)
+static aml_node_t *root_char(blob_t *blob)
 {
 	aml_node_t *node;
 
-	if(*len < 1 || !IS_ROOT_CHAR(**src)
-		|| !(node = node_new(AML_ROOT_CHAR, *src, 1)))
+	if(BLOB_EMPTY(blob) || !IS_ROOT_CHAR(BLOB_PEEK(blob)))
 		return NULL;
-	++(*src);
-	--(*len);
+	if(!(node = node_new(AML_ROOT_CHAR, &BLOB_PEEK(blob), 1)))
+		return NULL;
+	BLOB_CONSUME(blob, 1);
 	return node;
 }
 
-static aml_node_t *prefix_path(const char **src, size_t *len)
+static aml_node_t *prefix_path(blob_t *blob)
 {
 	aml_node_t *node;
 
-	if(!(node = node_new(AML_PREFIX_PATH, *src, 1)))
+	if(!(node = node_new(AML_PREFIX_PATH, &BLOB_PEEK(blob), 1)))
 		return NULL;
-	if(*len >= 1 && IS_PREFIX_CHAR(**src))
+	if(!BLOB_EMPTY(blob) && IS_PREFIX_CHAR(BLOB_PEEK(blob)))
 	{
-		++(*src);
-		--(*len);
-		node->children = prefix_path(src, len); // TODO Check errno
+		BLOB_CONSUME(blob, 1);
+		node->children = prefix_path(blob); // TODO Check errno
 	}
 	return node;
 }
 
 // TODO Is buffer needed?
-aml_node_t *name_seg(const char **src, size_t *len)
+aml_node_t *name_seg(blob_t *blob)
 {
-	const char *s;
-	size_t l;
+	blob_t b;
 	char buff[4];
 	size_t i = 0;
 	aml_node_t *node;
 
-	if(*len < 1 || !IS_LEAD_NAME_CHAR(**src))
+	if(BLOB_EMPTY(blob) || !IS_LEAD_NAME_CHAR(BLOB_PEEK(blob)))
 		return NULL;
-	s = *src;
-	l = *len;
+	BLOB_COPY(blob, &b);
 	memset(buff, '_', sizeof(buff));
-	while(i < sizeof(buff) && *len > 0 && IS_NAME_CHAR(**src))
+	while(i < sizeof(buff)
+		&& !BLOB_EMPTY(blob) && IS_NAME_CHAR(BLOB_PEEK(blob)))
 	{
-		buff[i++] = **src;
-		++(*src);
-		--(*len);
+		buff[i++] = BLOB_PEEK(blob);
+		BLOB_CONSUME(blob, 1);
 	}
 	if(!(node = node_new(AML_NAME_SEG, buff, sizeof(buff))))
-	{
-		*src = s;
-		*len = l;
-	}
+		BLOB_COPY(&b, blob);
 	return node;
 }
 
-static aml_node_t *dual_name_path(const char **src, size_t *len)
+static aml_node_t *dual_name_path(blob_t *blob)
 {
-	const char *s;
-	size_t l;
+	blob_t b;
 	aml_node_t *node;
 
-	if(*len < 1 || **src != DUAL_NAME_PREFIX)
+	BLOB_COPY(blob, &b);
+	if(!BLOB_CHECK(blob, DUAL_NAME_PREFIX))
 		return NULL;
-	s = (*src)++;
-	l = (*len)--;
-	if(!(node = parse_node(AML_DUAL_NAME_PATH, src, len,
-		2, name_seg, name_seg)))
-	{
-		*src = s;
-		*len = l;
-	}
+	if(!(node = parse_node(AML_DUAL_NAME_PATH, blob, 2, name_seg, name_seg)))
+		BLOB_COPY(&b, blob);
 	return node;
 }
 
 // TODO Clean
-static aml_node_t *multi_name_path(const char **src, size_t *len)
+static aml_node_t *multi_name_path(blob_t *blob)
 {
-	const char *s;
-	size_t l;
+	blob_t b;
 	aml_node_t *c, *node;
 	size_t i = 0, n;
 
-	if(*len < 2 || **src != MULTI_NAME_PREFIX
-		|| !(node = node_new(MULTI_NAME_PREFIX, *src, 0)))
+	BLOB_COPY(blob, &b);
+	if(BLOB_REMAIN(blob) < 2 || !BLOB_CHECK(blob, MULTI_NAME_PREFIX)
+		|| !(node = node_new(AML_MULTI_NAME_PATH, &BLOB_PEEK(blob), 0)))
 		return NULL;
-	s = *src;
-	l = *len;
-	++(*src);
-	--(*len);
-	n = **src;
-	++(*src);
-	--(*len);
-	while(i++ < n && (c = name_seg(src, len)))
+	BLOB_CONSUME(blob, 1);
+	n = BLOB_PEEK(blob);
+	BLOB_CONSUME(blob, 1);
+	while(i++ < n && (c = name_seg(blob)))
 		node_add_child(node, c);
 	if(!c)
 	{
-		*src = s;
-		*len = l;
+		BLOB_COPY(&b, blob);
 		ast_free(node);
 		return NULL;
 	}
 	return node;
 }
 
-aml_node_t *simple_name(const char **src, size_t *len)
+aml_node_t *simple_name(blob_t *blob)
 {
-	return parse_either(AML_SIMPLE_NAME, src, len,
+	return parse_either(AML_SIMPLE_NAME, blob,
 		3, name_string, arg_obj, local_obj);
 }
 
-aml_node_t *null_name(const char **src, size_t *len)
+aml_node_t *null_name(blob_t *blob)
 {
 	aml_node_t *node;
 
-	if(*len < 1 || **src)
+	if(BLOB_EMPTY(blob) || BLOB_PEEK(blob))
 		return NULL;
-	if((node = node_new(AML_NULL_NAME, *src, 1)))
-	{
-		++(*src);
-		--(*len);
-	}
+	if((node = node_new(AML_NULL_NAME, &BLOB_PEEK(blob), 1)))
+		BLOB_CONSUME(blob, 1);
 	return node;
 }
 
-aml_node_t *super_name(const char **src, size_t *len)
+aml_node_t *super_name(blob_t *blob)
 {
-	return parse_either(AML_SUPER_NAME, src, len,
+	return parse_either(AML_SUPER_NAME, blob,
 		3, simple_name, debug_obj, type6_opcode);
 }
 
-static aml_node_t *name_path(const char **src, size_t *len)
+static aml_node_t *name_path(blob_t *blob)
 {
-	return parse_either(AML_NAME_PATH, src, len,
+	return parse_either(AML_NAME_PATH, blob,
 		4, name_seg, dual_name_path, multi_name_path, null_name);
 }
 
-aml_node_t *name_string(const char **src, size_t *len)
+aml_node_t *name_string(blob_t *blob)
 {
+	blob_t b;
 	aml_node_t *node;
-	const char *s;
-	size_t l;
 
-	if(!(node = node_new(AML_NAME_STRING, *src, 0)))
+	if(!(node = node_new(AML_NAME_STRING, &BLOB_PEEK(blob), 0)))
 		return NULL;
-	s = *src;
-	l = *len;
-	if(!((node->children = root_char(src, len))
-		|| (node->children = prefix_path(src, len))))
+	BLOB_COPY(blob, &b);
+	if(!((node->children = root_char(blob))
+		|| (node->children = prefix_path(blob))))
 		goto fail;
-	if(!(node->children->next = name_path(src, len)))
+	if(!(node->children->next = name_path(blob)))
 		goto fail;
 	return node;
 
 fail:
-	*src = s;
-	*len = l;
+	BLOB_COPY(&b, blob);
 	ast_free(node);
 	return NULL;
 }

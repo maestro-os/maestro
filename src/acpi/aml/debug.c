@@ -1,22 +1,14 @@
 #include "aml_parser.h"
 
-aml_node_t *debug_obj(const char **src, size_t *len)
+aml_node_t *debug_obj(blob_t *blob)
 {
-	const char *s;
-	size_t l;
+	blob_t b;
 	aml_node_t *node;
 
-	if(*len < 2 || (*src)[0] != EXT_OP_PREFIX || (*src)[1] != DEBUG_OP)
+	BLOB_COPY(blob, &b);
+	if(!BLOB_CHECK(blob, EXT_OP_PREFIX) || !BLOB_CHECK(blob, DEBUG_OP))
 		return NULL;
-	s = *src;
-	l = *len;
-	*src += 2;
-	*len -= 2;
-	if(!(node = node_new(AML_DEBUG_OBJ, *src, 0)))
-	{
-		*src = s;
-		*len = l;
-		return NULL;
-	}
+	if(!(node = node_new(AML_DEBUG_OBJ, &BLOB_PEEK(blob), 0)))
+		BLOB_COPY(&b, blob);
 	return node;
 }

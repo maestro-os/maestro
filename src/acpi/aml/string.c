@@ -10,22 +10,19 @@ static size_t string_length(const char *src, const size_t len)
 	return (src[n] ? 0 : n);
 }
 
-aml_node_t *string(const char **src, size_t *len)
+aml_node_t *string(blob_t *blob)
 {
-	const char *s;
-	size_t l;
+	blob_t b;
 	size_t n;
 	aml_node_t *node;
 
-	if(*len < 2 || **src != STRING_PREFIX)
+	BLOB_COPY(blob, &b);
+	if(BLOB_REMAIN(blob) < 2 || !BLOB_CHECK(blob, STRING_PREFIX))
 		return NULL;
-	s = (*src)++;
-	l = (*len)--;
-	if((n = string_length(*src, *len)) == 0
-		|| !(node = node_new(AML_STRING, *src, n + 1)))
+	if((n = string_length(&BLOB_PEEK(blob), BLOB_REMAIN(blob))) == 0
+		|| !(node = node_new(AML_STRING, &BLOB_PEEK(blob), n + 1)))
 	{
-		*src = s;
-		*len = l;
+		BLOB_COPY(&b, blob);
 		return NULL;
 	}
 	return node;

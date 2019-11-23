@@ -104,6 +104,21 @@
 # define IS_ARG_OP(c)			((c) >= ARG0_OP && (c) <= ARG6_OP)
 # define IS_LOCAL_OP(c)			((c) >= LOCAL0_OP && (c) <= LOCAL7_OP)
 
+# define BLOB_COPY(from, to)	*(to) = *(from);
+# define BLOB_CONSUME(b, n)		(b)->src += (n); (b)->len += (n);
+# define BLOB_REMAIN(b)			((b)->len)
+# define BLOB_EMPTY(b)			(BLOB_REMAIN(b) == 0)
+# define BLOB_PEEK(b)			((b)->src[0])
+# define BLOB_CHECK(b, c)		blob_check(b, c)
+
+typedef struct
+{
+	const char *src;
+	size_t len;
+} blob_t;
+
+int blob_check(blob_t *blob, const char c);
+
 enum node_type
 {
 	AML_CODE,
@@ -434,23 +449,18 @@ typedef struct aml_node
 	size_t data_length;
 } aml_node_t;
 
-typedef aml_node_t *(*parse_func_t)(const char **, size_t *);
+typedef aml_node_t *(*parse_func_t)(blob_t *);
 
-aml_node_t *parse_node(enum node_type type, const char **src, size_t *len,
-	size_t n, ...);
-aml_node_t *parse_explicit(enum node_type type, const char **src, size_t *len,
-	size_t n, ...);
-aml_node_t *parse_serie(const char **src, size_t *len, size_t n, ...);
-aml_node_t *parse_list(enum node_type type, const char **src, size_t *len,
-	parse_func_t f);
-aml_node_t *parse_fixed_list(enum node_type type, const char **src, size_t *len,
+aml_node_t *parse_node(enum node_type type, blob_t *blob, size_t n, ...);
+aml_node_t *parse_explicit(enum node_type type, blob_t *blob, size_t n, ...);
+aml_node_t *parse_serie(blob_t *blob, size_t n, ...);
+aml_node_t *parse_list(enum node_type type, blob_t *blob, parse_func_t f);
+aml_node_t *parse_fixed_list(enum node_type type, blob_t *blob,
 	parse_func_t f, size_t i);
-aml_node_t *parse_string(const char **src, size_t *len,
-	size_t str_len, parse_func_t f);
-aml_node_t *parse_either(enum node_type type, const char **src,
-	size_t *len, size_t n, ...);
+aml_node_t *parse_string(blob_t *blob, size_t str_len, parse_func_t f);
+aml_node_t *parse_either(enum node_type type, blob_t *blob, size_t n, ...);
 aml_node_t *parse_operation(int ext_op, char op, enum node_type type,
-	const char **src, size_t *len, size_t n, ...);
+	blob_t *blob, size_t n, ...);
 
 aml_node_t *node_new(enum node_type type, const char *data, size_t length);
 void node_add_child(aml_node_t *node, aml_node_t *child);
@@ -464,80 +474,80 @@ uint8_t aml_get_byte(aml_node_t *node);
 uint16_t aml_get_word(aml_node_t *node);
 uint32_t aml_get_dword(aml_node_t *node);
 
-aml_node_t *byte_list(const char **src, size_t *len, const size_t n);
-aml_node_t *data_object(const char **src, size_t *len);
-aml_node_t *byte_data(const char **src, size_t *len);
-aml_node_t *word_data(const char **src, size_t *len);
-aml_node_t *dword_data(const char **src, size_t *len);
-aml_node_t *qword_data(const char **src, size_t *len);
+aml_node_t *byte_list(blob_t *blob, const size_t n);
+aml_node_t *data_object(blob_t *blob);
+aml_node_t *byte_data(blob_t *blob);
+aml_node_t *word_data(blob_t *blob);
+aml_node_t *dword_data(blob_t *blob);
+aml_node_t *qword_data(blob_t *blob);
 
-aml_node_t *string(const char **src, size_t *len);
+aml_node_t *string(blob_t *blob);
 
-aml_node_t *name_seg(const char **src, size_t *len);
-aml_node_t *simple_name(const char **src, size_t *len);
-aml_node_t *null_name(const char **src, size_t *len);
-aml_node_t *super_name(const char **src, size_t *len);
-aml_node_t *name_string(const char **src, size_t *len);
+aml_node_t *name_seg(blob_t *blob);
+aml_node_t *simple_name(blob_t *blob);
+aml_node_t *null_name(blob_t *blob);
+aml_node_t *super_name(blob_t *blob);
+aml_node_t *name_string(blob_t *blob);
 
-aml_node_t *access_type(const char **src, size_t *len);
-aml_node_t *access_attrib(const char **src, size_t *len);
-aml_node_t *extended_access_attrib(const char **src, size_t *len);
-aml_node_t *access_length(const char **src, size_t *len);
+aml_node_t *access_type(blob_t *blob);
+aml_node_t *access_attrib(blob_t *blob);
+aml_node_t *extended_access_attrib(blob_t *blob);
+aml_node_t *access_length(blob_t *blob);
 
-aml_node_t *pkg_length(const char **src, size_t *len);
+aml_node_t *pkg_length(blob_t *blob);
 
-aml_node_t *namespace_modifier_obj(const char **src, size_t *len);
+aml_node_t *namespace_modifier_obj(blob_t *blob);
 
-aml_node_t *def_bank_field(const char **src, size_t *len);
-aml_node_t *bank_value(const char **src, size_t *len);
+aml_node_t *def_bank_field(blob_t *blob);
+aml_node_t *bank_value(blob_t *blob);
 
-aml_node_t *field_flags(const char **src, size_t *len);
-aml_node_t *field_list(const char **src, size_t *len);
+aml_node_t *field_flags(blob_t *blob);
+aml_node_t *field_list(blob_t *blob);
 
-aml_node_t *named_obj(const char **src, size_t *len);
-aml_node_t *def_op_region(const char **src, size_t *len);
+aml_node_t *named_obj(blob_t *blob);
+aml_node_t *def_op_region(blob_t *blob);
 
-aml_node_t *data_ref_object(const char **src, size_t *len);
+aml_node_t *data_ref_object(blob_t *blob);
 
-aml_node_t *def_break(const char **src, size_t *len);
-aml_node_t *def_breakpoint(const char **src, size_t *len);
-aml_node_t *def_continue(const char **src, size_t *len);
-aml_node_t *def_else(const char **src, size_t *len);
-aml_node_t *def_fatal(const char **src, size_t *len);
-aml_node_t *def_ifelse(const char **src, size_t *len);
-aml_node_t *predicate(const char **src, size_t *len);
-aml_node_t *def_load(const char **src, size_t *len);
-aml_node_t *def_noop(const char **src, size_t *len);
-aml_node_t *def_notify(const char **src, size_t *len);
-aml_node_t *def_release(const char **src, size_t *len);
-aml_node_t *def_reset(const char **src, size_t *len);
-aml_node_t *def_return(const char **src, size_t *len);
-aml_node_t *def_signal(const char **src, size_t *len);
-aml_node_t *def_sleep(const char **src, size_t *len);
-aml_node_t *def_stall(const char **src, size_t *len);
-aml_node_t *def_while(const char **src, size_t *len);
+aml_node_t *def_break(blob_t *blob);
+aml_node_t *def_breakpoint(blob_t *blob);
+aml_node_t *def_continue(blob_t *blob);
+aml_node_t *def_else(blob_t *blob);
+aml_node_t *def_fatal(blob_t *blob);
+aml_node_t *def_ifelse(blob_t *blob);
+aml_node_t *predicate(blob_t *blob);
+aml_node_t *def_load(blob_t *blob);
+aml_node_t *def_noop(blob_t *blob);
+aml_node_t *def_notify(blob_t *blob);
+aml_node_t *def_release(blob_t *blob);
+aml_node_t *def_reset(blob_t *blob);
+aml_node_t *def_return(blob_t *blob);
+aml_node_t *def_signal(blob_t *blob);
+aml_node_t *def_sleep(blob_t *blob);
+aml_node_t *def_stall(blob_t *blob);
+aml_node_t *def_while(blob_t *blob);
 
-aml_node_t *def_buffer(const char **src, size_t *len);
-aml_node_t *def_package(const char **src, size_t *len);
-aml_node_t *def_var_package(const char **src, size_t *len);
+aml_node_t *def_buffer(blob_t *blob);
+aml_node_t *def_package(blob_t *blob);
+aml_node_t *def_var_package(blob_t *blob);
 
-aml_node_t *obj_reference(const char **src, size_t *len);
+aml_node_t *obj_reference(blob_t *blob);
 
-aml_node_t *method_invocation(const char **src, size_t *len);
+aml_node_t *method_invocation(blob_t *blob);
 
-aml_node_t *type1_opcode(const char **src, size_t *len);
-aml_node_t *type2_opcode(const char **src, size_t *len);
-aml_node_t *type6_opcode(const char **src, size_t *len);
+aml_node_t *type1_opcode(blob_t *blob);
+aml_node_t *type2_opcode(blob_t *blob);
+aml_node_t *type6_opcode(blob_t *blob);
 
-aml_node_t *arg_obj(const char **src, size_t *len);
-aml_node_t *local_obj(const char **src, size_t *len);
+aml_node_t *arg_obj(blob_t *blob);
+aml_node_t *local_obj(blob_t *blob);
 
-aml_node_t *term_list(const char **src, size_t *len);
-aml_node_t *term_arg(const char **src, size_t *len);
+aml_node_t *term_list(blob_t *blob);
+aml_node_t *term_arg(blob_t *blob);
 
-aml_node_t *debug_obj(const char **src, size_t *len);
+aml_node_t *debug_obj(blob_t *blob);
 
-aml_node_t *aml_parse(const char *src, const size_t len);
+aml_node_t *aml_parse(blob_t *blob);
 
 aml_node_t *aml_search(aml_node_t *node, enum node_type type);
 int aml_get_integer(aml_node_t *node);

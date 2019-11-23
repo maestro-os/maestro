@@ -1,223 +1,239 @@
 #include <acpi/aml/aml_parser.h>
 
-static aml_node_t *operand(const char **src, size_t *len)
-{
-	return parse_node(AML_OPERAND, src, len, 1, term_arg);
-}
+// TODO Move to `util/util.h`?
+#define VARG_COUNT(...)			(sizeof(int[] {__VA_ARGS__}) / sizeof(int))
 
-static aml_node_t *target(const char **src, size_t *len)
-{
-	return parse_either(AML_TARGET, src, len, 2, super_name, null_name);
-}
+#define NODE_FUNC_NAME(name)	"parse_" ## name ## "_op"
 
-aml_node_t *obj_reference(const char **src, size_t *len)
-{
-	return parse_either(AML_OBJ_REFERENCE, src, len, 2, term_arg, string);
-}
+#define OP_CHECK(opcode)\
+	if(!BLOB_CHECK(opcode))\
+		goto fail;
 
-static aml_node_t *parse_op(enum node_type type, const uint8_t op,
-	const char **src, size_t *len)
-{
-	aml_node_t *node;
+#define EXT_OP_CHECK(opcode)\
+	if(!BLOB_CHECK(EXT_OP_PREFIX) || !BLOB_CHECK(opcode))\
+		goto fail;
 
-	if(*len < 1 || **src != op || !(node = node_new(type, *src, 1)))
+#define OP_FOOT()\
+	fail:\
+		BLOB_COPY(&b, blob);\
 		return NULL;
-	++(*src);
-	--(*len);
-	return node;
+
+#define PARSE_IMPLICIT_OP(opcode, node, name, ...)\
+	static aml_node_t *NODE_FUNC_NAME(name)\
+	{\
+		blob_t b;\
+\
+		BLOB_COPY(blob, &b)\
+		OP_CHECK(opcode)\
+		return parse_node(node, blob, VARG_COUNT(__VA_ARGS__), __VA_ARGS__);\
+\
+		OP_FOOT()\
+	}
+
+static aml_node_t *operand(blob_t *blob)
+{
+	return parse_node(AML_OPERAND, blob, 1, term_arg);
 }
 
-aml_node_t *def_break(const char **src, size_t *len)
+static aml_node_t *target(blob_t *blob)
 {
-	return parse_op(AML_DEF_BREAK, BREAK_OP, src, len);
+	return parse_either(AML_TARGET, blob, 2, super_name, null_name);
 }
 
-aml_node_t *def_breakpoint(const char **src, size_t *len)
+aml_node_t *obj_reference(blob_t *blob)
 {
-	return parse_op(AML_DEF_BREAK_POINT, BREAKPOINT_OP, src, len);
+	return parse_either(AML_OBJ_REFERENCE, blob, 2, term_arg, string);
 }
 
-aml_node_t *def_continue(const char **src, size_t *len)
+static aml_node_t *parse_op(enum node_type type, const uint8_t op, blob_t *blob)
 {
-	return parse_op(AML_DEF_CONTINUE, CONTINUE_OP, src, len);
-}
-
-aml_node_t *def_else(const char **src, size_t *len)
-{
-	const char *s;
-	size_t l;
+	blob_t b;
 	aml_node_t *node;
 
-	if(*len < 1 || **src != ELSE_OP)
-		return node_new(AML_DEF_ELSE, *src, 0);
-	s = (*src)++;
-	l = (*len)--;
-	if(!(node = parse_explicit(AML_DEF_ELSE, src, len,
-		2, pkg_length, term_list)))
-	{
-		*src = s;
-		*len = l;
-	}
+	BLOB_COPY(blob, &b);
+	if(!BLOB_CHECK(blob, op))
+		return NULL;
+	if(!(node = node_new(type, &BLOB_PEEK(blob), 1)))
+		BLOB_COPY(&b, blob);
 	return node;
 }
 
-aml_node_t *def_fatal(const char **src, size_t *len)
+aml_node_t *def_break(blob_t *blob)
+{
+	return parse_op(AML_DEF_BREAK, BREAK_OP, blob);
+}
+
+aml_node_t *def_breakpoint(blob_t *blob)
+{
+	return parse_op(AML_DEF_BREAK_POINT, BREAKPOINT_OP, blob);
+}
+
+aml_node_t *def_continue(blob_t *blob)
+{
+	return parse_op(AML_DEF_CONTINUE, CONTINUE_OP, blob);
+}
+
+aml_node_t *def_else(blob_t *blob)
+{
+	blob_t b;
+	aml_node_t *node;
+
+	BLOB_COPY(blob, &b);
+	if(!BLOB_CHECK(blob, ELSE_OP))
+		return node_new(AML_DEF_ELSE, &BLOB_PEEK(blob), 0);
+	if(!(node = parse_explicit(AML_DEF_ELSE, blob, 2, pkg_length, term_list)))
+		BLOB_COPY(&b, blob);
+	return node;
+}
+
+aml_node_t *def_fatal(blob_t *blob)
 {
 	// TODO
-	(void) src;
-	(void) len;
+	(void) blob;
 	return NULL;
 }
 
-aml_node_t *def_ifelse(const char **src, size_t *len)
+aml_node_t *def_ifelse(blob_t *blob)
 {
-	return parse_operation(0, IF_OP, AML_DEF_IF_ELSE, src, len,
+	return parse_operation(0, IF_OP, AML_DEF_IF_ELSE, blob,
 		4, pkg_length, predicate, term_list, def_else);
 }
 
-aml_node_t *predicate(const char **src, size_t *len)
+aml_node_t *predicate(blob_t *blob)
 {
-	return parse_node(AML_PREDICATE, src, len, 1, term_arg);
+	return parse_node(AML_PREDICATE, blob, 1, term_arg);
 }
 
-aml_node_t *def_load(const char **src, size_t *len)
+aml_node_t *def_load(blob_t *blob)
 {
 	// TODO
-	(void) src;
-	(void) len;
+	(void) blob;
 	return NULL;
 }
 
-aml_node_t *def_noop(const char **src, size_t *len)
+aml_node_t *def_noop(blob_t *blob)
 {
-	return parse_op(AML_DEF_NOOP, NOOP_OP, src, len);
+	return parse_op(AML_DEF_NOOP, NOOP_OP, blob);
 }
 
-aml_node_t *def_notify(const char **src, size_t *len)
+aml_node_t *def_notify(blob_t *blob)
 {
 	// TODO
-	(void) src;
-	(void) len;
+	(void) blob;
 	return NULL;
 }
 
-static aml_node_t *mutex_object(const char **src, size_t *len)
+static aml_node_t *mutex_object(blob_t *blob)
 {
-	return parse_node(AML_MUTEX_OBJECT, src, len, 1, super_name);
+	return parse_node(AML_MUTEX_OBJECT, blob, 1, super_name);
 }
 
-aml_node_t *def_release(const char **src, size_t *len)
+aml_node_t *def_release(blob_t *blob)
 {
-	return parse_operation(1, RELEASE_OP, AML_DEF_RELEASE, src, len,
+	return parse_operation(1, RELEASE_OP, AML_DEF_RELEASE, blob,
 		1, mutex_object);
 }
 
-aml_node_t *def_reset(const char **src, size_t *len)
+aml_node_t *def_reset(blob_t *blob)
 {
 	// TODO
-	(void) src;
-	(void) len;
+	(void) blob;
 	return NULL;
 }
 
-static aml_node_t *arg_object(const char **src, size_t *len)
+static aml_node_t *arg_object(blob_t *blob)
 {
-	return parse_node(AML_ARG_OBJECT, src, len, 1, term_arg);
+	return parse_node(AML_ARG_OBJECT, blob, 1, term_arg);
 }
 
-aml_node_t *def_return(const char **src, size_t *len)
+aml_node_t *def_return(blob_t *blob)
 {
-	return parse_operation(0, RETURN_OP, AML_DEF_RETURN, src, len,
+	return parse_operation(0, RETURN_OP, AML_DEF_RETURN, blob,
 		1, arg_object);
 }
 
-aml_node_t *def_signal(const char **src, size_t *len)
+aml_node_t *def_signal(blob_t *blob)
 {
 	// TODO
-	(void) src;
-	(void) len;
+	(void) blob;
 	return NULL;
 }
 
-aml_node_t *def_sleep(const char **src, size_t *len)
+aml_node_t *def_sleep(blob_t *blob)
 {
 	// TODO
-	(void) src;
-	(void) len;
+	(void) blob;
 	return NULL;
 }
 
-aml_node_t *def_stall(const char **src, size_t *len)
+aml_node_t *def_stall(blob_t *blob)
 {
 	// TODO
-	(void) src;
-	(void) len;
+	(void) blob;
 	return NULL;
 }
 
-aml_node_t *def_while(const char **src, size_t *len)
+aml_node_t *def_while(blob_t *blob)
 {
-	return parse_operation(0, WHILE_OP, AML_DEF_WHILE, src, len,
+	return parse_operation(0, WHILE_OP, AML_DEF_WHILE, blob,
 		3, pkg_length, predicate, term_list);
 }
 
-aml_node_t *type1_opcode(const char **src, size_t *len)
+aml_node_t *type1_opcode(blob_t *blob)
 {
 	printf("type1_opcode:\n");
-	print_memory(*src, 16);
-	return parse_either(AML_TYPE1_OPCODE, src, len,
+	print_memory(blob->src, 16);
+	return parse_either(AML_TYPE1_OPCODE, blob,
 		15, def_break, def_breakpoint, def_continue, def_fatal, def_ifelse,
 			def_load, def_noop, def_notify, def_release, def_reset, def_return,
 				def_signal, def_sleep, def_stall, def_while);
 }
 
-static aml_node_t *timeout(const char **src, size_t *len)
+static aml_node_t *timeout(blob_t *blob)
 {
-	return parse_node(AML_DEF_ACQUIRE, src, len, 1, word_data);
+	return parse_node(AML_DEF_ACQUIRE, blob, 1, word_data);
 }
 
-aml_node_t *def_acquire(const char **src, size_t *len)
+aml_node_t *def_acquire(blob_t *blob)
 {
-	return parse_operation(1, ACQUIRE_OP, AML_DEF_ACQUIRE, src, len,
+	return parse_operation(1, ACQUIRE_OP, AML_DEF_ACQUIRE, blob,
 		2, mutex_object, timeout);
 }
 
-aml_node_t *def_add(const char **src, size_t *len)
+aml_node_t *def_add(blob_t *blob)
 {
-	return parse_operation(0, ADD_OP, AML_DEF_ADD, src, len,
+	return parse_operation(0, ADD_OP, AML_DEF_ADD, blob,
 		3, operand, operand, target);
 }
 
-aml_node_t *def_and(const char **src, size_t *len)
+aml_node_t *def_and(blob_t *blob)
 {
-	return parse_operation(0, AND_OP, AML_DEF_AND, src, len,
+	return parse_operation(0, AND_OP, AML_DEF_AND, blob,
 		3, operand, operand, target);
 }
 
-static aml_node_t *buffer_size(const char **src, size_t *len)
+static aml_node_t *buffer_size(blob_t *blob)
 {
-	return parse_node(AML_BUFFER_SIZE, src, len, 1, term_arg);
+	return parse_node(AML_BUFFER_SIZE, blob, 1, term_arg);
 }
 
-aml_node_t *def_buffer(const char **src, size_t *len)
+aml_node_t *def_buffer(blob_t *blob)
 {
-	const char *s;
-	size_t l;
+	blob_t b;
 	aml_node_t *node = NULL, *n0 = NULL, *n1 = NULL, *n2 = NULL;
 	size_t buff_size;
 
-	if(*len < 1 || **src != BUFFER_OP)
+	BLOB_COPY(blob, &b);
+	if(!BLOB_CHECK(blob, BUFFER_OP))
 		return NULL;
-	s = (*src)++;
-	l = (*len)--;
-	if(!(node = node_new(AML_DEF_BUFFER, *src, 0)))
+	if(!(node = node_new(AML_DEF_BUFFER, &BLOB_PEEK(blob), 0)))
 		goto fail;
-	if(!(n0 = pkg_length(src, len)))
+	if(!(n0 = pkg_length(blob)))
 		goto fail;
-	if(!(n1 = buffer_size(src, len)))
+	if(!(n1 = buffer_size(blob)))
 		goto fail;
 	buff_size = aml_get_integer(n1->children);
-	if(!(n2 = byte_list(src, len, buff_size)))
+	if(!(n2 = byte_list(blob, buff_size)))
 		goto fail;
 	node_add_child(node, n0);
 	node_add_child(node, n1);
@@ -225,8 +241,7 @@ aml_node_t *def_buffer(const char **src, size_t *len)
 	return node;
 
 fail:
-	*src = s;
-	*len = l;
+	BLOB_COPY(&b, blob);
 	ast_free(n0);
 	ast_free(n1);
 	ast_free(n2);
@@ -234,391 +249,363 @@ fail:
 	return NULL;
 }
 
-aml_node_t *def_concat(const char **src, size_t *len)
+aml_node_t *def_concat(blob_t *blob)
 {
 	// TODO
-	(void) src;
-	(void) len;
+	(void) blob;
 	return NULL;
 }
 
-aml_node_t *def_concat_res(const char **src, size_t *len)
+aml_node_t *def_concat_res(blob_t *blob)
 {
 	// TODO
-	(void) src;
-	(void) len;
+	(void) blob;
 	return NULL;
 }
 
-aml_node_t *def_cond_ref_of(const char **src, size_t *len)
+aml_node_t *def_cond_ref_of(blob_t *blob)
 {
 	// TODO
-	(void) src;
-	(void) len;
+	(void) blob;
 	return NULL;
 }
 
-aml_node_t *def_copy_object(const char **src, size_t *len)
+aml_node_t *def_copy_object(blob_t *blob)
 {
 	// TODO
-	(void) src;
-	(void) len;
+	(void) blob;
 	return NULL;
 }
 
-aml_node_t *def_decrement(const char **src, size_t *len)
+aml_node_t *def_decrement(blob_t *blob)
 {
-	return parse_operation(0, DECREMENT_OP, AML_DEF_DECREMENT, src, len,
+	return parse_operation(0, DECREMENT_OP, AML_DEF_DECREMENT, blob,
 		1, super_name);
 }
 
-aml_node_t *def_deref_of(const char **src, size_t *len)
+aml_node_t *def_deref_of(blob_t *blob)
 {
-	return parse_operation(0, DEREF_OF_OP, AML_DEF_DEREF_OF, src, len,
+	return parse_operation(0, DEREF_OF_OP, AML_DEF_DEREF_OF, blob,
 		1, obj_reference);
 }
 
-aml_node_t *def_divide(const char **src, size_t *len)
+aml_node_t *def_divide(blob_t *blob)
 {
 	// TODO
-	(void) src;
-	(void) len;
+	(void) blob;
 	return NULL;
 }
 
-aml_node_t *def_find_set_left_bit(const char **src, size_t *len)
+aml_node_t *def_find_set_left_bit(blob_t *blob)
 {
 	// TODO
-	(void) src;
-	(void) len;
+	(void) blob;
 	return NULL;
 }
 
-aml_node_t *def_find_set_right_bit(const char **src, size_t *len)
+aml_node_t *def_find_set_right_bit(blob_t *blob)
 {
 	// TODO
-	(void) src;
-	(void) len;
+	(void) blob;
 	return NULL;
 }
 
-aml_node_t *def_from_bcd(const char **src, size_t *len)
+aml_node_t *def_from_bcd(blob_t *blob)
 {
 	// TODO
-	(void) src;
-	(void) len;
+	(void) blob;
 	return NULL;
 }
 
-aml_node_t *def_increment(const char **src, size_t *len)
+aml_node_t *def_increment(blob_t *blob)
 {
-	return parse_operation(0, INCREMENT_OP, AML_DEF_INCREMENT, src, len,
+	return parse_operation(0, INCREMENT_OP, AML_DEF_INCREMENT, blob,
 		1, super_name);
 }
 
-static aml_node_t *buff_pkg_str_obj(const char **src, size_t *len)
+static aml_node_t *buff_pkg_str_obj(blob_t *blob)
 {
-	return parse_node(AML_BUFF_PKG_STR_OBJ, src, len, 1, term_arg);
+	return parse_node(AML_BUFF_PKG_STR_OBJ, blob, 1, term_arg);
 }
 
-static aml_node_t *index_value(const char **src, size_t *len)
+static aml_node_t *index_value(blob_t *blob)
 {
-	return parse_node(AML_INDEX_VALUE, src, len, 1, term_arg);
+	return parse_node(AML_INDEX_VALUE, blob, 1, term_arg);
 }
 
-aml_node_t *def_index(const char **src, size_t *len)
+aml_node_t *def_index(blob_t *blob)
 {
-	return parse_operation(0, INDEX_OP, AML_DEF_INDEX, src, len,
+	return parse_operation(0, INDEX_OP, AML_DEF_INDEX, blob,
 		3, buff_pkg_str_obj, index_value, target);
 }
 
-aml_node_t *def_l_and(const char **src, size_t *len)
+aml_node_t *def_l_and(blob_t *blob)
 {
-	return parse_operation(0, L_AND_OP, AML_DEF_L_AND, src, len,
+	return parse_operation(0, L_AND_OP, AML_DEF_L_AND, blob,
 		2, operand, operand);
 }
 
-aml_node_t *def_l_equal(const char **src, size_t *len)
+aml_node_t *def_l_equal(blob_t *blob)
 {
-	return parse_operation(0, L_EQUAL_OP, AML_DEF_L_EQUAL, src, len,
+	return parse_operation(0, L_EQUAL_OP, AML_DEF_L_EQUAL, blob,
 		2, operand, operand);
 }
 
-aml_node_t *def_l_greater(const char **src, size_t *len)
+aml_node_t *def_l_greater(blob_t *blob)
 {
-	return parse_operation(0, L_GREATER_OP, AML_DEF_L_GREATER, src, len,
+	return parse_operation(0, L_GREATER_OP, AML_DEF_L_GREATER, blob,
 		2, operand, operand);
 }
 
-aml_node_t *def_l_greater_equal(const char **src, size_t *len)
+aml_node_t *def_l_greater_equal(blob_t *blob)
 {
 	// TODO
-	(void) src;
-	(void) len;
+	(void) blob;
 	return NULL;
 }
 
-aml_node_t *def_l_less(const char **src, size_t *len)
+aml_node_t *def_l_less(blob_t *blob)
 {
-	return parse_operation(0, L_LESS_OP, AML_DEF_L_LESS, src, len,
+	return parse_operation(0, L_LESS_OP, AML_DEF_L_LESS, blob,
 		2, operand, operand);
 }
 
-aml_node_t *def_l_less_equal(const char **src, size_t *len)
+aml_node_t *def_l_less_equal(blob_t *blob)
 {
 	// TODO
-	(void) src;
-	(void) len;
+	(void) blob;
 	return NULL;
 }
 
-aml_node_t *def_mid(const char **src, size_t *len)
+aml_node_t *def_mid(blob_t *blob)
 {
 	// TODO
-	(void) src;
-	(void) len;
+	(void) blob;
 	return NULL;
 }
 
-aml_node_t *def_l_not(const char **src, size_t *len)
+aml_node_t *def_l_not(blob_t *blob)
 {
 	// TODO
-	(void) src;
-	(void) len;
+	(void) blob;
 	return NULL;
 }
 
-aml_node_t *def_l_not_equal(const char **src, size_t *len)
+aml_node_t *def_l_not_equal(blob_t *blob)
 {
 	// TODO
-	(void) src;
-	(void) len;
+	(void) blob;
 	return NULL;
 }
 
-aml_node_t *def_load_table(const char **src, size_t *len)
+aml_node_t *def_load_table(blob_t *blob)
 {
 	// TODO
-	(void) src;
-	(void) len;
+	(void) blob;
 	return NULL;
 }
 
-aml_node_t *def_l_or(const char **src, size_t *len)
+aml_node_t *def_l_or(blob_t *blob)
 {
-	return parse_operation(0, L_OR_OP, AML_DEF_L_OR, src, len,
+	return parse_operation(0, L_OR_OP, AML_DEF_L_OR, blob,
 		2, operand, operand);
 }
 
-aml_node_t *def_match(const char **src, size_t *len)
+aml_node_t *def_match(blob_t *blob)
 {
 	// TODO
-	(void) src;
-	(void) len;
+	(void) blob;
 	return NULL;
 }
 
-aml_node_t *def_mod(const char **src, size_t *len)
+aml_node_t *def_mod(blob_t *blob)
 {
 	// TODO
-	(void) src;
-	(void) len;
+	(void) blob;
 	return NULL;
 }
 
-aml_node_t *def_multiply(const char **src, size_t *len)
+aml_node_t *def_multiply(blob_t *blob)
 {
 	// TODO
-	(void) src;
-	(void) len;
+	(void) blob;
 	return NULL;
 }
 
-aml_node_t *def_n_and(const char **src, size_t *len)
+aml_node_t *def_n_and(blob_t *blob)
 {
 	// TODO
-	(void) src;
-	(void) len;
+	(void) blob;
 	return NULL;
 }
 
-aml_node_t *def_n_or(const char **src, size_t *len)
+aml_node_t *def_n_or(blob_t *blob)
 {
 	// TODO
-	(void) src;
-	(void) len;
+	(void) blob;
 	return NULL;
 }
 
-aml_node_t *def_not(const char **src, size_t *len)
+aml_node_t *def_not(blob_t *blob)
 {
-	return parse_operation(0, NOT_OP, AML_DEF_NOT, src, len,
+	return parse_operation(0, NOT_OP, AML_DEF_NOT, blob,
 		2, operand, target);
 }
 
-aml_node_t *def_object_type(const char **src, size_t *len)
+aml_node_t *def_object_type(blob_t *blob)
 {
 	// TODO
-	(void) src;
-	(void) len;
+	(void) blob;
 	return NULL;
 }
 
-aml_node_t *def_or(const char **src, size_t *len)
+aml_node_t *def_or(blob_t *blob)
 {
 	// TODO
-	(void) src;
-	(void) len;
+	(void) blob;
 	return NULL;
 }
 
-static aml_node_t *num_elements(const char **src, size_t *len)
+static aml_node_t *num_elements(blob_t *blob)
 {
-	return parse_node(AML_NUM_ELEMENTS, src, len, 1, byte_data);
+	return parse_node(AML_NUM_ELEMENTS, blob, 1, byte_data);
 }
 
-static aml_node_t *package_element(const char **src, size_t *len)
+static aml_node_t *package_element(blob_t *blob)
 {
-	return parse_either(AML_PACKAGE_ELEMENT, src, len,
+	return parse_either(AML_PACKAGE_ELEMENT, blob,
 		2, data_ref_object, name_string);
 }
 
-static aml_node_t *package_element_list(const char **src, size_t *len)
+static aml_node_t *package_element_list(blob_t *blob)
 {
-	return parse_list(AML_PACKAGE_ELEMENT_LIST, src, len, package_element);
+	return parse_list(AML_PACKAGE_ELEMENT_LIST, blob, package_element);
 }
 
-aml_node_t *def_package(const char **src, size_t *len)
+aml_node_t *def_package(blob_t *blob)
 {
-	return parse_operation(0, PACKAGE_OP, AML_DEF_PACKAGE, src, len,
+	return parse_operation(0, PACKAGE_OP, AML_DEF_PACKAGE, blob,
 		3, pkg_length, num_elements, package_element_list);
 }
 
-static aml_node_t *var_num_elements(const char **src, size_t *len)
+static aml_node_t *var_num_elements(blob_t *blob)
 {
-	return parse_node(AML_VAR_NUM_ELEMENTS, src, len, 1, term_arg);
+	return parse_node(AML_VAR_NUM_ELEMENTS, blob, 1, term_arg);
 }
 
-aml_node_t *def_var_package(const char **src, size_t *len)
+aml_node_t *def_var_package(blob_t *blob)
 {
-	return parse_operation(0, VAR_PACKAGE_OP, AML_DEF_VAR_PACKAGE, src, len,
+	return parse_operation(0, VAR_PACKAGE_OP, AML_DEF_VAR_PACKAGE, blob,
 		3, pkg_length, var_num_elements, package_element_list);
 }
 
-aml_node_t *def_ref_of(const char **src, size_t *len)
+aml_node_t *def_ref_of(blob_t *blob)
 {
 	// TODO
-	(void) src;
-	(void) len;
+	(void) blob;
 	return NULL;
 }
 
-static aml_node_t *shift_count(const char **src, size_t *len)
+static aml_node_t *shift_count(blob_t *blob)
 {
-	return parse_node(AML_SHIFT_COUNT, src, len, 1, term_arg);
+	return parse_node(AML_SHIFT_COUNT, blob, 1, term_arg);
 }
 
-aml_node_t *def_shift_left(const char **src, size_t *len)
+aml_node_t *def_shift_left(blob_t *blob)
 {
-	return parse_operation(0, SHIFT_LEFT_OP, AML_DEF_SHIFT_LEFT, src, len,
+	return parse_operation(0, SHIFT_LEFT_OP, AML_DEF_SHIFT_LEFT, blob,
 		3, operand, shift_count, target);
 }
 
-aml_node_t *def_shift_right(const char **src, size_t *len)
+aml_node_t *def_shift_right(blob_t *blob)
 {
-	return parse_operation(0, SHIFT_RIGHT_OP, AML_DEF_SHIFT_RIGHT, src, len,
+	return parse_operation(0, SHIFT_RIGHT_OP, AML_DEF_SHIFT_RIGHT, blob,
 		3, operand, shift_count, target);
 }
 
-aml_node_t *def_size_of(const char **src, size_t *len)
+aml_node_t *def_size_of(blob_t *blob)
 {
-	return parse_operation(0, SIZE_OF_OP, AML_DEF_SIZE_OF, src, len,
-		1, super_name);
+	return parse_operation(0, SIZE_OF_OP, AML_DEF_SIZE_OF, blob, 1, super_name);
 }
 
-aml_node_t *def_store(const char **src, size_t *len)
+aml_node_t *def_store(blob_t *blob)
 {
-	return parse_operation(0, STORE_OP, AML_DEF_STORE, src, len,
+	return parse_operation(0, STORE_OP, AML_DEF_STORE, blob,
 		2, term_arg, super_name);
 }
 
-aml_node_t *def_subtract(const char **src, size_t *len)
+aml_node_t *def_subtract(blob_t *blob)
 {
-	return parse_operation(0, SUBTRACT_OP, AML_DEF_SUBTRACT, src, len,
+	return parse_operation(0, SUBTRACT_OP, AML_DEF_SUBTRACT, blob,
 		3, operand, operand, target);
 }
 
-aml_node_t *def_timer(const char **src, size_t *len)
+aml_node_t *def_timer(blob_t *blob)
 {
 	// TODO
-	(void) src;
-	(void) len;
+	(void) blob;
 	return NULL;
 }
 
-aml_node_t *def_to_bcd(const char **src, size_t *len)
+aml_node_t *def_to_bcd(blob_t *blob)
 {
 	// TODO
-	(void) src;
-	(void) len;
+	(void) blob;
 	return NULL;
 }
 
-aml_node_t *def_to_buffer(const char **src, size_t *len)
+aml_node_t *def_to_buffer(blob_t *blob)
 {
-	return parse_operation(0, TO_BUFFER_OP, AML_DEF_TO_BUFFER, src, len,
+	return parse_operation(0, TO_BUFFER_OP, AML_DEF_TO_BUFFER, blob,
 		2, operand, target);
 }
 
-aml_node_t *def_to_decimal_string(const char **src, size_t *len)
+aml_node_t *def_to_decimal_string(blob_t *blob)
 {
 	return parse_operation(0, TO_DECIMAL_STRING_OP, AML_DEF_TO_DECIMAL_STRING,
-		src, len, 2, operand, target);
+		blob, 2, operand, target);
 }
 
-aml_node_t *def_to_hex_string(const char **src, size_t *len)
+aml_node_t *def_to_hex_string(blob_t *blob)
 {
 	return parse_operation(0, TO_HEX_STRING_OP, AML_DEF_TO_HEX_STRING,
-		src, len, 2, operand, target);
+		blob, 2, operand, target);
 }
 
-aml_node_t *def_to_integer(const char **src, size_t *len)
+aml_node_t *def_to_integer(blob_t *blob)
 {
-	return parse_operation(0, TO_INTEGER_OP, AML_DEF_TO_INTEGER, src, len,
+	return parse_operation(0, TO_INTEGER_OP, AML_DEF_TO_INTEGER, blob,
 		2, operand, target);
 }
 
-aml_node_t *def_to_string(const char **src, size_t *len)
+aml_node_t *def_to_string(blob_t *blob)
 {
 	// TODO
-	(void) src;
-	(void) len;
+	(void) blob;
 	return NULL;
 }
 
-aml_node_t *def_wait(const char **src, size_t *len)
+aml_node_t *def_wait(blob_t *blob)
 {
 	// TODO
-	(void) src;
-	(void) len;
+	(void) blob;
 	return NULL;
 }
 
-aml_node_t *def_xor(const char **src, size_t *len)
+aml_node_t *def_xor(blob_t *blob)
 {
 	// TODO
-	(void) src;
-	(void) len;
+	(void) blob;
 	return NULL;
 }
 
-aml_node_t *type2_opcode(const char **src, size_t *len)
+aml_node_t *type2_opcode(blob_t *blob)
 {
 	static struct
 	{
 		char ext_prefix;
 		const uint8_t op;
-		aml_node_t *(*func)(const char **, size_t *);
+		parse_func_t func;
 	} funcs[] = {
 		{1, ACQUIRE_OP, def_acquire},
 		{0, ADD_OP, def_add},
@@ -673,35 +660,38 @@ aml_node_t *type2_opcode(const char **src, size_t *len)
 		{1, WAIT_OP, def_wait},
 		{0, XOR_OP, def_xor}
 	};
+	blob_t b;
 	int ext_prefix;
 	uint8_t opcode;
 	size_t i;
 
-	if(*len < 1)
+	if(BLOB_EMPTY(blob))
 		return NULL;
-	if((ext_prefix = (**src == EXT_OP_PREFIX)))
+	BLOB_COPY(blob, &b);
+	if((ext_prefix = BLOB_CHECK(blob, EXT_OP_PREFIX)))
 	{
-		if(*len < 2)
+		if(BLOB_EMPTY(blob))
+		{
+			BLOB_COPY(&b, blob);
 			return NULL;
-		opcode = (*src)[1];
+		}
 	}
-	else
-		opcode = (*src)[0];
+	opcode = BLOB_PEEK(blob);
+	BLOB_CONSUME(blob, 1);
 	for(i = 0; i < sizeof(funcs) / sizeof(*funcs); ++i)
 	{
 		if(ext_prefix != funcs[i].ext_prefix)
 			continue;
 		if(opcode != funcs[i].op)
 			continue;
-		return parse_node(AML_TYPE2_OPCODE, src, len, 1, funcs[i].func);
+		return parse_node(AML_TYPE2_OPCODE, blob, 1, funcs[i].func);
 	}
-	return parse_node(AML_TYPE2_OPCODE, src, len, 1, method_invocation);
+	return parse_node(AML_TYPE2_OPCODE, blob, 1, method_invocation);
 }
 
-aml_node_t *type6_opcode(const char **src, size_t *len)
+aml_node_t *type6_opcode(blob_t *blob)
 {
 	// TODO
-	(void) src;
-	(void) len;
+	(void) blob;
 	return NULL;
 }

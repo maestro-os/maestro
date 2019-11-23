@@ -1,64 +1,48 @@
 #include <acpi/aml/aml_parser.h>
 
-static aml_node_t *def_alias(const char **src, size_t *len)
+static aml_node_t *def_alias(blob_t *blob)
 {
-	const char *s;
-	size_t l;
+	blob_t b;
 	aml_node_t *node;
 
-	if(*len < 1 || **src != ALIAS_OP)
+	BLOB_COPY(blob, &b);
+	if(!BLOB_CHECK(blob, ALIAS_OP))
 		return NULL;
-	s = (*src)++;
-	l = (*len)--;
-	if(!(node = parse_node(AML_DEF_ALIAS, src, len,
-		2, name_string, name_string)))
-	{
-		*src = s;
-		*len = l;
-	}
+	if(!(node = parse_node(AML_DEF_ALIAS, blob, 2, name_string, name_string)))
+		BLOB_COPY(&b, blob);
 	return node;
 }
 
-static aml_node_t *def_name(const char **src, size_t *len)
+static aml_node_t *def_name(blob_t *blob)
 {
-	const char *s;
-	size_t l;
+	blob_t b;
 	aml_node_t *node;
 
-	if(*len < 1 || **src != NAME_OP)
+	BLOB_COPY(blob, &b);
+	if(!BLOB_CHECK(blob, NAME_OP))
 		return NULL;
-	s = (*src)++;
-	l = (*len)--;
-	if(!(node = parse_node(AML_DEF_NAME, src, len,
+	if(!(node = parse_node(AML_DEF_NAME, blob,
 		2, name_string, data_ref_object)))
-	{
-		*src = s;
-		*len = l;
-	}
+		BLOB_COPY(&b, blob);
 	return node;
 }
 
-static aml_node_t *def_scope(const char **src, size_t *len)
+static aml_node_t *def_scope(blob_t *blob)
 {
-	const char *s;
-	size_t l;
+	blob_t b;
 	aml_node_t *node;
 
-	if(*len < 1 || **src != SCOPE_OP)
+	BLOB_COPY(blob, &b);
+	if(!BLOB_CHECK(blob, SCOPE_OP))
 		return NULL;
-	s = (*src)++;
-	l = (*len)--;
-	if(!(node = parse_explicit(AML_DEF_SCOPE, src, len,
+	if(!(node = parse_explicit(AML_DEF_SCOPE, blob,
 		3, pkg_length, name_string, term_list)))
-	{
-		*src = s;
-		*len = l;
-	}
+		BLOB_COPY(&b, blob);
 	return node;
 }
 
-aml_node_t *namespace_modifier_obj(const char **src, size_t *len)
+aml_node_t *namespace_modifier_obj(blob_t *blob)
 {
-	return parse_either(AML_NAME_SPACE_MODIFIER_OBJ, src, len,
+	return parse_either(AML_NAME_SPACE_MODIFIER_OBJ, blob,
 		3, def_alias, def_name, def_scope);
 }

@@ -8,24 +8,21 @@ static size_t count_args(const char *src, size_t len)
 	return 0;
 }
 
-aml_node_t *method_invocation(const char **src, size_t *len)
+aml_node_t *method_invocation(blob_t *blob)
 {
-	const char *s;
-	size_t l;
+	blob_t b;
 	aml_node_t *node, *args;
 	size_t args_count;
 
-	if(!(node = parse_node(AML_METHOD_INVOCATION, src, len, 1, name_string)))
+	if(!(node = parse_node(AML_METHOD_INVOCATION, blob, 1, name_string)))
 		return NULL;
-	s = *src;
-	l = *len;
-	if((args_count = count_args(*src, *len)) == 0)
+	BLOB_COPY(blob, &b);
+	if((args_count = count_args(&BLOB_PEEK(blob), BLOB_REMAIN(blob))) == 0)
 		return node;
-	if(!(args = parse_fixed_list(AML_TERM_ARG_LIST, src, len,
+	if(!(args = parse_fixed_list(AML_TERM_ARG_LIST, blob,
 		term_arg, args_count)))
 	{
-		*src = s;
-		*len = l;
+		BLOB_COPY(&b, blob);
 		ast_free(node);
 		return NULL;
 	}

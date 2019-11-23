@@ -1,41 +1,38 @@
 #include <acpi/aml/aml_parser.h>
 
-static aml_node_t *pkg_lead_byte(const char **src, size_t *len, int *n)
+static aml_node_t *pkg_lead_byte(blob_t *blob, int *n)
 {
 	aml_node_t *node;
 
-	if(*len < 1 || !(node = node_new(AML_PKG_LEAD_BYTE, *src, 1)))
+	if(BLOB_EMPTY(blob)
+		|| !(node = node_new(AML_PKG_LEAD_BYTE, &BLOB_PEEK(blob), 1)))
 		return NULL;
-	*n = (**src >> 6) & 0b11;
-	++(*src);
-	--(*len);
+	*n = (BLOB_PEEK(blob) >> 6) & 0b11;
+	BLOB_CONSUME(blob, 1);
 	return node;
 }
 
-aml_node_t *pkg_length(const char **src, size_t *len)
+aml_node_t *pkg_length(blob_t *blob)
 {
-	const char *s;
-	size_t l;
+	blob_t b;
 	aml_node_t *node, *child;
 	int i = 0, n;
 
-	if(!(node = node_new(AML_PKG_LENGTH, *src, 0)))
+	if(!(node = node_new(AML_PKG_LENGTH, &BLOB_PEEK(blob), 0)))
 		return NULL;
-	s = *src;
-	l = *len;
-	if(!(node->children = pkg_lead_byte(src, len, &n)))
+	BLOB_COPY(blob, &b);
+	if(!(node->children = pkg_lead_byte(blob, &n)))
 		goto fail;
 	while(i++ < n)
 	{
-		if(!(child = byte_data(src, len)))
+		if(!(child = byte_data(blob)))
 			goto fail;
 		node_add_child(node, child);
 	}
 	return node;
 
 fail:
+	BLOB_COPY(&b, blob);
 	ast_free(node);
-	*src = s;
-	*len = l;
 	return NULL;
 }

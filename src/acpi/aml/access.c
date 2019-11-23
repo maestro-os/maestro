@@ -1,24 +1,23 @@
 #include <acpi/aml/aml_parser.h>
 
-aml_node_t *access_type(const char **src, size_t *len)
+aml_node_t *access_type(blob_t *blob)
 {
-	return parse_node(AML_ACCESS_TYPE, src, len, 1, byte_data);
+	return parse_node(AML_ACCESS_TYPE, blob, 1, byte_data);
 }
 
-aml_node_t *access_attrib(const char **src, size_t *len)
+aml_node_t *access_attrib(blob_t *blob)
 {
-	return parse_node(AML_ACCESS_ATTRIB, src, len, 1, byte_data);
+	return parse_node(AML_ACCESS_ATTRIB, blob, 1, byte_data);
 }
 
-aml_node_t *extended_access_attrib(const char **src, size_t *len)
+aml_node_t *extended_access_attrib(blob_t *blob)
 {
-	return parse_node(AML_EXTENDED_ACCESS_ATTRIB, src, len, 1, byte_data);
+	return parse_node(AML_EXTENDED_ACCESS_ATTRIB, blob, 1, byte_data);
 }
 
-aml_node_t *access_length(const char **src, size_t *len)
+aml_node_t *access_length(blob_t *blob)
 {
 	// TODO
-	(void) src;
-	(void) len;
+	(void) blob;
 	return NULL;
 }

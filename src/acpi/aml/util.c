@@ -322,18 +322,15 @@ static const char *node_types[] = {
 };
 #endif
 
-static aml_node_t *do_parse(const char **src, size_t *len,
-	size_t n, va_list ap)
+static aml_node_t *do_parse(blob_t *blob, size_t n, va_list ap)
 {
-	const char *s;
-	size_t l;
+	blob_t b;
 	aml_node_t *node, *children = NULL, *last_child = NULL;
 
-	s = *src;
-	l = *len;
+	BLOB_COPY(blob, &b);
 	while(n-- > 0)
 	{
-		node = va_arg(ap, parse_func_t)(src, len);
+		node = va_arg(ap, parse_func_t)(blob);
 		if(!node)
 			goto fail;
 		if(!last_child)
@@ -348,21 +345,20 @@ static aml_node_t *do_parse(const char **src, size_t *len,
 	return children;
 
 fail:
+	BLOB_COPY(&b, blob);
 	ast_free(children);
-	*src = s;
-	*len = l;
 	return NULL;
 }
 
-aml_node_t *parse_node(const enum node_type type, const char **src, size_t *len,
+aml_node_t *parse_node(const enum node_type type, blob_t *blob,
 	const size_t n, ...)
 {
 	va_list ap;
 	aml_node_t *children, *node = NULL;
 
 	va_start(ap, n);
-	if(!(node = node_new(type, *src, 0))
-		|| !(children = do_parse(src, len, n, ap)))
+	if(!(node = node_new(type, &BLOB_PEEK(blob), 0))
+		|| !(children = do_parse(blob, n, ap)))
 	{
 		node_free(node);
 		return NULL;
@@ -371,59 +367,58 @@ aml_node_t *parse_node(const enum node_type type, const char **src, size_t *len,
 	return node;
 }
 
-aml_node_t *parse_explicit(const enum node_type type,
-	const char **src, size_t *len, size_t n, ...)
+aml_node_t *parse_explicit(const enum node_type type, blob_t *blob,
+	size_t n, ...)
 {
 	va_list ap;
-	aml_node_t *nod, *node = NULL, *children;
-	const char *base_src;
-	size_t base_len, length, l;
+	blob_t b, blob2;
+	aml_node_t *nod = NULL, *node = NULL, *children;
+	size_t l;
 
 	va_start(ap, n);
-	base_src = *src;
-	base_len = *len;
-	if(!(nod = va_arg(ap, parse_func_t)(src, len)))
+	BLOB_COPY(blob, &b);
+	if(!(nod = va_arg(ap, parse_func_t)(blob)))
 		return NULL;
-	printf("-> %u\n", (unsigned)(base_len - *len));
-	printf("=> %u\n", (unsigned)aml_pkg_length_get(nod));
-	l = length = aml_pkg_length_get(nod) - (base_len - *len);
-	if(l > base_len)
+	l = aml_pkg_length_get(nod) - (b.len - blob->len);
+	if(l == 0 || l > b.len)
 	{
-		printf("%u > %u\n", (unsigned)l, (unsigned)base_len);
-		kernel_halt();
+		printf("%u <-> %u\n", (unsigned) l, (unsigned) b.len);
+		goto fail;
 	}
-	if(!(node = node_new(type, *src, 0))
-		|| !(children = do_parse(src, &l, n - 1, ap)))
-	{
-		node_free(node);
-		*src = base_src;
-		*len = base_len;
-		return NULL;
-	}
+	blob2.src = blob->src;
+	blob2.len = l;
+	if(!(node = node_new(type, &BLOB_PEEK(blob), 0))
+		|| !(children = do_parse(&blob2, n - 1, ap)))
+		goto fail;
 	nod->next = children;
 	node->children = nod;
 	return node;
+
+fail:
+	BLOB_COPY(&b, blob);
+	node_free(nod);
+	node_free(node);
+	return NULL;
 }
 
-aml_node_t *parse_serie(const char **src, size_t *len, const size_t n, ...)
+aml_node_t *parse_serie(blob_t *blob, const size_t n, ...)
 {
 	va_list ap;
 
 	va_start(ap, n);
-	return do_parse(src, len, n, ap);
+	return do_parse(blob, n, ap);
 }
 
-aml_node_t *parse_list(const enum node_type type, const char **src, size_t *len,
-	parse_func_t f)
+aml_node_t *parse_list(const enum node_type type, blob_t *blob, parse_func_t f)
 {
 	aml_node_t *node, *n, *prev, *nod;
 
-	if(!(node = node_new(type, *src, 0)))
+	if(!(node = node_new(type, &BLOB_PEEK(blob), 0)))
 		return NULL;
 	prev = NULL;
-	while((n = f(src, len)))
+	while((n = f(blob)))
 	{
-		if(!(nod = node_new(type, *src, 0)))
+		if(!(nod = node_new(type, &BLOB_PEEK(blob), 0)))
 		{
 			ast_free(n);
 			ast_free(node);
@@ -436,15 +431,15 @@ aml_node_t *parse_list(const enum node_type type, const char **src, size_t *len,
 	return node;
 }
 
-aml_node_t *parse_fixed_list(const enum node_type type,
-	const char **src, size_t *len, parse_func_t f, size_t i)
+aml_node_t *parse_fixed_list(const enum node_type type, blob_t *blob,
+	parse_func_t f, size_t i)
 {
 	aml_node_t *node, *n, *prev, *nod;
 
-	if(!(node = node_new(type, *src, 0)))
+	if(!(node = node_new(type, &BLOB_PEEK(blob), 0)))
 		return NULL;
 	prev = node;
-	while(i-- > 0 && (n = f(src, len)))
+	while(i-- > 0 && (n = f(blob)))
 	{
 		if(!(nod = node_new(type, NULL, 0)))
 		{
@@ -460,14 +455,13 @@ aml_node_t *parse_fixed_list(const enum node_type type,
 	return node;
 }
 
-aml_node_t *parse_string(const char **src, size_t *len,
-	size_t str_len, const parse_func_t f)
+aml_node_t *parse_string(blob_t *blob, size_t str_len, const parse_func_t f)
 {
 	aml_node_t *node, *children = NULL, *last_child = NULL;
 
 	while(str_len-- > 0)
 	{
-		if(!(node = f(src, len)))
+		if(!(node = f(blob)))
 			goto fail;
 		if(!last_child)
 			last_child = children = node;
@@ -486,20 +480,17 @@ fail:
 	return NULL;
 }
 
-aml_node_t *parse_either(const enum node_type type, const char **src,
-	size_t *len, size_t n, ...)
+aml_node_t *parse_either(const enum node_type type, blob_t *blob, size_t n, ...)
 {
-	const char *s;
-	size_t l;
 	va_list ap;
+	blob_t b;
 	aml_node_t *node, *child;
 
-	s = *src;
-	l = *len;
 	va_start(ap, n);
-	if(!(node = node_new(type, *src, 0)))
+	BLOB_COPY(blob, &b);
+	if(!(node = node_new(type, &BLOB_PEEK(blob), 0)))
 		return NULL;
-	while(n-- > 0 && !(child = va_arg(ap, parse_func_t)(src, len)))
+	while(n-- > 0 && !(child = va_arg(ap, parse_func_t)(blob)))
 		if(errno)
 			goto fail;
 	if(!child)
@@ -508,43 +499,33 @@ aml_node_t *parse_either(const enum node_type type, const char **src,
 	return node;
 
 fail:
+	BLOB_COPY(&b, blob);
 	node_free(node);
-	*src = s;
-	*len = l;
 	return NULL;
 }
 
 aml_node_t *parse_operation(const int ext_op, const char op,
-	const enum node_type type, const char **src, size_t *len,
+	const enum node_type type, blob_t *blob,
 		const size_t n, ...)
 {
-	const char *s;
-	size_t l;
+	blob_t b;
 	va_list ap;
-	aml_node_t *children, *node = NULL;
+	aml_node_t *children, *node;
 
-	if(ext_op)
+	BLOB_COPY(blob, &b);
+	if(ext_op && !BLOB_CHECK(blob, EXT_OP_PREFIX))
+		return NULL;
+	if(!BLOB_CHECK(blob, op))
 	{
-		if(*len < 2 || (*src)[0] != EXT_OP_PREFIX || (*src)[1] != op)
-			return NULL;
-		s = *src;
-		l = *len;
-		*src += 2;
-		*len -= 2;
-	}
-	else
-	{
-		if(*len < 1 || **src != op)
-			return NULL;
-		s = (*src)++;
-		l = (*len)--;
+		if(ext_op)
+			BLOB_COPY(&b, blob);
+		return NULL;
 	}
 	va_start(ap, n);
-	if(!(node = node_new(type, *src, 0))
-		|| !(children = do_parse(src, len, n, ap)))
+	if(!(node = node_new(type, &BLOB_PEEK(blob), 0))
+		|| !(children = do_parse(blob, n, ap)))
 	{
-		*src = s;
-		*len = l;
+		BLOB_COPY(&b, blob);
 		node_free(node);
 		return NULL;
 	}
