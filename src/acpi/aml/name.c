@@ -73,7 +73,6 @@ static aml_node_t *multi_name_path(blob_t *blob)
 	if(BLOB_REMAIN(blob) < 2 || !BLOB_CHECK(blob, MULTI_NAME_PREFIX)
 		|| !(node = node_new(AML_MULTI_NAME_PATH, &BLOB_PEEK(blob), 0)))
 		return NULL;
-	BLOB_CONSUME(blob, 1);
 	n = BLOB_PEEK(blob);
 	BLOB_CONSUME(blob, 1);
 	while(i++ < n && (c = name_seg(blob)))
@@ -121,11 +120,12 @@ aml_node_t *name_string(blob_t *blob)
 	blob_t b;
 	aml_node_t *node;
 
-	if(!(node = node_new(AML_NAME_STRING, &BLOB_PEEK(blob), 0)))
+	if(BLOB_EMPTY(blob)
+		|| !(node = node_new(AML_NAME_STRING, &BLOB_PEEK(blob), 0)))
 		return NULL;
 	BLOB_COPY(blob, &b);
-	if(!((node->children = root_char(blob))
-		|| (node->children = prefix_path(blob))))
+	if(!(node->children = root_char(blob))
+		&& !(node->children = prefix_path(blob)))
 		goto fail;
 	if(!(node->children->next = name_path(blob)))
 		goto fail;

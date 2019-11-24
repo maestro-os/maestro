@@ -380,16 +380,17 @@ aml_node_t *parse_explicit(const enum node_type type, blob_t *blob,
 	if(!(nod = va_arg(ap, parse_func_t)(blob)))
 		return NULL;
 	l = aml_pkg_length_get(nod) - (b.len - blob->len);
-	if(l == 0 || l > b.len)
-	{
-		printf("%u <-> %u\n", (unsigned) l, (unsigned) b.len);
+	printf("explicit length -> %u\n", (unsigned)l);
+	print_memory(blob->src, l);
+	if(l > b.len)
 		goto fail;
-	}
 	blob2.src = blob->src;
 	blob2.len = l;
 	if(!(node = node_new(type, &BLOB_PEEK(blob), 0))
 		|| !(children = do_parse(&blob2, n - 1, ap)))
 		goto fail;
+	BLOB_CONSUME(&b, blob2.src - b.src);
+	BLOB_COPY(&b, blob);
 	nod->next = children;
 	node->children = nod;
 	return node;
@@ -515,10 +516,9 @@ aml_node_t *parse_operation(const int ext_op, const char op,
 	BLOB_COPY(blob, &b);
 	if(ext_op && !BLOB_CHECK(blob, EXT_OP_PREFIX))
 		return NULL;
-	if(!BLOB_CHECK(blob, op))
+	if(!BLOB_CHECK(blob, op) || BLOB_EMPTY(blob))
 	{
-		if(ext_op)
-			BLOB_COPY(&b, blob);
+		BLOB_COPY(&b, blob);
 		return NULL;
 	}
 	va_start(ap, n);

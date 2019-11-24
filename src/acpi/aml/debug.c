@@ -7,7 +7,10 @@ aml_node_t *debug_obj(blob_t *blob)
 
 	BLOB_COPY(blob, &b);
 	if(!BLOB_CHECK(blob, EXT_OP_PREFIX) || !BLOB_CHECK(blob, DEBUG_OP))
+	{
+		BLOB_COPY(&b, blob);
 		return NULL;
+	}
 	if(!(node = node_new(AML_DEBUG_OBJ, &BLOB_PEEK(blob), 0)))
 		BLOB_COPY(&b, blob);
 	return node;

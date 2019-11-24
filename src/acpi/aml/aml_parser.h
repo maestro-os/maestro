@@ -19,13 +19,19 @@
 # define VAR_PACKAGE_OP			((char) 0x13)
 # define METHOD_OP				((char) 0x14)
 # define LOAD_TABLE_OP			((char) 0x1f)
+# define LOAD_OP				((char) 0x20)
+# define STALL_OP				((char) 0x21)
+# define SLEEP_OP				((char) 0x22)
 # define ACQUIRE_OP				((char) 0x23)
+# define SIGNAL_OP				((char) 0x24)
 # define WAIT_OP				((char) 0x25)
+# define RESET_OP				((char) 0x26)
 # define RELEASE_OP				((char) 0x27)
 # define FROM_BCD_OP			((char) 0x28)
 # define TO_BCD_OP				((char) 0x29)
 # define REVISION_OP			((char) 0x30)
 # define DEBUG_OP				((char) 0x31)
+# define FATAL_OP				((char) 0x32)
 # define TIMER_OP				((char) 0x33)
 # define STORE_OP				((char) 0x70)
 # define REF_OF_OP				((char) 0x71)
@@ -44,6 +50,7 @@
 # define OR_OP					((char) 0x7d)
 # define XOR_OP					((char) 0x7f)
 # define NOT_OP					((char) 0x80)
+# define OP_REGION_OP			((char) 0x80)
 # define FIND_SET_LEFT_BIT_OP	((char) 0x81)
 # define FIELD_OP				((char) 0x81)
 # define FIND_SET_RIGHT_BIT_OP	((char) 0x82)
@@ -51,6 +58,7 @@
 # define DEREF_OF_OP			((char) 0x83)
 # define CONCAT_RES_OP			((char) 0x84)
 # define MOD_OP					((char) 0x85)
+# define NOTIFY_OP				((char) 0x86)
 # define SIZE_OF_OP				((char) 0x87)
 # define BANK_FIELD_OP			((char) 0x87)
 # define INDEX_OP				((char) 0x88)
@@ -80,7 +88,6 @@
 # define ONES_OP				((char) 0xff)
 
 # define EXT_OP_PREFIX			((char) 0x5b)
-# define OP_REGION_OP			((char) 0x80)
 
 # define ARG0_OP				((char) 0x68)
 # define ARG6_OP				((char) 0x6e)
@@ -105,7 +112,7 @@
 # define IS_LOCAL_OP(c)			((c) >= LOCAL0_OP && (c) <= LOCAL7_OP)
 
 # define BLOB_COPY(from, to)	*(to) = *(from);
-# define BLOB_CONSUME(b, n)		(b)->src += (n); (b)->len += (n);
+# define BLOB_CONSUME(b, n)		(b)->src += (n); (b)->len -= (n);
 # define BLOB_REMAIN(b)			((b)->len)
 # define BLOB_EMPTY(b)			(BLOB_REMAIN(b) == 0)
 # define BLOB_PEEK(b)			((b)->src[0])

@@ -60,7 +60,6 @@ static aml_node_t *def_device(blob_t *blob)
 		BLOB_COPY(&b, blob);
 		return NULL;
 	}
-	BLOB_CONSUME(blob, 2);
 	if(!(node = parse_explicit(AML_DEF_DEVICE, blob,
 		3, pkg_length, name_string, term_list)))
 		BLOB_COPY(&b, blob);
@@ -85,7 +84,6 @@ static aml_node_t *def_field(blob_t *blob)
 		BLOB_COPY(&b, blob);
 		return NULL;
 	}
-	BLOB_CONSUME(blob, 2);
 	if(!(node = parse_explicit(AML_DEF_FIELD, blob,
 		4, pkg_length, name_string, field_flags, field_list)))
 		BLOB_COPY(&b, blob);
@@ -99,6 +97,8 @@ static aml_node_t *method_flags(blob_t *blob)
 
 static aml_node_t *def_method(blob_t *blob)
 {
+	printf("def_method\n");
+	print_memory(blob->src, 16);
 	return parse_operation(0, METHOD_OP, AML_DEF_METHOD, blob,
 		4, pkg_length, name_string, method_flags, term_list);
 }

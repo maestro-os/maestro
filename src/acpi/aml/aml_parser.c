@@ -9,8 +9,11 @@ static aml_node_t *term_obj(blob_t *blob)
 {
 	printf("term_obj:\n");
 	print_memory(blob->src, 16);
-	return parse_either(AML_TERM_OBJ, blob,
+	aml_node_t *n = parse_either(AML_TERM_OBJ, blob,
 		3, object, type1_opcode, type2_opcode);
+	printf("term_obj after:\n");
+	print_memory(blob->src, 16);
+	return n;
 }
 
 aml_node_t *term_list(blob_t *blob)

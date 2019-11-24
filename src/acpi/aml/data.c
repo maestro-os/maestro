@@ -18,10 +18,9 @@ static aml_node_t *word_const(blob_t *blob)
 	blob_t b;
 	aml_node_t *node;
 
+	BLOB_COPY(blob, &b);
 	if(BLOB_REMAIN(blob) < 3 || !BLOB_CHECK(blob, WORD_PREFIX))
 		return NULL;
-	BLOB_COPY(blob, &b);
-	BLOB_CONSUME(blob, 1);
 	if(!(node = parse_node(AML_WORD_CONST, blob, 1, word_data)))
 		BLOB_COPY(&b, blob);
 	return node;
@@ -32,10 +31,9 @@ static aml_node_t *dword_const(blob_t *blob)
 	blob_t b;
 	aml_node_t *node;
 
+	BLOB_COPY(blob, &b);
 	if(BLOB_REMAIN(blob) < 5 || !BLOB_CHECK(blob, DWORD_PREFIX))
 		return NULL;
-	BLOB_COPY(blob, &b);
-	BLOB_CONSUME(blob, 1);
 	if(!(node = parse_node(AML_DWORD_CONST, blob, 1, dword_data)))
 		BLOB_COPY(&b, blob);
 	return node;
@@ -46,10 +44,9 @@ static aml_node_t *qword_const(blob_t *blob)
 	blob_t b;
 	aml_node_t *node;
 
+	BLOB_COPY(blob, &b);
 	if(BLOB_REMAIN(blob) < 9 || !BLOB_CHECK(blob, QWORD_PREFIX))
 		return NULL;
-	BLOB_COPY(blob, &b);
-	BLOB_CONSUME(blob, 1);
 	if(!(node = parse_node(AML_QWORD_CONST, blob, 1, qword_data)))
 		BLOB_COPY(&b, blob);
 	return node;
@@ -60,8 +57,8 @@ static aml_node_t *const_obj(blob_t *blob)
 	blob_t b;
 	aml_node_t *node;
 
-	if(BLOB_EMPTY(blob) || (BLOB_PEEK(blob) != ZERO_OP
-		&& BLOB_PEEK(blob) != ONE_OP && BLOB_PEEK(blob) != ONES_OP))
+	if(BLOB_PEEK(blob) != ZERO_OP && BLOB_PEEK(blob) != ONE_OP
+		&& BLOB_PEEK(blob) != ONES_OP)
 		return NULL;
 	BLOB_COPY(blob, &b);
 	BLOB_CONSUME(blob, 1);
@@ -80,18 +77,33 @@ static aml_node_t *revision_op(blob_t *blob)
 	blob_t b;
 	aml_node_t *node;
 
+	BLOB_COPY(blob, &b);
 	if(!BLOB_CHECK(blob, EXT_OP_PREFIX) || !BLOB_CHECK(blob, REVISION_OP))
+	{
+		BLOB_COPY(&b, blob);
 		return NULL;
-	if((node = node_new(AML_REVISION_OP, &BLOB_PEEK(blob), 2)))
-		BLOB_CONSUME(&b, 2);
+	}
+	if(!(node = node_new(AML_REVISION_OP, &BLOB_PEEK(blob), 2)))
+		BLOB_COPY(&b, blob);
 	return node;
 }
 
 static aml_node_t *computational_data(blob_t *blob)
 {
+	blob_t b;
+	aml_node_t *node;
+
+	BLOB_COPY(blob, &b);
+	if(!BLOB_EMPTY(blob) && BLOB_PEEK(blob) == BUFFER_OP)
+	{
+		BLOB_CONSUME(blob, 1);
+		if(!(node = def_buffer(blob)))
+			BLOB_COPY(&b, blob);
+		return node;
+	}
 	return parse_either(AML_COMPUTATIONAL_DATA, blob,
-		8, byte_const, word_const, dword_const, qword_const,
-			string, const_obj, revision_op, def_buffer);
+		7, byte_const, word_const, dword_const, qword_const, string, const_obj,
+			revision_op);
 }
 
 aml_node_t *data_object(blob_t *blob)

@@ -25,6 +25,8 @@
 # define CONTAINER_OF(ptr, type, field)	((void *) (ptr)\
 	- OFFSET_OF(type, field))
 
+#define VARG_COUNT(...)	(sizeof((void *[]) {__VA_ARGS__}) / sizeof(void *))
+
 unsigned floor_log2(const unsigned n);
 
 int bitmap_get(const uint8_t *bitmap, size_t index);
