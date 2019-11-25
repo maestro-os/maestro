@@ -12,6 +12,11 @@ SECTIONS
 		*(.rodata)
 	}
 
+	.stack BLOCK(4K) : ALIGN(4K)
+	{
+		*(.stack)
+	}
+
 	.data BLOCK(4K) : ALIGN(4K)
 	{
 		*(.data)

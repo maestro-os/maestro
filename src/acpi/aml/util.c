@@ -380,8 +380,6 @@ aml_node_t *parse_explicit(const enum node_type type, blob_t *blob,
 	if(!(nod = va_arg(ap, parse_func_t)(blob)))
 		return NULL;
 	l = aml_pkg_length_get(nod) - (b.len - blob->len);
-	printf("explicit length -> %u\n", (unsigned)l);
-	print_memory(blob->src, l);
 	if(l > b.len)
 		goto fail;
 	blob2.src = blob->src;
@@ -416,7 +414,7 @@ aml_node_t *parse_list(const enum node_type type, blob_t *blob, parse_func_t f)
 
 	if(!(node = node_new(type, &BLOB_PEEK(blob), 0)))
 		return NULL;
-	prev = NULL;
+	prev = node;
 	while((n = f(blob)))
 	{
 		if(!(nod = node_new(type, &BLOB_PEEK(blob), 0)))

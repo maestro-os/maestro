@@ -104,12 +104,14 @@ gdt:
 	.word gdt - gdt_start - 1
 	.long gdt_start
 
-.section .bss
+.section .stack[write]
 
 .align 8
 
 stack_bottom:
 	.skip STACK_SIZE
 stack_top:
+
+.section .bss
 
 kernel_end:

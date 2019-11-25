@@ -13,17 +13,21 @@ if(!BLOB_CHECK(blob, EXT_OP_PREFIX) || !BLOB_CHECK(blob, opcode))\
 	return NULL;\
 }\
 
-#define OP_HEAD(ext, opcode)\
+// TODO remove debug lines
+#define OP_HEAD(ext, opcode, name)\
 	blob_t b;\
 	aml_node_t *n;\
 \
+	printf("test opcode -> %s\n", #name);\
+	print_memory(blob->src, 16);\
 	BLOB_COPY(blob, &b);\
-	OP_CHECK_MACRO(ext)(opcode)
+	OP_CHECK_MACRO(ext)(opcode)\
+	printf("opcode -> %s\n", #name);
 
 #define PARSE_EMPTY_OP(ext, opcode, node, name)\
 aml_node_t *NODE_FUNC_NAME(name)(blob_t *blob)\
 {\
-	OP_HEAD(ext, opcode)\
+	OP_HEAD(ext, opcode, name)\
 	if(!(n = parse_node(node, blob, 0)))\
 	{\
 		BLOB_COPY(&b, blob);\
@@ -35,7 +39,7 @@ aml_node_t *NODE_FUNC_NAME(name)(blob_t *blob)\
 #define PARSE_IMPLICIT_OP(ext, opcode, node, name, ...)\
 aml_node_t *NODE_FUNC_NAME(name)(blob_t *blob)\
 {\
-	OP_HEAD(ext, opcode)\
+	OP_HEAD(ext, opcode, name)\
 	if(!(n = parse_node(node, blob,\
 		VARG_COUNT(__VA_ARGS__), __VA_ARGS__)))\
 	{\
@@ -48,7 +52,7 @@ aml_node_t *NODE_FUNC_NAME(name)(blob_t *blob)\
 #define PARSE_EXPLICIT_OP(ext, opcode, node, name, ...)\
 aml_node_t *NODE_FUNC_NAME(name)(blob_t *blob)\
 {\
-	OP_HEAD(ext, opcode)\
+	OP_HEAD(ext, opcode, name)\
 	if(!(n = parse_explicit(node, blob,\
 		VARG_COUNT(__VA_ARGS__), __VA_ARGS__)))\
 	{\
@@ -84,13 +88,17 @@ static aml_node_t *parse_opcode(blob_t *blob, enum node_type type,
 	if(BLOB_EMPTY(blob))
 		return NULL;
 	BLOB_COPY(blob, &b);
-	if((ext_prefix = BLOB_CHECK(blob, EXT_OP_PREFIX)) && BLOB_EMPTY(blob))
+	if((ext_prefix = (blob->src[0] == EXT_OP_PREFIX)))
 	{
-		BLOB_COPY(&b, blob);
-		return NULL;
+		if(BLOB_EMPTY(blob))
+		{
+			BLOB_COPY(&b, blob);
+			return NULL;
+		}
+		opcode = blob->src[1];
 	}
-	opcode = BLOB_PEEK(blob);
-	BLOB_CONSUME(blob, 1);
+	else
+		opcode = blob->src[0];
 	for(i = 0; i < ops_count; ++i)
 	{
 		if(ext_prefix != ops[i].ext_prefix)
@@ -138,7 +146,15 @@ static aml_node_t *arg_object(blob_t *blob)
 PARSE_EMPTY_OP(___, BREAK_OP, AML_DEF_BREAK, break)
 PARSE_EMPTY_OP(___, BREAKPOINT_OP, AML_DEF_BREAK_POINT, breakpoint)
 PARSE_EMPTY_OP(___, CONTINUE_OP, AML_DEF_CONTINUE, continue)
-PARSE_EXPLICIT_OP(___, ELSE_OP, AML_DEF_ELSE, else, pkg_length, term_list) // TODO Must success anyway (return an empty node)
+PARSE_EXPLICIT_OP(___, ELSE_OP, AML_DEF_ELSE, else_, pkg_length, term_list)
+
+aml_node_t *def_else(blob_t *blob)
+{
+	if(BLOB_EMPTY(blob) || BLOB_PEEK(blob) != ELSE_OP)
+		return node_new(AML_DEF_ELSE, &BLOB_PEEK(blob), 0);
+	return NODE_FUNC_NAME(else_)(blob);
+}
+
 TODO_OP(EXT, FATAL_OP, AML_DEF_FATAL, fatal) // TODO
 PARSE_EXPLICIT_OP(___, IF_OP, AML_DEF_IF_ELSE, ifelse,
 	pkg_length, predicate, term_list, def_else)

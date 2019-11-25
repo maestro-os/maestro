@@ -97,8 +97,6 @@ static aml_node_t *method_flags(blob_t *blob)
 
 static aml_node_t *def_method(blob_t *blob)
 {
-	printf("def_method\n");
-	print_memory(blob->src, 16);
 	return parse_operation(0, METHOD_OP, AML_DEF_METHOD, blob,
 		4, pkg_length, name_string, method_flags, term_list);
 }
