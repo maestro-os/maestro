@@ -5,7 +5,6 @@
 // TODO Sanity checks
 // TODO Implement streams and termcaps
 
-__ATTR_BSS
 tty_t ttys[TTYS_COUNT];
 tty_t *current_tty = NULL;
 

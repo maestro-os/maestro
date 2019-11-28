@@ -63,6 +63,11 @@
 # define BANK_FIELD_OP			((char) 0x87)
 # define INDEX_OP				((char) 0x88)
 # define MATCH_OP				((char) 0x89)
+# define CREATE_DWORD_FIELD_OP	((char) 0x8a)
+# define CREATE_WORD_FIELD_OP	((char) 0x8b)
+# define CREATE_BYTE_FIELD_OP	((char) 0x8c)
+# define CREATE_BIT_FIELD_OP	((char) 0x8d)
+# define CREATE_QWORD_FIELD_OP	((char) 0x8f)
 # define OBJECT_TYPE_OP			((char) 0x8e)
 # define L_AND_OP				((char) 0x90)
 # define L_OR_OP				((char) 0x91)
@@ -111,8 +116,8 @@
 # define IS_ARG_OP(c)			((c) >= ARG0_OP && (c) <= ARG6_OP)
 # define IS_LOCAL_OP(c)			((c) >= LOCAL0_OP && (c) <= LOCAL7_OP)
 
-# define BLOB_COPY(from, to)	*(to) = *(from);
-# define BLOB_CONSUME(b, n)		(b)->src += (n); (b)->len -= (n);
+# define BLOB_COPY(from, to)	*(to) = *(from)
+# define BLOB_CONSUME(b, n)		(b)->src += (n); (b)->len -= (n)
 # define BLOB_REMAIN(b)			((b)->len)
 # define BLOB_EMPTY(b)			(BLOB_REMAIN(b) == 0)
 # define BLOB_PEEK(b)			((b)->src[0])
@@ -201,21 +206,15 @@ enum node_type
 	AML_ACCESS_ATTRIB,
 	AML_CONNECT_FIELD,
 	AML_DEF_CREATE_BIT_FIELD,
-	AML_CREATE_BIT_FIELD_OP,
 	AML_SOURCE_BUFF,
 	AML_BIT_INDEX,
 	AML_DEF_CREATE_BYTE_FIELD,
-	AML_CREATE_BYTE_FIELD_OP,
 	AML_BYTE_INDEX,
-	AML_DEF_CREATE_D_WORD_FIELD,
-	AML_CREATE_D_WORD_FIELD_OP,
+	AML_DEF_CREATE_DWORD_FIELD,
 	AML_DEF_CREATE_FIELD,
-	AML_CREATE_FIELD_OP,
 	AML_NUM_BITS,
-	AML_DEF_CREATE_Q_WORD_FIELD,
-	AML_CREATE_Q_WORD_FIELD_OP,
+	AML_DEF_CREATE_QWORD_FIELD,
 	AML_DEF_CREATE_WORD_FIELD,
-	AML_CREATE_WORD_FIELD_OP,
 	AML_DEF_DATA_REGION,
 	AML_DATA_REGION_OP,
 	AML_DEF_DEVICE,
@@ -421,7 +420,7 @@ enum node_type
 	AML_TO_STRING_OP,
 	AML_DEF_WAIT,
 	AML_WAIT_OP,
-	AML_DEF_X_OR,
+	AML_DEF_XOR,
 	AML_XOR_OP,
 	AML_ARG_OBJ,
 	AML_ARG0_OP,

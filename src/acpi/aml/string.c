@@ -1,29 +1,42 @@
 #include <acpi/aml/aml_parser.h>
 #include <libc/ctype.h>
 
-static size_t string_length(const char *src, const size_t len)
+static aml_node_t *ascii_char(blob_t *blob)
 {
-	size_t n = 0;
+	aml_node_t *n;
 
-	while(src[n] && isascii(src[n]) && n < len)
-		++n;
-	return (src[n] ? 0 : n);
+	if(BLOB_EMPTY(blob) || BLOB_PEEK(blob) < 0x01 || BLOB_PEEK(blob) > 0x7f)
+		return NULL;
+	if((n = node_new(AML_ASCII_CHAR, &BLOB_PEEK(blob), 1)))
+		BLOB_CONSUME(blob, 1);
+	return n;
+}
+
+static aml_node_t *ascii_char_list(blob_t *blob)
+{
+	return parse_list(AML_ASCII_CHAR_LIST, blob, ascii_char);
+}
+
+static aml_node_t *null_char(blob_t *blob)
+{
+	aml_node_t *n;
+
+	if(BLOB_EMPTY(blob) || BLOB_PEEK(blob))
+		return NULL;
+	if((n = node_new(AML_ASCII_CHAR, &BLOB_PEEK(blob), 1)))
+		BLOB_CONSUME(blob, 1);
+	return n;
 }
 
 aml_node_t *string(blob_t *blob)
 {
 	blob_t b;
-	size_t n;
 	aml_node_t *node;
 
 	BLOB_COPY(blob, &b);
-	if(BLOB_REMAIN(blob) < 2 || !BLOB_CHECK(blob, STRING_PREFIX))
+	if(!BLOB_CHECK(blob, STRING_PREFIX))
 		return NULL;
-	if((n = string_length(&BLOB_PEEK(blob), BLOB_REMAIN(blob))) == 0
-		|| !(node = node_new(AML_STRING, &BLOB_PEEK(blob), n + 1)))
-	{
+	if(!(node = parse_node(AML_STRING, blob, 2, ascii_char_list, null_char)))
 		BLOB_COPY(&b, blob);
-		return NULL;
-	}
 	return node;
 }

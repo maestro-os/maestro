@@ -126,6 +126,13 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	print_slabs();
 #endif
 
+	// TODO Move back after driver init
+	printf("Keyboard initialization...\n");
+	keyboard_init();
+	keyboard_set_input_hook(tty_input_hook);
+	keyboard_set_ctrl_hook(tty_ctrl_hook);
+	keyboard_set_erase_hook(tty_erase_hook);
+
 	printf("ACPI initialization...\n");
 	acpi_init();
 
@@ -146,12 +153,6 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 
 	printf("Disks initialization...\n");
 	disk_init();
-
-	printf("Keyboard initialization...\n");
-	keyboard_init();
-	keyboard_set_input_hook(tty_input_hook);
-	keyboard_set_ctrl_hook(tty_ctrl_hook);
-	keyboard_set_erase_hook(tty_erase_hook);
 
 	printf("Processes initialization...\n");
 	process_init();

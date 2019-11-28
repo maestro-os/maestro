@@ -78,21 +78,15 @@ static const char *node_types[] = {
 	[AML_ACCESS_ATTRIB] = "ACCESS_ATTRIB",
 	[AML_CONNECT_FIELD] = "CONNECT_FIELD",
 	[AML_DEF_CREATE_BIT_FIELD] = "DEF_CREATE_BIT_FIELD",
-	[AML_CREATE_BIT_FIELD_OP] = "CREATE_BIT_FIELD_OP",
 	[AML_SOURCE_BUFF] = "SOURCE_BUFF",
 	[AML_BIT_INDEX] = "BIT_INDEX",
 	[AML_DEF_CREATE_BYTE_FIELD] = "DEF_CREATE_BYTE_FIELD",
-	[AML_CREATE_BYTE_FIELD_OP] = "CREATE_BYTE_FIELD_OP",
 	[AML_BYTE_INDEX] = "BYTE_INDEX",
-	[AML_DEF_CREATE_D_WORD_FIELD] = "DEF_CREATE_D_WORD_FIELD",
-	[AML_CREATE_D_WORD_FIELD_OP] = "CREATE_D_WORD_FIELD_OP",
+	[AML_DEF_CREATE_DWORD_FIELD] = "DEF_CREATE_D_WORD_FIELD",
 	[AML_DEF_CREATE_FIELD] = "DEF_CREATE_FIELD",
-	[AML_CREATE_FIELD_OP] = "CREATE_FIELD_OP",
 	[AML_NUM_BITS] = "NUM_BITS",
-	[AML_DEF_CREATE_Q_WORD_FIELD] = "DEF_CREATE_Q_WORD_FIELD",
-	[AML_CREATE_Q_WORD_FIELD_OP] = "CREATE_Q_WORD_FIELD_OP",
+	[AML_DEF_CREATE_QWORD_FIELD] = "DEF_CREATE_Q_WORD_FIELD",
 	[AML_DEF_CREATE_WORD_FIELD] = "DEF_CREATE_WORD_FIELD",
-	[AML_CREATE_WORD_FIELD_OP] = "CREATE_WORD_FIELD_OP",
 	[AML_DEF_DATA_REGION] = "DEF_DATA_REGION",
 	[AML_DATA_REGION_OP] = "DATA_REGION_OP",
 	[AML_DEF_DEVICE] = "DEF_DEVICE",
@@ -298,7 +292,7 @@ static const char *node_types[] = {
 	[AML_TO_STRING_OP] = "TO_STRING_OP",
 	[AML_DEF_WAIT] = "DEF_WAIT",
 	[AML_WAIT_OP] = "WAIT_OP",
-	[AML_DEF_X_OR] = "DEF_X_OR",
+	[AML_DEF_XOR] = "DEF_X_OR",
 	[AML_XOR_OP] = "XOR_OP",
 	[AML_ARG_OBJ] = "ARG_OBJ",
 	[AML_ARG0_OP] = "ARG0_OP",
@@ -373,21 +367,33 @@ aml_node_t *parse_explicit(const enum node_type type, blob_t *blob,
 	va_list ap;
 	blob_t b, blob2;
 	aml_node_t *nod = NULL, *node = NULL, *children;
-	size_t l;
+	size_t total_len, len;
 
 	va_start(ap, n);
 	BLOB_COPY(blob, &b);
 	if(!(nod = va_arg(ap, parse_func_t)(blob)))
 		return NULL;
-	l = aml_pkg_length_get(nod) - (b.len - blob->len);
-	if(l > b.len)
+	total_len = aml_pkg_length_get(nod);
+	len = total_len - (b.len - blob->len);
+	if(len > b.len)
+	{
+		printf("doesn't fit :< (%u into %u)\n", (unsigned) len, (unsigned) b.len);
 		goto fail;
+	}
+	printf("does fit :> (%u into %u)\n", (unsigned) len, (unsigned) b.len);
 	blob2.src = blob->src;
-	blob2.len = l;
+	blob2.len = len;
 	if(!(node = node_new(type, &BLOB_PEEK(blob), 0))
 		|| !(children = do_parse(&blob2, n - 1, ap)))
 		goto fail;
-	BLOB_CONSUME(&b, blob2.src - b.src);
+	if(blob2.len > 0)
+	{
+		printf("package begun at %p ended early (%u bytes remaining)\n",
+			b.src, (unsigned) blob2.len);
+		print_memory(b.src, 16);
+		kernel_loop();
+	}
+	BLOB_CONSUME(&b, total_len);
 	BLOB_COPY(&b, blob);
 	nod->next = children;
 	node->children = nod;

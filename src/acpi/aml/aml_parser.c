@@ -7,7 +7,7 @@ static aml_node_t *object(blob_t *blob)
 
 static aml_node_t *term_obj(blob_t *blob)
 {
-	printf("term_obj:\n");
+	printf("term_obj: (remaining: %u)\n", (unsigned) blob->len);
 	print_memory(blob->src, 16);
 	return parse_either(AML_TERM_OBJ, blob,
 		3, object, type1_opcode, type2_opcode);
@@ -15,14 +15,12 @@ static aml_node_t *term_obj(blob_t *blob)
 
 aml_node_t *term_list(blob_t *blob)
 {
-	printf("term_list:\n");
-	print_memory(blob->src, 16);
 	return parse_list(AML_TERM_LIST, blob, term_obj);
 }
 
 aml_node_t *term_arg(blob_t *blob)
 {
-	printf("term_arg\n");
+	printf("term_arg (remaining: %u)\n", (unsigned) blob->len);
 	print_memory(blob->src, 16);
 	return parse_either(AML_TERM_ARG, blob,
 		4, type2_opcode, data_object, arg_obj, local_obj);

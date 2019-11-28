@@ -2,26 +2,29 @@
 
 #define NODE_FUNC_NAME(name)	def_ ## name
 
+// TODO remove debug lines
+
 #define OP_CHECK_MACRO(ext)		OP_CHECK_ ## ext
-#define OP_CHECK____(opcode)\
+#define OP_CHECK____(opcode, name)\
 if(!BLOB_CHECK(blob, opcode))\
-	return NULL;
-#define OP_CHECK_EXT(opcode)\
+{\
+	printf("opcode %s failed\n", #name);\
+	return NULL;\
+}
+#define OP_CHECK_EXT(opcode, name)\
 if(!BLOB_CHECK(blob, EXT_OP_PREFIX) || !BLOB_CHECK(blob, opcode))\
 {\
+	printf("opcode %s failed\n", #name);\
 	BLOB_COPY(&b, blob);\
 	return NULL;\
 }\
 
-// TODO remove debug lines
 #define OP_HEAD(ext, opcode, name)\
 	blob_t b;\
 	aml_node_t *n;\
 \
-	printf("test opcode -> %s\n", #name);\
-	print_memory(blob->src, 16);\
 	BLOB_COPY(blob, &b);\
-	OP_CHECK_MACRO(ext)(opcode)\
+	OP_CHECK_MACRO(ext)(opcode, name)\
 	printf("opcode -> %s\n", #name);
 
 #define PARSE_EMPTY_OP(ext, opcode, node, name)\
@@ -77,6 +80,7 @@ typedef struct
 	parse_func_t func;
 } op_descriptor_t;
 
+// TODO Shorten
 static aml_node_t *parse_opcode(blob_t *blob, enum node_type type,
 	op_descriptor_t *ops, const size_t ops_count)
 {
@@ -105,8 +109,6 @@ static aml_node_t *parse_opcode(blob_t *blob, enum node_type type,
 			continue;
 		if(opcode != ops[i].op)
 			continue;
-		// TODO End parsing if fail here? (we are sure that this is that operation at this moment)
-		// TODO Must put blob back to original state on fail?
 		return parse_node(type, blob, 1, ops[i].func);
 	}
 	BLOB_COPY(&b, blob);
@@ -120,6 +122,8 @@ static aml_node_t *operand(blob_t *blob)
 
 static aml_node_t *target(blob_t *blob)
 {
+	printf("target\n");
+	print_memory(blob->src, 16);
 	return parse_either(AML_TARGET, blob, 2, super_name, null_name);
 }
 
@@ -130,7 +134,18 @@ aml_node_t *obj_reference(blob_t *blob)
 
 aml_node_t *predicate(blob_t *blob)
 {
+	printf("predicate\n");
 	return parse_node(AML_PREDICATE, blob, 1, term_arg);
+}
+
+static aml_node_t *notify_object(blob_t *blob)
+{
+	return parse_node(AML_NOTIFY_OBJECT, blob, 1, super_name);
+}
+
+static aml_node_t *notify_value(blob_t *blob)
+{
+	return parse_node(AML_NOTIFY_VALUE, blob, 1, term_arg);
 }
 
 static aml_node_t *mutex_object(blob_t *blob)
@@ -160,7 +175,8 @@ PARSE_EXPLICIT_OP(___, IF_OP, AML_DEF_IF_ELSE, ifelse,
 	pkg_length, predicate, term_list, def_else)
 TODO_OP(EXT, LOAD_OP, AML_DEF_LOAD, load) // TODO
 PARSE_EMPTY_OP(___, NOOP_OP, AML_DEF_NOOP, noop)
-TODO_OP(___, NOTIFY_OP, AML_DEF_NOTIFY, notify) // TODO
+PARSE_IMPLICIT_OP(___, NOTIFY_OP, AML_DEF_NOTIFY, notify,
+	notify_object, notify_value)
 PARSE_IMPLICIT_OP(EXT, RELEASE_OP, AML_DEF_RELEASE, release, mutex_object)
 TODO_OP(EXT, RESET_OP, AML_DEF_RESET, reset) // TODO
 PARSE_IMPLICIT_OP(___, RETURN_OP, AML_DEF_RETURN, return, arg_object)
@@ -301,18 +317,19 @@ TODO_OP(___, L_GREATER_EQUAL_OP, AML_DEF_L_GREATER_EQUAL, l_greater_equal) // TO
 PARSE_IMPLICIT_OP(___, L_LESS_OP, AML_DEF_L_LESS, l_less, operand, operand)
 TODO_OP(___, L_LESS_EQUAL_OP, AML_DEF_L_LESS_EQUAL, l_less_equal) // TODO
 TODO_OP(___, MID_OP, AML_DEF_MID, mid) // TODO
-TODO_OP(___, L_NOT_OP, AML_DEF_L_NOT, l_not) // TODO
+PARSE_IMPLICIT_OP(___, L_NOT_OP, AML_DEF_L_NOT, l_not, operand)
 TODO_OP(___, L_NOT_EQUAL_OP, AML_DEF_L_NOT_EQUAL, l_not_equal) // TODO
 TODO_OP(EXT, LOAD_TABLE_OP, AML_DEF_LOAD_TABLE, load_table) // TODO
 PARSE_IMPLICIT_OP(___, L_OR_OP, AML_DEF_L_OR, l_or, operand, operand)
 TODO_OP(___, MATCH_OP, AML_DEF_MATCH, match) // TODO
 TODO_OP(___, MOD_OP, AML_DEF_MOD, mod) // TODO
-TODO_OP(___, MULTIPLY_OP, AML_DEF_MULTIPLY, multiply) // TODO
-TODO_OP(___, N_AND_OP, AML_DEF_N_AND, n_and) // TODO
-TODO_OP(___, N_OR_OP, AML_DEF_N_OR, n_or) // TODO
+PARSE_IMPLICIT_OP(___, MULTIPLY_OP, AML_DEF_MULTIPLY, multiply,
+	operand, operand, target)
+PARSE_IMPLICIT_OP(___, N_AND_OP, AML_DEF_N_AND, n_and, operand, operand, target)
+PARSE_IMPLICIT_OP(___, N_OR_OP, AML_DEF_N_OR, n_or, operand, operand, target)
 PARSE_IMPLICIT_OP(___, NOT_OP, AML_DEF_NOT, not, operand, target)
 TODO_OP(___, OBJECT_TYPE_OP, AML_DEF_OBJECT_TYPE, object_type) // TODO
-TODO_OP(___, OR_OP, AML_DEF_OR, or) // TODO
+PARSE_IMPLICIT_OP(___, OR_OP, AML_DEF_OR, or, operand, operand, target)
 PARSE_EXPLICIT_OP(___, PACKAGE_OP, AML_DEF_PACKAGE, package,
 	pkg_length, num_elements, package_element_list)
 PARSE_EXPLICIT_OP(___, VAR_PACKAGE_OP, AML_DEF_VAR_PACKAGE, var_package,
@@ -337,7 +354,7 @@ PARSE_IMPLICIT_OP(___, TO_INTEGER_OP, AML_DEF_TO_INTEGER, to_integer,
 	operand, target)
 TODO_OP(___, TO_STRING_OP, AML_DEF_TO_STRING, to_string) // TODO
 TODO_OP(EXT, WAIT_OP, AML_DEF_WAIT, wait) // TODO
-TODO_OP(___, XOR_OP, AML_DEF_XOR, xor) // TODO
+PARSE_IMPLICIT_OP(___, XOR_OP, AML_DEF_XOR, xor, operand, operand, target)
 
 static op_descriptor_t type2_ops[] = {
 	{1, ACQUIRE_OP, NODE_FUNC_NAME(acquire)},
@@ -359,12 +376,12 @@ static op_descriptor_t type2_ops[] = {
 	{0, L_AND_OP, NODE_FUNC_NAME(l_and)},
 	{0, L_EQUAL_OP, NODE_FUNC_NAME(l_equal)},
 	{0, L_GREATER_OP, NODE_FUNC_NAME(l_greater)},
-	{0, 0x00, NODE_FUNC_NAME(l_greater_equal)}, // TODO Not op
+	// TODO {0, 0x00, NODE_FUNC_NAME(l_greater_equal)}, // TODO Not op
 	{0, L_LESS_OP, NODE_FUNC_NAME(l_less)},
-	{0, 0x00, NODE_FUNC_NAME(l_less_equal)}, // TODO Not op
+	// TODO {0, 0x00, NODE_FUNC_NAME(l_less_equal)}, // TODO Not op
 	{0, MID_OP, NODE_FUNC_NAME(mid)}, // TODO
 	{0, L_NOT_OP, NODE_FUNC_NAME(l_not)},
-	{0, 0x00, NODE_FUNC_NAME(l_not_equal)}, // TODO Not op
+	// TODO {0, 0x00, NODE_FUNC_NAME(l_not_equal)}, // TODO Not op
 	{1, LOAD_TABLE_OP, NODE_FUNC_NAME(load_table)},
 	{0, L_OR_OP, NODE_FUNC_NAME(l_or)},
 	{0, MATCH_OP, NODE_FUNC_NAME(match)},
@@ -404,9 +421,15 @@ aml_node_t *type2_opcode(blob_t *blob)
 	return parse_node(AML_TYPE2_OPCODE, blob, 1, method_invocation);
 }
 
+static op_descriptor_t type6_ops[] = {
+	{0, REF_OF_OP, NODE_FUNC_NAME(ref_of)},
+	{0, DEREF_OF_OP, NODE_FUNC_NAME(deref_of)},
+	{0, INDEX_OP, NODE_FUNC_NAME(index)}
+	// TODO UserTermObj?
+};
+
 aml_node_t *type6_opcode(blob_t *blob)
 {
-	// TODO
-	(void) blob;
-	return NULL;
+	return parse_opcode(blob, AML_TYPE6_OPCODE,
+		type6_ops, sizeof(type6_ops) / sizeof(*type6_ops));
 }

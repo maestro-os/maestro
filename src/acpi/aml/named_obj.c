@@ -1,45 +1,101 @@
 #include <acpi/aml/aml_parser.h>
 
+static aml_node_t *source_buff(blob_t *blob)
+{
+	return parse_node(AML_SOURCE_BUFF, blob, 1, term_arg);
+}
+
+static aml_node_t *bit_index(blob_t *blob)
+{
+	return parse_node(AML_BIT_INDEX, blob, 1, term_arg);
+}
+
+static aml_node_t *byte_index(blob_t *blob)
+{
+	return parse_node(AML_BYTE_INDEX, blob, 1, term_arg);
+}
+
+static aml_node_t *num_bits(blob_t *blob)
+{
+	return parse_node(AML_NUM_BITS, blob, 1, term_arg);
+}
+
 static aml_node_t *def_create_bit_field(blob_t *blob)
 {
-	// TODO
-	(void) blob;
-	return NULL;
+	blob_t b;
+	aml_node_t *n;
+
+	BLOB_COPY(blob, &b);
+	if(!BLOB_CHECK(blob, CREATE_BIT_FIELD_OP))
+		return NULL;
+	if(!(n = parse_node(AML_DEF_CREATE_BIT_FIELD, blob, 3,
+		source_buff, bit_index, name_string)))
+		BLOB_COPY(&b, blob);
+	return n;
 }
 
 static aml_node_t *def_create_byte_field(blob_t *blob)
 {
-	// TODO
-	(void) blob;
-	return NULL;
+	blob_t b;
+	aml_node_t *n;
+
+	BLOB_COPY(blob, &b);
+	if(!BLOB_CHECK(blob, CREATE_BYTE_FIELD_OP))
+		return NULL;
+	if(!(n = parse_node(AML_DEF_CREATE_BYTE_FIELD, blob, 3,
+		source_buff, byte_index, name_string)))
+		BLOB_COPY(&b, blob);
+	return n;
 }
 
 static aml_node_t *def_create_dword_field(blob_t *blob)
 {
-	// TODO
-	(void) blob;
-	return NULL;
+	blob_t b;
+	aml_node_t *n;
+
+	BLOB_COPY(blob, &b);
+	if(!BLOB_CHECK(blob, CREATE_DWORD_FIELD_OP))
+		return NULL;
+	if(!(n = parse_node(AML_DEF_CREATE_DWORD_FIELD, blob, 3,
+		source_buff, byte_index, name_string)))
+		BLOB_COPY(&b, blob);
+	return n;
 }
 
 static aml_node_t *def_create_field(blob_t *blob)
 {
 	// TODO
 	(void) blob;
+	(void) num_bits;
 	return NULL;
 }
 
 static aml_node_t *def_create_qword_field(blob_t *blob)
 {
-	// TODO
-	(void) blob;
-	return NULL;
+	blob_t b;
+	aml_node_t *n;
+
+	BLOB_COPY(blob, &b);
+	if(!BLOB_CHECK(blob, CREATE_QWORD_FIELD_OP))
+		return NULL;
+	if(!(n = parse_node(AML_DEF_CREATE_QWORD_FIELD, blob, 3,
+		source_buff, byte_index, name_string)))
+		BLOB_COPY(&b, blob);
+	return n;
 }
 
 static aml_node_t *def_create_word_field(blob_t *blob)
 {
-	// TODO
-	(void) blob;
-	return NULL;
+	blob_t b;
+	aml_node_t *n;
+
+	BLOB_COPY(blob, &b);
+	if(!BLOB_CHECK(blob, CREATE_WORD_FIELD_OP))
+		return NULL;
+	if(!(n = parse_node(AML_DEF_CREATE_WORD_FIELD, blob, 3,
+		source_buff, byte_index, name_string)))
+		BLOB_COPY(&b, blob);
+	return n;
 }
 
 static aml_node_t *def_data_region(blob_t *blob)
