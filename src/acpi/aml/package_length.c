@@ -21,8 +21,9 @@ aml_node_t *pkg_length(blob_t *blob)
 	if(!(node = node_new(AML_PKG_LENGTH, &BLOB_PEEK(blob), 0)))
 		return NULL;
 	BLOB_COPY(blob, &b);
-	if(!(node->children = pkg_lead_byte(blob, &n)))
+	if(!(child = pkg_lead_byte(blob, &n)))
 		goto fail;
+	node_add_child(node, child);
 	while(i++ < n)
 	{
 		if(!(child = byte_data(blob)))

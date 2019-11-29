@@ -21,7 +21,7 @@ static aml_node_t *prefix_path(blob_t *blob)
 	if(!BLOB_EMPTY(blob) && IS_PREFIX_CHAR(BLOB_PEEK(blob)))
 	{
 		BLOB_CONSUME(blob, 1);
-		node->children = prefix_path(blob); // TODO Check errno
+		node_add_child(node, prefix_path(blob)); // TODO Check errno
 	}
 	return node;
 }
@@ -118,17 +118,19 @@ static aml_node_t *name_path(blob_t *blob)
 aml_node_t *name_string(blob_t *blob)
 {
 	blob_t b;
-	aml_node_t *node;
+	aml_node_t *node, *n;
 
 	if(BLOB_EMPTY(blob)
 		|| !(node = node_new(AML_NAME_STRING, &BLOB_PEEK(blob), 0)))
 		return NULL;
 	BLOB_COPY(blob, &b);
-	if(!(node->children = root_char(blob))
-		&& !(node->children = prefix_path(blob)))
+	if(!(n = root_char(blob))
+		&& !(n = prefix_path(blob)))
 		goto fail;
-	if(!(node->children->next = name_path(blob)))
+	node_add_child(node, n);
+	if(!(n = name_path(blob)))
 		goto fail;
+	node_add_child(node, n);
 	return node;
 
 fail:

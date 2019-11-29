@@ -357,7 +357,7 @@ aml_node_t *parse_node(const enum node_type type, blob_t *blob,
 		node_free(node);
 		return NULL;
 	}
-	node->children = children;
+	node_add_child(node, children);
 	return node;
 }
 
@@ -375,6 +375,7 @@ aml_node_t *parse_explicit(const enum node_type type, blob_t *blob,
 		return NULL;
 	total_len = aml_pkg_length_get(nod);
 	len = total_len - (b.len - blob->len);
+	printf("pkg_length is %u bytes long\n", (unsigned) (b.len - blob->len));
 	if(len > b.len)
 	{
 		printf("doesn't fit :< (%u into %u)\n", (unsigned) len, (unsigned) b.len);
@@ -396,7 +397,8 @@ aml_node_t *parse_explicit(const enum node_type type, blob_t *blob,
 	BLOB_CONSUME(&b, total_len);
 	BLOB_COPY(&b, blob);
 	nod->next = children;
-	node->children = nod;
+	node_add_child(node, nod);
+	printf("getting out of package\n");
 	return node;
 
 fail:
@@ -533,7 +535,7 @@ aml_node_t *parse_operation(const int ext_op, const char op,
 		node_free(node);
 		return NULL;
 	}
-	node->children = children;
+	node_add_child(node, children);
 	return node;
 }
 
@@ -574,6 +576,7 @@ void node_add_child(aml_node_t *node, aml_node_t *child)
 	}
 	else
 		node->children = child;
+	child->parent = node;
 }
 
 #ifdef KERNEL_DEBUG

@@ -445,6 +445,7 @@ enum node_type
 
 typedef struct aml_node
 {
+	struct aml_node *parent;
 	struct aml_node *children;
 	struct aml_node *next;
 
@@ -454,6 +455,12 @@ typedef struct aml_node
 	const char *data;
 	size_t data_length;
 } aml_node_t;
+
+typedef struct aml_method
+{
+	struct aml_method *next;
+	const aml_node_t *node;
+} aml_method_t;
 
 typedef aml_node_t *(*parse_func_t)(blob_t *);
 
@@ -558,5 +565,10 @@ aml_node_t *aml_parse(blob_t *blob);
 aml_node_t *aml_search(aml_node_t *node, enum node_type type);
 int aml_get_integer(aml_node_t *node);
 size_t aml_pkg_length_get(const aml_node_t *node);
+
+void aml_method_insert(aml_method_t **methods, const aml_node_t *node);
+const aml_method_t *aml_method_get(const aml_method_t *methods,
+	const char *name);
+void aml_method_free(const aml_method_t **methods);
 
 #endif

@@ -8,7 +8,8 @@ static aml_node_t *def_alias(blob_t *blob)
 	BLOB_COPY(blob, &b);
 	if(!BLOB_CHECK(blob, ALIAS_OP))
 		return NULL;
-	if(!(node = parse_node(AML_DEF_ALIAS, blob, 2, name_string, name_string)))
+	if(!(node = parse_node(AML_DEF_ALIAS, blob,
+		2, name_string, name_string)))
 		BLOB_COPY(&b, blob);
 	return node;
 }

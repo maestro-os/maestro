@@ -94,7 +94,7 @@ static aml_node_t *computational_data(blob_t *blob)
 	aml_node_t *node;
 
 	BLOB_COPY(blob, &b);
-	if(!BLOB_EMPTY(blob) && BLOB_PEEK(blob) == BUFFER_OP)
+	if(!BLOB_EMPTY(blob) && BLOB_PEEK(blob) == BUFFER_OP) // TODO remove?
 	{
 		BLOB_CONSUME(blob, 1);
 		if(!(node = def_buffer(blob)))
