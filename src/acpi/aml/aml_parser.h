@@ -448,11 +448,17 @@ typedef struct aml_node
 	size_t data_length;
 } aml_node_t;
 
+typedef struct aml_method_path_seg
+{
+	struct aml_method_path_seg *next;
+	const char *name;
+} aml_method_path_seg_t;
+
 typedef struct aml_method
 {
 	struct aml_method *next;
-
-	// TODO
+	aml_method_path_seg_t *path;
+	// TODO Store arguments
 } aml_method_t;
 
 typedef struct
