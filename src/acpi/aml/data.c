@@ -1,139 +1,140 @@
 #include <acpi/aml/aml_parser.h>
 
-static aml_node_t *byte_const(blob_t *blob)
+static aml_node_t *byte_const(aml_parse_context_t *context)
 {
-	blob_t b;
+	aml_parse_context_t c;
 	aml_node_t *node;
 
-	BLOB_COPY(blob, &b);
-	if(BLOB_REMAIN(blob) < 2 || !BLOB_CHECK(blob, BYTE_PREFIX))
+	BLOB_COPY(context, &c);
+	if(BLOB_REMAIN(context) < 2 || !BLOB_CHECK(context, BYTE_PREFIX))
 		return NULL;
-	if(!(node = parse_node(AML_BYTE_CONST, blob, 1, byte_data)))
-		BLOB_COPY(&b, blob);
+	if(!(node = parse_node(AML_BYTE_CONST, context, 1, byte_data)))
+		BLOB_COPY(&c, context);
 	return node;
 }
 
-static aml_node_t *word_const(blob_t *blob)
+static aml_node_t *word_const(aml_parse_context_t *context)
 {
-	blob_t b;
+	aml_parse_context_t c;
 	aml_node_t *node;
 
-	BLOB_COPY(blob, &b);
-	if(BLOB_REMAIN(blob) < 3 || !BLOB_CHECK(blob, WORD_PREFIX))
+	BLOB_COPY(context, &c);
+	if(BLOB_REMAIN(context) < 3 || !BLOB_CHECK(context, WORD_PREFIX))
 		return NULL;
-	if(!(node = parse_node(AML_WORD_CONST, blob, 1, word_data)))
-		BLOB_COPY(&b, blob);
+	if(!(node = parse_node(AML_WORD_CONST, context, 1, word_data)))
+		BLOB_COPY(&c, context);
 	return node;
 }
 
-static aml_node_t *dword_const(blob_t *blob)
+static aml_node_t *dword_const(aml_parse_context_t *context)
 {
-	blob_t b;
+	aml_parse_context_t c;
 	aml_node_t *node;
 
-	BLOB_COPY(blob, &b);
-	if(BLOB_REMAIN(blob) < 5 || !BLOB_CHECK(blob, DWORD_PREFIX))
+	BLOB_COPY(context, &c);
+	if(BLOB_REMAIN(context) < 5 || !BLOB_CHECK(context, DWORD_PREFIX))
 		return NULL;
-	if(!(node = parse_node(AML_DWORD_CONST, blob, 1, dword_data)))
-		BLOB_COPY(&b, blob);
+	if(!(node = parse_node(AML_DWORD_CONST, context, 1, dword_data)))
+		BLOB_COPY(&c, context);
 	return node;
 }
 
-static aml_node_t *qword_const(blob_t *blob)
+static aml_node_t *qword_const(aml_parse_context_t *context)
 {
-	blob_t b;
+	aml_parse_context_t c;
 	aml_node_t *node;
 
-	BLOB_COPY(blob, &b);
-	if(BLOB_REMAIN(blob) < 9 || !BLOB_CHECK(blob, QWORD_PREFIX))
+	BLOB_COPY(context, &c);
+	if(BLOB_REMAIN(context) < 9 || !BLOB_CHECK(context, QWORD_PREFIX))
 		return NULL;
-	if(!(node = parse_node(AML_QWORD_CONST, blob, 1, qword_data)))
-		BLOB_COPY(&b, blob);
+	if(!(node = parse_node(AML_QWORD_CONST, context, 1, qword_data)))
+		BLOB_COPY(&c, context);
 	return node;
 }
 
-static aml_node_t *const_obj(blob_t *blob)
+static aml_node_t *const_obj(aml_parse_context_t *context)
 {
-	blob_t b;
+	aml_parse_context_t c;
 	aml_node_t *node;
 
-	if(BLOB_PEEK(blob) != ZERO_OP && BLOB_PEEK(blob) != ONE_OP
-		&& BLOB_PEEK(blob) != ONES_OP)
+	if(BLOB_PEEK(context) != ZERO_OP && BLOB_PEEK(context) != ONE_OP
+		&& BLOB_PEEK(context) != ONES_OP)
 		return NULL;
-	BLOB_COPY(blob, &b);
-	BLOB_CONSUME(blob, 1);
-	if(!(node = node_new(AML_CONST_OBJ, &BLOB_PEEK(blob), 1)))
-		BLOB_COPY(&b, blob);
+	BLOB_COPY(context, &c);
+	BLOB_CONSUME(context, 1);
+	if(!(node = node_new(AML_CONST_OBJ, &BLOB_PEEK(context), 1)))
+		BLOB_COPY(&c, context);
 	return node;
 }
 
-aml_node_t *byte_list(blob_t *blob, const size_t n)
+aml_node_t *byte_list(aml_parse_context_t *context, const size_t n)
 {
-	return parse_fixed_list(AML_BYTE_LIST, blob, byte_data, n);
+	return parse_fixed_list(AML_BYTE_LIST, context, byte_data, n);
 }
 
-static aml_node_t *revision_op(blob_t *blob)
+static aml_node_t *revision_op(aml_parse_context_t *context)
 {
-	blob_t b;
+	aml_parse_context_t c;
 	aml_node_t *node;
 
-	BLOB_COPY(blob, &b);
-	if(!BLOB_CHECK(blob, EXT_OP_PREFIX) || !BLOB_CHECK(blob, REVISION_OP))
+	BLOB_COPY(context, &c);
+	if(!BLOB_CHECK(context, EXT_OP_PREFIX)
+		|| !BLOB_CHECK(context, REVISION_OP))
 	{
-		BLOB_COPY(&b, blob);
+		BLOB_COPY(&c, context);
 		return NULL;
 	}
-	if(!(node = node_new(AML_REVISION_OP, &BLOB_PEEK(blob), 2)))
-		BLOB_COPY(&b, blob);
+	if(!(node = node_new(AML_REVISION_OP, &BLOB_PEEK(context), 2)))
+		BLOB_COPY(&c, context);
 	return node;
 }
 
-static aml_node_t *computational_data(blob_t *blob)
+static aml_node_t *computational_data(aml_parse_context_t *context)
 {
-	blob_t b;
+	aml_parse_context_t c;
 	aml_node_t *node;
 
-	BLOB_COPY(blob, &b);
-	if(!BLOB_EMPTY(blob) && BLOB_PEEK(blob) == BUFFER_OP) // TODO remove?
+	BLOB_COPY(context, &c);
+	if(!BLOB_EMPTY(context) && BLOB_PEEK(context) == BUFFER_OP) // TODO remove?
 	{
-		BLOB_CONSUME(blob, 1);
-		if(!(node = def_buffer(blob)))
-			BLOB_COPY(&b, blob);
+		BLOB_CONSUME(context, 1);
+		if(!(node = def_buffer(context)))
+			BLOB_COPY(&c, context);
 		return node;
 	}
-	return parse_either(AML_COMPUTATIONAL_DATA, blob,
+	return parse_either(AML_COMPUTATIONAL_DATA, context,
 		7, byte_const, word_const, dword_const, qword_const, string, const_obj,
 			revision_op);
 }
 
-aml_node_t *data_object(blob_t *blob)
+aml_node_t *data_object(aml_parse_context_t *context)
 {
-	return parse_either(AML_DATA_OBJECT, blob,
+	return parse_either(AML_DATA_OBJECT, context,
 		3, computational_data, def_package, def_var_package);
 }
 
-aml_node_t *byte_data(blob_t *blob)
+aml_node_t *byte_data(aml_parse_context_t *context)
 {
 	aml_node_t *node;
 
-	if(BLOB_EMPTY(blob)
-		|| !(node = node_new(AML_BYTE_DATA, &BLOB_PEEK(blob), 1)))
+	if(BLOB_EMPTY(context)
+		|| !(node = node_new(AML_BYTE_DATA, &BLOB_PEEK(context), 1)))
 		return NULL;
-	BLOB_CONSUME(blob, 1);
+	BLOB_CONSUME(context, 1);
 	return node;
 }
 
-aml_node_t *word_data(blob_t *blob)
+aml_node_t *word_data(aml_parse_context_t *context)
 {
-	return parse_node(AML_WORD_DATA, blob, 2, byte_data, byte_data);
+	return parse_node(AML_WORD_DATA, context, 2, byte_data, byte_data);
 }
 
-aml_node_t *dword_data(blob_t *blob)
+aml_node_t *dword_data(aml_parse_context_t *context)
 {
-	return parse_node(AML_DWORD_DATA, blob, 2, word_data, word_data);
+	return parse_node(AML_DWORD_DATA, context, 2, word_data, word_data);
 }
 
-aml_node_t *qword_data(blob_t *blob)
+aml_node_t *qword_data(aml_parse_context_t *context)
 {
-	return parse_node(AML_QWORD_DATA, blob, 2, dword_data, dword_data);
+	return parse_node(AML_QWORD_DATA, context, 2, dword_data, dword_data);
 }

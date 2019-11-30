@@ -1,39 +1,53 @@
 #include <acpi/aml/aml_parser.h>
 
-static aml_node_t *object(blob_t *blob)
+static aml_node_t *object(aml_parse_context_t *context)
 {
-	return parse_either(AML_OBJECT, blob, 2, namespace_modifier_obj, named_obj);
+	return parse_either(AML_OBJECT, context,
+		2, namespace_modifier_obj, named_obj);
 }
 
-static aml_node_t *term_obj(blob_t *blob)
+static aml_node_t *term_obj(aml_parse_context_t *context)
 {
-	printf("term_obj: (remaining: %u)\n", (unsigned) blob->len);
-	print_memory(blob->src, 16);
-	return parse_either(AML_TERM_OBJ, blob,
+	printf("term_obj: (remaining: %u)\n", (unsigned) context->len);
+	print_memory(context->src, 16);
+	return parse_either(AML_TERM_OBJ, context,
 		3, object, type1_opcode, type2_opcode);
 }
 
-aml_node_t *term_list(blob_t *blob)
+aml_node_t *term_list(aml_parse_context_t *context)
 {
-	return parse_list(AML_TERM_LIST, blob, term_obj);
+	return parse_list(AML_TERM_LIST, context, term_obj);
 }
 
-aml_node_t *term_arg(blob_t *blob)
+aml_node_t *term_arg(aml_parse_context_t *context)
 {
-	printf("term_arg (remaining: %u)\n", (unsigned) blob->len);
-	print_memory(blob->src, 16);
-	return parse_either(AML_TERM_ARG, blob,
+	printf("term_arg (remaining: %u)\n", (unsigned) context->len);
+	print_memory(context->src, 16);
+	return parse_either(AML_TERM_ARG, context,
 		4, type2_opcode, data_object, arg_obj, local_obj);
 }
 
-static aml_node_t *aml_code(blob_t *blob)
+static aml_node_t *aml_code(aml_parse_context_t *context)
 {
-	return parse_node(AML_CODE, blob, 1, term_list);
+	return parse_node(AML_CODE, context, 1, term_list);
 }
 
-aml_node_t *aml_parse(blob_t *blob)
+aml_node_t *aml_parse(const char *src, const size_t len)
 {
-	if(!blob || !blob->src || blob->len == 0)
+	aml_parse_context_t context;
+	aml_node_t *n;
+
+	if(!src || len == 0)
 		return NULL;
-	return aml_code(blob);
+	context.decl = 1;
+	context.methods = NULL;
+	context.src = src;
+	context.len = len;
+	ast_free(aml_code(&context));
+	context.decl = 0;
+	context.src = src;
+	context.len = len;
+	n = aml_code(&context);
+	aml_method_free(context.methods);
+	return n;
 }

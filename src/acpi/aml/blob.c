@@ -1,9 +1,9 @@
 #include <acpi/aml/aml_parser.h>
 
-int blob_check(blob_t *blob, const char c)
+int blob_check(aml_parse_context_t *context, const char c)
 {
-	if(blob->len == 0 || blob->src[0] != c)
+	if(context->len == 0 || context->src[0] != c)
 		return 0;
-	BLOB_CONSUME(blob, 1);
+	BLOB_CONSUME(context, 1);
 	return 1;
 }

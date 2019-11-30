@@ -6,60 +6,60 @@
 
 #define OP_CHECK_MACRO(ext)		OP_CHECK_ ## ext
 #define OP_CHECK____(opcode, name)\
-if(!BLOB_CHECK(blob, opcode))\
+if(!BLOB_CHECK(context, opcode))\
 {\
 	printf("opcode %s failed\n", #name);\
 	return NULL;\
 }
 #define OP_CHECK_EXT(opcode, name)\
-if(!BLOB_CHECK(blob, EXT_OP_PREFIX) || !BLOB_CHECK(blob, opcode))\
+if(!BLOB_CHECK(context, EXT_OP_PREFIX) || !BLOB_CHECK(context, opcode))\
 {\
 	printf("opcode %s failed\n", #name);\
-	BLOB_COPY(&b, blob);\
+	BLOB_COPY(&c, context);\
 	return NULL;\
 }\
 
 #define OP_HEAD(ext, opcode, name)\
-	blob_t b;\
+	aml_parse_context_t c;\
 	aml_node_t *n;\
 \
-	BLOB_COPY(blob, &b);\
+	BLOB_COPY(context, &c);\
 	OP_CHECK_MACRO(ext)(opcode, name)\
 	printf("opcode -> %s\n", #name);
 
 #define PARSE_EMPTY_OP(ext, opcode, node, name)\
-aml_node_t *NODE_FUNC_NAME(name)(blob_t *blob)\
+aml_node_t *NODE_FUNC_NAME(name)(aml_parse_context_t *context)\
 {\
 	OP_HEAD(ext, opcode, name)\
-	if(!(n = parse_node(node, blob, 0)))\
+	if(!(n = parse_node(node, context, 0)))\
 	{\
-		BLOB_COPY(&b, blob);\
+		BLOB_COPY(&c, context);\
 		return NULL;\
 	}\
 	return n;\
 }
 
 #define PARSE_IMPLICIT_OP(ext, opcode, node, name, ...)\
-aml_node_t *NODE_FUNC_NAME(name)(blob_t *blob)\
+aml_node_t *NODE_FUNC_NAME(name)(aml_parse_context_t *context)\
 {\
 	OP_HEAD(ext, opcode, name)\
-	if(!(n = parse_node(node, blob,\
+	if(!(n = parse_node(node, context,\
 		VARG_COUNT(__VA_ARGS__), __VA_ARGS__)))\
 	{\
-		BLOB_COPY(&b, blob);\
+		BLOB_COPY(&c, context);\
 		return NULL;\
 	}\
 	return n;\
 }
 
 #define PARSE_EXPLICIT_OP(ext, opcode, node, name, ...)\
-aml_node_t *NODE_FUNC_NAME(name)(blob_t *blob)\
+aml_node_t *NODE_FUNC_NAME(name)(aml_parse_context_t *context)\
 {\
 	OP_HEAD(ext, opcode, name)\
-	if(!(n = parse_explicit(node, blob,\
+	if(!(n = parse_explicit(node, context,\
 		VARG_COUNT(__VA_ARGS__), __VA_ARGS__)))\
 	{\
-		BLOB_COPY(&b, blob);\
+		BLOB_COPY(&c, context);\
 		return NULL;\
 	}\
 	return n;\
@@ -67,9 +67,9 @@ aml_node_t *NODE_FUNC_NAME(name)(blob_t *blob)\
 
 // TODO remove
 #define TODO_OP(ext, opcode, node, name)\
-aml_node_t *NODE_FUNC_NAME(name)(blob_t *blob)\
+aml_node_t *NODE_FUNC_NAME(name)(aml_parse_context_t *context)\
 {\
-	(void) blob;\
+	(void) context;\
 	return NULL;\
 }
 
@@ -81,81 +81,81 @@ typedef struct
 } op_descriptor_t;
 
 // TODO Shorten
-static aml_node_t *parse_opcode(blob_t *blob, enum node_type type,
+static aml_node_t *parse_opcode(aml_parse_context_t *context, enum node_type type,
 	op_descriptor_t *ops, const size_t ops_count)
 {
-	blob_t b;
+	aml_parse_context_t c;
 	int ext_prefix;
 	uint8_t opcode;
 	size_t i;
 
-	if(BLOB_EMPTY(blob))
+	if(BLOB_EMPTY(context))
 		return NULL;
-	BLOB_COPY(blob, &b);
-	if((ext_prefix = (blob->src[0] == EXT_OP_PREFIX)))
+	BLOB_COPY(context, &c);
+	if((ext_prefix = (context->src[0] == EXT_OP_PREFIX)))
 	{
-		if(BLOB_EMPTY(blob))
+		if(BLOB_EMPTY(context))
 		{
-			BLOB_COPY(&b, blob);
+			BLOB_COPY(&c, context);
 			return NULL;
 		}
-		opcode = blob->src[1];
+		opcode = context->src[1];
 	}
 	else
-		opcode = blob->src[0];
+		opcode = context->src[0];
 	for(i = 0; i < ops_count; ++i)
 	{
 		if(ext_prefix != ops[i].ext_prefix)
 			continue;
 		if(opcode != ops[i].op)
 			continue;
-		return parse_node(type, blob, 1, ops[i].func);
+		return parse_node(type, context, 1, ops[i].func);
 	}
-	BLOB_COPY(&b, blob);
+	BLOB_COPY(&c, context);
 	return NULL;
 }
 
-static aml_node_t *operand(blob_t *blob)
+static aml_node_t *operand(aml_parse_context_t *context)
 {
-	return parse_node(AML_OPERAND, blob, 1, term_arg);
+	return parse_node(AML_OPERAND, context, 1, term_arg);
 }
 
-static aml_node_t *target(blob_t *blob)
+static aml_node_t *target(aml_parse_context_t *context)
 {
 	printf("target\n");
-	print_memory(blob->src, 16);
-	return parse_either(AML_TARGET, blob, 2, super_name, null_name);
+	print_memory(context->src, 16);
+	return parse_either(AML_TARGET, context, 2, super_name, null_name);
 }
 
-aml_node_t *obj_reference(blob_t *blob)
+aml_node_t *obj_reference(aml_parse_context_t *context)
 {
-	return parse_either(AML_OBJ_REFERENCE, blob, 2, term_arg, string);
+	return parse_either(AML_OBJ_REFERENCE, context, 2, term_arg, string);
 }
 
-aml_node_t *predicate(blob_t *blob)
+aml_node_t *predicate(aml_parse_context_t *context)
 {
 	printf("predicate\n");
-	return parse_node(AML_PREDICATE, blob, 1, term_arg);
+	return parse_node(AML_PREDICATE, context, 1, term_arg);
 }
 
-static aml_node_t *notify_object(blob_t *blob)
+static aml_node_t *notify_object(aml_parse_context_t *context)
 {
-	return parse_node(AML_NOTIFY_OBJECT, blob, 1, super_name);
+	return parse_node(AML_NOTIFY_OBJECT, context, 1, super_name);
 }
 
-static aml_node_t *notify_value(blob_t *blob)
+static aml_node_t *notify_value(aml_parse_context_t *context)
 {
-	return parse_node(AML_NOTIFY_VALUE, blob, 1, term_arg);
+	return parse_node(AML_NOTIFY_VALUE, context, 1, term_arg);
 }
 
-static aml_node_t *mutex_object(blob_t *blob)
+static aml_node_t *mutex_object(aml_parse_context_t *context)
 {
-	return parse_node(AML_MUTEX_OBJECT, blob, 1, super_name);
+	return parse_node(AML_MUTEX_OBJECT, context, 1, super_name);
 }
 
-static aml_node_t *arg_object(blob_t *blob)
+static aml_node_t *arg_object(aml_parse_context_t *context)
 {
-	return parse_node(AML_ARG_OBJECT, blob, 1, term_arg);
+	return parse_node(AML_ARG_OBJECT, context, 1, term_arg);
 }
 
 PARSE_EMPTY_OP(___, BREAK_OP, AML_DEF_BREAK, break)
@@ -163,11 +163,11 @@ PARSE_EMPTY_OP(___, BREAKPOINT_OP, AML_DEF_BREAK_POINT, breakpoint)
 PARSE_EMPTY_OP(___, CONTINUE_OP, AML_DEF_CONTINUE, continue)
 PARSE_EXPLICIT_OP(___, ELSE_OP, AML_DEF_ELSE, else_, pkg_length, term_list)
 
-aml_node_t *def_else(blob_t *blob)
+aml_node_t *def_else(aml_parse_context_t *context)
 {
-	if(BLOB_EMPTY(blob) || BLOB_PEEK(blob) != ELSE_OP)
-		return node_new(AML_DEF_ELSE, &BLOB_PEEK(blob), 0);
-	return NODE_FUNC_NAME(else_)(blob);
+	if(BLOB_EMPTY(context) || BLOB_PEEK(context) != ELSE_OP)
+		return node_new(AML_DEF_ELSE, &BLOB_PEEK(context), 0);
+	return NODE_FUNC_NAME(else_)(context);
 }
 
 TODO_OP(EXT, FATAL_OP, AML_DEF_FATAL, fatal) // TODO
@@ -205,56 +205,56 @@ static op_descriptor_t type1_ops[] = {
 	{0, WHILE_OP, NODE_FUNC_NAME(while)}
 };
 
-aml_node_t *type1_opcode(blob_t *blob)
+aml_node_t *type1_opcode(aml_parse_context_t *context)
 {
-	return parse_opcode(blob, AML_TYPE1_OPCODE,
+	return parse_opcode(context, AML_TYPE1_OPCODE,
 		type1_ops, sizeof(type1_ops) / sizeof(*type1_ops));
 }
 
-static aml_node_t *timeout(blob_t *blob)
+static aml_node_t *timeout(aml_parse_context_t *context)
 {
-	return parse_node(AML_DEF_ACQUIRE, blob, 1, word_data);
+	return parse_node(AML_DEF_ACQUIRE, context, 1, word_data);
 }
 
-static aml_node_t *buffer_size(blob_t *blob)
+static aml_node_t *buffer_size(aml_parse_context_t *context)
 {
-	return parse_node(AML_BUFFER_SIZE, blob, 1, term_arg);
+	return parse_node(AML_BUFFER_SIZE, context, 1, term_arg);
 }
 
-static aml_node_t *buff_pkg_str_obj(blob_t *blob)
+static aml_node_t *buff_pkg_str_obj(aml_parse_context_t *context)
 {
-	return parse_node(AML_BUFF_PKG_STR_OBJ, blob, 1, term_arg);
+	return parse_node(AML_BUFF_PKG_STR_OBJ, context, 1, term_arg);
 }
 
-static aml_node_t *index_value(blob_t *blob)
+static aml_node_t *index_value(aml_parse_context_t *context)
 {
-	return parse_node(AML_INDEX_VALUE, blob, 1, term_arg);
+	return parse_node(AML_INDEX_VALUE, context, 1, term_arg);
 }
 
-static aml_node_t *num_elements(blob_t *blob)
+static aml_node_t *num_elements(aml_parse_context_t *context)
 {
-	return parse_node(AML_NUM_ELEMENTS, blob, 1, byte_data);
+	return parse_node(AML_NUM_ELEMENTS, context, 1, byte_data);
 }
 
-static aml_node_t *package_element(blob_t *blob)
+static aml_node_t *package_element(aml_parse_context_t *context)
 {
-	return parse_either(AML_PACKAGE_ELEMENT, blob,
+	return parse_either(AML_PACKAGE_ELEMENT, context,
 		2, data_ref_object, name_string);
 }
 
-static aml_node_t *package_element_list(blob_t *blob)
+static aml_node_t *package_element_list(aml_parse_context_t *context)
 {
-	return parse_list(AML_PACKAGE_ELEMENT_LIST, blob, package_element);
+	return parse_list(AML_PACKAGE_ELEMENT_LIST, context, package_element);
 }
 
-static aml_node_t *var_num_elements(blob_t *blob)
+static aml_node_t *var_num_elements(aml_parse_context_t *context)
 {
-	return parse_node(AML_VAR_NUM_ELEMENTS, blob, 1, term_arg);
+	return parse_node(AML_VAR_NUM_ELEMENTS, context, 1, term_arg);
 }
 
-static aml_node_t *shift_count(blob_t *blob)
+static aml_node_t *shift_count(aml_parse_context_t *context)
 {
-	return parse_node(AML_SHIFT_COUNT, blob, 1, term_arg);
+	return parse_node(AML_SHIFT_COUNT, context, 1, term_arg);
 }
 
 PARSE_IMPLICIT_OP(EXT, ACQUIRE_OP, AML_DEF_ACQUIRE, acquire,
@@ -263,21 +263,21 @@ PARSE_IMPLICIT_OP(___, ADD_OP, AML_DEF_ADD, add, operand, operand, target)
 PARSE_IMPLICIT_OP(___, AND_OP, AML_DEF_AND, and, operand, operand, target)
 
 // TODO explicit length
-aml_node_t *NODE_FUNC_NAME(buffer)(blob_t *blob)
+aml_node_t *NODE_FUNC_NAME(buffer)(aml_parse_context_t *context)
 {
-	blob_t b;
+	aml_parse_context_t c;
 	aml_node_t *node = NULL, *n0 = NULL, *n1 = NULL, *n2 = NULL;
 	size_t buff_size;
 
-	BLOB_COPY(blob, &b);
-	if(!(node = node_new(AML_DEF_BUFFER, &BLOB_PEEK(blob), 0)))
+	BLOB_COPY(context, &c);
+	if(!(node = node_new(AML_DEF_BUFFER, &BLOB_PEEK(context), 0)))
 		goto fail;
-	if(!(n0 = pkg_length(blob)))
+	if(!(n0 = pkg_length(context)))
 		goto fail;
-	if(!(n1 = buffer_size(blob)))
+	if(!(n1 = buffer_size(context)))
 		goto fail;
 	buff_size = aml_get_integer(n1->children);
-	if(!(n2 = byte_list(blob, buff_size)))
+	if(!(n2 = byte_list(context, buff_size)))
 		goto fail;
 	node_add_child(node, n0);
 	node_add_child(node, n1);
@@ -285,7 +285,7 @@ aml_node_t *NODE_FUNC_NAME(buffer)(blob_t *blob)
 	return node;
 
 fail:
-	BLOB_COPY(&b, blob);
+	BLOB_COPY(&c, context);
 	ast_free(n0);
 	ast_free(n1);
 	ast_free(n2);
@@ -411,14 +411,14 @@ static op_descriptor_t type2_ops[] = {
 	{0, XOR_OP, NODE_FUNC_NAME(xor)}
 };
 
-aml_node_t *type2_opcode(blob_t *blob)
+aml_node_t *type2_opcode(aml_parse_context_t *context)
 {
 	aml_node_t *n;
 
-	if((n = parse_opcode(blob, AML_TYPE2_OPCODE,
+	if((n = parse_opcode(context, AML_TYPE2_OPCODE,
 		type2_ops, sizeof(type2_ops) / sizeof(*type2_ops))))
 		return n;
-	return parse_node(AML_TYPE2_OPCODE, blob, 1, method_invocation);
+	return parse_node(AML_TYPE2_OPCODE, context, 1, method_invocation);
 }
 
 static op_descriptor_t type6_ops[] = {
@@ -428,8 +428,8 @@ static op_descriptor_t type6_ops[] = {
 	// TODO UserTermObj?
 };
 
-aml_node_t *type6_opcode(blob_t *blob)
+aml_node_t *type6_opcode(aml_parse_context_t *context)
 {
-	return parse_opcode(blob, AML_TYPE6_OPCODE,
+	return parse_opcode(context, AML_TYPE6_OPCODE,
 		type6_ops, sizeof(type6_ops) / sizeof(*type6_ops));
 }

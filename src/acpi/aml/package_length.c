@@ -1,39 +1,39 @@
 #include <acpi/aml/aml_parser.h>
 
-static aml_node_t *pkg_lead_byte(blob_t *blob, int *n)
+static aml_node_t *pkg_lead_byte(aml_parse_context_t *context, int *n)
 {
 	aml_node_t *node;
 
-	if(BLOB_EMPTY(blob)
-		|| !(node = node_new(AML_PKG_LEAD_BYTE, &BLOB_PEEK(blob), 1)))
+	if(BLOB_EMPTY(context)
+		|| !(node = node_new(AML_PKG_LEAD_BYTE, &BLOB_PEEK(context), 1)))
 		return NULL;
-	*n = (BLOB_PEEK(blob) >> 6) & 0b11;
-	BLOB_CONSUME(blob, 1);
+	*n = (BLOB_PEEK(context) >> 6) & 0b11;
+	BLOB_CONSUME(context, 1);
 	return node;
 }
 
-aml_node_t *pkg_length(blob_t *blob)
+aml_node_t *pkg_length(aml_parse_context_t *context)
 {
-	blob_t b;
+	aml_parse_context_t c;
 	aml_node_t *node, *child;
 	int i = 0, n;
 
-	if(!(node = node_new(AML_PKG_LENGTH, &BLOB_PEEK(blob), 0)))
+	if(!(node = node_new(AML_PKG_LENGTH, &BLOB_PEEK(context), 0)))
 		return NULL;
-	BLOB_COPY(blob, &b);
-	if(!(child = pkg_lead_byte(blob, &n)))
+	BLOB_COPY(context, &c);
+	if(!(child = pkg_lead_byte(context, &n)))
 		goto fail;
 	node_add_child(node, child);
 	while(i++ < n)
 	{
-		if(!(child = byte_data(blob)))
+		if(!(child = byte_data(context)))
 			goto fail;
 		node_add_child(node, child);
 	}
 	return node;
 
 fail:
-	BLOB_COPY(&b, blob);
+	BLOB_COPY(&c, context);
 	ast_free(node);
 	return NULL;
 }

@@ -316,15 +316,15 @@ static const char *node_types[] = {
 };
 #endif
 
-static aml_node_t *do_parse(blob_t *blob, size_t n, va_list ap)
+static aml_node_t *do_parse(aml_parse_context_t *context, size_t n, va_list ap)
 {
-	blob_t b;
+	aml_parse_context_t c;
 	aml_node_t *node, *children = NULL, *last_child = NULL;
 
-	BLOB_COPY(blob, &b);
+	BLOB_COPY(context, &c);
 	while(n-- > 0)
 	{
-		node = va_arg(ap, parse_func_t)(blob);
+		node = va_arg(ap, parse_func_t)(context);
 		if(!node)
 			goto fail;
 		if(!last_child)
@@ -339,20 +339,20 @@ static aml_node_t *do_parse(blob_t *blob, size_t n, va_list ap)
 	return children;
 
 fail:
-	BLOB_COPY(&b, blob);
+	BLOB_COPY(&c, context);
 	ast_free(children);
 	return NULL;
 }
 
-aml_node_t *parse_node(const enum node_type type, blob_t *blob,
+aml_node_t *parse_node(const enum node_type type, aml_parse_context_t *context,
 	const size_t n, ...)
 {
 	va_list ap;
 	aml_node_t *children, *node = NULL;
 
 	va_start(ap, n);
-	if(!(node = node_new(type, &BLOB_PEEK(blob), 0))
-		|| !(children = do_parse(blob, n, ap)))
+	if(!(node = node_new(type, &BLOB_PEEK(context), 0))
+		|| !(children = do_parse(context, n, ap)))
 	{
 		node_free(node);
 		return NULL;
@@ -361,71 +361,72 @@ aml_node_t *parse_node(const enum node_type type, blob_t *blob,
 	return node;
 }
 
-aml_node_t *parse_explicit(const enum node_type type, blob_t *blob,
-	size_t n, ...)
+aml_node_t *parse_explicit(const enum node_type type,
+	aml_parse_context_t *context, size_t n, ...)
 {
 	va_list ap;
-	blob_t b, blob2;
+	aml_parse_context_t c, context2;
 	aml_node_t *nod = NULL, *node = NULL, *children;
 	size_t total_len, len;
 
 	va_start(ap, n);
-	BLOB_COPY(blob, &b);
-	if(!(nod = va_arg(ap, parse_func_t)(blob)))
+	BLOB_COPY(context, &c);
+	if(!(nod = va_arg(ap, parse_func_t)(context)))
 		return NULL;
 	total_len = aml_pkg_length_get(nod);
-	len = total_len - (b.len - blob->len);
-	printf("pkg_length is %u bytes long\n", (unsigned) (b.len - blob->len));
-	if(len > b.len)
+	len = total_len - (c.len - context->len);
+	printf("pkg_length is %u bytes long\n", (unsigned) (c.len - context->len));
+	if(len > c.len)
 	{
-		printf("doesn't fit :< (%u into %u)\n", (unsigned) len, (unsigned) b.len);
+		printf("doesn't fit :< (%u into %u)\n", (unsigned) len, (unsigned) c.len);
 		goto fail;
 	}
-	printf("does fit :> (%u into %u)\n", (unsigned) len, (unsigned) b.len);
-	blob2.src = blob->src;
-	blob2.len = len;
-	if(!(node = node_new(type, &BLOB_PEEK(blob), 0))
-		|| !(children = do_parse(&blob2, n - 1, ap)))
+	printf("does fit :> (%u into %u)\n", (unsigned) len, (unsigned) c.len);
+	context2.src = context->src;
+	context2.len = len;
+	if(!(node = node_new(type, &BLOB_PEEK(context), 0))
+		|| !(children = do_parse(&context2, n - 1, ap)))
 		goto fail;
-	if(blob2.len > 0)
+	if(context2.len > 0)
 	{
 		printf("package begun at %p ended early (%u bytes remaining)\n",
-			b.src, (unsigned) blob2.len);
-		print_memory(b.src, 16);
+			c.src, (unsigned) context2.len);
+		print_memory(c.src, 16);
 		kernel_loop();
 	}
-	BLOB_CONSUME(&b, total_len);
-	BLOB_COPY(&b, blob);
+	BLOB_CONSUME(&c, total_len);
+	BLOB_COPY(&c, context);
 	nod->next = children;
 	node_add_child(node, nod);
 	printf("getting out of package\n");
 	return node;
 
 fail:
-	BLOB_COPY(&b, blob);
+	BLOB_COPY(&c, context);
 	node_free(nod);
 	node_free(node);
 	return NULL;
 }
 
-aml_node_t *parse_serie(blob_t *blob, const size_t n, ...)
+aml_node_t *parse_serie(aml_parse_context_t *context, const size_t n, ...)
 {
 	va_list ap;
 
 	va_start(ap, n);
-	return do_parse(blob, n, ap);
+	return do_parse(context, n, ap);
 }
 
-aml_node_t *parse_list(const enum node_type type, blob_t *blob, parse_func_t f)
+aml_node_t *parse_list(const enum node_type type, aml_parse_context_t *context,
+	const parse_func_t f)
 {
 	aml_node_t *node, *n, *prev, *nod;
 
-	if(!(node = node_new(type, &BLOB_PEEK(blob), 0)))
+	if(!(node = node_new(type, &BLOB_PEEK(context), 0)))
 		return NULL;
 	prev = node;
-	while((n = f(blob)))
+	while((n = f(context)))
 	{
-		if(!(nod = node_new(type, &BLOB_PEEK(blob), 0)))
+		if(!(nod = node_new(type, &BLOB_PEEK(context), 0)))
 		{
 			ast_free(n);
 			ast_free(node);
@@ -438,15 +439,15 @@ aml_node_t *parse_list(const enum node_type type, blob_t *blob, parse_func_t f)
 	return node;
 }
 
-aml_node_t *parse_fixed_list(const enum node_type type, blob_t *blob,
-	parse_func_t f, size_t i)
+aml_node_t *parse_fixed_list(const enum node_type type,
+	aml_parse_context_t *context, parse_func_t f, size_t i)
 {
 	aml_node_t *node, *n, *prev, *nod;
 
-	if(!(node = node_new(type, &BLOB_PEEK(blob), 0)))
+	if(!(node = node_new(type, &BLOB_PEEK(context), 0)))
 		return NULL;
 	prev = node;
-	while(i-- > 0 && (n = f(blob)))
+	while(i-- > 0 && (n = f(context)))
 	{
 		if(!(nod = node_new(type, NULL, 0)))
 		{
@@ -462,13 +463,14 @@ aml_node_t *parse_fixed_list(const enum node_type type, blob_t *blob,
 	return node;
 }
 
-aml_node_t *parse_string(blob_t *blob, size_t str_len, const parse_func_t f)
+aml_node_t *parse_string(aml_parse_context_t *context, size_t str_len,
+	const parse_func_t f)
 {
 	aml_node_t *node, *children = NULL, *last_child = NULL;
 
 	while(str_len-- > 0)
 	{
-		if(!(node = f(blob)))
+		if(!(node = f(context)))
 			goto fail;
 		if(!last_child)
 			last_child = children = node;
@@ -487,17 +489,18 @@ fail:
 	return NULL;
 }
 
-aml_node_t *parse_either(const enum node_type type, blob_t *blob, size_t n, ...)
+aml_node_t *parse_either(const enum node_type type,
+	aml_parse_context_t *context, size_t n, ...)
 {
 	va_list ap;
-	blob_t b;
+	aml_parse_context_t c;
 	aml_node_t *node, *child;
 
 	va_start(ap, n);
-	BLOB_COPY(blob, &b);
-	if(!(node = node_new(type, &BLOB_PEEK(blob), 0)))
+	BLOB_COPY(context, &c);
+	if(!(node = node_new(type, &BLOB_PEEK(context), 0)))
 		return NULL;
-	while(n-- > 0 && !(child = va_arg(ap, parse_func_t)(blob)))
+	while(n-- > 0 && !(child = va_arg(ap, parse_func_t)(context)))
 		if(errno)
 			goto fail;
 	if(!child)
@@ -506,32 +509,32 @@ aml_node_t *parse_either(const enum node_type type, blob_t *blob, size_t n, ...)
 	return node;
 
 fail:
-	BLOB_COPY(&b, blob);
+	BLOB_COPY(&c, context);
 	node_free(node);
 	return NULL;
 }
 
 aml_node_t *parse_operation(const int ext_op, const char op,
-	const enum node_type type, blob_t *blob,
+	const enum node_type type, aml_parse_context_t *context,
 		const size_t n, ...)
 {
-	blob_t b;
+	aml_parse_context_t c;
 	va_list ap;
 	aml_node_t *children, *node;
 
-	BLOB_COPY(blob, &b);
-	if(ext_op && !BLOB_CHECK(blob, EXT_OP_PREFIX))
+	BLOB_COPY(context, &c);
+	if(ext_op && !BLOB_CHECK(context, EXT_OP_PREFIX))
 		return NULL;
-	if(!BLOB_CHECK(blob, op) || BLOB_EMPTY(blob))
+	if(!BLOB_CHECK(context, op) || BLOB_EMPTY(context))
 	{
-		BLOB_COPY(&b, blob);
+		BLOB_COPY(&c, context);
 		return NULL;
 	}
 	va_start(ap, n);
-	if(!(node = node_new(type, &BLOB_PEEK(blob), 0))
-		|| !(children = do_parse(blob, n, ap)))
+	if(!(node = node_new(type, &BLOB_PEEK(context), 0))
+		|| !(children = do_parse(context, n, ap)))
 	{
-		BLOB_COPY(&b, blob);
+		BLOB_COPY(&c, context);
 		node_free(node);
 		return NULL;
 	}

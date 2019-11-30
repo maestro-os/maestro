@@ -1,17 +1,17 @@
 #include "aml_parser.h"
 
-aml_node_t *debug_obj(blob_t *blob)
+aml_node_t *debug_obj(aml_parse_context_t *context)
 {
-	blob_t b;
+	aml_parse_context_t c;
 	aml_node_t *node;
 
-	BLOB_COPY(blob, &b);
-	if(!BLOB_CHECK(blob, EXT_OP_PREFIX) || !BLOB_CHECK(blob, DEBUG_OP))
+	BLOB_COPY(context, &c);
+	if(!BLOB_CHECK(context, EXT_OP_PREFIX) || !BLOB_CHECK(context, DEBUG_OP))
 	{
-		BLOB_COPY(&b, blob);
+		BLOB_COPY(&c, context);
 		return NULL;
 	}
-	if(!(node = node_new(AML_DEBUG_OBJ, &BLOB_PEEK(blob), 0)))
-		BLOB_COPY(&b, blob);
+	if(!(node = node_new(AML_DEBUG_OBJ, &BLOB_PEEK(context), 0)))
+		BLOB_COPY(&c, context);
 	return node;
 }

@@ -11,7 +11,7 @@ void aml_method_insert(aml_method_t **methods, const aml_node_t *node)
 	}
 	if(!(m = kmalloc_zero(sizeof(aml_method_t), 0)))
 		return;
-	m->node = node;
+	// TODO Set method info
 	m->next = *methods;
 	*methods = m;
 }
@@ -28,7 +28,7 @@ const aml_method_t *aml_method_get(const aml_method_t *methods,
 	return NULL;
 }
 
-void aml_method_free(const aml_method_t **methods)
+void aml_method_free(const aml_method_t *methods)
 {
 	if(!methods)
 	{
@@ -36,5 +36,4 @@ void aml_method_free(const aml_method_t **methods)
 		return;
 	}
 	// TODO free all
-	*methods = NULL;
 }
