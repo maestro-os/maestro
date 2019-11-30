@@ -16,6 +16,7 @@ aml_node_t *method_invocation(aml_parse_context_t *context)
 
 	if(!(node = parse_node(AML_METHOD_INVOCATION, context, 1, name_string)))
 		return NULL;
+	// TODO Check that method exists
 	BLOB_COPY(context, &c);
 	args_count = count_args(&BLOB_PEEK(context), BLOB_REMAIN(context));
 	if(args_count == 0)

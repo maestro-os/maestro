@@ -151,6 +151,24 @@ static aml_node_t *method_flags(aml_parse_context_t *context)
 	return parse_node(AML_METHOD_FLAGS, context, 1, byte_data);
 }
 
+static aml_node_t *register_method(aml_parse_context_t *context)
+{
+	aml_parse_context_t c;
+	aml_node_t *node;
+	size_t len;
+
+	printf("register_method\n");
+	BLOB_COPY(context, &c);
+	if(!(node = parse_node(AML_DEF_METHOD, context,
+		2, pkg_length, name_string)))
+		return NULL;
+	len = aml_pkg_length_get(node->children);
+	aml_method_insert(&context->methods, node);
+	BLOB_CONSUME(&c, len);
+	BLOB_COPY(&c, context);
+	return node;
+}
+
 static aml_node_t *def_method(aml_parse_context_t *context)
 {
 	aml_parse_context_t c;
@@ -159,6 +177,12 @@ static aml_node_t *def_method(aml_parse_context_t *context)
 	BLOB_COPY(context, &c);
 	if(!BLOB_CHECK(context, METHOD_OP))
 		return NULL;
+	if(context->decl)
+	{
+		if(!(n = register_method(context)))
+			BLOB_COPY(&c, context);
+		return n;
+	}
 	if(!(n = parse_explicit(AML_DEF_METHOD, context,
 		4, pkg_length, name_string, method_flags, term_list)))
 		BLOB_COPY(&c, context);
