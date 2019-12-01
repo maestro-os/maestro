@@ -1,36 +1,23 @@
 #include <acpi/aml/aml_parser.h>
 
-static void insert_path_seg(aml_method_path_seg_t **segs,
-	const char *data, const size_t len)
+static void insert_path_seg(aml_method_path_seg_t **segs, const char *name)
 {
 	aml_method_path_seg_t *s;
 
-	if(!(s = kmalloc_zero(sizeof(aml_method_path_seg_t), 0)))
+	if(!name || !(s = kmalloc_zero(sizeof(aml_method_path_seg_t), 0)))
 		return;
-	if(!(s->name = strndup(data, len)))
-	{
-		kfree(s, 0);
-		return;
-	}
+	s->name = name;
 	s->next = *segs;
 	*segs = s;
 }
 
 static void method_set_path(aml_method_t *method, const aml_node_t *node)
 {
-	// TODO If method or scope, call insert_path_seg with the name in argument
-	(void) method;
-	(void) insert_path_seg;
 	while(node)
 	{
-		if(node->type == AML_DEF_METHOD)
-		{
-			// TODO
-		}
-		else if(node->type == AML_DEF_SCOPE)
-		{
-			// TODO
-		}
+		if(node->type == AML_DEF_METHOD || node->type == AML_DEF_SCOPE)
+			insert_path_seg(&method->path,
+				aml_name_string_get(node->children->next)); // TODO Check for NULL?
 		node = node->parent;
 	}
 }

@@ -124,7 +124,7 @@ aml_node_t *name_string(aml_parse_context_t *context)
 		|| !(node = node_new(AML_NAME_STRING, &BLOB_PEEK(context), 0)))
 		return NULL;
 	BLOB_COPY(context, &c);
-	if(!(n = root_char(context)) && !(n = prefix_path(context)))
+	if(!((n = root_char(context)) || (n = prefix_path(context))))
 		goto fail;
 	node_add_child(node, n);
 	if(!(n = name_path(context)))

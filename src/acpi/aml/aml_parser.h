@@ -557,6 +557,7 @@ aml_node_t *aml_parse(const char *src, size_t len);
 aml_node_t *aml_search(aml_node_t *node, enum node_type type);
 int aml_get_integer(aml_node_t *node);
 size_t aml_pkg_length_get(const aml_node_t *node);
+const char *aml_name_string_get(const aml_node_t *node);
 
 void aml_method_insert(aml_method_t **methods, const aml_node_t *node);
 const aml_method_t *aml_method_get(const aml_method_t *methods,

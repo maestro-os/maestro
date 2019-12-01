@@ -67,3 +67,64 @@ size_t aml_pkg_length_get(const aml_node_t *node)
 	}
 	return (len << 4) | (lead->data[0] & 0b1111);
 }
+
+static size_t name_string_length(const aml_node_t *node)
+{
+	size_t i = 0;
+	aml_node_t *n;
+
+	if(!node->children)
+		return i;
+	if(node->children->type == AML_ROOT_CHAR)
+		++i;
+	else
+	{
+		n = node->children;
+		while(n && n->type == AML_PREFIX_PATH)
+		{
+			++i;
+			n = n->children;
+		}
+	}
+	if(!node->children->next)
+		return 0;
+	n = node->children->next->children;
+	while(n)
+	{
+		i += 4;
+		n = n->next;
+	}
+	return i;
+}
+
+const char *aml_name_string_get(const aml_node_t *node)
+{
+	size_t i;
+	char *str;
+	aml_node_t *n;
+
+	if(!node || node->type != AML_NAME_STRING || !node->children)
+		return NULL;
+	if((i = name_string_length(node)) == 0 || !(str = kmalloc(i + 1, 0)))
+		return NULL;
+	str[i] = '\0';
+	if(node->children->type == AML_ROOT_CHAR)
+		str[i++] = '\\';
+	else
+	{
+		n = node->children;
+		while(n && n->type == AML_PREFIX_PATH)
+		{
+			str[i++] = '^';
+			n = n->children;
+		}
+	}
+	n = node->children->next->children;
+	while(n)
+	{
+		memcpy(str + i, n->data, 4);
+		i += 4;
+		n = n->next;
+	}
+	return str;
+}
