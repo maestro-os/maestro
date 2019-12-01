@@ -2,10 +2,10 @@
 
 check_a20:
 	pusha
-	mov $0x112345, %edi
-	mov $0x012345, %esi
-	mov (%edi), %edi
-	mov (%esi), %esi
+	mov $0x888888, %edi
+	mov $0x088888, %esi
+	mov %edi, (%edi)
+	mov %esi, (%esi)
 	cmpsd
 	popa
 	jne a20_enabled
