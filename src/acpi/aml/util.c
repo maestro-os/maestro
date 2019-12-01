@@ -596,9 +596,8 @@ static void ast_print_(const aml_node_t *ast, const size_t level)
 	if(!ast)
 		return;
 	print_indent(level);
-	printf("- %s: ", node_types[ast->type]);
-	tty_write(ast->data, ast->data_length, current_tty); // TODO Use printf precision
-	printf("\n");
+	printf("- %s: %.*s\n", node_types[ast->type],
+		(int) ast->data_length, ast->data);
 	a = ast->children;
 	while(a)
 	{

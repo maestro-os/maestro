@@ -3,6 +3,13 @@
 #include <libc/stdlib.h>
 #include <tty/tty.h>
 
+#define SHARP_FLAG	0b000001
+#define ZERO_FLAG	0b000010
+#define MINUS_FLAG	0b000100
+#define SPACE_FLAG	0b001000
+#define PLUS_FLAG	0b010000
+#define QUOTE_FLAG	0b100000
+
 typedef struct
 {
 	size_t size;
@@ -19,60 +26,216 @@ typedef struct
 	char type;
 } specifier_t;
 
-typedef struct
-{
-	char c;
-	int (*f)(const specifier_t *, va_list *);
-} handler_t;
-
 static void skip_nbr(const char **str)
 {
-	while(**str && isdigit(**str))
+	while(isdigit(**str))
 		++(*str);
 }
 
-static const char *next_specifier(const char *format, specifier_t *specifier)
+static int read_int(const char **str)
 {
-	const char *begin;
+	int n = 0, prev_n;
+	char neg = 0;
+
+	if(**str == '+' || (neg = **str == '-'))
+		++(*str);
+	while(**str >= '0' && **str <= '9')
+	{
+		prev_n = n;
+		n = (n * 10) + (**str - '0');
+		if(n < prev_n)
+		{
+			skip_nbr(str);
+			return 0;
+		}
+		++(*str);
+	}
+	return (neg ? -n : n);
+}
+
+static uint8_t parse_length_(const char **s)
+{
+	if(**s == 'h')
+	{
+		++(*s);
+		if(**s == 'h')
+		{
+			++(*s);
+			return sizeof(char);
+		}
+		return sizeof(short int);
+	}
+	if(**s == 'l')
+	{
+		++(*s);
+		if(**s == 'l')
+		{
+			++(*s);
+			return sizeof(long long int);
+		}
+		return sizeof(long int);
+	}
+	if(**s == 'L')
+	{
+		++(*s);
+		return sizeof(long double);
+	}
+	if(**s == 'j')
+	{
+		++(*s);
+		return sizeof(intmax_t);
+	}
+	if(**s == 'z')
+	{
+		++(*s);
+		return sizeof(size_t);
+	}
+	if(**s == 't')
+	{
+		++(*s);
+		return sizeof(ptrdiff_t);
+	}
+	return 0;
+}
+
+static uint8_t parse_length(const char **s)
+{
+	uint8_t val;
+
+	val = parse_length_(s);
+	if(**s == 'n')
+	{
+		++(*s);
+		return sizeof(void *);
+	}
+	return val;
+}
+
+static const char *next_specifier(const char *format, va_list *args,
+	specifier_t *specifier)
+{
+	const char *begin, *s;
 
 	bzero(specifier, sizeof(specifier_t));
-	while(*format && *format != '%')
-		++format;
-	if(!*format)
+	if(!(begin = strchr(format, '%')))
 		return NULL;
-	begin = format;
-	++format;
-	if(memchr("-+ 0#", *format, 1))
-		specifier->flags = *(format++);
-	if(*format == '*')
+	s = begin + 1;
+	if(*s == '%')
+	{
+		++s;
+		specifier->type = '%';
+		goto end;
+	}
+	while(1)
+	{
+		if(*s == '#')
+		{
+			specifier->flags |= SHARP_FLAG;
+			++s;
+			continue;
+		}
+		if(*s == '0')
+		{
+			specifier->flags |= ZERO_FLAG;
+			++s;
+			continue;
+		}
+		if(*s == '-')
+		{
+			specifier->flags |= MINUS_FLAG;
+			++s;
+			continue;
+		}
+		if(*s == ' ')
+		{
+			specifier->flags |= SPACE_FLAG;
+			++s;
+			continue;
+		}
+		if(*s == '+')
+		{
+			specifier->flags |= PLUS_FLAG;
+			++s;
+			continue;
+		}
+		if(*s == '\'')
+		{
+			specifier->flags |= QUOTE_FLAG;
+			++s;
+			continue;
+		}
+		break;
+	}
+	if(specifier->flags & MINUS_FLAG)
+		specifier->flags &= ~ZERO_FLAG;
+	if(specifier->flags & PLUS_FLAG)
+		specifier->flags &= ~SPACE_FLAG;
+	if(isdigit(*s))
 	{
 		specifier->parameter_width = 1;
-		++format;
+		specifier->width = read_int(&s);
 	}
-	else
+	else if(*s == '*')
 	{
-		specifier->width = atoi(format);
-		skip_nbr(&format);
+		++s;
+		specifier->parameter_width = 1;
+		specifier->width = va_arg(*args, int);
 	}
-	if(*format == '.')
+	if(*s == '.')
 	{
-		++format;
-		if(*format == '*')
+		++s;
+		specifier->parameter_precision = 1;
+		if(*s == '*')
 		{
-			specifier->parameter_width = 1;
-			++format;
+			++s;
+			specifier->precision = va_arg(*args, int);
 		}
 		else
-		{
-			specifier->width = atoi(format);
-			skip_nbr(&format);
-		}
+			specifier->precision = read_int(&s);
 	}
-	// TODO
-	specifier->type = *format;
-	++format;
-	specifier->size = format - begin;
+	specifier->length = parse_length(&s);
+	specifier->type = *s++;
+
+end:
+	specifier->size = s - begin;
 	return begin;
+}
+
+static inline int get_arg(va_list *args, const size_t length)
+{
+	if(length == 0 || length > 4)
+		return va_arg(*args, int32_t);
+	return va_arg(*args, int32_t) & ((1 << length * 8) - 1);
+}
+
+static inline size_t intlen(int i, const unsigned base)
+{
+	size_t n = 0;
+
+	if(i == 0)
+		return 1;
+	if(i < 0)
+		++n;
+	while(i != 0)
+	{
+		++n;
+		i /= base;
+	}
+	return n;
+}
+
+static inline size_t uintlen(unsigned i, const unsigned base)
+{
+	size_t n = 0;
+
+	if(i == 0)
+		return 1;
+	while(i != 0)
+	{
+		++n;
+		i /= base;
+	}
+	return n;
 }
 
 static inline int putchar(const char c)
@@ -81,47 +244,13 @@ static inline int putchar(const char c)
 	return 1;
 }
 
-static inline char get_number_char(int n)
+static inline int putzeros(const size_t n)
 {
-	if(n < 0)
-		n = -n;
-	return (n < 10 ? '0' : 'a' - 10) + n;
-}
+	size_t i = 0;
 
-static inline int putint(int n, const unsigned base)
-{
-	if(n >= (int) base || n <= -((int) base))
-		return putint(n / base, base) + putchar(get_number_char(n % base));
-	if(n < 0)
-	{
-		putchar('-');
-		n = -n;
-	}
-	return putchar(get_number_char(n % base));
-}
-
-static inline int putuint(const unsigned int n, const unsigned base)
-{
-	if(n >= base)
-		return putuint(n / base, base) + putchar(get_number_char(n % base));
-	else
-		return putchar(get_number_char(n % base));
-}
-
-static inline int putptr(const uintptr_t n)
-{
-	if(n >= 16)
-		return putptr(n / 16) + putchar(get_number_char(n % 16));
-	else
-		return putchar(get_number_char(n % 16));
-}
-
-static inline int putfloat(const unsigned int n)
-{
-	(void) n;
-	// TODO
-
-	return 0;
+	while(i++ < n)
+		putchar('0');
+	return n;
 }
 
 static inline int putstr(const char *str)
@@ -133,83 +262,176 @@ static inline int putstr(const char *str)
 	return len;
 }
 
-static int char_handler(const specifier_t *specifier, va_list *args)
+static int flags_number_handle(const specifier_t *specifier,
+	const size_t len, const int positive,
+		const int sign, const unsigned base, const int upper)
 {
-	// TODO Alignements, etc...
-	(void) specifier;
-	return putchar(va_arg(*args, int));
+	int total = 0;
+
+	// TODO All flags
+	if(specifier->flags & PLUS_FLAG && sign)
+	{
+		if(positive)
+			total += putchar('+');
+		else
+			total += putchar('-');
+	}
+	if(specifier->flags & SPACE_FLAG && positive)
+		total += putchar(' ');
+	if(specifier->flags & SHARP_FLAG && base == 16)
+		total += putstr(upper ? "0X" : "0x");
+	if(specifier->flags & ZERO_FLAG && specifier->width > (total + len))
+		total += putzeros(specifier->width - (total + len));
+	return total;
+}
+
+static inline char get_number_char(int n, const int upper)
+{
+	if(n < 0)
+		n = -n;
+	if(n < 10)
+		return '0' + n;
+	else
+		return (upper ? 'A' : 'a') + n - 10;
+}
+
+static inline int putint(const specifier_t *specifier, int n)
+{
+	if(n >= 10 || n <= -10)
+		return putint(specifier, n / 10)
+			+ putchar(get_number_char(n % 10, 0));
+	return putchar(get_number_char(n % 10, 0));
+}
+
+static inline int putuint(const specifier_t *specifier, const unsigned n,
+	const unsigned base, const int upper)
+{
+	if(n >= base)
+		return putuint(specifier, n / base, base, upper)
+			+ putchar(get_number_char(n % base, upper));
+	else
+		return putchar(get_number_char(n % base, upper));
 }
 
 static int signed_decimal_handler(const specifier_t *specifier, va_list *args)
 {
-	// TODO Alignements, etc...
-	(void) specifier;
-	return putint(va_arg(*args, int), 10);
+	int n;
+
+	n = get_arg(args, specifier->length);
+	return flags_number_handle(specifier, intlen(n, 10), (n >= 0), 1, 10, 0)
+		+ putint(specifier, n);
+}
+
+static int unsigned_octal_handler(const specifier_t *specifier, va_list *args)
+{
+	unsigned n;
+
+	n = get_arg(args, specifier->length);
+	return flags_number_handle(specifier, uintlen(n, 8), 1, 0, 8, 0)
+		+ putuint(specifier, n, 8, 0);
 }
 
 static int unsigned_decimal_handler(const specifier_t *specifier, va_list *args)
 {
-	// TODO Alignements, etc...
-	(void) specifier;
-	return putuint(va_arg(*args, int), 10);
+	unsigned n;
+
+	n = get_arg(args, specifier->length);
+	return flags_number_handle(specifier, uintlen(n, 10), 1, 0, 10, 0)
+		+ putuint(specifier, n, 10, 0);
 }
 
-static int float_handler(const specifier_t *specifier, va_list *args)
+static int unsigned_hexadecimal_handler(const specifier_t *specifier,
+	va_list *args)
 {
-	// TODO Alignements, etc...
+	unsigned n;
+
+	n = get_arg(args, specifier->length);
+	return flags_number_handle(specifier, uintlen(n, 16), 1, 0, 16, 0)
+		+ putuint(specifier, n, 16, 0);
+}
+
+static int unsigned_upper_hexadecimal_handler(const specifier_t *specifier,
+	va_list *args)
+{
+	unsigned n;
+
+	n = get_arg(args, specifier->length);
+	return flags_number_handle(specifier, uintlen(n, 16), 1, 0, 16, 1)
+		+ putuint(specifier, n, 16, 1);
+}
+
+static int char_handler(const specifier_t *specifier, va_list *args)
+{
+	// TODO All flags
 	(void) specifier;
-	return putfloat(va_arg(*args, double));
+	return putchar(va_arg(*args, int));
 }
 
 static int string_handler(const specifier_t *specifier, va_list *args)
 {
-	// TODO Alignements, etc...
-	(void) specifier;
-	return putstr(va_arg(*args, const char *));
+	const char *str;
+	size_t len;
+
+	str = va_arg(*args, const char *);
+	if(specifier->parameter_precision)
+		len = strnlen(str, specifier->precision);
+	else
+		len = strlen(str);
+	tty_write(str, len, current_tty);
+	return len;
 }
 
 static int pointer_handler(const specifier_t *specifier, va_list *args)
 {
-	// TODO Alignements, etc...
-	(void) specifier;
-	return putstr("0x") + putptr((uintptr_t) va_arg(*args, void *));
+	specifier_t s;
+	uintptr_t n;
+
+	s = *specifier;
+	s.flags |= SHARP_FLAG;
+	n = get_arg(args, s.length);
+	return flags_number_handle(&s, uintlen(n, 16), 1, 0, 16, 0)
+		+ putuint(&s, n, 16, 0);
 }
 
-static int hexadecimal_handler(const specifier_t *specifier, va_list *args)
+static int handle_specifier(const specifier_t *specifier, va_list *args,
+	int total)
 {
-	// TODO Alignements, etc...
-	(void) specifier;
-	return putuint((unsigned) va_arg(*args, void *), 16);
-}
-
-static int handle_specifier(const specifier_t *specifier, va_list *args)
-{
-	static handler_t handlers[] = {
+	static const struct
+	{
+		char c;
+		int (*f)(const specifier_t *, va_list *);
+	} handlers[] = {
 		{'d', signed_decimal_handler},
 		{'i', signed_decimal_handler},
+		{'o', unsigned_octal_handler},
 		{'u', unsigned_decimal_handler},
-		{'f', float_handler},
+		{'x', unsigned_hexadecimal_handler},
+		{'X', unsigned_upper_hexadecimal_handler},
+		// TODO doubles/floats
 		{'c', char_handler},
 		{'s', string_handler},
 		{'p', pointer_handler},
-		{'x', hexadecimal_handler}
-		// TODO
+		// TODO C, S
 	};
 	size_t i = 0;
-	const handler_t *h;
 
 	if(specifier->type == '%')
 	{
 		putchar('%');
 		return 1;
 	}
-	while(i < sizeof(handlers) / sizeof(handler_t))
+	if(specifier->type == 'n')
 	{
-		h = handlers + i++;
-		if(h->c == specifier->type)
-			return h->f(specifier, args);
+		*va_arg(*args, int *) = total;
+		return 0;
 	}
-	// TODO Do something?
+	while(i < sizeof(handlers) / sizeof(*handlers))
+	{
+		if(handlers[i].c == specifier->type)
+			return handlers[i].f(specifier, args);
+		++i;
+	}
+	// TODO Do something? (invalid format)
 	return 0;
 }
 
@@ -224,13 +446,13 @@ int printf(const char *format, ...)
 	va_start(args, format);
 	while(*format)
 	{
-		s = next_specifier(format, &specifier);
+		s = next_specifier(format, &args, &specifier);
 		len	= (s ? (size_t) (s - format) : strlen(format));
 		tty_write(format, len, current_tty);
 		format += len;
 		total += len;
 		if(s)
-			total += handle_specifier(&specifier, &args);
+			total += handle_specifier(&specifier, &args, total);
 		format += specifier.size;
 	}
 	va_end(args);

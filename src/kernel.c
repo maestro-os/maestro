@@ -51,8 +51,7 @@ static void print_slabs(void)
 	c = cache_getall();
 	while(c)
 	{
-		printf("%s %u %u %u\n", c->name, (unsigned) c->slabs,
-			(unsigned) c->objsize, (unsigned) c->objcount); // TODO Use %zu
+		printf("%s %zu %zu %zu\n", c->name, c->slabs, c->objsize, c->objcount);
 		c = c->next;
 	}
 	printf("\n");
@@ -90,13 +89,13 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	// TODO Fix
 	if(!check_a20())
 		enable_a20();
-	tty_init();
 
 	if(magic != MULTIBOOT2_BOOTLOADER_MAGIC)
 		PANIC("Non Multiboot2-compliant bootloader!", 0);
 	if(((uintptr_t) multiboot_ptr) & 7)
 		PANIC("Boot informations structure's address is not aligned!", 0);
 
+	tty_init();
 	idt_init();
 	pit_init();
 
