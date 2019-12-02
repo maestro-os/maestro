@@ -11,8 +11,8 @@
 // TODO uncomment # define HISTORY_LINES	128
 # define HISTORY_LINES	1024
 
-# define EMPTY_CHAR	(VGA_DEFAULT_COLOR << 8)
-# define HISTORY_POS(screen_y, x, y) (((screen_y) + (y)) * VGA_WIDTH + (x))
+# define EMPTY_CHAR			(VGA_DEFAULT_COLOR << 8)
+# define HISTORY_POS(x, y)	((y) * VGA_WIDTH + (x))
 
 # define TAB_SIZE				4
 # define GET_TAB_SIZE(cursor_x)	(TAB_SIZE - ((cursor_x) % TAB_SIZE))

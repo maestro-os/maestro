@@ -26,6 +26,8 @@ void tty_init(void)
 __attribute__((hot))
 static inline void update_tty(tty_t *tty)
 {
+	vgapos_t y;
+
 	if(tty != current_tty)
 		return;
 	if(tty->screen_y + VGA_HEIGHT <= HISTORY_LINES)
@@ -34,7 +36,14 @@ static inline void update_tty(tty_t *tty)
 	else
 		memcpy(VGA_BUFFER, tty->history + (VGA_WIDTH * tty->screen_y),
 			VGA_WIDTH * (HISTORY_LINES - tty->screen_y) * sizeof(uint16_t));
-	vga_move_cursor(tty->cursor_x, tty->cursor_y);
+	y = tty->cursor_y - tty->screen_y;
+	if(y >= 0 && y < VGA_HEIGHT)
+	{
+		vga_move_cursor(tty->cursor_x, y);
+		vga_enable_cursor(); // TODO Enable before?
+	}
+	else
+		vga_disable_cursor();
 }
 
 __attribute__((hot))
@@ -115,16 +124,10 @@ static void tty_fix_pos(tty_t *tty)
 		tty->cursor_x = p % VGA_WIDTH;
 		tty->cursor_y += p / VGA_WIDTH;
 	}
-	if(tty->cursor_y < 0)
-	{
-		tty->screen_y -= (tty->cursor_y - VGA_HEIGHT) + 1;
-		tty->cursor_y = 0;
-	}
-	if(tty->cursor_y >= VGA_HEIGHT)
-	{
-		tty->screen_y += (tty->cursor_y - VGA_HEIGHT) + 1;
-		tty->cursor_y = VGA_HEIGHT - 1;
-	}
+	if(tty->cursor_y < tty->screen_y)
+		tty->screen_y = tty->cursor_y;
+	if(tty->cursor_y >= tty->screen_y + VGA_HEIGHT)
+		tty->screen_y = tty->cursor_y - VGA_HEIGHT + 1;
 	if(tty->screen_y < 0)
 		tty->screen_y = 0;
 	if(tty->screen_y + VGA_HEIGHT > HISTORY_LINES)
@@ -192,9 +195,8 @@ static void tty_putchar(const char c, tty_t *tty)
 
 		default:
 		{
-			tty->history[HISTORY_POS(tty->screen_y,
-				tty->cursor_x, tty->cursor_y)] = (uint16_t) c
-					| ((uint16_t) tty->current_color << 8);
+			tty->history[HISTORY_POS(tty->cursor_x, tty->cursor_y)]
+				= (uint16_t) c | ((uint16_t) tty->current_color << 8);
 			tty_cursor_forward(tty, 1, 0);
 			break;
 		}
@@ -243,7 +245,7 @@ void tty_erase(tty_t *tty, size_t count)
 		count = tty->prompted_chars;
 	// TODO Tabs
 	tty_cursor_backward(tty, count, 0);
-	begin = HISTORY_POS(tty->screen_y, tty->cursor_x, tty->cursor_y);
+	begin = HISTORY_POS(tty->cursor_x, tty->cursor_y); // TODO Overflow causes page fault
 	for(i = begin; i < begin + count; ++i)
 		tty->history[i] = EMPTY_CHAR;
 	if(tty->update)

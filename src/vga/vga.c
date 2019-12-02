@@ -1,5 +1,7 @@
 #include <vga/vga.h>
 
+// TODO Save enable/disable cursor state
+
 void vga_clear(void)
 {
 	const uint16_t c = VGA_DEFAULT_COLOR << 8;
