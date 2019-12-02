@@ -203,7 +203,7 @@ end:
 
 static inline int get_arg(va_list *args, const size_t length)
 {
-	if(length == 0 || length > 4)
+	if(length == 0 || length >= 4)
 		return va_arg(*args, int32_t);
 	return va_arg(*args, int32_t) & ((1 << length * 8) - 1);
 }

@@ -128,6 +128,8 @@ static void tty_fix_pos(tty_t *tty)
 		tty->screen_y = tty->cursor_y;
 	if(tty->cursor_y >= tty->screen_y + VGA_HEIGHT)
 		tty->screen_y = tty->cursor_y - VGA_HEIGHT + 1;
+	if(tty->cursor_y >= HISTORY_LINES)
+		tty->cursor_y = HISTORY_LINES - 1;
 	if(tty->screen_y < 0)
 		tty->screen_y = 0;
 	if(tty->screen_y + VGA_HEIGHT > HISTORY_LINES)
