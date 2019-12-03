@@ -5,7 +5,7 @@ static void insert_path_seg(aml_method_path_seg_t **segs, const char *name)
 	aml_method_path_seg_t *s;
 
 	if(!name || !(s = kmalloc_zero(sizeof(aml_method_path_seg_t), 0)))
-		return;
+		return; // TODO `name` leaks here
 	s->name = name;
 	s->next = *segs;
 	*segs = s;
@@ -50,6 +50,42 @@ const aml_method_t *aml_method_get(const aml_method_t *methods,
 	// TODO
 	return NULL;
 }
+
+#ifdef KERNEL_DEBUG
+static const char *aml_method_get_name(const aml_method_t *m)
+{
+	aml_method_path_seg_t *s;
+
+	if(!(s = m->path))
+		return NULL;
+	while(s->next)
+		s = s->next;
+	return s->name;
+}
+
+void aml_print_methods(const aml_method_t *m)
+{
+	const char *n;
+	aml_method_path_seg_t *s;
+
+	while(m)
+	{
+		if((n = aml_method_get_name(m)))
+		{
+			// TODO Print arguments
+			printf("- %s\n", n);
+			s = m->path;
+			while(s)
+			{
+				printf("\t- %s\n", s->name);
+				s = s->next;
+			}
+			// TODO
+		}
+		m = m->next;
+	}
+}
+#endif
 
 void aml_method_free(const aml_method_t *methods)
 {

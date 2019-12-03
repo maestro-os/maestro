@@ -382,6 +382,7 @@ aml_node_t *parse_explicit(const enum node_type type,
 		goto fail;
 	}
 	printf("does fit :> (%u into %u)\n", (unsigned) len, (unsigned) c.len);
+	BLOB_COPY(context, &context2);
 	context2.src = context->src;
 	context2.len = len;
 	if(!(node = node_new(type, &BLOB_PEEK(context), 0))

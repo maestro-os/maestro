@@ -108,6 +108,7 @@ const char *aml_name_string_get(const aml_node_t *node)
 	if((i = name_string_length(node)) == 0 || !(str = kmalloc(i + 1, 0)))
 		return NULL;
 	str[i] = '\0';
+	i = 0;
 	if(node->children->type == AML_ROOT_CHAR)
 		str[i++] = '\\';
 	else

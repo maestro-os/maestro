@@ -157,13 +157,12 @@ static aml_node_t *register_method(aml_parse_context_t *context)
 	aml_node_t *node;
 	size_t len;
 
-	printf("register_method\n");
 	BLOB_COPY(context, &c);
 	if(!(node = parse_node(AML_DEF_METHOD, context,
 		2, pkg_length, name_string)))
 		return NULL;
 	len = aml_pkg_length_get(node->children);
-	aml_method_insert(&context->methods, node);
+	aml_method_insert(&c.methods, node);
 	BLOB_CONSUME(&c, len);
 	BLOB_COPY(&c, context);
 	return node;
@@ -207,11 +206,26 @@ static aml_node_t *def_power_res(aml_parse_context_t *context)
 	return NULL;
 }
 
+static aml_node_t *proc_id(aml_parse_context_t *context)
+{
+	return parse_node(AML_PROC_ID, context, 1, byte_data);
+}
+
+static aml_node_t *pblk_addr(aml_parse_context_t *context)
+{
+	return parse_node(AML_PBLK_ADDR, context, 1, dword_data);
+}
+
+static aml_node_t *pblk_len(aml_parse_context_t *context)
+{
+	return parse_node(AML_PBLK_LEN, context, 1, byte_data);
+}
+
 static aml_node_t *def_processor(aml_parse_context_t *context)
 {
-	// TODO
-	(void) context;
-	return NULL;
+	// TODO Handle explicit length
+	return parse_operation(1, PROCESSOR_OP, AML_DEF_PROCESSOR, context,
+		6, pkg_length, name_string, proc_id, pblk_addr, pblk_len, term_list);
 }
 
 static aml_node_t *def_thermal_zone(aml_parse_context_t *context)
@@ -225,7 +239,7 @@ static aml_node_t *def_thermal_zone(aml_parse_context_t *context)
 aml_node_t *named_obj(aml_parse_context_t *context)
 {
 	return parse_either(AML_NAMED_OBJ, context,
-		14, def_bank_field, def_create_bit_field, def_create_byte_field,
+		17, def_bank_field, def_create_bit_field, def_create_byte_field,
 			def_create_dword_field, def_create_field, def_create_qword_field,
 				def_create_word_field, def_data_region, def_device,
 					def_external, def_field, def_method, def_mutex,

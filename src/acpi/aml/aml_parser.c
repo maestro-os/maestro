@@ -8,8 +8,8 @@ static aml_node_t *object(aml_parse_context_t *context)
 
 static aml_node_t *term_obj(aml_parse_context_t *context)
 {
-	printf("term_obj: (remaining: %u)\n", (unsigned) context->len);
-	print_memory(context->src, 16);
+	//printf("term_obj: (remaining: %u)\n", (unsigned) context->len);
+	//print_memory(context->src, 16);
 	return parse_either(AML_TERM_OBJ, context,
 		3, object, type1_opcode, type2_opcode);
 }
@@ -21,8 +21,8 @@ aml_node_t *term_list(aml_parse_context_t *context)
 
 aml_node_t *term_arg(aml_parse_context_t *context)
 {
-	printf("term_arg (remaining: %u)\n", (unsigned) context->len);
-	print_memory(context->src, 16);
+	//printf("term_arg (remaining: %u)\n", (unsigned) context->len);
+	//print_memory(context->src, 16);
 	return parse_either(AML_TERM_ARG, context,
 		4, type2_opcode, data_object, arg_obj, local_obj);
 }

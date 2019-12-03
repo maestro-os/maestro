@@ -56,6 +56,7 @@
 # define FIND_SET_RIGHT_BIT_OP	((char) 0x82)
 # define DEVICE_OP				((char) 0x82)
 # define DEREF_OF_OP			((char) 0x83)
+# define PROCESSOR_OP			((char) 0x83)
 # define CONCAT_RES_OP			((char) 0x84)
 # define MOD_OP					((char) 0x85)
 # define NOTIFY_OP				((char) 0x86)
@@ -562,6 +563,9 @@ const char *aml_name_string_get(const aml_node_t *node);
 void aml_method_insert(aml_method_t **methods, const aml_node_t *node);
 const aml_method_t *aml_method_get(const aml_method_t *methods,
 	const char *name);
+# ifdef KERNEL_DEBUG
+void aml_print_methods(const aml_method_t *m);
+# endif
 void aml_method_free(const aml_method_t *methods);
 
 #endif
