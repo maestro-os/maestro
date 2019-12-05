@@ -4,6 +4,7 @@
 #include <memory/memory.h>
 #include <idt/idt.h>
 #include <pit/pit.h>
+#include <rtc/rtc.h>
 #include <acpi/acpi.h>
 #include <pci/pci.h>
 #include <cmos/cmos.h>
@@ -103,6 +104,7 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 
 	idt_init();
 	pit_init();
+	rtc_init();
 
 	printf("Booting crumbleos kernel version %s...\n", KERNEL_VERSION);
 	printf("Retrieving CPU informations...\n");
@@ -138,7 +140,7 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	keyboard_set_erase_hook(tty_erase_hook);
 
 	printf("ACPI initialization...\n");
-	acpi_init();
+	// TODO acpi_init();
 
 	// TODO PCIe
 	printf("PCI initialization...\n");
@@ -149,8 +151,12 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 #endif
 
 	printf("Clock initialization...\n");
-	// TODO Optimize
-	// time_init();
+	time_init();
+
+	STI();
+	// TODO rm
+	while(1)
+		printf("timestamp: %lu\n", time_get());
 
 	printf("Drivers initialization...\n");
 	init_drivers();

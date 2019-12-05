@@ -35,7 +35,7 @@ static int cmos_check_update(void)
 	return (inb(CMOS_DATA) & (1 << 7));
 }
 
-static void cmos_wait_ready(void)
+void cmos_wait_ready(void)
 {
 	// TODO Wait for IRQ8
 	while(!cmos_check_update())
@@ -53,11 +53,5 @@ uint8_t cmos_read_register(const uint8_t reg)
 void cmos_write_register(const uint8_t reg, const uint8_t value)
 {
 	cmos_select(reg);
-	outb(reg, value);
-}
-
-uint8_t cmos_get_time(const uint8_t reg)
-{
-	cmos_wait_ready();
-	return cmos_read_register(reg);
+	outb(CMOS_DATA, value);
 }

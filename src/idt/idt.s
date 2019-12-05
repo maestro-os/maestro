@@ -37,50 +37,9 @@
 .extern irq15_handler
 
 irq0:
-	cli
-	push %ebp
-	mov %esp, %ebp
 	pusha
-
-	push %edi
-	push %esi
-	push %edx
-	push %ecx
-	push %ebx
-	push %eax
-
-	push 12(%ebp)
-	push 4(%ebp)
-
-	cmp $0x8, 8(%ebp)
-	je ring0
-	jmp ring3
-
-ring0:
-	mov %ebp, %eax
-	add $16, %eax
-	push %eax
-	jmp esp_end
-
-ring3:
-	push 16(%ebp)
-
-esp_end:
-	push (%ebp)
-
-	call ata_err_check
-
-	push %esp
-	call process_tick
-	add $44, %esp
-
-	push $0x0
-	call pic_EOI
-	add $4, %esp
-
+	call irq0_handler
 	popa
-	mov %ebp, %esp
-	pop %ebp
 	sti
 	iret
 
@@ -134,9 +93,48 @@ irq7:
 	iret
 
 irq8:
+	cli
+	push %ebp
+	mov %esp, %ebp
 	pusha
-	call irq8_handler
+
+	push %edi
+	push %esi
+	push %edx
+	push %ecx
+	push %ebx
+	push %eax
+
+	push 12(%ebp)
+	push 4(%ebp)
+
+	cmp $0x8, 8(%ebp)
+	je ring0
+	jmp ring3
+
+ring0:
+	mov %ebp, %eax
+	add $16, %eax
+	push %eax
+	jmp esp_end
+
+ring3:
+	push 16(%ebp)
+
+esp_end:
+	push (%ebp)
+
+	call ata_err_check
+
+	push %esp
+	call process_tick
+	add $44, %esp
+
+	call rtc_release
+
 	popa
+	mov %ebp, %esp
+	pop %ebp
 	sti
 	iret
 

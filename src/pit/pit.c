@@ -6,10 +6,9 @@ static unsigned current_frequency;
 __attribute__((cold))
 void pit_init(void)
 {
-	CLI();
+	CLI(); // TODO Enable back after init if enabled in the first place?
 	outb(PIT_COMMAND, PIT_SELECT_CHANNEL_0 | PIT_ACCESS_LOBYTE_HIBYTE
 		| PIT_MODE_4);
-	pit_set_frequency(100); // TODO Change
 	outb(PIT_COMMAND, PIT_SELECT_CHANNEL_2 | PIT_ACCESS_LOBYTE_HIBYTE
 		| PIT_MODE_4);
 }
