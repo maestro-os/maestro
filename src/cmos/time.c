@@ -59,7 +59,6 @@ void time_init(void)
 	}
 	if(!(status_b & 0x2) && (hours & 0x80))
 		hours = ((hours & 0x7f) + 12) % 24;
-	printf("%lu:%lu:%lu %lu-%lu-%lu\n", hours, minutes, seconds, month, day, year); // TODO rm
 	year += century * 100;
 	current_time = seconds + (minutes * 60) + (hours * 3600)
 		+ ((day + 1) * 86400) + get_seconds(month, year); // TODO Clean

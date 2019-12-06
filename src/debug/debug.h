@@ -6,6 +6,7 @@
 
 # include <libc/stdio.h>
 
+# define GET_ESP(val)	asm("mov %%esp, %0" : "=a"(val))
 # define GET_EBP(val)	asm("mov %%ebp, %0" : "=a"(val))
 
 void print_regs(const regs_t *regs);

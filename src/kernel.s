@@ -12,6 +12,7 @@
 .global kernel_halt
 
 .global stack_top
+.global switch_stack
 .global kernel_end
 
 .set GDT_KERNEL_CODE_OFFSET, (gdt_kernel_code - gdt_start)
@@ -111,6 +112,8 @@ gdt:
 stack_bottom:
 	.skip STACK_SIZE
 stack_top:
+	.skip STACK_SIZE
+switch_stack:
 
 .section .bss
 

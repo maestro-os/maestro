@@ -81,6 +81,9 @@ static inline void init_drivers(void)
 // TODO Remove
 void test_process(void);
 
+// TODO Remove
+extern semaphore_t sem;
+
 __attribute__((cold))
 void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	void *kernel_end)
@@ -153,11 +156,6 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	printf("Clock initialization...\n");
 	time_init();
 
-	STI();
-	// TODO rm
-	while(1)
-		printf("timestamp: %lu\n", time_get());
-
 	printf("Drivers initialization...\n");
 	init_drivers();
 
@@ -168,9 +166,15 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	process_init();
 
 	// TODO Remove
-	/*CLI();
+	CLI();
+	sem_init(&sem, 1);
 	for(size_t i = 0; i < 1; ++i)
-		new_process(NULL, test_process);*/
+	{
+		regs_t r;	
+		bzero(&r, sizeof(r));
+		r.eip = (intptr_t)test_process;
+		new_process(NULL, &r);
+	}
 
 #ifdef KERNEL_DEBUG
 	print_mem_usage();

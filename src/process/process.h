@@ -43,8 +43,10 @@ typedef struct process
 	struct process *next;
 
 	pid_t pid;
-	process_state_t state, prev_state;
 	uid_t owner_id;
+
+	process_state_t state, prev_state;
+	struct process *sem_next;
 
 	struct process *parent;
 	child_t *children;
@@ -72,7 +74,7 @@ extern gdt_entry_t *tss_gdt_entry(void);
 extern void tss_flush(void);
 
 void process_init(void);
-process_t *new_process(process_t *parent, void (*begin)());
+process_t *new_process(process_t *parent, const regs_t *registers);
 process_t *get_process(pid_t pid);
 process_t *get_running_process(void);
 process_t *process_clone(process_t *proc);
@@ -89,5 +91,15 @@ extern void context_switch(const regs_t *regs,
 	uint16_t data_selector, uint16_t code_selector);
 __attribute__((noreturn))
 extern void kernel_switch(const regs_t *regs);
+
+typedef struct
+{
+	unsigned k;
+	process_t *proc_queue;
+} semaphore_t;
+
+void sem_init(semaphore_t *sem, unsigned k);
+void sem_wait(semaphore_t *sem, process_t *process);
+void sem_post(semaphore_t *sem);
 
 #endif

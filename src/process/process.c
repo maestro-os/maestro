@@ -100,7 +100,7 @@ static void free_pid(const pid_t pid)
 }
 
 __attribute__((hot))
-process_t *new_process(process_t *parent, void (*begin)())
+process_t *new_process(process_t *parent, const regs_t *registers)
 {
 	pid_t pid;
 	process_t *new_proc, *p;
@@ -117,7 +117,7 @@ process_t *new_process(process_t *parent, void (*begin)())
 	}
 	new_proc->pid = pid;
 	new_proc->parent = parent;
-	new_proc->regs_state.eip = (uintptr_t) begin;
+	new_proc->regs_state = *registers;
 	process_add_child(parent, new_proc);
 	if(errno)
 	{
@@ -183,13 +183,14 @@ process_t *process_clone(process_t *proc)
 		errno = EINVAL;
 		return NULL;
 	}
-	if(!(p = new_process(proc, (void *) proc->regs_state.eip)))
+	if(!(p = new_process(proc, &proc->regs_state)))
 		return NULL;
 	if(!(p->page_dir = vmem_clone(proc->page_dir, 1)))
 	{
 		del_process(p, 0);
 		return NULL;
 	}
+	p->state = WAITING;
 	return p;
 }
 
@@ -202,7 +203,11 @@ void process_set_state(process_t *process, const process_state_t state)
 	if(state == RUNNING)
 	{
 		if(running_process)
-			process_set_state(running_process, WAITING);
+		{
+			running_process->prev_state = running_process->state;
+			running_process->state = WAITING;
+			running_process = NULL;
+		}
 		running_process = process;
 	}
 	else if(process == running_process)
@@ -376,6 +381,7 @@ static void switch_processes(void)
 
 	if(!processes || !(p = next_waiting_process(running_process)))
 		return;
+	printf("%i tries to eat\n", p->pid);
 	process_set_state(p, RUNNING);
 	tss.ss0 = GDT_KERNEL_DATA_OFFSET;
 	tss.ss = GDT_USER_DATA_OFFSET;

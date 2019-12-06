@@ -7,7 +7,7 @@ pid_t getpid(void);
 pid_t getppid(void);
 pid_t waitpid(pid_t pid, int *wstatus, int options);
 
-/*static void putchar(char c)
+static void putchar(char c)
 {
 	write(0, &c, 1);
 }
@@ -22,7 +22,7 @@ static void putnbr(int n)
 	if(n > 9)
 		putnbr(n / 10);
 	putchar('0' + (n % 10));
-}*/
+}
 
 static void putstr(const char *s)
 {
@@ -32,7 +32,6 @@ static void putstr(const char *s)
 /*static void fork_bomb(void)
 {
 	pid_t pid;
-	int status;
 
 	putstr("fork\n");
 	if((pid = fork()) < 0)
@@ -41,25 +40,42 @@ static void putstr(const char *s)
 		_exit(1);
 	}
 	if(pid == 0)
-	{
 		putstr("child\n");
-		fork_bomb();
-		_exit(0);
-	}
 	else
 	{
 		putnbr(pid);
 		putstr("parent\n");
-		waitpid(pid, &status, 0);
-		_exit(status); // TODO EXITSTATUS
 	}
+	fork_bomb();
 }*/
+
+void multi_fork(int count)
+{
+	pid_t pid;
+
+loop:
+	if(count == 0)
+		return;
+	if((pid = fork()) < 0)
+		putstr("err\n");
+	if(pid)
+	{
+		--count;
+		goto loop;
+	}
+	putstr("child pid: ");
+	putnbr(getpid());
+	putstr("\n");
+}
 
 void test_process(void)
 {
 	//pid_t pid;
 
-	putstr("BEGIN\n");
+	putstr("pid: ");
+	putnbr(getpid());
+	putstr("\n");
+	multi_fork(130);
 	//fork_bomb();
 	/*if((pid = fork()) < 0)
 		putstr("err\n");
@@ -75,6 +91,7 @@ void test_process(void)
 		putnbr(getpid());
 		putchar('\n');
 	}*/
+	putstr("test_process end\n");
 	while(1)
 		;
 	asm("hlt");

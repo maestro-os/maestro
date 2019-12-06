@@ -6,7 +6,8 @@
 
 #define SYSCALLS_COUNT	(sizeof(sys_handlers) / sizeof(*sys_handlers))
 
-static sys_handler_t sys_handlers[] = {
+__ATTR_RODATA
+static const sys_handler_t sys_handlers[] = {
 	sys_write,
 	sys_fork,
 	sys_exit,

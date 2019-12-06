@@ -96,6 +96,7 @@ irq8:
 	cli
 	push %ebp
 	mov %esp, %ebp
+	mov $switch_stack, %esp
 	pusha
 
 	push %edi

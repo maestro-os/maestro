@@ -8,6 +8,7 @@ static const char *get_function_name(void *inst)
 	return "TODO";
 }
 
+// TODO Fix: prints `0x0` if callstack is smaller than max_depth
 __attribute__((cold))
 void print_callstack(void *ebp, const size_t max_depth)
 {
