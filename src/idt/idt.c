@@ -10,14 +10,13 @@ static interrupt_descriptor_t create_id(void *address, const uint16_t selector,
 	const uint8_t type_attr)
 {
 	interrupt_descriptor_t id;
-	bzero(&id, sizeof(interrupt_descriptor_t));
 
+	bzero(&id, sizeof(interrupt_descriptor_t));
 	id.offset = ((unsigned long) address) & 0xffff;
 	id.selector = selector;
 	id.type_attr = type_attr;
 	id.offset_2 = (((unsigned long) address) & 0xffff0000)
 		>> sizeof(id.offset) * 8;
-
 	return id;
 }
 
