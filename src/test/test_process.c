@@ -75,23 +75,10 @@ void test_process(void)
 	putstr("pid: ");
 	putnbr(getpid());
 	putstr("\n");
-	multi_fork(130);
+	multi_fork(2);
 	//fork_bomb();
-	/*if((pid = fork()) < 0)
-		putstr("err\n");
-	else if(pid)
-	{
-		putstr("parent: ");
-		putnbr(pid);
-		putchar('\n');
-	}
-	else
-	{
-		putstr("child: ");
-		putnbr(getpid());
-		putchar('\n');
-	}*/
 	putstr("test_process end\n");
+	*((char *) 0x0) = 0;
 	while(1)
 		;
 	asm("hlt");

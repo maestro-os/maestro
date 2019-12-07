@@ -8,7 +8,6 @@ static const char *get_function_name(void *inst)
 	return "TODO";
 }
 
-// TODO Fix: prints `0x0` if callstack is smaller than max_depth
 __attribute__((cold))
 void print_callstack(void *ebp, const size_t max_depth)
 {
@@ -18,12 +17,13 @@ void print_callstack(void *ebp, const size_t max_depth)
 	printf("--- Callstack ---\n");
 	while(ebp && i < max_depth)
 	{
-		eip = (void *) (*(int *) (ebp + 4));
+		if(!(eip = (void *) (*(int *) (ebp + 4))))
+			break;
 		// TODO Use %zu
 		printf("%i: %p -> %s\n", (int) i, eip, get_function_name(eip));
 		ebp = (void *) (*(int *) ebp);
 		++i;
 	}
-	if(ebp)
+	if(ebp && eip)
 		printf("...\n");
 }

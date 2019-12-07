@@ -381,7 +381,6 @@ static void switch_processes(void)
 
 	if(!processes || !(p = next_waiting_process(running_process)))
 		return;
-	printf("%i tries to eat\n", p->pid);
 	process_set_state(p, RUNNING);
 	tss.ss0 = GDT_KERNEL_DATA_OFFSET;
 	tss.ss = GDT_USER_DATA_OFFSET;
