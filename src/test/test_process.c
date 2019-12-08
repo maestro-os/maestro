@@ -72,11 +72,10 @@ void test_process(void)
 {
 	//pid_t pid;
 
-	putstr("test\n");
-	//putstr("pid: ");
-	//putnbr(getpid());
-	//putstr("\n");
-	//multi_fork(2);
+	putstr("pid: ");
+	putnbr(getpid());
+	putstr("\n");
+	multi_fork(3);
 	//fork_bomb();
 	//putstr("test_process end\n");
 	while(1)

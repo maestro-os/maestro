@@ -105,7 +105,7 @@ gdt:
 	.word gdt - gdt_start - 1
 	.long gdt_start
 
-.section .stack[write]
+.section .stack, "w"
 
 .align 8
 

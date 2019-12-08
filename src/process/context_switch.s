@@ -33,7 +33,9 @@ context_switch:
 	mov 16(%eax), %eax
 
 	pusha
-	call rtc_release
+	push $0x0
+	call pic_EOI
+	add $4, %esp
 	popa
 	add $4, %esp
 
@@ -42,15 +44,21 @@ context_switch:
 kernel_switch:
 	cli
 
-	call rtc_release
+	push $0x0
+	call pic_EOI
+	add $4, %esp
 
 	mov 4(%esp), %eax
-	push 12(%eax)
+	mov 12(%eax), %ebx
+	mov $512, %ecx
+	not %ecx
+	and %ecx, %ebx
+	push %ebx
 	popf
 	mov (%eax), %ebp
 	mov 4(%eax), %esp
 	mov 8(%eax), %ebx
-	mov %ebx, jmp_addr
+	movl %ebx, jmp_addr
 	mov 20(%eax), %ebx
 	mov 24(%eax), %ecx
 	mov 28(%eax), %edx

@@ -4,7 +4,6 @@
 #include <memory/memory.h>
 #include <idt/idt.h>
 #include <pit/pit.h>
-#include <rtc/rtc.h>
 #include <acpi/acpi.h>
 #include <pci/pci.h>
 #include <cmos/cmos.h>
@@ -107,7 +106,6 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 
 	idt_init();
 	pit_init();
-	rtc_init();
 
 	printf("Booting crumbleos kernel version %s...\n", KERNEL_VERSION);
 	printf("Retrieving CPU informations...\n");

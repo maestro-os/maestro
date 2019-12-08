@@ -1,13 +1,6 @@
 #include <pic/pic.h>
 #include <keyboard/ps2/ps2.h>
-#include <rtc/rtc.h>
 #include <disk/ata/ata.h>
-
-void irq0_handler()
-{
-	time_update();
-	pic_EOI(0x0);
-}
 
 void irq1_handler()
 {
@@ -49,6 +42,12 @@ void irq7_handler()
 {
 	// TODO
 	pic_EOI(0x7);
+}
+
+void irq8_handler()
+{
+	// TODO
+	pic_EOI(0x8);
 }
 
 void irq9_handler()

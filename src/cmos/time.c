@@ -69,7 +69,7 @@ void time_update(void)
 {
 	static size_t count = 0;
 
-	if(count >= 1000)
+	if(count >= 1000) // TODO Change according to PIT frequency
 	{
 		count = 0;
 		++current_time;
