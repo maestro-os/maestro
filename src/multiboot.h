@@ -353,7 +353,9 @@ typedef struct boot_info_t
 	// TODO
 } boot_info_t;
 
+extern boot_info_t *boot_info;
+
 size_t multiboot_tags_size(void *ptr);
-void read_boot_tags(void *ptr, boot_info_t *info);
+void read_boot_tags(void *ptr);
 
 #endif

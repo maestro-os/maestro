@@ -1,11 +1,53 @@
 #include <debug/debug.h>
+#include <elf/elf.h>
+
+static void *inst;
+static const char *func_name;
 
 __attribute__((cold))
-static const char *get_function_name(void *inst)
+static const char *get_symbol_name(const uint32_t offset)
 {
-	// TODO
-	(void) inst;
-	return "TODO";
+	elf_section_header_t *section;
+
+	if(!(section = get_section(boot_info->elf_sections, boot_info->elf_num,
+		boot_info->elf_shndx, boot_info->elf_entsize, ".strtab")))
+		return NULL;
+	return (const char *) section->sh_addr + offset;
+}
+
+__attribute__((cold))
+static void get_function_symbol(elf_section_header_t *hdr, const char *name)
+{
+	void *ptr;
+	size_t i = 0;
+	elf32_sym_t *sym;
+
+	(void) name;
+	if(hdr->sh_type != SHT_SYMTAB)
+		return;
+	ptr = (void *) hdr->sh_addr;
+	while(i < hdr->sh_size)
+	{
+		sym = ptr + i;
+		if((uintptr_t) inst >= sym->st_value
+			&& (uintptr_t) inst < sym->st_value + sym->st_size)
+		{
+			if(sym->st_name)
+				func_name = get_symbol_name(sym->st_name);
+			return;
+		}
+		i += sizeof(elf32_sym_t);
+	}
+}
+
+__attribute__((cold))
+static const char *get_function_name(void *i)
+{
+	inst = i;
+	func_name = NULL;
+	iterate_sections(boot_info->elf_sections, boot_info->elf_num,
+		boot_info->elf_shndx, boot_info->elf_entsize, get_function_symbol);
+	return func_name;
 }
 
 __attribute__((cold))
@@ -13,14 +55,16 @@ void print_callstack(void *ebp, const size_t max_depth)
 {
 	size_t i = 0;
 	void *eip;
+	const char *name;
 
 	printf("--- Callstack ---\n");
 	while(ebp && i < max_depth)
 	{
 		if(!(eip = (void *) (*(int *) (ebp + 4))))
 			break;
-		// TODO Use %zu
-		printf("%i: %p -> %s\n", (int) i, eip, get_function_name(eip));
+		if(!(name = get_function_name(eip)))
+			name = "???";
+		printf("%zu: %p -> %s\n", i, eip, name);
 		ebp = (void *) (*(int *) ebp);
 		++i;
 	}

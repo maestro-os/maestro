@@ -42,22 +42,22 @@ static void protect_section(elf_section_header_t *hdr, const char *name)
 }
 
 __attribute__((cold))
-static void protect_kernel(boot_info_t *info)
+static void protect_kernel(void)
 {
-	iterate_sections(info->elf_sections,
-		info->elf_num, info->elf_shndx, info->elf_entsize, protect_section);
+	iterate_sections(boot_info->elf_sections, boot_info->elf_num,
+		boot_info->elf_shndx, boot_info->elf_entsize, protect_section);
 }
 
 __attribute__((cold))
-void vmem_kernel(boot_info_t *info)
+void vmem_kernel(void)
 {
-	if(!info || !(kernel_vmem = new_vmem_obj()))
+	if(!(kernel_vmem = new_vmem_obj()))
 		goto fail;
 	vmem_identity_range(kernel_vmem, NULL, KERNEL_BEGIN, PAGING_PAGE_WRITE);
 	vmem_identity_range(kernel_vmem, KERNEL_BEGIN, heap_begin,
 		PAGING_PAGE_WRITE);
 	vmem_identity_range(kernel_vmem, heap_begin, memory_end, PAGING_PAGE_WRITE);
-	protect_kernel(info);
+	protect_kernel();
 	paging_enable(kernel_vmem);
 	return;
 

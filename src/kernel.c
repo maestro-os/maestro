@@ -87,8 +87,6 @@ __attribute__((cold))
 void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	void *kernel_end)
 {
-	boot_info_t boot_info;
-
 	tty_init();
 
 	if(!check_a20())
@@ -112,12 +110,12 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	cpuid();
 
 	printf("Retrieving Multiboot2 data...\n");
-	read_boot_tags(multiboot_ptr, &boot_info);
-	printf("Command line: %s\n", boot_info.cmdline);
-	printf("Bootloader name: %s\n", boot_info.loader_name);
+	read_boot_tags(multiboot_ptr);
+	printf("Command line: %s\n", boot_info->cmdline);
+	printf("Bootloader name: %s\n", boot_info->loader_name);
 
 	printf("Memory management initialization...\n");
-	memmap_init(&boot_info, multiboot_ptr, kernel_end);
+	memmap_init(multiboot_ptr, kernel_end);
 #ifdef KERNEL_DEBUG
 	memmap_print();
 	printf("\n");
@@ -128,7 +126,7 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	buddy_init();
 	printf("Buddy allocator begin: %p\n", buddy_begin);
 	slab_init();
-	vmem_kernel(&boot_info);
+	vmem_kernel();
 #ifdef KERNEL_DEBUG
 	print_slabs();
 #endif

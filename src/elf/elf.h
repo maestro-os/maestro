@@ -38,6 +38,16 @@
 # define SHF_ORDERED			0x04000000
 # define SHF_EXCLUDE			0x08000000
 
+# define ELF32_STT_NOTYPE	0
+# define ELF32_STT_OBJECT	1
+# define ELF32_STT_FUNC		2
+# define ELF32_STT_SECTION	3
+# define ELF32_STT_FILE		4
+# define ELF32_STT_LOPROC	13
+# define ELF32_STT_HIPROC	15
+
+typedef uint32_t elf32_addr_t;
+
 __attribute__((packed))
 struct elf_section_header
 {
@@ -53,8 +63,22 @@ struct elf_section_header
 	uint32_t sh_entsize;
 };
 
-typedef struct elf_section_header elf_section_header_t;
+__attribute__((packed))
+struct elf32_sym
+{
+	uint32_t st_name;
+	elf32_addr_t st_value;
+	uint32_t st_size;
+	uint8_t st_info;
+	uint8_t st_other;
+	uint16_t st_shndx;
+};
 
+typedef struct elf_section_header elf_section_header_t;
+typedef struct elf32_sym elf32_sym_t;
+
+elf_section_header_t *get_section(void *sections, size_t sections_count,
+	size_t shndx, size_t entsize, const char *section_name);
 void iterate_sections(void *sections, size_t sections_count,
 	size_t shndx, size_t entsize,
 		void (*f)(elf_section_header_t *, const char *));
