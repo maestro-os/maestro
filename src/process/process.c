@@ -214,6 +214,8 @@ void process_set_state(process_t *process, const process_state_t state)
 		running_process = NULL;
 	process->prev_state = process->state;
 	process->state = state;
+	if(state == TERMINATED)
+		sem_remove(process->sem_curr, process);
 	spin_unlock(&spinlock);
 }
 
@@ -253,6 +255,7 @@ void process_exit(process_t *proc, const int status)
 // TODO Limit on signals?
 // TODO Perform signals directly?
 // TODO Execute signal later?
+// TODO Send signals to children
 __attribute__((hot))
 void process_kill(process_t *proc, const int sig)
 {

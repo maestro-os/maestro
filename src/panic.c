@@ -129,6 +129,6 @@ void kernel_panic_(const char *reason, const uint32_t code,
 	print_panic(reason, code);
 	printf("\n-- DEBUG --\nFile: %s; Line: %i\n", file, line);
 	GET_EBP(ebp);
-	print_callstack(ebp, 8);
+	print_callstack(ebp, 11);
 	kernel_halt();
 }

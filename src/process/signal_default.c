@@ -3,6 +3,7 @@
 
 // TODO Remove
 #define TODO	termination
+#include <libc/stdio.h>
 
 // TODO Handle multicore
 

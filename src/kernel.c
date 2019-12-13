@@ -163,7 +163,7 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 
 	// TODO Remove
 	CLI();
-	sem_init(&sem, 1);
+	sem_init(&sem);
 	for(size_t i = 0; i < 1; ++i)
 	{
 		regs_t r;	

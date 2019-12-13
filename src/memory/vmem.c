@@ -53,6 +53,10 @@ void vmem_kernel(void)
 {
 	if(!(kernel_vmem = new_vmem_obj()))
 		goto fail;
+	// TODO Fix
+	/*vmem_unmap(kernel_vmem, NULL);
+	vmem_identity_range(kernel_vmem, (void *) PAGE_SIZE, KERNEL_BEGIN,
+		PAGING_PAGE_WRITE);*/
 	vmem_identity_range(kernel_vmem, NULL, KERNEL_BEGIN, PAGING_PAGE_WRITE);
 	vmem_identity_range(kernel_vmem, KERNEL_BEGIN, heap_begin,
 		PAGING_PAGE_WRITE);
@@ -81,6 +85,8 @@ void vmem_identity_range(vmem_t vmem, void *from, void *to, int flags)
 {
 	void *ptr;
 
+	if(!vmem)
+		return;
 	for(ptr = from; ptr < to; ptr += PAGE_SIZE)
 	{
 		vmem_identity(vmem, ptr, flags);
@@ -92,11 +98,29 @@ void vmem_identity_range(vmem_t vmem, void *from, void *to, int flags)
 }
 
 __attribute__((hot))
+void vmem_unmap(vmem_t vmem, void *virtaddr)
+{
+	size_t t;
+	vmem_t v;
+
+	if(!vmem)
+		return;
+	t = ADDR_TABLE(virtaddr);
+	if(!(vmem[t] & PAGING_TABLE_PRESENT))
+		return;
+	v = (void *) (vmem[t] & PAGING_ADDR_MASK);
+	v[ADDR_PAGE(virtaddr)] = 0;
+	// TODO Free page table if empty
+}
+
+__attribute__((hot))
 void vmem_map(vmem_t vmem, void *physaddr, void *virtaddr, const int flags)
 {
 	size_t t;
 	vmem_t v;
 
+	if(!vmem)
+		return;
 	t = ADDR_TABLE(virtaddr);
 	if(!(vmem[t] & PAGING_TABLE_PRESENT))
 	{
@@ -237,6 +261,7 @@ void *vmem_alloc_pages(vmem_t vmem, const size_t pages)
 	return ptr;
 }
 
+// TODO Use vmem_unmap to 
 __attribute__((hot))
 void vmem_free_pages(vmem_t vmem, const size_t pages, const int mem_free)
 {

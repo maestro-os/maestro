@@ -75,10 +75,10 @@ void test_process(void)
 	putstr("pid: ");
 	putnbr(getpid());
 	putstr("\n");
-	multi_fork(3);
+	multi_fork(1);
 	//fork_bomb();
 	//putstr("test_process end\n");
 	while(1)
-		;
+		putnbr(getpid());
 	asm("hlt");
 }

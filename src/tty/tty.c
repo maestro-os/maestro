@@ -256,12 +256,12 @@ void tty_erase(tty_t *tty, size_t count)
 	spin_unlock(&tty->spinlock);
 }
 
-// TODO Spinlock
 __attribute__((hot))
 void tty_input_hook(const key_code_t code)
 {
 	char c;
 
+	spin_lock(&current_tty->spinlock);
 	if(keyboard_is_ctrl_pressed())
 	{
 		switch(code)
@@ -296,13 +296,13 @@ void tty_input_hook(const key_code_t code)
 		current_tty->prompted_chars = 0;
 	else
 		++(current_tty->prompted_chars);
+	spin_unlock(&current_tty->spinlock);
 }
 
-// TODO Handle cursor when scrolling up/down
-// TODO Spinlock
 __attribute__((hot))
 void tty_ctrl_hook(const key_code_t code)
 {
+	spin_lock(&current_tty->spinlock);
 	// TODO Check if update is enabled?
 	if(keyboard_is_shift_pressed())
 	{
@@ -323,6 +323,7 @@ void tty_ctrl_hook(const key_code_t code)
 			}
 		}
 	}
+	spin_unlock(&current_tty->spinlock);
 }
 
 __attribute__((hot))

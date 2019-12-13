@@ -36,6 +36,12 @@ typedef enum
 	TERMINATED
 } process_state_t;
 
+typedef struct
+{
+	process_t *proc_current;
+	process_t *proc_queue;
+} semaphore_t;
+
 typedef struct child child_t;
 
 typedef struct process
@@ -44,12 +50,13 @@ typedef struct process
 
 	pid_t pid;
 	uid_t owner_id;
-
 	process_state_t state, prev_state;
-	struct process *sem_next;
 
 	struct process *parent;
 	child_t *children;
+
+	semaphore_t *sem_curr;
+	struct process *sem_next;
 
 	vmem_t page_dir;
 	void *user_stack;
@@ -69,6 +76,11 @@ struct child
 	struct child *next;
 	process_t *process;
 };
+
+void sem_init(semaphore_t *sem);
+void sem_wait(semaphore_t *sem, process_t *process);
+void sem_remove(semaphore_t *sem, process_t *process);
+void sem_post(semaphore_t *sem);
 
 extern gdt_entry_t *tss_gdt_entry(void);
 extern void tss_flush(void);
@@ -91,15 +103,5 @@ extern void context_switch(const regs_t *regs,
 	uint16_t data_selector, uint16_t code_selector);
 __attribute__((noreturn))
 extern void kernel_switch(const regs_t *regs);
-
-typedef struct
-{
-	unsigned k;
-	process_t *proc_queue;
-} semaphore_t;
-
-void sem_init(semaphore_t *sem, unsigned k);
-void sem_wait(semaphore_t *sem, process_t *process);
-void sem_post(semaphore_t *sem);
 
 #endif

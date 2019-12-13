@@ -77,6 +77,7 @@ void vmem_kernel_restore(void); // TODO remove?
 void vmem_identity(vmem_t vmem, void *page, int flags);
 void vmem_identity_range(vmem_t vmem, void *from, void *to, int flags);
 void vmem_map(vmem_t vmem, void *physaddr, void *virtaddr, int flags);
+void vmem_unmap(vmem_t vmem, void *virtaddr);
 vmem_t vmem_clone(vmem_t vmem, int mem_dup);
 void *vmem_translate(vmem_t vmem, void *ptr);
 int vmem_contains(vmem_t vmem, const void *ptr, size_t size);
