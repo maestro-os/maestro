@@ -14,6 +14,7 @@ static cache_t *signals_cache;
 
 static process_t *volatile processes = NULL;
 static process_t *volatile running_process = NULL;
+static process_t *volatile last_running_process = NULL;
 static uint8_t *pids_bitmap;
 
 __ATTR_PAGE_ALIGNED
@@ -206,9 +207,9 @@ void process_set_state(process_t *process, const process_state_t state)
 		{
 			running_process->prev_state = running_process->state;
 			running_process->state = WAITING;
-			running_process = NULL;
 		}
 		running_process = process;
+		last_running_process = running_process;
 	}
 	else if(process == running_process)
 		running_process = NULL;
@@ -247,8 +248,6 @@ void process_exit(process_t *proc, const int status)
 	spin_lock(&proc->spinlock);
 	proc->status = status;
 	process_set_state(proc, TERMINATED);
-	if(running_process == proc)
-		running_process = NULL;
 	spin_unlock(&proc->spinlock);
 }
 
@@ -302,6 +301,8 @@ void del_process(process_t *process, const int children)
 	spin_lock(&spinlock);
 	if(running_process == process)
 		running_process = NULL;
+	if(last_running_process == process)
+		last_running_process = NULL;
 	if(process->parent)
 	{
 		c = process->parent->children;
@@ -361,19 +362,18 @@ static void init_process(process_t *process)
 }
 
 __attribute__((hot))
-static process_t *next_waiting_process(process_t *process)
+static process_t *next_waiting_process(void)
 {
 	process_t *p;
 
-	if(!process && !(process = processes))
-		return NULL;
-	p = process;
+	if(!(p = last_running_process))
+		p = processes;
 	do
 	{
 		if(!(p = p->next))
 			p = processes;
 	}
-	while(p != process && p->state != WAITING);
+	while(p != last_running_process && p->state != WAITING);
 	return (p->state == WAITING ? p : NULL);
 }
 
@@ -382,7 +382,7 @@ static void switch_processes(void)
 {
 	process_t *p;
 
-	if(!processes || !(p = next_waiting_process(running_process)))
+	if(!processes || !(p = next_waiting_process()))
 		return;
 	process_set_state(p, RUNNING);
 	tss.ss0 = GDT_KERNEL_DATA_OFFSET;

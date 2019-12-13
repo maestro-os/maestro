@@ -75,7 +75,7 @@ void test_process(void)
 	putstr("pid: ");
 	putnbr(getpid());
 	putstr("\n");
-	multi_fork(1);
+	multi_fork(8);
 	//fork_bomb();
 	//putstr("test_process end\n");
 	while(1)

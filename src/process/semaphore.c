@@ -32,6 +32,7 @@ static void sem_add(semaphore_t *sem, process_t *process)
 
 void sem_wait(semaphore_t *sem, process_t *process)
 {
+
 	if(!sem || !process || sem->proc_current == process)
 		return;
 	CLI();
