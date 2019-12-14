@@ -21,11 +21,9 @@ sys_ret_t sys_write(process_t *process, const regs_t *registers)
 		return -1;
 	}
 	sem_wait(&sem, process);
-	CLI(); // TODO rm
 	// TODO Write to `fildes`
 	(void) fildes;
 	tty_write(buf, nbyte, current_tty);
-	STI(); // TODO rm
 	sem_post(&sem);
 	return nbyte;
 }

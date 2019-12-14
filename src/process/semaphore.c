@@ -2,7 +2,7 @@
 #include <kernel.h>
 #include <idt/idt.h>
 
-#define printf(...) // TODO rm
+//#define printf(...) // TODO rm
 
 // TODO Add spinlock in semaphore structure?
 

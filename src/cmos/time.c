@@ -62,7 +62,7 @@ void time_init(void)
 	year += century * 100;
 	current_time = seconds + (minutes * 60) + (hours * 3600)
 		+ ((day + 1) * 86400) + get_seconds(month, year); // TODO Clean
-	pit_set_frequency(1); // TODO Change
+	pit_set_frequency(1000); // TODO Change
 }
 
 void time_update(void)

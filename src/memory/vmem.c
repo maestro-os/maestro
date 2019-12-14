@@ -98,19 +98,18 @@ void vmem_identity_range(vmem_t vmem, void *from, void *to, int flags)
 }
 
 __attribute__((hot))
-void vmem_unmap(vmem_t vmem, void *virtaddr)
+int vmem_is_mapped(vmem_t vmem, void *ptr)
 {
 	size_t t;
 	vmem_t v;
 
 	if(!vmem)
-		return;
-	t = ADDR_TABLE(virtaddr);
+		return 0;
+	t = ADDR_TABLE(ptr);
 	if(!(vmem[t] & PAGING_TABLE_PRESENT))
-		return;
+		return 0;
 	v = (void *) (vmem[t] & PAGING_ADDR_MASK);
-	v[ADDR_PAGE(virtaddr)] = 0;
-	// TODO Free page table if empty
+	return (v[ADDR_PAGE(ptr)] & PAGING_PAGE_PRESENT);
 }
 
 __attribute__((hot))
@@ -131,6 +130,22 @@ void vmem_map(vmem_t vmem, void *physaddr, void *virtaddr, const int flags)
 	vmem[t] |= PAGING_TABLE_PRESENT | flags;
 	v = (void *) (vmem[t] & PAGING_ADDR_MASK);
 	v[ADDR_PAGE(virtaddr)] = (uintptr_t) physaddr | PAGING_PAGE_PRESENT | flags;
+}
+
+__attribute__((hot))
+void vmem_unmap(vmem_t vmem, void *virtaddr)
+{
+	size_t t;
+	vmem_t v;
+
+	if(!vmem)
+		return;
+	t = ADDR_TABLE(virtaddr);
+	if(!(vmem[t] & PAGING_TABLE_PRESENT))
+		return;
+	v = (void *) (vmem[t] & PAGING_ADDR_MASK);
+	v[ADDR_PAGE(virtaddr)] = 0;
+	// TODO Free page table if empty
 }
 
 __attribute__((hot))
@@ -234,12 +249,17 @@ void *vmem_translate(vmem_t vmem, void *ptr)
 __attribute__((hot))
 int vmem_contains(vmem_t vmem, const void *ptr, const size_t size)
 {
+	void *i;
+
 	if(!vmem)
 		return 0;
-	// TODO
-	(void) vmem;
-	(void) ptr;
-	(void) size;
+	i = ALIGN_DOWN(ptr, PAGE_SIZE);
+	while(i < ptr + size)
+	{
+		if(!vmem_is_mapped(vmem, i))
+			return 0;
+		i += PAGE_SIZE;
+	}
 	return 1;
 }
 
