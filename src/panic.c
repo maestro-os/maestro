@@ -128,7 +128,10 @@ void kernel_panic_(const char *reason, const uint32_t code,
 
 	print_panic(reason, code);
 	printf("\n-- DEBUG --\nFile: %s; Line: %i\n", file, line);
+	if(get_running_process())
+		print_regs(&get_running_process()->regs_state);
+	printf("\n");
 	GET_EBP(ebp);
-	print_callstack(ebp, 11);
+	print_callstack(ebp, 8);
 	kernel_halt();
 }

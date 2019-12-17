@@ -4,15 +4,14 @@ void print_regs(const regs_t *regs)
 {
 	if(!regs)
 		return;
-	printf("--- Registers ---\n");
-	printf("ebp: %p\n", (void *) regs->ebp);
-	printf("esp: %p\n", (void *) regs->esp);
-	printf("eip: %p\n", (void *) regs->eip);
-	printf("eflags: %i\n", (int) regs->eflags);
-	printf("eax: %x\n", (int) regs->eax);
-	printf("ebx: %x\n", (int) regs->ebx);
-	printf("ecx: %x\n", (int) regs->ecx);
-	printf("edx: %x\n", (int) regs->edx);
-	printf("esi: %x\n", (int) regs->esi);
-	printf("edi: %x\n", (int) regs->edi);
+	printf("ebp: %#.8x ", (int) regs->ebp);
+	printf("esp: %#.8x ", (int) regs->esp);
+	printf("eip: %#.8x ", (int) regs->eip);
+	printf("eflags: %#.8x ", (int) regs->eflags);
+	printf("eax: %#.8x\n", (int) regs->eax);
+	printf("ebx: %#.8x ", (int) regs->ebx);
+	printf("ecx: %#.8x ", (int) regs->ecx);
+	printf("edx: %#.8x ", (int) regs->edx);
+	printf("esi: %#.8x ", (int) regs->esi);
+	printf("edi: %#.8x\n", (int) regs->edi);
 }

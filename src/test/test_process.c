@@ -49,7 +49,7 @@ static void putstr(const char *s)
 	fork_bomb();
 }*/
 
-void multi_fork(int count)
+void multi_branch_fork(int count)
 {
 	pid_t pid;
 
@@ -68,11 +68,29 @@ loop:
 	putstr("\n");
 }
 
+void multi_chain_fork(int count)
+{
+	pid_t pid;
+
+loop:
+	if(count == 0)
+		return;
+	if((pid = fork()) < 0)
+		putstr("err\n");
+	if(pid)
+		return;
+	putstr("child pid: ");
+	putnbr(getpid());
+	putstr("\n");
+	--count;
+	goto loop;
+}
+
 void test_process(void)
 {
 	//pid_t pid;
 
-	multi_fork(1);
+	multi_chain_fork(4);
 	//fork_bomb();
 	//putstr("test_process end\n");
 	while(1)
