@@ -28,7 +28,6 @@ typedef struct regs regs_t;
 
 typedef enum
 {
-	CREATED,
 	WAITING,
 	RUNNING,
 	BLOCKED,

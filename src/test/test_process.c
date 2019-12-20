@@ -29,25 +29,15 @@ static void putstr(const char *s)
 	write(0, s, strlen(s));
 }
 
-/*static void fork_bomb(void)
+void fork_bomb(void)
 {
-	pid_t pid;
-
-	putstr("fork\n");
-	if((pid = fork()) < 0)
+	while(1)
 	{
-		putstr("END\n");
-		_exit(1);
+		if(fork() < 0)
+			putstr("fork error\n");
+		putstr("fork");
 	}
-	if(pid == 0)
-		putstr("child\n");
-	else
-	{
-		putnbr(pid);
-		putstr("parent\n");
-	}
-	fork_bomb();
-}*/
+}
 
 void multi_branch_fork(int count)
 {
@@ -87,14 +77,18 @@ void test_process(void)
 {
 	//pid_t pid;
 
-	multi_chain_fork(29);
+	multi_chain_fork(400);
 	//fork_bomb();
 	//putstr("test_process end\n");
+	if(getpid() == 400)
+		putstr("bleh\n");
 	while(1)
+		;
+	/*while(1)
 	{
 		//putstr("pid: ");
 		putnbr(getpid());
 		//putstr("\n");
-	}
+	}*/
 	asm("hlt");
 }

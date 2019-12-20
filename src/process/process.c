@@ -29,10 +29,10 @@ static void process_ctor(void *ptr, const size_t size)
 
 	bzero(ptr, size);
 	p = ptr;
-	if(CREATED != 0)
+	if(WAITING != 0)
 	{
-		p->state = CREATED;
-		p->prev_state = CREATED;
+		p->state = WAITING;
+		p->prev_state = WAITING;
 	}
 	while(i < SIG_MAX)
 		p->sigactions[i++].sa_handler = SIG_DFL;
@@ -97,6 +97,31 @@ static void free_pid(const pid_t pid)
 }
 
 __attribute__((hot))
+static void init_process(process_t *process)
+{
+	vmem_t vmem;
+	void *user_stack = NULL, *kernel_stack = NULL;
+
+	if(!process->page_dir)
+	{
+		// TODO Change default stack size (and allow stack grow)
+		// TODO Do not allow access to kernel_stack in user space?
+		if(!(vmem = vmem_init()) || !(user_stack = vmem_alloc_pages(vmem, 1))
+			|| !(kernel_stack = vmem_alloc_pages(vmem, 1)))
+		{
+			vmem_free(vmem, 0);
+			buddy_free(user_stack);
+			buddy_free(kernel_stack);
+			return;
+		}
+		process->page_dir = vmem;
+		process->user_stack = user_stack;
+		process->kernel_stack = kernel_stack;
+		process->regs_state.esp = (uintptr_t) user_stack + (PAGE_SIZE - 1);
+	}
+}
+
+__attribute__((hot))
 process_t *new_process(process_t *parent, const regs_t *registers)
 {
 	pid_t pid;
@@ -115,6 +140,7 @@ process_t *new_process(process_t *parent, const regs_t *registers)
 	new_proc->pid = pid;
 	new_proc->parent = parent;
 	new_proc->regs_state = *registers;
+	init_process(new_proc);
 	process_add_child(parent, new_proc);
 	if(errno)
 	{
@@ -327,33 +353,6 @@ void del_process(process_t *process, const int children)
 	spin_unlock(&spinlock);
 }
 
-// TODO Alloc when the process is created (because of `fork`) (or block parent?)
-__attribute__((hot))
-static void init_process(process_t *process)
-{
-	vmem_t vmem;
-	void *user_stack = NULL, *kernel_stack = NULL;
-
-	if(!process->page_dir)
-	{
-		// TODO Change default stack size (and allow stack grow)
-		// TODO Do not allow access to kernel_stack in user space?
-		if(!(vmem = vmem_init()) || !(user_stack = vmem_alloc_pages(vmem, 1))
-			|| !(kernel_stack = vmem_alloc_pages(vmem, 1)))
-		{
-			vmem_free(vmem, 0);
-			buddy_free(user_stack);
-			buddy_free(kernel_stack);
-			return;
-		}
-		process->page_dir = vmem;
-		process->user_stack = user_stack;
-		process->kernel_stack = kernel_stack;
-		process->regs_state.esp = (uintptr_t) user_stack + (PAGE_SIZE - 1);
-	}
-	process_set_state(process, WAITING);
-}
-
 __attribute__((hot))
 static process_t *next_waiting_process(void)
 {
@@ -392,31 +391,8 @@ static void switch_processes(void)
 __attribute__((hot))
 void process_tick(const regs_t *registers)
 {
-	process_t *p;
-
 	if(running_process)
 		running_process->regs_state = *registers;
-	p = processes;
-	while(p)
-	{
-		switch(p->state)
-		{
-			case CREATED:
-			{
-				init_process(p);
-				break;
-			}
-
-			case BLOCKED:
-			{
-				// TODO Unblock if needed?
-				break;
-			}
-
-			default: break;
-		}
-		p = p->next;
-	}
 	switch_processes();
 	// TODO Uncomment
 	/*if(!processes)

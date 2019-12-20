@@ -1,13 +1,8 @@
 #include <syscall/syscall.h>
+#include <kernel.h>
 #include <idt/idt.h>
 
-// TODO remove
-#include <tty/tty.h>
-
 #define SYSCALLS_COUNT	(sizeof(sys_handlers) / sizeof(*sys_handlers))
-
-extern void *switch_stack;
-extern tss_entry_t tss;
 
 __ATTR_RODATA
 static const sys_handler_t sys_handlers[] = {
@@ -22,16 +17,14 @@ static const sys_handler_t sys_handlers[] = {
 __attribute__((hot))
 sys_ret_t syscall_handler(const regs_t *registers)
 {
-	uint32_t tss_esp0;
 	size_t id;
 	process_t *process;
 	sys_handler_t h;
 	sys_ret_t ret;
 
-	tss_esp0 = tss.esp0;
-	tss.esp0 = (uintptr_t) &switch_stack;
 	id = registers->eax;
-	process = get_running_process();// TODO Check if NULL?
+	if(!(process = get_running_process()))
+		PANIC("System call while no process is running", 0);
 	if(id >= SYSCALLS_COUNT || !(h = sys_handlers[id]))
 	{
 		process_kill(process, SIGSYS);
@@ -43,6 +36,5 @@ sys_ret_t syscall_handler(const regs_t *registers)
 	ret = h(process, registers);
 	CLI();
 	process->syscalling = 0;
-	tss.esp0 = tss_esp0;
 	return ret;
 }
