@@ -73,7 +73,6 @@ void *clone_page(void *ptr);
 
 vmem_t vmem_init(void);
 void vmem_kernel(void);
-void vmem_kernel_restore(void); // TODO remove?
 void vmem_identity(vmem_t vmem, void *page, int flags);
 void vmem_identity_range(vmem_t vmem, void *from, void *to, int flags);
 int vmem_is_mapped(vmem_t vmem, void *ptr);

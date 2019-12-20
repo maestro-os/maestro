@@ -69,11 +69,6 @@ fail:
 	PANIC("Cannot initialize kernel virtual memory!", 0);
 }
 
-void vmem_kernel_restore(void)
-{
-	paging_enable(kernel_vmem);
-}
-
 __attribute__((hot))
 void vmem_identity(vmem_t vmem, void *page, const int flags)
 {

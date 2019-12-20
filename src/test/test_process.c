@@ -79,9 +79,6 @@ loop:
 		putstr("err\n");
 	if(pid)
 		return;
-	putstr("child pid: ");
-	putnbr(getpid());
-	putstr("\n");
 	--count;
 	goto loop;
 }
@@ -90,7 +87,7 @@ void test_process(void)
 {
 	//pid_t pid;
 
-	multi_chain_fork(4);
+	multi_chain_fork(29);
 	//fork_bomb();
 	//putstr("test_process end\n");
 	while(1)

@@ -82,7 +82,6 @@ void error_handler(const unsigned error, const uint32_t error_code)
 	process_t *process;
 	int sig;
 
-	vmem_kernel_restore();
 	if(error > 0x1f)
 		PANIC("Unknown", error_code);
 	if(!(process = get_running_process()) || process->syscalling

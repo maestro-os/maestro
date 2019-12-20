@@ -3,7 +3,6 @@
 
 // TODO
 #include <debug/debug.h>
-#include <tty/tty.h>
 
 // TODO Set errnos
 // TODO Multicore handling
@@ -14,12 +13,11 @@ static cache_t *signals_cache;
 
 static process_t *volatile processes = NULL;
 static process_t *volatile running_process = NULL;
-static process_t *volatile last_running_process = NULL;
 static uint8_t *pids_bitmap;
 
 __ATTR_PAGE_ALIGNED
 __ATTR_BSS
-static tss_entry_t tss;
+tss_entry_t tss;
 
 static spinlock_t spinlock = 0;
 
@@ -73,11 +71,9 @@ void process_init(void)
 		NULL, bzero);
 	if(!processes_cache || !children_cache || !signals_cache)
 		PANIC("Cannot allocate caches for processes!", 0);
-
 	if(!(pids_bitmap = kmalloc_zero(PIDS_BITMAP_SIZE, 0)))
 		PANIC("Cannot allocate PIDs bitmap!", 0);
 	bitmap_set(pids_bitmap, 0);
-
 	tss_init();
 }
 
@@ -209,7 +205,6 @@ void process_set_state(process_t *process, const process_state_t state)
 			running_process->state = WAITING;
 		}
 		running_process = process;
-		last_running_process = running_process;
 	}
 	else if(process == running_process)
 		running_process = NULL;
@@ -301,8 +296,6 @@ void del_process(process_t *process, const int children)
 	spin_lock(&spinlock);
 	if(running_process == process)
 		running_process = NULL;
-	if(last_running_process == process)
-		last_running_process = NULL;
 	if(process->parent)
 	{
 		c = process->parent->children;
@@ -366,14 +359,14 @@ static process_t *next_waiting_process(void)
 {
 	process_t *p;
 
-	if(!(p = last_running_process))
+	if(!(p = running_process))
 		p = processes;
 	do
 	{
 		if(!(p = p->next))
 			p = processes;
 	}
-	while(p != last_running_process && p->state != WAITING);
+	while(p != running_process && p->state != WAITING);
 	return (p->state == WAITING ? p : NULL);
 }
 

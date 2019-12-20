@@ -36,9 +36,11 @@
 .extern irq14_handler
 .extern irq15_handler
 
+# TODO Reserve one more page one processes's stack to make sure enough space is available for interruptions
+
 irq0:
 	cli
-	push %ebp # TODO Fix: might overflow process's stack
+	push %ebp
 	mov %esp, %ebp
 	mov $switch_stack, %esp
 
