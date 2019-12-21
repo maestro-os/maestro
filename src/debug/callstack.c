@@ -41,7 +41,7 @@ static void get_function_symbol(elf_section_header_t *hdr, const char *name)
 }
 
 __attribute__((cold))
-static const char *get_function_name(void *i)
+const char *get_function_name(void *i)
 {
 	inst = i;
 	func_name = NULL;
@@ -60,12 +60,12 @@ void print_callstack(void *ebp, const size_t max_depth)
 	printf("--- Callstack ---\n");
 	while(ebp && i < max_depth)
 	{
-		if(!(eip = (void *) (*(int *) (ebp + 4))))
+		if(!(eip = (void *) (*(intptr_t *) (ebp + 4))))
 			break;
 		if(!(name = get_function_name(eip)))
 			name = "???";
 		printf("%zu: %p -> %s\n", i, eip, name);
-		ebp = (void *) (*(int *) ebp);
+		ebp = (void *) (*(intptr_t *) ebp);
 		++i;
 	}
 	if(ebp && eip)

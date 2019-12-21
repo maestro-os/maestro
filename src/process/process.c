@@ -393,6 +393,9 @@ void process_tick(const regs_t *registers)
 {
 	if(running_process)
 		running_process->regs_state = *registers;
+	// TODO
+	/*profiler_capture();
+	profiler_print();*/
 	switch_processes();
 	// TODO Uncomment
 	/*if(!processes)
