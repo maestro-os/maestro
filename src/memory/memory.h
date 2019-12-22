@@ -78,6 +78,7 @@ void vmem_kernel(void);
 void vmem_identity(vmem_t vmem, void *page, int flags);
 void vmem_identity_range(vmem_t vmem, void *from, void *to, int flags);
 int vmem_is_mapped(vmem_t vmem, void *ptr);
+// TODO Add no-dup flag option
 void vmem_map(vmem_t vmem, void *physaddr, void *virtaddr, int flags);
 void vmem_unmap(vmem_t vmem, void *virtaddr);
 int vmem_contains(vmem_t vmem, const void *ptr, size_t size);

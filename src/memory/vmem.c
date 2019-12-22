@@ -3,7 +3,13 @@
 #include <libc/errno.h>
 
 // TODO Use `kernel_vmem` to hide holes in memory?
-// TODO Create a custom flag for shared/lazy allocations
+// TODO Create a no-dup flag, to tell if a physical page should be duplicated on clone
+
+// TODO Use a superstructure to hold the page directory and physical references
+// TODO Page tables should hold a pages counter. When a page is mapped on it, it's incremented, and decremented when unmapped
+// TODO Physical blocks allocated in virtual memory should hold a references counter with value 1 in the beginning
+// TODO When a virtual page is cloned and no-dup flag is clear, its write access is disabled, allowing the kernel to notice when modified. The physical page's reference counter is incremented
+// TODO When trying to modify the virtual page, if no-dup flag is clear, the physical page is duplicated and the counter is decremented
 
 vmem_t kernel_vmem;
 
@@ -20,7 +26,8 @@ vmem_t vmem_init(void)
 
 	if(!(vmem = new_vmem_obj()))
 		return NULL;
-	memcpy(vmem, kernel_vmem, PAGE_SIZE);
+	// TODO Only allow read access to kernel (or just a stub for interrupts)
+	memcpy(vmem, kernel_vmem, PAGE_SIZE); // TODO rm
 	return vmem;
 }
 
@@ -58,6 +65,7 @@ void vmem_kernel(void)
 	vmem_identity_range(kernel_vmem, NULL, KERNEL_BEGIN, PAGING_PAGE_WRITE);
 	vmem_identity_range(kernel_vmem, KERNEL_BEGIN, mem_info.heap_begin,
 		PAGING_PAGE_WRITE);
+	// TODO Grant access to pages only on allocation?
 	vmem_identity_range(kernel_vmem, mem_info.heap_begin, mem_info.memory_end,
 		PAGING_PAGE_WRITE);
 	protect_kernel();
@@ -146,7 +154,7 @@ void vmem_unmap(vmem_t vmem, void *virtaddr)
 		return;
 	v = (void *) (vmem[t] & PAGING_ADDR_MASK);
 	v[ADDR_PAGE(virtaddr)] = 0;
-	// TODO Free page table if empty
+	// TODO If table's pages count has reached 0. Free it
 }
 
 __attribute__((hot))
@@ -198,10 +206,11 @@ static void free_page_table(vmem_t table, const int mem)
 	{
 		for(i = 0; i < 1024; ++i)
 		{
-			// TODO Pay attention to the custom flag (shared/lazy)
 			if((table[i] & PAGING_PAGE_PRESENT)
 				&& (table[i] & PAGING_PAGE_USER))
 			{
+				// TODO Decrement physical page's references
+				// TODO Free physical page if zero references left
 				buddy_free((void *) (table[i] & PAGING_ADDR_MASK));
 			}
 		}
@@ -209,6 +218,7 @@ static void free_page_table(vmem_t table, const int mem)
 	buddy_free(table);
 }
 
+// TODO Clone pages only if no-dup is clear (remove mem_dup)
 __attribute__((hot))
 static vmem_t clone_page_table(vmem_t from, const int mem_dup)
 {
@@ -239,7 +249,7 @@ fail:
 	return NULL;
 }
 
-// TODO When cloning, set the shared/lazy flag on both old and new pages
+// TODO Clone pages only if no-dup is clear (remove mem_dup)
 __attribute__((hot))
 vmem_t vmem_clone(vmem_t vmem, const int mem_dup)
 {
