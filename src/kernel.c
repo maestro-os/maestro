@@ -120,11 +120,10 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	memmap_print();
 	printf("\n");
 #endif
-	printf("Available memory: %u bytes (%u pages)\n",
-		(unsigned) available_memory, (unsigned) available_memory / PAGE_SIZE);
-	printf("Kernel end: %p; Heap end: %p\n", kernel_end, heap_end);
+	printf("Available memory: %zu bytes (%zu pages)\n",
+		mem_info.available_memory, mem_info.available_memory / PAGE_SIZE);
+	printf("Kernel end: %p; Heap end: %p\n", kernel_end, mem_info.heap_end);
 	buddy_init();
-	printf("Buddy allocator begin: %p\n", buddy_begin);
 	slab_init();
 	vmem_kernel();
 #ifdef KERNEL_DEBUG

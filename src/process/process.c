@@ -104,14 +104,12 @@ static void init_process(process_t *process)
 
 	if(!process->page_dir)
 	{
-		// TODO Change default stack size (and allow stack grow)
-		// TODO Do not allow access to kernel_stack in user space?
+		// TODO Use a function for stack allocation
+		// TODO Do not allow access to kernel_stack in user space
 		if(!(vmem = vmem_init()) || !(user_stack = vmem_alloc_pages(vmem, 1))
 			|| !(kernel_stack = vmem_alloc_pages(vmem, 1)))
 		{
-			vmem_free(vmem, 0);
-			buddy_free(user_stack);
-			buddy_free(kernel_stack);
+			vmem_destroy(vmem);
 			return;
 		}
 		process->page_dir = vmem;
@@ -347,7 +345,7 @@ void del_process(process_t *process, const int children)
 		cache_free(children_cache, c);
 		c = next;
 	}
-	vmem_free(process->page_dir, 1);
+	vmem_destroy(process->page_dir);
 	// TODO Free `signals_queue`
 	cache_free(processes_cache, process);
 	spin_unlock(&spinlock);

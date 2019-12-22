@@ -3,9 +3,7 @@
 #include <libc/errno.h>
 
 // TODO Use `kernel_vmem` to hide holes in memory?
-// TODO Add stack spaces
-// TODO Handle shared memory (use free flag into page table entry)
-// TODO Pay attention to USER flag
+// TODO Create a custom flag for shared/lazy allocations
 
 vmem_t kernel_vmem;
 
@@ -58,9 +56,10 @@ void vmem_kernel(void)
 	vmem_identity_range(kernel_vmem, (void *) PAGE_SIZE, KERNEL_BEGIN,
 		PAGING_PAGE_WRITE);*/
 	vmem_identity_range(kernel_vmem, NULL, KERNEL_BEGIN, PAGING_PAGE_WRITE);
-	vmem_identity_range(kernel_vmem, KERNEL_BEGIN, heap_begin,
+	vmem_identity_range(kernel_vmem, KERNEL_BEGIN, mem_info.heap_begin,
 		PAGING_PAGE_WRITE);
-	vmem_identity_range(kernel_vmem, heap_begin, memory_end, PAGING_PAGE_WRITE);
+	vmem_identity_range(kernel_vmem, mem_info.heap_begin, mem_info.memory_end,
+		PAGING_PAGE_WRITE);
 	protect_kernel();
 	paging_enable(kernel_vmem);
 	return;
@@ -93,18 +92,25 @@ void vmem_identity_range(vmem_t vmem, void *from, void *to, int flags)
 }
 
 __attribute__((hot))
+static uint32_t *vmem_resolve(vmem_t vmem, void *ptr)
+{
+	uintptr_t table, page;
+	vmem_t table_obj;
+
+	table = ADDR_TABLE(ptr);
+	page = ADDR_PAGE(ptr);
+	if(!(vmem[table] & PAGING_TABLE_PRESENT))
+		return NULL;
+	table_obj = (void *) (vmem[table] & PAGING_ADDR_MASK);
+	if(!(table_obj[page] & PAGING_PAGE_PRESENT))
+		return NULL;
+	return table_obj + page;
+}
+
+__attribute__((hot))
 int vmem_is_mapped(vmem_t vmem, void *ptr)
 {
-	size_t t;
-	vmem_t v;
-
-	if(!vmem)
-		return 0;
-	t = ADDR_TABLE(ptr);
-	if(!(vmem[t] & PAGING_TABLE_PRESENT))
-		return 0;
-	v = (void *) (vmem[t] & PAGING_ADDR_MASK);
-	return (v[ADDR_PAGE(ptr)] & PAGING_PAGE_PRESENT);
+	return (vmem_resolve(vmem, ptr) != NULL);
 }
 
 __attribute__((hot))
@@ -144,6 +150,44 @@ void vmem_unmap(vmem_t vmem, void *virtaddr)
 }
 
 __attribute__((hot))
+int vmem_contains(vmem_t vmem, const void *ptr, const size_t size)
+{
+	void *i;
+
+	if(!vmem)
+		return 0;
+	i = ALIGN_DOWN(ptr, PAGE_SIZE);
+	while(i < ptr + size)
+	{
+		if(!vmem_is_mapped(vmem, i))
+			return 0;
+		i += PAGE_SIZE;
+	}
+	return 1;
+}
+
+__attribute__((hot))
+void *vmem_translate(vmem_t vmem, void *ptr)
+{
+	uint32_t *entry;
+
+	if(!vmem || !(entry = vmem_resolve(vmem, ptr)))
+		return NULL;
+	return (void *) ((*entry & PAGING_ADDR_MASK) | ADDR_REMAIN(ptr));
+}
+
+__attribute__((hot))
+uint32_t vmem_page_flags(vmem_t vmem, void *ptr)
+{
+	uint32_t *entry;
+
+	if(!vmem || !(entry = vmem_resolve(vmem, ptr)))
+		return 0;
+	return *entry & PAGING_FLAGS_MASK;
+
+}
+
+__attribute__((hot))
 static void free_page_table(vmem_t table, const int mem)
 {
 	size_t i;
@@ -154,9 +198,12 @@ static void free_page_table(vmem_t table, const int mem)
 	{
 		for(i = 0; i < 1024; ++i)
 		{
-			if(!(table[i] & PAGING_PAGE_PRESENT))
-				continue;
-			buddy_free((void *) (table[i] & PAGING_ADDR_MASK));
+			// TODO Pay attention to the custom flag (shared/lazy)
+			if((table[i] & PAGING_PAGE_PRESENT)
+				&& (table[i] & PAGING_PAGE_USER))
+			{
+				buddy_free((void *) (table[i] & PAGING_ADDR_MASK));
+			}
 		}
 	}
 	buddy_free(table);
@@ -192,6 +239,7 @@ fail:
 	return NULL;
 }
 
+// TODO When cloning, set the shared/lazy flag on both old and new pages
 __attribute__((hot))
 vmem_t vmem_clone(vmem_t vmem, const int mem_dup)
 {
@@ -218,77 +266,12 @@ vmem_t vmem_clone(vmem_t vmem, const int mem_dup)
 	return v;
 
 fail:
-	vmem_free(v, 0);
+	vmem_destroy(v);
 	return NULL;
 }
 
 __attribute__((hot))
-void *vmem_translate(vmem_t vmem, void *ptr)
-{
-	uintptr_t table, page, remain;
-	vmem_t table_obj;
-
-	if(!vmem)
-		return NULL;
-	table = ADDR_TABLE(ptr);
-	page = ADDR_PAGE(ptr);
-	remain = ADDR_REMAIN(ptr);
-	if(!(vmem[table] & PAGING_TABLE_PRESENT))
-		return NULL;
-	table_obj = (void *) (vmem[table] & PAGING_ADDR_MASK);
-	if(!(table_obj[page] & PAGING_PAGE_PRESENT))
-		return NULL;
-	return (void *) ((table_obj[page] & PAGING_ADDR_MASK) | remain);
-}
-
-__attribute__((hot))
-int vmem_contains(vmem_t vmem, const void *ptr, const size_t size)
-{
-	void *i;
-
-	if(!vmem)
-		return 0;
-	i = ALIGN_DOWN(ptr, PAGE_SIZE);
-	while(i < ptr + size)
-	{
-		if(!vmem_is_mapped(vmem, i))
-			return 0;
-		i += PAGE_SIZE;
-	}
-	return 1;
-}
-
-__attribute__((hot))
-void *vmem_alloc_pages(vmem_t vmem, const size_t pages)
-{
-	void *ptr;
-
-	if(!vmem || !(ptr = pages_alloc_zero(pages)))
-		return NULL;
-	// TODO Map at specific places for stacks
-	vmem_identity_range(vmem, ptr, ptr + (pages * PAGE_SIZE),
-		PAGING_PAGE_USER | PAGING_PAGE_WRITE);
-	if(errno)
-	{
-		pages_free(ptr, pages);
-		return NULL;
-	}
-	return ptr;
-}
-
-// TODO Use vmem_unmap to 
-__attribute__((hot))
-void vmem_free_pages(vmem_t vmem, const size_t pages, const int mem_free)
-{
-	if(!vmem)
-		return;
-	// TODO
-	(void) pages;
-	(void) mem_free;
-}
-
-__attribute__((hot))
-void vmem_free(vmem_t vmem, const int mem_free)
+void vmem_destroy(vmem_t vmem)
 {
 	size_t i;
 
@@ -298,7 +281,7 @@ void vmem_free(vmem_t vmem, const int mem_free)
 	{
 		if(!(vmem[i] & PAGING_TABLE_PRESENT))
 			continue;
-		free_page_table((void *) (vmem[i] & PAGING_ADDR_MASK), mem_free);
+		free_page_table((void *) (vmem[i] & PAGING_ADDR_MASK), 1);
 	}
 	buddy_free(vmem);
 }

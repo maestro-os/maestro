@@ -5,7 +5,6 @@ static const char *units[] = {
 	"KB", "MB", "GB", "TB", "EB", "ZB", "YB"
 };
 
-// TODO Use %zu
 void print_mem_amount(size_t amount)
 {
 	size_t n = 0;
@@ -17,7 +16,7 @@ void print_mem_amount(size_t amount)
 	}
 	if(amount < 1024)
 	{
-		printf("%i bytes", (int) amount);
+		printf("%zu bytes", amount);
 		return;
 	}
 	amount /= 1024;
@@ -26,7 +25,7 @@ void print_mem_amount(size_t amount)
 		amount /= 1024;
 		++n;
 	}
-	printf("%i %s", (int) amount, units[n]);
+	printf("%zu %s", amount, units[n]);
 }
 
 __attribute__((hot))

@@ -18,7 +18,7 @@ chunk_t *get_chunk(void *ptr)
 	size_t i;
 	chunk_t *c;
 
-	if(!ptr || ptr < buddy_begin)
+	if(!ptr || ptr < buddy_get_begin())
 		return NULL;
 	// TODO Optimize
 	for(i = 0; i < BUCKETS_COUNT; ++i)

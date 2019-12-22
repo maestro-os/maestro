@@ -7,7 +7,7 @@ void kfree(void *ptr, const int flags)
 
 	if(!ptr)
 		return;
-	if(ptr < buddy_begin || !(chunk = get_chunk(ptr)))
+	if(ptr < buddy_get_begin() || !(chunk = get_chunk(ptr)))
 		PANIC("Invalid kfree!", 0);
 	free_chunk(chunk, flags);
 }

@@ -38,7 +38,16 @@
 # define ADDR_PAGE(addr)	(((uintptr_t) (addr) >> 12) & 0x3ff)
 # define ADDR_REMAIN(addr)	((uintptr_t) (addr) & 0xfff)
 
-// TODO Extensive testing on every allocators
+typedef struct
+{
+	size_t memory_maps_size;
+	size_t memory_maps_entry_size;
+	void *memory_maps;
+
+	void *memory_end;
+	void *heap_begin, *heap_end;
+	size_t available_memory;
+} memory_info_t;
 
 typedef uint32_t *vmem_t;
 
@@ -51,14 +60,7 @@ typedef struct
 	size_t free;
 } mem_usage_t;
 
-extern size_t memory_maps_size;
-extern size_t memory_maps_entry_size;
-extern void *memory_maps;
-
-extern void *memory_end;
-extern void *heap_begin, *heap_end;
-extern size_t available_memory;
-
+extern memory_info_t mem_info;
 extern vmem_t kernel_vmem;
 
 extern int check_a20(void);
@@ -78,12 +80,15 @@ void vmem_identity_range(vmem_t vmem, void *from, void *to, int flags);
 int vmem_is_mapped(vmem_t vmem, void *ptr);
 void vmem_map(vmem_t vmem, void *physaddr, void *virtaddr, int flags);
 void vmem_unmap(vmem_t vmem, void *virtaddr);
-vmem_t vmem_clone(vmem_t vmem, int mem_dup);
-void *vmem_translate(vmem_t vmem, void *ptr);
 int vmem_contains(vmem_t vmem, const void *ptr, size_t size);
+void *vmem_translate(vmem_t vmem, void *ptr);
+uint32_t vmem_page_flags(vmem_t vmem, void *ptr);
+vmem_t vmem_clone(vmem_t vmem, int mem_dup);
+void vmem_destroy(vmem_t vmem);
+
+// TODO Stack allocation
 void *vmem_alloc_pages(vmem_t vmem, size_t pages);
 void vmem_free_pages(vmem_t vmem, size_t pages, int mem_free);
-void vmem_free(vmem_t vmem, int mem_free);
 
 extern void paging_enable(vmem_t vmem);
 extern void tlb_reload(void);
