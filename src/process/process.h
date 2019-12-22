@@ -57,7 +57,7 @@ typedef struct process
 	semaphore_t *sem_curr;
 	struct process *sem_next;
 
-	vmem_t page_dir;
+	mem_space_t *mem_space;
 	void *user_stack;
 	void *kernel_stack;
 	regs_t regs_state;

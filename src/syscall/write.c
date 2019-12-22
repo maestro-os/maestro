@@ -15,7 +15,7 @@ sys_ret_t sys_write(process_t *process, const regs_t *registers)
 	fildes = registers->ebx;
 	buf = (void *) registers->ecx;
 	nbyte = registers->edx;
-	if(!buf || !vmem_contains(process->page_dir, buf, nbyte))
+	if(!buf || !mem_space_can_access(process->mem_space, buf, nbyte))
 	{
 		// TODO Set errno
 		return -1;

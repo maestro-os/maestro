@@ -11,6 +11,9 @@
 # define PAGE_SIZE		0x1000
 # define KERNEL_BEGIN	((void *) 0x100000)
 
+# define MEM_SPACE_FLAG_WRITE	0b01
+# define MEM_SPACE_FLAG_STACK	0b10
+
 # define PAGING_TABLE_PAGE_SIZE		0b10000000
 # define PAGING_TABLE_ACCESSED		0b00100000
 # define PAGING_TABLE_CACHE_DISABLE	0b00010000
@@ -60,6 +63,31 @@ typedef struct
 	size_t free;
 } mem_usage_t;
 
+typedef struct mem_space mem_space_t;
+
+typedef struct mem_region
+{
+	struct mem_region *next;
+	struct mem_region *next_shared, *prev_shared;
+	mem_space_t *mem_space;
+
+	char flags;
+	void *start;
+	size_t pages;
+
+	char use_bitfield[0];
+} mem_region_t;
+
+struct mem_space
+{
+	mem_region_t *regions;
+	rb_tree_t *tree;
+
+	spinlock_t spinlock;
+
+	vmem_t page_dir;
+};
+
 extern memory_info_t mem_info;
 extern vmem_t kernel_vmem;
 
@@ -73,33 +101,37 @@ const char *memmap_type(uint32_t type);
 void print_mem_amount(size_t amount);
 void *clone_page(void *ptr);
 
+void get_memory_usage(mem_usage_t *usage);
+# ifdef KERNEL_DEBUG
+void print_mem_usage(void);
+# endif
+
+mem_space_t *mem_space_init(void);
+mem_space_t *mem_space_clone(mem_space_t *space);
+void *mem_space_alloc(mem_space_t *space, size_t pages);
+void *mem_space_alloc_stack(mem_space_t *space, size_t max_pages);
+void mem_space_free(mem_space_t *space, void *ptr, size_t pages);
+void mem_space_free_stack(mem_space_t *space, void *stack);
+int mem_space_can_access(mem_space_t *space, const void *ptr, size_t size);
+void mem_space_destroy(mem_space_t *space);
+
 vmem_t vmem_init(void);
 void vmem_kernel(void);
 void vmem_identity(vmem_t vmem, void *page, int flags);
 void vmem_identity_range(vmem_t vmem, void *from, void *to, int flags);
 int vmem_is_mapped(vmem_t vmem, void *ptr);
-// TODO Add no-dup flag option
 void vmem_map(vmem_t vmem, void *physaddr, void *virtaddr, int flags);
 void vmem_unmap(vmem_t vmem, void *virtaddr);
 int vmem_contains(vmem_t vmem, const void *ptr, size_t size);
 void *vmem_translate(vmem_t vmem, void *ptr);
 uint32_t vmem_page_flags(vmem_t vmem, void *ptr);
-vmem_t vmem_clone(vmem_t vmem, int mem_dup);
+vmem_t vmem_clone(vmem_t vmem);
 void vmem_destroy(vmem_t vmem);
-
-// TODO Stack allocation
-void *vmem_alloc_pages(vmem_t vmem, size_t pages);
-void vmem_free_pages(vmem_t vmem, size_t pages, int mem_free);
 
 extern void paging_enable(vmem_t vmem);
 extern void tlb_reload(void);
 extern void *cr2_get(void);
 extern void *cr3_get(void);
 extern void paging_disable(void);
-
-void get_memory_usage(mem_usage_t *usage);
-# ifdef KERNEL_DEBUG
-void print_mem_usage(void);
-# endif
 
 #endif

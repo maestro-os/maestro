@@ -99,20 +99,21 @@ static void free_pid(const pid_t pid)
 __attribute__((hot))
 static void init_process(process_t *process)
 {
-	vmem_t vmem;
+	mem_space_t *mem_space;
 	void *user_stack = NULL, *kernel_stack = NULL;
 
-	if(!process->page_dir)
+	if(!process->mem_space)
 	{
-		// TODO Use a function for stack allocation
+		// TODO Set stack max size
 		// TODO Do not allow access to kernel_stack in user space
-		if(!(vmem = vmem_init()) || !(user_stack = vmem_alloc_pages(vmem, 1))
-			|| !(kernel_stack = vmem_alloc_pages(vmem, 1)))
+		if(!(mem_space = mem_space_init())
+			|| !(user_stack = mem_space_alloc_stack(mem_space, 1))
+				|| !(kernel_stack = mem_space_alloc_stack(mem_space, 1)))
 		{
-			vmem_destroy(vmem);
+			mem_space_destroy(mem_space);
 			return;
 		}
-		process->page_dir = vmem;
+		process->mem_space = mem_space;
 		process->user_stack = user_stack;
 		process->kernel_stack = kernel_stack;
 		process->regs_state.esp = (uintptr_t) user_stack + (PAGE_SIZE - 1);
@@ -206,7 +207,7 @@ process_t *process_clone(process_t *proc)
 	}
 	if(!(p = new_process(proc, &proc->regs_state)))
 		return NULL;
-	if(!(p->page_dir = vmem_clone(proc->page_dir, 1)))
+	if(!(p->mem_space = mem_space_clone(proc->mem_space)))
 	{
 		del_process(p, 0);
 		return NULL;
@@ -345,7 +346,7 @@ void del_process(process_t *process, const int children)
 		cache_free(children_cache, c);
 		c = next;
 	}
-	vmem_destroy(process->page_dir);
+	mem_space_destroy(process->mem_space);
 	// TODO Free `signals_queue`
 	cache_free(processes_cache, process);
 	spin_unlock(&spinlock);
@@ -378,7 +379,7 @@ static void switch_processes(void)
 	tss.ss0 = GDT_KERNEL_DATA_OFFSET;
 	tss.ss = GDT_USER_DATA_OFFSET;
 	tss.esp0 = (uint32_t) p->kernel_stack + (PAGE_SIZE - 1);
-	paging_enable(p->page_dir);
+	paging_enable(p->mem_space->page_dir); // TODO Check if NULL?
 	if(p->syscalling)
 		kernel_switch(&p->regs_state);
 	else

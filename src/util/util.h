@@ -20,12 +20,24 @@
 # define MAX(a, b)	((a) >= (b) ? (a) : (b))
 
 # define BIT_SIZEOF(expr)	(sizeof(expr) * 8)
+# define BITFIELD_SIZE(n)	UPPER_DIVISION(n, BIT_SIZEOF(uint8_t))
 
 # define OFFSET_OF(type, field)			((size_t) &(((type *) 0)->field))
 # define CONTAINER_OF(ptr, type, field)	((void *) (ptr)\
 	- OFFSET_OF(type, field))
 
-#define VARG_COUNT(...)	(sizeof((void *[]) {__VA_ARGS__}) / sizeof(void *))
+# define VARG_COUNT(...)	(sizeof((void *[]) {__VA_ARGS__}) / sizeof(void *))
+
+# define RB_TREE_FLAG_LEFT_LEAF		0b001
+# define RB_TREE_FLAG_RIGHT_LEAF	0b010
+# define RB_TREE_FLAG_RED			0b100
+
+typedef struct rb_tree
+{
+	struct rb_tree *left, *right;
+	char flags;
+	char value[0];
+} rb_tree_t;
 
 unsigned floor_log2(const unsigned n);
 
@@ -41,5 +53,7 @@ typedef volatile int spinlock_t;
 
 extern void spin_lock(spinlock_t *spinlock);
 extern void spin_unlock(spinlock_t *spinlock);
+
+// TODO rb_tree functions
 
 #endif
