@@ -91,7 +91,13 @@ void error_handler(const unsigned error, const uint32_t error_code)
 	{
 		// TODO process_exit(process, eax);
 	}
-	process_kill(process, sig); // TODO Put in else
+	else if(error == 0xe)
+	{
+		if(!mem_space_handle_page_fault(process->mem_space))
+			process_kill(process, sig);
+	}
+	else
+		process_kill(process, sig); // TODO Put in else
 	pic_EOI(error);
 	kernel_loop();
 }

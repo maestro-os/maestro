@@ -182,25 +182,34 @@ static void region_free(mem_region_t *region)
 
 void mem_space_free(mem_space_t *space, void *ptr, size_t pages)
 {
+	if(!space || !ptr || pages == 0)
+		return;
 	// TODO Find region using tree and free it
-	(void) space;
-	(void) ptr;
-	(void) pages;
 }
 
 void mem_space_free_stack(mem_space_t *space, void *stack)
 {
+	if(!space || !stack)
+		return;
 	// TODO Find region using tree and free it
-	(void) space;
-	(void) stack;
 }
 
 int mem_space_can_access(mem_space_t *space, const void *ptr, size_t size)
 {
+	if(!space || !ptr)
+		return 0;
 	// TODO
-	(void) space;
-	(void) ptr;
 	(void) size;
+	return 0;
+}
+
+int mem_space_handle_page_fault(mem_space_t *space)
+{
+	if(!space)
+		return 0;
+	// TODO Check if virtual page is allocated
+	// TODO Allocate and map a physical page if needed
+	// TODO Return 0 if page isn't accessible or 1 if accessible
 	return 0;
 }
 

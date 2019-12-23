@@ -114,6 +114,7 @@ void *mem_space_alloc_stack(mem_space_t *space, size_t max_pages);
 void mem_space_free(mem_space_t *space, void *ptr, size_t pages);
 void mem_space_free_stack(mem_space_t *space, void *stack);
 int mem_space_can_access(mem_space_t *space, const void *ptr, size_t size);
+int mem_space_handle_page_fault(mem_space_t *space);
 void mem_space_destroy(mem_space_t *space);
 
 vmem_t vmem_init(void);
