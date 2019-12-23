@@ -55,5 +55,6 @@ extern void spin_lock(spinlock_t *spinlock);
 extern void spin_unlock(spinlock_t *spinlock);
 
 // TODO rb_tree functions
+void rb_tree_freeall(rb_tree_t **tree);
 
 #endif

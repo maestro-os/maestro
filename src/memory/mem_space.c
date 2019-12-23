@@ -110,44 +110,50 @@ fail:
 	return NULL;
 }
 
+static mem_region_t *region_create(mem_space_t *space,
+	const size_t pages, const int stack)
+{
+	mem_region_t *r;
+
+	// TODO Slab allocation
+	if(pages == 0)
+		return NULL;
+	if(!(r = kmalloc(sizeof(mem_region_t) + BITFIELD_SIZE(pages), 0)))
+		return NULL;
+	r->mem_space = space;
+	if(stack)
+		r->flags |= MEM_REGION_FLAG_STACK;
+	r->start = NULL; // TODO Find available zone using the tree
+	r->pages = pages;
+	return r;
+}
+
 void *mem_space_alloc(mem_space_t *space, size_t pages)
 {
-	// TODO
-	(void) space;
-	(void) pages;
-	return NULL;
+	mem_region_t *r;
+
+	// TODO Return NULL if available physical pages count is too low
+	if(!(r = region_create(space, pages, 0)))
+		return NULL;
+	r->used_pages = r->pages;
+	bitfield_set_range(r->use_bitfield, 0, r->pages);
+	r->next = space->regions;
+	space->regions = r;
+	// TODO Insert in tree
+	return r->start;
 }
 
 void *mem_space_alloc_stack(mem_space_t *space, size_t max_pages)
 {
-	// TODO
-	(void) space;
-	(void) max_pages;
-	return NULL;
-}
+	mem_region_t *r;
 
-void mem_space_free(mem_space_t *space, void *ptr, size_t pages)
-{
-	// TODO
-	(void) space;
-	(void) ptr;
-	(void) pages;
-}
-
-void mem_space_free_stack(mem_space_t *space, void *stack)
-{
-	// TODO
-	(void) space;
-	(void) stack;
-}
-
-int mem_space_can_access(mem_space_t *space, const void *ptr, size_t size)
-{
-	// TODO
-	(void) space;
-	(void) ptr;
-	(void) size;
-	return 0;
+	// TODO Return NULL if available physical pages count is too low
+	if(!(r = region_create(space, max_pages, 1)))
+		return NULL;
+	r->next = space->regions;
+	space->regions = r;
+	// TODO Insert in tree
+	return r->start + (r->pages * PAGE_SIZE) - 1;
 }
 
 static void region_free(mem_region_t *region)
@@ -174,6 +180,30 @@ static void region_free(mem_region_t *region)
 	kfree(region, 0);
 }
 
+void mem_space_free(mem_space_t *space, void *ptr, size_t pages)
+{
+	// TODO Find region using tree and free it
+	(void) space;
+	(void) ptr;
+	(void) pages;
+}
+
+void mem_space_free_stack(mem_space_t *space, void *stack)
+{
+	// TODO Find region using tree and free it
+	(void) space;
+	(void) stack;
+}
+
+int mem_space_can_access(mem_space_t *space, const void *ptr, size_t size)
+{
+	// TODO
+	(void) space;
+	(void) ptr;
+	(void) size;
+	return 0;
+}
+
 void mem_space_destroy(mem_space_t *space)
 {
 	mem_region_t *r, *next;
@@ -187,6 +217,6 @@ void mem_space_destroy(mem_space_t *space)
 		region_free(r);
 		r = next;
 	}
-	// TODO rb_tree_freeall(space->tree);
+	rb_tree_freeall(&space->tree);
 	kfree(space, 0);
 }

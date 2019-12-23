@@ -62,7 +62,6 @@ void bitfield_set_range(uint8_t *bitfield, const size_t begin, const size_t end)
 		*UNIT(bitfield, begin) |= mask;
 		++i;
 	}
-
 	if((end - begin) / 8 >= sizeof(mask))
 	{
 		while((i + sizeof(tiny_mask)) * 8 < end
@@ -71,22 +70,18 @@ void bitfield_set_range(uint8_t *bitfield, const size_t begin, const size_t end)
 			*UNIT(bitfield, i) = tiny_mask;
 			i += sizeof(tiny_mask);
 		}
-
 		mask = ~((long) 0);
-
 		while((i + sizeof(mask)) * 8 < end)
 		{
 			*((long *) UNIT(bitfield, i)) = mask;
 			i += sizeof(mask);
 		}
 	}
-
 	while((i + sizeof(tiny_mask)) * 8 < end)
 	{
 		*UNIT(bitfield, i) = tiny_mask;
 		i += sizeof(tiny_mask);
 	}
-
 	if(end % UNIT_SIZE != 0)
 	{
 		LEFT_MASK(mask, mask, INNER_INDEX(end));
@@ -107,7 +102,6 @@ void bitfield_clear_range(uint8_t *bitfield,
 		*UNIT(bitfield, begin) &= ~mask;
 		++i;
 	}
-
 	if((end - begin) / 8 >= sizeof(mask))
 	{
 		while((i + sizeof(*bitfield)) * 8 < end
@@ -116,20 +110,17 @@ void bitfield_clear_range(uint8_t *bitfield,
 			*UNIT(bitfield, i) = 0;
 			i += sizeof(*bitfield);
 		}
-
 		while((i + sizeof(mask)) * 8 < end)
 		{
 			*((long *) UNIT(bitfield, i)) = 0;
 			i += sizeof(mask);
 		}
 	}
-
 	while((i + sizeof(*bitfield)) * 8 < end)
 	{
 		*UNIT(bitfield, i) = 0;
 		i += sizeof(*bitfield);
 	}
-
 	if(end % UNIT_SIZE != 0)
 	{
 		LEFT_MASK(mask, mask, INNER_INDEX(end));
