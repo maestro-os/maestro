@@ -12,7 +12,7 @@
 # define SAME_PAGE(p0, p1)	(ALIGN_DOWN(p0, PAGE_SIZE)\
 	== ALIGN_DOWN(p1, PAGE_SIZE))
 
-# define UPPER_DIVISION(n0, n1)	((n0) % (n1) == 0\
+# define CEIL_DIVISION(n0, n1)	((n0) % (n1) == 0\
 	? (n0) / (n1) : (n0) / (n1) + 1)
 # define POW2(n)				(((typeof(n)) 1) << (n))
 # define ABS(i)		((i) < 0 ? -(i) : (i))
@@ -20,7 +20,7 @@
 # define MAX(a, b)	((a) >= (b) ? (a) : (b))
 
 # define BIT_SIZEOF(expr)	(sizeof(expr) * 8)
-# define BITFIELD_SIZE(n)	UPPER_DIVISION(n, BIT_SIZEOF(uint8_t))
+# define BITFIELD_SIZE(n)	CEIL_DIVISION(n, BIT_SIZEOF(uint8_t))
 
 # define OFFSET_OF(type, field)			((size_t) &(((type *) 0)->field))
 # define CONTAINER_OF(ptr, type, field)	((void *) (ptr)\
@@ -41,13 +41,13 @@ typedef struct rb_tree
 
 unsigned floor_log2(const unsigned n);
 
-int bitmap_get(const uint8_t *bitmap, size_t index);
-void bitmap_set(uint8_t *bitmap, size_t index);
-void bitmap_clear(uint8_t *bitmap, size_t index);
-void bitmap_toggle(uint8_t *bitmap, size_t index);
-void bitmap_set_range(uint8_t *bitmap, size_t begin, size_t end);
-void bitmap_clear_range(uint8_t *bitmap, size_t begin, size_t end);
-size_t bitmap_first_clear(const uint8_t *bitmap, size_t bitmap_size);
+int bitfield_get(const uint8_t *bitfield, size_t index);
+void bitfield_set(uint8_t *bitfield, size_t index);
+void bitfield_clear(uint8_t *bitfield, size_t index);
+void bitfield_toggle(uint8_t *bitfield, size_t index);
+void bitfield_set_range(uint8_t *bitfield, size_t begin, size_t end);
+void bitfield_clear_range(uint8_t *bitfield, size_t begin, size_t end);
+size_t bitfield_first_clear(const uint8_t *bitfield, size_t bitfield_size);
 
 typedef volatile int spinlock_t;
 

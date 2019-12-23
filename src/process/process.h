@@ -7,7 +7,7 @@
 # include <process/signal.h>
 
 # define PID_MAX			32768
-# define PIDS_BITMAP_SIZE	(PID_MAX / BIT_SIZEOF(char))
+# define PIDS_BITFIELD_SIZE	BITFIELD_SIZE(PID_MAX)
 
 __attribute__((packed))
 struct regs

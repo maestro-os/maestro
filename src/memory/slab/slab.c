@@ -8,8 +8,8 @@ static cache_t *caches_cache;
 __attribute__((hot))
 static void calc_pages_per_slab(cache_t *cache)
 {
-	cache->pages_per_slab = UPPER_DIVISION(sizeof(slab_t)
-		+ UPPER_DIVISION(cache->objcount, 8)
+	cache->pages_per_slab = CEIL_DIVISION(sizeof(slab_t)
+		+ CEIL_DIVISION(cache->objcount, 8)
 			+ (cache->objsize * cache->objcount), PAGE_SIZE);
 }
 
@@ -108,8 +108,8 @@ void *cache_alloc(cache_t *cache)
 		if(!(slab = alloc_slab(cache)))
 			return NULL;
 	}
-	i = bitmap_first_clear(SLAB_BITMAP(slab), cache->objcount);
-	bitmap_set(SLAB_BITMAP(slab), i);
+	i = bitfield_first_clear(SLAB_BITMAP(slab), cache->objcount);
+	bitfield_set(SLAB_BITMAP(slab), i);
 	--slab->available;
 	if(slab->available == 0)
 	{

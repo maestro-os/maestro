@@ -74,8 +74,9 @@ typedef struct mem_region
 	char flags;
 	void *start;
 	size_t pages;
+	size_t used_pages;
 
-	char use_bitfield[0];
+	uint8_t use_bitfield[0];
 } mem_region_t;
 
 struct mem_space
@@ -119,6 +120,7 @@ vmem_t vmem_init(void);
 void vmem_kernel(void);
 void vmem_identity(vmem_t vmem, void *page, int flags);
 void vmem_identity_range(vmem_t vmem, void *from, void *to, int flags);
+uint32_t *vmem_resolve(vmem_t vmem, void *ptr);
 int vmem_is_mapped(vmem_t vmem, void *ptr);
 void vmem_map(vmem_t vmem, void *physaddr, void *virtaddr, int flags);
 void vmem_unmap(vmem_t vmem, void *virtaddr);

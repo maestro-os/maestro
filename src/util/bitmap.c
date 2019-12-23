@@ -2,7 +2,7 @@
 #include <memory/memory.h>
 
 #define UNIT_SIZE		   	(BIT_SIZEOF(uint8_t))
-#define UNIT(bitmap, index)	((bitmap) + ((index) / UNIT_SIZE))
+#define UNIT(bitfield, index)	((bitfield) + ((index) / UNIT_SIZE))
 #define INNER_INDEX(index)	(UNIT_SIZE - ((index) % UNIT_SIZE) - 1)
 
 #define RIGHT_MASK(out, mask_type, size)\
@@ -23,52 +23,52 @@
 // TODO Protect and clean every function
 
 __attribute__((hot))
-int bitmap_get(const uint8_t *bitmap, const size_t index)
+int bitfield_get(const uint8_t *bitfield, const size_t index)
 {
-	return (*UNIT(bitmap, index) >> INNER_INDEX(index)) & 0b1;
+	return (*UNIT(bitfield, index) >> INNER_INDEX(index)) & 0b1;
 }
 
 __attribute__((hot))
-void bitmap_set(uint8_t *bitmap, const size_t index)
+void bitfield_set(uint8_t *bitfield, const size_t index)
 {
-	*UNIT(bitmap, index) |= (0b1 << INNER_INDEX(index));
+	*UNIT(bitfield, index) |= (0b1 << INNER_INDEX(index));
 }
 
 __attribute__((hot))
-void bitmap_clear(uint8_t *bitmap, const size_t index)
+void bitfield_clear(uint8_t *bitfield, const size_t index)
 {
-	*UNIT(bitmap, index) &= ~(0b1 << INNER_INDEX(index));
+	*UNIT(bitfield, index) &= ~(0b1 << INNER_INDEX(index));
 }
 
 __attribute__((hot))
-void bitmap_toggle(uint8_t *bitmap, const size_t index)
+void bitfield_toggle(uint8_t *bitfield, const size_t index)
 {
-	if(bitmap_get(bitmap, index))
-		bitmap_clear(bitmap, index);
+	if(bitfield_get(bitfield, index))
+		bitfield_clear(bitfield, index);
 	else
-		bitmap_set(bitmap, index);
+		bitfield_set(bitfield, index);
 }
 
 __attribute__((hot))
-void bitmap_set_range(uint8_t *bitmap, const size_t begin, const size_t end)
+void bitfield_set_range(uint8_t *bitfield, const size_t begin, const size_t end)
 {
 	long mask;
 	const uint8_t tiny_mask = ~((uint8_t) 0);
-	size_t i = begin / BIT_SIZEOF(*bitmap);
+	size_t i = begin / BIT_SIZEOF(*bitfield);
 
 	if(begin % UNIT_SIZE != 0)
 	{
 		RIGHT_MASK(mask, MASK, UNIT_SIZE - INNER_INDEX(begin));
-		*UNIT(bitmap, begin) |= mask;
+		*UNIT(bitfield, begin) |= mask;
 		++i;
 	}
 
 	if((end - begin) / 8 >= sizeof(mask))
 	{
 		while((i + sizeof(tiny_mask)) * 8 < end
-			&& !IS_ALIGNED(bitmap + i, PAGE_SIZE))
+			&& !IS_ALIGNED(bitfield + i, PAGE_SIZE))
 		{
-			*UNIT(bitmap, i) = tiny_mask;
+			*UNIT(bitfield, i) = tiny_mask;
 			i += sizeof(tiny_mask);
 		}
 
@@ -76,78 +76,79 @@ void bitmap_set_range(uint8_t *bitmap, const size_t begin, const size_t end)
 
 		while((i + sizeof(mask)) * 8 < end)
 		{
-			*((long *) UNIT(bitmap, i)) = mask;
+			*((long *) UNIT(bitfield, i)) = mask;
 			i += sizeof(mask);
 		}
 	}
 
 	while((i + sizeof(tiny_mask)) * 8 < end)
 	{
-		*UNIT(bitmap, i) = tiny_mask;
+		*UNIT(bitfield, i) = tiny_mask;
 		i += sizeof(tiny_mask);
 	}
 
 	if(end % UNIT_SIZE != 0)
 	{
 		LEFT_MASK(mask, mask, INNER_INDEX(end));
-		*UNIT(bitmap, i) |= mask;
+		*UNIT(bitfield, i) |= mask;
 	}
 }
 
 __attribute__((hot))
-void bitmap_clear_range(uint8_t *bitmap, const size_t begin, const size_t end)
+void bitfield_clear_range(uint8_t *bitfield,
+	const size_t begin, const size_t end)
 {
 	long mask;
-	size_t i = begin / BIT_SIZEOF(*bitmap);
+	size_t i = begin / BIT_SIZEOF(*bitfield);
 
 	if(begin % UNIT_SIZE != 0)
 	{
 		RIGHT_MASK(mask, MASK, UNIT_SIZE - INNER_INDEX(begin));
-		*UNIT(bitmap, begin) &= ~mask;
+		*UNIT(bitfield, begin) &= ~mask;
 		++i;
 	}
 
 	if((end - begin) / 8 >= sizeof(mask))
 	{
-		while((i + sizeof(*bitmap)) * 8 < end
-			&& !IS_ALIGNED(bitmap + i, PAGE_SIZE))
+		while((i + sizeof(*bitfield)) * 8 < end
+			&& !IS_ALIGNED(bitfield + i, PAGE_SIZE))
 		{
-			*UNIT(bitmap, i) = 0;
-			i += sizeof(*bitmap);
+			*UNIT(bitfield, i) = 0;
+			i += sizeof(*bitfield);
 		}
 
 		while((i + sizeof(mask)) * 8 < end)
 		{
-			*((long *) UNIT(bitmap, i)) = 0;
+			*((long *) UNIT(bitfield, i)) = 0;
 			i += sizeof(mask);
 		}
 	}
 
-	while((i + sizeof(*bitmap)) * 8 < end)
+	while((i + sizeof(*bitfield)) * 8 < end)
 	{
-		*UNIT(bitmap, i) = 0;
-		i += sizeof(*bitmap);
+		*UNIT(bitfield, i) = 0;
+		i += sizeof(*bitfield);
 	}
 
 	if(end % UNIT_SIZE != 0)
 	{
 		LEFT_MASK(mask, mask, INNER_INDEX(end));
-		*UNIT(bitmap, i) &= ~mask;
+		*UNIT(bitfield, i) &= ~mask;
 	}
 }
 
-size_t bitmap_first_clear(const uint8_t *bitmap, const size_t bitmap_size)
+size_t bitfield_first_clear(const uint8_t *bitfield, const size_t bitfield_size)
 {
 	size_t i = 0;
 	uint8_t c;
 	size_t j = 0;
 
-	while(i * UNIT_SIZE < bitmap_size && bitmap[i] == 0xff)
+	while(i * UNIT_SIZE < bitfield_size && bitfield[i] == 0xff)
 		++i;
-	if(i * UNIT_SIZE >= bitmap_size)
-		return bitmap_size;
-	c = bitmap[i];
-	while(c & (1 << 7) && i * UNIT_SIZE + j < bitmap_size)
+	if(i * UNIT_SIZE >= bitfield_size)
+		return bitfield_size;
+	c = bitfield[i];
+	while(c & (1 << 7) && i * UNIT_SIZE + j < bitfield_size)
 	{
 		c <<= 1;
 		++j;

@@ -27,7 +27,7 @@ void pit_set_frequency(const unsigned frequency)
 	unsigned c;
 
 	current_frequency = frequency;
-	if((c = UPPER_DIVISION(BASE_FREQUENCY, frequency)) & ~0xffff)
+	if((c = CEIL_DIVISION(BASE_FREQUENCY, frequency)) & ~0xffff)
 		c = 0;
 	pit_set_count(c);
 }

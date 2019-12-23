@@ -27,6 +27,7 @@ static mem_region_t *clone_region(mem_space_t *space, mem_region_t *r)
 	new->flags = r->flags;
 	new->start = r->start;
 	new->pages = r->pages;
+	new->used_pages = r->used_pages;
 	memcpy(new->use_bitfield, r->use_bitfield, bitfield_size);
 	if((new->next_shared = r->next_shared))
 		r->next_shared->prev_shared = new;
@@ -68,16 +69,35 @@ static int build_regions_tree(mem_space_t *space)
 	return 1;
 }
 
+static void regions_disable_write(mem_region_t *r, vmem_t page_dir)
+{
+	size_t i;
+	void *ptr;
+
+	while(r)
+	{
+		ptr = r->start;
+		while(i < r->pages)
+		{
+			*vmem_resolve(page_dir, ptr + (i * PAGE_SIZE))
+				&= ~PAGING_PAGE_WRITE;
+			++i;
+		}
+		r = r->next;
+	}
+}
+
 mem_space_t *mem_space_clone(mem_space_t *space)
 {
 	mem_space_t *s;
 
+	// TODO Slab allocation
 	if(!space || !(s = kmalloc_zero(sizeof(mem_space_t), 0)))
 		return NULL;
 	spin_lock(&space->spinlock);
 	if(!clone_regions(s, space->regions) || !build_regions_tree(s))
 		goto fail;
-	// TODO Disable write access to all pages of regions in `space->page_dir`
+	regions_disable_write(space->regions, space->page_dir);
 	if(!(s->page_dir = vmem_clone(space->page_dir)))
 		goto fail;
 	spin_unlock(&space->spinlock);
@@ -130,8 +150,43 @@ int mem_space_can_access(mem_space_t *space, const void *ptr, size_t size)
 	return 0;
 }
 
+static void region_free(mem_region_t *region)
+{
+	size_t i;
+
+	if(!region->prev_shared && !region->next_shared)
+	{
+		i = 0;
+		while(i < region->pages)
+		{
+			if(bitfield_get(region->use_bitfield, i))
+				buddy_free(region->start + (i * PAGE_SIZE));
+			++i;
+		}
+	}
+	else
+	{
+		if(region->prev_shared)
+			region->prev_shared->next_shared = region->next_shared;
+		if(region->next_shared)
+			region->next_shared->prev_shared = region->prev_shared;
+	}
+	kfree(region, 0);
+}
+
 void mem_space_destroy(mem_space_t *space)
 {
-	// TODO
-	(void) space;
+	mem_region_t *r, *next;
+
+	if(!space)
+		return;
+	r = space->regions;
+	while(r)
+	{
+		next = r->next;
+		region_free(r);
+		r = next;
+	}
+	// TODO rb_tree_freeall(space->tree);
+	kfree(space, 0);
 }

@@ -79,7 +79,7 @@ static void *large_alloc(const size_t size, const int flags)
 	chunk_t *chunk;
 
 	total_size = sizeof(chunk_t) + size;
-	pages = UPPER_DIVISION(total_size, PAGE_SIZE);
+	pages = CEIL_DIVISION(total_size, PAGE_SIZE);
 	if((chunk = _alloc_block(pages, flags)))
 	{
 		chunk->size = pages * PAGE_SIZE + sizeof(chunk_t);

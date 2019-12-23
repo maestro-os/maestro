@@ -41,7 +41,7 @@ static void protect_section(elf_section_header_t *hdr, const char *name)
 	if(hdr->sh_flags & SHF_WRITE || hdr->sh_addralign != PAGE_SIZE)
 		return;
 	ptr = (void *) hdr->sh_addr;
-	pages = UPPER_DIVISION(hdr->sh_size, PAGE_SIZE);
+	pages = CEIL_DIVISION(hdr->sh_size, PAGE_SIZE);
 	vmem_identity_range(kernel_vmem, ptr, ptr + (pages * PAGE_SIZE),
 		PAGING_PAGE_USER);
 }
@@ -100,7 +100,7 @@ void vmem_identity_range(vmem_t vmem, void *from, void *to, int flags)
 }
 
 __attribute__((hot))
-static uint32_t *vmem_resolve(vmem_t vmem, void *ptr)
+uint32_t *vmem_resolve(vmem_t vmem, void *ptr)
 {
 	uintptr_t table, page;
 	vmem_t table_obj;
@@ -185,7 +185,7 @@ void *vmem_translate(vmem_t vmem, void *ptr)
 }
 
 __attribute__((hot))
-uint32_t vmem_page_flags(vmem_t vmem, void *ptr)
+uint32_t vmem_get_entry(vmem_t vmem, void *ptr)
 {
 	uint32_t *entry;
 

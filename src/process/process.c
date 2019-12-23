@@ -13,7 +13,7 @@ static cache_t *signals_cache;
 
 static process_t *volatile processes = NULL;
 static process_t *volatile running_process = NULL;
-static uint8_t *pids_bitmap;
+static uint8_t *pids_bitfield;
 
 __ATTR_PAGE_ALIGNED
 __ATTR_BSS
@@ -71,9 +71,9 @@ void process_init(void)
 		NULL, bzero);
 	if(!processes_cache || !children_cache || !signals_cache)
 		PANIC("Cannot allocate caches for processes!", 0);
-	if(!(pids_bitmap = kmalloc_zero(PIDS_BITMAP_SIZE, 0)))
-		PANIC("Cannot allocate PIDs bitmap!", 0);
-	bitmap_set(pids_bitmap, 0);
+	if(!(pids_bitfield = kmalloc_zero(PIDS_BITFIELD_SIZE, 0)))
+		PANIC("Cannot allocate PIDs bitfield!", 0);
+	bitfield_set(pids_bitfield, 0);
 	tss_init();
 }
 
@@ -83,17 +83,17 @@ static pid_t alloc_pid(void)
 	pid_t pid;
 
 	// TODO Use a last_pid variable to avoid searching from the first pid
-	pid = bitmap_first_clear(pids_bitmap, PIDS_BITMAP_SIZE);
-	if(pid >= (pid_t) PIDS_BITMAP_SIZE)
+	pid = bitfield_first_clear(pids_bitfield, PIDS_BITFIELD_SIZE);
+	if(pid >= (pid_t) PIDS_BITFIELD_SIZE)
 		return -1;
-	bitmap_set(pids_bitmap, pid);
+	bitfield_set(pids_bitfield, pid);
 	return pid;
 }
 
 __attribute__((hot))
 static void free_pid(const pid_t pid)
 {
-	bitmap_clear(pids_bitmap, pid);
+	bitfield_clear(pids_bitfield, pid);
 }
 
 __attribute__((hot))

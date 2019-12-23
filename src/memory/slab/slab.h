@@ -10,7 +10,7 @@
 
 # define SLAB_BITMAP(slab)			((void *) (slab) + sizeof(slab_t))
 # define SLAB_OBJ(cache, slab, i)	(SLAB_BITMAP(slab)\
-	+ UPPER_DIVISION((cache)->objcount, 8) + (cache)->objsize * (i))
+	+ CEIL_DIVISION((cache)->objcount, 8) + (cache)->objsize * (i))
 
 typedef struct slab
 {
