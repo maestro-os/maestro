@@ -1,15 +1,30 @@
 #include <memory/memory.h>
+#include <kernel.h>
+
+static cache_t *mem_space_cache;
+
+static void global_init(void)
+{
+	if(!(mem_space_cache = cache_create("mem_space", sizeof(mem_space_t), 64,
+		bzero, NULL)))
+		PANIC("Failed to initialize mem_space cache!", 0);
+}
 
 mem_space_t *mem_space_init(void)
 {
+	static int init = 0;
 	mem_space_t *s;
 
-	// TODO Slab allocation
-	if(!(s = kmalloc_zero(sizeof(mem_space_t), 0)))
+	if(!init)
+	{
+		global_init();
+		init = 1;
+	}
+	if(!(s = cache_alloc(mem_space_cache)))
 		return NULL;
 	if(!(s->page_dir = vmem_init()))
 	{
-		kfree(s, 0);
+		cache_free(mem_space_cache, s);
 		return NULL;
 	}
 	return s;
@@ -89,8 +104,7 @@ mem_space_t *mem_space_clone(mem_space_t *space)
 {
 	mem_space_t *s;
 
-	// TODO Slab allocation
-	if(!space || !(s = kmalloc_zero(sizeof(mem_space_t), 0)))
+	if(!space || !(s = cache_alloc(mem_space_cache)))
 		return NULL;
 	spin_lock(&space->spinlock);
 	if(!clone_regions(s, space->regions) || !build_regions_tree(s))
@@ -102,7 +116,7 @@ mem_space_t *mem_space_clone(mem_space_t *space)
 	return s;
 
 fail:
-	kfree(s, 0);
+	cache_free(mem_space_cache, s);
 	// TODO Free all, remove links, etc...
 	spin_unlock(&space->spinlock);
 	return NULL;
@@ -113,7 +127,6 @@ static mem_region_t *region_create(mem_space_t *space,
 {
 	mem_region_t *r;
 
-	// TODO Slab allocation
 	if(pages == 0)
 		return NULL;
 	if(!(r = kmalloc(sizeof(mem_region_t) + BITFIELD_SIZE(pages), 0)))
@@ -225,5 +238,5 @@ void mem_space_destroy(mem_space_t *space)
 		r = next;
 	}
 	rb_tree_freeall(&space->tree);
-	kfree(space, 0);
+	cache_free(mem_space_cache, space);
 }
