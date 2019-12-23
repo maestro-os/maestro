@@ -54,7 +54,7 @@ __attribute__((cold))
 void print_callstack(void *ebp, const size_t max_depth)
 {
 	size_t i = 0;
-	void *eip;
+	void *eip = NULL;
 	const char *name;
 
 	printf("--- Callstack ---\n");

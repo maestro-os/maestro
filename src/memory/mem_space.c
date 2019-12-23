@@ -71,19 +71,17 @@ static int build_regions_tree(mem_space_t *space)
 
 static void regions_disable_write(mem_region_t *r, vmem_t page_dir)
 {
-	size_t i;
 	void *ptr;
+	size_t i;
 
-	while(r)
+	for(; r; r = r->next)
 	{
+		if(!(r->flags & MEM_REGION_FLAG_WRITE))
+			continue;
 		ptr = r->start;
-		while(i < r->pages)
-		{
+		for(i = 0; i < r->pages; ++i)
 			*vmem_resolve(page_dir, ptr + (i * PAGE_SIZE))
 				&= ~PAGING_PAGE_WRITE;
-			++i;
-		}
-		r = r->next;
 	}
 }
 
