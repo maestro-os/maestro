@@ -90,14 +90,16 @@ void error_handler(const unsigned error, const uint32_t error_code)
 	if(error == 0xd) // TODO and *eip == 0xf4
 	{
 		// TODO process_exit(process, eax);
+		process_kill(process, sig); // TODO rm
 	}
 	else if(error == 0xe)
 	{
-		if(!mem_space_handle_page_fault(process->mem_space))
-			process_kill(process, sig);
+		if(mem_space_handle_page_fault(process->mem_space))
+			return;
+		process_kill(process, sig);
 	}
 	else
-		process_kill(process, sig); // TODO Put in else
+		process_kill(process, sig);
 	pic_EOI(error);
 	kernel_loop();
 }

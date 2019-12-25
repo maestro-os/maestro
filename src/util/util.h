@@ -28,15 +28,11 @@
 
 # define VARG_COUNT(...)	(sizeof((void *[]) {__VA_ARGS__}) / sizeof(void *))
 
-# define RB_TREE_FLAG_LEFT_LEAF		0b001
-# define RB_TREE_FLAG_RIGHT_LEAF	0b010
-# define RB_TREE_FLAG_RED			0b100
-
 typedef struct rb_tree
 {
 	struct rb_tree *left, *right;
-	char flags;
-	char value[0];
+	char color;
+	uintmax_t value;
 } rb_tree_t;
 
 unsigned floor_log2(const unsigned n);
@@ -54,7 +50,11 @@ typedef volatile int spinlock_t;
 extern void spin_lock(spinlock_t *spinlock);
 extern void spin_unlock(spinlock_t *spinlock);
 
-// TODO rb_tree functions
-void rb_tree_freeall(rb_tree_t **tree);
+rb_tree_t *rb_tree_rotate_left(rb_tree_t *node);
+rb_tree_t *rb_tree_rotate_right(rb_tree_t *node);
+rb_tree_t *rb_tree_search(rb_tree_t *tree, uintmax_t value);
+void rb_tree_insert(rb_tree_t **tree, uintmax_t value);
+void rb_tree_delete(rb_tree_t **tree, uintmax_t value);
+void rb_tree_freeall(rb_tree_t *tree, void (*f)(uintmax_t));
 
 #endif
