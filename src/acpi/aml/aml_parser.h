@@ -118,7 +118,7 @@
 # define IS_LOCAL_OP(c)			((c) >= LOCAL0_OP && (c) <= LOCAL7_OP)
 
 # define BLOB_COPY(from, to)	*(to) = *(from)
-# define BLOB_CONSUME(b, n)		(b)->src += (n); (b)->len -= (n)
+# define BLOB_CONSUME(b, n)		blob_consume(b, n)
 # define BLOB_REMAIN(b)			((b)->len)
 # define BLOB_EMPTY(b)			(BLOB_REMAIN(b) == 0)
 # define BLOB_PEEK(b)			((b)->src[0])
@@ -471,6 +471,7 @@ typedef struct
 	size_t len;
 } aml_parse_context_t;
 
+void blob_consume(aml_parse_context_t *context, const size_t n);
 int blob_check(aml_parse_context_t *context, const char c);
 
 typedef aml_node_t *(*parse_func_t)(aml_parse_context_t *);
