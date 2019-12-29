@@ -61,7 +61,7 @@ avl_tree_t *avl_tree_rotate_leftright(avl_tree_t *root);
 avl_tree_t *avl_tree_rotate_rightleft(avl_tree_t *root);
 avl_tree_t *avl_tree_search(avl_tree_t *tree, void *value, cmp_func_t f);
 void avl_tree_insert(avl_tree_t **tree, void *value, cmp_func_t f);
-void avl_tree_delete(avl_tree_t **tree, void *value, cmp_func_t f);
+void avl_tree_delete(avl_tree_t **tree, avl_tree_t *n);
 void avl_tree_freeall(avl_tree_t *tree, void (*f)(void *));
 # ifdef KERNEL_DEBUG
 void avl_tree_print(const avl_tree_t *tree);

@@ -223,13 +223,40 @@ void avl_tree_insert(avl_tree_t **tree, void *value, const cmp_func_t f)
 		*tree = node;
 }
 
-void avl_tree_delete(avl_tree_t **tree, void *value, const cmp_func_t f)
+static avl_tree_t *find_min(avl_tree_t *node)
 {
-	if(!tree || !*tree)
+	while(node->left)
+		node = node->left;
+	return node;
+}
+
+void avl_tree_delete(avl_tree_t **tree, avl_tree_t *n)
+{
+	avl_tree_t *tmp;
+
+	if(!tree || !n)
 		return;
-	// TODO
-	(void) value;
-	(void) f;
+	if(n->left && n->right)
+	{
+		tmp = find_min(n);
+		n->value = tmp->value;
+		avl_tree_delete(tree, tmp);
+	}
+	else
+	{
+		if(n->left)
+			tmp = n->left;
+		else if(n->right)
+			tmp = n->right;
+		else
+			tmp = NULL;
+		if(n == n->parent->left)
+			n->parent->left = tmp;
+		else
+			n->parent->right = tmp;
+		// TODO Rebalance
+	}
+	cache_free(avl_tree_cache, n);
 }
 
 void avl_tree_freeall(avl_tree_t *tree, void (*f)(void *))
