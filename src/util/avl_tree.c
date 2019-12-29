@@ -230,6 +230,68 @@ static avl_tree_t *find_min(avl_tree_t *node)
 	return node;
 }
 
+static void delete_balance(avl_tree_t **tree, avl_tree_t *node)
+{
+	avl_tree_t *n, *g, *r, *tmp;
+	int factor;
+
+	update_heights(node);
+	r = node;
+	for(n = r->parent; n; n = g)
+	{
+		g = n->parent;
+		if(r == n->left)
+		{
+			if(avl_tree_balance_factor(n) > 0)
+			{
+				tmp = n->right;
+				factor = avl_tree_balance_factor(tmp);
+				if(factor < 0)
+					r = avl_tree_rotate_rightleft(n);
+				else
+					r = avl_tree_rotate_left(n);
+			}
+			else
+			{
+				if(avl_tree_balance_factor(n) == 0)
+					break;
+				r = n;
+				continue;
+			}
+		}
+		else
+		{
+			if(avl_tree_balance_factor(n) < 0)
+			{
+				tmp = n->left;
+				factor = avl_tree_balance_factor(tmp);
+				if(factor > 0)
+					r = avl_tree_rotate_leftright(n);
+				else
+					r = avl_tree_rotate_right(n);
+			}
+			else
+			{
+				if(avl_tree_balance_factor(n) == 0)
+					break;
+				r = n;
+				continue;
+			}
+		}
+		if((r->parent = g))
+		{
+			if(n == g->left)
+				g->left = r;
+			else
+				g->right = r;
+			if(factor == 0)
+				break;
+		}
+		else
+			*tree = r;
+	}
+}
+
 void avl_tree_delete(avl_tree_t **tree, avl_tree_t *n)
 {
 	avl_tree_t *tmp;
@@ -254,8 +316,8 @@ void avl_tree_delete(avl_tree_t **tree, avl_tree_t *n)
 			n->parent->left = tmp;
 		else
 			n->parent->right = tmp;
-		// TODO Rebalance
 	}
+	delete_balance(tree, n);
 	cache_free(avl_tree_cache, n);
 }
 
