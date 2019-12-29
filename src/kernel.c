@@ -137,6 +137,13 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	keyboard_set_ctrl_hook(tty_ctrl_hook);
 	keyboard_set_erase_hook(tty_erase_hook);
 
+	// TODO remove
+	avl_tree_t *t = NULL;
+	for(size_t i = 0; i < 50; ++i)
+		avl_tree_insert(&t, (void *) i, ptr_cmp);
+	avl_tree_print(t);
+	kernel_loop();
+
 	printf("ACPI initialization...\n");
 	// TODO acpi_init();
 

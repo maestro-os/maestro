@@ -28,12 +28,12 @@
 
 # define VARG_COUNT(...)	(sizeof((void *[]) {__VA_ARGS__}) / sizeof(void *))
 
-typedef struct rb_tree
+typedef struct avl_tree
 {
-	struct rb_tree *left, *right;
-	char color;
-	uintmax_t value;
-} rb_tree_t;
+	struct avl_tree *left, *right, *parent;
+	unsigned height;
+	void *value;
+} avl_tree_t;
 
 unsigned floor_log2(const unsigned n);
 
@@ -50,11 +50,21 @@ typedef volatile int spinlock_t;
 extern void spin_lock(spinlock_t *spinlock);
 extern void spin_unlock(spinlock_t *spinlock);
 
-rb_tree_t *rb_tree_rotate_left(rb_tree_t *node);
-rb_tree_t *rb_tree_rotate_right(rb_tree_t *node);
-rb_tree_t *rb_tree_search(rb_tree_t *tree, uintmax_t value);
-void rb_tree_insert(rb_tree_t **tree, uintmax_t value);
-void rb_tree_delete(rb_tree_t **tree, uintmax_t value);
-void rb_tree_freeall(rb_tree_t *tree, void (*f)(uintmax_t));
+typedef int (*cmp_func_t)(void *, void *);
+
+int ptr_cmp(void *p0, void *p1);
+
+int avl_tree_balance_factor(const avl_tree_t *tree);
+avl_tree_t *avl_tree_rotate_left(avl_tree_t *root);
+avl_tree_t *avl_tree_rotate_right(avl_tree_t *root);
+avl_tree_t *avl_tree_rotate_leftright(avl_tree_t *root);
+avl_tree_t *avl_tree_rotate_rightleft(avl_tree_t *root);
+avl_tree_t *avl_tree_search(avl_tree_t *tree, void *value, cmp_func_t f);
+void avl_tree_insert(avl_tree_t **tree, void *value, cmp_func_t f);
+void avl_tree_delete(avl_tree_t **tree, void *value, cmp_func_t f);
+void avl_tree_freeall(avl_tree_t *tree, void (*f)(void *));
+# ifdef KERNEL_DEBUG
+void avl_tree_print(const avl_tree_t *tree);
+# endif
 
 #endif

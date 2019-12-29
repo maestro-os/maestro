@@ -10,6 +10,8 @@
 #define PLUS_FLAG	0b010000
 #define QUOTE_FLAG	0b100000
 
+// TODO Fix %ju
+
 typedef struct
 {
 	size_t size;
@@ -201,11 +203,13 @@ end:
 	return begin;
 }
 
-static inline int get_arg(va_list *args, const size_t length)
+static inline intmax_t get_arg(va_list *args, const size_t length)
 {
-	if(length == 0 || length >= 4)
+	return va_arg(*args, int32_t);
+	(void) length;
+	/*if(length == 0 || length >= 4)
 		return va_arg(*args, int32_t);
-	return va_arg(*args, int32_t) & ((1 << length * 8) - 1);
+	return va_arg(*args, int32_t) & ((1 << length * 8) - 1);*/
 }
 
 static inline size_t intlen(int i, const unsigned base)

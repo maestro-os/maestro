@@ -82,7 +82,7 @@ typedef struct mem_region
 struct mem_space
 {
 	mem_region_t *regions;
-	rb_tree_t *tree;
+	avl_tree_t *tree;
 
 	spinlock_t spinlock;
 

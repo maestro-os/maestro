@@ -67,13 +67,13 @@ fclean: clean
 re: fclean all
 
 test: iso
-	qemu-system-i386 -cdrom $(NAME).iso -d int -soundhw pcspk
+	qemu-system-i386 -cdrom $(NAME).iso -d int
 
 cputest: iso
-	qemu-system-i386 -cdrom $(NAME).iso -d int,cpu -soundhw pcspk >cpu_out 2>&1
+	qemu-system-i386 -cdrom $(NAME).iso -d int,cpu >cpu_out 2>&1
 
 debug: iso
-	qemu-system-i386 -cdrom $(NAME).iso -d int -s -S -soundhw pcspk
+	qemu-system-i386 -cdrom $(NAME).iso -d int -s -S
 
 bochs: iso
 	bochs

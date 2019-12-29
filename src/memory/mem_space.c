@@ -237,6 +237,6 @@ void mem_space_destroy(mem_space_t *space)
 		region_free(r);
 		r = next;
 	}
-	rb_tree_freeall(space->tree, NULL);
+	avl_tree_freeall(space->tree, NULL);
 	cache_free(mem_space_cache, space);
 }

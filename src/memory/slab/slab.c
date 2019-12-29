@@ -49,14 +49,15 @@ cache_t *cache_get(const char *name)
 	return NULL;
 }
 
-__attribute__((hot))
+__attribute__((cold))
 cache_t *cache_create(const char *name, size_t objsize, size_t objcount,
 	void (*ctor)(void *, size_t), void (*dtor)(void *, size_t))
 {
 	cache_t *cache;
 
-	if(!name || objsize == 0 || objcount == 0
-		|| !(cache = cache_alloc(caches_cache)))
+	if(!name || objsize == 0 || objcount == 0)
+		return NULL;
+	if(!(cache = cache_alloc(caches_cache)))
 		return NULL;
 	cache->name = name;
 	cache->objsize = objsize;
