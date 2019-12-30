@@ -1,6 +1,6 @@
 #include <pic/pic.h>
 
-__attribute__((cold))
+ATTR_COLD
 void pic_init(const uint8_t offset1, const uint8_t offset2)
 {
 	int8_t mask1, mask2;
@@ -25,7 +25,7 @@ void pic_init(const uint8_t offset1, const uint8_t offset2)
 	outb(PIC_SLAVE_DATA, mask2);
 }
 
-__attribute__((hot))
+ATTR_HOT
 void pic_EOI(const unsigned irq)
 {
 	if(irq >= 0x8)

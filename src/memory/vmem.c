@@ -13,13 +13,13 @@
 
 vmem_t kernel_vmem;
 
-__attribute__((hot))
+ATTR_HOT
 static inline vmem_t new_vmem_obj(void)
 {
 	return buddy_alloc_zero(0);
 }
 
-__attribute__((hot))
+ATTR_HOT
 vmem_t vmem_init(void)
 {
 	vmem_t vmem;
@@ -31,7 +31,7 @@ vmem_t vmem_init(void)
 	return vmem;
 }
 
-__attribute__((cold))
+ATTR_COLD
 static void protect_section(elf_section_header_t *hdr, const char *name)
 {
 	void *ptr;
@@ -46,14 +46,14 @@ static void protect_section(elf_section_header_t *hdr, const char *name)
 		PAGING_PAGE_USER);
 }
 
-__attribute__((cold))
+ATTR_COLD
 static void protect_kernel(void)
 {
 	iterate_sections(boot_info->elf_sections, boot_info->elf_num,
 		boot_info->elf_shndx, boot_info->elf_entsize, protect_section);
 }
 
-__attribute__((cold))
+ATTR_COLD
 void vmem_kernel(void)
 {
 	if(!(kernel_vmem = new_vmem_obj()))
@@ -76,13 +76,13 @@ fail:
 	PANIC("Cannot initialize kernel virtual memory!", 0);
 }
 
-__attribute__((hot))
+ATTR_HOT
 void vmem_identity(vmem_t vmem, void *page, const int flags)
 {
 	vmem_map(vmem, page, page, flags);
 }
 
-__attribute__((hot))
+ATTR_HOT
 void vmem_identity_range(vmem_t vmem, void *from, void *to, int flags)
 {
 	void *ptr;
@@ -99,7 +99,7 @@ void vmem_identity_range(vmem_t vmem, void *from, void *to, int flags)
 	}
 }
 
-__attribute__((hot))
+ATTR_HOT
 uint32_t *vmem_resolve(vmem_t vmem, void *ptr)
 {
 	uintptr_t table, page;
@@ -115,13 +115,13 @@ uint32_t *vmem_resolve(vmem_t vmem, void *ptr)
 	return table_obj + page;
 }
 
-__attribute__((hot))
+ATTR_HOT
 int vmem_is_mapped(vmem_t vmem, void *ptr)
 {
 	return (vmem_resolve(vmem, ptr) != NULL);
 }
 
-__attribute__((hot))
+ATTR_HOT
 void vmem_map(vmem_t vmem, void *physaddr, void *virtaddr, const int flags)
 {
 	size_t t;
@@ -141,7 +141,7 @@ void vmem_map(vmem_t vmem, void *physaddr, void *virtaddr, const int flags)
 	v[ADDR_PAGE(virtaddr)] = (uintptr_t) physaddr | PAGING_PAGE_PRESENT | flags;
 }
 
-__attribute__((hot))
+ATTR_HOT
 void vmem_unmap(vmem_t vmem, void *virtaddr)
 {
 	size_t t;
@@ -157,7 +157,7 @@ void vmem_unmap(vmem_t vmem, void *virtaddr)
 	// TODO If page table is empty, free it
 }
 
-__attribute__((hot))
+ATTR_HOT
 int vmem_contains(vmem_t vmem, const void *ptr, const size_t size)
 {
 	void *i;
@@ -174,7 +174,7 @@ int vmem_contains(vmem_t vmem, const void *ptr, const size_t size)
 	return 1;
 }
 
-__attribute__((hot))
+ATTR_HOT
 void *vmem_translate(vmem_t vmem, void *ptr)
 {
 	uint32_t *entry;
@@ -184,7 +184,7 @@ void *vmem_translate(vmem_t vmem, void *ptr)
 	return (void *) ((*entry & PAGING_ADDR_MASK) | ADDR_REMAIN(ptr));
 }
 
-__attribute__((hot))
+ATTR_HOT
 uint32_t vmem_get_entry(vmem_t vmem, void *ptr)
 {
 	uint32_t *entry;
@@ -195,7 +195,7 @@ uint32_t vmem_get_entry(vmem_t vmem, void *ptr)
 
 }
 
-__attribute__((hot))
+ATTR_HOT
 static vmem_t clone_page_table(vmem_t from)
 {
 	vmem_t v;
@@ -206,7 +206,7 @@ static vmem_t clone_page_table(vmem_t from)
 	return v;
 }
 
-__attribute__((hot))
+ATTR_HOT
 vmem_t vmem_clone(vmem_t vmem)
 {
 	vmem_t v;
@@ -236,7 +236,7 @@ fail:
 	return NULL;
 }
 
-__attribute__((hot))
+ATTR_HOT
 void vmem_destroy(vmem_t vmem)
 {
 	size_t i;

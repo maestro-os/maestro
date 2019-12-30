@@ -48,7 +48,7 @@
 
 typedef uint32_t elf32_addr_t;
 
-__attribute__((packed))
+ATTR_PACKED
 struct elf_section_header
 {
 	uint32_t sh_name;
@@ -63,7 +63,7 @@ struct elf_section_header
 	uint32_t sh_entsize;
 };
 
-__attribute__((packed))
+ATTR_PACKED
 struct elf32_sym
 {
 	uint32_t st_name;

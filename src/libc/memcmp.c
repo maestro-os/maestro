@@ -1,7 +1,8 @@
 #include <libc/string.h>
+#include <util/attr.h>
 
 // TODO Rewrite
-__attribute__((hot))
+ATTR_HOT
 int memcmp(const void *s1, const void *s2, size_t n)
 {
 	size_t i = 0;

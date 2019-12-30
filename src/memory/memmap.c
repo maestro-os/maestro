@@ -4,13 +4,13 @@
 
 memory_info_t mem_info;
 
-__attribute__((hot))
+ATTR_HOT
 static inline int is_valid_entry(const multiboot_mmap_entry_t *entry)
 {
 	return (entry->addr + entry->len < ((uint64_t) 1 << (4 * 8)));
 }
 
-__attribute__((hot))
+ATTR_HOT
 void memmap_print(void)
 {
 	const multiboot_mmap_entry_t *t;
@@ -29,7 +29,7 @@ void memmap_print(void)
 	}
 }
 
-__attribute__((cold))
+ATTR_COLD
 static void *get_memory_end(void)
 {
 	void *end = NULL;
@@ -47,7 +47,7 @@ static void *get_memory_end(void)
 	return ALIGN_DOWN(end, PAGE_SIZE);
 }
 
-__attribute__((cold))
+ATTR_COLD
 void memmap_init(void *multiboot_ptr, void *kernel_end)
 {
 	void *multiboot_tags_end;

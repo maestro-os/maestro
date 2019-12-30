@@ -1,7 +1,8 @@
 #include <libc/string.h>
 #include <libc/libc_internal.h>
+#include <util/attr.h>
 
-__attribute__((hot))
+ATTR_HOT
 void *memset(void *s, int c, size_t n)
 {
 	void *begin = s;

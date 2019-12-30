@@ -2,6 +2,7 @@
 # define PAGES_H
 
 # include <memory/memory.h>
+# include <util/attr.h>
 
 # define FREE_LIST_SIZE	16
 
@@ -40,7 +41,9 @@ void split_next(pages_alloc_t *alloc, void *ptr, size_t pages);
 pages_alloc_t *find_alloc(size_t pages);
 void update_free_list(pages_alloc_t *alloc);
 
+ATTR_MALLOC
 void *pages_alloc(size_t n);
+ATTR_MALLOC
 void *pages_alloc_zero(size_t n);
 void pages_free(void *ptr, size_t n);
 

@@ -4,7 +4,7 @@
 #include <process/process.h>
 #include <debug/debug.h>
 
-__ATTR_RODATA
+ATTR_RODATA
 static const char *errors[] = {
 	"Divide-by-zero Error",
 	"Debug",
@@ -40,7 +40,7 @@ static const char *errors[] = {
 	"Unknown"
 };
 
-__ATTR_RODATA
+ATTR_RODATA
 static int error_signals[] = {
 	SIGFPE,
 	SIGTRAP, // TODO
@@ -104,7 +104,7 @@ void error_handler(const unsigned error, const uint32_t error_code)
 	kernel_loop();
 }
 
-__attribute__((cold))
+ATTR_COLD
 static void print_panic(const char *reason, const uint32_t code)
 {
 	tty_init();
@@ -118,16 +118,16 @@ static void print_panic(const char *reason, const uint32_t code)
  please feel free to report it.\n");
 }
 
-__attribute__((cold))
-__attribute((noreturn))
+ATTR_COLD
+ATTR_NORETURN
 void kernel_panic(const char *reason, const uint32_t code)
 {
 	print_panic(reason, code);
 	kernel_halt();
 }
 
-__attribute__((cold))
-__attribute__((noreturn))
+ATTR_COLD
+ATTR_NORETURN
 void kernel_panic_(const char *reason, const uint32_t code,
 	const char *file, const int line)
 {

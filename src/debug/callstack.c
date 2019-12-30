@@ -4,7 +4,7 @@
 static void *inst;
 static const char *func_name;
 
-__attribute__((cold))
+ATTR_COLD
 static const char *get_symbol_name(const uint32_t offset)
 {
 	elf_section_header_t *section;
@@ -15,7 +15,7 @@ static const char *get_symbol_name(const uint32_t offset)
 	return (const char *) section->sh_addr + offset;
 }
 
-__attribute__((cold))
+ATTR_COLD
 static void get_function_symbol(elf_section_header_t *hdr, const char *name)
 {
 	void *ptr;
@@ -40,7 +40,7 @@ static void get_function_symbol(elf_section_header_t *hdr, const char *name)
 	}
 }
 
-__attribute__((cold))
+ATTR_COLD
 const char *get_function_name(void *i)
 {
 	inst = i;
@@ -50,7 +50,7 @@ const char *get_function_name(void *i)
 	return func_name;
 }
 
-__attribute__((cold))
+ATTR_COLD
 void print_callstack(void *ebp, const size_t max_depth)
 {
 	size_t i = 0;

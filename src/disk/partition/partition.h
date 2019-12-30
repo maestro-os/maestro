@@ -12,7 +12,7 @@
 
 typedef char mbr_entry_t[16];
 
-__attribute__((packed))
+ATTR_PACKED
 struct mbr
 {
 	uint32_t signature;

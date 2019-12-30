@@ -1,6 +1,7 @@
 #include <debug/debug.h>
+#include <util/attr.h>
 
-__ATTR_BSS
+ATTR_BSS
 static profiler_func_t *funcs;
 
 static void profiler_sort(void)

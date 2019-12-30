@@ -1,8 +1,9 @@
 #include <libc/libc_internal.h>
 #include <libc/string.h>
+#include <util/attr.h>
 
-__attribute__((hot))
-__attribute__((const))
+ATTR_HOT
+ATTR_CONST
 long make_field(const int c)
 {
 	long field = 0;

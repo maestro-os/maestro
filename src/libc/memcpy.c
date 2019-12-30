@@ -1,6 +1,7 @@
 #include <libc/string.h>
+#include <util/attr.h>
 
-__attribute__((hot))
+ATTR_HOT
 void *memcpy(void *dest, const void *src, size_t n)
 {
 	void *begin = dest;

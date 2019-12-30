@@ -3,13 +3,13 @@
 static void (*keyboard_hook)(const uint8_t) = NULL;
 static int8_t leds_state = 0;
 
-__attribute__((hot))
+ATTR_HOT
 static inline int can_read(void)
 {
 	return inb(PS2_STATUS) & 0b1;
 }
 
-__attribute__((hot))
+ATTR_HOT
 static inline void wait_read(void)
 {
 	while(!can_read())
@@ -18,13 +18,13 @@ static inline void wait_read(void)
 	}
 }
 
-__attribute__((hot))
+ATTR_HOT
 static inline int can_write(void)
 {
 	return !(inb(PS2_STATUS) & 0b10);
 }
 
-__attribute__((hot))
+ATTR_HOT
 static inline void wait_write(void)
 {
 	while(!can_write())
@@ -34,7 +34,7 @@ static inline void wait_write(void)
 }
 
 // TODO Timeout
-__attribute__((hot))
+ATTR_HOT
 static uint8_t ps2_command(const uint8_t command,
 	const uint8_t expected_response)
 {
@@ -54,20 +54,20 @@ static uint8_t ps2_command(const uint8_t command,
 	return response;
 }
 
-__attribute__((hot))
+ATTR_HOT
 static inline int test_controller(void)
 {
 	return (ps2_command(0xaa, CONTROLLER_TEST_PASS) == CONTROLLER_TEST_PASS);
 }
 
-__attribute__((hot))
+ATTR_HOT
 static inline int test_device(void)
 {
 	return (ps2_command(0xab, KEYBOARD_TEST_PASS) == KEYBOARD_TEST_PASS);
 }
 
 // TODO Timeout
-__attribute__((hot))
+ATTR_HOT
 static inline int keyboard_send(const uint8_t data)
 {
 	uint8_t response;
@@ -86,14 +86,14 @@ static inline int keyboard_send(const uint8_t data)
 	return (response == KEYBOARD_ACK);
 }
 
-__attribute__((hot))
+ATTR_HOT
 static void clear_buffer(void)
 {
 	while(can_read())
 		inb(PS2_DATA);
 }
 
-__attribute__((hot))
+ATTR_HOT
 void ps2_disable_devices(void)
 {
 	wait_write();
@@ -102,7 +102,7 @@ void ps2_disable_devices(void)
 	outb(PS2_COMMAND, 0xa7);
 }
 
-__attribute__((hot))
+ATTR_HOT
 int ps2_enable_keyboard(void)
 {
 	wait_write();
@@ -117,7 +117,7 @@ int ps2_enable_keyboard(void)
 	return 1;
 }
 
-__attribute__((hot))
+ATTR_HOT
 static inline uint8_t get_config_byte(void)
 {
 	wait_write();
@@ -127,7 +127,7 @@ static inline uint8_t get_config_byte(void)
 	return inb(PS2_DATA);
 }
 
-__attribute__((hot))
+ATTR_HOT
 static inline void set_config_byte(const uint8_t config_byte)
 {
 	wait_write();
@@ -136,7 +136,7 @@ static inline void set_config_byte(const uint8_t config_byte)
 	outb(PS2_DATA, config_byte); // TODO Check if can write before
 }
 
-__attribute__((cold))
+ATTR_COLD
 void ps2_init(void)
 {
 	// TODO Check if existing using ACPI
@@ -166,26 +166,26 @@ void ps2_init(void)
 	clear_buffer();
 }
 
-__attribute__((cold))
+ATTR_COLD
 void ps2_set_keyboard_hook(void (*hook)(const uint8_t))
 {
 	keyboard_hook = hook;
 }
 
-__attribute__((hot))
+ATTR_HOT
 void ps2_keyboard_event(void)
 {
 	if(keyboard_hook)
 		keyboard_hook(inb(0x60));
 }
 
-__attribute__((hot))
+ATTR_HOT
 int8_t ps2_get_leds_state(void)
 {
 	return leds_state;
 }
 
-__attribute__((hot))
+ATTR_HOT
 void ps2_set_leds_state(const int8_t state)
 {
 	if(keyboard_send(0xed))

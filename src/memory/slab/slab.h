@@ -45,6 +45,7 @@ cache_t *cache_getall(void);
 cache_t *cache_get(const char *name);
 cache_t *cache_create(const char *name, size_t objsize, size_t objcount,
 	void (*ctor)(void *, size_t), void (*dtor)(void *, size_t));
+ATTR_MALLOC
 void *cache_alloc(cache_t *cache);
 void cache_shrink(cache_t *cache);
 void cache_free(cache_t *cache, void *obj);

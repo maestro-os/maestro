@@ -3,7 +3,7 @@
 
 # include <stdint.h>
 
-__attribute__((packed))
+ATTR_PACKED
 struct tss_entry
 {
 	uint32_t prev_tss;

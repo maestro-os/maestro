@@ -3,7 +3,7 @@
 
 static unsigned current_frequency;
 
-__attribute__((cold))
+ATTR_COLD
 void pit_init(void)
 {
 	CLI(); // TODO Enable back after init if enabled in the first place?
@@ -13,7 +13,7 @@ void pit_init(void)
 		| PIT_MODE_4);
 }
 
-__attribute__((hot))
+ATTR_HOT
 void pit_set_count(const uint16_t count)
 {
 	CLI();
@@ -21,7 +21,7 @@ void pit_set_count(const uint16_t count)
 	outb(PIT_CHANNEL_0, (count >> 8) & 0xff);
 }
 
-__attribute__((hot))
+ATTR_HOT
 void pit_set_frequency(const unsigned frequency)
 {
 	unsigned c;

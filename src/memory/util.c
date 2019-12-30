@@ -28,7 +28,7 @@ void print_mem_amount(size_t amount)
 	printf("%zu %s", amount, units[n]);
 }
 
-__attribute__((hot))
+ATTR_HOT
 void *clone_page(void *ptr)
 {
 	void *new_page;

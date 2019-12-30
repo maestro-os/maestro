@@ -7,7 +7,7 @@ ata_device_t *ata_devices = NULL;
 
 // TODO Handle bad sectors
 
-__attribute__((cold))
+ATTR_COLD
 void ata_init(void)
 {
 	if(!(ata_cache = cache_create("ata", sizeof(ata_device_t), 32,
@@ -15,13 +15,13 @@ void ata_init(void)
 		PANIC("Failed to initialize ATA driver!", 0);
 }
 
-__attribute__((hot))
+ATTR_HOT
 static inline int ata_has_err(ata_device_t *dev)
 {
 	return (inb(dev->bus + ATA_REG_STATUS) & ATA_STATUS_ERR);
 }
 
-__attribute__((hot))
+ATTR_HOT
 void ata_irq(void)
 {
 	ata_device_t *dev;
@@ -31,7 +31,7 @@ void ata_irq(void)
 	dev->wait_irq = 0;
 }
 
-__attribute__((hot))
+ATTR_HOT
 void ata_err_check(void)
 {
 	ata_device_t *d;

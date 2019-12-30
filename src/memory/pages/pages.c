@@ -3,11 +3,12 @@
 
 pages_alloc_t *allocs = NULL;
 
-__ATTR_BSS
+ATTR_BSS
 pages_alloc_t *free_list[FREE_LIST_SIZE];
 
 static spinlock_t spinlock = 0;
 
+ATTR_HOT
 static size_t get_largest_free_order(void)
 {
 	size_t i = 0, largest = 0;
@@ -21,6 +22,7 @@ static size_t get_largest_free_order(void)
 	return largest;
 }
 
+ATTR_HOT
 void update_free_list(pages_alloc_t *alloc)
 {
 	size_t order;
@@ -33,6 +35,7 @@ void update_free_list(pages_alloc_t *alloc)
 	free_list[order] = alloc;
 }
 
+ATTR_HOT
 pages_alloc_t *find_alloc(const size_t pages)
 {
 	size_t i;
@@ -47,6 +50,7 @@ pages_alloc_t *find_alloc(const size_t pages)
 	return a;
 }
 
+ATTR_HOT
 static void delete_alloc(pages_alloc_t *alloc)
 {
 	if(alloc->prev)
@@ -69,6 +73,7 @@ static void delete_alloc(pages_alloc_t *alloc)
 	kfree((void *) alloc, KMALLOC_BUDDY);
 }
 
+ATTR_HOT
 static pages_alloc_t *alloc_buddy(const size_t pages)
 {
 	pages_alloc_t *alloc;
@@ -89,6 +94,7 @@ static pages_alloc_t *alloc_buddy(const size_t pages)
 	return alloc;
 }
 
+ATTR_HOT
 static void *alloc_pages(pages_alloc_t *alloc, const size_t pages)
 {
 	void *ptr;
@@ -102,6 +108,7 @@ static void *alloc_pages(pages_alloc_t *alloc, const size_t pages)
 }
 
 // TODO Debug every case
+ATTR_HOT
 static void free_pages(pages_alloc_t *alloc, void *ptr, const size_t pages)
 {
 	size_t l;
@@ -135,6 +142,8 @@ static void free_pages(pages_alloc_t *alloc, void *ptr, const size_t pages)
 		delete_buddy(alloc->buddy);
 }
 
+ATTR_HOT
+ATTR_MALLOC
 void *pages_alloc(const size_t n)
 {
 	pages_alloc_t *alloc;
@@ -147,6 +156,8 @@ void *pages_alloc(const size_t n)
 	return ptr;
 }
 
+ATTR_HOT
+ATTR_MALLOC
 void *pages_alloc_zero(const size_t n)
 {
 	void *ptr;
@@ -158,6 +169,7 @@ void *pages_alloc_zero(const size_t n)
 	return ptr;
 }
 
+ATTR_HOT
 void pages_free(void *ptr, const size_t n)
 {
 	pages_alloc_t *alloc;

@@ -76,7 +76,7 @@ static void (*const funcs[])(process_t *, int) = {
 	[SIGSYS] = TODO
 };
 
-__attribute__((hot))
+ATTR_HOT
 void signal_default(process_t *proc, const int sig)
 {
 	void (*func)(process_t *, int);

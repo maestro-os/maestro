@@ -2,7 +2,7 @@
 #include <idt/idt.h>
 #include <keyboard/ps2/ps2.h>
 
-__attribute__((cold))
+ATTR_COLD
 void enable_a20(void)
 {
 	uint8_t in;

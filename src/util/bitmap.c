@@ -22,25 +22,25 @@
 
 // TODO Protect and clean every function
 
-__attribute__((hot))
+ATTR_HOT
 int bitfield_get(const uint8_t *bitfield, const size_t index)
 {
 	return (*UNIT(bitfield, index) >> INNER_INDEX(index)) & 0b1;
 }
 
-__attribute__((hot))
+ATTR_HOT
 void bitfield_set(uint8_t *bitfield, const size_t index)
 {
 	*UNIT(bitfield, index) |= (0b1 << INNER_INDEX(index));
 }
 
-__attribute__((hot))
+ATTR_HOT
 void bitfield_clear(uint8_t *bitfield, const size_t index)
 {
 	*UNIT(bitfield, index) &= ~(0b1 << INNER_INDEX(index));
 }
 
-__attribute__((hot))
+ATTR_HOT
 void bitfield_toggle(uint8_t *bitfield, const size_t index)
 {
 	if(bitfield_get(bitfield, index))
@@ -49,7 +49,7 @@ void bitfield_toggle(uint8_t *bitfield, const size_t index)
 		bitfield_set(bitfield, index);
 }
 
-__attribute__((hot))
+ATTR_HOT
 void bitfield_set_range(uint8_t *bitfield, const size_t begin, const size_t end)
 {
 	long mask;
@@ -89,7 +89,7 @@ void bitfield_set_range(uint8_t *bitfield, const size_t begin, const size_t end)
 	}
 }
 
-__attribute__((hot))
+ATTR_HOT
 void bitfield_clear_range(uint8_t *bitfield,
 	const size_t begin, const size_t end)
 {

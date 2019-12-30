@@ -9,21 +9,21 @@ static const char *const floppy_types[] = {
 	"2.88 MB 3.5 drive"
 };
 
-__attribute__((hot))
+ATTR_HOT
 static void cmos_select(const uint8_t reg)
 {
 	outb(CMOS_COMMAND, reg | (1 << 7));
 	// TODO io_wait?
 }
 
-__attribute__((hot))
+ATTR_HOT
 uint8_t cmos_detect_floppy(void)
 {
 	cmos_select(CMOS_FLOPPY_REGISTER);
 	return inb(CMOS_DATA);
 }
 
-__attribute__((hot))
+ATTR_HOT
 const char *cmos_get_floppy_string(const uint8_t type)
 {
 	return floppy_types[type];

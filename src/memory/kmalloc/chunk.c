@@ -8,9 +8,9 @@
 
 spinlock_t kmalloc_spinlock = 0;
 
-__ATTR_BSS
+ATTR_BSS
 static chunk_t *buckets[BUCKETS_COUNT];
-__ATTR_BSS
+ATTR_BSS
 static chunk_t *large_chunks;
 
 chunk_t *get_chunk(void *ptr)
@@ -50,7 +50,7 @@ static void coalesce_chunks(chunk_t *chunk)
 		coalesce_chunks(chunk->prev);
 }
 
-static void *_alloc_block(const size_t pages, const int flags)
+static void *alloc_block_(const size_t pages, const int flags)
 {
 	if(flags & KMALLOC_BUDDY)
 		return buddy_alloc_zero(buddy_get_order(pages * PAGE_SIZE));
@@ -62,7 +62,7 @@ static chunk_t *alloc_block(chunk_t **bucket, const int flags)
 {
 	chunk_t *ptr;
 
-	if(!(ptr = _alloc_block(1, flags)))
+	if(!(ptr = alloc_block_(1, flags)))
 		return NULL;
 	ptr->size = PAGE_SIZE - sizeof(chunk_t);
 	if(flags & KMALLOC_BUDDY)
@@ -80,7 +80,7 @@ static void *large_alloc(const size_t size, const int flags)
 
 	total_size = sizeof(chunk_t) + size;
 	pages = CEIL_DIVISION(total_size, PAGE_SIZE);
-	if((chunk = _alloc_block(pages, flags)))
+	if((chunk = alloc_block_(pages, flags)))
 	{
 		chunk->size = pages * PAGE_SIZE + sizeof(chunk_t);
 		if(flags & KMALLOC_BUDDY)

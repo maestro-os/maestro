@@ -11,7 +11,7 @@
 
 # include <kernel.h>
 
-__attribute__ ((packed))
+ATTR_PACKED
 struct rsdp_desc
 {
 	char signature[8];
@@ -21,7 +21,7 @@ struct rsdp_desc
 	uint32_t rsdt_address;
 };
 
-__attribute__((packed))
+ATTR_PACKED
 struct rsdp20_desc
 {
 	struct rsdp_desc desc;
@@ -31,7 +31,7 @@ struct rsdp20_desc
 	uint8_t reserved[3];
 };
 
-__attribute__((packed))
+ATTR_PACKED
 struct acpi_sdt_header
 {
 	char signature[4];
@@ -45,7 +45,7 @@ struct acpi_sdt_header
 	uint32_t creator_revision;
 };
 
-__attribute__((packed))
+ATTR_PACKED
 struct generic_address_structure
 {
   uint8_t address_space;
@@ -55,35 +55,35 @@ struct generic_address_structure
   uint64_t address;
 };
 
-__attribute__((packed))
+ATTR_PACKED
 struct rsdt
 {
 	struct acpi_sdt_header header;
 	uint32_t entries[0];
 };
 
-__attribute__((packed))
+ATTR_PACKED
 struct xsdt
 {
 	struct acpi_sdt_header header;
 	uint64_t entries[0];
 };
 
-__attribute__((packed))
+ATTR_PACKED
 struct madt
 {
 	struct acpi_sdt_header header;
 	// TODO
 };
 
-__attribute__((packed))
+ATTR_PACKED
 struct dsdt
 {
 	struct acpi_sdt_header header;
 	char src[0];
 };
 
-__attribute__((packed))
+ATTR_PACKED
 struct fadt
 {
 	struct acpi_sdt_header header;

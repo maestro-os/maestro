@@ -1,7 +1,8 @@
 #include <libc/string.h>
+#include <util/attr.h>
 
 // TODO Rewrite
-__attribute__((hot))
+ATTR_HOT
 void *memmove(void *dest, const void *src, size_t n)
 {
 	size_t i;

@@ -1,5 +1,6 @@
-#include <process/process.h>
 #include <libc/errno.h>
+#include <process/process.h>
+#include <util/attr.h>
 
 // TODO
 #include <debug/debug.h>
@@ -15,13 +16,13 @@ static process_t *volatile processes = NULL;
 static process_t *volatile running_process = NULL;
 static uint8_t *pids_bitfield;
 
-__ATTR_PAGE_ALIGNED
-__ATTR_BSS
+ATTR_PAGE_ALIGNED
+ATTR_BSS
 tss_entry_t tss;
 
 static spinlock_t spinlock = 0;
 
-__attribute__((hot))
+ATTR_HOT
 static void process_ctor(void *ptr, const size_t size)
 {
 	process_t *p;
@@ -38,7 +39,7 @@ static void process_ctor(void *ptr, const size_t size)
 		p->sigactions[i++].sa_handler = SIG_DFL;
 }
 
-__attribute__((cold))
+ATTR_COLD
 static void tss_init(void)
 {
 	const uint32_t base = (uint32_t) &tss;
@@ -60,7 +61,7 @@ static void tss_init(void)
 	tss_flush();
 }
 
-__attribute__((cold))
+ATTR_COLD
 void process_init(void)
 {
 	processes_cache = cache_create("processes", sizeof(process_t), PID_MAX,
@@ -77,7 +78,7 @@ void process_init(void)
 	tss_init();
 }
 
-__attribute__((hot))
+ATTR_HOT
 static pid_t alloc_pid(void)
 {
 	pid_t pid;
@@ -90,13 +91,13 @@ static pid_t alloc_pid(void)
 	return pid;
 }
 
-__attribute__((hot))
+ATTR_HOT
 static void free_pid(const pid_t pid)
 {
 	bitfield_clear(pids_bitfield, pid);
 }
 
-__attribute__((hot))
+ATTR_HOT
 static void init_process(process_t *process)
 {
 	mem_space_t *mem_space;
@@ -120,7 +121,7 @@ static void init_process(process_t *process)
 	}
 }
 
-__attribute__((hot))
+ATTR_HOT
 process_t *new_process(process_t *parent, const regs_t *registers)
 {
 	pid_t pid;
@@ -161,7 +162,7 @@ process_t *new_process(process_t *parent, const regs_t *registers)
 	return new_proc;
 }
 
-__attribute__((hot))
+ATTR_HOT
 process_t *get_process(const pid_t pid)
 {
 	process_t *p;
@@ -189,13 +190,13 @@ process_t *get_process(const pid_t pid)
 	return NULL;
 }
 
-__attribute__((hot))
+ATTR_HOT
 process_t *get_running_process(void)
 {
 	return running_process;
 }
 
-__attribute__((hot))
+ATTR_HOT
 process_t *process_clone(process_t *proc)
 {
 	process_t *p;
@@ -216,7 +217,7 @@ process_t *process_clone(process_t *proc)
 	return p;
 }
 
-__attribute__((hot))
+ATTR_HOT
 void process_set_state(process_t *process, const process_state_t state)
 {
 	if(!process)
@@ -240,7 +241,7 @@ void process_set_state(process_t *process, const process_state_t state)
 	spin_unlock(&spinlock);
 }
 
-__attribute__((hot))
+ATTR_HOT
 void process_add_child(process_t *parent, process_t *child)
 {
 	child_t *c;
@@ -260,7 +261,7 @@ void process_add_child(process_t *parent, process_t *child)
 	spin_unlock(&parent->spinlock);
 }
 
-__attribute__((hot))
+ATTR_HOT
 void process_exit(process_t *proc, const int status)
 {
 	if(!proc)
@@ -275,7 +276,7 @@ void process_exit(process_t *proc, const int status)
 // TODO Perform signals directly?
 // TODO Execute signal later?
 // TODO Send signals to children
-__attribute__((hot))
+ATTR_HOT
 void process_kill(process_t *proc, const int sig)
 {
 	signal_t *s;
@@ -311,7 +312,7 @@ void process_kill(process_t *proc, const int sig)
 	spin_unlock(&proc->spinlock);
 }
 
-__attribute__((hot))
+ATTR_HOT
 void del_process(process_t *process, const int children)
 {
 	child_t *c, *next;
@@ -352,7 +353,7 @@ void del_process(process_t *process, const int children)
 	spin_unlock(&spinlock);
 }
 
-__attribute__((hot))
+ATTR_HOT
 static process_t *next_waiting_process(void)
 {
 	process_t *p;
@@ -368,7 +369,7 @@ static process_t *next_waiting_process(void)
 	return (p->state == WAITING ? p : NULL);
 }
 
-__attribute__((hot))
+ATTR_HOT
 static void switch_processes(void)
 {
 	process_t *p;
@@ -387,7 +388,7 @@ static void switch_processes(void)
 			GDT_USER_DATA_OFFSET | 3, GDT_USER_CODE_OFFSET | 3);
 }
 
-__attribute__((hot))
+ATTR_HOT
 void process_tick(const regs_t *registers)
 {
 	if(running_process)

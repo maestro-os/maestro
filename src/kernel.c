@@ -58,7 +58,7 @@ static void print_slabs(void)
 }
 #endif
 
-__attribute__((cold))
+ATTR_COLD
 static inline void init_driver(const driver_t *driver)
 {
 	if(!driver)
@@ -67,7 +67,7 @@ static inline void init_driver(const driver_t *driver)
 	driver->init_func();
 }
 
-__attribute__((cold))
+ATTR_COLD
 static inline void init_drivers(void)
 {
 	size_t i = 0;
@@ -83,7 +83,7 @@ void test_process(void);
 // TODO Remove
 extern semaphore_t sem;
 
-__attribute__((cold))
+ATTR_COLD
 void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	void *kernel_end)
 {
@@ -139,9 +139,17 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 
 	// TODO remove
 	avl_tree_t *t = NULL;
+	printf("begin\n");
 	for(size_t i = 0; i < 50; ++i)
 		avl_tree_insert(&t, (void *) i, ptr_cmp);
+	for(size_t i = 100; i < 120; ++i)
+		avl_tree_insert(&t, (void *) i, ptr_cmp);
 	avl_tree_print(t);
+	printf("middle\n");
+	for(size_t i = 0; i < 25; ++i)
+		avl_tree_delete(&t, avl_tree_search(t, (void *) i, ptr_cmp));
+	avl_tree_print(t);
+	printf("end\n");
 	kernel_loop();
 
 	printf("ACPI initialization...\n");

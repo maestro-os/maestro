@@ -1,7 +1,7 @@
 #include <memory/kmalloc/kmalloc.h>
 #include <libc/errno.h>
 
-__attribute__((hot))
+ATTR_HOT
 void *kmalloc(const size_t size, const int flags)
 {
 	chunk_t *chunk;
@@ -18,7 +18,7 @@ void *kmalloc(const size_t size, const int flags)
 	return chunk->content;
 }
 
-__attribute__((hot))
+ATTR_HOT
 void *kmalloc_zero(const size_t size, const int flags)
 {
 	void *ptr;

@@ -72,7 +72,7 @@
 # define MOUNT_STATE_READONLY		3
 # define MOUNT_STATE_NEEDS_CHECK	4
 
-__attribute__((packed))
+ATTR_PACKED
 struct ext2_superblock
 {
 	uint32_t total_inodes;
@@ -102,14 +102,14 @@ struct ext2_superblock
 	uint16_t supergroup;
 };
 
-__attribute__((packed))
+ATTR_PACKED
 struct ext2_extended_superblock
 {
 	struct ext2_superblock base;
 	// TODO
 };
 
-__attribute__((packed))
+ATTR_PACKED
 struct ext2_block_group_descriptor
 {
 	uint32_t block_usage_bitmap_addr;
@@ -120,7 +120,7 @@ struct ext2_block_group_descriptor
 	uint16_t directories;
 };
 
-__attribute__((packed))
+ATTR_PACKED
 struct ext2_inode
 {
 	uint16_t type_permission;
@@ -146,7 +146,7 @@ struct ext2_inode
 	uint32_t os_specific_2[3];
 };
 
-__attribute__((packed))
+ATTR_PACKED
 struct ext2_directory_entry
 {
 	uint32_t inode;

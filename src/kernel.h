@@ -36,16 +36,16 @@ void outw(uint16_t port, uint16_t value);
 void outl(uint16_t port, uint32_t value);
 
 extern void kernel_wait(void);
-__attribute__((noreturn))
+ATTR_NORETURN
 extern void kernel_loop(void);
-__attribute__((noreturn))
+ATTR_NORETURN
 extern void kernel_halt(void);
 
 void error_handler(unsigned error, uint32_t error_code);
 
-__attribute__((noreturn))
+ATTR_NORETURN
 void kernel_panic(const char *reason, uint32_t code);
-__attribute__((noreturn))
+ATTR_NORETURN
 void kernel_panic_(const char *reason, uint32_t code,
 	const char *file, int line);
 

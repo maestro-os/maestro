@@ -8,7 +8,7 @@
 tty_t ttys[TTYS_COUNT];
 tty_t *current_tty = NULL;
 
-__attribute__((cold))
+ATTR_COLD
 void tty_init(void)
 {
 	size_t i;
@@ -23,7 +23,7 @@ void tty_init(void)
 	tty_switch(0);
 }
 
-__attribute__((hot))
+ATTR_HOT
 static inline void update_tty(tty_t *tty)
 {
 	vgapos_t y;
@@ -46,7 +46,7 @@ static inline void update_tty(tty_t *tty)
 		vga_disable_cursor();
 }
 
-__attribute__((hot))
+ATTR_HOT
 void tty_switch(const uint8_t tty)
 {
 	current_tty = ttys + tty;
@@ -55,7 +55,7 @@ void tty_switch(const uint8_t tty)
 	update_tty(current_tty);
 }
 
-__attribute__((hot))
+ATTR_HOT
 void tty_reset_attrs(tty_t *tty)
 {
 	spin_lock(&tty->spinlock);
@@ -65,7 +65,7 @@ void tty_reset_attrs(tty_t *tty)
 }
 
 // TODO Already locked if called from ANSI code
-__attribute__((hot))
+ATTR_HOT
 void tty_set_fgcolor(tty_t *tty, const vgacolor_t color)
 {
 	spin_lock(&tty->spinlock);
@@ -75,7 +75,7 @@ void tty_set_fgcolor(tty_t *tty, const vgacolor_t color)
 }
 
 // TODO Already locked if called from ANSI code
-__attribute__((hot))
+ATTR_HOT
 void tty_set_bgcolor(tty_t *tty, const vgacolor_t color)
 {
 	spin_lock(&tty->spinlock);
@@ -84,7 +84,7 @@ void tty_set_bgcolor(tty_t *tty, const vgacolor_t color)
 	spin_unlock(&tty->spinlock);
 }
 
-__attribute__((hot))
+ATTR_HOT
 static void tty_clear_portion(uint16_t *ptr, const size_t size)
 {
 	size_t i;
@@ -94,7 +94,7 @@ static void tty_clear_portion(uint16_t *ptr, const size_t size)
 		ptr[i] = EMPTY_CHAR;
 }
 
-__attribute__((hot))
+ATTR_HOT
 void tty_clear(tty_t *tty)
 {
 	spin_lock(&tty->spinlock);
@@ -106,7 +106,7 @@ void tty_clear(tty_t *tty)
 	spin_unlock(&tty->spinlock);
 }
 
-__attribute__((hot))
+ATTR_HOT
 static void tty_fix_pos(tty_t *tty)
 {
 	vgapos_t p;
@@ -142,7 +142,7 @@ static void tty_fix_pos(tty_t *tty)
 	}
 }
 
-__attribute__((hot))
+ATTR_HOT
 static void tty_cursor_forward(tty_t *tty, const size_t x, const size_t y)
 {
 	tty->cursor_x += x;
@@ -150,7 +150,7 @@ static void tty_cursor_forward(tty_t *tty, const size_t x, const size_t y)
 	tty_fix_pos(tty);
 }
 
-__attribute__((hot))
+ATTR_HOT
 static void tty_cursor_backward(tty_t *tty, const size_t x, const size_t y)
 {
 	tty->cursor_x -= x;
@@ -158,7 +158,7 @@ static void tty_cursor_backward(tty_t *tty, const size_t x, const size_t y)
 	tty_fix_pos(tty);
 }
 
-__attribute__((hot))
+ATTR_HOT
 static void tty_newline(tty_t *tty)
 {
 	tty->cursor_x = 0;
@@ -166,7 +166,7 @@ static void tty_newline(tty_t *tty)
 	tty_fix_pos(tty);
 }
 
-__attribute__((hot))
+ATTR_HOT
 static void tty_putchar(const char c, tty_t *tty)
 {
 	switch(c)
@@ -208,7 +208,7 @@ static void tty_putchar(const char c, tty_t *tty)
 		update_tty(tty);
 }
 
-__attribute__((hot))
+ATTR_HOT
 void tty_write(const char *buffer, const size_t count, tty_t *tty)
 {
 	size_t i;
@@ -231,7 +231,7 @@ void tty_write(const char *buffer, const size_t count, tty_t *tty)
 	spin_unlock(&tty->spinlock);
 }
 
-__attribute__((hot))
+ATTR_HOT
 void tty_erase(tty_t *tty, size_t count)
 {
 	vgapos_t begin;
@@ -256,7 +256,7 @@ void tty_erase(tty_t *tty, size_t count)
 	spin_unlock(&tty->spinlock);
 }
 
-__attribute__((hot))
+ATTR_HOT
 void tty_input_hook(const key_code_t code)
 {
 	char c;
@@ -299,7 +299,7 @@ void tty_input_hook(const key_code_t code)
 	spin_unlock(&current_tty->spinlock);
 }
 
-__attribute__((hot))
+ATTR_HOT
 void tty_ctrl_hook(const key_code_t code)
 {
 	spin_lock(&current_tty->spinlock);
@@ -326,7 +326,7 @@ void tty_ctrl_hook(const key_code_t code)
 	spin_unlock(&current_tty->spinlock);
 }
 
-__attribute__((hot))
+ATTR_HOT
 void tty_erase_hook(void)
 {
 	tty_erase(current_tty, 1);

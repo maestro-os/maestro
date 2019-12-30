@@ -1,6 +1,7 @@
 #include <libc/string.h>
+#include <util/attr.h>
 
-__attribute__((hot))
+ATTR_HOT
 void bzero(void *s, size_t n)
 {
 	void *end;

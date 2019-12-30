@@ -1,6 +1,6 @@
 #include <keyboard/keyboard.h>
 
-__ATTR_BSS
+ATTR_BSS
 static key_state_t key_states[KEYS_COUNT];
 static int capslock_state = 0;
 
@@ -8,7 +8,7 @@ void (*input_hook)(const key_code_t) = NULL;
 void (*ctrl_hook)(const key_code_t) = NULL;
 void (*erase_hook)() = NULL;
 
-__attribute__((hot))
+ATTR_HOT
 static void type_key(const key_code_t code)
 {
 	if(code == KEY_BACKSPACE)
@@ -29,7 +29,8 @@ static void type_key(const key_code_t code)
 		return;
 	}
 }
-__attribute__((hot))
+
+ATTR_HOT
 static void handle_extra_key(const key_code_t code)
 {
 	if(code < 0x90)
@@ -43,7 +44,7 @@ static void handle_extra_key(const key_code_t code)
 		key_states[code - 0x90 + 0x60] = KEY_STATE_RELEASED;
 }
 
-__attribute__((hot))
+ATTR_HOT
 static void handle_normal_key(const key_code_t code)
 {
 	if(code < 0x80)
@@ -55,7 +56,7 @@ static void handle_normal_key(const key_code_t code)
 		key_states[code - 0x81] = KEY_STATE_RELEASED;
 }
 
-__attribute__((hot))
+ATTR_HOT
 static void keyboard_handler(const key_code_t code)
 {
 	static int extra_keys = 0;
@@ -72,39 +73,39 @@ static void keyboard_handler(const key_code_t code)
 	extra_keys = 0;
 }
 
-__attribute__((cold))
+ATTR_COLD
 void keyboard_init(void)
 {
 	ps2_set_keyboard_hook(keyboard_handler);
 }
 
-__attribute__((hot))
+ATTR_HOT
 key_state_t keyboard_get_state(const key_code_t key)
 {
 	return key_states[key];
 }
 
-__attribute__((hot))
+ATTR_HOT
 int keyboard_is_ctrl_pressed(void)
 {
 	return keyboard_get_state(KEY_LEFT_CTRL)
 		|| keyboard_get_state(KEY_RIGHT_CTRL);
 }
 
-__attribute__((hot))
+ATTR_HOT
 int keyboard_is_shift_pressed(void)
 {
 	return keyboard_get_state(KEY_LEFT_SHIFT)
 		|| keyboard_get_state(KEY_RIGHT_SHIFT);
 }
 
-__attribute__((hot))
+ATTR_HOT
 int keyboard_is_capslock_enabled(void)
 {
 	return capslock_state;
 }
 
-__attribute__((hot))
+ATTR_HOT
 int keyboard_is_shifting(void)
 {
 	int shift;
@@ -113,7 +114,7 @@ int keyboard_is_shifting(void)
 	return (capslock_state ? !shift : shift);
 }
 
-__attribute__((hot))
+ATTR_HOT
 char keyboard_get_char(const key_code_t code, const int shift)
 {
 	switch(code)
@@ -187,19 +188,19 @@ char keyboard_get_char(const key_code_t code, const int shift)
 	}
 }
 
-__attribute__((cold))
+ATTR_COLD
 void keyboard_set_input_hook(void (*hook)(const key_code_t))
 {
 	input_hook = hook;
 }
 
-__attribute__((cold))
+ATTR_COLD
 void keyboard_set_ctrl_hook(void (*hook)(const key_code_t))
 {
 	ctrl_hook = hook;
 }
 
-__attribute__((cold))
+ATTR_COLD
 void keyboard_set_erase_hook(void (*hook)(void))
 {
 	erase_hook = hook;

@@ -11,7 +11,7 @@ static size_t end;
 
 static spinlock_t spinlock = 0;
 
-__attribute__((hot))
+ATTR_HOT
 block_order_t buddy_get_order(const size_t size)
 {
 	block_order_t order = 0;
@@ -25,13 +25,13 @@ block_order_t buddy_get_order(const size_t size)
 	return order;
 }
 
-__attribute__((hot))
+ATTR_HOT
 void *buddy_get_begin(void)
 {
 	return buddy_begin;
 }
 
-__attribute__((hot))
+ATTR_HOT
 static void update_block_state(size_t index)
 {
 	block_state_t left_state, right_state;
@@ -52,7 +52,7 @@ static void update_block_state(size_t index)
 	}
 }
 
-__attribute__((hot))
+ATTR_HOT
 static inline void set_block_state(const block_index_t index,
 	const block_state_t state)
 {
@@ -61,7 +61,7 @@ static inline void set_block_state(const block_index_t index,
 		update_block_state(NODE_PARENT(index));
 }
 
-__attribute__((cold))
+ATTR_COLD
 void buddy_init(void)
 {
 	size_t metadata_size;
@@ -83,7 +83,7 @@ void buddy_init(void)
 		set_block_state(i, NODE_STATE_FULL);
 }
 
-__attribute__((hot))
+ATTR_HOT
 static block_index_t find_free(const block_index_t index,
 	const block_order_t order, const int is_buddy)
 {
@@ -125,7 +125,8 @@ static block_index_t find_free(const block_index_t index,
 	return -1;
 }
 
-__attribute__((hot))
+ATTR_HOT
+ATTR_MALLOC
 void *buddy_alloc(const block_order_t order)
 {
 	block_index_t block;
@@ -147,7 +148,8 @@ void *buddy_alloc(const block_order_t order)
 	return ptr;
 }
 
-__attribute__((hot))
+ATTR_HOT
+ATTR_MALLOC
 void *buddy_alloc_zero(const block_order_t order)
 {
 	void *ptr;
@@ -157,7 +159,7 @@ void *buddy_alloc_zero(const block_order_t order)
 	return ptr;
 }
 
-__attribute__((hot))
+ATTR_HOT
 void buddy_free(void *ptr)
 {
 	block_index_t index;
@@ -175,7 +177,7 @@ void buddy_free(void *ptr)
 	spin_unlock(&spinlock);
 }
 
-__attribute__((hot))
+ATTR_HOT
 static size_t count_allocated_pages(const size_t index)
 {
 	size_t order;
@@ -189,7 +191,7 @@ static size_t count_allocated_pages(const size_t index)
 		+ count_allocated_pages(NODE_RIGHT(index));
 }
 
-__attribute__((hot))
+ATTR_HOT
 inline size_t allocated_pages(void)
 {
 	return count_allocated_pages(0);

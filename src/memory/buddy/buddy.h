@@ -1,9 +1,9 @@
 #ifndef BUDDY_H
 # define BUDDY_H
 
-# include <memory/memory.h>
-
 # include <libc/string.h>
+# include <memory/memory.h>
+# include <util/attr.h>
 
 # define BLOCK_SIZE(order)			(POW2(order) * PAGE_SIZE)
 
@@ -35,7 +35,9 @@ block_order_t buddy_get_order(size_t size);
 void *buddy_get_begin(void);
 void buddy_init(void);
 
+ATTR_MALLOC
 void *buddy_alloc(block_order_t order);
+ATTR_MALLOC
 void *buddy_alloc_zero(block_order_t order);
 void buddy_free(void *ptr);
 

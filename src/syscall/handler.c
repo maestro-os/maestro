@@ -4,7 +4,7 @@
 
 #define SYSCALLS_COUNT	(sizeof(sys_handlers) / sizeof(*sys_handlers))
 
-__ATTR_RODATA
+ATTR_RODATA
 static const sys_handler_t sys_handlers[] = {
 	sys_write,
 	sys_fork,
@@ -14,7 +14,7 @@ static const sys_handler_t sys_handlers[] = {
 	sys_waitpid
 };
 
-__attribute__((hot))
+ATTR_HOT
 sys_ret_t syscall_handler(const regs_t *registers)
 {
 	size_t id;

@@ -9,7 +9,7 @@
 # define PID_MAX			32768
 # define PIDS_BITFIELD_SIZE	BITFIELD_SIZE(PID_MAX)
 
-__attribute__((packed))
+ATTR_PACKED
 struct regs
 {
 	int32_t ebp;
@@ -97,10 +97,10 @@ void del_process(process_t *process, int children);
 
 void process_tick(const regs_t *registers);
 
-__attribute__((noreturn))
+ATTR_NORETURN
 extern void context_switch(const regs_t *regs,
 	uint16_t data_selector, uint16_t code_selector);
-__attribute__((noreturn))
+ATTR_NORETURN
 extern void kernel_switch(const regs_t *regs);
 
 #endif

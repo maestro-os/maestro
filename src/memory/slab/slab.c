@@ -5,7 +5,7 @@
 static cache_t *caches;
 static cache_t *caches_cache;
 
-__attribute__((hot))
+ATTR_HOT
 static void calc_pages_per_slab(cache_t *cache)
 {
 	cache->pages_per_slab = CEIL_DIVISION(sizeof(slab_t)
@@ -13,7 +13,7 @@ static void calc_pages_per_slab(cache_t *cache)
 			+ (cache->objsize * cache->objcount), PAGE_SIZE);
 }
 
-__attribute__((cold))
+ATTR_COLD
 void slab_init(void)
 {
 	if(!(caches_cache = kmalloc_zero(sizeof(cache_t), 0)))
@@ -26,13 +26,13 @@ void slab_init(void)
 	caches = caches_cache;
 }
 
-__attribute__((hot))
+ATTR_HOT
 cache_t *cache_getall(void)
 {
 	return caches;
 }
 
-__attribute__((hot))
+ATTR_HOT
 cache_t *cache_get(const char *name)
 {
 	cache_t *c;
@@ -49,7 +49,7 @@ cache_t *cache_get(const char *name)
 	return NULL;
 }
 
-__attribute__((cold))
+ATTR_COLD
 cache_t *cache_create(const char *name, size_t objsize, size_t objcount,
 	void (*ctor)(void *, size_t), void (*dtor)(void *, size_t))
 {
@@ -70,7 +70,7 @@ cache_t *cache_create(const char *name, size_t objsize, size_t objcount,
 	return cache;
 }
 
-__attribute__((hot))
+ATTR_HOT
 static void unlink_slab(slab_t *slab)
 {
 	if(!slab)
@@ -81,7 +81,7 @@ static void unlink_slab(slab_t *slab)
 		slab->prev->next = slab->next;
 }
 
-__attribute__((hot))
+ATTR_HOT
 static slab_t *alloc_slab(cache_t *cache)
 {
 	slab_t *slab;
@@ -95,7 +95,8 @@ static slab_t *alloc_slab(cache_t *cache)
 	return slab;
 }
 
-__attribute__((hot))
+ATTR_HOT
+ATTR_MALLOC
 void *cache_alloc(cache_t *cache)
 {
 	slab_t *slab;
@@ -132,7 +133,7 @@ void *cache_alloc(cache_t *cache)
 	return ptr;
 }
 
-__attribute__((hot))
+ATTR_HOT
 void cache_shrink(cache_t *cache)
 {
 	if(!cache)
@@ -143,7 +144,7 @@ void cache_shrink(cache_t *cache)
 	spin_unlock(&cache->spinlock);
 }
 
-__attribute__((hot))
+ATTR_HOT
 void cache_free(cache_t *cache, void *obj)
 {
 	if(!cache || !obj)
@@ -155,7 +156,7 @@ void cache_free(cache_t *cache, void *obj)
 	spin_unlock(&cache->spinlock);
 }
 
-__attribute__((hot))
+ATTR_HOT
 void cache_destroy(cache_t *cache)
 {
 	if(!cache)
