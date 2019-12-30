@@ -15,7 +15,7 @@ mem_space_t *mem_space_init(void)
 	static int init = 0;
 	mem_space_t *s;
 
-	if(!init)
+	if(unlikely(!init))
 	{
 		global_init();
 		init = 1;

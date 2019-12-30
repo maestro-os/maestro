@@ -16,7 +16,7 @@ static avl_tree_t *create_node(void *value)
 	static int init = 0;
 	avl_tree_t *node;
 
-	if(!init)
+	if(unlikely(!init))
 	{
 		global_init();
 		init = 1;
@@ -312,13 +312,19 @@ void avl_tree_delete(avl_tree_t **tree, avl_tree_t *n)
 			tmp = n->right;
 		else
 			tmp = NULL;
-		if(n == n->parent->left)
-			n->parent->left = tmp;
+		if(n->parent)
+		{
+			if(n == n->parent->left)
+				n->parent->left = tmp;
+			else
+				n->parent->right = tmp;
+		}
 		else
-			n->parent->right = tmp;
+			*tree = tmp;
+		tmp->parent = n->parent;
+		delete_balance(tree, tmp);
+		cache_free(avl_tree_cache, n);
 	}
-	delete_balance(tree, n);
-	cache_free(avl_tree_cache, n);
 }
 
 void avl_tree_freeall(avl_tree_t *tree, void (*f)(void *))
