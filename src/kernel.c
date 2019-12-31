@@ -18,6 +18,10 @@
 #include <disk/ext2/ext2.h>
 #include <libc/errno.h>
 
+#ifdef KERNEL_SELFTEST
+# include <selftest/selftest.h>
+#endif
+
 static driver_t drivers[] = {
 	{"PS/2", ps2_init},
 	{"ATA", ata_init}
@@ -136,6 +140,12 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	keyboard_set_input_hook(tty_input_hook);
 	keyboard_set_ctrl_hook(tty_ctrl_hook);
 	keyboard_set_erase_hook(tty_erase_hook);
+
+// TODO Ensure that keyboard is enabled
+#ifdef KERNEL_SELFTEST
+	run_selftest();
+	kernel_loop();
+#endif
 
 	printf("ACPI initialization...\n");
 	// TODO acpi_init();
