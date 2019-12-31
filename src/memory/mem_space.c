@@ -2,12 +2,28 @@
 #include <kernel.h>
 
 static cache_t *mem_space_cache;
+static cache_t *mem_gap_cache;
 
 static void global_init(void)
 {
 	if(!(mem_space_cache = cache_create("mem_space", sizeof(mem_space_t), 64,
 		bzero, NULL)))
 		PANIC("Failed to initialize mem_space cache!", 0);
+	if(!(mem_gap_cache = cache_create("mem_gap", sizeof(mem_gap_t), 64,
+		bzero, NULL)))
+		PANIC("Failed to initialize mem_gap cache!", 0);
+}
+
+static int region_cmp(void *r0, void *r1)
+{
+	return (uintptr_t) ((mem_region_t *) r1)->begin
+		- (uintptr_t) ((mem_region_t *) r0)->begin;
+}
+
+static int gap_cmp(void *r0, void *r1)
+{
+	return (uintptr_t) ((mem_gap_t *) r1)->pages
+		- (uintptr_t) ((mem_gap_t *) r0)->pages;
 }
 
 mem_space_t *mem_space_init(void)
@@ -22,8 +38,17 @@ mem_space_t *mem_space_init(void)
 	}
 	if(!(s = cache_alloc(mem_space_cache)))
 		return NULL;
+	if(!(s->gaps = cache_alloc(mem_gap_cache)))
+	{
+		cache_free(mem_space_cache, s);
+		return NULL;
+	}
+	s->gaps->begin = (void *) 0x1000;
+	s->gaps->pages = 0xfffff;
+	avl_tree_insert(&s->free_tree, s->gaps, region_cmp);
 	if(!(s->page_dir = vmem_init()))
 	{
+		cache_free(mem_gap_cache, s->gaps);
 		cache_free(mem_space_cache, s);
 		return NULL;
 	}
@@ -40,7 +65,7 @@ static mem_region_t *clone_region(mem_space_t *space, mem_region_t *r)
 		return NULL;
 	new->mem_space = space;
 	new->flags = r->flags;
-	new->start = r->start;
+	new->begin = r->begin;
 	new->pages = r->pages;
 	new->used_pages = r->used_pages;
 	memcpy(new->use_bitfield, r->use_bitfield, bitfield_size);
@@ -49,6 +74,42 @@ static mem_region_t *clone_region(mem_space_t *space, mem_region_t *r)
 	if((new->prev_shared = r))
 		r->next_shared = new;
 	return new;
+}
+
+static void region_free(mem_region_t *region)
+{
+	size_t i;
+
+	if(!region->prev_shared && !region->next_shared)
+	{
+		i = 0;
+		while(i < region->pages)
+		{
+			if(bitfield_get(region->use_bitfield, i))
+				buddy_free(region->begin + (i * PAGE_SIZE));
+			++i;
+		}
+	}
+	else
+	{
+		if(region->prev_shared)
+			region->prev_shared->next_shared = region->next_shared;
+		if(region->next_shared)
+			region->next_shared->prev_shared = region->prev_shared;
+	}
+	kfree(region, 0);
+}
+
+static void remove_regions(mem_region_t *r)
+{
+	mem_region_t *next;
+
+	while(r)
+	{
+		next = r->next;
+		region_free(r);
+		r = next;
+	}
 }
 
 static int clone_regions(mem_space_t *dest, mem_region_t *src)
@@ -62,7 +123,8 @@ static int clone_regions(mem_space_t *dest, mem_region_t *src)
 	{
 		if(!(new = clone_region(dest, r)))
 		{
-			// TODO Free all
+			remove_regions(dest->regions);
+			dest->regions = NULL;
 			return 0;
 		}
 		if(last)
@@ -77,11 +139,82 @@ static int clone_regions(mem_space_t *dest, mem_region_t *src)
 	return 1;
 }
 
-static int build_regions_tree(mem_space_t *space)
+static void gap_free(mem_gap_t *gap)
 {
 	// TODO
-	(void) space;
+	(void) gap;
+}
+
+static void remove_gaps(mem_gap_t *g)
+{
+	mem_gap_t *next;
+
+	while(g)
+	{
+		next = g->next;
+		gap_free(g);
+		g = next;
+	}
+}
+
+static int clone_gaps(mem_space_t *dest, mem_gap_t *src)
+{
+	mem_gap_t *g;
+	mem_gap_t *new;
+	mem_gap_t *last = NULL;
+
+	g = src;
+	while(g)
+	{
+		if(!(new = cache_alloc(mem_gap_cache)))
+		{
+			remove_gaps(dest->gaps);
+			dest->gaps = NULL;
+			return 0;
+		}
+		new->prev = last;
+		new->begin = g->begin;
+		new->pages = g->pages;
+		if(last)
+		{
+			last->next = new;
+			last = new;
+		}
+		else
+			last = dest->gaps = new;
+		g = g->next;
+	}
 	return 1;
+}
+
+static int build_trees(mem_space_t *space)
+{
+	mem_region_t *r;
+	mem_gap_t *g;
+
+	r = space->regions;
+	errno = 0;
+	while(r)
+	{
+		avl_tree_insert(&space->used_tree, r, region_cmp);
+		if(errno)
+			goto fail;
+		r = r->next;
+	}
+	g = space->gaps;
+	while(g)
+	{
+		avl_tree_insert(&space->used_tree, g, gap_cmp);
+		if(errno)
+			goto fail;
+		g = g->next;
+	}
+	return 1;
+
+fail:
+	avl_tree_freeall(&space->used_tree, NULL);
+	avl_tree_freeall(&space->free_tree, NULL);
+	return 0;
 }
 
 static void regions_disable_write(mem_region_t *r, vmem_t page_dir)
@@ -93,7 +226,7 @@ static void regions_disable_write(mem_region_t *r, vmem_t page_dir)
 	{
 		if(!(r->flags & MEM_REGION_FLAG_WRITE))
 			continue;
-		ptr = r->start;
+		ptr = r->begin;
 		for(i = 0; i < r->pages; ++i)
 			*vmem_resolve(page_dir, ptr + (i * PAGE_SIZE))
 				&= ~PAGING_PAGE_WRITE;
@@ -107,7 +240,8 @@ mem_space_t *mem_space_clone(mem_space_t *space)
 	if(!space || !(s = cache_alloc(mem_space_cache)))
 		return NULL;
 	spin_lock(&space->spinlock);
-	if(!clone_regions(s, space->regions) || !build_regions_tree(s))
+	if(!clone_regions(s, space->regions)
+		|| !clone_gaps(s, space->gaps) || !build_trees(s))
 		goto fail;
 	regions_disable_write(space->regions, space->page_dir);
 	if(!(s->page_dir = vmem_clone(space->page_dir)))
@@ -122,24 +256,75 @@ fail:
 	return NULL;
 }
 
+static avl_tree_t *find_gap(avl_tree_t *n, const size_t pages)
+{
+	if(!n || pages == 0)
+		return NULL;
+	while(1)
+	{
+		if(n->left && ((mem_gap_t *) n->left->value)->pages >= pages)
+			n = n->left;
+		else if(n->right && ((mem_gap_t *) n->right->value)->pages < pages)
+			n = n->right;
+		else
+			break;
+	}
+	return n;
+}
+
+static void shrink_gap(avl_tree_t **tree, avl_tree_t *gap, const size_t pages)
+{
+	mem_gap_t *g;
+
+	if(!gap || pages == 0)
+		return;
+	g = gap->value;
+	// TODO Error if pages > gap->pages? (shouldn't be possible)
+	if(g->pages <= pages)
+	{
+		if(g->prev)
+			g->prev->next = g->next;
+		if(g->next)
+			g->next->prev = g->prev;
+		avl_tree_delete(tree, gap);
+		cache_free(mem_gap_cache, g);
+		return;
+	}
+	g->begin += pages * PAGE_SIZE;
+	g->pages -= pages;
+}
+
 static mem_region_t *region_create(mem_space_t *space,
 	const size_t pages, const int stack)
 {
 	mem_region_t *r;
+	avl_tree_t *gap;
 
 	if(pages == 0)
 		return NULL;
 	if(!(r = kmalloc(sizeof(mem_region_t) + BITFIELD_SIZE(pages), 0)))
 		return NULL;
+	if(!(gap = find_gap(space->free_tree, pages)))
+	{
+		kfree(r, 0);
+		return NULL;
+	}
 	r->mem_space = space;
 	if(stack)
 		r->flags |= MEM_REGION_FLAG_STACK;
-	r->start = NULL; // TODO Find available zone using the tree
+	r->begin = ((mem_gap_t *) gap->value)->begin;
 	r->pages = pages;
+	avl_tree_insert(&space->used_tree, r, region_cmp);
+	if(errno)
+	{
+		kfree(r, 0);
+		return NULL;
+	}
+	shrink_gap(&space->free_tree, gap, pages);
 	return r;
 }
 
-void *mem_space_alloc(mem_space_t *space, size_t pages)
+void *mem_space_alloc(mem_space_t *space, const size_t pages)
 {
 	mem_region_t *r;
 
@@ -150,11 +335,10 @@ void *mem_space_alloc(mem_space_t *space, size_t pages)
 	bitfield_set_range(r->use_bitfield, 0, r->pages);
 	r->next = space->regions;
 	space->regions = r;
-	// TODO Insert in tree
-	return r->start;
+	return r->begin;
 }
 
-void *mem_space_alloc_stack(mem_space_t *space, size_t max_pages)
+void *mem_space_alloc_stack(mem_space_t *space, const size_t max_pages)
 {
 	mem_region_t *r;
 
@@ -163,32 +347,28 @@ void *mem_space_alloc_stack(mem_space_t *space, size_t max_pages)
 		return NULL;
 	r->next = space->regions;
 	space->regions = r;
-	// TODO Insert in tree
-	return r->start + (r->pages * PAGE_SIZE) - 1;
+	return r->begin + (r->pages * PAGE_SIZE) - 1;
 }
 
-static void region_free(mem_region_t *region)
+static mem_region_t *find_region(avl_tree_t *n, void *ptr)
 {
-	size_t i;
+	mem_region_t *r;
 
-	if(!region->prev_shared && !region->next_shared)
+	if(!ptr)
+		return NULL;
+	while(1)
 	{
-		i = 0;
-		while(i < region->pages)
-		{
-			if(bitfield_get(region->use_bitfield, i))
-				buddy_free(region->start + (i * PAGE_SIZE));
-			++i;
-		}
+		if(n->left && ((mem_gap_t *) n->left->value)->begin >= ptr)
+			n = n->left;
+		else if(n->right && ((mem_gap_t *) n->right->value)->begin < ptr)
+			n = n->right;
+		else
+			break;
 	}
-	else
-	{
-		if(region->prev_shared)
-			region->prev_shared->next_shared = region->next_shared;
-		if(region->next_shared)
-			region->next_shared->prev_shared = region->prev_shared;
-	}
-	kfree(region, 0);
+	r = n->value;
+	if(ptr >= r->begin && ptr < r->begin + r->pages * PAGE_SIZE)
+		return r;
+	return NULL;
 }
 
 void mem_space_free(mem_space_t *space, void *ptr, size_t pages)
@@ -214,14 +394,19 @@ int mem_space_can_access(mem_space_t *space, const void *ptr, size_t size)
 	return 0;
 }
 
-int mem_space_handle_page_fault(mem_space_t *space)
+int mem_space_handle_page_fault(mem_space_t *space, void *ptr)
 {
-	if(!space)
+	mem_region_t *r;
+
+	if(!space || !ptr)
+		return 0;
+	ptr = ALIGN_DOWN(ptr, PAGE_SIZE);
+	if(!(r = find_region(space->used_tree, ptr)))
 		return 0;
 	// TODO Check if virtual page is allocated
 	// TODO Allocate and map a physical page if needed
 	// TODO Return 0 if page isn't accessible or 1 if accessible
-	return 0;
+	return 1;
 }
 
 void mem_space_destroy(mem_space_t *space)
@@ -237,6 +422,9 @@ void mem_space_destroy(mem_space_t *space)
 		region_free(r);
 		r = next;
 	}
-	avl_tree_freeall(space->tree, NULL);
+	// TODO Free gaps
+	avl_tree_freeall(&space->used_tree, NULL);
+	avl_tree_freeall(&space->free_tree, NULL);
+	vmem_destroy(space->page_dir);
 	cache_free(mem_space_cache, space);
 }

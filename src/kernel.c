@@ -137,21 +137,6 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	keyboard_set_ctrl_hook(tty_ctrl_hook);
 	keyboard_set_erase_hook(tty_erase_hook);
 
-	// TODO remove
-	avl_tree_t *t = NULL;
-	printf("begin\n");
-	for(size_t i = 0; i < 50; ++i)
-		avl_tree_insert(&t, (void *) i, ptr_cmp);
-	for(size_t i = 100; i < 120; ++i)
-		avl_tree_insert(&t, (void *) i, ptr_cmp);
-	avl_tree_print(t);
-	printf("middle\n");
-	for(size_t i = 0; i < 25; ++i)
-		avl_tree_delete(&t, avl_tree_search(t, (void *) i, ptr_cmp));
-	avl_tree_print(t);
-	printf("end\n");
-	kernel_loop();
-
 	printf("ACPI initialization...\n");
 	// TODO acpi_init();
 
@@ -183,12 +168,9 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 		regs_t r;	
 		bzero(&r, sizeof(r));
 		r.eip = (intptr_t)test_process;
-		new_process(NULL, &r);
+		if(!(new_process(NULL, &r)))
+			printf("process creation failed!\n");
 	}
-
-#ifdef KERNEL_DEBUG
-	print_mem_usage();
-#endif
 
 	// TODO Remove
 	/*partition_create(disks, EXT2_PARTITION_TYPE);

@@ -3,13 +3,6 @@
 #include <libc/errno.h>
 
 // TODO Use `kernel_vmem` to hide holes in memory?
-// TODO Create a no-dup flag, to tell if a physical page should be duplicated on clone
-
-// TODO Use a superstructure to hold the page directory and physical references
-// TODO Page tables should hold a pages counter. When a page is mapped on it, it's incremented, and decremented when unmapped
-// TODO Physical blocks allocated in virtual memory should hold a references counter with value 1 in the beginning
-// TODO When a virtual page is cloned and no-dup flag is clear, its write access is disabled, allowing the kernel to notice when modified. The physical page's reference counter is incremented
-// TODO When trying to modify the virtual page, if no-dup flag is clear, the physical page is duplicated and the counter is decremented
 
 vmem_t kernel_vmem;
 

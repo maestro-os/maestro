@@ -72,17 +72,27 @@ typedef struct mem_region
 	mem_space_t *mem_space;
 
 	char flags;
-	void *start;
+	void *begin;
 	size_t pages;
 	size_t used_pages;
 
 	uint8_t use_bitfield[0];
 } mem_region_t;
 
+typedef struct mem_gap
+{
+	struct mem_gap *next, *prev;
+
+	void *begin;
+	size_t pages;
+} mem_gap_t;
+
 struct mem_space
 {
 	mem_region_t *regions;
-	avl_tree_t *tree;
+	mem_gap_t *gaps;
+	avl_tree_t *used_tree;
+	avl_tree_t *free_tree;
 
 	spinlock_t spinlock;
 
@@ -114,7 +124,7 @@ void *mem_space_alloc_stack(mem_space_t *space, size_t max_pages);
 void mem_space_free(mem_space_t *space, void *ptr, size_t pages);
 void mem_space_free_stack(mem_space_t *space, void *stack);
 int mem_space_can_access(mem_space_t *space, const void *ptr, size_t size);
-int mem_space_handle_page_fault(mem_space_t *space);
+int mem_space_handle_page_fault(mem_space_t *space, void *ptr);
 void mem_space_destroy(mem_space_t *space);
 
 vmem_t vmem_init(void);

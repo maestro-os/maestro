@@ -327,15 +327,23 @@ void avl_tree_delete(avl_tree_t **tree, avl_tree_t *n)
 	}
 }
 
-void avl_tree_freeall(avl_tree_t *tree, void (*f)(void *))
+void avl_tree_freeall_(avl_tree_t *tree, void (*f)(void *))
 {
 	if(!tree)
 		return;
 	if(f)
 		f(tree->value);
-	avl_tree_freeall(tree->left, f);
-	avl_tree_freeall(tree->right, f);
+	avl_tree_freeall_(tree->left, f);
+	avl_tree_freeall_(tree->right, f);
 	cache_free(avl_tree_cache, tree);
+}
+
+void avl_tree_freeall(avl_tree_t **tree, void (*f)(void *))
+{
+	if(!tree)
+		return;
+	avl_tree_freeall_(*tree, f);
+	*tree = NULL;
 }
 
 #ifdef KERNEL_DEBUG
@@ -367,6 +375,9 @@ void avl_tree_print_(const avl_tree_t *tree, const size_t level)
 
 void avl_tree_print(const avl_tree_t *tree)
 {
-	avl_tree_print_(tree, 0);
+	if(tree)
+		avl_tree_print_(tree, 0);
+	else
+		printf("(Empty tree)\n");
 }
 #endif

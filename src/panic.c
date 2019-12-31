@@ -94,7 +94,7 @@ void error_handler(const unsigned error, const uint32_t error_code)
 	}
 	else if(error == 0xe)
 	{
-		if(mem_space_handle_page_fault(process->mem_space))
+		if(mem_space_handle_page_fault(process->mem_space, cr2_get()))
 			return;
 		process_kill(process, sig);
 	}

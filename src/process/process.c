@@ -98,56 +98,36 @@ static void free_pid(const pid_t pid)
 }
 
 ATTR_HOT
-static void init_process(process_t *process)
-{
-	mem_space_t *mem_space;
-	void *user_stack = NULL, *kernel_stack = NULL;
-
-	if(!process->mem_space)
-	{
-		// TODO Set stack max size
-		// TODO Do not allow access to kernel_stack in user space
-		if(!(mem_space = mem_space_init())
-			|| !(user_stack = mem_space_alloc_stack(mem_space, 1))
-				|| !(kernel_stack = mem_space_alloc_stack(mem_space, 1)))
-		{
-			mem_space_destroy(mem_space);
-			return;
-		}
-		process->mem_space = mem_space;
-		process->user_stack = user_stack;
-		process->kernel_stack = kernel_stack;
-		process->regs_state.esp = (uintptr_t) user_stack + (PAGE_SIZE - 1);
-	}
-}
-
-ATTR_HOT
 process_t *new_process(process_t *parent, const regs_t *registers)
 {
 	pid_t pid;
 	process_t *new_proc, *p;
+	void *user_stack, *kernel_stack;
 
 	spin_lock(&spinlock);
 	errno = 0;
 	if((pid = alloc_pid()) < 0
 		|| !(new_proc = cache_alloc(processes_cache)))
 	{
-		free_pid(pid);
 		errno = ENOMEM;
-		spin_unlock(&spinlock);
-		return NULL;
+		goto fail;
 	}
 	new_proc->pid = pid;
 	new_proc->parent = parent;
 	new_proc->regs_state = *registers;
-	init_process(new_proc);
+	if(!(new_proc->mem_space = mem_space_init()))
+		goto fail;
+	// TODO Increase stacks size
+	if(!(user_stack = mem_space_alloc_stack(new_proc->mem_space, 1)))
+		goto fail;
+	if(!(kernel_stack = mem_space_alloc_stack(new_proc->mem_space, 1)))
+		goto fail;
+	new_proc->user_stack = user_stack;
+	new_proc->kernel_stack = kernel_stack;
+	new_proc->regs_state.esp = (uintptr_t) new_proc->user_stack;
 	process_add_child(parent, new_proc);
 	if(errno)
-	{
-		// TODO Free all
-		spin_unlock(&spinlock);
-		return NULL;
-	}
+		goto fail;
 	if(processes)
 	{
 		p = processes;
@@ -160,6 +140,12 @@ process_t *new_process(process_t *parent, const regs_t *registers)
 		processes = new_proc;
 	spin_unlock(&spinlock);
 	return new_proc;
+
+fail:
+	free_pid(pid);
+	// TODO Free all
+	spin_unlock(&spinlock);
+	return NULL;
 }
 
 ATTR_HOT

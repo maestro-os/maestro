@@ -75,11 +75,11 @@ loop:
 
 void test_process(void)
 {
-	multi_chain_fork(300);
-	if(getpid() == 300)
-		putstr("bleh\n");
+	//multi_chain_fork(300);
+	//if(getpid() == 300)
+		//putstr("bleh\n");
 	while(1)
-		;
+		putstr("a\n");
 		//putnbr(getpid());
 	asm("hlt");
 }
