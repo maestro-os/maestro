@@ -11,8 +11,9 @@
 # define PAGE_SIZE		0x1000
 # define KERNEL_BEGIN	((void *) 0x100000)
 
-# define MEM_REGION_FLAG_WRITE	0b01
-# define MEM_REGION_FLAG_STACK	0b10
+# define MEM_REGION_FLAG_WRITE	0b001
+# define MEM_REGION_FLAG_STACK	0b010
+# define MEM_REGION_FLAG_USER	0b100
 
 # define PAGING_TABLE_PAGE_SIZE		0b10000000
 # define PAGING_TABLE_ACCESSED		0b00100000
@@ -119,6 +120,7 @@ void print_mem_usage(void);
 
 mem_space_t *mem_space_init(void);
 mem_space_t *mem_space_clone(mem_space_t *space);
+// TODO Flags on allocation (write, user)
 void *mem_space_alloc(mem_space_t *space, size_t pages);
 void *mem_space_alloc_stack(mem_space_t *space, size_t max_pages);
 void mem_space_free(mem_space_t *space, void *ptr, size_t pages);

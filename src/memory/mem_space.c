@@ -45,6 +45,7 @@ mem_space_t *mem_space_init(void)
 	}
 	s->gaps->begin = (void *) 0x1000;
 	s->gaps->pages = 0xfffff;
+	// TODO Kernel code/syscall stub should not be inside a gap
 	avl_tree_insert(&s->free_tree, s->gaps, region_cmp);
 	if(!(s->page_dir = vmem_init()))
 	{
@@ -345,6 +346,8 @@ void *mem_space_alloc_stack(mem_space_t *space, const size_t max_pages)
 	// TODO Return NULL if available physical pages count is too low
 	if(!(r = region_create(space, max_pages, 1)))
 		return NULL;
+	r->used_pages = r->pages;
+	bitfield_set_range(r->use_bitfield, 0, r->pages);
 	r->next = space->regions;
 	space->regions = r;
 	return r->begin + (r->pages * PAGE_SIZE) - 1;
@@ -352,20 +355,22 @@ void *mem_space_alloc_stack(mem_space_t *space, const size_t max_pages)
 
 static mem_region_t *find_region(avl_tree_t *n, void *ptr)
 {
-	mem_region_t *r;
+	mem_region_t *r = NULL;
 
 	if(!ptr)
 		return NULL;
-	while(1)
+	while(n)
 	{
-		if(n->left && ((mem_gap_t *) n->left->value)->begin >= ptr)
+		r = n->value;
+		if(r->begin >= ptr)
 			n = n->left;
-		else if(n->right && ((mem_gap_t *) n->right->value)->begin < ptr)
+		else if(r->begin < ptr)
 			n = n->right;
 		else
 			break;
 	}
-	r = n->value;
+	if(!r)
+		return NULL;
 	if(ptr >= r->begin && ptr < r->begin + r->pages * PAGE_SIZE)
 		return r;
 	return NULL;
@@ -394,18 +399,33 @@ int mem_space_can_access(mem_space_t *space, const void *ptr, size_t size)
 	return 0;
 }
 
+// TODO Map the whole region?
 int mem_space_handle_page_fault(mem_space_t *space, void *ptr)
 {
 	mem_region_t *r;
+	void *physical_page;
+	int flags = 0;
 
 	if(!space || !ptr)
 		return 0;
 	ptr = ALIGN_DOWN(ptr, PAGE_SIZE);
 	if(!(r = find_region(space->used_tree, ptr)))
 		return 0;
-	// TODO Check if virtual page is allocated
-	// TODO Allocate and map a physical page if needed
-	// TODO Return 0 if page isn't accessible or 1 if accessible
+	if(bitfield_get(r->use_bitfield, (ptr - r->begin) / PAGE_SIZE) == 0)
+		return 0;
+	if(!(physical_page = buddy_alloc_zero(0)))
+		return 0;
+	if(r->flags & MEM_REGION_FLAG_WRITE)
+		flags |= PAGING_PAGE_WRITE;
+	if(r->flags & MEM_REGION_FLAG_USER)
+		flags |= PAGING_PAGE_USER;
+	errno = 0;
+	vmem_map(space->page_dir, physical_page, ptr, flags);
+	if(errno)
+	{
+		buddy_free(physical_page);
+		return 0;
+	}
 	return 1;
 }
 

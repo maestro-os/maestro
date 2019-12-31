@@ -62,22 +62,22 @@ void bitfield_set_range(uint8_t *bitfield, const size_t begin, const size_t end)
 		*UNIT(bitfield, begin) |= mask;
 		++i;
 	}
-	if((end - begin) / 8 >= sizeof(mask))
+	if((end - begin) >= BIT_SIZEOF(mask))
 	{
-		while((i + sizeof(tiny_mask)) * 8 < end
+		while((i + BIT_SIZEOF(tiny_mask)) < end
 			&& !IS_ALIGNED(bitfield + i, PAGE_SIZE))
 		{
 			*UNIT(bitfield, i) = tiny_mask;
 			i += sizeof(tiny_mask);
 		}
 		mask = ~((long) 0);
-		while((i + sizeof(mask)) * 8 < end)
+		while((i + BIT_SIZEOF(mask)) < end)
 		{
 			*((long *) UNIT(bitfield, i)) = mask;
 			i += sizeof(mask);
 		}
 	}
-	while((i + sizeof(tiny_mask)) * 8 < end)
+	while((i + BIT_SIZEOF(tiny_mask)) < end)
 	{
 		*UNIT(bitfield, i) = tiny_mask;
 		i += sizeof(tiny_mask);
@@ -102,21 +102,21 @@ void bitfield_clear_range(uint8_t *bitfield,
 		*UNIT(bitfield, begin) &= ~mask;
 		++i;
 	}
-	if((end - begin) / 8 >= sizeof(mask))
+	if((end - begin) >= BIT_SIZEOF(mask))
 	{
-		while((i + sizeof(*bitfield)) * 8 < end
+		while((i + BIT_SIZEOF(*bitfield)) < end
 			&& !IS_ALIGNED(bitfield + i, PAGE_SIZE))
 		{
 			*UNIT(bitfield, i) = 0;
 			i += sizeof(*bitfield);
 		}
-		while((i + sizeof(mask)) * 8 < end)
+		while((i + BIT_SIZEOF(mask)) < end)
 		{
 			*((long *) UNIT(bitfield, i)) = 0;
 			i += sizeof(mask);
 		}
 	}
-	while((i + sizeof(*bitfield)) * 8 < end)
+	while((i + BIT_SIZEOF(*bitfield)) < end)
 	{
 		*UNIT(bitfield, i) = 0;
 		i += sizeof(*bitfield);
