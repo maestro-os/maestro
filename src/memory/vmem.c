@@ -114,6 +114,7 @@ int vmem_is_mapped(vmem_t vmem, void *ptr)
 	return (vmem_resolve(vmem, ptr) != NULL);
 }
 
+// TODO Reload tlb after mapping?
 ATTR_HOT
 void vmem_map(vmem_t vmem, void *physaddr, void *virtaddr, const int flags)
 {

@@ -296,7 +296,7 @@ static void shrink_gap(avl_tree_t **tree, avl_tree_t *gap, const size_t pages)
 }
 
 static mem_region_t *region_create(mem_space_t *space,
-	const size_t pages, const int stack)
+	const size_t pages, const int flags)
 {
 	mem_region_t *r;
 	avl_tree_t *gap;
@@ -311,10 +311,11 @@ static mem_region_t *region_create(mem_space_t *space,
 		return NULL;
 	}
 	r->mem_space = space;
-	if(stack)
-		r->flags |= MEM_REGION_FLAG_STACK;
+	r->flags = flags;
 	r->begin = ((mem_gap_t *) gap->value)->begin;
 	r->pages = pages;
+	r->used_pages = r->pages;
+	bitfield_set_range(r->use_bitfield, 0, r->pages);
 	avl_tree_insert(&space->used_tree, r, region_cmp);
 	if(errno)
 	{
@@ -325,32 +326,19 @@ static mem_region_t *region_create(mem_space_t *space,
 	return r;
 }
 
-void *mem_space_alloc(mem_space_t *space, const size_t pages)
+void *mem_space_alloc(mem_space_t *space, const size_t pages, const int flags)
 {
 	mem_region_t *r;
 
 	// TODO Return NULL if available physical pages count is too low
-	if(!(r = region_create(space, pages, 0)))
+	if(!(r = region_create(space, pages, flags)))
 		return NULL;
-	r->used_pages = r->pages;
-	bitfield_set_range(r->use_bitfield, 0, r->pages);
 	r->next = space->regions;
 	space->regions = r;
-	return r->begin;
-}
-
-void *mem_space_alloc_stack(mem_space_t *space, const size_t max_pages)
-{
-	mem_region_t *r;
-
-	// TODO Return NULL if available physical pages count is too low
-	if(!(r = region_create(space, max_pages, 1)))
-		return NULL;
-	r->used_pages = r->pages;
-	bitfield_set_range(r->use_bitfield, 0, r->pages);
-	r->next = space->regions;
-	space->regions = r;
-	return r->begin + (r->pages * PAGE_SIZE) - 1;
+	if(flags & MEM_REGION_FLAG_STACK)
+		return r->begin + (r->pages * PAGE_SIZE) - 1;
+	else
+		return r->begin;
 }
 
 static mem_region_t *find_region(avl_tree_t *n, void *ptr)
@@ -396,25 +384,51 @@ int mem_space_can_access(mem_space_t *space, const void *ptr, size_t size)
 		return 0;
 	// TODO
 	(void) size;
-	return 0;
+	return 1;
+}
+
+static void copy_on_write(void *physical_page,
+	mem_region_t *region, const size_t region_offset)
+{
+	void *src;
+
+	src = vmem_translate(region->mem_space->page_dir,
+		region->begin + region_offset * PAGE_SIZE);
+	memcpy(physical_page, src, PAGE_SIZE);
+	if(region->prev_shared)
+		region->prev_shared->next_shared = region->next_shared;
+	if(region->next_shared)
+		region->next_shared->prev_shared = region->prev_shared;
+	region->prev_shared = NULL;
+	region->next_shared = NULL;
 }
 
 // TODO Map the whole region?
-int mem_space_handle_page_fault(mem_space_t *space, void *ptr)
+int mem_space_handle_page_fault(mem_space_t *space,
+	void *ptr, const int error_code)
 {
 	mem_region_t *r;
+	size_t region_offset;
 	void *physical_page;
 	int flags = 0;
 
 	if(!space || !ptr)
 		return 0;
+	if(!(error_code & PAGE_FAULT_USER))
+		return 0;
 	ptr = ALIGN_DOWN(ptr, PAGE_SIZE);
 	if(!(r = find_region(space->used_tree, ptr)))
 		return 0;
-	if(bitfield_get(r->use_bitfield, (ptr - r->begin) / PAGE_SIZE) == 0)
+	if((error_code & PAGE_FAULT_WRITE) && !(r->flags & MEM_REGION_FLAG_WRITE))
+		return 0;
+	region_offset = (ptr - r->begin) / PAGE_SIZE;
+	if(bitfield_get(r->use_bitfield, region_offset) == 0)
 		return 0;
 	if(!(physical_page = buddy_alloc_zero(0)))
 		return 0;
+	if(error_code & PAGE_FAULT_WRITE)
+		copy_on_write(physical_page, r, region_offset);
+	// TODO If region has next_shared or prev
 	if(r->flags & MEM_REGION_FLAG_WRITE)
 		flags |= PAGING_PAGE_WRITE;
 	if(r->flags & MEM_REGION_FLAG_USER)

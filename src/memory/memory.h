@@ -42,6 +42,12 @@
 # define ADDR_PAGE(addr)	(((uintptr_t) (addr) >> 12) & 0x3ff)
 # define ADDR_REMAIN(addr)	((uintptr_t) (addr) & 0xfff)
 
+# define PAGE_FAULT_PRESENT		0b00001
+# define PAGE_FAULT_WRITE		0b00010
+# define PAGE_FAULT_USER		0b00100
+# define PAGE_FAULT_RESERVED	0b01000
+# define PAGE_FAULT_INSTRUCTION	0b10000
+
 typedef struct
 {
 	size_t memory_maps_size;
@@ -120,13 +126,11 @@ void print_mem_usage(void);
 
 mem_space_t *mem_space_init(void);
 mem_space_t *mem_space_clone(mem_space_t *space);
-// TODO Flags on allocation (write, user)
-void *mem_space_alloc(mem_space_t *space, size_t pages);
-void *mem_space_alloc_stack(mem_space_t *space, size_t max_pages);
+void *mem_space_alloc(mem_space_t *space, size_t pages, int flags);
 void mem_space_free(mem_space_t *space, void *ptr, size_t pages);
 void mem_space_free_stack(mem_space_t *space, void *stack);
 int mem_space_can_access(mem_space_t *space, const void *ptr, size_t size);
-int mem_space_handle_page_fault(mem_space_t *space, void *ptr);
+int mem_space_handle_page_fault(mem_space_t *space, void *ptr, int error_code);
 void mem_space_destroy(mem_space_t *space);
 
 vmem_t vmem_init(void);

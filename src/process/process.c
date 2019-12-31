@@ -118,9 +118,11 @@ process_t *new_process(process_t *parent, const regs_t *registers)
 	if(!(new_proc->mem_space = mem_space_init()))
 		goto fail;
 	// TODO Increase stacks size
-	if(!(user_stack = mem_space_alloc_stack(new_proc->mem_space, 1)))
+	if(!(user_stack = mem_space_alloc(new_proc->mem_space, 1,
+		MEM_REGION_FLAG_STACK | MEM_REGION_FLAG_WRITE | MEM_REGION_FLAG_USER)))
 		goto fail;
-	if(!(kernel_stack = mem_space_alloc_stack(new_proc->mem_space, 1)))
+	if(!(kernel_stack = mem_space_alloc(new_proc->mem_space, 1,
+		MEM_REGION_FLAG_STACK | MEM_REGION_FLAG_WRITE)))
 		goto fail;
 	new_proc->user_stack = user_stack;
 	new_proc->kernel_stack = kernel_stack;
