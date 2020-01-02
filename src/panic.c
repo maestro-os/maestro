@@ -92,15 +92,13 @@ void error_handler(const unsigned error, const uint32_t error_code)
 		// TODO process_exit(process, eax);
 		process_kill(process, sig); // TODO rm
 	}
-	else if(error == 0xe)
+	else
 	{
-		if(mem_space_handle_page_fault(process->mem_space,
+		if(error == 0xe && mem_space_handle_page_fault(process->mem_space,
 			cr2_get(), error_code))
 			return;
 		process_kill(process, sig);
 	}
-	else
-		process_kill(process, sig);
 	pic_EOI(error);
 	kernel_loop();
 }
@@ -123,6 +121,7 @@ ATTR_COLD
 ATTR_NORETURN
 void kernel_panic(const char *reason, const uint32_t code)
 {
+	CLI();
 	print_panic(reason, code);
 	kernel_halt();
 }
@@ -134,6 +133,7 @@ void kernel_panic_(const char *reason, const uint32_t code,
 {
 	void *ebp;
 
+	CLI();
 	print_panic(reason, code);
 	printf("\n-- DEBUG --\nFile: %s; Line: %i\n", file, line);
 	if(get_running_process())

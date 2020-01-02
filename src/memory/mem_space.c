@@ -1,6 +1,8 @@
 #include <memory/memory.h>
 #include <kernel.h>
 
+// TODO Spinlock
+
 static cache_t *mem_space_cache;
 static cache_t *mem_gap_cache;
 
@@ -205,7 +207,7 @@ static int build_trees(mem_space_t *space)
 	g = space->gaps;
 	while(g)
 	{
-		avl_tree_insert(&space->used_tree, g, gap_cmp);
+		avl_tree_insert(&space->free_tree, g, gap_cmp);
 		if(errno)
 			goto fail;
 		g = g->next;
@@ -247,6 +249,7 @@ mem_space_t *mem_space_clone(mem_space_t *space)
 	regions_disable_write(space->regions, space->page_dir);
 	if(!(s->page_dir = vmem_clone(space->page_dir)))
 		goto fail;
+	// TODO Preallocate kernel stack(s)
 	spin_unlock(&space->spinlock);
 	return s;
 
@@ -300,6 +303,7 @@ static mem_region_t *region_create(mem_space_t *space,
 {
 	mem_region_t *r;
 	avl_tree_t *gap;
+	void *phys, *virt;
 
 	if(pages == 0)
 		return NULL;
@@ -317,6 +321,20 @@ static mem_region_t *region_create(mem_space_t *space,
 	r->used_pages = r->pages;
 	bitfield_set_range(r->use_bitfield, 0, r->pages);
 	avl_tree_insert(&space->used_tree, r, region_cmp);
+	// TODO Place preallocation in different function
+	if(!(flags & MEM_REGION_FLAG_USER) && (flags & MEM_REGION_FLAG_STACK))
+	{
+		virt = r->begin;
+		while(virt < r->begin + r->pages * PAGE_SIZE)
+		{
+			if(!(phys = buddy_alloc_zero(0)))
+			{
+				// TODO Free all
+			}
+			vmem_map(space->page_dir, phys, virt, 0); // TODO Flags
+			virt += PAGE_SIZE;
+		}
+	}
 	if(errno)
 	{
 		kfree(r, 0);
@@ -390,8 +408,13 @@ int mem_space_can_access(mem_space_t *space, const void *ptr, size_t size)
 static void copy_on_write(void *physical_page,
 	mem_region_t *region, const size_t region_offset)
 {
+	mem_region_t *r;
 	void *src;
 
+	if(!(r = region->prev_shared))
+		r = region->next_shared;
+	if(!r)
+		return;
 	src = vmem_translate(region->mem_space->page_dir,
 		region->begin + region_offset * PAGE_SIZE);
 	memcpy(physical_page, src, PAGE_SIZE);
@@ -414,8 +437,6 @@ int mem_space_handle_page_fault(mem_space_t *space,
 
 	if(!space || !ptr)
 		return 0;
-	if(!(error_code & PAGE_FAULT_USER))
-		return 0;
 	ptr = ALIGN_DOWN(ptr, PAGE_SIZE);
 	if(!(r = find_region(space->used_tree, ptr)))
 		return 0;
@@ -428,7 +449,6 @@ int mem_space_handle_page_fault(mem_space_t *space,
 		return 0;
 	if(error_code & PAGE_FAULT_WRITE)
 		copy_on_write(physical_page, r, region_offset);
-	// TODO If region has next_shared or prev
 	if(r->flags & MEM_REGION_FLAG_WRITE)
 		flags |= PAGING_PAGE_WRITE;
 	if(r->flags & MEM_REGION_FLAG_USER)

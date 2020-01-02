@@ -5,6 +5,11 @@
 // TODO
 #include <debug/debug.h>
 
+#define USER_STACK_FLAGS\
+	MEM_REGION_FLAG_STACK | MEM_REGION_FLAG_WRITE | MEM_REGION_FLAG_USER
+#define KERNEL_STACK_FLAGS\
+	MEM_REGION_FLAG_STACK | MEM_REGION_FLAG_WRITE
+
 // TODO Set errnos
 // TODO Multicore handling
 
@@ -115,18 +120,29 @@ process_t *new_process(process_t *parent, const regs_t *registers)
 	new_proc->pid = pid;
 	new_proc->parent = parent;
 	new_proc->regs_state = *registers;
-	if(!(new_proc->mem_space = mem_space_init()))
-		goto fail;
-	// TODO Increase stacks size
-	if(!(user_stack = mem_space_alloc(new_proc->mem_space, 1,
-		MEM_REGION_FLAG_STACK | MEM_REGION_FLAG_WRITE | MEM_REGION_FLAG_USER)))
-		goto fail;
-	if(!(kernel_stack = mem_space_alloc(new_proc->mem_space, 1,
-		MEM_REGION_FLAG_STACK | MEM_REGION_FLAG_WRITE)))
-		goto fail;
+	if(!parent)
+	{
+		if(!(new_proc->mem_space = mem_space_init()))
+			goto fail;
+		// TODO Increase stacks size
+		if(!(user_stack = mem_space_alloc(new_proc->mem_space, 1,
+			USER_STACK_FLAGS)))
+			goto fail;
+		if(!(kernel_stack = mem_space_alloc(new_proc->mem_space, 1,
+			KERNEL_STACK_FLAGS)))
+			goto fail;
+	}
+	else
+	{
+		if(!(new_proc->mem_space = mem_space_clone(parent->mem_space)))
+			goto fail;
+		user_stack = parent->user_stack;
+		kernel_stack = parent->kernel_stack;
+	}
 	new_proc->user_stack = user_stack;
 	new_proc->kernel_stack = kernel_stack;
-	new_proc->regs_state.esp = (uintptr_t) new_proc->user_stack;
+	if(!parent)
+		new_proc->regs_state.esp = (uintptr_t) new_proc->user_stack;
 	process_add_child(parent, new_proc);
 	if(errno)
 		goto fail;
@@ -196,11 +212,6 @@ process_t *process_clone(process_t *proc)
 	}
 	if(!(p = new_process(proc, &proc->regs_state)))
 		return NULL;
-	if(!(p->mem_space = mem_space_clone(proc->mem_space)))
-	{
-		del_process(p, 0);
-		return NULL;
-	}
 	p->state = WAITING;
 	return p;
 }
@@ -367,7 +378,7 @@ static void switch_processes(void)
 	process_set_state(p, RUNNING);
 	tss.ss0 = GDT_KERNEL_DATA_OFFSET;
 	tss.ss = GDT_USER_DATA_OFFSET;
-	tss.esp0 = (uint32_t) p->kernel_stack + (PAGE_SIZE - 1);
+	tss.esp0 = (uint32_t) p->kernel_stack;
 	paging_enable(p->mem_space->page_dir); // TODO Check if NULL?
 	if(p->syscalling)
 		kernel_switch(&p->regs_state);

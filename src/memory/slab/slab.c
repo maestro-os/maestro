@@ -39,7 +39,7 @@ cache_t *cache_get(const char *name)
 
 	if(!name)
 		return NULL;
-	c = caches; 
+	c = caches;
 	while(c)
 	{
 		if(strcmp(c->name, name) == 0)
