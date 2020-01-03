@@ -30,7 +30,6 @@ sys_ret_t syscall_handler(const regs_t *registers)
 		process_kill(process, SIGSYS);
 		kernel_loop();
 	}
-	process->regs_state = *registers;
 	process->syscalling = 1;
 	STI();
 	ret = h(process, registers);

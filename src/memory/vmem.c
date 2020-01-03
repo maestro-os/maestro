@@ -52,9 +52,9 @@ void vmem_kernel(void)
 	if(!(kernel_vmem = new_vmem_obj()))
 		goto fail;
 	// TODO Fix
-	/*vmem_unmap(kernel_vmem, NULL);
+	vmem_unmap(kernel_vmem, NULL);
 	vmem_identity_range(kernel_vmem, (void *) PAGE_SIZE, KERNEL_BEGIN,
-		PAGING_PAGE_WRITE);*/
+		PAGING_PAGE_WRITE);
 	vmem_identity_range(kernel_vmem, NULL, KERNEL_BEGIN, PAGING_PAGE_WRITE);
 	vmem_identity_range(kernel_vmem, KERNEL_BEGIN, mem_info.heap_begin,
 		PAGING_PAGE_WRITE);

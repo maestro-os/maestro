@@ -19,7 +19,7 @@ typedef struct pages_alloc
 
 	void *buddy;
 	size_t buddy_pages;
-	
+
 	void *ptr;
 	size_t available_pages;
 } pages_alloc_t;

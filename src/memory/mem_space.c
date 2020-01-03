@@ -28,6 +28,23 @@ static int gap_cmp(void *r0, void *r1)
 		- (uintptr_t) ((mem_gap_t *) r0)->pages;
 }
 
+static int init_gaps(mem_space_t *s)
+{
+	if(!(s->gaps = cache_alloc(mem_gap_cache)))
+		return 0;
+	s->gaps->begin = (void *) 0x1000;
+	s->gaps->pages = 0xfffff;
+	// TODO Kernel code/syscall stub should not be inside a gap
+	errno = 0;
+	avl_tree_insert(&s->free_tree, s->gaps, region_cmp);
+	if(errno)
+	{
+		cache_free(mem_gap_cache, s->gaps);
+		return 0;
+	}
+	return 1;
+}
+
 mem_space_t *mem_space_init(void)
 {
 	static int init = 0;
@@ -40,15 +57,11 @@ mem_space_t *mem_space_init(void)
 	}
 	if(!(s = cache_alloc(mem_space_cache)))
 		return NULL;
-	if(!(s->gaps = cache_alloc(mem_gap_cache)))
+	if(!(init_gaps(s)))
 	{
 		cache_free(mem_space_cache, s);
 		return NULL;
 	}
-	s->gaps->begin = (void *) 0x1000;
-	s->gaps->pages = 0xfffff;
-	// TODO Kernel code/syscall stub should not be inside a gap
-	avl_tree_insert(&s->free_tree, s->gaps, region_cmp);
 	if(!(s->page_dir = vmem_init()))
 	{
 		cache_free(mem_gap_cache, s->gaps);
@@ -224,21 +237,56 @@ static void regions_disable_write(mem_region_t *r, vmem_t page_dir)
 {
 	void *ptr;
 	size_t i;
+	uint32_t *entry;
 
 	for(; r; r = r->next)
 	{
+		if(!(r->flags & MEM_REGION_FLAG_USER))
+			continue;
 		if(!(r->flags & MEM_REGION_FLAG_WRITE))
 			continue;
 		ptr = r->begin;
 		for(i = 0; i < r->pages; ++i)
-			*vmem_resolve(page_dir, ptr + (i * PAGE_SIZE))
-				&= ~PAGING_PAGE_WRITE;
+		{
+			if((entry = vmem_resolve(page_dir, ptr + (i * PAGE_SIZE))))
+				*entry &= ~PAGING_PAGE_WRITE;
+		}
 	}
+}
+
+static int convert_flags(const int reg_flags)
+{
+	int flags = 0;
+
+	if(reg_flags & MEM_REGION_FLAG_WRITE)
+		flags |= PAGING_PAGE_WRITE;
+	if(reg_flags & MEM_REGION_FLAG_USER)
+		flags |= PAGING_PAGE_USER;
+	return flags;
+}
+
+static int preallocate_kernel_stack(mem_space_t *space, mem_region_t *r)
+{
+	void *i, *ptr;
+
+	i = r->begin;
+	while(i < r->begin + r->pages * PAGE_SIZE)
+	{
+		if(!(ptr = buddy_alloc_zero(0)))
+		{
+			// TODO Free all
+			return 0;
+		}
+		vmem_map(space->page_dir, ptr, i, convert_flags(r->flags));
+		i += PAGE_SIZE;
+	}
+	return 1;
 }
 
 mem_space_t *mem_space_clone(mem_space_t *space)
 {
 	mem_space_t *s;
+	mem_region_t *r;
 
 	if(!space || !(s = cache_alloc(mem_space_cache)))
 		return NULL;
@@ -249,7 +297,17 @@ mem_space_t *mem_space_clone(mem_space_t *space)
 	regions_disable_write(space->regions, space->page_dir);
 	if(!(s->page_dir = vmem_clone(space->page_dir)))
 		goto fail;
-	// TODO Preallocate kernel stack(s)
+	r = s->regions;
+	while(r)
+	{
+		if(!(r->flags & MEM_REGION_FLAG_USER)
+			&& r->flags & MEM_REGION_FLAG_STACK)
+		{
+			if(!preallocate_kernel_stack(s, r))
+				goto fail;
+		}
+		r = r->next;
+	}
 	spin_unlock(&space->spinlock);
 	return s;
 
@@ -303,7 +361,6 @@ static mem_region_t *region_create(mem_space_t *space,
 {
 	mem_region_t *r;
 	avl_tree_t *gap;
-	void *phys, *virt;
 
 	if(pages == 0)
 		return NULL;
@@ -320,23 +377,19 @@ static mem_region_t *region_create(mem_space_t *space,
 	r->pages = pages;
 	r->used_pages = r->pages;
 	bitfield_set_range(r->use_bitfield, 0, r->pages);
-	avl_tree_insert(&space->used_tree, r, region_cmp);
-	// TODO Place preallocation in different function
 	if(!(flags & MEM_REGION_FLAG_USER) && (flags & MEM_REGION_FLAG_STACK))
 	{
-		virt = r->begin;
-		while(virt < r->begin + r->pages * PAGE_SIZE)
+		if(!preallocate_kernel_stack(space, r))
 		{
-			if(!(phys = buddy_alloc_zero(0)))
-			{
-				// TODO Free all
-			}
-			vmem_map(space->page_dir, phys, virt, 0); // TODO Flags
-			virt += PAGE_SIZE;
+			kfree(r, 0);
+			return NULL;
 		}
 	}
+	errno = 0;
+	avl_tree_insert(&space->used_tree, r, region_cmp);
 	if(errno)
 	{
+		// TODO If preallocated kernel_stack, free it
 		kfree(r, 0);
 		return NULL;
 	}
@@ -405,6 +458,17 @@ int mem_space_can_access(mem_space_t *space, const void *ptr, size_t size)
 	return 1;
 }
 
+static void update_share(mem_region_t *r)
+{
+	uint32_t *entry;
+
+	if(r->prev_shared || r->next_shared || !(r->flags & MEM_REGION_FLAG_WRITE))
+		return;
+	if(!(entry = vmem_resolve(r->mem_space->page_dir, r->begin)))
+		return; // TODO Error?
+	*entry |= PAGING_PAGE_WRITE;
+}
+
 static void copy_on_write(void *physical_page,
 	mem_region_t *region, const size_t region_offset)
 {
@@ -419,9 +483,15 @@ static void copy_on_write(void *physical_page,
 		region->begin + region_offset * PAGE_SIZE);
 	memcpy(physical_page, src, PAGE_SIZE);
 	if(region->prev_shared)
+	{
 		region->prev_shared->next_shared = region->next_shared;
+		update_share(region->prev_shared);
+	}
 	if(region->next_shared)
+	{
 		region->next_shared->prev_shared = region->prev_shared;
+		update_share(region->next_shared);
+	}
 	region->prev_shared = NULL;
 	region->next_shared = NULL;
 }
@@ -433,12 +503,13 @@ int mem_space_handle_page_fault(mem_space_t *space,
 	mem_region_t *r;
 	size_t region_offset;
 	void *physical_page;
-	int flags = 0;
 
 	if(!space || !ptr)
 		return 0;
 	ptr = ALIGN_DOWN(ptr, PAGE_SIZE);
 	if(!(r = find_region(space->used_tree, ptr)))
+		return 0;
+	if(!(r->flags & MEM_REGION_FLAG_USER))
 		return 0;
 	if((error_code & PAGE_FAULT_WRITE) && !(r->flags & MEM_REGION_FLAG_WRITE))
 		return 0;
@@ -449,12 +520,8 @@ int mem_space_handle_page_fault(mem_space_t *space,
 		return 0;
 	if(error_code & PAGE_FAULT_WRITE)
 		copy_on_write(physical_page, r, region_offset);
-	if(r->flags & MEM_REGION_FLAG_WRITE)
-		flags |= PAGING_PAGE_WRITE;
-	if(r->flags & MEM_REGION_FLAG_USER)
-		flags |= PAGING_PAGE_USER;
 	errno = 0;
-	vmem_map(space->page_dir, physical_page, ptr, flags);
+	vmem_map(space->page_dir, physical_page, ptr, convert_flags(r->flags));
 	if(errno)
 	{
 		buddy_free(physical_page);

@@ -175,7 +175,7 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	sem_init(&sem);
 	for(size_t i = 0; i < 1; ++i)
 	{
-		regs_t r;	
+		regs_t r;
 		bzero(&r, sizeof(r));
 		r.eip = (intptr_t)test_process;
 		if(!(new_process(NULL, &r)))
