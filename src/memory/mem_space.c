@@ -509,7 +509,7 @@ int mem_space_handle_page_fault(mem_space_t *space,
 	ptr = ALIGN_DOWN(ptr, PAGE_SIZE);
 	if(!(r = find_region(space->used_tree, ptr)))
 		return 0;
-	if(!(r->flags & MEM_REGION_FLAG_USER))
+	if(!(r->flags & MEM_REGION_FLAG_USER) || !(r->flags & MEM_REGION_FLAG_USER))
 		return 0;
 	if((error_code & PAGE_FAULT_WRITE) && !(r->flags & MEM_REGION_FLAG_WRITE))
 		return 0;

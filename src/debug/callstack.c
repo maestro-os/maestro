@@ -9,8 +9,8 @@ static const char *get_symbol_name(const uint32_t offset)
 {
 	elf_section_header_t *section;
 
-	if(!(section = get_section(boot_info->elf_sections, boot_info->elf_num,
-		boot_info->elf_shndx, boot_info->elf_entsize, ".strtab")))
+	if(!(section = get_section(boot_info.elf_sections, boot_info.elf_num,
+		boot_info.elf_shndx, boot_info.elf_entsize, ".strtab")))
 		return NULL;
 	return (const char *) section->sh_addr + offset;
 }
@@ -45,8 +45,8 @@ const char *get_function_name(void *i)
 {
 	inst = i;
 	func_name = NULL;
-	iterate_sections(boot_info->elf_sections, boot_info->elf_num,
-		boot_info->elf_shndx, boot_info->elf_entsize, get_function_symbol);
+	iterate_sections(boot_info.elf_sections, boot_info.elf_num,
+		boot_info.elf_shndx, boot_info.elf_entsize, get_function_symbol);
 	return func_name;
 }
 

@@ -53,13 +53,13 @@ void memmap_init(void *multiboot_ptr, void *kernel_end)
 	void *multiboot_tags_end;
 
 	multiboot_tags_end = multiboot_ptr + multiboot_tags_size(multiboot_ptr);
-	mem_info.memory_maps_size = boot_info->memory_maps_size;
-	mem_info.memory_maps_entry_size = boot_info->memory_maps_entry_size;
-	mem_info.memory_maps = boot_info->memory_maps;
+	mem_info.memory_maps_size = boot_info.memory_maps_size;
+	mem_info.memory_maps_entry_size = boot_info.memory_maps_entry_size;
+	mem_info.memory_maps = boot_info.memory_maps;
 	mem_info.memory_end = get_memory_end();
 	mem_info.heap_begin = ALIGN_UP(MAX(multiboot_tags_end, kernel_end),
 		PAGE_SIZE);
-	mem_info.heap_end = ALIGN_DOWN((void *) (boot_info->mem_upper * 1024),
+	mem_info.heap_end = ALIGN_DOWN((void *) (boot_info.mem_upper * 1024),
 		PAGE_SIZE);
 	if(mem_info.heap_begin >= mem_info.heap_end)
 		PANIC("Invalid memory map!", 0);

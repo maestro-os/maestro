@@ -42,8 +42,8 @@ static void protect_section(elf_section_header_t *hdr, const char *name)
 ATTR_COLD
 static void protect_kernel(void)
 {
-	iterate_sections(boot_info->elf_sections, boot_info->elf_num,
-		boot_info->elf_shndx, boot_info->elf_entsize, protect_section);
+	iterate_sections(boot_info.elf_sections, boot_info.elf_num,
+		boot_info.elf_shndx, boot_info.elf_entsize, protect_section);
 }
 
 ATTR_COLD
@@ -51,16 +51,9 @@ void vmem_kernel(void)
 {
 	if(!(kernel_vmem = new_vmem_obj()))
 		goto fail;
-	// TODO Fix
 	vmem_unmap(kernel_vmem, NULL);
-	vmem_identity_range(kernel_vmem, (void *) PAGE_SIZE, KERNEL_BEGIN,
+	vmem_identity_range(kernel_vmem, (void *) PAGE_SIZE, mem_info.memory_end,
 		PAGING_PAGE_WRITE);
-	vmem_identity_range(kernel_vmem, NULL, KERNEL_BEGIN, PAGING_PAGE_WRITE);
-	vmem_identity_range(kernel_vmem, KERNEL_BEGIN, mem_info.heap_begin,
-		PAGING_PAGE_WRITE);
-	// TODO Do not grant access to processes' pages (accessible only during syscalls?)
-	vmem_identity_range(kernel_vmem, mem_info.heap_begin, mem_info.memory_end,
-		PAGING_PAGE_WRITE); // TODO rm?
 	protect_kernel();
 	paging_enable(kernel_vmem);
 	return;

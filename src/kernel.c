@@ -115,8 +115,8 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 
 	printf("Retrieving Multiboot2 data...\n");
 	read_boot_tags(multiboot_ptr);
-	printf("Command line: %s\n", boot_info->cmdline);
-	printf("Bootloader name: %s\n", boot_info->loader_name);
+	printf("Command line: %s\n", boot_info.cmdline);
+	printf("Bootloader name: %s\n", boot_info.loader_name);
 
 	printf("Memory management initialization...\n");
 	memmap_init(multiboot_ptr, kernel_end);
@@ -173,7 +173,7 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	// TODO Remove
 	CLI();
 	sem_init(&sem);
-	for(size_t i = 0; i < 1; ++i)
+	for(size_t i = 0; i < 2; ++i)
 	{
 		regs_t r;
 		bzero(&r, sizeof(r));
