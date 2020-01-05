@@ -71,10 +71,23 @@ cache_t *cache_create(const char *name, size_t objsize, size_t objcount,
 }
 
 ATTR_HOT
-static void unlink_slab(slab_t *slab)
+static void link_slab(slab_t **list, slab_t *slab)
 {
 	if(!slab)
 		return;
+	if((slab->next = *list))
+		slab->next->prev = slab;
+	slab->prev = NULL;
+	*list = slab;
+}
+
+ATTR_HOT
+static void unlink_slab(slab_t **list, slab_t *slab)
+{
+	if(!slab)
+		return;
+	if(slab == *list)
+		*list = slab->next;
 	if(slab->next)
 		slab->next->prev = slab->prev;
 	if(slab->prev)
@@ -89,9 +102,7 @@ static slab_t *alloc_slab(cache_t *cache)
 	if(!(slab = pages_alloc_zero(cache->pages_per_slab)))
 		return NULL;
 	slab->available = cache->objcount;
-	if((slab->next = cache->slabs_free))
-		slab->next->prev = slab;
-	cache->slabs_free = slab;
+	link_slab(&cache->slabs_free, slab);
 	return slab;
 }
 
@@ -99,33 +110,31 @@ ATTR_HOT
 ATTR_MALLOC
 void *cache_alloc(cache_t *cache)
 {
-	slab_t *slab;
+	slab_t **slabs_list, *slab;
 	size_t i;
 	void *ptr;
 
 	if(!cache)
 		return NULL;
-	if(!(slab = cache->slabs_partial) && !(slab = cache->slabs_free))
+	if(!(slab = *(slabs_list = &cache->slabs_partial))
+		&& !(slab = *(slabs_list = &cache->slabs_free)))
 	{
 		if(!(slab = alloc_slab(cache)))
 			return NULL;
+		slabs_list = &cache->slabs_free;
 	}
 	i = bitfield_first_clear(SLAB_BITMAP(slab), cache->objcount);
 	bitfield_set(SLAB_BITMAP(slab), i);
 	--slab->available;
 	if(slab->available == 0)
 	{
-		unlink_slab(slab);
-		slab->next = cache->slabs_full;
-		slab->prev = NULL;
-		cache->slabs_full = slab;
+		unlink_slab(slabs_list, slab);
+		link_slab(&cache->slabs_full, slab);
 	}
 	else if(slab->available < cache->objcount)
 	{
-		unlink_slab(slab);
-		slab->next = cache->slabs_partial;
-		slab->prev = NULL;
-		cache->slabs_partial = slab;
+		unlink_slab(slabs_list, slab);
+		link_slab(&cache->slabs_partial, slab);
 	}
 	ptr = SLAB_OBJ(cache, slab, i);
 	if(cache->ctor)

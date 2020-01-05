@@ -76,9 +76,9 @@ loop:
 void test_process(void)
 {
 	//multi_branch_fork(10);
-	/*while(1)
-		fork();*/
 	while(1)
-		putnbr(getpid());
+		fork();
+	/*while(1)
+		putnbr(getpid());*/
 	asm("hlt");
 }

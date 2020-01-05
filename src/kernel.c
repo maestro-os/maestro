@@ -173,12 +173,12 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	// TODO Remove
 	CLI();
 	sem_init(&sem);
-	for(size_t i = 0; i < 2; ++i)
+	for(size_t i = 0; i < 1; ++i)
 	{
 		regs_t r;
 		bzero(&r, sizeof(r));
 		r.eip = (intptr_t)test_process;
-		if(!(new_process(NULL, &r)))
+		if(!new_process(NULL, &r))
 			printf("process creation failed!\n");
 	}
 

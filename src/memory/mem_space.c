@@ -63,18 +63,16 @@ mem_space_t *mem_space_init(void)
 	}
 	if(!(s = cache_alloc(mem_space_cache)))
 		return NULL;
-	if(!(init_gaps(s)))
-	{
-		cache_free(mem_space_cache, s);
-		return NULL;
-	}
+	if(!init_gaps(s))
+		goto fail;
 	if(!(s->page_dir = vmem_init()))
-	{
-		cache_free(mem_gap_cache, s->gaps);
-		cache_free(mem_space_cache, s);
-		return NULL;
-	}
+		goto fail;
 	return s;
+
+fail:
+	cache_free(mem_gap_cache, s->gaps); // TODO Might be several gaps
+	cache_free(mem_space_cache, s);
+	return NULL;
 }
 
 static mem_region_t *clone_region(mem_space_t *space, mem_region_t *r)
