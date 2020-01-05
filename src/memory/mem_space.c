@@ -28,12 +28,18 @@ static int gap_cmp(void *r0, void *r1)
 		- (uintptr_t) ((mem_gap_t *) r0)->pages;
 }
 
+/*
+ Creates the memory gap for the beginning
+
+ First and last page are not included for NULL pointer
+ and to avoid overflow when aligning up
+ */
 static int init_gaps(mem_space_t *s)
 {
 	if(!(s->gaps = cache_alloc(mem_gap_cache)))
 		return 0;
 	s->gaps->begin = (void *) 0x1000;
-	s->gaps->pages = 0xfffff;
+	s->gaps->pages = 0xffffe;
 	// TODO Kernel code/syscall stub should not be inside a gap
 	errno = 0;
 	avl_tree_insert(&s->free_tree, s->gaps, region_cmp);
@@ -449,12 +455,30 @@ void mem_space_free_stack(mem_space_t *space, void *stack)
 	// TODO Find region using tree and free it
 }
 
-int mem_space_can_access(mem_space_t *space, const void *ptr, size_t size)
+int mem_space_can_access(mem_space_t *space, const void *ptr, const size_t size,
+	const int write)
 {
+	void *i, *end;
+	mem_region_t *r;
+
 	if(!space || !ptr)
 		return 0;
-	// TODO
-	(void) size;
+	i = ALIGN_DOWN(ptr, PAGE_SIZE);
+	end = ALIGN_UP(ptr + size, PAGE_SIZE);
+	while(i < end)
+	{
+		if(!(r = find_region(space->used_tree, i)))
+			return 0;
+		if(write && !(r->flags & MEM_REGION_FLAG_WRITE))
+			return 0;
+		while(i < r->begin + r->pages)
+		{
+			if(!bitfield_get(r->use_bitfield,
+				(uintptr_t) (i - r->begin) / PAGE_SIZE))
+				return 0;
+			i += PAGE_SIZE;
+		}
+	}
 	return 1;
 }
 

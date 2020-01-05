@@ -6,8 +6,8 @@
 
 static block_order_t max_order;
 static block_state_t *states;
-static void *buddy_begin;
-static size_t end;
+static void *buddy_begin, *buddy_end;
+static block_index_t end;
 
 static spinlock_t spinlock = 0;
 
@@ -65,7 +65,6 @@ ATTR_COLD
 void buddy_init(void)
 {
 	size_t metadata_size;
-	void *buddy_end;
 	size_t end_end;
 	size_t i;
 
@@ -178,15 +177,17 @@ void buddy_free(void *ptr)
 }
 
 ATTR_HOT
-static size_t count_allocated_pages(const size_t index)
+static size_t count_allocated_pages(const block_index_t index)
 {
-	size_t order;
+	block_order_t order;
 
 	if(index >= end)
 		return 0;
+	if(NODE_PTR(buddy_begin, max_order, index) >= buddy_end)
+		return 0;
 	order = NODE_ORDER(max_order, index);
-	if(order == 0 && states[index] == NODE_STATE_FULL)
-		return 1;
+	if(states[index] == NODE_STATE_FULL)
+		return POW2(order);
 	return count_allocated_pages(NODE_LEFT(index))
 		+ count_allocated_pages(NODE_RIGHT(index));
 }

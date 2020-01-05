@@ -201,22 +201,6 @@ process_t *get_running_process(void)
 }
 
 ATTR_HOT
-process_t *process_clone(process_t *proc)
-{
-	process_t *p;
-
-	if(!proc)
-	{
-		errno = EINVAL;
-		return NULL;
-	}
-	if(!(p = new_process(proc, &proc->regs_state)))
-		return NULL;
-	p->state = WAITING;
-	return p;
-}
-
-ATTR_HOT
 void process_set_state(process_t *process, const process_state_t state)
 {
 	if(!process)

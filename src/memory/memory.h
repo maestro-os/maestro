@@ -129,7 +129,8 @@ mem_space_t *mem_space_clone(mem_space_t *space);
 void *mem_space_alloc(mem_space_t *space, size_t pages, int flags);
 void mem_space_free(mem_space_t *space, void *ptr, size_t pages);
 void mem_space_free_stack(mem_space_t *space, void *stack);
-int mem_space_can_access(mem_space_t *space, const void *ptr, size_t size);
+int mem_space_can_access(mem_space_t *space, const void *ptr, size_t size,
+	int write);
 int mem_space_handle_page_fault(mem_space_t *space, void *ptr, int error_code);
 void mem_space_destroy(mem_space_t *space);
 

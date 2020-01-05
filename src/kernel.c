@@ -182,6 +182,10 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 			printf("process creation failed!\n");
 	}
 
+#ifdef KERNEL_DEBUG
+	print_mem_usage();
+#endif
+
 	// TODO Remove
 	/*partition_create(disks, EXT2_PARTITION_TYPE);
 

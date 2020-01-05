@@ -15,6 +15,7 @@
 
 # define CLI()	asm("cli")
 # define STI()	asm("sti")
+# define HLT()	asm("hlt")
 
 # define SYSCALL_VECTOR				0x80
 
