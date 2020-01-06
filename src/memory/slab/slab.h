@@ -8,20 +8,22 @@
 
 # define CACHES_CACHE_NAME	"caches"
 
-# define SLAB_BITMAP(slab)			((void *) (slab) + sizeof(slab_t))
-# define SLAB_OBJ(cache, slab, i)	(SLAB_BITMAP(slab)\
+# define SLAB_OBJ(cache, slab, i)	((slab)->use_bitfield\
 	+ CEIL_DIVISION((cache)->objcount, 8) + (cache)->objsize * (i))
 
 typedef struct slab
 {
 	struct slab *prev, *next;
 	size_t available;
+
+	uint8_t use_bitfield[0];
 } slab_t;
 
 typedef struct cache
 {
+	struct cache *next;
+
 	const char *name;
-	spinlock_t spinlock;
 
 	size_t slabs;
 	size_t objsize;
@@ -31,24 +33,25 @@ typedef struct cache
 
 	slab_t *slabs_full;
 	slab_t *slabs_partial;
-	slab_t *slabs_free;
+	avl_tree_t *tree;
 
 	void (*ctor)(void *, size_t);
 	void (*dtor)(void *, size_t);
 
-	struct cache *next;
+	spinlock_t spinlock;
 } cache_t;
 
 void slab_init(void);
 
 cache_t *cache_getall(void);
 cache_t *cache_get(const char *name);
+ATTR_MALLOC
 cache_t *cache_create(const char *name, size_t objsize, size_t objcount,
 	void (*ctor)(void *, size_t), void (*dtor)(void *, size_t));
+void cache_destroy(cache_t *cache);
+
 ATTR_MALLOC
 void *cache_alloc(cache_t *cache);
-void cache_shrink(cache_t *cache);
 void cache_free(cache_t *cache, void *obj);
-void cache_destroy(cache_t *cache);
 
 #endif
