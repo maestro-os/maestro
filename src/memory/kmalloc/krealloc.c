@@ -55,20 +55,20 @@ void *krealloc(void *ptr, const size_t size)
 	}
 	c = GET_CHUNK(ptr);
 	_chunk_assert(c);
-	if(size <= c->length)
+	if(size <= c->size)
 	{
 		_shrink_chunk((_used_chunk_t *) c, size);
 		return ptr;
 	}
 	if(c->next && !c->next->used
-		&& (c->next->length + CHUNK_HDR_SIZE) - c->length >= size)
+		&& (c->next->size + CHUNK_HDR_SIZE) - c->size >= size)
 	{
 		_eat_chunk((_used_chunk_t *) c, size);
 		return ptr;
 	}
 	if(!(p = kmalloc(size)))
 		return NULL;
-	memcpy(p, ptr, MIN(c->length, size));
+	memcpy(p, ptr, MIN(c->size, size));
 	kfree(ptr);
 	return p;
 }

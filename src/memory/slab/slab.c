@@ -71,14 +71,14 @@ cache_t *cache_create(const char *name, size_t objsize, size_t objcount,
 }
 
 ATTR_COLD
-static void free_all_slabs(cache_t *cache, slab_t *s)
+static void free_all_slabs(slab_t *s)
 {
 	slab_t *next;
 
 	while(s)
 	{
 		next = s->next;
-		pages_free(s, cache->pages_per_slab);
+		pages_free(s);
 		s = next;
 	}
 }
@@ -100,8 +100,8 @@ void cache_destroy(cache_t *cache)
 		}
 		c = c->next;
 	}
-	free_all_slabs(cache, cache->slabs_full);
-	free_all_slabs(cache, cache->slabs_partial);
+	free_all_slabs(cache->slabs_full);
+	free_all_slabs(cache->slabs_partial);
 	avl_tree_freeall(&cache->tree, NULL);
 	cache_free(caches_cache, cache);
 }
@@ -224,7 +224,7 @@ void cache_free(cache_t *cache, void *obj)
 	{
 		unlink_slab(cache, s);
 		avl_tree_delete(&cache->tree, n);
-		pages_free(s, cache->pages_per_slab);
+		pages_free(s);
 	}
 
 end:

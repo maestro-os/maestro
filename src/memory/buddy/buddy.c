@@ -11,13 +11,16 @@ static block_index_t end;
 
 static spinlock_t spinlock = 0;
 
+/*
+ * Returns the buddy order for the given number of pages.
+ */
 ATTR_HOT
-block_order_t buddy_get_order(const size_t size)
+block_order_t buddy_get_order(const size_t pages)
 {
 	block_order_t order = 0;
 	size_t i = 1;
 
-	while(i < size / PAGE_SIZE)
+	while(i < pages)
 	{
 		i <<= 1;
 		++order;
@@ -68,7 +71,7 @@ void buddy_init(void)
 	size_t end_end;
 	size_t i;
 
-	max_order = buddy_get_order(mem_info.available_memory);
+	max_order = buddy_get_order(mem_info.available_memory / PAGE_SIZE);
 	states = mem_info.heap_begin;
 	metadata_size = METADATA_SIZE(max_order);
 	bzero(states, metadata_size);

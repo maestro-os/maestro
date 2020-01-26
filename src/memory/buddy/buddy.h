@@ -31,7 +31,7 @@ typedef int block_index_t;
 typedef uint32_t block_order_t;
 typedef uint8_t block_state_t;
 
-block_order_t buddy_get_order(size_t size);
+block_order_t buddy_get_order(size_t pages);
 void *buddy_get_begin(void);
 void buddy_init(void);
 

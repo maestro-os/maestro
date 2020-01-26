@@ -45,7 +45,7 @@ typedef struct _chunk_hdr
 	struct _chunk_hdr *prev, *next;
 
 	_block_t *block;
-	size_t length;
+	size_t size;
 	char used;
 # ifdef _MALLOC_CHUNK_MAGIC
 	long magic;

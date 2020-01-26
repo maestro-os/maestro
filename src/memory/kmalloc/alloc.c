@@ -74,7 +74,7 @@ _block_t *_alloc_block(const size_t pages)
 	b->pages = pages;
 	first_chunk = BLOCK_DATA(b);
 	first_chunk->block = b;
-	first_chunk->length = pages * PAGE_SIZE - (BLOCK_HDR_SIZE + CHUNK_HDR_SIZE);
+	first_chunk->size = pages * PAGE_SIZE - (BLOCK_HDR_SIZE + CHUNK_HDR_SIZE);
 #ifdef _MALLOC_CHUNK_MAGIC
 	first_chunk->magic = _MALLOC_CHUNK_MAGIC;
 #endif
@@ -109,7 +109,7 @@ void _free_block(_block_t *b)
 		_large_bin = b->next;
 	if(b->next)
 		b->next->prev = b->prev;
-	pages_free(b, b->pages);
+	pages_free(b);
 }
 
 /*
@@ -154,7 +154,7 @@ void _bucket_link(_free_chunk_t *chunk)
 {
 	_free_chunk_t **bucket;
 
-	if(!(bucket = _get_bucket(chunk->hdr.length, 1,
+	if(!(bucket = _get_bucket(chunk->hdr.size, 1,
 		_block_get_bin(chunk->hdr.block) == &_medium_bin)))
 		return;
 	chunk->prev_free = NULL;
@@ -198,10 +198,10 @@ void _split_chunk(_chunk_hdr_t *chunk, size_t size)
 
 	size = MAX(ALIGNMENT, size);
 	new_chunk = (_free_chunk_t *) ALIGN(CHUNK_DATA(chunk) + size, ALIGNMENT);
-	if(chunk->length <= size + CHUNK_HDR_SIZE + ALIGNMENT)
+	if(chunk->size <= size + CHUNK_HDR_SIZE + ALIGNMENT)
 		return;
-	l = chunk->length;
-	chunk->length = size;
+	l = chunk->size;
+	chunk->size = size;
 	if(!chunk->used)
 	{
 		_bucket_unlink((_free_chunk_t *) chunk);
@@ -212,7 +212,7 @@ void _split_chunk(_chunk_hdr_t *chunk, size_t size)
 	if((new_chunk->hdr.prev = (_chunk_hdr_t *) chunk))
 		new_chunk->hdr.prev->next = (_chunk_hdr_t *) new_chunk;
 	new_chunk->hdr.block = chunk->block;
-	new_chunk->hdr.length = l - (size + CHUNK_HDR_SIZE);
+	new_chunk->hdr.size = l - (size + CHUNK_HDR_SIZE);
 	new_chunk->hdr.used = 0;
 #ifdef _MALLOC_CHUNK_MAGIC
 	new_chunk->hdr.magic = _MALLOC_CHUNK_MAGIC;
@@ -227,7 +227,7 @@ void _merge_chunks(_chunk_hdr_t *c)
 {
 	if(!c->next->used)
 		_bucket_unlink((_free_chunk_t *) c->next);
-	c->length += CHUNK_HDR_SIZE + c->next->length;
+	c->size += CHUNK_HDR_SIZE + c->next->size;
 	if((c->next = c->next->next))
 		c->next->prev = c;
 }
@@ -244,7 +244,7 @@ void _alloc_chunk(_free_chunk_t *chunk, const size_t size)
 	if(unlikely(chunk->hdr.magic != _MALLOC_CHUNK_MAGIC))
 		PANIC("kmalloc: corrupted chunk", 0);
 #endif
-	if(unlikely(chunk->hdr.used || chunk->hdr.length < size))
+	if(unlikely(chunk->hdr.used || chunk->hdr.size < size))
 		PANIC("kmalloc: internal error", 0);
 	_bucket_unlink(chunk);
 	chunk->hdr.used = 1;
