@@ -1,5 +1,5 @@
 #include <libc/string.h>
-#include <util/attr.h>
+#include <util/util.h>
 
 // TODO Rewrite
 ATTR_HOT

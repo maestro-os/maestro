@@ -2,6 +2,7 @@
 #include <kernel.h>
 
 // TODO Spinlock
+// TODO Check if linked lists are useful
 
 static cache_t *mem_space_cache;
 static cache_t *mem_gap_cache;
@@ -81,7 +82,7 @@ static mem_region_t *clone_region(mem_space_t *space, mem_region_t *r)
 	mem_region_t *new;
 
 	bitfield_size = BITFIELD_SIZE(r->pages);
-	if(!(new = kmalloc_zero(sizeof(mem_region_t) + bitfield_size, 0)))
+	if(!(new = kmalloc_zero(sizeof(mem_region_t) + bitfield_size)))
 		return NULL;
 	new->mem_space = space;
 	new->flags = r->flags;
@@ -117,7 +118,7 @@ static void region_free(mem_region_t *region)
 		if(region->next_shared)
 			region->next_shared->prev_shared = region->prev_shared;
 	}
-	kfree(region, 0);
+	kfree(region);
 }
 
 static void remove_regions(mem_region_t *r)
@@ -368,11 +369,11 @@ static mem_region_t *region_create(mem_space_t *space,
 
 	if(pages == 0)
 		return NULL;
-	if(!(r = kmalloc(sizeof(mem_region_t) + BITFIELD_SIZE(pages), 0)))
+	if(!(r = kmalloc(sizeof(mem_region_t) + BITFIELD_SIZE(pages))))
 		return NULL;
 	if(!(gap = find_gap(space->free_tree, pages)))
 	{
-		kfree(r, 0);
+		kfree(r);
 		return NULL;
 	}
 	r->mem_space = space;
@@ -385,7 +386,7 @@ static mem_region_t *region_create(mem_space_t *space,
 	{
 		if(!preallocate_kernel_stack(space, r))
 		{
-			kfree(r, 0);
+			kfree(r);
 			return NULL;
 		}
 	}
@@ -394,7 +395,7 @@ static mem_region_t *region_create(mem_space_t *space,
 	if(errno)
 	{
 		// TODO If preallocated kernel_stack, free it
-		kfree(r, 0);
+		kfree(r);
 		return NULL;
 	}
 	shrink_gap(&space->free_tree, gap, pages);
@@ -461,8 +462,8 @@ int mem_space_can_access(mem_space_t *space, const void *ptr, const size_t size,
 
 	if(!space || !ptr)
 		return 0;
-	i = ALIGN_DOWN(ptr, PAGE_SIZE);
-	end = ALIGN_UP(ptr + size, PAGE_SIZE);
+	i = DOWN_ALIGN(ptr, PAGE_SIZE);
+	end = UP_ALIGN(ptr + size, PAGE_SIZE);
 	while(i < end)
 	{
 		if(!(r = find_region(space->used_tree, i)))
@@ -528,7 +529,7 @@ int mem_space_handle_page_fault(mem_space_t *space,
 
 	if(!space || !ptr)
 		return 0;
-	ptr = ALIGN_DOWN(ptr, PAGE_SIZE);
+	ptr = DOWN_ALIGN(ptr, PAGE_SIZE);
 	if(!(r = find_region(space->used_tree, ptr)))
 		return 0;
 	if(!(r->flags & MEM_REGION_FLAG_USER) || !(r->flags & MEM_REGION_FLAG_USER))

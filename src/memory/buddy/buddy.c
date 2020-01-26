@@ -72,9 +72,9 @@ void buddy_init(void)
 	states = mem_info.heap_begin;
 	metadata_size = METADATA_SIZE(max_order);
 	bzero(states, metadata_size);
-	buddy_begin = ALIGN_UP(states + metadata_size, PAGE_SIZE);
+	buddy_begin = UP_ALIGN(states + metadata_size, PAGE_SIZE);
 
-	buddy_end = ALIGN_DOWN(mem_info.heap_end, PAGE_SIZE);
+	buddy_end = DOWN_ALIGN(mem_info.heap_end, PAGE_SIZE);
 	end = NODES_COUNT(max_order - 1)
 		+ ((uintptr_t) (buddy_end - buddy_begin) / PAGE_SIZE);
 	end_end = NODES_COUNT(max_order);

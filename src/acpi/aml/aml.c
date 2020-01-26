@@ -105,7 +105,7 @@ const char *aml_name_string_get(const aml_node_t *node)
 
 	if(!node || node->type != AML_NAME_STRING || !node->children)
 		return NULL;
-	if((i = name_string_length(node)) == 0 || !(str = kmalloc(i + 1, 0)))
+	if((i = name_string_length(node)) == 0 || !(str = kmalloc(i + 1)))
 		return NULL;
 	str[i] = '\0';
 	i = 0;

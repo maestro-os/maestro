@@ -1,6 +1,6 @@
 #include <libc/string.h>
 #include <libc/libc_internal.h>
-#include <util/attr.h>
+#include <util/util.h>
 
 ATTR_HOT
 void *memset(void *s, int c, size_t n)

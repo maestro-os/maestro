@@ -1,6 +1,6 @@
 #include <libc/errno.h>
 #include <process/process.h>
-#include <util/attr.h>
+#include <util/util.h>
 
 // TODO
 #include <debug/debug.h>
@@ -77,7 +77,7 @@ void process_init(void)
 		NULL, bzero);
 	if(!processes_cache || !children_cache || !signals_cache)
 		PANIC("Cannot allocate caches for processes!", 0);
-	if(!(pids_bitfield = kmalloc_zero(PIDS_BITFIELD_SIZE, 0)))
+	if(!(pids_bitfield = kmalloc_zero(PIDS_BITFIELD_SIZE)))
 		PANIC("Cannot allocate PIDs bitfield!", 0);
 	bitfield_set(pids_bitfield, 0);
 	tss_init();

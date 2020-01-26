@@ -1,5 +1,4 @@
 #include <debug/debug.h>
-#include <util/attr.h>
 
 ATTR_BSS
 static profiler_func_t *funcs;
@@ -44,7 +43,7 @@ static void profiler_increment(const char *name)
 	}
 	if(!f)
 	{
-		if(!(f = kmalloc_zero(sizeof(funcs), 0)))
+		if(!(f = kmalloc_zero(sizeof(funcs))))
 			PANIC("Profiler memory allocation failed!", 0);
 		f->name = name;
 		f->next = funcs;

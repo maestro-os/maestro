@@ -3,7 +3,7 @@
 
 # include <libc/string.h>
 # include <memory/memory.h>
-# include <util/attr.h>
+# include <util/util.h>
 
 # define BLOCK_SIZE(order)			(POW2(order) * PAGE_SIZE)
 

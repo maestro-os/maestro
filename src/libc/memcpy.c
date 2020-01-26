@@ -1,5 +1,5 @@
 #include <libc/string.h>
-#include <util/attr.h>
+#include <util/util.h>
 
 ATTR_HOT
 void *memcpy(void *dest, const void *src, size_t n)

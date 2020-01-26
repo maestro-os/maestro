@@ -2,8 +2,6 @@
 #include <memory/slab/slab.h>
 #include <libc/errno.h>
 
-// TODO Fix
-
 static cache_t *caches;
 static cache_t *caches_cache;
 
@@ -18,7 +16,7 @@ static void calc_pages_per_slab(cache_t *cache)
 ATTR_COLD
 void slab_init(void)
 {
-	if(!(caches_cache = kmalloc_zero(sizeof(cache_t), 0)))
+	if(!(caches_cache = kmalloc_zero(sizeof(cache_t))))
 		PANIC("Failed to initialize slab allocator!", 0);
 	caches_cache->name = CACHES_CACHE_NAME;
 	caches_cache->objsize = sizeof(cache_t);

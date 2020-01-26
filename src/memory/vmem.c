@@ -151,7 +151,7 @@ int vmem_contains(vmem_t vmem, const void *ptr, const size_t size)
 
 	if(!vmem)
 		return 0;
-	i = ALIGN_DOWN(ptr, PAGE_SIZE);
+	i = DOWN_ALIGN(ptr, PAGE_SIZE);
 	while(i < ptr + size)
 	{
 		if(!vmem_is_mapped(vmem, i))

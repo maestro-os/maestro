@@ -4,20 +4,19 @@
 # include <libc/string.h>
 
 # define IS_ALIGNED(ptr, n)	(((intptr_t) (ptr) & ((n) - 1)) == 0)
-# define ALIGN_DOWN(ptr, n)	((void *) ((intptr_t) (ptr)\
+# define DOWN_ALIGN(ptr, n)	((void *) ((intptr_t) (ptr)\
 	& ~((intptr_t) (n) - 1)))
-# define ALIGN_UP(ptr, n)	(ALIGN_DOWN(ptr, n) + (n))
+# define UP_ALIGN(ptr, n)	(DOWN_ALIGN(ptr, n) + (n))
 # define ALIGN(ptr, n)		(IS_ALIGNED((ptr), (n)) ? (ptr)\
-	: ALIGN_UP((ptr), (n)))
+	: UP_ALIGN((ptr), (n)))
 # define SAME_PAGE(p0, p1)	(ALIGN_DOWN(p0, PAGE_SIZE)\
 	== ALIGN_DOWN(p1, PAGE_SIZE))
 
-# define CEIL_DIVISION(n0, n1)	((n0) % (n1) == 0\
-	? (n0) / (n1) : (n0) / (n1) + 1)
+# define CEIL_DIVISION(n0, n1)	((n0) / (n1) + !!((n0) % (n1)))
 # define POW2(n)				(((typeof(n)) 1) << (n))
-# define ABS(i)		((i) < 0 ? -(i) : (i))
-# define MIN(a, b)	((a) <= (b) ? (a) : (b))
-# define MAX(a, b)	((a) >= (b) ? (a) : (b))
+# define ABS(i)					((i) < 0 ? -(i) : (i))
+# define MIN(a, b)				((a) <= (b) ? (a) : (b))
+# define MAX(a, b)				((a) >= (b) ? (a) : (b))
 
 # define BIT_SIZEOF(expr)	(sizeof(expr) * 8)
 # define BITFIELD_SIZE(n)	CEIL_DIVISION(n, BIT_SIZEOF(uint8_t))
@@ -27,6 +26,19 @@
 	- OFFSET_OF(type, field))
 
 # define VARG_COUNT(...)	(sizeof((void *[]) {__VA_ARGS__}) / sizeof(void *))
+
+# define ATTR_BSS			__attribute__((section(".bss")))
+# define ATTR_COLD			__attribute__((cold))
+# define ATTR_CONST			__attribute__((const))
+# define ATTR_HOT			__attribute__((hot))
+# define ATTR_MALLOC		__attribute__((malloc))
+# define ATTR_NORETURN		__attribute__((noreturn))
+# define ATTR_PACKED		__attribute__((packed))
+# define ATTR_PAGE_ALIGNED	__attribute__((aligned(PAGE_SIZE)))
+# define ATTR_RODATA		__attribute__((section(".rodata#")))
+
+# define likely(x)			__builtin_expect(!!(x), 1)
+# define unlikely(x)		__builtin_expect(!!(x), 0)
 
 typedef struct avl_tree
 {

@@ -8,7 +8,7 @@ char *strdup(const char *s)
 
 	if(!s)
 		return NULL;
-	if((len = strlen(s)) == 0 || !(buff = kmalloc(len + 1, 0)))
+	if((len = strlen(s)) == 0 || !(buff = kmalloc(len + 1)))
 		return NULL;
 	memcpy(buff, s, len);
 	buff[len] = '\0';

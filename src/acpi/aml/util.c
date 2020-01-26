@@ -549,15 +549,15 @@ aml_node_t *node_new(const enum node_type type, const char *data,
 	aml_node_t *node;
 	char *buff;
 
-	if(!(node = kmalloc_zero(sizeof(aml_node_t), 0)))
+	if(!(node = kmalloc_zero(sizeof(aml_node_t))))
 		return NULL;
 	node->type = type;
 	node->ptr = data;
 	if(!data || length <= 0)
 		return node;
-	if(!(buff = kmalloc(length, 0)))
+	if(!(buff = kmalloc(length)))
 	{
-		kfree((void *) node, 0);
+		kfree((void *) node);
 		return NULL;
 	}
 	memcpy(buff, data, length);
@@ -617,8 +617,8 @@ void node_free(aml_node_t *node)
 {
 	if(!node)
 		return;
-	kfree((void *) node->data, 0);
-	kfree((void *) node, 0);
+	kfree((void *) node->data);
+	kfree((void *) node);
 }
 
 void ast_free(aml_node_t *ast)

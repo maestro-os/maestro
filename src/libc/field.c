@@ -1,6 +1,6 @@
 #include <libc/libc_internal.h>
 #include <libc/string.h>
-#include <util/attr.h>
+#include <util/util.h>
 
 ATTR_HOT
 ATTR_CONST

@@ -4,7 +4,7 @@ static void insert_path_seg(aml_method_path_seg_t **segs, const char *name)
 {
 	aml_method_path_seg_t *s;
 
-	if(!name || !(s = kmalloc_zero(sizeof(aml_method_path_seg_t), 0)))
+	if(!name || !(s = kmalloc_zero(sizeof(aml_method_path_seg_t))))
 		return; // TODO `name` leaks here
 	s->name = name;
 	s->next = *segs;
@@ -31,7 +31,7 @@ void aml_method_insert(aml_method_t **methods, const aml_node_t *node)
 		errno = EINVAL;
 		return;
 	}
-	if(!(m = kmalloc_zero(sizeof(aml_method_t), 0)))
+	if(!(m = kmalloc_zero(sizeof(aml_method_t))))
 		return;
 	method_set_path(m, node);
 	// TODO Set arguments

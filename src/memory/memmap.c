@@ -44,7 +44,7 @@ static void *get_memory_end(void)
 			end = (void *) (uintptr_t) t->addr + t->len;
 		t = (void *) t + mem_info.memory_maps_entry_size;
 	}
-	return ALIGN_DOWN(end, PAGE_SIZE);
+	return DOWN_ALIGN(end, PAGE_SIZE);
 }
 
 ATTR_COLD
@@ -57,9 +57,9 @@ void memmap_init(void *multiboot_ptr, void *kernel_end)
 	mem_info.memory_maps_entry_size = boot_info.memory_maps_entry_size;
 	mem_info.memory_maps = boot_info.memory_maps;
 	mem_info.memory_end = get_memory_end();
-	mem_info.heap_begin = ALIGN_UP(MAX(multiboot_tags_end, kernel_end),
+	mem_info.heap_begin = UP_ALIGN(MAX(multiboot_tags_end, kernel_end),
 		PAGE_SIZE);
-	mem_info.heap_end = ALIGN_DOWN((void *) (boot_info.mem_upper * 1024),
+	mem_info.heap_end = DOWN_ALIGN((void *) (boot_info.mem_upper * 1024),
 		PAGE_SIZE);
 	if(mem_info.heap_begin >= mem_info.heap_end)
 		PANIC("Invalid memory map!", 0);
