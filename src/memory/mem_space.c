@@ -17,18 +17,6 @@ static void global_init(void)
 		PANIC("Failed to initialize mem_gap cache!", 0);
 }
 
-static int region_cmp(void *r0, void *r1)
-{
-	return (uintptr_t) ((mem_region_t *) r1)->begin
-		- (uintptr_t) ((mem_region_t *) r0)->begin;
-}
-
-static int gap_cmp(void *r0, void *r1)
-{
-	return (uintptr_t) ((mem_gap_t *) r1)->pages
-		- (uintptr_t) ((mem_gap_t *) r0)->pages;
-}
-
 /*
  Creates the memory gap for the beginning
 
@@ -41,9 +29,10 @@ static int init_gaps(mem_space_t *s)
 		return 0;
 	s->gaps->begin = (void *) 0x1000;
 	s->gaps->pages = 0xffffe;
-	// TODO Kernel code/syscall stub should not be inside a gap
+	// TODO Kernel code/syscall stub must not be inside a gap
 	errno = 0;
-	avl_tree_insert(&s->free_tree, s->gaps, region_cmp);
+	s->gaps->node.value = s->gaps->pages;
+	avl_tree_insert(&s->free_tree, &s->gaps->node, avl_val_cmp);
 	if(errno)
 	{
 		cache_free(mem_gap_cache, s->gaps);
@@ -217,25 +206,22 @@ static int build_trees(mem_space_t *space)
 	errno = 0;
 	while(r)
 	{
-		avl_tree_insert(&space->used_tree, r, region_cmp);
+		r->node.value = (avl_value_t) r->begin;
+		avl_tree_insert(&space->used_tree, &r->node, avl_val_cmp);
 		if(errno)
-			goto fail;
+			return 0;
 		r = r->next;
 	}
 	g = space->gaps;
 	while(g)
 	{
-		avl_tree_insert(&space->free_tree, g, gap_cmp);
+		g->node.value = (avl_value_t) g->pages;
+		avl_tree_insert(&space->free_tree, &g->node, avl_val_cmp);
 		if(errno)
-			goto fail;
+			return 0;
 		g = g->next;
 	}
 	return 1;
-
-fail:
-	avl_tree_freeall(&space->used_tree, NULL);
-	avl_tree_freeall(&space->free_tree, NULL);
-	return 0;
 }
 
 static void regions_disable_write(mem_region_t *r, vmem_t page_dir)
@@ -329,9 +315,11 @@ static avl_tree_t *find_gap(avl_tree_t *n, const size_t pages)
 		return NULL;
 	while(1)
 	{
-		if(n->left && ((mem_gap_t *) n->left->value)->pages >= pages)
+		if(n->left
+			&& CONTAINER_OF(n->left, mem_gap_t, node)->pages >= pages)
 			n = n->left;
-		else if(n->right && ((mem_gap_t *) n->right->value)->pages < pages)
+		else if(n->right
+			&& CONTAINER_OF(n->right, mem_gap_t, node)->pages < pages)
 			n = n->right;
 		else
 			break;
@@ -345,7 +333,7 @@ static void shrink_gap(avl_tree_t **tree, avl_tree_t *gap, const size_t pages)
 
 	if(!gap || pages == 0)
 		return;
-	g = gap->value;
+	g = CONTAINER_OF(gap, mem_gap_t, node);
 	// TODO Error if pages > gap->pages? (shouldn't be possible)
 	if(g->pages <= pages)
 	{
@@ -353,7 +341,7 @@ static void shrink_gap(avl_tree_t **tree, avl_tree_t *gap, const size_t pages)
 			g->prev->next = g->next;
 		if(g->next)
 			g->next->prev = g->prev;
-		avl_tree_delete(tree, gap);
+		avl_tree_remove(tree, gap);
 		cache_free(mem_gap_cache, g);
 		return;
 	}
@@ -378,7 +366,7 @@ static mem_region_t *region_create(mem_space_t *space,
 	}
 	r->mem_space = space;
 	r->flags = flags;
-	r->begin = ((mem_gap_t *) gap->value)->begin;
+	r->begin = CONTAINER_OF(gap, mem_gap_t, node)->begin;
 	r->pages = pages;
 	r->used_pages = r->pages;
 	bitfield_set_range(r->use_bitfield, 0, r->pages);
@@ -391,7 +379,8 @@ static mem_region_t *region_create(mem_space_t *space,
 		}
 	}
 	errno = 0;
-	avl_tree_insert(&space->used_tree, r, region_cmp);
+	r->node.value = (avl_value_t) r->begin;
+	avl_tree_insert(&space->used_tree, &r->node, avl_val_cmp);
 	if(errno)
 	{
 		// TODO If preallocated kernel_stack, free it
@@ -425,7 +414,7 @@ static mem_region_t *find_region(avl_tree_t *n, void *ptr)
 		return NULL;
 	while(n)
 	{
-		r = n->value;
+		r = CONTAINER_OF(n, mem_region_t, node);
 		if(r->begin >= ptr)
 			n = n->left;
 		else if(r->begin < ptr)
@@ -567,8 +556,6 @@ void mem_space_destroy(mem_space_t *space)
 		r = next;
 	}
 	// TODO Free gaps
-	avl_tree_freeall(&space->used_tree, NULL);
-	avl_tree_freeall(&space->free_tree, NULL);
 	vmem_destroy(space->page_dir);
 	cache_free(mem_space_cache, space);
 }

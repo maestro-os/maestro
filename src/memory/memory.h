@@ -76,6 +76,7 @@ typedef struct mem_region
 {
 	struct mem_region *next;
 	struct mem_region *next_shared, *prev_shared;
+	avl_tree_t node;
 	mem_space_t *mem_space;
 
 	char flags;
@@ -89,6 +90,7 @@ typedef struct mem_region
 typedef struct mem_gap
 {
 	struct mem_gap *next, *prev;
+	avl_tree_t node;
 
 	void *begin;
 	size_t pages;

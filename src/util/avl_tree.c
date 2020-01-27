@@ -2,36 +2,22 @@
 #include <memory/memory.h>
 #include <kernel.h>
 
-static cache_t *avl_tree_cache;
+/*
+ * This file contains functions for AVL trees handling.
+ */
 
-static void global_init(void)
-{
-	if(!(avl_tree_cache = cache_create("avl_tree", sizeof(avl_tree_t), 256,
-		bzero, NULL)))
-		PANIC("Failed to initialize avl_tree cache!", 0);
-}
-
-static avl_tree_t *create_node(void *value)
-{
-	static int init = 0;
-	avl_tree_t *node;
-
-	if(unlikely(!init))
-	{
-		global_init();
-		init = 1;
-	}
-	if((node = cache_alloc(avl_tree_cache)))
-		node->value = value;
-	return node;
-}
-
+/*
+ * Returns the balance factor for the given tree.
+ */
 int avl_tree_balance_factor(const avl_tree_t *tree)
 {
 	return (tree->right ? tree->right->height : 0)
 		- (tree->left ? tree->left->height : 0);
 }
 
+/*
+ * Updates the height of all nodes in the given tree.
+ */
 static unsigned update_all_heights(avl_tree_t *n)
 {
 	unsigned left_height, right_height;
@@ -41,6 +27,9 @@ static unsigned update_all_heights(avl_tree_t *n)
 	return n->height = MAX(left_height, right_height);
 }
 
+/*
+ * Performs a left rotation on the given root node.
+ */
 avl_tree_t *avl_tree_rotate_left(avl_tree_t *root)
 {
 	avl_tree_t *new_root, *tmp;
@@ -56,6 +45,9 @@ avl_tree_t *avl_tree_rotate_left(avl_tree_t *root)
 	return new_root;
 }
 
+/*
+ * Performs a right rotation on the given root node.
+ */
 avl_tree_t *avl_tree_rotate_right(avl_tree_t *root)
 {
 	avl_tree_t *new_root, *tmp;
@@ -95,7 +87,12 @@ avl_tree_t *avl_tree_rotate_rightleft(avl_tree_t *root)
 	return avl_tree_rotate_left(root);
 }
 
-avl_tree_t *avl_tree_search(avl_tree_t *tree, void *value, const cmp_func_t f)
+/*
+ * Searches a node in the given tree using the given value
+ * and comparison function.
+ */
+avl_tree_t *avl_tree_search(avl_tree_t *tree,
+	const avl_value_t value, const cmp_func_t f)
 {
 	avl_tree_t *n;
 
@@ -104,7 +101,7 @@ avl_tree_t *avl_tree_search(avl_tree_t *tree, void *value, const cmp_func_t f)
 	n = tree;
 	while(n->value != value)
 	{
-		if(f(n->value, value) < 0 && n->left)
+		if(f(&n->value, &value) < 0 && n->left)
 			n = n->left;
 		else if(n->right)
 			n = n->right;
@@ -114,6 +111,9 @@ avl_tree_t *avl_tree_search(avl_tree_t *tree, void *value, const cmp_func_t f)
 	return n;
 }
 
+/*
+ * Updates the height of the node `n` and its parents.
+ */
 static void update_heights(avl_tree_t *n)
 {
 	unsigned left_height, right_height;
@@ -132,6 +132,9 @@ static void update_heights(avl_tree_t *n)
 	}
 }
 
+/*
+ * Balances the given tree after insertion of an element.
+ */
 static void insert_balance(avl_tree_t **tree, avl_tree_t *node)
 {
 	avl_tree_t *n, *g, *r;
@@ -188,29 +191,33 @@ static void insert_balance(avl_tree_t **tree, avl_tree_t *node)
 	}
 }
 
-void avl_tree_insert(avl_tree_t **tree, void *value, const cmp_func_t f)
+/*
+ * Inserts the given `node` into the given `tree` using the given comparison
+ * function `f`.
+ * If the node has a value equivalent to the value of another node, it will be
+ * inserted in the right subtree of that node.
+ */
+void avl_tree_insert(avl_tree_t **tree, avl_tree_t *node, const cmp_func_t f)
 {
-	avl_tree_t *node, *n;
+	avl_tree_t *n;
 	int i = 0;
 
-	if(!tree || !(node = create_node(value)))
+	if(!tree)
 		return;
+	node->left = NULL;
+	node->right = NULL;
+	node->height = 0;
 	if((n = *tree))
 	{
 		while(1)
 		{
-			i = f(n->value, value);
+			i = f(&n->value, &node->value);
 			if(i < 0 && n->left)
 				n = n->left;
 			else if(i > 0 && n->right)
 				n = n->right;
 			else
 				break;
-		}
-		if(i == 0)
-		{
-			cache_free(avl_tree_cache, node);
-			return;
 		}
 		if(i < 0)
 			n->left = node;
@@ -223,6 +230,9 @@ void avl_tree_insert(avl_tree_t **tree, void *value, const cmp_func_t f)
 		*tree = node;
 }
 
+/*
+ * TODO
+ */
 static avl_tree_t *find_min(avl_tree_t *node)
 {
 	while(node->left)
@@ -230,6 +240,9 @@ static avl_tree_t *find_min(avl_tree_t *node)
 	return node;
 }
 
+/*
+ * Balances the given tree after deletion of an element.
+ */
 static void delete_balance(avl_tree_t **tree, avl_tree_t *node)
 {
 	avl_tree_t *n, *g, *r, *tmp;
@@ -292,7 +305,10 @@ static void delete_balance(avl_tree_t **tree, avl_tree_t *node)
 	}
 }
 
-void avl_tree_delete(avl_tree_t **tree, avl_tree_t *n)
+/*
+ * Deletes the given node fron the given tree.
+ */
+void avl_tree_remove(avl_tree_t **tree, avl_tree_t *n)
 {
 	avl_tree_t *tmp;
 
@@ -302,7 +318,7 @@ void avl_tree_delete(avl_tree_t **tree, avl_tree_t *n)
 	{
 		tmp = find_min(n);
 		n->value = tmp->value;
-		avl_tree_delete(tree, tmp);
+		avl_tree_remove(tree, tmp);
 	}
 	else
 	{
@@ -321,32 +337,30 @@ void avl_tree_delete(avl_tree_t **tree, avl_tree_t *n)
 		}
 		else
 			*tree = tmp;
-		tmp->parent = n->parent;
-		delete_balance(tree, tmp);
-		cache_free(avl_tree_cache, n);
+		if(tmp) // TODO Check that this is correct (is tree still balanced?)
+		{
+			tmp->parent = n->parent;
+			delete_balance(tree, tmp);
+		}
 	}
 }
 
-void avl_tree_freeall_(avl_tree_t *tree, void (*f)(void *))
+/*
+ * Performs the function `f` for every node in tree `tree`.
+ */
+void avl_tree_foreach(avl_tree_t *tree, void (*f)(avl_tree_t *))
 {
 	if(!tree)
 		return;
-	if(f)
-		f(tree->value);
-	avl_tree_freeall_(tree->left, f);
-	avl_tree_freeall_(tree->right, f);
-	cache_free(avl_tree_cache, tree);
-}
-
-void avl_tree_freeall(avl_tree_t **tree, void (*f)(void *))
-{
-	if(!tree)
-		return;
-	avl_tree_freeall_(*tree, f);
-	*tree = NULL;
+	avl_tree_foreach(tree->left, f);
+	avl_tree_foreach(tree->right, f);
+	f(tree);
 }
 
 #ifdef KERNEL_DEBUG
+/*
+ * Prints `n` tabs.
+ */
 static void print_tabs(size_t n)
 {
 	while(n--)
@@ -373,6 +387,9 @@ void avl_tree_print_(const avl_tree_t *tree, const size_t level)
 	}
 }
 
+/*
+ * Prints the given AVL tree.
+ */
 void avl_tree_print(const avl_tree_t *tree)
 {
 	if(tree)

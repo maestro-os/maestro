@@ -14,8 +14,9 @@
 typedef struct slab
 {
 	struct slab *prev, *next;
-	size_t available;
+	avl_tree_t node;
 
+	size_t available;
 	uint8_t use_bitfield[0];
 } slab_t;
 

@@ -71,13 +71,14 @@ cache_t *cache_create(const char *name, size_t objsize, size_t objcount,
 }
 
 ATTR_COLD
-static void free_all_slabs(slab_t *s)
+static void free_all_slabs(cache_t *cache, slab_t *s)
 {
 	slab_t *next;
 
 	while(s)
 	{
 		next = s->next;
+		avl_tree_remove(&cache->tree, &s->node);
 		pages_free(s);
 		s = next;
 	}
@@ -100,9 +101,8 @@ void cache_destroy(cache_t *cache)
 		}
 		c = c->next;
 	}
-	free_all_slabs(cache->slabs_full);
-	free_all_slabs(cache->slabs_partial);
-	avl_tree_freeall(&cache->tree, NULL);
+	free_all_slabs(cache, cache->slabs_full);
+	free_all_slabs(cache, cache->slabs_partial);
 	cache_free(caches_cache, cache);
 }
 
@@ -140,7 +140,8 @@ static slab_t *alloc_slab(cache_t *cache)
 	if(!(slab = pages_alloc_zero(cache->pages_per_slab)))
 		return NULL;
 	slab->available = cache->objcount;
-	avl_tree_insert(&cache->tree, slab, ptr_cmp);
+	slab->node.value = (avl_value_t) slab;
+	avl_tree_insert(&cache->tree, &slab->node, ptr_cmp);
 	return slab;
 }
 
@@ -175,15 +176,15 @@ void *cache_alloc(cache_t *cache)
 	return ptr;
 }
 
-static avl_tree_t *get_slab(cache_t *cache, void *obj)
+static slab_t *get_slab(cache_t *cache, void *obj)
 {
-	slab_t *s = NULL;
 	avl_tree_t *n;
+	slab_t *s = NULL;
 
 	n = cache->tree;
 	while(n)
 	{
-		s = n->value;
+		s = CONTAINER_OF(n, slab_t, node);
 		if((void *) SLAB_OBJ(cache, s, cache->objcount) >= obj)
 			n = n->left;
 		else if((void *) SLAB_OBJ(cache, s, 0) < obj)
@@ -191,28 +192,26 @@ static avl_tree_t *get_slab(cache_t *cache, void *obj)
 		else
 			break;
 	}
-	if(!n)
+	if(!s)
 		return NULL;
 	if(obj < (void *) SLAB_OBJ(cache, s, 0))
 		return NULL;
 	if(obj >= (void *) SLAB_OBJ(cache, s, cache->objcount))
 		return NULL;
-	return n;
+	return s;
 }
 
 ATTR_HOT
 void cache_free(cache_t *cache, void *obj)
 {
-	avl_tree_t *n;
 	slab_t *s;
 	size_t i;
 
 	if(!cache || !obj)
 		return;
 	spin_lock(&cache->spinlock);
-	if(!(n = get_slab(cache, obj)))
+	if(!(s = get_slab(cache, obj)))
 		goto end;
-	s = n->value;
 	i = (obj - (void *) SLAB_OBJ(cache, s, 0)) / cache->objsize;
 	bitfield_clear(s->use_bitfield, i);
 	if(s->available++ == 0)
@@ -223,7 +222,7 @@ void cache_free(cache_t *cache, void *obj)
 	else if(s->available >= cache->objcount)
 	{
 		unlink_slab(cache, s);
-		avl_tree_delete(&cache->tree, n);
+		avl_tree_remove(&cache->tree, &s->node);
 		pages_free(s);
 	}
 

@@ -8,9 +8,9 @@
 # define HASH_MAP_SIZE	1024
 
 /*
- * Number of structure that one `blocks_info_t` can contain
+ * Number of structure that one `blocks_cache_t` can contain
  */
-# define BLOCKS_INFO_CAPACITY	((PAGE_SIZE - sizeof(blocks_info_t))\
+# define BLOCKS_INFO_CAPACITY	((PAGE_SIZE - sizeof(blocks_cache_t))\
 	/ sizeof(pages_block_t))
 
 /*
@@ -40,13 +40,13 @@ typedef struct pages_block
 /*
  * Represents a page of memory allocated to store pages_block_t structures.
  */
-typedef struct blocks_info
+typedef struct blocks_cache
 {
 	/*
 	 * Double-linked list of blocks_info sorted according
 	 * to increasing `available`.
 	 */
-	struct blocks_info *prev, *next;
+	struct blocks_cache *prev, *next;
 
 	/*
 	 * Number of available structures.
@@ -56,7 +56,7 @@ typedef struct blocks_info
 	 * Pointer to the first unused structure.
 	 */
 	pages_block_t *first_available;
-} blocks_info_t;
+} blocks_cache_t;
 
 pages_block_t *get_available_block(size_t n);
 pages_block_t *alloc_block(size_t n);

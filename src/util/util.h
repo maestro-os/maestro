@@ -22,8 +22,8 @@
 # define BITFIELD_SIZE(n)	CEIL_DIVISION(n, BIT_SIZEOF(uint8_t))
 
 # define OFFSET_OF(type, field)			((size_t) &(((type *) 0)->field))
-# define CONTAINER_OF(ptr, type, field)	((void *) (ptr)\
-	- OFFSET_OF(type, field))
+# define CONTAINER_OF(ptr, type, field)	((type *) ((void *) (ptr)\
+	- OFFSET_OF(type, field)))
 
 # define VARG_COUNT(...)	(sizeof((void *[]) {__VA_ARGS__}) / sizeof(void *))
 
@@ -40,11 +40,17 @@
 # define likely(x)			__builtin_expect(!!(x), 1)
 # define unlikely(x)		__builtin_expect(!!(x), 0)
 
+typedef int32_t avl_value_t; // TODO Use int64_t on 64bits
+
+/*
+ * Structure representing an AVL tree node.
+ * This structure should be used inside of other structures.
+ */
 typedef struct avl_tree
 {
 	struct avl_tree *left, *right, *parent;
 	unsigned height;
-	void *value;
+	avl_value_t value;
 } avl_tree_t;
 
 unsigned floor_log2(const unsigned n);
@@ -62,19 +68,20 @@ typedef volatile int spinlock_t;
 extern void spin_lock(spinlock_t *spinlock);
 extern void spin_unlock(spinlock_t *spinlock);
 
-typedef int (*cmp_func_t)(void *, void *);
+typedef int (*cmp_func_t)(const void *, const void *);
 
-int ptr_cmp(void *p0, void *p1);
+int ptr_cmp(const void *p0, const void *p1);
+int avl_val_cmp(const void *v0, const void *v1);
 
 int avl_tree_balance_factor(const avl_tree_t *tree);
 avl_tree_t *avl_tree_rotate_left(avl_tree_t *root);
 avl_tree_t *avl_tree_rotate_right(avl_tree_t *root);
 avl_tree_t *avl_tree_rotate_leftright(avl_tree_t *root);
 avl_tree_t *avl_tree_rotate_rightleft(avl_tree_t *root);
-avl_tree_t *avl_tree_search(avl_tree_t *tree, void *value, cmp_func_t f);
-void avl_tree_insert(avl_tree_t **tree, void *value, cmp_func_t f);
-void avl_tree_delete(avl_tree_t **tree, avl_tree_t *n);
-void avl_tree_freeall(avl_tree_t **tree, void (*f)(void *));
+avl_tree_t *avl_tree_search(avl_tree_t *tree, avl_value_t value, cmp_func_t f);
+void avl_tree_insert(avl_tree_t **tree, avl_tree_t *node, cmp_func_t f);
+void avl_tree_remove(avl_tree_t **tree, avl_tree_t *n);
+void avl_tree_foreach(avl_tree_t *tree, void (*f)(avl_tree_t *));
 # ifdef KERNEL_DEBUG
 void avl_tree_print(const avl_tree_t *tree);
 # endif
