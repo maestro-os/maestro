@@ -1,12 +1,63 @@
 #include <memory/memory.h>
 #include <kernel.h>
 
+/*
+ * This file handles memory spaces handling, used to divide processes' memory
+ * space.
+ *
+ * The mem_space provides an architecture-independant interface for handling
+ * processes memory. It allows to allocate virtual memory space and to use the
+ * COW (Copy-On-Write) feature of the kernel which avoids useless copies of
+ * memory.
+ *
+ * When a copy of a memory space is made, the write access to the physical pages
+ * is disabled to make the kernel able to detect when a process tries to access
+ * the memory.
+ * When trying to write to the memory, the physical page will be cloned and the
+ * process will have its virtual page remapped to the newly allocated page.
+ *
+ * - Memory regions (structure `mem_region`) tells which parts of the virtual
+ * space is being using by allocated memory.
+ * - Memory gaps (structure `mem_gap`) tells which parts of the virtual space
+ * is ready to be used for further allocations.
+ *
+ * Gaps determine the locations where virtual memory can be allocated.
+ * When setting default gaps, the kernel shall create a first gap from the
+ * second page of memory to the beginning of the kernel stub, and a second gap
+ * from the end of the kernel stub to the before last page of the available
+ * memory.
+ * The reason for not allowing allocations of the first page is because the
+ * `NULL` pointer is located at the beginning of it and needs not to be
+ * accessible.
+ * The kernel stub must not be allocated neither because the process must keep
+ * access to it in order to be able to perform system calls.
+ * The last page is not included to prevent overflows.
+ *
+ * When a region of memory is allocated, the physical memory is not allocated
+ * directly, except for kernelspace stacks which need to be allocated directly
+ * because the kernel is using the Page Fault exception to detect access to
+ * memory that was not yet allocated. However if the kernel stack was not
+ * pre-allocated, the CPU shall trigger a Double Fault exception which shall
+ * lead to a Triple Fault and reset the system.
+ */
+
 // TODO Spinlock
 // TODO Check if linked lists are useful
+// TODO Use pages allocator instead of buddy allocator?
+// TODO Allocate whole regions at once instead of 1 page?
 
+/*
+ * The cache for the `mem_space` structure.
+ */
 static cache_t *mem_space_cache;
+/*
+ * The cache for the `mem_gap` structure.
+ */
 static cache_t *mem_gap_cache;
 
+/*
+ * Initializes caches.
+ */
 static void global_init(void)
 {
 	if(!(mem_space_cache = cache_create("mem_space", sizeof(mem_space_t), 64,
@@ -18,10 +69,7 @@ static void global_init(void)
 }
 
 /*
- Creates the memory gap for the beginning
-
- First and last page are not included for NULL pointer
- and to avoid overflow when aligning up
+ * Creates the default memory gaps for the given memory space.
  */
 static int init_gaps(mem_space_t *s)
 {
@@ -41,6 +89,9 @@ static int init_gaps(mem_space_t *s)
 	return 1;
 }
 
+/*
+ * Creates a new memory space.
+ */
 mem_space_t *mem_space_init(void)
 {
 	static int init = 0;
@@ -65,6 +116,9 @@ fail:
 	return NULL;
 }
 
+/*
+ * Clones the given region for the given destination space.
+ */
 static mem_region_t *clone_region(mem_space_t *space, mem_region_t *r)
 {
 	size_t bitfield_size;
@@ -86,6 +140,10 @@ static mem_region_t *clone_region(mem_space_t *space, mem_region_t *r)
 	return new;
 }
 
+/*
+ * Frees the given region, unlinks it from shared linked list and frees physical
+ * memory if needed.
+ */
 static void region_free(mem_region_t *region)
 {
 	size_t i;
@@ -110,6 +168,9 @@ static void region_free(mem_region_t *region)
 	kfree(region);
 }
 
+/*
+ * Frees the given region list.
+ */
 static void remove_regions(mem_region_t *r)
 {
 	mem_region_t *next;
@@ -122,6 +183,9 @@ static void remove_regions(mem_region_t *r)
 	}
 }
 
+/*
+ * Clones the given regions to the given destination memory space.
+ */
 static int clone_regions(mem_space_t *dest, mem_region_t *src)
 {
 	mem_region_t *r;
@@ -149,12 +213,18 @@ static int clone_regions(mem_space_t *dest, mem_region_t *src)
 	return 1;
 }
 
+/*
+ * TODO
+ */
 static void gap_free(mem_gap_t *gap)
 {
 	// TODO
 	(void) gap;
 }
 
+/*
+ * Frees the given gaps list.
+ */
 static void remove_gaps(mem_gap_t *g)
 {
 	mem_gap_t *next;
@@ -167,6 +237,9 @@ static void remove_gaps(mem_gap_t *g)
 	}
 }
 
+/*
+ * Clones the given gaps list to the given destination memory space.
+ */
 static int clone_gaps(mem_space_t *dest, mem_gap_t *src)
 {
 	mem_gap_t *g;
@@ -197,6 +270,7 @@ static int clone_gaps(mem_space_t *dest, mem_gap_t *src)
 	return 1;
 }
 
+// TODO Remove, build trees during cloning of regions and gaps
 static int build_trees(mem_space_t *space)
 {
 	mem_region_t *r;
@@ -224,6 +298,9 @@ static int build_trees(mem_space_t *space)
 	return 1;
 }
 
+/*
+ * Disables writing on the given region and x86 paging directory.
+ */
 static void regions_disable_write(mem_region_t *r, vmem_t page_dir)
 {
 	void *ptr;
@@ -245,6 +322,9 @@ static void regions_disable_write(mem_region_t *r, vmem_t page_dir)
 	}
 }
 
+/*
+ * Converts region space flags into x86 paging flags.
+ */
 static int convert_flags(const int reg_flags)
 {
 	int flags = 0;
@@ -256,6 +336,9 @@ static int convert_flags(const int reg_flags)
 	return flags;
 }
 
+/*
+ * Preallocates the kernel stack associated with the given space and region.
+ */
 static int preallocate_kernel_stack(mem_space_t *space, mem_region_t *r)
 {
 	void *i, *ptr;
@@ -274,6 +357,10 @@ static int preallocate_kernel_stack(mem_space_t *space, mem_region_t *r)
 	return 1;
 }
 
+/*
+ * Clones the given memory space. Physical pages are not cloned but will be when
+ * accessed.
+ */
 mem_space_t *mem_space_clone(mem_space_t *space)
 {
 	mem_space_t *s;
@@ -309,6 +396,10 @@ fail:
 	return NULL;
 }
 
+/*
+ * Finds a gap large enough to fit the required number of pages.
+ * If no gap large enough is found, `NULL` is returned.
+ */
 static avl_tree_t *find_gap(avl_tree_t *n, const size_t pages)
 {
 	if(!n || pages == 0)
@@ -327,6 +418,11 @@ static avl_tree_t *find_gap(avl_tree_t *n, const size_t pages)
 	return n;
 }
 
+/*
+ * Shrinks the given gap to the given amount of pages. The pointer to the
+ * beginning of the gap will increase to that amount of pages and the location
+ * of the gap in its tree will be updated.
+ */
 static void shrink_gap(avl_tree_t **tree, avl_tree_t *gap, const size_t pages)
 {
 	mem_gap_t *g;
@@ -347,8 +443,16 @@ static void shrink_gap(avl_tree_t **tree, avl_tree_t *gap, const size_t pages)
 	}
 	g->begin += pages * PAGE_SIZE;
 	g->pages -= pages;
+	// TODO Remove and re-insert the node in the tree
 }
 
+/*
+ * Creates a region of the specified size with the specified flags. The function
+ * will look for a gap large enough to fit the requested amount of pages, shrink
+ * the gap and create the new region in that location.
+ *
+ * If the region is a kernel stack, it will be pre-allocated.
+ */
 static mem_region_t *region_create(mem_space_t *space,
 	const size_t pages, const int flags)
 {
@@ -391,6 +495,11 @@ static mem_region_t *region_create(mem_space_t *space,
 	return r;
 }
 
+/*
+ * Allocates a region with the given number of pages and returns a pointer to
+ * the beginning. If the requested allocation is a stack, then the pointer to
+ * the top of the stack will be returned.
+ */
 void *mem_space_alloc(mem_space_t *space, const size_t pages, const int flags)
 {
 	mem_region_t *r;
@@ -406,6 +515,10 @@ void *mem_space_alloc(mem_space_t *space, const size_t pages, const int flags)
 		return r->begin;
 }
 
+/*
+ * Finds the regions containing the given pointer.
+ * If no region is found, `NULL` is returned.
+ */
 static mem_region_t *find_region(avl_tree_t *n, void *ptr)
 {
 	mem_region_t *r = NULL;
@@ -429,20 +542,38 @@ static mem_region_t *find_region(avl_tree_t *n, void *ptr)
 	return NULL;
 }
 
-void mem_space_free(mem_space_t *space, void *ptr, size_t pages)
+/*
+ * Frees the given pages allocated in the given memory space.
+ */
+void mem_space_free(mem_space_t *space, void *ptr, const size_t pages)
 {
 	if(!space || !ptr || pages == 0)
 		return;
-	// TODO Find region using tree and free it
+	// TODO Find region using tree and free pages in it
+	// TODO Free region if all pages have been freed
+	// TODO Get and extend near gap
+	// TODO Merge gaps if needed
+	// TODO Update page directory
 }
 
+/*
+ * Frees the given stack allocated in the given memory space.
+ * The given pointer must be the same as returned by the allocation function.
+ */
 void mem_space_free_stack(mem_space_t *space, void *stack)
 {
 	if(!space || !stack)
 		return;
 	// TODO Find region using tree and free it
+	// TODO Get and extend near gap
+	// TODO Merge gaps if needed
+	// TODO Update page directory
 }
 
+/*
+ * Checks if the given portion of memory is accessible in the given memory
+ * space. `write` tells whether the portion should writable or not.
+ */
 int mem_space_can_access(mem_space_t *space, const void *ptr, const size_t size,
 	const int write)
 {
@@ -470,6 +601,9 @@ int mem_space_can_access(mem_space_t *space, const void *ptr, const size_t size,
 	return 1;
 }
 
+/*
+ * TODO
+ */
 static void update_share(mem_region_t *r)
 {
 	uint32_t *entry;
@@ -481,6 +615,11 @@ static void update_share(mem_region_t *r)
 	*entry |= PAGING_PAGE_WRITE;
 }
 
+/*
+ * Performs the copy on write operation. Copies the content of the given
+ * region at the given offset (in pages) to the given physical page.
+ * The region will be unlinked from the shared linked-list.
+ */
 static void copy_on_write(void *physical_page,
 	mem_region_t *region, const size_t region_offset)
 {
@@ -509,6 +648,19 @@ static void copy_on_write(void *physical_page,
 }
 
 // TODO Map the whole region?
+/*
+ * Handles a page fault. This function returns `1` if the new page was correctly
+ * allocated and `0` if the process should be killed by a signal or if the
+ * kernel should panic.
+ *
+ * The function will return `0` if:
+ * - The region for the given pointer cannot be found
+ * - The region is not in userspace
+ * - The page fault was caused by a write operation and the region isn't
+ * writable
+ * - The page that is being accessed has been freed
+ * - An error happened while mapping the allocated page
+ */
 int mem_space_handle_page_fault(mem_space_t *space,
 	void *ptr, const int error_code)
 {
@@ -521,14 +673,14 @@ int mem_space_handle_page_fault(mem_space_t *space,
 	ptr = DOWN_ALIGN(ptr, PAGE_SIZE);
 	if(!(r = find_region(space->used_tree, ptr)))
 		return 0;
-	if(!(r->flags & MEM_REGION_FLAG_USER) || !(r->flags & MEM_REGION_FLAG_USER))
+	if(!(r->flags & MEM_REGION_FLAG_USER))
 		return 0;
 	if((error_code & PAGE_FAULT_WRITE) && !(r->flags & MEM_REGION_FLAG_WRITE))
 		return 0;
 	region_offset = (ptr - r->begin) / PAGE_SIZE;
 	if(bitfield_get(r->use_bitfield, region_offset) == 0)
 		return 0;
-	if(!(physical_page = buddy_alloc_zero(0)))
+	if(!(physical_page = buddy_alloc_zero(0))) // TODO OOM killer?
 		return 0;
 	if(error_code & PAGE_FAULT_WRITE)
 		copy_on_write(physical_page, r, region_offset);
@@ -542,6 +694,9 @@ int mem_space_handle_page_fault(mem_space_t *space,
 	return 1;
 }
 
+/*
+ * Destroyes the given memory space. Destroyes not shared memory regions.
+ */
 void mem_space_destroy(mem_space_t *space)
 {
 	mem_region_t *r, *next;

@@ -4,6 +4,9 @@
 #endif
 
 // TODO Separate bad ram and reserved?
+/*
+ * Returns the amount of reserved memory in bytes.
+ */
 static size_t get_reserved_memory(void)
 {
 	size_t n = 0;
@@ -22,6 +25,9 @@ static size_t get_reserved_memory(void)
 	return n;
 }
 
+/*
+ * Fills the given structure with the memory usage.
+ */
 void get_memory_usage(mem_usage_t *usage)
 {
 	size_t remaining;
@@ -42,6 +48,9 @@ void get_memory_usage(mem_usage_t *usage)
 }
 
 #ifdef KERNEL_DEBUG
+/*
+ * Prints the memory usage.
+ */
 void print_mem_usage(void)
 {
 	mem_usage_t usage;

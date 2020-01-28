@@ -4,14 +4,34 @@
 
 // TODO Use `kernel_vmem` to hide holes in memory?
 
+/*
+ * This file handles x86 memory permissions handling.
+ * x86 uses a tree-like structure to handle permissions. This structure is made
+ * of several elements:
+ * - Page directory: A 1024 entries array containing page tables
+ * - Page table: A 1024 entries array describing permissions on each page
+ *
+ * Both objects are 4096 bytes large.
+ */
+
+/*
+ * The kernel's memory context.
+ */
 vmem_t kernel_vmem;
 
+/*
+ * Creates a paging object.
+ */
 ATTR_HOT
 static inline vmem_t new_vmem_obj(void)
 {
 	return buddy_alloc_zero(0);
 }
 
+/*
+ * Initializes a new page directory. By default, the page directory is a copy
+ * of the kernel's page directory.
+ */
 ATTR_HOT
 vmem_t vmem_init(void)
 {
@@ -24,6 +44,10 @@ vmem_t vmem_init(void)
 	return vmem;
 }
 
+/*
+ * Protects write-protected section specified by the ELF section header given
+ * in argument.
+ */
 ATTR_COLD
 static void protect_section(elf_section_header_t *hdr, const char *name)
 {
@@ -39,6 +63,9 @@ static void protect_section(elf_section_header_t *hdr, const char *name)
 		PAGING_PAGE_USER);
 }
 
+/*
+ * Protects the kernel code.
+ */
 ATTR_COLD
 static void protect_kernel(void)
 {
@@ -46,6 +73,9 @@ static void protect_kernel(void)
 		boot_info.elf_shndx, boot_info.elf_entsize, protect_section);
 }
 
+/*
+ * Creates the kernel's page directory.
+ */
 ATTR_COLD
 void vmem_kernel(void)
 {
@@ -62,12 +92,19 @@ fail:
 	PANIC("Cannot initialize kernel virtual memory!", 0);
 }
 
+/*
+ * Identity mapping of the given page. (maps the given page to the same virtual
+ * address as its physical address)
+ */
 ATTR_HOT
 void vmem_identity(vmem_t vmem, void *page, const int flags)
 {
 	vmem_map(vmem, page, page, flags);
 }
 
+/*
+ * Identity maps a range of pages.
+ */
 ATTR_HOT
 void vmem_identity_range(vmem_t vmem, void *from, void *to, int flags)
 {
@@ -85,6 +122,10 @@ void vmem_identity_range(vmem_t vmem, void *from, void *to, int flags)
 	}
 }
 
+/*
+ * Resolves the paging entry for the given pointer. If no entry is found, `NULL`
+ * is returned. The entry must be marked as present to be found.
+ */
 ATTR_HOT
 uint32_t *vmem_resolve(vmem_t vmem, void *ptr)
 {
@@ -101,6 +142,9 @@ uint32_t *vmem_resolve(vmem_t vmem, void *ptr)
 	return table_obj + page;
 }
 
+/*
+ * Checks if the given pointer is mapped.
+ */
 ATTR_HOT
 int vmem_is_mapped(vmem_t vmem, void *ptr)
 {
@@ -108,6 +152,10 @@ int vmem_is_mapped(vmem_t vmem, void *ptr)
 }
 
 // TODO Reload tlb after mapping?
+/*
+ * Maps the given physical address to the given virtual address with the given
+ * flags.
+ */
 ATTR_HOT
 void vmem_map(vmem_t vmem, void *physaddr, void *virtaddr, const int flags)
 {
@@ -128,6 +176,9 @@ void vmem_map(vmem_t vmem, void *physaddr, void *virtaddr, const int flags)
 	v[ADDR_PAGE(virtaddr)] = (uintptr_t) physaddr | PAGING_PAGE_PRESENT | flags;
 }
 
+/*
+ * Unmaps the given virtual address.
+ */
 ATTR_HOT
 void vmem_unmap(vmem_t vmem, void *virtaddr)
 {
@@ -144,6 +195,10 @@ void vmem_unmap(vmem_t vmem, void *virtaddr)
 	// TODO If page table is empty, free it
 }
 
+/*
+ * Checks if the portion of memory beginning at `ptr` with size `size` is
+ * mapped.
+ */
 ATTR_HOT
 int vmem_contains(vmem_t vmem, const void *ptr, const size_t size)
 {
@@ -161,6 +216,10 @@ int vmem_contains(vmem_t vmem, const void *ptr, const size_t size)
 	return 1;
 }
 
+/*
+ * Translates the given virtual address to the corresponding physical address.
+ * If the address is not mapped, `NULL` is returned.
+ */
 ATTR_HOT
 void *vmem_translate(vmem_t vmem, void *ptr)
 {
@@ -171,6 +230,9 @@ void *vmem_translate(vmem_t vmem, void *ptr)
 	return (void *) ((*entry & PAGING_ADDR_MASK) | ADDR_REMAIN(ptr));
 }
 
+/*
+ * Resolves the entry for the given virtual address and returns its flags.
+ */
 ATTR_HOT
 uint32_t vmem_get_entry(vmem_t vmem, void *ptr)
 {
@@ -179,9 +241,11 @@ uint32_t vmem_get_entry(vmem_t vmem, void *ptr)
 	if(!vmem || !(entry = vmem_resolve(vmem, ptr)))
 		return 0;
 	return *entry & PAGING_FLAGS_MASK;
-
 }
 
+/*
+ * Clones the given page table.
+ */
 ATTR_HOT
 static vmem_t clone_page_table(vmem_t from)
 {
@@ -193,6 +257,9 @@ static vmem_t clone_page_table(vmem_t from)
 	return v;
 }
 
+/*
+ * Clones the given page directory.
+ */
 ATTR_HOT
 vmem_t vmem_clone(vmem_t vmem)
 {
@@ -223,6 +290,9 @@ fail:
 	return NULL;
 }
 
+/*
+ * Destroyes the given page directory.
+ */
 ATTR_HOT
 void vmem_destroy(vmem_t vmem)
 {

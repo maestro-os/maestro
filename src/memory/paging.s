@@ -6,6 +6,9 @@
 .global cr3_get
 .global paging_disable
 
+/*
+ * (x86) Enables paging using the specified page directory.
+ */
 paging_enable:
 	push %ebp
 	mov %esp, %ebp
@@ -22,6 +25,9 @@ paging_enable:
 	pop %ebp
 	ret
 
+/*
+ * (x86) Reloads the Translate Lookaside Buffer.
+ */
 tlb_reload:
 	push %eax
 	movl %cr3, %eax
@@ -29,14 +35,25 @@ tlb_reload:
 	pop %eax
 	ret
 
+/*
+ * (x86) Returns the value inside of the %cr2 register. When a Page Fault
+ * occurs, this register is set with the linear address that was accessed.
+ */
 cr2_get:
 	mov %cr2, %eax
 	ret
 
+/*
+ * (x86) Returns the value inside of the %cr3 register. This register contains
+ * the pointer to the current page directory.
+ */
 cr3_get:
 	mov %cr3, %eax
 	ret
 
+/*
+ * (x86) Disables paging.
+ */
 paging_disable:
 	push %eax
 	mov %cr0, %eax
