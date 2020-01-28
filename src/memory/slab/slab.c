@@ -2,9 +2,33 @@
 #include <memory/slab/slab.h>
 #include <libc/errno.h>
 
+/*
+ * This file handles allocations using the slab allocator.
+ *
+ * This allocator allows to reduce fragmentation by having regions of memory
+ * reserved to a specific object of a fixed size, allowing to packed them
+ * together.
+ *
+ * A cache is an object that represents an allocator for a specific object.
+ * A slab is one or several pages allocated for storing objects.
+ * An object is an allocation on the slab allocator.
+ */
+
+// TODO Sort slabs so the that the allocator allocates objects on the most filled slabs first
+// TODO Avoid having objects on two different pages (if possible) to reduce cache swap
+
+/*
+ * The list of all caches.
+ */
 static cache_t *caches;
+/*
+ * The cache used to allocate caches. This cache is allocated using `kmalloc`.
+ */
 static cache_t *caches_cache;
 
+/*
+ * Computes the number of pages required for a slab.
+ */
 ATTR_HOT
 static void calc_pages_per_slab(cache_t *cache)
 {
@@ -13,6 +37,9 @@ static void calc_pages_per_slab(cache_t *cache)
 			+ (cache->objsize * cache->objcount), PAGE_SIZE);
 }
 
+/*
+ * Initializes the slab allocator.
+ */
 ATTR_COLD
 void slab_init(void)
 {
@@ -26,12 +53,18 @@ void slab_init(void)
 	caches = caches_cache;
 }
 
+/*
+ * Returns the list of all caches.
+ */
 ATTR_HOT
 cache_t *cache_getall(void)
 {
 	return caches;
 }
 
+/*
+ * Returns the cache with the given name.
+ */
 ATTR_HOT
 cache_t *cache_get(const char *name)
 {
@@ -49,6 +82,10 @@ cache_t *cache_get(const char *name)
 	return NULL;
 }
 
+/*
+ * Creates a cache.
+ * TODO: Describe arguments.
+ */
 ATTR_COLD
 cache_t *cache_create(const char *name, size_t objsize, size_t objcount,
 	void (*ctor)(void *, size_t), void (*dtor)(void *, size_t))
@@ -70,6 +107,9 @@ cache_t *cache_create(const char *name, size_t objsize, size_t objcount,
 	return cache;
 }
 
+/*
+ * Frees all slabs in the cache.
+ */
 ATTR_COLD
 static void free_all_slabs(cache_t *cache, slab_t *s)
 {
@@ -84,6 +124,9 @@ static void free_all_slabs(cache_t *cache, slab_t *s)
 	}
 }
 
+/*
+ * Destroyes the given cache.
+ */
 ATTR_COLD
 void cache_destroy(cache_t *cache)
 {
@@ -91,6 +134,7 @@ void cache_destroy(cache_t *cache)
 
 	if(!cache)
 		return;
+	// TODO Use double linked list?
 	c = caches;
 	while(c)
 	{
@@ -106,6 +150,9 @@ void cache_destroy(cache_t *cache)
 	cache_free(caches_cache, cache);
 }
 
+/*
+ * Links the given slab to the given slab list.
+ */
 ATTR_HOT
 static void link_slab(slab_t **list, slab_t *slab)
 {
@@ -117,6 +164,10 @@ static void link_slab(slab_t **list, slab_t *slab)
 	*list = slab;
 }
 
+/*
+ * Unlinks the given slab from its list. `cache` is the cache associated with
+ * the slab.
+ */
 ATTR_HOT
 static void unlink_slab(cache_t *cache, slab_t *slab)
 {
@@ -132,6 +183,9 @@ static void unlink_slab(cache_t *cache, slab_t *slab)
 		slab->prev->next = slab->next;
 }
 
+/*
+ * Allocates a new slab for the given cache.
+ */
 ATTR_HOT
 static slab_t *alloc_slab(cache_t *cache)
 {
@@ -145,6 +199,9 @@ static slab_t *alloc_slab(cache_t *cache)
 	return slab;
 }
 
+/*
+ * Allocates an object on the given cache.
+ */
 ATTR_HOT
 ATTR_MALLOC
 void *cache_alloc(cache_t *cache)
@@ -176,6 +233,9 @@ void *cache_alloc(cache_t *cache)
 	return ptr;
 }
 
+/*
+ * Returns the slab for the given object.
+ */
 static slab_t *get_slab(cache_t *cache, void *obj)
 {
 	avl_tree_t *n;
@@ -201,6 +261,9 @@ static slab_t *get_slab(cache_t *cache, void *obj)
 	return s;
 }
 
+/*
+ * Frees an object from the given cache.
+ */
 ATTR_HOT
 void cache_free(cache_t *cache, void *obj)
 {

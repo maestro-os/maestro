@@ -2,14 +2,23 @@
 #include <memory/memory.h>
 #include <libc/stdio.h>
 
+/*
+ * Variable containing the memory mapping.
+ */
 memory_info_t mem_info;
 
+/*
+ * Tells if a Multiboot mmap entry is valid.
+ */
 ATTR_HOT
 static inline int is_valid_entry(const multiboot_mmap_entry_t *entry)
 {
 	return (entry->addr + entry->len < ((uint64_t) 1 << (4 * 8)));
 }
 
+/*
+ * Prints the memory mapping.
+ */
 ATTR_HOT
 void memmap_print(void)
 {
@@ -29,6 +38,9 @@ void memmap_print(void)
 	}
 }
 
+/*
+ * Returns a pointer to the end of the system memory.
+ */
 ATTR_COLD
 static void *get_memory_end(void)
 {
@@ -47,6 +59,9 @@ static void *get_memory_end(void)
 	return DOWN_ALIGN(end, PAGE_SIZE);
 }
 
+/*
+ * Uses Multiboot informations to create a memory mapping.
+ */
 ATTR_COLD
 void memmap_init(void *multiboot_ptr, void *kernel_end)
 {
@@ -66,6 +81,9 @@ void memmap_init(void *multiboot_ptr, void *kernel_end)
 	mem_info.available_memory = mem_info.heap_end - mem_info.heap_begin;
 }
 
+/*
+ * Returns the string describing a memory region according to its type.
+ */
 const char *memmap_type(const uint32_t type)
 {
 	switch(type)

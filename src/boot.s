@@ -1,3 +1,6 @@
+/*
+ * Constants used by Multiboot2 to detect the kernel.
+ */
 .set MULTIBOOT_MAGIC,			0xe85250d6
 .set MULTIBOOT_ARCHITECTURE,	0
 .set HEADER_LENGTH,				(header_end - header)
@@ -17,6 +20,9 @@
 
 .section .text
 
+/*
+ * The Multiboot2 kernel header.
+ */
 .align 8
 header:
 	.long MULTIBOOT_MAGIC
@@ -24,6 +30,9 @@ header:
 	.long HEADER_LENGTH
 	.long CHECKSUM
 
+/*
+ * The entry tag, setting the entry point of the kernel.
+ */
 .align 8
 entry_address_tag:
 	.short MULTIBOOT_HEADER_TAG_ENTRY_ADDRESS
@@ -38,6 +47,9 @@ entry_address_tag_end:
 	.long 8
 header_end:
 
+/*
+ * The entry point for the kernel.
+ */
 multiboot_entry:
 	mov $stack_top, %esp
 	xor %ebp, %ebp

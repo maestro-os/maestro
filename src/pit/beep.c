@@ -1,5 +1,8 @@
 #include <pit/pit.h>
 
+/*
+ * Makes the PC speaker beep at the given frequency.
+ */
 void beep(const unsigned frequency)
 {
 	unsigned div;
@@ -13,6 +16,9 @@ void beep(const unsigned frequency)
 		outb(BEEPER_ENABLE, tmp | 3);
 }
 
+/*
+ * Stops the PC speaker beep.
+ */
 void stop_beep(void)
 {
 	outb(BEEPER_ENABLE, inb(BEEPER_ENABLE) & 0xfc);

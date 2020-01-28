@@ -8,19 +8,56 @@
 # include <memory/slab/slab.h>
 # include <util/util.h>
 
+/*
+ * The size of a page in bytes.
+ */
 # define PAGE_SIZE		0x1000
+/*
+ * The pointer to the beginning of the kernel.
+ */
 # define KERNEL_BEGIN	((void *) 0x100000)
 
+/*
+ * Memory region flag allowing write permission on the region.
+ */
 # define MEM_REGION_FLAG_WRITE	0b001
+/*
+ * Memory region flag telling that the region is a stack.
+ */
 # define MEM_REGION_FLAG_STACK	0b010
+/*
+ * Memory region flag telling that the region is a userspace region.
+ */
 # define MEM_REGION_FLAG_USER	0b100
 
+/*
+ * x86 paging flag. If set, pages are 4 MB long.
+ */
 # define PAGING_TABLE_PAGE_SIZE		0b10000000
+/*
+ * x86 paging flag. Set if the page has been read or wrote.
+ */
 # define PAGING_TABLE_ACCESSED		0b00100000
+/*
+ * x86 paging flag. If set, page will not be cached.
+ */
 # define PAGING_TABLE_CACHE_DISABLE	0b00010000
+/*
+ * x86 paging flag. If set, write-through caching is enabled.
+ * If not, then write-back is enabled instead.
+ */
 # define PAGING_TABLE_WRITE_THROUGH	0b00001000
+/*
+ * x86 paging flag. If set, the page can be accessed by userspace operations.
+ */
 # define PAGING_TABLE_USER			0b00000100
+/*
+ * x86 paging flag. If set, the page can be wrote.
+ */
 # define PAGING_TABLE_WRITE			0b00000010
+/*
+ * x86 paging flag. If set, the page is present.
+ */
 # define PAGING_TABLE_PRESENT		0b00000001
 
 # define PAGING_PAGE_GLOBAL			0b100000000
@@ -32,84 +69,175 @@
 # define PAGING_PAGE_WRITE			0b000000010
 # define PAGING_PAGE_PRESENT		0b000000001
 
+/*
+ * Flags mask in a page directory entry.
+ */
 # define PAGING_FLAGS_MASK	0xfff
+/*
+ * Address mask in a page directory entry. The address doesn't need every bytes
+ * since it must be page-aligned.
+ */
 # define PAGING_ADDR_MASK	~((uint32_t) PAGING_FLAGS_MASK)
 
+/*
+ * Converts the page number to a pointer to the beginning of the pages.
+ */
 # define PAGETOPTR(page)	((void *) (page) * PAGE_SIZE)
+/*
+ * Converts a pointer to the page index containing it.
+ */
 # define PTRTOPAGE(ptr)		((uintptr_t) (ptr) / PAGE_SIZE)
 
+/*
+ * Gives the table index for the given address.
+ */
 # define ADDR_TABLE(addr)	(((uintptr_t) (addr) >> 22) & 0x3ff)
+/*
+ * Gives the page index for the given address.
+ */
 # define ADDR_PAGE(addr)	(((uintptr_t) (addr) >> 12) & 0x3ff)
+/*
+ * Gives the offset of the pointer in its page.
+ */
 # define ADDR_REMAIN(addr)	((uintptr_t) (addr) & 0xfff)
 
+/*
+ * x86 page fault flag. If set, the page was present.
+ */
 # define PAGE_FAULT_PRESENT		0b00001
+/*
+ * x86 page fault flag. If set, the error was caused bt a write operation, else
+ * the error was caused by a read operation.
+ */
 # define PAGE_FAULT_WRITE		0b00010
+/*
+ * x86 page fault flag. If set, the page fault was caused by a userspace
+ * operation.
+ */
 # define PAGE_FAULT_USER		0b00100
+/*
+ * x86 page fault flag. TODO
+ */
 # define PAGE_FAULT_RESERVED	0b01000
+/*
+ * x86 page fault flag. If set, the page fault was caused by an instruction
+ * fetch.
+ */
 # define PAGE_FAULT_INSTRUCTION	0b10000
 
+/*
+ * Structure storing informations relative to the main memory.
+ */
 typedef struct
 {
+	/* TODO */
 	size_t memory_maps_size;
+	/* TODO */
 	size_t memory_maps_entry_size;
+	/* TODO */
 	void *memory_maps;
 
+	/* TODO */
 	void *memory_end;
+	/* TODO */
 	void *heap_begin, *heap_end;
+	/* TODO */
 	size_t available_memory;
 } memory_info_t;
 
-typedef uint32_t *vmem_t;
-
+/*
+ * Structure containing the memory usage.
+ */
 typedef struct
 {
+	/* The amount of reserved memory that the kernel cannot use */
 	size_t reserved;
+	/* The amount of memory used by the kernel itself */
 	size_t system;
+	/* The amount of allocated memory (kernel allocations included) */
 	size_t allocated;
+	/* The amount of used swap memory */
 	size_t swap;
+	/* The amount of remaining free memory */
 	size_t free;
 } mem_usage_t;
 
 typedef struct mem_space mem_space_t;
 
+/*
+ * Structure representing a memory region in the memory space. (Used addresses)
+ */
 typedef struct mem_region
 {
+	/* Linked list of memory regions in the current memory space. */
 	struct mem_region *next;
+	/*
+	 * Double-linked list of memory regions that share the same physical space.
+	 * Elements in this list might not be in the same memory space.
+	 */
 	struct mem_region *next_shared, *prev_shared;
+	/* The node of the tree the structure is stored in. */
 	avl_tree_t node;
+	/* The memory space associated with the region. */
 	mem_space_t *mem_space;
 
+	/* The flags for the memory region. */
 	char flags;
+	/* The beginning address of the region. */
 	void *begin;
+	/* The size of the region in pages. */
 	size_t pages;
+	/* The number of used pages in the region. */
 	size_t used_pages;
 
+	/* A bitfield telling which pages are used. */
 	uint8_t use_bitfield[0];
 } mem_region_t;
 
+/*
+ * Structure representing a memory gap int the memory space. (Free addresses)
+ */
 typedef struct mem_gap
 {
+	/* Double-linked list of memory gaps in the current memory space. */
 	struct mem_gap *next, *prev;
+	/* The node of the tree the structure is stored in */
 	avl_tree_t node;
 
+	/* The beginning address of the gap. */
 	void *begin;
+	/* The size of the gap in pages. */
 	size_t pages;
 } mem_gap_t;
 
+/*
+ * Structure representing a memory context. Allowing to allocate virtual memory.
+ */
 struct mem_space
 {
+	/* Linked list of regions (used addresses) */
 	mem_region_t *regions;
+	/* Linked list of gaps (free addresses) */
 	mem_gap_t *gaps;
+	/* Binary tree of regions */
 	avl_tree_t *used_tree;
+	/* Binary tree of gaps */
 	avl_tree_t *free_tree;
 
+	/* The spinlock for this memory space. */
 	spinlock_t spinlock;
 
+	/* An architecture dependent object to handle memory permissions. */
 	vmem_t page_dir;
 };
 
 extern memory_info_t mem_info;
 extern vmem_t kernel_vmem;
+
+/*
+ * The object used in x86 memory permissions handling.
+ */
+typedef uint32_t *vmem_t;
 
 extern int check_a20(void);
 void enable_a20(void);

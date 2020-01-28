@@ -4,6 +4,9 @@
 #include <process/process.h>
 #include <debug/debug.h>
 
+/*
+ * The name associated with every CPU exception.
+ */
 ATTR_RODATA
 static const char *errors[] = {
 	"Divide-by-zero Error",
@@ -40,6 +43,9 @@ static const char *errors[] = {
 	"Unknown"
 };
 
+/*
+ * The list of signals associated with each CPU exception.
+ */
 ATTR_RODATA
 static int error_signals[] = {
 	SIGFPE,
@@ -77,6 +83,9 @@ static int error_signals[] = {
 };
 
 // TODO Check if switching context
+/*
+ * Handles a CPU exception.
+ */
 void error_handler(const unsigned error, const uint32_t error_code)
 {
 	process_t *process;
@@ -103,6 +112,9 @@ void error_handler(const unsigned error, const uint32_t error_code)
 	kernel_loop();
 }
 
+/*
+ * Initializes the TTY and prints a panic message.
+ */
 ATTR_COLD
 static void print_panic(const char *reason, const uint32_t code)
 {
@@ -117,6 +129,9 @@ static void print_panic(const char *reason, const uint32_t code)
  please feel free to report it.\n");
 }
 
+/* * Triggers a kernel panic with the specified reason and error code.
+ * This function should be called using `PANIC(...)` only.
+ */
 ATTR_COLD
 ATTR_NORETURN
 void kernel_panic(const char *reason, const uint32_t code)
@@ -126,6 +141,10 @@ void kernel_panic(const char *reason, const uint32_t code)
 	kernel_halt();
 }
 
+/*
+ * Same function as `kernel_panic` except that it takes more arguments: the file
+ * and the line number where the kernel panic was triggered.
+ */
 ATTR_COLD
 ATTR_NORETURN
 void kernel_panic_(const char *reason, const uint32_t code,

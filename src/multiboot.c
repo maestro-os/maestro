@@ -1,8 +1,14 @@
 #include <multiboot.h>
 #include <memory/memory.h>
 
+/*
+ * TODO
+ */
 boot_info_t boot_info;
 
+/*
+ * TODO
+ */
 size_t multiboot_tags_size(void *ptr)
 {
 	multiboot_tag_t *tag;
@@ -16,6 +22,9 @@ size_t multiboot_tags_size(void *ptr)
 	return (size_t) ((void *) tag - ptr);
 }
 
+/*
+ * Retrives informations of the given tag.
+ */
 static void handle_tag(multiboot_tag_t *tag)
 {
 	multiboot_tag_mmap_t *mmap_tag;
@@ -81,6 +90,9 @@ static void handle_tag(multiboot_tag_t *tag)
 	}
 }
 
+/*
+ * Reads the content of the multiboot tags.
+ */
 void read_boot_tags(void *ptr)
 {
 	multiboot_tag_t *tag;

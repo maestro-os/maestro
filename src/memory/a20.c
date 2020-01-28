@@ -2,6 +2,9 @@
 #include <idt/idt.h>
 #include <keyboard/ps2/ps2.h>
 
+/*
+ * Enables the a20 line.
+ */
 ATTR_COLD
 void enable_a20(void)
 {

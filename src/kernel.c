@@ -22,12 +22,18 @@
 # include <selftest/selftest.h>
 #endif
 
+/*
+ * The list of default drivers to be loaded by the kernel.
+ */
 static driver_t drivers[] = {
 	{"PS/2", ps2_init},
 	{"ATA", ata_init}
 };
 
 #ifdef KERNEL_DEBUG
+/*
+ * Prints all PCI devices found.
+ */
 // TODO Uncomment
 /*static void print_devices(void)
 {
@@ -46,6 +52,9 @@ prog_if: %x; revision_id: %x; bar0: %x; bar1: %x\n",
 	printf("\n");
 }*/
 
+/*
+ * Prints all slabs of the slab allocator.
+ */
 static void print_slabs(void)
 {
 	cache_t *c;
@@ -62,6 +71,9 @@ static void print_slabs(void)
 }
 #endif
 
+/*
+ * Initializes the given driver.
+ */
 ATTR_COLD
 static inline void init_driver(const driver_t *driver)
 {
@@ -71,6 +83,9 @@ static inline void init_driver(const driver_t *driver)
 	driver->init_func();
 }
 
+/*
+ * Initializes drivers.
+ */
 ATTR_COLD
 static inline void init_drivers(void)
 {
@@ -87,6 +102,12 @@ void test_process(void);
 // TODO Remove
 extern semaphore_t sem;
 
+/*
+ * The kernel's main function. `magic` is the magic number given by Multiboot to
+ * be checked by this function. `multiboot_ptr` is the pointer to the structure
+ * containing boot informations. `kernel_end` is the pointer to the end of the
+ * kernel image.
+ */
 ATTR_COLD
 void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	void *kernel_end)

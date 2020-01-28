@@ -1,8 +1,14 @@
 #include <pit/pit.h>
 #include <idt/idt.h>
 
+/*
+ * The current frequency of the PIT in hertz.
+ */
 static unsigned current_frequency;
 
+/*
+ * Initializes the PIT.
+ */
 ATTR_COLD
 void pit_init(void)
 {
@@ -13,6 +19,9 @@ void pit_init(void)
 		| PIT_MODE_4);
 }
 
+/*
+ * Sets the PIT divider value.
+ */
 ATTR_HOT
 void pit_set_count(const uint16_t count)
 {
@@ -21,6 +30,9 @@ void pit_set_count(const uint16_t count)
 	outb(PIT_CHANNEL_0, (count >> 8) & 0xff);
 }
 
+/*
+ * Sets the current frequency of the PIT in hertz.
+ */
 ATTR_HOT
 void pit_set_frequency(const unsigned frequency)
 {

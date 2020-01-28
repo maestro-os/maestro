@@ -4,41 +4,69 @@
 # include <memory/memory.h>
 # include <util/util.h>
 
+/*
+ * Flags telling that the object is used.
+ */
 # define OBJ_USED	0b1
 
+/*
+ * Name of the cache that contains all caches.
+ */
 # define CACHES_CACHE_NAME	"caches"
 
+/*
+ * Gives the pointer to the object in the specified cache, slab and index.
+ */
 # define SLAB_OBJ(cache, slab, i)	((slab)->use_bitfield\
 	+ CEIL_DIVISION((cache)->objcount, 8) + (cache)->objsize * (i))
 
+/*
+ * Structure representing a slab.
+ */
 typedef struct slab
 {
+	/* Double-linked list of slabs. */
 	struct slab *prev, *next;
+	/* The node of the tree the slab is located in. */
 	avl_tree_t node;
 
+	/* The amount of available objects in the slab. */
 	size_t available;
+	/* Bitfield telling which object is used in the slab. */
 	uint8_t use_bitfield[0];
 } slab_t;
 
 typedef struct cache
 {
+	/* Linked list of caches. */
 	struct cache *next;
 
+	/* The name of the cache. */
 	const char *name;
 
+	/* TODO */
 	size_t slabs;
+	/* The size of an object. */
 	size_t objsize;
+	/* TODO */
 	size_t objcount;
 
+	/* The number of pages per slabs */
 	size_t pages_per_slab;
 
+	/* The list of full slabs */
 	slab_t *slabs_full;
+	/* The list of partial slabs (some objects are still available) */
 	slab_t *slabs_partial;
+	/* The tree containing all the slabs for fast retrieval */
 	avl_tree_t *tree;
 
+	/* The constructor function for the objects of the cache. */
 	void (*ctor)(void *, size_t);
+	/* The destructor function for the objects of the cache. */
 	void (*dtor)(void *, size_t);
 
+	/* The spinlock of the cache. */
 	spinlock_t spinlock;
 } cache_t;
 

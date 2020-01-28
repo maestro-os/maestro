@@ -4,15 +4,41 @@
 
 // TODO Fix: Infinite loop if memory is full
 
+/*
+ * This files handles the buddy allocator which allows to allocate 2^^n pages
+ * large blocks of memory.
+ *
+ * This allocator works by dividing blocks of memory in two until the a block of
+ * the required size is available.
+ *
+ * The order of a block is the `n` in the expression `2^^n` that represents the
+ * size of a block in pages.
+ */
+
+/*
+ * The max order for the current system.
+ */
 static block_order_t max_order;
+/*
+ * Array containing the states for every buddies.
+ */
 static block_state_t *states;
+/*
+ * TODO
+ */
 static void *buddy_begin, *buddy_end;
+/*
+ * TODO
+ */
 static block_index_t end;
 
+/*
+ * The spinlock used for buddy allocator operations.
+ */
 static spinlock_t spinlock = 0;
 
 /*
- * Returns the buddy order for the given number of pages.
+ * Returns the buddy order required to fit the given number of pages.
  */
 ATTR_HOT
 block_order_t buddy_get_order(const size_t pages)
@@ -28,12 +54,19 @@ block_order_t buddy_get_order(const size_t pages)
 	return order;
 }
 
+/*
+ * TODO
+ */
 ATTR_HOT
 void *buddy_get_begin(void)
 {
 	return buddy_begin;
 }
 
+/*
+ * Updates the state of a block and its parents according to the state of its
+ * child blocks.
+ */
 ATTR_HOT
 static void update_block_state(size_t index)
 {
@@ -49,12 +82,15 @@ static void update_block_state(size_t index)
 			states[index] = NODE_STATE_FULL;
 		else
 			states[index] = NODE_STATE_PARTIAL;
-		if(index == 0)
+		if(index == 0) // TODO Break if the block was already in the right state
 			break;
 		index = NODE_PARENT(index);
 	}
 }
 
+/*
+ * Sets the state of a block and its parents.
+ */
 ATTR_HOT
 static inline void set_block_state(const block_index_t index,
 	const block_state_t state)
@@ -64,6 +100,9 @@ static inline void set_block_state(const block_index_t index,
 		update_block_state(NODE_PARENT(index));
 }
 
+/*
+ * Initializes the buddy allocator.
+ */
 ATTR_COLD
 void buddy_init(void)
 {
@@ -85,6 +124,11 @@ void buddy_init(void)
 		set_block_state(i, NODE_STATE_FULL);
 }
 
+/*
+ * Finds a free block and returns it. `index` is the index of the tree the
+ * search begins. `order` is the requiered order for the block to find.
+ * `is_buddy` tells whether the buddy block has already been checked or not.
+ */
 ATTR_HOT
 static block_index_t find_free(const block_index_t index,
 	const block_order_t order, const int is_buddy)
@@ -127,6 +171,9 @@ static block_index_t find_free(const block_index_t index,
 	return -1;
 }
 
+/*
+ * Allocates a block of memory using the buddy allocator.
+ */
 ATTR_HOT
 ATTR_MALLOC
 void *buddy_alloc(const block_order_t order)
@@ -150,6 +197,9 @@ void *buddy_alloc(const block_order_t order)
 	return ptr;
 }
 
+/*
+ * Uses `buddy_alloc` and applies `bzero` on the allocated block.
+ */
 ATTR_HOT
 ATTR_MALLOC
 void *buddy_alloc_zero(const block_order_t order)
@@ -161,6 +211,9 @@ void *buddy_alloc_zero(const block_order_t order)
 	return ptr;
 }
 
+/*
+ * Frees the given memory block that was allocated using the buddy allocator.
+ */
 ATTR_HOT
 void buddy_free(void *ptr)
 {
@@ -179,6 +232,9 @@ void buddy_free(void *ptr)
 	spin_unlock(&spinlock);
 }
 
+/*
+ * Returns the number of pages allocated by the buddy allocator.
+ */
 ATTR_HOT
 static size_t count_allocated_pages(const block_index_t index)
 {
@@ -195,6 +251,9 @@ static size_t count_allocated_pages(const block_index_t index)
 		+ count_allocated_pages(NODE_RIGHT(index));
 }
 
+/*
+ * Returns the number of pages allocated by the buddy allocator.
+ */
 ATTR_HOT
 inline size_t allocated_pages(void)
 {

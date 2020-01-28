@@ -13,12 +13,27 @@
 # define ID_PRIVILEGE_RING_3		0b00000110
 # define ID_PRESENT					0b00000001
 
+/*
+ * Disables interruptions.
+ */
 # define CLI()	asm("cli")
+/*
+ * Enables interruptions.
+ */
 # define STI()	asm("sti")
+/*
+ * Waits for an interruption.
+ */
 # define HLT()	asm("hlt")
 
+/*
+ * The IDT vector index for system calls.
+ */
 # define SYSCALL_VECTOR				0x80
 
+/*
+ * Structure representing an IDT entry.
+ */
 typedef struct interrupt_descriptor
 {
 	uint16_t offset;

@@ -9,6 +9,10 @@
 # define PIT_CHANNEL_1	0x41
 # define PIT_CHANNEL_2	0x42
 # define PIT_COMMAND	0x43
+
+/*
+ * The command to enable the PC speaker.
+ */
 # define BEEPER_ENABLE	0x61
 
 # define PIT_SELECT_CHANNEL_0	0x0
@@ -28,6 +32,9 @@
 # define PIT_MODE_4		0x4
 # define PIT_MODE_5		0x5
 
+/*
+ * The base frequency of the PIT.
+ */
 # define BASE_FREQUENCY	1193180
 
 void pit_init(void);

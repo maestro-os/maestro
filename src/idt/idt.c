@@ -4,8 +4,14 @@
 
 // TODO Pay attention to the stack that is to be used when handling an interrupt
 
+/*
+ * The list of IDT entries.
+ */
 static interrupt_descriptor_t id[0x81];
 
+/*
+ * Creates an IDT entry.
+ */
 static interrupt_descriptor_t create_id(void *address, const uint16_t selector,
 	const uint8_t type_attr)
 {
@@ -20,6 +26,9 @@ static interrupt_descriptor_t create_id(void *address, const uint16_t selector,
 	return id;
 }
 
+/*
+ * Initializes the IDT.
+ */
 void idt_init(void)
 {
 	unsigned long idt_ptr[2];

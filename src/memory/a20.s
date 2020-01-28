@@ -1,5 +1,8 @@
 .global check_a20
 
+/*
+ * Checks whether the a20 line is enabled or not.
+ */
 check_a20:
 	pusha
 	mov $0x888888, %edi

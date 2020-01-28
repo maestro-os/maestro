@@ -9,6 +9,9 @@
 # define GDT_USER_DATA_OFFSET	0x20
 # define GDT_TSS_OFFSET			0x28
 
+/*
+ * Structure representing a GDT entry.
+ */
 typedef struct
 {
 	uint16_t limit_low;

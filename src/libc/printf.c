@@ -439,6 +439,11 @@ static int handle_specifier(const specifier_t *specifier, va_list *args,
 	return 0;
 }
 
+/*
+ * Prints a message on the screen with the specified format and arguments.
+ * The format determines the number, location and type of the variadic
+ * arguments. Refer to the POSIX standard for further documentation.
+ */
 int printf(const char *format, ...)
 {
 	int total = 0;

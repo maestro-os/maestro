@@ -12,15 +12,27 @@
 #  include <debug/debug.h>
 # endif
 
+/*
+ * The kernel version.
+ */
 # define KERNEL_VERSION	"0.1"
+/*
+ * TODO
+ */
 # define KERNEL_MAGIC
 
+/*
+ * PANIC(): Triggers a kernel panic with the specified message.
+ */
 # ifdef KERNEL_DEBUG
 #  define PANIC(reason, code)	kernel_panic_(reason, code, __FILE__, __LINE__)
 # else
 #  define PANIC(reason, code)	kernel_panic(reason, code)
 # endif
 
+/*
+ * Structure representing a driver.
+ */
 typedef struct
 {
 	const char *name;
