@@ -119,7 +119,7 @@ static void free_all_slabs(cache_t *cache, slab_t *s)
 	{
 		next = s->next;
 		avl_tree_remove(&cache->tree, &s->node);
-		pages_free(s);
+		pages_free(s, 0);
 		s = next;
 	}
 }
@@ -286,7 +286,7 @@ void cache_free(cache_t *cache, void *obj)
 	{
 		unlink_slab(cache, s);
 		avl_tree_remove(&cache->tree, &s->node);
-		pages_free(s);
+		pages_free(s, 0);
 	}
 
 end:

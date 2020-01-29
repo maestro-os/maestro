@@ -162,6 +162,7 @@ void vmem_map(vmem_t vmem, void *physaddr, void *virtaddr, const int flags)
 	size_t t;
 	vmem_t v;
 
+	errno = 0;
 	if(!vmem)
 		return;
 	t = ADDR_TABLE(virtaddr);
@@ -174,6 +175,30 @@ void vmem_map(vmem_t vmem, void *physaddr, void *virtaddr, const int flags)
 	vmem[t] |= PAGING_TABLE_PRESENT | flags;
 	v = (void *) (vmem[t] & PAGING_ADDR_MASK);
 	v[ADDR_PAGE(virtaddr)] = (uintptr_t) physaddr | PAGING_PAGE_PRESENT | flags;
+}
+
+/*
+ * Maps the specified range of physical memory to the specified range of virtual
+ * memory.
+ */
+void vmem_map_range(vmem_t vmem, void *physaddr, void *virtaddr,
+	const size_t pages, const int flags)
+{
+	size_t i = 0;
+
+	if(!vmem)
+		return;
+	while(i < pages)
+	{
+		vmem_map(vmem, physaddr + i * PAGE_SIZE,
+			virtaddr + i * PAGE_SIZE, flags);
+		if(errno)
+		{
+			vmem_unmap_range(vmem, virtaddr, pages);
+			return;
+		}
+		++i;
+	}
 }
 
 /*
@@ -193,6 +218,23 @@ void vmem_unmap(vmem_t vmem, void *virtaddr)
 	v = (void *) (vmem[t] & PAGING_ADDR_MASK);
 	v[ADDR_PAGE(virtaddr)] = 0;
 	// TODO If page table is empty, free it
+}
+
+/*
+ * Unmaps the given virtual memory range.
+ */
+void vmem_unmap_range(vmem_t vmem, void *virtaddr, const size_t pages)
+{
+	size_t i = 0;
+
+	if(!vmem)
+		return;
+	while(i < pages)
+	{
+		vmem_unmap(vmem, virtaddr + i * PAGE_SIZE);
+		++i;
+	}
+
 }
 
 /*
@@ -269,6 +311,7 @@ vmem_t vmem_clone(vmem_t vmem)
 
 	if(!vmem || !(v = vmem_init()))
 		return NULL;
+	errno = 0;
 	for(i = 0; i < 1024; ++i)
 	{
 		if(!(vmem[i] & PAGING_TABLE_PRESENT))

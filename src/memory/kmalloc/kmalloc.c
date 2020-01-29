@@ -81,6 +81,7 @@ void *kmalloc(const size_t size)
 
 	if(size == 0)
 		return NULL;
+	spin_lock(&kmalloc_spinlock);
 	if(size < _SMALL_BIN_MAX)
 		ptr = _small_alloc(size);
 	else if(size < _MEDIUM_BIN_MAX)
@@ -89,6 +90,7 @@ void *kmalloc(const size_t size)
 		ptr = _large_alloc(size);
 	if(!ptr)
 		errno = ENOMEM;
+	spin_unlock(&kmalloc_spinlock);
 	return ptr;
 }
 

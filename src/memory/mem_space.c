@@ -17,7 +17,7 @@
  * process will have its virtual page remapped to the newly allocated page.
  *
  * - Memory regions (structure `mem_region`) tells which parts of the virtual
- * space is being using by allocated memory.
+ * space is being used by allocated memory.
  * - Memory gaps (structure `mem_gap`) tells which parts of the virtual space
  * is ready to be used for further allocations.
  *
@@ -51,6 +51,10 @@
  */
 static cache_t *mem_space_cache;
 /*
+ * The cache for the `mem_region` structure.
+ */
+static cache_t *mem_region_cache;
+/*
  * The cache for the `mem_gap` structure.
  */
 static cache_t *mem_gap_cache;
@@ -63,6 +67,9 @@ static void global_init(void)
 	if(!(mem_space_cache = cache_create("mem_space", sizeof(mem_space_t), 64,
 		bzero, NULL)))
 		PANIC("Failed to initialize mem_space cache!", 0);
+	if(!(mem_region_cache = cache_create("mem_region", sizeof(mem_region_t), 64,
+		bzero, NULL)))
+		PANIC("Failed to initialize mem_region cache!", 0);
 	if(!(mem_gap_cache = cache_create("mem_gap", sizeof(mem_gap_t), 64,
 		bzero, NULL)))
 		PANIC("Failed to initialize mem_gap cache!", 0);
@@ -121,18 +128,15 @@ fail:
  */
 static mem_region_t *clone_region(mem_space_t *space, mem_region_t *r)
 {
-	size_t bitfield_size;
 	mem_region_t *new;
 
-	bitfield_size = BITFIELD_SIZE(r->pages);
-	if(!(new = kmalloc_zero(sizeof(mem_region_t) + bitfield_size)))
+	if(!(new = cache_alloc(mem_region_cache)))
 		return NULL;
 	new->mem_space = space;
 	new->flags = r->flags;
 	new->begin = r->begin;
 	new->pages = r->pages;
 	new->used_pages = r->used_pages;
-	memcpy(new->use_bitfield, r->use_bitfield, bitfield_size);
 	if((new->next_shared = r->next_shared))
 		r->next_shared->prev_shared = new;
 	if((new->prev_shared = r))
@@ -146,18 +150,8 @@ static mem_region_t *clone_region(mem_space_t *space, mem_region_t *r)
  */
 static void region_free(mem_region_t *region)
 {
-	size_t i;
-
 	if(!region->prev_shared && !region->next_shared)
-	{
-		i = 0;
-		while(i < region->pages)
-		{
-			if(bitfield_get(region->use_bitfield, i))
-				buddy_free(region->begin + (i * PAGE_SIZE));
-			++i;
-		}
-	}
+		pages_free(region->begin, region->pages * PAGE_SIZE);
 	else
 	{
 		if(region->prev_shared)
@@ -165,7 +159,7 @@ static void region_free(mem_region_t *region)
 		if(region->next_shared)
 			region->next_shared->prev_shared = region->prev_shared;
 	}
-	kfree(region);
+	cache_free(mem_region_cache, region);
 }
 
 /*
@@ -461,11 +455,11 @@ static mem_region_t *region_create(mem_space_t *space,
 
 	if(pages == 0)
 		return NULL;
-	if(!(r = kmalloc(sizeof(mem_region_t) + BITFIELD_SIZE(pages))))
+	if(!(r = cache_alloc(mem_region_cache)))
 		return NULL;
 	if(!(gap = find_gap(space->free_tree, pages)))
 	{
-		kfree(r);
+		cache_free(mem_region_cache, r);
 		return NULL;
 	}
 	r->mem_space = space;
@@ -473,14 +467,11 @@ static mem_region_t *region_create(mem_space_t *space,
 	r->begin = CONTAINER_OF(gap, mem_gap_t, node)->begin;
 	r->pages = pages;
 	r->used_pages = r->pages;
-	bitfield_set_range(r->use_bitfield, 0, r->pages);
-	if(!(flags & MEM_REGION_FLAG_USER) && (flags & MEM_REGION_FLAG_STACK))
+	if(!(flags & MEM_REGION_FLAG_USER) && (flags & MEM_REGION_FLAG_STACK)
+		&& !preallocate_kernel_stack(space, r))
 	{
-		if(!preallocate_kernel_stack(space, r))
-		{
-			kfree(r);
-			return NULL;
-		}
+		cache_free(mem_region_cache, r);
+		return NULL;
 	}
 	errno = 0;
 	r->node.value = (avl_value_t) r->begin;
@@ -488,7 +479,7 @@ static mem_region_t *region_create(mem_space_t *space,
 	if(errno)
 	{
 		// TODO If preallocated kernel_stack, free it
-		kfree(r);
+		cache_free(mem_region_cache, r);
 		return NULL;
 	}
 	shrink_gap(&space->free_tree, gap, pages);
@@ -549,9 +540,10 @@ void mem_space_free(mem_space_t *space, void *ptr, const size_t pages)
 {
 	if(!space || !ptr || pages == 0)
 		return;
-	// TODO Find region using tree and free pages in it
-	// TODO Free region if all pages have been freed
-	// TODO Get and extend near gap
+	// TODO Find region using tree
+	// TODO If the whole region is to be freed, free it
+	// TODO If only a part of the region is to be freed, spilt into new regions
+	// TODO Get and extend near gap if needed
 	// TODO Merge gaps if needed
 	// TODO Update page directory
 }
@@ -565,7 +557,7 @@ void mem_space_free_stack(mem_space_t *space, void *stack)
 	if(!space || !stack)
 		return;
 	// TODO Find region using tree and free it
-	// TODO Get and extend near gap
+	// TODO Get and extend near gaps
 	// TODO Merge gaps if needed
 	// TODO Update page directory
 }
@@ -583,20 +575,14 @@ int mem_space_can_access(mem_space_t *space, const void *ptr, const size_t size,
 	if(!space || !ptr)
 		return 0;
 	i = DOWN_ALIGN(ptr, PAGE_SIZE);
-	end = UP_ALIGN(ptr + size, PAGE_SIZE);
+	end = DOWN_ALIGN(ptr + size, PAGE_SIZE);
 	while(i < end)
 	{
 		if(!(r = find_region(space->used_tree, i)))
 			return 0;
 		if(write && !(r->flags & MEM_REGION_FLAG_WRITE))
 			return 0;
-		while(i < r->begin + r->pages)
-		{
-			if(!bitfield_get(r->use_bitfield,
-				(uintptr_t) (i - r->begin) / PAGE_SIZE))
-				return 0;
-			i += PAGE_SIZE;
-		}
+		i += r->pages * PAGE_SIZE;
 	}
 	return 1;
 }
@@ -616,23 +602,33 @@ static void update_share(mem_region_t *r)
 }
 
 /*
- * Performs the copy on write operation. Copies the content of the given
+ * Performs the Copy-On-Write operation. Copies the content of the given
  * region at the given offset (in pages) to the given physical page.
  * The region will be unlinked from the shared linked-list.
  */
-static void copy_on_write(void *physical_page,
-	mem_region_t *region, const size_t region_offset)
+static int copy_on_write(mem_region_t *region)
 {
 	mem_region_t *r;
-	void *src;
+	void *dest, *src;
 
 	if(!(r = region->prev_shared))
 		r = region->next_shared;
 	if(!r)
-		return;
-	src = vmem_translate(region->mem_space->page_dir,
-		region->begin + region_offset * PAGE_SIZE);
-	memcpy(physical_page, src, PAGE_SIZE);
+		return 0;
+	// TODO If linear block cannot be found, try to use a non-linear block
+	// TODO If even non-linear block cannot be found, use OOM-killer
+	if(!(dest = pages_alloc(region->pages)))
+		return 0;
+	src = vmem_translate(region->mem_space->page_dir, region->begin);
+	memcpy(dest, src, region->pages * PAGE_SIZE);
+	errno = 0;
+	vmem_map_range(region->mem_space->page_dir, dest, region->begin,
+		region->pages, convert_flags(r->flags));
+	if(errno)
+	{
+		pages_free(dest, 0);
+		return 0;
+	}
 	if(region->prev_shared)
 	{
 		region->prev_shared->next_shared = region->next_shared;
@@ -645,6 +641,7 @@ static void copy_on_write(void *physical_page,
 	}
 	region->prev_shared = NULL;
 	region->next_shared = NULL;
+	return 1;
 }
 
 // TODO Map the whole region?
@@ -654,44 +651,30 @@ static void copy_on_write(void *physical_page,
  * kernel should panic.
  *
  * The function will return `0` if:
+ * - The page fault was not caused by a write operation
  * - The region for the given pointer cannot be found
- * - The region is not in userspace
- * - The page fault was caused by a write operation and the region isn't
- * writable
- * - The page that is being accessed has been freed
+ * - The the region isn't writable
+ * - The page fault was caused by a userspace operation and the region is not
+ * in userspace
  * - An error happened while mapping the allocated page
  */
 int mem_space_handle_page_fault(mem_space_t *space,
 	void *ptr, const int error_code)
 {
 	mem_region_t *r;
-	size_t region_offset;
-	void *physical_page;
 
 	if(!space || !ptr)
+		return 0;
+	if(!(error_code & PAGE_FAULT_WRITE))
 		return 0;
 	ptr = DOWN_ALIGN(ptr, PAGE_SIZE);
 	if(!(r = find_region(space->used_tree, ptr)))
 		return 0;
-	if(!(r->flags & MEM_REGION_FLAG_USER))
+	if(!(r->flags & MEM_REGION_FLAG_WRITE))
 		return 0;
-	if((error_code & PAGE_FAULT_WRITE) && !(r->flags & MEM_REGION_FLAG_WRITE))
+	if((error_code & PAGE_FAULT_USER) && !(r->flags & MEM_REGION_FLAG_USER))
 		return 0;
-	region_offset = (ptr - r->begin) / PAGE_SIZE;
-	if(bitfield_get(r->use_bitfield, region_offset) == 0)
-		return 0;
-	if(!(physical_page = buddy_alloc_zero(0))) // TODO OOM killer?
-		return 0;
-	if(error_code & PAGE_FAULT_WRITE)
-		copy_on_write(physical_page, r, region_offset);
-	errno = 0;
-	vmem_map(space->page_dir, physical_page, ptr, convert_flags(r->flags));
-	if(errno)
-	{
-		buddy_free(physical_page);
-		return 0;
-	}
-	return 1;
+	return copy_on_write(r);
 }
 
 /*

@@ -45,6 +45,8 @@ _free_chunk_t *_small_buckets[_SMALL_BUCKETS_COUNT];
 __attribute__((section(".bss")))
 _free_chunk_t *_medium_buckets[_MEDIUM_BUCKETS_COUNT];
 
+spinlock_t kmalloc_spinlock;
+
 /*
  * Links the given block to the given bin.
  */
@@ -109,7 +111,7 @@ void _free_block(_block_t *b)
 		_large_bin = b->next;
 	if(b->next)
 		b->next->prev = b->prev;
-	pages_free(b);
+	pages_free(b, 0);
 }
 
 /*

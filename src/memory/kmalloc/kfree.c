@@ -14,6 +14,7 @@ void kfree(void *ptr)
 
 	if(unlikely(!ptr))
 		return;
+	spin_lock(&kmalloc_spinlock);
 	c = GET_CHUNK(ptr);
 	_chunk_assert(c);
 	c->used = 0;
@@ -26,7 +27,11 @@ void kfree(void *ptr)
 		_merge_chunks(c);
 	}
 	if(c->prev || c->next)
+	{
+		spin_unlock(&kmalloc_spinlock);
 		return;
+	}
 	_bucket_unlink((_free_chunk_t *) c);
 	_free_block(c->block);
+	spin_unlock(&kmalloc_spinlock);
 }

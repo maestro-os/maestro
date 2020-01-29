@@ -189,9 +189,6 @@ typedef struct mem_region
 	size_t pages;
 	/* The number of used pages in the region. */
 	size_t used_pages;
-
-	/* A bitfield telling which pages are used. */
-	uint8_t use_bitfield[0];
 } mem_region_t;
 
 /*
@@ -209,6 +206,11 @@ typedef struct mem_gap
 	/* The size of the gap in pages. */
 	size_t pages;
 } mem_gap_t;
+
+/*
+ * The object used in x86 memory permissions handling.
+ */
+typedef uint32_t *vmem_t;
 
 /*
  * Structure representing a memory context. Allowing to allocate virtual memory.
@@ -233,11 +235,6 @@ struct mem_space
 
 extern memory_info_t mem_info;
 extern vmem_t kernel_vmem;
-
-/*
- * The object used in x86 memory permissions handling.
- */
-typedef uint32_t *vmem_t;
 
 extern int check_a20(void);
 void enable_a20(void);
@@ -271,7 +268,10 @@ void vmem_identity_range(vmem_t vmem, void *from, void *to, int flags);
 uint32_t *vmem_resolve(vmem_t vmem, void *ptr);
 int vmem_is_mapped(vmem_t vmem, void *ptr);
 void vmem_map(vmem_t vmem, void *physaddr, void *virtaddr, int flags);
+void vmem_map_range(vmem_t vmem, void *physaddr, void *virtaddr,
+	size_t pages, int flags);
 void vmem_unmap(vmem_t vmem, void *virtaddr);
+void vmem_unmap_range(vmem_t vmem, void *virtaddr, size_t pages);
 int vmem_contains(vmem_t vmem, const void *ptr, size_t size);
 void *vmem_translate(vmem_t vmem, void *ptr);
 uint32_t vmem_page_flags(vmem_t vmem, void *ptr);

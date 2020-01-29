@@ -99,10 +99,6 @@ void *_large_alloc(size_t size);
 
 void _chunk_assert(_chunk_hdr_t *c);
 
-# ifdef _MALLOC_DEBUG
-void _debug_print_malloc_info(void);
-void _debug_show_alloc(void);
-void _debug_global_check(void);
-# endif
+extern spinlock_t kmalloc_spinlock;
 
 #endif

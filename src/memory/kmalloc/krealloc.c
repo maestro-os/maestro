@@ -53,6 +53,7 @@ void *krealloc(void *ptr, const size_t size)
 		kfree(ptr);
 		return NULL;
 	}
+	spin_lock(&kmalloc_spinlock);
 	c = GET_CHUNK(ptr);
 	_chunk_assert(c);
 	if(size <= c->size)
@@ -64,10 +65,12 @@ void *krealloc(void *ptr, const size_t size)
 		&& (c->next->size + CHUNK_HDR_SIZE) - c->size >= size)
 	{
 		_eat_chunk((_used_chunk_t *) c, size);
+		spin_unlock(&kmalloc_spinlock);
 		return ptr;
 	}
 	if(!(p = kmalloc(size)))
 		return NULL;
+	spin_unlock(&kmalloc_spinlock);
 	memcpy(p, ptr, MIN(c->size, size));
 	kfree(ptr);
 	return p;
