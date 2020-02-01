@@ -1,332 +1,90 @@
-.text
-
-.global error0
-.global error1
-.global error2
-.global error3
-.global error4
-.global error5
-.global error6
-.global error7
-.global error8
-.global error9
-.global error10
-.global error11
-.global error12
-.global error13
-.global error14
-.global error15
-.global error16
-.global error17
-.global error18
-.global error19
-.global error20
-.global error21
-.global error22
-.global error23
-.global error24
-.global error25
-.global error26
-.global error27
-.global error28
-.global error29
-.global error30
-.global error31
+.section .text
 
 .global error_handler
 
-error0:
-	pusha
-	push $0
-	push $0x0
-	call error_handler
-	add $8, %esp
-	popa
-	iret
+.macro ERROR_NOCODE	n
+.global error\n
 
-error1:
-	pusha
-	push $0
-	push $0x1
-	call error_handler
-	add $8, %esp
-	popa
-	iret
+error\n:
+	push %ebp
+	mov %esp, %ebp
 
-error2:
-	pusha
-	push $0
-	push $0x2
-	call error_handler
-	add $8, %esp
-	popa
-	iret
+	sub $40, %esp
+	call get_regs
 
-error3:
-	pusha
+	push %esp
 	push $0
-	push $0x3
+	push $\n
 	call error_handler
-	add $8, %esp
-	popa
-	iret
+	add $12, %esp
 
-error4:
-	pusha
-	push $0
-	push $0x4
-	call error_handler
-	add $8, %esp
-	popa
-	iret
+	call restore_regs
+	add $40, %esp
 
-error5:
-	pusha
-	push $0
-	push $0x5
-	call error_handler
-	add $8, %esp
-	popa
+	mov %ebp, %esp
+	pop %ebp
 	iret
+.endm
 
-error6:
-	pusha
-	push $0
-	push $0x6
-	call error_handler
-	add $8, %esp
-	popa
-	iret
+.macro ERROR_CODE	n
+.global error\n
 
-error7:
-	pusha
-	push $0
-	push $0x7
-	call error_handler
-	add $8, %esp
-	popa
-	iret
-
-error8:
-	pop %eax
-	pusha
+error\n:
 	push %eax
-	push $0x8
-	call error_handler
-	add $8, %esp
-	popa
-	iret
-
-error9:
-	pusha
-	push $0
-	push $0x9
-	call error_handler
-	add $8, %esp
-	popa
-	iret
-
-error10:
+	mov 4(%esp), %eax
+	mov %eax, -44(%esp)
 	pop %eax
-	pusha
-	push %eax
-	push $0xa
-	call error_handler
-	add $8, %esp
-	popa
-	iret
+	add $4, %esp
 
-error11:
-	pop %eax
-	pusha
-	push %eax
-	push $0xb
-	call error_handler
-	add $8, %esp
-	popa
-	iret
+	push %ebp
+	mov %esp, %ebp
 
-error12:
-	pop %eax
-	pusha
-	push %eax
-	push $0xc
-	call error_handler
-	add $8, %esp
-	popa
-	iret
+	sub $40, %esp
+	call get_regs
 
-error13:
-	pop %eax
-	pusha
-	push %eax
-	push $0xd
+	push %esp
+	sub $4, %esp
+	push $\n
 	call error_handler
-	add $8, %esp
-	popa
-	iret
+	add $12, %esp
 
-error14:
-	pop %eax
-	pusha
-	push %eax
-	push $0xe
-	call error_handler
-	add $8, %esp
-	popa
-	iret
+	call restore_regs
+	add $40, %esp
 
-error15:
-	pusha
-	push $0
-	push $0xf
-	call error_handler
-	add $8, %esp
-	popa
+	mov %ebp, %esp
+	pop %ebp
 	iret
+.endm
 
-error16:
-	pusha
-	push $0
-	push $0x10
-	call error_handler
-	add $8, %esp
-	popa
-	iret
-
-error17:
-	pop %eax
-	pusha
-	push %eax
-	push $0x11
-	call error_handler
-	add $8, %esp
-	popa
-	iret
-
-error18:
-	pusha
-	push $0
-	push $0x12
-	call error_handler
-	add $8, %esp
-	popa
-	iret
-
-error19:
-	pusha
-	push $0
-	push $0x13
-	call error_handler
-	add $8, %esp
-	popa
-	iret
-
-error20:
-	pusha
-	push $0
-	push $0x14
-	call error_handler
-	add $8, %esp
-	popa
-	iret
-
-error21:
-	pusha
-	push $0
-	push $0x15
-	call error_handler
-	add $8, %esp
-	popa
-	iret
-
-error22:
-	pusha
-	push $0
-	push $0x16
-	call error_handler
-	add $8, %esp
-	popa
-	iret
-
-error23:
-	pusha
-	push $0
-	push $0x17
-	call error_handler
-	add $8, %esp
-	popa
-	iret
-
-error24:
-	pusha
-	push $0
-	push $0x18
-	call error_handler
-	add $8, %esp
-	popa
-	iret
-
-error25:
-	pusha
-	push $0
-	push $0x19
-	call error_handler
-	add $8, %esp
-	popa
-	iret
-
-error26:
-	pusha
-	push $0
-	push $0x1a
-	call error_handler
-	add $8, %esp
-	popa
-	iret
-
-error27:
-	pusha
-	push $0
-	push $0x1b
-	call error_handler
-	add $8, %esp
-	popa
-	iret
-
-error28:
-	pusha
-	push $0
-	push $0x1c
-	call error_handler
-	add $8, %esp
-	popa
-	iret
-
-error29:
-	pusha
-	push $0
-	push $0x1d
-	call error_handler
-	add $8, %esp
-	popa
-	iret
-
-error30:
-	pop %eax
-	pusha
-	push %eax
-	push $0x1e
-	call error_handler
-	add $8, %esp
-	popa
-	iret
-
-error31:
-	pusha
-	push $0
-	push $0x1f
-	call error_handler
-	add $8, %esp
-	popa
-	iret
+ERROR_NOCODE 0
+ERROR_NOCODE 1
+ERROR_NOCODE 2
+ERROR_NOCODE 3
+ERROR_NOCODE 4
+ERROR_NOCODE 5
+ERROR_NOCODE 6
+ERROR_NOCODE 7
+ERROR_CODE 8
+ERROR_NOCODE 9
+ERROR_CODE 10
+ERROR_CODE 11
+ERROR_CODE 12
+ERROR_CODE 13
+ERROR_CODE 14
+ERROR_NOCODE 15
+ERROR_NOCODE 16
+ERROR_CODE 17
+ERROR_NOCODE 18
+ERROR_NOCODE 19
+ERROR_NOCODE 20
+ERROR_NOCODE 21
+ERROR_NOCODE 22
+ERROR_NOCODE 23
+ERROR_NOCODE 24
+ERROR_NOCODE 25
+ERROR_NOCODE 26
+ERROR_NOCODE 27
+ERROR_NOCODE 28
+ERROR_NOCODE 29
+ERROR_CODE 30
+ERROR_NOCODE 31

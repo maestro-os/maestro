@@ -1,6 +1,7 @@
 #include <vga/vga.h>
 
 // TODO Save enable/disable cursor state
+// TODO Spinlock?
 
 void vga_clear(void)
 {

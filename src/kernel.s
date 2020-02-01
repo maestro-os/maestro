@@ -12,7 +12,6 @@
 .global kernel_halt
 
 .global stack_top
-.global switch_stack
 .global kernel_end
 
 /*
@@ -152,8 +151,6 @@ gdt:
 stack_bottom:
 	.skip STACK_SIZE
 stack_top:
-	.skip STACK_SIZE
-switch_stack:
 
 .section .bss
 

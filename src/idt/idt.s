@@ -36,55 +36,27 @@
 .extern irq14_handler
 .extern irq15_handler
 
-# TODO Reserve one more page one processes's stack to make sure enough space is available for interruptions
-
 irq0:
 	cli
 	push %ebp
 	mov %esp, %ebp
-	mov $switch_stack, %esp
 
-	pusha
+	sub $40, %esp
+	call get_regs
+
 	call time_update
 	call ata_err_check
-	popa
-	pusha
-
-	push %edi
-	push %esi
-	push %edx
-	push %ecx
-	push %ebx
-	push %eax
-
-	push 12(%ebp)
-	push 4(%ebp)
-
-	cmp $0x8, 8(%ebp)
-	je ring0
-	jmp ring3
-
-ring0:
-	mov %ebp, %eax
-	add $16, %eax
-	push %eax
-	jmp esp_end
-
-ring3:
-	push 16(%ebp)
-
-esp_end:
-	push (%ebp)
 
 	push %esp
 	call process_tick
-	add $44, %esp
 
 	push $0x0
 	call pic_EOI
 	add $4, %esp
 
-	popa
+	call restore_regs
+	add $40, %esp
+
 	mov %ebp, %esp
 	pop %ebp
 	sti

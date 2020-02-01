@@ -2,6 +2,13 @@
 #include <pit/pit.h>
 #include <libc/string.h>
 
+#ifdef spin_lock
+# undef spin_lock
+#endif
+#ifdef spin_unlock
+# undef spin_unlock
+#endif
+
 // TODO Sanity checks
 // TODO Implement streams and termcaps
 

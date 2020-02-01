@@ -1,4 +1,7 @@
+#include <kernel.h>
 #include <debug/debug.h>
+#include <util/util.h>
+#include <memory/memory.h>
 
 ATTR_BSS
 static profiler_func_t *funcs;

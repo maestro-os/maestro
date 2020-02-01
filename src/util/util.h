@@ -3,6 +3,10 @@
 
 # include <libc/string.h>
 
+# ifdef KERNEL_DEBUG_SPINLOCK
+#  include <debug/debug.h>
+# endif
+
 # define IS_ALIGNED(ptr, n)	(((intptr_t) (ptr) & ((n) - 1)) == 0)
 # define DOWN_ALIGN(ptr, n)	((void *) ((intptr_t) (ptr)\
 	& ~((intptr_t) (n) - 1)))
@@ -67,6 +71,11 @@ typedef volatile int spinlock_t;
 
 extern void spin_lock(spinlock_t *spinlock);
 extern void spin_unlock(spinlock_t *spinlock);
+
+# ifdef KERNEL_DEBUG_SPINLOCK
+#  define spin_lock(s)		debug_spin_lock(s, __FILE__, __LINE__)
+#  define spin_unlock(s)	debug_spin_unlock(s, __FILE__, __LINE__)
+# endif
 
 typedef int (*cmp_func_t)(const void *, const void *);
 

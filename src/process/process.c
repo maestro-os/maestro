@@ -1,3 +1,4 @@
+#include <kernel.h>
 #include <libc/errno.h>
 #include <process/process.h>
 #include <util/util.h>
@@ -340,16 +341,38 @@ ATTR_HOT
 static process_t *next_waiting_process(void)
 {
 	process_t *p;
+	int loop = 0;
 
+	spin_lock(&spinlock);
 	if(!(p = running_process))
 		p = processes;
-	do
+	if(!p)
+		goto end;
+loop:
+	if(!(p = p->next))
 	{
-		if(!(p = p->next))
-			p = processes;
+		if(loop)
+		{
+			p = NULL;
+			goto end;
+		}
+		p = processes;
+		loop = 1;
 	}
-	while(p != running_process && p->state != WAITING);
-	return (p->state == WAITING ? p : NULL);
+	if(!p)
+		goto end;
+	spin_lock(&p->spinlock);
+	if(p->state != WAITING)
+	{
+		spin_unlock(&p->spinlock);
+		goto loop;
+	}
+	else
+		spin_unlock(&p->spinlock);
+
+end:
+	spin_unlock(&spinlock);
+	return p;
 }
 
 ATTR_HOT
@@ -357,7 +380,7 @@ static void switch_processes(void)
 {
 	process_t *p;
 
-	if(!processes || !(p = next_waiting_process()))
+	if(!(p = next_waiting_process()) && !(p = running_process))
 		return;
 	process_set_state(p, RUNNING);
 	tss.ss0 = GDT_KERNEL_DATA_OFFSET;
@@ -374,13 +397,15 @@ static void switch_processes(void)
 ATTR_HOT
 void process_tick(const regs_t *registers)
 {
+	spin_lock(&spinlock);
+	// TODO Spinlock on `running_process`?
 	if(running_process)
 		running_process->regs_state = *registers;
+	spin_unlock(&spinlock);
 	// TODO
 	/*profiler_capture();
 	profiler_print();*/
 	switch_processes();
-	// TODO Uncomment
-	/*if(!processes)
-		kernel_halt();*/
+	printf("no more process to run, kernel halt.\n");
+	kernel_halt();
 }

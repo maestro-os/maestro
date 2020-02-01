@@ -1,5 +1,6 @@
 #include <kernel.h>
 #include <memory/kmalloc/kmalloc_internal.h>
+#include <memory/pages/pages.h>
 
 // TODO Do not use printf/dprintf for errors printing
 

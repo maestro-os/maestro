@@ -22,7 +22,8 @@
 # define KERNEL_MAGIC
 
 /*
- * PANIC(): Triggers a kernel panic with the specified message.
+ * PANIC(...): Triggers a kernel panic with the specified message and error
+ * code.
  */
 # ifdef KERNEL_DEBUG
 #  define PANIC(reason, code)	kernel_panic_(reason, code, __FILE__, __LINE__)
@@ -52,7 +53,7 @@ extern void kernel_loop(void);
 ATTR_NORETURN
 extern void kernel_halt(void);
 
-void error_handler(unsigned error, uint32_t error_code);
+void error_handler(unsigned error, uint32_t error_code, const regs_t *regs);
 
 ATTR_NORETURN
 void kernel_panic(const char *reason, uint32_t code);

@@ -1,4 +1,5 @@
 #include <debug/debug.h>
+#include <process/process.h>
 
 void print_regs(const regs_t *regs)
 {

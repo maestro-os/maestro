@@ -86,29 +86,36 @@ static int error_signals[] = {
 /*
  * Handles a CPU exception.
  */
-void error_handler(const unsigned error, const uint32_t error_code)
+void error_handler(unsigned error, uint32_t error_code, const regs_t *regs)
 {
+	vmem_t page_dir;
 	process_t *process;
 	int sig;
 
+	page_dir = cr3_get();
+	if(kernel_vmem)
+		paging_enable(kernel_vmem);
 	if(error > 0x1f)
 		PANIC("Unknown", error_code);
 	if(!(process = get_running_process()) || process->syscalling
 		|| (sig = error_signals[error]) < 0)
 		PANIC(errors[error], error_code);
-	if(error == 0xd) // TODO and *eip == 0xf4
+	if(error == 0xd && *((uint8_t *) regs->eip) == 0xf4) // TODO Create macro
+		process_exit(process, regs->eax);
+	else if(error == 0xe && mem_space_handle_page_fault(process->mem_space,
+		cr2_get(), error_code))
 	{
-		// TODO process_exit(process, eax);
-		process_kill(process, sig); // TODO rm
+		pic_EOI(error); // TODO Useful?
+		paging_enable(page_dir);
+		return;
 	}
 	else
 	{
-		if(error == 0xe && mem_space_handle_page_fault(process->mem_space,
-			cr2_get(), error_code))
-			return;
+		printf("killin' %i\n", process->pid);// TODO rm
 		process_kill(process, sig);
 	}
-	pic_EOI(error);
+	pic_EOI(error); // TODO Useful?
+	paging_enable(page_dir);
 	kernel_loop();
 }
 

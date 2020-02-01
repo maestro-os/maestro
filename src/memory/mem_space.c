@@ -495,7 +495,6 @@ void *mem_space_alloc(mem_space_t *space, const size_t pages, const int flags)
 {
 	mem_region_t *r;
 
-	// TODO Return NULL if available physical pages count is too low
 	if(!(r = region_create(space, pages, flags)))
 		return NULL;
 	r->next = space->regions;
@@ -602,28 +601,42 @@ static void update_share(mem_region_t *r)
 }
 
 /*
- * Performs the Copy-On-Write operation. Copies the content of the given
- * region at the given offset (in pages) to the given physical page.
+ * Performs the Copy-On-Write operation if needed.
+ * Copies the content of the given region at the given offset (in pages) to the
+ * given physical pages.
  * The region will be unlinked from the shared linked-list.
+ *
+ * The function returns `1` if the operation has been performed or `0` if not.
  */
 static int copy_on_write(mem_region_t *region)
 {
 	mem_region_t *r;
+	size_t i;
 	void *dest, *src;
 
 	if(!(r = region->prev_shared))
 		r = region->next_shared;
 	if(!r)
-		return 0;
+	{
+		errno = 0;
+		for(i = 0; i < region->pages; ++i)
+		{
+			*vmem_resolve(region->mem_space->page_dir,
+				region->begin + i * PAGE_SIZE) |= PAGING_PAGE_WRITE;
+			if(errno)
+				return 0;
+		}
+		return 1;
+	}
 	// TODO If linear block cannot be found, try to use a non-linear block
 	// TODO If even non-linear block cannot be found, use OOM-killer
-	if(!(dest = pages_alloc(region->pages)))
+	if(!(dest = pages_alloc(r->pages)))
 		return 0;
-	src = vmem_translate(region->mem_space->page_dir, region->begin);
+	src = vmem_translate(r->mem_space->page_dir, region->begin);
 	memcpy(dest, src, region->pages * PAGE_SIZE);
 	errno = 0;
 	vmem_map_range(region->mem_space->page_dir, dest, region->begin,
-		region->pages, convert_flags(r->flags));
+		region->pages, convert_flags(region->flags));
 	if(errno)
 	{
 		pages_free(dest, 0);
@@ -656,12 +669,13 @@ static int copy_on_write(mem_region_t *region)
  * - The the region isn't writable
  * - The page fault was caused by a userspace operation and the region is not
  * in userspace
- * - An error happened while mapping the allocated page
+ * - An error happened while allocating the region
  */
 int mem_space_handle_page_fault(mem_space_t *space,
 	void *ptr, const int error_code)
 {
 	mem_region_t *r;
+	void *physical_pages;
 
 	if(!space || !ptr)
 		return 0;
@@ -674,7 +688,21 @@ int mem_space_handle_page_fault(mem_space_t *space,
 		return 0;
 	if((error_code & PAGE_FAULT_USER) && !(r->flags & MEM_REGION_FLAG_USER))
 		return 0;
-	return copy_on_write(r);
+	if(r->prev_shared || r->next_shared)
+		return copy_on_write(r);
+	// TODO If linear block cannot be found, try to use a non-linear block
+	// TODO If even non-linear block cannot be found, use OOM-killer
+	if(!(physical_pages = pages_alloc_zero(r->pages)))
+		return 0;
+	errno = 0;
+	vmem_map_range(r->mem_space->page_dir, physical_pages, r->begin,
+		r->pages, convert_flags(r->flags));
+	if(errno)
+	{
+		pages_free(physical_pages, 0);
+		return 0;
+	}
+	return 1;
 }
 
 /*
