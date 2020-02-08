@@ -4,6 +4,8 @@
 #include <process/process.h>
 #include <debug/debug.h>
 
+#define HLT_INSTRUCTION	0xf4
+
 /*
  * The name associated with every CPU exception.
  */
@@ -100,7 +102,7 @@ void error_handler(unsigned error, uint32_t error_code, const regs_t *regs)
 	if(!(process = get_running_process()) || process->syscalling
 		|| (sig = error_signals[error]) < 0)
 		PANIC(errors[error], error_code);
-	if(error == 0xd && *((uint8_t *) regs->eip) == 0xf4) // TODO Create macro
+	if(error == 0xd && *((uint8_t *) regs->eip) == HLT_INSTRUCTION)
 		process_exit(process, regs->eax);
 	else if(error == 0xe && mem_space_handle_page_fault(process->mem_space,
 		cr2_get(), error_code))
@@ -110,10 +112,7 @@ void error_handler(unsigned error, uint32_t error_code, const regs_t *regs)
 		return;
 	}
 	else
-	{
-		printf("killin' %i\n", process->pid);// TODO rm
 		process_kill(process, sig);
-	}
 	pic_EOI(error); // TODO Useful?
 	paging_enable(page_dir);
 	kernel_loop();

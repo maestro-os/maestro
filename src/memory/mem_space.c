@@ -39,6 +39,10 @@
  * memory that was not yet allocated. However if the kernel stack was not
  * pre-allocated, the CPU shall trigger a Double Fault exception which shall
  * lead to a Triple Fault and reset the system.
+ *
+ * The identity flag allows to map a memory region to the same position as the
+ * physical memory. Every regions with this flag shall be relocated when cloning
+ * the memory space to avoid conflicts on physical memory.
  */
 
 // TODO Spinlock
@@ -354,8 +358,17 @@ static int preallocate_kernel_stack(mem_space_t *space, mem_region_t *r)
 /*
  * Clones the given memory space. Physical pages are not cloned but will be when
  * accessed.
+ *
+ * Memory regions with the identity flag shall be relocated to different
+ * locations to avoid conflicts.
+ *
+ * `relocation_callback` is a pointer to a function that, if non-NULL will be
+ * called for each identity region to specify its location in the new memory
+ * space. The first argument of the function is the old pointer to the region
+ * and the second argument is the new pointer after the relocation.
  */
-mem_space_t *mem_space_clone(mem_space_t *space)
+mem_space_t *mem_space_clone(mem_space_t *space,
+	void (*relocation_callback)(void *, void *))
 {
 	mem_space_t *s;
 	mem_region_t *r;
@@ -453,6 +466,7 @@ static mem_region_t *region_create(mem_space_t *space,
 	mem_region_t *r;
 	avl_tree_t *gap;
 
+	// TODO Handle IDENTITY
 	if(pages == 0)
 		return NULL;
 	if(!(r = cache_alloc(mem_region_cache)))
@@ -490,6 +504,9 @@ static mem_region_t *region_create(mem_space_t *space,
  * Allocates a region with the given number of pages and returns a pointer to
  * the beginning. If the requested allocation is a stack, then the pointer to
  * the top of the stack will be returned.
+ *
+ * If the identity flag is specified, the virtual memory shall be mapped on the
+ * same region as the physical memory.
  */
 void *mem_space_alloc(mem_space_t *space, const size_t pages, const int flags)
 {
