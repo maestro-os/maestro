@@ -39,10 +39,6 @@
  * memory that was not yet allocated. However if the kernel stack was not
  * pre-allocated, the CPU shall trigger a Double Fault exception which shall
  * lead to a Triple Fault and reset the system.
- *
- * The identity flag allows to map a memory region to the same position as the
- * physical memory. Every regions with this flag shall be relocated when cloning
- * the memory space to avoid conflicts on physical memory.
  */
 
 // TODO Spinlock
@@ -154,6 +150,7 @@ static mem_region_t *clone_region(mem_space_t *space, mem_region_t *r)
  */
 static void region_free(mem_region_t *region)
 {
+	// TODO Extend gaps around
 	if(!region->prev_shared && !region->next_shared)
 		pages_free(region->begin, region->pages * PAGE_SIZE);
 	else
@@ -183,6 +180,7 @@ static void remove_regions(mem_region_t *r)
 
 /*
  * Clones the given regions to the given destination memory space.
+ * Non userspace regions will not be cloned.
  */
 static int clone_regions(mem_space_t *dest, mem_region_t *src)
 {
@@ -190,9 +188,13 @@ static int clone_regions(mem_space_t *dest, mem_region_t *src)
 	mem_region_t *new;
 	mem_region_t *last = NULL;
 
-	r = src;
-	while(r)
+	for(r = src; r; r = r->next)
 	{
+		if(!(r->flags & MEM_REGION_FLAG_USER))
+		{
+			// TODO Extend gaps around
+			continue;
+		}
 		if(!(new = clone_region(dest, r)))
 		{
 			remove_regions(dest->regions);
@@ -206,7 +208,6 @@ static int clone_regions(mem_space_t *dest, mem_region_t *src)
 		}
 		else
 			last = dest->regions = new;
-		r = r->next;
 	}
 	return 1;
 }
@@ -337,7 +338,7 @@ static int convert_flags(const int reg_flags)
 /*
  * Preallocates the kernel stack associated with the given space and region.
  */
-static int preallocate_kernel_stack(mem_space_t *space, mem_region_t *r)
+static int preallocate_kernel_space(mem_space_t *space, mem_region_t *r)
 {
 	void *i, *ptr;
 
@@ -358,41 +359,24 @@ static int preallocate_kernel_stack(mem_space_t *space, mem_region_t *r)
 /*
  * Clones the given memory space. Physical pages are not cloned but will be when
  * accessed.
- *
- * Memory regions with the identity flag shall be relocated to different
- * locations to avoid conflicts.
- *
- * `relocation_callback` is a pointer to a function that, if non-NULL will be
- * called for each identity region to specify its location in the new memory
- * space. The first argument of the function is the old pointer to the region
- * and the second argument is the new pointer after the relocation.
+ * Non-userspace regions will not be cloned.
  */
-mem_space_t *mem_space_clone(mem_space_t *space,
-	void (*relocation_callback)(void *, void *))
+mem_space_t *mem_space_clone(mem_space_t *space)
 {
 	mem_space_t *s;
-	mem_region_t *r;
 
 	if(!space || !(s = cache_alloc(mem_space_cache)))
 		return NULL;
 	spin_lock(&space->spinlock);
-	if(!clone_regions(s, space->regions)
-		|| !clone_gaps(s, space->gaps) || !build_trees(s))
+	if(!clone_regions(s, space->regions))
+		goto fail;
+	if(!clone_gaps(s, space->gaps))
+		goto fail;
+	if(!build_trees(s))
 		goto fail;
 	regions_disable_write(space->regions, space->page_dir);
 	if(!(s->page_dir = vmem_clone(space->page_dir)))
 		goto fail;
-	r = s->regions;
-	while(r)
-	{
-		if(!(r->flags & MEM_REGION_FLAG_USER)
-			&& r->flags & MEM_REGION_FLAG_STACK)
-		{
-			if(!preallocate_kernel_stack(s, r))
-				goto fail;
-		}
-		r = r->next;
-	}
 	spin_unlock(&space->spinlock);
 	return s;
 
@@ -481,8 +465,7 @@ static mem_region_t *region_create(mem_space_t *space,
 	r->begin = CONTAINER_OF(gap, mem_gap_t, node)->begin;
 	r->pages = pages;
 	r->used_pages = r->pages;
-	if(!(flags & MEM_REGION_FLAG_USER) && (flags & MEM_REGION_FLAG_STACK)
-		&& !preallocate_kernel_stack(space, r))
+	if(!(flags & MEM_REGION_FLAG_USER) && !preallocate_kernel_space(space, r))
 	{
 		cache_free(mem_region_cache, r);
 		return NULL;
@@ -504,9 +487,6 @@ static mem_region_t *region_create(mem_space_t *space,
  * Allocates a region with the given number of pages and returns a pointer to
  * the beginning. If the requested allocation is a stack, then the pointer to
  * the top of the stack will be returned.
- *
- * If the identity flag is specified, the virtual memory shall be mapped on the
- * same region as the physical memory.
  */
 void *mem_space_alloc(mem_space_t *space, const size_t pages, const int flags)
 {

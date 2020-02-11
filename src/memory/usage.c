@@ -38,7 +38,7 @@ void get_memory_usage(mem_usage_t *usage)
 	remaining = (size_t) mem_info.heap_end;
 	usage->reserved = get_reserved_memory();
 	remaining -= usage->reserved;
-	usage->system = (size_t) buddy_get_begin() - 0x100000;
+	usage->system = (size_t) mem_info.heap_begin - 0x100000;
 	remaining -= usage->system;
 	usage->allocated = allocated_pages() * PAGE_SIZE;
 	remaining -= usage->allocated;

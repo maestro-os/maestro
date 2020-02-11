@@ -347,7 +347,7 @@ void vmem_destroy(vmem_t vmem)
 	{
 		if(!(vmem[i] & PAGING_TABLE_PRESENT))
 			continue;
-		buddy_free((void *) (vmem[i] & PAGING_ADDR_MASK));
+		buddy_free((void *) (vmem[i] & PAGING_ADDR_MASK), 0);
 	}
-	buddy_free(vmem);
+	buddy_free(vmem, 0);
 }

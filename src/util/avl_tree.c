@@ -206,6 +206,7 @@ void avl_tree_insert(avl_tree_t **tree, avl_tree_t *node, const cmp_func_t f)
 		return;
 	node->left = NULL;
 	node->right = NULL;
+	node->parent = NULL;
 	node->height = 0;
 	if((n = *tree))
 	{

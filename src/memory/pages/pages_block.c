@@ -99,7 +99,7 @@ void pages_block_free(pages_block_t *block)
 			b->next->prev = b->prev;
 		if(b->prev)
 			b->prev->next = b->next;
-		buddy_free(b);
+		buddy_free(b, 0);
 	}
 	update_cursor();
 }

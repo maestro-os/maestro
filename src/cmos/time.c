@@ -63,7 +63,7 @@ void time_init(void)
 	current_time = seconds + (minutes * 60) + (hours * 3600)
 		+ ((day + 1) * 86400) + get_seconds(month, year); // TODO Clean
 	// TODO Adapt clock to PIT frequency (which is also used by process scheduler)
-	pit_set_frequency(1000);
+	pit_set_frequency(1); // TODO Put at `1000`
 }
 
 void time_update(void)

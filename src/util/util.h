@@ -95,4 +95,6 @@ void avl_tree_foreach(avl_tree_t *tree, void (*f)(avl_tree_t *));
 void avl_tree_print(const avl_tree_t *tree);
 # endif
 
+void swap_ptr(void **p0, void **p1);
+
 #endif

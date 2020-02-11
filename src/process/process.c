@@ -108,7 +108,6 @@ process_t *new_process(process_t *parent, const regs_t *registers)
 {
 	pid_t pid;
 	process_t *new_proc, *p;
-	void *user_stack, *kernel_stack;
 
 	spin_lock(&spinlock);
 	errno = 0;
@@ -126,22 +125,19 @@ process_t *new_process(process_t *parent, const regs_t *registers)
 		if(!(new_proc->mem_space = mem_space_init()))
 			goto fail;
 		// TODO Increase stacks size
-		if(!(user_stack = mem_space_alloc(new_proc->mem_space, 1,
+		if(!(new_proc->user_stack = mem_space_alloc(new_proc->mem_space, 1,
 			USER_STACK_FLAGS)))
-			goto fail;
-		if(!(kernel_stack = mem_space_alloc(new_proc->mem_space, 1,
-			KERNEL_STACK_FLAGS)))
 			goto fail;
 	}
 	else
 	{
 		if(!(new_proc->mem_space = mem_space_clone(parent->mem_space)))
 			goto fail;
-		user_stack = parent->user_stack;
-		kernel_stack = parent->kernel_stack;
+		new_proc->user_stack = parent->user_stack;
 	}
-	new_proc->user_stack = user_stack;
-	new_proc->kernel_stack = kernel_stack;
+	if(!(new_proc->kernel_stack = mem_space_alloc(new_proc->mem_space, 1,
+		KERNEL_STACK_FLAGS)))
+		goto fail;
 	if(!parent)
 		new_proc->regs_state.esp = (uintptr_t) new_proc->user_stack;
 	process_add_child(parent, new_proc);

@@ -90,7 +90,7 @@ pages_block_t *alloc_block(const size_t n)
 		return NULL;
 	if(!(b = pages_block_alloc(ptr, pages)))
 	{
-		buddy_free(ptr);
+		buddy_free(ptr, pages);
 		return NULL;
 	}
 	b->used = 1;
