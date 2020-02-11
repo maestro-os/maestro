@@ -129,12 +129,13 @@ static void unlink_free_block(buddy_free_block_t *block)
 ATTR_COLD
 void buddy_init(void)
 {
-	void *i = mem_info.heap_begin;
+	void *i;
 	block_order_t order;
 
+	i = mem_info.heap_begin;
 	while(i < mem_info.heap_end)
 	{
-		order = MIN(mem_info.heap_end - i, MAX_BLOCK_SIZE);
+		order = MIN(buddy_get_order(mem_info.heap_end - i), BUDDY_MAX_ORDER);
 		link_free_block(i, order);
 		i += BLOCK_SIZE(order);
 	}
@@ -167,19 +168,24 @@ ATTR_MALLOC
 void *buddy_alloc(const block_order_t order)
 {
 	size_t i;
+	void *ptr;
 
 	errno = 0;
 	if(order > BUDDY_MAX_ORDER)
 		return NULL;
+	spin_lock(&spinlock);
 	i = order;
 	while(i < BUDDY_MAX_ORDER + 1 && !free_list[i])
 		++i;
 	if(!free_list[i])
 	{
+		spin_unlock(&spinlock);
 		errno = ENOMEM;
 		return NULL;
 	}
-	return split_block(free_list[i], order);
+	ptr = split_block(free_list[i], order);
+	spin_unlock(&spinlock);
+	return ptr;
 }
 
 /*
@@ -205,12 +211,15 @@ void *buddy_alloc_inrange(const block_order_t order, void *begin, void *end)
 {
 	avl_tree_t *n;
 	buddy_free_block_t *b;
+	void *ptr;
 
 	errno = 0;
 	begin = ALIGN(begin, PAGE_SIZE);
 	end = DOWN_ALIGN(end, PAGE_SIZE);
+	spin_lock(&spinlock);
 	if(!(n = get_nearest_free_block(begin)))
 	{
+		spin_unlock(&spinlock);
 		errno = ENOMEM;
 		return NULL;
 	}
@@ -220,10 +229,13 @@ void *buddy_alloc_inrange(const block_order_t order, void *begin, void *end)
 		b = b->next;
 	if(!b || b->order < order)
 	{
+		spin_unlock(&spinlock);
 		errno = ENOMEM;
 		return NULL;
 	}
-	return split_block(b, order);
+	ptr = split_block(b, order);
+	spin_unlock(&spinlock);
+	return ptr;
 }
 
 /*
@@ -262,6 +274,7 @@ void buddy_free(void *ptr, block_order_t order)
 {
 	void *buddy;
 
+	spin_lock(&spinlock);
 	link_free_block(ptr, order);
 	while(order < BUDDY_MAX_ORDER && (buddy = get_buddy(ptr, order)))
 	{
@@ -272,6 +285,7 @@ void buddy_free(void *ptr, block_order_t order)
 		((buddy_free_block_t *) ptr)->order = ++order;
 		link_free_block(ptr, order);
 	}
+	spin_unlock(&spinlock);
 }
 
 /*
