@@ -72,7 +72,7 @@ static avl_tree_t *get_nearest_free_block(buddy_free_block_t *block)
 
 /*
  * Links a free block for the given pointer with the given order.
- * The block must not be inserted yet.
+ * The block must not be linked yet.
  */
 static void link_free_block(buddy_free_block_t *ptr,
 	const block_order_t order)
@@ -83,6 +83,7 @@ static void link_free_block(buddy_free_block_t *ptr,
 	ptr->prev_free = NULL;
 	if((ptr->next_free = free_list[order]))
 		ptr->next_free->prev_free = ptr;
+	free_list[order] = ptr;
 	if((n = get_nearest_free_block(ptr)))
 	{
 		b = CONTAINER_OF(n, buddy_free_block_t, node);
@@ -107,7 +108,7 @@ static void link_free_block(buddy_free_block_t *ptr,
 		ptr->next = NULL;
 	}
 	ptr->node.value = (avl_value_t) ptr;
-	avl_tree_insert(&free_tree, n, ptr_cmp);
+	avl_tree_insert(&free_tree, &ptr->node, ptr_cmp);
 	ptr->order = order;
 }
 
@@ -117,9 +118,18 @@ static void link_free_block(buddy_free_block_t *ptr,
 static void unlink_free_block(buddy_free_block_t *block)
 {
 	if(block == free_list[block->order])
-		free_list[block->order] = free_list[block->order]->next;
-	else
+	{
+		if((free_list[block->order] = block->next_free))
+			free_list[block->order]->prev_free = NULL;
+	}
+	if(block->prev_free)
+		block->prev_free->next_free = block->next_free;
+	if(block->next_free)
+		block->next_free->prev_free = block->prev_free;
+	if(block->prev)
 		block->prev->next = block->next;
+	if(block->next)
+		block->next->prev = block->prev;
 	avl_tree_remove(&free_tree, &block->node);
 }
 
