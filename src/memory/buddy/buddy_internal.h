@@ -4,6 +4,11 @@
 # include <memory/buddy/buddy.h>
 # include <util/util.h>
 
+# define BUDDY_BLOCK_OFFSET(ptr)\
+	((uintptr_t) (ptr) - (uintptr_t) mem_info.heap_begin)
+# define BUDDY_ADDR(ptr, order)\
+	((void *) (BUDDY_BLOCK_OFFSET(ptr) ^ BLOCK_SIZE(order)))
+
 typedef struct buddy_free_block
 {
 	/* Double-linked list of free blocks of the same order. */

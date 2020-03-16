@@ -1,7 +1,9 @@
 NAME = crumbleos
 
+DEBUG_FLAGS = -D KERNEL_SELFTEST -D KERNEL_DEBUG -D KERNEL_DEBUG_SANITY# -D KERNEL_DEBUG_SPINLOCK
+
 CC = i686-elf-gcc
-CFLAGS = -nostdlib -ffreestanding -fstack-protector-strong -Wall -Wextra -Werror -lgcc -g3 -D KERNEL_DEBUG# -D KERNEL_DEBUG_SPINLOCK
+CFLAGS = -nostdlib -ffreestanding -fstack-protector-strong -Wall -Wextra -Werror -lgcc -g3 $(DEBUG_FLAGS)
 
 LINKER = linker.ld
 
@@ -38,10 +40,10 @@ $(NAME): $(OBJ_DIRS) $(INTERNAL_OBJ) $(LINKER)
 $(OBJ_DIRS):
 	mkdir -p $(OBJ_DIRS)
 
-$(OBJ_DIR)%.s.o: $(SRC_DIR)%.s $(HDR)
+$(OBJ_DIR)%.s.o: $(SRC_DIR)%.s $(HDR) Makefile
 	$(CC) $(CFLAGS) -I $(SRC_DIR) -c $< -o $@
 
-$(OBJ_DIR)%.c.o: $(SRC_DIR)%.c $(HDR)
+$(OBJ_DIR)%.c.o: $(SRC_DIR)%.c $(HDR) Makefile
 	$(CC) $(CFLAGS) -I $(SRC_DIR) -c $< -o $@
 
 iso: $(NAME).iso

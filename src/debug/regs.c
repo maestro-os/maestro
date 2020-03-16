@@ -1,6 +1,8 @@
 #include <debug/debug.h>
 #include <process/process.h>
 
+#include <libc/stdio.h>
+
 void print_regs(const regs_t *regs)
 {
 	if(!regs)

@@ -6,6 +6,7 @@
 typedef void (*test_suite_func_t)(void);
 
 void test_bitfield(void);
+void test_buddy(void);
 
 void run_selftest(void);
 

@@ -1,5 +1,5 @@
-#include <kernel.h>
 #include <debug/debug.h>
+#include <kernel.h>
 #include <memory/memory.h>
 #include <util/util.h>
 
@@ -12,14 +12,14 @@
 
 static void invalid_spinlock(spinlock_t *spinlock)
 {
-	printf("INVALID SPINLOCK ADDRESS `%p`!\n", spinlock);
+	printf("DEBUG: Invalid spinlock address `%p`\n", spinlock);
 	kernel_halt();
 }
 
 void debug_spin_lock(spinlock_t *spinlock,
 	const char *file, const size_t line)
 {
-	printf("Spin locked %p in %s at line %zu\n", spinlock, file, line);
+	printf("DEBUG: Spin locked %p in %s at line %zu\n", spinlock, file, line);
 	if((void *) spinlock < KERNEL_BEGIN)
 		invalid_spinlock(spinlock);
 	spin_lock(spinlock);
@@ -28,7 +28,7 @@ void debug_spin_lock(spinlock_t *spinlock,
 void debug_spin_unlock(spinlock_t *spinlock,
 	const char *file, const size_t line)
 {
-	printf("Spin unlocked %p in %s at line %zu\n", spinlock, file, line);
+	printf("DEBUG: Spin unlocked %p in %s at line %zu\n", spinlock, file, line);
 	if((void *) spinlock < KERNEL_BEGIN)
 		invalid_spinlock(spinlock);
 	spin_unlock(spinlock);

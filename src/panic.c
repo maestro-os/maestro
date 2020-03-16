@@ -135,7 +135,8 @@ static void print_panic(const char *reason, const uint32_t code)
  please feel free to report it.\n");
 }
 
-/* * Triggers a kernel panic with the specified reason and error code.
+/*
+ * Triggers a kernel panic with the specified reason and error code.
  * This function should be called using `PANIC(...)` only.
  */
 ATTR_COLD

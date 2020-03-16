@@ -7,14 +7,14 @@
 #  include <debug/debug.h>
 # endif
 
-# define IS_ALIGNED(ptr, n)	(((intptr_t) (ptr) & ((n) - 1)) == 0)
-# define DOWN_ALIGN(ptr, n)	((void *) ((intptr_t) (ptr)\
+# define IS_ALIGNED(ptr, n)		(((intptr_t) (ptr) & ((n) - 1)) == 0)
+# define DOWN_ALIGN(ptr, n)		((void *) ((intptr_t) (ptr)\
 	& ~((intptr_t) (n) - 1)))
-# define UP_ALIGN(ptr, n)	(DOWN_ALIGN(ptr, n) + (n))
-# define ALIGN(ptr, n)		(IS_ALIGNED((ptr), (n)) ? (ptr)\
+# define UP_ALIGN(ptr, n)		(DOWN_ALIGN((ptr), (n)) + (n))
+# define ALIGN(ptr, n)			(IS_ALIGNED((ptr), (n)) ? (ptr)\
 	: UP_ALIGN((ptr), (n)))
-# define SAME_PAGE(p0, p1)	(ALIGN_DOWN(p0, PAGE_SIZE)\
-	== ALIGN_DOWN(p1, PAGE_SIZE))
+# define SAME_PAGE(p0, p1)		(ALIGN_DOWN((p0), PAGE_SIZE)\
+	== ALIGN_DOWN((p1), PAGE_SIZE))
 
 # define CEIL_DIVISION(n0, n1)	((n0) / (n1) + !!((n0) % (n1)))
 # define POW2(n)				(((typeof(n)) 1) << (n))
@@ -23,7 +23,7 @@
 # define MAX(a, b)				((a) >= (b) ? (a) : (b))
 
 # define BIT_SIZEOF(expr)	(sizeof(expr) * 8)
-# define BITFIELD_SIZE(n)	CEIL_DIVISION(n, BIT_SIZEOF(uint8_t))
+# define BITFIELD_SIZE(n)	CEIL_DIVISION((n), BIT_SIZEOF(uint8_t))
 
 # define OFFSET_OF(type, field)			((size_t) &(((type *) 0)->field))
 # define CONTAINER_OF(ptr, type, field)	((type *) ((void *) (ptr)\
@@ -43,6 +43,14 @@
 
 # define likely(x)			__builtin_expect(!!(x), 1)
 # define unlikely(x)		__builtin_expect(!!(x), 0)
+
+# ifdef KERNEL_DEBUG_SANITY
+#  define sanity_check(x)	_debug_sanity_check(x)
+# else
+#  define sanity_check(x)	(x)
+# endif
+
+# define assert(x, str)	if(!(x)) PANIC((str), 0)
 
 typedef int32_t avl_value_t; // TODO Use int64_t on 64bits
 
@@ -92,6 +100,7 @@ void avl_tree_insert(avl_tree_t **tree, avl_tree_t *node, cmp_func_t f);
 void avl_tree_remove(avl_tree_t **tree, avl_tree_t *n);
 void avl_tree_foreach(avl_tree_t *tree, void (*f)(avl_tree_t *));
 # ifdef KERNEL_DEBUG
+int avl_tree_check(avl_tree_t *tree);
 void avl_tree_print(const avl_tree_t *tree);
 # endif
 

@@ -1,6 +1,8 @@
 #include <debug/debug.h>
 #include <util/util.h>
+
 #include <libc/ctype.h>
+#include <libc/stdio.h>
 
 static void print_hexa(const char *ptr, const size_t bytes)
 {

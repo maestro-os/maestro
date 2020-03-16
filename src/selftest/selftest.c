@@ -2,7 +2,8 @@
 #include <libc/string.h>
 
 static test_suite_func_t suites[] = {
-	test_bitfield
+	test_bitfield,
+	test_buddy
 };
 
 void run_selftest(void)

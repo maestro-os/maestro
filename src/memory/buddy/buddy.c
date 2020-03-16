@@ -1,8 +1,19 @@
 #include <memory/buddy/buddy.h>
 #include <memory/buddy/buddy_internal.h>
+#include <kernel.h>
 #include <idt/idt.h>
+
 #include <libc/errno.h>
 
+#ifdef KERNEL_DEBUG
+# include <debug/debug.h>
+#endif
+
+#define debug_check_block(ptr)		debug_assert(sanity_check(ptr)\
+	&& IS_ALIGNED((ptr), PAGE_SIZE) && (void *) (ptr) >= mem_info.heap_begin\
+		&& (void *) (ptr) < mem_info.heap_end, "buddy: invalid block")
+#define debug_check_order(order)	debug_assert(order <= BUDDY_MAX_ORDER,\
+	"buddy: invalid order")
 /*
  * This files handles the buddy allocator which allows to allocate 2^^n pages
  * large blocks of memory.
@@ -49,16 +60,42 @@ block_order_t buddy_get_order(const size_t pages)
 }
 
 /*
+ * Returns the given block's buddy.
+ * Returns `NULL` if the buddy block is not free.
+ */
+static buddy_free_block_t *get_buddy(void *ptr, const block_order_t order)
+{
+	void *buddy_addr;
+
+	debug_check_block(ptr);
+	debug_check_order(order);
+	buddy_addr = BUDDY_ADDR(ptr, order);
+	if(!avl_tree_search(free_tree, (avl_value_t) buddy_addr, ptr_cmp))
+		return NULL;
+	debug_check_block(buddy_addr);
+	return buddy_addr;
+}
+
+/*
  * Returns the AVL node of the nearest free block from the given block.
  */
-static avl_tree_t *get_nearest_free_block(buddy_free_block_t *block)
+static avl_tree_t *get_nearest_free_block(const buddy_free_block_t *block)
 {
 	avl_tree_t *n;
 
+	debug_check_block(block);
 	if(!(n = free_tree))
 		return NULL;
+	void *ebp;
+	GET_EBP(ebp);
+	print_callstack(ebp, 8);
+	printf("-------\n");
 	while(n)
 	{
+		printf("-> %p\n", n);
+		static int i = 0;
+		if(i++ > 115)
+			kernel_halt();
 		if(block == (void *) n->value)
 			break;
 		if(ABS((intptr_t) block - (intptr_t) n->left)
@@ -80,6 +117,8 @@ static void link_free_block(buddy_free_block_t *ptr,
 	avl_tree_t *n;
 	buddy_free_block_t *b;
 
+	debug_check_block(ptr);
+	debug_check_order(order);
 	ptr->prev_free = NULL;
 	if((ptr->next_free = free_list[order]))
 		ptr->next_free->prev_free = ptr;
@@ -108,8 +147,8 @@ static void link_free_block(buddy_free_block_t *ptr,
 		ptr->next = NULL;
 	}
 	ptr->node.value = (avl_value_t) ptr;
-	avl_tree_insert(&free_tree, &ptr->node, ptr_cmp);
 	ptr->order = order;
+	avl_tree_insert(&free_tree, &ptr->node, ptr_cmp);
 }
 
 /*
@@ -117,6 +156,8 @@ static void link_free_block(buddy_free_block_t *ptr,
  */
 static void unlink_free_block(buddy_free_block_t *block)
 {
+	debug_check_block(block);
+	debug_check_order(block->order);
 	if(block == free_list[block->order])
 	{
 		if((free_list[block->order] = block->next_free))
@@ -134,6 +175,27 @@ static void unlink_free_block(buddy_free_block_t *block)
 }
 
 /*
+ * Splits the given block until a block of the required order is created and
+ * returns it.
+ * The input block will be unlinked and the new blocks created will be inserted
+ * into the free list and free tree except the returned block.
+ */
+static buddy_free_block_t *split_block(buddy_free_block_t *block,
+	const block_order_t order)
+{
+	debug_check_block(block);
+	debug_check_order(order);
+	unlink_free_block(block);
+	while(block->order > order)
+	{
+		--block->order;
+		link_free_block((void *) block + BLOCK_SIZE(block->order),
+			block->order);
+	}
+	return block;
+}
+
+/*
  * Initializes the buddy allocator.
  */
 ATTR_COLD
@@ -145,29 +207,11 @@ void buddy_init(void)
 	i = mem_info.heap_begin;
 	while(i < mem_info.heap_end)
 	{
-		order = MIN(buddy_get_order(mem_info.heap_end - i), BUDDY_MAX_ORDER);
+		order = MIN(buddy_get_order((mem_info.heap_end - i) / PAGE_SIZE),
+			BUDDY_MAX_ORDER);
 		link_free_block(i, order);
 		i += BLOCK_SIZE(order);
 	}
-}
-
-/*
- * Splits the given block until a block of the required order is created and
- * returns it.
- * The input block will be unlinked and the new blocks created will be inserted
- * into the free list and free tree except the returned block.
- */
-static buddy_free_block_t *split_block(buddy_free_block_t *block,
-	const block_order_t order)
-{
-	unlink_free_block(block);
-	while(block->order > order)
-	{
-		--block->order;
-		link_free_block((void *) block + BLOCK_SIZE(block->order),
-			block->order);
-	}
-	return block;
 }
 
 /*
@@ -195,6 +239,7 @@ void *buddy_alloc(const block_order_t order)
 	}
 	ptr = split_block(free_list[i], order);
 	spin_unlock(&spinlock);
+	debug_check_block(ptr);
 	return ptr;
 }
 
@@ -224,8 +269,12 @@ void *buddy_alloc_inrange(const block_order_t order, void *begin, void *end)
 	void *ptr;
 
 	errno = 0;
+	if(order > BUDDY_MAX_ORDER)
+		return NULL;
+	debug_assert(end >= begin, "buddy_alloc_inrange: invalid range");
 	begin = ALIGN(begin, PAGE_SIZE);
 	end = DOWN_ALIGN(end, PAGE_SIZE);
+	// TODO Restrain `begin` and `end` to buddy allocator range
 	spin_lock(&spinlock);
 	if(!(n = get_nearest_free_block(begin)))
 	{
@@ -245,6 +294,7 @@ void *buddy_alloc_inrange(const block_order_t order, void *begin, void *end)
 	}
 	ptr = split_block(b, order);
 	spin_unlock(&spinlock);
+	debug_check_block(ptr);
 	return ptr;
 }
 
@@ -262,20 +312,6 @@ void *buddy_alloc_zero_inrange(block_order_t order, void *begin, void *end)
 }
 
 /*
- * Returns the given block's buddy.
- * Returns `NULL` if the buddy block is not free.
- */
-static buddy_free_block_t *get_buddy(void *ptr, const block_order_t order)
-{
-	void *buddy_addr;
-
-	buddy_addr = (void *) ((ptr - mem_info.heap_begin) ^ (PAGE_SIZE << order));
-	if(!avl_tree_search(free_tree, (avl_value_t) buddy_addr, ptr_cmp))
-		return NULL;
-	return buddy_addr;
-}
-
-/*
  * Frees the given memory block that was allocated using the buddy allocator.
  * The given order must be the same as the one given to allocate the block.
  */
@@ -284,6 +320,8 @@ void buddy_free(void *ptr, block_order_t order)
 {
 	void *buddy;
 
+	debug_check_block(ptr);
+	assert(order <= BUDDY_MAX_ORDER, "buddy_free: order > BUDDY_MAX_ORDER");
 	spin_lock(&spinlock);
 	link_free_block(ptr, order);
 	while(order < BUDDY_MAX_ORDER && (buddy = get_buddy(ptr, order)))
