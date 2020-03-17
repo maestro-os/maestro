@@ -70,9 +70,9 @@ static buddy_free_block_t *get_buddy(void *ptr, const block_order_t order)
 	debug_check_block(ptr);
 	debug_check_order(order);
 	buddy_addr = BUDDY_ADDR(ptr, order);
+	debug_check_block(buddy_addr);
 	if(!avl_tree_search(free_tree, (avl_value_t) buddy_addr, ptr_cmp))
 		return NULL;
-	debug_check_block(buddy_addr);
 	return buddy_addr;
 }
 
@@ -86,16 +86,9 @@ static avl_tree_t *get_nearest_free_block(const buddy_free_block_t *block)
 	debug_check_block(block);
 	if(!(n = free_tree))
 		return NULL;
-	void *ebp;
-	GET_EBP(ebp);
-	print_callstack(ebp, 8);
-	printf("-------\n");
 	while(n)
 	{
-		printf("-> %p\n", n);
-		static int i = 0;
-		if(i++ > 115)
-			kernel_halt();
+		debug_check_block(CONTAINER_OF(n, buddy_free_block_t, node));
 		if(block == (void *) n->value)
 			break;
 		if(ABS((intptr_t) block - (intptr_t) n->left)
@@ -177,8 +170,8 @@ static void unlink_free_block(buddy_free_block_t *block)
 /*
  * Splits the given block until a block of the required order is created and
  * returns it.
- * The input block will be unlinked and the new blocks created will be inserted
- * into the free list and free tree except the returned block.
+ * The input block will be unlinked and the newly created blocks will be
+ * inserted into the free list and free tree except the returned block.
  */
 static buddy_free_block_t *split_block(buddy_free_block_t *block,
 	const block_order_t order)
@@ -327,7 +320,7 @@ void buddy_free(void *ptr, block_order_t order)
 	while(order < BUDDY_MAX_ORDER && (buddy = get_buddy(ptr, order)))
 	{
 		if(buddy < ptr)
-			swap_ptr(&ptr, &buddy);
+			swap_ptr(&ptr, &buddy); // TODO Might cause problems on next iteration?
 		unlink_free_block(ptr);
 		unlink_free_block(buddy);
 		((buddy_free_block_t *) ptr)->order = ++order;

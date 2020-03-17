@@ -3,6 +3,7 @@
 
 static test_suite_func_t suites[] = {
 	test_bitfield,
+	test_avl,
 	test_buddy
 };
 

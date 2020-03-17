@@ -41,13 +41,15 @@ avl_tree_t *avl_tree_rotate_left(avl_tree_t *root)
 {
 	avl_tree_t *new_root, *tmp;
 
-	if(!sanity_check(root) || !sanity_check(new_root = root->right))
+	if(!sanity_check(root))
 		return NULL;
+	if(!sanity_check(new_root = root->right))
+		return root;
 	tmp = new_root->left;
 	new_root->left = root;
 	new_root->left->parent = new_root;
-	if((root->right = tmp))
-		root->right->parent = root;
+	if((new_root->left->right = tmp))
+		new_root->left->right->parent = new_root->left;
 	update_all_heights(new_root);
 	return new_root;
 }
@@ -59,13 +61,15 @@ avl_tree_t *avl_tree_rotate_right(avl_tree_t *root)
 {
 	avl_tree_t *new_root, *tmp;
 
-	if(!sanity_check(root) || !sanity_check(new_root = root->left))
+	if(!sanity_check(root))
 		return NULL;
+	if(!sanity_check(new_root = root->left))
+		return root;
 	tmp = new_root->right;
 	new_root->right = root;
 	new_root->right->parent = new_root;
-	if((root->left = tmp))
-		root->left->parent = root;
+	if((new_root->right->left = tmp))
+		new_root->right->left->parent = new_root->right;
 	update_all_heights(new_root);
 	return new_root;
 }
@@ -75,11 +79,12 @@ avl_tree_t *avl_tree_rotate_leftright(avl_tree_t *root)
 {
 	avl_tree_t *new_root;
 
-	if(!sanity_check(root)
-		|| !sanity_check(new_root = avl_tree_rotate_left(root->right)))
+	if(!sanity_check(root))
 		return NULL;
-	root->right = new_root;
-	root->right->parent = root;
+	if(!sanity_check(new_root = avl_tree_rotate_left(root->left)))
+		return root;
+	root->left = new_root;
+	root->left->parent = root;
 	return avl_tree_rotate_right(root);
 }
 
@@ -88,11 +93,12 @@ avl_tree_t *avl_tree_rotate_rightleft(avl_tree_t *root)
 {
 	avl_tree_t *new_root;
 
-	if(!sanity_check(root)
-		|| !sanity_check(new_root = avl_tree_rotate_right(root->left)))
+	if(!sanity_check(root))
 		return NULL;
-	root->left = new_root;
-	root->left->parent = root;
+	if(!sanity_check(new_root = avl_tree_rotate_right(root->right)))
+		return root;
+	root->right = new_root;
+	root->right->parent = root;
 	return avl_tree_rotate_left(root);
 }
 
@@ -127,17 +133,11 @@ static void update_heights(avl_tree_t *n)
 {
 	unsigned left_height, right_height;
 
-	debug_assert(n, "update_heights: bad argument");
-	while(n)
+	while(sanity_check(n))
 	{
-		if(n->left || n->right)
-		{
-			left_height = (n->left ? n->left->height : 0);
-			right_height = (n->right ? n->right->height : 0);
-			n->height = MAX(left_height, right_height) + 1;
-		}
-		else
-			n->height = 0;
+		left_height = (n->left ? n->left->height + 1 : 0);
+		right_height = (n->right ? n->right->height + 1 : 0);
+		n->height = MAX(left_height, right_height);
 		n = n->parent;
 	}
 }
