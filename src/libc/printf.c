@@ -11,6 +11,7 @@
 #define QUOTE_FLAG	0b100000
 
 // TODO Fix %ju
+// TODO %i doesn't print - on negative
 
 typedef struct
 {

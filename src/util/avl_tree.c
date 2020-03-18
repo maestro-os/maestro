@@ -116,6 +116,8 @@ avl_tree_t *avl_tree_search(avl_tree_t *tree,
 	n = tree;
 	while(n->value != value)
 	{
+		sanity_check(n->left);
+		sanity_check(n->right);
 		if(f(&n->value, &value) < 0 && n->left)
 			n = n->left;
 		else if(n->right)
@@ -135,6 +137,8 @@ static void update_heights(avl_tree_t *n)
 
 	while(sanity_check(n))
 	{
+		sanity_check(n->left);
+		sanity_check(n->right);
 		left_height = (n->left ? n->left->height + 1 : 0);
 		right_height = (n->right ? n->right->height + 1 : 0);
 		n->height = MAX(left_height, right_height);
@@ -253,14 +257,14 @@ static avl_tree_t *find_min(avl_tree_t *node)
 }
 
 /*
- * Balances the given tree after deletion of an element.
+ * Balances the given tree after removal of an element.
  */
-static void delete_balance(avl_tree_t **tree, avl_tree_t *node)
+static void remove_balance(avl_tree_t **tree, avl_tree_t *node)
 {
 	avl_tree_t *n, *g, *r, *tmp;
 	int factor;
 
-	debug_assert(tree && node, "delete_balance: bad arguments");
+	debug_assert(tree && node, "remove_balance: bad arguments");
 	update_heights(node);
 	r = node;
 	for(n = r->parent; n; n = g)
@@ -351,7 +355,7 @@ void avl_tree_remove(avl_tree_t **tree, avl_tree_t *n)
 	if(tmp)
 	{
 		tmp->parent = n->parent;
-		delete_balance(tree, tmp);
+		remove_balance(tree, tmp);
 	}
 }
 
@@ -375,9 +379,9 @@ int avl_tree_check(avl_tree_t *tree)
 {
 	if(!sanity_check(tree))
 		return 1;
-	if(tree->left && tree->left->parent != tree)
+	if(sanity_check(tree->left) && tree->left->parent != tree)
 		return 0;
-	if(tree->right && tree->right->parent != tree)
+	if(sanity_check(tree->right) && tree->right->parent != tree)
 		return 0;
 	return avl_tree_check(tree->left) && avl_tree_check(tree->right);
 }

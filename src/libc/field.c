@@ -10,6 +10,6 @@ long make_field(const int c)
 	size_t i = 0;
 
 	for(; i < sizeof(long); ++i)
-		field = (field << 1) | (c & 0xff);
+		field = (field << 8) | (c & 0xff);
 	return field;
 }

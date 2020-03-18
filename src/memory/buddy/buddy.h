@@ -19,10 +19,6 @@ ATTR_MALLOC
 void *buddy_alloc(block_order_t order);
 ATTR_MALLOC
 void *buddy_alloc_zero(block_order_t order);
-ATTR_MALLOC
-void *buddy_alloc_inrange(block_order_t order, void *begin, void *end);
-ATTR_MALLOC
-void *buddy_alloc_zero_inrange(block_order_t order, void *begin, void *end);
 void buddy_free(void *ptr, block_order_t order);
 
 size_t allocated_pages(void);

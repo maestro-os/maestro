@@ -77,68 +77,18 @@ static buddy_free_block_t *get_buddy(void *ptr, const block_order_t order)
 }
 
 /*
- * Returns the AVL node of the nearest free block from the given block.
- */
-static avl_tree_t *get_nearest_free_block(const buddy_free_block_t *block)
-{
-	avl_tree_t *n;
-
-	debug_check_block(block);
-	if(!(n = free_tree))
-		return NULL;
-	while(n)
-	{
-		debug_check_block(CONTAINER_OF(n, buddy_free_block_t, node));
-		if(block == (void *) n->value)
-			break;
-		if(ABS((intptr_t) block - (intptr_t) n->left)
-			< ABS((intptr_t) block - (intptr_t) n->right))
-			n = n->left;
-		else
-			n = n->right;
-	}
-	return n;
-}
-
-/*
  * Links a free block for the given pointer with the given order.
  * The block must not be linked yet.
  */
 static void link_free_block(buddy_free_block_t *ptr,
 	const block_order_t order)
 {
-	avl_tree_t *n;
-	buddy_free_block_t *b;
-
 	debug_check_block(ptr);
 	debug_check_order(order);
 	ptr->prev_free = NULL;
 	if((ptr->next_free = free_list[order]))
 		ptr->next_free->prev_free = ptr;
 	free_list[order] = ptr;
-	if((n = get_nearest_free_block(ptr)))
-	{
-		b = CONTAINER_OF(n, buddy_free_block_t, node);
-		if(b < ptr)
-		{
-			if((ptr->next = b->next))
-				ptr->next->prev = ptr;
-			if((ptr->prev = b))
-				ptr->prev->next = ptr;
-		}
-		else
-		{
-			if((ptr->prev = b->prev))
-				ptr->prev->next = ptr;
-			if((ptr->next = b))
-				ptr->next->prev = ptr;
-		}
-	}
-	else
-	{
-		ptr->prev = NULL;
-		ptr->next = NULL;
-	}
 	ptr->node.value = (avl_value_t) ptr;
 	ptr->order = order;
 	avl_tree_insert(&free_tree, &ptr->node, ptr_cmp);
@@ -151,20 +101,15 @@ static void unlink_free_block(buddy_free_block_t *block)
 {
 	debug_check_block(block);
 	debug_check_order(block->order);
-	if(block == free_list[block->order])
-	{
-		if((free_list[block->order] = block->next_free))
-			free_list[block->order]->prev_free = NULL;
-	}
 	if(block->prev_free)
 		block->prev_free->next_free = block->next_free;
 	if(block->next_free)
 		block->next_free->prev_free = block->prev_free;
-	if(block->prev)
-		block->prev->next = block->next;
-	if(block->next)
-		block->next->prev = block->prev;
+	if(block == free_list[block->order])
+		free_list[block->order] = block->next_free;
 	avl_tree_remove(&free_tree, &block->node);
+	debug_assert(!avl_tree_search(free_tree, (avl_value_t) block, ptr_cmp),
+		"avl_tree_remove failed!");
 }
 
 /*
@@ -178,6 +123,7 @@ static buddy_free_block_t *split_block(buddy_free_block_t *block,
 {
 	debug_check_block(block);
 	debug_check_order(order);
+	debug_assert(block->order >= order, "split_block: block too small");
 	unlink_free_block(block);
 	while(block->order > order)
 	{
@@ -230,9 +176,11 @@ void *buddy_alloc(const block_order_t order)
 		errno = ENOMEM;
 		return NULL;
 	}
+	debug_assert(free_list[i]->order == i,
+		"buddy_alloc: invalid free list");
 	ptr = split_block(free_list[i], order);
-	spin_unlock(&spinlock);
 	debug_check_block(ptr);
+	spin_unlock(&spinlock);
 	return ptr;
 }
 
@@ -246,60 +194,6 @@ void *buddy_alloc_zero(const block_order_t order)
 	void *ptr;
 
 	if((ptr = buddy_alloc(order)))
-		bzero(ptr, BLOCK_SIZE(order));
-	return ptr;
-}
-
-/*
- * Allocates a block of memory using the buddy allocator in the specified range.
- */
-ATTR_HOT
-ATTR_MALLOC
-void *buddy_alloc_inrange(const block_order_t order, void *begin, void *end)
-{
-	avl_tree_t *n;
-	buddy_free_block_t *b;
-	void *ptr;
-
-	errno = 0;
-	if(order > BUDDY_MAX_ORDER)
-		return NULL;
-	debug_assert(end >= begin, "buddy_alloc_inrange: invalid range");
-	begin = ALIGN(begin, PAGE_SIZE);
-	end = DOWN_ALIGN(end, PAGE_SIZE);
-	// TODO Restrain `begin` and `end` to buddy allocator range
-	spin_lock(&spinlock);
-	if(!(n = get_nearest_free_block(begin)))
-	{
-		spin_unlock(&spinlock);
-		errno = ENOMEM;
-		return NULL;
-	}
-	b = CONTAINER_OF(n, buddy_free_block_t, node);
-	// TODO Some previous blocks might be in the range?
-	while(b && (void *) b < end && b->order < order)
-		b = b->next;
-	if(!b || b->order < order)
-	{
-		spin_unlock(&spinlock);
-		errno = ENOMEM;
-		return NULL;
-	}
-	ptr = split_block(b, order);
-	spin_unlock(&spinlock);
-	debug_check_block(ptr);
-	return ptr;
-}
-
-/*
- * Uses `buddy_alloc_inrange` and applies `bzero` on the allocated block.
- */
-ATTR_MALLOC
-void *buddy_alloc_zero_inrange(block_order_t order, void *begin, void *end)
-{
-	void *ptr;
-
-	if((ptr = buddy_alloc_inrange(order, begin, end)))
 		bzero(ptr, BLOCK_SIZE(order));
 	return ptr;
 }
@@ -320,7 +214,7 @@ void buddy_free(void *ptr, block_order_t order)
 	while(order < BUDDY_MAX_ORDER && (buddy = get_buddy(ptr, order)))
 	{
 		if(buddy < ptr)
-			swap_ptr(&ptr, &buddy); // TODO Might cause problems on next iteration?
+			swap_ptr(&ptr, &buddy);
 		unlink_free_block(ptr);
 		unlink_free_block(buddy);
 		((buddy_free_block_t *) ptr)->order = ++order;
