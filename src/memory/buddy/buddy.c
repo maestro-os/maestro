@@ -108,8 +108,6 @@ static void unlink_free_block(buddy_free_block_t *block)
 	if(block == free_list[block->order])
 		free_list[block->order] = block->next_free;
 	avl_tree_remove(&free_tree, &block->node);
-	debug_assert(!avl_tree_search(free_tree, (avl_value_t) block, ptr_cmp),
-		"avl_tree_remove failed!");
 }
 
 /*
@@ -176,8 +174,7 @@ void *buddy_alloc(const block_order_t order)
 		errno = ENOMEM;
 		return NULL;
 	}
-	debug_assert(free_list[i]->order == i,
-		"buddy_alloc: invalid free list");
+	debug_assert(free_list[i]->order == i, "buddy_alloc: invalid free list");
 	ptr = split_block(free_list[i], order);
 	debug_check_block(ptr);
 	spin_unlock(&spinlock);

@@ -4,7 +4,7 @@
 
 #include <libc/stdio.h>
 
-int _debug_sanity_check(const void *ptr)
+void *_debug_sanity_check(const void *ptr)
 {
 	void *ebp;
 
@@ -15,5 +15,5 @@ int _debug_sanity_check(const void *ptr)
 		print_callstack(ebp, 8);
 		kernel_halt();
 	}
-	return (ptr != NULL);
+	return (void *) ptr;
 }

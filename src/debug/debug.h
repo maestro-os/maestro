@@ -25,7 +25,7 @@ typedef struct profiler_func
 
 void _debug_assert_fail(const char *str);
 
-int _debug_sanity_check(const void *ptr);
+void *_debug_sanity_check(const void *ptr);
 
 void print_regs(const regs_t *regs);
 void print_memory(const char *src, size_t n);

@@ -333,7 +333,7 @@ void avl_tree_remove(avl_tree_t **tree, avl_tree_t *n)
 		return;
 	if(n->left && n->right)
 	{
-		tmp = find_min(n);
+		tmp = find_min(n->right);
 		n->value = tmp->value;
 		n = tmp;
 	}

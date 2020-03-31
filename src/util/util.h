@@ -3,7 +3,7 @@
 
 # include <libc/string.h>
 
-# ifdef KERNEL_DEBUG_SPINLOCK
+# if defined(KERNEL_DEBUG_SANITY) || defined(KERNEL_DEBUG_SPINLOCK)
 #  include <debug/debug.h>
 # endif
 
@@ -45,7 +45,7 @@
 # define unlikely(x)		__builtin_expect(!!(x), 0)
 
 # ifdef KERNEL_DEBUG_SANITY
-#  define sanity_check(x)	_debug_sanity_check(x)
+#  define sanity_check(x)	((typeof(x)) _debug_sanity_check(x))
 # else
 #  define sanity_check(x)	(x)
 # endif
@@ -53,6 +53,11 @@
 # define assert(x, str)	if(!(x)) PANIC((str), 0)
 
 typedef int32_t avl_value_t; // TODO Use int64_t on 64bits
+
+typedef struct list_head
+{
+	struct list_head *prev, *next;
+} list_head_t;
 
 /*
  * Structure representing an AVL tree node.
@@ -83,6 +88,16 @@ extern void spin_unlock(spinlock_t *spinlock);
 # ifdef KERNEL_DEBUG_SPINLOCK
 #  define spin_lock(s)		debug_spin_lock(s, __FILE__, __LINE__)
 #  define spin_unlock(s)	debug_spin_unlock(s, __FILE__, __LINE__)
+# endif
+
+size_t list_size(list_head_t *list);
+void list_foreach(list_head_t *list, void (*f)(list_head_t *));
+void list_insert_before(list_head_t **first, list_head_t *node,
+	list_head_t *new_node);
+void list_insert_after(list_head_t *node, list_head_t *new_node);
+void list_remove(list_head_t **first, list_head_t *node);
+# ifdef KERNEL_DEBUG
+int list_check(list_head_t *list);
 # endif
 
 typedef int (*cmp_func_t)(const void *, const void *);
