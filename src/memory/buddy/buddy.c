@@ -14,6 +14,10 @@
 		&& (void *) (ptr) < mem_info.heap_end, "buddy: invalid block")
 #define debug_check_order(order)	debug_assert(order <= BUDDY_MAX_ORDER,\
 	"buddy: invalid order")
+
+#define GET_BUDDY_FREE_BLOCK(node)\
+	CONTAINER_OF(node, buddy_free_block_t, free_list)
+
 /*
  * This files handles the buddy allocator which allows to allocate 2^^n pages
  * large blocks of memory.
@@ -30,7 +34,7 @@
   * order.
   */
 ATTR_BSS
-static buddy_free_block_t *free_list[BUDDY_MAX_ORDER + 1];
+static list_head_t *free_list[BUDDY_MAX_ORDER + 1];
 
 /*
  * The tree containing free blocks sorted according to their address.
@@ -78,17 +82,13 @@ static buddy_free_block_t *get_buddy(void *ptr, const block_order_t order)
 
 /*
  * Links a free block for the given pointer with the given order.
- * The block must not be linked yet.
+ * The block must not already be linked.
  */
-static void link_free_block(buddy_free_block_t *ptr,
-	const block_order_t order)
+static void link_free_block(buddy_free_block_t *ptr, const block_order_t order)
 {
 	debug_check_block(ptr);
 	debug_check_order(order);
-	ptr->prev_free = NULL;
-	if((ptr->next_free = free_list[order]))
-		ptr->next_free->prev_free = ptr;
-	free_list[order] = ptr;
+	list_insert_front(&free_list[order], &ptr->free_list);
 	ptr->node.value = (avl_value_t) ptr;
 	ptr->order = order;
 	avl_tree_insert(&free_tree, &ptr->node, ptr_cmp);
@@ -101,12 +101,7 @@ static void unlink_free_block(buddy_free_block_t *block)
 {
 	debug_check_block(block);
 	debug_check_order(block->order);
-	if(block->prev_free)
-		block->prev_free->next_free = block->next_free;
-	if(block->next_free)
-		block->next_free->prev_free = block->prev_free;
-	if(block == free_list[block->order])
-		free_list[block->order] = block->next_free;
+	list_remove(&free_list[block->order], &block->free_list);
 	avl_tree_remove(&free_tree, &block->node);
 }
 
@@ -174,8 +169,9 @@ void *buddy_alloc(const block_order_t order)
 		errno = ENOMEM;
 		return NULL;
 	}
-	debug_assert(free_list[i]->order == i, "buddy_alloc: invalid free list");
-	ptr = split_block(free_list[i], order);
+	debug_assert(GET_BUDDY_FREE_BLOCK(free_list[i])->order == i,
+		"buddy_alloc: invalid free list");
+	ptr = split_block(GET_BUDDY_FREE_BLOCK(free_list[i]), order);
 	debug_check_block(ptr);
 	spin_unlock(&spinlock);
 	return ptr;

@@ -12,7 +12,7 @@
 typedef struct buddy_free_block
 {
 	/* Double-linked list of free blocks of the same order. */
-	struct buddy_free_block *prev_free, *next_free;
+	list_head_t free_list;
 	/* The AVL tree node. */
 	avl_tree_t node;
 

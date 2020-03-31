@@ -92,6 +92,7 @@ extern void spin_unlock(spinlock_t *spinlock);
 
 size_t list_size(list_head_t *list);
 void list_foreach(list_head_t *list, void (*f)(list_head_t *));
+void list_insert_front(list_head_t **first, list_head_t *new_node);
 void list_insert_before(list_head_t **first, list_head_t *node,
 	list_head_t *new_node);
 void list_insert_after(list_head_t *node, list_head_t *new_node);

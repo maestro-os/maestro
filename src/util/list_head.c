@@ -41,7 +41,7 @@ void list_foreach(list_head_t *list, void (*f)(list_head_t *))
 }
 
 /*
- * Updates the links on adjacent nodes.
+ * Updates the links on adjacent nodes after insertion of `l`.
  */
 static void link_back(list_head_t *l)
 {
@@ -49,6 +49,19 @@ static void link_back(list_head_t *l)
 		l->next->prev = l;
 	if(l->prev)
 		l->prev->next = l;
+}
+
+/*
+ * Inserts `new_node` at the beginning of the list `first`.
+ */
+void list_insert_front(list_head_t **first, list_head_t *new_node)
+{
+	if(!sanity_check(first) ||!sanity_check(new_node))
+		return;
+	new_node->prev = NULL;
+	new_node->next = *first;
+	*first = new_node;
+	link_back(new_node);
 }
 
 /*
@@ -63,7 +76,7 @@ void list_insert_before(list_head_t **first, list_head_t *node,
 	if(sanity_check(first) && *first == sanity_check(node))
 		*first = new_node;
 	new_node->next = node;
-	new_node->prev = node->prev;
+	new_node->prev = (node ? node->prev : NULL);
 	link_back(new_node);
 }
 
