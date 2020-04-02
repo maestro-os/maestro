@@ -103,8 +103,8 @@ avl_tree_t *avl_tree_rotate_rightleft(avl_tree_t *root)
 }
 
 /*
- * Searches a node in the given tree using the given value
- * and comparison function.
+ * Searches a node in the given `tree` using the given `value` and comparison
+ * function `f`.
  */
 avl_tree_t *avl_tree_search(avl_tree_t *tree,
 	const avl_value_t value, const cmp_func_t f)
@@ -246,7 +246,7 @@ void avl_tree_insert(avl_tree_t **tree, avl_tree_t *node, const cmp_func_t f)
 }
 
 /*
- * TODO
+ * Returns the leftmost node from `node`.
  */
 static avl_tree_t *find_min(avl_tree_t *node)
 {
@@ -322,6 +322,53 @@ static void remove_balance(avl_tree_t **tree, avl_tree_t *node)
 	}
 }
 
+static void avl_tree_remove_(avl_tree_t **tree, avl_tree_t *n)
+{
+	avl_tree_t *tmp, *right;
+	int single_node;
+
+	debug_assert(sanity_check(tree) && sanity_check(n),
+		"avl_tree_remove_: bad arguments");
+	tmp = find_min(sanity_check(n->right));
+	debug_assert(sanity_check(tmp), "avl_tree_remove_: bad min node");
+	single_node = (sanity_check(sanity_check(tmp)->parent) == n);
+	if(single_node)
+	{
+		tmp->left = n->left;
+		tmp->left->parent = tmp;
+	}
+	else
+	{
+		if(sanity_check(right = tmp->right))
+			right->parent = tmp->parent;
+		tmp->parent->left = right;
+	}
+	if(sanity_check(n->parent))
+	{
+		if(n->parent->left == n)
+			n->parent->left = tmp;
+		else
+			n->parent->right = tmp;
+		tmp->parent = n->parent;
+	}
+	else
+	{
+		*tree = tmp;
+		tmp->parent = NULL;
+	}
+	if(single_node)
+		remove_balance(tree, tmp);
+	else
+	{
+		tmp->left = n->left;
+		tmp->left->parent = tmp;
+		tmp->right = n->right;
+		tmp->right->parent = tmp;
+		if(right)
+			remove_balance(tree, right);
+	}
+}
+
 /*
  * Deletes the given node from the given tree.
  */
@@ -331,11 +378,10 @@ void avl_tree_remove(avl_tree_t **tree, avl_tree_t *n)
 
 	if(!sanity_check(tree) || !sanity_check(n))
 		return;
-	if(n->left && n->right)
+	if(sanity_check(n->left) && sanity_check(n->right))
 	{
-		tmp = find_min(n->right);
-		n->value = tmp->value;
-		n = tmp;
+		avl_tree_remove_(tree, n);
+		return;
 	}
 	if(n->left)
 		tmp = n->left;
@@ -343,9 +389,9 @@ void avl_tree_remove(avl_tree_t **tree, avl_tree_t *n)
 		tmp = n->right;
 	else
 		tmp = NULL;
-	if(n->parent)
+	if(sanity_check(n->parent))
 	{
-		if(n == n->parent->left)
+		if(n->parent->left == n)
 			n->parent->left = tmp;
 		else
 			n->parent->right = tmp;
@@ -369,6 +415,7 @@ void avl_tree_foreach(avl_tree_t *tree, void (*f)(avl_tree_t *))
 	avl_tree_foreach(tree->left, f);
 	avl_tree_foreach(tree->right, f);
 	f(tree);
+
 }
 
 #ifdef KERNEL_DEBUG

@@ -11,7 +11,7 @@
 /*
  * The size of a page in bytes.
  */
-# define PAGE_SIZE		0x1000
+# define PAGE_SIZE		((size_t) 0x1000)
 /*
  * The pointer to the beginning of the kernel.
  */

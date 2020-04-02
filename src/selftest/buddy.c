@@ -4,7 +4,7 @@
 #include <libc/stdio.h>
 #include <libc/string.h>
 
-/*static void test0(void)
+static void test0(void)
 {
 	void *p;
 
@@ -51,7 +51,7 @@ static void test2(void)
 		buddy_free(p0, 8);
 	}
 	ASSERT(1);
-}*/
+}
 
 static void test3(void)
 {
@@ -69,9 +69,9 @@ static void test3(void)
 void test_buddy(void)
 {
 	printf("%s: ", __func__);
-	/*test0();
+	test0();
 	test1();
-	test2();*/
+	test2();
 	test3();
 	printf("\n");
 }
