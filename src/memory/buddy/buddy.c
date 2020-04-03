@@ -12,7 +12,7 @@
 #define debug_check_block(ptr)		debug_assert(sanity_check(ptr)\
 	&& IS_ALIGNED((ptr), PAGE_SIZE) && (void *) (ptr) >= mem_info.heap_begin\
 		&& (void *) (ptr) < mem_info.heap_end, "buddy: invalid block")
-#define debug_check_order(order)	debug_assert(order <= BUDDY_MAX_ORDER,\
+#define debug_check_order(order)	debug_assert((order) <= BUDDY_MAX_ORDER,\
 	"buddy: invalid order")
 
 #define GET_BUDDY_FREE_BLOCK(node)\
@@ -137,10 +137,12 @@ void buddy_init(void)
 	block_order_t order;
 
 	i = mem_info.heap_begin;
-	while(i < mem_info.heap_end)
+	while(i + PAGE_SIZE <= mem_info.heap_end)
 	{
 		order = MIN(buddy_get_order((mem_info.heap_end - i) / PAGE_SIZE),
 			BUDDY_MAX_ORDER);
+		if(BLOCK_SIZE(order) > (uintptr_t) (mem_info.heap_end - i))
+			--order;
 		link_free_block(i, order);
 		i += BLOCK_SIZE(order);
 	}
@@ -163,7 +165,7 @@ void *buddy_alloc(const block_order_t order)
 	i = order;
 	while(i < BUDDY_MAX_ORDER + 1 && !free_list[i])
 		++i;
-	if(!free_list[i])
+	if(i >= BUDDY_MAX_ORDER + 1)
 	{
 		spin_unlock(&spinlock);
 		errno = ENOMEM;

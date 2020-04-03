@@ -402,6 +402,6 @@ void process_tick(const regs_t *registers)
 	/*profiler_capture();
 	profiler_print();*/
 	switch_processes();
-	printf("no more process to run, kernel halt.\n");
-	kernel_halt();
+	// TODO Uncomment printf("no more process to run, kernel halt.\n");
+	// TODO Uncomment kernel_halt();
 }
