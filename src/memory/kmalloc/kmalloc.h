@@ -1,5 +1,5 @@
-#ifndef _KMALLOC_H
-# define _KMALLOC_H
+#ifndef KMALLOC_H
+# define KMALLOC_H
 
 # include <libc/string.h>
 

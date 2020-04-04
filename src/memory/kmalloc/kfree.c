@@ -10,28 +10,28 @@
  */
 void kfree(void *ptr)
 {
-	_chunk_hdr_t *c;
+	chunk_hdr_t *c;
 
 	if(unlikely(!ptr))
 		return;
 	spin_lock(&kmalloc_spinlock);
 	c = GET_CHUNK(ptr);
-	_chunk_assert(c);
+	chunk_assert(c);
 	c->used = 0;
-	_bucket_link((_free_chunk_t *) c);
+	bucket_link((free_chunk_t *) c);
 	if(c->next && !c->next->used)
-		_merge_chunks(c);
+		merge_chunks(c);
 	if(c->prev && !c->prev->used)
 	{
 		c = c->prev;
-		_merge_chunks(c);
+		merge_chunks(c);
 	}
 	if(c->prev || c->next)
 	{
 		spin_unlock(&kmalloc_spinlock);
 		return;
 	}
-	_bucket_unlink((_free_chunk_t *) c);
-	_free_block(c->block);
+	bucket_unlink((free_chunk_t *) c);
+	kmalloc_free_block(c->block);
 	spin_unlock(&kmalloc_spinlock);
 }

@@ -6,59 +6,59 @@
 /*
  * Handles a small allocation.
  */
-__attribute__((malloc))
-void *_small_alloc(const size_t size)
+ATTR_MALLOC
+void *small_alloc(const size_t size)
 {
-	_free_chunk_t **bucket;
-	_block_t *b;
-	_free_chunk_t *chunk;
+	free_chunk_t **bucket;
+	block_t *b;
+	free_chunk_t *chunk;
 
-	if(!(bucket = _get_bucket(size, 0, 0)) || !*bucket)
+	if(!(bucket = get_bucket(size, 0, 0)) || !*bucket)
 	{
-		if(!(b = _alloc_block(_SMALL_BLOCK_PAGES)))
+		if(!(b = kmalloc_alloc_block(SMALL_BLOCK_PAGES)))
 			return NULL;
 		chunk = BLOCK_DATA(b);
 	}
 	else
 		chunk = *bucket;
-	_alloc_chunk(chunk, size);
+	alloc_chunk(chunk, size);
 	return CHUNK_DATA(chunk);
 }
 
 /*
  * Handles a medium allocation.
  */
-__attribute__((malloc))
-void *_medium_alloc(const size_t size)
+ATTR_MALLOC
+void *medium_alloc(const size_t size)
 {
-	_free_chunk_t **bucket;
-	_block_t *b;
-	_free_chunk_t *chunk;
+	free_chunk_t **bucket;
+	block_t *b;
+	free_chunk_t *chunk;
 
-	if(!(bucket = _get_bucket(size, 0, 1)) || !*bucket)
+	if(!(bucket = get_bucket(size, 0, 1)) || !*bucket)
 	{
-		if(!(b = _alloc_block(_MEDIUM_BLOCK_PAGES)))
+		if(!(b = kmalloc_alloc_block(MEDIUM_BLOCK_PAGES)))
 			return NULL;
 		chunk = BLOCK_DATA(b);
 	}
 	else
 		chunk = *bucket;
-	_alloc_chunk(chunk, size);
+	alloc_chunk(chunk, size);
 	return CHUNK_DATA(chunk);
 }
 
 /*
  * Handles a large allocation.
  */
-__attribute__((malloc))
-void *_large_alloc(const size_t size)
+ATTR_MALLOC
+void *large_alloc(const size_t size)
 {
 	size_t min_size;
-	_block_t *b;
-	_chunk_hdr_t *first_chunk;
+	block_t *b;
+	chunk_hdr_t *first_chunk;
 
 	min_size = BLOCK_HDR_SIZE + CHUNK_HDR_SIZE + size;
-	if(!(b = _alloc_block(CEIL_DIVISION(min_size, PAGE_SIZE))))
+	if(!(b = kmalloc_alloc_block(CEIL_DIVISION(min_size, PAGE_SIZE))))
 		return NULL;
 	first_chunk = BLOCK_DATA(b);
 	first_chunk->used = 1;
@@ -74,7 +74,7 @@ void *_large_alloc(const size_t size)
  *
  * If the allocation fails, the errno is set to ENOMEM.
  */
-__attribute__((malloc))
+ATTR_MALLOC
 void *kmalloc(const size_t size)
 {
 	void *ptr;
@@ -82,12 +82,12 @@ void *kmalloc(const size_t size)
 	if(size == 0)
 		return NULL;
 	spin_lock(&kmalloc_spinlock);
-	if(size < _SMALL_BIN_MAX)
-		ptr = _small_alloc(size);
-	else if(size < _MEDIUM_BIN_MAX)
-		ptr = _medium_alloc(size);
+	if(size < SMALL_BIN_MAX)
+		ptr = small_alloc(size);
+	else if(size < MEDIUM_BIN_MAX)
+		ptr = medium_alloc(size);
 	else
-		ptr = _large_alloc(size);
+		ptr = large_alloc(size);
 	if(!ptr)
 		errno = ENOMEM;
 	spin_unlock(&kmalloc_spinlock);

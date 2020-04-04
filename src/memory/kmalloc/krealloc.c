@@ -6,17 +6,17 @@
  * the size of the chunk. Shrinking the chunk might create a new unused chunk
  * that might be merged with the following chunk.
  */
-static void _shrink_chunk(_used_chunk_t *chunk, const size_t size)
+static void shrink_chunk(used_chunk_t *chunk, const size_t size)
 {
-	_chunk_hdr_t *next;
+	chunk_hdr_t *next;
 
-	_split_chunk(&chunk->hdr, size);
+	split_chunk(&chunk->hdr, size);
 	next = chunk->hdr.next;
 	if(!next || !next->next)
 		return;
 	if(next->used || next->next->used)
 		return;
-	_merge_chunks(next);
+	merge_chunks(next);
 }
 
 /*
@@ -24,10 +24,10 @@ static void _shrink_chunk(_used_chunk_t *chunk, const size_t size)
  * the size `size`. Next chunk will shrink if enough space is remaining, else
  * it might disapear.
  */
-static void _eat_chunk(_used_chunk_t *chunk, const size_t size)
+static void eat_chunk(used_chunk_t *chunk, const size_t size)
 {
-	_merge_chunks(&chunk->hdr);
-	_split_chunk(&chunk->hdr, size);
+	merge_chunks(&chunk->hdr);
+	split_chunk(&chunk->hdr, size);
 }
 
 /*
@@ -40,10 +40,10 @@ static void _eat_chunk(_used_chunk_t *chunk, const size_t size)
  * allocated, the data from the old chunk will be copied to the new one and
  * the old one will be freed.
  */
-__attribute__((malloc))
+ATTR_MALLOC
 void *krealloc(void *ptr, const size_t size)
 {
-	_chunk_hdr_t *c;
+	chunk_hdr_t *c;
 	void *p;
 
 	if(!ptr)
@@ -55,16 +55,16 @@ void *krealloc(void *ptr, const size_t size)
 	}
 	spin_lock(&kmalloc_spinlock);
 	c = GET_CHUNK(ptr);
-	_chunk_assert(c);
+	chunk_assert(c);
 	if(size <= c->size)
 	{
-		_shrink_chunk((_used_chunk_t *) c, size);
+		shrink_chunk((used_chunk_t *) c, size);
 		return ptr;
 	}
 	if(c->next && !c->next->used
 		&& (c->next->size + CHUNK_HDR_SIZE) - c->size >= size)
 	{
-		_eat_chunk((_used_chunk_t *) c, size);
+		eat_chunk((used_chunk_t *) c, size);
 		spin_unlock(&kmalloc_spinlock);
 		return ptr;
 	}
