@@ -193,6 +193,13 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	process_init();
 
 	// TODO Remove
+	while(1)
+	{
+		if(!kmalloc(1000))
+			printf("OOM\n");
+	}
+
+	// TODO Remove
 	CLI();
 	sem_init(&sem);
 	for(size_t i = 0; i < 1; ++i)

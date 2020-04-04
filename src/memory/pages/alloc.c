@@ -10,6 +10,9 @@
  * remain and shall be used for further allocations.
  */
 
+// TODO rm
+#include <libc/stdio.h>
+
 /*
  * Allocates a memory region of `n` pages and returns a pointer to the
  * beginning.
@@ -28,7 +31,7 @@ void *pages_alloc(const size_t n)
 	if(!b)
 		return NULL;
 	split_block(b, n);
-	return b->ptr;
+	return sanity_check(b->ptr);
 }
 
 /*

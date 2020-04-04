@@ -67,7 +67,8 @@ block_order_t buddy_get_order(const size_t pages)
  * Returns the given block's buddy.
  * Returns `NULL` if the buddy block is not free.
  */
-static buddy_free_block_t *get_buddy(void *ptr, const block_order_t order)
+static buddy_free_block_t *get_buddy(buddy_free_block_t *ptr,
+	const block_order_t order)
 {
 	void *buddy_addr;
 
@@ -81,28 +82,27 @@ static buddy_free_block_t *get_buddy(void *ptr, const block_order_t order)
 }
 
 /*
- * Links a free block for the given pointer with the given order.
+ * Links the given block to the free list and free tree.
  * The block must not already be linked.
  */
-static void link_free_block(buddy_free_block_t *ptr, const block_order_t order)
+static void link_free_block(buddy_free_block_t *ptr)
 {
 	debug_check_block(ptr);
-	debug_check_order(order);
-	list_insert_front(&free_list[order], &ptr->free_list);
+	debug_check_order(ptr->order);
+	list_insert_front(&free_list[ptr->order], &ptr->free_list);
 	ptr->node.value = (avl_value_t) ptr;
-	ptr->order = order;
 	avl_tree_insert(&free_tree, &ptr->node, ptr_cmp);
 }
 
 /*
  * Unlinks the given block from the free list and free tree.
  */
-static void unlink_free_block(buddy_free_block_t *block)
+static void unlink_free_block(buddy_free_block_t *ptr)
 {
-	debug_check_block(block);
-	debug_check_order(block->order);
-	list_remove(&free_list[block->order], &block->free_list);
-	avl_tree_remove(&free_tree, &block->node);
+	debug_check_block(ptr);
+	debug_check_order(ptr->order);
+	list_remove(&free_list[ptr->order], &ptr->free_list);
+	avl_tree_remove(&free_tree, &ptr->node);
 }
 
 /*
@@ -114,6 +114,8 @@ static void unlink_free_block(buddy_free_block_t *block)
 static buddy_free_block_t *split_block(buddy_free_block_t *block,
 	const block_order_t order)
 {
+	buddy_free_block_t *new;
+
 	debug_check_block(block);
 	debug_check_order(order);
 	debug_assert(block->order >= order, "split_block: block too small");
@@ -121,8 +123,9 @@ static buddy_free_block_t *split_block(buddy_free_block_t *block,
 	while(block->order > order)
 	{
 		--block->order;
-		link_free_block((void *) block + BLOCK_SIZE(block->order),
-			block->order);
+		new = (void *) block + BLOCK_SIZE(block->order);
+		new->order = block->order;
+		link_free_block(new);
 	}
 	return block;
 }
@@ -134,6 +137,7 @@ ATTR_COLD
 void buddy_init(void)
 {
 	void *i;
+	buddy_free_block_t *block;
 	block_order_t order;
 
 	i = mem_info.heap_begin;
@@ -143,7 +147,9 @@ void buddy_init(void)
 			BUDDY_MAX_ORDER);
 		if(BLOCK_SIZE(order) > (uintptr_t) (mem_info.heap_end - i))
 			--order;
-		link_free_block(i, order);
+		block = i;
+		block->order = order;
+		link_free_block(block);
 		i += BLOCK_SIZE(order);
 	}
 }
@@ -200,20 +206,22 @@ void *buddy_alloc_zero(const block_order_t order)
 ATTR_HOT
 void buddy_free(void *ptr, block_order_t order)
 {
-	void *buddy;
+	buddy_free_block_t *block, *buddy;
 
-	debug_check_block(ptr);
+	block = ptr;
+	debug_check_block(block);
 	assert(order <= BUDDY_MAX_ORDER, "buddy_free: order > BUDDY_MAX_ORDER");
 	spin_lock(&spinlock);
-	link_free_block(ptr, order);
-	while(order < BUDDY_MAX_ORDER && (buddy = get_buddy(ptr, order)))
+	block->order = order;
+	link_free_block(block);
+	while(block->order < BUDDY_MAX_ORDER && (buddy = get_buddy(block, order)))
 	{
-		if(buddy < ptr)
-			swap_ptr(&ptr, &buddy);
-		unlink_free_block(ptr);
+		if(buddy < block)
+			swap_ptr((void **) &block, (void **) &buddy);
+		unlink_free_block(block);
 		unlink_free_block(buddy);
-		((buddy_free_block_t *) ptr)->order = ++order;
-		link_free_block(ptr, order);
+		++block->order;
+		link_free_block(block);
 	}
 	spin_unlock(&spinlock);
 }
@@ -227,3 +235,28 @@ size_t allocated_pages(void)
 	// TODO
 	return 0;
 }
+
+# ifdef KERNEL_DEBUG
+/*
+ * Prints the free list.
+ */
+void buddy_print_free_list(void)
+{
+	size_t i;
+	list_head_t *l;
+
+	printf("Free list:\n");
+	for(i = 0; i <= BUDDY_MAX_ORDER; ++i)
+	{
+		printf("- %zu: ", i);
+		l = free_list[i];
+		while(l)
+		{
+			printf("%p", CONTAINER_OF(l, buddy_free_block_t, free_list));
+			if((l = l->next))
+				printf(" ");
+		}
+		printf("\n");
+	}
+}
+# endif

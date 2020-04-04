@@ -123,7 +123,7 @@ pages_block_t *alloc_block(const size_t n)
 	{
 		if(!(b1 = pages_block_alloc(ptr, POW2(pages) - n)))
 		{
-			// TODO Remove `b0`
+			cache_free(pages_block_cache, b0);
 			buddy_free(ptr, pages);
 			return NULL;
 		}

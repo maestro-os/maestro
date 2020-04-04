@@ -23,4 +23,8 @@ void buddy_free(void *ptr, block_order_t order);
 
 size_t allocated_pages(void);
 
+# ifdef KERNEL_DEBUG
+void buddy_print_free_list(void);
+# endif
+
 #endif
