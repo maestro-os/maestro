@@ -3,11 +3,9 @@
 #include <libc/errno.h>
 
 /*
- * This file handles allocations using the slab allocator.
- *
- * This allocator allows to reduce fragmentation by having regions of memory
- * reserved to a specific object of a fixed size, allowing to packed them
- * together.
+ * This file contains the slab allocator. This allocator allows to reduce
+ * fragmentation by having regions of memory reserved to a specific object of a
+ * fixed size, allowing to pack them together.
  *
  * A cache is an object that represents an allocator for a specific object.
  * A slab is one or several pages allocated for storing objects.
@@ -22,9 +20,9 @@
  */
 static cache_t *caches;
 /*
- * The cache used to allocate caches. This cache is allocated using `kmalloc`.
+ * The cache used to allocate caches.
  */
-static cache_t *caches_cache;
+static cache_t caches_cache;
 
 /*
  * Computes the number of pages required for a slab.
@@ -32,9 +30,11 @@ static cache_t *caches_cache;
 ATTR_HOT
 static void calc_pages_per_slab(cache_t *cache)
 {
-	cache->pages_per_slab = CEIL_DIVISION(sizeof(slab_t)
+	debug_assert(sanity_check(cache), "calc_pages_per_slab: invalid argument");
+	cache->slab_order = buddy_get_order(CEIL_DIVISION(sizeof(slab_t)
 		+ CEIL_DIVISION(cache->objcount, 8)
-			+ (cache->objsize * cache->objcount), PAGE_SIZE);
+			+ (cache->objsize * cache->objcount), PAGE_SIZE));
+	// TODO Adapt objects count
 }
 
 /*
@@ -43,14 +43,12 @@ static void calc_pages_per_slab(cache_t *cache)
 ATTR_COLD
 void slab_init(void)
 {
-	if(!(caches_cache = kmalloc_zero(sizeof(cache_t))))
-		PANIC("Failed to initialize slab allocator!", 0);
-	caches_cache->name = CACHES_CACHE_NAME;
-	caches_cache->objsize = sizeof(cache_t);
-	caches_cache->objcount = 32;
-	calc_pages_per_slab(caches_cache);
-	caches_cache->ctor = bzero;
-	caches = caches_cache;
+	caches_cache.name = CACHES_CACHE_NAME;
+	caches_cache.objsize = sizeof(cache_t);
+	caches_cache.objcount = 32;
+	calc_pages_per_slab(&caches_cache);
+	caches_cache.ctor = bzero;
+	caches = &caches_cache;
 }
 
 /*
@@ -63,7 +61,8 @@ cache_t *cache_getall(void)
 }
 
 /*
- * Returns the cache with the given name.
+ * Returns the cache with the given name. If no cache is found, `NULL` is
+ * returned.
  */
 ATTR_HOT
 cache_t *cache_get(const char *name)
@@ -83,8 +82,10 @@ cache_t *cache_get(const char *name)
 }
 
 /*
- * Creates a cache.
- * TODO: Describe arguments.
+ * Creates a cache named `name`, with objects of size `objsize`.
+ * `objcount` is the number of objects per slab.
+ * `ctor` is a function called at the construction of a new object.
+ * `dtor` is a function called at the destruction of an object.
  */
 ATTR_COLD
 cache_t *cache_create(const char *name, size_t objsize, size_t objcount,
@@ -94,7 +95,7 @@ cache_t *cache_create(const char *name, size_t objsize, size_t objcount,
 
 	if(!name || objsize == 0 || objcount == 0)
 		return NULL;
-	if(!(cache = cache_alloc(caches_cache)))
+	if(!(cache = cache_alloc(&caches_cache)))
 		return NULL;
 	cache->name = name;
 	cache->objsize = objsize;
@@ -109,18 +110,21 @@ cache_t *cache_create(const char *name, size_t objsize, size_t objcount,
 
 /*
  * Frees all slabs in the cache.
+ * The cache structure might contain invalid references after calling this
+ * function. It is meant to be used only before freeing the cache.
  */
 ATTR_COLD
-static void free_all_slabs(cache_t *cache, slab_t *s)
+static void free_all_slabs(cache_t *cache, list_head_t *l)
 {
-	slab_t *next;
+	list_head_t *next;
+	slab_t *s;
 
-	while(s)
+	while(l)
 	{
-		next = s->next;
-		avl_tree_remove(&cache->tree, &s->node);
-		pages_free(s, 0);
-		s = next;
+		next = l->next;
+		s = CONTAINER_OF(l, slab_t, list_node);
+		buddy_free(s, cache->slab_order);
+		l = next;
 	}
 }
 
@@ -147,56 +151,23 @@ void cache_destroy(cache_t *cache)
 	}
 	free_all_slabs(cache, cache->slabs_full);
 	free_all_slabs(cache, cache->slabs_partial);
-	cache_free(caches_cache, cache);
-}
-
-/*
- * Links the given slab to the given slab list.
- */
-ATTR_HOT
-static void link_slab(slab_t **list, slab_t *slab)
-{
-	if(!slab)
-		return;
-	if((slab->next = *list))
-		slab->next->prev = slab;
-	slab->prev = NULL;
-	*list = slab;
-}
-
-/*
- * Unlinks the given slab from its list. `cache` is the cache associated with
- * the slab.
- */
-ATTR_HOT
-static void unlink_slab(cache_t *cache, slab_t *slab)
-{
-	if(!slab)
-		return;
-	if(slab == cache->slabs_full)
-		cache->slabs_full = slab->next;
-	if(slab == cache->slabs_partial)
-		cache->slabs_partial = slab->next;
-	if(slab->next)
-		slab->next->prev = slab->prev;
-	if(slab->prev)
-		slab->prev->next = slab->next;
+	cache_free(&caches_cache, cache);
 }
 
 /*
  * Allocates a new slab for the given cache.
  */
 ATTR_HOT
-static slab_t *alloc_slab(cache_t *cache)
+static list_head_t *alloc_slab(cache_t *cache)
 {
 	slab_t *slab;
 
-	if(!(slab = pages_alloc_zero(cache->pages_per_slab)))
+	if(!(slab = buddy_alloc_zero(cache->slab_order)))
 		return NULL;
 	slab->available = cache->objcount;
 	slab->node.value = (avl_value_t) slab;
 	avl_tree_insert(&cache->tree, &slab->node, ptr_cmp);
-	return slab;
+	return &slab->list_node;
 }
 
 /*
@@ -206,7 +177,8 @@ ATTR_HOT
 ATTR_MALLOC
 void *cache_alloc(cache_t *cache)
 {
-	slab_t *slab;
+	list_head_t *slab;
+	slab_t *s;
 	size_t i;
 	void *ptr;
 
@@ -214,20 +186,23 @@ void *cache_alloc(cache_t *cache)
 		return NULL;
 	if(!(slab = cache->slabs_partial) && !(slab = alloc_slab(cache)))
 		return NULL;
-	i = bitfield_first_clear(slab->use_bitfield, cache->objcount);
-	bitfield_set(slab->use_bitfield, i);
-	--slab->available;
-	if(slab->available == 0)
+	s = CONTAINER_OF(slab, slab_t, list_node);
+	i = bitfield_first_clear(s->use_bitfield, cache->objcount);
+	bitfield_set(s->use_bitfield, i);
+	--s->available;
+	if(s->available == 0)
 	{
-		unlink_slab(cache, slab);
-		link_slab(&cache->slabs_full, slab);
+		list_remove(&cache->slabs_partial, slab);
+		list_remove(&cache->slabs_full, slab);
+		list_insert_front(&cache->slabs_full, slab);
 	}
-	else if(slab->available < cache->objcount)
+	else if(s->available < cache->objcount)
 	{
-		unlink_slab(cache, slab);
-		link_slab(&cache->slabs_partial, slab);
+		list_remove(&cache->slabs_partial, slab);
+		list_remove(&cache->slabs_full, slab);
+		list_insert_front(&cache->slabs_partial, slab);
 	}
-	ptr = SLAB_OBJ(cache, slab, i);
+	ptr = SLAB_OBJ(cache, s, i);
 	if(cache->ctor)
 		cache->ctor(ptr, cache->objsize);
 	return ptr;
@@ -279,14 +254,15 @@ void cache_free(cache_t *cache, void *obj)
 	bitfield_clear(s->use_bitfield, i);
 	if(s->available++ == 0)
 	{
-		unlink_slab(cache, s);
-		link_slab(&cache->slabs_partial, s);
+		list_remove(&cache->slabs_partial, &s->list_node);
+		list_remove(&cache->slabs_full, &s->list_node);
+		list_insert_front(&cache->slabs_partial, &s->list_node);
 	}
 	else if(s->available >= cache->objcount)
 	{
-		unlink_slab(cache, s);
-		avl_tree_remove(&cache->tree, &s->node);
-		pages_free(s, 0);
+		list_remove(&cache->slabs_partial, &s->list_node);
+		list_remove(&cache->slabs_full, &s->list_node);
+		buddy_free(s, cache->slab_order);
 	}
 
 end:

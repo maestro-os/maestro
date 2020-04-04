@@ -4,7 +4,8 @@
 static test_suite_func_t suites[] = {
 	test_bitfield,
 	test_avl,
-	test_buddy
+	//test_buddy,
+	test_pages
 };
 
 void run_selftest(void)

@@ -19,7 +19,7 @@
 	CONTAINER_OF(node, buddy_free_block_t, free_list)
 
 /*
- * This files handles the buddy allocator which allows to allocate 2^^n pages
+ * This files contains the buddy allocator which allows to allocate 2^^n pages
  * large blocks of memory.
  *
  * This allocator works by dividing blocks of memory in two until the a block of

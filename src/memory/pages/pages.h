@@ -4,6 +4,8 @@
 # include <memory/memory.h>
 # include <util/util.h>
 
+void pages_init(void);
+
 void *pages_alloc(size_t n);
 void *pages_alloc_zero(size_t n);
 void pages_free(void *ptr, size_t pages);

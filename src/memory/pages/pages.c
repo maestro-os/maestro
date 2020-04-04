@@ -1,10 +1,32 @@
 #include <memory/pages/pages_internal.h>
+#include <kernel.h>
 #include <util/util.h>
 
+/*
+ * pages_block_t cache.
+ */
+static cache_t *pages_block_cache;
+
+/*
+ * TODO
+ */
 ATTR_BSS
-static pages_block_t *free_buckets[BUCKETS_COUNT];
+static list_head_t *free_buckets[BUCKETS_COUNT];
+/*
+ * TODO
+ */
 ATTR_BSS
-static pages_block_t *used_map[HASH_MAP_SIZE];
+static list_head_t *used_map[HASH_MAP_SIZE];
+
+/*
+ * Initializes the pages allocator.
+ */
+void pages_init(void)
+{
+	if(!(pages_block_cache = cache_create("pages_blocks", sizeof(pages_block_t),
+		32, bzero, NULL)))
+		PANIC("Cannot allocate cache for pages allocator!", 0);
+}
 
 /*
  * Returns the free bucket index for a block of `n` pages.
@@ -13,7 +35,7 @@ static size_t get_bucket_index(const size_t n)
 {
 	size_t i = 0;
 
-	while(i - 1 < BUCKETS_COUNT && n > ((size_t) 1 << i))
+	while(i - 1 < BUCKETS_COUNT && n > POW2(i))
 		++i;
 	return i;
 }
@@ -24,30 +46,13 @@ static size_t get_bucket_index(const size_t n)
  */
 static void link_block(pages_block_t *b)
 {
-	pages_block_t **bucket;
+	list_head_t **bucket;
 
 	if(b->used)
 		bucket = used_map + ((uintptr_t) b->ptr % HASH_MAP_SIZE);
 	else
 		bucket = free_buckets + get_bucket_index(b->pages);
-	if((b->next = *bucket))
-		b->next->prev = b;
-	b->prev = NULL;
-	*bucket = b;
-}
-
-/*
- * Unlinks the specified block from the specified bucket.
- */
-static void unlink_block(pages_block_t **bucket, pages_block_t *b)
-{
-	if(b->prev)
-		b->prev->next = b->next;
-	if(b->next)
-		b->next->prev = b->prev;
-	// TODO Set b->prev and b->next to NULL?
-	if(*bucket == b)
-		*bucket = (*bucket)->next;
+	list_insert_front(bucket, &b->blocks_node);
 }
 
 /*
@@ -57,20 +62,37 @@ static void unlink_block(pages_block_t **bucket, pages_block_t *b)
 pages_block_t *get_available_block(const size_t n)
 {
 	size_t i = 0;
-	pages_block_t **bucket, *b;
+	list_head_t **bucket, *block;
+	pages_block_t *b;
 
-	while(i < BUCKETS_COUNT - 1 && n > ((size_t) 1 << i))
+	while(i < BUCKETS_COUNT - 1 && n > POW2(i))
 		++i;
 	while(i < BUCKETS_COUNT - 1 && !free_buckets[i])
 		++i;
 	bucket = free_buckets + i;
-	if(!(b = *bucket))
+	block = *bucket;
+	while(block && CONTAINER_OF(block, pages_block_t, blocks_node)->pages < n)
+		block = block->next;
+	if(!block)
 		return NULL;
-	while(b && b->pages < n)
-		b = b->next;
-	unlink_block(bucket, b);
+	list_remove(bucket, block);
+	b = CONTAINER_OF(block, pages_block_t, blocks_node);
 	b->used = 1;
 	link_block(b);
+	return b;
+}
+
+/*
+ * Allocates a new `pages_block_t` object. And fills it.
+ */
+static pages_block_t *pages_block_alloc(void *ptr, const size_t pages)
+{
+	pages_block_t *b;
+
+	if(!(b = cache_alloc(pages_block_cache)))
+		return NULL;
+	b->ptr = ptr;
+	b->pages = pages;
 	return b;
 }
 
@@ -79,6 +101,7 @@ pages_block_t *get_available_block(const size_t n)
  * The block of memory shall be at least `n` pages large and shall be marked as
  * used.
  */
+// TODO Currently bugged! Returned object is not marked as used
 pages_block_t *alloc_block(const size_t n)
 {
 	size_t pages;
@@ -88,12 +111,12 @@ pages_block_t *alloc_block(const size_t n)
 	pages = buddy_get_order(n);
 	if(!(ptr = buddy_alloc(pages)))
 		return NULL;
+	// TODO If block is too large, allocate two objects and mark the first one as used
 	if(!(b = pages_block_alloc(ptr, pages)))
 	{
 		buddy_free(ptr, pages);
 		return NULL;
 	}
-	b->used = 1;
 	link_block(b);
 	return b;
 }
@@ -110,11 +133,70 @@ void split_block(pages_block_t *b, const size_t n)
 	if(b->pages <= n)
 		return;
 	if(!(new = pages_block_alloc(b->ptr + n * PAGE_SIZE, b->pages - n)))
-		return;
+		return; // TODO Error?
 	b->pages = n;
-	if((new->buddy_next = b->buddy_next))
-		new->buddy_next->buddy_prev = new;
-	if((new->buddy_prev = b))
-		new->buddy_prev->buddy_next = new;
+	list_insert_after(&b->buddies_node, &new->buddies_node);
 	link_block(new);
+}
+
+/*
+ * Returns a pointer to the pages block associated to the given pointer.
+ * If the block doesn't exist or isn't used, the function returns `NULL`.
+ */
+pages_block_t *get_used_block(void *ptr)
+{
+	list_head_t *b;
+	pages_block_t *block;
+
+	if(!sanity_check(ptr))
+		return NULL;
+	b = used_map[(uintptr_t) ptr % HASH_MAP_SIZE];
+	while(b && CONTAINER_OF(b, pages_block_t, blocks_node)->ptr != ptr)
+		b = b->next;
+	if(!b)
+		return NULL;
+	block = CONTAINER_OF(b, pages_block_t, blocks_node);
+	if(!block->used)
+		return NULL;
+	return block;
+}
+
+/*
+ * Unlinks and frees the given pages block. If the block of memory that was
+ * allocated using the buddy allocator is empty, it shall be freed too.
+ */
+void free_block(pages_block_t *b)
+{
+	list_head_t *l, *prev, *next, *buddy_prev;
+	pages_block_t *tmp;
+
+	if(!sanity_check(b) || !b->used)
+		return;
+	b->used = 0;
+	link_block(b);
+	l = &b->blocks_node;
+	prev = l->prev;
+	next = l->next;
+	if(prev && !CONTAINER_OF(prev, pages_block_t, blocks_node)->used)
+	{
+		tmp = CONTAINER_OF(prev, pages_block_t, blocks_node);
+		tmp->ptr -= b->pages * PAGE_SIZE;
+		tmp->pages += b->pages;
+		buddy_prev = b->buddies_node.prev;
+		list_remove(NULL, l);
+		list_remove(NULL, &b->buddies_node);
+		if(!buddy_prev->prev && !buddy_prev->next)
+		{
+			list_remove(NULL, buddy_prev);
+			tmp = CONTAINER_OF(buddy_prev, pages_block_t, blocks_node);
+			buddy_free(tmp->ptr, tmp->pages);
+			cache_free(pages_block_cache, tmp);
+		}
+	}
+	else if(next)
+	{
+		tmp = CONTAINER_OF(next, pages_block_t, blocks_node);
+		if(!tmp->used)
+			free_block(tmp);
+	}
 }

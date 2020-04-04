@@ -53,7 +53,7 @@ static void test2(void)
 	ASSERT(1);
 }
 
-static void test3(void)
+/*static void test3(void)
 {
 	void *p;
 
@@ -64,7 +64,7 @@ static void test3(void)
 		memset(p, 0xff, BLOCK_SIZE(8));
 	}
 	ASSERT(1);
-}
+}*/
 
 void test_buddy(void)
 {
@@ -72,6 +72,6 @@ void test_buddy(void)
 	test0();
 	test1();
 	test2();
-	test3();
+	//test3();
 	printf("\n");
 }

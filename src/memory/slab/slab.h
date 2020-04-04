@@ -26,7 +26,7 @@
 typedef struct slab
 {
 	/* Double-linked list of slabs. */
-	struct slab *prev, *next;
+	list_head_t list_node;
 	/* The node of the tree the slab is located in. */
 	avl_tree_t node;
 
@@ -44,20 +44,18 @@ typedef struct cache
 	/* The name of the cache. */
 	const char *name;
 
-	/* TODO */
-	size_t slabs;
 	/* The size of an object. */
 	size_t objsize;
-	/* TODO */
+	/* The number of objects contained in one slab. */
 	size_t objcount;
 
-	/* The number of pages per slabs */
-	size_t pages_per_slab;
+	/* The order of a memory block for a slab */
+	size_t slab_order;
 
 	/* The list of full slabs */
-	slab_t *slabs_full;
+	list_head_t *slabs_full;
 	/* The list of partial slabs (some objects are still available) */
-	slab_t *slabs_partial;
+	list_head_t *slabs_partial;
 	/* The tree containing all the slabs for fast retrieval */
 	avl_tree_t *tree;
 

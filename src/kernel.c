@@ -60,11 +60,11 @@ static void print_slabs(void)
 	cache_t *c;
 
 	printf("--- Slab allocator caches ---\n");
-	printf("<name> <slabs> <objsize> <objects_count>\n");
+	printf("<name> <objsize> <objects_count>\n");
 	c = cache_getall();
 	while(c)
 	{
-		printf("%s %zu %zu %zu\n", c->name, c->slabs, c->objsize, c->objcount);
+		printf("%s %zu %zu\n", c->name, c->objsize, c->objcount);
 		c = c->next;
 	}
 	printf("\n");
@@ -150,6 +150,7 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	printf("Kernel end: %p; Heap end: %p\n", kernel_end, mem_info.heap_end);
 	buddy_init();
 	slab_init();
+	pages_init();
 	vmem_kernel();
 #ifdef KERNEL_DEBUG
 	print_slabs();

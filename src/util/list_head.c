@@ -106,6 +106,8 @@ void list_remove(list_head_t **first, list_head_t *node)
 		node->prev->next = node->next;
 	if(node->next)
 		node->next->prev = node->prev;
+	node->prev = NULL;
+	node->next = NULL;
 }
 
 #ifdef KERNEL_DEBUG
