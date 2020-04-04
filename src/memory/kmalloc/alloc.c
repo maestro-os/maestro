@@ -55,6 +55,7 @@ static inline void bin_link(block_t *block)
 {
 	block_t **bin;
 
+	debug_assert(sanity_check(block), "bin_link: bad argument");
 	bin = block_get_bin(block);
 	if((block->next = *bin))
 		block->next->prev = block;
@@ -71,7 +72,7 @@ block_t *kmalloc_alloc_block(const size_t pages)
 	block_t *b;
 	chunk_hdr_t *first_chunk;
 
-	if(pages == 0 || !(b = pages_alloc(pages)))
+	if(pages == 0 || !(b = pages_alloc_zero(pages)))
 		return NULL;
 	bzero(b, BLOCK_HDR_SIZE);
 	b->pages = pages;
@@ -90,6 +91,7 @@ block_t *kmalloc_alloc_block(const size_t pages)
  */
 block_t **block_get_bin(block_t *b)
 {
+	debug_assert(sanity_check(b), "block_get_bin: bad argument");
 	if(b->pages <= SMALL_BLOCK_PAGES)
 		return &small_bin;
 	else if(b->pages <= MEDIUM_BLOCK_PAGES)
@@ -102,6 +104,8 @@ block_t **block_get_bin(block_t *b)
  */
 void kmalloc_free_block(block_t *b)
 {
+	if(!sanity_check(b))
+		return;
 	if(b->prev)
 		b->prev->next = b->next;
 	else if(b == small_bin)
@@ -156,6 +160,7 @@ void bucket_link(free_chunk_t *chunk)
 {
 	free_chunk_t **bucket;
 
+	debug_assert(sanity_check(chunk), "bucket_link: bad argument");
 	if(!(bucket = get_bucket(chunk->hdr.size, 1,
 		block_get_bin(chunk->hdr.block) == &medium_bin)))
 		return;
@@ -172,6 +177,7 @@ void bucket_unlink(free_chunk_t *chunk)
 {
 	size_t i;
 
+	debug_assert(sanity_check(chunk), "bucket_unlink: bad argument");
 	// TODO Check block type instead of checking both small and medium?
 	for(i = 0; i < SMALL_BUCKETS_COUNT; ++i)
 		if(small_buckets[i] == chunk)
@@ -179,9 +185,9 @@ void bucket_unlink(free_chunk_t *chunk)
 	for(i = 0; i < MEDIUM_BUCKETS_COUNT; ++i)
 		if(medium_buckets[i] == chunk)
 			medium_buckets[i] = chunk->next_free;
-	if(chunk->prev_free)
+	if(sanity_check(chunk->prev_free))
 		chunk->prev_free->next_free = chunk->next_free;
-	if(chunk->next_free)
+	if(sanity_check(chunk->next_free))
 		chunk->next_free->prev_free = chunk->prev_free;
 	chunk->prev_free = NULL;
 	chunk->next_free = NULL;
@@ -198,6 +204,7 @@ void split_chunk(chunk_hdr_t *chunk, size_t size)
 	free_chunk_t *new_chunk;
 	size_t l;
 
+	debug_assert(sanity_check(chunk) && size > 0, "split_chunk: bad arguments");
 	size = MAX(ALIGNMENT, size);
 	new_chunk = (free_chunk_t *) ALIGN(CHUNK_DATA(chunk) + size, ALIGNMENT);
 	if(chunk->size <= size + CHUNK_HDR_SIZE + ALIGNMENT)
@@ -209,11 +216,11 @@ void split_chunk(chunk_hdr_t *chunk, size_t size)
 		bucket_unlink((free_chunk_t *) chunk);
 		bucket_link((free_chunk_t *) chunk);
 	}
-	if((new_chunk->hdr.next = (chunk_hdr_t *) chunk->next))
+	if((new_chunk->hdr.next = (chunk_hdr_t *) sanity_check(chunk->next)))
 		new_chunk->hdr.next->prev = (chunk_hdr_t *) new_chunk;
 	if((new_chunk->hdr.prev = (chunk_hdr_t *) chunk))
 		new_chunk->hdr.prev->next = (chunk_hdr_t *) new_chunk;
-	new_chunk->hdr.block = chunk->block;
+	new_chunk->hdr.block = sanity_check(chunk->block);
 	new_chunk->hdr.size = l - (size + CHUNK_HDR_SIZE);
 	new_chunk->hdr.used = 0;
 #ifdef MALLOC_CHUNK_MAGIC
@@ -242,10 +249,12 @@ void merge_chunks(chunk_hdr_t *c)
  */
 void alloc_chunk(free_chunk_t *chunk, const size_t size)
 {
+	debug_assert(sanity_check(chunk) && size > 0, "alloc_chunk: bad arguments");
 #ifdef MALLOC_CHUNK_MAGIC
-	assert(chunk->hdr.magic == _MALLOC_CHUNK_MAGIC, "kmalloc: corrupted chunk");
+	debug_assert(chunk->hdr.magic == _MALLOC_CHUNK_MAGIC,
+		"kmalloc: corrupted chunk");
 #endif
-	assert(!chunk->hdr.used && chunk->hdr.size >= size,
+	debug_assert(!chunk->hdr.used && chunk->hdr.size >= size,
 		"kmalloc: internal error");
 	bucket_unlink(chunk);
 	chunk->hdr.used = 1;
@@ -258,8 +267,9 @@ void alloc_chunk(free_chunk_t *chunk, const size_t size)
  */
 void chunk_assert(chunk_hdr_t *c)
 {
+	debug_assert(sanity_check(c), "alloc_chunk: bad argument");
 #ifdef MALLOC_CHUNK_MAGIC
-	assert(c->magic == MALLOC_CHUNK_MAGIC, "kmalloc: corrupted chunk");
+	debug_assert(c->magic == MALLOC_CHUNK_MAGIC, "kmalloc: corrupted chunk");
 #endif
-	assert(c->used, "kmalloc: pointer was not allocated");
+	debug_assert(c->used, "kmalloc: pointer was not allocated");
 }

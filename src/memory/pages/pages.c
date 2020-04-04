@@ -9,6 +9,8 @@ static cache_t *pages_block_cache;
 
 /*
  * A list of buckets containing free pages blocks ordered by their size.
+ * The index `n` is the order of the block. The minimum size of a block stored
+ * in a bucket is `2^^n`.
  */
 ATTR_BSS
 static list_head_t *free_buckets[BUCKETS_COUNT];
@@ -65,6 +67,7 @@ pages_block_t *get_available_block(const size_t n)
 	list_head_t **bucket, *block;
 	pages_block_t *b;
 
+	debug_assert(n > 0, "get_available_block: bad argument");
 	while(i < BUCKETS_COUNT - 1 && n > POW2(i))
 		++i;
 	while(i < BUCKETS_COUNT - 1 && !free_buckets[i])
@@ -107,6 +110,7 @@ pages_block_t *alloc_block(const size_t n)
 	void *ptr;
 	pages_block_t *b0, *b1;
 
+	debug_assert(n > 0, "alloc_block: bad argument");
 	pages = buddy_get_order(n);
 	if(!(ptr = buddy_alloc(pages)))
 		return NULL;
@@ -141,6 +145,7 @@ void split_block(pages_block_t *b, const size_t n)
 {
 	pages_block_t *new;
 
+	debug_assert(b && n > 0, "split_block: bad arguments");
 	if(b->pages <= n)
 		return;
 	if(!(new = pages_block_alloc(b->ptr + n * PAGE_SIZE, b->pages - n)))
