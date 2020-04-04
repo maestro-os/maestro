@@ -8,12 +8,12 @@
 static cache_t *pages_block_cache;
 
 /*
- * TODO
+ * A list of buckets containing free pages blocks ordered by their size.
  */
 ATTR_BSS
 static list_head_t *free_buckets[BUCKETS_COUNT];
 /*
- * TODO
+ * Hash map containing used pages blocks.
  */
 ATTR_BSS
 static list_head_t *used_map[HASH_MAP_SIZE];
@@ -49,9 +49,9 @@ static void link_block(pages_block_t *b)
 	list_head_t **bucket;
 
 	if(b->used)
-		bucket = used_map + ((uintptr_t) b->ptr % HASH_MAP_SIZE);
+		bucket = &used_map[(uintptr_t) b->ptr % HASH_MAP_SIZE];
 	else
-		bucket = free_buckets + get_bucket_index(b->pages);
+		bucket = &free_buckets[get_bucket_index(b->pages)];
 	list_insert_front(bucket, &b->blocks_node);
 }
 
@@ -101,24 +101,35 @@ static pages_block_t *pages_block_alloc(void *ptr, const size_t pages)
  * The block of memory shall be at least `n` pages large and shall be marked as
  * used.
  */
-// TODO Currently bugged! Returned object is not marked as used
 pages_block_t *alloc_block(const size_t n)
 {
 	size_t pages;
 	void *ptr;
-	pages_block_t *b;
+	pages_block_t *b0, *b1;
 
 	pages = buddy_get_order(n);
 	if(!(ptr = buddy_alloc(pages)))
 		return NULL;
-	// TODO If block is too large, allocate two objects and mark the first one as used
-	if(!(b = pages_block_alloc(ptr, pages)))
+	if(!(b0 = pages_block_alloc(ptr, n)))
 	{
 		buddy_free(ptr, pages);
 		return NULL;
 	}
-	link_block(b);
-	return b;
+	if(POW2(pages) > n)
+	{
+		if(!(b1 = pages_block_alloc(ptr, POW2(pages) - n)))
+		{
+			// TODO Remove `b0`
+			buddy_free(ptr, pages);
+			return NULL;
+		}
+		b1->used = 0;
+		link_block(b1);
+		list_insert_after(&b0->buddies_node, &b1->buddies_node);
+	}
+	b0->used = 1;
+	link_block(b0);
+	return b0;
 }
 
 /*
@@ -133,10 +144,10 @@ void split_block(pages_block_t *b, const size_t n)
 	if(b->pages <= n)
 		return;
 	if(!(new = pages_block_alloc(b->ptr + n * PAGE_SIZE, b->pages - n)))
-		return; // TODO Error?
+		return; // TODO Error
 	b->pages = n;
-	list_insert_after(&b->buddies_node, &new->buddies_node);
 	link_block(new);
+	list_insert_after(&b->buddies_node, &new->buddies_node);
 }
 
 /*
@@ -156,9 +167,20 @@ pages_block_t *get_used_block(void *ptr)
 	if(!b)
 		return NULL;
 	block = CONTAINER_OF(b, pages_block_t, blocks_node);
-	if(!block->used)
-		return NULL;
+	debug_assert(block->used, "Unused pages block in used blocks hash map");
 	return block;
+}
+
+/*
+ * Unlinks the given used block from its bucket.
+ */
+static void unlink_used_block(pages_block_t *b)
+{
+	list_head_t **bucket;
+
+	debug_assert(sanity_check(b) && b->used, "unlink_used_block: bad argument");
+	bucket = &used_map[(uintptr_t) b->ptr % HASH_MAP_SIZE];
+	list_remove(bucket, &b->blocks_node);
 }
 
 /*
@@ -172,6 +194,7 @@ void free_block(pages_block_t *b)
 
 	if(!sanity_check(b) || !b->used)
 		return;
+	unlink_used_block(b);
 	b->used = 0;
 	link_block(b);
 	l = &b->blocks_node;

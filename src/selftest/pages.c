@@ -67,6 +67,19 @@ static void test3(void)
 	ASSERT(1);
 }
 
+/*static void test4(void)
+{
+	void *p;
+
+	while(1)
+	{
+		if(!(p = pages_alloc(128)))
+			break;
+		memset(p, 0xff, PAGE_SIZE * 128);
+	}
+	ASSERT(1);
+}*/
+
 void test_pages(void)
 {
 	printf("%s: ", __func__);
@@ -74,5 +87,6 @@ void test_pages(void)
 	test1();
 	test2();
 	test3();
+	//test4();
 	printf("\n");
 }
