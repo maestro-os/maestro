@@ -278,10 +278,14 @@ uint32_t vmem_page_flags(vmem_t vmem, void *ptr);
 vmem_t vmem_clone(vmem_t vmem);
 void vmem_destroy(vmem_t vmem);
 
-extern void paging_enable(vmem_t vmem);
-extern void tlb_reload(void);
+extern uint32_t cr0_get(void);
+extern void cr0_set(uint32_t flags);
+extern void cr0_clear(uint32_t flags);
 extern void *cr2_get(void);
 extern void *cr3_get(void);
+
+extern void paging_enable(vmem_t vmem);
 extern void paging_disable(void);
+extern void tlb_reload(void);
 
 #endif

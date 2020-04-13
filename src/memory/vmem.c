@@ -74,6 +74,26 @@ static void protect_kernel(void)
 }
 
 /*
+ * Protects the tables inside of the given directory.
+ */
+static void protect_tables(vmem_t vmem)
+{
+	size_t i;
+	void *table_ptr;
+	uint32_t *table_entry;
+
+	for(i = 0; i < 1024; ++i)
+	{
+		if(!(vmem[i] & PAGING_TABLE_PRESENT))
+			continue;
+		table_ptr = (void *) (vmem[i] & PAGING_ADDR_MASK);
+		if(!(table_entry = vmem_resolve(vmem, table_ptr)))
+			continue;
+		*table_entry &= ~PAGING_PAGE_WRITE;
+	}
+}
+
+/*
  * Creates the kernel's page directory.
  */
 ATTR_COLD
@@ -85,6 +105,7 @@ void vmem_kernel(void)
 	vmem_identity_range(kernel_vmem, (void *) PAGE_SIZE, mem_info.memory_end,
 		PAGING_PAGE_WRITE);
 	protect_kernel();
+	protect_tables(kernel_vmem);
 	paging_enable(kernel_vmem);
 	return;
 
@@ -102,6 +123,7 @@ void vmem_identity(vmem_t vmem, void *page, const int flags)
 	vmem_map(vmem, page, page, flags);
 }
 
+// TODO Optimize
 /*
  * Identity maps a range of pages.
  */
@@ -110,7 +132,7 @@ void vmem_identity_range(vmem_t vmem, void *from, void *to, int flags)
 {
 	void *ptr;
 
-	if(!vmem)
+	if(!sanity_check(vmem))
 		return;
 	for(ptr = from; ptr < to; ptr += PAGE_SIZE)
 	{
@@ -132,6 +154,8 @@ uint32_t *vmem_resolve(vmem_t vmem, void *ptr)
 	uintptr_t table, page;
 	vmem_t table_obj;
 
+	if(!sanity_check(vmem))
+		return NULL;
 	table = ADDR_TABLE(ptr);
 	page = ADDR_PAGE(ptr);
 	if(!(vmem[table] & PAGING_TABLE_PRESENT))
@@ -139,7 +163,7 @@ uint32_t *vmem_resolve(vmem_t vmem, void *ptr)
 	table_obj = (void *) (vmem[table] & PAGING_ADDR_MASK);
 	if(!(table_obj[page] & PAGING_PAGE_PRESENT))
 		return NULL;
-	return table_obj + page;
+	return &table_obj[page];
 }
 
 /*
@@ -151,7 +175,6 @@ int vmem_is_mapped(vmem_t vmem, void *ptr)
 	return (vmem_resolve(vmem, ptr) != NULL);
 }
 
-// TODO Reload tlb after mapping?
 /*
  * Maps the given physical address to the given virtual address with the given
  * flags.
@@ -161,9 +184,10 @@ void vmem_map(vmem_t vmem, void *physaddr, void *virtaddr, const int flags)
 {
 	size_t t;
 	vmem_t v;
+	uint32_t lock;
 
 	errno = 0;
-	if(!vmem)
+	if(!sanity_check(vmem))
 		return;
 	t = ADDR_TABLE(virtaddr);
 	if(!(vmem[t] & PAGING_TABLE_PRESENT))
@@ -174,7 +198,11 @@ void vmem_map(vmem_t vmem, void *physaddr, void *virtaddr, const int flags)
 	}
 	vmem[t] |= PAGING_TABLE_PRESENT | flags;
 	v = (void *) (vmem[t] & PAGING_ADDR_MASK);
+	lock = cr0_get() & 0x10000;
+	cr0_clear(lock);
 	v[ADDR_PAGE(virtaddr)] = (uintptr_t) physaddr | PAGING_PAGE_PRESENT | flags;
+	cr0_set(lock);
+	tlb_reload();
 }
 
 /*
@@ -186,7 +214,7 @@ void vmem_map_range(vmem_t vmem, void *physaddr, void *virtaddr,
 {
 	size_t i = 0;
 
-	if(!vmem)
+	if(!sanity_check(vmem))
 		return;
 	while(i < pages)
 	{
@@ -209,17 +237,23 @@ void vmem_unmap(vmem_t vmem, void *virtaddr)
 {
 	size_t t;
 	vmem_t v;
+	uint32_t lock;
 
-	if(!vmem)
+	if(!sanity_check(vmem))
 		return;
 	t = ADDR_TABLE(virtaddr);
 	if(!(vmem[t] & PAGING_TABLE_PRESENT))
 		return;
 	v = (void *) (vmem[t] & PAGING_ADDR_MASK);
+	lock = cr0_get() & 0x10000;
+	cr0_clear(lock);
 	v[ADDR_PAGE(virtaddr)] = 0;
+	cr0_set(lock);
 	// TODO If page table is empty, free it
+	tlb_reload();
 }
 
+// TODO Optimize
 /*
  * Unmaps the given virtual memory range.
  */
@@ -227,7 +261,7 @@ void vmem_unmap_range(vmem_t vmem, void *virtaddr, const size_t pages)
 {
 	size_t i = 0;
 
-	if(!vmem)
+	if(!sanity_check(vmem))
 		return;
 	while(i < pages)
 	{
@@ -246,7 +280,7 @@ int vmem_contains(vmem_t vmem, const void *ptr, const size_t size)
 {
 	void *i;
 
-	if(!vmem)
+	if(!sanity_check(vmem))
 		return 0;
 	i = DOWN_ALIGN(ptr, PAGE_SIZE);
 	while(i < ptr + size)
@@ -267,7 +301,7 @@ void *vmem_translate(vmem_t vmem, void *ptr)
 {
 	uint32_t *entry;
 
-	if(!vmem || !(entry = vmem_resolve(vmem, ptr)))
+	if(!sanity_check(vmem) || !sanity_check(entry = vmem_resolve(vmem, ptr)))
 		return NULL;
 	return (void *) ((*entry & PAGING_ADDR_MASK) | ADDR_REMAIN(ptr));
 }
@@ -276,11 +310,11 @@ void *vmem_translate(vmem_t vmem, void *ptr)
  * Resolves the entry for the given virtual address and returns its flags.
  */
 ATTR_HOT
-uint32_t vmem_get_entry(vmem_t vmem, void *ptr)
+uint32_t vmem_page_flags(vmem_t vmem, void *ptr)
 {
 	uint32_t *entry;
 
-	if(!vmem || !(entry = vmem_resolve(vmem, ptr)))
+	if(!sanity_check(vmem) || !sanity_check(entry = vmem_resolve(vmem, ptr)))
 		return 0;
 	return *entry & PAGING_FLAGS_MASK;
 }
@@ -293,24 +327,28 @@ static vmem_t clone_page_table(vmem_t from)
 {
 	vmem_t v;
 
-	if(!from || !(v = new_vmem_obj()))
+	sanity_check(from);
+	if(!(v = new_vmem_obj()))
 		return NULL;
 	memcpy(v, from, PAGE_SIZE);
 	return v;
 }
 
 /*
- * Clones the given page directory.
+ * Clones the given page directory and tables in it.
  */
 ATTR_HOT
 vmem_t vmem_clone(vmem_t vmem)
 {
 	vmem_t v;
+	uint32_t lock;
 	size_t i;
 	void *old_table, *new_table;
 
-	if(!vmem || !(v = vmem_init()))
+	if(!sanity_check(vmem) || !(v = vmem_init()))
 		return NULL;
+	lock = cr0_get() & 0x10000;
+	cr0_clear(lock);
 	errno = 0;
 	for(i = 0; i < 1024; ++i)
 	{
@@ -326,10 +364,12 @@ vmem_t vmem_clone(vmem_t vmem)
 		else
 			v[i] = vmem[i];
 	}
+	cr0_set(lock);
 	return v;
 
 fail:
 	vmem_destroy(v);
+	cr0_set(lock);
 	return NULL;
 }
 
@@ -341,7 +381,7 @@ void vmem_destroy(vmem_t vmem)
 {
 	size_t i;
 
-	if(!vmem)
+	if(!sanity_check(vmem))
 		return;
 	for(i = 0; i < 1024; ++i)
 	{
