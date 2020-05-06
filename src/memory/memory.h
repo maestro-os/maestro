@@ -116,7 +116,8 @@
  */
 # define PAGE_FAULT_USER		0b00100
 /*
- * x86 page fault flag. TODO
+ * x86 page fault flag. If set, one or more page directory entries contain
+ * reserved bits which are set.
  */
 # define PAGE_FAULT_RESERVED	0b01000
 /*
@@ -130,18 +131,20 @@
  */
 typedef struct
 {
-	/* TODO */
+	/* Size of the Multiboot2 memory map */
 	size_t memory_maps_size;
-	/* TODO */
+	/* Size of an entry in the Multiboot2 memory map */
 	size_t memory_maps_entry_size;
-	/* TODO */
+	/* Pointer to the Multiboot2 memory map */
 	void *memory_maps;
 
-	/* TODO */
+	/* Pointer to the end of the memory */
 	void *memory_end;
-	/* TODO */
-	void *heap_begin, *heap_end;
-	/* TODO */
+	/* Pointer to the beginning of allocatable memory */
+	void *heap_begin;
+	/* Pointer to the end of allocatable memory */
+	void *heap_end;
+	/* The amount total of allocatable memory */
 	size_t available_memory;
 } memory_info_t;
 
@@ -152,12 +155,12 @@ typedef struct
 {
 	/* The amount of reserved memory that the kernel cannot use */
 	size_t reserved;
+	/* The amount of bad memory */
+	size_t bad_ram;
 	/* The amount of memory used by the kernel itself */
 	size_t system;
 	/* The amount of allocated memory (kernel allocations included) */
 	size_t allocated;
-	/* The amount of used swap memory */
-	size_t swap;
 	/* The amount of remaining free memory */
 	size_t free;
 } mem_usage_t;
@@ -263,13 +266,13 @@ void mem_space_destroy(mem_space_t *space);
 
 vmem_t vmem_init(void);
 void vmem_kernel(void);
-void vmem_identity(vmem_t vmem, void *page, int flags);
-void vmem_identity_range(vmem_t vmem, void *from, void *to, int flags);
 uint32_t *vmem_resolve(vmem_t vmem, void *ptr);
 int vmem_is_mapped(vmem_t vmem, void *ptr);
 void vmem_map(vmem_t vmem, void *physaddr, void *virtaddr, int flags);
 void vmem_map_range(vmem_t vmem, void *physaddr, void *virtaddr,
 	size_t pages, int flags);
+void vmem_identity(vmem_t vmem, void *page, int flags);
+void vmem_identity_range(vmem_t vmem, void *from, size_t pages, int flags);
 void vmem_unmap(vmem_t vmem, void *virtaddr);
 void vmem_unmap_range(vmem_t vmem, void *virtaddr, size_t pages);
 int vmem_contains(vmem_t vmem, const void *ptr, size_t size);
