@@ -129,7 +129,7 @@ pages_block_t *alloc_block(const size_t n)
 		}
 		b1->used = 0;
 		link_block(b1);
-		list_insert_after(&b0->buddies_node, &b1->buddies_node);
+		list_insert_after(NULL, &b0->buddies_node, &b1->buddies_node);
 	}
 	b0->used = 1;
 	link_block(b0);
@@ -152,7 +152,7 @@ void split_block(pages_block_t *b, const size_t n)
 		return; // TODO Error
 	b->pages = n;
 	link_block(new);
-	list_insert_after(&b->buddies_node, &new->buddies_node);
+	list_insert_after(NULL, &b->buddies_node, &new->buddies_node);
 }
 
 /*

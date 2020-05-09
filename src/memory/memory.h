@@ -29,6 +29,11 @@
  * Memory region flag telling that the region is a userspace region.
  */
 # define MEM_REGION_FLAG_USER		0b0100
+/*
+ * Memory region flag telling that the region has the same virtual and physical
+ * addresses.
+ */
+# define MEM_REGION_FLAG_IDENTITY	0b1000
 
 /*
  * x86 paging flag. If set, pages are 4 MB long.
@@ -173,12 +178,12 @@ typedef struct mem_space mem_space_t;
 typedef struct mem_region
 {
 	/* Linked list of memory regions in the current memory space. */
-	struct mem_region *next;
+	list_head_t list;
 	/*
 	 * Double-linked list of memory regions that share the same physical space.
 	 * Elements in this list might not be in the same memory space.
 	 */
-	struct mem_region *next_shared, *prev_shared;
+	list_head_t shared_list;
 	/* The node of the tree the structure is stored in. */
 	avl_tree_t node;
 	/* The memory space associated with the region. */
@@ -200,9 +205,11 @@ typedef struct mem_region
 typedef struct mem_gap
 {
 	/* Double-linked list of memory gaps in the current memory space. */
-	struct mem_gap *next, *prev;
+	list_head_t list;
 	/* The node of the tree the structure is stored in */
 	avl_tree_t node;
+	/* The memory space associated with the gap. */
+	mem_space_t *mem_space;
 
 	/* The beginning address of the gap. */
 	void *begin;
@@ -220,13 +227,13 @@ typedef uint32_t *vmem_t;
  */
 struct mem_space
 {
-	/* Linked list of regions (used addresses) */
-	mem_region_t *regions;
-	/* Linked list of gaps (free addresses) */
-	mem_gap_t *gaps;
-	/* Binary tree of regions */
+	/* Linked list of regions (used zones) */
+	list_head_t *regions;
+	/* Linked list of gaps (free zones, ordered by growing pointer) */
+	list_head_t *gaps;
+	/* Binary tree of regions (ordered by pointer) */
 	avl_tree_t *used_tree;
-	/* Binary tree of gaps */
+	/* Binary tree of gaps (ordered by size in pages) */
 	avl_tree_t *free_tree;
 
 	/* The spinlock for this memory space. */
@@ -257,8 +264,8 @@ void print_mem_usage(void);
 mem_space_t *mem_space_init(void);
 mem_space_t *mem_space_clone(mem_space_t *space);
 void *mem_space_alloc(mem_space_t *space, size_t pages, int flags);
-void mem_space_free(mem_space_t *space, void *ptr, size_t pages);
-void mem_space_free_stack(mem_space_t *space, void *stack);
+int mem_space_free(mem_space_t *space, void *ptr, size_t pages);
+int mem_space_free_stack(mem_space_t *space, void *stack);
 int mem_space_can_access(mem_space_t *space, const void *ptr, size_t size,
 	int write);
 int mem_space_handle_page_fault(mem_space_t *space, void *ptr, int error_code);
@@ -277,8 +284,10 @@ void vmem_unmap(vmem_t vmem, void *virtaddr);
 void vmem_unmap_range(vmem_t vmem, void *virtaddr, size_t pages);
 int vmem_contains(vmem_t vmem, const void *ptr, size_t size);
 void *vmem_translate(vmem_t vmem, void *ptr);
+uint32_t vmem_get_entry(vmem_t vmem, void *ptr);
 uint32_t vmem_page_flags(vmem_t vmem, void *ptr);
 vmem_t vmem_clone(vmem_t vmem);
+void vmem_flush(vmem_t vmem);
 void vmem_destroy(vmem_t vmem);
 
 extern void paging_enable(vmem_t vmem);

@@ -42,9 +42,8 @@
  */
 
 // TODO Spinlock
-// TODO Check if linked lists are useful
-// TODO Use pages allocator instead of buddy allocator?
-// TODO Allocate whole regions at once instead of 1 page?
+// TODO Check lists order
+// TODO Remove pages allocator calls
 
 /*
  * The cache for the `mem_space` structure.
@@ -76,24 +75,344 @@ static void global_init(void)
 }
 
 /*
+ * Creates a memory gap with the given values for the given memory space. The
+ * gap is not inserted in any data structure.
+ */
+static mem_gap_t *gap_create(mem_space_t *space,
+	void *begin, const size_t pages)
+{
+	mem_gap_t *gap;
+
+	debug_assert(sanity_check(space), "Invalid memory space");
+	debug_assert(begin < begin + pages * PAGE_SIZE, "Invalid gap");
+	if(!(gap = cache_alloc(mem_gap_cache)))
+		return NULL;
+	gap->begin = begin;
+	gap->pages = pages;
+	gap->mem_space = space;
+	gap->node.value = pages;
+	return gap;
+}
+
+/*
+ * Clones the given gap for the given destination space. The gap is not inserted
+ * in any data structure.
+ */
+static mem_gap_t *gap_clone(mem_space_t *dest, mem_gap_t *g)
+{
+	mem_gap_t *new;
+
+	if(!sanity_check(new = gap_create(dest, g->begin, g->pages)))
+		return NULL;
+	return new;
+}
+
+/*
+ * Creates a gap of the specified size at the specified position and/or
+ * extend/merge gaps around.
+ */
+static void extend_gaps(void *begin, const size_t pages)
+{
+	// TODO
+	(void) begin;
+	(void) pages;
+}
+
+/*
  * Creates the default memory gaps for the given memory space.
  */
 static int init_gaps(mem_space_t *s)
 {
-	if(!(s->gaps = cache_alloc(mem_gap_cache)))
+	size_t gap_pages;
+	void *gap_begin;
+
+	// TODO
+	/*
+	list_insert_front(&space->gaps, &gap->list);
+	avl_tree_insert(&space->free_tree, &gap->node, avl_val_cmp);
+	*/
+
+	debug_assert(sanity_check(s), "Invalid memory space");
+	gap_begin = (void *) 0x1000;
+	gap_pages = (uintptr_t) KERNEL_BEGIN / PAGE_SIZE - 1;
+	if(!gap_create(s, gap_begin, gap_pages))
 		return 0;
-	s->gaps->begin = (void *) 0x1000;
-	s->gaps->pages = 0xffffe;
-	// TODO Kernel code/syscall stub must not be inside a gap
-	errno = 0;
-	s->gaps->node.value = s->gaps->pages;
-	avl_tree_insert(&s->free_tree, &s->gaps->node, avl_val_cmp);
-	if(errno)
+	gap_begin = mem_info.heap_begin;
+	gap_pages = (size_t) KERNEL_BEGIN
+		- CEIL_DIVISION((uintptr_t) gap_begin, PAGE_SIZE);
+	if(!gap_create(s, gap_begin, gap_pages))
+		return 0;
+	return 1;
+}
+
+/*
+ * Unlinks and frees the given gap.
+ */
+static void gap_free(mem_gap_t *gap)
+{
+	mem_space_t *mem_space;
+
+	debug_assert(sanity_check(gap), "Invalid gap");
+	mem_space = gap->mem_space;
+	debug_assert(sanity_check(mem_space), "Invalid memory space");
+	list_remove(&mem_space->gaps, &gap->list);
+	avl_tree_remove(&mem_space->free_tree, &gap->node);
+	cache_free(mem_gap_cache, gap);
+}
+
+/*
+ * Removes the gap structure in the given list node.
+ */
+static void list_free_gap(list_head_t *l)
+{
+	debug_assert(sanity_check(l), "Invalid list");
+	gap_free(CONTAINER_OF(l, mem_gap_t, list));
+}
+
+/*
+ * Removes all gaps in the given list.
+ * The pointer to the list has to be considered invalid after calling this
+ * funciton.
+ */
+static void free_gaps(list_head_t *list)
+{
+	debug_assert(sanity_check(list), "Invalid list");
+	list_foreach(list, list_free_gap);
+}
+
+/*
+ * Creates a region for the given memory space. The region is not inserted in
+ * any data structure.
+ */
+static mem_region_t *region_create(mem_space_t *space, const char flags,
+	void *begin, const size_t pages, const size_t used_pages)
+{
+	mem_region_t *region;
+
+	debug_assert(sanity_check(space), "Invalid memory space");
+	if(!sanity_check(region = cache_alloc(mem_region_cache)))
+		return NULL;
+	region->mem_space = space;
+	region->flags = flags;
+	region->begin = begin;
+	region->pages = pages;
+	region->used_pages = used_pages;
+	region->node.value = (avl_value_t) region->begin;
+	return region;
+}
+
+/*
+ * Clones the given region for the given destination space and links it to the
+ * shared list.
+ */
+static mem_region_t *region_clone(mem_space_t *space, mem_region_t *r)
+{
+	mem_region_t *new;
+
+	if(!sanity_check(new = region_create(space, r->flags, r->begin,
+		r->pages, r->used_pages)))
+		return NULL;
+	// TODO Disable write here?
+	list_insert_after(NULL, &r->shared_list, &new->shared_list);
+	return new;
+}
+
+static int region_is_shared(mem_region_t *region)
+{
+	debug_assert(sanity_check(region), "Invalid region");
+	return (region->shared_list.prev || region->shared_list.next);
+}
+
+/*
+ * Frees physical pages for the given region.
+ */
+static void region_phys_free(mem_region_t *r)
+{
+	void *page_dir;
+	void *i, *ptr;
+	uint32_t *entry;
+
+	debug_assert(sanity_check(r), "Invalid region");
+	page_dir = r->mem_space->page_dir;
+	debug_assert(sanity_check(page_dir), "Invalid page directiory");
+	i = r->begin;
+	while(i < r->begin + (r->pages * PAGE_SIZE))
 	{
-		cache_free(mem_gap_cache, s->gaps);
-		return 0;
+		entry = vmem_resolve(page_dir, i);
+		debug_assert(sanity_check(entry), "Invalid paging entry");
+		ptr = (void *) (*entry & PAGING_ADDR_MASK);
+		debug_assert(sanity_check(ptr), "Invalid physical page");
+		buddy_free(ptr, 0);
+		*entry = 0;
+		vmem_flush(page_dir);
+		i += PAGE_SIZE;
+	}
+}
+
+/*
+ * Converts region space flags into paging flags.
+ */
+static int convert_flags(const int reg_flags)
+{
+	int flags = 0;
+
+	if(reg_flags & MEM_REGION_FLAG_WRITE)
+		flags |= PAGING_PAGE_WRITE;
+	if(reg_flags & MEM_REGION_FLAG_USER)
+		flags |= PAGING_PAGE_USER;
+	return flags;
+}
+
+/*
+ * Allocates physical pages for the given region.
+ */
+static int region_phys_alloc(mem_region_t *r)
+{
+	void *page_dir;
+	void *i, *ptr;
+
+	debug_assert(sanity_check(r), "Invalid region");
+	page_dir = r->mem_space->page_dir;
+	debug_assert(sanity_check(page_dir), "Invalid page directiory");
+	i = r->begin;
+	while(i < r->begin + (r->pages * PAGE_SIZE))
+	{
+		if(!(ptr = buddy_alloc_zero(0)))
+		{
+			region_phys_free(r);
+			return 0;
+		}
+		vmem_map(page_dir, ptr, i, convert_flags(r->flags));
+		i += PAGE_SIZE;
 	}
 	return 1;
+}
+
+/*
+ * Frees the given region, unlinks it and frees physical memory if needed.
+ */
+static void region_free(mem_region_t *region)
+{
+	mem_space_t *mem_space;
+
+	debug_assert(sanity_check(region), "Invalid region");
+	mem_space = region->mem_space;
+	debug_assert(sanity_check(mem_space), "Invalid memory space");
+	if(region_is_shared(region))
+		list_remove(NULL, &region->shared_list);
+	else
+		region_phys_free(region);
+	list_remove(&mem_space->regions, &region->list);
+	avl_tree_remove(&mem_space->used_tree, &region->node);
+	cache_free(mem_region_cache, region);
+}
+
+/*
+ * Frees the region structure in the given list node.
+ */
+static void list_free_region(list_head_t *l)
+{
+	debug_assert(sanity_check(l), "Invalid list");
+	region_free(CONTAINER_OF(l, mem_region_t, list));
+}
+
+/*
+ * Frees all regions in the given list.
+ * The pointer to the list has to be considered invalid after calling this
+ * funciton.
+ */
+static void free_regions(list_head_t *list)
+{
+	debug_assert(sanity_check(list), "Invalid list");
+	list_foreach(list, list_free_region);
+}
+
+/*
+ * Clones the given regions to the given destination memory space.
+ * Non userspace regions will not be cloned.
+ */
+static int clone_regions(mem_space_t *dest, list_head_t *regions)
+{
+	list_head_t *l;
+	mem_region_t *r, *new;
+	list_head_t *last = NULL;
+
+	// TODO
+	/*
+	list_insert_front(&space->regions, &region->list);
+	avl_tree_insert(&space->used_tree, &region->node, avl_val_cmp);
+	*/
+
+	for(l = regions; l; l = l->next)
+	{
+		r = CONTAINER_OF(l, mem_region_t, list);
+		if(!(r->flags & MEM_REGION_FLAG_USER))
+		{
+			// TODO Extend gaps around
+			continue;
+		}
+		if(!sanity_check(new = region_clone(dest, r)))
+		{
+			free_regions(dest->regions);
+			dest->regions = NULL;
+			return 0;
+		}
+		list_insert_after(&dest->regions, last, &new->list);
+		last = &new->list;
+	}
+	return 1;
+}
+
+/*
+ * Clones the given gaps list to the given destination memory space.
+ */
+static int clone_gaps(mem_space_t *dest, list_head_t *gaps)
+{
+	list_head_t *l;
+	mem_gap_t *g, *new;
+	list_head_t *last = NULL;
+
+	// TODO
+	/*
+	list_insert_front(&space->gaps, &gap->list);
+	avl_tree_insert(&space->free_tree, &gap->node, avl_val_cmp);
+	*/
+
+	for(l = gaps; l; l = l->next)
+	{
+		g = CONTAINER_OF(l, mem_gap_t, list);
+		if(!sanity_check(new = gap_clone(dest, g)))
+		{
+			free_gaps(dest->gaps);
+			dest->gaps = NULL;
+			return 0;
+		}
+		list_insert_after(&dest->gaps, last, &new->list);
+		last = &new->list;
+	}
+	return 1;
+}
+
+/*
+ * Disables write permission on the given region in the page directory link to
+ * its memory space.
+ */
+static void regions_disable_write(mem_region_t *r)
+{
+	void *page_dir;
+	void *ptr;
+	size_t i;
+	uint32_t *entry;
+
+	debug_assert(sanity_check(r), "Invalid region");
+	page_dir = r->mem_space->page_dir;
+	debug_assert(sanity_check(page_dir), "Invalid page directory");
+	ptr = r->begin;
+	for(i = 0; i < r->pages; ++i)
+	{
+		if((entry = vmem_resolve(page_dir, ptr + (i * PAGE_SIZE))))
+			*entry &= ~PAGING_PAGE_WRITE;
+	}
 }
 
 /*
@@ -109,251 +428,18 @@ mem_space_t *mem_space_init(void)
 		global_init();
 		init = 1;
 	}
-	if(!(s = cache_alloc(mem_space_cache)))
+	if(!sanity_check(s = cache_alloc(mem_space_cache)))
 		return NULL;
 	if(!init_gaps(s))
 		goto fail;
-	if(!(s->page_dir = vmem_init()))
+	if(!sanity_check(s->page_dir = vmem_init()))
 		goto fail;
 	return s;
 
 fail:
-	cache_free(mem_gap_cache, s->gaps); // TODO Might be several gaps
+	free_gaps(s->gaps);
 	cache_free(mem_space_cache, s);
 	return NULL;
-}
-
-/*
- * Clones the given region for the given destination space.
- */
-static mem_region_t *clone_region(mem_space_t *space, mem_region_t *r)
-{
-	mem_region_t *new;
-
-	if(!(new = cache_alloc(mem_region_cache)))
-		return NULL;
-	new->mem_space = space;
-	new->flags = r->flags;
-	new->begin = r->begin;
-	new->pages = r->pages;
-	new->used_pages = r->used_pages;
-	if((new->next_shared = r->next_shared))
-		r->next_shared->prev_shared = new;
-	if((new->prev_shared = r))
-		r->next_shared = new;
-	return new;
-}
-
-/*
- * Frees the given region, unlinks it from shared linked list and frees physical
- * memory if needed.
- */
-static void region_free(mem_region_t *region)
-{
-	// TODO Extend gaps around
-	if(!region->prev_shared && !region->next_shared)
-		pages_free(region->begin, region->pages * PAGE_SIZE);
-	else
-	{
-		if(region->prev_shared)
-			region->prev_shared->next_shared = region->next_shared;
-		if(region->next_shared)
-			region->next_shared->prev_shared = region->prev_shared;
-	}
-	cache_free(mem_region_cache, region);
-}
-
-/*
- * Frees the given region list.
- */
-static void remove_regions(mem_region_t *r)
-{
-	mem_region_t *next;
-
-	while(r)
-	{
-		next = r->next;
-		region_free(r);
-		r = next;
-	}
-}
-
-/*
- * Clones the given regions to the given destination memory space.
- * Non userspace regions will not be cloned.
- */
-static int clone_regions(mem_space_t *dest, mem_region_t *src)
-{
-	mem_region_t *r;
-	mem_region_t *new;
-	mem_region_t *last = NULL;
-
-	for(r = src; r; r = r->next)
-	{
-		if(!(r->flags & MEM_REGION_FLAG_USER))
-		{
-			// TODO Extend gaps around
-			continue;
-		}
-		if(!(new = clone_region(dest, r)))
-		{
-			remove_regions(dest->regions);
-			dest->regions = NULL;
-			return 0;
-		}
-		if(last)
-		{
-			last->next = new;
-			last = new;
-		}
-		else
-			last = dest->regions = new;
-	}
-	return 1;
-}
-
-/*
- * TODO
- */
-static void gap_free(mem_gap_t *gap)
-{
-	// TODO
-	(void) gap;
-}
-
-/*
- * Frees the given gaps list.
- */
-static void remove_gaps(mem_gap_t *g)
-{
-	mem_gap_t *next;
-
-	while(g)
-	{
-		next = g->next;
-		gap_free(g);
-		g = next;
-	}
-}
-
-/*
- * Clones the given gaps list to the given destination memory space.
- */
-static int clone_gaps(mem_space_t *dest, mem_gap_t *src)
-{
-	mem_gap_t *g;
-	mem_gap_t *new;
-	mem_gap_t *last = NULL;
-
-	g = src;
-	while(g)
-	{
-		if(!(new = cache_alloc(mem_gap_cache)))
-		{
-			remove_gaps(dest->gaps);
-			dest->gaps = NULL;
-			return 0;
-		}
-		new->prev = last;
-		new->begin = g->begin;
-		new->pages = g->pages;
-		if(last)
-		{
-			last->next = new;
-			last = new;
-		}
-		else
-			last = dest->gaps = new;
-		g = g->next;
-	}
-	return 1;
-}
-
-// TODO Remove, build trees during cloning of regions and gaps
-static int build_trees(mem_space_t *space)
-{
-	mem_region_t *r;
-	mem_gap_t *g;
-
-	r = space->regions;
-	errno = 0;
-	while(r)
-	{
-		r->node.value = (avl_value_t) r->begin;
-		avl_tree_insert(&space->used_tree, &r->node, avl_val_cmp);
-		if(errno)
-			return 0;
-		r = r->next;
-	}
-	g = space->gaps;
-	while(g)
-	{
-		g->node.value = (avl_value_t) g->pages;
-		avl_tree_insert(&space->free_tree, &g->node, avl_val_cmp);
-		if(errno)
-			return 0;
-		g = g->next;
-	}
-	return 1;
-}
-
-/*
- * Disables writing on the given region and x86 paging directory.
- */
-static void regions_disable_write(mem_region_t *r, vmem_t page_dir)
-{
-	void *ptr;
-	size_t i;
-	uint32_t *entry;
-
-	for(; r; r = r->next)
-	{
-		if(!(r->flags & MEM_REGION_FLAG_USER))
-			continue;
-		if(!(r->flags & MEM_REGION_FLAG_WRITE))
-			continue;
-		ptr = r->begin;
-		for(i = 0; i < r->pages; ++i)
-		{
-			if((entry = vmem_resolve(page_dir, ptr + (i * PAGE_SIZE))))
-				*entry &= ~PAGING_PAGE_WRITE;
-		}
-	}
-}
-
-/*
- * Converts region space flags into x86 paging flags.
- */
-static int convert_flags(const int reg_flags)
-{
-	int flags = 0;
-
-	if(reg_flags & MEM_REGION_FLAG_WRITE)
-		flags |= PAGING_PAGE_WRITE;
-	if(reg_flags & MEM_REGION_FLAG_USER)
-		flags |= PAGING_PAGE_USER;
-	return flags;
-}
-
-/*
- * Preallocates the kernel stack associated with the given space and region.
- */
-static int preallocate_kernel_space(mem_space_t *space, mem_region_t *r)
-{
-	void *i, *ptr;
-
-	i = r->begin;
-	while(i < r->begin + r->pages * PAGE_SIZE)
-	{
-		if(!(ptr = buddy_alloc_zero(0)))
-		{
-			// TODO Free all
-			return 0;
-		}
-		vmem_map(space->page_dir, ptr, i, convert_flags(r->flags));
-		i += PAGE_SIZE;
-	}
-	return 1;
 }
 
 /*
@@ -364,25 +450,24 @@ static int preallocate_kernel_space(mem_space_t *space, mem_region_t *r)
 mem_space_t *mem_space_clone(mem_space_t *space)
 {
 	mem_space_t *s;
+	list_head_t *r;
 
-	if(!space || !(s = cache_alloc(mem_space_cache)))
+	if(!space || !sanity_check(s = cache_alloc(mem_space_cache)))
 		return NULL;
 	spin_lock(&space->spinlock);
 	if(!clone_regions(s, space->regions))
 		goto fail;
 	if(!clone_gaps(s, space->gaps))
 		goto fail;
-	if(!build_trees(s))
-		goto fail;
-	regions_disable_write(space->regions, space->page_dir);
+	for(r = space->regions; r; r = r->next)
+		regions_disable_write(CONTAINER_OF(r, mem_region_t, list));
 	if(!(s->page_dir = vmem_clone(space->page_dir)))
 		goto fail;
 	spin_unlock(&space->spinlock);
 	return s;
 
 fail:
-	cache_free(mem_space_cache, s);
-	// TODO Free all, remove links, etc...
+	mem_space_destroy(s);
 	spin_unlock(&space->spinlock);
 	return NULL;
 }
@@ -393,7 +478,7 @@ fail:
  */
 static avl_tree_t *find_gap(avl_tree_t *n, const size_t pages)
 {
-	if(!n || pages == 0)
+	if(!sanity_check(n) || pages == 0)
 		return NULL;
 	while(1)
 	{
@@ -421,20 +506,44 @@ static void shrink_gap(avl_tree_t **tree, avl_tree_t *gap, const size_t pages)
 	if(!gap || pages == 0)
 		return;
 	g = CONTAINER_OF(gap, mem_gap_t, node);
-	// TODO Error if pages > gap->pages? (shouldn't be possible)
-	if(g->pages <= pages)
-	{
-		if(g->prev)
-			g->prev->next = g->next;
-		if(g->next)
-			g->next->prev = g->prev;
-		avl_tree_remove(tree, gap);
-		cache_free(mem_gap_cache, g);
-		return;
-	}
+	debug_assert(pages <= g->pages, "Gap is too small");
 	g->begin += pages * PAGE_SIZE;
 	g->pages -= pages;
-	// TODO Remove and re-insert the node in the tree
+	if(g->pages <= 0)
+	{
+		gap_free(g);
+		return;
+	}
+	avl_tree_remove(tree, gap);
+	g->node.value = g->pages;
+	avl_tree_insert(tree, gap, ptr_cmp);
+}
+
+/*
+ * Tells whether the region should be preallocated or not.
+ */
+static inline int must_preallocate(const int flags)
+{
+	return (flags & MEM_REGION_FLAG_STACK) && !(flags & MEM_REGION_FLAG_USER);
+}
+
+/*
+ * Maps the given region to identity.
+ */
+static void region_identity(mem_region_t *r)
+{
+	void *page_dir;
+	void *i;
+
+	debug_assert(sanity_check(r), "Invalid region");
+	page_dir = r->mem_space->page_dir;
+	debug_assert(sanity_check(page_dir), "Invalid page directiory");
+	i = r->begin;
+	while(i < r->begin + (r->pages * PAGE_SIZE))
+	{
+		vmem_identity(page_dir, i, convert_flags(r->flags));
+		i += PAGE_SIZE;
+	}
 }
 
 /*
@@ -444,41 +553,29 @@ static void shrink_gap(avl_tree_t **tree, avl_tree_t *gap, const size_t pages)
  *
  * If the region is a kernel stack, it will be pre-allocated.
  */
-static mem_region_t *region_create(mem_space_t *space,
+static mem_region_t *mem_space_alloc_(mem_space_t *space,
 	const size_t pages, const int flags)
 {
 	mem_region_t *r;
 	avl_tree_t *gap;
+	mem_gap_t *g;
 
-	// TODO Handle IDENTITY
-	if(pages == 0)
+	debug_assert(!((flags & MEM_REGION_FLAG_IDENTITY)
+		&& (flags & MEM_REGION_FLAG_STACK)), "Invalid flags");
+	if(!sanity_check(gap = find_gap(space->free_tree, pages)))
 		return NULL;
-	if(!(r = cache_alloc(mem_region_cache)))
+	g = CONTAINER_OF(gap, mem_gap_t, node);
+	if(!sanity_check(r = region_create(space, flags, g->begin, pages, pages)))
 		return NULL;
-	if(!(gap = find_gap(space->free_tree, pages)))
+	if(r->flags & MEM_REGION_FLAG_IDENTITY)
+		region_identity(r);
+	if(must_preallocate(r->flags) && !region_phys_alloc(r))
 	{
 		cache_free(mem_region_cache, r);
 		return NULL;
 	}
-	r->mem_space = space;
-	r->flags = flags;
-	r->begin = CONTAINER_OF(gap, mem_gap_t, node)->begin;
-	r->pages = pages;
-	r->used_pages = r->pages;
-	if(!(flags & MEM_REGION_FLAG_USER) && !preallocate_kernel_space(space, r))
-	{
-		cache_free(mem_region_cache, r);
-		return NULL;
-	}
-	errno = 0;
-	r->node.value = (avl_value_t) r->begin;
+	// TODO Insert into list
 	avl_tree_insert(&space->used_tree, &r->node, avl_val_cmp);
-	if(errno)
-	{
-		// TODO If preallocated kernel_stack, free it
-		cache_free(mem_region_cache, r);
-		return NULL;
-	}
 	shrink_gap(&space->free_tree, gap, pages);
 	return r;
 }
@@ -488,14 +585,15 @@ static mem_region_t *region_create(mem_space_t *space,
  * the beginning. If the requested allocation is a stack, then the pointer to
  * the top of the stack will be returned.
  */
+ATTR_MALLOC
 void *mem_space_alloc(mem_space_t *space, const size_t pages, const int flags)
 {
 	mem_region_t *r;
 
-	if(!(r = region_create(space, pages, flags)))
+	if(!sanity_check(space) || pages == 0)
 		return NULL;
-	r->next = space->regions;
-	space->regions = r;
+	if(!sanity_check(r = mem_space_alloc_(space, pages, flags)))
+		return NULL;
 	if(flags & MEM_REGION_FLAG_STACK)
 		return r->begin + (r->pages * PAGE_SIZE) - 1;
 	else
@@ -515,47 +613,71 @@ static mem_region_t *find_region(avl_tree_t *n, void *ptr)
 	while(n)
 	{
 		r = CONTAINER_OF(n, mem_region_t, node);
-		if(r->begin >= ptr)
+		if(r->begin > ptr)
 			n = n->left;
 		else if(r->begin < ptr)
 			n = n->right;
 		else
 			break;
 	}
-	if(!r)
+	if(!n)
 		return NULL;
-	if(ptr >= r->begin && ptr < r->begin + r->pages * PAGE_SIZE)
+	if(ptr >= r->begin && ptr < r->begin + (r->pages * PAGE_SIZE))
 		return r;
 	return NULL;
 }
 
 /*
+ * Shrinks, removes or splits the given region according to the given gap
+ * pointer and size and creates/expands/merges gaps accordingly.
+ */
+static void region_split(mem_region_t *region, void *ptr, const size_t pages)
+{
+	/*if(pages == r->pages)
+		region_free(r);
+	else
+		region_split(r, ptr, pages);*/
+	// TODO
+	extend_gaps(region->begin, pages);
+	(void) ptr;
+	(void) pages;
+}
+
+/*
  * Frees the given pages allocated in the given memory space.
  */
-void mem_space_free(mem_space_t *space, void *ptr, const size_t pages)
+int mem_space_free(mem_space_t *space, void *ptr, const size_t pages)
 {
-	if(!space || !ptr || pages == 0)
-		return;
-	// TODO Find region using tree
-	// TODO If the whole region is to be freed, free it
-	// TODO If only a part of the region is to be freed, spilt into new regions
-	// TODO Get and extend near gap if needed
-	// TODO Merge gaps if needed
-	// TODO Update page directory
+	mem_region_t *r;
+
+	if(!sanity_check(space) || !ptr || pages == 0)
+		return 0;
+	if(!sanity_check(r = find_region(space->used_tree, ptr)))
+		return 0;
+	if(pages > r->pages)
+		return 0;
+	region_split(r, ptr, pages);
+	return 1;
 }
 
 /*
  * Frees the given stack allocated in the given memory space.
  * The given pointer must be the same as returned by the allocation function.
  */
-void mem_space_free_stack(mem_space_t *space, void *stack)
+int mem_space_free_stack(mem_space_t *space, void *ptr)
 {
-	if(!space || !stack)
-		return;
-	// TODO Find region using tree and free it
-	// TODO Get and extend near gaps
-	// TODO Merge gaps if needed
-	// TODO Update page directory
+	mem_region_t *r;
+
+	if(!sanity_check(space))
+		return 0;
+	if(((uintptr_t) ptr & (PAGE_SIZE - 1)) != (PAGE_SIZE - 1))
+		return 0;
+	if(!sanity_check(r = find_region(space->used_tree, ptr)))
+		return 0;
+	if(!(r->flags & MEM_REGION_FLAG_STACK))
+		return 0;
+	// TODO Free region and extend gaps
+	return 1;
 }
 
 /*
@@ -568,10 +690,11 @@ int mem_space_can_access(mem_space_t *space, const void *ptr, const size_t size,
 	void *i, *end;
 	mem_region_t *r;
 
-	if(!space || !ptr)
+	if(!sanity_check(space) || !ptr)
 		return 0;
 	i = DOWN_ALIGN(ptr, PAGE_SIZE);
 	end = DOWN_ALIGN(ptr + size, PAGE_SIZE);
+	debug_assert(i <= end, "Invalid range");
 	while(i < end)
 	{
 		if(!(r = find_region(space->used_tree, i)))
@@ -584,141 +707,139 @@ int mem_space_can_access(mem_space_t *space, const void *ptr, const size_t size,
 }
 
 /*
- * TODO
+ * Updates the write status of the given region.
  */
 static void update_share(mem_region_t *r)
 {
+	int write;
+	void *page_dir;
+	size_t i;
 	uint32_t *entry;
 
-	if(r->prev_shared || r->next_shared || !(r->flags & MEM_REGION_FLAG_WRITE))
-		return;
-	if(!(entry = vmem_resolve(r->mem_space->page_dir, r->begin)))
-		return; // TODO Error?
-	*entry |= PAGING_PAGE_WRITE;
+	debug_assert(sanity_check(r), "Invalid region");
+	write = (r->flags & MEM_REGION_FLAG_WRITE)
+		&& !(r->shared_list.prev || r->shared_list.next);
+	page_dir = r->mem_space->page_dir;
+	for(i = 0; i < r->pages; ++i)
+	{
+		entry = vmem_resolve(page_dir, r->begin + (i * PAGE_SIZE));
+		debug_assert(sanity_check(entry), "Entry not found");
+		if(write)
+			*entry |= PAGING_PAGE_WRITE;
+		else
+			*entry &= ~PAGING_PAGE_WRITE;
+	}
+	vmem_flush(page_dir);
+}
+
+/*
+ * On the shared list, removes the current region and calls `update_share` on
+ * previous and next regions.
+ */
+static void update_near_regions(mem_region_t *region)
+{
+	list_head_t *prev, *next;
+
+	debug_assert(sanity_check(region), "Invalid region");
+	prev = region->shared_list.prev;
+	next = region->shared_list.next;
+	list_remove(NULL, &region->shared_list);
+	if(prev)
+		update_share(CONTAINER_OF(prev, mem_region_t, shared_list));
+	if(next)
+		update_share(CONTAINER_OF(next, mem_region_t, shared_list));
+}
+
+/*
+ * Copies physical pages from region `src` to region `dest`.
+ */
+static void copy_pages(mem_region_t *dest, mem_region_t *src)
+{
+	size_t i;
+	void *d, *s;
+
+	debug_assert(sanity_check(dest) && sanity_check(src), "Invalid region");
+	debug_assert(dest->begin == src->begin, "Incompatible regions");
+	debug_assert(dest->pages == src->pages, "Incompatible regions");
+	for(i = 0; i < dest->pages; ++i)
+	{
+		d = vmem_translate(dest->mem_space->page_dir, dest->begin);
+		s = vmem_translate(src->mem_space->page_dir, src->begin);
+		debug_assert(d && s, "Unallocated physical pages");
+		memcpy(d, s, PAGE_SIZE);
+	}
 }
 
 /*
  * Performs the Copy-On-Write operation if needed.
- * Copies the content of the given region at the given offset (in pages) to the
- * given physical pages.
+ * Duplicates physical pages for the given region with the same content as its
+ * shared regions.
  * The region will be unlinked from the shared linked-list.
  *
- * The function returns `1` if the operation has been performed or `0` if not.
+ * On success, 1 is returned. 0 on fail.
  */
 static int copy_on_write(mem_region_t *region)
 {
-	mem_region_t *r;
-	size_t i;
-	void *dest, *src;
+	list_head_t *r;
 
-	if(!(r = region->prev_shared))
-		r = region->next_shared;
-	if(!r)
-	{
-		errno = 0;
-		for(i = 0; i < region->pages; ++i)
-		{
-			*vmem_resolve(region->mem_space->page_dir,
-				region->begin + i * PAGE_SIZE) |= PAGING_PAGE_WRITE;
-			if(errno)
-				return 0;
-		}
-		return 1;
-	}
-	// TODO If linear block cannot be found, try to use a non-linear block
-	// TODO If even non-linear block cannot be found, use OOM-killer
-	if(!(dest = pages_alloc(r->pages)))
+	debug_assert(sanity_check(region), "Invalid region");
+	if(!(r = region->shared_list.prev))
+		r = region->shared_list.next;
+	if(!sanity_check(r))
 		return 0;
-	src = vmem_translate(r->mem_space->page_dir, region->begin);
-	memcpy(dest, src, region->pages * PAGE_SIZE);
-	errno = 0;
-	vmem_map_range(region->mem_space->page_dir, dest, region->begin,
-		region->pages, convert_flags(region->flags));
-	if(errno)
-	{
-		pages_free(dest, 0);
+	// TODO If memory block cannot be found, use OOM-killer
+	if(!region_phys_alloc(region))
 		return 0;
-	}
-	if(region->prev_shared)
-	{
-		region->prev_shared->next_shared = region->next_shared;
-		update_share(region->prev_shared);
-	}
-	if(region->next_shared)
-	{
-		region->next_shared->prev_shared = region->prev_shared;
-		update_share(region->next_shared);
-	}
-	region->prev_shared = NULL;
-	region->next_shared = NULL;
+	copy_pages(region, CONTAINER_OF(r, mem_region_t, list));
+	update_near_regions(region);
 	return 1;
 }
 
-// TODO Map the whole region?
 /*
- * Handles a page fault. This function returns `1` if the new page was correctly
- * allocated and `0` if the process should be killed by a signal or if the
+ * Handles a page fault. This function returns 1 if the new page was correctly
+ * allocated and 0 if the process should be killed by a signal or if the
  * kernel should panic.
  *
- * The function will return `0` if:
+ * The function will return 0 if:
  * - The page fault was not caused by a write operation
  * - The region for the given pointer cannot be found
  * - The the region isn't writable
  * - The page fault was caused by a userspace operation and the region is not
  * in userspace
- * - An error happened while allocating the region
+ * - The memory could not have been allocated
  */
 int mem_space_handle_page_fault(mem_space_t *space,
 	void *ptr, const int error_code)
 {
 	mem_region_t *r;
-	void *physical_pages;
 
-	if(!space || !ptr)
+	if(!sanity_check(space) || !ptr)
 		return 0;
 	if(!(error_code & PAGE_FAULT_WRITE))
 		return 0;
 	ptr = DOWN_ALIGN(ptr, PAGE_SIZE);
-	if(!(r = find_region(space->used_tree, ptr)))
+	if(!sanity_check(r = find_region(space->used_tree, ptr)))
 		return 0;
+	r = CONTAINER_OF(r, mem_region_t, node);
 	if(!(r->flags & MEM_REGION_FLAG_WRITE))
 		return 0;
 	if((error_code & PAGE_FAULT_USER) && !(r->flags & MEM_REGION_FLAG_USER))
 		return 0;
-	if(r->prev_shared || r->next_shared)
+	if(r->shared_list.prev || r->shared_list.next)
 		return copy_on_write(r);
-	// TODO If linear block cannot be found, try to use a non-linear block
-	// TODO If even non-linear block cannot be found, use OOM-killer
-	if(!(physical_pages = pages_alloc_zero(r->pages)))
-		return 0;
-	errno = 0;
-	vmem_map_range(r->mem_space->page_dir, physical_pages, r->begin,
-		r->pages, convert_flags(r->flags));
-	if(errno)
-	{
-		pages_free(physical_pages, 0);
-		return 0;
-	}
-	return 1;
+	return region_phys_alloc(r);
 }
 
 /*
- * Destroyes the given memory space. Destroyes not shared memory regions.
+ * Destroyes the given memory space and regions/gaps in it and frees non-shared
+ * physical pages.
  */
 void mem_space_destroy(mem_space_t *space)
 {
-	mem_region_t *r, *next;
-
-	if(!space)
+	if(!sanity_check(space))
 		return;
-	r = space->regions;
-	while(r)
-	{
-		next = r->next;
-		region_free(r);
-		r = next;
-	}
-	// TODO Free gaps
+	free_regions(space->regions);
+	free_gaps(space->gaps);
 	vmem_destroy(space->page_dir);
 	cache_free(mem_space_cache, space);
 }

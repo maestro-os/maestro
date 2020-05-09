@@ -10,6 +10,8 @@
  * - Page table: A 1024 entries array describing permissions on each page
  *
  * Both objects are 4096 bytes large.
+ *
+ * After modifying a page directory, function `vmem_flush` should be called.
  */
 
 /*
@@ -107,7 +109,7 @@ uint32_t *vmem_resolve(vmem_t vmem, void *ptr)
 	table_obj = (void *) (vmem[table] & PAGING_ADDR_MASK);
 	if(!(table_obj[page] & PAGING_PAGE_PRESENT))
 		return NULL;
-	return table_obj + page;
+	return &table_obj[page];
 }
 
 /*
@@ -117,15 +119,6 @@ ATTR_HOT
 int vmem_is_mapped(vmem_t vmem, void *ptr)
 {
 	return (vmem_resolve(vmem, ptr) != NULL);
-}
-
-/*
- * Releads the TLB if the given page directory is loaded.
- */
-static inline void reload_tlb(vmem_t vmem)
-{
-	if(vmem == cr3_get())
-		tlb_reload();
 }
 
 /*
@@ -151,10 +144,8 @@ void vmem_map(vmem_t vmem, void *physaddr, void *virtaddr, const int flags)
 	vmem[t] |= PAGING_TABLE_PRESENT | flags;
 	v = (void *) (vmem[t] & PAGING_ADDR_MASK);
 	v[ADDR_PAGE(virtaddr)] = (uintptr_t) physaddr | PAGING_PAGE_PRESENT | flags;
-	reload_tlb(vmem);
 }
 
-// TODO Call tlb_reload once
 /*
  * Maps the specified range of physical memory to the specified range of virtual
  * memory.
@@ -228,10 +219,8 @@ void vmem_unmap(vmem_t vmem, void *virtaddr)
 	v = (void *) (vmem[t] & PAGING_ADDR_MASK);
 	v[ADDR_PAGE(virtaddr)] = 0;
 	// TODO If page table is empty, free it
-	reload_tlb(vmem);
 }
 
-// TODO Call tlb_reload once
 /*
  * Unmaps the given virtual memory range.
  */
@@ -343,6 +332,17 @@ vmem_t vmem_clone(vmem_t vmem)
 fail:
 	vmem_destroy(v);
 	return NULL;
+}
+
+/*
+ * Flushes modifications to the given page directory.
+ */
+void vmem_flush(vmem_t vmem)
+{
+	if(!sanity_check(vmem))
+		return;
+	if(vmem == cr3_get())
+		tlb_reload();
 }
 
 /*
