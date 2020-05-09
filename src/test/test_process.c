@@ -83,7 +83,9 @@ void test_process(void)
 	}*/
 	/*while(1)
 		putnbr(getpid());*/
-	fork();
+	putstr("fork: ");
+	putnbr(fork());
+	putstr("\n");
 	putnbr(getpid());
 	while(1)
 		;

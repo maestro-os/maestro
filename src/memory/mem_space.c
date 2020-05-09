@@ -41,9 +41,7 @@
  * lead to a Triple Fault and reset the system.
  */
 
-// TODO Spinlock
-// TODO Check lists order
-// TODO Remove pages allocator calls
+// TODO Check gaps list order
 
 /*
  * The cache for the `mem_space` structure.
@@ -84,7 +82,7 @@ static mem_gap_t *gap_create(mem_space_t *space,
 	mem_gap_t *gap;
 
 	debug_assert(sanity_check(space), "Invalid memory space");
-	debug_assert(begin < begin + pages * PAGE_SIZE, "Invalid gap");
+	debug_assert(begin < begin + (pages * PAGE_SIZE), "Invalid gap");
 	if(!(gap = cache_alloc(mem_gap_cache)))
 		return NULL;
 	gap->begin = begin;
@@ -123,25 +121,25 @@ static void extend_gaps(void *begin, const size_t pages)
  */
 static int init_gaps(mem_space_t *s)
 {
-	size_t gap_pages;
 	void *gap_begin;
-
-	// TODO
-	/*
-	list_insert_front(&space->gaps, &gap->list);
-	avl_tree_insert(&space->free_tree, &gap->node, avl_val_cmp);
-	*/
+	size_t gap_pages;
+	mem_gap_t *gap;
 
 	debug_assert(sanity_check(s), "Invalid memory space");
 	gap_begin = (void *) 0x1000;
 	gap_pages = (uintptr_t) KERNEL_BEGIN / PAGE_SIZE - 1;
-	if(!gap_create(s, gap_begin, gap_pages))
+	if(!(gap = gap_create(s, gap_begin, gap_pages)))
 		return 0;
+	list_insert_after(&s->gaps, s->gaps, &gap->list);
+	avl_tree_insert(&s->free_tree, &gap->node, avl_val_cmp);
+	// TODO Only expose a stub for the kernel
 	gap_begin = mem_info.heap_begin;
-	gap_pages = (size_t) KERNEL_BEGIN
-		- CEIL_DIVISION((uintptr_t) gap_begin, PAGE_SIZE);
-	if(!gap_create(s, gap_begin, gap_pages))
+	gap_pages = CEIL_DIVISION(mem_info.memory_end - mem_info.heap_begin,
+		PAGE_SIZE);
+	if(!(gap = gap_create(s, gap_begin, gap_pages)))
 		return 0;
+	list_insert_after(&s->gaps, s->gaps, &gap->list);
+	avl_tree_insert(&s->free_tree, &gap->node, avl_val_cmp);
 	return 1;
 }
 
@@ -337,12 +335,6 @@ static int clone_regions(mem_space_t *dest, list_head_t *regions)
 	mem_region_t *r, *new;
 	list_head_t *last = NULL;
 
-	// TODO
-	/*
-	list_insert_front(&space->regions, &region->list);
-	avl_tree_insert(&space->used_tree, &region->node, avl_val_cmp);
-	*/
-
 	for(l = regions; l; l = l->next)
 	{
 		r = CONTAINER_OF(l, mem_region_t, list);
@@ -358,6 +350,7 @@ static int clone_regions(mem_space_t *dest, list_head_t *regions)
 			return 0;
 		}
 		list_insert_after(&dest->regions, last, &new->list);
+		avl_tree_insert(&dest->used_tree, &new->node, avl_val_cmp);
 		last = &new->list;
 	}
 	return 1;
@@ -483,7 +476,7 @@ static avl_tree_t *find_gap(avl_tree_t *n, const size_t pages)
 	while(1)
 	{
 		if(n->left
-			&& CONTAINER_OF(n->left, mem_gap_t, node)->pages >= pages)
+			&& CONTAINER_OF(n->left, mem_gap_t, node)->pages > pages)
 			n = n->left;
 		else if(n->right
 			&& CONTAINER_OF(n->right, mem_gap_t, node)->pages < pages)
@@ -560,6 +553,7 @@ static mem_region_t *mem_space_alloc_(mem_space_t *space,
 	avl_tree_t *gap;
 	mem_gap_t *g;
 
+	debug_assert(space, "Invalid memory space");
 	debug_assert(!((flags & MEM_REGION_FLAG_IDENTITY)
 		&& (flags & MEM_REGION_FLAG_STACK)), "Invalid flags");
 	if(!sanity_check(gap = find_gap(space->free_tree, pages)))
@@ -589,15 +583,22 @@ ATTR_MALLOC
 void *mem_space_alloc(mem_space_t *space, const size_t pages, const int flags)
 {
 	mem_region_t *r;
+	void *ptr;
 
 	if(!sanity_check(space) || pages == 0)
 		return NULL;
+	spin_lock(&space->spinlock);
 	if(!sanity_check(r = mem_space_alloc_(space, pages, flags)))
+	{
+		spin_unlock(&space->spinlock);
 		return NULL;
+	}
 	if(flags & MEM_REGION_FLAG_STACK)
-		return r->begin + (r->pages * PAGE_SIZE) - 1;
+		ptr = r->begin + (r->pages * PAGE_SIZE) - 1;
 	else
-		return r->begin;
+		ptr = r->begin;
+	spin_unlock(&space->spinlock);
+	return ptr;
 }
 
 /*
@@ -652,12 +653,18 @@ int mem_space_free(mem_space_t *space, void *ptr, const size_t pages)
 
 	if(!sanity_check(space) || !ptr || pages == 0)
 		return 0;
+	spin_lock(&space->spinlock);
 	if(!sanity_check(r = find_region(space->used_tree, ptr)))
-		return 0;
+		goto fail;
 	if(pages > r->pages)
-		return 0;
+		goto fail;
 	region_split(r, ptr, pages);
+	spin_unlock(&space->spinlock);
 	return 1;
+
+fail:
+	spin_unlock(&space->spinlock);
+	return 0;
 }
 
 /*
@@ -670,14 +677,20 @@ int mem_space_free_stack(mem_space_t *space, void *ptr)
 
 	if(!sanity_check(space))
 		return 0;
+	spin_lock(&space->spinlock);
 	if(((uintptr_t) ptr & (PAGE_SIZE - 1)) != (PAGE_SIZE - 1))
-		return 0;
+		goto fail;
 	if(!sanity_check(r = find_region(space->used_tree, ptr)))
-		return 0;
+		goto fail;
 	if(!(r->flags & MEM_REGION_FLAG_STACK))
-		return 0;
+		goto fail;
 	// TODO Free region and extend gaps
+	spin_unlock(&space->spinlock);
 	return 1;
+
+fail:
+	spin_unlock(&space->spinlock);
+	return 0;
 }
 
 /*
@@ -695,14 +708,18 @@ int mem_space_can_access(mem_space_t *space, const void *ptr, const size_t size,
 	i = DOWN_ALIGN(ptr, PAGE_SIZE);
 	end = DOWN_ALIGN(ptr + size, PAGE_SIZE);
 	debug_assert(i <= end, "Invalid range");
+	spin_lock(&space->spinlock);
 	while(i < end)
 	{
-		if(!(r = find_region(space->used_tree, i)))
+		if(!(r = find_region(space->used_tree, i))
+			|| (write && !(r->flags & MEM_REGION_FLAG_WRITE)))
+		{
+			spin_unlock(&space->spinlock);
 			return 0;
-		if(write && !(r->flags & MEM_REGION_FLAG_WRITE))
-			return 0;
+		}
 		i += r->pages * PAGE_SIZE;
 	}
+	spin_unlock(&space->spinlock);
 	return 1;
 }
 
@@ -817,17 +834,25 @@ int mem_space_handle_page_fault(mem_space_t *space,
 		return 0;
 	if(!(error_code & PAGE_FAULT_WRITE))
 		return 0;
+	spin_lock(&space->spinlock);
 	ptr = DOWN_ALIGN(ptr, PAGE_SIZE);
 	if(!sanity_check(r = find_region(space->used_tree, ptr)))
-		return 0;
-	r = CONTAINER_OF(r, mem_region_t, node);
+		goto fail;
 	if(!(r->flags & MEM_REGION_FLAG_WRITE))
-		return 0;
+		goto fail;
 	if((error_code & PAGE_FAULT_USER) && !(r->flags & MEM_REGION_FLAG_USER))
-		return 0;
+		goto fail;
 	if(r->shared_list.prev || r->shared_list.next)
+	{
+		spin_unlock(&space->spinlock);
 		return copy_on_write(r);
+	}
+	spin_unlock(&space->spinlock);
 	return region_phys_alloc(r);
+
+fail:
+	spin_unlock(&space->spinlock);
+	return 0;
 }
 
 /*
@@ -838,8 +863,10 @@ void mem_space_destroy(mem_space_t *space)
 {
 	if(!sanity_check(space))
 		return;
+	spin_lock(&space->spinlock);
 	free_regions(space->regions);
 	free_gaps(space->gaps);
 	vmem_destroy(space->page_dir);
 	cache_free(mem_space_cache, space);
+	spin_unlock(&space->spinlock);
 }
