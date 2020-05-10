@@ -70,11 +70,11 @@ static void tss_init(void)
 ATTR_COLD
 void process_init(void)
 {
-	processes_cache = cache_create("processes", sizeof(process_t), PID_MAX,
+	processes_cache = cache_create("processes", sizeof(process_t), 64,
 		process_ctor, bzero);
-	children_cache = cache_create("process_children", sizeof(child_t), PID_MAX,
+	children_cache = cache_create("process_children", sizeof(child_t), 64,
 		NULL, bzero);
-	signals_cache = cache_create("signals", sizeof(siginfo_t), PID_MAX,
+	signals_cache = cache_create("signals", sizeof(siginfo_t), 64,
 		NULL, bzero);
 	if(!processes_cache || !children_cache || !signals_cache)
 		PANIC("Cannot allocate caches for processes!", 0);

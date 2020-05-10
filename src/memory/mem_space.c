@@ -560,20 +560,27 @@ static mem_region_t *mem_space_alloc_(mem_space_t *space,
 	debug_assert(!((flags & MEM_REGION_FLAG_IDENTITY)
 		&& (flags & MEM_REGION_FLAG_STACK)), "Invalid flags");
 	if(!sanity_check(gap = find_gap(space->free_tree, pages)))
+	{
+		errno = ENOMEM;
 		return NULL;
+	}
 	g = CONTAINER_OF(gap, mem_gap_t, node);
 	if(!sanity_check(r = region_create(space, flags, g->begin, pages, pages)))
+	{
+		errno = ENOMEM;
 		return NULL;
+	}
 	if(r->flags & MEM_REGION_FLAG_IDENTITY)
 		region_identity(r);
 	if(must_preallocate(r->flags) && !region_phys_alloc(r))
 	{
+		errno = ENOMEM;
 		cache_free(mem_region_cache, r);
 		return NULL;
 	}
 	// TODO Insert into list
 	avl_tree_insert(&space->used_tree, &r->node, avl_val_cmp);
-	shrink_gap(&space->free_tree, gap, pages);
+	shrink_gap(&space->free_tree, gap, r->pages);
 	return r;
 }
 
@@ -588,14 +595,20 @@ void *mem_space_alloc(mem_space_t *space, const size_t pages, const int flags)
 	mem_region_t *r;
 	void *ptr;
 
-	if(!sanity_check(space) || pages == 0)
+	if(!sanity_check(space))
 		return NULL;
+	if(pages == 0)
+	{
+		errno = EINVAL;
+		return NULL;
+	}
 	spin_lock(&space->spinlock);
 	if(!sanity_check(r = mem_space_alloc_(space, pages, flags)))
 	{
 		spin_unlock(&space->spinlock);
 		return NULL;
 	}
+	debug_assert(r->begin, "Invalid region");
 	if(flags & MEM_REGION_FLAG_STACK)
 		ptr = r->begin + (r->pages * PAGE_SIZE) - 1;
 	else

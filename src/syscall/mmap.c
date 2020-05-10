@@ -16,19 +16,24 @@ static int convert_flags(const int prot, const int flags)
 // TODO Handle errnos
 sys_ret_t sys_mmap(process_t *process, const regs_t *registers)
 {
+	void *addr;
 	size_t pages;
-	int flags;
 	int prot;
+	int flags;
 	int space_flags;
 	void *ptr;
 
-	pages = CEIL_DIVISION(registers->ebx, PAGE_SIZE);
-	flags = registers->ecx;
+	addr = (void *) registers->ebx;
+	pages = CEIL_DIVISION(registers->ecx, PAGE_SIZE);
 	prot = registers->edx;
+	flags = registers->esi;
+	// TODO edi: fildes
+	// TODO ebp: off
 	if(!(prot & PROT_READ))
 		return (sys_ret_t) NULL;
 	space_flags = convert_flags(flags, prot) | MEM_REGION_FLAG_USER;
 	// TODO Handle fixed map
+	(void) addr;
 	if(!(ptr = mem_space_alloc(process->mem_space, pages, space_flags)))
 		return -errno;
 	return (sys_ret_t) ptr;
