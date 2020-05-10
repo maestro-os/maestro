@@ -3,6 +3,8 @@
 .global _exit
 .global getpid
 .global waitpid
+.global mmap
+.global munmap
 
 write:
 	push %ebp
@@ -90,6 +92,56 @@ waitpid:
 	int $0x80
 
 	pop %edx
+	pop %ecx
+	pop %ebx
+
+	mov %ebp, %esp
+	pop %ebp
+	ret
+
+mmap:
+	push %ebp
+	mov %esp, %ebp
+
+	push %ebx
+	push %ecx
+	push %edx
+	push %esi
+	push %edi
+	push %ebp
+
+	mov $0x6, %eax
+	mov 8(%ebp), %ebx
+	mov 12(%ebp), %ecx
+	mov 16(%ebp), %edx
+	mov 20(%ebp), %esi
+	mov 24(%ebp), %edi
+	mov 28(%ebp), %ebp
+	int $0x80
+
+	pop %ebp
+	pop %edi
+	pop %esi
+	pop %edx
+	pop %ecx
+	pop %ebx
+
+	mov %ebp, %esp
+	pop %ebp
+	ret
+
+munmap:
+	push %ebp
+	mov %esp, %ebp
+
+	push %ebx
+	push %ecx
+
+	mov $0x7, %eax
+	mov 8(%ebp), %ebx
+	mov 12(%ebp), %ecx
+	int $0x80
+
 	pop %ecx
 	pop %ebx
 

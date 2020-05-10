@@ -20,20 +20,29 @@
 /*
  * Memory region flag allowing write permission on the region.
  */
-# define MEM_REGION_FLAG_WRITE		0b0001
+# define MEM_REGION_FLAG_WRITE		0b000001
+/*
+ * Memory region flag allowing execution permission on the region.
+ */
+# define MEM_REGION_FLAG_EXEC		0b000010
+/*
+ * Memory region flag telling that the region is shared with other memory
+ * spaces.
+ */
+# define MEM_REGION_FLAG_SHARED		0b000100
 /*
  * Memory region flag telling that the region is a stack.
  */
-# define MEM_REGION_FLAG_STACK		0b0010
+# define MEM_REGION_FLAG_STACK		0b001000
 /*
  * Memory region flag telling that the region is a userspace region.
  */
-# define MEM_REGION_FLAG_USER		0b0100
+# define MEM_REGION_FLAG_USER		0b010000
 /*
  * Memory region flag telling that the region has the same virtual and physical
  * addresses.
  */
-# define MEM_REGION_FLAG_IDENTITY	0b1000
+# define MEM_REGION_FLAG_IDENTITY	0b100000
 
 /*
  * x86 paging flag. If set, pages are 4 MB long.
@@ -263,6 +272,7 @@ void print_mem_usage(void);
 
 mem_space_t *mem_space_init(void);
 mem_space_t *mem_space_clone(mem_space_t *space);
+// TODO Allocation at a given address
 void *mem_space_alloc(mem_space_t *space, size_t pages, int flags);
 int mem_space_free(mem_space_t *space, void *ptr, size_t pages);
 int mem_space_free_stack(mem_space_t *space, void *stack);

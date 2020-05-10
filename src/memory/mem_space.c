@@ -16,6 +16,8 @@
  * When trying to write to the memory, the physical page will be cloned and the
  * process will have its virtual page remapped to the newly allocated page.
  *
+ * If a region of memory is shared, the physical pages are not duplicated.
+ *
  * - Memory regions (structure `mem_region`) tells which parts of the virtual
  * space is being used by allocated memory.
  * - Memory gaps (structure `mem_gap`) tells which parts of the virtual space
@@ -39,9 +41,15 @@
  * memory that was not yet allocated. However if the kernel stack was not
  * pre-allocated, the CPU shall trigger a Double Fault exception which shall
  * lead to a Triple Fault and reset the system.
+ *
+ * When physical pages are allocated, only the page that the process tries to
+ * access is being allocated, not the entire region. This allows to save memory
+ * on stacks for example.
  */
 
+// TODO Handle shared
 // TODO Check gaps list order
+// TODO Allocate only one page on access, not the entire region (except kernel stacks)
 
 /*
  * The cache for the `mem_space` structure.
@@ -365,12 +373,6 @@ static int clone_gaps(mem_space_t *dest, list_head_t *gaps)
 	mem_gap_t *g, *new;
 	list_head_t *last = NULL;
 
-	// TODO
-	/*
-	list_insert_front(&space->gaps, &gap->list);
-	avl_tree_insert(&space->free_tree, &gap->node, avl_val_cmp);
-	*/
-
 	for(l = gaps; l; l = l->next)
 	{
 		g = CONTAINER_OF(l, mem_gap_t, list);
@@ -381,6 +383,7 @@ static int clone_gaps(mem_space_t *dest, list_head_t *gaps)
 			return 0;
 		}
 		list_insert_after(&dest->gaps, last, &new->list);
+		avl_tree_insert(&dest->free_tree, &new->node, avl_val_cmp);
 		last = &new->list;
 	}
 	return 1;

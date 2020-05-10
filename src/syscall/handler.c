@@ -11,7 +11,9 @@ static const sys_handler_t sys_handlers[] = {
 	sys_exit,
 	sys_getpid,
 	sys_getppid,
-	sys_waitpid
+	sys_waitpid,
+	sys_mmap,
+	sys_munmap
 };
 
 ATTR_HOT

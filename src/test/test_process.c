@@ -1,4 +1,7 @@
 #include <process/process.h>
+#include <syscall/syscall.h>
+
+typedef unsigned off_t;
 
 int write(int fildes, const void *buf, size_t nbyte);
 pid_t fork(void);
@@ -6,6 +9,9 @@ void _exit(int status);
 pid_t getpid(void);
 pid_t getppid(void);
 pid_t waitpid(pid_t pid, int *wstatus, int options);
+void *mmap(void *addr, size_t length, int prot, int flags,
+	int fd, off_t offset);
+int munmap(void *addr, size_t length);
 
 static void putchar(char c)
 {
@@ -83,10 +89,12 @@ void test_process(void)
 	}*/
 	/*while(1)
 		putnbr(getpid());*/
-	putstr("fork: ");
+	/*putstr("fork: ");
 	putnbr(fork());
-	putstr("\n");
+	putstr("\n");*/
 	putnbr(getpid());
+	void *ptr = mmap(NULL, 0x1000, PROT_READ | PROT_WRITE, MAP_PRIVATE, -1, 0);
+	putnbr((int) ptr);
 	while(1)
 		;
 	asm("hlt");
