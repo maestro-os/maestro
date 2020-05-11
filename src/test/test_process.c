@@ -92,16 +92,29 @@ void test_process(void)
 	/*putstr("fork: ");
 	putnbr(fork());
 	putstr("\n");*/
-	putstr("fork: ");
+
+	putstr("pid: ");
 	putnbr(getpid());
 	putstr("\n");
-	char *ptr = mmap(NULL, 0x1000, PROT_READ | PROT_WRITE, MAP_PRIVATE, -1, 0);
-	putnbr((int) ptr);
 
+	/*
+	char *ptr = mmap(NULL, 0x1001, PROT_READ | PROT_WRITE, MAP_PRIVATE, -1, 0);
 	size_t i = 0;
-	while(i < 0x1000)
+	while(i < 0x1001)
 		ptr[i++] = 0xff;
-	putstr("\nstill alive\n");
+	putstr("still alive\n");*/
+
+	while(1)
+	{
+		char *ptr;
+		if(!(ptr = mmap(NULL, 0x1000, PROT_READ | PROT_WRITE, MAP_PRIVATE,
+			-1, 0)))
+		{
+			putstr("NULL\n");
+			break;
+		}
+		ptr[0] = 0xff;
+	}
 
 	while(1)
 		;

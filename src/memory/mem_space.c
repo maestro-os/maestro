@@ -47,9 +47,11 @@
  * on stacks for example.
  */
 
+// TODO Handle allocation at a given address
 // TODO Handle shared
 // TODO Check gaps list order
 // TODO Allocate only one page on access, not the entire region (except kernel stacks)
+// TODO Do not allocate pages on read, point to unique zero-ed page by default
 
 /*
  * The cache for the `mem_space` structure.
@@ -223,6 +225,10 @@ static mem_region_t *region_clone(mem_space_t *space, mem_region_t *r)
 	return new;
 }
 
+/*
+ * Tells if the physical pages for the given region are shared with one or more
+ * other memory spaces.
+ */
 static int region_is_shared(mem_region_t *region)
 {
 	debug_assert(sanity_check(region), "Invalid region");
@@ -246,11 +252,14 @@ static void region_phys_free(mem_region_t *r)
 	{
 		entry = vmem_resolve(page_dir, i);
 		debug_assert(sanity_check(entry), "Invalid paging entry");
-		ptr = (void *) (*entry & PAGING_ADDR_MASK);
-		debug_assert(sanity_check(ptr), "Invalid physical page");
-		buddy_free(ptr, 0);
-		*entry = 0;
-		vmem_flush(page_dir);
+		if(*entry & PAGING_PAGE_PRESENT)
+		{
+			ptr = (void *) (*entry & PAGING_ADDR_MASK);
+			debug_assert(sanity_check(ptr), "Invalid physical page");
+			buddy_free(ptr, 0);
+			*entry = 0;
+			vmem_flush(page_dir);
+		}
 		i += PAGE_SIZE;
 	}
 }

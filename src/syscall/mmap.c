@@ -31,7 +31,7 @@ sys_ret_t sys_mmap(process_t *process, const regs_t *registers)
 	// TODO ebp: off
 	if(!(prot & PROT_READ))
 		return (sys_ret_t) NULL;
-	space_flags = convert_flags(flags, prot) | MEM_REGION_FLAG_USER;
+	space_flags = convert_flags(prot, flags) | MEM_REGION_FLAG_USER;
 	// TODO Handle fixed map
 	(void) addr;
 	if(!(ptr = mem_space_alloc(process->mem_space, pages, space_flags)))
