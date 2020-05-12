@@ -274,6 +274,8 @@ mem_space_t *mem_space_init(void);
 mem_space_t *mem_space_clone(mem_space_t *space);
 // TODO Allocation at a given address
 void *mem_space_alloc(mem_space_t *space, size_t pages, int flags);
+void *mem_space_alloc_fixed(mem_space_t *space, void *addr, size_t pages,
+	int flags);
 int mem_space_free(mem_space_t *space, void *ptr, size_t pages);
 int mem_space_free_stack(mem_space_t *space, void *stack);
 int mem_space_can_access(mem_space_t *space, const void *ptr, size_t size,

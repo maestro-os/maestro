@@ -47,11 +47,9 @@
  * on stacks for example.
  */
 
-// TODO Handle allocation at a given address
 // TODO Handle shared
 // TODO Check gaps list order
 // TODO Allocate only one page on access, not the entire region (except kernel stacks)
-// TODO Do not allocate pages on read, point to unique zero-ed page by default
 
 /*
  * The cache for the `mem_space` structure.
@@ -65,6 +63,10 @@ static cache_t *mem_region_cache;
  * The cache for the `mem_gap` structure.
  */
 static cache_t *mem_gap_cache;
+/*
+ * The default physical page, meant to be zero-ed and read only.
+ */
+void *default_page;
 
 /*
  * Initializes caches.
@@ -80,6 +82,8 @@ static void global_init(void)
 	if(!(mem_gap_cache = cache_create("mem_gap", sizeof(mem_gap_t), 64,
 		bzero, NULL)))
 		PANIC("Failed to initialize mem_gap cache!", 0);
+	if(!(default_page = buddy_alloc_zero(0)))
+		PANIC("Failed to allocate memory space default page!", 0);
 }
 
 /*
@@ -236,6 +240,29 @@ static int region_is_shared(mem_region_t *region)
 }
 
 /*
+ * Fills the region with mapping to the default page.
+ */
+static int region_phys_default(mem_region_t *r)
+{
+	void *page_dir;
+	void *i;
+
+	debug_assert(sanity_check(r), "Invalid region");
+	page_dir = r->mem_space->page_dir;
+	debug_assert(sanity_check(page_dir), "Invalid page directiory");
+	i = r->begin;
+	while(i < r->begin + (r->pages * PAGE_SIZE))
+	{
+		vmem_map(page_dir, default_page, i, PAGING_PAGE_USER);
+		if(errno)
+			return 0;
+		i += PAGE_SIZE;
+	}
+	vmem_flush(page_dir);
+	return 1;
+}
+
+/*
  * Frees physical pages for the given region.
  */
 static void region_phys_free(mem_region_t *r)
@@ -258,10 +285,10 @@ static void region_phys_free(mem_region_t *r)
 			debug_assert(sanity_check(ptr), "Invalid physical page");
 			buddy_free(ptr, 0);
 			*entry = 0;
-			vmem_flush(page_dir);
 		}
 		i += PAGE_SIZE;
 	}
+	vmem_flush(page_dir);
 }
 
 /*
@@ -293,14 +320,18 @@ static int region_phys_alloc(mem_region_t *r)
 	while(i < r->begin + (r->pages * PAGE_SIZE))
 	{
 		if(!(ptr = buddy_alloc_zero(0)))
-		{
-			region_phys_free(r);
-			return 0;
-		}
+			goto fail;
 		vmem_map(page_dir, ptr, i, convert_flags(r->flags));
+		if(errno)
+			goto fail;
 		i += PAGE_SIZE;
 	}
+	vmem_flush(page_dir);
 	return 1;
+
+fail:
+	region_phys_free(r);
+	return 0;
 }
 
 /*
@@ -564,6 +595,7 @@ static mem_region_t *mem_space_alloc_(mem_space_t *space,
 	mem_region_t *r;
 	avl_tree_t *gap;
 	mem_gap_t *g;
+	int prealloc;
 
 	debug_assert(space, "Invalid memory space");
 	debug_assert(!((flags & MEM_REGION_FLAG_IDENTITY)
@@ -581,13 +613,14 @@ static mem_region_t *mem_space_alloc_(mem_space_t *space,
 	}
 	if(r->flags & MEM_REGION_FLAG_IDENTITY)
 		region_identity(r);
-	if(must_preallocate(r->flags) && !region_phys_alloc(r))
+	prealloc = must_preallocate(r->flags);
+	if((prealloc && !region_phys_alloc(r))
+		|| (!prealloc && !region_phys_default(r)))
 	{
-		errno = ENOMEM;
 		cache_free(mem_region_cache, r);
 		return NULL;
 	}
-	// TODO Insert into list
+	list_insert_front(&space->regions, &r->list);
 	avl_tree_insert(&space->used_tree, &r->node, avl_val_cmp);
 	shrink_gap(&space->free_tree, gap, r->pages);
 	return r;
@@ -624,6 +657,28 @@ void *mem_space_alloc(mem_space_t *space, const size_t pages, const int flags)
 		ptr = r->begin;
 	spin_unlock(&space->spinlock);
 	return ptr;
+}
+
+/*
+ * Allocates a region with the given number of pages at the specified location
+ * and returns a pointer to the beginning. The allocation shall be exactly at
+ * the given address and shall fail if not possible. On success, old region(s)
+ * in place of the new one is/are replaced by the new one.
+ */
+ATTR_MALLOC
+void *mem_space_alloc_fixed(mem_space_t *space, void *addr, size_t pages,
+	int flags)
+{
+	if(!sanity_check(space))
+		return NULL;
+	if(!addr || pages == 0)
+	{
+		errno = EINVAL;
+		return NULL;
+	}
+	// TODO
+	(void) flags;
+	return NULL;
 }
 
 /*
@@ -676,8 +731,13 @@ int mem_space_free(mem_space_t *space, void *ptr, const size_t pages)
 {
 	mem_region_t *r;
 
-	if(!sanity_check(space) || !ptr || pages == 0)
+	if(!sanity_check(space))
 		return 0;
+	if(!ptr || ptr + pages * PAGE_SIZE <= ptr)
+	{
+		errno = -EINVAL;
+		return 0;
+	}
 	spin_lock(&space->spinlock);
 	if(!sanity_check(r = find_region(space->used_tree, ptr)))
 		goto fail;
