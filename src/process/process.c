@@ -11,6 +11,9 @@
 #define KERNEL_STACK_FLAGS\
 	MEM_REGION_FLAG_STACK | MEM_REGION_FLAG_WRITE
 
+#define USER_STACK_PAGES	8
+#define KERNEL_STACK_PAGES	8
+
 // TODO Set errnos
 // TODO Multicore handling
 
@@ -124,9 +127,8 @@ process_t *new_process(process_t *parent, const regs_t *registers)
 	{
 		if(!(new_proc->mem_space = mem_space_init()))
 			goto fail;
-		// TODO Increase stacks size
-		if(!(new_proc->user_stack = mem_space_alloc(new_proc->mem_space, 1,
-			USER_STACK_FLAGS)))
+		if(!(new_proc->user_stack = mem_space_alloc(new_proc->mem_space,
+			USER_STACK_PAGES, USER_STACK_FLAGS)))
 			goto fail;
 	}
 	else
@@ -135,8 +137,8 @@ process_t *new_process(process_t *parent, const regs_t *registers)
 			goto fail;
 		new_proc->user_stack = parent->user_stack;
 	}
-	if(!(new_proc->kernel_stack = mem_space_alloc(new_proc->mem_space, 1,
-		KERNEL_STACK_FLAGS)))
+	if(!(new_proc->kernel_stack = mem_space_alloc(new_proc->mem_space,
+		KERNEL_STACK_PAGES, KERNEL_STACK_FLAGS)))
 		goto fail;
 	if(!parent)
 		new_proc->regs_state.esp = (uintptr_t) new_proc->user_stack;

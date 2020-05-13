@@ -694,6 +694,8 @@ static mem_region_t *find_region(avl_tree_t *n, void *ptr)
 	while(n)
 	{
 		r = CONTAINER_OF(n, mem_region_t, node);
+		if(ptr >= r->begin && ptr < r->begin + (r->pages * PAGE_SIZE))
+			return r;
 		if(r->begin > ptr)
 			n = n->left;
 		else if(r->begin < ptr)
@@ -701,10 +703,6 @@ static mem_region_t *find_region(avl_tree_t *n, void *ptr)
 		else
 			break;
 	}
-	if(!n)
-		return NULL;
-	if(ptr >= r->begin && ptr < r->begin + (r->pages * PAGE_SIZE))
-		return r;
 	return NULL;
 }
 

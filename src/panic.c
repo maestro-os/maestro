@@ -11,38 +11,38 @@
  */
 ATTR_RODATA
 static const char *errors[] = {
-	"Divide-by-zero Error",
-	"Debug",
-	"Non-maskable Interrupt",
-	"Breakpoint",
-	"Overflow",
-	"Bound Range Exceeded",
-	"Invalid Opcode",
-	"Device Not Available",
-	"Double Fault",
-	"Coprocessor Segment Overrun",
-	"Invalid TSS",
-	"Segment Not Present",
-	"Stack-Segment Fault",
-	"General Protection Fault",
-	"Page Fault",
-	"Unknown",
-	"x87 Floating-Point Exception",
-	"Alignement Check",
-	"Machine Check",
-	"SIMD Floating-Point Exception",
-	"Virtualization Exception",
-	"Unknown",
-	"Unknown",
-	"Unknown",
-	"Unknown",
-	"Unknown",
-	"Unknown",
-	"Unknown",
-	"Unknown",
-	"Unknown",
-	"Security Exception",
-	"Unknown"
+	[0] = "Divide-by-zero Error",
+	[1] = "Debug",
+	[2] = "Non-maskable Interrupt",
+	[3] = "Breakpoint",
+	[4] = "Overflow",
+	[5] = "Bound Range Exceeded",
+	[6] = "Invalid Opcode",
+	[7] = "Device Not Available",
+	[8] = "Double Fault",
+	[9] = "Coprocessor Segment Overrun",
+	[10] = "Invalid TSS",
+	[11] = "Segment Not Present",
+	[12] = "Stack-Segment Fault",
+	[13] = "General Protection Fault",
+	[14] = "Page Fault",
+	[15] = "Unknown",
+	[16] = "x87 Floating-Point Exception",
+	[17] = "Alignement Check",
+	[18] = "Machine Check",
+	[19] = "SIMD Floating-Point Exception",
+	[20] = "Virtualization Exception",
+	[21] = "Unknown",
+	[22] = "Unknown",
+	[23] = "Unknown",
+	[24] = "Unknown",
+	[25] = "Unknown",
+	[26] = "Unknown",
+	[27] = "Unknown",
+	[28] = "Unknown",
+	[29] = "Unknown",
+	[30] = "Security Exception",
+	[31] = "Unknown"
 };
 
 /*
@@ -50,38 +50,38 @@ static const char *errors[] = {
  */
 ATTR_RODATA
 static int error_signals[] = {
-	SIGFPE,
-	SIGTRAP, // TODO
-	SIGINT, // TODO
-	SIGTRAP,
-	-1, // TODO
-	-1, // TODO
-	SIGILL,
-	SIGFPE,
-	-1,
-	-1,
-	-1,
-	-1,
-	-1,
-	SIGSEGV,
-	SIGSEGV,
-	-1,
-	SIGFPE,
-	-1, // TODO
-	-1,
-	SIGFPE,
-	-1,
-	-1,
-	-1,
-	-1,
-	-1,
-	-1,
-	-1,
-	-1,
-	-1,
-	-1,
-	-1,
-	-1
+	[0] = SIGFPE,
+	[1] = SIGTRAP, // TODO
+	[2] = SIGINT, // TODO
+	[3] = SIGTRAP,
+	[4] = -1, // TODO
+	[5] = -1, // TODO
+	[6] = SIGILL,
+	[7] = SIGFPE,
+	[8] = -1,
+	[9] = -1,
+	[10] = -1,
+	[11] = -1,
+	[12] = -1,
+	[13] = SIGSEGV,
+	[14] = SIGSEGV,
+	[15] = -1,
+	[16] = SIGFPE,
+	[17] = -1, // TODO
+	[18] = -1,
+	[19] = SIGFPE,
+	[20] = -1,
+	[21] = -1,
+	[22] = -1,
+	[23] = -1,
+	[24] = -1,
+	[25] = -1,
+	[26] = -1,
+	[27] = -1,
+	[28] = -1,
+	[29] = -1,
+	[30] = -1,
+	[31] = -1
 };
 
 // TODO Check if switching context
