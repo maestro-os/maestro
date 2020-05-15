@@ -1,8 +1,6 @@
 #include <kernel.h>
 #include <memory/kmalloc/kmalloc_internal.h>
-#include <memory/pages/pages.h>
-
-// TODO Do not use printf/dprintf for errors printing
+#include <memory/buddy/buddy.h>
 
 /*
  * This file handles internal operations for the allocator.
@@ -72,7 +70,7 @@ block_t *kmalloc_alloc_block(const size_t pages)
 	block_t *b;
 	chunk_hdr_t *first_chunk;
 
-	if(pages == 0 || !(b = pages_alloc_zero(pages)))
+	if(pages == 0 || !(b = buddy_alloc_zero(buddy_get_order(pages)))) // TODO
 		return NULL;
 	bzero(b, BLOCK_HDR_SIZE);
 	b->pages = pages;
@@ -116,7 +114,7 @@ void kmalloc_free_block(block_t *b)
 		large_bin = b->next;
 	if(b->next)
 		b->next->prev = b->prev;
-	pages_free(b, b->pages);
+	buddy_free(b, buddy_get_order(b->pages)); // TODO
 }
 
 /*

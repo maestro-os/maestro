@@ -3,7 +3,6 @@
 
 # include <multiboot.h>
 # include <memory/buddy/buddy.h>
-# include <memory/pages/pages.h>
 # include <memory/kmalloc/kmalloc.h>
 # include <memory/slab/slab.h>
 # include <util/util.h>

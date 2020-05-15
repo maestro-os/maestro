@@ -150,7 +150,6 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	printf("Kernel end: %p; Heap end: %p\n", kernel_end, mem_info.heap_end);
 	buddy_init();
 	slab_init();
-	pages_init();
 	vmem_kernel();
 #ifdef KERNEL_DEBUG
 	print_slabs();
