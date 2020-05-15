@@ -3,47 +3,34 @@
 #include <memory/buddy/buddy.h>
 
 /*
- * This file handles internal operations for the allocator.
+ * This file handles internal operations for kmalloc.
  *
- * Allocations are stored into linked lists of chunks. Every chunk is allocated
+ * Allocations are stored into a linked list of chunks. Every chunk is allocated
  * according to the value into `ALIGNMENT`.
  *
  * Chunks are contained into blocks which represent the memory regions given by
- * the kernel.
- * Blocks are sorted into bins according to the size of the allocations they can
- * handle.
- *
- * - small_bin: size < SMALL_BIN_MAX
- * - medium_bin: size < MEDIUM_BIN_MAX
- * - large_bin: size >= MEDIUM_BIN_MAX
- *
- * Blocks in `large_bin` contain only one allocation which can be several
- * pages large.
+ * the buddy allocator.
  *
  * MALLOC_CHUNK_MAGIC is a magic number used in chunk structures to ensure that
- * chunks aren't overwritten. If the value has been changed between two
- * operations of the allocator, the current process shall abort.
+ * chunks aren't corrupted. If the value has been changed between two
+ * operations of the allocator, the kernel shall panic.
  */
 
 /*
  * Bins containing the list of allocated blocks.
  */
-block_t *small_bin = NULL;
-block_t *medium_bin = NULL;
-block_t *large_bin = NULL;
+static block_t *blocks_bin = NULL;
 
 /*
- * Buckets containing lists of free chunks.
+ * Bucket containing the list of free chunks.
  * Lists are sorted according to the size of the empty chunk.
- *
- * A chunk must be at least `n` bytes large to fit in a bucket, where
- * n=_FIRST_SMALL_BUCKET_SIZE * 2^i . Here, `i` is the index in the array.
  */
 ATTR_BSS
-free_chunk_t *small_buckets[SMALL_BUCKETS_COUNT];
-ATTR_BSS
-free_chunk_t *medium_buckets[MEDIUM_BUCKETS_COUNT];
+static free_chunk_t *buckets[BUCKETS_COUNT];
 
+/*
+ * The spinlock for kmalloc operations.
+ */
 spinlock_t kmalloc_spinlock;
 
 /*
@@ -51,13 +38,10 @@ spinlock_t kmalloc_spinlock;
  */
 static inline void bin_link(block_t *block)
 {
-	block_t **bin;
-
 	debug_assert(sanity_check(block), "bin_link: bad argument");
-	bin = block_get_bin(block);
-	if((block->next = *bin))
+	if((block->next = blocks_bin))
 		block->next->prev = block;
-	*bin = block;
+	blocks_bin = block;
 }
 
 /*
@@ -67,34 +51,26 @@ static inline void bin_link(block_t *block)
 ATTR_MALLOC
 block_t *kmalloc_alloc_block(const size_t pages)
 {
+	size_t buddy_order;
 	block_t *b;
 	chunk_hdr_t *first_chunk;
 
-	if(pages == 0 || !(b = buddy_alloc_zero(buddy_get_order(pages)))) // TODO
+	if(pages == 0)
+		return NULL;
+	buddy_order = buddy_get_order(pages);
+	if(!(b = buddy_alloc_zero(buddy_order)))
 		return NULL;
 	bzero(b, BLOCK_HDR_SIZE);
-	b->pages = pages;
+	b->buddy_order = buddy_order;
 	first_chunk = BLOCK_DATA(b);
 	first_chunk->block = b;
-	first_chunk->size = pages * PAGE_SIZE - (BLOCK_HDR_SIZE + CHUNK_HDR_SIZE);
+	first_chunk->size = BLOCK_SIZE(buddy_order)
+		- (BLOCK_HDR_SIZE + CHUNK_HDR_SIZE);
 #ifdef MALLOC_CHUNK_MAGIC
 	first_chunk->magic = MALLOC_CHUNK_MAGIC;
 #endif
 	bin_link(b);
 	return b;
-}
-
-/*
- * Returns a pointer to the bin for the given block.
- */
-block_t **block_get_bin(block_t *b)
-{
-	debug_assert(sanity_check(b), "block_get_bin: bad argument");
-	if(b->pages <= SMALL_BLOCK_PAGES)
-		return &small_bin;
-	else if(b->pages <= MEDIUM_BLOCK_PAGES)
-		return &medium_bin;
-	return &large_bin;
 }
 
 /*
@@ -106,15 +82,11 @@ void kmalloc_free_block(block_t *b)
 		return;
 	if(b->prev)
 		b->prev->next = b->next;
-	else if(b == small_bin)
-		small_bin = b->next;
-	else if(b == medium_bin)
-		medium_bin = b->next;
-	else if(b == large_bin)
-		large_bin = b->next;
+	else
+		blocks_bin = b->next;
 	if(b->next)
 		b->next->prev = b->prev;
-	buddy_free(b, buddy_get_order(b->pages)); // TODO
+	buddy_free(b, buddy_get_order(b->buddy_order));
 }
 
 /*
@@ -122,33 +94,24 @@ void kmalloc_free_block(block_t *b)
  * the given `size`. If `insert` is not zero, the function will return the first
  * bucket that fits even if empty to allow insertion of a new free chunk.
  */
-free_chunk_t **get_bucket(const size_t size, const int insert, const int medium)
+free_chunk_t **get_bucket(const size_t size, const int insert)
 {
-	free_chunk_t **buckets;
-	size_t first, count;
 	size_t i = 0;
 
-	if(medium)
-	{
-		buckets = medium_buckets;
-		first = FIRST_MEDIUM_BUCKET_SIZE;
-		count = MEDIUM_BUCKETS_COUNT;
-	}
-	else
-	{
-		buckets = small_buckets;
-		first = FIRST_SMALL_BUCKET_SIZE;
-		count = SMALL_BUCKETS_COUNT;
-	}
-	if(size < first)
+	if(size < FIRST_BUCKET_SIZE)
 		return NULL;
 	if(insert)
-		while(size >= (first << (i + 1)) && i < count - 1)
+	{
+		while(size >= (FIRST_BUCKET_SIZE << (i + 1)) && i < BUCKETS_COUNT - 1)
 			++i;
+	}
 	else
-		while((!buckets[i] || size > (first << i)) && i < count - 1)
+	{
+		while((!buckets[i] || size > (FIRST_BUCKET_SIZE << i))
+			&& i < BUCKETS_COUNT - 1)
 			++i;
-	return buckets + i;
+	}
+	return &buckets[i];
 }
 
 /*
@@ -159,8 +122,7 @@ void bucket_link(free_chunk_t *chunk)
 	free_chunk_t **bucket;
 
 	debug_assert(sanity_check(chunk), "bucket_link: bad argument");
-	if(!(bucket = get_bucket(chunk->hdr.size, 1,
-		block_get_bin(chunk->hdr.block) == &medium_bin)))
+	if(!(bucket = get_bucket(chunk->hdr.size, 1)))
 		return;
 	chunk->prev_free = NULL;
 	if((chunk->next_free = *bucket))
@@ -177,12 +139,9 @@ void bucket_unlink(free_chunk_t *chunk)
 
 	debug_assert(sanity_check(chunk), "bucket_unlink: bad argument");
 	// TODO Check block type instead of checking both small and medium?
-	for(i = 0; i < SMALL_BUCKETS_COUNT; ++i)
-		if(small_buckets[i] == chunk)
-			small_buckets[i] = chunk->next_free;
-	for(i = 0; i < MEDIUM_BUCKETS_COUNT; ++i)
-		if(medium_buckets[i] == chunk)
-			medium_buckets[i] = chunk->next_free;
+	for(i = 0; i < BUCKETS_COUNT; ++i)
+		if(buckets[i] == chunk)
+			buckets[i] = chunk->next_free;
 	if(sanity_check(chunk->prev_free))
 		chunk->prev_free->next_free = chunk->next_free;
 	if(sanity_check(chunk->next_free))
@@ -249,7 +208,7 @@ void alloc_chunk(free_chunk_t *chunk, const size_t size)
 {
 	debug_assert(sanity_check(chunk) && size > 0, "alloc_chunk: bad arguments");
 #ifdef MALLOC_CHUNK_MAGIC
-	debug_assert(chunk->hdr.magic == _MALLOC_CHUNK_MAGIC,
+	debug_assert(chunk->hdr.magic == MALLOC_CHUNK_MAGIC,
 		"kmalloc: corrupted chunk");
 #endif
 	debug_assert(!chunk->hdr.used && chunk->hdr.size >= size,
