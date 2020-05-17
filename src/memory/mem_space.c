@@ -1,6 +1,9 @@
 #include <memory/memory.h>
 #include <kernel.h>
 
+#define KERNEL_STACK_FLAGS\
+	MEM_REGION_FLAG_WRITE | MEM_REGION_FLAG_STACK | MEM_REGION_FLAG_IDENTITY
+
 /*
  * This file handles memory spaces handling, used to divide processes' memory
  * space.
@@ -349,7 +352,7 @@ static void region_free(mem_region_t *region)
 	if(region_is_shared(region))
 		list_remove(NULL, &region->shared_list);
 	else
-		region_phys_free(region);
+		region_phys_free(region); // TODO Do not call when identity and not a kernel stack (create a specific flag?)
 	list_remove(&mem_space->regions, &region->list);
 	avl_tree_remove(&mem_space->used_tree, &region->node);
 	cache_free(mem_region_cache, region);
@@ -558,14 +561,6 @@ static void shrink_gap(avl_tree_t **tree, avl_tree_t *gap, const size_t pages)
 }
 
 /*
- * Tells whether the region should be preallocated or not.
- */
-static inline int must_preallocate(const int flags)
-{
-	return (flags & MEM_REGION_FLAG_STACK) && !(flags & MEM_REGION_FLAG_USER);
-}
-
-/*
  * Maps the given region to identity.
  */
 static void region_identity(mem_region_t *r)
@@ -597,11 +592,8 @@ static mem_region_t *mem_space_alloc_(mem_space_t *space,
 	mem_region_t *r;
 	avl_tree_t *gap;
 	mem_gap_t *g;
-	int prealloc;
 
 	debug_assert(space, "Invalid memory space");
-	debug_assert(!((flags & MEM_REGION_FLAG_IDENTITY)
-		&& (flags & MEM_REGION_FLAG_STACK)), "Invalid flags");
 	if(!sanity_check(gap = find_gap(space->free_tree, pages)))
 	{
 		errno = ENOMEM;
@@ -615,9 +607,7 @@ static mem_region_t *mem_space_alloc_(mem_space_t *space,
 	}
 	if(r->flags & MEM_REGION_FLAG_IDENTITY)
 		region_identity(r);
-	prealloc = must_preallocate(r->flags);
-	if((prealloc && !region_phys_alloc(r))
-		|| (!prealloc && !region_phys_default(r)))
+	if(!region_phys_default(r))
 	{
 		cache_free(mem_region_cache, r);
 		return NULL;
@@ -632,6 +622,9 @@ static mem_region_t *mem_space_alloc_(mem_space_t *space,
  * Allocates a region with the given number of pages and returns a pointer to
  * the beginning. If the requested allocation is a stack, then the pointer to
  * the top of the stack will be returned.
+ *
+ * If a kernel stack is requested, the function shall fail with errno EINVAL.
+ * To allocate a stack, `mem_space_alloc_kernel_stack` shall be used.
  */
 ATTR_MALLOC
 void *mem_space_alloc(mem_space_t *space, const size_t pages, const int flags)
@@ -641,7 +634,8 @@ void *mem_space_alloc(mem_space_t *space, const size_t pages, const int flags)
 
 	if(!sanity_check(space))
 		return NULL;
-	if(pages == 0)
+	if(pages == 0
+		|| ((flags & MEM_REGION_FLAG_STACK) && !(flags & MEM_REGION_FLAG_USER)))
 	{
 		errno = EINVAL;
 		return NULL;
@@ -669,7 +663,7 @@ void *mem_space_alloc(mem_space_t *space, const size_t pages, const int flags)
  */
 ATTR_MALLOC
 void *mem_space_alloc_fixed(mem_space_t *space, void *addr, size_t pages,
-	int flags)
+	const int flags)
 {
 	if(!sanity_check(space))
 		return NULL;
@@ -681,6 +675,30 @@ void *mem_space_alloc_fixed(mem_space_t *space, void *addr, size_t pages,
 	// TODO
 	(void) flags;
 	return NULL;
+}
+
+/*
+ * Allocates a kernel stack with the given buddy allocator order as size.
+ * Kernel stacks are preallocated and identity mapped.
+ */
+ATTR_MALLOC
+void *mem_space_alloc_kernel_stack(mem_space_t *space, const size_t buddy_order)
+{
+	void *ptr;
+
+	// TODO Zero?
+	if(!(ptr = buddy_alloc(buddy_order)))
+	{
+		errno = ENOMEM;
+		return NULL;
+	}
+	if(!mem_space_alloc_fixed(space, ptr, BLOCK_SIZE(buddy_order),
+		KERNEL_STACK_FLAGS))
+	{
+		buddy_free(ptr, buddy_order);
+		return NULL;
+	}
+	return ptr;
 }
 
 /*
@@ -743,6 +761,7 @@ int mem_space_free(mem_space_t *space, void *ptr, const size_t pages)
 		goto fail;
 	if(pages > r->pages)
 		goto fail;
+	// TODO
 	region_split(r, ptr, pages);
 	spin_unlock(&space->spinlock);
 	return 1;
@@ -919,8 +938,8 @@ static void copy_pages(mem_region_t *dest, mem_region_t *src)
 	void *d, *s;
 
 	debug_assert(sanity_check(dest) && sanity_check(src), "Invalid region");
-	debug_assert(dest->begin == src->begin, "Incompatible regions");
-	debug_assert(dest->pages == src->pages, "Incompatible regions");
+	debug_assert(dest->begin == src->begin
+		&& dest->pages == src->pages, "Incompatible regions");
 	for(i = 0; i < dest->pages; ++i)
 	{
 		d = vmem_translate(dest->mem_space->page_dir, dest->begin);
@@ -968,8 +987,8 @@ static int copy_on_write(mem_region_t *region)
  * in userspace
  * - The memory could not have been allocated
  */
-int mem_space_handle_page_fault(mem_space_t *space,
-	void *ptr, const int error_code)
+int mem_space_handle_page_fault(mem_space_t *space, void *ptr,
+	const int error_code)
 {
 	mem_region_t *r;
 

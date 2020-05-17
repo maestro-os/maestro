@@ -47,8 +47,8 @@
  */
 # define MEM_REGION_FLAG_USER		0b010000
 /*
- * Memory region flag telling that the region has the same virtual and physical
- * addresses.
+ * Memory region flag telling that the region must have the same virtual and
+ * physical address.
  */
 # define MEM_REGION_FLAG_IDENTITY	0b100000
 
@@ -283,6 +283,7 @@ mem_space_t *mem_space_clone(mem_space_t *space);
 void *mem_space_alloc(mem_space_t *space, size_t pages, int flags);
 void *mem_space_alloc_fixed(mem_space_t *space, void *addr, size_t pages,
 	int flags);
+void *mem_space_alloc_kernel_stack(mem_space_t *space, size_t buddy_order);
 int mem_space_free(mem_space_t *space, void *ptr, size_t pages);
 int mem_space_free_stack(mem_space_t *space, void *stack);
 int mem_space_can_access(mem_space_t *space, const void *ptr, size_t size,

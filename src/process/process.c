@@ -3,7 +3,7 @@
 #include <process/process.h>
 #include <util/util.h>
 
-// TODO
+// TODO rm
 #include <debug/debug.h>
 
 #define USER_STACK_FLAGS\
@@ -12,8 +12,9 @@
 	MEM_REGION_FLAG_STACK | MEM_REGION_FLAG_WRITE
 
 #define USER_STACK_PAGES	8
-#define KERNEL_STACK_PAGES	8
+#define KERNEL_STACK_ORDER	3
 
+// TODO Documentation and cleanup
 // TODO Set errnos
 // TODO Multicore handling
 
@@ -137,8 +138,9 @@ process_t *new_process(process_t *parent, const regs_t *registers)
 			goto fail;
 		new_proc->user_stack = parent->user_stack;
 	}
-	if(!(new_proc->kernel_stack = mem_space_alloc(new_proc->mem_space,
-		KERNEL_STACK_PAGES, KERNEL_STACK_FLAGS)))
+	if(!(new_proc->kernel_stack
+		= mem_space_alloc_kernel_stack(new_proc->mem_space,
+			KERNEL_STACK_ORDER)))
 		goto fail;
 	if(!parent)
 		new_proc->regs_state.esp = (uintptr_t) new_proc->user_stack;
