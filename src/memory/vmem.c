@@ -97,7 +97,7 @@ fail:
  * is returned. The entry must be marked as present to be found.
  */
 ATTR_HOT
-uint32_t *vmem_resolve(vmem_t vmem, void *ptr)
+uint32_t *vmem_resolve(vmem_t vmem, const void *ptr)
 {
 	uintptr_t table, page;
 	vmem_t table_obj;
@@ -116,7 +116,7 @@ uint32_t *vmem_resolve(vmem_t vmem, void *ptr)
  * Checks if the given pointer is mapped.
  */
 ATTR_HOT
-int vmem_is_mapped(vmem_t vmem, void *ptr)
+int vmem_is_mapped(vmem_t vmem, const void *ptr)
 {
 	return (vmem_resolve(vmem, ptr) != NULL);
 }
@@ -126,7 +126,8 @@ int vmem_is_mapped(vmem_t vmem, void *ptr)
  * flags.
  */
 ATTR_HOT
-void vmem_map(vmem_t vmem, void *physaddr, void *virtaddr, const int flags)
+void vmem_map(vmem_t vmem, const void *physaddr, const void *virtaddr,
+	const int flags)
 {
 	size_t t;
 	vmem_t v;
@@ -150,7 +151,7 @@ void vmem_map(vmem_t vmem, void *physaddr, void *virtaddr, const int flags)
  * Maps the specified range of physical memory to the specified range of virtual
  * memory.
  */
-void vmem_map_range(vmem_t vmem, void *physaddr, void *virtaddr,
+void vmem_map_range(vmem_t vmem, const void *physaddr, const void *virtaddr,
 	const size_t pages, const int flags)
 {
 	size_t i = 0;
@@ -175,7 +176,7 @@ void vmem_map_range(vmem_t vmem, void *physaddr, void *virtaddr,
  * address as its physical address)
  */
 ATTR_HOT
-void vmem_identity(vmem_t vmem, void *page, const int flags)
+void vmem_identity(vmem_t vmem, const void *page, const int flags)
 {
 	vmem_map(vmem, page, page, flags);
 }
@@ -184,7 +185,8 @@ void vmem_identity(vmem_t vmem, void *page, const int flags)
  * Identity maps a range of pages.
  */
 ATTR_HOT
-void vmem_identity_range(vmem_t vmem, void *from, const size_t pages, int flags)
+void vmem_identity_range(vmem_t vmem, const void *from, const size_t pages,
+	int flags)
 {
 	size_t i = 0;
 
@@ -206,7 +208,7 @@ void vmem_identity_range(vmem_t vmem, void *from, const size_t pages, int flags)
  * Unmaps the given virtual address.
  */
 ATTR_HOT
-void vmem_unmap(vmem_t vmem, void *virtaddr)
+void vmem_unmap(vmem_t vmem, const void *virtaddr)
 {
 	size_t t;
 	vmem_t v;
@@ -224,7 +226,7 @@ void vmem_unmap(vmem_t vmem, void *virtaddr)
 /*
  * Unmaps the given virtual memory range.
  */
-void vmem_unmap_range(vmem_t vmem, void *virtaddr, const size_t pages)
+void vmem_unmap_range(vmem_t vmem, const void *virtaddr, const size_t pages)
 {
 	size_t i = 0;
 
@@ -264,7 +266,7 @@ int vmem_contains(vmem_t vmem, const void *ptr, const size_t size)
  * If the address is not mapped, `NULL` is returned.
  */
 ATTR_HOT
-void *vmem_translate(vmem_t vmem, void *ptr)
+void *vmem_translate(vmem_t vmem, const void *ptr)
 {
 	uint32_t *entry;
 
@@ -277,7 +279,7 @@ void *vmem_translate(vmem_t vmem, void *ptr)
  * Resolves the entry for the given virtual address and returns its flags.
  */
 ATTR_HOT
-uint32_t vmem_get_entry(vmem_t vmem, void *ptr)
+uint32_t vmem_get_entry(vmem_t vmem, const void *ptr)
 {
 	uint32_t *entry;
 

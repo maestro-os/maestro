@@ -49,7 +49,9 @@
 
 // TODO Handle shared
 // TODO Check gaps list order
-// TODO Allocate only one page on access, not the entire region (except kernel stacks)
+// TODO Allocate only one page on access, not the entire region
+// TODO Handle file mapping
+// TODO Empty page after stack to make segfault on overflow
 
 /*
  * The cache for the `mem_space` structure.
@@ -96,7 +98,8 @@ static mem_gap_t *gap_create(mem_space_t *space,
 	mem_gap_t *gap;
 
 	debug_assert(sanity_check(space), "Invalid memory space");
-	debug_assert(begin < begin + (pages * PAGE_SIZE), "Invalid gap");
+	debug_assert((uintptr_t) begin < (uintptr_t) begin + (pages * PAGE_SIZE),
+		"Invalid gap");
 	if(!(gap = cache_alloc(mem_gap_cache)))
 		return NULL;
 	gap->begin = begin;
@@ -140,7 +143,7 @@ static int init_gaps(mem_space_t *s)
 	mem_gap_t *gap;
 
 	debug_assert(sanity_check(s), "Invalid memory space");
-	gap_begin = (void *) 0x1000;
+	gap_begin = MEM_SPACE_BEGIN;
 	gap_pages = (uintptr_t) KERNEL_BEGIN / PAGE_SIZE - 1;
 	if(!(gap = gap_create(s, gap_begin, gap_pages)))
 		return 0;
@@ -148,8 +151,7 @@ static int init_gaps(mem_space_t *s)
 	avl_tree_insert(&s->free_tree, &gap->node, avl_val_cmp);
 	// TODO Only expose a stub for the kernel
 	gap_begin = mem_info.heap_begin;
-	gap_pages = CEIL_DIVISION(mem_info.memory_end - mem_info.heap_begin,
-		PAGE_SIZE);
+	gap_pages = (MEM_SPACE_END - mem_info.heap_begin) / PAGE_SIZE;
 	if(!(gap = gap_create(s, gap_begin, gap_pages)))
 		return 0;
 	list_insert_after(&s->gaps, s->gaps, &gap->list);
@@ -804,6 +806,64 @@ int mem_space_can_access(mem_space_t *space, const void *ptr, const size_t size,
 	}
 	spin_unlock(&space->spinlock);
 	return 1;
+}
+
+/*
+ * Copies `n` bytes from the given `src` address in the given memory space to
+ * the given `dst` address in the current context.
+ * If a portion of the memory space used in the copy is unreachable, the
+ * behaviour is undefined.
+ */
+void mem_space_copy_from(mem_space_t *space, void *dst, const void *src,
+	const size_t n)
+{
+	size_t i;
+	void *ptr;
+	size_t size;
+
+	if(!sanity_check(space) || !sanity_check(dst) || !src)
+		return;
+	spin_lock(&space->spinlock);
+	i = 0;
+	while(i < n)
+	{
+		ptr = vmem_translate(space->page_dir, src + i);
+		debug_assert(ptr, "Invalid memory");
+		size = MIN(n - i, PAGE_SIZE - (i % PAGE_SIZE));
+		memcpy(dst + i, ptr, size);
+		i += size;
+	}
+	spin_unlock(&space->spinlock);
+}
+
+/*
+ * Copies `n` bytes from the given `src` address in the current context to
+ * the given `dst` address in the given memory space.
+ * If a portion of the memory space used in the copy is unreachable, the
+ * behaviour is undefined.
+ * The function doesn't check write access to the destination page and will
+ * try to write on it anyways.
+ */
+void mem_space_copy_to(mem_space_t *space, void *dst, const void *src,
+	const size_t n)
+{
+	size_t i;
+	void *ptr;
+	size_t size;
+
+	if(!sanity_check(space) || !sanity_check(dst) || !src)
+		return;
+	spin_lock(&space->spinlock);
+	i = 0;
+	while(i < n)
+	{
+		ptr = vmem_translate(space->page_dir, src + i);
+		debug_assert(ptr, "Invalid memory");
+		size = MIN(n - i, PAGE_SIZE - (i % PAGE_SIZE));
+		memcpy(ptr, dst + i, size);
+		i += size;
+	}
+	spin_unlock(&space->spinlock);
 }
 
 /*

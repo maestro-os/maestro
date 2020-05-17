@@ -40,7 +40,12 @@
 /*
  * Computes 2^^n on unsigned integers (where `^^` is an exponent).
  */
-# define POW2(n)				(((typeof(n)) 1) << (n))
+# define POW2(n)				((typeof(n)) 1 << (n))
+/*
+ * Computes floor(log2(n)) without on unsigned integers.
+ */
+# define LOG2(n)				((n) == 0 ? 1\
+	: BIT_SIZEOF(n) - __builtin_ctz(n) - 1) // TODO Check
  /*
   * Returns the absolute value for the given `i`.
   */
@@ -149,7 +154,7 @@
  * Asserts the given condition. If not fullfilled, makes the kernel panic with
  * message `str`.
  */
-# define assert(x, str)	if(!(x)) PANIC((str), 0)
+# define assert(x, str)		if(!(x)) PANIC((str), 0)
 
 /*
  * The type for the value inside of the avl tree structure.
@@ -179,8 +184,6 @@ typedef struct avl_tree
 	/* The value of the node used for comparison in searching */
 	avl_value_t value;
 } avl_tree_t;
-
-unsigned floor_log2(const unsigned n);
 
 int bitfield_get(const uint8_t *bitfield, size_t index);
 void bitfield_set(uint8_t *bitfield, size_t index);

@@ -17,6 +17,15 @@
 # define KERNEL_BEGIN	((void *) 0x100000)
 
 /*
+ * The beginning of the virtual memory for a memory space.
+ */
+# define MEM_SPACE_BEGIN	((void *) 0x1000)
+/*
+ * The end of the virtual memory for a memory space.
+ */
+# define MEM_SPACE_END		((void *) ~(PAGE_SIZE - 1))
+
+/*
  * Memory region flag allowing write permission on the region.
  */
 # define MEM_REGION_FLAG_WRITE		0b000001
@@ -271,7 +280,6 @@ void print_mem_usage(void);
 
 mem_space_t *mem_space_init(void);
 mem_space_t *mem_space_clone(mem_space_t *space);
-// TODO Allocation at a given address
 void *mem_space_alloc(mem_space_t *space, size_t pages, int flags);
 void *mem_space_alloc_fixed(mem_space_t *space, void *addr, size_t pages,
 	int flags);
@@ -279,24 +287,29 @@ int mem_space_free(mem_space_t *space, void *ptr, size_t pages);
 int mem_space_free_stack(mem_space_t *space, void *stack);
 int mem_space_can_access(mem_space_t *space, const void *ptr, size_t size,
 	int write);
+void mem_space_copy_from(mem_space_t *space, void *dst, const void *src,
+	size_t n);
+void mem_space_copy_to(mem_space_t *space, void *dst, const void *src,
+	size_t n);
 int mem_space_handle_page_fault(mem_space_t *space, void *ptr, int error_code);
 void mem_space_destroy(mem_space_t *space);
 
 vmem_t vmem_init(void);
 void vmem_kernel(void);
-uint32_t *vmem_resolve(vmem_t vmem, void *ptr);
-int vmem_is_mapped(vmem_t vmem, void *ptr);
-void vmem_map(vmem_t vmem, void *physaddr, void *virtaddr, int flags);
-void vmem_map_range(vmem_t vmem, void *physaddr, void *virtaddr,
+uint32_t *vmem_resolve(vmem_t vmem, const void *ptr);
+int vmem_is_mapped(vmem_t vmem, const void *ptr);
+void vmem_map(vmem_t vmem, const void *physaddr, const void *virtaddr,
+	int flags);
+void vmem_map_range(vmem_t vmem, const void *physaddr, const void *virtaddr,
 	size_t pages, int flags);
-void vmem_identity(vmem_t vmem, void *page, int flags);
-void vmem_identity_range(vmem_t vmem, void *from, size_t pages, int flags);
-void vmem_unmap(vmem_t vmem, void *virtaddr);
-void vmem_unmap_range(vmem_t vmem, void *virtaddr, size_t pages);
+void vmem_identity(vmem_t vmem, const void *page, int flags);
+void vmem_identity_range(vmem_t vmem, const void *from, size_t pages,
+	int flags);
+void vmem_unmap(vmem_t vmem, const void *virtaddr);
+void vmem_unmap_range(vmem_t vmem, const void *virtaddr, size_t pages);
 int vmem_contains(vmem_t vmem, const void *ptr, size_t size);
-void *vmem_translate(vmem_t vmem, void *ptr);
-uint32_t vmem_get_entry(vmem_t vmem, void *ptr);
-uint32_t vmem_page_flags(vmem_t vmem, void *ptr);
+void *vmem_translate(vmem_t vmem, const void *ptr);
+uint32_t vmem_get_entry(vmem_t vmem, const void *ptr);
 vmem_t vmem_clone(vmem_t vmem);
 void vmem_flush(vmem_t vmem);
 void vmem_destroy(vmem_t vmem);
