@@ -50,6 +50,7 @@
  * on stacks for example.
  */
 
+// TODO Create a macro to check overflow
 // TODO Handle shared
 // TODO Check gaps list order
 // TODO Allocate only one page on access, not the entire region
@@ -126,14 +127,16 @@ static mem_gap_t *gap_clone(mem_space_t *dest, mem_gap_t *g)
 }
 
 /*
- * Creates a gap of the specified size at the specified position and/or
+ * Creates a gap of the specified size at the specified address and/or
  * extend/merge gaps around.
  */
-static void extend_gaps(void *begin, const size_t pages)
+static int extend_gaps(void *addr, const size_t pages)
 {
+	// TODO Assert the doesn't overflow
 	// TODO
-	(void) begin;
+	(void) addr;
 	(void) pages;
+	return 1;
 }
 
 /*
@@ -260,11 +263,16 @@ static int region_phys_default(mem_region_t *r)
 	{
 		vmem_map(page_dir, default_page, i, PAGING_PAGE_USER);
 		if(errno)
-			return 0;
+			goto fail;
 		i += PAGE_SIZE;
 	}
 	vmem_flush(page_dir);
 	return 1;
+
+fail:
+	vmem_unmap_range(page_dir, r->begin, r->pages);
+	vmem_flush(page_dir);
+	return 0;
 }
 
 /*
@@ -580,18 +588,120 @@ static void region_identity(mem_region_t *r)
 }
 
 /*
+ * Finds the regions containing the given pointer.
+ * If no region is found, `NULL` is returned.
+ */
+static mem_region_t *find_region(avl_tree_t *n, void *ptr)
+{
+	mem_region_t *r = NULL;
+
+	if(!ptr)
+		return NULL;
+	while(n)
+	{
+		r = CONTAINER_OF(n, mem_region_t, node);
+		if(ptr >= r->begin && ptr < r->begin + (r->pages * PAGE_SIZE))
+			return r;
+		if(r->begin > ptr)
+			n = n->left;
+		else if(r->begin < ptr)
+			n = n->right;
+		else
+			break;
+	}
+	return NULL;
+}
+
+/*
+ * Creates a hole in the given region according to the given range.
+ * The given region and range bound by `addr` and `pages` must overlap.
+ * Region `r` shall be invalid after calling this function.
+ *
+ * On success, returns 1. On fail, returns 0.
+ */
+static int region_split(mem_region_t *r, void *addr, const size_t pages)
+{
+	debug_assert(addr + PAGE_SIZE * pages >= r->begin + PAGE_SIZE * r->pages
+		&& addr <= r->begin, "Region and range must overlap");
+	// TODO Check for overflow
+	if(addr > r->begin)
+	{
+		// TODO Keep a region before
+	}
+	if(addr + PAGE_SIZE * pages <= r->begin + PAGE_SIZE * r->pages)
+	{
+		// TODO Keep a region after
+	}
+	region_free(r);
+	return 1;
+}
+
+/*
+ * Removes/shrinks region/gap in the given interval of memory to make it empty.
+ *
+ * On success, returns 1. On fail, returns 0.
+ */
+static int mem_space_crush(mem_space_t *space, void *addr, const size_t pages)
+{
+	//mem_gap_t *g;
+	mem_region_t *r;
+
+	// TODO Find a way to get gaps from address
+	/*if(sanity_check(g = find_gap(space->free_tree, addr)))
+	{
+		// TODO Remove/shrink region gap
+	}*/
+	if(sanity_check(r = find_region(space->used_tree, addr)))
+	{
+		if(!region_split(r, addr, pages))
+		{
+			// TODO Cancel gap removal
+			return 0;
+		}
+	}
+	return 1;
+}
+
+/*
+ * Creates a region of the specified size with the specified flags at the
+ * specified virtual address.
+ * If the crush flag is enabled, gaps or regions at this location will be cut
+ * or removed.
+ */
+static mem_region_t *mem_space_alloc__(mem_space_t *space, void *addr,
+	const size_t pages, const int flags, const int crush)
+{
+	mem_region_t *r;
+
+	if(!sanity_check(r = region_create(space, flags, addr, pages, pages)))
+	{
+		errno = ENOMEM;
+		return NULL;
+	}
+	if(r->flags & MEM_REGION_FLAG_IDENTITY)
+		region_identity(r);
+	if(!region_phys_default(r)
+		|| (crush && !mem_space_crush(space, addr, pages)))
+	{
+		cache_free(mem_region_cache, r);
+		return NULL;
+	}
+	list_insert_front(&space->regions, &r->list);
+	avl_tree_insert(&space->used_tree, &r->node, avl_val_cmp);
+	return r;
+}
+
+/*
  * Creates a region of the specified size with the specified flags. The function
  * will look for a gap large enough to fit the requested amount of pages, shrink
  * the gap and create the new region in that location.
- *
- * If the region is a kernel stack, it will be pre-allocated.
  */
-static mem_region_t *mem_space_alloc_(mem_space_t *space,
-	const size_t pages, const int flags)
+static mem_region_t *mem_space_alloc_(mem_space_t *space, const size_t pages,
+	const int flags)
 {
-	mem_region_t *r;
 	avl_tree_t *gap;
 	mem_gap_t *g;
+	mem_region_t *r;
 
 	debug_assert(space, "Invalid memory space");
 	if(!sanity_check(gap = find_gap(space->free_tree, pages)))
@@ -600,20 +710,8 @@ static mem_region_t *mem_space_alloc_(mem_space_t *space,
 		return NULL;
 	}
 	g = CONTAINER_OF(gap, mem_gap_t, node);
-	if(!sanity_check(r = region_create(space, flags, g->begin, pages, pages)))
-	{
-		errno = ENOMEM;
+	if(!sanity_check(r = mem_space_alloc__(space, g->begin, pages, flags, 0)))
 		return NULL;
-	}
-	if(r->flags & MEM_REGION_FLAG_IDENTITY)
-		region_identity(r);
-	if(!region_phys_default(r))
-	{
-		cache_free(mem_region_cache, r);
-		return NULL;
-	}
-	list_insert_front(&space->regions, &r->list);
-	avl_tree_insert(&space->used_tree, &r->node, avl_val_cmp);
 	shrink_gap(&space->free_tree, gap, r->pages);
 	return r;
 }
@@ -665,6 +763,9 @@ ATTR_MALLOC
 void *mem_space_alloc_fixed(mem_space_t *space, void *addr, size_t pages,
 	const int flags)
 {
+	mem_region_t *r;
+	void *ptr;
+
 	if(!sanity_check(space))
 		return NULL;
 	if(!addr || pages == 0)
@@ -672,9 +773,19 @@ void *mem_space_alloc_fixed(mem_space_t *space, void *addr, size_t pages,
 		errno = EINVAL;
 		return NULL;
 	}
-	// TODO
-	(void) flags;
-	return NULL;
+	spin_lock(&space->spinlock);
+	if(!sanity_check(r = mem_space_alloc__(space, addr,  pages, flags, 1)))
+	{
+		spin_unlock(&space->spinlock);
+		return NULL;
+	}
+	debug_assert(r->begin, "Invalid region");
+	if(flags & MEM_REGION_FLAG_STACK)
+		ptr = r->begin + (r->pages * PAGE_SIZE) - 1;
+	else
+		ptr = r->begin;
+	spin_unlock(&space->spinlock);
+	return ptr;
 }
 
 /*
@@ -702,47 +813,6 @@ void *mem_space_alloc_kernel_stack(mem_space_t *space, const size_t buddy_order)
 }
 
 /*
- * Finds the regions containing the given pointer.
- * If no region is found, `NULL` is returned.
- */
-static mem_region_t *find_region(avl_tree_t *n, void *ptr)
-{
-	mem_region_t *r = NULL;
-
-	if(!ptr)
-		return NULL;
-	while(n)
-	{
-		r = CONTAINER_OF(n, mem_region_t, node);
-		if(ptr >= r->begin && ptr < r->begin + (r->pages * PAGE_SIZE))
-			return r;
-		if(r->begin > ptr)
-			n = n->left;
-		else if(r->begin < ptr)
-			n = n->right;
-		else
-			break;
-	}
-	return NULL;
-}
-
-/*
- * Shrinks, removes or splits the given region according to the given gap
- * pointer and size and creates/expands/merges gaps accordingly.
- */
-static void region_split(mem_region_t *region, void *ptr, const size_t pages)
-{
-	/*if(pages == r->pages)
-		region_free(r);
-	else
-		region_split(r, ptr, pages);*/
-	// TODO
-	extend_gaps(region->begin, pages);
-	(void) ptr;
-	(void) pages;
-}
-
-/*
  * Frees the given pages allocated in the given memory space.
  */
 int mem_space_free(mem_space_t *space, void *ptr, const size_t pages)
@@ -759,10 +829,10 @@ int mem_space_free(mem_space_t *space, void *ptr, const size_t pages)
 	spin_lock(&space->spinlock);
 	if(!sanity_check(r = find_region(space->used_tree, ptr)))
 		goto fail;
-	if(pages > r->pages)
+	if(pages > r->pages) // TODO Ignore and clamp to region size?
 		goto fail;
-	// TODO
-	region_split(r, ptr, pages);
+	if(!extend_gaps(ptr, pages) || !region_split(r, ptr, pages))
+		goto fail; // TODO Remove created gap
 	spin_unlock(&space->spinlock);
 	return 1;
 
@@ -788,7 +858,7 @@ int mem_space_free_stack(mem_space_t *space, void *ptr)
 		goto fail;
 	if(!(r->flags & MEM_REGION_FLAG_STACK))
 		goto fail;
-	// TODO Free region and extend gaps
+	// TODO extend_gaps and region_split
 	spin_unlock(&space->spinlock);
 	return 1;
 
