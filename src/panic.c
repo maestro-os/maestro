@@ -1,6 +1,7 @@
 #include <kernel.h>
 #include <tty/tty.h>
 #include <pic/pic.h>
+#include <memory/memory.h>
 #include <process/process.h>
 #include <debug/debug.h>
 

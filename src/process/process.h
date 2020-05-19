@@ -2,7 +2,7 @@
 # define PROCESS_H
 
 # include <gdt.h>
-# include <memory/memory.h>
+# include <memory/mem_space/mem_space.h>
 # include <process/tss.h>
 # include <process/signal.h>
 

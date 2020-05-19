@@ -1,5 +1,6 @@
 #include <kernel.h>
 #include <libc/errno.h>
+#include <memory/slab/slab.h>
 #include <process/process.h>
 #include <util/util.h>
 
