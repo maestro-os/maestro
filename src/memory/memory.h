@@ -3,7 +3,6 @@
 
 # include <multiboot.h>
 # include <memory/buddy/buddy.h>
-# include <memory/pages/pages.h>
 # include <memory/kmalloc/kmalloc.h>
 # include <memory/slab/slab.h>
 # include <util/util.h>
@@ -16,19 +15,6 @@
  * The pointer to the beginning of the kernel.
  */
 # define KERNEL_BEGIN	((void *) 0x100000)
-
-/*
- * Memory region flag allowing write permission on the region.
- */
-# define MEM_REGION_FLAG_WRITE		0b0001
-/*
- * Memory region flag telling that the region is a stack.
- */
-# define MEM_REGION_FLAG_STACK		0b0010
-/*
- * Memory region flag telling that the region is a userspace region.
- */
-# define MEM_REGION_FLAG_USER		0b0100
 
 /*
  * x86 paging flag. If set, pages are 4 MB long.
@@ -116,7 +102,8 @@
  */
 # define PAGE_FAULT_USER		0b00100
 /*
- * x86 page fault flag. TODO
+ * x86 page fault flag. If set, one or more page directory entries contain
+ * reserved bits which are set.
  */
 # define PAGE_FAULT_RESERVED	0b01000
 /*
@@ -130,18 +117,20 @@
  */
 typedef struct
 {
-	/* TODO */
+	/* Size of the Multiboot2 memory map */
 	size_t memory_maps_size;
-	/* TODO */
+	/* Size of an entry in the Multiboot2 memory map */
 	size_t memory_maps_entry_size;
-	/* TODO */
+	/* Pointer to the Multiboot2 memory map */
 	void *memory_maps;
 
-	/* TODO */
+	/* Pointer to the end of the memory */
 	void *memory_end;
-	/* TODO */
-	void *heap_begin, *heap_end;
-	/* TODO */
+	/* Pointer to the beginning of allocatable memory */
+	void *heap_begin;
+	/* Pointer to the end of allocatable memory */
+	void *heap_end;
+	/* The amount total of allocatable memory */
 	size_t available_memory;
 } memory_info_t;
 
@@ -152,86 +141,20 @@ typedef struct
 {
 	/* The amount of reserved memory that the kernel cannot use */
 	size_t reserved;
+	/* The amount of bad memory */
+	size_t bad_ram;
 	/* The amount of memory used by the kernel itself */
 	size_t system;
 	/* The amount of allocated memory (kernel allocations included) */
 	size_t allocated;
-	/* The amount of used swap memory */
-	size_t swap;
 	/* The amount of remaining free memory */
 	size_t free;
 } mem_usage_t;
-
-typedef struct mem_space mem_space_t;
-
-/*
- * Structure representing a memory region in the memory space. (Used addresses)
- */
-typedef struct mem_region
-{
-	/* Linked list of memory regions in the current memory space. */
-	struct mem_region *next;
-	/*
-	 * Double-linked list of memory regions that share the same physical space.
-	 * Elements in this list might not be in the same memory space.
-	 */
-	struct mem_region *next_shared, *prev_shared;
-	/* The node of the tree the structure is stored in. */
-	avl_tree_t node;
-	/* The memory space associated with the region. */
-	mem_space_t *mem_space;
-
-	/* The flags for the memory region. */
-	char flags;
-	/* The beginning address of the region. */
-	void *begin;
-	/* The size of the region in pages. */
-	size_t pages;
-	/* The number of used pages in the region. */
-	size_t used_pages;
-} mem_region_t;
-
-/*
- * Structure representing a memory gap int the memory space. (Free addresses)
- */
-typedef struct mem_gap
-{
-	/* Double-linked list of memory gaps in the current memory space. */
-	struct mem_gap *next, *prev;
-	/* The node of the tree the structure is stored in */
-	avl_tree_t node;
-
-	/* The beginning address of the gap. */
-	void *begin;
-	/* The size of the gap in pages. */
-	size_t pages;
-} mem_gap_t;
 
 /*
  * The object used in x86 memory permissions handling.
  */
 typedef uint32_t *vmem_t;
-
-/*
- * Structure representing a memory context. Allowing to allocate virtual memory.
- */
-struct mem_space
-{
-	/* Linked list of regions (used addresses) */
-	mem_region_t *regions;
-	/* Linked list of gaps (free addresses) */
-	mem_gap_t *gaps;
-	/* Binary tree of regions */
-	avl_tree_t *used_tree;
-	/* Binary tree of gaps */
-	avl_tree_t *free_tree;
-
-	/* The spinlock for this memory space. */
-	spinlock_t spinlock;
-
-	/* An architecture dependent object to handle memory permissions. */
-	vmem_t page_dir;
-};
 
 extern memory_info_t mem_info;
 extern vmem_t kernel_vmem;
@@ -251,31 +174,24 @@ void get_memory_usage(mem_usage_t *usage);
 void print_mem_usage(void);
 # endif
 
-mem_space_t *mem_space_init(void);
-mem_space_t *mem_space_clone(mem_space_t *space);
-void *mem_space_alloc(mem_space_t *space, size_t pages, int flags);
-void mem_space_free(mem_space_t *space, void *ptr, size_t pages);
-void mem_space_free_stack(mem_space_t *space, void *stack);
-int mem_space_can_access(mem_space_t *space, const void *ptr, size_t size,
-	int write);
-int mem_space_handle_page_fault(mem_space_t *space, void *ptr, int error_code);
-void mem_space_destroy(mem_space_t *space);
-
 vmem_t vmem_init(void);
 void vmem_kernel(void);
-void vmem_identity(vmem_t vmem, void *page, int flags);
-void vmem_identity_range(vmem_t vmem, void *from, void *to, int flags);
-uint32_t *vmem_resolve(vmem_t vmem, void *ptr);
-int vmem_is_mapped(vmem_t vmem, void *ptr);
-void vmem_map(vmem_t vmem, void *physaddr, void *virtaddr, int flags);
-void vmem_map_range(vmem_t vmem, void *physaddr, void *virtaddr,
+uint32_t *vmem_resolve(vmem_t vmem, const void *ptr);
+int vmem_is_mapped(vmem_t vmem, const void *ptr);
+void vmem_map(vmem_t vmem, const void *physaddr, const void *virtaddr,
+	int flags);
+void vmem_map_range(vmem_t vmem, const void *physaddr, const void *virtaddr,
 	size_t pages, int flags);
-void vmem_unmap(vmem_t vmem, void *virtaddr);
-void vmem_unmap_range(vmem_t vmem, void *virtaddr, size_t pages);
+void vmem_identity(vmem_t vmem, const void *page, int flags);
+void vmem_identity_range(vmem_t vmem, const void *from, size_t pages,
+	int flags);
+void vmem_unmap(vmem_t vmem, const void *virtaddr);
+void vmem_unmap_range(vmem_t vmem, const void *virtaddr, size_t pages);
 int vmem_contains(vmem_t vmem, const void *ptr, size_t size);
-void *vmem_translate(vmem_t vmem, void *ptr);
-uint32_t vmem_page_flags(vmem_t vmem, void *ptr);
+void *vmem_translate(vmem_t vmem, const void *ptr);
+uint32_t vmem_get_entry(vmem_t vmem, const void *ptr);
 vmem_t vmem_clone(vmem_t vmem);
+void vmem_flush(vmem_t vmem);
 void vmem_destroy(vmem_t vmem);
 
 extern uint32_t cr0_get(void);

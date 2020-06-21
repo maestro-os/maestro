@@ -2,10 +2,6 @@
 #include <memory/memory.h>
 #include <kernel.h>
 
-// TODO rm
-#include <kernel.h>
-#include <libc/stdio.h>
-
 /*
  * This file contains functions for AVL trees handling.
  */

@@ -4,18 +4,21 @@
 #include <libc/errno.h>
 
 /*
- * Handles a small allocation.
+ * Handles an allocation. This function might allocate a new block of memory to
+ * fullfill the operation.
  */
 ATTR_MALLOC
-void *small_alloc(const size_t size)
+void *alloc_(const size_t size)
 {
 	free_chunk_t **bucket;
+	size_t pages;
 	block_t *b;
 	free_chunk_t *chunk;
 
-	if(!(bucket = get_bucket(size, 0, 0)) || !*bucket)
+	if(!(bucket = get_bucket(size, 0)) || !*bucket)
 	{
-		if(!(b = kmalloc_alloc_block(SMALL_BLOCK_PAGES)))
+		pages = CEIL_DIVISION(sizeof(block_t) + size, PAGE_SIZE);
+		if(!(b = kmalloc_alloc_block(pages)))
 			return NULL;
 		chunk = BLOCK_DATA(b);
 	}
@@ -23,46 +26,6 @@ void *small_alloc(const size_t size)
 		chunk = *bucket;
 	alloc_chunk(chunk, size);
 	return CHUNK_DATA(chunk);
-}
-
-/*
- * Handles a medium allocation.
- */
-ATTR_MALLOC
-void *medium_alloc(const size_t size)
-{
-	free_chunk_t **bucket;
-	block_t *b;
-	free_chunk_t *chunk;
-
-	if(!(bucket = get_bucket(size, 0, 1)) || !*bucket)
-	{
-		if(!(b = kmalloc_alloc_block(MEDIUM_BLOCK_PAGES)))
-			return NULL;
-		chunk = BLOCK_DATA(b);
-	}
-	else
-		chunk = *bucket;
-	alloc_chunk(chunk, size);
-	return CHUNK_DATA(chunk);
-}
-
-/*
- * Handles a large allocation.
- */
-ATTR_MALLOC
-void *large_alloc(const size_t size)
-{
-	size_t min_size;
-	block_t *b;
-	chunk_hdr_t *first_chunk;
-
-	min_size = BLOCK_HDR_SIZE + CHUNK_HDR_SIZE + size;
-	if(!(b = kmalloc_alloc_block(CEIL_DIVISION(min_size, PAGE_SIZE))))
-		return NULL;
-	first_chunk = BLOCK_DATA(b);
-	first_chunk->used = 1;
-	return CHUNK_DATA(first_chunk);
 }
 
 /*
@@ -82,15 +45,10 @@ void *kmalloc(const size_t size)
 	if(size == 0)
 		return NULL;
 	spin_lock(&kmalloc_spinlock);
-	if(size < SMALL_BIN_MAX)
-		ptr = small_alloc(size);
-	else if(size < MEDIUM_BIN_MAX)
-		ptr = medium_alloc(size);
-	else
-		ptr = large_alloc(size);
+	ptr = alloc_(size);
+	spin_unlock(&kmalloc_spinlock);
 	if(!ptr)
 		errno = ENOMEM;
-	spin_unlock(&kmalloc_spinlock);
 	return ptr;
 }
 

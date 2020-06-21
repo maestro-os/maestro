@@ -1,6 +1,9 @@
 .global spin_lock
 .global spin_unlock
 
+/*
+ * Locks the given spinlock.
+ */
 spin_lock:
 	push %ebp
 	mov %esp, %ebp
@@ -22,6 +25,9 @@ spin:
 	pop %ebp
 	ret
 
+/*
+ * Unlocks the given spinlock.
+ */
 spin_unlock:
 	push %ebp
 	mov %esp, %ebp

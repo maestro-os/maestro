@@ -2,8 +2,6 @@
 #include <elf/elf.h>
 #include <libc/errno.h>
 
-// TODO Use `kernel_vmem` to hide holes in memory?
-
 /*
  * This file handles x86 memory permissions handling.
  * x86 uses a tree-like structure to handle permissions. This structure is made
@@ -12,6 +10,8 @@
  * - Page table: A 1024 entries array describing permissions on each page
  *
  * Both objects are 4096 bytes large.
+ *
+ * After modifying a page directory, function `vmem_flush` should be called.
  */
 
 /*
@@ -59,8 +59,7 @@ static void protect_section(elf_section_header_t *hdr, const char *name)
 		return;
 	ptr = (void *) hdr->sh_addr;
 	pages = CEIL_DIVISION(hdr->sh_size, PAGE_SIZE);
-	vmem_identity_range(kernel_vmem, ptr, ptr + (pages * PAGE_SIZE),
-		PAGING_PAGE_USER);
+	vmem_identity_range(kernel_vmem, ptr, pages, PAGING_PAGE_USER);
 }
 
 /*
@@ -102,8 +101,9 @@ void vmem_kernel(void)
 	if(!(kernel_vmem = new_vmem_obj()))
 		goto fail;
 	vmem_unmap(kernel_vmem, NULL);
-	vmem_identity_range(kernel_vmem, (void *) PAGE_SIZE, mem_info.memory_end,
-		PAGING_PAGE_WRITE);
+	vmem_identity_range(kernel_vmem, (void *) PAGE_SIZE,
+		(mem_info.memory_end - (void *) PAGE_SIZE) / PAGE_SIZE,
+			PAGING_PAGE_WRITE);
 	protect_kernel();
 	protect_tables(kernel_vmem);
 	paging_enable(kernel_vmem);
@@ -114,42 +114,11 @@ fail:
 }
 
 /*
- * Identity mapping of the given page. (maps the given page to the same virtual
- * address as its physical address)
- */
-ATTR_HOT
-void vmem_identity(vmem_t vmem, void *page, const int flags)
-{
-	vmem_map(vmem, page, page, flags);
-}
-
-// TODO Optimize
-/*
- * Identity maps a range of pages.
- */
-ATTR_HOT
-void vmem_identity_range(vmem_t vmem, void *from, void *to, int flags)
-{
-	void *ptr;
-
-	if(!sanity_check(vmem))
-		return;
-	for(ptr = from; ptr < to; ptr += PAGE_SIZE)
-	{
-		vmem_identity(vmem, ptr, flags);
-		if(errno)
-		{
-			// TODO Unmap range
-		}
-	}
-}
-
-/*
  * Resolves the paging entry for the given pointer. If no entry is found, `NULL`
  * is returned. The entry must be marked as present to be found.
  */
 ATTR_HOT
-uint32_t *vmem_resolve(vmem_t vmem, void *ptr)
+uint32_t *vmem_resolve(vmem_t vmem, const void *ptr)
 {
 	uintptr_t table, page;
 	vmem_t table_obj;
@@ -170,7 +139,7 @@ uint32_t *vmem_resolve(vmem_t vmem, void *ptr)
  * Checks if the given pointer is mapped.
  */
 ATTR_HOT
-int vmem_is_mapped(vmem_t vmem, void *ptr)
+int vmem_is_mapped(vmem_t vmem, const void *ptr)
 {
 	return (vmem_resolve(vmem, ptr) != NULL);
 }
@@ -180,7 +149,8 @@ int vmem_is_mapped(vmem_t vmem, void *ptr)
  * flags.
  */
 ATTR_HOT
-void vmem_map(vmem_t vmem, void *physaddr, void *virtaddr, const int flags)
+void vmem_map(vmem_t vmem, const void *physaddr, const void *virtaddr,
+	const int flags)
 {
 	size_t t;
 	vmem_t v;
@@ -209,7 +179,7 @@ void vmem_map(vmem_t vmem, void *physaddr, void *virtaddr, const int flags)
  * Maps the specified range of physical memory to the specified range of virtual
  * memory.
  */
-void vmem_map_range(vmem_t vmem, void *physaddr, void *virtaddr,
+void vmem_map_range(vmem_t vmem, const void *physaddr, const void *virtaddr,
 	const size_t pages, const int flags)
 {
 	size_t i = 0;
@@ -230,10 +200,43 @@ void vmem_map_range(vmem_t vmem, void *physaddr, void *virtaddr,
 }
 
 /*
+ * Identity mapping of the given page. (maps the given page to the same virtual
+ * address as its physical address)
+ */
+ATTR_HOT
+void vmem_identity(vmem_t vmem, const void *page, const int flags)
+{
+	vmem_map(vmem, page, page, flags);
+}
+
+/*
+ * Identity maps a range of pages.
+ */
+ATTR_HOT
+void vmem_identity_range(vmem_t vmem, const void *from, const size_t pages,
+	int flags)
+{
+	size_t i = 0;
+
+	if(!vmem)
+		return;
+	while(i < pages)
+	{
+		vmem_identity(vmem, from + i * PAGE_SIZE, flags);
+		if(errno)
+		{
+			vmem_unmap_range(vmem, from, pages);
+			return;
+		}
+		++i;
+	}
+}
+
+/*
  * Unmaps the given virtual address.
  */
 ATTR_HOT
-void vmem_unmap(vmem_t vmem, void *virtaddr)
+void vmem_unmap(vmem_t vmem, const void *virtaddr)
 {
 	size_t t;
 	vmem_t v;
@@ -257,7 +260,7 @@ void vmem_unmap(vmem_t vmem, void *virtaddr)
 /*
  * Unmaps the given virtual memory range.
  */
-void vmem_unmap_range(vmem_t vmem, void *virtaddr, const size_t pages)
+void vmem_unmap_range(vmem_t vmem, const void *virtaddr, const size_t pages)
 {
 	size_t i = 0;
 
@@ -297,7 +300,7 @@ int vmem_contains(vmem_t vmem, const void *ptr, const size_t size)
  * If the address is not mapped, `NULL` is returned.
  */
 ATTR_HOT
-void *vmem_translate(vmem_t vmem, void *ptr)
+void *vmem_translate(vmem_t vmem, const void *ptr)
 {
 	uint32_t *entry;
 
@@ -310,7 +313,7 @@ void *vmem_translate(vmem_t vmem, void *ptr)
  * Resolves the entry for the given virtual address and returns its flags.
  */
 ATTR_HOT
-uint32_t vmem_page_flags(vmem_t vmem, void *ptr)
+uint32_t vmem_get_entry(vmem_t vmem, const void *ptr)
 {
 	uint32_t *entry;
 
@@ -371,6 +374,17 @@ fail:
 	vmem_destroy(v);
 	cr0_set(lock);
 	return NULL;
+}
+
+/*
+ * Flushes modifications to the given page directory.
+ */
+void vmem_flush(vmem_t vmem)
+{
+	if(!sanity_check(vmem))
+		return;
+	if(vmem == cr3_get())
+		tlb_reload();
 }
 
 /*

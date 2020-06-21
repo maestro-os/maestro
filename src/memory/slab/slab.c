@@ -28,12 +28,15 @@ static cache_t caches_cache;
  * Computes the number of pages required for a slab.
  */
 ATTR_HOT
-static void calc_pages_per_slab(cache_t *cache)
+static void calc_slab_order(cache_t *cache)
 {
+	size_t pages_count;
+
 	debug_assert(sanity_check(cache), "calc_pages_per_slab: invalid argument");
-	cache->slab_order = buddy_get_order(CEIL_DIVISION(sizeof(slab_t)
+	pages_count = CEIL_DIVISION(sizeof(slab_t)
 		+ CEIL_DIVISION(cache->objcount, 8)
-			+ (cache->objsize * cache->objcount), PAGE_SIZE));
+			+ (cache->objsize * cache->objcount), PAGE_SIZE);
+	cache->slab_order = buddy_get_order(pages_count);
 	// TODO Adapt objects count
 }
 
@@ -46,7 +49,7 @@ void slab_init(void)
 	caches_cache.name = CACHES_CACHE_NAME;
 	caches_cache.objsize = sizeof(cache_t);
 	caches_cache.objcount = 32;
-	calc_pages_per_slab(&caches_cache);
+	calc_slab_order(&caches_cache);
 	caches_cache.ctor = bzero;
 	caches = &caches_cache;
 }
@@ -100,7 +103,7 @@ cache_t *cache_create(const char *name, size_t objsize, size_t objcount,
 	cache->name = name;
 	cache->objsize = objsize;
 	cache->objcount = objcount;
-	calc_pages_per_slab(cache);
+	calc_slab_order(cache);
 	cache->ctor = ctor;
 	cache->dtor = dtor;
 	cache->next = caches;

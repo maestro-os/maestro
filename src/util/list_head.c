@@ -1,6 +1,14 @@
 #include <util/util.h>
 
 /*
+ * This file handles linked lists.
+ *
+ * Every lists are doubly-linked to allow insertion from anywhere in the list.
+ * The usage of a generic structure allows to avoid repetion of the same code
+ * for every structures using it.
+ */
+
+/*
  * Returns the number of elements in the given list.
  */
 size_t list_size(list_head_t *list)
@@ -31,12 +39,15 @@ size_t list_size(list_head_t *list)
  */
 void list_foreach(list_head_t *list, void (*f)(list_head_t *))
 {
-	if(!f)
+	list_head_t *next;
+
+	if(!sanity_check(f))
 		return;
 	while(list)
 	{
+		next = list->next;
 		f(list);
-		list = list->next;
+		list = next;
 	}
 }
 
@@ -75,6 +86,8 @@ void list_insert_before(list_head_t **first, list_head_t *node,
 		return;
 	if(sanity_check(first) && *first == sanity_check(node))
 		*first = new_node;
+	if(!sanity_check(node))
+		return;
 	new_node->next = node;
 	new_node->prev = (node ? node->prev : NULL);
 	link_back(new_node);
@@ -83,9 +96,14 @@ void list_insert_before(list_head_t **first, list_head_t *node,
 /*
  * Inserts `new_node` after `node`.
  */
-void list_insert_after(list_head_t *node, list_head_t *new_node)
+void list_insert_after(list_head_t **first, list_head_t *node,
+	list_head_t *new_node)
 {
-	if(!sanity_check(node) || !sanity_check(new_node))
+	if(!sanity_check(new_node))
+		return;
+	if(sanity_check(first) && !*first)
+		*first = new_node;
+	if(!sanity_check(node))
 		return;
 	new_node->next = node->next;
 	new_node->prev = node;
