@@ -1,6 +1,6 @@
-# CrumbleOS
+# Maestro
 
-CrumbleOS is a simple OS created just for fun.
+Maestro is a simple OS created just for fun.
 
 
 
