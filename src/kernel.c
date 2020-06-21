@@ -130,7 +130,7 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	idt_init();
 	pit_init();
 
-	printf("Booting crumbleos kernel version %s...\n", KERNEL_VERSION);
+	printf("Booting Maestro kernel version %s...\n", KERNEL_VERSION);
 	printf("Retrieving CPU informations...\n");
 	cpuid();
 
