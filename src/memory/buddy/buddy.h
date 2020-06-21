@@ -25,6 +25,7 @@ size_t allocated_pages(void);
 
 # ifdef KERNEL_DEBUG
 void buddy_print_free_list(void);
+int buddy_free_list_has(void *ptr);
 # endif
 
 #endif

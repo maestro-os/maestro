@@ -111,20 +111,21 @@ static void unlink_free_block(buddy_free_block_t *ptr)
  * The input block will be unlinked and the newly created blocks will be
  * inserted into the free list and free tree except the returned block.
  */
-static buddy_free_block_t *split_block(buddy_free_block_t *block,
-	const block_order_t order)
+static void *split_block(buddy_free_block_t *block, const block_order_t order)
 {
+	size_t i;
 	buddy_free_block_t *new;
 
 	debug_check_block(block);
 	debug_check_order(order);
 	debug_assert(block->order >= order, "split_block: block too small");
+	i = block->order;
 	unlink_free_block(block);
-	while(block->order > order)
+	while(i > order)
 	{
-		--block->order;
-		new = (void *) block + BLOCK_SIZE(block->order);
-		new->order = block->order;
+		--i;
+		new = (void *) block + BLOCK_SIZE(i);
+		new->order = i;
 		link_free_block(new);
 	}
 	return block;
@@ -180,6 +181,7 @@ void *buddy_alloc(const block_order_t order)
 	debug_assert(GET_BUDDY_FREE_BLOCK(free_list[i])->order == i,
 		"buddy_alloc: invalid free list");
 	ptr = split_block(GET_BUDDY_FREE_BLOCK(free_list[i]), order);
+	debug_assert(!buddy_free_list_has(ptr), "buddy_alloc: block not unlinked");
 	debug_check_block(ptr);
 	spin_unlock(&spinlock);
 	return ptr;
@@ -223,6 +225,7 @@ void buddy_free(void *ptr, block_order_t order)
 		++block->order;
 		link_free_block(block);
 	}
+	debug_assert(buddy_free_list_has(ptr), "buddy_free: block not linked");
 	spin_unlock(&spinlock);
 }
 
@@ -258,5 +261,28 @@ void buddy_print_free_list(void)
 		}
 		printf("\n");
 	}
+}
+
+/*
+ * Checks if the given `ptr` is in the free list.
+ */
+int buddy_free_list_has(void *ptr)
+{
+	size_t i;
+	list_head_t *l;
+	buddy_free_block_t *b;
+
+	for(i = 0; i <= BUDDY_MAX_ORDER; ++i)
+	{
+		l = free_list[i];
+		while(l)
+		{
+			b = CONTAINER_OF(l, buddy_free_block_t, free_list);
+			if((void *) b <= ptr && (void *) b + BLOCK_SIZE(b->order) > ptr)
+				return 1;
+			l = l->next;
+		}
+	}
+	return 0;
 }
 # endif
