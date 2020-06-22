@@ -68,6 +68,7 @@ clean:
 fclean: clean
 	rm -f $(NAME)
 	rm -f $(NAME).iso
+	rm -rf $(DOC_BUILD_DIR)
 
 re: fclean all
 
