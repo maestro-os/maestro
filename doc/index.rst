@@ -14,12 +14,10 @@ Maestro documentation
    compilation
    booting
 
-   arch/x86
-
    debug
 
-   TTY
    VGA
+   TTY
    PS2/keyboard
    PS2/mouse
 
@@ -59,14 +57,14 @@ Maestro documentation
 Overview
 ========
 
-This documentation describes the way the Maestro kernel works and its interfaces. The target audience for these documents are kernel or module developers.
+This documentation describes the way the Maestro kernel works and its interfaces. The target audience for these documents are kernel and module developers.
 
 
 
 License
 =======
 
-The kernel and the documentation is under MIT license.
+The kernel and this documentation is under MIT license.
 
 
 
@@ -74,5 +72,4 @@ Indices and tables
 ==================
 
 * :ref:`genindex`
-* :ref:`modindex`
 * :ref:`search`
