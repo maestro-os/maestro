@@ -3,7 +3,7 @@ Debug
 
 This section describes debugging features integrated to the kernel. These features are not intended for release builds and are thus disabled by default.
 
-Debugging features are implemented in directory **src/debug/**
+Debugging features are implemented in directory **src/debug/**.
 
 
 
@@ -13,6 +13,7 @@ Enabling debugging mode
 Debugging mode is enabled through macros, they can be defined using option **-D** in the compilation command line.
 
 Available debugging flags (macros) are:
+
 - **KERNEL_DEBUG**: Enables general debugging features
 - **KERNEL_DEBUG_SANITY**: Enables parameters sanity checks
 - **KERNEL_DEBUG_SELFTEST**: Enables kernel selftesting
@@ -24,6 +25,7 @@ General debugging
 =================
 
 General debugging features include:
+
 - Assertions
 - Registers printing
 - Memory printing
