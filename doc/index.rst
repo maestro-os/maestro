@@ -21,6 +21,7 @@ Maestro documentation
    PS2/keyboard
    PS2/mouse
 
+   memory/a20
    memory/mem_map
    memory/buddy_alloc
    memory/slab_alloc
@@ -30,6 +31,8 @@ Maestro documentation
 
    interruptions
    interruptions/syscalls
+
+   task_switching
 
    process
    process/scheduling
