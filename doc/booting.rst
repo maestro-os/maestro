@@ -38,4 +38,11 @@ All segments (except **TSS**) allow to read/write/execute in kernel and user mod
 
 The **TSS** (Task Switch Segment) is an almost-obsolete segment that is required for task switching, its purpose is explained in section **Task Switching**.
 
-After that, the kernel passes control to the main function.
+After that, the kernel passes control to the main function, which initializes the rest of the kernel.
+
+
+
+Initialization
+==============
+
+TODO

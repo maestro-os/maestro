@@ -18,7 +18,7 @@ The text mode allows to easily write text on the screen but it comes with a few 
 
 
 The buffer for this mode is located at address **0xb8000** on the physical memory.
-As this region of memory is in DMA, special considerations for paging are necessary: Write-Through caching should be enabled to ensure direct writting to the main memory, so that the result shows directly on screen instead of waiting for the CPU to swap the cache.
+As this region of memory is in DMA, special considerations for paging are necessary: Write-Through caching should be enabled to ensure direct writing to the main memory, so that the result shows directly on screen instead of waiting for the CPU to swap the cache.
 
 
 

@@ -10,8 +10,10 @@ Maestro documentation
    :maxdepth: 2
    :caption: Contents:
 
+   external_doc
    dependencies
    compilation
+
    booting
 
    debug
