@@ -212,7 +212,8 @@ void buddy_free(void *ptr, block_order_t order)
 
 	block = ptr;
 	debug_check_block(block);
-	assert(order <= BUDDY_MAX_ORDER, "buddy_free: order > BUDDY_MAX_ORDER");
+	debug_assert(order <= BUDDY_MAX_ORDER,
+		"buddy_free: order > BUDDY_MAX_ORDER");
 	spin_lock(&spinlock);
 	block->order = order;
 	link_free_block(block);
