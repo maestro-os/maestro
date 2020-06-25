@@ -45,15 +45,16 @@ Maestro documentation
 
    cpuid
 
-   pci
+   PCI
 
-   disk/mbr
-   disk/gpt
+   disk/PATA
+   disk/MBR
+   disk/GPT
 
+   filesystem/VFS
    filesystem/ext2
-   filesystem/vfs
 
-   cmos
+   CMOS
 
    ACPI/AML
 

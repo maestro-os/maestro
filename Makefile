@@ -32,8 +32,8 @@ OBJ := $(ASM_OBJ) $(C_OBJ)
 INTERNAL_OBJ := $(CRTI_OBJ) $(OBJ) $(CRTN_OBJ)
 OBJ_LINK_LIST := $(CRTI_OBJ) $(CRTBEGIN_OBJ) $(OBJ) $(CRTEND_OBJ) $(CRTN_OBJ)
 
+DOC_SRC_DIR = doc_src/
 DOC_DIR = doc/
-DOC_BUILD_DIR = doc_build/
 
 all: tags $(NAME) iso doc
 
@@ -68,7 +68,7 @@ clean:
 fclean: clean
 	rm -f $(NAME)
 	rm -f $(NAME).iso
-	rm -rf $(DOC_BUILD_DIR)
+	rm -rf $(DOC_DIR)
 
 re: fclean all
 
@@ -87,7 +87,7 @@ bochs: iso
 virtualbox: iso
 	virtualbox
 
-doc:
-	sphinx-build $(DOC_DIR) $(DOC_BUILD_DIR)
+doc: doc_src
+	sphinx-build $(DOC_SRC_DIR) $(DOC_DIR)
 
 .PHONY: all iso clean fclean re test debug bochs doc
