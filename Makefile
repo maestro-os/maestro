@@ -28,7 +28,7 @@ C_OBJ := $(patsubst $(SRC_DIR)%.c, $(OBJ_DIR)%.c.o, $(C_SRC))
 CRTEND_OBJ := $(shell $(CC) $(CFLAGS) -print-file-name=crtend.o)
 CRTN_OBJ = $(OBJ_DIR)crtn.s.o
 
-OBJ := $(ASM_OBJ) $(C_OBJ) 
+OBJ := $(ASM_OBJ) $(C_OBJ)
 INTERNAL_OBJ := $(CRTI_OBJ) $(OBJ) $(CRTN_OBJ)
 OBJ_LINK_LIST := $(CRTI_OBJ) $(CRTBEGIN_OBJ) $(OBJ) $(CRTEND_OBJ) $(CRTN_OBJ)
 
