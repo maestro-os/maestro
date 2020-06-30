@@ -4,20 +4,18 @@
 # include <memory/buddy/buddy.h>
 # include <util/util.h>
 
-# define BUDDY_BLOCK_OFFSET(ptr)	((uintptr_t) (ptr)\
-	- (uintptr_t) mem_info.heap_begin)
-# define BUDDY_ADDR(ptr, order)		((void *) (mem_info.heap_begin\
-	+ (BUDDY_BLOCK_OFFSET(ptr) ^ BLOCK_SIZE(order))))
+/*
+ * The state of a used block. This value cannot be reached thanks to the
+ * capacity of the pointer type (because the value is the page identifier, not
+ * the pointer).
+ */
+# define BLOCK_STATE_USED	((block_state_t) -1)
 
-typedef struct buddy_free_block
-{
-	/* Double-linked list of free blocks of the same order. */
-	list_head_t free_list;
-	/* The AVL tree node. */
-	avl_tree_t node;
-
-	/* The block's order. */
-	block_order_t order;
-} buddy_free_block_t;
+/*
+ * The type representing the state of a block. Value BLOCK_STATE_USED means used
+ * block. Any other value means free block and represents the identifier of the
+ * next block into the free list.
+ */
+typedef uint32_t block_state_t;
 
 #endif
