@@ -12,7 +12,7 @@ static void test0(void)
 	{
 		if(!(p = buddy_alloc(0)))
 			ASSERT(0);
-		memset(p, 0xff, BLOCK_SIZE(0));
+		memset(p, 0xff, FRAME_SIZE(0));
 		buddy_free(p, 0);
 	}
 	ASSERT(1);
@@ -26,7 +26,7 @@ static void test1(void)
 	{
 		if(!(p = buddy_alloc(8)))
 			ASSERT(0);
-		memset(p, 0xff, BLOCK_SIZE(8));
+		memset(p, 0xff, FRAME_SIZE(8));
 		buddy_free(p, 8);
 	}
 	ASSERT(1);
@@ -40,13 +40,13 @@ static void test2(void)
 	{
 		if(!(p0 = buddy_alloc(8)))
 			ASSERT(0);
-		memset(p0, 0xff, BLOCK_SIZE(8));
+		memset(p0, 0xff, FRAME_SIZE(8));
 		if(!(p1 = buddy_alloc(0)))
 		{
 			buddy_free(p0, 8);
 			ASSERT(0);
 		}
-		memset(p1, 0xff, BLOCK_SIZE(0));
+		memset(p1, 0xff, FRAME_SIZE(0));
 		buddy_free(p1, 0);
 		buddy_free(p0, 8);
 	}

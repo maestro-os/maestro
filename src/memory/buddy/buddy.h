@@ -7,8 +7,8 @@
 
 # define BUDDY_MAX_ORDER	17
 
-# define BLOCK_SIZE(order)	(PAGE_SIZE << (order))
-# define MAX_BLOCK_SIZE		(PAGE_SIZE << BUDDY_MAX_ORDER)
+# define FRAME_SIZE(order)	(PAGE_SIZE << (order))
+# define MAX_FRAME_SIZE		(PAGE_SIZE << BUDDY_MAX_ORDER)
 
 typedef unsigned block_order_t;
 
@@ -24,7 +24,8 @@ void buddy_free(void *ptr, block_order_t order);
 size_t allocated_pages(void);
 
 # ifdef KERNEL_DEBUG
-void buddy_print_free_list(void);
+void buddy_free_list_check(void);
+void buddy_free_list_print(void);
 int buddy_free_list_has(void *ptr);
 # endif
 

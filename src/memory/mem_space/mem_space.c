@@ -297,7 +297,7 @@ void *mem_space_alloc_kernel_stack(mem_space_t *space, const size_t buddy_order)
 		errno = ENOMEM;
 		return NULL;
 	}
-	if(!mem_space_alloc_fixed(space, ptr, BLOCK_SIZE(buddy_order),
+	if(!mem_space_alloc_fixed(space, ptr, FRAME_SIZE(buddy_order),
 		KERNEL_STACK_FLAGS))
 	{
 		buddy_free(ptr, buddy_order);

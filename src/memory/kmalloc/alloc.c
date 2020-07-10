@@ -64,7 +64,7 @@ block_t *kmalloc_alloc_block(const size_t pages)
 	b->buddy_order = buddy_order;
 	first_chunk = BLOCK_DATA(b);
 	first_chunk->block = b;
-	first_chunk->size = BLOCK_SIZE(buddy_order)
+	first_chunk->size = FRAME_SIZE(buddy_order)
 		- (BLOCK_HDR_SIZE + CHUNK_HDR_SIZE);
 #ifdef MALLOC_CHUNK_MAGIC
 	first_chunk->magic = MALLOC_CHUNK_MAGIC;
