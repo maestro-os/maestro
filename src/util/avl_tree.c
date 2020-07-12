@@ -1,6 +1,8 @@
 #include <util/util.h>
 #include <debug/debug.h>
 
+#include <libc/stdio.h>
+
 /*
  * This file contains functions for AVL trees handling.
  */

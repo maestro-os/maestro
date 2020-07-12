@@ -14,8 +14,7 @@
 /*
  * Tells if the specified frame is used.
  */
-# define FRAME_IS_USED(state_ptr)	((state_ptr)->prev == FRAME_STATE_USED\
- 	|| (state_ptr)->next == FRAME_STATE_USED)
+# define FRAME_IS_USED(state_ptr)	((state_ptr)->prev == FRAME_STATE_USED)
 
 /*
  * Returns the pointer to the frame state for the given frame id.

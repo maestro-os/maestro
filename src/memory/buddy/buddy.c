@@ -99,7 +99,6 @@ static void free_list_pop(frame_order_t order)
 	FRAME_STATE_GET(s->prev)->next = (s->next != frame_id ? s->next : s->prev);
 	FRAME_STATE_GET(s->next)->prev = (s->prev != frame_id ? s->prev : s->next);
 	s->prev = FRAME_STATE_USED;
-	s->next = FRAME_STATE_USED;
 	if(FRAME_IS_USED(free_list[order]))
 		free_list[order] = NULL;
 }
@@ -125,7 +124,6 @@ static void free_list_remove(frame_order_t order, frame_state_t *s)
 	FRAME_STATE_GET(s->prev)->next = (s->next != frame_id ? s->next : s->prev);
 	FRAME_STATE_GET(s->next)->prev = (s->prev != frame_id ? s->prev : s->next);
 	s->prev = FRAME_STATE_USED;
-	s->next = FRAME_STATE_USED;
 }
 
 /*
@@ -168,19 +166,16 @@ void buddy_init(void)
  */
 static void free_list_split(const frame_order_t from, const frame_order_t to)
 {
-	size_t i;
-	frame_state_t *s, *buddy;
+	frame_state_t *s;
+	size_t frame_id, i;
 
 	debug_assert(from <= BUDDY_MAX_ORDER && to < from, "buddy: invalid orders");
-	for(i = from; i > to; --i)
-	{
-		s = free_list[i];
-		buddy = FRAME_STATE_GET(GET_BUDDY(FRAME_ID(s), i - 1));
-		debug_assert(FRAME_IS_USED(buddy), "buddy: invalid buddy");
-		free_list_pop(i);
-		free_list_push(i - 1, s);
-		free_list_push(i - 1, buddy);
-	}
+	s = free_list[from];
+	frame_id = FRAME_ID(s);
+	free_list_pop(from);
+	free_list_push(to, s);
+	for(i = to; i < from; ++i)
+		free_list_push(i, FRAME_STATE_GET(GET_BUDDY(frame_id, i)));
 }
 
 /*
