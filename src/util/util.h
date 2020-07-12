@@ -139,24 +139,6 @@
 # define unlikely(x)		__builtin_expect(!!(x), 0)
 
 /*
- * sanity_check(): Checks the sanity of the pointer and returns it.
- * Only enabled when compiling with the appropriate flag.
- * A pointer is considered as sane if it is in the range of the memory available
- * on the system and greater than the first megabyte or NULL.
- */
-# ifdef KERNEL_DEBUG_SANITY
-#  define sanity_check(x)	((typeof(x)) _debug_sanity_check(x))
-# else
-#  define sanity_check(x)	(x)
-# endif
-
-/*
- * Asserts the given condition. If not fullfilled, makes the kernel panic with
- * message `str`.
- */
-# define assert(x, str)		if(!(x)) PANIC((str), 0)
-
-/*
  * The type for the value inside of the avl tree structure.
  */
 typedef int32_t avl_value_t; // TODO Use int64_t on 64bits

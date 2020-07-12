@@ -1,6 +1,5 @@
 #include <util/util.h>
-#include <memory/memory.h>
-#include <kernel.h>
+#include <debug/debug.h>
 
 /*
  * This file contains functions for AVL trees handling.
@@ -112,8 +111,6 @@ avl_tree_t *avl_tree_search(avl_tree_t *tree,
 	n = tree;
 	while(n->value != value)
 	{
-		sanity_check(n->left);
-		sanity_check(n->right);
 		if(f(&n->value, &value) < 0 && n->left)
 			n = n->left;
 		else if(n->right)
@@ -133,8 +130,6 @@ static void update_heights(avl_tree_t *n)
 
 	while(sanity_check(n))
 	{
-		sanity_check(n->left);
-		sanity_check(n->right);
 		left_height = (n->left ? n->left->height + 1 : 0);
 		right_height = (n->right ? n->right->height + 1 : 0);
 		n->height = MAX(left_height, right_height);

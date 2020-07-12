@@ -1,6 +1,8 @@
 #include <debug/debug.h>
 #include <elf/elf.h>
 
+#include <libc/stdio.h>
+
 static void *inst;
 static const char *func_name;
 

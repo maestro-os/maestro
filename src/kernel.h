@@ -53,6 +53,8 @@ extern void kernel_loop(void);
 ATTR_NORETURN
 extern void kernel_halt(void);
 
+typedef struct regs regs_t;
+
 void error_handler(unsigned error, uint32_t error_code, const regs_t *regs);
 
 ATTR_NORETURN

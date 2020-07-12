@@ -1,5 +1,7 @@
-#include <kernel.h>
 #include <memory/slab/slab.h>
+#include <debug/debug.h>
+#include <kernel.h>
+
 #include <libc/errno.h>
 
 /*

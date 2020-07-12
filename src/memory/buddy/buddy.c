@@ -2,22 +2,23 @@
 #include <memory/buddy/buddy_internal.h>
 #include <kernel.h>
 #include <idt/idt.h>
+#include <debug/debug.h>
 
 #include <libc/errno.h>
 
 /*
  * This files contains the buddy allocator which allows to allocate 2^^n pages
- * large blocks of memory.
+ * large frames of memory.
  *
- * This allocator works by dividing blocks of memory in two until the a block of
+ * This allocator works by dividing frames of memory in two until the a frame of
  * the required size is available.
  *
- * The order of a block is the `n` in the expression `2^^n` that represents the
- * size of a block in pages.
+ * The order of a frame is the `n` in the expression `2^^n` that represents the
+ * size of a frame in pages.
  */
 
 /*
- * Pointer to the region of memory containing blocks states.
+ * Pointer to the region of memory containing frames states.
  */
 static frame_state_t *frames_states;
 
@@ -32,7 +33,7 @@ static size_t pages_count;
 static void *buddy_begin;
 
 /*
- * The list of linked lists containing free blocks, sorted according to blocks'
+ * The list of linked lists containing free frames, sorted according to frames'
  * order.
  */
 static frame_state_t *free_list[BUDDY_MAX_ORDER + 1];
@@ -52,9 +53,9 @@ size_t total_allocated_pages = 0;
  */
 ATTR_HOT
 ATTR_CONST
-block_order_t buddy_get_order(const size_t pages)
+frame_order_t buddy_get_order(const size_t pages)
 {
-	block_order_t order = 0;
+	frame_order_t order = 0;
 	size_t i = 1;
 
 	while(i < pages)
@@ -69,67 +70,62 @@ block_order_t buddy_get_order(const size_t pages)
  * Links the given element to the given free list.
  */
 ATTR_HOT
-static void free_list_push(frame_state_t **list, frame_state_t *s)
+static void free_list_push(frame_order_t order, frame_state_t *s)
 {
-	debug_assert(list && s, "Invalid arguments");
+	debug_assert(order <= BUDDY_MAX_ORDER && s, "buddy: invalid arguments");
 	s->prev = FRAME_ID(s);
-	s->next = (*list ? FRAME_ID(*list) : FRAME_ID(s));
+	s->next = (free_list[order] ? FRAME_ID(free_list[order]) : FRAME_ID(s));
+	s->order = order;
 	FRAME_STATE_GET(s->next)->prev = FRAME_ID(s);
 	debug_assert(FRAME_STATE_GET(s->prev) == s, "buddy: free list failure");
 	debug_check_free_frame(s);
-	*list = s;
-#ifdef KERNEL_DEBUG
-	/*debug_assert(buddy_free_list_has(FRAME_ID_PTR(FRAME_ID(s))),
-		"buddy: free list push failed");*/
-#endif
+	free_list[order] = s;
 }
 
 /*
  * Unlinks the first element of the given free list.
  */
 ATTR_HOT
-static void free_list_pop(frame_state_t **list)
+static void free_list_pop(frame_order_t order)
 {
 	frame_state_t *s;
 	size_t frame_id;
 
-	debug_assert(list && *list, "Invalid argument");
-	s = *list;
+	debug_assert(order <= BUDDY_MAX_ORDER, "buddy: invalid argument");
+	s = free_list[order];
 	debug_check_free_frame(s);
-	*list = FRAME_STATE_GET(s->next);
+	free_list[order] = FRAME_STATE_GET(s->next);
 	frame_id = FRAME_ID(s);
 	FRAME_STATE_GET(s->prev)->next = (s->next != frame_id ? s->next : s->prev);
 	FRAME_STATE_GET(s->next)->prev = (s->prev != frame_id ? s->prev : s->next);
 	s->prev = FRAME_STATE_USED;
 	s->next = FRAME_STATE_USED;
-	if(FRAME_IS_USED(*list))
-		*list = NULL;
-#ifdef KERNEL_DEBUG
-	//buddy_free_list_check();
-#endif
+	if(FRAME_IS_USED(free_list[order]))
+		free_list[order] = NULL;
 }
 
 /*
  * Unlinks the given element of the given free list.
  */
 ATTR_HOT
-static void free_list_remove(frame_state_t **list, frame_state_t *s)
+static void free_list_remove(frame_order_t order, frame_state_t *s)
 {
 	size_t frame_id;
 
-	debug_assert(list && *list && s, "Invalid arguments");
+	debug_assert(order <= BUDDY_MAX_ORDER && s, "buddy: invalid arguments");
+	debug_assert(free_list[order], "buddy: empty free list");
 	debug_check_free_frame(s);
 	frame_id = FRAME_ID(s);
-	if(*list == s)
-		*list = (s->next == frame_id ? NULL : FRAME_STATE_GET(s->next));
+	if(free_list[order] == s)
+	{
+		debug_assert(s->prev == frame_id, "buddy: invalid free list");
+		free_list[order] = (s->next == frame_id ? NULL
+			: FRAME_STATE_GET(s->next));
+	}
 	FRAME_STATE_GET(s->prev)->next = (s->next != frame_id ? s->next : s->prev);
 	FRAME_STATE_GET(s->next)->prev = (s->prev != frame_id ? s->prev : s->next);
 	s->prev = FRAME_STATE_USED;
 	s->next = FRAME_STATE_USED;
-#ifdef KERNEL_DEBUG
-	/*debug_assert(!buddy_free_list_has(FRAME_ID_PTR(FRAME_ID(s))),
-		"buddy: free list remove failed");*/
-#endif
 }
 
 /*
@@ -148,7 +144,7 @@ void buddy_init(void)
 	buddy_begin = mem_info.heap_begin + pages_count * sizeof(frame_state_t);
 	buddy_begin = ALIGN(buddy_begin, PAGE_SIZE);
 	debug_assert(buddy_begin + pages_count * PAGE_SIZE == mem_info.heap_end,
-		"Invalid buddy allocator memory");
+		"buddy: invalid allocator memory");
 	memset((void *) frames_states, FRAME_STATE_USED,
 		pages_count * sizeof(frame_state_t));
 	bzero(free_list, sizeof(free_list));
@@ -163,62 +159,69 @@ void buddy_init(void)
 		s = FRAME_STATE_GET(i / PAGE_SIZE);
 		debug_assert((uintptr_t) s < (uintptr_t) buddy_begin,
 			"buddy: frame state out of bounds");
-		free_list_push(&free_list[order], s);
+		free_list_push(order, s);
 	}
 }
 
 /*
- * Splits the given block from order `from` to order `to`.
+ * Splits the given frame from order `from` to order `to`.
  */
-static void free_list_split(const block_order_t from, const block_order_t to)
+static void free_list_split(const frame_order_t from, const frame_order_t to)
 {
 	size_t i;
 	frame_state_t *s, *buddy;
 
-	debug_assert(from <= BUDDY_MAX_ORDER && to < from, "Invalid orders");
+	debug_assert(from <= BUDDY_MAX_ORDER && to < from, "buddy: invalid orders");
 	for(i = from; i > to; --i)
 	{
 		s = free_list[i];
 		buddy = FRAME_STATE_GET(GET_BUDDY(FRAME_ID(s), i - 1));
-		free_list_pop(&free_list[i]);
-		free_list_push(&free_list[i - 1], s);
-		free_list_push(&free_list[i - 1], buddy);
+		debug_assert(FRAME_IS_USED(buddy), "buddy: invalid buddy");
+		free_list_pop(i);
+		free_list_push(i - 1, s);
+		free_list_push(i - 1, buddy);
 	}
 }
 
 /*
- * Coalesces the given block from the given order.
+ * Coalesces the given frame from the given order.
  */
-static void free_list_coalesce(frame_state_t *b, const block_order_t order)
+static void free_list_coalesce(frame_state_t *b, const frame_order_t order)
 {
-	size_t i, buddy;
+	size_t i, frame_id, buddy;
 	frame_state_t *buddy_state;
 
-	debug_assert(b, "Invalid argument");
-	debug_assert(order <= BUDDY_MAX_ORDER, "Invalid order");
+	debug_assert(b, "buddy: invalid argument");
+	debug_assert(order <= BUDDY_MAX_ORDER, "buddy: invalid order");
 	i = order;
 	while(i < BUDDY_MAX_ORDER)
 	{
-		debug_assert(!FRAME_IS_USED(b), "buddy: trying to coalesce used block");
-		if((buddy = GET_BUDDY(FRAME_ID(b), i)) + POW2(i) >= pages_count)
+		debug_assert(!FRAME_IS_USED(b), "buddy: trying to coalesce used frame");
+		frame_id = FRAME_ID(b);
+		if(frame_id >= pages_count || frame_id + POW2(i) > pages_count)
+			break;
+		buddy = GET_BUDDY(frame_id, i);
+		if(buddy >= pages_count || buddy + POW2(i) > pages_count)
 			break;
 		buddy_state = FRAME_STATE_GET(buddy);
+		if(buddy_state->order != i)
+			break;
 		debug_assert(b != buddy_state, "buddy: invalid buddy");
 		if(FRAME_IS_USED(buddy_state))
 			break;
-		free_list_remove(&free_list[i], b);
-		free_list_remove(&free_list[i], buddy_state);
+		free_list_remove(i, b);
+		free_list_remove(i, buddy_state);
 		b = MIN(b, buddy_state);
-		free_list_push(&free_list[++i], b);
+		free_list_push(++i, b);
 	}
 }
 
 /*
- * Allocates a block of memory using the buddy allocator.
+ * Allocates a frame of memory using the buddy allocator.
  */
 ATTR_HOT
 ATTR_MALLOC
-void *buddy_alloc(const block_order_t order)
+void *buddy_alloc(const frame_order_t order)
 {
 	size_t i;
 	void *ptr;
@@ -239,11 +242,12 @@ void *buddy_alloc(const block_order_t order)
 	{
 		free_list_split(i, order);
 		i = order;
-		debug_assert(free_list[i], "Buddy block split fail");
+		debug_assert(free_list[i], "Buddy frame split fail");
 	}
 	ptr = FRAME_ID_PTR(FRAME_ID(free_list[i]));
-	free_list_pop(&free_list[i]);
+	free_list_pop(i);
 	total_allocated_pages += FRAME_SIZE(order);
+	debug_check_frame(buddy_begin, ptr, order);
 
 end:
 	spin_unlock(&spinlock);
@@ -251,11 +255,11 @@ end:
 }
 
 /*
- * Uses `buddy_alloc` and applies `bzero` on the allocated block.
+ * Uses `buddy_alloc` and applies `bzero` on the allocated frame.
  */
 ATTR_HOT
 ATTR_MALLOC
-void *buddy_alloc_zero(const block_order_t order)
+void *buddy_alloc_zero(const frame_order_t order)
 {
 	void *ptr;
 
@@ -265,21 +269,21 @@ void *buddy_alloc_zero(const block_order_t order)
 }
 
 /*
- * Frees the given memory block that was allocated using the buddy allocator.
- * The given order must be the same as the one given to allocate the block.
+ * Frees the given memory frame that was allocated using the buddy allocator.
+ * The given order must be the same as the one given to allocate the frame.
  */
 ATTR_HOT
-void buddy_free(void *ptr, const block_order_t order)
+void buddy_free(void *ptr, const frame_order_t order)
 {
 	frame_state_t *state;
 
-	debug_check_block(buddy_begin, ptr, order);
+	debug_check_frame(buddy_begin, ptr, order);
 	debug_assert(order <= BUDDY_MAX_ORDER,
 		"buddy_free: order > BUDDY_MAX_ORDER");
 	spin_lock(&spinlock);
 	state = FRAME_STATE_GET(FRAME_PTR_ID(ptr));
-	debug_assert(FRAME_IS_USED(state), "Freeing unused block");
-	free_list_push(&free_list[order], state);
+	debug_assert(FRAME_IS_USED(state), "buddy: freeing unused frame");
+	free_list_push(order, state);
 	free_list_coalesce(state, order);
 	total_allocated_pages -= FRAME_SIZE(order);
 	spin_unlock(&spinlock);
@@ -331,29 +335,33 @@ void buddy_print_free_list(void)
 }
 
 /*
- * Checks if the given `ptr` is in the free list.
+ * Checks if the given `frame` is in the free list.
  */
-int buddy_free_list_has(void *ptr)
+int buddy_free_list_has(frame_state_t *state)
 {
-	size_t frame_id;
 	size_t i;
+
+	for(i = 0; i <= BUDDY_MAX_ORDER; ++i)
+		if(buddy_free_list_has_(state, i))
+			return 1;
+	return 0;
+}
+
+int buddy_free_list_has_(frame_state_t *state, frame_order_t order)
+{
 	frame_state_t *s, *next;
 
-	frame_id = FRAME_PTR_ID(ptr);
-	for(i = 0; i <= BUDDY_MAX_ORDER; ++i)
+	if(!(s = free_list[order]))
+		return 0;
+	while(1)
 	{
-		if(!(s = free_list[i]))
-			continue;
-		while(1)
-		{
-			debug_check_free_frame(s);
-			if(FRAME_ID(s) == frame_id)
-				return 1;
-			next = FRAME_STATE_GET(s->next);
-			if(next == s)
-				break;
-			s = next;
-		}
+		debug_check_free_frame(s);
+		if(s == state)
+			return 1;
+		next = FRAME_STATE_GET(s->next);
+		if(next == s)
+			break;
+		s = next;
 	}
 	return 0;
 }

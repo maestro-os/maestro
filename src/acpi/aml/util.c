@@ -1,4 +1,6 @@
 #include <acpi/aml/aml_parser.h>
+#include <kernel.h>
+
 #include <stdarg.h>
 
 #ifdef KERNEL_DEBUG

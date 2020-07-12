@@ -1,6 +1,9 @@
 #include <kernel.h>
 #include <memory/mem_space/mem_space.h>
 #include <memory/memory.h>
+#include <debug/debug.h>
+
+#include <libc/errno.h>
 
 /*
  * This file handles physical allocations for regions.

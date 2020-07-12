@@ -1,5 +1,7 @@
 #include <memory/memory.h>
 #include <elf/elf.h>
+#include <debug/debug.h>
+
 #include <libc/errno.h>
 
 /*
@@ -330,10 +332,9 @@ static vmem_t clone_page_table(vmem_t from)
 {
 	vmem_t v;
 
-	sanity_check(from);
 	if(!(v = new_vmem_obj()))
 		return NULL;
-	memcpy(v, from, PAGE_SIZE);
+	memcpy(v, sanity_check(from), PAGE_SIZE);
 	return v;
 }
 

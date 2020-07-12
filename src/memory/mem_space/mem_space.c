@@ -1,6 +1,9 @@
 #include <memory/mem_space/mem_space.h>
 #include <memory/slab/slab.h>
 #include <kernel.h>
+#include <debug/debug.h>
+
+#include <libc/errno.h>
 
 #define KERNEL_STACK_FLAGS\
 	MEM_REGION_FLAG_WRITE | MEM_REGION_FLAG_STACK | MEM_REGION_FLAG_IDENTITY

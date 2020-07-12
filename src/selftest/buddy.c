@@ -94,7 +94,7 @@ static int check_duplicates(const buddy_block_test_t *blocks,
 	return 0;
 }
 
-static int test0__(const block_order_t order)
+static int test0__(const frame_order_t order)
 {
 	buddy_block_test_t *blocks = NULL, *b, *next;
 	size_t i = 0;
@@ -109,7 +109,7 @@ static int test0__(const block_order_t order)
 		b->next = blocks;
 		b->order = order;
 		blocks = b;
-		if(++i % 16384 == 0)
+		if(++i % 1024 == 0)
 			printf("%zu allocations of order %u\n", i, order);
 	}
 	printf("%zu allocations of order %u\n", i, order);
@@ -119,7 +119,7 @@ static int test0__(const block_order_t order)
 		next = blocks->next;
 		buddy_free(blocks, blocks->order);
 		blocks = next;
-		if(++i % 16384 == 0)
+		if(++i % 1024 == 0)
 			printf("%zu free\n", i);
 	}
 	printf("%zu free\n", i);
@@ -128,19 +128,17 @@ static int test0__(const block_order_t order)
 
 static void test0_(void)
 {
-	const size_t max = 10;
+	const size_t max = BUDDY_MAX_ORDER;
 	size_t i;
 
 	i = max;
-	while(1)
+	do
 	{
 		printf("Buddy duplicate testing: %zu/%zu\n", i, max);
 		if(!test0__(i))
 			ASSERT(0);
-		if(i == 0)
-			break;
-		--i;
 	}
+	while(i-- > 0);
 	ASSERT(1);
 }
 

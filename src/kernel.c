@@ -164,6 +164,7 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 
 // TODO Ensure that keyboard is enabled
 #ifdef KERNEL_SELFTEST
+	printf("Running selftests...\n");
 	run_selftest();
 	kernel_loop();
 #endif

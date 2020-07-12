@@ -1,6 +1,7 @@
 #include <kernel.h>
 #include <memory/mem_space/mem_space.h>
 #include <memory/slab/slab.h>
+#include <debug/debug.h>
 
 /*
  * This file handles gaps for memory spaces.
@@ -148,6 +149,9 @@ int gap_extend(avl_tree_t **tree, void *addr, const size_t pages)
 	debug_assert(sanity_check(tree), "Invalid gaps tree");
 	ASSERT_RANGE(addr, pages);
 	// TODO
+	(void) tree;
+	(void) addr;
+	(void) pages;
 	return 1;
 }
 

@@ -3,6 +3,8 @@
 #include <memory/memory.h>
 #include <util/util.h>
 
+#include <libc/stdio.h>
+
 #ifdef spin_lock
 # undef spin_lock
 #endif

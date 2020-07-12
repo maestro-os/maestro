@@ -1,9 +1,9 @@
 NAME = maestro
 
-DEBUG_FLAGS = -D KERNEL_DEBUG -D KERNEL_DEBUG_SANITY -D KERNEL_SELFTEST #-D KERNEL_DEBUG_SPINLOCK
+DEBUG_FLAGS = #-D KERNEL_DEBUG -D KERNEL_DEBUG_SANITY -D KERNEL_SELFTEST #-D KERNEL_DEBUG_SPINLOCK
 
 CC = i686-elf-gcc
-CFLAGS = -nostdlib -ffreestanding -fstack-protector-strong -Wall -Wextra -Werror -lgcc -g3 $(DEBUG_FLAGS)
+CFLAGS = -nostdlib -ffreestanding -fstack-protector-strong -Wall -Wextra -Werror -lgcc -O3 -D KERNEL_SELFTEST#-g3 $(DEBUG_FLAGS)
 
 LINKER = linker.ld
 

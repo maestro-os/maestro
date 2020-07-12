@@ -1,6 +1,7 @@
 #include <kernel.h>
 #include <memory/kmalloc/kmalloc_internal.h>
 #include <memory/buddy/buddy.h>
+#include <debug/debug.h>
 
 /*
  * This file handles internal operations for kmalloc.
@@ -229,4 +230,7 @@ void chunk_assert(chunk_hdr_t *c)
 	debug_assert(c->magic == MALLOC_CHUNK_MAGIC, "kmalloc: corrupted chunk");
 #endif
 	debug_assert(c->used, "kmalloc: pointer was not allocated");
+#ifndef KERNEL_DEBUG
+	(void) c;
+#endif
 }

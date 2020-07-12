@@ -3,6 +3,8 @@
 #include <util/util.h>
 #include <memory/memory.h>
 
+#include <libc/stdio.h>
+
 ATTR_BSS
 static profiler_func_t *funcs;
 

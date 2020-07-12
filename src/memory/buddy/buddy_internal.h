@@ -5,14 +5,14 @@
 # include <util/util.h>
 
 /*
- * The state of a used block. This value cannot be reached thanks to the
+ * The state of a used frame. This value cannot be reached thanks to the
  * capacity of the pointer type (because the value is the page identifier, not
  * the pointer).
  */
 # define FRAME_STATE_USED	((uint32_t) -1)
 
 /*
- * Tells if the specified block is used.
+ * Tells if the specified frame is used.
  */
 # define FRAME_IS_USED(state_ptr)	((state_ptr)->prev == FRAME_STATE_USED\
  	|| (state_ptr)->next == FRAME_STATE_USED)
@@ -23,7 +23,7 @@
 # define FRAME_STATE_GET(id)	(&frames_states[(id)])
 
 /*
- * Returns the id of the block from the pointer to its state.
+ * Returns the id of the frame from the pointer to its state.
  */
 # define FRAME_ID(state_ptr)\
  	(((uintptr_t) (state_ptr) - (uintptr_t) frames_states)\
@@ -40,13 +40,11 @@
 # define FRAME_PTR_ID(ptr)		((uintptr_t) ((ptr) - buddy_begin) / PAGE_SIZE)
 
 /*
- * Returns the buddy for the given block with the given order.
+ * Returns the buddy for the given frame with the given order.
  */
 # define GET_BUDDY(id, order)	((id) ^ POW2(order))
 
 # ifdef KERNEL_DEBUG
-#  include <debug/debug.h>
-
 /*
  * Asserts that the given free frame is valid.
  */
@@ -66,13 +64,13 @@
 	while(0)
 
 /*
- * Asserts that the given block of memory is valid.
+ * Asserts that the given frame of memory is valid.
  */
-#  define debug_check_block(begin, ptr, order)\
+#  define debug_check_frame(begin, ptr, order)\
 	debug_assert(sanity_check(ptr)\
 		&& IS_ALIGNED((ptr) - (begin), PAGE_SIZE << (order))\
 		&& (void *) (ptr) >= mem_info.heap_begin\
-		&& (void *) (ptr) < mem_info.heap_end, "buddy: invalid block")
+		&& (void *) (ptr) < mem_info.heap_end, "buddy: invalid frame")
 
 /*
  * Asserts that the given order is valid.
@@ -81,13 +79,13 @@
      debug_assert((order) <= BUDDY_MAX_ORDER, "buddy: invalid order")
 # else
 #  define debug_check_free_frame(frame)
-#  define debug_check_block(ptr)
+#  define debug_check_frame(begin, ptr, order)
 #  define debug_check_order(order)
 # endif
 
 /*
  * Structure representing the state of page frame. FRAME_IS_USED allows to check
- * if the block is used.
+ * if the frame is used.
  * A frame pointing to itself represtents the end of the list.
  */
 typedef struct
@@ -96,6 +94,15 @@ typedef struct
 	uint32_t prev;
 	/* Id of the next page frame in the free list. */
 	uint32_t next;
+	/* Order of the current frame. */
+	frame_order_t order;
 } frame_state_t;
+
+# ifdef KERNEL_DEBUG
+void buddy_free_list_check(void);
+void buddy_free_list_print(void);
+int buddy_free_list_has(frame_state_t *state);
+int buddy_free_list_has_(frame_state_t *state, frame_order_t order);
+# endif
 
 #endif

@@ -1,4 +1,5 @@
 #include <util/util.h>
+#include <debug/debug.h>
 
 /*
  * This file handles linked lists.

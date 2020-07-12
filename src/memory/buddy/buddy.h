@@ -10,23 +10,16 @@
 # define FRAME_SIZE(order)	(PAGE_SIZE << (order))
 # define MAX_FRAME_SIZE		(PAGE_SIZE << BUDDY_MAX_ORDER)
 
-typedef unsigned block_order_t;
+typedef uint8_t frame_order_t;
 
-block_order_t buddy_get_order(size_t pages);
+frame_order_t buddy_get_order(size_t pages);
 void buddy_init(void);
 
 ATTR_MALLOC
-void *buddy_alloc(block_order_t order);
+void *buddy_alloc(frame_order_t order);
 ATTR_MALLOC
-void *buddy_alloc_zero(block_order_t order);
-void buddy_free(void *ptr, block_order_t order);
+void *buddy_alloc_zero(frame_order_t order);
+void buddy_free(void *ptr, frame_order_t order);
 
 size_t allocated_pages(void);
-
-# ifdef KERNEL_DEBUG
-void buddy_free_list_check(void);
-void buddy_free_list_print(void);
-int buddy_free_list_has(void *ptr);
-# endif
-
 #endif
