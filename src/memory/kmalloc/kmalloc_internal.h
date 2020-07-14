@@ -14,13 +14,32 @@
  * Tells the minimum of available memory required to create a new chunk,
  * excluding the size of the header.
  */
-# define KMALLOC_MINIMUM	8
+# define KMALLOC_MIN\
+	MAX(8, sizeof(kmalloc_free_chunk_t) - sizeof(kmalloc_chunk_hdr_t))
+
+/*
+ * The maximum size of an element in the first bin in bytes.
+ */
+# define KMALLOC_FREE_BIN_MIN		KMALLOC_MIN
+
+/*
+ * The number of free chunks bin.
+ */
+# define KMALLOC_FREE_BIN_COUNT		10
+
+/*
+ * Returns the minimum size in bytes for the given bin index.
+ */
+# define KMALLOC_BIN_SIZE(index)	(KMALLOC_FREE_BIN_MIN << (index))
 
 /*
  * Chunk flag telling that the chunk is allocated.
  */
 # define KMALLOC_FLAG_USED	0b1
 
+/*
+ * A block of memory to be divided into chunks
+ */
 typedef struct
 {
 	/* Order of the block of memory */
@@ -29,6 +48,9 @@ typedef struct
 	char data[0];
 } kmalloc_block_t;
 
+/*
+ * The header for chunks of memory
+ */
 typedef struct
 {
 # ifdef KMALLOC_MAGIC
@@ -45,12 +67,38 @@ typedef struct
 	size_t size;
 	/* Flags for the given chunk */
 	char flags;
+} kmalloc_chunk_hdr_t;
+
+/*
+ * A free chunk
+ */
+typedef struct
+{
+	/* The header for the chunk */
+	kmalloc_chunk_hdr_t hdr;
+	/* The free list in which the block is inserted */
+	list_head_t free_list;
+} kmalloc_free_chunk_t;
+
+/*
+ * A used chunk
+ */
+typedef struct
+{
+	/* The header for the chunk */
+	kmalloc_chunk_hdr_t hdr;
 	/* The data into the chunk */
 	char data[0];
-} kmalloc_chunk_t;
+} kmalloc_used_chunk_t;
 
 extern spinlock_t kmalloc_spinlock;
 
 void *alloc(size_t size);
+
+# ifdef KERNEL_DEBUG
+void check_free_chunk(kmalloc_free_chunk_t *chunk);
+void check_free_chunk_(kmalloc_free_chunk_t *chunk, size_t bin);
+void check_free_bins(void);
+# endif
 
 #endif
