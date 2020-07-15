@@ -1,7 +1,13 @@
 #ifndef SELFTEST_H
 # define SELFTEST_H
 
-# define ASSERT(x)	{ printf("%c", (x ? '.' : 'F')); return; }
+# define ASSERT(x)\
+	do\
+	{\
+		printf("%c", (x ? '.' : 'F'));\
+		return;\
+	}\
+	while(0)
 
 typedef void (*test_suite_func_t)(void);
 

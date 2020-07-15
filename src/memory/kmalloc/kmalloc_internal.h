@@ -96,6 +96,8 @@ extern spinlock_t kmalloc_spinlock;
 void *alloc(size_t size);
 
 # ifdef KERNEL_DEBUG
+int free_bin_has(kmalloc_free_chunk_t *chunk, list_head_t *bin);
+int free_bins_has(kmalloc_free_chunk_t *chunk);
 void check_free_chunk(kmalloc_free_chunk_t *chunk);
 void check_free_chunk_(kmalloc_free_chunk_t *chunk, size_t bin);
 void check_free_bins(void);
