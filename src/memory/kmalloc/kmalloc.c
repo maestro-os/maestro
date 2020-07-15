@@ -7,6 +7,8 @@
 /*
  * Allocates a block of memory of the given size in bytes and returns the
  * pointer to the beginning of it.
+ * The returned block of memory isn't initialized. One should use `kmalloc_zero`
+ * to get a cleared block of memory.
  * The block of memory can later be freed using `kfree`.
  *
  * On fail the function returns `NULL` and sets the errno to ENOMEM.

@@ -1,9 +1,8 @@
 #include <memory/kmalloc/kmalloc.h>
 #include <memory/kmalloc/kmalloc_internal.h>
+#include <kernel.h>
 #include <util/util.h>
 #include <debug/debug.h>
-
-#include <libc/stdio.h> // TODO rm
 
 /*
  * The kmalloc allocator works like the `malloc` function of the standard
@@ -33,10 +32,11 @@ spinlock_t kmalloc_spinlock = 0;
 /*
  * Asserts that the magic number for the given chunk is correct.
  */
-static void check_magic(kmalloc_chunk_hdr_t *chunk)
+void check_magic(kmalloc_chunk_hdr_t *chunk)
 {
 	debug_assert(sanity_check(chunk), "kmalloc: invalid argument");
-	debug_assert(chunk->magic == KMALLOC_MAGIC, "kmalloc: invalid argument");
+	if(chunk->magic != KMALLOC_MAGIC)
+		PANIC("kmalloc: corrupted chunk", 0);
 }
 #endif
 
@@ -75,7 +75,7 @@ static kmalloc_free_chunk_t *pop_free_chunk(size_t size)
 /*
  * Get free bin for the given `size`.
  */
-static list_head_t **get_free_bin(size_t size)
+list_head_t **get_free_bin(size_t size)
 {
 	size_t i = 0;
 
@@ -89,7 +89,7 @@ static list_head_t **get_free_bin(size_t size)
 /*
  * Inserts the given chunk into its free bin.
  */
-static void free_bin_insert(kmalloc_free_chunk_t *chunk)
+void free_bin_insert(kmalloc_free_chunk_t *chunk)
 {
 	list_head_t **bin;
 
@@ -99,6 +99,14 @@ static void free_bin_insert(kmalloc_free_chunk_t *chunk)
 	bin = get_free_bin(chunk->hdr.size);
 	debug_assert(sanity_check(bin), "kmalloc: invalid bin");
 	list_insert_front(bin, &chunk->free_list);
+}
+
+/*
+ * Removes the given chunk from its free bin.
+ */
+void free_bin_remove(kmalloc_free_chunk_t *chunk)
+{
+	list_remove(get_free_bin(chunk->hdr.size), &chunk->hdr.list);
 }
 
 /*

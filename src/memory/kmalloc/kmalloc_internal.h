@@ -93,6 +93,14 @@ typedef struct
 
 extern spinlock_t kmalloc_spinlock;
 
+#ifdef KMALLOC_MAGIC
+void check_magic(kmalloc_chunk_hdr_t *chunk);
+#endif
+
+list_head_t **get_free_bin(size_t size);
+void free_bin_insert(kmalloc_free_chunk_t *chunk);
+void free_bin_remove(kmalloc_free_chunk_t *chunk);
+
 void *alloc(size_t size);
 
 # ifdef KERNEL_DEBUG
