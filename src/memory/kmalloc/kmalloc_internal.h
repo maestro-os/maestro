@@ -107,6 +107,7 @@ list_head_t **get_free_bin(size_t size);
 void free_bin_insert(kmalloc_free_chunk_t *chunk);
 void free_bin_remove(kmalloc_free_chunk_t *chunk);
 
+void consume_chunk(kmalloc_chunk_hdr_t *chunk, size_t size);
 void *alloc(size_t size);
 
 # ifdef KERNEL_DEBUG

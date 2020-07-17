@@ -154,29 +154,26 @@ static kmalloc_block_t *alloc_block(size_t size)
  * Splits the given chunk according to the given `size`, creating a new free
  * chunk if large enough.
  */
-static void consume_chunk(kmalloc_free_chunk_t *chunk, size_t size)
+void consume_chunk(kmalloc_chunk_hdr_t *chunk, size_t size)
 {
 	kmalloc_free_chunk_t *new;
 
-#ifdef KERNEL_DEBUG
-	check_free_chunk(chunk);
-#endif
-	debug_assert(chunk->hdr.size >= size,
+	debug_assert(chunk->size >= size,
 		"kmalloc: block is too small for allocation");
-	if(chunk->hdr.size >= size + sizeof(kmalloc_free_chunk_t) + KMALLOC_MIN)
+	if(chunk->size >= size + sizeof(kmalloc_free_chunk_t) + KMALLOC_MIN)
 	{
 		new = (void *) (chunk + 1) + size;
 		bzero(new, sizeof(kmalloc_free_chunk_t));
 #ifdef KMALLOC_MAGIC
 		new->hdr.magic = KMALLOC_MAGIC;
 #endif
-		list_insert_after(NULL, &chunk->hdr.list, &new->hdr.list);
-		new->hdr.block = chunk->hdr.block;
-		new->hdr.size = chunk->hdr.size - size - sizeof(kmalloc_free_chunk_t);
+		list_insert_after(NULL, &chunk->list, &new->hdr.list);
+		new->hdr.block = chunk->block;
+		new->hdr.size = chunk->size - size - sizeof(kmalloc_free_chunk_t);
 		free_bin_insert(new);
-		chunk->hdr.size = size;
+		chunk->size = size;
 	}
-	chunk->hdr.flags |= KMALLOC_FLAG_USED;
+	chunk->flags |= KMALLOC_FLAG_USED;
 }
 
 /*
@@ -197,7 +194,10 @@ void *alloc(size_t size)
 	}
 	debug_assert(chunk->hdr.size >= size,
 		"kmalloc: block is too small for allocation");
-	consume_chunk(chunk, size);
+#ifdef KERNEL_DEBUG
+	check_free_chunk(chunk);
+#endif
+	consume_chunk(&chunk->hdr, size);
 	return &((kmalloc_used_chunk_t *) chunk)->data;
 }
 
