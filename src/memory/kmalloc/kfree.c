@@ -16,6 +16,8 @@ static int eat_next(list_head_t *chunk)
 	if((l_next = chunk->next))
 	{
 		curr = CONTAINER_OF(chunk, kmalloc_chunk_hdr_t, list);
+		if(curr->flags & KMALLOC_FLAG_USED)
+			return 0;
 		next = CONTAINER_OF(l_next, kmalloc_chunk_hdr_t, list);
 		if(!(next->flags & KMALLOC_FLAG_USED))
 		{
@@ -33,10 +35,19 @@ static int eat_next(list_head_t *chunk)
  */
 static kmalloc_chunk_hdr_t *coalesce_adjacents(kmalloc_chunk_hdr_t *chunk)
 {
+	list_head_t *prev;
+
 	debug_assert(sanity_check(chunk), "kmalloc: invalid argument");
+	debug_assert(!chunk->list.prev
+		|| (void *) chunk->list.prev < (void *) chunk,
+		"kmalloc: invalid previous chunk");
+	debug_assert(!chunk->list.next
+		|| (void *) chunk->list.next > (void *) chunk,
+		"kmalloc: invalid next chunk");
+	prev = chunk->list.prev;
 	eat_next(&chunk->list);
-	if(eat_next(chunk->list.prev))
-		chunk = CONTAINER_OF(chunk->list.prev, kmalloc_chunk_hdr_t, list);
+	if(prev && eat_next(prev))
+		chunk = CONTAINER_OF(prev, kmalloc_chunk_hdr_t, list);
 	return chunk;
 }
 
@@ -46,7 +57,6 @@ static kmalloc_chunk_hdr_t *coalesce_adjacents(kmalloc_chunk_hdr_t *chunk)
 void kfree(void *ptr)
 {
 	kmalloc_chunk_hdr_t *chunk;
-	kmalloc_block_t *block;
 
 	if(!sanity_check(ptr))
 		return;
@@ -62,9 +72,10 @@ void kfree(void *ptr)
 	chunk = coalesce_adjacents(chunk);
 	if(!chunk->list.prev && !chunk->list.next)
 	{
-		block = CONTAINER_OF(chunk, kmalloc_block_t, data);
-		debug_assert(IS_ALIGNED(block, PAGE_SIZE), "kmalloc: invalid block");
-		buddy_free(block, block->buddy_order);
+		debug_assert(chunk->block == CONTAINER_OF(chunk, kmalloc_block_t, data),
+			"kmalloc: bad block address");
+		check_block(chunk->block);
+		buddy_free(chunk->block, chunk->block->buddy_order);
 	}
 	else
 		free_bin_insert((kmalloc_free_chunk_t *) chunk);

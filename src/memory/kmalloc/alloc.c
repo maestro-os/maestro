@@ -28,11 +28,23 @@ static list_head_t *large_bin = NULL;
  */
 spinlock_t kmalloc_spinlock = 0;
 
+/*
+ * Asserts that the given block is correct.
+ */
+void check_block(const kmalloc_block_t *block)
+{
+	debug_assert(sanity_check(block), "kmalloc: invalid argument");
+	debug_assert(IS_ALIGNED(block, PAGE_SIZE), "kmalloc: invalid alignment");
+#ifdef KMALLOC_MAGIC
+	debug_assert(block->magic == KMALLOC_MAGIC, "kmalloc: invalid block magic");
+#endif
+}
+
 #ifdef KMALLOC_MAGIC
 /*
  * Asserts that the magic number for the given chunk is correct.
  */
-void check_magic(kmalloc_chunk_hdr_t *chunk)
+void check_magic(const kmalloc_chunk_hdr_t *chunk)
 {
 	debug_assert(sanity_check(chunk), "kmalloc: invalid argument");
 	if(chunk->magic != KMALLOC_MAGIC)
@@ -106,7 +118,7 @@ void free_bin_insert(kmalloc_free_chunk_t *chunk)
  */
 void free_bin_remove(kmalloc_free_chunk_t *chunk)
 {
-	list_remove(get_free_bin(chunk->hdr.size), &chunk->hdr.list);
+	list_remove(get_free_bin(chunk->hdr.size), &chunk->free_list);
 }
 
 /*
@@ -124,6 +136,9 @@ static kmalloc_block_t *alloc_block(size_t size)
 	size = FRAME_SIZE(order);
 	if(!(block = buddy_alloc(order)))
 		return NULL;
+#ifdef KMALLOC_MAGIC
+	block->magic = KMALLOC_MAGIC;
+#endif
 	block->buddy_order = order;
 	first_chunk = (void *) &block->data;
 	bzero(first_chunk, sizeof(kmalloc_free_chunk_t));
@@ -190,9 +205,9 @@ void *alloc(size_t size)
 /*
  * Tells if the given `chunk` is stored in the given free bin.
  */
-int free_bin_has(kmalloc_free_chunk_t *chunk, list_head_t *bin)
+int free_bin_has(const kmalloc_free_chunk_t *chunk, const list_head_t *bin)
 {
-	list_head_t *l;
+	const list_head_t *l;
 
 	check_free_chunk(chunk);
 	l = bin;
@@ -208,7 +223,7 @@ int free_bin_has(kmalloc_free_chunk_t *chunk, list_head_t *bin)
 /*
  * Tells if the given `chunk` is stored in any free bin.
  */
-int free_bins_has(kmalloc_free_chunk_t *chunk)
+int free_bins_has(const kmalloc_free_chunk_t *chunk)
 {
 	size_t i;
 
@@ -224,7 +239,7 @@ int free_bins_has(kmalloc_free_chunk_t *chunk)
  * Asserts that the given chunk is valid. `bin` is the bin the chunk is stored
  * in.
  */
-void check_free_chunk(kmalloc_free_chunk_t *chunk)
+void check_free_chunk(const kmalloc_free_chunk_t *chunk)
 {
 	debug_assert(sanity_check(chunk), "kmalloc: invalid argument");
 #ifdef KMALLOC_MAGIC
@@ -232,13 +247,16 @@ void check_free_chunk(kmalloc_free_chunk_t *chunk)
 #endif
 	debug_assert(!(chunk->hdr.flags & KMALLOC_FLAG_USED),
 		"kmalloc: chunk must be free");
+	debug_assert(chunk->hdr.list.prev
+		|| (void *) chunk == chunk->hdr.block->data,
+		"kmalloc: first chunk of block is not at beginning");
 }
 
 /*
  * Asserts that the given chunk is valid. `bin` is the bin the chunk is stored
  * in.
  */
-void check_free_chunk_(kmalloc_free_chunk_t *chunk, size_t bin)
+void check_free_chunk_(const kmalloc_free_chunk_t *chunk, size_t bin)
 {
 	debug_assert(sanity_check(chunk), "kmalloc: invalid argument");
 #ifdef KMALLOC_MAGIC

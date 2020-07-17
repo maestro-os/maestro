@@ -6,6 +6,7 @@ static test_suite_func_t suites[] = {
 	test_avl,
 	test_buddy,*/
 	test_kmalloc,
+
 	/*test_buddy_duplicates,
 	test_kmalloc_bulk*/
 };

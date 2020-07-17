@@ -5,7 +5,7 @@
 
 # ifdef KERNEL_DEBUG
 /*
- * The magic number to check integrity of memory chunks.
+ * The magic number to check integrity of memory chunks and blocks.
  */
 #  define KMALLOC_MAGIC	0xdeadbeef
 # endif
@@ -42,6 +42,10 @@
  */
 typedef struct
 {
+#ifdef KMALLOC_MAGIC
+	/* Magic number */
+	uint32_t magic;
+#endif
 	/* Order of the block of memory */
 	frame_order_t buddy_order;
 	/* The data contained into the block */
@@ -54,7 +58,7 @@ typedef struct
 typedef struct
 {
 # ifdef KMALLOC_MAGIC
-	/* Magic number on every chunks, used to check integrity */
+	/* Magic number */
 	uint32_t magic;
 # endif
 
@@ -93,8 +97,10 @@ typedef struct
 
 extern spinlock_t kmalloc_spinlock;
 
+void check_block(const kmalloc_block_t *block);
+
 #ifdef KMALLOC_MAGIC
-void check_magic(kmalloc_chunk_hdr_t *chunk);
+void check_magic(const kmalloc_chunk_hdr_t *chunk);
 #endif
 
 list_head_t **get_free_bin(size_t size);
@@ -104,10 +110,10 @@ void free_bin_remove(kmalloc_free_chunk_t *chunk);
 void *alloc(size_t size);
 
 # ifdef KERNEL_DEBUG
-int free_bin_has(kmalloc_free_chunk_t *chunk, list_head_t *bin);
-int free_bins_has(kmalloc_free_chunk_t *chunk);
-void check_free_chunk(kmalloc_free_chunk_t *chunk);
-void check_free_chunk_(kmalloc_free_chunk_t *chunk, size_t bin);
+int free_bin_has(const kmalloc_free_chunk_t *chunk, const list_head_t *bin);
+int free_bins_has(const kmalloc_free_chunk_t *chunk);
+void check_free_chunk(const kmalloc_free_chunk_t *chunk);
+void check_free_chunk_(const kmalloc_free_chunk_t *chunk, size_t bin);
 void check_free_bins(void);
 # endif
 

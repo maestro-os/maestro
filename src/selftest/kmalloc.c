@@ -69,13 +69,13 @@ static void test5(void)
 	size_t i;
 	void *ptr[100];
 
-	for(i = 0; i < 100; ++i)
+	for(i = 1; i < 100; ++i)
 	{
 		if(!(ptr[i] = kmalloc(i * 100)))
 			ASSERT(0);
-		memset(ptr, -1, i * 100);
+		memset(ptr[i], -1, i * 100);
 	}
-	for(i = 0; i < 100; ++i)
+	for(i = 1; i < 100; ++i)
 		kfree(ptr[i]);
 	ASSERT(1);
 }
@@ -85,6 +85,8 @@ static int test6_(size_t i)
 	void *ptr;
 	int r;
 
+	if(i == 0)
+		return 1;
 	if(!(ptr = kmalloc(i * 100)))
 		return 0;
 	r = 1;
@@ -101,6 +103,23 @@ static void test6(void)
 
 // TODO Pseudorandom alloc size and pseudorandom free order
 
+static void test_leak(void)
+{
+	void *ptr;
+	size_t i = 100;
+
+	while(1)
+	{
+		do
+			i = (i * 28 + 2) % 10000;
+		while(i == 0);
+		if(!(ptr = kmalloc(i)))
+			ASSERT(0);
+		memset(ptr, -1, i);
+		kfree(ptr);
+	}
+}
+
 void test_kmalloc(void)
 {
 	printf("%s: ", __func__);
@@ -111,6 +130,8 @@ void test_kmalloc(void)
 	test4();
 	test5();
 	test6();
+	//test_leak();
+	(void) test_leak;
 	printf("\n");
 }
 
