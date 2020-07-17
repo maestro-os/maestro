@@ -3,7 +3,7 @@
 #ifdef KERNEL_DEBUG
 # include <libc/stdio.h>
 
-# define TO_PERCENTAGE(n, total)	((n) * 100 / (total))
+# define TO_PERCENTAGE(n, total)	((n) / ((total) / 100))
 #endif
 
 /*
@@ -37,16 +37,18 @@ void get_memory_usage(mem_usage_t *usage)
 	if(!usage)
 		return;
 	bzero(usage, sizeof(mem_usage_t));
-	remaining = (size_t) mem_info.heap_end;
+	remaining = (size_t) mem_info.memory_end;
 	usage->reserved = get_reserved_memory();
 	remaining -= usage->reserved;
 	usage->bad_ram = 0; // TODO Get bad ram from mapping
 	remaining -= usage->bad_ram;
-	usage->system = (size_t) mem_info.heap_begin - 0x100000;
+	usage->system = (size_t) mem_info.heap_begin - (size_t) KERNEL_BEGIN;
 	remaining -= usage->system;
 	usage->allocated = allocated_pages() * PAGE_SIZE;
 	remaining -= usage->allocated;
 	usage->free = remaining;
+	debug_assert(usage->free < (uintptr_t) mem_info.memory_end,
+		"memory: invalid free memory value");
 }
 
 #ifdef KERNEL_DEBUG
@@ -59,7 +61,7 @@ void print_mem_usage(void)
 	size_t total;
 
 	get_memory_usage(&usage);
-	total = (size_t) mem_info.heap_end;
+	total = (size_t) mem_info.memory_end;
 	printf("--- Memory usage ---\n");
 	printf("total: %zu bytes\n", total);
 	printf("reserved: %zu bytes (%zu%%)\n", usage.reserved,

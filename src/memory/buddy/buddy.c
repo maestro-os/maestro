@@ -46,7 +46,7 @@ static spinlock_t spinlock = 0;
 /*
  * Total number of allocated pages.
  */
-size_t total_allocated_pages = 0;
+static size_t total_allocated_pages = 0;
 
 /*
  * Returns the buddy order required to fit the given number of pages.
@@ -241,7 +241,7 @@ void *buddy_alloc(const frame_order_t order)
 	}
 	ptr = FRAME_ID_PTR(FRAME_ID(free_list[i]));
 	free_list_pop(i);
-	total_allocated_pages += FRAME_SIZE(order);
+	total_allocated_pages += POW2(order);
 	debug_check_frame(buddy_begin, ptr, order);
 
 end:
@@ -280,7 +280,7 @@ void buddy_free(void *ptr, const frame_order_t order)
 	debug_assert(FRAME_IS_USED(state), "buddy: freeing unused frame");
 	free_list_push(order, state);
 	free_list_coalesce(state, order);
-	total_allocated_pages -= FRAME_SIZE(order);
+	total_allocated_pages -= POW2(order);
 	spin_unlock(&spinlock);
 }
 

@@ -151,9 +151,6 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	buddy_init();
 	slab_init();
 	vmem_kernel();
-#ifdef KERNEL_DEBUG
-	print_slabs();
-#endif
 
 	// TODO Move back after driver init
 	printf("Keyboard initialization...\n");
@@ -175,10 +172,6 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	// TODO PCIe
 	printf("PCI initialization...\n");
 	pci_scan();
-#ifdef KERNEL_DEBUG
-	// TODO Uncomment
-	//print_devices();
-#endif
 
 	printf("Clock initialization...\n");
 	time_init();
@@ -205,6 +198,7 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	}
 
 #ifdef KERNEL_DEBUG
+	print_slabs();
 	print_mem_usage();
 #endif
 
