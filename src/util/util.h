@@ -154,6 +154,16 @@ typedef struct list_head
 } list_head_t;
 
 /*
+ * Structure used for stack elements.
+ * This structure should be used inside of other structures.
+ */
+typedef struct stack_head
+{
+	/* Pointer to the next object in the stack */
+	struct stack_head *next;
+} stack_head_t;
+
+/*
  * Structure representing an AVL tree node.
  * This structure should be used inside of other structures.
  */
@@ -199,6 +209,10 @@ void list_remove(list_head_t **first, list_head_t *node);
 # ifdef KERNEL_DEBUG
 int list_check(list_head_t *list);
 # endif
+
+size_t stack_size(const stack_head_t *stack);
+void stack_push(stack_head_t **stack, stack_head_t *n);
+stack_head_t *stack_pop(stack_head_t **stack);
 
 /*
  * Generic type for a comparison function.
