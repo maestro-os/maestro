@@ -94,12 +94,4 @@ void process_exit(process_t *process, int status);
 void process_kill(process_t *process, int sig);
 void del_process(process_t *process, int children);
 
-void process_tick(const regs_t *registers);
-
-ATTR_NORETURN
-extern void context_switch(const regs_t *regs,
-	uint16_t data_selector, uint16_t code_selector);
-ATTR_NORETURN
-extern void kernel_switch(const regs_t *regs);
-
 #endif

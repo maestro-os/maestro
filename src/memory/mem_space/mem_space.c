@@ -135,7 +135,6 @@ fail:
 
 /*
  * Removes/shrinks region/gap in the given interval of memory to make it empty.
- *
  * On success, returns 1. On fail, returns 0.
  */
 static int mem_space_crush(mem_space_t *space, void *addr, const size_t pages)

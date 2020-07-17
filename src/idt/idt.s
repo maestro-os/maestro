@@ -35,6 +35,7 @@
 .extern irq13_handler
 .extern irq14_handler
 .extern irq15_handler
+.extern scheduler_tick
 
 irq0:
 	cli
@@ -48,7 +49,7 @@ irq0:
 	call ata_err_check
 
 	push %esp
-	call process_tick
+	call scheduler_tick
 
 	push $0x0
 	call pic_EOI

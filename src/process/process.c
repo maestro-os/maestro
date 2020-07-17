@@ -13,7 +13,7 @@
 #define USER_STACK_PAGES	8
 #define KERNEL_STACK_ORDER	3
 
-// TODO Cleanup
+// TODO Documentation and cleanup
 // TODO Set errnos
 // TODO Multicore handling
 
@@ -33,12 +33,12 @@ static cache_t *signals_cache;
 /*
  * Processes list.
  */
-static process_t *volatile processes = NULL;
+process_t *volatile processes = NULL;
 
 /*
  * The currently running process.
  */
-static process_t *volatile running_process = NULL;
+process_t *volatile running_process = NULL;
 
 /*
  * The bitfield indicating which PIDs are used.
@@ -56,7 +56,7 @@ tss_entry_t tss;
 /*
  * The spinlock for processes handling.
  */
-static spinlock_t spinlock = 0;
+spinlock_t processes_spinlock = 0;
 
 /*
  * Constructs a process structure.
@@ -165,7 +165,7 @@ process_t *new_process(process_t *parent, const regs_t *registers)
 	pid_t pid;
 	process_t *new_proc, *p;
 
-	spin_lock(&spinlock);
+	spin_lock(&processes_spinlock);
 	errno = 0;
 	if((pid = alloc_pid()) < 0
 		|| !(new_proc = cache_alloc(processes_cache)))
@@ -209,13 +209,13 @@ process_t *new_process(process_t *parent, const regs_t *registers)
 	}
 	else
 		processes = new_proc;
-	spin_unlock(&spinlock);
+	spin_unlock(&processes_spinlock);
 	return new_proc;
 
 fail:
 	free_pid(pid);
 	// TODO Free all
-	spin_unlock(&spinlock);
+	spin_unlock(&processes_spinlock);
 	return NULL;
 }
 
@@ -228,36 +228,27 @@ process_t *get_process(const pid_t pid)
 {
 	process_t *p;
 
-	spin_lock(&spinlock);
+	spin_lock(&processes_spinlock);
 	errno = 0;
 	p = processes;
 	if(pid <= 0)
 	{
 		errno = EINVAL;
-		spin_unlock(&spinlock);
+		spin_unlock(&processes_spinlock);
 		return NULL;
 	}
 	while(p)
 	{
 		if(p->pid == pid)
 		{
-			spin_unlock(&spinlock);
+			spin_unlock(&processes_spinlock);
 			return p;
 		}
 		p = p->next;
 	}
 	errno = ESRCH;
-	spin_unlock(&spinlock);
+	spin_unlock(&processes_spinlock);
 	return NULL;
-}
-
-/*
- * Returns the currently running process. Returns NULL if no process is running.
- */
-ATTR_HOT
-process_t *get_running_process(void)
-{
-	return running_process;
 }
 
 /*
@@ -272,7 +263,7 @@ void process_set_state(process_t *process, const process_state_t state)
 {
 	if(!process)
 		return;
-	spin_lock(&spinlock);
+	spin_lock(&processes_spinlock);
 	if(state == RUNNING)
 	{
 		if(running_process)
@@ -288,7 +279,7 @@ void process_set_state(process_t *process, const process_state_t state)
 	process->state = state;
 	if(state == TERMINATED)
 		sem_remove(process->sem_curr, process);
-	spin_unlock(&spinlock);
+	spin_unlock(&processes_spinlock);
 }
 
 /*
@@ -383,7 +374,7 @@ void del_process(process_t *process, int children)
 
 	if(!process)
 		return;
-	spin_lock(&spinlock);
+	spin_lock(&processes_spinlock);
 	if(running_process == process)
 		running_process = NULL;
 	if(process->parent)
@@ -414,104 +405,5 @@ void del_process(process_t *process, int children)
 	mem_space_destroy(process->mem_space);
 	// TODO Free `signals_queue`
 	cache_free(processes_cache, process);
-	spin_unlock(&spinlock);
-}
-
-/*
- * Returns the next waiting process to be run.
- */
-ATTR_HOT
-static process_t *next_waiting_process(void)
-{
-	process_t *p;
-	int loop = 0;
-
-	spin_lock(&spinlock);
-	if(!(p = running_process))
-		p = processes;
-	if(!p)
-		goto end;
-loop:
-	if(!(p = p->next))
-	{
-		if(loop)
-		{
-			p = NULL;
-			goto end;
-		}
-		p = processes;
-		loop = 1;
-	}
-	if(!p)
-		goto end;
-	spin_lock(&p->spinlock);
-	if(p->state != WAITING)
-	{
-		spin_unlock(&p->spinlock);
-		goto loop;
-	}
-	else
-		spin_unlock(&p->spinlock);
-
-end:
-	spin_unlock(&spinlock);
-	return p;
-}
-
-/*
- * Switches context to the given process `process`.
- */
-ATTR_HOT
-static void switch_process(process_t *process)
-{
-	int syscalling;
-
-	debug_assert(sanity_check(process), "process: invalid argument");
-	process_set_state(process, RUNNING);
-	tss.ss0 = GDT_KERNEL_DATA_OFFSET;
-	tss.ss = GDT_USER_DATA_OFFSET;
-	tss.esp0 = (uint32_t) process->kernel_stack;
-	syscalling = process->syscalling;
-	debug_assert(sanity_check(process->mem_space->page_dir),
-		"process: bad memory context");
-	paging_enable(process->mem_space->page_dir);
-	if(syscalling)
-		kernel_switch(&process->regs_state);
-	else
-		context_switch(&process->regs_state,
-			GDT_USER_DATA_OFFSET | 3, GDT_USER_CODE_OFFSET | 3);
-}
-
-/*
- * Switches to the next process to be run.
- */
-ATTR_HOT
-static void switch_processes(void)
-{
-	process_t *p;
-
-	// TODO Rewrite processes scheduling
-	if(!(p = next_waiting_process()) && !(p = running_process))
-		return;
-	switch_process(p);
-}
-
-/*
- * The ticking function, invoking the processes scheduler.
- */
-ATTR_HOT
-ATTR_NORETURN
-void process_tick(const regs_t *registers)
-{
-	spin_lock(&spinlock);
-	// TODO Spinlock on `running_process`?
-	if(running_process)
-		running_process->regs_state = *registers;
-	spin_unlock(&spinlock);
-	// TODO
-	/*profiler_capture();
-	profiler_print();*/
-	switch_processes();
-	printf("No more process to run, kernel halt.\n");
-	kernel_halt();
+	spin_unlock(&processes_spinlock);
 }
