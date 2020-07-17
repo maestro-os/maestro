@@ -1,6 +1,6 @@
 NAME = maestro
 
-DEBUG_FLAGS = -D KERNEL_DEBUG -D KERNEL_DEBUG_SANITY #-D KERNEL_SELFTEST #-D KERNEL_DEBUG_SPINLOCK
+DEBUG_FLAGS = -D KERNEL_DEBUG -D KERNEL_DEBUG_SANITY #-D KERNEL_SELFTEST -D KERNEL_DEBUG_SPINLOCK 
 
 CC = i686-elf-gcc
 CFLAGS = -nostdlib -ffreestanding -fstack-protector-strong -Wall -Wextra -Werror -lgcc -g3 $(DEBUG_FLAGS)
@@ -75,7 +75,8 @@ cputest: iso
 	qemu-system-i386 -cdrom $(NAME).iso -d int,cpu >cpu_out 2>&1
 
 debug: iso
-	qemu-system-i386 -cdrom $(NAME).iso -d int -s -S
+	qemu-system-i386 -cdrom $(NAME).iso -d int -s -S >debug_out 2>&1 &
+	gdb $(NAME) -ex 'tar rem :1234'
 
 bochs: iso
 	bochs

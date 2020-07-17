@@ -41,7 +41,7 @@ mem_gap_t *gap_create(mem_space_t *space, void *begin, const size_t pages)
 		gaps_global_init();
 		init = 1;
 	}
-	debug_assert(sanity_check(space), "Invalid memory space");
+	debug_assert(sanity_check(space), "mem_space: invalid memory space");
 	ASSERT_RANGE(begin, pages);
 	if(!(gap = cache_alloc(mem_gap_cache)))
 		return NULL;
@@ -123,16 +123,16 @@ int gaps_init(mem_space_t *s)
 	size_t gap_pages;
 	mem_gap_t *gap;
 
-	debug_assert(sanity_check(s), "Invalid memory space");
+	debug_assert(sanity_check(s), "mem_space: invalid argument");
 	gap_begin = MEM_SPACE_BEGIN;
-	gap_pages = (uintptr_t) KERNEL_BEGIN / PAGE_SIZE - 1;
+	gap_pages = (uintptr_t) (KERNEL_BEGIN - gap_begin) / PAGE_SIZE;
 	if(!(gap = gap_create(s, gap_begin, gap_pages)))
 		return 0;
 	list_insert_after(&s->gaps, s->gaps, &gap->list);
 	avl_tree_insert(&s->free_tree, &gap->node, avl_val_cmp);
 	// TODO Only expose a stub for the kernel
 	gap_begin = mem_info.heap_begin;
-	gap_pages = (MEM_SPACE_END - mem_info.heap_begin) / PAGE_SIZE;
+	gap_pages = (MEM_SPACE_END - gap_begin) / PAGE_SIZE;
 	if(!(gap = gap_create(s, gap_begin, gap_pages)))
 		return 0;
 	list_insert_after(&s->gaps, s->gaps, &gap->list);
@@ -146,12 +146,9 @@ int gaps_init(mem_space_t *s)
  */
 int gap_extend(avl_tree_t **tree, void *addr, const size_t pages)
 {
-	debug_assert(sanity_check(tree), "Invalid gaps tree");
+	debug_assert(sanity_check(tree), "mem_space: invalid argument");
 	ASSERT_RANGE(addr, pages);
 	// TODO
-	(void) tree;
-	(void) addr;
-	(void) pages;
 	return 1;
 }
 
@@ -164,11 +161,11 @@ void gap_shrink(avl_tree_t **tree, avl_tree_t *gap, const size_t pages)
 {
 	mem_gap_t *g;
 
-	debug_assert(sanity_check(tree), "Invalid gaps tree");
+	debug_assert(sanity_check(tree), "mem_space: invalid gaps tree");
 	if(!gap || pages == 0)
 		return;
 	g = CONTAINER_OF(gap, mem_gap_t, node);
-	debug_assert(pages <= g->pages, "Gap is too small");
+	debug_assert(pages <= g->pages, "mem_space: gap is too small");
 	g->begin += pages * PAGE_SIZE;
 	g->pages -= pages;
 	if(g->pages <= 0)
@@ -188,9 +185,9 @@ void gap_free(mem_gap_t *gap)
 {
 	mem_space_t *mem_space;
 
-	debug_assert(sanity_check(gap), "Invalid gap");
+	debug_assert(sanity_check(gap), "mem_space: invalid gap");
 	mem_space = gap->mem_space;
-	debug_assert(sanity_check(mem_space), "Invalid memory space");
+	debug_assert(sanity_check(mem_space), "mem_space: invalid memory space");
 	list_remove(&mem_space->gaps, &gap->list);
 	avl_tree_remove(&mem_space->free_tree, &gap->node);
 	cache_free(mem_gap_cache, gap);
@@ -201,7 +198,7 @@ void gap_free(mem_gap_t *gap)
  */
 static void list_free_gap(list_head_t *l)
 {
-	debug_assert(sanity_check(l), "Invalid list");
+	debug_assert(sanity_check(l), "mem_space: invalid list");
 	gap_free(CONTAINER_OF(l, mem_gap_t, list));
 }
 
@@ -212,6 +209,6 @@ static void list_free_gap(list_head_t *l)
  */
 void gaps_free(list_head_t *list)
 {
-	debug_assert(sanity_check(list), "Invalid list");
+	debug_assert(sanity_check(list), "mem_space: invalid list");
 	list_foreach(list, list_free_gap);
 }

@@ -3,8 +3,6 @@
 #include <memory/slab/slab.h>
 #include <process/process.h>
 #include <util/util.h>
-
-// TODO rm
 #include <debug/debug.h>
 
 #define USER_STACK_FLAGS\
@@ -15,24 +13,54 @@
 #define USER_STACK_PAGES	8
 #define KERNEL_STACK_ORDER	3
 
-// TODO Documentation and cleanup
+// TODO Cleanup
 // TODO Set errnos
 // TODO Multicore handling
 
+/*
+ * The cache for processes structures.
+ */
 static cache_t *processes_cache;
+
+// TODO rm
 static cache_t *children_cache;
+
+/*
+ * The cache for signals structures.
+ */
 static cache_t *signals_cache;
 
+/*
+ * Processes list.
+ */
 static process_t *volatile processes = NULL;
+
+/*
+ * The currently running process.
+ */
 static process_t *volatile running_process = NULL;
+
+/*
+ * The bitfield indicating which PIDs are used.
+ */
 static uint8_t *pids_bitfield;
 
+/*
+ * The Task State Segment structure used to specify the pointer to the syscall
+ * stack.
+ */
 ATTR_PAGE_ALIGNED
 ATTR_BSS
 tss_entry_t tss;
 
+/*
+ * The spinlock for processes handling.
+ */
 static spinlock_t spinlock = 0;
 
+/*
+ * Constructs a process structure.
+ */
 ATTR_HOT
 static void process_ctor(void *ptr, const size_t size)
 {
@@ -50,6 +78,9 @@ static void process_ctor(void *ptr, const size_t size)
 		p->sigactions[i++].sa_handler = SIG_DFL;
 }
 
+/*
+ * Initializes the TSS into the Global Descriptor Table and updates it.
+ */
 ATTR_COLD
 static void tss_init(void)
 {
@@ -72,6 +103,9 @@ static void tss_init(void)
 	tss_flush();
 }
 
+/*
+ * Initializes caches for processes, PIDs bitmap and TSS.
+ */
 ATTR_COLD
 void process_init(void)
 {
@@ -89,6 +123,9 @@ void process_init(void)
 	tss_init();
 }
 
+/*
+ * Allocates a PID and returns it. Returns `-1` if no PID is available.
+ */
 ATTR_HOT
 static pid_t alloc_pid(void)
 {
@@ -102,12 +139,26 @@ static pid_t alloc_pid(void)
 	return pid;
 }
 
+/*
+ * Frees the given PID into the bitmap.
+ */
 ATTR_HOT
 static void free_pid(const pid_t pid)
 {
 	bitfield_clear(pids_bitfield, pid);
 }
 
+/*
+ * Creates a new process with its own PID. `parent` is the parent of the newly
+ * created process. `registers` is the initial states of the registers for the
+ * process.
+ *
+ * If `parent` is not NULL, the parent's memory space is cloned for the new
+ * process. User stacks are cloned but not kernel stacks.
+ *
+ * The process is added as a child to `parent` and is added to the processes
+ * list.
+ */
 ATTR_HOT
 process_t *new_process(process_t *parent, const regs_t *registers)
 {
@@ -168,6 +219,10 @@ fail:
 	return NULL;
 }
 
+/*
+ * Returns the process with the given PID. If the process doesn't exist, the
+ * function returns NULL.
+ */
 ATTR_HOT
 process_t *get_process(const pid_t pid)
 {
@@ -196,12 +251,22 @@ process_t *get_process(const pid_t pid)
 	return NULL;
 }
 
+/*
+ * Returns the currently running process. Returns NULL if no process is running.
+ */
 ATTR_HOT
 process_t *get_running_process(void)
 {
 	return running_process;
 }
 
+/*
+ * Sets the state `state` for the given process `process` and update the prevous
+ * state.
+ * If state is `RUNNING`, the currently running process is updated.
+ * If state is `TERMINATED` and the process is waiting into a semaphore, then
+ * it is removed from said semaphore it.
+ */
 ATTR_HOT
 void process_set_state(process_t *process, const process_state_t state)
 {
@@ -226,6 +291,9 @@ void process_set_state(process_t *process, const process_state_t state)
 	spin_unlock(&spinlock);
 }
 
+/*
+ * Adds the child `child` to the given parent process `parent`.
+ */
 ATTR_HOT
 void process_add_child(process_t *parent, process_t *child)
 {
@@ -246,59 +314,70 @@ void process_add_child(process_t *parent, process_t *child)
 	spin_unlock(&parent->spinlock);
 }
 
+/*
+ * Makes the given process `process` exit with status `status`, changing the
+ * state of the process to `TERMINATED`.
+ */
 ATTR_HOT
-void process_exit(process_t *proc, const int status)
+void process_exit(process_t *process, int status)
 {
-	if(!proc)
+	if(!process)
 		return;
-	spin_lock(&proc->spinlock);
-	proc->status = status;
-	process_set_state(proc, TERMINATED);
-	spin_unlock(&proc->spinlock);
+	spin_lock(&process->spinlock);
+	process->status = status;
+	process_set_state(process, TERMINATED);
+	spin_unlock(&process->spinlock);
 }
 
 // TODO Limit on signals?
 // TODO Perform signals directly?
 // TODO Execute signal later?
 // TODO Send signals to children
+/*
+ * Kills the given process `process` with the given signal number `sig`.
+ */
 ATTR_HOT
-void process_kill(process_t *proc, const int sig)
+void process_kill(process_t *process, int sig)
 {
 	signal_t *s;
 	sigaction_t *action;
 
-	if(!proc)
+	if(!process)
 		return;
-	spin_lock(&proc->spinlock);
+	spin_lock(&process->spinlock);
 	if(sig == SIGKILL || sig == SIGSTOP
-		|| (action = proc->sigactions + sig)->sa_handler == SIG_DFL)
+		|| (action = process->sigactions + sig)->sa_handler == SIG_DFL)
 	{
-		signal_default(proc, sig);
-		spin_unlock(&proc->spinlock);
+		signal_default(process, sig);
+		spin_unlock(&process->spinlock);
 		return;
 	}
 	if(action->sa_handler == SIG_IGN || !(s = cache_alloc(signals_cache)))
 	{
-		spin_unlock(&proc->spinlock);
+		spin_unlock(&process->spinlock);
 		return;
 	}
 	s->info.si_signo = sig;
 	// TODO
-	if(proc->last_signal)
+	if(process->last_signal)
 	{
-		proc->last_signal->next = s;
-		proc->last_signal = s;
+		process->last_signal->next = s;
+		process->last_signal = s;
 	}
 	else
 	{
-		proc->signals_queue = s;
-		proc->last_signal = s;
+		process->signals_queue = s;
+		process->last_signal = s;
 	}
-	spin_unlock(&proc->spinlock);
+	spin_unlock(&process->spinlock);
 }
 
+/*
+ * Deletes the given process `process`. Also deletes children processes if
+ * `children` is set.
+ */
 ATTR_HOT
-void del_process(process_t *process, const int children)
+void del_process(process_t *process, int children)
 {
 	child_t *c, *next;
 
@@ -338,6 +417,9 @@ void del_process(process_t *process, const int children)
 	spin_unlock(&spinlock);
 }
 
+/*
+ * Returns the next waiting process to be run.
+ */
 ATTR_HOT
 static process_t *next_waiting_process(void)
 {
@@ -376,26 +458,49 @@ end:
 	return p;
 }
 
+/*
+ * Switches context to the given process `process`.
+ */
+ATTR_HOT
+static void switch_process(process_t *process)
+{
+	int syscalling;
+
+	debug_assert(sanity_check(process), "process: invalid argument");
+	process_set_state(process, RUNNING);
+	tss.ss0 = GDT_KERNEL_DATA_OFFSET;
+	tss.ss = GDT_USER_DATA_OFFSET;
+	tss.esp0 = (uint32_t) process->kernel_stack;
+	syscalling = process->syscalling;
+	debug_assert(sanity_check(process->mem_space->page_dir),
+		"process: bad memory context");
+	paging_enable(process->mem_space->page_dir);
+	if(syscalling)
+		kernel_switch(&process->regs_state);
+	else
+		context_switch(&process->regs_state,
+			GDT_USER_DATA_OFFSET | 3, GDT_USER_CODE_OFFSET | 3);
+}
+
+/*
+ * Switches to the next process to be run.
+ */
 ATTR_HOT
 static void switch_processes(void)
 {
 	process_t *p;
 
+	// TODO Rewrite processes scheduling
 	if(!(p = next_waiting_process()) && !(p = running_process))
 		return;
-	process_set_state(p, RUNNING);
-	tss.ss0 = GDT_KERNEL_DATA_OFFSET;
-	tss.ss = GDT_USER_DATA_OFFSET;
-	tss.esp0 = (uint32_t) p->kernel_stack;
-	paging_enable(p->mem_space->page_dir); // TODO Check if NULL?
-	if(p->syscalling)
-		kernel_switch(&p->regs_state);
-	else
-		context_switch(&p->regs_state,
-			GDT_USER_DATA_OFFSET | 3, GDT_USER_CODE_OFFSET | 3);
+	switch_process(p);
 }
 
+/*
+ * The ticking function, invoking the processes scheduler.
+ */
 ATTR_HOT
+ATTR_NORETURN
 void process_tick(const regs_t *registers)
 {
 	spin_lock(&spinlock);
@@ -407,6 +512,6 @@ void process_tick(const regs_t *registers)
 	/*profiler_capture();
 	profiler_print();*/
 	switch_processes();
-	// TODO Uncomment printf("no more process to run, kernel halt.\n");
-	// TODO Uncomment kernel_halt();
+	printf("No more process to run, kernel halt.\n");
+	kernel_halt();
 }

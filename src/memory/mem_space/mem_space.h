@@ -41,7 +41,7 @@
 
 #define ASSERT_RANGE(addr, pages)\
 	debug_assert((uintptr_t) (addr)\
-		< (uintptr_t) (addr) + ((pages) * PAGE_SIZE), "Invalid gap");
+		< (uintptr_t) (addr) + ((pages) * PAGE_SIZE), "mem_space: invalid gap")
 
 typedef struct mem_space mem_space_t;
 

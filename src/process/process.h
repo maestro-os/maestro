@@ -90,8 +90,8 @@ process_t *get_process(pid_t pid);
 process_t *get_running_process(void);
 void process_set_state(process_t *process, process_state_t state);
 void process_add_child(process_t *parent, process_t *child);
-void process_exit(process_t *proc, int status);
-void process_kill(process_t *proc, int sig);
+void process_exit(process_t *process, int status);
+void process_kill(process_t *process, int sig);
 void del_process(process_t *process, int children);
 
 void process_tick(const regs_t *registers);

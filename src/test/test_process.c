@@ -107,7 +107,7 @@ void test_process(void)
 	}
 	putstr("\nstill alive\n");*/
 
-	while(1)
+	/*while(1)
 	{
 		char *ptr;
 		if(!(ptr = mmap(NULL, 0x1000, PROT_READ | PROT_WRITE, MAP_PRIVATE,
@@ -119,7 +119,7 @@ void test_process(void)
 		//ptr[0] = 0xff;
 		putnbr((int) ptr[0]);
 	}
-	putstr("\nstill alive\n");
+	putstr("\nstill alive\n");*/
 
 	while(1)
 		;
