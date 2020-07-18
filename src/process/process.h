@@ -90,6 +90,11 @@ typedef struct process
 	/* The current and previous state of the process. */
 	process_state_t state, prev_state;
 
+	/* The priority of the process. */
+	int8_t priority;
+	/* The scheduler queue. */
+	list_head_t schedule_queue;
+
 	/* A pointer to the parent process. */
 	struct process *parent;
 	/* The linked list of children of the parent process. */
@@ -145,13 +150,11 @@ extern gdt_entry_t *tss_gdt_entry(void);
 extern void tss_flush(void);
 
 void process_init(void);
-process_t *new_process(process_t *parent, const regs_t *registers);
-process_t *get_process(pid_t pid);
-process_t *get_running_process(void);
+process_t *process_create(process_t *parent, const regs_t *registers);
+process_t *process_get(pid_t pid);
 void process_set_state(process_t *process, process_state_t state);
 void process_add_child(process_t *parent, process_t *child);
 void process_exit(process_t *process, int status);
 void process_kill(process_t *process, int sig);
-void del_process(process_t *process, int children);
 
 #endif

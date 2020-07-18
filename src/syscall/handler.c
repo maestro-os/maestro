@@ -1,4 +1,5 @@
 #include <syscall/syscall.h>
+#include <process/scheduler.h>
 #include <kernel.h>
 #include <idt/idt.h>
 

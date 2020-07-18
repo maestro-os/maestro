@@ -3,6 +3,7 @@
 #include <pic/pic.h>
 #include <memory/memory.h>
 #include <process/process.h>
+#include <process/scheduler.h>
 #include <debug/debug.h>
 
 #define HLT_INSTRUCTION	0xf4

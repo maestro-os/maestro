@@ -193,7 +193,7 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 		regs_t r;
 		bzero(&r, sizeof(r));
 		r.eip = (intptr_t)test_process;
-		if(!new_process(NULL, &r))
+		if(!process_create(NULL, &r))
 			printf("process creation failed!\n");
 	}
 

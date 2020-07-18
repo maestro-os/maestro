@@ -6,7 +6,7 @@ sys_ret_t sys_fork(process_t *process, const regs_t *registers)
 	process_t *child;
 
 	CLI();
-	if(!(child = new_process(process, registers)))
+	if(!(child = process_create(process, registers)))
 		return -ENOMEM;
 	child->regs_state.eax = 0;
 	STI();

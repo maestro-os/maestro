@@ -44,8 +44,13 @@
 /*
  * Computes floor(log2(n)) without on unsigned integers.
  */
-# define LOG2(n)				((n) == 0 ? 1\
-	: BIT_SIZEOF(n) - __builtin_ctz(n) - 1) // TODO Check
+# define LOG2(n)				((n) == 0\
+ 	? 1 : BIT_SIZEOF(n) - __builtin_clz(n) - 1) // TODO Check
+/*
+ * Computes the square root of an integer.
+ */
+# define SQRT(n)				(1 << (LOG2(n) / 2))
+
  /*
   * Returns the absolute value for the given `i`.
   */

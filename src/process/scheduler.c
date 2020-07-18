@@ -1,5 +1,6 @@
 #include <process/scheduler.h>
 #include <process/process.h>
+#include <process/process_internal.h>
 #include <memory/memory.h>
 #include <kernel.h>
 
@@ -14,15 +15,22 @@
  * In x86, to prevent some vulnerabilities such as Meltdown for example, the
  * page directory should be switched to the kernel's one. However, the stack has
  * to stay at the same position, thus the kernel stack must be identity mapped.
+ *
+ * The scheduler uses queues to sort processes by priority. High priority
+ * processes have more CPU time.
  */
 
-extern avl_tree_t *processes;
+// TODO Spinlock?
 
-extern process_t *running_process;
+/*
+ * The list of queues sorted by growing priority.
+ */
+static schedule_queue_t queues[QUEUES_COUNT];
 
-extern tss_entry_t tss;
-
-extern spinlock_t processes_spinlock;
+/*
+ * The time unit, used to divide CPU time.
+ */
+static unsigned time_unit = 0;
 
 /*
  * Returns the currently running process. Returns NULL if no process is running.
@@ -34,48 +42,65 @@ process_t *get_running_process(void)
 }
 
 /*
+ * Returns the queue for the given `priority`.
+ */
+static inline size_t get_queue_id(int8_t priority)
+{
+	int id;
+	
+	id = ((int) 128 + priority) * (QUEUES_COUNT - 1) / 255;
+	debug_assert(id > 0 && id < QUEUES_COUNT, "scheduler: invalid queue id");
+	return id;
+}
+
+/*
+ * Adds the process to the scheduler queue.
+ */
+void scheduler_add(process_t *p)
+{
+	schedule_queue_t *queue;
+
+	debug_assert(sanity_check(p), "scheduler: invalid argument");
+	queue = &queues[get_queue_id(p->priority)];
+	list_insert_front(&queue->list, &p->schedule_queue);
+	if(!queue->cursor)
+		queue->cursor = queue->list;
+}
+
+/*
+ * Removes the process from the scheduler queue.
+ */
+void scheduler_remove(process_t *p)
+{
+	schedule_queue_t *queue;
+
+	debug_assert(sanity_check(p), "scheduler: invalid argument");
+	queue = &queues[get_queue_id(p->priority)];
+	if(queue->cursor == &p->schedule_queue)
+		queue->cursor = queue->list;
+	list_remove(&queue->list, &p->schedule_queue);
+}
+
+/*
  * Returns the next waiting process to be run.
  */
 ATTR_HOT
 static process_t *next_waiting_process(void)
 {
-	// TODO
-	if(!processes)
+	unsigned id;
+	schedule_queue_t *queue;
+	process_t *p;
+
+	id = (SQRT(8 * time_unit + 1) - 1) / 2;
+	debug_assert(id < QUEUES_COUNT, "scheduler: invalid queue id");
+	queue = &queues[id];
+	if(!queue->cursor && !(queue->cursor = queue->list))
 		return NULL;
-	return CONTAINER_OF(processes, process_t, tree);
-/*	process_t *p;
-	int loop = 0;
-
-	spin_lock(&processes_spinlock);
-	if(!(p = running_process))
-		p = processes;
-	if(!p)
-		goto end;
-loop:
-	if(!(p = p->next))
-	{
-		if(loop)
-		{
-			p = NULL;
-			goto end;
-		}
-		p = processes;
-		loop = 1;
-	}
-	if(!p)
-		goto end;
-	spin_lock(&p->spinlock);
-	if(p->state != WAITING)
-	{
-		spin_unlock(&p->spinlock);
-		goto loop;
-	}
-	else
-		spin_unlock(&p->spinlock);
-
-end:
-	spin_unlock(&processes_spinlock);
-	return p;*/
+	p = CONTAINER_OF(queue->cursor, process_t, schedule_queue);
+	if(!(queue->cursor = queue->cursor->next))
+		queue->cursor = queue->list;
+	time_unit = (time_unit + 1) % CYCLE_LENGTH;
+	return p;
 }
 
 /*
@@ -123,14 +148,10 @@ ATTR_HOT
 ATTR_NORETURN
 void scheduler_tick(const regs_t *registers)
 {
-	spin_lock(&processes_spinlock);
-	// TODO Spinlock on `running_process`?
+	spin_lock(&processes_spinlock); // TODO Spinlock on `running_process`?
 	if(running_process)
 		running_process->regs_state = *registers;
 	spin_unlock(&processes_spinlock);
-	// TODO
-	/*profiler_capture();
-	profiler_print();*/
 	switch_processes();
 	kernel_halt();
 }

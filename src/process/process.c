@@ -2,6 +2,7 @@
 #include <libc/errno.h>
 #include <memory/slab/slab.h>
 #include <process/process.h>
+#include <process/scheduler.h>
 #include <util/util.h>
 #include <debug/debug.h>
 
@@ -21,9 +22,6 @@
  * The cache for processes structures.
  */
 static cache_t *processes_cache;
-
-// TODO rm
-static cache_t *children_cache;
 
 /*
  * The cache for signals structures.
@@ -90,6 +88,7 @@ static void process_dtor(void *ptr, size_t size)
 	p = ptr;
 	(void) size;
 	avl_tree_remove(&processes, &p->tree);
+	scheduler_remove(p);
 	if(p->parent)
 		list_remove(&p->parent->children, &p->parent_child);
 	c = p->children;
@@ -140,7 +139,7 @@ void process_init(void)
 		process_ctor, process_dtor);
 	signals_cache = cache_create("signals", sizeof(signal_t), 64,
 		NULL, bzero);
-	if(!processes_cache || !children_cache || !signals_cache)
+	if(!processes_cache || !signals_cache)
 		PANIC("Cannot allocate caches for processes!", 0);
 	if(!(pids_bitfield = kmalloc_zero(PIDS_BITFIELD_SIZE)))
 		PANIC("Cannot allocate PIDs bitfield!", 0);
@@ -185,10 +184,10 @@ static void free_pid(const pid_t pid)
  * list.
  */
 ATTR_HOT
-process_t *new_process(process_t *parent, const regs_t *registers)
+process_t *process_create(process_t *parent, const regs_t *registers)
 {
 	pid_t pid;
-	process_t *new_proc/*, *p*/;
+	process_t *new_proc;
 
 	spin_lock(&processes_spinlock);
 	errno = 0;
@@ -201,6 +200,7 @@ process_t *new_process(process_t *parent, const regs_t *registers)
 	new_proc->pid = pid;
 	new_proc->parent = parent;
 	new_proc->regs_state = *registers;
+	scheduler_add(new_proc);
 	if(!parent)
 	{
 		if(!(new_proc->mem_space = mem_space_init()))
@@ -241,7 +241,7 @@ fail:
  * function returns NULL.
  */
 ATTR_HOT
-process_t *get_process(const pid_t pid)
+process_t *process_get(const pid_t pid)
 {
 	avl_tree_t *n;
 	process_t *p;
