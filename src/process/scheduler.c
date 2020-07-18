@@ -16,9 +16,9 @@
  * to stay at the same position, thus the kernel stack must be identity mapped.
  */
 
-extern process_t *volatile processes;
+extern avl_tree_t *processes;
 
-extern process_t *volatile running_process;
+extern process_t *running_process;
 
 extern tss_entry_t tss;
 
@@ -39,7 +39,11 @@ process_t *get_running_process(void)
 ATTR_HOT
 static process_t *next_waiting_process(void)
 {
-	process_t *p;
+	// TODO
+	if(!processes)
+		return NULL;
+	return CONTAINER_OF(processes, process_t, tree);
+/*	process_t *p;
 	int loop = 0;
 
 	spin_lock(&processes_spinlock);
@@ -71,7 +75,7 @@ loop:
 
 end:
 	spin_unlock(&processes_spinlock);
-	return p;
+	return p;*/
 }
 
 /*

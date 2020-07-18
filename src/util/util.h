@@ -154,7 +154,7 @@ typedef struct list_head
 } list_head_t;
 
 /*
- * Structure used for stack elements.
+ * Structure used for stack data structure (LIFO).
  * This structure should be used inside of other structures.
  */
 typedef struct stack_head
@@ -162,6 +162,16 @@ typedef struct stack_head
 	/* Pointer to the next object in the stack */
 	struct stack_head *next;
 } stack_head_t;
+
+/*
+ * Structure used for queue data structure (FIFO).
+ * This structure should be used inside of other structures.
+ */
+typedef struct queue_head
+{
+	/* Pointer to the next object in the queue */
+	struct queue_head *next;
+} queue_head_t;
 
 /*
  * Structure representing an AVL tree node.
@@ -213,6 +223,10 @@ int list_check(list_head_t *list);
 size_t stack_size(const stack_head_t *stack);
 void stack_push(stack_head_t **stack, stack_head_t *n);
 stack_head_t *stack_pop(stack_head_t **stack);
+
+size_t queue_size(const queue_head_t *out);
+void queue_enqueue(queue_head_t **in, queue_head_t **out, queue_head_t *n);
+queue_head_t *queue_dequeue(queue_head_t **in, queue_head_t **out);
 
 /*
  * Generic type for a comparison function.

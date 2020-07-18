@@ -33,12 +33,12 @@ static cache_t *signals_cache;
 /*
  * Processes list.
  */
-process_t *volatile processes = NULL;
+avl_tree_t *processes = NULL;
 
 /*
  * The currently running process.
  */
-process_t *volatile running_process = NULL;
+process_t *running_process = NULL;
 
 /*
  * The bitfield indicating which PIDs are used.
@@ -62,7 +62,7 @@ spinlock_t processes_spinlock = 0;
  * Constructs a process structure.
  */
 ATTR_HOT
-static void process_ctor(void *ptr, const size_t size)
+static void process_ctor(void *ptr, size_t size)
 {
 	process_t *p;
 	size_t i = 0;
@@ -76,6 +76,33 @@ static void process_ctor(void *ptr, const size_t size)
 	}
 	while(i < SIG_MAX)
 		p->sigactions[i++].sa_handler = SIG_DFL;
+}
+
+/*
+ * Destructs a process structure.
+ */
+ATTR_HOT
+static void process_dtor(void *ptr, size_t size)
+{
+	process_t *p;
+	list_head_t *c;
+
+	p = ptr;
+	(void) size;
+	avl_tree_remove(&processes, &p->tree);
+	if(p->parent)
+		list_remove(&p->parent->children, &p->parent_child);
+	c = p->children;
+	while(c)
+	{
+		list_remove(&p->children, c->prev);
+		CONTAINER_OF(c, process_t, parent_child)->parent = NULL;
+		c = c->next;
+	}
+	if(p->sem_curr)
+		sem_remove(p->sem_curr, p);
+	mem_space_destroy(p->mem_space);
+	// TODO Empty signals queue
 }
 
 /*
@@ -110,10 +137,8 @@ ATTR_COLD
 void process_init(void)
 {
 	processes_cache = cache_create("processes", sizeof(process_t), 64,
-		process_ctor, bzero);
-	children_cache = cache_create("process_children", sizeof(child_t), 64,
-		NULL, bzero);
-	signals_cache = cache_create("signals", sizeof(siginfo_t), 64,
+		process_ctor, process_dtor);
+	signals_cache = cache_create("signals", sizeof(signal_t), 64,
 		NULL, bzero);
 	if(!processes_cache || !children_cache || !signals_cache)
 		PANIC("Cannot allocate caches for processes!", 0);
@@ -163,7 +188,7 @@ ATTR_HOT
 process_t *new_process(process_t *parent, const regs_t *registers)
 {
 	pid_t pid;
-	process_t *new_proc, *p;
+	process_t *new_proc/*, *p*/;
 
 	spin_lock(&processes_spinlock);
 	errno = 0;
@@ -199,16 +224,8 @@ process_t *new_process(process_t *parent, const regs_t *registers)
 	process_add_child(parent, new_proc);
 	if(errno)
 		goto fail;
-	if(processes)
-	{
-		p = processes;
-		while(p->next && p->next->pid < pid)
-			p = p->next;
-		new_proc->next = p->next;
-		p->next = new_proc;
-	}
-	else
-		processes = new_proc;
+	new_proc->tree.value = new_proc->pid;
+	avl_tree_insert(&processes, &new_proc->tree, avl_val_cmp);
 	spin_unlock(&processes_spinlock);
 	return new_proc;
 
@@ -226,29 +243,20 @@ fail:
 ATTR_HOT
 process_t *get_process(const pid_t pid)
 {
+	avl_tree_t *n;
 	process_t *p;
 
+	debug_assert(pid < PID_MAX, "process: bad PID");
 	spin_lock(&processes_spinlock);
-	errno = 0;
-	p = processes;
-	if(pid <= 0)
+	n = avl_tree_search(processes, pid, avl_val_cmp);
+	if(!n)
 	{
-		errno = EINVAL;
-		spin_unlock(&processes_spinlock);
+		errno = ESRCH;
 		return NULL;
 	}
-	while(p)
-	{
-		if(p->pid == pid)
-		{
-			spin_unlock(&processes_spinlock);
-			return p;
-		}
-		p = p->next;
-	}
-	errno = ESRCH;
+	p = CONTAINER_OF(n, process_t, tree);
 	spin_unlock(&processes_spinlock);
-	return NULL;
+	return p; // TODO Warning: process might get invalid since execution is out of spinlock
 }
 
 /*
@@ -264,6 +272,7 @@ void process_set_state(process_t *process, const process_state_t state)
 	if(!process)
 		return;
 	spin_lock(&processes_spinlock);
+	// TODO Ignore if state isn't changed
 	if(state == RUNNING)
 	{
 		if(running_process)
@@ -283,25 +292,15 @@ void process_set_state(process_t *process, const process_state_t state)
 }
 
 /*
- * Adds the child `child` to the given parent process `parent`.
+ * Adds child `child` to the given parent process `parent`.
  */
 ATTR_HOT
 void process_add_child(process_t *parent, process_t *child)
 {
-	child_t *c;
-
-	if(!parent || !child)
+	if(!sanity_check(parent) || !sanity_check(child))
 		return;
-	spin_lock(&parent->spinlock);
-	if(!(c = cache_alloc(children_cache)))
-	{
-		errno = ENOMEM;
-		spin_unlock(&parent->spinlock);
-		return;
-	}
-	c->next = parent->children;
-	c->process = child;
-	parent->children = c;
+	spin_lock(&parent->spinlock); // TODO Also aquire child's spinlock
+	list_insert_front(&parent->children, &child->parent_child);
 	spin_unlock(&parent->spinlock);
 }
 
@@ -333,77 +332,26 @@ void process_kill(process_t *process, int sig)
 	signal_t *s;
 	sigaction_t *action;
 
-	if(!process)
+	if(!sanity_check(process))
 		return;
 	spin_lock(&process->spinlock);
-	if(sig == SIGKILL || sig == SIGSTOP
-		|| (action = process->sigactions + sig)->sa_handler == SIG_DFL)
+	action = &process->sigactions[sig];
+	if(sig == SIGKILL || sig == SIGSTOP || action->sa_handler == SIG_DFL)
 	{
 		signal_default(process, sig);
-		spin_unlock(&process->spinlock);
-		return;
+		goto end;
 	}
-	if(action->sa_handler == SIG_IGN || !(s = cache_alloc(signals_cache)))
+	if(action->sa_handler == SIG_IGN)
+		goto end;
+	if(!(s = cache_alloc(signals_cache)))
 	{
-		spin_unlock(&process->spinlock);
-		return;
+		// TODO Error
+		goto end;
 	}
 	s->info.si_signo = sig;
 	// TODO
-	if(process->last_signal)
-	{
-		process->last_signal->next = s;
-		process->last_signal = s;
-	}
-	else
-	{
-		process->signals_queue = s;
-		process->last_signal = s;
-	}
+	queue_enqueue(&process->last_signal, &process->signals_queue, &s->queue);
+
+end:
 	spin_unlock(&process->spinlock);
-}
-
-/*
- * Deletes the given process `process`. Also deletes children processes if
- * `children` is set.
- */
-ATTR_HOT
-void del_process(process_t *process, int children)
-{
-	child_t *c, *next;
-
-	if(!process)
-		return;
-	spin_lock(&processes_spinlock);
-	if(running_process == process)
-		running_process = NULL;
-	if(process->parent)
-	{
-		c = process->parent->children;
-		while(c)
-		{
-			next = c->next;
-			if(c->process->pid == process->pid)
-			{
-				cache_free(children_cache, c);
-				break;
-			}
-			c = next;
-		}
-	}
-	c = process->children;
-	while(c)
-	{
-		next = c->next;
-		if(children) // TODO Usefull?
-			del_process(c->process, 1);
-		else
-			c->process->parent = NULL;
-		cache_free(children_cache, c);
-		c = next;
-	}
-	mem_space_destroy(process->mem_space);
-	// TODO Free `signals_queue`
-	cache_free(processes_cache, process);
-	spin_unlock(&processes_spinlock);
 }

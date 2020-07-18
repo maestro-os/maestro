@@ -1,6 +1,8 @@
 #ifndef SIGNAL_H
 # define SIGNAL_H
 
+# include <util/util.h>
+
 # define SIGHUP		1
 # define SIGINT		2
 # define SIGQUIT	3
@@ -75,7 +77,7 @@ typedef struct sigaction
 
 typedef struct signal
 {
-	struct signal *next;
+	queue_head_t queue;
 	siginfo_t info;
 } signal_t;
 
