@@ -10,6 +10,8 @@ process_t *get_running_process(void);
 
 void scheduler_add(process_t *p);
 void scheduler_remove(process_t *p);
+
+ATTR_NORETURN
 void scheduler_tick(const regs_t *registers);
 
 ATTR_NORETURN

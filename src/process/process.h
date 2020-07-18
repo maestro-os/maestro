@@ -93,7 +93,7 @@ typedef struct process
 	/* The priority of the process. */
 	int8_t priority;
 	/* The scheduler queue. */
-	list_head_t schedule_queue;
+	list_head_t schedule_list;
 
 	/* A pointer to the parent process. */
 	struct process *parent;

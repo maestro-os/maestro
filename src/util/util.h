@@ -49,7 +49,7 @@
 /*
  * Computes the square root of an integer.
  */
-# define SQRT(n)				(1 << (LOG2(n) / 2))
+# define SQRT(n)				(POW2(LOG2(n) / 2))
 
  /*
   * Returns the absolute value for the given `i`.

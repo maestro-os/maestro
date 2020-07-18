@@ -16,21 +16,34 @@
  * page directory should be switched to the kernel's one. However, the stack has
  * to stay at the same position, thus the kernel stack must be identity mapped.
  *
- * The scheduler uses queues to sort processes by priority. High priority
- * processes have more CPU time.
+ * The scheduler works in a round robin fashion. There is a linked list of
+ * processes with a cursor on it. When selecting the next process to be
+ * executed, the scheduler cycles through the list of processes and selects the
+ * first one to be in WAITING state.
+ *
+ * This algorithm has complexity O(1) best case and O(n) worst case, however
+ * the worst case is rare, as the list is almost never totally iterated because
+ * the number of RUNNING processes is limited to the number of simultaneous
+ * threads on the processor.
  */
 
 // TODO Spinlock?
+// TODO Use `CYCLE_LENGTH`
 
 /*
- * The list of queues sorted by growing priority.
+ * The cursor of the scheduler.
  */
-static schedule_queue_t queues[QUEUES_COUNT];
+static list_head_t *cursor = NULL;
 
 /*
- * The time unit, used to divide CPU time.
+ * The list of processes for scheduling.
  */
-static unsigned time_unit = 0;
+static list_head_t *scheduler_processes = NULL;
+
+/*
+ * The number of elapsed quantum for the current process.
+ */
+static unsigned curr_quantum = 0;
 
 /*
  * Returns the currently running process. Returns NULL if no process is running.
@@ -42,29 +55,14 @@ process_t *get_running_process(void)
 }
 
 /*
- * Returns the queue for the given `priority`.
- */
-static inline size_t get_queue_id(int8_t priority)
-{
-	int id;
-	
-	id = ((int) 128 + priority) * (QUEUES_COUNT - 1) / 255;
-	debug_assert(id > 0 && id < QUEUES_COUNT, "scheduler: invalid queue id");
-	return id;
-}
-
-/*
  * Adds the process to the scheduler queue.
  */
 void scheduler_add(process_t *p)
 {
-	schedule_queue_t *queue;
-
 	debug_assert(sanity_check(p), "scheduler: invalid argument");
-	queue = &queues[get_queue_id(p->priority)];
-	list_insert_front(&queue->list, &p->schedule_queue);
-	if(!queue->cursor)
-		queue->cursor = queue->list;
+	list_insert_front(&scheduler_processes, &p->schedule_list);
+	if(!cursor)
+		cursor = scheduler_processes;
 }
 
 /*
@@ -72,13 +70,20 @@ void scheduler_add(process_t *p)
  */
 void scheduler_remove(process_t *p)
 {
-	schedule_queue_t *queue;
-
 	debug_assert(sanity_check(p), "scheduler: invalid argument");
-	queue = &queues[get_queue_id(p->priority)];
-	if(queue->cursor == &p->schedule_queue)
-		queue->cursor = queue->list;
-	list_remove(&queue->list, &p->schedule_queue);
+	if(cursor == &p->schedule_list)
+		cursor = scheduler_processes;
+	list_remove(&scheduler_processes, &p->schedule_list);
+}
+
+/*
+ * Returns the number of quantum for the given process.
+ */
+static unsigned get_quantum_count(const process_t *process)
+{
+	debug_assert(sanity_check(process), "scheduler: invalid argument");
+	// TODO Must be proportional to priority, cannot be zero
+	return 0;
 }
 
 /*
@@ -87,19 +92,23 @@ void scheduler_remove(process_t *p)
 ATTR_HOT
 static process_t *next_waiting_process(void)
 {
-	unsigned id;
-	schedule_queue_t *queue;
+	list_head_t *l;
 	process_t *p;
 
-	id = (SQRT(8 * time_unit + 1) - 1) / 2;
-	debug_assert(id < QUEUES_COUNT, "scheduler: invalid queue id");
-	queue = &queues[id];
-	if(!queue->cursor && !(queue->cursor = queue->list))
-		return NULL;
-	p = CONTAINER_OF(queue->cursor, process_t, schedule_queue);
-	if(!(queue->cursor = queue->cursor->next))
-		queue->cursor = queue->list;
-	time_unit = (time_unit + 1) % CYCLE_LENGTH;
+	if(!running_process || ++curr_quantum >= get_quantum_count(running_process))
+	{
+		if(!cursor)
+			cursor = scheduler_processes;
+		if((l = cursor))
+		{
+			p = CONTAINER_OF(l, process_t, schedule_list);
+			curr_quantum = 0;
+		}
+		else
+			p = NULL;
+	}
+	else
+		p = running_process;
 	return p;
 }
 
@@ -135,9 +144,10 @@ static void switch_processes(void)
 {
 	process_t *p;
 
-	// TODO Rewrite processes scheduling
-	if(!(p = next_waiting_process()) && !(p = running_process))
+	if(!(p = next_waiting_process()))
 		return;
+	if(running_process && p != running_process)
+		process_set_state(running_process, WAITING);
 	switch_process(p);
 }
 
