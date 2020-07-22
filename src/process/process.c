@@ -200,6 +200,8 @@ process_t *process_create(process_t *parent, const regs_t *registers)
 	new_proc->pid = pid;
 	new_proc->parent = parent;
 	new_proc->regs_state = *registers;
+	debug_assert(new_proc->state == WAITING,
+		"process: invalid state for new process");
 	scheduler_add(new_proc);
 	if(!parent)
 	{
@@ -286,6 +288,10 @@ void process_set_state(process_t *process, const process_state_t state)
 		running_process = NULL;
 	process->prev_state = process->state;
 	process->state = state;
+	if(state == WAITING)
+		scheduler_add(process);
+	else
+		scheduler_remove(process);
 	if(state == TERMINATED)
 		sem_remove(process->sem_curr, process);
 	spin_unlock(&processes_spinlock);

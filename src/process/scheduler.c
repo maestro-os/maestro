@@ -17,14 +17,20 @@
  * to stay at the same position, thus the kernel stack must be identity mapped.
  *
  * The scheduler works in a round robin fashion. There is a linked list of
- * processes with a cursor on it. When selecting the next process to be
- * executed, the scheduler cycles through the list of processes and selects the
- * first one to be in WAITING state.
+ * WAITING processes with a cursor on it. When selecting the next process, the
+ * scheduler just moves the cursor to the next element in the list.
  *
- * This algorithm has complexity O(1) best case and O(n) worst case, however
- * the worst case is rare, as the list is almost never totally iterated because
- * the number of RUNNING processes is limited to the number of simultaneous
- * threads on the processor.
+ * When a process's state is changed, if new state is:
+ * - WAITING: the process is inserted into the scheduler's list
+ * - non-WAITING: the process is removed from the scheduler's list
+ *
+ * Thus, the list only contains WAITING processes.
+ *
+ * This algorithm has complexity O(1) because it never has to iterate over the
+ * list.
+ *
+ * The time slice during which a process is executed is called a `quantum`.
+ * The number of quantum for a process is defined by its priority.
  */
 
 // TODO Spinlock?
@@ -81,9 +87,14 @@ void scheduler_remove(process_t *p)
  */
 static unsigned get_quantum_count(const process_t *process)
 {
+	unsigned quantum;
+
 	debug_assert(sanity_check(process), "scheduler: invalid argument");
-	// TODO Must be proportional to priority, cannot be zero
-	return 0;
+	quantum = 128 + process->priority;
+	// TODO Must be bound into CYCLE_LENGTH
+	if(quantum <= 0)
+		quantum = 1;
+	return quantum;
 }
 
 /*
@@ -102,6 +113,8 @@ static process_t *next_waiting_process(void)
 		if((l = cursor))
 		{
 			p = CONTAINER_OF(l, process_t, schedule_list);
+			debug_assert(p->state == WAITING,
+				"scheduler: invalid state for process");
 			curr_quantum = 0;
 		}
 		else
