@@ -12,10 +12,6 @@
  * toward privilege levels. If a process is interrupted while executing a
  * system call, it should be resumed at the same level of permission.
  *
- * In x86, to prevent some vulnerabilities such as Meltdown for example, the
- * page directory should be switched to the kernel's one. However, the stack has
- * to stay at the same position, thus the kernel stack must be identity mapped.
- *
  * The scheduler works in a round robin fashion. There is a linked list of
  * WAITING processes with a cursor on it. When selecting the next process, the
  * scheduler just moves the cursor to the next element in the list.
@@ -131,18 +127,12 @@ static process_t *next_waiting_process(void)
 ATTR_HOT
 static void switch_process(process_t *process)
 {
-	int syscalling;
-
 	debug_assert(sanity_check(process), "process: invalid argument");
 	process_set_state(process, RUNNING);
-	tss.ss0 = GDT_KERNEL_DATA_OFFSET;
-	tss.ss = GDT_USER_DATA_OFFSET;
-	tss.esp0 = (uint32_t) process->kernel_stack;
-	syscalling = process->syscalling;
 	debug_assert(sanity_check(process->mem_space->page_dir),
 		"process: bad memory context");
 	paging_enable(process->mem_space->page_dir);
-	if(syscalling)
+	if(process->syscalling)
 		kernel_switch(&process->regs_state);
 	else
 		context_switch(&process->regs_state,

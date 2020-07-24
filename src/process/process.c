@@ -52,6 +52,11 @@ ATTR_BSS
 tss_entry_t tss;
 
 /*
+ * The list of interrupt stacks for every cores.
+ */
+void **interrupt_stacks;
+
+/*
  * The spinlock for processes handling.
  */
 spinlock_t processes_spinlock = 0;
@@ -130,7 +135,31 @@ static void tss_init(void)
 }
 
 /*
- * Initializes caches for processes, PIDs bitmap and TSS.
+ * Allocates an interrupt stack for every cores of the CPU and initializes the
+ * TSS for each.
+ */
+ATTR_COLD
+static void interrupt_stacks_init(void)
+{
+	// TODO Multiple core
+	const size_t cores_count = 1;
+	size_t i;
+
+	if(!(interrupt_stacks = kmalloc(sizeof(void *) * cores_count)))
+		PANIC("Cannot initialize interrupt stacks!", 0);
+	for(i = 0; i < cores_count; ++i)
+	{
+		if(!(interrupt_stacks[i] = buddy_alloc(INTERRUPT_STACK_ORDER)))
+			PANIC("Cannot initialize interrupt stack!", 0);
+		tss_init();
+		tss.ss0 = GDT_KERNEL_DATA_OFFSET;
+		tss.ss = GDT_USER_DATA_OFFSET;
+		tss.esp0 = (uint32_t) interrupt_stacks[i];
+	}
+}
+
+/*
+ * Initializes caches for processes, PIDs bitmap, interrupt stacks and TSS.
  */
 ATTR_COLD
 void process_init(void)
@@ -144,7 +173,7 @@ void process_init(void)
 	if(!(pids_bitfield = kmalloc_zero(PIDS_BITFIELD_SIZE)))
 		PANIC("Cannot allocate PIDs bitfield!", 0);
 	bitfield_set(pids_bitfield, 0);
-	tss_init();
+	interrupt_stacks_init();
 }
 
 /*
