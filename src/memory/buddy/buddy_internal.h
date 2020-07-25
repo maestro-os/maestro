@@ -65,6 +65,7 @@
 /*
  * Asserts that the given frame of memory is valid.
  */
+// TODO Check if end of frame is lower than beginning and still in range
 #  define debug_check_frame(begin, ptr, order)\
 	debug_assert(sanity_check(ptr)\
 		&& IS_ALIGNED((ptr) - (begin), PAGE_SIZE << (order))\
