@@ -13,9 +13,7 @@ ATTR_HOT
 static inline void wait_read(void)
 {
 	while(!can_read())
-	{
-		// TODO Sleep?
-	}
+		;
 }
 
 ATTR_HOT
@@ -28,9 +26,7 @@ ATTR_HOT
 static inline void wait_write(void)
 {
 	while(!can_write())
-	{
-		// TODO Sleep?
-	}
+		;
 }
 
 // TODO Timeout
@@ -45,7 +41,6 @@ static uint8_t ps2_command(const uint8_t command,
 	{
 		wait_write();
 		outb(PS2_COMMAND, command);
-
 		wait_read();
 		if((response = inb(PS2_DATA)) == expected_response)
 			break;
@@ -77,12 +72,10 @@ static inline int keyboard_send(const uint8_t data)
 	{
 		wait_write();
 		outb(PS2_DATA, data);
-
 		wait_read();
 		if((response = inb(PS2_DATA)) == KEYBOARD_ACK)
 			break;
 	}
-
 	return (response == KEYBOARD_ACK);
 }
 
@@ -122,7 +115,6 @@ static inline uint8_t get_config_byte(void)
 {
 	wait_write();
 	outb(PS2_COMMAND, 0x20); // TODO Use ps2_command without expected response?
-
 	wait_read();
 	return inb(PS2_DATA);
 }
@@ -141,8 +133,6 @@ void ps2_init(void)
 {
 	// TODO Check if existing using ACPI
 	ps2_disable_devices();
-	// TODO Discard buffer?
-	// inb(PS2_DATA);
 	clear_buffer();
 	set_config_byte(get_config_byte() & 0b10111100);
 	printf("PS/2 Dual Channel: %s\n",
@@ -175,8 +165,10 @@ void ps2_set_keyboard_hook(void (*hook)(const uint8_t))
 ATTR_HOT
 void ps2_keyboard_event(void)
 {
-	if(keyboard_hook)
-		keyboard_hook(inb(0x60));
+	if(!keyboard_hook)
+		return;
+	while(can_read())
+		keyboard_hook(inb(PS2_DATA)); // TODO Fix: potential concurency problem (hook change)
 }
 
 ATTR_HOT

@@ -154,6 +154,7 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 
 	// TODO Move back after driver init
 	printf("Keyboard initialization...\n");
+	ps2_init(); // TODO rm
 	keyboard_init();
 	keyboard_set_input_hook(tty_input_hook);
 	keyboard_set_ctrl_hook(tty_ctrl_hook);
@@ -161,6 +162,7 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 
 // TODO Ensure that keyboard is enabled
 #ifdef KERNEL_SELFTEST
+	kernel_loop();
 	printf("Running selftests...\n");
 	run_selftest();
 	kernel_loop();

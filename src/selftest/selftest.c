@@ -2,13 +2,13 @@
 #include <libc/string.h>
 
 static test_suite_func_t suites[] = {
-	/*test_bitfield,
-	test_avl,
-	test_buddy,*/
-	test_kmalloc,
+	//test_bitfield,
+	//test_avl,
+	test_buddy,
+	//test_kmalloc,
 
-	/*test_buddy_duplicates,
-	test_kmalloc_bulk*/
+	//test_buddy_duplicates,
+	//test_kmalloc_bulk
 };
 
 void run_selftest(void)

@@ -2,6 +2,7 @@
 #include <libc/errno.h>
 #include <memory/slab/slab.h>
 #include <process/process.h>
+#include <process/process_internal.h>
 #include <process/scheduler.h>
 #include <util/util.h>
 #include <debug/debug.h>

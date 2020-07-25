@@ -158,7 +158,6 @@ static void switch_processes(void)
  * The ticking function, invoking the processes scheduler.
  */
 ATTR_HOT
-ATTR_NORETURN
 void scheduler_tick(const regs_t *registers)
 {
 	spin_lock(&processes_spinlock); // TODO Spinlock on `running_process`?
@@ -166,5 +165,4 @@ void scheduler_tick(const regs_t *registers)
 		running_process->regs_state = *registers;
 	spin_unlock(&processes_spinlock);
 	switch_processes();
-	kernel_halt();
 }

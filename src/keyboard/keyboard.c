@@ -183,7 +183,6 @@ char keyboard_get_char(const key_code_t code, const int shift)
 		case KEY_KEYPAD_3: return (shift ? '\0' : '3');
 		case KEY_KEYPAD_0: return (shift ? '\0' : '0');
 		case KEY_KEYPAD_DOT: return (shift ? '\0' : '.');
-
 		default: return '\0';
 	}
 }
