@@ -10,11 +10,28 @@
 /*
  * The size of a page in bytes.
  */
-# define PAGE_SIZE		((size_t) 0x1000)
+# define PAGE_SIZE	((size_t) 0x1000)
+
 /*
- * The pointer to the beginning of the kernel.
+ * The virtual pointer to the beginning of the kernel.
  */
-# define KERNEL_BEGIN	((void *) 0x100000)
+# define KERNEL_VIRT_BEGIN	((void *) &kernel_begin)
+/*
+ * The virtual pointer to the end of the kernel.
+ */
+# define KERNEL_VIRT_END	((void *) &kernel_end)
+/*
+ * The kernel's image size in bytes.
+ */
+# define KERNEL_SIZE		((size_t) (KERNEL_VIRT_END - KERNEL_VIRT_BEGIN))
+/*
+ * The physical pointer to the beginning of the kernel.
+ */
+# define KERNEL_PHYS_BEGIN	((void *) 0x100000)
+/*
+ * The physical pointer to the end of the kernel.
+ */
+# define KERNEL_PHYS_END	(KERNEL_PHYS_BEGIN + KERNEL_SIZE)
 
 /*
  * x86 paging flag. If set, pages are 4 MB long.
@@ -156,13 +173,16 @@ typedef struct
  */
 typedef uint32_t *vmem_t;
 
+extern int kernel_begin;
+extern int kernel_end;
+
 extern memory_info_t mem_info;
 extern vmem_t kernel_vmem;
 
 extern int check_a20(void);
 void enable_a20(void);
 
-void memmap_init(void *multiboot_ptr, void *kernel_end);
+void memmap_init(void *multiboot_ptr);
 void memmap_print(void);
 const char *memmap_type(uint32_t type);
 

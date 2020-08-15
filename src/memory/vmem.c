@@ -42,8 +42,9 @@ vmem_t vmem_init(void)
 	if(!(vmem = new_vmem_obj()))
 		return NULL;
 	// TODO Only allow read access to a stub for interrupts
-	vmem_identity_range(vmem, KERNEL_BEGIN,
-		(mem_info.heap_begin - KERNEL_BEGIN) / PAGE_SIZE, PAGING_PAGE_USER);
+	vmem_identity_range(vmem, KERNEL_PHYS_BEGIN,
+		(mem_info.heap_begin - KERNEL_PHYS_BEGIN) / PAGE_SIZE,
+		PAGING_PAGE_USER);
 	return vmem;
 }
 

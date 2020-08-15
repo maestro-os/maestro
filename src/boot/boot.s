@@ -18,7 +18,11 @@
 .set MULTIBOOT_HEADER_TAG_ENTRY_ADDRESS_EFI64,	9
 .set MULTIBOOT_HEADER_TAG_RELOCATABLE,			10
 
-.section .text
+.extern switch_protected
+.extern _init
+.extern _fini
+
+.section .boot.text
 
 /*
  * The Multiboot2 kernel header.
@@ -51,7 +55,7 @@ header_end:
  * The entry point for the kernel.
  */
 multiboot_entry:
-	mov $stack_top, %esp
+	mov $boot_stack_top, %esp
 	xor %ebp, %ebp
 
 	pushl $0
@@ -60,15 +64,15 @@ multiboot_entry:
 	push %eax
 	push %ebx
 	call switch_protected
-	call _init
+	# call _init
+	call kernel_remap
 	pop %ebx
 	pop %eax
 
-	push $kernel_end
 	push %ebx
 	push %eax
 	call kernel_main
 	add $12, %esp
 
 	call kernel_halt
-	call _fini
+	# call _fini

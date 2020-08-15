@@ -48,7 +48,7 @@ static uint8_t *pids_bitfield;
  * The Task State Segment structure used to specify the pointer to the syscall
  * stack.
  */
-ATTR_PAGE_ALIGNED
+ATTR_ALIGNED(PAGE_SIZE)
 ATTR_BSS
 tss_entry_t tss;
 

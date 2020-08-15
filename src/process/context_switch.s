@@ -6,7 +6,7 @@
 context_switch:
 	cli
 	mov %esp, %ebp
-	mov $stack_top, %esp # TODO remove?
+	mov $boot_stack_top, %esp # TODO remove
 
 	mov 8(%ebp), %eax
 	mov %ax, %ds

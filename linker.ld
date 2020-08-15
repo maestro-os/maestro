@@ -1,31 +1,58 @@
 SECTIONS
 {
-	. = 1M;
+/*
+ * Booting stub sections
+ */
+	. = 0x100000;
 
-	.text BLOCK(4K) : ALIGN(4K)
+	.boot.text ALIGN(4K) :
 	{
+		*(.boot.text)
+	}
+
+	.boot.data ALIGN(4K) :
+	{
+		*(.boot.data)
+	}
+
+	.boot.stack ALIGN(4K) :
+	{
+		*(.boot.stack)
+	}
+
+/*
+ * Kernel sections
+ */
+	. = 0xc0100000;
+
+	.text ALIGN(4K) : AT (ADDR (.text) - 0xc0000000 + 0x100000)
+	{
+/*
+ * Symbol at the beginning of the kernel image.
+ */
+		kernel_begin = .;
+
 		*(.text)
 	}
 
-	.rodata BLOCK(4K) : ALIGN(4K)
+	.rodata ALIGN(4K) : AT (ADDR (.rodata) - 0xc0000000 + 0x100000)
 	{
 		*(.rodata)
 	}
 
-	.stack BLOCK(4K) : ALIGN(4K)
-	{
-		*(.stack)
-	}
-
-	.data BLOCK(4K) : ALIGN(4K)
+	.data ALIGN(4K) : AT (ADDR (.data) - 0xc0000000 + 0x100000)
 	{
 		*(.data)
 	}
 
-	.bss BLOCK(4K) : ALIGN(4K)
+	.bss ALIGN(4K) : AT (ADDR (.bss) - 0xc0000000 + 0x100000)
 	{
 		*(COMMON)
 		*(.bss)
+
+/*
+ * Symbol at the end of the kernel image
+ */
 		kernel_end = .;
 	}
 }

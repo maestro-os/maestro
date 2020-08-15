@@ -4,11 +4,11 @@
 
 #include <libc/stdio.h>
 
-void *_debug_sanity_check(const void *ptr)
+void *_debug_sanity_check(const volatile void *ptr)
 {
 	void *ebp;
 
-	if(ptr && (ptr < KERNEL_BEGIN || ptr >= mem_info.memory_end))
+	if(ptr && (ptr < KERNEL_VIRT_BEGIN || ptr >= mem_info.memory_end))
 	{
 		printf("DEBUG: Sanity check failed: `%p`\n", ptr);
 		GET_EBP(ebp);

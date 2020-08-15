@@ -117,15 +117,16 @@ avl_tree_t *gap_find(avl_tree_t *n, const size_t pages)
 /*
  * Creates the default memory gaps for the given memory space.
  */
+// TODO Rewrite
 int gaps_init(mem_space_t *s)
 {
-	void *gap_begin;
+	/*void *gap_begin;
 	size_t gap_pages;
 	mem_gap_t *gap;
 
 	debug_assert(sanity_check(s), "mem_space: invalid argument");
 	gap_begin = MEM_SPACE_BEGIN;
-	gap_pages = (uintptr_t) (KERNEL_BEGIN - gap_begin) / PAGE_SIZE;
+	gap_pages = (uintptr_t) (KERNEL_PHYS_BEGIN - gap_begin) / PAGE_SIZE;
 	if(!(gap = gap_create(s, gap_begin, gap_pages)))
 		return 0;
 	list_insert_after(&s->gaps, s->gaps, &gap->list);
@@ -136,7 +137,8 @@ int gaps_init(mem_space_t *s)
 	if(!(gap = gap_create(s, gap_begin, gap_pages)))
 		return 0;
 	list_insert_after(&s->gaps, s->gaps, &gap->list);
-	avl_tree_insert(&s->free_tree, &gap->node, avl_val_cmp);
+	avl_tree_insert(&s->free_tree, &gap->node, avl_val_cmp);*/
+	(void) s;
 	return 1;
 }
 

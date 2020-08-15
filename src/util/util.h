@@ -90,13 +90,17 @@
 # define VARG_COUNT(...)	(sizeof((void *[]) {__VA_ARGS__}) / sizeof(void *))
 
 /*
- * Attribute. Places the elements to the .bss section.
+ * Attribute. Places the elements into the given section.
  */
-# define ATTR_BSS			__attribute__((section(".bss")))
+# define ATTR_SECTION(s)	__attribute__((section(s)))
 /*
- * Attribute. Places the elements to the .rodata section.
+ * Attribute. Places the elements into the `.bss` section.
  */
-# define ATTR_RODATA		__attribute__((section(".rodata#")))
+# define ATTR_BSS			ATTR_SECTION(".bss")
+/*
+ * Attribute. Places the elements into the `.rodata` section.
+ */
+# define ATTR_RODATA		ATTR_SECTION(".rodata#")
 /*
  * Attribute. Tells the compiler that the function shall not be called
  * often (allowing optimizations).
@@ -132,7 +136,7 @@
  * Attribute. Aligns the given element to page boundary, allowing cache
  * optimization.
  */
-# define ATTR_PAGE_ALIGNED	__attribute__((aligned(PAGE_SIZE)))
+# define ATTR_ALIGNED(n)	__attribute__((aligned(n)))
 
 /*
  * Tells the compiler that the given condition is likely to be fullfilled.

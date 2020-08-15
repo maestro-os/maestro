@@ -42,7 +42,7 @@ void get_memory_usage(mem_usage_t *usage)
 	remaining -= usage->reserved;
 	usage->bad_ram = 0; // TODO Get bad ram from mapping
 	remaining -= usage->bad_ram;
-	usage->system = (size_t) mem_info.heap_begin - (size_t) KERNEL_BEGIN;
+	usage->system = KERNEL_SIZE;
 	remaining -= usage->system;
 	usage->allocated = allocated_pages() * PAGE_SIZE;
 	remaining -= usage->allocated;

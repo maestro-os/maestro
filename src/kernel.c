@@ -112,6 +112,7 @@ ATTR_COLD
 void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	void *kernel_end)
 {
+	kernel_halt();
 	tty_init();
 
 	if(!check_a20())
@@ -140,7 +141,7 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 	printf("Bootloader name: %s\n", boot_info.loader_name);
 
 	printf("Memory management initialization...\n");
-	memmap_init(multiboot_ptr, kernel_end);
+	memmap_init(multiboot_ptr);
 #ifdef KERNEL_DEBUG
 	memmap_print();
 	printf("\n");
