@@ -34,6 +34,11 @@
 # define KERNEL_PHYS_END	(KERNEL_PHYS_BEGIN + KERNEL_SIZE)
 
 /*
+ * The pointer to the end of the virtual memory reserved to the process.
+ */
+# define PROCESS_END		((void *) 0xc0000000)
+
+/*
  * x86 paging flag. If set, pages are 4 MB long.
  */
 # define PAGING_TABLE_PAGE_SIZE		0b10000000

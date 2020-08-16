@@ -1,12 +1,11 @@
 *.a
 *.o
 *.gch
+*.swp
 
 iso/
 maestro
 *.iso
 tags
-
-*.swp
 
 *_out

@@ -74,10 +74,6 @@ test: iso
 cputest: iso
 	qemu-system-i386 -cdrom $(NAME).iso -d int,cpu >cpu_out 2>&1
 
-debug: iso
-	qemu-system-i386 -cdrom $(NAME).iso -d int -s -S >debug_out 2>&1 &
-	gdb $(NAME) -ex 'tar rem :1234'
-
 bochs: iso
 	bochs
 

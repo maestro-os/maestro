@@ -6,6 +6,9 @@
 .set HEADER_LENGTH,				(header_end - header)
 .set CHECKSUM,					-(MULTIBOOT_MAGIC + MULTIBOOT_ARCHITECTURE + HEADER_LENGTH)
 
+/*
+ * Multiboot header tags constants.
+ */
 .set MULTIBOOT_HEADER_TAG_END,					0
 .set MULTIBOOT_HEADER_TAG_INFORMATION_REQUEST,	1
 .set MULTIBOOT_HEADER_TAG_ADDRESS,				2
@@ -17,6 +20,13 @@
 .set MULTIBOOT_HEADER_TAG_ENTRY_ADDRESS_EFI32,	8
 .set MULTIBOOT_HEADER_TAG_ENTRY_ADDRESS_EFI64,	9
 .set MULTIBOOT_HEADER_TAG_RELOCATABLE,			10
+
+/*
+ * The size of the kernel stack.
+ */
+.set STACK_SIZE,	32768
+
+.global boot_stack_top
 
 .extern switch_protected
 .extern _init
@@ -64,6 +74,7 @@ multiboot_entry:
 	push %eax
 	push %ebx
 	call switch_protected
+	call a20_handle
 	# call _init
 	call kernel_remap
 	pop %ebx
@@ -76,3 +87,15 @@ multiboot_entry:
 
 	call kernel_halt
 	# call _fini
+
+
+
+.section .boot.stack, "w"
+
+.align 8
+
+/*
+ * The kernel stack.
+ */
+.skip STACK_SIZE
+boot_stack_top:

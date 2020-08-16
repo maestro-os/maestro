@@ -109,19 +109,9 @@ extern semaphore_t sem;
  * kernel image.
  */
 ATTR_COLD
-void kernel_main(const unsigned long magic, void *multiboot_ptr,
-	void *kernel_end)
+void kernel_main(const unsigned long magic, void *multiboot_ptr)
 {
-	kernel_halt();
 	tty_init();
-
-	if(!check_a20())
-	{
-		printf("A20 line not enabled. Enabling...\n");
-		enable_a20();
-	}
-	if(!check_a20())
-		PANIC("Cannot enable A20 line!", 0);
 
 	if(magic != MULTIBOOT2_BOOTLOADER_MAGIC)
 		PANIC("Non Multiboot2-compliant bootloader!", 0);
@@ -148,7 +138,6 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr,
 #endif
 	printf("Available memory: %zu bytes (%zu pages)\n",
 		mem_info.available_memory, mem_info.available_memory / PAGE_SIZE);
-	printf("Kernel end: %p; Heap end: %p\n", kernel_end, mem_info.heap_end);
 	buddy_init();
 	slab_init();
 	vmem_kernel();

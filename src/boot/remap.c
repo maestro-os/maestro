@@ -28,9 +28,12 @@ extern void kernel_remap_update_stack(void);
 ATTR_SECTION(".boot.text")
 void kernel_remap(void)
 {
+	size_t i;
 	const uint32_t flags = PAGING_TABLE_PAGE_SIZE | PAGING_TABLE_WRITE
 		| PAGING_TABLE_PRESENT;
 
+	for(i = 0; i < 1024; ++i)
+		remap_dir[i] = 0;
 	remap_dir[0] = flags;
 	remap_dir[768] = flags;
 	pse_enable(&remap_dir);
