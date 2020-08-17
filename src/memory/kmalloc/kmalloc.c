@@ -25,9 +25,10 @@ void *kmalloc(size_t size)
 	spin_unlock(&kmalloc_spinlock);
 	if(!ptr)
 		errno = ENOMEM;
-	debug_assert(ptr >= mem_info.heap_begin && ptr < mem_info.heap_end
+	// TODO Check that pointer is valid in virtual memory
+	/*debug_assert(ptr >= mem_info.heap_begin && ptr < mem_info.heap_end
 		&& ptr + size >= mem_info.heap_begin && ptr + size < mem_info.heap_end,
-		"kmalloc: invalid pointer returned");
+		"kmalloc: invalid pointer returned");*/
 	return ptr;
 }
 

@@ -146,12 +146,12 @@ typedef struct
 	/* Pointer to the Multiboot2 memory map */
 	void *memory_maps;
 
-	/* Pointer to the end of the memory */
+	/* Pointer to the end of the physical memory */
 	void *memory_end;
-	/* Pointer to the beginning of allocatable memory */
-	void *heap_begin;
-	/* Pointer to the end of allocatable memory */
-	void *heap_end;
+	/* Pointer to the beginning of physical allocatable memory */
+	void *phys_alloc_begin;
+	/* Pointer to the end of physical allocatable memory */
+	void *phys_alloc_end;
 	/* The amount total of allocatable memory */
 	size_t available_memory;
 } memory_info_t;

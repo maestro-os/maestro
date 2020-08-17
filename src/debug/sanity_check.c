@@ -8,7 +8,7 @@ void *_debug_sanity_check(const volatile void *ptr)
 {
 	void *ebp;
 
-	if(ptr && (ptr < KERNEL_VIRT_BEGIN || ptr >= mem_info.memory_end))
+	if(ptr && ptr < (void *) PAGE_SIZE)
 	{
 		printf("DEBUG: Sanity check failed: `%p`\n", ptr);
 		GET_EBP(ebp);

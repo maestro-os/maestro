@@ -113,24 +113,18 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr)
 {
 	tty_init();
 
-	if(magic != MULTIBOOT2_BOOTLOADER_MAGIC)
+	if(magic != MULTIBOOT2_BOOTLOADER_MAGIC || !IS_ALIGNED(multiboot_ptr, 8))
 		PANIC("Non Multiboot2-compliant bootloader!", 0);
-	if(((uintptr_t) multiboot_ptr) & 7)
-		PANIC("Boot informations structure's address is not aligned!", 0);
 
 	idt_init();
 	pit_init();
 
 	printf("Booting Maestro kernel version %s...\n", KERNEL_VERSION);
-	printf("Retrieving CPU informations...\n");
 	cpuid();
-
-	printf("Retrieving Multiboot2 data...\n");
 	read_boot_tags(multiboot_ptr);
 	printf("Command line: %s\n", boot_info.cmdline);
 	printf("Bootloader name: %s\n", boot_info.loader_name);
 
-	printf("Memory management initialization...\n");
 	memmap_init(multiboot_ptr);
 #ifdef KERNEL_DEBUG
 	memmap_print();
@@ -150,9 +144,7 @@ void kernel_main(const unsigned long magic, void *multiboot_ptr)
 	keyboard_set_ctrl_hook(tty_ctrl_hook);
 	keyboard_set_erase_hook(tty_erase_hook);
 
-// TODO Ensure that keyboard is enabled
 #ifdef KERNEL_SELFTEST
-	kernel_loop();
 	printf("Running selftests...\n");
 	run_selftest();
 	kernel_loop();

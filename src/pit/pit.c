@@ -8,11 +8,12 @@ static unsigned current_frequency;
 
 /*
  * Initializes the PIT.
+ * This function disables interrupts.
  */
 ATTR_COLD
 void pit_init(void)
 {
-	CLI(); // TODO Enable back after init if enabled in the first place?
+	CLI();
 	outb(PIT_COMMAND, PIT_SELECT_CHANNEL_0 | PIT_ACCESS_LOBYTE_HIBYTE
 		| PIT_MODE_4);
 	outb(PIT_COMMAND, PIT_SELECT_CHANNEL_2 | PIT_ACCESS_LOBYTE_HIBYTE

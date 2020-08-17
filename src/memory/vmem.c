@@ -42,9 +42,7 @@ vmem_t vmem_init(void)
 	if(!(vmem = new_vmem_obj()))
 		return NULL;
 	// TODO Only allow read access to a stub for interrupts
-	vmem_identity_range(vmem, KERNEL_PHYS_BEGIN,
-		(mem_info.heap_begin - KERNEL_PHYS_BEGIN) / PAGE_SIZE,
-		PAGING_PAGE_USER);
+	vmem_map_range(vmem, NULL, PROCESS_END, 262144, PAGING_PAGE_WRITE);
 	return vmem;
 }
 
@@ -63,7 +61,8 @@ static void protect_section(elf_section_header_t *hdr, const char *name)
 		return;
 	ptr = (void *) hdr->sh_addr;
 	pages = CEIL_DIVISION(hdr->sh_size, PAGE_SIZE);
-	vmem_identity_range(kernel_vmem, ptr, pages, PAGING_PAGE_USER);
+	vmem_map_range(kernel_vmem, (void *) (PROCESS_END + (uintptr_t) ptr), ptr,
+		pages, PAGING_PAGE_USER);
 }
 
 /*
@@ -85,6 +84,7 @@ static void protect_tables(vmem_t vmem)
 	void *table_ptr;
 	uint32_t *table_entry;
 
+	debug_assert(sanity_check(vmem), "vmem: invalid arguments");
 	for(i = 0; i < 1024; ++i)
 	{
 		if(!(vmem[i] & PAGING_TABLE_PRESENT))
@@ -102,12 +102,8 @@ static void protect_tables(vmem_t vmem)
 ATTR_COLD
 void vmem_kernel(void)
 {
-	if(!(kernel_vmem = new_vmem_obj()))
+	if(!(kernel_vmem = vmem_init()))
 		goto fail;
-	vmem_unmap(kernel_vmem, NULL);
-	vmem_identity_range(kernel_vmem, (void *) PAGE_SIZE,
-		(mem_info.memory_end - (void *) PAGE_SIZE) / PAGE_SIZE,
-			PAGING_PAGE_WRITE);
 	protect_kernel();
 	protect_tables(kernel_vmem);
 	paging_enable(kernel_vmem);
@@ -127,8 +123,7 @@ uint32_t *vmem_resolve(vmem_t vmem, const void *ptr)
 	uintptr_t table, page;
 	vmem_t table_obj;
 
-	if(!sanity_check(vmem))
-		return NULL;
+	debug_assert(sanity_check(vmem), "vmem: invalid arguments");
 	table = ADDR_TABLE(ptr);
 	page = ADDR_PAGE(ptr);
 	if(!(vmem[table] & PAGING_TABLE_PRESENT))
@@ -161,8 +156,7 @@ void vmem_map(vmem_t vmem, const void *physaddr, const void *virtaddr,
 	uint32_t lock;
 
 	errno = 0;
-	if(!sanity_check(vmem))
-		return;
+	debug_assert(sanity_check(vmem), "vmem: invalid arguments");
 	t = ADDR_TABLE(virtaddr);
 	if(!(vmem[t] & PAGING_TABLE_PRESENT))
 	{
@@ -188,8 +182,10 @@ void vmem_map_range(vmem_t vmem, const void *physaddr, const void *virtaddr,
 {
 	size_t i = 0;
 
-	if(!sanity_check(vmem))
-		return;
+	debug_assert(sanity_check(vmem)
+		&& (size_t) physaddr / PAGE_SIZE + pages <= 1048576
+		&& (size_t) virtaddr / PAGE_SIZE + pages <= 1048576,
+		"vmem: invalid arguments");
 	while(i < pages)
 	{
 		vmem_map(vmem, physaddr + i * PAGE_SIZE,
@@ -222,8 +218,9 @@ void vmem_identity_range(vmem_t vmem, const void *from, const size_t pages,
 {
 	size_t i = 0;
 
-	if(!vmem)
-		return;
+	debug_assert(sanity_check(vmem)
+		&& (size_t) from / PAGE_SIZE + pages < 1048576,
+		"vmem: invalid arguments");
 	while(i < pages)
 	{
 		vmem_identity(vmem, from + i * PAGE_SIZE, flags);
@@ -246,8 +243,7 @@ void vmem_unmap(vmem_t vmem, const void *virtaddr)
 	vmem_t v;
 	uint32_t lock;
 
-	if(!sanity_check(vmem))
-		return;
+	debug_assert(sanity_check(vmem), "vmem: invalid arguments");
 	t = ADDR_TABLE(virtaddr);
 	if(!(vmem[t] & PAGING_TABLE_PRESENT))
 		return;
@@ -268,14 +264,12 @@ void vmem_unmap_range(vmem_t vmem, const void *virtaddr, const size_t pages)
 {
 	size_t i = 0;
 
-	if(!sanity_check(vmem))
-		return;
+	debug_assert(sanity_check(vmem), "vmem: invalid arguments");
 	while(i < pages)
 	{
 		vmem_unmap(vmem, virtaddr + i * PAGE_SIZE);
 		++i;
 	}
-
 }
 
 /*
@@ -287,8 +281,7 @@ int vmem_contains(vmem_t vmem, const void *ptr, const size_t size)
 {
 	void *i;
 
-	if(!sanity_check(vmem))
-		return 0;
+	debug_assert(sanity_check(vmem), "vmem: invalid arguments");
 	i = DOWN_ALIGN(ptr, PAGE_SIZE);
 	while(i < ptr + size)
 	{
@@ -308,7 +301,8 @@ void *vmem_translate(vmem_t vmem, const void *ptr)
 {
 	uint32_t *entry;
 
-	if(!sanity_check(vmem) || !sanity_check(entry = vmem_resolve(vmem, ptr)))
+	debug_assert(sanity_check(vmem), "vmem: invalid arguments");
+	if(!sanity_check(entry = vmem_resolve(vmem, ptr)))
 		return NULL;
 	return (void *) ((*entry & PAGING_ADDR_MASK) | ADDR_REMAIN(ptr));
 }
@@ -321,7 +315,8 @@ uint32_t vmem_get_entry(vmem_t vmem, const void *ptr)
 {
 	uint32_t *entry;
 
-	if(!sanity_check(vmem) || !sanity_check(entry = vmem_resolve(vmem, ptr)))
+	debug_assert(sanity_check(vmem), "vmem: invalid arguments");
+	if(!sanity_check(entry = vmem_resolve(vmem, ptr)))
 		return 0;
 	return *entry & PAGING_FLAGS_MASK;
 }
@@ -334,9 +329,10 @@ static vmem_t clone_page_table(vmem_t from)
 {
 	vmem_t v;
 
+	debug_assert(sanity_check(from), "vmem: invalid arguments");
 	if(!(v = new_vmem_obj()))
 		return NULL;
-	memcpy(v, sanity_check(from), PAGE_SIZE);
+	memcpy(v, from, PAGE_SIZE);
 	return v;
 }
 
@@ -351,7 +347,8 @@ vmem_t vmem_clone(vmem_t vmem)
 	size_t i;
 	void *old_table, *new_table;
 
-	if(!sanity_check(vmem) || !(v = vmem_init()))
+	debug_assert(sanity_check(vmem), "vmem: invalid arguments");
+	if(!(v = vmem_init()))
 		return NULL;
 	lock = cr0_get() & 0x10000;
 	cr0_clear(lock);
@@ -384,8 +381,7 @@ fail:
  */
 void vmem_flush(vmem_t vmem)
 {
-	if(!sanity_check(vmem))
-		return;
+	debug_assert(sanity_check(vmem), "vmem: invalid arguments");
 	if(vmem == cr3_get())
 		tlb_reload();
 }
@@ -398,8 +394,7 @@ void vmem_destroy(vmem_t vmem)
 {
 	size_t i;
 
-	if(!sanity_check(vmem))
-		return;
+	debug_assert(sanity_check(vmem), "vmem: invalid arguments");
 	for(i = 0; i < 1024; ++i)
 	{
 		if(!(vmem[i] & PAGING_TABLE_PRESENT))

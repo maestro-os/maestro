@@ -75,18 +75,19 @@ multiboot_entry:
 	push %ebx
 	call switch_protected
 	call a20_handle
-	# call _init
+	# TODO call _init
 	call kernel_remap
 	pop %ebx
 	pop %eax
 
+	mov $(0xc0000000 + boot_stack_top), %esp
 	push %ebx
 	push %eax
 	call kernel_main
 	add $12, %esp
 
 	call kernel_halt
-	# call _fini
+	# TODO call _fini
 
 
 

@@ -21,7 +21,8 @@ extern void pse_enable(void *page_dir);
 extern void kernel_remap_update_stack(void);
 
 /*
- * Remaps the kernel image to higher half memory. This function enables PSE.
+ * Remaps the first gigabyte of memory to the last one. This function enables
+ * PSE.
  * Note: the kernel can access the NULL pointer and write onto its own code
  * after this function. Thus the kernel must be protected as soon as possible.
  */
@@ -31,10 +32,15 @@ void kernel_remap(void)
 	size_t i;
 	const uint32_t flags = PAGING_TABLE_PAGE_SIZE | PAGING_TABLE_WRITE
 		| PAGING_TABLE_PRESENT;
+	uint32_t entry;
 
 	for(i = 0; i < 1024; ++i)
 		remap_dir[i] = 0;
-	remap_dir[0] = flags;
-	remap_dir[768] = flags;
+	for(i = 0; i < 256; ++i)
+	{
+		entry = (i * PAGE_SIZE * 1024) | flags;
+		remap_dir[i] = entry;
+		remap_dir[256 * 3 + i] = entry;
+	}
 	pse_enable(&remap_dir);
 }

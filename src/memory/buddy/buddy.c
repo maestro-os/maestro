@@ -28,7 +28,7 @@ static frame_state_t *frames_states;
 static size_t pages_count;
 
 /*
- * Pointer to the beginning of buddy memory.
+ * Phyical pointer to the beginning of buddy memory.
  */
 static void *buddy_begin;
 
@@ -132,30 +132,28 @@ static void free_list_remove(frame_order_t order, frame_state_t *s)
 ATTR_COLD
 void buddy_init(void)
 {
-	size_t allocatable_memory;
 	size_t i, order;
 	frame_state_t *s;
 
-	frames_states = mem_info.heap_begin;
-	pages_count = (mem_info.heap_end - mem_info.heap_begin)
+	frames_states = PROCESS_END + (uintptr_t) mem_info.phys_alloc_begin;
+	pages_count = (mem_info.phys_alloc_end - mem_info.phys_alloc_begin)
 		/ (PAGE_SIZE + sizeof(frame_state_t));
-	buddy_begin = mem_info.heap_begin + pages_count * sizeof(frame_state_t);
-	buddy_begin = ALIGN(buddy_begin, PAGE_SIZE);
-	debug_assert(buddy_begin + pages_count * PAGE_SIZE == mem_info.heap_end,
-		"buddy: invalid allocator memory");
+	buddy_begin = ALIGN(mem_info.phys_alloc_begin
+		+ pages_count * sizeof(frame_state_t), PAGE_SIZE);
+	debug_assert(buddy_begin + pages_count * PAGE_SIZE
+		== mem_info.phys_alloc_end, "buddy: invalid allocator memory");
 	memset((void *) frames_states, FRAME_STATE_USED,
 		pages_count * sizeof(frame_state_t));
 	bzero(free_list, sizeof(free_list));
-	allocatable_memory = mem_info.heap_end - buddy_begin;
-	for(i = 0, order = BUDDY_MAX_ORDER;
-		i < allocatable_memory; i += FRAME_SIZE(order))
+	for(i = 0, order = BUDDY_MAX_ORDER; i < pages_count; i += POW2(order))
 	{
-		while(order > 0 && i + FRAME_SIZE(order) > allocatable_memory)
+		while(order > 0 && i + POW2(order) > pages_count)
 			--order;
-		if(i + FRAME_SIZE(0) > allocatable_memory)
+		if(i >= pages_count)
 			break;
-		s = FRAME_STATE_GET(i / PAGE_SIZE);
-		debug_assert((uintptr_t) s < (uintptr_t) buddy_begin,
+		s = FRAME_STATE_GET(i);
+		debug_assert((uintptr_t) s < (uintptr_t) (frames_states
+			+ pages_count * sizeof(frame_state_t)),
 			"buddy: frame state out of bounds");
 		free_list_push(order, s);
 	}

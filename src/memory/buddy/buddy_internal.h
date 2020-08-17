@@ -69,8 +69,9 @@
 #  define debug_check_frame(begin, ptr, order)\
 	debug_assert(sanity_check(ptr)\
 		&& IS_ALIGNED((ptr) - (begin), PAGE_SIZE << (order))\
-		&& (void *) (ptr) >= mem_info.heap_begin\
-		&& (void *) (ptr) < mem_info.heap_end, "buddy: invalid frame")
+		&& (void *) (ptr) >= buddy_begin\
+		&& (void *) (ptr) < buddy_begin + pages_count * PAGE_SIZE,\
+		"buddy: invalid frame")
 
 /*
  * Asserts that the given order is valid.

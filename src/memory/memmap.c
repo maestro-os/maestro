@@ -72,13 +72,14 @@ void memmap_init(void *multiboot_ptr)
 	mem_info.memory_maps_entry_size = boot_info.memory_maps_entry_size;
 	mem_info.memory_maps = boot_info.memory_maps;
 	mem_info.memory_end = get_memory_end();
-	mem_info.heap_begin = UP_ALIGN(MAX(multiboot_tags_end, KERNEL_PHYS_END),
+	mem_info.phys_alloc_begin = UP_ALIGN(MAX(multiboot_tags_end,
+		KERNEL_PHYS_END), PAGE_SIZE);
+	mem_info.phys_alloc_end = DOWN_ALIGN((void *) (boot_info.mem_upper * 1024),
 		PAGE_SIZE);
-	mem_info.heap_end = DOWN_ALIGN((void *) (boot_info.mem_upper * 1024),
-		PAGE_SIZE);
-	if(mem_info.heap_begin >= mem_info.heap_end)
+	if(mem_info.phys_alloc_begin >= mem_info.phys_alloc_end)
 		PANIC("Invalid memory map!", 0);
-	mem_info.available_memory = mem_info.heap_end - mem_info.heap_begin;
+	mem_info.available_memory = mem_info.phys_alloc_end
+		- mem_info.phys_alloc_begin;
 }
 
 /*
