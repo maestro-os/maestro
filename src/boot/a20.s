@@ -74,7 +74,7 @@ a20_enable:
 a20_wait_read:
 	in $0x64, %al
 	test $1, %al
-	jnz a20_wait_read
+	jz a20_wait_read
 	ret
 
 /*
