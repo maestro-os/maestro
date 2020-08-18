@@ -203,18 +203,21 @@ vmem_t vmem_init(void);
 void vmem_kernel(void);
 uint32_t *vmem_resolve(vmem_t vmem, const void *ptr);
 int vmem_is_mapped(vmem_t vmem, const void *ptr);
+int vmem_contains(vmem_t vmem, const void *ptr, size_t size);
+void *vmem_translate(vmem_t vmem, const void *ptr);
+uint32_t vmem_get_entry(vmem_t vmem, const void *ptr);
 void vmem_map(vmem_t vmem, const void *physaddr, const void *virtaddr,
+	int flags);
+void vmem_map_pse(vmem_t vmem, const void *physaddr, const void *virtaddr,
 	int flags);
 void vmem_map_range(vmem_t vmem, const void *physaddr, const void *virtaddr,
 	size_t pages, int flags);
 void vmem_identity(vmem_t vmem, const void *page, int flags);
+void vmem_identity_pse(vmem_t vmem, const void *page, int flags);
 void vmem_identity_range(vmem_t vmem, const void *from, size_t pages,
 	int flags);
 void vmem_unmap(vmem_t vmem, const void *virtaddr);
 void vmem_unmap_range(vmem_t vmem, const void *virtaddr, size_t pages);
-int vmem_contains(vmem_t vmem, const void *ptr, size_t size);
-void *vmem_translate(vmem_t vmem, const void *ptr);
-uint32_t vmem_get_entry(vmem_t vmem, const void *ptr);
 vmem_t vmem_clone(vmem_t vmem);
 void vmem_flush(vmem_t vmem);
 void vmem_destroy(vmem_t vmem);
