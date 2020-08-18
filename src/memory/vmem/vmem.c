@@ -6,6 +6,12 @@
 #include <libc/errno.h>
 
 /*
+ * Tells whether the mapping can use PSE or not for the given `ptr`.
+ */
+#define CAN_USE_PSE(ptr, remaining_pages)\
+	(IS_ALIGNED((ptr), 0x400000) && (remaining_pages) >= 1024)
+
+/*
  * This file handles x86 memory permissions handling.
  * x86 uses a tree-like structure to handle permissions. This structure is made
  * of several objects:
@@ -24,13 +30,13 @@
 /*
  * The kernel's memory context.
  */
-vmem_t kernel_vmem;
+vmem_t kernel_vmem = NULL;
 
 /*
  * Creates a paging object.
  */
 ATTR_HOT
-static inline vmem_t new_vmem_obj(void)
+static inline vmem_t vmem_obj_new(void)
 {
 	return buddy_alloc_zero(0); // TODO When allocating, map without writing permission
 }
@@ -44,7 +50,7 @@ vmem_t vmem_init(void)
 {
 	vmem_t vmem;
 
-	if(!(vmem = new_vmem_obj()))
+	if(!(vmem = vmem_obj_new()))
 		return NULL;
 	// TODO If Meltdown mitigation is enabled, only allow read access to a stub for interrupts
 	vmem_map_range(vmem, NULL, PROCESS_END, 262144, PAGING_PAGE_WRITE);
@@ -193,12 +199,12 @@ static void vmem_table_check(uint32_t *entry, uint32_t flags)
 	debug_assert(sanity_check(entry), "vmem: invalid argument");
 	if(!(*entry & PAGING_TABLE_PRESENT))
 	{
-		if(!(v = new_vmem_obj()))
+		if(!(v = vmem_obj_new()))
 			return;
 	}
 	else if(*entry & PAGING_TABLE_PAGE_SIZE)
 	{
-		if(!(v = new_vmem_obj()))
+		if(!(v = vmem_obj_new()))
 			return;
 		ptr = (void *) (*entry & PAGING_ADDR_MASK);
 		for(i = 0; i < 1024; ++i)
@@ -282,7 +288,7 @@ void vmem_map_range(vmem_t vmem, const void *physaddr, const void *virtaddr,
 	{
 		v = virtaddr + i * PAGE_SIZE;
 		p = physaddr + i * PAGE_SIZE;
-		if(IS_ALIGNED(v, 0x400000) && pages - i >= 1024)
+		if(CAN_USE_PSE(v, pages - i))
 		{
 			vmem_map_pse(vmem, p, v, flags);
 			i += 1024;
@@ -336,7 +342,7 @@ void vmem_identity_range(vmem_t vmem, const void *from, const size_t pages,
 	while(i < pages)
 	{
 		ptr = from + i * PAGE_SIZE;
-		if(IS_ALIGNED(ptr, 0x400000) && pages - i >= 1024)
+		if(CAN_USE_PSE(ptr, pages - i))
 		{
 			vmem_identity_pse(vmem, ptr, flags);
 			i += 1024;
@@ -400,7 +406,7 @@ static vmem_t clone_page_table(vmem_t from)
 	vmem_t v;
 
 	debug_assert(sanity_check(from), "vmem: invalid argument");
-	if(!(v = new_vmem_obj()))
+	if(!(v = vmem_obj_new()))
 		return NULL;
 	memcpy(v, from, PAGE_SIZE);
 	return v;
