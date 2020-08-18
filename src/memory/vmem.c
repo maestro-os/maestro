@@ -271,6 +271,7 @@ void vmem_map_range(vmem_t vmem, const void *physaddr, const void *virtaddr,
 	const size_t pages, const int flags)
 {
 	size_t i = 0;
+	const void *v, *p;
 
 	debug_assert(sanity_check(vmem)
 		&& (size_t) physaddr / PAGE_SIZE + pages <= 1048576
@@ -278,15 +279,23 @@ void vmem_map_range(vmem_t vmem, const void *physaddr, const void *virtaddr,
 		"vmem: invalid arguments");
 	while(i < pages)
 	{
-		// TODO PSE If aligned and large enough
-		vmem_map(vmem, physaddr + i * PAGE_SIZE,
-			virtaddr + i * PAGE_SIZE, flags);
+		v = virtaddr + i * PAGE_SIZE;
+		p = physaddr + i * PAGE_SIZE;
+		if(IS_ALIGNED(v, 0x400000) && pages - i >= 1024)
+		{
+			vmem_map_pse(vmem, p, v, flags);
+			i += 1024;
+		}
+		else
+		{
+			vmem_map(vmem, p, v, flags);
+			++i;
+		}
 		if(errno)
 		{
 			vmem_unmap_range(vmem, virtaddr, pages);
 			return;
 		}
-		++i;
 	}
 }
 
@@ -318,20 +327,29 @@ void vmem_identity_range(vmem_t vmem, const void *from, const size_t pages,
 	int flags)
 {
 	size_t i = 0;
+	const void *ptr;
 
 	debug_assert(sanity_check(vmem)
 		&& (size_t) from / PAGE_SIZE + pages < 1048576,
 		"vmem: invalid arguments");
 	while(i < pages)
 	{
-		// TODO PSE If aligned and large enough
-		vmem_identity(vmem, from + i * PAGE_SIZE, flags);
+		ptr = from + i * PAGE_SIZE;
+		if(IS_ALIGNED(ptr, 0x400000) && pages - i >= 1024)
+		{
+			vmem_identity_pse(vmem, ptr, flags);
+			i += 1024;
+		}
+		else
+		{
+			vmem_identity(vmem, ptr, flags);
+			++i;
+		}
 		if(errno)
 		{
 			vmem_unmap_range(vmem, from, pages);
 			return;
 		}
-		++i;
 	}
 }
 
