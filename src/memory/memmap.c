@@ -1,5 +1,7 @@
 #include <kernel.h>
 #include <memory/memory.h>
+#include <elf/elf.h>
+
 #include <libc/stdio.h>
 
 /*
@@ -39,6 +41,21 @@ void memmap_print(void)
 }
 
 /*
+ * Returns a pointer to the beginning of the allocatable physical memory.
+ */
+static void *get_phys_alloc_begin(void *multiboot_ptr)
+{
+	void *multiboot_tags_end;
+	void *ptr;
+
+	multiboot_tags_end = multiboot_ptr + multiboot_tags_size(multiboot_ptr);
+	ptr = MAX(multiboot_tags_end, KERNEL_PHYS_END);
+	ptr = MAX(ptr, boot_info.elf_sections
+		+ boot_info.elf_num * sizeof(elf_section_header_t));
+	return ALIGN(ptr, PAGE_SIZE);
+}
+
+/*
  * Returns a pointer to the end of the system memory.
  */
 ATTR_COLD
@@ -65,15 +82,11 @@ static void *get_memory_end(void)
 ATTR_COLD
 void memmap_init(void *multiboot_ptr)
 {
-	void *multiboot_tags_end;
-
-	multiboot_tags_end = multiboot_ptr + multiboot_tags_size(multiboot_ptr);
 	mem_info.memory_maps_size = boot_info.memory_maps_size;
 	mem_info.memory_maps_entry_size = boot_info.memory_maps_entry_size;
 	mem_info.memory_maps = boot_info.memory_maps;
 	mem_info.memory_end = get_memory_end();
-	mem_info.phys_alloc_begin = UP_ALIGN(MAX(multiboot_tags_end,
-		KERNEL_PHYS_END), PAGE_SIZE);
+	mem_info.phys_alloc_begin = get_phys_alloc_begin(multiboot_ptr);
 	mem_info.phys_alloc_end = DOWN_ALIGN((void *) (boot_info.mem_upper * 1024),
 		PAGE_SIZE);
 	if(mem_info.phys_alloc_begin >= mem_info.phys_alloc_end)

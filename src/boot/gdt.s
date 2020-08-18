@@ -37,8 +37,9 @@ complete_flush:
 	mov %ax, %fs
 	mov %ax, %gs
 	mov %ax, %ss
-
 	ret
+
+
 
 .section .boot.data
 

@@ -73,8 +73,8 @@ multiboot_entry:
 
 	push %eax
 	push %ebx
-	call switch_protected
 	call a20_handle
+	call switch_protected
 	# TODO call _init
 	call kernel_remap
 	pop %ebx
