@@ -1,4 +1,5 @@
-#include <memory/memory.h>
+#include <memory/vmem/vmem.h>
+#include <memory/buddy/buddy.h>
 #include <elf/elf.h>
 #include <debug/debug.h>
 

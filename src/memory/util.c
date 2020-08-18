@@ -33,17 +33,3 @@ void print_mem_amount(size_t amount)
 	}
 	printf("%zu %s", amount, units[n]);
 }
-
-/*
- * Clones the given page. The new page is allocated using the buddy allocator.
- */
-ATTR_HOT
-void *clone_page(void *ptr)
-{
-	void *new_page;
-
-	ptr = (void *) ((uintptr_t) ptr & PAGING_ADDR_MASK);
-	if((new_page = buddy_alloc(0)))
-		memcpy(new_page, ptr, PAGE_SIZE);
-	return new_page;
-}

@@ -1,5 +1,6 @@
 #include <memory/mem_space/mem_space.h>
 #include <memory/slab/slab.h>
+#include <memory/vmem/vmem.h>
 #include <kernel.h>
 #include <debug/debug.h>
 

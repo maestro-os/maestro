@@ -2,6 +2,7 @@
 #include <tty/tty.h>
 #include <cpu/cpu.h>
 #include <memory/memory.h>
+#include <memory/vmem/vmem.h>
 #include <idt/idt.h>
 #include <pit/pit.h>
 #include <acpi/acpi.h>
