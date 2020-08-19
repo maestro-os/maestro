@@ -17,6 +17,8 @@
  * size of a frame in pages.
  */
 
+// TODO Implement flags
+
 /*
  * Pointer to the region of memory containing frames states.
  */
@@ -214,11 +216,13 @@ static void free_list_coalesce(frame_state_t *b, const frame_order_t order)
  */
 ATTR_HOT
 ATTR_MALLOC
-void *buddy_alloc(const frame_order_t order)
+void *buddy_alloc(const frame_order_t order, int flags)
 {
 	size_t i;
 	void *ptr;
 
+	// TODO Implement BUDDY_FLAG_KERNEL
+	(void) flags;
 	errno = 0;
 	if(order > BUDDY_MAX_ORDER)
 		return NULL;
@@ -252,12 +256,12 @@ end:
  */
 ATTR_HOT
 ATTR_MALLOC
-void *buddy_alloc_zero(const frame_order_t order)
+void *buddy_alloc_zero(const frame_order_t order, int flags)
 {
 	void *ptr;
 
-	if((ptr = buddy_alloc(order)))
-		bzero(ptr, FRAME_SIZE(order));
+	if((ptr = buddy_alloc(order, flags)))
+		bzero(ptr, BUDDY_FRAME_SIZE(order));
 	return ptr;
 }
 

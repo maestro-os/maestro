@@ -133,8 +133,8 @@ static kmalloc_block_t *alloc_block(size_t size)
 
 	size = CEIL_DIVISION(sizeof(kmalloc_block_t) + size, PAGE_SIZE);
 	order = buddy_get_order(size);
-	size = FRAME_SIZE(order);
-	if(!(block = buddy_alloc(order)))
+	size = BUDDY_FRAME_SIZE(order);
+	if(!(block = buddy_alloc(order, BUDDY_FLAG_ZONE_KERNEL)))
 		return NULL;
 #ifdef KMALLOC_MAGIC
 	block->magic = KMALLOC_MAGIC;

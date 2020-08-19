@@ -167,7 +167,7 @@ static list_head_t *alloc_slab(cache_t *cache)
 {
 	slab_t *slab;
 
-	if(!(slab = buddy_alloc_zero(cache->slab_order)))
+	if(!(slab = buddy_alloc_zero(cache->slab_order, BUDDY_FLAG_ZONE_KERNEL)))
 		return NULL;
 	slab->available = cache->objcount;
 	slab->node.value = (avl_value_t) slab;

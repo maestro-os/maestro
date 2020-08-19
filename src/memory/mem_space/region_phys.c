@@ -20,7 +20,7 @@ static void *default_page;
  */
 static void phys_global_init(void)
 {
-	default_page = buddy_alloc_zero(0);
+	default_page = buddy_alloc_zero(0, 0);
 	if(!default_page)
 		PANIC("Memory spaces initialization failed!", 0);
 }
@@ -107,7 +107,7 @@ int region_phys_alloc(mem_region_t *r)
 	i = r->begin;
 	while(i < r->begin + (r->pages * PAGE_SIZE))
 	{
-		if(!(ptr = buddy_alloc_zero(0)))
+		if(!(ptr = buddy_alloc_zero(0, 0)))
 			goto fail;
 		vmem_map(page_dir, ptr, i, convert_flags(r->flags));
 		if(errno)

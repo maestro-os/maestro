@@ -150,7 +150,8 @@ static void interrupt_stacks_init(void)
 		PANIC("Cannot initialize interrupt stacks!", 0);
 	for(i = 0; i < cores_count; ++i)
 	{
-		if(!(interrupt_stacks[i] = buddy_alloc(INTERRUPT_STACK_ORDER)))
+		if(!(interrupt_stacks[i] = buddy_alloc(INTERRUPT_STACK_ORDER,
+			BUDDY_FLAG_ZONE_KERNEL)))
 			PANIC("Cannot initialize interrupt stack!", 0);
 		tss_init();
 		tss.ss0 = GDT_KERNEL_DATA_OFFSET;

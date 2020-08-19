@@ -295,12 +295,12 @@ void *mem_space_alloc_kernel_stack(mem_space_t *space, const size_t buddy_order)
 	void *ptr;
 
 	// TODO Zero?
-	if(!(ptr = buddy_alloc(buddy_order)))
+	if(!(ptr = buddy_alloc(buddy_order, 0)))
 	{
 		errno = ENOMEM;
 		return NULL;
 	}
-	if(!mem_space_alloc_fixed(space, ptr, FRAME_SIZE(buddy_order),
+	if(!mem_space_alloc_fixed(space, ptr, BUDDY_FRAME_SIZE(buddy_order),
 		KERNEL_STACK_FLAGS))
 	{
 		buddy_free(ptr, buddy_order);

@@ -38,7 +38,8 @@ vmem_t kernel_vmem = NULL;
 ATTR_HOT
 static inline vmem_t vmem_obj_new(void)
 {
-	return buddy_alloc_zero(0); // TODO When allocating, map without writing permission
+	// TODO Map without writing permission?
+	return buddy_alloc_zero(0, BUDDY_FLAG_ZONE_KERNEL);
 }
 
 /*
