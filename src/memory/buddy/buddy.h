@@ -17,28 +17,27 @@
 # define BUDDY_FRAME_SIZE(order)	(PAGE_SIZE << (order))
 
 /*
+ * Buddy allocator flag. Tells that the allocated frame must be mapped into the
+ * user zone.
+ */
+# define BUDDY_FLAG_ZONE_USER	0b000
+/*
+ * Buddy allocator flag. Tells that the allocated frame must be mapped into the
+ * kernel zone.
+ */
+# define BUDDY_FLAG_ZONE_KERNEL	0b001
+/*
+ * Buddy allocator flag. Tells that the allocated frame must be mapped into the
+ * DMA zone.
+ */
+# define BUDDY_FLAG_ZONE_DMA	0b010
+/*
  * Buddy allocator flag. Tells that the allocation shall not fail (unless not
  * enough memory is present on the system). This flag is ignored if
  * BUDDY_FLAG_USER is not specified or if the allocation order is higher than 0.
  * The allocator shall use the OOM killer to recover memory.
  */
-# define BUDDY_FLAG_NOFAIL		0b0001
-/*
- * Buddy allocator flag. Tells that the allocated frame must be mapped into the
- * user zone.
- */
-# define BUDDY_FLAG_ZONE_USER	0b0010
-/*
- * Buddy allocator flag. Tells that the allocated frame must be mapped into the
- * kernel zone. If the flag is set and no space is available, the allocation
- * shall fail.
- */
-# define BUDDY_FLAG_ZONE_KERNEL	0b0100
-/*
- * Buddy allocator flag. Tells that the allocated frame must be mapped into the
- * DMA zone.
- */
-# define BUDDY_FLAG_ZONE_DMA	0b1000
+# define BUDDY_FLAG_NOFAIL		0b100
 
 typedef uint8_t frame_order_t;
 

@@ -68,7 +68,7 @@ static void link_back(list_head_t *l)
  */
 void list_insert_front(list_head_t **first, list_head_t *new_node)
 {
-	if(!sanity_check(first) ||!sanity_check(new_node))
+	if(!sanity_check(first) || !sanity_check(new_node))
 		return;
 	new_node->prev = NULL;
 	new_node->next = *first;
