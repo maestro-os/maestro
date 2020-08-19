@@ -76,18 +76,58 @@ void zone_init(zone_t *zone, int type, void *begin, size_t pages)
  */
 zone_t *zone_get(frame_order_t order, int type)
 {
-	// TODO
-	(void) order;
-	(void) type;
+	list_head_t **list;
+	list_head_t *l;
+	zone_t *z;
+	size_t i;
+
+	if(!(list = get_list(type)))
+		return NULL;
+	l = *list;
+	while(l)
+	{
+		z = CONTAINER_OF(l, zone_t, list);
+		i = order;
+		while(i <= BUDDY_MAX_ORDER && !z->free_list[i])
+			++i;
+		if(i <= BUDDY_MAX_ORDER)
+			return z;
+		l = l->next;
+	}
 	return NULL;
 }
 
 /*
- * Returns the zone in which pointer `ptr` was allocated.
+ * Returns the zone that owns pointer `ptr` in list `l`.Returns NULL if no zone
+ * owns the pointer.
+ */
+zone_t *zone_get_for_(list_head_t *l, void *ptr)
+{
+	zone_t *z;
+
+	while(l)
+	{
+		z = CONTAINER_OF(l, zone_t, list);
+		if(ptr >= z->begin && ptr < z->begin + z->pages * PAGE_SIZE)
+			return z;
+		l = l->next;
+	}
+	return NULL;
+}
+
+/*
+ * Returns the zone that owns pointer `ptr`. Returns NULL if no zone owns the
+ * pointer.
  */
 zone_t *zone_get_for(void *ptr)
 {
-	// TODO
-	(void) ptr;
+	zone_t *z;
+
+	if((z = zone_get_for_(dma_zone, ptr)))
+		return z;
+	if((z = zone_get_for_(kernel_zone, ptr)))
+		return z;
+	if((z = zone_get_for_(user_zone, ptr)))
+		return z;
 	return NULL;
 }
