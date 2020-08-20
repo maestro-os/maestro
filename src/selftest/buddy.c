@@ -4,13 +4,22 @@
 #include <libc/stdio.h>
 #include <libc/string.h>
 
+static void *alloc(frame_order_t order, int flags)
+{
+	void *ptr;
+
+	if(!(ptr = buddy_alloc(order, flags)))
+		return NULL;
+	return PROCESS_END + (uintptr_t) ptr;
+}
+
 static void test0(void)
 {
 	void *p;
 
 	for(size_t i = 0; i < 1024; ++i)
 	{
-		if(!(p = buddy_alloc(0, BUDDY_FLAG_ZONE_KERNEL)))
+		if(!(p = alloc(0, BUDDY_FLAG_ZONE_KERNEL)))
 			ASSERT(0);
 		memset(p, 0xff, BUDDY_FRAME_SIZE(0));
 		buddy_free(p, 0);
@@ -24,7 +33,7 @@ static void test1(void)
 
 	for(size_t i = 0; i < 1024; ++i)
 	{
-		if(!(p = buddy_alloc(8, BUDDY_FLAG_ZONE_KERNEL)))
+		if(!(p = alloc(8, BUDDY_FLAG_ZONE_KERNEL)))
 			ASSERT(0);
 		memset(p, 0xff, BUDDY_FRAME_SIZE(8));
 		buddy_free(p, 8);
@@ -38,10 +47,10 @@ static void test2(void)
 
 	for(size_t i = 0; i < 1024; ++i)
 	{
-		if(!(p0 = buddy_alloc(8, BUDDY_FLAG_ZONE_KERNEL)))
+		if(!(p0 = alloc(8, BUDDY_FLAG_ZONE_KERNEL)))
 			ASSERT(0);
 		memset(p0, 0xff, BUDDY_FRAME_SIZE(8));
-		if(!(p1 = buddy_alloc(0, BUDDY_FLAG_ZONE_KERNEL)))
+		if(!(p1 = alloc(0, BUDDY_FLAG_ZONE_KERNEL)))
 		{
 			buddy_free(p0, 8);
 			ASSERT(0);
@@ -59,7 +68,7 @@ static void test2(void)
 
 	for(size_t i = 0; i < 1024; ++i)
 	{
-		if(!(p = buddy_alloc(8)))
+		if(!(p = alloc(8)))
 			ASSERT(0);
 		memset(p, 0xff, BLOCK_SIZE(8));
 	}
@@ -99,7 +108,7 @@ static int test0__(const frame_order_t order)
 	buddy_block_test_t *blocks = NULL, *b, *next;
 	size_t i = 0;
 
-	while((b = buddy_alloc(order, BUDDY_FLAG_ZONE_KERNEL)))
+	while((b = alloc(order, BUDDY_FLAG_ZONE_KERNEL)))
 	{
 		if(check_duplicates(blocks, b))
 		{

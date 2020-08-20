@@ -37,6 +37,10 @@
  * The pointer to the end of the virtual memory reserved to the process.
  */
 # define PROCESS_END		((void *) 0xc0000000)
+/*
+ * Converts a kernel physical address to a virtual address.
+ */
+# define KERN_TO_VIRT(ptr)	((typeof(ptr)) (PROCESS_END + (uintptr_t) (ptr)))
 
 /*
  * x86 paging flag. If set, pages are 4 MB long.

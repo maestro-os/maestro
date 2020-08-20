@@ -38,7 +38,7 @@ vmem_t kernel_vmem = NULL;
 ATTR_HOT
 static inline vmem_t vmem_obj_new(void)
 {
-	// TODO Map without writing permission?
+	// TODO Map in kernel without write permission
 	return buddy_alloc_zero(0, BUDDY_FLAG_ZONE_KERNEL);
 }
 
@@ -121,7 +121,7 @@ uint32_t *vmem_resolve(vmem_t vmem, const void *ptr)
 		return NULL;
 	if(vmem[table] & PAGING_TABLE_PAGE_SIZE)
 		return &vmem[table];
-	table_obj = (void *) (vmem[table] & PAGING_ADDR_MASK);
+	table_obj = KERN_TO_VIRT((void *) (vmem[table] & PAGING_ADDR_MASK));
 	page = ADDR_PAGE(ptr);
 	if(!(table_obj[page] & PAGING_PAGE_PRESENT))
 		return NULL;
@@ -207,9 +207,9 @@ static void vmem_table_check(uint32_t *entry, uint32_t flags)
 	{
 		if(!(v = vmem_obj_new()))
 			return;
-		ptr = (void *) (*entry & PAGING_ADDR_MASK);
+		ptr = KERN_TO_VIRT((void *) (*entry & PAGING_ADDR_MASK));
 		for(i = 0; i < 1024; ++i)
-			v[i] = (uint32_t) (ptr + (i * PAGE_SIZE))
+			KERN_TO_VIRT(v)[i] = (uint32_t) (ptr + (i * PAGE_SIZE))
 				| flags | PAGING_PAGE_PRESENT;
 	}
 	*entry = (uint32_t) v | flags | PAGING_TABLE_PRESENT;
@@ -244,8 +244,8 @@ void vmem_map(vmem_t vmem, const void *physaddr, const void *virtaddr,
 	physaddr = DOWN_ALIGN(physaddr, PAGE_SIZE);
 	virtaddr = DOWN_ALIGN(virtaddr, PAGE_SIZE);
 	t = ADDR_TABLE(virtaddr);
-	vmem_table_check(&vmem[t], flags);
-	v = (void *) (vmem[t] & PAGING_ADDR_MASK);
+	vmem_table_check(&vmem[t], flags); // TODO Handle error
+	v = KERN_TO_VIRT((void *) (vmem[t] & PAGING_ADDR_MASK));
 	lock = cr0_get() & 0x10000;
 	cr0_clear(lock);
 	v[ADDR_PAGE(virtaddr)] = (uintptr_t) physaddr | PAGING_PAGE_PRESENT | flags;
@@ -375,8 +375,8 @@ void vmem_unmap(vmem_t vmem, const void *virtaddr)
 	t = ADDR_TABLE(virtaddr);
 	if(!(vmem[t] & PAGING_TABLE_PRESENT))
 		return;
-	vmem_table_check(&vmem[t], vmem[t] & PAGING_FLAGS_MASK);
-	v = (void *) (vmem[t] & PAGING_ADDR_MASK);
+	vmem_table_check(&vmem[t], vmem[t] & PAGING_FLAGS_MASK); // TODO Handle error
+	v = KERN_TO_VIRT((void *) (vmem[t] & PAGING_ADDR_MASK));
 	lock = cr0_get() & 0x10000;
 	cr0_clear(lock);
 	v[ADDR_PAGE(virtaddr)] = 0;
@@ -409,7 +409,7 @@ static vmem_t clone_page_table(vmem_t from)
 	debug_assert(sanity_check(from), "vmem: invalid argument");
 	if(!(v = vmem_obj_new()))
 		return NULL;
-	memcpy(v, from, PAGE_SIZE);
+	memcpy(KERN_TO_VIRT(v), from, PAGE_SIZE);
 	return v;
 }
 
@@ -436,7 +436,7 @@ vmem_t vmem_clone(vmem_t vmem)
 			continue;
 		if(!(vmem[i] & PAGING_TABLE_PAGE_SIZE))
 		{
-			old_table = (void *) (vmem[i] & PAGING_ADDR_MASK);
+			old_table = KERN_TO_VIRT((void *) (vmem[i] & PAGING_ADDR_MASK));
 			if(!(new_table = clone_page_table(old_table)))
 				goto fail;
 			v[i] = ((uint32_t) new_table) | (vmem[i] & PAGING_FLAGS_MASK);

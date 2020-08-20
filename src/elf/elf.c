@@ -1,5 +1,9 @@
 #include <elf/elf.h>
+#include <memory/memory.h>
 
+/*
+ * Returns the section with name `name`.
+ */
 elf_section_header_t *get_section(void *sections, size_t sections_count,
 	size_t shndx, size_t entsize, const char *section_name)
 {
@@ -21,6 +25,10 @@ elf_section_header_t *get_section(void *sections, size_t sections_count,
 	return NULL;
 }
 
+/*
+ * Iterates over the given sections list, calling the given function with
+ * section headers and nanes.
+ */
 void iterate_sections(void *sections, const size_t sections_count,
 	const size_t shndx, const size_t entsize,
 		void (*f)(elf_section_header_t *, const char *))

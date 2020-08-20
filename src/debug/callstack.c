@@ -1,5 +1,7 @@
 #include <debug/debug.h>
 #include <elf/elf.h>
+#include <memory/memory.h>
+#include <memory/vmem/vmem.h>
 
 #include <libc/stdio.h>
 
@@ -45,6 +47,8 @@ static void get_function_symbol(elf_section_header_t *hdr, const char *name)
 ATTR_COLD
 const char *get_function_name(void *i)
 {
+	if(i < KERNEL_VIRT_BEGIN || i >= KERNEL_VIRT_END)
+		return NULL;
 	inst = i;
 	func_name = NULL;
 	iterate_sections(boot_info.elf_sections, boot_info.elf_num,
@@ -56,12 +60,14 @@ ATTR_COLD
 void print_callstack(void *ebp, const size_t max_depth)
 {
 	size_t i = 0;
-	void *eip = NULL;
+	void *eip;
 	const char *name;
 
 	printf("--- Callstack ---\n");
 	while(ebp && i < max_depth)
 	{
+		if(!vmem_is_mapped(KERN_TO_VIRT(cr3_get()), ebp))
+			break;
 		if(!(eip = (void *) (*(intptr_t *) (ebp + 4))))
 			break;
 		if(!(name = get_function_name(eip)))

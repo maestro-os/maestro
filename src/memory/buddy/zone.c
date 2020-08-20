@@ -87,6 +87,7 @@ zone_t *zone_get(frame_order_t order, int type)
 	while(l)
 	{
 		z = CONTAINER_OF(l, zone_t, list);
+		debug_assert(z->type == type, "zone: invalid zone type in list");
 		i = order;
 		while(i <= BUDDY_MAX_ORDER && !z->free_list[i])
 			++i;
