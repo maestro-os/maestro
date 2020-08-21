@@ -348,6 +348,7 @@ typedef struct boot_info_t
 	uint32_t elf_num;
 	uint32_t elf_entsize;
 	uint32_t elf_shndx;
+	void *phys_elf_sections;
 	void *elf_sections;
 
 	// TODO

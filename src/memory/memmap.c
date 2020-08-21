@@ -50,7 +50,7 @@ static void *get_phys_alloc_begin(void *multiboot_ptr)
 
 	multiboot_tags_end = multiboot_ptr + multiboot_tags_size(multiboot_ptr);
 	ptr = MAX(multiboot_tags_end, KERNEL_PHYS_END);
-	ptr = MAX(ptr, boot_info.elf_sections
+	ptr = MAX(ptr, boot_info.phys_elf_sections
 		+ boot_info.elf_num * sizeof(elf_section_header_t));
 	return ALIGN(ptr, PAGE_SIZE);
 }

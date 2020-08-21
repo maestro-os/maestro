@@ -34,13 +34,15 @@ static void handle_tag(multiboot_tag_t *tag)
 	{
 		case MULTIBOOT_TAG_TYPE_CMDLINE:
 		{
-			boot_info.cmdline = ((multiboot_tag_string_t *) tag)->string;
+			boot_info.cmdline
+				= KERN_TO_VIRT(&((multiboot_tag_string_t *) tag)->string[0]);
 			break;
 		}
 
 		case MULTIBOOT_TAG_TYPE_BOOT_LOADER_NAME:
 		{
-			boot_info.loader_name = ((multiboot_tag_string_t *) tag)->string;
+			boot_info.loader_name
+				= KERN_TO_VIRT(&((multiboot_tag_string_t *) tag)->string[0]);
 			break;
 		}
 
@@ -80,7 +82,8 @@ static void handle_tag(multiboot_tag_t *tag)
 			boot_info.elf_num = elf_tag->num;
 			boot_info.elf_entsize = elf_tag->entsize;
 			boot_info.elf_shndx = elf_tag->shndx;
-			boot_info.elf_sections = elf_tag->sections;
+			boot_info.phys_elf_sections = &elf_tag->sections[0];
+			boot_info.elf_sections = KERN_TO_VIRT(boot_info.phys_elf_sections);
 			break;
 		}
 
