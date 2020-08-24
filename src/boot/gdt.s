@@ -41,9 +41,9 @@ complete_flush:
 
 
 
-.section .boot.data
+.section .gdt
 
-.align 8
+. = (0x800 - gdt)
 
 /*
  * The beginning of the GDT.
