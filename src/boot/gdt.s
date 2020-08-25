@@ -3,10 +3,24 @@
 .global GDT_USER_CODE_OFFSET
 .global GDT_USER_DATA_OFFSET
 .global GDT_TSS_OFFSET
-.global gdt
+
+.global GDT_PHYS_PTR
+.global GDT_DESC_PHYS_PTR
+.global GDT_VIRT_PTR
+.global GDT_DESC_VIRT_PTR
+
+.global gdt_start
+.global gdt_kernel_code
+.global gdt_kernel_data
+.global gdt_user_code
+.global gdt_user_data
 .global gdt_tss
+.global gdt
 
 .global switch_protected
+.global gdt_move
+
+.extern gdt_copy
 
 /*
  * Offsets into the GDT for each segment.
@@ -17,6 +31,23 @@
 .set GDT_USER_DATA_OFFSET, (gdt_user_data - gdt_start)
 .set GDT_TSS_OFFSET, (gdt_tss - gdt_start)
 
+/*
+ * Physical address to the GDT.
+ */
+.set GDT_PHYS_PTR,		0x800
+/*
+ * Physical address to the GDT descriptor.
+ */
+.set GDT_DESC_PHYS_PTR,	(GDT_PHYS_PTR + (gdt - gdt_start))
+/*
+ * Virtual address to the GDT.
+ */
+.set GDT_VIRT_PTR,		(0xc0000000 + GDT_PHYS_PTR)
+/*
+ * Virtual address to the GDT descriptor.
+ */
+.set GDT_DESC_VIRT_PTR,	(GDT_VIRT_PTR + (gdt - gdt_start))
+
 .section .boot.text
 
 /*
@@ -24,7 +55,13 @@
  */
 switch_protected:
 	cli
-	lgdt gdt
+
+	call gdt_copy
+	mov $GDT_DESC_PHYS_PTR, %eax
+	movl $GDT_PHYS_PTR, 2(%eax)
+
+	lgdt GDT_PHYS_PTR
+
 	mov %cr0, %eax
 	or $1, %al
 	mov %eax, %cr0
@@ -39,11 +76,24 @@ complete_flush:
 	mov %ax, %ss
 	ret
 
+/*
+ * Moves the GDT to the new virtual address after kernel relocation.
+ */
+gdt_move:
+	mov $GDT_DESC_VIRT_PTR, %eax
+	movl $GDT_VIRT_PTR, 2(%eax)
+
+	lgdt GDT_VIRT_PTR
+
+	ret
 
 
-.section .gdt
 
-. = (0x800 - gdt)
+.section .boot.data
+
+.align 8
+
+// TODO Stack segments
 
 /*
  * The beginning of the GDT.
@@ -103,6 +153,9 @@ gdt_user_data:
 gdt_tss:
 	.quad 0
 
+/*
+ * The GDT descriptor.
+ */
 gdt:
 	.word gdt - gdt_start - 1
 	.long gdt_start

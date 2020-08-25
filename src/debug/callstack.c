@@ -21,7 +21,7 @@ static const char *get_symbol_name(const uint32_t offset)
 	if(!(section = get_section(boot_info.elf_sections, boot_info.elf_num,
 		boot_info.elf_shndx, boot_info.elf_entsize, ".strtab")))
 		return NULL;
-	return (const char *) section->sh_addr + offset;
+	return KERN_TO_VIRT((const char *) section->sh_addr + offset);
 }
 
 // TODO Documentation

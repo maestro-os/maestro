@@ -1,14 +1,6 @@
 SECTIONS
 {
 /*
- * Global Descriptor Table section.
- */
-	.gdt ALIGN(4K) :
-	{
-		*(.gdt)
-	}
-
-/*
  * Booting stub sections
  */
 	. = 0x100000;

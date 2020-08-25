@@ -18,7 +18,7 @@ ATTR_SECTION(".boot.data")
 static uint32_t remap_dir[1024];
 
 extern void pse_enable(void *page_dir);
-extern void kernel_remap_update_stack(void);
+extern void gdt_move(void);
 
 /*
  * Remaps the first gigabyte of memory to the last one. This function enables
@@ -43,4 +43,5 @@ void kernel_remap(void)
 		remap_dir[256 * 3 + i] = entry;
 	}
 	pse_enable(&remap_dir);
+	gdt_move();
 }

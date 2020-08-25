@@ -18,6 +18,6 @@ tss_gdt_entry:
 tss_flush:
 	movw $GDT_TSS_OFFSET, %ax
 	ltr %ax
-	lgdt gdt
+	lgdt GDT_VIRT_PTR
 
 	ret

@@ -19,7 +19,7 @@ elf_section_header_t *get_section(void *sections, size_t sections_count,
 	while(i < sections_count)
 	{
 		hdr = sections + (i++ * sizeof(elf_section_header_t));
-		n = (char *) names_section->sh_addr + hdr->sh_name;
+		n = KERN_TO_VIRT((char *) names_section->sh_addr + hdr->sh_name);
 		if(strcmp(n, section_name) == 0)
 			return hdr;
 	}
@@ -44,6 +44,6 @@ void iterate_sections(void *sections, const size_t sections_count,
 	while(i < sections_count)
 	{
 		hdr = sections + (i++ * sizeof(elf_section_header_t));
-		f(hdr, (void *) names_section->sh_addr + hdr->sh_name);
+		f(hdr, KERN_TO_VIRT((void *) names_section->sh_addr + hdr->sh_name));
 	}
 }
