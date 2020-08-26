@@ -11,7 +11,7 @@ void gdt_copy(void)
 	char *dest;
 	size_t i = 0, len;
 
-	src = (const char *) &gdt;
+	src = (const char *) &gdt_start;
 	dest = GDT_PHYS_PTR;
 	len = GDT_SIZE;
 	while(i < len)

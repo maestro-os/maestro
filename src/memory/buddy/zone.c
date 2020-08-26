@@ -56,8 +56,7 @@ void zone_init(zone_t *zone, int type, void *begin, size_t pages)
 	memset((void *) zone->states, FRAME_STATE_USED,
 		zone->pages * sizeof(frame_state_t));
 	bzero(&zone->free_list, sizeof(zone->free_list));
-	for(i = 0, order = BUDDY_MAX_ORDER; i < zone->pages; i += POW2(order))
-	{
+	for(i = 0, order = BUDDY_MAX_ORDER; i < zone->pages; i += POW2(order)) {
 		while(order > 0 && i + POW2(order) > zone->pages)
 			--order;
 		if(i >= zone->pages)

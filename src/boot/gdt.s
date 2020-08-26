@@ -60,7 +60,7 @@ switch_protected:
 	mov $GDT_DESC_PHYS_PTR, %eax
 	movl $GDT_PHYS_PTR, 2(%eax)
 
-	lgdt GDT_PHYS_PTR
+	lgdt GDT_DESC_PHYS_PTR
 
 	mov %cr0, %eax
 	or $1, %al
@@ -83,7 +83,7 @@ gdt_move:
 	mov $GDT_DESC_VIRT_PTR, %eax
 	movl $GDT_VIRT_PTR, 2(%eax)
 
-	lgdt GDT_VIRT_PTR
+	lgdt GDT_DESC_VIRT_PTR
 
 	ret
 

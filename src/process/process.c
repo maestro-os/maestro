@@ -122,7 +122,7 @@ static void tss_init(void)
 	const uint8_t access = 0b10001001;
 	gdt_entry_t *tss_gdt;
 
-	tss_gdt = tss_gdt_entry();
+	tss_gdt = (gdt_entry_t *) (GDT_VIRT_PTR + GDT_TSS_OFFSET);
 	bzero(tss_gdt, sizeof(gdt_entry_t));
 	tss_gdt->limit_low = limit & 0xffff;
 	tss_gdt->base_low = base & 0xffff;

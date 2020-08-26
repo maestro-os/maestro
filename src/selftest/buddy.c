@@ -13,6 +13,11 @@ static void *alloc(frame_order_t order, int flags)
 	return PROCESS_END + (uintptr_t) ptr;
 }
 
+static void free(void *ptr, frame_order_t order)
+{
+	buddy_free(ptr - (uintptr_t) PROCESS_END, order);
+}
+
 static void test0(void)
 {
 	void *p;
@@ -22,7 +27,7 @@ static void test0(void)
 		if(!(p = alloc(0, BUDDY_FLAG_ZONE_KERNEL)))
 			ASSERT(0);
 		memset(p, 0xff, BUDDY_FRAME_SIZE(0));
-		buddy_free(p, 0);
+		free(p, 0);
 	}
 	ASSERT(1);
 }
@@ -36,7 +41,7 @@ static void test1(void)
 		if(!(p = alloc(8, BUDDY_FLAG_ZONE_KERNEL)))
 			ASSERT(0);
 		memset(p, 0xff, BUDDY_FRAME_SIZE(8));
-		buddy_free(p, 8);
+		free(p, 8);
 	}
 	ASSERT(1);
 }
@@ -52,12 +57,12 @@ static void test2(void)
 		memset(p0, 0xff, BUDDY_FRAME_SIZE(8));
 		if(!(p1 = alloc(0, BUDDY_FLAG_ZONE_KERNEL)))
 		{
-			buddy_free(p0, 8);
+			free(p0, 8);
 			ASSERT(0);
 		}
 		memset(p1, 0xff, BUDDY_FRAME_SIZE(0));
-		buddy_free(p1, 0);
-		buddy_free(p0, 8);
+		free(p1, 0);
+		free(p0, 8);
 	}
 	ASSERT(1);
 }
@@ -126,7 +131,7 @@ static int test0__(const frame_order_t order)
 	while(blocks)
 	{
 		next = blocks->next;
-		buddy_free(blocks, blocks->order);
+		free(blocks, blocks->order);
 		blocks = next;
 		if(++i % 1024 == 0)
 			printf("%zu free\n", i);
