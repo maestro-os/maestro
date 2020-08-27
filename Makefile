@@ -1,6 +1,9 @@
 NAME = maestro
 
-TARGET = arch/x86/target.json
+ARCH ?= x86
+
+TARGET = arch/$(ARCH)/target.json
+LINKER = arch/$(ARCH)/linker.ld
 
 DEBUG_FLAGS = -D KERNEL_DEBUG -D KERNEL_DEBUG_SANITY -D KERNEL_SELFTEST #-D KERNEL_DEBUG_SPINLOCK
 
@@ -9,8 +12,6 @@ CFLAGS = -nostdlib -ffreestanding -fstack-protector-strong -mno-red-zone -Wall -
 
 RUST = rustc
 RUSTFLAGS = --emit=obj --target=$(TARGET)
-
-LINKER = linker.ld
 
 SRC_DIR = src/
 OBJ_DIR = obj/
@@ -39,6 +40,8 @@ OBJ := $(ASM_OBJ) $(C_OBJ) $(RUST_OBJ)
 INTERNAL_OBJ := $(CRTI_OBJ) $(OBJ) $(CRTN_OBJ)
 OBJ_LINK_LIST := $(CRTI_OBJ) $(CRTBEGIN_OBJ) $(OBJ) $(CRTEND_OBJ) $(CRTN_OBJ)
 
+LIBCORE = rust/libcore.rlib
+
 all: tags $(NAME) iso
 
 $(NAME): $(OBJ_DIRS) $(INTERNAL_OBJ) $(LINKER)
@@ -53,8 +56,11 @@ $(OBJ_DIR)%.s.o: $(SRC_DIR)%.s $(HDR) Makefile
 $(OBJ_DIR)%.c.o: $(SRC_DIR)%.c $(HDR) Makefile
 	$(CC) $(CFLAGS) -I $(SRC_DIR) -c $< -o $@
 
-$(OBJ_DIR)%.rs.o: $(SRC_DIR)%.rs $(HDR) Makefile $(TARGET)
-	$(RUST) $(RUSTFLAGS) $< -o $@
+$(OBJ_DIR)%.rs.o: $(SRC_DIR)%.rs $(HDR) $(LIBCORE) Makefile $(TARGET)
+	$(RUST) $(RUSTFLAGS) -o $@ --extern core=$(LIBCORE) $<
+
+$(LIBCORE):
+	make libcore -C rust/
 
 iso: $(NAME).iso
 
@@ -73,6 +79,7 @@ clean:
 	rm -f tags
 
 fclean: clean
+	make fclean -C rust/
 	rm -f $(NAME)
 	rm -f $(NAME).iso
 

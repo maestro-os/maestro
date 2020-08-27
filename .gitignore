@@ -9,3 +9,6 @@ maestro
 tags
 
 *_out
+
+/target
+*.rlib
