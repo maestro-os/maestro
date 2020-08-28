@@ -13,6 +13,9 @@ CFLAGS = -nostdlib -ffreestanding -fstack-protector-strong -mno-red-zone -Wall -
 RUST = rustc
 RUSTFLAGS = --emit=obj --target=$(TARGET)
 
+LD = i686-elf-ld
+LDFLAGS =
+
 SRC_DIR = src/
 OBJ_DIR = obj/
 
@@ -45,7 +48,7 @@ LIBCORE = rust/libcore.rlib
 all: tags $(NAME) iso
 
 $(NAME): $(OBJ_DIRS) $(INTERNAL_OBJ) $(LINKER)
-	$(CC) $(CFLAGS) --gc-sections -T $(LINKER) -o $(NAME) $(OBJ_LINK_LIST)
+	$(LD) $(LDFLAGS) -T $(LINKER) -o $@ $(OBJ_LINK_LIST)
 
 $(OBJ_DIRS):
 	mkdir -p $(OBJ_DIRS)
@@ -57,10 +60,10 @@ $(OBJ_DIR)%.c.o: $(SRC_DIR)%.c $(HDR) Makefile
 	$(CC) $(CFLAGS) -I $(SRC_DIR) -c $< -o $@
 
 $(OBJ_DIR)%.rs.o: $(SRC_DIR)%.rs $(HDR) $(LIBCORE) Makefile $(TARGET)
-	$(RUST) $(RUSTFLAGS) -o $@ --extern core=$(LIBCORE) $<
+	$(RUST) $(RUSTFLAGS) -L rust/ -o $@ --extern core=$(LIBCORE) $<
 
 $(LIBCORE):
-	make libcore -C rust/
+	make all -C rust/
 
 iso: $(NAME).iso
 
@@ -75,12 +78,13 @@ tags: $(SRC) $(HDR)
 
 clean:
 	rm -rf obj/
+	make clean -C rust/
 	rm -rf iso/
 	rm -f tags
 
 fclean: clean
-	make fclean -C rust/
 	rm -f $(NAME)
+	rm -rf target/
 	rm -f $(NAME).iso
 
 re: fclean all

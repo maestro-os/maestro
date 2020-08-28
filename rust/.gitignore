@@ -1,3 +1,5 @@
 rustc-nightly-src
 rustc-nightly-src.tar.gz
-core.d
+
+*.d
+*.rlib

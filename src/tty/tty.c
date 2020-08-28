@@ -221,6 +221,8 @@ void tty_write(const char *buffer, const size_t count, tty_t *tty)
 	size_t i;
 
 	spin_lock(&tty->spinlock);
+	if(!tty)
+		tty = current_tty;
 	if(!buffer || count == 0 || !tty)
 	{
 		spin_unlock(&tty->spinlock);

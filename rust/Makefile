@@ -6,11 +6,16 @@ TARGET = ../arch/x86/target.json
 
 CARGO = cargo
 CARGOFLAGS = -Z unstable-options
+RUSTC = rustc
+RUSTFLAGS = -Z unstable-options
 
-LIBCORE_FILE = $(DIR)/library/core/Cargo.toml
+LIBCORE_PATH = $(DIR)/library/core/
 LIBCORE = libcore.rlib
 
-all: $(LIBCORE)
+LIBCOMPILER_BUILTINS_PATH = $(DIR)/vendor/compiler_builtins/
+LIBCOMPILER_BUILTINS = libcompiler_builtins.rlib
+
+all: $(LIBCORE) $(LIBCOMPILER_BUILTINS)
 
 clean:
 	rm -rf $(DIR)
@@ -25,11 +30,14 @@ update: fclean all
 $(ARCHIVE):
 	curl $(URL) -o $@
 
-$(LIBCORE_FILE): $(ARCHIVE)
+$(DIR): $(ARCHIVE)
 	tar -xf $(ARCHIVE)
-	touch $(LIBCORE_FILE)
+	touch $(DIR)
 
-$(LIBCORE): $(LIBCORE_FILE)
-	cd "$(DIR)/library/core/" && $(CARGO) build $(CARGOFLAGS) --target ../../../$(TARGET) --out-dir $(shell pwd)
+$(LIBCORE): $(DIR)
+	cd "$(LIBCORE_PATH)" && $(CARGO) build $(CARGOFLAGS) --target ../../../$(TARGET) --out-dir $(shell pwd)
+
+$(LIBCOMPILER_BUILTINS): $(DIR)
+	$(RUSTC) $(RUSTFLAGS) --out-dir $(shell pwd) --crate-name=compiler_builtins --crate-type=lib --target $(TARGET) --extern core=$(LIBCORE) $(LIBCOMPILER_BUILTINS_PATH)/src/lib.rs --cfg stage0 --cfg feature='"compiler-builtins"' --emit=link,dep-info
 
 .PHONY: all clean update

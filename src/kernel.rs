@@ -6,20 +6,17 @@
 
 #![deny(warnings)]
 
-extern crate libc;
 use core::panic::PanicInfo;
 
 extern "C" {
-    fn tty_init();
+    fn kernel_main_(magic: u32, multiboot_ptr: *const u8);
 }
 
 #[no_mangle]
-pub extern "C" fn kernel_main(_magic: u32, _multiboot_ptr: *const libc::c_void) {
+pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const u8) {
     unsafe {
-        tty_init();
+        kernel_main_(magic, multiboot_ptr);
     }
-
-    // TODO
 }
 
 #[panic_handler]

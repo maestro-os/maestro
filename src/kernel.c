@@ -110,7 +110,7 @@ extern semaphore_t sem;
  * kernel image.
  */
 ATTR_COLD
-void kernel_main(const unsigned long magic, void *multiboot_ptr)
+void kernel_main_(const unsigned long magic, void *multiboot_ptr)
 {
 	tty_init();
 
