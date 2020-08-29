@@ -22,6 +22,7 @@ OBJ_DIR = obj/
 ASM_SRC := $(shell find $(SRC_DIR) -type f -name "*.s" -and ! -name "crti.s" -and ! -name "crtn.s")
 C_SRC := $(shell find $(SRC_DIR) -type f -name "*.c")
 HDR := $(shell find $(SRC_DIR) -type f -name "*.h")
+RUST_MAIN = src/kernel.rs
 RUST_SRC := $(shell find $(SRC_DIR) -type f -name "*.rs")
 
 DIRS := $(shell find $(SRC_DIR) -type d)
@@ -34,16 +35,17 @@ CRTBEGIN_OBJ := $(shell $(CC) $(CFLAGS) -print-file-name=crtbegin.o)
 
 ASM_OBJ := $(patsubst $(SRC_DIR)%.s, $(OBJ_DIR)%.s.o, $(ASM_SRC))
 C_OBJ := $(patsubst $(SRC_DIR)%.c, $(OBJ_DIR)%.c.o, $(C_SRC))
-RUST_OBJ := $(patsubst $(SRC_DIR)%.rs, $(OBJ_DIR)%.rs.o, $(RUST_SRC))
+RUST_MAIN_OBJ := $(patsubst $(SRC_DIR)%.rs, $(OBJ_DIR)%.rs.o, $(RUST_MAIN))
 
 CRTEND_OBJ := $(shell $(CC) $(CFLAGS) -print-file-name=crtend.o)
 CRTN_OBJ = $(OBJ_DIR)crtn.s.o
 
-OBJ := $(ASM_OBJ) $(C_OBJ) $(RUST_OBJ)
+LIBCORE = rust/libcore.rlib
+LIBCOMPILER_BUILTINS = rust/libcompiler_builtins.rlib
+
+OBJ := $(ASM_OBJ) $(C_OBJ) $(RUST_MAIN_OBJ) $(LIBCORE) $(LIBCOMPILER_BUILTINS)
 INTERNAL_OBJ := $(CRTI_OBJ) $(OBJ) $(CRTN_OBJ)
 OBJ_LINK_LIST := $(CRTI_OBJ) $(CRTBEGIN_OBJ) $(OBJ) $(CRTEND_OBJ) $(CRTN_OBJ)
-
-LIBCORE = rust/libcore.rlib
 
 all: tags $(NAME) iso
 
