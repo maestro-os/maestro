@@ -61,8 +61,8 @@ $(OBJ_DIR)%.s.o: $(SRC_DIR)%.s $(HDR) Makefile
 $(OBJ_DIR)%.c.o: $(SRC_DIR)%.c $(HDR) Makefile
 	$(CC) $(CFLAGS) -I $(SRC_DIR) -c $< -o $@
 
-$(OBJ_DIR)%.rs.o: $(SRC_DIR)%.rs $(HDR) $(LIBCORE) Makefile $(TARGET)
-	$(RUST) $(RUSTFLAGS) -L rust/ -o $@ --extern core=$(LIBCORE) $<
+$(RUST_MAIN_OBJ): $(RUST_SRC) $(LIBCORE) Makefile $(TARGET)
+	$(RUST) $(RUSTFLAGS) -L rust/ -o $@ --extern core=$(LIBCORE) $(RUST_MAIN)
 
 $(LIBCORE):
 	make all -C rust/

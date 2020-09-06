@@ -2,6 +2,7 @@
 #![no_main]
 
 #![feature(const_fn)]
+#![feature(const_in_array_repeat_expressions)]
 #![feature(const_ptr_offset)]
 #![feature(const_raw_ptr_to_usize_cast)]
 #![feature(intrinsics)]
@@ -11,8 +12,10 @@
 
 #![deny(warnings)]
 #![allow(dead_code)]
+#![allow(unused_macros)]
 
 mod memory;
+mod tty;
 mod util;
 mod vga;
 

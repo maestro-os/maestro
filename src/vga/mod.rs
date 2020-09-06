@@ -11,56 +11,57 @@ use super::memory as memory;
 // TODO Save enable/disable cursor state
 // TODO Spinlock?
 
-pub type Color = u16;
-pub type Pos = u16;
+pub type Char = u16;
+pub type Color = u8;
+pub type Pos = i16;
 
 /*
  * Physical address of the VGA text buffer.
  */
-pub const VGA_BUFFER_PHYS: *mut u16 = 0xb8000 as *mut u16;
+pub const BUFFER_PHYS: *mut Char = 0xb8000 as *mut Char;
 /*
  * Virtual address of the VGA text buffer.
  */
-pub const VGA_BUFFER_VIRT: *mut u16 = unsafe { (memory::PROCESS_END as usize + VGA_BUFFER_PHYS as usize) as *mut u16 };
-pub const VGA_BUFFER: *mut u16 = VGA_BUFFER_VIRT;
+pub const BUFFER_VIRT: *mut Char = unsafe { (memory::PROCESS_END as usize + BUFFER_PHYS as usize) as *mut Char };
+pub const BUFFER: *mut Char = BUFFER_VIRT;
 
 /*
  * Width of the screen in characters under the VGA text mode.
  */
-pub const VGA_WIDTH: Pos = 80;
+pub const WIDTH: Pos = 80;
 /*
  * Height of the screen in characters under the VGA text mode.
  */
-pub const VGA_HEIGHT: Pos = 25;
+pub const HEIGHT: Pos = 25;
 /*
  * The size in bytes of the VGA text buffer.
  */
-pub const VGA_BUFFER_SIZE: u32 = (VGA_WIDTH * VGA_HEIGHT * core::mem::size_of::<i16>() as Pos) as u32;
+pub const BUFFER_SIZE: u32 = (WIDTH * HEIGHT * core::mem::size_of::<i16>() as Pos) as u32;
 
 /*
  * VGA text mode colors.
  */
-pub const VGA_COLOR_BLACK: Color			= 0x0;
-pub const VGA_COLOR_BLUE: Color			    = 0x1;
-pub const VGA_COLOR_GREEN: Color			= 0x2;
-pub const VGA_COLOR_CYAN: Color			    = 0x3;
-pub const VGA_COLOR_RED: Color			    = 0x4;
-pub const VGA_COLOR_MAGENTA: Color		    = 0x5;
-pub const VGA_COLOR_BROWN: Color			= 0x6;
-pub const VGA_COLOR_LIGHT_GREY: Color	    = 0x7;
-pub const VGA_COLOR_DARK_GREY: Color		= 0x8;
-pub const VGA_COLOR_LIGHT_BLUE: Color	    = 0x9;
-pub const VGA_COLOR_LIGHT_GREEN: Color	    = 0xa;
-pub const VGA_COLOR_LIGHT_CYAN: Color	    = 0xb;
-pub const VGA_COLOR_LIGHT_RED: Color		= 0xc;
-pub const VGA_COLOR_LIGHT_MAGENTA: Color	= 0xd;
-pub const VGA_COLOR_YELLOW: Color		    = 0xe;
-pub const VGA_COLOR_WHITE: Color			= 0xf;
+pub const COLOR_BLACK: Color			= 0x0;
+pub const COLOR_BLUE: Color			    = 0x1;
+pub const COLOR_GREEN: Color			= 0x2;
+pub const COLOR_CYAN: Color			    = 0x3;
+pub const COLOR_RED: Color			    = 0x4;
+pub const COLOR_MAGENTA: Color		    = 0x5;
+pub const COLOR_BROWN: Color			= 0x6;
+pub const COLOR_LIGHT_GREY: Color	    = 0x7;
+pub const COLOR_DARK_GREY: Color		= 0x8;
+pub const COLOR_LIGHT_BLUE: Color	    = 0x9;
+pub const COLOR_LIGHT_GREEN: Color	    = 0xa;
+pub const COLOR_LIGHT_CYAN: Color	    = 0xb;
+pub const COLOR_LIGHT_RED: Color		= 0xc;
+pub const COLOR_LIGHT_MAGENTA: Color	= 0xd;
+pub const COLOR_YELLOW: Color		    = 0xe;
+pub const COLOR_WHITE: Color			= 0xf;
 
 /*
  * VGA text mode default color.
  */
-pub const VGA_DEFAULT_COLOR: Color = VGA_COLOR_WHITE | (VGA_COLOR_BLACK << 4);
+pub const DEFAULT_COLOR: Color = COLOR_WHITE | (COLOR_BLACK << 4);
 
 pub const CURSOR_START: u8 = 0;
 pub const CURSOR_END: u8 = 15;
@@ -76,9 +77,9 @@ pub fn entry_color(fg: Color, bg: Color) -> Color {
  * Clears the VGA text buffer.
  */
 pub fn clear() {
-    for i in 0..(VGA_WIDTH * VGA_HEIGHT) {
+    for i in 0..(WIDTH * HEIGHT) {
 		unsafe {
-			*VGA_BUFFER.offset(i as isize) = VGA_DEFAULT_COLOR << 8;
+			*BUFFER.offset(i as isize) = (DEFAULT_COLOR as Char) << 8;
 		}
     }
 }
@@ -109,7 +110,7 @@ pub fn disable_cursor() {
  * Moves the VGA text mode cursor to the given position.
  */
 pub fn move_cursor(x: Pos, y: Pos) {
-    let pos = y * VGA_WIDTH + x;
+    let pos = y * WIDTH + x;
 
 	unsafe {
 		io::outb(0x3d4, 0x0f);
@@ -123,7 +124,7 @@ pub fn move_cursor(x: Pos, y: Pos) {
  * Writes the given character `c` at the given position `x`/`y` on the screen with the default color.
  */
 pub fn putchar(c: char, x: Pos, y: Pos) {
-    putchar_color(c, VGA_DEFAULT_COLOR, x, y);
+    putchar_color(c, DEFAULT_COLOR, x, y);
 }
 
 /*
@@ -132,6 +133,6 @@ pub fn putchar(c: char, x: Pos, y: Pos) {
  */
 pub fn putchar_color(c: char, color: Color, x: Pos, y: Pos) {
 	unsafe {
-		*VGA_BUFFER.offset((y * VGA_WIDTH + x) as isize) = (c as u16) | (color as u16) << 8;
+		*BUFFER.offset((y * WIDTH + x) as isize) = (c as Char) | (color as Char) << 8;
 	}
 }
