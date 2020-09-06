@@ -22,7 +22,12 @@ mod vga;
 use core::panic::PanicInfo;
 
 extern "C" {
+	// TODO rm
     fn kernel_main_(magic: u32, multiboot_ptr: *const u8);
+
+	fn kernel_wait();
+	fn kernel_loop();
+	fn kernel_halt();
 
 }
 
@@ -39,11 +44,16 @@ mod io {
 
 #[no_mangle]
 pub extern "C" fn kernel_main(_magic: u32, _multiboot_ptr: *const u8) {
-	vga::putchar('A', 0, 0);
+	tty::init();
+	tty::current().write("Hello world!\n");
 
     /*unsafe {
         kernel_main_(magic, multiboot_ptr);
     }*/
+
+	unsafe {
+		kernel_halt();
+	}
 }
 
 #[panic_handler]

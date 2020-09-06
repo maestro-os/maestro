@@ -146,8 +146,8 @@ macro_rules! container_of {
  * Extern spinlock functions.
  */
 extern "C" {
-	fn spin_lock(lock: *mut bool);
-	fn spin_unlock(lock: *mut bool);
+	pub fn spin_lock(lock: *mut bool);
+	pub fn spin_unlock(lock: *mut bool);
 }
 
 /*

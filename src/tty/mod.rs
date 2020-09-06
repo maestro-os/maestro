@@ -65,8 +65,10 @@ const fn get_tab_size(cursor_x: vga::Pos) -> usize {
  */
 #[derive(Copy)]
 #[derive(Clone)]
-struct TTY
+pub struct TTY
 {
+	/* The id of the TTY*/
+	id: usize,
 	/* The X position of the cursor in the history */
 	cursor_x: vga::Pos,
 	/* The Y position of the cursor in the history */
@@ -93,6 +95,7 @@ struct TTY
  * The array of every TTYs.
  */
 static mut TTYS: &'static mut [TTY; TTYS_COUNT] = &mut[TTY {
+		id: 0,
 		cursor_x: 0,
 		cursor_y: 0,
 		screen_y: 0,
@@ -113,47 +116,78 @@ static mut CURRENT_TTY: usize = 0;
 pub fn init() {
 	for i in 0..TTYS_COUNT {
 		unsafe {
+			TTYS[i].id = i;
 			TTYS[i].clear();
 		}
 	}
-	TTY::switch(0);
+	switch(0);
+}
+
+/*
+ * Switches to TTY with id `tty`.
+ */
+pub fn switch(tty: usize) {
+	if tty >= TTYS_COUNT {
+		return;
+	}
+	unsafe {
+		CURRENT_TTY = tty;
+	}
+
+	let mut t = unsafe { TTYS[tty] };
+	vga::enable_cursor();
+	vga::move_cursor(t.cursor_x, t.cursor_y);
+	t.update();
+}
+
+/*
+ * Returns a reference to the current TTY.
+ */
+pub fn current() -> &'static mut TTY {
+	unsafe {
+		&mut TTYS[CURRENT_TTY]
+	}
 }
 
 impl TTY {
 	/*
-	 * Switches to TTY with id `tty`.
+	 * Returns the id of the TTY.
 	 */
-	pub fn switch(tty: usize) {
-		if tty >= TTYS_COUNT {
-			return;
-		}
-		unsafe {
-			CURRENT_TTY = tty;
-		}
-
-		let mut t = unsafe { TTYS[tty] };
-		vga::enable_cursor();
-		vga::move_cursor(t.cursor_x, t.cursor_y);
-		t.update();
-	}
-
-	/*
-	 * Returns a reference to the current TTY.
-	 */
-	pub fn current() -> &'static mut Self {
-		unsafe {
-			&mut TTYS[CURRENT_TTY]
-		}
+	pub fn get_id(&self) -> usize {
+		self.id
 	}
 
 	/*
 	 * Updates the TTY to the screen.
 	 */
 	pub fn update(&mut self) {
-		if !self.update {
-			return;
+		unsafe {
+			if self.id == CURRENT_TTY && !self.update {
+				return;
+			}
 		}
-		// TODO Screen update
+
+		if self.screen_y + vga::HEIGHT <= HISTORY_LINES {
+			unsafe {
+				let buff = &self.history[history_pos(0, self.screen_y)] as *const _ as *const _;
+				core::ptr::copy_nonoverlapping(buff, vga::BUFFER as *mut _,
+					(vga::WIDTH as usize) * (vga::HEIGHT as usize) * core::mem::size_of::<vga::Char>());
+			}
+		} else {
+			unsafe {
+				let buff = &self.history[history_pos(0, self.screen_y)] as *const _ as *const _;
+				core::ptr::copy_nonoverlapping(buff, vga::BUFFER as *mut _,
+					(vga::WIDTH * (HISTORY_LINES - self.screen_y)) as usize * core::mem::size_of::<vga::Char>());
+			}
+		}
+
+		let y = self.cursor_y - self.screen_y;
+		if y >= 0 && y < vga::HEIGHT {
+			vga::move_cursor(self.cursor_x, y);
+			vga::enable_cursor();
+		} else {
+			vga::disable_cursor();
+		}
 	}
 
 	/*
@@ -272,7 +306,9 @@ impl TTY {
 			},
 			_ => {
 				let tty_char = (c as vga::Char) | ((self.current_color as vga::Char) << 8);
-				self.history[history_pos(self.cursor_x, self.cursor_y)] = tty_char;
+				let pos = history_pos(self.cursor_x, self.cursor_y);
+				assert!(pos < HISTORY_LINES as usize);
+				self.history[pos] = tty_char;
 				self.cursor_forward(1, 0);
 			}
 		}
