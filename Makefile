@@ -1,20 +1,36 @@
 NAME = maestro
 
-ARCH ?= x86
+KERNEL_ARCH ?= x86
+KERNEL_MODE ?= debug
 
-TARGET = arch/$(ARCH)/target.json
-LINKER = arch/$(ARCH)/linker.ld
+TARGET = arch/$(KERNEL_ARCH)/target.json
+LINKER = arch/$(KERNEL_ARCH)/linker.ld
 
 DEBUG_FLAGS = -D KERNEL_DEBUG -D KERNEL_DEBUG_SANITY -D KERNEL_SELFTEST #-D KERNEL_DEBUG_SPINLOCK
 
 CC = i686-elf-gcc
-CFLAGS = -nostdlib -ffreestanding -fstack-protector-strong -mno-red-zone -Wall -Wextra -Werror -lgcc -g3 $(DEBUG_FLAGS)
+CFLAGS = -nostdlib -ffreestanding -fstack-protector-strong -mno-red-zone -Wall -Wextra -Werror -lgcc
+#ifeq ($(KERNEL_MODE), release)
+#CFLAGS += -O3
+#else
+CFLAGS += -g3 $(DEBUG_FLAGS)
+#endif
 
 RUST = rustc
-RUSTFLAGS = --emit=obj --target=$(TARGET) -g -Z macro-backtrace
+RUSTFLAGS = --emit=obj --target=$(TARGET) -Z macro-backtrace
+ifeq ($(KERNEL_MODE), release)
+RUSTFLAGS += -O
+else
+RUSTFLAGS += -g
+endif
 
 LD = i686-elf-ld
 LDFLAGS =
+ifeq ($(KERNEL_MODE), release)
+#LDFLAGS += --gc-sections
+endif
+
+STRIP = strip
 
 SRC_DIR = src/
 OBJ_DIR = obj/
@@ -51,6 +67,9 @@ all: tags $(NAME) iso
 
 $(NAME): $(OBJ_DIRS) $(INTERNAL_OBJ) $(LINKER)
 	$(LD) $(LDFLAGS) -T $(LINKER) -o $@ $(OBJ_LINK_LIST)
+ifeq ($(KERNEL_MODE), release)
+	$(STRIP) $(NAME)
+endif
 
 $(OBJ_DIRS):
 	mkdir -p $(OBJ_DIRS)

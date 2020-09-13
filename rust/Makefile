@@ -2,12 +2,14 @@ URL = https://static.rust-lang.org/dist/rustc-nightly-src.tar.gz
 ARCHIVE = rustc-nightly-src.tar.gz
 DIR = rustc-nightly-src
 
-TARGET = ../arch/x86/target.json
+KERNEL_ARCH ?= x86
+
+TARGET = ../arch/$(KERNEL_ARCH)/target.json
 
 CARGO = cargo
 CARGOFLAGS = -Z unstable-options
 RUSTC = rustc
-RUSTFLAGS = -Z unstable-options
+RUSTFLAGS = -Z unstable-options -Copt-level=z
 
 LIBCORE_PATH = $(DIR)/library/core/
 LIBCORE = libcore.rlib
@@ -34,10 +36,10 @@ $(DIR): $(ARCHIVE)
 	tar -xf $(ARCHIVE)
 	touch $(DIR)
 
-$(LIBCORE): $(DIR)
+$(LIBCORE): $(DIR) Makefile
 	cd "$(LIBCORE_PATH)" && $(CARGO) build $(CARGOFLAGS) --target ../../../$(TARGET) --out-dir $(shell pwd)
 
-$(LIBCOMPILER_BUILTINS): $(DIR)
+$(LIBCOMPILER_BUILTINS): $(DIR) Makefile
 	$(RUSTC) $(RUSTFLAGS) --out-dir $(shell pwd) --crate-name=compiler_builtins --crate-type=lib --target $(TARGET) --extern core=$(LIBCORE) $(LIBCOMPILER_BUILTINS_PATH)/src/lib.rs --cfg stage0 --cfg feature='"compiler-builtins"' --emit=link,dep-info
 
 .PHONY: all clean update

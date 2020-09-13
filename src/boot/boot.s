@@ -5,7 +5,6 @@
 .set MULTIBOOT_ARCHITECTURE,	0
 .set HEADER_LENGTH,				(header_end - header)
 .set CHECKSUM,					-(MULTIBOOT_MAGIC + MULTIBOOT_ARCHITECTURE + HEADER_LENGTH)
-
 /*
  * Multiboot header tags constants.
  */
