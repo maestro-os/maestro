@@ -11,7 +11,7 @@ CC = i686-elf-gcc
 CFLAGS = -nostdlib -ffreestanding -fstack-protector-strong -mno-red-zone -Wall -Wextra -Werror -lgcc -g3 $(DEBUG_FLAGS)
 
 RUST = rustc
-RUSTFLAGS = --emit=obj --target=$(TARGET) -g
+RUSTFLAGS = --emit=obj --target=$(TARGET) -g -Z macro-backtrace
 
 LD = i686-elf-ld
 LDFLAGS =

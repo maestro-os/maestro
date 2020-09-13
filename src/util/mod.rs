@@ -1,10 +1,11 @@
-use crate::memory;
 use crate::memory::Void;
+use crate::memory;
+use crate::tty;
 
 /* Maximum size for a signed integer */
-type Imax = i32;
+pub type Imax = i32;
 /* Maximum size for an unsigned integer */
-type Umax = u32;
+pub type Umax = u32;
 
 /*
  * Tells if pointer `ptr` is aligned on boundary `n`.
@@ -140,6 +141,66 @@ macro_rules! offset_of {
  */
 macro_rules! container_of {
 	($ptr:expr, $type:expr, $field:expr) => ((($ptr as usize) - offset_of($type, $field)) as *const $type)
+}
+
+/*
+ * Prints the given formatted string with the given values.
+ */
+#[allow_internal_unstable(print_internals)]
+#[macro_export]
+macro_rules! print {
+	($($arg:tt)*) => {{
+		crate::util::_print(format_args!($($arg)*));
+	}};
+}
+
+/*
+ * Same as `print!`, except it appends a newline at the end.
+ */
+#[allow_internal_unstable(print_internals, format_args_nl)]
+#[macro_export]
+macro_rules! println {
+	() => (print!("\n"));
+	($($arg:tt)*) => {{
+		crate::util::_print(format_args_nl!($($arg)*));
+	}};
+}
+
+/*
+ * TODO
+ */
+struct TTYWrite {}
+
+impl core::fmt::Write for TTYWrite {
+	fn write_str(&mut self, s: &str) -> Result<(), core::fmt::Error> {
+		tty::current().write(s);
+		Ok(())
+	}
+}
+
+/*
+ * Prints the specified message on the current TTY.
+ */
+pub fn _print(args: core::fmt::Arguments) {
+	let mut w: TTYWrite = TTYWrite {};
+	core::fmt::write(&mut w, args).ok();
+}
+
+/*
+ * Structure representing the list of registers for a context.
+ */
+pub struct Regs
+{
+	pub ebp: i32,
+	pub esp: i32,
+	pub eip: i32,
+	pub eflags: i32,
+	pub eax: i32,
+	pub ebx: i32,
+	pub ecx: i32,
+	pub edx: i32,
+	pub esi: i32,
+	pub edi: i32,
 }
 
 /*

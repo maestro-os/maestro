@@ -2,6 +2,8 @@
  * TODO Documentation
  */
 
+pub mod vmem;
+
 /*
  * Used to represent the `void` keyword in `void *` in C.
  */
