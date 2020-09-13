@@ -49,7 +49,7 @@ void vga_move_cursor(const vgapos_t x, const vgapos_t y)
 {
 	uint16_t pos;
 
- 	pos = y * VGA_WIDTH + x;
+	pos = y * VGA_WIDTH + x;
 	outb(0x3d4, 0x0f);
 	outb(0x3d5, (uint8_t) (pos & 0xff));
 	outb(0x3d4, 0x0e);

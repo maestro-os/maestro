@@ -48,11 +48,11 @@ struct acpi_sdt_header
 ATTR_PACKED
 struct generic_address_structure
 {
-  uint8_t address_space;
-  uint8_t bit_width;
-  uint8_t bit_offset;
-  uint8_t access_size;
-  uint64_t address;
+	uint8_t address_space;
+	uint8_t bit_width;
+	uint8_t bit_offset;
+	uint8_t access_size;
+	uint64_t address;
 };
 
 ATTR_PACKED

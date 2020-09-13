@@ -128,13 +128,13 @@ static void print_panic(const char *reason, const uint32_t code)
 {
 	tty_init();
 	printf("--- KERNEL PANIC ---\n\n");
-	printf("Kernel has been forced to halt due to internal problem,\
- sorry :/\n");
+	printf("Kernel has been forced to halt due to internal problem, \
+sorry :/\n");
 	printf("Reason: %s\n", reason);
 	printf("Error code: %x\n", (unsigned) code);
 	printf("CR2: %p\n\n", cr2_get());
-	printf("If you believe this is a bug on the kernel side,\
- please feel free to report it.\n");
+	printf("If you believe this is a bug on the kernel side, \
+please feel free to report it.\n");
 }
 
 /*

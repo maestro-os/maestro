@@ -11,10 +11,10 @@
  * Tells if pointer `ptr` is aligned on boundary `n`.
  */
 # define IS_ALIGNED(ptr, n)		(((intptr_t) (ptr) & ((n) - 1)) == 0)
- /*
-  * Aligns down a pointer. The retuned value shall be lower than `ptr` or equal
-  * if the pointer is already aligned.
-  */
+/*
+ * Aligns down a pointer. The retuned value shall be lower than `ptr` or equal
+ * if the pointer is already aligned.
+ */
 # define DOWN_ALIGN(ptr, n)		((void *) ((intptr_t) (ptr)\
 	& ~((intptr_t) (n) - 1)))
 /*
@@ -45,23 +45,23 @@
  * Computes floor(log2(n)) without on unsigned integers.
  */
 # define LOG2(n)				((n) == 0\
- 	? 1 : BIT_SIZEOF(n) - __builtin_clz(n) - 1) // TODO Check
+	? 1 : BIT_SIZEOF(n) - __builtin_clz(n) - 1) // TODO Check
 /*
  * Computes the square root of an integer.
  */
 # define SQRT(n)				(POW2(LOG2(n) / 2))
 
- /*
-  * Returns the absolute value for the given `i`.
-  */
+/*
+ * Returns the absolute value for the given `i`.
+ */
 # define ABS(i)					((i) < 0 ? -(i) : (i))
- /*
-  * Returns the lowest between `a` and `b`.
-  */
+/*
+ * Returns the lowest between `a` and `b`.
+ */
 # define MIN(a, b)				((a) <= (b) ? (a) : (b))
- /*
-  * Returns the greatest between `a` and `b`.
-  */
+/*
+ * Returns the greatest between `a` and `b`.
+ */
 # define MAX(a, b)				((a) >= (b) ? (a) : (b))
 
 /*

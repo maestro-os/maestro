@@ -70,18 +70,18 @@ pub const CURSOR_END: u8 = 15;
  * Returns the value for the given foreground color `fg` and background color `bg`.
  */
 pub fn entry_color(fg: Color, bg: Color) -> Color {
-    fg | (bg << 4)
+	fg | (bg << 4)
 }
 
 /*
  * Clears the VGA text buffer.
  */
 pub fn clear() {
-    for i in 0..(WIDTH * HEIGHT) {
+	for i in 0..(WIDTH * HEIGHT) {
 		unsafe {
 			*BUFFER.offset(i as isize) = (DEFAULT_COLOR as Char) << 8;
 		}
-    }
+	}
 }
 
 /*
@@ -110,7 +110,7 @@ pub fn disable_cursor() {
  * Moves the VGA text mode cursor to the given position.
  */
 pub fn move_cursor(x: Pos, y: Pos) {
-    let pos = y * WIDTH + x;
+	let pos = y * WIDTH + x;
 
 	unsafe {
 		io::outb(0x3d4, 0x0f);
@@ -124,7 +124,7 @@ pub fn move_cursor(x: Pos, y: Pos) {
  * Writes the given character `c` at the given position `x`/`y` on the screen with the default color.
  */
 pub fn putchar(c: char, x: Pos, y: Pos) {
-    putchar_color(c, DEFAULT_COLOR, x, y);
+	putchar_color(c, DEFAULT_COLOR, x, y);
 }
 
 /*

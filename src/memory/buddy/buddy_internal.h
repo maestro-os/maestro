@@ -20,7 +20,7 @@
  * Returns the id of the frame from the pointer to its state.
  */
 # define FRAME_ID(zone, state_ptr)\
- 	(((uintptr_t) (state_ptr) - (uintptr_t) (zone)->states)\
+	(((uintptr_t) (state_ptr) - (uintptr_t) (zone)->states)\
 		/ sizeof(frame_state_t))
 
 /*
@@ -73,7 +73,7 @@
  * Asserts that the given order is valid.
  */
 #  define debug_check_order(order)\
-     debug_assert((order) <= BUDDY_MAX_ORDER, "buddy: invalid order")
+	debug_assert((order) <= BUDDY_MAX_ORDER, "buddy: invalid order")
 # else
 #  define debug_check_free_frame(frame)
 #  define debug_check_frame(begin, ptr, order)

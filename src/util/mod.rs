@@ -88,9 +88,9 @@ pub fn sqrt(n: Umax) -> Umax {
 	pow2(log2(n) / 2)
 }
 
- /*
-  * Returns the absolute value for the given `i`.
-  */
+/*
+ * Returns the absolute value for the given `i`.
+ */
 #[inline(always)]
 pub fn abs(i: Imax) -> Imax {
 	if i < 0 { i } else { i }
