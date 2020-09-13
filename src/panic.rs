@@ -25,19 +25,19 @@ macro_rules! panic {
  */
 fn print_panic(reason: &str, code: u32) {
 	tty::init();
-	println!("--- KERNEL PANIC ---\n");
-	println!("Kernel has been forced to halt due to internal problem, sorry :/");
-	println!("Reason: {}", reason);
-	println!("Error code: {}", code);
-	println!("CR2: {:p}\n", unsafe { memory::vmem::cr2_get() } as *const Void);
-	println!("If you believe this is a bug on the kernel side, please feel free to report it.");
+	::println!("--- KERNEL PANIC ---\n");
+	::println!("Kernel has been forced to halt due to internal problem, sorry :/");
+	::println!("Reason: {}", reason);
+	::println!("Error code: {}", code);
+	::println!("CR2: {:p}\n", unsafe { memory::vmem::cr2_get() } as *const Void);
+	::println!("If you believe this is a bug on the kernel side, please feel free to report it.");
 }
 
 /*
  * TODO doc
  */
 pub fn kernel_panic(reason: &str, code: u32) -> ! {
-	cli!();
+	::cli!();
 	print_panic(reason, code);
 	unsafe {
 		kernel_halt();
@@ -48,12 +48,12 @@ pub fn kernel_panic(reason: &str, code: u32) -> ! {
  * TODO doc
  */
 pub fn kernel_panic_(reason: &str, code: u32, file: &str, line: u32) -> ! {
-	cli!();
+	::cli!();
 	print_panic(reason, code);
-	println!("\n-- DEBUG --\nFile: {}; Line: {}", file, line);
+	::println!("\n-- DEBUG --\nFile: {}; Line: {}", file, line);
 	// TODO Print running process registers
-	println!();
-	debug::print_callstack(register_get!("ebp") as *const _, 8);
+	::println!();
+	debug::print_callstack(::register_get!("ebp") as *const _, 8);
 	unsafe {
 		kernel_halt();
 	}

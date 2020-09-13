@@ -132,7 +132,16 @@ pub fn putchar(c: char, x: Pos, y: Pos) {
  * with the given color `color`.
  */
 pub fn putchar_color(c: char, color: Color, x: Pos, y: Pos) {
+	assert!(x >= 0);
+	assert!(x < WIDTH);
+	assert!(y >= 0);
+	assert!(y < HEIGHT);
+
+	let pos = (y as usize) * (WIDTH as usize) + (x as usize);
+	let c = (c as Char) | (color as Char) << 8;
+
+	assert!(pos < BUFFER_SIZE as usize);
 	unsafe {
-		*BUFFER.offset((y * WIDTH + x) as isize) = (c as Char) | (color as Char) << 8;
+		*BUFFER.offset(pos as isize) = c;
 	}
 }

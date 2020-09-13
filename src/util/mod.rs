@@ -144,6 +144,27 @@ macro_rules! container_of {
 }
 
 /*
+ * TODO
+ */
+struct TTYWrite {}
+
+impl core::fmt::Write for TTYWrite {
+	fn write_str(&mut self, s: &str) -> Result<(), core::fmt::Error> {
+		tty::current().write(s);
+		Ok(())
+	}
+}
+
+/*
+ * Prints the specified message on the current TTY. This function is meant to be used through `print!` and `println!`
+ * macros only.
+ */
+pub fn _print(args: core::fmt::Arguments) {
+	let mut w: TTYWrite = TTYWrite {};
+	core::fmt::write(&mut w, args).ok();
+}
+
+/*
  * Prints the given formatted string with the given values.
  */
 #[allow_internal_unstable(print_internals)]
@@ -160,30 +181,10 @@ macro_rules! print {
 #[allow_internal_unstable(print_internals, format_args_nl)]
 #[macro_export]
 macro_rules! println {
-	() => (print!("\n"));
+	() => (::print!("\n"));
 	($($arg:tt)*) => {{
 		crate::util::_print(format_args_nl!($($arg)*));
 	}};
-}
-
-/*
- * TODO
- */
-struct TTYWrite {}
-
-impl core::fmt::Write for TTYWrite {
-	fn write_str(&mut self, s: &str) -> Result<(), core::fmt::Error> {
-		tty::current().write(s);
-		Ok(())
-	}
-}
-
-/*
- * Prints the specified message on the current TTY.
- */
-pub fn _print(args: core::fmt::Arguments) {
-	let mut w: TTYWrite = TTYWrite {};
-	core::fmt::write(&mut w, args).ok();
 }
 
 /*

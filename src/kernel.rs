@@ -12,31 +12,29 @@
 #![feature(llvm_asm)]
 #![feature(rustc_attrs)]
 #![feature(rustc_private)]
+#![feature(untagged_unions)]
 
 #![deny(warnings)]
 #![allow(dead_code)]
 #![allow(unused_macros)]
 
-#[macro_use] mod util;
-
-#[macro_use] mod debug;
-#[macro_use] mod idt;
-#[macro_use] mod memory;
-#[macro_use] mod panic;
-#[macro_use] mod tty;
-#[macro_use] mod vga;
+mod debug;
+mod idt;
+mod memory;
+mod multiboot;
+mod panic;
+mod tty;
+mod util;
+mod vga;
 
 use core::panic::PanicInfo;
 
 use memory::Void;
 
-// TODO rm
-extern "C" {
-    fn kernel_main_(magic: u32, multiboot_ptr: *const u8);
-}
+const KERNEL_VERSION: &'static str = "1.0";
 
 extern "C" {
-	pub fn kernel_wait() -> !;
+	pub fn kernel_wait();
 	pub fn kernel_loop() -> !;
 	pub fn kernel_halt() -> !;
 }
@@ -53,16 +51,17 @@ mod io {
 }
 
 #[no_mangle]
-pub extern "C" fn kernel_main(_magic: u32, _multiboot_ptr: *const Void) {
+pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const Void) {
 	tty::init();
-	println!("Hello world!");
 
-	/*if(magic != MULTIBOOT2_BOOTLOADER_MAGIC || !is_aligned(multiboot_ptr, 8))
-		PANIC("Non Multiboot2-compliant bootloader!", 0);*/
+	if magic != multiboot::BOOTLOADER_MAGIC || !util::is_aligned(multiboot_ptr, 8) {
+		panic!("Bootloader non compliant with Multiboot2!", 0);
+	}
 
 	// TODO IDT init
 	// TODO PIT init
 
+	println!("Booting Maestro kernel version {}", KERNEL_VERSION);
 	// TODO CPUID
 	// TODO read boot tags
 
@@ -82,11 +81,17 @@ pub extern "C" fn kernel_main(_magic: u32, _multiboot_ptr: *const Void) {
 	}
 }
 
+/*
+ * Called on Rust panic.
+ */
 #[panic_handler]
 fn panic(_info: &PanicInfo) -> ! {
 	panic::kernel_panic("Rust panic: panic", 0);
 }
 
+/*
+ * TODO
+ */
 #[lang = "eh_personality"]
 fn eh_personality() {
 	panic::kernel_panic("Rust panic: eh_personality", 0);
