@@ -28,6 +28,8 @@
 
 use core::panic::PanicInfo;
 
+use memory::Void;
+
 // TODO rm
 extern "C" {
     fn kernel_main_(magic: u32, multiboot_ptr: *const u8);
@@ -51,17 +53,32 @@ mod io {
 }
 
 #[no_mangle]
-pub extern "C" fn kernel_main(_magic: u32, _multiboot_ptr: *const u8) {
+pub extern "C" fn kernel_main(_magic: u32, _multiboot_ptr: *const Void) {
 	tty::init();
-	println!("Hello world!\n");
-	println!("Hello world!\n");
+	println!("Hello world!");
 
-    /*unsafe {
-        kernel_main_(magic, multiboot_ptr);
-    }*/
+	/*if(magic != MULTIBOOT2_BOOTLOADER_MAGIC || !is_aligned(multiboot_ptr, 8))
+		PANIC("Non Multiboot2-compliant bootloader!", 0);*/
+
+	// TODO IDT init
+	// TODO PIT init
+
+	// TODO CPUID
+	// TODO read boot tags
+
+	// TODO memmap_init
+	// TODO buddy_init
+	// TODO vmem_kernel
+
+	// TODO ACPI
+	// TODO PCI
+	// TODO time
+	// TODO drivers
+	// TODO Disk
+	// TODO Process
 
 	unsafe {
-		kernel_halt();
+		kernel_halt(); // TODO Replace with kernel_loop
 	}
 }
 
