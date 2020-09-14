@@ -55,11 +55,11 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const Void) {
 	tty::init();
 
 	if magic != multiboot::BOOTLOADER_MAGIC || !util::is_aligned(multiboot_ptr, 8) {
-		panic!("Bootloader non compliant with Multiboot2!", 0);
+		panic::kernel_panic("Bootloader non compliant with Multiboot2!", 0);
 	}
 
-	// TODO IDT init
-	// TODO PIT init
+	idt::init();
+	// TODO pit::init();
 
 	println!("Booting Maestro kernel version {}", KERNEL_VERSION);
 	// TODO CPUID
