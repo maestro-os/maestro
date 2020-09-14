@@ -76,17 +76,36 @@ macro_rules! hlt {
  * The IDT vector index for system calls.
  */
 const SYSCALL_VECTOR: u8 = 0x80;
+/*
+ * The number of entries into the IDT.
+ */
+const ENTRIES_COUNT: u8 = 0x81;
+
+/*
+ * Structure representing the IDT.
+ */
+#[repr(C, packed)]
+struct InterruptDescriptorTable {
+	/* TODO doc */
+	size: u16,
+	/* TODO doc */
+	offset: u32,
+}
 
 /*
  * Structure representing an IDT entry.
  */
 #[repr(C)]
-struct InterruptDescriptor
-{
+struct InterruptDescriptor {
+	/* TODO doc */
 	offset: u16,
+	/* TODO doc */
 	selector: u16,
+	/* TODO doc */
 	zero: u8,
+	/* TODO doc */
 	type_attr: u8,
+	/* TODO doc */
 	offset_2: u16,
 }
 
@@ -152,7 +171,7 @@ extern "C" {
 /*
  * The list of IDT entries.
  */
-static mut ID: [InterruptDescriptor; 0x81] = [InterruptDescriptor {
+static mut ID: [InterruptDescriptor; ENTRIES_COUNT as usize] = [InterruptDescriptor {
 	offset: 0,
 	selector: 0,
 	zero: 0,
@@ -243,5 +262,11 @@ pub fn init() {
 		ID[SYSCALL_VECTOR as usize] = create_id(get_c_fn_ptr(syscall), 0x8, 0xee);
 	}
 
-	// TODO Load IDT
+	let idt = InterruptDescriptorTable {
+		size: (core::mem::size_of::<InterruptDescriptor>() * (ENTRIES_COUNT as usize) - 1) as u16,
+		offset: unsafe { &ID } as *const _ as u32,
+	};
+	unsafe {
+		idt_load(&idt as *const _ as *const _);
+	}
 }
