@@ -26,7 +26,7 @@ CFLAGS += -g3 $(DEBUG_FLAGS)
 #endif
 
 # The Rust language compiler
-RUST = rustc
+RUSTC = rustc
 # The Rust language compiler flags
 RUSTFLAGS = --emit=obj --target=$(TARGET) -Z macro-backtrace
 ifeq ($(KERNEL_MODE), release)
@@ -123,7 +123,7 @@ $(OBJ_DIR)%.c.o: $(SRC_DIR)%.c $(HDR) Makefile
 
 # The rule to compile Rust language objects
 $(RUST_MAIN_OBJ): $(RUST_SRC) $(LIBCORE) Makefile $(TARGET)
-	$(RUST) $(RUSTFLAGS) -L rust/ -o $@ --extern core=$(LIBCORE) $(RUST_MAIN)
+	$(RUSTC) $(RUSTFLAGS) -L rust/ -o $@ --extern core=$(LIBCORE) $(RUST_MAIN)
 
 # The rule to compile Rust libcore
 $(LIBCORE):

@@ -19,7 +19,7 @@
 
 .global idt_load
 
-.extern pic_EOI
+.extern end_of_interrupt
 .extern irq1_handler
 .extern irq2_handler
 .extern irq3_handler
@@ -52,7 +52,7 @@ irq0:
 	call scheduler_tick
 
 	push $0x0
-	call pic_EOI
+	call end_of_interrupt
 	add $4, %esp
 
 	call restore_regs

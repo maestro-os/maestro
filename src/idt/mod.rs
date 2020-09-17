@@ -1,3 +1,4 @@
+mod handler;
 pub mod pic;
 
 use crate::memory::Void;

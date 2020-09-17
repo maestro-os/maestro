@@ -2,6 +2,9 @@
 
 .global error_handler
 
+/*
+ * TODO doc
+ */
 .macro ERROR_NOCODE	n
 .global error\n
 
@@ -26,6 +29,9 @@ error\n:
 	iret
 .endm
 
+/*
+ * TODO doc
+ */
 .macro ERROR_CODE	n
 .global error\n
 

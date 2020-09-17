@@ -23,6 +23,7 @@ mod idt;
 mod memory;
 mod multiboot;
 mod panic;
+mod pit;
 mod tty;
 mod util;
 mod vga;
@@ -59,12 +60,13 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const Void) {
 	}
 
 	idt::init();
-	// TODO pit::init();
+	pit::init();
 
 	println!("Booting Maestro kernel version {}", KERNEL_VERSION);
 	// TODO CPUID
-	// TODO read boot tags
+	multiboot::read_tags(multiboot_ptr);
 
+	println!("Initializing memory allocation...");
 	// TODO memmap_init
 	// TODO buddy_init
 	// TODO vmem_kernel
