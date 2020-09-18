@@ -402,8 +402,54 @@ fn tags_size(_ptr: *const Void) -> usize {
 }
 
 /*
+ * Reads the given `tag` and fills the boot informations structure accordingly.
+ */
+fn handle_tag(tag: *const Tag) {
+	let t = unsafe { (*tag).type_ };
+	match t {
+		TAG_TYPE_CMDLINE => {
+			// TODO
+		},
+
+		TAG_TYPE_BOOT_LOADER_NAME => {
+			// TODO
+		},
+
+		TAG_TYPE_MODULE => {
+			// TODO
+		},
+
+		TAG_TYPE_BASIC_MEMINFO => {
+			// TODO
+		},
+
+		TAG_TYPE_BOOTDEV => {
+			// TODO
+		},
+
+		TAG_TYPE_MMAP => {
+			// TODO
+		},
+
+		TAG_TYPE_ELF_SECTIONS => {
+			// TODO
+		},
+
+		// TODO
+
+		_ => {}
+	}
+}
+
+/*
  * Reads the multiboot tags from the given `ptr` and fills the boot informations structure.
  */
-pub fn read_tags(_ptr: *const Void) {
-	// TODO
+pub fn read_tags(ptr: *const Void) {
+	unsafe {
+		let mut tag = (ptr.offset(8)) as *const Tag;
+		while (*tag).type_ != TAG_TYPE_END {
+			handle_tag(tag);
+			tag = (tag as *const u8).offset((((*tag).size + 7) & !7) as isize) as *const Tag;
+		}
+	}
 }
