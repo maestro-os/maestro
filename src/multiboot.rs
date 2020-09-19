@@ -3,6 +3,7 @@
  */
 
 use crate::memory::Void;
+use crate::memory;
 
 pub const BOOTLOADER_MAGIC: u32 = 0x36d76289;
 pub const TAG_ALIGN: usize = 8;
@@ -137,7 +138,7 @@ struct Tag {
 struct TagString {
 	type_: u32,
 	size: u32,
-	string: [char; 0],
+	string: [u8; 0],
 }
 
 #[repr(C)]
@@ -146,7 +147,7 @@ struct TagModule {
 	size: u32,
 	mod_start: u32,
 	mod_end: u32,
-	cmdline: [char; 0],
+	cmdline: [u8; 0],
 }
 
 #[repr(C)]
@@ -248,7 +249,7 @@ struct TagELFSections {
 	num: u32,
 	entsize: u32,
 	shndx: u32,
-	sections: [char; 0],
+	sections: [u8; 0],
 }
 
 #[repr(C)]
@@ -404,10 +405,13 @@ fn tags_size(_ptr: *const Void) -> usize {
 /*
  * Reads the given `tag` and fills the boot informations structure accordingly.
  */
-fn handle_tag(tag: *const Tag) {
-	let t = unsafe { (*tag).type_ };
-	match t {
+fn handle_tag(boot_info: &mut BootInfo, tag: *const Tag) {
+	let type_ = unsafe { (*tag).type_ };
+	match type_ {
 		TAG_TYPE_CMDLINE => {
+			/*let t = &tag as *const _ as *const TagString;
+			let ptr = memory::kern_to_virt(&(*t).string as *const Void);
+			boot_info.cmdline = &*(ptr as *const _ as *const [u8] as *const str);*/
 			// TODO
 		},
 
@@ -420,7 +424,11 @@ fn handle_tag(tag: *const Tag) {
 		},
 
 		TAG_TYPE_BASIC_MEMINFO => {
-			// TODO
+			let t = &tag as *const _ as *const TagBasicMeminfo;
+			unsafe {
+				boot_info.mem_lower = (*t).mem_lower;
+				boot_info.mem_upper = (*t).mem_upper;
+			}
 		},
 
 		TAG_TYPE_BOOTDEV => {
@@ -428,11 +436,25 @@ fn handle_tag(tag: *const Tag) {
 		},
 
 		TAG_TYPE_MMAP => {
-			// TODO
+			let t = &tag as *const _ as *const TagMmap;
+			unsafe {
+				boot_info.memory_maps_size = (*t).size as usize;
+				boot_info.memory_maps_entry_size = (*t).entry_size as usize;
+				let ptr = memory::kern_to_virt(&(*t).entries as *const _ as *const _);
+				boot_info.memory_maps = ptr as *const _;
+			}
 		},
 
 		TAG_TYPE_ELF_SECTIONS => {
-			// TODO
+			let t = &tag as *const _ as *const TagELFSections;
+			unsafe {
+				boot_info.elf_num = (*t).num;
+				boot_info.elf_entsize = (*t).entsize;
+				boot_info.elf_shndx = (*t).shndx;
+				boot_info.phys_elf_sections = &(*t).sections as *const _;
+				let ptr = memory::kern_to_virt(boot_info.phys_elf_sections as *const _);
+				boot_info.elf_sections = ptr as *const _;
+			}
 		},
 
 		// TODO
@@ -448,7 +470,7 @@ pub fn read_tags(ptr: *const Void) {
 	unsafe {
 		let mut tag = (ptr.offset(8)) as *const Tag;
 		while (*tag).type_ != TAG_TYPE_END {
-			handle_tag(tag);
+			handle_tag(&mut BOOT_INFO, tag);
 			tag = (tag as *const u8).offset((((*tag).size + 7) & !7) as isize) as *const Tag;
 		}
 	}
