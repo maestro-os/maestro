@@ -67,7 +67,7 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const Void) {
 	multiboot::read_tags(multiboot_ptr);
 
 	println!("Initializing memory allocation...");
-	// TODO memmap_init
+	memory::memmap::init(multiboot_ptr);
 	// TODO buddy_init
 	// TODO vmem_kernel
 

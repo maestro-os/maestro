@@ -1,5 +1,6 @@
-use super::vga;
-use super::util;
+use core::cmp::*;
+use crate::vga;
+use crate::util;
 
 /*
  * This module handles TTYs.
@@ -334,7 +335,7 @@ impl TTY {
 	 * Erases `count` characters in TTY.
 	 */
 	pub fn erase(&mut self, mut count: usize) {
-		count = util::max(count, self.prompted_chars);
+		count = max(count, self.prompted_chars);
 		if count == 0 {
 			return;
 		}

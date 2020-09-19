@@ -89,30 +89,6 @@ pub fn sqrt(n: Umax) -> Umax {
 }
 
 /*
- * Returns the absolute value for the given `i`.
- */
-#[inline(always)]
-pub fn abs(i: Imax) -> Imax {
-	if i < 0 { i } else { i }
-}
-
-/*
- * Returns the lowest value between `a` and `b`.
- */
-#[inline(always)]
-pub fn min<T: core::cmp::PartialOrd>(a: T, b: T) -> T {
-	if a < b { a } else { b }
-}
-
-/*
- * Returns the greatest value between `a` and `b`.
- */
-#[inline(always)]
-pub fn max<T: core::cmp::PartialOrd>(a: T, b: T) -> T {
-	if a > b { a } else { b }
-}
-
-/*
  * Returns the of a type in bits.
  */
 #[inline(always)]

@@ -2,6 +2,7 @@
  * TODO Documentation
  */
 
+pub mod memmap;
 pub mod vmem;
 
 /*
@@ -101,9 +102,9 @@ pub const PROCESS_END: *const Void = 0xc0000000 as *const _;
  * Returns a pointer to the beginning of the kernel in the virtual address space.
  */
 #[inline(always)]
-pub fn kernel_virtual_begin() -> *const Void {
+pub fn get_kernel_virtual_begin() -> *const Void {
 	unsafe {
-		&kernel_begin as *const Void
+		&kernel_begin as *const _
 	}
 }
 
@@ -111,9 +112,29 @@ pub fn kernel_virtual_begin() -> *const Void {
  * Returns the size of the kernel image in bytes.
  */
 #[inline(always)]
-pub fn kernel_size() -> usize {
+pub fn get_kernel_size() -> usize {
 	unsafe {
 		(&kernel_end as *const _ as usize) - (&kernel_begin as *const _ as usize)
+	}
+}
+
+/*
+ * Returns the end of the kernel image in the physical memory.
+ */
+#[inline(always)]
+pub fn get_kernel_end() -> *const Void {
+	unsafe {
+		KERNEL_PHYS_BEGIN.offset(get_kernel_size() as isize)
+	}
+}
+
+/*
+ * Returns the end of the kernel image in the virtual memory.
+ */
+#[inline(always)]
+pub fn get_kernel_virtual_end() -> *const Void {
+	unsafe {
+		get_kernel_virtual_begin().offset(get_kernel_size() as isize)
 	}
 }
 

@@ -3,7 +3,7 @@
  */
 
 use crate::memory::Void;
-use crate::memory;
+//use crate::memory;
 
 pub const BOOTLOADER_MAGIC: u32 = 0x36d76289;
 pub const TAG_ALIGN: usize = 8;
@@ -122,9 +122,9 @@ struct Color {
 
 #[repr(C)]
 pub struct MmapEntry {
-	addr: u64,
-	len: u64,
-	type_: u32,
+	pub addr: u64,
+	pub len: u64,
+	pub type_: u32,
 	zero: u32,
 }
 
@@ -369,8 +369,6 @@ pub struct BootInfo {
 	/* TODO */
 	pub elf_shndx: u32,
 	/* TODO */
-	pub phys_elf_sections: *const Void,
-	/* TODO */
 	pub elf_sections: *const Void,
 
 	// TODO
@@ -379,7 +377,7 @@ pub struct BootInfo {
 /*
  * The field storing the informations given to the kernel at boot time.
  */
-pub static mut BOOT_INFO: BootInfo = BootInfo {
+static mut BOOT_INFO: BootInfo = BootInfo {
 	cmdline: "",
 	loader_name: "",
 	mem_lower: 0,
@@ -390,16 +388,41 @@ pub static mut BOOT_INFO: BootInfo = BootInfo {
 	elf_num: 0,
 	elf_entsize: 0,
 	elf_shndx: 0,
-	phys_elf_sections: 0 as *const _,
 	elf_sections: 0 as *const _,
 };
 
 /*
- * TODO
+ * Returns the boot informations provided by Multiboot.
  */
-fn tags_size(_ptr: *const Void) -> usize {
-	// TODO
-	0
+pub fn get_boot_info() -> &'static BootInfo {
+	unsafe {
+		&BOOT_INFO
+	}
+}
+
+/*
+ * Returns the pointer to the next Multiboot tag after the given tag.
+ */
+fn next_tag(tag: *const Tag) -> *const Tag {
+	unsafe {
+		((tag as usize) + ((((*tag).size + 7) & !7) as usize)) as *const _
+	}
+}
+
+/*
+ * Returns the size in bytes of Multiboot tags pointed by `ptr`.
+ */
+pub fn get_tags_size(ptr: *const Void) -> usize {
+	assert!(ptr as usize != 0);
+
+	unsafe {
+		let mut tag = ptr.offset(8) as *const Tag;
+		while (*tag).type_ != TAG_TYPE_END {
+			tag = next_tag(tag);
+		}
+		tag = next_tag(tag);
+		(tag as usize) - (ptr as usize)
+	}
 }
 
 /*
@@ -410,7 +433,7 @@ fn handle_tag(boot_info: &mut BootInfo, tag: *const Tag) {
 	match type_ {
 		TAG_TYPE_CMDLINE => {
 			/*let t = &tag as *const _ as *const TagString;
-			let ptr = memory::kern_to_virt(&(*t).string as *const Void);
+			let ptr = &(*t).string;
 			boot_info.cmdline = &*(ptr as *const _ as *const [u8] as *const str);*/
 			// TODO
 		},
@@ -440,8 +463,7 @@ fn handle_tag(boot_info: &mut BootInfo, tag: *const Tag) {
 			unsafe {
 				boot_info.memory_maps_size = (*t).size as usize;
 				boot_info.memory_maps_entry_size = (*t).entry_size as usize;
-				let ptr = memory::kern_to_virt(&(*t).entries as *const _ as *const _);
-				boot_info.memory_maps = ptr as *const _;
+				boot_info.memory_maps = &(*t).entries as *const _;
 			}
 		},
 
@@ -451,9 +473,7 @@ fn handle_tag(boot_info: &mut BootInfo, tag: *const Tag) {
 				boot_info.elf_num = (*t).num;
 				boot_info.elf_entsize = (*t).entsize;
 				boot_info.elf_shndx = (*t).shndx;
-				boot_info.phys_elf_sections = &(*t).sections as *const _;
-				let ptr = memory::kern_to_virt(boot_info.phys_elf_sections as *const _);
-				boot_info.elf_sections = ptr as *const _;
+				boot_info.elf_sections = &(*t).sections as *const _;
 			}
 		},
 
@@ -471,7 +491,7 @@ pub fn read_tags(ptr: *const Void) {
 		let mut tag = (ptr.offset(8)) as *const Tag;
 		while (*tag).type_ != TAG_TYPE_END {
 			handle_tag(&mut BOOT_INFO, tag);
-			tag = (tag as *const u8).offset((((*tag).size + 7) & !7) as isize) as *const Tag;
+			tag = next_tag(tag);
 		}
 	}
 }
