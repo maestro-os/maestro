@@ -2,7 +2,7 @@
  * TODO doc
  */
 
-use crate::memory::Void;
+use crate::memory::*;
 //use crate::memory;
 
 pub const BOOTLOADER_MAGIC: u32 = 0x36d76289;
@@ -342,6 +342,38 @@ struct TagLoadBaseAddr {
 	load_base_addr: u32,
 }
 
+impl MmapEntry {
+	/*
+	 * Tells if a Multiboot mmap entry is valid.
+	 */
+	pub fn is_valid(&self) -> bool {
+		(self.addr + self.len) < ((1 as u64) << (4 * 8))
+	}
+
+	/*
+	 * Returns the string describing the memory region according to its type.
+	 */
+	pub fn get_type_string(&self) -> &'static str {
+		match self.type_ {
+			MEMORY_AVAILABLE => "Available",
+			MEMORY_RESERVED => "Reserved",
+			MEMORY_ACPI_RECLAIMABLE => "ACPI",
+			MEMORY_NVS => "Hibernate",
+			MEMORY_BADRAM => "Bad RAM",
+			_ => "Unknown",
+		}
+	}
+}
+
+impl Tag {
+	/*
+	 * Returns the pointer to the next Multiboot tag after the current tag.
+	 */
+	pub fn next(&self) -> *const Self {
+		((self as *const _ as usize) + (((self.size + 7) & !7) as usize)) as *const _
+	}
+}
+
 /*
  * Structure representing the informations given to the kernel at boot time.
  */
@@ -401,26 +433,17 @@ pub fn get_boot_info() -> &'static BootInfo {
 }
 
 /*
- * Returns the pointer to the next Multiboot tag after the given tag.
- */
-fn next_tag(tag: *const Tag) -> *const Tag {
-	unsafe {
-		((tag as usize) + ((((*tag).size + 7) & !7) as usize)) as *const _
-	}
-}
-
-/*
  * Returns the size in bytes of Multiboot tags pointed by `ptr`.
  */
 pub fn get_tags_size(ptr: *const Void) -> usize {
-	assert!(ptr as usize != 0);
+	debug_assert!(ptr != NULL);
 
 	unsafe {
 		let mut tag = ptr.offset(8) as *const Tag;
 		while (*tag).type_ != TAG_TYPE_END {
-			tag = next_tag(tag);
+			tag = (*tag).next();
 		}
-		tag = next_tag(tag);
+		tag = (*tag).next();
 		(tag as usize) - (ptr as usize)
 	}
 }
@@ -491,7 +514,7 @@ pub fn read_tags(ptr: *const Void) {
 		let mut tag = (ptr.offset(8)) as *const Tag;
 		while (*tag).type_ != TAG_TYPE_END {
 			handle_tag(&mut BOOT_INFO, tag);
-			tag = next_tag(tag);
+			tag = (*tag).next();
 		}
 	}
 }

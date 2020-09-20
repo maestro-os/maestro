@@ -1,5 +1,7 @@
 SECTIONS
 {
+	ENTRY(multiboot_entry)
+
 /*
  * Booting stub sections
  */

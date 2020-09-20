@@ -87,15 +87,19 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const Void) {
  * Called on Rust panic.
  */
 #[panic_handler]
-fn panic(_info: &PanicInfo) -> ! {
-	panic::kernel_panic("Rust panic: panic", 0);
+fn panic(panic_info: &PanicInfo) -> ! {
+	if let Some(s) = panic_info.payload().downcast_ref::<&str>() {
+		panic::kernel_panic(s, 0); // TODO Use a specific panic function for Rust?
+	} else {
+		panic::kernel_panic("Rust panic (no payload)", 0);
+	}
 }
 
 /*
- * TODO
+ * TODO doc
  */
 #[lang = "eh_personality"]
 fn eh_personality() {
-	panic::kernel_panic("Rust panic: eh_personality", 0);
+	// TODO Do something?
 }
 

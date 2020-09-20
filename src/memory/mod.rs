@@ -11,6 +11,11 @@ pub mod vmem;
 pub type Void = u8;
 
 /*
+ * Null pointer of type *const Void.
+ */
+pub const NULL: *const Void = 0x0 as _;
+
+/*
  * The size of a page in bytes.
  */
 pub const PAGE_SIZE: usize = 0x1000;

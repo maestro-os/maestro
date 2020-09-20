@@ -3,7 +3,7 @@
  */
 
 use core::cmp::*;
-use crate::memory::Void;
+use crate::memory::*;
 use crate::memory;
 use crate::multiboot;
 use crate::panic;
@@ -53,18 +53,11 @@ pub fn get_info() -> &'static MemoryInfo {
 }
 
 /*
- * Tells if a Multiboot mmap entry is valid.
- */
-fn is_valid_entry(entry: &multiboot::MmapEntry) -> bool {
-	entry.addr + entry.len < (1 as u64) << (4 * 8)
-}
-
-/*
  * Prints the memory mapping.
  */
 pub fn print_entries() {
 	let mem_info = get_info();
-	assert!(mem_info.memory_maps as usize != 0);
+	debug_assert!(mem_info.memory_maps as *const _ != NULL);
 
 	::println!("--- Memory mapping ---");
 	::println!("<begin> <end> <type>");
@@ -72,10 +65,10 @@ pub fn print_entries() {
 	let mut t = mem_info.memory_maps;
 	while (t as usize) < (mem_info.memory_maps as usize) + (mem_info.memory_maps_size as usize) {
 		unsafe {
-			if is_valid_entry(&*t) {
+			if (*t).is_valid() {
 				let begin = (*t).addr as *const Void;
 				let end = (((*t).addr as usize) + ((*t).len as usize)) as *const Void;
-				let type_ = get_type_string((*t).type_);
+				let type_ = (*t).get_type_string();
 				::println!("- {:p} {:p} {}", begin, end, type_);
 			}
 		}
@@ -100,14 +93,15 @@ fn get_phys_alloc_begin(multiboot_ptr: *const Void) -> *const Void {
  */
 fn get_memory_end() -> *const Void {
 	let mem_info = get_info();
-	assert!((mem_info.memory_maps as usize) != 0);
+	debug_assert!(mem_info.memory_maps as *const _ != NULL);
 
 	let mut t = mem_info.memory_maps;
 	let mut end: usize = 0;
 
 	while (t as usize) < (mem_info.memory_maps as usize) + (mem_info.memory_maps_size as usize) {
+		::println!("{:p}", t);
 		unsafe {
-			if is_valid_entry(&*t) {
+			if (*t).is_valid() {
 				end = max(end, ((*t).addr as usize) + ((*t).len as usize));
 			}
 		}
@@ -135,19 +129,5 @@ pub fn init(multiboot_ptr: *const Void) {
 		}
 		MEM_INFO.available_memory = (MEM_INFO.phys_alloc_end as usize)
 			- (MEM_INFO.phys_alloc_begin as usize);
-	}
-}
-
-/*
- * Returns the string describing a memory region according to its type.
- */
-fn get_type_string(t: u32) -> &'static str {
-	match t {
-		multiboot::MEMORY_AVAILABLE => "Available",
-		multiboot::MEMORY_RESERVED => "Reserved",
-		multiboot::MEMORY_ACPI_RECLAIMABLE => "ACPI",
-		multiboot::MEMORY_NVS => "Hibernate",
-		multiboot::MEMORY_BADRAM => "Bad RAM",
-		_ => "Unknown",
 	}
 }

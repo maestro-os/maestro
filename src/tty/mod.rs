@@ -308,7 +308,7 @@ impl TTY {
 			_ => {
 				let tty_char = (c as vga::Char) | ((self.current_color as vga::Char) << 8);
 				let pos = history_pos(self.cursor_x, self.cursor_y);
-				assert!(pos < HISTORY_SIZE as usize);
+				debug_assert!(pos < HISTORY_SIZE as usize);
 				self.history[pos] = tty_char;
 				self.cursor_forward(1, 0);
 			}

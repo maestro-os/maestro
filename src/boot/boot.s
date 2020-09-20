@@ -25,6 +25,7 @@
  */
 .set STACK_SIZE,	32768
 
+.global multiboot_entry
 .global boot_stack_top
 
 .extern switch_protected

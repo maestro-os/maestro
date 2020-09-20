@@ -18,7 +18,7 @@ DEBUG_FLAGS = -D KERNEL_DEBUG -D KERNEL_DEBUG_SANITY -D KERNEL_SELFTEST #-D KERN
 # The C language compiler
 CC = i686-elf-gcc
 # The C language compiler flags
-CFLAGS = -nostdlib -ffreestanding -fstack-protector-strong -mno-red-zone -Wall -Wextra -Werror -lgcc
+CFLAGS = -nostdlib -ffreestanding -fstack-protector-strong -fno-pic -mno-red-zone -Wall -Wextra -Werror -lgcc
 #ifeq ($(KERNEL_MODE), release)
 #CFLAGS += -O3
 #else
@@ -30,18 +30,15 @@ RUSTC = rustc
 # The Rust language compiler flags
 RUSTFLAGS = --emit=obj --target=$(TARGET) -Z macro-backtrace
 ifeq ($(KERNEL_MODE), release)
-RUSTFLAGS += -O
+RUSTFLAGS += -C debuginfo=0 -C opt-level=3
 else
-RUSTFLAGS += -g
+RUSTFLAGS += -C debuginfo=2 -C opt-level=0
 endif
 
 # The linker program
 LD = i686-elf-ld
 # The linker program flags
-LDFLAGS =
-ifeq ($(KERNEL_MODE), release)
-#LDFLAGS += --gc-sections
-endif
+LDFLAGS = --gc-sections
 
 # The strip program
 STRIP = strip
