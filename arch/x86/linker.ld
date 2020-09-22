@@ -34,23 +34,23 @@ SECTIONS
  */
 		kernel_begin = .;
 
-		*(.text)
+		*(.text*)
 	}
 
 	.rodata ALIGN(4K) : AT (ADDR (.rodata) - 0xc0000000)
 	{
-		*(.rodata)
+		*(.rodata*)
 	}
 
 	.data ALIGN(4K) : AT (ADDR (.data) - 0xc0000000)
 	{
-		*(.data)
+		*(.data*)
 	}
 
 	.bss ALIGN(4K) : AT (ADDR (.bss) - 0xc0000000)
 	{
 		*(COMMON)
-		*(.bss)
+		*(.bss*)
 
 /*
  * Symbol at the end of the kernel image
