@@ -10,9 +10,10 @@ use crate::util;
  */
 #[macro_export]
 macro_rules! register_get {
-	($reg:literal) => {{
+	($reg:expr) => {{
 		let mut val: u32;
-		unsafe { llvm_asm!(concat!("mov %%", $reg, ", %0") : "=a"(val)); }
+		llvm_asm!(concat!("mov %", $reg, ", %eax") : "={eax}"(val));
+
 		val
 	}};
 }
@@ -61,16 +62,15 @@ pub fn print_callstack(ebp: *const u32, max_depth: usize) {
 
 	let mut i: usize = 0;
 	let mut ebp_ = ebp;
-	let mut eip = 0 as *const Void;
 	while ebp_ != 0 as *const u32 && i < max_depth {
 		// TODO
 		/*if !memory::vmem::is_mapped(memory::kern_to_virt(memory::cr3_get()), ebp_) {
 			break;
 		}*/
-		unsafe {
-			eip = *((ebp_ as usize + 4) as *const u32) as *const _;
-		}
-		if eip != (0 as *const _) {
+		let eip = unsafe {
+			*((ebp_ as usize + core::mem::size_of::<usize>()) as *const u32) as *const _
+		};
+		if eip == (0 as *const _) {
 			break;
 		}
 		::println!("{}: {:p} -> {}", i, eip, get_function_name(eip));
@@ -81,9 +81,7 @@ pub fn print_callstack(ebp: *const u32, max_depth: usize) {
 	}
 	if i == 0 {
 		::println!("Empty");
-	} else if ebp_ != (0 as *const _) && eip != (0 as *const _) {
+	} else if ebp_ != (0 as *const _) {
 		::println!("...");
 	}
 }
-
-// TODO

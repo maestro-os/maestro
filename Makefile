@@ -120,7 +120,7 @@ $(OBJ_DIR)%.c.o: $(SRC_DIR)%.c $(HDR) Makefile
 
 # The rule to compile Rust language objects
 $(RUST_MAIN_OBJ): $(RUST_SRC) $(LIBCORE) Makefile $(TARGET)
-	$(RUSTC) $(RUSTFLAGS) -L rust/ -o $@ --extern core=$(LIBCORE) $(RUST_MAIN)
+	$(RUSTC) $(RUSTFLAGS) -L rust/ -o $@ --extern core=$(LIBCORE) --cfg kernel_mode=\"$(KERNEL_MODE)\" $(RUST_MAIN)
 
 # The rule to compile Rust libcore
 $(LIBCORE):

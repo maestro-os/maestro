@@ -6,7 +6,6 @@ use core::cmp::*;
 use crate::memory::*;
 use crate::memory;
 use crate::multiboot;
-use crate::panic;
 use crate::util;
 
 /*
@@ -125,7 +124,7 @@ pub fn init(multiboot_ptr: *const Void) {
 		MEM_INFO.phys_alloc_end = util::down_align((boot_info.mem_upper * 1024) as *const _,
 			memory::PAGE_SIZE);
 		if MEM_INFO.phys_alloc_begin >= MEM_INFO.phys_alloc_end {
-			panic::kernel_panic("Invalid memory map!", 0);
+			::kernel_panic!("Invalid memory map!", 0);
 		}
 		MEM_INFO.available_memory = (MEM_INFO.phys_alloc_end as usize)
 			- (MEM_INFO.phys_alloc_begin as usize);

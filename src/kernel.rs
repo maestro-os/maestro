@@ -56,7 +56,7 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const Void) {
 	tty::init();
 
 	if magic != multiboot::BOOTLOADER_MAGIC || !util::is_aligned(multiboot_ptr, 8) {
-		panic::kernel_panic("Bootloader non compliant with Multiboot2!", 0);
+		::kernel_panic!("Bootloader non compliant with Multiboot2!", 0);
 	}
 
 	idt::init();
@@ -86,12 +86,15 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const Void) {
 /*
  * Called on Rust panic.
  */
+// TODO Replace by a macro?
+// TODO Use debug panic only when compiled in debug mode
 #[panic_handler]
 fn panic(panic_info: &PanicInfo) -> ! {
 	if let Some(s) = panic_info.payload().downcast_ref::<&str>() {
-		panic::kernel_panic(s, 0); // TODO Use a specific panic function for Rust?
+		// TODO Use a specific panic function for Rust?
+		::kernel_panic!(s, 0);
 	} else {
-		panic::kernel_panic("Rust panic (no payload)", 0);
+		::kernel_panic!("Rust panic (no payload)", 0);
 	}
 }
 

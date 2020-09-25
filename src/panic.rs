@@ -14,10 +14,16 @@ use kernel_halt;
  * Macro triggering a kernel panic.
  */
 #[macro_export]
-macro_rules! panic {
-	() => (crate::panic::kernel_panic("Unknown", 0));
-	($reason:literal) => (crate::panic::kernel_panic($reason, 0));
-	($reason:literal, $code:literal) => (crate::panic::kernel_panic($reason, $code));
+macro_rules! kernel_panic {
+	() => {
+		crate::panic::kernel_panic_("Unknown", 0, file!(), line!(), column!())
+	};
+	($reason:expr) => {
+		crate::panic::kernel_panic_($reason, 0, file!(), line!(), column!())
+	};
+	($reason:expr, $code:expr) => {
+		crate::panic::kernel_panic_($reason, $code, file!(), line!(), column!())
+	};
 }
 
 /*
@@ -36,7 +42,8 @@ fn print_panic(reason: &str, code: u32) {
 /*
  * TODO doc
  */
-pub fn kernel_panic(reason: &str, code: u32) -> ! {
+#[cfg(kernel_mode = "release")]
+pub fn kernel_panic_(reason: &str, code: u32, _file: &str, _line: u32, _col: u32) -> ! {
 	::cli!();
 	print_panic(reason, code);
 	unsafe {
@@ -47,13 +54,15 @@ pub fn kernel_panic(reason: &str, code: u32) -> ! {
 /*
  * TODO doc
  */
-pub fn kernel_panic_(reason: &str, code: u32, file: &str, line: u32) -> ! {
+#[cfg(kernel_mode = "debug")]
+pub fn kernel_panic_(reason: &str, code: u32, file: &str, line: u32, col: u32) -> ! {
 	::cli!();
 	print_panic(reason, code);
-	::println!("\n-- DEBUG --\nFile: {}; Line: {}", file, line);
+	::println!("\n-- DEBUG --\nFile: {}; Line: {}; Column: {}", file, line, col);
 	// TODO Print running process registers
 	::println!();
-	debug::print_callstack(::register_get!("ebp") as *const _, 8);
+	let ebp = unsafe { ::register_get!("ebp") as *const _ };
+	debug::print_callstack(ebp, 8);
 	unsafe {
 		kernel_halt();
 	}
