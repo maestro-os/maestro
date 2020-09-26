@@ -225,3 +225,11 @@ impl Spinlock {
 		}
 	}
 }
+
+extern "C" {
+	pub fn memcpy(dest: *mut Void, src: *const Void, n: usize) -> *mut Void;
+	pub fn memcmp(s1: *const Void, s2: *const Void, n: usize) -> i32;
+	pub fn memset(s: *mut Void, c: i32, n: usize) -> *mut Void;
+
+	pub fn bzero(s: *mut Void, n: usize);
+}

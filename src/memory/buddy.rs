@@ -9,6 +9,7 @@
  * size of a frame in pages.
  */
 
+use crate::memory::NULL;
 use crate::memory::Void;
 use crate::memory;
 use crate::util;
@@ -16,11 +17,11 @@ use crate::util;
 /*
  * Type representing the order of a memory frame.
  */
-type FrameOrder = u8;
+pub type FrameOrder = u8;
 /*
  * Type representing buddy allocator flags.
  */
-type Flags = i32;
+pub type Flags = i32;
 
 /*
  * The maximum order of a buddy allocated frame.
@@ -46,12 +47,70 @@ pub const FLAG_ZONE_DMA: Flags = 0b010;
  */
 pub const FLAG_NOFAIL: Flags = 0b100;
 
+/*
+ * Structure representing an allocatable zone of memory.
+ */
+struct Zone {
+	/* TODO doc */
+	type_: Flags,
+	/* TODO doc */
+	spinlock: util::Spinlock, // TODO Use a semaphore
+	/* TODO doc */
+	allocated_pages: usize,
+
+	/* TODO doc */
+	begin: *mut Void,
+	/* TODO doc */
+	size: usize,
+}
+
+impl Zone {
+	/*
+	 * Creates a new instance of zone with type `type_`. The zone covers the memory from pointer `begin` to
+	 * `begin + size` where `size` if the size in bytes.
+	 */
+	pub fn new(type_: Flags, begin: *mut Void, size: usize) -> Self {
+		Self {
+			type_: type_,
+			spinlock: util::Spinlock::new(),
+			allocated_pages: 0,
+
+			begin: begin,
+			size: size,
+		}
+	}
+
+	/*
+	 * Creates a fake Zone. This function is only meant to fill the global variable array until it gets really filled
+	 * by the initialization function.
+	 */
+	pub const fn fake() -> Self {
+		Self {
+			type_: 0,
+			spinlock: util::Spinlock::new(),
+			allocated_pages: 0,
+			begin: 0 as _,
+			size: 0,
+		}
+	}
+
+	/*
+	 * Returns the number of allocated pages in the current zone of memory.
+	 */
+	pub fn get_allocated_pages(&self) -> usize {
+		self.allocated_pages
+	}
+
+	// TODO
+}
+
 // TODO OOM killer
 
-/*
- * The spinlock used for buddy allocator operations.
- */
-static SPINLOCK: util::Spinlock = util::Spinlock::new();
+static mut ZONES: [Zone; 3] = [
+	Zone::fake(),
+	Zone::fake(),
+	Zone::fake(),
+];
 
 /*
  * The size in bytes of a frame allocated by the buddy allocator with the given `order`.
@@ -71,31 +130,37 @@ pub fn get_order(pages: usize) -> FrameOrder {
 		i *= 2;
 		order += 1;
 	}
-	return order;
-
+	order
 }
 
 /*
  * Initializes the buddy allocator.
  */
 pub fn init() {
-	// TODO
+	// TODO Initialize zones
 }
 
 /*
  * Allocates a frame of memory using the buddy allocator.
  */
-pub fn alloc(_order: FrameOrder, _flags: Flags) -> *const Void {
+pub fn alloc(_order: FrameOrder, _flags: Flags) -> *mut Void {
 	// TODO
-	memory::NULL
+	memory::NULL as _
 }
 
 /*
  * Uses `alloc` and zeroes the allocated frame.
  */
-pub fn alloc_zero(_order: FrameOrder, _flags: Flags) -> *const Void {
-	// TODO
-	memory::NULL
+pub fn alloc_zero(order: FrameOrder, flags: Flags) -> *mut Void {
+	let ptr = alloc(order, flags);
+
+	if ptr != (NULL as _) {
+		let len = get_frame_size(order);
+		unsafe {
+			util::bzero(ptr, len);
+		}
+	}
+	ptr
 }
 
 /*
@@ -110,6 +175,12 @@ pub fn free(_ptr: *const Void, _order: FrameOrder) {
  * Returns the total number of pages allocated by the buddy allocator.
  */
 pub fn allocated_pages() -> usize {
-	// TODO
-	0
+	let mut n = 0;
+
+	unsafe {
+		for i in 0..ZONES.len() {
+			n += ZONES[i].get_allocated_pages();
+		}
+	}
+	n
 }
