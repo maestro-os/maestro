@@ -1,7 +1,9 @@
-//use crate::debug;
+#[cfg(kernel_mode = "debug")]
+use crate::debug;
+
 use crate::memory;
 use crate::memory::Void;
-//use crate::tty;
+use crate::tty;
 use kernel_halt;
 
 /*
@@ -57,13 +59,13 @@ pub fn kernel_panic_(reason: &str, code: u32, _file: &str, _line: u32, _col: u32
 #[cfg(kernel_mode = "debug")]
 pub fn kernel_panic_(reason: &str, code: u32, file: &str, line: u32, col: u32) -> ! {
 	::cli!();
-	//tty::init();
+	tty::init();
 	print_panic(reason, code);
 	::println!("\n-- DEBUG --\nFile: {}; Line: {}; Column: {}", file, line, col);
 	// TODO Print running process registers
 	::println!();
-	//let ebp = unsafe { ::register_get!("ebp") as *const _ };
-	//debug::print_callstack(ebp, 8);
+	let ebp = unsafe { ::register_get!("ebp") as *const _ };
+	debug::print_callstack(ebp, 8);
 	unsafe {
 		kernel_halt();
 	}

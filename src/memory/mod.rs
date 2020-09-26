@@ -2,6 +2,7 @@
  * TODO Documentation
  */
 
+pub mod buddy;
 pub mod memmap;
 pub mod vmem;
 
