@@ -27,6 +27,7 @@
 
 .global multiboot_entry
 .global boot_stack_top
+.global boot_stack_bottom
 
 .extern switch_protected
 .extern _init
@@ -98,5 +99,7 @@ multiboot_entry:
 /*
  * The kernel stack.
  */
+boot_stack_bottom:
+.size boot_stack_top, STACK_SIZE
 .skip STACK_SIZE
 boot_stack_top:

@@ -32,6 +32,9 @@ use core::panic::PanicInfo;
 
 use memory::Void;
 
+/*
+ * Current kernel version.
+ */
 const KERNEL_VERSION: &'static str = "1.0";
 
 extern "C" {
@@ -68,6 +71,7 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const Void) {
 
 	println!("Initializing memory allocation...");
 	memory::memmap::init(multiboot_ptr);
+	memory::memmap::print_entries(); // TODO rm
 	// TODO buddy_init
 	// TODO vmem_kernel
 

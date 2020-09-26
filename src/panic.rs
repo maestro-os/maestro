@@ -1,4 +1,4 @@
-use crate::debug;
+//use crate::debug;
 use crate::memory;
 use crate::memory::Void;
 //use crate::tty;
@@ -62,8 +62,8 @@ pub fn kernel_panic_(reason: &str, code: u32, file: &str, line: u32, col: u32) -
 	::println!("\n-- DEBUG --\nFile: {}; Line: {}; Column: {}", file, line, col);
 	// TODO Print running process registers
 	::println!();
-	let ebp = unsafe { ::register_get!("ebp") as *const _ };
-	debug::print_callstack(ebp, 8);
+	//let ebp = unsafe { ::register_get!("ebp") as *const _ };
+	//debug::print_callstack(ebp, 8);
 	unsafe {
 		kernel_halt();
 	}

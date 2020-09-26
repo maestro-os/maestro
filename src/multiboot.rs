@@ -347,7 +347,6 @@ impl MmapEntry {
 	 * Tells if a Multiboot mmap entry is valid.
 	 */
 	pub fn is_valid(&self) -> bool {
-		::println!("{:p} {} {}", self as *const _, self.addr, self.len);
 		(self.addr + self.len) < ((1 as u64) << (4 * 8))
 	}
 
@@ -456,7 +455,7 @@ fn handle_tag(boot_info: &mut BootInfo, tag: *const Tag) {
 	let type_ = unsafe { (*tag).type_ };
 	match type_ {
 		TAG_TYPE_CMDLINE => {
-			/*let t = &tag as *const _ as *const TagString;
+			/*let t = tag as *const _ as *const TagString;
 			let ptr = &(*t).string;
 			boot_info.cmdline = &*(ptr as *const _ as *const [u8] as *const str);*/
 			// TODO
@@ -471,8 +470,8 @@ fn handle_tag(boot_info: &mut BootInfo, tag: *const Tag) {
 		},
 
 		TAG_TYPE_BASIC_MEMINFO => {
-			let t = &tag as *const _ as *const TagBasicMeminfo;
 			unsafe {
+				let t = tag as *const _ as *const TagBasicMeminfo;
 				boot_info.mem_lower = (*t).mem_lower;
 				boot_info.mem_upper = (*t).mem_upper;
 			}
@@ -483,8 +482,8 @@ fn handle_tag(boot_info: &mut BootInfo, tag: *const Tag) {
 		},
 
 		TAG_TYPE_MMAP => {
-			let t = &tag as *const _ as *const TagMmap;
 			unsafe {
+				let t = tag as *const _ as *const TagMmap;
 				boot_info.memory_maps_size = (*t).size as usize;
 				boot_info.memory_maps_entry_size = (*t).entry_size as usize;
 				boot_info.memory_maps = &(*t).entries as *const _;
@@ -492,8 +491,8 @@ fn handle_tag(boot_info: &mut BootInfo, tag: *const Tag) {
 		},
 
 		TAG_TYPE_ELF_SECTIONS => {
-			let t = &tag as *const _ as *const TagELFSections;
 			unsafe {
+				let t = tag as *const _ as *const TagELFSections;
 				boot_info.elf_num = (*t).num;
 				boot_info.elf_entsize = (*t).entsize;
 				boot_info.elf_shndx = (*t).shndx;
