@@ -1,6 +1,5 @@
 use core::cmp::*;
 use crate::vga;
-use crate::util;
 
 /*
  * This module handles TTYs.
@@ -64,8 +63,6 @@ const fn get_tab_size(cursor_x: vga::Pos) -> usize {
 /*
  * Structure representing a TTY.
  */
-#[derive(Copy)]
-#[derive(Clone)]
 pub struct TTY
 {
 	/* The id of the TTY*/
@@ -87,11 +84,9 @@ pub struct TTY
 	prompted_chars: usize,
 	/* Tells whether TTY updates are enabled or not */
 	update: bool,
-
-	/* The spinlock for the TTY */
-	spinlock: util::Spinlock,
 }
 
+// TODO Wrap into mutexes
 /*
  * The array of every TTYs.
  */
@@ -104,7 +99,6 @@ static mut TTYS: &'static mut [TTY; TTYS_COUNT] = &mut[TTY {
 		history: [0; HISTORY_SIZE],
 		prompted_chars: 0,
 		update: true,
-		spinlock: util::Spinlock::new(),
 	}; TTYS_COUNT];
 /*
  * The current TTY's id.
@@ -135,7 +129,7 @@ pub fn switch(tty: usize) {
 		CURRENT_TTY = tty;
 	}
 
-	let mut t = unsafe { TTYS[tty] };
+	let t = unsafe { &mut TTYS[tty] };
 	vga::enable_cursor();
 	vga::move_cursor(t.cursor_x, t.cursor_y);
 	t.update();

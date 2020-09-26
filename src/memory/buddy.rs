@@ -54,8 +54,6 @@ struct Zone {
 	/* TODO doc */
 	type_: Flags,
 	/* TODO doc */
-	spinlock: util::Spinlock, // TODO Use a semaphore
-	/* TODO doc */
 	allocated_pages: usize,
 
 	/* TODO doc */
@@ -72,7 +70,6 @@ impl Zone {
 	pub fn new(type_: Flags, begin: *mut Void, size: usize) -> Self {
 		Self {
 			type_: type_,
-			spinlock: util::Spinlock::new(),
 			allocated_pages: 0,
 
 			begin: begin,
@@ -87,7 +84,6 @@ impl Zone {
 	pub const fn fake() -> Self {
 		Self {
 			type_: 0,
-			spinlock: util::Spinlock::new(),
 			allocated_pages: 0,
 			begin: 0 as _,
 			size: 0,
@@ -106,6 +102,11 @@ impl Zone {
 
 // TODO OOM killer
 
+// TODO Remplace by a linked list? (in case of holes in memory)
+// TODO Wrap into mutexes
+/*
+ * The array of buddy allocator zones.
+ */
 static mut ZONES: [Zone; 3] = [
 	Zone::fake(),
 	Zone::fake(),

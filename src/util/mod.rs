@@ -2,6 +2,8 @@ use crate::memory::Void;
 use crate::memory;
 use crate::tty;
 
+pub mod lock;
+
 /* Maximum size for a signed integer */
 pub type Imax = i32;
 /* Maximum size for an unsigned integer */
@@ -178,52 +180,6 @@ pub struct Regs
 	pub edx: i32,
 	pub esi: i32,
 	pub edi: i32,
-}
-
-/*
- * Extern spinlock functions.
- */
-extern "C" {
-	pub fn spin_lock(lock: *mut bool);
-	pub fn spin_unlock(lock: *mut bool);
-}
-
-/*
- * Structure representing a spinlock.
- */
-#[derive(Copy)]
-#[derive(Clone)]
-pub struct Spinlock {
-	locked: bool,
-}
-
-impl Spinlock {
-	/*
-	 * Creates a new spinlock.
-	 */
-	pub const fn new() -> Self {
-		Self {
-			locked: false,
-		}
-	}
-
-	/*
-	 * Wrapper for `spin_lock`. Locks the spinlock.
-	 */
-	pub fn lock(&mut self) {
-		unsafe {
-			spin_lock(&mut self.locked);
-		}
-	}
-
-	/*
-	 * Wrapper for `spin_unlock`. Unlocks the spinlock.
-	 */
-	pub fn unlock(&mut self) {
-		unsafe {
-			spin_unlock(&mut self.locked);
-		}
-	}
 }
 
 extern "C" {

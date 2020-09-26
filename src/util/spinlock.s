@@ -2,7 +2,7 @@
 .global spin_unlock
 
 /*
- * Locks the given spinlock.
+ * Locks the given spinlock. If the spinlock is already locked, the thread shall wait until it becomes available.
  */
 spin_lock:
 	push %ebp
@@ -26,7 +26,7 @@ spin:
 	ret
 
 /*
- * Unlocks the given spinlock.
+ * Unlocks the given spinlock. Does nothing if the spinlock is already unlocked.
  */
 spin_unlock:
 	push %ebp
