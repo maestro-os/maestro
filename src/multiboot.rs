@@ -347,6 +347,7 @@ impl MmapEntry {
 	 * Tells if a Multiboot mmap entry is valid.
 	 */
 	pub fn is_valid(&self) -> bool {
+		::println!("{:p} {} {}", self as *const _, self.addr, self.len);
 		(self.addr + self.len) < ((1 as u64) << (4 * 8))
 	}
 

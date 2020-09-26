@@ -1,7 +1,7 @@
 use crate::debug;
 use crate::memory;
 use crate::memory::Void;
-use crate::tty;
+//use crate::tty;
 use kernel_halt;
 
 /*
@@ -30,7 +30,6 @@ macro_rules! kernel_panic {
  * Initializes the TTY and prints a panic message.
  */
 fn print_panic(reason: &str, code: u32) {
-	tty::init();
 	::println!("--- KERNEL PANIC ---\n");
 	::println!("Kernel has been forced to halt due to internal problem, sorry :/");
 	::println!("Reason: {}", reason);
@@ -45,6 +44,7 @@ fn print_panic(reason: &str, code: u32) {
 #[cfg(kernel_mode = "release")]
 pub fn kernel_panic_(reason: &str, code: u32, _file: &str, _line: u32, _col: u32) -> ! {
 	::cli!();
+	tty::init();
 	print_panic(reason, code);
 	unsafe {
 		kernel_halt();
@@ -57,6 +57,7 @@ pub fn kernel_panic_(reason: &str, code: u32, _file: &str, _line: u32, _col: u32
 #[cfg(kernel_mode = "debug")]
 pub fn kernel_panic_(reason: &str, code: u32, file: &str, line: u32, col: u32) -> ! {
 	::cli!();
+	//tty::init();
 	print_panic(reason, code);
 	::println!("\n-- DEBUG --\nFile: {}; Line: {}; Column: {}", file, line, col);
 	// TODO Print running process registers

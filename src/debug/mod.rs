@@ -38,8 +38,35 @@ pub fn print_regs(regs: &util::Regs) {
  * Prints, in hexadecimal, the content of the memory at the given location `ptr`, with the given
  * size `n` in bytes.
  */
-pub fn print_memory(_ptr: &str, _n: usize) {
-	// TODO
+pub unsafe fn print_memory(ptr: *const Void, n: usize) {
+	let mut i = 0;
+	while i < n {
+		::print!("{:p}  ", ptr);
+
+		let mut j = 0;
+		while j < 16 && i + j < n {
+			::println!("{:x?} ", *(((ptr as usize) + (i + j)) as *const u8));
+			j += 1;
+		}
+
+		::print!(" |");
+
+		j = 0;
+		while j < 16 && i + j < n {
+			let v = *(((ptr as usize) + (i + j)) as *const u8);
+			let c = if v < 32 {
+				'.'
+			} else {
+				v as char
+			};
+			::println!("{}", c);
+			j += 1;
+		}
+
+		::println!("|");
+
+		i += j;
+	}
 }
 
 /*

@@ -98,7 +98,6 @@ fn get_memory_end() -> *const Void {
 	let mut end: usize = 0;
 
 	while (t as usize) < (mem_info.memory_maps as usize) + (mem_info.memory_maps_size as usize) {
-		::println!("{:p}", t);
 		unsafe {
 			if (*t).is_valid() {
 				end = max(end, ((*t).addr as usize) + ((*t).len as usize));
