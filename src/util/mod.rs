@@ -128,7 +128,7 @@ struct TTYWrite {}
 
 impl core::fmt::Write for TTYWrite {
 	fn write_str(&mut self, s: &str) -> Result<(), core::fmt::Error> {
-		tty::current().write(s);
+		lock::MutexGuard::new(tty::current()).get_mut().write(s);
 		Ok(())
 	}
 }

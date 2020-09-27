@@ -1,11 +1,12 @@
 use core::cmp::*;
+use crate::util::lock::Mutex;
+use crate::util::lock::MutexGuard;
 use crate::vga;
 
 /*
  * This module handles TTYs.
  */
 
-// TODO Spinlock
 // TODO Sanity checks
 // TODO Implement streams and termcaps
 
@@ -90,7 +91,7 @@ pub struct TTY
 /*
  * The array of every TTYs.
  */
-static mut TTYS: &'static mut [TTY; TTYS_COUNT] = &mut[TTY {
+static mut TTYS: &'static mut [Mutex<TTY>; TTYS_COUNT] = &mut[Mutex::<TTY>::new(TTY {
 		id: 0,
 		cursor_x: 0,
 		cursor_y: 0,
@@ -99,21 +100,39 @@ static mut TTYS: &'static mut [TTY; TTYS_COUNT] = &mut[TTY {
 		history: [0; HISTORY_SIZE],
 		prompted_chars: 0,
 		update: true,
-	}; TTYS_COUNT];
+	}); TTYS_COUNT];
 /*
  * The current TTY's id.
  */
 static mut CURRENT_TTY: usize = 0;
 
 /*
+ * Returns a mutable reference to the TTY with identifier `tty`.
+ */
+pub fn get(tty: usize) -> &'static mut Mutex<TTY> {
+	unsafe {
+		&mut TTYS[tty]
+	}
+}
+
+/*
+ * Returns a reference to the current TTY.
+ */
+pub fn current() -> &'static mut Mutex<TTY> {
+	unsafe {
+		&mut TTYS[CURRENT_TTY]
+	}
+}
+
+/*
  * Initializes every TTYs.
  */
 pub fn init() {
 	for i in 0..TTYS_COUNT {
-		unsafe {
-			TTYS[i].id = i;
-			TTYS[i].clear();
-		}
+		let mut guard = MutexGuard::new(get(i));
+		let t = guard.get_mut();
+		t.id = i;
+		t.clear();
 	}
 	switch(0);
 }
@@ -129,19 +148,11 @@ pub fn switch(tty: usize) {
 		CURRENT_TTY = tty;
 	}
 
-	let t = unsafe { &mut TTYS[tty] };
+	let mut guard = MutexGuard::new(get(tty));
+	let t = guard.get_mut();
 	vga::enable_cursor();
 	vga::move_cursor(t.cursor_x, t.cursor_y);
 	t.update();
-}
-
-/*
- * Returns a reference to the current TTY.
- */
-pub fn current() -> &'static mut TTY {
-	unsafe {
-		&mut TTYS[CURRENT_TTY]
-	}
 }
 
 impl TTY {

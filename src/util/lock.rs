@@ -50,6 +50,7 @@ impl Spinlock {
  * This structure is used to give access to a payload owned by a concurrency control structure.
  */
 pub struct LockPayload<'a, T> {
+	/* A mutable reference to the payload owned by the sturcture */
 	payload: &'a mut T,
 }
 
@@ -83,6 +84,16 @@ pub struct Mutex<T> {
 
 impl<T> Mutex<T> {
 	/*
+	 * Creates a new Mutex with the given data to be owned.
+	 */
+	pub fn new(data: T) -> Self {
+		Self {
+			spin: Spinlock::new(),
+			data: data,
+		}
+	}
+
+	/*
 	 * Locks the mutex. If the mutex is already locked, the thread shall wait until it becomes available.
 	 */
 	pub fn lock(&mut self) -> LockPayload<T> {
@@ -90,6 +101,7 @@ impl<T> Mutex<T> {
 		LockPayload::<T>::new(&mut self.data)
 	}
 
+	// TODO Protect against unlocking while the payload is still in use?
 	/*
 	 * Unlocks the mutex. Does nothing if the mutex is already unlocked.
 	 */
@@ -106,16 +118,26 @@ impl<T> Mutex<T> {
 pub struct MutexGuard<'a, T> {
 	/* The mutex associated to the guard */
 	mutex: &'a mut Mutex<T>,
+	/* The payload associated with the subsequent call to `lock` */
+	payload: LockPayload<'a, T>,
 }
 
 impl<'a, T> MutexGuard<'a, T> {
 	/*
-	 * Creates an instance of MutexGuard.
+	 * Creates an instance of MutexGuard for the given `mutex` and locks it.
 	 */
 	pub fn new(mutex: &'a mut Mutex<T>) -> Self {
 		Self {
 			mutex: mutex,
+			payload: mutex.lock(),
 		}
+	}
+
+	/*
+	 * Returns a mutable reference to the data owned by the associated Mutex.
+	 */
+	pub fn get_mut(&mut self) -> &mut T {
+		self.payload.get_mut()
 	}
 }
 
