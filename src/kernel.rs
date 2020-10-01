@@ -10,6 +10,7 @@
 #![feature(intrinsics)]
 #![feature(lang_items)]
 #![feature(llvm_asm)]
+#![feature(maybe_uninit_ref)]
 #![feature(rustc_attrs)]
 #![feature(rustc_private)]
 #![feature(untagged_unions)]

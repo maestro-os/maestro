@@ -1,4 +1,5 @@
 use core::cmp::*;
+use core::mem::MaybeUninit;
 use crate::util::lock::Mutex;
 use crate::util::lock::MutexGuard;
 use crate::vga;
@@ -91,16 +92,7 @@ pub struct TTY
 /*
  * The array of every TTYs.
  */
-static mut TTYS: &'static mut [Mutex<TTY>; TTYS_COUNT] = &mut[Mutex::<TTY>::new(TTY {
-		id: 0,
-		cursor_x: 0,
-		cursor_y: 0,
-		screen_y: 0,
-		current_color: vga::DEFAULT_COLOR,
-		history: [0; HISTORY_SIZE],
-		prompted_chars: 0,
-		update: true,
-	}); TTYS_COUNT];
+static mut TTYS: MaybeUninit<&mut [Mutex<TTY>; TTYS_COUNT]> = MaybeUninit::uninit();
 /*
  * The current TTY's id.
  */
@@ -110,8 +102,9 @@ static mut CURRENT_TTY: usize = 0;
  * Returns a mutable reference to the TTY with identifier `tty`.
  */
 pub fn get(tty: usize) -> &'static mut Mutex<TTY> {
+	debug_assert!(tty < TTYS_COUNT);
 	unsafe {
-		&mut TTYS[tty]
+		&mut (TTYS.get_mut())[tty]
 	}
 }
 
@@ -120,7 +113,8 @@ pub fn get(tty: usize) -> &'static mut Mutex<TTY> {
  */
 pub fn current() -> &'static mut Mutex<TTY> {
 	unsafe {
-		&mut TTYS[CURRENT_TTY]
+		debug_assert!(CURRENT_TTY < TTYS_COUNT);
+		&mut (TTYS.get_mut())[CURRENT_TTY]
 	}
 }
 
@@ -129,10 +123,7 @@ pub fn current() -> &'static mut Mutex<TTY> {
  */
 pub fn init() {
 	for i in 0..TTYS_COUNT {
-		let mut guard = MutexGuard::new(get(i));
-		let t = guard.get_mut();
-		t.id = i;
-		t.clear();
+		*get(i) = Mutex::new(TTY::new());
 	}
 	switch(0);
 }
@@ -156,6 +147,22 @@ pub fn switch(tty: usize) {
 }
 
 impl TTY {
+	/*
+	 * Creates a new TTY.
+	 */
+	pub fn new() -> Self {
+		Self {
+			id: 0,
+			cursor_x: 0,
+			cursor_y: 0,
+			screen_y: 0,
+			current_color: vga::DEFAULT_COLOR,
+			history: [0; HISTORY_SIZE],
+			prompted_chars: 0,
+			update: true,
+		}
+	}
+
 	/*
 	 * Returns the id of the TTY.
 	 */
