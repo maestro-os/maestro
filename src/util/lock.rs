@@ -74,8 +74,8 @@ impl<'a, T> LockPayload<'a, T> {
 
 /*
  * Mutual exclusion for protection of sensitive data.
- * A Mutex allows to ensure that one, and only thread accesses the data stored into it at the same time. Preventing race
- * conditions.
+ * A Mutex allows to ensure that one, and only thread accesses the data stored into it at the same
+ * time. Preventing race conditions.
  */
 pub struct Mutex<T> {
 	spin: Spinlock,
@@ -94,7 +94,8 @@ impl<T> Mutex<T> {
 	}
 
 	/*
-	 * Locks the mutex. If the mutex is already locked, the thread shall wait until it becomes available.
+	 * Locks the mutex. If the mutex is already locked, the thread shall wait until it becomes
+	 * available.
 	 */
 	pub fn lock(&mut self) -> LockPayload<T> {
 		self.spin.lock();
@@ -108,18 +109,24 @@ impl<T> Mutex<T> {
 	pub fn unlock(&mut self) {
 		self.spin.unlock();
 	}
+
+	/*
+	 * Returns a mutable reference to the payload. This function is unsafe because it can return
+	 * the payload while the Mutex isn't locked.
+	 */
+	unsafe fn get_mut_payload(&mut self) -> &mut T {
+		&mut self.data
+	}
 }
 
 /*
- * Type used to declare a guard meant to unlock the associated Mutex at the moment the exection gets out of the scope of
- * its declaration. This structure is useful to ensure that the mutex doesen't stay locked after the exectution of a
- * function ended.
+ * Type used to declare a guard meant to unlock the associated Mutex at the moment the execution
+ * gets out of the scope of its declaration. This structure is useful to ensure that the mutex
+ * doesen't stay locked after the exectution of a function ended.
  */
 pub struct MutexGuard<'a, T> {
 	/* The mutex associated to the guard */
 	mutex: &'a mut Mutex<T>,
-	/* The payload associated with the subsequent call to `lock` */
-	payload: LockPayload<'a, T>,
 }
 
 impl<'a, T> MutexGuard<'a, T> {
@@ -127,17 +134,20 @@ impl<'a, T> MutexGuard<'a, T> {
 	 * Creates an instance of MutexGuard for the given `mutex` and locks it.
 	 */
 	pub fn new(mutex: &'a mut Mutex<T>) -> Self {
-		Self {
+		let g = Self {
 			mutex: mutex,
-			payload: mutex.lock(),
-		}
+		};
+		g.mutex.lock();
+		g
 	}
 
 	/*
 	 * Returns a mutable reference to the data owned by the associated Mutex.
 	 */
 	pub fn get_mut(&mut self) -> &mut T {
-		self.payload.get_mut()
+		unsafe {
+			self.mutex.get_mut_payload()
+		}
 	}
 }
 

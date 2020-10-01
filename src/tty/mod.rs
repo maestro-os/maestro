@@ -35,7 +35,7 @@ const EMPTY_CHAR: vga::Char = (vga::DEFAULT_COLOR as vga::Char) << 8;
 const TAB_SIZE: usize = 4;
 
 /*
- * TODO
+ * The character to initialize ANSI escape sequences.
  */
 const ANSI_ESCAPE: char = 0x1b as char;
 
@@ -88,7 +88,6 @@ pub struct TTY
 	update: bool,
 }
 
-// TODO Wrap into mutexes
 /*
  * The array of every TTYs.
  */
@@ -96,7 +95,7 @@ static mut TTYS: MaybeUninit<&mut [Mutex<TTY>; TTYS_COUNT]> = MaybeUninit::unini
 /*
  * The current TTY's id.
  */
-static mut CURRENT_TTY: usize = 0;
+static mut CURRENT_TTY: usize = 0; // TODO Mutex
 
 /*
  * Returns a mutable reference to the TTY with identifier `tty`.
@@ -184,13 +183,15 @@ impl TTY {
 			unsafe {
 				let buff = &self.history[history_pos(0, self.screen_y)] as *const _ as *const _;
 				core::ptr::copy_nonoverlapping(buff, vga::BUFFER as *mut _,
-					(vga::WIDTH as usize) * (vga::HEIGHT as usize) * core::mem::size_of::<vga::Char>());
+					(vga::WIDTH as usize) * (vga::HEIGHT as usize)
+					* core::mem::size_of::<vga::Char>());
 			}
 		} else {
 			unsafe {
 				let buff = &self.history[history_pos(0, self.screen_y)] as *const _ as *const _;
 				core::ptr::copy_nonoverlapping(buff, vga::BUFFER as *mut _,
-					(vga::WIDTH * (HISTORY_LINES - self.screen_y)) as usize * core::mem::size_of::<vga::Char>());
+					(vga::WIDTH * (HISTORY_LINES - self.screen_y)) as usize
+					* core::mem::size_of::<vga::Char>());
 			}
 		}
 
