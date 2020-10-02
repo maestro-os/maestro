@@ -66,7 +66,7 @@ header_end:
  * The entry point for the kernel.
  */
 multiboot_entry:
-	mov $boot_stack_top, %esp
+	mov $boot_stack_bottom, %esp
 	xor %ebp, %ebp
 
 	pushl $0
@@ -81,7 +81,7 @@ multiboot_entry:
 	pop %ebx
 	pop %eax
 
-	mov $(0xc0000000 + boot_stack_top), %esp
+	mov $(0xc0000000 + boot_stack_bottom), %esp
 	push %ebx
 	push %eax
 	call kernel_main
@@ -99,7 +99,7 @@ multiboot_entry:
 /*
  * The kernel stack.
  */
-boot_stack_bottom:
+boot_stack_top:
 .size boot_stack_top, STACK_SIZE
 .skip STACK_SIZE
-boot_stack_top:
+boot_stack_bottom:
