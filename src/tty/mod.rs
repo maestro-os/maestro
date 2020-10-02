@@ -2,6 +2,7 @@ use core::cmp::*;
 use core::mem::MaybeUninit;
 use crate::util::lock::Mutex;
 use crate::util::lock::MutexGuard;
+use crate::util;
 use crate::vga;
 
 /*
@@ -91,7 +92,7 @@ pub struct TTY
 /*
  * The array of every TTYs.
  */
-static mut TTYS: MaybeUninit<&mut [Mutex<TTY>; TTYS_COUNT]> = MaybeUninit::uninit();
+static mut TTYS: MaybeUninit<[Mutex<TTY>; TTYS_COUNT]> = MaybeUninit::uninit();
 /*
  * The current TTY's id.
  */
@@ -103,7 +104,7 @@ static mut CURRENT_TTY: usize = 0; // TODO Mutex
 pub fn get(tty: usize) -> &'static mut Mutex<TTY> {
 	debug_assert!(tty < TTYS_COUNT);
 	unsafe {
-		&mut (TTYS.get_mut())[tty]
+		&mut TTYS.get_mut()[tty]
 	}
 }
 
@@ -112,8 +113,7 @@ pub fn get(tty: usize) -> &'static mut Mutex<TTY> {
  */
 pub fn current() -> &'static mut Mutex<TTY> {
 	unsafe {
-		debug_assert!(CURRENT_TTY < TTYS_COUNT);
-		&mut (TTYS.get_mut())[CURRENT_TTY]
+		get(CURRENT_TTY)
 	}
 }
 
@@ -121,9 +121,18 @@ pub fn current() -> &'static mut Mutex<TTY> {
  * Initializes every TTYs.
  */
 pub fn init() {
-	for i in 0..TTYS_COUNT {
-		*get(i) = Mutex::new(TTY::new());
+	unsafe {
+		let ttys_ptr = TTYS.get_mut() as *mut _ as *mut _;
+		let ttys_size = core::mem::size_of_val(&TTYS);
+		util::bzero(ttys_ptr, ttys_size);
 	}
+
+	for i in 0..TTYS_COUNT {
+		let mut guard = MutexGuard::new(get(i));
+		let t = guard.get_mut();
+		t.init();
+	}
+
 	switch(0);
 }
 
@@ -149,17 +158,15 @@ impl TTY {
 	/*
 	 * Creates a new TTY.
 	 */
-	pub fn new() -> Self {
-		Self {
-			id: 0,
-			cursor_x: 0,
-			cursor_y: 0,
-			screen_y: 0,
-			current_color: vga::DEFAULT_COLOR,
-			history: [0; HISTORY_SIZE],
-			prompted_chars: 0,
-			update: true,
-		}
+	pub fn init(&mut self) {
+		self.id = 0;
+		self.cursor_x = 0;
+		self.cursor_y = 0;
+		self.screen_y = 0;
+		self.current_color = vga::DEFAULT_COLOR;
+		self.history = [0; HISTORY_SIZE];
+		self.prompted_chars = 0;
+		self.update = true;
 	}
 
 	/*
