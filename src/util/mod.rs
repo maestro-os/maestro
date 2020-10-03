@@ -189,3 +189,15 @@ extern "C" {
 
 	pub fn bzero(s: *mut Void, n: usize);
 }
+
+/*
+ * Zeroes the given object.
+ */
+pub fn zero_object<T>(obj: &mut T) {
+	let ptr = obj as *mut T as *mut Void;
+	let size = core::mem::size_of::<T>();
+
+	unsafe {
+		bzero(ptr, size);
+	}
+}

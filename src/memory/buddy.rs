@@ -9,9 +9,12 @@
  * size of a frame in pages.
  */
 
+use core::mem::MaybeUninit;
 use crate::memory::NULL;
 use crate::memory::Void;
 use crate::memory;
+use crate::util::lock::Mutex;
+use crate::util::lock::MutexGuard;
 use crate::util;
 
 /*
@@ -41,11 +44,14 @@ pub const FLAG_ZONE_KERNEL: Flags = 0b001;
  */
 pub const FLAG_ZONE_DMA: Flags = 0b010;
 /*
- * Buddy allocator flag. Tells that the allocation shall not fail (unless not enough memory is present on the system).
- * This flag is ignored if FLAG_USER is not specified or if the allocation order is higher than 0.
- * The allocator shall use the OOM killer to recover memory.
+ * Buddy allocator flag. Tells that the allocation shall not fail (unless not enough memory is
+ * present on the system). This flag is ignored if FLAG_USER is not specified or if the allocation
+ * order is higher than 0. The allocator shall use the OOM killer to recover memory.
  */
 pub const FLAG_NOFAIL: Flags = 0b100;
+
+// TODO OOM killer
+
 
 /*
  * Structure representing an allocatable zone of memory.
@@ -62,56 +68,11 @@ struct Zone {
 	size: usize,
 }
 
-impl Zone {
-	/*
-	 * Creates a new instance of zone with type `type_`. The zone covers the memory from pointer `begin` to
-	 * `begin + size` where `size` if the size in bytes.
-	 */
-	pub fn new(type_: Flags, begin: *mut Void, size: usize) -> Self {
-		Self {
-			type_: type_,
-			allocated_pages: 0,
-
-			begin: begin,
-			size: size,
-		}
-	}
-
-	/*
-	 * Creates a fake Zone. This function is only meant to fill the global variable array until it gets really filled
-	 * by the initialization function.
-	 */
-	pub const fn fake() -> Self {
-		Self {
-			type_: 0,
-			allocated_pages: 0,
-			begin: 0 as _,
-			size: 0,
-		}
-	}
-
-	/*
-	 * Returns the number of allocated pages in the current zone of memory.
-	 */
-	pub fn get_allocated_pages(&self) -> usize {
-		self.allocated_pages
-	}
-
-	// TODO
-}
-
-// TODO OOM killer
-
 // TODO Remplace by a linked list? (in case of holes in memory)
-// TODO Wrap into mutexes
 /*
  * The array of buddy allocator zones.
  */
-static mut ZONES: [Zone; 3] = [
-	Zone::fake(),
-	Zone::fake(),
-	Zone::fake(),
-];
+static mut ZONES: MaybeUninit<[Mutex<Zone>; 3]> = MaybeUninit::uninit();
 
 /*
  * The size in bytes of a frame allocated by the buddy allocator with the given `order`.
@@ -138,13 +99,30 @@ pub fn get_order(pages: usize) -> FrameOrder {
  * Initializes the buddy allocator.
  */
 pub fn init() {
-	// TODO Initialize zones
+	unsafe {
+		util::zero_object(&mut ZONES);
+
+		// TODO Init zones according to memory mapping
+		let z = ZONES.get_mut();
+
+		z[0].lock().get_mut().init(FLAG_ZONE_USER, 0 as *mut _, 0); // TODO
+		z[0].unlock();
+
+		z[1].lock().get_mut().init(FLAG_ZONE_KERNEL, 0 as *mut _, 0); // TODO
+		z[1].unlock();
+
+		// TODO
+		z[2].lock().get_mut().init(FLAG_ZONE_DMA, 0 as *mut _, 0); // TODO
+		z[2].unlock();
+	}
 }
 
 /*
  * Allocates a frame of memory using the buddy allocator.
  */
-pub fn alloc(_order: FrameOrder, _flags: Flags) -> *mut Void {
+pub fn alloc(order: FrameOrder, _flags: Flags) -> *mut Void {
+	debug_assert!(order <= MAX_ORDER);
+
 	// TODO
 	memory::NULL as _
 }
@@ -165,10 +143,12 @@ pub fn alloc_zero(order: FrameOrder, flags: Flags) -> *mut Void {
 }
 
 /*
- * Frees the given memory frame that was allocated using the buddy allocator. The given order must be the same as the
- * one given to allocate the frame.
+ * Frees the given memory frame that was allocated using the buddy allocator. The given order must
+ * be the same as the one given to allocate the frame.
  */
-pub fn free(_ptr: *const Void, _order: FrameOrder) {
+pub fn free(_ptr: *const Void, order: FrameOrder) {
+	debug_assert!(order <= MAX_ORDER);
+
 	// TODO
 }
 
@@ -179,9 +159,33 @@ pub fn allocated_pages() -> usize {
 	let mut n = 0;
 
 	unsafe {
-		for i in 0..ZONES.len() {
-			n += ZONES[i].get_allocated_pages();
+		let z = ZONES.get_mut();
+		for i in 0..z.len() {
+			let guard = MutexGuard::new(&mut z[i]); // TODO Remove `mut`?
+			n += guard.get().get_allocated_pages();
 		}
 	}
 	n
+}
+
+impl Zone {
+	/*
+	 * Initializes the zone with type `type_`. The zone covers the memory from pointer `begin` to
+	 * `begin + size` where `size` is the size in bytes.
+	 */
+	pub fn init(&mut self, type_: Flags, begin: *mut Void, size: usize) {
+		self.type_ = type_;
+		self.allocated_pages = 0;
+		self.begin = begin;
+		self.size = size;
+	}
+
+	/*
+	 * Returns the number of allocated pages in the current zone of memory.
+	 */
+	pub fn get_allocated_pages(&self) -> usize {
+		self.allocated_pages
+	}
+
+	// TODO
 }

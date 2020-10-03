@@ -111,6 +111,14 @@ impl<T> Mutex<T> {
 	}
 
 	/*
+	 * Returns an immutable reference to the payload. This function is unsafe because it can return
+	 * the payload while the Mutex isn't locked.
+	 */
+	unsafe fn get_payload(&self) -> &T {
+		&self.data
+	}
+
+	/*
 	 * Returns a mutable reference to the payload. This function is unsafe because it can return
 	 * the payload while the Mutex isn't locked.
 	 */
@@ -139,6 +147,15 @@ impl<'a, T> MutexGuard<'a, T> {
 		};
 		g.mutex.lock();
 		g
+	}
+
+	/*
+	 * Returns an immutable reference to the data owned by the associated Mutex.
+	 */
+	pub fn get(&self) -> &T {
+		unsafe {
+			self.mutex.get_payload()
+		}
 	}
 
 	/*

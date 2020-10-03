@@ -122,9 +122,7 @@ pub fn current() -> &'static mut Mutex<TTY> {
  */
 pub fn init() {
 	unsafe {
-		let ttys_ptr = TTYS.get_mut() as *mut _ as *mut _;
-		let ttys_size = core::mem::size_of_val(&TTYS);
-		util::bzero(ttys_ptr, ttys_size);
+		util::zero_object(&mut TTYS);
 	}
 
 	for i in 0..TTYS_COUNT {
