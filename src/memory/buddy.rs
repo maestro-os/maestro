@@ -79,6 +79,13 @@ struct Zone {
 	size: usize,
 }
 
+/*
+ * Structure representing the metadata for a frame of physical memory.
+ */
+struct Frame {
+	// TODO
+}
+
 // TODO Remplace by a linked list? (in case of holes in memory)
 /*
  * The array of buddy allocator zones.
@@ -145,9 +152,9 @@ fn get_suitable_zone(order: FrameOrder, type_: Flags) -> Option<&'static mut Mut
 	// TODO If zone is full, fallback to other zones with lowest priority
 	for i in 0..zones.len() {
 		let is_valid = {
-			let mut guard = MutexGuard::new(&mut zones[i]);
-			let zone = guard.get_mut();
-			zone.type_ == type_ && zone.has_enough_space(order)
+			let guard = MutexGuard::new(&mut zones[i]);
+			let zone = guard.get();
+			zone.type_ == type_ && zone.is_suitable(order)
 		};
 		if is_valid {
 			return Some(&mut zones[i]);
@@ -164,8 +171,8 @@ fn get_zone_for_pointer(ptr: *const Void) -> Option<&'static mut Mutex<Zone>> {
 
 	for i in 0..zones.len() {
 		let is_valid = {
-			let mut guard = MutexGuard::new(&mut zones[i]);
-			let zone = guard.get_mut();
+			let guard = MutexGuard::new(&mut zones[i]);
+			let zone = guard.get();
 			ptr >= zone.begin && (ptr as usize) < zone.begin as usize + zone.size
 		};
 		if is_valid {
@@ -178,26 +185,33 @@ fn get_zone_for_pointer(ptr: *const Void) -> Option<&'static mut Mutex<Zone>> {
 /*
  * Allocates a frame of memory using the buddy allocator.
  */
-pub fn alloc(order: FrameOrder, _flags: Flags) -> *mut Void {
+pub fn alloc(order: FrameOrder, flags: Flags) -> Result<*mut Void, ()> {
 	debug_assert!(order <= MAX_ORDER);
 
-	// TODO
-	memory::NULL as _
+	let z = get_suitable_zone(order, flags & ZONE_TYPE_MASK);
+	if let Some(z_) = z {
+		let mut guard = MutexGuard::new(z_);
+		let zone = guard.get_mut();
+
+		let frame = zone.get_available_frame(order);
+		if let Some(f) = frame {
+			zone.frame_mark_used(f, order);
+			return Ok(f.get_ptr());
+		}
+	}
+	Err(())
 }
 
 /*
  * Uses `alloc` and zeroes the allocated frame.
  */
-pub fn alloc_zero(order: FrameOrder, flags: Flags) -> *mut Void {
-	let ptr = alloc(order, flags);
-
-	if ptr != (NULL as _) {
-		let len = get_frame_size(order);
-		unsafe {
-			util::bzero(ptr, len);
-		}
+pub fn alloc_zero(order: FrameOrder, flags: Flags) -> Result<*mut Void, ()> {
+	let ptr = alloc(order, flags)?;
+	let len = get_frame_size(order);
+	unsafe {
+		util::bzero(ptr, len);
 	}
-	ptr
+	Ok(ptr)
 }
 
 /*
@@ -246,10 +260,44 @@ impl Zone {
 	}
 
 	/*
-	 * Returns `true` if the zone has enough free memory to fit an allocation of the given order.
+	 * Tells if this zone of memory is suitable for an allocation of the given `order`.
 	 */
-	pub fn has_enough_space(&self, _order: FrameOrder) -> bool {
+	pub fn is_suitable(&self, _order: FrameOrder) -> bool {
 		// TODO Check free list
 		true
+	}
+
+	/*
+	 * Returns an available frame owned by this zone, with an order of at least `_order`.
+	 */
+	pub fn get_available_frame(&self, _order: FrameOrder) -> Option<&'static mut Frame> {
+		// TODO
+		None
+	}
+
+	/*
+	 * Splits the given `frame` if larger than `order` until it reaches the said order, inserting
+	 * subsequent frames into the free list. The frame is then removed from the free list.
+	 */
+	pub fn frame_mark_used(&mut self, _frame: &mut Frame, _order: FrameOrder) {
+		// TODO
+	}
+
+	/*
+	 * Marks the given `frame` as free. Then the frame is merged with its buddies recursively if
+	 * available.
+	 */
+	pub fn frame_mark_free(&mut self, _frame: &mut Frame) {
+		// TODO
+	}
+}
+
+impl Frame {
+	/*
+	 * Returns the pointer to the location of the associated physical memory.
+	 */
+	pub fn get_ptr(&self) -> *mut Void {
+		// TODO
+		NULL as _
 	}
 }
