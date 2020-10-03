@@ -9,9 +9,11 @@
  * size of a frame in pages.
  */
 
+use core::cmp::min;
 use core::mem::MaybeUninit;
 use crate::memory::NULL;
 use crate::memory::Void;
+use crate::memory::memmap;
 use crate::memory;
 use crate::util::lock::Mutex;
 use crate::util::lock::MutexGuard;
@@ -49,6 +51,11 @@ pub const FLAG_ZONE_DMA: Flags = 0b010;
  * order is higher than 0. The allocator shall use the OOM killer to recover memory.
  */
 pub const FLAG_NOFAIL: Flags = 0b100;
+
+/*
+ * Pointer to the end of the kernel zone of memory with the maximum possible size.
+ */
+pub const KERNEL_ZONE_LIMIT: *const Void = 0x40000000 as _;
 
 // TODO OOM killer
 
@@ -101,20 +108,27 @@ pub fn get_order(pages: usize) -> FrameOrder {
 pub fn init() {
 	unsafe {
 		util::zero_object(&mut ZONES);
-
-		// TODO Init zones according to memory mapping
-		let z = ZONES.get_mut();
-
-		z[0].lock().get_mut().init(FLAG_ZONE_USER, 0 as *mut _, 0); // TODO
-		z[0].unlock();
-
-		z[1].lock().get_mut().init(FLAG_ZONE_KERNEL, 0 as *mut _, 0); // TODO
-		z[1].unlock();
-
-		// TODO
-		z[2].lock().get_mut().init(FLAG_ZONE_DMA, 0 as *mut _, 0); // TODO
-		z[2].unlock();
 	}
+
+	let mmap_info = memmap::get_info();
+	let z = unsafe { ZONES.get_mut() };
+
+	let kernel_zone_begin = mmap_info.phys_alloc_begin as *mut Void;
+	let available_memory_end = (mmap_info.phys_alloc_begin as usize) + mmap_info.available_memory;
+	let kernel_zone_end = min(available_memory_end, KERNEL_ZONE_LIMIT as usize) as *mut Void;
+	let kernel_zone_size = (kernel_zone_end as usize) - (mmap_info.phys_alloc_begin as usize);
+	z[1].lock().get_mut().init(FLAG_ZONE_KERNEL, kernel_zone_begin, kernel_zone_size);
+	z[1].unlock();
+
+	let user_zone_begin = kernel_zone_end;
+	let user_zone_end = available_memory_end as *mut Void;
+	let user_zone_size = (user_zone_end as usize) - (user_zone_begin as usize);
+	z[0].lock().get_mut().init(FLAG_ZONE_USER, user_zone_begin, user_zone_size);
+	z[0].unlock();
+
+	// TODO
+	z[2].lock().get_mut().init(FLAG_ZONE_DMA, 0 as *mut _, 0);
+	z[2].unlock();
 }
 
 /*

@@ -3,6 +3,7 @@
  */
 
 use core::cmp::*;
+use core::mem::MaybeUninit;
 use crate::memory::*;
 use crate::memory;
 use crate::multiboot;
@@ -13,41 +14,33 @@ use crate::util;
  */
 pub struct MemoryInfo {
 	/* Size of the Multiboot2 memory map */
-	memory_maps_size: usize,
+	pub memory_maps_size: usize,
 	/* Size of an entry in the Multiboot2 memory map */
-	memory_maps_entry_size: usize,
+	pub memory_maps_entry_size: usize,
 	/* Pointer to the Multiboot2 memory map */
-	memory_maps: *const multiboot::MmapEntry,
+	pub memory_maps: *const multiboot::MmapEntry,
 
 	/* Pointer to the end of the physical memory */
-	memory_end: *const Void,
+	pub memory_end: *const Void,
 	/* Pointer to the beginning of physical allocatable memory */
-	phys_alloc_begin: *const Void,
+	pub phys_alloc_begin: *const Void,
 	/* Pointer to the end of physical allocatable memory */
-	phys_alloc_end: *const Void,
+	pub phys_alloc_end: *const Void,
 	/* The amount total of allocatable memory */
-	available_memory: usize,
+	pub available_memory: usize,
 }
 
 /*
  * Variable containing the memory mapping.
  */
-static mut MEM_INFO: MemoryInfo = MemoryInfo {
-	memory_maps_size: 0,
-	memory_maps_entry_size: 0,
-	memory_maps: 0 as *const _,
-	memory_end: 0 as *const _,
-	phys_alloc_begin: 0 as *const _,
-	phys_alloc_end: 0 as *const _,
-	available_memory: 0,
-};
+static mut MEM_INFO: MaybeUninit<MemoryInfo> = MaybeUninit::uninit();
 
 /*
  * Returns the structure storing memory mapping informations.
  */
 pub fn get_info() -> &'static MemoryInfo {
 	unsafe {
-		&MEM_INFO
+		MEM_INFO.get_mut()
 	}
 }
 
@@ -113,19 +106,15 @@ fn get_memory_end() -> *const Void {
  */
 pub fn init(multiboot_ptr: *const Void) {
 	let boot_info = multiboot::get_boot_info();
-
-	unsafe {
-		MEM_INFO.memory_maps_size = boot_info.memory_maps_size;
-		MEM_INFO.memory_maps_entry_size = boot_info.memory_maps_entry_size;
-		MEM_INFO.memory_maps = boot_info.memory_maps;
-		MEM_INFO.memory_end = get_memory_end();
-		MEM_INFO.phys_alloc_begin = get_phys_alloc_begin(multiboot_ptr);
-		MEM_INFO.phys_alloc_end = util::down_align((boot_info.mem_upper * 1024) as *const _,
-			memory::PAGE_SIZE);
-		if MEM_INFO.phys_alloc_begin >= MEM_INFO.phys_alloc_end {
-			::kernel_panic!("Invalid memory map!", 0);
-		}
-		MEM_INFO.available_memory = (MEM_INFO.phys_alloc_end as usize)
-			- (MEM_INFO.phys_alloc_begin as usize);
-	}
+	let mem_info = unsafe { MEM_INFO.get_mut() };
+	mem_info.memory_maps_size = boot_info.memory_maps_size;
+	mem_info.memory_maps_entry_size = boot_info.memory_maps_entry_size;
+	mem_info.memory_maps = boot_info.memory_maps;
+	mem_info.memory_end = get_memory_end();
+	mem_info.phys_alloc_begin = get_phys_alloc_begin(multiboot_ptr);
+	mem_info.phys_alloc_end = util::down_align((boot_info.mem_upper * 1024) as *const _,
+		memory::PAGE_SIZE);
+	debug_assert!(mem_info.phys_alloc_begin < mem_info.phys_alloc_end);
+	mem_info.available_memory = (mem_info.phys_alloc_end as usize)
+		- (mem_info.phys_alloc_begin as usize);
 }
