@@ -34,17 +34,21 @@ pub type Flags = i32;
 pub const MAX_ORDER: FrameOrder = 17;
 
 /*
+ * The mask for the type of the zone in buddy allocator flags.
+ */
+const ZONE_TYPE_MASK: Flags = 0b11;
+/*
  * Buddy allocator flag. Tells that the allocated frame must be mapped into the user zone.
  */
-pub const FLAG_ZONE_USER: Flags = 0b000;
+pub const FLAG_ZONE_TYPE_USER: Flags = 0b000;
 /*
  * Buddy allocator flag. Tells that the allocated frame must be mapped into the kernel zone.
  */
-pub const FLAG_ZONE_KERNEL: Flags = 0b001;
+pub const FLAG_ZONE_TYPE_KERNEL: Flags = 0b001;
 /*
  * Buddy allocator flag. Tells that the allocated frame must be mapped into the DMA zone.
  */
-pub const FLAG_ZONE_DMA: Flags = 0b010;
+pub const FLAG_ZONE_TYPE_DMA: Flags = 0b010;
 /*
  * Buddy allocator flag. Tells that the allocation shall not fail (unless not enough memory is
  * present on the system). This flag is ignored if FLAG_USER is not specified or if the allocation
@@ -64,14 +68,14 @@ pub const KERNEL_ZONE_LIMIT: *const Void = 0x40000000 as _;
  * Structure representing an allocatable zone of memory.
  */
 struct Zone {
-	/* TODO doc */
+	/* The type of the zone, defining the priority */
 	type_: Flags,
-	/* TODO doc */
+	/* The number of allocated pages in the zone */
 	allocated_pages: usize,
 
-	/* TODO doc */
+	/* A pointer to the beginning of the zone */
 	begin: *mut Void,
-	/* TODO doc */
+	/* The size of the zone in bytes */
 	size: usize,
 }
 
@@ -117,18 +121,58 @@ pub fn init() {
 	let available_memory_end = (mmap_info.phys_alloc_begin as usize) + mmap_info.available_memory;
 	let kernel_zone_end = min(available_memory_end, KERNEL_ZONE_LIMIT as usize) as *mut Void;
 	let kernel_zone_size = (kernel_zone_end as usize) - (mmap_info.phys_alloc_begin as usize);
-	z[1].lock().get_mut().init(FLAG_ZONE_KERNEL, kernel_zone_begin, kernel_zone_size);
+	z[1].lock().get_mut().init(FLAG_ZONE_TYPE_KERNEL, kernel_zone_begin, kernel_zone_size);
 	z[1].unlock();
 
 	let user_zone_begin = kernel_zone_end;
 	let user_zone_end = available_memory_end as *mut Void;
 	let user_zone_size = (user_zone_end as usize) - (user_zone_begin as usize);
-	z[0].lock().get_mut().init(FLAG_ZONE_USER, user_zone_begin, user_zone_size);
+	z[0].lock().get_mut().init(FLAG_ZONE_TYPE_USER, user_zone_begin, user_zone_size);
 	z[0].unlock();
 
 	// TODO
-	z[2].lock().get_mut().init(FLAG_ZONE_DMA, 0 as *mut _, 0);
+	z[2].lock().get_mut().init(FLAG_ZONE_TYPE_DMA, 0 as *mut _, 0);
 	z[2].unlock();
+}
+
+/*
+ * Returns a mutable reference to a zone suitable for an allocation with the given order `order`
+ * and type `type_`.
+ */
+fn get_suitable_zone(order: FrameOrder, type_: Flags) -> Option<&'static mut Mutex<Zone>> {
+	let zones = unsafe { ZONES.get_mut() };
+
+	// TODO If zone is full, fallback to other zones with lowest priority
+	for i in 0..zones.len() {
+		let is_valid = {
+			let mut guard = MutexGuard::new(&mut zones[i]);
+			let zone = guard.get_mut();
+			zone.type_ == type_ && zone.has_enough_space(order)
+		};
+		if is_valid {
+			return Some(&mut zones[i]);
+		}
+	}
+	None
+}
+
+/*
+ * Returns a mutable reference to the zone that contains the given pointer.
+ */
+fn get_zone_for_pointer(ptr: *const Void) -> Option<&'static mut Mutex<Zone>> {
+	let zones = unsafe { ZONES.get_mut() };
+
+	for i in 0..zones.len() {
+		let is_valid = {
+			let mut guard = MutexGuard::new(&mut zones[i]);
+			let zone = guard.get_mut();
+			ptr >= zone.begin && (ptr as usize) < zone.begin as usize + zone.size
+		};
+		if is_valid {
+			return Some(&mut zones[i]);
+		}
+	}
+	None
 }
 
 /*
@@ -201,5 +245,11 @@ impl Zone {
 		self.allocated_pages
 	}
 
-	// TODO
+	/*
+	 * Returns `true` if the zone has enough free memory to fit an allocation of the given order.
+	 */
+	pub fn has_enough_space(&self, _order: FrameOrder) -> bool {
+		// TODO Check free list
+		true
+	}
 }
