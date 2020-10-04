@@ -15,6 +15,7 @@ use crate::memory::NULL;
 use crate::memory::Void;
 use crate::memory::memmap;
 use crate::memory;
+use crate::memory::PAGE_SIZE;
 use crate::util::lock::Mutex;
 use crate::util::lock::MutexGuard;
 use crate::util;
@@ -79,7 +80,7 @@ struct Zone {
 	size: usize,
 
 	/* The free list containing linked lists to free frames */
-	// TODO free_list: [; MAX_ORDER + 1],
+	free_list: [Option<*mut Frame>; (MAX_ORDER + 1) as usize],
 }
 
 /*
@@ -251,6 +252,7 @@ impl Zone {
 		self.type_ = type_;
 		self.allocated_pages = 0;
 		self.begin = begin;
+		// TODO Ensure that enough space is available for the zone
 		self.size = size;
 	}
 
@@ -262,10 +264,30 @@ impl Zone {
 	}
 
 	/*
+	 * Returns the pointer to the beginning of the allocatable zone, after the metadata zone.
+	 */
+	pub fn get_data_begin(&self) -> *mut Void {
+		let frames_count = self.get_pages_count() * core::mem::size_of::<Frame>();
+		util::align(((self.begin as usize) + frames_count) as _, PAGE_SIZE) as _
+	}
+
+	/*
+	 * Returns the number of allocatable pages.
+	 */
+	pub fn get_pages_count(&self) -> usize {
+		self.size / (PAGE_SIZE + core::mem::size_of::<Frame>())
+	}
+
+	/*
 	 * Returns an available frame owned by this zone, with an order of at least `_order`.
 	 */
-	pub fn get_available_frame(&self, _order: FrameOrder) -> Option<&'static mut Frame> {
-		// TODO
+	pub fn get_available_frame(&self, order: FrameOrder) -> Option<&'static mut Frame> {
+		for i in (order as usize)..self.free_list.len() {
+			let f = self.free_list[i];
+			if let Some(f_) = f {
+				return Some(unsafe { &mut *f_ });
+			}
+		}
 		None
 	}
 
