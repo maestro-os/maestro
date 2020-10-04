@@ -111,7 +111,9 @@ pub fn bitfield_size(n: usize) -> usize {
  * Returns the offset of the given field `field` in structure `type`.
  */
 macro_rules! offset_of {
-	($type:expr, $field:expr) => (&((0 as *const $type).$field) as usize)
+	($type:ty, $field:ident) => {
+		((&((*(NULL as *const $type)).$field)) as *const Void) as usize
+	}
 }
 
 /*
@@ -119,11 +121,13 @@ macro_rules! offset_of {
  * `field` at pointer `ptr`.
  */
 macro_rules! container_of {
-	($ptr:expr, $type:expr, $field:expr) => ((($ptr as usize) - offset_of($type, $field)) as *const $type)
+	($ptr:expr, $type:ty, $field:ident) => {
+		(($ptr as *const $type as usize) - offset_of($type, $field)) as *const $type
+	}
 }
 
 /*
- * TODO
+ * Custom writer used to redirect print/println macros to the desired text output.
  */
 struct TTYWrite {}
 

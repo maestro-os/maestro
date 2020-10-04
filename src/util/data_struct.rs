@@ -15,6 +15,17 @@ struct LinkedList {
 	next: *mut LinkedList,
 }
 
+/*
+ * Returns a reference to the element of type `type` for the given linked list node `node` stored
+ * in field `field`.
+ */
+#[macro_export]
+macro_rules! linked_list_get {
+	($node:expr, $type:ty, $field:ident) => {
+		::container_of!($node, $type, $field)
+	}
+}
+
 impl LinkedList {
 	/*
 	 * Returns the size of the linked list, counting previous elements.
@@ -44,11 +55,55 @@ impl LinkedList {
 		i
 	}
 
-	// TODO get_value (macro)
+	/*
+	 * Executes the given closure `f` for each nodes after the given node `node`, including the
+	 * given one. The nodes are not mutable.
+	 */
+	pub fn foreach<T>(&self, f: T) where T: Fn(&LinkedList) {
+		let mut curr = self as *const LinkedList;
 
-	// TODO insert_front
-	// TODO insert_before
-	// TODO insert_after
+		while curr as *const Void != NULL {
+			unsafe {
+				f(&*curr);
+				curr = (*curr).next;
+			}
+		}
+	}
+
+	/*
+	 * Same as `foreach` except the nodes are mutable.
+	 */
+	pub fn foreach_mut<T>(&mut self, f: T) where T: Fn(&mut LinkedList) {
+		let mut curr = self as *mut LinkedList;
+
+		while curr as *const Void != NULL {
+			unsafe {
+				f(&mut *curr);
+				curr = (*curr).prev;
+			}
+		}
+	}
+
+	/*
+	 * TODO
+	 */
+	//pub fn insert_front() {
+		// TODO
+	//}
+
+	/*
+	 * TODO
+	 */
+	//pub fn insert_before() {
+		// TODO
+	//}
+
+	/*
+	 * TODO
+	 */
+	//pub fn insert_after() {
+		// TODO
+	//}
 
 	/*
 	 * Unlinks the current node from the linked list.
