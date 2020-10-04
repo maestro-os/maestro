@@ -77,6 +77,9 @@ struct Zone {
 	begin: *mut Void,
 	/* The size of the zone in bytes */
 	size: usize,
+
+	/* The free list containing linked lists to free frames */
+	// TODO free_list: [; MAX_ORDER + 1],
 }
 
 /*
@@ -142,19 +145,18 @@ pub fn init() {
 	z[2].unlock();
 }
 
+// TODO Allow to fallback to another zone if the one that is returned is full
 /*
- * Returns a mutable reference to a zone suitable for an allocation with the given order `order`
- * and type `type_`.
+ * Returns a mutable reference to a zone suitable for an allocation with the given type `type_`.
  */
-fn get_suitable_zone(order: FrameOrder, type_: Flags) -> Option<&'static mut Mutex<Zone>> {
+fn get_suitable_zone(type_: Flags) -> Option<&'static mut Mutex<Zone>> {
 	let zones = unsafe { ZONES.get_mut() };
 
-	// TODO If zone is full, fallback to other zones with lowest priority
 	for i in 0..zones.len() {
 		let is_valid = {
 			let guard = MutexGuard::new(&mut zones[i]);
 			let zone = guard.get();
-			zone.type_ == type_ && zone.is_suitable(order)
+			zone.type_ == type_
 		};
 		if is_valid {
 			return Some(&mut zones[i]);
@@ -188,7 +190,7 @@ fn get_zone_for_pointer(ptr: *const Void) -> Option<&'static mut Mutex<Zone>> {
 pub fn alloc(order: FrameOrder, flags: Flags) -> Result<*mut Void, ()> {
 	debug_assert!(order <= MAX_ORDER);
 
-	let z = get_suitable_zone(order, flags & ZONE_TYPE_MASK);
+	let z = get_suitable_zone(flags & ZONE_TYPE_MASK);
 	if let Some(z_) = z {
 		let mut guard = MutexGuard::new(z_);
 		let zone = guard.get_mut();
@@ -257,14 +259,6 @@ impl Zone {
 	 */
 	pub fn get_allocated_pages(&self) -> usize {
 		self.allocated_pages
-	}
-
-	/*
-	 * Tells if this zone of memory is suitable for an allocation of the given `order`.
-	 */
-	pub fn is_suitable(&self, _order: FrameOrder) -> bool {
-		// TODO Check free list
-		true
 	}
 
 	/*

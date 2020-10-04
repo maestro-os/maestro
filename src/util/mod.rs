@@ -2,6 +2,7 @@ use crate::memory::Void;
 use crate::memory;
 use crate::tty;
 
+pub mod data_struct;
 pub mod lock;
 
 /* Maximum size for a signed integer */
