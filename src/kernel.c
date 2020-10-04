@@ -5,7 +5,7 @@
 #include <memory/vmem/vmem.h>
 #include <idt/idt.h>
 #include <pit/pit.h>
-#include <acpi/acpi.h>
+//#include <acpi/acpi.h>
 #include <pci/pci.h>
 #include <cmos/cmos.h>
 #include <disk/ata/ata.h>
