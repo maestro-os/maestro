@@ -11,7 +11,6 @@
 
 use core::cmp::min;
 use core::mem::MaybeUninit;
-use crate::memory::NULL;
 use crate::memory::Void;
 use crate::memory::memmap;
 use crate::memory;
@@ -28,6 +27,10 @@ pub type FrameOrder = u8;
  * Type representing buddy allocator flags.
  */
 pub type Flags = i32;
+/*
+ * Type representing the identifier of a frame.
+ */
+type FrameID = u32;
 
 /*
  * The maximum order of a buddy allocated frame.
@@ -86,8 +89,14 @@ struct Zone {
 /*
  * Structure representing the metadata for a frame of physical memory.
  */
+#[repr(packed)]
 struct Frame {
-	// TODO
+	/* Identifier of the previous frame in the free list. */
+	prev: FrameID,
+	/* Identifier of the next frame in the free list. */
+	next: FrameID,
+	/* Order of the current frame */
+	order: FrameOrder,
 }
 
 // TODO Remplace by a linked list? (in case of holes in memory)
@@ -199,7 +208,7 @@ pub fn alloc(order: FrameOrder, flags: Flags) -> Result<*mut Void, ()> {
 		let frame = zone.get_available_frame(order);
 		if let Some(f) = frame {
 			zone.frame_mark_used(f, order);
-			return Ok(f.get_ptr());
+			return Ok(f.get_ptr(zone));
 		}
 	}
 	Err(())
@@ -310,10 +319,20 @@ impl Zone {
 
 impl Frame {
 	/*
+	 * Returns the id of the current frame in the associated zone `zone`.
+	 */
+	pub fn get_id(&self, zone: &Zone) -> FrameID {
+		let self_off = self as *const _ as usize;
+		let zone_off = zone as *const _ as usize;
+		debug_assert!(self_off >= zone_off);
+		((self_off - zone_off) / core::mem::size_of::<Self>()) as u32
+	}
+
+	/*
 	 * Returns the pointer to the location of the associated physical memory.
 	 */
-	pub fn get_ptr(&self) -> *mut Void {
-		// TODO
-		NULL as _
+	pub fn get_ptr(&self, zone: &Zone) -> *mut Void {
+		let off = self.get_id(zone) as usize * core::mem::size_of::<Self>();
+		((zone.begin as *const _ as usize) + off) as _
 	}
 }
