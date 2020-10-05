@@ -85,25 +85,72 @@ impl LinkedList {
 	}
 
 	/*
-	 * TODO
+	 * Links back adjacent nodes to the current node.
 	 */
-	//pub fn insert_front() {
-		// TODO
-	//}
+	unsafe fn link_back(&mut self) {
+		if self.next as *const _ != NULL {
+			(*self.next).prev = self;
+		}
+		if self.prev as *const _ != NULL {
+			(*self.prev).next = self;
+		}
+	}
 
 	/*
-	 * TODO
+	 * Inserts the node at the beginning of the given linked list `front`.
 	 */
-	//pub fn insert_before() {
-		// TODO
-	//}
+	pub fn insert_front(&mut self, front: &mut *mut LinkedList) {
+		self.prev = NULL as _;
+		self.next = *front as _;
+		*front = self as _;
+		unsafe {
+			self.link_back();
+		}
+	}
 
 	/*
-	 * TODO
+	 * Inserts the node before node `node` in the given linked list `front`.
 	 */
-	//pub fn insert_after() {
-		// TODO
-	//}
+	pub fn insert_before(&mut self, front: *mut *mut LinkedList, node: *mut LinkedList) {
+		unsafe {
+			if front as *const _ != NULL && *front == node {
+				*front = self;
+			}
+		}
+
+		if node as *const _ == NULL {
+			return;
+		}
+
+		unsafe {
+			self.next = node;
+			self.prev = if node as *const _ != NULL { (*node).prev } else { NULL as _ };
+			self.link_back();
+		}
+	}
+
+	/*
+	 * Inserts the node after node `node` in the given linked list `front`.
+	 */
+	pub fn insert_after(&mut self, front: *mut *mut LinkedList, node: *mut LinkedList) {
+		debug_assert!(node as *const _ != NULL);
+
+		unsafe {
+			if front as *const _ != NULL && *front as *const _ != NULL {
+				*front = self;
+			}
+		}
+
+		if node as *const _ != NULL {
+			return;
+		}
+
+		unsafe {
+			self.next = (*node).next;
+			self.prev = node;
+			self.link_back();
+		}
+	}
 
 	/*
 	 * Unlinks the current node from the linked list.
