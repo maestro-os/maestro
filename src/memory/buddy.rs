@@ -14,7 +14,6 @@ use core::mem::MaybeUninit;
 use crate::memory::Void;
 use crate::memory::memmap;
 use crate::memory;
-use crate::memory::PAGE_SIZE;
 use crate::util::lock::Mutex;
 use crate::util::lock::MutexGuard;
 use crate::util;
@@ -65,6 +64,11 @@ pub const FLAG_NOFAIL: Flags = 0b100;
  */
 pub const KERNEL_ZONE_LIMIT: *const Void = 0x40000000 as _;
 
+/*
+ * Value indicating that the frame is used.
+ */
+pub const FRAME_STATE_USED: FrameID = !(0 as FrameID);
+
 // TODO OOM killer
 
 
@@ -88,6 +92,10 @@ struct Zone {
 
 /*
  * Structure representing the metadata for a frame of physical memory.
+ * The structure has an internal linked list for the free list. This linked list doesn't store
+ * pointers but frame identifiers to save memory. If either `prev` or `next` has value
+ * `FRAME_STATE_USED`, the frame is marked as used.
+ * If a frame points to itself, it means that no more elements are present in the list.
  */
 #[repr(packed)]
 struct Frame {
@@ -277,18 +285,18 @@ impl Zone {
 	 */
 	pub fn get_data_begin(&self) -> *mut Void {
 		let frames_count = self.get_pages_count() * core::mem::size_of::<Frame>();
-		util::align(((self.begin as usize) + frames_count) as _, PAGE_SIZE) as _
+		util::align(((self.begin as usize) + frames_count) as _, memory::PAGE_SIZE) as _
 	}
 
 	/*
 	 * Returns the number of allocatable pages.
 	 */
 	pub fn get_pages_count(&self) -> usize {
-		self.size / (PAGE_SIZE + core::mem::size_of::<Frame>())
+		self.size / (memory::PAGE_SIZE + core::mem::size_of::<Frame>())
 	}
 
 	/*
-	 * Returns an available frame owned by this zone, with an order of at least `_order`.
+	 * Returns an available frame owned by this zone, with an order of at least `order`.
 	 */
 	pub fn get_available_frame(&self, order: FrameOrder) -> Option<&'static mut Frame> {
 		for i in (order as usize)..self.free_list.len() {
@@ -298,6 +306,16 @@ impl Zone {
 			}
 		}
 		None
+	}
+
+	/*
+	 * Returns a mutable reference to the frame with the given identifier `id`.
+	 * The given identifier **must** be in the range of the zone.
+	 */
+	pub fn get_frame(&mut self, id: FrameID) -> *mut Frame {
+		debug_assert!((id as usize) < self.get_pages_count());
+		let off = (self.begin as usize) + (id as usize * core::mem::size_of::<Frame>());
+		off as _
 	}
 
 	/*
@@ -335,4 +353,65 @@ impl Frame {
 		let off = self.get_id(zone) as usize * core::mem::size_of::<Self>();
 		((zone.begin as *const _ as usize) + off) as _
 	}
+
+	/*
+	 * Tells whether the frame is used or not.
+	 */
+	pub fn is_used(&self) -> bool {
+		(self.prev == FRAME_STATE_USED) || (self.next == FRAME_STATE_USED)
+	}
+
+	/*
+	 * Returns the identifier of the buddy frame in zone `zone`, taking in account the frame's
+	 * order.
+	 * The return value might be invalid and the caller has the reponsibility to check that it is
+	 * below the number of frames in the zone.
+	 */
+	pub fn get_buddy_id(&self, zone: &Zone) -> FrameID {
+		self.get_id(zone) ^ get_frame_size(self.order) as u32
+	}
+
+	/*
+	 * Links the frame into zone `zone`'s free list.
+	 */
+	pub fn link(&mut self, _zone: &mut Zone) {
+		// TODO
+	}
+
+	/*
+	 * Unlinks the frame from zone `zone`'s free list.
+	 */
+	pub fn unlink(&mut self, _zone: &mut Zone) {
+		// TODO
+	}
+
+	/*
+	 * Unlinks the frame from zone `zone`'s free list, splits it until it reaches the required
+	 * order `order` while inserting the new free frames into the free list. At the end of the
+	 * function, the current frame is **not** inserted into the free list.
+	 *
+	 * The frame must not be marked as used.
+	 */
+	pub fn split(&mut self, zone: &mut Zone, order: FrameOrder) {
+		debug_assert!(!self.is_used());
+		debug_assert!(self.order >= order);
+
+		self.unlink(zone);
+		while self.order > order {
+			let buddy = self.get_buddy_id(zone);
+			if (buddy as usize) >= zone.get_pages_count() {
+				break;
+			}
+
+			self.order -= 1;
+
+			let buddy_frame = unsafe { &mut *zone.get_frame(buddy) };
+			debug_assert!(!buddy_frame.is_used());
+			buddy_frame.unlink(zone);
+			buddy_frame.order = self.order;
+			buddy_frame.link(zone);
+		}
+	}
+
+	// TODO coalesce
 }
