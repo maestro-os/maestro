@@ -368,21 +368,55 @@ impl Frame {
 	 * below the number of frames in the zone.
 	 */
 	pub fn get_buddy_id(&self, zone: &Zone) -> FrameID {
-		self.get_id(zone) ^ get_frame_size(self.order) as u32
+		self.get_id(zone) ^ (1 << self.order) as u32
 	}
 
 	/*
 	 * Links the frame into zone `zone`'s free list.
 	 */
-	pub fn link(&mut self, _zone: &mut Zone) {
-		// TODO
+	pub fn link(&mut self, zone: &mut Zone) {
+		debug_assert!(!self.is_used());
+
+		let id = self.get_id(zone);
+		self.prev = id;
+		self.next = if let Some(n) = zone.free_list[self.order as usize] {
+			unsafe {
+				(*n).get_id(zone)
+			}
+		} else {
+			id
+		};
+		zone.free_list[self.order as usize] = Some(self);
 	}
 
 	/*
 	 * Unlinks the frame from zone `zone`'s free list.
 	 */
-	pub fn unlink(&mut self, _zone: &mut Zone) {
-		// TODO
+	pub fn unlink(&mut self, zone: &mut Zone) {
+		debug_assert!(!self.is_used());
+
+		let id = self.get_id(zone);
+		let has_prev = self.prev != id;
+		let has_next = self.next != id;
+		if has_prev {
+			let prev = zone.get_frame(self.prev);
+			unsafe {
+				(*prev).next = if has_next { self.next } else { self.prev };
+			}
+		} else {
+			zone.free_list[self.order as usize] = if has_next {
+				Some(zone.get_frame(self.next))
+			} else {
+				None
+			}
+		}
+
+		if has_next {
+			let next = zone.get_frame(self.next);
+			unsafe {
+				(*next).prev = if has_prev { self.prev } else { self.next };
+			}
+		}
 	}
 
 	/*
