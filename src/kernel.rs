@@ -7,6 +7,7 @@
 #![feature(const_in_array_repeat_expressions)]
 #![feature(const_ptr_offset)]
 #![feature(const_raw_ptr_to_usize_cast)]
+#![feature(custom_test_frameworks)]
 #![feature(intrinsics)]
 #![feature(lang_items)]
 #![feature(llvm_asm)]
@@ -19,12 +20,16 @@
 #![allow(dead_code)]
 #![allow(unused_macros)]
 
+#![test_runner(crate::selftest::runner)]
+#![reexport_test_harness_main = "test_main"]
+
 mod debug;
 mod idt;
 mod memory;
 mod multiboot;
 mod panic;
 mod pit;
+mod selftest;
 mod tty;
 mod util;
 mod vga;
@@ -75,6 +80,9 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const Void) {
 	memory::memmap::print_entries(); // TODO rm
 	memory::buddy::init();
 	// TODO vmem_kernel
+
+	#[cfg(test)]
+	test_main();
 
 	// TODO ACPI
 	// TODO PCI

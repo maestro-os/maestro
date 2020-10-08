@@ -493,3 +493,20 @@ impl Frame {
 		self.link(zone);
 	}
 }
+
+#[cfg(test)]
+mod test {
+	use super::*;
+
+	#[test]
+	fn test_buddy0() {
+		if let Ok(p) = alloc(0, FLAG_ZONE_TYPE_KERNEL) {
+			assert!(util::is_aligned(p, PAGE_SIZE));
+			free(p, 0);
+		} else {
+			assert!(false);
+		}
+	}
+
+	// TODO Add more tests
+}

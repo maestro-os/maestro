@@ -96,6 +96,9 @@ INTERNAL_OBJ := $(CRTI_OBJ) $(OBJ) $(CRTN_OBJ)
 # TODO
 OBJ_LINK_LIST := $(CRTI_OBJ) $(CRTBEGIN_OBJ) $(OBJ) $(CRTEND_OBJ) $(CRTN_OBJ)
 
+# Flags for the QEMU emulator
+QEMU_FLAGS = -cdrom $(NAME).iso -device isa-debug-exit,iobase=0xf4,iosize=0x04
+
 # The rule to compile everything
 all: tags $(NAME) iso
 
@@ -158,12 +161,12 @@ re: fclean all
 
 # The rule to test the kernel using QEMU
 test: iso
-	qemu-system-i386 -cdrom $(NAME).iso -d int
+	qemu-system-i386 $(QEMU_FLAGS) -d int
 
 # The rule to run a CPU test of the kernel using QEMU (aka running the kernel and storing a lot of logs into the
 # `cpu_out` file)
 cputest: iso
-	qemu-system-i386 -cdrom $(NAME).iso -d int,cpu >cpu_out 2>&1
+	qemu-system-i386 $(QEMU_FLAGS) -d int,cpu >cpu_out 2>&1
 
 # The rule to test the kernel using Bochs. The configuration for Bochs can be found in the file `.bochsrc`
 bochs: iso
