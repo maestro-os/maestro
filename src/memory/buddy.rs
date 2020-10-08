@@ -71,7 +71,6 @@ pub const FRAME_STATE_USED: FrameID = !(0 as FrameID);
 
 // TODO OOM killer
 
-
 /*
  * Structure representing an allocatable zone of memory.
  */
@@ -215,7 +214,8 @@ pub fn alloc(order: FrameOrder, flags: Flags) -> Result<*mut Void, ()> {
 
 		let frame = zone.get_available_frame(order);
 		if let Some(f) = frame {
-			zone.frame_mark_used(f, order);
+			f.split(zone, order);
+			f.mark_used();
 			return Ok(f.get_ptr(zone));
 		}
 	}
@@ -238,10 +238,23 @@ pub fn alloc_zero(order: FrameOrder, flags: Flags) -> Result<*mut Void, ()> {
  * Frees the given memory frame that was allocated using the buddy allocator. The given order must
  * be the same as the one given to allocate the frame.
  */
-pub fn free(_ptr: *const Void, order: FrameOrder) {
+pub fn free(ptr: *const Void, order: FrameOrder) {
+	debug_assert!(util::is_aligned(ptr, memory::PAGE_SIZE));
 	debug_assert!(order <= MAX_ORDER);
 
-	// TODO
+	let z = get_zone_for_pointer(ptr);
+	if let Some(z_) = z {
+		let mut guard = MutexGuard::new(z_);
+		let zone = guard.get_mut();
+
+		let frame_id = zone.get_frame_id_from_ptr(ptr);
+		debug_assert!((frame_id as usize) < zone.get_pages_count());
+		let frame = zone.get_frame(frame_id);
+		unsafe {
+			(*frame).mark_free();
+			(*frame).coalesce(zone);
+		}
+	}
 }
 
 /*
@@ -269,7 +282,6 @@ impl Zone {
 		self.type_ = type_;
 		self.allocated_pages = 0;
 		self.begin = begin;
-		// TODO Ensure that enough space is available for the zone
 		self.size = size;
 	}
 
@@ -309,6 +321,15 @@ impl Zone {
 	}
 
 	/*
+	 * Returns the identifier for the frame at the given pointer `ptr`. The pointer must point to
+	 * the frame itself, not the Frame structure.
+	 */
+	pub fn get_frame_id_from_ptr(&self, ptr: *const Void) -> FrameID {
+		let frame_size = core::mem::size_of::<Frame>() + memory::PAGE_SIZE;
+		(((ptr as usize) - (self.begin as usize)) / frame_size) as _
+	}
+
+	/*
 	 * Returns a mutable reference to the frame with the given identifier `id`.
 	 * The given identifier **must** be in the range of the zone.
 	 */
@@ -316,22 +337,6 @@ impl Zone {
 		debug_assert!((id as usize) < self.get_pages_count());
 		let off = (self.begin as usize) + (id as usize * core::mem::size_of::<Frame>());
 		off as _
-	}
-
-	/*
-	 * Splits the given `frame` if larger than `order` until it reaches the said order, inserting
-	 * subsequent frames into the free list. The frame is then removed from the free list.
-	 */
-	pub fn frame_mark_used(&mut self, _frame: &mut Frame, _order: FrameOrder) {
-		// TODO
-	}
-
-	/*
-	 * Marks the given `frame` as free. Then the frame is merged with its buddies recursively if
-	 * available.
-	 */
-	pub fn frame_mark_free(&mut self, _frame: &mut Frame) {
-		// TODO
 	}
 }
 
@@ -359,6 +364,20 @@ impl Frame {
 	 */
 	pub fn is_used(&self) -> bool {
 		(self.prev == FRAME_STATE_USED) || (self.next == FRAME_STATE_USED)
+	}
+
+	/*
+	 * Marks the frame as used. The frame must not be linked to any free list.
+	 */
+	pub fn mark_used(&mut self) {
+		self.prev = FRAME_STATE_USED;
+	}
+
+	/*
+	 * Marks the frame as free. The frame must not be linked to any free list.
+	 */
+	pub fn mark_free(&mut self) {
+		self.prev = 0;
 	}
 
 	/*
@@ -421,8 +440,8 @@ impl Frame {
 
 	/*
 	 * Unlinks the frame from zone `zone`'s free list, splits it until it reaches the required
-	 * order `order` while inserting the new free frames into the free list. At the end of the
-	 * function, the current frame is **not** inserted into the free list.
+	 * order `order` while linking the new free frames to the free list. At the end of the
+	 * function, the current frame is **not** linked to the free list.
 	 *
 	 * The frame must not be marked as used.
 	 */
@@ -432,12 +451,12 @@ impl Frame {
 
 		self.unlink(zone);
 		while self.order > order {
+			self.order -= 1;
+
 			let buddy = self.get_buddy_id(zone);
 			if (buddy as usize) >= zone.get_pages_count() {
 				break;
 			}
-
-			self.order -= 1;
 
 			let buddy_frame = unsafe { &mut *zone.get_frame(buddy) };
 			debug_assert!(!buddy_frame.is_used());
@@ -447,5 +466,30 @@ impl Frame {
 		}
 	}
 
-	// TODO coalesce
+	/*
+	 * Coealesces the frame in zone `zone` with free buddy blocks recursively until no buddy is
+	 * available anymore. Buddies that are merges with the frame are unlinked. The order of the
+	 * frame is incremented at each merge. The frame is linked to the free list at the end.
+	 *
+	 * The frame must not be marked as used.
+	 */
+	pub fn coalesce(&mut self, zone: &mut Zone) {
+		debug_assert!(!self.is_used());
+
+		while self.order < MAX_ORDER {
+			let buddy = self.get_buddy_id(zone);
+			if (buddy as usize) >= zone.get_pages_count() {
+				break;
+			}
+
+			let buddy_frame = unsafe { &mut *zone.get_frame(buddy) };
+			if buddy_frame.order != self.order && !buddy_frame.is_used() {
+				break;
+			}
+
+			buddy_frame.unlink(zone);
+			self.order += 1;
+		}
+		self.link(zone);
+	}
 }
