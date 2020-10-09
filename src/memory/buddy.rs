@@ -498,10 +498,10 @@ impl Frame {
 mod test {
 	use super::*;
 
-	#[test]
+	#[test_case]
 	fn test_buddy0() {
 		if let Ok(p) = alloc(0, FLAG_ZONE_TYPE_KERNEL) {
-			assert!(util::is_aligned(p, PAGE_SIZE));
+			assert!(util::is_aligned(p, memory::PAGE_SIZE));
 			free(p, 0);
 		} else {
 			assert!(false);

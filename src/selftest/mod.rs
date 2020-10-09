@@ -32,7 +32,7 @@ mod qemu {
  * kernel or exits the emulator if possible.
  */
 #[cfg(test)]
-fn runner(tests: &[&dyn Fn()]) {
+pub fn runner(tests: &[&dyn Fn()]) {
     ::println!("Running {} tests", tests.len());
 
     for test in tests {
@@ -41,5 +41,7 @@ fn runner(tests: &[&dyn Fn()]) {
 
 	// TODO Add flag to enable/disable qemu
 	qemu::exit(qemu::SUCCESS);
-	crate::kernel_halt();
+	unsafe {
+		crate::kernel_halt();
+	}
 }
