@@ -2,6 +2,7 @@
  * TODO doc
  */
 
+// TODO Add flag to enable/disable qemu
 mod qemu {
 	use crate::io;
 
@@ -38,6 +39,7 @@ fn runner(tests: &[&dyn Fn()]) {
         test();
     }
 
+	// TODO Add flag to enable/disable qemu
 	qemu::exit(qemu::SUCCESS);
-	kernel_halt();
+	crate::kernel_halt();
 }
