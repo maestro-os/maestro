@@ -32,6 +32,7 @@ macro_rules! kernel_panic {
  * Initializes the TTY and prints a panic message.
  */
 fn print_panic(reason: &str, code: u32) {
+	tty::init();
 	::println!("--- KERNEL PANIC ---\n");
 	::println!("Kernel has been forced to halt due to internal problem, sorry :/");
 	::println!("Reason: {}", reason);
@@ -41,12 +42,11 @@ fn print_panic(reason: &str, code: u32) {
 }
 
 /*
- * TODO doc
+ * Re-initializes the TTY, prints the panic message and halts the kernel.
  */
 #[cfg(kernel_mode = "release")]
 pub fn kernel_panic_(reason: &str, code: u32, _file: &str, _line: u32, _col: u32) -> ! {
 	::cli!();
-	tty::init();
 	print_panic(reason, code);
 	unsafe {
 		kernel_halt();
@@ -54,12 +54,12 @@ pub fn kernel_panic_(reason: &str, code: u32, _file: &str, _line: u32, _col: u32
 }
 
 /*
- * TODO doc
+ * Same as the release version, except the function also prints process's registers and the
+ * kernel's callstack.
  */
 #[cfg(kernel_mode = "debug")]
 pub fn kernel_panic_(reason: &str, code: u32, file: &str, line: u32, col: u32) -> ! {
 	::cli!();
-	tty::init();
 	print_panic(reason, code);
 	::println!("\n-- DEBUG --\nFile: {}; Line: {}; Column: {}", file, line, col);
 	// TODO Print running process registers

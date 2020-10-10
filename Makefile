@@ -6,6 +6,9 @@ KERNEL_ARCH ?= x86
 # The target compilation mode. The value an be either `release` or `debug`. Another value may result in an undefined
 # behavior. This variable can be set using an environement variable with the same name
 KERNEL_MODE ?= debug
+# A boolean value telling whether the kernel is compiled for testing or not. This variable can be set using an
+# environement variable with the same name
+KERNEL_TEST ?= false
 
 # The target descriptor file path
 TARGET = arch/$(KERNEL_ARCH)/target.json
@@ -33,6 +36,9 @@ ifeq ($(KERNEL_MODE), release)
 RUSTFLAGS += -C debuginfo=0 -C opt-level=3
 else
 RUSTFLAGS += -C debuginfo=2 -C opt-level=0
+endif
+ifeq ($(KERNEL_TEST), true)
+RUSTFLAGS += --test
 endif
 
 # The linker program
@@ -123,7 +129,7 @@ $(OBJ_DIR)%.c.o: $(SRC_DIR)%.c $(HDR) Makefile
 
 # The rule to compile Rust language objects
 $(RUST_MAIN_OBJ): $(RUST_SRC) $(LIBCORE) Makefile $(TARGET)
-	$(RUSTC) $(RUSTFLAGS) -L rust/ -o $@ --extern core=$(LIBCORE) --cfg kernel_mode=\"$(KERNEL_MODE)\" --test $(RUST_MAIN) # TODO Place testing flags somewhere else
+	$(RUSTC) $(RUSTFLAGS) -L rust/ -o $@ --extern core=$(LIBCORE) --cfg kernel_mode=\"$(KERNEL_MODE)\" $(RUST_MAIN)
 
 # The rule to compile Rust libcore
 $(LIBCORE):

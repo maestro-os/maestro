@@ -70,12 +70,12 @@ pub unsafe fn print_memory(ptr: *const Void, n: usize) {
 }
 
 /*
- * Returns the name of the function for the given instruction pointer. If the name cannot be
- * retrived, the function returns "???".
+ * Returns an Option containing the name of the function for the given instruction pointer. If the
+ * name cannot be retrieved, the function returns None.
  */
-fn get_function_name(_i: *const Void) -> &'static str {
+fn get_function_name(_i: *const Void) -> Option<&'static str> {
 	// TODO
-	"TODO"
+	None
 }
 
 /*
@@ -100,12 +100,19 @@ pub fn print_callstack(ebp: *const u32, max_depth: usize) {
 		if eip == (0 as *const _) {
 			break;
 		}
-		::println!("{}: {:p} -> {}", i, eip, get_function_name(eip));
+
+		if let Some(name) = get_function_name(eip) {
+			::println!("{}: {:p} -> {}", i, eip, name);
+		} else {
+			::println!("{}: {:p} -> ???", i, eip);
+		}
+
 		unsafe {
 			ebp_ = *(ebp_ as *const u32) as *const u32;
 		}
 		i += 1;
 	}
+
 	if i == 0 {
 		::println!("Empty");
 	} else if ebp_ != (0 as *const _) {
