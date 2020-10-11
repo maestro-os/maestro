@@ -2,7 +2,10 @@
  * TODO doc
  */
 
+use crate::elf;
 use crate::memory::Void;
+use crate::memory;
+use crate::multiboot;
 use crate::util;
 
 /*
@@ -70,12 +73,58 @@ pub unsafe fn print_memory(ptr: *const Void, n: usize) {
 }
 
 /*
+ * Returns the name of the symbol at offset `offset`.
+ */
+fn get_symbol_name(offset: u32) -> Option<&'static str> {
+	let boot_info = multiboot::get_boot_info();
+
+	if let Some(section) = elf::get_section(boot_info.elf_sections, boot_info.elf_num as usize,
+		boot_info.elf_shndx as usize, boot_info.elf_entsize as usize, ".strtab") {
+		let name = unsafe {
+			util::ptr_to_str(memory::kern_to_virt((section.sh_addr + offset) as _))
+		};
+		Some(name)
+	} else {
+		None
+	}
+}
+
+/*
  * Returns an Option containing the name of the function for the given instruction pointer. If the
  * name cannot be retrieved, the function returns None.
  */
-fn get_function_name(_i: *const Void) -> Option<&'static str> {
-	// TODO
-	None
+fn get_function_name(i: *const Void) -> Option<&'static str> {
+	if i < memory::get_kernel_virtual_begin() || i >= memory::get_kernel_virtual_end() {
+		return None;
+	}
+
+	let boot_info = multiboot::get_boot_info();
+	let mut func_name: Option<&'static str> = None;
+	elf::foreach_sections(boot_info.elf_sections, boot_info.elf_num as usize, boot_info.elf_shndx as usize,
+		boot_info.elf_entsize as usize, |hdr: &elf::ELF32SectionHeader, _name: &str| {
+			if hdr.sh_type != elf::SHT_SYMTAB {
+				return;
+			}
+
+			let ptr = memory::kern_to_virt(hdr.sh_addr as _);
+			let mut i: usize = 0;
+			while i < hdr.sh_size as usize {
+				let sym = unsafe {
+					&*(ptr.offset(i as isize) as *const elf::ELF32Sym)
+				};
+				let value = sym.st_value as usize;
+				let size = sym.st_size as usize;
+
+				if i >= value && i < value + size {
+					if sym.st_name != 0 {
+						func_name = get_symbol_name(sym.st_name);
+					}
+					return;
+				}
+				i += core::mem::size_of::<elf::ELF32Sym>();
+			}
+		});
+	func_name
 }
 
 /*

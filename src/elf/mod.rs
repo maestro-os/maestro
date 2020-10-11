@@ -179,17 +179,17 @@ type ELF32Addr = u32;
  * Structure representing an ELF section header in memory.
  */
 #[repr(C, packed)]
-pub struct ELFSectionHeader {
-	sh_name: u32,
-	sh_type: u32,
-	sh_flags: u32,
-	sh_addr: u32,
-	sh_offset: u32,
-	sh_size: u32,
-	sh_link: u32,
-	sh_info: u32,
-	sh_addralign: u32,
-	sh_entsize: u32,
+pub struct ELF32SectionHeader {
+	pub sh_name: u32,
+	pub sh_type: u32,
+	pub sh_flags: u32,
+	pub sh_addr: u32,
+	pub sh_offset: u32,
+	pub sh_size: u32,
+	pub sh_link: u32,
+	pub sh_info: u32,
+	pub sh_addralign: u32,
+	pub sh_entsize: u32,
 }
 
 /*
@@ -197,12 +197,12 @@ pub struct ELFSectionHeader {
  */
 #[repr(C, packed)]
 pub struct ELF32Sym {
-	st_name: u32,
-	st_value: ELF32Addr,
-	st_size: u32,
-	st_info: u8,
-	st_other: u8,
-	st_shndx: u16,
+	pub st_name: u32,
+	pub st_value: ELF32Addr,
+	pub st_size: u32,
+	pub st_info: u8,
+	pub st_other: u8,
+	pub st_shndx: u16,
 }
 
 /*
@@ -210,16 +210,16 @@ pub struct ELF32Sym {
  * TODO document every arguments
  */
 pub fn get_section(sections: *const Void, sections_count: usize, shndx: usize, entsize: usize, name: &str)
-	-> Option<&ELFSectionHeader> {
+	-> Option<&ELF32SectionHeader> {
 	debug_assert!(sections != NULL);
 
 	let names_section = unsafe {
-		&*(sections.offset((shndx * entsize) as isize) as *const ELFSectionHeader)
+		&*(sections.offset((shndx * entsize) as isize) as *const ELF32SectionHeader)
 	};
 	let mut i = 0;
 	while i < sections_count {
 		let hdr = unsafe {
-			&*(sections.offset((i * core::mem::size_of::<ELFSectionHeader>()) as isize) as *const ELFSectionHeader)
+			&*(sections.offset((i * core::mem::size_of::<ELF32SectionHeader>()) as isize) as *const ELF32SectionHeader)
 		};
 		let n = unsafe {
 			util::ptr_to_str(memory::kern_to_virt((names_section.sh_addr + hdr.sh_name) as _))
@@ -237,15 +237,15 @@ pub fn get_section(sections: *const Void, sections_count: usize, shndx: usize, e
  * reference and the name of the section.
  * TODO document every arguments
  */
-pub fn foreach_sections<T>(sections: *const Void, sections_count: usize, shndx: usize, entsize: usize, f: T)
-	where T: Fn(&ELFSectionHeader, &str) {
+pub fn foreach_sections<T>(sections: *const Void, sections_count: usize, shndx: usize, entsize: usize, mut f: T)
+	where T: FnMut(&ELF32SectionHeader, &str) {
 	let names_section = unsafe {
-		&*(sections.offset((shndx * entsize) as isize) as *const ELFSectionHeader)
+		&*(sections.offset((shndx * entsize) as isize) as *const ELF32SectionHeader)
 	};
 	let mut i = 0;
 	while i < sections_count {
 		let hdr = unsafe {
-			&*(sections.offset((i * core::mem::size_of::<ELFSectionHeader>()) as isize) as *const ELFSectionHeader)
+			&*(sections.offset((i * core::mem::size_of::<ELF32SectionHeader>()) as isize) as *const ELF32SectionHeader)
 		};
 		let n = unsafe {
 			util::ptr_to_str(memory::kern_to_virt((names_section.sh_addr + hdr.sh_name) as _))
