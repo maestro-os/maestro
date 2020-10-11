@@ -104,7 +104,7 @@ static mut CURRENT_TTY: usize = 0; // TODO Mutex
 pub fn get(tty: usize) -> &'static mut Mutex<TTY> {
 	debug_assert!(tty < TTYS_COUNT);
 	unsafe {
-		&mut TTYS.get_mut()[tty]
+		&mut TTYS.assume_init_mut()[tty]
 	}
 }
 

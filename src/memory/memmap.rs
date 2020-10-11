@@ -40,7 +40,7 @@ static mut MEM_INFO: MaybeUninit<MemoryInfo> = MaybeUninit::uninit();
  */
 pub fn get_info() -> &'static MemoryInfo {
 	unsafe {
-		MEM_INFO.get_mut()
+		MEM_INFO.assume_init_mut()
 	}
 }
 
@@ -106,7 +106,7 @@ fn get_memory_end() -> *const Void {
  */
 pub fn init(multiboot_ptr: *const Void) {
 	let boot_info = multiboot::get_boot_info();
-	let mem_info = unsafe { MEM_INFO.get_mut() };
+	let mem_info = unsafe { MEM_INFO.assume_init_mut() };
 	mem_info.memory_maps_size = boot_info.memory_maps_size;
 	mem_info.memory_maps_entry_size = boot_info.memory_maps_entry_size;
 	mem_info.memory_maps = boot_info.memory_maps;

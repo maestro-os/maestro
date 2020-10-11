@@ -24,6 +24,7 @@
 #![reexport_test_harness_main = "test_main"]
 
 mod debug;
+mod elf;
 mod idt;
 mod memory;
 mod multiboot;

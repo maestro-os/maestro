@@ -193,6 +193,8 @@ extern "C" {
 	pub fn memset(s: *mut Void, c: i32, n: usize) -> *mut Void;
 
 	pub fn bzero(s: *mut Void, n: usize);
+
+	pub fn strlen(s: *const Void) -> usize;
 }
 
 /*
@@ -205,4 +207,14 @@ pub fn zero_object<T>(obj: &mut T) {
 	unsafe {
 		bzero(ptr, size);
 	}
+}
+
+/*
+ * Converts the given pointer to a string of characters. The string must be valid and must end with `\0`. The ownership
+ * of the string is not taken, thus the caller is must drop it manually.
+ */
+pub unsafe fn ptr_to_str(ptr: *const Void) -> &'static str {
+	let len = strlen(ptr);
+	let slice = core::slice::from_raw_parts(ptr, len);
+	core::str::from_utf8_unchecked(slice)
 }

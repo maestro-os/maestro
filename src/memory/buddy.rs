@@ -142,7 +142,7 @@ pub fn init() {
 	}
 
 	let mmap_info = memmap::get_info();
-	let z = unsafe { ZONES.get_mut() };
+	let z = unsafe { ZONES.assume_init_mut() };
 
 	let kernel_zone_begin = mmap_info.phys_alloc_begin as *mut Void;
 	let available_memory_end = (mmap_info.phys_alloc_begin as usize) + mmap_info.available_memory;
@@ -167,7 +167,7 @@ pub fn init() {
  * Returns a mutable reference to a zone suitable for an allocation with the given type `type_`.
  */
 fn get_suitable_zone(type_: Flags) -> Option<&'static mut Mutex<Zone>> {
-	let zones = unsafe { ZONES.get_mut() };
+	let zones = unsafe { ZONES.assume_init_mut() };
 
 	for i in 0..zones.len() {
 		let is_valid = {
@@ -186,7 +186,7 @@ fn get_suitable_zone(type_: Flags) -> Option<&'static mut Mutex<Zone>> {
  * Returns a mutable reference to the zone that contains the given pointer.
  */
 fn get_zone_for_pointer(ptr: *const Void) -> Option<&'static mut Mutex<Zone>> {
-	let zones = unsafe { ZONES.get_mut() };
+	let zones = unsafe { ZONES.assume_init_mut() };
 
 	for i in 0..zones.len() {
 		let is_valid = {
@@ -264,7 +264,7 @@ pub fn allocated_pages() -> usize {
 	let mut n = 0;
 
 	unsafe {
-		let z = ZONES.get_mut();
+		let z = ZONES.assume_init_mut();
 		for i in 0..z.len() {
 			let guard = MutexGuard::new(&mut z[i]); // TODO Remove `mut`?
 			n += guard.get().get_allocated_pages();
