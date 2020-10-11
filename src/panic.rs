@@ -1,8 +1,9 @@
 #[cfg(kernel_mode = "debug")]
 use crate::debug;
 
-use crate::memory;
+use core::fmt;
 use crate::memory::Void;
+use crate::memory;
 use crate::tty;
 use kernel_halt;
 
@@ -63,6 +64,45 @@ pub fn kernel_panic_(reason: &str, code: u32, file: &str, line: u32, col: u32) -
 	print_panic(reason, code);
 	::println!("\n-- DEBUG --\nFile: {}; Line: {}; Column: {}", file, line, col);
 	// TODO Print running process registers
+	::println!();
+	let ebp = unsafe { ::register_get!("ebp") as *const _ };
+	debug::print_callstack(ebp, 8);
+	unsafe {
+		kernel_halt();
+	}
+}
+
+/*
+ * Initializes the TTY and prints a Rust panic message.
+ */
+fn print_rust_panic<'a>(args: &'a fmt::Arguments<'a>) {
+	tty::init();
+	::println!("--- KERNEL PANIC ---\n");
+	::println!("Kernel has been forced to halt due to internal problem, sorry :/");
+	::println!("Reason: {}", args);
+	::println!("CR2: {:p}\n", unsafe { memory::vmem::cr2_get() } as *const Void);
+	::println!("If you believe this is a bug on the kernel side, please feel free to report it.");
+}
+
+/*
+ * Handles a Rust panic.
+ */
+#[cfg(kernel_mode = "release")]
+pub fn rust_panic<'a>(args: &'a fmt::Arguments<'a>) {
+	::cli!();
+	print_rust_panic(args);
+	unsafe {
+		kernel_halt();
+	}
+}
+
+/*
+ * Same as the release version, except the function also prints the kernel's callstack.
+ */
+#[cfg(kernel_mode = "debug")]
+pub fn rust_panic<'a>(args: &'a fmt::Arguments<'a>) -> ! {
+	::cli!();
+	print_rust_panic(args);
 	::println!();
 	let ebp = unsafe { ::register_get!("ebp") as *const _ };
 	debug::print_callstack(ebp, 8);

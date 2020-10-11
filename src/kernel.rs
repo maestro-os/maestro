@@ -12,6 +12,7 @@
 #![feature(lang_items)]
 #![feature(llvm_asm)]
 #![feature(maybe_uninit_ref)]
+#![feature(panic_info_message)]
 #![feature(rustc_attrs)]
 #![feature(rustc_private)]
 #![feature(untagged_unions)]
@@ -100,13 +101,10 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const Void) {
 /*
  * Called on Rust panic.
  */
-// TODO Replace by a macro?
-// TODO Use debug panic only when compiled in debug mode
 #[panic_handler]
 fn panic(panic_info: &PanicInfo) -> ! {
-	if let Some(s) = panic_info.payload().downcast_ref::<&str>() {
-		// TODO Use a specific panic function for Rust?
-		::kernel_panic!(s, 0);
+	if let Some(s) = panic_info.message() {
+		panic::rust_panic(s);
 	} else {
 		::kernel_panic!("Rust panic (no payload)", 0);
 	}
