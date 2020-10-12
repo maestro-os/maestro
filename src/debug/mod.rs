@@ -93,8 +93,8 @@ fn get_symbol_name(offset: u32) -> Option<&'static str> {
  * Returns an Option containing the name of the function for the given instruction pointer. If the
  * name cannot be retrieved, the function returns None.
  */
-fn get_function_name(i: *const Void) -> Option<&'static str> {
-	if i < memory::get_kernel_virtual_begin() || i >= memory::get_kernel_virtual_end() {
+fn get_function_name(inst: *const Void) -> Option<&'static str> {
+	if inst < memory::get_kernel_virtual_begin() || inst >= memory::get_kernel_virtual_end() {
 		return None;
 	}
 
@@ -113,9 +113,9 @@ fn get_function_name(i: *const Void) -> Option<&'static str> {
 					&*(ptr.offset(i as isize) as *const elf::ELF32Sym)
 				};
 				let value = sym.st_value as usize;
-				let size = sym.st_size as usize;
+				//let size = sym.st_size as usize;
 
-				if i >= value && i < value + size {
+				if (inst as usize) >= value/* && (inst as usize) < (value + size)*/ { // TODO Fix overflow
 					if sym.st_name != 0 {
 						func_name = get_symbol_name(sym.st_name);
 					}

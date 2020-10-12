@@ -90,11 +90,10 @@ struct Zone {
 }
 
 /*
- * Structure representing the metadata for a frame of physical memory.
- * The structure has an internal linked list for the free list. This linked list doesn't store
- * pointers but frame identifiers to save memory. If either `prev` or `next` has value
- * `FRAME_STATE_USED`, the frame is marked as used.
- * If a frame points to itself, it means that no more elements are present in the list.
+ * Structure representing the metadata for a frame of physical memory. The structure has an internal linked list for the
+ * free list. This linked list doesn't store pointers but frame identifiers to save memory. If either `prev` or `next`
+ * has value `FRAME_STATE_USED`, the frame is marked as used. If a frame points to itself, it means that no more
+ * elements are present in the list.
  */
 #[repr(packed)]
 struct Frame {
@@ -248,7 +247,7 @@ pub fn free(ptr: *const Void, order: FrameOrder) {
 		let zone = guard.get_mut();
 
 		let frame_id = zone.get_frame_id_from_ptr(ptr);
-		debug_assert!((frame_id as usize) < zone.get_pages_count());
+		debug_assert!(frame_id < zone.get_pages_count());
 		let frame = zone.get_frame(frame_id);
 		unsafe {
 			(*frame).mark_free();
@@ -275,6 +274,33 @@ pub fn allocated_pages() -> usize {
 
 impl Zone {
 	/*
+	 * Fills the free list during initialization according to the number of available pages.
+	 */
+	fn fill_free_list(&mut self) {
+		let pages_count = self.get_pages_count();
+		let mut frame: FrameID = 0;
+		let mut order = MAX_ORDER;
+
+		while frame < pages_count as FrameID {
+			let p = util::pow2(order as _) as FrameID;
+			if frame + p > pages_count {
+				if order == 0 {
+					break;
+				}
+				order -= 1;
+				continue;
+			}
+
+			let f = unsafe { &mut *self.get_frame(frame) };
+			f.mark_free();
+			f.order = order;
+			f.link(self);
+
+			frame += p;
+		}
+	}
+
+	/*
 	 * Initializes the zone with type `type_`. The zone covers the memory from pointer `begin` to
 	 * `begin + size` where `size` is the size in bytes.
 	 */
@@ -283,6 +309,7 @@ impl Zone {
 		self.allocated_pages = 0;
 		self.begin = begin;
 		self.size = size;
+		self.fill_free_list();
 	}
 
 	/*
@@ -296,15 +323,15 @@ impl Zone {
 	 * Returns the pointer to the beginning of the allocatable zone, after the metadata zone.
 	 */
 	pub fn get_data_begin(&self) -> *mut Void {
-		let frames_count = self.get_pages_count() * core::mem::size_of::<Frame>();
+		let frames_count = (self.get_pages_count() as usize) * core::mem::size_of::<Frame>();
 		util::align(((self.begin as usize) + frames_count) as _, memory::PAGE_SIZE) as _
 	}
 
 	/*
 	 * Returns the number of allocatable pages.
 	 */
-	pub fn get_pages_count(&self) -> usize {
-		self.size / (memory::PAGE_SIZE + core::mem::size_of::<Frame>())
+	pub fn get_pages_count(&self) -> FrameID {
+		(self.size / (memory::PAGE_SIZE + core::mem::size_of::<Frame>())) as _
 	}
 
 	/*
@@ -334,7 +361,7 @@ impl Zone {
 	 * The given identifier **must** be in the range of the zone.
 	 */
 	pub fn get_frame(&mut self, id: FrameID) -> *mut Frame {
-		debug_assert!((id as usize) < self.get_pages_count());
+		debug_assert!(id < self.get_pages_count());
 		let off = (self.begin as usize) + (id as usize * core::mem::size_of::<Frame>());
 		off as _
 	}
@@ -454,7 +481,7 @@ impl Frame {
 			self.order -= 1;
 
 			let buddy = self.get_buddy_id(zone);
-			if (buddy as usize) >= zone.get_pages_count() {
+			if buddy >= zone.get_pages_count() {
 				break;
 			}
 
@@ -478,7 +505,7 @@ impl Frame {
 
 		while self.order < MAX_ORDER {
 			let buddy = self.get_buddy_id(zone);
-			if (buddy as usize) >= zone.get_pages_count() {
+			if buddy >= zone.get_pages_count() {
 				break;
 			}
 

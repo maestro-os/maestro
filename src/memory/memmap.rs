@@ -79,7 +79,7 @@ fn get_phys_alloc_begin(multiboot_ptr: *const Void) -> *const Void {
 	let mut ptr = max(multiboot_tags_end, memory::get_kernel_end());
 	let phys_elf_end = (boot_info.elf_sections as usize + boot_info.elf_num as usize
 		* core::mem::size_of::<elf::ELF32SectionHeader>()) as *const Void;
-	ptr = max(ptr, memory::kern_to_virt(phys_elf_end));
+	ptr = max(ptr, phys_elf_end);
 	return util::align(ptr, memory::PAGE_SIZE);
 }
 
