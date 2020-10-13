@@ -101,12 +101,26 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const Void) {
 /*
  * Called on Rust panic.
  */
+#[cfg(not(test))]
 #[panic_handler]
 fn panic(panic_info: &PanicInfo) -> ! {
 	if let Some(s) = panic_info.message() {
 		panic::rust_panic(s);
 	} else {
 		::kernel_panic!("Rust panic (no payload)", 0);
+	}
+}
+
+/*
+ * Called on Rust panic during testing.
+ */
+#[cfg(test)]
+#[panic_handler]
+fn panic(panic_info: &PanicInfo) -> ! {
+	::println!("FAILED\n");
+	::println!("Error: {}\n", panic_info);
+	unsafe {
+		kernel_halt();
 	}
 }
 

@@ -3,7 +3,7 @@
  */
 
 // TODO Add flag to enable/disable qemu
-mod qemu {
+pub mod qemu {
 	use crate::io;
 
 	/*
@@ -20,9 +20,10 @@ mod qemu {
 	 */
 	pub const FAILURE: u32 = 0x11;
 
-	pub fn exit(status: u32) {
+	pub fn exit(status: u32) -> ! {
 		unsafe {
 			io::outl(EXIT_PORT, status);
+			crate::kernel_halt();
 		}
 	}
 }
@@ -36,11 +37,15 @@ pub fn runner(tests: &[&dyn Fn()]) {
     ::println!("Running {} tests", tests.len());
 
     for test in tests {
+		// TODO Print test name
         test();
+		::println!("ok");
     }
 
+	::println!("No more tests to run");
+
 	// TODO Add flag to enable/disable qemu
-	qemu::exit(qemu::SUCCESS);
+	//qemu::exit(qemu::SUCCESS);
 	unsafe {
 		crate::kernel_halt();
 	}

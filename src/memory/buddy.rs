@@ -215,7 +215,9 @@ pub fn alloc(order: FrameOrder, flags: Flags) -> Result<*mut Void, ()> {
 		if let Some(f) = frame {
 			f.split(zone, order);
 			f.mark_used();
-			return Ok(f.get_ptr(zone));
+			let ptr = f.get_ptr(zone);
+			debug_assert!(util::is_aligned(ptr, memory::PAGE_SIZE));
+			return Ok(ptr);
 		}
 	}
 	Err(())
@@ -373,7 +375,7 @@ impl Frame {
 	 */
 	pub fn get_id(&self, zone: &Zone) -> FrameID {
 		let self_off = self as *const _ as usize;
-		let zone_off = zone as *const _ as usize;
+		let zone_off = zone.begin as *const _ as usize;
 		debug_assert!(self_off >= zone_off);
 		((self_off - zone_off) / core::mem::size_of::<Self>()) as u32
 	}
@@ -382,8 +384,16 @@ impl Frame {
 	 * Returns the pointer to the location of the associated physical memory.
 	 */
 	pub fn get_ptr(&self, zone: &Zone) -> *mut Void {
-		let off = self.get_id(zone) as usize * core::mem::size_of::<Self>();
-		((zone.begin as *const _ as usize) + off) as _
+		let begin_offset = zone.begin as *const _ as usize;
+		let mut data_begin = begin_offset
+			+ zone.get_pages_count() as usize * core::mem::size_of::<Self>();
+		data_begin = util::align(data_begin as _, memory::PAGE_SIZE) as _;
+
+		debug_assert!((data_begin - begin_offset)
+			+ zone.get_pages_count() as usize * memory::PAGE_SIZE <= zone.size);
+
+		let off = self.get_id(zone) as usize * memory::PAGE_SIZE;
+		(data_begin + off) as _
 	}
 
 	/*
@@ -528,7 +538,9 @@ mod test {
 	#[test_case]
 	fn test_buddy0() {
 		if let Ok(p) = alloc(0, FLAG_ZONE_TYPE_KERNEL) {
-			assert!(util::is_aligned(p, memory::PAGE_SIZE));
+			unsafe {
+				util::memset(p, -1, get_frame_size(0));
+			}
 			free(p, 0);
 		} else {
 			assert!(false);
