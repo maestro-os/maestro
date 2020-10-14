@@ -8,7 +8,7 @@ pub mod lock;
 /* Maximum size for a signed integer */
 pub type Imax = i32;
 /* Maximum size for an unsigned integer */
-pub type Umax = u32;
+pub type Umax = u32; // TODO Find another solution
 
 /*
  * Tells if pointer `ptr` is aligned on boundary `n`.

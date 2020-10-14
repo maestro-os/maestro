@@ -21,7 +21,14 @@
  * the element can be freed.
  */
 
+use core::result::Result;
+use crate::elf;
+use crate::memory::NULL;
 use crate::memory::Void;
+use crate::memory::buddy;
+use crate::memory;
+use crate::multiboot;
+use crate::util;
 
 /*
  * x86 paging flag. If set, pages are 4 MB long.
@@ -53,13 +60,37 @@ pub const PAGING_TABLE_WRITE: u32 = 0b00000010;
  */
 pub const PAGING_TABLE_PRESENT: u32 = 0b00000001;
 
+/*
+ * TODO doc
+ */
 pub const PAGING_PAGE_GLOBAL: u32 = 0b100000000;
+/*
+ * TODO doc
+ */
 pub const PAGING_PAGE_DIRTY: u32 = 0b001000000;
+/*
+ * TODO doc
+ */
 pub const PAGING_PAGE_ACCESSED: u32 = 0b000100000;
+/*
+ * TODO doc
+ */
 pub const PAGING_PAGE_CACHE_DISABLE: u32 = 0b000010000;
+/*
+ * TODO doc
+ */
 pub const PAGING_PAGE_WRITE_THROUGH: u32 = 0b000001000;
+/*
+ * TODO doc
+ */
 pub const PAGING_PAGE_USER: u32 = 0b000000100;
+/*
+ * TODO doc
+ */
 pub const PAGING_PAGE_WRITE: u32 = 0b000000010;
+/*
+ * TODO doc
+ */
 pub const PAGING_PAGE_PRESENT: u32 = 0b000000001;
 
 /*
@@ -132,11 +163,33 @@ pub struct VMemWrapper {
 // TODO Find a place to store wrappers
 
 /*
+ * Protects the kernel's read-only sections from writing in the given page directory `vmem`.
+ */
+fn protect_kernel(vmem: MutVMem) {
+	let boot_info = multiboot::get_boot_info();
+	elf::foreach_sections(boot_info.elf_sections, boot_info.elf_num as usize,
+		boot_info.elf_shndx as usize, boot_info.elf_entsize as usize,
+		| section: &elf::ELF32SectionHeader, _name: &str | {
+			if section.sh_flags & elf::SHF_WRITE != 0
+				|| section.sh_addralign as usize != memory::PAGE_SIZE {
+				return;
+			}
+
+			let pages = util::ceil_division(section.sh_size, memory::PAGE_SIZE as _) as usize;
+			map_range(vmem, (memory::PROCESS_END as usize + section.sh_addr as usize) as _,
+				section.sh_addr as *const Void, pages as usize, PAGING_PAGE_USER);
+		});
+}
+
+/*
  * Initializes a new page directory. The kernel memory is mapped into the context by default.
  */
-pub fn init() -> Option<VMem> {
-	// TODO
-	None
+pub fn init() -> Result<MutVMem, ()> {
+	let v = buddy::alloc_zero(0, buddy::FLAG_ZONE_TYPE_KERNEL)? as MutVMem;
+	// TODO If Meltdown mitigation is enabled, only allow read access to a stub for interrupts
+	map_range(v, NULL, memory::PROCESS_END, 262144, PAGING_PAGE_WRITE); // TODO Place pages count in a constant
+	protect_kernel(v);
+	Ok(v)
 }
 
 /*
@@ -195,7 +248,7 @@ pub fn get_flags(_vmem: VMem, _ptr: *const Void) -> Option<u32> {
  * Maps the the given physical address `physaddr` to the given virtual address `virtaddr` with the
  * given flags. The function forces the FLAG_PAGE_PRESENT flag.
  */
-pub fn map(_vmem: VMem, _physaddr: *const Void, _virtaddr: *const Void, _flags: u32) {
+pub fn map(_vmem: MutVMem, _physaddr: *const Void, _virtaddr: *const Void, _flags: u32) {
 	// TODO
 }
 
@@ -203,7 +256,7 @@ pub fn map(_vmem: VMem, _physaddr: *const Void, _virtaddr: *const Void, _flags: 
  * Maps the given physical address `physaddr` to the given virtual address `virtaddr` with the
  * given flags using blocks of 1024 pages (PSE).
  */
-pub fn map_pse(_vmem: VMem, _physaddr: *const Void, _virtaddr: *const Void, _flags: u32) {
+pub fn map_pse(_vmem: MutVMem, _physaddr: *const Void, _virtaddr: *const Void, _flags: u32) {
 	// TODO
 }
 
@@ -211,7 +264,7 @@ pub fn map_pse(_vmem: VMem, _physaddr: *const Void, _virtaddr: *const Void, _fla
  * Maps the given range of physical address `physaddr` to the given range of virtual address
  * `virtaddr`. The range is `pages` pages large.
  */
-pub fn map_range(_vmem: VMem, _physaddr: *const Void, _virtaddr: *const Void, _pages: usize,
+pub fn map_range(_vmem: MutVMem, _physaddr: *const Void, _virtaddr: *const Void, _pages: usize,
 	_flags: u32) {
 	// TODO
 }
@@ -220,7 +273,7 @@ pub fn map_range(_vmem: VMem, _physaddr: *const Void, _virtaddr: *const Void, _p
  * Maps the physical address `ptr` to the same address in virtual memory with the given flags
  * `flags`.
  */
-pub fn identity(_vmem: VMem, _ptr: *const Void, _flags: u32) {
+pub fn identity(_vmem: MutVMem, _ptr: *const Void, _flags: u32) {
 	// TODO
 }
 
@@ -228,14 +281,14 @@ pub fn identity(_vmem: VMem, _ptr: *const Void, _flags: u32) {
  * Maps the physical address `ptr` to the same address in virtual memory with the given flags
  * `flags`, using blocks of 1024 pages (PSE).
  */
-pub fn identity_pse(_vmem: VMem, _ptr: *const Void, _flags: u32) {
+pub fn identity_pse(_vmem: MutVMem, _ptr: *const Void, _flags: u32) {
 	// TODO
 }
 
 /*
  * Identity maps a range beginning at physical address `from` with pages `pages` and flags `flags`.
  */
-pub fn identity_range(_vmem: VMem, _from: *const Void, _pages: usize, _flags: u32) {
+pub fn identity_range(_vmem: MutVMem, _from: *const Void, _pages: usize, _flags: u32) {
 	// TODO
 }
 
@@ -244,7 +297,7 @@ pub fn identity_range(_vmem: VMem, _from: *const Void, _pages: usize, _flags: u3
  * large block is present at this location (PSE), it shall be split down into a table which shall
  * be filled accordingly.
  */
-pub fn unmap(_vmem: VMem, _virtaddr: *const Void) {
+pub fn unmap(_vmem: MutVMem, _virtaddr: *const Void) {
 	// TODO
 }
 
@@ -252,7 +305,7 @@ pub fn unmap(_vmem: VMem, _virtaddr: *const Void) {
  * Unmaps the given range beginning at virtual address `virtaddr` with size of `pages` pages. Large
  * blocks splitting is supported (PSE).
  */
-pub fn unmap_range(_vmem: VMem, _virtaddr: *const Void, _pages: usize) {
+pub fn unmap_range(_vmem: MutVMem, _virtaddr: *const Void, _pages: usize) {
 	// TODO
 }
 
