@@ -196,7 +196,21 @@ pub fn init() -> Result<MutVMem, ()> {
  * Creates and loads the kernel's page directory. The kernel's code is protected from writing.
  */
 pub fn kernel() {
-	// TODO
+	if let Ok(kernel_vmem) = init() {
+		unsafe {
+			paging_enable(kernel_vmem);
+		}
+	} else {
+		::kernel_panic!("Cannot initialize kernel virtual memory!", 0);
+	}
+}
+
+/*
+ * Returns the index of the element corresponding to the given virtual address `ptr` for element at
+ * level `level` in the tree. The level represents the depth in the tree. `0` is the deepest.
+ */
+fn get_addr_element_index(ptr: *const Void, level: usize) -> usize {
+	((ptr as usize) >> (12 + level * 10)) & 0x3ff
 }
 
 /*
@@ -204,7 +218,17 @@ pub fn kernel() {
  * entry must be marked as present to be found. If Page Size Extention (PSE) is used, an entry of
  * the page directory might be returned.
  */
-pub fn resolve(_vmem: VMem, _ptr: *const Void) -> Option<*const u32> {
+pub fn resolve(vmem: VMem, ptr: *const Void) -> Option<*const u32> {
+	let table = get_addr_element_index(ptr, 1);
+	let table_entry = unsafe { vmem.add(table) };
+	let table_entry_value = unsafe { *table_entry };
+	if table_entry_value & PAGING_TABLE_PRESENT != 0 {
+		return None;
+	}
+	if table_entry_value & PAGING_TABLE_PAGE_SIZE != 0 {
+		return Some(table_entry);
+	}
+
 	// TODO
 	None
 }

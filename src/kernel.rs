@@ -109,9 +109,6 @@ fn panic(panic_info: &PanicInfo) -> ! {
 	} else {
 		::kernel_panic!("Rust panic (no payload)", 0);
 	}
-	unsafe {
-		kernel_halt();
-	}
 }
 
 /*
