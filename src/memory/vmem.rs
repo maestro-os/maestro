@@ -19,6 +19,8 @@
  * used. This can be done with a simple counter: when an entry is allocated, the counter is
  * incremented and when an entry is freed, the counter is decremented. When the counter reaches 0,
  * the element can be freed.
+ *
+ * The Page Size Extension (PSE) allows to map 4MB large blocks using only a page directory entry.
  */
 
 use core::result::Result;
@@ -213,49 +215,48 @@ fn get_addr_element_index(ptr: *const Void, level: usize) -> usize {
 	((ptr as usize) >> (12 + level * 10)) & 0x3ff
 }
 
+// TODO Adapt to 5 level paging
 /*
  * Resolves the paging entry for the given pointer. If no entry is found, None is returned. The
- * entry must be marked as present to be found. If Page Size Extention (PSE) is used, an entry of
+ * entry must be marked as present to be found. If Page Size Extension (PSE) is used, an entry of
  * the page directory might be returned.
  */
 pub fn resolve(vmem: VMem, ptr: *const Void) -> Option<*const u32> {
-	let table = get_addr_element_index(ptr, 1);
-	let table_entry = unsafe { vmem.add(table) };
-	let table_entry_value = unsafe { *table_entry };
-	if table_entry_value & PAGING_TABLE_PRESENT != 0 {
+	let dir_entry = unsafe { vmem.add(get_addr_element_index(ptr, 1)) };
+	let dir_entry_value = unsafe { *dir_entry };
+	if dir_entry_value & PAGING_TABLE_PRESENT != 0 {
 		return None;
 	}
-	if table_entry_value & PAGING_TABLE_PAGE_SIZE != 0 {
-		return Some(table_entry);
+	if dir_entry_value & PAGING_TABLE_PAGE_SIZE != 0 {
+		return Some(dir_entry);
 	}
 
-	// TODO
-	None
+	let dir_entry_ptr = (dir_entry_value & PAGING_ADDR_MASK) as VMem;
+	let table_entry = unsafe { dir_entry_ptr.add(get_addr_element_index(ptr, 0)) };
+	let table_entry_value = unsafe { *table_entry };
+	if table_entry_value & PAGING_PAGE_PRESENT != 0 {
+		return None;
+	}
+	Some(table_entry)
 }
 
 /*
  * Tells whether the given pointer `ptr` is mapped or not.
  */
-pub fn is_mapped(_vmem: VMem, _ptr: *const Void) -> bool {
-	// TODO
-	false
-}
-
-/*
- * Checks if the portion of memory beginning at `ptr` with size `size` is mapped.
- */
-pub fn contains(_vmem: VMem, _ptr: *const Void, _size: usize) -> bool {
-	// TODO
-	false
+pub fn is_mapped(vmem: VMem, ptr: *const Void) -> bool {
+	resolve(vmem, ptr) != None
 }
 
 /*
  * Translates the given virtual address `ptr` to the corresponding physical address. If the address
  * is not mapped, None is returned.
  */
-pub fn translate(_vmem: VMem, _ptr: *const Void) -> Option<*const Void> {
-	// TODO
-	None
+pub fn translate(vmem: VMem, ptr: *const Void) -> Option<*const Void> {
+	if let Some(e) = resolve(vmem, ptr) {
+		Some((unsafe { *e } & PAGING_ADDR_MASK) as _)
+	} else {
+		None
+	}
 }
 
 /*
@@ -263,9 +264,12 @@ pub fn translate(_vmem: VMem, _ptr: *const Void) -> Option<*const Void> {
  * might return a page directory entry if a large block is present at the corresponding location.
  * If no entry is found, the function returns None.
  */
-pub fn get_flags(_vmem: VMem, _ptr: *const Void) -> Option<u32> {
-	// TODO
-	None
+pub fn get_flags(vmem: VMem, ptr: *const Void) -> Option<u32> {
+	if let Some(e) = resolve(vmem, ptr) {
+		Some(unsafe { *e } & PAGING_FLAGS_MASK)
+	} else {
+		None
+	}
 }
 
 /*
@@ -297,8 +301,8 @@ pub fn map_range(_vmem: MutVMem, _physaddr: *const Void, _virtaddr: *const Void,
  * Maps the physical address `ptr` to the same address in virtual memory with the given flags
  * `flags`.
  */
-pub fn identity(_vmem: MutVMem, _ptr: *const Void, _flags: u32) {
-	// TODO
+pub fn identity(vmem: MutVMem, ptr: *const Void, flags: u32) {
+	map(vmem, ptr, ptr, flags);
 }
 
 /*
@@ -346,8 +350,12 @@ pub fn clone(_vmem: VMem) -> Option<VMem> {
  * Flushes the modifications of the given page directory by reloading the Translation Lookaside
  * Buffer (TLB).
  */
-pub fn flush(_vmem: VMem) {
-	// TODO
+pub fn flush(vmem: VMem) {
+	unsafe {
+		if vmem == (cr3_get() as _) {
+			tlb_reload();
+		}
+	}
 }
 
 /*

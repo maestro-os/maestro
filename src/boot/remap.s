@@ -4,7 +4,7 @@
 .section .boot.text
 
 /*
- * Enables Page Size Extention (PSE) and paging using the given page directory.
+ * Enables Page Size Extension (PSE) and paging using the given page directory.
  */
 pse_enable:
 	push %ebp
