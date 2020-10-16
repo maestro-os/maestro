@@ -224,17 +224,17 @@ fn get_addr_element_index(ptr: *const Void, level: usize) -> usize {
 pub fn resolve(vmem: VMem, ptr: *const Void) -> Option<*const u32> {
 	let dir_entry = unsafe { vmem.add(get_addr_element_index(ptr, 1)) };
 	let dir_entry_value = unsafe { *dir_entry };
-	if dir_entry_value & PAGING_TABLE_PRESENT != 0 {
+	if dir_entry_value & PAGING_TABLE_PRESENT == 0 {
 		return None;
 	}
-	if dir_entry_value & PAGING_TABLE_PAGE_SIZE != 0 {
+	if dir_entry_value & PAGING_TABLE_PAGE_SIZE == 0 {
 		return Some(dir_entry);
 	}
 
 	let dir_entry_ptr = (dir_entry_value & PAGING_ADDR_MASK) as VMem;
 	let table_entry = unsafe { dir_entry_ptr.add(get_addr_element_index(ptr, 0)) };
 	let table_entry_value = unsafe { *table_entry };
-	if table_entry_value & PAGING_PAGE_PRESENT != 0 {
+	if table_entry_value & PAGING_PAGE_PRESENT == 0 {
 		return None;
 	}
 	Some(table_entry)
@@ -273,11 +273,67 @@ pub fn get_flags(vmem: VMem, ptr: *const Void) -> Option<u32> {
 }
 
 /*
+ * Creates an empty page table at index `index` of the page directory.
+ */
+fn create_table(vmem: MutVMem, index: usize, flags: u32) -> Result<(), ()> {
+	debug_assert!(index < 1024);
+
+	let v = buddy::alloc_zero(0, buddy::FLAG_ZONE_TYPE_KERNEL)? as MutVMem;
+	unsafe {
+		*vmem.add(index) = (v as u32) | flags | PAGING_TABLE_PRESENT;
+	}
+	Ok(())
+}
+
+/*
+ * Expands a large block into a page table. This function allocates a new page table and fills it
+ * so that the memory mapping keeps the same behaviour.
+ */
+fn expand_table(vmem: MutVMem, index: usize) -> Result<(), ()> {
+	let table_entry = unsafe { vmem.add(index) };
+	let table_entry_value = unsafe { *table_entry };
+	debug_assert!(table_entry_value & PAGING_TABLE_PRESENT != 0);
+	debug_assert!(table_entry_value & PAGING_TABLE_PAGE_SIZE != 0);
+
+	let base_addr = table_entry_value & PAGING_ADDR_MASK;
+	let flags = table_entry_value & PAGING_FLAGS_MASK;
+	create_table(vmem, index, flags)?;
+	for i in 0..1024 {
+		let addr = base_addr + (i * memory::PAGE_SIZE) as u32;
+		unsafe {
+			*table_entry.add(i) = addr | flags | PAGING_PAGE_PRESENT;
+		}
+	}
+
+	Ok(())
+}
+
+/*
  * Maps the the given physical address `physaddr` to the given virtual address `virtaddr` with the
  * given flags. The function forces the FLAG_PAGE_PRESENT flag.
  */
-pub fn map(_vmem: MutVMem, _physaddr: *const Void, _virtaddr: *const Void, _flags: u32) {
-	// TODO
+pub fn map(vmem: MutVMem, physaddr: *const Void, virtaddr: *const Void, flags: u32)
+	-> Result<(), ()> {
+	debug_assert!(util::is_aligned(physaddr, memory::PAGE_SIZE));
+	debug_assert!(util::is_aligned(virtaddr, memory::PAGE_SIZE));
+	debug_assert!(flags & PAGING_ADDR_MASK == 0);
+
+	let dir_entry_index = get_addr_element_index(virtaddr, 1);
+	let dir_entry = unsafe { vmem.add(dir_entry_index) };
+	let dir_entry_value = unsafe { *dir_entry };
+	if dir_entry_value & PAGING_TABLE_PRESENT == 0 {
+		create_table(vmem, dir_entry_index, flags)?;
+	} else if dir_entry_value & PAGING_TABLE_PAGE_SIZE == 0 {
+		expand_table(vmem, dir_entry_index)?;
+	}
+
+	let dir_entry_ptr = (dir_entry_value & PAGING_ADDR_MASK) as MutVMem;
+	let table_entry = unsafe { dir_entry_ptr.add(get_addr_element_index(virtaddr, 0)) };
+	unsafe {
+		*table_entry = (physaddr as u32) | flags;
+	}
+
+	Ok(())
 }
 
 /*
@@ -301,8 +357,9 @@ pub fn map_range(_vmem: MutVMem, _physaddr: *const Void, _virtaddr: *const Void,
  * Maps the physical address `ptr` to the same address in virtual memory with the given flags
  * `flags`.
  */
-pub fn identity(vmem: MutVMem, ptr: *const Void, flags: u32) {
-	map(vmem, ptr, ptr, flags);
+pub fn identity(vmem: MutVMem, ptr: *const Void, flags: u32) -> Result<(), ()> {
+	map(vmem, ptr, ptr, flags)?;
+	Ok(())
 }
 
 /*
