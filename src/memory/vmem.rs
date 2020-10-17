@@ -165,6 +165,77 @@ pub struct VMemWrapper {
 // TODO Find a place to store wrappers
 
 /*
+ * Allocates a paging object and returns a pointer to it. Returns None if the allocation fails.
+ */
+fn alloc_obj() -> Result<MutVMem, ()> {
+	Ok(buddy::alloc_zero(0, buddy::FLAG_ZONE_TYPE_KERNEL)? as _)
+}
+
+/*
+ * Frees paging object `obj`.
+ */
+fn free_obj(obj: VMem) {
+	buddy::free(obj as _, 0)
+}
+
+/*
+ * This module handles page tables manipulations.
+ */
+mod table {
+	use super::*;
+
+	/*
+	 * Creates an empty page table at index `index` of the page directory.
+	 */
+	pub fn create(vmem: MutVMem, index: usize, flags: u32) -> Result<(), ()> {
+		debug_assert!(index < 1024);
+
+		let v = alloc_obj()?;
+		unsafe {
+			*vmem.add(index) = (v as u32) | flags | PAGING_TABLE_PRESENT;
+		}
+		Ok(())
+	}
+
+	/*
+	 * Expands a large block into a page table. This function allocates a new page table and fills
+	 * it so that the memory mapping keeps the same behavior.
+	 */
+	pub fn expand(vmem: MutVMem, index: usize) -> Result<(), ()> {
+		let table_entry = unsafe { vmem.add(index) };
+		let table_entry_value = unsafe { *table_entry };
+		debug_assert!(table_entry_value & PAGING_TABLE_PRESENT != 0);
+		debug_assert!(table_entry_value & PAGING_TABLE_PAGE_SIZE != 0);
+
+		let base_addr = table_entry_value & PAGING_ADDR_MASK;
+		let flags = table_entry_value & PAGING_FLAGS_MASK;
+		table::create(vmem, index, flags)?;
+		for i in 0..1024 {
+			let addr = base_addr + (i * memory::PAGE_SIZE) as u32;
+			unsafe {
+				*table_entry.add(i) = addr | flags | PAGING_PAGE_PRESENT;
+			}
+		}
+
+		Ok(())
+	}
+
+	/*
+	 * Deletes the table at index `index` in the page directory.
+	 */
+	pub fn delete(vmem: MutVMem, index: usize) {
+		debug_assert!(index < 1024);
+		let dir_entry = unsafe { vmem.add(index) };
+		let dir_entry_value = unsafe { *dir_entry };
+		let dir_entry_addr = dir_entry_value & PAGING_ADDR_MASK;
+		buddy::free(dir_entry_addr as _, 0);
+		unsafe {
+			*dir_entry = 0;
+		}
+	}
+}
+
+/*
  * Protects the kernel's read-only sections from writing in the given page directory `vmem`.
  */
 fn protect_kernel(vmem: MutVMem) {
@@ -178,8 +249,10 @@ fn protect_kernel(vmem: MutVMem) {
 			}
 
 			let pages = util::ceil_division(section.sh_size, memory::PAGE_SIZE as _) as usize;
-			map_range(vmem, (memory::PROCESS_END as usize + section.sh_addr as usize) as _,
-				section.sh_addr as *const Void, pages as usize, PAGING_PAGE_USER);
+			if map_range(vmem, (memory::PROCESS_END as usize + section.sh_addr as usize) as _,
+				section.sh_addr as *const Void, pages as usize, PAGING_PAGE_USER) == Err(()) {
+				::kernel_panic!("Kernel protection failed!");
+			}
 		});
 }
 
@@ -187,9 +260,9 @@ fn protect_kernel(vmem: MutVMem) {
  * Initializes a new page directory. The kernel memory is mapped into the context by default.
  */
 pub fn init() -> Result<MutVMem, ()> {
-	let v = buddy::alloc_zero(0, buddy::FLAG_ZONE_TYPE_KERNEL)? as MutVMem;
+	let v = alloc_obj()?;
 	// TODO If Meltdown mitigation is enabled, only allow read access to a stub for interrupts
-	map_range(v, NULL, memory::PROCESS_END, 262144, PAGING_PAGE_WRITE); // TODO Place pages count in a constant
+	map_range(v, NULL, memory::PROCESS_END, 262144, PAGING_PAGE_WRITE)?; // TODO Place pages count in a constant
 	protect_kernel(v);
 	Ok(v)
 }
@@ -231,8 +304,8 @@ pub fn resolve(vmem: VMem, ptr: *const Void) -> Option<*const u32> {
 		return Some(dir_entry);
 	}
 
-	let dir_entry_ptr = (dir_entry_value & PAGING_ADDR_MASK) as VMem;
-	let table_entry = unsafe { dir_entry_ptr.add(get_addr_element_index(ptr, 0)) };
+	let table = (dir_entry_value & PAGING_ADDR_MASK) as VMem;
+	let table_entry = unsafe { table.add(get_addr_element_index(ptr, 0)) };
 	let table_entry_value = unsafe { *table_entry };
 	if table_entry_value & PAGING_PAGE_PRESENT == 0 {
 		return None;
@@ -273,42 +346,6 @@ pub fn get_flags(vmem: VMem, ptr: *const Void) -> Option<u32> {
 }
 
 /*
- * Creates an empty page table at index `index` of the page directory.
- */
-fn create_table(vmem: MutVMem, index: usize, flags: u32) -> Result<(), ()> {
-	debug_assert!(index < 1024);
-
-	let v = buddy::alloc_zero(0, buddy::FLAG_ZONE_TYPE_KERNEL)? as MutVMem;
-	unsafe {
-		*vmem.add(index) = (v as u32) | flags | PAGING_TABLE_PRESENT;
-	}
-	Ok(())
-}
-
-/*
- * Expands a large block into a page table. This function allocates a new page table and fills it
- * so that the memory mapping keeps the same behaviour.
- */
-fn expand_table(vmem: MutVMem, index: usize) -> Result<(), ()> {
-	let table_entry = unsafe { vmem.add(index) };
-	let table_entry_value = unsafe { *table_entry };
-	debug_assert!(table_entry_value & PAGING_TABLE_PRESENT != 0);
-	debug_assert!(table_entry_value & PAGING_TABLE_PAGE_SIZE != 0);
-
-	let base_addr = table_entry_value & PAGING_ADDR_MASK;
-	let flags = table_entry_value & PAGING_FLAGS_MASK;
-	create_table(vmem, index, flags)?;
-	for i in 0..1024 {
-		let addr = base_addr + (i * memory::PAGE_SIZE) as u32;
-		unsafe {
-			*table_entry.add(i) = addr | flags | PAGING_PAGE_PRESENT;
-		}
-	}
-
-	Ok(())
-}
-
-/*
  * Maps the the given physical address `physaddr` to the given virtual address `virtaddr` with the
  * given flags. The function forces the FLAG_PAGE_PRESENT flag.
  */
@@ -322,13 +359,13 @@ pub fn map(vmem: MutVMem, physaddr: *const Void, virtaddr: *const Void, flags: u
 	let dir_entry = unsafe { vmem.add(dir_entry_index) };
 	let dir_entry_value = unsafe { *dir_entry };
 	if dir_entry_value & PAGING_TABLE_PRESENT == 0 {
-		create_table(vmem, dir_entry_index, flags)?;
+		table::create(vmem, dir_entry_index, flags)?;
 	} else if dir_entry_value & PAGING_TABLE_PAGE_SIZE == 0 {
-		expand_table(vmem, dir_entry_index)?;
+		table::expand(vmem, dir_entry_index)?;
 	}
 
-	let dir_entry_ptr = (dir_entry_value & PAGING_ADDR_MASK) as MutVMem;
-	let table_entry = unsafe { dir_entry_ptr.add(get_addr_element_index(virtaddr, 0)) };
+	let table = (dir_entry_value & PAGING_ADDR_MASK) as MutVMem;
+	let table_entry = unsafe { table.add(get_addr_element_index(virtaddr, 0)) };
 	unsafe {
 		*table_entry = (physaddr as u32) | flags;
 	}
@@ -340,17 +377,57 @@ pub fn map(vmem: MutVMem, physaddr: *const Void, virtaddr: *const Void, flags: u
  * Maps the given physical address `physaddr` to the given virtual address `virtaddr` with the
  * given flags using blocks of 1024 pages (PSE).
  */
-pub fn map_pse(_vmem: MutVMem, _physaddr: *const Void, _virtaddr: *const Void, _flags: u32) {
-	// TODO
+pub fn map_pse(vmem: MutVMem, physaddr: *const Void, virtaddr: *const Void, flags: u32) {
+	debug_assert!(util::is_aligned(physaddr, memory::PAGE_SIZE));
+	debug_assert!(util::is_aligned(virtaddr, memory::PAGE_SIZE));
+	debug_assert!(flags & PAGING_ADDR_MASK == 0);
+
+	let dir_entry_index = get_addr_element_index(virtaddr, 1);
+	let dir_entry = unsafe { vmem.add(dir_entry_index) };
+	let dir_entry_value = unsafe { *dir_entry };
+	if dir_entry_value & PAGING_TABLE_PRESENT != 0
+		&& dir_entry_value & PAGING_TABLE_PAGE_SIZE != 0 {
+		table::delete(vmem, dir_entry_index);
+	}
+
+	unsafe {
+		*vmem.add(dir_entry_index) = (physaddr as u32) | flags;
+	}
 }
 
 /*
  * Maps the given range of physical address `physaddr` to the given range of virtual address
  * `virtaddr`. The range is `pages` pages large.
  */
-pub fn map_range(_vmem: MutVMem, _physaddr: *const Void, _virtaddr: *const Void, _pages: usize,
-	_flags: u32) {
-	// TODO
+pub fn map_range(vmem: MutVMem, physaddr: *const Void, virtaddr: *const Void, pages: usize,
+	flags: u32) -> Result<(), ()> {
+	debug_assert!(util::is_aligned(physaddr, memory::PAGE_SIZE));
+	debug_assert!((physaddr as usize) + (pages * memory::PAGE_SIZE) >= (physaddr as usize));
+	debug_assert!(util::is_aligned(virtaddr, memory::PAGE_SIZE));
+	debug_assert!((virtaddr as usize) + (pages * memory::PAGE_SIZE) >= (virtaddr as usize));
+	debug_assert!(flags & PAGING_ADDR_MASK == 0);
+
+	let mut i = 0;
+	while i < pages {
+		let off = i * memory::PAGE_SIZE;
+		let use_pse = {
+			util::is_aligned(((virtaddr as usize) + off) as _, 1024 * memory::PAGE_SIZE)
+				&& (pages - i) >= 1024
+		};
+		let next_physaddr = ((physaddr as usize) + off) as *const Void;
+		let next_virtaddr = ((virtaddr as usize) + off) as *const Void;
+		if use_pse {
+			map_pse(vmem, next_physaddr, next_virtaddr, flags);
+			i += 1024;
+		} else {
+			if map(vmem, next_physaddr, next_virtaddr, flags) == Err(()) {
+				// TODO Undo
+			}
+			i += 1;
+		}
+	}
+
+	Ok(())
 }
 
 /*
@@ -358,23 +435,23 @@ pub fn map_range(_vmem: MutVMem, _physaddr: *const Void, _virtaddr: *const Void,
  * `flags`.
  */
 pub fn identity(vmem: MutVMem, ptr: *const Void, flags: u32) -> Result<(), ()> {
-	map(vmem, ptr, ptr, flags)?;
-	Ok(())
+	map(vmem, ptr, ptr, flags)
 }
 
 /*
  * Maps the physical address `ptr` to the same address in virtual memory with the given flags
  * `flags`, using blocks of 1024 pages (PSE).
  */
-pub fn identity_pse(_vmem: MutVMem, _ptr: *const Void, _flags: u32) {
-	// TODO
+pub fn identity_pse(vmem: MutVMem, ptr: *const Void, flags: u32) {
+	map_pse(vmem, ptr, ptr, flags);
 }
 
 /*
  * Identity maps a range beginning at physical address `from` with pages `pages` and flags `flags`.
  */
-pub fn identity_range(_vmem: MutVMem, _from: *const Void, _pages: usize, _flags: u32) {
-	// TODO
+pub fn identity_range(vmem: MutVMem, ptr: *const Void, pages: usize, flags: u32)
+	-> Result<(), ()> {
+	map_range(vmem, ptr, ptr, pages, flags)
 }
 
 /*
@@ -382,25 +459,102 @@ pub fn identity_range(_vmem: MutVMem, _from: *const Void, _pages: usize, _flags:
  * large block is present at this location (PSE), it shall be split down into a table which shall
  * be filled accordingly.
  */
-pub fn unmap(_vmem: MutVMem, _virtaddr: *const Void) {
-	// TODO
+pub fn unmap(vmem: MutVMem, virtaddr: *const Void) -> Result<(), ()> {
+	let dir_entry_index = get_addr_element_index(virtaddr, 1);
+	let dir_entry = unsafe { vmem.add(dir_entry_index) as VMem };
+	let dir_entry_value = unsafe { *dir_entry };
+	if dir_entry_value & PAGING_TABLE_PRESENT == 0 {
+		return Ok(());
+	} else if dir_entry_value & PAGING_TABLE_PAGE_SIZE != 0 {
+		table::expand(vmem, dir_entry_index)?;
+	}
+
+	let table_entry_index = get_addr_element_index(virtaddr, 0);
+	let table_entry = unsafe { vmem.add(table_entry_index) as MutVMem };
+	unsafe {
+		*table_entry = 0;
+	}
+	Ok(())
 }
 
 /*
- * Unmaps the given range beginning at virtual address `virtaddr` with size of `pages` pages. Large
- * blocks splitting is supported (PSE).
+ * Unmaps the large block (PSE) at the given virtual address `virtaddr`.
  */
-pub fn unmap_range(_vmem: MutVMem, _virtaddr: *const Void, _pages: usize) {
-	// TODO
+pub fn unmap_pse(vmem: MutVMem, virtaddr: *const Void) {
+	let dir_entry_index = get_addr_element_index(virtaddr, 1);
+	let dir_entry = unsafe { vmem.add(dir_entry_index) as MutVMem };
+	let dir_entry_value = unsafe { *dir_entry };
+	if dir_entry_value & PAGING_TABLE_PRESENT == 0
+		|| dir_entry_value & PAGING_TABLE_PAGE_SIZE == 0 {
+		return;
+	}
+	unsafe {
+		*dir_entry = 0;
+	}
+}
+
+/*
+ * Unmaps the given range beginning at virtual address `virtaddr` with size of `pages` pages.
+ */
+pub fn unmap_range(vmem: MutVMem, virtaddr: *const Void, pages: usize) -> Result<(), ()> {
+	debug_assert!(util::is_aligned(virtaddr, memory::PAGE_SIZE));
+	debug_assert!((virtaddr as usize) + (pages * memory::PAGE_SIZE) >= (virtaddr as usize));
+
+	let mut i = 0;
+	while i < pages {
+		let off = i * memory::PAGE_SIZE;
+		let use_pse = {
+			util::is_aligned(((virtaddr as usize) + off) as _, 1024 * memory::PAGE_SIZE)
+				&& (pages - i) >= 1024
+		};
+		let next_virtaddr = ((virtaddr as usize) + off) as *const Void;
+		if use_pse {
+			unmap_pse(vmem, next_virtaddr);
+			i += 1024;
+		} else {
+			if unmap(vmem, next_virtaddr) == Err(()) {
+				// TODO Undo
+			}
+			i += 1;
+		}
+	}
+
+	Ok(())
 }
 
 /*
  * Clones the given page directory, allocating copies of every children elements. If the page
  * directory cannot be cloned, the function returns None.
  */
-pub fn clone(_vmem: VMem) -> Option<VMem> {
-	// TODO
-	None
+pub fn clone(vmem: VMem) -> Result<VMem, ()> {
+	let v = alloc_obj()?;
+	for i in 0..1024 {
+		let src_dir_entry = unsafe { vmem.add(i) };
+		let src_dir_entry_value = unsafe { *src_dir_entry };
+		if src_dir_entry_value & PAGING_TABLE_PRESENT == 0 {
+			continue;
+		}
+
+		let dest_dir_entry = unsafe { vmem.add(i) as MutVMem };
+		if src_dir_entry_value & PAGING_TABLE_PAGE_SIZE == 0 {
+			let src_table = (src_dir_entry_value & PAGING_ADDR_MASK) as VMem;
+			if let Ok(dest_table) = alloc_obj() {
+				unsafe {
+					util::memcpy(dest_table as _, src_table as _, memory::PAGE_SIZE);
+					*dest_dir_entry = (dest_table as u32)
+						| (src_dir_entry_value & PAGING_FLAGS_MASK);
+				}
+			} else {
+				destroy(v);
+				return Err(());
+			}
+		} else {
+			unsafe {
+				*dest_dir_entry = src_dir_entry_value;
+			}
+		}
+	}
+	Ok(v)
 }
 
 /*
@@ -419,6 +573,15 @@ pub fn flush(vmem: VMem) {
  * Destroyes the given page directory, including its children elements. If the page directory is
  * begin used, the behaviour is undefined.
  */
-pub fn destroy(_vmem: VMem) {
-	// TODO
+pub fn destroy(vmem: VMem) {
+	for i in 0..1024 {
+		let dir_entry = unsafe { vmem.add(i) };
+		let dir_entry_value = unsafe { *dir_entry };
+		if dir_entry_value & PAGING_TABLE_PRESENT != 0
+			&& dir_entry_value & PAGING_TABLE_PAGE_SIZE == 0 {
+			let table = (dir_entry_value & PAGING_ADDR_MASK) as VMem;
+			free_obj(table);
+		}
+	}
+	free_obj(vmem);
 }
