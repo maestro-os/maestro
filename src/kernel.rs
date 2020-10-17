@@ -63,7 +63,7 @@ mod io {
 }
 
 #[no_mangle]
-pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const Void) {
+pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const Void) -> ! {
 	tty::init();
 
 	if magic != multiboot::BOOTLOADER_MAGIC || !util::is_aligned(multiboot_ptr, 8) {

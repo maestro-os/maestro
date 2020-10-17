@@ -88,7 +88,7 @@ fn print_rust_panic<'a>(args: &'a fmt::Arguments<'a>) {
  * Handles a Rust panic.
  */
 #[cfg(kernel_mode = "release")]
-pub fn rust_panic<'a>(args: &'a fmt::Arguments<'a>) {
+pub fn rust_panic<'a>(args: &'a fmt::Arguments<'a>) -> ! {
 	::cli!();
 	print_rust_panic(args);
 	unsafe {

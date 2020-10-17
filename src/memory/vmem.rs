@@ -20,7 +20,7 @@
  * incremented and when an entry is freed, the counter is decremented. When the counter reaches 0,
  * the element can be freed.
  *
- * The Page Size Extension (PSE) allows to map 4MB large blocks using only a page directory entry.
+ * The Page Size Extension (PSE) allows to map 4MB large blocks without using a page table.
  */
 
 use core::result::Result;
@@ -37,7 +37,7 @@ use crate::util;
  */
 pub const PAGING_TABLE_PAGE_SIZE: u32 = 0b10000000;
 /*
- * x86 paging flag. Set if the page has been read or wrote.
+ * x86 paging flag. Set if the page has been read or written.
  */
 pub const PAGING_TABLE_ACCESSED: u32 = 0b00100000;
 /*
@@ -100,8 +100,8 @@ pub const PAGING_PAGE_PRESENT: u32 = 0b000000001;
  */
 pub const PAGING_FLAGS_MASK: u32 = 0xfff;
 /*
- * Address mask in a page directory entry. The address doesn't need every bytes
- * since it must be page-aligned.
+ * Address mask in a page directory entry. The address doesn't need every bytes since it must be
+ * page-aligned.
  */
 pub const PAGING_ADDR_MASK: u32 = !PAGING_FLAGS_MASK;
 
@@ -110,23 +110,21 @@ pub const PAGING_ADDR_MASK: u32 = !PAGING_FLAGS_MASK;
  */
 pub const PAGE_FAULT_PRESENT: u32 = 0b00001;
 /*
- * x86 page fault flag. If set, the error was caused bt a write operation, else
- * the error was caused by a read operation.
+ * x86 page fault flag. If set, the error was caused by a write operation, else the error was
+ * caused by a read operation.
  */
 pub const PAGE_FAULT_WRITE: u32 = 0b00010;
 /*
- * x86 page fault flag. If set, the page fault was caused by a userspace
- * operation.
+ * x86 page fault flag. If set, the page fault was caused by a userspace operation.
  */
 pub const PAGE_FAULT_USER: u32 = 0b00100;
 /*
- * x86 page fault flag. If set, one or more page directory entries contain
- * reserved bits which are set.
+ * x86 page fault flag. If set, one or more page directory entries contain reserved bits which are
+ * set.
  */
 pub const PAGE_FAULT_RESERVED: u32 = 0b01000;
 /*
- * x86 page fault flag. If set, the page fault was caused by an instruction
- * fetch.
+ * x86 page fault flag. If set, the page fault was caused by an instruction fetch.
  */
 pub const PAGE_FAULT_INSTRUCTION: u32 = 0b10000;
 
@@ -402,9 +400,7 @@ pub fn map_pse(vmem: MutVMem, physaddr: *const Void, virtaddr: *const Void, flag
 pub fn map_range(vmem: MutVMem, physaddr: *const Void, virtaddr: *const Void, pages: usize,
 	flags: u32) -> Result<(), ()> {
 	debug_assert!(util::is_aligned(physaddr, memory::PAGE_SIZE));
-	debug_assert!((physaddr as usize) + (pages * memory::PAGE_SIZE) >= (physaddr as usize));
 	debug_assert!(util::is_aligned(virtaddr, memory::PAGE_SIZE));
-	debug_assert!((virtaddr as usize) + (pages * memory::PAGE_SIZE) >= (virtaddr as usize));
 	debug_assert!(flags & PAGING_ADDR_MASK == 0);
 
 	let mut i = 0;
