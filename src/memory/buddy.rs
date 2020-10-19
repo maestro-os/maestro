@@ -141,18 +141,23 @@ pub fn init() {
 	}
 
 	let mmap_info = memmap::get_info();
-	let z = unsafe { ZONES.assume_init_mut() };
+	let z = unsafe {
+		ZONES.assume_init_mut()
+	};
 
-	let kernel_zone_begin = mmap_info.phys_alloc_begin as *mut Void;
+	let kernel_zone_begin = memory::kern_to_virt(mmap_info.phys_alloc_begin) as *mut Void;
 	let available_memory_end = (mmap_info.phys_alloc_begin as usize) + mmap_info.available_memory;
 	let kernel_zone_end = min(available_memory_end, KERNEL_ZONE_LIMIT as usize) as *mut Void;
 	let kernel_zone_size = (kernel_zone_end as usize) - (mmap_info.phys_alloc_begin as usize);
 	z[1].lock().get_mut().init(FLAG_ZONE_TYPE_KERNEL, kernel_zone_begin, kernel_zone_size);
 	z[1].unlock();
 
-	let user_zone_begin = kernel_zone_end;
+	// TODO
+	/*let user_zone_begin = kernel_zone_end;
 	let user_zone_end = available_memory_end as *mut Void;
-	let user_zone_size = (user_zone_end as usize) - (user_zone_begin as usize);
+	let user_zone_size = (user_zone_end as usize) - (user_zone_begin as usize);*/
+	let user_zone_begin = 0 as *mut _;
+	let user_zone_size = 0;
 	z[0].lock().get_mut().init(FLAG_ZONE_TYPE_USER, user_zone_begin, user_zone_size);
 	z[0].unlock();
 
@@ -545,6 +550,51 @@ mod test {
 		} else {
 			assert!(false);
 		}
+	}
+
+	#[test_case]
+	fn test_buddy1() {
+		for _ in 0..1000 {
+			if let Ok(p) = alloc(0, FLAG_ZONE_TYPE_KERNEL) {
+				unsafe {
+					util::memset(p, -1, get_frame_size(0));
+				}
+				free(p, 0);
+			} else {
+				assert!(false);
+			}
+		}
+	}
+
+	#[test_case]
+	fn test_buddy2() {
+		if let Ok(p) = alloc(1, FLAG_ZONE_TYPE_KERNEL) {
+			unsafe {
+				util::memset(p, -1, get_frame_size(1));
+			}
+			free(p, 1);
+		} else {
+			assert!(false);
+		}
+	}
+
+	fn test3(i: usize) {
+		if let Ok(p) = alloc(0, FLAG_ZONE_TYPE_KERNEL) {
+			unsafe {
+				util::memset(p, -1, get_frame_size(0));
+			}
+			if i > 0 {
+				test3(i - 1);
+			}
+			free(p, 0);
+		} else {
+			assert!(false);
+		}
+	}
+
+	#[test_case]
+	fn test_buddy3() {
+		test3(100);
 	}
 
 	// TODO Add more tests

@@ -17,7 +17,7 @@
 #![feature(rustc_private)]
 #![feature(untagged_unions)]
 
-#![deny(warnings)]
+//#![deny(warnings)]
 #![allow(dead_code)]
 #![allow(unused_macros)]
 
