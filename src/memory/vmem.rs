@@ -190,7 +190,7 @@ mod table {
 
 		let v = alloc_obj()?;
 		unsafe {
-			*vmem.add(index) = (v as u32) | flags | PAGING_TABLE_PRESENT;
+			*vmem.add(index) = (v as u32) | (flags | PAGING_TABLE_PRESENT);
 		}
 		Ok(())
 	}
@@ -211,7 +211,7 @@ mod table {
 		for i in 0..1024 {
 			let addr = base_addr + (i * memory::PAGE_SIZE) as u32;
 			unsafe {
-				*table_entry.add(i) = addr | flags | PAGING_PAGE_PRESENT;
+				*table_entry.add(i) = addr | flags;
 			}
 		}
 
@@ -298,7 +298,7 @@ pub fn resolve(vmem: VMem, ptr: *const Void) -> Option<*const u32> {
 	if dir_entry_value & PAGING_TABLE_PRESENT == 0 {
 		return None;
 	}
-	if dir_entry_value & PAGING_TABLE_PAGE_SIZE == 0 {
+	if dir_entry_value & PAGING_TABLE_PAGE_SIZE != 0 {
 		return Some(dir_entry);
 	}
 
@@ -358,14 +358,14 @@ pub fn map(vmem: MutVMem, physaddr: *const Void, virtaddr: *const Void, flags: u
 	let dir_entry_value = unsafe { *dir_entry };
 	if dir_entry_value & PAGING_TABLE_PRESENT == 0 {
 		table::create(vmem, dir_entry_index, flags)?;
-	} else if dir_entry_value & PAGING_TABLE_PAGE_SIZE == 0 {
+	} else if dir_entry_value & PAGING_TABLE_PAGE_SIZE != 0 {
 		table::expand(vmem, dir_entry_index)?;
 	}
 
 	let table = (dir_entry_value & PAGING_ADDR_MASK) as MutVMem;
 	let table_entry = unsafe { table.add(get_addr_element_index(virtaddr, 0)) };
 	unsafe {
-		*table_entry = (physaddr as u32) | flags;
+		*table_entry = (physaddr as u32) | (flags | PAGING_PAGE_PRESENT);
 	}
 
 	Ok(())
@@ -384,12 +384,13 @@ pub fn map_pse(vmem: MutVMem, physaddr: *const Void, virtaddr: *const Void, flag
 	let dir_entry = unsafe { vmem.add(dir_entry_index) };
 	let dir_entry_value = unsafe { *dir_entry };
 	if dir_entry_value & PAGING_TABLE_PRESENT != 0
-		&& dir_entry_value & PAGING_TABLE_PAGE_SIZE != 0 {
+		&& dir_entry_value & PAGING_TABLE_PAGE_SIZE == 0 {
 		table::delete(vmem, dir_entry_index);
 	}
 
 	unsafe {
-		*vmem.add(dir_entry_index) = (physaddr as u32) | flags;
+		*vmem.add(dir_entry_index) = (physaddr as u32)
+			| (flags | PAGING_TABLE_PRESENT | PAGING_TABLE_PAGE_SIZE);
 	}
 }
 
