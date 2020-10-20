@@ -80,20 +80,23 @@ struct Zone {
 	/* The number of allocated pages in the zone */
 	allocated_pages: usize,
 
-	/* A pointer to the beginning of the zone */
+	/* A pointer to the beginning of the metadata of the zone */
+	metadata_begin: *mut Void,
+	/* A pointer to the beginning of the allocatable memory of the zone */
 	begin: *mut Void,
 	/* The size of the zone in bytes */
-	size: usize,
+	pages_count: FrameID,
 
 	/* The free list containing linked lists to free frames */
 	free_list: [Option<*mut Frame>; (MAX_ORDER + 1) as usize],
 }
 
 /*
- * Structure representing the metadata for a frame of physical memory. The structure has an internal linked list for the
- * free list. This linked list doesn't store pointers but frame identifiers to save memory. If either `prev` or `next`
- * has value `FRAME_STATE_USED`, the frame is marked as used. If a frame points to itself, it means that no more
- * elements are present in the list.
+ * Structure representing the metadata for a frame of physical memory. The structure has an
+ * internal linked list for the free list. This linked list doesn't store pointers but frame
+ * identifiers to save memory. If either `prev` or `next` has value `FRAME_STATE_USED`, the frame
+ * is marked as used. If a frame points to itself, it means that no more elements are present in
+ * the list.
  */
 #[repr(packed)]
 struct Frame {
@@ -145,24 +148,28 @@ pub fn init() {
 		ZONES.assume_init_mut()
 	};
 
-	let kernel_zone_begin = memory::kern_to_virt(mmap_info.phys_alloc_begin) as *mut Void;
-	let available_memory_end = (mmap_info.phys_alloc_begin as usize) + mmap_info.available_memory;
-	let kernel_zone_end = min(available_memory_end, KERNEL_ZONE_LIMIT as usize) as *mut Void;
-	let kernel_zone_size = (kernel_zone_end as usize) - (mmap_info.phys_alloc_begin as usize);
-	z[1].lock().get_mut().init(FLAG_ZONE_TYPE_KERNEL, kernel_zone_begin, kernel_zone_size);
+	let metadata_begin = util::align(mmap_info.phys_alloc_begin, memory::PAGE_SIZE) as *mut Void;
+	let frames_count = mmap_info.available_memory
+		/ (memory::PAGE_SIZE + core::mem::size_of::<Frame>());
+	let metadata_size = frames_count * core::mem::size_of::<Frame>();
+	let metadata_end = unsafe { metadata_begin.add(metadata_size) };
+	// TODO Check that metadata doesn't exceed kernel space's capacity
+
+	let kernel_zone_begin = util::align(metadata_end, memory::PAGE_SIZE) as *mut Void;
+	let kernel_zone_end = util::down_align(min(KERNEL_ZONE_LIMIT, mmap_info.memory_end),
+		memory::PAGE_SIZE);
+	let kernel_frames_count = (kernel_zone_end as usize - kernel_zone_begin as usize)
+		/ memory::PAGE_SIZE;
+	z[1].lock().get_mut().init(FLAG_ZONE_TYPE_KERNEL, metadata_begin, kernel_frames_count as _,
+		kernel_zone_begin);
 	z[1].unlock();
 
 	// TODO
-	/*let user_zone_begin = kernel_zone_end;
-	let user_zone_end = available_memory_end as *mut Void;
-	let user_zone_size = (user_zone_end as usize) - (user_zone_begin as usize);*/
-	let user_zone_begin = 0 as *mut _;
-	let user_zone_size = 0;
-	z[0].lock().get_mut().init(FLAG_ZONE_TYPE_USER, user_zone_begin, user_zone_size);
+	z[0].lock().get_mut().init(FLAG_ZONE_TYPE_USER, 0 as *mut Void, 0, 0 as *mut Void);
 	z[0].unlock();
 
 	// TODO
-	z[2].lock().get_mut().init(FLAG_ZONE_TYPE_DMA, 0 as *mut _, 0);
+	z[2].lock().get_mut().init(FLAG_ZONE_TYPE_DMA, 0 as *mut Void, 0, 0 as *mut Void);
 	z[2].unlock();
 }
 
@@ -196,7 +203,7 @@ fn get_zone_for_pointer(ptr: *const Void) -> Option<&'static mut Mutex<Zone>> {
 		let is_valid = {
 			let guard = MutexGuard::new(&mut zones[i]);
 			let zone = guard.get();
-			ptr >= zone.begin && (ptr as usize) < zone.begin as usize + zone.size
+			ptr >= zone.begin && (ptr as usize) < zone.begin as usize + zone.get_size()
 		};
 		if is_valid {
 			return Some(&mut zones[i]);
@@ -230,6 +237,8 @@ pub fn alloc(order: FrameOrder, flags: Flags) -> Result<*mut Void, ()> {
 
 /*
  * Uses `alloc` and zeroes the allocated frame.
+ * Warning: This function can be used only if the physical memory is guaranteed to be mapped with
+ * write permission.
  */
 pub fn alloc_zero(order: FrameOrder, flags: Flags) -> Result<*mut Void, ()> {
 	let ptr = alloc(order, flags)?;
@@ -311,11 +320,13 @@ impl Zone {
 	 * Initializes the zone with type `type_`. The zone covers the memory from pointer `begin` to
 	 * `begin + size` where `size` is the size in bytes.
 	 */
-	pub fn init(&mut self, type_: Flags, begin: *mut Void, size: usize) {
+	pub fn init(&mut self, type_: Flags, metadata_begin: *mut Void, pages_count: FrameID,
+		begin: *mut Void) {
 		self.type_ = type_;
 		self.allocated_pages = 0;
+		self.metadata_begin = metadata_begin;
 		self.begin = begin;
-		self.size = size;
+		self.pages_count = pages_count;
 		self.fill_free_list();
 	}
 
@@ -327,18 +338,17 @@ impl Zone {
 	}
 
 	/*
-	 * Returns the pointer to the beginning of the allocatable zone, after the metadata zone.
-	 */
-	pub fn get_data_begin(&self) -> *mut Void {
-		let frames_count = (self.get_pages_count() as usize) * core::mem::size_of::<Frame>();
-		util::align(((self.begin as usize) + frames_count) as _, memory::PAGE_SIZE) as _
-	}
-
-	/*
 	 * Returns the number of allocatable pages.
 	 */
 	pub fn get_pages_count(&self) -> FrameID {
-		(self.size / (memory::PAGE_SIZE + core::mem::size_of::<Frame>())) as _
+		self.pages_count
+	}
+
+	/*
+	 * Returns the size in bytes of the allocatable memory.
+	 */
+	pub fn get_size(&self) -> usize {
+		(self.pages_count as usize) * memory::PAGE_SIZE
 	}
 
 	/*
@@ -359,8 +369,7 @@ impl Zone {
 	 * the frame itself, not the Frame structure.
 	 */
 	pub fn get_frame_id_from_ptr(&self, ptr: *const Void) -> FrameID {
-		let frame_size = core::mem::size_of::<Frame>() + memory::PAGE_SIZE;
-		(((ptr as usize) - (self.begin as usize)) / frame_size) as _
+		(((ptr as usize) - (self.begin as usize)) / memory::PAGE_SIZE) as _
 	}
 
 	/*
@@ -369,7 +378,7 @@ impl Zone {
 	 */
 	pub fn get_frame(&mut self, id: FrameID) -> *mut Frame {
 		debug_assert!(id < self.get_pages_count());
-		let off = (self.begin as usize) + (id as usize * core::mem::size_of::<Frame>());
+		let off = (self.metadata_begin as usize) + (id as usize * core::mem::size_of::<Frame>());
 		off as _
 	}
 }
@@ -380,7 +389,7 @@ impl Frame {
 	 */
 	pub fn get_id(&self, zone: &Zone) -> FrameID {
 		let self_off = self as *const _ as usize;
-		let zone_off = zone.begin as *const _ as usize;
+		let zone_off = zone.metadata_begin as *const _ as usize;
 		debug_assert!(self_off >= zone_off);
 		((self_off - zone_off) / core::mem::size_of::<Self>()) as u32
 	}
@@ -389,16 +398,8 @@ impl Frame {
 	 * Returns the pointer to the location of the associated physical memory.
 	 */
 	pub fn get_ptr(&self, zone: &Zone) -> *mut Void {
-		let begin_offset = zone.begin as *const _ as usize;
-		let mut data_begin = begin_offset
-			+ zone.get_pages_count() as usize * core::mem::size_of::<Self>();
-		data_begin = util::align(data_begin as _, memory::PAGE_SIZE) as _;
-
-		debug_assert!((data_begin - begin_offset)
-			+ zone.get_pages_count() as usize * memory::PAGE_SIZE <= zone.size);
-
 		let off = self.get_id(zone) as usize * memory::PAGE_SIZE;
-		(data_begin + off) as _
+		(zone.begin as usize + off) as _
 	}
 
 	/*

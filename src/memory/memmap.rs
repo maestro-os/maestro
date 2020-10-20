@@ -1,5 +1,7 @@
 /*
- * TODO doc
+ * This module handles the memory informations, which stores global informations on the system
+ * memory by retrieving them from the boot informations. These data are meant to be used by the
+ * memory allocators.
  */
 
 use core::cmp::*;
@@ -23,11 +25,11 @@ pub struct MemoryInfo {
 
 	/* Pointer to the end of the physical memory */
 	pub memory_end: *const Void,
-	/* Pointer to the beginning of physical allocatable memory */
+	/* Pointer to the beginning of physical allocatable memory, page aligned */
 	pub phys_alloc_begin: *const Void,
-	/* Pointer to the end of physical allocatable memory */
+	/* Pointer to the end of physical allocatable memory, page aligned */
 	pub phys_alloc_end: *const Void,
-	/* The amount total of allocatable memory */
+	/* The total amount of allocatable memory in bytes */
 	pub available_memory: usize,
 }
 
@@ -101,7 +103,7 @@ fn get_memory_end() -> *const Void {
 		}
 		t = ((t as usize) + mem_info.memory_maps_entry_size) as *const _;
 	}
-	return util::down_align(end as *const _, memory::PAGE_SIZE);
+	end as *const _
 }
 
 /*

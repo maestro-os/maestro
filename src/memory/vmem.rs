@@ -166,14 +166,15 @@ pub struct VMemWrapper {
  * Allocates a paging object and returns a pointer to it. Returns None if the allocation fails.
  */
 fn alloc_obj() -> Result<MutVMem, ()> {
-	Ok(buddy::alloc_zero(0, buddy::FLAG_ZONE_TYPE_KERNEL)? as _)
+	let phys_ptr = buddy::alloc_zero(0, buddy::FLAG_ZONE_TYPE_KERNEL)? as *mut Void;
+	Ok(memory::kern_to_virt(phys_ptr) as _)
 }
 
 /*
  * Frees paging object `obj`.
  */
 fn free_obj(obj: VMem) {
-	buddy::free(obj as _, 0)
+	buddy::free(memory::kern_to_phys(obj as _), 0)
 }
 
 /*
@@ -190,7 +191,8 @@ mod table {
 
 		let v = alloc_obj()?;
 		unsafe {
-			*vmem.add(index) = (v as u32) | (flags | PAGING_TABLE_PRESENT);
+			*vmem.add(index) = (memory::kern_to_phys(v as _) as u32)
+				| (flags | PAGING_TABLE_PRESENT);
 		}
 		Ok(())
 	}
@@ -271,7 +273,7 @@ pub fn init() -> Result<MutVMem, ()> {
 pub fn kernel() {
 	if let Ok(kernel_vmem) = init() {
 		unsafe {
-			paging_enable(kernel_vmem);
+			paging_enable(memory::kern_to_phys(kernel_vmem as _) as _);
 		}
 	} else {
 		::kernel_panic!("Cannot initialize kernel virtual memory!", 0);
@@ -324,7 +326,7 @@ pub fn is_mapped(vmem: VMem, ptr: *const Void) -> bool {
  */
 pub fn translate(vmem: VMem, ptr: *const Void) -> Option<*const Void> {
 	if let Some(e) = resolve(vmem, ptr) {
-		Some((unsafe { *e } & PAGING_ADDR_MASK) as _)
+		Some((unsafe { *e } & PAGING_ADDR_MASK) as _) // TODO Add remaining space (check if PSE is used)
 	} else {
 		None
 	}
@@ -538,7 +540,7 @@ pub fn clone(vmem: VMem) -> Result<VMem, ()> {
 			if let Ok(dest_table) = alloc_obj() {
 				unsafe {
 					util::memcpy(dest_table as _, src_table as _, memory::PAGE_SIZE);
-					*dest_dir_entry = (dest_table as u32)
+					*dest_dir_entry = (memory::kern_to_phys(dest_table as _) as u32)
 						| (src_dir_entry_value & PAGING_FLAGS_MASK);
 				}
 			} else {
