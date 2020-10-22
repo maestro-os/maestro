@@ -26,6 +26,7 @@
 
 mod debug;
 mod elf;
+mod error;
 mod idt;
 mod memory;
 mod multiboot;

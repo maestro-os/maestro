@@ -261,6 +261,7 @@ fn protect_kernel(vmem: MutVMem) {
  */
 pub fn init() -> Result<MutVMem, ()> {
 	let v = alloc_obj()?;
+	identity(v, NULL, 0)?;
 	// TODO If Meltdown mitigation is enabled, only allow read access to a stub for interrupts
 	map_range(v, NULL, memory::PROCESS_END, 262144, PAGING_PAGE_WRITE)?; // TODO Place pages count in a constant
 	protect_kernel(v);
@@ -326,7 +327,7 @@ pub fn is_mapped(vmem: VMem, ptr: *const Void) -> bool {
  */
 pub fn translate(vmem: VMem, ptr: *const Void) -> Option<*const Void> {
 	if let Some(e) = resolve(vmem, ptr) {
-		Some((unsafe { *e } & PAGING_ADDR_MASK) as _) // TODO Add remaining space (check if PSE is used)
+		Some((unsafe { *e } & PAGING_ADDR_MASK) as _) // TODO Add remaining offset (check if PSE is used)
 	} else {
 		None
 	}
