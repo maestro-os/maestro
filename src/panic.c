@@ -90,7 +90,7 @@ static int error_signals[] = {
 /*
  * Handles a CPU exception.
  */
-void error_handler(unsigned error, uint32_t error_code, const regs_t *regs)
+void error_handler_(unsigned error, uint32_t error_code, const regs_t *regs)
 {
 	vmem_t page_dir;
 	process_t *process;

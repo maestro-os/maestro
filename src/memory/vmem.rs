@@ -305,7 +305,7 @@ pub fn resolve(vmem: VMem, ptr: *const Void) -> Option<*const u32> {
 		return Some(dir_entry);
 	}
 
-	let table = (dir_entry_value & PAGING_ADDR_MASK) as VMem;
+	let table = memory::kern_to_virt((dir_entry_value & PAGING_ADDR_MASK) as _) as VMem;
 	let table_entry = unsafe { table.add(get_addr_element_index(ptr, 0)) };
 	let table_entry_value = unsafe { *table_entry };
 	if table_entry_value & PAGING_PAGE_PRESENT == 0 {
@@ -358,13 +358,14 @@ pub fn map(vmem: MutVMem, physaddr: *const Void, virtaddr: *const Void, flags: u
 
 	let dir_entry_index = get_addr_element_index(virtaddr, 1);
 	let dir_entry = unsafe { vmem.add(dir_entry_index) };
-	let dir_entry_value = unsafe { *dir_entry };
+	let mut dir_entry_value = unsafe { *dir_entry };
 	if dir_entry_value & PAGING_TABLE_PRESENT == 0 {
 		table::create(vmem, dir_entry_index, flags)?;
 	} else if dir_entry_value & PAGING_TABLE_PAGE_SIZE != 0 {
 		table::expand(vmem, dir_entry_index)?;
 	}
 
+	dir_entry_value = unsafe { *dir_entry };
 	let table = (dir_entry_value & PAGING_ADDR_MASK) as MutVMem;
 	let table_entry = unsafe { table.add(get_addr_element_index(virtaddr, 0)) };
 	unsafe {

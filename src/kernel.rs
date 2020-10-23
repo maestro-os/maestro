@@ -38,7 +38,6 @@ mod util;
 mod vga;
 
 use core::panic::PanicInfo;
-
 use memory::Void;
 
 /*

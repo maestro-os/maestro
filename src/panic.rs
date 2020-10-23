@@ -1,5 +1,5 @@
 #[cfg(kernel_mode = "debug")]
-use crate::debug;
+//use crate::debug;
 
 use core::fmt;
 use crate::memory::Void;
@@ -65,8 +65,8 @@ pub fn kernel_panic_(reason: &str, code: u32, file: &str, line: u32, col: u32) -
 	::println!("\n-- DEBUG --\nFile: {}; Line: {}; Column: {}", file, line, col);
 	// TODO Print running process registers
 	::println!();
-	let ebp = unsafe { ::register_get!("ebp") as *const _ };
-	debug::print_callstack(ebp, 8);
+	//let ebp = unsafe { ::register_get!("ebp") as *const _ };
+	// TODO fix: debug::print_callstack(ebp, 8);
 	unsafe {
 		kernel_halt();
 	}
@@ -104,8 +104,8 @@ pub fn rust_panic<'a>(args: &'a fmt::Arguments<'a>) -> ! {
 	::cli!();
 	print_rust_panic(args);
 	::println!();
-	let ebp = unsafe { ::register_get!("ebp") as *const _ };
-	debug::print_callstack(ebp, 8);
+	//let ebp = unsafe { ::register_get!("ebp") as *const _ };
+	// TODO fix: debug::print_callstack(ebp, 8);
 	unsafe {
 		kernel_halt();
 	}
