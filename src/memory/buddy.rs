@@ -11,6 +11,7 @@
 
 use core::cmp::min;
 use core::mem::MaybeUninit;
+use crate::memory::NULL;
 use crate::memory::Void;
 use crate::memory::memmap;
 use crate::memory;
@@ -148,14 +149,16 @@ pub fn init() {
 		ZONES.assume_init_mut()
 	};
 
-	let metadata_begin = util::align(mmap_info.phys_alloc_begin, memory::PAGE_SIZE) as *mut Void;
+	let virt_alloc_begin = memory::kern_to_virt(mmap_info.phys_alloc_begin);
+	let metadata_begin = util::align(virt_alloc_begin, memory::PAGE_SIZE) as *mut Void;
 	let frames_count = mmap_info.available_memory
 		/ (memory::PAGE_SIZE + core::mem::size_of::<Frame>());
 	let metadata_size = frames_count * core::mem::size_of::<Frame>();
 	let metadata_end = unsafe { metadata_begin.add(metadata_size) };
+	let phys_metadata_end = memory::kern_to_phys(metadata_end);
 	// TODO Check that metadata doesn't exceed kernel space's capacity
 
-	let kernel_zone_begin = util::align(metadata_end, memory::PAGE_SIZE) as *mut Void;
+	let kernel_zone_begin = util::align(phys_metadata_end, memory::PAGE_SIZE) as *mut Void;
 	let kernel_zone_end = util::down_align(min(KERNEL_ZONE_LIMIT, mmap_info.memory_end),
 		memory::PAGE_SIZE);
 	let kernel_frames_count = (kernel_zone_end as usize - kernel_zone_begin as usize)
@@ -213,7 +216,9 @@ fn get_zone_for_pointer(ptr: *const Void) -> Option<&'static mut Mutex<Zone>> {
 }
 
 /*
- * Allocates a frame of memory using the buddy allocator.
+ * Allocates a frame of memory using the buddy allocator. `order` is the order of the frame to be
+ * allocated.
+ * TODO document flags
  */
 pub fn alloc(order: FrameOrder, flags: Flags) -> Result<*mut Void, ()> {
 	debug_assert!(order <= MAX_ORDER);
@@ -236,17 +241,11 @@ pub fn alloc(order: FrameOrder, flags: Flags) -> Result<*mut Void, ()> {
 }
 
 /*
- * Uses `alloc` and zeroes the allocated frame.
- * Warning: This function can be used only if the physical memory is guaranteed to be mapped with
- * write permission.
+ * Calls `alloc` with order `order`. The allocated frame is in the kernel zone.
+ * The function returns the *virtual* address, not the physical one.
  */
-pub fn alloc_zero(order: FrameOrder, flags: Flags) -> Result<*mut Void, ()> {
-	let ptr = alloc(order, flags)?;
-	let len = get_frame_size(order);
-	unsafe {
-		util::bzero(ptr, len);
-	}
-	Ok(ptr)
+pub fn alloc_kernel(order: FrameOrder) -> Result<*mut Void, ()> {
+	Ok(memory::kern_to_virt(alloc(order, FLAG_ZONE_TYPE_KERNEL)?) as _)
 }
 
 /*
@@ -543,7 +542,7 @@ mod test {
 
 	#[test_case]
 	fn test_buddy0() {
-		if let Ok(p) = alloc(0, FLAG_ZONE_TYPE_KERNEL) {
+		if let Ok(p) = alloc_kernel(0) {
 			unsafe {
 				util::memset(p, -1, get_frame_size(0));
 			}
@@ -555,21 +554,7 @@ mod test {
 
 	#[test_case]
 	fn test_buddy1() {
-		for _ in 0..1000 {
-			if let Ok(p) = alloc(0, FLAG_ZONE_TYPE_KERNEL) {
-				unsafe {
-					util::memset(p, -1, get_frame_size(0));
-				}
-				free(p, 0);
-			} else {
-				assert!(false);
-			}
-		}
-	}
-
-	#[test_case]
-	fn test_buddy2() {
-		if let Ok(p) = alloc(1, FLAG_ZONE_TYPE_KERNEL) {
+		if let Ok(p) = alloc_kernel(1) {
 			unsafe {
 				util::memset(p, -1, get_frame_size(1));
 			}
@@ -579,13 +564,13 @@ mod test {
 		}
 	}
 
-	fn test3(i: usize) {
-		if let Ok(p) = alloc(0, FLAG_ZONE_TYPE_KERNEL) {
+	fn stack_test(i: usize) {
+		if let Ok(p) = alloc_kernel(0) {
 			unsafe {
 				util::memset(p, -1, get_frame_size(0));
 			}
 			if i > 0 {
-				test3(i - 1);
+				stack_test(i - 1);
 			}
 			free(p, 0);
 		} else {
@@ -594,8 +579,70 @@ mod test {
 	}
 
 	#[test_case]
-	fn test_buddy3() {
-		test3(100);
+	fn test_buddy_stack() {
+		stack_test(100);
+	}
+
+	fn get_dangling(order: FrameOrder) -> *mut Void {
+		if let Ok(p) = alloc_kernel(order) {
+			unsafe {
+				util::memset(p, -1, get_frame_size(order));
+			}
+			free(p, 0);
+			p
+		} else {
+			assert!(false);
+			memory::NULL as _
+		}
+	}
+
+	#[test_case]
+	fn test_buddy_free() {
+		let first = get_dangling(0);
+		for _ in 0..100 {
+			assert_eq!(get_dangling(0), first);
+		}
+	}
+
+	struct TestDupNode {
+		next: *mut TestDupNode,
+	}
+
+	fn has_cycle(begin: *const TestDupNode) -> bool {
+		if begin != NULL as _ {
+			return false;
+		}
+
+		let mut tortoise = begin;
+		let mut hoare = unsafe { (*begin).next };
+		while (tortoise != NULL as _) && (hoare != NULL as _) && (tortoise != hoare) {
+			tortoise = unsafe { (*tortoise).next };
+
+			if unsafe { (*hoare).next } != NULL as _ {
+				return false;
+			}
+			hoare = unsafe { (*(*hoare).next).next };
+		}
+		tortoise == hoare
+	}
+
+	#[test_case]
+	fn test_buddy_full_duplicate() {
+		let mut first = NULL as *mut TestDupNode;
+		while let Ok(p) = alloc_kernel(0) {
+			let node = p as *mut TestDupNode;
+			unsafe {
+				(*node).next = first;
+			}
+			first = node;
+			assert!(!has_cycle(first));
+		}
+
+		while first != NULL as _ {
+			let next = unsafe { (*first).next };
+			free(first as _, 0);
+			first = next;
+		}
 	}
 
 	// TODO Add more tests

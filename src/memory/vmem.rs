@@ -166,8 +166,12 @@ pub struct VMemWrapper {
  * Allocates a paging object and returns a pointer to it. Returns None if the allocation fails.
  */
 fn alloc_obj() -> Result<MutVMem, ()> {
-	let phys_ptr = buddy::alloc_zero(0, buddy::FLAG_ZONE_TYPE_KERNEL)? as *mut Void;
-	Ok(memory::kern_to_virt(phys_ptr) as _)
+	let phys_ptr = buddy::alloc(0, buddy::FLAG_ZONE_TYPE_KERNEL)? as *mut Void;
+	let virt_ptr = memory::kern_to_virt(phys_ptr);
+	unsafe {
+		util::bzero(virt_ptr as _, buddy::get_frame_size(0));
+	}
+	Ok(virt_ptr as _)
 }
 
 /*
