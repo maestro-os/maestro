@@ -206,7 +206,7 @@ fn get_zone_for_pointer(ptr: *const Void) -> Option<&'static mut Mutex<Zone>> {
 		let is_valid = {
 			let guard = MutexGuard::new(&mut zones[i]);
 			let zone = guard.get();
-			ptr >= zone.begin && (ptr as usize) < zone.begin as usize + zone.get_size()
+			ptr >= zone.begin && (ptr as usize) < (zone.begin as usize) + zone.get_size()
 		};
 		if is_valid {
 			return Some(&mut zones[i]);
@@ -269,6 +269,14 @@ pub fn free(ptr: *const Void, order: FrameOrder) {
 			(*frame).coalesce(zone);
 		}
 	}
+}
+
+/*
+ * Frees the given memory frame. `ptr` is the *virtual* address to the beginning of the frame and
+ * and `order` is the order of the frame.
+ */
+pub fn free_kernel(ptr: *const Void, order: FrameOrder) {
+	free(memory::kern_to_phys(ptr), order);
 }
 
 /*
@@ -413,6 +421,7 @@ impl Frame {
 	 */
 	pub fn mark_used(&mut self) {
 		self.prev = FRAME_STATE_USED;
+		self.next = FRAME_STATE_USED;
 	}
 
 	/*
@@ -420,6 +429,7 @@ impl Frame {
 	 */
 	pub fn mark_free(&mut self) {
 		self.prev = 0;
+		self.next = 0;
 	}
 
 	/*
@@ -529,6 +539,7 @@ impl Frame {
 				break;
 			}
 
+			buddy_frame.mark_free();
 			buddy_frame.unlink(zone);
 			self.order += 1;
 		}
@@ -541,24 +552,24 @@ mod test {
 	use super::*;
 
 	#[test_case]
-	fn test_buddy0() {
+	fn buddy0() {
 		if let Ok(p) = alloc_kernel(0) {
 			unsafe {
 				util::memset(p, -1, get_frame_size(0));
 			}
-			free(p, 0);
+			free_kernel(p, 0);
 		} else {
 			assert!(false);
 		}
 	}
 
 	#[test_case]
-	fn test_buddy1() {
+	fn buddy1() {
 		if let Ok(p) = alloc_kernel(1) {
 			unsafe {
 				util::memset(p, -1, get_frame_size(1));
 			}
-			free(p, 1);
+			free_kernel(p, 1);
 		} else {
 			assert!(false);
 		}
@@ -572,14 +583,14 @@ mod test {
 			if i > 0 {
 				stack_test(i - 1);
 			}
-			free(p, 0);
+			free_kernel(p, 0);
 		} else {
 			assert!(false);
 		}
 	}
 
 	#[test_case]
-	fn test_buddy_stack() {
+	fn buddy_stack() {
 		stack_test(100);
 	}
 
@@ -588,7 +599,7 @@ mod test {
 			unsafe {
 				util::memset(p, -1, get_frame_size(order));
 			}
-			free(p, 0);
+			free_kernel(p, 0);
 			p
 		} else {
 			assert!(false);
@@ -597,7 +608,7 @@ mod test {
 	}
 
 	#[test_case]
-	fn test_buddy_free() {
+	fn buddy_free() {
 		let first = get_dangling(0);
 		for _ in 0..100 {
 			assert_eq!(get_dangling(0), first);
@@ -627,7 +638,7 @@ mod test {
 	}
 
 	#[test_case]
-	fn test_buddy_full_duplicate() {
+	fn buddy_full_duplicate() {
 		let mut first = NULL as *mut TestDupNode;
 		while let Ok(p) = alloc_kernel(0) {
 			let node = p as *mut TestDupNode;
@@ -640,7 +651,7 @@ mod test {
 
 		while first != NULL as _ {
 			let next = unsafe { (*first).next };
-			free(first as _, 0);
+			free_kernel(first as _, 0);
 			first = next;
 		}
 	}

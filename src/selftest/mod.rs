@@ -29,17 +29,33 @@ pub mod qemu {
 }
 
 /*
+ * Trait for any testable feature.
+ */
+pub trait Testable {
+	/*
+	 * Function called to run the corresponding test.
+	 */
+	fn run(&self);
+}
+
+impl<T> Testable for T where T: Fn() {
+	fn run(&self) {
+		::print!("test {} ... ", core::any::type_name::<T>());
+		self();
+		::println!("ok");
+	}
+}
+
+/*
  * The test runner for the kernel. This function runs every tests for the kernel and halts the
  * kernel or exits the emulator if possible.
  */
 #[cfg(test)]
-pub fn runner(tests: &[&dyn Fn()]) {
+pub fn runner(tests: &[&dyn Testable]) {
     ::println!("Running {} tests", tests.len());
 
     for test in tests {
-		// TODO Print test name
-        test();
-		::println!("ok");
+		test.run();
     }
 
 	::println!("No more tests to run");
