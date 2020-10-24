@@ -1,3 +1,5 @@
+.global kernel_begin
+
 .global kernel_wait
 .global kernel_loop
 .global kernel_halt
@@ -7,7 +9,15 @@
 .section .text
 
 /*
- * Makes the kernel wait for an interrupt.
+ * The kernel begin symbol, giving the pointer to the begin of the kernel image
+ * in the virtual memory. This memory location should never be accessed using
+ * this symbol.
+ */
+kernel_begin:
+
+/*
+ * Makes the kernel wait for an interrupt, then returns.
+ * This function enables interrupts.
  */
 kernel_wait:
 	sti
@@ -15,7 +25,7 @@ kernel_wait:
 	ret
 
 /*
- * Enters the kernel loop, process every interrupt indefinitely.
+ * Enters the kernel loop, processes every interrupts indefinitely.
  */
 kernel_loop:
 	sti
@@ -29,15 +39,6 @@ kernel_halt:
 	cli
 	hlt
 	jmp kernel_halt
-
-.section .text
-
-/*
- * The kernel begin symbol, giving the pointer to the begin of the kernel image
- * in the virtual memory. This memory location should never be accessed using
- * this symbol.
- */
-kernel_begin:
 
 .section .bss
 

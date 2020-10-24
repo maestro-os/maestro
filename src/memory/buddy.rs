@@ -383,10 +383,36 @@ impl Zone {
 	 * Returns a mutable reference to the frame with the given identifier `id`.
 	 * The given identifier **must** be in the range of the zone.
 	 */
-	pub fn get_frame(&mut self, id: FrameID) -> *mut Frame {
+	pub fn get_frame(&self, id: FrameID) -> *mut Frame {
 		debug_assert!(id < self.get_pages_count());
 		let off = (self.metadata_begin as usize) + (id as usize * core::mem::size_of::<Frame>());
 		off as _
+	}
+
+	/*
+	 * Debug function.
+	 * Checks the correctness of the free list for the zone. Every frames in the free list must
+	 * have an order lower or equal the max order and must be free.
+	 * The function returns `true` if the free list is correct, or `false if not.
+	 */
+	#[cfg(kernel_mode = "debug")]
+	pub fn check_free_list(&self) -> bool {
+		for (_, list) in self.free_list.iter().enumerate() {
+			if let Some(first) = *list {
+				let mut frame = first;
+				loop {
+					let f = unsafe { &*frame };
+					if f.is_used() || f.order > MAX_ORDER {
+						return false;
+					}
+					if f.next == f.get_id(self) {
+						break;
+					}
+					frame = self.get_frame(f.next);
+				}
+			}
+		}
+		true
 	}
 }
 
@@ -458,6 +484,8 @@ impl Frame {
 			id
 		};
 		zone.free_list[self.order as usize] = Some(self);
+
+		debug_assert!(zone.check_free_list());
 	}
 
 	/*
@@ -488,6 +516,8 @@ impl Frame {
 				(*next).prev = if has_prev { self.prev } else { self.next };
 			}
 		}
+
+		debug_assert!(zone.check_free_list());
 	}
 
 	/*

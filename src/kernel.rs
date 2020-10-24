@@ -83,8 +83,8 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const Void) -> ! {
 	memory::buddy::init();
 	memory::vmem::kernel();
 
-	#[cfg(test)]
-	test_main();
+	//#[cfg(test)]
+	//test_main();
 
 	// TODO ACPI
 	// TODO PCI

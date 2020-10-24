@@ -1,8 +1,22 @@
-#include <libc/string.h>
-#include <libc/libc_internal.h>
-#include <util/util.h>
+#include <stddef.h>
+#include <stdint.h>
 
-ATTR_HOT
+/*
+ * TODO doc
+ */
+static long make_field(const int c)
+{
+	long field = 0;
+	size_t i = 0;
+
+	for(; i < sizeof(long); ++i)
+		field = (field << 8) | (c & 0xff);
+	return field;
+}
+
+/*
+ * TODO doc
+ */
 void *memset(void *s, int c, size_t n)
 {
 	void *begin = s;
