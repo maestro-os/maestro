@@ -234,6 +234,7 @@ pub fn alloc(order: FrameOrder, flags: Flags) -> Result<*mut Void, ()> {
 			f.mark_used();
 			let ptr = f.get_ptr(zone);
 			debug_assert!(util::is_aligned(ptr, memory::PAGE_SIZE));
+			debug_assert!(ptr >= zone.begin && ptr < (zone.begin as usize + zone.get_size()) as _);
 			return Ok(ptr);
 		}
 	}
@@ -393,22 +394,36 @@ impl Zone {
 	 * Debug function.
 	 * Checks the correctness of the free list for the zone. Every frames in the free list must
 	 * have an order lower or equal the max order and must be free.
+	 * If a frame is the first of a list, it must not have a previous element.
+	 *
 	 * The function returns `true` if the free list is correct, or `false if not.
 	 */
 	#[cfg(kernel_mode = "debug")]
 	pub fn check_free_list(&self) -> bool {
-		for (_, list) in self.free_list.iter().enumerate() {
+		for (_order, list) in self.free_list.iter().enumerate() {
 			if let Some(first) = *list {
 				let mut frame = first;
+				let mut is_first = true;
+
 				loop {
 					let f = unsafe { &*frame };
-					if f.is_used() || f.order > MAX_ORDER {
+					let id = f.get_id(self);
+
+					if f.is_used() {
 						return false;
 					}
-					if f.next == f.get_id(self) {
+					if f.order > MAX_ORDER {
+						return false;
+					}
+					if is_first && f.prev != id {
+						return false;
+					}
+
+					if f.next == id {
 						break;
 					}
 					frame = self.get_frame(f.next);
+					is_first = false;
 				}
 			}
 		}
@@ -473,13 +488,15 @@ impl Frame {
 	 */
 	pub fn link(&mut self, zone: &mut Zone) {
 		debug_assert!(!self.is_used());
+		debug_assert!(zone.check_free_list());
 
 		let id = self.get_id(zone);
 		self.prev = id;
 		self.next = if let Some(n) = zone.free_list[self.order as usize] {
-			unsafe {
-				(*n).get_id(zone)
-			}
+			let next = unsafe { &mut *n };
+			debug_assert!(!next.is_used());
+			next.prev = id;
+			next.get_id(zone)
 		} else {
 			id
 		};
@@ -493,6 +510,7 @@ impl Frame {
 	 */
 	pub fn unlink(&mut self, zone: &mut Zone) {
 		debug_assert!(!self.is_used());
+		debug_assert!(zone.check_free_list());
 
 		let id = self.get_id(zone);
 		let has_prev = self.prev != id;
@@ -536,6 +554,7 @@ impl Frame {
 			self.order -= 1;
 
 			let buddy = self.get_buddy_id(zone);
+			debug_assert!(buddy != self.get_id(zone));
 			if buddy >= zone.get_pages_count() {
 				break;
 			}
@@ -565,11 +584,10 @@ impl Frame {
 			}
 
 			let buddy_frame = unsafe { &mut *zone.get_frame(buddy) };
-			if buddy_frame.order != self.order && !buddy_frame.is_used() {
+			if buddy_frame.order != self.order || buddy_frame.is_used() {
 				break;
 			}
 
-			buddy_frame.mark_free();
 			buddy_frame.unlink(zone);
 			self.order += 1;
 		}
