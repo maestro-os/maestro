@@ -159,7 +159,7 @@ pub fn init() {
 	// TODO Check that metadata doesn't exceed kernel space's capacity
 
 	let kernel_zone_begin = util::align(phys_metadata_end, memory::PAGE_SIZE) as *mut Void;
-	let kernel_zone_end = util::down_align(min(KERNEL_ZONE_LIMIT, mmap_info.memory_end),
+	let kernel_zone_end = util::down_align(min(KERNEL_ZONE_LIMIT, mmap_info.phys_alloc_end),
 		memory::PAGE_SIZE);
 	let kernel_frames_count = (kernel_zone_end as usize - kernel_zone_begin as usize)
 		/ memory::PAGE_SIZE;
@@ -232,6 +232,8 @@ pub fn alloc(order: FrameOrder, flags: Flags) -> Result<*mut Void, ()> {
 		if let Some(f) = frame {
 			f.split(zone, order);
 			f.mark_used();
+			zone.allocated_pages += util::pow2(order as _) as usize;
+
 			let ptr = f.get_ptr(zone);
 			debug_assert!(util::is_aligned(ptr, memory::PAGE_SIZE));
 			debug_assert!(ptr >= zone.begin && ptr < (zone.begin as usize + zone.get_size()) as _);
@@ -269,6 +271,7 @@ pub fn free(ptr: *const Void, order: FrameOrder) {
 			(*frame).mark_free();
 			(*frame).coalesce(zone);
 		}
+		zone.allocated_pages -= util::pow2(order as _) as usize;
 	}
 }
 
