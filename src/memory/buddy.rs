@@ -11,7 +11,6 @@
 
 use core::cmp::min;
 use core::mem::MaybeUninit;
-use crate::memory::NULL;
 use crate::memory::Void;
 use crate::memory::memmap;
 use crate::memory;
@@ -396,14 +395,14 @@ impl Zone {
 	/*
 	 * Debug function.
 	 * Checks the correctness of the free list for the zone. Every frames in the free list must
-	 * have an order lower or equal the max order and must be free.
+	 * have an order equal to the order of the bucket it's inserted in and must be free.
 	 * If a frame is the first of a list, it must not have a previous element.
 	 *
 	 * The function returns `true` if the free list is correct, or `false if not.
 	 */
 	#[cfg(kernel_mode = "debug")]
 	pub fn check_free_list(&self) -> bool {
-		for (_order, list) in self.free_list.iter().enumerate() {
+		for (order, list) in self.free_list.iter().enumerate() {
 			if let Some(first) = *list {
 				let mut frame = first;
 				let mut is_first = true;
@@ -415,7 +414,7 @@ impl Zone {
 					if f.is_used() {
 						return false;
 					}
-					if f.order > MAX_ORDER {
+					if f.order != (order as _) {
 						return false;
 					}
 					if is_first && f.prev != id {
@@ -509,25 +508,29 @@ impl Frame {
 	}
 
 	/*
-	 * Unlinks the frame from zone `zone`'s free list.
+	 * Unlinks the frame from zone `zone`'s free list. The frame must not be used.
 	 */
 	pub fn unlink(&mut self, zone: &mut Zone) {
 		debug_assert!(!self.is_used());
 		debug_assert!(zone.check_free_list());
 
+
 		let id = self.get_id(zone);
 		let has_prev = self.prev != id;
 		let has_next = self.next != id;
-		if has_prev {
-			let prev = zone.get_frame(self.prev);
-			unsafe {
-				(*prev).next = if has_next { self.next } else { self.prev };
-			}
-		} else {
+
+		if zone.free_list[self.order as usize] == Some(self) {
 			zone.free_list[self.order as usize] = if has_next {
 				Some(zone.get_frame(self.next))
 			} else {
 				None
+			};
+		}
+
+		if has_prev {
+			let prev = zone.get_frame(self.prev);
+			unsafe {
+				(*prev).next = if has_next { self.next } else { self.prev };
 			}
 		}
 
@@ -600,6 +603,7 @@ impl Frame {
 
 #[cfg(test)]
 mod test {
+	use crate::memory::NULL;
 	use super::*;
 
 	#[test_case]

@@ -31,79 +31,56 @@ use crate::memory::buddy;
 use crate::memory;
 use crate::multiboot;
 use crate::util;
+use crate::vga;
 
+/*
+ * x86 paging flag. If set, prevents the CPU from updating the associated addresses when the TLB
+ * is flushed.
+ */
+pub const FLAG_GLOBAL: u32 = 0b100000000;
 /*
  * x86 paging flag. If set, pages are 4 MB long.
  */
-pub const PAGING_TABLE_PAGE_SIZE: u32 = 0b10000000;
+pub const FLAG_PAGE_SIZE: u32 = 0b010000000;
+/*
+ * x86 paging flag. Indicates that the page has been written.
+ */
+pub const FLAG_DIRTY: u32 = 0b001000000;
 /*
  * x86 paging flag. Set if the page has been read or written.
  */
-pub const PAGING_TABLE_ACCESSED: u32 = 0b00100000;
+pub const FLAG_ACCESSED: u32 = 0b000100000;
 /*
  * x86 paging flag. If set, page will not be cached.
  */
-pub const PAGING_TABLE_CACHE_DISABLE: u32 = 0b00010000;
+pub const FLAG_CACHE_DISABLE: u32 = 0b000010000;
 /*
  * x86 paging flag. If set, write-through caching is enabled.
  * If not, then write-back is enabled instead.
  */
-pub const PAGING_TABLE_WRITE_THROUGH: u32 = 0b00001000;
+pub const FLAG_WRITE_THROUGH: u32 = 0b000001000;
 /*
  * x86 paging flag. If set, the page can be accessed by userspace operations.
  */
-pub const PAGING_TABLE_USER: u32 = 0b00000100;
+pub const FLAG_USER: u32 = 0b000000100;
 /*
  * x86 paging flag. If set, the page can be wrote.
  */
-pub const PAGING_TABLE_WRITE: u32 = 0b00000010;
+pub const FLAG_WRITE: u32 = 0b000000010;
 /*
  * x86 paging flag. If set, the page is present.
  */
-pub const PAGING_TABLE_PRESENT: u32 = 0b00000001;
-
-/*
- * TODO doc
- */
-pub const PAGING_PAGE_GLOBAL: u32 = 0b100000000;
-/*
- * TODO doc
- */
-pub const PAGING_PAGE_DIRTY: u32 = 0b001000000;
-/*
- * TODO doc
- */
-pub const PAGING_PAGE_ACCESSED: u32 = 0b000100000;
-/*
- * TODO doc
- */
-pub const PAGING_PAGE_CACHE_DISABLE: u32 = 0b000010000;
-/*
- * TODO doc
- */
-pub const PAGING_PAGE_WRITE_THROUGH: u32 = 0b000001000;
-/*
- * TODO doc
- */
-pub const PAGING_PAGE_USER: u32 = 0b000000100;
-/*
- * TODO doc
- */
-pub const PAGING_PAGE_WRITE: u32 = 0b000000010;
-/*
- * TODO doc
- */
-pub const PAGING_PAGE_PRESENT: u32 = 0b000000001;
+pub const FLAG_PRESENT: u32 = 0b000000001;
 
 /*
  * Flags mask in a page directory entry.
  */
-pub const PAGING_FLAGS_MASK: u32 = 0xfff;
+pub const FLAGS_MASK: u32 = 0xfff;
 /*
  * Address mask in a page directory entry. The address doesn't need every bytes since it must be
  * page-aligned.
  */
-pub const PAGING_ADDR_MASK: u32 = !PAGING_FLAGS_MASK;
+pub const ADDR_MASK: u32 = !FLAGS_MASK;
 
 /*
  * x86 page fault flag. If set, the page was present.
@@ -191,13 +168,13 @@ mod table {
 	 */
 	pub fn create(vmem: MutVMem, index: usize, flags: u32) -> Result<(), ()> {
 		debug_assert!(index < 1024);
-		debug_assert!(flags & PAGING_ADDR_MASK == 0);
-		debug_assert!(flags & PAGING_TABLE_PAGE_SIZE == 0);
+		debug_assert!(flags & ADDR_MASK == 0);
+		debug_assert!(flags & FLAG_PAGE_SIZE == 0);
 
 		let v = alloc_obj()?;
 		unsafe {
 			*vmem.add(index) = (memory::kern_to_phys(v as _) as u32)
-				| (flags | PAGING_TABLE_PRESENT);
+				| (flags | FLAG_PRESENT);
 		}
 		Ok(())
 	}
@@ -209,14 +186,14 @@ mod table {
 	pub fn expand(vmem: MutVMem, index: usize) -> Result<(), ()> {
 		let dir_entry = unsafe { vmem.add(index) };
 		let mut dir_entry_value = unsafe { *dir_entry };
-		debug_assert!(dir_entry_value & PAGING_TABLE_PRESENT != 0);
-		debug_assert!(dir_entry_value & PAGING_TABLE_PAGE_SIZE != 0);
+		debug_assert!(dir_entry_value & FLAG_PRESENT != 0);
+		debug_assert!(dir_entry_value & FLAG_PAGE_SIZE != 0);
 
-		let base_addr = dir_entry_value & PAGING_ADDR_MASK;
-		let flags = dir_entry_value & PAGING_FLAGS_MASK & !PAGING_TABLE_PAGE_SIZE;
+		let base_addr = dir_entry_value & ADDR_MASK;
+		let flags = dir_entry_value & FLAGS_MASK & !FLAG_PAGE_SIZE;
 		table::create(vmem, index, flags)?;
 		dir_entry_value = unsafe { *dir_entry };
-		let table_addr = (dir_entry_value & PAGING_ADDR_MASK) as MutVMem;
+		let table_addr = (dir_entry_value & ADDR_MASK) as MutVMem;
 		for i in 0..1024 {
 			let addr = base_addr + (i * memory::PAGE_SIZE) as u32;
 			unsafe {
@@ -234,7 +211,7 @@ mod table {
 		debug_assert!(index < 1024);
 		let dir_entry = unsafe { vmem.add(index) };
 		let dir_entry_value = unsafe { *dir_entry };
-		let dir_entry_addr = dir_entry_value & PAGING_ADDR_MASK;
+		let dir_entry_addr = dir_entry_value & ADDR_MASK;
 		buddy::free(dir_entry_addr as _, 0);
 		unsafe {
 			*dir_entry = 0;
@@ -266,7 +243,7 @@ fn protect_kernel(vmem: MutVMem) {
 				memory::kern_to_virt(section.sh_addr as _)
 			};
 			let pages = util::ceil_division(section.sh_size, memory::PAGE_SIZE as _) as usize;
-			if map_range(vmem, phys_addr, virt_addr, pages as usize, PAGING_PAGE_USER) == Err(()) {
+			if map_range(vmem, phys_addr, virt_addr, pages as usize, FLAG_USER) == Err(()) {
 				::kernel_panic!("Kernel protection failed!");
 			}
 		});
@@ -277,10 +254,18 @@ fn protect_kernel(vmem: MutVMem) {
  */
 pub fn init() -> Result<MutVMem, ()> {
 	let v = alloc_obj()?;
+
 	identity(v, NULL, 0)?;
+
 	// TODO If Meltdown mitigation is enabled, only allow read access to a stub for interrupts
-	map_range(v, NULL, memory::PROCESS_END, 262144, PAGING_PAGE_WRITE)?; // TODO Place pages count in a constant
+	map_range(v, NULL, memory::PROCESS_END, 262144, FLAG_WRITE)?; // TODO Place pages count in a constant
+
+	// TODO Extend to other DMA
+	map_range(v, vga::BUFFER_PHYS as _, vga::BUFFER_VIRT as _, 1,
+		FLAG_WRITE | FLAG_CACHE_DISABLE | FLAG_WRITE_THROUGH)?;
+
 	protect_kernel(v);
+
 	Ok(v)
 }
 
@@ -314,17 +299,18 @@ fn get_addr_element_index(ptr: *const Void, level: usize) -> usize {
 pub fn resolve(vmem: VMem, ptr: *const Void) -> Option<*const u32> {
 	let dir_entry = unsafe { vmem.add(get_addr_element_index(ptr, 1)) };
 	let dir_entry_value = unsafe { *dir_entry };
-	if dir_entry_value & PAGING_TABLE_PRESENT == 0 {
+	if dir_entry_value & FLAG_PRESENT == 0 {
 		return None;
 	}
-	if dir_entry_value & PAGING_TABLE_PAGE_SIZE != 0 {
+	if dir_entry_value & FLAG_PAGE_SIZE != 0 {
 		return Some(dir_entry);
 	}
 
-	let table = memory::kern_to_virt((dir_entry_value & PAGING_ADDR_MASK) as _) as VMem;
+	let table = memory::kern_to_virt((dir_entry_value & ADDR_MASK) as _) as VMem;
 	let table_entry = unsafe { table.add(get_addr_element_index(ptr, 0)) };
 	let table_entry_value = unsafe { *table_entry };
-	if table_entry_value & PAGING_PAGE_PRESENT == 0 {
+	if table_entry_value & FLAG_PRESENT == 0 {
+		// TODO
 		return None;
 	}
 	Some(table_entry)
@@ -343,7 +329,7 @@ pub fn is_mapped(vmem: VMem, ptr: *const Void) -> bool {
  */
 pub fn translate(vmem: VMem, ptr: *const Void) -> Option<*const Void> {
 	if let Some(e) = resolve(vmem, ptr) {
-		Some((unsafe { *e } & PAGING_ADDR_MASK) as _) // TODO Add remaining offset (check if PSE is used)
+		Some((unsafe { *e } & ADDR_MASK) as _) // TODO Add remaining offset (check if PSE is used)
 	} else {
 		None
 	}
@@ -356,7 +342,7 @@ pub fn translate(vmem: VMem, ptr: *const Void) -> Option<*const Void> {
  */
 pub fn get_flags(vmem: VMem, ptr: *const Void) -> Option<u32> {
 	if let Some(e) = resolve(vmem, ptr) {
-		Some(unsafe { *e } & PAGING_FLAGS_MASK)
+		Some(unsafe { *e } & FLAGS_MASK)
 	} else {
 		None
 	}
@@ -370,23 +356,23 @@ pub fn map(vmem: MutVMem, physaddr: *const Void, virtaddr: *const Void, flags: u
 	-> Result<(), ()> {
 	debug_assert!(util::is_aligned(physaddr, memory::PAGE_SIZE));
 	debug_assert!(util::is_aligned(virtaddr, memory::PAGE_SIZE));
-	debug_assert!(flags & PAGING_ADDR_MASK == 0);
+	debug_assert!(flags & ADDR_MASK == 0);
 
 	let dir_entry_index = get_addr_element_index(virtaddr, 1);
 	let dir_entry = unsafe { vmem.add(dir_entry_index) };
 	let mut dir_entry_value = unsafe { *dir_entry };
-	if dir_entry_value & PAGING_TABLE_PRESENT == 0 {
+	if dir_entry_value & FLAG_PRESENT == 0 {
 		table::create(vmem, dir_entry_index, flags)?;
-	} else if dir_entry_value & PAGING_TABLE_PAGE_SIZE != 0 {
+	} else if dir_entry_value & FLAG_PAGE_SIZE != 0 {
 		table::expand(vmem, dir_entry_index)?;
 	}
 
 	dir_entry_value = unsafe { *dir_entry };
-	let table = (dir_entry_value & PAGING_ADDR_MASK) as MutVMem;
+	let table = (dir_entry_value & ADDR_MASK) as MutVMem;
 	let table_entry_index = get_addr_element_index(virtaddr, 0);
 	let table_entry = unsafe { table.add(table_entry_index) };
 	unsafe {
-		*table_entry = (physaddr as u32) | (flags | PAGING_PAGE_PRESENT);
+		*table_entry = (physaddr as u32) | (flags | FLAG_PRESENT);
 	}
 
 	Ok(())
@@ -399,19 +385,18 @@ pub fn map(vmem: MutVMem, physaddr: *const Void, virtaddr: *const Void, flags: u
 pub fn map_pse(vmem: MutVMem, physaddr: *const Void, virtaddr: *const Void, flags: u32) {
 	debug_assert!(util::is_aligned(physaddr, memory::PAGE_SIZE));
 	debug_assert!(util::is_aligned(virtaddr, memory::PAGE_SIZE));
-	debug_assert!(flags & PAGING_ADDR_MASK == 0);
+	debug_assert!(flags & ADDR_MASK == 0);
 
 	let dir_entry_index = get_addr_element_index(virtaddr, 1);
 	let dir_entry = unsafe { vmem.add(dir_entry_index) };
 	let dir_entry_value = unsafe { *dir_entry };
-	if dir_entry_value & PAGING_TABLE_PRESENT != 0
-		&& dir_entry_value & PAGING_TABLE_PAGE_SIZE == 0 {
+	if dir_entry_value & FLAG_PRESENT != 0
+		&& dir_entry_value & FLAG_PAGE_SIZE == 0 {
 		table::delete(vmem, dir_entry_index);
 	}
 
 	unsafe {
-		*vmem.add(dir_entry_index) = (physaddr as u32)
-			| (flags | PAGING_TABLE_PRESENT | PAGING_TABLE_PAGE_SIZE);
+		*vmem.add(dir_entry_index) = (physaddr as u32) | (flags | FLAG_PRESENT | FLAG_PAGE_SIZE);
 	}
 }
 
@@ -423,7 +408,7 @@ pub fn map_range(vmem: MutVMem, physaddr: *const Void, virtaddr: *const Void, pa
 	flags: u32) -> Result<(), ()> {
 	debug_assert!(util::is_aligned(physaddr, memory::PAGE_SIZE));
 	debug_assert!(util::is_aligned(virtaddr, memory::PAGE_SIZE));
-	debug_assert!(flags & PAGING_ADDR_MASK == 0);
+	debug_assert!(flags & ADDR_MASK == 0);
 
 	let mut i = 0;
 	while i < pages {
@@ -481,9 +466,9 @@ pub fn unmap(vmem: MutVMem, virtaddr: *const Void) -> Result<(), ()> {
 	let dir_entry_index = get_addr_element_index(virtaddr, 1);
 	let dir_entry = unsafe { vmem.add(dir_entry_index) as VMem };
 	let dir_entry_value = unsafe { *dir_entry };
-	if dir_entry_value & PAGING_TABLE_PRESENT == 0 {
+	if dir_entry_value & FLAG_PRESENT == 0 {
 		return Ok(());
-	} else if dir_entry_value & PAGING_TABLE_PAGE_SIZE != 0 {
+	} else if dir_entry_value & FLAG_PAGE_SIZE != 0 {
 		table::expand(vmem, dir_entry_index)?;
 	}
 
@@ -502,8 +487,8 @@ pub fn unmap_pse(vmem: MutVMem, virtaddr: *const Void) {
 	let dir_entry_index = get_addr_element_index(virtaddr, 1);
 	let dir_entry = unsafe { vmem.add(dir_entry_index) as MutVMem };
 	let dir_entry_value = unsafe { *dir_entry };
-	if dir_entry_value & PAGING_TABLE_PRESENT == 0
-		|| dir_entry_value & PAGING_TABLE_PAGE_SIZE == 0 {
+	if dir_entry_value & FLAG_PRESENT == 0
+		|| dir_entry_value & FLAG_PAGE_SIZE == 0 {
 		return;
 	}
 	unsafe {
@@ -549,18 +534,18 @@ pub fn clone(vmem: VMem) -> Result<VMem, ()> {
 	for i in 0..1024 {
 		let src_dir_entry = unsafe { vmem.add(i) };
 		let src_dir_entry_value = unsafe { *src_dir_entry };
-		if src_dir_entry_value & PAGING_TABLE_PRESENT == 0 {
+		if src_dir_entry_value & FLAG_PRESENT == 0 {
 			continue;
 		}
 
 		let dest_dir_entry = unsafe { vmem.add(i) as MutVMem };
-		if src_dir_entry_value & PAGING_TABLE_PAGE_SIZE == 0 {
-			let src_table = (src_dir_entry_value & PAGING_ADDR_MASK) as VMem;
+		if src_dir_entry_value & FLAG_PAGE_SIZE == 0 {
+			let src_table = (src_dir_entry_value & ADDR_MASK) as VMem;
 			if let Ok(dest_table) = alloc_obj() {
 				unsafe {
 					util::memcpy(dest_table as _, src_table as _, memory::PAGE_SIZE);
 					*dest_dir_entry = (memory::kern_to_phys(dest_table as _) as u32)
-						| (src_dir_entry_value & PAGING_FLAGS_MASK);
+						| (src_dir_entry_value & FLAGS_MASK);
 				}
 			} else {
 				destroy(v);
@@ -595,9 +580,9 @@ pub fn destroy(vmem: VMem) {
 	for i in 0..1024 {
 		let dir_entry = unsafe { vmem.add(i) };
 		let dir_entry_value = unsafe { *dir_entry };
-		if dir_entry_value & PAGING_TABLE_PRESENT != 0
-			&& dir_entry_value & PAGING_TABLE_PAGE_SIZE == 0 {
-			let table = (dir_entry_value & PAGING_ADDR_MASK) as VMem;
+		if dir_entry_value & FLAG_PRESENT != 0
+			&& dir_entry_value & FLAG_PAGE_SIZE == 0 {
+			let table = (dir_entry_value & ADDR_MASK) as VMem;
 			free_obj(table);
 		}
 	}
