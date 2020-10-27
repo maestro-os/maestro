@@ -626,13 +626,13 @@ mod test {
 		}
 	}
 
-	fn stack_test(i: usize) {
+	fn lifo_test(i: usize) {
 		if let Ok(p) = alloc_kernel(0) {
 			unsafe {
 				util::memset(p, -1, get_frame_size(0));
 			}
 			if i > 0 {
-				stack_test(i - 1);
+				lifo_test(i - 1);
 			}
 			free_kernel(p, 0);
 		} else {
@@ -641,8 +641,25 @@ mod test {
 	}
 
 	#[test_case]
-	fn buddy_stack() {
-		stack_test(100);
+	fn buddy_lifo() {
+		lifo_test(100);
+	}
+
+	#[test_case]
+	fn buddy_fifo() {
+		let mut frames: [*const Void; 100] = [NULL; 100];
+
+		for i in 0..frames.len() {
+			if let Ok(p) = alloc_kernel(0) {
+				frames[i] = p;
+			} else {
+				assert!(false);
+			}
+		}
+
+		for i in 0..frames.len() {
+			free_kernel(frames[i], 0);
+		}
 	}
 
 	fn get_dangling(order: FrameOrder) -> *mut Void {
