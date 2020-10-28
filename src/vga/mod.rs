@@ -1,5 +1,3 @@
-use super::io as io;
-use super::memory as memory;
 
 /*
  * This file handles the VGA text mode, allowing to easily write text on the
@@ -7,6 +5,10 @@ use super::memory as memory;
  *
  * Note: The VGA text mode runs only when booting with a Legacy BIOS.
  */
+
+use crate::io;
+use crate::memory::vmem;
+use crate::memory;
 
 // TODO Save enable/disable cursor state
 // TODO Spinlock?
@@ -25,7 +27,6 @@ pub const BUFFER_PHYS: *mut Char = 0xb8000 as _;
 pub const BUFFER_VIRT: *mut Char = unsafe {
 	(memory::PROCESS_END as usize + BUFFER_PHYS as usize) as _
 };
-pub const BUFFER: *mut Char = BUFFER_VIRT;
 
 /*
  * Width of the screen in characters under the VGA text mode.
@@ -81,7 +82,9 @@ pub fn entry_color(fg: Color, bg: Color) -> Color {
 pub fn clear() {
 	for i in 0..(WIDTH * HEIGHT) {
 		unsafe {
-			*BUFFER.offset(i as isize) = (DEFAULT_COLOR as Char) << 8;
+			vmem::write_lock_wrap(|| {
+				*BUFFER_VIRT.offset(i as isize) = (DEFAULT_COLOR as Char) << 8;
+			});
 		}
 	}
 }
@@ -144,6 +147,8 @@ pub fn putchar_color(c: char, color: Color, x: Pos, y: Pos) {
 
 	debug_assert!(pos < BUFFER_SIZE as usize);
 	unsafe {
-		*BUFFER.offset(pos as isize) = c;
+		vmem::write_lock_wrap(|| {
+			*BUFFER_VIRT.offset(pos as isize) = c;
+		});
 	}
 }

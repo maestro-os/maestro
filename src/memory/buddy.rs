@@ -285,7 +285,7 @@ pub fn free_kernel(ptr: *const Void, order: FrameOrder) {
 /*
  * Returns the total number of pages allocated by the buddy allocator.
  */
-pub fn allocated_pages() -> usize {
+pub fn allocated_pages_count() -> usize {
 	let mut n = 0;
 
 	unsafe {
@@ -608,6 +608,8 @@ mod test {
 
 	#[test_case]
 	fn buddy0() {
+		let alloc_pages = allocated_pages_count();
+
 		if let Ok(p) = alloc_kernel(0) {
 			unsafe {
 				util::memset(p, -1, get_frame_size(0));
@@ -616,10 +618,14 @@ mod test {
 		} else {
 			assert!(false);
 		}
+
+		debug_assert_eq!(allocated_pages_count(), alloc_pages);
 	}
 
 	#[test_case]
 	fn buddy1() {
+		let alloc_pages = allocated_pages_count();
+
 		if let Ok(p) = alloc_kernel(1) {
 			unsafe {
 				util::memset(p, -1, get_frame_size(1));
@@ -628,6 +634,8 @@ mod test {
 		} else {
 			assert!(false);
 		}
+
+		debug_assert_eq!(allocated_pages_count(), alloc_pages);
 	}
 
 	fn lifo_test(i: usize) {
@@ -646,11 +654,17 @@ mod test {
 
 	#[test_case]
 	fn buddy_lifo() {
+		let alloc_pages = allocated_pages_count();
+
 		lifo_test(100);
+
+		debug_assert_eq!(allocated_pages_count(), alloc_pages);
 	}
 
 	#[test_case]
 	fn buddy_fifo() {
+		let alloc_pages = allocated_pages_count();
+
 		let mut frames: [*const Void; 100] = [NULL; 100];
 
 		for i in 0..frames.len() {
@@ -664,6 +678,8 @@ mod test {
 		for i in 0..frames.len() {
 			free_kernel(frames[i], 0);
 		}
+
+		debug_assert_eq!(allocated_pages_count(), alloc_pages);
 	}
 
 	fn get_dangling(order: FrameOrder) -> *mut Void {
@@ -681,10 +697,14 @@ mod test {
 
 	#[test_case]
 	fn buddy_free() {
+		let alloc_pages = allocated_pages_count();
+
 		let first = get_dangling(0);
 		for _ in 0..100 {
 			assert_eq!(get_dangling(0), first);
 		}
+
+		debug_assert_eq!(allocated_pages_count(), alloc_pages);
 	}
 
 	struct TestDupNode {
@@ -711,6 +731,8 @@ mod test {
 
 	#[test_case]
 	fn buddy_full_duplicate() {
+		let alloc_pages = allocated_pages_count();
+
 		let mut first = NULL as *mut TestDupNode;
 		while let Ok(p) = alloc_kernel(0) {
 			let node = p as *mut TestDupNode;
@@ -726,6 +748,8 @@ mod test {
 			free_kernel(first as _, 0);
 			first = next;
 		}
+
+		debug_assert_eq!(allocated_pages_count(), alloc_pages);
 	}
 
 	// TODO Add more tests

@@ -114,6 +114,19 @@ type VMem = *const u32;
  */
 type MutVMem = *mut u32;
 
+/*
+ * Structure wrapping a virtual memory. This structure contains the counter for the number of
+ * elements that are used in the associated element.
+ */
+pub struct VMemWrapper {
+	/* The number of used elements in the associated element */
+	used_elements: u16,
+	/* The associated element */
+	vmem: VMem,
+}
+
+// TODO Find a place to store wrappers
+
 extern "C" {
 	pub fn cr0_get() -> u32;
 	pub fn cr0_set(flags: u32);
@@ -127,17 +140,41 @@ extern "C" {
 }
 
 /*
- * Structure wrapping a virtual memory. This structure contains the counter for the number of
- * elements that are used in the associated element.
+ * Tells whether the read-only pages protection is enabled.
  */
-pub struct VMemWrapper {
-	/* The number of used elements in the associated element */
-	used_elements: u16,
-	/* The associated element */
-	vmem: VMem,
+pub fn is_write_lock() -> bool {
+	unsafe {
+		(cr0_get() & (1 << 16)) != 0
+	}
 }
 
-// TODO Find a place to store wrappers
+/*
+ * Sets whether the kernel can write to read-only pages.
+ */
+pub fn set_write_lock(lock: bool) {
+	if lock {
+		unsafe {
+			cr0_set(1 << 16);
+		}
+	} else {
+		unsafe {
+			cr0_clear(1 << 16);
+		}
+	}
+}
+
+/*
+ * Executes the closure given as parameter. During execution, the kernel can write on read-only
+ * pages. The state of the write lock is restored after the closure's execution.
+ */
+pub unsafe fn write_lock_wrap<T: Fn()>(f: T) {
+	let lock = is_write_lock();
+	set_write_lock(false);
+
+	f();
+
+	set_write_lock(lock);
+}
 
 /*
  * Allocates a paging object and returns a pointer to it. Returns None if the allocation fails.
@@ -262,7 +299,7 @@ pub fn init() -> Result<MutVMem, ()> {
 
 	// TODO Extend to other DMA
 	map_range(v, vga::BUFFER_PHYS as _, vga::BUFFER_VIRT as _, 1,
-		FLAG_WRITE | FLAG_CACHE_DISABLE | FLAG_WRITE_THROUGH)?;
+		FLAG_CACHE_DISABLE | FLAG_WRITE_THROUGH)?;
 
 	protect_kernel(v);
 
@@ -562,7 +599,8 @@ pub fn clone(vmem: VMem) -> Result<VMem, ()> {
 
 /*
  * Flushes the modifications of the given page directory by reloading the Translation Lookaside
- * Buffer (TLB).
+ * Buffer (TLB). This function should be called after modifying the currently loaded paging
+ * context.
  */
 pub fn flush(vmem: VMem) {
 	unsafe {

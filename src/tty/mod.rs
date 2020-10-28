@@ -187,14 +187,14 @@ impl TTY {
 		if self.screen_y + vga::HEIGHT <= HISTORY_LINES {
 			unsafe {
 				let buff = &self.history[history_pos(0, self.screen_y)] as *const _ as *const _;
-				core::ptr::copy_nonoverlapping(buff, vga::BUFFER as *mut _,
+				core::ptr::copy_nonoverlapping(buff, vga::BUFFER_VIRT as *mut _,
 					(vga::WIDTH as usize) * (vga::HEIGHT as usize)
 					* core::mem::size_of::<vga::Char>());
 			}
 		} else {
 			unsafe {
 				let buff = &self.history[history_pos(0, self.screen_y)] as *const _ as *const _;
-				core::ptr::copy_nonoverlapping(buff, vga::BUFFER as *mut _,
+				core::ptr::copy_nonoverlapping(buff, vga::BUFFER_VIRT as *mut _,
 					(vga::WIDTH * (HISTORY_LINES - self.screen_y)) as usize
 					* core::mem::size_of::<vga::Char>());
 			}
