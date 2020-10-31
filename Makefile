@@ -10,10 +10,13 @@ KERNEL_MODE ?= debug
 # environement variable with the same name
 KERNEL_TEST ?= false
 
+# The path to the architecture specific directory
+ARCH_PATH = arch/$(KERNEL_ARCH)/
+
 # The target descriptor file path
-TARGET = arch/$(KERNEL_ARCH)/target.json
+TARGET = $(ARCH_PATH)target.json
 # The linker script file path
-LINKER = arch/$(KERNEL_ARCH)/linker.ld
+LINKER = $(ARCH_PATH)linker.ld
 
 # The C debug flags to use
 DEBUG_FLAGS = -D KERNEL_DEBUG -D KERNEL_DEBUG_SANITY -D KERNEL_SELFTEST #-D KERNEL_DEBUG_SPINLOCK
@@ -29,17 +32,18 @@ CFLAGS += -g3 $(DEBUG_FLAGS)
 #endif
 
 # The Rust language compiler
-RUSTC = rustc
+XARGO = xargo
 # The Rust language compiler flags
-RUSTFLAGS = --emit=obj --target=$(TARGET) -Z macro-backtrace
+XARGOFLAGS =
 ifeq ($(KERNEL_MODE), release)
-RUSTFLAGS += -C debuginfo=0 -C opt-level=3
-else
-RUSTFLAGS += -C debuginfo=2 -C opt-level=0
+XARGOFLAGS += --release
 endif
 ifeq ($(KERNEL_TEST), true)
-RUSTFLAGS += --test
+XARGOFLAGS += --test
 endif
+
+# TODO
+RUSTCFLAGS = -Z macro-backtrace --emit=obj
 
 # The linker program
 LD = i686-elf-ld
@@ -61,7 +65,7 @@ C_SRC := $(shell find $(SRC_DIR) -type f -name "*.c")
 # The list of C language header files
 HDR := $(shell find $(SRC_DIR) -type f -name "*.h")
 # The main Rust source file
-RUST_MAIN = src/kernel.rs
+RUST_MAIN = $(SRC_DIR)main.rs
 # The list of Rust source files
 RUST_SRC := $(shell find $(SRC_DIR) -type f -name "*.rs")
 
@@ -90,13 +94,8 @@ CRTEND_OBJ := $(shell $(CC) $(CFLAGS) -print-file-name=crtend.o)
 # TODO
 CRTN_OBJ = $(OBJ_DIR)crtn.s.o
 
-# The path to Rust libcore
-LIBCORE = rust/libcore.rlib
-# The path to Rust libcompiler_builtins
-LIBCOMPILER_BUILTINS = rust/libcompiler_builtins.rlib
-
 # The list of objects
-OBJ := $(ASM_OBJ) $(C_OBJ) $(RUST_MAIN_OBJ) $(LIBCORE) $(LIBCOMPILER_BUILTINS)
+OBJ := $(ASM_OBJ) $(C_OBJ) $(RUST_MAIN_OBJ) $(LIBCOMPILER_BUILTINS)
 # TODO
 INTERNAL_OBJ := $(CRTI_OBJ) $(OBJ) $(CRTN_OBJ)
 # TODO
@@ -127,13 +126,17 @@ $(OBJ_DIR)%.s.o: $(SRC_DIR)%.s $(HDR) Makefile
 $(OBJ_DIR)%.c.o: $(SRC_DIR)%.c $(HDR) Makefile
 	$(CC) $(CFLAGS) -I $(SRC_DIR) -c $< -o $@
 
-# The rule to compile Rust language objects
-$(RUST_MAIN_OBJ): $(RUST_SRC) $(LIBCORE) Makefile $(TARGET)
-	$(RUSTC) $(RUSTFLAGS) -L rust/ -o $@ --extern core=$(LIBCORE) --cfg kernel_mode=\"$(KERNEL_MODE)\" $(RUST_MAIN)
+# TODO
+$(TARGET):
 
-# The rule to compile Rust libcore
-$(LIBCORE):
-	make all -C rust/
+# TODO
+current_target.json: $(TARGET)
+	cp $(TARGET) current_target.json
+
+# The rule to compile Rust language objects
+$(RUST_MAIN_OBJ): $(RUST_SRC) Makefile current_target.json
+	RUSTCFLAGS="$(RUSTCFLAGS) --cfg kernel_mode=\"$(KERNEL_MODE)\"" $(XARGO) build $(XARGOFLAGS) --manifest-path $(shell pwd)/Cargo.toml --target current_target
+	cp target/$(KERNEL_MODE)/$(NAME) $@
 
 # Alias for $(NAME).iso
 iso: $(NAME).iso
