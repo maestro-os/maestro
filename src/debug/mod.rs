@@ -25,16 +25,16 @@ macro_rules! register_get {
  * Prints the registers into the given `regs` structure.
  */
 pub fn print_regs(regs: &util::Regs) {
-	::print!("ebp: {:p} ", regs.ebp as *const Void);
-	::print!("esp: {:p} ", regs.esp as *const Void);
-	::print!("eip: {:p} ", regs.eip as *const Void);
-	::print!("eflags: {:p} ", regs.eflags as *const Void);
-	::print!("eax: {:p}\n", regs.eax as *const Void);
-	::print!("ebx: {:p} ", regs.ebx as *const Void);
-	::print!("ecx: {:p} ", regs.ecx as *const Void);
-	::print!("edx: {:p} ", regs.edx as *const Void);
-	::print!("esi: {:p} ", regs.esi as *const Void);
-	::print!("edi: {:p}\n", regs.edi as *const Void);
+	crate::print!("ebp: {:p} ", regs.ebp as *const Void);
+	crate::print!("esp: {:p} ", regs.esp as *const Void);
+	crate::print!("eip: {:p} ", regs.eip as *const Void);
+	crate::print!("eflags: {:p} ", regs.eflags as *const Void);
+	crate::print!("eax: {:p}\n", regs.eax as *const Void);
+	crate::print!("ebx: {:p} ", regs.ebx as *const Void);
+	crate::print!("ecx: {:p} ", regs.ecx as *const Void);
+	crate::print!("edx: {:p} ", regs.edx as *const Void);
+	crate::print!("esi: {:p} ", regs.esi as *const Void);
+	crate::print!("edi: {:p}\n", regs.edi as *const Void);
 }
 
 /*
@@ -44,15 +44,15 @@ pub fn print_regs(regs: &util::Regs) {
 pub unsafe fn print_memory(ptr: *const Void, n: usize) {
 	let mut i = 0;
 	while i < n {
-		::print!("{:p}  ", ptr);
+		crate::print!("{:p}  ", ptr);
 
 		let mut j = 0;
 		while j < 16 && i + j < n {
-			::println!("{:x?} ", *(((ptr as usize) + (i + j)) as *const u8));
+			crate::println!("{:x?} ", *(((ptr as usize) + (i + j)) as *const u8));
 			j += 1;
 		}
 
-		::print!(" |");
+		crate::print!(" |");
 
 		j = 0;
 		while j < 16 && i + j < n {
@@ -62,11 +62,11 @@ pub unsafe fn print_memory(ptr: *const Void, n: usize) {
 			} else {
 				v as char
 			};
-			::println!("{}", c);
+			crate::println!("{}", c);
 			j += 1;
 		}
 
-		::println!("|");
+		crate::println!("|");
 
 		i += j;
 	}
@@ -134,7 +134,7 @@ fn get_function_name(inst: *const Void) -> Option<&'static str> {
  * print `...` at the end. If the callstack is empty, the function just prints `Empty`.
  */
 pub fn print_callstack(ebp: *const u32, max_depth: usize) {
-	::println!("--- Callstack ---");
+	crate::println!("--- Callstack ---");
 
 	let mut i: usize = 0;
 	let mut ebp_ = ebp;
@@ -151,9 +151,9 @@ pub fn print_callstack(ebp: *const u32, max_depth: usize) {
 		}
 
 		if let Some(name) = get_function_name(eip) {
-			::println!("{}: {:p} -> {}", i, eip, name);
+			crate::println!("{}: {:p} -> {}", i, eip, name);
 		} else {
-			::println!("{}: {:p} -> ???", i, eip);
+			crate::println!("{}: {:p} -> ???", i, eip);
 		}
 
 		unsafe {
@@ -163,8 +163,8 @@ pub fn print_callstack(ebp: *const u32, max_depth: usize) {
 	}
 
 	if i == 0 {
-		::println!("Empty");
+		crate::println!("Empty");
 	} else if ebp_ != (0 as *const _) {
-		::println!("...");
+		crate::println!("...");
 	}
 }

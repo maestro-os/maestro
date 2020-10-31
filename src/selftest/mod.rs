@@ -40,9 +40,9 @@ pub trait Testable {
 
 impl<T> Testable for T where T: Fn() {
 	fn run(&self) {
-		::print!("test {} ... ", core::any::type_name::<T>());
+		crate::print!("test {} ... ", core::any::type_name::<T>());
 		self();
-		::println!("ok");
+		crate::println!("ok");
 	}
 }
 
@@ -52,13 +52,13 @@ impl<T> Testable for T where T: Fn() {
  */
 #[cfg(test)]
 pub fn runner(tests: &[&dyn Testable]) {
-    ::println!("Running {} tests", tests.len());
+    crate::println!("Running {} tests", tests.len());
 
     for test in tests {
 		test.run();
     }
 
-	::println!("No more tests to run");
+	crate::println!("No more tests to run");
 
 	// TODO Add flag to enable/disable qemu
 	//qemu::exit(qemu::SUCCESS);

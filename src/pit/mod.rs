@@ -103,7 +103,7 @@ static mut CURRENT_FREQUENCY: Frequency = 0;
  * This function disables interrupts.
  */
 pub fn init() {
-	::cli!();
+	crate::cli!();
 
 	unsafe {
 		io::outb(COMMAND, SELECT_CHANNEL_0 | ACCESS_LOBYTE_HIBYTE | MODE_4);
@@ -116,7 +116,7 @@ pub fn init() {
  * This function disables interrupts.
  */
 pub fn set_value(count: u16) {
-	::cli!();
+	crate::cli!();
 
 	unsafe {
 		io::outb(CHANNEL_0, (count & 0xff) as u8);

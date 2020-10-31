@@ -164,7 +164,7 @@ macro_rules! print {
 #[allow_internal_unstable(print_internals, format_args_nl)]
 #[macro_export]
 macro_rules! println {
-	() => (::print!("\n"));
+	() => (crate::print!("\n"));
 	($($arg:tt)*) => {{
 		crate::util::_print(format_args_nl!($($arg)*));
 	}};

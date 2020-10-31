@@ -27,13 +27,16 @@
 mod debug;
 mod elf;
 mod error;
+#[macro_use]
 mod idt;
 mod memory;
 mod multiboot;
+#[macro_use]
 mod panic;
 mod pit;
 mod selftest;
 mod tty;
+#[macro_use]
 mod util;
 mod vga;
 
@@ -67,7 +70,7 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const Void) -> ! {
 	tty::init();
 
 	if magic != multiboot::BOOTLOADER_MAGIC || !util::is_aligned(multiboot_ptr, 8) {
-		::kernel_panic!("Bootloader non compliant with Multiboot2!", 0);
+		kernel_panic!("Bootloader non compliant with Multiboot2!", 0);
 	}
 
 	idt::init();
@@ -107,7 +110,7 @@ fn panic(panic_info: &PanicInfo) -> ! {
 	if let Some(s) = panic_info.message() {
 		panic::rust_panic(s);
 	} else {
-		::kernel_panic!("Rust panic (no payload)", 0);
+		kernel_panic!("Rust panic (no payload)", 0);
 	}
 }
 

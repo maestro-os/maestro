@@ -54,8 +54,8 @@ pub fn print_entries() {
 	let mem_info = get_info();
 	debug_assert!(mem_info.memory_maps as *const _ != NULL);
 
-	::println!("--- Memory mapping ---");
-	::println!("<begin> <end> <type>");
+	crate::println!("--- Memory mapping ---");
+	crate::println!("<begin> <end> <type>");
 
 	let mut t = mem_info.memory_maps;
 	while (t as usize) < (mem_info.memory_maps as usize) + (mem_info.memory_maps_size as usize) {
@@ -64,7 +64,7 @@ pub fn print_entries() {
 				let begin = (*t).addr as *const Void;
 				let end = (((*t).addr as usize) + ((*t).len as usize)) as *const Void;
 				let type_ = (*t).get_type_string();
-				::println!("- {:p} {:p} {}", begin, end, type_);
+				crate::println!("- {:p} {:p} {}", begin, end, type_);
 			}
 		}
 		t = ((t as usize) + mem_info.memory_maps_entry_size) as *const _;

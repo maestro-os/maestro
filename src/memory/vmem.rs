@@ -281,7 +281,7 @@ fn protect_kernel(vmem: MutVMem) {
 			};
 			let pages = util::ceil_division(section.sh_size, memory::PAGE_SIZE as _) as usize;
 			if map_range(vmem, phys_addr, virt_addr, pages as usize, FLAG_USER) == Err(()) {
-				::kernel_panic!("Kernel protection failed!");
+				crate::kernel_panic!("Kernel protection failed!");
 			}
 		});
 }
@@ -315,7 +315,7 @@ pub fn kernel() {
 			paging_enable(memory::kern_to_phys(kernel_vmem as _) as _);
 		}
 	} else {
-		::kernel_panic!("Cannot initialize kernel virtual memory!", 0);
+		crate::kernel_panic!("Cannot initialize kernel virtual memory!", 0);
 	}
 }
 

@@ -61,5 +61,5 @@ fn get_error_message(i: u32) -> &'static str {
 #[no_mangle]
 pub extern "C" fn error_handler(error: u32, error_code: u32, _regs: *const util::Regs) {
 	// TODO Allow to register error callbacks
-	::kernel_panic!(get_error_message(error), error_code);
+	crate::kernel_panic!(get_error_message(error), error_code);
 }

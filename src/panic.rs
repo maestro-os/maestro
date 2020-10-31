@@ -5,7 +5,6 @@ use core::fmt;
 use crate::memory::Void;
 use crate::memory;
 use crate::tty;
-use kernel_halt;
 
 /*
  * This file handles kernel panics.
@@ -34,12 +33,12 @@ macro_rules! kernel_panic {
  */
 fn print_panic(reason: &str, code: u32) {
 	tty::init();
-	::println!("--- KERNEL PANIC ---\n");
-	::println!("Kernel has been forced to halt due to internal problem, sorry :/");
-	::println!("Reason: {}", reason);
-	::println!("Error code: {}", code);
-	::println!("CR2: {:p}\n", unsafe { memory::vmem::cr2_get() } as *const Void);
-	::println!("If you believe this is a bug on the kernel side, please feel free to report it.");
+	crate::println!("--- KERNEL PANIC ---\n");
+	crate::println!("Kernel has been forced to halt due to internal problem, sorry :/");
+	crate::println!("Reason: {}", reason);
+	crate::println!("Error code: {}", code);
+	crate::println!("CR2: {:p}\n", unsafe { memory::vmem::cr2_get() } as *const Void);
+	crate::println!("If you believe this is a bug on the kernel side, please feel free to report it.");
 }
 
 /*
@@ -50,7 +49,7 @@ pub fn kernel_panic_(reason: &str, code: u32, _file: &str, _line: u32, _col: u32
 	::cli!();
 	print_panic(reason, code);
 	unsafe {
-		kernel_halt();
+		crate::kernel_halt();
 	}
 }
 
@@ -60,15 +59,15 @@ pub fn kernel_panic_(reason: &str, code: u32, _file: &str, _line: u32, _col: u32
  */
 #[cfg(kernel_mode = "debug")]
 pub fn kernel_panic_(reason: &str, code: u32, file: &str, line: u32, col: u32) -> ! {
-	::cli!();
+	crate::cli!();
 	print_panic(reason, code);
-	::println!("\n-- DEBUG --\nFile: {}; Line: {}; Column: {}", file, line, col);
+	crate::println!("\n-- DEBUG --\nFile: {}; Line: {}; Column: {}", file, line, col);
 	// TODO Print running process registers
-	::println!();
+	crate::println!();
 	//let ebp = unsafe { ::register_get!("ebp") as *const _ };
 	// TODO fix: debug::print_callstack(ebp, 8);
 	unsafe {
-		kernel_halt();
+		crate::kernel_halt();
 	}
 }
 
@@ -77,11 +76,11 @@ pub fn kernel_panic_(reason: &str, code: u32, file: &str, line: u32, col: u32) -
  */
 fn print_rust_panic<'a>(args: &'a fmt::Arguments<'a>) {
 	tty::init();
-	::println!("--- KERNEL PANIC ---\n");
-	::println!("Kernel has been forced to halt due to internal problem, sorry :/");
-	::println!("Reason: {}", args);
-	::println!("CR2: {:p}\n", unsafe { memory::vmem::cr2_get() } as *const Void);
-	::println!("If you believe this is a bug on the kernel side, please feel free to report it.");
+	crate::println!("--- KERNEL PANIC ---\n");
+	crate::println!("Kernel has been forced to halt due to internal problem, sorry :/");
+	crate::println!("Reason: {}", args);
+	crate::println!("CR2: {:p}\n", unsafe { memory::vmem::cr2_get() } as *const Void);
+	crate::println!("If you believe this is a bug on the kernel side, please feel free to report it.");
 }
 
 /*
@@ -89,10 +88,10 @@ fn print_rust_panic<'a>(args: &'a fmt::Arguments<'a>) {
  */
 #[cfg(kernel_mode = "release")]
 pub fn rust_panic<'a>(args: &'a fmt::Arguments<'a>) -> ! {
-	::cli!();
+	crate::cli!();
 	print_rust_panic(args);
 	unsafe {
-		kernel_halt();
+		crate::kernel_halt();
 	}
 }
 
@@ -101,12 +100,12 @@ pub fn rust_panic<'a>(args: &'a fmt::Arguments<'a>) -> ! {
  */
 #[cfg(kernel_mode = "debug")]
 pub fn rust_panic<'a>(args: &'a fmt::Arguments<'a>) -> ! {
-	::cli!();
+	crate::cli!();
 	print_rust_panic(args);
-	::println!();
+	crate::println!();
 	//let ebp = unsafe { ::register_get!("ebp") as *const _ };
 	// TODO fix: debug::print_callstack(ebp, 8);
 	unsafe {
-		kernel_halt();
+		crate::kernel_halt();
 	}
 }

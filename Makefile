@@ -1,3 +1,6 @@
+# TODO documentation
+# TODO explain the compilation process
+
 # The name of the kernel image
 NAME = maestro
 
@@ -14,9 +17,9 @@ KERNEL_TEST ?= false
 ARCH_PATH = arch/$(KERNEL_ARCH)/
 
 # The target descriptor file path
-TARGET = $(ARCH_PATH)target.json
+TARGET = $(shell pwd)/$(ARCH_PATH)target.json
 # The linker script file path
-LINKER = $(ARCH_PATH)linker.ld
+LINKER = $(shell pwd)/$(ARCH_PATH)linker.ld
 
 # The C debug flags to use
 DEBUG_FLAGS = -D KERNEL_DEBUG -D KERNEL_DEBUG_SANITY -D KERNEL_SELFTEST #-D KERNEL_DEBUG_SPINLOCK
@@ -31,9 +34,9 @@ CFLAGS = -nostdlib -ffreestanding -fstack-protector-strong -fno-pic -mno-red-zon
 CFLAGS += -g3 $(DEBUG_FLAGS)
 #endif
 
-# The Rust language compiler
+# Xargo
 XARGO = xargo
-# The Rust language compiler flags
+# Xargo flags
 XARGOFLAGS =
 ifeq ($(KERNEL_MODE), release)
 XARGOFLAGS += --release
@@ -42,13 +45,16 @@ ifeq ($(KERNEL_TEST), true)
 XARGOFLAGS += --test
 endif
 
-# TODO
-RUSTCFLAGS = -Z macro-backtrace --emit=obj
+# The Rust language compiler flags
+RUSTFLAGS = -Z macro-backtrace
 
-# The linker program
-LD = i686-elf-ld
-# The linker program flags
-LDFLAGS = --gc-sections
+# The name of the library file for the non-Rust code. The code contained in this library is linked using the build script (build.rs)
+NON_RUST_LIB_NAME = lib$(NAME).a
+
+# The archive creator program
+AR = ar
+# The archive creator program flags
+ARFLAGS = rc
 
 # The strip program
 STRIP = strip
@@ -64,9 +70,7 @@ ASM_SRC := $(shell find $(SRC_DIR) -type f -name "*.s" -and ! -name "crti.s" -an
 C_SRC := $(shell find $(SRC_DIR) -type f -name "*.c")
 # The list of C language header files
 HDR := $(shell find $(SRC_DIR) -type f -name "*.h")
-# The main Rust source file
-RUST_MAIN = $(SRC_DIR)main.rs
-# The list of Rust source files
+# The list of Rust language source files
 RUST_SRC := $(shell find $(SRC_DIR) -type f -name "*.rs")
 
 # The list of directories in the source directory
@@ -75,7 +79,7 @@ DIRS := $(shell find $(SRC_DIR) -type d)
 OBJ_DIRS := $(patsubst $(SRC_DIR)%, $(OBJ_DIR)%, $(DIRS))
 
 # The list of all sources to compile
-SRC := $(ASM_SRC) $(C_SRC) $(RUST_SRC)
+SRC := $(ASM_SRC) $(C_SRC)
 
 # TODO
 CRTI_OBJ = $(OBJ_DIR)crti.s.o
@@ -86,8 +90,6 @@ CRTBEGIN_OBJ := $(shell $(CC) $(CFLAGS) -print-file-name=crtbegin.o)
 ASM_OBJ := $(patsubst $(SRC_DIR)%.s, $(OBJ_DIR)%.s.o, $(ASM_SRC))
 # The list of C language objects
 C_OBJ := $(patsubst $(SRC_DIR)%.c, $(OBJ_DIR)%.c.o, $(C_SRC))
-# The list of Rust language objects
-RUST_MAIN_OBJ := $(patsubst $(SRC_DIR)%.rs, $(OBJ_DIR)%.rs.o, $(RUST_MAIN))
 
 # TODO
 CRTEND_OBJ := $(shell $(CC) $(CFLAGS) -print-file-name=crtend.o)
@@ -95,8 +97,8 @@ CRTEND_OBJ := $(shell $(CC) $(CFLAGS) -print-file-name=crtend.o)
 CRTN_OBJ = $(OBJ_DIR)crtn.s.o
 
 # The list of objects
-OBJ := $(ASM_OBJ) $(C_OBJ) $(RUST_MAIN_OBJ) $(LIBCOMPILER_BUILTINS)
-# TODO
+OBJ := $(ASM_OBJ) $(C_OBJ)
+# Object files that are result of code which is part of the sources
 INTERNAL_OBJ := $(CRTI_OBJ) $(OBJ) $(CRTN_OBJ)
 # TODO
 OBJ_LINK_LIST := $(CRTI_OBJ) $(CRTBEGIN_OBJ) $(OBJ) $(CRTEND_OBJ) $(CRTN_OBJ)
@@ -108,11 +110,16 @@ QEMU_FLAGS = -cdrom $(NAME).iso -device isa-debug-exit,iobase=0xf4,iosize=0x04
 all: tags $(NAME) iso
 
 # The rule to compile the kernel image
-$(NAME): $(OBJ_DIRS) $(INTERNAL_OBJ) $(LINKER)
-	$(LD) $(LDFLAGS) -T $(LINKER) -o $@ $(OBJ_LINK_LIST)
+$(NAME): $(NON_RUST_LIB_NAME) $(RUST_SRC) current_target.json $(LINKER)
+	RUSTFLAGS="$(RUSTFLAGS) --cfg kernel_mode=\"$(KERNEL_MODE)\" -C link-arg=$(LINKER)" $(XARGO) build $(XARGOFLAGS) --manifest-path $(shell pwd)/Cargo.toml --target current_target
+	cp target/current_target/$(KERNEL_MODE)/$(NAME) $@
 ifeq ($(KERNEL_MODE), release)
 	$(STRIP) $(NAME)
 endif
+
+# The rule to compile non-Rust code into a separate library for linking
+$(NON_RUST_LIB_NAME): $(OBJ_DIRS) $(INTERNAL_OBJ)
+	$(AR) $(ARFLAGS) $@ $(INTERNAL_OBJ)
 
 # The rule to create object directories
 $(OBJ_DIRS):
@@ -126,17 +133,12 @@ $(OBJ_DIR)%.s.o: $(SRC_DIR)%.s $(HDR) Makefile
 $(OBJ_DIR)%.c.o: $(SRC_DIR)%.c $(HDR) Makefile
 	$(CC) $(CFLAGS) -I $(SRC_DIR) -c $< -o $@
 
-# TODO
+# Empty rule used to check if the file has been changed or not
 $(TARGET):
 
-# TODO
+# The rule to copy the target file so that Xargo can use it
 current_target.json: $(TARGET)
 	cp $(TARGET) current_target.json
-
-# The rule to compile Rust language objects
-$(RUST_MAIN_OBJ): $(RUST_SRC) Makefile current_target.json
-	RUSTCFLAGS="$(RUSTCFLAGS) --cfg kernel_mode=\"$(KERNEL_MODE)\"" $(XARGO) build $(XARGOFLAGS) --manifest-path $(shell pwd)/Cargo.toml --target current_target
-	cp target/$(KERNEL_MODE)/$(NAME) $@
 
 # Alias for $(NAME).iso
 iso: $(NAME).iso
@@ -155,8 +157,8 @@ tags: $(SRC) $(HDR)
 # The rule to clean the workspace
 clean:
 	rm -rf obj/
-	make clean -C rust/
 	rm -rf iso/
+	rm current_target.json
 	rm -f tags
 
 # The rule to clean the workspace, including target binaries
