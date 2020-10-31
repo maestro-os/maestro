@@ -1,5 +1,19 @@
-# TODO documentation
-# TODO explain the compilation process
+# This is the main Makefile for the kernel's compilation
+#
+# The kernel is divided into two parts:
+# - Rust code, which represents most the kernel
+# - Assembly and C code
+#
+# The compilation occurs in the following order:
+# - The Makefile compiles Assembly and C code for the required target, creating object files
+# - The object files are packed into a library
+# - The Rust code is compiled using Xargo
+# - Xargo calls the build script, which tells the Rust compiler to link the library previously mentioned
+# - Xargo runs the linker with the linker script for the required target
+#
+# This Makefile also contains several rules used to test the kernel with emulators
+
+
 
 # The name of the kernel image
 NAME = maestro
@@ -111,7 +125,7 @@ all: tags $(NAME) iso
 
 # The rule to compile the kernel image
 $(NAME): $(NON_RUST_LIB_NAME) $(RUST_SRC) current_target.json $(LINKER)
-	RUSTFLAGS="$(RUSTFLAGS) --cfg kernel_mode=\"$(KERNEL_MODE)\" -C link-arg=$(LINKER)" $(XARGO) build $(XARGOFLAGS) --manifest-path $(shell pwd)/Cargo.toml --target current_target
+	RUSTFLAGS="$(RUSTFLAGS) --cfg kernel_mode=\"$(KERNEL_MODE)\" -C link-arg=-T$(LINKER)" $(XARGO) build $(XARGOFLAGS) --manifest-path $(shell pwd)/Cargo.toml --target current_target
 	cp target/current_target/$(KERNEL_MODE)/$(NAME) $@
 ifeq ($(KERNEL_MODE), release)
 	$(STRIP) $(NAME)
