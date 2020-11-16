@@ -7,9 +7,9 @@
 # The compilation occurs in the following order:
 # - The Makefile compiles Assembly and C code for the required target, creating object files
 # - The object files are packed into a library
-# - The Rust code is compiled using Xargo
-# - Xargo calls the build script, which tells the Rust compiler to link the library previously mentioned
-# - Xargo runs the linker with the linker script for the required target
+# - The Rust code is compiled using Cargo
+# - Cargo calls the build script, which tells the Rust compiler to link the library previously mentioned
+# - Cargo runs the linker with the linker script for the required target
 #
 # This Makefile also contains several rules used to test the kernel with emulators
 
@@ -27,13 +27,16 @@ KERNEL_MODE ?= debug
 # environement variable with the same name
 KERNEL_TEST ?= false
 
+# Current directory
+PWD := $(shell pwd)
+
 # The path to the architecture specific directory
 ARCH_PATH = arch/$(KERNEL_ARCH)/
 
 # The target descriptor file path
-TARGET = $(shell pwd)/$(ARCH_PATH)target.json
+TARGET = $(PWD)/$(ARCH_PATH)target.json
 # The linker script file path
-LINKER = $(shell pwd)/$(ARCH_PATH)linker.ld
+LINKER = $(PWD)/$(ARCH_PATH)linker.ld
 
 # The C debug flags to use
 DEBUG_FLAGS = -D KERNEL_DEBUG -D KERNEL_DEBUG_SANITY -D KERNEL_SELFTEST #-D KERNEL_DEBUG_SPINLOCK
@@ -48,15 +51,15 @@ CFLAGS = -nostdlib -ffreestanding -fstack-protector-strong -fno-pic -mno-red-zon
 CFLAGS += -g3 $(DEBUG_FLAGS)
 #endif
 
-# Xargo
-XARGO = xargo
-# Xargo flags
-XARGOFLAGS =
+# Cargo
+CARGO = cargo
+# Cargo flags
+CARGOFLAGS =
 ifeq ($(KERNEL_MODE), release)
-XARGOFLAGS += --release
+CARGOFLAGS += --release
 endif
 ifeq ($(KERNEL_TEST), true)
-XARGOFLAGS += --test
+CARGOFLAGS += --tests
 endif
 
 # The Rust language compiler flags
@@ -124,9 +127,9 @@ QEMU_FLAGS = -cdrom $(NAME).iso -device isa-debug-exit,iobase=0xf4,iosize=0x04
 all: tags $(NAME) iso
 
 # The rule to compile the kernel image
-$(NAME): $(NON_RUST_LIB_NAME) $(RUST_SRC) current_target.json $(LINKER)
-	RUSTFLAGS="$(RUSTFLAGS) --cfg kernel_mode=\"$(KERNEL_MODE)\" -C link-arg=-T$(LINKER)" $(XARGO) build $(XARGOFLAGS) --manifest-path $(shell pwd)/Cargo.toml --target current_target
-	cp target/current_target/$(KERNEL_MODE)/$(NAME) $@
+$(NAME): $(NON_RUST_LIB_NAME) $(RUST_SRC) $(LINKER) Makefile
+	RUSTFLAGS="$(RUSTFLAGS) --cfg kernel_mode=\"$(KERNEL_MODE)\" -C link-arg=-T$(LINKER)" $(CARGO) build $(CARGOFLAGS) --target $(TARGET) --verbose
+	cp $(shell ls -1 target/target/debug/deps/maestro-* | head -n 1) $@
 ifeq ($(KERNEL_MODE), release)
 	$(STRIP) $(NAME)
 endif
@@ -150,10 +153,6 @@ $(OBJ_DIR)%.c.o: $(SRC_DIR)%.c $(HDR) Makefile
 # Empty rule used to check if the file has been changed or not
 $(TARGET):
 
-# The rule to copy the target file so that Xargo can use it
-current_target.json: $(TARGET)
-	cp $(TARGET) current_target.json
-
 # Alias for $(NAME).iso
 iso: $(NAME).iso
 
@@ -172,7 +171,6 @@ tags: $(SRC) $(HDR)
 clean:
 	rm -rf obj/
 	rm -rf iso/
-	rm current_target.json
 	rm -f tags
 
 # The rule to clean the workspace, including target binaries

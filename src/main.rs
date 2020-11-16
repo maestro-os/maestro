@@ -120,8 +120,8 @@ fn panic(panic_info: &PanicInfo) -> ! {
 #[cfg(test)]
 #[panic_handler]
 fn panic(panic_info: &PanicInfo) -> ! {
-	::println!("FAILED\n");
-	::println!("Error: {}\n", panic_info);
+	println!("FAILED\n");
+	println!("Error: {}\n", panic_info);
 	unsafe {
 		kernel_halt();
 	}
