@@ -128,7 +128,7 @@ all: tags $(NAME) iso
 
 # The rule to compile the kernel image
 $(NAME): $(NON_RUST_LIB_NAME) $(RUST_SRC) $(LINKER) Makefile
-	RUSTFLAGS="$(RUSTFLAGS) --cfg kernel_mode=\"$(KERNEL_MODE)\" -C link-arg=-T$(LINKER)" $(CARGO) build $(CARGOFLAGS) --target $(TARGET) --verbose
+	RUSTFLAGS="$(RUSTFLAGS) --cfg kernel_mode=\"$(KERNEL_MODE)\" -C link-arg=-T$(LINKER)" $(CARGO) build $(CARGOFLAGS) --target $(TARGET)
 	cp $(shell ls -1 target/target/debug/deps/maestro-* | head -n 1) $@
 ifeq ($(KERNEL_MODE), release)
 	$(STRIP) $(NAME)

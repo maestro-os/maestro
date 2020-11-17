@@ -301,6 +301,9 @@ pub fn init() -> Result<MutVMem, ()> {
 	map_range(v, vga::BUFFER_PHYS as _, vga::BUFFER_VIRT as _, 1,
 		FLAG_CACHE_DISABLE | FLAG_WRITE_THROUGH)?;
 
+	// TODO remove
+	crate::println!("-> {:?}", get_flags(v, vga::BUFFER_VIRT as _));
+
 	protect_kernel(v);
 
 	Ok(v)
@@ -405,6 +408,7 @@ pub fn map(vmem: MutVMem, physaddr: *const Void, virtaddr: *const Void, flags: u
 	}
 
 	dir_entry_value = unsafe { *dir_entry };
+	debug_assert!(dir_entry_value & FLAG_PAGE_SIZE == 0);
 	let table = (dir_entry_value & ADDR_MASK) as MutVMem;
 	let table_entry_index = get_addr_element_index(virtaddr, 0);
 	let table_entry = unsafe { table.add(table_entry_index) };
