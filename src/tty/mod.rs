@@ -53,14 +53,16 @@ const BELL_DURATION: u32 = 500;
 /*
  * Returns the position of the cursor in the history array from x and y position.
  */
-const fn history_pos(x: vga::Pos, y: vga::Pos) -> usize {
-	(y * vga::WIDTH + x) as usize
+fn get_history_offset(x: vga::Pos, y: vga::Pos) -> usize {
+	let off = (y * vga::WIDTH + x) as usize;
+	debug_assert!(off < HISTORY_SIZE);
+	off
 }
 
 /*
  * Returns the position of a tab character for the given cursor X position.
  */
-const fn get_tab_size(cursor_x: vga::Pos) -> usize {
+fn get_tab_size(cursor_x: vga::Pos) -> usize {
 	TAB_SIZE - ((cursor_x as usize) % TAB_SIZE)
 }
 
@@ -187,7 +189,7 @@ impl TTY {
 
 		if self.screen_y + vga::HEIGHT <= HISTORY_LINES {
 			unsafe {
-				let buff = &self.history[history_pos(0, self.screen_y)] as *const _ as *const _;
+				let buff = &self.history[get_history_offset(0, self.screen_y)] as *const _;
 				vmem::write_lock_wrap(|| {
 					core::ptr::copy_nonoverlapping(buff, vga::BUFFER_VIRT as *mut _,
 						(vga::WIDTH as usize) * (vga::HEIGHT as usize)
@@ -196,7 +198,7 @@ impl TTY {
 			}
 		} else {
 			unsafe {
-				let buff = &self.history[history_pos(0, self.screen_y)] as *const _ as *const _;
+				let buff = &self.history[get_history_offset(0, self.screen_y)] as *const _;
 				vmem::write_lock_wrap(|| {
 					core::ptr::copy_nonoverlapping(buff, vga::BUFFER_VIRT as *mut _,
 						(vga::WIDTH * (HISTORY_LINES - self.screen_y)) as usize
@@ -291,6 +293,11 @@ impl TTY {
 			}
 			self.screen_y = HISTORY_LINES - vga::HEIGHT;
 		}
+
+		debug_assert!(self.cursor_x >= 0);
+		debug_assert!(self.cursor_x < vga::WIDTH);
+		debug_assert!(self.cursor_y - self.screen_y >= 0);
+		debug_assert!(self.cursor_y - self.screen_y < vga::HEIGHT);
 	}
 
 	fn cursor_forward(&mut self, x: usize, y: usize)
@@ -330,8 +337,7 @@ impl TTY {
 			},
 			_ => {
 				let tty_char = (c as vga::Char) | ((self.current_color as vga::Char) << 8);
-				let pos = history_pos(self.cursor_x, self.cursor_y);
-				debug_assert!(pos < HISTORY_SIZE as usize);
+				let pos = get_history_offset(self.cursor_x, self.cursor_y);
 				self.history[pos] = tty_char;
 				self.cursor_forward(1, 0);
 			}
@@ -364,7 +370,7 @@ impl TTY {
 		}
 		self.cursor_backward(count, 0);
 
-		let begin = history_pos(self.cursor_x, self.cursor_y);
+		let begin = get_history_offset(self.cursor_x, self.cursor_y);
 		for i in begin..(begin + count) {
 			self.history[i] = EMPTY_CHAR;
 		}

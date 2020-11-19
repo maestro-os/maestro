@@ -301,9 +301,6 @@ pub fn init() -> Result<MutVMem, ()> {
 	map_range(v, vga::BUFFER_PHYS as _, vga::BUFFER_VIRT as _, 1,
 		FLAG_CACHE_DISABLE | FLAG_WRITE_THROUGH)?;
 
-	// TODO remove
-	crate::println!("-> {:?}", get_flags(v, vga::BUFFER_VIRT as _));
-
 	protect_kernel(v);
 
 	Ok(v)
