@@ -1,7 +1,7 @@
 mod handler;
 pub mod pic;
 
-use crate::memory::Void;
+use core::ffi::c_void;
 use crate::util;
 
 /*
@@ -111,7 +111,7 @@ struct InterruptDescriptor {
 }
 
 extern "C" {
-	fn idt_load(idt: *const Void);
+	fn idt_load(idt: *const c_void);
 	fn interrupt_is_enabled() -> bool;
 }
 
@@ -183,7 +183,7 @@ static mut ID: [InterruptDescriptor; ENTRIES_COUNT as usize] = [InterruptDescrip
 /*
  * Creates an IDT entry.
  */
-fn create_id(address: *const Void, selector: u16, type_attr: u8) -> InterruptDescriptor {
+fn create_id(address: *const c_void, selector: u16, type_attr: u8) -> InterruptDescriptor {
 	InterruptDescriptor {
 		offset: ((address as u32) & 0xffff) as u16,
 		selector: selector,
@@ -196,9 +196,9 @@ fn create_id(address: *const Void, selector: u16, type_attr: u8) -> InterruptDes
 /*
  * Takes a C extern function and returns its pointer.
  */
-fn get_c_fn_ptr(f: unsafe extern "C" fn()) -> *const Void {
+fn get_c_fn_ptr(f: unsafe extern "C" fn()) -> *const c_void {
 	unsafe {
-		core::mem::transmute::<_, _>(f as *const Void)
+		core::mem::transmute::<_, _>(f as *const c_void)
 	}
 }
 

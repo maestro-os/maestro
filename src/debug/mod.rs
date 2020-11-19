@@ -2,8 +2,8 @@
  * TODO doc
  */
 
+use core::ffi::c_void;
 use crate::elf;
-use crate::memory::Void;
 use crate::memory;
 use crate::multiboot;
 use crate::util;
@@ -25,23 +25,23 @@ macro_rules! register_get {
  * Prints the registers into the given `regs` structure.
  */
 pub fn print_regs(regs: &util::Regs) {
-	crate::print!("ebp: {:p} ", regs.ebp as *const Void);
-	crate::print!("esp: {:p} ", regs.esp as *const Void);
-	crate::print!("eip: {:p} ", regs.eip as *const Void);
-	crate::print!("eflags: {:p} ", regs.eflags as *const Void);
-	crate::print!("eax: {:p}\n", regs.eax as *const Void);
-	crate::print!("ebx: {:p} ", regs.ebx as *const Void);
-	crate::print!("ecx: {:p} ", regs.ecx as *const Void);
-	crate::print!("edx: {:p} ", regs.edx as *const Void);
-	crate::print!("esi: {:p} ", regs.esi as *const Void);
-	crate::print!("edi: {:p}\n", regs.edi as *const Void);
+	crate::print!("ebp: {:p} ", regs.ebp as *const c_void);
+	crate::print!("esp: {:p} ", regs.esp as *const c_void);
+	crate::print!("eip: {:p} ", regs.eip as *const c_void);
+	crate::print!("eflags: {:p} ", regs.eflags as *const c_void);
+	crate::print!("eax: {:p}\n", regs.eax as *const c_void);
+	crate::print!("ebx: {:p} ", regs.ebx as *const c_void);
+	crate::print!("ecx: {:p} ", regs.ecx as *const c_void);
+	crate::print!("edx: {:p} ", regs.edx as *const c_void);
+	crate::print!("esi: {:p} ", regs.esi as *const c_void);
+	crate::print!("edi: {:p}\n", regs.edi as *const c_void);
 }
 
 /*
  * Prints, in hexadecimal, the content of the memory at the given location `ptr`, with the given
  * size `n` in bytes.
  */
-pub unsafe fn print_memory(ptr: *const Void, n: usize) {
+pub unsafe fn print_memory(ptr: *const c_void, n: usize) {
 	let mut i = 0;
 	while i < n {
 		crate::print!("{:p}  ", ptr);
@@ -93,7 +93,7 @@ fn get_symbol_name(offset: u32) -> Option<&'static str> {
  * Returns an Option containing the name of the function for the given instruction pointer. If the
  * name cannot be retrieved, the function returns None.
  */
-fn get_function_name(inst: *const Void) -> Option<&'static str> {
+fn get_function_name(inst: *const c_void) -> Option<&'static str> {
 	if inst < memory::get_kernel_virtual_begin() || inst >= memory::get_kernel_virtual_end() {
 		return None;
 	}

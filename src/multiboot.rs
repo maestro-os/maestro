@@ -2,6 +2,7 @@
  * TODO doc
  */
 
+use core::ffi::c_void;
 use crate::memory::*;
 //use crate::memory;
 
@@ -401,7 +402,7 @@ pub struct BootInfo {
 	/* TODO */
 	pub elf_shndx: u32,
 	/* TODO */
-	pub elf_sections: *const Void,
+	pub elf_sections: *const c_void,
 
 	// TODO
 }
@@ -435,7 +436,7 @@ pub fn get_boot_info() -> &'static BootInfo {
 /*
  * Returns the size in bytes of Multiboot tags pointed by `ptr`.
  */
-pub fn get_tags_size(ptr: *const Void) -> usize {
+pub fn get_tags_size(ptr: *const c_void) -> usize {
 	debug_assert!(ptr != NULL);
 
 	unsafe {
@@ -496,7 +497,7 @@ fn handle_tag(boot_info: &mut BootInfo, tag: *const Tag) {
 				boot_info.elf_num = (*t).num;
 				boot_info.elf_entsize = (*t).entsize;
 				boot_info.elf_shndx = (*t).shndx;
-				boot_info.elf_sections = &(*t).sections as *const _;
+				boot_info.elf_sections = (*t).sections.as_ptr() as _;
 			}
 		},
 
@@ -509,7 +510,7 @@ fn handle_tag(boot_info: &mut BootInfo, tag: *const Tag) {
 /*
  * Reads the multiboot tags from the given `ptr` and fills the boot informations structure.
  */
-pub fn read_tags(ptr: *const Void) {
+pub fn read_tags(ptr: *const c_void) {
 	unsafe {
 		let mut tag = (ptr.offset(8)) as *const Tag;
 		while (*tag).type_ != TAG_TYPE_END {

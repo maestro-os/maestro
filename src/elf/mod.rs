@@ -2,8 +2,8 @@
  * TODO doc
  */
 
+use core::ffi::c_void;
 use crate::memory::NULL;
-use crate::memory::Void;
 use crate::memory;
 use crate::util;
 
@@ -209,8 +209,8 @@ pub struct ELF32Sym {
  * Returns a reference to the section with name `name`. If the section is not found, returns None.
  * TODO document every arguments
  */
-pub fn get_section(sections: *const Void, sections_count: usize, shndx: usize, entsize: usize, name: &str)
-	-> Option<&ELF32SectionHeader> {
+pub fn get_section(sections: *const c_void, sections_count: usize, shndx: usize, entsize: usize,
+	name: &str) -> Option<&ELF32SectionHeader> {
 	debug_assert!(sections != NULL);
 
 	let names_section = unsafe {
@@ -219,7 +219,8 @@ pub fn get_section(sections: *const Void, sections_count: usize, shndx: usize, e
 	let mut i = 0;
 	while i < sections_count {
 		let hdr = unsafe {
-			&*(sections.offset((i * core::mem::size_of::<ELF32SectionHeader>()) as isize) as *const ELF32SectionHeader)
+			&*(sections.offset((i * core::mem::size_of::<ELF32SectionHeader>()) as isize)
+				as *const ELF32SectionHeader)
 		};
 		let n = unsafe {
 			util::ptr_to_str(memory::kern_to_virt((names_section.sh_addr + hdr.sh_name) as _))
@@ -233,12 +234,12 @@ pub fn get_section(sections: *const Void, sections_count: usize, shndx: usize, e
 }
 
 /*
- * Iterates over the given section headers list `sections`, calling the given closure `f` for every elements with a
- * reference and the name of the section.
+ * Iterates over the given section headers list `sections`, calling the given closure `f` for every
+ * elements with a reference and the name of the section.
  * TODO document every arguments
  */
-pub fn foreach_sections<T>(sections: *const Void, sections_count: usize, shndx: usize, entsize: usize, mut f: T)
-	where T: FnMut(&ELF32SectionHeader, &str) {
+pub fn foreach_sections<T>(sections: *const c_void, sections_count: usize, shndx: usize,
+	entsize: usize, mut f: T) where T: FnMut(&ELF32SectionHeader, &str) {
 	let names_section = unsafe {
 		&*(sections.offset((shndx * entsize) as isize) as *const ELF32SectionHeader)
 	};

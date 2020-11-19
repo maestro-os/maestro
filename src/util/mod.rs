@@ -1,4 +1,4 @@
-use crate::memory::Void;
+use core::ffi::c_void;
 use crate::memory;
 use crate::tty;
 
@@ -14,7 +14,7 @@ pub type Umax = u32; // TODO Find another solution
  * Tells if pointer `ptr` is aligned on boundary `n`.
  */
 #[inline(always)]
-pub fn is_aligned(ptr: *const Void, n: usize) -> bool {
+pub fn is_aligned(ptr: *const c_void, n: usize) -> bool {
 	((ptr as usize) & (n - 1)) == 0
 }
 
@@ -23,16 +23,16 @@ pub fn is_aligned(ptr: *const Void, n: usize) -> bool {
  * if the pointer is already aligned.
  */
 #[inline(always)]
-pub fn down_align(ptr: *const Void, n: usize) -> *const Void {
-	((ptr as usize) & !(n - 1)) as *const Void
+pub fn down_align(ptr: *const c_void, n: usize) -> *const c_void {
+	((ptr as usize) & !(n - 1)) as *const c_void
 }
 
 /*
  * Aligns up a pointer. The returned value shall be greater than `ptr`.
  */
 #[inline(always)]
-pub fn up_align(ptr: *const Void, n: usize) -> *const Void {
-	((down_align(ptr, n) as usize) + n) as *const Void
+pub fn up_align(ptr: *const c_void, n: usize) -> *const c_void {
+	((down_align(ptr, n) as usize) + n) as *const c_void
 }
 
 /*
@@ -40,7 +40,7 @@ pub fn up_align(ptr: *const Void, n: usize) -> *const Void {
  * the pointer is already aligned.
  */
 #[inline(always)]
-pub fn align(ptr: *const Void, n: usize) -> *const Void {
+pub fn align(ptr: *const c_void, n: usize) -> *const c_void {
 	if is_aligned(ptr, n) { ptr } else { up_align(ptr, n) }
 }
 
@@ -48,7 +48,7 @@ pub fn align(ptr: *const Void, n: usize) -> *const Void {
  * Tells whether `p0` and `p1` are on the same memory page or not.
  */
 #[inline(always)]
-pub fn same_page(p0: *const Void, p1: *const Void) -> bool {
+pub fn same_page(p0: *const c_void, p1: *const c_void) -> bool {
 	down_align(p0, memory::PAGE_SIZE) == down_align(p1, memory::PAGE_SIZE)
 }
 
@@ -112,7 +112,7 @@ pub fn bitfield_size(n: usize) -> usize {
  */
 macro_rules! offset_of {
 	($type:ty, $field:ident) => {
-		((&((*(NULL as *const $type)).$field)) as *const Void) as usize
+		((&((*(NULL as *const $type)).$field)) as *const c_void) as usize
 	}
 }
 
@@ -188,20 +188,20 @@ pub struct Regs
 }
 
 extern "C" {
-	pub fn memcpy(dest: *mut Void, src: *const Void, n: usize) -> *mut Void;
-	pub fn memcmp(s1: *const Void, s2: *const Void, n: usize) -> i32;
-	pub fn memset(s: *mut Void, c: i32, n: usize) -> *mut Void;
+	pub fn memcpy(dest: *mut c_void, src: *const c_void, n: usize) -> *mut c_void;
+	pub fn memcmp(s1: *const c_void, s2: *const c_void, n: usize) -> i32;
+	pub fn memset(s: *mut c_void, c: i32, n: usize) -> *mut c_void;
 
-	pub fn bzero(s: *mut Void, n: usize);
+	pub fn bzero(s: *mut c_void, n: usize);
 
-	pub fn strlen(s: *const Void) -> usize;
+	pub fn strlen(s: *const c_void) -> usize;
 }
 
 /*
  * Zeroes the given object.
  */
 pub fn zero_object<T>(obj: &mut T) {
-	let ptr = obj as *mut T as *mut Void;
+	let ptr = obj as *mut T as *mut c_void;
 	let size = core::mem::size_of::<T>();
 
 	unsafe {
@@ -210,11 +210,11 @@ pub fn zero_object<T>(obj: &mut T) {
 }
 
 /*
- * Converts the given pointer to a string of characters. The string must be valid and must end with `\0`. The ownership
- * of the string is not taken, thus the caller is must drop it manually.
+ * Converts the given pointer to a string of characters. The string must be valid and must end with
+ * `\0`. The ownership of the string is not taken, thus the caller must drop it manually.
  */
-pub unsafe fn ptr_to_str(ptr: *const Void) -> &'static str {
+pub unsafe fn ptr_to_str(ptr: *const c_void) -> &'static str {
 	let len = strlen(ptr);
-	let slice = core::slice::from_raw_parts(ptr, len);
+	let slice = core::slice::from_raw_parts(ptr as *const u8, len);
 	core::str::from_utf8_unchecked(slice)
 }

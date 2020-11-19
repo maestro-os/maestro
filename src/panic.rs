@@ -2,7 +2,7 @@
 //use crate::debug;
 
 use core::fmt;
-use crate::memory::Void;
+use core::ffi::c_void;
 use crate::memory;
 use crate::tty;
 
@@ -37,7 +37,7 @@ fn print_panic(reason: &str, code: u32) {
 	crate::println!("Kernel has been forced to halt due to internal problem, sorry :/");
 	crate::println!("Reason: {}", reason);
 	crate::println!("Error code: {}", code);
-	crate::println!("CR2: {:p}\n", unsafe { memory::vmem::cr2_get() } as *const Void);
+	crate::println!("CR2: {:p}\n", unsafe { memory::vmem::cr2_get() } as *const c_void);
 	crate::println!("If you believe this is a bug on the kernel side, please feel free to report it.");
 }
 
@@ -79,7 +79,7 @@ fn print_rust_panic<'a>(args: &'a fmt::Arguments<'a>) {
 	crate::println!("--- KERNEL PANIC ---\n");
 	crate::println!("Kernel has been forced to halt due to internal problem, sorry :/");
 	crate::println!("Reason: {}", args);
-	crate::println!("CR2: {:p}\n", unsafe { memory::vmem::cr2_get() } as *const Void);
+	crate::println!("CR2: {:p}\n", unsafe { memory::vmem::cr2_get() } as *const c_void);
 	crate::println!("If you believe this is a bug on the kernel side, please feel free to report it.");
 }
 

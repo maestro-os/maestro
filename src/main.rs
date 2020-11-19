@@ -40,8 +40,8 @@ mod tty;
 mod util;
 mod vga;
 
+use core::ffi::c_void;
 use core::panic::PanicInfo;
-use memory::Void;
 
 /*
  * Current kernel version.
@@ -66,7 +66,7 @@ mod io {
 }
 
 #[no_mangle]
-pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const Void) -> ! {
+pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 	tty::init();
 
 	if magic != multiboot::BOOTLOADER_MAGIC || !util::is_aligned(multiboot_ptr, 8) {

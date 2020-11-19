@@ -23,10 +23,10 @@
  * The Page Size Extension (PSE) allows to map 4MB large blocks without using a page table.
  */
 
+use core::ffi::c_void;
 use core::result::Result;
 use crate::elf;
 use crate::memory::NULL;
-use crate::memory::Void;
 use crate::memory::buddy;
 use crate::memory;
 use crate::multiboot;
@@ -180,7 +180,7 @@ pub unsafe fn write_lock_wrap<T: Fn()>(f: T) {
  * Allocates a paging object and returns a pointer to it. Returns None if the allocation fails.
  */
 fn alloc_obj() -> Result<MutVMem, ()> {
-	let ptr = buddy::alloc_kernel(0)? as *mut Void;
+	let ptr = buddy::alloc_kernel(0)? as *mut c_void;
 	unsafe {
 		util::bzero(ptr as _, buddy::get_frame_size(0));
 	}
@@ -270,12 +270,12 @@ fn protect_kernel(vmem: MutVMem) {
 			}
 
 			let phys_addr = if section.sh_addr < (memory::PROCESS_END as _) {
-				section.sh_addr as *const Void
+				section.sh_addr as *const c_void
 			} else {
 				memory::kern_to_phys(section.sh_addr as _)
 			};
 			let virt_addr = if section.sh_addr >= (memory::PROCESS_END as _) {
-				section.sh_addr as *const Void
+				section.sh_addr as *const c_void
 			} else {
 				memory::kern_to_virt(section.sh_addr as _)
 			};
@@ -323,7 +323,7 @@ pub fn kernel() {
  * Returns the index of the element corresponding to the given virtual address `ptr` for element at
  * level `level` in the tree. The level represents the depth in the tree. `0` is the deepest.
  */
-fn get_addr_element_index(ptr: *const Void, level: usize) -> usize {
+fn get_addr_element_index(ptr: *const c_void, level: usize) -> usize {
 	((ptr as usize) >> (12 + level * 10)) & 0x3ff
 }
 
@@ -333,7 +333,7 @@ fn get_addr_element_index(ptr: *const Void, level: usize) -> usize {
  * entry must be marked as present to be found. If Page Size Extension (PSE) is used, an entry of
  * the page directory might be returned.
  */
-pub fn resolve(vmem: VMem, ptr: *const Void) -> Option<*const u32> {
+pub fn resolve(vmem: VMem, ptr: *const c_void) -> Option<*const u32> {
 	let dir_entry = unsafe { vmem.add(get_addr_element_index(ptr, 1)) };
 	let dir_entry_value = unsafe { *dir_entry };
 	if dir_entry_value & FLAG_PRESENT == 0 {
@@ -356,7 +356,7 @@ pub fn resolve(vmem: VMem, ptr: *const Void) -> Option<*const u32> {
 /*
  * Tells whether the given pointer `ptr` is mapped or not.
  */
-pub fn is_mapped(vmem: VMem, ptr: *const Void) -> bool {
+pub fn is_mapped(vmem: VMem, ptr: *const c_void) -> bool {
 	resolve(vmem, ptr) != None
 }
 
@@ -364,7 +364,7 @@ pub fn is_mapped(vmem: VMem, ptr: *const Void) -> bool {
  * Translates the given virtual address `ptr` to the corresponding physical address. If the address
  * is not mapped, None is returned.
  */
-pub fn translate(vmem: VMem, ptr: *const Void) -> Option<*const Void> {
+pub fn translate(vmem: VMem, ptr: *const c_void) -> Option<*const c_void> {
 	if let Some(e) = resolve(vmem, ptr) {
 		Some((unsafe { *e } & ADDR_MASK) as _) // TODO Add remaining offset (check if PSE is used)
 	} else {
@@ -377,7 +377,7 @@ pub fn translate(vmem: VMem, ptr: *const Void) -> Option<*const Void> {
  * might return a page directory entry if a large block is present at the corresponding location.
  * If no entry is found, the function returns None.
  */
-pub fn get_flags(vmem: VMem, ptr: *const Void) -> Option<u32> {
+pub fn get_flags(vmem: VMem, ptr: *const c_void) -> Option<u32> {
 	if let Some(e) = resolve(vmem, ptr) {
 		Some(unsafe { *e } & FLAGS_MASK)
 	} else {
@@ -389,7 +389,7 @@ pub fn get_flags(vmem: VMem, ptr: *const Void) -> Option<u32> {
  * Maps the the given physical address `physaddr` to the given virtual address `virtaddr` with the
  * given flags. The function forces the FLAG_PAGE_PRESENT flag.
  */
-pub fn map(vmem: MutVMem, physaddr: *const Void, virtaddr: *const Void, flags: u32)
+pub fn map(vmem: MutVMem, physaddr: *const c_void, virtaddr: *const c_void, flags: u32)
 	-> Result<(), ()> {
 	debug_assert!(util::is_aligned(physaddr, memory::PAGE_SIZE));
 	debug_assert!(util::is_aligned(virtaddr, memory::PAGE_SIZE));
@@ -420,7 +420,7 @@ pub fn map(vmem: MutVMem, physaddr: *const Void, virtaddr: *const Void, flags: u
  * Maps the given physical address `physaddr` to the given virtual address `virtaddr` with the
  * given flags using blocks of 1024 pages (PSE).
  */
-pub fn map_pse(vmem: MutVMem, physaddr: *const Void, virtaddr: *const Void, flags: u32) {
+pub fn map_pse(vmem: MutVMem, physaddr: *const c_void, virtaddr: *const c_void, flags: u32) {
 	debug_assert!(util::is_aligned(physaddr, memory::PAGE_SIZE));
 	debug_assert!(util::is_aligned(virtaddr, memory::PAGE_SIZE));
 	debug_assert!(flags & ADDR_MASK == 0);
@@ -442,7 +442,7 @@ pub fn map_pse(vmem: MutVMem, physaddr: *const Void, virtaddr: *const Void, flag
  * Maps the given range of physical address `physaddr` to the given range of virtual address
  * `virtaddr`. The range is `pages` pages large.
  */
-pub fn map_range(vmem: MutVMem, physaddr: *const Void, virtaddr: *const Void, pages: usize,
+pub fn map_range(vmem: MutVMem, physaddr: *const c_void, virtaddr: *const c_void, pages: usize,
 	flags: u32) -> Result<(), ()> {
 	debug_assert!(util::is_aligned(physaddr, memory::PAGE_SIZE));
 	debug_assert!(util::is_aligned(virtaddr, memory::PAGE_SIZE));
@@ -455,8 +455,8 @@ pub fn map_range(vmem: MutVMem, physaddr: *const Void, virtaddr: *const Void, pa
 			util::is_aligned(((virtaddr as usize) + off) as _, 1024 * memory::PAGE_SIZE)
 				&& (pages - i) >= 1024
 		};
-		let next_physaddr = ((physaddr as usize) + off) as *const Void;
-		let next_virtaddr = ((virtaddr as usize) + off) as *const Void;
+		let next_physaddr = ((physaddr as usize) + off) as *const c_void;
+		let next_virtaddr = ((virtaddr as usize) + off) as *const c_void;
 		if use_pse {
 			map_pse(vmem, next_physaddr, next_virtaddr, flags);
 			i += 1024;
@@ -475,7 +475,7 @@ pub fn map_range(vmem: MutVMem, physaddr: *const Void, virtaddr: *const Void, pa
  * Maps the physical address `ptr` to the same address in virtual memory with the given flags
  * `flags`.
  */
-pub fn identity(vmem: MutVMem, ptr: *const Void, flags: u32) -> Result<(), ()> {
+pub fn identity(vmem: MutVMem, ptr: *const c_void, flags: u32) -> Result<(), ()> {
 	map(vmem, ptr, ptr, flags)
 }
 
@@ -483,14 +483,14 @@ pub fn identity(vmem: MutVMem, ptr: *const Void, flags: u32) -> Result<(), ()> {
  * Maps the physical address `ptr` to the same address in virtual memory with the given flags
  * `flags`, using blocks of 1024 pages (PSE).
  */
-pub fn identity_pse(vmem: MutVMem, ptr: *const Void, flags: u32) {
+pub fn identity_pse(vmem: MutVMem, ptr: *const c_void, flags: u32) {
 	map_pse(vmem, ptr, ptr, flags);
 }
 
 /*
  * Identity maps a range beginning at physical address `from` with pages `pages` and flags `flags`.
  */
-pub fn identity_range(vmem: MutVMem, ptr: *const Void, pages: usize, flags: u32)
+pub fn identity_range(vmem: MutVMem, ptr: *const c_void, pages: usize, flags: u32)
 	-> Result<(), ()> {
 	map_range(vmem, ptr, ptr, pages, flags)
 }
@@ -500,7 +500,7 @@ pub fn identity_range(vmem: MutVMem, ptr: *const Void, pages: usize, flags: u32)
  * large block is present at this location (PSE), it shall be split down into a table which shall
  * be filled accordingly.
  */
-pub fn unmap(vmem: MutVMem, virtaddr: *const Void) -> Result<(), ()> {
+pub fn unmap(vmem: MutVMem, virtaddr: *const c_void) -> Result<(), ()> {
 	let dir_entry_index = get_addr_element_index(virtaddr, 1);
 	let dir_entry = unsafe { vmem.add(dir_entry_index) as VMem };
 	let dir_entry_value = unsafe { *dir_entry };
@@ -521,7 +521,7 @@ pub fn unmap(vmem: MutVMem, virtaddr: *const Void) -> Result<(), ()> {
 /*
  * Unmaps the large block (PSE) at the given virtual address `virtaddr`.
  */
-pub fn unmap_pse(vmem: MutVMem, virtaddr: *const Void) {
+pub fn unmap_pse(vmem: MutVMem, virtaddr: *const c_void) {
 	let dir_entry_index = get_addr_element_index(virtaddr, 1);
 	let dir_entry = unsafe { vmem.add(dir_entry_index) as MutVMem };
 	let dir_entry_value = unsafe { *dir_entry };
@@ -537,7 +537,7 @@ pub fn unmap_pse(vmem: MutVMem, virtaddr: *const Void) {
 /*
  * Unmaps the given range beginning at virtual address `virtaddr` with size of `pages` pages.
  */
-pub fn unmap_range(vmem: MutVMem, virtaddr: *const Void, pages: usize) -> Result<(), ()> {
+pub fn unmap_range(vmem: MutVMem, virtaddr: *const c_void, pages: usize) -> Result<(), ()> {
 	debug_assert!(util::is_aligned(virtaddr, memory::PAGE_SIZE));
 	debug_assert!((virtaddr as usize) + (pages * memory::PAGE_SIZE) >= (virtaddr as usize));
 
@@ -548,7 +548,7 @@ pub fn unmap_range(vmem: MutVMem, virtaddr: *const Void, pages: usize) -> Result
 			util::is_aligned(((virtaddr as usize) + off) as _, 1024 * memory::PAGE_SIZE)
 				&& (pages - i) >= 1024
 		};
-		let next_virtaddr = ((virtaddr as usize) + off) as *const Void;
+		let next_virtaddr = ((virtaddr as usize) + off) as *const c_void;
 		if use_pse {
 			unmap_pse(vmem, next_virtaddr);
 			i += 1024;

@@ -24,11 +24,11 @@ pub struct MemoryInfo {
 	pub memory_maps: *const multiboot::MmapEntry,
 
 	/* Pointer to the end of the physical memory */
-	pub memory_end: *const Void,
+	pub memory_end: *const c_void,
 	/* Pointer to the beginning of physical allocatable memory, page aligned */
-	pub phys_alloc_begin: *const Void,
+	pub phys_alloc_begin: *const c_void,
 	/* Pointer to the end of physical allocatable memory, page aligned */
-	pub phys_alloc_end: *const Void,
+	pub phys_alloc_end: *const c_void,
 	/* The total amount of allocatable memory in bytes */
 	pub available_memory: usize,
 }
@@ -61,8 +61,8 @@ pub fn print_entries() {
 	while (t as usize) < (mem_info.memory_maps as usize) + (mem_info.memory_maps_size as usize) {
 		unsafe {
 			if (*t).is_valid() {
-				let begin = (*t).addr as *const Void;
-				let end = (((*t).addr as usize) + ((*t).len as usize)) as *const Void;
+				let begin = (*t).addr as *const c_void;
+				let end = (((*t).addr as usize) + ((*t).len as usize)) as *const c_void;
 				let type_ = (*t).get_type_string();
 				crate::println!("- {:p} {:p} {}", begin, end, type_);
 			}
@@ -74,13 +74,13 @@ pub fn print_entries() {
 /*
  * Returns a pointer to the beginning of the allocatable physical memory.
  */
-fn get_phys_alloc_begin(multiboot_ptr: *const Void) -> *const Void {
+fn get_phys_alloc_begin(multiboot_ptr: *const c_void) -> *const c_void {
 	let boot_info = multiboot::get_boot_info();
 	let multiboot_tags_size = multiboot::get_tags_size(multiboot_ptr);
 	let multiboot_tags_end = ((multiboot_ptr as usize) + multiboot_tags_size) as *const _;
 	let mut ptr = max(multiboot_tags_end, memory::get_kernel_end());
 	let phys_elf_end = (boot_info.elf_sections as usize + boot_info.elf_num as usize
-		* core::mem::size_of::<elf::ELF32SectionHeader>()) as *const Void;
+		* core::mem::size_of::<elf::ELF32SectionHeader>()) as *const c_void;
 	ptr = max(ptr, phys_elf_end);
 	return util::align(ptr, memory::PAGE_SIZE);
 }
@@ -88,7 +88,7 @@ fn get_phys_alloc_begin(multiboot_ptr: *const Void) -> *const Void {
 /*
  * Returns a pointer to the end of the system memory.
  */
-fn get_memory_end() -> *const Void {
+fn get_memory_end() -> *const c_void {
 	let mem_info = get_info();
 	debug_assert!(mem_info.memory_maps as *const _ != NULL);
 
@@ -109,7 +109,7 @@ fn get_memory_end() -> *const Void {
 /*
  * Fills the memory mapping structure according to Multiboot's informations.
  */
-pub fn init(multiboot_ptr: *const Void) {
+pub fn init(multiboot_ptr: *const c_void) {
 	let boot_info = multiboot::get_boot_info();
 	let mem_info = unsafe { MEM_INFO.assume_init_mut() };
 	mem_info.memory_maps_size = boot_info.memory_maps_size;

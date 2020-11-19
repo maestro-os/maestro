@@ -10,8 +10,8 @@
  */
 
 use core::cmp::min;
+use core::ffi::c_void;
 use core::mem::MaybeUninit;
-use crate::memory::Void;
 use crate::memory::memmap;
 use crate::memory;
 use crate::util::lock::Mutex;
@@ -62,7 +62,7 @@ pub const FLAG_NOFAIL: Flags = 0b100;
 /*
  * Pointer to the end of the kernel zone of memory with the maximum possible size.
  */
-pub const KERNEL_ZONE_LIMIT: *const Void = 0x40000000 as _;
+pub const KERNEL_ZONE_LIMIT: *const c_void = 0x40000000 as _;
 
 /*
  * Value indicating that the frame is used.
@@ -81,9 +81,9 @@ struct Zone {
 	allocated_pages: usize,
 
 	/* A pointer to the beginning of the metadata of the zone */
-	metadata_begin: *mut Void,
+	metadata_begin: *mut c_void,
 	/* A pointer to the beginning of the allocatable memory of the zone */
-	begin: *mut Void,
+	begin: *mut c_void,
 	/* The size of the zone in bytes */
 	pages_count: FrameID,
 
@@ -149,7 +149,7 @@ pub fn init() {
 	};
 
 	let virt_alloc_begin = memory::kern_to_virt(mmap_info.phys_alloc_begin);
-	let metadata_begin = util::align(virt_alloc_begin, memory::PAGE_SIZE) as *mut Void;
+	let metadata_begin = util::align(virt_alloc_begin, memory::PAGE_SIZE) as *mut c_void;
 	let frames_count = mmap_info.available_memory
 		/ (memory::PAGE_SIZE + core::mem::size_of::<Frame>());
 	let metadata_size = frames_count * core::mem::size_of::<Frame>();
@@ -157,7 +157,7 @@ pub fn init() {
 	let phys_metadata_end = memory::kern_to_phys(metadata_end);
 	// TODO Check that metadata doesn't exceed kernel space's capacity
 
-	let kernel_zone_begin = util::align(phys_metadata_end, memory::PAGE_SIZE) as *mut Void;
+	let kernel_zone_begin = util::align(phys_metadata_end, memory::PAGE_SIZE) as *mut c_void;
 	let kernel_zone_end = util::down_align(min(KERNEL_ZONE_LIMIT, mmap_info.phys_alloc_end),
 		memory::PAGE_SIZE);
 	let kernel_frames_count = (kernel_zone_end as usize - kernel_zone_begin as usize)
@@ -167,11 +167,11 @@ pub fn init() {
 	z[1].unlock();
 
 	// TODO
-	z[0].lock().get_mut().init(FLAG_ZONE_TYPE_USER, 0 as *mut Void, 0, 0 as *mut Void);
+	z[0].lock().get_mut().init(FLAG_ZONE_TYPE_USER, 0 as *mut c_void, 0, 0 as *mut c_void);
 	z[0].unlock();
 
 	// TODO
-	z[2].lock().get_mut().init(FLAG_ZONE_TYPE_DMA, 0 as *mut Void, 0, 0 as *mut Void);
+	z[2].lock().get_mut().init(FLAG_ZONE_TYPE_DMA, 0 as *mut c_void, 0, 0 as *mut c_void);
 	z[2].unlock();
 }
 
@@ -198,7 +198,7 @@ fn get_suitable_zone(type_: Flags) -> Option<&'static mut Mutex<Zone>> {
 /*
  * Returns a mutable reference to the zone that contains the given pointer.
  */
-fn get_zone_for_pointer(ptr: *const Void) -> Option<&'static mut Mutex<Zone>> {
+fn get_zone_for_pointer(ptr: *const c_void) -> Option<&'static mut Mutex<Zone>> {
 	let zones = unsafe { ZONES.assume_init_mut() };
 
 	for i in 0..zones.len() {
@@ -219,7 +219,7 @@ fn get_zone_for_pointer(ptr: *const Void) -> Option<&'static mut Mutex<Zone>> {
  * allocated.
  * TODO document flags
  */
-pub fn alloc(order: FrameOrder, flags: Flags) -> Result<*mut Void, ()> {
+pub fn alloc(order: FrameOrder, flags: Flags) -> Result<*mut c_void, ()> {
 	debug_assert!(order <= MAX_ORDER);
 
 	let z = get_suitable_zone(flags & ZONE_TYPE_MASK);
@@ -246,7 +246,7 @@ pub fn alloc(order: FrameOrder, flags: Flags) -> Result<*mut Void, ()> {
  * Calls `alloc` with order `order`. The allocated frame is in the kernel zone.
  * The function returns the *virtual* address, not the physical one.
  */
-pub fn alloc_kernel(order: FrameOrder) -> Result<*mut Void, ()> {
+pub fn alloc_kernel(order: FrameOrder) -> Result<*mut c_void, ()> {
 	Ok(memory::kern_to_virt(alloc(order, FLAG_ZONE_TYPE_KERNEL)?) as _)
 }
 
@@ -254,7 +254,7 @@ pub fn alloc_kernel(order: FrameOrder) -> Result<*mut Void, ()> {
  * Frees the given memory frame that was allocated using the buddy allocator. The given order must
  * be the same as the one given to allocate the frame.
  */
-pub fn free(ptr: *const Void, order: FrameOrder) {
+pub fn free(ptr: *const c_void, order: FrameOrder) {
 	debug_assert!(util::is_aligned(ptr, memory::PAGE_SIZE));
 	debug_assert!(order <= MAX_ORDER);
 
@@ -278,7 +278,7 @@ pub fn free(ptr: *const Void, order: FrameOrder) {
  * Frees the given memory frame. `ptr` is the *virtual* address to the beginning of the frame and
  * and `order` is the order of the frame.
  */
-pub fn free_kernel(ptr: *const Void, order: FrameOrder) {
+pub fn free_kernel(ptr: *const c_void, order: FrameOrder) {
 	free(memory::kern_to_phys(ptr), order);
 }
 
@@ -330,8 +330,8 @@ impl Zone {
 	 * Initializes the zone with type `type_`. The zone covers the memory from pointer `begin` to
 	 * `begin + size` where `size` is the size in bytes.
 	 */
-	pub fn init(&mut self, type_: Flags, metadata_begin: *mut Void, pages_count: FrameID,
-		begin: *mut Void) {
+	pub fn init(&mut self, type_: Flags, metadata_begin: *mut c_void, pages_count: FrameID,
+		begin: *mut c_void) {
 		self.type_ = type_;
 		self.allocated_pages = 0;
 		self.metadata_begin = metadata_begin;
@@ -378,7 +378,7 @@ impl Zone {
 	 * Returns the identifier for the frame at the given pointer `ptr`. The pointer must point to
 	 * the frame itself, not the Frame structure.
 	 */
-	pub fn get_frame_id_from_ptr(&self, ptr: *const Void) -> FrameID {
+	pub fn get_frame_id_from_ptr(&self, ptr: *const c_void) -> FrameID {
 		(((ptr as usize) - (self.begin as usize)) / memory::PAGE_SIZE) as _
 	}
 
@@ -447,7 +447,7 @@ impl Frame {
 	/*
 	 * Returns the pointer to the location of the associated physical memory.
 	 */
-	pub fn get_ptr(&self, zone: &Zone) -> *mut Void {
+	pub fn get_ptr(&self, zone: &Zone) -> *mut c_void {
 		let off = self.get_id(zone) as usize * memory::PAGE_SIZE;
 		(zone.begin as usize + off) as _
 	}
@@ -665,7 +665,7 @@ mod test {
 	fn buddy_fifo() {
 		let alloc_pages = allocated_pages_count();
 
-		let mut frames: [*const Void; 100] = [NULL; 100];
+		let mut frames: [*const c_void; 100] = [NULL; 100];
 
 		for i in 0..frames.len() {
 			if let Ok(p) = alloc_kernel(0) {
@@ -682,7 +682,7 @@ mod test {
 		debug_assert_eq!(allocated_pages_count(), alloc_pages);
 	}
 
-	fn get_dangling(order: FrameOrder) -> *mut Void {
+	fn get_dangling(order: FrameOrder) -> *mut c_void {
 		if let Ok(p) = alloc_kernel(order) {
 			unsafe {
 				util::memset(p, -1, get_frame_size(order));

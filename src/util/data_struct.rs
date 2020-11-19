@@ -2,8 +2,8 @@
  * This files handles data structures used into the kernel.
  */
 
+use core::ffi::c_void;
 use crate::memory::NULL;
-use crate::memory::Void;
 
 /*
  * Structure representing a node in a doubly-linked list.
@@ -34,7 +34,7 @@ impl LinkedList {
 		let mut i = 0;
 		let mut curr = self as *const LinkedList;
 
-		while curr as *const Void != NULL {
+		while curr as *const c_void != NULL {
 			i += 1;
 			curr = unsafe { (*curr).prev };
 		}
@@ -48,7 +48,7 @@ impl LinkedList {
 		let mut i = 0;
 		let mut curr = self as *const LinkedList;
 
-		while curr as *const Void != NULL {
+		while curr as *const c_void != NULL {
 			i += 1;
 			curr = unsafe { (*curr).next };
 		}
@@ -62,7 +62,7 @@ impl LinkedList {
 	pub fn foreach<T>(&self, f: T) where T: Fn(&LinkedList) {
 		let mut curr = self as *const LinkedList;
 
-		while curr as *const Void != NULL {
+		while curr as *const c_void != NULL {
 			unsafe {
 				f(&*curr);
 				curr = (*curr).next;
@@ -76,7 +76,7 @@ impl LinkedList {
 	pub fn foreach_mut<T>(&mut self, f: T) where T: Fn(&mut LinkedList) {
 		let mut curr = self as *mut LinkedList;
 
-		while curr as *const Void != NULL {
+		while curr as *const c_void != NULL {
 			unsafe {
 				f(&mut *curr);
 				curr = (*curr).prev;
@@ -156,12 +156,12 @@ impl LinkedList {
 	 * Unlinks the current node from the linked list.
 	 */
 	pub fn unlink(&mut self) {
-		if self.prev as *const Void != NULL {
+		if self.prev as *const c_void != NULL {
 			unsafe {
 				(*self.prev).next = self.next;
 			}
 		}
-		if self.next as *const Void != NULL {
+		if self.next as *const c_void != NULL {
 			unsafe {
 				(*self.next).prev = self.prev;
 			}
