@@ -8,7 +8,7 @@ use crate::memory::NULL;
 /*
  * Structure representing a node in a doubly-linked list.
  */
-struct LinkedList {
+pub struct LinkedList {
 	/* Pointer to the previous element in the list */
 	prev: *mut LinkedList,
 	/* Pointer to the next element in the list */

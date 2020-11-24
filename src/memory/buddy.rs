@@ -231,7 +231,7 @@ pub fn alloc(order: FrameOrder, flags: Flags) -> Result<*mut c_void, ()> {
 		if let Some(f) = frame {
 			f.split(zone, order);
 			f.mark_used();
-			zone.allocated_pages += util::pow2(order as _) as usize;
+			zone.allocated_pages += util::pow2(order) as usize;
 
 			let ptr = f.get_ptr(zone);
 			debug_assert!(util::is_aligned(ptr, memory::PAGE_SIZE));
@@ -270,7 +270,7 @@ pub fn free(ptr: *const c_void, order: FrameOrder) {
 			(*frame).mark_free();
 			(*frame).coalesce(zone);
 		}
-		zone.allocated_pages -= util::pow2(order as _) as usize;
+		zone.allocated_pages -= util::pow2(order) as usize;
 	}
 }
 
@@ -308,7 +308,7 @@ impl Zone {
 		let mut order = MAX_ORDER;
 
 		while frame < pages_count as FrameID {
-			let p = util::pow2(order as _) as FrameID;
+			let p = util::pow2(order as FrameID) as FrameID;
 			if frame + p > pages_count {
 				if order == 0 {
 					break;

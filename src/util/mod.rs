@@ -5,11 +5,6 @@ use crate::tty;
 pub mod data_struct;
 pub mod lock;
 
-/* Maximum size for a signed integer */
-pub type Imax = i32;
-/* Maximum size for an unsigned integer */
-pub type Umax = u32; // TODO Find another solution
-
 /*
  * Tells if pointer `ptr` is aligned on boundary `n`.
  */
@@ -56,9 +51,14 @@ pub fn same_page(p0: *const c_void, p1: *const c_void) -> bool {
  * Computes ceil(n0 / n1) without using floating point numbers.
  */
 #[inline(always)]
-pub fn ceil_division(n0: Umax, n1: Umax) -> Umax {
-	if (n0 % n1) != 0 {
-		(n0 / n1) + 1
+pub fn ceil_division<T>(n0: T, n1: T) -> T
+	where T: From<u8> + Copy
+		+ core::ops::Add<Output = T>
+		+ core::ops::Div<Output = T>
+		+ core::ops::Rem<Output = T>
+		+ core::cmp::PartialEq {
+	if (n0 % n1) != T::from(0) {
+		(n0 / n1) + T::from(1)
 	} else {
 		n0 / n1
 	}
@@ -68,26 +68,28 @@ pub fn ceil_division(n0: Umax, n1: Umax) -> Umax {
  * Computes 2^^n on unsigned integers (where `^^` is an exponent).
  */
 #[inline(always)]
-pub fn pow2(n: Umax) -> Umax {
-	(1 as Umax) << n
+pub fn pow2<T>(n: T) -> T where T: From<u8> + core::ops::Shl<Output = T> {
+	T::from(1) << n
 }
 
+// TODO Use a generic argument
 /*
  * Computes floor(log2(n)) without on unsigned integers.
  */
 #[inline(always)]
-pub fn log2(n: Umax) -> Umax {
+pub fn log2(n: usize) -> usize {
 	if n == 0 {
 		return 1;
 	}
-	(bit_size_of::<Umax>() as Umax) - n.leading_zeros() - 1
+	(bit_size_of::<usize>() as usize) - (n.leading_zeros() as usize) - 1
 }
 
+// TODO Use a generic argument
 /*
  * Computes the square root of an integer.
  */
 #[inline(always)]
-pub fn sqrt(n: Umax) -> Umax {
+pub fn sqrt(n: usize) -> usize {
 	pow2(log2(n) / 2)
 }
 
@@ -97,14 +99,6 @@ pub fn sqrt(n: Umax) -> Umax {
 #[inline(always)]
 pub fn bit_size_of<T>() -> usize {
 	core::mem::size_of::<T>() * 8
-}
-
-/*
- * Returns the size of a bitfield of `n` elements in bytes.
- */
-#[inline(always)]
-pub fn bitfield_size(n: usize) -> usize {
-	ceil_division(n as Umax, bit_size_of::<u8>() as Umax) as usize
 }
 
 /*
