@@ -102,21 +102,24 @@ pub fn bit_size_of<T>() -> usize {
 }
 
 /*
- * Returns the offset of the given field `field` in structure `type`.
+ * Returns the offset of the given field `field` in structure `type`. The type must be a pointer
+ * type.
  */
+#[macro_export]
 macro_rules! offset_of {
 	($type:ty, $field:ident) => {
-		((&((*(NULL as *const $type)).$field)) as *const c_void) as usize
+		(&(*(crate::memory::NULL as $type)).$field) as *const _ as *const c_void as usize
 	}
 }
 
 /*
- * Returns the structure of type `type` that contains the structure in field
- * `field` at pointer `ptr`.
+ * Returns the structure of type `type` that contains the structure in field `field` at pointer
+ * `ptr`. The type must be a pointer type.
  */
+#[macro_export]
 macro_rules! container_of {
 	($ptr:expr, $type:ty, $field:ident) => {
-		(($ptr as *const $type as usize) - offset_of($type, $field)) as *const $type
+		(($ptr as $type as usize) - crate::offset_of!($type, $field)) as $type
 	}
 }
 

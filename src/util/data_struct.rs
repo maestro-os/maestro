@@ -22,11 +22,33 @@ pub struct LinkedList {
 #[macro_export]
 macro_rules! linked_list_get {
 	($node:expr, $type:ty, $field:ident) => {
-		::container_of!($node, $type, $field)
+		crate::container_of!($node, $type, $field)
 	}
 }
 
 impl LinkedList {
+	/*
+	 * Returns the previous element if it exsits, or None.
+	 */
+	pub fn get_prev(&self) -> Option<&'static mut LinkedList> {
+		if self.prev != NULL as _ {
+			Some(unsafe { &mut *self.prev })
+		} else {
+			None
+		}
+	}
+
+	/*
+	 * Returns the next element if it exsits, or None.
+	 */
+	pub fn get_next(&self) -> Option<&'static mut LinkedList> {
+		if self.next != NULL as _ {
+			Some(unsafe { &mut *self.next })
+		} else {
+			None
+		}
+	}
+
 	/*
 	 * Returns the size of the linked list, counting previous elements.
 	 */

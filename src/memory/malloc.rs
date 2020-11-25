@@ -5,9 +5,12 @@
 use core::ffi::c_void;
 use crate::memory::PAGE_SIZE;
 use crate::memory::buddy;
-use crate::util::data_struct;
+use crate::util::data_struct::LinkedList;
 use crate::util;
 
+/*
+ * Type representing chunks' flags.
+ */
 type ChunkFlags = u8;
 
 /* Chunk flag indicating that the chunk is being used */
@@ -18,7 +21,7 @@ const CHUNK_FLAG_USED: ChunkFlags = 0b1;
  */
 struct Chunk {
 	/* The linked list storing the chunks */
-	list: data_struct::LinkedList,
+	list: LinkedList,
 	/* The chunk's flags */
 	flags: u8,
 	/* The size of the chunk's memory in bytes */
@@ -47,24 +50,64 @@ impl Chunk {
 	/*
 	 * Tells whether the chunk can be split for the given size `size`.
 	 */
-	fn can_split(&self, _size: usize) -> bool {
-		// TODO
-		false
+	fn can_split(&self, size: usize) -> bool {
+		self.size >= size + core::mem::size_of::<Chunk>() + 8
 	}
 
 	/*
 	 * Splits the chunk with the given size `size` if necessary and marks it as used. The function
 	 * might create a new chunk next to the current.
 	 */
-	fn split(&mut self, _size: usize) {
+	fn split(&mut self, size: usize) {
+		if self.can_split(size) {
+			let next_off = (self as *mut Self as usize) + core::mem::size_of::<Chunk>() + size;
+			unsafe {
+				let next = &mut *(next_off as *mut Self);
+				util::bzero(next as *mut Self as _, core::mem::size_of::<Chunk>());
+				next.flags = 0;
+				next.size = self.size - (size + core::mem::size_of::<Chunk>());
+			}
+		}
+
+		self.flags |= CHUNK_FLAG_USED;
+	}
+
+	/*
+	 * Tries to expand the chunk. Returns `true` if possible, or `false` if not. If the chunk
+	 * cannot be expanded, the function does nothing. Expansion might reduce/move/remove the next
+	 * chunk if it is free.
+	 */
+	fn expand(&mut self, _new_size: usize) -> bool {
 		// TODO
+		false
 	}
 
 	/*
 	 * Marks the chunk as free and tries to coalesce it with adjacent chunks if they are free.
 	 */
 	fn coalesce(&mut self) {
-		// TODO
+		self.flags &= CHUNK_FLAG_USED;
+
+		if let Some(next) = self.list.get_next() {
+			let n = unsafe {
+				&*crate::linked_list_get!(next as *mut LinkedList, *const Chunk, list)
+			};
+
+			if !n.is_used() {
+				self.size += core::mem::size_of::<Chunk>() + n.size;
+				next.unlink();
+			}
+		}
+
+		if let Some(prev) = self.list.get_prev() {
+			let p = unsafe {
+				&mut *crate::linked_list_get!(prev as *mut LinkedList, *mut Chunk, list)
+			};
+
+			if !p.is_used() {
+				p.coalesce();
+			}
+		}
 	}
 }
 
