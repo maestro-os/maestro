@@ -2,7 +2,6 @@
  * This files handles data structures used into the kernel.
  */
 
-use core::ffi::c_void;
 use crate::memory::NULL;
 
 /*
@@ -56,7 +55,7 @@ impl LinkedList {
 		let mut i = 0;
 		let mut curr = self as *const LinkedList;
 
-		while curr as *const c_void != NULL {
+		while curr != NULL as _ {
 			i += 1;
 			curr = unsafe { (*curr).prev };
 		}
@@ -70,7 +69,7 @@ impl LinkedList {
 		let mut i = 0;
 		let mut curr = self as *const LinkedList;
 
-		while curr as *const c_void != NULL {
+		while curr != NULL as _ {
 			i += 1;
 			curr = unsafe { (*curr).next };
 		}
@@ -84,7 +83,7 @@ impl LinkedList {
 	pub fn foreach<T>(&self, f: T) where T: Fn(&LinkedList) {
 		let mut curr = self as *const LinkedList;
 
-		while curr as *const c_void != NULL {
+		while curr != NULL as _ {
 			unsafe {
 				f(&*curr);
 				curr = (*curr).next;
@@ -98,7 +97,7 @@ impl LinkedList {
 	pub fn foreach_mut<T>(&mut self, f: T) where T: Fn(&mut LinkedList) {
 		let mut curr = self as *mut LinkedList;
 
-		while curr as *const c_void != NULL {
+		while curr != NULL as _ {
 			unsafe {
 				f(&mut *curr);
 				curr = (*curr).prev;
@@ -110,10 +109,10 @@ impl LinkedList {
 	 * Links back adjacent nodes to the current node.
 	 */
 	unsafe fn link_back(&mut self) {
-		if self.next as *const _ != NULL {
+		if self.next != NULL as _ {
 			(*self.next).prev = self;
 		}
-		if self.prev as *const _ != NULL {
+		if self.prev != NULL as _ {
 			(*self.prev).next = self;
 		}
 	}
@@ -133,20 +132,16 @@ impl LinkedList {
 	/*
 	 * Inserts the node before node `node` in the given linked list `front`.
 	 */
-	pub fn insert_before(&mut self, front: *mut *mut LinkedList, node: *mut LinkedList) {
-		unsafe {
-			if front as *const _ != NULL && *front == node {
-				*front = self;
-			}
-		}
+	pub fn insert_before(&mut self, front: &mut *mut LinkedList, node: *mut LinkedList) {
+		debug_assert!(node != NULL as _);
 
-		if node as *const _ == NULL {
-			return;
+		if *front == node {
+			*front = self;
 		}
 
 		unsafe {
+			self.prev = (*node).prev;
 			self.next = node;
-			self.prev = if node as *const _ != NULL { (*node).prev } else { NULL as _ };
 			self.link_back();
 		}
 	}
@@ -154,22 +149,16 @@ impl LinkedList {
 	/*
 	 * Inserts the node after node `node` in the given linked list `front`.
 	 */
-	pub fn insert_after(&mut self, front: *mut *mut LinkedList, node: *mut LinkedList) {
-		debug_assert!(node as *const _ != NULL);
+	pub fn insert_after(&mut self, front: &mut *mut LinkedList, node: *mut LinkedList) {
+		debug_assert!(node != NULL as _);
 
-		unsafe {
-			if front as *const _ != NULL && *front as *const _ != NULL {
-				*front = self;
-			}
-		}
-
-		if node as *const _ != NULL {
-			return;
+		if *front == NULL as _ {
+			*front = self;
 		}
 
 		unsafe {
-			self.next = (*node).next;
 			self.prev = node;
+			self.next = (*node).next;
 			self.link_back();
 		}
 	}
@@ -178,12 +167,12 @@ impl LinkedList {
 	 * Unlinks the current node from the linked list.
 	 */
 	pub fn unlink(&mut self) {
-		if self.prev as *const c_void != NULL {
+		if self.prev != NULL as _ {
 			unsafe {
 				(*self.prev).next = self.next;
 			}
 		}
-		if self.next as *const c_void != NULL {
+		if self.next != NULL as _ {
 			unsafe {
 				(*self.next).prev = self.prev;
 			}

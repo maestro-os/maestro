@@ -514,7 +514,6 @@ impl Frame {
 		debug_assert!(!self.is_used());
 		debug_assert!(zone.check_free_list());
 
-
 		let id = self.get_id(zone);
 		let has_prev = self.prev != id;
 		let has_next = self.next != id;

@@ -17,6 +17,11 @@ type ChunkFlags = u8;
 const CHUNK_FLAG_USED: ChunkFlags = 0b1;
 
 /*
+ * The minimum amount of bytes required to create a free chunk.
+ */
+const FREE_CHUNK_MIN: usize = 8;
+
+/*
  * A chunk of allocated or free memory stored in linked lists.
  */
 struct Chunk {
@@ -51,7 +56,7 @@ impl Chunk {
 	 * Tells whether the chunk can be split for the given size `size`.
 	 */
 	fn can_split(&self, size: usize) -> bool {
-		self.size >= size + core::mem::size_of::<Chunk>() + 8
+		self.size >= size + core::mem::size_of::<Chunk>() + FREE_CHUNK_MIN
 	}
 
 	/*
@@ -70,16 +75,6 @@ impl Chunk {
 		}
 
 		self.flags |= CHUNK_FLAG_USED;
-	}
-
-	/*
-	 * Tries to expand the chunk. Returns `true` if possible, or `false` if not. If the chunk
-	 * cannot be expanded, the function does nothing. Expansion might reduce/move/remove the next
-	 * chunk if it is free.
-	 */
-	fn expand(&mut self, _new_size: usize) -> bool {
-		// TODO
-		false
 	}
 
 	/*
@@ -108,6 +103,73 @@ impl Chunk {
 				p.coalesce();
 			}
 		}
+	}
+
+	/*
+	 * Tries to resize the chunk, adding `delta` bytes. A negative number of bytes results in chunk
+	 * shrinking. Returns `true` if possible, or `false` if not. If the chunk cannot be expanded,
+	 * the function does nothing. Expansion might reduce/move/remove the next chunk if it is free.
+	 * If `delta` is zero, the function returns `false`.
+	 */
+	fn resize(&mut self, delta: isize) -> bool {
+		if delta == 0 {
+			return true;
+		}
+
+		let mut valid = false;
+
+		if delta > 0 {
+			if let Some(next) = self.list.get_next() {
+				let n = unsafe {
+					&*crate::linked_list_get!(next as *mut LinkedList, *const Chunk, list)
+				};
+
+				if n.is_used() {
+					return false;
+				}
+
+				let available_size = core::mem::size_of::<Chunk>() + n.size;
+				if available_size < delta as usize {
+					return false;
+				}
+
+				let next_min_size = core::mem::size_of::<Chunk>() + FREE_CHUNK_MIN;
+				if available_size - delta as usize >= next_min_size {
+					// TODO Move next chunk
+				} else {
+					next.unlink();
+				}
+
+				valid = true;
+			}
+		}
+
+		if delta < 0 {
+			if self.size <= (-delta) as usize {
+				return false;
+			}
+
+			if let Some(next) = self.list.get_next() {
+				let n = unsafe {
+					&*crate::linked_list_get!(next as *mut LinkedList, *const Chunk, list)
+				};
+
+				if !n.is_used() {
+					// TODO Move next chunk
+				}
+			}
+
+			valid = true;
+		}
+
+		if valid {
+			if delta >= 0 {
+				self.size += delta as usize;
+			} else {
+				self.size -= delta.abs() as usize;
+			}
+		}
+		valid
 	}
 }
 
