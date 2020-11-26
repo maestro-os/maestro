@@ -1,8 +1,11 @@
 /*
  * This file handles allocations of chunks of kernel memory.
+ *
+ * TODO: More documentation
  */
 
 use core::ffi::c_void;
+use core::mem::MaybeUninit;
 use crate::memory::PAGE_SIZE;
 use crate::memory::buddy;
 use crate::util::data_struct::LinkedList;
@@ -22,6 +25,16 @@ const CHUNK_FLAG_USED: ChunkFlags = 0b1;
 const FREE_CHUNK_MIN: usize = 8;
 
 /*
+ * The size of the smallest free list bin.
+ */
+const FREE_LIST_SMALLEST_SIZE: usize = FREE_CHUNK_MIN;
+
+/*
+ * The number of free list bins.
+ */
+const FREE_LIST_BINS: usize = 8;
+
+/*
  * A chunk of allocated or free memory stored in linked lists.
  */
 struct Chunk {
@@ -38,6 +51,8 @@ struct Chunk {
  * chunks.
  */
 struct Block {
+	/* The linked list storing the blocks */
+	list: LinkedList,
 	/* The order of the frame for the buddy allocator */
 	order: buddy::FrameOrder,
 	/* The first chunk of the block */
@@ -45,6 +60,17 @@ struct Block {
 }
 
 impl Chunk {
+	/*
+	 * Creates a new free chunk with the given size `size` in bytes.
+	 */
+	fn new_free(size: usize) -> Self {
+		Self {
+			list: LinkedList::new_single(),
+			flags: 0,
+			size: size,
+		}
+	}
+
 	/*
 	 * Tells the whether the chunk is free.
 	 */
@@ -176,15 +202,20 @@ impl Chunk {
 impl Block {
 	/*
 	 * Allocates a new block of memory with the minimum available size `min_size` in bytes.
+	 * The buddy allocator must be initialized before using this function.
 	 */
 	fn new(min_size: usize) -> Result<&'static mut Self, ()> {
 		let total_min_size = core::mem::size_of::<Block>() + min_size;
 		let order = buddy::get_order(util::ceil_division(total_min_size, PAGE_SIZE));
+		let first_chunk_size = buddy::get_frame_size(order) - core::mem::size_of::<Block>();
 
 		let ptr = buddy::alloc_kernel(order)?;
 		let block = unsafe { &mut *(ptr as *mut Block) };
-		block.order = order;
-		// TODO Init first_chunk
+		*block = Self {
+			list: LinkedList::new_single(),
+			order: order,
+			first_chunk: Chunk::new_free(first_chunk_size),
+		};
 		Ok(block)
 	}
 
@@ -197,6 +228,37 @@ impl Block {
 }
 
 /*
+ * List storing allocated blocks of memory.
+ */
+static mut BLOCKS: MaybeUninit<[Option<&'static mut Block>; 3]> = MaybeUninit::uninit();
+/*
+ * List storing allocated blocks of memory.
+ */
+static mut FREE_LISTS: MaybeUninit<[Option<&'static mut Chunk>; FREE_LIST_BINS]>
+	= MaybeUninit::uninit();
+
+/*
+ * Initializes the allocator. This function must be called before using the allocator's functions
+ * and exactly once.
+ */
+pub fn init() {
+	unsafe {
+		util::zero_object(&mut BLOCKS);
+		util::zero_object(&mut FREE_LISTS);
+	}
+}
+
+/*
+ * Returns the free list for the given size `size`. If `insert` is not set, the function may return
+ * a free list that contain chunks greater than the required size so that it can be split.
+ */
+fn get_free_list(_size: usize, _insert: bool) -> Option<&'static mut Chunk> {
+	// TODO
+	None
+}
+
+// TODO Mutex
+/*
  * Allocates `n` bytes of kernel memory and returns a pointer to the beginning of the allocated
  * chunk. If the allocation fails, the function shall return None.
  */
@@ -205,6 +267,7 @@ pub fn alloc(_n: usize) -> Option<*mut c_void> {
 	None
 }
 
+// TODO Mutex
 /*
  * Changes the size of the memory previously allocated with `alloc`. `ptr` is the pointer to the
  * chunk of memory. `n` is the new size of the chunk of memory. If the reallocation fails, the
@@ -215,6 +278,7 @@ pub fn realloc(_ptr: *const c_void, _n: usize) -> Option<*mut c_void> {
 	None
 }
 
+// TODO Mutex
 /*
  * Frees the memory at the pointer `ptr` previously allocated with `alloc`. Subsequent uses of the
  * associated memory are undefined.

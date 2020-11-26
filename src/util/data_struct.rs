@@ -27,6 +27,16 @@ macro_rules! linked_list_get {
 
 impl LinkedList {
 	/*
+	 * Creates a single node.
+	 */
+	pub fn new_single() -> Self {
+		Self {
+			prev: NULL as _,
+			next: NULL as _,
+		}
+	}
+
+	/*
 	 * Returns the previous element if it exsits, or None.
 	 */
 	pub fn get_prev(&self) -> Option<&'static mut LinkedList> {
