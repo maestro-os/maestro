@@ -252,9 +252,31 @@ pub fn init() {
  * Returns the free list for the given size `size`. If `insert` is not set, the function may return
  * a free list that contain chunks greater than the required size so that it can be split.
  */
-fn get_free_list(_size: usize, _insert: bool) -> Option<&'static mut Chunk> {
-	// TODO
-	None
+fn get_free_list(size: usize, insert: bool) -> Option<&'static mut Chunk> {
+	let mut i = util::log2(size / FREE_LIST_SMALLEST_SIZE);
+	if i >= FREE_LIST_BINS {
+		i = FREE_LIST_BINS - 1;
+	}
+
+	let free_lists = unsafe {
+		FREE_LISTS.assume_init_mut()
+	};
+
+	if !insert {
+		while i < FREE_LIST_BINS && free_lists[i].is_none() {
+			i += 1;
+		}
+
+		if i >= FREE_LIST_BINS {
+			return None;
+		}
+	}
+
+	if let Some(f) = &mut free_lists[i] {
+		Some(f)
+	} else {
+		None
+	}
 }
 
 // TODO Mutex
