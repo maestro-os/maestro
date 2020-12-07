@@ -4,8 +4,10 @@
  * TODO: More documentation
  */
 
+use core::cmp::max;
 use core::ffi::c_void;
 use core::mem::MaybeUninit;
+use core::mem::size_of;
 use crate::memory::PAGE_SIZE;
 use crate::memory::buddy;
 use crate::util::data_struct::LinkedList;
@@ -47,6 +49,16 @@ struct Chunk {
 }
 
 /*
+ * A free chunk, wrapping the Chunk structure.
+ */
+struct FreeChunk {
+	/* The chunk */
+	chunk: Chunk,
+	/* The linked list for the free list */
+	free_list: LinkedList,
+}
+
+/*
  * Structure representing a frame of memory allocated using the buddy allocator, storing memory
  * chunks.
  */
@@ -59,54 +71,78 @@ struct Block {
 	first_chunk: Chunk,
 }
 
+/*
+ * Type representing a free list entry into the free lists list
+ */
+type FreeList = Option<*mut LinkedList>;
+
+/*
+ * List storing allocated blocks of memory.
+ */
+static mut FREE_LISTS: MaybeUninit<[FreeList; FREE_LIST_BINS]> = MaybeUninit::uninit();
+
+/*
+ * Returns the free list for the given size `size`. If `insert` is not set, the function may return
+ * a free list that contain chunks greater than the required size so that it can be split.
+ */
+fn get_free_list(size: usize, insert: bool) -> Option<&'static mut FreeList> {
+	let mut i = util::log2(size / FREE_LIST_SMALLEST_SIZE);
+	if i >= FREE_LIST_BINS {
+		i = FREE_LIST_BINS - 1;
+	}
+
+	let free_lists = unsafe {
+		FREE_LISTS.assume_init_mut()
+	};
+
+	if !insert {
+		while i < FREE_LIST_BINS && free_lists[i].is_none() {
+			i += 1;
+		}
+
+		if i >= FREE_LIST_BINS {
+			return None;
+		}
+	}
+
+	Some(&mut free_lists[i])
+}
+
 impl Chunk {
 	/*
-	 * Creates a new free chunk with the given size `size` in bytes.
+	 * Returns the chunk corresponding to the given data pointer.
 	 */
-	fn new_free(size: usize) -> Self {
-		Self {
-			list: LinkedList::new_single(),
-			flags: 0,
-			size: size,
-		}
+	pub unsafe fn from_ptr(ptr: *mut c_void) -> &'static mut Self {
+		&mut *(ptr.sub(core::mem::size_of::<Chunk>()) as *mut Self)
 	}
 
 	/*
 	 * Tells the whether the chunk is free.
 	 */
-	fn is_used(&self) -> bool {
+	pub fn is_used(&self) -> bool {
 		(self.flags & CHUNK_FLAG_USED) != 0
 	}
 
 	/*
-	 * Tells whether the chunk can be split for the given size `size`.
+	 * Returns a pointer to the chunks' data.
 	 */
-	fn can_split(&self, size: usize) -> bool {
-		self.size >= size + core::mem::size_of::<Chunk>() + FREE_CHUNK_MIN
+	pub fn get_ptr(&mut self) -> *mut c_void {
+		unsafe {
+			(self as *mut Self as *mut c_void).add(core::mem::size_of::<Self>())
+		}
 	}
 
 	/*
-	 * Splits the chunk with the given size `size` if necessary and marks it as used. The function
-	 * might create a new chunk next to the current.
+	 * Returns the size of the chunk.
 	 */
-	fn split(&mut self, size: usize) {
-		if self.can_split(size) {
-			let next_off = (self as *mut Self as usize) + core::mem::size_of::<Chunk>() + size;
-			unsafe {
-				let next = &mut *(next_off as *mut Self);
-				util::bzero(next as *mut Self as _, core::mem::size_of::<Chunk>());
-				next.flags = 0;
-				next.size = self.size - (size + core::mem::size_of::<Chunk>());
-			}
-		}
-
-		self.flags |= CHUNK_FLAG_USED;
+	pub fn get_size(&self) -> usize {
+		self.size
 	}
 
 	/*
 	 * Marks the chunk as free and tries to coalesce it with adjacent chunks if they are free.
 	 */
-	fn coalesce(&mut self) {
+	pub fn coalesce(&mut self) {
 		self.flags &= CHUNK_FLAG_USED;
 
 		if let Some(next) = self.list.get_next() {
@@ -137,7 +173,7 @@ impl Chunk {
 	 * the function does nothing. Expansion might reduce/move/remove the next chunk if it is free.
 	 * If `delta` is zero, the function returns `false`.
 	 */
-	fn resize(&mut self, delta: isize) -> bool {
+	pub fn resize(&mut self, delta: isize) -> bool {
 		if delta == 0 {
 			return true;
 		}
@@ -199,6 +235,87 @@ impl Chunk {
 	}
 }
 
+impl FreeChunk {
+	/*
+	 * Creates a new free with the given size `size` in bytes, meant to be the first chunk of a
+	 * block.
+	 */
+	pub fn new_first(ptr: *mut c_void, size: usize) {
+		let c = unsafe {
+			&mut *(ptr as *mut Self)
+		};
+		*c = Self {
+			chunk: Chunk {
+				list: LinkedList::new_single(),
+				flags: 0,
+				size: size,
+			},
+			free_list: LinkedList::new_single(),
+		};
+		c.free_list_insert();
+	}
+
+	/*
+	 * Returns a pointer to the chunks' data.
+	 */
+	pub fn get_ptr(&mut self) -> *mut c_void {
+		self.chunk.get_ptr()
+	}
+
+	/*
+	 * Returns the size of the chunk.
+	 */
+	pub fn get_size(&self) -> usize {
+		self.chunk.get_size()
+	}
+
+	/*
+	 * Checks that the chunk is correct. This function uses assertions and thus is useful only in
+	 * debug mode.
+	 */
+	pub fn check(&self) {
+		debug_assert!(!self.chunk.is_used());
+	}
+
+	/*
+	 * Tells whether the chunk can be split for the given size `size`.
+	 */
+	fn can_split(&self, size: usize) -> bool {
+		let min_data_size = max(size_of::<FreeChunk>() - size_of::<Chunk>(), FREE_CHUNK_MIN);
+		self.get_size() >= size + size_of::<Chunk>() + min_data_size
+	}
+
+	/*
+	 * Splits the chunk with the given size `size` if necessary and marks it as used. The function
+	 * might create a new chunk next to the current.
+	 */
+	pub fn split(&mut self, size: usize) {
+		debug_assert!(self.get_size() >= size);
+
+		if self.can_split(size) {
+			let next_off = (self as *mut Self as usize) + core::mem::size_of::<Chunk>() + size;
+			let next = unsafe {
+				&mut *(next_off as *mut FreeChunk)
+			};
+			util::zero_object(next);
+			next.chunk.flags = 0;
+			next.chunk.size = self.get_size() - (size + core::mem::size_of::<Chunk>());
+			next.chunk.list.insert_after(&mut self.chunk.list);
+			next.free_list_insert();
+		}
+
+		self.chunk.flags |= CHUNK_FLAG_USED;
+	}
+
+	/*
+	 * Inserts the chunk into the appropriate free list.
+	 */
+	pub fn free_list_insert(&mut self) {
+		let free_list = get_free_list(self.chunk.size, true).unwrap();
+		self.free_list.insert_front(free_list);
+	}
+}
+
 impl Block {
 	/*
 	 * Allocates a new block of memory with the minimum available size `min_size` in bytes.
@@ -214,8 +331,13 @@ impl Block {
 		*block = Self {
 			list: LinkedList::new_single(),
 			order: order,
-			first_chunk: Chunk::new_free(first_chunk_size),
+			first_chunk: Chunk {
+				list: LinkedList::new_single(),
+				flags: 0,
+				size: 0,
+			},
 		};
+		FreeChunk::new_first(&mut block.first_chunk as *mut _ as *mut c_void, first_chunk_size);
 		Ok(block)
 	}
 
@@ -228,54 +350,12 @@ impl Block {
 }
 
 /*
- * List storing allocated blocks of memory.
- */
-static mut BLOCKS: MaybeUninit<[Option<&'static mut Block>; 3]> = MaybeUninit::uninit();
-/*
- * List storing allocated blocks of memory.
- */
-static mut FREE_LISTS: MaybeUninit<[Option<&'static mut Chunk>; FREE_LIST_BINS]>
-	= MaybeUninit::uninit();
-
-/*
  * Initializes the allocator. This function must be called before using the allocator's functions
  * and exactly once.
  */
 pub fn init() {
 	unsafe {
-		util::zero_object(&mut BLOCKS);
 		util::zero_object(&mut FREE_LISTS);
-	}
-}
-
-/*
- * Returns the free list for the given size `size`. If `insert` is not set, the function may return
- * a free list that contain chunks greater than the required size so that it can be split.
- */
-fn get_free_list(size: usize, insert: bool) -> Option<&'static mut Chunk> {
-	let mut i = util::log2(size / FREE_LIST_SMALLEST_SIZE);
-	if i >= FREE_LIST_BINS {
-		i = FREE_LIST_BINS - 1;
-	}
-
-	let free_lists = unsafe {
-		FREE_LISTS.assume_init_mut()
-	};
-
-	if !insert {
-		while i < FREE_LIST_BINS && free_lists[i].is_none() {
-			i += 1;
-		}
-
-		if i >= FREE_LIST_BINS {
-			return None;
-		}
-	}
-
-	if let Some(f) = &mut free_lists[i] {
-		Some(f)
-	} else {
-		None
 	}
 }
 
@@ -284,9 +364,28 @@ fn get_free_list(size: usize, insert: bool) -> Option<&'static mut Chunk> {
  * Allocates `n` bytes of kernel memory and returns a pointer to the beginning of the allocated
  * chunk. If the allocation fails, the function shall return None.
  */
-pub fn alloc(_n: usize) -> Option<*mut c_void> {
-	// TODO
-	None
+pub fn alloc(n: usize) -> Option<*mut c_void> {
+	let mut f = get_free_list(n, false);
+	if f.is_none() {
+		if Block::new(n).is_err() {
+			return None;
+		}
+
+		f = get_free_list(n, false);
+		debug_assert!(f.is_some());
+	}
+
+	let free_list = f.unwrap();
+	let chunk_node = unsafe {
+		&mut *free_list.unwrap()
+	};
+	let chunk = unsafe {
+		&mut *crate::linked_list_get!(chunk_node, *mut FreeChunk, free_list)
+	};
+	chunk.check();
+	debug_assert!(chunk.get_size() >= n);
+	chunk.split(n);
+	Some(chunk.get_ptr())
 }
 
 // TODO Mutex

@@ -119,7 +119,7 @@ macro_rules! offset_of {
 #[macro_export]
 macro_rules! container_of {
 	($ptr:expr, $type:ty, $field:ident) => {
-		(($ptr as $type as usize) - crate::offset_of!($type, $field)) as $type
+		(($ptr as *const _ as usize) - crate::offset_of!($type, $field)) as $type
 	}
 }
 

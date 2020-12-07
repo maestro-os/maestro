@@ -2,16 +2,26 @@
  * This files handles data structures used into the kernel.
  */
 
-use crate::memory::NULL;
+/*
+ * Converts an `Option<*mut Self>` into a `Option<*const Self>`.
+ */
+#[inline(always)]
+fn option_mut_to_const<T>(option: Option<*mut T>) -> Option<*const T> {
+	if let Some(ptr) = option {
+		Some(ptr as *const T)
+	} else {
+		None
+	}
+}
 
 /*
  * Structure representing a node in a doubly-linked list.
  */
 pub struct LinkedList {
 	/* Pointer to the previous element in the list */
-	prev: *mut LinkedList,
+	prev: Option<*mut LinkedList>,
 	/* Pointer to the next element in the list */
-	next: *mut LinkedList,
+	next: Option<*mut LinkedList>,
 }
 
 /*
@@ -31,8 +41,8 @@ impl LinkedList {
 	 */
 	pub fn new_single() -> Self {
 		Self {
-			prev: NULL as _,
-			next: NULL as _,
+			prev: None,
+			next: None,
 		}
 	}
 
@@ -40,8 +50,8 @@ impl LinkedList {
 	 * Returns the previous element if it exsits, or None.
 	 */
 	pub fn get_prev(&self) -> Option<&'static mut LinkedList> {
-		if self.prev != NULL as _ {
-			Some(unsafe { &mut *self.prev })
+		if self.prev.is_some() {
+			Some(unsafe { &mut *self.prev.unwrap() })
 		} else {
 			None
 		}
@@ -51,8 +61,8 @@ impl LinkedList {
 	 * Returns the next element if it exsits, or None.
 	 */
 	pub fn get_next(&self) -> Option<&'static mut LinkedList> {
-		if self.next != NULL as _ {
-			Some(unsafe { &mut *self.next })
+		if self.next.is_some() {
+			Some(unsafe { &mut *self.next.unwrap() })
 		} else {
 			None
 		}
@@ -63,11 +73,11 @@ impl LinkedList {
 	 */
 	pub fn left_size(&self) -> usize {
 		let mut i = 0;
-		let mut curr = self as *const LinkedList;
+		let mut curr: Option<*const Self> = Some(self);
 
-		while curr != NULL as _ {
+		while curr.is_some() {
 			i += 1;
-			curr = unsafe { (*curr).prev };
+			curr = option_mut_to_const(unsafe { (*curr.unwrap()).prev });
 		}
 		i
 	}
@@ -77,11 +87,11 @@ impl LinkedList {
 	 */
 	pub fn right_size(&self) -> usize {
 		let mut i = 0;
-		let mut curr = self as *const LinkedList;
+		let mut curr: Option<*const Self> = Some(self);
 
-		while curr != NULL as _ {
+		while curr.is_some() {
 			i += 1;
-			curr = unsafe { (*curr).next };
+			curr = option_mut_to_const(unsafe { (*curr.unwrap()).next });
 		}
 		i
 	}
@@ -91,12 +101,13 @@ impl LinkedList {
 	 * given one. The nodes are not mutable.
 	 */
 	pub fn foreach<T>(&self, f: T) where T: Fn(&LinkedList) {
-		let mut curr = self as *const LinkedList;
+		let mut curr: Option<*const Self> = Some(self);
 
-		while curr != NULL as _ {
+		while curr.is_some() {
+			let c = curr.unwrap();
 			unsafe {
-				f(&*curr);
-				curr = (*curr).next;
+				f(&*c);
+				curr = option_mut_to_const((*c).next);
 			}
 		}
 	}
@@ -105,12 +116,13 @@ impl LinkedList {
 	 * Same as `foreach` except the nodes are mutable.
 	 */
 	pub fn foreach_mut<T>(&mut self, f: T) where T: Fn(&mut LinkedList) {
-		let mut curr = self as *mut LinkedList;
+		let mut curr: Option<*mut Self> = Some(self);
 
-		while curr != NULL as _ {
+		while curr.is_some() {
+			let c = curr.unwrap();
 			unsafe {
-				f(&mut *curr);
-				curr = (*curr).prev;
+				f(&mut *c);
+				curr = (*c).next;
 			}
 		}
 	}
@@ -119,21 +131,21 @@ impl LinkedList {
 	 * Links back adjacent nodes to the current node.
 	 */
 	unsafe fn link_back(&mut self) {
-		if self.next != NULL as _ {
-			(*self.next).prev = self;
+		if self.next.is_some() {
+			(*self.next.unwrap()).prev = Some(self);
 		}
-		if self.prev != NULL as _ {
-			(*self.prev).next = self;
+		if self.prev.is_some() {
+			(*self.prev.unwrap()).next = Some(self);
 		}
 	}
 
 	/*
 	 * Inserts the node at the beginning of the given linked list `front`.
 	 */
-	pub fn insert_front(&mut self, front: &mut *mut LinkedList) {
-		self.prev = NULL as _;
+	pub fn insert_front(&mut self, front: &mut Option<*mut LinkedList>) {
+		self.prev = None;
 		self.next = *front as _;
-		*front = self as _;
+		*front = Some(self);
 		unsafe {
 			self.link_back();
 		}
@@ -142,16 +154,21 @@ impl LinkedList {
 	/*
 	 * Inserts the node before node `node` in the given linked list `front`.
 	 */
-	pub fn insert_before(&mut self, front: &mut *mut LinkedList, node: *mut LinkedList) {
-		debug_assert!(node != NULL as _);
-
-		if *front == node {
-			*front = self;
+	pub fn insert_before(&mut self, front: &mut Option<*mut LinkedList>, node: &mut LinkedList) {
+		if front.is_some() && front.unwrap() == node {
+			*front = Some(self);
 		}
 
+		self.insert_before_floating(node);
+	}
+
+	/*
+	 * Inserts the node before node `node` in a floating linked list (with no front).
+	 */
+	pub fn insert_before_floating(&mut self, node: &mut LinkedList) {
 		unsafe {
 			self.prev = (*node).prev;
-			self.next = node;
+			self.next = Some(node);
 			self.link_back();
 		}
 	}
@@ -159,15 +176,9 @@ impl LinkedList {
 	/*
 	 * Inserts the node after node `node` in the given linked list `front`.
 	 */
-	pub fn insert_after(&mut self, front: &mut *mut LinkedList, node: *mut LinkedList) {
-		debug_assert!(node != NULL as _);
-
-		if *front == NULL as _ {
-			*front = self;
-		}
-
+	pub fn insert_after(&mut self, node: &mut LinkedList) {
 		unsafe {
-			self.prev = node;
+			self.prev = Some(node);
 			self.next = (*node).next;
 			self.link_back();
 		}
@@ -177,18 +188,18 @@ impl LinkedList {
 	 * Unlinks the current node from the linked list.
 	 */
 	pub fn unlink(&mut self) {
-		if self.prev != NULL as _ {
+		if self.prev.is_some() {
 			unsafe {
-				(*self.prev).next = self.next;
+				(*self.prev.unwrap()).next = self.next;
 			}
 		}
-		if self.next != NULL as _ {
+		if self.next.is_some() {
 			unsafe {
-				(*self.next).prev = self.prev;
+				(*self.next.unwrap()).prev = self.prev;
 			}
 		}
-		self.prev = NULL as _;
-		self.next = NULL as _;
+		self.prev = None;
+		self.next = None;
 	}
 }
 
