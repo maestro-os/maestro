@@ -90,12 +90,17 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 	#[cfg(test)]
 	test_main();
 
+	// TODO Register default error handlers
+
 	// TODO ACPI
 	// TODO PCI
 	// TODO time
 	// TODO drivers
 	// TODO Disk
 	// TODO Process
+
+	// TODO Load init ramdisk
+	// TODO Start first process
 
 	unsafe {
 		kernel_halt(); // TODO Replace with kernel_loop

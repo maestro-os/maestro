@@ -160,13 +160,13 @@ impl Chunk {
 
 		if let Some(next) = self.list.get_next() {
 			let n = unsafe {
-				&*crate::linked_list_get!(next as *mut LinkedList, *const Chunk, list)
+				&mut *crate::linked_list_get!(next as *mut LinkedList, *mut Chunk, list)
 			};
 
 			if !n.is_used() {
 				self.size += core::mem::size_of::<Chunk>() + n.size;
 				next.unlink_floating();
-				// TODO Unlink from free list
+				n.as_free_chunk().free_list_remove();
 			}
 		}
 
@@ -375,6 +375,13 @@ impl Block {
 	}
 
 	/*
+	 * Returns a mutable reference to the block whose first chunk's reference is passed as argument.
+	 */
+	pub unsafe fn from_first_chunk(chunk: &mut Chunk) -> &mut Block {
+		&mut *(((chunk as *mut Chunk as usize) - size_of::<Self>()) as *mut Self)
+	}
+
+	/*
 	 * Returns the total size of the block in bytes.
 	 */
 	fn get_total_size(&self) -> usize {
@@ -457,9 +464,14 @@ pub fn free(ptr: *mut c_void) {
 	// TODO Check that chunk is valid?
 
 	let c = chunk.chunk.coalesce();
-	// TODO Remove block if contains only one free chunk
-	// TODO else:
-	c.free_list_insert();
+	if c.chunk.list.is_single() {
+		let block = unsafe {
+			Block::from_first_chunk(&mut c.chunk)
+		};
+		buddy::free_kernel(block as *mut _ as _, block.order);
+	} else {
+		c.free_list_insert();
+	}
 }
 
 #[cfg(test)]
@@ -499,6 +511,29 @@ mod test {
 			free(ptr);
 		} else {
 			assert!(false);
+		}
+	}
+
+	#[test_case]
+	fn alloc_free_heap() {
+		let mut ptrs: [*mut c_void; 1024] = [0 as _; 1024];
+
+		for i in 0..1024 {
+			let size = i + 1;
+			if let Ok(ptr) = alloc(size) {
+				unsafe {
+					util::memset(ptr, -1, size);
+				}
+				ptrs[i] = ptr;
+			} else {
+				assert!(false);
+			}
+		}
+
+		// TODO Check duplicate pointer
+
+		for i in 0..1024 {
+			free(ptrs[i]);
 		}
 	}
 

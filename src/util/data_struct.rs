@@ -49,6 +49,13 @@ impl LinkedList {
 	}
 
 	/*
+	 * Tells whether the node is single in the list.
+	 */
+	pub fn is_single(&self) -> bool {
+		self.prev.is_none() && self.next.is_none()
+	}
+
+	/*
 	 * Returns the previous element if it exsits, or None.
 	 */
 	pub fn get_prev(&self) -> Option<&'static mut LinkedList> {
