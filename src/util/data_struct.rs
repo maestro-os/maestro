@@ -16,6 +16,8 @@ fn option_mut_to_const<T>(option: Option<*mut T>) -> Option<*const T> {
 
 /*
  * Structure representing a node in a doubly-linked list.
+ *
+ * TODO Explain difference between floating and non-floating lists
  */
 pub struct LinkedList {
 	/* Pointer to the previous element in the list */
@@ -163,7 +165,7 @@ impl LinkedList {
 	}
 
 	/*
-	 * Inserts the node before node `node` in a floating linked list (with no front).
+	 * Inserts the node before node `node` in a floating linked list.
 	 */
 	pub fn insert_before_floating(&mut self, node: &mut LinkedList) {
 		unsafe {
@@ -184,10 +186,18 @@ impl LinkedList {
 		}
 	}
 
+	pub fn unlink(&mut self, front: &mut Option<*mut LinkedList>) {
+		if front.is_some() && front.unwrap() == self {
+			*front = self.next;
+		}
+
+		self.unlink_floating();
+	}
+
 	/*
-	 * Unlinks the current node from the linked list.
+	 * Unlinks the current node from the floating linked list.
 	 */
-	pub fn unlink(&mut self) {
+	pub fn unlink_floating(&mut self) {
 		if self.prev.is_some() {
 			unsafe {
 				(*self.prev.unwrap()).next = self.next;

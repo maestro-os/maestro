@@ -4,7 +4,7 @@
  * TODO: More documentation
  */
 
-use core::cmp::max;
+use core::cmp::{min, max};
 use core::ffi::c_void;
 use core::mem::MaybeUninit;
 use core::mem::size_of;
@@ -51,6 +51,7 @@ struct Chunk {
 /*
  * A free chunk, wrapping the Chunk structure.
  */
+#[repr(C)]
 struct FreeChunk {
 	/* The chunk */
 	chunk: Chunk,
@@ -113,7 +114,7 @@ impl Chunk {
 	 * Returns the chunk corresponding to the given data pointer.
 	 */
 	pub unsafe fn from_ptr(ptr: *mut c_void) -> &'static mut Self {
-		&mut *(ptr.sub(core::mem::size_of::<Chunk>()) as *mut Self)
+		&mut *(ptr.sub(core::mem::size_of::<Self>()) as *mut Self)
 	}
 
 	/*
@@ -140,9 +141,21 @@ impl Chunk {
 	}
 
 	/*
-	 * Marks the chunk as free and tries to coalesce it with adjacent chunks if they are free.
+	 * Returns a mutable reference for the given chunk as a free chunk. The result is undefined if
+	 * the chunk is used.
 	 */
-	pub fn coalesce(&mut self) {
+	pub fn as_free_chunk(&mut self) -> &mut FreeChunk {
+		debug_assert!(!self.is_used());
+		unsafe {
+			&mut *(self as *mut Self as *mut FreeChunk)
+		}
+	}
+
+	/*
+	 * Marks the chunk as free and tries to coalesce it with adjacent chunks if they are free.
+	 * The function returns the resulting free chunk.
+	 */
+	pub fn coalesce(&mut self) -> &mut FreeChunk {
 		self.flags &= CHUNK_FLAG_USED;
 
 		if let Some(next) = self.list.get_next() {
@@ -152,7 +165,8 @@ impl Chunk {
 
 			if !n.is_used() {
 				self.size += core::mem::size_of::<Chunk>() + n.size;
-				next.unlink();
+				next.unlink_floating();
+				// TODO Unlink from free list
 			}
 		}
 
@@ -164,6 +178,9 @@ impl Chunk {
 			if !p.is_used() {
 				p.coalesce();
 			}
+			p.as_free_chunk()
+		} else {
+			self.as_free_chunk()
 		}
 	}
 
@@ -183,7 +200,7 @@ impl Chunk {
 		if delta > 0 {
 			if let Some(next) = self.list.get_next() {
 				let n = unsafe {
-					&*crate::linked_list_get!(next as *mut LinkedList, *const Chunk, list)
+					&mut *crate::linked_list_get!(next as *mut LinkedList, *mut Chunk, list)
 				};
 
 				if n.is_used() {
@@ -195,11 +212,12 @@ impl Chunk {
 					return false;
 				}
 
+				next.unlink_floating();
+				n.as_free_chunk().free_list_remove();
+
 				let next_min_size = core::mem::size_of::<Chunk>() + FREE_CHUNK_MIN;
 				if available_size - delta as usize >= next_min_size {
-					// TODO Move next chunk
-				} else {
-					next.unlink();
+					// TODO Move next chunk (relink to both list and free list)
 				}
 
 				valid = true;
@@ -253,6 +271,13 @@ impl FreeChunk {
 			free_list: LinkedList::new_single(),
 		};
 		c.free_list_insert();
+	}
+
+	/*
+	 * Returns the chunk corresponding to the given data pointer.
+	 */
+	pub unsafe fn from_ptr(ptr: *mut c_void) -> &'static mut Self {
+		&mut *(ptr.sub(core::mem::size_of::<Self>()) as *mut Self)
 	}
 
 	/*
@@ -314,6 +339,14 @@ impl FreeChunk {
 		let free_list = get_free_list(self.chunk.size, true).unwrap();
 		self.free_list.insert_front(free_list);
 	}
+
+	/*
+	 * Removes the chunk from its free list.
+	 */
+	pub fn free_list_remove(&mut self) {
+		let free_list = get_free_list(self.chunk.size, false).unwrap();
+		self.free_list.unlink(free_list);
+	}
 }
 
 impl Block {
@@ -362,13 +395,13 @@ pub fn init() {
 // TODO Mutex
 /*
  * Allocates `n` bytes of kernel memory and returns a pointer to the beginning of the allocated
- * chunk. If the allocation fails, the function shall return None.
+ * chunk. If the allocation fails, the function shall return an error.
  */
-pub fn alloc(n: usize) -> Option<*mut c_void> {
+pub fn alloc(n: usize) -> Result<*mut c_void, ()> {
 	let mut f = get_free_list(n, false);
 	if f.is_none() {
 		if Block::new(n).is_err() {
-			return None;
+			return Err(());
 		}
 
 		f = get_free_list(n, false);
@@ -385,18 +418,31 @@ pub fn alloc(n: usize) -> Option<*mut c_void> {
 	chunk.check();
 	debug_assert!(chunk.get_size() >= n);
 	chunk.split(n);
-	Some(chunk.get_ptr())
+	Ok(chunk.get_ptr())
 }
 
 // TODO Mutex
 /*
  * Changes the size of the memory previously allocated with `alloc`. `ptr` is the pointer to the
  * chunk of memory. `n` is the new size of the chunk of memory. If the reallocation fails, the
- * chunk is left untouched.
+ * chunk is left untouched and the function returns an error.
  */
-pub fn realloc(_ptr: *const c_void, _n: usize) -> Option<*mut c_void> {
-	// TODO
-	None
+pub fn realloc(ptr: *mut c_void, n: usize) -> Result<*mut c_void, ()> {
+	let chunk = unsafe {
+		Chunk::from_ptr(ptr)
+	};
+	// TODO Check that chunk is valid?
+
+	if !chunk.resize((n as isize) - (chunk.get_size() as isize)) {
+		let new_ptr = alloc(n)?;
+		unsafe {
+			util::memcpy(new_ptr, ptr, min(chunk.get_size(), n));
+		}
+		free(ptr);
+		Ok(new_ptr)
+	} else {
+		Ok(ptr)
+	}
 }
 
 // TODO Mutex
@@ -404,8 +450,16 @@ pub fn realloc(_ptr: *const c_void, _n: usize) -> Option<*mut c_void> {
  * Frees the memory at the pointer `ptr` previously allocated with `alloc`. Subsequent uses of the
  * associated memory are undefined.
  */
-pub fn free(_ptr: *const c_void) {
-	// TODO
+pub fn free(ptr: *mut c_void) {
+	let chunk = unsafe {
+		FreeChunk::from_ptr(ptr)
+	};
+	// TODO Check that chunk is valid?
+
+	let c = chunk.chunk.coalesce();
+	// TODO Remove block if contains only one free chunk
+	// TODO else:
+	c.free_list_insert();
 }
 
 #[cfg(test)]
@@ -414,7 +468,7 @@ mod test {
 
 	#[test_case]
 	fn alloc_free0() {
-		if let Some(ptr) = alloc(1) {
+		if let Ok(ptr) = alloc(1) {
 			unsafe {
 				util::memset(ptr, -1, 1);
 			}
@@ -426,7 +480,7 @@ mod test {
 
 	#[test_case]
 	fn alloc_free1() {
-		if let Some(ptr) = alloc(8) {
+		if let Ok(ptr) = alloc(8) {
 			unsafe {
 				util::memset(ptr, -1, 8);
 			}
@@ -438,7 +492,7 @@ mod test {
 
 	#[test_case]
 	fn alloc_free2() {
-		if let Some(ptr) = alloc(PAGE_SIZE) {
+		if let Ok(ptr) = alloc(PAGE_SIZE) {
 			unsafe {
 				util::memset(ptr, -1, PAGE_SIZE);
 			}
