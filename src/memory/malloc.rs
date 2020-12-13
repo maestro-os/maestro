@@ -39,6 +39,7 @@ const FREE_LIST_BINS: usize = 8;
 /*
  * A chunk of allocated or free memory stored in linked lists.
  */
+#[repr(C)]
 struct Chunk {
 	/* The linked list storing the chunks */
 	list: LinkedList,
@@ -63,6 +64,7 @@ struct FreeChunk {
  * Structure representing a frame of memory allocated using the buddy allocator, storing memory
  * chunks.
  */
+#[repr(C)]
 struct Block {
 	/* The linked list storing the blocks */
 	list: LinkedList,
@@ -114,7 +116,7 @@ impl Chunk {
 	 * Returns the chunk corresponding to the given data pointer.
 	 */
 	pub unsafe fn from_ptr(ptr: *mut c_void) -> &'static mut Self {
-		&mut *(ptr.sub(core::mem::size_of::<Self>()) as *mut Self)
+		&mut *(((ptr as usize) - size_of::<Self>()) as *mut Self)
 	}
 
 	/*
@@ -129,7 +131,7 @@ impl Chunk {
 	 */
 	pub fn get_ptr(&mut self) -> *mut c_void {
 		unsafe {
-			(self as *mut Self as *mut c_void).add(core::mem::size_of::<Self>())
+			(self as *mut Self as *mut c_void).add(size_of::<Self>())
 		}
 	}
 
@@ -153,10 +155,15 @@ impl Chunk {
 
 	/*
 	 * Marks the chunk as free and tries to coalesce it with adjacent chunks if they are free.
-	 * The function returns the resulting free chunk.
+	 * The function returns the resulting free chunk, which will not be inserted into any free
+	 * list.
 	 */
 	pub fn coalesce(&mut self) -> &mut FreeChunk {
-		self.flags &= CHUNK_FLAG_USED;
+		if self.is_used() {
+			self.flags &= !CHUNK_FLAG_USED;
+		} else {
+			self.as_free_chunk().free_list_remove();
+		}
 
 		if let Some(next) = self.list.get_next() {
 			let n = unsafe {
@@ -164,7 +171,7 @@ impl Chunk {
 			};
 
 			if !n.is_used() {
-				self.size += core::mem::size_of::<Chunk>() + n.size;
+				self.size += size_of::<Chunk>() + n.size;
 				next.unlink_floating();
 				n.as_free_chunk().free_list_remove();
 			}
@@ -176,12 +183,11 @@ impl Chunk {
 			};
 
 			if !p.is_used() {
-				p.coalesce();
+				return p.coalesce();
 			}
-			p.as_free_chunk()
-		} else {
-			self.as_free_chunk()
 		}
+
+		self.as_free_chunk()
 	}
 
 	/*
@@ -207,7 +213,7 @@ impl Chunk {
 					return false;
 				}
 
-				let available_size = core::mem::size_of::<Chunk>() + n.size;
+				let available_size = size_of::<Chunk>() + n.size;
 				if available_size < delta as usize {
 					return false;
 				}
@@ -215,7 +221,7 @@ impl Chunk {
 				next.unlink_floating();
 				n.as_free_chunk().free_list_remove();
 
-				let next_min_size = core::mem::size_of::<Chunk>() + FREE_CHUNK_MIN;
+				let next_min_size = size_of::<Chunk>() + FREE_CHUNK_MIN;
 				if available_size - delta as usize >= next_min_size {
 					// TODO Move next chunk (relink to both list and free list)
 				}
@@ -274,13 +280,6 @@ impl FreeChunk {
 	}
 
 	/*
-	 * Returns the chunk corresponding to the given data pointer.
-	 */
-	pub unsafe fn from_ptr(ptr: *mut c_void) -> &'static mut Self {
-		&mut *(ptr.sub(core::mem::size_of::<Self>()) as *mut Self)
-	}
-
-	/*
 	 * Returns a pointer to the chunks' data.
 	 */
 	pub fn get_ptr(&mut self) -> *mut c_void {
@@ -310,26 +309,33 @@ impl FreeChunk {
 		self.get_size() >= size + size_of::<Chunk>() + min_data_size
 	}
 
+	// TODO Fix the fact that this function makes the current object invalid and thus the inner
+	// chunk must be used instead
 	/*
 	 * Splits the chunk with the given size `size` if necessary and marks it as used. The function
 	 * might create a new chunk next to the current.
 	 */
-	pub fn split(&mut self, size: usize) {
+	pub fn split(&mut self, size: usize) -> &mut Chunk {
+		self.check();
 		debug_assert!(self.get_size() >= size);
 
 		if self.can_split(size) {
-			let next_off = (self as *mut Self as usize) + core::mem::size_of::<Chunk>() + size;
+			let curr_len = size_of::<Chunk>() + size;
+			let next_off = (self as *mut Self as usize) + curr_len;
 			let next = unsafe {
 				&mut *(next_off as *mut FreeChunk)
 			};
 			util::zero_object(next);
 			next.chunk.flags = 0;
-			next.chunk.size = self.get_size() - (size + core::mem::size_of::<Chunk>());
+			next.chunk.size = self.get_size() - curr_len;
 			next.chunk.list.insert_after(&mut self.chunk.list);
 			next.free_list_insert();
 		}
 
 		self.chunk.flags |= CHUNK_FLAG_USED;
+		self.chunk.size = size;
+
+		&mut self.chunk
 	}
 
 	/*
@@ -355,9 +361,9 @@ impl Block {
 	 * The buddy allocator must be initialized before using this function.
 	 */
 	fn new(min_size: usize) -> Result<&'static mut Self, ()> {
-		let total_min_size = core::mem::size_of::<Block>() + min_size;
+		let total_min_size = size_of::<Block>() + min_size;
 		let order = buddy::get_order(util::ceil_division(total_min_size, PAGE_SIZE));
-		let first_chunk_size = buddy::get_frame_size(order) - core::mem::size_of::<Block>();
+		let first_chunk_size = buddy::get_frame_size(order) - size_of::<Block>();
 
 		let ptr = buddy::alloc_kernel(order)?;
 		let block = unsafe { &mut *(ptr as *mut Block) };
@@ -377,8 +383,11 @@ impl Block {
 	/*
 	 * Returns a mutable reference to the block whose first chunk's reference is passed as argument.
 	 */
-	pub unsafe fn from_first_chunk(chunk: &mut Chunk) -> &mut Block {
-		&mut *(((chunk as *mut Chunk as usize) - size_of::<Self>()) as *mut Self)
+	pub unsafe fn from_first_chunk(chunk: *mut Chunk) -> &'static mut Block {
+		let first_chunk_off = crate::offset_of!(*const Block, first_chunk);
+		let ptr = ((chunk as usize) - first_chunk_off) as *mut Self;
+		debug_assert!(util::is_aligned(ptr as *const c_void, PAGE_SIZE));
+		&mut *ptr
 	}
 
 	/*
@@ -424,8 +433,11 @@ pub fn alloc(n: usize) -> Result<*mut c_void, ()> {
 	};
 	chunk.check();
 	debug_assert!(chunk.get_size() >= n);
-	chunk.split(n);
-	Ok(chunk.get_ptr())
+
+	let c = chunk.split(n);
+	debug_assert!(c.get_size() >= n);
+	debug_assert!(c.is_used());
+	Ok(c.get_ptr())
 }
 
 // TODO Mutex
@@ -459,11 +471,11 @@ pub fn realloc(ptr: *mut c_void, n: usize) -> Result<*mut c_void, ()> {
  */
 pub fn free(ptr: *mut c_void) {
 	let chunk = unsafe {
-		FreeChunk::from_ptr(ptr)
+		Chunk::from_ptr(ptr)
 	};
 	// TODO Check that chunk is valid?
 
-	let c = chunk.chunk.coalesce();
+	let c = chunk.coalesce();
 	if c.chunk.list.is_single() {
 		let block = unsafe {
 			Block::from_first_chunk(&mut c.chunk)
@@ -474,7 +486,7 @@ pub fn free(ptr: *mut c_void) {
 	}
 }
 
-#[cfg(test)]
+/*#[cfg(test)]
 mod test {
 	use super::*;
 
@@ -530,7 +542,13 @@ mod test {
 			}
 		}
 
-		// TODO Check duplicate pointer
+		for i in 0..1024 {
+			for j in (i + 1)..1024 {
+				if ptrs[j] == ptrs[i] {
+					assert!(false);
+				}
+			}
+		}
 
 		for i in 0..1024 {
 			free(ptrs[i]);
@@ -538,4 +556,4 @@ mod test {
 	}
 
 	// TODO
-}
+}*/

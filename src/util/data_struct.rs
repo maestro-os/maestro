@@ -162,6 +162,7 @@ impl LinkedList {
 
 	/*
 	 * Inserts the node before node `node` in the given linked list `front`.
+	 * If the node is not single, the behaviour is undefined.
 	 */
 	pub fn insert_before(&mut self, front: &mut Option<*mut LinkedList>, node: &mut LinkedList) {
 		if front.is_some() && front.unwrap() == node {
@@ -173,8 +174,11 @@ impl LinkedList {
 
 	/*
 	 * Inserts the node before node `node` in a floating linked list.
+	 * If the node is not single, the behaviour is undefined.
 	 */
 	pub fn insert_before_floating(&mut self, node: &mut LinkedList) {
+		debug_assert!(self.is_single());
+
 		unsafe {
 			self.prev = (*node).prev;
 			self.next = Some(node);
@@ -184,8 +188,11 @@ impl LinkedList {
 
 	/*
 	 * Inserts the node after node `node` in the given linked list `front`.
+	 * If the node is not single, the behaviour is undefined.
 	 */
 	pub fn insert_after(&mut self, node: &mut LinkedList) {
+		debug_assert!(self.is_single());
+
 		unsafe {
 			self.prev = Some(node);
 			self.next = (*node).next;
@@ -221,3 +228,141 @@ impl LinkedList {
 }
 
 // TODO Binary tree
+
+mod test {
+	use super::*;
+
+	#[test_case]
+	fn linked_list_insert_before0() {
+		let mut l0 = LinkedList::new_single();
+		let mut l1 = LinkedList::new_single();
+		let mut front: Option<*mut LinkedList> = None;
+
+		l0.insert_before(&mut front, &mut l1);
+
+		assert!(front.is_none());
+		assert!(l0.prev.is_none());
+		assert!(l0.next.is_some());
+		assert!(l0.next.unwrap() == &mut l1 as _);
+
+		assert!(l1.prev.is_some());
+		assert!(l1.prev.unwrap() == &mut l0 as _);
+		assert!(l1.next.is_none());
+	}
+
+	#[test_case]
+	fn linked_list_insert_before1() {
+		let mut l0 = LinkedList::new_single();
+		let mut l1 = LinkedList::new_single();
+		let mut front: Option<*mut LinkedList> = Some(&mut l1 as _);
+
+		l0.insert_before(&mut front, &mut l1);
+
+		assert!(front.is_some() && front.unwrap() == &mut l0 as _);
+		assert!(l0.prev.is_none());
+		assert!(l0.next.is_some());
+		assert!(l0.next.unwrap() == &mut l1 as _);
+
+		assert!(l1.prev.is_some());
+		assert!(l1.prev.unwrap() == &mut l0 as _);
+		assert!(l1.next.is_none());
+	}
+
+	#[test_case]
+	fn linked_list_insert_before2() {
+		let mut l0 = LinkedList::new_single();
+		let mut l1 = LinkedList::new_single();
+		let mut front: Option<*mut LinkedList> = Some(&mut l0 as _);
+
+		l0.insert_before(&mut front, &mut l1);
+
+		assert!(front.is_some() && front.unwrap() == &mut l0 as _);
+		assert!(l0.prev.is_none());
+		assert!(l0.next.is_some());
+		assert!(l0.next.unwrap() == &mut l1 as _);
+
+		assert!(l1.prev.is_some());
+		assert!(l1.prev.unwrap() == &mut l0 as _);
+		assert!(l1.next.is_none());
+	}
+
+	#[test_case]
+	fn linked_list_insert_before_floating0() {
+		let mut l0 = LinkedList::new_single();
+		let mut l1 = LinkedList::new_single();
+
+		l0.insert_before_floating(&mut l1);
+
+		assert!(l0.prev.is_none());
+		assert!(l0.next.is_some());
+		assert!(l0.next.unwrap() == &mut l1 as _);
+
+		assert!(l1.prev.is_some());
+		assert!(l1.prev.unwrap() == &mut l0 as _);
+		assert!(l1.next.is_none());
+	}
+
+	#[test_case]
+	fn linked_list_insert_before_floating1() {
+		let mut l0 = LinkedList::new_single();
+		let mut l1 = LinkedList::new_single();
+		let mut l2 = LinkedList::new_single();
+
+		l0.insert_before_floating(&mut l2);
+		l1.insert_before_floating(&mut l2);
+
+		assert!(l0.prev.is_none());
+		assert!(l0.next.is_some());
+		assert!(l0.next.unwrap() == &mut l1 as _);
+
+		assert!(l1.prev.is_some());
+		assert!(l1.prev.unwrap() == &mut l0 as _);
+		assert!(l1.next.is_some());
+		assert!(l1.next.unwrap() == &mut l2 as _);
+
+		assert!(l2.prev.is_some());
+		assert!(l2.prev.unwrap() == &mut l1 as _);
+		assert!(l2.next.is_none());
+	}
+
+	#[test_case]
+	fn linked_list_insert_after0() {
+		let mut l0 = LinkedList::new_single();
+		let mut l1 = LinkedList::new_single();
+
+		l1.insert_after(&mut l0);
+
+		assert!(l0.prev.is_none());
+		assert!(l0.next.is_some());
+		assert!(l0.next.unwrap() == &mut l1 as _);
+
+		assert!(l1.prev.is_some());
+		assert!(l1.prev.unwrap() == &mut l0 as _);
+		assert!(l1.next.is_none());
+	}
+
+	#[test_case]
+	fn linked_list_insert_after1() {
+		let mut l0 = LinkedList::new_single();
+		let mut l1 = LinkedList::new_single();
+		let mut l2 = LinkedList::new_single();
+
+		l2.insert_after(&mut l0);
+		l1.insert_after(&mut l0);
+
+		assert!(l0.prev.is_none());
+		assert!(l0.next.is_some());
+		assert!(l0.next.unwrap() == &mut l1 as _);
+
+		assert!(l1.prev.is_some());
+		assert!(l1.prev.unwrap() == &mut l0 as _);
+		assert!(l1.next.is_some());
+		assert!(l1.next.unwrap() == &mut l2 as _);
+
+		assert!(l2.prev.is_some());
+		assert!(l2.prev.unwrap() == &mut l1 as _);
+		assert!(l2.next.is_none());
+	}
+
+	// TODO
+}

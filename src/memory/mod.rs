@@ -107,6 +107,7 @@ pub fn addr_remain(addr: *const c_void) -> usize {
  * Converts a kernel physical address to a virtual address.
  */
 pub fn kern_to_virt(ptr: *const c_void) -> *const c_void {
+	debug_assert!(ptr < PROCESS_END);
 	((ptr as usize) + (PROCESS_END as usize)) as *const _
 }
 
@@ -114,6 +115,7 @@ pub fn kern_to_virt(ptr: *const c_void) -> *const c_void {
  * Converts a kernel virtual address to a physical address.
  */
 pub fn kern_to_phys(ptr: *const c_void) -> *const c_void {
+	debug_assert!(ptr >= PROCESS_END);
 	((ptr as usize) - (PROCESS_END as usize)) as *const _
 }
 
