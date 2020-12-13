@@ -330,6 +330,7 @@ impl FreeChunk {
 			next.chunk.size = self.get_size() - curr_len;
 			next.chunk.list.insert_after(&mut self.chunk.list);
 			next.free_list_insert();
+			debug_assert!(!next.chunk.list.is_single());
 		}
 
 		self.chunk.flags |= CHUNK_FLAG_USED;
@@ -486,7 +487,7 @@ pub fn free(ptr: *mut c_void) {
 	}
 }
 
-/*#[cfg(test)]
+#[cfg(test)]
 mod test {
 	use super::*;
 
@@ -556,4 +557,4 @@ mod test {
 	}
 
 	// TODO
-}*/
+}
