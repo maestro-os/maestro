@@ -19,6 +19,7 @@ fn option_mut_to_const<T>(option: Option<*mut T>) -> Option<*const T> {
  *
  * TODO Explain difference between floating and non-floating lists
  */
+#[derive(Debug)]
 pub struct LinkedList {
 	/* Pointer to the previous element in the list */
 	prev: Option<*mut LinkedList>,
@@ -52,6 +53,10 @@ impl LinkedList {
 	 * Tells whether the node is single in the list.
 	 */
 	pub fn is_single(&self) -> bool {
+		crate::println!("=> {:?} {} {} {}", self,
+			self.prev.is_none(),
+			self.next.is_none(),
+			self.prev.is_none() && self.next.is_none());
 		self.prev.is_none() && self.next.is_none()
 	}
 
@@ -229,6 +234,7 @@ impl LinkedList {
 
 // TODO Binary tree
 
+#[cfg(test)]
 mod test {
 	use super::*;
 

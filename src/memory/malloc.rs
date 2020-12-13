@@ -6,7 +6,6 @@
 
 use core::cmp::{min, max};
 use core::ffi::c_void;
-use core::mem::MaybeUninit;
 use core::mem::size_of;
 use crate::memory::PAGE_SIZE;
 use crate::memory::buddy;
@@ -82,7 +81,7 @@ type FreeList = Option<*mut LinkedList>;
 /*
  * List storing allocated blocks of memory.
  */
-static mut FREE_LISTS: MaybeUninit<[FreeList; FREE_LIST_BINS]> = MaybeUninit::uninit();
+static mut FREE_LISTS: [FreeList; FREE_LIST_BINS] = [None; FREE_LIST_BINS];
 
 /*
  * Returns the free list for the given size `size`. If `insert` is not set, the function may return
@@ -95,7 +94,7 @@ fn get_free_list(size: usize, insert: bool) -> Option<&'static mut FreeList> {
 	}
 
 	let free_lists = unsafe {
-		FREE_LISTS.assume_init_mut()
+		&mut FREE_LISTS
 	};
 
 	if !insert {
@@ -228,9 +227,7 @@ impl Chunk {
 
 				valid = true;
 			}
-		}
-
-		if delta < 0 {
+		} else if delta < 0 {
 			if self.size <= (-delta) as usize {
 				return false;
 			}
@@ -280,6 +277,20 @@ impl FreeChunk {
 	}
 
 	/*
+	 * Creates a new free chunk. `size` is the size of the available memory in the chunk.
+	 */
+	pub fn new(size: usize) -> Self {
+		Self {
+			chunk: Chunk {
+				list: LinkedList::new_single(),
+				flags: 0,
+				size: size,
+			},
+			free_list: LinkedList::new_single(),
+		}
+	}
+
+	/*
 	 * Returns a pointer to the chunks' data.
 	 */
 	pub fn get_ptr(&mut self) -> *mut c_void {
@@ -325,9 +336,7 @@ impl FreeChunk {
 			let next = unsafe {
 				&mut *(next_off as *mut FreeChunk)
 			};
-			util::zero_object(next);
-			next.chunk.flags = 0;
-			next.chunk.size = self.get_size() - curr_len;
+			*next = FreeChunk::new(self.get_size() - curr_len);
 			next.chunk.list.insert_after(&mut self.chunk.list);
 			next.free_list_insert();
 			debug_assert!(!next.chunk.list.is_single());
@@ -396,16 +405,6 @@ impl Block {
 	 */
 	fn get_total_size(&self) -> usize {
 		buddy::get_frame_size(self.order)
-	}
-}
-
-/*
- * Initializes the allocator. This function must be called before using the allocator's functions
- * and exactly once.
- */
-pub fn init() {
-	unsafe {
-		util::zero_object(&mut FREE_LISTS);
 	}
 }
 

@@ -85,7 +85,6 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 	memory::memmap::print_entries(); // TODO rm
 	memory::buddy::init();
 	memory::vmem::kernel();
-	memory::malloc::init();
 
 	#[cfg(test)]
 	test_main();
