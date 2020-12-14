@@ -119,6 +119,7 @@ fn panic(panic_info: &PanicInfo) -> ! {
 	}
 }
 
+// TODO Use only if test was running. Else, use classic function
 /*
  * Called on Rust panic during testing.
  */

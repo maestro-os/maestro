@@ -271,6 +271,8 @@ pub fn free(ptr: *const c_void, order: FrameOrder) {
 			(*frame).coalesce(zone);
 		}
 		zone.allocated_pages -= util::pow2(order) as usize;
+	} else {
+		crate::kernel_panic!("Invalid pointer for buddy allocator free!");
 	}
 }
 
@@ -368,6 +370,11 @@ impl Zone {
 		for i in (order as usize)..self.free_list.len() {
 			let f = self.free_list[i];
 			if let Some(f_) = f {
+				unsafe {
+					debug_assert!(!(*f_).is_used());
+				}
+				debug_assert!((f_ as usize) >= (self.begin as usize));
+				debug_assert!((f_ as usize) < (self.begin as usize) + self.get_size());
 				return Some(unsafe { &mut *f_ });
 			}
 		}
