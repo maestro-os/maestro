@@ -17,7 +17,9 @@ use crate::util;
  */
 type ChunkFlags = u8;
 
-/* Chunk flag indicating that the chunk is being used */
+/*
+ * Chunk flag indicating that the chunk is being used
+ */
 const CHUNK_FLAG_USED: ChunkFlags = 0b1;
 
 /*
@@ -79,7 +81,7 @@ struct Block {
 type FreeList = Option<*mut LinkedList>;
 
 /*
- * List storing allocated blocks of memory.
+ * List storing free lists for each free chunk. The chunks are storted by size.
  */
 static mut FREE_LISTS: [FreeList; FREE_LIST_BINS] = [None; FREE_LIST_BINS];
 
@@ -310,6 +312,22 @@ impl FreeChunk {
 	 */
 	pub fn check(&self) {
 		debug_assert!(!self.chunk.is_used());
+
+		if let Some(prev) = self.chunk.list.get_prev() {
+			let p = unsafe {
+				&*crate::linked_list_get!(prev as *mut LinkedList, *mut Chunk, list)
+			};
+			let len = if p.is_used() { size_of::<Chunk>() } else { size_of::<FreeChunk>() };
+			debug_assert!((p as *const Chunk as usize) + len <= (self as *const Self as usize));
+		}
+
+		if let Some(next) = self.chunk.list.get_next() {
+			let n = unsafe {
+				&*crate::linked_list_get!(next as *mut LinkedList, *mut Chunk, list)
+			};
+			debug_assert!((self as *const Self as usize) + size_of::<FreeChunk>()
+				<= (n as *const Chunk as usize));
+		}
 	}
 
 	/*
@@ -330,20 +348,23 @@ impl FreeChunk {
 		self.check();
 		debug_assert!(self.get_size() >= size);
 
+		self.chunk.flags |= CHUNK_FLAG_USED;
+
 		if self.can_split(size) {
 			let curr_len = size_of::<Chunk>() + size;
 			let next_off = (self as *mut Self as usize) + curr_len;
 			let next = unsafe {
 				&mut *(next_off as *mut FreeChunk)
 			};
-			*next = FreeChunk::new(self.get_size() - curr_len);
-			next.chunk.list.insert_after(&mut self.chunk.list);
-			next.free_list_insert();
-			debug_assert!(!next.chunk.list.is_single());
-		}
 
-		self.chunk.flags |= CHUNK_FLAG_USED;
-		self.chunk.size = size;
+			*next = FreeChunk::new(self.get_size() - curr_len);
+			next.check();
+			next.free_list_insert();
+			next.chunk.list.insert_after(&mut self.chunk.list);
+			debug_assert!(!next.chunk.list.is_single());
+
+			self.chunk.size = size;
+		}
 
 		&mut self.chunk
 	}
@@ -352,7 +373,7 @@ impl FreeChunk {
 	 * Inserts the chunk into the appropriate free list.
 	 */
 	pub fn free_list_insert(&mut self) {
-		let free_list = get_free_list(self.chunk.size, true).unwrap();
+		let free_list = get_free_list(self.get_size(), true).unwrap();
 		self.free_list.insert_front(free_list);
 	}
 
@@ -360,7 +381,7 @@ impl FreeChunk {
 	 * Removes the chunk from its free list.
 	 */
 	pub fn free_list_remove(&mut self) {
-		let free_list = get_free_list(self.chunk.size, false).unwrap();
+		let free_list = get_free_list(self.get_size(), false).unwrap();
 		self.free_list.unlink(free_list);
 	}
 }

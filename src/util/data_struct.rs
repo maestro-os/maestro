@@ -53,17 +53,13 @@ impl LinkedList {
 	 * Tells whether the node is single in the list.
 	 */
 	pub fn is_single(&self) -> bool {
-		crate::println!("=> {:?} {} {} {}", self,
-			self.prev.is_none(),
-			self.next.is_none(),
-			self.prev.is_none() && self.next.is_none());
 		self.prev.is_none() && self.next.is_none()
 	}
 
 	/*
 	 * Returns the previous element if it exsits, or None.
 	 */
-	pub fn get_prev(&self) -> Option<&'static mut LinkedList> {
+	pub fn get_prev(&self) -> Option<&mut LinkedList> {
 		if self.prev.is_some() {
 			Some(unsafe { &mut *self.prev.unwrap() })
 		} else {
@@ -74,7 +70,7 @@ impl LinkedList {
 	/*
 	 * Returns the next element if it exsits, or None.
 	 */
-	pub fn get_next(&self) -> Option<&'static mut LinkedList> {
+	pub fn get_next(&self) -> Option<&mut LinkedList> {
 		if self.next.is_some() {
 			Some(unsafe { &mut *self.next.unwrap() })
 		} else {
@@ -158,7 +154,7 @@ impl LinkedList {
 	 */
 	pub fn insert_front(&mut self, front: &mut Option<*mut LinkedList>) {
 		self.prev = None;
-		self.next = *front as _;
+		self.next = *front;
 		*front = Some(self);
 		unsafe {
 			self.link_back();
@@ -229,6 +225,12 @@ impl LinkedList {
 		}
 		self.prev = None;
 		self.next = None;
+	}
+}
+
+impl Drop for LinkedList {
+	fn drop(&mut self) {
+		self.unlink_floating();
 	}
 }
 
