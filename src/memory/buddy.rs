@@ -9,9 +9,9 @@
  * size of a frame in pages.
  */
 
-use core::cmp::min;
 use core::ffi::c_void;
 use core::mem::MaybeUninit;
+use core::mem::size_of;
 use crate::memory::memmap;
 use crate::memory;
 use crate::util::lock::Mutex;
@@ -150,19 +150,16 @@ pub fn init() {
 
 	let virt_alloc_begin = memory::kern_to_virt(mmap_info.phys_alloc_begin);
 	let metadata_begin = util::align(virt_alloc_begin, memory::PAGE_SIZE) as *mut c_void;
-	let frames_count = mmap_info.available_memory
-		/ (memory::PAGE_SIZE + core::mem::size_of::<Frame>());
-	let metadata_size = frames_count * core::mem::size_of::<Frame>();
-	let metadata_end = unsafe { metadata_begin.add(metadata_size) };
+	let frames_count = mmap_info.available_memory / (memory::PAGE_SIZE + size_of::<Frame>());
+	let metadata_size = frames_count * size_of::<Frame>();
+	let metadata_end = unsafe { // Pointer arithmetic
+		metadata_begin.add(metadata_size)
+	};
 	let phys_metadata_end = memory::kern_to_phys(metadata_end);
 	// TODO Check that metadata doesn't exceed kernel space's capacity
 
 	let kernel_zone_begin = util::align(phys_metadata_end, memory::PAGE_SIZE) as *mut c_void;
-	let kernel_zone_end = util::down_align(min(KERNEL_ZONE_LIMIT, mmap_info.phys_alloc_end),
-		memory::PAGE_SIZE);
-	let kernel_frames_count = (kernel_zone_end as usize - kernel_zone_begin as usize)
-		/ memory::PAGE_SIZE;
-	z[1].lock().get_mut().init(FLAG_ZONE_TYPE_KERNEL, metadata_begin, kernel_frames_count as _,
+	z[1].lock().get_mut().init(FLAG_ZONE_TYPE_KERNEL, metadata_begin, frames_count as _,
 		kernel_zone_begin);
 	z[1].unlock();
 
@@ -266,7 +263,7 @@ pub fn free(ptr: *const c_void, order: FrameOrder) {
 		let frame_id = zone.get_frame_id_from_ptr(ptr);
 		debug_assert!(frame_id < zone.get_pages_count());
 		let frame = zone.get_frame(frame_id);
-		unsafe {
+		unsafe { // Dereference of raw pointer
 			(*frame).mark_free();
 			(*frame).coalesce(zone);
 		}
@@ -319,7 +316,9 @@ impl Zone {
 				continue;
 			}
 
-			let f = unsafe { &mut *self.get_frame(frame) };
+			let f = unsafe { // Dereference of raw pointer
+				&mut *self.get_frame(frame)
+			};
 			f.mark_free();
 			f.order = order;
 			f.link(self);
@@ -331,6 +330,7 @@ impl Zone {
 	/*
 	 * Initializes the zone with type `type_`. The zone covers the memory from pointer `begin` to
 	 * `begin + size` where `size` is the size in bytes.
+	 * `metadata_begin` must be a virtual address and `begin` must be a physical address.
 	 */
 	pub fn init(&mut self, type_: Flags, metadata_begin: *mut c_void, pages_count: FrameID,
 		begin: *mut c_void) {
@@ -370,11 +370,12 @@ impl Zone {
 		for i in (order as usize)..self.free_list.len() {
 			let f = self.free_list[i];
 			if let Some(f_) = f {
-				unsafe {
+				unsafe { // Dereference of raw pointer
 					debug_assert!(!(*f_).is_used());
+					debug_assert!(((*f_).get_ptr(self) as usize) >= (self.begin as usize));
+					debug_assert!(((*f_).get_ptr(self) as usize)
+						< (self.begin as usize) + self.get_size());
 				}
-				debug_assert!((f_ as usize) >= (self.begin as usize));
-				debug_assert!((f_ as usize) < (self.begin as usize) + self.get_size());
 				return Some(unsafe { &mut *f_ });
 			}
 		}
@@ -395,7 +396,7 @@ impl Zone {
 	 */
 	pub fn get_frame(&self, id: FrameID) -> *mut Frame {
 		debug_assert!(id < self.get_pages_count());
-		let off = (self.metadata_begin as usize) + (id as usize * core::mem::size_of::<Frame>());
+		let off = (self.metadata_begin as usize) + (id as usize * size_of::<Frame>());
 		off as _
 	}
 
@@ -409,6 +410,8 @@ impl Zone {
 	 */
 	#[cfg(kernel_mode = "debug")]
 	pub fn check_free_list(&self) -> bool {
+		let zone_size = (self.get_pages_count() as usize) * memory::PAGE_SIZE;
+
 		for (order, list) in self.free_list.iter().enumerate() {
 			if let Some(first) = *list {
 				let mut frame = first;
@@ -426,6 +429,18 @@ impl Zone {
 					}
 					if is_first && f.prev != id {
 						return false;
+					}
+
+					if f.get_ptr(self) < self.begin {
+						return false;
+					}
+					unsafe { // Pointer arithmetic
+						if f.get_ptr(self) >= self.begin.add(zone_size) {
+							return false;
+						}
+						if f.get_ptr(self).add(f.get_size()) > self.begin.add(zone_size) {
+							return false;
+						}
 					}
 
 					if f.next == id {
@@ -448,7 +463,7 @@ impl Frame {
 		let self_off = self as *const _ as usize;
 		let zone_off = zone.metadata_begin as *const _ as usize;
 		debug_assert!(self_off >= zone_off);
-		((self_off - zone_off) / core::mem::size_of::<Self>()) as u32
+		((self_off - zone_off) / size_of::<Self>()) as u32
 	}
 
 	/*
@@ -464,6 +479,20 @@ impl Frame {
 	 */
 	pub fn is_used(&self) -> bool {
 		(self.prev == FRAME_STATE_USED) || (self.next == FRAME_STATE_USED)
+	}
+
+	/*
+	 * Returns the order of the frame.
+	 */
+	pub fn get_order(&self) -> FrameOrder {
+		self.order
+	}
+
+	/*
+	 * Returns the size of the frame.
+	 */
+	pub fn get_size(&self) -> usize {
+		get_frame_size(self.order)
 	}
 
 	/*

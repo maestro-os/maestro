@@ -6,6 +6,7 @@
 
 use core::cmp::*;
 use core::mem::MaybeUninit;
+use core::mem::size_of;
 use crate::elf;
 use crate::memory::*;
 use crate::memory;
@@ -80,9 +81,10 @@ fn get_phys_alloc_begin(multiboot_ptr: *const c_void) -> *const c_void {
 	let multiboot_tags_end = ((multiboot_ptr as usize) + multiboot_tags_size) as *const _;
 	let mut ptr = max(multiboot_tags_end, memory::get_kernel_end());
 	let phys_elf_end = (boot_info.elf_sections as usize + boot_info.elf_num as usize
-		* core::mem::size_of::<elf::ELF32SectionHeader>()) as *const c_void;
+		* size_of::<elf::ELF32SectionHeader>()) as *const c_void;
 	ptr = max(ptr, phys_elf_end);
-	return util::align(ptr, memory::PAGE_SIZE);
+
+	util::align(ptr, memory::PAGE_SIZE)
 }
 
 /*
