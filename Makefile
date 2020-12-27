@@ -63,7 +63,7 @@ CARGOFLAGS += --tests
 endif
 
 # The Rust language compiler flags
-RUSTFLAGS = -Z macro-backtrace
+RUSTFLAGS = -Z macro-backtrace -C link-arg=-T$(LINKER) -C link-arg=-e$(ENTRY_POINT) --cfg kernel_mode=\"$(KERNEL_MODE)\"
 
 # The name of the library file for the non-Rust code. The code contained in this library is linked using the build script (build.rs)
 NON_RUST_LIB_NAME = lib$(NAME).a
@@ -128,7 +128,7 @@ all: tags $(NAME) iso
 
 # The rule to compile the kernel image
 $(NAME): $(NON_RUST_LIB_NAME) $(RUST_SRC) $(LINKER) Makefile
-	RUSTFLAGS="$(RUSTFLAGS) --cfg kernel_mode=\"$(KERNEL_MODE)\" -C link-arg=-T$(LINKER)" $(CARGO) build $(CARGOFLAGS) --target $(TARGET)
+	RUSTFLAGS="$(RUSTFLAGS)" $(CARGO) build $(CARGOFLAGS) --target $(TARGET)
 	cp $(shell ls -1 target/target/debug/deps/maestro-* | head -n 1) $@
 ifeq ($(KERNEL_MODE), release)
 	$(STRIP) $(NAME)
@@ -149,9 +149,6 @@ $(OBJ_DIR)%.s.o: $(SRC_DIR)%.s $(HDR) Makefile
 # The rule to compile C language objects
 $(OBJ_DIR)%.c.o: $(SRC_DIR)%.c $(HDR) Makefile
 	$(CC) $(CFLAGS) -I $(SRC_DIR) -c $< -o $@
-
-# Empty rule used to check if the file has been changed or not
-$(TARGET):
 
 # Alias for $(NAME).iso
 iso: $(NAME).iso

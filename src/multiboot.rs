@@ -3,6 +3,7 @@
  */
 
 use core::ffi::c_void;
+use core::mem::ManuallyDrop;
 use crate::memory::*;
 //use crate::memory;
 
@@ -233,8 +234,8 @@ struct TagFramebufferUnionF1 {
 
 #[repr(C)]
 union TagFramebufferUnion {
-	f0: TagFramebufferUnionF0,
-	f1: TagFramebufferUnionF1,
+	f0: ManuallyDrop<TagFramebufferUnionF0>,
+	f1: ManuallyDrop<TagFramebufferUnionF1>,
 }
 
 #[repr(C)]

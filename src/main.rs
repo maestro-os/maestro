@@ -1,26 +1,27 @@
+/*
+ * This file is the main source file for the kernel, but it is not the entry point of the kernel.
+ */
+
 #![no_std]
 #![no_main]
 
 #![feature(allow_internal_unstable)]
 #![feature(asm)]
-#![feature(const_fn)]
 #![feature(const_in_array_repeat_expressions)]
 #![feature(const_ptr_offset)]
 #![feature(const_raw_ptr_to_usize_cast)]
 #![feature(custom_test_frameworks)]
-#![feature(intrinsics)]
 #![feature(lang_items)]
-#![feature(llvm_asm)]
 #![feature(maybe_uninit_ref)]
-#![feature(panic_info_message)]
-#![feature(rustc_attrs)]
-#![feature(rustc_private)]
-#![feature(untagged_unions)]
 
 #![deny(warnings)]
 #![allow(dead_code)]
 #![allow(unused_macros)]
 
+/*
+ * The following attributes allow to specify the location of the custom test framework for embedded
+ * self-testing and debugging.
+ */
 #![test_runner(crate::selftest::runner)]
 #![reexport_test_harness_main = "test_main"]
 
@@ -34,6 +35,8 @@ mod multiboot;
 #[macro_use]
 mod panic;
 mod pit;
+#[macro_use]
+mod print;
 mod selftest;
 mod tty;
 #[macro_use]
@@ -65,6 +68,13 @@ mod io {
 	}
 }
 
+/*
+ * This is the main function of the Rust source code, responsible for the initialization of the
+ * kernel. When calling this function, the CPU must be in Protected Mode with the GDT loaded with
+ * space for the Task State Segment.
+ * `magic` is the magic number passed by Multiboot.
+ * `multiboot_ptr` is the pointer to the Multiboot booting informations structure.
+ */
 #[no_mangle]
 pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 	tty::init();
