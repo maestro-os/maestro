@@ -54,7 +54,7 @@ pub fn get_kernel_size() -> usize {
 #[inline(always)]
 pub fn get_kernel_end() -> *const c_void {
 	unsafe {
-		KERNEL_PHYS_BEGIN.offset(get_kernel_size() as isize)
+		((&kernel_end as *const c_void as usize) - (PROCESS_END as usize)) as _
 	}
 }
 
@@ -64,7 +64,7 @@ pub fn get_kernel_end() -> *const c_void {
 #[inline(always)]
 pub fn get_kernel_virtual_end() -> *const c_void {
 	unsafe {
-		get_kernel_virtual_begin().offset(get_kernel_size() as isize)
+		((PROCESS_END as usize) + (&kernel_end as *const _ as usize)) as _
 	}
 }
 

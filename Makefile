@@ -63,7 +63,7 @@ CARGOFLAGS += --tests
 endif
 
 # The Rust language compiler flags
-RUSTFLAGS = -Z macro-backtrace -C link-arg=-T$(LINKER) -C link-arg=-e$(ENTRY_POINT) --cfg kernel_mode=\"$(KERNEL_MODE)\"
+RUSTFLAGS = -Z macro-backtrace -C link-arg=-T$(LINKER) --cfg kernel_mode=\"$(KERNEL_MODE)\"
 
 # The name of the library file for the non-Rust code. The code contained in this library is linked using the build script (build.rs)
 NON_RUST_LIB_NAME = lib$(NAME).a

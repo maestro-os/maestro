@@ -9,6 +9,7 @@
  * size of a frame in pages.
  */
 
+use core::cmp::min;
 use core::ffi::c_void;
 use core::mem::MaybeUninit;
 use core::mem::size_of;
@@ -144,7 +145,7 @@ pub fn init() {
 	}
 
 	let mmap_info = memmap::get_info();
-	let z = unsafe {
+	let z = unsafe { // Assuming that a global variable is initialized
 		ZONES.assume_init_mut()
 	};
 
@@ -325,6 +326,9 @@ impl Zone {
 
 			frame += p;
 		}
+
+		debug_assert!(frame >= pages_count);
+		self.check_free_list();
 	}
 
 	/*
@@ -406,10 +410,10 @@ impl Zone {
 	 * have an order equal to the order of the bucket it's inserted in and must be free.
 	 * If a frame is the first of a list, it must not have a previous element.
 	 *
-	 * The function returns `true` if the free list is correct, or `false if not.
+	 * If a frame is invalid, the function shall result in the kernel panicking.
 	 */
 	#[cfg(kernel_mode = "debug")]
-	pub fn check_free_list(&self) -> bool {
+	pub fn check_free_list(&self) {
 		let zone_size = (self.get_pages_count() as usize) * memory::PAGE_SIZE;
 
 		for (order, list) in self.free_list.iter().enumerate() {
@@ -418,29 +422,22 @@ impl Zone {
 				let mut is_first = true;
 
 				loop {
-					let f = unsafe { &*frame };
+					let f = unsafe { // Dereference of raw pointer
+						&*frame
+					};
 					let id = f.get_id(self);
 
-					if f.is_used() {
-						return false;
-					}
-					if f.order != (order as _) {
-						return false;
-					}
-					if is_first && f.prev != id {
-						return false;
-					}
+					f.check_broken(self);
+					debug_assert!(!f.is_used());
+					debug_assert!(f.order == (order as _));
+					debug_assert!(!is_first || f.prev == id);
 
-					if f.get_ptr(self) < self.begin {
-						return false;
-					}
+					let frame_ptr = f.get_ptr(self);
+					debug_assert!(frame_ptr >= self.begin);
 					unsafe { // Pointer arithmetic
-						if f.get_ptr(self) >= self.begin.add(zone_size) {
-							return false;
-						}
-						if f.get_ptr(self).add(f.get_size()) > self.begin.add(zone_size) {
-							return false;
-						}
+						let zone_end = self.begin.add(zone_size);
+						debug_assert!(frame_ptr < zone_end);
+						debug_assert!(frame_ptr.add(f.get_size()) <= zone_end);
 					}
 
 					if f.next == id {
@@ -451,7 +448,6 @@ impl Zone {
 				}
 			}
 		}
-		true
 	}
 }
 
@@ -489,7 +485,14 @@ impl Frame {
 	}
 
 	/*
-	 * Returns the size of the frame.
+	 * Returns the size of the frame in pages.
+	 */
+	pub fn get_pages(&self) -> usize {
+		util::pow2(self.order) as _
+	}
+
+	/*
+	 * Returns the size of the frame in bytes.
 	 */
 	pub fn get_size(&self) -> usize {
 		get_frame_size(self.order)
@@ -512,6 +515,17 @@ impl Frame {
 	}
 
 	/*
+	 * Debug function to assert that the chunk is valid. Invalid chunk shall result in the kernel
+	 * panicking.
+	 */
+	#[cfg(kernel_mode = "debug")]
+	pub fn check_broken(&self, zone: &Zone) {
+		debug_assert!(self.prev == FRAME_STATE_USED || self.prev < zone.get_pages_count());
+		debug_assert!(self.next == FRAME_STATE_USED || self.next < zone.get_pages_count());
+		debug_assert!(self.order <= MAX_ORDER);
+	}
+
+	/*
 	 * Returns the identifier of the buddy frame in zone `zone`, taking in account the frame's
 	 * order.
 	 * The return value might be invalid and the caller has the reponsibility to check that it is
@@ -525,8 +539,9 @@ impl Frame {
 	 * Links the frame into zone `zone`'s free list.
 	 */
 	pub fn link(&mut self, zone: &mut Zone) {
+		self.check_broken(zone);
+		zone.check_free_list();
 		debug_assert!(!self.is_used());
-		debug_assert!(zone.check_free_list());
 
 		let id = self.get_id(zone);
 		self.prev = id;
@@ -540,15 +555,17 @@ impl Frame {
 		};
 		zone.free_list[self.order as usize] = Some(self);
 
-		debug_assert!(zone.check_free_list());
+		self.check_broken(zone);
+		zone.check_free_list();
 	}
 
 	/*
 	 * Unlinks the frame from zone `zone`'s free list. The frame must not be used.
 	 */
 	pub fn unlink(&mut self, zone: &mut Zone) {
+		self.check_broken(zone);
 		debug_assert!(!self.is_used());
-		debug_assert!(zone.check_free_list());
+		zone.check_free_list();
 
 		let id = self.get_id(zone);
 		let has_prev = self.prev != id;
@@ -564,19 +581,20 @@ impl Frame {
 
 		if has_prev {
 			let prev = zone.get_frame(self.prev);
-			unsafe {
+			unsafe { // Dereference of raw pointer
 				(*prev).next = if has_next { self.next } else { self.prev };
 			}
 		}
 
 		if has_next {
 			let next = zone.get_frame(self.next);
-			unsafe {
+			unsafe { // Dereference of raw pointer
 				(*next).prev = if has_prev { self.prev } else { self.next };
 			}
 		}
 
-		debug_assert!(zone.check_free_list());
+		self.check_broken(zone);
+		zone.check_free_list();
 	}
 
 	/*
@@ -587,7 +605,9 @@ impl Frame {
 	 * The frame must not be marked as used.
 	 */
 	pub fn split(&mut self, zone: &mut Zone, order: FrameOrder) {
+		self.check_broken(zone);
 		debug_assert!(!self.is_used());
+		debug_assert!(order <= MAX_ORDER);
 		debug_assert!(self.order >= order);
 
 		self.unlink(zone);
@@ -600,39 +620,61 @@ impl Frame {
 				break;
 			}
 
-			let buddy_frame = unsafe { &mut *zone.get_frame(buddy) };
-			debug_assert!(!buddy_frame.is_used());
-			buddy_frame.unlink(zone);
+			let buddy_frame = unsafe { // Dereference of raw pointer
+				&mut *zone.get_frame(buddy)
+			};
+			buddy_frame.mark_free();
 			buddy_frame.order = self.order;
 			buddy_frame.link(zone);
 		}
+
+		self.check_broken(zone);
 	}
 
 	/*
 	 * Coealesces the frame in zone `zone` with free buddy blocks recursively until no buddy is
-	 * available anymore. Buddies that are merges with the frame are unlinked. The order of the
+	 * available anymore. Buddies that are merged with the frame are unlinked. The order of the
 	 * frame is incremented at each merge. The frame is linked to the free list at the end.
 	 *
 	 * The frame must not be marked as used.
 	 */
 	pub fn coalesce(&mut self, zone: &mut Zone) {
+		self.check_broken(zone);
 		debug_assert!(!self.is_used());
 
 		while self.order < MAX_ORDER {
+			let id = self.get_id(zone);
 			let buddy = self.get_buddy_id(zone);
+			debug_assert!(buddy != self.get_id(zone));
 			if buddy >= zone.get_pages_count() {
 				break;
 			}
 
-			let buddy_frame = unsafe { &mut *zone.get_frame(buddy) };
+			let new_pages_count = util::pow2((self.order + 1) as usize) as FrameID;
+			if min(id, buddy) + new_pages_count > zone.get_pages_count() {
+				break;
+			}
+
+			let buddy_frame = unsafe { // Dereference of raw pointer
+				&mut *zone.get_frame(buddy)
+			};
+			buddy_frame.check_broken(zone);
 			if buddy_frame.order != self.order || buddy_frame.is_used() {
 				break;
 			}
 
 			buddy_frame.unlink(zone);
-			self.order += 1;
+			if id < buddy {
+				self.order += 1;
+			} else {
+				buddy_frame.order += 1;
+				buddy_frame.coalesce(zone);
+				return;
+			}
 		}
 		self.link(zone);
+
+		self.check_broken(zone);
 	}
 }
 
