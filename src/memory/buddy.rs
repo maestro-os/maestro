@@ -1,12 +1,12 @@
 /*
- * This module contains the buddy allocator which allows to allocate 2^^n pages
- * large frames of memory.
+ * This module contains the buddy allocator which allows to allocate 2^^n pages large frames of
+ * memory.
  *
- * This allocator works by dividing frames of memory in two until the a frame of
- * the required size is available.
+ * This allocator works by dividing frames of memory in two until the a frame of the required size
+ * is available.
  *
- * The order of a frame is the `n` in the expression `2^^n` that represents the
- * size of a frame in pages.
+ * The order of a frame is the `n` in the expression `2^^n` that represents the size of a frame in
+ * pages.
  */
 
 use core::cmp::min;
@@ -265,7 +265,7 @@ pub fn free(ptr: *const c_void, order: FrameOrder) {
 		debug_assert!(frame_id < zone.get_pages_count());
 		let frame = zone.get_frame(frame_id);
 		unsafe { // Dereference of raw pointer
-			(*frame).mark_free();
+			(*frame).mark_free(zone);
 			(*frame).coalesce(zone);
 		}
 		zone.allocated_pages -= util::pow2(order) as usize;
@@ -320,7 +320,7 @@ impl Zone {
 			let f = unsafe { // Dereference of raw pointer
 				&mut *self.get_frame(frame)
 			};
-			f.mark_free();
+			f.mark_free(self);
 			f.order = order;
 			f.link(self);
 
@@ -400,8 +400,7 @@ impl Zone {
 	 */
 	pub fn get_frame(&self, id: FrameID) -> *mut Frame {
 		debug_assert!(id < self.get_pages_count());
-		let off = (self.metadata_begin as usize) + (id as usize * size_of::<Frame>());
-		off as _
+		((self.metadata_begin as usize) + (id as usize * size_of::<Frame>())) as _
 	}
 
 	/*
@@ -509,9 +508,10 @@ impl Frame {
 	/*
 	 * Marks the frame as free. The frame must not be linked to any free list.
 	 */
-	pub fn mark_free(&mut self) {
-		self.prev = 0;
-		self.next = 0;
+	pub fn mark_free(&mut self, zone: &Zone) {
+		let id = self.get_id(zone);
+		self.prev = id;
+		self.next = id;
 	}
 
 	/*
@@ -623,7 +623,7 @@ impl Frame {
 			let buddy_frame = unsafe { // Dereference of raw pointer
 				&mut *zone.get_frame(buddy)
 			};
-			buddy_frame.mark_free();
+			buddy_frame.mark_free(zone);
 			buddy_frame.order = self.order;
 			buddy_frame.link(zone);
 		}
@@ -672,8 +672,9 @@ impl Frame {
 				return;
 			}
 		}
-		self.link(zone);
 
+		zone.check_free_list();
+		self.link(zone);
 		self.check_broken(zone);
 	}
 }

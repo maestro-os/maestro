@@ -13,6 +13,7 @@
 #![feature(custom_test_frameworks)]
 #![feature(lang_items)]
 #![feature(maybe_uninit_ref)]
+#![feature(panic_info_message)]
 
 #![deny(warnings)]
 #![allow(dead_code)]
