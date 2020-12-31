@@ -76,7 +76,7 @@ struct Block {
 }
 
 /*
- * Type representing a free list entry into the free lists list
+ * Type representing a free list entry into the free lists list.
  */
 type FreeList = Option<*mut LinkedList>;
 
@@ -86,16 +86,50 @@ type FreeList = Option<*mut LinkedList>;
 static mut FREE_LISTS: [FreeList; FREE_LIST_BINS] = [None; FREE_LIST_BINS];
 
 /*
+ * Checks the chunks inside of each free lists.
+ */
+#[cfg(kernel_mode = "debug")]
+fn check_free_lists() {
+	let free_lists = unsafe { // Access to global variable
+		&mut FREE_LISTS
+	};
+
+	for i in 0..FREE_LIST_BINS {
+		let c = free_lists[i];
+		if c.is_none() {
+			continue;
+		}
+
+		let mut node = c.unwrap();
+		loop {
+			let chunk = unsafe {
+				&*crate::linked_list_get!(node as *mut LinkedList, *mut FreeChunk, free_list)
+			};
+			chunk.check();
+
+			let next = unsafe { // Dereference of raw pointer
+				(*node).get_next()
+			};
+			if let Some(n) = next {
+				node = n;
+			} else {
+				break;
+			}
+		}
+	}
+}
+
+/*
  * Returns the free list for the given size `size`. If `insert` is not set, the function may return
  * a free list that contain chunks greater than the required size so that it can be split.
  */
 fn get_free_list(size: usize, insert: bool) -> Option<&'static mut FreeList> {
-	let mut i = util::log2(size / FREE_LIST_SMALLEST_SIZE);
-	if i >= FREE_LIST_BINS {
-		i = FREE_LIST_BINS - 1;
-	}
+	check_free_lists();
 
-	let free_lists = unsafe {
+	let mut i = util::log2(size / FREE_LIST_SMALLEST_SIZE);
+	i = min(i, FREE_LIST_BINS - 1);
+
+	let free_lists = unsafe { // Access to global variable
 		&mut FREE_LISTS
 	};
 
@@ -191,6 +225,7 @@ impl Chunk {
 		self.as_free_chunk()
 	}
 
+	// TODO Clean
 	/*
 	 * Tries to resize the chunk, adding `delta` bytes. A negative number of bytes results in chunk
 	 * shrinking. Returns `true` if possible, or `false` if not. If the chunk cannot be expanded,
@@ -264,7 +299,7 @@ impl FreeChunk {
 	 * block.
 	 */
 	pub fn new_first(ptr: *mut c_void, size: usize) {
-		let c = unsafe {
+		let c = unsafe { // Dereference of raw pointer
 			&mut *(ptr as *mut Self)
 		};
 		*c = Self {
@@ -310,6 +345,7 @@ impl FreeChunk {
 	 * Checks that the chunk is correct. This function uses assertions and thus is useful only in
 	 * debug mode.
 	 */
+	#[cfg(kernel_mode = "debug")]
 	pub fn check(&self) {
 		debug_assert!(!self.chunk.is_used());
 
@@ -317,7 +353,11 @@ impl FreeChunk {
 			let p = unsafe {
 				&*crate::linked_list_get!(prev as *mut LinkedList, *mut Chunk, list)
 			};
-			let len = if p.is_used() { size_of::<Chunk>() } else { size_of::<FreeChunk>() };
+			let len = if p.is_used() {
+				size_of::<Chunk>()
+			} else {
+				size_of::<FreeChunk>()
+			};
 			debug_assert!((p as *const Chunk as usize) + len <= (self as *const Self as usize));
 		}
 
@@ -348,6 +388,7 @@ impl FreeChunk {
 		self.check();
 		debug_assert!(self.get_size() >= size);
 
+		self.free_list_remove();
 		self.chunk.flags |= CHUNK_FLAG_USED;
 
 		if self.can_split(size) {
@@ -373,16 +414,26 @@ impl FreeChunk {
 	 * Inserts the chunk into the appropriate free list.
 	 */
 	pub fn free_list_insert(&mut self) {
+		self.check();
+		check_free_lists();
+
 		let free_list = get_free_list(self.get_size(), true).unwrap();
 		self.free_list.insert_front(free_list);
+
+		check_free_lists();
 	}
 
 	/*
 	 * Removes the chunk from its free list.
 	 */
 	pub fn free_list_remove(&mut self) {
-		let free_list = get_free_list(self.get_size(), false).unwrap();
+		self.check();
+		check_free_lists();
+
+		let free_list = get_free_list(self.get_size(), true).unwrap();
 		self.free_list.unlink(free_list);
+
+		check_free_lists();
 	}
 }
 
@@ -395,9 +446,12 @@ impl Block {
 		let total_min_size = size_of::<Block>() + min_size;
 		let order = buddy::get_order(util::ceil_division(total_min_size, PAGE_SIZE));
 		let first_chunk_size = buddy::get_frame_size(order) - size_of::<Block>();
+		debug_assert!(first_chunk_size >= min_size);
 
 		let ptr = buddy::alloc_kernel(order)?;
-		let block = unsafe { &mut *(ptr as *mut Block) };
+		let block = unsafe { // Dereference of raw pointer
+			&mut *(ptr as *mut Block)
+		};
 		*block = Self {
 			list: LinkedList::new_single(),
 			order: order,
@@ -576,5 +630,5 @@ mod test {
 		}
 	}
 
-	// TODO
+	// TODO Test realloc
 }

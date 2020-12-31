@@ -201,6 +201,9 @@ impl LinkedList {
 		}
 	}
 
+	/*
+	 * Unlinks the current node from the linked list with front `front`.
+	 */
 	pub fn unlink(&mut self, front: &mut Option<*mut LinkedList>) {
 		if front.is_some() && front.unwrap() == self {
 			*front = self.next;

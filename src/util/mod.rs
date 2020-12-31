@@ -70,31 +70,30 @@ pub fn ceil_division<T>(n0: T, n1: T) -> T
 
 /*
  * Computes 2^^n on unsigned integers (where `^^` is an exponent).
+ * The behaviour is undefined for n < 0.
  */
 #[inline(always)]
-pub fn pow2<T>(n: T) -> T where T: From<u8> + core::ops::Shl<Output = T> {
+pub fn pow2<T>(n: T) -> T
+	where T: From<u8>
+		+ core::ops::Shl<Output = T> {
 	T::from(1) << n
 }
 
-// TODO Use a generic argument
 /*
- * Computes floor(log2(n)) without on unsigned integers.
+ * Computes floor(log2(n)) on unsigned integers without using floating-point numbers.
+ * Because the logarithm is undefined for n <= 0, the function returns `0` in this case.
  */
 #[inline(always)]
-pub fn log2(n: usize) -> usize {
-	if n == 0 {
-		return 1;
+pub fn log2<T>(n: T) -> T
+	where T: From<usize>
+		+ Into<usize>
+		+ core::cmp::PartialOrd
+		+ core::ops::Sub<Output = T> {
+	if n > T::from(0) {
+		T::from(bit_size_of::<T>()) - T::from(n.into().leading_zeros() as _) - T::from(1)
+	} else {
+		T::from(0)
 	}
-	(bit_size_of::<usize>() as usize) - (n.leading_zeros() as usize) - 1
-}
-
-// TODO Use a generic argument
-/*
- * Computes the square root of an integer.
- */
-#[inline(always)]
-pub fn sqrt(n: usize) -> usize {
-	pow2(log2(n) / 2)
 }
 
 /*
@@ -175,4 +174,22 @@ pub unsafe fn ptr_to_str(ptr: *const c_void) -> &'static str {
 	let len = strlen(ptr);
 	let slice = core::slice::from_raw_parts(ptr as *const u8, len);
 	core::str::from_utf8_unchecked(slice)
+}
+
+#[cfg(test)]
+mod test {
+	use super::*;
+
+	#[test_case]
+	fn log2_0() {
+		debug_assert!(log2(0) == 0);
+		//debug_assert!(log2(-1) == 0);
+	}
+
+	#[test_case]
+	fn log2_1() {
+		for i in 1..bit_size_of::<usize>() {
+			debug_assert!(log2(pow2(i)) == i);
+		}
+	}
 }
