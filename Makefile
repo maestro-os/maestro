@@ -27,6 +27,11 @@ KERNEL_MODE ?= debug
 # environement variable with the same name
 KERNEL_TEST ?= false
 
+# Forcing the KERNEL_TEST option to `false` if building in release mode
+ifeq ($(KERNEL_MODE), release)
+KERNEL_TEST = false
+endif
+
 # Current directory
 PWD := $(shell pwd)
 

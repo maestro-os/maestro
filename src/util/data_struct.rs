@@ -231,11 +231,11 @@ impl LinkedList {
 	}
 }
 
-impl Drop for LinkedList {
+/*impl Drop for LinkedList {
 	fn drop(&mut self) {
 		self.unlink_floating();
 	}
-}
+}*/
 
 // TODO Binary tree
 

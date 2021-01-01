@@ -134,6 +134,8 @@ fn get_free_list(size: usize, insert: bool) -> Option<&'static mut FreeList> {
 	};
 
 	if !insert {
+		i += 1;
+
 		while i < FREE_LIST_BINS && free_lists[i].is_none() {
 			i += 1;
 		}
@@ -144,6 +146,13 @@ fn get_free_list(size: usize, insert: bool) -> Option<&'static mut FreeList> {
 	}
 
 	Some(&mut free_lists[i])
+}
+
+/*
+ * Returns the minimum data size for a chunk.
+ */
+fn get_min_chunk_size() -> usize {
+	max(size_of::<FreeChunk>() - size_of::<Chunk>(), FREE_CHUNK_MIN)
 }
 
 impl Chunk {
@@ -175,6 +184,42 @@ impl Chunk {
 	 */
 	pub fn get_size(&self) -> usize {
 		self.size
+	}
+
+	/*
+	 * Checks that the chunk is correct. This function uses assertions and thus is useful only in
+	 * debug mode.
+	 */
+	#[cfg(kernel_mode = "debug")]
+	pub fn check(&self) {
+		debug_assert!(self as *const _ as *const c_void >= crate::memory::PROCESS_END);
+		debug_assert!(self.get_size() >= get_min_chunk_size());
+
+		if !self.is_used() {
+			// TODO Check adjacent free list elements?
+		}
+
+		if let Some(prev) = self.list.get_prev() {
+			let p = unsafe {
+				&*crate::linked_list_get!(prev as *mut LinkedList, *mut Chunk, list)
+			};
+			debug_assert!(p as *const _ as *const c_void >= crate::memory::PROCESS_END);
+			debug_assert!(p.get_size() >= get_min_chunk_size());
+
+			let len = size_of::<Chunk>() + p.get_size();
+			debug_assert!((p as *const Self as usize) + len <= (self as *const Self as usize));
+		}
+
+		if let Some(next) = self.list.get_next() {
+			let n = unsafe {
+				&*crate::linked_list_get!(next as *mut LinkedList, *mut Chunk, list)
+			};
+			debug_assert!(n as *const _ as *const c_void >= crate::memory::PROCESS_END);
+			debug_assert!(n.get_size() >= get_min_chunk_size());
+
+			let len = size_of::<Chunk>() + self.get_size();
+			debug_assert!((self as *const Self as usize) + len <= (n as *const Self as usize));
+		}
 	}
 
 	/*
@@ -296,7 +341,7 @@ impl Chunk {
 impl FreeChunk {
 	/*
 	 * Creates a new free with the given size `size` in bytes, meant to be the first chunk of a
-	 * block.
+	 * block. The chunk is **not** inserted into the free list.
 	 */
 	pub fn new_first(ptr: *mut c_void, size: usize) {
 		let c = unsafe { // Dereference of raw pointer
@@ -310,7 +355,6 @@ impl FreeChunk {
 			},
 			free_list: LinkedList::new_single(),
 		};
-		c.free_list_insert();
 	}
 
 	/*
@@ -348,34 +392,15 @@ impl FreeChunk {
 	#[cfg(kernel_mode = "debug")]
 	pub fn check(&self) {
 		debug_assert!(!self.chunk.is_used());
-
-		if let Some(prev) = self.chunk.list.get_prev() {
-			let p = unsafe {
-				&*crate::linked_list_get!(prev as *mut LinkedList, *mut Chunk, list)
-			};
-			let len = if p.is_used() {
-				size_of::<Chunk>()
-			} else {
-				size_of::<FreeChunk>()
-			};
-			debug_assert!((p as *const Chunk as usize) + len <= (self as *const Self as usize));
-		}
-
-		if let Some(next) = self.chunk.list.get_next() {
-			let n = unsafe {
-				&*crate::linked_list_get!(next as *mut LinkedList, *mut Chunk, list)
-			};
-			debug_assert!((self as *const Self as usize) + size_of::<FreeChunk>()
-				<= (n as *const Chunk as usize));
-		}
+		self.chunk.check();
 	}
 
 	/*
 	 * Tells whether the chunk can be split for the given size `size`.
 	 */
 	fn can_split(&self, size: usize) -> bool {
-		let min_data_size = max(size_of::<FreeChunk>() - size_of::<Chunk>(), FREE_CHUNK_MIN);
-		self.get_size() >= size + size_of::<Chunk>() + min_data_size
+		let min_data_size = get_min_chunk_size();
+		self.get_size() >= max(size, min_data_size) + size_of::<Chunk>() + min_data_size
 	}
 
 	// TODO Fix the fact that this function makes the current object invalid and thus the inner
@@ -392,19 +417,22 @@ impl FreeChunk {
 		self.chunk.flags |= CHUNK_FLAG_USED;
 
 		if self.can_split(size) {
-			let curr_len = size_of::<Chunk>() + size;
-			let next_off = (self as *mut Self as usize) + curr_len;
+			let min_data_size = get_min_chunk_size();
+			let curr_data_size = max(size, min_data_size);
+			let curr_size = size_of::<Chunk>() + curr_data_size;
+
+			let next_off = (self as *mut Self as usize) + curr_size;
 			let next = unsafe {
 				&mut *(next_off as *mut FreeChunk)
 			};
 
-			*next = FreeChunk::new(self.get_size() - curr_len);
+			*next = FreeChunk::new(self.get_size() - curr_size);
 			next.check();
 			next.free_list_insert();
 			next.chunk.list.insert_after(&mut self.chunk.list);
 			debug_assert!(!next.chunk.list.is_single());
 
-			self.chunk.size = size;
+			self.chunk.size = curr_data_size;
 		}
 
 		&mut self.chunk
@@ -441,6 +469,7 @@ impl Block {
 	/*
 	 * Allocates a new block of memory with the minimum available size `min_size` in bytes.
 	 * The buddy allocator must be initialized before using this function.
+	 * The underlying chunk created by this function is **not** inserted into the free list.
 	 */
 	fn new(min_size: usize) -> Result<&'static mut Self, ()> {
 		let total_min_size = size_of::<Block>() + min_size;
@@ -449,6 +478,7 @@ impl Block {
 		debug_assert!(first_chunk_size >= min_size);
 
 		let ptr = buddy::alloc_kernel(order)?;
+		debug_assert!(ptr as *const _ >= crate::memory::PROCESS_END);
 		let block = unsafe { // Dereference of raw pointer
 			&mut *(ptr as *mut Block)
 		};
@@ -483,32 +513,43 @@ impl Block {
 	}
 }
 
+/*
+ * Returns a reference to a free chunk suitable for an allocation of given size `size`.
+ * On success, the return value MUST be used or might result in a memory leak.
+ */
+fn get_available_chunk(size: usize) -> Result<&'static mut FreeChunk, ()> {
+	let f = get_free_list(size, false);
+	let chunk = {
+		if f.is_some() {
+			let free_list = f.unwrap();
+			let chunk_node = unsafe {
+				&mut *free_list.unwrap()
+			};
+
+			unsafe {
+				&mut *crate::linked_list_get!(chunk_node, *mut FreeChunk, free_list)
+			}
+		} else {
+			let block = Block::new(size)?;
+			unsafe { // Dereference of raw pointer
+				&mut *(&mut block.first_chunk as *mut _ as *mut FreeChunk)
+			}
+		}
+	};
+
+	chunk.check();
+	debug_assert!(chunk.get_size() >= size);
+
+	Ok(chunk)
+}
+
 // TODO Mutex
 /*
  * Allocates `n` bytes of kernel memory and returns a pointer to the beginning of the allocated
  * chunk. If the allocation fails, the function shall return an error.
  */
 pub fn alloc(n: usize) -> Result<*mut c_void, ()> {
-	let mut f = get_free_list(n, false);
-	if f.is_none() {
-		if Block::new(n).is_err() {
-			return Err(());
-		}
-
-		f = get_free_list(n, false);
-		debug_assert!(f.is_some());
-	}
-
-	let free_list = f.unwrap();
-	let chunk_node = unsafe {
-		&mut *free_list.unwrap()
-	};
-	let chunk = unsafe {
-		&mut *crate::linked_list_get!(chunk_node, *mut FreeChunk, free_list)
-	};
-	chunk.check();
-	debug_assert!(chunk.get_size() >= n);
-
+	let chunk = get_available_chunk(n)?;
 	let c = chunk.split(n);
 	debug_assert!(c.get_size() >= n);
 	debug_assert!(c.is_used());
@@ -605,29 +646,34 @@ mod test {
 	fn alloc_free_heap() {
 		let mut ptrs: [*mut c_void; 1024] = [0 as _; 1024];
 
-		for i in 0..1024 {
+		for i in 0..ptrs.len() {
 			let size = i + 1;
-			if let Ok(ptr) = alloc(size) {
-				unsafe {
-					util::memset(ptr, -1, size);
-				}
-				ptrs[i] = ptr;
-			} else {
-				assert!(false);
+			let ptr = alloc(size).unwrap();
+			unsafe {
+				util::memset(ptr, -1, size);
+			}
+			ptrs[i] = ptr;
+		}
+
+		for i in 0..ptrs.len() {
+			for j in (i + 1)..ptrs.len() {
+				assert!(ptrs[j] != ptrs[i]);
 			}
 		}
 
-		for i in 0..1024 {
-			for j in (i + 1)..1024 {
-				if ptrs[j] == ptrs[i] {
-					assert!(false);
-				}
-			}
-		}
-
-		for i in 0..1024 {
+		for i in 0..ptrs.len() {
 			free(ptrs[i]);
 		}
+	}
+
+	#[test_case]
+	fn free0() {
+		let ptr0 = alloc(16).unwrap();
+		free(ptr0);
+		let ptr1 = alloc(16).unwrap();
+		free(ptr1);
+
+		debug_assert!(ptr0 == ptr1);
 	}
 
 	// TODO Test realloc

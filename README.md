@@ -18,7 +18,7 @@ Typing `make` will generate a binary and an ISO file.
 Some environement variables can be used to customize the compilation of the kernel. The list is the following:
 - **KERNEL_ARCH** (default: `x86`): Specify the platform for which the kernel will be compiled. The list of available platform is located in the `arch/` directory.
 - **KERNEL_MODE** (default: `debug`): The mode of the kernel. Either `debug` or `release`.
-- **KERNEL_TEST** (default: `false`): Tells whether self-testing is enabled or not for the kernel.
+- **KERNEL_TEST** (default: `false`): Tells whether self-testing is enabled or not for the kernel. If the kernel is built in release mode, this option is forced to `false`.
 
 
 
