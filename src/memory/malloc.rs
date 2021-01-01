@@ -556,6 +556,19 @@ pub fn alloc(n: usize) -> Result<*mut c_void, ()> {
 	Ok(c.get_ptr())
 }
 
+/*
+ * Returns the size of the given memory allocation in bytes.
+ * The pointer `ptr` MUST point to the beginning of a valid, used chunk of memory.
+ */
+pub fn get_size(ptr: *mut c_void) -> usize {
+	let chunk = unsafe { // Call to unsafe function
+		Chunk::from_ptr(ptr)
+	};
+	chunk.check();
+	debug_assert!(chunk.is_used());
+	chunk.get_size()
+}
+
 // TODO Mutex
 /*
  * Changes the size of the memory previously allocated with `alloc`. `ptr` is the pointer to the
@@ -666,6 +679,11 @@ mod test {
 		}
 	}
 
+	// TODO More tests on alloc
+
+	// TODO Test get_size
+	// TODO Test realloc
+
 	#[test_case]
 	fn free0() {
 		let ptr0 = alloc(16).unwrap();
@@ -676,5 +694,5 @@ mod test {
 		debug_assert!(ptr0 == ptr1);
 	}
 
-	// TODO Test realloc
+	// TODO More tests on free
 }
