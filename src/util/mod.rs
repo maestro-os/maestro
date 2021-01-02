@@ -1,11 +1,16 @@
 /*
- * This module contains utilities used everywhere in the kernel. All the features here are
- * guaranteed to not require memory allocators.
+ * This module contains utilities used everywhere in the kernel.
+ * All the features here are guaranteed to not require memory allocators except for containers.
+ *
+ * Data structures and containers are considered two separated things:
+ * - Data structures do not require memory allocations
+ * - Containers require memory allocations
  */
 
 use core::ffi::c_void;
 use crate::memory;
 
+pub mod container;
 pub mod data_struct;
 pub mod lock;
 

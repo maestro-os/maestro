@@ -1,5 +1,6 @@
 /*
- * This files handles data structures used into the kernel.
+ * This files implements data structures.
+ * Data structures present in this files are guaranteed to not require any memory allocations.
  */
 
 /*

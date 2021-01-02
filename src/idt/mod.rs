@@ -76,11 +76,11 @@ macro_rules! hlt {
 /*
  * The IDT vector index for system calls.
  */
-const SYSCALL_VECTOR: u8 = 0x80;
+pub const SYSCALL_VECTOR: u8 = 0x80;
 /*
  * The number of entries into the IDT.
  */
-const ENTRIES_COUNT: u8 = 0x81;
+pub const ENTRIES_COUNT: u8 = 0x81;
 
 /*
  * Structure representing the IDT.
