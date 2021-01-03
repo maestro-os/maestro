@@ -105,12 +105,11 @@ pub fn register_callback<T>(id: u8, priority: u32, callback: T) -> Result<&mut T
 		return Err(());
 	}
 
-	let wrapper = CallbackWrapper {
+	CALLBACKS[id as _].push(CallbackWrapper {
 		priority: priority,
 		callback: Box::new(&callback)?,
-	};
-	CALLBACKS[id as _].push(wrapper);
-	Ok(wrapper.callback.unwrap())
+	});
+	Ok(CALLBACKS[id as _].last())
 }
 
 // TODO Callback unregister

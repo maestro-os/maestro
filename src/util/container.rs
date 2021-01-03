@@ -4,6 +4,8 @@
 
 use core::cmp::max;
 use core::mem::size_of_val;
+use core::ops::Index;
+use core::ops::IndexMut;
 use crate::memory::malloc;
 use crate::util;
 
@@ -88,6 +90,20 @@ impl<T> Vec<T> {
 	}
 
 	/*
+	 * Returns the first element of the vector.
+	 */
+	pub fn first(&mut self) -> T {
+		self[0]
+	}
+
+	/*
+	 * Returns the first element of the vector.
+	 */
+	pub fn last(&mut self) -> T {
+		self[self.len - 1]
+	}
+
+	/*
 	 * Inserts an element at position index within the vector, shifting all elements after it to
 	 * the right.
 	 */
@@ -148,6 +164,26 @@ impl<T> Vec<T> {
 	}
 }
 
+impl<T> Index<usize> for Vec<T> {
+	type Output = T;
+
+    #[inline]
+    fn index(&self, index: usize) -> &Self::Output {
+		unsafe { // Dereference of raw pointer
+			&*self.data.unwrap().offset(index as _)
+		}
+    }
+}
+
+impl<T> IndexMut<usize> for Vec<T> {
+    #[inline]
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+		unsafe { // Dereference of raw pointer
+			&mut *self.data.unwrap().offset(index as _)
+		}
+    }
+}
+
 impl<T> Drop for Vec<T> {
 	fn drop(&mut self) {
 		self.clear();
@@ -185,7 +221,7 @@ impl<T> Box<T> where T: ?Sized {
 
 impl<T> Drop for Box<T> where T: ?Sized {
 	fn drop(&mut self) {
-		// TODO Free object
+		malloc::free(self.ptr as _);
 	}
 }
 
