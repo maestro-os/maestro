@@ -3,7 +3,9 @@
  */
 
 use core::cmp::max;
+use core::ffi::c_void;
 use core::mem::size_of_val;
+use core::mem::transmute;
 use core::ops::Index;
 use core::ops::IndexMut;
 use crate::memory::malloc;
@@ -127,9 +129,9 @@ impl<T> Vec<T> {
 	/*
 	 * Appends an element to the back of a collection.
 	 */
-	/*pub fn push(&mut self, value: T) {
+	pub fn push(&mut self, value: T) {
 		// TODO
-	}*/
+	}
 
 	/*
 	 * Removes the last element from a vector and returns it, or None if it is empty.
@@ -203,7 +205,7 @@ impl<T> Box<T> where T: ?Sized {
 	pub fn new(value: &T) -> Result<Box::<T>, ()> {
 		let size = size_of_val(value);
 		let mut b = Self {
-			ptr: malloc::alloc(size)? as _,
+			ptr: transmute::<*mut c_void, *mut T>(malloc::alloc(size)?),
 		};
 		unsafe { // Call to C function
 			util::memcpy(b.ptr as _, value as *const _ as *const _, size);

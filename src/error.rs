@@ -99,17 +99,17 @@ static mut CALLBACKS: [Vec::<CallbackWrapper>; idt::ENTRIES_COUNT as _]
  *
  * If the `id` is invalid or if an allocation fails, the function shall return an error.
  */
-pub fn register_callback<T>(id: u8, priority: u32, callback: T) -> Result<&mut T, ()>
+pub fn register_callback<T>(id: u8, priority: u32, callback: T) -> Result<(), ()>
 	where T: InterruptCallback {
 	if id >= idt::ENTRIES_COUNT {
 		return Err(());
 	}
 
-	CALLBACKS[id as _].push(CallbackWrapper {
+	CALLBACKS[id as usize].push(CallbackWrapper {
 		priority: priority,
 		callback: Box::new(&callback)?,
 	});
-	Ok(CALLBACKS[id as _].last())
+	Ok(())
 }
 
 // TODO Callback unregister
