@@ -1,13 +1,11 @@
-/*
- * This module contains the buddy allocator which allows to allocate 2^^n pages large frames of
- * memory.
- *
- * This allocator works by dividing frames of memory in two until the a frame of the required size
- * is available.
- *
- * The order of a frame is the `n` in the expression `2^^n` that represents the size of a frame in
- * pages.
- */
+/// This module contains the buddy allocator which allows to allocate 2^^n pages large frames of
+/// memory.
+/// 
+/// This allocator works by dividing frames of memory in two until the a frame of the required size
+/// is available.
+/// 
+/// The order of a frame is the `n` in the expression `2^^n` that represents the size of a frame in
+/// pages.
 
 use core::cmp::min;
 use core::ffi::c_void;
@@ -19,112 +17,80 @@ use crate::util::lock::Mutex;
 use crate::util::lock::MutexGuard;
 use crate::util;
 
-/*
- * Type representing the order of a memory frame.
- */
+/// Type representing the order of a memory frame.
 pub type FrameOrder = u8;
-/*
- * Type representing buddy allocator flags.
- */
+/// Type representing buddy allocator flags.
 pub type Flags = i32;
-/*
- * Type representing the identifier of a frame.
- */
+/// Type representing the identifier of a frame.
 type FrameID = u32;
 
-/*
- * The maximum order of a buddy allocated frame.
- */
+/// The maximum order of a buddy allocated frame.
 pub const MAX_ORDER: FrameOrder = 17;
 
-/*
- * The mask for the type of the zone in buddy allocator flags.
- */
+/// The mask for the type of the zone in buddy allocator flags.
 const ZONE_TYPE_MASK: Flags = 0b11;
-/*
- * Buddy allocator flag. Tells that the allocated frame must be mapped into the user zone.
- */
+/// Buddy allocator flag. Tells that the allocated frame must be mapped into the user zone.
 pub const FLAG_ZONE_TYPE_USER: Flags = 0b000;
-/*
- * Buddy allocator flag. Tells that the allocated frame must be mapped into the kernel zone.
- */
+/// Buddy allocator flag. Tells that the allocated frame must be mapped into the kernel zone.
 pub const FLAG_ZONE_TYPE_KERNEL: Flags = 0b001;
-/*
- * Buddy allocator flag. Tells that the allocated frame must be mapped into the DMA zone.
- */
+/// Buddy allocator flag. Tells that the allocated frame must be mapped into the DMA zone.
 pub const FLAG_ZONE_TYPE_DMA: Flags = 0b010;
-/*
- * Buddy allocator flag. Tells that the allocation shall not fail (unless not enough memory is
- * present on the system). This flag is ignored if FLAG_USER is not specified or if the allocation
- * order is higher than 0. The allocator shall use the OOM killer to recover memory.
- */
+/// Buddy allocator flag. Tells that the allocation shall not fail (unless not enough memory is
+/// present on the system). This flag is ignored if FLAG_USER is not specified or if the allocation
+/// order is higher than 0. The allocator shall use the OOM killer to recover memory.
 pub const FLAG_NOFAIL: Flags = 0b100;
 
-/*
- * Pointer to the end of the kernel zone of memory with the maximum possible size.
- */
+/// Pointer to the end of the kernel zone of memory with the maximum possible size.
 pub const KERNEL_ZONE_LIMIT: *const c_void = 0x40000000 as _;
 
-/*
- * Value indicating that the frame is used.
- */
+/// Value indicating that the frame is used.
 pub const FRAME_STATE_USED: FrameID = !(0 as FrameID);
 
 // TODO OOM killer
 
-/*
- * Structure representing an allocatable zone of memory.
- */
+/// Structure representing an allocatable zone of memory.
 struct Zone {
-	/* The type of the zone, defining the priority */
+	/// The type of the zone, defining the priority 
 	type_: Flags,
-	/* The number of allocated pages in the zone */
+	/// The number of allocated pages in the zone 
 	allocated_pages: usize,
 
-	/* A pointer to the beginning of the metadata of the zone */
+	/// A pointer to the beginning of the metadata of the zone 
 	metadata_begin: *mut c_void,
-	/* A pointer to the beginning of the allocatable memory of the zone */
+	/// A pointer to the beginning of the allocatable memory of the zone 
 	begin: *mut c_void,
-	/* The size of the zone in bytes */
+	/// The size of the zone in bytes 
 	pages_count: FrameID,
 
-	/* The free list containing linked lists to free frames */
+	/// The free list containing linked lists to free frames 
 	free_list: [Option<*mut Frame>; (MAX_ORDER + 1) as usize],
 }
 
-/*
- * Structure representing the metadata for a frame of physical memory. The structure has an
- * internal linked list for the free list. This linked list doesn't store pointers but frame
- * identifiers to save memory. If either `prev` or `next` has value `FRAME_STATE_USED`, the frame
- * is marked as used. If a frame points to itself, it means that no more elements are present in
- * the list.
- */
+/// Structure representing the metadata for a frame of physical memory. The structure has an
+/// internal linked list for the free list. This linked list doesn't store pointers but frame
+/// identifiers to save memory. If either `prev` or `next` has value `FRAME_STATE_USED`, the frame
+/// is marked as used. If a frame points to itself, it means that no more elements are present in
+/// the list.
 #[repr(packed)]
 struct Frame {
-	/* Identifier of the previous frame in the free list. */
+	/// Identifier of the previous frame in the free list. 
 	prev: FrameID,
-	/* Identifier of the next frame in the free list. */
+	/// Identifier of the next frame in the free list. 
 	next: FrameID,
-	/* Order of the current frame */
+	/// Order of the current frame 
 	order: FrameOrder,
 }
 
 // TODO Remplace by a linked list? (in case of holes in memory)
-/*
- * The array of buddy allocator zones.
- */
+/// The array of buddy allocator zones.
 static mut ZONES: MaybeUninit<[Mutex<Zone>; 3]> = MaybeUninit::uninit();
 
-/*
- * The size in bytes of a frame allocated by the buddy allocator with the given `order`.
- */
+/// The size in bytes of a frame allocated by the buddy allocator with the given `order`.
 pub fn get_frame_size(order: FrameOrder) -> usize {
 	memory::PAGE_SIZE << order
 }
 
-/*
- * Returns the buddy order required to fit the given number of pages.
- */
+/// Returns the buddy order required to fit the given number of pages.
 pub fn get_order(pages: usize) -> FrameOrder {
 	let mut order: FrameOrder = 0;
 	let mut i = 1;
@@ -136,9 +102,7 @@ pub fn get_order(pages: usize) -> FrameOrder {
 	order
 }
 
-/*
- * Initializes the buddy allocator.
- */
+/// Initializes the buddy allocator.
 pub fn init() {
 	unsafe {
 		util::zero_object(&mut ZONES);
@@ -174,9 +138,7 @@ pub fn init() {
 }
 
 // TODO Allow to fallback to another zone if the one that is returned is full
-/*
- * Returns a mutable reference to a zone suitable for an allocation with the given type `type_`.
- */
+/// Returns a mutable reference to a zone suitable for an allocation with the given type `type_`.
 fn get_suitable_zone(type_: Flags) -> Option<&'static mut Mutex<Zone>> {
 	let zones = unsafe { ZONES.assume_init_mut() };
 
@@ -193,9 +155,7 @@ fn get_suitable_zone(type_: Flags) -> Option<&'static mut Mutex<Zone>> {
 	None
 }
 
-/*
- * Returns a mutable reference to the zone that contains the given pointer.
- */
+/// Returns a mutable reference to the zone that contains the given pointer.
 fn get_zone_for_pointer(ptr: *const c_void) -> Option<&'static mut Mutex<Zone>> {
 	let zones = unsafe { ZONES.assume_init_mut() };
 
@@ -212,11 +172,9 @@ fn get_zone_for_pointer(ptr: *const c_void) -> Option<&'static mut Mutex<Zone>> 
 	None
 }
 
-/*
- * Allocates a frame of memory using the buddy allocator. `order` is the order of the frame to be
- * allocated.
- * TODO document flags
- */
+/// Allocates a frame of memory using the buddy allocator. `order` is the order of the frame to be
+/// allocated.
+/// TODO document flags
 pub fn alloc(order: FrameOrder, flags: Flags) -> Result<*mut c_void, ()> {
 	debug_assert!(order <= MAX_ORDER);
 
@@ -240,18 +198,14 @@ pub fn alloc(order: FrameOrder, flags: Flags) -> Result<*mut c_void, ()> {
 	Err(())
 }
 
-/*
- * Calls `alloc` with order `order`. The allocated frame is in the kernel zone.
- * The function returns the *virtual* address, not the physical one.
- */
+/// Calls `alloc` with order `order`. The allocated frame is in the kernel zone.
+/// The function returns the *virtual* address, not the physical one.
 pub fn alloc_kernel(order: FrameOrder) -> Result<*mut c_void, ()> {
 	Ok(memory::kern_to_virt(alloc(order, FLAG_ZONE_TYPE_KERNEL)?) as _)
 }
 
-/*
- * Frees the given memory frame that was allocated using the buddy allocator. The given order must
- * be the same as the one given to allocate the frame.
- */
+/// Frees the given memory frame that was allocated using the buddy allocator. The given order must
+/// be the same as the one given to allocate the frame.
 pub fn free(ptr: *const c_void, order: FrameOrder) {
 	debug_assert!(util::is_aligned(ptr, memory::PAGE_SIZE));
 	debug_assert!(order <= MAX_ORDER);
@@ -274,17 +228,13 @@ pub fn free(ptr: *const c_void, order: FrameOrder) {
 	}
 }
 
-/*
- * Frees the given memory frame. `ptr` is the *virtual* address to the beginning of the frame and
- * and `order` is the order of the frame.
- */
+/// Frees the given memory frame. `ptr` is the *virtual* address to the beginning of the frame and
+/// and `order` is the order of the frame.
 pub fn free_kernel(ptr: *const c_void, order: FrameOrder) {
 	free(memory::kern_to_phys(ptr), order);
 }
 
-/*
- * Returns the total number of pages allocated by the buddy allocator.
- */
+/// Returns the total number of pages allocated by the buddy allocator.
 pub fn allocated_pages_count() -> usize {
 	let mut n = 0;
 
@@ -299,9 +249,7 @@ pub fn allocated_pages_count() -> usize {
 }
 
 impl Zone {
-	/*
-	 * Fills the free list during initialization according to the number of available pages.
-	 */
+	/// Fills the free list during initialization according to the number of available pages.
 	fn fill_free_list(&mut self) {
 		let pages_count = self.get_pages_count();
 		let mut frame: FrameID = 0;
@@ -331,11 +279,9 @@ impl Zone {
 		self.check_free_list();
 	}
 
-	/*
-	 * Initializes the zone with type `type_`. The zone covers the memory from pointer `begin` to
-	 * `begin + size` where `size` is the size in bytes.
-	 * `metadata_begin` must be a virtual address and `begin` must be a physical address.
-	 */
+	/// Initializes the zone with type `type_`. The zone covers the memory from pointer `begin` to
+	/// `begin + size` where `size` is the size in bytes.
+	/// `metadata_begin` must be a virtual address and `begin` must be a physical address.
 	pub fn init(&mut self, type_: Flags, metadata_begin: *mut c_void, pages_count: FrameID,
 		begin: *mut c_void) {
 		self.type_ = type_;
@@ -346,30 +292,22 @@ impl Zone {
 		self.fill_free_list();
 	}
 
-	/*
-	 * Returns the number of allocated pages in the current zone of memory.
-	 */
+	/// Returns the number of allocated pages in the current zone of memory.
 	pub fn get_allocated_pages(&self) -> usize {
 		self.allocated_pages
 	}
 
-	/*
-	 * Returns the number of allocatable pages.
-	 */
+	/// Returns the number of allocatable pages.
 	pub fn get_pages_count(&self) -> FrameID {
 		self.pages_count
 	}
 
-	/*
-	 * Returns the size in bytes of the allocatable memory.
-	 */
+	/// Returns the size in bytes of the allocatable memory.
 	pub fn get_size(&self) -> usize {
 		(self.pages_count as usize) * memory::PAGE_SIZE
 	}
 
-	/*
-	 * Returns an available frame owned by this zone, with an order of at least `order`.
-	 */
+	/// Returns an available frame owned by this zone, with an order of at least `order`.
 	pub fn get_available_frame(&self, order: FrameOrder) -> Option<&'static mut Frame> {
 		for i in (order as usize)..self.free_list.len() {
 			let f = self.free_list[i];
@@ -386,31 +324,25 @@ impl Zone {
 		None
 	}
 
-	/*
-	 * Returns the identifier for the frame at the given pointer `ptr`. The pointer must point to
-	 * the frame itself, not the Frame structure.
-	 */
+	/// Returns the identifier for the frame at the given pointer `ptr`. The pointer must point to
+	/// the frame itself, not the Frame structure.
 	pub fn get_frame_id_from_ptr(&self, ptr: *const c_void) -> FrameID {
 		(((ptr as usize) - (self.begin as usize)) / memory::PAGE_SIZE) as _
 	}
 
-	/*
-	 * Returns a mutable reference to the frame with the given identifier `id`.
-	 * The given identifier **must** be in the range of the zone.
-	 */
+	/// Returns a mutable reference to the frame with the given identifier `id`.
+	/// The given identifier **must** be in the range of the zone.
 	pub fn get_frame(&self, id: FrameID) -> *mut Frame {
 		debug_assert!(id < self.get_pages_count());
 		((self.metadata_begin as usize) + (id as usize * size_of::<Frame>())) as _
 	}
 
-	/*
-	 * Debug function.
-	 * Checks the correctness of the free list for the zone. Every frames in the free list must
-	 * have an order equal to the order of the bucket it's inserted in and must be free.
-	 * If a frame is the first of a list, it must not have a previous element.
-	 *
-	 * If a frame is invalid, the function shall result in the kernel panicking.
-	 */
+	/// Debug function.
+	/// Checks the correctness of the free list for the zone. Every frames in the free list must
+	/// have an order equal to the order of the bucket it's inserted in and must be free.
+	/// If a frame is the first of a list, it must not have a previous element.
+	/// 
+	/// If a frame is invalid, the function shall result in the kernel panicking.
 	#[cfg(kernel_mode = "debug")]
 	pub fn check_free_list(&self) {
 		let zone_size = (self.get_pages_count() as usize) * memory::PAGE_SIZE;
@@ -451,9 +383,7 @@ impl Zone {
 }
 
 impl Frame {
-	/*
-	 * Returns the id of the current frame in the associated zone `zone`.
-	 */
+	/// Returns the id of the current frame in the associated zone `zone`.
 	pub fn get_id(&self, zone: &Zone) -> FrameID {
 		let self_off = self as *const _ as usize;
 		let zone_off = zone.metadata_begin as *const _ as usize;
@@ -461,63 +391,47 @@ impl Frame {
 		((self_off - zone_off) / size_of::<Self>()) as u32
 	}
 
-	/*
-	 * Returns the pointer to the location of the associated physical memory.
-	 */
+	/// Returns the pointer to the location of the associated physical memory.
 	pub fn get_ptr(&self, zone: &Zone) -> *mut c_void {
 		let off = self.get_id(zone) as usize * memory::PAGE_SIZE;
 		(zone.begin as usize + off) as _
 	}
 
-	/*
-	 * Tells whether the frame is used or not.
-	 */
+	/// Tells whether the frame is used or not.
 	pub fn is_used(&self) -> bool {
 		(self.prev == FRAME_STATE_USED) || (self.next == FRAME_STATE_USED)
 	}
 
-	/*
-	 * Returns the order of the frame.
-	 */
+	/// Returns the order of the frame.
 	pub fn get_order(&self) -> FrameOrder {
 		self.order
 	}
 
-	/*
-	 * Returns the size of the frame in pages.
-	 */
+	/// Returns the size of the frame in pages.
 	pub fn get_pages(&self) -> usize {
 		util::pow2(self.order) as _
 	}
 
-	/*
-	 * Returns the size of the frame in bytes.
-	 */
+	/// Returns the size of the frame in bytes.
 	pub fn get_size(&self) -> usize {
 		get_frame_size(self.order)
 	}
 
-	/*
-	 * Marks the frame as used. The frame must not be linked to any free list.
-	 */
+	/// Marks the frame as used. The frame must not be linked to any free list.
 	pub fn mark_used(&mut self) {
 		self.prev = FRAME_STATE_USED;
 		self.next = FRAME_STATE_USED;
 	}
 
-	/*
-	 * Marks the frame as free. The frame must not be linked to any free list.
-	 */
+	/// Marks the frame as free. The frame must not be linked to any free list.
 	pub fn mark_free(&mut self, zone: &Zone) {
 		let id = self.get_id(zone);
 		self.prev = id;
 		self.next = id;
 	}
 
-	/*
-	 * Debug function to assert that the chunk is valid. Invalid chunk shall result in the kernel
-	 * panicking.
-	 */
+	/// Debug function to assert that the chunk is valid. Invalid chunk shall result in the kernel
+	/// panicking.
 	#[cfg(kernel_mode = "debug")]
 	pub fn check_broken(&self, zone: &Zone) {
 		debug_assert!(self.prev == FRAME_STATE_USED || self.prev < zone.get_pages_count());
@@ -525,19 +439,15 @@ impl Frame {
 		debug_assert!(self.order <= MAX_ORDER);
 	}
 
-	/*
-	 * Returns the identifier of the buddy frame in zone `zone`, taking in account the frame's
-	 * order.
-	 * The return value might be invalid and the caller has the reponsibility to check that it is
-	 * below the number of frames in the zone.
-	 */
+	/// Returns the identifier of the buddy frame in zone `zone`, taking in account the frame's
+	/// order.
+	/// The return value might be invalid and the caller has the reponsibility to check that it is
+	/// below the number of frames in the zone.
 	pub fn get_buddy_id(&self, zone: &Zone) -> FrameID {
 		self.get_id(zone) ^ (1 << self.order) as u32
 	}
 
-	/*
-	 * Links the frame into zone `zone`'s free list.
-	 */
+	/// Links the frame into zone `zone`'s free list.
 	pub fn link(&mut self, zone: &mut Zone) {
 		self.check_broken(zone);
 		zone.check_free_list();
@@ -559,9 +469,7 @@ impl Frame {
 		zone.check_free_list();
 	}
 
-	/*
-	 * Unlinks the frame from zone `zone`'s free list. The frame must not be used.
-	 */
+	/// Unlinks the frame from zone `zone`'s free list. The frame must not be used.
 	pub fn unlink(&mut self, zone: &mut Zone) {
 		self.check_broken(zone);
 		debug_assert!(!self.is_used());
@@ -597,13 +505,11 @@ impl Frame {
 		zone.check_free_list();
 	}
 
-	/*
-	 * Unlinks the frame from zone `zone`'s free list, splits it until it reaches the required
-	 * order `order` while linking the new free frames to the free list. At the end of the
-	 * function, the current frame is **not** linked to the free list.
-	 *
-	 * The frame must not be marked as used.
-	 */
+	/// Unlinks the frame from zone `zone`'s free list, splits it until it reaches the required
+	/// order `order` while linking the new free frames to the free list. At the end of the
+	/// function, the current frame is **not** linked to the free list.
+	/// 
+	/// The frame must not be marked as used.
 	pub fn split(&mut self, zone: &mut Zone, order: FrameOrder) {
 		self.check_broken(zone);
 		debug_assert!(!self.is_used());
@@ -631,13 +537,11 @@ impl Frame {
 		self.check_broken(zone);
 	}
 
-	/*
-	 * Coealesces the frame in zone `zone` with free buddy blocks recursively until no buddy is
-	 * available anymore. Buddies that are merged with the frame are unlinked. The order of the
-	 * frame is incremented at each merge. The frame is linked to the free list at the end.
-	 *
-	 * The frame must not be marked as used.
-	 */
+	/// Coealesces the frame in zone `zone` with free buddy blocks recursively until no buddy is
+	/// available anymore. Buddies that are merged with the frame are unlinked. The order of the
+	/// frame is incremented at each merge. The frame is linked to the free list at the end.
+	/// 
+	/// The frame must not be marked as used.
 	pub fn coalesce(&mut self, zone: &mut Zone) {
 		self.check_broken(zone);
 		debug_assert!(!self.is_used());

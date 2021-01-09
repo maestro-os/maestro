@@ -1,6 +1,4 @@
-/*
- * This files implements containers, which require memory allocations.
- */
+/// This files implements containers, which require memory allocations.
 
 use core::cmp::max;
 use core::ffi::c_void;
@@ -14,24 +12,20 @@ use core::ops::IndexMut;
 use crate::memory::malloc;
 use crate::util;
 
-/*
- * A vector container is a dynamically-resizable array of elements.
- * When resizing a vector, the elements can be moved, thus the callee should not rely on pointers
- * to elements inside a vector.
- */
+/// A vector container is a dynamically-resizable array of elements.
+/// When resizing a vector, the elements can be moved, thus the callee should not rely on pointers
+/// to elements inside a vector.
 pub struct Vec<T> {
-	/* The number of elements present in the vector */
+	/// The number of elements present in the vector 
 	len: usize,
-	/* The number of elements that can be stored in the vector with its current buffer */
+	/// The number of elements that can be stored in the vector with its current buffer 
 	capacity: usize,
-	/* A pointer to the first element of the vector */
+	/// A pointer to the first element of the vector 
 	data: Option<*mut T>,
 }
 
 impl<T> Vec<T> {
-	/*
-	 * Creates a new empty vector.
-	 */
+	/// Creates a new empty vector.
 	pub fn new() -> Self {
 		Self {
 			len: 0,
@@ -41,9 +35,7 @@ impl<T> Vec<T> {
 	}
 
 	// TODO Handle fail
-	/*
-	 * Reallocates the vector's data with the vector's capacity.
-	 */
+	/// Reallocates the vector's data with the vector's capacity.
 	fn realloc(&mut self) {
 		let ptr = if self.data.is_some() {
 			malloc::realloc(self.data.unwrap() as _, self.capacity).unwrap() as _
@@ -54,17 +46,13 @@ impl<T> Vec<T> {
 	}
 
 	// TODO Handle fail
-	/*
-	 * Increases the capacity to at least `min` elements.
-	 */
+	/// Increases the capacity to at least `min` elements.
 	fn increase_capacity(&mut self, min: usize) {
 		self.capacity = max(self.capacity, min);
 		self.realloc();
 	}
 
-	/*
-	 * Creates a new emoty vector with the given capacity.
-	 */
+	/// Creates a new emoty vector with the given capacity.
 	pub fn with_capacity(capacity: usize) -> Self {
 		let mut vec = Self::new();
 		vec.capacity = capacity;
@@ -72,55 +60,41 @@ impl<T> Vec<T> {
 		vec
 	}
 
-	/*
-	 * Returns the number of elements inside of the vector.
-	 */
+	/// Returns the number of elements inside of the vector.
 	pub fn len(&self) -> usize {
 		self.len
 	}
 
-	/*
-	 * Returns true if the vector contains no elements.
-	 */
+	/// Returns true if the vector contains no elements.
 	pub fn is_empty(&self) -> bool {
 		self.len == 0
 	}
 
-	/*
-	 * Returns the number of elements that can be stored inside of the vector without needing to
-	 * reallocate the memory.
-	 */
+	/// Returns the number of elements that can be stored inside of the vector without needing to
+	/// reallocate the memory.
 	pub fn capacity(&self) -> usize {
 		self.capacity
 	}
 
-	/*
-	 * Returns the first element of the vector.
-	 */
+	/// Returns the first element of the vector.
 	pub fn first(&mut self) -> &mut T {
 		&mut self[0]
 	}
 
-	/*
-	 * Returns the first element of the vector.
-	 */
+	/// Returns the first element of the vector.
 	pub fn last(&mut self) -> &mut T {
 		let len = self.len;
 		&mut self[len - 1]
 	}
 
-	/*
-	 * Inserts an element at position index within the vector, shifting all elements after it to
-	 * the right.
-	 */
+	/// Inserts an element at position index within the vector, shifting all elements after it to
+	/// the right.
 	/*pub fn insert(&mut self, index: usize, element: T) {
 		// TODO
 	}*/
 
-	/*
-	 * Removes and returns the element at position index within the vector, shifting all elements
-	 * after it to the left.
-	 */
+	/// Removes and returns the element at position index within the vector, shifting all elements
+	/// after it to the left.
 	/*pub fn remove(&mut self, index: usize) -> T {
 		// TODO
 	}*/
@@ -130,16 +104,12 @@ impl<T> Vec<T> {
 	// TODO reserve
 	// TODO resize
 
-	/*
-	 * Appends an element to the back of a collection.
-	 */
+	/// Appends an element to the back of a collection.
 	pub fn push(&mut self, _value: T) {
 		// TODO
 	}
 
-	/*
-	 * Removes the last element from a vector and returns it, or None if it is empty.
-	 */
+	/// Removes the last element from a vector and returns it, or None if it is empty.
 	pub fn pop(&mut self) -> Option<T> {
 		// TODO
 		/*if !self.is_empty() {
@@ -155,9 +125,7 @@ impl<T> Vec<T> {
 
 	// TODO Iterators?
 
-	/*
-	 * Clears the vector, removing all values.
-	 */
+	/// Clears the vector, removing all values.
 	fn clear(&mut self) {
 		// TODO Call drop on each?
 
@@ -200,15 +168,13 @@ impl<T> Drop for Vec<T> {
 
 #[fundamental]
 pub struct Box<T: ?Sized> {
-	/* Pointer to the allocated memory */
+	/// Pointer to the allocated memory 
 	ptr: *mut T,
 }
 
 impl<T> Box<T> {
-	/*
-	 * Creates a new instance and places the given value `value` into it.
-	 * If the allocation fails, the function shall return an error.
-	 */
+	/// Creates a new instance and places the given value `value` into it.
+	/// If the allocation fails, the function shall return an error.
 	pub fn new(value: T) -> Result<Box::<T>, ()> {
 		let size = size_of_val(&value);
 		let b = Self {
@@ -223,9 +189,7 @@ impl<T> Box<T> {
 		Ok(b)
 	}
 
-	/*
-	 * Returns a reference to the object contained into the Box.
-	 */
+	/// Returns a reference to the object contained into the Box.
 	pub fn unwrap(&mut self) -> &mut T {
 		unsafe { // Dereference of raw pointer
 			&mut *self.ptr
@@ -234,10 +198,8 @@ impl<T> Box<T> {
 }
 
 impl<T: Clone> Box<T> {
-	/*
-	 * Clones the Box and its content. The type of the wrapped data must implement the Clone trait.
-	 * If the allocation fails, the function shall return an error.
-	 */
+	/// Clones the Box and its content. The type of the wrapped data must implement the Clone trait.
+	/// If the allocation fails, the function shall return an error.
     fn clone(&self) -> Result<Self, ()> {
 		let obj = unsafe { // Dereference of raw pointer
 			&*self.ptr

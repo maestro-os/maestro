@@ -4,109 +4,73 @@ pub mod pic;
 use core::ffi::c_void;
 use crate::util;
 
-/*
- * TODO Doc
- */
+/// TODO Doc
 const ID_TYPE_GATE_TASK: u8 = 0b01010000;
-/*
- * TODO Doc
- */
+/// TODO Doc
 const ID_TYPE_GATE_INTERRUPT16: u8 = 0b01100000;
-/*
- * TODO Doc
- */
+/// TODO Doc
 const ID_TYPE_GATE_TRAP16: u8 = 0b01110000;
-/*
- * TODO Doc
- */
+/// TODO Doc
 const ID_TYPE_GATE_INTERRUPT32: u8 = 0b11100000;
-/*
- * TODO Doc
- */
+/// TODO Doc
 const ID_TYPE_GATE_TRAP32: u8 = 0b11110000;
-/*
- * TODO Doc
- */
+/// TODO Doc
 const ID_TYPE_S: u8 = 0b00001000;
-/*
- * TODO Doc
- */
+/// TODO Doc
 const ID_PRIVILEGE_RING_0: u8 = 0b00000000;
-/*
- * TODO Doc
- */
+/// TODO Doc
 const ID_PRIVILEGE_RING_1: u8 = 0b00000010;
-/*
- * TODO Doc
- */
+/// TODO Doc
 const ID_PRIVILEGE_RING_2: u8 = 0b00000100;
-/*
- * TODO Doc
- */
+/// TODO Doc
 const ID_PRIVILEGE_RING_3: u8 = 0b00000110;
-/*
- * TODO Doc
- */
+/// TODO Doc
 const ID_PRESENT: u8 = 0b00000001;
 
-/*
- * Disables interruptions.
- */
+/// Disables interruptions.
 #[macro_export]
 macro_rules! cli {
 	() => (unsafe { asm!("cli") });
 }
 
-/*
- * Enables interruptions.
- */
+/// Enables interruptions.
 #[macro_export]
 macro_rules! sti {
 	() => (unsafe { asm!("sti") });
 }
 
-/*
- * Waits for an interruption.
- */
+/// Waits for an interruption.
 #[macro_export]
 macro_rules! hlt {
 	() => (unsafe { asm!("hlt") });
 }
 
-/*
- * The IDT vector index for system calls.
- */
+/// The IDT vector index for system calls.
 pub const SYSCALL_VECTOR: u8 = 0x80;
-/*
- * The number of entries into the IDT.
- */
+/// The number of entries into the IDT.
 pub const ENTRIES_COUNT: u8 = 0x81;
 
-/*
- * Structure representing the IDT.
- */
+/// Structure representing the IDT.
 #[repr(C, packed)]
 struct InterruptDescriptorTable {
-	/* TODO doc */
+	/// TODO doc 
 	size: u16,
-	/* TODO doc */
+	/// TODO doc 
 	offset: u32,
 }
 
-/*
- * Structure representing an IDT entry.
- */
+/// Structure representing an IDT entry.
 #[repr(C)]
 struct InterruptDescriptor {
-	/* TODO doc */
+	/// TODO doc 
 	offset: u16,
-	/* TODO doc */
+	/// TODO doc 
 	selector: u16,
-	/* TODO doc */
+	/// TODO doc 
 	zero: u8,
-	/* TODO doc */
+	/// TODO doc 
 	type_attr: u8,
-	/* TODO doc */
+	/// TODO doc 
 	offset_2: u16,
 }
 
@@ -169,9 +133,7 @@ extern "C" {
 	fn syscall();
 }
 
-/*
- * The list of IDT entries.
- */
+/// The list of IDT entries.
 static mut ID: [InterruptDescriptor; ENTRIES_COUNT as usize] = [InterruptDescriptor {
 	offset: 0,
 	selector: 0,
@@ -180,9 +142,7 @@ static mut ID: [InterruptDescriptor; ENTRIES_COUNT as usize] = [InterruptDescrip
 	offset_2: 0,
 }; 0x81];
 
-/*
- * Creates an IDT entry.
- */
+/// Creates an IDT entry.
 fn create_id(address: *const c_void, selector: u16, type_attr: u8) -> InterruptDescriptor {
 	InterruptDescriptor {
 		offset: ((address as u32) & 0xffff) as u16,
@@ -193,18 +153,14 @@ fn create_id(address: *const c_void, selector: u16, type_attr: u8) -> InterruptD
 	}
 }
 
-/*
- * Takes a C extern function and returns its pointer.
- */
+/// Takes a C extern function and returns its pointer.
 fn get_c_fn_ptr(f: unsafe extern "C" fn()) -> *const c_void {
 	unsafe {
 		core::mem::transmute::<_, _>(f as *const c_void)
 	}
 }
 
-/*
- * Initializes the IDT.
- */
+/// Initializes the IDT.
 pub fn init() {
 	cli!();
 	pic::init(0x20, 0x28);

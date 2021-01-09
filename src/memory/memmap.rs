@@ -1,8 +1,6 @@
-/*
- * This module handles the memory informations, which stores global informations on the system
- * memory by retrieving them from the boot informations. These data are meant to be used by the
- * memory allocators.
- */
+/// This module handles the memory informations, which stores global informations on the system
+/// memory by retrieving them from the boot informations. These data are meant to be used by the
+/// memory allocators.
 
 use core::cmp::*;
 use core::mem::MaybeUninit;
@@ -13,44 +11,36 @@ use crate::memory;
 use crate::multiboot;
 use crate::util;
 
-/*
- * Structure storing informations relative to the main memory.
- */
+/// Structure storing informations relative to the main memory.
 pub struct MemoryInfo {
-	/* Size of the Multiboot2 memory map */
+	/// Size of the Multiboot2 memory map 
 	pub memory_maps_size: usize,
-	/* Size of an entry in the Multiboot2 memory map */
+	/// Size of an entry in the Multiboot2 memory map 
 	pub memory_maps_entry_size: usize,
-	/* Pointer to the Multiboot2 memory map */
+	/// Pointer to the Multiboot2 memory map 
 	pub memory_maps: *const multiboot::MmapEntry,
 
-	/* Pointer to the end of the physical memory */
+	/// Pointer to the end of the physical memory 
 	pub memory_end: *const c_void,
-	/* Pointer to the beginning of physical allocatable memory, page aligned */
+	/// Pointer to the beginning of physical allocatable memory, page aligned 
 	pub phys_alloc_begin: *const c_void,
-	/* Pointer to the end of physical allocatable memory, page aligned */
+	/// Pointer to the end of physical allocatable memory, page aligned 
 	pub phys_alloc_end: *const c_void,
-	/* The total amount of allocatable memory in bytes */
+	/// The total amount of allocatable memory in bytes 
 	pub available_memory: usize,
 }
 
-/*
- * Variable containing the memory mapping.
- */
+/// Variable containing the memory mapping.
 static mut MEM_INFO: MaybeUninit<MemoryInfo> = MaybeUninit::uninit();
 
-/*
- * Returns the structure storing memory mapping informations.
- */
+/// Returns the structure storing memory mapping informations.
 pub fn get_info() -> &'static MemoryInfo {
 	unsafe {
 		MEM_INFO.assume_init_mut()
 	}
 }
 
-/*
- * Prints the memory mapping.
- */
+/// Prints the memory mapping.
 pub fn print_entries() {
 	let mem_info = get_info();
 	debug_assert!(mem_info.memory_maps as *const _ != NULL);
@@ -72,9 +62,7 @@ pub fn print_entries() {
 	}
 }
 
-/*
- * Returns a pointer to the beginning of the allocatable physical memory.
- */
+/// Returns a pointer to the beginning of the allocatable physical memory.
 fn get_phys_alloc_begin(multiboot_ptr: *const c_void) -> *const c_void {
 	let boot_info = multiboot::get_boot_info();
 	let multiboot_tags_size = multiboot::get_tags_size(multiboot_ptr);
@@ -87,9 +75,7 @@ fn get_phys_alloc_begin(multiboot_ptr: *const c_void) -> *const c_void {
 	util::align(ptr, memory::PAGE_SIZE)
 }
 
-/*
- * Returns a pointer to the end of the system memory.
- */
+/// Returns a pointer to the end of the system memory.
 fn get_memory_end() -> *const c_void {
 	let mem_info = get_info();
 	debug_assert!(mem_info.memory_maps as *const _ != NULL);
@@ -108,9 +94,7 @@ fn get_memory_end() -> *const c_void {
 	end as *const _
 }
 
-/*
- * Fills the memory mapping structure according to Multiboot's informations.
- */
+/// Fills the memory mapping structure according to Multiboot's informations.
 pub fn init(multiboot_ptr: *const c_void) {
 	let boot_info = multiboot::get_boot_info();
 	let mem_info = unsafe { MEM_INFO.assume_init_mut() };

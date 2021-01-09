@@ -1,3 +1,5 @@
+/// This module handles TTYs.
+
 use core::cmp::*;
 use core::mem::MaybeUninit;
 use crate::memory::vmem;
@@ -6,104 +8,72 @@ use crate::util::lock::MutexGuard;
 use crate::util;
 use crate::vga;
 
-/*
- * This module handles TTYs.
- */
-
 // TODO Sanity checks
 // TODO Implement streams and termcaps
 
-/*
- * The number of TTYs.
- */
+/// The number of TTYs.
 const TTYS_COUNT: usize = 8;
-/*
- * The number of history lines for one TTY.
- */
+/// The number of history lines for one TTY.
 const HISTORY_LINES: vga::Pos = 128;
-/*
- * The number of characters a TTY can store.
- */
+/// The number of characters a TTY can store.
 const HISTORY_SIZE: usize = (vga::WIDTH as usize) * (HISTORY_LINES as usize);
 
-/*
- * An empty character.
- */
+/// An empty character.
 const EMPTY_CHAR: vga::Char = (vga::DEFAULT_COLOR as vga::Char) << 8;
 
-/*
- * The size of a tabulation in space-equivalent.
- */
+/// The size of a tabulation in space-equivalent.
 const TAB_SIZE: usize = 4;
 
-/*
- * The character to initialize ANSI escape sequences.
- */
+/// The character to initialize ANSI escape sequences.
 const ANSI_ESCAPE: char = 0x1b as char;
 
-/*
- * The frequency of the bell in Hz.
- */
+/// The frequency of the bell in Hz.
 const BELL_FREQUENCY: u32 = 2000;
-/*
- * The duraction of the bell in ms.
- */
+/// The duraction of the bell in ms.
 const BELL_DURATION: u32 = 500;
 
-/*
- * Returns the position of the cursor in the history array from x and y position.
- */
+/// Returns the position of the cursor in the history array from x and y position.
 fn get_history_offset(x: vga::Pos, y: vga::Pos) -> usize {
 	let off = (y * vga::WIDTH + x) as usize;
 	debug_assert!(off < HISTORY_SIZE);
 	off
 }
 
-/*
- * Returns the position of a tab character for the given cursor X position.
- */
+/// Returns the position of a tab character for the given cursor X position.
 fn get_tab_size(cursor_x: vga::Pos) -> usize {
 	TAB_SIZE - ((cursor_x as usize) % TAB_SIZE)
 }
 
-/*
- * Structure representing a TTY.
- */
+/// Structure representing a TTY.
 pub struct TTY
 {
-	/* The id of the TTY*/
+	/// The id of the TTY
 	id: usize,
-	/* The X position of the cursor in the history */
+	/// The X position of the cursor in the history 
 	cursor_x: vga::Pos,
-	/* The Y position of the cursor in the history */
+	/// The Y position of the cursor in the history 
 	cursor_y: vga::Pos,
-	/* The Y position of the screen in the history */
+	/// The Y position of the screen in the history 
 	screen_y: vga::Pos,
 
-	/* The current color for the text to be written */
+	/// The current color for the text to be written 
 	current_color: vga::Color,
 
-	/* The content of the TTY's history */
+	/// The content of the TTY's history 
 	history: [vga::Char; HISTORY_SIZE],
 
-	/* The number of prompted characters */
+	/// The number of prompted characters 
 	prompted_chars: usize,
-	/* Tells whether TTY updates are enabled or not */
+	/// Tells whether TTY updates are enabled or not 
 	update: bool,
 }
 
-/*
- * The array of every TTYs.
- */
+/// The array of every TTYs.
 static mut TTYS: MaybeUninit<[Mutex<TTY>; TTYS_COUNT]> = MaybeUninit::uninit();
-/*
- * The current TTY's id.
- */
+/// The current TTY's id.
 static mut CURRENT_TTY: usize = 0; // TODO Mutex
 
-/*
- * Returns a mutable reference to the TTY with identifier `tty`.
- */
+/// Returns a mutable reference to the TTY with identifier `tty`.
 pub fn get(tty: usize) -> &'static mut Mutex<TTY> {
 	debug_assert!(tty < TTYS_COUNT);
 	unsafe {
@@ -111,18 +81,14 @@ pub fn get(tty: usize) -> &'static mut Mutex<TTY> {
 	}
 }
 
-/*
- * Returns a reference to the current TTY.
- */
+/// Returns a reference to the current TTY.
 pub fn current() -> &'static mut Mutex<TTY> {
 	unsafe {
 		get(CURRENT_TTY)
 	}
 }
 
-/*
- * Initializes every TTYs.
- */
+/// Initializes every TTYs.
 pub fn init() {
 	unsafe {
 		util::zero_object(&mut TTYS);
@@ -137,9 +103,7 @@ pub fn init() {
 	switch(0);
 }
 
-/*
- * Switches to TTY with id `tty`.
- */
+/// Switches to TTY with id `tty`.
 pub fn switch(tty: usize) {
 	if tty >= TTYS_COUNT {
 		return;
@@ -156,9 +120,7 @@ pub fn switch(tty: usize) {
 }
 
 impl TTY {
-	/*
-	 * Creates a new TTY.
-	 */
+	/// Creates a new TTY.
 	pub fn init(&mut self) {
 		self.id = 0;
 		self.cursor_x = 0;
@@ -170,16 +132,12 @@ impl TTY {
 		self.update = true;
 	}
 
-	/*
-	 * Returns the id of the TTY.
-	 */
+	/// Returns the id of the TTY.
 	pub fn get_id(&self) -> usize {
 		self.id
 	}
 
-	/*
-	 * Updates the TTY to the screen.
-	 */
+	/// Updates the TTY to the screen.
 	pub fn update(&mut self) {
 		unsafe {
 			if self.id == CURRENT_TTY && !self.update {
@@ -216,33 +174,25 @@ impl TTY {
 		}
 	}
 
-	/*
-	 * Reinitializes TTY's current attributes.
-	 */
+	/// Reinitializes TTY's current attributes.
 	pub fn reset_attrs(&mut self) {
 		self.current_color = vga::DEFAULT_COLOR;
 		// TODO
 	}
 
-	/*
-	 * Sets the current foreground color `color` for TTY.
-	 */
+	/// Sets the current foreground color `color` for TTY.
 	pub fn set_fgcolor(&mut self, color: vga::Color) {
 		self.current_color &= !(0xff as vga::Color);
 		self.current_color |= color;
 	}
 
-	/*
-	 * Sets the current background color `color` for TTY.
-	 */
+	/// Sets the current background color `color` for TTY.
 	pub fn set_bgcolor(&mut self, color: vga::Color) {
 		self.current_color &= !((0xff << 4) as vga::Color);
 		self.current_color |= color << 4;
 	}
 
-	/*
-	 * Clears the TTY's history.
-	 */
+	/// Clears the TTY's history.
 	pub fn clear(&mut self) {
 		self.cursor_x = 0;
 		self.cursor_y = 0;
@@ -345,9 +295,7 @@ impl TTY {
 		self.update();
 	}
 
-	/*
-	 * Writes string `buffer` to TTY.
-	 */
+	/// Writes string `buffer` to TTY.
 	pub fn write(&mut self, buffer: &str) {
 		for i in 0..buffer.len() {
 			let c = buffer.as_bytes()[i] as char;
@@ -360,9 +308,7 @@ impl TTY {
 		}
 	}
 
-	/*
-	 * Erases `count` characters in TTY.
-	 */
+	/// Erases `count` characters in TTY.
 	pub fn erase(&mut self, mut count: usize) {
 		count = max(count, self.prompted_chars);
 		if count == 0 {
@@ -378,23 +324,17 @@ impl TTY {
 		self.prompted_chars -= count;
 	}
 
-	/*
-	 * Handles keyboard insert input for keycode `code`.
-	 */
+	/// Handles keyboard insert input for keycode `code`.
 	/*pub fn input_hook(&mut self, code: ps2::key_code) {
 		// TODO
 	}*/
 
-	/*
-	 * Handles keyboard control input for keycode `code`.
-	 */
+	/// Handles keyboard control input for keycode `code`.
 	/*pub fn ctrl_hook(&mut self, code: ps2::key_code) {
 		// TODO
 	}*/
 
-	/*
-	 * Handles keyboard erase input for keycode.
-	 */
+	/// Handles keyboard erase input for keycode.
 	pub fn erase_hook(&mut self) {
 		self.erase(1);
 	}

@@ -1,4 +1,8 @@
-#[cfg(kernel_mode = "debug")]
+/// This file handles kernel panics.
+/// A kernel panic occurs when an error is raised that the kernel cannot recover from. This is an undesirable state which
+/// requires to reboot the host machine.
+
+//#[cfg(kernel_mode = "debug")]
 //use crate::debug;
 
 use core::fmt;
@@ -6,15 +10,7 @@ use core::ffi::c_void;
 use crate::memory;
 use crate::tty;
 
-/*
- * This file handles kernel panics.
- * A kernel panic occurs when an error is raised that the kernel cannot recover from. This is an undesirable state which
- * requires to reboot the host machine.
- */
-
-/*
- * Macro triggering a kernel panic.
- */
+/// Macro triggering a kernel panic.
 #[macro_export]
 macro_rules! kernel_panic {
 	() => {
@@ -28,9 +24,7 @@ macro_rules! kernel_panic {
 	};
 }
 
-/*
- * Initializes the TTY and prints a panic message.
- */
+/// Initializes the TTY and prints a panic message.
 fn print_panic(reason: &str, code: u32) {
 	tty::init();
 	crate::println!("--- KERNEL PANIC ---\n");
@@ -41,9 +35,7 @@ fn print_panic(reason: &str, code: u32) {
 	crate::println!("If you believe this is a bug on the kernel side, please feel free to report it.");
 }
 
-/*
- * Re-initializes the TTY, prints the panic message and halts the kernel.
- */
+/// Re-initializes the TTY, prints the panic message and halts the kernel.
 #[cfg(kernel_mode = "release")]
 pub fn kernel_panic_(reason: &str, code: u32, _file: &str, _line: u32, _col: u32) -> ! {
 	::cli!();
@@ -53,10 +45,8 @@ pub fn kernel_panic_(reason: &str, code: u32, _file: &str, _line: u32, _col: u32
 	}
 }
 
-/*
- * Same as the release version, except the function also prints process's registers and the
- * kernel's callstack.
- */
+/// Same as the release version, except the function also prints process's registers and the
+/// kernel's callstack.
 #[cfg(kernel_mode = "debug")]
 pub fn kernel_panic_(reason: &str, code: u32, file: &str, line: u32, col: u32) -> ! {
 	crate::cli!();
@@ -71,9 +61,7 @@ pub fn kernel_panic_(reason: &str, code: u32, file: &str, line: u32, col: u32) -
 	}
 }
 
-/*
- * Initializes the TTY and prints a Rust panic message.
- */
+/// Initializes the TTY and prints a Rust panic message.
 fn print_rust_panic<'a>(args: &'a fmt::Arguments<'a>) {
 	tty::init();
 	crate::println!("--- KERNEL PANIC ---\n");
@@ -83,9 +71,7 @@ fn print_rust_panic<'a>(args: &'a fmt::Arguments<'a>) {
 	crate::println!("If you believe this is a bug on the kernel side, please feel free to report it.");
 }
 
-/*
- * Handles a Rust panic.
- */
+/// Handles a Rust panic.
 #[cfg(kernel_mode = "release")]
 pub fn rust_panic<'a>(args: &'a fmt::Arguments<'a>) -> ! {
 	crate::cli!();
@@ -95,9 +81,7 @@ pub fn rust_panic<'a>(args: &'a fmt::Arguments<'a>) -> ! {
 	}
 }
 
-/*
- * Same as the release version, except the function also prints the kernel's callstack.
- */
+/// Same as the release version, except the function also prints the kernel's callstack.
 #[cfg(kernel_mode = "debug")]
 pub fn rust_panic<'a>(args: &'a fmt::Arguments<'a>) -> ! {
 	crate::cli!();

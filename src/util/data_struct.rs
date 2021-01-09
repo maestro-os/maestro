@@ -1,11 +1,7 @@
-/*
- * This files implements data structures.
- * Data structures present in this files are guaranteed to not require any memory allocations.
- */
+/// This files implements data structures.
+/// Data structures present in this files are guaranteed to not require any memory allocations.
 
-/*
- * Converts an `Option<*mut Self>` into a `Option<*const Self>`.
- */
+/// Converts an `Option<*mut Self>` into a `Option<*const Self>`.
 #[inline(always)]
 fn option_mut_to_const<T>(option: Option<*mut T>) -> Option<*const T> {
 	if let Some(ptr) = option {
@@ -15,23 +11,19 @@ fn option_mut_to_const<T>(option: Option<*mut T>) -> Option<*const T> {
 	}
 }
 
-/*
- * Structure representing a node in a doubly-linked list.
- *
- * TODO Explain difference between floating and non-floating lists
- */
+/// Structure representing a node in a doubly-linked list.
+/// 
+/// TODO Explain difference between floating and non-floating lists
 #[derive(Debug)]
 pub struct LinkedList {
-	/* Pointer to the previous element in the list */
+	/// Pointer to the previous element in the list 
 	prev: Option<*mut LinkedList>,
-	/* Pointer to the next element in the list */
+	/// Pointer to the next element in the list 
 	next: Option<*mut LinkedList>,
 }
 
-/*
- * Returns a reference to the element of type `type` for the given linked list node `node` stored
- * in field `field`.
- */
+/// Returns a reference to the element of type `type` for the given linked list node `node` stored
+/// in field `field`.
 #[macro_export]
 macro_rules! linked_list_get {
 	($node:expr, $type:ty, $field:ident) => {
@@ -40,9 +32,7 @@ macro_rules! linked_list_get {
 }
 
 impl LinkedList {
-	/*
-	 * Creates a single node.
-	 */
+	/// Creates a single node.
 	pub fn new_single() -> Self {
 		Self {
 			prev: None,
@@ -50,16 +40,12 @@ impl LinkedList {
 		}
 	}
 
-	/*
-	 * Tells whether the node is single in the list.
-	 */
+	/// Tells whether the node is single in the list.
 	pub fn is_single(&self) -> bool {
 		self.prev.is_none() && self.next.is_none()
 	}
 
-	/*
-	 * Returns the previous element if it exsits, or None.
-	 */
+	/// Returns the previous element if it exsits, or None.
 	pub fn get_prev(&self) -> Option<&mut LinkedList> {
 		if self.prev.is_some() {
 			Some(unsafe { &mut *self.prev.unwrap() })
@@ -68,9 +54,7 @@ impl LinkedList {
 		}
 	}
 
-	/*
-	 * Returns the next element if it exsits, or None.
-	 */
+	/// Returns the next element if it exsits, or None.
 	pub fn get_next(&self) -> Option<&mut LinkedList> {
 		if self.next.is_some() {
 			Some(unsafe { &mut *self.next.unwrap() })
@@ -79,9 +63,7 @@ impl LinkedList {
 		}
 	}
 
-	/*
-	 * Returns the size of the linked list, counting previous elements.
-	 */
+	/// Returns the size of the linked list, counting previous elements.
 	pub fn left_size(&self) -> usize {
 		let mut i = 0;
 		let mut curr: Option<*const Self> = Some(self);
@@ -93,9 +75,7 @@ impl LinkedList {
 		i
 	}
 
-	/*
-	 * Returns the size of the linked list, counting next elements.
-	 */
+	/// Returns the size of the linked list, counting next elements.
 	pub fn right_size(&self) -> usize {
 		let mut i = 0;
 		let mut curr: Option<*const Self> = Some(self);
@@ -107,10 +87,8 @@ impl LinkedList {
 		i
 	}
 
-	/*
-	 * Executes the given closure `f` for each nodes after the given node `node`, including the
-	 * given one. The nodes are not mutable.
-	 */
+	/// Executes the given closure `f` for each nodes after the given node `node`, including the
+	/// given one. The nodes are not mutable.
 	pub fn foreach<T>(&self, f: T) where T: Fn(&LinkedList) {
 		let mut curr: Option<*const Self> = Some(self);
 
@@ -123,9 +101,7 @@ impl LinkedList {
 		}
 	}
 
-	/*
-	 * Same as `foreach` except the nodes are mutable.
-	 */
+	/// Same as `foreach` except the nodes are mutable.
 	pub fn foreach_mut<T>(&mut self, f: T) where T: Fn(&mut LinkedList) {
 		let mut curr: Option<*mut Self> = Some(self);
 
@@ -138,9 +114,7 @@ impl LinkedList {
 		}
 	}
 
-	/*
-	 * Links back adjacent nodes to the current node.
-	 */
+	/// Links back adjacent nodes to the current node.
 	unsafe fn link_back(&mut self) {
 		if self.next.is_some() {
 			(*self.next.unwrap()).prev = Some(self);
@@ -150,9 +124,7 @@ impl LinkedList {
 		}
 	}
 
-	/*
-	 * Inserts the node at the beginning of the given linked list `front`.
-	 */
+	/// Inserts the node at the beginning of the given linked list `front`.
 	pub fn insert_front(&mut self, front: &mut Option<*mut LinkedList>) {
 		self.prev = None;
 		self.next = *front;
@@ -162,10 +134,8 @@ impl LinkedList {
 		}
 	}
 
-	/*
-	 * Inserts the node before node `node` in the given linked list `front`.
-	 * If the node is not single, the behaviour is undefined.
-	 */
+	/// Inserts the node before node `node` in the given linked list `front`.
+	/// If the node is not single, the behaviour is undefined.
 	pub fn insert_before(&mut self, front: &mut Option<*mut LinkedList>, node: &mut LinkedList) {
 		if front.is_some() && front.unwrap() == node {
 			*front = Some(self);
@@ -174,10 +144,8 @@ impl LinkedList {
 		self.insert_before_floating(node);
 	}
 
-	/*
-	 * Inserts the node before node `node` in a floating linked list.
-	 * If the node is not single, the behaviour is undefined.
-	 */
+	/// Inserts the node before node `node` in a floating linked list.
+	/// If the node is not single, the behaviour is undefined.
 	pub fn insert_before_floating(&mut self, node: &mut LinkedList) {
 		debug_assert!(self.is_single());
 
@@ -188,10 +156,8 @@ impl LinkedList {
 		}
 	}
 
-	/*
-	 * Inserts the node after node `node` in the given linked list `front`.
-	 * If the node is not single, the behaviour is undefined.
-	 */
+	/// Inserts the node after node `node` in the given linked list `front`.
+	/// If the node is not single, the behaviour is undefined.
 	pub fn insert_after(&mut self, node: &mut LinkedList) {
 		debug_assert!(self.is_single());
 
@@ -202,9 +168,7 @@ impl LinkedList {
 		}
 	}
 
-	/*
-	 * Unlinks the current node from the linked list with front `front`.
-	 */
+	/// Unlinks the current node from the linked list with front `front`.
 	pub fn unlink(&mut self, front: &mut Option<*mut LinkedList>) {
 		if front.is_some() && front.unwrap() == self {
 			*front = self.next;
@@ -213,9 +177,7 @@ impl LinkedList {
 		self.unlink_floating();
 	}
 
-	/*
-	 * Unlinks the current node from the floating linked list.
-	 */
+	/// Unlinks the current node from the floating linked list.
 	pub fn unlink_floating(&mut self) {
 		if self.prev.is_some() {
 			unsafe {

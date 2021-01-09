@@ -1,6 +1,4 @@
-/*
- * TODO doc
- */
+///TODO doc
 
 use core::ffi::c_void;
 use crate::elf;
@@ -8,9 +6,7 @@ use crate::memory;
 use crate::multiboot;
 use crate::util;
 
-/*
- * Returns the value into the specified register.
- */
+/// Returns the value into the specified register.
 #[macro_export]
 macro_rules! register_get {
 	($reg:expr) => {{
@@ -21,9 +17,7 @@ macro_rules! register_get {
 	}};
 }
 
-/*
- * Prints the registers into the given `regs` structure.
- */
+/// Prints the registers into the given `regs` structure.
 pub fn print_regs(regs: &util::Regs) {
 	crate::print!("ebp: {:p} ", regs.ebp as *const c_void);
 	crate::print!("esp: {:p} ", regs.esp as *const c_void);
@@ -37,10 +31,8 @@ pub fn print_regs(regs: &util::Regs) {
 	crate::print!("edi: {:p}\n", regs.edi as *const c_void);
 }
 
-/*
- * Prints, in hexadecimal, the content of the memory at the given location `ptr`, with the given
- * size `n` in bytes.
- */
+/// Prints, in hexadecimal, the content of the memory at the given location `ptr`, with the given
+/// size `n` in bytes.
 pub unsafe fn print_memory(ptr: *const c_void, n: usize) {
 	let mut i = 0;
 	while i < n {
@@ -72,9 +64,7 @@ pub unsafe fn print_memory(ptr: *const c_void, n: usize) {
 	}
 }
 
-/*
- * Returns the name of the symbol at offset `offset`.
- */
+/// Returns the name of the symbol at offset `offset`.
 fn get_symbol_name(offset: u32) -> Option<&'static str> {
 	let boot_info = multiboot::get_boot_info();
 
@@ -89,10 +79,8 @@ fn get_symbol_name(offset: u32) -> Option<&'static str> {
 	}
 }
 
-/*
- * Returns an Option containing the name of the function for the given instruction pointer. If the
- * name cannot be retrieved, the function returns None.
- */
+/// Returns an Option containing the name of the function for the given instruction pointer. If the
+/// name cannot be retrieved, the function returns None.
 fn get_function_name(inst: *const c_void) -> Option<&'static str> {
 	if inst < memory::get_kernel_virtual_begin() || inst >= memory::get_kernel_virtual_end() {
 		return None;
@@ -127,12 +115,10 @@ fn get_function_name(inst: *const c_void) -> Option<&'static str> {
 	func_name
 }
 
-/*
- * Prints the callstack in the current context, including symbol's name and address. `ebp` is value
- * of the `%ebp` register that is used as a starting point for printing. `max_depth` is the maximum
- * depth of the stack to print. If the stack is larger than the maximum depth, the function shall
- * print `...` at the end. If the callstack is empty, the function just prints `Empty`.
- */
+/// Prints the callstack in the current context, including symbol's name and address. `ebp` is value
+/// of the `%ebp` register that is used as a starting point for printing. `max_depth` is the maximum
+/// depth of the stack to print. If the stack is larger than the maximum depth, the function shall
+/// print `...` at the end. If the callstack is empty, the function just prints `Empty`.
 pub fn print_callstack(ebp: *const u32, max_depth: usize) {
 	crate::println!("--- Callstack ---");
 

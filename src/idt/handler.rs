@@ -1,6 +1,4 @@
-/*
- * TODO doc
- */
+/// TODO doc
 
 use crate::idt::pic;
 

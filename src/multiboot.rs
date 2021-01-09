@@ -1,6 +1,4 @@
-/*
- * TODO doc
- */
+/// TODO doc
 
 use core::ffi::c_void;
 use core::mem::ManuallyDrop;
@@ -345,16 +343,12 @@ struct TagLoadBaseAddr {
 }
 
 impl MmapEntry {
-	/*
-	 * Tells if a Multiboot mmap entry is valid.
-	 */
+	/// Tells if a Multiboot mmap entry is valid.
 	pub fn is_valid(&self) -> bool {
 		(self.addr + self.len) < ((1 as u64) << (4 * 8))
 	}
 
-	/*
-	 * Returns the string describing the memory region according to its type.
-	 */
+	/// Returns the string describing the memory region according to its type.
 	pub fn get_type_string(&self) -> &'static str {
 		match self.type_ {
 			MEMORY_AVAILABLE => "Available",
@@ -368,49 +362,43 @@ impl MmapEntry {
 }
 
 impl Tag {
-	/*
-	 * Returns the pointer to the next Multiboot tag after the current tag.
-	 */
+	/// Returns the pointer to the next Multiboot tag after the current tag.
 	pub fn next(&self) -> *const Self {
 		((self as *const _ as usize) + (((self.size + 7) & !7) as usize)) as *const _
 	}
 }
 
-/*
- * Structure representing the informations given to the kernel at boot time.
- */
+/// Structure representing the informations given to the kernel at boot time.
 pub struct BootInfo {
-	/* TODO */
+	/// TODO 
 	pub cmdline: &'static str,
-	/* TODO */
+	/// TODO 
 	pub loader_name: &'static str,
 
-	/* TODO */
+	/// TODO 
 	pub mem_lower: u32,
-	/* TODO */
+	/// TODO 
 	pub mem_upper: u32,
-	/* TODO */
+	/// TODO 
 	pub memory_maps_size: usize,
-	/* TODO */
+	/// TODO 
 	pub memory_maps_entry_size: usize,
-	/* TODO */
+	/// TODO 
 	pub memory_maps: *const MmapEntry,
 
-	/* TODO */
+	/// TODO 
 	pub elf_num: u32,
-	/* TODO */
+	/// TODO 
 	pub elf_entsize: u32,
-	/* TODO */
+	/// TODO 
 	pub elf_shndx: u32,
-	/* TODO */
+	/// TODO 
 	pub elf_sections: *const c_void,
 
 	// TODO
 }
 
-/*
- * The field storing the informations given to the kernel at boot time.
- */
+/// The field storing the informations given to the kernel at boot time.
 static mut BOOT_INFO: BootInfo = BootInfo {
 	cmdline: "",
 	loader_name: "",
@@ -425,18 +413,14 @@ static mut BOOT_INFO: BootInfo = BootInfo {
 	elf_sections: 0 as *const _,
 };
 
-/*
- * Returns the boot informations provided by Multiboot.
- */
+/// Returns the boot informations provided by Multiboot.
 pub fn get_boot_info() -> &'static BootInfo {
 	unsafe {
 		&BOOT_INFO
 	}
 }
 
-/*
- * Returns the size in bytes of Multiboot tags pointed by `ptr`.
- */
+/// Returns the size in bytes of Multiboot tags pointed by `ptr`.
 pub fn get_tags_size(ptr: *const c_void) -> usize {
 	debug_assert!(ptr != NULL);
 
@@ -450,9 +434,7 @@ pub fn get_tags_size(ptr: *const c_void) -> usize {
 	}
 }
 
-/*
- * Reads the given `tag` and fills the boot informations structure accordingly.
- */
+/// Reads the given `tag` and fills the boot informations structure accordingly.
 fn handle_tag(boot_info: &mut BootInfo, tag: *const Tag) {
 	let type_ = unsafe { (*tag).type_ };
 	match type_ {
@@ -508,9 +490,7 @@ fn handle_tag(boot_info: &mut BootInfo, tag: *const Tag) {
 	}
 }
 
-/*
- * Reads the multiboot tags from the given `ptr` and fills the boot informations structure.
- */
+/// Reads the multiboot tags from the given `ptr` and fills the boot informations structure.
 pub fn read_tags(ptr: *const c_void) {
 	unsafe {
 		let mut tag = (ptr.offset(8)) as *const Tag;

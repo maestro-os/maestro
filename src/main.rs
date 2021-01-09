@@ -23,8 +23,7 @@
 #![allow(dead_code)]
 #![allow(unused_macros)]
 
-/*
- * The following attributes allow to specify the location of the custom test framework for embedded
+/* The following attributes allow to specify the location of the custom test framework for embedded
  * self-testing and debugging.
  */
 #![test_runner(crate::selftest::runner)]
@@ -51,9 +50,7 @@ mod vga;
 use core::ffi::c_void;
 use core::panic::PanicInfo;
 
-/*
- * Current kernel version.
- */
+/// Current kernel version.
 const KERNEL_VERSION: &'static str = "1.0";
 
 extern "C" {
@@ -73,13 +70,11 @@ mod io {
 	}
 }
 
-/*
- * This is the main function of the Rust source code, responsible for the initialization of the
- * kernel. When calling this function, the CPU must be in Protected Mode with the GDT loaded with
- * space for the Task State Segment.
- * `magic` is the magic number passed by Multiboot.
- * `multiboot_ptr` is the pointer to the Multiboot booting informations structure.
- */
+/// This is the main function of the Rust source code, responsible for the initialization of the
+/// kernel. When calling this function, the CPU must be in Protected Mode with the GDT loaded with
+/// space for the Task State Segment.
+/// `magic` is the magic number passed by Multiboot.
+/// `multiboot_ptr` is the pointer to the Multiboot booting informations structure.
 #[no_mangle]
 pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 	tty::init();
@@ -121,9 +116,7 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 	}
 }
 
-/*
- * Called on Rust panic.
- */
+/// Called on Rust panic.
 #[cfg(not(test))]
 #[panic_handler]
 fn panic(panic_info: &PanicInfo) -> ! {
@@ -135,9 +128,7 @@ fn panic(panic_info: &PanicInfo) -> ! {
 }
 
 // TODO Use only if test was running. Else, use classic function
-/*
- * Called on Rust panic during testing.
- */
+/// Called on Rust panic during testing.
 #[cfg(test)]
 #[panic_handler]
 fn panic(panic_info: &PanicInfo) -> ! {
@@ -148,9 +139,7 @@ fn panic(panic_info: &PanicInfo) -> ! {
 	}
 }
 
-/*
- * TODO doc
- */
+/// TODO doc
 #[lang = "eh_personality"]
 fn eh_personality() {
 	// TODO Do something?

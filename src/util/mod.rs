@@ -1,11 +1,9 @@
-/*
- * This module contains utilities used everywhere in the kernel.
- * All the features here are guaranteed to not require memory allocators except for containers.
- *
- * Data structures and containers are considered two separated things:
- * - Data structures do not require memory allocations
- * - Containers require memory allocations
- */
+/// This module contains utilities used everywhere in the kernel.
+/// All the features here are guaranteed to not require memory allocators except for containers.
+/// 
+/// Data structures and containers are considered two separated things:
+/// - Data structures do not require memory allocations
+/// - Containers require memory allocations
 
 use core::ffi::c_void;
 use crate::memory;
@@ -14,51 +12,39 @@ pub mod container;
 pub mod data_struct;
 pub mod lock;
 
-/*
- * Tells if pointer `ptr` is aligned on boundary `n`.
- */
+/// Tells if pointer `ptr` is aligned on boundary `n`.
 #[inline(always)]
 pub fn is_aligned(ptr: *const c_void, n: usize) -> bool {
 	((ptr as usize) & (n - 1)) == 0
 }
 
-/*
- * Aligns down a pointer. The retuned value shall be lower than `ptr` or equal
- * if the pointer is already aligned.
- */
+/// Aligns down a pointer. The retuned value shall be lower than `ptr` or equal
+/// if the pointer is already aligned.
 #[inline(always)]
 pub fn down_align(ptr: *const c_void, n: usize) -> *const c_void {
 	((ptr as usize) & !(n - 1)) as *const c_void
 }
 
-/*
- * Aligns up a pointer. The returned value shall be greater than `ptr`.
- */
+/// Aligns up a pointer. The returned value shall be greater than `ptr`.
 #[inline(always)]
 pub fn up_align(ptr: *const c_void, n: usize) -> *const c_void {
 	((down_align(ptr, n) as usize) + n) as *const c_void
 }
 
-/*
- * Aligns a pointer. The returned value shall be greater than `ptr` or equal if
- * the pointer is already aligned.
- */
+/// Aligns a pointer. The returned value shall be greater than `ptr` or equal if
+/// the pointer is already aligned.
 #[inline(always)]
 pub fn align(ptr: *const c_void, n: usize) -> *const c_void {
 	if is_aligned(ptr, n) { ptr } else { up_align(ptr, n) }
 }
 
-/*
- * Tells whether `p0` and `p1` are on the same memory page or not.
- */
+/// Tells whether `p0` and `p1` are on the same memory page or not.
 #[inline(always)]
 pub fn same_page(p0: *const c_void, p1: *const c_void) -> bool {
 	down_align(p0, memory::PAGE_SIZE) == down_align(p1, memory::PAGE_SIZE)
 }
 
-/*
- * Computes ceil(n0 / n1) without using floating point numbers.
- */
+/// Computes ceil(n0 / n1) without using floating point numbers.
 #[inline(always)]
 pub fn ceil_division<T>(n0: T, n1: T) -> T
 	where T: From<u8> + Copy
@@ -73,10 +59,8 @@ pub fn ceil_division<T>(n0: T, n1: T) -> T
 	}
 }
 
-/*
- * Computes 2^^n on unsigned integers (where `^^` is an exponent).
- * The behaviour is undefined for n < 0.
- */
+/// Computes 2^^n on unsigned integers (where `^^` is an exponent).
+/// The behaviour is undefined for n < 0.
 #[inline(always)]
 pub fn pow2<T>(n: T) -> T
 	where T: From<u8>
@@ -84,10 +68,8 @@ pub fn pow2<T>(n: T) -> T
 	T::from(1) << n
 }
 
-/*
- * Computes floor(log2(n)) on unsigned integers without using floating-point numbers.
- * Because the logarithm is undefined for n <= 0, the function returns `0` in this case.
- */
+/// Computes floor(log2(n)) on unsigned integers without using floating-point numbers.
+/// Because the logarithm is undefined for n <= 0, the function returns `0` in this case.
 #[inline(always)]
 pub fn log2<T>(n: T) -> T
 	where T: From<usize>
@@ -101,18 +83,14 @@ pub fn log2<T>(n: T) -> T
 	}
 }
 
-/*
- * Returns the of a type in bits.
- */
+/// Returns the of a type in bits.
 #[inline(always)]
 pub fn bit_size_of<T>() -> usize {
 	core::mem::size_of::<T>() * 8
 }
 
-/*
- * Returns the offset of the given field `field` in structure `type`. The type must be a pointer
- * type.
- */
+/// Returns the offset of the given field `field` in structure `type`. The type must be a pointer
+/// type.
 #[macro_export]
 macro_rules! offset_of {
 	($type:ty, $field:ident) => {
@@ -120,10 +98,8 @@ macro_rules! offset_of {
 	}
 }
 
-/*
- * Returns the structure of type `type` that contains the structure in field `field` at pointer
- * `ptr`. The type must be a pointer type.
- */
+/// Returns the structure of type `type` that contains the structure in field `field` at pointer
+/// `ptr`. The type must be a pointer type.
 #[macro_export]
 macro_rules! container_of {
 	($ptr:expr, $type:ty, $field:ident) => {
@@ -131,10 +107,8 @@ macro_rules! container_of {
 	}
 }
 
-/*
- * Structure representing the list of registers for a context. The content of this structure
- * depends on the architecture for which the kernel is compiled.
- */
+/// Structure representing the list of registers for a context. The content of this structure
+/// depends on the architecture for which the kernel is compiled.
 pub struct Regs
 {
 	pub ebp: i32,
@@ -159,9 +133,7 @@ extern "C" {
 	pub fn strlen(s: *const c_void) -> usize;
 }
 
-/*
- * Zeroes the given object.
- */
+/// Zeroes the given object.
 pub fn zero_object<T>(obj: &mut T) {
 	let ptr = obj as *mut T as *mut c_void;
 	let size = core::mem::size_of::<T>();
@@ -171,10 +143,8 @@ pub fn zero_object<T>(obj: &mut T) {
 	}
 }
 
-/*
- * Converts the given pointer to a string of characters. The string must be valid and must end with
- * `\0`. The ownership of the string is not taken, thus the caller must drop it manually.
- */
+/// Converts the given pointer to a string of characters. The string must be valid and must end with
+/// `\0`. The ownership of the string is not taken, thus the caller must drop it manually.
 pub unsafe fn ptr_to_str(ptr: *const c_void) -> &'static str {
 	let len = strlen(ptr);
 	let slice = core::slice::from_raw_parts(ptr as *const u8, len);
