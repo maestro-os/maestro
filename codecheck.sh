@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# This script is meant to automatically check for code style errors in the source code.
+
 # Checks for lines that has a space in its indentation (except documentation comments)
 grep '^	* [^\*]' -rn src/
 # Checks for lines that end with a space
