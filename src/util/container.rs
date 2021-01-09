@@ -9,8 +9,8 @@ use core::ops::CoerceUnsized;
 use core::ops::DispatchFromDyn;
 use core::ops::Index;
 use core::ops::IndexMut;
-use crate::memory::malloc;
 use crate::util;
+use mem_alloc::malloc;
 
 /// A vector container is a dynamically-resizable array of elements.
 /// When resizing a vector, the elements can be moved, thus the callee should not rely on pointers

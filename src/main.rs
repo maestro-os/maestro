@@ -23,11 +23,14 @@
 #![allow(dead_code)]
 #![allow(unused_macros)]
 
-/* The following attributes allow to specify the location of the custom test framework for embedded
+/*
+ * The following attributes allow to specify the location of the custom test framework for embedded
  * self-testing and debugging.
  */
 #![test_runner(crate::selftest::runner)]
 #![reexport_test_harness_main = "test_main"]
+
+extern crate mem_alloc;
 
 mod debug;
 mod elf;
@@ -49,6 +52,8 @@ mod vga;
 
 use core::ffi::c_void;
 use core::panic::PanicInfo;
+
+use mem_alloc::buddy;
 
 /// Current kernel version.
 const KERNEL_VERSION: &'static str = "1.0";
@@ -93,7 +98,7 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 	println!("Initializing memory allocation...");
 	memory::memmap::init(multiboot_ptr);
 	memory::memmap::print_entries(); // TODO rm
-	memory::buddy::init();
+	buddy::init();
 	memory::vmem::kernel();
 
 	#[cfg(test)]

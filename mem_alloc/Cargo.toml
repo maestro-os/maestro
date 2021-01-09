@@ -1,0 +1,11 @@
+[package]
+name = "mem_alloc"
+version = "0.1.0"
+authors = ["screwdriver_ <luc14860@gmail.com>"]
+edition = "2018"
+
+[lib]
+name = "mem_alloc"
+path = "src/lib.rs"
+
+[dependencies]

@@ -59,7 +59,7 @@ CFLAGS += -g3 $(DEBUG_FLAGS)
 # Cargo
 CARGO = cargo
 # Cargo flags
-CARGOFLAGS =
+CARGOFLAGS = --verbose
 ifeq ($(KERNEL_MODE), release)
 CARGOFLAGS += --release
 endif

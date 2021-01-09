@@ -1,7 +1,5 @@
 /// TODO Documentation
 
-pub mod buddy;
-pub mod malloc;
 pub mod memmap;
 pub mod vmem;
 
