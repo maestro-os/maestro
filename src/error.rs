@@ -88,26 +88,38 @@ struct CallbackWrapper {
 	callback: Box::<dyn InterruptCallback>,
 }
 
-static mut CALLBACKS: [Vec::<CallbackWrapper>; idt::ENTRIES_COUNT as _]
-	= [Vec::<CallbackWrapper>::new(); idt::ENTRIES_COUNT as _];
+// TODO Wrap in mutex
+/*
+ * List containing vectors that store callbacks for every interrupt watchdogs.
+ */
+static mut CALLBACKS: [Option::<Vec::<CallbackWrapper>>; idt::ENTRIES_COUNT as _]
+	= [None; idt::ENTRIES_COUNT as _];
 
 /*
  * Registers the given callback and returns a reference to it.
- * `id` is the id of the interrupt.
+ * `id` is the id of the interrupt to watch.
  * `priority` is the priority for the callback. Higher value means higher priority.
  * `callback` is the callback to register.
  *
  * If the `id` is invalid or if an allocation fails, the function shall return an error.
  */
-pub fn register_callback<T>(id: u8, priority: u32, callback: T) -> Result<(), ()>
-	where T: InterruptCallback {
+// TODO Return a reference?
+pub fn register_callback<T: 'static + InterruptCallback>(id: u8, priority: u32, callback: T)
+	-> Result<(), ()> {
 	if id >= idt::ENTRIES_COUNT {
 		return Err(());
 	}
 
-	CALLBACKS[id as usize].push(CallbackWrapper {
+	let vec = unsafe { // Access to global variable
+		&mut CALLBACKS[id as usize]
+	};
+	if vec.is_none() {
+		*vec = Some(Vec::<CallbackWrapper>::new());
+	}
+
+	vec.as_mut().unwrap().push(CallbackWrapper {
 		priority: priority,
-		callback: Box::new(&callback)?,
+		callback: Box::new(callback)?,
 	});
 	Ok(())
 }

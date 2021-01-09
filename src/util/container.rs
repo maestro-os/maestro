@@ -4,8 +4,11 @@
 
 use core::cmp::max;
 use core::ffi::c_void;
+use core::marker::Unsize;
 use core::mem::size_of_val;
 use core::mem::transmute;
+use core::ops::CoerceUnsized;
+use core::ops::DispatchFromDyn;
 use core::ops::Index;
 use core::ops::IndexMut;
 use crate::memory::malloc;
@@ -94,15 +97,16 @@ impl<T> Vec<T> {
 	/*
 	 * Returns the first element of the vector.
 	 */
-	pub fn first(&mut self) -> T {
-		self[0]
+	pub fn first(&mut self) -> &mut T {
+		&mut self[0]
 	}
 
 	/*
 	 * Returns the first element of the vector.
 	 */
-	pub fn last(&mut self) -> T {
-		self[self.len - 1]
+	pub fn last(&mut self) -> &mut T {
+		let len = self.len;
+		&mut self[len - 1]
 	}
 
 	/*
@@ -129,7 +133,7 @@ impl<T> Vec<T> {
 	/*
 	 * Appends an element to the back of a collection.
 	 */
-	pub fn push(&mut self, value: T) {
+	pub fn push(&mut self, _value: T) {
 		// TODO
 	}
 
@@ -137,14 +141,16 @@ impl<T> Vec<T> {
 	 * Removes the last element from a vector and returns it, or None if it is empty.
 	 */
 	pub fn pop(&mut self) -> Option<T> {
-		if !self.is_empty() {
+		// TODO
+		/*if !self.is_empty() {
 			self.len -= 1;
 			unsafe { // Pointer arithmetic and dereference of raw pointer
 				Some(*self.data.unwrap().offset(self.len as _))
 			}
 		} else {
 			None
-		}
+		}*/
+		None
 	}
 
 	// TODO Iterators?
@@ -192,23 +198,27 @@ impl<T> Drop for Vec<T> {
 	}
 }
 
-pub struct Box<T> where T: ?Sized {
+#[fundamental]
+pub struct Box<T: ?Sized> {
 	/* Pointer to the allocated memory */
 	ptr: *mut T,
 }
 
-impl<T> Box<T> where T: ?Sized {
+impl<T> Box<T> {
 	/*
 	 * Creates a new instance and places the given value `value` into it.
 	 * If the allocation fails, the function shall return an error.
 	 */
-	pub fn new(value: &T) -> Result<Box::<T>, ()> {
-		let size = size_of_val(value);
-		let mut b = Self {
-			ptr: transmute::<*mut c_void, *mut T>(malloc::alloc(size)?),
+	pub fn new(value: T) -> Result<Box::<T>, ()> {
+		let size = size_of_val(&value);
+		let b = Self {
+			ptr: unsafe { // Use of transmute
+				// TODO Check that conversion from thin to fat pointer works
+				transmute::<*mut c_void, *mut T>(malloc::alloc(size)?)
+			},
 		};
 		unsafe { // Call to C function
-			util::memcpy(b.ptr as _, value as *const _ as *const _, size);
+			util::memcpy(b.ptr as _, &value as *const _ as *const _, size);
 		}
 		Ok(b)
 	}
@@ -217,11 +227,30 @@ impl<T> Box<T> where T: ?Sized {
 	 * Returns a reference to the object contained into the Box.
 	 */
 	pub fn unwrap(&mut self) -> &mut T {
-		&mut *self.ptr
+		unsafe { // Dereference of raw pointer
+			&mut *self.ptr
+		}
 	}
 }
 
-impl<T> Drop for Box<T> where T: ?Sized {
+impl<T: Clone> Box<T> {
+	/*
+	 * Clones the Box and its content. The type of the wrapped data must implement the Clone trait.
+	 * If the allocation fails, the function shall return an error.
+	 */
+    fn clone(&self) -> Result<Self, ()> {
+		let obj = unsafe { // Dereference of raw pointer
+			&*self.ptr
+		};
+		Box::new(obj.clone())
+    }
+}
+
+impl<T: ?Sized + Unsize<U>, U: ?Sized> CoerceUnsized<Box<U>> for Box<T> {}
+
+impl<T: ?Sized + Unsize<U>, U: ?Sized> DispatchFromDyn<Box<U>> for Box<T> {}
+
+impl<T: ?Sized> Drop for Box<T> {
 	fn drop(&mut self) {
 		malloc::free(self.ptr as _);
 	}

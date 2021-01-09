@@ -7,13 +7,17 @@
 
 #![feature(allow_internal_unstable)]
 #![feature(asm)]
+#![feature(coerce_unsized)]
 #![feature(const_in_array_repeat_expressions)]
 #![feature(const_ptr_offset)]
 #![feature(const_raw_ptr_to_usize_cast)]
 #![feature(custom_test_frameworks)]
+#![feature(dispatch_from_dyn)]
+#![feature(fundamental)]
 #![feature(lang_items)]
 #![feature(maybe_uninit_ref)]
 #![feature(panic_info_message)]
+#![feature(unsize)]
 
 #![deny(warnings)]
 #![allow(dead_code)]
