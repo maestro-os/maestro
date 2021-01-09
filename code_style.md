@@ -46,7 +46,7 @@ The following elements **must** be documented:
 Files themselves **must** also begin with a documentation comment describing the role of the module.
 Makefile variables and rules **must** also be documented.
 
-A documentation comment for **C** and **Rust** code shall have the following syntax:
+A documentation comment for **C** code shall have the following syntax:
 
 ```
 /*
@@ -67,4 +67,10 @@ Example:
  * Documentation 2
  * ...
  */
+```
+
+A documentation comment for **Rust** code shall have the following syntax:
+
+```
+/// Here is the documentation
 ```
