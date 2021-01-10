@@ -5,10 +5,12 @@
 use core::cmp::{min, max};
 use core::ffi::c_void;
 use core::mem::size_of;
-use crate::memory::PAGE_SIZE;
-use crate::memory::buddy;
-use crate::util::data_struct::LinkedList;
+use crate::buddy;
+use crate::r#const::*;
 use crate::util;
+use util::data_struct::LinkedList;
+use util::linked_list_get;
+use util::offset_of;
 
 /// Type representing chunks' flags.
 type ChunkFlags = u8;
@@ -79,7 +81,7 @@ fn check_free_lists() {
 		let mut node = c.unwrap();
 		loop {
 			let chunk = unsafe {
-				&*crate::linked_list_get!(node as *mut LinkedList, *mut FreeChunk, free_list)
+				&*linked_list_get!(node as *mut LinkedList, *mut FreeChunk, free_list)
 			};
 			chunk.check();
 
@@ -154,7 +156,7 @@ impl Chunk {
 	/// debug mode.
 	#[cfg(kernel_mode = "debug")]
 	pub fn check(&self) {
-		debug_assert!(self as *const _ as *const c_void >= crate::memory::PROCESS_END);
+		debug_assert!(self as *const _ as *const c_void >= PROCESS_END);
 		debug_assert!(self.get_size() >= get_min_chunk_size());
 
 		if !self.is_used() {
@@ -163,9 +165,9 @@ impl Chunk {
 
 		if let Some(prev) = self.list.get_prev() {
 			let p = unsafe {
-				&*crate::linked_list_get!(prev as *mut LinkedList, *mut Chunk, list)
+				&*linked_list_get!(prev as *mut LinkedList, *mut Chunk, list)
 			};
-			debug_assert!(p as *const _ as *const c_void >= crate::memory::PROCESS_END);
+			debug_assert!(p as *const _ as *const c_void >= PROCESS_END);
 			debug_assert!(p.get_size() >= get_min_chunk_size());
 
 			let len = size_of::<Chunk>() + p.get_size();
@@ -174,9 +176,9 @@ impl Chunk {
 
 		if let Some(next) = self.list.get_next() {
 			let n = unsafe {
-				&*crate::linked_list_get!(next as *mut LinkedList, *mut Chunk, list)
+				&*linked_list_get!(next as *mut LinkedList, *mut Chunk, list)
 			};
-			debug_assert!(n as *const _ as *const c_void >= crate::memory::PROCESS_END);
+			debug_assert!(n as *const _ as *const c_void >= PROCESS_END);
 			debug_assert!(n.get_size() >= get_min_chunk_size());
 
 			let len = size_of::<Chunk>() + self.get_size();
@@ -205,7 +207,7 @@ impl Chunk {
 
 		if let Some(next) = self.list.get_next() {
 			let n = unsafe {
-				&mut *crate::linked_list_get!(next as *mut LinkedList, *mut Chunk, list)
+				&mut *linked_list_get!(next as *mut LinkedList, *mut Chunk, list)
 			};
 
 			if !n.is_used() {
@@ -217,7 +219,7 @@ impl Chunk {
 
 		if let Some(prev) = self.list.get_prev() {
 			let p = unsafe {
-				&mut *crate::linked_list_get!(prev as *mut LinkedList, *mut Chunk, list)
+				&mut *linked_list_get!(prev as *mut LinkedList, *mut Chunk, list)
 			};
 
 			if !p.is_used() {
@@ -243,7 +245,7 @@ impl Chunk {
 		if delta > 0 {
 			if let Some(next) = self.list.get_next() {
 				let n = unsafe {
-					&mut *crate::linked_list_get!(next as *mut LinkedList, *mut Chunk, list)
+					&mut *linked_list_get!(next as *mut LinkedList, *mut Chunk, list)
 				};
 
 				if n.is_used() {
@@ -272,7 +274,7 @@ impl Chunk {
 
 			if let Some(next) = self.list.get_next() {
 				let n = unsafe {
-					&*crate::linked_list_get!(next as *mut LinkedList, *const Chunk, list)
+					&*linked_list_get!(next as *mut LinkedList, *const Chunk, list)
 				};
 
 				if !n.is_used() {
@@ -414,7 +416,7 @@ impl Block {
 		debug_assert!(first_chunk_size >= min_size);
 
 		let ptr = buddy::alloc_kernel(order)?;
-		debug_assert!(ptr as *const _ >= crate::memory::PROCESS_END);
+		debug_assert!(ptr as *const _ >= PROCESS_END);
 		let block = unsafe { // Dereference of raw pointer
 			&mut *(ptr as *mut Block)
 		};
@@ -433,7 +435,7 @@ impl Block {
 
 	/// Returns a mutable reference to the block whose first chunk's reference is passed as argument.
 	pub unsafe fn from_first_chunk(chunk: *mut Chunk) -> &'static mut Block {
-		let first_chunk_off = crate::offset_of!(*const Block, first_chunk);
+		let first_chunk_off = offset_of!(*const Block, first_chunk);
 		let ptr = ((chunk as usize) - first_chunk_off) as *mut Self;
 		debug_assert!(util::is_aligned(ptr as *const c_void, PAGE_SIZE));
 		&mut *ptr
@@ -457,7 +459,7 @@ fn get_available_chunk(size: usize) -> Result<&'static mut FreeChunk, ()> {
 			};
 
 			unsafe {
-				&mut *crate::linked_list_get!(chunk_node, *mut FreeChunk, free_list)
+				&mut *linked_list_get!(chunk_node, *mut FreeChunk, free_list)
 			}
 		} else {
 			let block = Block::new(size)?;

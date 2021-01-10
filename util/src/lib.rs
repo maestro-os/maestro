@@ -88,7 +88,7 @@ pub fn bit_size_of<T>() -> usize {
 #[macro_export]
 macro_rules! offset_of {
 	($type:ty, $field:ident) => {
-		(&(*(null as $type)).$field) as *const _ as *const c_void as usize
+		(&(*(core::ptr::null::<c_void>() as $type)).$field) as *const _ as *const c_void as usize
 	}
 }
 
@@ -97,7 +97,7 @@ macro_rules! offset_of {
 #[macro_export]
 macro_rules! container_of {
 	($ptr:expr, $type:ty, $field:ident) => {
-		(($ptr as *const _ as usize) - crate::offset_of!($type, $field)) as $type
+		(($ptr as *const _ as usize) - util::offset_of!($type, $field)) as $type
 	}
 }
 

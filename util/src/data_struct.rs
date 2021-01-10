@@ -27,7 +27,7 @@ pub struct LinkedList {
 #[macro_export]
 macro_rules! linked_list_get {
 	($node:expr, $type:ty, $field:ident) => {
-		crate::container_of!($node, $type, $field)
+		util::container_of!($node, $type, $field)
 	}
 }
 
