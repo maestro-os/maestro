@@ -1,5 +1,5 @@
 [workspace]
-members = ["mem_alloc"]
+members = ["mem_alloc", "util"]
 
 [package]
 name = "maestro"
@@ -7,5 +7,10 @@ version = "0.1.0"
 authors = ["Crumble14 <luc14860@gmail.com>"]
 edition = "2018"
 
+[[bin]]
+name = "maestro"
+path = "src/kernel.rs"
+
 [dependencies]
 mem_alloc = { path = "mem_alloc" }
+util = { path = "util" }

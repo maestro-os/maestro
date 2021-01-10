@@ -10,7 +10,7 @@ tags
 
 *_out
 
-/target
+target/
 *.rlib
 
 current_target.json
