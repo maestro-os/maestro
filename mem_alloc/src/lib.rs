@@ -1,4 +1,4 @@
-#![cfg_attr(not(std), no_std)]
+#![cfg_attr(not(userspace), no_std)]
 
 mod buddy;
 mod malloc;

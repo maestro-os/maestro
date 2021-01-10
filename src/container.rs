@@ -1,4 +1,5 @@
-/// This files implements containers, which require memory allocations.
+/// This files implements containers. These are different from data structures in the fact that
+/// they require a memory allocator.
 
 use core::cmp::max;
 use core::ffi::c_void;

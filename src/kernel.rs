@@ -31,6 +31,7 @@
 #![reexport_test_harness_main = "test_main"]
 
 extern crate mem_alloc;
+extern crate util;
 
 mod debug;
 mod elf;
