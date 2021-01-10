@@ -25,11 +25,11 @@ use core::ffi::c_void;
 use core::result::Result;
 use crate::elf;
 use crate::memory::NULL;
-use crate::memory::buddy;
 use crate::memory;
 use crate::multiboot;
 use crate::util;
 use crate::vga;
+use mem_alloc::buddy;
 
 /// x86 paging flag. If set, prevents the CPU from updating the associated addresses when the TLB
 /// is flushed.
