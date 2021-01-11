@@ -25,10 +25,18 @@ KERNEL_MODE ?= debug
 # A boolean value telling whether the kernel is compiled for testing or not. This variable can be set using an
 # environement variable with the same name
 KERNEL_TEST ?= false
+# If true, compiles libraries for userspace testing purpose
+USERSPACE_TEST ?= false
 
 # Forcing the KERNEL_TEST option to `false` if building in release mode
 ifeq ($(KERNEL_MODE), release)
 KERNEL_TEST = false
+endif
+
+# The C language compiler
+CC = i686-elf-gcc
+ifeq ($(USERSPACE_TEST), true)
+CC = cc
 endif
 
 # Current directory
@@ -69,7 +77,7 @@ QEMU_FLAGS = -cdrom $(NAME).iso -device isa-debug-exit,iobase=0xf4,iosize=0x04
 LIB_FILES := lib$(NAME).a mem_alloc/libmem_alloc.a util/libutil.a
 
 # The rule to compile everything
-all: tags $(NAME) iso
+all: $(NAME) iso
 
 # TODO: Fix the incorrect binary in target. This is probably due to the usage of the flag to compile for testing
 # The rule to compile the kernel image
@@ -84,15 +92,15 @@ endif
 
 # The rule to compile the main kernel library
 lib$(NAME).a:
-	make -f lib.makefile
+	 CC='$(CC)' make -f lib.makefile
 
 # The rule to compile the memory allocation kernel library
 mem_alloc/libmem_alloc.a:
-	LIB_NAME='mem_alloc' BUILD_ROOT='mem_alloc' CC='gcc' make -f lib.makefile
+	LIB_NAME='mem_alloc' BUILD_ROOT='mem_alloc' CC='$(CC)' make -f lib.makefile
 
 # The rule to compile the utility kernel library
 util/libutil.a:
-	LIB_NAME='util' BUILD_ROOT='util' CC='gcc' make -f lib.makefile
+	LIB_NAME='util' BUILD_ROOT='util' CC='$(CC)' make -f lib.makefile
 
 # Alias for $(NAME).iso
 iso: $(NAME).iso

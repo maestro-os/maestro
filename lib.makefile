@@ -94,7 +94,7 @@ $(OBJ_DIR)%.c.o: $(SRC_DIR)%.c $(HDR) Makefile
 
 # The rule to create the `tags` file
 tags: $(SRC) $(HDR)
-	ctags $(SRC) $(HDR)
+	cd $(BUILD_ROOT)_&& ctags $(SRC) $(HDR)
 
 # The rule to clean the workspace
 clean:
