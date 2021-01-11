@@ -156,7 +156,7 @@ mod table {
 
 		let v = alloc_obj()?;
 		unsafe {
-			*vmem.add(index) = (memory::kern_to_phys(v as _) as u32)
+			*vmem.add(index) = (mem_alloc::kern_to_phys(v as _) as u32)
 				| (flags | FLAG_PRESENT);
 		}
 		Ok(())
@@ -212,12 +212,12 @@ fn protect_kernel(vmem: MutVMem) {
 			let phys_addr = if section.sh_addr < (memory::PROCESS_END as _) {
 				section.sh_addr as *const c_void
 			} else {
-				memory::kern_to_phys(section.sh_addr as _)
+				mem_alloc::kern_to_phys(section.sh_addr as _)
 			};
 			let virt_addr = if section.sh_addr >= (memory::PROCESS_END as _) {
 				section.sh_addr as *const c_void
 			} else {
-				memory::kern_to_virt(section.sh_addr as _)
+				mem_alloc::kern_to_virt(section.sh_addr as _)
 			};
 			let pages = util::ceil_division(section.sh_size, memory::PAGE_SIZE as _) as usize;
 			if map_range(vmem, phys_addr, virt_addr, pages as usize, FLAG_USER) == Err(()) {
@@ -248,7 +248,7 @@ pub fn init() -> Result<MutVMem, ()> {
 pub fn kernel() {
 	if let Ok(kernel_vmem) = init() {
 		unsafe {
-			paging_enable(memory::kern_to_phys(kernel_vmem as _) as _);
+			paging_enable(mem_alloc::kern_to_phys(kernel_vmem as _) as _);
 		}
 	} else {
 		crate::kernel_panic!("Cannot initialize kernel virtual memory!", 0);
@@ -275,7 +275,7 @@ pub fn resolve(vmem: VMem, ptr: *const c_void) -> Option<*const u32> {
 		return Some(dir_entry);
 	}
 
-	let table = memory::kern_to_virt((dir_entry_value & ADDR_MASK) as _) as VMem;
+	let table = mem_alloc::kern_to_virt((dir_entry_value & ADDR_MASK) as _) as VMem;
 	let table_entry = unsafe { table.add(get_addr_element_index(ptr, 0)) };
 	let table_entry_value = unsafe { *table_entry };
 	if table_entry_value & FLAG_PRESENT == 0 {
@@ -488,7 +488,7 @@ pub fn clone(vmem: VMem) -> Result<VMem, ()> {
 			if let Ok(dest_table) = alloc_obj() {
 				unsafe {
 					util::memcpy(dest_table as _, src_table as _, memory::PAGE_SIZE);
-					*dest_dir_entry = (memory::kern_to_phys(dest_table as _) as u32)
+					*dest_dir_entry = (mem_alloc::kern_to_phys(dest_table as _) as u32)
 						| (src_dir_entry_value & FLAGS_MASK);
 				}
 			} else {

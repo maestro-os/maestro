@@ -4,9 +4,9 @@
 
 extern crate util;
 
-mod buddy;
-mod r#const;
-mod malloc;
+pub mod buddy;
+pub mod r#const;
+pub mod malloc;
 
 use core::ffi::c_void;
 use crate::r#const::*;

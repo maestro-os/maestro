@@ -4,9 +4,8 @@
 
 // TODO Add non-error interrupts?
 
+use crate::container::*;
 use crate::idt;
-use crate::util::container::Box;
-use crate::util::container::Vec;
 use crate::util;
 
 // TODO Arch dependent

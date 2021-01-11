@@ -33,6 +33,7 @@
 extern crate mem_alloc;
 extern crate util;
 
+mod container;
 mod debug;
 mod elf;
 mod error;
@@ -48,13 +49,10 @@ mod print;
 mod selftest;
 mod tty;
 #[macro_use]
-mod util;
 mod vga;
 
 use core::ffi::c_void;
 use core::panic::PanicInfo;
-
-use mem_alloc::buddy;
 
 /// Current kernel version.
 const KERNEL_VERSION: &'static str = "1.0";
@@ -99,7 +97,7 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 	println!("Initializing memory allocation...");
 	memory::memmap::init(multiboot_ptr);
 	memory::memmap::print_entries(); // TODO rm
-	buddy::init();
+	memory::alloc::init();
 	memory::vmem::kernel();
 
 	#[cfg(test)]

@@ -2,7 +2,6 @@
 
 use core::ffi::c_void;
 use crate::memory::NULL;
-use crate::memory;
 use crate::util;
 
 /// TODO doc
@@ -133,7 +132,7 @@ pub fn get_section(sections: *const c_void, sections_count: usize, shndx: usize,
 				as *const ELF32SectionHeader)
 		};
 		let n = unsafe {
-			util::ptr_to_str(memory::kern_to_virt((names_section.sh_addr + hdr.sh_name) as _))
+			util::ptr_to_str(mem_alloc::kern_to_virt((names_section.sh_addr + hdr.sh_name) as _))
 		};
 		if n == name {
 			return Some(hdr);
@@ -157,7 +156,7 @@ pub fn foreach_sections<T>(sections: *const c_void, sections_count: usize, shndx
 			&*(sections.offset((i * core::mem::size_of::<ELF32SectionHeader>()) as isize) as *const ELF32SectionHeader)
 		};
 		let n = unsafe {
-			util::ptr_to_str(memory::kern_to_virt((names_section.sh_addr + hdr.sh_name) as _))
+			util::ptr_to_str(mem_alloc::kern_to_virt((names_section.sh_addr + hdr.sh_name) as _))
 		};
 		f(hdr, n);
 		i += 1;

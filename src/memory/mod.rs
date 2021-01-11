@@ -1,9 +1,11 @@
 /// TODO Documentation
 
+pub mod alloc;
 pub mod memmap;
 pub mod vmem;
 
 use core::ffi::c_void;
+use mem_alloc::r#const::*;
 
 // TODO Remove
 /// Null pointer of type *const c_void.
