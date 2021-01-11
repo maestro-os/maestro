@@ -23,6 +23,9 @@ pub type Flags = i32;
 /// Type representing the identifier of a frame.
 type FrameID = u32;
 
+/// The number of memory zones.
+pub const ZONES_COUNT: usize = 3;
+
 /// The maximum order of a buddy allocated frame.
 pub const MAX_ORDER: FrameOrder = 17;
 
@@ -48,7 +51,7 @@ pub const FRAME_STATE_USED: FrameID = !(0 as FrameID);
 // TODO OOM killer
 
 /// Structure representing an allocatable zone of memory.
-struct Zone {
+pub struct Zone {
 	/// The type of the zone, defining the priority 
 	type_: Flags,
 	/// The number of allocated pages in the zone 
@@ -80,13 +83,36 @@ struct Frame {
 	order: FrameOrder,
 }
 
-// TODO Remplace by a linked list? (in case of holes in memory)
 /// The array of buddy allocator zones.
-static mut ZONES: MaybeUninit<[Mutex<Zone>; 3]> = MaybeUninit::uninit();
+static mut ZONES: MaybeUninit<[Mutex<Zone>; ZONES_COUNT]> = MaybeUninit::uninit();
+
+/// Prepares the buddy allocator. Calling this function is required before setting the zone slots.
+pub fn prepare() {
+	unsafe { // Calling unsafe function
+		util::zero_object(&mut ZONES);
+	}
+}
+
+/// Sets the zone at the given slot `slot`. It is required to call function `prepare` once before
+/// calling this one.
+/// Setting each zone slot is required before using the allocator. If one or more slot isn't set,
+/// the behaviour of the allocator is undefined.
+pub fn set_zone_slot(slot: usize, zone: Zone) {
+	let z = unsafe { // Assuming that a global variable is initialized
+		ZONES.assume_init_mut()
+	};
+	debug_assert!(slot < z.len());
+	z[slot] = Mutex::new(zone);
+}
 
 /// The size in bytes of a frame allocated by the buddy allocator with the given `order`.
 pub fn get_frame_size(order: FrameOrder) -> usize {
 	PAGE_SIZE << order
+}
+
+/// Returns the size of the metadata for one frame.
+pub const fn get_frame_metadata_size() -> usize {
+	size_of::<Frame>()
 }
 
 /// Returns the buddy order required to fit the given number of pages.
@@ -239,17 +265,21 @@ impl Zone {
 		self.check_free_list();
 	}
 
-	/// Initializes the zone with type `type_`. The zone covers the memory from pointer `begin` to
+	/// Creates a zone with type `type_`. The zone covers the memory from pointer `begin` to
 	/// `begin + size` where `size` is the size in bytes.
 	/// `metadata_begin` must be a virtual address and `begin` must be a physical address.
-	pub fn init(&mut self, type_: Flags, metadata_begin: *mut c_void, pages_count: FrameID,
-		begin: *mut c_void) {
-		self.type_ = type_;
-		self.allocated_pages = 0;
-		self.metadata_begin = metadata_begin;
-		self.begin = begin;
-		self.pages_count = pages_count;
-		self.fill_free_list();
+	pub fn new(type_: Flags, metadata_begin: *mut c_void, pages_count: FrameID, begin: *mut c_void)
+		-> Zone {
+		let mut z = Zone {
+			type_: type_,
+			allocated_pages: 0,
+			metadata_begin: metadata_begin,
+			begin: begin,
+			pages_count: pages_count,
+			free_list: [None; (MAX_ORDER + 1) as usize],
+		};
+		z.fill_free_list();
+		z
 	}
 
 	/// Returns the number of allocated pages in the current zone of memory.
@@ -268,7 +298,7 @@ impl Zone {
 	}
 
 	/// Returns an available frame owned by this zone, with an order of at least `order`.
-	pub fn get_available_frame(&self, order: FrameOrder) -> Option<&'static mut Frame> {
+	fn get_available_frame(&self, order: FrameOrder) -> Option<&'static mut Frame> {
 		for i in (order as usize)..self.free_list.len() {
 			let f = self.free_list[i];
 			if let Some(f_) = f {
@@ -286,13 +316,13 @@ impl Zone {
 
 	/// Returns the identifier for the frame at the given pointer `ptr`. The pointer must point to
 	/// the frame itself, not the Frame structure.
-	pub fn get_frame_id_from_ptr(&self, ptr: *const c_void) -> FrameID {
+	fn get_frame_id_from_ptr(&self, ptr: *const c_void) -> FrameID {
 		(((ptr as usize) - (self.begin as usize)) / PAGE_SIZE) as _
 	}
 
 	/// Returns a mutable reference to the frame with the given identifier `id`.
 	/// The given identifier **must** be in the range of the zone.
-	pub fn get_frame(&self, id: FrameID) -> *mut Frame {
+	fn get_frame(&self, id: FrameID) -> *mut Frame {
 		debug_assert!(id < self.get_pages_count());
 		((self.metadata_begin as usize) + (id as usize * size_of::<Frame>())) as _
 	}
@@ -304,7 +334,7 @@ impl Zone {
 	/// 
 	/// If a frame is invalid, the function shall result in the kernel panicking.
 	#[cfg(kernel_mode = "debug")]
-	pub fn check_free_list(&self) {
+	fn check_free_list(&self) {
 		let zone_size = (self.get_pages_count() as usize) * PAGE_SIZE;
 
 		for (order, list) in self.free_list.iter().enumerate() {
