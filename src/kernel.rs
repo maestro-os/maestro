@@ -36,7 +36,7 @@ extern crate util;
 mod container;
 mod debug;
 mod elf;
-mod error;
+mod event;
 #[macro_use]
 mod idt;
 mod memory;
@@ -47,6 +47,7 @@ mod pit;
 #[macro_use]
 mod print;
 mod selftest;
+mod syscall;
 mod tty;
 #[macro_use]
 mod vga;

@@ -89,6 +89,7 @@ ifeq ($(KERNEL_MODE), release)
 endif
 
 # TODO Select the C/assembly compiler according to architecture
+# TODO Make the building rules for libraries depend on its source files
 
 # The rule to compile the main kernel library
 lib$(NAME).a:

@@ -1,8 +1,5 @@
-/// This file handles software and hardware error interruptions.
-/// 
-/// TODO doc
-
-// TODO Add non-error interrupts?
+/// This file handles interruptions, it provides an interface allowing to register callbacks for
+/// each interrupts. Each callback has a priority number and is called in descreasing order.
 
 use crate::container::*;
 use crate::idt;
@@ -107,10 +104,10 @@ pub fn register_callback<T: 'static + InterruptCallback>(id: u8, priority: u32, 
 
 // TODO Callback unregister
 
-/// This function is called whenever an error interruption is triggered.
+/// This function is called whenever an interruption is triggered.
 /// TODO doc
 #[no_mangle]
-pub extern "C" fn error_handler(error: u32, error_code: u32, _regs: *const util::Regs) {
-	// TODO Allow to register error callbacks
+pub extern "C" fn event_handler(error: u32, error_code: u32, _regs: *const util::Regs) {
+	// TODO Use error callbacks
 	crate::kernel_panic!(get_error_message(error), error_code);
 }

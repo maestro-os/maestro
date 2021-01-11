@@ -1,3 +1,5 @@
+// TODO doc
+
 .section .text
 
 .global error_handler
@@ -18,7 +20,7 @@ error\n:
 	push %esp
 	push $0
 	push $\n
-	call error_handler
+	call event_handler
 	add $12, %esp
 
 	call restore_regs
@@ -51,7 +53,7 @@ error\n:
 	push %esp
 	sub $4, %esp
 	push $\n
-	call error_handler
+	call event_handler
 	add $12, %esp
 
 	call restore_regs
