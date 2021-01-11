@@ -115,11 +115,15 @@ $(NAME).iso: $(NAME)
 # The rule to clean the workspace
 clean:
 	make clean -f lib.makefile
+	LIB_NAME='mem_alloc' BUILD_ROOT='mem_alloc' make clean -f lib.makefile
+	LIB_NAME='util' BUILD_ROOT='util' make clean -f lib.makefile
 	rm -rf iso/
 
 # The rule to clean the workspace, including target binaries
 fclean: clean
 	make fclean -f lib.makefile
+	LIB_NAME='mem_alloc' BUILD_ROOT='mem_alloc' make fclean -f lib.makefile
+	LIB_NAME='util' BUILD_ROOT='util' make fclean -f lib.makefile
 	rm -rf target/
 	rm -f $(NAME)
 	rm -f $(NAME).iso
