@@ -1,7 +1,9 @@
-#include <libc/string.h>
-#include <util/util.h>
+#include <stddef.h>
+#include <stdint.h>
 
-ATTR_HOT
+/*
+ * Zeros the given chunk of memory `s` with the given size `n`.
+ */
 void bzero(void *s, size_t n)
 {
 	void *end;

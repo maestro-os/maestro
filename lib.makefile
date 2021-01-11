@@ -77,7 +77,7 @@ OBJ := $(ASM_OBJ) $(C_OBJ)
 all: $(NAME)
 
 # The rule to build the library
-$(NAME): $(OBJ_DIRS) $(INTERNAL_OBJ)
+$(NAME): $(OBJ_DIRS) $(OBJ)
 	$(AR) $(ARFLAGS) $@ $(OBJ)
 
 # The rule to create object directories

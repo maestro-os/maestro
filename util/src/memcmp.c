@@ -1,8 +1,11 @@
-#include <libc/string.h>
-#include <util/util.h>
+#include <stdint.h>
+#include <stddef.h>
 
 // TODO Rewrite
-ATTR_HOT
+/*
+ * Compares strings of byte `s1` and `s2` with length `n` and given the diffence
+ * between the first characters that differ.
+ */
 int memcmp(const void *s1, const void *s2, size_t n)
 {
 	size_t i = 0;

@@ -1,7 +1,9 @@
-#include <libc/string.h>
-#include <util/util.h>
+#include <stdint.h>
+#include <stddef.h>
 
-ATTR_HOT
+/*
+ * Copy the given memory area `src` to `dest` with size `n`.
+ */
 void *memcpy(void *dest, const void *src, size_t n)
 {
 	void *begin = dest;

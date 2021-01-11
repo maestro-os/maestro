@@ -84,15 +84,15 @@ endif
 
 # The rule to compile the main kernel library
 lib$(NAME).a:
-	make -C lib.makefile
+	make -f lib.makefile
 
 # The rule to compile the memory allocation kernel library
 mem_alloc/libmem_alloc.a:
-	LIB_NAME='mem_alloc' BUILD_ROOT='mem_alloc' make -C lib.makefile
+	LIB_NAME='mem_alloc' BUILD_ROOT='mem_alloc' CC='gcc' make -f lib.makefile
 
 # The rule to compile the utility kernel library
 util/libutil.a:
-	LIB_NAME='util' BUILD_ROOT='util' make -C lib.makefile
+	LIB_NAME='util' BUILD_ROOT='util' CC='gcc' make -f lib.makefile
 
 # Alias for $(NAME).iso
 iso: $(NAME).iso
@@ -106,13 +106,14 @@ $(NAME).iso: $(NAME)
 
 # The rule to clean the workspace
 clean:
-	make clean -C lib.makefile
+	make clean -f lib.makefile
 	rm -rf iso/
 
 # The rule to clean the workspace, including target binaries
 fclean: clean
-	rm -f $(NAME)
+	make fclean -f lib.makefile
 	rm -rf target/
+	rm -f $(NAME)
 	rm -f $(NAME).iso
 
 # The rule to recompile everything
