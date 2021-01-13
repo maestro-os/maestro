@@ -57,12 +57,18 @@ CARGOFLAGS = --verbose
 ifeq ($(KERNEL_MODE), release)
 CARGOFLAGS += --release
 endif
+
 ifeq ($(KERNEL_TEST), true)
-CARGOFLAGS += --tests
+CARGOMODE = test --no-run
+else
+CARGOMODE = build
 endif
 
 # The Rust language compiler flags
 RUSTFLAGS = -Z macro-backtrace -C link-arg=-T$(LINKER) --cfg kernel_mode=\"$(KERNEL_MODE)\"
+ifeq ($(KERNEL_TEST), true)
+RUSTFLAGS += --cfg test
+endif
 
 # The strip program
 STRIP = strip
@@ -82,7 +88,7 @@ all: $(NAME) iso
 # TODO: Fix the incorrect binary in target. This is probably due to the usage of the flag to compile for testing
 # The rule to compile the kernel image
 $(NAME): $(LIB_FILES) $(RUST_SRC) $(LINKER) Makefile
-	RUSTFLAGS="$(RUSTFLAGS)" $(CARGO) build $(CARGOFLAGS) --target $(TARGET)
+	RUSTFLAGS="$(RUSTFLAGS)" $(CARGO) $(CARGOMODE) $(CARGOFLAGS) --target $(TARGET)
 	cp `ls -1 target/target/debug/deps/maestro-* | head -n 1` $@
 ifeq ($(KERNEL_MODE), release)
 	$(STRIP) $(NAME)

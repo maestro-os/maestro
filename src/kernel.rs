@@ -46,6 +46,7 @@ mod panic;
 mod pit;
 #[macro_use]
 mod print;
+#[cfg(test)]
 mod selftest;
 mod syscall;
 mod tty;
@@ -149,4 +150,3 @@ fn panic(panic_info: &PanicInfo) -> ! {
 fn eh_personality() {
 	// TODO Do something?
 }
-
