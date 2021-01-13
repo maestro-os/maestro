@@ -34,9 +34,9 @@ KERNEL_TEST = false
 endif
 
 # The C language compiler
-CC = i686-elf-gcc
+CC = i686-elf-gcc # TODO Set according to architecture
 ifeq ($(USERSPACE_TEST), true)
-CC = cc
+CC = i686-elf-gcc
 endif
 
 # Current directory
@@ -51,7 +51,7 @@ TARGET = $(ARCH_PATH)target.json
 LINKER = $(ARCH_PATH)linker.ld
 
 # Cargo
-CARGO = cargo
+CARGO = cargo +nightly
 # Cargo flags
 CARGOFLAGS = --verbose
 ifeq ($(KERNEL_MODE), release)
@@ -65,7 +65,7 @@ CARGOMODE = build
 endif
 
 # The Rust language compiler flags
-RUSTFLAGS = -Z macro-backtrace -C link-arg=-T$(LINKER) --cfg kernel_mode=\"$(KERNEL_MODE)\"
+RUSTFLAGS = -Zmacro-backtrace -C link-arg=-T$(LINKER) --cfg kernel_mode=\"$(KERNEL_MODE)\"
 ifeq ($(KERNEL_TEST), true)
 RUSTFLAGS += --cfg test
 endif
