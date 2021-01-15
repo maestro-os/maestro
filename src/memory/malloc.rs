@@ -479,6 +479,10 @@ fn get_available_chunk(size: usize) -> Result<&'static mut FreeChunk, ()> {
 /// Allocates `n` bytes of kernel memory and returns a pointer to the beginning of the allocated
 /// chunk. If the allocation fails, the function shall return an error.
 pub fn alloc(n: usize) -> Result<*mut c_void, ()> {
+	if n <= 0 {
+		return Err(());
+	}
+
 	let chunk = get_available_chunk(n)?;
 	let c = chunk.split(n);
 	debug_assert!(c.get_size() >= n);
@@ -545,48 +549,44 @@ mod test {
 
 	#[test_case]
 	fn alloc_free0() {
-		if let Ok(ptr) = alloc(1) {
-			unsafe {
-				util::memset(ptr, -1, 1);
-			}
-			free(ptr);
-		} else {
-			assert!(false);
-		}
+		assert!(alloc(0).is_err());
 	}
 
 	#[test_case]
 	fn alloc_free1() {
-		if let Ok(ptr) = alloc(8) {
-			unsafe {
-				util::memset(ptr, -1, 8);
-			}
-			free(ptr);
-		} else {
-			assert!(false);
+		let ptr = alloc(1).unwrap();
+		unsafe { // Call to C function
+			util::memset(ptr, -1, 1);
 		}
+		free(ptr);
+	}
+
+	#[test_case]
+	fn alloc_free1() {
+		let ptr = alloc(8).unwrap();
+		unsafe { // Call to C function
+			util::memset(ptr, -1, 8);
+		}
+		free(ptr);
 	}
 
 	#[test_case]
 	fn alloc_free2() {
-		if let Ok(ptr) = alloc(memory::PAGE_SIZE) {
-			unsafe {
-				util::memset(ptr, -1, memory::PAGE_SIZE);
-			}
-			free(ptr);
-		} else {
-			assert!(false);
+		let ptr = alloc(memory::PAGE_SIZE).unwrap();
+		unsafe { // Call to C function
+			util::memset(ptr, -1, memory::PAGE_SIZE);
 		}
+		free(ptr);
 	}
 
 	#[test_case]
-	fn alloc_free_heap() {
+	fn alloc_free_fifo() {
 		let mut ptrs: [*mut c_void; 1024] = [0 as _; 1024];
 
 		for i in 0..ptrs.len() {
 			let size = i + 1;
 			let ptr = alloc(size).unwrap();
-			unsafe {
+			unsafe { // Call to C function
 				util::memset(ptr, -1, size);
 			}
 			ptrs[i] = ptr;
@@ -603,16 +603,87 @@ mod test {
 		}
 	}
 
-	// TODO More tests on alloc
+	fn lifo_test(i: usize) {
+		let ptr = alloc(i).unwrap();
+		unsafe { // Call to C function
+			util::memset(ptr, -1, i);
+		}
+		if i > 1 {
+			lifo_test(i - 1);
+		}
+		free(ptr);
+	}
 
-	// TODO Test get_size
-	// TODO Test realloc
+	#[test_case]
+	fn alloc_free_lifo() {
+		lifo_test(100);
+	}
+
+	#[test_case]
+	fn get_size0() {
+		for i in 1..memory::PAGE_SIZE {
+			let ptr = alloc(i).unwrap();
+			assert!(get_size(ptr) >= i);
+			unsafe { // Call to C function
+				util::memset(ptr, -1, i);
+			}
+			assert!(get_size(ptr) >= i);
+			free(ptr);
+		}
+	}
+
+	// TODO More tests on get_size
+
+	// TODO Check the integrity of the data after reallocation
+	#[test_case]
+	fn realloc0() {
+		let mut ptr = alloc(1).unwrap();
+		assert!(get_size(ptr) >= 1);
+
+		for i in 1..memory::PAGE_SIZE {
+			ptr = realloc(ptr, i).unwrap();
+			assert!(get_size(ptr) >= i);
+			unsafe { // Call to C function
+				util::memset(ptr, -1, i);
+			}
+			assert!(get_size(ptr) >= i);
+		}
+
+		free(ptr);
+	}
+
+	// TODO Check the integrity of the data after reallocation
+	#[test_case]
+	fn realloc1() {
+		let mut ptr = alloc(memory::PAGE_SIZE).unwrap();
+		assert!(get_size(ptr) >= 1);
+
+		for i in (1..memory::PAGE_SIZE).rev() {
+			ptr = realloc(ptr, i).unwrap();
+			assert!(get_size(ptr) >= i);
+			unsafe { // Call to C function
+				util::memset(ptr, -1, i);
+			}
+			assert!(get_size(ptr) >= i);
+		}
+
+		free(ptr);
+	}
+
+	// TODO More tests on realloc (test with several chunks at the same time)
 
 	#[test_case]
 	fn free0() {
 		let ptr0 = alloc(16).unwrap();
+		unsafe { // Call to C function
+			util::memset(ptr0, -1, 16);
+		}
 		free(ptr0);
+
 		let ptr1 = alloc(16).unwrap();
+		unsafe { // Call to C function
+			util::memset(ptr1, -1, 16);
+		}
 		free(ptr1);
 
 		debug_assert!(ptr0 == ptr1);
