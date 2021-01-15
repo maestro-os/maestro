@@ -27,6 +27,8 @@ KERNEL_MODE ?= debug
 KERNEL_TEST ?= false
 # If true, compiles libraries for userspace testing purpose
 USERSPACE_TEST ?= false
+# If true, the kernel is compiled for QEMU testing.
+QEMU_TEST ?= false
 
 # Forcing the KERNEL_TEST option to `false` if building in release mode
 ifeq ($(KERNEL_MODE), release)
@@ -68,6 +70,12 @@ endif
 RUSTFLAGS = -Zmacro-backtrace -C link-arg=-T$(LINKER) --cfg kernel_mode=\"$(KERNEL_MODE)\"
 ifeq ($(KERNEL_TEST), true)
 RUSTFLAGS += --cfg test
+endif
+ifeq ($(USERSPACE_TEST), true)
+RUSTFLAGS += --cfg userspace
+endif
+ifeq ($(QEMU_TEST), true)
+RUSTFLAGS += --cfg qemu
 endif
 
 # The strip program

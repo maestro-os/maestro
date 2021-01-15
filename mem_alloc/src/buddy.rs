@@ -577,8 +577,7 @@ impl Frame {
 mod test {
 	use super::*;
 
-	#[cfg_attr(userspace, test)]
-	#[cfg_attr(not(userspace), test_case)]
+	#[test_case]
 	fn buddy0() {
 		let alloc_pages = allocated_pages_count();
 
@@ -594,8 +593,7 @@ mod test {
 		debug_assert_eq!(allocated_pages_count(), alloc_pages);
 	}
 
-	#[cfg_attr(userspace, test)]
-	#[cfg_attr(not(userspace), test_case)]
+	#[test_case]
 	fn buddy1() {
 		let alloc_pages = allocated_pages_count();
 
@@ -625,8 +623,7 @@ mod test {
 		}
 	}
 
-	#[cfg_attr(userspace, test)]
-	#[cfg_attr(not(userspace), test_case)]
+	#[test_case]
 	fn buddy_lifo() {
 		let alloc_pages = allocated_pages_count();
 
@@ -635,8 +632,7 @@ mod test {
 		debug_assert_eq!(allocated_pages_count(), alloc_pages);
 	}
 
-	#[cfg_attr(userspace, test)]
-	#[cfg_attr(not(userspace), test_case)]
+	#[test_case]
 	fn buddy_fifo() {
 		let alloc_pages = allocated_pages_count();
 
@@ -670,8 +666,7 @@ mod test {
 		}
 	}
 
-	#[cfg_attr(userspace, test)]
-	#[cfg_attr(not(userspace), test_case)]
+	#[test_case]
 	fn buddy_free() {
 		let alloc_pages = allocated_pages_count();
 
@@ -707,8 +702,7 @@ mod test {
 		tortoise == hoare
 	}
 
-	#[cfg_attr(userspace, test)]
-	#[cfg_attr(not(userspace), test_case)]
+	#[test_case]
 	fn buddy_full_duplicate() {
 		let alloc_pages = allocated_pages_count();
 

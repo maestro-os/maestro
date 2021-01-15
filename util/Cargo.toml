@@ -9,3 +9,4 @@ name = "util"
 path = "src/lib.rs"
 
 [dependencies]
+libc = "0.2.82"

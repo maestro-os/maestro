@@ -206,8 +206,7 @@ impl LinkedList {
 mod test {
 	use super::*;
 
-	#[cfg_attr(userspace, test)]
-	#[cfg_attr(not(userspace), test_case)]
+	#[test_case]
 	fn linked_list_insert_before0() {
 		let mut l0 = LinkedList::new_single();
 		let mut l1 = LinkedList::new_single();
@@ -225,8 +224,7 @@ mod test {
 		assert!(l1.next.is_none());
 	}
 
-	#[cfg_attr(userspace, test)]
-	#[cfg_attr(not(userspace), test_case)]
+	#[test_case]
 	fn linked_list_insert_before1() {
 		let mut l0 = LinkedList::new_single();
 		let mut l1 = LinkedList::new_single();
@@ -244,8 +242,7 @@ mod test {
 		assert!(l1.next.is_none());
 	}
 
-	#[cfg_attr(userspace, test)]
-	#[cfg_attr(not(userspace), test_case)]
+	#[test_case]
 	fn linked_list_insert_before2() {
 		let mut l0 = LinkedList::new_single();
 		let mut l1 = LinkedList::new_single();
@@ -263,8 +260,7 @@ mod test {
 		assert!(l1.next.is_none());
 	}
 
-	#[cfg_attr(userspace, test)]
-	#[cfg_attr(not(userspace), test_case)]
+	#[test_case]
 	fn linked_list_insert_before_floating0() {
 		let mut l0 = LinkedList::new_single();
 		let mut l1 = LinkedList::new_single();
@@ -280,8 +276,7 @@ mod test {
 		assert!(l1.next.is_none());
 	}
 
-	#[cfg_attr(userspace, test)]
-	#[cfg_attr(not(userspace), test_case)]
+	#[test_case]
 	fn linked_list_insert_before_floating1() {
 		let mut l0 = LinkedList::new_single();
 		let mut l1 = LinkedList::new_single();
@@ -304,8 +299,7 @@ mod test {
 		assert!(l2.next.is_none());
 	}
 
-	#[cfg_attr(userspace, test)]
-	#[cfg_attr(not(userspace), test_case)]
+	#[test_case]
 	fn linked_list_insert_after0() {
 		let mut l0 = LinkedList::new_single();
 		let mut l1 = LinkedList::new_single();
@@ -321,8 +315,7 @@ mod test {
 		assert!(l1.next.is_none());
 	}
 
-	#[cfg_attr(userspace, test)]
-	#[cfg_attr(not(userspace), test_case)]
+	#[test_case]
 	fn linked_list_insert_after1() {
 		let mut l0 = LinkedList::new_single();
 		let mut l1 = LinkedList::new_single();

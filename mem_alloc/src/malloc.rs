@@ -543,8 +543,7 @@ pub fn free(ptr: *mut c_void) {
 mod test {
 	use super::*;
 
-	#[cfg_attr(userspace, test)]
-	#[cfg_attr(not(userspace), test_case)]
+	#[test_case]
 	fn alloc_free0() {
 		if let Ok(ptr) = alloc(1) {
 			unsafe {
@@ -556,8 +555,7 @@ mod test {
 		}
 	}
 
-	#[cfg_attr(userspace, test)]
-	#[cfg_attr(not(userspace), test_case)]
+	#[test_case]
 	fn alloc_free1() {
 		if let Ok(ptr) = alloc(8) {
 			unsafe {
@@ -569,8 +567,7 @@ mod test {
 		}
 	}
 
-	#[cfg_attr(userspace, test)]
-	#[cfg_attr(not(userspace), test_case)]
+	#[test_case]
 	fn alloc_free2() {
 		if let Ok(ptr) = alloc(PAGE_SIZE) {
 			unsafe {
@@ -582,8 +579,7 @@ mod test {
 		}
 	}
 
-	#[cfg_attr(userspace, test)]
-	#[cfg_attr(not(userspace), test_case)]
+	#[test_case]
 	fn alloc_free_heap() {
 		let mut ptrs: [*mut c_void; 1024] = [0 as _; 1024];
 
@@ -612,8 +608,7 @@ mod test {
 	// TODO Test get_size
 	// TODO Test realloc
 
-	#[cfg_attr(userspace, test)]
-	#[cfg_attr(not(userspace), test_case)]
+	#[test_case]
 	fn free0() {
 		let ptr0 = alloc(16).unwrap();
 		free(ptr0);

@@ -10,6 +10,7 @@ echo $libs | tr ',' '\n' | while read lib; do
 	make $lib/lib${lib}.a;
 done || exit 1
 
+export USERSPACE_TEST=true
 export RUSTFLAGS='-Zmacro-backtrace --cfg kernel_mode="debug" --cfg userspace'
 
 echo $libs | tr ',' '\n' | while read lib; do

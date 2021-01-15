@@ -1,6 +1,10 @@
-#![cfg_attr(not(userspace), no_std)]
+#![no_std]
 
+#![feature(custom_test_frameworks)]
 #![feature(maybe_uninit_ref)]
+
+#![test_runner(util::selftest::runner)]
+#![reexport_test_harness_main = "test_main"]
 
 extern crate util;
 

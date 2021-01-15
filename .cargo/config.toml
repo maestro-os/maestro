@@ -1,3 +1,2 @@
 [unstable]
-#build-std = ["core"]
-build-std = ["core", "std", "alloc", "proc_macro", "test"]
+build-std = ["core"]

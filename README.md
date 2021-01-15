@@ -20,6 +20,7 @@ Some environement variables can be used to customize the compilation of the kern
 - **KERNEL_MODE** (default: `debug`): The mode of the kernel. Either `debug` or `release`.
 - **KERNEL_TEST** (default: `false`): Tells whether self-testing is enabled or not for the kernel. If the kernel is built in release mode, this option is forced to `false`.
 - **USERSPACE_TEST** (default: `false`): Tells if the libraries should be compiled for userspace testing purpose.
+- **QEMU_TEST** (default: `false`): Tells whether the kernel should be compiled to be tested on QEMU.
 
 
 

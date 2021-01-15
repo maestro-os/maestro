@@ -1,7 +1,17 @@
 #![cfg_attr(not(userspace), no_std)]
 
+#![feature(allow_internal_unstable)]
+#![feature(custom_test_frameworks)]
+
+#![cfg_attr(not(userspace), test_runner(selftest::runner))]
+#![cfg_attr(not(userspace), reexport_test_harness_main = "test_main")]
+
 pub mod data_struct;
 pub mod lock;
+#[macro_use]
+pub mod print;
+#[cfg(not(userspace))]
+pub mod selftest;
 
 /// This library contains utilities used everywhere in the kernel.
 /// All the features here are guaranteed to not require memory allocators.
@@ -149,15 +159,13 @@ pub unsafe fn ptr_to_str(ptr: *const c_void) -> &'static str {
 mod test {
 	use super::*;
 
-	#[cfg_attr(userspace, test)]
-	#[cfg_attr(not(userspace), test_case)]
+	#[test_case]
 	fn log2_0() {
 		debug_assert!(log2(0) == 0);
 		//debug_assert!(log2(-1) == 0);
 	}
 
-	#[cfg_attr(userspace, test)]
-	#[cfg_attr(not(userspace), test_case)]
+	#[test_case]
 	fn log2_1() {
 		for i in 1..bit_size_of::<usize>() {
 			debug_assert!(log2(pow2(i)) == i);

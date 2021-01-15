@@ -1,6 +1,8 @@
-/// TODO doc
+/// This module handles selftesting of the kernel.
 
-// TODO Add flag to enable/disable qemu
+/// This module contains utilities to manipulate QEMU for testing.
+#[cfg(qemu)]
+#[cfg(not(userspace))]
 pub mod qemu {
 	use crate::io;
 
@@ -12,8 +14,9 @@ pub mod qemu {
 	/// QEMU exit code for failure.
 	pub const FAILURE: u32 = 0x11;
 
+	/// Exits QEMU with the given status.
 	pub fn exit(status: u32) -> ! {
-		unsafe {
+		unsafe { // Call to unsafe functions
 			io::outl(EXIT_PORT, status);
 			crate::kernel_halt();
 		}
@@ -46,9 +49,9 @@ pub fn runner(tests: &[&dyn Testable]) {
 
 	crate::println!("No more tests to run");
 
-	// TODO Add flag to enable/disable qemu
-	//qemu::exit(qemu::SUCCESS);
-	unsafe {
+	#[cfg(qemu)]
+	qemu::exit(qemu::SUCCESS); // TODO Handle assertion fail (exit with FAILURE)
+	unsafe { // Call to unsafe function
 		crate::kernel_halt();
 	}
 }

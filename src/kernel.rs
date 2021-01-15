@@ -23,12 +23,8 @@
 #![allow(dead_code)]
 #![allow(unused_macros)]
 
-/*
- * The following attributes allow to specify the location of the custom test framework for embedded
- * self-testing and debugging.
- */
 #![test_runner(crate::selftest::runner)]
-#![reexport_test_harness_main = "test_main"]
+#![reexport_test_harness_main = "kernel_selftest"]
 
 extern crate mem_alloc;
 extern crate util;
@@ -44,8 +40,7 @@ mod multiboot;
 #[macro_use]
 mod panic;
 mod pit;
-#[macro_use]
-mod print;
+mod print_util;
 #[cfg(test)]
 mod selftest;
 mod syscall;
@@ -55,6 +50,9 @@ mod vga;
 
 use core::ffi::c_void;
 use core::panic::PanicInfo;
+
+use util::print;
+use util::println;
 
 /// Current kernel version.
 const KERNEL_VERSION: &'static str = "1.0";
@@ -103,7 +101,7 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 	memory::vmem::kernel();
 
 	#[cfg(test)]
-	test_main();
+	kernel_selftest();
 
 	// TODO Register default error handlers
 
