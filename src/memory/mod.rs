@@ -1,15 +1,24 @@
 /// TODO Documentation
 
 pub mod alloc;
+pub mod buddy;
+pub mod malloc;
 pub mod memmap;
 pub mod vmem;
 
 use core::ffi::c_void;
-use mem_alloc::r#const::*;
 
 // TODO Remove
 /// Null pointer of type *const c_void.
 pub const NULL: *const c_void = 0x0 as _;
+
+/// The size of a page in bytes.
+pub const PAGE_SIZE: usize = 0x1000;
+
+/// The physical pointer to the beginning of the kernel.
+pub const KERNEL_PHYS_BEGIN: *const c_void = 0x100000 as *const _;
+/// The pointer to the end of the virtual memory reserved to the process.
+pub const PROCESS_END: *const c_void = 0xc0000000 as *const _;
 
 // TODO Remove?
 /// Converts the page number to a pointer to the beginning of the pages.
@@ -68,6 +77,18 @@ pub fn get_kernel_virtual_end() -> *const c_void {
 	unsafe {
 		((PROCESS_END as usize) + (&kernel_end as *const _ as usize)) as _
 	}
+}
+
+/// Converts a kernel physical address to a virtual address.
+pub fn kern_to_virt(ptr: *const c_void) -> *const c_void {
+	debug_assert!(ptr < PROCESS_END);
+	((ptr as usize) + (PROCESS_END as usize)) as *const _
+}
+
+/// Converts a kernel virtual address to a physical address.
+pub fn kern_to_phys(ptr: *const c_void) -> *const c_void {
+	debug_assert!(ptr >= PROCESS_END);
+	((ptr as usize) - (PROCESS_END as usize)) as *const _
 }
 
 /// Symbols to the beginning and the end of the kernel.

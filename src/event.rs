@@ -1,7 +1,7 @@
 /// This file handles interruptions, it provides an interface allowing to register callbacks for
 /// each interrupts. Each callback has a priority number and is called in descreasing order.
 
-use crate::container::*;
+use crate::util::container::*;
 use crate::idt;
 use crate::util;
 

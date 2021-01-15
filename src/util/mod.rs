@@ -1,24 +1,13 @@
-#![cfg_attr(not(userspace), no_std)]
-
-#![feature(allow_internal_unstable)]
-#![feature(custom_test_frameworks)]
-
-#![cfg_attr(not(userspace), test_runner(selftest::runner))]
-#![cfg_attr(not(userspace), reexport_test_harness_main = "test_main")]
-
-pub mod data_struct;
-pub mod lock;
-#[macro_use]
-pub mod print;
-#[cfg(not(userspace))]
-pub mod selftest;
-
-/// This library contains utilities used everywhere in the kernel.
+/// This module contains utilities used everywhere in the kernel.
 /// All the features here are guaranteed to not require memory allocators.
 ///
 /// Data structures and containers are considered two separated things:
 /// - Data structures do not require memory allocations
 /// - Containers require memory allocations
+
+pub mod container;
+pub mod data_struct;
+pub mod lock;
 
 use core::ffi::c_void;
 
@@ -107,7 +96,7 @@ macro_rules! offset_of {
 #[macro_export]
 macro_rules! container_of {
 	($ptr:expr, $type:ty, $field:ident) => {
-		(($ptr as *const _ as usize) - util::offset_of!($type, $field)) as $type
+		(($ptr as *const _ as usize) - crate::offset_of!($type, $field)) as $type
 	}
 }
 

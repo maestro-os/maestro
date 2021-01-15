@@ -11,10 +11,10 @@ use core::cmp::min;
 use core::ffi::c_void;
 use core::mem::MaybeUninit;
 use core::mem::size_of;
-use core::ptr::null;
-use crate::r#const::*;
-use util::lock::Mutex;
-use util::lock::MutexGuard;
+use crate::memory;
+use crate::util::lock::Mutex;
+use crate::util::lock::MutexGuard;
+use crate::util;
 
 /// Type representing the order of a memory frame.
 pub type FrameOrder = u8;
@@ -107,7 +107,7 @@ pub fn set_zone_slot(slot: usize, zone: Zone) {
 
 /// The size in bytes of a frame allocated by the buddy allocator with the given `order`.
 pub fn get_frame_size(order: FrameOrder) -> usize {
-	PAGE_SIZE << order
+	memory::PAGE_SIZE << order
 }
 
 /// Returns the size of the metadata for one frame.
@@ -180,7 +180,7 @@ pub fn alloc(order: FrameOrder, flags: Flags) -> Result<*mut c_void, ()> {
 			zone.allocated_pages += util::pow2(order) as usize;
 
 			let ptr = f.get_ptr(zone);
-			debug_assert!(util::is_aligned(ptr, PAGE_SIZE));
+			debug_assert!(util::is_aligned(ptr, memory::PAGE_SIZE));
 			debug_assert!(ptr >= zone.begin && ptr < (zone.begin as usize + zone.get_size()) as _);
 			return Ok(ptr);
 		}
@@ -191,13 +191,13 @@ pub fn alloc(order: FrameOrder, flags: Flags) -> Result<*mut c_void, ()> {
 /// Calls `alloc` with order `order`. The allocated frame is in the kernel zone.
 /// The function returns the *virtual* address, not the physical one.
 pub fn alloc_kernel(order: FrameOrder) -> Result<*mut c_void, ()> {
-	Ok(crate::kern_to_virt(alloc(order, FLAG_ZONE_TYPE_KERNEL)?) as _)
+	Ok(memory::kern_to_virt(alloc(order, FLAG_ZONE_TYPE_KERNEL)?) as _)
 }
 
 /// Frees the given memory frame that was allocated using the buddy allocator. The given order must
 /// be the same as the one given to allocate the frame.
 pub fn free(ptr: *const c_void, order: FrameOrder) {
-	debug_assert!(util::is_aligned(ptr, PAGE_SIZE));
+	debug_assert!(util::is_aligned(ptr, memory::PAGE_SIZE));
 	debug_assert!(order <= MAX_ORDER);
 
 	let z = get_zone_for_pointer(ptr).unwrap();
@@ -217,7 +217,7 @@ pub fn free(ptr: *const c_void, order: FrameOrder) {
 /// Frees the given memory frame. `ptr` is the *virtual* address to the beginning of the frame and
 /// and `order` is the order of the frame.
 pub fn free_kernel(ptr: *const c_void, order: FrameOrder) {
-	free(crate::kern_to_phys(ptr), order);
+	free(memory::kern_to_phys(ptr), order);
 }
 
 /// Returns the total number of pages allocated by the buddy allocator.
@@ -294,7 +294,7 @@ impl Zone {
 
 	/// Returns the size in bytes of the allocatable memory.
 	pub fn get_size(&self) -> usize {
-		(self.pages_count as usize) * PAGE_SIZE
+		(self.pages_count as usize) * memory::PAGE_SIZE
 	}
 
 	/// Returns an available frame owned by this zone, with an order of at least `order`.
@@ -317,7 +317,7 @@ impl Zone {
 	/// Returns the identifier for the frame at the given pointer `ptr`. The pointer must point to
 	/// the frame itself, not the Frame structure.
 	fn get_frame_id_from_ptr(&self, ptr: *const c_void) -> FrameID {
-		(((ptr as usize) - (self.begin as usize)) / PAGE_SIZE) as _
+		(((ptr as usize) - (self.begin as usize)) / memory::PAGE_SIZE) as _
 	}
 
 	/// Returns a mutable reference to the frame with the given identifier `id`.
@@ -335,7 +335,7 @@ impl Zone {
 	/// If a frame is invalid, the function shall result in the kernel panicking.
 	#[cfg(kernel_mode = "debug")]
 	fn check_free_list(&self) {
-		let zone_size = (self.get_pages_count() as usize) * PAGE_SIZE;
+		let zone_size = (self.get_pages_count() as usize) * memory::PAGE_SIZE;
 
 		for (order, list) in self.free_list.iter().enumerate() {
 			if let Some(first) = *list {
@@ -383,7 +383,7 @@ impl Frame {
 
 	/// Returns the pointer to the location of the associated physical memory.
 	pub fn get_ptr(&self, zone: &Zone) -> *mut c_void {
-		let off = self.get_id(zone) as usize * PAGE_SIZE;
+		let off = self.get_id(zone) as usize * memory::PAGE_SIZE;
 		(zone.begin as usize + off) as _
 	}
 
@@ -576,6 +576,7 @@ impl Frame {
 #[cfg(test)]
 mod test {
 	use super::*;
+	use core::ptr::null;
 
 	#[test_case]
 	fn buddy0() {

@@ -5,7 +5,7 @@
 
 use crate::io;
 use crate::memory::vmem;
-use mem_alloc::r#const::*;
+use crate::memory;
 
 // TODO Save enable/disable cursor state
 // TODO Spinlock?
@@ -18,7 +18,7 @@ pub type Pos = i16;
 pub const BUFFER_PHYS: *mut Char = 0xb8000 as _;
 /// Virtual address of the VGA text buffer.
 pub const BUFFER_VIRT: *mut Char = unsafe {
-	(PROCESS_END as usize + BUFFER_PHYS as usize) as _
+	(memory::PROCESS_END as usize + BUFFER_PHYS as usize) as _
 };
 
 /// Width of the screen in characters under the VGA text mode.

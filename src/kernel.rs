@@ -26,10 +26,6 @@
 #![test_runner(crate::selftest::runner)]
 #![reexport_test_harness_main = "kernel_selftest"]
 
-extern crate mem_alloc;
-extern crate util;
-
-mod container;
 mod debug;
 mod elf;
 mod event;
@@ -40,19 +36,19 @@ mod multiboot;
 #[macro_use]
 mod panic;
 mod pit;
-mod print_util;
+#[macro_use]
+mod print;
 #[cfg(test)]
 mod selftest;
 mod syscall;
 mod tty;
 #[macro_use]
+mod util;
+#[macro_use]
 mod vga;
 
 use core::ffi::c_void;
 use core::panic::PanicInfo;
-
-use util::print;
-use util::println;
 
 /// Current kernel version.
 const KERNEL_VERSION: &'static str = "1.0";

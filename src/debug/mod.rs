@@ -71,7 +71,7 @@ fn get_symbol_name(offset: u32) -> Option<&'static str> {
 	if let Some(section) = elf::get_section(boot_info.elf_sections, boot_info.elf_num as usize,
 		boot_info.elf_shndx as usize, boot_info.elf_entsize as usize, ".strtab") {
 		let name = unsafe {
-			util::ptr_to_str(mem_alloc::kern_to_virt((section.sh_addr + offset) as _))
+			util::ptr_to_str(memory::kern_to_virt((section.sh_addr + offset) as _))
 		};
 		Some(name)
 	} else {
@@ -94,7 +94,7 @@ fn get_function_name(inst: *const c_void) -> Option<&'static str> {
 				return;
 			}
 
-			let ptr = mem_alloc::kern_to_virt(hdr.sh_addr as _);
+			let ptr = memory::kern_to_virt(hdr.sh_addr as _);
 			let mut i: usize = 0;
 			while i < hdr.sh_size as usize {
 				let sym = unsafe {
@@ -126,7 +126,7 @@ pub fn print_callstack(ebp: *const u32, max_depth: usize) {
 	let mut ebp_ = ebp;
 	while ebp_ != 0 as *const u32 && i < max_depth {
 		// TODO
-		/*if !memory::vmem::is_mapped(mem_alloc::kern_to_virt(memory::cr3_get()), ebp_) {
+		/*if !memory::vmem::is_mapped(memory::kern_to_virt(memory::cr3_get()), ebp_) {
 			break;
 		}*/
 		let eip = unsafe {

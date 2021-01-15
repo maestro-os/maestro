@@ -5,12 +5,12 @@
 use core::cmp::{min, max};
 use core::ffi::c_void;
 use core::mem::size_of;
-use crate::buddy;
-use crate::r#const::*;
+use crate::linked_list_get;
+use crate::memory::buddy;
+use crate::memory;
+use crate::offset_of;
+use crate::util::data_struct::LinkedList;
 use crate::util;
-use util::data_struct::LinkedList;
-use util::linked_list_get;
-use util::offset_of;
 
 /// Type representing chunks' flags.
 type ChunkFlags = u8;
@@ -156,7 +156,7 @@ impl Chunk {
 	/// debug mode.
 	#[cfg(kernel_mode = "debug")]
 	pub fn check(&self) {
-		debug_assert!(self as *const _ as *const c_void >= PROCESS_END);
+		debug_assert!(self as *const _ as *const c_void >= memory::PROCESS_END);
 		debug_assert!(self.get_size() >= get_min_chunk_size());
 
 		if !self.is_used() {
@@ -167,7 +167,7 @@ impl Chunk {
 			let p = unsafe {
 				&*linked_list_get!(prev as *mut LinkedList, *mut Chunk, list)
 			};
-			debug_assert!(p as *const _ as *const c_void >= PROCESS_END);
+			debug_assert!(p as *const _ as *const c_void >= memory::PROCESS_END);
 			debug_assert!(p.get_size() >= get_min_chunk_size());
 
 			let len = size_of::<Chunk>() + p.get_size();
@@ -178,7 +178,7 @@ impl Chunk {
 			let n = unsafe {
 				&*linked_list_get!(next as *mut LinkedList, *mut Chunk, list)
 			};
-			debug_assert!(n as *const _ as *const c_void >= PROCESS_END);
+			debug_assert!(n as *const _ as *const c_void >= memory::PROCESS_END);
 			debug_assert!(n.get_size() >= get_min_chunk_size());
 
 			let len = size_of::<Chunk>() + self.get_size();
@@ -411,12 +411,12 @@ impl Block {
 	/// The underlying chunk created by this function is **not** inserted into the free list.
 	fn new(min_size: usize) -> Result<&'static mut Self, ()> {
 		let total_min_size = size_of::<Block>() + min_size;
-		let order = buddy::get_order(util::ceil_division(total_min_size, PAGE_SIZE));
+		let order = buddy::get_order(util::ceil_division(total_min_size, memory::PAGE_SIZE));
 		let first_chunk_size = buddy::get_frame_size(order) - size_of::<Block>();
 		debug_assert!(first_chunk_size >= min_size);
 
 		let ptr = buddy::alloc_kernel(order)?;
-		debug_assert!(ptr as *const _ >= PROCESS_END);
+		debug_assert!(ptr as *const _ >= memory::PROCESS_END);
 		let block = unsafe { // Dereference of raw pointer
 			&mut *(ptr as *mut Block)
 		};
@@ -437,7 +437,7 @@ impl Block {
 	pub unsafe fn from_first_chunk(chunk: *mut Chunk) -> &'static mut Block {
 		let first_chunk_off = offset_of!(*const Block, first_chunk);
 		let ptr = ((chunk as usize) - first_chunk_off) as *mut Self;
-		debug_assert!(util::is_aligned(ptr as *const c_void, PAGE_SIZE));
+		debug_assert!(util::is_aligned(ptr as *const c_void, memory::PAGE_SIZE));
 		&mut *ptr
 	}
 
@@ -569,9 +569,9 @@ mod test {
 
 	#[test_case]
 	fn alloc_free2() {
-		if let Ok(ptr) = alloc(PAGE_SIZE) {
+		if let Ok(ptr) = alloc(memory::PAGE_SIZE) {
 			unsafe {
-				util::memset(ptr, -1, PAGE_SIZE);
+				util::memset(ptr, -1, memory::PAGE_SIZE);
 			}
 			free(ptr);
 		} else {

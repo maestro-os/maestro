@@ -1,4 +1,4 @@
-/// This file contains utilities for the `print` and `println` macros.
+/// This file handles macros `print` and `println`.
 
 use crate::tty;
 use crate::util::lock::MutexGuard;
@@ -18,4 +18,23 @@ impl core::fmt::Write for TTYWrite {
 pub fn _print(args: core::fmt::Arguments) {
 	let mut w: TTYWrite = TTYWrite {};
 	core::fmt::write(&mut w, args).ok();
+}
+
+/// Prints the given formatted string with the given values.
+#[allow_internal_unstable(print_internals)]
+#[macro_export]
+macro_rules! print {
+	($($arg:tt)*) => {{
+		crate::print::_print(format_args!($($arg)*));
+	}};
+}
+
+/// Same as `print!`, except it appends a newline at the end.
+#[allow_internal_unstable(print_internals, format_args_nl)]
+#[macro_export]
+macro_rules! println {
+	() => (crate::print!("\n"));
+	($($arg:tt)*) => {{
+		crate::print::_print(format_args_nl!($($arg)*));
+	}};
 }
