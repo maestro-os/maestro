@@ -10,10 +10,10 @@ spin_lock:
 
 	push %eax
 	push %ebx
+	mov 8(%ebp), %ebx
 
 spin:
 	mov $1, %eax
-	mov 8(%ebp), %ebx
 	xchg %eax, (%ebx)
 	test %eax, %eax
 	jnz spin

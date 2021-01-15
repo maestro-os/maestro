@@ -115,11 +115,8 @@ CARGOFLAGS = --verbose
 ifeq ($(KERNEL_MODE), release)
 CARGOFLAGS += --release
 endif
-
 ifeq ($(KERNEL_TEST), true)
-CARGOMODE = test --no-run
-else
-CARGOMODE = build
+CARGOFLAGS = --tests
 endif
 
 # The Rust language compiler flags
@@ -163,7 +160,7 @@ tags: $(SRC) $(HDR) $(RUST_SRC)
 # TODO: Fix the incorrect binary in target. This is probably due to the usage of the flag to compile for testing
 # The rule to compile the kernel image
 $(NAME): $(LIB_NAME) $(RUST_SRC) $(LINKER) Makefile
-	RUSTFLAGS="$(RUSTFLAGS)" $(CARGO) $(CARGOMODE) $(CARGOFLAGS) --target $(TARGET)
+	RUSTFLAGS="$(RUSTFLAGS)" $(CARGO) build $(CARGOFLAGS) --target $(TARGET)
 	cp `ls -1 target/target/debug/deps/maestro-* | head -n 1` $@
 ifeq ($(KERNEL_MODE), release)
 	$(STRIP) $(NAME)

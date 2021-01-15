@@ -130,7 +130,9 @@ pub fn get_order(pages: usize) -> FrameOrder {
 // TODO Allow to fallback to another zone if the one that is returned is full
 /// Returns a mutable reference to a zone suitable for an allocation with the given type `type_`.
 fn get_suitable_zone(type_: Flags) -> Option<&'static mut Mutex<Zone>> {
-	let zones = unsafe { ZONES.assume_init_mut() };
+	let zones = unsafe { // Assuming global variable is initialized
+		ZONES.assume_init_mut()
+	};
 
 	for i in 0..zones.len() {
 		let is_valid = {
@@ -147,7 +149,9 @@ fn get_suitable_zone(type_: Flags) -> Option<&'static mut Mutex<Zone>> {
 
 /// Returns a mutable reference to the zone that contains the given pointer.
 fn get_zone_for_pointer(ptr: *const c_void) -> Option<&'static mut Mutex<Zone>> {
-	let zones = unsafe { ZONES.assume_init_mut() };
+	let zones = unsafe { // Assuming global variable is initialized
+		ZONES.assume_init_mut()
+	};
 
 	for i in 0..zones.len() {
 		let is_valid = {
@@ -224,12 +228,12 @@ pub fn free_kernel(ptr: *const c_void, order: FrameOrder) {
 pub fn allocated_pages_count() -> usize {
 	let mut n = 0;
 
-	unsafe {
-		let z = ZONES.assume_init_mut();
-		for i in 0..z.len() {
-			let guard = MutexGuard::new(&mut z[i]); // TODO Remove `mut`?
-			n += guard.get().get_allocated_pages();
-		}
+	let z = unsafe { // Assuming global variable is initialized
+		ZONES.assume_init_mut()
+	};
+	for i in 0..z.len() {
+		let guard = MutexGuard::new(&mut z[i]); // TODO Remove `mut`?
+		n += guard.get().get_allocated_pages();
 	}
 	n
 }

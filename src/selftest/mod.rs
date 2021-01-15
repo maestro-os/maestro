@@ -39,7 +39,6 @@ impl<T> Testable for T where T: Fn() {
 
 /// The test runner for the kernel. This function runs every tests for the kernel and halts the
 /// kernel or exits the emulator if possible.
-#[cfg(test)]
 pub fn runner(tests: &[&dyn Testable]) {
 	crate::println!("Running {} tests", tests.len());
 

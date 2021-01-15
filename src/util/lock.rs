@@ -2,20 +2,22 @@
 
 /// Extern spinlock functions.
 extern "C" {
-	pub fn spin_lock(lock: *mut bool);
-	pub fn spin_unlock(lock: *mut bool);
+	pub fn spin_lock(lock: *mut i32);
+	pub fn spin_unlock(lock: *mut i32);
 }
 
 /// Structure representing a spinlock.
 pub struct Spinlock {
-	locked: bool,
+	/// Variable telling whether the spinlock is locked or not. This variable is 4 bytes wide to
+	/// match the size of the register handling it.
+	locked: i32,
 }
 
 impl Spinlock {
 	/// Creates a new spinlock.
 	pub const fn new() -> Self {
 		Self {
-			locked: false,
+			locked: 0,
 		}
 	}
 
@@ -78,7 +80,7 @@ impl<T> Mutex<T> {
 		LockPayload::<T>::new(&mut self.data)
 	}
 
-	// TODO Protect against unlocking while the payload is still in use?
+	// TODO Protect against unlocking while the payload is still in use
 	/// Unlocks the mutex. Does nothing if the mutex is already unlocked.
 	pub fn unlock(&mut self) {
 		self.spin.unlock();
@@ -117,14 +119,14 @@ impl<'a, T> MutexGuard<'a, T> {
 
 	/// Returns an immutable reference to the data owned by the associated Mutex.
 	pub fn get(&self) -> &T {
-		unsafe {
+		unsafe { // Call to unsafe function
 			self.mutex.get_payload()
 		}
 	}
 
 	/// Returns a mutable reference to the data owned by the associated Mutex.
 	pub fn get_mut(&mut self) -> &mut T {
-		unsafe {
+		unsafe { // Call to unsafe function
 			self.mutex.get_mut_payload()
 		}
 	}

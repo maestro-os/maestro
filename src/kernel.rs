@@ -38,7 +38,6 @@ mod panic;
 mod pit;
 #[macro_use]
 mod print;
-#[cfg(test)]
 mod selftest;
 mod syscall;
 mod tty;
