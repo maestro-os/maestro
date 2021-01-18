@@ -11,6 +11,7 @@ use core::ops::DispatchFromDyn;
 use core::ops::Index;
 use core::ops::IndexMut;
 use core::ops::{Deref, DerefMut};
+use core::ptr;
 use crate::memory::malloc;
 use crate::util;
 
@@ -32,7 +33,7 @@ impl<T> Vec<T> {
 		Self {
 			len: 0,
 			capacity: 0,
-			data: Some(0 as _),
+			data: None,
 		}
 	}
 
@@ -50,7 +51,7 @@ impl<T> Vec<T> {
 	// TODO Handle fail
 	/// Increases the capacity to at least `min` elements.
 	fn increase_capacity(&mut self, min: usize) {
-		self.capacity = max(self.capacity, min);
+		self.capacity = max(self.capacity, min); // TODO Larger allocations than needed to avoid reallocation all the time
 		self.realloc();
 	}
 
@@ -79,14 +80,19 @@ impl<T> Vec<T> {
 	}
 
 	/// Returns the first element of the vector.
-	pub fn first(&mut self) -> &mut T {
-		&mut self[0]
+	pub fn first(&mut self) -> T {
+		debug_assert!(!self.is_empty());
+		unsafe { // Pointer arithmetic and dereference of raw pointer
+			ptr::read(self.data.unwrap())
+		}
 	}
 
 	/// Returns the first element of the vector.
-	pub fn last(&mut self) -> &mut T {
-		let len = self.len;
-		&mut self[len - 1]
+	pub fn last(&mut self) -> T {
+		debug_assert!(!self.is_empty());
+		unsafe { // Pointer arithmetic and dereference of raw pointer
+			ptr::read(self.data.unwrap().offset((self.len - 1) as _))
+		}
 	}
 
 	/// Inserts an element at position index within the vector, shifting all elements after it to
@@ -107,25 +113,30 @@ impl<T> Vec<T> {
 	// TODO resize
 
 	/// Appends an element to the back of a collection.
-	pub fn push(&mut self, _value: T) {
-		// TODO
+	pub fn push(&mut self, value: T) {
+		if self.capacity < self.len + 1 {
+			// TODO Handle allocation error
+			self.increase_capacity(self.capacity + 1);
+		}
+		debug_assert!(self.capacity >= self.len + 1);
+
+		unsafe { // Pointer arithmetic and dereference of raw pointer
+			ptr::write(self.data.unwrap().offset(self.len as _), value);
+		}
+		self.len += 1;
 	}
 
 	/// Removes the last element from a vector and returns it, or None if it is empty.
 	pub fn pop(&mut self) -> Option<T> {
-		// TODO
-		/*if !self.is_empty() {
+		if !self.is_empty() {
 			self.len -= 1;
 			unsafe { // Pointer arithmetic and dereference of raw pointer
-				Some(*self.data.unwrap().offset(self.len as _))
+				Some(ptr::read(self.data.unwrap().offset(self.len as _)))
 			}
 		} else {
 			None
-		}*/
-		None
+		}
 	}
-
-	// TODO Iterators?
 
 	/// Clears the vector, removing all values.
 	fn clear(&mut self) {
@@ -290,4 +301,47 @@ impl<T: ?Sized> Drop for Box<T> {
 	}
 }
 
-// TODO Unit tests
+#[cfg(test)]
+mod test {
+	use super::*;
+
+	#[test_case]
+	fn vec_push() {
+		let mut v = Vec::<usize>::new();
+		debug_assert_eq!(v.len(), 0);
+
+		for i in 0..100 {
+			v.push(i);
+			debug_assert_eq!(v.len(), i + 1);
+			debug_assert_eq!(v[i], i);
+		}
+	}
+
+	#[test_case]
+	fn vec_push_clear() {
+		let mut v = Vec::<usize>::new();
+		debug_assert_eq!(v.len(), 0);
+
+		for i in 0..100 {
+			v.push(i);
+			debug_assert_eq!(v.len(), i + 1);
+			debug_assert_eq!(v[i], i);
+		}
+
+		v.clear();
+		debug_assert_eq!(v.len(), 0);
+	}
+
+	#[test_case]
+	fn vec_push_pop() {
+		let mut v = Vec::<usize>::new();
+		debug_assert_eq!(v.len(), 0);
+
+		for i in 0..100 {
+			v.push(i);
+			debug_assert_eq!(v.len(), i + 1);
+			debug_assert_eq!(v[i], i);
+			v.pop();
+		}
+	}
+}

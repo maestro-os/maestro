@@ -284,19 +284,26 @@ impl Chunk {
 		if next.is_none() {
 			return false;
 		}
+		let node = next.unwrap();
 		let n = unsafe {
-			&mut *linked_list_get!(next.unwrap() as *mut LinkedList, *mut Chunk, list)
+			&mut *linked_list_get!(node as *mut LinkedList, *mut Chunk, list)
 		};
 		if n.is_used() {
 			return false;
 		}
 
+		let new_size = self.size + delta;
 		let available_size = size_of::<Chunk>() + n.size;
 		if available_size < delta {
 			return false;
 		}
+		self.size += available_size;
 
-		self.coalesce();
+		node.unlink_floating();
+		n.as_free_chunk().free_list_remove();
+
+		self.split(new_size);
+
 		true
 	}
 
@@ -501,6 +508,7 @@ pub fn realloc(ptr: *mut c_void, n: usize) -> Result<*mut c_void, ()> {
 		Chunk::from_ptr(ptr)
 	};
 	chunk.check();
+	debug_assert!(chunk.is_used());
 
 	let chunk_size = chunk.get_size();
 	if n > chunk_size {
