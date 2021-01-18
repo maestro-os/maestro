@@ -314,7 +314,7 @@ impl Chunk {
 		debug_assert!(delta != 0);
 		debug_assert!(delta < self.get_size());
 
-		let new_size = self.get_size() - delta;
+		let new_size = max(self.get_size() - delta, get_min_chunk_size());
 		if self.can_split(new_size) {
 			self.split(new_size);
 

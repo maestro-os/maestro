@@ -4,6 +4,7 @@
 use core::cmp::max;
 use core::ffi::c_void;
 use core::marker::Unsize;
+use core::mem::size_of;
 use core::mem::size_of_val;
 use core::mem::transmute;
 use core::ops::CoerceUnsized;
@@ -51,7 +52,7 @@ impl<T> Vec<T> {
 	// TODO Handle fail
 	/// Increases the capacity to at least `min` elements.
 	fn increase_capacity(&mut self, min: usize) {
-		self.capacity = max(self.capacity, min); // TODO Larger allocations than needed to avoid reallocation all the time
+		self.capacity = max(self.capacity, min * size_of::<T>()); // TODO Larger allocations than needed to avoid reallocation all the time
 		self.realloc();
 	}
 
