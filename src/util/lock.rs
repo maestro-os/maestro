@@ -66,7 +66,7 @@ pub struct Mutex<T> {
 
 impl<T> Mutex<T> {
 	/// Creates a new Mutex with the given data to be owned.
-	pub fn new(data: T) -> Self {
+	pub const fn new(data: T) -> Self {
 		Self {
 			spin: Spinlock::new(),
 			data: data,

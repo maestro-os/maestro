@@ -10,6 +10,7 @@ use core::ops::CoerceUnsized;
 use core::ops::DispatchFromDyn;
 use core::ops::Index;
 use core::ops::IndexMut;
+use core::ops::{Deref, DerefMut};
 use crate::memory::malloc;
 use crate::util;
 
@@ -161,6 +162,53 @@ impl<T> IndexMut<usize> for Vec<T> {
     }
 }
 
+/// An iterator for the Vec structure.
+pub struct VecIterator<'a, T> {
+	/// The vector to iterate.
+	vec: &'a Vec::<T>,
+	/// The current index of the iterator.
+	index: usize,
+}
+
+impl<'a, T> VecIterator<'a, T> {
+	/// Creates a vector iterator for the given reference.
+	fn new(vec: &'a Vec::<T>) -> Self {
+		VecIterator {
+			vec: vec,
+			index: 0,
+		}
+	}
+}
+
+impl<'a, T> Iterator for VecIterator<'a, T> {
+	type Item = &'a T;
+
+	// TODO Implement every functions?
+
+	fn next(&mut self) -> Option<Self::Item> {
+		if self.index < self.vec.len() {
+			let e = &self.vec[self.index];
+			self.index += 1;
+			Some(e)
+		} else {
+			None
+		}
+	}
+
+	fn count(self) -> usize {
+		self.vec.len()
+	}
+}
+
+impl<'a, T> IntoIterator for &'a Vec<T> {
+	type Item = &'a T;
+	type IntoIter = VecIterator<'a, T>;
+
+	fn into_iter(self) -> Self::IntoIter {
+		VecIterator::new(&self)
+	}
+}
+
 impl<T> Drop for Vec<T> {
 	fn drop(&mut self) {
 		self.clear();
@@ -189,13 +237,36 @@ impl<T> Box<T> {
 		}
 		Ok(b)
 	}
+}
 
-	/// Returns a reference to the object contained into the Box.
-	pub fn unwrap(&mut self) -> &mut T {
+impl<T: ?Sized> AsRef<T> for Box<T> {
+    fn as_ref(&self) -> &T {
+		unsafe { // Dereference of raw pointer
+			&*self.ptr
+		}
+    }
+}
+
+impl<T: ?Sized> AsMut<T> for Box<T> {
+    fn as_mut(&mut self) -> &mut T {
 		unsafe { // Dereference of raw pointer
 			&mut *self.ptr
 		}
-	}
+    }
+}
+
+impl<T: ?Sized> Deref for Box<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        self.as_ref()
+    }
+}
+
+impl<T: ?Sized> DerefMut for Box<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.as_mut()
+    }
 }
 
 impl<T: Clone> Box<T> {

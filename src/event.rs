@@ -1,8 +1,9 @@
 /// This file handles interruptions, it provides an interface allowing to register callbacks for
 /// each interrupts. Each callback has a priority number and is called in descreasing order.
 
-use crate::util::container::*;
 use crate::idt;
+use crate::util::container::*;
+use crate::util::lock::{Mutex, MutexGuard};
 use crate::util;
 
 // TODO Arch dependent
@@ -59,7 +60,7 @@ pub trait InterruptCallback {
 	/// `code` is an optional code associated with the interrupt. If no code is given, the value is
 	/// `0`.
 	/// `regs` the values of the registers when the interruption was triggered.
-	fn call(&mut self, id: u32, code: u32, regs: &util::Regs);
+	fn call(&self, id: u32, code: u32, regs: &util::Regs);
 }
 
 /// Structure wrapping a callback to insert it into a linked list.
@@ -70,10 +71,9 @@ struct CallbackWrapper {
 	callback: Box::<dyn InterruptCallback>,
 }
 
-// TODO Wrap in mutex
 /// List containing vectors that store callbacks for every interrupt watchdogs.
-static mut CALLBACKS: [Option::<Vec::<CallbackWrapper>>; idt::ENTRIES_COUNT as _]
-	= [None; idt::ENTRIES_COUNT as _];
+static mut CALLBACKS: Mutex::<[Option::<Vec::<CallbackWrapper>>; idt::ENTRIES_COUNT as _]>
+	= Mutex::new([None; idt::ENTRIES_COUNT as _]);
 
 /// Registers the given callback and returns a reference to it.
 /// `id` is the id of the interrupt to watch.
@@ -88,13 +88,15 @@ pub fn register_callback<T: 'static + InterruptCallback>(id: u8, priority: u32, 
 		return Err(());
 	}
 
-	let vec = unsafe { // Access to global variable
-		&mut CALLBACKS[id as usize]
+	let mut guard = unsafe { // Access to global variable
+		MutexGuard::new(&mut CALLBACKS)
 	};
+	let vec = &mut guard.get_mut()[id as usize];
 	if vec.is_none() {
 		*vec = Some(Vec::<CallbackWrapper>::new());
 	}
 
+	// TODO Insert in the right place according to priority
 	vec.as_mut().unwrap().push(CallbackWrapper {
 		priority: priority,
 		callback: Box::new(callback)?,
@@ -105,9 +107,22 @@ pub fn register_callback<T: 'static + InterruptCallback>(id: u8, priority: u32, 
 // TODO Callback unregister
 
 /// This function is called whenever an interruption is triggered.
-/// TODO doc
+/// `id` is the identifier of the interrupt type. This value is architecture-dependent.
+/// `code` is an optional code associated with the interrupt. If the interrupt type doesn't have a
+/// code, the value is `0`.
+/// `regs` is the state of the registers at the moment of the interrupt.
 #[no_mangle]
-pub extern "C" fn event_handler(error: u32, error_code: u32, _regs: *const util::Regs) {
-	// TODO Use error callbacks
-	crate::kernel_panic!(get_error_message(error), error_code);
+pub extern "C" fn event_handler(id: u32, code: u32, regs: &util::Regs) {
+	let guard = unsafe { // Access to global variable
+		MutexGuard::new(&mut CALLBACKS)
+	};
+	let callbacks = &guard.get()[id as usize];
+
+	if let Some(callbacks) = callbacks {
+		for c in callbacks.into_iter() {
+			(*c.callback).call(id, code, regs);
+		}
+	} else {
+		crate::kernel_panic!(get_error_message(id), code);
+	}
 }

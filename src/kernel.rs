@@ -98,8 +98,6 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 	#[cfg(test)]
 	kernel_selftest();
 
-	// TODO Register default error handlers
-
 	// TODO ACPI
 	// TODO PCI
 	// TODO time
