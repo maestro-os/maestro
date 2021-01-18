@@ -1,5 +1,5 @@
 /// This file handles allocations of chunks of kernel memory.
-/// 
+///
 /// TODO: More documentation
 
 use core::cmp::{min, max};
@@ -140,6 +140,15 @@ impl Chunk {
 		(self.flags & CHUNK_FLAG_USED) != 0
 	}
 
+	/// Sets the chunk used or free.
+	pub fn set_used(&mut self, used: bool) {
+		if used {
+			self.flags |= CHUNK_FLAG_USED;
+		} else {
+			self.flags &= !CHUNK_FLAG_USED;
+		}
+	}
+
 	/// Returns a pointer to the chunks' data.
 	pub fn get_ptr(&mut self) -> *mut c_void {
 		unsafe {
@@ -190,18 +199,51 @@ impl Chunk {
 	/// the chunk is used.
 	pub fn as_free_chunk(&mut self) -> &mut FreeChunk {
 		debug_assert!(!self.is_used());
-		unsafe {
+		unsafe { // Dereference of raw pointer
 			&mut *(self as *mut Self as *mut FreeChunk)
 		}
 	}
 
-	/// Marks the chunk as free and tries to coalesce it with adjacent chunks if they are free.
-	/// The function returns the resulting free chunk, which will not be inserted into any free
-	/// list.
-	pub fn coalesce(&mut self) -> &mut FreeChunk {
-		if self.is_used() {
-			self.flags &= !CHUNK_FLAG_USED;
-		} else {
+	/// Tells whether the chunk can be split for the given size `size`.
+	fn can_split(&self, size: usize) -> bool {
+		let min_data_size = get_min_chunk_size();
+		self.get_size() >= max(size, min_data_size) + size_of::<Chunk>() + min_data_size
+	}
+
+	/// Splits the chunk with the given size `size` if necessary. The function might create a new chunk next to the
+	/// current. The created chunk will be inserted in the free list but the current chunk will not.
+	pub fn split(&mut self, size: usize) {
+		self.check();
+		debug_assert!(self.get_size() >= size);
+
+		if !self.is_used() {
+			self.as_free_chunk().free_list_remove();
+		}
+
+		if self.can_split(size) {
+			let min_data_size = get_min_chunk_size();
+			let curr_data_size = max(size, min_data_size);
+			let curr_size = size_of::<Chunk>() + curr_data_size;
+
+			let next_off = (self as *mut Self as usize) + curr_size;
+			let next = unsafe {
+				&mut *(next_off as *mut FreeChunk)
+			};
+
+			*next = FreeChunk::new(self.get_size() - curr_size);
+			next.check();
+			next.free_list_insert();
+			next.chunk.list.insert_after(&mut self.list);
+			debug_assert!(!next.chunk.list.is_single());
+
+			self.size = curr_data_size;
+		}
+	}
+
+	/// Tries to coalesce the chunk it with adjacent chunks if they are free. The function returns the resulting chunk,
+	/// which will not be inserted into any free list.
+	pub fn coalesce(&mut self) -> &mut Chunk {
+		if !self.is_used() {
 			self.as_free_chunk().free_list_remove();
 		}
 
@@ -217,82 +259,65 @@ impl Chunk {
 			}
 		}
 
-		if let Some(prev) = self.list.get_prev() {
-			let p = unsafe {
-				&mut *linked_list_get!(prev as *mut LinkedList, *mut Chunk, list)
-			};
+		if !self.is_used() {
+			if let Some(prev) = self.list.get_prev() {
+				let p = unsafe {
+					&mut *linked_list_get!(prev as *mut LinkedList, *mut Chunk, list)
+				};
 
-			if !p.is_used() {
-				return p.coalesce();
+				if !p.is_used() {
+					return p.coalesce();
+				}
 			}
 		}
 
-		self.as_free_chunk()
+		self
 	}
 
-	// TODO Clean
-	/// Tries to resize the chunk, adding `delta` bytes. A negative number of bytes results in chunk
-	/// shrinking. Returns `true` if possible, or `false` if not. If the chunk cannot be expanded,
-	/// the function does nothing. Expansion might reduce/move/remove the next chunk if it is free.
-	/// If `delta` is zero, the function returns `false`.
-	pub fn resize(&mut self, delta: isize) -> bool {
-		if delta == 0 {
-			return true;
+	/// Tries to grow the given chunk of `delta` more bytes. If not possible, the function returns `false`.
+	/// The function might alter the free list to get the space needed.
+	pub fn grow(&mut self, delta: usize) -> bool {
+		debug_assert!(self.is_used());
+		debug_assert!(delta != 0);
+
+		let next = self.list.get_next();
+		if next.is_none() {
+			return false;
+		}
+		let n = unsafe {
+			&mut *linked_list_get!(next.unwrap() as *mut LinkedList, *mut Chunk, list)
+		};
+		if n.is_used() {
+			return false;
 		}
 
-		let mut valid = false;
-
-		if delta > 0 {
-			if let Some(next) = self.list.get_next() {
-				let n = unsafe {
-					&mut *linked_list_get!(next as *mut LinkedList, *mut Chunk, list)
-				};
-
-				if n.is_used() {
-					return false;
-				}
-
-				let available_size = size_of::<Chunk>() + n.size;
-				if available_size < delta as usize {
-					return false;
-				}
-
-				next.unlink_floating();
-				n.as_free_chunk().free_list_remove();
-
-				let next_min_size = size_of::<Chunk>() + FREE_CHUNK_MIN;
-				if available_size - delta as usize >= next_min_size {
-					// TODO Move next chunk (relink to both list and free list)
-				}
-
-				valid = true;
-			}
-		} else if delta < 0 {
-			if self.size <= (-delta) as usize {
-				return false;
-			}
-
-			if let Some(next) = self.list.get_next() {
-				let n = unsafe {
-					&*linked_list_get!(next as *mut LinkedList, *const Chunk, list)
-				};
-
-				if !n.is_used() {
-					// TODO Move next chunk
-				}
-			}
-
-			valid = true;
+		let available_size = size_of::<Chunk>() + n.size;
+		if available_size < delta {
+			return false;
 		}
 
-		if valid {
-			if delta >= 0 {
-				self.size += delta as usize;
-			} else {
-				self.size -= delta.abs() as usize;
-			}
+		self.coalesce();
+		true
+	}
+
+	/// Tries to shrink the given chunk of `delta` less bytes. If not possible, the function returns `false`.
+	/// The function might alter the free list to relinquish the space.
+	pub fn shrink(&mut self, delta: usize) {
+		debug_assert!(self.is_used());
+		debug_assert!(delta != 0);
+		debug_assert!(delta < self.get_size());
+
+		let new_size = self.get_size() - delta;
+		if self.can_split(new_size) {
+			self.split(new_size);
+
+			let next = self.list.get_next().unwrap();
+			let n = unsafe {
+				&mut *linked_list_get!(next as *mut LinkedList, *mut Chunk, list)
+			};
+			debug_assert!(!n.is_used());
+			n.coalesce();
 		}
-		valid
 	}
 }
 
@@ -343,42 +368,8 @@ impl FreeChunk {
 		self.chunk.check();
 	}
 
-	/// Tells whether the chunk can be split for the given size `size`.
-	fn can_split(&self, size: usize) -> bool {
-		let min_data_size = get_min_chunk_size();
-		self.get_size() >= max(size, min_data_size) + size_of::<Chunk>() + min_data_size
-	}
-
-	// TODO Fix the fact that this function makes the current object invalid and thus the inner
-	// chunk must be used instead
-	/// Splits the chunk with the given size `size` if necessary and marks it as used. The function
-	/// might create a new chunk next to the current.
-	pub fn split(&mut self, size: usize) -> &mut Chunk {
-		self.check();
-		debug_assert!(self.get_size() >= size);
-
-		self.free_list_remove();
-		self.chunk.flags |= CHUNK_FLAG_USED;
-
-		if self.can_split(size) {
-			let min_data_size = get_min_chunk_size();
-			let curr_data_size = max(size, min_data_size);
-			let curr_size = size_of::<Chunk>() + curr_data_size;
-
-			let next_off = (self as *mut Self as usize) + curr_size;
-			let next = unsafe {
-				&mut *(next_off as *mut FreeChunk)
-			};
-
-			*next = FreeChunk::new(self.get_size() - curr_size);
-			next.check();
-			next.free_list_insert();
-			next.chunk.list.insert_after(&mut self.chunk.list);
-			debug_assert!(!next.chunk.list.is_single());
-
-			self.chunk.size = curr_data_size;
-		}
-
+	/// Returns the chunk object.
+	pub fn get_chunk(&mut self) -> &mut Chunk {
 		&mut self.chunk
 	}
 
@@ -483,11 +474,11 @@ pub fn alloc(n: usize) -> Result<*mut c_void, ()> {
 		return Err(());
 	}
 
-	let chunk = get_available_chunk(n)?;
-	let c = chunk.split(n);
-	debug_assert!(c.get_size() >= n);
-	debug_assert!(c.is_used());
-	Ok(c.get_ptr())
+	let chunk = get_available_chunk(n)?.get_chunk();
+	chunk.split(n);
+	debug_assert!(chunk.get_size() >= n);
+	chunk.set_used(true);
+	Ok(chunk.get_ptr())
 }
 
 /// Returns the size of the given memory allocation in bytes.
@@ -506,18 +497,26 @@ pub fn get_size(ptr: *mut c_void) -> usize {
 /// chunk of memory. `n` is the new size of the chunk of memory. If the reallocation fails, the
 /// chunk is left untouched and the function returns an error.
 pub fn realloc(ptr: *mut c_void, n: usize) -> Result<*mut c_void, ()> {
-	let chunk = unsafe {
+	let chunk = unsafe { // Call to unsafe function
 		Chunk::from_ptr(ptr)
 	};
-	// TODO Check that chunk is valid?
+	chunk.check();
 
-	if !chunk.resize((n as isize) - (chunk.get_size() as isize)) {
-		let new_ptr = alloc(n)?;
-		unsafe {
-			util::memcpy(new_ptr, ptr, min(chunk.get_size(), n));
+	let chunk_size = chunk.get_size();
+	if n > chunk_size {
+		if !chunk.grow(n - chunk_size) {
+			let new_ptr = alloc(n)?;
+			unsafe { // Call to C function
+				util::memcpy(new_ptr, ptr, min(chunk.get_size(), n));
+			}
+			free(ptr);
+			Ok(new_ptr)
+		} else {
+			Ok(ptr)
 		}
-		free(ptr);
-		Ok(new_ptr)
+	} else if n < chunk_size {
+		chunk.shrink(chunk_size - n);
+		Ok(ptr)
 	} else {
 		Ok(ptr)
 	}
@@ -527,19 +526,20 @@ pub fn realloc(ptr: *mut c_void, n: usize) -> Result<*mut c_void, ()> {
 /// Frees the memory at the pointer `ptr` previously allocated with `alloc`. Subsequent uses of the
 /// associated memory are undefined.
 pub fn free(ptr: *mut c_void) {
-	let chunk = unsafe {
+	let chunk = unsafe { // Call to unsafe function
 		Chunk::from_ptr(ptr)
 	};
-	// TODO Check that chunk is valid?
+	chunk.check();
+	chunk.set_used(false);
 
 	let c = chunk.coalesce();
-	if c.chunk.list.is_single() {
-		let block = unsafe {
-			Block::from_first_chunk(&mut c.chunk)
+	if c.list.is_single() {
+		let block = unsafe { // Call to unsafe function
+			Block::from_first_chunk(c)
 		};
 		buddy::free_kernel(block as *mut _ as _, block.order);
 	} else {
-		c.free_list_insert();
+		c.as_free_chunk().free_list_insert();
 	}
 }
 
