@@ -40,14 +40,14 @@ impl<T> Vec<T> {
 		}
 	}
 
-	// TODO Handle fail
+	// TODO Handle fail (do not use unwrap)
 	/// Reallocates the vector's data with the vector's capacity.
 	fn realloc(&mut self) {
 		let size = self.capacity * size_of::<T>();
 		let ptr = if self.data.is_some() {
-			malloc::realloc(self.data.unwrap() as _, size).unwrap() as _
+			malloc::realloc(self.data.unwrap() as *mut c_void, size).unwrap() as *mut T
 		} else {
-			malloc::alloc(size).unwrap() as _
+			malloc::alloc(size).unwrap() as *mut T
 		};
 		self.data = Some(ptr);
 	}
@@ -162,7 +162,6 @@ impl<T> Vec<T> {
 
 		if self.data.is_some() {
 			malloc::free(self.data.unwrap() as _);
-		} else {
 			self.data = None;
 		}
 	}
@@ -198,6 +197,10 @@ impl<T> IndexMut<usize> for Vec<T> {
 
 impl<T: Ord> Vec<T> {
 	pub fn binary_search(&self, x: &T) -> Result<usize, usize> {
+		if self.is_empty() {
+			return Err(0);
+		}
+
 		let mut i = self.len() / 2;
 		let mut step_size = self.len() / 4;
 
@@ -389,6 +392,71 @@ mod test {
 			debug_assert_eq!(v.first(), i);
 			v.pop();
 			debug_assert_eq!(v.len(), 0);
+		}
+	}
+
+	#[test_case]
+	fn vec_binary_search0() {
+		let v = Vec::<usize>::new();
+
+		if let Err(v) = v.binary_search(&0) {
+			assert!(v == 0);
+		} else {
+			assert!(false);
+		}
+	}
+
+	#[test_case]
+	fn vec_binary_search1() {
+		let mut v = Vec::<usize>::new();
+		v.push(0);
+
+		if let Ok(v) = v.binary_search(&0) {
+			assert!(v == 0);
+		} else {
+			assert!(false);
+		}
+	}
+
+	#[test_case]
+	fn vec_binary_search2() {
+		let mut v = Vec::<usize>::new();
+		v.push(1);
+
+		if let Err(v) = v.binary_search(&0) {
+			assert!(v == 0);
+		} else {
+			assert!(false);
+		}
+	}
+
+	#[test_case]
+	fn vec_binary_search3() {
+		let mut v = Vec::<usize>::new();
+		v.push(1);
+		v.push(2);
+		v.push(3);
+
+		if let Ok(v) = v.binary_search(&2) {
+			assert!(v == 1);
+		} else {
+			assert!(false);
+		}
+	}
+
+	#[test_case]
+	fn vec_binary_search4() {
+		let mut v = Vec::<usize>::new();
+		v.push(0);
+		v.push(2);
+		v.push(4);
+		v.push(6);
+		v.push(8);
+
+		if let Ok(v) = v.binary_search(&6) {
+			assert!(v == 3);
+		} else {
+			assert!(false);
 		}
 	}
 }

@@ -483,7 +483,9 @@ pub fn alloc(n: usize) -> Result<*mut c_void, ()> {
 
 	let chunk = get_available_chunk(n)?.get_chunk();
 	chunk.split(n);
+	chunk.check();
 	debug_assert!(chunk.get_size() >= n);
+	assert!(!chunk.is_used());
 	chunk.set_used(true);
 	Ok(chunk.get_ptr())
 }
@@ -495,7 +497,7 @@ pub fn get_size(ptr: *mut c_void) -> usize {
 		Chunk::from_ptr(ptr)
 	};
 	chunk.check();
-	debug_assert!(chunk.is_used());
+	assert!(chunk.is_used());
 	chunk.get_size()
 }
 
@@ -508,7 +510,7 @@ pub fn realloc(ptr: *mut c_void, n: usize) -> Result<*mut c_void, ()> {
 		Chunk::from_ptr(ptr)
 	};
 	chunk.check();
-	debug_assert!(chunk.is_used());
+	assert!(chunk.is_used());
 
 	let chunk_size = chunk.get_size();
 	if n > chunk_size {
@@ -538,6 +540,7 @@ pub fn free(ptr: *mut c_void) {
 		Chunk::from_ptr(ptr)
 	};
 	chunk.check();
+	assert!(chunk.is_used());
 	chunk.set_used(false);
 
 	let c = chunk.coalesce();
