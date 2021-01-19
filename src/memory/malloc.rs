@@ -678,6 +678,48 @@ mod test {
 		free(ptr);
 	}
 
+	// TODO Check the integrity of the data after reallocation
+	#[test_case]
+	fn realloc2() {
+		let mut ptr0 = alloc(8).unwrap();
+		let mut ptr1 = alloc(8).unwrap();
+		unsafe { // Call to C function
+			util::memset(ptr0, -1, 8);
+			util::memset(ptr1, -1, 8);
+		}
+
+		for i in 0..8 {
+			ptr0 = realloc(ptr0, util::pow2(i)).unwrap();
+			assert!(get_size(ptr0) >= util::pow2(i));
+			ptr1 = realloc(ptr1, util::pow2(i) + 1).unwrap();
+			assert!(get_size(ptr1) >= util::pow2(i) + 1);
+		}
+
+		free(ptr1);
+		free(ptr0);
+	}
+
+	// TODO Check the integrity of the data after reallocation
+	#[test_case]
+	fn realloc3() {
+		let mut ptr0 = alloc(8).unwrap();
+		let mut ptr1 = alloc(8).unwrap();
+		unsafe { // Call to C function
+			util::memset(ptr0, -1, 8);
+			util::memset(ptr1, -1, 8);
+		}
+
+		for i in (0..8).rev() {
+			ptr0 = realloc(ptr0, util::pow2(i)).unwrap();
+			assert!(get_size(ptr0) >= util::pow2(i));
+			ptr1 = realloc(ptr1, util::pow2(i) + 1).unwrap();
+			assert!(get_size(ptr1) >= util::pow2(i) + 1);
+		}
+
+		free(ptr1);
+		free(ptr0);
+	}
+
 	// TODO More tests on realloc (test with several chunks at the same time)
 
 	#[test_case]
