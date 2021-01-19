@@ -196,6 +196,29 @@ impl<T> IndexMut<usize> for Vec<T> {
     }
 }
 
+impl<T: Ord> Vec<T> {
+	pub fn binary_search(&self, x: &T) -> Result<usize, usize> {
+		let mut i = self.len() / 2;
+		let mut step_size = self.len() / 4;
+
+		while step_size > 0 && self[i] != *x {
+			if *x < self[i] {
+				i -= step_size;
+			} else {
+				i += step_size;
+			}
+
+			step_size /= 2;
+		}
+
+		if self[i] == *x {
+			Ok(i)
+		} else {
+			Err(i)
+		}
+	}
+}
+
 /// An iterator for the Vec structure.
 pub struct VecIterator<'a, T> {
 	/// The vector to iterate.
