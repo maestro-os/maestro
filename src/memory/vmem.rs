@@ -220,7 +220,7 @@ fn protect_kernel(vmem: MutVMem) {
 				memory::kern_to_virt(section.sh_addr as _)
 			};
 			let pages = util::ceil_division(section.sh_size, memory::PAGE_SIZE as _) as usize;
-			if map_range(vmem, phys_addr, virt_addr, pages as usize, FLAG_USER) == Err(()) {
+			if map_range(vmem, phys_addr, virt_addr, pages as usize, FLAG_USER).is_err() {
 				crate::kernel_panic!("Kernel protection failed!");
 			}
 		});

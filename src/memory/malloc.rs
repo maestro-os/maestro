@@ -15,6 +15,9 @@ use crate::util;
 /// Type representing chunks' flags.
 type ChunkFlags = u8;
 
+/// The magic number for every chunks
+const CHUNK_MAGIC: u32 = 0xdeadbeef;
+
 /// Chunk flag indicating that the chunk is being used
 const CHUNK_FLAG_USED: ChunkFlags = 0b1;
 
@@ -30,6 +33,8 @@ const FREE_LIST_BINS: usize = 8;
 /// A chunk of allocated or free memory stored in linked lists.
 #[repr(C)]
 struct Chunk {
+	/// The magic number to check integrity of the chunk.
+	magic: u32, // TODO Option to disable
 	/// The linked list storing the chunks 
 	list: LinkedList,
 	/// The chunk's flags 
@@ -165,6 +170,7 @@ impl Chunk {
 	/// debug mode.
 	#[cfg(kernel_mode = "debug")]
 	pub fn check(&self) {
+		debug_assert_eq!(self.magic, CHUNK_MAGIC);
 		debug_assert!(self as *const _ as *const c_void >= memory::PROCESS_END);
 		debug_assert!(self.get_size() >= get_min_chunk_size());
 
@@ -337,6 +343,7 @@ impl FreeChunk {
 		};
 		*c = Self {
 			chunk: Chunk {
+				magic: CHUNK_MAGIC,
 				list: LinkedList::new_single(),
 				flags: 0,
 				size: size,
@@ -349,6 +356,7 @@ impl FreeChunk {
 	pub fn new(size: usize) -> Self {
 		Self {
 			chunk: Chunk {
+				magic: CHUNK_MAGIC,
 				list: LinkedList::new_single(),
 				flags: 0,
 				size: size,
@@ -422,6 +430,7 @@ impl Block {
 			list: LinkedList::new_single(),
 			order: order,
 			first_chunk: Chunk {
+				magic: CHUNK_MAGIC,
 				list: LinkedList::new_single(),
 				flags: 0,
 				size: 0,
