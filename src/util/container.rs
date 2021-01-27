@@ -247,7 +247,6 @@ impl<T> Vec<T> {
 
 		while step_size > 0 {
 			let ord = f(&self[i]);
-			crate::println!("{:?}", ord);
 			match ord {
 				Ordering::Less => {
 					i += step_size;

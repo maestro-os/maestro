@@ -1,6 +1,7 @@
 /// This file handles interruptions, it provides an interface allowing to register callbacks for
 /// each interrupts. Each callback has a priority number and is called in descreasing order.
 
+use core::cmp::Ordering;
 use crate::idt;
 use crate::util::container::*;
 use crate::util::lock::{Mutex, MutexGuard};
@@ -96,8 +97,24 @@ pub fn register_callback<T: 'static + InterruptCallback>(id: u8, priority: u32, 
 		*vec = Some(Vec::<CallbackWrapper>::new());
 	}
 
-	// TODO Insert in the right place according to priority
-	vec.as_mut().unwrap().push(CallbackWrapper {
+	let index = {
+		let r = vec.as_mut().unwrap().binary_search_by(| x | {
+			if x.priority < priority {
+				Ordering::Less
+			} else if x.priority > priority {
+				Ordering::Greater
+			} else {
+				Ordering::Equal
+			}
+		});
+
+		if let Err(l) = r {
+			l
+		} else {
+			r.unwrap()
+		}
+	};
+	vec.as_mut().unwrap().insert(index, CallbackWrapper {
 		priority: priority,
 		callback: Box::new(callback)?,
 	});
