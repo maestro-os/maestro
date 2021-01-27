@@ -3,6 +3,7 @@
 
 /*
  * Copy the given memory area `src` to `dest` with size `n`.
+ * If the given memory areas are overlapping, the behaviour is undefined.
  */
 void *memcpy(void *dest, const void *src, size_t n)
 {

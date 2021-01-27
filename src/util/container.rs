@@ -112,17 +112,42 @@ impl<T> Vec<T> {
 
 	/// Inserts an element at position index within the vector, shifting all elements after it to
 	/// the right.
-	/*pub fn insert(&mut self, index: usize, element: T) {
-		// TODO
-	}*/
+	pub fn insert(&mut self, index: usize, element: T) {
+		if self.capacity < self.len + 1 {
+			// TODO Handle allocation error
+			self.increase_capacity(self.capacity + 1);
+		}
+		debug_assert!(self.capacity >= self.len + 1);
+
+		unsafe { // Pointer arithmetic and dereference of raw pointer
+			ptr::copy(self.data.unwrap().offset(index as _),
+				self.data.unwrap().offset((index + 1) as _),
+				self.len - index);
+			ptr::write(self.data.unwrap().offset(index as _), element);
+		}
+		self.len += 1;
+	}
 
 	/// Removes and returns the element at position index within the vector, shifting all elements
 	/// after it to the left.
-	/*pub fn remove(&mut self, index: usize) -> T {
-		// TODO
-	}*/
+	pub fn remove(&mut self, index: usize) -> T {
+		if self.is_empty() {
+			self.vector_panic(0);
+		}
 
-	// TODO Element access with []
+		let v = unsafe { // Pointer arithmetic and dereference of raw pointer
+			ptr::read(self.data.unwrap().offset(index as _))
+		};
+
+		unsafe { // Pointer arithmetic and dereference of raw pointer
+			ptr::copy(self.data.unwrap().offset((index + 1) as _),
+				self.data.unwrap().offset(index as _),
+				self.len - index - 1);
+		}
+		self.len -= 1;
+
+		v
+	}
 
 	// TODO reserve
 	// TODO resize
@@ -355,6 +380,28 @@ mod test {
 	use super::*;
 
 	#[test_case]
+	fn vec_insert_remove0() {
+		let mut v = Vec::<usize>::new();
+		debug_assert_eq!(v.len(), 0);
+
+		for i in 0..100 {
+			v.insert(i, i);
+			debug_assert_eq!(v.len(), i + 1);
+			debug_assert_eq!(v[i], i);
+		}
+
+		for i in 0..100 {
+			debug_assert_eq!(v.remove(i), i);
+			debug_assert_eq!(v.len(), i);
+		}
+	}
+
+	// TODO More tests for insert/remove
+
+	// TODO reserve
+	// TODO resize
+
+	#[test_case]
 	fn vec_push() {
 		let mut v = Vec::<usize>::new();
 		debug_assert_eq!(v.len(), 0);
@@ -459,4 +506,6 @@ mod test {
 			assert!(false);
 		}
 	}
+
+	// TODO Box unit tests
 }
