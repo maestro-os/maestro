@@ -118,6 +118,7 @@ pub struct Regs
 
 extern "C" {
 	pub fn memcpy(dest: *mut c_void, src: *const c_void, n: usize) -> *mut c_void;
+	pub fn memmove(dest: *mut c_void, src: *const c_void, n: usize) -> *mut c_void;
 	pub fn memcmp(s1: *const c_void, s2: *const c_void, n: usize) -> i32;
 	pub fn memset(s: *mut c_void, c: i32, n: usize) -> *mut c_void;
 
@@ -147,6 +148,7 @@ pub unsafe fn ptr_to_str(ptr: *const c_void) -> &'static str {
 #[cfg(test)]
 mod test {
 	use super::*;
+	use core::mem::size_of;
 
 	#[test_case]
 	fn log2_0() {
@@ -160,4 +162,42 @@ mod test {
 			debug_assert!(log2(pow2(i)) == i);
 		}
 	}
+
+	#[test_case]
+	fn memcpy0() {
+		let mut dest: [usize; 100] = [0; 100];
+		let mut src: [usize; 100] = [0; 100];
+
+		for i in 0..100 {
+			src[i] = i;
+		}
+		unsafe { // Call to C function
+			memcpy(dest.as_mut_ptr() as _, src.as_ptr() as _, 100 * size_of::<usize>());
+		}
+		for i in 0..100 {
+			debug_assert_eq!(dest[i], i);
+		}
+	}
+
+	// TODO More tests on memcpy
+
+	#[test_case]
+	fn memmove0() {
+		let mut dest: [usize; 100] = [0; 100];
+		let mut src: [usize; 100] = [0; 100];
+
+		for i in 0..100 {
+			src[i] = i;
+		}
+		unsafe { // Call to C function
+			memmove(dest.as_mut_ptr() as _, src.as_ptr() as _, 100 * size_of::<usize>());
+		}
+		for i in 0..100 {
+			debug_assert_eq!(dest[i], i);
+		}
+	}
+
+	// TODO More tests on memmove
+
+	// TODO Test every C functions
 }

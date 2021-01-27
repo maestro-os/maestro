@@ -390,7 +390,7 @@ mod test {
 			debug_assert_eq!(v[i], i);
 		}
 
-		for i in 0..100 {
+		for i in (0..100).rev() {
 			debug_assert_eq!(v.remove(i), i);
 			debug_assert_eq!(v.len(), i);
 		}
@@ -507,5 +507,11 @@ mod test {
 		}
 	}
 
-	// TODO Box unit tests
+	#[test_case]
+	fn box0() {
+		let b = Box::new(42 as usize);
+		debug_assert_eq!(*b.unwrap(), 42);
+	}
+
+	// TODO
 }
