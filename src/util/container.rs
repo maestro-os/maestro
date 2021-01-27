@@ -1,6 +1,7 @@
 /// This files implements containers. These are different from data structures in the fact that
 /// they require a memory allocator.
 
+use core::cmp::Ordering;
 use core::cmp::max;
 use core::ffi::c_void;
 use core::marker::Unsize;
@@ -222,6 +223,21 @@ impl<T> IndexMut<usize> for Vec<T> {
 
 impl<T: Ord> Vec<T> {
 	pub fn binary_search(&self, x: &T) -> Result<usize, usize> {
+		self.binary_search_by(move | y | {
+			if *y < *x {
+				Ordering::Less
+			} else if *y > *x {
+				Ordering::Greater
+			} else {
+				Ordering::Equal
+			}
+		})
+	}
+}
+
+impl<T> Vec<T> {
+	pub fn binary_search_by<'a, F>(&'a self, mut f: F) -> Result<usize, usize>
+		where F: FnMut(&'a T) -> Ordering {
 		if self.is_empty() {
 			return Err(0);
 		}
@@ -229,17 +245,25 @@ impl<T: Ord> Vec<T> {
 		let mut i = self.len() / 2;
 		let mut step_size = self.len() / 4;
 
-		while step_size > 0 && self[i] != *x {
-			if *x < self[i] {
-				i -= step_size;
-			} else {
-				i += step_size;
+		while step_size > 0 {
+			let ord = f(&self[i]);
+			crate::println!("{:?}", ord);
+			match ord {
+				Ordering::Less => {
+					i += step_size;
+				},
+				Ordering::Greater => {
+					i -= step_size;
+				},
+				_ => {
+					break;
+				},
 			}
 
 			step_size /= 2;
 		}
 
-		if self[i] == *x {
+		if f(&self[i]) == Ordering::Equal {
 			Ok(i)
 		} else {
 			Err(i)
