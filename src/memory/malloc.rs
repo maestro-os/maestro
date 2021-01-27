@@ -147,11 +147,15 @@ impl Chunk {
 
 	/// Sets the chunk used or free.
 	pub fn set_used(&mut self, used: bool) {
+		self.check();
+
 		if used {
 			self.flags |= CHUNK_FLAG_USED;
 		} else {
 			self.flags &= !CHUNK_FLAG_USED;
 		}
+
+		self.check();
 	}
 
 	/// Returns a pointer to the chunks' data.
@@ -244,6 +248,7 @@ impl Chunk {
 
 			self.size = curr_data_size;
 		}
+		self.check();
 	}
 
 	/// Tries to coalesce the chunk it with adjacent chunks if they are free. The function returns the resulting chunk,
@@ -262,6 +267,7 @@ impl Chunk {
 				self.size += size_of::<Chunk>() + n.size;
 				next.unlink_floating();
 				n.as_free_chunk().free_list_remove();
+				n.check();
 			}
 		}
 
@@ -277,6 +283,7 @@ impl Chunk {
 			}
 		}
 
+		self.check();
 		self
 	}
 
@@ -309,6 +316,7 @@ impl Chunk {
 		n.as_free_chunk().free_list_remove();
 
 		self.split(new_size);
+		self.check();
 
 		true
 	}
@@ -331,6 +339,8 @@ impl Chunk {
 			debug_assert!(!n.is_used());
 			n.coalesce();
 		}
+
+		self.check();
 	}
 }
 
@@ -550,7 +560,9 @@ pub fn free(ptr: *mut c_void) {
 	};
 	chunk.check();
 	assert!(chunk.is_used());
+
 	chunk.set_used(false);
+	chunk.as_free_chunk().free_list = LinkedList::new_single();
 
 	let c = chunk.coalesce();
 	if c.list.is_single() {
