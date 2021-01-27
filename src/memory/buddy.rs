@@ -266,6 +266,7 @@ impl Zone {
 		}
 
 		debug_assert!(frame >= pages_count);
+		#[cfg(kernel_mode = "debug")]
 		self.check_free_list();
 	}
 
@@ -352,6 +353,7 @@ impl Zone {
 					};
 					let id = f.get_id(self);
 
+					#[cfg(kernel_mode = "debug")]
 					f.check_broken(self);
 					debug_assert!(!f.is_used());
 					debug_assert!(f.order == (order as _));
@@ -443,7 +445,9 @@ impl Frame {
 
 	/// Links the frame into zone `zone`'s free list.
 	pub fn link(&mut self, zone: &mut Zone) {
+		#[cfg(kernel_mode = "debug")]
 		self.check_broken(zone);
+		#[cfg(kernel_mode = "debug")]
 		zone.check_free_list();
 		debug_assert!(!self.is_used());
 
@@ -459,14 +463,18 @@ impl Frame {
 		};
 		zone.free_list[self.order as usize] = Some(self);
 
+		#[cfg(kernel_mode = "debug")]
 		self.check_broken(zone);
+		#[cfg(kernel_mode = "debug")]
 		zone.check_free_list();
 	}
 
 	/// Unlinks the frame from zone `zone`'s free list. The frame must not be used.
 	pub fn unlink(&mut self, zone: &mut Zone) {
+		#[cfg(kernel_mode = "debug")]
 		self.check_broken(zone);
 		debug_assert!(!self.is_used());
+		#[cfg(kernel_mode = "debug")]
 		zone.check_free_list();
 
 		let id = self.get_id(zone);
@@ -495,7 +503,9 @@ impl Frame {
 			}
 		}
 
+		#[cfg(kernel_mode = "debug")]
 		self.check_broken(zone);
+		#[cfg(kernel_mode = "debug")]
 		zone.check_free_list();
 	}
 
@@ -505,6 +515,7 @@ impl Frame {
 	/// 
 	/// The frame must not be marked as used.
 	pub fn split(&mut self, zone: &mut Zone, order: FrameOrder) {
+		#[cfg(kernel_mode = "debug")]
 		self.check_broken(zone);
 		debug_assert!(!self.is_used());
 		debug_assert!(order <= MAX_ORDER);
@@ -528,6 +539,7 @@ impl Frame {
 			buddy_frame.link(zone);
 		}
 
+		#[cfg(kernel_mode = "debug")]
 		self.check_broken(zone);
 	}
 
@@ -537,6 +549,7 @@ impl Frame {
 	/// 
 	/// The frame must not be marked as used.
 	pub fn coalesce(&mut self, zone: &mut Zone) {
+		#[cfg(kernel_mode = "debug")]
 		self.check_broken(zone);
 		debug_assert!(!self.is_used());
 
@@ -556,6 +569,7 @@ impl Frame {
 			let buddy_frame = unsafe { // Dereference of raw pointer
 				&mut *zone.get_frame(buddy)
 			};
+			#[cfg(kernel_mode = "debug")]
 			buddy_frame.check_broken(zone);
 			if buddy_frame.order != self.order || buddy_frame.is_used() {
 				break;
@@ -571,8 +585,10 @@ impl Frame {
 			}
 		}
 
+		#[cfg(kernel_mode = "debug")]
 		zone.check_free_list();
 		self.link(zone);
+		#[cfg(kernel_mode = "debug")]
 		self.check_broken(zone);
 	}
 }

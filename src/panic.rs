@@ -38,7 +38,7 @@ fn print_panic(reason: &str, code: u32) {
 /// Re-initializes the TTY, prints the panic message and halts the kernel.
 #[cfg(kernel_mode = "release")]
 pub fn kernel_panic_(reason: &str, code: u32, _file: &str, _line: u32, _col: u32) -> ! {
-	::cli!();
+	crate::cli!();
 	print_panic(reason, code);
 	unsafe {
 		crate::kernel_halt();
