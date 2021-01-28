@@ -38,6 +38,7 @@ mod panic;
 mod pit;
 #[macro_use]
 mod print;
+mod ps2;
 mod selftest;
 mod syscall;
 mod tty;
@@ -97,6 +98,12 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 
 	#[cfg(test)]
 	kernel_selftest();
+
+	// TODO Move into a module?
+	ps2::init();
+	ps2::set_keyboard_callback(| _c, _action | {
+		// TODO
+	});
 
 	// TODO ACPI
 	// TODO PCI
