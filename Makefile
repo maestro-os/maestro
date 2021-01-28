@@ -179,6 +179,7 @@ $(NAME).iso: $(NAME)
 # The rule to clean the workspace
 clean:
 	rm -rf $(OBJ_DIR)
+	rm -rf $(LIB_NAME)
 	rm -f tags
 	rm -rf iso/
 
