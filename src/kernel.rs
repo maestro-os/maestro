@@ -99,11 +99,14 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 	#[cfg(test)]
 	kernel_selftest();
 
-	// TODO Move into a module?
-	ps2::init();
-	ps2::set_keyboard_callback(| _c, _action | {
-		// TODO
-	});
+	// TODO Move into a module
+	if ps2::init().is_ok() {
+		ps2::set_keyboard_callback(| _c, _action | {
+			// TODO
+		});
+	} else {
+		// TODO Error message
+	}
 
 	// TODO ACPI
 	// TODO PCI

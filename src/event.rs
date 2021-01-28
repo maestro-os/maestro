@@ -138,7 +138,9 @@ pub extern "C" fn event_handler(id: u32, code: u32, regs: &util::Regs) {
 
 	if let Some(callbacks) = callbacks {
 		for c in callbacks.into_iter() {
-			(*c.callback).call(id, code, regs);
+			if (*c.callback).is_enabled() {
+				(*c.callback).call(id, code, regs);
+			}
 		}
 	} else {
 		crate::kernel_panic!(get_error_message(id), code);
