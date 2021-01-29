@@ -102,6 +102,7 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 	// TODO Move into a module
 	if ps2::init().is_ok() {
 		ps2::set_keyboard_callback(| _c, _action | {
+			println!("Key action!\n");
 			// TODO
 		});
 	} else {
@@ -119,7 +120,8 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 	// TODO Start first process
 
 	unsafe {
-		kernel_halt(); // TODO Replace with kernel_loop
+		//kernel_halt(); // TODO Replace with kernel_loop
+		kernel_loop();
 	}
 }
 

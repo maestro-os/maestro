@@ -142,7 +142,7 @@ pub extern "C" fn event_handler(id: u32, code: u32, regs: &util::Regs) {
 				(*c.callback).call(id, code, regs);
 			}
 		}
-	} else {
+	} else if (id as usize) < ERROR_MESSAGES.len() {
 		crate::kernel_panic!(get_error_message(id), code);
 	}
 }
