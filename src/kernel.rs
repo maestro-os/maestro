@@ -32,6 +32,7 @@ mod event;
 #[macro_use]
 mod idt;
 mod memory;
+mod module;
 mod multiboot;
 #[macro_use]
 mod panic;
