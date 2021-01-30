@@ -105,8 +105,8 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 	// TODO time
 
 	// TODO Load modules from file and register into a vector
-	let mut ps2_module = ps2::PS2Module::new(| _c, _action | {
-		println!("Key action!");
+	let mut ps2_module = ps2::PS2Module::new(| c, action | {
+		println!("Key action! {:?} {:?}", c, action);
 		// TODO
 	});
 	if ps2_module.init().is_err() {

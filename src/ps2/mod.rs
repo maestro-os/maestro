@@ -3,6 +3,7 @@
 
 // TODO Externalize this module into a kernel module when the interface for loading them will be ready
 
+use core::cmp::Ordering;
 use crate::event;
 use crate::io;
 use crate::module::Module;
@@ -47,6 +48,7 @@ const LED_CAPS_LOCK: u8 = 0b100;
 // TODO Turn commands and flags into constants.
 
 /// Enumation of keyboard keys.
+#[derive(Clone, Debug)]
 pub enum KeyboardKey {
 	KeyEsc,
 	Key1,
@@ -133,100 +135,102 @@ pub enum KeyboardKey {
 	KeyKeypadDot,
 	KeyF11,
 	KeyF12,
+
+	KeyUnknown,
 }
 
-// TODO Turn into a map
-/*static normal_keys = vec![
-	(0x01, KeyEsc),
-	(0x02, Key1),
-	(0x03, Key2),
-	(0x04, Key3),
-	(0x05, Key4),
-	(0x06, Key5),
-	(0x07, Key6),
-	(0x08, Key7),
-	(0x09, Key8),
-	(0x0a, Key9),
-	(0x0b, Key0),
-	(0x0c, KeyMinus),
-	(0x0d, KeyEqual),
-	(0x0e, KeyBackspace),
-	(0x0f, KeyTab),
-	(0x10, KeyQ),
-	(0x11, KeyW),
-	(0x12, KeyE),
-	(0x13, KeyR),
-	(0x14, KeyT),
-	(0x15, KeyY),
-	(0x16, KeyU),
-	(0x17, KeyI),
-	(0x18, KeyO),
-	(0x19, KeyP),
-	(0x1a, KeyOpenBrace),
-	(0x1b, KeyCloseBrace),
-	(0x1c, KeyEnter),
-	(0x1d, KeyLeftControl),
-	(0x1e, KeyA),
-	(0x1f, KeyS),
-	(0x20, KeyD),
-	(0x21, KeyF),
-	(0x22, KeyG),
-	(0x23, KeyH),
-	(0x24, KeyJ),
-	(0x25, KeyK),
-	(0x26, KeyL),
-	(0x27, KeySemiColon),
-	(0x28, KeySingleQuote),
-	(0x29, KeyBackTick),
-	(0x2a, KeyLeftShift),
-	(0x2b, KeyBackslash),
-	(0x2c, KeyZ),
-	(0x2d, KeyX),
-	(0x2e, KeyC),
-	(0x2f, KeyV),
-	(0x30, KeyB),
-	(0x31, KeyN),
-	(0x32, KeyM),
-	(0x33, KeyComma),
-	(0x34, KeyDot),
-	(0x35, KeySlash),
-	(0x36, KeyRightShift),
-	(0x37, KeyKeypadStar),
-	(0x38, KeyLeftAlt),
-	(0x39, KeySpace),
-	(0x3a, KeyCapsLock),
-	(0x3b, KeyF1),
-	(0x3c, KeyF2),
-	(0x3d, KeyF3),
-	(0x3e, KeyF4),
-	(0x3f, KeyF5),
-	(0x40, KeyF6),
-	(0x41, KeyF7),
-	(0x42, KeyF8),
-	(0x43, KeyF9),
-	(0x44, KeyF10),
-	(0x45, KeyNumberLock),
-	(0x46, KeyScrollLock),
-	(0x47, KeyKeypad7),
-	(0x48, KeyKeypad8),
-	(0x49, KeyKeypad9),
-	(0x4a, KeyKeypadMinus),
-	(0x4b, KeyKeypad4),
-	(0x4c, KeyKeypad5),
-	(0x4d, KeyKeypad6),
-	(0x4e, KeyKeypadPlus),
-	(0x4f, KeyKeypad1),
-	(0x50, KeyKeypad2),
-	(0x51, KeyKeypad3),
-	(0x52, KeyKeypad0),
-	(0x53, KeyKeypadDot),
-	(0x57, KeyF11),
-	(0x58, KeyF12),
-];*/
+static NORMAL_KEYS: [(u8, KeyboardKey); 85] = [
+	(0x01, KeyboardKey::KeyEsc),
+	(0x02, KeyboardKey::Key1),
+	(0x03, KeyboardKey::Key2),
+	(0x04, KeyboardKey::Key3),
+	(0x05, KeyboardKey::Key4),
+	(0x06, KeyboardKey::Key5),
+	(0x07, KeyboardKey::Key6),
+	(0x08, KeyboardKey::Key7),
+	(0x09, KeyboardKey::Key8),
+	(0x0a, KeyboardKey::Key9),
+	(0x0b, KeyboardKey::Key0),
+	(0x0c, KeyboardKey::KeyMinus),
+	(0x0d, KeyboardKey::KeyEqual),
+	(0x0e, KeyboardKey::KeyBackspace),
+	(0x0f, KeyboardKey::KeyTab),
+	(0x10, KeyboardKey::KeyQ),
+	(0x11, KeyboardKey::KeyW),
+	(0x12, KeyboardKey::KeyE),
+	(0x13, KeyboardKey::KeyR),
+	(0x14, KeyboardKey::KeyT),
+	(0x15, KeyboardKey::KeyY),
+	(0x16, KeyboardKey::KeyU),
+	(0x17, KeyboardKey::KeyI),
+	(0x18, KeyboardKey::KeyO),
+	(0x19, KeyboardKey::KeyP),
+	(0x1a, KeyboardKey::KeyOpenBrace),
+	(0x1b, KeyboardKey::KeyCloseBrace),
+	(0x1c, KeyboardKey::KeyEnter),
+	(0x1d, KeyboardKey::KeyLeftControl),
+	(0x1e, KeyboardKey::KeyA),
+	(0x1f, KeyboardKey::KeyS),
+	(0x20, KeyboardKey::KeyD),
+	(0x21, KeyboardKey::KeyF),
+	(0x22, KeyboardKey::KeyG),
+	(0x23, KeyboardKey::KeyH),
+	(0x24, KeyboardKey::KeyJ),
+	(0x25, KeyboardKey::KeyK),
+	(0x26, KeyboardKey::KeyL),
+	(0x27, KeyboardKey::KeySemiColon),
+	(0x28, KeyboardKey::KeySingleQuote),
+	(0x29, KeyboardKey::KeyBackTick),
+	(0x2a, KeyboardKey::KeyLeftShift),
+	(0x2b, KeyboardKey::KeyBackslash),
+	(0x2c, KeyboardKey::KeyZ),
+	(0x2d, KeyboardKey::KeyX),
+	(0x2e, KeyboardKey::KeyC),
+	(0x2f, KeyboardKey::KeyV),
+	(0x30, KeyboardKey::KeyB),
+	(0x31, KeyboardKey::KeyN),
+	(0x32, KeyboardKey::KeyM),
+	(0x33, KeyboardKey::KeyComma),
+	(0x34, KeyboardKey::KeyDot),
+	(0x35, KeyboardKey::KeySlash),
+	(0x36, KeyboardKey::KeyRightShift),
+	(0x37, KeyboardKey::KeyKeypadStar),
+	(0x38, KeyboardKey::KeyLeftAlt),
+	(0x39, KeyboardKey::KeySpace),
+	(0x3a, KeyboardKey::KeyCapsLock),
+	(0x3b, KeyboardKey::KeyF1),
+	(0x3c, KeyboardKey::KeyF2),
+	(0x3d, KeyboardKey::KeyF3),
+	(0x3e, KeyboardKey::KeyF4),
+	(0x3f, KeyboardKey::KeyF5),
+	(0x40, KeyboardKey::KeyF6),
+	(0x41, KeyboardKey::KeyF7),
+	(0x42, KeyboardKey::KeyF8),
+	(0x43, KeyboardKey::KeyF9),
+	(0x44, KeyboardKey::KeyF10),
+	(0x45, KeyboardKey::KeyNumberLock),
+	(0x46, KeyboardKey::KeyScrollLock),
+	(0x47, KeyboardKey::KeyKeypad7),
+	(0x48, KeyboardKey::KeyKeypad8),
+	(0x49, KeyboardKey::KeyKeypad9),
+	(0x4a, KeyboardKey::KeyKeypadMinus),
+	(0x4b, KeyboardKey::KeyKeypad4),
+	(0x4c, KeyboardKey::KeyKeypad5),
+	(0x4d, KeyboardKey::KeyKeypad6),
+	(0x4e, KeyboardKey::KeyKeypadPlus),
+	(0x4f, KeyboardKey::KeyKeypad1),
+	(0x50, KeyboardKey::KeyKeypad2),
+	(0x51, KeyboardKey::KeyKeypad3),
+	(0x52, KeyboardKey::KeyKeypad0),
+	(0x53, KeyboardKey::KeyKeypadDot),
+	(0x57, KeyboardKey::KeyF11),
+	(0x58, KeyboardKey::KeyF12),
+];
 
 // TODO Special keys
 
 /// Enumeration of keyboard actions.
+#[derive(Debug)]
 pub enum KeyboardAction {
 	/// The key was pressed.
 	Pressed,
@@ -378,12 +382,32 @@ fn test_device() -> Result::<(), ()> {
 
 /// Reads a keystroke and returns the associated key and action.
 fn read_keystroke() -> (KeyboardKey, KeyboardAction) {
-	let _keycode = unsafe {
+	let mut keycode = unsafe { // IO operation
 		io::inb(DATA_REGISTER)
 	};
+	let action = if keycode < 0x80 {
+		KeyboardAction::Pressed
+	} else {
+		keycode -= 0x80;
+		KeyboardAction::Released
+	};
 
-	// TODO
-	(KeyboardKey::KeyA, KeyboardAction::Pressed)
+	let cmp = | k: &(u8, KeyboardKey) | {
+		if k.0 < keycode {
+			Ordering::Less
+		} else if k.0 > keycode {
+			Ordering::Greater
+		} else {
+			Ordering::Equal
+		}
+	};
+	let index = NORMAL_KEYS.binary_search_by(cmp);
+	let key = if let Ok(i) = index {
+		NORMAL_KEYS[i].1.clone()
+	} else {
+		KeyboardKey::KeyUnknown
+	};
+	(key, action)
 }
 
 /// Keyboard input events callback.
