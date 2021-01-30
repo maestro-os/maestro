@@ -71,8 +71,61 @@ impl Bitfield {
 
 		self.set_count -= 1;
 	}
+
+	// TODO set_all
+	// TODO clear_all
+	// TODO fill
 }
 
-// TODO Drop trait
+impl Drop for Bitfield {
+	fn drop(&mut self) {
+		malloc::free(self.ptr as *mut _);
+	}
+}
 
-// TODO Unit testing
+#[cfg(test)]
+mod test {
+	use super::*;
+
+	#[test_case]
+	fn bitfield_set0() {
+		let mut bitfield = Bitfield::new(42).unwrap();
+		debug_assert_eq!(bitfield.len(), 42);
+
+		for i in 0..bitfield.len() {
+			debug_assert!(!bitfield.is_set(i));
+		}
+
+		for i in 0..bitfield.len() {
+			bitfield.set(i);
+		}
+
+		for i in 0..bitfield.len() {
+			debug_assert!(bitfield.is_set(i));
+		}
+	}
+
+	#[test_case]
+	fn bitfield_clear0() {
+		let mut bitfield = Bitfield::new(42).unwrap();
+		debug_assert_eq!(bitfield.len(), 42);
+
+		for i in 0..bitfield.len() {
+			bitfield.set(i);
+		}
+
+		for i in 0..bitfield.len() {
+			debug_assert!(bitfield.is_set(i));
+		}
+
+		for i in 0..bitfield.len() {
+			bitfield.clear(i);
+		}
+
+		for i in 0..bitfield.len() {
+			debug_assert!(!bitfield.is_set(i));
+		}
+	}
+
+	// TODO Write more tests
+}

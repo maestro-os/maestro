@@ -199,5 +199,8 @@ mod test {
 
 	// TODO More tests on memmove
 
-	// TODO Test every C functions
+	// TODO Test `memcmp`
+	// TODO Test `memset`
+	// TODO Test `bzero`
+	// TODO Test `strlen`
 }

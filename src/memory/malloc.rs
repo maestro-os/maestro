@@ -520,12 +520,18 @@ pub fn alloc(n: usize) -> Result<*mut c_void, ()> {
 
 	let chunk = get_available_chunk(n)?.get_chunk();
 	chunk.split(n);
+
 	#[cfg(kernel_mode = "debug")]
 	chunk.check();
 	debug_assert!(chunk.get_size() >= n);
 	assert!(!chunk.is_used());
 	chunk.set_used(true);
-	Ok(chunk.get_ptr())
+
+	let ptr = chunk.get_ptr();
+	unsafe { // Call to C function
+		util::bzero(ptr, n);
+	}
+	Ok(ptr)
 }
 
 /// Returns the size of the given memory allocation in bytes.

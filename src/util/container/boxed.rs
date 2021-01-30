@@ -94,6 +94,8 @@ impl<T: ?Sized> Drop for Box<T> {
 
 #[cfg(test)]
 mod test {
+	use super::*;
+
 	#[test_case]
 	fn box0() {
 		let b = Box::new(42 as usize);
