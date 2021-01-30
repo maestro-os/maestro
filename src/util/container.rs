@@ -13,7 +13,7 @@ use core::ops::DispatchFromDyn;
 use core::ops::Index;
 use core::ops::IndexMut;
 use core::ops::{Deref, DerefMut};
-use core::ptr::null_mut;
+use core::ptr::NonNull;
 use core::ptr;
 use crate::memory::malloc;
 use crate::util;
@@ -326,8 +326,8 @@ impl<T> Drop for Vec<T> {
 
 #[fundamental]
 pub struct Box<T: ?Sized> {
-	/// Pointer to the allocated memory 
-	ptr: *mut T,
+	/// Pointer to the allocated memory
+	ptr: NonNull<T>,
 }
 
 impl<T> Box<T> {
@@ -343,9 +343,9 @@ impl<T> Box<T> {
 			unsafe { // Call to C function
 				util::memcpy(ptr as _, &value as *const _ as *const _, size);
 			}
-			ptr
+			NonNull::new(ptr).unwrap()
 		} else {
-			null_mut::<T>()
+			NonNull::dangling()
 		};
 		Ok(Self {
 			ptr: ptr,
@@ -356,7 +356,7 @@ impl<T> Box<T> {
 impl<T: ?Sized> AsRef<T> for Box<T> {
     fn as_ref(&self) -> &T {
 		unsafe { // Dereference of raw pointer
-			&*self.ptr
+			&*self.ptr.as_ptr()
 		}
     }
 }
@@ -364,7 +364,7 @@ impl<T: ?Sized> AsRef<T> for Box<T> {
 impl<T: ?Sized> AsMut<T> for Box<T> {
     fn as_mut(&mut self) -> &mut T {
 		unsafe { // Dereference of raw pointer
-			&mut *self.ptr
+			&mut *self.ptr.as_ptr()
 		}
     }
 }
@@ -388,7 +388,7 @@ impl<T: Clone> Box<T> {
 	/// If the allocation fails, the function shall return an error.
     fn clone(&self) -> Result<Self, ()> {
 		let obj = unsafe { // Dereference of raw pointer
-			&*self.ptr
+			&*self.ptr.as_ptr()
 		};
 		Box::new(obj.clone())
     }
@@ -400,7 +400,7 @@ impl<T: ?Sized + Unsize<U>, U: ?Sized> DispatchFromDyn<Box<U>> for Box<T> {}
 
 impl<T: ?Sized> Drop for Box<T> {
 	fn drop(&mut self) {
-		malloc::free(self.ptr as _);
+		malloc::free(self.ptr.as_ptr() as _);
 	}
 }
 
