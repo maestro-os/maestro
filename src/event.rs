@@ -96,9 +96,10 @@ pub fn register_callback<T: 'static + InterruptCallback>(id: u8, priority: u32, 
 	if vec.is_none() {
 		*vec = Some(Vec::<CallbackWrapper>::new());
 	}
+	let v = vec.as_mut().unwrap();
 
 	let index = {
-		let r = vec.as_mut().unwrap().binary_search_by(| x | {
+		let r = v.binary_search_by(| x | {
 			if x.priority < priority {
 				Ordering::Less
 			} else if x.priority > priority {
@@ -114,7 +115,7 @@ pub fn register_callback<T: 'static + InterruptCallback>(id: u8, priority: u32, 
 			r.unwrap()
 		}
 	};
-	vec.as_mut().unwrap().insert(index, CallbackWrapper {
+	v.insert(index, CallbackWrapper {
 		priority: priority,
 		callback: Box::new(callback)?,
 	});

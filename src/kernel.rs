@@ -1,5 +1,4 @@
-/*
- * This file is the main source file for the kernel, but it is not the entry point of the kernel.
+/* * This file is the main source file for the kernel, but it is not the entry point of the kernel.
  */
 
 #![no_std]
@@ -50,6 +49,7 @@ mod vga;
 
 use core::ffi::c_void;
 use core::panic::PanicInfo;
+use crate::module::Module;
 
 /// Current kernel version.
 const KERNEL_VERSION: &'static str = "1.0";
@@ -100,20 +100,22 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 	#[cfg(test)]
 	kernel_selftest();
 
-	// TODO Move into a module
-	if ps2::init().is_ok() {
-		ps2::set_keyboard_callback(| _c, _action | {
-			println!("Key action!\n");
-			// TODO
-		});
-	} else {
-		// TODO Error message
-	}
-
 	// TODO ACPI
 	// TODO PCI
 	// TODO time
-	// TODO drivers
+
+	// TODO Load modules from file and register into a vector
+	let mut ps2_module = ps2::PS2Module::new(| _c, _action | {
+		println!("Key action!");
+		// TODO
+	});
+	if ps2_module.init().is_err() {
+		println!("Failed to init PS/2 kernel module!");
+		unsafe {
+			kernel_halt();
+		}
+	}
+
 	// TODO Disk
 	// TODO Process
 

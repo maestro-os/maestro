@@ -13,6 +13,7 @@ use core::ops::DispatchFromDyn;
 use core::ops::Index;
 use core::ops::IndexMut;
 use core::ops::{Deref, DerefMut};
+use core::ptr::null_mut;
 use core::ptr;
 use crate::memory::malloc;
 use crate::util;
@@ -334,16 +335,21 @@ impl<T> Box<T> {
 	/// If the allocation fails, the function shall return an error.
 	pub fn new(value: T) -> Result<Box::<T>, ()> {
 		let size = size_of_val(&value);
-		let b = Self {
-			ptr: unsafe { // Use of transmute
+		let ptr = if size > 0 {
+			let ptr = unsafe { // Use of transmute
 				// TODO Check that conversion from thin to fat pointer works
 				transmute::<*mut c_void, *mut T>(malloc::alloc(size)?)
-			},
+			};
+			unsafe { // Call to C function
+				util::memcpy(ptr as _, &value as *const _ as *const _, size);
+			}
+			ptr
+		} else {
+			null_mut::<T>()
 		};
-		unsafe { // Call to C function
-			util::memcpy(b.ptr as _, &value as *const _ as *const _, size);
-		}
-		Ok(b)
+		Ok(Self {
+			ptr: ptr,
+		})
 	}
 }
 

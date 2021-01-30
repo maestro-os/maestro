@@ -8,7 +8,7 @@ use core::cmp::Ordering;
 /// - Minor: Version including new features
 /// - Patch: Version including bug fixes and optimizations
 #[derive(Eq)]
-pub struct ModuleVersion {
+pub struct Version {
 	/// The major version
 	pub major: u16,
 	/// The minor version
@@ -17,7 +17,7 @@ pub struct ModuleVersion {
 	pub patch: u16,
 }
 
-impl ModuleVersion {
+impl Version {
 	/// Compares current version with the given one.
 	fn cmp(&self, other: &Self) -> Ordering {
 		let mut ord = self.major.cmp(&other.major);
@@ -36,19 +36,19 @@ impl ModuleVersion {
 	// TODO to_string
 }
 
-impl Ord for ModuleVersion {
+impl Ord for Version {
 	fn cmp(&self, other: &Self) -> Ordering {
 		self.cmp(other)
 	}
 }
 
-impl PartialOrd for ModuleVersion {
+impl PartialOrd for Version {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl PartialEq for ModuleVersion {
+impl PartialEq for Version {
     fn eq(&self, other: &Self) -> bool {
         self.major == other.major && self.minor == other.minor && self.patch == other.patch
     }
@@ -60,11 +60,11 @@ pub trait Module {
 	fn get_name(&self) -> &str;
 
 	/// Returns the version of the module.
-	fn get_version(&self) -> ModuleVersion;
+	fn get_version(&self) -> Version;
 
 	/// Function called after the module have been loaded for initialization.
-	fn init(&mut self);
+	fn init(&mut self) -> Result::<(), ()>;
 
 	/// Function called before unloading the module.
-	fn destory(&mut self);
+	fn destroy(&mut self);
 }

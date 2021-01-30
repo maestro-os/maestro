@@ -1,9 +1,13 @@
 /// This module handles PS/2 devices.
 /// TODO doc
 
-use crate::util::container::Box;
+// TODO Externalize this module into a kernel module when the interface for loading them will be ready
+
 use crate::event;
 use crate::io;
+use crate::module::Module;
+use crate::module;
+use crate::util::container::Box;
 use crate::util;
 
 /// The interrupt number for keyboard input events.
@@ -230,9 +234,6 @@ pub enum KeyboardAction {
 	Released,
 }
 
-/// The callback handling keyboard inputs.
-static mut KEYBOARD_CALLBACK: Option::<Box::<dyn FnMut(KeyboardKey, KeyboardAction)>> = None; // TODO Handle data race
-
 /// Tells whether the PS/2 buffer is ready for reading.
 fn can_read() -> bool {
 	unsafe { // IO operation
@@ -386,53 +387,80 @@ fn read_keystroke() -> (KeyboardKey, KeyboardAction) {
 }
 
 /// Keyboard input events callback.
-struct KeyboardCallback_ {}
+struct KeyboardCallback {
+	/// A reference to the PS/2 module instance.
+	module: *mut PS2Module, // TODO Use a safe object to handle memory
+}
 
-impl event::InterruptCallback for KeyboardCallback_ {
+impl event::InterruptCallback for KeyboardCallback {
 	fn is_enabled(&self) -> bool {
 		true
 	}
 
 	fn call(&self, _id: u32, _code: u32, _regs: &util::Regs) {
-		let callback = unsafe { // Access to global variable
-			&mut KEYBOARD_CALLBACK
-		};
-		if let Some(l) = callback {
-			while can_read() {
-				let (key, action) = read_keystroke();
-				l(key, action);
+		while can_read() {
+			let (key, action) = read_keystroke();
+			unsafe { // Dereference of raw pointer
+				((*self.module).keyboard_callback)(key, action);
 			}
 		}
 	}
 }
 
-/// Initializes the PS/2 driver.
-pub fn init() -> Result::<(), ()> {
-	// TODO Check if PS/2 controller is existing using ACPI
-
-	// TODO Disable interrupts during init
-
-	disable_devices();
-	clear_buffer();
-
-	set_config_byte(get_config_byte() & 0b10111100);
-
-	test_controller()?;
-	test_device()?;
-	enable_keyboard()?;
-
-	set_config_byte(get_config_byte() | 0b1);
-	clear_buffer();
-
-	event::register_callback(KEYBOARD_INTERRUPT, 0, KeyboardCallback_ {})?; // TODO Unregister when unloading module
-	Ok(())
+/// The PS2 kernel module structure.
+pub struct PS2Module {
+	/// The callback handling keyboard inputs.
+	keyboard_callback: Box::<dyn FnMut(KeyboardKey, KeyboardAction)>,
 }
 
-/// Sets the callback for keyboard actions.
-pub fn set_keyboard_callback<F: 'static + FnMut(KeyboardKey, KeyboardAction)>(f: F) {
-	unsafe { // Access to global variable
-		KEYBOARD_CALLBACK = Some(Box::new(f).unwrap());
+impl PS2Module {
+	/// Creates the module's instance.
+	pub fn new<F: 'static + FnMut(KeyboardKey, KeyboardAction)>(f: F) -> Self {
+		Self {
+			keyboard_callback: Box::new(f).unwrap(),
+		}
 	}
 }
 
-// TODO LEDs state
+impl Module for PS2Module {
+	fn get_name(&self) -> &str {
+		"PS/2"
+	}
+
+	fn get_version(&self) -> module::Version {
+		module::Version {
+			major: 0,
+			minor: 0,
+			patch: 0,
+		}
+	}
+
+	fn init(&mut self) -> Result::<(), ()> {
+		// TODO Check if PS/2 controller is existing using ACPI
+
+		// TODO Disable interrupts during init
+
+		disable_devices();
+		clear_buffer();
+
+		set_config_byte(get_config_byte() & 0b10111100);
+
+		test_controller()?;
+		test_device()?;
+		enable_keyboard()?;
+
+		set_config_byte(get_config_byte() | 0b1);
+		clear_buffer();
+
+		event::register_callback(KEYBOARD_INTERRUPT, 0, KeyboardCallback {
+			module: self as _,
+		})?;
+		Ok(())
+	}
+
+	fn destroy(&mut self) {
+		// TODO Unregister callback
+	}
+
+	// TODO LEDs state
+}
