@@ -48,7 +48,7 @@ const LED_CAPS_LOCK: u8 = 0b100;
 // TODO Turn commands and flags into constants.
 
 /// Enumation of keyboard keys.
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum KeyboardKey {
 	KeyEsc,
 	Key1,
@@ -136,9 +136,61 @@ pub enum KeyboardKey {
 	KeyF11,
 	KeyF12,
 
+	KeyPreviousTrack,
+	KeyNextTrack,
+	KeyKeypadEnter,
+	KeyRightControl,
+	KeyMute,
+	KeyCalculator,
+	KeyPlay,
+	KeyStop,
+	KeyVolumeDown,
+	KeyVolumeUp,
+	KeyWWWHome,
+	KeyKeypadSlash,
+	KeyRightAlt,
+	KeyHome,
+	KeyCursorUp,
+	KeyPageUp,
+	KeyCursorLeft,
+	KeyCursorRight,
+	KeyEnd,
+	KeyCursorDown,
+	KeyPageDown,
+	KeyInsert,
+	KeyDelete,
+	KeyLeftGUI,
+	KeyRightGUI,
+	KeyApps,
+	KeyACPIPower,
+	KeyACPISleep,
+	KeyACPIWake,
+	KeyWWWSearch,
+	KeyWWWFavorites,
+	KeyWWWRefresh,
+	KeyWWWStop,
+	KeyWWWForward,
+	KeyWWWBack,
+	KeyMyComputer,
+	KeyEmail,
+	KeyMediaSelect,
+
+	KeyPrintScreen,
+	KeyPause,
+
 	KeyUnknown,
 }
 
+/// Enumeration of keyboard actions.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum KeyboardAction {
+	/// The key was pressed.
+	Pressed,
+	/// The key was released.
+	Released,
+}
+
+/// A slice containing a pair of keycode and enumeration that allows to associate a keycode with its enumeration entry.
 static NORMAL_KEYS: [(u8, KeyboardKey); 85] = [
 	(0x01, KeyboardKey::KeyEsc),
 	(0x02, KeyboardKey::Key1),
@@ -227,16 +279,47 @@ static NORMAL_KEYS: [(u8, KeyboardKey); 85] = [
 	(0x58, KeyboardKey::KeyF12),
 ];
 
-// TODO Special keys
-
-/// Enumeration of keyboard actions.
-#[derive(Debug)]
-pub enum KeyboardAction {
-	/// The key was pressed.
-	Pressed,
-	/// The key was released.
-	Released,
-}
+/// Same as `NORMAL_KEYS` except this slice stores keys beginning with `0xE0`.
+static SPECIAL_KEYS: [(u8, KeyboardKey); 38] = [
+	(0x10, KeyboardKey::KeyPreviousTrack),
+	(0x19, KeyboardKey::KeyNextTrack),
+	(0x1C, KeyboardKey::KeyKeypadEnter),
+	(0x1D, KeyboardKey::KeyRightControl),
+	(0x20, KeyboardKey::KeyMute),
+	(0x21, KeyboardKey::KeyCalculator),
+	(0x22, KeyboardKey::KeyPlay),
+	(0x24, KeyboardKey::KeyStop),
+	(0x2E, KeyboardKey::KeyVolumeDown),
+	(0x30, KeyboardKey::KeyVolumeUp),
+	(0x32, KeyboardKey::KeyWWWHome),
+	(0x35, KeyboardKey::KeyKeypadSlash),
+	(0x38, KeyboardKey::KeyRightAlt),
+	(0x47, KeyboardKey::KeyHome),
+	(0x48, KeyboardKey::KeyCursorUp),
+	(0x49, KeyboardKey::KeyPageUp),
+	(0x4B, KeyboardKey::KeyCursorLeft),
+	(0x4D, KeyboardKey::KeyCursorRight),
+	(0x4F, KeyboardKey::KeyEnd),
+	(0x50, KeyboardKey::KeyCursorDown),
+	(0x51, KeyboardKey::KeyPageDown),
+	(0x52, KeyboardKey::KeyInsert),
+	(0x53, KeyboardKey::KeyDelete),
+	(0x5B, KeyboardKey::KeyLeftGUI),
+	(0x5C, KeyboardKey::KeyRightGUI),
+	(0x5D, KeyboardKey::KeyApps),
+	(0x5E, KeyboardKey::KeyACPIPower),
+	(0x5F, KeyboardKey::KeyACPISleep),
+	(0x63, KeyboardKey::KeyACPIWake),
+	(0x65, KeyboardKey::KeyWWWSearch),
+	(0x66, KeyboardKey::KeyWWWFavorites),
+	(0x67, KeyboardKey::KeyWWWRefresh),
+	(0x68, KeyboardKey::KeyWWWStop),
+	(0x69, KeyboardKey::KeyWWWForward),
+	(0x6A, KeyboardKey::KeyWWWBack),
+	(0x6B, KeyboardKey::KeyMyComputer),
+	(0x6C, KeyboardKey::KeyEmail),
+	(0x6D, KeyboardKey::KeyMediaSelect),
+];
 
 /// Tells whether the PS/2 buffer is ready for reading.
 fn can_read() -> bool {
@@ -380,11 +463,21 @@ fn test_device() -> Result::<(), ()> {
 	send_command(0xab, TEST_KEYBOARD_PASS)
 }
 
+/// Reads one byte of keycode from the controller.
+fn read_keycode_byte() -> u8 {
+	unsafe { // IO operation
+		io::inb(DATA_REGISTER)
+	}
+}
+
 /// Reads a keystroke and returns the associated key and action.
 fn read_keystroke() -> (KeyboardKey, KeyboardAction) {
-	let mut keycode = unsafe { // IO operation
-		io::inb(DATA_REGISTER)
-	};
+	let mut keycode = read_keycode_byte();
+	let special = keycode == 0xe0; // TODO Handle extra characters
+	if special {
+		keycode = read_keycode_byte();
+	}
+
 	let action = if keycode < 0x80 {
 		KeyboardAction::Pressed
 	} else {
@@ -401,12 +494,18 @@ fn read_keystroke() -> (KeyboardKey, KeyboardAction) {
 			Ordering::Equal
 		}
 	};
-	let index = NORMAL_KEYS.binary_search_by(cmp);
+	let list = if !special {
+		&NORMAL_KEYS[..]
+	} else {
+		&SPECIAL_KEYS[..]
+	};
+	let index = list.binary_search_by(cmp);
 	let key = if let Ok(i) = index {
-		NORMAL_KEYS[i].1.clone()
+		list[i].1.clone()
 	} else {
 		KeyboardKey::KeyUnknown
 	};
+
 	(key, action)
 }
 
@@ -424,8 +523,15 @@ impl event::InterruptCallback for KeyboardCallback {
 	fn call(&self, _id: u32, _code: u32, _regs: &util::Regs) {
 		while can_read() {
 			let (key, action) = read_keystroke();
+
 			unsafe { // Dereference of raw pointer
 				((*self.module).keyboard_callback)(key, action);
+			}
+
+			if key == KeyboardKey::KeyPause && action == KeyboardAction::Pressed {
+				unsafe { // Dereference of raw pointer
+					((*self.module).keyboard_callback)(key, KeyboardAction::Released);
+				}
 			}
 		}
 	}
