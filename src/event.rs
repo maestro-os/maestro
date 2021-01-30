@@ -3,7 +3,8 @@
 
 use core::cmp::Ordering;
 use crate::idt;
-use crate::util::container::*;
+use crate::util::container::boxed::Box;
+use crate::util::container::vec::Vec;
 use crate::util::lock::{Mutex, MutexGuard};
 use crate::util;
 

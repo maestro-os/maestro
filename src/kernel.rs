@@ -38,6 +38,7 @@ mod panic;
 mod pit;
 #[macro_use]
 mod print;
+mod process;
 mod ps2;
 mod selftest;
 mod syscall;

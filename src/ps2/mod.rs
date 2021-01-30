@@ -8,7 +8,7 @@ use crate::event;
 use crate::io;
 use crate::module::Module;
 use crate::module;
-use crate::util::container::Box;
+use crate::util::container::boxed::Box;
 use crate::util;
 
 /// The interrupt number for keyboard input events.
@@ -473,10 +473,11 @@ fn read_keycode_byte() -> u8 {
 /// Reads a keystroke and returns the associated key and action.
 fn read_keystroke() -> (KeyboardKey, KeyboardAction) {
 	let mut keycode = read_keycode_byte();
-	let special = keycode == 0xe0; // TODO Handle extra characters
+	let special = keycode == 0xe0;
 	if special {
 		keycode = read_keycode_byte();
 	}
+	// TODO Add support for print screen and pause
 
 	let action = if keycode < 0x80 {
 		KeyboardAction::Pressed
