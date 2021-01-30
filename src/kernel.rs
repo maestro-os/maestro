@@ -105,6 +105,7 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 	// TODO PCI
 	// TODO time
 
+	println!("Loading modules...");
 	// TODO Load modules from file and register into a vector
 	let mut ps2_module = ps2::PS2Module::new(| c, action | {
 		println!("Key action! {:?} {:?}", c, action);
@@ -112,18 +113,25 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 	});
 	if ps2_module.init().is_err() {
 		println!("Failed to init PS/2 kernel module!");
-		unsafe {
+		unsafe { // Call to ASM function
 			kernel_halt();
 		}
 	}
 
 	// TODO Disk
-	// TODO Process
+
+	println!("Initializing processes...");
+	if process::init().is_err() {
+		println!("Failed to init processes!");
+		unsafe { // Call to ASM function
+			kernel_halt();
+		}
+	}
 
 	// TODO Load init ramdisk
 	// TODO Start first process
 
-	unsafe {
+	unsafe { // Call to ASM function
 		//kernel_halt(); // TODO Replace with kernel_loop
 		kernel_loop();
 	}

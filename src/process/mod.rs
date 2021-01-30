@@ -2,11 +2,12 @@
 /// TODO
 
 pub mod pid;
+pub mod scheduler;
 
 use core::ffi::c_void;
 use crate::process::pid::PIDManager;
 use crate::process::pid::Pid;
-use crate::util::container::vec::Vec;
+use crate::process::scheduler::Scheduler;
 
 /// An enumeration containing possible states for a process.
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -46,25 +47,28 @@ pub struct Process {
 	// TODO Signals list
 }
 
-/// A bitfield containing used PIDs.
-static mut PROCESSES: Option::<Vec::<Process>> = None; // TODO Wrap in mutex
+/// The processes scheduler.
+static mut SCHEDULER: Option::<Scheduler> = None;
 /// The PID manager.
 static mut PID_MANAGER: Option::<PIDManager> = None; // TODO Wrap in mutex
 
 /// Initializes processes system.
 pub fn init() -> Result::<(), ()> {
 	unsafe { // Access to global variable
-		PROCESSES = Some(Vec::<Process>::new());
+		SCHEDULER = Some(Scheduler::new());
 		PID_MANAGER = Some(PIDManager::new()?);
 	}
+
 	Ok(())
 }
 
 impl Process {
-	///// Returns the process with PID `pid`. If the process doesn't exist, the function returns None.
-	//pub fn get_by_pid(pid: Pid) -> Option::<&Self> {
-		// TODO
-	//}
+	/// Returns the process with PID `pid`. If the process doesn't exist, the function returns None.
+	pub fn get_by_pid(pid: Pid) -> Option::<&'static Self> {
+		unsafe { // Access to global variable
+			SCHEDULER.as_mut().unwrap()
+		}.get_by_pid(pid)
+	}
 
 	/// Creates a new process, assigns an unique PID to it and places it into the scheduler's queue. The process is set
 	/// to state `Running` by default.
