@@ -1,24 +1,24 @@
 /// This file must be compiled for x86 only.
 /// The virtual memory makes the kernel able to isolate processes, which is essential for modern
 /// systems.
-/// 
+///
 /// x86 virtual memory works with a tree structure. Each element is an array of subelements. The
-/// position of the elements in the arrays allows to tell the virtual address for the mapping. Under
-/// 32 bits, elements are array of 32 bits long words that can contain 1024 entries. The following
-/// elements are available:
+/// position of the elements in the arrays allows to tell the virtual address for the mapping.
+/// Under 32 bits, elements are array of 32 bits long words that can contain 1024 entries. The
+/// following elements are available:
 /// - Page directory: The main element, contains page tables
 /// - Page table: Represents a block of 4MB, each entry is a page
-/// 
+///
 /// Under 32 bits, pages are 4096 bytes large. Each entries of elements contains the physical
 /// address to the element/page and some flags. The flags can be stored with the address in only
 /// 4 bytes large entries because addresses have to be page-aligned, freeing 12 bits in the entry
 /// for the flags.
-/// 
+///
 /// For each entries of each elements, the kernel must keep track of how many elements are being
 /// used. This can be done with a simple counter: when an entry is allocated, the counter is
 /// incremented and when an entry is freed, the counter is decremented. When the counter reaches 0,
 /// the element can be freed.
-/// 
+///
 /// The Page Size Extension (PSE) allows to map 4MB large blocks without using a page table.
 
 use core::ffi::c_void;
@@ -79,9 +79,9 @@ type MutVMem = *mut u32;
 /// Structure wrapping a virtual memory. This structure contains the counter for the number of
 /// elements that are used in the associated element.
 pub struct VMemWrapper {
-	/// The number of used elements in the associated element 
+	/// The number of used elements in the associated element
 	used_elements: u16,
-	/// The associated element 
+	/// The associated element
 	vmem: VMem,
 }
 
@@ -233,7 +233,8 @@ pub fn init() -> Result<MutVMem, ()> {
 	identity(v, NULL, 0)?;
 
 	// TODO If Meltdown mitigation is enabled, only allow read access to a stub for interrupts
-	map_range(v, NULL, memory::PROCESS_END, 262144, FLAG_WRITE)?; // TODO Place pages count in a constant
+	// TODO Place pages count in a constant
+	map_range(v, NULL, memory::PROCESS_END, 262144, FLAG_WRITE)?;
 
 	// TODO Extend to other DMA
 	map_range(v, vga::BUFFER_PHYS as _, vga::BUFFER_VIRT as _, 1,
@@ -255,8 +256,8 @@ pub fn kernel() {
 	}
 }
 
-/// Returns the index of the element corresponding to the given virtual address `ptr` for element at
-/// level `level` in the tree. The level represents the depth in the tree. `0` is the deepest.
+/// Returns the index of the element corresponding to the given virtual address `ptr` for element
+/// at level `level` in the tree. The level represents the depth in the tree. `0` is the deepest.
 fn get_addr_element_index(ptr: *const c_void, level: usize) -> usize {
 	((ptr as usize) >> (12 + level * 10)) & 0x3ff
 }
@@ -290,8 +291,8 @@ pub fn is_mapped(vmem: VMem, ptr: *const c_void) -> bool {
 	resolve(vmem, ptr) != None
 }
 
-/// Translates the given virtual address `ptr` to the corresponding physical address. If the address
-/// is not mapped, None is returned.
+/// Translates the given virtual address `ptr` to the corresponding physical address. If the
+/// address is not mapped, None is returned.
 pub fn translate(vmem: VMem, ptr: *const c_void) -> Option<*const c_void> {
 	if let Some(e) = resolve(vmem, ptr) {
 		Some((unsafe { *e } & ADDR_MASK) as _) // TODO Add remaining offset (check if PSE is used)
@@ -403,7 +404,8 @@ pub fn identity_pse(vmem: MutVMem, ptr: *const c_void, flags: u32) {
 	map_pse(vmem, ptr, ptr, flags);
 }
 
-/// Identity maps a range beginning at physical address `from` with pages `pages` and flags `flags`.
+/// Identity maps a range beginning at physical address `from` with pages `pages` and flags
+/// `flags`.
 pub fn identity_range(vmem: MutVMem, ptr: *const c_void, pages: usize, flags: u32)
 	-> Result<(), ()> {
 	map_range(vmem, ptr, ptr, pages, flags)

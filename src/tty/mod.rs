@@ -49,22 +49,22 @@ pub struct TTY
 {
 	/// The id of the TTY
 	id: usize,
-	/// The X position of the cursor in the history 
+	/// The X position of the cursor in the history
 	cursor_x: vga::Pos,
-	/// The Y position of the cursor in the history 
+	/// The Y position of the cursor in the history
 	cursor_y: vga::Pos,
-	/// The Y position of the screen in the history 
+	/// The Y position of the screen in the history
 	screen_y: vga::Pos,
 
-	/// The current color for the text to be written 
+	/// The current color for the text to be written
 	current_color: vga::Color,
 
-	/// The content of the TTY's history 
+	/// The content of the TTY's history
 	history: [vga::Char; HISTORY_SIZE],
 
-	/// The number of prompted characters 
+	/// The number of prompted characters
 	prompted_chars: usize,
-	/// Tells whether TTY updates are enabled or not 
+	/// Tells whether TTY updates are enabled or not
 	update: bool,
 }
 

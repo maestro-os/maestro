@@ -14,7 +14,8 @@ pub fn init() {
 
 	let virt_alloc_begin = memory::kern_to_virt(mmap_info.phys_alloc_begin);
 	let metadata_begin = util::align(virt_alloc_begin, memory::PAGE_SIZE) as *mut c_void;
-	let frames_count = mmap_info.available_memory / (memory::PAGE_SIZE + buddy::get_frame_metadata_size());
+	let frames_count = mmap_info.available_memory
+		/ (memory::PAGE_SIZE + buddy::get_frame_metadata_size());
 	let metadata_size = frames_count * buddy::get_frame_metadata_size();
 	let metadata_end = unsafe { // Pointer arithmetic
 		metadata_begin.add(metadata_size)

@@ -48,7 +48,8 @@ impl<T> Vec<T> {
 	// TODO Handle fail
 	/// Increases the capacity to at least `min` elements.
 	fn increase_capacity(&mut self, min: usize) {
-		self.capacity = max(self.capacity, min); // TODO Larger allocations than needed to avoid reallocation all the time
+		self.capacity = max(self.capacity, min); // TODO Larger allocations than needed to avoid
+		// reallocation all the time
 		self.realloc();
 	}
 
@@ -188,8 +189,8 @@ impl<T> Vec<T> {
 impl<T> Index<usize> for Vec<T> {
 	type Output = T;
 
-    #[inline]
-    fn index(&self, index: usize) -> &Self::Output {
+	#[inline]
+	fn index(&self, index: usize) -> &Self::Output {
 		if index >= self.len() {
 			self.vector_panic(index);
 		}
@@ -197,12 +198,12 @@ impl<T> Index<usize> for Vec<T> {
 		unsafe { // Dereference of raw pointer
 			&*self.data.unwrap().offset(index as _)
 		}
-    }
+	}
 }
 
 impl<T> IndexMut<usize> for Vec<T> {
-    #[inline]
-    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+	#[inline]
+	fn index_mut(&mut self, index: usize) -> &mut Self::Output {
 		if index >= self.len() {
 			self.vector_panic(index);
 		}
@@ -210,7 +211,7 @@ impl<T> IndexMut<usize> for Vec<T> {
 		unsafe { // Dereference of raw pointer
 			&mut *self.data.unwrap().offset(index as _)
 		}
-    }
+	}
 }
 
 impl<T: Ord> Vec<T> {

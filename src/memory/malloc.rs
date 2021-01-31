@@ -35,20 +35,20 @@ const FREE_LIST_BINS: usize = 8;
 struct Chunk {
 	/// The magic number to check integrity of the chunk.
 	magic: u32, // TODO Option to disable
-	/// The linked list storing the chunks 
+	/// The linked list storing the chunks
 	list: LinkedList,
-	/// The chunk's flags 
+	/// The chunk's flags
 	flags: u8,
-	/// The size of the chunk's memory in bytes 
+	/// The size of the chunk's memory in bytes
 	size: usize,
 }
 
 /// A free chunk, wrapping the Chunk structure.
 #[repr(C)]
 struct FreeChunk {
-	/// The chunk 
+	/// The chunk
 	chunk: Chunk,
-	/// The linked list for the free list 
+	/// The linked list for the free list
 	free_list: LinkedList,
 }
 
@@ -56,11 +56,11 @@ struct FreeChunk {
 /// chunks.
 #[repr(C)]
 struct Block {
-	/// The linked list storing the blocks 
+	/// The linked list storing the blocks
 	list: LinkedList,
-	/// The order of the frame for the buddy allocator 
+	/// The order of the frame for the buddy allocator
 	order: buddy::FrameOrder,
-	/// The first chunk of the block 
+	/// The first chunk of the block
 	first_chunk: Chunk,
 }
 
@@ -102,8 +102,8 @@ fn check_free_lists() {
 	}
 }
 
-/// Returns the free list for the given size `size`. If `insert` is not set, the function may return
-/// a free list that contain chunks greater than the required size so that it can be split.
+/// Returns the free list for the given size `size`. If `insert` is not set, the function may
+/// return a free list that contain chunks greater than the required size so that it can be split.
 fn get_free_list(size: usize, insert: bool) -> Option<&'static mut FreeList> {
 	#[cfg(kernel_mode = "debug")]
 	check_free_lists();
@@ -223,8 +223,9 @@ impl Chunk {
 		self.get_size() >= max(size, min_data_size) + size_of::<Chunk>() + min_data_size
 	}
 
-	/// Splits the chunk with the given size `size` if necessary. The function might create a new chunk next to the
-	/// current. The created chunk will be inserted in the free list but the current chunk will not.
+	/// Splits the chunk with the given size `size` if necessary. The function might create a new
+	/// chunk next to the current. The created chunk will be inserted in the free list but the
+	/// current chunk will not.
 	pub fn split(&mut self, size: usize) {
 		#[cfg(kernel_mode = "debug")]
 		self.check();
@@ -258,8 +259,8 @@ impl Chunk {
 		self.check();
 	}
 
-	/// Tries to coalesce the chunk it with adjacent chunks if they are free. The function returns the resulting chunk,
-	/// which will not be inserted into any free list.
+	/// Tries to coalesce the chunk it with adjacent chunks if they are free. The function returns
+	/// the resulting chunk, which will not be inserted into any free list.
 	pub fn coalesce(&mut self) -> &mut Chunk {
 		if !self.is_used() {
 			self.as_free_chunk().free_list_remove();
@@ -296,8 +297,8 @@ impl Chunk {
 		self
 	}
 
-	/// Tries to grow the given chunk of `delta` more bytes. If not possible, the function returns `false`.
-	/// The function might alter the free list to get the space needed.
+	/// Tries to grow the given chunk of `delta` more bytes. If not possible, the function returns
+	/// `false`. The function might alter the free list to get the space needed.
 	pub fn grow(&mut self, delta: usize) -> bool {
 		debug_assert!(self.is_used());
 		debug_assert!(delta != 0);
@@ -331,8 +332,8 @@ impl Chunk {
 		true
 	}
 
-	/// Tries to shrink the given chunk of `delta` less bytes. If not possible, the function returns `false`.
-	/// The function might alter the free list to relinquish the space.
+	/// Tries to shrink the given chunk of `delta` less bytes. If not possible, the function
+	/// returns `false`. The function might alter the free list to relinquish the space.
 	pub fn shrink(&mut self, delta: usize) {
 		debug_assert!(self.is_used());
 		debug_assert!(delta != 0);

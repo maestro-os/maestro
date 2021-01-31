@@ -370,29 +370,29 @@ impl Tag {
 
 /// Structure representing the informations given to the kernel at boot time.
 pub struct BootInfo {
-	/// TODO 
+	/// TODO
 	pub cmdline: &'static str,
-	/// TODO 
+	/// TODO
 	pub loader_name: &'static str,
 
-	/// TODO 
+	/// TODO
 	pub mem_lower: u32,
-	/// TODO 
+	/// TODO
 	pub mem_upper: u32,
-	/// TODO 
+	/// TODO
 	pub memory_maps_size: usize,
-	/// TODO 
+	/// TODO
 	pub memory_maps_entry_size: usize,
-	/// TODO 
+	/// TODO
 	pub memory_maps: *const MmapEntry,
 
-	/// TODO 
+	/// TODO
 	pub elf_num: u32,
-	/// TODO 
+	/// TODO
 	pub elf_entsize: u32,
-	/// TODO 
+	/// TODO
 	pub elf_shndx: u32,
-	/// TODO 
+	/// TODO
 	pub elf_sections: *const c_void,
 
 	// TODO

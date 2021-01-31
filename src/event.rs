@@ -67,9 +67,9 @@ pub trait InterruptCallback {
 
 /// Structure wrapping a callback to insert it into a linked list.
 struct CallbackWrapper {
-	/// The priority associated with the callback. Higher value means higher priority 
+	/// The priority associated with the callback. Higher value means higher priority
 	priority: u32,
-	/// The callback 
+	/// The callback
 	callback: Box::<dyn InterruptCallback>,
 }
 
@@ -81,7 +81,7 @@ static mut CALLBACKS: Mutex::<[Option::<Vec::<CallbackWrapper>>; idt::ENTRIES_CO
 /// `id` is the id of the interrupt to watch.
 /// `priority` is the priority for the callback. Higher value means higher priority.
 /// `callback` is the callback to register.
-/// 
+///
 /// If the `id` is invalid or if an allocation fails, the function shall return an error.
 // TODO Return a reference?
 pub fn register_callback<T: 'static + InterruptCallback>(id: u8, priority: u32, callback: T)

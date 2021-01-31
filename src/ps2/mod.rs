@@ -1,7 +1,8 @@
 /// This module handles PS/2 devices.
 /// TODO doc
 
-// TODO Externalize this module into a kernel module when the interface for loading them will be ready
+// TODO Externalize this module into a kernel module when the interface for loading them will be
+// ready
 
 use core::cmp::Ordering;
 use crate::event;
@@ -190,7 +191,8 @@ pub enum KeyboardAction {
 	Released,
 }
 
-/// A slice containing a pair of keycode and enumeration that allows to associate a keycode with its enumeration entry.
+/// A slice containing a pair of keycode and enumeration that allows to associate a keycode with
+/// its enumeration entry.
 static NORMAL_KEYS: [(u8, KeyboardKey); 85] = [
 	(0x01, KeyboardKey::KeyEsc),
 	(0x02, KeyboardKey::Key1),

@@ -71,11 +71,12 @@ impl Process {
 		}.get_by_pid(pid)
 	}
 
-	/// Creates a new process, assigns an unique PID to it and places it into the scheduler's queue. The process is set
-	/// to state `Running` by default.
+	/// Creates a new process, assigns an unique PID to it and places it into the scheduler's
+	/// queue. The process is set to state `Running` by default.
 	/// `parent` is the parent of the process (optional).
 	/// `owner` is the ID of the process's owner.
-	pub fn new(parent: Option::<*mut Process>, owner: Uid)/* -> Result::<&'static Self, ()>*/ -> Result::<Self, ()> {
+	pub fn new(parent: Option::<*mut Process>, owner: Uid)/* -> Result::<&'static Self, ()>*/
+		-> Result::<Self, ()> {
 		let pid = unsafe { // Access to global variable
 			PID_MANAGER.as_mut().unwrap()
 		}.get_unique_pid()?;

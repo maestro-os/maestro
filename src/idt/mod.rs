@@ -53,24 +53,24 @@ pub const ENTRIES_COUNT: u8 = 0x81;
 /// Structure representing the IDT.
 #[repr(C, packed)]
 struct InterruptDescriptorTable {
-	/// TODO doc 
+	/// TODO doc
 	size: u16,
-	/// TODO doc 
+	/// TODO doc
 	offset: u32,
 }
 
 /// Structure representing an IDT entry.
 #[repr(C)]
 struct InterruptDescriptor {
-	/// TODO doc 
+	/// TODO doc
 	offset: u16,
-	/// TODO doc 
+	/// TODO doc
 	selector: u16,
-	/// TODO doc 
+	/// TODO doc
 	zero: u8,
-	/// TODO doc 
+	/// TODO doc
 	type_attr: u8,
-	/// TODO doc 
+	/// TODO doc
 	offset_2: u16,
 }
 

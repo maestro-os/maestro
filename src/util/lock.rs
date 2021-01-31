@@ -38,7 +38,7 @@ impl Spinlock {
 
 /// This structure is used to give access to a payload owned by a concurrency control structure.
 pub struct LockPayload<'a, T> {
-	/// A mutable reference to the payload owned by the sturcture 
+	/// A mutable reference to the payload owned by the sturcture
 	payload: &'a mut T,
 }
 
@@ -103,7 +103,7 @@ impl<T> Mutex<T> {
 /// gets out of the scope of its declaration. This structure is useful to ensure that the mutex
 /// doesen't stay locked after the exectution of a function ended.
 pub struct MutexGuard<'a, T> {
-	/// The mutex associated to the guard 
+	/// The mutex associated to the guard
 	mutex: &'a mut Mutex<T>,
 }
 

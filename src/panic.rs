@@ -1,6 +1,6 @@
 /// This file handles kernel panics.
-/// A kernel panic occurs when an error is raised that the kernel cannot recover from. This is an undesirable state which
-/// requires to reboot the host machine.
+/// A kernel panic occurs when an error is raised that the kernel cannot recover from. This is an
+/// undesirable state which requires to reboot the host machine.
 
 //#[cfg(kernel_mode = "debug")]
 //use crate::debug;
@@ -32,7 +32,8 @@ fn print_panic(reason: &str, code: u32) {
 	crate::println!("Reason: {}", reason);
 	crate::println!("Error code: {}", code);
 	crate::println!("CR2: {:p}\n", unsafe { memory::vmem::cr2_get() } as *const c_void);
-	crate::println!("If you believe this is a bug on the kernel side, please feel free to report it.");
+	crate::println!("If you believe this is a bug on the kernel side, please feel free to report
+it.");
 }
 
 /// Re-initializes the TTY, prints the panic message and halts the kernel.
@@ -68,7 +69,8 @@ fn print_rust_panic<'a>(args: &'a fmt::Arguments<'a>) {
 	crate::println!("Kernel has been forced to halt due to internal problem, sorry :/");
 	crate::println!("Reason: {}", args);
 	crate::println!("CR2: {:p}\n", unsafe { memory::vmem::cr2_get() } as *const c_void);
-	crate::println!("If you believe this is a bug on the kernel side, please feel free to report it.");
+	crate::println!("If you believe this is a bug on the kernel side, please feel free to report
+it.");
 }
 
 /// Handles a Rust panic.

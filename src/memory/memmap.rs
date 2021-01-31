@@ -13,20 +13,20 @@ use crate::util;
 
 /// Structure storing informations relative to the main memory.
 pub struct MemoryInfo {
-	/// Size of the Multiboot2 memory map 
+	/// Size of the Multiboot2 memory map
 	pub memory_maps_size: usize,
-	/// Size of an entry in the Multiboot2 memory map 
+	/// Size of an entry in the Multiboot2 memory map
 	pub memory_maps_entry_size: usize,
-	/// Pointer to the Multiboot2 memory map 
+	/// Pointer to the Multiboot2 memory map
 	pub memory_maps: *const multiboot::MmapEntry,
 
-	/// Pointer to the end of the physical memory 
+	/// Pointer to the end of the physical memory
 	pub memory_end: *const c_void,
-	/// Pointer to the beginning of physical allocatable memory, page aligned 
+	/// Pointer to the beginning of physical allocatable memory, page aligned
 	pub phys_alloc_begin: *const c_void,
-	/// Pointer to the end of physical allocatable memory, page aligned 
+	/// Pointer to the end of physical allocatable memory, page aligned
 	pub phys_alloc_end: *const c_void,
-	/// The total amount of allocatable memory in bytes 
+	/// The total amount of allocatable memory in bytes
 	pub available_memory: usize,
 }
 

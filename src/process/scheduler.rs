@@ -28,7 +28,8 @@ impl InterruptCallback for TickCallback {
 /// The structure representing the process scheduler.
 pub struct Scheduler {
 	/// The list of all processes.
-	processes: Vec::<Process>, // TODO Use another container to be able to take a reference of the content
+	processes: Vec::<Process>, // TODO Use another container to be able to take a reference of the
+	// content
 }
 
 impl Scheduler {

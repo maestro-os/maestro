@@ -117,10 +117,11 @@ fn get_function_name(inst: *const c_void) -> Option<&'static str> {
 	func_name
 }
 
-/// Prints the callstack in the current context, including symbol's name and address. `ebp` is value
-/// of the `%ebp` register that is used as a starting point for printing. `max_depth` is the maximum
-/// depth of the stack to print. If the stack is larger than the maximum depth, the function shall
-/// print `...` at the end. If the callstack is empty, the function just prints `Empty`.
+/// Prints the callstack in the current context, including symbol's name and address. `ebp` is
+/// value of the `%ebp` register that is used as a starting point for printing. `max_depth` is the
+/// maximum depth of the stack to print. If the stack is larger than the maximum depth, the
+/// function shall print `...` at the end. If the callstack is empty, the function just prints
+/// `Empty`.
 pub fn print_callstack(ebp: *const u32, max_depth: usize) {
 	crate::println!("--- Callstack ---");
 

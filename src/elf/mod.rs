@@ -143,8 +143,8 @@ pub fn get_section(sections: *const c_void, sections_count: usize, shndx: usize,
 	None
 }
 
-/// Iterates over the given section headers list `sections`, calling the given closure `f` for every
-/// elements with a reference and the name of the section.
+/// Iterates over the given section headers list `sections`, calling the given closure `f` for
+/// every elements with a reference and the name of the section.
 /// TODO document every arguments
 pub fn foreach_sections<T>(sections: *const c_void, sections_count: usize, shndx: usize,
 	entsize: usize, mut f: T) where T: FnMut(&ELF32SectionHeader, &str) {
@@ -153,8 +153,9 @@ pub fn foreach_sections<T>(sections: *const c_void, sections_count: usize, shndx
 	};
 	let mut i = 0;
 	while i < sections_count {
+		let hdr_offset = i * core::mem::size_of::<ELF32SectionHeader>();
 		let hdr = unsafe {
-			&*(sections.offset((i * core::mem::size_of::<ELF32SectionHeader>()) as isize) as *const ELF32SectionHeader)
+			&*(sections.offset(hdr_offset as isize) as *const ELF32SectionHeader)
 		};
 		let n = unsafe {
 			util::ptr_to_str(memory::kern_to_virt((names_section.sh_addr + hdr.sh_name) as _))

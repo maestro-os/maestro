@@ -1,6 +1,6 @@
 /// This module handles process PIDs.
-/// Each process must have an unique PID, thus they have to be allocated. The kernel uses a bitfield to store the used
-/// PIDs.
+/// Each process must have an unique PID, thus they have to be allocated. The kernel uses a
+/// bitfield to store the used PIDs.
 
 use crate::util::container::bitfield::Bitfield;
 

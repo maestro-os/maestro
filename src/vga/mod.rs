@@ -1,6 +1,6 @@
 /// This file handles the VGA text mode, allowing to easily write text on the
 /// screen.
-/// 
+///
 /// Note: The VGA text mode runs only when booting with a Legacy BIOS.
 
 use crate::io;
@@ -98,7 +98,8 @@ pub fn move_cursor(x: Pos, y: Pos) {
 	}
 }
 
-/// Writes the given character `c` at the given position `x`/`y` on the screen with the default color.
+/// Writes the given character `c` at the given position `x`/`y` on the screen with the default
+/// color.
 pub fn putchar(c: char, x: Pos, y: Pos) {
 	putchar_color(c, DEFAULT_COLOR, x, y);
 }

@@ -12,13 +12,13 @@ fn option_mut_to_const<T>(option: Option<*mut T>) -> Option<*const T> {
 }
 
 /// Structure representing a node in a doubly-linked list.
-/// 
+///
 /// TODO Explain difference between floating and non-floating lists
 #[derive(Debug)]
 pub struct LinkedList {
-	/// Pointer to the previous element in the list 
+	/// Pointer to the previous element in the list
 	prev: Option<*mut LinkedList>,
-	/// Pointer to the next element in the list 
+	/// Pointer to the next element in the list
 	next: Option<*mut LinkedList>,
 }
 

@@ -16,11 +16,11 @@ impl<T> Testable for T where T: Fn() {
 
 /// The test runner. Runs every tests and exits.
 pub fn runner(tests: &[&dyn Testable]) {
-    crate::println!("Running {} tests", tests.len());
+	crate::println!("Running {} tests", tests.len());
 
-    for test in tests {
+	for test in tests {
 		test.run();
-    }
+	}
 
 	crate::println!("No more tests to run");
 

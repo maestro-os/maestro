@@ -1,9 +1,9 @@
 /// This module contains the buddy allocator which allows to allocate 2^^n pages large frames of
 /// memory.
-/// 
+///
 /// This allocator works by dividing frames of memory in two until the a frame of the required size
 /// is available.
-/// 
+///
 /// The order of a frame is the `n` in the expression `2^^n` that represents the size of a frame in
 /// pages.
 
@@ -52,19 +52,19 @@ pub const FRAME_STATE_USED: FrameID = !(0 as FrameID);
 
 /// Structure representing an allocatable zone of memory.
 pub struct Zone {
-	/// The type of the zone, defining the priority 
+	/// The type of the zone, defining the priority
 	type_: Flags,
-	/// The number of allocated pages in the zone 
+	/// The number of allocated pages in the zone
 	allocated_pages: usize,
 
-	/// A pointer to the beginning of the metadata of the zone 
+	/// A pointer to the beginning of the metadata of the zone
 	metadata_begin: *mut c_void,
-	/// A pointer to the beginning of the allocatable memory of the zone 
+	/// A pointer to the beginning of the allocatable memory of the zone
 	begin: *mut c_void,
-	/// The size of the zone in bytes 
+	/// The size of the zone in bytes
 	pages_count: FrameID,
 
-	/// The free list containing linked lists to free frames 
+	/// The free list containing linked lists to free frames
 	free_list: [Option<*mut Frame>; (MAX_ORDER + 1) as usize],
 }
 
@@ -75,11 +75,11 @@ pub struct Zone {
 /// the list.
 #[repr(packed)]
 struct Frame {
-	/// Identifier of the previous frame in the free list. 
+	/// Identifier of the previous frame in the free list.
 	prev: FrameID,
-	/// Identifier of the next frame in the free list. 
+	/// Identifier of the next frame in the free list.
 	next: FrameID,
-	/// Order of the current frame 
+	/// Order of the current frame
 	order: FrameOrder,
 }
 
@@ -336,7 +336,7 @@ impl Zone {
 	/// Checks the correctness of the free list for the zone. Every frames in the free list must
 	/// have an order equal to the order of the bucket it's inserted in and must be free.
 	/// If a frame is the first of a list, it must not have a previous element.
-	/// 
+	///
 	/// If a frame is invalid, the function shall result in the kernel panicking.
 	#[cfg(kernel_mode = "debug")]
 	fn check_free_list(&self) {
@@ -512,7 +512,7 @@ impl Frame {
 	/// Unlinks the frame from zone `zone`'s free list, splits it until it reaches the required
 	/// order `order` while linking the new free frames to the free list. At the end of the
 	/// function, the current frame is **not** linked to the free list.
-	/// 
+	///
 	/// The frame must not be marked as used.
 	pub fn split(&mut self, zone: &mut Zone, order: FrameOrder) {
 		#[cfg(kernel_mode = "debug")]
@@ -546,7 +546,7 @@ impl Frame {
 	/// Coealesces the frame in zone `zone` with free buddy blocks recursively until no buddy is
 	/// available anymore. Buddies that are merged with the frame are unlinked. The order of the
 	/// frame is incremented at each merge. The frame is linked to the free list at the end.
-	/// 
+	///
 	/// The frame must not be marked as used.
 	pub fn coalesce(&mut self, zone: &mut Zone) {
 		#[cfg(kernel_mode = "debug")]
