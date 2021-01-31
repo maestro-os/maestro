@@ -24,6 +24,9 @@ const CHUNK_FLAG_USED: ChunkFlags = 0b1;
 /// The minimum amount of bytes required to create a free chunk.
 const FREE_CHUNK_MIN: usize = 8;
 
+/// The required alignement for pointers returned by allocator.
+const ALIGNEMENT: usize = 8;
+
 /// The size of the smallest free list bin.
 const FREE_LIST_SMALLEST_SIZE: usize = FREE_CHUNK_MIN;
 
@@ -31,7 +34,7 @@ const FREE_LIST_SMALLEST_SIZE: usize = FREE_CHUNK_MIN;
 const FREE_LIST_BINS: usize = 8;
 
 /// A chunk of allocated or free memory stored in linked lists.
-#[repr(C)]
+#[repr(C, align(8))]
 struct Chunk {
 	/// The magic number to check integrity of the chunk.
 	magic: u32, // TODO Option to disable
@@ -44,7 +47,7 @@ struct Chunk {
 }
 
 /// A free chunk, wrapping the Chunk structure.
-#[repr(C)]
+#[repr(C, align(8))]
 struct FreeChunk {
 	/// The chunk
 	chunk: Chunk,
@@ -54,7 +57,7 @@ struct FreeChunk {
 
 /// Structure representing a frame of memory allocated using the buddy allocator, storing memory
 /// chunks.
-#[repr(C)]
+#[repr(C, align(8))]
 struct Block {
 	/// The linked list storing the blocks
 	list: LinkedList,
@@ -163,8 +166,15 @@ impl Chunk {
 
 	/// Returns a pointer to the chunks' data.
 	pub fn get_ptr(&mut self) -> *mut c_void {
-		unsafe {
+		unsafe { // Pointer arithmetic
 			(self as *mut Self as *mut c_void).add(size_of::<Self>())
+		}
+	}
+
+	/// Returns a const pointer to the chunks' data.
+	pub fn get_const_ptr(&self) -> *const c_void {
+		unsafe { // Pointer arithmetic
+			(self as *const Self as *const c_void).add(size_of::<Self>())
 		}
 	}
 
@@ -206,6 +216,8 @@ impl Chunk {
 			let len = size_of::<Chunk>() + self.get_size();
 			debug_assert!((self as *const Self as usize) + len <= (n as *const Self as usize));
 		}
+
+		debug_assert!(util::is_aligned(self.get_const_ptr(), ALIGNEMENT));
 	}
 
 	/// Returns a mutable reference for the given chunk as a free chunk. The result is undefined if
@@ -217,10 +229,22 @@ impl Chunk {
 		}
 	}
 
-	/// Tells whether the chunk can be split for the given size `size`.
-	fn can_split(&self, size: usize) -> bool {
+	/// Returns the reference to the next chunk for splitting the current chunk with given size
+	/// `size`. If the chunk cannot be split, the function returns None.
+	fn get_split_next_chunk(&mut self, size: usize) -> Option::<*mut FreeChunk> {
 		let min_data_size = get_min_chunk_size();
-		self.get_size() >= max(size, min_data_size) + size_of::<Chunk>() + min_data_size
+		let next_ptr = util::align(unsafe { // Pointer arithmetic
+			self.get_ptr().add(max(size, min_data_size))
+		}, ALIGNEMENT);
+
+		let curr_new_size = (next_ptr as usize) - (self.get_ptr() as usize);
+		debug_assert!(curr_new_size >= size);
+
+		if curr_new_size + size_of::<Chunk>() + min_data_size <= self.get_size() {
+			Some(next_ptr as *mut FreeChunk)
+		} else {
+			None
+		}
 	}
 
 	/// Splits the chunk with the given size `size` if necessary. The function might create a new
@@ -235,24 +259,20 @@ impl Chunk {
 			self.as_free_chunk().free_list_remove();
 		}
 
-		if self.can_split(size) {
-			let min_data_size = get_min_chunk_size();
-			let curr_data_size = max(size, min_data_size);
-			let curr_size = size_of::<Chunk>() + curr_data_size;
+		if let Some(next) = self.get_split_next_chunk(size) {
+			let curr_new_size = (next as usize) - (self.get_ptr() as usize);
 
-			let next_off = (self as *mut Self as usize) + curr_size;
-			let next = unsafe {
-				&mut *(next_off as *mut FreeChunk)
-			};
+			let next_size = self.size - curr_new_size - size_of::<Chunk>();
+			unsafe { // Dereference of raw pointer
+				*next = FreeChunk::new(next_size);
+				#[cfg(kernel_mode = "debug")]
+				(*next).check();
+				(*next).free_list_insert();
+				(*next).chunk.list.insert_after(&mut self.list);
+				debug_assert!(!(*next).chunk.list.is_single());
+			}
 
-			*next = FreeChunk::new(self.get_size() - curr_size);
-			#[cfg(kernel_mode = "debug")]
-			next.check();
-			next.free_list_insert();
-			next.chunk.list.insert_after(&mut self.list);
-			debug_assert!(!next.chunk.list.is_single());
-
-			self.size = curr_data_size;
+			self.size = curr_new_size;
 		}
 
 		#[cfg(kernel_mode = "debug")]
@@ -340,7 +360,7 @@ impl Chunk {
 		debug_assert!(delta < self.get_size());
 
 		let new_size = max(self.get_size() - delta, get_min_chunk_size());
-		if self.can_split(new_size) {
+		if self.get_split_next_chunk(new_size).is_some() {
 			self.split(new_size);
 
 			let next = self.list.get_next().unwrap();
@@ -390,6 +410,11 @@ impl FreeChunk {
 	/// Returns a pointer to the chunks' data.
 	pub fn get_ptr(&mut self) -> *mut c_void {
 		self.chunk.get_ptr()
+	}
+
+	/// Returns a const pointer to the chunks' data.
+	pub fn get_const_ptr(&self) -> *const c_void {
+		self.chunk.get_const_ptr()
 	}
 
 	/// Returns the size of the chunk.

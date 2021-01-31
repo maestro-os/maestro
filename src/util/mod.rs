@@ -34,7 +34,11 @@ pub fn up_align(ptr: *const c_void, n: usize) -> *const c_void {
 /// the pointer is already aligned.
 #[inline(always)]
 pub fn align(ptr: *const c_void, n: usize) -> *const c_void {
-	if is_aligned(ptr, n) { ptr } else { up_align(ptr, n) }
+	if is_aligned(ptr, n) {
+		ptr
+	} else {
+		up_align(ptr, n)
+	}
 }
 
 /// Computes ceil(n0 / n1) without using floating point numbers.
