@@ -47,6 +47,7 @@ pub struct Process {
 	// TODO Signals list
 }
 
+// TODO Use MaybeUninit?
 /// The processes scheduler.
 static mut SCHEDULER: Option::<Scheduler> = None;
 /// The PID manager.
@@ -55,7 +56,7 @@ static mut PID_MANAGER: Option::<PIDManager> = None; // TODO Wrap in mutex
 /// Initializes processes system.
 pub fn init() -> Result::<(), ()> {
 	unsafe { // Access to global variable
-		SCHEDULER = Some(Scheduler::new());
+		SCHEDULER = Some(Scheduler::new()?);
 		PID_MANAGER = Some(PIDManager::new()?);
 	}
 
@@ -64,7 +65,7 @@ pub fn init() -> Result::<(), ()> {
 
 impl Process {
 	/// Returns the process with PID `pid`. If the process doesn't exist, the function returns None.
-	pub fn get_by_pid(pid: Pid) -> Option::<&'static Self> {
+	pub fn get_by_pid(pid: Pid) -> Option::<&'static mut Self> {
 		unsafe { // Access to global variable
 			SCHEDULER.as_mut().unwrap()
 		}.get_by_pid(pid)
@@ -74,16 +75,14 @@ impl Process {
 	/// to state `Running` by default.
 	/// `parent` is the parent of the process (optional).
 	/// `owner` is the ID of the process's owner.
-	pub fn new(parent: Option::<*mut Process>, owner: Uid) -> Result::<Self, ()> {
+	pub fn new(parent: Option::<*mut Process>, owner: Uid)/* -> Result::<&'static Self, ()>*/ -> Result::<Self, ()> {
 		let pid = unsafe { // Access to global variable
 			PID_MANAGER.as_mut().unwrap()
 		}.get_unique_pid()?;
 		let user_stack = core::ptr::null_mut::<c_void>(); // TODO
 		let kernel_stack = core::ptr::null_mut::<c_void>(); // TODO
 
-		// TODO Insert in processes list (pay attention to deadlocks with pid manager)
-
-		Ok(Self {
+		let process = Self {
 			pid: pid,
 			state: State::Running,
 			owner: owner,
@@ -91,7 +90,11 @@ impl Process {
 
 			user_stack: user_stack,
 			kernel_stack: kernel_stack,
-		})
+		};
+		/*Ok(unsafe { // Access to global variable
+			SCHEDULER.as_mut().unwrap()
+		}.add_process(process))*/
+		Ok(process)
 	}
 
 	/// Returns the process's PID.
