@@ -2,5 +2,4 @@
 /// they require a memory allocator.
 
 pub mod bitfield;
-pub mod boxed;
 pub mod vec;

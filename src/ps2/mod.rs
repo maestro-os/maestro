@@ -9,7 +9,7 @@ use crate::event;
 use crate::io;
 use crate::module::Module;
 use crate::module;
-use crate::util::container::boxed::Box;
+use crate::util::boxed::Box;
 use crate::util;
 
 /// The interrupt number for keyboard input events.

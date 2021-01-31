@@ -531,3 +531,5 @@ pub fn destroy(vmem: VMem) {
 	}
 	free_obj(vmem);
 }
+
+// TODO Unit tests

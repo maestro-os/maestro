@@ -35,6 +35,7 @@ impl<T> Box<T> {
 		} else {
 			NonNull::dangling()
 		};
+
 		Ok(Self {
 			ptr: ptr,
 		})

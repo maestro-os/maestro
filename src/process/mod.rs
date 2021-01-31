@@ -25,7 +25,7 @@ pub enum State {
 /// Type representing a User ID.
 type Uid = u16;
 
-/// A structure representing a process.
+/// The Process Control Block (PCB).
 /// TODO doc
 pub struct Process {
 	/// The ID of the process.
@@ -39,11 +39,16 @@ pub struct Process {
 	parent: Option::<*mut Process>, // TODO Use a weak pointer
 	// TODO Children list
 
+	// TODO Registers state
+
+	// TODO Virtual memory
+
 	/// A pointer to the userspace stack.
 	user_stack: *mut c_void,
 	/// A pointer to the kernelspace stack.
 	kernel_stack: *mut c_void,
 
+	// TODO File descriptors
 	// TODO Signals list
 }
 

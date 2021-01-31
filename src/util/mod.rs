@@ -5,9 +5,11 @@
 /// - Data structures do not require memory allocations
 /// - Containers require memory allocations
 
+pub mod boxed;
 pub mod container;
 pub mod data_struct;
 pub mod lock;
+pub mod ptr;
 
 use core::ffi::c_void;
 
