@@ -48,16 +48,16 @@ pub struct Process {
 }
 
 // TODO Use MaybeUninit?
-/// The processes scheduler.
-static mut SCHEDULER: Option::<Scheduler> = None;
 /// The PID manager.
 static mut PID_MANAGER: Option::<PIDManager> = None; // TODO Wrap in mutex
+/// The processes scheduler.
+static mut SCHEDULER: Option::<Scheduler> = None;
 
 /// Initializes processes system.
 pub fn init() -> Result::<(), ()> {
 	unsafe { // Access to global variable
-		SCHEDULER = Some(Scheduler::new()?);
 		PID_MANAGER = Some(PIDManager::new()?);
+		SCHEDULER = Some(Scheduler::new()?);
 	}
 
 	Ok(())
