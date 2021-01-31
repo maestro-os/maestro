@@ -42,44 +42,44 @@ impl<T> Box<T> {
 }
 
 impl<T: ?Sized> AsRef<T> for Box<T> {
-    fn as_ref(&self) -> &T {
+	fn as_ref(&self) -> &T {
 		unsafe { // Dereference of raw pointer
 			&*self.ptr.as_ptr()
 		}
-    }
+	}
 }
 
 impl<T: ?Sized> AsMut<T> for Box<T> {
-    fn as_mut(&mut self) -> &mut T {
+	fn as_mut(&mut self) -> &mut T {
 		unsafe { // Dereference of raw pointer
 			&mut *self.ptr.as_ptr()
 		}
-    }
+	}
 }
 
 impl<T: ?Sized> Deref for Box<T> {
-    type Target = T;
+	type Target = T;
 
-    fn deref(&self) -> &Self::Target {
-        self.as_ref()
-    }
+	fn deref(&self) -> &Self::Target {
+		self.as_ref()
+	}
 }
 
 impl<T: ?Sized> DerefMut for Box<T> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        self.as_mut()
-    }
+	fn deref_mut(&mut self) -> &mut Self::Target {
+		self.as_mut()
+	}
 }
 
 impl<T: Clone> Box<T> {
 	/// Clones the Box and its content. The type of the wrapped data must implement the Clone trait.
 	/// If the allocation fails, the function shall return an error.
-    fn clone(&self) -> Result<Self, ()> {
+	fn clone(&self) -> Result<Self, ()> {
 		let obj = unsafe { // Dereference of raw pointer
 			&*self.ptr.as_ptr()
 		};
 		Box::new(obj.clone())
-    }
+	}
 }
 
 impl<T: ?Sized + Unsize<U>, U: ?Sized> CoerceUnsized<Box<U>> for Box<T> {}

@@ -43,15 +43,15 @@ impl Ord for Version {
 }
 
 impl PartialOrd for Version {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
+	fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+		Some(self.cmp(other))
+	}
 }
 
 impl PartialEq for Version {
-    fn eq(&self, other: &Self) -> bool {
-        self.major == other.major && self.minor == other.minor && self.patch == other.patch
-    }
+	fn eq(&self, other: &Self) -> bool {
+		self.major == other.major && self.minor == other.minor && self.patch == other.patch
+	}
 }
 
 /// Structure describing a kernel module.
