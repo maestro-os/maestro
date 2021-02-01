@@ -51,6 +51,7 @@ mod vga;
 use core::ffi::c_void;
 use core::panic::PanicInfo;
 use crate::module::Module;
+use crate::process::Process;
 
 /// Current kernel version.
 const KERNEL_VERSION: &'static str = "1.0";
@@ -129,7 +130,16 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 	}
 
 	// TODO Load init ramdisk
-	// TODO Start first process
+
+	// TODO Start first process from disk (init program)
+	if let Ok(p) = Process::new(None, 0) {
+		println!("Test process PID: {}", p.get_pid());
+	} else {
+		println!("Failed to create test process!");
+		unsafe { // Call to ASM function
+			kernel_halt();
+		}
+	}
 
 	unsafe { // Call to ASM function
 		//kernel_halt(); // TODO Replace with kernel_loop

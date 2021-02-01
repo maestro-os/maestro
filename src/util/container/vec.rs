@@ -186,6 +186,13 @@ impl<T> Vec<T> {
 	}
 }
 
+impl<T: Clone> Clone for Vec<T> {
+	fn clone(&self) -> Self {
+		// TODO
+		Self::new()
+	}
+}
+
 impl<T> Index<usize> for Vec<T> {
 	type Output = T;
 

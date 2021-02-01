@@ -8,6 +8,7 @@ use core::ffi::c_void;
 use crate::process::pid::PIDManager;
 use crate::process::pid::Pid;
 use crate::process::scheduler::Scheduler;
+use crate::util::ptr::SharedPtr;
 
 /// An enumeration containing possible states for a process.
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -80,8 +81,8 @@ impl Process {
 	/// queue. The process is set to state `Running` by default.
 	/// `parent` is the parent of the process (optional).
 	/// `owner` is the ID of the process's owner.
-	pub fn new(parent: Option::<*mut Process>, owner: Uid)/* -> Result::<&'static Self, ()>*/
-		-> Result::<Self, ()> {
+	pub fn new(parent: Option::<*mut Process>, owner: Uid) -> Result::<SharedPtr::<Self>, ()> {
+		// TODO Deadlock fix: requires both memory allocator and PID allocator
 		let pid = unsafe { // Access to global variable
 			PID_MANAGER.as_mut().unwrap()
 		}.get_unique_pid()?;
@@ -97,10 +98,10 @@ impl Process {
 			user_stack: user_stack,
 			kernel_stack: kernel_stack,
 		};
-		/*Ok(unsafe { // Access to global variable
+
+		unsafe { // Access to global variable
 			SCHEDULER.as_mut().unwrap()
-		}.add_process(process))*/
-		Ok(process)
+		}.add_process(process)
 	}
 
 	/// Returns the process's PID.

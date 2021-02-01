@@ -5,6 +5,7 @@ use crate::event;
 use crate::process::Process;
 use crate::process::pid::Pid;
 use crate::util::container::vec::Vec;
+use crate::util::ptr::SharedPtr;
 use crate::util;
 
 /// Scheduler ticking callback.
@@ -28,20 +29,21 @@ impl InterruptCallback for TickCallback {
 /// The structure representing the process scheduler.
 pub struct Scheduler {
 	/// The list of all processes.
-	processes: Vec::<Process>, // TODO Use another container to be able to take a reference of the
-	// content
+	processes: Vec::<SharedPtr::<Process>>,
+	/// The ticking callback, called at a regular interval to make the scheduler work.
+	tick_callback: Option::<SharedPtr::<TickCallback>>,
 }
 
 impl Scheduler {
 	/// Creates a new instance of scheduler.
 	pub fn new() -> Result::<Self, ()> {
 		let mut s = Self {
-			processes: Vec::<Process>::new(),
+			processes: Vec::<SharedPtr::<Process>>::new(),
+			tick_callback: None,
 		};
-		event::register_callback(32, 0, TickCallback {
+		s.tick_callback = Some(event::register_callback(32, 0, TickCallback {
 			scheduler: &mut s as _,
-		})?;
-
+		})?);
 		Ok(s)
 	}
 
@@ -51,10 +53,12 @@ impl Scheduler {
 		None
 	}
 
-	///// Adds a process to the scheduler.
-	//pub fn add_process(&mut self, process: Process) -> &'static mut Process {
-	//	// TODO
-	//}
+	/// Adds a process to the scheduler.
+	pub fn add_process(&mut self, process: Process) -> Result::<SharedPtr::<Process>, ()> {
+		let mut ptr = SharedPtr::new(process)?;
+		self.processes.push(ptr.clone());
+		Ok(ptr)
+	}
 
 	fn tick(&self, _regs: &util::Regs) {
 		// TODO
@@ -64,6 +68,6 @@ impl Scheduler {
 
 impl Drop for Scheduler {
 	fn drop(&mut self) {
-		// TODO Unregister callback
+		// TODO Unregister `tick_callback`
 	}
 }
