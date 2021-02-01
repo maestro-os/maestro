@@ -1,8 +1,10 @@
 /// TODO doc
 
 use core::ffi::c_void;
+use core::marker::Unsize;
 use core::mem::size_of_val;
 use core::mem::transmute;
+use core::ops::CoerceUnsized;
 use core::ops::{Deref, DerefMut};
 use core::ptr::NonNull;
 use core::ptr::copy_nonoverlapping;
@@ -83,6 +85,8 @@ impl<T: ?Sized> DerefMut for SharedPtr<T> {
 		self.as_mut()
 	}
 }
+
+impl<T: ?Sized + Unsize<U>, U: ?Sized> CoerceUnsized<SharedPtr<U>> for SharedPtr<T> {}
 
 impl<T: ?Sized> Drop for SharedPtr<T> {
 	fn drop(&mut self) {

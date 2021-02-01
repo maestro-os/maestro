@@ -3,9 +3,9 @@
 
 use core::cmp::Ordering;
 use crate::idt;
-use crate::util::boxed::Box;
 use crate::util::container::vec::Vec;
 use crate::util::lock::{Mutex, MutexGuard};
+use crate::util::ptr::SharedPtr;
 use crate::util;
 
 // TODO Arch dependent
@@ -70,7 +70,7 @@ struct CallbackWrapper {
 	/// The priority associated with the callback. Higher value means higher priority
 	priority: u32,
 	/// The callback
-	callback: Box::<dyn InterruptCallback>,
+	callback: SharedPtr::<dyn InterruptCallback>,
 }
 
 /// List containing vectors that store callbacks for every interrupt watchdogs.
@@ -85,7 +85,7 @@ static mut CALLBACKS: Mutex::<[Option::<Vec::<CallbackWrapper>>; idt::ENTRIES_CO
 /// If the `id` is invalid or if an allocation fails, the function shall return an error.
 // TODO Return a reference?
 pub fn register_callback<T: 'static + InterruptCallback>(id: u8, priority: u32, callback: T)
-	-> Result<(), ()> {
+	-> Result<SharedPtr::<T>, ()> {
 	if id >= idt::ENTRIES_COUNT {
 		return Err(());
 	}
@@ -116,11 +116,13 @@ pub fn register_callback<T: 'static + InterruptCallback>(id: u8, priority: u32, 
 			r.unwrap()
 		}
 	};
+
+	let mut ptr = SharedPtr::new(callback)?;
 	v.insert(index, CallbackWrapper {
 		priority: priority,
-		callback: Box::new(callback)?,
+		callback: ptr.clone(),
 	});
-	Ok(())
+	Ok(ptr)
 }
 
 // TODO Callback unregister

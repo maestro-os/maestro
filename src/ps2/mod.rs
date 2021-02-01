@@ -10,6 +10,7 @@ use crate::io;
 use crate::module::Module;
 use crate::module;
 use crate::util::boxed::Box;
+use crate::util::ptr::SharedPtr;
 use crate::util;
 
 /// The interrupt number for keyboard input events.
@@ -542,6 +543,8 @@ impl event::InterruptCallback for KeyboardCallback {
 
 /// The PS2 kernel module structure.
 pub struct PS2Module {
+	/// The callback for keyboard input interrupts.
+	keyboard_interrupt_callback: Option::<SharedPtr::<KeyboardCallback>>,
 	/// The callback handling keyboard inputs.
 	keyboard_callback: Box::<dyn FnMut(KeyboardKey, KeyboardAction)>,
 }
@@ -550,6 +553,7 @@ impl PS2Module {
 	/// Creates the module's instance.
 	pub fn new<F: 'static + FnMut(KeyboardKey, KeyboardAction)>(f: F) -> Self {
 		Self {
+			keyboard_interrupt_callback: None,
 			keyboard_callback: Box::new(f).unwrap(),
 		}
 	}
@@ -585,14 +589,15 @@ impl Module for PS2Module {
 		set_config_byte(get_config_byte() | 0b1);
 		clear_buffer();
 
-		event::register_callback(KEYBOARD_INTERRUPT, 0, KeyboardCallback {
-			module: self as _,
-		})?;
+		self.keyboard_interrupt_callback = Some(event::register_callback(KEYBOARD_INTERRUPT, 0,
+			KeyboardCallback {
+				module: self as _,
+		})?);
 		Ok(())
 	}
 
 	fn destroy(&mut self) {
-		// TODO Unregister callback
+		// TODO Unregister callback `keyboard_interrupt_callback` and set it to None
 	}
 
 	// TODO LEDs state
