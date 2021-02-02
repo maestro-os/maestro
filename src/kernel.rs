@@ -73,6 +73,10 @@ mod io {
 	}
 }
 
+extern "C" {
+	fn test_process();
+}
+
 /// This is the main function of the Rust source code, responsible for the initialization of the
 /// kernel. When calling this function, the CPU must be in Protected Mode with the GDT loaded with
 /// space for the Task State Segment.
@@ -132,7 +136,7 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 	// TODO Load init ramdisk
 
 	// TODO Start first process from disk (init program)
-	if let Ok(p) = Process::new(None, 0) {
+	if let Ok(p) = Process::new(None, 0, &test_process as *const _ as *const _) {
 		println!("Test process PID: {}", p.get_pid());
 	} else {
 		println!("Failed to create test process!");
