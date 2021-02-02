@@ -202,8 +202,8 @@ impl Chunk {
 			debug_assert!(p as *const _ as *const c_void >= memory::PROCESS_END);
 			debug_assert!(p.get_size() >= get_min_chunk_size());
 
-			let len = size_of::<Chunk>() + p.get_size();
-			debug_assert!((p as *const Self as usize) + len <= (self as *const Self as usize));
+			debug_assert!((p.get_const_ptr() as usize) + p.get_size()
+				<= (self as *const Self as usize));
 		}
 
 		if let Some(next) = self.list.get_next() {
@@ -213,8 +213,8 @@ impl Chunk {
 			debug_assert!(n as *const _ as *const c_void >= memory::PROCESS_END);
 			debug_assert!(n.get_size() >= get_min_chunk_size());
 
-			let len = size_of::<Chunk>() + self.get_size();
-			debug_assert!((self as *const Self as usize) + len <= (n as *const Self as usize));
+			debug_assert!((self.get_const_ptr() as usize) + self.get_size()
+				<= (n as *const Self as usize));
 		}
 
 		debug_assert!(util::is_aligned(self.get_const_ptr(), ALIGNEMENT));

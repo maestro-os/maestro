@@ -29,7 +29,7 @@ impl<T> Box<T> {
 				transmute::<*mut c_void, *mut T>(malloc::alloc(size)?)
 			};
 			unsafe { // Call to unsafe function
-				copy_nonoverlapping(&value as *const _ as *const _, ptr as _, size);
+				copy_nonoverlapping(&value as *const _ as *const u8, ptr as *mut u8, size);
 			}
 			NonNull::new(ptr).unwrap()
 		} else {
