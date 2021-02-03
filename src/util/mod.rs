@@ -108,6 +108,8 @@ macro_rules! container_of {
 
 /// Structure representing the list of registers for a context. The content of this structure
 /// depends on the architecture for which the kernel is compiled.
+#[derive(Clone, Copy, Debug)]
+#[repr(C)]
 pub struct Regs
 {
 	pub ebp: i32,

@@ -59,7 +59,7 @@ pub struct Process {
 /// The PID manager.
 static mut PID_MANAGER: Option::<PIDManager> = None; // TODO Wrap in mutex
 /// The processes scheduler.
-static mut SCHEDULER: Option::<Scheduler> = None;
+static mut SCHEDULER: Option::<Scheduler> = None; // TODO Wrap in mutex
 
 /// Initializes processes system.
 pub fn init() -> Result::<(), ()> {
@@ -73,7 +73,7 @@ pub fn init() -> Result::<(), ()> {
 
 impl Process {
 	/// Returns the process with PID `pid`. If the process doesn't exist, the function returns None.
-	pub fn get_by_pid(pid: Pid) -> Option::<&'static mut Self> {
+	pub fn get_by_pid(pid: Pid) -> Option::<SharedPtr::<Self>> {
 		unsafe { // Access to global variable
 			SCHEDULER.as_mut().unwrap()
 		}.get_by_pid(pid)

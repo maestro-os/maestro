@@ -142,6 +142,9 @@ IRQ 13
 IRQ 14
 IRQ 15
 
+/*
+ * TODO doc
+ */
 idt_load:
 	mov 4(%esp), %edx
 	lidt (%edx)

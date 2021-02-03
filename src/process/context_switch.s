@@ -1,12 +1,21 @@
+/*
+ * TODO doc
+ */
+
 .global context_switch
 .global kernel_switch
 
+.extern end_of_interrupt
+
 .section .text
 
+/*
+ * TODO doc
+ */
 context_switch:
 	cli
 	mov %esp, %ebp
-	mov $boot_stack_top, %esp # TODO remove
+	#mov $boot_stack_top, %esp # TODO remove
 
 	mov 8(%ebp), %eax
 	mov %ax, %ds
@@ -24,7 +33,7 @@ context_switch:
 	push 8(%ebp)
 	push 4(%eax)
 	pushf
-	orl $512, (%esp)
+	orl $0x200, (%esp)
 	push 12(%ebp)
 	push 8(%eax)
 
@@ -34,18 +43,21 @@ context_switch:
 
 	pusha
 	push $0x0
-	call pic_EOI
+	call end_of_interrupt
 	add $4, %esp
 	popa
 	add $4, %esp
 
 	iret
 
-kernel_switch:
+/*
+ * TODO doc
+ */
+context_switch_kernel:
 	cli
 
 	push $0x0
-	call pic_EOI
+	call end_of_interrupt
 	add $4, %esp
 
 	mov 4(%esp), %eax
