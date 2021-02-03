@@ -99,7 +99,7 @@ impl Scheduler {
 		if let Some(curr_proc) = self.get_next_process() {
 			print!("Switching"); // TODO rm
 			unsafe { // Call to ASM function
-				context_switch(&curr_proc.regs, 32, 24);
+				context_switch(&curr_proc.regs, 32 | 3, 24 | 3); // TODO Place values in constants
 			}
 		}
 	}

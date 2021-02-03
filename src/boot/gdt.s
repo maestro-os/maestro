@@ -80,10 +80,10 @@ complete_flush:
  * Moves the GDT to the new virtual address after kernel relocation.
  */
 gdt_move:
-	mov $GDT_DESC_PHYS_PTR, %eax
-	movl $GDT_PHYS_PTR, 2(%eax)
+	mov $GDT_DESC_VIRT_PTR, %eax
+	movl $GDT_VIRT_PTR, 2(%eax)
 
-	lgdt GDT_DESC_PHYS_PTR
+	lgdt GDT_DESC_VIRT_PTR
 
 	ret
 

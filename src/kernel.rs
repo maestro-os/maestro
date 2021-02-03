@@ -28,6 +28,7 @@
 mod debug;
 mod elf;
 mod event;
+mod gdt;
 #[macro_use]
 mod idt;
 mod memory;

@@ -3,6 +3,7 @@
 
 pub mod pid;
 pub mod scheduler;
+pub mod tss;
 
 use core::ffi::c_void;
 use crate::process::pid::PIDManager;
@@ -63,6 +64,9 @@ static mut SCHEDULER: Option::<Scheduler> = None; // TODO Wrap in mutex
 
 /// Initializes processes system.
 pub fn init() -> Result::<(), ()> {
+	tss::init();
+	tss::flush();
+
 	unsafe { // Access to global variable
 		PID_MANAGER = Some(PIDManager::new()?);
 		SCHEDULER = Some(Scheduler::new()?);
