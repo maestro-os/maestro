@@ -1,10 +1,11 @@
-/// TODO doc
+/// This module stores the Bitfield structure.
 
 use crate::memory::malloc;
 use crate::util::bit_size_of;
 use crate::util::ceil_division;
 
-/// TODO doc
+/// A bitfield is a data structure meant to contain only boolean values.
+/// The size of the bitfield is specified at initialization.
 pub struct Bitfield {
 	/// The bitfield's memory region.
 	ptr: *mut u8,

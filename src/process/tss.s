@@ -1,5 +1,5 @@
 /*
- * TODO doc
+ * This file is an extention to the TSS Rust module.
  */
 
 .global tss_get
@@ -26,8 +26,9 @@ tss_flush:
 
 .section .data
 
-// TODO doc
+// The size of the TSS structure in bytes.
 .set TSS_SIZE, 104
 
+// The location of the TSS.
 tss:
 	.skip TSS_SIZE

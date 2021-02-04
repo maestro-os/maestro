@@ -1,5 +1,5 @@
 /*
- * TODO doc
+ * Context switching allows to stop the currently executed code, changing the state of the machine to another saved state.
  */
 
 .global context_switch
@@ -10,7 +10,8 @@
 .section .text
 
 /*
- * TODO doc
+ * This function switches to a userspace context.
+ * TODO document arguments
  */
 context_switch:
 	cli
@@ -51,7 +52,8 @@ context_switch:
 	iret
 
 /*
- * TODO doc
+ * This function switches to a kernelspace context.
+ * TODO document arguments
  */
 context_switch_kernel:
 	cli
@@ -83,5 +85,6 @@ context_switch_kernel:
 
 .section .data
 
+// TODO doc (remove?)
 jmp_addr:
 	.long 0

@@ -1,38 +1,43 @@
-/// TODO doc
+/// Under the x86 architecture, the TSS (Task State Segment) is a structure that is mostly
+/// deprecated but that must still be used in order to perform software context switching because
+/// it allows to store the pointers to the stacks to use whenever an interruption happens and
+/// requires switching the protection ring, and thus the stack.
+/// The structure has to be registered into the GDT into the TSS segment, and must be loaded using
+/// instruction `ltr`.
 
 use core::mem::size_of;
 use crate::gdt;
 
-/// TODO doc
+/// The TSS structure.
 #[repr(C, packed)]
 struct TSSEntry {
-	prev_tss: i32,
-	esp0: i32,
-	ss0: i32,
-	esp1: i32,
-	ss1: i32,
-	esp2: i32,
-	ss2: i32,
-	cr3: i32,
-	eip: i32,
-	eflags: i32,
-	eax: i32,
-	ecx: i32,
-	edx: i32,
-	ebx: i32,
-	esp: i32,
-	ebp: i32,
-	esi: i32,
-	edi: i32,
-	es: i32,
-	cs: i32,
-	ss: i32,
-	ds: i32,
-	fs: i32,
-	gs: i32,
-	ldt: i32,
-	trap: i16,
-	iomap_base: i16,
+	prev_tss: u32,
+	esp0: u32,
+	ss0: u32,
+	esp1: u32,
+	ss1: u32,
+	esp2: u32,
+	ss2: u32,
+	cr3: u32,
+	eip: u32,
+	eflags: u32,
+	eax: u32,
+	ecx: u32,
+	edx: u32,
+	ebx: u32,
+	esp: u32,
+	ebp: u32,
+	esi: u32,
+	edi: u32,
+	es: u32,
+	cs: u32,
+	ss: u32,
+	ds: u32,
+	fs: u32,
+	gs: u32,
+	ldt: u32,
+	trap: u16,
+	iomap_base: u16,
 }
 
 extern "C" {

@@ -1,4 +1,6 @@
-// TODO doc
+/*
+ * This file contains macros and functions created by these macros to handle interruptions.
+ */
 
 .section .text
 
@@ -7,7 +9,8 @@
 .extern end_of_interrupt
 
 /*
- * TODO doc
+ * This macro creates a function to handle an error interrupt that does **not** pass an additional error code.
+ * `n` is the id in the interrupt vector.
  */
 .macro ERROR_NOCODE	n
 .global error\n
@@ -34,7 +37,8 @@ error\n:
 .endm
 
 /*
- * TODO doc
+ * This macro creates a function to handle an error interrupt that passes an additional error code.
+ * `n` is the id in the interrupt vector.
  */
 .macro ERROR_CODE	n
 .global error\n
@@ -67,7 +71,8 @@ error\n:
 .endm
 
 /*
- * TODO doc
+ * This macro creates a function to handle a regular interruption.
+ * `n` is the id of the IRQ.
  */
 .macro IRQ	n
 .global irq\n
@@ -92,6 +97,9 @@ irq\n:
 	iret
 .endm
 
+/*
+ * Creating the handlers for every errors.
+ */
 ERROR_NOCODE 0
 ERROR_NOCODE 1
 ERROR_NOCODE 2
@@ -125,6 +133,9 @@ ERROR_NOCODE 29
 ERROR_CODE 30
 ERROR_NOCODE 31
 
+/*
+ * Creating the handlers for every IRQs.
+ */
 IRQ 0
 IRQ 1
 IRQ 2
@@ -143,7 +154,7 @@ IRQ 14
 IRQ 15
 
 /*
- * TODO doc
+ * This function takes the IDT given as argument and loads it.
  */
 idt_load:
 	mov 4(%esp), %edx

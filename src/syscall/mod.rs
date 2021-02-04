@@ -1,5 +1,5 @@
-/// This module handles system calls.
-///
+/// This module handles system calls. A system call is "function" that allows to communcate between
+/// userspace and kernelspace.
 /// TODO doc
 
 use crate::util;

@@ -1,4 +1,4 @@
-/// TODO doc
+/// This file contains the Box structure.
 
 use core::ffi::c_void;
 use core::marker::Unsize;
@@ -11,7 +11,9 @@ use core::ptr::NonNull;
 use core::ptr::copy_nonoverlapping;
 use crate::memory::malloc;
 
-/// TODO doc
+/// This structure allows to store an object in an allocated region of memory.
+/// The object is owned by the Box and will be freed whenever the Box is dropped.
+/// The Box uses the `malloc` allocator.
 #[fundamental]
 pub struct Box<T: ?Sized> {
 	/// Pointer to the allocated memory

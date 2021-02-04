@@ -1,4 +1,6 @@
-/// TODO doc
+/// The role of the process scheduler is to interrupt the currently running process periodicaly
+/// to switch to another process that is in running state. The interruption is fired by the PIT
+/// on IDT0.
 
 use crate::event::InterruptCallback;
 use crate::event;
@@ -91,15 +93,16 @@ impl Scheduler {
 	/// Ticking the scheduler. This function saves the data of the currently running process, then
 	/// switches to the next process to run.
 	fn tick(&mut self, regs: &util::Regs) {
-		print!("Tick"); // TODO rm
+		unsafe { println!("Tick {}", regs.eip); }; // TODO rm
 		if let Some(curr_proc) = self.get_current_process() {
+			println!("Update {:p}", curr_proc);
 			curr_proc.regs = *regs;
 		}
 
 		if let Some(curr_proc) = self.get_next_process() {
-			print!("Switching"); // TODO rm
 			unsafe { // Call to ASM function
-				context_switch(&curr_proc.regs, 32 | 3, 24 | 3); // TODO Place values in constants
+				println!("Switching {:p} {}", curr_proc, curr_proc.regs.eip); // TODO rm
+				context_switch(&curr_proc.regs, 32 | 3, 24 | 3); // TODO Clean
 			}
 		}
 	}

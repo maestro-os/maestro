@@ -1,20 +1,22 @@
-/// TODO doc
+/// Under the x86 architecture, the GDT (Global Descriptior Table) is a table of structure that
+/// describes the segments of memory. It is a deprecated structure that still must be used in order
+/// to switch to protected mode, handle protection rings and load the Task State Segment (TSS).
 
 use core::ffi::c_void;
 use crate::memory;
 
-/// TODO doc
+/// The address in physical memory to the beginning of the GDT.
 const PHYS_PTR: *mut c_void = 0x800 as _;
 
-/// TODO doc
+/// The offset of the kernel code segment.
 pub const KERNEL_CODE_OFFSET: usize = 8;
-/// TODO doc
+/// The offset of the kernel data segment.
 pub const KERNEL_DATA_OFFSET: usize = 16;
-/// TODO doc
+/// The offset of the user code segment.
 pub const USER_CODE_OFFSET: usize = 24;
-/// TODO doc
+/// The offset of the user data segment.
 pub const USER_DATA_OFFSET: usize = 32;
-/// TODO doc
+/// The offset of the Task State Segment (TSS).
 pub const TSS_OFFSET: usize = 40;
 
 /// x86. Creates a segment selector for the given segment offset and ring.

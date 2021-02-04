@@ -112,16 +112,16 @@ macro_rules! container_of {
 #[repr(C, packed)]
 pub struct Regs
 {
-	pub ebp: i32,
-	pub esp: i32,
-	pub eip: i32,
-	pub eflags: i32,
-	pub eax: i32,
-	pub ebx: i32,
-	pub ecx: i32,
-	pub edx: i32,
-	pub esi: i32,
-	pub edi: i32,
+	pub ebp: u32,
+	pub esp: u32,
+	pub eip: u32,
+	pub eflags: u32,
+	pub eax: u32,
+	pub ebx: u32,
+	pub ecx: u32,
+	pub edx: u32,
+	pub esi: u32,
+	pub edi: u32,
 }
 
 extern "C" {

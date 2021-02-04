@@ -1,4 +1,5 @@
-/// TODO doc
+/// The Multiboot standard specifies an interface to load and boot the kernel image. It provides
+/// critical informations such as the memory mapping and the ELF structure of the kernel.
 
 use core::ffi::c_void;
 use core::mem::ManuallyDrop;

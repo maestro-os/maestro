@@ -1,4 +1,10 @@
-/// TODO doc
+/// A kernel module is an executable that is loaded in kernelspace in order to handle a specific
+/// feature. The some advantages of that system is a lighter kernel with clearer code and it
+/// allows to load only the parts that are required by the current system.
+///
+/// There's a distinction between a Module and a Kernel module:
+/// - Module: A Rust module, part of the structure of the code.
+/// - Kernel module: A piece of software to be loaded at runtime.
 
 use core::cmp::Ordering;
 

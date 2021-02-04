@@ -1,8 +1,16 @@
+/*
+ * This file contains functions to get the values of every registers when an interruption happens and to restore them when the interruption returns.
+ */
+
 .section .text
 
 .global get_regs
 .global restore_regs
 
+/*
+ * This function stores the values of every registers after an interruption was triggered.
+ * It is required that the caller allocate some memory (the size of the registers storing structure) before calling.
+ */
 get_regs:
 	mov %edi, -0x4(%ebp)
 	mov %esi, -0x8(%ebp)
@@ -36,6 +44,14 @@ esp_end:
 
 	ret
 
+
+
+/*
+ * This function is meant to be called before the `iret` instruction.
+ * It restores the values of the registers that are not updated from the `iret` instruction.
+ * The values are taken from the structure that was previously allocated on the stack for the function `get_regs`.
+ * The function is not relinquishing the space taken by the structure on the stack.
+ */
 restore_regs:
 	mov -0x4(%ebp), %edi
 	mov -0x8(%ebp), %esi

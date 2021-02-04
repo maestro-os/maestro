@@ -1,4 +1,4 @@
-/// TODO doc
+/// This module contains pointer-like structures.
 
 use core::ffi::c_void;
 use core::marker::Unsize;
