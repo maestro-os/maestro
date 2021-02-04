@@ -1,40 +1,6 @@
-/// This module implements utility for current code, useful to prevent race conditions for example.
+/// This module contains the Mutex and MutexGuard structure.
 
-/// Extern spinlock functions.
-extern "C" {
-	pub fn spin_lock(lock: *mut i32);
-	pub fn spin_unlock(lock: *mut i32);
-}
-
-/// Structure representing a spinlock.
-pub struct Spinlock {
-	/// Variable telling whether the spinlock is locked or not. This variable is 4 bytes wide to
-	/// match the size of the register handling it.
-	locked: i32,
-}
-
-impl Spinlock {
-	/// Creates a new spinlock.
-	pub const fn new() -> Self {
-		Self {
-			locked: 0,
-		}
-	}
-
-	/// Wrapper for `spin_lock`. Locks the spinlock.
-	pub fn lock(&mut self) {
-		unsafe {
-			spin_lock(&mut self.locked);
-		}
-	}
-
-	/// Wrapper for `spin_unlock`. Unlocks the spinlock.
-	pub fn unlock(&mut self) {
-		unsafe {
-			spin_unlock(&mut self.locked);
-		}
-	}
-}
+use crate::util::lock::spinlock::Spinlock;
 
 /// This structure is used to give access to a payload owned by a concurrency control structure.
 pub struct LockPayload<'a, T> {
@@ -59,8 +25,11 @@ impl<'a, T> LockPayload<'a, T> {
 /// Mutual exclusion for protection of sensitive data.
 /// A Mutex allows to ensure that one, and only thread accesses the data stored into it at the same
 /// time. Preventing race conditions.
+/// This structure works using spinlocks.
 pub struct Mutex<T> {
+	/// The spinlock for the underlying data.
 	spin: Spinlock,
+	/// The data associated to the mutex.
 	data: T,
 }
 
@@ -138,5 +107,3 @@ impl<'a, T> core::ops::Drop for MutexGuard<'a, T> {
 		self.mutex.unlock();
 	}
 }
-
-// TODO Semaphore

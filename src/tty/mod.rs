@@ -3,8 +3,8 @@
 use core::cmp::*;
 use core::mem::MaybeUninit;
 use crate::memory::vmem;
-use crate::util::lock::Mutex;
-use crate::util::lock::MutexGuard;
+use crate::util::lock::mutex::Mutex;
+use crate::util::lock::mutex::MutexGuard;
 use crate::util;
 use crate::vga;
 

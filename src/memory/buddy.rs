@@ -12,8 +12,8 @@ use core::ffi::c_void;
 use core::mem::MaybeUninit;
 use core::mem::size_of;
 use crate::memory;
-use crate::util::lock::Mutex;
-use crate::util::lock::MutexGuard;
+use crate::util::lock::mutex::Mutex;
+use crate::util::lock::mutex::MutexGuard;
 use crate::util;
 
 /// Type representing the order of a memory frame.

@@ -4,7 +4,7 @@
 use core::cmp::Ordering;
 use crate::idt;
 use crate::util::container::vec::Vec;
-use crate::util::lock::{Mutex, MutexGuard};
+use crate::util::lock::mutex::{Mutex, MutexGuard};
 use crate::util::ptr::SharedPtr;
 use crate::util;
 

@@ -1,7 +1,7 @@
 /// This file handles macros `print` and `println`.
 
 use crate::tty;
-use crate::util::lock::MutexGuard;
+use crate::util::lock::mutex::MutexGuard;
 
 /// Custom writer used to redirect print/println macros to the desired text output.
 struct TTYWrite {}
