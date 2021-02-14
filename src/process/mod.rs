@@ -1,11 +1,13 @@
 /// This module handles processes.
 /// TODO
 
+pub mod mem_space;
 pub mod pid;
 pub mod scheduler;
 pub mod tss;
 
 use core::ffi::c_void;
+use crate::process::mem_space::MemSpace;
 use crate::process::pid::PIDManager;
 use crate::process::pid::Pid;
 use crate::process::scheduler::Scheduler;
@@ -44,8 +46,8 @@ pub struct Process {
 
 	/// The last saved registers state
 	regs: Regs,
-
-	// TODO Virtual memory
+	/// The virtual memory of the process containing every mappings.
+	mem_space: MemSpace,
 
 	/// A pointer to the userspace stack.
 	user_stack: *mut c_void,
@@ -116,6 +118,7 @@ impl Process {
 				esi: 0x0,
 				edi: 0x0,
 			},
+			mem_space: MemSpace::new(),
 
 			user_stack: user_stack,
 			kernel_stack: kernel_stack,

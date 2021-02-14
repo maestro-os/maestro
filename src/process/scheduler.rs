@@ -100,6 +100,7 @@ impl Scheduler {
 		}
 
 		if let Some(curr_proc) = self.get_next_process() {
+			// TODO Switch paging context
 			unsafe { // Call to ASM function
 				println!("Switching {:p} {}", curr_proc, curr_proc.regs.eip); // TODO rm
 				context_switch(&curr_proc.regs, 32 | 3, 24 | 3); // TODO Clean

@@ -72,9 +72,9 @@ pub const PAGE_FAULT_RESERVED: u32 = 0b01000;
 pub const PAGE_FAULT_INSTRUCTION: u32 = 0b10000;
 
 /// The type representing a x86 page directory.
-type VMem = *const u32;
+pub type VMem = *const u32;
 /// Same as VMem, but mutable.
-type MutVMem = *mut u32;
+pub type MutVMem = *mut u32;
 
 /// Structure wrapping a virtual memory. This structure contains the counter for the number of
 /// elements that are used in the associated element.
