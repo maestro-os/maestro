@@ -101,6 +101,48 @@ fn alloc_obj() -> Result<*mut u32, ()> {
 	Ok(ptr as _)
 }
 
+/// Returns the object at index `index` of given object `obj`.
+fn obj_get(obj: *const u32, index: usize) -> u32 {
+	debug_assert!(index < 1024);
+	unsafe { // Pointer arithmetic and derference of raw pointer
+		*obj_get_ptr(obj, index)
+	}
+}
+
+/// Sets the object at index `index` of given object `obj` with value `value`.
+fn obj_set(obj: *mut u32, index: usize, value: u32) {
+	debug_assert!(index < 1024);
+	unsafe { // Pointer arithmetic and derference of raw pointer
+		*obj_get_mut_ptr(obj, index) = value;
+	}
+}
+
+/// Returns a pointer to the object at index `index` of given object `obj`.
+fn obj_get_ptr(obj: *const u32, index: usize) -> *const u32 {
+	debug_assert!(index < 1024);
+	let mut obj_ptr = obj;
+	if (obj_ptr as *const c_void) < memory::PROCESS_END {
+		obj_ptr = ((obj as usize) + (memory::PROCESS_END as usize)) as _;
+	}
+
+	unsafe { // Pointer arithmetic
+		obj_ptr.add(index)
+	}
+}
+
+/// Returns a mutable pointer to the object at index `index` of given object `obj`.
+fn obj_get_mut_ptr(obj: *mut u32, index: usize) -> *mut u32 {
+	debug_assert!(index < 1024);
+	let mut obj_ptr = obj;
+	if (obj_ptr as *const c_void) < memory::PROCESS_END {
+		obj_ptr = ((obj as usize) + (memory::PROCESS_END as usize)) as _;
+	}
+
+	unsafe { // Pointer arithmetic
+		obj_ptr.add(index)
+	}
+}
+
 /// Frees paging object `obj`. The pointer to the object must be a virtual address.
 fn free_obj(obj: *mut u32) {
 	buddy::free_kernel(obj as _, 0)
@@ -123,30 +165,25 @@ mod table {
 		debug_assert!(flags & FLAG_PAGE_SIZE == 0);
 
 		let v = alloc_obj()?;
-		unsafe {
-			*vmem.add(index) = (memory::kern_to_phys(v as _) as u32) | (flags | FLAG_PRESENT);
-		}
+		obj_set(vmem, index, (memory::kern_to_phys(v as _) as u32) | (flags | FLAG_PRESENT));
 		Ok(())
 	}
 
 	/// Expands a large block into a page table. This function allocates a new page table and fills
 	/// it so that the memory mapping keeps the same behavior.
 	pub fn expand(vmem: *mut u32, index: usize) -> Result<(), ()> {
-		let dir_entry = unsafe { vmem.add(index) };
-		let mut dir_entry_value = unsafe { *dir_entry };
+		let mut dir_entry_value = obj_get(vmem, index);
 		debug_assert!(dir_entry_value & FLAG_PRESENT != 0);
 		debug_assert!(dir_entry_value & FLAG_PAGE_SIZE != 0);
 
 		let base_addr = dir_entry_value & ADDR_MASK;
 		let flags = dir_entry_value & FLAGS_MASK & !FLAG_PAGE_SIZE;
 		table::create(vmem, index, flags)?;
-		dir_entry_value = unsafe { *dir_entry };
+		dir_entry_value = obj_get(vmem, index);
 		let table_addr = (dir_entry_value & ADDR_MASK) as *mut u32;
 		for i in 0..1024 {
 			let addr = base_addr + (i * memory::PAGE_SIZE) as u32;
-			unsafe {
-				*table_addr.add(i) = addr | flags;
-			}
+			obj_set(table_addr, i, addr | flags);
 		}
 
 		Ok(())
@@ -155,13 +192,10 @@ mod table {
 	/// Deletes the table at index `index` in the page directory.
 	pub fn delete(vmem: *mut u32, index: usize) {
 		debug_assert!(index < 1024);
-		let dir_entry = unsafe { vmem.add(index) };
-		let dir_entry_value = unsafe { *dir_entry };
-		let dir_entry_addr = dir_entry_value & ADDR_MASK;
-		buddy::free(dir_entry_addr as _, 0);
-		unsafe {
-			*dir_entry = 0;
-		}
+		let dir_entry_value = obj_get(vmem, index);
+		let dir_entry_addr = (dir_entry_value & ADDR_MASK) as _;
+		buddy::free(dir_entry_addr, 0);
+		obj_set(vmem, index, 0);
 	}
 }
 
@@ -169,14 +203,15 @@ impl X86VMem {
 	/// Protects the kernel's read-only sections from writing in the given page directory `vmem`.
 	fn protect_kernel(&mut self) {
 		let boot_info = multiboot::get_boot_info();
-		elf::foreach_sections(boot_info.elf_sections, boot_info.elf_num as usize,
-			boot_info.elf_shndx as usize, boot_info.elf_entsize as usize,
-			| section: &elf::ELF32SectionHeader, _name: &str | {
+		elf::foreach_sections(memory::kern_to_virt(boot_info.elf_sections),
+			boot_info.elf_num as usize, boot_info.elf_shndx as usize,
+			boot_info.elf_entsize as usize, | section: &elf::ELF32SectionHeader, _name: &str | {
 				if section.sh_flags & elf::SHF_WRITE != 0
 					|| section.sh_addralign as usize != memory::PAGE_SIZE {
 					return;
 				}
 
+				// TODO Clean (use dedicated functions)
 				let phys_addr = if section.sh_addr < (memory::PROCESS_END as _) {
 					section.sh_addr as *const c_void
 				} else {
@@ -222,27 +257,23 @@ impl X86VMem {
 	/// The entry must be marked as present to be found. If Page Size Extension (PSE) is used, an
 	/// entry of the page directory might be returned.
 	pub fn resolve(&self, ptr: *const c_void) -> Option<*const u32> {
-		let dir_entry = unsafe { // Pointer arithmetic
-			self.page_dir.add(Self::get_addr_element_index(ptr, 1))
-		};
-		let dir_entry_value = unsafe { *dir_entry };
+		let dir_entry_index = Self::get_addr_element_index(ptr, 1);
+		let dir_entry_value = obj_get(self.page_dir, dir_entry_index);
 		if dir_entry_value & FLAG_PRESENT == 0 {
 			return None;
 		}
 		if dir_entry_value & FLAG_PAGE_SIZE != 0 {
-			return Some(dir_entry);
+			return Some(obj_get_ptr(self.page_dir, dir_entry_index));
 		}
 
 		let table = memory::kern_to_virt((dir_entry_value & ADDR_MASK) as _) as *const u32;
-		let table_entry = unsafe { // Pointer arithmetic
-			table.add(Self::get_addr_element_index(ptr, 0))
-		};
-		let table_entry_value = unsafe { *table_entry };
+		let table_entry_index = Self::get_addr_element_index(ptr, 0);
+		let table_entry_value = obj_get(table, table_entry_index);
 		if table_entry_value & FLAG_PRESENT == 0 {
 			// TODO
 			return None;
 		}
-		Some(table_entry)
+		Some(obj_get_ptr(table, table_entry_index))
 	}
 
 	/// Resolves the entry for the given virtual address `ptr` and returns its flags. This function
@@ -250,7 +281,9 @@ impl X86VMem {
 	/// location. If no entry is found, the function returns None.
 	pub fn get_flags(&self, ptr: *const c_void) -> Option<u32> {
 		if let Some(e) = self.resolve(ptr) {
-			Some(unsafe { *e } & FLAGS_MASK)
+			Some(unsafe { // Dereference of raw pointer
+				*e
+			} & FLAGS_MASK)
 		} else {
 			None
 		}
@@ -264,21 +297,13 @@ impl X86VMem {
 		debug_assert!(flags & ADDR_MASK == 0);
 
 		let dir_entry_index = Self::get_addr_element_index(virtaddr, 1);
-		let dir_entry = unsafe { // Pointer arithmetic
-			self.page_dir.add(dir_entry_index)
-		};
-		let dir_entry_value = unsafe { // Dereference of raw pointer
-			*dir_entry
-		};
-		if dir_entry_value & FLAG_PRESENT != 0
-			&& dir_entry_value & FLAG_PAGE_SIZE == 0 {
+		let dir_entry_value = obj_get(self.page_dir, dir_entry_index);
+		if dir_entry_value & FLAG_PRESENT != 0 && dir_entry_value & FLAG_PAGE_SIZE == 0 {
 			table::delete(self.page_dir, dir_entry_index);
 		}
 
-		unsafe { // Pointer arithmetic and dereference of raw pointer
-			*self.page_dir.add(dir_entry_index) = (physaddr as u32)
-				| (flags | FLAG_PRESENT | FLAG_PAGE_SIZE);
-		}
+		obj_set(self.page_dir, dir_entry_index,
+			(physaddr as u32) | (flags | FLAG_PRESENT | FLAG_PAGE_SIZE));
 	}
 
 	/// Maps the physical address `ptr` to the same address in virtual memory with the given flags
@@ -290,19 +315,12 @@ impl X86VMem {
 	/// Unmaps the large block (PSE) at the given virtual address `virtaddr`.
 	pub fn unmap_pse(&mut self, virtaddr: *const c_void) {
 		let dir_entry_index = Self::get_addr_element_index(virtaddr, 1);
-		let dir_entry = unsafe { // Pointer arithmetic
-			self.page_dir.add(dir_entry_index) as *mut u32
-		};
-		let dir_entry_value = unsafe { // Dereference of raw pointer
-			*dir_entry
-		};
-		if dir_entry_value & FLAG_PRESENT == 0
-			|| dir_entry_value & FLAG_PAGE_SIZE == 0 {
+		let dir_entry_value = obj_get(self.page_dir, dir_entry_index);
+		if dir_entry_value & FLAG_PRESENT == 0 || dir_entry_value & FLAG_PAGE_SIZE == 0 {
 			return;
 		}
-		unsafe {
-			*dir_entry = 0;
-		}
+
+		obj_set(self.page_dir, dir_entry_index, 0);
 	}
 }
 
@@ -324,30 +342,18 @@ impl VMem for X86VMem {
 		debug_assert!(flags & ADDR_MASK == 0);
 
 		let dir_entry_index = Self::get_addr_element_index(virtaddr, 1);
-		let dir_entry = unsafe { // Pointer arithmetic
-			self.page_dir.add(dir_entry_index)
-		};
-		let mut dir_entry_value = unsafe { // Dereference of raw pointer
-			*dir_entry
-		};
+		let mut dir_entry_value = obj_get(self.page_dir, dir_entry_index);
 		if dir_entry_value & FLAG_PRESENT == 0 {
 			table::create(self.page_dir, dir_entry_index, flags)?;
 		} else if dir_entry_value & FLAG_PAGE_SIZE != 0 {
 			table::expand(self.page_dir, dir_entry_index)?;
 		}
 
-		dir_entry_value = unsafe { // Dereference of raw pointer
-			*dir_entry
-		};
+		dir_entry_value = obj_get(self.page_dir, dir_entry_index);
 		debug_assert!(dir_entry_value & FLAG_PAGE_SIZE == 0);
 		let table = (dir_entry_value & ADDR_MASK) as *mut u32;
 		let table_entry_index = Self::get_addr_element_index(virtaddr, 0);
-		let table_entry = unsafe { // Pointer arithmetic
-			table.add(table_entry_index)
-		};
-		unsafe {
-			*table_entry = (physaddr as u32) | (flags | FLAG_PRESENT);
-		}
+		obj_set(table, table_entry_index, (physaddr as u32) | (flags | FLAG_PRESENT));
 
 		Ok(())
 	}
@@ -383,12 +389,7 @@ impl VMem for X86VMem {
 
 	fn unmap(&mut self, virtaddr: *const c_void) -> Result<(), ()> {
 		let dir_entry_index = Self::get_addr_element_index(virtaddr, 1);
-		let dir_entry = unsafe { // Pointer arithmetic
-			self.page_dir.add(dir_entry_index) as *const u32
-		};
-		let dir_entry_value = unsafe { // Dereference of raw pointer
-			*dir_entry
-		};
+		let dir_entry_value = obj_get(self.page_dir, dir_entry_index);
 		if dir_entry_value & FLAG_PRESENT == 0 {
 			return Ok(());
 		} else if dir_entry_value & FLAG_PAGE_SIZE != 0 {
@@ -396,12 +397,7 @@ impl VMem for X86VMem {
 		}
 
 		let table_entry_index = Self::get_addr_element_index(virtaddr, 0);
-		let table_entry = unsafe { // Pointer arithmetic
-			self.page_dir.add(table_entry_index) as *mut u32
-		};
-		unsafe {
-			*table_entry = 0;
-		}
+		obj_set(self.page_dir, table_entry_index, 0);
 		Ok(())
 	}
 
@@ -434,34 +430,24 @@ impl VMem for X86VMem {
 	fn clone(&self) -> Result::<Self, ()> {
 		let v = alloc_obj()?;
 		for i in 0..1024 {
-			let src_dir_entry = unsafe { // Pointer arithmetic
-				self.page_dir.add(i)
-			};
-			let src_dir_entry_value = unsafe { // Pointer arithmetic
-				*src_dir_entry
-			};
+			let src_dir_entry_value = obj_get(self.page_dir, i);
 			if src_dir_entry_value & FLAG_PRESENT == 0 {
 				continue;
 			}
 
-			let dest_dir_entry = unsafe {
-				self.page_dir.add(i) as *mut u32
-			};
 			if src_dir_entry_value & FLAG_PAGE_SIZE == 0 {
 				let src_table = (src_dir_entry_value & ADDR_MASK) as *const u32;
 				if let Ok(dest_table) = alloc_obj() {
-					unsafe {
+					unsafe { // Call to C function
 						util::memcpy(dest_table as _, src_table as _, memory::PAGE_SIZE);
-						*dest_dir_entry = (memory::kern_to_phys(dest_table as _) as u32)
-							| (src_dir_entry_value & FLAGS_MASK);
 					}
+					obj_set(self.page_dir, i, (memory::kern_to_phys(dest_table as _) as u32)
+						| (src_dir_entry_value & FLAGS_MASK));
 				} else {
 					return Err(());
 				}
 			} else {
-				unsafe {
-					*dest_dir_entry = src_dir_entry_value;
-				}
+				obj_set(self.page_dir, i, src_dir_entry_value);
 			}
 		}
 
@@ -500,12 +486,7 @@ impl Drop for X86VMem {
 		}
 
 		for i in 0..1024 {
-			let dir_entry = unsafe { // Pointer arithmetic
-				self.page_dir.add(i)
-			};
-			let dir_entry_value = unsafe { // Dereference of raw pointer
-				*dir_entry
-			};
+			let dir_entry_value = obj_get(self.page_dir, i);
 			if (dir_entry_value & FLAG_PRESENT) != 0 && (dir_entry_value & FLAG_PAGE_SIZE) == 0 {
 				let table = (dir_entry_value & ADDR_MASK) as *mut u32;
 				free_obj(memory::kern_to_virt(table as _) as _);
