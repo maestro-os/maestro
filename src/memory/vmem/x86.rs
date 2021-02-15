@@ -116,7 +116,7 @@ mod table {
 	use super::*;
 
 	/// Creates an empty page table at index `index` of the page directory.
-	pub fn create(vmem: MutVMem, index: usize, flags: u32) -> Result<(), ()> {
+	pub fn create(vmem: *mut u32, index: usize, flags: u32) -> Result<(), ()> {
 		debug_assert!(index < 1024);
 		debug_assert!(flags & ADDR_MASK == 0);
 		debug_assert!(flags & FLAG_PAGE_SIZE == 0);
@@ -131,7 +131,7 @@ mod table {
 
 	/// Expands a large block into a page table. This function allocates a new page table and fills
 	/// it so that the memory mapping keeps the same behavior.
-	pub fn expand(vmem: MutVMem, index: usize) -> Result<(), ()> {
+	pub fn expand(vmem: *mut u32, index: usize) -> Result<(), ()> {
 		let dir_entry = unsafe { vmem.add(index) };
 		let mut dir_entry_value = unsafe { *dir_entry };
 		debug_assert!(dir_entry_value & FLAG_PRESENT != 0);
@@ -153,7 +153,7 @@ mod table {
 	}
 
 	/// Deletes the table at index `index` in the page directory.
-	pub fn delete(vmem: MutVMem, index: usize) {
+	pub fn delete(vmem: *mut u32, index: usize) {
 		debug_assert!(index < 1024);
 		let dir_entry = unsafe { vmem.add(index) };
 		let dir_entry_value = unsafe { *dir_entry };
@@ -196,7 +196,7 @@ impl X86VMem {
 
 	/// Initializes a new page directory. The kernel memory is mapped into the context by default.
 	pub fn new() -> Result<Self, ()> {
-		let vmem = Self {
+		let mut vmem = Self {
 			page_dir: alloc_obj()?,
 		};
 		vmem.identity(NULL, 0)?;
@@ -272,12 +272,13 @@ impl X86VMem {
 		};
 		if dir_entry_value & FLAG_PRESENT != 0
 			&& dir_entry_value & FLAG_PAGE_SIZE == 0 {
-			table::delete(vmem, dir_entry_index);
+			table::delete(self.page_dir, dir_entry_index);
 		}
 
-		*unsafe { // Pointer arithmetic
-			self.page_dir.add(dir_entry_index)
-		} = (physaddr as u32) | (flags | FLAG_PRESENT | FLAG_PAGE_SIZE);
+		unsafe { // Pointer arithmetic and dereference of raw pointer
+			*self.page_dir.add(dir_entry_index) = (physaddr as u32)
+				| (flags | FLAG_PRESENT | FLAG_PAGE_SIZE);
+		}
 	}
 
 	/// Maps the physical address `ptr` to the same address in virtual memory with the given flags
@@ -306,13 +307,6 @@ impl X86VMem {
 }
 
 impl VMem for X86VMem {
-	/// Tells whether the given pointer `ptr` is mapped or not.
-	fn is_mapped(&self, ptr: *const c_void) -> bool {
-		self.resolve(ptr) != None
-	}
-
-	/// Translates the given virtual address `ptr` to the corresponding physical address. If the
-	/// address is not mapped, None is returned.
 	fn translate(&self, ptr: *const c_void) -> Option<*const c_void> {
 		if let Some(e) = self.resolve(ptr) {
 			Some((unsafe { // Dereference of raw pointer
@@ -323,8 +317,6 @@ impl VMem for X86VMem {
 		}
 	}
 
-	/// Maps the the given physical address `physaddr` to the given virtual address `virtaddr` with
-	/// the given flags. The function forces the FLAG_PAGE_PRESENT flag.
 	fn map(&mut self, physaddr: *const c_void, virtaddr: *const c_void, flags: u32)
 		-> Result<(), ()> {
 		debug_assert!(util::is_aligned(physaddr, memory::PAGE_SIZE));
@@ -339,9 +331,9 @@ impl VMem for X86VMem {
 			*dir_entry
 		};
 		if dir_entry_value & FLAG_PRESENT == 0 {
-			table::create(vmem, dir_entry_index, flags)?;
+			table::create(self.page_dir, dir_entry_index, flags)?;
 		} else if dir_entry_value & FLAG_PAGE_SIZE != 0 {
-			table::expand(vmem, dir_entry_index)?;
+			table::expand(self.page_dir, dir_entry_index)?;
 		}
 
 		dir_entry_value = unsafe { // Dereference of raw pointer
@@ -360,8 +352,6 @@ impl VMem for X86VMem {
 		Ok(())
 	}
 
-	/// Maps the given range of physical address `physaddr` to the given range of virtual address
-	/// `virtaddr`. The range is `pages` pages large.
 	fn map_range(&mut self, physaddr: *const c_void, virtaddr: *const c_void, pages: usize,
 		flags: u32) -> Result<(), ()> {
 		debug_assert!(util::is_aligned(physaddr, memory::PAGE_SIZE));
@@ -391,9 +381,6 @@ impl VMem for X86VMem {
 		Ok(())
 	}
 
-	/// Unmaps the page at virtual address `virtaddr`. The function unmaps only one page, thus if a
-	/// large block is present at this location (PSE), it shall be split down into a table which shall
-	/// be filled accordingly.
 	fn unmap(&mut self, virtaddr: *const c_void) -> Result<(), ()> {
 		let dir_entry_index = Self::get_addr_element_index(virtaddr, 1);
 		let dir_entry = unsafe { // Pointer arithmetic
@@ -405,7 +392,7 @@ impl VMem for X86VMem {
 		if dir_entry_value & FLAG_PRESENT == 0 {
 			return Ok(());
 		} else if dir_entry_value & FLAG_PAGE_SIZE != 0 {
-			table::expand(vmem, dir_entry_index)?;
+			table::expand(self.page_dir, dir_entry_index)?;
 		}
 
 		let table_entry_index = Self::get_addr_element_index(virtaddr, 0);
@@ -418,7 +405,6 @@ impl VMem for X86VMem {
 		Ok(())
 	}
 
-	/// Unmaps the given range beginning at virtual address `virtaddr` with size of `pages` pages.
 	fn unmap_range(&mut self, virtaddr: *const c_void, pages: usize) -> Result<(), ()> {
 		debug_assert!(util::is_aligned(virtaddr, memory::PAGE_SIZE));
 		debug_assert!((virtaddr as usize) + (pages * memory::PAGE_SIZE) >= (virtaddr as usize));
@@ -445,8 +431,6 @@ impl VMem for X86VMem {
 		Ok(())
 	}
 
-	/// Clones the given page directory, allocating copies of every children elements. If the page
-	/// directory cannot be cloned, the function returns None.
 	fn clone(&self) -> Result::<Self, ()> {
 		let v = alloc_obj()?;
 		for i in 0..1024 {
@@ -481,15 +465,26 @@ impl VMem for X86VMem {
 			}
 		}
 
-		Ok(v)
+		Ok(Self {
+			page_dir: v
+		})
 	}
 
-	/// Flushes the modifications of the given page directory by reloading the Translation Lookaside
-	/// Buffer (TLB). This function should be called after modifying the currently loaded paging
-	/// context.
+	fn bind(&self) {
+		unsafe { // Call to C function
+			paging_enable(memory::kern_to_phys(self.page_dir as _) as _);
+		}
+	}
+
+	fn is_bound(&self) -> bool {
+		unsafe { // Call to C function
+			self.page_dir == (cr3_get() as _)
+		}
+	}
+
 	fn flush(&self) {
-		unsafe { // Call to C functions
-			if self.page_dir == (cr3_get() as _) {
+		if self.is_bound() {
+			unsafe { // Call to C function
 				tlb_reload();
 			}
 		}
@@ -500,7 +495,7 @@ impl Drop for X86VMem {
 	/// Destroyes the given page directory, including its children elements. If the page directory
 	/// is begin used, the behaviour is undefined.
 	fn drop(&mut self) {
-		if self.page_dir == (cr3_get() as _) {
+		if self.is_bound() {
 			crate::kernel_panic!("Dropping virtual memory context handler while in use!", 0);
 		}
 
@@ -512,7 +507,7 @@ impl Drop for X86VMem {
 				*dir_entry
 			};
 			if (dir_entry_value & FLAG_PRESENT) != 0 && (dir_entry_value & FLAG_PAGE_SIZE) == 0 {
-				let table = (dir_entry_value & ADDR_MASK) as *const u32;
+				let table = (dir_entry_value & ADDR_MASK) as *mut u32;
 				free_obj(table);
 			}
 		}

@@ -22,9 +22,9 @@ pub struct MemSpace {
 impl MemSpace {
 	/// Creates a new virtual memory object.
 	pub fn new() -> Result::<Self, ()> {
-		Self {
+		Ok(Self {
 			vmem: vmem::new()?,
-		}
+		})
 	}
 
 	/// Maps a region of memory.

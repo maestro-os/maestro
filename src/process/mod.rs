@@ -118,7 +118,7 @@ impl Process {
 				esi: 0x0,
 				edi: 0x0,
 			},
-			mem_space: MemSpace::new(),
+			mem_space: MemSpace::new()?,
 
 			user_stack: user_stack,
 			kernel_stack: kernel_stack,
