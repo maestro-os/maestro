@@ -7,21 +7,23 @@ pub const MAPPING_FLAG_WRITE: u8 = 0b010;
 pub const MAPPING_FLAG_EXEC: u8 = 0b100;
 
 use core::ffi::c_void;
-use crate::memory::vmem::MutVMem;
+use crate::memory::vmem::VMem;
+use crate::memory::vmem;
+use crate::util::boxed::Box;
 
 /// Structure representing the virtual memory of a context.
 pub struct MemSpace {
 	// TODO Store memory mappings and gaps
 
-	/// The architecture-dependent paging object.
-	paging_context: MutVMem, // TODO Use a wrapper to Drop automatically
+	/// The virtual memory context handler.
+	vmem: Box::<dyn VMem>,
 }
 
 impl MemSpace {
 	/// Creates a new virtual memory object.
-	pub fn new() -> Self {
+	pub fn new() -> Result::<Self, ()> {
 		Self {
-			paging_context: 0 as _, // TODO
+			vmem: vmem::new()?,
 		}
 	}
 
