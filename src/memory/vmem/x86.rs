@@ -91,7 +91,8 @@ extern "C" {
 	pub fn tlb_reload();
 }
 
-/// Allocates a paging object and returns a pointer to it. Returns None if the allocation fails.
+/// Allocates a paging object and returns its virtual address.
+/// Returns Err if the allocation fails.
 fn alloc_obj() -> Result<*mut u32, ()> {
 	let ptr = buddy::alloc_kernel(0)? as *mut c_void;
 	unsafe {
@@ -100,14 +101,14 @@ fn alloc_obj() -> Result<*mut u32, ()> {
 	Ok(ptr as _)
 }
 
-/// Frees paging object `obj`.
+/// Frees paging object `obj`. The pointer to the object must be a virtual address.
 fn free_obj(obj: *mut u32) {
 	buddy::free_kernel(obj as _, 0)
 }
 
 /// The structure representing virtual memory context handler for the x86 architecture.
 pub struct X86VMem {
-	/// A pointer to the page directory.
+	/// The virtual address to the page directory.
 	page_dir: *mut u32,
 }
 
@@ -123,8 +124,7 @@ mod table {
 
 		let v = alloc_obj()?;
 		unsafe {
-			*vmem.add(index) = (memory::kern_to_phys(v as _) as u32)
-				| (flags | FLAG_PRESENT);
+			*vmem.add(index) = (memory::kern_to_phys(v as _) as u32) | (flags | FLAG_PRESENT);
 		}
 		Ok(())
 	}
@@ -508,11 +508,11 @@ impl Drop for X86VMem {
 			};
 			if (dir_entry_value & FLAG_PRESENT) != 0 && (dir_entry_value & FLAG_PAGE_SIZE) == 0 {
 				let table = (dir_entry_value & ADDR_MASK) as *mut u32;
-				free_obj(table);
+				free_obj(memory::kern_to_virt(table as _) as _);
 			}
 		}
 
-		free_obj(self.page_dir);
+		free_obj(self.page_dir as _);
 	}
 }
 

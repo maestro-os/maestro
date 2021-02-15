@@ -11,7 +11,7 @@ use crate::memory::vmem::VMem;
 use crate::memory::vmem;
 use crate::util::boxed::Box;
 
-/// Structure representing the virtual memory of a context.
+/// Structure representing the virtual memory space of a context.
 pub struct MemSpace {
 	// TODO Store memory mappings and gaps
 
@@ -50,6 +50,11 @@ impl MemSpace {
 	/// further attempts to access it shall result in a page fault.
 	pub fn unmap(_ptr: *const c_void, _size: usize) {
 		// TODO
+	}
+
+	/// Binds the CPU to this memory space.
+	pub fn bind(&self) {
+		self.vmem.bind();
 	}
 
 	/// Function called whenever the CPU triggered a page fault for the context. This function

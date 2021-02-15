@@ -99,11 +99,12 @@ impl Scheduler {
 			curr_proc.regs = *regs;
 		}
 
-		if let Some(curr_proc) = self.get_next_process() {
-			// TODO Switch paging context
+		if let Some(next_proc) = self.get_next_process() {
+			next_proc.mem_space.bind();
+
 			unsafe { // Call to ASM function
-				println!("Switching {:p} {}", curr_proc, curr_proc.regs.eip); // TODO rm
-				context_switch(&curr_proc.regs, 32 | 3, 24 | 3); // TODO Clean
+				println!("Switching {:p} {}", next_proc, next_proc.regs.eip); // TODO rm
+				context_switch(&next_proc.regs, 32 | 3, 24 | 3); // TODO Clean
 			}
 		}
 	}
