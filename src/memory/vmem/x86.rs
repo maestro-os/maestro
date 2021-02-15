@@ -501,23 +501,7 @@ mod test {
 	use super::*;
 
 	#[test_case]
-	fn vmem_basic0() {
-		let vmem = X86VMem::new().unwrap();
-		for i in 0..1024 {
-			assert_eq!(vmem.translate(i as _), None);
-		}
-	}
-
-	#[test_case]
-	fn vmem_basic1() {
-		let vmem = X86VMem::new().unwrap();
-		for i in 0..1024 {
-			assert!(vmem.translate(((memory::PROCESS_END as usize) + i) as _) != None);
-		}
-	}
-
-	#[test_case]
-	fn vmem_basic2() {
+	fn vmem_x86_vga_text_access() {
 		let vmem = X86VMem::new().unwrap();
 		for i in 0..(80 * 25 * 2) {
 			assert!(vmem.translate(((vga::BUFFER_VIRT as usize) + i) as _) != None);

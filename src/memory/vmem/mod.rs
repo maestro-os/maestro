@@ -104,3 +104,27 @@ pub unsafe fn write_lock_wrap<T: Fn()>(f: T) {
 
 	set_write_lock(lock);
 }
+
+#[cfg(test)]
+mod test {
+	use super::*;
+	use crate::memory;
+
+	#[test_case]
+	fn vmem_basic0() {
+		let vmem = new().unwrap();
+		for i in 0..1024 {
+			assert_eq!(vmem.translate(i as _), None);
+		}
+	}
+
+	#[test_case]
+	fn vmem_basic1() {
+		let vmem = new().unwrap();
+		for i in 0..1024 {
+			assert!(vmem.translate(((memory::PROCESS_END as usize) + i) as _) != None);
+		}
+	}
+
+	// TODO Add more tests
+}
