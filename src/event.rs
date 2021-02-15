@@ -134,7 +134,7 @@ pub fn register_callback<T: 'static + InterruptCallback>(id: u8, priority: u32, 
 /// `regs` is the state of the registers at the moment of the interrupt.
 #[no_mangle]
 pub extern "C" fn event_handler(id: u32, code: u32, regs: &util::Regs) {
-	// TODO PROTENTIAL DEADLOCK: Interruption when the Mutex is already being used?
+	// TODO POTENTIAL DEADLOCK: Interruption when the Mutex is already being used?
 	let guard = unsafe { // Access to global variable
 		MutexGuard::new(&mut CALLBACKS)
 	};

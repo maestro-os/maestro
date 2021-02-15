@@ -234,9 +234,8 @@ impl X86VMem {
 		let mut vmem = Self {
 			page_dir: alloc_obj()?,
 		};
-		vmem.identity(NULL, 0)?;
 		// TODO If Meltdown mitigation is enabled, only allow read access to a stub for interrupts
-		// TODO Place pages count in a constant
+		// TODO Place pages count in a constant, limit to size of physical memory
 		vmem.map_range(NULL, memory::PROCESS_END, 262144, FLAG_WRITE)?;
 		// TODO Extend to other DMA
 		vmem.map_range(vga::BUFFER_PHYS as _, vga::BUFFER_VIRT as _, 1,
@@ -497,4 +496,31 @@ impl Drop for X86VMem {
 	}
 }
 
-// TODO Unit tests
+#[cfg(test)]
+mod test {
+	use super::*;
+
+	#[test_case]
+	fn vmem_basic0() {
+		let vmem = X86VMem::new().unwrap();
+		for i in 0..1024 {
+			assert_eq!(vmem.translate(i as _), None);
+		}
+	}
+
+	#[test_case]
+	fn vmem_basic1() {
+		let vmem = X86VMem::new().unwrap();
+		for i in 0..1024 {
+			assert!(vmem.translate(((memory::PROCESS_END as usize) + i) as _) != None);
+		}
+	}
+
+	#[test_case]
+	fn vmem_basic2() {
+		let vmem = X86VMem::new().unwrap();
+		for i in 0..(80 * 25 * 2) {
+			assert!(vmem.translate(((vga::BUFFER_VIRT as usize) + i) as _) != None);
+		}
+	}
+}
