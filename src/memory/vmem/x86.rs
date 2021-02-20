@@ -326,9 +326,18 @@ impl X86VMem {
 impl VMem for X86VMem {
 	fn translate(&self, ptr: *const c_void) -> Option<*const c_void> {
 		if let Some(e) = self.resolve(ptr) {
-			Some((unsafe { // Dereference of raw pointer
+			let entry_value = unsafe { // Dereference of raw pointer
 				*e
-			} & ADDR_MASK) as _) // TODO Add remaining offset (check if PSE is used)
+			};
+			let remain_mask = if entry_value & FLAG_GLOBAL == 0 {
+				memory::PAGE_SIZE - 1
+			} else {
+				1024 * memory::PAGE_SIZE - 1
+			};
+
+			let mut virtptr = (entry_value & ADDR_MASK) as usize;
+			virtptr |= ptr as usize & remain_mask;
+			Some(virtptr as _)
 		} else {
 			None
 		}
