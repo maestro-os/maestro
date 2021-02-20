@@ -83,8 +83,8 @@ extern "C" {
 	pub fn cr0_get() -> u32;
 	pub fn cr0_set(flags: u32);
 	pub fn cr0_clear(flags: u32);
-	pub fn cr2_get() -> u32;
-	pub fn cr3_get() -> u32;
+	pub fn cr2_get() -> *const c_void;
+	pub fn cr3_get() -> *mut c_void;
 
 	pub fn paging_enable(directory: *const u32);
 	pub fn paging_disable();
@@ -472,7 +472,7 @@ impl VMem for X86VMem {
 
 	fn is_bound(&self) -> bool {
 		unsafe { // Call to C function
-			self.page_dir == (cr3_get() as _)
+			cr3_get() == memory::kern_to_phys(self.page_dir as _) as _
 		}
 	}
 

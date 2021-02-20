@@ -102,7 +102,10 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 	memory::memmap::init(multiboot_ptr);
 	memory::memmap::print_entries(); // TODO rm
 	memory::alloc::init();
-	memory::vmem::kernel();
+	let kernel_vmem = memory::vmem::kernel();
+	if kernel_vmem.is_err() {
+		crate::kernel_panic!("Cannot initialize kernel virtual memory!", 0);
+	}
 
 	#[cfg(test)]
 	kernel_selftest();

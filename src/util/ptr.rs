@@ -2,12 +2,14 @@
 
 use core::ffi::c_void;
 use core::marker::Unsize;
+use core::mem::ManuallyDrop;
 use core::mem::size_of_val;
 use core::mem::transmute;
 use core::ops::CoerceUnsized;
 use core::ops::{Deref, DerefMut};
 use core::ptr::NonNull;
 use core::ptr::copy_nonoverlapping;
+use core::ptr::drop_in_place;
 use crate::memory::malloc;
 use crate::util::data_struct::LinkedList;
 
@@ -24,14 +26,16 @@ pub struct SharedPtr<T: ?Sized> {
 impl<T> SharedPtr<T> {
 	/// Creates a new shared pointer for the given value `value`.
 	pub fn new(value: T) -> Result<SharedPtr::<T>, ()> {
-		let size = size_of_val(&value);
+		let value_ref = &ManuallyDrop::new(value);
+
+		let size = size_of_val(value_ref);
 		let ptr = if size > 0 {
 			let ptr = unsafe { // Use of transmute
 				// TODO Check that conversion from thin to fat pointer works
 				transmute::<*mut c_void, *mut T>(malloc::alloc(size)?)
 			};
 			unsafe { // Call to unsafe function
-				copy_nonoverlapping(&value as *const _ as *const u8, ptr as *mut u8, size);
+				copy_nonoverlapping(value_ref as *const _ as *const u8, ptr as *mut u8, size);
 			}
 			NonNull::new(ptr).unwrap()
 		} else {
@@ -91,6 +95,9 @@ impl<T: ?Sized + Unsize<U>, U: ?Sized> CoerceUnsized<SharedPtr<U>> for SharedPtr
 impl<T: ?Sized> Drop for SharedPtr<T> {
 	fn drop(&mut self) {
 		if self.list.is_single() {
+			unsafe { // Call to unsafe function
+				drop_in_place(self.ptr.as_ptr());
+			}
 			malloc::free(self.ptr.as_ptr() as *mut _);
 		} else {
 			self.list.unlink_floating();

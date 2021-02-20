@@ -64,14 +64,12 @@ pub fn new() -> Result::<Box::<dyn VMem>, ()> {
 	Ok(Box::new(x86::X86VMem::new()?)? as Box::<dyn VMem>)
 }
 
-// TODO Handle leak
-/// Creates and loads the kernel's memory protection, protecting its code from writing.
-pub fn kernel() {
-	if let Ok(kernel_vmem) = new() {
-		kernel_vmem.bind();
-	} else {
-		crate::kernel_panic!("Cannot initialize kernel virtual memory!", 0);
-	}
+/// Creates and loads the kernel's virtual memory context handler, protecting its code from
+/// writing.
+pub fn kernel() -> Result::<Box::<dyn VMem>, ()> {
+	let kernel_vmem = new()?;
+	kernel_vmem.bind();
+	Ok(kernel_vmem)
 }
 
 /// Tells whether the read-only pages protection is enabled.
