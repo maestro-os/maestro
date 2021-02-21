@@ -4,13 +4,14 @@
 
 use core::cmp::{min, max};
 use core::ffi::c_void;
+use core::mem::MaybeUninit;
 use core::mem::size_of;
 use crate::list_new;
 use crate::memory::buddy;
 use crate::memory;
 use crate::offset_of;
-use crate::util::data_struct::List;
-use crate::util::data_struct::ListNode;
+use crate::util::data_struct::list::List;
+use crate::util::data_struct::list::ListNode;
 use crate::util;
 
 /// Type representing chunks' flags.
@@ -72,14 +73,13 @@ struct Block {
 type FreeList = List<FreeChunk>;
 
 /// List storing free lists for each free chunk. The chunks are storted by size.
-static mut FREE_LISTS: [List::<FreeChunk>; FREE_LIST_BINS]
-	= [list_new!(FreeChunk, free_list); FREE_LIST_BINS];
+static mut FREE_LISTS: MaybeUninit::<[List::<FreeChunk>; FREE_LIST_BINS]> = MaybeUninit::uninit();
 
 /// Checks the chunks inside of each free lists.
 #[cfg(kernel_mode = "debug")]
 fn check_free_lists() {
-	let free_lists = unsafe { // Access to global variable
-		&mut FREE_LISTS
+	let free_lists = unsafe { // Access to global variable and call to unsafe function
+		FREE_LISTS.assume_init_mut()
 	};
 
 	for i in 0..FREE_LIST_BINS {
@@ -98,8 +98,8 @@ fn get_free_list(size: usize, insert: bool) -> Option<&'static mut FreeList> {
 	let mut i = util::log2(size / FREE_LIST_SMALLEST_SIZE);
 	i = min(i, FREE_LIST_BINS - 1);
 
-	let free_lists = unsafe { // Access to global variable
-		&mut FREE_LISTS
+	let free_lists = unsafe { // Access to global variable and call to unsafe function
+		FREE_LISTS.assume_init_mut()
 	};
 
 	if !insert {
@@ -271,7 +271,9 @@ impl Chunk {
 
 			if !n.is_used() {
 				self.size += size_of::<Chunk>() + n.size;
-				next.unlink_floating();
+				unsafe { // Call to unsafe function
+					next.unlink_floating();
+				}
 				n.as_free_chunk().free_list_remove();
 				#[cfg(kernel_mode = "debug")]
 				n.check();
@@ -303,7 +305,6 @@ impl Chunk {
 			return false;
 		}
 		let node = next.unwrap();
-
 		let n = node.get_mut::<Chunk>(crate::offset_of!(Chunk, list));
 		if n.is_used() {
 			return false;
@@ -316,7 +317,9 @@ impl Chunk {
 		}
 		self.size += available_size;
 
-		node.unlink_floating();
+		unsafe { // Call to unsafe function
+			node.unlink_floating();
+		}
 		n.as_free_chunk().free_list_remove();
 
 		self.split(new_size);
@@ -476,6 +479,17 @@ impl Block {
 	/// Returns the total size of the block in bytes.
 	fn get_total_size(&self) -> usize {
 		buddy::get_frame_size(self.order)
+	}
+}
+
+/// Initializes the memory allocator.
+pub fn init() {
+	let free_lists = unsafe { // Access to global variable and call to unsafe function
+		FREE_LISTS.assume_init_mut()
+	};
+
+	for i in 0..FREE_LIST_BINS {
+		free_lists[i] = list_new!(FreeChunk, free_list);
 	}
 }
 

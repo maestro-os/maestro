@@ -11,7 +11,7 @@ use core::ptr::NonNull;
 use core::ptr::copy_nonoverlapping;
 use core::ptr::drop_in_place;
 use crate::memory::malloc;
-use crate::util::data_struct::ListNode;
+use crate::util::data_struct::list::ListNode;
 
 /// A shared pointer is a structure which allows to share ownership of a value between several
 /// objects. The object counts the number of references to it. When this count reaches zero, the
@@ -101,7 +101,9 @@ impl<T: ?Sized> Drop for SharedPtr<T> {
 			}
 			malloc::free(self.ptr.as_ptr() as *mut _);
 		} else {
-			self.list.unlink_floating();
+			unsafe { // Call to unsafe function
+				self.list.unlink_floating();
+			}
 		}
 	}
 }
