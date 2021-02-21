@@ -88,12 +88,15 @@ pub fn bit_size_of<T>() -> usize {
 	core::mem::size_of::<T>() * 8
 }
 
-/// Returns the offset of the given field `field` in structure `type`. The type must be a pointer
-/// type.
+/// Returns the offset of the given field `field` in structure `type`.
 #[macro_export]
 macro_rules! offset_of {
 	($type:ty, $field:ident) => {
-		(&(*(core::ptr::null::<c_void>() as $type)).$field) as *const _ as *const c_void as usize
+		#[allow(unused_unsafe)]
+		unsafe { // Dereference of raw pointer
+			let ptr = core::ptr::NonNull::<c_void>::dangling().as_ptr();
+			(&(*(ptr as *const $type)).$field) as *const _ as usize - ptr as usize
+		}
 	}
 }
 

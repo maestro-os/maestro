@@ -9,6 +9,7 @@
 #![feature(coerce_unsized)]
 #![feature(const_in_array_repeat_expressions)]
 #![feature(const_ptr_offset)]
+#![feature(const_raw_ptr_deref)]
 #![feature(const_raw_ptr_to_usize_cast)]
 #![feature(custom_test_frameworks)]
 #![feature(dispatch_from_dyn)]
@@ -16,6 +17,7 @@
 #![feature(lang_items)]
 #![feature(maybe_uninit_ref)]
 #![feature(panic_info_message)]
+#![feature(stmt_expr_attributes)]
 #![feature(unsize)]
 
 #![deny(warnings)]

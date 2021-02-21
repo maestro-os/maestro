@@ -70,6 +70,7 @@ pub const PAGE_FAULT_INSTRUCTION: u32 = 0b10000;
 
 /// Structure wrapping a virtual memory. This structure contains the counter for the number of
 /// elements that are used in the associated element.
+#[derive(Debug)]
 pub struct VMemWrapper {
 	/// The number of used elements in the associated element
 	used_elements: u16,
@@ -149,6 +150,7 @@ fn free_obj(obj: *mut u32) {
 }
 
 /// The structure representing virtual memory context handler for the x86 architecture.
+#[derive(Debug)]
 pub struct X86VMem {
 	/// The virtual address to the page directory.
 	page_dir: *mut u32,

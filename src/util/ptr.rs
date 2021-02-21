@@ -11,14 +11,15 @@ use core::ptr::NonNull;
 use core::ptr::copy_nonoverlapping;
 use core::ptr::drop_in_place;
 use crate::memory::malloc;
-use crate::util::data_struct::LinkedList;
+use crate::util::data_struct::ListNode;
 
 /// A shared pointer is a structure which allows to share ownership of a value between several
 /// objects. The object counts the number of references to it. When this count reaches zero, the
 /// value is freed.
+#[derive(Debug)]
 pub struct SharedPtr<T: ?Sized> {
 	/// The list storing other shared pointers pointing to the same data.
-	list: LinkedList,
+	list: ListNode,
 	/// A pointer to the data.
 	ptr: NonNull<T>,
 }
@@ -43,14 +44,14 @@ impl<T> SharedPtr<T> {
 		};
 
 		Ok(Self {
-			list: LinkedList::new_single(),
+			list: ListNode::new_single(),
 			ptr: ptr,
 		})
 	}
 
 	/// Clones the shared pointer, sharing the ownership.
 	pub fn clone(&mut self) -> Self {
-		let mut list = LinkedList::new_single();
+		let mut list = ListNode::new_single();
 		list.insert_after(&mut self.list);
 
 		SharedPtr {
@@ -105,4 +106,27 @@ impl<T: ?Sized> Drop for SharedPtr<T> {
 	}
 }
 
-// TODO Unit tests
+#[cfg(test)]
+mod test {
+	use super::*;
+
+	#[test_case]
+	fn shared_ptr0() {
+		let b = SharedPtr::new(42 as usize);
+		debug_assert_eq!(*b.unwrap(), 42);
+	}
+
+	#[test_case]
+	fn shared_ptr1() {
+		let mut b = SharedPtr::new(42 as usize).unwrap();
+		let b1 = b.clone();
+		debug_assert_eq!(*b, 42);
+		debug_assert_eq!(*b1, 42);
+
+		drop(b1);
+
+		debug_assert_eq!(*b, 42);
+	}
+
+	// TODO
+}

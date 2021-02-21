@@ -5,11 +5,12 @@
 use core::cmp::{min, max};
 use core::ffi::c_void;
 use core::mem::size_of;
-use crate::linked_list_get;
+use crate::list_new;
 use crate::memory::buddy;
 use crate::memory;
 use crate::offset_of;
-use crate::util::data_struct::LinkedList;
+use crate::util::data_struct::List;
+use crate::util::data_struct::ListNode;
 use crate::util;
 
 /// Type representing chunks' flags.
@@ -39,7 +40,7 @@ struct Chunk {
 	/// The magic number to check integrity of the chunk.
 	magic: u32, // TODO Option to disable
 	/// The linked list storing the chunks
-	list: LinkedList,
+	list: ListNode,
 	/// The chunk's flags
 	flags: u8,
 	/// The size of the chunk's memory in bytes
@@ -52,7 +53,7 @@ struct FreeChunk {
 	/// The chunk
 	chunk: Chunk,
 	/// The linked list for the free list
-	free_list: LinkedList,
+	free_list: ListNode,
 }
 
 /// Structure representing a frame of memory allocated using the buddy allocator, storing memory
@@ -60,7 +61,7 @@ struct FreeChunk {
 #[repr(C, align(8))]
 struct Block {
 	/// The linked list storing the blocks
-	list: LinkedList,
+	list: ListNode,
 	/// The order of the frame for the buddy allocator
 	order: buddy::FrameOrder,
 	/// The first chunk of the block
@@ -68,10 +69,11 @@ struct Block {
 }
 
 /// Type representing a free list entry into the free lists list.
-type FreeList = Option<*mut LinkedList>;
+type FreeList = List<FreeChunk>;
 
 /// List storing free lists for each free chunk. The chunks are storted by size.
-static mut FREE_LISTS: [FreeList; FREE_LIST_BINS] = [None; FREE_LIST_BINS];
+static mut FREE_LISTS: [List::<FreeChunk>; FREE_LIST_BINS]
+	= [list_new!(FreeChunk, free_list); FREE_LIST_BINS];
 
 /// Checks the chunks inside of each free lists.
 #[cfg(kernel_mode = "debug")]
@@ -81,27 +83,9 @@ fn check_free_lists() {
 	};
 
 	for i in 0..FREE_LIST_BINS {
-		let c = free_lists[i];
-		if c.is_none() {
-			continue;
-		}
-
-		let mut node = c.unwrap();
-		loop {
-			let chunk = unsafe {
-				&*linked_list_get!(node as *mut LinkedList, *mut FreeChunk, free_list)
-			};
-			chunk.check();
-
-			let next = unsafe { // Dereference of raw pointer
-				(*node).get_next()
-			};
-			if let Some(n) = next {
-				node = n;
-			} else {
-				break;
-			}
-		}
+		free_lists[i].foreach(| node | {
+			node.get::<FreeChunk>(crate::offset_of!(FreeChunk, free_list)).check();
+		});
 	}
 }
 
@@ -121,7 +105,7 @@ fn get_free_list(size: usize, insert: bool) -> Option<&'static mut FreeList> {
 	if !insert {
 		i += 1;
 
-		while i < FREE_LIST_BINS && free_lists[i].is_none() {
+		while i < FREE_LIST_BINS && free_lists[i].is_empty() {
 			i += 1;
 		}
 
@@ -196,9 +180,7 @@ impl Chunk {
 		}
 
 		if let Some(prev) = self.list.get_prev() {
-			let p = unsafe {
-				&*linked_list_get!(prev as *mut LinkedList, *mut Chunk, list)
-			};
+			let p = prev.get::<Chunk>(crate::offset_of!(Chunk, list));
 			debug_assert!(p as *const _ as *const c_void >= memory::PROCESS_END);
 			debug_assert!(p.get_size() >= get_min_chunk_size());
 
@@ -207,9 +189,7 @@ impl Chunk {
 		}
 
 		if let Some(next) = self.list.get_next() {
-			let n = unsafe {
-				&*linked_list_get!(next as *mut LinkedList, *mut Chunk, list)
-			};
+			let n = next.get::<Chunk>(crate::offset_of!(Chunk, list));
 			debug_assert!(n as *const _ as *const c_void >= memory::PROCESS_END);
 			debug_assert!(n.get_size() >= get_min_chunk_size());
 
@@ -287,9 +267,7 @@ impl Chunk {
 		}
 
 		if let Some(next) = self.list.get_next() {
-			let n = unsafe {
-				&mut *linked_list_get!(next as *mut LinkedList, *mut Chunk, list)
-			};
+			let n = next.get_mut::<Chunk>(crate::offset_of!(Chunk, list));
 
 			if !n.is_used() {
 				self.size += size_of::<Chunk>() + n.size;
@@ -302,10 +280,7 @@ impl Chunk {
 
 		if !self.is_used() {
 			if let Some(prev) = self.list.get_prev() {
-				let p = unsafe {
-					&mut *linked_list_get!(prev as *mut LinkedList, *mut Chunk, list)
-				};
-
+				let p = prev.get_mut::<Chunk>(crate::offset_of!(Chunk, list));
 				if !p.is_used() {
 					return p.coalesce();
 				}
@@ -328,9 +303,8 @@ impl Chunk {
 			return false;
 		}
 		let node = next.unwrap();
-		let n = unsafe {
-			&mut *linked_list_get!(node as *mut LinkedList, *mut Chunk, list)
-		};
+
+		let n = node.get_mut::<Chunk>(crate::offset_of!(Chunk, list));
 		if n.is_used() {
 			return false;
 		}
@@ -364,9 +338,7 @@ impl Chunk {
 			self.split(new_size);
 
 			let next = self.list.get_next().unwrap();
-			let n = unsafe {
-				&mut *linked_list_get!(next as *mut LinkedList, *mut Chunk, list)
-			};
+			let n = next.get_mut::<Chunk>(crate::offset_of!(Chunk, list));
 			debug_assert!(!n.is_used());
 			n.coalesce();
 		}
@@ -386,11 +358,11 @@ impl FreeChunk {
 		*c = Self {
 			chunk: Chunk {
 				magic: CHUNK_MAGIC,
-				list: LinkedList::new_single(),
+				list: ListNode::new_single(),
 				flags: 0,
 				size: size,
 			},
-			free_list: LinkedList::new_single(),
+			free_list: ListNode::new_single(),
 		};
 	}
 
@@ -399,11 +371,11 @@ impl FreeChunk {
 		Self {
 			chunk: Chunk {
 				magic: CHUNK_MAGIC,
-				list: LinkedList::new_single(),
+				list: ListNode::new_single(),
 				flags: 0,
 				size: size,
 			},
-			free_list: LinkedList::new_single(),
+			free_list: ListNode::new_single(),
 		}
 	}
 
@@ -443,7 +415,7 @@ impl FreeChunk {
 		check_free_lists();
 
 		let free_list = get_free_list(self.get_size(), true).unwrap();
-		self.free_list.insert_front(free_list);
+		free_list.insert_front(&mut self.free_list);
 
 		#[cfg(kernel_mode = "debug")]
 		check_free_lists();
@@ -457,7 +429,7 @@ impl FreeChunk {
 		check_free_lists();
 
 		let free_list = get_free_list(self.get_size(), true).unwrap();
-		self.free_list.unlink(free_list);
+		self.free_list.unlink_from(free_list);
 
 		#[cfg(kernel_mode = "debug")]
 		check_free_lists();
@@ -480,11 +452,11 @@ impl Block {
 			&mut *(ptr as *mut Block)
 		};
 		*block = Self {
-			list: LinkedList::new_single(),
+			list: ListNode::new_single(),
 			order: order,
 			first_chunk: Chunk {
 				magic: CHUNK_MAGIC,
-				list: LinkedList::new_single(),
+				list: ListNode::new_single(),
 				flags: 0,
 				size: 0,
 			},
@@ -495,7 +467,7 @@ impl Block {
 
 	/// Returns a mutable reference to the block whose first chunk's reference is passed as argument.
 	pub unsafe fn from_first_chunk(chunk: *mut Chunk) -> &'static mut Block {
-		let first_chunk_off = offset_of!(*const Block, first_chunk);
+		let first_chunk_off = offset_of!(Block, first_chunk);
 		let ptr = ((chunk as usize) - first_chunk_off) as *mut Self;
 		debug_assert!(util::is_aligned(ptr as *const c_void, memory::PAGE_SIZE));
 		&mut *ptr
@@ -510,17 +482,10 @@ impl Block {
 /// Returns a reference to a free chunk suitable for an allocation of given size `size`.
 /// On success, the return value MUST be used or might result in a memory leak.
 fn get_available_chunk(size: usize) -> Result<&'static mut FreeChunk, ()> {
-	let f = get_free_list(size, false);
+	let free_list = get_free_list(size, false);
 	let chunk = {
-		if f.is_some() {
-			let free_list = f.unwrap();
-			let chunk_node = unsafe {
-				&mut *free_list.unwrap()
-			};
-
-			unsafe {
-				&mut *linked_list_get!(chunk_node, *mut FreeChunk, free_list)
-			}
+		if let Some(f) = free_list {
+			f.get_mut_front().unwrap()
 		} else {
 			let block = Block::new(size)?;
 			unsafe { // Dereference of raw pointer
@@ -616,7 +581,7 @@ pub fn free(ptr: *mut c_void) {
 	assert!(chunk.is_used());
 
 	chunk.set_used(false);
-	chunk.as_free_chunk().free_list = LinkedList::new_single();
+	chunk.as_free_chunk().free_list = ListNode::new_single();
 
 	let c = chunk.coalesce();
 	if c.list.is_single() {
