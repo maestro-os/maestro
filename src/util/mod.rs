@@ -12,6 +12,7 @@ pub mod lock;
 pub mod ptr;
 
 use core::ffi::c_void;
+use core::mem::MaybeUninit;
 
 /// Tells if pointer `ptr` is aligned on boundary `n`.
 #[inline(always)]
@@ -154,6 +155,14 @@ pub unsafe fn ptr_to_str(ptr: *const c_void) -> &'static str {
 	let len = strlen(ptr);
 	let slice = core::slice::from_raw_parts(ptr as *const u8, len);
 	core::str::from_utf8_unchecked(slice)
+}
+
+/// Assigns value `val` to pointer `ptr` with calling Drop on it to prevent dropping garbage data.
+/// If `ptr` doesn't point to a valid memory location, the behaviour is undefined.
+pub unsafe fn write_ptr<T>(ptr: *mut T, val: T) -> &'static mut T {
+	let next = &mut *(ptr as *mut MaybeUninit<T>);
+	next.write(val);
+	next.assume_init_mut()
 }
 
 #[cfg(test)]
