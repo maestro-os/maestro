@@ -62,7 +62,7 @@ pub trait InterruptCallback {
 	/// `code` is an optional code associated with the interrupt. If no code is given, the value is
 	/// `0`.
 	/// `regs` the values of the registers when the interruption was triggered.
-	fn call(&self, id: u32, code: u32, regs: &util::Regs);
+	fn call(&mut self, id: u32, code: u32, regs: &util::Regs);
 }
 
 /// Structure wrapping a callback to insert it into a linked list.
@@ -135,15 +135,15 @@ pub fn register_callback<T: 'static + InterruptCallback>(id: u8, priority: u32, 
 #[no_mangle]
 pub extern "C" fn event_handler(id: u32, code: u32, regs: &util::Regs) {
 	// TODO POTENTIAL DEADLOCK: Interruption when the Mutex is already being used?
-	let guard = unsafe { // Access to global variable
+	let mut guard = unsafe { // Access to global variable
 		MutexGuard::new(&mut CALLBACKS)
 	};
-	let callbacks = &guard.get()[id as usize];
+	let callbacks = &mut guard.get_mut()[id as usize];
 
 	if let Some(callbacks) = callbacks {
-		for c in callbacks.into_iter() {
-			if (*c.callback).is_enabled() {
-				(*c.callback).call(id, code, regs);
+		for i in 0..callbacks.len() {
+			if (*callbacks[i].callback).is_enabled() {
+				(*callbacks[i].callback).call(id, code, regs);
 			}
 		}
 	} else if (id as usize) < ERROR_MESSAGES.len() {

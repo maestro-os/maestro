@@ -7,6 +7,7 @@ pub mod scheduler;
 pub mod tss;
 
 use core::ffi::c_void;
+use core::mem::MaybeUninit;
 use crate::process::mem_space::MemSpace;
 use crate::process::pid::PIDManager;
 use crate::process::pid::Pid;
@@ -58,11 +59,11 @@ pub struct Process {
 	// TODO Signals list
 }
 
-// TODO Use MaybeUninit?
+// TODO Use mutexes. Take into account sharing with interrupts
 /// The PID manager.
-static mut PID_MANAGER: Option::<PIDManager> = None; // TODO Wrap in mutex
+static mut PID_MANAGER: MaybeUninit::<PIDManager> = MaybeUninit::uninit();
 /// The processes scheduler.
-static mut SCHEDULER: Option::<Scheduler> = None; // TODO Wrap in mutex
+static mut SCHEDULER: MaybeUninit::<SharedPtr::<Scheduler>> = MaybeUninit::uninit();
 
 /// Initializes processes system.
 pub fn init() -> Result::<(), ()> {
@@ -70,8 +71,8 @@ pub fn init() -> Result::<(), ()> {
 	tss::flush();
 
 	unsafe { // Access to global variable
-		PID_MANAGER = Some(PIDManager::new()?);
-		SCHEDULER = Some(Scheduler::new()?);
+		PID_MANAGER.write(PIDManager::new()?);
+		SCHEDULER.write(Scheduler::new()?);
 	}
 
 	Ok(())
@@ -81,7 +82,7 @@ impl Process {
 	/// Returns the process with PID `pid`. If the process doesn't exist, the function returns None.
 	pub fn get_by_pid(pid: Pid) -> Option::<SharedPtr::<Self>> {
 		unsafe { // Access to global variable
-			SCHEDULER.as_mut().unwrap()
+			SCHEDULER.assume_init_mut()
 		}.get_by_pid(pid)
 	}
 
@@ -94,7 +95,7 @@ impl Process {
 
 		// TODO Deadlock fix: requires both memory allocator and PID allocator
 		let pid = unsafe { // Access to global variable
-			PID_MANAGER.as_mut().unwrap()
+			PID_MANAGER.assume_init_mut()
 		}.get_unique_pid()?;
 		let user_stack = core::ptr::null_mut::<c_void>(); // TODO
 		let kernel_stack = core::ptr::null_mut::<c_void>(); // TODO
@@ -125,7 +126,7 @@ impl Process {
 		};
 
 		unsafe { // Access to global variable
-			SCHEDULER.as_mut().unwrap()
+			SCHEDULER.assume_init_mut()
 		}.add_process(process)
 	}
 

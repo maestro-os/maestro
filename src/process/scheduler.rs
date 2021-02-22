@@ -20,7 +20,7 @@ extern "C" {
 /// Scheduler ticking callback.
 pub struct TickCallback {
 	/// A reference to the scheduler.
-	scheduler: *mut Scheduler,
+	scheduler: SharedPtr<Scheduler>,
 }
 
 impl InterruptCallback for TickCallback {
@@ -28,10 +28,8 @@ impl InterruptCallback for TickCallback {
 		true
 	}
 
-	fn call(&self, _id: u32, _code: u32, regs: &util::Regs) {
-		unsafe { // Dereference of raw pointer
-			(*self.scheduler).tick(regs);
-		}
+	fn call(&mut self, _id: u32, _code: u32, regs: &util::Regs) {
+		(*self.scheduler).tick(regs);
 	}
 }
 
@@ -48,15 +46,15 @@ pub struct Scheduler {
 
 impl Scheduler {
 	/// Creates a new instance of scheduler.
-	pub fn new() -> Result::<Self, ()> {
-		let mut s = Self {
+	pub fn new() -> Result::<SharedPtr::<Self>, ()> {
+		let mut s = SharedPtr::<Self>::new(Self {
 			tick_callback: None,
 
 			processes: Vec::<SharedPtr::<Process>>::new(),
 			curr_proc: None,
-		};
-		s.tick_callback = Some(event::register_callback(32, 0, TickCallback {
-			scheduler: &mut s as _,
+		})?;
+		(*s).tick_callback = Some(event::register_callback(32, 0, TickCallback {
+			scheduler: s.clone(),
 		})?);
 		Ok(s)
 	}
