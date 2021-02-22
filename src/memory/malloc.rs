@@ -4,6 +4,7 @@
 
 use core::cmp::{min, max};
 use core::ffi::c_void;
+use core::mem::ManuallyDrop;
 use core::mem::MaybeUninit;
 use core::mem::size_of;
 use crate::list_new;
@@ -239,18 +240,18 @@ impl Chunk {
 			self.as_free_chunk().free_list_remove();
 		}
 
-		if let Some(next) = self.get_split_next_chunk(size) {
-			let curr_new_size = (next as usize) - (self.get_ptr() as usize);
-
+		if let Some(next_ptr) = self.get_split_next_chunk(size) {
+			let curr_new_size = (next_ptr as usize) - (self.get_ptr() as usize);
 			let next_size = self.size - curr_new_size - size_of::<Chunk>();
-			unsafe { // Dereference of raw pointer
-				*next = FreeChunk::new(next_size);
-				#[cfg(kernel_mode = "debug")]
-				(*next).check();
-				(*next).free_list_insert();
-				(*next).chunk.list.insert_after(&mut self.list);
-				debug_assert!(!(*next).chunk.list.is_single());
-			}
+			let next = unsafe {
+				&mut *(next_ptr as *mut ManuallyDrop<FreeChunk>)
+			};
+			*next = ManuallyDrop::new(FreeChunk::new(next_size));
+			#[cfg(kernel_mode = "debug")]
+			(*next).check();
+			(*next).free_list_insert();
+			(*next).chunk.list.insert_after(&mut self.list);
+			debug_assert!(!(*next).chunk.list.is_single());
 
 			self.size = curr_new_size;
 		}
@@ -356,9 +357,9 @@ impl FreeChunk {
 	/// block. The chunk is **not** inserted into the free list.
 	pub fn new_first(ptr: *mut c_void, size: usize) {
 		let c = unsafe { // Dereference of raw pointer
-			&mut *(ptr as *mut Self)
+			&mut *(ptr as *mut ManuallyDrop<Self>)
 		};
-		*c = Self {
+		*c = ManuallyDrop::new(Self {
 			chunk: Chunk {
 				magic: CHUNK_MAGIC,
 				list: ListNode::new_single(),
@@ -366,7 +367,7 @@ impl FreeChunk {
 				size: size,
 			},
 			free_list: ListNode::new_single(),
-		};
+		});
 	}
 
 	/// Creates a new free chunk. `size` is the size of the available memory in the chunk.
@@ -452,9 +453,9 @@ impl Block {
 		let ptr = buddy::alloc_kernel(order)?;
 		debug_assert!(ptr as *const _ >= memory::PROCESS_END);
 		let block = unsafe { // Dereference of raw pointer
-			&mut *(ptr as *mut Block)
+			&mut *(ptr as *mut ManuallyDrop<Block>)
 		};
-		*block = Self {
+		*block = ManuallyDrop::new(Self {
 			list: ListNode::new_single(),
 			order: order,
 			first_chunk: Chunk {
@@ -463,7 +464,7 @@ impl Block {
 				flags: 0,
 				size: 0,
 			},
-		};
+		});
 		FreeChunk::new_first(&mut block.first_chunk as *mut _ as *mut c_void, first_chunk_size);
 		Ok(block)
 	}
