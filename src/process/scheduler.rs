@@ -93,20 +93,19 @@ impl Scheduler {
 	/// Ticking the scheduler. This function saves the data of the currently running process, then
 	/// switches to the next process to run.
 	fn tick(&mut self, regs: &util::Regs) {
-		//println!("bleh: {:?}", self.get_current_process());
 		if let Some(curr_proc) = self.get_current_process() {
-			println!("Update {:p} {} {:?}", &*curr_proc, curr_proc.pid, curr_proc.regs);
+			println!("Update {} {:?}", curr_proc.pid, curr_proc.regs);
 			curr_proc.regs = *regs;
 		}
 
-		if let Some(next_proc) = self.get_next_process() {
+		/*if let Some(next_proc) = self.get_next_process() {
 			next_proc.mem_space.bind();
 
 			unsafe { // Call to ASM function
 				println!("Switching {:p} {}", next_proc, next_proc.regs.eip); // TODO rm
 				context_switch(&next_proc.regs, 32 | 3, 24 | 3); // TODO Clean
 			}
-		}
+		}*/
 	}
 }
 

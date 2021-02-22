@@ -174,7 +174,9 @@ impl<T> Vec<T> {
 
 	/// Clears the vector, removing all values.
 	fn clear(&mut self) {
-		// TODO Call drop on each?
+		for e in self.into_iter() {
+			drop(e);
+		}
 
 		self.len = 0;
 		self.capacity = 0;
@@ -186,12 +188,13 @@ impl<T> Vec<T> {
 	}
 }
 
-impl<T: Clone> Clone for Vec<T> {
+// TODO
+/*impl<T: Clone> Clone for Vec<T> {
 	fn clone(&self) -> Self {
 		// TODO
 		Self::new()
 	}
-}
+}*/
 
 impl<T> Index<usize> for Vec<T> {
 	type Output = T;
