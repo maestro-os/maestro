@@ -2,6 +2,7 @@
 
 use core::cmp::*;
 use core::mem::MaybeUninit;
+use core::mem::size_of;
 use crate::memory::vmem;
 use crate::util::lock::mutex::Mutex;
 use crate::util::lock::mutex::MutexGuard;
@@ -32,7 +33,7 @@ const BELL_FREQUENCY: u32 = 2000;
 /// The duraction of the bell in ms.
 const BELL_DURATION: u32 = 500;
 
-/// Returns the position of the cursor in the history array from x and y position.
+/// Returns the position of the cursor in the history array from `x` and `y` position.
 fn get_history_offset(x: vga::Pos, y: vga::Pos) -> usize {
 	let off = (y * vga::WIDTH + x) as usize;
 	debug_assert!(off < HISTORY_SIZE);
@@ -145,24 +146,12 @@ impl TTY {
 			}
 		}
 
-		if self.screen_y + vga::HEIGHT <= HISTORY_LINES {
-			unsafe {
-				let buff = &self.history[get_history_offset(0, self.screen_y)] as *const _;
-				vmem::write_lock_wrap(|| {
-					core::ptr::copy_nonoverlapping(buff, vga::BUFFER_VIRT as *mut _,
-						(vga::WIDTH as usize) * (vga::HEIGHT as usize)
-						* core::mem::size_of::<vga::Char>());
-				});
-			}
-		} else {
-			unsafe {
-				let buff = &self.history[get_history_offset(0, self.screen_y)] as *const _;
-				vmem::write_lock_wrap(|| {
-					core::ptr::copy_nonoverlapping(buff, vga::BUFFER_VIRT as *mut _,
-						(vga::WIDTH * (HISTORY_LINES - self.screen_y)) as usize
-						* core::mem::size_of::<vga::Char>());
-				});
-			}
+		let buff = &self.history[get_history_offset(0, self.screen_y)];
+		unsafe { // Call to unsafe function
+			vmem::write_lock_wrap(|| {
+				core::ptr::copy_nonoverlapping(buff as *const _, vga::BUFFER_VIRT as *mut _,
+					(vga::WIDTH as usize) * (vga::HEIGHT as usize) * size_of::<vga::Char>());
+			});
 		}
 
 		let y = self.cursor_y - self.screen_y;
@@ -238,9 +227,10 @@ impl TTY {
 			for i in 0..size {
 				self.history[i] = self.history[diff + i];
 			}
-			for i in size..diff {
+			for i in size..self.history.len() {
 				self.history[i] = 0;
 			}
+
 			self.screen_y = HISTORY_LINES - vga::HEIGHT;
 		}
 
