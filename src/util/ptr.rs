@@ -8,6 +8,7 @@ use core::ops::{Deref, DerefMut};
 use core::ptr::NonNull;
 use core::ptr::drop_in_place;
 use crate::memory::malloc;
+use crate::util::write_ptr;
 
 /// Inner structure of the shared pointer. The same instance of this structure is shared with
 /// every clones of a SharedPtr structure. This structure holds the number of SharedPtr holding it.
@@ -51,8 +52,8 @@ impl<T> SharedPtr<T> {
 	/// Creates a new shared pointer for the given value `value`.
 	pub fn new(value: T) -> Result<SharedPtr::<T>, ()> {
 		let ptr = malloc::alloc(size_of::<SharedPtrInner::<T>>())? as *mut SharedPtrInner<T>;
-		unsafe { // Dereference of raw pointer
-			*ptr = SharedPtrInner::new(value);
+		unsafe { // Call to unsafe function
+			write_ptr(ptr, SharedPtrInner::new(value));
 		}
 
 		Ok(Self {

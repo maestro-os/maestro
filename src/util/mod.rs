@@ -157,12 +157,11 @@ pub unsafe fn ptr_to_str(ptr: *const c_void) -> &'static str {
 	core::str::from_utf8_unchecked(slice)
 }
 
-/// Assigns value `val` to pointer `ptr` with calling Drop on it to prevent dropping garbage data.
-/// If `ptr` doesn't point to a valid memory location, the behaviour is undefined.
-pub unsafe fn write_ptr<T>(ptr: *mut T, val: T) -> &'static mut T {
+/// Assigns value `val` to pointer `ptr` without calling Drop on it to prevent dropping garbage
+/// data. If `ptr` doesn't point to a valid memory location, the behaviour is undefined.
+pub unsafe fn write_ptr<T>(ptr: *mut T, val: T) {
 	let next = &mut *(ptr as *mut MaybeUninit<T>);
 	next.write(val);
-	next.assume_init_mut()
 }
 
 #[cfg(test)]

@@ -242,8 +242,9 @@ impl Chunk {
 		if let Some(next_ptr) = self.get_split_next_chunk(size) {
 			let curr_new_size = (next_ptr as usize) - (self.get_ptr() as usize);
 			let next_size = self.size - curr_new_size - size_of::<Chunk>();
-			let next = unsafe { // Call to unsafe function
-				util::write_ptr(next_ptr, FreeChunk::new(next_size))
+			let next = unsafe { // Call to unsafe function and dereference of raw pointer
+				util::write_ptr(next_ptr, FreeChunk::new(next_size));
+				&mut *next_ptr
 			};
 			#[cfg(kernel_mode = "debug")]
 			next.check();
@@ -449,7 +450,7 @@ impl Block {
 
 		let ptr = buddy::alloc_kernel(order)?;
 		debug_assert!(ptr as *const _ >= memory::PROCESS_END);
-		let block = unsafe { // Call to unsafe function
+		let block = unsafe { // Call to unsafe function and dereference of raw pointer
 			util::write_ptr(ptr as *mut Block, Self {
 				list: ListNode::new_single(),
 				order: order,
@@ -459,7 +460,8 @@ impl Block {
 					flags: 0,
 					size: 0,
 				},
-			})
+			});
+			&mut *(ptr as *mut Block)
 		};
 		FreeChunk::new_first(&mut block.first_chunk as *mut _ as *mut c_void, first_chunk_size);
 		Ok(block)
