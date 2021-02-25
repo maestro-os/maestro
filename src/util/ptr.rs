@@ -1,61 +1,74 @@
 /// This module contains pointer-like structures.
 
-use core::ffi::c_void;
 use core::marker::Unsize;
-use core::mem::ManuallyDrop;
-use core::mem::size_of_val;
-use core::mem::transmute;
+use core::mem::size_of;
 use core::ops::CoerceUnsized;
+use core::ops::DispatchFromDyn;
 use core::ops::{Deref, DerefMut};
 use core::ptr::NonNull;
-use core::ptr::copy_nonoverlapping;
 use core::ptr::drop_in_place;
 use crate::memory::malloc;
-use crate::util::data_struct::list::ListNode;
+
+/// Inner structure of the shared pointer. The same instance of this structure is shared with
+/// every clones of a SharedPtr structure. This structure holds the number of SharedPtr holding it.
+/// Each time the pointer is cloned, the counter is incremented. Each time a copy is dropped, the
+/// counter is decrementer. The inner structure is dropped at the moment the counter reaches `0`.
+#[derive(Debug)]
+struct SharedPtrInner<T: ?Sized> {
+	/// The nubmer of shared pointers holding the structure.
+	count: usize,
+	/// The object stored by the structure.
+	obj: T,
+}
+
+impl<T> SharedPtrInner<T> {
+	/// Creates a new instance with the given object. The counter is initialized to `1`.
+	fn new(value: T) -> Self {
+		Self {
+			obj: value,
+			count: 1,
+		}
+	}
+}
+
+impl<T: ?Sized> SharedPtrInner<T> {
+	/// Tells whether the inner structure should be dropped.
+	fn must_drop(&self) -> bool {
+		self.count <= 0
+	}
+}
 
 /// A shared pointer is a structure which allows to share ownership of a value between several
 /// objects. The object counts the number of references to it. When this count reaches zero, the
 /// value is freed.
 #[derive(Debug)]
 pub struct SharedPtr<T: ?Sized> {
-	/// The list storing other shared pointers pointing to the same data.
-	list: ListNode,
-	/// A pointer to the data.
-	ptr: NonNull<T>,
+	/// A pointer to the inner structure shared by every clones of this structure.
+	ptr: NonNull<SharedPtrInner<T>>,
 }
 
 impl<T> SharedPtr<T> {
 	/// Creates a new shared pointer for the given value `value`.
 	pub fn new(value: T) -> Result<SharedPtr::<T>, ()> {
-		let value_ref = &ManuallyDrop::new(value);
-
-		let size = size_of_val(value_ref);
-		let ptr = if size > 0 {
-			let ptr = unsafe { // Use of transmute
-				// TODO Check that conversion from thin to fat pointer works
-				transmute::<*mut c_void, *mut T>(malloc::alloc(size)?)
-			};
-			unsafe { // Call to unsafe function
-				copy_nonoverlapping(value_ref as *const _ as *const u8, ptr as *mut u8, size);
-			}
-			NonNull::new(ptr).unwrap()
-		} else {
-			NonNull::dangling()
-		};
+		let ptr = malloc::alloc(size_of::<SharedPtrInner::<T>>())? as *mut SharedPtrInner<T>;
+		unsafe { // Dereference of raw pointer
+			*ptr = SharedPtrInner::new(value);
+		}
 
 		Ok(Self {
-			list: ListNode::new_single(),
-			ptr: ptr,
+			ptr: NonNull::new(ptr).unwrap(),
 		})
 	}
+}
 
+impl<T: ?Sized> SharedPtr<T> {
 	/// Clones the shared pointer, sharing the ownership.
 	pub fn clone(&mut self) -> Self {
-		let mut list = ListNode::new_single();
-		list.insert_after(&mut self.list);
+		unsafe { // Call to unsafe function
+			self.ptr.as_mut().count += 1;
+		}
 
 		SharedPtr {
-			list: list,
 			ptr: self.ptr,
 		}
 	}
@@ -64,7 +77,7 @@ impl<T> SharedPtr<T> {
 impl<T: ?Sized> AsRef<T> for SharedPtr<T> {
 	fn as_ref(&self) -> &T {
 		unsafe { // Dereference of raw pointer
-			&*self.ptr.as_ptr()
+			&(*self.ptr.as_ptr()).obj
 		}
 	}
 }
@@ -72,7 +85,7 @@ impl<T: ?Sized> AsRef<T> for SharedPtr<T> {
 impl<T: ?Sized> AsMut<T> for SharedPtr<T> {
 	fn as_mut(&mut self) -> &mut T {
 		unsafe { // Dereference of raw pointer
-			&mut *self.ptr.as_ptr()
+			&mut (*self.ptr.as_ptr()).obj
 		}
 	}
 }
@@ -93,20 +106,21 @@ impl<T: ?Sized> DerefMut for SharedPtr<T> {
 
 impl<T: ?Sized + Unsize<U>, U: ?Sized> CoerceUnsized<SharedPtr<U>> for SharedPtr<T> {}
 
+impl<T: ?Sized + Unsize<U>, U: ?Sized> DispatchFromDyn<SharedPtr<U>> for SharedPtr<T> {}
+
 impl<T: ?Sized> Drop for SharedPtr<T> {
 	fn drop(&mut self) {
-		if self.list.is_single() {
-			unsafe { // Call to unsafe function
+		unsafe { // Call to unsafe functions
+			(*self.ptr.as_mut()).count -= 1;
+			if self.ptr.as_ref().must_drop() {
 				drop_in_place(self.ptr.as_ptr());
-			}
-			malloc::free(self.ptr.as_ptr() as *mut _);
-		} else {
-			unsafe { // Call to unsafe function
-				self.list.unlink_floating();
+				malloc::free(self.ptr.as_ptr() as *mut _);
 			}
 		}
 	}
 }
+
+// TODO WeakPtr
 
 #[cfg(test)]
 mod test {
