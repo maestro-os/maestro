@@ -78,6 +78,9 @@ error\n:
 .global irq\n
 
 irq\n:
+	push %ebp
+	mov %esp, %ebp
+
 	sub $40, %esp
 	call get_regs
 
@@ -94,6 +97,8 @@ irq\n:
 	call end_of_interrupt
 	add $4, %esp
 
+	mov %ebp, %esp
+	pop %ebp
 	iret
 .endm
 

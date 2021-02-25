@@ -5,7 +5,7 @@
 use crate::event::InterruptCallback;
 use crate::event;
 use crate::process::Process;
-use crate::process::State;
+//use crate::process::State;
 use crate::process::pid::Pid;
 use crate::util::Regs;
 use crate::util::container::vec::Vec;
@@ -75,10 +75,6 @@ impl Scheduler {
 		let mut ptr = SharedPtr::new(process)?;
 		self.processes.push(ptr.clone());
 
-		if self.curr_proc.is_none() && ptr.get_current_state() == State::Running {
-			self.curr_proc = Some(ptr.clone());
-		}
-
 		Ok(ptr)
 	}
 
@@ -91,19 +87,20 @@ impl Scheduler {
 	/// Ticking the scheduler. This function saves the data of the currently running process, then
 	/// switches to the next process to run.
 	fn tick(&mut self, regs: &util::Regs) {
+		println!("tick");
 		if let Some(curr_proc) = self.get_current_process() {
 			println!("Update {} {:?}", curr_proc.pid, curr_proc.regs);
 			curr_proc.regs = *regs;
 		}
 
-		/*if let Some(next_proc) = self.get_next_process() {
+		if let Some(next_proc) = self.get_next_process() {
 			next_proc.mem_space.bind();
 
 			unsafe { // Call to ASM function
 				println!("Switching {:p} {}", next_proc, next_proc.regs.eip); // TODO rm
 				context_switch(&next_proc.regs, 32 | 3, 24 | 3); // TODO Clean
 			}
-		}*/
+		}
 	}
 }
 
