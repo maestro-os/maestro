@@ -41,6 +41,11 @@ pub struct Process {
 	/// The ID of the process's owner.
 	owner: Uid,
 
+	/// The priority of the process.
+	priority: usize,
+	/// The number of quantum run during the cycle.
+	quantum_count: usize,
+
 	/// A pointer to the parent process.
 	parent: Option::<*mut Process>, // TODO Use a weak pointer
 	// TODO Children list
@@ -105,6 +110,9 @@ impl Process {
 			state: State::Running,
 			owner: owner,
 
+			priority: 0,
+			quantum_count: 0,
+
 			parent: parent,
 
 			regs: Regs {
@@ -143,6 +151,12 @@ impl Process {
 	/// Returns the process's owner ID.
 	pub fn get_owner(&self) -> Uid {
 		self.owner
+	}
+
+	/// Returns the priority of the process. A greater number means a higher priority relative to
+	/// other processes.
+	pub fn get_priority(&self) -> usize {
+		self.priority
 	}
 
 	/// Returns the process's parent if exists.

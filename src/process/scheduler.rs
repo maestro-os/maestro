@@ -1,6 +1,12 @@
 /// The role of the process scheduler is to interrupt the currently running process periodicaly
 /// to switch to another process that is in running state. The interruption is fired by the PIT
 /// on IDT0.
+///
+/// A scheduler cycle is a period during which the scheduler iterates through every processes.
+/// The scheduler works by assigning a number of quantum for each process, based on the number of
+/// running processes and their priority.
+/// This number represents the number of ticks during which the process keep running until
+/// until switching to the next process.
 
 use crate::event::InterruptCallback;
 use crate::event;
@@ -94,11 +100,14 @@ impl Scheduler {
 		}
 
 		if let Some(next_proc) = self.get_next_process() {
-			next_proc.mem_space.bind();
+			self.curr_proc = Some(next_proc.clone());
 
+			let curr_proc = self.curr_proc.as_ref().unwrap();
+			// TODO Assign TSS
+			curr_proc.mem_space.bind();
 			unsafe { // Call to ASM function
-				println!("Switching {:p} {}", next_proc, next_proc.regs.eip); // TODO rm
-				context_switch(&next_proc.regs, 32 | 3, 24 | 3); // TODO Clean
+				println!("Switching {:p} {}", curr_proc, curr_proc.regs.eip); // TODO rm
+				context_switch(&curr_proc.regs, 32 | 3, 24 | 3); // TODO Clean
 			}
 		}
 	}
