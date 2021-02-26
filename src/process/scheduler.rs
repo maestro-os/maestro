@@ -10,9 +10,10 @@
 
 use crate::event::InterruptCallback;
 use crate::event;
+use crate::gdt;
 use crate::process::Process;
-//use crate::process::State;
 use crate::process::pid::Pid;
+use crate::process::tss;
 use crate::util::Regs;
 use crate::util::container::vec::Vec;
 use crate::util::ptr::SharedPtr;
@@ -103,11 +104,18 @@ impl Scheduler {
 			self.curr_proc = Some(next_proc.clone());
 
 			let curr_proc = self.curr_proc.as_ref().unwrap();
-			// TODO Assign TSS
+			let tss = tss::get();
+			tss.ss0 = gdt::KERNEL_DATA_OFFSET as _;
+			tss.ss = gdt::USER_DATA_OFFSET as _;
+			tss.esp0 = curr_proc.kernel_stack as _;
 			curr_proc.mem_space.bind();
+
+			// TODO Handle syscalling
 			unsafe { // Call to ASM function
 				println!("Switching {:p} {}", curr_proc, curr_proc.regs.eip); // TODO rm
-				context_switch(&curr_proc.regs, 32 | 3, 24 | 3); // TODO Clean
+				context_switch(&curr_proc.regs,
+					(gdt::USER_DATA_OFFSET | 3) as _,
+					(gdt::USER_CODE_OFFSET | 3) as _);
 			}
 		}
 	}

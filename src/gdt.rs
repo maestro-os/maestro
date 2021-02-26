@@ -9,26 +9,26 @@ use crate::memory;
 const PHYS_PTR: *mut c_void = 0x800 as _;
 
 /// The offset of the kernel code segment.
-pub const KERNEL_CODE_OFFSET: usize = 8;
+pub const KERNEL_CODE_OFFSET: u32 = 8;
 /// The offset of the kernel data segment.
-pub const KERNEL_DATA_OFFSET: usize = 16;
+pub const KERNEL_DATA_OFFSET: u32 = 16;
 /// The offset of the user code segment.
-pub const USER_CODE_OFFSET: usize = 24;
+pub const USER_CODE_OFFSET: u32 = 24;
 /// The offset of the user data segment.
-pub const USER_DATA_OFFSET: usize = 32;
+pub const USER_DATA_OFFSET: u32 = 32;
 /// The offset of the Task State Segment (TSS).
-pub const TSS_OFFSET: usize = 40;
+pub const TSS_OFFSET: u32 = 40;
 
 /// x86. Creates a segment selector for the given segment offset and ring.
 #[inline(always)]
-pub fn make_segment_selector(offset: usize, ring: usize) -> u16 {
+pub fn make_segment_selector(offset: u32, ring: u32) -> u16 {
 	debug_assert!(ring <= 3);
 	(offset | ring) as _
 }
 
 /// x86. Returns the pointer to the segment at offset `offset`.
-pub fn get_segment_ptr(offset: usize) -> *mut u64 {
+pub fn get_segment_ptr(offset: u32) -> *mut u64 {
 	unsafe { // Pointer arithmetic
-		memory::kern_to_virt(PHYS_PTR.add(offset)) as _
+		memory::kern_to_virt(PHYS_PTR.add(offset as _)) as _
 	}
 }
