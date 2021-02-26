@@ -25,6 +25,7 @@ use crate::memory::buddy;
 use crate::memory::vmem::VMem;
 use crate::memory;
 use crate::multiboot;
+use crate::util::math;
 use crate::util;
 use crate::vga;
 
@@ -224,7 +225,7 @@ impl X86VMem {
 				} else {
 					memory::kern_to_virt(section.sh_addr as _)
 				};
-				let pages = util::ceil_division(section.sh_size, memory::PAGE_SIZE as _) as usize;
+				let pages = math::ceil_division(section.sh_size, memory::PAGE_SIZE as _) as usize;
 				if self.map_range(phys_addr, virt_addr, pages as usize, FLAG_USER).is_err() {
 					crate::kernel_panic!("Kernel protection failed!");
 				}

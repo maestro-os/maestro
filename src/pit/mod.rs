@@ -1,8 +1,9 @@
 /// TODO doc
 
 use crate::io;
-use crate::util;
+use crate::util::math;
 
+/// TODO doc
 pub type Frequency = u32;
 
 /// TODO doc
@@ -87,7 +88,7 @@ pub fn set_frequency(frequency: Frequency) {
 
 	let mut c = {
 		if frequency != 0 {
-			util::ceil_division(BASE_FREQUENCY, frequency)
+			math::ceil_division(BASE_FREQUENCY, frequency)
 		} else {
 			0
 		}

@@ -2,7 +2,7 @@
 
 use crate::memory::malloc;
 use crate::util::bit_size_of;
-use crate::util::ceil_division;
+use crate::util::math::ceil_division;
 
 /// A bitfield is a data structure meant to contain only boolean values.
 /// The size of the bitfield is specified at initialization.

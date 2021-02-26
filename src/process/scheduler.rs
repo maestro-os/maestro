@@ -5,9 +5,10 @@
 /// A scheduler cycle is a period during which the scheduler iterates through every processes.
 /// The scheduler works by assigning a number of quantum for each process, based on the number of
 /// running processes and their priority.
-/// This number represents the number of ticks during which the process keep running until
-/// until switching to the next process.
+/// This number represents the number of ticks during which the process keeps running until
+/// switching to the next process.
 
+use core::cmp::max;
 use crate::event::InterruptCallback;
 use crate::event;
 use crate::gdt;
@@ -16,8 +17,14 @@ use crate::process::pid::Pid;
 use crate::process::tss;
 use crate::util::Regs;
 use crate::util::container::vec::Vec;
+use crate::util::math;
 use crate::util::ptr::SharedPtr;
 use crate::util;
+
+/// The number of quanta for the process with the average priority.
+const AVERAGE_PRIORITY_QUANTA: usize = 10;
+/// The number of quanta for the process with the maximum priority.
+const MAX_PRIORITY_QUANTA: usize = 30;
 
 extern "C" {
 	fn context_switch(regs: &Regs, data_selector: u16, code_selector: u16) -> !;
@@ -49,6 +56,11 @@ pub struct Scheduler {
 	processes: Vec::<SharedPtr::<Process>>,
 	/// The currently running process.
 	curr_proc: Option::<SharedPtr::<Process>>,
+
+	/// The sum of all priorities, used to compute the average priority.
+	priority_sum: usize,
+	/// The priority of the processs which has the current highest priority.
+	priority_max: usize,
 }
 
 impl Scheduler {
@@ -59,6 +71,9 @@ impl Scheduler {
 
 			processes: Vec::<SharedPtr::<Process>>::new(),
 			curr_proc: None,
+
+			priority_sum: 0,
+			priority_max: 0,
 		})?;
 		(*s).tick_callback = Some(event::register_callback(32, 0, TickCallback {
 			scheduler: s.clone(),
@@ -77,12 +92,42 @@ impl Scheduler {
 		self.curr_proc.as_mut()
 	}
 
+	/// Updates the scheduler's heuristic with the new priority of a process.
+	/// `old` is the old priority of the process.
+	/// `new` is the newe priority of the process.
+	/// The function doesn't need to know the process which has been updated since it updates
+	/// global informations.
+	pub fn update_priority(&mut self, old: usize, new: usize) {
+		self.priority_sum = self.priority_sum - old + new;
+		if old >= self.priority_max {
+			self.priority_max = new;
+		}
+	}
+
 	/// Adds a process to the scheduler.
 	pub fn add_process(&mut self, process: Process) -> Result::<SharedPtr::<Process>, ()> {
 		let mut ptr = SharedPtr::new(process)?;
 		self.processes.push(ptr.clone());
+		self.update_priority(0, ptr.get_priority());
 
 		Ok(ptr)
+	}
+
+	// TODO Remove process
+
+	/// Returns the average priority of a process.
+	fn get_average_priority(&self) -> usize {
+		self.priority_sum / self.processes.len()
+	}
+
+	/// Returns the number of quantum for the given priority.
+	fn get_quantum_count(&self, priority: usize) -> usize {
+		let n = math::integer_linear_interpolation::<isize>(priority as _,
+			self.get_average_priority() as _,
+			self.priority_max as _,
+			AVERAGE_PRIORITY_QUANTA as _,
+			MAX_PRIORITY_QUANTA as _);
+		max(1, n) as _
 	}
 
 	/// Returns the next process to run.

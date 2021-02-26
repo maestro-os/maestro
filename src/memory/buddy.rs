@@ -14,6 +14,7 @@ use core::mem::size_of;
 use crate::memory;
 use crate::util::lock::mutex::Mutex;
 use crate::util::lock::mutex::MutexGuard;
+use crate::util::math;
 use crate::util;
 
 /// Type representing the order of a memory frame.
@@ -181,7 +182,7 @@ pub fn alloc(order: FrameOrder, flags: Flags) -> Result<*mut c_void, ()> {
 		if let Some(f) = frame {
 			f.split(zone, order);
 			f.mark_used();
-			zone.allocated_pages += util::pow2(order) as usize;
+			zone.allocated_pages += math::pow2(order) as usize;
 
 			let ptr = f.get_ptr(zone);
 			debug_assert!(util::is_aligned(ptr, memory::PAGE_SIZE));
@@ -215,7 +216,7 @@ pub fn free(ptr: *const c_void, order: FrameOrder) {
 		(*frame).mark_free(zone);
 		(*frame).coalesce(zone);
 	}
-	zone.allocated_pages -= util::pow2(order) as usize;
+	zone.allocated_pages -= math::pow2(order) as usize;
 }
 
 /// Frees the given memory frame. `ptr` is the *virtual* address to the beginning of the frame and
@@ -246,7 +247,7 @@ impl Zone {
 		let mut order = MAX_ORDER;
 
 		while frame < pages_count as FrameID {
-			let p = util::pow2(order as FrameID) as FrameID;
+			let p = math::pow2(order as FrameID) as FrameID;
 			if frame + p > pages_count {
 				if order == 0 {
 					break;
@@ -405,7 +406,7 @@ impl Frame {
 
 	/// Returns the size of the frame in pages.
 	pub fn get_pages(&self) -> usize {
-		util::pow2(self.order) as _
+		math::pow2(self.order) as _
 	}
 
 	/// Returns the size of the frame in bytes.
@@ -561,7 +562,7 @@ impl Frame {
 				break;
 			}
 
-			let new_pages_count = util::pow2((self.order + 1) as usize) as FrameID;
+			let new_pages_count = math::pow2((self.order + 1) as usize) as FrameID;
 			if min(id, buddy) + new_pages_count > zone.get_pages_count() {
 				break;
 			}

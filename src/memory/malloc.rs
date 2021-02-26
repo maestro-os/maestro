@@ -12,6 +12,7 @@ use crate::memory;
 use crate::offset_of;
 use crate::util::data_struct::list::List;
 use crate::util::data_struct::list::ListNode;
+use crate::util::math;
 use crate::util;
 
 /// Type representing chunks' flags.
@@ -95,7 +96,7 @@ fn get_free_list(size: usize, insert: bool) -> Option<&'static mut FreeList> {
 	#[cfg(kernel_mode = "debug")]
 	check_free_lists();
 
-	let mut i = util::log2(size / FREE_LIST_SMALLEST_SIZE);
+	let mut i = math::log2(size / FREE_LIST_SMALLEST_SIZE);
 	i = min(i, FREE_LIST_BINS - 1);
 
 	let free_lists = unsafe { // Access to global variable and call to unsafe function
@@ -444,7 +445,7 @@ impl Block {
 	/// The underlying chunk created by this function is **not** inserted into the free list.
 	fn new(min_size: usize) -> Result<&'static mut Self, ()> {
 		let total_min_size = size_of::<Block>() + min_size;
-		let order = buddy::get_order(util::ceil_division(total_min_size, memory::PAGE_SIZE));
+		let order = buddy::get_order(math::ceil_division(total_min_size, memory::PAGE_SIZE));
 		let first_chunk_size = buddy::get_frame_size(order) - size_of::<Block>();
 		debug_assert!(first_chunk_size >= min_size);
 

@@ -9,6 +9,7 @@ pub mod boxed;
 pub mod container;
 pub mod data_struct;
 pub mod lock;
+pub mod math;
 pub mod ptr;
 
 use core::ffi::c_void;
@@ -41,45 +42,6 @@ pub fn align(ptr: *const c_void, n: usize) -> *const c_void {
 		ptr
 	} else {
 		up_align(ptr, n)
-	}
-}
-
-/// Computes ceil(n0 / n1) without using floating point numbers.
-#[inline(always)]
-pub fn ceil_division<T>(n0: T, n1: T) -> T
-	where T: From<u8> + Copy
-		+ core::ops::Add<Output = T>
-		+ core::ops::Div<Output = T>
-		+ core::ops::Rem<Output = T>
-		+ core::cmp::PartialEq {
-	if (n0 % n1) != T::from(0) {
-		(n0 / n1) + T::from(1)
-	} else {
-		n0 / n1
-	}
-}
-
-/// Computes 2^^n on unsigned integers (where `^^` is an exponent).
-/// The behaviour is undefined for n < 0.
-#[inline(always)]
-pub fn pow2<T>(n: T) -> T
-	where T: From<u8>
-		+ core::ops::Shl<Output = T> {
-	T::from(1) << n
-}
-
-/// Computes floor(log2(n)) on unsigned integers without using floating-point numbers.
-/// Because the logarithm is undefined for n <= 0, the function returns `0` in this case.
-#[inline(always)]
-pub fn log2<T>(n: T) -> T
-	where T: From<usize>
-		+ Into<usize>
-		+ core::cmp::PartialOrd
-		+ core::ops::Sub<Output = T> {
-	if n > T::from(0) {
-		T::from(bit_size_of::<T>()) - T::from(n.into().leading_zeros() as _) - T::from(1)
-	} else {
-		T::from(0)
 	}
 }
 
