@@ -595,7 +595,9 @@ pub fn free(ptr: *mut c_void) {
 	assert!(chunk.is_used());
 
 	chunk.set_used(false);
-	chunk.as_free_chunk().free_list = ListNode::new_single();
+	unsafe { // Call to unsafe function
+		util::write_ptr(&mut chunk.as_free_chunk().free_list, ListNode::new_single());
+	}
 
 	let c = chunk.coalesce();
 	if c.list.is_single() {
