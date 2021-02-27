@@ -55,4 +55,22 @@ pub fn integer_linear_interpolation<T>(x: T, a_x: T, a_y: T, b_x: T, b_y: T) -> 
 	a_y + ((x - a_x) * (-a_y + b_y)) / (b_x - a_x)
 }
 
-// TODO Unit tests
+#[cfg(test)]
+mod test {
+	use super::*;
+
+	#[test_case]
+	fn log2_0() {
+		debug_assert!(log2(0) == 0);
+		//debug_assert!(log2(-1) == 0);
+	}
+
+	#[test_case]
+	fn log2_1() {
+		for i in 1..util::bit_size_of::<usize>() {
+			debug_assert!(log2(pow2(i)) == i);
+		}
+	}
+
+	// TODO Test every functions
+}

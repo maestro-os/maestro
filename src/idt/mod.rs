@@ -2,6 +2,7 @@ mod handler;
 pub mod pic;
 
 use core::ffi::c_void;
+use core::mem::MaybeUninit;
 use crate::util;
 
 /// TODO Doc
@@ -46,9 +47,9 @@ macro_rules! hlt {
 }
 
 /// The IDT vector index for system calls.
-pub const SYSCALL_VECTOR: u8 = 0x80;
+pub const SYSCALL_ENTRY: usize = 0x80;
 /// The number of entries into the IDT.
-pub const ENTRIES_COUNT: u8 = 0x81;
+pub const ENTRIES_COUNT: usize = 0x81;
 
 /// Structure representing the IDT.
 #[repr(C, packed)]
@@ -134,13 +135,8 @@ extern "C" {
 }
 
 /// The list of IDT entries.
-static mut ID: [InterruptDescriptor; ENTRIES_COUNT as usize] = [InterruptDescriptor {
-	offset: 0,
-	selector: 0,
-	zero: 0,
-	type_attr: 0,
-	offset_2: 0,
-}; 0x81];
+static mut ID: MaybeUninit::<[InterruptDescriptor; ENTRIES_COUNT]>
+	= MaybeUninit::uninit();
 
 /// Creates an IDT entry.
 fn create_id(address: *const c_void, selector: u16, type_attr: u8) -> InterruptDescriptor {
@@ -165,62 +161,64 @@ pub fn init() {
 	cli!();
 	pic::init(0x20, 0x28);
 
-	unsafe {
-		ID[0x00] = create_id(get_c_fn_ptr(error0), 0x8, 0x8e);
-		ID[0x01] = create_id(get_c_fn_ptr(error1), 0x8, 0x8e);
-		ID[0x02] = create_id(get_c_fn_ptr(error2), 0x8, 0x8e);
-		ID[0x03] = create_id(get_c_fn_ptr(error3), 0x8, 0x8e);
-		ID[0x04] = create_id(get_c_fn_ptr(error4), 0x8, 0x8e);
-		ID[0x05] = create_id(get_c_fn_ptr(error5), 0x8, 0x8e);
-		ID[0x06] = create_id(get_c_fn_ptr(error6), 0x8, 0x8e);
-		ID[0x07] = create_id(get_c_fn_ptr(error7), 0x8, 0x8e);
-		ID[0x08] = create_id(get_c_fn_ptr(error8), 0x8, 0x8e);
-		ID[0x09] = create_id(get_c_fn_ptr(error9), 0x8, 0x8e);
-		ID[0x0a] = create_id(get_c_fn_ptr(error10), 0x8, 0x8e);
-		ID[0x0b] = create_id(get_c_fn_ptr(error11), 0x8, 0x8e);
-		ID[0x0c] = create_id(get_c_fn_ptr(error12), 0x8, 0x8e);
-		ID[0x0d] = create_id(get_c_fn_ptr(error13), 0x8, 0x8e);
-		ID[0x0e] = create_id(get_c_fn_ptr(error14), 0x8, 0x8e);
-		ID[0x0f] = create_id(get_c_fn_ptr(error15), 0x8, 0x8e);
-		ID[0x10] = create_id(get_c_fn_ptr(error16), 0x8, 0x8e);
-		ID[0x11] = create_id(get_c_fn_ptr(error17), 0x8, 0x8e);
-		ID[0x12] = create_id(get_c_fn_ptr(error18), 0x8, 0x8e);
-		ID[0x13] = create_id(get_c_fn_ptr(error19), 0x8, 0x8e);
-		ID[0x14] = create_id(get_c_fn_ptr(error20), 0x8, 0x8e);
-		ID[0x15] = create_id(get_c_fn_ptr(error21), 0x8, 0x8e);
-		ID[0x16] = create_id(get_c_fn_ptr(error22), 0x8, 0x8e);
-		ID[0x17] = create_id(get_c_fn_ptr(error23), 0x8, 0x8e);
-		ID[0x18] = create_id(get_c_fn_ptr(error24), 0x8, 0x8e);
-		ID[0x19] = create_id(get_c_fn_ptr(error25), 0x8, 0x8e);
-		ID[0x1a] = create_id(get_c_fn_ptr(error26), 0x8, 0x8e);
-		ID[0x1b] = create_id(get_c_fn_ptr(error27), 0x8, 0x8e);
-		ID[0x1c] = create_id(get_c_fn_ptr(error28), 0x8, 0x8e);
-		ID[0x1d] = create_id(get_c_fn_ptr(error29), 0x8, 0x8e);
-		ID[0x1e] = create_id(get_c_fn_ptr(error30), 0x8, 0x8e);
-		ID[0x1f] = create_id(get_c_fn_ptr(error31), 0x8, 0x8e);
+	unsafe { // Access to global variable
+		let id = ID.assume_init_mut();
 
-		ID[0x20] = create_id(get_c_fn_ptr(irq0), 0x8, 0x8e);
-		ID[0x21] = create_id(get_c_fn_ptr(irq1), 0x8, 0x8e);
-		ID[0x22] = create_id(get_c_fn_ptr(irq2), 0x8, 0x8e);
-		ID[0x23] = create_id(get_c_fn_ptr(irq3), 0x8, 0x8e);
-		ID[0x24] = create_id(get_c_fn_ptr(irq4), 0x8, 0x8e);
-		ID[0x25] = create_id(get_c_fn_ptr(irq5), 0x8, 0x8e);
-		ID[0x26] = create_id(get_c_fn_ptr(irq6), 0x8, 0x8e);
-		ID[0x27] = create_id(get_c_fn_ptr(irq7), 0x8, 0x8e);
-		ID[0x28] = create_id(get_c_fn_ptr(irq8), 0x8, 0x8e);
-		ID[0x29] = create_id(get_c_fn_ptr(irq9), 0x8, 0x8e);
-		ID[0x2a] = create_id(get_c_fn_ptr(irq10), 0x8, 0x8e);
-		ID[0x2b] = create_id(get_c_fn_ptr(irq11), 0x8, 0x8e);
-		ID[0x2c] = create_id(get_c_fn_ptr(irq12), 0x8, 0x8e);
-		ID[0x2d] = create_id(get_c_fn_ptr(irq13), 0x8, 0x8e);
-		ID[0x2e] = create_id(get_c_fn_ptr(irq14), 0x8, 0x8e);
-		ID[0x2f] = create_id(get_c_fn_ptr(irq15), 0x8, 0x8e);
+		id[0x00] = create_id(get_c_fn_ptr(error0), 0x8, 0x8e);
+		id[0x01] = create_id(get_c_fn_ptr(error1), 0x8, 0x8e);
+		id[0x02] = create_id(get_c_fn_ptr(error2), 0x8, 0x8e);
+		id[0x03] = create_id(get_c_fn_ptr(error3), 0x8, 0x8e);
+		id[0x04] = create_id(get_c_fn_ptr(error4), 0x8, 0x8e);
+		id[0x05] = create_id(get_c_fn_ptr(error5), 0x8, 0x8e);
+		id[0x06] = create_id(get_c_fn_ptr(error6), 0x8, 0x8e);
+		id[0x07] = create_id(get_c_fn_ptr(error7), 0x8, 0x8e);
+		id[0x08] = create_id(get_c_fn_ptr(error8), 0x8, 0x8e);
+		id[0x09] = create_id(get_c_fn_ptr(error9), 0x8, 0x8e);
+		id[0x0a] = create_id(get_c_fn_ptr(error10), 0x8, 0x8e);
+		id[0x0b] = create_id(get_c_fn_ptr(error11), 0x8, 0x8e);
+		id[0x0c] = create_id(get_c_fn_ptr(error12), 0x8, 0x8e);
+		id[0x0d] = create_id(get_c_fn_ptr(error13), 0x8, 0x8e);
+		id[0x0e] = create_id(get_c_fn_ptr(error14), 0x8, 0x8e);
+		id[0x0f] = create_id(get_c_fn_ptr(error15), 0x8, 0x8e);
+		id[0x10] = create_id(get_c_fn_ptr(error16), 0x8, 0x8e);
+		id[0x11] = create_id(get_c_fn_ptr(error17), 0x8, 0x8e);
+		id[0x12] = create_id(get_c_fn_ptr(error18), 0x8, 0x8e);
+		id[0x13] = create_id(get_c_fn_ptr(error19), 0x8, 0x8e);
+		id[0x14] = create_id(get_c_fn_ptr(error20), 0x8, 0x8e);
+		id[0x15] = create_id(get_c_fn_ptr(error21), 0x8, 0x8e);
+		id[0x16] = create_id(get_c_fn_ptr(error22), 0x8, 0x8e);
+		id[0x17] = create_id(get_c_fn_ptr(error23), 0x8, 0x8e);
+		id[0x18] = create_id(get_c_fn_ptr(error24), 0x8, 0x8e);
+		id[0x19] = create_id(get_c_fn_ptr(error25), 0x8, 0x8e);
+		id[0x1a] = create_id(get_c_fn_ptr(error26), 0x8, 0x8e);
+		id[0x1b] = create_id(get_c_fn_ptr(error27), 0x8, 0x8e);
+		id[0x1c] = create_id(get_c_fn_ptr(error28), 0x8, 0x8e);
+		id[0x1d] = create_id(get_c_fn_ptr(error29), 0x8, 0x8e);
+		id[0x1e] = create_id(get_c_fn_ptr(error30), 0x8, 0x8e);
+		id[0x1f] = create_id(get_c_fn_ptr(error31), 0x8, 0x8e);
 
-		ID[SYSCALL_VECTOR as usize] = create_id(get_c_fn_ptr(syscall), 0x8, 0xee);
+		id[0x20] = create_id(get_c_fn_ptr(irq0), 0x8, 0x8e);
+		id[0x21] = create_id(get_c_fn_ptr(irq1), 0x8, 0x8e);
+		id[0x22] = create_id(get_c_fn_ptr(irq2), 0x8, 0x8e);
+		id[0x23] = create_id(get_c_fn_ptr(irq3), 0x8, 0x8e);
+		id[0x24] = create_id(get_c_fn_ptr(irq4), 0x8, 0x8e);
+		id[0x25] = create_id(get_c_fn_ptr(irq5), 0x8, 0x8e);
+		id[0x26] = create_id(get_c_fn_ptr(irq6), 0x8, 0x8e);
+		id[0x27] = create_id(get_c_fn_ptr(irq7), 0x8, 0x8e);
+		id[0x28] = create_id(get_c_fn_ptr(irq8), 0x8, 0x8e);
+		id[0x29] = create_id(get_c_fn_ptr(irq9), 0x8, 0x8e);
+		id[0x2a] = create_id(get_c_fn_ptr(irq10), 0x8, 0x8e);
+		id[0x2b] = create_id(get_c_fn_ptr(irq11), 0x8, 0x8e);
+		id[0x2c] = create_id(get_c_fn_ptr(irq12), 0x8, 0x8e);
+		id[0x2d] = create_id(get_c_fn_ptr(irq13), 0x8, 0x8e);
+		id[0x2e] = create_id(get_c_fn_ptr(irq14), 0x8, 0x8e);
+		id[0x2f] = create_id(get_c_fn_ptr(irq15), 0x8, 0x8e);
+
+		id[SYSCALL_ENTRY] = create_id(get_c_fn_ptr(syscall), 0x8, 0xee);
 	}
 
 	let idt = InterruptDescriptorTable {
-		size: (core::mem::size_of::<InterruptDescriptor>() * (ENTRIES_COUNT as usize) - 1) as u16,
+		size: (core::mem::size_of::<InterruptDescriptor>() * ENTRIES_COUNT - 1) as u16,
 		offset: unsafe { &ID } as *const _ as u32,
 	};
 	unsafe {

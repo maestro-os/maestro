@@ -7,7 +7,8 @@
 #![feature(allow_internal_unstable)]
 #![feature(asm)]
 #![feature(coerce_unsized)]
-#![feature(const_in_array_repeat_expressions)]
+#![feature(const_maybe_uninit_assume_init)]
+#![feature(const_mut_refs)]
 #![feature(const_ptr_offset)]
 #![feature(const_raw_ptr_deref)]
 #![feature(const_raw_ptr_to_usize_cast)]
@@ -96,6 +97,7 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 
 	idt::init();
 	pit::init();
+	event::init();
 
 	println!("Booting Maestro kernel version {}", KERNEL_VERSION);
 	// TODO CPUID

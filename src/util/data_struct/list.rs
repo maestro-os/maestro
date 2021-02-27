@@ -369,10 +369,10 @@ mod test {
 		assert!(front.is_none());
 		assert!(l0.prev.is_none());
 		assert!(l0.next.is_some());
-		assert!(l0.next.unwrap() == &mut l1 as _);
+		assert!(l0.next.unwrap() == NonNull::new(&mut l1 as _).unwrap());
 
 		assert!(l1.prev.is_some());
-		assert!(l1.prev.unwrap() == &mut l0 as _);
+		assert!(l1.prev.unwrap() == NonNull::new(&mut l0 as _).unwrap());
 		assert!(l1.next.is_none());
 	}
 
@@ -387,10 +387,10 @@ mod test {
 		assert!(front.is_some() && front.unwrap() == &mut l0 as _);
 		assert!(l0.prev.is_none());
 		assert!(l0.next.is_some());
-		assert!(l0.next.unwrap() == &mut l1 as _);
+		assert!(l0.next.unwrap() == NonNull::new(&mut l1 as _).unwrap());
 
 		assert!(l1.prev.is_some());
-		assert!(l1.prev.unwrap() == &mut l0 as _);
+		assert!(l1.prev.unwrap() == NonNull::new(&mut l0 as _).unwrap());
 		assert!(l1.next.is_none());
 	}
 
@@ -405,10 +405,10 @@ mod test {
 		assert!(front.is_some() && front.unwrap() == &mut l0 as _);
 		assert!(l0.prev.is_none());
 		assert!(l0.next.is_some());
-		assert!(l0.next.unwrap() == &mut l1 as _);
+		assert!(l0.next.unwrap() == NonNull::new(&mut l1 as _).unwrap());
 
 		assert!(l1.prev.is_some());
-		assert!(l1.prev.unwrap() == &mut l0 as _);
+		assert!(l1.prev.unwrap() == NonNull::new(&mut l0 as _).unwrap());
 		assert!(l1.next.is_none());
 	}
 
@@ -421,10 +421,10 @@ mod test {
 
 		assert!(l0.prev.is_none());
 		assert!(l0.next.is_some());
-		assert!(l0.next.unwrap() == &mut l1 as _);
+		assert!(l0.next.unwrap() == NonNull::new(&mut l1 as _).unwrap());
 
 		assert!(l1.prev.is_some());
-		assert!(l1.prev.unwrap() == &mut l0 as _);
+		assert!(l1.prev.unwrap() == NonNull::new(&mut l0 as _).unwrap());
 		assert!(l1.next.is_none());
 	}
 
@@ -439,15 +439,15 @@ mod test {
 
 		assert!(l0.prev.is_none());
 		assert!(l0.next.is_some());
-		assert!(l0.next.unwrap() == &mut l1 as _);
+		assert!(l0.next.unwrap() == NonNull::new(&mut l1 as _).unwrap());
 
 		assert!(l1.prev.is_some());
-		assert!(l1.prev.unwrap() == &mut l0 as _);
+		assert!(l1.prev.unwrap() == NonNull::new(&mut l0 as _).unwrap());
 		assert!(l1.next.is_some());
-		assert!(l1.next.unwrap() == &mut l2 as _);
+		assert!(l1.next.unwrap() == NonNull::new(&mut l2 as _).unwrap());
 
 		assert!(l2.prev.is_some());
-		assert!(l2.prev.unwrap() == &mut l1 as _);
+		assert!(l2.prev.unwrap() == NonNull::new(&mut l1 as _).unwrap());
 		assert!(l2.next.is_none());
 	}
 
@@ -460,10 +460,10 @@ mod test {
 
 		assert!(l0.prev.is_none());
 		assert!(l0.next.is_some());
-		assert!(l0.next.unwrap() == &mut l1 as _);
+		assert!(l0.next.unwrap() == NonNull::new(&mut l1 as _).unwrap());
 
 		assert!(l1.prev.is_some());
-		assert!(l1.prev.unwrap() == &mut l0 as _);
+		assert!(l1.prev.unwrap() == NonNull::new(&mut l0 as _).unwrap());
 		assert!(l1.next.is_none());
 	}
 
@@ -478,15 +478,15 @@ mod test {
 
 		assert!(l0.prev.is_none());
 		assert!(l0.next.is_some());
-		assert!(l0.next.unwrap() == &mut l1 as _);
+		assert!(l0.next.unwrap() == NonNull::new(&mut l1 as _).unwrap());
 
 		assert!(l1.prev.is_some());
-		assert!(l1.prev.unwrap() == &mut l0 as _);
+		assert!(l1.prev.unwrap() == NonNull::new(&mut l0 as _).unwrap());
 		assert!(l1.next.is_some());
-		assert!(l1.next.unwrap() == &mut l2 as _);
+		assert!(l1.next.unwrap() == NonNull::new(&mut l2 as _).unwrap());
 
 		assert!(l2.prev.is_some());
-		assert!(l2.prev.unwrap() == &mut l1 as _);
+		assert!(l2.prev.unwrap() == NonNull::new(&mut l1 as _).unwrap());
 		assert!(l2.next.is_none());
 	}
 

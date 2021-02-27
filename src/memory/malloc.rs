@@ -746,10 +746,10 @@ mod test {
 		}
 
 		for i in 0..8 {
-			ptr0 = realloc(ptr0, util::pow2(i)).unwrap();
-			assert!(get_size(ptr0) >= util::pow2(i));
-			ptr1 = realloc(ptr1, util::pow2(i) + 1).unwrap();
-			assert!(get_size(ptr1) >= util::pow2(i) + 1);
+			ptr0 = realloc(ptr0, math::pow2(i)).unwrap();
+			assert!(get_size(ptr0) >= math::pow2(i));
+			ptr1 = realloc(ptr1, math::pow2(i) + 1).unwrap();
+			assert!(get_size(ptr1) >= math::pow2(i) + 1);
 		}
 
 		free(ptr1);
@@ -767,10 +767,10 @@ mod test {
 		}
 
 		for i in (0..8).rev() {
-			ptr0 = realloc(ptr0, util::pow2(i)).unwrap();
-			assert!(get_size(ptr0) >= util::pow2(i));
-			ptr1 = realloc(ptr1, util::pow2(i) + 1).unwrap();
-			assert!(get_size(ptr1) >= util::pow2(i) + 1);
+			ptr0 = realloc(ptr0, math::pow2(i)).unwrap();
+			assert!(get_size(ptr0) >= math::pow2(i));
+			ptr1 = realloc(ptr1, math::pow2(i) + 1).unwrap();
+			assert!(get_size(ptr1) >= math::pow2(i) + 1);
 		}
 
 		free(ptr1);

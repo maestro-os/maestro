@@ -14,7 +14,7 @@ use crate::util::ptr::SharedPtr;
 use crate::util;
 
 /// The interrupt number for keyboard input events.
-const KEYBOARD_INTERRUPT: u8 = 33;
+const KEYBOARD_INTERRUPT_ID: usize = 33;
 
 /// TODO doc
 const DATA_REGISTER: u16 = 0x60;
@@ -589,7 +589,7 @@ impl Module for PS2Module {
 		set_config_byte(get_config_byte() | 0b1);
 		clear_buffer();
 
-		self.keyboard_interrupt_callback = Some(event::register_callback(KEYBOARD_INTERRUPT, 0,
+		self.keyboard_interrupt_callback = Some(event::register_callback(KEYBOARD_INTERRUPT_ID, 0,
 			KeyboardCallback {
 				module: self as _,
 		})?);

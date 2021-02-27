@@ -2,6 +2,7 @@
 /// each interrupts. Each callback has a priority number and is called in descreasing order.
 
 use core::cmp::Ordering;
+use core::mem::MaybeUninit;
 use crate::idt;
 use crate::util::container::vec::Vec;
 use crate::util::lock::mutex::{Mutex, MutexGuard};
@@ -74,8 +75,21 @@ struct CallbackWrapper {
 }
 
 /// List containing vectors that store callbacks for every interrupt watchdogs.
-static mut CALLBACKS: Mutex::<[Option::<Vec::<CallbackWrapper>>; idt::ENTRIES_COUNT as _]>
-	= Mutex::new([None; idt::ENTRIES_COUNT as _]);
+static mut CALLBACKS: MaybeUninit::<
+		Mutex::<[Option::<Vec::<CallbackWrapper>>; idt::ENTRIES_COUNT as _]>
+	> = MaybeUninit::uninit();
+
+/// Initializes the events handler.
+pub fn init() {
+	let mut guard = MutexGuard::new(unsafe { // Access to global variable
+		CALLBACKS.assume_init_mut()
+	});
+	let callbacks = guard.get_mut();
+
+	for i in 0..callbacks.len() {
+		callbacks[i] = None;
+	}
+}
 
 /// Registers the given callback and returns a reference to it.
 /// `id` is the id of the interrupt to watch.
@@ -83,17 +97,16 @@ static mut CALLBACKS: Mutex::<[Option::<Vec::<CallbackWrapper>>; idt::ENTRIES_CO
 /// `callback` is the callback to register.
 ///
 /// If the `id` is invalid or if an allocation fails, the function shall return an error.
-// TODO Return a reference?
-pub fn register_callback<T: 'static + InterruptCallback>(id: u8, priority: u32, callback: T)
+pub fn register_callback<T: 'static + InterruptCallback>(id: usize, priority: u32, callback: T)
 	-> Result<SharedPtr::<T>, ()> {
 	if id >= idt::ENTRIES_COUNT {
 		return Err(());
 	}
 
 	let mut guard = unsafe { // Access to global variable
-		MutexGuard::new(&mut CALLBACKS)
+		MutexGuard::new(CALLBACKS.assume_init_mut())
 	};
-	let vec = &mut guard.get_mut()[id as usize];
+	let vec = &mut guard.get_mut()[id];
 	if vec.is_none() {
 		*vec = Some(Vec::<CallbackWrapper>::new());
 	}
@@ -136,7 +149,7 @@ pub fn register_callback<T: 'static + InterruptCallback>(id: u8, priority: u32, 
 pub extern "C" fn event_handler(id: u32, code: u32, regs: &util::Regs) {
 	// TODO POTENTIAL DEADLOCK: Interruption when the Mutex is already being used?
 	let mut guard = unsafe { // Access to global variable
-		MutexGuard::new(&mut CALLBACKS)
+		MutexGuard::new(CALLBACKS.assume_init_mut())
 	};
 	let callbacks = &mut guard.get_mut()[id as usize];
 

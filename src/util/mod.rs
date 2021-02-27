@@ -132,19 +132,6 @@ mod test {
 	use core::mem::size_of;
 
 	#[test_case]
-	fn log2_0() {
-		debug_assert!(log2(0) == 0);
-		//debug_assert!(log2(-1) == 0);
-	}
-
-	#[test_case]
-	fn log2_1() {
-		for i in 1..bit_size_of::<usize>() {
-			debug_assert!(log2(pow2(i)) == i);
-		}
-	}
-
-	#[test_case]
 	fn memcpy0() {
 		let mut dest: [usize; 100] = [0; 100];
 		let mut src: [usize; 100] = [0; 100];
