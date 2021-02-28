@@ -146,7 +146,10 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 	// TODO Load init ramdisk
 
 	// TODO Start first process from disk (init program)
-	if let Ok(p) = Process::new(None, 0, &test_process as *const _ as *const _) {
+	let test_begin = unsafe { // Use of transmute
+		core::mem::transmute::<unsafe extern "C" fn(), *const c_void>(test_process)
+	};
+	if let Ok(p) = Process::new(None, 0, test_begin) {
 		println!("Test process PID: {}", p.get_pid());
 	} else {
 		println!("Failed to create test process!");

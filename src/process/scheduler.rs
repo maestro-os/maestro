@@ -61,6 +61,9 @@ pub struct Scheduler {
 	priority_sum: usize,
 	/// The priority of the processs which has the current highest priority.
 	priority_max: usize,
+
+	/// The current process cursor on the `processes` list.
+	cursor: usize,
 }
 
 impl Scheduler {
@@ -74,6 +77,8 @@ impl Scheduler {
 
 			priority_sum: 0,
 			priority_max: 0,
+
+			cursor: 0,
 		})?;
 		(*s).tick_callback = Some(event::register_callback(32, 0, TickCallback {
 			scheduler: s.clone(),
@@ -113,7 +118,7 @@ impl Scheduler {
 		Ok(ptr)
 	}
 
-	// TODO Remove process
+	// TODO Remove process (don't forget to update the priority)
 
 	/// Returns the average priority of a process.
 	fn get_average_priority(&self) -> usize {
@@ -132,8 +137,23 @@ impl Scheduler {
 
 	/// Returns the next process to run.
 	fn get_next_process(&mut self) -> Option::<&mut SharedPtr::<Process>> {
-		// TODO
-		self.curr_proc.as_mut()
+		if self.processes.is_empty() {
+			return None;
+		}
+
+		if self.cursor >= self.processes.len() {
+			self.cursor = 0;
+		}
+
+		let cursor_priority = self.processes[self.cursor].priority;
+		let cursor_quantum_count = self.get_quantum_count(cursor_priority);
+		if cursor_quantum_count >= cursor_quantum_count {
+			let cursor_process = &mut self.processes[self.cursor];
+			cursor_process.quantum_count = 0;
+			self.cursor = (self.cursor + 1) % self.processes.len();
+		}
+
+		Some(&mut self.processes[self.cursor])
 	}
 
 	/// Ticking the scheduler. This function saves the data of the currently running process, then
@@ -148,7 +168,9 @@ impl Scheduler {
 		if let Some(next_proc) = self.get_next_process() {
 			self.curr_proc = Some(next_proc.clone());
 
-			let curr_proc = self.curr_proc.as_ref().unwrap();
+			let curr_proc = self.curr_proc.as_mut().unwrap();
+			curr_proc.quantum_count += 1;
+
 			let tss = tss::get();
 			tss.ss0 = gdt::KERNEL_DATA_OFFSET as _;
 			tss.ss = gdt::USER_DATA_OFFSET as _;
