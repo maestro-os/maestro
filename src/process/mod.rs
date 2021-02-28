@@ -8,6 +8,7 @@ pub mod tss;
 
 use core::ffi::c_void;
 use core::mem::MaybeUninit;
+use core::ptr::null_mut;
 use crate::process::mem_space::MemSpace;
 use crate::process::pid::PIDManager;
 use crate::process::pid::Pid;
@@ -102,8 +103,9 @@ impl Process {
 		let pid = unsafe { // Access to global variable
 			PID_MANAGER.assume_init_mut()
 		}.get_unique_pid()?;
-		let user_stack = core::ptr::null_mut::<c_void>(); // TODO
-		let kernel_stack = core::ptr::null_mut::<c_void>(); // TODO
+		let mem_space = MemSpace::new()?;
+		let user_stack = null_mut::<c_void>(); // TODO Allocate on memory space
+		let kernel_stack = null_mut::<c_void>(); // TODO Allocate on memory space
 
 		let process = Self {
 			pid: pid,
@@ -117,7 +119,7 @@ impl Process {
 
 			regs: Regs {
 				ebp: 0x0,
-				esp: 0x0,
+				esp: 0x0, // TODO Place virtual pointer to userspace stack
 				eip: entry_point as _,
 				eflags: 0x0,
 				eax: 0x0,
@@ -127,7 +129,7 @@ impl Process {
 				esi: 0x0,
 				edi: 0x0,
 			},
-			mem_space: MemSpace::new()?,
+			mem_space: mem_space,
 
 			user_stack: user_stack,
 			kernel_stack: kernel_stack,
