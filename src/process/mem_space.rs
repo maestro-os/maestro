@@ -2,14 +2,23 @@
 /// mapping of execution contexts.
 /// TODO doc
 
-pub const MAPPING_FLAG_READ: u8 = 0b001;
-pub const MAPPING_FLAG_WRITE: u8 = 0b010;
-pub const MAPPING_FLAG_EXEC: u8 = 0b100;
-
 use core::ffi::c_void;
 use crate::memory::vmem::VMem;
 use crate::memory::vmem;
+use crate::memory;
 use crate::util::boxed::Box;
+
+/// Flag telling that a memory mapping can be read from.
+pub const MAPPING_FLAG_READ: u8   = 0b00001;
+/// Flag telling that a memory mapping can be written to.
+pub const MAPPING_FLAG_WRITE: u8  = 0b00010;
+/// Flag telling that a memory mapping can contain executable instructions.
+pub const MAPPING_FLAG_EXEC: u8   = 0b00100;
+/// Flag telling that a memory mapping is accessible from userspace.
+pub const MAPPING_FLAG_USER: u8   = 0b01000;
+/// Flag telling that a memory mapping must allocate its physical memory right away and not when
+/// the process tries to write to it.
+pub const MAPPING_FLAG_NOLAZY: u8 = 0b10000;
 
 /// Structure representing the virtual memory space of a context.
 pub struct MemSpace {
@@ -36,9 +45,19 @@ impl MemSpace {
 	/// underlying physical memory is not allocated directly but only an attempt to write the
 	/// memory is detected.
 	/// The function returns a pointer to the newly mapped virtual memory.
-	pub fn map(_ptr: Option::<*const c_void>, _size: usize, _flags: u8) -> Result::<c_void, ()> {
+	pub fn map(&mut self, _ptr: Option::<*const c_void>, _size: usize, _flags: u8)
+		-> Result::<*const c_void, ()> {
 		// TODO
 		Err(())
+	}
+
+	/// Same as `map`, except the function returns a pointer to the end of the memory region.
+	pub fn map_stack(&mut self, ptr: Option::<*const c_void>, size: usize, flags: u8)
+		-> Result::<*const c_void, ()> {
+		let mapping_ptr = self.map(ptr, size, flags)?;
+		Ok(unsafe { // Call to unsafe function
+			mapping_ptr.add(size * memory::PAGE_SIZE) // `- 1`?
+		})
 	}
 
 	/// Unmaps the given region of memory.
@@ -48,7 +67,7 @@ impl MemSpace {
 	/// other memory mappings.
 	/// After this function returns, the access to the region of memory shall be revoked and
 	/// further attempts to access it shall result in a page fault.
-	pub fn unmap(_ptr: *const c_void, _size: usize) {
+	pub fn unmap(&mut self, _ptr: *const c_void, _size: usize) {
 		// TODO
 	}
 
@@ -64,8 +83,14 @@ impl MemSpace {
 	///
 	/// `virt_addr` is the virtual address of the wrong memory access that caused the fault.
 	/// If the process should continue, the function returns `true`, else `false`.
-	pub fn handle_page_fault(_virt_addr: *const c_void) -> bool {
+	pub fn handle_page_fault(&self, _virt_addr: *const c_void) -> bool {
 		// TODO
 		false
+	}
+}
+
+impl Drop for MemSpace {
+	fn drop(&mut self) {
+		// TODO Free every allocations
 	}
 }

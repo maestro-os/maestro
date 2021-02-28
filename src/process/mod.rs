@@ -8,13 +8,22 @@ pub mod tss;
 
 use core::ffi::c_void;
 use core::mem::MaybeUninit;
-use core::ptr::null_mut;
 use crate::process::mem_space::MemSpace;
 use crate::process::pid::PIDManager;
 use crate::process::pid::Pid;
 use crate::process::scheduler::Scheduler;
 use crate::util::Regs;
 use crate::util::ptr::SharedPtr;
+use mem_space::{MAPPING_FLAG_READ, MAPPING_FLAG_WRITE, MAPPING_FLAG_USER, MAPPING_FLAG_NOLAZY};
+
+/// The size of the userspace stack of a process in number of pages.
+const USER_STACK_SIZE: usize = 2048;
+/// The flags for the userspace stack mapping.
+const USER_STACK_FLAGS: u8 = MAPPING_FLAG_READ | MAPPING_FLAG_WRITE | MAPPING_FLAG_USER;
+/// The size of the kernelspace stack of a process in number of pages.
+const KERNEL_STACK_SIZE: usize = 8;
+/// The flags for the kernelspace stack mapping.
+const KERNEL_STACK_FLAGS: u8 = MAPPING_FLAG_READ | MAPPING_FLAG_WRITE | MAPPING_FLAG_NOLAZY;
 
 /// An enumeration containing possible states for a process.
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -57,9 +66,9 @@ pub struct Process {
 	mem_space: MemSpace,
 
 	/// A pointer to the userspace stack.
-	user_stack: *mut c_void,
+	user_stack: *const c_void,
 	/// A pointer to the kernelspace stack.
-	kernel_stack: *mut c_void,
+	kernel_stack: *const c_void,
 
 	// TODO File descriptors
 	// TODO Signals list
@@ -103,9 +112,10 @@ impl Process {
 		let pid = unsafe { // Access to global variable
 			PID_MANAGER.assume_init_mut()
 		}.get_unique_pid()?;
-		let mem_space = MemSpace::new()?;
-		let user_stack = null_mut::<c_void>(); // TODO Allocate on memory space
-		let kernel_stack = null_mut::<c_void>(); // TODO Allocate on memory space
+		let mut mem_space = MemSpace::new()?;
+		let user_stack = mem_space.map_stack(None, USER_STACK_SIZE, USER_STACK_FLAGS)?;
+		// TODO On fail, free user_stack (use RAII?)
+		let kernel_stack = mem_space.map_stack(None, KERNEL_STACK_SIZE, KERNEL_STACK_FLAGS)?;
 
 		let process = Self {
 			pid: pid,
@@ -119,7 +129,7 @@ impl Process {
 
 			regs: Regs {
 				ebp: 0x0,
-				esp: 0x0, // TODO Place virtual pointer to userspace stack
+				esp: user_stack as _,
 				eip: entry_point as _,
 				eflags: 0x0,
 				eax: 0x0,
