@@ -20,6 +20,42 @@ pub const MAPPING_FLAG_USER: u8   = 0b01000;
 /// the process tries to write to it.
 pub const MAPPING_FLAG_NOLAZY: u8 = 0b10000;
 
+/// A gap in the memory space that can use for new mappings.
+pub struct MemGap {
+	/// Pointer on the virtual memory to the beginning of the gap
+	begin: *const c_void,
+	/// The size of the gap in pages.
+	size: usize,
+}
+
+/// A mapping in the memory space.
+pub struct MemMapping {
+	/// Pointer on the virtual memory to the beginning of the mapping
+	begin: *const c_void,
+	/// The size of the mapping in pages.
+	size: usize,
+	/// The mapping's flags.
+	flags: u8,
+
+	// TODO Add sharing informations
+}
+
+impl MemMapping {
+	/// Creates a new instance.
+	/// `begin` is the pointer on the virtual memory to the beginning of the mapping.
+	/// `size` is the size of the mapping in pages.
+	/// `flags` the mapping's flags
+	pub fn new(begin: *const c_void, size: usize, flags: u8) -> Self {
+		Self {
+			begin: begin,
+			size: size,
+			flags: flags,
+		}
+	}
+
+	// TODO
+}
+
 /// Structure representing the virtual memory space of a context.
 pub struct MemSpace {
 	// TODO Store memory mappings and gaps
