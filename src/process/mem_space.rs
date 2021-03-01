@@ -9,16 +9,19 @@ use crate::memory;
 use crate::util::boxed::Box;
 
 /// Flag telling that a memory mapping can be read from.
-pub const MAPPING_FLAG_READ: u8   = 0b00001;
+pub const MAPPING_FLAG_READ: u8   = 0b000001;
 /// Flag telling that a memory mapping can be written to.
-pub const MAPPING_FLAG_WRITE: u8  = 0b00010;
+pub const MAPPING_FLAG_WRITE: u8  = 0b000010;
 /// Flag telling that a memory mapping can contain executable instructions.
-pub const MAPPING_FLAG_EXEC: u8   = 0b00100;
+pub const MAPPING_FLAG_EXEC: u8   = 0b000100;
 /// Flag telling that a memory mapping is accessible from userspace.
-pub const MAPPING_FLAG_USER: u8   = 0b01000;
+pub const MAPPING_FLAG_USER: u8   = 0b001000;
 /// Flag telling that a memory mapping must allocate its physical memory right away and not when
 /// the process tries to write to it.
-pub const MAPPING_FLAG_NOLAZY: u8 = 0b10000;
+pub const MAPPING_FLAG_NOLAZY: u8 = 0b010000;
+/// Flag telling that a memory mapping has its physical memory shared with one or more other
+/// mappings.
+pub const MAPPING_FLAG_SHARED: u8 = 0b100000;
 
 /// A gap in the memory space that can use for new mappings.
 pub struct MemGap {

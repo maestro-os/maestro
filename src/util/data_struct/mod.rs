@@ -3,5 +3,4 @@
 /// allocations.
 
 pub mod list;
-
-// TODO Binary tree
+pub mod binary_tree;
