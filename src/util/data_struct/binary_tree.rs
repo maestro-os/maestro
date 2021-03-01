@@ -5,12 +5,22 @@ use core::cmp::max;
 use core::marker::PhantomData;
 use core::ptr::NonNull;
 
+/// The color of a binary tree node.
+enum NodeColor {
+	Black,
+	Red,
+}
+
 /// TODO doc
 pub struct BinaryTreeNode<T, O: Fn() -> usize> {
+	/// Pointer to the parent node
+	parent: Option::<NonNull<Self>>,
 	/// Pointer to the left child
-	left: Option::<NonNull<BinaryTreeNode<T, O>>>,
+	left: Option::<NonNull<Self>>,
 	/// Pointer to the right child
-	right: Option::<NonNull<BinaryTreeNode<T, O>>>,
+	right: Option::<NonNull<Self>>,
+	/// The color of the node
+	color: NodeColor,
 
 	/// Closure storing the offset of the node into the structure storing it
 	offset_data: O,
@@ -20,6 +30,28 @@ pub struct BinaryTreeNode<T, O: Fn() -> usize> {
 
 impl<T, O: Fn() -> usize> BinaryTreeNode::<T, O> {
 	// TODO new
+
+	/// Unwraps the given pointer option into a reference option.
+	fn unwrap_pointer(ptr: &Option::<NonNull<Self>>) -> Option::<&Self> {
+		if let Some(p) = ptr {
+			unsafe { // Call to unsafe function
+				Some(p.as_ref())
+			}
+		} else {
+			None
+		}
+	}
+
+	/// Same as `unwrap_pointer` but returns a mutable reference.
+	fn unwrap_pointer_mut(ptr: &mut Option::<NonNull<Self>>) -> Option::<&mut Self> {
+		if let Some(p) = ptr {
+			unsafe { // Call to unsafe function
+				Some(p.as_mut())
+			}
+		} else {
+			None
+		}
+	}
 
 	/// Returns a reference to the item that owns the node of the tree.
 	pub fn get(&self) -> &T {
@@ -38,44 +70,100 @@ impl<T, O: Fn() -> usize> BinaryTreeNode::<T, O> {
 	}
 
 	/// Returns a reference to the left child node.
-	pub fn get_left(&self) -> Option::<&BinaryTreeNode::<T, O>> {
-		if let Some(l) = self.left.as_ref() {
-			unsafe { // Call to unsafe function
-				Some(l.as_ref())
-			}
+	pub fn get_parent(&self) -> Option::<&Self> {
+		Self::unwrap_pointer(&self.parent)
+	}
+
+	/// Returns a reference to the parent child node.
+	pub fn get_parent_mut(&mut self) -> Option::<&mut Self> {
+		Self::unwrap_pointer_mut(&mut self.parent)
+	}
+
+	/// Returns a mutable reference to the parent child node.
+	pub fn get_left(&self) -> Option::<&Self> {
+		Self::unwrap_pointer(&self.left)
+	}
+
+	/// Returns a reference to the left child node.
+	pub fn get_left_mut(&mut self) -> Option::<&mut Self> {
+		Self::unwrap_pointer_mut(&mut self.left)
+	}
+
+	/// Returns a reference to the left child node.
+	pub fn get_right(&self) -> Option::<&Self> {
+		Self::unwrap_pointer(&self.right)
+	}
+
+	/// Returns a reference to the left child node.
+	pub fn get_right_mut(&mut self) -> Option::<&mut Self> {
+		Self::unwrap_pointer_mut(&mut self.right)
+	}
+
+	/// Returns a reference to the grandparent node.
+	pub fn get_grandparent(&self) -> Option::<&Self> {
+		if let Some(p) = self.get_parent() {
+			p.get_parent()
 		} else {
 			None
 		}
 	}
 
-	/// Returns a reference to the left child node.
-	pub fn get_left_mut(&mut self) -> Option::<&mut BinaryTreeNode::<T, O>> {
-		if let Some(l) = self.left.as_mut() {
-			unsafe { // Call to unsafe function
-				Some(l.as_mut())
-			}
+	/// Returns a mutable reference to the grandparent node.
+	pub fn get_grandparent_mut(&mut self) -> Option::<&mut Self> {
+		if let Some(p) = self.get_parent_mut() {
+			p.get_parent_mut()
 		} else {
 			None
 		}
 	}
 
-	/// Returns a reference to the left child node.
-	pub fn get_right(&self) -> Option::<&BinaryTreeNode::<T, O>> {
-		if let Some(r) = self.right.as_ref() {
-			unsafe { // Call to unsafe function
-				Some(r.as_ref())
-			}
+	/// Returns a reference to the sibling node.
+	pub fn get_sibling(&self) -> Option::<&Self> {
+		let self_ptr = self as *const _;
+		let p = self.get_parent();
+		if p.is_none() {
+			return None;
+		}
+
+		let parent = p.unwrap();
+		let left = parent.get_left();
+		if left.is_some() && left.unwrap() as *const _ == self_ptr {
+			parent.get_right()
+		} else {
+			parent.get_left()
+		}
+	}
+
+	/// Returns a mutable reference to the sibling node.
+	pub fn get_sibling_mut(&mut self) -> Option::<&mut Self> {
+		let self_ptr = self as *const _;
+		let p = self.get_parent_mut();
+		if p.is_none() {
+			return None;
+		}
+
+		let parent = p.unwrap();
+		let left = parent.get_left_mut();
+		if left.is_some() && left.unwrap() as *const _ == self_ptr {
+			parent.get_right_mut()
+		} else {
+			parent.get_left_mut()
+		}
+	}
+
+	/// Returns a reference to the uncle node.
+	pub fn get_uncle(&mut self) -> Option::<&Self> {
+		if let Some(parent) = self.get_parent() {
+			parent.get_sibling()
 		} else {
 			None
 		}
 	}
 
-	/// Returns a reference to the left child node.
-	pub fn get_right_mut(&mut self) -> Option::<&mut BinaryTreeNode::<T, O>> {
-		if let Some(r) = self.right.as_mut() {
-			unsafe { // Call to unsafe function
-				Some(r.as_mut())
-			}
+	/// Returns a mutable reference to the uncle node.
+	pub fn get_uncle_mut(&mut self) -> Option::<&mut Self> {
+		if let Some(parent) = self.get_parent_mut() {
+			parent.get_sibling_mut()
 		} else {
 			None
 		}
