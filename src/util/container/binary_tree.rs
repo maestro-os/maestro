@@ -1,8 +1,7 @@
-/// This module implements a binary tree utility.
+/// This module implements a binary tree container.
 
 use core::cmp::Ordering;
 use core::cmp::max;
-use core::marker::PhantomData;
 use core::ptr::NonNull;
 
 /// The color of a binary tree node.
@@ -12,7 +11,7 @@ enum NodeColor {
 }
 
 /// TODO doc
-pub struct BinaryTreeNode<T: 'static, O: 'static + Fn() -> usize> {
+struct BinaryTreeNode<T> {
 	/// Pointer to the parent node
 	parent: Option::<NonNull<Self>>,
 	/// Pointer to the left child
@@ -22,13 +21,10 @@ pub struct BinaryTreeNode<T: 'static, O: 'static + Fn() -> usize> {
 	/// The color of the node
 	color: NodeColor,
 
-	/// Closure storing the offset of the node into the structure storing it
-	offset_data: O,
-	/// Phantom data to keep `T`
-	_phantom: PhantomData<T>,
+	value: T,
 }
 
-impl<T: 'static, O: 'static + Fn() -> usize> BinaryTreeNode::<T, O> {
+impl<T: 'static> BinaryTreeNode<T> {
 	// TODO new
 
 	/// Unwraps the given pointer option into a reference option.
@@ -50,22 +46,6 @@ impl<T: 'static, O: 'static + Fn() -> usize> BinaryTreeNode::<T, O> {
 			}
 		} else {
 			None
-		}
-	}
-
-	/// Returns a reference to the item that owns the node of the tree.
-	pub fn get(&self) -> &T {
-		let ptr = (self as *const _ as usize) - (self.offset_data)();
-		unsafe { // Dereference of raw pointer
-			&*(ptr as *const T)
-		}
-	}
-
-	/// Returns a mutable reference to the item that owns the node of the tree.
-	pub fn get_mut(&mut self) -> &mut T {
-		let ptr = (self as *mut _ as usize) - (self.offset_data)();
-		unsafe { // Dereference of raw pointer
-			&mut *(ptr as *mut T)
 		}
 	}
 
@@ -239,24 +219,21 @@ impl<T: 'static, O: 'static + Fn() -> usize> BinaryTreeNode::<T, O> {
 }
 
 /// TODO doc
-pub struct BinaryTree<T: 'static, O: 'static + Fn() -> usize> {
+pub struct BinaryTree<T: 'static> {
 	/// The root node of the binary tree.
-	root: Option::<NonNull<BinaryTreeNode<T, O>>>,
-	/// Closure storing the offset of the node into the structure storing it
-	offset_data: O,
+	root: Option::<NonNull<BinaryTreeNode::<T>>>,
 }
 
-impl<T: 'static, O: 'static + Fn() -> usize> BinaryTree<T, O> {
+impl<T: 'static> BinaryTree<T> {
 	/// Creates a new binary tree.
-	pub fn new(offset_data: O) -> Self {
+	pub fn new() -> Self {
 		Self {
 			root: None,
-			offset_data: offset_data,
 		}
 	}
 
 	/// Returns a reference to the root node.
-	pub fn get_root(&self) -> Option::<&BinaryTreeNode<T, O>> {
+	fn get_root(&self) -> Option::<&BinaryTreeNode::<T>> {
 		if let Some(r) = self.root.as_ref() {
 			unsafe { // Call to unsafe function
 				Some(r.as_ref())
@@ -267,7 +244,7 @@ impl<T: 'static, O: 'static + Fn() -> usize> BinaryTree<T, O> {
 	}
 
 	/// Returns a mutable reference to the root node.
-	pub fn get_root_mut(&mut self) -> Option::<&mut BinaryTreeNode<T, O>> {
+	fn get_root_mut(&mut self) -> Option::<&mut BinaryTreeNode::<T>> {
 		if let Some(r) = self.root.as_mut() {
 			unsafe { // Call to unsafe function
 				Some(r.as_mut())
@@ -297,36 +274,35 @@ impl<T: 'static, O: 'static + Fn() -> usize> BinaryTree<T, O> {
 
 	/// Searches for a node with the given closure for comparison.
 	/// `cmp` is the comparison function.
-	pub fn get<F: Fn(&BinaryTreeNode::<T, O>) -> Ordering>(&self, cmp: F)
-		-> Option<&BinaryTreeNode::<T, O>> {
-		let mut node = self.get_root();
+	pub fn get<F: Fn(&T) -> Ordering>(&mut self, cmp: F) -> Option::<&mut T> {
+		let mut node = self.get_root_mut();
 
 		while node.is_some() {
 			let n = node.unwrap();
-			let ord = cmp(n);
+			let ord = cmp(&n.value);
 			if ord == Ordering::Less {
-				node = n.get_left();
+				node = n.get_left_mut();
 			} else if ord == Ordering::Greater {
-				node = n.get_right();
+				node = n.get_right_mut();
 			} else {
-				break;
+				return Some(&mut n.value);
 			}
 		}
 
-		node
+		None
 	}
 
 	/// Inserts a node in the tree.
 	/// `node` is the node to insert.
 	/// `cmp` is the comparison function.
-	pub fn insert<F: Fn(&T) -> Ordering>(&mut self, _node: BinaryTreeNode<T, O>, _cmp: F) {
+	pub fn insert<F: Fn(&T) -> Ordering>(&mut self, _node: T, _cmp: F) {
 		// TODO
 	}
 
 	/// Removes a node from the tree.
 	/// `node` is the node to remove.
 	/// `cmp` is the comparison function.
-	pub fn remove<F: Fn(&T) -> Ordering>(&mut self, _node: BinaryTreeNode<T, O>, _cmp: F) {
+	pub fn remove<F: Fn(&T) -> Ordering>(&mut self, _node: T, _cmp: F) {
 		// TODO
 	}
 }
