@@ -10,8 +10,8 @@ use crate::list_new;
 use crate::memory::buddy;
 use crate::memory;
 use crate::offset_of;
-use crate::util::data_struct::list::List;
-use crate::util::data_struct::list::ListNode;
+use crate::util::list::List;
+use crate::util::list::ListNode;
 use crate::util::math;
 use crate::util;
 

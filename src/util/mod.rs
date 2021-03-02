@@ -7,7 +7,7 @@
 
 pub mod boxed;
 pub mod container;
-pub mod data_struct;
+pub mod list;
 pub mod lock;
 pub mod math;
 pub mod ptr;
