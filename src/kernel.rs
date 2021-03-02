@@ -19,6 +19,7 @@
 #![feature(maybe_uninit_extra)]
 #![feature(maybe_uninit_ref)]
 #![feature(panic_info_message)]
+#![feature(slice_ptr_get)]
 #![feature(stmt_expr_attributes)]
 #![feature(unsize)]
 

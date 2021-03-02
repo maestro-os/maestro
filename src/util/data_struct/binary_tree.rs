@@ -12,7 +12,7 @@ enum NodeColor {
 }
 
 /// TODO doc
-pub struct BinaryTreeNode<T, O: Fn() -> usize> {
+pub struct BinaryTreeNode<T: 'static, O: 'static + Fn() -> usize> {
 	/// Pointer to the parent node
 	parent: Option::<NonNull<Self>>,
 	/// Pointer to the left child
@@ -28,14 +28,14 @@ pub struct BinaryTreeNode<T, O: Fn() -> usize> {
 	_phantom: PhantomData<T>,
 }
 
-impl<T, O: Fn() -> usize> BinaryTreeNode::<T, O> {
+impl<T: 'static, O: 'static + Fn() -> usize> BinaryTreeNode::<T, O> {
 	// TODO new
 
 	/// Unwraps the given pointer option into a reference option.
-	fn unwrap_pointer(ptr: &Option::<NonNull<Self>>) -> Option::<&Self> {
+	fn unwrap_pointer(ptr: &Option::<NonNull::<Self>>) -> Option::<&'static Self> {
 		if let Some(p) = ptr {
-			unsafe { // Call to unsafe function
-				Some(p.as_ref())
+			unsafe { // Dereference of raw pointer
+				Some(&*p.as_ptr())
 			}
 		} else {
 			None
@@ -43,10 +43,10 @@ impl<T, O: Fn() -> usize> BinaryTreeNode::<T, O> {
 	}
 
 	/// Same as `unwrap_pointer` but returns a mutable reference.
-	fn unwrap_pointer_mut(ptr: &mut Option::<NonNull<Self>>) -> Option::<&mut Self> {
+	fn unwrap_pointer_mut(ptr: &mut Option::<NonNull::<Self>>) -> Option::<&'static mut Self> {
 		if let Some(p) = ptr {
 			unsafe { // Call to unsafe function
-				Some(p.as_mut())
+				Some(&mut *(p.as_ptr() as *mut _))
 			}
 		} else {
 			None
@@ -70,37 +70,37 @@ impl<T, O: Fn() -> usize> BinaryTreeNode::<T, O> {
 	}
 
 	/// Returns a reference to the left child node.
-	pub fn get_parent(&self) -> Option::<&Self> {
+	pub fn get_parent(&self) -> Option::<&'static Self> {
 		Self::unwrap_pointer(&self.parent)
 	}
 
 	/// Returns a reference to the parent child node.
-	pub fn get_parent_mut(&mut self) -> Option::<&mut Self> {
+	pub fn get_parent_mut(&mut self) -> Option::<&'static mut Self> {
 		Self::unwrap_pointer_mut(&mut self.parent)
 	}
 
 	/// Returns a mutable reference to the parent child node.
-	pub fn get_left(&self) -> Option::<&Self> {
+	pub fn get_left(&self) -> Option::<&'static Self> {
 		Self::unwrap_pointer(&self.left)
 	}
 
 	/// Returns a reference to the left child node.
-	pub fn get_left_mut(&mut self) -> Option::<&mut Self> {
+	pub fn get_left_mut(&mut self) -> Option::<&'static mut Self> {
 		Self::unwrap_pointer_mut(&mut self.left)
 	}
 
 	/// Returns a reference to the left child node.
-	pub fn get_right(&self) -> Option::<&Self> {
+	pub fn get_right(&self) -> Option::<&'static Self> {
 		Self::unwrap_pointer(&self.right)
 	}
 
 	/// Returns a reference to the left child node.
-	pub fn get_right_mut(&mut self) -> Option::<&mut Self> {
+	pub fn get_right_mut(&mut self) -> Option::<&'static mut Self> {
 		Self::unwrap_pointer_mut(&mut self.right)
 	}
 
 	/// Returns a reference to the grandparent node.
-	pub fn get_grandparent(&self) -> Option::<&Self> {
+	pub fn get_grandparent(&self) -> Option::<&'static Self> {
 		if let Some(p) = self.get_parent() {
 			p.get_parent()
 		} else {
@@ -109,7 +109,7 @@ impl<T, O: Fn() -> usize> BinaryTreeNode::<T, O> {
 	}
 
 	/// Returns a mutable reference to the grandparent node.
-	pub fn get_grandparent_mut(&mut self) -> Option::<&mut Self> {
+	pub fn get_grandparent_mut(&mut self) -> Option::<&'static mut Self> {
 		if let Some(p) = self.get_parent_mut() {
 			p.get_parent_mut()
 		} else {
@@ -118,7 +118,7 @@ impl<T, O: Fn() -> usize> BinaryTreeNode::<T, O> {
 	}
 
 	/// Returns a reference to the sibling node.
-	pub fn get_sibling(&self) -> Option::<&Self> {
+	pub fn get_sibling(&self) -> Option::<&'static Self> {
 		let self_ptr = self as *const _;
 		let p = self.get_parent();
 		if p.is_none() {
@@ -135,7 +135,7 @@ impl<T, O: Fn() -> usize> BinaryTreeNode::<T, O> {
 	}
 
 	/// Returns a mutable reference to the sibling node.
-	pub fn get_sibling_mut(&mut self) -> Option::<&mut Self> {
+	pub fn get_sibling_mut(&mut self) -> Option::<&'static mut Self> {
 		let self_ptr = self as *const _;
 		let p = self.get_parent_mut();
 		if p.is_none() {
@@ -152,7 +152,7 @@ impl<T, O: Fn() -> usize> BinaryTreeNode::<T, O> {
 	}
 
 	/// Returns a reference to the uncle node.
-	pub fn get_uncle(&mut self) -> Option::<&Self> {
+	pub fn get_uncle(&mut self) -> Option::<&'static Self> {
 		if let Some(parent) = self.get_parent() {
 			parent.get_sibling()
 		} else {
@@ -161,11 +161,49 @@ impl<T, O: Fn() -> usize> BinaryTreeNode::<T, O> {
 	}
 
 	/// Returns a mutable reference to the uncle node.
-	pub fn get_uncle_mut(&mut self) -> Option::<&mut Self> {
+	pub fn get_uncle_mut(&mut self) -> Option::<&'static mut Self> {
 		if let Some(parent) = self.get_parent_mut() {
 			parent.get_sibling_mut()
 		} else {
 			None
+		}
+	}
+
+	/// Applies a left tree rotation with the current node as pivot.
+	pub fn left_rotate(&mut self) {
+		let root = self.parent;
+		let root_ptr = unsafe { // Dereference of raw pointer
+			&mut *(root.unwrap().as_ptr() as *mut Self)
+		};
+		let left = self.left;
+
+		self.left = root;
+		root_ptr.parent = NonNull::new(self);
+
+		root_ptr.right = left;
+		if left.is_some() {
+			unsafe { // Dereference of raw pointer
+				&mut *(left.unwrap().as_ptr() as *mut Self)
+			}.parent = root;
+		}
+	}
+
+	/// Applies a right tree rotation with the current node as pivot.
+	pub fn right_rotate(&mut self) {
+		let root = self.parent;
+		let root_ptr = unsafe { // Dereference of raw pointer
+			&mut *(root.unwrap().as_ptr() as *mut Self)
+		};
+		let right = self.right;
+
+		self.right = root;
+		root_ptr.parent = NonNull::new(self);
+
+		root_ptr.left = right;
+		if right.is_some() {
+			unsafe { // Dereference of raw pointer
+				&mut *(right.unwrap().as_ptr() as *mut Self)
+			}.parent = root;
 		}
 	}
 
@@ -201,14 +239,14 @@ impl<T, O: Fn() -> usize> BinaryTreeNode::<T, O> {
 }
 
 /// TODO doc
-pub struct BinaryTree<T, O: Fn() -> usize> {
+pub struct BinaryTree<T: 'static, O: 'static + Fn() -> usize> {
 	/// The root node of the binary tree.
 	root: Option::<NonNull<BinaryTreeNode<T, O>>>,
 	/// Closure storing the offset of the node into the structure storing it
 	offset_data: O,
 }
 
-impl<T, O: Fn() -> usize> BinaryTree<T, O> {
+impl<T: 'static, O: 'static + Fn() -> usize> BinaryTree<T, O> {
 	/// Creates a new binary tree.
 	pub fn new(offset_data: O) -> Self {
 		Self {
@@ -298,7 +336,7 @@ mod test {
 	use super::*;
 
 	#[test_case]
-	fn binary_tree0() {
+	fn binary_tree_node_rotate0() {
 		// TODO
 	}
 
