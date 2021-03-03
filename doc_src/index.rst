@@ -26,7 +26,6 @@ Maestro documentation
    memory/a20
    memory/mem_map
    memory/buddy_alloc
-   memory/slab_alloc
    memory/kmalloc
    memory/vmem
    memory/mem_space
@@ -63,14 +62,14 @@ Maestro documentation
 Overview
 ========
 
-This documentation describes the way the Maestro kernel works and its interfaces. The target audience for these documents are kernel and module developers.
+This documentation describes the way the Maestro kernel and its interfaces work. The targeted audience for these documents are kernel and module developers.
 
 
 
 License
 =======
 
-The kernel and this documentation is under MIT license.
+The kernel and this documentation are under MIT license.
 
 
 

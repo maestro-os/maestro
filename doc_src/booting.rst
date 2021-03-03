@@ -38,7 +38,20 @@ All segments (except **TSS**) allow to read/write/execute in kernel and user mod
 
 The **TSS** (Task Switch Segment) is an almost-obsolete segment that is required for task switching, its purpose is explained in section **Task Switching**.
 
-After that, the kernel passes control to the main function, which initializes the rest of the kernel.
+
+
+Memory remapping
+----------------
+
+The kernel is divided into two parts:
+- Booting stub: located at **0x100000** on virtual memory
+- Main kernel code: located at **0xc0200000** on virtual memory
+
+Because GRUB loads the whole kernel at **0x100000**, it is required to remap the memory to use the main code of the kernel. This is done through paging.
+
+TODO: Add schematics of memory mapping
+
+The mapping of memory at **0x100000** is removed later because it is not required anymore.
 
 
 

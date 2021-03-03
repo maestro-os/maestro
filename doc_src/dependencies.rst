@@ -1,28 +1,20 @@
 Dependencies
-============
+************
 
 The kernel needs some external components in order to work, here is the list.
 
 
 
+Mandatory
+=========
+
 Compilation
 -----------
 
-- GCC: Compiler
-- Make: Utility to build using a Makefile
-- Bison: Parser generator utility
-- Flex: Parser generator utility
-- GMP: Multiple precision arithmetic library
-- MPC: Complex numbers arithmetic library
-- MPFR: Multiple precision floating point computation library
-- Texinfo: GNU documentation system
-
-
-
-Documentation
--------------
-
-- Sphinx: Documentation generator
+- gcc: A Cross-Compiler for the targeted architecture
+- make: Utility to build using a Makefile
+- Cargo: Rust building utility
+- rustc: Rust compiler
 
 
 
@@ -33,13 +25,20 @@ Booting
 
 
 
+Optional
+========
+
 Debugging
 ---------
 
 - GDB: GNU Debugger
+- QEMU: Emulator
+- Bochs: Emulator
+- Virtualbox: Emulator
 
-The following are not mandatory, these are the emulators commonly used to test the kernel.
 
-- QEMU
-- Bochs
-- Virtualbox
+
+Documentation
+-------------
+
+- Sphinx: Documentation generator

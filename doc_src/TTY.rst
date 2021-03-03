@@ -29,21 +29,9 @@ Controls
 
 Here is a list of controls for the terminal:
 
-- Ctrl + Q: Resume terminal
-- Ctrl + S: Suspend terminal
-- Ctrl + W: Erases input
 - Shift + PgUp: Scrolls up one page
 - Shift + PgDn: Scrolls down one page
 TODO
-
-
-
-printf
-------
-
-An implementation of the printf function is available in the kernel for general and debugging purpose. Though it shouldn't be use outside of the booting process as normal operating environment should be directed by userspace processes.
-
-One can refer to the POSIX description of the printf function for usage.
 
 
 
