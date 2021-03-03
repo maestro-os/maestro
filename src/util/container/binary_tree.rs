@@ -272,6 +272,18 @@ impl<T: 'static> BinaryTree<T> {
 		}
 	}
 
+	/// Updates the parent of the tree.
+	/// `node` is a node of the tree.
+	fn update_parent(&mut self, node: &mut BinaryTreeNode::<T>) {
+		let mut root = NonNull::new(node as *mut BinaryTreeNode::<T>);
+		while root.is_some() {
+			root = unsafe { // Call to unsafe function
+				root.unwrap().as_mut()
+			}.parent;
+		}
+		self.root = root;
+	}
+
 	/// Searches for a node with the given closure for comparison.
 	/// `cmp` is the comparison function.
 	pub fn get<F: Fn(&T) -> Ordering>(&mut self, cmp: F) -> Option::<&mut T> {
