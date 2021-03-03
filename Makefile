@@ -26,7 +26,7 @@ KERNEL_MODE ?= debug
 # environement variable with the same name
 KERNEL_TEST ?= false
 # If true, the kernel is compiled for QEMU testing.
-QEMU_TEST ?= false
+KERNEL_QEMU_TEST ?= false
 
 # Forcing the KERNEL_TEST option to `false` if building in release mode
 ifeq ($(KERNEL_MODE), release)
@@ -121,7 +121,7 @@ endif
 
 # The Rust language compiler flags
 RUSTFLAGS = -Zmacro-backtrace -C link-arg=-T$(LINKER) --cfg kernel_mode=\"$(KERNEL_MODE)\"
-ifeq ($(QEMU_TEST), true)
+ifeq ($(KERNEL_QEMU_TEST), true)
 RUSTFLAGS += --cfg qemu
 endif
 

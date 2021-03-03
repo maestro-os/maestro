@@ -1,23 +1,49 @@
 Compilation
-===========
+***********
 
 This page contains instructions to compile GCC cross compiler for the kernel and some details about the kernel compilation itself.
 
 
 
-GCC compilation
----------------
+Supported architectures
+=======================
 
-For the x86 32bits platform, the required target is i686.
+Here is the list of supported architectures
 
-TODO: Write complete compiler building instructions
++--------------+------------------+-------------------+
+| Architecture | C Cross Compiler | Target triplet    |
++==============+==================+===================+
+| x86          | i686-elf-gcc     | i686-unknown-none |
++--------------+------------------+-------------------+
+
+
+
+Configuration
+=============
+
+Before building the kernel, some environement variables can be set in order to configure the compilation of the kernel.
+When changing the environement variables, it's highly recommended to recompile everything.
+
+Here is the list of environement variables:
+
++------------------+---------------+-----------------------------------------------------------------------------------------------------------------+
+| Name             | Default value | Description                                                                                                     |
++==================+===============+=================================================================================================================+
+| KERNEL_ARCH      | ``x86``       | Specifies the platform for which the kernel will be compiled                                                    |
++------------------+---------------+-----------------------------------------------------------------------------------------------------------------+
+| KERNEL_MODE      | ``debug``     | Enables the debug mode of the kernel (on by the default). Possible values are either `debug` or `release`       |
++------------------+---------------+-----------------------------------------------------------------------------------------------------------------+
+| KERNEL_TEST      | ``false``     | Tells whether self-testing is enabled. If the kernel is built in release mode, this option is forced to `false` |
++------------------+---------------+-----------------------------------------------------------------------------------------------------------------+
+| KERNEL_QEMU_TEST | ``false``     | Tells whether the kernel should be compiled to be tested on QEMU                                                |
++------------------+---------------+-----------------------------------------------------------------------------------------------------------------+
 
 
 
 Kernel compilation
-------------------
+==================
 
-Once the compiler ready, the kernel can be compiled using command "make".
+Once the compiler is ready, the kernel can be compiled using command "make".
 
 .. code:: shell
 	make maestro # Builds the kernel
