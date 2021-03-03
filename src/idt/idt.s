@@ -1,172 +1,166 @@
+/*
+ * This file contains macros and functions created by these macros to handle interruptions.
+ */
+
 .section .text
 
-.global irq0
-.global irq1
-.global irq2
-.global irq3
-.global irq4
-.global irq5
-.global irq6
-.global irq7
-.global irq8
-.global irq9
-.global irq10
-.global irq11
-.global irq12
-.global irq13
-.global irq14
-.global irq15
-
+.global error_handler
 .global idt_load
+.extern end_of_interrupt
 
-.extern pic_EOI
-.extern irq1_handler
-.extern irq2_handler
-.extern irq3_handler
-.extern irq4_handler
-.extern irq5_handler
-.extern irq6_handler
-.extern irq7_handler
-.extern irq8_handler
-.extern irq9_handler
-.extern irq10_handler
-.extern irq11_handler
-.extern irq12_handler
-.extern irq13_handler
-.extern irq14_handler
-.extern irq15_handler
+/*
+ * This macro creates a function to handle an error interrupt that does **not** pass an additional error code.
+ * `n` is the id in the interrupt vector.
+ */
+.macro ERROR_NOCODE	n
+.global error\n
 
-irq0:
-	cli
+error\n:
 	push %ebp
 	mov %esp, %ebp
 
 	sub $40, %esp
 	call get_regs
 
-	call time_update
-	call ata_err_check
-
 	push %esp
-	call process_tick
-
-	push $0x0
-	call pic_EOI
-	add $4, %esp
+	push $0
+	push $\n
+	call event_handler
+	add $12, %esp
 
 	call restore_regs
 	add $40, %esp
 
 	mov %ebp, %esp
 	pop %ebp
-	sti
 	iret
+.endm
 
-irq1:
-	pusha
-	call irq1_handler
-	popa
-	sti
+/*
+ * This macro creates a function to handle an error interrupt that passes an additional error code.
+ * `n` is the id in the interrupt vector.
+ */
+.macro ERROR_CODE	n
+.global error\n
+
+error\n:
+	push %eax
+	mov 4(%esp), %eax
+	mov %eax, -44(%esp)
+	pop %eax
+	add $4, %esp
+
+	push %ebp
+	mov %esp, %ebp
+
+	sub $40, %esp
+	call get_regs
+
+	push %esp
+	sub $4, %esp
+	push $\n
+	call event_handler
+	add $12, %esp
+
+	call restore_regs
+	add $40, %esp
+
+	mov %ebp, %esp
+	pop %ebp
 	iret
+.endm
 
-irq2:
-	pusha
-	call irq2_handler
-	popa
-	sti
+/*
+ * This macro creates a function to handle a regular interruption.
+ * `n` is the id of the IRQ.
+ */
+.macro IRQ	n
+.global irq\n
+
+irq\n:
+	push %ebp
+	mov %esp, %ebp
+
+	sub $40, %esp
+	call get_regs
+
+	push %esp
+	push $0
+	push $(\n + 0x20)
+	call event_handler
+	add $12, %esp
+
+	call restore_regs
+	add $40, %esp
+
+	push $(\n + 0x20)
+	call end_of_interrupt
+	add $4, %esp
+
+	mov %ebp, %esp
+	pop %ebp
 	iret
+.endm
 
-irq3:
-	pusha
-	call irq3_handler
-	popa
-	sti
-	iret
+/*
+ * Creating the handlers for every errors.
+ */
+ERROR_NOCODE 0
+ERROR_NOCODE 1
+ERROR_NOCODE 2
+ERROR_NOCODE 3
+ERROR_NOCODE 4
+ERROR_NOCODE 5
+ERROR_NOCODE 6
+ERROR_NOCODE 7
+ERROR_CODE 8
+ERROR_NOCODE 9
+ERROR_CODE 10
+ERROR_CODE 11
+ERROR_CODE 12
+ERROR_CODE 13
+ERROR_CODE 14
+ERROR_NOCODE 15
+ERROR_NOCODE 16
+ERROR_CODE 17
+ERROR_NOCODE 18
+ERROR_NOCODE 19
+ERROR_NOCODE 20
+ERROR_NOCODE 21
+ERROR_NOCODE 22
+ERROR_NOCODE 23
+ERROR_NOCODE 24
+ERROR_NOCODE 25
+ERROR_NOCODE 26
+ERROR_NOCODE 27
+ERROR_NOCODE 28
+ERROR_NOCODE 29
+ERROR_CODE 30
+ERROR_NOCODE 31
 
-irq4:
-	pusha
-	call irq4_handler
-	popa
-	sti
-	iret
+/*
+ * Creating the handlers for every IRQs.
+ */
+IRQ 0
+IRQ 1
+IRQ 2
+IRQ 3
+IRQ 4
+IRQ 5
+IRQ 6
+IRQ 7
+IRQ 8
+IRQ 9
+IRQ 10
+IRQ 11
+IRQ 12
+IRQ 13
+IRQ 14
+IRQ 15
 
-irq5:
-	pusha
-	call irq5_handler
-	popa
-	sti
-	iret
-
-irq6:
-	pusha
-	call irq6_handler
-	popa
-	sti
-	iret
-
-irq7:
-	pusha
-	call irq7_handler
-	popa
-	sti
-	iret
-
-irq8:
-	pusha
-	call irq8_handler
-	popa
-	sti
-	iret
-
-irq9:
-	pusha
-	call irq9_handler
-	popa
-	sti
-	iret
-
-irq10:
-	pusha
-	call irq10_handler
-	popa
-	sti
-	iret
-
-irq11:
-	pusha
-	call irq11_handler
-	popa
-	sti
-	iret
-
-irq12:
-	pusha
-	call irq12_handler
-	popa
-	sti
-	iret
-
-irq13:
-	pusha
-	call irq13_handler
-	popa
-	sti
-	iret
-
-irq14:
-	pusha
-	call irq14_handler
-	popa
-	sti
-	iret
-
-irq15:
-	pusha
-	call irq15_handler
-	popa
-	sti
-	iret
-
+/*
+ * This function takes the IDT given as argument and loads it.
+ */
 idt_load:
 	mov 4(%esp), %edx
 	lidt (%edx)

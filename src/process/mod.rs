@@ -1,0 +1,180 @@
+/// This module handles processes.
+/// TODO
+
+pub mod mem_space;
+pub mod pid;
+pub mod scheduler;
+pub mod tss;
+
+use core::ffi::c_void;
+use core::mem::MaybeUninit;
+use crate::process::mem_space::MemSpace;
+use crate::process::pid::PIDManager;
+use crate::process::pid::Pid;
+use crate::process::scheduler::Scheduler;
+use crate::util::Regs;
+use crate::util::ptr::SharedPtr;
+use mem_space::{MAPPING_FLAG_READ, MAPPING_FLAG_WRITE, MAPPING_FLAG_USER, MAPPING_FLAG_NOLAZY};
+
+/// The size of the userspace stack of a process in number of pages.
+const USER_STACK_SIZE: usize = 2048;
+/// The flags for the userspace stack mapping.
+const USER_STACK_FLAGS: u8 = MAPPING_FLAG_READ | MAPPING_FLAG_WRITE | MAPPING_FLAG_USER;
+/// The size of the kernelspace stack of a process in number of pages.
+const KERNEL_STACK_SIZE: usize = 8;
+/// The flags for the kernelspace stack mapping.
+const KERNEL_STACK_FLAGS: u8 = MAPPING_FLAG_READ | MAPPING_FLAG_WRITE | MAPPING_FLAG_NOLAZY;
+
+/// An enumeration containing possible states for a process.
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum State {
+	/// The process is running or waiting to run.
+	Running,
+	/// The process is waiting for an event.
+	Sleeping,
+	/// The process has been stopped by a signal or by tracing.
+	Stopped,
+	/// The process has been killed.
+	Zombie,
+}
+
+/// Type representing a User ID.
+type Uid = u16;
+
+/// The Process Control Block (PCB).
+/// TODO doc
+pub struct Process {
+	/// The ID of the process.
+	pid: Pid,
+	/// The current state of the process.
+	state: State,
+	/// The ID of the process's owner.
+	owner: Uid,
+
+	/// The priority of the process.
+	priority: usize,
+	/// The number of quantum run during the cycle.
+	quantum_count: usize,
+
+	/// A pointer to the parent process.
+	parent: Option::<*mut Process>, // TODO Use a weak pointer
+	// TODO Children list
+
+	/// The last saved registers state
+	regs: Regs,
+	/// The virtual memory of the process containing every mappings.
+	mem_space: MemSpace,
+
+	/// A pointer to the userspace stack.
+	user_stack: *const c_void,
+	/// A pointer to the kernelspace stack.
+	kernel_stack: *const c_void,
+
+	// TODO File descriptors
+	// TODO Signals list
+}
+
+// TODO Use mutexes. Take into account sharing with interrupts
+/// The PID manager.
+static mut PID_MANAGER: MaybeUninit::<PIDManager> = MaybeUninit::uninit();
+/// The processes scheduler.
+static mut SCHEDULER: MaybeUninit::<SharedPtr::<Scheduler>> = MaybeUninit::uninit();
+
+/// Initializes processes system.
+pub fn init() -> Result::<(), ()> {
+	tss::init();
+	tss::flush();
+
+	unsafe { // Access to global variable
+		PID_MANAGER.write(PIDManager::new()?);
+		SCHEDULER.write(Scheduler::new()?);
+	}
+
+	Ok(())
+}
+
+impl Process {
+	/// Returns the process with PID `pid`. If the process doesn't exist, the function returns None.
+	pub fn get_by_pid(pid: Pid) -> Option::<SharedPtr::<Self>> {
+		unsafe { // Access to global variable
+			SCHEDULER.assume_init_mut()
+		}.get_by_pid(pid)
+	}
+
+	/// Creates a new process, assigns an unique PID to it and places it into the scheduler's
+	/// queue. The process is set to state `Running` by default.
+	/// `parent` is the parent of the process (optional).
+	/// `owner` is the ID of the process's owner.
+	pub fn new(parent: Option::<*mut Process>, owner: Uid, entry_point: *const c_void)
+		-> Result::<SharedPtr::<Self>, ()> {
+
+		// TODO Deadlock fix: requires both memory allocator and PID allocator
+		let pid = unsafe { // Access to global variable
+			PID_MANAGER.assume_init_mut()
+		}.get_unique_pid()?;
+		let mut mem_space = MemSpace::new()?;
+		let user_stack = mem_space.map_stack(None, USER_STACK_SIZE, USER_STACK_FLAGS)?;
+		// TODO On fail, free user_stack (use RAII?)
+		let kernel_stack = mem_space.map_stack(None, KERNEL_STACK_SIZE, KERNEL_STACK_FLAGS)?;
+
+		let process = Self {
+			pid: pid,
+			state: State::Running,
+			owner: owner,
+
+			priority: 0,
+			quantum_count: 0,
+
+			parent: parent,
+
+			regs: Regs {
+				ebp: 0x0,
+				esp: user_stack as _,
+				eip: entry_point as _,
+				eflags: 0x0,
+				eax: 0x0,
+				ebx: 0x0,
+				ecx: 0x0,
+				edx: 0x0,
+				esi: 0x0,
+				edi: 0x0,
+			},
+			mem_space: mem_space,
+
+			user_stack: user_stack,
+			kernel_stack: kernel_stack,
+		};
+
+		unsafe { // Access to global variable
+			SCHEDULER.assume_init_mut()
+		}.add_process(process)
+	}
+
+	/// Returns the process's PID.
+	pub fn get_pid(&self) -> Pid {
+		self.pid
+	}
+
+	/// Returns the process's current state.
+	pub fn get_current_state(&self) -> State {
+		self.state
+	}
+
+	/// Returns the process's owner ID.
+	pub fn get_owner(&self) -> Uid {
+		self.owner
+	}
+
+	/// Returns the priority of the process. A greater number means a higher priority relative to
+	/// other processes.
+	pub fn get_priority(&self) -> usize {
+		self.priority
+	}
+
+	/// Returns the process's parent if exists.
+	pub fn get_parent(&self) -> Option::<*mut Process> {
+		self.parent
+	}
+
+	// TODO
+}

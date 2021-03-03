@@ -1,12 +1,16 @@
 *.a
 *.o
 *.gch
+*.swp
 
 iso/
 maestro
 *.iso
 tags
 
-*.swp
+*_out
 
-doc
+target/
+*.rlib
+
+current_target.json

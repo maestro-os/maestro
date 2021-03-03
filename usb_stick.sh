@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# This script is meant to generate a bootable USB stick image for testing purpose.
+
 echo "Please unmount every partition on the device before proceeding."
 read -p "Type device to use as a USB stick (warning: this will erase all data on it): /dev/" device_name
 read -p "Type device label (warning: this will erase all data on it): /media/" label

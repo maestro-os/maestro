@@ -1,15 +1,45 @@
 # Maestro
 
-Maestro is a simple OS created just for fun.
+Maestro is a lightweight Unix-like kernel written in Rust.
 
 
 
 ## Compilation
 
-To compile this project, you must compile a cross compiler, following the instructions on this page: [GCC Cross Compiler](https://wiki.osdev.org/GCC_Cross-Compiler)
-GRUB is also needed in order to boot the kernel.
+The kernel currently supports the following architectures:
 
-Typing `make` will generate a binary and an ISO file.
+|--------------|------------------|-------------------|
+| Architecture | C Cross-Compiler | Target triplet    |
+|--------------|------------------|-------------------|
+| x86          | i686-elf-gcc     | i686-unknown-none |
+|--------------|------------------|-------------------|
+
+The following dependencies are required for compilation:
+- The C Cross-Compiler associated with the targeted platform
+- Nightly Rust compiler
+- (optional) grub-mkrescue, only to build an ISO file
+
+
+
+### Environement variables
+
+Some environement variables can be used to customize the compilation of the kernel. The list is the following:
+- **KERNEL_ARCH** (default: `x86`): Specify the platform for which the kernel will be compiled. The list of available platform is located in the `arch/` directory.
+- **KERNEL_MODE** (default: `debug`): The mode of the kernel. Either `debug` or `release`.
+- **KERNEL_TEST** (default: `false`): Tells whether self-testing is enabled or not for the kernel. If the kernel is built in release mode, this option is forced to `false`.
+- **USERSPACE_TEST** (default: `false`): Tells if the libraries should be compiled for userspace testing purpose.
+- **QEMU_TEST** (default: `false`): Tells whether the kernel should be compiled to be tested on QEMU.
+
+
+
+### Makefile
+
+The command `make` or `make maestro` build the kernel.
+`make iso` or `make maestro.iso` build a test ISO image.
+
+Typing `make clean` removes every object files and keeps only the original source code and the generated binaries.
+Typing `make fclean` does the same as `make clean` but also removes the binaries.
+And `make re` cleans and recompiles everything.
 
 
 
