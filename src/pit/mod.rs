@@ -1,22 +1,25 @@
-/// TODO doc
+/// This module handles the PIT (Programmable Interrupt Timer) which allows to trigger
+/// interruptions at a fixed interval.
 
+use crate::idt;
 use crate::io;
+use crate::util::lock::mutex::Mutex;
 use crate::util::math;
 
-/// TODO doc
+/// The type representing the frequency of the PIT in Hertz.
 pub type Frequency = u32;
 
-/// TODO doc
+/// PIT channel number 0.
 const CHANNEL_0: u16 = 0x40;
-/// TODO doc
+/// PIT channel number 1.
 const CHANNEL_1: u16 = 0x41;
-/// TODO doc
+/// PIT channel number 2.
 const CHANNEL_2: u16 = 0x42;
-/// TODO doc
-const COMMAND: u16 = 0x43;
+/// The port to send a command to the PIT.
+const PIT_COMMAND: u16 = 0x43;
 
 /// The command to enable the PC speaker.
-const BEEPER_ENABLE: u8 = 0x61;
+const BEEPER_ENABLE_COMMAND: u8 = 0x61;
 
 /// TODO doc
 const SELECT_CHANNEL_0: u8 = 0x0;
@@ -52,46 +55,42 @@ const MODE_5: u8 = 0x5;
 /// The base frequency of the PIT.
 const BASE_FREQUENCY: Frequency = 1193180;
 
-/// The current frequency of the PIT in hertz.
-static mut CURRENT_FREQUENCY: Frequency = 0;
+/// The current frequency of the PIT.
+static mut CURRENT_FREQUENCY: Mutex::<Frequency> = Mutex::new(0 as Frequency);
 
 /// Initializes the PIT.
 /// This function disables interrupts.
 pub fn init() {
-	crate::cli!();
-
-	unsafe {
-		io::outb(COMMAND, SELECT_CHANNEL_0 | ACCESS_LOBYTE_HIBYTE | MODE_4);
-		io::outb(COMMAND, SELECT_CHANNEL_2 | ACCESS_LOBYTE_HIBYTE | MODE_4);
-	}
+	idt::wrap_disable_interrupts(|| {
+		unsafe { // Call to unsafe function
+			io::outb(PIT_COMMAND, SELECT_CHANNEL_0 | ACCESS_LOBYTE_HIBYTE | MODE_4);
+			io::outb(PIT_COMMAND, SELECT_CHANNEL_2 | ACCESS_LOBYTE_HIBYTE | MODE_4);
+		}
+	});
 }
 
 /// Sets the PIT divider value to `count`.
 /// This function disables interrupts.
 pub fn set_value(count: u16) {
-	crate::cli!();
-
-	unsafe {
-		io::outb(CHANNEL_0, (count & 0xff) as u8);
-		io::outb(CHANNEL_0, ((count >> 8) & 0xff) as u8);
-	}
-
-	// TODO Enable interrupts back if they were enabled in the first place?
+	idt::wrap_disable_interrupts(|| {
+		unsafe { // Call to unsafe function
+			io::outb(CHANNEL_0, (count & 0xff) as u8);
+			io::outb(CHANNEL_0, ((count >> 8) & 0xff) as u8);
+		}
+	});
 }
 
 /// Sets the current frequency of the PIT to `frequency` in hertz.
 /// This function disables interrupts.
 pub fn set_frequency(frequency: Frequency) {
-	unsafe {
-		CURRENT_FREQUENCY = frequency;
+	unsafe { // Access to global variable
+		*CURRENT_FREQUENCY.lock().get_mut() = frequency;
 	}
 
-	let mut c = {
-		if frequency != 0 {
-			math::ceil_division(BASE_FREQUENCY, frequency)
-		} else {
-			0
-		}
+	let mut c = if frequency != 0 {
+		math::ceil_division(BASE_FREQUENCY, frequency)
+	} else {
+		0
 	};
 	if c & !0xffff != 0 {
 		c = 0;

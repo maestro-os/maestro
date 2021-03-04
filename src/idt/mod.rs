@@ -28,28 +28,34 @@ const ID_PRIVILEGE_RING_3: u8 = 0b00000110;
 /// TODO Doc
 const ID_PRESENT: u8 = 0b00000001;
 
+/// The IDT vector index for system calls.
+pub const SYSCALL_ENTRY: usize = 0x80;
+/// The number of entries into the IDT.
+pub const ENTRIES_COUNT: usize = 0x81;
+
 /// Disables interruptions.
 #[macro_export]
 macro_rules! cli {
-	() => (unsafe { asm!("cli") });
+	() => (unsafe { // Assembly instruction
+		asm!("cli")
+	});
 }
 
 /// Enables interruptions.
 #[macro_export]
 macro_rules! sti {
-	() => (unsafe { asm!("sti") });
+	() => (unsafe { // Assembly instruction
+		asm!("sti")
+	});
 }
 
 /// Waits for an interruption.
 #[macro_export]
 macro_rules! hlt {
-	() => (unsafe { asm!("hlt") });
+	() => (unsafe { // Assembly instruction
+		asm!("hlt")
+	});
 }
-
-/// The IDT vector index for system calls.
-pub const SYSCALL_ENTRY: usize = 0x80;
-/// The number of entries into the IDT.
-pub const ENTRIES_COUNT: usize = 0x81;
 
 /// Structure representing the IDT.
 #[repr(C, packed)]
@@ -221,7 +227,24 @@ pub fn init() {
 		size: (core::mem::size_of::<InterruptDescriptor>() * ENTRIES_COUNT - 1) as u16,
 		offset: unsafe { &ID } as *const _ as u32,
 	};
-	unsafe {
+	unsafe { // Call to assembly function
 		idt_load(&idt as *const _ as *const _);
+	}
+}
+
+/// Executes the given function `f` with maskable interruptions disabled.
+/// If interruptions were enabled before calling this function, they are enabled back before
+/// returning.
+pub fn wrap_disable_interrupts<F: Fn()>(f: F) {
+	let enabled = unsafe { // Call to assembly function
+		interrupt_is_enabled()
+	};
+
+	if enabled {
+		crate::cli!();
+		f();
+		crate::sti!();
+	} else {
+		f();
 	}
 }
