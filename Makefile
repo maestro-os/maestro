@@ -26,7 +26,7 @@ KERNEL_MODE ?= debug
 # environement variable with the same name
 KERNEL_TEST ?= false
 # If true, the kernel is compiled for QEMU testing.
-QEMU_TEST ?= false
+KERNEL_QEMU_TEST ?= false
 
 # Forcing the KERNEL_TEST option to `false` if building in release mode
 ifeq ($(KERNEL_MODE), release)
@@ -121,7 +121,7 @@ endif
 
 # The Rust language compiler flags
 RUSTFLAGS = -Zmacro-backtrace -C link-arg=-T$(LINKER) --cfg kernel_mode=\"$(KERNEL_MODE)\"
-ifeq ($(QEMU_TEST), true)
+ifeq ($(KERNEL_QEMU_TEST), true)
 RUSTFLAGS += --cfg qemu
 endif
 
@@ -133,6 +133,11 @@ RUST_SRC := $(shell find $(SRC_DIR) -type f -name "*.rs")
 
 # Flags for the QEMU emulator
 QEMU_FLAGS = -cdrom $(NAME).iso -device isa-debug-exit,iobase=0xf4,iosize=0x04
+
+# The path to the documentation sources
+DOC_SRC_DIR = doc_src/
+# The path to the documentation build directory
+DOC_DIR = doc/
 
 # The rule to compile everything
 all: $(NAME) iso tags
@@ -188,6 +193,7 @@ fclean: clean
 	rm -rf target/
 	rm -f $(NAME)
 	rm -f $(NAME).iso
+	rm -rf $(DOC_DIR)
 
 # The rule to recompile everything
 re: fclean all
@@ -209,4 +215,7 @@ bochs: iso
 virtualbox: iso
 	virtualbox
 
-.PHONY: all iso clean fclean re test debug bochs
+doc: $(DOC_SRC_DIR)
+	sphinx-build $(DOC_SRC_DIR) $(DOC_DIR)
+
+.PHONY: all iso clean fclean re test debug bochs doc
