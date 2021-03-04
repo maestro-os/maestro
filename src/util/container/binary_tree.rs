@@ -321,7 +321,7 @@ impl<T: 'static> BinaryTree<T> {
 
 #[cfg(test)]
 mod test {
-	use super::*;
+	//use super::*;
 
 	#[test_case]
 	fn binary_tree_node_rotate0() {
