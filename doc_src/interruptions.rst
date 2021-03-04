@@ -23,7 +23,8 @@ Before returning from an interrupt, it's important to send an EOI (End Of Interr
 x86 Task State Segment
 ----------------------
 
-TODO: Talk about stacks and privilege levels
+When an interruption happens while in ring 3 (TODO: place link to privilege levels), the kernel needs to go back to ring 0 to handle it.
+The Task State Segment (TSS) structure indicates the segments and stack pointer to use when switching back to ring 0.
 
 
 
@@ -130,4 +131,11 @@ A system call allows processes to communicate with the kernel. It can be trigger
     int $0x80
 
 The id of the syscall is stored in the register ``%eax``.  Other registers are used to pass arguments with the syscall.
-TODO: Add the order of registers for arguments
+Each of the following registers are used to pass arguments to the system call, in this order:
+
+- ``%ebx``
+- ``%ecx``
+- ``%edx``
+- ``%esi``
+- ``%edi``
+- ``%ebp``
