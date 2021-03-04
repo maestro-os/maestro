@@ -31,20 +31,9 @@ Maestro documentation
    memory/mem_space
 
    interruptions
-   interruptions/syscalls
-
    task_switching
 
    process
-   process/scheduling
-   process/signals
-   process/fork
-
-   ELF
-
-   cpuid
-
-   PCI
 
    disk/PATA
    disk/MBR
@@ -53,11 +42,13 @@ Maestro documentation
    filesystem/VFS
    filesystem/ext2
 
-   CMOS
+   ELF
+   modules
 
    ACPI/AML
-
-   modules
+   CMOS
+   PCI
+   cpuid
 
 
 
@@ -72,6 +63,13 @@ Intented audience
 =================
 
 This documentation describes the way the Maestro kernel and its interfaces work. The targeted audience for these documents are kernel and module developers.
+
+
+
+Interface references
+====================
+
+TODO: Give a link to the functions/structures/modules references
 
 
 

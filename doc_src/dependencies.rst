@@ -13,8 +13,10 @@ Compilation
 
 - gcc: A Cross-Compiler for the targeted architecture
 - make: Utility to build using a Makefile
-- Cargo: Rust building utility
+- cargo: Rust building utility
 - rustc: Rust compiler
+
+Node: The Nightly toolchain of Rust is required.
 
 
 
