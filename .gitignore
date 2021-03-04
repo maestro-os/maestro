@@ -12,5 +12,6 @@ tags
 
 target/
 *.rlib
+doc/
 
 current_target.json

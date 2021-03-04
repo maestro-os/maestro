@@ -45,7 +45,8 @@ Kernel compilation
 
 Once the compiler is ready, the kernel can be compiled using command "make".
 
-.. code:: shell
+.. code-block:: shell
+
 	make maestro # Builds the kernel
 	make maestro.iso # Builds an .iso file image
 	make doc # Builds the documentation
@@ -55,7 +56,8 @@ The default rule is "all".
 
 The following Makefile rules are also available:
 
-.. code:: shell
+.. code-block:: shell
+
 	make clean # Clean the project directory
 	make fclean # Cleans the project directory and removes executable files and documentation
 	make re # Remakes the project (equivalent to: make fclean; make all)

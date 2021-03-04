@@ -134,6 +134,11 @@ RUST_SRC := $(shell find $(SRC_DIR) -type f -name "*.rs")
 # Flags for the QEMU emulator
 QEMU_FLAGS = -cdrom $(NAME).iso -device isa-debug-exit,iobase=0xf4,iosize=0x04
 
+# The path to the documentation sources
+DOC_SRC_DIR = doc_src/
+# The path to the documentation build directory
+DOC_DIR = doc/
+
 # The rule to compile everything
 all: $(NAME) iso tags
 
@@ -210,7 +215,7 @@ bochs: iso
 virtualbox: iso
 	virtualbox
 
-doc: doc_src
+doc: $(DOC_SRC_DIR)
 	sphinx-build $(DOC_SRC_DIR) $(DOC_DIR)
 
 .PHONY: all iso clean fclean re test debug bochs doc

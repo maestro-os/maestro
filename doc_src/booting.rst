@@ -8,7 +8,7 @@ The kernel booting sequence is supervised by the Multiboot2 standard. The recomm
 Multiboot2
 ==========
 
-Multiboot is a very simple booting standard created by GNU. The specification is available here: `https://www.gnu.org/software/grub/manual/multiboot2/multiboot.html`
+Multiboot is a very simple booting standard created by GNU. The specification is available `here <https://www.gnu.org/software/grub/manual/multiboot2/multiboot.html>`_.
 Advantages of this standard on the kernelside include:
 
 - Compatibility with GRUB, one of the most used bootloader
