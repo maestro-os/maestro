@@ -4,21 +4,35 @@ use crate::util::lock::spinlock::Spinlock;
 
 /// This structure is used to give access to a payload owned by a concurrency control structure.
 pub struct LockPayload<'a, T> {
-	/// A mutable reference to the payload owned by the sturcture
-	payload: &'a mut T,
+	/// A mutable reference to the Mutex.
+	mutex: &'a mut Mutex::<T>,
 }
 
 impl<'a, T> LockPayload<'a, T> {
 	/// Creates a new lock payload instance.
-	pub fn new(payload: &'a mut T) -> Self {
+	pub fn new(mutex: &'a mut Mutex::<T>) -> Self {
 		Self {
-			payload: payload,
+			mutex: mutex,
 		}
 	}
 
 	/// Gives access to the payload.
+	pub fn get(&self) -> &T {
+		&self.mutex.data
+	}
+
+	/// Gives access to the payload.
 	pub fn get_mut(&mut self) -> &mut T {
-		&mut self.payload
+		&mut self.mutex.data
+	}
+}
+
+impl<'a, T> Drop for LockPayload<'a, T> {
+	/// Called when the LockPayload gets out of the scope of execution.
+	fn drop(&mut self) {
+		unsafe { // Call to unsafe function
+			self.mutex.unlock();
+		}
 	}
 }
 
@@ -46,12 +60,11 @@ impl<T> Mutex<T> {
 	/// available.
 	pub fn lock(&mut self) -> LockPayload<T> {
 		self.spin.lock();
-		LockPayload::<T>::new(&mut self.data)
+		LockPayload::<T>::new(self)
 	}
 
-	// TODO Protect against unlocking while the payload is still in use
-	/// Unlocks the mutex. Does nothing if the mutex is already unlocked.
-	pub fn unlock(&mut self) {
+	/// Unlocks the Mutex.
+	unsafe fn unlock(&mut self) {
 		self.spin.unlock();
 	}
 
@@ -67,6 +80,8 @@ impl<T> Mutex<T> {
 		&mut self.data
 	}
 }
+
+// TODO Remove MutexGuard?
 
 /// Type used to declare a guard meant to unlock the associated Mutex at the moment the execution
 /// gets out of the scope of its declaration. This structure is useful to ensure that the mutex
@@ -101,9 +116,11 @@ impl<'a, T> MutexGuard<'a, T> {
 	}
 }
 
-impl<'a, T> core::ops::Drop for MutexGuard<'a, T> {
+impl<'a, T> Drop for MutexGuard<'a, T> {
 	/// Called when the MutexGuard gets out of the scope of execution.
 	fn drop(&mut self) {
-		self.mutex.unlock();
+		unsafe { // Call to unsafe function
+			self.mutex.unlock();
+		}
 	}
 }

@@ -9,7 +9,6 @@ use crate::util::lock::mutex::MutexGuard;
 use crate::util;
 use crate::vga;
 
-// TODO Sanity checks
 // TODO Implement streams and termcaps
 
 /// The number of TTYs.
@@ -46,8 +45,7 @@ fn get_tab_size(cursor_x: vga::Pos) -> usize {
 }
 
 /// Structure representing a TTY.
-pub struct TTY
-{
+pub struct TTY {
 	/// The id of the TTY
 	id: usize,
 	/// The X position of the cursor in the history
@@ -72,7 +70,7 @@ pub struct TTY
 /// The array of every TTYs.
 static mut TTYS: MaybeUninit<[Mutex<TTY>; TTYS_COUNT]> = MaybeUninit::uninit();
 /// The current TTY's id.
-static mut CURRENT_TTY: usize = 0; // TODO Mutex
+static mut CURRENT_TTY: Mutex::<usize> = Mutex::new(0);
 
 /// Returns a mutable reference to the TTY with identifier `tty`.
 pub fn get(tty: usize) -> &'static mut Mutex<TTY> {
@@ -84,8 +82,8 @@ pub fn get(tty: usize) -> &'static mut Mutex<TTY> {
 
 /// Returns a reference to the current TTY.
 pub fn current() -> &'static mut Mutex<TTY> {
-	unsafe {
-		get(CURRENT_TTY)
+	unsafe { // Access to global variable
+		get(*CURRENT_TTY.lock().get())
 	}
 }
 
@@ -109,8 +107,8 @@ pub fn switch(tty: usize) {
 	if tty >= TTYS_COUNT {
 		return;
 	}
-	unsafe {
-		CURRENT_TTY = tty;
+	unsafe { // Access to global variable
+		*CURRENT_TTY.lock().get_mut() = tty;
 	}
 
 	let mut guard = MutexGuard::new(get(tty));
@@ -140,10 +138,11 @@ impl TTY {
 
 	/// Updates the TTY to the screen.
 	pub fn update(&mut self) {
-		unsafe {
-			if self.id == CURRENT_TTY && !self.update {
-				return;
-			}
+		let current_tty = unsafe { // Access to global variable
+			*CURRENT_TTY.lock().get()
+		};
+		if self.id == current_tty && !self.update {
+			return;
 		}
 
 		let buff = &self.history[get_history_offset(0, self.screen_y)];

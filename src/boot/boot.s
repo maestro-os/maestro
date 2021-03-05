@@ -63,14 +63,14 @@ entry_address_tag_end:
 header_end:
 
 /*
- * The entry point for the kernel.
+ * The entry point of the kernel.
  */
 multiboot_entry:
 	mov $boot_stack_bottom, %esp
 	xor %ebp, %ebp
-
 	pushl $0
 	popf
+	cli
 
 	push %eax
 	push %ebx

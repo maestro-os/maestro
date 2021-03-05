@@ -1,4 +1,5 @@
-/* * This file is the main source file for the kernel, but it is not the entry point of the kernel.
+/*
+ * This file is the main source file for the kernel, but it is not the entry point of the kernel.
  */
 
 #![no_std]
@@ -104,11 +105,16 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 	// TODO CPUID
 	multiboot::read_tags(multiboot_ptr);
 
-	println!("Initializing memory allocation...");
+	println!("Reading memory map...");
 	memory::memmap::init(multiboot_ptr);
-	memory::memmap::print_entries(); // TODO rm
+	#[cfg(kernel_mode = "debug")]
+	memory::memmap::print_entries();
+
+	println!("Initializing memory allocation...");
 	memory::alloc::init();
 	memory::malloc::init();
+
+	println!("Initializing virtual memory handler...");
 	let kernel_vmem = memory::vmem::kernel();
 	if kernel_vmem.is_err() {
 		crate::kernel_panic!("Cannot initialize kernel virtual memory!", 0);
@@ -125,23 +131,18 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 	// TODO Load modules from file and register into a vector
 	let mut ps2_module = ps2::PS2Module::new(| c, action | {
 		println!("Key action! {:?} {:?}", c, action);
-		// TODO
+		// TODO Write to device file
 	});
 	if ps2_module.init().is_err() {
-		println!("Failed to init PS/2 kernel module!");
-		unsafe { // Call to ASM function
-			kernel_halt();
-		}
+		kernel_panic!("Failed to init PS/2 kernel module!", 0);
 	}
 
 	// TODO Disk
+	// TODO Virtual file system
 
 	println!("Initializing processes...");
 	if process::init().is_err() {
-		println!("Failed to init processes!");
-		unsafe { // Call to ASM function
-			kernel_halt();
-		}
+		kernel_panic!("Failed to init processes!", 0);
 	}
 
 	// TODO Load init ramdisk
@@ -153,14 +154,10 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 	if let Ok(p) = Process::new(None, 0, test_begin) {
 		println!("Test process PID: {}", p.get_pid());
 	} else {
-		println!("Failed to create test process!");
-		unsafe { // Call to ASM function
-			kernel_halt();
-		}
+		kernel_panic!("Failed to create test process!", 0);
 	}
 
 	unsafe { // Call to ASM function
-		//kernel_halt(); // TODO Replace with kernel_loop
 		kernel_loop();
 	}
 }
@@ -183,7 +180,7 @@ fn panic(panic_info: &PanicInfo) -> ! {
 fn panic(panic_info: &PanicInfo) -> ! {
 	println!("FAILED\n");
 	println!("Error: {}\n", panic_info);
-	unsafe {
+	unsafe { // Call to ASM function
 		kernel_halt();
 	}
 }

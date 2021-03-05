@@ -7,7 +7,6 @@
 /*
  * Ensures that the A20 line is enabled.
  */
-// TODO Crash if the line cannot be enabled
 a20_handle:
 	call a20_check
 	test $0, %eax
