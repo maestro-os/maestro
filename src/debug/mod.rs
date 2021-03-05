@@ -88,7 +88,7 @@ fn get_function_name(inst: *const c_void) -> Option<&'static str> {
 
 	let boot_info = multiboot::get_boot_info();
 	let mut func_name: Option<&'static str> = None;
-	elf::foreach_sections(boot_info.elf_sections, boot_info.elf_num as usize,
+	elf::foreach_sections(memory::kern_to_virt(boot_info.elf_sections), boot_info.elf_num as usize,
 		boot_info.elf_shndx as usize, boot_info.elf_entsize as usize,
 		|hdr: &elf::ELF32SectionHeader, _name: &str| {
 			if hdr.sh_type != elf::SHT_SYMTAB {
