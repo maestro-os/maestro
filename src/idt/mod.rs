@@ -1,4 +1,5 @@
-mod handler;
+/// TODO doc
+
 pub mod pic;
 
 use core::ffi::c_void;
@@ -17,15 +18,15 @@ const ID_TYPE_GATE_INTERRUPT32: u8 = 0b11100000;
 const ID_TYPE_GATE_TRAP32: u8 = 0b11110000;
 /// TODO Doc
 const ID_TYPE_S: u8 = 0b00001000;
-/// TODO Doc
+/// Makes the interrupt switch to ring 0.
 const ID_PRIVILEGE_RING_0: u8 = 0b00000000;
-/// TODO Doc
+/// Makes the interrupt switch to ring 1.
 const ID_PRIVILEGE_RING_1: u8 = 0b00000010;
-/// TODO Doc
+/// Makes the interrupt switch to ring 2.
 const ID_PRIVILEGE_RING_2: u8 = 0b00000100;
-/// TODO Doc
+/// Makes the interrupt switch to ring 3.
 const ID_PRIVILEGE_RING_3: u8 = 0b00000110;
-/// TODO Doc
+/// Flag telling that the interrupt is present.
 const ID_PRESENT: u8 = 0b00000001;
 
 /// The IDT vector index for system calls.
@@ -60,24 +61,24 @@ macro_rules! hlt {
 /// Structure representing the IDT.
 #[repr(C, packed)]
 struct InterruptDescriptorTable {
-	/// TODO doc
+	/// The size of the IDT in bytes, minus 1.
 	size: u16,
-	/// TODO doc
+	/// The pointer to the beginning of the IDT.
 	offset: u32,
 }
 
 /// Structure representing an IDT entry.
 #[repr(C)]
 struct InterruptDescriptor {
-	/// TODO doc
+	/// Bits 0..15 of the address to the handler for the interrupt.
 	offset: u16,
-	/// TODO doc
+	/// The code segment selector to execute the interrupt.
 	selector: u16,
-	/// TODO doc
+	/// Must be set to zero.
 	zero: u8,
-	/// TODO doc
+	/// Interrupt flags.
 	type_attr: u8,
-	/// TODO doc
+	/// Bits 16..31 of the address to the handler for the interrupt.
 	offset_2: u16,
 }
 
