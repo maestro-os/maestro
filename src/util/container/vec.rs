@@ -6,6 +6,7 @@ use core::ffi::c_void;
 use core::mem::size_of;
 use core::ops::Index;
 use core::ops::IndexMut;
+use core::ptr::NonNull;
 use core::ptr;
 use crate::memory::malloc;
 
@@ -20,7 +21,7 @@ pub struct Vec<T> {
 	/// The number of elements that can be stored in the vector with its current buffer
 	capacity: usize,
 	/// A pointer to the first element of the vector
-	data: Option<*mut T>,
+	data: Option<NonNull<T>>,
 }
 
 impl<T> Vec<T> {
@@ -38,11 +39,12 @@ impl<T> Vec<T> {
 	fn realloc(&mut self) {
 		let size = self.capacity * size_of::<T>();
 		let ptr = if self.data.is_some() {
-			malloc::realloc(self.data.unwrap() as *mut c_void, size).unwrap() as *mut T
+			malloc::realloc(self.data.unwrap().as_ptr() as *mut c_void, size).unwrap() as *mut T
 		} else {
 			malloc::alloc(size).unwrap() as *mut T
 		};
-		self.data = Some(ptr);
+		self.data = NonNull::new(ptr);
+		debug_assert!(self.data.is_some());
 	}
 
 	// TODO Handle fail
@@ -89,7 +91,7 @@ impl<T> Vec<T> {
 		}
 
 		unsafe { // Pointer arithmetic and dereference of raw pointer
-			ptr::read(self.data.unwrap())
+			ptr::read(self.data.unwrap().as_ptr())
 		}
 	}
 
@@ -100,7 +102,7 @@ impl<T> Vec<T> {
 		}
 
 		unsafe { // Pointer arithmetic and dereference of raw pointer
-			ptr::read(self.data.unwrap().offset((self.len - 1) as _))
+			ptr::read(self.data.unwrap().as_ptr().offset((self.len - 1) as _))
 		}
 	}
 
@@ -113,11 +115,10 @@ impl<T> Vec<T> {
 		}
 		debug_assert!(self.capacity >= self.len + 1);
 
+		let ptr = self.data.unwrap().as_ptr();
 		unsafe { // Pointer arithmetic and dereference of raw pointer
-			ptr::copy(self.data.unwrap().offset(index as _),
-				self.data.unwrap().offset((index + 1) as _),
-				self.len - index);
-			ptr::write(self.data.unwrap().offset(index as _), element);
+			ptr::copy(ptr.offset(index as _), ptr.offset((index + 1) as _), self.len - index);
+			ptr::write(ptr.offset(index as _), element);
 		}
 		self.len += 1;
 	}
@@ -129,14 +130,12 @@ impl<T> Vec<T> {
 			self.vector_panic(0);
 		}
 
+		let ptr = self.data.unwrap().as_ptr();
 		let v = unsafe { // Pointer arithmetic and dereference of raw pointer
-			ptr::read(self.data.unwrap().offset(index as _))
+			ptr::read(ptr.offset(index as _))
 		};
-
 		unsafe { // Pointer arithmetic and dereference of raw pointer
-			ptr::copy(self.data.unwrap().offset((index + 1) as _),
-				self.data.unwrap().offset(index as _),
-				self.len - index - 1);
+			ptr::copy(ptr.offset((index + 1) as _), ptr.offset(index as _), self.len - index - 1);
 		}
 		self.len -= 1;
 
@@ -155,7 +154,7 @@ impl<T> Vec<T> {
 		debug_assert!(self.capacity >= self.len + 1);
 
 		unsafe { // Pointer arithmetic and dereference of raw pointer
-			ptr::write(self.data.unwrap().offset(self.len as _), value);
+			ptr::write(self.data.unwrap().as_ptr().offset(self.len as _), value);
 		}
 		self.len += 1;
 	}
@@ -165,7 +164,7 @@ impl<T> Vec<T> {
 		if !self.is_empty() {
 			self.len -= 1;
 			unsafe { // Pointer arithmetic and dereference of raw pointer
-				Some(ptr::read(self.data.unwrap().offset(self.len as _)))
+				Some(ptr::read(self.data.unwrap().as_ptr().offset(self.len as _)))
 			}
 		} else {
 			None
@@ -173,7 +172,7 @@ impl<T> Vec<T> {
 	}
 
 	/// Clears the vector, removing all values.
-	fn clear(&mut self) {
+	pub fn clear(&mut self) {
 		for e in self.into_iter() {
 			drop(e);
 		}
@@ -182,19 +181,22 @@ impl<T> Vec<T> {
 		self.capacity = 0;
 
 		if self.data.is_some() {
-			malloc::free(self.data.unwrap() as _);
+			malloc::free(self.data.unwrap().as_ptr() as _);
 			self.data = None;
 		}
 	}
 }
 
-// TODO
-/*impl<T: Clone> Clone for Vec<T> {
-	fn clone(&self) -> Self {
-		// TODO
-		Self::new()
+impl<T: Clone> Vec::<T> {
+	/// Clones the vector and its content.
+	pub fn clone(&self) -> Result::<Vec::<T>, ()> {
+		Ok(Self {
+			len: self.len,
+			capacity: self.capacity,
+			data: NonNull::new(malloc::alloc(self.capacity)? as *mut T),
+		})
 	}
-}*/
+}
 
 impl<T> Index<usize> for Vec<T> {
 	type Output = T;
@@ -206,7 +208,7 @@ impl<T> Index<usize> for Vec<T> {
 		}
 
 		unsafe { // Dereference of raw pointer
-			&*self.data.unwrap().offset(index as _)
+			&*self.data.unwrap().as_ptr().offset(index as _)
 		}
 	}
 }
@@ -219,7 +221,7 @@ impl<T> IndexMut<usize> for Vec<T> {
 		}
 
 		unsafe { // Dereference of raw pointer
-			&mut *self.data.unwrap().offset(index as _)
+			&mut *self.data.unwrap().as_ptr().offset(index as _)
 		}
 	}
 }

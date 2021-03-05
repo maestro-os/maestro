@@ -51,7 +51,7 @@ impl Bitfield {
 
 	/// Sets bit `index`.
 	pub fn set(&mut self, index: usize) {
-		// TODO Check that index is in bound
+		debug_assert!(index < self.len);
 
 		let unit = unsafe { // Pointer arithmetic and dereference of raw pointer
 			&mut *self.ptr.offset((index / bit_size_of::<u8>()) as _)
@@ -63,7 +63,7 @@ impl Bitfield {
 
 	/// Clears bit `index`.
 	pub fn clear(&mut self, index: usize) {
-		// TODO Check that index is in bound
+		debug_assert!(index < self.len);
 
 		let unit = unsafe { // Pointer arithmetic and dereference of raw pointer
 			&mut *self.ptr.offset((index / bit_size_of::<u8>()) as _)

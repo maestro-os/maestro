@@ -30,7 +30,6 @@ impl<T> Box<T> {
 		let size = size_of_val(value_ref);
 		let ptr = if size > 0 {
 			let ptr = unsafe { // Use of transmute
-				// TODO Check that conversion from thin to fat pointer works
 				transmute::<*mut c_void, *mut T>(malloc::alloc(size)?)
 			};
 			unsafe { // Call to unsafe function
@@ -111,5 +110,5 @@ mod test {
 		debug_assert_eq!(*b.unwrap(), 42);
 	}
 
-	// TODO
+	// TODO More tests
 }
