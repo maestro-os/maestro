@@ -13,6 +13,7 @@ pub mod math;
 pub mod ptr;
 
 use core::ffi::c_void;
+use core::fmt;
 use core::mem::MaybeUninit;
 
 /// Tells if pointer `ptr` is aligned on boundary `n`.
@@ -88,6 +89,23 @@ pub struct Regs
 	pub edx: u32,
 	pub esi: u32,
 	pub edi: u32,
+}
+
+impl fmt::Display for Regs {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		write!(f, "ebp: {:p} esp: {:p} eip: {:p} eflags: {:p} eax: {:p}\n
+ebx: {:p} ecx: {:p} edx: {:p} esi: {:p} edi: {:p}\n",
+			self.ebp as *const c_void,
+			self.esp as *const c_void,
+			self.eip as *const c_void,
+			self.eflags as *const c_void,
+			self.eax as *const c_void,
+			self.ebx as *const c_void,
+			self.ecx as *const c_void,
+			self.edx as *const c_void,
+			self.esi as *const c_void,
+			self.edi as *const c_void)
+	}
 }
 
 extern "C" {

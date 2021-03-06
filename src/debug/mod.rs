@@ -5,7 +5,6 @@ use core::mem::size_of;
 use crate::elf;
 use crate::memory;
 use crate::multiboot;
-use crate::util;
 
 /// Returns the value into the specified register.
 #[macro_export]
@@ -18,31 +17,16 @@ macro_rules! register_get {
 	}};
 }
 
-// TODO Implement in Regs structure directly
-/// Prints the registers into the given `regs` structure.
-pub fn print_regs(regs: &util::Regs) {
-	crate::print!("ebp: {:p} ", regs.ebp as *const c_void);
-	crate::print!("esp: {:p} ", regs.esp as *const c_void);
-	crate::print!("eip: {:p} ", regs.eip as *const c_void);
-	crate::print!("eflags: {:p} ", regs.eflags as *const c_void);
-	crate::print!("eax: {:p}\n", regs.eax as *const c_void);
-	crate::print!("ebx: {:p} ", regs.ebx as *const c_void);
-	crate::print!("ecx: {:p} ", regs.ecx as *const c_void);
-	crate::print!("edx: {:p} ", regs.edx as *const c_void);
-	crate::print!("esi: {:p} ", regs.esi as *const c_void);
-	crate::print!("edi: {:p}\n", regs.edi as *const c_void);
-}
-
 /// Prints, in hexadecimal, the content of the memory at the given location `ptr`, with the given
 /// size `n` in bytes.
 pub unsafe fn print_memory(ptr: *const c_void, n: usize) {
 	let mut i = 0;
 	while i < n {
-		crate::print!("{:p}  ", ptr);
+		crate::print!("{:#08x}  ", ptr as usize + i);
 
 		let mut j = 0;
 		while j < 16 && i + j < n {
-			crate::println!("{:x?} ", *(((ptr as usize) + (i + j)) as *const u8));
+			crate::print!("{:02x} ", *(((ptr as usize) + (i + j)) as *const u8));
 			j += 1;
 		}
 
@@ -51,12 +35,12 @@ pub unsafe fn print_memory(ptr: *const c_void, n: usize) {
 		j = 0;
 		while j < 16 && i + j < n {
 			let v = *(((ptr as usize) + (i + j)) as *const u8);
-			let c = if v < 32 {
+			let c = if v < 32 || v > 127 {
 				'.'
 			} else {
 				v as char
 			};
-			crate::println!("{}", c);
+			crate::print!("{}", c);
 			j += 1;
 		}
 

@@ -198,7 +198,9 @@ pub fn foreach_sections<F>(sections: *const c_void, sections_count: usize, shndx
 /// Returns the name of the symbol at the given offset.
 /// `strtab_section` is a reference to the .strtab section, containing symbol names.
 /// `offset` is the offset of the symbol in the section.
+/// If the offset is outside of the section, the behaviour is undefined.
 pub fn get_symbol_name(strtab_section: &ELF32SectionHeader, offset: u32) -> Option<&'static str> {
+	debug_assert!(offset < strtab_section.sh_size);
 	Some(unsafe { // Call to unsafe function
 		util::ptr_to_str(memory::kern_to_virt((strtab_section.sh_addr + offset) as _))
 	})
@@ -215,6 +217,10 @@ pub fn get_symbol_name(strtab_section: &ELF32SectionHeader, offset: u32) -> Opti
 pub fn get_function_name(sections: *const c_void, sections_count: usize, shndx: usize,
 	entsize: usize, inst: *const c_void) -> Option<&'static str> {
 	let strtab_section = get_section(sections, sections_count, shndx, entsize, ".strtab").unwrap();
+	unsafe { // TODO rm
+		crate::debug::print_memory(strtab_section as *const _ as *const c_void, strtab_section.sh_size as usize);
+	}
+
 	let mut func_name: Option<&'static str> = None;
 	foreach_sections(sections, sections_count, shndx, entsize,
 		|hdr: &ELF32SectionHeader, _name: &str| {
@@ -222,24 +228,26 @@ pub fn get_function_name(sections: *const c_void, sections_count: usize, shndx: 
 				return;
 			}
 
-			let ptr = memory::kern_to_virt(hdr.sh_addr as _);
+			let ptr = memory::kern_to_virt(hdr.sh_addr as _) as *const u8;
+			debug_assert!(hdr.sh_entsize > 0);
+
 			let mut i: usize = 0;
 			while i < hdr.sh_size as usize {
 				let sym = unsafe { // Pointer arithmetic and dereference of raw pointer
-					&*(ptr.offset(i as isize) as *const ELF32Sym)
+					&*(ptr.add(i) as *const ELF32Sym)
 				};
-				let value = sym.st_value as usize;
-				//let size = sym.st_size as usize;
 
-				// TODO Fix overflow
-				if (inst as usize) >= value/* && (inst as usize) < (value + size)*/ {
+				let value = sym.st_value as usize;
+				let size = sym.st_size as usize;
+				if (inst as usize) >= value && (inst as usize) < (value + size) {
 					if sym.st_name != 0 {
 						func_name = get_symbol_name(strtab_section, sym.st_name);
 					}
 
 					break;
 				}
-				i += size_of::<ELF32Sym>();
+
+				i += hdr.sh_entsize as usize;
 			}
 		});
 	func_name
