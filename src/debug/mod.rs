@@ -1,6 +1,7 @@
-///TODO doc
+/// This module implements debugging tools.
 
 use core::ffi::c_void;
+use core::mem::size_of;
 use crate::elf;
 use crate::memory;
 use crate::multiboot;
@@ -11,12 +12,13 @@ use crate::util;
 macro_rules! register_get {
 	($reg:expr) => {{
 		let mut val: u32;
-		llvm_asm!(concat!("mov %", $reg, ", %eax") : "={eax}"(val));
+		llvm_asm!(concat!("mov %", $reg, ", %eax") : "={eax}"(val)); // TODO Use new syntax
 
 		val
 	}};
 }
 
+// TODO Implement in Regs structure directly
 /// Prints the registers into the given `regs` structure.
 pub fn print_regs(regs: &util::Regs) {
 	crate::print!("ebp: {:p} ", regs.ebp as *const c_void);
@@ -64,59 +66,6 @@ pub unsafe fn print_memory(ptr: *const c_void, n: usize) {
 	}
 }
 
-/// Returns the name of the symbol at offset `offset`.
-fn get_symbol_name(offset: u32) -> Option<&'static str> {
-	let boot_info = multiboot::get_boot_info();
-
-	if let Some(section) = elf::get_section(boot_info.elf_sections, boot_info.elf_num as usize,
-		boot_info.elf_shndx as usize, boot_info.elf_entsize as usize, ".strtab") {
-		let name = unsafe {
-			util::ptr_to_str(memory::kern_to_virt((section.sh_addr + offset) as _))
-		};
-		Some(name)
-	} else {
-		None
-	}
-}
-
-/// Returns an Option containing the name of the function for the given instruction pointer. If the
-/// name cannot be retrieved, the function returns None.
-fn get_function_name(inst: *const c_void) -> Option<&'static str> {
-	if inst < memory::get_kernel_virtual_begin() || inst >= memory::get_kernel_virtual_end() {
-		return None;
-	}
-
-	let boot_info = multiboot::get_boot_info();
-	let mut func_name: Option<&'static str> = None;
-	elf::foreach_sections(memory::kern_to_virt(boot_info.elf_sections), boot_info.elf_num as usize,
-		boot_info.elf_shndx as usize, boot_info.elf_entsize as usize,
-		|hdr: &elf::ELF32SectionHeader, _name: &str| {
-			if hdr.sh_type != elf::SHT_SYMTAB {
-				return;
-			}
-
-			let ptr = memory::kern_to_virt(hdr.sh_addr as _);
-			let mut i: usize = 0;
-			while i < hdr.sh_size as usize {
-				let sym = unsafe {
-					&*(ptr.offset(i as isize) as *const elf::ELF32Sym)
-				};
-				let value = sym.st_value as usize;
-				//let size = sym.st_size as usize;
-
-				// TODO Fix overflow
-				if (inst as usize) >= value/* && (inst as usize) < (value + size)*/ {
-					if sym.st_name != 0 {
-						func_name = get_symbol_name(sym.st_name);
-					}
-					return;
-				}
-				i += core::mem::size_of::<elf::ELF32Sym>();
-			}
-		});
-	func_name
-}
-
 /// Prints the callstack in the current context, including symbol's name and address. `ebp` is
 /// value of the `%ebp` register that is used as a starting point for printing. `max_depth` is the
 /// maximum depth of the stack to print. If the stack is larger than the maximum depth, the
@@ -125,6 +74,7 @@ fn get_function_name(inst: *const c_void) -> Option<&'static str> {
 pub fn print_callstack(ebp: *const u32, max_depth: usize) {
 	crate::println!("--- Callstack ---");
 
+	let boot_info = multiboot::get_boot_info();
 	let mut i: usize = 0;
 	let mut ebp_ = ebp;
 	while ebp_ != 0 as *const u32 && i < max_depth {
@@ -132,14 +82,16 @@ pub fn print_callstack(ebp: *const u32, max_depth: usize) {
 		/*if !memory::vmem::is_mapped(memory::kern_to_virt(memory::cr3_get()), ebp_) {
 			break;
 		}*/
-		let eip = unsafe {
-			*((ebp_ as usize + core::mem::size_of::<usize>()) as *const u32) as *const _
+		let eip = unsafe { // Dereference of raw pointer
+			*((ebp_ as usize + size_of::<usize>()) as *const u32) as *const c_void
 		};
 		if eip == (0 as *const _) {
 			break;
 		}
 
-		if let Some(name) = get_function_name(eip) {
+		if let Some(name) = elf::get_function_name(memory::kern_to_virt(boot_info.elf_sections),
+			boot_info.elf_num as usize, boot_info.elf_shndx as usize,
+			boot_info.elf_entsize as usize, eip) {
 			crate::println!("{}: {:p} -> {}", i, eip, name);
 		} else {
 			crate::println!("{}: {:p} -> ???", i, eip);

@@ -2,11 +2,10 @@
 /// A kernel panic occurs when an error is raised that the kernel cannot recover from. This is an
 /// undesirable state which requires to reboot the host machine.
 
-//#[cfg(kernel_mode = "debug")]
-//use crate::debug;
-
-use core::fmt;
+#[cfg(kernel_mode = "debug")]
+use crate::debug;
 use core::ffi::c_void;
+use core::fmt;
 use crate::memory;
 use crate::tty;
 
@@ -54,12 +53,17 @@ pub fn kernel_panic_(reason: &str, code: u32, _file: &str, _line: u32, _col: u32
 pub fn kernel_panic_(reason: &str, code: u32, file: &str, line: u32, col: u32) -> ! {
 	crate::cli!();
 	print_panic(reason, code);
+
 	crate::println!("\n-- DEBUG --\nFile: {}; Line: {}; Column: {}", file, line, col);
 	// TODO Print running process registers
 	crate::println!();
-	//let ebp = unsafe { ::register_get!("ebp") as *const _ };
-	// TODO fix: debug::print_callstack(ebp, 8);
-	unsafe {
+
+	let ebp = unsafe { // Call to unsafe macro
+		crate::register_get!("ebp") as *const _
+	};
+	debug::print_callstack(ebp, 8);
+
+	unsafe { // Call to ASM function
 		crate::kernel_halt();
 	}
 }
@@ -82,7 +86,8 @@ it.");
 pub fn rust_panic<'a>(args: &'a fmt::Arguments<'a>) -> ! {
 	crate::cli!();
 	print_rust_panic(args);
-	unsafe {
+
+	unsafe { // Call to ASM function
 		crate::kernel_halt();
 	}
 }

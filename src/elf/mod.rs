@@ -8,29 +8,29 @@ use crate::memory::NULL;
 use crate::memory;
 use crate::util;
 
-/// TODO doc
+/// The section header is inactive.
 pub const SHT_NULL: u32 = 0x00000000;
-/// TODO doc
+/// The section holds information defined by the program.
 pub const SHT_PROGBITS: u32 = 0x00000001;
-/// TODO doc
+/// The section holds a symbol table.
 pub const SHT_SYMTAB: u32 = 0x00000002;
-/// TODO doc
+/// the section holds a string table.
 pub const SHT_STRTAB: u32 = 0x00000003;
-/// TODO doc
+/// The section holds relocation entries with explicit attends.
 pub const SHT_RELA: u32 = 0x00000004;
-/// TODO doc
+/// The section holds a symbol hash table.
 pub const SHT_HASH: u32 = 0x00000005;
-/// TODO doc
+/// The section holds informations for dynamic linking.
 pub const SHT_DYNAMIC: u32 = 0x00000006;
-/// TODO doc
+/// The section holds informations that marks the file in some way.
 pub const SHT_NOTE: u32 = 0x00000007;
-/// TODO doc
+/// The section is empty but contains information in its offset.
 pub const SHT_NOBITS: u32 = 0x00000008;
-/// TODO doc
+/// The section holds relocation entries without explicit attends.
 pub const SHT_REL: u32 = 0x00000009;
-/// TODO doc
+/// Reserved section type.
 pub const SHT_SHLIB: u32 = 0x0000000a;
-/// TODO doc
+/// The section holds a symbol table.
 pub const SHT_DYNSYM: u32 = 0x0000000b;
 /// TODO doc
 pub const SHT_INIT_ARRAY: u32 = 0x0000000e;
@@ -47,11 +47,11 @@ pub const SHT_NUM: u32 = 0x00000013;
 /// TODO doc
 pub const SHT_LOOS: u32 = 0x60000000;
 
-/// TODO doc
+/// The section contains writable data.
 pub const SHF_WRITE: u32 = 0x00000001;
-/// TODO doc
+/// The section occupies memory during execution.
 pub const SHF_ALLOC: u32 = 0x00000002;
-/// TODO doc
+/// The section contains executable machine instructions.
 pub const SHF_EXECINSTR: u32 = 0x00000004;
 /// TODO doc
 pub const SHF_MERGE: u32 = 0x00000010;
@@ -69,70 +69,74 @@ pub const SHF_GROUP: u32 = 0x00000200;
 pub const SHF_TLS: u32 = 0x00000400;
 /// TODO doc
 pub const SHF_MASKOS: u32 = 0x0ff00000;
-/// TODO doc
+/// All bits included in this mask are reserved for processor-specific semantics.
 pub const SHF_MASKPROC: u32 = 0xf0000000;
 /// TODO doc
 pub const SHF_ORDERED: u32 = 0x04000000;
 /// TODO doc
 pub const SHF_EXCLUDE: u32 = 0x08000000;
 
+/// The symbol's type is not specified.
+pub const STT_NOTYPE: u8 = 0;
+/// The symbol is associated with a data object, such as a variable, an array, and so on.
+pub const STT_OBJECT: u8 = 1;
+/// The symbol is associated with a function or other executable code.
+pub const STT_FUNC: u8 = 2;
+/// The symbol is associated with a section.
+pub const STT_SECTION: u8 = 3;
 /// TODO doc
-pub const ELF32_STT_NOTYPE: u8 = 0;
+pub const STT_FILE: u8 = 4;
 /// TODO doc
-pub const ELF32_STT_OBJECT: u8 = 1;
+pub const STT_LOPROC: u8 = 13;
 /// TODO doc
-pub const ELF32_STT_FUNC: u8 = 2;
-/// TODO doc
-pub const ELF32_STT_SECTION: u8 = 3;
-/// TODO doc
-pub const ELF32_STT_FILE: u8 = 4;
-/// TODO doc
-pub const ELF32_STT_LOPROC: u8 = 13;
-/// TODO doc
-pub const ELF32_STT_HIPROC: u8 = 15;
+pub const STT_HIPROC: u8 = 15;
 
 /// TODO doc
 type ELF32Addr = u32;
 
 /// Structure representing an ELF section header in memory.
+#[derive(Clone, Copy, Debug)]
 #[repr(C, packed)]
 pub struct ELF32SectionHeader {
-	/// TODO doc
+	/// Index in the string table section specifying the name of the section.
 	pub sh_name: u32,
-	/// TODO doc
+	/// The type of the section.
 	pub sh_type: u32,
-	/// TODO doc
+	/// Section flags.
 	pub sh_flags: u32,
-	/// TODO doc
+	/// The address to the section's data in memory during execution.
 	pub sh_addr: u32,
-	/// TODO doc
+	/// The offset of the section's data in the ELF file.
 	pub sh_offset: u32,
-	/// TODO doc
+	/// The size of the section's data in bytes.
 	pub sh_size: u32,
-	/// TODO doc
+	/// Section header table index link.
 	pub sh_link: u32,
-	/// TODO doc
+	/// Extra-informations whose interpretation depends on the section type.
 	pub sh_info: u32,
-	/// TODO doc
+	/// Alignment constraints of the section in memory. `0` or `1` means that the section doesn't
+	/// require specific alignment.
 	pub sh_addralign: u32,
-	/// TODO doc
+	/// If the section is a table of entry, this field holds the size of one entry. Else, holds
+	/// `0`.
 	pub sh_entsize: u32,
 }
 
 /// Structure representing an ELF symbol in memory.
+#[derive(Clone, Copy, Debug)]
 #[repr(C, packed)]
 pub struct ELF32Sym {
-	/// TODO doc
+	/// Index in the string table section specifying the name of the symbol.
 	pub st_name: u32,
-	/// TODO doc
+	/// The value of the symbol.
 	pub st_value: ELF32Addr,
-	/// TODO doc
+	/// The size of the symbol.
 	pub st_size: u32,
-	/// TODO doc
+	/// The symbol's type and binding attributes.
 	pub st_info: u8,
-	/// TODO doc
+	/// Holds `0`.
 	pub st_other: u8,
-	/// TODO doc
+	/// The index of the section the symbol is in.
 	pub st_shndx: u16,
 }
 
@@ -189,4 +193,54 @@ pub fn foreach_sections<F>(sections: *const c_void, sections_count: usize, shndx
 		};
 		f(hdr, n);
 	}
+}
+
+/// Returns the name of the symbol at the given offset.
+/// `strtab_section` is a reference to the .strtab section, containing symbol names.
+/// `offset` is the offset of the symbol in the section.
+pub fn get_symbol_name(strtab_section: &ELF32SectionHeader, offset: u32) -> Option<&'static str> {
+	Some(unsafe { // Call to unsafe function
+		util::ptr_to_str(memory::kern_to_virt((strtab_section.sh_addr + offset) as _))
+	})
+}
+
+/// Returns an Option containing the name of the function for the given instruction pointer. If the
+/// name cannot be retrieved, the function returns None.
+/// `sections` is a pointer to the ELF sections of the kernel in the virtual memory.
+/// `sections_count` is the number of sections in the kernel.
+/// `shndx` is the index of the section containing section names.
+/// `entsize` is the size of section entries.
+/// `inst` is the pointer to the instruction on the virtual memory.
+/// If the section `.strtab` doesn't exist, the behaviour is undefined.
+pub fn get_function_name(sections: *const c_void, sections_count: usize, shndx: usize,
+	entsize: usize, inst: *const c_void) -> Option<&'static str> {
+	let strtab_section = get_section(sections, sections_count, shndx, entsize, ".strtab").unwrap();
+	let mut func_name: Option<&'static str> = None;
+	foreach_sections(sections, sections_count, shndx, entsize,
+		|hdr: &ELF32SectionHeader, _name: &str| {
+			if hdr.sh_type != SHT_SYMTAB {
+				return;
+			}
+
+			let ptr = memory::kern_to_virt(hdr.sh_addr as _);
+			let mut i: usize = 0;
+			while i < hdr.sh_size as usize {
+				let sym = unsafe { // Pointer arithmetic and dereference of raw pointer
+					&*(ptr.offset(i as isize) as *const ELF32Sym)
+				};
+				let value = sym.st_value as usize;
+				//let size = sym.st_size as usize;
+
+				// TODO Fix overflow
+				if (inst as usize) >= value/* && (inst as usize) < (value + size)*/ {
+					if sym.st_name != 0 {
+						func_name = get_symbol_name(strtab_section, sym.st_name);
+					}
+
+					break;
+				}
+				i += size_of::<ELF32Sym>();
+			}
+		});
+	func_name
 }

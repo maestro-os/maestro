@@ -58,7 +58,7 @@ pub fn get_kernel_virtual_begin() -> *const c_void {
 /// Returns the size of the kernel image in bytes.
 #[inline(always)]
 pub fn get_kernel_size() -> usize {
-	unsafe {
+	unsafe { // Use of extern statics
 		(&kernel_end as *const _ as usize) - (&kernel_begin as *const _ as usize)
 	}
 }
@@ -66,7 +66,7 @@ pub fn get_kernel_size() -> usize {
 /// Returns the end of the kernel image in the physical memory.
 #[inline(always)]
 pub fn get_kernel_end() -> *const c_void {
-	unsafe {
+	unsafe { // Use of extern static
 		((&kernel_end as *const c_void as usize) - (PROCESS_END as usize)) as _
 	}
 }
@@ -74,8 +74,8 @@ pub fn get_kernel_end() -> *const c_void {
 /// Returns the end of the kernel image in the virtual memory.
 #[inline(always)]
 pub fn get_kernel_virtual_end() -> *const c_void {
-	unsafe {
-		((PROCESS_END as usize) + (&kernel_end as *const _ as usize)) as _
+	unsafe { // Use of extern static
+		(&kernel_end as *const _ as usize) as _
 	}
 }
 

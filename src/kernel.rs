@@ -17,6 +17,7 @@
 #![feature(dispatch_from_dyn)]
 #![feature(fundamental)]
 #![feature(lang_items)]
+#![feature(llvm_asm)]
 #![feature(maybe_uninit_extra)]
 #![feature(maybe_uninit_ref)]
 #![feature(panic_info_message)]
