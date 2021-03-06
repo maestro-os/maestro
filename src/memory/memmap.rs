@@ -5,6 +5,7 @@
 use core::cmp::*;
 use core::mem::MaybeUninit;
 use core::mem::size_of;
+use core::ptr::null;
 use crate::elf;
 use crate::memory::*;
 use crate::memory;
@@ -43,7 +44,7 @@ pub fn get_info() -> &'static MemoryInfo {
 /// Prints the memory mapping.
 pub fn print_entries() {
 	let mem_info = get_info();
-	debug_assert!(mem_info.memory_maps as *const _ != NULL);
+	debug_assert!(mem_info.memory_maps != null::<multiboot::MmapEntry>());
 
 	crate::println!("--- Memory mapping ---");
 	crate::println!("<begin> <end> <type>");
@@ -78,7 +79,7 @@ fn get_phys_alloc_begin(multiboot_ptr: *const c_void) -> *const c_void {
 /// Returns a pointer to the end of the system memory.
 fn get_memory_end() -> *const c_void {
 	let mem_info = get_info();
-	debug_assert!(mem_info.memory_maps as *const _ != NULL);
+	debug_assert!(mem_info.memory_maps != null::<multiboot::MmapEntry>());
 
 	let mut t = mem_info.memory_maps;
 	let mut end: usize = 0;
@@ -97,7 +98,9 @@ fn get_memory_end() -> *const c_void {
 /// Fills the memory mapping structure according to Multiboot's informations.
 pub fn init(multiboot_ptr: *const c_void) {
 	let boot_info = multiboot::get_boot_info();
-	let mem_info = unsafe { MEM_INFO.assume_init_mut() };
+	let mem_info = unsafe { // Access to global variable
+		MEM_INFO.assume_init_mut()
+	};
 	mem_info.memory_maps_size = boot_info.memory_maps_size;
 	mem_info.memory_maps_entry_size = boot_info.memory_maps_entry_size;
 	mem_info.memory_maps = boot_info.memory_maps;

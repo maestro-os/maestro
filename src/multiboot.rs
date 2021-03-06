@@ -3,8 +3,7 @@
 
 use core::ffi::c_void;
 use core::mem::ManuallyDrop;
-use crate::memory::*;
-//use crate::memory;
+use core::ptr::null;
 
 pub const BOOTLOADER_MAGIC: u32 = 0x36d76289;
 pub const TAG_ALIGN: usize = 8;
@@ -423,7 +422,7 @@ pub fn get_boot_info() -> &'static BootInfo {
 
 /// Returns the size in bytes of Multiboot tags pointed by `ptr`.
 pub fn get_tags_size(ptr: *const c_void) -> usize {
-	debug_assert!(ptr != NULL);
+	debug_assert!(ptr != null::<c_void>());
 
 	unsafe {
 		let mut tag = ptr.offset(8) as *const Tag;

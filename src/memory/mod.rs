@@ -8,10 +8,6 @@ pub mod vmem;
 
 use core::ffi::c_void;
 
-// TODO Remove
-/// Null pointer of type *const c_void.
-pub const NULL: *const c_void = 0x0 as _;
-
 /// The size of a page in bytes.
 pub const PAGE_SIZE: usize = 0x1000;
 

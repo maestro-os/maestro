@@ -18,9 +18,9 @@
 /// The Page Size Extension (PSE) allows to map 4MB large blocks without using a page table.
 
 use core::ffi::c_void;
+use core::ptr::null;
 use core::result::Result;
 use crate::elf;
-use crate::memory::NULL;
 use crate::memory::buddy;
 use crate::memory::vmem::VMem;
 use crate::memory;
@@ -239,7 +239,7 @@ impl X86VMem {
 		};
 		// TODO If Meltdown mitigation is enabled, only allow read access to a stub for interrupts
 		// TODO Place pages count in a constant, limit to size of physical memory
-		vmem.map_range(NULL, memory::PROCESS_END, 262144, FLAG_WRITE)?;
+		vmem.map_range(null::<c_void>(), memory::PROCESS_END, 262144, FLAG_WRITE)?;
 		// TODO Extend to other DMA
 		vmem.map_range(vga::BUFFER_PHYS as _, vga::BUFFER_VIRT as _, 1,
 			FLAG_CACHE_DISABLE | FLAG_WRITE_THROUGH)?;
