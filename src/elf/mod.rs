@@ -94,6 +94,8 @@ pub const STT_HIPROC: u8 = 15;
 /// TODO doc
 type ELF32Addr = u32;
 
+// TODO Fix function name getting
+
 /// Structure representing an ELF section header in memory.
 #[derive(Clone, Copy, Debug)]
 #[repr(C, packed)]
@@ -216,10 +218,6 @@ pub fn get_symbol_name(strtab_section: &ELF32SectionHeader, offset: u32) -> Opti
 pub fn get_function_name(sections: *const c_void, sections_count: usize, shndx: usize,
 	entsize: usize, inst: *const c_void) -> Option<&'static str> {
 	let strtab_section = get_section(sections, sections_count, shndx, entsize, ".strtab").unwrap();
-	unsafe { // TODO rm
-		crate::debug::print_memory(strtab_section as *const _ as *const c_void, strtab_section.sh_size as usize);
-	}
-
 	let mut func_name: Option<&'static str> = None;
 	foreach_sections(sections, sections_count, shndx, entsize,
 		|hdr: &ELF32SectionHeader, _name: &str| {

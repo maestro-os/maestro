@@ -6,8 +6,8 @@ use core::ptr::NonNull;
 
 /// The color of a binary tree node.
 enum NodeColor {
-	Black,
 	Red,
+	Black,
 }
 
 /// TODO doc
@@ -25,7 +25,17 @@ struct BinaryTreeNode<T> {
 }
 
 impl<T: 'static> BinaryTreeNode<T> {
-	// TODO new
+	/// Creates a new node with the given `value`. The node is colored Red by default.
+	pub fn new(value: T) -> Self {
+		Self {
+			parent: None,
+			left: None,
+			right: None,
+			color: NodeColor::Red,
+
+			value: value,
+		}
+	}
 
 	/// Unwraps the given pointer option into a reference option.
 	fn unwrap_pointer(ptr: &Option::<NonNull::<Self>>) -> Option::<&'static Self> {
@@ -187,6 +197,28 @@ impl<T: 'static> BinaryTreeNode<T> {
 		}
 	}
 
+	/// Inserts the given node `node` to left of the current node.
+	pub fn insert_left(&mut self, node: &mut BinaryTreeNode::<T>) {
+		if let Some(mut n) = self.left {
+			node.insert_left(unsafe { // Call to unsafe function
+				n.as_mut()
+			});
+		}
+		self.left = NonNull::new(node);
+		node.parent = NonNull::new(self);
+	}
+
+	/// Inserts the given node `node` to right of the current node.
+	pub fn insert_right(&mut self, node: &mut BinaryTreeNode::<T>) {
+		if let Some(mut n) = self.right {
+			node.insert_right(unsafe { // Call to unsafe function
+				n.as_mut()
+			});
+		}
+		self.right = NonNull::new(node);
+		node.parent = NonNull::new(self);
+	}
+
 	/// Returns the number of nodes in the subtree.
 	pub fn nodes_count(&self) -> usize {
 		let left_count = if let Some(l) = self.get_left() {
@@ -272,9 +304,9 @@ impl<T: 'static> BinaryTree<T> {
 		}
 	}
 
-	/// Updates the parent of the tree.
+	/// Updates the root of the tree.
 	/// `node` is a node of the tree.
-	fn update_parent(&mut self, node: &mut BinaryTreeNode::<T>) {
+	fn update_node(&mut self, node: &mut BinaryTreeNode::<T>) {
 		let mut root = NonNull::new(node as *mut BinaryTreeNode::<T>);
 		while root.is_some() {
 			root = unsafe { // Call to unsafe function
@@ -284,7 +316,28 @@ impl<T: 'static> BinaryTree<T> {
 		self.root = root;
 	}
 
-	/// Searches for a node with the given closure for comparison.
+	/// Returns the node with the closest value. Returns None if the tree is empty.
+	/// `cmp` is the comparison function.
+	fn get_closest_node<F: Fn(&T) -> Ordering>(&mut self, cmp: F)
+		-> Option::<&mut BinaryTreeNode::<T>> {
+		let mut node = self.get_root_mut();
+
+		while node.is_some() {
+			let n = node.unwrap();
+			let ord = cmp(&n.value);
+			if ord == Ordering::Less {
+				node = n.get_left_mut();
+			} else if ord == Ordering::Greater {
+				node = n.get_right_mut();
+			} else {
+				return Some(n);
+			}
+		}
+
+		node
+	}
+
+	/// Searches for a value with the given closure for comparison.
 	/// `cmp` is the comparison function.
 	pub fn get<F: Fn(&T) -> Ordering>(&mut self, cmp: F) -> Option::<&mut T> {
 		let mut node = self.get_root_mut();
@@ -305,16 +358,34 @@ impl<T: 'static> BinaryTree<T> {
 	}
 
 	/// Inserts a node in the tree.
-	/// `node` is the node to insert.
+	/// `value` is the node to insert.
 	/// `cmp` is the comparison function.
-	pub fn insert<F: Fn(&T) -> Ordering>(&mut self, _node: T, _cmp: F) {
-		// TODO
+	pub fn insert<F: Fn(&T, &T) -> Ordering>(&mut self, value: T, cmp: F) {
+		let mut node = BinaryTreeNode::new(value);
+		let closest = self.get_closest_node(| val | {
+			cmp(val, &node.value) // TODO Check order
+		});
+
+		if let Some(c) = closest {
+			let order = cmp(&c.value, &node.value); // TODO Check order
+			if order == Ordering::Less {
+				c.insert_left(&mut node);
+			} else {
+				c.insert_right(&mut node);
+			}
+
+			// TODO Equilibrate
+			self.update_node(&mut node);
+		} else {
+			debug_assert!(self.root.is_none());
+			self.root = NonNull::new(&mut node);
+		}
 	}
 
 	/// Removes a node from the tree.
-	/// `node` is the node to remove.
+	/// `value` is the node to remove.
 	/// `cmp` is the comparison function.
-	pub fn remove<F: Fn(&T) -> Ordering>(&mut self, _node: T, _cmp: F) {
+	pub fn remove<F: Fn(&T) -> Ordering>(&mut self, _value: T, _cmp: F) {
 		// TODO
 	}
 }
