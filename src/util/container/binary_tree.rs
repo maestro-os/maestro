@@ -2,12 +2,14 @@
 
 use core::cmp::Ordering;
 use core::cmp::max;
+//use core::fmt;
 use core::mem::size_of;
 use core::ptr::NonNull;
 use crate::memory::malloc;
 use crate::util;
 
 /// The color of a binary tree node.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum NodeColor {
 	Red,
 	Black,
@@ -258,6 +260,19 @@ impl<T: 'static> BinaryTreeNode<T> {
 	}
 }
 
+/// Specify the order in which the tree is traversed.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TraversalType {
+	/// Accesses the data, then left child, then right child
+	PreOrder,
+	/// Accesses left child, then the data, then right child
+	InOrder,
+	/// Accesses right child, then the data, then left child
+	ReverseInOrder,
+	/// Accesses left child, then right child, then the data
+	PostOrder,
+}
+
 /// TODO doc
 pub struct BinaryTree<T: 'static> {
 	/// The root node of the binary tree.
@@ -316,10 +331,14 @@ impl<T: 'static> BinaryTree<T> {
 	/// `node` is a node of the tree.
 	fn update_node(&mut self, node: &mut BinaryTreeNode::<T>) {
 		let mut root = NonNull::new(node as *mut BinaryTreeNode::<T>);
-		while root.is_some() {
-			root = unsafe { // Call to unsafe function
+		loop {
+			let parent = unsafe { // Call to unsafe function
 				root.unwrap().as_mut()
 			}.parent;
+			if parent.is_none() {
+				break;
+			}
+			root = parent;
 		}
 		self.root = root;
 	}
@@ -381,11 +400,11 @@ impl<T: 'static> BinaryTree<T> {
 		let value = &n.value;
 
 		let closest = self.get_closest_node(| val | {
-			cmp(val, value) // TODO Check order
+			cmp(val, value)
 		});
 
 		if let Some(c) = closest {
-			let order = cmp(&c.value, &value); // TODO Check order
+			let order = cmp(&value, &c.value);
 			if order == Ordering::Less {
 				c.insert_left(n);
 			} else {
@@ -409,32 +428,60 @@ impl<T: 'static> BinaryTree<T> {
 	}
 
 	/// Calls the given closure for every nodes in the subtree with root `root`.
-	fn foreach_nodes<F: Fn(&mut BinaryTreeNode::<T>)>(root: &mut BinaryTreeNode::<T>, f: &F) {
-		if let Some(mut n) = root.left {
-			Self::foreach_nodes(unsafe { // Call to unsafe function
-				n.as_mut()
-			}, f);
-		}
-		if let Some(mut n) = root.right {
-			Self::foreach_nodes(unsafe { // Call to unsafe function
-				n.as_mut()
-			}, f);
+	/// `traversal_type` defines the order in which the tree is traversed.
+	fn foreach_nodes<F: Fn(&mut BinaryTreeNode::<T>)>(root: &mut BinaryTreeNode::<T>, f: &F,
+		traversal_type: TraversalType) {
+		let (first, second) = if traversal_type == TraversalType::ReverseInOrder {
+			(root.right, root.left)
+		} else {
+			(root.left, root.right)
+		};
+
+		if traversal_type == TraversalType::PreOrder {
+			f(root);
 		}
 
-		f(root);
+		if let Some(mut n) = first {
+			Self::foreach_nodes(unsafe { // Call to unsafe function
+				n.as_mut()
+			}, f, traversal_type);
+		}
+
+		if traversal_type == TraversalType::InOrder {
+			f(root);
+		}
+
+		if let Some(mut n) = second {
+			Self::foreach_nodes(unsafe { // Call to unsafe function
+				n.as_mut()
+			}, f, traversal_type);
+		}
+
+		if traversal_type == TraversalType::PostOrder {
+			f(root);
+		}
 	}
 
 	/// Calls the given closure for every values.
-	pub fn foreach<F: Fn(&mut T)>(&mut self, f: F) {
+	pub fn foreach<F: Fn(&mut T)>(&mut self, f: F, traversal_type: TraversalType) {
 		if let Some(mut n) = self.root {
 			Self::foreach_nodes(unsafe { // Call to unsafe function
 				n.as_mut()
 			}, &| n: &mut BinaryTreeNode::<T> | {
 				f(&mut n.value);
-			});
+			}, traversal_type);
 		}
 	}
 }
+
+// TODO impl Clone?
+
+// TODO
+/*impl<T: fmt::Display> fmt::Display for BinaryTree::<T> {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		// TODO
+	}
+}*/
 
 impl<T> Drop for BinaryTree::<T> {
 	fn drop(&mut self) {
@@ -443,7 +490,7 @@ impl<T> Drop for BinaryTree::<T> {
 				n.as_mut()
 			}, &| n | {
 				malloc::free(n as *mut _ as *mut _);
-			});
+			}, TraversalType::PostOrder);
 		}
 	}
 }
@@ -456,7 +503,7 @@ mod test {
 	fn binary_tree0() {
 		let mut b = BinaryTree::<i32>::new();
 		assert!(b.get(| val | {
-			val.cmp(&0) // TODO Check order
+			0.cmp(val)
 		}).is_none());
 	}
 
@@ -464,10 +511,10 @@ mod test {
 	fn binary_tree1() {
 		let mut b = BinaryTree::<i32>::new();
 		b.insert(0, | v0, v1 | {
-			v0.cmp(v1) // TODO Check order
+			v0.cmp(v1)
 		}).unwrap();
 		assert_eq!(*b.get(| val | {
-			val.cmp(&0) // TODO Check order
+			0.cmp(val)
 		}).unwrap(), 0);
 	}
 
@@ -475,14 +522,14 @@ mod test {
 	fn binary_tree2() {
 		let mut b = BinaryTree::<i32>::new();
 		let cmp = | v0: &i32, v1: &i32 | {
-			v0.cmp(v1) // TODO Check order
+			v0.cmp(v1)
 		};
 		for i in 0..10 {
 			b.insert(i, cmp).unwrap();
 		}
 		for i in 0..10 {
 			assert_eq!(*b.get(| val | {
-				val.cmp(&i) // TODO Check order
+				i.cmp(val)
 			}).unwrap(), i);
 		}
 	}
