@@ -407,11 +407,44 @@ impl<T: 'static> BinaryTree<T> {
 	pub fn remove<F: Fn(&T) -> Ordering>(&mut self, _value: T, _cmp: F) {
 		// TODO
 	}
+
+	/// Calls the given closure for every nodes in the subtree with root `root`.
+	fn foreach_nodes<F: Fn(&mut BinaryTreeNode::<T>)>(root: &mut BinaryTreeNode::<T>, f: &F) {
+		if let Some(mut n) = root.left {
+			Self::foreach_nodes(unsafe { // Call to unsafe function
+				n.as_mut()
+			}, f);
+		}
+		if let Some(mut n) = root.right {
+			Self::foreach_nodes(unsafe { // Call to unsafe function
+				n.as_mut()
+			}, f);
+		}
+
+		f(root);
+	}
+
+	/// Calls the given closure for every values.
+	pub fn foreach<F: Fn(&mut T)>(&mut self, f: F) {
+		if let Some(mut n) = self.root {
+			Self::foreach_nodes(unsafe { // Call to unsafe function
+				n.as_mut()
+			}, &| n: &mut BinaryTreeNode::<T> | {
+				f(&mut n.value);
+			});
+		}
+	}
 }
 
 impl<T> Drop for BinaryTree::<T> {
 	fn drop(&mut self) {
-		// TODO Remove every nodes
+		if let Some(mut n) = self.root {
+			Self::foreach_nodes(unsafe { // Call to unsafe function
+				n.as_mut()
+			}, &| n | {
+				malloc::free(n as *mut _ as *mut _);
+			});
+		}
 	}
 }
 
