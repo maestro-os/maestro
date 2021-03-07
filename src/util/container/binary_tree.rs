@@ -2,7 +2,10 @@
 
 use core::cmp::Ordering;
 use core::cmp::max;
+use core::mem::size_of;
 use core::ptr::NonNull;
+use crate::memory::malloc;
+use crate::util;
 
 /// The color of a binary tree node.
 enum NodeColor {
@@ -26,15 +29,20 @@ struct BinaryTreeNode<T> {
 
 impl<T: 'static> BinaryTreeNode<T> {
 	/// Creates a new node with the given `value`. The node is colored Red by default.
-	pub fn new(value: T) -> Self {
-		Self {
+	pub fn new(value: T) -> Result::<NonNull::<Self>, ()> {
+		let ptr = malloc::alloc(size_of::<Self>())? as *mut Self;
+		let s = Self {
 			parent: None,
 			left: None,
 			right: None,
 			color: NodeColor::Red,
 
 			value: value,
+		};
+		unsafe { // Call to unsafe function
+			util::write_ptr(ptr, s);
 		}
+		Ok(NonNull::new(ptr).unwrap())
 	}
 
 	/// Unwraps the given pointer option into a reference option.
@@ -325,13 +333,18 @@ impl<T: 'static> BinaryTree<T> {
 		while node.is_some() {
 			let n = node.unwrap();
 			let ord = cmp(&n.value);
-			if ord == Ordering::Less {
-				node = n.get_left_mut();
+
+			let next = if ord == Ordering::Less {
+				n.get_left_mut()
 			} else if ord == Ordering::Greater {
-				node = n.get_right_mut();
+				n.get_right_mut()
 			} else {
+				None
+			};
+			if next.is_none() {
 				return Some(n);
 			}
+			node = Some(n);
 		}
 
 		node
@@ -360,26 +373,32 @@ impl<T: 'static> BinaryTree<T> {
 	/// Inserts a node in the tree.
 	/// `value` is the node to insert.
 	/// `cmp` is the comparison function.
-	pub fn insert<F: Fn(&T, &T) -> Ordering>(&mut self, value: T, cmp: F) {
-		let mut node = BinaryTreeNode::new(value);
+	pub fn insert<F: Fn(&T, &T) -> Ordering>(&mut self, value: T, cmp: F) -> Result::<(), ()> {
+		let mut node = BinaryTreeNode::new(value)?;
+		let n = unsafe { // Call to unsafe function
+			node.as_mut()
+		};
+		let value = &n.value;
+
 		let closest = self.get_closest_node(| val | {
-			cmp(val, &node.value) // TODO Check order
+			cmp(val, value) // TODO Check order
 		});
 
 		if let Some(c) = closest {
-			let order = cmp(&c.value, &node.value); // TODO Check order
+			let order = cmp(&c.value, &value); // TODO Check order
 			if order == Ordering::Less {
-				c.insert_left(&mut node);
+				c.insert_left(n);
 			} else {
-				c.insert_right(&mut node);
+				c.insert_right(n);
 			}
 
 			// TODO Equilibrate
-			self.update_node(&mut node);
+			self.update_node(n);
 		} else {
 			debug_assert!(self.root.is_none());
-			self.root = NonNull::new(&mut node);
+			self.root = Some(node);
 		}
+		Ok(())
 	}
 
 	/// Removes a node from the tree.
@@ -390,13 +409,49 @@ impl<T: 'static> BinaryTree<T> {
 	}
 }
 
+impl<T> Drop for BinaryTree::<T> {
+	fn drop(&mut self) {
+		// TODO Remove every nodes
+	}
+}
+
 #[cfg(test)]
 mod test {
-	//use super::*;
+	use super::*;
 
 	#[test_case]
-	fn binary_tree_node_rotate0() {
-		// TODO
+	fn binary_tree0() {
+		let mut b = BinaryTree::<i32>::new();
+		assert!(b.get(| val | {
+			val.cmp(&0) // TODO Check order
+		}).is_none());
+	}
+
+	#[test_case]
+	fn binary_tree1() {
+		let mut b = BinaryTree::<i32>::new();
+		b.insert(0, | v0, v1 | {
+			v0.cmp(v1) // TODO Check order
+		}).unwrap();
+		assert_eq!(*b.get(| val | {
+			val.cmp(&0) // TODO Check order
+		}).unwrap(), 0);
+	}
+
+	#[test_case]
+	fn binary_tree2() {
+		let mut b = BinaryTree::<i32>::new();
+		let cmp = | v0: &i32, v1: &i32 | {
+			v0.cmp(v1) // TODO Check order
+		};
+		for i in 0..10 {
+			b.insert(i, cmp).unwrap();
+		}
+		for i in 0..10 {
+			assert_eq!(*b.get(| val | {
+				val.cmp(&i) // TODO Check order
+			}).unwrap(), i);
+		}
 	}
 
 	// TODO
