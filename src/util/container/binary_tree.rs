@@ -2,7 +2,7 @@
 
 use core::cmp::Ordering;
 use core::cmp::max;
-//use core::fmt;
+use core::fmt;
 use core::mem::size_of;
 use core::ptr::NonNull;
 use crate::memory::malloc;
@@ -209,10 +209,8 @@ impl<T: 'static> BinaryTreeNode<T> {
 
 	/// Inserts the given node `node` to left of the current node.
 	pub fn insert_left(&mut self, node: &mut BinaryTreeNode::<T>) {
-		if let Some(mut n) = self.left {
-			node.insert_left(unsafe { // Call to unsafe function
-				n.as_mut()
-			});
+		if let Some(n) = self.get_left_mut() {
+			node.insert_left(n);
 		}
 		self.left = NonNull::new(node);
 		node.parent = NonNull::new(self);
@@ -220,10 +218,8 @@ impl<T: 'static> BinaryTreeNode<T> {
 
 	/// Inserts the given node `node` to right of the current node.
 	pub fn insert_right(&mut self, node: &mut BinaryTreeNode::<T>) {
-		if let Some(mut n) = self.right {
-			node.insert_right(unsafe { // Call to unsafe function
-				n.as_mut()
-			});
+		if let Some(n) = self.get_right_mut() {
+			node.insert_right(n);
 		}
 		self.right = NonNull::new(node);
 		node.parent = NonNull::new(self);
@@ -242,6 +238,15 @@ impl<T: 'static> BinaryTreeNode<T> {
 			0
 		};
 		1 + left_count + right_count
+	}
+
+	/// Returns the depth of the node in the tree.
+	pub fn get_node_depth(&self) -> usize {
+		if let Some(p) = self.get_parent() {
+			p.get_node_depth() + 1
+		} else {
+			0
+		}
 	}
 
 	/// Returns the depth of the subtree.
@@ -343,32 +348,6 @@ impl<T: 'static> BinaryTree<T> {
 		self.root = root;
 	}
 
-	/// Returns the node with the closest value. Returns None if the tree is empty.
-	/// `cmp` is the comparison function.
-	fn get_closest_node<F: Fn(&T) -> Ordering>(&mut self, cmp: F)
-		-> Option::<&mut BinaryTreeNode::<T>> {
-		let mut node = self.get_root_mut();
-
-		while node.is_some() {
-			let n = node.unwrap();
-			let ord = cmp(&n.value);
-
-			let next = if ord == Ordering::Less {
-				n.get_left_mut()
-			} else if ord == Ordering::Greater {
-				n.get_right_mut()
-			} else {
-				None
-			};
-			if next.is_none() {
-				return Some(n);
-			}
-			node = Some(n);
-		}
-
-		node
-	}
-
 	/// Searches for a value with the given closure for comparison.
 	/// `cmp` is the comparison function.
 	pub fn get<F: Fn(&T) -> Ordering>(&mut self, cmp: F) -> Option::<&mut T> {
@@ -389,6 +368,30 @@ impl<T: 'static> BinaryTree<T> {
 		None
 	}
 
+	/// For value insertion, returns the parent node on which the value will be inserted.
+	fn get_insert_node<F: Fn(&T) -> Ordering>(&mut self, cmp: F)
+		-> Option::<&mut BinaryTreeNode::<T>> {
+		let mut node = self.get_root_mut();
+
+		while node.is_some() {
+			let n = node.unwrap();
+			let ord = cmp(&n.value);
+			let next = if ord == Ordering::Less {
+				n.get_left_mut()
+			} else if ord == Ordering::Greater {
+				n.get_right_mut()
+			} else {
+				None
+			};
+			if next.is_none() {
+				return Some(n);
+			}
+			node = next;
+		}
+
+		None
+	}
+
 	/// Inserts a node in the tree.
 	/// `value` is the node to insert.
 	/// `cmp` is the comparison function.
@@ -399,16 +402,16 @@ impl<T: 'static> BinaryTree<T> {
 		};
 		let value = &n.value;
 
-		let closest = self.get_closest_node(| val | {
-			cmp(val, value)
+		let parent = self.get_insert_node(| val | {
+			cmp(value, val)
 		});
 
-		if let Some(c) = closest {
-			let order = cmp(&value, &c.value);
+		if let Some(p) = parent {
+			let order = cmp(&value, &p.value);
 			if order == Ordering::Less {
-				c.insert_left(n);
+				p.insert_left(n);
 			} else {
-				c.insert_right(n);
+				p.insert_right(n);
 			}
 
 			// TODO Equilibrate
@@ -429,7 +432,7 @@ impl<T: 'static> BinaryTree<T> {
 
 	/// Calls the given closure for every nodes in the subtree with root `root`.
 	/// `traversal_type` defines the order in which the tree is traversed.
-	fn foreach_nodes<F: Fn(&mut BinaryTreeNode::<T>)>(root: &mut BinaryTreeNode::<T>, f: &F,
+	fn foreach_nodes<F: FnMut(&BinaryTreeNode::<T>)>(root: &BinaryTreeNode::<T>, f: &mut F,
 		traversal_type: TraversalType) {
 		let (first, second) = if traversal_type == TraversalType::ReverseInOrder {
 			(root.right, root.left)
@@ -447,7 +450,8 @@ impl<T: 'static> BinaryTree<T> {
 			}, f, traversal_type);
 		}
 
-		if traversal_type == TraversalType::InOrder {
+		if traversal_type == TraversalType::InOrder
+			|| traversal_type == TraversalType::ReverseInOrder {
 			f(root);
 		}
 
@@ -462,12 +466,59 @@ impl<T: 'static> BinaryTree<T> {
 		}
 	}
 
-	/// Calls the given closure for every values.
-	pub fn foreach<F: Fn(&mut T)>(&mut self, f: F, traversal_type: TraversalType) {
-		if let Some(mut n) = self.root {
-			Self::foreach_nodes(unsafe { // Call to unsafe function
+	/// Calls the given closure for every nodes in the subtree with root `root`.
+	/// `traversal_type` defines the order in which the tree is traversed.
+	fn foreach_nodes_mut<F: FnMut(&mut BinaryTreeNode::<T>)>(root: &mut BinaryTreeNode::<T>,
+		f: &mut F, traversal_type: TraversalType) {
+		let (first, second) = if traversal_type == TraversalType::ReverseInOrder {
+			(root.right, root.left)
+		} else {
+			(root.left, root.right)
+		};
+
+		if traversal_type == TraversalType::PreOrder {
+			f(root);
+		}
+
+		if let Some(mut n) = first {
+			Self::foreach_nodes_mut(unsafe { // Call to unsafe function
 				n.as_mut()
-			}, &| n: &mut BinaryTreeNode::<T> | {
+			}, f, traversal_type);
+		}
+
+		if traversal_type == TraversalType::InOrder
+			|| traversal_type == TraversalType::ReverseInOrder {
+			f(root);
+		}
+
+		if let Some(mut n) = second {
+			Self::foreach_nodes_mut(unsafe { // Call to unsafe function
+				n.as_mut()
+			}, f, traversal_type);
+		}
+
+		if traversal_type == TraversalType::PostOrder {
+			f(root);
+		}
+	}
+
+	/// Calls the given closure for every values.
+	pub fn foreach<F: FnMut(&T)>(&self, mut f: F, traversal_type: TraversalType) {
+		if let Some(n) = self.root {
+			Self::foreach_nodes(unsafe { // Call to unsafe function
+				n.as_ref()
+			}, &mut | n: &BinaryTreeNode::<T> | {
+				f(&n.value);
+			}, traversal_type);
+		}
+	}
+
+	/// Calls the given closure for every values.
+	pub fn foreach_mut<F: FnMut(&mut T)>(&mut self, mut f: F, traversal_type: TraversalType) {
+		if let Some(mut n) = self.root {
+			Self::foreach_nodes_mut(unsafe { // Call to unsafe function
+				n.as_mut()
+			}, &mut | n: &mut BinaryTreeNode::<T> | {
 				f(&mut n.value);
 			}, traversal_type);
 		}
@@ -476,19 +527,31 @@ impl<T: 'static> BinaryTree<T> {
 
 // TODO impl Clone?
 
-// TODO
-/*impl<T: fmt::Display> fmt::Display for BinaryTree::<T> {
+impl<T: fmt::Display> fmt::Display for BinaryTree::<T> {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		// TODO
+		if let Some(mut n) = self.root {
+			Self::foreach_nodes(unsafe { // Call to unsafe function
+				n.as_mut()
+			}, &mut | n | {
+				for _ in 0..n.get_node_depth() {
+					let _ = write!(f, "\t");
+				}
+
+				let _ = write!(f, "{}\n", n.value);
+			}, TraversalType::ReverseInOrder);
+			Ok(())
+		} else {
+			write!(f, "<Empty tree>")
+		}
 	}
-}*/
+}
 
 impl<T> Drop for BinaryTree::<T> {
 	fn drop(&mut self) {
 		if let Some(mut n) = self.root {
-			Self::foreach_nodes(unsafe { // Call to unsafe function
+			Self::foreach_nodes_mut(unsafe { // Call to unsafe function
 				n.as_mut()
-			}, &| n | {
+			}, &mut | n | {
 				malloc::free(n as *mut _ as *mut _);
 			}, TraversalType::PostOrder);
 		}
@@ -528,6 +591,23 @@ mod test {
 			b.insert(i, cmp).unwrap();
 		}
 		for i in 0..10 {
+			assert_eq!(*b.get(| val | {
+				i.cmp(val)
+			}).unwrap(), i);
+		}
+	}
+
+	#[test_case]
+	fn binary_tree2() {
+		let mut b = BinaryTree::<i32>::new();
+		let cmp = | v0: &i32, v1: &i32 | {
+			v0.cmp(v1)
+		};
+		for i in 0..10 {
+			b.insert(i, cmp).unwrap();
+			b.insert(-i, cmp).unwrap();
+		}
+		for i in -9..10 {
 			assert_eq!(*b.get(| val | {
 				i.cmp(val)
 			}).unwrap(), i);
