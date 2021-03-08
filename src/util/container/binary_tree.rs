@@ -47,6 +47,16 @@ impl<T: 'static> BinaryTreeNode<T> {
 		Ok(NonNull::new(ptr).unwrap())
 	}
 
+	/// Tells whether the node is red.
+	pub fn is_red(&self) -> bool {
+		self.color == NodeColor::Red
+	}
+
+	/// Tells whether the node is black.
+	pub fn is_black(&self) -> bool {
+		self.color == NodeColor::Black
+	}
+
 	/// Unwraps the given pointer option into a reference option.
 	fn unwrap_pointer(ptr: &Option::<NonNull::<Self>>) -> Option::<&'static Self> {
 		if let Some(p) = ptr {
@@ -169,6 +179,30 @@ impl<T: 'static> BinaryTreeNode<T> {
 		}
 	}
 
+	/// Tells whether the node is a left child.
+	pub fn is_left_child(&self) -> bool {
+		// TODO
+		false
+	}
+
+	/// Tells whether the node is a right child.
+	pub fn is_right_child(&self) -> bool {
+		// TODO
+		false
+	}
+
+	/// Tells whether the node and its parent and grandparent form a triangle.
+	pub fn is_triangle(&self) -> bool {
+		// TODO
+		false
+	}
+
+	/// Tells whether the node and its parent and grandparent form a line.
+	pub fn is_line(&self) -> bool {
+		// TODO
+		false
+	}
+
 	/// Applies a left tree rotation with the current node as pivot.
 	pub fn left_rotate(&mut self) {
 		let root = self.parent;
@@ -247,6 +281,21 @@ impl<T: 'static> BinaryTreeNode<T> {
 		} else {
 			0
 		}
+	}
+
+	/// Returns the black depth of the node in the tree.
+	pub fn get_node_black_depth(&self) -> usize {
+		let parent = if let Some(p) = self.get_parent() {
+			p.get_node_black_depth()
+		} else {
+			0
+		};
+		let curr = if self.is_black() {
+			1
+		} else {
+			0
+		};
+		parent + curr
 	}
 
 	/// Returns the depth of the subtree.
@@ -348,9 +397,9 @@ impl<T: 'static> BinaryTree<T> {
 		self.root = root;
 	}
 
-	/// Searches for a value with the given closure for comparison.
+	/// Searches for a node with the given closure for comparison.
 	/// `cmp` is the comparison function.
-	pub fn get<F: Fn(&T) -> Ordering>(&mut self, cmp: F) -> Option::<&mut T> {
+	fn get_node<F: Fn(&T) -> Ordering>(&mut self, cmp: F) -> Option::<&mut BinaryTreeNode::<T>> {
 		let mut node = self.get_root_mut();
 
 		while node.is_some() {
@@ -361,11 +410,21 @@ impl<T: 'static> BinaryTree<T> {
 			} else if ord == Ordering::Greater {
 				node = n.get_right_mut();
 			} else {
-				return Some(&mut n.value);
+				return Some(n);
 			}
 		}
 
 		None
+	}
+
+	/// Searches for a value with the given closure for comparison.
+	/// `cmp` is the comparison function.
+	pub fn get<F: Fn(&T) -> Ordering>(&mut self, cmp: F) -> Option::<&mut T> {
+		if let Some(n) = self.get_node(cmp) {
+			Some(&mut n.value)
+		} else {
+			None
+		}
 	}
 
 	/// For value insertion, returns the parent node on which the value will be inserted.
@@ -392,8 +451,60 @@ impl<T: 'static> BinaryTree<T> {
 		None
 	}
 
-	/// Inserts a node in the tree.
-	/// `value` is the node to insert.
+	/// Equilibrates the tree after insertion of node `n`.
+	fn insert_equilibrate(&mut self, n: &mut BinaryTreeNode::<T>) {
+		let mut node = n;
+		if node.parent.is_none() {
+			node.color = NodeColor::Black;
+			return;
+		}
+
+		loop {
+			let parent = node.get_parent_mut().unwrap();
+			let grandparent = node.get_grandparent_mut().unwrap();
+
+			if let Some(uncle) = node.get_uncle_mut() {
+				if uncle.is_red() {
+					parent.color = NodeColor::Black;
+					grandparent.color = NodeColor::Red;
+					uncle.color = NodeColor::Black;
+
+					node = grandparent;
+					continue;
+				}
+			}
+
+			if node.is_triangle() {
+				if node.is_left_child() {
+					parent.right_rotate();
+				} else {
+					parent.left_rotate();
+				}
+
+				node = parent;
+				continue;
+			}
+
+			if node.is_line() {
+				if node.is_left_child() {
+					grandparent.right_rotate();
+				} else {
+					grandparent.left_rotate();
+				}
+
+				parent.color = NodeColor::Black;
+				grandparent.color = NodeColor::Red;
+
+				node = parent;
+				continue;
+			}
+
+			break;
+		}
+	}
+
+	/// Inserts a value in the tree.
+	/// `value` is the value to insert.
 	/// `cmp` is the comparison function.
 	pub fn insert<F: Fn(&T, &T) -> Ordering>(&mut self, value: T, cmp: F) -> Result::<(), ()> {
 		let mut node = BinaryTreeNode::new(value)?;
@@ -413,18 +524,19 @@ impl<T: 'static> BinaryTree<T> {
 			} else {
 				p.insert_right(n);
 			}
-
-			// TODO Equilibrate
-			self.update_node(n);
 		} else {
 			debug_assert!(self.root.is_none());
 			self.root = Some(node);
 		}
+
+		self.insert_equilibrate(n);
+		self.update_node(n);
 		Ok(())
 	}
 
-	/// Removes a node from the tree.
-	/// `value` is the node to remove.
+	/// Removes a value from the tree. If the value is present several times in the tree, only one
+	/// node is removed.
+	/// `value` is the value to remove.
 	/// `cmp` is the comparison function.
 	pub fn remove<F: Fn(&T) -> Ordering>(&mut self, _value: T, _cmp: F) {
 		// TODO
@@ -565,31 +677,36 @@ mod test {
 	#[test_case]
 	fn binary_tree0() {
 		let mut b = BinaryTree::<i32>::new();
+
 		assert!(b.get(| val | {
 			0.cmp(val)
 		}).is_none());
 	}
 
 	#[test_case]
-	fn binary_tree1() {
+	fn binary_tree_insert0() {
 		let mut b = BinaryTree::<i32>::new();
+
 		b.insert(0, | v0, v1 | {
 			v0.cmp(v1)
 		}).unwrap();
+
 		assert_eq!(*b.get(| val | {
 			0.cmp(val)
 		}).unwrap(), 0);
 	}
 
 	#[test_case]
-	fn binary_tree2() {
+	fn binary_tree_insert1() {
 		let mut b = BinaryTree::<i32>::new();
 		let cmp = | v0: &i32, v1: &i32 | {
 			v0.cmp(v1)
 		};
+
 		for i in 0..10 {
 			b.insert(i, cmp).unwrap();
 		}
+
 		for i in 0..10 {
 			assert_eq!(*b.get(| val | {
 				i.cmp(val)
@@ -598,19 +715,48 @@ mod test {
 	}
 
 	#[test_case]
-	fn binary_tree2() {
+	fn binary_tree_insert2() {
 		let mut b = BinaryTree::<i32>::new();
 		let cmp = | v0: &i32, v1: &i32 | {
 			v0.cmp(v1)
 		};
+
 		for i in 0..10 {
 			b.insert(i, cmp).unwrap();
 			b.insert(-i, cmp).unwrap();
 		}
+
 		for i in -9..10 {
 			assert_eq!(*b.get(| val | {
 				i.cmp(val)
 			}).unwrap(), i);
+		}
+	}
+
+	#[test_case]
+	fn binary_tree_remove0() {
+		let mut b = BinaryTree::<i32>::new();
+		let cmp = | v0: &i32, v1: &i32 | {
+			v0.cmp(v1)
+		};
+
+		for i in 0..10 {
+			b.insert(i, cmp).unwrap();
+			b.insert(-i, cmp).unwrap();
+		}
+
+		for i in -9..10 {
+			assert_eq!(*b.get(| val | {
+				i.cmp(val)
+			}).unwrap(), i);
+
+			b.remove(i, | val | {
+				i.cmp(val)
+			});
+
+			assert!(b.get(| val | {
+				i.cmp(val)
+			}).is_none());
 		}
 	}
 
