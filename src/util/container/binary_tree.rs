@@ -460,43 +460,44 @@ impl<T: 'static> BinaryTree<T> {
 		}
 
 		loop {
-			let parent = node.get_parent_mut().unwrap();
-			let grandparent = node.get_grandparent_mut().unwrap();
+			if let Some(parent) = node.get_parent_mut() {
+				if let Some(grandparent) = node.get_grandparent_mut() {
+					if let Some(uncle) = node.get_uncle_mut() {
+						if uncle.is_red() {
+							parent.color = NodeColor::Black;
+							grandparent.color = NodeColor::Red;
+							uncle.color = NodeColor::Black;
 
-			if let Some(uncle) = node.get_uncle_mut() {
-				if uncle.is_red() {
-					parent.color = NodeColor::Black;
-					grandparent.color = NodeColor::Red;
-					uncle.color = NodeColor::Black;
+							node = grandparent;
+							continue;
+						}
+					}
 
-					node = grandparent;
-					continue;
+					if node.is_triangle() {
+						if node.is_left_child() {
+							parent.right_rotate();
+						} else {
+							parent.left_rotate();
+						}
+
+						node = parent;
+						continue;
+					}
+
+					if node.is_line() {
+						if node.is_left_child() {
+							grandparent.right_rotate();
+						} else {
+							grandparent.left_rotate();
+						}
+
+						parent.color = NodeColor::Black;
+						grandparent.color = NodeColor::Red;
+
+						node = parent;
+						continue;
+					}
 				}
-			}
-
-			if node.is_triangle() {
-				if node.is_left_child() {
-					parent.right_rotate();
-				} else {
-					parent.left_rotate();
-				}
-
-				node = parent;
-				continue;
-			}
-
-			if node.is_line() {
-				if node.is_left_child() {
-					grandparent.right_rotate();
-				} else {
-					grandparent.left_rotate();
-				}
-
-				parent.color = NodeColor::Black;
-				grandparent.color = NodeColor::Red;
-
-				node = parent;
-				continue;
 			}
 
 			break;
@@ -511,26 +512,32 @@ impl<T: 'static> BinaryTree<T> {
 		let n = unsafe { // Call to unsafe function
 			node.as_mut()
 		};
-		let value = &n.value;
 
 		let parent = self.get_insert_node(| val | {
-			cmp(value, val)
+			cmp(&n.value, val)
 		});
 
 		if let Some(p) = parent {
-			let order = cmp(&value, &p.value);
+			let order = cmp(&n.value, &p.value);
 			if order == Ordering::Less {
 				p.insert_left(n);
 			} else {
 				p.insert_right(n);
 			}
+
+			self.insert_equilibrate(n);
+			self.update_node(n);
 		} else {
 			debug_assert!(self.root.is_none());
 			self.root = Some(node);
+
+			let n = unsafe { // Call to unsafe function
+				node.as_mut()
+			};
+			self.insert_equilibrate(n);
+			self.update_node(n);
 		}
 
-		self.insert_equilibrate(n);
-		self.update_node(n);
 		Ok(())
 	}
 
