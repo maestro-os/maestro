@@ -330,7 +330,7 @@ impl<T: 'static> BinaryTreeNode<T> {
 		if let Some(parent) = self.get_parent_mut() {
 			if self.is_left_child() {
 				parent.left = None;
-			} else {
+			} else if self.is_right_child() {
 				parent.right = None;
 			}
 			self.parent = None;
@@ -828,9 +828,8 @@ mod test {
 			v0.cmp(v1)
 		};
 
-		for i in 0..10 {
+		for i in -9..10 {
 			b.insert(i, cmp).unwrap();
-			b.insert(-i, cmp).unwrap();
 		}
 
 		for i in -9..10 {
@@ -847,9 +846,8 @@ mod test {
 			v0.cmp(v1)
 		};
 
-		for i in 0..10 {
+		for i in -9..10 {
 			b.insert(i, cmp).unwrap();
-			b.insert(-i, cmp).unwrap();
 		}
 
 		for i in -9..10 {
@@ -861,8 +859,6 @@ mod test {
 				i.cmp(val)
 			});
 
-			crate::println!("{}", b);
-
 			assert!(b.get(| val | {
 				i.cmp(val)
 			}).is_none());
@@ -871,5 +867,5 @@ mod test {
 		assert!(b.is_empty());
 	}
 
-	// TODO
+	// TODO Try removing in different order
 }
