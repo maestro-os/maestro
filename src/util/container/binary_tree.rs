@@ -109,6 +109,50 @@ impl<T: 'static> BinaryTreeNode<T> {
 		Self::unwrap_pointer_mut(&mut self.right)
 	}
 
+	/// Tells whether the node is a left child.
+	pub fn is_left_child(&self) -> bool {
+		if let Some(parent) = self.get_parent() {
+			if let Some(n) = parent.get_left() {
+				return n as *const _ == self as *const _;
+			}
+		}
+
+		false
+	}
+
+	/// Tells whether the node is a right child.
+	pub fn is_right_child(&self) -> bool {
+		if let Some(parent) = self.get_parent() {
+			if let Some(n) = parent.get_right() {
+				return n as *const _ == self as *const _;
+			}
+		}
+
+		false
+	}
+
+	/// Tells whether the node and its parent and grandparent form a triangle.
+	pub fn is_triangle(&self) -> bool {
+		if let Some(parent) = self.get_parent() {
+			if let Some(grandparent) = parent.get_parent() {
+				return parent.is_left_child() != grandparent.is_left_child();
+			}
+		}
+
+		false
+	}
+
+	/// Tells whether the node and its parent and grandparent form a line.
+	pub fn is_line(&self) -> bool {
+		if let Some(parent) = self.get_parent() {
+			if let Some(grandparent) = parent.get_parent() {
+				return parent.is_left_child() == grandparent.is_left_child();
+			}
+		}
+
+		false
+	}
+
 	/// Returns a reference to the grandparent node.
 	pub fn get_grandparent(&self) -> Option::<&'static Self> {
 		if let Some(p) = self.get_parent() {
@@ -129,35 +173,27 @@ impl<T: 'static> BinaryTreeNode<T> {
 
 	/// Returns a reference to the sibling node.
 	pub fn get_sibling(&self) -> Option::<&'static Self> {
-		let self_ptr = self as *const _;
-		let p = self.get_parent();
-		if p.is_none() {
-			return None;
-		}
-
-		let parent = p.unwrap();
-		let left = parent.get_left();
-		if left.is_some() && left.unwrap() as *const _ == self_ptr {
-			parent.get_right()
+		if let Some(parent) = self.get_parent() {
+			if self.is_left_child() {
+				parent.get_right()
+			} else {
+				parent.get_left()
+			}
 		} else {
-			parent.get_left()
+			None
 		}
 	}
 
 	/// Returns a mutable reference to the sibling node.
 	pub fn get_sibling_mut(&mut self) -> Option::<&'static mut Self> {
-		let self_ptr = self as *const _;
-		let p = self.get_parent_mut();
-		if p.is_none() {
-			return None;
-		}
-
-		let parent = p.unwrap();
-		let left = parent.get_left_mut();
-		if left.is_some() && left.unwrap() as *const _ == self_ptr {
-			parent.get_right_mut()
+		if let Some(parent) = self.get_parent_mut() {
+			if self.is_left_child() {
+				parent.get_right_mut()
+			} else {
+				parent.get_left_mut()
+			}
 		} else {
-			parent.get_left_mut()
+			None
 		}
 	}
 
@@ -179,65 +215,41 @@ impl<T: 'static> BinaryTreeNode<T> {
 		}
 	}
 
-	/// Tells whether the node is a left child.
-	pub fn is_left_child(&self) -> bool {
-		// TODO
-		false
-	}
-
-	/// Tells whether the node is a right child.
-	pub fn is_right_child(&self) -> bool {
-		// TODO
-		false
-	}
-
-	/// Tells whether the node and its parent and grandparent form a triangle.
-	pub fn is_triangle(&self) -> bool {
-		// TODO
-		false
-	}
-
-	/// Tells whether the node and its parent and grandparent form a line.
-	pub fn is_line(&self) -> bool {
-		// TODO
-		false
-	}
-
 	/// Applies a left tree rotation with the current node as pivot.
 	pub fn left_rotate(&mut self) {
-		let root = self.parent;
+		let root = self.get_parent_mut();
 		let root_ptr = unsafe { // Dereference of raw pointer
-			&mut *(root.unwrap().as_ptr() as *mut Self)
+			&mut *(root.unwrap() as *mut Self)
 		};
 		let left = self.left;
 
-		self.left = root;
+		self.left = NonNull::new(root_ptr);
 		root_ptr.parent = NonNull::new(self);
 
 		root_ptr.right = left;
 		if left.is_some() {
 			unsafe { // Dereference of raw pointer
 				&mut *(left.unwrap().as_ptr() as *mut Self)
-			}.parent = root;
+			}.parent = NonNull::new(root_ptr);
 		}
 	}
 
 	/// Applies a right tree rotation with the current node as pivot.
 	pub fn right_rotate(&mut self) {
-		let root = self.parent;
+		let root = self.get_parent_mut();
 		let root_ptr = unsafe { // Dereference of raw pointer
-			&mut *(root.unwrap().as_ptr() as *mut Self)
+			&mut *(root.unwrap() as *mut Self)
 		};
 		let right = self.right;
 
-		self.right = root;
+		self.right = NonNull::new(root_ptr);
 		root_ptr.parent = NonNull::new(self);
 
 		root_ptr.left = right;
 		if right.is_some() {
 			unsafe { // Dereference of raw pointer
 				&mut *(right.unwrap().as_ptr() as *mut Self)
-			}.parent = root;
+			}.parent = NonNull::new(root_ptr);
 		}
 	}
 
@@ -451,56 +463,43 @@ impl<T: 'static> BinaryTree<T> {
 		None
 	}
 
+	// TODO Fix
 	/// Equilibrates the tree after insertion of node `n`.
 	fn insert_equilibrate(&mut self, n: &mut BinaryTreeNode::<T>) {
 		let mut node = n;
-		if node.parent.is_none() {
-			node.color = NodeColor::Black;
-			return;
-		}
+		while let Some(parent) = node.get_parent_mut() {
+			if parent.is_black() {
+				break;
+			}
 
-		loop {
-			if let Some(parent) = node.get_parent_mut() {
-				if let Some(grandparent) = node.get_grandparent_mut() {
-					if let Some(uncle) = node.get_uncle_mut() {
-						if uncle.is_red() {
-							parent.color = NodeColor::Black;
-							grandparent.color = NodeColor::Red;
-							uncle.color = NodeColor::Black;
+			let grandparent = parent.get_parent_mut().unwrap();
+			if let Some(uncle) = node.get_uncle_mut() {
+				if uncle.is_red() {
+					parent.color = NodeColor::Black;
+					uncle.color = NodeColor::Black;
+					grandparent.color = NodeColor::Red;
 
-							node = grandparent;
-							continue;
-						}
-					}
-
-					if node.is_triangle() {
-						if node.is_left_child() {
-							parent.right_rotate();
-						} else {
-							parent.left_rotate();
-						}
-
-						node = parent;
-						continue;
-					}
-
-					if node.is_line() {
-						if node.is_left_child() {
-							grandparent.right_rotate();
-						} else {
-							grandparent.left_rotate();
-						}
-
-						parent.color = NodeColor::Black;
-						grandparent.color = NodeColor::Red;
-
-						node = parent;
-						continue;
-					}
+					node = grandparent;
+					continue;
 				}
 			}
 
-			break;
+			if parent.is_left_child() {
+				if node.is_right_child() {
+					node.left_rotate();
+					node = parent;
+				}
+			} else {
+				if node.is_left_child() {
+					node.right_rotate();
+					node = parent;
+				}
+			}
+
+			let parent = node.get_parent_mut().unwrap();
+			parent.color = NodeColor::Black;
+			let grandparent = parent.get_parent_mut().unwrap();
+			grandparent.color = NodeColor::Red;
 		}
 	}
 
@@ -537,6 +536,9 @@ impl<T: 'static> BinaryTree<T> {
 			self.insert_equilibrate(n);
 			self.update_node(n);
 		}
+		unsafe { // Call to unsafe function
+			self.root.unwrap().as_mut()
+		}.color = NodeColor::Black;
 
 		Ok(())
 	}
@@ -642,6 +644,24 @@ impl<T: 'static> BinaryTree<T> {
 			}, traversal_type);
 		}
 	}
+
+	/// Checks the integrity of the tree. If the tree is invalid, the function makes the kernel
+	/// panic. This function is available only in debug mode.
+	#[cfg(kernel_mode = "debug")]
+	pub fn check(&self) {
+		if let Some(root) = self.root {
+			Self::foreach_nodes(unsafe { // Call to unsafe function
+				root.as_ref()
+			}, &mut | n: &BinaryTreeNode::<T> | {
+				if let Some(left) = n.get_left() {
+					debug_assert!(left.get_parent().unwrap() as *const _ == n as *const _);
+				}
+				if let Some(right) = n.get_right() {
+					debug_assert!(right.get_parent().unwrap() as *const _ == n as *const _);
+				}
+			}, TraversalType::PreOrder);
+		}
+	}
 }
 
 // TODO impl Clone?
@@ -656,7 +676,12 @@ impl<T: fmt::Display> fmt::Display for BinaryTree::<T> {
 					let _ = write!(f, "\t");
 				}
 
-				let _ = write!(f, "{}\n", n.value);
+				let color = if n.color == NodeColor::Red {
+					"red"
+				} else {
+					"black"
+				};
+				let _ = write!(f, "{} ({})\n", n.value, color);
 			}, TraversalType::ReverseInOrder);
 			Ok(())
 		} else {
@@ -732,6 +757,8 @@ mod test {
 			b.insert(i, cmp).unwrap();
 			b.insert(-i, cmp).unwrap();
 		}
+
+		crate::println!("{}", b);
 
 		for i in -9..10 {
 			assert_eq!(*b.get(| val | {
