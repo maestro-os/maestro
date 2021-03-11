@@ -324,6 +324,28 @@ impl<T: 'static> BinaryTreeNode<T> {
 		};
 		1 + max(left_count, right_count)
 	}
+
+	/// Unlinks the node from its tree.
+	pub fn unlink(&mut self) {
+		if let Some(parent) = self.get_parent_mut() {
+			if self.is_left_child() {
+				parent.left = None;
+			} else {
+				parent.right = None;
+			}
+			self.parent = None;
+		}
+
+		if let Some(left) = self.get_left_mut() {
+			left.parent = None;
+			self.left = None;
+		}
+
+		if let Some(right) = self.get_right_mut() {
+			right.parent = None;
+			self.right = None;
+		}
+	}
 }
 
 /// Specify the order in which the tree is traversed.
@@ -351,6 +373,11 @@ impl<T: 'static> BinaryTree<T> {
 		Self {
 			root: None,
 		}
+	}
+
+	/// Tells whether the tree is empty.
+	pub fn is_empty(&self) -> bool {
+		self.root.is_none()
 	}
 
 	/// Returns a reference to the root node.
@@ -543,12 +570,60 @@ impl<T: 'static> BinaryTree<T> {
 		Ok(())
 	}
 
+	/// Returns the leftmost node in the tree.
+	fn get_leftmost_node<F: Fn(&T) -> Ordering>(node: &'static mut BinaryTreeNode::<T>)
+		-> &'static mut BinaryTreeNode::<T> {
+		let mut n = node;
+		while let Some(left) = n.get_left_mut() {
+			n = left;
+		}
+		n
+	}
+
+	// TODO Clean
 	/// Removes a value from the tree. If the value is present several times in the tree, only one
 	/// node is removed.
-	/// `value` is the value to remove.
 	/// `cmp` is the comparison function.
-	pub fn remove<F: Fn(&T) -> Ordering>(&mut self, _value: T, _cmp: F) {
-		// TODO
+	pub fn remove<F: Fn(&T) -> Ordering>(&mut self, cmp: F) {
+		if let Some(node) = self.get_node(cmp) {
+			let left = node.get_left_mut();
+			let right = node.get_right_mut();
+
+			let replacement: Option::<NonNull::<BinaryTreeNode::<T>>>
+				= if left.is_some() && right.is_some() {
+				let leftmost = Self::get_leftmost_node::<F>(right.unwrap());
+				leftmost.unlink();
+				NonNull::new(leftmost as *mut _)
+			} else if left.is_some() {
+				NonNull::new(left.unwrap() as *mut _)
+			} else if right.is_some() {
+				NonNull::new(right.unwrap() as *mut _)
+			} else {
+				None
+			};
+
+			if let Some(mut r) = replacement {
+				unsafe { // Call to unsafe function
+					r.as_mut()
+				}.parent = node.parent;
+			}
+
+			if let Some(parent) = node.get_parent_mut() {
+				*if node.is_left_child() {
+					&mut parent.left
+				} else {
+					&mut parent.right
+				} = replacement;
+
+				node.unlink();
+				malloc::free(node as *mut _ as *mut _);
+			} else {
+				node.unlink();
+				malloc::free(node as *mut _ as *mut _);
+
+				self.root = replacement;
+			}
+		}
 	}
 
 	/// Calls the given closure for every nodes in the subtree with root `root`.
@@ -758,8 +833,6 @@ mod test {
 			b.insert(-i, cmp).unwrap();
 		}
 
-		crate::println!("{}", b);
-
 		for i in -9..10 {
 			assert_eq!(*b.get(| val | {
 				i.cmp(val)
@@ -784,14 +857,18 @@ mod test {
 				i.cmp(val)
 			}).unwrap(), i);
 
-			b.remove(i, | val | {
+			b.remove(| val | {
 				i.cmp(val)
 			});
+
+			crate::println!("{}", b);
 
 			assert!(b.get(| val | {
 				i.cmp(val)
 			}).is_none());
 		}
+
+		assert!(b.is_empty());
 	}
 
 	// TODO
