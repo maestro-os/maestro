@@ -7,6 +7,7 @@ use crate::memory::vmem::VMem;
 use crate::memory::vmem;
 use crate::memory;
 use crate::util::boxed::Box;
+use crate::util::container::binary_tree::BinaryTree;
 
 /// Flag telling that a memory mapping can be read from.
 pub const MAPPING_FLAG_READ: u8   = 0b000001;
@@ -61,7 +62,11 @@ impl MemMapping {
 
 /// Structure representing the virtual memory space of a context.
 pub struct MemSpace {
-	// TODO Store memory mappings and gaps
+	/// Binary tree storing the list of memory gaps, ready for new mappings. Sorted by size.
+	gaps: BinaryTree::<MemGap>,
+	/// Binary tree storing the list of memory mappings. Sorted by pointer to the beginning of the
+	/// mapping on the virtual memory.
+	mappings: BinaryTree::<MemMapping>,
 
 	/// The virtual memory context handler.
 	vmem: Box::<dyn VMem>,
@@ -71,6 +76,9 @@ impl MemSpace {
 	/// Creates a new virtual memory object.
 	pub fn new() -> Result::<Self, ()> {
 		Ok(Self {
+			gaps: BinaryTree::new(),
+			mappings: BinaryTree::new(),
+
 			vmem: vmem::new()?,
 		})
 	}
@@ -84,10 +92,31 @@ impl MemSpace {
 	/// underlying physical memory is not allocated directly but only an attempt to write the
 	/// memory is detected.
 	/// The function returns a pointer to the newly mapped virtual memory.
-	pub fn map(&mut self, _ptr: Option::<*const c_void>, _size: usize, _flags: u8)
+	pub fn map(&mut self, ptr: Option::<*const c_void>, size: usize, flags: u8)
 		-> Result::<*const c_void, ()> {
-		// TODO
-		Err(())
+		if let Some(_ptr) = ptr {
+			// TODO Insert mapping at exact location if possible
+			Err(())
+		} else {
+			let gap = self.gaps.get(| val | {
+				size.cmp(&val.size)
+			});
+
+			if let Some(gap) = gap {
+				let mapping = MemMapping::new(gap.begin, size, flags);
+				self.mappings.insert(mapping, | n0, n1 | {
+					n0.begin.cmp(&n1.begin)
+				})?;
+
+				// TODO Create a gap with the new size and location and insert it
+				// If the insertion fails, remove the new mapping form the tree and return Err
+				// TODO Remove the old gap from the tree
+
+				Err(()) // TODO Return Ok
+			} else {
+				Err(())
+			}
+		}
 	}
 
 	/// Same as `map`, except the function returns a pointer to the end of the memory region.
