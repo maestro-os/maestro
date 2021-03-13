@@ -367,7 +367,7 @@ pub struct BinaryTree<T: 'static> {
 	root: Option::<NonNull<BinaryTreeNode::<T>>>,
 }
 
-impl<T: 'static> BinaryTree<T> {
+impl<T: 'static + Ord> BinaryTree<T> {
 	/// Creates a new binary tree.
 	pub fn new() -> Self {
 		Self {
@@ -436,44 +436,13 @@ impl<T: 'static> BinaryTree<T> {
 		self.root = root;
 	}
 
-	/// Searches for a node with the given closure for comparison.
-	/// `cmp` is the comparison function.
-	fn get_node<F: Fn(&T) -> Ordering>(&mut self, cmp: F) -> Option::<&mut BinaryTreeNode::<T>> {
-		let mut node = self.get_root_mut();
-
-		while node.is_some() {
-			let n = node.unwrap();
-			let ord = cmp(&n.value);
-			if ord == Ordering::Less {
-				node = n.get_left_mut();
-			} else if ord == Ordering::Greater {
-				node = n.get_right_mut();
-			} else {
-				return Some(n);
-			}
-		}
-
-		None
-	}
-
-	/// Searches for a value with the given closure for comparison.
-	/// `cmp` is the comparison function.
-	pub fn get<F: Fn(&T) -> Ordering>(&mut self, cmp: F) -> Option::<&mut T> {
-		if let Some(n) = self.get_node(cmp) {
-			Some(&mut n.value)
-		} else {
-			None
-		}
-	}
-
 	/// For value insertion, returns the parent node on which the value will be inserted.
-	fn get_insert_node<F: Fn(&T) -> Ordering>(&mut self, cmp: F)
-		-> Option::<&mut BinaryTreeNode::<T>> {
+	fn get_insert_node(&mut self, val: &T) -> Option::<&mut BinaryTreeNode::<T>> {
 		let mut node = self.get_root_mut();
 
 		while node.is_some() {
 			let n = node.unwrap();
-			let ord = cmp(&n.value);
+			let ord = val.cmp(&n.value);
 			let next = if ord == Ordering::Less {
 				n.get_left_mut()
 			} else if ord == Ordering::Greater {
@@ -531,20 +500,16 @@ impl<T: 'static> BinaryTree<T> {
 	}
 
 	/// Inserts a value in the tree.
-	/// `value` is the value to insert.
+	/// `val` is the value to insert.
 	/// `cmp` is the comparison function.
-	pub fn insert<F: Fn(&T, &T) -> Ordering>(&mut self, value: T, cmp: F) -> Result::<(), ()> {
-		let mut node = BinaryTreeNode::new(value)?;
+	pub fn insert(&mut self, val: T) -> Result::<(), ()> {
+		let mut node = BinaryTreeNode::new(val)?;
 		let n = unsafe { // Call to unsafe function
 			node.as_mut()
 		};
 
-		let parent = self.get_insert_node(| val | {
-			cmp(&n.value, val)
-		});
-
-		if let Some(p) = parent {
-			let order = cmp(&n.value, &p.value);
+		if let Some(p) = self.get_insert_node(&n.value) {
+			let order = n.value.cmp(&p.value);
 			if order == Ordering::Less {
 				p.insert_left(n);
 			} else {
@@ -570,9 +535,40 @@ impl<T: 'static> BinaryTree<T> {
 		Ok(())
 	}
 
+	/// Searches for a node with the given value in the tree.
+	/// `val` is the value to find.
+	fn get_node<T_: 'static>(&mut self, val: T_) -> Option::<&mut BinaryTreeNode::<T>>
+		where T: PartialOrd<T_> {
+		let mut node = self.get_root_mut();
+
+		while node.is_some() {
+			let n = node.unwrap();
+			let ord = n.value.partial_cmp(&val).unwrap().reverse();
+			if ord == Ordering::Less {
+				node = n.get_left_mut();
+			} else if ord == Ordering::Greater {
+				node = n.get_right_mut();
+			} else {
+				return Some(n);
+			}
+		}
+
+		None
+	}
+
+	/// Searches for the given value in the tree.
+	/// `val` is the value to find.
+	pub fn get<T_: 'static>(&mut self, val: T_) -> Option::<&mut T> where T: PartialOrd<T_> {
+		if let Some(n) = self.get_node(val) {
+			Some(&mut n.value)
+		} else {
+			None
+		}
+	}
+
 	/// Returns the leftmost node in the tree.
-	fn get_leftmost_node<F: Fn(&T) -> Ordering>(node: &'static mut BinaryTreeNode::<T>)
-		-> &'static mut BinaryTreeNode::<T> {
+	fn get_leftmost_node<T_: 'static>(node: &'static mut BinaryTreeNode::<T>)
+		-> &'static mut BinaryTreeNode::<T> where T: PartialOrd<T_> {
 		let mut n = node;
 		while let Some(left) = n.get_left_mut() {
 			n = left;
@@ -583,15 +579,15 @@ impl<T: 'static> BinaryTree<T> {
 	// TODO Clean
 	/// Removes a value from the tree. If the value is present several times in the tree, only one
 	/// node is removed.
-	/// `cmp` is the comparison function.
-	pub fn remove<F: Fn(&T) -> Ordering>(&mut self, cmp: F) {
-		if let Some(node) = self.get_node(cmp) {
+	/// `val` is the value to select the node to remove.
+	pub fn remove<T_: 'static>(&mut self, val: T_) where T: PartialOrd<T_> {
+		if let Some(node) = self.get_node(val) {
 			let left = node.get_left_mut();
 			let right = node.get_right_mut();
 
 			let replacement: Option::<NonNull::<BinaryTreeNode::<T>>>
 				= if left.is_some() && right.is_some() {
-				let leftmost = Self::get_leftmost_node::<F>(right.unwrap());
+				let leftmost = Self::get_leftmost_node::<T_>(right.unwrap());
 				leftmost.unlink();
 				NonNull::new(leftmost as *mut _)
 			} else if left.is_some() {
@@ -625,7 +621,9 @@ impl<T: 'static> BinaryTree<T> {
 			}
 		}
 	}
+}
 
+impl<T: 'static> BinaryTree::<T> {
 	/// Calls the given closure for every nodes in the subtree with root `root`.
 	/// `traversal_type` defines the order in which the tree is traversed.
 	fn foreach_nodes<F: FnMut(&BinaryTreeNode::<T>)>(root: &BinaryTreeNode::<T>, f: &mut F,
@@ -785,83 +783,55 @@ mod test {
 	fn binary_tree0() {
 		let mut b = BinaryTree::<i32>::new();
 
-		assert!(b.get(| val | {
-			0.cmp(val)
-		}).is_none());
+		assert!(b.get(0).is_none());
 	}
 
 	#[test_case]
 	fn binary_tree_insert0() {
 		let mut b = BinaryTree::<i32>::new();
 
-		b.insert(0, | v0, v1 | {
-			v0.cmp(v1)
-		}).unwrap();
-
-		assert_eq!(*b.get(| val | {
-			0.cmp(val)
-		}).unwrap(), 0);
+		b.insert(0).unwrap();
+		assert_eq!(*b.get(0).unwrap(), 0);
 	}
 
 	#[test_case]
 	fn binary_tree_insert1() {
 		let mut b = BinaryTree::<i32>::new();
-		let cmp = | v0: &i32, v1: &i32 | {
-			v0.cmp(v1)
-		};
 
 		for i in 0..10 {
-			b.insert(i, cmp).unwrap();
+			b.insert(i).unwrap();
 		}
 
 		for i in 0..10 {
-			assert_eq!(*b.get(| val | {
-				i.cmp(val)
-			}).unwrap(), i);
+			assert_eq!(*b.get(i).unwrap(), i);
 		}
 	}
 
 	#[test_case]
 	fn binary_tree_insert2() {
 		let mut b = BinaryTree::<i32>::new();
-		let cmp = | v0: &i32, v1: &i32 | {
-			v0.cmp(v1)
-		};
 
 		for i in -9..10 {
-			b.insert(i, cmp).unwrap();
+			b.insert(i).unwrap();
 		}
 
 		for i in -9..10 {
-			assert_eq!(*b.get(| val | {
-				i.cmp(val)
-			}).unwrap(), i);
+			assert_eq!(*b.get(i).unwrap(), i);
 		}
 	}
 
 	#[test_case]
 	fn binary_tree_remove0() {
 		let mut b = BinaryTree::<i32>::new();
-		let cmp = | v0: &i32, v1: &i32 | {
-			v0.cmp(v1)
-		};
 
 		for i in -9..10 {
-			b.insert(i, cmp).unwrap();
+			b.insert(i).unwrap();
 		}
 
 		for i in -9..10 {
-			assert_eq!(*b.get(| val | {
-				i.cmp(val)
-			}).unwrap(), i);
-
-			b.remove(| val | {
-				i.cmp(val)
-			});
-
-			assert!(b.get(| val | {
-				i.cmp(val)
-			}).is_none());
+			assert_eq!(*b.get(i).unwrap(), i);
+			b.remove(i);
+			assert!(b.get(i).is_none());
 		}
 
 		assert!(b.is_empty());

@@ -2,6 +2,7 @@
 /// mapping of execution contexts.
 /// TODO doc
 
+use core::cmp::Ordering;
 use core::ffi::c_void;
 use crate::memory::vmem::VMem;
 use crate::memory::vmem;
@@ -32,6 +33,70 @@ pub struct MemGap {
 	size: usize,
 }
 
+impl Ord for MemGap {
+	fn cmp(&self, other: &Self) -> Ordering {
+		self.size.cmp(&other.size)
+	}
+}
+
+impl Eq for MemGap {}
+
+impl PartialEq for MemGap {
+	fn eq(&self, other: &Self) -> bool {
+		self.size == other.size
+	}
+}
+
+impl PartialOrd for MemGap {
+	fn partial_cmp(&self, other: &Self) -> Option::<Ordering> {
+		Some(self.size.cmp(&other.size))
+	}
+}
+
+impl PartialEq::<usize> for MemGap {
+	fn eq(&self, other: &usize) -> bool {
+		self.size == *other
+	}
+}
+
+impl PartialOrd::<usize> for MemGap {
+	fn partial_cmp(&self, other: &usize) -> Option::<Ordering> {
+		Some(self.size.cmp(other))
+	}
+}
+
+impl MemGap {
+	/// Creates a new instance.
+	/// `begin` is a pointer on the virtual memory to the beginning of the gap.
+	/// `size` is the size of the gap in pages.
+	pub fn new(begin: *const c_void, size: usize) -> Self {
+		debug_assert!(size > 0);
+		Self {
+			begin: begin,
+			size: size,
+		}
+	}
+
+	/// Consumes the gap, shrinking its size of removing to make place for a mapping. The function
+	/// updates the given container where the gap is located.
+	/// `container` is the container of the gap.
+	/// `size` is the size of the part that has been consumed on the gap.
+	pub fn consume(&mut self, container: &mut BinaryTree::<Self>, size: usize)
+		-> Result::<(), ()> {
+		debug_assert!(size <= self.size);
+		if size < self.size {
+			let new_addr = ((self.begin as usize) + (size * memory::PAGE_SIZE)) as _;
+			let new_size = self.size - size;
+			container.insert(Self::new(new_addr, new_size))?;
+		}
+
+		// TODO
+		//if self.gaps.insert(new_gap).is_err() {
+		//}
+		Ok(())
+	}
+}
+
 /// A mapping in the memory space.
 pub struct MemMapping {
 	/// Pointer on the virtual memory to the beginning of the mapping
@@ -42,6 +107,38 @@ pub struct MemMapping {
 	flags: u8,
 
 	// TODO Add sharing informations
+}
+
+impl Ord for MemMapping {
+	fn cmp(&self, other: &Self) -> Ordering {
+		self.begin.cmp(&other.begin)
+	}
+}
+
+impl Eq for MemMapping {}
+
+impl PartialEq for MemMapping {
+	fn eq(&self, other: &Self) -> bool {
+		self.begin == other.begin
+	}
+}
+
+impl PartialOrd for MemMapping {
+	fn partial_cmp(&self, other: &Self) -> Option::<Ordering> {
+		Some(self.begin.cmp(&other.begin))
+	}
+}
+
+impl PartialEq::<*const c_void> for MemMapping {
+	fn eq(&self, other: &*const c_void) -> bool {
+		self.begin == *other
+	}
+}
+
+impl PartialOrd::<*const c_void> for MemMapping {
+	fn partial_cmp(&self, other: &*const c_void) -> Option::<Ordering> {
+		Some(self.begin.cmp(other))
+	}
 }
 
 impl MemMapping {
@@ -98,21 +195,20 @@ impl MemSpace {
 			// TODO Insert mapping at exact location if possible
 			Err(())
 		} else {
-			let gap = self.gaps.get(| val | {
-				size.cmp(&val.size)
-			});
+			let gap = self.gaps.get(size);
 
 			if let Some(gap) = gap {
 				let mapping = MemMapping::new(gap.begin, size, flags);
-				self.mappings.insert(mapping, | n0, n1 | {
-					n0.begin.cmp(&n1.begin)
-				})?;
+				let mapping_ptr = mapping.begin;
+				self.mappings.insert(mapping)?;
 
-				// TODO Create a gap with the new size and location and insert it
-				// If the insertion fails, remove the new mapping form the tree and return Err
-				// TODO Remove the old gap from the tree
+				//if gap.consume(&mut self.gaps, size).is_err() {
+				//	self.mappings.remove(mapping_ptr);
+				//	return Err(())
+				//}
 
-				Err(()) // TODO Return Ok
+				// TODO Remove the old gap by address from the tree
+				Ok(mapping_ptr)
 			} else {
 				Err(())
 			}
