@@ -77,23 +77,20 @@ impl MemGap {
 		}
 	}
 
-	/// Consumes the gap, shrinking its size of removing to make place for a mapping. The function
-	/// updates the given container where the gap is located.
-	/// `container` is the container of the gap.
+	/// Creates a new gap to replace the current one after mapping memory on it. After calling
+	/// this function, the callee shall removed the current gap from its container before inserting
+	/// the new one in it.
 	/// `size` is the size of the part that has been consumed on the gap.
-	pub fn consume(&mut self, container: &mut BinaryTree::<Self>, size: usize)
-		-> Result::<(), ()> {
+	/// The function returns a new gap. If the gap is fully consumed, the function returns None.
+	pub fn consume(&self, size: usize) -> Option::<Self> {
 		debug_assert!(size <= self.size);
 		if size < self.size {
 			let new_addr = ((self.begin as usize) + (size * memory::PAGE_SIZE)) as _;
 			let new_size = self.size - size;
-			container.insert(Self::new(new_addr, new_size))?;
+			Some(Self::new(new_addr, new_size))
+		} else {
+			None
 		}
-
-		// TODO
-		//if self.gaps.insert(new_gap).is_err() {
-		//}
-		Ok(())
 	}
 }
 
@@ -195,23 +192,30 @@ impl MemSpace {
 			// TODO Insert mapping at exact location if possible
 			Err(())
 		} else {
-			let gap = self.gaps.get(size);
+			let (_old_gap_ptr, new_gap, mapping_ptr) = {
+				let gap = self.gaps.get(size);
+				if gap.is_none() {
+					return Err(());
+				}
 
-			if let Some(gap) = gap {
+				let gap = gap.unwrap();
+				let gap_ptr = gap.begin;
+
 				let mapping = MemMapping::new(gap.begin, size, flags);
 				let mapping_ptr = mapping.begin;
 				self.mappings.insert(mapping)?;
 
-				//if gap.consume(&mut self.gaps, size).is_err() {
-				//	self.mappings.remove(mapping_ptr);
-				//	return Err(())
-				//}
+				(gap_ptr, gap.consume(size), mapping_ptr)
+			};
 
-				// TODO Remove the old gap by address from the tree
-				Ok(mapping_ptr)
-			} else {
-				Err(())
+			if let Some(new_gap) = new_gap {
+				if self.gaps.insert(new_gap).is_err() {
+					self.mappings.remove(mapping_ptr);
+				}
 			}
+
+			// TODO Remove the old gap by address `old_gap_ptr` from the tree
+			return Err(())
 		}
 	}
 
