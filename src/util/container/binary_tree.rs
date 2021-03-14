@@ -420,6 +420,57 @@ impl<T: 'static + Ord> BinaryTree<T> {
 		}
 	}
 
+	/// Searches for a node with the given value in the tree.
+	/// `val` is the value to find.
+	fn get_node<T_: 'static>(&mut self, val: T_) -> Option::<&mut BinaryTreeNode::<T>>
+		where T: PartialOrd<T_> {
+		let mut node = self.get_root_mut();
+
+		while node.is_some() {
+			let n = node.unwrap();
+			let ord = n.value.partial_cmp(&val).unwrap().reverse();
+			if ord == Ordering::Less {
+				node = n.get_left_mut();
+			} else if ord == Ordering::Greater {
+				node = n.get_right_mut();
+			} else {
+				return Some(n);
+			}
+		}
+
+		None
+	}
+
+	/// Searches for the given value in the tree.
+	/// `val` is the value to find.
+	pub fn get<T_: 'static>(&mut self, val: T_) -> Option::<&mut T> where T: PartialOrd<T_> {
+		if let Some(n) = self.get_node(val) {
+			Some(&mut n.value)
+		} else {
+			None
+		}
+	}
+
+	/// Searches in the tree for a value greater or equal to the given value.
+	/// `val` is the value to find.
+	pub fn get_min<T_: 'static>(&mut self, val: T_) -> Option::<&mut T> where T: PartialOrd<T_> {
+		let mut node = self.get_root_mut();
+
+		while node.is_some() {
+			let n = node.unwrap();
+			let ord = n.value.partial_cmp(&val).unwrap().reverse();
+			if ord == Ordering::Greater {
+				node = n.get_right_mut();
+			} else {
+				return Some(&mut n.value);
+			}
+		}
+
+		None
+	}
+
+	// TODO get_max?
+
 	/// Updates the root of the tree.
 	/// `node` is a node of the tree.
 	fn update_node(&mut self, node: &mut BinaryTreeNode::<T>) {
@@ -532,38 +583,9 @@ impl<T: 'static + Ord> BinaryTree<T> {
 			self.root.unwrap().as_mut()
 		}.color = NodeColor::Black;
 
+		#[cfg(kernel_mode = "debug")]
+		self.check();
 		Ok(())
-	}
-
-	/// Searches for a node with the given value in the tree.
-	/// `val` is the value to find.
-	fn get_node<T_: 'static>(&mut self, val: T_) -> Option::<&mut BinaryTreeNode::<T>>
-		where T: PartialOrd<T_> {
-		let mut node = self.get_root_mut();
-
-		while node.is_some() {
-			let n = node.unwrap();
-			let ord = n.value.partial_cmp(&val).unwrap().reverse();
-			if ord == Ordering::Less {
-				node = n.get_left_mut();
-			} else if ord == Ordering::Greater {
-				node = n.get_right_mut();
-			} else {
-				return Some(n);
-			}
-		}
-
-		None
-	}
-
-	/// Searches for the given value in the tree.
-	/// `val` is the value to find.
-	pub fn get<T_: 'static>(&mut self, val: T_) -> Option::<&mut T> where T: PartialOrd<T_> {
-		if let Some(n) = self.get_node(val) {
-			Some(&mut n.value)
-		} else {
-			None
-		}
 	}
 
 	/// Returns the leftmost node in the tree.
@@ -620,6 +642,9 @@ impl<T: 'static + Ord> BinaryTree<T> {
 				self.root = replacement;
 			}
 		}
+
+		#[cfg(kernel_mode = "debug")]
+		self.check();
 	}
 }
 
@@ -737,7 +762,7 @@ impl<T: 'static> BinaryTree::<T> {
 	}
 }
 
-// TODO impl Clone?
+// TODO impl Clone for T: Clone
 
 impl<T: fmt::Display> fmt::Display for BinaryTree::<T> {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -782,7 +807,6 @@ mod test {
 	#[test_case]
 	fn binary_tree0() {
 		let mut b = BinaryTree::<i32>::new();
-
 		assert!(b.get(0).is_none());
 	}
 
@@ -837,5 +861,175 @@ mod test {
 		assert!(b.is_empty());
 	}
 
-	// TODO Try removing in different order
+	#[test_case]
+	fn binary_tree_remove1() {
+		let mut b = BinaryTree::<i32>::new();
+
+		for i in -9..10 {
+			b.insert(i).unwrap();
+		}
+
+		for i in (-9..10).rev() {
+			assert_eq!(*b.get(i).unwrap(), i);
+			b.remove(i);
+			assert!(b.get(i).is_none());
+		}
+
+		assert!(b.is_empty());
+	}
+
+	#[test_case]
+	fn binary_tree_remove2() {
+		let mut b = BinaryTree::<i32>::new();
+
+		for i in (-9..10).rev() {
+			b.insert(i).unwrap();
+		}
+
+		for i in (-9..10).rev() {
+			assert_eq!(*b.get(i).unwrap(), i);
+			b.remove(i);
+			assert!(b.get(i).is_none());
+		}
+
+		assert!(b.is_empty());
+	}
+
+	#[test_case]
+	fn binary_tree_remove3() {
+		let mut b = BinaryTree::<i32>::new();
+
+		for i in (-9..10).rev() {
+			b.insert(i).unwrap();
+		}
+
+		for i in -9..10 {
+			assert_eq!(*b.get(i).unwrap(), i);
+			b.remove(i);
+			assert!(b.get(i).is_none());
+		}
+
+		assert!(b.is_empty());
+	}
+
+	#[test_case]
+	fn binary_tree_remove4() {
+		let mut b = BinaryTree::<i32>::new();
+
+		for i in -9..10 {
+			b.insert(i).unwrap();
+			b.remove(i);
+		}
+
+		assert!(b.is_empty());
+	}
+
+	#[test_case]
+	fn binary_tree_remove5() {
+		let mut b = BinaryTree::<i32>::new();
+
+		for i in -9..10 {
+			b.insert(i).unwrap();
+		}
+
+		for i in -9..10 {
+			if i % 2 == 0 {
+				continue;
+			}
+
+			assert_eq!(*b.get(i).unwrap(), i);
+			b.remove(i);
+			assert!(b.get(i).is_none());
+		}
+
+		assert!(!b.is_empty());
+		crate::println!("-> {}", b);
+
+		for i in -9..10 {
+			if i % 2 == 1 {
+				continue;
+			}
+
+			assert_eq!(*b.get(i).unwrap(), i);
+			b.remove(i);
+			assert!(b.get(i).is_none());
+		}
+
+		assert!(b.is_empty());
+	}
+
+	#[test_case]
+	fn binary_tree_get_min0() {
+		let mut b = BinaryTree::<i32>::new();
+		assert!(b.get_min(0).is_none());
+	}
+
+	#[test_case]
+	fn binary_tree_get_min1() {
+		let mut b = BinaryTree::<i32>::new();
+		b.insert(0).unwrap();
+		assert!(*b.get_min(0).unwrap() >= 0);
+	}
+
+	#[test_case]
+	fn binary_tree_get_min2() {
+		let mut b = BinaryTree::<i32>::new();
+		b.insert(0).unwrap();
+		assert!(b.get_min(1).is_none());
+	}
+
+	#[test_case]
+	fn binary_tree_get_min3() {
+		let mut b = BinaryTree::<i32>::new();
+		b.insert(-1).unwrap();
+		b.insert(0).unwrap();
+		b.insert(1).unwrap();
+		assert!(*b.get_min(0).unwrap() >= 0);
+	}
+
+	#[test_case]
+	fn binary_tree_get_min4() {
+		let mut b = BinaryTree::<i32>::new();
+		b.insert(0).unwrap();
+		b.insert(1).unwrap();
+		assert!(*b.get_min(0).unwrap() >= 0);
+	}
+
+	#[test_case]
+	fn binary_tree_get_min5() {
+		let mut b = BinaryTree::<i32>::new();
+		b.insert(1).unwrap();
+		assert!(*b.get_min(0).unwrap() >= 0);
+	}
+
+	#[test_case]
+	fn binary_tree_get_min6() {
+		let mut b = BinaryTree::<i32>::new();
+		b.insert(-1).unwrap();
+		b.insert(1).unwrap();
+		assert!(*b.get_min(0).unwrap() >= 0);
+	}
+
+	#[test_case]
+	fn binary_tree_foreach0() {
+		let b = BinaryTree::<i32>::new();
+		b.foreach(| _ | {
+			assert!(false);
+		}, TraversalType::PreOrder);
+	}
+
+	#[test_case]
+	fn binary_tree_foreach1() {
+		let mut b = BinaryTree::<i32>::new();
+		b.insert(0).unwrap();
+
+		let mut passed = false;
+		b.foreach(| val | {
+			assert_eq!(passed, false);
+			assert_eq!(*val, 0);
+			passed = true;
+		}, TraversalType::PreOrder);
+	}
+
+	// TODO More foreach tests
 }

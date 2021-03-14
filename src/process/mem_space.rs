@@ -167,10 +167,18 @@ pub struct MemSpace {
 }
 
 impl MemSpace {
+	/// Returns a new binary tree containing the default gaps for a memory space.
+	fn default_gaps() -> Result::<BinaryTree::<MemGap>, ()> {
+		let mut tree = BinaryTree::<MemGap>::new();
+		tree.insert(MemGap::new(memory::PAGE_SIZE as _,
+			(memory::PROCESS_END as usize - memory::PAGE_SIZE) / memory::PAGE_SIZE))?;
+		Ok(tree)
+	}
+
 	/// Creates a new virtual memory object.
 	pub fn new() -> Result::<Self, ()> {
 		Ok(Self {
-			gaps: BinaryTree::new(),
+			gaps: Self::default_gaps()?,
 			mappings: BinaryTree::new(),
 
 			vmem: vmem::new()?,
@@ -193,7 +201,7 @@ impl MemSpace {
 			Err(())
 		} else {
 			let (_old_gap_ptr, new_gap, mapping_ptr) = {
-				let gap = self.gaps.get(size);
+				let gap = self.gaps.get_min(size);
 				if gap.is_none() {
 					return Err(());
 				}
@@ -215,7 +223,7 @@ impl MemSpace {
 			}
 
 			// TODO Remove the old gap by address `old_gap_ptr` from the tree
-			return Err(())
+			Ok(mapping_ptr)
 		}
 	}
 
