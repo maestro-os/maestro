@@ -934,25 +934,20 @@ mod test {
 
 		for i in -9..10 {
 			if i % 2 == 0 {
-				continue;
+				assert_eq!(*b.get(i).unwrap(), i);
+				b.remove(i);
+				assert!(b.get(i).is_none());
 			}
-
-			assert_eq!(*b.get(i).unwrap(), i);
-			b.remove(i);
-			assert!(b.get(i).is_none());
 		}
 
 		assert!(!b.is_empty());
-		crate::println!("-> {}", b);
 
 		for i in -9..10 {
 			if i % 2 == 1 {
-				continue;
+				assert_eq!(*b.get(i).unwrap(), i);
+				b.remove(i);
+				assert!(b.get(i).is_none());
 			}
-
-			assert_eq!(*b.get(i).unwrap(), i);
-			b.remove(i);
-			assert!(b.get(i).is_none());
 		}
 
 		assert!(b.is_empty());
