@@ -2,13 +2,17 @@
 /// mapping of execution contexts.
 /// TODO doc
 
-use core::cmp::Ordering;
+mod gap;
+mod mapping;
+
 use core::ffi::c_void;
 use crate::memory::vmem::VMem;
 use crate::memory::vmem;
 use crate::memory;
 use crate::util::boxed::Box;
 use crate::util::container::binary_tree::BinaryTree;
+use gap::MemGap;
+use mapping::MemMapping;
 
 /// Flag telling that a memory mapping can be read from.
 pub const MAPPING_FLAG_READ: u8   = 0b000001;
@@ -24,135 +28,6 @@ pub const MAPPING_FLAG_NOLAZY: u8 = 0b010000;
 /// Flag telling that a memory mapping has its physical memory shared with one or more other
 /// mappings.
 pub const MAPPING_FLAG_SHARED: u8 = 0b100000;
-
-/// A gap in the memory space that can use for new mappings.
-pub struct MemGap {
-	/// Pointer on the virtual memory to the beginning of the gap
-	begin: *const c_void,
-	/// The size of the gap in pages.
-	size: usize,
-}
-
-impl Ord for MemGap {
-	fn cmp(&self, other: &Self) -> Ordering {
-		self.size.cmp(&other.size)
-	}
-}
-
-impl Eq for MemGap {}
-
-impl PartialEq for MemGap {
-	fn eq(&self, other: &Self) -> bool {
-		self.size == other.size
-	}
-}
-
-impl PartialOrd for MemGap {
-	fn partial_cmp(&self, other: &Self) -> Option::<Ordering> {
-		Some(self.size.cmp(&other.size))
-	}
-}
-
-impl PartialEq::<usize> for MemGap {
-	fn eq(&self, other: &usize) -> bool {
-		self.size == *other
-	}
-}
-
-impl PartialOrd::<usize> for MemGap {
-	fn partial_cmp(&self, other: &usize) -> Option::<Ordering> {
-		Some(self.size.cmp(other))
-	}
-}
-
-impl MemGap {
-	/// Creates a new instance.
-	/// `begin` is a pointer on the virtual memory to the beginning of the gap.
-	/// `size` is the size of the gap in pages.
-	pub fn new(begin: *const c_void, size: usize) -> Self {
-		debug_assert!(size > 0);
-		Self {
-			begin: begin,
-			size: size,
-		}
-	}
-
-	/// Creates a new gap to replace the current one after mapping memory on it. After calling
-	/// this function, the callee shall removed the current gap from its container before inserting
-	/// the new one in it.
-	/// `size` is the size of the part that has been consumed on the gap.
-	/// The function returns a new gap. If the gap is fully consumed, the function returns None.
-	pub fn consume(&self, size: usize) -> Option::<Self> {
-		debug_assert!(size <= self.size);
-		if size < self.size {
-			let new_addr = ((self.begin as usize) + (size * memory::PAGE_SIZE)) as _;
-			let new_size = self.size - size;
-			Some(Self::new(new_addr, new_size))
-		} else {
-			None
-		}
-	}
-}
-
-/// A mapping in the memory space.
-pub struct MemMapping {
-	/// Pointer on the virtual memory to the beginning of the mapping
-	begin: *const c_void,
-	/// The size of the mapping in pages.
-	size: usize,
-	/// The mapping's flags.
-	flags: u8,
-
-	// TODO Add sharing informations
-}
-
-impl Ord for MemMapping {
-	fn cmp(&self, other: &Self) -> Ordering {
-		self.begin.cmp(&other.begin)
-	}
-}
-
-impl Eq for MemMapping {}
-
-impl PartialEq for MemMapping {
-	fn eq(&self, other: &Self) -> bool {
-		self.begin == other.begin
-	}
-}
-
-impl PartialOrd for MemMapping {
-	fn partial_cmp(&self, other: &Self) -> Option::<Ordering> {
-		Some(self.begin.cmp(&other.begin))
-	}
-}
-
-impl PartialEq::<*const c_void> for MemMapping {
-	fn eq(&self, other: &*const c_void) -> bool {
-		self.begin == *other
-	}
-}
-
-impl PartialOrd::<*const c_void> for MemMapping {
-	fn partial_cmp(&self, other: &*const c_void) -> Option::<Ordering> {
-		Some(self.begin.cmp(other))
-	}
-}
-
-impl MemMapping {
-	/// Creates a new instance.
-	/// `begin` is the pointer on the virtual memory to the beginning of the mapping.
-	/// `size` is the size of the mapping in pages.
-	/// `flags` the mapping's flags
-	pub fn new(begin: *const c_void, size: usize, flags: u8) -> Self {
-		Self {
-			begin: begin,
-			size: size,
-			flags: flags,
-		}
-	}
-
-	// TODO
-}
 
 /// Structure representing the virtual memory space of a context.
 pub struct MemSpace {
@@ -207,10 +82,10 @@ impl MemSpace {
 				}
 
 				let gap = gap.unwrap();
-				let gap_ptr = gap.begin;
+				let gap_ptr = gap.get_begin();
 
-				let mapping = MemMapping::new(gap.begin, size, flags);
-				let mapping_ptr = mapping.begin;
+				let mapping = MemMapping::new(gap_ptr, size, flags);
+				let mapping_ptr = mapping.get_begin();
 				self.mappings.insert(mapping)?;
 
 				(gap_ptr, gap.consume(size), mapping_ptr)
