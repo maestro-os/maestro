@@ -337,12 +337,20 @@ impl<T: 'static> BinaryTreeNode<T> {
 		}
 
 		if let Some(left) = self.get_left_mut() {
-			left.parent = None;
+			if let Some(p) = left.parent {
+				if p.as_ptr() == self as _ {
+					left.parent = None;
+				}
+			}
 			self.left = None;
 		}
 
 		if let Some(right) = self.get_right_mut() {
-			right.parent = None;
+			if let Some(p) = right.parent {
+				if p.as_ptr() == self as _ {
+					right.parent = None;
+				}
+			}
 			self.right = None;
 		}
 	}
@@ -473,7 +481,7 @@ impl<T: 'static + Ord> BinaryTree<T> {
 
 	/// Updates the root of the tree.
 	/// `node` is a node of the tree.
-	fn update_node(&mut self, node: &mut BinaryTreeNode::<T>) {
+	fn update_root(&mut self, node: &mut BinaryTreeNode::<T>) {
 		let mut root = NonNull::new(node as *mut BinaryTreeNode::<T>);
 		loop {
 			let parent = unsafe { // Call to unsafe function
@@ -568,7 +576,7 @@ impl<T: 'static + Ord> BinaryTree<T> {
 			}
 
 			self.insert_equilibrate(n);
-			self.update_node(n);
+			self.update_root(n);
 		} else {
 			debug_assert!(self.root.is_none());
 			self.root = Some(node);
@@ -577,7 +585,7 @@ impl<T: 'static + Ord> BinaryTree<T> {
 				node.as_mut()
 			};
 			self.insert_equilibrate(n);
-			self.update_node(n);
+			self.update_root(n);
 		}
 		unsafe { // Call to unsafe function
 			self.root.unwrap().as_mut()
@@ -943,7 +951,7 @@ mod test {
 		assert!(!b.is_empty());
 
 		for i in -9..10 {
-			if i % 2 == 1 {
+			if i % 2 != 0 {
 				assert_eq!(*b.get(i).unwrap(), i);
 				b.remove(i);
 				assert!(b.get(i).is_none());
