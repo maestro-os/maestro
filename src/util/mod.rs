@@ -165,7 +165,27 @@ mod test {
 		}
 	}
 
-	// TODO More tests on memcpy
+	#[test_case]
+	fn memcpy1() {
+		let mut dest: [usize; 100] = [0; 100];
+		let mut src: [usize; 100] = [0; 100];
+
+		for i in 10..90 {
+			src[i] = i;
+		}
+		unsafe { // Call to C function
+			memcpy(dest.as_mut_ptr() as _, src.as_ptr() as _, 100 * size_of::<usize>());
+		}
+		for i in 0..10 {
+			debug_assert_eq!(dest[i], 0);
+		}
+		for i in 10..90 {
+			debug_assert_eq!(dest[i], i);
+		}
+		for i in 90..100 {
+			debug_assert_eq!(dest[i], 0);
+		}
+	}
 
 	#[test_case]
 	fn memmove0() {
@@ -183,10 +203,42 @@ mod test {
 		}
 	}
 
+	#[test_case]
+	fn memmove1() {
+		let mut buff: [usize; 100] = [0; 100];
+
+		for i in 0..100 {
+			buff[i] = i;
+		}
+		unsafe { // Call to C function
+			memmove(buff.as_mut_ptr() as _, buff.as_ptr() as _, 100 * size_of::<usize>());
+		}
+		for i in 0..100 {
+			debug_assert_eq!(buff[i], i);
+		}
+	}
+
 	// TODO More tests on memmove
 
 	// TODO Test `memcmp`
 	// TODO Test `memset`
-	// TODO Test `bzero`
+
+	#[test_case]
+	fn memmove0() {
+		let mut buff: [usize; 100] = [0; 100];
+
+		for i in 0..100 {
+			buff[i] = i;
+		}
+		unsafe { // Call to C function
+			bzero(buff.as_mut_ptr() as _, 100 * size_of::<usize>());
+		}
+		for i in 0..100 {
+			debug_assert_eq!(buff[i], 0);
+		}
+	}
+
+	// TODO More tests on memmove
+
 	// TODO Test `strlen`
 }
