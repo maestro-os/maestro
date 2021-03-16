@@ -4,7 +4,7 @@
    contain the root `toctree` directive.
 
 Maestro documentation
-=====================
+*********************
 
 .. toctree::
    :maxdepth: 2
@@ -13,6 +13,7 @@ Maestro documentation
    external_doc
    dependencies
    compilation
+   selftest
 
    booting
 

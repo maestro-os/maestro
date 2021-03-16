@@ -2,14 +2,40 @@ Process
 *******
 
 A process is a task running a program. It can be paused and resume, and communicates with the kernel using system calls.
-It has its own virtual memory on which it can allocate regions dynamically.
+
+
+
+Virtual memory
+==============
+
+Each process has its own virtual memory on which it can allocate mappings through syscalls.
 
 
 
 Memory layout
-=============
+-------------
 
-TODO
+The layout of the virtual memory of each process is the following:
+
++------------+------------+---------------------------------------------------------------------------------------------+
+| Begin      | End        | Description                                                                                 |
++============+============+=============================================================================================+
+| 0x0        | 0x1000     | The first page of memory is not available for any usage since it contains the NULL pointer. |
++------------+------------+---------------------------------------------------------------------------------------------+
+| 0x1000     | TODO       | ELF sections data (code, initialized and uninitialized data, etc...)                        |
++------------+------------+---------------------------------------------------------------------------------------------+
+| TODO       | TODO       | Heap/Allocatable memory                                                                     |
++------------+------------+---------------------------------------------------------------------------------------------+
+| TODO       | TODO       | Shared libraries                                                                            |
++------------+------------+---------------------------------------------------------------------------------------------+
+| TODO       | TODO       | Userspace Stack                                                                             |
++------------+------------+---------------------------------------------------------------------------------------------+
+| TODO       | 0xc0000000 | argv, environ                                                                               |
++------------+------------+---------------------------------------------------------------------------------------------+
+| 0xc0000000 | Memory end | Kernel memory                                                                               |
++------------+------------+---------------------------------------------------------------------------------------------+
+
+TODO: Find a place for kernelside stack
 
 
 

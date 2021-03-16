@@ -58,4 +58,15 @@ The mapping of memory at ``0x100000`` is removed later because it is not require
 Initialization
 ==============
 
-TODO
+Once the memory remapped, the kernel begins the initialization sequence:
+- TTY initialization
+- Interrupts initialization
+- PIT initialization
+- Multiboot informations reading
+- Physical memory mapping reading
+- Memory allocators initialization
+- Kernel virtual memory initialization
+- TODO
+- Processes initialization
+- Creating the first process
+- Running the scheduler
