@@ -558,7 +558,7 @@ impl<T: 'static + Ord> BinaryTree<T> {
 		}
 	}
 
-	/// Inserts a value in the tree.
+	/// Inserts a value in the tree and returns a mutable reference to it.
 	/// `val` is the value to insert.
 	/// `cmp` is the comparison function.
 	pub fn insert(&mut self, val: T) -> Result::<(), ()> {

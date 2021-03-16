@@ -5,12 +5,15 @@
 mod gap;
 mod mapping;
 
+use core::cmp::min;
 use core::ffi::c_void;
 use crate::memory::vmem::VMem;
 use crate::memory::vmem;
 use crate::memory;
 use crate::util::boxed::Box;
 use crate::util::container::binary_tree::BinaryTree;
+use crate::util::list::List;
+use crate::util::math;
 use gap::MemGap;
 use mapping::MemMapping;
 
@@ -29,10 +32,18 @@ pub const MAPPING_FLAG_NOLAZY: u8 = 0b010000;
 /// mappings.
 pub const MAPPING_FLAG_SHARED: u8 = 0b100000;
 
+/// The number of buckets for available gaps in memory.
+const GAPS_BUCKETS_COUNT: usize = 8;
+
 /// Structure representing the virtual memory space of a context.
 pub struct MemSpace {
-	/// Binary tree storing the list of memory gaps, ready for new mappings. Sorted by size.
+	/// Binary tree storing the list of memory gaps, ready for new mappings. Sorted by pointer to
+	/// the beginning of the mapping on the virtual memory.
 	gaps: BinaryTree::<MemGap>,
+	/// The gaps bucket, sorted by size. The minimum size in pages of a gap is: `2^^n`, where `n`
+	/// is the index in the list.
+	gaps_buckets: [List::<MemGap>; GAPS_BUCKETS_COUNT],
+
 	/// Binary tree storing the list of memory mappings. Sorted by pointer to the beginning of the
 	/// mapping on the virtual memory.
 	mappings: BinaryTree::<MemMapping>,
@@ -42,22 +53,53 @@ pub struct MemSpace {
 }
 
 impl MemSpace {
+	/// Returns the bucket index for a gap of size `size`.
+	fn get_gap_bucket_index(size: usize) -> usize {
+		min(math::log2(size), GAPS_BUCKETS_COUNT)
+	}
+
+	/// Inserts the given gap into the memory space's structures.
+	fn gap_insert(&mut self, gap: MemGap) -> Result::<(), ()> {
+		let gap_ptr = gap.get_begin();
+		self.gaps.insert(gap)?;
+		let g = self.gaps.get(gap_ptr).unwrap();
+
+		let bucket_index = Self::get_gap_bucket_index(g.get_size());
+		let bucket = &mut self.gaps_buckets[bucket_index];
+		bucket.insert_front(&mut g.list);
+
+		Ok(())
+	}
+
+	/// Removes the given gap from the memory space's structures.
+	fn gap_remove(&mut self, gap_begin: *const c_void) {
+		let g = self.gaps.get(gap_begin).unwrap();
+
+		let bucket_index = Self::get_gap_bucket_index(g.get_size());
+		let bucket = &mut self.gaps_buckets[bucket_index];
+		g.list.unlink_from(bucket);
+
+		self.gaps.remove(gap_begin);
+	}
+
 	/// Returns a new binary tree containing the default gaps for a memory space.
-	fn default_gaps() -> Result::<BinaryTree::<MemGap>, ()> {
-		let mut tree = BinaryTree::<MemGap>::new();
-		tree.insert(MemGap::new(memory::PAGE_SIZE as _,
-			(memory::PROCESS_END as usize - memory::PAGE_SIZE) / memory::PAGE_SIZE))?;
-		Ok(tree)
+	fn create_default_gaps(&mut self) -> Result::<(), ()> {
+		self.gap_insert(MemGap::new(memory::PAGE_SIZE as _,
+			(memory::PROCESS_END as usize - memory::PAGE_SIZE) / memory::PAGE_SIZE))
 	}
 
 	/// Creates a new virtual memory object.
 	pub fn new() -> Result::<Self, ()> {
-		Ok(Self {
-			gaps: Self::default_gaps()?,
+		let mut s = Self {
+			gaps: BinaryTree::new(),
+			gaps_buckets: [crate::list_new!(MemGap, list); GAPS_BUCKETS_COUNT],
+
 			mappings: BinaryTree::new(),
 
 			vmem: vmem::new()?,
-		})
+		};
+		s.create_default_gaps()?;
+		Ok(s)
 	}
 
 	/// Maps a region of memory.
@@ -76,7 +118,7 @@ impl MemSpace {
 			Err(())
 		} else {
 			let (_old_gap_ptr, new_gap, mapping_ptr) = {
-				let gap = self.gaps.get_min(size);
+				let gap: Option::<MemGap> = None; // TODO Select gap from gaps list
 				if gap.is_none() {
 					return Err(());
 				}
