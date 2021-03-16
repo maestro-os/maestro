@@ -12,8 +12,8 @@ Each process has its own virtual memory on which it can allocate mappings throug
 
 
 
-Memory layout
--------------
+Memory layout (x86)
+-------------------
 
 The layout of the virtual memory of each process is the following:
 
@@ -22,20 +22,12 @@ The layout of the virtual memory of each process is the following:
 +============+============+=============================================================================================+
 | 0x0        | 0x1000     | The first page of memory is not available for any usage since it contains the NULL pointer. |
 +------------+------------+---------------------------------------------------------------------------------------------+
-| 0x1000     | TODO       | ELF sections data (code, initialized and uninitialized data, etc...)                        |
+| 0x1000     | 0x40000000 | ELF sections data (code, initialized and uninitialized data, etc...)                        |
 +------------+------------+---------------------------------------------------------------------------------------------+
-| TODO       | TODO       | Heap/Allocatable memory                                                                     |
-+------------+------------+---------------------------------------------------------------------------------------------+
-| TODO       | TODO       | Shared libraries                                                                            |
-+------------+------------+---------------------------------------------------------------------------------------------+
-| TODO       | TODO       | Userspace Stack                                                                             |
-+------------+------------+---------------------------------------------------------------------------------------------+
-| TODO       | 0xc0000000 | argv, environ                                                                               |
+| 0x40000000 | 0xc0000000 | Allocatable memory/Shared libraries/Stacks/argv, environ                                    |
 +------------+------------+---------------------------------------------------------------------------------------------+
 | 0xc0000000 | Memory end | Kernel memory                                                                               |
 +------------+------------+---------------------------------------------------------------------------------------------+
-
-TODO: Find a place for kernelside stack
 
 
 
