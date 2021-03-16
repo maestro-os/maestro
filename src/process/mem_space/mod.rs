@@ -55,7 +55,7 @@ pub struct MemSpace {
 impl MemSpace {
 	/// Returns the bucket index for a gap of size `size`.
 	fn get_gap_bucket_index(size: usize) -> usize {
-		min(math::log2(size), GAPS_BUCKETS_COUNT)
+		min(math::log2(size), GAPS_BUCKETS_COUNT - 1)
 	}
 
 	/// Inserts the given gap into the memory space's structures.
@@ -80,6 +80,23 @@ impl MemSpace {
 		g.list.unlink_from(bucket);
 
 		self.gaps.remove(gap_begin);
+	}
+
+	/// Returns a reference to a gap with at least size `size`.
+	fn gap_get(buckets: &mut [List::<MemGap>], size: usize) -> Option::<&mut MemGap> {
+		let bucket_index = Self::get_gap_bucket_index(size);
+		let bucket = &mut buckets[bucket_index];
+
+		let mut node = bucket.get_front();
+		while node.is_some() {
+			let n = node.unwrap();
+			let value = n.get_mut::<MemGap>(bucket.get_inner_offset());
+			if value.get_size() >= size {
+				return Some(value);
+			}
+			node = n.get_next();
+		}
+		None
 	}
 
 	/// Returns a new binary tree containing the default gaps for a memory space.
@@ -118,7 +135,7 @@ impl MemSpace {
 			Err(())
 		} else {
 			let (_old_gap_ptr, new_gap, mapping_ptr) = {
-				let gap: Option::<MemGap> = None; // TODO Select gap from gaps list
+				let gap = Self::gap_get(&mut self.gaps_buckets, size);
 				if gap.is_none() {
 					return Err(());
 				}

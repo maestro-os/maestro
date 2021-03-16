@@ -49,23 +49,17 @@ impl<T> List<T> {
 		}
 	}
 
-	/// Returns a reference to the front element if the list is not empty.
-	pub fn get_front(&self) -> Option::<&'static T> {
-		if let Some(front) = self.front {
-			Some(unsafe { // Call to unsafe function
-				front.as_ref()
-			}.get::<T>(self.inner_offset))
-		} else {
-			None
-		}
+	/// Returns the offset of the node in the element stored bt the list.
+	pub fn get_inner_offset(&self) -> usize {
+		self.inner_offset
 	}
 
-	/// Returns a mutable reference to the front element if the list is not empty.
-	pub fn get_mut_front(&mut self) -> Option::<&'static mut T> {
-		if let Some(mut front) = self.front {
-			Some(unsafe { // Call to unsafe function
-				front.as_mut()
-			}.get_mut::<T>(self.inner_offset))
+	/// Returns a mutable reference to the front node if the list is not empty.
+	pub fn get_front(&mut self) -> Option::<&'static mut ListNode> {
+		if let Some(front) = self.front {
+			Some(unsafe { // Dereference of raw pointer
+				&mut *front.as_ptr()
+			})
 		} else {
 			None
 		}

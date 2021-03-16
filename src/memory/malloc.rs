@@ -499,7 +499,7 @@ fn get_available_chunk(size: usize) -> Result<&'static mut FreeChunk, ()> {
 	let free_list = get_free_list(size, false);
 	let chunk = {
 		if let Some(f) = free_list {
-			f.get_mut_front().unwrap()
+			f.get_front().unwrap().get_mut(f.get_inner_offset())
 		} else {
 			let block = Block::new(size)?;
 			unsafe { // Dereference of raw pointer
