@@ -85,24 +85,29 @@ impl MemSpace {
 	/// Returns a reference to a gap with at least size `size`.
 	fn gap_get(buckets: &mut [List::<MemGap>], size: usize) -> Option::<&mut MemGap> {
 		let bucket_index = Self::get_gap_bucket_index(size);
-		let bucket = &mut buckets[bucket_index];
 
-		let mut node = bucket.get_front();
-		while node.is_some() {
-			let n = node.unwrap();
-			let value = n.get_mut::<MemGap>(bucket.get_inner_offset());
-			if value.get_size() >= size {
-				return Some(value);
+		for i in bucket_index..GAPS_BUCKETS_COUNT {
+			let bucket = &mut buckets[i];
+
+			let mut node = bucket.get_front();
+			while node.is_some() {
+				let n = node.unwrap();
+				let value = n.get_mut::<MemGap>(bucket.get_inner_offset());
+				if value.get_size() >= size {
+					return Some(value);
+				}
+				node = n.get_next();
 			}
-			node = n.get_next();
 		}
+
 		None
 	}
 
 	/// Returns a new binary tree containing the default gaps for a memory space.
 	fn create_default_gaps(&mut self) -> Result::<(), ()> {
-		self.gap_insert(MemGap::new(memory::PAGE_SIZE as _,
-			(memory::PROCESS_END as usize - memory::PAGE_SIZE) / memory::PAGE_SIZE))
+		let begin = memory::ALLOC_BEGIN;
+		let size = (memory::PROCESS_END as usize - begin as usize) / memory::PAGE_SIZE;
+		self.gap_insert(MemGap::new(begin, size))
 	}
 
 	/// Creates a new virtual memory object.
@@ -134,7 +139,7 @@ impl MemSpace {
 			// TODO Insert mapping at exact location if possible
 			Err(())
 		} else {
-			let (_old_gap_ptr, new_gap, mapping_ptr) = {
+			let (old_gap_ptr, new_gap, mapping_ptr) = {
 				let gap = Self::gap_get(&mut self.gaps_buckets, size);
 				if gap.is_none() {
 					return Err(());
@@ -151,12 +156,13 @@ impl MemSpace {
 			};
 
 			if let Some(new_gap) = new_gap {
-				if self.gaps.insert(new_gap).is_err() {
+				if self.gap_insert(new_gap).is_err() {
 					self.mappings.remove(mapping_ptr);
+					return Err(());
 				}
 			}
 
-			// TODO Remove the old gap by address `old_gap_ptr` from the tree
+			self.gap_remove(old_gap_ptr);
 			Ok(mapping_ptr)
 		}
 	}
