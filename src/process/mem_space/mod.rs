@@ -163,6 +163,7 @@ impl MemSpace {
 			}
 
 			self.gap_remove(old_gap_ptr);
+			// TODO Map the regions in virtual memory according to flags
 			Ok(mapping_ptr)
 		}
 	}

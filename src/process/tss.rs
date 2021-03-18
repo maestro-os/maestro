@@ -57,7 +57,8 @@ pub fn init() {
 	let tss_value = (limit & 0xffff)
 		| ((base & 0xffffff) << 16)
 		| (flags << 40)
-		| ((base & 0xff) << 56);
+		| (((limit >> 16) & 0x0f) << 48)
+		| (((base >> 24) & 0xff) << 56);
 
 	unsafe { // Derference of raw pointer
 		*tss_ptr = tss_value;
