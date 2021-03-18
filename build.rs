@@ -1,5 +1,6 @@
 ///
-/// This build script allows to link the assembly and C language part of the kernel to the rest of the code.
+/// This build script allows to link the assembly and C language part of the kernel to the rest of
+/// the code.
 ///
 
 ///

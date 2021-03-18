@@ -575,7 +575,7 @@ impl<T: 'static + Ord> BinaryTree<T> {
 				p.insert_right(n);
 			}
 
-			self.insert_equilibrate(n);
+			// TODO self.insert_equilibrate(n);
 			self.update_root(n);
 		} else {
 			debug_assert!(self.root.is_none());
@@ -584,7 +584,7 @@ impl<T: 'static + Ord> BinaryTree<T> {
 			let n = unsafe { // Call to unsafe function
 				node.as_mut()
 			};
-			self.insert_equilibrate(n);
+			// TODO self.insert_equilibrate(n);
 			self.update_root(n);
 		}
 		unsafe { // Call to unsafe function
