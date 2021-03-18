@@ -161,7 +161,7 @@ impl Scheduler {
 	fn tick(&mut self, regs: &util::Regs) {
 		println!("tick");
 		if let Some(curr_proc) = self.get_current_process() {
-			println!("Update {} {:?}", curr_proc.pid, curr_proc.regs);
+			//println!("Update {} {:?}", curr_proc.pid, curr_proc.regs);
 			curr_proc.regs = *regs;
 		}
 
@@ -179,7 +179,7 @@ impl Scheduler {
 
 			// TODO Handle syscalling
 			unsafe { // Call to ASM function
-				println!("Switching {:p} {}", curr_proc, curr_proc.regs.eip); // TODO rm
+				//println!("Switching {:p} {}", curr_proc, curr_proc.regs.eip); // TODO rm
 				context_switch(&curr_proc.regs,
 					(gdt::USER_DATA_OFFSET | 3) as _,
 					(gdt::USER_CODE_OFFSET | 3) as _);

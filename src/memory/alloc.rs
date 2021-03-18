@@ -7,6 +7,7 @@ use crate::memory::memmap;
 use crate::memory;
 use crate::util;
 
+// TODO Clean
 /// Initializes the memory allocators.
 pub fn init() {
 	buddy::prepare();

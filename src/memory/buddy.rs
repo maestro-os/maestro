@@ -41,15 +41,13 @@ pub const FLAG_ZONE_TYPE_DMA: Flags = 0b010;
 /// Buddy allocator flag. Tells that the allocation shall not fail (unless not enough memory is
 /// present on the system). This flag is ignored if FLAG_USER is not specified or if the allocation
 /// order is higher than 0. The allocator shall use the OOM killer to recover memory.
-pub const FLAG_NOFAIL: Flags = 0b100; // TODO Implement
+pub const FLAG_NOFAIL: Flags = 0b100; // TODO Move OOM killer outside?
 
 /// Pointer to the end of the kernel zone of memory with the maximum possible size.
 pub const KERNEL_ZONE_LIMIT: *const c_void = 0x40000000 as _;
 
 /// Value indicating that the frame is used.
 pub const FRAME_STATE_USED: FrameID = !(0 as FrameID);
-
-// TODO OOM killer
 
 /// Structure representing an allocatable zone of memory.
 pub struct Zone {
@@ -128,9 +126,8 @@ pub fn get_order(pages: usize) -> FrameOrder {
 	order
 }
 
-// TODO Allow to fallback to another zone if the one that is returned is full
 /// Returns a mutable reference to a zone suitable for an allocation with the given type `type_`.
-fn get_suitable_zone(type_: Flags) -> Option<&'static mut Mutex<Zone>> {
+fn get_suitable_zone(type_: usize) -> Option<&'static mut Mutex<Zone>> {
 	let zones = unsafe { // Assuming global variable is initialized
 		ZONES.assume_init_mut()
 	};
@@ -139,7 +136,7 @@ fn get_suitable_zone(type_: Flags) -> Option<&'static mut Mutex<Zone>> {
 		let is_valid = {
 			let guard = MutexGuard::new(&mut zones[i]);
 			let zone = guard.get();
-			zone.type_ == type_
+			zone.type_ == type_ as _
 		};
 		if is_valid {
 			return Some(&mut zones[i]);
@@ -168,26 +165,29 @@ fn get_zone_for_pointer(ptr: *const c_void) -> Option<&'static mut Mutex<Zone>> 
 }
 
 /// Allocates a frame of memory using the buddy allocator. `order` is the order of the frame to be
-/// allocated.
-/// TODO document flags
+/// allocated. The given frame shall fit the flags `flags`. If no suitable frame is found, the
+/// function returns an Err.
 pub fn alloc(order: FrameOrder, flags: Flags) -> Result<*mut c_void, ()> {
 	debug_assert!(order <= MAX_ORDER);
 
-	let z = get_suitable_zone(flags & ZONE_TYPE_MASK);
-	if z.is_some() {
-		let mut guard = MutexGuard::new(z.unwrap());
-		let zone = guard.get_mut();
+	let begin_zone = (flags & ZONE_TYPE_MASK) as usize;
+	for i in begin_zone..ZONES_COUNT {
+		let z = get_suitable_zone(i);
+		if z.is_some() {
+			let mut guard = MutexGuard::new(z.unwrap());
+			let zone = guard.get_mut();
 
-		let frame = zone.get_available_frame(order);
-		if let Some(f) = frame {
-			f.split(zone, order);
-			f.mark_used();
-			zone.allocated_pages += math::pow2(order) as usize;
+			let frame = zone.get_available_frame(order);
+			if let Some(f) = frame {
+				f.split(zone, order);
+				f.mark_used();
+				zone.allocated_pages += math::pow2(order) as usize;
 
-			let ptr = f.get_ptr(zone);
-			debug_assert!(util::is_aligned(ptr, memory::PAGE_SIZE));
-			debug_assert!(ptr >= zone.begin && ptr < (zone.begin as usize + zone.get_size()) as _);
-			return Ok(ptr);
+				let ptr = f.get_ptr(zone);
+				debug_assert!(util::is_aligned(ptr, memory::PAGE_SIZE));
+				debug_assert!(ptr >= zone.begin && ptr < (zone.begin as usize + zone.get_size()) as _);
+				return Ok(ptr);
+			}
 		}
 	}
 	Err(())

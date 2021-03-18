@@ -103,9 +103,9 @@ impl MemMapping {
 	}
 
 	/// Returns the flags for the virtual memory context mapping.
-	fn get_vmem_flags(&self) -> u32 {
+	fn get_vmem_flags(&self, allocated: bool) -> u32 {
 		let mut flags = 0;
-		if (self.flags & super::MAPPING_FLAG_WRITE) != 0 {
+		if allocated && (self.flags & super::MAPPING_FLAG_WRITE) != 0 {
 			flags |= vmem::x86::FLAG_WRITE;
 		}
 		if (self.flags & super::MAPPING_FLAG_USER) != 0 {
@@ -117,11 +117,12 @@ impl MemMapping {
 	/// Maps the mapping to the given virtual memory context with the default page. If the mapping
 	/// is marked as nolazy, the function allocates physical memory to be mapped.
 	pub fn map_default(&self, vmem: &mut Box::<dyn VMem>) -> Result::<(), ()> {
+		let nolazy = (self.flags & super::MAPPING_FLAG_NOLAZY) != 0;
 		let default_page = get_default_page();
-		let flags = self.get_vmem_flags();
+		let flags = self.get_vmem_flags(nolazy);
 
 		for i in 0..self.size {
-			let phys_ptr = if self.flags & super::MAPPING_FLAG_NOLAZY != 0 {
+			let phys_ptr = if nolazy {
 				let ptr = buddy::alloc(0, buddy::FLAG_ZONE_TYPE_USER);
 				if ptr.is_err() {
 					self.unmap(vmem);
@@ -140,7 +141,13 @@ impl MemMapping {
 		Ok(())
 	}
 
-	// TODO map
+	/// Maps the page at offset `offset` in the mapping to the given virtual memory context. The
+	/// function allocates the physical memory to be mapped. If the memory is already mapped with
+	/// non-default physical pages, the function does nothing.
+	pub fn map(&self, _offset: usize, _vmem: &mut Box::<dyn VMem>) -> Result::<(), ()> {
+		// TODO
+		Ok(())
+	}
 
 	/// Unmaps the mapping from the given virtual memory context.
 	pub fn unmap(&self, _vmem: &mut Box::<dyn VMem>) {
