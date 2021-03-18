@@ -2,8 +2,34 @@
 
 use core::cmp::Ordering;
 use core::ffi::c_void;
+use crate::memory::buddy;
+use crate::memory::vmem::VMem;
+use crate::memory::vmem;
 use crate::memory;
+use crate::util::boxed::Box;
 use crate::util;
+
+/// A pointer to the default physical page of memory. This page is meant to be mapped in read-only
+/// and is a placeholder for pages that are accessed without being allocated nor written.
+static mut DEFAULT_PAGE: Option::<*const c_void> = None;
+
+/// Returns a pointer to the default physical page.
+fn get_default_page() -> *const c_void {
+	let default_page = unsafe { // Access to global variable
+		&mut DEFAULT_PAGE
+	};
+
+	if default_page.is_none() {
+		let ptr = buddy::alloc(0, buddy::FLAG_ZONE_TYPE_KERNEL);
+		if let Ok(ptr) = ptr {
+			*default_page = Some(ptr);
+		} else {
+			kernel_panic!("Cannot allocate default memory page!", 0);
+		}
+	}
+
+	default_page.unwrap()
+}
 
 /// A mapping in the memory space.
 pub struct MemMapping {
@@ -74,6 +100,51 @@ impl MemMapping {
 	/// Returns the size of the mapping in memory pages.
 	pub fn get_size(&self) -> usize {
 		self.size
+	}
+
+	/// Returns the flags for the virtual memory context mapping.
+	fn get_vmem_flags(&self) -> u32 {
+		let mut flags = 0;
+		if (self.flags & super::MAPPING_FLAG_WRITE) != 0 {
+			flags |= vmem::x86::FLAG_WRITE;
+		}
+		if (self.flags & super::MAPPING_FLAG_USER) != 0 {
+			flags |= vmem::x86::FLAG_USER;
+		}
+		flags
+	}
+
+	/// Maps the mapping to the given virtual memory context with the default page. If the mapping
+	/// is marked as nolazy, the function allocates physical memory to be mapped.
+	pub fn map_default(&self, vmem: &mut Box::<dyn VMem>) -> Result::<(), ()> {
+		let default_page = get_default_page();
+		let flags = self.get_vmem_flags();
+
+		for i in 0..self.size {
+			let phys_ptr = if self.flags & super::MAPPING_FLAG_NOLAZY != 0 {
+				let ptr = buddy::alloc(0, buddy::FLAG_ZONE_TYPE_USER);
+				if ptr.is_err() {
+					self.unmap(vmem);
+					return Err(());
+				}
+				ptr.unwrap()
+			} else {
+				default_page
+			};
+			let virt_ptr = ((self.begin as usize) + (i * memory::PAGE_SIZE)) as *const c_void;
+			if vmem.map(phys_ptr, virt_ptr, flags).is_err() {
+				self.unmap(vmem);
+				return Err(());
+			}
+		}
+		Ok(())
+	}
+
+	// TODO map
+
+	/// Unmaps the mapping from the given virtual memory context.
+	pub fn unmap(&self, _vmem: &mut Box::<dyn VMem>) {
+		// TODO
 	}
 
 	// TODO

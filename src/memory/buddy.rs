@@ -41,7 +41,7 @@ pub const FLAG_ZONE_TYPE_DMA: Flags = 0b010;
 /// Buddy allocator flag. Tells that the allocation shall not fail (unless not enough memory is
 /// present on the system). This flag is ignored if FLAG_USER is not specified or if the allocation
 /// order is higher than 0. The allocator shall use the OOM killer to recover memory.
-pub const FLAG_NOFAIL: Flags = 0b100;
+pub const FLAG_NOFAIL: Flags = 0b100; // TODO Implement
 
 /// Pointer to the end of the kernel zone of memory with the maximum possible size.
 pub const KERNEL_ZONE_LIMIT: *const c_void = 0x40000000 as _;

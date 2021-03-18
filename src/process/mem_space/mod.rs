@@ -17,20 +17,18 @@ use crate::util::math;
 use gap::MemGap;
 use mapping::MemMapping;
 
-/// Flag telling that a memory mapping can be read from.
-pub const MAPPING_FLAG_READ: u8   = 0b000001;
 /// Flag telling that a memory mapping can be written to.
-pub const MAPPING_FLAG_WRITE: u8  = 0b000010;
+pub const MAPPING_FLAG_WRITE: u8  = 0b00001;
 /// Flag telling that a memory mapping can contain executable instructions.
-pub const MAPPING_FLAG_EXEC: u8   = 0b000100;
+pub const MAPPING_FLAG_EXEC: u8   = 0b00010;
 /// Flag telling that a memory mapping is accessible from userspace.
-pub const MAPPING_FLAG_USER: u8   = 0b001000;
+pub const MAPPING_FLAG_USER: u8   = 0b00100;
 /// Flag telling that a memory mapping must allocate its physical memory right away and not when
 /// the process tries to write to it.
-pub const MAPPING_FLAG_NOLAZY: u8 = 0b010000;
+pub const MAPPING_FLAG_NOLAZY: u8 = 0b01000;
 /// Flag telling that a memory mapping has its physical memory shared with one or more other
 /// mappings.
-pub const MAPPING_FLAG_SHARED: u8 = 0b100000;
+pub const MAPPING_FLAG_SHARED: u8 = 0b10000;
 
 /// The number of buckets for available gaps in memory.
 const GAPS_BUCKETS_COUNT: usize = 8;
@@ -139,31 +137,32 @@ impl MemSpace {
 			// TODO Insert mapping at exact location if possible
 			Err(())
 		} else {
-			let (old_gap_ptr, new_gap, mapping_ptr) = {
-				let gap = Self::gap_get(&mut self.gaps_buckets, size);
-				if gap.is_none() {
-					return Err(());
-				}
+			let gap = Self::gap_get(&mut self.gaps_buckets, size);
+			if gap.is_none() {
+				return Err(());
+			}
 
-				let gap = gap.unwrap();
-				let gap_ptr = gap.get_begin();
+			let gap = gap.unwrap();
+			let gap_ptr = gap.get_begin();
 
-				let mapping = MemMapping::new(gap_ptr, size, flags);
-				let mapping_ptr = mapping.get_begin();
-				self.mappings.insert(mapping)?;
+			let mapping = MemMapping::new(gap_ptr, size, flags);
+			let mapping_ptr = mapping.get_begin();
+			self.mappings.insert(mapping)?;
 
-				(gap_ptr, gap.consume(size), mapping_ptr)
-			};
+			if self.mappings.get(mapping_ptr).unwrap().map_default(&mut self.vmem).is_err() {
+				self.mappings.remove(mapping_ptr);
+				return Err(());
+			}
 
-			if let Some(new_gap) = new_gap {
+			if let Some(new_gap) = gap.consume(size) {
 				if self.gap_insert(new_gap).is_err() {
+					self.mappings.get(mapping_ptr).unwrap().unmap(&mut self.vmem);
 					self.mappings.remove(mapping_ptr);
 					return Err(());
 				}
 			}
 
-			self.gap_remove(old_gap_ptr);
-			// TODO Map the regions in virtual memory according to flags
+			self.gap_remove(gap_ptr);
 			Ok(mapping_ptr)
 		}
 	}
