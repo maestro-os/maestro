@@ -138,20 +138,26 @@ impl MemMapping {
 				return Err(());
 			}
 		}
+
+		vmem.flush();
 		Ok(())
 	}
 
 	/// Maps the page at offset `offset` in the mapping to the given virtual memory context. The
 	/// function allocates the physical memory to be mapped. If the memory is already mapped with
 	/// non-default physical pages, the function does nothing.
-	pub fn map(&self, _offset: usize, _vmem: &mut Box::<dyn VMem>) -> Result::<(), ()> {
+	pub fn map(&self, _offset: usize, vmem: &mut Box::<dyn VMem>) -> Result::<(), ()> {
 		// TODO
+
+		vmem.flush();
 		Ok(())
 	}
 
 	/// Unmaps the mapping from the given virtual memory context.
-	pub fn unmap(&self, _vmem: &mut Box::<dyn VMem>) {
+	pub fn unmap(&self, vmem: &mut Box::<dyn VMem>) {
 		// TODO
+
+		vmem.flush();
 	}
 
 	// TODO

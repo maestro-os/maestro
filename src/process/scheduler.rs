@@ -177,6 +177,10 @@ impl Scheduler {
 			tss.esp0 = curr_proc.kernel_stack as _;
 			curr_proc.mem_space.bind();
 
+			let eip = curr_proc.regs.eip;
+			let vmem = curr_proc.mem_space.get_vmem();
+			debug_assert!(vmem.translate(eip as _).is_some());
+
 			// TODO Handle syscalling
 			unsafe { // Call to ASM function
 				//println!("Switching {:p} {}", curr_proc, curr_proc.regs.eip); // TODO rm

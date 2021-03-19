@@ -272,7 +272,6 @@ impl X86VMem {
 		let table_entry_index = Self::get_addr_element_index(ptr, 0);
 		let table_entry_value = obj_get(table, table_entry_index);
 		if table_entry_value & FLAG_PRESENT == 0 {
-			// TODO
 			return None;
 		}
 		Some(obj_get_ptr(table, table_entry_index))
@@ -361,6 +360,11 @@ impl VMem for X86VMem {
 		}
 
 		dir_entry_value = obj_get(self.page_dir, dir_entry_index);
+		if flags & FLAG_USER != 0 {
+			obj_set(self.page_dir, dir_entry_index, dir_entry_value | FLAG_USER);
+			dir_entry_value = obj_get(self.page_dir, dir_entry_index);
+		}
+
 		debug_assert!(dir_entry_value & FLAG_PAGE_SIZE == 0);
 		let table = (dir_entry_value & ADDR_MASK) as *mut u32;
 		let table_entry_index = Self::get_addr_element_index(virtaddr, 0);

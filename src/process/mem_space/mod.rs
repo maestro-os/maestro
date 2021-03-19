@@ -122,6 +122,11 @@ impl MemSpace {
 		Ok(s)
 	}
 
+	/// Returns a mutable reference to the vvirtual memory context.
+	pub fn get_vmem(&mut self) -> &mut Box::<dyn VMem> {
+		&mut self.vmem
+	}
+
 	/// Maps a region of memory.
 	/// `ptr` represents the address of the beginning of the region on the virtual memory.
 	/// If the address is None, the function shall find a gap in the memory space that is large
