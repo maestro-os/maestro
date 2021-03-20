@@ -8,13 +8,17 @@ pub mod tss;
 
 use core::ffi::c_void;
 use core::mem::MaybeUninit;
-use crate::process::mem_space::MemSpace;
-use crate::process::pid::PIDManager;
-use crate::process::pid::Pid;
-use crate::process::scheduler::Scheduler;
+use crate::event::InterruptCallback;
+use crate::event;
+use crate::memory::vmem;
 use crate::util::Regs;
 use crate::util::ptr::SharedPtr;
+use crate::util;
+use mem_space::MemSpace;
 use mem_space::{MAPPING_FLAG_WRITE, MAPPING_FLAG_USER, MAPPING_FLAG_NOLAZY};
+use pid::PIDManager;
+use pid::Pid;
+use scheduler::Scheduler;
 
 /// The size of the userspace stack of a process in number of pages.
 const USER_STACK_SIZE: usize = 2048;
@@ -24,6 +28,68 @@ const USER_STACK_FLAGS: u8 = MAPPING_FLAG_WRITE | MAPPING_FLAG_USER;
 const KERNEL_STACK_SIZE: usize = 8;
 /// The flags for the kernelspace stack mapping.
 const KERNEL_STACK_FLAGS: u8 = MAPPING_FLAG_WRITE | MAPPING_FLAG_NOLAZY;
+
+/// Type representing the type of a signal.
+pub type SignalType = u8;
+
+/// Process abort.
+pub const SIGABRT: SignalType = 0;
+/// Alarm clock.
+pub const SIGALRM: SignalType = 1;
+/// Access to an undefined portion of a memory object.
+pub const SIGBUS: SignalType = 2;
+/// Child process terminated.
+pub const SIGCHLD: SignalType = 3;
+/// Continue executing.
+pub const SIGCONT: SignalType = 4;
+/// Erroneous arithmetic operation.
+pub const SIGFPE: SignalType = 5;
+/// Hangup.
+pub const SIGHUP: SignalType = 6;
+/// Illigal instruction.
+pub const SIGILL: SignalType = 7;
+/// Terminal interrupt.
+pub const SIGINT: SignalType = 8;
+/// Kill.
+pub const SIGKILL: SignalType = 9;
+/// Write on a pipe with no one to read it.
+pub const SIGPIPE: SignalType = 10;
+/// Terminal quit.
+pub const SIGQUIT: SignalType = 11;
+/// Invalid memory reference.
+pub const SIGSEGV: SignalType = 12;
+/// Stop executing.
+pub const SIGSTOP: SignalType = 13;
+/// Termination.
+pub const SIGTERM: SignalType = 14;
+/// Terminal stop.
+pub const SIGTSTP: SignalType = 15;
+/// Background process attempting read.
+pub const SIGTTIN: SignalType = 16;
+/// Background process attempting write.
+pub const SIGTTOU: SignalType = 17;
+/// User-defined signal 1.
+pub const SIGUSR1: SignalType = 18;
+/// User-defined signal 2.
+pub const SIGUSR2: SignalType = 19;
+/// Pollable event.
+pub const SIGPOLL: SignalType = 20;
+/// Profiling timer expired.
+pub const SIGPROF: SignalType = 21;
+/// Bad system call.
+pub const SIGSYS: SignalType = 22;
+/// Trace/breakpoint trap.
+pub const SIGTRAP: SignalType = 23;
+/// High bandwidth data is available at a socket.
+pub const SIGURG: SignalType = 24;
+/// Virtual timer expired.
+pub const SIGVTALRM: SignalType = 25;
+/// CPU time limit exceeded.
+pub const SIGXCPU: SignalType = 26;
+/// File size limit exceeded.
+pub const SIGXFSZ: SignalType = 27;
+/// Window resize.
+pub const SIGWINCH: SignalType = 28;
 
 /// An enumeration containing possible states for a process.
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -80,7 +146,46 @@ static mut PID_MANAGER: MaybeUninit::<PIDManager> = MaybeUninit::uninit();
 /// The processes scheduler.
 static mut SCHEDULER: MaybeUninit::<SharedPtr::<Scheduler>> = MaybeUninit::uninit();
 
-/// Initializes processes system.
+/// Scheduler ticking callback.
+pub struct ProcessFaultCallback {}
+
+impl InterruptCallback for ProcessFaultCallback {
+	fn is_enabled(&self) -> bool {
+		true
+	}
+
+	fn call(&mut self, id: u32, code: u32, _regs: &util::Regs) {
+		let scheduler = unsafe { // Access to global variable
+			SCHEDULER.assume_init_mut()
+		};
+		if let Some(curr_proc) = scheduler.get_current_process() {
+			let signal = match id {
+				0x0e => {
+					let accessed_ptr = unsafe { // Call to ASM function
+						vmem::x86::cr2_get()
+					};
+					if curr_proc.mem_space.handle_page_fault(accessed_ptr, code) {
+						Some(SIGSEGV)
+					} else {
+						None
+					}
+				},
+				_ => None,
+			};
+
+			if let Some(signal) = signal {
+				curr_proc.kill(signal);
+				unsafe { // Call to ASM function
+					crate::kernel_loop();
+				}
+			}
+		} else {
+			// TODO Kernel panic
+		}
+	}
+}
+
+/// Initializes processes system. This function must be called only once, at kernel initialization.
 pub fn init() -> Result::<(), ()> {
 	tss::init();
 	tss::flush();
@@ -89,6 +194,9 @@ pub fn init() -> Result::<(), ()> {
 		PID_MANAGER.write(PIDManager::new()?);
 		SCHEDULER.write(Scheduler::new()?);
 	}
+
+	// TODO Register for all errors that can be caused by a process
+	event::register_callback(0x0e, u32::MAX, ProcessFaultCallback {})?;
 
 	Ok(())
 }
@@ -176,5 +284,8 @@ impl Process {
 		self.parent
 	}
 
-	// TODO
+	/// Kills the process with the given signal type `type`.
+	pub fn kill(&mut self, _type: SignalType) {
+		// TODO
+	}
 }

@@ -203,8 +203,9 @@ impl MemSpace {
 	/// A typical situation where is function is usefull is for Copy-On-Write allocations.
 	///
 	/// `virt_addr` is the virtual address of the wrong memory access that caused the fault.
+	/// `code` is the error code given along with the error.
 	/// If the process should continue, the function returns `true`, else `false`.
-	pub fn handle_page_fault(&self, _virt_addr: *const c_void) -> bool {
+	pub fn handle_page_fault(&self, _virt_addr: *const c_void, _code: u32) -> bool {
 		// TODO
 		false
 	}
