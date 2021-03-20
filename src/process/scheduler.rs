@@ -159,7 +159,7 @@ impl Scheduler {
 	/// Ticking the scheduler. This function saves the data of the currently running process, then
 	/// switches to the next process to run.
 	fn tick(&mut self, regs: &util::Regs) {
-		println!("tick");
+		//println!("tick");
 		if let Some(curr_proc) = self.get_current_process() {
 			//println!("Update {} {:?}", curr_proc.pid, curr_proc.regs);
 			curr_proc.regs = *regs;

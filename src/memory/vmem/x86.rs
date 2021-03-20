@@ -360,10 +360,8 @@ impl VMem for X86VMem {
 		}
 
 		dir_entry_value = obj_get(self.page_dir, dir_entry_index);
-		if flags & FLAG_USER != 0 {
-			obj_set(self.page_dir, dir_entry_index, dir_entry_value | FLAG_USER);
-			dir_entry_value = obj_get(self.page_dir, dir_entry_index);
-		}
+		obj_set(self.page_dir, dir_entry_index, dir_entry_value | flags);
+		dir_entry_value |= flags;
 
 		debug_assert!(dir_entry_value & FLAG_PAGE_SIZE == 0);
 		let table = (dir_entry_value & ADDR_MASK) as *mut u32;

@@ -13,6 +13,7 @@ use crate::memory::vmem;
 use crate::memory;
 use crate::util::boxed::Box;
 use crate::util::container::binary_tree::BinaryTree;
+use crate::util::container::binary_tree;
 use crate::util::list::List;
 use crate::util::math;
 use gap::MemGap;
@@ -245,6 +246,10 @@ impl MemSpace {
 
 impl Drop for MemSpace {
 	fn drop(&mut self) {
-		// TODO Free every allocations
+		let mappings = &mut self.mappings;
+		let vmem = &mut self.vmem;
+		mappings.foreach(| m | {
+			m.unmap(vmem);
+		}, binary_tree::TraversalType::PreOrder);
 	}
 }
