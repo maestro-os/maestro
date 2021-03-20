@@ -5,6 +5,7 @@
 mod gap;
 mod mapping;
 
+use core::cmp::Ordering;
 use core::cmp::min;
 use core::ffi::c_void;
 use crate::memory::vmem::VMem;
@@ -177,7 +178,25 @@ impl MemSpace {
 		-> Result::<*const c_void, ()> {
 		let mapping_ptr = self.map(ptr, size, flags)?;
 		Ok(unsafe { // Call to unsafe function
-			mapping_ptr.add(size * memory::PAGE_SIZE) // `- 1`?
+			mapping_ptr.add(size * memory::PAGE_SIZE)
+		})
+	}
+
+	/// Returns a mutable reference to the memory mapping containing the given virtual address
+	/// `ptr` from mappings container `mappings`. If no mapping contains the address, the function
+	/// returns None.
+	fn get_mapping_for(mappings: &mut BinaryTree::<MemMapping>, ptr: *const c_void)
+		-> Option::<&mut MemMapping> {
+		mappings.cmp_get(| val | {
+			let begin = val.get_begin();
+			let end = (begin as usize + val.get_size() * memory::PAGE_SIZE) as *const c_void;
+			if ptr >= begin && ptr < end {
+				Ordering::Equal
+			} else if ptr < begin {
+				Ordering::Less
+			} else {
+				Ordering::Greater
+			}
 		})
 	}
 
@@ -205,9 +224,22 @@ impl MemSpace {
 	/// `virt_addr` is the virtual address of the wrong memory access that caused the fault.
 	/// `code` is the error code given along with the error.
 	/// If the process should continue, the function returns `true`, else `false`.
-	pub fn handle_page_fault(&self, _virt_addr: *const c_void, _code: u32) -> bool {
-		// TODO
-		false
+	pub fn handle_page_fault(&mut self, virt_addr: *const c_void, code: u32) -> bool {
+		if code & vmem::x86::PAGE_FAULT_PRESENT == 0 {
+			return false;
+		}
+
+		let mapping = Self::get_mapping_for(&mut self.mappings, virt_addr).unwrap();
+		let offset = (virt_addr as usize - mapping.get_begin() as usize) / memory::PAGE_SIZE;
+		if mapping.map(offset, &mut self.vmem).is_err() {
+			// TODO Use OOM-killer
+			// TODO Check if current process has been killed
+			if mapping.map(offset, &mut self.vmem).is_err() {
+				crate::kernel_panic!("OOM killer is unable to free up space for new allocation!");
+			}
+		}
+
+		true
 	}
 }
 

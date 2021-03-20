@@ -165,9 +165,9 @@ impl InterruptCallback for ProcessFaultCallback {
 						vmem::x86::cr2_get()
 					};
 					if curr_proc.mem_space.handle_page_fault(accessed_ptr, code) {
-						Some(SIGSEGV)
-					} else {
 						None
+					} else {
+						Some(SIGSEGV)
 					}
 				},
 				_ => None,

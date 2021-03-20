@@ -146,9 +146,21 @@ impl MemMapping {
 	/// Maps the page at offset `offset` in the mapping to the given virtual memory context. The
 	/// function allocates the physical memory to be mapped. If the memory is already mapped with
 	/// non-default physical pages, the function does nothing.
-	pub fn map(&self, _offset: usize, vmem: &mut Box::<dyn VMem>) -> Result::<(), ()> {
-		// TODO
+	pub fn map(&self, offset: usize, vmem: &mut Box::<dyn VMem>) -> Result::<(), ()> {
+		let virt_ptr = (self.begin as usize + offset * memory::PAGE_SIZE) as *const c_void;
+		if let Some(phys_ptr) = vmem.translate(virt_ptr) {
+			if phys_ptr != get_default_page() {
+				return Ok(());
+			}
+		}
 
+		let phys_ptr = buddy::alloc(0, buddy::FLAG_ZONE_TYPE_USER)?;
+		// TODO Ensure the memory is zero-init
+		let flags = self.get_vmem_flags(true);
+		if vmem.map(phys_ptr, virt_ptr, flags).is_err() {
+			buddy::free(phys_ptr, 0);
+			return Err(());
+		}
 		vmem.flush();
 		Ok(())
 	}

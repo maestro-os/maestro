@@ -459,6 +459,26 @@ impl<T: 'static + Ord> BinaryTree<T> {
 		}
 	}
 
+	/// Searches for a node in the tree using the given comparison function `cmp` instead of the
+	/// Ord trait.
+	pub fn cmp_get<F: Fn(&T) -> Ordering>(&mut self, cmp: F) -> Option::<&mut T> {
+		let mut node = self.get_root_mut();
+
+		while node.is_some() {
+			let n = node.unwrap();
+			let ord = cmp(&n.value).reverse();
+			if ord == Ordering::Less {
+				node = n.get_left_mut();
+			} else if ord == Ordering::Greater {
+				node = n.get_right_mut();
+			} else {
+				return Some(&mut n.value);
+			}
+		}
+
+		None
+	}
+
 	/// Searches in the tree for a value greater or equal to the given value.
 	/// `val` is the value to find.
 	pub fn get_min<T_: 'static>(&mut self, val: T_) -> Option::<&mut T> where T: PartialOrd<T_> {
