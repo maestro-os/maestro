@@ -48,8 +48,11 @@ static ERROR_MESSAGES: &'static [&'static str] = &[
 
 /// Returns the error message corresponding to the given interrupt vector index `i`.
 fn get_error_message(i: u32) -> &'static str {
-	debug_assert!((i as usize) < ERROR_MESSAGES.len());
-	ERROR_MESSAGES[i as usize]
+	if (i as usize) < ERROR_MESSAGES.len() {
+		ERROR_MESSAGES[i as usize]
+	} else {
+		"Unknown"
+	}
 }
 
 /// Trait representing a callback that aims to be called whenever an associated interruption is
@@ -63,7 +66,8 @@ pub trait InterruptCallback {
 	/// `code` is an optional code associated with the interrupt. If no code is given, the value is
 	/// `0`.
 	/// `regs` the values of the registers when the interruption was triggered.
-	fn call(&mut self, id: u32, code: u32, regs: &util::Regs);
+	/// If the function returns `false`, the kernel shall panic.
+	fn call(&mut self, id: u32, code: u32, regs: &util::Regs) -> bool;
 }
 
 /// Structure wrapping a callback to insert it into a linked list.
@@ -156,7 +160,9 @@ pub extern "C" fn event_handler(id: u32, code: u32, regs: &util::Regs) {
 	if let Some(callbacks) = callbacks {
 		for i in 0..callbacks.len() {
 			if (*callbacks[i].callback).is_enabled() {
-				(*callbacks[i].callback).call(id, code, regs);
+				if !(*callbacks[i].callback).call(id, code, regs) {
+					crate::kernel_panic!(get_error_message(id), code);
+				}
 			}
 		}
 	} else if (id as usize) < ERROR_MESSAGES.len() {

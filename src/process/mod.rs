@@ -91,6 +91,9 @@ pub const SIGXFSZ: SignalType = 27;
 /// Window resize.
 pub const SIGWINCH: SignalType = 28;
 
+/// The opcode of the `hlt` instruction.
+const HLT_INSTRUCTION: u8 = 0xf4;
+
 /// An enumeration containing possible states for a process.
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum State {
@@ -157,7 +160,7 @@ impl InterruptCallback for ProcessFaultCallback {
 		true
 	}
 
-	fn call(&mut self, id: u32, code: u32, regs: &util::Regs) {
+	fn call(&mut self, id: u32, code: u32, regs: &util::Regs) -> bool {
 		let scheduler = unsafe { // Access to global variable
 			SCHEDULER.assume_init_mut()
 		};
@@ -168,7 +171,7 @@ impl InterruptCallback for ProcessFaultCallback {
 					let inst_prefix = unsafe {
 						*(regs.eip as *const u8)
 					};
-					if inst_prefix == 0xf4 {
+					if inst_prefix == HLT_INSTRUCTION {
 						curr_proc.exit(regs.eax);
 						// TODO Returning the function shall not result in resuming execution
 						None
@@ -197,8 +200,10 @@ impl InterruptCallback for ProcessFaultCallback {
 					crate::kernel_loop();
 				}
 			}
+
+			true
 		} else {
-			// TODO Kernel panic
+			false
 		}
 	}
 }
@@ -306,7 +311,9 @@ impl Process {
 		self.parent
 	}
 
-	/// Kills the process with the given signal type `type`.
+	/// Kills the process with the given signal type `type`. This function enqueues a new signal
+	/// to be processed. If the process doesn't have a signal handler, the default action for the
+	/// signal is executed.
 	pub fn kill(&mut self, _type: SignalType) {
 		// TODO
 	}

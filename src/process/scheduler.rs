@@ -42,8 +42,9 @@ impl InterruptCallback for TickCallback {
 		true
 	}
 
-	fn call(&mut self, _id: u32, _code: u32, regs: &util::Regs) {
+	fn call(&mut self, _id: u32, _code: u32, regs: &util::Regs) -> bool {
 		(*self.scheduler).tick(regs);
+		true
 	}
 }
 
