@@ -138,6 +138,9 @@ pub struct Process {
 
 	// TODO File descriptors
 	// TODO Signals list
+
+	/// The exit status of the process after exiting.
+	exit_status: u8,
 }
 
 // TODO Use mutexes. Take into account sharing with interrupts
@@ -154,12 +157,25 @@ impl InterruptCallback for ProcessFaultCallback {
 		true
 	}
 
-	fn call(&mut self, id: u32, code: u32, _regs: &util::Regs) {
+	fn call(&mut self, id: u32, code: u32, regs: &util::Regs) {
 		let scheduler = unsafe { // Access to global variable
 			SCHEDULER.assume_init_mut()
 		};
 		if let Some(curr_proc) = scheduler.get_current_process() {
 			let signal = match id {
+				0x0d => {
+					// TODO Make sure the process's virtual memory is bound
+					let inst_prefix = unsafe {
+						*(regs.eip as *const u8)
+					};
+					if inst_prefix == 0xf4 {
+						curr_proc.exit(regs.eax);
+						// TODO Returning the function shall not result in resuming execution
+						None
+					} else {
+						Some(SIGSEGV)
+					}
+				},
 				0x0e => {
 					let accessed_ptr = unsafe { // Call to ASM function
 						vmem::x86::cr2_get()
@@ -175,6 +191,8 @@ impl InterruptCallback for ProcessFaultCallback {
 
 			if let Some(signal) = signal {
 				curr_proc.kill(signal);
+				// TODO The function must return to execute other event handlers, but the process
+				// must not continue execution
 				unsafe { // Call to ASM function
 					crate::kernel_loop();
 				}
@@ -196,6 +214,8 @@ pub fn init() -> Result::<(), ()> {
 	}
 
 	// TODO Register for all errors that can be caused by a process
+	// TODO Use only one instance?
+	event::register_callback(0x0d, u32::MAX, ProcessFaultCallback {})?;
 	event::register_callback(0x0e, u32::MAX, ProcessFaultCallback {})?;
 
 	Ok(())
@@ -251,6 +271,8 @@ impl Process {
 
 			user_stack: user_stack,
 			kernel_stack: kernel_stack,
+
+			exit_status: 0,
 		};
 
 		unsafe { // Access to global variable
@@ -287,5 +309,12 @@ impl Process {
 	/// Kills the process with the given signal type `type`.
 	pub fn kill(&mut self, _type: SignalType) {
 		// TODO
+	}
+
+	/// Exits the process with the given `status`. This function changes the process's status to
+	/// `Zombie`.
+	pub fn exit(&mut self, status: u32) {
+		self.exit_status = (status & 0xff) as u8;
+		self.state = State::Zombie;
 	}
 }

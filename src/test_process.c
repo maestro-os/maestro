@@ -8,7 +8,7 @@ void _exit(int status);
 // TODO doc?
 void test_process(void)
 {
-	while(1)
+	for(size_t i = 0; i < 10; ++i)
 		write(0, "Hello world!\n", 13);
 	asm("hlt");
 }
