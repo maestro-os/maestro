@@ -8,7 +8,7 @@ pub mod tss;
 
 use core::ffi::c_void;
 use core::mem::MaybeUninit;
-use crate::event::InterruptCallback;
+use crate::event::{InterruptCallback, InterruptResult, InterruptResultAction};
 use crate::event;
 use crate::memory::vmem;
 use crate::util::Regs;
@@ -160,12 +160,12 @@ impl InterruptCallback for ProcessFaultCallback {
 		true
 	}
 
-	fn call(&mut self, id: u32, code: u32, regs: &util::Regs) -> bool {
+	fn call(&mut self, id: u32, code: u32, regs: &util::Regs) -> InterruptResult {
 		let scheduler = unsafe { // Access to global variable
 			SCHEDULER.assume_init_mut()
 		};
 		if let Some(curr_proc) = scheduler.get_current_process() {
-			let signal = match id {
+			match id {
 				0x0d => {
 					// TODO Make sure the process's virtual memory is bound
 					let inst_prefix = unsafe {
@@ -173,37 +173,29 @@ impl InterruptCallback for ProcessFaultCallback {
 					};
 					if inst_prefix == HLT_INSTRUCTION {
 						curr_proc.exit(regs.eax);
-						// TODO Returning the function shall not result in resuming execution
-						None
 					} else {
-						Some(SIGSEGV)
+						curr_proc.kill(SIGSEGV);
 					}
 				},
 				0x0e => {
 					let accessed_ptr = unsafe { // Call to ASM function
 						vmem::x86::cr2_get()
 					};
-					if curr_proc.mem_space.handle_page_fault(accessed_ptr, code) {
-						None
-					} else {
-						Some(SIGSEGV)
+					if !curr_proc.mem_space.handle_page_fault(accessed_ptr, code) {
+						curr_proc.kill(SIGSEGV);
 					}
 				},
-				_ => None,
-			};
-
-			if let Some(signal) = signal {
-				curr_proc.kill(signal);
-				// TODO The function must return to execute other event handlers, but the process
-				// must not continue execution
-				unsafe { // Call to ASM function
-					crate::kernel_loop();
-				}
+				_ => {},
 			}
 
-			true
+			if curr_proc.get_current_state() == State::Running {
+				InterruptResult::new(false, InterruptResultAction::Resume)
+			} else {
+				// TODO Avoid skipping others while ensuring the process won't resume?
+				InterruptResult::new(true, InterruptResultAction::Loop)
+			}
 		} else {
-			false
+			InterruptResult::new(true, InterruptResultAction::Panic)
 		}
 	}
 }

@@ -2,6 +2,7 @@
 
 .global kernel_wait
 .global kernel_loop
+.global kernel_loop_reset
 .global kernel_halt
 
 .global kernel_end
@@ -30,6 +31,13 @@ kernel_wait:
 kernel_loop:
 	sti
 	hlt
+	jmp kernel_loop
+
+/*
+ * Resets the stack to the given value, then calls `kernel_loop`.
+ */
+kernel_loop_reset:
+	mov 4(%esp), %esp
 	jmp kernel_loop
 
 /*

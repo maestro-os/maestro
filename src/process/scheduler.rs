@@ -9,12 +9,13 @@
 /// switching to the next process.
 
 use core::cmp::max;
-use crate::event::InterruptCallback;
+use crate::event::{InterruptCallback, InterruptResult, InterruptResultAction};
 use crate::event;
 use crate::gdt;
 use crate::process::Process;
 use crate::process::pid::Pid;
 use crate::process::tss;
+use crate::process;
 use crate::util::Regs;
 use crate::util::container::vec::Vec;
 use crate::util::math;
@@ -42,9 +43,9 @@ impl InterruptCallback for TickCallback {
 		true
 	}
 
-	fn call(&mut self, _id: u32, _code: u32, regs: &util::Regs) -> bool {
+	fn call(&mut self, _id: u32, _code: u32, regs: &util::Regs) -> InterruptResult {
 		(*self.scheduler).tick(regs);
-		true
+		InterruptResult::new(false, InterruptResultAction::Resume)
 	}
 }
 
@@ -136,25 +137,35 @@ impl Scheduler {
 		max(1, n) as _
 	}
 
+	/// Tells whether the given process can be run.
+	fn can_run(&self, process: &Process) -> bool {
+		if process.get_current_state() != process::State::Running {
+			return false;
+		}
+
+		let cursor_priority = process.priority;
+		process.quantum_count < self.get_quantum_count(cursor_priority)
+	}
+
 	/// Returns the next process to run.
 	fn get_next_process(&mut self) -> Option::<&mut SharedPtr::<Process>> {
 		if self.processes.is_empty() {
 			return None;
 		}
 
-		if self.cursor >= self.processes.len() {
-			self.cursor = 0;
+		let processes_count = self.processes.len();
+		let mut i = self.cursor;
+		let mut j = 0;
+		while j < self.processes.len() && !self.can_run(&self.processes[i]) {
+			i = (i + 1) % processes_count;
+			j += 1;
+		}
+		if j == self.processes.len() {
+			return None;
 		}
 
-		let cursor_priority = self.processes[self.cursor].priority;
-		let cursor_quantum_count = self.get_quantum_count(cursor_priority);
-		if cursor_quantum_count >= cursor_quantum_count {
-			let cursor_process = &mut self.processes[self.cursor];
-			cursor_process.quantum_count = 0;
-			self.cursor = (self.cursor + 1) % self.processes.len();
-		}
-
-		Some(&mut self.processes[self.cursor])
+		self.cursor = i;
+		Some(&mut self.processes[i])
 	}
 
 	/// Ticking the scheduler. This function saves the data of the currently running process, then

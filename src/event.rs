@@ -3,7 +3,9 @@
 
 use core::cmp::Ordering;
 use core::mem::MaybeUninit;
+use crate::idt::pic;
 use crate::idt;
+use crate::process::tss;
 use crate::util::container::vec::Vec;
 use crate::util::lock::mutex::{Mutex, MutexGuard};
 use crate::util::ptr::SharedPtr;
@@ -55,6 +57,35 @@ fn get_error_message(i: u32) -> &'static str {
 	}
 }
 
+/// The action to execute after the interrupt handler has returned.
+pub enum InterruptResultAction {
+	/// Resumes execution of the code where it was interrupted.
+	Resume,
+	/// Goes back to the kernel loop, waiting for another interruption.
+	Loop,
+	/// Makes the kernel panic.
+	Panic,
+}
+
+/// Enumeration telling which action will be executed after an interrupt handler.
+pub struct InterruptResult {
+	/// Tells whether to skip execution of the next interrupt handlers (with lower priority).
+	skip_next: bool,
+	/// The action to execute after the handler. The last handler decides which action to execute
+	/// unless the `skip_next` variable is set to `true`.
+	action: InterruptResultAction,
+}
+
+impl InterruptResult {
+	/// Creates a new instance.
+	pub fn new(skip_next: bool, action: InterruptResultAction) -> Self {
+		Self {
+			skip_next: skip_next,
+			action: action,
+		}
+	}
+}
+
 /// Trait representing a callback that aims to be called whenever an associated interruption is
 /// triggered.
 pub trait InterruptCallback {
@@ -67,7 +98,7 @@ pub trait InterruptCallback {
 	/// `0`.
 	/// `regs` the values of the registers when the interruption was triggered.
 	/// If the function returns `false`, the kernel shall panic.
-	fn call(&mut self, id: u32, code: u32, regs: &util::Regs) -> bool;
+	fn call(&mut self, id: u32, code: u32, regs: &util::Regs) -> InterruptResult;
 }
 
 /// Structure wrapping a callback to insert it into a linked list.
@@ -151,19 +182,39 @@ pub fn register_callback<T: 'static + InterruptCallback>(id: usize, priority: u3
 /// `regs` is the state of the registers at the moment of the interrupt.
 #[no_mangle]
 pub extern "C" fn event_handler(id: u32, code: u32, regs: &util::Regs) {
-	// TODO POTENTIAL DEADLOCK: Interruption when the Mutex is already being used?
-	let mut guard = unsafe { // Access to global variable
-		MutexGuard::new(CALLBACKS.assume_init_mut())
+	let mutex = unsafe { // Access to global variable
+		CALLBACKS.assume_init_mut()
 	};
-	let callbacks = &mut guard.get_mut()[id as usize];
+	if mutex.is_locked() {
+		crate::kernel_panic!("Event handler deadlock");
+	}
+	let mut guard = MutexGuard::new(mutex);
 
-	if let Some(callbacks) = callbacks {
+	if let Some(callbacks) = &mut guard.get_mut()[id as usize] {
+		let mut last_action = InterruptResultAction::Resume;
+
 		for i in 0..callbacks.len() {
 			if (*callbacks[i].callback).is_enabled() {
-				if !(*callbacks[i].callback).call(id, code, regs) {
-					crate::kernel_panic!(get_error_message(id), code);
+				let result = (*callbacks[i].callback).call(id, code, regs);
+				last_action = result.action;
+				if result.skip_next {
+					break;
 				}
 			}
+		}
+
+		match last_action {
+			InterruptResultAction::Resume => {},
+			InterruptResultAction::Loop => {
+				pic::end_of_interrupt(id as _);
+				// TODO Fix: Use of loop action before TSS init shall result in undefined behaviour
+				unsafe { // Call to ASM function
+					crate::kernel_loop_reset(tss::get().esp0 as _);
+				}
+			},
+			InterruptResultAction::Panic => {
+				crate::kernel_panic!(get_error_message(id), code);
+			},
 		}
 	} else if (id as usize) < ERROR_MESSAGES.len() {
 		crate::kernel_panic!(get_error_message(id), code);

@@ -29,6 +29,13 @@ impl Spinlock {
 		}
 	}
 
+	/// Tells whether the spinlock is already locked. This function should not be called to check
+	/// if the spinlock is ready to be locked before locking it, since it may cause race
+	/// conditions. In this case, prefer using `lock` directly.
+	pub fn is_locked(&self) -> bool {
+		self.locked != 0
+	}
+
 	/// Wrapper for `spin_lock`. Locks the spinlock.
 	pub fn lock(&mut self) {
 		unsafe {

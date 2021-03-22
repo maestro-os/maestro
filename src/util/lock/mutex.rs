@@ -56,6 +56,13 @@ impl<T> Mutex<T> {
 		}
 	}
 
+	/// Tells whether the mutex is already locked. This function should not be called to check if
+	/// the mutex is ready to be locked before locking it, since it may cause race conditions. In
+	/// this case, prefer using `lock` directly.
+	pub fn is_locked(&self) -> bool {
+		self.spin.is_locked()
+	}
+
 	/// Locks the mutex. If the mutex is already locked, the thread shall wait until it becomes
 	/// available.
 	pub fn lock(&mut self) -> LockPayload<T> {

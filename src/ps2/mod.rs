@@ -5,6 +5,7 @@
 // ready
 
 use core::cmp::Ordering;
+use crate::event::{InterruptCallback, InterruptResult, InterruptResultAction};
 use crate::event;
 use crate::io;
 use crate::module::Module;
@@ -519,12 +520,12 @@ struct KeyboardCallback {
 	module: *mut PS2Module, // TODO Use a safe object to handle memory
 }
 
-impl event::InterruptCallback for KeyboardCallback {
+impl InterruptCallback for KeyboardCallback {
 	fn is_enabled(&self) -> bool {
 		true
 	}
 
-	fn call(&mut self, _id: u32, _code: u32, _regs: &util::Regs) -> bool {
+	fn call(&mut self, _id: u32, _code: u32, _regs: &util::Regs) -> InterruptResult {
 		while can_read() {
 			let (key, action) = read_keystroke();
 
@@ -538,7 +539,8 @@ impl event::InterruptCallback for KeyboardCallback {
 				}
 			}
 		}
-		true
+
+		InterruptResult::new(false, InterruptResultAction::Resume)
 	}
 }
 

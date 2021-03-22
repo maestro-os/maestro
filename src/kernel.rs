@@ -67,6 +67,7 @@ const KERNEL_VERSION: &'static str = "1.0";
 extern "C" {
 	pub fn kernel_wait();
 	pub fn kernel_loop() -> !;
+	pub fn kernel_loop_reset(stack: *mut c_void) -> !;
 	pub fn kernel_halt() -> !;
 }
 
