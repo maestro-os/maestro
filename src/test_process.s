@@ -2,6 +2,8 @@
 
 .global write
 .global _exit
+.global getpid
+.global getppid
 
 # TODO doc?
 write:
@@ -28,6 +30,29 @@ write:
 
 # TODO doc?
 _exit:
+	push %ebp
+	mov %esp, %ebp
+
+	push %ebx
+
 	mov $1, %eax
+	mov 8(%ebp), %ebx
+	int $0x80
+
+	pop %ebx
+
+	mov %ebp, %esp
+	pop %ebp
+	ret
+
+# TODO doc?
+getpid:
+	mov $2, %eax
+	int $0x80
+	ret
+
+# TODO doc?
+getppid:
+	mov $3, %eax
 	int $0x80
 	ret

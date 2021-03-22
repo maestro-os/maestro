@@ -59,7 +59,7 @@ CC = i686-elf-gcc # TODO Set according to architecture
 DEBUG_FLAGS = -D KERNEL_DEBUG -D KERNEL_DEBUG_SANITY -D KERNEL_SELFTEST #-D KERNEL_DEBUG_SPINLOCK
 
 # The C language compiler flags
-CFLAGS = -nostdlib -ffreestanding -fstack-protector-strong -fno-pic -mno-red-zone -Wall -Wextra -Werror -lgcc
+CFLAGS = -nostdlib -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -Wall -Wextra -Werror -lgcc
 ifeq ($(KERNEL_MODE), release)
 CFLAGS += -O3
 else
