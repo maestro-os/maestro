@@ -2,11 +2,15 @@
 /// userspace and kernelspace.
 /// TODO doc
 
-mod write;
 mod _exit;
+mod getpid;
+mod getppid;
+mod write;
 
 use _exit::_exit;
 use crate::util;
+use getpid::getpid;
+use getppid::getppid;
 use write::write;
 
 /// This function is called whenever a system call is triggered.
@@ -16,6 +20,8 @@ pub extern "C" fn syscall_handler(regs: &util::Regs) -> u32 {
 	match id {
 		0 => write(regs),
 		1 => _exit(regs),
+		2 => getpid(regs),
+		3 => getppid(regs),
 		_ => {
 			// TODO Kill process for invalid system call
 			loop {}

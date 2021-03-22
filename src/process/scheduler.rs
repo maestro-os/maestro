@@ -95,8 +95,12 @@ impl Scheduler {
 	}
 
 	/// Returns the current running process. If no process is running, the function returns None.
-	pub fn get_current_process(&mut self) -> Option::<&mut SharedPtr::<Process>> {
-		self.curr_proc.as_mut()
+	pub fn get_current_process(&mut self) -> Option::<SharedPtr::<Process>> {
+		if let Some(c) = &mut self.curr_proc {
+			Some(c.clone())
+		} else {
+			None
+		}
 	}
 
 	/// Updates the scheduler's heuristic with the new priority of a process.
@@ -171,7 +175,7 @@ impl Scheduler {
 	/// Ticking the scheduler. This function saves the data of the currently running process, then
 	/// switches to the next process to run.
 	fn tick(&mut self, regs: &util::Regs) {
-		if let Some(curr_proc) = self.get_current_process() {
+		if let Some(mut curr_proc) = self.get_current_process() {
 			curr_proc.regs = *regs;
 		}
 

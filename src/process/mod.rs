@@ -164,7 +164,7 @@ impl InterruptCallback for ProcessFaultCallback {
 		let scheduler = unsafe { // Access to global variable
 			SCHEDULER.assume_init_mut()
 		};
-		if let Some(curr_proc) = scheduler.get_current_process() {
+		if let Some(mut curr_proc) = scheduler.get_current_process() {
 			match id {
 				0x0d => {
 					// TODO Make sure the process's virtual memory is bound
@@ -219,11 +219,19 @@ pub fn init() -> Result::<(), ()> {
 }
 
 impl Process {
-	/// Returns the process with PID `pid`. If the process doesn't exist, the function returns None.
+	/// Returns the process with PID `pid`. If the process doesn't exist, the function returns
+	/// None.
 	pub fn get_by_pid(pid: Pid) -> Option::<SharedPtr::<Self>> {
 		unsafe { // Access to global variable
 			SCHEDULER.assume_init_mut()
 		}.get_by_pid(pid)
+	}
+
+	/// Returns the current running process. If no process is running, the function returns None.
+	pub fn get_current() -> Option::<SharedPtr::<Self>> {
+		unsafe { // Access to global variable
+			SCHEDULER.assume_init_mut()
+		}.get_current_process()
 	}
 
 	/// Creates a new process, assigns an unique PID to it and places it into the scheduler's
@@ -280,6 +288,17 @@ impl Process {
 	/// Returns the process's PID.
 	pub fn get_pid(&self) -> Pid {
 		self.pid
+	}
+
+	/// Returns the parent process's PID.
+	pub fn get_parent_pid(&self) -> Pid {
+		if let Some(parent) = self.parent {
+			unsafe { // Dereference of raw pointer
+				&*parent
+			}.get_pid()
+		} else {
+			self.get_pid()
+		}
 	}
 
 	/// Returns the process's current state.

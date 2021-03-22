@@ -208,6 +208,9 @@ pub extern "C" fn event_handler(id: u32, code: u32, regs: &util::Regs) {
 			InterruptResultAction::Loop => {
 				pic::end_of_interrupt(id as _);
 				// TODO Fix: Use of loop action before TSS init shall result in undefined behaviour
+				// TODO Fix: The stack might be removed while being used (example: process is
+				// killed, its exit status is retrieved from another CPU core and then the process
+				// is removed)
 				unsafe { // Call to ASM function
 					crate::kernel_loop_reset(tss::get().esp0 as _);
 				}
