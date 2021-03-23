@@ -215,7 +215,12 @@ bochs: iso
 virtualbox: iso
 	virtualbox
 
+# Builds the documentation
 doc: $(DOC_SRC_DIR)
 	sphinx-build $(DOC_SRC_DIR) $(DOC_DIR)
 
-.PHONY: all iso clean fclean re test debug bochs doc
+# Runs clippy on the Rust code
+clippy:
+	RUSTFLAGS="$(RUSTFLAGS)" $(CARGO) clippy $(CARGOFLAGS) --target $(TARGET)
+
+.PHONY: all iso clean fclean re test debug bochs doc clippy

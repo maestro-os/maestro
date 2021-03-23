@@ -807,7 +807,7 @@ impl<T: fmt::Display> fmt::Display for BinaryTree::<T> {
 				} else {
 					"black"
 				};
-				let _ = write!(f, "{} ({})\n", n.value, color);
+				let _ = writeln!(f, "{} ({})", n.value, color);
 			}, TraversalType::ReverseInOrder);
 			Ok(())
 		} else {

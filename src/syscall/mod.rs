@@ -3,14 +3,24 @@
 /// TODO doc
 
 mod _exit;
+mod chroot;
+mod close;
 mod getpid;
 mod getppid;
+mod open;
+mod read;
+mod unlink;
 mod write;
 
 use _exit::_exit;
+use chroot::chroot;
+use close::close;
 use crate::util;
 use getpid::getpid;
 use getppid::getppid;
+use open::open;
+use read::read;
+use unlink::unlink;
 use write::write;
 
 /// This function is called whenever a system call is triggered.
@@ -18,10 +28,16 @@ use write::write;
 pub extern "C" fn syscall_handler(regs: &util::Regs) -> u32 {
 	let id = regs.eax;
 	match id {
-		0 => write(regs),
-		1 => _exit(regs),
-		2 => getpid(regs),
-		3 => getppid(regs),
+		// TODO chown, chmod, mkdir, mknod, link, mount, ...
+		0 => open(regs),
+		1 => close(regs),
+		2 => unlink(regs),
+		3 => chroot(regs),
+		4 => read(regs),
+		5 => write(regs),
+		6 => _exit(regs),
+		7 => getpid(regs),
+		8 => getppid(regs),
 		_ => {
 			// TODO Kill process for invalid system call
 			loop {}

@@ -35,6 +35,7 @@
 mod debug;
 mod elf;
 mod event;
+mod filesystem;
 mod gdt;
 #[macro_use]
 mod idt;
