@@ -1,10 +1,18 @@
 /// This module handles the filesystem hierarchy.
 /// TODO doc
 
+/// Type representing a file descriptor.
+type Fd = u16;
+
+/// Type representing a user ID.
 type Uid = u16;
+/// Type representing a group ID.
 type Gid = u16;
+/// Type representing a file mode.
 type Mode = u16;
-type Timestamp = u32;
+
+/// Type representing a timestamp.
+type Timestamp = u32; // TODO Move somewhere else?
 
 /// The maximum length of a filename.
 pub const MAX_NAME_LENGTH: usize = 255;
@@ -40,12 +48,34 @@ pub const S_ISGID: Mode = 02000;
 /// TODO doc
 pub const S_ISVTX: Mode = 01000;
 
+/// Enumeration representing the different file types.
+#[derive(Copy, Clone, Debug)]
+pub enum FileType {
+	/// A regular file storing data.
+	Regular,
+	/// A directory, containing other files.
+	Directory,
+	/// A symbolic link, pointing to another file.
+	Link,
+	/// A named pipe.
+	FIFO,
+	/// A Unix domain socket.
+	Socket,
+	/// A Block device file.
+	BlockDevice,
+	/// A Character device file.
+	CharDevice,
+}
+
 /// Structure representing a file.
 pub struct File {
 	/// The name of the file.
 	name: [u8; MAX_NAME_LENGTH],
 	/// The size of the file in bytes.
 	size: usize,
+
+	/// The type of the file.
+	type_: FileType,
 
 	/// The ID of the owner user.
 	uid: Uid,
@@ -70,12 +100,17 @@ pub struct File {
 impl File {
 	/// Returns the file's name.
 	pub fn get_name(&self) -> &str {
-		"TODO"
+		"TODO" // TODO
 	}
 
 	/// Returns the size of the file in bytes.
 	pub fn get_size(&self) -> usize {
 		self.size
+	}
+
+	/// Returns the type of the file.
+	pub fn get_file_type(&self) -> FileType {
+		self.type_
 	}
 
 	/// Returns the owner user ID.
@@ -98,7 +133,15 @@ impl File {
 
 /// Returns a reference to the file at path `path`. If the file doesn't exist, the function returns
 /// None.
-pub fn get_file_from_path(_path: &str) -> Option::<File> {
+pub fn get_file_from_path(_path: &str) -> Option::<&'static mut File> {
+	// TODO
+	None
+}
+
+// TODO `fd` may point to a different file for each process
+/// Returns a reference to the file from file descriptor `fd`. If the file descriptor is invalid,
+/// the behaviour is undefined.
+pub fn get_file_from_descriptor(_fd: Fd) -> Option::<&'static mut File> {
 	// TODO
 	None
 }
