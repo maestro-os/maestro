@@ -14,11 +14,10 @@ pub struct Path {
 
 impl Path {
 	/// Creates a new instance from string.
-	pub fn from_string(_path: &str) -> Self {
-		// TODO
+	pub fn from_string(path: &str) -> Self {
 		Self {
-			absolute: false,
-			parts: Vec::new(),
+			absolute: path.chars().next().unwrap() == '/',
+			parts: Vec::new(), // TODO
 		}
 	}
 
@@ -62,8 +61,10 @@ impl Path {
 
 impl FailableClone for Path {
 	fn failable_clone(&self) -> Result::<Self, ()> {
-		// TODO
-		Err(())
+		Ok(Self {
+			absolute: self.absolute,
+			parts: self.parts.failable_clone()?,
+		})
 	}
 }
 

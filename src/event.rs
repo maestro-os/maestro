@@ -169,7 +169,7 @@ pub fn register_callback<T: 'static + InterruptCallback>(id: usize, priority: u3
 	v.insert(index, CallbackWrapper {
 		priority: priority,
 		callback: ptr.clone(),
-	});
+	})?;
 	Ok(ptr)
 }
 

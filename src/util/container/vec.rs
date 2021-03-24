@@ -37,31 +37,32 @@ impl<T> Vec<T> {
 
 	// TODO Handle fail (do not use unwrap)
 	/// Reallocates the vector's data with the vector's capacity.
-	fn realloc(&mut self) {
+	fn realloc(&mut self) -> Result::<(), ()> {
 		let size = self.capacity * size_of::<T>();
 		let ptr = if self.data.is_some() {
-			malloc::realloc(self.data.unwrap().as_ptr() as *mut c_void, size).unwrap() as *mut T
+			malloc::realloc(self.data.unwrap().as_ptr() as *mut c_void, size)? as *mut T
 		} else {
-			malloc::alloc(size).unwrap() as *mut T
+			malloc::alloc(size)? as *mut T
 		};
 		self.data = NonNull::new(ptr);
 		debug_assert!(self.data.is_some());
+		Ok(())
 	}
 
 	// TODO Handle fail
 	/// Increases the capacity to at least `min` elements.
-	fn increase_capacity(&mut self, min: usize) {
+	fn increase_capacity(&mut self, min: usize) -> Result::<(), ()> {
 		self.capacity = max(self.capacity, min); // TODO Larger allocations than needed to avoid
 		// reallocation all the time
-		self.realloc();
+		self.realloc()
 	}
 
 	/// Creates a new emoty vector with the given capacity.
-	pub fn with_capacity(capacity: usize) -> Self {
+	pub fn with_capacity(capacity: usize) -> Result::<Self, ()> {
 		let mut vec = Self::new();
 		vec.capacity = capacity;
-		vec.realloc();
-		vec
+		vec.realloc()?;
+		Ok(vec)
 	}
 
 	/// Returns the number of elements inside of the vector.
@@ -109,10 +110,9 @@ impl<T> Vec<T> {
 
 	/// Inserts an element at position index within the vector, shifting all elements after it to
 	/// the right.
-	pub fn insert(&mut self, index: usize, element: T) {
+	pub fn insert(&mut self, index: usize, element: T) -> Result::<(), ()> {
 		if self.capacity < self.len + 1 {
-			// TODO Handle allocation error
-			self.increase_capacity(self.capacity + 1);
+			self.increase_capacity(self.capacity + 1)?;
 		}
 		debug_assert!(self.capacity >= self.len + 1);
 
@@ -122,6 +122,7 @@ impl<T> Vec<T> {
 			ptr::write(ptr.offset(index as _), element);
 		}
 		self.len += 1;
+		Ok(())
 	}
 
 	/// Removes and returns the element at position index within the vector, shifting all elements
@@ -153,10 +154,9 @@ impl<T> Vec<T> {
 	// TODO resize
 
 	/// Appends an element to the back of a collection.
-	pub fn push(&mut self, value: T) {
+	pub fn push(&mut self, value: T) -> Result::<(), ()> {
 		if self.capacity < self.len + 1 {
-			// TODO Handle allocation error
-			self.increase_capacity(self.capacity + 1);
+			self.increase_capacity(self.capacity + 1)?;
 		}
 		debug_assert!(self.capacity >= self.len + 1);
 
@@ -164,6 +164,7 @@ impl<T> Vec<T> {
 			ptr::write(self.data.unwrap().as_ptr().offset(self.len as _), value);
 		}
 		self.len += 1;
+		Ok(())
 	}
 
 	/// Removes the last element from a vector and returns it, or None if it is empty.
@@ -357,6 +358,8 @@ mod test {
 	}
 
 	// TODO More tests for insert/remove
+
+	// TODO append
 
 	// TODO reserve
 	// TODO resize

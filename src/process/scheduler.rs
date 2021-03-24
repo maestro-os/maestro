@@ -118,7 +118,7 @@ impl Scheduler {
 	/// Adds a process to the scheduler.
 	pub fn add_process(&mut self, process: Process) -> Result::<SharedPtr::<Process>, ()> {
 		let mut ptr = SharedPtr::new(process)?;
-		self.processes.push(ptr.clone());
+		self.processes.push(ptr.clone())?;
 		self.update_priority(0, ptr.get_priority());
 
 		Ok(ptr)

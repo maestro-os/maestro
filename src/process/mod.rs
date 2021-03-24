@@ -345,7 +345,7 @@ impl Process {
 		});
 		if let Err(index) = index_result {
 			let fd = FileDescriptor::new(id, file);
-			self.file_descriptors.insert(index, fd);
+			self.file_descriptors.insert(index, fd)?;
 			Ok(&mut self.file_descriptors[index])
 		} else {
 			Err(())
