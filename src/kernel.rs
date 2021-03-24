@@ -34,6 +34,7 @@
 
 mod debug;
 mod elf;
+mod errno;
 mod event;
 mod filesystem;
 mod gdt;
