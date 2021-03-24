@@ -145,9 +145,21 @@ impl<T> Vec<T> {
 	}
 
 	/// Moves all the elements of `other` into `Self`, leaving `other` empty.
-	pub fn append(&mut self, _other: &mut Vec::<T>) -> Result::<(), ()> {
-		// TODO
-		Err(())
+	pub fn append(&mut self, other: &mut Vec::<T>) -> Result::<(), ()> {
+		if self.capacity < self.len + other.len {
+			self.increase_capacity(self.capacity + other.len)?;
+		}
+
+		let self_ptr = self.data.unwrap().as_ptr();
+		let other_ptr = other.data.unwrap().as_ptr();
+		unsafe { // Pointer arithmetic and dereference of raw pointer
+			ptr::copy(other_ptr, self_ptr.offset(self.len as _), other.len);
+		}
+
+		self.len += other.len;
+		other.clear();
+
+		Ok(())
 	}
 
 	// TODO reserve
