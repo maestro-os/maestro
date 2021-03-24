@@ -73,12 +73,29 @@ macro_rules! container_of {
 	}
 }
 
+extern "C" {
+	pub fn memcpy(dest: *mut c_void, src: *const c_void, n: usize) -> *mut c_void;
+	pub fn memmove(dest: *mut c_void, src: *const c_void, n: usize) -> *mut c_void;
+	pub fn memcmp(s1: *const c_void, s2: *const c_void, n: usize) -> i32;
+	pub fn memset(s: *mut c_void, c: i32, n: usize) -> *mut c_void;
+
+	pub fn bzero(s: *mut c_void, n: usize);
+
+	pub fn strlen(s: *const c_void) -> usize;
+}
+
+/// Trait allowing to perform a clone of a structure that can possibly fail (on memory allocation
+/// failure, for example).
+pub trait FailableClone {
+	/// Clones the object. If the clone fails, the function returns Err.
+	fn failable_clone(&self) -> Result::<Self, ()> where Self: Sized;
+}
+
 /// Structure representing the list of registers for a context. The content of this structure
 /// depends on the architecture for which the kernel is compiled.
 #[derive(Clone, Copy, Debug)]
 #[repr(C, packed)]
-pub struct Regs
-{
+pub struct Regs {
 	pub ebp: u32,
 	pub esp: u32,
 	pub eip: u32,
@@ -106,17 +123,6 @@ ebx: {:p} ecx: {:p} edx: {:p} esi: {:p} edi: {:p}\n",
 			self.esi as *const c_void,
 			self.edi as *const c_void)
 	}
-}
-
-extern "C" {
-	pub fn memcpy(dest: *mut c_void, src: *const c_void, n: usize) -> *mut c_void;
-	pub fn memmove(dest: *mut c_void, src: *const c_void, n: usize) -> *mut c_void;
-	pub fn memcmp(s1: *const c_void, s2: *const c_void, n: usize) -> i32;
-	pub fn memset(s: *mut c_void, c: i32, n: usize) -> *mut c_void;
-
-	pub fn bzero(s: *mut c_void, n: usize);
-
-	pub fn strlen(s: *const c_void) -> usize;
 }
 
 /// Zeroes the given object.

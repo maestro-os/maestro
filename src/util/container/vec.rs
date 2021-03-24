@@ -9,6 +9,7 @@ use core::ops::IndexMut;
 use core::ptr::NonNull;
 use core::ptr;
 use crate::memory::malloc;
+use crate::util::FailableClone;
 
 /// A vector container is a dynamically-resizable array of elements.
 /// When resizing a vector, the elements can be moved, thus the callee should not rely on pointers
@@ -142,6 +143,12 @@ impl<T> Vec<T> {
 		v
 	}
 
+	/// Moves all the elements of `other` into `Self`, leaving `other` empty.
+	pub fn append(&mut self, _other: &mut Vec::<T>) -> Result::<(), ()> {
+		// TODO
+		Err(())
+	}
+
 	// TODO reserve
 	// TODO resize
 
@@ -187,9 +194,9 @@ impl<T> Vec<T> {
 	}
 }
 
-impl<T: Clone> Vec::<T> {
+impl<T: FailableClone> FailableClone for Vec::<T> {
 	/// Clones the vector and its content.
-	pub fn clone(&self) -> Result::<Vec::<T>, ()> {
+	fn failable_clone(&self) -> Result::<Vec::<T>, ()> {
 		Ok(Self {
 			len: self.len,
 			capacity: self.capacity,

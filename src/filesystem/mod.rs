@@ -1,8 +1,10 @@
 /// This module handles the filesystem hierarchy.
 /// TODO doc
 
-/// Type representing a file descriptor.
-type Fd = u16;
+pub mod file_descriptor;
+pub mod path;
+
+use path::Path;
 
 /// Type representing a user ID.
 type Uid = u16;
@@ -133,15 +135,7 @@ impl File {
 
 /// Returns a reference to the file at path `path`. If the file doesn't exist, the function returns
 /// None.
-pub fn get_file_from_path(_path: &str) -> Option::<&'static mut File> {
-	// TODO
-	None
-}
-
-// TODO `fd` may point to a different file for each process
-/// Returns a reference to the file from file descriptor `fd`. If the file descriptor is invalid,
-/// the behaviour is undefined.
-pub fn get_file_from_descriptor(_fd: Fd) -> Option::<&'static mut File> {
+pub fn get_file_from_path(_path: &Path) -> Option::<&'static mut File> {
 	// TODO
 	None
 }

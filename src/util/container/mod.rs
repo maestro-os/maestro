@@ -3,4 +3,5 @@
 
 pub mod binary_tree;
 pub mod bitfield;
+pub mod string;
 pub mod vec;

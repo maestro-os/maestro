@@ -10,8 +10,11 @@ use core::ffi::c_void;
 use core::mem::MaybeUninit;
 use crate::event::{InterruptCallback, InterruptResult, InterruptResultAction};
 use crate::event;
+use crate::filesystem::File;
+use crate::filesystem::file_descriptor::FileDescriptor;
 use crate::memory::vmem;
 use crate::util::Regs;
+use crate::util::container::vec::Vec;
 use crate::util::ptr::SharedPtr;
 use crate::util;
 use mem_space::MemSpace;
@@ -139,7 +142,8 @@ pub struct Process {
 	/// A pointer to the kernelspace stack.
 	kernel_stack: *const c_void,
 
-	// TODO File descriptors
+	/// The list of open file descriptors.
+	file_descriptors: Vec::<FileDescriptor>,
 	// TODO Signals list
 
 	/// The exit status of the process after exiting.
@@ -277,6 +281,8 @@ impl Process {
 			user_stack: user_stack,
 			kernel_stack: kernel_stack,
 
+			file_descriptors: Vec::new(),
+
 			exit_status: 0,
 		};
 
@@ -320,6 +326,57 @@ impl Process {
 	/// Returns the process's parent if exists.
 	pub fn get_parent(&self) -> Option::<*mut Process> {
 		self.parent
+	}
+
+	/// Returns an available file descriptor ID. If no ID is available, the function returns an
+	/// Err.
+	fn get_available_fd(&mut self) -> Result::<u32, ()> {
+		// TODO
+		Err(())
+	}
+
+	/// Opens a file, creates a file descriptor and returns a mutable reference to it.
+	/// `file` the file to open.
+	/// If the file cannot be open, the function returns an Err.
+	pub fn open_file(&mut self, file: &mut File) -> Result::<&mut FileDescriptor, ()> {
+		let id = self.get_available_fd()?;
+		let index_result = self.file_descriptors.binary_search_by(| fd | {
+			fd.get_id().cmp(&id)
+		});
+		if let Err(index) = index_result {
+			let fd = FileDescriptor::new(id, file);
+			self.file_descriptors.insert(index, fd);
+			Ok(&mut self.file_descriptors[index])
+		} else {
+			Err(())
+		}
+	}
+
+	/// Returns the file descriptor with ID `id`. If the file descriptor doesn't exist, the
+	/// function returns None.
+	pub fn get_fd(&mut self, id: u32) -> Option::<&mut FileDescriptor> {
+		let result = self.file_descriptors.binary_search_by(| fd | {
+			fd.get_id().cmp(&id)
+		});
+		if let Ok(index) = result {
+			Some(&mut self.file_descriptors[index])
+		} else {
+			None
+		}
+	}
+
+	/// Closes the file descriptor with the ID `id`. The function returns an Err if the file
+	/// descriptor doesn't exist.
+	pub fn close_fd(&mut self, id: u32) -> Result::<(), ()> {
+		let result = self.file_descriptors.binary_search_by(| fd | {
+			fd.get_id().cmp(&id)
+		});
+		if let Ok(index) = result {
+			self.file_descriptors.remove(index);
+			Ok(())
+		} else {
+			Err(())
+		}
 	}
 
 	/// Kills the process with the given signal type `type`. This function enqueues a new signal

@@ -1,6 +1,7 @@
 /// TODO doc
 
 use core::ffi::c_void;
+use crate::filesystem::path::Path;
 use crate::filesystem;
 use crate::util;
 
@@ -39,9 +40,11 @@ pub fn open(regs: &util::Regs) -> u32 {
 	let _flags = regs.ecx;
 	let _mode = regs.edx as u16;
 
-	let _file = filesystem::get_file_from_path(unsafe { // Call to unsafe function
+	let path = Path::from_string(unsafe { // Call to unsafe function
 		util::ptr_to_str(pathname)
 	});
+	// TODO Concat path with process's path to get absolute path
+	let _file = filesystem::get_file_from_path(&path);
 	// TODO
 	0
 }

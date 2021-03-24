@@ -76,10 +76,10 @@ impl<T: ?Sized> DerefMut for Box<T> {
 	}
 }
 
-impl<T: Clone> Box<T> {
+impl<T: ?Sized + Clone> Box<T> {
 	/// Clones the Box and its content. The type of the wrapped data must implement the Clone trait.
 	/// If the allocation fails, the function shall return an error.
-	fn clone(&self) -> Result<Self, ()> {
+	fn failable_clone(&self) -> Result<Self, ()> {
 		let obj = unsafe { // Dereference of raw pointer
 			&*self.ptr.as_ptr()
 		};
