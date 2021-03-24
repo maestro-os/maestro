@@ -14,7 +14,7 @@ write:
 	push %ecx
 	push %edx
 
-	mov $0, %eax
+	mov $5, %eax
 	mov 8(%ebp), %ebx
 	mov 12(%ebp), %ecx
 	mov 16(%ebp), %edx
@@ -35,7 +35,7 @@ _exit:
 
 	push %ebx
 
-	mov $1, %eax
+	mov $6, %eax
 	mov 8(%ebp), %ebx
 	int $0x80
 
@@ -47,12 +47,12 @@ _exit:
 
 # TODO doc?
 getpid:
-	mov $2, %eax
+	mov $7, %eax
 	int $0x80
 	ret
 
 # TODO doc?
 getppid:
-	mov $3, %eax
+	mov $8, %eax
 	int $0x80
 	ret
