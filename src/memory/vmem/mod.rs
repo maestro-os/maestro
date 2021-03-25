@@ -8,12 +8,13 @@ pub mod x86;
 
 use core::ffi::c_void;
 use crate::errno::Errno;
+use crate::util::FailableClone;
 use crate::util::boxed::Box;
 
 /// Trait representing virtual memory context handler. This trait is the interface to manipulate
 /// virtual memory on any architecture. Each architecture has its own structure implementing this
 /// trait.
-pub trait VMem {
+pub trait VMem: FailableClone {
 	/// Translates the given virtual address `ptr` to the corresponding physical address. If the
 	/// address is not mapped, the function returns None.
 	fn translate(&self, ptr: *const c_void) -> Option<*const c_void>;
@@ -48,9 +49,6 @@ pub trait VMem {
 	/// Unmaps the given range beginning at virtual address `virtaddr` with size of `pages` pages.
 	fn unmap_range(&mut self, virtaddr: *const c_void, pages: usize) -> Result<(), Errno>;
 
-	/// Clones the context, creating a new one pointing towards the same physical pages.
-	fn clone(&self) -> Result<Self, Errno> where Self: Sized;
-
 	/// Binds the virtual memory context handler.
 	fn bind(&self);
 	/// Tells whether the handler is bound or not.
@@ -63,6 +61,14 @@ pub trait VMem {
 /// Creates a new virtual memory context handler for the current architecture.
 pub fn new() -> Result::<Box::<dyn VMem>, Errno> {
 	Ok(Box::new(x86::X86VMem::new()?)? as Box::<dyn VMem>)
+}
+
+/// Clones the virtual memory context handler `vmem`.
+pub fn clone(vmem: &Box::<dyn VMem>) -> Result::<Box::<dyn VMem>, Errno> {
+	let vmem = unsafe { // Dereference of raw pointer
+		&*(vmem.as_ptr() as *const x86::X86VMem)
+	};
+	Ok(Box::new(vmem.failable_clone()?)? as Box::<dyn VMem>)
 }
 
 /// Creates and loads the kernel's virtual memory context handler, protecting its code from

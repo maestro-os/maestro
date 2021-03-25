@@ -1,7 +1,6 @@
 /// TODO doc
 
 use core::ptr::NonNull;
-use crate::errno::Errno;
 use crate::filesystem::File;
 use crate::util::FailableClone;
 

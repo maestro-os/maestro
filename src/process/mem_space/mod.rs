@@ -13,6 +13,7 @@ use crate::errno;
 use crate::memory::vmem::VMem;
 use crate::memory::vmem;
 use crate::memory;
+use crate::util::FailableClone;
 use crate::util::boxed::Box;
 use crate::util::container::binary_tree::BinaryTree;
 use crate::util::container::binary_tree;
@@ -221,8 +222,26 @@ impl MemSpace {
 
 	/// Clones the current memory space for process forking.
 	pub fn fork(&mut self) -> Result<MemSpace, Errno> {
-		// TODO
-		Err(errno::ENOMEM)
+		let mut mem_space = Self {
+			gaps: BinaryTree::new(),
+			gaps_buckets: [crate::list_new!(MemGap, list); GAPS_BUCKETS_COUNT],
+
+			mappings: self.mappings.failable_clone()?,
+
+			vmem: vmem::clone(&self.vmem)?,
+		};
+
+		for g in self.gaps.into_iter() {
+			let result = g.failable_clone();
+			if let Err(errno) = result {
+				return Err(errno);
+			}
+			if let Err(errno) = mem_space.gap_insert(result.unwrap()) {
+				return Err(errno);
+			}
+		}
+
+		Ok(mem_space)
 	}
 
 	/// Function called whenever the CPU triggered a page fault for the context. This function

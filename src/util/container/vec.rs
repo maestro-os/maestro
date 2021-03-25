@@ -341,7 +341,7 @@ impl<T> Vec<T> {
 
 /// An iterator for the Vec structure.
 pub struct VecIterator<'a, T> {
-	/// The vector to iterate.
+	/// The vector to iterate into.
 	vec: &'a Vec::<T>,
 	/// The current index of the iterator.
 	index: usize,

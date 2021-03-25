@@ -26,6 +26,7 @@ use crate::memory::buddy;
 use crate::memory::vmem::VMem;
 use crate::memory;
 use crate::multiboot;
+use crate::util::FailableClone;
 use crate::util::math;
 use crate::util;
 use crate::vga;
@@ -443,7 +444,29 @@ impl VMem for X86VMem {
 		Ok(())
 	}
 
-	fn clone(&self) -> Result<Self, Errno> {
+	fn bind(&self) {
+		unsafe { // Call to C function
+			paging_enable(memory::kern_to_phys(self.page_dir as _) as _);
+		}
+	}
+
+	fn is_bound(&self) -> bool {
+		unsafe { // Call to C function
+			cr3_get() == memory::kern_to_phys(self.page_dir as _) as _
+		}
+	}
+
+	fn flush(&self) {
+		if self.is_bound() {
+			unsafe { // Call to C function
+				tlb_reload();
+			}
+		}
+	}
+}
+
+impl FailableClone for X86VMem {
+	fn failable_clone(&self) -> Result<Self, Errno> {
 		let v = alloc_obj()?;
 		for i in 0..1024 {
 			let src_dir_entry_value = obj_get(self.page_dir, i);
@@ -471,26 +494,6 @@ impl VMem for X86VMem {
 		Ok(Self {
 			page_dir: v
 		})
-	}
-
-	fn bind(&self) {
-		unsafe { // Call to C function
-			paging_enable(memory::kern_to_phys(self.page_dir as _) as _);
-		}
-	}
-
-	fn is_bound(&self) -> bool {
-		unsafe { // Call to C function
-			cr3_get() == memory::kern_to_phys(self.page_dir as _) as _
-		}
-	}
-
-	fn flush(&self) {
-		if self.is_bound() {
-			unsafe { // Call to C function
-				tlb_reload();
-			}
-		}
 	}
 }
 

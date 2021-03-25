@@ -47,6 +47,18 @@ impl<T> Box<T> {
 	}
 }
 
+impl<T: ?Sized> Box<T> {
+	/// Returns a pointer to the data wrapped into the Box.
+	pub fn as_ptr(&self) -> *const T {
+		self.ptr.as_ptr()
+	}
+
+	/// Returns a mutable pointer to the data wrapped into the Box.
+	pub fn as_mut_ptr(&mut self) -> *mut T {
+		self.ptr.as_ptr()
+	}
+}
+
 impl<T: ?Sized> AsRef<T> for Box<T> {
 	fn as_ref(&self) -> &T {
 		unsafe { // Dereference of raw pointer

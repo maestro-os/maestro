@@ -7,6 +7,7 @@ use core::mem::size_of;
 use core::ptr::NonNull;
 use crate::errno::Errno;
 use crate::memory::malloc;
+use crate::util::FailableClone;
 use crate::util;
 
 /// The color of a binary tree node.
@@ -28,6 +29,30 @@ struct BinaryTreeNode<T> {
 	color: NodeColor,
 
 	value: T,
+}
+
+/// Unwraps the given pointer option into a reference option.
+fn unwrap_pointer<T>(ptr: &Option::<NonNull::<BinaryTreeNode::<T>>>)
+	-> Option::<&'static BinaryTreeNode::<T>> {
+	if let Some(p) = ptr {
+		unsafe { // Dereference of raw pointer
+			Some(&*p.as_ptr())
+		}
+	} else {
+		None
+	}
+}
+
+/// Same as `unwrap_pointer` but returns a mutable reference.
+fn unwrap_pointer_mut<T>(ptr: &mut Option::<NonNull::<BinaryTreeNode::<T>>>)
+	-> Option::<&'static mut BinaryTreeNode::<T>> {
+	if let Some(p) = ptr {
+		unsafe { // Call to unsafe function
+			Some(&mut *(p.as_ptr() as *mut _))
+		}
+	} else {
+		None
+	}
 }
 
 impl<T: 'static> BinaryTreeNode<T> {
@@ -58,56 +83,34 @@ impl<T: 'static> BinaryTreeNode<T> {
 		self.color == NodeColor::Black
 	}
 
-	/// Unwraps the given pointer option into a reference option.
-	fn unwrap_pointer(ptr: &Option::<NonNull::<Self>>) -> Option::<&'static Self> {
-		if let Some(p) = ptr {
-			unsafe { // Dereference of raw pointer
-				Some(&*p.as_ptr())
-			}
-		} else {
-			None
-		}
-	}
-
-	/// Same as `unwrap_pointer` but returns a mutable reference.
-	fn unwrap_pointer_mut(ptr: &mut Option::<NonNull::<Self>>) -> Option::<&'static mut Self> {
-		if let Some(p) = ptr {
-			unsafe { // Call to unsafe function
-				Some(&mut *(p.as_ptr() as *mut _))
-			}
-		} else {
-			None
-		}
-	}
-
 	/// Returns a reference to the left child node.
 	pub fn get_parent(&self) -> Option::<&'static Self> {
-		Self::unwrap_pointer(&self.parent)
+		unwrap_pointer(&self.parent)
 	}
 
 	/// Returns a reference to the parent child node.
 	pub fn get_parent_mut(&mut self) -> Option::<&'static mut Self> {
-		Self::unwrap_pointer_mut(&mut self.parent)
+		unwrap_pointer_mut(&mut self.parent)
 	}
 
 	/// Returns a mutable reference to the parent child node.
 	pub fn get_left(&self) -> Option::<&'static Self> {
-		Self::unwrap_pointer(&self.left)
+		unwrap_pointer(&self.left)
 	}
 
 	/// Returns a reference to the left child node.
 	pub fn get_left_mut(&mut self) -> Option::<&'static mut Self> {
-		Self::unwrap_pointer_mut(&mut self.left)
+		unwrap_pointer_mut(&mut self.left)
 	}
 
 	/// Returns a reference to the left child node.
 	pub fn get_right(&self) -> Option::<&'static Self> {
-		Self::unwrap_pointer(&self.right)
+		unwrap_pointer(&self.right)
 	}
 
 	/// Returns a reference to the left child node.
 	pub fn get_right_mut(&mut self) -> Option::<&'static mut Self> {
-		Self::unwrap_pointer_mut(&mut self.right)
+		unwrap_pointer_mut(&mut self.right)
 	}
 
 	/// Tells whether the node is a left child.
@@ -791,7 +794,89 @@ impl<T: 'static> BinaryTree::<T> {
 	}
 }
 
-// TODO impl Clone for T: Clone
+/// An iterator for the BinaryTree structure. This iterator traverses the tree in pre order.
+pub struct BinaryTreeIterator<'a, T: 'static> {
+	/// The binary tree to iterate into.
+	tree: &'a BinaryTree::<T>,
+	/// The current node of the iterator.
+	node: Option::<NonNull::<BinaryTreeNode::<T>>>,
+}
+
+impl<'a, T> BinaryTreeIterator<'a, T> {
+	/// Creates a binary tree iterator for the given reference.
+	fn new(tree: &'a BinaryTree::<T>) -> Self {
+		BinaryTreeIterator {
+			tree: tree,
+			node: tree.root,
+		}
+	}
+}
+
+impl<'a, T: Ord> Iterator for BinaryTreeIterator<'a, T> {
+	type Item = &'a T;
+
+	// TODO Implement every functions?
+
+	fn next(&mut self) -> Option<Self::Item> {
+		let node = self.node;
+		self.node = {
+			if self.node.is_none() {
+				return None;
+			}
+
+			let n = unwrap_pointer(&node).unwrap();
+			if let Some(left) = n.get_left() {
+				NonNull::new(left as *const _ as *mut _)
+			} else if let Some(right) = n.get_right() {
+				NonNull::new(right as *const _ as *mut _)
+			} else {
+				let mut n = n;
+				while n.is_right_child() {
+					n = n.get_parent().unwrap();
+				}
+
+				if n.is_left_child() {
+					if let Some(sibling) = n.get_sibling() {
+						NonNull::new(sibling as *const _ as *mut _)
+					} else {
+						None
+					}
+				} else {
+					None
+				}
+			}
+		};
+
+		if let Some(node) = unwrap_pointer(&node) {
+			Some(&node.value)
+		} else {
+			None
+		}
+	}
+
+	fn count(self) -> usize {
+		self.tree.nodes_count()
+	}
+}
+
+impl<'a, T: Ord> IntoIterator for &'a BinaryTree<T> {
+	type Item = &'a T;
+	type IntoIter = BinaryTreeIterator<'a, T>;
+
+	fn into_iter(self) -> Self::IntoIter {
+		BinaryTreeIterator::new(&self)
+	}
+}
+
+impl<T: FailableClone + Ord> FailableClone for BinaryTree::<T> {
+	fn failable_clone(&self) -> Result<Self, Errno> {
+		let mut new = Self::new();
+		for n in self {
+			new.insert(n.failable_clone()?)?;
+		}
+		Ok(new)
+	}
+}
 
 impl<T: fmt::Display> fmt::Display for BinaryTree::<T> {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

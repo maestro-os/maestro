@@ -98,7 +98,7 @@ pub trait FailableClone {
 macro_rules! failable_clone_impl {
 	($type:ty) => {
 		impl FailableClone for $type {
-			fn failable_clone(&self) -> Result<Self, Errno> {
+			fn failable_clone(&self) -> Result<Self, crate::errno::Errno> {
 				Ok(self.clone())
 			}
 		}
