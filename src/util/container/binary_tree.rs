@@ -792,6 +792,11 @@ impl<T: 'static> BinaryTree::<T> {
 			}, TraversalType::PreOrder);
 		}
 	}
+
+	/// Returns a mutable iterator for the current binary tree.
+	pub fn iter_mut(&mut self) -> BinaryTreeMutIterator::<T> {
+		BinaryTreeMutIterator::new(self)
+	}
 }
 
 /// An iterator for the BinaryTree structure. This iterator traverses the tree in pre order.
@@ -865,6 +870,72 @@ impl<'a, T: Ord> IntoIterator for &'a BinaryTree<T> {
 
 	fn into_iter(self) -> Self::IntoIter {
 		BinaryTreeIterator::new(&self)
+	}
+}
+
+/// An iterator for the BinaryTree structure. This iterator traverses the tree in pre order.
+pub struct BinaryTreeMutIterator<'a, T: 'static> {
+	/// The binary tree to iterate into.
+	tree: &'a mut BinaryTree::<T>,
+	/// The current node of the iterator.
+	node: Option::<NonNull::<BinaryTreeNode::<T>>>,
+}
+
+impl<'a, T> BinaryTreeMutIterator<'a, T> {
+	/// Creates a binary tree iterator for the given reference.
+	fn new(tree: &'a mut BinaryTree::<T>) -> Self {
+		let root = tree.root;
+		BinaryTreeMutIterator {
+			tree: tree,
+			node: root,
+		}
+	}
+}
+
+impl<'a, T: Ord> Iterator for BinaryTreeMutIterator<'a, T> {
+	type Item = &'a mut T;
+
+	// TODO Implement every functions?
+
+	fn next(&mut self) -> Option<Self::Item> {
+		let mut node = self.node;
+		self.node = {
+			if self.node.is_none() {
+				return None;
+			}
+
+			let n = unwrap_pointer(&node).unwrap();
+			if let Some(left) = n.get_left() {
+				NonNull::new(left as *const _ as *mut _)
+			} else if let Some(right) = n.get_right() {
+				NonNull::new(right as *const _ as *mut _)
+			} else {
+				let mut n = n;
+				while n.is_right_child() {
+					n = n.get_parent().unwrap();
+				}
+
+				if n.is_left_child() {
+					if let Some(sibling) = n.get_sibling() {
+						NonNull::new(sibling as *const _ as *mut _)
+					} else {
+						None
+					}
+				} else {
+					None
+				}
+			}
+		};
+
+		if let Some(node) = unwrap_pointer_mut(&mut node) {
+			Some(&mut node.value)
+		} else {
+			None
+		}
+	}
+
+	fn count(self) -> usize {
+		self.tree.nodes_count()
 	}
 }
 

@@ -7,8 +7,9 @@ use crate::memory::buddy;
 use crate::memory::vmem::VMem;
 use crate::memory::vmem;
 use crate::memory;
-use crate::util::FailableClone;
 use crate::util::boxed::Box;
+use crate::util::container::binary_tree::BinaryTree;
+use crate::util::list::ListNode;
 use crate::util;
 
 /// A pointer to the default physical page of memory. This page is meant to be mapped in read-only
@@ -42,7 +43,8 @@ pub struct MemMapping {
 	/// The mapping's flags.
 	flags: u8,
 
-	// TODO Add sharing informations
+	/// The node of the list storing the mappings sharing the same physical memory.
+	pub shared_list: ListNode,
 }
 
 impl MemMapping {
@@ -59,6 +61,8 @@ impl MemMapping {
 			begin: begin,
 			size: size,
 			flags: flags,
+
+			shared_list: ListNode::new_single(),
 		}
 	}
 
@@ -142,7 +146,23 @@ impl MemMapping {
 		vmem.flush();
 	}
 
-	// TODO
+	/// Clones the mapping for the fork operation. The other mapping is sharing the same physical
+	/// memory for Copy-On-Write. `container` is the container in which the new mapping is to be
+	/// inserted.
+	pub fn fork(&mut self, container: &mut BinaryTree::<MemMapping>) -> Result::<(), Errno> {
+		let new_mapping = Self {
+			begin: self.begin,
+			size: self.size,
+			flags: self.flags,
+
+			shared_list: ListNode::new_single(),
+		};
+		container.insert(new_mapping)?;
+
+		let new_mapping = container.get(self.begin);
+		new_mapping.unwrap().shared_list.insert_after(&mut self.shared_list);
+		Ok(())
+	}
 }
 
 impl Ord for MemMapping {
@@ -176,15 +196,3 @@ impl PartialOrd::<*const c_void> for MemMapping {
 		Some(self.begin.cmp(other))
 	}
 }
-
-impl Clone for MemMapping {
-	fn clone(&self) -> Self {
-		Self {
-			begin: self.begin,
-			size: self.size,
-			flags: self.flags,
-		}
-	}
-}
-
-crate::failable_clone_impl!(MemMapping);

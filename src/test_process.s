@@ -47,12 +47,12 @@ _exit:
 
 # TODO doc?
 getpid:
-	mov $7, %eax
+	mov $9, %eax
 	int $0x80
 	ret
 
 # TODO doc?
 getppid:
-	mov $8, %eax
+	mov $10, %eax
 	int $0x80
 	ret

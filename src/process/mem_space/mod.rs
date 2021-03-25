@@ -226,7 +226,7 @@ impl MemSpace {
 			gaps: BinaryTree::new(),
 			gaps_buckets: [crate::list_new!(MemGap, list); GAPS_BUCKETS_COUNT],
 
-			mappings: self.mappings.failable_clone()?,
+			mappings: BinaryTree::new(),
 
 			vmem: vmem::clone(&self.vmem)?,
 		};
@@ -239,6 +239,10 @@ impl MemSpace {
 			if let Err(errno) = mem_space.gap_insert(result.unwrap()) {
 				return Err(errno);
 			}
+		}
+
+		for m in self.mappings.iter_mut() {
+			m.fork(&mut mem_space.mappings)?;
 		}
 
 		Ok(mem_space)
