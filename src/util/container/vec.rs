@@ -8,6 +8,7 @@ use core::ops::Index;
 use core::ops::IndexMut;
 use core::ptr::NonNull;
 use core::ptr;
+use core::slice;
 use crate::memory::malloc;
 use crate::util::FailableClone;
 
@@ -79,6 +80,28 @@ impl<T> Vec<T> {
 	/// reallocate the memory.
 	pub fn capacity(&self) -> usize {
 		self.capacity
+	}
+
+	/// Returns a slice containing the data.
+	pub fn as_slice(&self) -> &[T] {
+		unsafe { // Call to unsafe function
+			if let Some(p) = self.data {
+				slice::from_raw_parts(p.as_ptr(), self.len)
+			} else {
+				slice::from_raw_parts(0x0 as _, 0)
+			}
+		}
+	}
+
+	/// Returns a mutable slice containing the data.
+	pub fn as_mut_slice(&mut self) -> &mut [T] {
+		unsafe { // Call to unsafe function
+			if let Some(p) = self.data {
+				slice::from_raw_parts_mut(p.as_ptr() as *mut T, self.len)
+			} else {
+				slice::from_raw_parts_mut(0x0 as _, 0)
+			}
+		}
 	}
 
 	/// Triggers a panic after an invalid access to the vector.
@@ -207,14 +230,34 @@ impl<T> Vec<T> {
 	}
 }
 
-impl<T: FailableClone> FailableClone for Vec::<T> {
+impl<T: PartialEq> PartialEq for Vec::<T> {
+	fn eq(&self, other: &Vec::<T>) -> bool {
+		if self.len() != other.len() {
+			return false;
+		}
+
+		for i in 0..self.len() {
+			if self[i] != other[i] {
+				return false;
+			}
+		}
+
+		true
+	}
+}
+
+impl<T> FailableClone for Vec::<T> where T: FailableClone {
 	/// Clones the vector and its content.
 	fn failable_clone(&self) -> Result::<Vec::<T>, ()> {
-		Ok(Self {
+		let mut v = Self {
 			len: self.len,
 			capacity: self.capacity,
 			data: NonNull::new(malloc::alloc(self.capacity)? as *mut T),
-		})
+		};
+		for i in 0..self.len() {
+			v[i] = self[i].failable_clone()?;
+		}
+		Ok(v)
 	}
 }
 
@@ -358,7 +401,7 @@ mod test {
 		debug_assert_eq!(v.len(), 0);
 
 		for i in 0..100 {
-			v.insert(i, i);
+			v.insert(i, i).unwrap();
 			debug_assert_eq!(v.len(), i + 1);
 			debug_assert_eq!(v[i], i);
 		}
@@ -382,7 +425,7 @@ mod test {
 		debug_assert_eq!(v.len(), 0);
 
 		for i in 0..100 {
-			v.push(i);
+			v.push(i).unwrap();
 			debug_assert_eq!(v.len(), i + 1);
 			debug_assert_eq!(v[i], i);
 		}
@@ -394,7 +437,7 @@ mod test {
 		debug_assert_eq!(v.len(), 0);
 
 		for i in 0..100 {
-			v.push(i);
+			v.push(i).unwrap();
 			debug_assert_eq!(v.len(), i + 1);
 			debug_assert_eq!(v[i], i);
 		}
@@ -409,7 +452,7 @@ mod test {
 		debug_assert_eq!(v.len(), 0);
 
 		for i in 0..100 {
-			v.push(i);
+			v.push(i).unwrap();
 			debug_assert_eq!(v.len(), 1);
 			debug_assert_eq!(v.first(), i);
 			v.pop();
@@ -431,7 +474,7 @@ mod test {
 	#[test_case]
 	fn vec_binary_search1() {
 		let mut v = Vec::<usize>::new();
-		v.push(0);
+		v.push(0).unwrap();
 
 		if let Ok(v) = v.binary_search(&0) {
 			assert!(v == 0);
@@ -443,7 +486,7 @@ mod test {
 	#[test_case]
 	fn vec_binary_search2() {
 		let mut v = Vec::<usize>::new();
-		v.push(1);
+		v.push(1).unwrap();
 
 		if let Err(v) = v.binary_search(&0) {
 			assert!(v == 0);
@@ -455,9 +498,9 @@ mod test {
 	#[test_case]
 	fn vec_binary_search3() {
 		let mut v = Vec::<usize>::new();
-		v.push(1);
-		v.push(2);
-		v.push(3);
+		v.push(1).unwrap();
+		v.push(2).unwrap();
+		v.push(3).unwrap();
 
 		if let Ok(v) = v.binary_search(&2) {
 			assert!(v == 1);
@@ -469,11 +512,11 @@ mod test {
 	#[test_case]
 	fn vec_binary_search4() {
 		let mut v = Vec::<usize>::new();
-		v.push(0);
-		v.push(2);
-		v.push(4);
-		v.push(6);
-		v.push(8);
+		v.push(0).unwrap();
+		v.push(2).unwrap();
+		v.push(4).unwrap();
+		v.push(6).unwrap();
+		v.push(8).unwrap();
 
 		if let Ok(v) = v.binary_search(&6) {
 			assert!(v == 3);

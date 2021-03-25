@@ -26,7 +26,22 @@ impl Path {
 		self.absolute
 	}
 
-	// TODO to_string
+	// TODO Use `push` on string for separator
+	/// Converts the path into a String and returns it.
+	pub fn as_string(&self) -> Result::<String, ()> {
+		let separator = String::from("/")?;
+		let mut s = String::new();
+		if self.absolute {
+			s.push_str(&separator)?;
+		}
+		for i in 0..self.parts.len() {
+			s.push_str(&self.parts[i])?;
+			if i + 1 < self.parts.len() {
+				s.push_str(&separator)?;
+			}
+		}
+		Ok(s)
+	}
 
 	/// Reduces the path, removing all useless `.` and `..`.
 	pub fn reduce(&mut self) {
@@ -47,7 +62,8 @@ impl Path {
 		}
 	}
 
-	/// Concats the current path with another path `other` to create a new path.
+	/// Concats the current path with another path `other` to create a new path. The path is not
+	/// automaticaly reduced.
 	pub fn concat(&self, other: &Self) -> Result::<Self, ()> {
 		let mut self_parts = self.parts.failable_clone()?;
 		let mut other_parts = other.parts.failable_clone()?;
@@ -68,4 +84,90 @@ impl FailableClone for Path {
 	}
 }
 
-// TODO Unit tests
+#[cfg(test)]
+mod test {
+	use super::*;
+
+	#[test_case]
+	fn path_absolute0() {
+		assert!(Path::from_string("/").is_absolute());
+	}
+
+	#[test_case]
+	fn path_absolute1() {
+		assert!(Path::from_string("/.").is_absolute());
+	}
+
+	#[test_case]
+	fn path_absolute2() {
+		assert!(!Path::from_string(".").is_absolute());
+	}
+
+	#[test_case]
+	fn path_absolute3() {
+		assert!(!Path::from_string("..").is_absolute());
+	}
+
+	#[test_case]
+	fn path_absolute4() {
+		assert!(!Path::from_string("./").is_absolute());
+	}
+
+	#[test_case]
+	fn path_reduce0() {
+		let mut path = Path::from_string("/.");
+		path.reduce();
+		assert_eq!(path.as_string().unwrap(), "/");
+	}
+
+	#[test_case]
+	fn path_reduce1() {
+		let mut path = Path::from_string("/..");
+		path.reduce();
+		assert_eq!(path.as_string().unwrap(), "/");
+	}
+
+	#[test_case]
+	fn path_reduce2() {
+		let mut path = Path::from_string("../");
+		path.reduce();
+		assert_eq!(path.as_string().unwrap(), "..");
+	}
+
+	#[test_case]
+	fn path_reduce3() {
+		let mut path = Path::from_string("../bleh");
+		path.reduce();
+		assert_eq!(path.as_string().unwrap(), "../bleh");
+	}
+
+	#[test_case]
+	fn path_reduce4() {
+		let mut path = Path::from_string("../bleh/..");
+		path.reduce();
+		assert_eq!(path.as_string().unwrap(), "..");
+	}
+
+	#[test_case]
+	fn path_reduce5() {
+		let mut path = Path::from_string("../bleh/../bluh");
+		path.reduce();
+		assert_eq!(path.as_string().unwrap(), "../bluh");
+	}
+
+	#[test_case]
+	fn path_reduce6() {
+		let mut path = Path::from_string("/bleh/../bluh");
+		path.reduce();
+		assert_eq!(path.as_string().unwrap(), "/bluh");
+	}
+
+	#[test_case]
+	fn path_reduce6() {
+		let mut path = Path::from_string("/bleh/../../bluh");
+		path.reduce();
+		assert_eq!(path.as_string().unwrap(), "/bluh");
+	}
+
+	// TODO test concat
+}

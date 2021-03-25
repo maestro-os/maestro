@@ -91,6 +91,30 @@ pub trait FailableClone {
 	fn failable_clone(&self) -> Result::<Self, ()> where Self: Sized;
 }
 
+/// Implements FailableClone with the default implemention for the given type. The type must
+/// implement Clone.
+#[macro_export]
+macro_rules! failable_clone_impl {
+	($type:ty) => {
+		impl FailableClone for $type {
+			fn failable_clone(&self) -> Result::<Self, ()> {
+				Ok(self.clone())
+			}
+		}
+	}
+}
+
+failable_clone_impl!(i8);
+failable_clone_impl!(u8);
+failable_clone_impl!(i16);
+failable_clone_impl!(u16);
+failable_clone_impl!(i32);
+failable_clone_impl!(u32);
+failable_clone_impl!(i64);
+failable_clone_impl!(u64);
+failable_clone_impl!(isize);
+failable_clone_impl!(usize);
+
 /// Structure representing the list of registers for a context. The content of this structure
 /// depends on the architecture for which the kernel is compiled.
 #[derive(Clone, Copy, Debug)]
