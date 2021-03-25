@@ -4,6 +4,10 @@
 pub mod file_descriptor;
 pub mod path;
 
+use crate::errno::Errno;
+use crate::errno;
+use crate::limits;
+use crate::util::container::string::String;
 use path::Path;
 
 /// Type representing a user ID.
@@ -15,9 +19,6 @@ type Mode = u16;
 
 /// Type representing a timestamp.
 type Timestamp = u32; // TODO Move somewhere else?
-
-/// The maximum length of a filename.
-pub const MAX_NAME_LENGTH: usize = 255;
 
 /// TODO doc
 pub const S_IRWXU: Mode = 00700;
@@ -72,12 +73,12 @@ pub enum FileType {
 /// Structure representing a file.
 pub struct File {
 	/// The name of the file.
-	name: [u8; MAX_NAME_LENGTH],
+	name: String,
 	/// The size of the file in bytes.
 	size: usize,
 
 	/// The type of the file.
-	type_: FileType,
+	file_type: FileType,
 
 	/// The ID of the owner user.
 	uid: Uid,
@@ -86,23 +87,59 @@ pub struct File {
 	/// The mode of the file.
 	mode: Mode,
 
-	// TODO inode
+	/// The inode. None means that the file is not stored on any filesystem.
+	inode: Option::<u32>, // TODO
 
-	/// Timestamp of the last modification of the inode.
+	/// Timestamp of the last modification of the metadata.
 	ctime: Timestamp,
 	/// Timestamp of the last modification of the file.
 	mtime: Timestamp,
 	/// Timestamp of the last access to the file.
 	atime: Timestamp,
 
-	/// The number of hard links to the inode.
-	links_count: usize,
+	// TODO Store file data:
+	// - Regular: text
+	// - Directory: children files
+	// - Link: target
+	// - FIFO: buffer (on ram only)
+	// - Socket: buffer (on ram only)
+	// - BlockDevice: major and minor
+	// - CharDevice: major and minor
 }
 
 impl File {
+	/// Creates a new instance.
+	pub fn new(name: String, file_type: FileType, uid: Uid, gid: Gid, mode: Mode) -> Self {
+		debug_assert!(name.len() <= limits::NAME_MAX);
+
+		let timestamp = 0; // TODO
+		Self {
+			name: name,
+			size: 0,
+
+			file_type: file_type,
+
+			uid: uid,
+			gid: gid,
+			mode: mode,
+
+			inode: None,
+
+			ctime: timestamp,
+			mtime: timestamp,
+			atime: timestamp,
+		}
+	}
+
 	/// Returns the file's name.
-	pub fn get_name(&self) -> &str {
-		"TODO" // TODO
+	pub fn get_name(&self) -> &String {
+		&self.name
+	}
+
+	/// Sets the file's name.
+	pub fn set_name(&mut self, name: String) {
+		self.name = name;
+		// TODO Update to disk directly?
 	}
 
 	/// Returns the size of the file in bytes.
@@ -112,7 +149,7 @@ impl File {
 
 	/// Returns the type of the file.
 	pub fn get_file_type(&self) -> FileType {
-		self.type_
+		self.file_type
 	}
 
 	/// Returns the owner user ID.
@@ -130,7 +167,70 @@ impl File {
 		self.mode
 	}
 
+	/// Returns the timestamp to the last modification of the file's metadata.
+	pub fn get_ctime(&self) -> Timestamp {
+		self.ctime
+	}
+
+	/// Returns the timestamp to the last modification to the file.
+	pub fn get_mtime(&self) -> Timestamp {
+		self.mtime
+	}
+
+	/// Returns the timestamp to the last access to the file.
+	pub fn get_atime(&self) -> Timestamp {
+		self.atime
+	}
+
+	/// Tells if the file can be read from by the given UID and GID.
+	pub fn can_read(&self, uid: Uid, gid: Gid) -> bool {
+		if self.uid == uid && self.mode & S_IRUSR != 0 {
+			return true;
+		}
+		if self.gid == gid && self.mode & S_IRGRP != 0 {
+			return true;
+		}
+		self.mode & S_IROTH != 0
+	}
+
+	/// Tells if the file can be written to by the given UID and GID.
+	pub fn can_write(&self, uid: Uid, gid: Gid) -> bool {
+		if self.uid == uid && self.mode & S_IWUSR != 0 {
+			return true;
+		}
+		if self.gid == gid && self.mode & S_IWGRP != 0 {
+			return true;
+		}
+		self.mode & S_IWOTH != 0
+	}
+
+	/// Tells if the file can be executed by the given UID and GID.
+	pub fn can_execute(&self, uid: Uid, gid: Gid) -> bool {
+		if self.uid == uid && self.mode & S_IXUSR != 0 {
+			return true;
+		}
+		if self.gid == gid && self.mode & S_IXGRP != 0 {
+			return true;
+		}
+		self.mode & S_IXOTH != 0
+	}
+
+	/// Synchronizes the file's content with the device.
+	pub fn sync(&self) {
+		if self.inode.is_some() {
+			// TODO
+		}
+	}
+
 	// TODO
+}
+
+/// Adds the file `file` to the file hierarchy. The file will be located into the directory at path
+/// `path`. The directory must exist. If an error happens, the function returns an Err with the
+/// appropriate Errno.
+pub fn add_file(_path: Path, _file: File) -> Result::<(), Errno> {
+	// TODO
+	Err(errno::ENOMEM)
 }
 
 /// Returns a reference to the file at path `path`. If the file doesn't exist, the function returns
