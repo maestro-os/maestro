@@ -39,6 +39,11 @@ impl String {
 		}
 	}
 
+	/// Returns the length of the String in characters count.
+	pub fn len(&self) -> usize {
+		self.as_str().len()
+	}
+
 	// TODO push
 	// TODO pop
 
@@ -64,6 +69,10 @@ impl PartialEq for String {
 
 impl PartialEq<str> for String {
 	fn eq(&self, other: &str) -> bool {
+		if self.len() != other.len() {
+			return false;
+		}
+
 		let bytes = other.as_bytes();
 		for i in 0..bytes.len() {
 			if self.data[i] != bytes[i] {

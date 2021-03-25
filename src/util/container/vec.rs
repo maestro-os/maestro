@@ -88,7 +88,7 @@ impl<T> Vec<T> {
 			if let Some(p) = self.data {
 				slice::from_raw_parts(p.as_ptr(), self.len)
 			} else {
-				slice::from_raw_parts(0x0 as _, 0)
+				slice::from_raw_parts(NonNull::dangling().as_ptr(), 0)
 			}
 		}
 	}
@@ -99,7 +99,7 @@ impl<T> Vec<T> {
 			if let Some(p) = self.data {
 				slice::from_raw_parts_mut(p.as_ptr() as *mut T, self.len)
 			} else {
-				slice::from_raw_parts_mut(0x0 as _, 0)
+				slice::from_raw_parts_mut(NonNull::dangling().as_ptr(), 0)
 			}
 		}
 	}

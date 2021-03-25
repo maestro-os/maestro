@@ -42,7 +42,7 @@ pub fn open(regs: &util::Regs) -> u32 {
 
 	let path = Path::from_string(unsafe { // Call to unsafe function
 		util::ptr_to_str(pathname)
-	});
+	}).unwrap(); // TODO Do not unwrap
 	// TODO Concat path with process's path to get absolute path
 	let _file = filesystem::get_file_from_path(&path);
 	// TODO
