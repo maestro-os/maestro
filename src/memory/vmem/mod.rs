@@ -60,7 +60,7 @@ pub trait VMem {
 }
 
 /// Creates a new virtual memory context handler for the current architecture.
-pub fn new() -> Result::<Box::<dyn VMem>, ()> {
+pub fn new() -> Result::<Box::<dyn VMem>, Errno> {
 	Ok(Box::new(x86::X86VMem::new()?)? as Box::<dyn VMem>)
 }
 

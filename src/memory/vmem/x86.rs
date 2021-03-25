@@ -233,7 +233,7 @@ impl X86VMem {
 	}
 
 	/// Initializes a new page directory. The kernel memory is mapped into the context by default.
-	pub fn new() -> Result<Self, ()> {
+	pub fn new() -> Result<Self, Errno> {
 		let mut vmem = Self {
 			page_dir: alloc_obj()?,
 		};

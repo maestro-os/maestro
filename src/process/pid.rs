@@ -2,13 +2,15 @@
 /// Each process must have an unique PID, thus they have to be allocated. The kernel uses a
 /// bitfield to store the used PIDs.
 
+use crate::errno::Errno;
+use crate::errno;
 use crate::util::container::bitfield::Bitfield;
 
 /// Type representing a Process ID. This ID is unique for every running processes.
 pub type Pid = u16;
 
 /// The maximum possible PID.
-const MAX_PID: Pid = 32768;
+const MAX_PID: Pid = 32768; // TODO Move somewhere else?
 
 /// A structure handling PID allocations.
 pub struct PIDManager {
@@ -33,9 +35,9 @@ impl PIDManager {
 	}
 
 	/// Returns a unused PID and marks it as used.
-	pub fn get_unique_pid(&mut self) -> Result::<Pid, ()> {
+	pub fn get_unique_pid(&mut self) -> Result::<Pid, Errno> {
 		if self.used.set_count() >= self.used.len() {
-			return Err(());
+			return Err(errno::ENOMEM);
 		}
 
 		while self.used.is_set(self.cursor) {

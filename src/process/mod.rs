@@ -250,8 +250,7 @@ impl Process {
 	/// `entry_point` is the pointer to the first instruction of the process.
 	/// `cwd` the path to the process's working directory.
 	pub fn new(parent: Option::<*mut Process>, owner: Uid, entry_point: *const c_void, cwd: Path)
-		-> Result::<SharedPtr::<Self>, ()> {
-
+		-> Result::<SharedPtr::<Self>, Errno> {
 		// TODO Deadlock fix: requires both memory allocator and PID allocator
 		let pid = unsafe { // Access to global variable
 			PID_MANAGER.assume_init_mut()
@@ -394,6 +393,44 @@ impl Process {
 		} else {
 			Err(())
 		}
+	}
+
+	/// Forks the current process. Duplicating everything for it to be identical, except the PID,
+	/// the parent process and children processes. On fail, the function returns an Err with the
+	/// appropriate Errno.
+	pub fn fork(&self) -> Result::<SharedPtr::<Self>, Errno> {
+		// TODO Mutex
+		let pid = unsafe { // Access to global variable
+			PID_MANAGER.assume_init_mut()
+		}.get_unique_pid()?;
+		let mut regs = self.regs;
+		regs.eax = 0;
+
+		let process = Self {
+			pid: pid,
+			state: self.state,
+			owner: self.owner,
+
+			priority: self.priority,
+			quantum_count: self.quantum_count,
+
+			parent: &self as _,
+
+			regs: regs,
+			mem_space: self.fork(),
+
+			user_stack: self.user_stack,
+			kernel_stack: self.kernel_stack,
+
+			cwd: self.cwd,
+			file_descriptors: self.file_descriptors,
+
+			exit_status: self.exit_status,
+		};
+
+		unsafe { // Access to global variable
+			SCHEDULER.assume_init_mut()
+		}.add_process(process)
 	}
 
 	/// Kills the process with the given signal type `type`. This function enqueues a new signal

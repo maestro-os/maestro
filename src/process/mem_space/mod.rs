@@ -8,6 +8,8 @@ mod mapping;
 use core::cmp::Ordering;
 use core::cmp::min;
 use core::ffi::c_void;
+use crate::errno::Errno;
+use crate::errno;
 use crate::memory::vmem::VMem;
 use crate::memory::vmem;
 use crate::memory;
@@ -104,14 +106,14 @@ impl MemSpace {
 	}
 
 	/// Returns a new binary tree containing the default gaps for a memory space.
-	fn create_default_gaps(&mut self) -> Result::<(), ()> {
+	fn create_default_gaps(&mut self) -> Result::<(), Errno> {
 		let begin = memory::ALLOC_BEGIN;
 		let size = (memory::PROCESS_END as usize - begin as usize) / memory::PAGE_SIZE;
 		self.gap_insert(MemGap::new(begin, size))
 	}
 
 	/// Creates a new virtual memory object.
-	pub fn new() -> Result::<Self, ()> {
+	pub fn new() -> Result::<Self, Errno> {
 		let mut s = Self {
 			gaps: BinaryTree::new(),
 			gaps_buckets: [crate::list_new!(MemGap, list); GAPS_BUCKETS_COUNT],
