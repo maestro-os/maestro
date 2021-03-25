@@ -245,6 +245,8 @@ impl MemSpace {
 			m.fork(&mut mem_space.mappings)?;
 		}
 
+		// TODO Set every mapping in read-only
+
 		Ok(mem_space)
 	}
 

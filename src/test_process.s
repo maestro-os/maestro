@@ -2,6 +2,7 @@
 
 .global write
 .global _exit
+.global fork
 .global getpid
 .global getppid
 
@@ -44,6 +45,14 @@ _exit:
 	mov %ebp, %esp
 	pop %ebp
 	ret
+
+# TODO doc?
+fork:
+	mov $7, %eax
+	int $0x80
+	ret
+
+# TODO waitpid
 
 # TODO doc?
 getpid:

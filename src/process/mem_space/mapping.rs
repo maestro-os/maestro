@@ -161,6 +161,9 @@ impl MemMapping {
 
 		let new_mapping = container.get(self.begin);
 		new_mapping.unwrap().shared_list.insert_after(&mut self.shared_list);
+
+		// TODO Set every mapping in read-only
+
 		Ok(())
 	}
 }
