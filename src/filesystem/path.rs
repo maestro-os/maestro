@@ -16,6 +16,14 @@ pub struct Path {
 }
 
 impl Path {
+	/// Creates a new instance to the root directory.
+	pub fn root() -> Self {
+		Self {
+			absolute: true,
+			parts: Vec::new(),
+		}
+	}
+
 	/// Creates a new instance from string.
 	pub fn from_string(path: &str) -> Result::<Self, ()> {
 		let mut parts = Vec::new();

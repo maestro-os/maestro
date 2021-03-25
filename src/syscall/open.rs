@@ -1,8 +1,10 @@
 /// TODO doc
 
 use core::ffi::c_void;
+use crate::errno;
 use crate::filesystem::path::Path;
 use crate::filesystem;
+use crate::process::Process;
 use crate::util;
 
 /// TODO doc
@@ -34,17 +36,34 @@ pub const O_SYNC: u32 =      0b01000000000000;
 /// TODO doc
 pub const O_TRUNC: u32 =     0b10000000000000;
 
+/// Returns the absolute path to the file.
+fn get_file_absolute_path(process: &Process, path_str: &str) -> Result::<Path, ()> {
+	let path = Path::from_string(path_str)?;
+	if !path.is_absolute() {
+		let cwd = process.get_cwd();
+		let mut absolute_path = cwd.concat(&path)?;
+		absolute_path.reduce()?;
+		Ok(absolute_path)
+	} else {
+		Ok(path)
+	}
+}
+
 /// The implementation of the `open` syscall.
 pub fn open(regs: &util::Regs) -> u32 {
 	let pathname = regs.ebx as *const c_void;
 	let _flags = regs.ecx;
 	let _mode = regs.edx as u16;
 
-	let path = Path::from_string(unsafe { // Call to unsafe function
+	let curr_proc = Process::get_current().unwrap();
+	let path_str = unsafe { // Call to unsafe function
 		util::ptr_to_str(pathname)
-	}).unwrap(); // TODO Do not unwrap
-	// TODO Concat path with process's path to get absolute path
-	let _file = filesystem::get_file_from_path(&path);
-	// TODO
-	0
+	};
+	if let Ok(file_path) = get_file_absolute_path(&curr_proc, path_str) {
+		let _file = filesystem::get_file_from_path(&file_path);
+		// TODO
+		0
+	} else {
+		-errno::ENOMEM as _
+	}
 }

@@ -12,6 +12,7 @@ use crate::event::{InterruptCallback, InterruptResult, InterruptResultAction};
 use crate::event;
 use crate::filesystem::File;
 use crate::filesystem::file_descriptor::FileDescriptor;
+use crate::filesystem::path::Path;
 use crate::memory::vmem;
 use crate::util::Regs;
 use crate::util::container::vec::Vec;
@@ -142,10 +143,12 @@ pub struct Process {
 	/// A pointer to the kernelspace stack.
 	kernel_stack: *const c_void,
 
+	/// The current working directory.
+	cwd: Path,
 	/// The list of open file descriptors.
 	file_descriptors: Vec::<FileDescriptor>,
-	// TODO Signals list
 
+	// TODO Signals list
 	/// The exit status of the process after exiting.
 	exit_status: u8,
 }
@@ -242,7 +245,9 @@ impl Process {
 	/// queue. The process is set to state `Running` by default.
 	/// `parent` is the parent of the process (optional).
 	/// `owner` is the ID of the process's owner.
-	pub fn new(parent: Option::<*mut Process>, owner: Uid, entry_point: *const c_void)
+	/// `entry_point` is the pointer to the first instruction of the process.
+	/// `cwd` the path to the process's working directory.
+	pub fn new(parent: Option::<*mut Process>, owner: Uid, entry_point: *const c_void, cwd: Path)
 		-> Result::<SharedPtr::<Self>, ()> {
 
 		// TODO Deadlock fix: requires both memory allocator and PID allocator
@@ -281,6 +286,7 @@ impl Process {
 			user_stack: user_stack,
 			kernel_stack: kernel_stack,
 
+			cwd: cwd,
 			file_descriptors: Vec::new(),
 
 			exit_status: 0,
@@ -326,6 +332,16 @@ impl Process {
 	/// Returns the process's parent if exists.
 	pub fn get_parent(&self) -> Option::<*mut Process> {
 		self.parent
+	}
+
+	/// Returns a reference to the process's current working directory.
+	pub fn get_cwd(&self) -> &Path {
+		&self.cwd
+	}
+
+	/// Sets the process's current working directory.
+	pub fn set_cwd(&mut self, path: Path) {
+		self.cwd = path;
 	}
 
 	/// Returns an available file descriptor ID. If no ID is available, the function returns an

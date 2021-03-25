@@ -60,6 +60,7 @@ mod vga;
 
 use core::ffi::c_void;
 use core::panic::PanicInfo;
+use crate::filesystem::path::Path;
 use crate::module::Module;
 use crate::process::Process;
 
@@ -155,7 +156,7 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 	let test_begin = unsafe { // Use of transmute
 		core::mem::transmute::<unsafe extern "C" fn(), *const c_void>(test_process)
 	};
-	if let Ok(p) = Process::new(None, 0, test_begin) {
+	if let Ok(p) = Process::new(None, 0, test_begin, Path::root()) {
 		println!("Test process PID: {}", p.get_pid());
 	} else {
 		kernel_panic!("Failed to create test process!", 0);
