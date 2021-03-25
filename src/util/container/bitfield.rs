@@ -1,5 +1,6 @@
 /// This module stores the Bitfield structure.
 
+use crate::errno::Errno;
 use crate::memory::malloc;
 use crate::util::bit_size_of;
 use crate::util::math::ceil_division;
@@ -17,7 +18,7 @@ pub struct Bitfield {
 
 impl Bitfield {
 	/// Creates a new bitfield with the given number of bits `len`.
-	pub fn new(len: usize) -> Result::<Self, ()> {
+	pub fn new(len: usize) -> Result<Self, Errno> {
 		let size = ceil_division(len, bit_size_of::<u8>());
 		Ok(Self {
 			ptr: malloc::alloc(size)? as *mut _,

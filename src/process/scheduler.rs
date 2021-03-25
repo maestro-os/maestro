@@ -9,6 +9,7 @@
 /// switching to the next process.
 
 use core::cmp::max;
+use crate::errno::Errno;
 use crate::event::{InterruptCallback, InterruptResult, InterruptResultAction};
 use crate::event;
 use crate::gdt;
@@ -70,7 +71,7 @@ pub struct Scheduler {
 
 impl Scheduler {
 	/// Creates a new instance of scheduler.
-	pub fn new() -> Result::<SharedPtr::<Self>, ()> {
+	pub fn new() -> Result<SharedPtr::<Self>, Errno> {
 		let mut s = SharedPtr::<Self>::new(Self {
 			tick_callback: None,
 
@@ -116,7 +117,7 @@ impl Scheduler {
 	}
 
 	/// Adds a process to the scheduler.
-	pub fn add_process(&mut self, process: Process) -> Result::<SharedPtr::<Process>, ()> {
+	pub fn add_process(&mut self, process: Process) -> Result<SharedPtr::<Process>, Errno> {
 		let mut ptr = SharedPtr::new(process)?;
 		self.processes.push(ptr.clone())?;
 		self.update_priority(0, ptr.get_priority());

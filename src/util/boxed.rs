@@ -11,6 +11,7 @@ use core::ops::{Deref, DerefMut};
 use core::ptr::NonNull;
 use core::ptr::copy_nonoverlapping;
 use core::ptr::drop_in_place;
+use crate::errno::Errno;
 use crate::memory::malloc;
 
 /// This structure allows to store an object in an allocated region of memory.
@@ -24,7 +25,7 @@ pub struct Box<T: ?Sized> {
 impl<T> Box<T> {
 	/// Creates a new instance and places the given value `value` into it.
 	/// If the allocation fails, the function shall return an error.
-	pub fn new(value: T) -> Result<Box::<T>, ()> {
+	pub fn new(value: T) -> Result<Box::<T>, Errno> {
 		let value_ref = &ManuallyDrop::new(value);
 
 		let size = size_of_val(value_ref);
@@ -79,7 +80,7 @@ impl<T: ?Sized> DerefMut for Box<T> {
 impl<T: ?Sized + Clone> Box<T> {
 	/// Clones the Box and its content. The type of the wrapped data must implement the Clone trait.
 	/// If the allocation fails, the function shall return an error.
-	fn failable_clone(&self) -> Result<Self, ()> {
+	fn failable_clone(&self) -> Result<Self, Errno> {
 		let obj = unsafe { // Dereference of raw pointer
 			&*self.ptr.as_ptr()
 		};

@@ -1,5 +1,6 @@
 /// This module handles files path.
 
+use crate::errno::Errno;
 use crate::util::FailableClone;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
@@ -25,7 +26,7 @@ impl Path {
 	}
 
 	/// Creates a new instance from string.
-	pub fn from_string(path: &str) -> Result::<Self, ()> {
+	pub fn from_string(path: &str) -> Result<Self, Errno> {
 		let mut parts = Vec::new();
 		for p in path.split(PATH_SEPARATOR) {
 			if !p.is_empty() {
@@ -46,7 +47,7 @@ impl Path {
 
 	// TODO Use `push` on string for separator
 	/// Converts the path into a String and returns it.
-	pub fn as_string(&self) -> Result::<String, ()> {
+	pub fn as_string(&self) -> Result<String, Errno> {
 		let separator = String::from("/")?;
 		let mut s = String::new();
 		if self.absolute {
@@ -62,7 +63,7 @@ impl Path {
 	}
 
 	/// Reduces the path, removing all useless `.` and `..`.
-	pub fn reduce(&mut self) -> Result::<(), ()> {
+	pub fn reduce(&mut self) -> Result<(), Errno> {
 		let mut i = 0;
 		while i < self.parts.len() {
 			let part = &self.parts[i];
@@ -88,7 +89,7 @@ impl Path {
 
 	/// Concats the current path with another path `other` to create a new path. The path is not
 	/// automaticaly reduced.
-	pub fn concat(&self, other: &Self) -> Result::<Self, ()> {
+	pub fn concat(&self, other: &Self) -> Result<Self, Errno> {
 		let mut self_parts = self.parts.failable_clone()?;
 		let mut other_parts = other.parts.failable_clone()?;
 		self_parts.append(&mut other_parts)?;
@@ -100,7 +101,7 @@ impl Path {
 }
 
 impl FailableClone for Path {
-	fn failable_clone(&self) -> Result::<Self, ()> {
+	fn failable_clone(&self) -> Result<Self, Errno> {
 		Ok(Self {
 			absolute: self.absolute,
 			parts: self.parts.failable_clone()?,

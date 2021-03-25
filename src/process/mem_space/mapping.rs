@@ -2,6 +2,7 @@
 
 use core::cmp::Ordering;
 use core::ffi::c_void;
+use crate::errno::Errno;
 use crate::memory::buddy;
 use crate::memory::vmem::VMem;
 use crate::memory::vmem;
@@ -116,7 +117,7 @@ impl MemMapping {
 
 	/// Maps the mapping to the given virtual memory context with the default page. If the mapping
 	/// is marked as nolazy, the function allocates physical memory to be mapped.
-	pub fn map_default(&self, vmem: &mut Box::<dyn VMem>) -> Result::<(), ()> {
+	pub fn map_default(&self, vmem: &mut Box::<dyn VMem>) -> Result<(), Errno> {
 		let nolazy = (self.flags & super::MAPPING_FLAG_NOLAZY) != 0;
 		let default_page = get_default_page();
 		let flags = self.get_vmem_flags(nolazy);
@@ -124,18 +125,18 @@ impl MemMapping {
 		for i in 0..self.size {
 			let phys_ptr = if nolazy {
 				let ptr = buddy::alloc(0, buddy::FLAG_ZONE_TYPE_USER);
-				if ptr.is_err() {
+				if let Err(errno) = ptr {
 					self.unmap(vmem);
-					return Err(());
+					return Err(errno);
 				}
 				ptr.unwrap()
 			} else {
 				default_page
 			};
 			let virt_ptr = ((self.begin as usize) + (i * memory::PAGE_SIZE)) as *const c_void;
-			if vmem.map(phys_ptr, virt_ptr, flags).is_err() {
+			if let Err(errno) = vmem.map(phys_ptr, virt_ptr, flags) {
 				self.unmap(vmem);
-				return Err(());
+				return Err(errno);
 			}
 		}
 
@@ -146,7 +147,7 @@ impl MemMapping {
 	/// Maps the page at offset `offset` in the mapping to the given virtual memory context. The
 	/// function allocates the physical memory to be mapped. If the memory is already mapped with
 	/// non-default physical pages, the function does nothing.
-	pub fn map(&self, offset: usize, vmem: &mut Box::<dyn VMem>) -> Result::<(), ()> {
+	pub fn map(&self, offset: usize, vmem: &mut Box::<dyn VMem>) -> Result<(), Errno> {
 		let virt_ptr = (self.begin as usize + offset * memory::PAGE_SIZE) as *const c_void;
 		if let Some(phys_ptr) = vmem.translate(virt_ptr) {
 			if phys_ptr != get_default_page() {
@@ -157,9 +158,9 @@ impl MemMapping {
 		let phys_ptr = buddy::alloc(0, buddy::FLAG_ZONE_TYPE_USER)?;
 		// TODO Ensure the memory is zero-init
 		let flags = self.get_vmem_flags(true);
-		if vmem.map(phys_ptr, virt_ptr, flags).is_err() {
+		if let Err(errno) = vmem.map(phys_ptr, virt_ptr, flags) {
 			buddy::free(phys_ptr, 0);
-			return Err(());
+			return Err(errno);
 		}
 		vmem.flush();
 		Ok(())

@@ -5,6 +5,7 @@ use core::cmp::max;
 use core::fmt;
 use core::mem::size_of;
 use core::ptr::NonNull;
+use crate::errno::Errno;
 use crate::memory::malloc;
 use crate::util;
 
@@ -31,7 +32,7 @@ struct BinaryTreeNode<T> {
 
 impl<T: 'static> BinaryTreeNode<T> {
 	/// Creates a new node with the given `value`. The node is colored Red by default.
-	pub fn new(value: T) -> Result::<NonNull::<Self>, ()> {
+	pub fn new(value: T) -> Result<NonNull::<Self>, Errno> {
 		let ptr = malloc::alloc(size_of::<Self>())? as *mut Self;
 		let s = Self {
 			parent: None,
@@ -581,7 +582,7 @@ impl<T: 'static + Ord> BinaryTree<T> {
 	/// Inserts a value in the tree and returns a mutable reference to it.
 	/// `val` is the value to insert.
 	/// `cmp` is the comparison function.
-	pub fn insert(&mut self, val: T) -> Result::<(), ()> {
+	pub fn insert(&mut self, val: T) -> Result<(), Errno> {
 		let mut node = BinaryTreeNode::new(val)?;
 		let n = unsafe { // Call to unsafe function
 			node.as_mut()

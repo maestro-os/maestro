@@ -39,7 +39,7 @@ pub const O_SYNC: u32 =      0b01000000000000;
 pub const O_TRUNC: u32 =     0b10000000000000;
 
 /// Returns the absolute path to the file.
-fn get_file_absolute_path(process: &Process, path_str: &str) -> Result::<Path, ()> {
+fn get_file_absolute_path(process: &Process, path_str: &str) -> Result<Path, Errno> {
 	let path = Path::from_string(path_str)?;
 	if !path.is_absolute() {
 		let cwd = process.get_cwd();

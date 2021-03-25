@@ -7,6 +7,7 @@ use core::ops::DispatchFromDyn;
 use core::ops::{Deref, DerefMut};
 use core::ptr::NonNull;
 use core::ptr::drop_in_place;
+use crate::errno::Errno;
 use crate::memory::malloc;
 use crate::util::write_ptr;
 
@@ -50,7 +51,7 @@ pub struct SharedPtr<T: ?Sized> {
 
 impl<T> SharedPtr<T> {
 	/// Creates a new shared pointer for the given value `value`.
-	pub fn new(value: T) -> Result<SharedPtr::<T>, ()> {
+	pub fn new(value: T) -> Result<SharedPtr::<T>, Errno> {
 		let ptr = malloc::alloc(size_of::<SharedPtrInner::<T>>())? as *mut SharedPtrInner<T>;
 		unsafe { // Call to unsafe function
 			write_ptr(ptr, SharedPtrInner::new(value));

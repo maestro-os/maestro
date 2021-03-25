@@ -22,7 +22,7 @@ pub struct PIDManager {
 
 impl PIDManager {
 	/// Creates a new instance.
-	pub fn new() -> Result::<Self, ()> {
+	pub fn new() -> Result<Self, Errno> {
 		Ok(Self {
 			used: Bitfield::new((MAX_PID + 1) as _)?,
 			cursor: 0,

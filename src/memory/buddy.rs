@@ -11,6 +11,8 @@ use core::cmp::min;
 use core::ffi::c_void;
 use core::mem::MaybeUninit;
 use core::mem::size_of;
+use crate::errno::Errno;
+use crate::errno;
 use crate::memory;
 use crate::util::lock::mutex::Mutex;
 use crate::util::lock::mutex::MutexGuard;
@@ -167,7 +169,7 @@ fn get_zone_for_pointer(ptr: *const c_void) -> Option<&'static mut Mutex<Zone>> 
 /// Allocates a frame of memory using the buddy allocator. `order` is the order of the frame to be
 /// allocated. The given frame shall fit the flags `flags`. If no suitable frame is found, the
 /// function returns an Err.
-pub fn alloc(order: FrameOrder, flags: Flags) -> Result<*mut c_void, ()> {
+pub fn alloc(order: FrameOrder, flags: Flags) -> Result<*mut c_void, Errno> {
 	debug_assert!(order <= MAX_ORDER);
 
 	let begin_zone = (flags & ZONE_TYPE_MASK) as usize;
@@ -190,12 +192,12 @@ pub fn alloc(order: FrameOrder, flags: Flags) -> Result<*mut c_void, ()> {
 			}
 		}
 	}
-	Err(())
+	Err(errno::ENOMEM)
 }
 
 /// Calls `alloc` with order `order`. The allocated frame is in the kernel zone.
 /// The function returns the *virtual* address, not the physical one.
-pub fn alloc_kernel(order: FrameOrder) -> Result<*mut c_void, ()> {
+pub fn alloc_kernel(order: FrameOrder) -> Result<*mut c_void, Errno> {
 	Ok(memory::kern_to_virt(alloc(order, FLAG_ZONE_TYPE_KERNEL)?) as _)
 }
 

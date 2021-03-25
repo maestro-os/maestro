@@ -69,7 +69,7 @@ pub trait Module {
 	fn get_version(&self) -> Version;
 
 	/// Function called after the module have been loaded for initialization.
-	fn init(&mut self) -> Result::<(), ()>;
+	fn init(&mut self) -> Result<(), ()>;
 
 	/// Function called before unloading the module.
 	fn destroy(&mut self);

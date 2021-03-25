@@ -3,6 +3,7 @@
 
 use core::cmp::Ordering;
 use core::mem::MaybeUninit;
+use crate::errno::Errno;
 use crate::idt::pic;
 use crate::idt;
 use crate::process::tss;
@@ -133,10 +134,8 @@ pub fn init() {
 ///
 /// If the `id` is invalid or if an allocation fails, the function shall return an error.
 pub fn register_callback<T: 'static + InterruptCallback>(id: usize, priority: u32, callback: T)
-	-> Result<SharedPtr::<T>, ()> {
-	if id >= idt::ENTRIES_COUNT {
-		return Err(());
-	}
+	-> Result<SharedPtr::<T>, Errno> {
+	debug_assert!(id < idt::ENTRIES_COUNT);
 
 	let mut guard = unsafe { // Access to global variable
 		MutexGuard::new(CALLBACKS.assume_init_mut())

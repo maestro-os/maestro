@@ -21,6 +21,7 @@ use core::ffi::c_void;
 use core::ptr::null;
 use core::result::Result;
 use crate::elf;
+use crate::errno::Errno;
 use crate::memory::buddy;
 use crate::memory::vmem::VMem;
 use crate::memory;
@@ -95,7 +96,7 @@ extern "C" {
 
 /// Allocates a paging object and returns its virtual address.
 /// Returns Err if the allocation fails.
-fn alloc_obj() -> Result<*mut u32, ()> {
+fn alloc_obj() -> Result<*mut u32, Errno> {
 	let ptr = buddy::alloc_kernel(0)? as *mut c_void;
 	unsafe {
 		util::bzero(ptr as _, buddy::get_frame_size(0));
@@ -162,7 +163,7 @@ mod table {
 	use super::*;
 
 	/// Creates an empty page table at index `index` of the page directory.
-	pub fn create(vmem: *mut u32, index: usize, flags: u32) -> Result<(), ()> {
+	pub fn create(vmem: *mut u32, index: usize, flags: u32) -> Result<(), Errno> {
 		debug_assert!(index < 1024);
 		debug_assert!(flags & ADDR_MASK == 0);
 		debug_assert!(flags & FLAG_PAGE_SIZE == 0);
@@ -174,7 +175,7 @@ mod table {
 
 	/// Expands a large block into a page table. This function allocates a new page table and fills
 	/// it so that the memory mapping keeps the same behavior.
-	pub fn expand(vmem: *mut u32, index: usize) -> Result<(), ()> {
+	pub fn expand(vmem: *mut u32, index: usize) -> Result<(), Errno> {
 		let mut dir_entry_value = obj_get(vmem, index);
 		debug_assert!(dir_entry_value & FLAG_PRESENT != 0);
 		debug_assert!(dir_entry_value & FLAG_PAGE_SIZE != 0);
@@ -346,7 +347,7 @@ impl VMem for X86VMem {
 	}
 
 	fn map(&mut self, physaddr: *const c_void, virtaddr: *const c_void, flags: u32)
-		-> Result<(), ()> {
+		-> Result<(), Errno> {
 		debug_assert!(util::is_aligned(physaddr, memory::PAGE_SIZE));
 		debug_assert!(util::is_aligned(virtaddr, memory::PAGE_SIZE));
 		debug_assert!(flags & ADDR_MASK == 0);
@@ -372,7 +373,7 @@ impl VMem for X86VMem {
 	}
 
 	fn map_range(&mut self, physaddr: *const c_void, virtaddr: *const c_void, pages: usize,
-		flags: u32) -> Result<(), ()> {
+		flags: u32) -> Result<(), Errno> {
 		debug_assert!(util::is_aligned(physaddr, memory::PAGE_SIZE));
 		debug_assert!(util::is_aligned(virtaddr, memory::PAGE_SIZE));
 		debug_assert!(flags & ADDR_MASK == 0);
@@ -390,8 +391,9 @@ impl VMem for X86VMem {
 				self.map_pse(next_physaddr, next_virtaddr, flags);
 				i += 1024;
 			} else {
-				if self.map(next_physaddr, next_virtaddr, flags) == Err(()) {
+				if let Err(errno) = self.map(next_physaddr, next_virtaddr, flags) {
 					// TODO Undo
+					return Err(errno);
 				}
 				i += 1;
 			}
@@ -400,7 +402,7 @@ impl VMem for X86VMem {
 		Ok(())
 	}
 
-	fn unmap(&mut self, virtaddr: *const c_void) -> Result<(), ()> {
+	fn unmap(&mut self, virtaddr: *const c_void) -> Result<(), Errno> {
 		let dir_entry_index = Self::get_addr_element_index(virtaddr, 1);
 		let dir_entry_value = obj_get(self.page_dir, dir_entry_index);
 		if dir_entry_value & FLAG_PRESENT == 0 {
@@ -414,7 +416,7 @@ impl VMem for X86VMem {
 		Ok(())
 	}
 
-	fn unmap_range(&mut self, virtaddr: *const c_void, pages: usize) -> Result<(), ()> {
+	fn unmap_range(&mut self, virtaddr: *const c_void, pages: usize) -> Result<(), Errno> {
 		debug_assert!(util::is_aligned(virtaddr, memory::PAGE_SIZE));
 		debug_assert!((virtaddr as usize) + (pages * memory::PAGE_SIZE) >= (virtaddr as usize));
 
@@ -430,8 +432,9 @@ impl VMem for X86VMem {
 				self.unmap_pse(next_virtaddr);
 				i += 1024;
 			} else {
-				if self.unmap(next_virtaddr) == Err(()) {
+				if let Err(errno) = self.unmap(next_virtaddr) {
 					// TODO Undo
+					return Err(errno);
 				}
 				i += 1;
 			}
@@ -440,7 +443,7 @@ impl VMem for X86VMem {
 		Ok(())
 	}
 
-	fn clone(&self) -> Result::<Self, ()> {
+	fn clone(&self) -> Result<Self, Errno> {
 		let v = alloc_obj()?;
 		for i in 0..1024 {
 			let src_dir_entry_value = obj_get(self.page_dir, i);
@@ -450,14 +453,15 @@ impl VMem for X86VMem {
 
 			if src_dir_entry_value & FLAG_PAGE_SIZE == 0 {
 				let src_table = (src_dir_entry_value & ADDR_MASK) as *const u32;
-				if let Ok(dest_table) = alloc_obj() {
+				let dest_table_result = alloc_obj();
+				if let Ok(dest_table) = dest_table_result {
 					unsafe { // Call to C function
 						util::memcpy(dest_table as _, src_table as _, memory::PAGE_SIZE);
 					}
 					obj_set(self.page_dir, i, (memory::kern_to_phys(dest_table as _) as u32)
 						| (src_dir_entry_value & FLAGS_MASK));
 				} else {
-					return Err(());
+					return Err(dest_table_result.unwrap_err());
 				}
 			} else {
 				obj_set(self.page_dir, i, src_dir_entry_value);

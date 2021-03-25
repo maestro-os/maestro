@@ -61,7 +61,7 @@ impl MemSpace {
 	}
 
 	/// Inserts the given gap into the memory space's structures.
-	fn gap_insert(&mut self, gap: MemGap) -> Result::<(), ()> {
+	fn gap_insert(&mut self, gap: MemGap) -> Result<(), Errno> {
 		let gap_ptr = gap.get_begin();
 		self.gaps.insert(gap)?;
 		let g = self.gaps.get(gap_ptr).unwrap();
@@ -141,14 +141,14 @@ impl MemSpace {
 	/// memory is detected.
 	/// The function returns a pointer to the newly mapped virtual memory.
 	pub fn map(&mut self, ptr: Option::<*const c_void>, size: usize, flags: u8)
-		-> Result::<*const c_void, ()> {
+		-> Result<*const c_void, Errno> {
 		if let Some(_ptr) = ptr {
 			// TODO Insert mapping at exact location if possible
-			Err(())
+			Err(errno::ENOMEM)
 		} else {
 			let gap = Self::gap_get(&mut self.gaps_buckets, size);
 			if gap.is_none() {
-				return Err(());
+				return Err(errno::ENOMEM);
 			}
 
 			let gap = gap.unwrap();
@@ -160,14 +160,14 @@ impl MemSpace {
 
 			if self.mappings.get(mapping_ptr).unwrap().map_default(&mut self.vmem).is_err() {
 				self.mappings.remove(mapping_ptr);
-				return Err(());
+				return Err(errno::ENOMEM);
 			}
 
 			if let Some(new_gap) = gap.consume(size) {
 				if self.gap_insert(new_gap).is_err() {
 					self.mappings.get(mapping_ptr).unwrap().unmap(&mut self.vmem);
 					self.mappings.remove(mapping_ptr);
-					return Err(());
+					return Err(errno::ENOMEM);
 				}
 			}
 
@@ -178,7 +178,7 @@ impl MemSpace {
 
 	/// Same as `map`, except the function returns a pointer to the end of the memory region.
 	pub fn map_stack(&mut self, ptr: Option::<*const c_void>, size: usize, flags: u8)
-		-> Result::<*const c_void, ()> {
+		-> Result<*const c_void, Errno> {
 		let mapping_ptr = self.map(ptr, size, flags)?;
 		Ok(unsafe { // Call to unsafe function
 			mapping_ptr.add(size * memory::PAGE_SIZE)
@@ -217,6 +217,12 @@ impl MemSpace {
 	/// Binds the CPU to this memory space.
 	pub fn bind(&self) {
 		self.vmem.bind();
+	}
+
+	/// Clones the current memory space for process forking.
+	pub fn fork(&mut self) -> Result<MemSpace, Errno> {
+		// TODO
+		Err(errno::ENOMEM)
 	}
 
 	/// Function called whenever the CPU triggered a page fault for the context. This function

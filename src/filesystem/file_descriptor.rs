@@ -1,9 +1,12 @@
 /// TODO doc
 
 use core::ptr::NonNull;
+use crate::errno::Errno;
 use crate::filesystem::File;
+use crate::util::FailableClone;
 
 /// Structure representing a file descriptor.
+#[derive(Clone)]
 pub struct FileDescriptor {
 	/// The ID of the file descriptor.
 	id: u32,
@@ -34,6 +37,8 @@ impl FileDescriptor {
 
 	// TODO
 }
+
+crate::failable_clone_impl!(FileDescriptor);
 
 impl Drop for FileDescriptor {
 	fn drop(&mut self) {

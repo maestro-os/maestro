@@ -6,6 +6,8 @@ use core::cmp::{min, max};
 use core::ffi::c_void;
 use core::mem::MaybeUninit;
 use core::mem::size_of;
+use core::ptr::null_mut;
+use crate::errno::Errno;
 use crate::list_new;
 use crate::memory::buddy;
 use crate::memory;
@@ -443,7 +445,7 @@ impl Block {
 	/// Allocates a new block of memory with the minimum available size `min_size` in bytes.
 	/// The buddy allocator must be initialized before using this function.
 	/// The underlying chunk created by this function is **not** inserted into the free list.
-	fn new(min_size: usize) -> Result<&'static mut Self, ()> {
+	fn new(min_size: usize) -> Result<&'static mut Self, Errno> {
 		let total_min_size = size_of::<Block>() + min_size;
 		let order = buddy::get_order(math::ceil_division(total_min_size, memory::PAGE_SIZE));
 		let first_chunk_size = buddy::get_frame_size(order) - size_of::<Block>();
@@ -495,7 +497,7 @@ pub fn init() {
 
 /// Returns a reference to a free chunk suitable for an allocation of given size `size`.
 /// On success, the return value MUST be used or might result in a memory leak.
-fn get_available_chunk(size: usize) -> Result<&'static mut FreeChunk, ()> {
+fn get_available_chunk(size: usize) -> Result<&'static mut FreeChunk, Errno> {
 	let free_list = get_free_list(size, false);
 	let chunk = {
 		if let Some(f) = free_list {
@@ -518,9 +520,9 @@ fn get_available_chunk(size: usize) -> Result<&'static mut FreeChunk, ()> {
 // TODO Mutex
 /// Allocates `n` bytes of kernel memory and returns a pointer to the beginning of the allocated
 /// chunk. If the allocation fails, the function shall return an error.
-pub fn alloc(n: usize) -> Result<*mut c_void, ()> {
+pub fn alloc(n: usize) -> Result<*mut c_void, Errno> {
 	if n <= 0 {
-		return Err(());
+		return Ok(null_mut::<c_void>());
 	}
 
 	let chunk = get_available_chunk(n)?.get_chunk();
@@ -555,7 +557,7 @@ pub fn get_size(ptr: *mut c_void) -> usize {
 /// Changes the size of the memory previously allocated with `alloc`. `ptr` is the pointer to the
 /// chunk of memory. `n` is the new size of the chunk of memory. If the reallocation fails, the
 /// chunk is left untouched and the function returns an error.
-pub fn realloc(ptr: *mut c_void, n: usize) -> Result<*mut c_void, ()> {
+pub fn realloc(ptr: *mut c_void, n: usize) -> Result<*mut c_void, Errno> {
 	let chunk = unsafe { // Call to unsafe function
 		Chunk::from_ptr(ptr)
 	};

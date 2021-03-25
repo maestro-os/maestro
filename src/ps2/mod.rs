@@ -359,7 +359,7 @@ fn clear_buffer() {
 }
 
 /// Sends the given data `data` to the keyboard.
-fn keyboard_send(data: u8) -> Result::<(), ()> {
+fn keyboard_send(data: u8) -> Result<(), ()> {
 	let mut response = 0;
 
 	for _ in 0..MAX_ATTEMPTS {
@@ -385,7 +385,7 @@ fn keyboard_send(data: u8) -> Result::<(), ()> {
 }
 
 /// Sends the given command `command` and returns the response.
-fn send_command(command: u8, expected_response: u8) -> Result::<(), ()> {
+fn send_command(command: u8, expected_response: u8) -> Result<(), ()> {
 	for _ in 0..MAX_ATTEMPTS {
 		wait_write();
 		unsafe { // IO operation
@@ -417,7 +417,7 @@ fn disable_devices() {
 }
 
 /// Enables the keyboard device.
-fn enable_keyboard() -> Result::<(), ()> {
+fn enable_keyboard() -> Result<(), ()> {
 	wait_write();
 	unsafe { // IO operation
 		io::outb(COMMAND_REGISTER, 0xae);
@@ -458,12 +458,12 @@ fn set_config_byte(config: u8) {
 }
 
 /// Tests the PS/2 controller.
-fn test_controller() -> Result::<(), ()> {
+fn test_controller() -> Result<(), ()> {
 	send_command(0xaa, TEST_CONTROLLER_PASS)
 }
 
 /// TODO doc
-fn test_device() -> Result::<(), ()> {
+fn test_device() -> Result<(), ()> {
 	send_command(0xab, TEST_KEYBOARD_PASS)
 }
 
@@ -575,7 +575,7 @@ impl Module for PS2Module {
 		}
 	}
 
-	fn init(&mut self) -> Result::<(), ()> {
+	fn init(&mut self) -> Result<(), ()> {
 		// TODO Check if PS/2 controller is existing using ACPI
 
 		// TODO Disable interrupts during init
@@ -592,11 +592,16 @@ impl Module for PS2Module {
 		set_config_byte(get_config_byte() | 0b1);
 		clear_buffer();
 
-		self.keyboard_interrupt_callback = Some(event::register_callback(KEYBOARD_INTERRUPT_ID, 0,
+		let callback_result = event::register_callback(KEYBOARD_INTERRUPT_ID, 0,
 			KeyboardCallback {
 				module: self as _,
-		})?);
-		Ok(())
+			});
+		if let Ok(callback) = callback_result {
+			self.keyboard_interrupt_callback = Some(callback);
+			Ok(())
+		} else {
+			Err(())
+		}
 	}
 
 	fn destroy(&mut self) {

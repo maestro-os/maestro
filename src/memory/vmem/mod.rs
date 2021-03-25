@@ -7,6 +7,7 @@
 pub mod x86;
 
 use core::ffi::c_void;
+use crate::errno::Errno;
 use crate::util::boxed::Box;
 
 /// Trait representing virtual memory context handler. This trait is the interface to manipulate
@@ -25,30 +26,30 @@ pub trait VMem {
 	/// Maps the the given physical address `physaddr` to the given virtual address `virtaddr` with
 	/// the given flags.
 	fn map(&mut self, physaddr: *const c_void, virtaddr: *const c_void, flags: u32)
-		-> Result<(), ()>;
+		-> Result<(), Errno>;
 	/// Maps the given range of physical address `physaddr` to the given range of virtual address
 	/// `virtaddr`. The range is `pages` pages large.
 	fn map_range(&mut self, physaddr: *const c_void, virtaddr: *const c_void, pages: usize,
-		flags: u32) -> Result<(), ()>;
+		flags: u32) -> Result<(), Errno>;
 
 	/// Maps the physical address `ptr` to the same address in virtual memory with the given flags
 	/// `flags`.
-	fn identity(&mut self, ptr: *const c_void, flags: u32) -> Result<(), ()> {
+	fn identity(&mut self, ptr: *const c_void, flags: u32) -> Result<(), Errno> {
 		self.map(ptr, ptr, flags)
 	}
 	/// Identity maps a range beginning at physical address `from` with pages `pages` and flags
 	/// `flags`.
-	fn identity_range(&mut self, ptr: *const c_void, pages: usize, flags: u32) -> Result<(), ()> {
+	fn identity_range(&mut self, ptr: *const c_void, pages: usize, flags: u32) -> Result<(), Errno> {
 		self.map_range(ptr, ptr, pages, flags)
 	}
 
 	/// Unmaps the page at virtual address `virtaddr`.
-	fn unmap(&mut self, virtaddr: *const c_void) -> Result<(), ()>;
+	fn unmap(&mut self, virtaddr: *const c_void) -> Result<(), Errno>;
 	/// Unmaps the given range beginning at virtual address `virtaddr` with size of `pages` pages.
-	fn unmap_range(&mut self, virtaddr: *const c_void, pages: usize) -> Result<(), ()>;
+	fn unmap_range(&mut self, virtaddr: *const c_void, pages: usize) -> Result<(), Errno>;
 
 	/// Clones the context, creating a new one pointing towards the same physical pages.
-	fn clone(&self) -> Result::<Self, ()> where Self: Sized;
+	fn clone(&self) -> Result<Self, Errno> where Self: Sized;
 
 	/// Binds the virtual memory context handler.
 	fn bind(&self);
@@ -66,7 +67,7 @@ pub fn new() -> Result::<Box::<dyn VMem>, Errno> {
 
 /// Creates and loads the kernel's virtual memory context handler, protecting its code from
 /// writing.
-pub fn kernel() -> Result::<Box::<dyn VMem>, ()> {
+pub fn kernel() -> Result<Box::<dyn VMem>, Errno> {
 	let kernel_vmem = new()?;
 	kernel_vmem.bind();
 	Ok(kernel_vmem)

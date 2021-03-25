@@ -3,6 +3,7 @@
 use core::fmt::Debug;
 use core::fmt;
 use core::str;
+use crate::errno::Errno;
 use crate::util::FailableClone;
 use crate::util::container::vec::Vec;
 
@@ -21,7 +22,7 @@ impl String {
 	}
 
 	/// Creates a new instance. If the string cannot be allocated, the function return Err.
-	pub fn from(s: &str) -> Result::<Self, ()> {
+	pub fn from(s: &str) -> Result<Self, Errno> {
 		let mut v = Vec::new(); // TODO Reserve space
 		for b in s.as_bytes() {
 			v.push(*b)?;
@@ -48,7 +49,7 @@ impl String {
 	// TODO pop
 
 	/// Appends the string `other` to the current one.
-	pub fn push_str(&mut self, other: &String) -> Result::<(), ()> {
+	pub fn push_str(&mut self, other: &String) -> Result<(), Errno> {
 		let mut v = other.data.failable_clone()?;
 		self.data.append(&mut v)
 	}
@@ -91,7 +92,7 @@ impl PartialEq<&str> for String {
 }
 
 impl FailableClone for String {
-	fn failable_clone(&self) -> Result::<Self, ()> {
+	fn failable_clone(&self) -> Result<Self, Errno> {
 		Ok(Self {
 			data: self.data.failable_clone()?,
 		})

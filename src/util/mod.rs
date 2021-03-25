@@ -15,6 +15,7 @@ pub mod ptr;
 use core::ffi::c_void;
 use core::fmt;
 use core::mem::MaybeUninit;
+use crate::errno::Errno;
 
 /// Tells if pointer `ptr` is aligned on boundary `n`.
 #[inline(always)]
@@ -88,7 +89,7 @@ extern "C" {
 /// failure, for example).
 pub trait FailableClone {
 	/// Clones the object. If the clone fails, the function returns Err.
-	fn failable_clone(&self) -> Result::<Self, ()> where Self: Sized;
+	fn failable_clone(&self) -> Result<Self, Errno> where Self: Sized;
 }
 
 /// Implements FailableClone with the default implemention for the given type. The type must
@@ -97,7 +98,7 @@ pub trait FailableClone {
 macro_rules! failable_clone_impl {
 	($type:ty) => {
 		impl FailableClone for $type {
-			fn failable_clone(&self) -> Result::<Self, ()> {
+			fn failable_clone(&self) -> Result<Self, Errno> {
 				Ok(self.clone())
 			}
 		}

@@ -9,6 +9,7 @@ use core::ops::IndexMut;
 use core::ptr::NonNull;
 use core::ptr;
 use core::slice;
+use crate::errno::Errno;
 use crate::memory::malloc;
 use crate::util::FailableClone;
 
@@ -38,7 +39,7 @@ impl<T> Vec<T> {
 
 	// TODO Handle fail (do not use unwrap)
 	/// Reallocates the vector's data with the vector's capacity.
-	fn realloc(&mut self) -> Result::<(), ()> {
+	fn realloc(&mut self) -> Result<(), Errno> {
 		let size = self.capacity * size_of::<T>();
 		let ptr = if self.data.is_some() {
 			malloc::realloc(self.data.unwrap().as_ptr() as *mut c_void, size)? as *mut T
@@ -52,14 +53,14 @@ impl<T> Vec<T> {
 
 	// TODO Handle fail
 	/// Increases the capacity to at least `min` elements.
-	fn increase_capacity(&mut self, min: usize) -> Result::<(), ()> {
+	fn increase_capacity(&mut self, min: usize) -> Result<(), Errno> {
 		self.capacity = max(self.capacity, min); // TODO Larger allocations than needed to avoid
 		// reallocation all the time
 		self.realloc()
 	}
 
 	/// Creates a new emoty vector with the given capacity.
-	pub fn with_capacity(capacity: usize) -> Result::<Self, ()> {
+	pub fn with_capacity(capacity: usize) -> Result<Self, Errno> {
 		let mut vec = Self::new();
 		vec.capacity = capacity;
 		vec.realloc()?;
@@ -133,7 +134,7 @@ impl<T> Vec<T> {
 
 	/// Inserts an element at position index within the vector, shifting all elements after it to
 	/// the right.
-	pub fn insert(&mut self, index: usize, element: T) -> Result::<(), ()> {
+	pub fn insert(&mut self, index: usize, element: T) -> Result<(), Errno> {
 		if self.capacity < self.len + 1 {
 			self.increase_capacity(self.capacity + 1)?;
 		}
@@ -168,7 +169,7 @@ impl<T> Vec<T> {
 	}
 
 	/// Moves all the elements of `other` into `Self`, leaving `other` empty.
-	pub fn append(&mut self, other: &mut Vec::<T>) -> Result::<(), ()> {
+	pub fn append(&mut self, other: &mut Vec::<T>) -> Result<(), Errno> {
 		if self.capacity < self.len + other.len {
 			self.increase_capacity(self.capacity + other.len)?;
 		}
@@ -189,7 +190,7 @@ impl<T> Vec<T> {
 	// TODO resize
 
 	/// Appends an element to the back of a collection.
-	pub fn push(&mut self, value: T) -> Result::<(), ()> {
+	pub fn push(&mut self, value: T) -> Result<(), Errno> {
 		if self.capacity < self.len + 1 {
 			self.increase_capacity(self.capacity + 1)?;
 		}
@@ -248,7 +249,7 @@ impl<T: PartialEq> PartialEq for Vec::<T> {
 
 impl<T> FailableClone for Vec::<T> where T: FailableClone {
 	/// Clones the vector and its content.
-	fn failable_clone(&self) -> Result::<Vec::<T>, ()> {
+	fn failable_clone(&self) -> Result<Vec::<T>, Errno> {
 		let mut v = Self {
 			len: self.len,
 			capacity: self.capacity,

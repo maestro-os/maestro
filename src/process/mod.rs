@@ -8,6 +8,7 @@ pub mod tss;
 
 use core::ffi::c_void;
 use core::mem::MaybeUninit;
+use core::ptr::NonNull;
 use crate::errno::Errno;
 use crate::errno;
 use crate::event::{InterruptCallback, InterruptResult, InterruptResultAction};
@@ -16,6 +17,7 @@ use crate::filesystem::File;
 use crate::filesystem::file_descriptor::FileDescriptor;
 use crate::filesystem::path::Path;
 use crate::memory::vmem;
+use crate::util::FailableClone;
 use crate::util::Regs;
 use crate::util::container::vec::Vec;
 use crate::util::ptr::SharedPtr;
@@ -132,7 +134,7 @@ pub struct Process {
 	quantum_count: usize,
 
 	/// A pointer to the parent process.
-	parent: Option::<*mut Process>, // TODO Use a weak pointer
+	parent: Option::<NonNull::<Process>>, // TODO Use a weak pointer
 	// TODO Children list
 
 	/// The last saved registers state
@@ -210,7 +212,7 @@ impl InterruptCallback for ProcessFaultCallback {
 }
 
 /// Initializes processes system. This function must be called only once, at kernel initialization.
-pub fn init() -> Result::<(), ()> {
+pub fn init() -> Result<(), Errno> {
 	tss::init();
 	tss::flush();
 
@@ -249,7 +251,7 @@ impl Process {
 	/// `owner` is the ID of the process's owner.
 	/// `entry_point` is the pointer to the first instruction of the process.
 	/// `cwd` the path to the process's working directory.
-	pub fn new(parent: Option::<*mut Process>, owner: Uid, entry_point: *const c_void, cwd: Path)
+	pub fn new(parent: Option::<NonNull::<Process>>, owner: Uid, entry_point: *const c_void, cwd: Path)
 		-> Result::<SharedPtr::<Self>, Errno> {
 		// TODO Deadlock fix: requires both memory allocator and PID allocator
 		let pid = unsafe { // Access to global variable
@@ -305,9 +307,9 @@ impl Process {
 
 	/// Returns the parent process's PID.
 	pub fn get_parent_pid(&self) -> Pid {
-		if let Some(parent) = self.parent {
-			unsafe { // Dereference of raw pointer
-				&*parent
+		if let Some(mut parent) = self.parent {
+			unsafe { // Call to unsafe function
+				parent.as_mut()
 			}.get_pid()
 		} else {
 			self.get_pid()
@@ -331,7 +333,7 @@ impl Process {
 	}
 
 	/// Returns the process's parent if exists.
-	pub fn get_parent(&self) -> Option::<*mut Process> {
+	pub fn get_parent(&self) -> Option::<NonNull::<Process>> {
 		self.parent
 	}
 
@@ -383,7 +385,7 @@ impl Process {
 
 	/// Closes the file descriptor with the ID `id`. The function returns an Err if the file
 	/// descriptor doesn't exist.
-	pub fn close_fd(&mut self, id: u32) -> Result::<(), ()> {
+	pub fn close_fd(&mut self, id: u32) -> Result<(), Errno> {
 		let result = self.file_descriptors.binary_search_by(| fd | {
 			fd.get_id().cmp(&id)
 		});
@@ -391,14 +393,14 @@ impl Process {
 			self.file_descriptors.remove(index);
 			Ok(())
 		} else {
-			Err(())
+			Err(errno::EBADF)
 		}
 	}
 
 	/// Forks the current process. Duplicating everything for it to be identical, except the PID,
 	/// the parent process and children processes. On fail, the function returns an Err with the
 	/// appropriate Errno.
-	pub fn fork(&self) -> Result::<SharedPtr::<Self>, Errno> {
+	pub fn fork(&mut self) -> Result::<SharedPtr::<Self>, Errno> {
 		// TODO Mutex
 		let pid = unsafe { // Access to global variable
 			PID_MANAGER.assume_init_mut()
@@ -414,16 +416,16 @@ impl Process {
 			priority: self.priority,
 			quantum_count: self.quantum_count,
 
-			parent: &self as _,
+			parent: NonNull::new(self as _),
 
 			regs: regs,
-			mem_space: self.fork(),
+			mem_space: self.mem_space.fork()?,
 
 			user_stack: self.user_stack,
 			kernel_stack: self.kernel_stack,
 
-			cwd: self.cwd,
-			file_descriptors: self.file_descriptors,
+			cwd: self.cwd.failable_clone()?,
+			file_descriptors: self.file_descriptors.failable_clone()?,
 
 			exit_status: self.exit_status,
 		};
