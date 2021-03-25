@@ -1,7 +1,7 @@
 /// This module stores the errno utilities.
 
 /// Type representing an Unix errno.
-type Errno = i32;
+pub type Errno = i32;
 
 /// Argument list too long.
 pub const E2BIG: Errno = 0;

@@ -3,9 +3,6 @@
 use core::ptr::NonNull;
 use crate::filesystem::File;
 
-/// The maximum number of file descriptors open at the same time for one process.
-pub const OPEN_MAX: usize = 1024; // TODO Move somewhere else
-
 /// Structure representing a file descriptor.
 pub struct FileDescriptor {
 	/// The ID of the file descriptor.

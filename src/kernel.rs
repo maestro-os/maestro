@@ -40,6 +40,7 @@ mod filesystem;
 mod gdt;
 #[macro_use]
 mod idt;
+mod limits;
 mod memory;
 mod module;
 mod multiboot;
