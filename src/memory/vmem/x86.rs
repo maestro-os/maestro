@@ -71,18 +71,6 @@ pub const PAGE_FAULT_RESERVED: u32 = 0b01000;
 /// x86 page fault flag. If set, the page fault was caused by an instruction fetch.
 pub const PAGE_FAULT_INSTRUCTION: u32 = 0b10000;
 
-/// Structure wrapping a virtual memory. This structure contains the counter for the number of
-/// elements that are used in the associated element.
-#[derive(Debug)]
-pub struct VMemWrapper {
-	/// The number of used elements in the associated element
-	used_elements: u16,
-	/// The associated element
-	vmem: *mut u32,
-}
-
-// TODO Find a place to store wrappers
-
 extern "C" {
 	pub fn cr0_get() -> u32;
 	pub fn cr0_set(flags: u32);
@@ -192,6 +180,22 @@ mod table {
 		}
 
 		Ok(())
+	}
+
+	/// Tells whether the table at index `index` in the page directory is empty.
+	pub fn is_empty(vmem: *mut u32, index: usize) -> bool {
+		debug_assert!(index < 1024);
+
+		let dir_entry_value = obj_get(vmem, index);
+		let dir_entry_addr = (dir_entry_value & ADDR_MASK) as *mut u32;
+
+		for i in 0..1024 {
+			if obj_get(dir_entry_addr, i) & FLAG_PRESENT != 0 {
+				return false;
+			}
+		}
+
+		true
 	}
 
 	/// Deletes the table at index `index` in the page directory.
@@ -414,6 +418,11 @@ impl VMem for X86VMem {
 
 		let table_entry_index = Self::get_addr_element_index(virtaddr, 0);
 		obj_set(self.page_dir, table_entry_index, 0);
+
+		if table::is_empty(self.page_dir, dir_entry_index) {
+			table::delete(self.page_dir, dir_entry_index);
+		}
+
 		Ok(())
 	}
 
