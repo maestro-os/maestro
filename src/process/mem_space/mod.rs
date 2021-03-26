@@ -232,20 +232,21 @@ impl MemSpace {
 		};
 
 		for g in self.gaps.into_iter() {
-			let result = g.failable_clone();
-			if let Err(errno) = result {
-				return Err(errno);
-			}
-			if let Err(errno) = mem_space.gap_insert(result.unwrap()) {
-				return Err(errno);
-			}
+			let new_gap = g.failable_clone()?;
+			mem_space.gap_insert(new_gap)?;
 		}
 
 		for m in self.mappings.iter_mut() {
-			m.fork(&mut mem_space.mappings)?;
+			let new_mapping = m.fork(&mut mem_space.mappings)?;
+			for i in 0..new_mapping.get_size() {
+				new_mapping.update_vmem(i, &mut mem_space.vmem);
+			}
 		}
-
-		// TODO Set every mapping in read-only
+		for m in self.mappings.iter_mut() {
+			for i in 0..m.get_size() {
+				m.update_vmem(i, &mut self.vmem)
+			}
+		}
 
 		Ok(mem_space)
 	}

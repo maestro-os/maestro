@@ -79,7 +79,8 @@ impl MemMapping {
 	/// Returns the flags for the virtual memory context mapping.
 	fn get_vmem_flags(&self, allocated: bool) -> u32 {
 		let mut flags = 0;
-		if allocated && (self.flags & super::MAPPING_FLAG_WRITE) != 0 {
+		if (self.flags & super::MAPPING_FLAG_WRITE) != 0 && allocated
+			&& (self.shared_list.is_single() || self.flags & super::MAPPING_FLAG_SHARED != 0) {
 			flags |= vmem::x86::FLAG_WRITE;
 		}
 		if (self.flags & super::MAPPING_FLAG_USER) != 0 {
@@ -117,6 +118,8 @@ impl MemMapping {
 		Ok(())
 	}
 
+	// TODO Implement COW
+	// TODO Force the current vmem to be bound (if not, bind temporarily to zero or copy)
 	/// Maps the page at offset `offset` in the mapping to the given virtual memory context. The
 	/// function allocates the physical memory to be mapped. If the memory is already mapped with
 	/// non-default physical pages, the function does nothing.
@@ -146,10 +149,28 @@ impl MemMapping {
 		vmem.flush();
 	}
 
+	/// Updates the given virtual memory context `vmem` according to the mapping for the page at
+	/// offset `offset`.
+	pub fn update_vmem(&self, offset: usize, vmem: &mut Box::<dyn VMem>) {
+		let virt_ptr = (self.begin as usize + offset * memory::PAGE_SIZE) as *const c_void;
+		let phys_ptr_result = vmem.translate(virt_ptr);
+		if phys_ptr_result.is_none() {
+			return;
+		}
+		let phys_ptr = phys_ptr_result.unwrap();
+
+		let allocated = phys_ptr != get_default_page();
+		let flags = self.get_vmem_flags(allocated);
+		vmem.map(phys_ptr, virt_ptr, flags).unwrap();
+		vmem.flush();
+	}
+
 	/// Clones the mapping for the fork operation. The other mapping is sharing the same physical
 	/// memory for Copy-On-Write. `container` is the container in which the new mapping is to be
-	/// inserted.
-	pub fn fork(&mut self, container: &mut BinaryTree::<MemMapping>) -> Result::<(), Errno> {
+	/// inserted. The virtual memory context has to be updated after calling this function.
+	/// The function returns a mutable reference to the newly created mapping.
+	pub fn fork<'a>(&mut self, container: &'a mut BinaryTree::<MemMapping>)
+		-> Result::<&'a mut Self, Errno> {
 		let new_mapping = Self {
 			begin: self.begin,
 			size: self.size,
@@ -159,12 +180,9 @@ impl MemMapping {
 		};
 		container.insert(new_mapping)?;
 
-		let new_mapping = container.get(self.begin);
-		new_mapping.unwrap().shared_list.insert_after(&mut self.shared_list);
-
-		// TODO Set every mapping in read-only
-
-		Ok(())
+		let new_mapping = container.get(self.begin).unwrap();
+		new_mapping.shared_list.insert_after(&mut self.shared_list);
+		Ok(new_mapping)
 	}
 }
 

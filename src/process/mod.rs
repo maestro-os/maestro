@@ -189,6 +189,9 @@ impl InterruptCallback for ProcessFaultCallback {
 					}
 				},
 				0x0e => {
+					if code & vmem::x86::PAGE_FAULT_USER == 0 {
+						return InterruptResult::new(true, InterruptResultAction::Panic);
+					}
 					let accessed_ptr = unsafe { // Call to ASM function
 						vmem::x86::cr2_get()
 					};
