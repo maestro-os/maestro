@@ -618,7 +618,7 @@ mod test {
 
 	#[test_case]
 	fn alloc_free0() {
-		assert!(alloc(0).is_err());
+		assert!(alloc(0).is_ok());
 	}
 
 	#[test_case]

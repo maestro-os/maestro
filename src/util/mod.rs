@@ -251,7 +251,38 @@ mod test {
 
 	// TODO More tests on memmove
 
-	// TODO Test `memcmp`
+	#[test_case]
+	fn memcmp0() {
+		let mut b0: [u8; 100] = [0; 100];
+		let mut b1: [u8; 100] = [0; 100];
+
+		for i in 0..100 {
+			b0[i] = i as _;
+			b1[i] = i as _;
+		}
+		let val = unsafe { // Call to C function
+			memcmp(b0.as_mut_ptr() as _, b1.as_ptr() as _, 100)
+		};
+		assert_eq!(val, 0);
+	}
+
+	#[test_case]
+	fn memcmp1() {
+		let mut b0: [u8; 100] = [0; 100];
+		let mut b1: [u8; 100] = [0; 100];
+
+		for i in 0..100 {
+			b0[i] = i as _;
+			b1[i] = 0;
+		}
+		let val = unsafe { // Call to C function
+			memcmp(b0.as_mut_ptr() as _, b1.as_ptr() as _, 100)
+		};
+		assert_eq!(val, 1);
+	}
+
+	// TODO More tests on memcmp
+
 	// TODO Test `memset`
 
 	#[test_case]

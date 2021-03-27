@@ -98,7 +98,7 @@ type ELF32Addr = u32;
 
 /// Structure representing an ELF section header in memory.
 #[derive(Clone, Copy, Debug)]
-#[repr(C, packed)]
+#[repr(C)]
 pub struct ELF32SectionHeader {
 	/// Index in the string table section specifying the name of the section.
 	pub sh_name: u32,
@@ -126,7 +126,7 @@ pub struct ELF32SectionHeader {
 
 /// Structure representing an ELF symbol in memory.
 #[derive(Clone, Copy, Debug)]
-#[repr(C, packed)]
+#[repr(C)]
 pub struct ELF32Sym {
 	/// Index in the string table section specifying the name of the symbol.
 	pub st_name: u32,
