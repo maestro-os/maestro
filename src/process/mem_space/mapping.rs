@@ -2,8 +2,10 @@
 
 use core::cmp::Ordering;
 use core::ffi::c_void;
+use core::ptr;
 use crate::errno::Errno;
 use crate::memory::buddy;
+use crate::memory::malloc;
 use crate::memory::vmem::VMem;
 use crate::memory::vmem;
 use crate::memory;
@@ -81,8 +83,8 @@ impl MemMapping {
 		self.flags
 	}
 
-	/// Tells whether the mapping is being forked or not. If true, the physical memory is shared
-	/// with at least another mapping.
+	/// Tells whether the mapping is in forking state or not. If true, the physical memory is
+	/// shared with at least another mapping.
 	pub fn is_forking(&self) -> bool {
 		!self.shared_list.is_single() && self.flags & super::MAPPING_FLAG_SHARED == 0
 	}
@@ -128,30 +130,96 @@ impl MemMapping {
 		Ok(())
 	}
 
-	// TODO Implement COW
-	/// Maps the page at offset `offset` in the mapping to the given virtual memory context. The
-	/// function allocates the physical memory to be mapped. If the memory is already mapped with
-	/// non-default physical pages, the function does nothing.
-	pub fn map(&self, offset: usize, vmem: &mut Box::<dyn VMem>) -> Result<(), Errno> {
+	/// Returns a pointer to the physical page of memory associated with the mapping at page offset
+	/// `offset`. `vmem` is the virtual memory context associated with the mapping. If no page is
+	/// associated, the function returns None.
+	pub fn get_physical_page(&self, offset: usize, vmem: &mut Box::<dyn VMem>)
+		-> Option::<*const c_void> {
 		let virt_ptr = (self.begin as usize + offset * memory::PAGE_SIZE) as *const c_void;
-		if let Some(phys_ptr) = vmem.translate(virt_ptr) {
-			if phys_ptr != get_default_page() {
-				return Ok(());
-			}
+		let phys_ptr = vmem.translate(virt_ptr)?;
+		if phys_ptr != get_default_page() {
+			Some(phys_ptr)
+		} else {
+			None
 		}
+	}
 
-		let phys_ptr = buddy::alloc(0, buddy::FLAG_ZONE_TYPE_USER)?;
+	/// Returns a random mapping that shares the same physical page.
+	fn get_shared_adjacent(&self) -> &'static mut Self {
+		let next = self.shared_list.get_next();
+		let list_node = {
+			if let Some(next) = next {
+				next
+			} else {
+				self.shared_list.get_prev().unwrap()
+			}
+		};
+		let inner_offset = crate::offset_of!(Self, shared_list);
+		list_node.get_mut::<Self>(inner_offset)
+	}
+
+	// TODO Use RAII to free allocated memory on error?
+	/// Maps the page at offset `offset` in the mapping to the given virtual memory context. The
+	/// function allocates the physical memory to be mapped.
+	/// If the mapping is in forking state, the function shall apply Copy-On-Write and allocate
+	/// a new physical page with the same data.
+	pub fn map(&mut self, offset: usize, vmem: &mut Box::<dyn VMem>) -> Result<(), Errno> {
+		let cow = self.is_forking();
+
+		let virt_ptr = (self.begin as usize + offset * memory::PAGE_SIZE) as *const c_void;
+		let phys_ptr = {
+			if let Some(ptr) = self.get_physical_page(offset, vmem) {
+				if cow {
+					buddy::alloc(0, buddy::FLAG_ZONE_TYPE_USER)?
+				} else {
+					ptr
+				}
+			} else {
+				buddy::alloc(0, buddy::FLAG_ZONE_TYPE_USER)?
+			}
+		};
+
+		// TODO Do not allocate if not COW
+		let cow_buffer_result = malloc::alloc(memory::PAGE_SIZE);
+		if let Err(errno) = cow_buffer_result {
+			buddy::free(phys_ptr, 0);
+			return Err(errno);
+		}
+		let cow_buffer = cow_buffer_result.unwrap();
+
 		let flags = self.get_vmem_flags(true);
 		if let Err(errno) = vmem.map(phys_ptr, virt_ptr, flags) {
+			malloc::free(cow_buffer);
 			buddy::free(phys_ptr, 0);
 			return Err(errno);
 		}
 		vmem.flush();
-		vmem::tmp_bind(vmem, || {
-			unsafe { // Call to C function
-				util::bzero(virt_ptr as _, memory::PAGE_SIZE);
+
+		if cow {
+			let src = self.get_shared_adjacent().get_physical_page(offset, vmem).unwrap();
+			vmem::tmp_bind(vmem, || {
+				unsafe { // Call to C function
+					ptr::copy_nonoverlapping(src, cow_buffer, memory::PAGE_SIZE);
+				}
+			});
+			vmem::tmp_bind(vmem, || {
+				unsafe { // Call to C function
+					ptr::copy_nonoverlapping(cow_buffer, virt_ptr as _, memory::PAGE_SIZE);
+				}
+			});
+
+			unsafe { // Call to unsafe function
+				self.shared_list.unlink_floating();
 			}
-		});
+		} else {
+			vmem::tmp_bind(vmem, || {
+				unsafe { // Call to C function
+					util::bzero(virt_ptr as _, memory::PAGE_SIZE);
+				}
+			});
+		}
+
+		malloc::free(cow_buffer);
 		Ok(())
 	}
 
