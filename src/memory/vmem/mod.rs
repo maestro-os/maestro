@@ -112,6 +112,24 @@ pub unsafe fn write_lock_wrap<T: Fn()>(f: T) {
 	set_write_lock(lock);
 }
 
+/// Binds the given virtual memory context `vmem` during the execution of the given function `f`.
+pub fn tmp_bind<T: Fn()>(vmem: &Box::<dyn VMem>, f: T) {
+	if vmem.is_bound() {
+		f();
+	} else {
+		let cr3 = unsafe { // Call to ASM function
+			x86::cr3_get()
+		};
+		vmem.bind();
+
+		f();
+
+		unsafe { // Call to ASM function
+			x86::paging_enable(cr3 as _);
+		}
+	}
+}
+
 #[cfg(test)]
 mod test {
 	use super::*;

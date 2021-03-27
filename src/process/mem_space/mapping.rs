@@ -76,11 +76,21 @@ impl MemMapping {
 		self.size
 	}
 
+	/// Returns the mapping's flags.
+	pub fn get_flags(&self) -> u8 {
+		self.flags
+	}
+
+	/// Tells whether the mapping is being forked or not. If true, the physical memory is shared
+	/// with at least another mapping.
+	pub fn is_forking(&self) -> bool {
+		!self.shared_list.is_single() && self.flags & super::MAPPING_FLAG_SHARED == 0
+	}
+
 	/// Returns the flags for the virtual memory context mapping.
 	fn get_vmem_flags(&self, allocated: bool) -> u32 {
 		let mut flags = 0;
-		if (self.flags & super::MAPPING_FLAG_WRITE) != 0 && allocated
-			&& (self.shared_list.is_single() || self.flags & super::MAPPING_FLAG_SHARED != 0) {
+		if (self.flags & super::MAPPING_FLAG_WRITE) != 0 && allocated && !self.is_forking() {
 			flags |= vmem::x86::FLAG_WRITE;
 		}
 		if (self.flags & super::MAPPING_FLAG_USER) != 0 {
@@ -119,7 +129,6 @@ impl MemMapping {
 	}
 
 	// TODO Implement COW
-	// TODO Force the current vmem to be bound (if not, bind temporarily to zero or copy)
 	/// Maps the page at offset `offset` in the mapping to the given virtual memory context. The
 	/// function allocates the physical memory to be mapped. If the memory is already mapped with
 	/// non-default physical pages, the function does nothing.
@@ -132,13 +141,17 @@ impl MemMapping {
 		}
 
 		let phys_ptr = buddy::alloc(0, buddy::FLAG_ZONE_TYPE_USER)?;
-		// TODO Ensure the memory is zero-init
 		let flags = self.get_vmem_flags(true);
 		if let Err(errno) = vmem.map(phys_ptr, virt_ptr, flags) {
 			buddy::free(phys_ptr, 0);
 			return Err(errno);
 		}
 		vmem.flush();
+		vmem::tmp_bind(vmem, || {
+			unsafe { // Call to C function
+				util::bzero(virt_ptr as _, memory::PAGE_SIZE);
+			}
+		});
 		Ok(())
 	}
 

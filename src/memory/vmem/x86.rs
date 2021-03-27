@@ -484,8 +484,10 @@ impl FailableClone for X86VMem {
 			}
 
 			if src_dir_entry_value & FLAG_PAGE_SIZE == 0 {
-				let src_table = (src_dir_entry_value & ADDR_MASK) as *const u32;
+				let mut src_table = (src_dir_entry_value & ADDR_MASK) as *const u32;
+				src_table = memory::kern_to_virt(src_table as _) as _;
 				let dest_table_result = alloc_obj();
+
 				if let Ok(dest_table) = dest_table_result {
 					unsafe { // Call to C function
 						util::memcpy(dest_table as _, src_table as _, memory::PAGE_SIZE);
