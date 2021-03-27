@@ -245,10 +245,11 @@ impl X86VMem {
 		};
 		// TODO If Meltdown mitigation is enabled, only allow read access to a stub for interrupts
 		// TODO Place pages count in a constant, limit to size of physical memory
-		vmem.map_range(null::<c_void>(), memory::PROCESS_END, 262144, FLAG_WRITE)?;
+		vmem.map_range(null::<c_void>(), memory::PROCESS_END, 262144,
+			FLAG_WRITE | FLAG_GLOBAL)?; // TODO Enable global in cr4
 		// TODO Extend to other DMA
 		vmem.map_range(vga::BUFFER_PHYS as _, vga::BUFFER_VIRT as _, 1,
-			FLAG_CACHE_DISABLE | FLAG_WRITE_THROUGH)?;
+			FLAG_CACHE_DISABLE | FLAG_WRITE_THROUGH | FLAG_WRITE)?;
 		vmem.protect_kernel();
 		Ok(vmem)
 	}

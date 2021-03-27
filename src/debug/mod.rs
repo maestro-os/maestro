@@ -11,7 +11,10 @@ use crate::multiboot;
 macro_rules! register_get {
 	($reg:expr) => {{
 		let mut val: u32;
-		llvm_asm!(concat!("mov %", $reg, ", %eax") : "={eax}"(val)); // TODO Use new syntax
+		// TODO Use new syntax
+		// TODO Let the compiler allocate the register it wants
+		// TODO Adapt to the size of the given register
+		llvm_asm!(concat!("mov %", $reg, ", %eax") : "={eax}"(val));
 
 		val
 	}};

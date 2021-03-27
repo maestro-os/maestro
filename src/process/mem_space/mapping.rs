@@ -2,7 +2,6 @@
 
 use core::cmp::Ordering;
 use core::ffi::c_void;
-use core::ptr;
 use crate::errno::Errno;
 use crate::memory::buddy;
 use crate::memory::malloc;
@@ -195,28 +194,22 @@ impl MemMapping {
 		}
 		vmem.flush();
 
+		// TODO let accesser = VMemAccesser::new(vmem);
 		if cow {
-			let src = self.get_shared_adjacent().get_physical_page(offset, vmem).unwrap();
-			vmem::tmp_bind(vmem, || {
-				unsafe { // Call to C function
-					ptr::copy_nonoverlapping(src, cow_buffer, memory::PAGE_SIZE);
-				}
-			});
-			vmem::tmp_bind(vmem, || {
-				unsafe { // Call to C function
-					ptr::copy_nonoverlapping(cow_buffer, virt_ptr as _, memory::PAGE_SIZE);
-				}
-			});
+			// TODO WARNING: vmem got modified, the physical page isn't the same anymore
+			let _src = self.get_shared_adjacent().get_physical_page(offset, vmem).unwrap();
+			// TODO Copy
 
 			unsafe { // Call to unsafe function
 				self.shared_list.unlink_floating();
 			}
 		} else {
-			vmem::tmp_bind(vmem, || {
+			// TODO Zero the page
+			/*vmem::tmp_bind(vmem, || {
 				unsafe { // Call to C function
 					util::bzero(virt_ptr as _, memory::PAGE_SIZE);
 				}
-			});
+			});*/
 		}
 
 		malloc::free(cow_buffer);

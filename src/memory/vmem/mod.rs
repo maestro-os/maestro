@@ -112,21 +112,41 @@ pub unsafe fn write_lock_wrap<T: Fn()>(f: T) {
 	set_write_lock(lock);
 }
 
-/// Binds the given virtual memory context `vmem` during the execution of the given function `f`.
-pub fn tmp_bind<T: Fn()>(vmem: &Box::<dyn VMem>, f: T) {
-	if vmem.is_bound() {
-		f();
-	} else {
-		let cr3 = unsafe { // Call to ASM function
-			x86::cr3_get()
-		};
-		vmem.bind();
+/// Structure wrapping a virtual memory context handler to make access operations on it.
+/// Since this kind of operations is heavy, it shouldn't be performed too often.
+pub struct VMemAccesser<'a> {
+	/// A reference to the Box holding the virtual memory context handler.
+	vmem: &'a mut Box::<dyn VMem>,
+}
 
-		f();
-
-		unsafe { // Call to ASM function
-			x86::paging_enable(cr3 as _);
+impl<'a> VMemAccesser::<'a> {
+	pub fn new(vmem: &'a mut Box::<dyn VMem>) -> Self {
+		Self {
+			vmem: vmem,
 		}
+	}
+
+	/// Reads the given page at address `addr` and writes the content to the given buffer 'buffer'.
+	/// `virt` tells whether the address is virtual or physical.
+	pub fn read_page(&mut self, _addr: *const c_void, _virt: bool,
+		_buffer: &mut [u8; super::PAGE_SIZE]) -> Result::<(), Errno> {
+		// TODO
+		Ok(())
+	}
+
+	/// Writes the given page at address `addr` with the data in the given buffer `buffer.
+	/// `virt` tells whether the address is virtual or physical.
+	pub fn write_page(&mut self, _addr: *const c_void, _virt: bool,
+		_buffer: &[u8; super::PAGE_SIZE]) -> Result::<(), Errno> {
+		// TODO
+		Ok(())
+	}
+
+	/// Zeros the page at the given virtual address `virtaddr`.
+	/// `virt` tells whether the address is virtual or physical.
+	pub fn zero_page(&mut self, _addr: *const c_void, _virt: bool) -> Result::<(), Errno> {
+		// TODO
+		Ok(())
 	}
 }
 
