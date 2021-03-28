@@ -48,6 +48,14 @@ impl<T> Box<T> {
 }
 
 impl<T: ?Sized> Box<T> {
+	/// Creates a new instance from a raw pointer. The newly created Box takes the ownership of the
+	/// pointer.
+	pub unsafe fn from_raw(ptr: *mut T) -> Self {
+		Self {
+			ptr: NonNull::new(ptr).unwrap(),
+		}
+	}
+
 	/// Returns a pointer to the data wrapped into the Box.
 	pub fn as_ptr(&self) -> *const T {
 		self.ptr.as_ptr()

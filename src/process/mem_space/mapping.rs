@@ -2,10 +2,13 @@
 
 use core::cmp::Ordering;
 use core::ffi::c_void;
+use core::mem::ManuallyDrop;
+use core::ptr;
 use crate::errno::Errno;
 use crate::memory::buddy;
-use crate::memory::malloc;
+use crate::memory::stack::stack_switch;
 use crate::memory::vmem::VMem;
+use crate::memory::vmem::vmem_switch;
 use crate::memory::vmem;
 use crate::memory;
 use crate::util::boxed::Box;
@@ -143,6 +146,11 @@ impl MemMapping {
 		}
 	}
 
+	/// Tells whether the mapping contains the given virtual address `ptr`.
+	pub fn contains_ptr(&self, ptr: *const c_void) -> bool {
+		ptr >= self.begin && ptr < (self.begin as usize + self.size * memory::PAGE_SIZE) as _
+	}
+
 	/// Returns a random mapping that shares the same physical page.
 	fn get_shared_adjacent(&self) -> &'static mut Self {
 		let next = self.shared_list.get_next();
@@ -163,9 +171,25 @@ impl MemMapping {
 	/// If the mapping is in forking state, the function shall apply Copy-On-Write and allocate
 	/// a new physical page with the same data.
 	pub fn map(&mut self, offset: usize, vmem: &mut Box::<dyn VMem>) -> Result<(), Errno> {
-		let cow = self.is_forking();
+		let mut tmp_stack = Box::<[u8; memory::PAGE_SIZE]>::new([0; memory::PAGE_SIZE])?;
 
-		let virt_ptr = (self.begin as usize + offset * memory::PAGE_SIZE) as *const c_void;
+		let virt_ptr = (self.begin as usize + offset * memory::PAGE_SIZE) as *mut _;
+		let cow = self.is_forking();
+		let cow_buffer = {
+			if cow {
+				let cow_buffer = Box::<[u8; memory::PAGE_SIZE]>::new([0; memory::PAGE_SIZE])?;
+				unsafe { // Call to unsafe function
+					ptr::copy_nonoverlapping(virt_ptr,
+						cow_buffer.as_ptr() as *mut c_void,
+						memory::PAGE_SIZE);
+				}
+				Some(cow_buffer)
+			} else {
+				None
+			}
+		};
+
+		// TODO Separate allocated and non-allocated pointer
 		let phys_ptr = {
 			if let Some(ptr) = self.get_physical_page(offset, vmem) {
 				if cow {
@@ -178,41 +202,44 @@ impl MemMapping {
 			}
 		};
 
-		// TODO Do not allocate if not COW
-		let cow_buffer_result = malloc::alloc(memory::PAGE_SIZE);
-		if let Err(errno) = cow_buffer_result {
-			buddy::free(phys_ptr, 0);
-			return Err(errno);
-		}
-		let cow_buffer = cow_buffer_result.unwrap();
-
 		let flags = self.get_vmem_flags(true);
 		if let Err(errno) = vmem.map(phys_ptr, virt_ptr, flags) {
-			malloc::free(cow_buffer);
-			buddy::free(phys_ptr, 0);
+			buddy::free(phys_ptr, 0); // TODO Fix: UB if freeing the pointer that's already mapped
 			return Err(errno);
 		}
 		vmem.flush();
 
-		// TODO let accesser = VMemAccesser::new(vmem);
-		if cow {
-			// TODO WARNING: vmem got modified, the physical page isn't the same anymore
-			let _src = self.get_shared_adjacent().get_physical_page(offset, vmem).unwrap();
-			// TODO Copy
+		stack_switch(tmp_stack.as_mut_ptr() as _,
+			| data: &(&mut Box::<dyn VMem>,
+				*mut c_void,
+				Option::<Box::<[u8; memory::PAGE_SIZE]>>) | {
+				let vmem = &*ManuallyDrop::new(unsafe { // Call to unsafe function
+					Box::from_raw(data.0.as_mut_ptr())
+				});
+				let virt_ptr = data.1;
+				let buffer = &data.2;
 
+				vmem_switch(vmem, move || {
+					if let Some(buffer) = &buffer {
+						unsafe { // Call to unsafe functions
+							ptr::copy_nonoverlapping(buffer.as_ptr() as *const c_void,
+								virt_ptr as *mut c_void,
+								memory::PAGE_SIZE);
+						}
+					} else {
+						unsafe { // Call to unsafe function
+							util::bzero(virt_ptr as _, memory::PAGE_SIZE);
+						}
+					}
+				});
+			} as _, (vmem, virt_ptr, cow_buffer))?;
+
+		if cow {
 			unsafe { // Call to unsafe function
 				self.shared_list.unlink_floating();
 			}
-		} else {
-			// TODO Zero the page
-			/*vmem::tmp_bind(vmem, || {
-				unsafe { // Call to C function
-					util::bzero(virt_ptr as _, memory::PAGE_SIZE);
-				}
-			});*/
 		}
 
-		malloc::free(cow_buffer);
 		Ok(())
 	}
 

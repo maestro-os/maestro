@@ -4,6 +4,7 @@ pub mod alloc;
 pub mod buddy;
 pub mod malloc;
 pub mod memmap;
+pub mod stack;
 pub mod vmem;
 
 use core::ffi::c_void;

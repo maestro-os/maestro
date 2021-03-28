@@ -74,6 +74,20 @@ macro_rules! container_of {
 	}
 }
 
+/// Returns the value stored into the specified register.
+#[macro_export]
+macro_rules! register_get {
+	($reg:expr) => {{
+		let mut val: u32;
+		// TODO Use new syntax
+		// TODO Let the compiler allocate the register it wants
+		// TODO Adapt to the size of the given register
+		llvm_asm!(concat!("mov %", $reg, ", %eax") : "={eax}"(val));
+
+		val
+	}};
+}
+
 extern "C" {
 	pub fn memcpy(dest: *mut c_void, src: *const c_void, n: usize) -> *mut c_void;
 	pub fn memmove(dest: *mut c_void, src: *const c_void, n: usize) -> *mut c_void;

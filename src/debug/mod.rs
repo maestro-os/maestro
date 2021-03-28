@@ -6,20 +6,6 @@ use crate::elf;
 use crate::memory;
 use crate::multiboot;
 
-/// Returns the value into the specified register.
-#[macro_export]
-macro_rules! register_get {
-	($reg:expr) => {{
-		let mut val: u32;
-		// TODO Use new syntax
-		// TODO Let the compiler allocate the register it wants
-		// TODO Adapt to the size of the given register
-		llvm_asm!(concat!("mov %", $reg, ", %eax") : "={eax}"(val));
-
-		val
-	}};
-}
-
 /// Prints, in hexadecimal, the content of the memory at the given location `ptr`, with the given
 /// size `n` in bytes.
 pub unsafe fn print_memory(ptr: *const c_void, n: usize) {
