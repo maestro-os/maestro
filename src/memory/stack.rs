@@ -8,6 +8,15 @@ extern "C" {
 	fn stack_switch_(stack: *mut c_void, func_ptr: *const c_void, data: *const c_void);
 }
 
+/// TODO doc
+#[no_mangle]
+extern "C" fn stack_switch_in(func_ptr: *const c_void, data: *const c_void) {
+	let f = unsafe { // Call to unsafe function
+		core::mem::transmute::<*const c_void, fn(*const c_void)>(func_ptr)
+	};
+	f(data);
+}
+
 // TODO Mark unsafe?
 /// Executes the given closure `f` while being on the given stack. `stack` is the pointer to the
 /// beginning of the new stack. After execution, the functio restores the previous stack.

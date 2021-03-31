@@ -2,7 +2,6 @@
 
 use core::cmp::Ordering;
 use core::ffi::c_void;
-use core::mem::ManuallyDrop;
 use core::ptr;
 use crate::errno::Errno;
 use crate::memory::buddy;
@@ -210,29 +209,21 @@ impl MemMapping {
 		vmem.flush();
 
 		stack_switch(tmp_stack.as_mut_ptr() as _,
-			| data: &(&mut Box::<dyn VMem>,
-				*mut c_void,
-				Option::<Box::<[u8; memory::PAGE_SIZE]>>) | {
-				let vmem = &*ManuallyDrop::new(unsafe { // Call to unsafe function
-					Box::from_raw(data.0.as_mut_ptr())
-				});
-				let virt_ptr = data.1;
-				let buffer = &data.2;
-
-				vmem_switch(vmem, move || {
-					if let Some(buffer) = &buffer {
+			| data: &(&Box::<dyn VMem>, *mut c_void, Option::<Box::<[u8; memory::PAGE_SIZE]>>) | {
+				vmem_switch(data.0, move || {
+					if let Some(buffer) = &data.2 {
 						unsafe { // Call to unsafe functions
 							ptr::copy_nonoverlapping(buffer.as_ptr() as *const c_void,
-								virt_ptr as *mut c_void,
+								data.1 as *mut c_void,
 								memory::PAGE_SIZE);
 						}
 					} else {
 						unsafe { // Call to unsafe function
-							util::bzero(virt_ptr as _, memory::PAGE_SIZE);
+							util::bzero(data.1 as _, memory::PAGE_SIZE);
 						}
 					}
 				});
-			} as _, (vmem, virt_ptr, cow_buffer))?;
+			} as _, (vmem as _, virt_ptr as _, cow_buffer as _))?;
 
 		if cow {
 			unsafe { // Call to unsafe function

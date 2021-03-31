@@ -4,6 +4,8 @@
 
 .global stack_switch_
 
+.extern stack_switch_in
+
 .section .text
 
 # Performs the stack switching for the given stack and closure to execute.
@@ -11,11 +13,10 @@ stack_switch_:
 	push %ebp
 	mov %esp, %ebp
 
-	mov 12(%ebp), %eax
 	mov 16(%ebp), %esp
 	push 8(%ebp)
-	call *%eax
-	add $4, %esp
+	push 12(%ebp)
+	call stack_switch_in
 
 	mov %ebp, %esp
 	pop %ebp
