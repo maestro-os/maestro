@@ -37,6 +37,16 @@ fn get_default_page() -> *const c_void {
 	default_page.unwrap()
 }
 
+/// Structure storing data that will be passed to the temporary stack on mapping.
+pub struct StackSwitchData<'a> {
+	/// The virtual memory context handler.
+	vmem: &'a mut Box::<dyn VMem>,
+	/// The page's virtual pointer.
+	virt_ptr: *mut c_void,
+	/// The COW buffer, storing the data to be copied to the new page.
+	cow_buffer: Option::<Box::<[u8; memory::PAGE_SIZE]>>,
+}
+
 /// A mapping in the memory space.
 pub struct MemMapping {
 	/// Pointer on the virtual memory to the beginning of the mapping
@@ -209,21 +219,29 @@ impl MemMapping {
 		vmem.flush();
 
 		stack_switch(tmp_stack.as_mut_ptr() as _,
-			| data: &(&Box::<dyn VMem>, *mut c_void, Option::<Box::<[u8; memory::PAGE_SIZE]>>) | {
-				vmem_switch(data.0, move || {
-					if let Some(buffer) = &data.2 {
-						unsafe { // Call to unsafe functions
+			| data | {
+				let data = unsafe {
+					&*(data as *const StackSwitchData)
+				};
+
+				vmem_switch(data.vmem, move || {
+					if let Some(buffer) = &data.cow_buffer {
+						unsafe {
 							ptr::copy_nonoverlapping(buffer.as_ptr() as *const c_void,
-								data.1 as *mut c_void,
+								data.virt_ptr as *mut c_void,
 								memory::PAGE_SIZE);
 						}
 					} else {
-						unsafe { // Call to unsafe function
-							util::bzero(data.1 as _, memory::PAGE_SIZE);
+						unsafe {
+							util::bzero(data.virt_ptr as _, memory::PAGE_SIZE);
 						}
 					}
 				});
-			} as _, (vmem as _, virt_ptr as _, cow_buffer as _))?;
+			} as _, StackSwitchData {
+				vmem: vmem,
+				virt_ptr: virt_ptr,
+				cow_buffer: cow_buffer,
+			})?;
 
 		if cow {
 			unsafe { // Call to unsafe function

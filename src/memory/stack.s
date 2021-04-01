@@ -13,8 +13,8 @@ stack_switch_:
 	push %ebp
 	mov %esp, %ebp
 
-	mov 16(%ebp), %esp
-	push 8(%ebp)
+	mov 8(%ebp), %esp
+	push 16(%ebp)
 	push 12(%ebp)
 	call stack_switch_in
 
