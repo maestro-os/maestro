@@ -174,6 +174,7 @@ impl MemMapping {
 		list_node.get_mut::<Self>(inner_offset)
 	}
 
+	// TODO Clean
 	// TODO Use RAII to free allocated memory on error?
 	/// Maps the page at offset `offset` in the mapping to the given virtual memory context. The
 	/// function allocates the physical memory to be mapped.
@@ -218,30 +219,26 @@ impl MemMapping {
 		}
 		vmem.flush();
 
-		stack_switch(tmp_stack.as_mut_ptr() as _,
-			| data | {
-				let data = unsafe {
-					&*(data as *const StackSwitchData)
-				};
+		unsafe {
+			stack_switch(tmp_stack.as_mut_ptr().add(memory::PAGE_SIZE) as _,
+				| data | {
+					let data = &*(data as *const StackSwitchData);
 
-				vmem_switch(data.vmem, move || {
-					if let Some(buffer) = &data.cow_buffer {
-						unsafe {
+					vmem_switch(data.vmem, move || {
+						if let Some(buffer) = &data.cow_buffer {
 							ptr::copy_nonoverlapping(buffer.as_ptr() as *const c_void,
 								data.virt_ptr as *mut c_void,
 								memory::PAGE_SIZE);
-						}
-					} else {
-						unsafe {
+						} else {
 							util::bzero(data.virt_ptr as _, memory::PAGE_SIZE);
 						}
-					}
-				});
-			} as _, StackSwitchData {
-				vmem: vmem,
-				virt_ptr: virt_ptr,
-				cow_buffer: cow_buffer,
-			})?;
+					});
+				} as _, StackSwitchData {
+					vmem: vmem,
+					virt_ptr: virt_ptr,
+					cow_buffer: cow_buffer,
+				})?;
+		}
 
 		if cow {
 			unsafe { // Call to unsafe function

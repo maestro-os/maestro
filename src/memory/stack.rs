@@ -17,15 +17,13 @@ extern "C" fn stack_switch_in(func_ptr: *const c_void, data: *const c_void) {
 	f(data);
 }
 
-// TODO Mark unsafe?
 /// Executes the given closure `f` while being on the given stack. `stack` is the pointer to the
 /// beginning of the new stack. After execution, the function restores the previous stack.
 /// `data` is the data to pass on the temporary stack.
-pub fn stack_switch<T>(stack: *mut c_void, f: fn(*const c_void), data: T) -> Result::<(), Errno> {
+pub unsafe fn stack_switch<T>(stack: *mut c_void, f: fn(*const c_void), data: T)
+	-> Result::<(), Errno> {
 	let data_box = Box::new(data)?;
 	let data_ptr = data_box.as_ptr();
-	unsafe { // Call to C function
-		stack_switch_(stack, f as _, data_ptr as _);
-	}
+	stack_switch_(stack, f as _, data_ptr as _);
 	Ok(())
 }
