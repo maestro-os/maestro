@@ -15,6 +15,9 @@ use crate::util::container::binary_tree::BinaryTree;
 use crate::util::list::ListNode;
 use crate::util;
 
+/// The size of the temporary stack used for memory mapping initialization.
+const TMP_STACK_SIZE: usize = memory::PAGE_SIZE;
+
 /// A pointer to the default physical page of memory. This page is meant to be mapped in read-only
 /// and is a placeholder for pages that are accessed without being allocated nor written.
 static mut DEFAULT_PAGE: Option::<*const c_void> = None;
@@ -175,13 +178,18 @@ impl MemMapping {
 	}
 
 	// TODO Clean
-	// TODO Use RAII to free allocated memory on error?
+	// TODO Fix: allocating only one page results in troubles since mapping sharing is defined
+	// for several pages. Detaching them once one page is copied results in the other pages staying
+	// uninitialized
 	/// Maps the page at offset `offset` in the mapping to the given virtual memory context. The
 	/// function allocates the physical memory to be mapped.
 	/// If the mapping is in forking state, the function shall apply Copy-On-Write and allocate
 	/// a new physical page with the same data.
 	pub fn map(&mut self, offset: usize, vmem: &mut Box::<dyn VMem>) -> Result<(), Errno> {
-		let mut tmp_stack = Box::<[u8; memory::PAGE_SIZE]>::new([0; memory::PAGE_SIZE])?;
+		let tmp_stack = Box::<[u8; memory::PAGE_SIZE]>::new([0; TMP_STACK_SIZE])?;
+		let tmp_stack_top = unsafe {
+			(tmp_stack.as_ptr() as *mut c_void).add(TMP_STACK_SIZE)
+		};
 
 		let virt_ptr = (self.begin as usize + offset * memory::PAGE_SIZE) as *mut _;
 		let cow = self.is_forking();
@@ -199,28 +207,28 @@ impl MemMapping {
 			}
 		};
 
-		// TODO Separate allocated and non-allocated pointer
-		let phys_ptr = {
-			if let Some(ptr) = self.get_physical_page(offset, vmem) {
-				if cow {
-					buddy::alloc(0, buddy::FLAG_ZONE_TYPE_USER)?
-				} else {
-					ptr
-				}
+		let source_phys_ptr = {
+			if cow {
+				self.get_physical_page(offset, vmem)
 			} else {
-				buddy::alloc(0, buddy::FLAG_ZONE_TYPE_USER)?
+				None
 			}
 		};
 
 		let flags = self.get_vmem_flags(true);
-		if let Err(errno) = vmem.map(phys_ptr, virt_ptr, flags) {
-			buddy::free(phys_ptr, 0); // TODO Fix: UB if freeing the pointer that's already mapped
-			return Err(errno);
+		if let Some(phys_ptr) = source_phys_ptr {
+			vmem.map(phys_ptr, virt_ptr, flags)?;
+		} else {
+			let phys_ptr = buddy::alloc(0, buddy::FLAG_ZONE_TYPE_USER)?;
+			if let Err(errno) = vmem.map(phys_ptr, virt_ptr, flags) {
+				buddy::free(phys_ptr, 0);
+				return Err(errno);
+			}
 		}
 		vmem.flush();
 
 		unsafe {
-			stack_switch(tmp_stack.as_mut_ptr().add(memory::PAGE_SIZE) as _,
+			stack_switch(tmp_stack_top as _,
 				| data | {
 					let data = &*(data as *const StackSwitchData);
 
