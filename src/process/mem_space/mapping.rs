@@ -2,6 +2,7 @@
 
 use core::cmp::Ordering;
 use core::ffi::c_void;
+use core::ptr::NonNull;
 use core::ptr;
 use crate::errno::Errno;
 use crate::memory::buddy;
@@ -12,7 +13,6 @@ use crate::memory::vmem;
 use crate::memory;
 use crate::util::boxed::Box;
 use crate::util::container::binary_tree::BinaryTree;
-use crate::util::list::ListNode;
 use crate::util;
 
 /// The size of the temporary stack used for memory mapping initialization.
@@ -43,7 +43,7 @@ fn get_default_page() -> *const c_void {
 /// Structure storing data that will be passed to the temporary stack on mapping.
 pub struct StackSwitchData<'a> {
 	/// The virtual memory context handler.
-	vmem: &'a mut Box::<dyn VMem>,
+	vmem: &'a dyn VMem,
 	/// The page's virtual pointer.
 	virt_ptr: *mut c_void,
 	/// The COW buffer, storing the data to be copied to the new page.
@@ -59,8 +59,8 @@ pub struct MemMapping {
 	/// The mapping's flags.
 	flags: u8,
 
-	/// The node of the list storing the mappings sharing the same physical memory.
-	pub shared_list: ListNode,
+	/// Pointer to the virtual memory context handler.
+	vmem: NonNull::<dyn VMem>,
 }
 
 impl MemMapping {
@@ -69,7 +69,8 @@ impl MemMapping {
 	/// must be page-aligned.
 	/// `size` is the size of the mapping in pages. The size must be greater than 0.
 	/// `flags` the mapping's flags
-	pub fn new(begin: *const c_void, size: usize, flags: u8) -> Self {
+	/// `vmem` is the virtual memory context handler.
+	pub fn new(begin: *const c_void, size: usize, flags: u8, vmem: NonNull::<dyn VMem>) -> Self {
 		debug_assert!(util::is_aligned(begin, memory::PAGE_SIZE));
 		debug_assert!(size > 0);
 
@@ -78,7 +79,7 @@ impl MemMapping {
 			size: size,
 			flags: flags,
 
-			shared_list: ListNode::new_single(),
+			vmem: vmem,
 		}
 	}
 
@@ -97,16 +98,56 @@ impl MemMapping {
 		self.flags
 	}
 
-	/// Tells whether the mapping is in forking state or not. If true, the physical memory is
-	/// shared with at least another mapping.
-	pub fn is_forking(&self) -> bool {
-		!self.shared_list.is_single() && self.flags & super::MAPPING_FLAG_SHARED == 0
+	/// Returns a reference to the virtual memory context handler associated with the mapping.
+	pub fn get_vmem(&self) -> &'static dyn VMem {
+		unsafe {
+			&*self.vmem.as_ptr()
+		}
 	}
 
-	/// Returns the flags for the virtual memory context mapping.
-	fn get_vmem_flags(&self, allocated: bool) -> u32 {
+	/// Returns a mutable reference to the virtual memory context handler associated with the
+	/// mapping.
+	pub fn get_mut_vmem(&mut self) -> &'static mut dyn VMem {
+		unsafe {
+			&mut *self.vmem.as_ptr()
+		}
+	}
+
+	/// Tells whether the mapping contains the given virtual address `ptr`.
+	pub fn contains_ptr(&self, ptr: *const c_void) -> bool {
+		ptr >= self.begin && ptr < (self.begin as usize + self.size * memory::PAGE_SIZE) as _
+	}
+
+	/// Returns a pointer to the physical page of memory associated with the mapping at page offset
+	/// `offset`. If no page is associated, the function returns None.
+	pub fn get_physical_page(&self, offset: usize) -> Option::<*const c_void> {
+		let virt_ptr = (self.begin as usize + offset * memory::PAGE_SIZE) as *const c_void;
+		let phys_ptr = self.get_vmem().translate(virt_ptr)?;
+		if phys_ptr != get_default_page() {
+			Some(phys_ptr)
+		} else {
+			None
+		}
+	}
+
+	/// Tells whether the page at offset `offset` in the mapping is shared or not.
+	pub fn is_shared(&self, offset: usize) -> bool {
+		let _phys_ptr = self.get_physical_page(offset);
+		// TODO Use the physical memory references counter
+		false
+	}
+
+	/// Tells whether the page at offset `offset` is waiting for Copy-On-Write.
+	pub fn is_cow(&self, offset: usize) -> bool {
+		self.is_shared(offset) && self.flags & super::MAPPING_FLAG_SHARED == 0
+	}
+
+	/// Returns the flags for the virtual memory context for the given virtual page offset.
+	/// `allocated` tells whether the page has been physically allocated.
+	/// `offset` is the offset of the page in the mapping.
+	fn get_vmem_flags(&self, allocated: bool, offset: usize) -> u32 {
 		let mut flags = 0;
-		if (self.flags & super::MAPPING_FLAG_WRITE) != 0 && allocated && !self.is_forking() {
+		if (self.flags & super::MAPPING_FLAG_WRITE) != 0 && allocated && !self.is_cow(offset) {
 			flags |= vmem::x86::FLAG_WRITE;
 		}
 		if (self.flags & super::MAPPING_FLAG_USER) != 0 {
@@ -117,16 +158,17 @@ impl MemMapping {
 
 	/// Maps the mapping to the given virtual memory context with the default page. If the mapping
 	/// is marked as nolazy, the function allocates physical memory to be mapped.
-	pub fn map_default(&self, vmem: &mut Box::<dyn VMem>) -> Result<(), Errno> {
+	pub fn map_default(&mut self) -> Result<(), Errno> {
+		let vmem = self.get_mut_vmem();
 		let nolazy = (self.flags & super::MAPPING_FLAG_NOLAZY) != 0;
 		let default_page = get_default_page();
-		let flags = self.get_vmem_flags(nolazy);
 
 		for i in 0..self.size {
+			let flags = self.get_vmem_flags(nolazy, i);
 			let phys_ptr = if nolazy {
 				let ptr = buddy::alloc(0, buddy::FLAG_ZONE_TYPE_USER);
 				if let Err(errno) = ptr {
-					self.unmap(vmem);
+					self.unmap();
 					return Err(errno);
 				}
 				ptr.unwrap()
@@ -135,7 +177,7 @@ impl MemMapping {
 			};
 			let virt_ptr = ((self.begin as usize) + (i * memory::PAGE_SIZE)) as *const c_void;
 			if let Err(errno) = vmem.map(phys_ptr, virt_ptr, flags) {
-				self.unmap(vmem);
+				self.unmap();
 				return Err(errno);
 			}
 		}
@@ -144,55 +186,20 @@ impl MemMapping {
 		Ok(())
 	}
 
-	/// Returns a pointer to the physical page of memory associated with the mapping at page offset
-	/// `offset`. `vmem` is the virtual memory context associated with the mapping. If no page is
-	/// associated, the function returns None.
-	pub fn get_physical_page(&self, offset: usize, vmem: &mut Box::<dyn VMem>)
-		-> Option::<*const c_void> {
-		let virt_ptr = (self.begin as usize + offset * memory::PAGE_SIZE) as *const c_void;
-		let phys_ptr = vmem.translate(virt_ptr)?;
-		if phys_ptr != get_default_page() {
-			Some(phys_ptr)
-		} else {
-			None
-		}
-	}
-
-	/// Tells whether the mapping contains the given virtual address `ptr`.
-	pub fn contains_ptr(&self, ptr: *const c_void) -> bool {
-		ptr >= self.begin && ptr < (self.begin as usize + self.size * memory::PAGE_SIZE) as _
-	}
-
-	/// Returns a random mapping that shares the same physical page.
-	fn get_shared_adjacent(&self) -> &'static mut Self {
-		let next = self.shared_list.get_next();
-		let list_node = {
-			if let Some(next) = next {
-				next
-			} else {
-				self.shared_list.get_prev().unwrap()
-			}
-		};
-		let inner_offset = crate::offset_of!(Self, shared_list);
-		list_node.get_mut::<Self>(inner_offset)
-	}
-
 	// TODO Clean
-	// TODO Fix: allocating only one page results in troubles since mapping sharing is defined
-	// for several pages. Detaching them once one page is copied results in the other pages staying
-	// uninitialized
 	/// Maps the page at offset `offset` in the mapping to the given virtual memory context. The
 	/// function allocates the physical memory to be mapped.
 	/// If the mapping is in forking state, the function shall apply Copy-On-Write and allocate
 	/// a new physical page with the same data.
-	pub fn map(&mut self, offset: usize, vmem: &mut Box::<dyn VMem>) -> Result<(), Errno> {
+	pub fn map(&mut self, offset: usize) -> Result<(), Errno> {
+		let vmem = self.get_mut_vmem();
 		let tmp_stack = Box::<[u8; memory::PAGE_SIZE]>::new([0; TMP_STACK_SIZE])?;
 		let tmp_stack_top = unsafe {
 			(tmp_stack.as_ptr() as *mut c_void).add(TMP_STACK_SIZE)
 		};
 
 		let virt_ptr = (self.begin as usize + offset * memory::PAGE_SIZE) as *mut _;
-		let cow = self.is_forking();
+		let cow = self.is_cow(offset);
 		let cow_buffer = {
 			if cow {
 				let cow_buffer = Box::<[u8; memory::PAGE_SIZE]>::new([0; memory::PAGE_SIZE])?;
@@ -209,13 +216,13 @@ impl MemMapping {
 
 		let source_phys_ptr = {
 			if cow {
-				self.get_physical_page(offset, vmem)
+				self.get_physical_page(offset)
 			} else {
 				None
 			}
 		};
 
-		let flags = self.get_vmem_flags(true);
+		let flags = self.get_vmem_flags(true, offset);
 		if let Some(phys_ptr) = source_phys_ptr {
 			vmem.map(phys_ptr, virt_ptr, flags)?;
 		} else {
@@ -249,24 +256,23 @@ impl MemMapping {
 		}
 
 		if cow {
-			unsafe { // Call to unsafe function
-				self.shared_list.unlink_floating();
-			}
+			// TODO Decrement reference counter on old physical page
 		}
 
 		Ok(())
 	}
 
 	/// Unmaps the mapping from the given virtual memory context.
-	pub fn unmap(&self, vmem: &mut Box::<dyn VMem>) {
+	pub fn unmap(&self) {
 		// TODO
 
-		vmem.flush();
+		self.get_vmem().flush();
 	}
 
-	/// Updates the given virtual memory context `vmem` according to the mapping for the page at
-	/// offset `offset`.
-	pub fn update_vmem(&self, offset: usize, vmem: &mut Box::<dyn VMem>) {
+	/// Updates the virtual memory context according to the mapping for the page at offset
+	/// `offset`.
+	pub fn update_vmem(&mut self, offset: usize) {
+		let vmem = self.get_mut_vmem();
 		let virt_ptr = (self.begin as usize + offset * memory::PAGE_SIZE) as *const c_void;
 		let phys_ptr_result = vmem.translate(virt_ptr);
 		if phys_ptr_result.is_none() {
@@ -275,7 +281,7 @@ impl MemMapping {
 		let phys_ptr = phys_ptr_result.unwrap();
 
 		let allocated = phys_ptr != get_default_page();
-		let flags = self.get_vmem_flags(allocated);
+		let flags = self.get_vmem_flags(allocated, offset);
 		vmem.map(phys_ptr, virt_ptr, flags).unwrap();
 		vmem.flush();
 	}
@@ -291,13 +297,15 @@ impl MemMapping {
 			size: self.size,
 			flags: self.flags,
 
-			shared_list: ListNode::new_single(),
+			vmem: self.vmem,
 		};
 		container.insert(new_mapping)?;
 
-		let new_mapping = container.get(self.begin).unwrap();
-		new_mapping.shared_list.insert_after(&mut self.shared_list);
-		Ok(new_mapping)
+		for _i in 0..self.size {
+			// TODO Get physical pointer to each page and increment reference to it
+		}
+
+		Ok(container.get(self.begin).unwrap())
 	}
 }
 

@@ -115,7 +115,7 @@ pub unsafe fn write_lock_wrap<T: Fn()>(f: T) {
 // TODO Mark unsafe?
 /// Executes the given closure `f` while being bound to the given virtual memory context `vmem`.
 /// After execution, the function restores the previous context.
-pub fn vmem_switch<F: FnMut()>(vmem: &Box::<dyn VMem>, mut f: F) {
+pub fn vmem_switch<F: FnMut()>(vmem: &dyn VMem, mut f: F) {
 	if vmem.is_bound() {
 		f();
 	} else {

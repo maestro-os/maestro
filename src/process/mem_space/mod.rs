@@ -4,10 +4,12 @@
 
 mod gap;
 mod mapping;
+mod physical_ref_counter;
 
 use core::cmp::Ordering;
 use core::cmp::min;
 use core::ffi::c_void;
+use core::ptr::NonNull;
 use crate::errno::Errno;
 use crate::errno;
 use crate::memory::vmem::VMem;
@@ -155,18 +157,19 @@ impl MemSpace {
 			let gap = gap.unwrap();
 			let gap_ptr = gap.get_begin();
 
-			let mapping = MemMapping::new(gap_ptr, size, flags);
+			let mapping = MemMapping::new(gap_ptr, size, flags,
+				NonNull::new(self.vmem.as_mut_ptr()).unwrap());
 			let mapping_ptr = mapping.get_begin();
 			self.mappings.insert(mapping)?;
 
-			if self.mappings.get(mapping_ptr).unwrap().map_default(&mut self.vmem).is_err() {
+			if self.mappings.get(mapping_ptr).unwrap().map_default().is_err() {
 				self.mappings.remove(mapping_ptr);
 				return Err(errno::ENOMEM);
 			}
 
 			if let Some(new_gap) = gap.consume(size) {
 				if self.gap_insert(new_gap).is_err() {
-					self.mappings.get(mapping_ptr).unwrap().unmap(&mut self.vmem);
+					self.mappings.get(mapping_ptr).unwrap().unmap();
 					self.mappings.remove(mapping_ptr);
 					return Err(errno::ENOMEM);
 				}
@@ -240,15 +243,15 @@ impl MemSpace {
 			let new_mapping = m.fork(&mut mem_space.mappings)?;
 			for i in 0..new_mapping.get_size() {
 				if new_mapping.get_flags() & MAPPING_FLAG_NOLAZY == 0 {
-					new_mapping.update_vmem(i, &mut mem_space.vmem);
+					new_mapping.update_vmem(i);
 				} else {
-					new_mapping.map(i, &mut mem_space.vmem)?;
+					new_mapping.map(i)?;
 				}
 			}
 		}
 		for m in self.mappings.iter_mut() {
 			for i in 0..m.get_size() {
-				m.update_vmem(i, &mut self.vmem);
+				m.update_vmem(i);
 			}
 		}
 
@@ -270,10 +273,10 @@ impl MemSpace {
 
 		let mapping = Self::get_mapping_for(&mut self.mappings, virt_addr).unwrap();
 		let offset = (virt_addr as usize - mapping.get_begin() as usize) / memory::PAGE_SIZE;
-		if mapping.map(offset, &mut self.vmem).is_err() {
+		if mapping.map(offset).is_err() {
 			// TODO Use OOM-killer
 			// TODO Check if current process has been killed
-			if mapping.map(offset, &mut self.vmem).is_err() {
+			if mapping.map(offset).is_err() {
 				crate::kernel_panic!("OOM killer is unable to free up space for new allocation!");
 			}
 		}
@@ -285,9 +288,8 @@ impl MemSpace {
 impl Drop for MemSpace {
 	fn drop(&mut self) {
 		let mappings = &mut self.mappings;
-		let vmem = &mut self.vmem;
 		mappings.foreach(| m | {
-			m.unmap(vmem);
+			m.unmap();
 		}, binary_tree::TraversalType::PreOrder);
 	}
 }
