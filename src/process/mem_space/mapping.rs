@@ -132,9 +132,14 @@ impl MemMapping {
 
 	/// Tells whether the page at offset `offset` in the mapping is shared or not.
 	pub fn is_shared(&self, offset: usize) -> bool {
-		let _phys_ptr = self.get_physical_page(offset);
-		// TODO Use the physical memory references counter
-		false
+		if let Some(phys_ptr) = self.get_physical_page(offset) {
+			unsafe { // Safe because the global variable is wrapped into a Mutex
+				let ref_counter = super::PHYSICAL_REF_COUNTER.lock();
+				ref_counter.get().is_shared(phys_ptr)
+			}
+		} else {
+			false
+		}
 	}
 
 	/// Tells whether the page at offset `offset` is waiting for Copy-On-Write.
@@ -222,6 +227,9 @@ impl MemMapping {
 			}
 		};
 
+		// TODO Decrement old physical page if it exists
+		// TODO Increment the new page if it's already mapped
+
 		let flags = self.get_vmem_flags(true, offset);
 		if let Some(phys_ptr) = source_phys_ptr {
 			vmem.map(phys_ptr, virt_ptr, flags)?;
@@ -253,10 +261,6 @@ impl MemMapping {
 					virt_ptr: virt_ptr,
 					cow_buffer: cow_buffer,
 				})?;
-		}
-
-		if cow {
-			// TODO Decrement reference counter on old physical page
 		}
 
 		Ok(())
@@ -299,13 +303,19 @@ impl MemMapping {
 
 			vmem: self.vmem,
 		};
+
+		unsafe { // Safe because the global variable is wrapped into a Mutex
+			let mut ref_counter = super::PHYSICAL_REF_COUNTER.lock();
+			for i in 0..self.size {
+				if let Some(phys_ptr) = self.get_physical_page(i) {
+					// TODO On fail, cancel previous changes
+					ref_counter.get_mut().increment(phys_ptr)?;
+				}
+			}
+		};
+
 		container.insert(new_mapping)?;
-
-		for _i in 0..self.size {
-			// TODO Get physical pointer to each page and increment reference to it
-		}
-
-		Ok(container.get(self.begin).unwrap())
+		Ok(container.get_mut(self.begin).unwrap())
 	}
 }
 

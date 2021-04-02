@@ -384,7 +384,7 @@ pub struct BinaryTree<T: 'static> {
 
 impl<T: 'static + Ord> BinaryTree<T> {
 	/// Creates a new binary tree.
-	pub fn new() -> Self {
+	pub const fn new() -> Self {
 		Self {
 			root: None,
 		}
@@ -435,9 +435,30 @@ impl<T: 'static + Ord> BinaryTree<T> {
 		}
 	}
 
-	/// Searches for a node with the given value in the tree.
+	/// Searches for a node with the given value in the tree and returns a reference.
 	/// `val` is the value to find.
-	fn get_node<T_: 'static>(&mut self, val: T_) -> Option::<&mut BinaryTreeNode::<T>>
+	fn get_node<T_: 'static>(&self, val: T_) -> Option::<&BinaryTreeNode::<T>>
+		where T: PartialOrd<T_> {
+		let mut node = self.get_root();
+
+		while node.is_some() {
+			let n = node.unwrap();
+			let ord = n.value.partial_cmp(&val).unwrap().reverse();
+			if ord == Ordering::Less {
+				node = n.get_left();
+			} else if ord == Ordering::Greater {
+				node = n.get_right();
+			} else {
+				return Some(n);
+			}
+		}
+
+		None
+	}
+
+	/// Searches for a node with the given value in the tree and returns a mutable reference.
+	/// `val` is the value to find.
+	fn get_mut_node<T_: 'static>(&mut self, val: T_) -> Option::<&mut BinaryTreeNode::<T>>
 		where T: PartialOrd<T_> {
 		let mut node = self.get_root_mut();
 
@@ -456,10 +477,20 @@ impl<T: 'static + Ord> BinaryTree<T> {
 		None
 	}
 
-	/// Searches for the given value in the tree.
+	/// Searches for the given value in the tree and returns a reference.
 	/// `val` is the value to find.
-	pub fn get<T_: 'static>(&mut self, val: T_) -> Option::<&mut T> where T: PartialOrd<T_> {
+	pub fn get<T_: 'static>(&self, val: T_) -> Option::<&T> where T: PartialOrd<T_> {
 		if let Some(n) = self.get_node(val) {
+			Some(&n.value)
+		} else {
+			None
+		}
+	}
+
+	/// Searches for the given value in the tree and returns a mutable reference.
+	/// `val` is the value to find.
+	pub fn get_mut<T_: 'static>(&mut self, val: T_) -> Option::<&mut T> where T: PartialOrd<T_> {
+		if let Some(n) = self.get_mut_node(val) {
 			Some(&mut n.value)
 		} else {
 			None
@@ -638,7 +669,7 @@ impl<T: 'static + Ord> BinaryTree<T> {
 	/// node is removed.
 	/// `val` is the value to select the node to remove.
 	pub fn remove<T_: 'static>(&mut self, val: T_) where T: PartialOrd<T_> {
-		if let Some(node) = self.get_node(val) {
+		if let Some(node) = self.get_mut_node(val) {
 			let left = node.get_left_mut();
 			let right = node.get_right_mut();
 

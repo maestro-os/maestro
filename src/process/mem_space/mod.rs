@@ -20,9 +20,11 @@ use crate::util::boxed::Box;
 use crate::util::container::binary_tree::BinaryTree;
 use crate::util::container::binary_tree;
 use crate::util::list::List;
+use crate::util::lock::mutex::Mutex;
 use crate::util::math;
 use gap::MemGap;
 use mapping::MemMapping;
+use physical_ref_counter::PhysRefCounter;
 
 /// Flag telling that a memory mapping can be written to.
 pub const MAPPING_FLAG_WRITE: u8  = 0b00001;
@@ -39,6 +41,9 @@ pub const MAPPING_FLAG_SHARED: u8 = 0b10000;
 
 /// The number of buckets for available gaps in memory.
 const GAPS_BUCKETS_COUNT: usize = 8;
+
+/// The physical pages reference counter.
+pub static mut PHYSICAL_REF_COUNTER: Mutex::<PhysRefCounter> = Mutex::new(PhysRefCounter::new());
 
 /// Structure representing the virtual memory space of a context.
 pub struct MemSpace {
@@ -67,7 +72,7 @@ impl MemSpace {
 	fn gap_insert(&mut self, gap: MemGap) -> Result<(), Errno> {
 		let gap_ptr = gap.get_begin();
 		self.gaps.insert(gap)?;
-		let g = self.gaps.get(gap_ptr).unwrap();
+		let g = self.gaps.get_mut(gap_ptr).unwrap();
 
 		let bucket_index = Self::get_gap_bucket_index(g.get_size());
 		let bucket = &mut self.gaps_buckets[bucket_index];
@@ -78,7 +83,7 @@ impl MemSpace {
 
 	/// Removes the given gap from the memory space's structures.
 	fn gap_remove(&mut self, gap_begin: *const c_void) {
-		let g = self.gaps.get(gap_begin).unwrap();
+		let g = self.gaps.get_mut(gap_begin).unwrap();
 
 		let bucket_index = Self::get_gap_bucket_index(g.get_size());
 		let bucket = &mut self.gaps_buckets[bucket_index];
@@ -162,14 +167,14 @@ impl MemSpace {
 			let mapping_ptr = mapping.get_begin();
 			self.mappings.insert(mapping)?;
 
-			if self.mappings.get(mapping_ptr).unwrap().map_default().is_err() {
+			if self.mappings.get_mut(mapping_ptr).unwrap().map_default().is_err() {
 				self.mappings.remove(mapping_ptr);
 				return Err(errno::ENOMEM);
 			}
 
 			if let Some(new_gap) = gap.consume(size) {
 				if self.gap_insert(new_gap).is_err() {
-					self.mappings.get(mapping_ptr).unwrap().unmap();
+					self.mappings.get_mut(mapping_ptr).unwrap().unmap();
 					self.mappings.remove(mapping_ptr);
 					return Err(errno::ENOMEM);
 				}

@@ -61,17 +61,16 @@ pub struct PhysRefCounter {
 
 impl PhysRefCounter {
 	/// Creates a new instance.
-	pub fn new() -> Self {
+	pub const fn new() -> Self {
 		Self {
 			tree: BinaryTree::<PageRefCounter>::new(),
 		}
 	}
 
-	// TODO Switch self to immutable
 	/// Returns the number of references for the given page.
 	/// `ptr` is the physical address of the page.
 	/// If the page isn't stored into the structure, the function returns `0`.
-	pub fn get_ref_count(&mut self, ptr: *const c_void) -> usize {
+	pub fn get_ref_count(&self, ptr: *const c_void) -> usize {
 		let ptr = util::down_align(ptr, memory::PAGE_SIZE);
 		if let Some(counter) = self.tree.get(ptr) {
 			counter.references
@@ -80,10 +79,9 @@ impl PhysRefCounter {
 		}
 	}
 
-	// TODO Switch self to immutable
 	/// Tells whether the given page is shared.
 	/// `ptr` is the physical address of the page.
-	pub fn is_shared(&mut self, ptr: *const c_void) -> bool {
+	pub fn is_shared(&self, ptr: *const c_void) -> bool {
 		self.get_ref_count(ptr) > COUNT_THRESHOLD
 	}
 
@@ -91,7 +89,8 @@ impl PhysRefCounter {
 	/// structure, the function adds it.
 	/// `ptr` is the physical address of the page.
 	pub fn increment(&mut self, ptr: *const c_void) -> Result<(), Errno> {
-		if let Some(counter) = self.tree.get(ptr) {
+		let ptr = util::down_align(ptr, memory::PAGE_SIZE);
+		if let Some(counter) = self.tree.get_mut(ptr) {
 			counter.references += COUNT_THRESHOLD;
 			Ok(())
 		} else {
@@ -106,7 +105,8 @@ impl PhysRefCounter {
 	/// function removes the page from the structure.
 	/// `ptr` is the physical address of the page.
 	pub fn decrement(&mut self, ptr: *const c_void) {
-		if let Some(counter) = self.tree.get(ptr) {
+		let ptr = util::down_align(ptr, memory::PAGE_SIZE);
+		if let Some(counter) = self.tree.get_mut(ptr) {
 			counter.references -= 1;
 			if counter.references <= COUNT_THRESHOLD {
 				self.tree.remove(ptr);
