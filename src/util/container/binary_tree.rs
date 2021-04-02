@@ -10,6 +10,9 @@ use crate::memory::malloc;
 use crate::util::FailableClone;
 use crate::util;
 
+// TODO Fix: an element in a tree might be at the wrong place after being modified by mutable
+// reference
+
 /// The color of a binary tree node.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum NodeColor {

@@ -287,8 +287,7 @@ impl MemSpace {
 
 impl Drop for MemSpace {
 	fn drop(&mut self) {
-		let mappings = &mut self.mappings;
-		mappings.foreach(| m | {
+		self.mappings.foreach(| m | {
 			m.unmap();
 		}, binary_tree::TraversalType::PreOrder);
 	}
