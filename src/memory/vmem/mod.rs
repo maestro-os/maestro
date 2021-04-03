@@ -106,9 +106,7 @@ pub fn set_write_lock(lock: bool) {
 pub unsafe fn write_lock_wrap<T: Fn()>(f: T) {
 	let lock = is_write_lock();
 	set_write_lock(false);
-
 	f();
-
 	set_write_lock(lock);
 }
 
@@ -119,6 +117,11 @@ pub fn vmem_switch<F: FnMut()>(vmem: &dyn VMem, mut f: F) {
 	if vmem.is_bound() {
 		f();
 	} else {
+		debug_assert!(vmem.translate(unsafe {
+			use core::mem::transmute;
+			transmute::<unsafe extern "C" fn() -> *mut c_void, *const c_void>(x86::cr3_get)
+		}).is_some());
+
 		let cr3 = unsafe { // Call to ASM function
 			x86::cr3_get()
 		};

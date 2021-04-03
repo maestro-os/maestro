@@ -45,16 +45,18 @@ pub unsafe fn print_memory(ptr: *const c_void, n: usize) {
 /// function shall print `...` at the end. If the callstack is empty, the function just prints
 /// `Empty`.
 pub fn print_callstack(ebp: *const u32, max_depth: usize) {
+	let boot_info = multiboot::get_boot_info();
+
 	crate::println!("--- Callstack ---");
 
-	let boot_info = multiboot::get_boot_info();
 	let mut i: usize = 0;
 	let mut ebp_ = ebp;
 	while ebp_ != 0 as *const u32 && i < max_depth {
 		// TODO
-		/*if !memory::vmem::is_mapped(memory::kern_to_virt(memory::cr3_get()), ebp_) {
+		/*if !vmem.is_mapped(ebp_) {
 			break;
 		}*/
+
 		let eip = unsafe { // Dereference of raw pointer
 			*((ebp_ as usize + size_of::<usize>()) as *const u32) as *const c_void
 		};

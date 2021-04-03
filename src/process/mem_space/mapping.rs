@@ -191,7 +191,6 @@ impl MemMapping {
 		Ok(())
 	}
 
-	// TODO Clean
 	/// Maps the page at offset `offset` in the mapping to the given virtual memory context. The
 	/// function allocates the physical memory to be mapped.
 	/// If the mapping is in forking state, the function shall apply Copy-On-Write and allocate
@@ -219,26 +218,23 @@ impl MemMapping {
 			}
 		};
 
-		let source_phys_ptr = {
-			if cow {
-				self.get_physical_page(offset)
-			} else {
-				None
-			}
-		};
+		let curr_phys_ptr = self.get_physical_page(offset);
 
-		// TODO Decrement old physical page if it exists
-		// TODO Increment the new page if it's already mapped
+		if cow {
+			let phys_ptr = curr_phys_ptr.unwrap();
+			unsafe { // Safe because the global variable is wrapped into a Mutex
+				let mut ref_counter = super::PHYSICAL_REF_COUNTER.lock();
+				ref_counter.get_mut().decrement(phys_ptr);
+			}
+		} else if curr_phys_ptr.is_some() {
+			return Ok(());
+		}
 
 		let flags = self.get_vmem_flags(true, offset);
-		if let Some(phys_ptr) = source_phys_ptr {
-			vmem.map(phys_ptr, virt_ptr, flags)?;
-		} else {
-			let phys_ptr = buddy::alloc(0, buddy::FLAG_ZONE_TYPE_USER)?;
-			if let Err(errno) = vmem.map(phys_ptr, virt_ptr, flags) {
-				buddy::free(phys_ptr, 0);
-				return Err(errno);
-			}
+		let new_phys_ptr = buddy::alloc(0, buddy::FLAG_ZONE_TYPE_USER)?;
+		if let Err(errno) = vmem.map(new_phys_ptr, virt_ptr, flags) {
+			buddy::free(new_phys_ptr, 0);
+			return Err(errno);
 		}
 		vmem.flush();
 
@@ -269,6 +265,7 @@ impl MemMapping {
 	/// Unmaps the mapping from the given virtual memory context.
 	pub fn unmap(&self) {
 		// TODO
+		// TODO Remove the physical memory only if the page is not shared
 
 		self.get_vmem().flush();
 	}
@@ -304,12 +301,22 @@ impl MemMapping {
 			vmem: self.vmem,
 		};
 
+		// TODO Clean
 		unsafe { // Safe because the global variable is wrapped into a Mutex
-			let mut ref_counter = super::PHYSICAL_REF_COUNTER.lock();
+			let mut ref_counter_lock = super::PHYSICAL_REF_COUNTER.lock();
+			let ref_counter = ref_counter_lock.get_mut();
+
 			for i in 0..self.size {
 				if let Some(phys_ptr) = self.get_physical_page(i) {
-					// TODO On fail, cancel previous changes
-					ref_counter.get_mut().increment(phys_ptr)?;
+					if let Err(errno) = ref_counter.increment(phys_ptr) {
+						for j in 0..i {
+							if let Some(phys_ptr) = self.get_physical_page(j) {
+								ref_counter.decrement(phys_ptr);
+							}
+						}
+
+						return Err(errno);
+					}
 				}
 			}
 		};
