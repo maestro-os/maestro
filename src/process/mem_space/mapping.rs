@@ -40,16 +40,15 @@ fn get_default_page() -> *const c_void {
 	default_page.unwrap()
 }
 
-/// Structure storing data that will be passed to the temporary stack on mapping.
-pub struct StackSwitchData<'a> {
-	/// The virtual memory context handler.
-	vmem: &'a mut dyn VMem,
-	/// The mapping's flags.
-	flags: u32,
-	/// The page's virtual pointer.
-	virt_ptr: *mut c_void,
-	/// The COW buffer, storing the data to be copied to the new page.
-	cow_buffer: Option::<Box::<[u8; memory::PAGE_SIZE]>>,
+/// TODO doc
+struct StackSwitchData<'a> {
+	/// TODO doc
+	self_: &'a mut MemMapping,
+	/// TODO doc
+	offset: usize,
+
+	/// The result.
+	result: Result<(), Errno>,
 }
 
 /// A mapping in the memory space.
@@ -193,23 +192,15 @@ impl MemMapping {
 		Ok(())
 	}
 
-	/// Maps the page at offset `offset` in the mapping to the given virtual memory context. The
-	/// function allocates the physical memory to be mapped.
-	/// If the mapping is in forking state, the function shall apply Copy-On-Write and allocate
-	/// a new physical page with the same data.
-	pub fn map(&mut self, offset: usize) -> Result<(), Errno> {
+	/// TODO doc
+	fn do_map(&mut self, offset: usize) -> Result<(), Errno> {
 		let vmem = self.get_mut_vmem();
-		let tmp_stack = Box::<[u8; memory::PAGE_SIZE]>::new([0; TMP_STACK_SIZE])?;
-		let tmp_stack_top = unsafe {
-			(tmp_stack.as_ptr() as *mut c_void).add(TMP_STACK_SIZE)
-		};
-
 		let virt_ptr = (self.begin as usize + offset * memory::PAGE_SIZE) as *mut _;
 		let cow = self.is_cow(offset);
 		let cow_buffer = {
 			if cow {
 				let cow_buffer = Box::<[u8; memory::PAGE_SIZE]>::new([0; memory::PAGE_SIZE])?;
-				unsafe { // Call to unsafe function
+				unsafe {
 					ptr::copy_nonoverlapping(virt_ptr,
 						cow_buffer.as_ptr() as *mut c_void,
 						memory::PAGE_SIZE);
@@ -223,6 +214,7 @@ impl MemMapping {
 		let curr_phys_ptr = self.get_physical_page(offset);
 
 		if cow {
+			// TODO Move after remapping
 			let phys_ptr = curr_phys_ptr.unwrap();
 			unsafe { // Safe because the global variable is wrapped into a Mutex
 				let mut ref_counter = super::PHYSICAL_REF_COUNTER.lock();
@@ -234,35 +226,53 @@ impl MemMapping {
 
 		let flags = self.get_vmem_flags(true, offset);
 
+		let new_phys_ptr = buddy::alloc(0, buddy::FLAG_ZONE_TYPE_USER)?;
+		if let Err(errno) = vmem.map(new_phys_ptr, virt_ptr, flags) {
+			buddy::free(new_phys_ptr, 0);
+			return Err(errno);
+		}
+		vmem.flush();
+
+		vmem_switch(vmem, || {
+			if let Some(buffer) = &cow_buffer {
+				unsafe {
+					ptr::copy_nonoverlapping(buffer.as_ptr() as *const c_void,
+						virt_ptr as *mut c_void,
+						memory::PAGE_SIZE);
+				}
+			} else {
+				unsafe {
+					util::bzero(virt_ptr as _, memory::PAGE_SIZE);
+				}
+			}
+		});
+
+		Ok(())
+	}
+
+	/// Maps the page at offset `offset` in the mapping to the given virtual memory context. The
+	/// function allocates the physical memory to be mapped.
+	/// If the mapping is in forking state, the function shall apply Copy-On-Write and allocate
+	/// a new physical page with the same data.
+	pub fn map(&mut self, offset: usize) -> Result<(), Errno> {
+		let tmp_stack = Box::<[u8; memory::PAGE_SIZE]>::new([0; TMP_STACK_SIZE])?;
+		let tmp_stack_top = unsafe {
+			(tmp_stack.as_ptr() as *mut c_void).add(TMP_STACK_SIZE)
+		};
+
+		let f: fn(*mut c_void) -> () = | data: *mut c_void | {
+			let data = unsafe {
+				&mut *(data as *mut StackSwitchData)
+			};
+			data.result = data.self_.do_map(data.offset);
+		};
 		unsafe {
-			stack_switch(tmp_stack_top as _,
-				| data | {
-					let data = &mut *(data as *mut StackSwitchData);
+			stack_switch(tmp_stack_top as _, f as _, StackSwitchData {
+				self_: self,
+				offset: offset,
 
-					// TODO FIX
-					let new_phys_ptr = buddy::alloc(0, buddy::FLAG_ZONE_TYPE_USER).unwrap();
-					if let Err(_errno) = data.vmem.map(new_phys_ptr, data.virt_ptr, data.flags) {
-						buddy::free(new_phys_ptr, 0);
-						// TODO FIX
-						//return Err(errno);
-					}
-					data.vmem.flush();
-
-					vmem_switch(data.vmem, || {
-						if let Some(buffer) = &data.cow_buffer {
-							ptr::copy_nonoverlapping(buffer.as_ptr() as *const c_void,
-								data.virt_ptr as *mut c_void,
-								memory::PAGE_SIZE);
-						} else {
-							util::bzero(data.virt_ptr as _, memory::PAGE_SIZE);
-						}
-					});
-				} as _, StackSwitchData {
-					vmem: vmem,
-					flags: flags,
-					virt_ptr: virt_ptr,
-					cow_buffer: cow_buffer,
-				})?;
+				result: Ok(()),
+			})?;
 		}
 
 		Ok(())

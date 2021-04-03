@@ -175,7 +175,7 @@ endif
 iso: $(NAME).iso
 
 # The rule to compile the .iso file image, using grub as a bootloader
-$(NAME).iso: $(NAME)
+$(NAME).iso: $(NAME) grub.cfg
 	mkdir -p iso/boot/grub
 	cp $(NAME) iso/boot
 	cp grub.cfg iso/boot/grub
