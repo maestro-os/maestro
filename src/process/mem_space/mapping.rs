@@ -43,7 +43,9 @@ fn get_default_page() -> *const c_void {
 /// Structure storing data that will be passed to the temporary stack on mapping.
 pub struct StackSwitchData<'a> {
 	/// The virtual memory context handler.
-	vmem: &'a dyn VMem,
+	vmem: &'a mut dyn VMem,
+	/// The mapping's flags.
+	flags: u32,
 	/// The page's virtual pointer.
 	virt_ptr: *mut c_void,
 	/// The COW buffer, storing the data to be copied to the new page.
@@ -231,19 +233,22 @@ impl MemMapping {
 		}
 
 		let flags = self.get_vmem_flags(true, offset);
-		let new_phys_ptr = buddy::alloc(0, buddy::FLAG_ZONE_TYPE_USER)?;
-		if let Err(errno) = vmem.map(new_phys_ptr, virt_ptr, flags) {
-			buddy::free(new_phys_ptr, 0);
-			return Err(errno);
-		}
-		vmem.flush();
 
 		unsafe {
 			stack_switch(tmp_stack_top as _,
 				| data | {
-					let data = &*(data as *const StackSwitchData);
+					let data = &mut *(data as *mut StackSwitchData);
 
-					vmem_switch(data.vmem, move || {
+					// TODO FIX
+					let new_phys_ptr = buddy::alloc(0, buddy::FLAG_ZONE_TYPE_USER).unwrap();
+					if let Err(_errno) = data.vmem.map(new_phys_ptr, data.virt_ptr, data.flags) {
+						buddy::free(new_phys_ptr, 0);
+						// TODO FIX
+						//return Err(errno);
+					}
+					data.vmem.flush();
+
+					vmem_switch(data.vmem, || {
 						if let Some(buffer) = &data.cow_buffer {
 							ptr::copy_nonoverlapping(buffer.as_ptr() as *const c_void,
 								data.virt_ptr as *mut c_void,
@@ -254,6 +259,7 @@ impl MemMapping {
 					});
 				} as _, StackSwitchData {
 					vmem: vmem,
+					flags: flags,
 					virt_ptr: virt_ptr,
 					cow_buffer: cow_buffer,
 				})?;
