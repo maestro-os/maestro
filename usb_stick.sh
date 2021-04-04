@@ -11,7 +11,7 @@ media=/media/$label
 new_label=MAESTRO
 
 mkfs.vfat -F 32 -n $new_label -I $device &&
-	mkdir $media &&
+	mkdir -p $media &&
 	mount $device $media &&
 	grub-install --root-directory=$media --target=i386-pc --no-floppy --recheck --force $device &&
 	cp maestro $media/boot/ &&
