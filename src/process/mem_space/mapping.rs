@@ -6,7 +6,7 @@ use core::ptr::NonNull;
 use core::ptr;
 use crate::errno::Errno;
 use crate::memory::buddy;
-use crate::memory::stack::stack_switch;
+use crate::memory::stack;
 use crate::memory::vmem::VMem;
 use crate::memory::vmem::vmem_switch;
 use crate::memory::vmem;
@@ -192,7 +192,7 @@ impl MemMapping {
 		Ok(())
 	}
 
-	/// TODO doc
+	/// Function inner to the `map` function, performing the mapping using another stack.
 	fn do_map(&mut self, offset: usize) -> Result<(), Errno> {
 		let vmem = self.get_mut_vmem();
 		let virt_ptr = (self.begin as usize + offset * memory::PAGE_SIZE) as *mut _;
@@ -214,7 +214,6 @@ impl MemMapping {
 		let curr_phys_ptr = self.get_physical_page(offset);
 
 		if cow {
-			// TODO Move after remapping
 			let phys_ptr = curr_phys_ptr.unwrap();
 			unsafe { // Safe because the global variable is wrapped into a Mutex
 				let mut ref_counter = super::PHYSICAL_REF_COUNTER.lock();
@@ -267,7 +266,7 @@ impl MemMapping {
 			data.result = data.self_.do_map(data.offset);
 		};
 		unsafe {
-			stack_switch(tmp_stack_top as _, f as _, StackSwitchData {
+			stack::switch(tmp_stack_top as _, f as _, StackSwitchData {
 				self_: self,
 				offset: offset,
 

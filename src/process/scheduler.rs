@@ -9,10 +9,15 @@
 /// switching to the next process.
 
 use core::cmp::max;
+use core::ffi::c_void;
+use core::ptr::NonNull;
 use crate::errno::Errno;
 use crate::event::{InterruptCallback, InterruptResult, InterruptResultAction};
 use crate::event;
 use crate::gdt;
+use crate::memory::malloc;
+use crate::memory::stack;
+use crate::memory;
 use crate::process::Process;
 use crate::process::pid::Pid;
 use crate::process::tss;
@@ -23,6 +28,8 @@ use crate::util::math;
 use crate::util::ptr::SharedPtr;
 use crate::util;
 
+/// The size of the temporary stack for context switching.
+const TMP_STACK_SIZE: usize = memory::PAGE_SIZE;
 /// The number of quanta for the process with the average priority.
 const AVERAGE_PRIORITY_QUANTA: usize = 10;
 /// The number of quanta for the process with the maximum priority.
@@ -31,6 +38,12 @@ const MAX_PRIORITY_QUANTA: usize = 30;
 extern "C" {
 	fn context_switch(regs: &Regs, data_selector: u16, code_selector: u16) -> !;
 	fn context_switch_kernel(regs: &Regs) -> !;
+}
+
+/// The structure containing the context switching data.
+struct ContextSwitchData {
+	/// The registers for the context.
+	regs: util::Regs,
 }
 
 /// Scheduler ticking callback.
@@ -52,6 +65,9 @@ impl InterruptCallback for TickCallback {
 
 /// The structure representing the process scheduler.
 pub struct Scheduler {
+	/// A vector containing the temporary stacks for each CPU cores.
+	tmp_stacks: Vec::<NonNull::<c_void>>,
+
 	/// The ticking callback, called at a regular interval to make the scheduler work.
 	tick_callback: Option::<SharedPtr::<TickCallback>>,
 
@@ -71,8 +87,16 @@ pub struct Scheduler {
 
 impl Scheduler {
 	/// Creates a new instance of scheduler.
-	pub fn new() -> Result<SharedPtr::<Self>, Errno> {
+	pub fn new(cores_count: usize) -> Result<SharedPtr::<Self>, Errno> {
+		let mut tmp_stacks = Vec::new();
+		for _ in 0..cores_count {
+			// TODO Fix leaks
+			tmp_stacks.push(NonNull::new(malloc::alloc(TMP_STACK_SIZE)?).unwrap())?;
+		}
+
 		let mut s = SharedPtr::<Self>::new(Self {
+			tmp_stacks: tmp_stacks,
+
 			tick_callback: None,
 
 			processes: Vec::<SharedPtr::<Process>>::new(),
@@ -196,11 +220,23 @@ impl Scheduler {
 			let vmem = curr_proc.mem_space.get_vmem();
 			debug_assert!(vmem.translate(eip as _).is_some());
 
-			// TODO Handle syscalling
-			unsafe { // Call to ASM function
-				context_switch(&curr_proc.regs,
-					(gdt::USER_DATA_OFFSET | 3) as _,
-					(gdt::USER_CODE_OFFSET | 3) as _);
+			let core_id = 0; // TODO
+			let f = | data | {
+				let data = unsafe {
+					&mut *(data as *mut ContextSwitchData)
+				};
+
+				// TODO Handle syscalling
+				unsafe {
+					context_switch(&data.regs,
+						(gdt::USER_DATA_OFFSET | 3) as _,
+						(gdt::USER_CODE_OFFSET | 3) as _);
+				}
+			};
+			unsafe {
+				stack::switch(self.tmp_stacks[core_id].as_ptr(), f, ContextSwitchData {
+					regs: *regs,
+				}).unwrap();
 			}
 		}
 	}

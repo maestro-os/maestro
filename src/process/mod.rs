@@ -221,7 +221,7 @@ pub fn init() -> Result<(), Errno> {
 
 	unsafe { // Access to global variable
 		PID_MANAGER.write(PIDManager::new()?);
-		SCHEDULER.write(Scheduler::new()?);
+		SCHEDULER.write(Scheduler::new(1)?); // TODO Get cores count
 	}
 
 	// TODO Register for all errors that can be caused by a process
