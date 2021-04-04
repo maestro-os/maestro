@@ -254,8 +254,8 @@ impl Process {
 	/// `owner` is the ID of the process's owner.
 	/// `entry_point` is the pointer to the first instruction of the process.
 	/// `cwd` the path to the process's working directory.
-	pub fn new(parent: Option::<NonNull::<Process>>, owner: Uid, entry_point: *const c_void, cwd: Path)
-		-> Result::<SharedPtr::<Self>, Errno> {
+	pub fn new(parent: Option::<NonNull::<Process>>, owner: Uid, entry_point: *const c_void,
+		cwd: Path) -> Result::<SharedPtr::<Self>, Errno> {
 		// TODO Deadlock fix: requires both memory allocator and PID allocator
 		let pid = unsafe { // Access to global variable
 			PID_MANAGER.assume_init_mut()

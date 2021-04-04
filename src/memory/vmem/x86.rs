@@ -456,6 +456,11 @@ impl VMem for X86VMem {
 	}
 
 	fn bind(&self) {
+		debug_assert!(self.translate(unsafe {
+			use core::mem::transmute;
+			transmute::<unsafe extern "C" fn() -> *mut c_void, *const c_void>(cr3_get)
+		}).is_some());
+
 		unsafe { // Call to C function
 			paging_enable(memory::kern_to_phys(self.page_dir as _) as _);
 		}

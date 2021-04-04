@@ -110,18 +110,12 @@ pub unsafe fn write_lock_wrap<T: Fn()>(f: T) {
 	set_write_lock(lock);
 }
 
-// TODO Mark unsafe?
 /// Executes the given closure `f` while being bound to the given virtual memory context `vmem`.
 /// After execution, the function restores the previous context.
 pub fn vmem_switch<F: FnMut()>(vmem: &dyn VMem, mut f: F) {
 	if vmem.is_bound() {
 		f();
 	} else {
-		debug_assert!(vmem.translate(unsafe {
-			use core::mem::transmute;
-			transmute::<unsafe extern "C" fn() -> *mut c_void, *const c_void>(x86::cr3_get)
-		}).is_some());
-
 		let cr3 = unsafe { // Call to ASM function
 			x86::cr3_get()
 		};
