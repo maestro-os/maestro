@@ -24,7 +24,7 @@ error\n:
 	call get_regs
 
 	# Getting the ring
-	mov 12(%ebp), %eax
+	mov 8(%ebp), %eax
 	and $0b11, %eax
 
 	# Pushing arguments to call event_handler
@@ -66,7 +66,7 @@ error\n:
 	call get_regs
 
 	# Getting the ring
-	mov 12(%ebp), %eax
+	mov 8(%ebp), %eax
 	and $0b11, %eax
 
 	# Pushing arguments to call event_handler
@@ -102,7 +102,7 @@ irq\n:
 	call get_regs
 
 	# Getting the ring
-	mov 12(%ebp), %eax
+	mov 8(%ebp), %eax
 	and $0b11, %eax
 
 	# Pushing arguments to call event_handler
