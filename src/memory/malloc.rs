@@ -649,6 +649,15 @@ mod test {
 	}
 
 	#[test_case]
+	fn alloc_free3() {
+		let ptr = alloc(memory::PAGE_SIZE * 10).unwrap();
+		unsafe { // Call to C function
+			util::memset(ptr, -1, memory::PAGE_SIZE * 10);
+		}
+		free(ptr);
+	}
+
+	#[test_case]
 	fn alloc_free_fifo() {
 		let mut ptrs: [*mut c_void; 1024] = [0 as _; 1024];
 

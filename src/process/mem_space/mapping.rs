@@ -16,7 +16,7 @@ use crate::util::container::binary_tree::BinaryTree;
 use crate::util;
 
 /// The size of the temporary stack used for memory mapping initialization.
-const TMP_STACK_SIZE: usize = memory::PAGE_SIZE;
+const TMP_STACK_SIZE: usize = memory::PAGE_SIZE * 2;
 
 /// A pointer to the default physical page of memory. This page is meant to be mapped in read-only
 /// and is a placeholder for pages that are accessed without being allocated nor written.
@@ -255,7 +255,7 @@ impl MemMapping {
 	/// If the mapping is in forking state, the function shall apply Copy-On-Write and allocate
 	/// a new physical page with the same data.
 	pub fn map(&mut self, offset: usize) -> Result<(), Errno> {
-		let tmp_stack = Box::<[u8; memory::PAGE_SIZE]>::new([0; TMP_STACK_SIZE])?;
+		let tmp_stack = Box::<[u8; TMP_STACK_SIZE]>::new([0; TMP_STACK_SIZE])?;
 		let tmp_stack_top = unsafe {
 			(tmp_stack.as_ptr() as *mut c_void).add(TMP_STACK_SIZE)
 		};

@@ -1025,7 +1025,7 @@ mod test {
 
 	#[test_case]
 	fn binary_tree0() {
-		let mut b = BinaryTree::<i32>::new();
+		let b = BinaryTree::<i32>::new();
 		assert!(b.get(0).is_none());
 	}
 

@@ -141,7 +141,7 @@ mod test {
 	#[test_case]
 	fn vmem_basic0() {
 		let vmem = new().unwrap();
-		for i in 0..1024 {
+		for i in ((0 as usize)..(0xc0000000 as usize)).step_by(memory::PAGE_SIZE) {
 			assert_eq!(vmem.translate(i as _), None);
 		}
 	}
@@ -149,10 +149,64 @@ mod test {
 	#[test_case]
 	fn vmem_basic1() {
 		let vmem = new().unwrap();
-		for i in 0..1024 {
-			assert!(vmem.translate(((memory::PROCESS_END as usize) + i) as _) != None);
+		for i in (0..0x40000000).step_by(memory::PAGE_SIZE) {
+			let virt_ptr = ((memory::PROCESS_END as usize) + i) as _;
+			let result = vmem.translate(virt_ptr);
+			assert_ne!(result, None);
+			let phys_ptr = result.unwrap();
+			assert_eq!(phys_ptr, i as _);
 		}
 	}
+
+	#[test_case]
+	fn vmem_map0() {
+		let mut vmem = new().unwrap();
+		vmem.map(0x100000 as _, 0x100000 as _, 0).unwrap();
+
+		for i in ((0 as usize)..(0xc0000000 as usize)).step_by(memory::PAGE_SIZE) {
+			if i >= 0x100000 && i < 0x101000 {
+				let result = vmem.translate(i as _);
+				assert!(result.is_some());
+				assert_eq!(result.unwrap(), i as _);
+			} else {
+				assert_eq!(vmem.translate(i as _), None);
+			}
+		}
+	}
+
+	#[test_case]
+	fn vmem_map1() {
+		let mut vmem = new().unwrap();
+		vmem.map(0x100000 as _, 0x100000 as _, 0).unwrap();
+		vmem.map(0x200000 as _, 0x100000 as _, 0).unwrap();
+
+		for i in ((0 as usize)..(0xc0000000 as usize)).step_by(memory::PAGE_SIZE) {
+			if i >= 0x100000 && i < 0x101000 {
+				let result = vmem.translate(i as _);
+				assert!(result.is_some());
+				assert_eq!(result.unwrap(), (0x100000 + i) as _);
+			} else {
+				assert_eq!(vmem.translate(i as _), None);
+			}
+		}
+	}
+
+	// TODO More tests on map
+	// TODO Test on map_range
+
+	#[test_case]
+	fn vmem_unmap0() {
+		let mut vmem = new().unwrap();
+		vmem.map(0x100000 as _, 0x100000 as _, 0).unwrap();
+		vmem.unmap(0x100000 as _).unwrap();
+
+		for i in ((0 as usize)..(0xc0000000 as usize)).step_by(memory::PAGE_SIZE) {
+			assert_eq!(vmem.translate(i as _), None);
+		}
+	}
+
+	// TODO More tests on unmap
+	// TODO Test on unmap_range
 
 	// TODO Add more tests
 }

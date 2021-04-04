@@ -417,8 +417,9 @@ impl VMem for X86VMem {
 			table::expand(self.page_dir, dir_entry_index)?;
 		}
 
+		let table = (dir_entry_value & ADDR_MASK) as *mut u32;
 		let table_entry_index = Self::get_addr_element_index(virtaddr, 0);
-		obj_set(self.page_dir, table_entry_index, 0);
+		obj_set(table, table_entry_index, 0);
 
 		if table::is_empty(self.page_dir, dir_entry_index) {
 			table::delete(self.page_dir, dir_entry_index);
