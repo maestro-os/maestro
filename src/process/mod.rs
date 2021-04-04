@@ -139,6 +139,8 @@ pub struct Process {
 
 	/// The last saved registers state
 	regs: Regs,
+	/// Tells whether the process was syscalling or not.
+	syscalling: bool,
 	/// The virtual memory of the process containing every mappings.
 	mem_space: MemSpace,
 
@@ -171,7 +173,11 @@ impl InterruptCallback for ProcessFaultCallback {
 		true
 	}
 
-	fn call(&mut self, id: u32, code: u32, regs: &util::Regs) -> InterruptResult {
+	fn call(&mut self, id: u32, code: u32, regs: &util::Regs, ring: u32) -> InterruptResult {
+		if ring < 3 {
+			return InterruptResult::new(true, InterruptResultAction::Panic);
+		}
+
 		let scheduler = unsafe { // Access to global variable
 			SCHEDULER.assume_init_mut()
 		};
@@ -189,9 +195,6 @@ impl InterruptCallback for ProcessFaultCallback {
 					}
 				},
 				0x0e => {
-					if code & vmem::x86::PAGE_FAULT_USER == 0 {
-						return InterruptResult::new(true, InterruptResultAction::Panic);
-					}
 					let accessed_ptr = unsafe { // Call to ASM function
 						vmem::x86::cr2_get()
 					};
@@ -287,6 +290,7 @@ impl Process {
 				esi: 0x0,
 				edi: 0x0,
 			},
+			syscalling: false,
 			mem_space: mem_space,
 
 			user_stack: user_stack,
@@ -348,6 +352,11 @@ impl Process {
 	/// Sets the process's current working directory.
 	pub fn set_cwd(&mut self, path: Path) {
 		self.cwd = path;
+	}
+
+	/// Tells whether the process was syscalling before being interrupted.
+	pub fn is_syscalling(&self) -> bool {
+		self.syscalling
 	}
 
 	/// Returns an available file descriptor ID. If no ID is available, the function returns an
@@ -422,6 +431,7 @@ impl Process {
 			parent: NonNull::new(self as _),
 
 			regs: regs,
+			syscalling: self.syscalling,
 			mem_space: self.mem_space.fork()?,
 
 			user_stack: self.user_stack,

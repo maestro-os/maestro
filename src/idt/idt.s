@@ -19,15 +19,23 @@ error\n:
 	push %ebp
 	mov %esp, %ebp
 
+	# Allocating space for registers and retrieving them
 	sub $40, %esp
 	call get_regs
 
+	# Getting the ring
+	mov 12(%ebp), %eax
+	and $0b11, %eax
+
+	# Pushing arguments to call event_handler
+	push %eax
 	push %esp
 	push $0
 	push $\n
 	call event_handler
 	add $12, %esp
 
+	# Restoring registers and freeing the allocated stack space
 	call restore_regs
 	add $40, %esp
 
@@ -53,15 +61,23 @@ error\n:
 	push %ebp
 	mov %esp, %ebp
 
+	# Allocating space for registers and retrieving them
 	sub $40, %esp
 	call get_regs
 
+	# Getting the ring
+	mov 12(%ebp), %eax
+	and $0b11, %eax
+
+	# Pushing arguments to call event_handler
+	push %eax
 	push %esp
 	sub $4, %esp
 	push $\n
 	call event_handler
 	add $12, %esp
 
+	# Restoring registers and freeing the allocated stack space
 	call restore_regs
 	add $40, %esp
 
@@ -81,15 +97,23 @@ irq\n:
 	push %ebp
 	mov %esp, %ebp
 
+	# Allocating space for registers and retrieving them
 	sub $40, %esp
 	call get_regs
 
+	# Getting the ring
+	mov 12(%ebp), %eax
+	and $0b11, %eax
+
+	# Pushing arguments to call event_handler
+	push %eax
 	push %esp
 	push $0
 	push $(\n + 0x20)
 	call event_handler
 	add $12, %esp
 
+	# Restoring registers and freeing the allocated stack space
 	call restore_regs
 	add $40, %esp
 

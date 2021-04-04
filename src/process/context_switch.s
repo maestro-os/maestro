@@ -3,7 +3,7 @@
  */
 
 .global context_switch
-.global kernel_switch
+.global context_switch_kernel
 
 .extern end_of_interrupt
 

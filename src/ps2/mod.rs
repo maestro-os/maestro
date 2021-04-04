@@ -525,7 +525,7 @@ impl InterruptCallback for KeyboardCallback {
 		true
 	}
 
-	fn call(&mut self, _id: u32, _code: u32, _regs: &util::Regs) -> InterruptResult {
+	fn call(&mut self, _id: u32, _code: u32, _regs: &util::Regs, _ring: u32) -> InterruptResult {
 		while can_read() {
 			let (key, action) = read_keystroke();
 

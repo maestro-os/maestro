@@ -98,8 +98,9 @@ pub trait InterruptCallback {
 	/// `code` is an optional code associated with the interrupt. If no code is given, the value is
 	/// `0`.
 	/// `regs` the values of the registers when the interruption was triggered.
+	/// `ring` tells the ring at which the code was running.
 	/// If the function returns `false`, the kernel shall panic.
-	fn call(&mut self, id: u32, code: u32, regs: &util::Regs) -> InterruptResult;
+	fn call(&mut self, id: u32, code: u32, regs: &util::Regs, ring: u32) -> InterruptResult;
 }
 
 /// Structure wrapping a callback to insert it into a linked list.
@@ -179,8 +180,9 @@ pub fn register_callback<T: 'static + InterruptCallback>(id: usize, priority: u3
 /// `code` is an optional code associated with the interrupt. If the interrupt type doesn't have a
 /// code, the value is `0`.
 /// `regs` is the state of the registers at the moment of the interrupt.
+/// `ring` tells the ring at which the code was running.
 #[no_mangle]
-pub extern "C" fn event_handler(id: u32, code: u32, regs: &util::Regs) {
+pub extern "C" fn event_handler(id: u32, code: u32, regs: &util::Regs, ring: u32) {
 	let mutex = unsafe { // Access to global variable
 		CALLBACKS.assume_init_mut()
 	};
@@ -194,7 +196,7 @@ pub extern "C" fn event_handler(id: u32, code: u32, regs: &util::Regs) {
 
 		for i in 0..callbacks.len() {
 			if (*callbacks[i].callback).is_enabled() {
-				let result = (*callbacks[i].callback).call(id, code, regs);
+				let result = (*callbacks[i].callback).call(id, code, regs, ring);
 				last_action = result.action;
 				if result.skip_next {
 					break;

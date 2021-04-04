@@ -44,6 +44,8 @@ extern "C" {
 struct ContextSwitchData {
 	/// The registers for the context.
 	regs: util::Regs,
+	/// Tells whether the process should resume in kernelspace for the execution of the syscall.
+	syscalling: bool,
 }
 
 /// Scheduler ticking callback.
@@ -57,8 +59,8 @@ impl InterruptCallback for TickCallback {
 		true
 	}
 
-	fn call(&mut self, _id: u32, _code: u32, regs: &util::Regs) -> InterruptResult {
-		(*self.scheduler).tick(regs);
+	fn call(&mut self, _id: u32, _code: u32, regs: &util::Regs, ring: u32) -> InterruptResult {
+		(*self.scheduler).tick(regs, ring);
 		InterruptResult::new(false, InterruptResultAction::Resume)
 	}
 }
@@ -199,9 +201,12 @@ impl Scheduler {
 
 	/// Ticking the scheduler. This function saves the data of the currently running process, then
 	/// switches to the next process to run.
-	fn tick(&mut self, regs: &util::Regs) {
+	/// `regs` is the state of the registers from the paused context.
+	/// `ring` is the ring of the paused context.
+	fn tick(&mut self, regs: &util::Regs, ring: u32) {
 		if let Some(mut curr_proc) = self.get_current_process() {
 			curr_proc.regs = *regs;
+			curr_proc.syscalling = ring < 3;
 		}
 
 		if let Some(next_proc) = self.get_next_process() {
@@ -226,17 +231,25 @@ impl Scheduler {
 					&mut *(data as *mut ContextSwitchData)
 				};
 
-				// TODO Handle syscalling
-				unsafe {
-					context_switch(&data.regs,
-						(gdt::USER_DATA_OFFSET | 3) as _,
-						(gdt::USER_CODE_OFFSET | 3) as _);
+				if data.syscalling {
+					unsafe {
+						context_switch_kernel(&data.regs);
+					}
+				} else {
+					unsafe {
+						context_switch(&data.regs,
+							(gdt::USER_DATA_OFFSET | 3) as _,
+							(gdt::USER_CODE_OFFSET | 3) as _);
+					}
 				}
 			};
+
+			let ctx_switch_data = ContextSwitchData {
+				regs: curr_proc.regs,
+				syscalling: curr_proc.is_syscalling(),
+			};
 			unsafe {
-				stack::switch(self.tmp_stacks[core_id].as_ptr(), f, ContextSwitchData {
-					regs: *regs,
-				}).unwrap();
+				stack::switch(self.tmp_stacks[core_id].as_ptr(), f, ctx_switch_data).unwrap();
 			}
 		}
 	}
