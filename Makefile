@@ -166,9 +166,11 @@ tags: $(SRC) $(HDR) $(RUST_SRC)
 # The rule to compile the kernel image
 $(NAME): $(LIB_NAME) $(RUST_SRC) $(LINKER) Makefile
 	RUSTFLAGS="$(RUSTFLAGS)" $(CARGO) build $(CARGOFLAGS) --target $(TARGET)
-	cp `ls -1 target/target/debug/deps/maestro-* | head -n 1` $@
 ifeq ($(KERNEL_MODE), release)
+	cp target/target/release/maestro .
 	$(STRIP) $(NAME)
+else
+	cp `ls -1 target/target/debug/deps/maestro-* | head -n 1` $@
 endif
 
 # Alias for $(NAME).iso
