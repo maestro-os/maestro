@@ -182,7 +182,7 @@ pub fn register_callback<T: 'static + InterruptCallback>(id: usize, priority: u3
 /// `regs` is the state of the registers at the moment of the interrupt.
 /// `ring` tells the ring at which the code was running.
 #[no_mangle]
-pub extern "C" fn event_handler(id: u32, code: u32, regs: &util::Regs, ring: u32) {
+pub extern "C" fn event_handler(id: u32, code: u32, ring: u32, regs: &util::Regs) {
 	let mutex = unsafe { // Access to global variable
 		CALLBACKS.assume_init_mut()
 	};

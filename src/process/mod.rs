@@ -33,7 +33,7 @@ const USER_STACK_SIZE: usize = 2048;
 /// The flags for the userspace stack mapping.
 const USER_STACK_FLAGS: u8 = MAPPING_FLAG_WRITE | MAPPING_FLAG_USER;
 /// The size of the kernelspace stack of a process in number of pages.
-const KERNEL_STACK_SIZE: usize = 8;
+const KERNEL_STACK_SIZE: usize = 16;
 /// The flags for the kernelspace stack mapping.
 const KERNEL_STACK_FLAGS: u8 = MAPPING_FLAG_WRITE | MAPPING_FLAG_NOLAZY;
 

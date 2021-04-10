@@ -28,8 +28,8 @@ error\n:
 	and $0b11, %eax
 
 	# Pushing arguments to call event_handler
-	push %eax
 	push %esp
+	push %eax
 	push $0
 	push $\n
 	call event_handler
@@ -70,9 +70,9 @@ error\n:
 	and $0b11, %eax
 
 	# Pushing arguments to call event_handler
-	push %eax
 	push %esp
-	sub $4, %esp
+	push %eax
+	sub $4, %ebp
 	push $\n
 	call event_handler
 	add $12, %esp
