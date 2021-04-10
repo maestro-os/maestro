@@ -180,22 +180,23 @@ impl Scheduler {
 	/// Returns the next process to run.
 	fn get_next_process(&mut self) -> Option::<&mut SharedPtr::<Process>> {
 		if self.processes.is_empty() {
-			return None;
+			None
+		} else {
+			let processes_count = self.processes.len();
+			let mut i = self.cursor;
+			let mut j = 0;
+			while j < self.processes.len() && !self.can_run(&self.processes[i]) {
+				i = (i + 1) % processes_count;
+				j += 1;
+			}
+			if j == self.processes.len() {
+				Some(&mut self.processes[self.cursor])
+			} else {
+				self.cursor = i;
+				self.processes[i].quantum_count += 1;
+				Some(&mut self.processes[i])
+			}
 		}
-
-		let processes_count = self.processes.len();
-		let mut i = self.cursor;
-		let mut j = 0;
-		while j < self.processes.len() && !self.can_run(&self.processes[i]) {
-			i = (i + 1) % processes_count;
-			j += 1;
-		}
-		if j == self.processes.len() {
-			return None;
-		}
-
-		self.cursor = i;
-		Some(&mut self.processes[i])
 	}
 
 	/// Ticking the scheduler. This function saves the data of the currently running process, then
@@ -210,10 +211,7 @@ impl Scheduler {
 
 		if let Some(next_proc) = self.get_next_process() {
 			self.curr_proc = Some(next_proc.clone());
-
 			let curr_proc = self.curr_proc.as_mut().unwrap();
-			curr_proc.quantum_count += 1;
-
 			let tss = tss::get();
 			tss.ss0 = gdt::KERNEL_DATA_OFFSET as _;
 			tss.ss = gdt::USER_DATA_OFFSET as _;
@@ -250,9 +248,17 @@ impl Scheduler {
 			unsafe {
 				stack::switch(self.tmp_stacks[core_id].as_ptr(), f, ctx_switch_data).unwrap();
 			}
-		}
 
-		kernel_panic!("No process remaining to run!");
+			unsafe {
+				crate::kernel_loop();
+			}
+		} else {
+			// TODO Add a compilation option to choose
+			//kernel_panic!("No process remaining to run!");
+			unsafe {
+				crate::kernel_halt();
+			}
+		}
 	}
 }
 

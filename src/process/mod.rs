@@ -426,7 +426,7 @@ impl Process {
 			owner: self.owner,
 
 			priority: self.priority,
-			quantum_count: self.quantum_count,
+			quantum_count: 0,
 
 			parent: NonNull::new(self as _),
 
