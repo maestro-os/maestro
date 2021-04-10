@@ -106,8 +106,8 @@ irq\n:
 	and $0b11, %eax
 
 	# Pushing arguments to call event_handler
-	push %eax
 	push %esp
+	push %eax
 	push $0
 	push $(\n + 0x20)
 	call event_handler

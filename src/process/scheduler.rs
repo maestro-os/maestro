@@ -12,7 +12,7 @@ use core::cmp::max;
 use core::ffi::c_void;
 use core::ptr::NonNull;
 use crate::errno::Errno;
-use crate::event::{InterruptCallback, InterruptResult, InterruptResultAction};
+use crate::event::{InterruptCallback, InterruptResult};
 use crate::event;
 use crate::gdt;
 use crate::memory::malloc;
@@ -61,7 +61,6 @@ impl InterruptCallback for TickCallback {
 
 	fn call(&mut self, _id: u32, _code: u32, regs: &util::Regs, ring: u32) -> InterruptResult {
 		(*self.scheduler).tick(regs, ring);
-		InterruptResult::new(false, InterruptResultAction::Resume)
 	}
 }
 
@@ -203,7 +202,7 @@ impl Scheduler {
 	/// switches to the next process to run.
 	/// `regs` is the state of the registers from the paused context.
 	/// `ring` is the ring of the paused context.
-	fn tick(&mut self, regs: &util::Regs, ring: u32) {
+	fn tick(&mut self, regs: &util::Regs, ring: u32) -> ! {
 		if let Some(mut curr_proc) = self.get_current_process() {
 			curr_proc.regs = *regs;
 			curr_proc.syscalling = ring < 3;
@@ -252,6 +251,8 @@ impl Scheduler {
 				stack::switch(self.tmp_stacks[core_id].as_ptr(), f, ctx_switch_data).unwrap();
 			}
 		}
+
+		kernel_panic!("No process remaining to run!");
 	}
 }
 

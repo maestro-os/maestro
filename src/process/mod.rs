@@ -453,6 +453,7 @@ impl Process {
 	/// signal is executed.
 	pub fn kill(&mut self, _type: SignalType) {
 		// TODO
+		self.exit(1);
 	}
 
 	/// Exits the process with the given `status`. This function changes the process's status to
