@@ -12,6 +12,7 @@ use core::ffi::c_void;
 use core::ptr::NonNull;
 use crate::errno::Errno;
 use crate::errno;
+use crate::memory::stack;
 use crate::memory::vmem::VMem;
 use crate::memory::vmem;
 use crate::memory;
@@ -42,8 +43,21 @@ pub const MAPPING_FLAG_SHARED: u8 = 0b10000;
 /// The number of buckets for available gaps in memory.
 const GAPS_BUCKETS_COUNT: usize = 8;
 
+/// The size of the temporary stack used to fork a memory space.
+const TMP_STACK_SIZE: usize = memory::PAGE_SIZE * 8;
+
 /// The physical pages reference counter.
 pub static mut PHYSICAL_REF_COUNTER: Mutex::<PhysRefCounter> = Mutex::new(PhysRefCounter::new());
+
+/// Structure representing the data passed to the temporary stack used to fork a memory space.
+/// It is necessary to switch stacks because using a stack while mapping it is undefined.
+struct ForkData<'a> {
+	/// A reference to the memory space.
+	self_: &'a mut MemSpace,
+
+	/// The result of the mapping operation.
+	result: Result<MemSpace, Errno>,
+}
 
 /// Structure representing the virtual memory space of a context.
 pub struct MemSpace {
@@ -228,8 +242,8 @@ impl MemSpace {
 		self.vmem.bind();
 	}
 
-	/// Clones the current memory space for process forking.
-	pub fn fork(&mut self) -> Result<MemSpace, Errno> {
+	/// TODO doc
+	fn do_fork(&mut self) -> Result<MemSpace, Errno> {
 		let mut mem_space = Self {
 			gaps: BinaryTree::new(),
 			gaps_buckets: [crate::list_new!(MemGap, list); GAPS_BUCKETS_COUNT],
@@ -261,6 +275,29 @@ impl MemSpace {
 		}
 
 		Ok(mem_space)
+	}
+
+	/// Clones the current memory space for process forking.
+	pub fn fork(&mut self) -> Result<MemSpace, Errno> {
+		let tmp_stack = Box::<[u8; TMP_STACK_SIZE]>::new([0; TMP_STACK_SIZE])?;
+		let tmp_stack_top = unsafe {
+			(tmp_stack.as_ptr() as *mut c_void).add(TMP_STACK_SIZE)
+		};
+
+		let f: fn(*mut c_void) -> () = | data: *mut c_void | {
+			let data = unsafe {
+				&mut *(data as *mut ForkData)
+			};
+			data.result = data.self_.do_fork();
+		};
+
+		unsafe {
+			stack::switch(tmp_stack_top, f, ForkData {
+				self_: self,
+
+				result: Err(0),
+			})?.result
+		}
 	}
 
 	/// Function called whenever the CPU triggered a page fault for the context. This function

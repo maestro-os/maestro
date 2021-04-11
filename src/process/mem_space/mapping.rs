@@ -7,7 +7,6 @@ use core::ptr::NonNull;
 use core::ptr;
 use crate::errno::Errno;
 use crate::memory::buddy;
-use crate::memory::stack;
 use crate::memory::vmem::VMem;
 use crate::memory::vmem::vmem_switch;
 use crate::memory::vmem;
@@ -17,9 +16,6 @@ use crate::util::container::binary_tree::BinaryTree;
 use crate::util::lock::mutex::Mutex;
 use crate::util::lock::mutex::MutexGuard;
 use crate::util;
-
-/// The size of the temporary stack used for memory mapping initialization.
-const TMP_STACK_SIZE: usize = memory::PAGE_SIZE * 8;
 
 /// A pointer to the default physical page of memory. This page is meant to be mapped in read-only
 /// and is a placeholder for pages that are accessed without being allocated nor written.
@@ -43,18 +39,6 @@ fn get_default_page() -> *const c_void {
 	}
 
 	default_page.unwrap()
-}
-
-/// Structure representing the data passed to the temporary stack used to map the process's pages.
-/// It is necessary to switch stacks because using a stack while mapping it is undefined.
-struct StackSwitchData<'a> {
-	/// A reference to the memory mapping.
-	self_: &'a mut MemMapping,
-	/// The offset of the page in the mapping.
-	offset: usize,
-
-	/// The result of the mapping operation.
-	result: Result<(), Errno>,
 }
 
 /// A mapping in the memory space.
@@ -199,8 +183,12 @@ impl MemMapping {
 		Ok(())
 	}
 
-	/// Function inner to the `map` function, performing the mapping using another stack.
-	fn do_map(&mut self, offset: usize) -> Result<(), Errno> {
+	/// Maps the page at offset `offset` in the mapping to the given virtual memory context. The
+	/// function allocates the physical memory to be mapped.
+	/// If the mapping is in forking state, the function shall apply Copy-On-Write and allocate
+	/// a new physical page with the same data.
+	/// The memory space associated with the mapping must be bound before calling this function.
+	pub fn map(&mut self, offset: usize) -> Result<(), Errno> {
 		let vmem = self.get_mut_vmem();
 		let virt_ptr = (self.begin as usize + offset * memory::PAGE_SIZE) as *mut _;
 		let cow = self.is_cow(offset);
@@ -252,35 +240,6 @@ impl MemMapping {
 				}
 			}
 		});
-
-		Ok(())
-	}
-
-	/// Maps the page at offset `offset` in the mapping to the given virtual memory context. The
-	/// function allocates the physical memory to be mapped.
-	/// If the mapping is in forking state, the function shall apply Copy-On-Write and allocate
-	/// a new physical page with the same data.
-	pub fn map(&mut self, offset: usize) -> Result<(), Errno> {
-		let tmp_stack = Box::<[u8; TMP_STACK_SIZE]>::new([0; TMP_STACK_SIZE])?;
-		let tmp_stack_top = unsafe {
-			(tmp_stack.as_ptr() as *mut c_void).add(TMP_STACK_SIZE)
-		};
-
-		let f: fn(*mut c_void) -> () = | data: *mut c_void | {
-			let data = unsafe {
-				&mut *(data as *mut StackSwitchData)
-			};
-			data.result = data.self_.do_map(data.offset);
-		};
-		unsafe {
-			// TODO Fix: UB if `self` is a reference to an object on the stack
-			stack::switch(tmp_stack_top as _, f as _, StackSwitchData {
-				self_: self,
-				offset: offset,
-
-				result: Ok(()), // TODO Take this result into account for return
-			})?;
-		}
 
 		Ok(())
 	}
