@@ -189,7 +189,7 @@ impl MemSpace {
 	pub fn map_stack(&mut self, ptr: Option::<*const c_void>, size: usize, flags: u8)
 		-> Result<*const c_void, Errno> {
 		let mapping_ptr = self.map(ptr, size, flags)?;
-		Ok(unsafe { // Call to unsafe function
+		Ok(unsafe { // Safe because the new pointer stays in the range of the allocated mapping
 			mapping_ptr.add(size * memory::PAGE_SIZE)
 		})
 	}

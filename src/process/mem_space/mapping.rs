@@ -14,6 +14,8 @@ use crate::memory::vmem;
 use crate::memory;
 use crate::util::boxed::Box;
 use crate::util::container::binary_tree::BinaryTree;
+use crate::util::lock::mutex::Mutex;
+use crate::util::lock::mutex::MutexGuard;
 use crate::util;
 
 /// The size of the temporary stack used for memory mapping initialization.
@@ -21,13 +23,15 @@ const TMP_STACK_SIZE: usize = memory::PAGE_SIZE * 2;
 
 /// A pointer to the default physical page of memory. This page is meant to be mapped in read-only
 /// and is a placeholder for pages that are accessed without being allocated nor written.
-static mut DEFAULT_PAGE: Option::<*const c_void> = None;
+static mut DEFAULT_PAGE: Mutex::<Option::<*const c_void>> = Mutex::new(None);
 
 /// Returns a pointer to the default physical page.
 fn get_default_page() -> *const c_void {
-	let default_page = unsafe { // Access to global variable
+	let m = unsafe { // Safe because using a Mutex
 		&mut DEFAULT_PAGE
 	};
+	let mut guard = MutexGuard::new(m);
+	let default_page = guard.get_mut();
 
 	if default_page.is_none() {
 		let ptr = buddy::alloc(0, buddy::FLAG_ZONE_TYPE_KERNEL);
@@ -264,20 +268,21 @@ impl MemMapping {
 
 		let f: fn(*mut c_void) -> () = | data: *mut c_void | {
 			let data = unsafe {
-				&mut *(data as *mut &mut StackSwitchData)
+				&mut *(data as *mut StackSwitchData)
 			};
 			data.result = data.self_.do_map(data.offset);
 		};
-		let mut data = StackSwitchData {
-			self_: self,
-			offset: offset,
-
-			result: Ok(()), // TODO Take this result into account for return
-		};
 		unsafe {
-			stack::switch(tmp_stack_top as _, f as _, &mut data)?;
+			// TODO Fix: UB if `self` is a reference to an object on the stack
+			stack::switch(tmp_stack_top as _, f as _, StackSwitchData {
+				self_: self,
+				offset: offset,
+
+				result: Ok(()), // TODO Take this result into account for return
+			})?;
 		}
-		data.result
+
+		Ok(())
 	}
 
 	/// Unmaps the mapping from the given virtual memory context.

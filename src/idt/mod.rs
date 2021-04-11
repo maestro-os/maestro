@@ -1,7 +1,6 @@
 /// TODO doc
 
 pub mod pic;
-
 use core::ffi::c_void;
 use core::mem::MaybeUninit;
 use crate::util;
@@ -163,12 +162,13 @@ fn get_c_fn_ptr(f: unsafe extern "C" fn()) -> *const c_void {
 	}
 }
 
-/// Initializes the IDT.
+/// Initializes the IDT. This function must be called only once at kernel initialization.
 pub fn init() {
 	cli!();
 	pic::init(0x20, 0x28);
 
-	unsafe { // Access to global variable
+	// Access to global variable. Safe because the function is supposed to be called only once
+	unsafe {
 		let id = ID.assume_init_mut();
 
 		id[0x00] = create_id(get_c_fn_ptr(error0), 0x8, 0x8e);
@@ -226,9 +226,11 @@ pub fn init() {
 
 	let idt = InterruptDescriptorTable {
 		size: (core::mem::size_of::<InterruptDescriptor>() * ENTRIES_COUNT - 1) as u16,
-		offset: unsafe { &ID } as *const _ as u32,
+		offset: unsafe {
+			&ID
+		} as *const _ as u32,
 	};
-	unsafe { // Call to assembly function
+	unsafe {
 		idt_load(&idt as *const _ as *const _);
 	}
 }
@@ -237,7 +239,7 @@ pub fn init() {
 /// If interruptions were enabled before calling this function, they are enabled back before
 /// returning.
 pub fn wrap_disable_interrupts<F: Fn()>(f: F) {
-	let enabled = unsafe { // Call to assembly function
+	let enabled = unsafe {
 		interrupt_is_enabled()
 	};
 

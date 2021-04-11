@@ -3,8 +3,10 @@
 use core::ffi::c_void;
 use core::marker::Unsize;
 use core::mem::ManuallyDrop;
+use core::mem::MaybeUninit;
 use core::mem::size_of_val;
 use core::mem::transmute;
+use core::mem;
 use core::ops::CoerceUnsized;
 use core::ops::DispatchFromDyn;
 use core::ops::{Deref, DerefMut};
@@ -33,7 +35,7 @@ impl<T> Box<T> {
 			let ptr = unsafe { // Use of transmute
 				transmute::<*mut c_void, *mut T>(malloc::alloc(size)?)
 			};
-			unsafe { // Call to unsafe function
+			unsafe {
 				copy_nonoverlapping(value_ref as *const _ as *const u8, ptr as *mut u8, size);
 			}
 			NonNull::new(ptr).unwrap()
@@ -44,6 +46,17 @@ impl<T> Box<T> {
 		Ok(Self {
 			ptr: ptr,
 		})
+	}
+
+	/// Returns the value owned by the Box, taking its ownership.
+	pub fn take(self) -> T {
+		unsafe {
+			let mut t = MaybeUninit::<T>::uninit();
+			copy_nonoverlapping(self.ptr.as_ptr(), t.as_mut_ptr(), 1);
+			malloc::free(self.ptr.as_ptr() as _);
+			mem::forget(self);
+			t.assume_init()
+		}
 	}
 }
 
@@ -69,7 +82,7 @@ impl<T: ?Sized> Box<T> {
 
 impl<T: ?Sized> AsRef<T> for Box<T> {
 	fn as_ref(&self) -> &T {
-		unsafe { // Dereference of raw pointer
+		unsafe {
 			&*self.ptr.as_ptr()
 		}
 	}
@@ -77,7 +90,7 @@ impl<T: ?Sized> AsRef<T> for Box<T> {
 
 impl<T: ?Sized> AsMut<T> for Box<T> {
 	fn as_mut(&mut self) -> &mut T {
-		unsafe { // Dereference of raw pointer
+		unsafe {
 			&mut *self.ptr.as_ptr()
 		}
 	}
@@ -101,7 +114,7 @@ impl<T: ?Sized + Clone> Box<T> {
 	/// Clones the Box and its content. The type of the wrapped data must implement the Clone trait.
 	/// If the allocation fails, the function shall return an error.
 	fn failable_clone(&self) -> Result<Self, Errno> {
-		let obj = unsafe { // Dereference of raw pointer
+		let obj = unsafe {
 			&*self.ptr.as_ptr()
 		};
 		Box::new(obj.clone())
@@ -116,8 +129,8 @@ impl<T: ?Sized> Drop for Box<T> {
 	fn drop(&mut self) {
 		unsafe { // Call to unsafe function
 			drop_in_place(self.ptr.as_ptr());
+			malloc::free(self.ptr.as_ptr() as _);
 		}
-		malloc::free(self.ptr.as_ptr() as _);
 	}
 }
 
