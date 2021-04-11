@@ -185,6 +185,7 @@ impl Chunk {
 		if let Some(prev) = self.list.get_prev() {
 			let p = prev.get::<Chunk>(crate::offset_of!(Chunk, list));
 			debug_assert!(p as *const _ as *const c_void >= memory::PROCESS_END);
+			debug_assert_eq!(p.magic, CHUNK_MAGIC);
 			debug_assert!(p.get_size() >= get_min_chunk_size());
 
 			debug_assert!((p.get_const_ptr() as usize) + p.get_size()
@@ -194,6 +195,7 @@ impl Chunk {
 		if let Some(next) = self.list.get_next() {
 			let n = next.get::<Chunk>(crate::offset_of!(Chunk, list));
 			debug_assert!(n as *const _ as *const c_void >= memory::PROCESS_END);
+			debug_assert_eq!(n.magic, CHUNK_MAGIC);
 			debug_assert!(n.get_size() >= get_min_chunk_size());
 
 			debug_assert!((self.get_const_ptr() as usize) + self.get_size()

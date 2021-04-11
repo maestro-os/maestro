@@ -1,4 +1,5 @@
-/// TODO doc
+/// A memory mapping is a region of virtual memory that a process can access. It may be mapped
+/// at the process's creation or by the process itself using system calls.
 
 use core::cmp::Ordering;
 use core::ffi::c_void;
@@ -40,14 +41,15 @@ fn get_default_page() -> *const c_void {
 	default_page.unwrap()
 }
 
-/// TODO doc
+/// Structure representing the data passed to the temporary stack used to map the process's pages.
+/// It is necessary to switch stacks because using a stack while mapping it is undefined.
 struct StackSwitchData<'a> {
-	/// TODO doc
+	/// A reference to the memory mapping.
 	self_: &'a mut MemMapping,
-	/// TODO doc
+	/// The offset of the page in the mapping.
 	offset: usize,
 
-	/// The result.
+	/// The result of the mapping operation.
 	result: Result<(), Errno>,
 }
 
@@ -61,7 +63,7 @@ pub struct MemMapping {
 	flags: u8,
 
 	/// Pointer to the virtual memory context handler.
-	vmem: NonNull::<dyn VMem>,
+	vmem: NonNull::<dyn VMem>, // TODO Use a weak pointer
 }
 
 impl MemMapping {
@@ -122,8 +124,9 @@ impl MemMapping {
 	/// Returns a pointer to the physical page of memory associated with the mapping at page offset
 	/// `offset`. If no page is associated, the function returns None.
 	pub fn get_physical_page(&self, offset: usize) -> Option::<*const c_void> {
+		let vmem = self.get_vmem();
 		let virt_ptr = (self.begin as usize + offset * memory::PAGE_SIZE) as *const c_void;
-		let phys_ptr = self.get_vmem().translate(virt_ptr)?;
+		let phys_ptr = vmem.translate(virt_ptr)?;
 		if phys_ptr != get_default_page() {
 			Some(phys_ptr)
 		} else {
@@ -261,20 +264,20 @@ impl MemMapping {
 
 		let f: fn(*mut c_void) -> () = | data: *mut c_void | {
 			let data = unsafe {
-				&mut *(data as *mut StackSwitchData)
+				&mut *(data as *mut &mut StackSwitchData)
 			};
 			data.result = data.self_.do_map(data.offset);
 		};
+		let mut data = StackSwitchData {
+			self_: self,
+			offset: offset,
+
+			result: Ok(()), // TODO Take this result into account for return
+		};
 		unsafe {
-			stack::switch(tmp_stack_top as _, f as _, StackSwitchData {
-				self_: self,
-				offset: offset,
-
-				result: Ok(()),
-			})?;
+			stack::switch(tmp_stack_top as _, f as _, &mut data)?;
 		}
-
-		Ok(())
+		data.result
 	}
 
 	/// Unmaps the mapping from the given virtual memory context.
