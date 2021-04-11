@@ -584,16 +584,17 @@ impl FailableClone for X86VMem {
 				let dest_table_result = alloc_obj();
 
 				if let Ok(dest_table) = dest_table_result {
-					unsafe { // Call to C function
+					unsafe {
 						util::memcpy(dest_table as _, src_table as _, memory::PAGE_SIZE);
 					}
-					obj_set(self.page_dir, i, (memory::kern_to_phys(dest_table as _) as u32)
+					obj_set(v, i, (memory::kern_to_phys(dest_table as _) as u32)
 						| (src_dir_entry_value & FLAGS_MASK));
 				} else {
+					// TODO Free previously allocated tables and directory
 					return Err(dest_table_result.unwrap_err());
 				}
 			} else {
-				obj_set(self.page_dir, i, src_dir_entry_value);
+				obj_set(v, i, src_dir_entry_value);
 			}
 		}
 

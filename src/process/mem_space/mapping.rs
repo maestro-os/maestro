@@ -19,7 +19,7 @@ use crate::util::lock::mutex::MutexGuard;
 use crate::util;
 
 /// The size of the temporary stack used for memory mapping initialization.
-const TMP_STACK_SIZE: usize = memory::PAGE_SIZE * 2;
+const TMP_STACK_SIZE: usize = memory::PAGE_SIZE * 8;
 
 /// A pointer to the default physical page of memory. This page is meant to be mapped in read-only
 /// and is a placeholder for pages that are accessed without being allocated nor written.

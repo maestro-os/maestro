@@ -41,11 +41,9 @@ extern "C" {
 }
 
 /// The structure containing the context switching data.
-struct ContextSwitchData {
-	/// The registers for the context.
-	regs: util::Regs,
-	/// Tells whether the process should resume in kernelspace for the execution of the syscall.
-	syscalling: bool,
+struct ContextSwitchData<'a> {
+	///  The process to switch to.
+	proc: &'a mut Process,
 }
 
 /// Scheduler ticking callback.
@@ -211,16 +209,6 @@ impl Scheduler {
 
 		if let Some(next_proc) = self.get_next_process() {
 			self.curr_proc = Some(next_proc.clone());
-			let curr_proc = self.curr_proc.as_mut().unwrap();
-			let tss = tss::get();
-			tss.ss0 = gdt::KERNEL_DATA_OFFSET as _;
-			tss.ss = gdt::USER_DATA_OFFSET as _;
-			tss.esp0 = curr_proc.kernel_stack as _;
-			curr_proc.mem_space.bind();
-
-			let eip = curr_proc.regs.eip;
-			let vmem = curr_proc.mem_space.get_vmem();
-			debug_assert!(vmem.translate(eip as _).is_some());
 
 			let core_id = 0; // TODO
 			let f = | data | {
@@ -228,13 +216,23 @@ impl Scheduler {
 					&mut *(data as *mut ContextSwitchData)
 				};
 
-				if data.syscalling {
+				let tss = tss::get();
+				tss.ss0 = gdt::KERNEL_DATA_OFFSET as _;
+				tss.ss = gdt::USER_DATA_OFFSET as _;
+				tss.esp0 = data.proc.kernel_stack as _;
+				data.proc.mem_space.bind();
+
+				let eip = data.proc.regs.eip;
+				let vmem = data.proc.mem_space.get_vmem();
+				debug_assert!(vmem.translate(eip as _).is_some());
+
+				if data.proc.is_syscalling() {
 					unsafe {
-						context_switch_kernel(&data.regs);
+						context_switch_kernel(&data.proc.regs);
 					}
 				} else {
 					unsafe {
-						context_switch(&data.regs,
+						context_switch(&data.proc.regs,
 							(gdt::USER_DATA_OFFSET | 3) as _,
 							(gdt::USER_CODE_OFFSET | 3) as _);
 					}
@@ -242,8 +240,7 @@ impl Scheduler {
 			};
 
 			let ctx_switch_data = ContextSwitchData {
-				regs: curr_proc.regs,
-				syscalling: curr_proc.is_syscalling(),
+				proc: self.curr_proc.as_mut().unwrap(),
 			};
 			unsafe {
 				stack::switch(self.tmp_stacks[core_id].as_ptr(), f, ctx_switch_data).unwrap();
