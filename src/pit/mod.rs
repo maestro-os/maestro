@@ -4,6 +4,7 @@
 use crate::idt;
 use crate::io;
 use crate::util::lock::mutex::Mutex;
+use crate::util::lock::mutex::MutexGuard;
 use crate::util::math;
 
 /// The type representing the frequency of the PIT in Hertz.
@@ -62,7 +63,7 @@ static mut CURRENT_FREQUENCY: Mutex::<Frequency> = Mutex::new(0 as Frequency);
 /// This function disables interrupts.
 pub fn init() {
 	idt::wrap_disable_interrupts(|| {
-		unsafe { // Call to unsafe function
+		unsafe {
 			io::outb(PIT_COMMAND, SELECT_CHANNEL_0 | ACCESS_LOBYTE_HIBYTE | MODE_4);
 			io::outb(PIT_COMMAND, SELECT_CHANNEL_2 | ACCESS_LOBYTE_HIBYTE | MODE_4);
 		}
@@ -73,7 +74,7 @@ pub fn init() {
 /// This function disables interrupts.
 pub fn set_value(count: u16) {
 	idt::wrap_disable_interrupts(|| {
-		unsafe { // Call to unsafe function
+		unsafe {
 			io::outb(CHANNEL_0, (count & 0xff) as u8);
 			io::outb(CHANNEL_0, ((count >> 8) & 0xff) as u8);
 		}
@@ -83,15 +84,18 @@ pub fn set_value(count: u16) {
 /// Sets the current frequency of the PIT to `frequency` in hertz.
 /// This function disables interrupts.
 pub fn set_frequency(frequency: Frequency) {
-	unsafe { // Access to global variable
-		*CURRENT_FREQUENCY.lock().get_mut() = frequency;
-	}
+	let m = unsafe { // Safe because using a Mutex
+		&mut CURRENT_FREQUENCY
+	};
+	let mut guard = MutexGuard::new(m);
+	*guard.get_mut() = frequency;
 
 	let mut c = if frequency != 0 {
 		math::ceil_division(BASE_FREQUENCY, frequency)
 	} else {
 		0
 	};
+	c = c & 0xffff;
 	if c & !0xffff != 0 {
 		c = 0;
 	}

@@ -21,17 +21,17 @@ void print_nbr(unsigned nbr)
 // TODO doc?
 void test_process(void)
 {
-	/*for(size_t i = 0; i < 10; ++i) {
+	for(size_t i = 0; i < 10; ++i) {
 		write(0, "pid: ", 5);
 		print_nbr(getpid());
 		write(0, "\n", 1);
-	}*/
-	int pid = fork();
+	}
+	/*int pid = fork();
 	if(pid) {
 		// TODO
 	} else {
 		print_nbr(pid);
-	}
+	}*/
 
 	while(1)
 		;

@@ -110,14 +110,14 @@ impl<'a, T> MutexGuard<'a, T> {
 
 	/// Returns an immutable reference to the data owned by the associated Mutex.
 	pub fn get(&self) -> &T {
-		unsafe { // Call to unsafe function
+		unsafe {
 			self.mutex.get_payload()
 		}
 	}
 
 	/// Returns a mutable reference to the data owned by the associated Mutex.
 	pub fn get_mut(&mut self) -> &mut T {
-		unsafe { // Call to unsafe function
+		unsafe {
 			self.mutex.get_mut_payload()
 		}
 	}
@@ -126,7 +126,7 @@ impl<'a, T> MutexGuard<'a, T> {
 impl<'a, T> Drop for MutexGuard<'a, T> {
 	/// Called when the MutexGuard gets out of the scope of execution.
 	fn drop(&mut self) {
-		unsafe { // Call to unsafe function
+		unsafe {
 			self.mutex.unlock();
 		}
 	}

@@ -238,6 +238,83 @@ impl X86VMem {
 			});
 	}
 
+	/// Asserts that the map operation shall not result in a crash.
+	#[cfg(kernel_mode = "debug")]
+	fn check_map(&self, virt_ptr: *const c_void, phys_ptr: *const c_void, pse: bool) {
+		if !self.is_bound() {
+			return;
+		}
+
+		let esp = unsafe {
+			crate::register_get!("esp") as *const c_void
+		};
+		let aligned_stack_page = util::down_align(esp, memory::PAGE_SIZE);
+		let size = {
+			if pse {
+				1024
+			} else {
+				1
+			}
+		};
+		for i in 0..size {
+			let virt_ptr = unsafe {
+				virt_ptr.add(i * memory::PAGE_SIZE)
+			};
+			if virt_ptr != aligned_stack_page {
+				return;
+			}
+			assert_eq!(self.translate(aligned_stack_page), Some(phys_ptr));
+		}
+	}
+
+	/// Asserts that the unmap operation shall not result in a crash.
+	#[cfg(kernel_mode = "debug")]
+	fn check_unmap(&self, virt_ptr: *const c_void, pse: bool) {
+		if !self.is_bound() {
+			return;
+		}
+
+		let esp = unsafe {
+			crate::register_get!("esp") as *const c_void
+		};
+		let aligned_stack_page = util::down_align(esp, memory::PAGE_SIZE);
+		let size = {
+			if pse {
+				1024
+			} else {
+				1
+			}
+		};
+		for i in 0..size {
+			let virt_ptr = unsafe {
+				virt_ptr.add(i * memory::PAGE_SIZE)
+			};
+			if virt_ptr != aligned_stack_page {
+				return;
+			}
+			assert_ne!(virt_ptr, aligned_stack_page);
+		}
+	}
+
+	/// Asserts that the bind operation shall not result in a crash.
+	#[cfg(kernel_mode = "debug")]
+	fn check_bind(&self) {
+		if self.is_bound() {
+			return;
+		}
+
+		let esp = unsafe {
+			crate::register_get!("esp") as *const c_void
+		};
+		self.translate(esp).unwrap();
+		// TODO Check that the content of the physical page is the same as the current
+
+		for i in 0..262144 {
+			let ptr = (0xc0000000 + i * memory::PAGE_SIZE) as *const c_void;
+			self.translate(ptr).unwrap();
+		}
+	}
+
 	/// Initializes a new page directory. The kernel memory is mapped into the context by default.
 	pub fn new() -> Result<Self, Errno> {
 		let mut vmem = Self {
@@ -354,6 +431,9 @@ impl VMem for X86VMem {
 
 	fn map(&mut self, physaddr: *const c_void, virtaddr: *const c_void, flags: u32)
 		-> Result<(), Errno> {
+		#[cfg(kernel_mode = "debug")]
+		self.check_map(virtaddr, physaddr, false);
+
 		debug_assert!(util::is_aligned(physaddr, memory::PAGE_SIZE));
 		debug_assert!(util::is_aligned(virtaddr, memory::PAGE_SIZE));
 		debug_assert!(flags & ADDR_MASK == 0);
@@ -394,6 +474,9 @@ impl VMem for X86VMem {
 			let next_physaddr = ((physaddr as usize) + off) as *const c_void;
 			let next_virtaddr = ((virtaddr as usize) + off) as *const c_void;
 			if use_pse {
+				#[cfg(kernel_mode = "debug")]
+				self.check_map(next_virtaddr, next_physaddr, true);
+
 				self.map_pse(next_physaddr, next_virtaddr, flags);
 				i += 1024;
 			} else {
@@ -409,6 +492,9 @@ impl VMem for X86VMem {
 	}
 
 	fn unmap(&mut self, virtaddr: *const c_void) -> Result<(), Errno> {
+		#[cfg(kernel_mode = "debug")]
+		self.check_unmap(virtaddr, false);
+
 		let dir_entry_index = Self::get_addr_element_index(virtaddr, 1);
 		let dir_entry_value = obj_get(self.page_dir, dir_entry_index);
 		if dir_entry_value & FLAG_PRESENT == 0 {
@@ -441,6 +527,9 @@ impl VMem for X86VMem {
 			};
 			let next_virtaddr = ((virtaddr as usize) + off) as *const c_void;
 			if use_pse {
+				#[cfg(kernel_mode = "debug")]
+				self.check_unmap(next_virtaddr, true);
+
 				self.unmap_pse(next_virtaddr);
 				i += 1024;
 			} else {
@@ -456,13 +545,12 @@ impl VMem for X86VMem {
 	}
 
 	fn bind(&self) {
-		debug_assert!(self.translate(unsafe {
-			use core::mem::transmute;
-			transmute::<unsafe extern "C" fn() -> *mut c_void, *const c_void>(cr3_get)
-		}).is_some());
-
-		unsafe { // Call to C function
-			paging_enable(memory::kern_to_phys(self.page_dir as _) as _);
+		if !self.is_bound() {
+			#[cfg(kernel_mode = "debug")]
+			self.check_bind();
+			unsafe { // Call to C function
+				paging_enable(memory::kern_to_phys(self.page_dir as _) as _);
+			}
 		}
 	}
 
