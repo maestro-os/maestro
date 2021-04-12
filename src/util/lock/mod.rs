@@ -2,5 +2,4 @@
 /// example.
 
 pub mod mutex;
-pub mod semaphore;
 pub mod spinlock;

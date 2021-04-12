@@ -4,6 +4,7 @@
 pub mod mem_space;
 pub mod pid;
 pub mod scheduler;
+pub mod semaphore;
 pub mod tss;
 
 use core::ffi::c_void;
