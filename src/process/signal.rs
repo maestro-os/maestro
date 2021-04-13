@@ -1,5 +1,7 @@
 /// This module implements process signals.
 
+use crate::errno::Errno;
+use crate::errno;
 use super::Process;
 use super::State;
 
@@ -65,6 +67,9 @@ pub const SIGXFSZ: SignalType = 27;
 /// Window resize.
 pub const SIGWINCH: SignalType = 28;
 
+/// The number of different signal types.
+pub const SIGNALS_COUNT: usize = 29;
+
 /// Enumeration representing the action to perform for a signal.
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum SignalAction {
@@ -124,9 +129,13 @@ pub struct Signal {
 impl Signal {
 	/// Creates a new instance.
 	/// `type_` is the signal type.
-	pub fn new(type_: SignalType) -> Self {
-		Self {
-			type_: type_,
+	pub fn new(type_: SignalType) -> Result<Self, Errno> {
+		if (type_ as usize) < SIGNALS_COUNT {
+			Ok(Self {
+				type_: type_,
+			})
+		} else {
+			Err(errno::EINVAL)
 		}
 	}
 

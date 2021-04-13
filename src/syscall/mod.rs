@@ -8,6 +8,7 @@ mod close;
 mod fork;
 mod getpid;
 mod getppid;
+mod kill;
 mod open;
 mod read;
 mod unlink;
@@ -21,6 +22,7 @@ use crate::util;
 use fork::fork;
 use getpid::getpid;
 use getppid::getppid;
+use kill::kill;
 use open::open;
 use read::read;
 use unlink::unlink;
@@ -44,6 +46,7 @@ pub extern "C" fn syscall_handler(regs: &util::Regs) -> u32 {
 		8 => waitpid(regs),
 		9 => getpid(regs),
 		10 => getppid(regs),
+		11 => kill(regs),
 		_ => {
 			// TODO Kill process for invalid system call
 			loop {}

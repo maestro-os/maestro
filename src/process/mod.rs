@@ -128,7 +128,7 @@ impl InterruptCallback for ProcessFaultCallback {
 			return InterruptResult::new(true, InterruptResultAction::Panic);
 		}
 
-		let scheduler = unsafe { // Access to global variable
+		let scheduler = unsafe {
 			SCHEDULER.assume_init_mut()
 		};
 		if let Some(mut curr_proc) = scheduler.get_current_process() {
@@ -141,15 +141,15 @@ impl InterruptCallback for ProcessFaultCallback {
 					if inst_prefix == HLT_INSTRUCTION {
 						curr_proc.exit(regs.eax);
 					} else {
-						curr_proc.kill(signal::SIGSEGV);
+						curr_proc.kill(signal::SIGSEGV).unwrap();
 					}
 				},
 				0x0e => {
-					let accessed_ptr = unsafe { // Call to ASM function
+					let accessed_ptr = unsafe {
 						vmem::x86::cr2_get()
 					};
 					if !curr_proc.mem_space.handle_page_fault(accessed_ptr, code) {
-						curr_proc.kill(signal::SIGSEGV);
+						curr_proc.kill(signal::SIGSEGV).unwrap();
 					}
 				},
 				_ => {},
@@ -448,8 +448,11 @@ impl Process {
 	/// Kills the process with the given signal type `type`. This function enqueues a new signal
 	/// to be processed. If the process doesn't have a signal handler, the default action for the
 	/// signal is executed.
-	pub fn kill(&mut self, _type: SignalType) {
-		self.signals_queue.push(Signal::new(_type)).unwrap(); // TODO Use preallocated memory
+	pub fn kill(&mut self, _type: SignalType) -> Result<(), Errno> {
+		// TODO Use preallocated memory
+		let signal = Signal::new(_type)?;
+		self.signals_queue.push(signal)?;
+		Ok(())
 	}
 
 	/// Returns the signal handler for the signal type `type_`.
