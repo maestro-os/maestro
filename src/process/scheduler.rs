@@ -173,7 +173,7 @@ impl Scheduler {
 
 	/// Tells whether the given process can be run.
 	fn can_run(&self, process: &Process) -> bool {
-		if process.get_current_state() != process::State::Running {
+		if process.get_state() != process::State::Running {
 			return false;
 		}
 

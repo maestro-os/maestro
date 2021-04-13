@@ -1,4 +1,7 @@
-/// This module implements signals.
+/// This module implements process signals.
+
+use super::Process;
+use super::State;
 
 /// Type representing the type of a signal.
 pub type SignalType = u8;
@@ -63,6 +66,7 @@ pub const SIGXFSZ: SignalType = 27;
 pub const SIGWINCH: SignalType = 28;
 
 /// Enumeration representing the action to perform for a signal.
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum SignalAction {
 	/// Abnormal termination of the process.
 	Terminate,
@@ -76,7 +80,8 @@ pub enum SignalAction {
 	Continue,
 }
 
-static ERROR_MESSAGES: &'static [SignalAction] = &[
+/// Array containing the default actions for each signal.
+static DEFAULT_ACTIONS: &'static [SignalAction] = &[
 	SignalAction::Abort, // SIGABRT
 	SignalAction::Terminate, // SIGALRM
 	SignalAction::Abort, // SIGBUS
@@ -134,4 +139,51 @@ impl Signal {
 	pub fn can_catch(&self) -> bool {
 		self.type_ != SIGKILL && self.type_ != SIGSTOP
 	}
+
+	/// Executes the action associated with the signal for process `process`.
+	pub fn execute_action(&self, process: &mut Process) {
+		let process_state = process.get_state();
+		if process_state == State::Zombie {
+			return;
+		}
+
+		if let Some(_handler) = process.get_signal_handler(self.type_) {
+			// TODO Execute handler
+		} else {
+			let default_action = DEFAULT_ACTIONS[self.type_ as usize];
+			let exit_code = (128 + self.type_) as u32;
+
+			match default_action {
+				SignalAction::Terminate => {
+					process.exit(exit_code);
+				},
+
+				SignalAction::Abort => {
+					process.exit(exit_code);
+				},
+
+				SignalAction::Ignore => {},
+
+				SignalAction::Stop => {
+					// TODO Handle semaphores
+					if process_state == State::Running {
+						process.set_state(State::Sleeping);
+					}
+				},
+
+				SignalAction::Continue => {
+					// TODO Handle semaphores
+					if process_state == State::Sleeping {
+						process.set_state(State::Running);
+					}
+				},
+			}
+		}
+	}
+}
+
+/// Structure representing a signal handler.
+#[derive(Clone, Copy)]
+pub struct SignalHandler {
+	// TODO
 }

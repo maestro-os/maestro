@@ -30,6 +30,7 @@ use pid::PIDManager;
 use pid::Pid;
 use scheduler::Scheduler;
 use signal::Signal;
+use signal::SignalHandler;
 use signal::SignalType;
 
 /// The size of the userspace stack of a process in number of pages.
@@ -101,6 +102,9 @@ pub struct Process {
 
 	/// The FIFO containing awaiting signals.
 	signals_queue: Vec::<Signal>, // TODO Use a dedicated FIFO structure
+	/// The list of signal handlers.
+	signal_handlers: [Option<SignalHandler>; 28],
+
 	/// The exit status of the process after exiting.
 	exit_status: ExitStatus,
 }
@@ -151,7 +155,7 @@ impl InterruptCallback for ProcessFaultCallback {
 				_ => {},
 			}
 
-			if curr_proc.get_current_state() == State::Running {
+			if curr_proc.get_state() == State::Running {
 				InterruptResult::new(false, InterruptResultAction::Resume)
 			} else {
 				// TODO Avoid skipping others while ensuring the process won't resume?
@@ -247,6 +251,8 @@ impl Process {
 			file_descriptors: Vec::new(),
 
 			signals_queue: Vec::new(),
+			signal_handlers: [None; 28],
+
 			exit_status: 0,
 		};
 
@@ -272,8 +278,13 @@ impl Process {
 	}
 
 	/// Returns the process's current state.
-	pub fn get_current_state(&self) -> State {
+	pub fn get_state(&self) -> State {
 		self.state
+	}
+
+	/// Sets the process's state to `new_state`.
+	pub fn set_state(&mut self, new_state: State) {
+		self.state = new_state;
 	}
 
 	/// Returns the process's owner ID.
@@ -423,6 +434,8 @@ impl Process {
 			file_descriptors: self.file_descriptors.failable_clone()?,
 
 			signals_queue: Vec::new(),
+			signal_handlers: self.signal_handlers,
+
 			exit_status: self.exit_status,
 		};
 		self.add_child(pid)?;
@@ -436,8 +449,12 @@ impl Process {
 	/// to be processed. If the process doesn't have a signal handler, the default action for the
 	/// signal is executed.
 	pub fn kill(&mut self, _type: SignalType) {
-		// TODO
-		self.exit(1);
+		self.signals_queue.push(Signal::new(_type)).unwrap(); // TODO Use preallocated memory
+	}
+
+	/// Returns the signal handler for the signal type `type_`.
+	pub fn get_signal_handler(&self, type_: SignalType) -> Option<SignalHandler> {
+		self.signal_handlers[type_ as usize]
 	}
 
 	/// Exits the process with the given `status`. This function changes the process's status to
