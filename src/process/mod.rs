@@ -5,6 +5,7 @@ pub mod mem_space;
 pub mod pid;
 pub mod scheduler;
 pub mod semaphore;
+pub mod signal;
 pub mod tss;
 
 use core::ffi::c_void;
@@ -28,6 +29,8 @@ use mem_space::{MAPPING_FLAG_WRITE, MAPPING_FLAG_USER, MAPPING_FLAG_NOLAZY};
 use pid::PIDManager;
 use pid::Pid;
 use scheduler::Scheduler;
+use signal::Signal;
+use signal::SignalType;
 
 /// The size of the userspace stack of a process in number of pages.
 const USER_STACK_SIZE: usize = 2048;
@@ -37,68 +40,6 @@ const USER_STACK_FLAGS: u8 = MAPPING_FLAG_WRITE | MAPPING_FLAG_USER;
 const KERNEL_STACK_SIZE: usize = 64;
 /// The flags for the kernelspace stack mapping.
 const KERNEL_STACK_FLAGS: u8 = MAPPING_FLAG_WRITE | MAPPING_FLAG_NOLAZY;
-
-/// Type representing the type of a signal.
-pub type SignalType = u8;
-
-/// Process abort.
-pub const SIGABRT: SignalType = 0;
-/// Alarm clock.
-pub const SIGALRM: SignalType = 1;
-/// Access to an undefined portion of a memory object.
-pub const SIGBUS: SignalType = 2;
-/// Child process terminated.
-pub const SIGCHLD: SignalType = 3;
-/// Continue executing.
-pub const SIGCONT: SignalType = 4;
-/// Erroneous arithmetic operation.
-pub const SIGFPE: SignalType = 5;
-/// Hangup.
-pub const SIGHUP: SignalType = 6;
-/// Illigal instruction.
-pub const SIGILL: SignalType = 7;
-/// Terminal interrupt.
-pub const SIGINT: SignalType = 8;
-/// Kill.
-pub const SIGKILL: SignalType = 9;
-/// Write on a pipe with no one to read it.
-pub const SIGPIPE: SignalType = 10;
-/// Terminal quit.
-pub const SIGQUIT: SignalType = 11;
-/// Invalid memory reference.
-pub const SIGSEGV: SignalType = 12;
-/// Stop executing.
-pub const SIGSTOP: SignalType = 13;
-/// Termination.
-pub const SIGTERM: SignalType = 14;
-/// Terminal stop.
-pub const SIGTSTP: SignalType = 15;
-/// Background process attempting read.
-pub const SIGTTIN: SignalType = 16;
-/// Background process attempting write.
-pub const SIGTTOU: SignalType = 17;
-/// User-defined signal 1.
-pub const SIGUSR1: SignalType = 18;
-/// User-defined signal 2.
-pub const SIGUSR2: SignalType = 19;
-/// Pollable event.
-pub const SIGPOLL: SignalType = 20;
-/// Profiling timer expired.
-pub const SIGPROF: SignalType = 21;
-/// Bad system call.
-pub const SIGSYS: SignalType = 22;
-/// Trace/breakpoint trap.
-pub const SIGTRAP: SignalType = 23;
-/// High bandwidth data is available at a socket.
-pub const SIGURG: SignalType = 24;
-/// Virtual timer expired.
-pub const SIGVTALRM: SignalType = 25;
-/// CPU time limit exceeded.
-pub const SIGXCPU: SignalType = 26;
-/// File size limit exceeded.
-pub const SIGXFSZ: SignalType = 27;
-/// Window resize.
-pub const SIGWINCH: SignalType = 28;
 
 /// The opcode of the `hlt` instruction.
 const HLT_INSTRUCTION: u8 = 0xf4;
@@ -118,6 +59,8 @@ pub enum State {
 
 /// Type representing a User ID.
 type Uid = u16;
+/// Type representing an exit status.
+type ExitStatus = u8;
 
 /// The Process Control Block (PCB).
 /// TODO doc
@@ -155,9 +98,10 @@ pub struct Process {
 	/// The list of open file descriptors.
 	file_descriptors: Vec::<FileDescriptor>,
 
-	// TODO Signals list
+	/// The FIFO containing awaiting signals.
+	signals_queue: Vec::<Signal>, // TODO Use a dedicated FIFO structure
 	/// The exit status of the process after exiting.
-	exit_status: u8,
+	exit_status: ExitStatus,
 }
 
 // TODO Use mutexes. Take into account sharing with interrupts
@@ -192,7 +136,7 @@ impl InterruptCallback for ProcessFaultCallback {
 					if inst_prefix == HLT_INSTRUCTION {
 						curr_proc.exit(regs.eax);
 					} else {
-						curr_proc.kill(SIGSEGV);
+						curr_proc.kill(signal::SIGSEGV);
 					}
 				},
 				0x0e => {
@@ -200,7 +144,7 @@ impl InterruptCallback for ProcessFaultCallback {
 						vmem::x86::cr2_get()
 					};
 					if !curr_proc.mem_space.handle_page_fault(accessed_ptr, code) {
-						curr_proc.kill(SIGSEGV);
+						curr_proc.kill(signal::SIGSEGV);
 					}
 				},
 				_ => {},
@@ -300,6 +244,7 @@ impl Process {
 			cwd: cwd,
 			file_descriptors: Vec::new(),
 
+			signals_queue: Vec::new(),
 			exit_status: 0,
 		};
 
@@ -410,6 +355,15 @@ impl Process {
 		}
 	}
 
+	/// Returns the exit code if the process has ended.
+	pub fn get_exit_code(&self) -> Option<ExitStatus> {
+		if self.state == State::Zombie {
+			Some(self.exit_status)
+		} else {
+			None
+		}
+	}
+
 	/// Forks the current process. Duplicating everything for it to be identical, except the PID,
 	/// the parent process and children processes. On fail, the function returns an Err with the
 	/// appropriate Errno.
@@ -441,8 +395,11 @@ impl Process {
 			cwd: self.cwd.failable_clone()?,
 			file_descriptors: self.file_descriptors.failable_clone()?,
 
+			signals_queue: Vec::new(),
 			exit_status: self.exit_status,
 		};
+
+		// TODO Add to parent's children list
 
 		unsafe { // Access to global variable
 			SCHEDULER.assume_init_mut()
@@ -460,7 +417,7 @@ impl Process {
 	/// Exits the process with the given `status`. This function changes the process's status to
 	/// `Zombie`.
 	pub fn exit(&mut self, status: u32) {
-		self.exit_status = (status & 0xff) as u8;
+		self.exit_status = (status & 0xff) as ExitStatus;
 		self.state = State::Zombie;
 	}
 }
