@@ -79,7 +79,8 @@ pub struct Process {
 
 	/// A pointer to the parent process.
 	parent: Option::<NonNull::<Process>>, // TODO Use a weak pointer
-	// TODO Children list
+	/// The list of children processes.
+	children: Vec::<Pid>,
 
 	/// The last saved registers state
 	regs: Regs,
@@ -184,14 +185,14 @@ impl Process {
 	/// Returns the process with PID `pid`. If the process doesn't exist, the function returns
 	/// None.
 	pub fn get_by_pid(pid: Pid) -> Option::<SharedPtr::<Self>> {
-		unsafe { // Access to global variable
+		unsafe {
 			SCHEDULER.assume_init_mut()
 		}.get_by_pid(pid)
 	}
 
 	/// Returns the current running process. If no process is running, the function returns None.
 	pub fn get_current() -> Option::<SharedPtr::<Self>> {
-		unsafe { // Access to global variable
+		unsafe {
 			SCHEDULER.assume_init_mut()
 		}.get_current_process()
 	}
@@ -205,7 +206,7 @@ impl Process {
 	pub fn new(parent: Option::<NonNull::<Process>>, owner: Uid, entry_point: *const c_void,
 		cwd: Path) -> Result::<SharedPtr::<Self>, Errno> {
 		// TODO Deadlock fix: requires both memory allocator and PID allocator
-		let pid = unsafe { // Access to global variable
+		let pid = unsafe {
 			PID_MANAGER.assume_init_mut()
 		}.get_unique_pid()?;
 		let mut mem_space = MemSpace::new()?;
@@ -222,6 +223,7 @@ impl Process {
 			quantum_count: 0,
 
 			parent: parent,
+			children: Vec::new(),
 
 			regs: Regs {
 				ebp: 0x0,
@@ -248,7 +250,7 @@ impl Process {
 			exit_status: 0,
 		};
 
-		unsafe { // Access to global variable
+		unsafe {
 			SCHEDULER.assume_init_mut()
 		}.add_process(process)
 	}
@@ -288,6 +290,30 @@ impl Process {
 	/// Returns the process's parent if exists.
 	pub fn get_parent(&self) -> Option::<NonNull::<Process>> {
 		self.parent
+	}
+
+	/// Returns a reference to the list of the process's children.
+	pub fn get_children(&self) -> &Vec<Pid> {
+		&self.children
+	}
+
+	/// Adds the process with the given PID `pid` as child to the process.
+	pub fn add_child(&mut self, pid: Pid) -> Result<(), Errno> {
+		let r = self.children.binary_search(&pid);
+		let i = if let Ok(i) = r {
+			i
+		} else {
+			r.unwrap_err()
+		};
+		self.children.insert(i, pid)
+	}
+
+	/// Removes the process with the given PID `pid` as child to the process.
+	pub fn remove_child(&mut self, pid: Pid) {
+		let r = self.children.binary_search(&pid);
+		if let Ok(i) = r {
+			self.children.remove(i);
+		}
 	}
 
 	/// Returns a reference to the process's current working directory.
@@ -369,7 +395,7 @@ impl Process {
 	/// appropriate Errno.
 	pub fn fork(&mut self) -> Result::<SharedPtr::<Self>, Errno> {
 		// TODO Mutex
-		let pid = unsafe { // Access to global variable
+		let pid = unsafe {
 			PID_MANAGER.assume_init_mut()
 		}.get_unique_pid()?;
 		let mut regs = self.regs;
@@ -384,6 +410,7 @@ impl Process {
 			quantum_count: 0,
 
 			parent: NonNull::new(self as _),
+			children: Vec::new(),
 
 			regs: regs,
 			syscalling: self.syscalling,
@@ -398,10 +425,9 @@ impl Process {
 			signals_queue: Vec::new(),
 			exit_status: self.exit_status,
 		};
+		self.add_child(pid)?;
 
-		// TODO Add to parent's children list
-
-		unsafe { // Access to global variable
+		unsafe {
 			SCHEDULER.assume_init_mut()
 		}.add_process(process)
 	}
@@ -419,5 +445,20 @@ impl Process {
 	pub fn exit(&mut self, status: u32) {
 		self.exit_status = (status & 0xff) as ExitStatus;
 		self.state = State::Zombie;
+	}
+}
+
+impl Drop for Process {
+	fn drop(&mut self) {
+		if let Some(mut parent) = self.get_parent() {
+			unsafe {
+				parent.as_mut()
+			}.remove_child(self.pid);
+		}
+
+		// TODO Mutex
+		unsafe {
+			PID_MANAGER.assume_init_mut()
+		}.release_pid(self.pid);
 	}
 }

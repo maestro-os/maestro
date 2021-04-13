@@ -113,8 +113,14 @@ impl Scheduler {
 	}
 
 	/// Returns the process with PID `pid`. If the process doesn't exist, the function returns None.
-	pub fn get_by_pid(&mut self, _pid: Pid) -> Option::<SharedPtr::<Process>> {
-		// TODO
+	pub fn get_by_pid(&mut self, pid: Pid) -> Option::<SharedPtr::<Process>> {
+		// TODO Optimize
+		for i in 0..self.processes.len() {
+			let proc = &mut self.processes[i];
+			if proc.get_pid() == pid {
+				return Some(proc.clone());
+			}
+		}
 		None
 	}
 

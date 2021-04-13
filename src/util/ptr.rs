@@ -53,7 +53,7 @@ impl<T> SharedPtr<T> {
 	/// Creates a new shared pointer for the given value `value`.
 	pub fn new(value: T) -> Result<SharedPtr::<T>, Errno> {
 		let ptr = malloc::alloc(size_of::<SharedPtrInner::<T>>())? as *mut SharedPtrInner<T>;
-		unsafe { // Call to unsafe function
+		unsafe {
 			write_ptr(ptr, SharedPtrInner::new(value));
 		}
 
@@ -66,9 +66,9 @@ impl<T> SharedPtr<T> {
 impl<T: ?Sized> SharedPtr<T> {
 	/// Clones the shared pointer, sharing the ownership.
 	pub fn clone(&mut self) -> Self {
-		unsafe { // Call to unsafe function
-			self.ptr.as_mut().count += 1;
-		}
+		unsafe {
+			self.ptr.as_mut()
+		}.count += 1;
 
 		SharedPtr {
 			ptr: self.ptr,
@@ -78,7 +78,7 @@ impl<T: ?Sized> SharedPtr<T> {
 
 impl<T: ?Sized> AsRef<T> for SharedPtr<T> {
 	fn as_ref(&self) -> &T {
-		unsafe { // Dereference of raw pointer
+		unsafe {
 			&(*self.ptr.as_ptr()).obj
 		}
 	}
@@ -86,7 +86,7 @@ impl<T: ?Sized> AsRef<T> for SharedPtr<T> {
 
 impl<T: ?Sized> AsMut<T> for SharedPtr<T> {
 	fn as_mut(&mut self) -> &mut T {
-		unsafe { // Dereference of raw pointer
+		unsafe {
 			&mut (*self.ptr.as_ptr()).obj
 		}
 	}
@@ -112,7 +112,7 @@ impl<T: ?Sized + Unsize<U>, U: ?Sized> DispatchFromDyn<SharedPtr<U>> for SharedP
 
 impl<T: ?Sized> Drop for SharedPtr<T> {
 	fn drop(&mut self) {
-		unsafe { // Call to unsafe functions
+		unsafe {
 			(*self.ptr.as_mut()).count -= 1;
 			if self.ptr.as_ref().must_drop() {
 				drop_in_place(self.ptr.as_ptr());
