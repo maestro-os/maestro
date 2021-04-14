@@ -9,6 +9,7 @@ use crate::util::container::bitfield::Bitfield;
 /// Type representing a Process ID. This ID is unique for every running processes.
 pub type Pid = u16;
 
+// TODO Exclude `0` from PIDs
 /// The maximum possible PID.
 const MAX_PID: Pid = 32768; // TODO Move somewhere else?
 

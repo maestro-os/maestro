@@ -6,11 +6,13 @@ mod _exit;
 mod chroot;
 mod close;
 mod fork;
+mod getpgid;
 mod getpid;
 mod getppid;
 mod kill;
 mod open;
 mod read;
+mod setpgid;
 mod unlink;
 mod waitpid;
 mod write;
@@ -20,11 +22,13 @@ use chroot::chroot;
 use close::close;
 use crate::util;
 use fork::fork;
+use getpgid::getpgid;
 use getpid::getpid;
 use getppid::getppid;
 use kill::kill;
 use open::open;
 use read::read;
+use setpgid::setpgid;
 use unlink::unlink;
 use waitpid::waitpid;
 use write::write;
@@ -46,7 +50,11 @@ pub extern "C" fn syscall_handler(regs: &util::Regs) -> u32 {
 		8 => waitpid(regs),
 		9 => getpid(regs),
 		10 => getppid(regs),
-		11 => kill(regs),
+		11 => getpgid(regs),
+		12 => setpgid(regs),
+		13 => kill(regs),
+		// TODO signal
+
 		_ => {
 			// TODO Kill process for invalid system call
 			loop {}

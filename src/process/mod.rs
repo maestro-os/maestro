@@ -68,6 +68,9 @@ type ExitStatus = u8;
 pub struct Process {
 	/// The ID of the process.
 	pid: Pid,
+	/// The ID of the process group.
+	pgid: Pid,
+
 	/// The current state of the process.
 	state: State,
 	/// The ID of the process's owner.
@@ -82,6 +85,8 @@ pub struct Process {
 	parent: Option::<NonNull::<Process>>, // TODO Use a weak pointer
 	/// The list of children processes.
 	children: Vec::<Pid>,
+	/// The list of processes in the process group.
+	process_group: Vec::<Pid>,
 
 	/// The last saved registers state
 	regs: Regs,
@@ -103,7 +108,7 @@ pub struct Process {
 	/// The FIFO containing awaiting signals.
 	signals_queue: Vec::<Signal>, // TODO Use a dedicated FIFO structure
 	/// The list of signal handlers.
-	signal_handlers: [Option<SignalHandler>; 28],
+	signal_handlers: [Option<SignalHandler>; signal::SIGNALS_COUNT],
 
 	/// The exit status of the process after exiting.
 	exit_status: ExitStatus,
@@ -220,6 +225,8 @@ impl Process {
 
 		let process = Self {
 			pid: pid,
+			pgid: pid,
+
 			state: State::Running,
 			owner: owner,
 
@@ -228,6 +235,7 @@ impl Process {
 
 			parent: parent,
 			children: Vec::new(),
+			process_group: Vec::new(),
 
 			regs: Regs {
 				ebp: 0x0,
@@ -251,7 +259,7 @@ impl Process {
 			file_descriptors: Vec::new(),
 
 			signals_queue: Vec::new(),
-			signal_handlers: [None; 28],
+			signal_handlers: [None; signal::SIGNALS_COUNT],
 
 			exit_status: 0,
 		};
@@ -264,6 +272,46 @@ impl Process {
 	/// Returns the process's PID.
 	pub fn get_pid(&self) -> Pid {
 		self.pid
+	}
+
+	/// Returns the process's group ID.
+	pub fn get_pgid(&self) -> Pid {
+		self.pgid
+	}
+
+	/// Tells whether the process is among a group and is not its owner.
+	pub fn is_in_group(&self) -> bool {
+		self.pgid != 0 && self.pgid != self.pid
+	}
+
+	/// Sets the process's group ID to the given value `pgid`.
+	pub fn set_pgid(&mut self, pgid: Pid) -> Result<(), Errno> {
+		if self.is_in_group() {
+			let mut old_group_process = Process::get_by_pid(self.pgid).unwrap();
+			let i = old_group_process.process_group.binary_search(&self.pid).unwrap();
+			old_group_process.process_group.remove(i);
+		}
+
+		self.pgid = {
+			if pgid == 0 {
+				self.pid
+			} else {
+				pgid
+			}
+		};
+
+		if pgid != self.pid {
+			if let Some(mut new_group_process) = Process::get_by_pid(pgid) {
+				let i = new_group_process.process_group.binary_search(&self.pid).unwrap_err();
+				// TODO Beware of memory shortage
+				new_group_process.process_group.insert(i, self.pid).unwrap();
+				Ok(())
+			} else {
+				Err(errno::ESRCH)
+			}
+		} else {
+			Ok(())
+		}
 	}
 
 	/// Returns the parent process's PID.
@@ -414,6 +462,8 @@ impl Process {
 
 		let process = Self {
 			pid: pid,
+			pgid: self.pgid,
+
 			state: self.state,
 			owner: self.owner,
 
@@ -422,6 +472,7 @@ impl Process {
 
 			parent: NonNull::new(self as _),
 			children: Vec::new(),
+			process_group: Vec::new(),
 
 			regs: regs,
 			syscalling: self.syscalling,
