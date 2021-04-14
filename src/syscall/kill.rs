@@ -7,30 +7,44 @@ use crate::process::State;
 use crate::process::pid::Pid;
 use crate::util;
 
+/// Tries to kill the process with PID `pid` with the signal `sig`.
+fn try_kill(pid: i32, sig: u8) -> Result<(), Errno> {
+	if let Some(mut proc) = Process::get_by_pid(pid as Pid) {
+		if proc.get_state() != State::Zombie {
+			proc.kill(sig)
+		} else {
+			Err(errno::ESRCH)
+		}
+	} else {
+		Err(errno::ESRCH)
+	}
+}
+
 /// TODO doc
 fn handle_kill(pid: i32, sig: u8) -> Result<(), Errno> {
 	// TODO Handle sig == 0
 	// TODO Handle when killing current process
 
 	if pid > 0 {
-		if let Some(mut proc) = Process::get_by_pid(pid as Pid) {
-			if proc.get_state() != State::Zombie {
-				proc.kill(sig)
-			} else {
-				Err(errno::ESRCH)
-			}
-		} else {
-			Err(errno::ESRCH)
-		}
+		try_kill(pid, sig)
 	} else if pid == 0 {
-		// TODO Send to every processes in the process group
-		Err(errno::ESRCH)
+		let mut curr_proc = Process::get_current().unwrap();
+		for p in curr_proc.get_group_processes() {
+			try_kill(*p as _, sig).unwrap();
+		}
+		curr_proc.kill(sig)
 	} else if pid == -1 {
 		// TODO Send to every processes that the process has permission to send a signal to
 		Err(errno::ESRCH)
 	} else {
-		// TODO Send to process group id `-pid`
-		Err(errno::ESRCH)
+		if let Some(mut curr_proc) = Process::get_by_pid(-pid as _) {
+			for p in curr_proc.get_group_processes() {
+				try_kill(*p as _, sig).unwrap();
+			}
+			curr_proc.kill(sig)
+		} else {
+			Err(errno::ESRCH)
+		}
 	}
 }
 

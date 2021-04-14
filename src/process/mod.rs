@@ -314,6 +314,11 @@ impl Process {
 		}
 	}
 
+	/// Returns a reference to the list of PIDs of processes in the current process's group.
+	pub fn get_group_processes(&self) -> &Vec<Pid> {
+		&self.process_group
+	}
+
 	/// Returns the parent process's PID.
 	pub fn get_parent_pid(&self) -> Pid {
 		if let Some(mut parent) = self.parent {
