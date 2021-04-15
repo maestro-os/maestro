@@ -32,6 +32,10 @@ const STATUS_B_REGISTER: u8 = 0x0b;
 
 /// Bit of status register A, tells whether the time is being updated.
 const UPDATE_FLAG: u8 = 1 << 7;
+/// Bit of status register B, tells whether the 24 hour format is set.
+const FORMAT_24_FLAG: u8 = 1 << 1;
+/// Bit of status register B, tells whether binary mode is set.
+const FORMAT_BCD_FLAG: u8 = 1 << 2;
 
 /// The ID of the register used to store the Floopy Drive type.
 const FLOPPY_DRIVE_REGISTER: u8 = 0x10;
@@ -134,7 +138,6 @@ fn leap_years_between(y0: u32, y1: u32) -> u32 {
 fn get_days_since_epoch(year: u32, month: u32, day: u32) -> u32 {
 	let year_days = (year - 1970) * 365 + leap_years_between(year, 1970);
 	let month_days = (((month + 1) / 2) * 31) + ((month / 2) * 30);
-	println!("d: {} /", month_days + day);
 	year_days + month_days + day
 }
 
@@ -161,8 +164,7 @@ pub fn get_time(century_register: bool) -> Timestamp {
 		} as u32;
 
 		let status_b = read(STATUS_B_REGISTER);
-		// TODO Place flag `0x04` in constant
-		if status_b & 0x04 == 0 {
+		if status_b & FORMAT_BCD_FLAG == 0 {
 			second = (second & 0x0f) + ((second / 16) * 10);
         	minute = (minute & 0x0f) + ((minute / 16) * 10);
         	hour = ((hour & 0x0f) + (((hour & 0x70) / 16) * 10)) | (hour & 0x80);
@@ -174,8 +176,7 @@ pub fn get_time(century_register: bool) -> Timestamp {
         	}
 		}
 
-		// TODO Place flag `0x02` in constant
-		if (status_b & 0x02) == 0 && (hour & 0x80) != 0 {
+		if (status_b & FORMAT_24_FLAG) == 0 && (hour & 0x80) != 0 {
 			hour = ((hour & 0x7f) + 12) % 24;
 		}
 
