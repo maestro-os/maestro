@@ -3,6 +3,7 @@
 
 use crate::idt;
 use crate::io;
+use super::ClockSource;
 use super::Timestamp;
 
 /// The ID of the port used to select the CMOS register to read.
@@ -141,50 +142,76 @@ fn get_days_since_epoch(year: u32, month: u32, day: u32) -> u32 {
 	year_days + month_days + day
 }
 
-/// Returns the current timestamp in seconds from the CMOS time.
-/// The function might wait up to 1 second for the CMOS to be ready for reading.
-/// The function also disables maskable interrupts during its execution.
-/// `century_register` tells whether the century register exists or not. If it doesn't exist, the
-/// 21st century is taken.
-pub fn get_time(century_register: bool) -> Timestamp {
-	let mut timestamp: Timestamp = 0;
+/// Structure representing the CMOS clock source.
+/// This source is really slow (waits up to 1 second before reading) and is not very reliable. It
+/// should be used only if nothing else is available.
+/// Maskable interrupts are disabled when retrieving the timestamp.
+pub struct CMOSClock {
+	/// Tells whether the century register is available.
+	century_register: bool,
+}
 
-	idt::wrap_disable_interrupts(|| {
-		time_wait();
-		let mut second = read(SECOND_REGISTER) as u32;
-		let mut minute = read(MINUTE_REGISTER) as u32;
-		let mut hour = read(HOUR_REGISTER) as u32;
-		let mut day = read(DAY_OF_MONTH_REGISTER) as u32;
-		let mut month = read(MONTH_REGISTER) as u32;
-		let mut year = read(YEAR_REGISTER) as u32;
-		let mut century = if century_register {
-			read(CENTURY_REGISTER)
-		} else {
-			20
-		} as u32;
-
-		let status_b = read(STATUS_B_REGISTER);
-		if status_b & FORMAT_BCD_FLAG == 0 {
-			second = (second & 0x0f) + ((second / 16) * 10);
-        	minute = (minute & 0x0f) + ((minute / 16) * 10);
-        	hour = ((hour & 0x0f) + (((hour & 0x70) / 16) * 10)) | (hour & 0x80);
-        	day = (day & 0x0f) + ((day / 16) * 10);
-        	month = (month & 0x0f) + ((month / 16) * 10);
-        	year = (year & 0x0f) + ((year / 16) * 10);
-        	if century_register {
-            	century = (century & 0x0f) + (century / 16) * 10;
-        	}
+impl CMOSClock {
+	/// Creates a new instance. `century_register` tells whether the century register is available.
+	/// If it isn't available, the 21st century is assumed.
+	pub fn new(century_register: bool) -> Self {
+		Self {
+			century_register: century_register,
 		}
+	}
 
-		if (status_b & FORMAT_24_FLAG) == 0 && (hour & 0x80) != 0 {
-			hour = ((hour & 0x7f) + 12) % 24;
-		}
+	/// Tells whether the century register is available.
+	pub fn has_century_register(&self) -> bool {
+		self.century_register
+	}
+}
 
-		year += century * 100;
+impl ClockSource for CMOSClock {
+	fn get_name(&self) -> &str {
+		"CMOS"
+	}
 
-		let days_since_epoch = get_days_since_epoch(year, month - 1, day - 3); // TODO Determine why `- 3` instead of `- 1`
-		timestamp = days_since_epoch * 86400 + hour * 3600 + minute * 60 + second;
-	});
+	/// Returns the current timestamp in seconds from the CMOS time.
+	fn get_time(&self) -> Timestamp {
+		let mut timestamp: Timestamp = 0;
 
-	timestamp
+		idt::wrap_disable_interrupts(|| {
+			time_wait();
+			let mut second = read(SECOND_REGISTER) as u32;
+			let mut minute = read(MINUTE_REGISTER) as u32;
+			let mut hour = read(HOUR_REGISTER) as u32;
+			let mut day = read(DAY_OF_MONTH_REGISTER) as u32;
+			let mut month = read(MONTH_REGISTER) as u32;
+			let mut year = read(YEAR_REGISTER) as u32;
+			let mut century = if self.century_register {
+				read(CENTURY_REGISTER)
+			} else {
+				20
+			} as u32;
+
+			let status_b = read(STATUS_B_REGISTER);
+			if status_b & FORMAT_BCD_FLAG == 0 {
+				second = (second & 0x0f) + ((second / 16) * 10);
+				minute = (minute & 0x0f) + ((minute / 16) * 10);
+				hour = ((hour & 0x0f) + (((hour & 0x70) / 16) * 10)) | (hour & 0x80);
+				day = (day & 0x0f) + ((day / 16) * 10);
+				month = (month & 0x0f) + ((month / 16) * 10);
+				year = (year & 0x0f) + ((year / 16) * 10);
+				if self.century_register {
+					century = (century & 0x0f) + (century / 16) * 10;
+				}
+			}
+
+			if (status_b & FORMAT_24_FLAG) == 0 && (hour & 0x80) != 0 {
+				hour = ((hour & 0x7f) + 12) % 24;
+			}
+
+			year += century * 100;
+
+			let days_since_epoch = get_days_since_epoch(year, month - 1, day - 3); // TODO Determine why `- 3` instead of `- 1`
+			timestamp = days_since_epoch * 86400 + hour * 3600 + minute * 60 + second;
+		});
+
+		timestamp
+	}
 }

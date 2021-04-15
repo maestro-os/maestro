@@ -133,9 +133,13 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 
 	// TODO ACPI
 	// TODO PCI
-	// TODO time
+	// TODO Init clock sources
+
+	// TODO rm
 	loop {
-		println!("-> {}", time::cmos::get_time(false));
+		use time::ClockSource;
+		let cmos_clock = time::cmos::CMOSClock::new(false);
+		println!("-> {}", cmos_clock.get_time());
 	}
 
 	/*println!("Loading modules...");
