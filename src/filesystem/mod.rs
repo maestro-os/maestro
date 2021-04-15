@@ -7,18 +7,16 @@ pub mod path;
 use crate::errno::Errno;
 use crate::errno;
 use crate::limits;
+use crate::time::Timestamp;
 use crate::util::container::string::String;
 use path::Path;
 
 /// Type representing a user ID.
-type Uid = u16;
+pub type Uid = u16;
 /// Type representing a group ID.
-type Gid = u16;
+pub type Gid = u16;
 /// Type representing a file mode.
-type Mode = u16;
-
-/// Type representing a timestamp.
-type Timestamp = u32; // TODO Move somewhere else?
+pub type Mode = u16;
 
 /// TODO doc
 pub const S_IRWXU: Mode = 00700;

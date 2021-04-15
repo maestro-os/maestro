@@ -54,6 +54,7 @@ mod process;
 mod ps2;
 mod selftest;
 mod syscall;
+mod time;
 mod tty;
 #[macro_use]
 mod util;
@@ -62,9 +63,9 @@ mod vga;
 
 use core::ffi::c_void;
 use core::panic::PanicInfo;
-use crate::filesystem::path::Path;
-use crate::module::Module;
-use crate::process::Process;
+//use crate::filesystem::path::Path;
+//use crate::module::Module;
+//use crate::process::Process;
 
 /// Current kernel version.
 const KERNEL_VERSION: &'static str = "1.0";
@@ -133,8 +134,11 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 	// TODO ACPI
 	// TODO PCI
 	// TODO time
+	loop {
+		println!("-> {}", time::cmos::get_time(false));
+	}
 
-	println!("Loading modules...");
+	/*println!("Loading modules...");
 	// TODO Load modules from file and register into a vector
 	let mut ps2_module = ps2::PS2Module::new(| c, action | {
 		println!("Key action! {:?} {:?}", c, action);
@@ -166,7 +170,7 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 
 	unsafe { // Call to ASM function
 		kernel_loop();
-	}
+	}*/
 }
 
 /// Called on Rust panic.

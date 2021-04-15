@@ -16,6 +16,7 @@ use crate::errno;
 use crate::event::{InterruptCallback, InterruptResult, InterruptResultAction};
 use crate::event;
 use crate::filesystem::File;
+use crate::filesystem::Uid;
 use crate::filesystem::file_descriptor::FileDescriptor;
 use crate::filesystem::path::Path;
 use crate::memory::vmem;
@@ -58,8 +59,6 @@ pub enum State {
 	Zombie,
 }
 
-/// Type representing a User ID.
-type Uid = u16;
 /// Type representing an exit status.
 type ExitStatus = u8;
 
