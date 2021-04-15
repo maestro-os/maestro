@@ -14,4 +14,13 @@ pub trait ClockSource {
 	fn get_time(&self) -> Timestamp;
 }
 
-// TODO Function to get the clock source list or to get a clock source by name
+// TODO Function to get the clock source list
+// TODO Function to get a clock source by name
+// TODO Function to add a clock source
+
+/// Returns the current timestamp for the preferred clock source.
+pub fn get() -> Timestamp {
+	// TODO Use a list of clock sources
+	let cmos = cmos::CMOSClock::new(false);
+	cmos.get_time()
+}

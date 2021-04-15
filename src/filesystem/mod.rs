@@ -8,6 +8,7 @@ use crate::errno::Errno;
 use crate::errno;
 use crate::limits;
 use crate::time::Timestamp;
+use crate::time;
 use crate::util::container::string::String;
 use path::Path;
 
@@ -110,7 +111,7 @@ impl File {
 	pub fn new(name: String, file_type: FileType, uid: Uid, gid: Gid, mode: Mode) -> Self {
 		debug_assert!(name.len() <= limits::NAME_MAX);
 
-		let timestamp = 0; // TODO
+		let timestamp = time::get();
 		Self {
 			name: name,
 			size: 0,
