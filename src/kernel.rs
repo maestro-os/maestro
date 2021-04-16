@@ -14,6 +14,7 @@
 #![feature(const_ptr_offset)]
 #![feature(const_raw_ptr_deref)]
 #![feature(const_raw_ptr_to_usize_cast)]
+#![feature(core_intrinsics)]
 #![feature(custom_test_frameworks)]
 #![feature(dispatch_from_dyn)]
 #![feature(fundamental)]
@@ -33,6 +34,7 @@
 #![test_runner(crate::selftest::runner)]
 #![reexport_test_harness_main = "kernel_selftest"]
 
+mod acpi;
 mod debug;
 mod elf;
 mod errno;
@@ -131,9 +133,8 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 	#[cfg(test)]
 	kernel_selftest();
 
-	// TODO ACPI
+	acpi::init();
 	// TODO PCI
-	// TODO Init clock sources
 
 	println!("Loading modules...");
 	// TODO Load modules from file and register into a vector

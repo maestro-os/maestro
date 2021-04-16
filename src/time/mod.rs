@@ -1,5 +1,12 @@
 /// This module handles time-releated features.
-/// TODO doc
+/// The kernel stores a list of clock sources. A clock source is an object that allow to get the
+/// current timestamp.
+
+use crate::errno::Errno;
+use crate::util::boxed::Box;
+use crate::util::container::vec::Vec;
+use crate::util::lock::mutex::Mutex;
+use crate::util::lock::mutex::MutexGuard;
 
 pub mod cmos;
 
@@ -14,13 +21,38 @@ pub trait ClockSource {
 	fn get_time(&self) -> Timestamp;
 }
 
-// TODO Function to get the clock source list
-// TODO Function to get a clock source by name
-// TODO Function to add a clock source
+/// Vector containing all the clock sources.
+static mut CLOCK_SOURCES: Mutex::<Vec::<Box::<dyn ClockSource>>> = Mutex::new(Vec::new());
 
-/// Returns the current timestamp for the preferred clock source.
+/// Returns a reference to the list of clock sources.
+pub fn get_clock_sources() -> &'static Mutex::<Vec::<Box::<dyn ClockSource>>> {
+	unsafe { // Safe because using Mutex
+		&CLOCK_SOURCES
+	}
+}
+
+/// Adds the new clock source to the clock sources list.
+pub fn add_clock_source<T: 'static + ClockSource>(source: T) -> Result<(), Errno> {
+	let mutex = unsafe { // Safe because using Mutex
+		&mut CLOCK_SOURCES
+	};
+	let mut guard = MutexGuard::new(mutex);
+	let sources = guard.get_mut();
+	sources.push(Box::new(source)?)?;
+	Ok(())
+}
+
+/// Returns the current timestamp from the preferred clock source.
 pub fn get() -> Timestamp {
-	// TODO Use a list of clock sources
-	let cmos = cmos::CMOSClock::new(false);
+	let mutex = unsafe { // Safe because using Mutex
+		&mut CLOCK_SOURCES
+	};
+	let mut guard = MutexGuard::new(mutex);
+	let sources = guard.get_mut();
+	if sources.is_empty() {
+		crate::kernel_panic!("No clock source available!");
+	}
+
+	let cmos = &sources[0]; // TODO Select the preferred source
 	cmos.get_time()
 }

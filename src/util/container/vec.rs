@@ -29,7 +29,7 @@ pub struct Vec<T> {
 
 impl<T> Vec<T> {
 	/// Creates a new empty vector.
-	pub fn new() -> Self {
+	pub const fn new() -> Self {
 		Self {
 			len: 0,
 			capacity: 0,
