@@ -116,12 +116,12 @@ pub fn vmem_switch<F: FnMut()>(vmem: &dyn VMem, mut f: F) {
 	if vmem.is_bound() {
 		f();
 	} else {
-		let cr3 = unsafe { // Call to ASM function
+		let cr3 = unsafe {
 			x86::cr3_get()
 		};
 		vmem.bind();
 		f();
-		unsafe { // Call to ASM function
+		unsafe {
 			x86::paging_enable(cr3 as _);
 		}
 	}

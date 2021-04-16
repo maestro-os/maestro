@@ -23,7 +23,7 @@ fn try_kill(pid: i32, sig: u8) -> Result<(), Errno> {
 /// TODO doc
 fn handle_kill(pid: i32, sig: u8) -> Result<(), Errno> {
 	// TODO Handle sig == 0
-	// TODO Handle when killing current process
+	// TODO Handle when killing current process (execute before returning)
 
 	if pid > 0 {
 		try_kill(pid, sig)

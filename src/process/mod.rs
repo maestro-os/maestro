@@ -138,10 +138,14 @@ impl InterruptCallback for ProcessFaultCallback {
 		if let Some(mut curr_proc) = scheduler.get_current_process() {
 			match id {
 				0x0d => {
-					// TODO Make sure the process's virtual memory is bound
-					let inst_prefix = unsafe {
-						*(regs.eip as *const u8)
-					};
+					let vmem = curr_proc.get_mem_space().get_vmem();
+					let mut inst_prefix = 0;
+					vmem::vmem_switch(vmem.as_ref(), || {
+						inst_prefix = unsafe {
+							*(regs.eip as *const u8)
+						};
+					});
+
 					if inst_prefix == HLT_INSTRUCTION {
 						curr_proc.exit(regs.eax);
 					} else {
@@ -162,7 +166,8 @@ impl InterruptCallback for ProcessFaultCallback {
 			if curr_proc.get_state() == State::Running {
 				InterruptResult::new(false, InterruptResultAction::Resume)
 			} else {
-				// TODO Avoid skipping others while ensuring the process won't resume?
+				// TODO Avoid skipping other event handlers while ensuring the process won't
+				// resume?
 				InterruptResult::new(true, InterruptResultAction::Loop)
 			}
 		} else {
@@ -176,7 +181,7 @@ pub fn init() -> Result<(), Errno> {
 	tss::init();
 	tss::flush();
 
-	unsafe { // Access to global variable
+	unsafe {
 		PID_MANAGER.write(PIDManager::new()?);
 		SCHEDULER.write(Scheduler::new(1)?); // TODO Get cores count
 	}
@@ -379,6 +384,11 @@ impl Process {
 		}
 	}
 
+	/// Returns a mutable reference to the process's memory space.
+	pub fn get_mem_space(&mut self) -> &mut MemSpace {
+		&mut self.mem_space
+	}
+
 	/// Returns a reference to the process's current working directory.
 	pub fn get_cwd(&self) -> &Path {
 		&self.cwd
@@ -500,19 +510,24 @@ impl Process {
 		}.add_process(process)
 	}
 
-	/// Kills the process with the given signal type `type`. This function enqueues a new signal
-	/// to be processed. If the process doesn't have a signal handler, the default action for the
-	/// signal is executed.
-	pub fn kill(&mut self, _type: SignalType) -> Result<(), Errno> {
-		// TODO Use preallocated memory
-		let signal = Signal::new(_type)?;
-		self.signals_queue.push(signal)?;
-		Ok(())
-	}
-
 	/// Returns the signal handler for the signal type `type_`.
 	pub fn get_signal_handler(&self, type_: SignalType) -> Option<SignalHandler> {
 		self.signal_handlers[type_ as usize]
+	}
+
+	/// Kills the process with the given signal type `type`. This function enqueues a new signal
+	/// to be processed. If the process doesn't have a signal handler, the default action for the
+	/// signal is executed.
+	pub fn kill(&mut self, type_: SignalType) -> Result<(), Errno> {
+		// TODO Use preallocated memory for the signals queue?
+		let signal = Signal::new(type_)?;
+		if signal.can_catch() && self.get_signal_handler(type_).is_some() {
+			self.signals_queue.push(signal)?;
+		} else {
+			signal.execute_action(self);
+		}
+
+		Ok(())
 	}
 
 	/// Exits the process with the given `status`. This function changes the process's status to

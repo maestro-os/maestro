@@ -128,13 +128,17 @@ GET_REGS \n
 	# Retrieving the error code on the stack
 	sub $4, %esp
 
+	# Getting pointer to structure containing register values
+	mov %esp, %eax
+	add $40, %eax
+
 	# Getting the ring
-	mov 8(%ebp), %eax
-	and $0b11, %eax
+	mov 8(%ebp), %ebx
+	and $0b11, %ebx
 
 	# Pushing arguments to call event_handler
-	push %esp
 	push %eax
+	push %ebx
 	push 8(%esp)
 	push $\n
 	call event_handler
