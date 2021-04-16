@@ -173,12 +173,12 @@ impl Scheduler {
 
 	/// Tells whether the given process can be run.
 	fn can_run(&self, process: &Process) -> bool {
-		if process.get_state() != process::State::Running {
-			return false;
+		if process.get_state() == process::State::Running {
+			let cursor_priority = process.priority;
+			process.quantum_count < self.get_quantum_count(cursor_priority)
+		} else {
+			false
 		}
-
-		let cursor_priority = process.priority;
-		process.quantum_count < self.get_quantum_count(cursor_priority)
 	}
 
 	/// Returns the next process to run.
@@ -193,12 +193,18 @@ impl Scheduler {
 				i = (i + 1) % processes_count;
 				j += 1;
 			}
-			if j == self.processes.len() {
-				Some(&mut self.processes[self.cursor])
+
+			let process = if j == self.processes.len() {
+				&mut self.processes[self.cursor]
 			} else {
 				self.cursor = i;
 				self.processes[i].quantum_count += 1;
-				Some(&mut self.processes[i])
+				&mut self.processes[i]
+			};
+			if process.get_state() == process::State::Running {
+				Some(process)
+			} else {
+				None
 			}
 		}
 	}
