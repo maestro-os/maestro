@@ -23,8 +23,7 @@ use crate::memory::vmem;
 use crate::util::FailableClone;
 use crate::util::Regs;
 use crate::util::container::vec::Vec;
-use crate::util::lock::mutex::Mutex;
-use crate::util::lock::mutex::MutexGuard;
+use crate::util::lock::mutex::*;
 use crate::util::ptr::SharedPtr;
 use crate::util;
 use mem_space::MemSpace;
@@ -136,11 +135,11 @@ impl InterruptCallback for ProcessFaultCallback {
 		let mutex = unsafe {
 			SCHEDULER.assume_init_mut()
 		};
-		let mut guard = MutexGuard::new(mutex);
+		let mut guard = MutMutexGuard::new(mutex);
 		let scheduler = guard.get_mut();
 
 		if let Some(mut curr_proc) = scheduler.get_current_process() {
-			let mut curr_proc_guard = MutexGuard::new(&mut curr_proc);
+			let mut curr_proc_guard = MutMutexGuard::new(&mut curr_proc);
 			let curr_proc = curr_proc_guard.get_mut();
 
 			match id {
@@ -209,7 +208,7 @@ impl Process {
 		let mutex = unsafe {
 			SCHEDULER.assume_init_mut()
 		};
-		let mut guard = MutexGuard::new(mutex);
+		let mut guard = MutMutexGuard::new(mutex);
 		guard.get_mut().get_by_pid(pid)
 	}
 
@@ -218,7 +217,7 @@ impl Process {
 		let mutex = unsafe {
 			SCHEDULER.assume_init_mut()
 		};
-		let mut guard = MutexGuard::new(mutex);
+		let mut guard = MutMutexGuard::new(mutex);
 		guard.get_mut().get_current_process()
 	}
 
@@ -234,7 +233,7 @@ impl Process {
 			let mutex = unsafe {
 				PID_MANAGER.assume_init_mut()
 			};
-			let mut guard = MutexGuard::new(mutex);
+			let mut guard = MutMutexGuard::new(mutex);
 			guard.get_mut().get_unique_pid()
 		}?;
 
@@ -287,7 +286,7 @@ impl Process {
 		let mutex = unsafe {
 			SCHEDULER.assume_init_mut()
 		};
-		let mut guard = MutexGuard::new(mutex);
+		let mut guard = MutMutexGuard::new(mutex);
 		guard.get_mut().add_process(process)
 	}
 
@@ -310,7 +309,7 @@ impl Process {
 	pub fn set_pgid(&mut self, pgid: Pid) -> Result<(), Errno> {
 		if self.is_in_group() {
 			let mut mutex = Process::get_by_pid(self.pgid).unwrap();
-			let mut guard = MutexGuard::new(&mut mutex);
+			let mut guard = MutMutexGuard::new(&mut mutex);
 			let old_group_process = guard.get_mut();
 			let i = old_group_process.process_group.binary_search(&self.pid).unwrap();
 			old_group_process.process_group.remove(i);
@@ -326,7 +325,7 @@ impl Process {
 
 		if pgid != self.pid {
 			if let Some(mut mutex) = Process::get_by_pid(pgid) {
-				let mut guard = MutexGuard::new(&mut mutex);
+				let mut guard = MutMutexGuard::new(&mut mutex);
 				let new_group_process = guard.get_mut();
 				let i = new_group_process.process_group.binary_search(&self.pid).unwrap_err();
 				// TODO Beware of memory shortage
@@ -348,7 +347,7 @@ impl Process {
 	/// Returns the parent process's PID.
 	pub fn get_parent_pid(&self) -> Pid {
 		if let Some(mut parent) = self.parent {
-			unsafe { // Call to unsafe function
+			unsafe {
 				parent.as_mut()
 			}.get_pid()
 		} else {
@@ -493,7 +492,7 @@ impl Process {
 			let mutex = unsafe {
 				PID_MANAGER.assume_init_mut()
 			};
-			let mut guard = MutexGuard::new(mutex);
+			let mut guard = MutMutexGuard::new(mutex);
 			guard.get_mut().get_unique_pid()
 		}?;
 
@@ -534,7 +533,7 @@ impl Process {
 		let mutex = unsafe {
 			SCHEDULER.assume_init_mut()
 		};
-		let mut guard = MutexGuard::new(mutex);
+		let mut guard = MutMutexGuard::new(mutex);
 		guard.get_mut().add_process(process)
 	}
 
@@ -577,7 +576,7 @@ impl Drop for Process {
 		let mutex = unsafe {
 			PID_MANAGER.assume_init_mut()
 		};
-		let mut guard = MutexGuard::new(mutex);
+		let mut guard = MutMutexGuard::new(mutex);
 		guard.get_mut().release_pid(self.pid);
 	}
 }

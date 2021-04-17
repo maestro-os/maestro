@@ -14,8 +14,7 @@ use core::mem::size_of;
 use crate::errno::Errno;
 use crate::errno;
 use crate::memory;
-use crate::util::lock::mutex::Mutex;
-use crate::util::lock::mutex::MutexGuard;
+use crate::util::lock::mutex::*;
 use crate::util::math;
 use crate::util;
 
@@ -176,7 +175,7 @@ pub fn alloc(order: FrameOrder, flags: Flags) -> Result<*mut c_void, Errno> {
 	for i in begin_zone..ZONES_COUNT {
 		let z = get_suitable_zone(i);
 		if z.is_some() {
-			let mut guard = MutexGuard::new(z.unwrap());
+			let mut guard = MutMutexGuard::new(z.unwrap());
 			let zone = guard.get_mut();
 
 			let frame = zone.get_available_frame(order);
@@ -208,13 +207,13 @@ pub fn free(ptr: *const c_void, order: FrameOrder) {
 	debug_assert!(order <= MAX_ORDER);
 
 	let z = get_zone_for_pointer(ptr).unwrap();
-	let mut guard = MutexGuard::new(z);
+	let mut guard = MutMutexGuard::new(z);
 	let zone = guard.get_mut();
 
 	let frame_id = zone.get_frame_id_from_ptr(ptr);
 	debug_assert!(frame_id < zone.get_pages_count());
 	let frame = zone.get_frame(frame_id);
-	unsafe { // Dereference of raw pointer
+	unsafe {
 		(*frame).mark_free(zone);
 		(*frame).coalesce(zone);
 	}

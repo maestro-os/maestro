@@ -1,15 +1,16 @@
 /// This module implements the `setpgid` system call, which allows to set the process group ID of a
 /// process.
 
-use crate::process::pid::Pid;
 use crate::errno::Errno;
 use crate::errno;
 use crate::process::Process;
+use crate::process::pid::Pid;
+use crate::util::lock::mutex::MutexGuard;
 use crate::util;
 
 /// TODO doc
 fn handle_setpgid(pid: Pid, pgid: Pid) -> Result<(), Errno> {
-	let mut proc = {
+	let mut mutex = {
 		if pid == 0 {
 			Process::get_current().unwrap()
 		} else {
@@ -19,7 +20,9 @@ fn handle_setpgid(pid: Pid, pgid: Pid) -> Result<(), Errno> {
 				return Err(errno::ESRCH);
 			}
 		}
-	}.lock().get();
+	};
+	let mut guard = MutexGuard::new(&mut mutex);
+	let proc = guard.get_mut();
 
 	// TODO Check processes SID
 

@@ -1,15 +1,16 @@
 /// This module implements the `getpgid` system call, which allows to get the process group ID of a
 /// process.
 
-use crate::process::pid::Pid;
 use crate::errno::Errno;
 use crate::errno;
 use crate::process::Process;
+use crate::process::pid::Pid;
+use crate::util::lock::mutex::MutMutexGuard;
 use crate::util;
 
 /// TODO doc
 fn handle_getpgid(pid: Pid) -> Result<Pid, Errno> {
-	let proc = {
+	let mut mutex = {
 		if pid == 0 {
 			Process::get_current().unwrap()
 		} else {
@@ -19,7 +20,9 @@ fn handle_getpgid(pid: Pid) -> Result<Pid, Errno> {
 				return Err(errno::ESRCH);
 			}
 		}
-	}.lock().get();
+	};
+	let mut guard = MutMutexGuard::new(&mut mutex);
+	let proc = guard.get_mut();
 
 	Ok(proc.get_pgid())
 }

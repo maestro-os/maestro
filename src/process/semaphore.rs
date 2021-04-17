@@ -2,8 +2,7 @@
 
 use crate::errno::Errno;
 use crate::util::container::vec::Vec;
-use crate::util::lock::mutex::Mutex;
-use crate::util::lock::mutex::MutexGuard;
+use crate::util::lock::mutex::*;
 use super::Pid;
 
 /// A semaphore is a structure which locks access to a data such that only one thread can access it
@@ -28,10 +27,9 @@ impl<T> Semaphore<T> {
 	}
 
 	/// Tells whether the process with PID `pid` can acquire the resource.
-	fn can_acquire(&mut self, pid: Pid) -> bool {
-		let mut guard = MutexGuard::new(&mut self.fifo);
-		let fifo = guard.get_mut();
-
+	fn can_acquire(&self, pid: Pid) -> bool {
+		let guard = MutexGuard::new(&self.fifo);
+		let fifo = guard.get();
 		fifo.is_empty() || fifo[0] == pid
 	}
 
@@ -43,7 +41,7 @@ impl<T> Semaphore<T> {
 	/// `pid` is the PID of the process using the resource.
 	pub fn acquire<F: Fn(&mut T)>(&mut self, pid: Pid, f: F) -> Result<(), Errno> {
 		{
-			let mut guard = MutexGuard::new(&mut self.fifo);
+			let mut guard = MutMutexGuard::new(&mut self.fifo);
 			let fifo = guard.get_mut();
 			fifo.push(pid)?;
 		}
@@ -57,7 +55,7 @@ impl<T> Semaphore<T> {
 		f(&mut self.data);
 
 		{
-			let mut guard = MutexGuard::new(&mut self.fifo);
+			let mut guard = MutMutexGuard::new(&mut self.fifo);
 			let fifo = guard.get_mut();
 			debug_assert!(!fifo.is_empty());
 			fifo.remove(0);

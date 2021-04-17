@@ -13,8 +13,7 @@ use crate::memory::vmem;
 use crate::memory;
 use crate::util::boxed::Box;
 use crate::util::container::binary_tree::BinaryTree;
-use crate::util::lock::mutex::Mutex;
-use crate::util::lock::mutex::MutexGuard;
+use crate::util::lock::mutex::*;
 use crate::util;
 
 /// A pointer to the default physical page of memory. This page is meant to be mapped in read-only
@@ -26,7 +25,7 @@ fn get_default_page() -> *const c_void {
 	let m = unsafe { // Safe because using a Mutex
 		&mut DEFAULT_PAGE
 	};
-	let mut guard = MutexGuard::new(m);
+	let mut guard = MutMutexGuard::new(m);
 	let default_page = guard.get_mut();
 
 	if default_page.is_none() {

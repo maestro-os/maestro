@@ -63,9 +63,8 @@ impl<T> SharedPtr<T> {
 	}
 }
 
-impl<T: ?Sized> SharedPtr<T> {
-	/// Clones the shared pointer, sharing the ownership.
-	pub fn clone(&mut self) -> Self {
+impl<T: ?Sized> Clone for SharedPtr<T> {
+	fn clone(&self) -> Self {
 		unsafe {
 			self.ptr.as_mut()
 		}.count += 1;

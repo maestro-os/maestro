@@ -5,8 +5,7 @@
 use crate::errno::Errno;
 use crate::util::boxed::Box;
 use crate::util::container::vec::Vec;
-use crate::util::lock::mutex::Mutex;
-use crate::util::lock::mutex::MutexGuard;
+use crate::util::lock::mutex::*;
 
 pub mod cmos;
 
@@ -36,7 +35,7 @@ pub fn add_clock_source<T: 'static + ClockSource>(source: T) -> Result<(), Errno
 	let mutex = unsafe { // Safe because using Mutex
 		&mut CLOCK_SOURCES
 	};
-	let mut guard = MutexGuard::new(mutex);
+	let mut guard = MutMutexGuard::new(mutex);
 	let sources = guard.get_mut();
 	sources.push(Box::new(source)?)?;
 	Ok(())
@@ -47,8 +46,8 @@ pub fn get() -> Timestamp {
 	let mutex = unsafe { // Safe because using Mutex
 		&mut CLOCK_SOURCES
 	};
-	let mut guard = MutexGuard::new(mutex);
-	let sources = guard.get_mut();
+	let guard = MutexGuard::new(mutex);
+	let sources = guard.get();
 	if sources.is_empty() {
 		crate::kernel_panic!("No clock source available!");
 	}

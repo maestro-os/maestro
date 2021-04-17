@@ -3,8 +3,7 @@
 
 use crate::idt;
 use crate::io;
-use crate::util::lock::mutex::Mutex;
-use crate::util::lock::mutex::MutexGuard;
+use crate::util::lock::mutex::*;
 use crate::util::math;
 
 /// The type representing the frequency of the PIT in Hertz.
@@ -87,7 +86,7 @@ pub fn set_frequency(frequency: Frequency) {
 	let m = unsafe { // Safe because using a Mutex
 		&mut CURRENT_FREQUENCY
 	};
-	let mut guard = MutexGuard::new(m);
+	let mut guard = MutMutexGuard::new(m);
 	*guard.get_mut() = frequency;
 
 	let mut c = if frequency != 0 {

@@ -24,8 +24,7 @@ use crate::process::tss;
 use crate::process;
 use crate::util::Regs;
 use crate::util::container::vec::Vec;
-use crate::util::lock::mutex::Mutex;
-use crate::util::lock::mutex::MutexGuard;
+use crate::util::lock::mutex::*;
 use crate::util::math;
 use crate::util::ptr::SharedPtr;
 use crate::util;
@@ -43,9 +42,9 @@ extern "C" {
 }
 
 /// The structure containing the context switching data.
-struct ContextSwitchData<'a> {
+struct ContextSwitchData {
 	///  The process to switch to.
-	proc: &'a mut Process,
+	proc: SharedPtr::<Mutex::<Process>>,
 }
 
 /// Scheduler ticking callback.
@@ -60,7 +59,7 @@ impl InterruptCallback for TickCallback {
 	}
 
 	fn call(&mut self, _id: u32, _code: u32, regs: &util::Regs, ring: u32) -> InterruptResult {
-		let mut guard = MutexGuard::new(&mut self.scheduler);
+		let mut guard = MutMutexGuard::new(&mut self.scheduler);
 		guard.get_mut().tick(regs, ring);
 	}
 }
@@ -113,7 +112,7 @@ impl Scheduler {
 			let callback = TickCallback {
 				scheduler: s.clone(),
 			};
-			let mut guard = MutexGuard::new(&mut s);
+			let mut guard = MutMutexGuard::new(&mut s);
 			let scheduler = guard.get_mut();
 			scheduler.tick_callback = Some(event::register_callback(32, 0, callback)?);
 		}
@@ -157,7 +156,7 @@ impl Scheduler {
 	pub fn add_process(&mut self, process: Process)
 		-> Result<SharedPtr::<Mutex::<Process>>, Errno> {
 		let priority = process.get_priority();
-		let mut ptr = SharedPtr::new(Mutex::new(process))?;
+		let ptr = SharedPtr::new(Mutex::new(process))?;
 		self.processes.push(ptr.clone())?;
 		self.update_priority(0, priority);
 
@@ -184,8 +183,9 @@ impl Scheduler {
 	/// Tells whether the given process can be run.
 	/// `i` is the index of the process in the processes list.
 	fn can_run(&self, i: usize) -> bool {
-		let lock = self.processes[i].lock();
-		let process = lock.get();
+		let mutex = &self.processes[i];
+		let guard = MutexGuard::new(mutex);
+		let process = guard.get();
 
 		if process.get_state() == process::State::Running {
 			let cursor_priority = process.priority;
@@ -212,7 +212,7 @@ impl Scheduler {
 				&mut self.processes[self.cursor]
 			} else {
 				self.cursor = i;
-				self.processes[i].lock().get().quantum_count += 1;
+				self.processes[i].lock().get_mut().quantum_count += 1;
 				&mut self.processes[i]
 			};
 
@@ -230,7 +230,8 @@ impl Scheduler {
 	/// `ring` is the ring of the paused context.
 	fn tick(&mut self, regs: &util::Regs, ring: u32) -> ! {
 		if let Some(mut curr_proc) = self.get_current_process() {
-			let curr_proc = curr_proc.lock().get();
+			let mut guard = MutMutexGuard::new(&mut curr_proc);
+			let curr_proc = guard.get_mut();
 			curr_proc.regs = *regs;
 			curr_proc.syscalling = ring < 3;
 		}
@@ -240,38 +241,45 @@ impl Scheduler {
 
 			let core_id = 0; // TODO
 			let f = | data | {
-				let data = unsafe {
-					&mut *(data as *mut ContextSwitchData)
+				let (syscalling, regs) = {
+					let data = unsafe {
+						&mut *(data as *mut ContextSwitchData)
+					};
+					let mut guard = MutMutexGuard::new(&mut data.proc);
+					let proc = guard.get_mut();
+
+					let tss = tss::get();
+					tss.ss0 = gdt::KERNEL_DATA_OFFSET as _;
+					tss.ss = gdt::USER_DATA_OFFSET as _;
+					tss.esp0 = proc.kernel_stack as _;
+					proc.mem_space.bind();
+
+					let eip = proc.regs.eip;
+					let vmem = proc.mem_space.get_vmem();
+					debug_assert!(vmem.translate(eip as _).is_some());
+
+					(proc.is_syscalling(), proc.regs)
 				};
 
-				let tss = tss::get();
-				tss.ss0 = gdt::KERNEL_DATA_OFFSET as _;
-				tss.ss = gdt::USER_DATA_OFFSET as _;
-				tss.esp0 = data.proc.kernel_stack as _;
-				data.proc.mem_space.bind();
-
-				let eip = data.proc.regs.eip;
-				let vmem = data.proc.mem_space.get_vmem();
-				debug_assert!(vmem.translate(eip as _).is_some());
-
-				if data.proc.is_syscalling() {
+				if syscalling {
 					unsafe {
-						context_switch_kernel(&data.proc.regs);
+						context_switch_kernel(&regs);
 					}
 				} else {
 					unsafe {
-						context_switch(&data.proc.regs,
+						context_switch(&regs,
 							(gdt::USER_DATA_OFFSET | 3) as _,
 							(gdt::USER_CODE_OFFSET | 3) as _);
 					}
 				}
 			};
 
+			let tmp_stack = self.tmp_stacks[core_id].as_ptr();
 			let ctx_switch_data = ContextSwitchData {
-				proc: self.curr_proc.as_mut().unwrap().lock().get_mut(),
+				proc: self.curr_proc.as_mut().unwrap().clone(),
 			};
 			unsafe {
-				stack::switch(self.tmp_stacks[core_id].as_ptr(), f, ctx_switch_data).unwrap();
+				stack::switch(tmp_stack, f, ctx_switch_data).unwrap();
 			}
 
 			unsafe {

@@ -88,8 +88,6 @@ impl<T> Mutex<T> {
 	}
 }
 
-// TODO Remove MutexGuard?
-
 /// Type used to declare a guard meant to unlock the associated Mutex at the moment the execution
 /// gets out of the scope of its declaration. This structure is useful to ensure that the mutex
 /// doesen't stay locked after the exectution of a function ended.
