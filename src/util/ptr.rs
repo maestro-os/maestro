@@ -135,7 +135,7 @@ mod test {
 
 	#[test_case]
 	fn shared_ptr1() {
-		let mut b = SharedPtr::new(42 as usize).unwrap();
+		let b = SharedPtr::new(42 as usize).unwrap();
 		let b1 = b.clone();
 		debug_assert_eq!(*b, 42);
 		debug_assert_eq!(*b1, 42);
