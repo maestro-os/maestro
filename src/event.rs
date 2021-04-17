@@ -118,7 +118,7 @@ static mut CALLBACKS: MaybeUninit::<
 
 /// Initializes the events handler.
 pub fn init() {
-	let mut guard = MutMutexGuard::new(unsafe { // Access to global variable
+	let mut guard = MutexGuard::new(unsafe { // Access to global variable
 		CALLBACKS.assume_init_mut()
 	});
 	let callbacks = guard.get_mut();
@@ -139,7 +139,7 @@ pub fn register_callback<T: 'static + InterruptCallback>(id: usize, priority: u3
 	debug_assert!(id < idt::ENTRIES_COUNT);
 
 	let mut guard = unsafe {
-		MutMutexGuard::new(CALLBACKS.assume_init_mut())
+		MutexGuard::new(CALLBACKS.assume_init_mut())
 	};
 	let vec = &mut guard.get_mut()[id];
 	if vec.is_none() {
@@ -189,7 +189,7 @@ pub extern "C" fn event_handler(id: u32, code: u32, ring: u32, regs: &util::Regs
 	if mutex.is_locked() {
 		crate::kernel_panic!("Event handler deadlock");
 	}
-	let mut guard = MutMutexGuard::new(mutex);
+	let mut guard = MutexGuard::new(mutex);
 
 	if let Some(callbacks) = &mut guard.get_mut()[id as usize] {
 		let mut last_action = InterruptResultAction::Resume;

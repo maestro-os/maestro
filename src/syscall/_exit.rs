@@ -2,14 +2,14 @@
 
 use crate::process::Process;
 use crate::process::tss;
-use crate::util::lock::mutex::MutMutexGuard;
+use crate::util::lock::mutex::MutexGuard;
 use crate::util;
 
 /// The implementation of the `write` syscall.
 pub fn _exit(regs: &util::Regs) -> ! {
 	{
 		let mut mutex = Process::get_current().unwrap();
-		let mut guard = MutMutexGuard::new(&mut mutex);
+		let mut guard = MutexGuard::new(&mut mutex);
 		let curr_proc = guard.get_mut();
 		curr_proc.exit(regs.eax)
 	}

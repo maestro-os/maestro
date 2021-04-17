@@ -59,7 +59,7 @@ impl InterruptCallback for TickCallback {
 	}
 
 	fn call(&mut self, _id: u32, _code: u32, regs: &util::Regs, ring: u32) -> InterruptResult {
-		let mut guard = MutMutexGuard::new(&mut self.scheduler);
+		let mut guard = MutexGuard::new(&mut self.scheduler);
 		guard.get_mut().tick(regs, ring);
 	}
 }
@@ -112,7 +112,7 @@ impl Scheduler {
 			let callback = TickCallback {
 				scheduler: s.clone(),
 			};
-			let mut guard = MutMutexGuard::new(&mut s);
+			let mut guard = MutexGuard::new(&mut s);
 			let scheduler = guard.get_mut();
 			scheduler.tick_callback = Some(event::register_callback(32, 0, callback)?);
 		}
@@ -183,8 +183,8 @@ impl Scheduler {
 	/// Tells whether the given process can be run.
 	/// `i` is the index of the process in the processes list.
 	fn can_run(&self, i: usize) -> bool {
-		let mutex = &self.processes[i];
-		let guard = MutexGuard::new(mutex);
+		let mut mutex = self.processes[i].clone();
+		let guard = MutexGuard::new(&mut mutex);
 		let process = guard.get();
 
 		if process.get_state() == process::State::Running {
@@ -230,7 +230,7 @@ impl Scheduler {
 	/// `ring` is the ring of the paused context.
 	fn tick(&mut self, regs: &util::Regs, ring: u32) -> ! {
 		if let Some(mut curr_proc) = self.get_current_process() {
-			let mut guard = MutMutexGuard::new(&mut curr_proc);
+			let mut guard = MutexGuard::new(&mut curr_proc);
 			let curr_proc = guard.get_mut();
 			curr_proc.regs = *regs;
 			curr_proc.syscalling = ring < 3;
@@ -245,7 +245,7 @@ impl Scheduler {
 					let data = unsafe {
 						&mut *(data as *mut ContextSwitchData)
 					};
-					let mut guard = MutMutexGuard::new(&mut data.proc);
+					let mut guard = MutexGuard::new(&mut data.proc);
 					let proc = guard.get_mut();
 
 					let tss = tss::get();

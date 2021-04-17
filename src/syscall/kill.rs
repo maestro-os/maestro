@@ -5,13 +5,13 @@ use crate::errno;
 use crate::process::Process;
 use crate::process::State;
 use crate::process::pid::Pid;
-use crate::util::lock::mutex::MutMutexGuard;
+use crate::util::lock::mutex::MutexGuard;
 use crate::util;
 
 /// Tries to kill the process with PID `pid` with the signal `sig`.
 fn try_kill(pid: i32, sig: u8) -> Result<(), Errno> {
 	if let Some(mut proc) = Process::get_by_pid(pid as Pid) {
-		let mut guard = MutMutexGuard::new(&mut proc);
+		let mut guard = MutexGuard::new(&mut proc);
 		let proc = guard.get_mut();
 		if proc.get_state() != State::Zombie {
 			proc.kill(sig)
@@ -32,7 +32,7 @@ fn handle_kill(pid: i32, sig: u8) -> Result<(), Errno> {
 		try_kill(pid, sig)
 	} else if pid == 0 {
 		let mut mutex = Process::get_current().unwrap();
-		let mut guard = MutMutexGuard::new(&mut mutex);
+		let mut guard = MutexGuard::new(&mut mutex);
 		let curr_proc = guard.get_mut();
 		for p in curr_proc.get_group_processes() {
 			try_kill(*p as _, sig).unwrap();
@@ -43,7 +43,7 @@ fn handle_kill(pid: i32, sig: u8) -> Result<(), Errno> {
 		Err(errno::ESRCH)
 	} else {
 		if let Some(mut proc) = Process::get_by_pid(-pid as _) {
-			let mut guard = MutMutexGuard::new(&mut proc);
+			let mut guard = MutexGuard::new(&mut proc);
 			let proc = guard.get_mut();
 			for p in proc.get_group_processes() {
 				try_kill(*p as _, sig).unwrap();

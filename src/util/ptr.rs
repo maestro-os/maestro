@@ -66,7 +66,7 @@ impl<T> SharedPtr<T> {
 impl<T: ?Sized> Clone for SharedPtr<T> {
 	fn clone(&self) -> Self {
 		unsafe {
-			self.ptr.as_mut()
+			&mut *(self.ptr.as_ptr() as *mut SharedPtrInner::<T>)
 		}.count += 1;
 
 		SharedPtr {

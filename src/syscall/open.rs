@@ -7,7 +7,7 @@ use crate::filesystem::File;
 use crate::filesystem::path::Path;
 use crate::filesystem;
 use crate::process::Process;
-use crate::util::lock::mutex::MutMutexGuard;
+use crate::util::lock::mutex::MutexGuard;
 use crate::util;
 
 /// TODO doc
@@ -72,7 +72,7 @@ pub fn open(regs: &util::Regs) -> u32 {
 	let _mode = regs.edx as u16;
 
 	let mut mutex = Process::get_current().unwrap();
-	let mut guard = MutMutexGuard::new(&mut mutex);
+	let mut guard = MutexGuard::new(&mut mutex);
 	let curr_proc = guard.get_mut();
 	// TODO Check that path is in process's memory
 	// TODO Check path length (ENAMETOOLONG)

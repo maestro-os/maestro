@@ -35,7 +35,7 @@ pub fn add_clock_source<T: 'static + ClockSource>(source: T) -> Result<(), Errno
 	let mutex = unsafe { // Safe because using Mutex
 		&mut CLOCK_SOURCES
 	};
-	let mut guard = MutMutexGuard::new(mutex);
+	let mut guard = MutexGuard::new(mutex);
 	let sources = guard.get_mut();
 	sources.push(Box::new(source)?)?;
 	Ok(())

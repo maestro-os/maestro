@@ -25,7 +25,7 @@ fn get_default_page() -> *const c_void {
 	let m = unsafe { // Safe because using a Mutex
 		&mut DEFAULT_PAGE
 	};
-	let mut guard = MutMutexGuard::new(m);
+	let mut guard = MutexGuard::new(m);
 	let default_page = guard.get_mut();
 
 	if default_page.is_none() {

@@ -93,7 +93,7 @@ pub fn init() {
 	}
 
 	for i in 0..TTYS_COUNT {
-		let mut guard = MutMutexGuard::new(get(i));
+		let mut guard = MutexGuard::new(get(i));
 		let t = guard.get_mut();
 		t.init();
 	}
@@ -110,7 +110,7 @@ pub fn switch(tty: usize) {
 		*CURRENT_TTY.lock().get_mut() = tty;
 	}
 
-	let mut guard = MutMutexGuard::new(get(tty));
+	let mut guard = MutexGuard::new(get(tty));
 	let t = guard.get_mut();
 	vga::enable_cursor();
 	vga::move_cursor(t.cursor_x, t.cursor_y);

@@ -5,7 +5,7 @@ use crate::errno::Errno;
 use crate::errno;
 use crate::process::Process;
 use crate::process::pid::Pid;
-use crate::util::lock::mutex::MutMutexGuard;
+use crate::util::lock::mutex::MutexGuard;
 use crate::util;
 
 /// TODO doc
@@ -21,7 +21,7 @@ fn handle_getpgid(pid: Pid) -> Result<Pid, Errno> {
 			}
 		}
 	};
-	let mut guard = MutMutexGuard::new(&mut mutex);
+	let mut guard = MutexGuard::new(&mut mutex);
 	let proc = guard.get_mut();
 
 	Ok(proc.get_pgid())

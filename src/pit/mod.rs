@@ -86,7 +86,7 @@ pub fn set_frequency(frequency: Frequency) {
 	let m = unsafe { // Safe because using a Mutex
 		&mut CURRENT_FREQUENCY
 	};
-	let mut guard = MutMutexGuard::new(m);
+	let mut guard = MutexGuard::new(m);
 	*guard.get_mut() = frequency;
 
 	let mut c = if frequency != 0 {

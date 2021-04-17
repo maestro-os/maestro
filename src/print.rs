@@ -1,14 +1,14 @@
 /// This file handles macros `print` and `println`.
 
 use crate::tty;
-use crate::util::lock::mutex::MutMutexGuard;
+use crate::util::lock::mutex::MutexGuard;
 
 /// Custom writer used to redirect print/println macros to the desired text output.
 struct TTYWrite {}
 
 impl core::fmt::Write for TTYWrite {
 	fn write_str(&mut self, s: &str) -> Result<(), core::fmt::Error> {
-		MutMutexGuard::new(tty::current()).get_mut().write(s);
+		MutexGuard::new(tty::current()).get_mut().write(s);
 		Ok(())
 	}
 }
