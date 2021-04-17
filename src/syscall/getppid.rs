@@ -5,5 +5,5 @@ use crate::util;
 
 /// The implementation of the `getppid` syscall.
 pub fn getppid(_regs: &util::Regs) -> u32 {
-	Process::get_current().unwrap().get_parent_pid() as _
+	Process::get_current().unwrap().lock().get().get_parent_pid() as _
 }

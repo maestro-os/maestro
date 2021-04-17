@@ -160,13 +160,13 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 	let test_begin = unsafe { // Use of transmute
 		core::mem::transmute::<unsafe extern "C" fn(), *const c_void>(test_process)
 	};
-	if let Ok(p) = Process::new(None, 0, test_begin, Path::root()) {
-		println!("Test process PID: {}", p.get_pid());
+	if let Ok(mut p) = Process::new(None, 0, test_begin, Path::root()) {
+		println!("Test process PID: {}", p.lock().get().get_pid());
 	} else {
 		kernel_panic!("Failed to create test process!", 0);
 	}
 
-	unsafe { // Call to ASM function
+	unsafe {
 		kernel_loop();
 	}
 }
@@ -189,7 +189,7 @@ fn panic(panic_info: &PanicInfo) -> ! {
 fn panic(panic_info: &PanicInfo) -> ! {
 	println!("FAILED\n");
 	println!("Error: {}\n", panic_info);
-	unsafe { // Call to ASM function
+	unsafe {
 		kernel_halt();
 	}
 }

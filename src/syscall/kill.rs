@@ -10,6 +10,7 @@ use crate::util;
 /// Tries to kill the process with PID `pid` with the signal `sig`.
 fn try_kill(pid: i32, sig: u8) -> Result<(), Errno> {
 	if let Some(mut proc) = Process::get_by_pid(pid as Pid) {
+		let proc = proc.lock().get();
 		if proc.get_state() != State::Zombie {
 			proc.kill(sig)
 		} else {
@@ -28,7 +29,7 @@ fn handle_kill(pid: i32, sig: u8) -> Result<(), Errno> {
 	if pid > 0 {
 		try_kill(pid, sig)
 	} else if pid == 0 {
-		let mut curr_proc = Process::get_current().unwrap();
+		let mut curr_proc = Process::get_current().unwrap().lock().get();
 		for p in curr_proc.get_group_processes() {
 			try_kill(*p as _, sig).unwrap();
 		}
@@ -38,6 +39,7 @@ fn handle_kill(pid: i32, sig: u8) -> Result<(), Errno> {
 		Err(errno::ESRCH)
 	} else {
 		if let Some(mut curr_proc) = Process::get_by_pid(-pid as _) {
+			let curr_proc = curr_proc.lock().get();
 			for p in curr_proc.get_group_processes() {
 				try_kill(*p as _, sig).unwrap();
 			}

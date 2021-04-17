@@ -19,7 +19,7 @@ fn handle_setpgid(pid: Pid, pgid: Pid) -> Result<(), Errno> {
 				return Err(errno::ESRCH);
 			}
 		}
-	};
+	}.lock().get();
 
 	// TODO Check processes SID
 

@@ -70,7 +70,7 @@ pub fn open(regs: &util::Regs) -> u32 {
 	let flags = regs.ecx;
 	let _mode = regs.edx as u16;
 
-	let mut curr_proc = Process::get_current().unwrap();
+	let mut curr_proc = Process::get_current().unwrap().lock().get();
 	// TODO Check that path is in process's memory
 	// TODO Check path length (ENAMETOOLONG)
 	let path_str = unsafe { // Call to unsafe function

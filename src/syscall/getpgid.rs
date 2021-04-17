@@ -19,7 +19,7 @@ fn handle_getpgid(pid: Pid) -> Result<Pid, Errno> {
 				return Err(errno::ESRCH);
 			}
 		}
-	};
+	}.lock().get();
 
 	Ok(proc.get_pgid())
 }
