@@ -44,6 +44,9 @@ const KERNEL_STACK_SIZE: usize = 64;
 /// The flags for the kernelspace stack mapping.
 const KERNEL_STACK_FLAGS: u8 = MAPPING_FLAG_WRITE | MAPPING_FLAG_NOLAZY;
 
+/// The default value of the eflags register.
+const DEFAULT_EFLAGS: u32 = 0x1202;
+
 /// The opcode of the `hlt` instruction.
 const HLT_INSTRUCTION: u8 = 0xf4;
 
@@ -260,7 +263,7 @@ impl Process {
 				ebp: 0x0,
 				esp: user_stack as _,
 				eip: entry_point as _,
-				eflags: 0x0,
+				eflags: DEFAULT_EFLAGS,
 				eax: 0x0,
 				ebx: 0x0,
 				ecx: 0x0,
