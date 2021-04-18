@@ -1,6 +1,7 @@
 /// This module handles the filesystem hierarchy.
 /// TODO doc
 
+pub mod device;
 pub mod file_descriptor;
 pub mod path;
 

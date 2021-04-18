@@ -237,6 +237,14 @@ impl MemSpace {
 		// TODO
 	}
 
+	/// Tells whether the given region of memory `ptr` of size `size` in bytes can be accessed.
+	/// `user` tells whether the memory must be accessible from userspace or just kernelspace.
+	/// `write` tells whether to check for write permission.
+	pub fn can_access(&self, _ptr: *const u8, _size: usize, _user: bool, _write: bool) -> bool {
+		// TODO
+		true
+	}
+
 	/// Binds the CPU to this memory space.
 	pub fn bind(&self) {
 		self.vmem.bind();

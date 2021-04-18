@@ -18,7 +18,6 @@ pub trait VMem: FailableClone {
 	/// Translates the given virtual address `ptr` to the corresponding physical address. If the
 	/// address is not mapped, the function returns None.
 	fn translate(&self, ptr: *const c_void) -> Option<*const c_void>;
-	// TODO get_flags?
 
 	/// Tells whether the given pointer `ptr` is mapped or not.
 	fn is_mapped(&self, ptr: *const c_void) -> bool {

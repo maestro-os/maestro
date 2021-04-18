@@ -147,7 +147,7 @@ impl InterruptCallback for ProcessFaultCallback {
 
 			match id {
 				0x0d => {
-					let vmem = curr_proc.get_mem_space().get_vmem();
+					let vmem = curr_proc.get_mem_space_mut().get_vmem();
 					let mut inst_prefix = 0;
 					vmem::vmem_switch(vmem.as_ref(), || {
 						inst_prefix = unsafe {
@@ -408,8 +408,13 @@ impl Process {
 		}
 	}
 
+	/// Returns a reference to the process's memory space.
+	pub fn get_mem_space(&self) -> &MemSpace {
+		&self.mem_space
+	}
+
 	/// Returns a mutable reference to the process's memory space.
-	pub fn get_mem_space(&mut self) -> &mut MemSpace {
+	pub fn get_mem_space_mut(&mut self) -> &mut MemSpace {
 		&mut self.mem_space
 	}
 
