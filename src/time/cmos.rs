@@ -50,6 +50,7 @@ fn read(reg: u8) -> u8 {
 }
 
 /// Enumeration representing a drive type.
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum FloppyDriveType {
 	/// No drive is present.
 	NoDrive,

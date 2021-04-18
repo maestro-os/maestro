@@ -77,13 +77,13 @@ impl<T> Mutex<T> {
 
 	/// Returns an immutable reference to the payload. This function is unsafe because it can return
 	/// the payload while the Mutex isn't locked.
-	unsafe fn get_payload(&self) -> &T {
+	pub unsafe fn get_payload(&self) -> &T {
 		&self.data
 	}
 
 	/// Returns a mutable reference to the payload. This function is unsafe because it can return
 	/// the payload while the Mutex isn't locked.
-	unsafe fn get_mut_payload(&mut self) -> &mut T {
+	pub unsafe fn get_mut_payload(&mut self) -> &mut T {
 		&mut self.data
 	}
 }

@@ -52,7 +52,7 @@ pub const S_ISGID: Mode = 02000;
 pub const S_ISVTX: Mode = 01000;
 
 /// Enumeration representing the different file types.
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum FileType {
 	/// A regular file storing data.
 	Regular,

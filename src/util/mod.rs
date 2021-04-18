@@ -190,6 +190,15 @@ pub unsafe fn write_ptr<T>(ptr: *mut T, val: T) {
 	next.write(val);
 }
 
+/// Turns the error into an empty error for the given result.
+pub fn to_empty_error<T, E>(r: Result<T, E>) -> Result<T, ()> {
+	if let Ok(t) = r {
+		Ok(t)
+	} else {
+		 Err(())
+	}
+}
+
 #[cfg(test)]
 mod test {
 	use super::*;

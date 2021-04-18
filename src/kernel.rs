@@ -36,6 +36,7 @@
 
 mod acpi;
 mod debug;
+mod default_devices;
 mod elf;
 mod errno;
 mod event;
@@ -65,6 +66,10 @@ mod vga;
 
 use core::ffi::c_void;
 use core::panic::PanicInfo;
+use crate::default_devices::*;
+use crate::filesystem::device::Device;
+use crate::filesystem::device::DeviceType;
+use crate::filesystem::device;
 use crate::filesystem::path::Path;
 use crate::module::Module;
 use crate::process::Process;
@@ -92,6 +97,17 @@ mod io {
 
 extern "C" {
 	fn test_process();
+}
+
+/// Creates the default devices.
+fn create_devices() -> Result<(), ()> {
+	device::register_device(util::to_empty_error(Device::new(1, 3, DeviceType::Char,
+		NullDeviceHandle {}))?)?;
+	device::register_device(util::to_empty_error(Device::new(1, 5, DeviceType::Char,
+		ZeroDeviceHandle {}))?)?;
+	// TODO
+
+	Ok(())
 }
 
 /// This is the main function of the Rust source code, responsible for the initialization of the
@@ -135,6 +151,10 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 
 	acpi::init();
 	// TODO PCI
+
+	if create_devices().is_err() {
+		kernel_panic!("Failed to create devices!");
+	}
 
 	println!("Loading modules...");
 	// TODO Load modules from file and register into a vector
