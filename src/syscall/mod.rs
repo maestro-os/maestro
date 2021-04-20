@@ -73,6 +73,7 @@ pub extern "C" fn syscall_handler(regs: &util::Regs) -> u32 {
 			}
 		}
 	};
+
 	if let Ok(val) = result {
 		val as _
 	} else {

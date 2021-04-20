@@ -29,9 +29,11 @@ void test_process(void)
 
 	int pid = fork();
 	if(pid) {
-		// TODO
-	} else {
+		// Parent
 		print_nbr(pid);
+	} else {
+		// Child
+		//print_nbr(pid);
 	}
 
 	asm("hlt");

@@ -521,7 +521,7 @@ impl Process {
 			pid: pid,
 			pgid: self.pgid,
 
-			state: self.state,
+			state: State::Running,
 			owner: self.owner,
 
 			priority: self.priority,
