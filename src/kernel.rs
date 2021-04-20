@@ -56,6 +56,7 @@ mod print;
 mod process;
 mod ps2;
 mod selftest;
+mod storage;
 mod syscall;
 mod time;
 mod tty;
