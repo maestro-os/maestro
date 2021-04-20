@@ -8,7 +8,7 @@ use crate::util::lock::mutex::MutexGuard;
 use crate::util;
 
 /// The implementation of the `write` syscall.
-pub fn write(regs: &util::Regs) -> u32 {
+pub fn write(_proc: &mut Process, regs: &util::Regs) -> u32 {
 	let _fd = regs.ebx;
 	let buf = regs.ecx as *const u8;
 	let count = regs.edx as usize;

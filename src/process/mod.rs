@@ -428,6 +428,16 @@ impl Process {
 		self.cwd = path;
 	}
 
+	/// Returns the process's saved state registers.
+	pub fn get_regs(&self) -> &util::Regs {
+		&self.regs
+	}
+
+	/// Sets the process's saved state registers.
+	pub fn set_regs(&mut self, regs: &util::Regs) {
+		self.regs = *regs;
+	}
+
 	/// Tells whether the process was syscalling before being interrupted.
 	pub fn is_syscalling(&self) -> bool {
 		self.syscalling

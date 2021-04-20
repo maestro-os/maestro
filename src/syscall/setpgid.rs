@@ -30,7 +30,7 @@ fn handle_setpgid(pid: Pid, pgid: Pid) -> Result<(), Errno> {
 }
 
 /// The implementation of the `getpgid` syscall.
-pub fn setpgid(regs: &util::Regs) -> u32 {
+pub fn setpgid(_proc: &mut Process, regs: &util::Regs) -> u32 {
 	let pid = regs.ebx as Pid;
 	let pgid = regs.ecx as Pid;
 

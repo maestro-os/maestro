@@ -7,7 +7,6 @@ use crate::filesystem::File;
 use crate::filesystem::path::Path;
 use crate::filesystem;
 use crate::process::Process;
-use crate::util::lock::mutex::MutexGuard;
 use crate::util;
 
 /// TODO doc
@@ -66,14 +65,11 @@ fn get_file(path: Path, flags: u32) -> Result::<&'static mut File, Errno> {
 }
 
 /// The implementation of the `open` syscall.
-pub fn open(regs: &util::Regs) -> u32 {
+pub fn open(proc: &mut Process, regs: &util::Regs) -> u32 {
 	let pathname = regs.ebx as *const c_void;
 	let flags = regs.ecx;
 	let _mode = regs.edx as u16;
 
-	let mut mutex = Process::get_current().unwrap();
-	let mut guard = MutexGuard::new(&mut mutex);
-	let curr_proc = guard.get_mut();
 	// TODO Check that path is in process's memory
 	// TODO Check path length (ENAMETOOLONG)
 	let path_str = unsafe { // Call to unsafe function
@@ -82,7 +78,7 @@ pub fn open(regs: &util::Regs) -> u32 {
 
 	// TODO Resolve symbolic links up to limit (if too many, ELOOP)
 
-	let file_path = get_file_absolute_path(&curr_proc, path_str);
+	let file_path = get_file_absolute_path(&proc, path_str);
 	if file_path.is_err() {
 		return -errno::ENOMEM as _;
 	}
@@ -93,7 +89,7 @@ pub fn open(regs: &util::Regs) -> u32 {
 		-errno as _
 	} else {
 		let file = file_result.unwrap();
-		let fd = curr_proc.open_file(file);
+		let fd = proc.open_file(file);
 		if let Err(errno) = fd {
 			-errno as _
 		} else {

@@ -309,10 +309,10 @@ impl X86VMem {
 		self.translate(esp).unwrap();
 		// TODO Check that the content of the physical page is the same as the current
 
-		for i in 0..262144 {
+		/*for i in 0..262144 {
 			let ptr = (0xc0000000 + i * memory::PAGE_SIZE) as *const c_void;
 			self.translate(ptr).unwrap();
-		}
+		}*/
 	}
 
 	/// Initializes a new page directory. The kernel memory is mapped into the context by default.
