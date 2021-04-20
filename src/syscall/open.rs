@@ -65,35 +65,21 @@ fn get_file(path: Path, flags: u32) -> Result::<&'static mut File, Errno> {
 }
 
 /// The implementation of the `open` syscall.
-pub fn open(proc: &mut Process, regs: &util::Regs) -> u32 {
+pub fn open(proc: &mut Process, regs: &util::Regs) -> Result<i32, Errno> {
 	let pathname = regs.ebx as *const c_void;
 	let flags = regs.ecx;
 	let _mode = regs.edx as u16;
 
 	// TODO Check that path is in process's memory
 	// TODO Check path length (ENAMETOOLONG)
-	let path_str = unsafe { // Call to unsafe function
+	let path_str = unsafe {
 		util::ptr_to_str(pathname)
 	};
 
 	// TODO Resolve symbolic links up to limit (if too many, ELOOP)
 
-	let file_path = get_file_absolute_path(&proc, path_str);
-	if file_path.is_err() {
-		return -errno::ENOMEM as _;
-	}
-	let file_path = file_path.unwrap();
-
-	let file_result = get_file(file_path, flags);
-	if let Err(errno) = file_result {
-		-errno as _
-	} else {
-		let file = file_result.unwrap();
-		let fd = proc.open_file(file);
-		if let Err(errno) = fd {
-			-errno as _
-		} else {
-			fd.unwrap().get_id()
-		}
-	}
+	let file_path = get_file_absolute_path(&proc, path_str)?;
+	let file = get_file(file_path, flags)?;
+	let fd = proc.open_file(file)?;
+	Ok(fd.get_id() as _)
 }

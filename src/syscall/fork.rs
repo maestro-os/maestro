@@ -1,14 +1,14 @@
 /// TODO doc
 
+use crate::errno::Errno;
 use crate::process::Process;
+use crate::util::lock::mutex::MutexGuard;
 use crate::util;
 
 /// The implementation of the `fork` syscall.
-pub fn fork(proc: &mut Process, _regs: &util::Regs) -> u32 {
-	let new_proc = proc.fork();
-	if let Err(new_proc) = new_proc {
-		-new_proc as _
-	} else {
-		new_proc.unwrap().lock().get().get_pid() as _
-	}
+pub fn fork(proc: &mut Process, _regs: &util::Regs) -> Result<i32, Errno> {
+	let mut mutex = proc.fork()?;
+	let mut guard = MutexGuard::new(&mut mutex);
+	let new_proc = guard.get_mut();
+	Ok(new_proc.get_pid() as _)
 }

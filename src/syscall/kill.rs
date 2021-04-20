@@ -9,12 +9,13 @@ use crate::util::lock::mutex::MutexGuard;
 use crate::util;
 
 /// Tries to kill the process with PID `pid` with the signal `sig`.
-fn try_kill(pid: i32, sig: u8) -> Result<(), Errno> {
+fn try_kill(pid: i32, sig: u8) -> Result<i32, Errno> {
 	if let Some(mut proc) = Process::get_by_pid(pid as Pid) {
 		let mut guard = MutexGuard::new(&mut proc);
 		let proc = guard.get_mut();
 		if proc.get_state() != State::Zombie {
-			proc.kill(sig)
+			proc.kill(sig)?;
+			Ok(0)
 		} else {
 			Err(errno::ESRCH)
 		}
@@ -23,13 +24,17 @@ fn try_kill(pid: i32, sig: u8) -> Result<(), Errno> {
 	}
 }
 
-/// TODO doc
-fn handle_kill(pid: i32, sig: u8, proc: &mut Process) -> Result<(), Errno> {
+/// The implementation of the `kill` syscall.
+pub fn kill(proc: &mut Process, regs: &util::Regs) -> Result<i32, Errno> {
+	let pid = regs.ebx as i32;
+	let sig = regs.ecx as u8;
+
 	// TODO Handle sig == 0
 	// TODO Handle when killing current process (execute before returning)
 
 	if pid == proc.get_pid() as _ {
-		proc.kill(sig)
+		proc.kill(sig)?;
+		Ok(0)
 	} else if pid > 0 {
 		try_kill(pid, sig)
 	} else if pid == 0 {
@@ -37,7 +42,8 @@ fn handle_kill(pid: i32, sig: u8, proc: &mut Process) -> Result<(), Errno> {
 			try_kill(*p as _, sig).unwrap();
 		}
 
-		proc.kill(sig)
+		proc.kill(sig)?;
+		Ok(0)
 	} else if pid == -1 {
 		// TODO Send to every processes that the process has permission to send a signal to
 
@@ -48,7 +54,8 @@ fn handle_kill(pid: i32, sig: u8, proc: &mut Process) -> Result<(), Errno> {
 				try_kill(*p as _, sig).unwrap();
 			}
 
-			return proc.kill(sig);
+			proc.kill(sig)?;
+			return Ok(0);
 		} else {
 			if let Some(mut proc) = Process::get_by_pid(-pid as _) {
 				let mut guard = MutexGuard::new(&mut proc);
@@ -57,22 +64,11 @@ fn handle_kill(pid: i32, sig: u8, proc: &mut Process) -> Result<(), Errno> {
 					try_kill(*p as _, sig).unwrap();
 				}
 
-				return proc.kill(sig);
+				proc.kill(sig)?;
+				return Ok(0);
 			}
 		}
 
 		Err(errno::ESRCH)
-	}
-}
-
-/// The implementation of the `kill` syscall.
-pub fn kill(proc: &mut Process, regs: &util::Regs) -> u32 {
-	let pid = regs.ebx as i32;
-	let sig = regs.ecx as u8;
-
-	if let Err(errno) = handle_kill(pid, sig, proc) {
-		-errno as _
-	} else {
-		0
 	}
 }

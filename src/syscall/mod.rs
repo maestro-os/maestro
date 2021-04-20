@@ -48,7 +48,7 @@ pub extern "C" fn syscall_handler(regs: &util::Regs) -> u32 {
 
 	let id = regs.eax;
 
-	match id {
+	let result = match id {
 		// TODO chown, chmod, mkdir, mknod, link, mount, ...
 		0 => open(curr_proc, regs),
 		1 => close(curr_proc, regs),
@@ -72,5 +72,10 @@ pub extern "C" fn syscall_handler(regs: &util::Regs) -> u32 {
 				crate::kernel_loop();
 			}
 		}
+	};
+	if let Ok(val) = result {
+		val as _
+	} else {
+		-result.unwrap_err() as _
 	}
 }

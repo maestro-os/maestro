@@ -8,35 +8,27 @@ use crate::process::pid::Pid;
 use crate::util::lock::mutex::MutexGuard;
 use crate::util;
 
-/// TODO doc
-fn handle_setpgid(pid: Pid, pgid: Pid) -> Result<(), Errno> {
-	let mut mutex = {
-		if pid == 0 {
-			Process::get_current().unwrap()
-		} else {
+/// The implementation of the `getpgid` syscall.
+pub fn setpgid(proc: &mut Process, regs: &util::Regs) -> Result<i32, Errno> {
+	let pid = regs.ebx as Pid;
+	let pgid = regs.ecx as Pid;
+
+	// TODO Check processes SID
+
+	if pid == 0 || pid == proc.get_pid() {
+		proc.set_pgid(pgid)?;
+	} else {
+		let mut mutex = {
 			if let Some(proc) = Process::get_by_pid(pid) {
 				proc
 			} else {
 				return Err(errno::ESRCH);
 			}
-		}
-	};
-	let mut guard = MutexGuard::new(&mut mutex);
-	let proc = guard.get_mut();
-
-	// TODO Check processes SID
-
-	proc.set_pgid(pgid)
-}
-
-/// The implementation of the `getpgid` syscall.
-pub fn setpgid(_proc: &mut Process, regs: &util::Regs) -> u32 {
-	let pid = regs.ebx as Pid;
-	let pgid = regs.ecx as Pid;
-
-	if let Err(errno) = handle_setpgid(pid, pgid) {
-		-errno as _
-	} else {
-		0
+		};
+		let mut guard = MutexGuard::new(&mut mutex);
+		let proc = guard.get_mut();
+		proc.set_pgid(pgid)?;
 	}
+
+	Ok(0)
 }

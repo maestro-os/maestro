@@ -1,16 +1,17 @@
 /// TODO doc
 
+use crate::errno::Errno;
 use crate::errno;
 use crate::process::Process;
 use crate::util;
 
 /// The implementation of the `close` syscall.
-pub fn close(proc: &mut Process, regs: &util::Regs) -> u32 {
+pub fn close(proc: &mut Process, regs: &util::Regs) -> Result<i32, Errno> {
 	let fd = regs.ebx;
 
 	if proc.close_fd(fd).is_ok() {
-		0
+		Ok(0)
 	} else {
-		-errno::EBADF as _
+		Err(errno::EBADF)
 	}
 }

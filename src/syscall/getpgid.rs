@@ -9,9 +9,9 @@ use crate::util::lock::mutex::MutexGuard;
 use crate::util;
 
 /// TODO doc
-fn handle_getpgid(pid: Pid, proc: &mut Process) -> Result<Pid, Errno> {
+fn handle_getpgid(pid: Pid, proc: &mut Process) -> Result<i32, Errno> {
 	if pid == 0 {
-		Ok(proc.get_pid())
+		Ok(proc.get_pid() as _)
 	} else {
 		let mut mutex = {
 			if let Some(proc) = Process::get_by_pid(pid) {
@@ -22,18 +22,13 @@ fn handle_getpgid(pid: Pid, proc: &mut Process) -> Result<Pid, Errno> {
 		};
 		let mut guard = MutexGuard::new(&mut mutex);
 		let proc = guard.get_mut();
-		Ok(proc.get_pgid())
+		Ok(proc.get_pgid() as _)
 	}
 }
 
 /// The implementation of the `getpgid` syscall.
-pub fn getpgid(proc: &mut Process, regs: &util::Regs) -> u32 {
+pub fn getpgid(proc: &mut Process, regs: &util::Regs) -> Result<i32, Errno> {
 	let pid = regs.ebx as Pid;
 
-	let r = handle_getpgid(pid, proc);
-	if let Ok(pgid) = r {
-		pgid as _
-	} else {
-		-r.unwrap_err() as _
-	}
+	handle_getpgid(pid, proc)
 }
