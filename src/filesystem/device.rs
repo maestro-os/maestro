@@ -8,6 +8,8 @@ use crate::util::boxed::Box;
 use crate::util::container::vec::Vec;
 use crate::util::lock::mutex::Mutex;
 use crate::util::lock::mutex::MutexGuard;
+use super::Mode;
+use super::path::Path;
 
 // TODO Unit tests
 /// Returns the major number from a device number.
@@ -59,6 +61,10 @@ pub struct Device {
 	/// The minor number.
 	minor: u32,
 
+	/// The path to the device file.
+	path: Path,
+	/// The file's mode.
+	mode: Mode,
 	/// The type of the device.
 	type_: DeviceType,
 
@@ -71,12 +77,15 @@ impl Device {
 	/// `major` and `minor` are the major and minor numbers of the device.
 	/// `type_` is the type of the device.
 	/// `handle` is the handle for I/O operations.
-	pub fn new<H: 'static + DeviceHandle>(major: u32, minor: u32, type_: DeviceType, handle: H)
+	pub fn new<H: 'static + DeviceHandle>(major: u32, minor: u32, path: Path, mode: Mode,
+		type_: DeviceType, handle: H)
 		-> Result<Self, Errno> {
 		Ok(Self {
 			major: major,
 			minor: minor,
 
+			path: path,
+			mode: mode,
 			type_: type_,
 
 			handle: Box::new(handle)?,
@@ -91,6 +100,16 @@ impl Device {
 	/// Returns the minor number.
 	pub fn get_minor(&self) -> u32 {
 		self.minor
+	}
+
+	/// Returns the path to the device file.
+	pub fn get_path(&self) -> &Path {
+		&self.path
+	}
+
+	/// Returns the device file's mode.
+	pub fn get_mode(&self) -> Mode {
+		self.mode
 	}
 
 	/// Returns the type of the device.
@@ -148,6 +167,8 @@ pub fn register_device(device: Device) -> Result<(), ()> {
 		Ok(i) => i,
 		Err(i) => i,
 	};
+
+	// TODO Add new device file
 
 	if container.insert(index, Mutex::new(device)).is_ok() {
 		Ok(())

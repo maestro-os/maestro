@@ -1,5 +1,6 @@
-/// This module handles the filesystem hierarchy.
-/// TODO doc
+/// This module handles filesystems. Every filesystems are unified by the Virtual FileSystem (VFS).
+/// The root filesystem is passed to the kernel as an argument when booting. Other filesystems are
+/// mounted into subdirectories.
 
 pub mod device;
 pub mod file_descriptor;
@@ -225,9 +226,9 @@ impl File {
 	// TODO
 }
 
-/// Adds the file `file` to the file hierarchy. The file will be located into the directory at path
-/// `path`. The directory must exist. If an error happens, the function returns an Err with the
-/// appropriate Errno.
+/// Adds the file `file` to the VFS. The file will be located into the directory at path `path`.
+/// The directory must exist. If an error happens, the function returns an Err with the appropriate
+/// Errno.
 pub fn add_file(_path: Path, _file: File) -> Result::<(), Errno> {
 	// TODO
 	Err(errno::ENOMEM)

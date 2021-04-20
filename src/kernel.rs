@@ -101,10 +101,16 @@ extern "C" {
 
 /// Creates the default devices.
 fn create_devices() -> Result<(), ()> {
-	device::register_device(util::to_empty_error(Device::new(1, 3, DeviceType::Char,
-		NullDeviceHandle {}))?)?;
-	device::register_device(util::to_empty_error(Device::new(1, 5, DeviceType::Char,
-		ZeroDeviceHandle {}))?)?;
+	let null_path = util::to_empty_error(Path::from_string("/dev/null"))?;
+	let null_device = util::to_empty_error(Device::new(1, 3, null_path, 0666, DeviceType::Char,
+		NullDeviceHandle {}))?;
+	device::register_device(null_device)?;
+
+	let zero_path = util::to_empty_error(Path::from_string("/dev/zero"))?;
+	let zero_device = util::to_empty_error(Device::new(1, 3, zero_path, 0666, DeviceType::Char,
+		ZeroDeviceHandle {}))?;
+	device::register_device(zero_device)?;
+
 	// TODO
 
 	Ok(())
