@@ -50,6 +50,7 @@ mod module;
 mod multiboot;
 #[macro_use]
 mod panic;
+mod pci;
 mod pit;
 #[macro_use]
 mod print;
@@ -157,12 +158,22 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 	kernel_selftest();
 
 	acpi::init();
-	// TODO PCI
+
+	let mutex = pci::get_manager();
+	let mut guard = util::lock::mutex::MutexGuard::new(mutex);
+	let pci_devices = guard.get_mut().scan();
+	for i in 0..pci_devices.len() {
+		let dev = &pci_devices[i];
+		println!("-> {:x} {:x} {:x} {:x}", dev.get_device_id(), dev.get_vendor_id(),
+			dev.get_class(), dev.get_subclass());
+		// TODO Allocate DMA zones
+	}
 
 	if create_devices().is_err() {
 		kernel_panic!("Failed to create devices!");
 	}
 
+	// TODO Load module through userspace instead
 	println!("Loading modules...");
 	// TODO Load modules from file and register into a vector
 	let mut ps2_module = ps2::PS2Module::new(| c, action | {
