@@ -99,6 +99,14 @@ pub struct PATAInterface {
 	/// Tells whether the disk is slave or master.
 	slave: bool,
 
+	/// Tells whether the drive supports LBA48.
+	lba48: bool,
+
+	/// Tells whether the drive is ATAPI.
+	atapi: bool,
+	/// Tells whether the drive is SATA.
+	sata: bool,
+
 	/// The number of sectors on the disk.
 	sectors_count: u64,
 }
@@ -111,6 +119,11 @@ impl PATAInterface {
 		let mut s = Self {
 			secondary: secondary,
 			slave: slave,
+
+			lba48: false,
+
+			atapi: false,
+			sata: false,
 
 			sectors_count: 0,
 		};
@@ -126,6 +139,21 @@ impl PATAInterface {
 	/// Tells whether the interface is for the slave disk.
 	pub fn is_slave(&self) -> bool {
 		self.slave
+	}
+
+	/// Tells whether the drive supports LBA48.
+	pub fn supports_lba48(&self) -> bool {
+		self.lba48
+	}
+
+	/// Tells whether the drive is ATAPI.
+	pub fn is_atapi(&self) -> bool {
+		self.atapi
+	}
+
+	/// Tells whether the drive is SATA.
+	pub fn is_sata(&self) -> bool {
+		self.sata
 	}
 
 	/// Returns the port for the register at offset `offset`.
@@ -238,23 +266,24 @@ impl PATAInterface {
 		let lba_hi = unsafe {
 			io::inb(self.get_register_port(LBA_HI_REGISTER_OFFSET))
 		};
-		if lba_mid == 0x14 || lba_hi == 0xeb {
-			return Err("Device is ATAPI");
-		} else if lba_mid == 0x3c || lba_hi == 0xc3 {
-			return Err("Device is SATA");
-		} else if lba_mid != 0 || lba_hi != 0 {
+
+		let atapi = lba_mid == 0x14 && lba_hi == 0xeb;
+		let sata = lba_mid == 0x3c && lba_hi == 0xc3;
+		if !atapi && !sata && (lba_mid != 0 || lba_hi != 0) {
 			return Err("Unknown device");
 		}
 
-		loop {
-			let status = self.get_status();
-			if status & STATUS_DRQ != 0 || status & STATUS_ERR != 0 {
-				break;
+		if !atapi && !sata {
+			loop {
+				let status = self.get_status();
+				if status & STATUS_DRQ != 0 || status & STATUS_ERR != 0 {
+					break;
+				}
 			}
-		}
 
-		if self.get_status() & STATUS_ERR != 0 {
-			return Err("Error while identifying the device");
+			if self.get_status() & STATUS_ERR != 0 {
+				return Err("Error while identifying the device");
+			}
 		}
 
 		let data_port = self.get_register_port(DATA_REGISTER_OFFSET);
@@ -274,6 +303,9 @@ impl PATAInterface {
 			return Err("Unsupported disk (too old)");
 		}
 
+		self.lba48 = lba48_support;
+		self.atapi = atapi;
+		self.sata = sata;
 		self.sectors_count = if lba48_support {
 			lba48_size
 		} else {
