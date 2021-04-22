@@ -107,15 +107,15 @@ impl PATAInterface {
 	/// Creates a new instance.
 	/// `secondary` tells whether the disk is on the secondary bus.
 	/// `slave` tells whether the disk is the slave disk.
-	pub fn new(secondary: bool, slave: bool) -> Self {
+	pub fn new(secondary: bool, slave: bool) -> Result<Self, &'static str> {
 		let mut s = Self {
 			secondary: secondary,
 			slave: slave,
 
 			sectors_count: 0,
 		};
-		s.identify();
-		s
+		s.identify()?;
+		Ok(s)
 	}
 
 	/// Tells whether the interface is for the secondary bus.
@@ -186,7 +186,7 @@ impl PATAInterface {
 	}
 
 	/// Waits at least 420 nanoseconds after a select operations.
-	fn select_wait(&self) {
+	fn wait(&self) {
 		let port = self.get_register_port(STATUS_REGISTER_OFFSET);
 
 		// Individual status read take at least 30ns. 30 * 14 = 420
@@ -197,18 +197,38 @@ impl PATAInterface {
 		}
 	}
 
-	/// Identifies the drive, retrieving informations about the drive.
-	fn identify(&mut self) {
+	/// Sets the number `count` of sectors to read/write. The device is assumed to be selected.
+	fn set_sectors_count(&self, count: u16) {
+		unsafe {
+			io::outw(SECTORS_COUNT_REGISTER_OFFSET, count);
+		}
+	}
+
+	/// Sets the LBA offset `offset`. The device is assumed to be selected.
+	fn set_lba(&self, offset: u64) {
+		unsafe {
+			io::outw(LBA_LO_REGISTER_OFFSET, ((offset >> 32) & 0xffff) as _);
+			io::outw(LBA_MID_REGISTER_OFFSET, ((offset >> 16) & 0xffff) as _);
+			io::outw(LBA_HI_REGISTER_OFFSET, (offset & 0xffff) as _);
+		}
+	}
+
+	/// Identifies the drive, retrieving informations about the drive. On error, the function
+	/// returns a string telling the cause.
+	fn identify(&mut self) -> Result<(), &'static str> {
 		self.select();
-		self.select_wait();
+		self.wait();
+
+		self.set_sectors_count(0);
+		self.set_lba(0);
+		self.wait();
 
 		self.send_command(COMMAND_IDENTIFY);
-		// TODO Wait?
+		self.wait();
 
 		let status = self.get_status();
 		if status == 0 {
-			// TODO Drive doesn't exist
-			return;
+			return Err("Drive doesn't exist");
 		}
 		self.wait_busy();
 
@@ -218,9 +238,12 @@ impl PATAInterface {
 		let lba_hi = unsafe {
 			io::inb(self.get_register_port(LBA_HI_REGISTER_OFFSET))
 		};
-		if lba_mid != 0 || lba_hi != 0 {
-			// TODO Not ATA
-			return;
+		if lba_mid == 0x14 || lba_hi == 0xeb {
+			return Err("Device is ATAPI");
+		} else if lba_mid == 0x3c || lba_hi == 0xc3 {
+			return Err("Device is SATA");
+		} else if lba_mid != 0 || lba_hi != 0 {
+			return Err("Unknown device");
 		}
 
 		loop {
@@ -231,8 +254,7 @@ impl PATAInterface {
 		}
 
 		if self.get_status() & STATUS_ERR != 0 {
-			// TODO Error while identifying
-			return;
+			return Err("Error while identifying the device");
 		}
 
 		let data_port = self.get_register_port(DATA_REGISTER_OFFSET);
@@ -244,13 +266,12 @@ impl PATAInterface {
 		}
 
 		let lba48_support = data[83] & (1 << 10) != 0;
-		let lba28_size = ((data[60] as u32) << 32) | (data[61] as u32);
+		let lba28_size = ((data[60] as u32) << 16) | (data[61] as u32);
 		let lba48_size = ((data[100] as u64) << 48) | ((data[101] as u64) << 32)
 			| ((data[102] as u64) << 16) | (data[103] as u64);
 
 		if lba28_size == 0 {
-			// TODO Unsupported disk
-			return;
+			return Err("Unsupported disk (too old)");
 		}
 
 		self.sectors_count = if lba48_support {
@@ -258,6 +279,8 @@ impl PATAInterface {
 		} else {
 			lba28_size as _
 		};
+
+		Ok(())
 	}
 
 	// TODO

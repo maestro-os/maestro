@@ -75,6 +75,7 @@ use crate::filesystem::device;
 use crate::filesystem::path::Path;
 use crate::module::Module;
 use crate::process::Process;
+use crate::storage::pata::PATAInterface;
 
 /// Current kernel version.
 const KERNEL_VERSION: &'static str = "1.0";
@@ -108,9 +109,28 @@ fn init_pci() {
 	let devices = guard.get_mut().scan();
 	for i in 0..devices.len() {
 		let dev = &devices[i];
+		// TODO rm
 		println!("-> {:x} {:x} {:x} {:x}", dev.get_device_id(), dev.get_vendor_id(),
 			dev.get_class(), dev.get_subclass());
 		// TODO Allocate DMA zones
+	}
+}
+
+/// Initializes disk interfaces.
+fn init_disks() {
+	// TODO Check disks that were found by PCI
+
+	if let Err(err) = PATAInterface::new(false, false) {
+		println!("0: {}", err);
+	}
+	if let Err(err) = PATAInterface::new(false, true) {
+		println!("1: {}", err);
+	}
+	if let Err(err) = PATAInterface::new(true, false) {
+		println!("2: {}", err);
+	}
+	if let Err(err) = PATAInterface::new(true, true) {
+		println!("3: {}", err);
 	}
 }
 
@@ -171,7 +191,8 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 	kernel_selftest();
 
 	acpi::init();
-	init_pci();
+	//init_pci();
+	init_disks();
 
 	if create_devices().is_err() {
 		kernel_panic!("Failed to create devices!");
