@@ -101,6 +101,19 @@ extern "C" {
 	fn test_process();
 }
 
+/// Initializes PCI.
+fn init_pci() {
+	let mutex = pci::get_manager();
+	let mut guard = util::lock::mutex::MutexGuard::new(mutex);
+	let devices = guard.get_mut().scan();
+	for i in 0..devices.len() {
+		let dev = &devices[i];
+		println!("-> {:x} {:x} {:x} {:x}", dev.get_device_id(), dev.get_vendor_id(),
+			dev.get_class(), dev.get_subclass());
+		// TODO Allocate DMA zones
+	}
+}
+
 /// Creates the default devices.
 fn create_devices() -> Result<(), ()> {
 	let null_path = util::to_empty_error(Path::from_string("/dev/null"))?;
@@ -158,16 +171,7 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 	kernel_selftest();
 
 	acpi::init();
-
-	let mutex = pci::get_manager();
-	let mut guard = util::lock::mutex::MutexGuard::new(mutex);
-	let pci_devices = guard.get_mut().scan();
-	for i in 0..pci_devices.len() {
-		let dev = &pci_devices[i];
-		println!("-> {:x} {:x} {:x} {:x}", dev.get_device_id(), dev.get_vendor_id(),
-			dev.get_class(), dev.get_subclass());
-		// TODO Allocate DMA zones
-	}
+	init_pci();
 
 	if create_devices().is_err() {
 		kernel_panic!("Failed to create devices!");
