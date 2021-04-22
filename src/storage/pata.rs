@@ -112,7 +112,7 @@ pub struct PATAInterface {
 }
 
 impl PATAInterface {
-	/// Creates a new instance.
+	/// Creates a new instance. On error, the function returns a string telling the cause.
 	/// `secondary` tells whether the disk is on the secondary bus.
 	/// `slave` tells whether the disk is the slave disk.
 	pub fn new(secondary: bool, slave: bool) -> Result<Self, &'static str> {

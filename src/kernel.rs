@@ -75,6 +75,7 @@ use crate::filesystem::device;
 use crate::filesystem::path::Path;
 use crate::module::Module;
 use crate::process::Process;
+use crate::storage::StorageInterface;
 use crate::storage::pata::PATAInterface;
 
 /// Current kernel version.
@@ -120,17 +121,32 @@ fn init_pci() {
 fn init_disks() {
 	// TODO Check disks that were found by PCI
 
-	if let Err(err) = PATAInterface::new(false, false) {
-		println!("0: {}", err);
+	let dev0 = PATAInterface::new(false, false);
+	if let Err(s) = dev0 {
+		println!("0: {}", s);
+	} else {
+		println!("0: {} sectors", dev0.unwrap().get_blocks_count());
 	}
-	if let Err(err) = PATAInterface::new(false, true) {
-		println!("1: {}", err);
+
+	let dev1 = PATAInterface::new(false, true);
+	if let Err(s) = dev1 {
+		println!("1: {}", s);
+	} else {
+		println!("1: {} sectors", dev1.unwrap().get_blocks_count());
 	}
-	if let Err(err) = PATAInterface::new(true, false) {
-		println!("2: {}", err);
+
+	let dev2 = PATAInterface::new(true, false);
+	if let Err(s) = dev2 {
+		println!("2: {}", s);
+	} else {
+		println!("2: {} sectors", dev2.unwrap().get_blocks_count());
 	}
-	if let Err(err) = PATAInterface::new(true, true) {
-		println!("3: {}", err);
+
+	let dev3 = PATAInterface::new(true, true);
+	if let Err(s) = dev3 {
+		println!("3: {}", s);
+	} else {
+		println!("3: {} sectors", dev3.unwrap().get_blocks_count());
 	}
 }
 
