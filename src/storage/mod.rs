@@ -10,7 +10,7 @@ pub trait StorageInterface {
 	/// Returns the alignment of the storage blocks in bytes.
 	fn get_block_alignment(&self) -> usize;
 	/// Returns the number of storage blocks.
-	fn get_blocks_count(&self) -> usize;
+	fn get_blocks_count(&self) -> u64;
 
 	/// Reads `size` blocks from storage at block offset `offset`, writting the data to `buf`.
 	fn read(&self, buf: &mut [u8], offset: usize, size: usize) -> Result<(), ()>;

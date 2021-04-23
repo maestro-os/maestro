@@ -11,7 +11,6 @@
 ///
 /// TODO
 
-use core::cmp::min;
 use crate::io;
 use super::StorageInterface;
 
@@ -51,9 +50,10 @@ const STATUS_REGISTER_OFFSET: u16 = 7;
 const COMMAND_REGISTER_OFFSET: u16 = 7;
 
 /// Selects the master drive.
-const COMMAND_SELECT_MASTER: u8 = 0xa0;
+const SELECT_MASTER: u8 = 0xa0;
 /// Selects the slave drive.
-const COMMAND_SELECT_SLAVE: u8 = 0xb0;
+const SELECT_SLAVE: u8 = 0xb0;
+
 /// Flush cache command.
 const COMMAND_CACHE_FLUSH: u8 = 0xe7;
 /// Identifies the selected drive.
@@ -206,23 +206,36 @@ impl PATAInterface {
 	/// NOTE: Before using the drive, the kernel has to wait at least 420 nanoseconds to ensure
 	/// that the drive is in a consistent state.
 	fn select(&self) {
-		if !self.slave {
-			self.send_command(COMMAND_SELECT_MASTER);
+		let value = if !self.slave {
+			SELECT_MASTER
 		} else {
-			self.send_command(COMMAND_SELECT_SLAVE);
+			SELECT_SLAVE
+		};
+		unsafe {
+			io::outb(self.get_register_port(DRIVE_REGISTER_OFFSET), value);
 		}
 	}
 
-	/// Waits at least 420 nanoseconds after a select operations.
-	fn wait(&self) {
+	/// Waits at least 420 nanoseconds if `long` is not set, or at least 5 milliseconds if set.
+	fn wait(&self, long: bool) {
 		let port = self.get_register_port(STATUS_REGISTER_OFFSET);
+		let count = if long {
+			167
+		} else {
+			14
+		};
 
 		// Individual status read take at least 30ns. 30 * 14 = 420
-		for _ in 0..14 {
+		for _ in 0..count {
 			unsafe {
 				io::inb(port);
 			}
 		}
+	}
+
+	/// Flushes the drive's cache. The device is assumed to be selected.
+	fn cache_flush(&self) {
+		self.send_command(COMMAND_CACHE_FLUSH);
 	}
 
 	/// Sets the number `count` of sectors to read/write. The device is assumed to be selected.
@@ -241,18 +254,40 @@ impl PATAInterface {
 		}
 	}
 
+	/// Resets both master and slave devices. The current drive may not be selected anymore.
+	fn reset(&self) {
+		let port = if !self.secondary {
+			PRIMARY_DEVICE_CONTROL_PORT
+		} else {
+			SECONDARY_DEVICE_CONTROL_PORT
+		};
+
+		unsafe {
+			io::outb(port, 1 << 2);
+		}
+
+		self.wait(true);
+
+		unsafe {
+			io::outb(port, 0);
+		}
+
+		self.wait(true);
+	}
+
 	/// Identifies the drive, retrieving informations about the drive. On error, the function
 	/// returns a string telling the cause.
 	fn identify(&mut self) -> Result<(), &'static str> {
+		self.reset();
 		self.select();
-		self.wait();
+		self.wait(false);
 
 		self.set_sectors_count(0);
 		self.set_lba(0);
-		self.wait();
+		self.wait(false);
 
 		self.send_command(COMMAND_IDENTIFY);
-		self.wait();
+		self.wait(false);
 
 		let status = self.get_status();
 		if status == 0 {
@@ -295,9 +330,9 @@ impl PATAInterface {
 		}
 
 		let lba48_support = data[83] & (1 << 10) != 0;
-		let lba28_size = ((data[60] as u32) << 16) | (data[61] as u32);
-		let lba48_size = ((data[100] as u64) << 48) | ((data[101] as u64) << 32)
-			| ((data[102] as u64) << 16) | (data[103] as u64);
+		let lba28_size = (data[60] as u32) | ((data[61] as u32) << 16);
+		let lba48_size = (data[100] as u64) | ((data[101] as u64) << 16)
+			| ((data[102] as u64) << 32) | ((data[103] as u64) << 48);
 
 		if lba28_size == 0 {
 			return Err("Unsupported disk (too old)");
@@ -311,6 +346,8 @@ impl PATAInterface {
 		} else {
 			lba28_size as _
 		};
+
+		self.wait(false);
 
 		Ok(())
 	}
@@ -327,8 +364,8 @@ impl StorageInterface for PATAInterface {
 		512
 	}
 
-	fn get_blocks_count(&self) -> usize {
-		min(self.sectors_count, usize::MAX as u64) as _
+	fn get_blocks_count(&self) -> u64 {
+		self.sectors_count
 	}
 
 	fn read(&self, _buf: &mut [u8], _offset: usize, _size: usize) -> Result<(), ()> {
