@@ -6,6 +6,7 @@
 ///
 /// Legacy PATA can support up to two buses, each supporting up to two drives.
 /// Each bus has its own set of ports. Before using a drive, the kernel has to:
+/// - Reset the ATA controller
 /// - Select the drive (with the dedicated command)
 /// - Identify it to retrieve informations, such as whether the drives support LBA48
 ///
@@ -352,7 +353,33 @@ impl PATAInterface {
 		Ok(())
 	}
 
-	// TODO
+	/// Reads `size` blocks from storage at block offset `offset`, writting the data to `buf`.
+	/// The function uses LBA28, thus the offset is assumed to be in range.
+	fn read28(&self, _buf: &mut [u8], _offset: u64, _size: u64) -> Result<(), ()> {
+		// TODO
+		Err(())
+	}
+
+	/// Reads `size` blocks from storage at block offset `offset`, writting the data to `buf`.
+	/// The function uses LBA48.
+	fn read48(&self, _buf: &mut [u8], _offset: u64, _size: u64) -> Result<(), ()> {
+		// TODO
+		Err(())
+	}
+
+	/// Writes `size` blocks to storage at block offset `offset`, reading the data from `buf`.
+	/// The function uses LBA28, thus the offset is assumed to be in range.
+	fn write28(&self, _buf: &[u8], _offset: u64, _size: u64) -> Result<(), ()> {
+		// TODO
+		Err(())
+	}
+
+	/// Writes `size` blocks to storage at block offset `offset`, reading the data from `buf`.
+	/// The function uses LBA48.
+	fn write48(&self, _buf: &[u8], _offset: u64, _size: u64) -> Result<(), ()> {
+		// TODO
+		Err(())
+	}
 }
 
 impl StorageInterface for PATAInterface {
@@ -368,13 +395,29 @@ impl StorageInterface for PATAInterface {
 		self.sectors_count
 	}
 
-	fn read(&self, _buf: &mut [u8], _offset: usize, _size: usize) -> Result<(), ()> {
-		// TODO
-		Err(())
+	fn read(&self, buf: &mut [u8], offset: u64, size: u64) -> Result<(), ()> {
+		if offset < self.sectors_count && offset + size < self.sectors_count {
+			// TODO Check size?
+			if offset <= (1 << 29) - 1 {
+				self.read28(buf, offset, size)
+			} else {
+				self.read48(buf, offset, size)
+			}
+		} else {
+			Err(())
+		}
 	}
 
-	fn write(&self, _buf: &[u8], _offset: usize, _size: usize) -> Result<(), ()> {
-		// TODO
-		Err(())
+	fn write(&self, buf: &[u8], offset: u64, size: u64) -> Result<(), ()> {
+		if offset < self.sectors_count && offset + size < self.sectors_count {
+			// TODO Check size?
+			if offset <= (1 << 29) - 1 {
+				self.write28(buf, offset, size)
+			} else {
+				self.write48(buf, offset, size)
+			}
+		} else {
+			Err(())
+		}
 	}
 }

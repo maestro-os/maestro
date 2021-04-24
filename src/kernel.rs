@@ -125,28 +125,32 @@ fn init_disks() {
 	if let Err(s) = dev0 {
 		println!("0: {}", s);
 	} else {
-		println!("0: {} sectors", dev0.unwrap().get_blocks_count());
+		let d = dev0.unwrap();
+		println!("0: {} sectors {} {}", d.get_blocks_count(), d.is_atapi(), d.is_sata());
 	}
 
 	let dev1 = PATAInterface::new(false, true);
 	if let Err(s) = dev1 {
 		println!("1: {}", s);
 	} else {
-		println!("1: {} sectors", dev1.unwrap().get_blocks_count());
+		let d = dev1.unwrap();
+		println!("1: {} sectors {} {}", d.get_blocks_count(), d.is_atapi(), d.is_sata());
 	}
 
 	let dev2 = PATAInterface::new(true, false);
 	if let Err(s) = dev2 {
 		println!("2: {}", s);
 	} else {
-		println!("2: {} sectors", dev2.unwrap().get_blocks_count());
+		let d = dev2.unwrap();
+		println!("2: {} sectors {} {}", d.get_blocks_count(), d.is_atapi(), d.is_sata());
 	}
 
 	let dev3 = PATAInterface::new(true, true);
 	if let Err(s) = dev3 {
 		println!("3: {}", s);
 	} else {
-		println!("3: {} sectors", dev3.unwrap().get_blocks_count());
+		let d = dev3.unwrap();
+		println!("3: {} sectors {} {}", d.get_blocks_count(), d.is_atapi(), d.is_sata());
 	}
 }
 

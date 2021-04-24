@@ -13,7 +13,7 @@ pub trait StorageInterface {
 	fn get_blocks_count(&self) -> u64;
 
 	/// Reads `size` blocks from storage at block offset `offset`, writting the data to `buf`.
-	fn read(&self, buf: &mut [u8], offset: usize, size: usize) -> Result<(), ()>;
+	fn read(&self, buf: &mut [u8], offset: u64, size: u64) -> Result<(), ()>;
 	/// Writes `size` blocks to storage at block offset `offset`, reading the data from `buf`.
-	fn write(&self, buf: &[u8], offset: usize, size: usize) -> Result<(), ()>;
+	fn write(&self, buf: &[u8], offset: u64, size: u64) -> Result<(), ()>;
 }
