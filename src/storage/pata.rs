@@ -13,6 +13,7 @@
 /// TODO
 
 use crate::io;
+use crate::util::math;
 use super::StorageInterface;
 
 /// The beginning of the port range for the primary ATA bus.
@@ -55,6 +56,8 @@ const SELECT_MASTER: u8 = 0xa0;
 /// Selects the slave drive.
 const SELECT_SLAVE: u8 = 0xb0;
 
+/// Reads sectors from the disk.
+const COMMAND_READ_SECTORS: u8 = 0x20;
 /// Flush cache command.
 const COMMAND_CACHE_FLUSH: u8 = 0xe7;
 /// Identifies the selected drive.
@@ -353,11 +356,65 @@ impl PATAInterface {
 		Ok(())
 	}
 
+	/// Waits for the drive to be ready for IO operation. The device is assumed to be selected.
+	fn wait_io(&self) -> Result<(), ()> {
+		loop {
+			let status = self.get_status();
+			if (status & STATUS_BSY == 0) && (status & STATUS_DRQ != 0) {
+				return Ok(());
+			}
+			if (status & STATUS_ERR != 0) && (status & STATUS_DF != 0) {
+				return Err(());
+			}
+		}
+	}
+
 	/// Reads `size` blocks from storage at block offset `offset`, writting the data to `buf`.
 	/// The function uses LBA28, thus the offset is assumed to be in range.
-	fn read28(&self, _buf: &mut [u8], _offset: u64, _size: u64) -> Result<(), ()> {
-		// TODO
-		Err(())
+	fn read28(&self, buf: &mut [u8], offset: u64, size: u64) -> Result<(), ()> {
+		self.select();
+		self.wait(false);
+
+		let reads_count = math::ceil_division(size, 256) as usize;
+
+		for i in 0..reads_count {
+			unsafe {
+				let drive = if self.slave {
+					0xf0
+				} else {
+					0xe0
+				} | ((offset >> 24) & 0x0f) as u8;
+				let count = (size % 256) as u8;
+				let lo_lba = (offset & 0xff) as u8;
+				let mid_lba = ((offset >> 8) & 0xff) as u8;
+				let hi_lba = ((offset >> 16) & 0xff) as u8;
+
+				io::outb(self.get_register_port(DRIVE_REGISTER_OFFSET), drive);
+				io::outb(self.get_register_port(SECTORS_COUNT_REGISTER_OFFSET), count);
+				io::outb(self.get_register_port(LBA_LO_REGISTER_OFFSET), lo_lba);
+				io::outb(self.get_register_port(LBA_MID_REGISTER_OFFSET), mid_lba);
+				io::outb(self.get_register_port(LBA_HI_REGISTER_OFFSET), hi_lba);
+			}
+
+			self.send_command(COMMAND_READ_SECTORS);
+
+			let data_port = self.get_register_port(DATA_REGISTER_OFFSET);
+			for j in 0..(size as usize) {
+				self.wait_io()?;
+
+				for k in 0..256 {
+					let index = ((i * 256 * 512) + (j * 256) + k) * 2;
+					let word = unsafe {
+						io::inw(data_port)
+					};
+
+					buf[index] = (word & 0xff) as _;
+					buf[index + 1] = ((word << 8) & 0xff) as _;
+				}
+			}
+		}
+
+		Ok(())
 	}
 
 	/// Reads `size` blocks from storage at block offset `offset`, writting the data to `buf`.
@@ -396,28 +453,26 @@ impl StorageInterface for PATAInterface {
 	}
 
 	fn read(&self, buf: &mut [u8], offset: u64, size: u64) -> Result<(), ()> {
-		if offset < self.sectors_count && offset + size < self.sectors_count {
-			// TODO Check size?
-			if offset <= (1 << 29) - 1 {
-				self.read28(buf, offset, size)
-			} else {
-				self.read48(buf, offset, size)
-			}
+		if offset >= self.sectors_count || offset + size >= self.sectors_count {
+			return Err(());
+		}
+
+		if offset <= (1 << 29) - 1 {
+			self.read28(buf, offset, size)
 		} else {
-			Err(())
+			self.read48(buf, offset, size)
 		}
 	}
 
 	fn write(&self, buf: &[u8], offset: u64, size: u64) -> Result<(), ()> {
-		if offset < self.sectors_count && offset + size < self.sectors_count {
-			// TODO Check size?
-			if offset <= (1 << 29) - 1 {
-				self.write28(buf, offset, size)
-			} else {
-				self.write48(buf, offset, size)
-			}
+		if offset >= self.sectors_count || offset + size >= self.sectors_count {
+			return Err(());
+		}
+
+		if offset <= (1 << 29) - 1 {
+			self.write28(buf, offset, size)
 		} else {
-			Err(())
+			self.write48(buf, offset, size)
 		}
 	}
 }
