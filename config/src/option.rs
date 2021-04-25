@@ -37,6 +37,23 @@ impl MenuOption {
 
 		None
 	}
+
+	/// Prints the entry to the screen.
+	/// `value` is the current value of the entry.
+	pub fn print(&self, value: &str) {
+		match self.option_type.as_str() {
+			"menu" => {
+				println!("-> {}", self.display_name);
+			},
+			"choice" | "bool" => {
+				println!("[{}] {}", value, self.display_name);
+			}
+
+			_ => {
+				println!("!!! INVALID OPTION !!!");
+			}
+		}
+	}
 }
 
 /// Reads all options from the given JSON file `file`.

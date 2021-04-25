@@ -1,8 +1,10 @@
 /// The configuration utility allows to easily create configuration files for the kernel's
 /// compilation.
 
+mod button;
 mod option;
 
+use std::collections::HashMap;
 use std::io::stdout;
 use std::process;
 
@@ -23,102 +25,12 @@ use crossterm::terminal::LeaveAlternateScreen;
 use crossterm::terminal;
 use crossterm::tty::IsTty;
 
+use button::BackButton;
+use button::Button;
+use button::EnterButton;
+use button::ExitButton;
+use button::SaveButton;
 use option::MenuOption;
-
-/// Structure representing the configuration environment, storage data for rendering and
-/// configuration itself.
-struct ConfigEnv {
-	/// The X position of the cursor.
-	cursor_x: usize,
-	/// The Y position of the cursor.
-	cursor_y: usize,
-
-	/// The list of available options in the root menu.
-	options: Vec<MenuOption>,
-
-	/// Stores the current menu.
-	current_menu: Vec<String>,
-}
-
-impl ConfigEnv {
-	/// Returns the option with name `name` within the root menu.
-	fn get_root_option(&self, name: &String) -> Option<&MenuOption> {
-		for m in &self.options {
-			if m.name == *name {
-				return Some(&m);
-			}
-		}
-
-		None
-	}
-
-	/// Returns the current menu.
-	fn get_current_menu(&self) -> Option<&MenuOption> {
-		let mut menu: Option<&MenuOption> = None;
-		for m in &self.current_menu {
-			menu = {
-				if let Some(menu_) = menu {
-					menu_.get_suboption(&m)
-				} else {
-					self.get_root_option(&m)
-				}
-			};
-
-			if menu.is_none() {
-				// TODO Error
-				return None;
-			}
-		}
-		menu
-	}
-
-	/// Returns the number of options in the current menu.
-	fn get_current_options(&self) -> &Vec<MenuOption> {
-		if let Some(menu) = &self.get_current_menu() {
-			&menu.suboptions
-		} else {
-			&self.options
-		}
-	}
-
-	/// Returns the number of buttons.
-	fn get_buttons_count(&self) -> usize {
-		// TODO
-		10
-	}
-
-	/// Moves the cursor up.
-	fn move_up(&mut self) {
-        if self.cursor_y > 0 {
-            self.cursor_y -= 1;
-            render_menu(self);
-        }
-	}
-
-	/// Moves the cursor down.
-	fn move_down(&mut self) {
-        if self.cursor_y < self.get_current_options().len() - 1 {
-            self.cursor_y += 1;
-            render_menu(self);
-        }
-	}
-
-	/// Moves the cursor left.
-	fn move_left(&mut self) {
-        if self.cursor_x > 0 {
-            self.cursor_x -= 1;
-            render_menu(self);
-        }
-	}
-
-	/// Moves the cursor right.
-	fn move_right(&mut self) {
-        if self.cursor_x < self.get_buttons_count() - 1{
-            self.cursor_x += 1;
-            render_menu(self);
-        }
-	}
-}
 
 /// Renders the `screen too small` error.
 fn render_screen_error() -> Result<()> {
@@ -172,32 +84,207 @@ fn render_background(width: u16, height: u16) -> Result<(u16, u16, u16, u16)> {
 
 	let options_x = menu_x + 5;
 	let options_y = menu_y + 5;
-	let options_width = 100; // TODO
-	let options_height = 100; // TODO
+	let options_width = menu_width - menu_x * 2;
+	let options_height = menu_height - menu_y * 2;
 	Ok((options_x, options_y, options_width, options_height))
 }
 
-/// Renders the menu.
-fn render_menu(env: &mut ConfigEnv) -> Result<()> {
-	let (width, height) = terminal::size()?;
+/// Structure representing the configuration environment, storage data for rendering and
+/// configuration itself.
+struct ConfigEnv {
+	/// The X position of the cursor.
+	cursor_x: usize,
+	/// The Y position of the cursor.
+	cursor_y: usize,
 
-	if width < 80 || height < 25 {
-		render_screen_error()
-	} else {
-		let (opt_x, opt_y, opt_width, opt_height) = render_background(width, height)?;
-		for i in 0..env.get_current_options().len() {
-			execute!(stdout(), cursor::MoveTo(opt_x, opt_y + i as u16))?;
+	/// The list of available options in the root menu.
+	options: Vec<MenuOption>,
+	/// Stores the current menu.
+	current_menu: Vec<String>,
 
-			let option = &env.get_current_options()[i];
-			if option.option_type == "menu" {
-				println!("{}", option.display_name); // TODO
+	buttons: Vec<Box<dyn Button>>,
+
+	/// Hashmap containing the current configuration values.
+	config_values: HashMap<String, String>,
+}
+
+impl ConfigEnv {
+	/// Creates a new instance.
+	/// `options` is the list of options.
+	pub fn new(options: Vec<MenuOption>) -> Self {
+		Self {
+			cursor_x: 0,
+			cursor_y: 0,
+
+			options: options,
+			current_menu: Vec::new(),
+
+			buttons: vec!{
+				Box::new(EnterButton {}),
+				Box::new(BackButton {}),
+				Box::new(SaveButton {}),
+				Box::new(ExitButton {}),
+			},
+
+			config_values: HashMap::new(),
+		}
+	}
+
+	/// Returns the option with name `name` within the root menu.
+	fn get_root_option(&self, name: &String) -> Option<&MenuOption> {
+		for m in &self.options {
+			if m.name == *name {
+				return Some(&m);
 			}
 		}
-		// TODO Scrolling
 
-		// TODO Render buttons
+		None
+	}
 
-		execute!(stdout(), cursor::MoveTo(opt_x, opt_y + env.cursor_y as u16))
+	/// Returns the current menu.
+	fn get_current_menu(&self) -> Option<&MenuOption> {
+		let mut menu: Option<&MenuOption> = None;
+		for m in &self.current_menu {
+			menu = {
+				if let Some(menu_) = menu {
+					menu_.get_suboption(&m)
+				} else {
+					self.get_root_option(&m)
+				}
+			};
+
+			if menu.is_none() {
+				// TODO Error
+				return None;
+			}
+		}
+		menu
+	}
+
+	/// Returns the number of options in the current menu.
+	fn get_current_options(&self) -> &Vec<MenuOption> {
+		if let Some(menu) = &self.get_current_menu() {
+			&menu.suboptions
+		} else {
+			&self.options
+		}
+	}
+
+	/// Returns the number of buttons.
+	fn get_buttons_count(&self) -> usize {
+		4
+	}
+
+	/// Renders the menu.
+	fn render(&mut self) -> Result<()> {
+		let (width, height) = terminal::size()?;
+
+		if width < 80 || height < 25 {
+			render_screen_error()
+		} else {
+			let (opt_x, opt_y, opt_width, opt_height) = render_background(width, height)?;
+			let options_count = self.get_current_options().len();
+
+			execute!(stdout(),
+				SetForegroundColor(Color::Black),
+				SetBackgroundColor(Color::Grey))?;
+
+			// TODO Print current menu path
+
+			// TODO Limit rendering and add scrolling
+			for i in 0..options_count {
+				execute!(stdout(), cursor::MoveTo(opt_x, opt_y + i as u16))?;
+
+				let option = &self.get_current_options()[i];
+				option.print("TODO");
+			}
+			// TODO Scrolling
+
+			let buttons_x = opt_x;
+			let buttons_y = opt_y + opt_height - 2;
+			execute!(stdout(), cursor::MoveTo(buttons_x, buttons_y))?;
+			for i in 0..self.buttons.len() {
+				if i == self.cursor_x {
+					execute!(stdout(),
+						SetForegroundColor(Color::Black),
+						SetBackgroundColor(Color::Red))?;
+				}
+				print!("<{}>", self.buttons[i].get_name());
+
+				execute!(stdout(),
+					SetForegroundColor(Color::Black),
+					SetBackgroundColor(Color::Grey))?;
+				if i < self.buttons.len() - 1 {
+					print!(" ");
+				}
+			}
+			println!();
+
+			execute!(stdout(), cursor::MoveTo(opt_x, opt_y + self.cursor_y as u16))
+		}
+	}
+
+	/// Moves the cursor up.
+	fn move_up(&mut self) {
+        if self.cursor_y > 0 {
+            self.cursor_y -= 1;
+            self.render();
+        }
+	}
+
+	/// Moves the cursor down.
+	fn move_down(&mut self) {
+        if self.cursor_y < self.get_current_options().len() - 1 {
+            self.cursor_y += 1;
+            self.render();
+        }
+	}
+
+	/// Moves the cursor left.
+	fn move_left(&mut self) {
+        if self.cursor_x > 0 {
+            self.cursor_x -= 1;
+            self.render();
+        }
+	}
+
+	/// Moves the cursor right.
+	fn move_right(&mut self) {
+        if self.cursor_x < self.get_buttons_count() - 1 {
+            self.cursor_x += 1;
+            self.render();
+        }
+	}
+
+	/// Toggles the selected option.
+	fn toggle(&mut self) {
+		// TODO
+	}
+
+	/// Performs the action of the select button.
+	fn press_button(&mut self) {
+		let button_index = self.cursor_x;
+		// TODO Clean
+		unsafe {
+			let button = &mut *(&mut *self.buttons[button_index] as *mut dyn Button);
+			(*button).on_action(self);
+		}
+	}
+
+	/// Enters the selected menu.
+	pub fn push_menu(&mut self) {
+		let menu_index = self.cursor_x;
+		let menu = self.options[menu_index].name.clone();
+		self.current_menu.push(menu);
+		self.render();
+	}
+
+	/// Goes back to the parent menu.
+	pub fn pop_menu(&mut self) {
+		if !self.current_menu.is_empty() {
+			self.current_menu.pop();
+			self.render();
+		}
 	}
 }
 
@@ -205,6 +292,12 @@ fn render_menu(env: &mut ConfigEnv) -> Result<()> {
 fn reset() -> Result<()> {
 	terminal::disable_raw_mode()?;
     execute!(stdout(), LeaveAlternateScreen)
+}
+
+fn exit() -> Result<()> {
+    // TODO Ask for confirmation
+	reset()?;
+    process::exit(0);
 }
 
 /// Waits for a keyboard or resize event.
@@ -228,7 +321,7 @@ fn wait_for_event(env: &mut ConfigEnv) -> Result<()> {
 
             		KeyCode::Char('l') => {
             			if event.modifiers == KeyModifiers::CONTROL {
-            				render_menu(env);
+            				env.render();
             			} else {
             				env.move_right();
             			}
@@ -242,16 +335,14 @@ fn wait_for_event(env: &mut ConfigEnv) -> Result<()> {
             		},
 
             		KeyCode::Char(' ') => {
-            			// TODO
+            			env.toggle();
             		},
             		KeyCode::Enter => {
-            			// TODO
+            			env.press_button();
             		},
 
             		KeyCode::Esc => {
-            			// TODO Ask for confirmation
-						reset()?;
-            			process::exit(0);
+            			exit()?;
             		},
 
             		_ => {},
@@ -259,7 +350,7 @@ fn wait_for_event(env: &mut ConfigEnv) -> Result<()> {
             },
 
             Event::Resize(_, _) => {
-            	render_menu(env);
+            	env.render();
             },
 
             _ => {},
@@ -272,16 +363,8 @@ fn display(options: Vec<MenuOption>) -> Result<()> {
 	execute!(stdout(), EnterAlternateScreen)?;
 	terminal::enable_raw_mode()?;
 
-	let mut env = ConfigEnv {
-		cursor_x: 0,
-		cursor_y: 0,
-
-		options: options,
-
-		current_menu: Vec::new(),
-	};
-
-	render_menu(&mut env);
+	let mut env = ConfigEnv::new(options);
+	env.render();
     wait_for_event(&mut env)?;
 
 	reset()
