@@ -1,4 +1,4 @@
-/// This module implements storage utilities.
+/// This module implements storage drivers.
 
 pub mod pata;
 
@@ -16,4 +16,18 @@ pub trait StorageInterface {
 	fn read(&self, buf: &mut [u8], offset: u64, size: u64) -> Result<(), ()>;
 	/// Writes `size` blocks to storage at block offset `offset`, reading the data from `buf`.
 	fn write(&self, buf: &[u8], offset: u64, size: u64) -> Result<(), ()>;
+}
+
+// TODO Take into account hotplug devices and buses (PCI, USB, ...)
+// TODO Function to add a device
+
+/// Tests every storage drivers on every storage devices.
+/// The execution of this function removes all the data on every connected writable disks, so it
+/// must be used carefully.
+#[cfg(kernel_storage_test = "true")]
+pub fn test() {
+	// TODO Iterate on every devices:
+	// - Run several times:
+	//  - Write pseudo-random indicator data on every blocks
+	//  - Read to check indicators to make sure that I/O works
 }

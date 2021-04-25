@@ -25,6 +25,9 @@ KERNEL_MODE ?= debug
 # A boolean value telling whether the kernel is compiled for testing or not. This variable can be set using an
 # environement variable with the same name
 KERNEL_TEST ?= false
+# A boolean value telling whether the kernel is compiled to test storage devices. This variable can be set using an
+# environement variable with the same name
+KERNEL_STORAGE_TEST ?= false
 # If true, the kernel is compiled for QEMU testing.
 KERNEL_QEMU_TEST ?= false
 
@@ -120,7 +123,7 @@ CARGOFLAGS = --tests
 endif
 
 # The Rust language compiler flags
-RUSTFLAGS = -Zmacro-backtrace -C link-arg=-T$(LINKER) --cfg kernel_mode=\"$(KERNEL_MODE)\"
+RUSTFLAGS = -Zmacro-backtrace -C link-arg=-T$(LINKER) --cfg kernel_mode=\"$(KERNEL_MODE)\" --cfg kernel_storage_test=\"$(KERNEL_STORAGE_TEST)\"
 ifeq ($(KERNEL_QEMU_TEST), true)
 RUSTFLAGS += --cfg qemu
 endif

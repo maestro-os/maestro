@@ -121,6 +121,7 @@ fn init_pci() {
 fn init_disks() {
 	// TODO Check disks that were found by PCI
 
+	// TODO Add valid devices to disks list
 	let dev0 = PATAInterface::new(false, false);
 	if let Err(s) = dev0 {
 		println!("0: {}", s);
@@ -212,7 +213,10 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 
 	acpi::init();
 	//init_pci();
+
 	init_disks();
+	#[cfg(kernel_disk_test = "true")]
+	storage::test();
 
 	if create_devices().is_err() {
 		kernel_panic!("Failed to create devices!");
