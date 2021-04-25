@@ -42,8 +42,8 @@ impl Button for SaveButton {
 		"Save".to_string()
 	}
 
-	fn on_action(&mut self, _env: &mut ConfigEnv) {
-		// TODO
+	fn on_action(&mut self, env: &mut ConfigEnv) {
+		env.save();
 	}
 }
 

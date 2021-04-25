@@ -5,7 +5,10 @@ mod button;
 mod option;
 
 use std::collections::HashMap;
+use std::fs::File;
+use std::io::Write;
 use std::io::stdout;
+use std::io;
 use std::process;
 
 use crossterm::Result;
@@ -39,6 +42,8 @@ const DISPLAY_MIN_HEIGHT: u16 = 25;
 
 /// The path to the file containing configuration file options.
 const CONFIG_OPTIONS_FILE: &str = "config_options.json";
+/// The path to the output configuration file.
+const CONFIG_FILE: &str = ".config";
 
 /// Renders the `screen too small` error.
 fn render_screen_error() -> Result<()> {
@@ -145,6 +150,7 @@ impl ConfigEnv {
 				Box::new(ExitButton {}),
 			},
 
+			// TODO Fill values from existing config
 			config_values: HashMap::new(),
 		}
 	}
@@ -315,6 +321,30 @@ impl ConfigEnv {
 			self.current_menu_view.pop();
 			self.render();
 		}
+	}
+
+	/// Serializes all the options in the given options list `options` and writes into the buffer
+	/// `data`. `prefix` is the prefix of the variables to create.
+	fn serialize_menu(&self, prefix: &String, options: &Vec<MenuOption>, data: &mut String) {
+		for o in options {
+			if o.option_type == "menu" {
+				let new_prefix = prefix.clone() + &o.name + "_";
+				self.serialize_menu(&new_prefix, &o.suboptions, data);
+			} else {
+				let name = prefix.clone() + &o.name;
+				let value = "TODO"; // TODO Get value
+				*data = data.clone() + &name + "=\"" + &value + "\"\n";
+			}
+		}
+	}
+
+	/// Saves configuration to file.
+	pub fn save(&self) -> io::Result<()> {
+		let mut data = String::new();
+		self.serialize_menu(&"".to_owned(), &self.options, &mut data);
+
+		let mut file = File::create(CONFIG_FILE)?;
+		file.write_all(data.as_str().as_bytes())
 	}
 }
 
