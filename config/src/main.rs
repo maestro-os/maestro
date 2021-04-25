@@ -80,28 +80,36 @@ fn render_background(width: u16, height: u16) -> Result<(u16, u16, u16, u16)> {
 	execute!(stdout(), cursor::MoveTo(menu_x + 2, menu_y + 2))?;
 	print!("<Space>: Toggle");
 	execute!(stdout(), cursor::MoveTo(menu_x + 2, menu_y + 3))?;
-	print!("<Enter>: Validate");
+	print!("<Enter>: Go to menu");
+	execute!(stdout(), cursor::MoveTo(menu_x + 2, menu_y + 4))?;
+	print!("<Backspace>: Go to parent menu");
 
-	let options_x = menu_x + 5;
-	let options_y = menu_y + 5;
-	let options_width = menu_width - menu_x * 2;
-	let options_height = menu_height - menu_y * 2;
+	let options_x = menu_x + 6;
+	let options_y = menu_y + 6;
+	let options_width = menu_width - options_x;
+	let options_height = menu_height - options_y;
 	Ok((options_x, options_y, options_width, options_height))
+}
+
+/// Represents the viewing point of a menu.
+struct MenuView {
+	/// The identifier of the menu.
+	menu_id: String,
+	/// The X position of the cursor.
+	cursor_y: usize,
 }
 
 /// Structure representing the configuration environment, storage data for rendering and
 /// configuration itself.
 struct ConfigEnv {
-	/// The X position of the cursor.
-	cursor_x: usize,
-	/// The Y position of the cursor.
-	cursor_y: usize,
-
 	/// The list of available options in the root menu.
 	options: Vec<MenuOption>,
-	/// Stores the current menu.
-	current_menu: Vec<String>,
 
+	/// The Y position of the cursor.
+	cursor_x: usize,
+	/// Stores the current menu view. The last element is the view being shown.
+	current_menu_view: Vec<MenuView>,
+	/// The list of buttons on the interface.
 	buttons: Vec<Box<dyn Button>>,
 
 	/// Hashmap containing the current configuration values.
@@ -113,12 +121,15 @@ impl ConfigEnv {
 	/// `options` is the list of options.
 	pub fn new(options: Vec<MenuOption>) -> Self {
 		Self {
-			cursor_x: 0,
-			cursor_y: 0,
-
 			options: options,
-			current_menu: Vec::new(),
 
+			cursor_x: 0,
+			current_menu_view: vec! {
+				MenuView {
+					menu_id: "".to_string(),
+					cursor_y: 0,
+				}
+			},
 			buttons: vec!{
 				Box::new(EnterButton {}),
 				Box::new(BackButton {}),
@@ -143,22 +154,25 @@ impl ConfigEnv {
 
 	/// Returns the current menu.
 	fn get_current_menu(&self) -> Option<&MenuOption> {
-		let mut menu: Option<&MenuOption> = None;
-		for m in &self.current_menu {
-			menu = {
-				if let Some(menu_) = menu {
-					menu_.get_suboption(&m)
+		let mut option: Option<&MenuOption> = None;
+
+		for i in 1..self.current_menu_view.len() {
+			option = {
+				let id = self.current_menu_view[i].menu_id.clone();
+
+				if let Some(o) = option {
+					o.get_suboption(&id)
 				} else {
-					self.get_root_option(&m)
+					self.get_root_option(&id)
 				}
 			};
 
-			if menu.is_none() {
-				// TODO Error
-				return None;
+			if option.is_none() {
+				panic!("Internal error");
 			}
 		}
-		menu
+
+		option
 	}
 
 	/// Returns the number of options in the current menu.
@@ -170,9 +184,10 @@ impl ConfigEnv {
 		}
 	}
 
-	/// Returns the number of buttons.
-	fn get_buttons_count(&self) -> usize {
-		4
+	/// Returns the current menu view.
+	fn get_current_view(&mut self) -> &mut MenuView {
+		let last = self.current_menu_view.len() - 1;
+		&mut self.current_menu_view[last]
 	}
 
 	/// Renders the menu.
@@ -201,7 +216,7 @@ impl ConfigEnv {
 			// TODO Scrolling
 
 			let buttons_x = opt_x;
-			let buttons_y = opt_y + opt_height - 2;
+			let buttons_y = opt_y + opt_height;
 			execute!(stdout(), cursor::MoveTo(buttons_x, buttons_y))?;
 			for i in 0..self.buttons.len() {
 				if i == self.cursor_x {
@@ -220,22 +235,23 @@ impl ConfigEnv {
 			}
 			println!();
 
-			execute!(stdout(), cursor::MoveTo(opt_x, opt_y + self.cursor_y as u16))
+			execute!(stdout(), cursor::MoveTo(opt_x,
+				opt_y + self.get_current_view().cursor_y as u16))
 		}
 	}
 
 	/// Moves the cursor up.
 	fn move_up(&mut self) {
-        if self.cursor_y > 0 {
-            self.cursor_y -= 1;
+        if self.get_current_view().cursor_y > 0 {
+            self.get_current_view().cursor_y -= 1;
             self.render();
         }
 	}
 
 	/// Moves the cursor down.
 	fn move_down(&mut self) {
-        if self.cursor_y < self.get_current_options().len() - 1 {
-            self.cursor_y += 1;
+        if self.get_current_view().cursor_y < self.get_current_options().len() - 1 {
+            self.get_current_view().cursor_y += 1;
             self.render();
         }
 	}
@@ -250,7 +266,7 @@ impl ConfigEnv {
 
 	/// Moves the cursor right.
 	fn move_right(&mut self) {
-        if self.cursor_x < self.get_buttons_count() - 1 {
+        if self.cursor_x < self.buttons.len() - 1 {
             self.cursor_x += 1;
             self.render();
         }
@@ -273,16 +289,22 @@ impl ConfigEnv {
 
 	/// Enters the selected menu.
 	pub fn push_menu(&mut self) {
-		let menu_index = self.cursor_x;
-		let menu = self.options[menu_index].name.clone();
-		self.current_menu.push(menu);
-		self.render();
+		let menu_index = self.get_current_view().cursor_y;
+		let menu_type = self.get_current_options()[menu_index].option_type.clone();
+		if menu_type == "menu" {
+			let menu_id = self.get_current_options()[menu_index].name.clone();
+			self.current_menu_view.push(MenuView {
+				menu_id: menu_id,
+				cursor_y: 0,
+			});
+			self.render();
+		}
 	}
 
 	/// Goes back to the parent menu.
 	pub fn pop_menu(&mut self) {
-		if !self.current_menu.is_empty() {
-			self.current_menu.pop();
+		if self.current_menu_view.len() > 1 {
+			self.current_menu_view.pop();
 			self.render();
 		}
 	}
@@ -339,6 +361,9 @@ fn wait_for_event(env: &mut ConfigEnv) -> Result<()> {
             		},
             		KeyCode::Enter => {
             			env.press_button();
+            		},
+            		KeyCode::Backspace => {
+            			env.pop_menu();
             		},
 
             		KeyCode::Esc => {
