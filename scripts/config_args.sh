@@ -2,4 +2,4 @@
 
 # TODO doc
 
-cat .config | sed 's/^/--cfg /' | tr '\n' ' '
+cat .config | sed 's/^/--cfg config_/' | tr '\n' ' '

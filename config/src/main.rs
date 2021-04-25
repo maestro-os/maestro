@@ -151,6 +151,7 @@ impl ConfigEnv {
 			},
 
 			// TODO Fill values from existing config
+			// TODO If a value doesn't exist, fill with default values
 			config_values: HashMap::new(),
 		}
 	}
@@ -323,6 +324,15 @@ impl ConfigEnv {
 		}
 	}
 
+	/// Returns the value of the variable for the given name `name`.
+	fn get_value(&self, name: &String) -> String {
+		if let Some(val) = self.config_values.get(name) {
+			val.clone()
+		} else {
+			"".to_owned()
+		}
+	}
+
 	/// Serializes all the options in the given options list `options` and writes into the buffer
 	/// `data`. `prefix` is the prefix of the variables to create.
 	fn serialize_menu(&self, prefix: &String, options: &Vec<MenuOption>, data: &mut String) {
@@ -332,7 +342,7 @@ impl ConfigEnv {
 				self.serialize_menu(&new_prefix, &o.suboptions, data);
 			} else {
 				let name = prefix.clone() + &o.name;
-				let value = "TODO"; // TODO Get value
+				let value = self.get_value(&name);
 				*data = data.clone() + &name + "=\"" + &value + "\"\n";
 			}
 		}
