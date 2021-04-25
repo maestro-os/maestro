@@ -8,6 +8,8 @@ maestro
 *.iso
 tags
 
+.config
+
 *_out
 
 target/

@@ -17,30 +17,32 @@
 # The name of the kernel image
 NAME = maestro
 
-# The target architecture. This variable can be set using an environement variable with the same name
-KERNEL_ARCH ?= x86
-# The target compilation mode. The value an be either `release` or `debug`. Another value may result in an undefined
-# behavior. This variable can be set using an environement variable with the same name
-KERNEL_MODE ?= debug
-# A boolean value telling whether the kernel is compiled for testing or not. This variable can be set using an
-# environement variable with the same name
-KERNEL_TEST ?= false
-# A boolean value telling whether the kernel is compiled to test storage devices. This variable can be set using an
-# environement variable with the same name
-KERNEL_STORAGE_TEST ?= false
-# If true, the kernel is compiled for QEMU testing.
-KERNEL_QEMU_TEST ?= false
 
-# Forcing the KERNEL_TEST option to `false` if building in release mode
-ifeq ($(KERNEL_MODE), release)
-KERNEL_TEST = false
-endif
 
 # Current directory
 PWD := $(shell pwd)
 
+
+
+# The path to the script that generates configuration as compiler arguments
+CONFIG_ARGUMENTS_SCRIPT = scripts/config_args.sh
+# The path to the script that extracts specific configuration attributes
+CONFIG_ATTR_SCRIPT = scripts/config_attr.sh
+
+# The path to the configuration file created by the configuration utility
+CONFIG_FILE = .config
+# Configuration as arguments for the compiler
+CONFIG_ARGUMENTS := $(shell $(CONFIG_ARGUMENTS_SCRIPT))
+
+# The target architecture
+CONFIG_ARCH := $(shell $(CONFIG_ATTR_SCRIPT) general_arch)
+# The target architecture
+CONFIG_DEBUG := $(shell $(CONFIG_ATTR_SCRIPT) debug_debug)
+
+
+
 # The path to the architecture specific directory
-ARCH_PATH = $(PWD)/arch/$(KERNEL_ARCH)/
+ARCH_PATH = $(PWD)/arch/$(CONFIG_ARCH)/
 
 # The target descriptor file path
 TARGET = $(ARCH_PATH)target.json
@@ -63,7 +65,7 @@ DEBUG_FLAGS = -D KERNEL_DEBUG -D KERNEL_DEBUG_SANITY -D KERNEL_SELFTEST #-D KERN
 
 # The C language compiler flags
 CFLAGS = -nostdlib -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -Wall -Wextra -Werror -lgcc
-ifeq ($(KERNEL_MODE), release)
+ifeq ($(CONFIG_DEBUG), release)
 CFLAGS += -O3
 else
 CFLAGS += -g3 $(DEBUG_FLAGS)
@@ -115,7 +117,7 @@ OBJ := $(ASM_OBJ) $(C_OBJ)
 CARGO = cargo +nightly
 # Cargo flags
 CARGOFLAGS = --verbose
-ifeq ($(KERNEL_MODE), release)
+ifeq ($(CONFIG_DEBUG), release)
 CARGOFLAGS += --release
 endif
 ifeq ($(KERNEL_TEST), true)
@@ -123,7 +125,7 @@ CARGOFLAGS = --tests
 endif
 
 # The Rust language compiler flags
-RUSTFLAGS = -Zmacro-backtrace -C link-arg=-T$(LINKER) --cfg kernel_mode=\"$(KERNEL_MODE)\" --cfg kernel_storage_test=\"$(KERNEL_STORAGE_TEST)\"
+RUSTFLAGS = -Zmacro-backtrace -C link-arg=-T$(LINKER) $(CONFIG_ARGUMENTS)
 ifeq ($(KERNEL_QEMU_TEST), true)
 RUSTFLAGS += --cfg qemu
 endif
@@ -134,13 +136,7 @@ STRIP = strip
 # The list of Rust language source files
 RUST_SRC := $(shell find $(SRC_DIR) -type f -name "*.rs")
 
-# Flags for the QEMU emulator
-QEMU_FLAGS = -cdrom $(NAME).iso -device isa-debug-exit,iobase=0xf4,iosize=0x04
 
-# The path to the documentation sources
-DOC_SRC_DIR = doc_src/
-# The path to the documentation build directory
-DOC_DIR = doc/
 
 # The rule to compile everything
 all: $(NAME) iso tags
@@ -161,13 +157,9 @@ $(OBJ_DIR)%.s.o: $(SRC_DIR)%.s $(HDR) Makefile
 $(OBJ_DIR)%.c.o: $(SRC_DIR)%.c $(HDR) Makefile
 	$(CC) $(CFLAGS) -I $(SRC_DIR) -c $< -o $@
 
-# The rule to create the `tags` file
-tags: $(SRC) $(HDR) $(RUST_SRC)
-	ctags $(SRC) $(HDR) $(RUST_SRC)
-
 $(NAME): $(LIB_NAME) $(RUST_SRC) $(LINKER) Makefile
 	RUSTFLAGS="$(RUSTFLAGS)" $(CARGO) build $(CARGOFLAGS) --target $(TARGET)
-ifeq ($(KERNEL_MODE), release)
+ifeq ($(CONFIG_DEBUG), release)
 	cp target/target/release/maestro .
 	$(STRIP) $(NAME)
 else
@@ -197,9 +189,30 @@ fclean: clean
 	rm -f $(NAME)
 	rm -f $(NAME).iso
 	rm -rf $(DOC_DIR)
+	make -C config/ fclean
 
 # The rule to recompile everything
 re: fclean all
+
+
+
+config/target/release/config:
+	make -C config/
+
+# Runs the configuration utility to create the configuration file
+config: config/target/release/config
+	config/target/release/config
+
+
+
+# The rule to create the `tags` file
+tags: $(SRC) $(HDR) $(RUST_SRC)
+	ctags $(SRC) $(HDR) $(RUST_SRC)
+
+
+
+# Flags for the QEMU emulator
+QEMU_FLAGS = -cdrom $(NAME).iso -device isa-debug-exit,iobase=0xf4,iosize=0x04
 
 # The rule to test the kernel using QEMU
 test: iso
@@ -218,12 +231,23 @@ bochs: iso
 virtualbox: iso
 	virtualbox
 
+
+
+# The path to the documentation sources
+DOC_SRC_DIR = doc_src/
+# The path to the documentation build directory
+DOC_DIR = doc/
+
 # Builds the documentation
 doc: $(DOC_SRC_DIR)
 	sphinx-build $(DOC_SRC_DIR) $(DOC_DIR)
+
+
 
 # Runs clippy on the Rust code
 clippy:
 	RUSTFLAGS="$(RUSTFLAGS)" $(CARGO) clippy $(CARGOFLAGS) --target $(TARGET)
 
-.PHONY: all iso clean fclean re test debug bochs doc clippy
+
+
+.PHONY: all iso clean fclean re config test debug bochs doc clippy
