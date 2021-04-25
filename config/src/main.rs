@@ -1,20 +1,28 @@
+/// The configuration utility allows to easily create configuration files for the kernel's
+/// compilation.
+
 use std::io::stdout;
 use std::process;
 
+use crossterm::Result;
 use crossterm::cursor;
 use crossterm::event::Event;
 use crossterm::event::KeyCode;
 use crossterm::event::KeyModifiers;
 use crossterm::event;
+use crossterm::execute;
 use crossterm::style::Color;
 use crossterm::style::SetBackgroundColor;
 use crossterm::style::SetForegroundColor;
 use crossterm::terminal::Clear;
 use crossterm::terminal::ClearType;
+use crossterm::terminal::EnterAlternateScreen;
+use crossterm::terminal::LeaveAlternateScreen;
 use crossterm::terminal;
 use crossterm::tty::IsTty;
-use crossterm::{execute, Result, terminal::{EnterAlternateScreen, LeaveAlternateScreen}};
 
+/// Structure representing the configuration environment, storage data for rendering and
+/// configuration itself.
 struct ConfigEnv {
 	cursor_x: usize,
 	cursor_y: usize,
@@ -36,6 +44,7 @@ impl ConfigEnv {
 	}
 }
 
+/// Renders the menu.
 fn render_menu(env: &mut ConfigEnv) -> Result<()> {
 	let (width, height) = terminal::size()?;
 
@@ -75,23 +84,26 @@ fn render_menu(env: &mut ConfigEnv) -> Result<()> {
 	print!("<Enter>: Validate");
 
 	execute!(stdout(), cursor::MoveTo(menu_x + 2, menu_y + 5))?;
-	// TODO
+	// TODO Render options
 
-	// TODO
+	// TODO Render buttons
 
-	Ok(())
+	execute!(stdout(), cursor::MoveTo(env.cursor_x as _, env.cursor_y as _))
 }
 
+// TODO rm?
 fn update_selection(env: &mut ConfigEnv) -> Result<()> {
 	// TODO
 	execute!(stdout(), cursor::MoveTo(env.cursor_x as _, env.cursor_y as _))
 }
 
+/// Resets the terminal before quitting.
 fn reset() {
 	terminal::disable_raw_mode();
     execute!(stdout(), LeaveAlternateScreen);
 }
 
+/// Waits for a keyboard or resize event.
 fn wait_for_event(env: &mut ConfigEnv) -> Result<()> {
 	loop {
         match event::read()? {
@@ -155,13 +167,14 @@ fn wait_for_event(env: &mut ConfigEnv) -> Result<()> {
             		_ => {},
             	}
             },
-            Event::Resize(width, height) => println!("New size {}x{}", width, height),
+            Event::Resize(width, height) => println!("New size {}x{}", width, height), // TODO
 
             _ => {},
         }
     }
 }
 
+/// Displays the configuration utility.
 fn display() -> Result<()> {
 	execute!(stdout(), EnterAlternateScreen)?;
 	terminal::enable_raw_mode();
