@@ -189,19 +189,16 @@ fclean: clean
 	rm -f $(NAME)
 	rm -f $(NAME).iso
 	rm -rf $(DOC_DIR)
-	make -C config/ fclean
+	rm -rf config/target/
 
 # The rule to recompile everything
 re: fclean all
 
 
 
-config/target/release/config:
-	make -C config/
-
 # Runs the configuration utility to create the configuration file
-config: config/target/release/config
-	config/target/release/config
+config:
+	cd config/ && cargo run --release
 
 
 

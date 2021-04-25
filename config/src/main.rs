@@ -32,6 +32,14 @@ use button::ExitButton;
 use button::SaveButton;
 use option::MenuOption;
 
+/// Minimum display width.
+const DISPLAY_MIN_WIDTH: u16 = 80;
+/// Minimum display height.
+const DISPLAY_MIN_HEIGHT: u16 = 25;
+
+/// The path to the file containing configuration file options.
+const CONFIG_OPTIONS_FILE: &str = "config_options.json";
+
 /// Renders the `screen too small` error.
 fn render_screen_error() -> Result<()> {
 	execute!(stdout(),
@@ -39,7 +47,7 @@ fn render_screen_error() -> Result<()> {
 		SetBackgroundColor(Color::Red))?;
 	execute!(stdout(), Clear(ClearType::All))?;
 	execute!(stdout(), cursor::MoveTo(0, 0))?;
-	println!("Display is too small! (minimum 80x25)");
+	println!(concat!("Display is too small! (minimum 80x25)"));
 	execute!(stdout(), cursor::MoveTo(0, 1))
 }
 
@@ -194,7 +202,7 @@ impl ConfigEnv {
 	fn render(&mut self) -> Result<()> {
 		let (width, height) = terminal::size()?;
 
-		if width < 80 || height < 25 {
+		if width < DISPLAY_MIN_WIDTH || height < DISPLAY_MIN_HEIGHT {
 			render_screen_error()
 		} else {
 			let (opt_x, opt_y, opt_width, opt_height) = render_background(width, height)?;
@@ -410,13 +418,13 @@ fn main() {
 	}
 	let (width, height) = size.unwrap();
 
-	if width < 80 || height < 25 {
-		eprintln!("The terminal must be at least 80x25 characters in size to run the configuration
-tool");
+	if width < DISPLAY_MIN_WIDTH || height < DISPLAY_MIN_HEIGHT {
+		eprintln!(concat!("The terminal must be at least 80x25 characters in size to run the
+configuration tool"));
 		process::exit(1);
 	}
 
-	let options_results = option::from_file("config_options.json");
+	let options_results = option::from_file(CONFIG_OPTIONS_FILE);
 	if let Err(err) = options_results {
 		eprintln!("{}", err);
 		process::exit(1);
