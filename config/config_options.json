@@ -1,70 +1,80 @@
-{
-	"options": [
-		{
-			"name": "general",
-			"display_name": "General",
-			"desc": "General kernel configuration",
-			"type": "menu",
-			"options": [
-				{
-					"name": "arch",
-					"display_name": "Target architecture",
-					"desc": "The target CPU architecture the kernel will run on",
-					"type": "choice",
-					"attrs": {
-						"values": [
-							"x86"
-						],
-						"default": "x86"
-					}
-				}
-			]
-		},
-		{
-			"name": "debug",
-			"display_name": "Debug mode",
-			"desc": "Kernel debug mode",
-			"type": "menu",
-			"attrs": {
-				"options": [
-					{
-						"name": "debug",
-						"display_name": "Enabling debug mode",
-						"desc": "Tells whether to enable debug mode",
-						"type": "bool",
-						"default": false,
-						"deps": []
-					},
-					{
-						"name": "test",
-						"display_name": "Unit tests",
-						"desc": "Tests some critical kernel features on boot, then halts",
-						"type": "bool",
-						"default": false,
-						"deps": [
-							"_.debug"
-						]
-					},
-					{
-						"name": "storagetest",
-						"display_name": "Storage testing",
-						"desc": "Tests all attached storage devices and their drives. **WARNING**: This option will erase all data on all storage devices",
-						"type": "bool",
-						"default": false,
-						"deps": [
-							"_.debug"
-						]
-					},
-					{
-						"name": "qemu",
-						"display_name": "QEMU",
-						"desc": "Compiles the kernel for QEMU",
-						"type": "bool",
-						"default": false,
-						"deps": []
-					}
-				]
+[
+	{
+		"name": "general",
+		"display_name": "General",
+		"desc": "General kernel configuration",
+		"option_type": "menu",
+		"values": [],
+		"default": "",
+		"deps": [],
+		"suboptions": [
+			{
+				"name": "arch",
+				"display_name": "Target architecture",
+				"desc": "The target CPU architecture the kernel will run on",
+				"option_type": "choice",
+				"values": [
+					"x86"
+				],
+				"default": "x86",
+				"deps": [],
+				"suboptions": []
 			}
-		}
-	]
-}
+		]
+	},
+	{
+		"name": "debug",
+		"display_name": "Debug mode",
+		"desc": "Kernel debug mode",
+		"option_type": "menu",
+		"values": [],
+		"default": "",
+		"deps": [],
+		"suboptions": [
+			{
+				"name": "debug",
+				"display_name": "Enabling debug mode",
+				"desc": "Tells whether to enable debug mode",
+				"option_type": "bool",
+				"values": [],
+				"default": "false",
+				"deps": [],
+				"suboptions": []
+			},
+			{
+				"name": "test",
+				"display_name": "Unit tests",
+				"desc": "Tests some critical kernel features on boot, then halts",
+				"option_type": "bool",
+				"values": [],
+				"default": "false",
+				"deps": [
+					"_.debug"
+				],
+				"suboptions": []
+			},
+			{
+				"name": "storagetest",
+				"display_name": "Storage testing",
+				"desc": "Tests all attached storage devices and their drives. **WARNING**: This option will erase all data on all storage devices",
+				"option_type": "bool",
+				"values": [],
+				"default": "false",
+				"deps": [
+					"_.debug"
+				],
+				"suboptions": []
+			},
+			{
+				"name": "qemu",
+				"display_name": "QEMU",
+				"desc": "Compiles the kernel for QEMU",
+				"option_type": "bool",
+				"values": [],
+				"default": "false",
+				"deps": [],
+				"suboptions": []
+			}
+		]
+	}
+]
