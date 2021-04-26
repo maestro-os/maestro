@@ -286,8 +286,10 @@ impl Scheduler {
 				crate::kernel_loop();
 			}
 		} else {
-			// TODO Add a compilation option to choose
-			//kernel_panic!("No process remaining to run!");
+			#[cfg(general_scheduler_end_panic)]
+			kernel_panic!("No process remaining to run!");
+
+			#[cfg(not(general_scheduler_end_panic))]
 			unsafe {
 				crate::kernel_halt();
 			}
