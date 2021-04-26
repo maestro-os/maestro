@@ -43,14 +43,10 @@ impl MenuOption {
 	pub fn print(&self, value: &str) {
 		match self.option_type.as_str() {
 			"menu" => {
-				println!("-> {}", self.display_name);
+				println!(" -> {}", self.display_name);
 			},
-			"choice" | "bool" => {
-				println!("[{}] {}", value, self.display_name);
-			}
-
 			_ => {
-				println!("!!! INVALID OPTION !!!");
+				println!(" [{}] {}", value, self.display_name);
 			}
 		}
 	}
@@ -64,6 +60,7 @@ pub fn from_file(file: &str) -> Result<Vec<MenuOption>, &'static str> {
 			eprintln!("{}", err); // TODO Move?
 			Err("Failed to parse options file!")
 		} else {
+			// TODO Change names to full pathes
 			// TODO Check for dependencies cycle
 			Ok(options_result.unwrap())
 		}

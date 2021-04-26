@@ -127,13 +127,15 @@ struct ConfigEnv {
 	buttons: Vec<Box<dyn Button>>,
 
 	/// Hashmap containing the current configuration values.
+	/// The key is the path to the variable and value is the value associated with the variable.
 	config_values: HashMap<String, String>,
 }
 
 impl ConfigEnv {
 	/// Creates a new instance.
 	/// `options` is the list of options.
-	pub fn new(options: Vec<MenuOption>) -> Self {
+	/// `values` is the values for all options.
+	pub fn new(options: Vec<MenuOption>, values: HashMap<String, String>) -> Self {
 		Self {
 			options: options,
 
@@ -151,9 +153,7 @@ impl ConfigEnv {
 				Box::new(ExitButton {}),
 			},
 
-			// TODO Fill values from existing config
-			// TODO If a value doesn't exist, fill with default values
-			config_values: HashMap::new(),
+			config_values: values,
 		}
 	}
 
@@ -227,7 +227,7 @@ impl ConfigEnv {
 			}
 
 			let option = &self.get_current_options()[i];
-			option.print("TODO"); //  TODO Get value
+			option.print("TODO"); // TODO Get value
 		}
 
 		execute!(stdout(),
@@ -484,15 +484,37 @@ fn wait_for_event(env: &mut ConfigEnv) -> Result<()> {
 }
 
 /// Displays the configuration utility.
-fn display(options: Vec<MenuOption>) -> Result<()> {
+fn display(options: Vec<MenuOption>, values: HashMap<String, String>) -> Result<()> {
 	execute!(stdout(), EnterAlternateScreen)?;
 	terminal::enable_raw_mode()?;
 
-	let mut env = ConfigEnv::new(options);
+	let mut env = ConfigEnv::new(options, values);
 	env.render();
     wait_for_event(&mut env)?;
 
 	reset()
+}
+
+/// TODO doc
+fn get_values_(prefix: &String, options: &Vec<MenuOption>, values: &mut HashMap<String, String>) {
+	for o in options {
+		if o.option_type == "menu" {
+			let new_prefix = prefix.clone() + &o.name + "_";
+			get_values_(&new_prefix, &o.suboptions, values);
+		} else {
+			let name = prefix.clone() + &o.name;
+			let value = &o.default; // TODO If config file exists, read from it
+			values.insert(name, value.to_string());
+		}
+	}
+}
+
+/// Returns a hash map containing the values for all options according to the config file if it
+/// exists, or the default values.
+fn get_values(options: &Vec<MenuOption>) -> HashMap<String, String> {
+	let mut map = HashMap::new();
+	get_values_(&"".to_owned(), options, &mut map);
+	map
 }
 
 fn main() {
@@ -521,9 +543,10 @@ configuration tool"));
 		eprintln!("{}", err);
 		process::exit(1);
 	}
-
 	let options = options_results.unwrap();
-	if display(options).is_err() {
+	let values = get_values(&options);
+
+	if display(options, values).is_err() {
 		eprintln!("Terminal error!");
 		process::exit(1);
 	}
