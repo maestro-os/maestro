@@ -19,6 +19,16 @@
 				"default": "x86",
 				"deps": [],
 				"suboptions": []
+			},
+			{
+				"name": "scheduler_end_panic",
+				"display_name": "Panic on scheduler end",
+				"desc": "Makes the kernel panic if no processes is remaining to run. If disabled, the kernel is halted",
+				"option_type": "bool",
+				"values": [],
+				"default": "true",
+				"deps": [],
+				"suboptions": []
 			}
 		]
 	},
