@@ -4,6 +4,7 @@
 mod button;
 mod option;
 
+use std::cmp::min;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Write;
@@ -205,6 +206,61 @@ impl ConfigEnv {
 		&mut self.current_menu_view[last]
 	}
 
+	/// Renders the options. The arguments define the frame in which the options will be rendered.
+	fn render_options(&mut self, opt_x: u16, opt_y: u16, opt_width: u16, opt_height: u16)
+		-> Result<()> {
+		let options_count = self.get_current_options().len();
+
+		// TODO Print current menu path
+
+		// TODO Limit rendering and add scrolling
+		for i in 0..options_count {
+			execute!(stdout(), cursor::MoveTo(opt_x, opt_y + i as u16))?;
+			if i == self.get_current_view().cursor_y {
+				execute!(stdout(),
+					SetForegroundColor(Color::Grey),
+					SetBackgroundColor(Color::Black))?;
+			} else {
+				execute!(stdout(),
+					SetForegroundColor(Color::Black),
+					SetBackgroundColor(Color::Grey))?;
+			}
+
+			let option = &self.get_current_options()[i];
+			option.print("TODO"); //  TODO Get value
+		}
+
+		execute!(stdout(),
+			SetForegroundColor(Color::Black),
+			SetBackgroundColor(Color::Grey))?;
+		// TODO Scrolling
+
+		Ok(())
+	}
+
+	/// Renders the options. `x` and `y` are the coordinates of the buttons.
+	fn render_buttons(&mut self, x: u16, y: u16) -> Result<()> {
+		execute!(stdout(), cursor::MoveTo(x, y))?;
+		for i in 0..self.buttons.len() {
+			if i == self.cursor_x {
+				execute!(stdout(),
+					SetForegroundColor(Color::Black),
+					SetBackgroundColor(Color::Red))?;
+			}
+			print!("<{}>", self.buttons[i].get_name());
+
+			execute!(stdout(),
+				SetForegroundColor(Color::Black),
+				SetBackgroundColor(Color::Grey))?;
+			if i < self.buttons.len() - 1 {
+				print!(" ");
+			}
+		}
+		println!();
+
+		Ok(())
+	}
+
 	/// Renders the menu.
 	fn render(&mut self) -> Result<()> {
 		let (width, height) = terminal::size()?;
@@ -213,60 +269,32 @@ impl ConfigEnv {
 			render_screen_error()
 		} else {
 			let (opt_x, opt_y, opt_width, opt_height) = render_background(width, height)?;
-			let options_count = self.get_current_options().len();
-
-			execute!(stdout(),
-				SetForegroundColor(Color::Black),
-				SetBackgroundColor(Color::Grey))?;
-
-			// TODO Print current menu path
-
-			// TODO Limit rendering and add scrolling
-			for i in 0..options_count {
-				execute!(stdout(), cursor::MoveTo(opt_x, opt_y + i as u16))?;
-
-				let option = &self.get_current_options()[i];
-				option.print("TODO");
-			}
-			// TODO Scrolling
+			self.render_options(opt_x, opt_y, opt_width, opt_height);
 
 			let buttons_x = opt_x;
 			let buttons_y = opt_y + opt_height;
-			execute!(stdout(), cursor::MoveTo(buttons_x, buttons_y))?;
-			for i in 0..self.buttons.len() {
-				if i == self.cursor_x {
-					execute!(stdout(),
-						SetForegroundColor(Color::Black),
-						SetBackgroundColor(Color::Red))?;
-				}
-				print!("<{}>", self.buttons[i].get_name());
-
-				execute!(stdout(),
-					SetForegroundColor(Color::Black),
-					SetBackgroundColor(Color::Grey))?;
-				if i < self.buttons.len() - 1 {
-					print!(" ");
-				}
-			}
-			println!();
+			self.render_buttons(buttons_x, buttons_y);
 
 			execute!(stdout(), cursor::MoveTo(opt_x,
 				opt_y + self.get_current_view().cursor_y as u16))
 		}
 	}
 
-	/// Moves the cursor up.
-	fn move_up(&mut self) {
-        if self.get_current_view().cursor_y > 0 {
-            self.get_current_view().cursor_y -= 1;
+	/// Moves the cursor up. `n` is the number of lines to move up.
+	fn move_up(&mut self, mut n: usize) {
+		let curr = self.get_current_view().cursor_y;
+        if curr > 0 {
+            self.get_current_view().cursor_y -= min(n, curr);
             self.render();
         }
 	}
 
-	/// Moves the cursor down.
-	fn move_down(&mut self) {
-        if self.get_current_view().cursor_y < self.get_current_options().len() - 1 {
-            self.get_current_view().cursor_y += 1;
+	/// Moves the cursor down. `n` is the number of lines to move down.
+	fn move_down(&mut self, n: usize) {
+		let max = self.get_current_options().len() - 1;
+		let curr = self.get_current_view().cursor_y;
+        if curr < max {
+            self.get_current_view().cursor_y = min(curr + n, max);
             self.render();
         }
 	}
@@ -285,6 +313,25 @@ impl ConfigEnv {
             self.cursor_x += 1;
             self.render();
         }
+	}
+
+	/// Moves the cursor to the top.
+	fn move_top(&mut self) {
+		let curr = self.get_current_view().cursor_y;
+		if curr > 0 {
+            self.get_current_view().cursor_y = 0;
+            self.render();
+		}
+	}
+
+	/// Moves the cursor to the bottom.
+	fn move_bottom(&mut self) {
+		let max = self.get_current_options().len() - 1;
+		let curr = self.get_current_view().cursor_y;
+		if curr < max {
+            self.get_current_view().cursor_y = max;
+            self.render();
+		}
 	}
 
 	/// Toggles the selected option.
@@ -377,10 +424,10 @@ fn wait_for_event(env: &mut ConfigEnv) -> Result<()> {
             Event::Key(event) => {
             	match event.code {
             		KeyCode::Up | KeyCode::Char('k') => {
-            			env.move_up();
+            			env.move_up(1);
             		},
             		KeyCode::Down | KeyCode::Char('j') => {
-            			env.move_down();
+            			env.move_down(1);
             		},
             		KeyCode::Left | KeyCode::Char('h') => {
             			env.move_left();
@@ -398,10 +445,16 @@ fn wait_for_event(env: &mut ConfigEnv) -> Result<()> {
             		},
 
             		KeyCode::PageUp => {
-            			// TODO
+            			env.move_up(10);
             		},
             		KeyCode::PageDown => {
-            			// TODO
+            			env.move_down(10);
+            		},
+            		KeyCode::Home => {
+            			env.move_top();
+            		},
+            		KeyCode::End => {
+            			env.move_bottom();
             		},
 
             		KeyCode::Char(' ') => {
@@ -413,9 +466,8 @@ fn wait_for_event(env: &mut ConfigEnv) -> Result<()> {
             		KeyCode::Backspace => {
             			env.pop_menu();
             		},
-
             		KeyCode::Esc => {
-            			exit()?;
+            			env.pop_menu();
             		},
 
             		_ => {},

@@ -49,7 +49,7 @@
 				"values": [],
 				"default": "false",
 				"deps": [
-					"_.debug"
+					"debug_debug"
 				],
 				"suboptions": []
 			},
@@ -61,7 +61,7 @@
 				"values": [],
 				"default": "false",
 				"deps": [
-					"_.debug"
+					"debug_debug"
 				],
 				"suboptions": []
 			},

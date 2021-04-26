@@ -7,7 +7,8 @@
 # The compilation occurs in the following order:
 # - The makefile compiles assembly and C code and pack them into static a library
 # - The Rust code is compiled using Cargo
-# - Cargo calls the build script, which tells the Rust compiler to link the library previously mentioned
+# - Cargo calls the build script, which tells the Rust compiler to link the library previously
+# mentioned
 # - Cargo runs the linker with the linker script for the required target
 #
 # This makefile also contains several rules used to test the kernel with emulators
@@ -64,7 +65,8 @@ CC = i686-elf-gcc # TODO Set according to architecture
 DEBUG_FLAGS = -D KERNEL_DEBUG -D KERNEL_DEBUG_SANITY -D KERNEL_SELFTEST #-D KERNEL_DEBUG_SPINLOCK
 
 # The C language compiler flags
-CFLAGS = -nostdlib -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -Wall -Wextra -Werror -lgcc
+CFLAGS = -nostdlib -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -Wall -Wextra\
+-Werror -lgcc
 ifeq ($(CONFIG_DEBUG), release)
 CFLAGS += -O3
 else
@@ -138,8 +140,14 @@ RUST_SRC := $(shell find $(SRC_DIR) -type f -name "*.rs")
 
 
 
+# Checks that the configuration exists
+check_config:
+	stat $(CONFIG_FILE) 2>/dev/null || { \
+	echo "File $(CONFIG_FILE) doesn't exist. Use \`make config\` to create it"; exit 1; \
+}
+
 # The rule to compile everything
-all: $(NAME) iso tags
+all: check_config $(NAME) iso tags
 
 # The rule to create object directories
 $(OBJ_DIRS):
@@ -215,12 +223,13 @@ QEMU_FLAGS = -cdrom $(NAME).iso -device isa-debug-exit,iobase=0xf4,iosize=0x04
 test: iso
 	qemu-system-i386 $(QEMU_FLAGS) -d int
 
-# The rule to run a CPU test of the kernel using QEMU (aka running the kernel and storing a lot of logs into the
-# `cpu_out` file)
+# The rule to run a CPU test of the kernel using QEMU (aka running the kernel and storing a lot of
+# logs into the `cpu_out` file)
 cputest: iso
 	qemu-system-i386 $(QEMU_FLAGS) -d int,cpu >cpu_out 2>&1
 
-# The rule to test the kernel using Bochs. The configuration for Bochs can be found in the file `.bochsrc`
+# The rule to test the kernel using Bochs. The configuration for Bochs can be found in the file
+# `.bochsrc`
 bochs: iso
 	bochs
 
@@ -247,4 +256,5 @@ clippy:
 
 
 
-.PHONY: all iso clean fclean re config test debug bochs doc clippy
+.PHONY: check_config all iso clean fclean re config test debug bochs doc clippy
+.SILENT: check_config

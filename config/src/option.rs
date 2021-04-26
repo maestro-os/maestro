@@ -20,7 +20,7 @@ pub struct MenuOption {
 	pub values: Vec<String>,
 	/// The default value.
 	pub default: String,
-	/// The set of dependencies needed to enable this option. TODO: document dependency name
+	/// The set of dependencies needed to enable this option.
 	pub deps: Vec<String>,
 	/// The set of suboptions.
 	pub suboptions: Vec<MenuOption>,
