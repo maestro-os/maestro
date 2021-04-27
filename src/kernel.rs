@@ -54,9 +54,7 @@ mod pit;
 #[macro_use]
 mod print;
 mod process;
-mod ps2;
 mod selftest;
-mod storage;
 mod syscall;
 mod time;
 mod tty;
@@ -68,10 +66,7 @@ mod vga;
 use core::ffi::c_void;
 use core::panic::PanicInfo;
 use crate::filesystem::path::Path;
-use crate::module::Module;
 use crate::process::Process;
-use crate::storage::StorageInterface;
-use crate::storage::pata::PATAInterface;
 
 /// Current kernel version.
 const KERNEL_VERSION: &'static str = "1.0";
@@ -96,44 +91,6 @@ mod io {
 
 extern "C" {
 	fn test_process();
-}
-
-/// Initializes disk interfaces.
-fn init_disks() {
-	// TODO Check disks that were found by PCI
-
-	// TODO Add valid devices to disks list
-	let dev0 = PATAInterface::new(false, false);
-	if let Err(s) = dev0 {
-		println!("0: {}", s);
-	} else {
-		let d = dev0.unwrap();
-		println!("0: {} sectors {} {}", d.get_blocks_count(), d.is_atapi(), d.is_sata());
-	}
-
-	let dev1 = PATAInterface::new(false, true);
-	if let Err(s) = dev1 {
-		println!("1: {}", s);
-	} else {
-		let d = dev1.unwrap();
-		println!("1: {} sectors {} {}", d.get_blocks_count(), d.is_atapi(), d.is_sata());
-	}
-
-	let dev2 = PATAInterface::new(true, false);
-	if let Err(s) = dev2 {
-		println!("2: {}", s);
-	} else {
-		let d = dev2.unwrap();
-		println!("2: {} sectors {} {}", d.get_blocks_count(), d.is_atapi(), d.is_sata());
-	}
-
-	let dev3 = PATAInterface::new(true, true);
-	if let Err(s) = dev3 {
-		println!("3: {}", s);
-	} else {
-		let d = dev3.unwrap();
-		println!("3: {} sectors {} {}", d.get_blocks_count(), d.is_atapi(), d.is_sata());
-	}
 }
 
 /// This is the main function of the Rust source code, responsible for the initialization of the
@@ -178,28 +135,19 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 	kernel_selftest();
 
 	acpi::init();
-	if device::bus::detect().is_err() {
-		crate::kernel_panic!("Failed to detect device buses!", 0);
-	}
-
-	init_disks();
-	#[cfg(config_debug_storagetest)]
-	storage::test();
 
 	if device::default::create().is_err() {
 		kernel_panic!("Failed to create default devices!");
 	}
+	if device::detect().is_err() {
+		crate::kernel_panic!("Failed to detect device buses!", 0);
+	}
+	#[cfg(config_debug_storagetest)]
+	storage::test();
 
 	// TODO Load module through userspace instead
 	println!("Loading modules...");
 	// TODO Load modules from file and register into a vector
-	let mut ps2_module = ps2::PS2Module::new(| c, action | {
-		println!("Key action! {:?} {:?}", c, action);
-		// TODO Write to device file
-	});
-	if ps2_module.init().is_err() {
-		kernel_panic!("Failed to init PS/2 kernel module!", 0);
-	}
 
 	// TODO Disk
 	// TODO Virtual file system

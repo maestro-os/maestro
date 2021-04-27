@@ -4,15 +4,20 @@
 
 pub mod bus;
 pub mod default;
+pub mod ps2;
+pub mod storage;
 
 use core::cmp::Ordering;
 use crate::errno::Errno;
 use crate::filesystem::Mode;
 use crate::filesystem::path::Path;
+use crate::module::Module;
 use crate::util::boxed::Box;
 use crate::util::container::vec::Vec;
 use crate::util::lock::mutex::Mutex;
 use crate::util::lock::mutex::MutexGuard;
+use storage::StorageInterface;
+use storage::pata::PATAInterface;
 
 /// Returns the major number from a device number.
 pub fn major(dev: u64) -> u32 {
@@ -218,6 +223,65 @@ pub fn get_device(major: u32, minor: u32, type_: DeviceType)
 		None
 	}
 }*/
+
+// TODO
+/// Initializes PS/2 devices.
+fn init_ps2() {
+	let mut ps2_module = ps2::PS2Module::new(| c, action | {
+		crate::println!("Key action! {:?} {:?}", c, action);
+		// TODO Write to device file
+	});
+	if ps2_module.init().is_err() {
+		crate::kernel_panic!("Failed to init PS/2 kernel module!", 0);
+	}
+}
+
+/// Initializes PATA drives.
+fn init_pata() {
+	// TODO Add valid devices to disks list
+	let dev0 = PATAInterface::new(false, false);
+	if let Err(s) = dev0 {
+		crate::println!("0: {}", s);
+	} else {
+		let d = dev0.unwrap();
+		crate::println!("0: {} sectors {} {}", d.get_blocks_count(), d.is_atapi(), d.is_sata());
+	}
+
+	let dev1 = PATAInterface::new(false, true);
+	if let Err(s) = dev1 {
+		crate::println!("1: {}", s);
+	} else {
+		let d = dev1.unwrap();
+		crate::println!("1: {} sectors {} {}", d.get_blocks_count(), d.is_atapi(), d.is_sata());
+	}
+
+	let dev2 = PATAInterface::new(true, false);
+	if let Err(s) = dev2 {
+		crate::println!("2: {}", s);
+	} else {
+		let d = dev2.unwrap();
+		crate::println!("2: {} sectors {} {}", d.get_blocks_count(), d.is_atapi(), d.is_sata());
+	}
+
+	let dev3 = PATAInterface::new(true, true);
+	if let Err(s) = dev3 {
+		crate::println!("3: {}", s);
+	} else {
+		let d = dev3.unwrap();
+		crate::println!("3: {} sectors {} {}", d.get_blocks_count(), d.is_atapi(), d.is_sata());
+	}
+}
+
+/// Detects buses and devices.
+pub fn detect() -> Result<(), Errno> {
+	bus::detect()?;
+	init_ps2();
+	init_pata();
+
+	// TODO
+
+	Ok(())
+}
 
 #[cfg(test)]
 mod test {
