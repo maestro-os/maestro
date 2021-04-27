@@ -20,14 +20,15 @@ NAME = maestro
 
 # Current directory
 PWD := $(shell pwd)
+# The list of files that, when touched, make the kernel be recompiled entirely.
+TOUCH_UPDATE_FILES = Makefile
+
+
 
 # The path to the configuration file created by the configuration utility
 CONFIG_FILE = .config
 # Tells whether the configuration file exists
 CONFIG_EXISTS = $(shell stat $(CONFIG_FILE) >/dev/null 2>&1; echo $$?)
-
-# The list of files that, when touched, make the kernel be recompiled entirely.
-TOUCH_UPDATE_FILES = Makefile $(CONFIG_FILE)
 
 # The path to the script that generates configuration as compiler arguments
 CONFIG_ARGUMENTS_SCRIPT = scripts/config_args.sh
@@ -261,7 +262,7 @@ CONFIG_UTIL_BUILD_PATH = /tmp/$(NAME)_config
 
 # Builds the configuration utility into a tmp directory.
 $(CONFIG_UTIL_PATH): $(CONFIG_UTIL_SRC)
-	rm -r $(CONFIG_UTIL_BUILD_PATH)
+	rm -rf $(CONFIG_UTIL_BUILD_PATH)
 	cp -r config/ $(CONFIG_UTIL_BUILD_PATH)
 	cd $(CONFIG_UTIL_BUILD_PATH) && cargo build --release
 	cp -Tr $(CONFIG_UTIL_BUILD_PATH) config/
@@ -270,6 +271,7 @@ $(CONFIG_UTIL_PATH): $(CONFIG_UTIL_SRC)
 # Runs the configuration utility to create the configuration file
 $(CONFIG_FILE): $(CONFIG_UTIL_PATH)
 	$(CONFIG_UTIL_PATH)
+	@stat $(CONFIG_FILE) >/dev/null 2>&1 && echo "The configuration file is now ready. You may want to type \`make clean\` before compiling with \`make\`" || true
 
 # Runs the configuration utility to create the configuration file
 config: $(CONFIG_FILE)
