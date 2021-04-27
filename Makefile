@@ -206,13 +206,6 @@ re: fclean all
 
 
 
-# Runs the configuration utility to create the configuration file
-config:
-	cd config/ && cargo build --release
-	config/target/release/config
-
-
-
 # The rule to create the `tags` file
 tags: $(SRC) $(HDR) $(RUST_SRC)
 	ctags $(SRC) $(HDR) $(RUST_SRC)
@@ -259,4 +252,28 @@ clippy:
 
 
 
-.PHONY: check_config all iso clean fclean re config test debug bochs doc clippy
+# The path of the configuration utility
+CONFIG_UTIL_PATH := config/target/release/config
+# The list of the sources for the configuration utility
+CONFIG_UTIL_SRC := $(shell find config/src/ -type f -name "*.rs")
+# The path where is the configuration utility is build
+CONFIG_UTIL_BUILD_PATH = /tmp/$(NAME)_config
+
+# Builds the configuration utility into a tmp directory.
+$(CONFIG_UTIL_PATH): $(CONFIG_UTIL_SRC)
+	rm -r $(CONFIG_UTIL_BUILD_PATH)
+	cp -r config/ $(CONFIG_UTIL_BUILD_PATH)
+	cd $(CONFIG_UTIL_BUILD_PATH) && cargo build --release
+	cp -Tr $(CONFIG_UTIL_BUILD_PATH) config/
+	rm -r $(CONFIG_UTIL_BUILD_PATH)
+
+# Runs the configuration utility to create the configuration file
+$(CONFIG_FILE): $(CONFIG_UTIL_PATH)
+	$(CONFIG_UTIL_PATH)
+
+# Runs the configuration utility to create the configuration file
+config: $(CONFIG_FILE)
+
+
+
+.PHONY: check_config all iso clean fclean re config test debug bochs doc clippy $(CONFIG_FILE)
