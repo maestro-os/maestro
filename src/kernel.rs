@@ -209,6 +209,7 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 		crate::kernel_panic!("Cannot initialize kernel virtual memory!", 0);
 	}
 
+	#[cfg(test)]
 	#[cfg(config_debug_test)]
 	kernel_selftest();
 

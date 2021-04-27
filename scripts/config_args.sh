@@ -2,4 +2,4 @@
 
 # TODO doc
 
-cat .config | sed 's/^/--cfg config_/' | tr '\n' ' '
+cat .config | grep -v '="false"$' | sed 's/^/--cfg config_/' | sed 's/="true"$//' | tr '\n' ' '
