@@ -1,4 +1,0 @@
-Slab allocator
-**************
-
-TODO

@@ -16,34 +16,25 @@ Here is the list of supported architectures
 | x86          | i686-elf-gcc     | i686-unknown-none |
 +--------------+------------------+-------------------+
 
+The corresponding compiler must be installed before compiling the kernel.
+
 
 
 Configuration
 =============
 
-Before building the kernel, some environement variables can be set in order to configure the compilation of the kernel.
-When changing the environement variables, it's highly recommended to recompile everything.
+Before compiling the kernel, a configuration file named `.config` must be created to provide the compilation parameters.
+This file can be created by running `make config`, which will compile and run a configuration utility.
+The detail of each parameter is described in the utility itself.
 
-Here is the list of environement variables:
-
-+------------------+---------------+-----------------------------------------------------------------------------------------------------------------+
-| Name             | Default value | Description                                                                                                     |
-+==================+===============+=================================================================================================================+
-| KERNEL_ARCH      | ``x86``       | Specifies the platform for which the kernel will be compiled                                                    |
-+------------------+---------------+-----------------------------------------------------------------------------------------------------------------+
-| KERNEL_MODE      | ``debug``     | Enables the debug mode of the kernel (on by the default). Possible values are either `debug` or `release`       |
-+------------------+---------------+-----------------------------------------------------------------------------------------------------------------+
-| KERNEL_TEST      | ``false``     | Tells whether self-testing is enabled. If the kernel is built in release mode, this option is forced to `false` |
-+------------------+---------------+-----------------------------------------------------------------------------------------------------------------+
-| KERNEL_QEMU_TEST | ``false``     | Tells whether the kernel should be compiled to be tested on QEMU                                                |
-+------------------+---------------+-----------------------------------------------------------------------------------------------------------------+
+After modifying the configuration file, you may want to clean the directory with `make clean` before compiling.
 
 
 
 Kernel compilation
 ==================
 
-Once the compiler is ready, the kernel can be compiled using command "make".
+The kernel can be compiled using command `make`.
 
 .. code-block:: shell
 
@@ -66,3 +57,4 @@ The following Makefile rules are also available:
 	make cputest # Runs QEMU with the kernel image and dumps CPU state and interruptions into the file "cpu_out"
 	make bochs # Runs Bochs with the kernel image using the configuration in the project's directory
 	make virtualbox # Runs Virtualbox
+	make config # Creates or updates the configuration file
