@@ -18,8 +18,8 @@ pub struct MenuOption {
 	pub option_type: String,
 	/// The set of possible values.
 	pub values: Vec<String>,
-	/// The default value.
-	pub default: String,
+	/// The value of the option.
+	pub value: String,
 	/// The set of dependencies needed to enable this option.
 	pub deps: Vec<String>,
 	/// The set of suboptions.
@@ -50,6 +50,34 @@ impl MenuOption {
 			}
 		}
 	}
+
+	/// Serializes the current menu and submenus and writes into the buffer `data`.
+	/// `prefix` is the prefix of the variables to create.
+	pub fn serialize(&self, prefix: &String, data: &mut String) {
+		if self.option_type != "menu" {
+			let name = prefix.clone() + &self.name;
+			let value = &self.value;
+			*data = data.clone() + &name + "=\"" + value + "\"\n";
+		}
+
+		let new_prefix = prefix.clone() + &self.name + "_";
+		for o in &self.suboptions {
+			o.serialize(&new_prefix, data);
+		}
+	}
+}
+
+/// Changes options names to full pathes.
+fn translate_names(prefix: &String, options: &mut Vec<MenuOption>) {
+	for o in options {
+		if o.option_type == "menu" {
+			let new_prefix = prefix.clone() + &o.name + "_";
+			translate_names(&new_prefix, &mut o.suboptions);
+		} else {
+			let new_name = prefix.clone() + &o.name;
+			o.name = new_name;
+		}
+	}
 }
 
 /// Reads all options from the given JSON file `file`.
@@ -60,9 +88,10 @@ pub fn from_file(file: &str) -> Result<Vec<MenuOption>, &'static str> {
 			eprintln!("{}", err); // TODO Move?
 			Err("Failed to parse options file!")
 		} else {
-			// TODO Change names to full pathes
+			let mut options = options_result.unwrap();
+			translate_names(&"".to_owned(), &mut options);
 			// TODO Check for dependencies cycle
-			Ok(options_result.unwrap())
+			Ok(options)
 		}
 	} else {
 		Err("Failed to open options file!")

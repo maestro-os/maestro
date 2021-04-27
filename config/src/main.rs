@@ -125,17 +125,13 @@ struct ConfigEnv {
 	current_menu_view: Vec<MenuView>,
 	/// The list of buttons on the interface.
 	buttons: Vec<Box<dyn Button>>,
-
-	/// Hashmap containing the current configuration values.
-	/// The key is the path to the variable and value is the value associated with the variable.
-	config_values: HashMap<String, String>,
 }
 
 impl ConfigEnv {
 	/// Creates a new instance.
 	/// `options` is the list of options.
 	/// `values` is the values for all options.
-	pub fn new(options: Vec<MenuOption>, values: HashMap<String, String>) -> Self {
+	pub fn new(options: Vec<MenuOption>) -> Self {
 		Self {
 			options: options,
 
@@ -152,8 +148,6 @@ impl ConfigEnv {
 				Box::new(SaveButton {}),
 				Box::new(ExitButton {}),
 			},
-
-			config_values: values,
 		}
 	}
 
@@ -212,6 +206,7 @@ impl ConfigEnv {
 		let options_count = self.get_current_options().len();
 
 		// TODO Print current menu path
+		// TODO Current option description
 
 		// TODO Limit rendering and add scrolling
 		for i in 0..options_count {
@@ -371,34 +366,12 @@ impl ConfigEnv {
 		}
 	}
 
-	/// Returns the value of the variable for the given name `name`.
-	fn get_value(&self, name: &String) -> String {
-		if let Some(val) = self.config_values.get(name) {
-			val.clone()
-		} else {
-			"".to_owned()
-		}
-	}
-
-	/// Serializes all the options in the given options list `options` and writes into the buffer
-	/// `data`. `prefix` is the prefix of the variables to create.
-	fn serialize_menu(&self, prefix: &String, options: &Vec<MenuOption>, data: &mut String) {
-		for o in options {
-			if o.option_type == "menu" {
-				let new_prefix = prefix.clone() + &o.name + "_";
-				self.serialize_menu(&new_prefix, &o.suboptions, data);
-			} else {
-				let name = prefix.clone() + &o.name;
-				let value = self.get_value(&name);
-				*data = data.clone() + &name + "=\"" + &value + "\"\n";
-			}
-		}
-	}
-
 	/// Saves configuration to file.
 	pub fn save(&self) -> io::Result<()> {
 		let mut data = String::new();
-		self.serialize_menu(&"".to_owned(), &self.options, &mut data);
+		for o in &self.options {
+			o.serialize(&"".to_owned(), &mut data);
+		}
 
 		let mut file = File::create(CONFIG_FILE)?;
 		file.write_all(data.as_str().as_bytes())
@@ -484,37 +457,15 @@ fn wait_for_event(env: &mut ConfigEnv) -> Result<()> {
 }
 
 /// Displays the configuration utility.
-fn display(options: Vec<MenuOption>, values: HashMap<String, String>) -> Result<()> {
+fn display(options: Vec<MenuOption>) -> Result<()> {
 	execute!(stdout(), EnterAlternateScreen)?;
 	terminal::enable_raw_mode()?;
 
-	let mut env = ConfigEnv::new(options, values);
+	let mut env = ConfigEnv::new(options);
 	env.render();
     wait_for_event(&mut env)?;
 
 	reset()
-}
-
-/// TODO doc
-fn get_values_(prefix: &String, options: &Vec<MenuOption>, values: &mut HashMap<String, String>) {
-	for o in options {
-		if o.option_type == "menu" {
-			let new_prefix = prefix.clone() + &o.name + "_";
-			get_values_(&new_prefix, &o.suboptions, values);
-		} else {
-			let name = prefix.clone() + &o.name;
-			let value = &o.default; // TODO If config file exists, read from it
-			values.insert(name, value.to_string());
-		}
-	}
-}
-
-/// Returns a hash map containing the values for all options according to the config file if it
-/// exists, or the default values.
-fn get_values(options: &Vec<MenuOption>) -> HashMap<String, String> {
-	let mut map = HashMap::new();
-	get_values_(&"".to_owned(), options, &mut map);
-	map
 }
 
 fn main() {
@@ -544,9 +495,8 @@ configuration tool"));
 		process::exit(1);
 	}
 	let options = options_results.unwrap();
-	let values = get_values(&options);
 
-	if display(options, values).is_err() {
+	if display(options).is_err() {
 		eprintln!("Terminal error!");
 		process::exit(1);
 	}

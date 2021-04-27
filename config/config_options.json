@@ -5,7 +5,7 @@
 		"desc": "General kernel configuration",
 		"option_type": "menu",
 		"values": [],
-		"default": "",
+		"value": "",
 		"deps": [],
 		"suboptions": [
 			{
@@ -16,7 +16,7 @@
 				"values": [
 					"x86"
 				],
-				"default": "x86",
+				"value": "x86",
 				"deps": [],
 				"suboptions": []
 			},
@@ -26,7 +26,7 @@
 				"desc": "Makes the kernel panic if no processes is remaining to run. If disabled, the kernel is halted",
 				"option_type": "bool",
 				"values": [],
-				"default": "true",
+				"value": "true",
 				"deps": [],
 				"suboptions": []
 			}
@@ -38,7 +38,7 @@
 		"desc": "Kernel debug mode",
 		"option_type": "menu",
 		"values": [],
-		"default": "",
+		"value": "",
 		"deps": [],
 		"suboptions": [
 			{
@@ -47,7 +47,7 @@
 				"desc": "Tells whether to enable debug mode",
 				"option_type": "bool",
 				"values": [],
-				"default": "false",
+				"value": "false",
 				"deps": [],
 				"suboptions": []
 			},
@@ -57,7 +57,7 @@
 				"desc": "Tests some critical kernel features on boot, then halts",
 				"option_type": "bool",
 				"values": [],
-				"default": "false",
+				"value": "false",
 				"deps": [
 					"debug_debug"
 				],
@@ -69,7 +69,7 @@
 				"desc": "Tests all attached storage devices and their drives. **WARNING**: This option will erase all data on all storage devices",
 				"option_type": "bool",
 				"values": [],
-				"default": "false",
+				"value": "false",
 				"deps": [
 					"debug_debug"
 				],
@@ -81,7 +81,7 @@
 				"desc": "Compiles the kernel for QEMU",
 				"option_type": "bool",
 				"values": [],
-				"default": "false",
+				"value": "false",
 				"deps": [],
 				"suboptions": []
 			}
