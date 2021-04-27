@@ -41,8 +41,10 @@ CONFIG_ARGS := $(shell $(CONFIG_ARGUMENTS_SCRIPT))
 
 # The target architecture
 CONFIG_ARCH := $(shell $(CONFIG_ATTR_SCRIPT) general_arch)
-# The target architecture
+# Tells whether to compile in debug mode
 CONFIG_DEBUG := $(shell $(CONFIG_ATTR_SCRIPT) debug_debug)
+# Tells whether to compile for unit testing
+CONFIG_DEBUG_TEST := $(shell $(CONFIG_ATTR_SCRIPT) debug_debug)
 endif
 
 
@@ -127,7 +129,7 @@ CARGOFLAGS = --verbose
 ifeq ($(CONFIG_DEBUG), false)
 CARGOFLAGS += --release
 endif
-ifeq ($(KERNEL_TEST), true)
+ifeq ($(CONFIG_DEBUG_TEST), true)
 CARGOFLAGS = --tests
 endif
 
