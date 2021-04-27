@@ -5,7 +5,6 @@ mod button;
 mod option;
 
 use std::cmp::min;
-use std::collections::HashMap;
 use std::fs::File;
 use std::io::Write;
 use std::io::stdout;
@@ -370,7 +369,7 @@ impl ConfigEnv {
 	pub fn save(&self) -> io::Result<()> {
 		let mut data = String::new();
 		for o in &self.options {
-			o.serialize(&"".to_owned(), &mut data);
+			o.serialize(&mut data);
 		}
 
 		let mut file = File::create(CONFIG_FILE)?;

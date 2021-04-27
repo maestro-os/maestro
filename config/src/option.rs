@@ -52,17 +52,13 @@ impl MenuOption {
 	}
 
 	/// Serializes the current menu and submenus and writes into the buffer `data`.
-	/// `prefix` is the prefix of the variables to create.
-	pub fn serialize(&self, prefix: &String, data: &mut String) {
+	pub fn serialize(&self, data: &mut String) {
 		if self.option_type != "menu" {
-			let name = prefix.clone() + &self.name;
-			let value = &self.value;
-			*data = data.clone() + &name + "=\"" + value + "\"\n";
+			*data = data.clone() + &self.name + "=\"" + &self.value + "\"\n";
 		}
 
-		let new_prefix = prefix.clone() + &self.name + "_";
 		for o in &self.suboptions {
-			o.serialize(&new_prefix, data);
+			o.serialize(data);
 		}
 	}
 }
