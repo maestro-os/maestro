@@ -1,8 +1,7 @@
 /// This module handles selftesting of the kernel.
 
 /// This module contains utilities to manipulate QEMU for testing.
-#[cfg(qemu)]
-#[cfg(not(userspace))]
+#[cfg(config_debug_qemu)]
 pub mod qemu {
 	use crate::io;
 
@@ -48,7 +47,7 @@ pub fn runner(tests: &[&dyn Testable]) {
 
 	crate::println!("No more tests to run");
 
-	#[cfg(qemu)]
+	#[cfg(config_debug_qemu)]
 	qemu::exit(qemu::SUCCESS); // TODO Handle assertion fail (exit with FAILURE)
 	unsafe { // Call to unsafe function
 		crate::kernel_halt();

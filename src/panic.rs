@@ -4,7 +4,7 @@
 
 use core::ffi::c_void;
 use core::fmt;
-#[cfg(kernel_mode = "debug")]
+#[cfg(config_debug_debug)]
 use crate::debug;
 use crate::memory;
 use crate::tty;
@@ -38,7 +38,7 @@ it.");
 }
 
 /// Re-initializes the TTY, prints the panic message and halts the kernel.
-#[cfg(kernel_mode = "release")]
+#[cfg(not(config_debug_debug))]
 pub fn kernel_panic_(reason: &str, code: u32, _file: &str, _line: u32, _col: u32) -> ! {
 	crate::cli!();
 	print_panic(reason, code);
@@ -49,7 +49,7 @@ pub fn kernel_panic_(reason: &str, code: u32, _file: &str, _line: u32, _col: u32
 
 /// Same as the release version, except the function also prints process's registers and the
 /// kernel's callstack.
-#[cfg(kernel_mode = "debug")]
+#[cfg(config_debug_debug)]
 pub fn kernel_panic_(reason: &str, code: u32, file: &str, line: u32, col: u32) -> ! {
 	crate::cli!();
 	print_panic(reason, code);
@@ -82,7 +82,7 @@ it.");
 }
 
 /// Handles a Rust panic.
-#[cfg(kernel_mode = "release")]
+#[cfg(not(config_debug_debug))]
 pub fn rust_panic<'a>(args: &'a fmt::Arguments<'a>) -> ! {
 	crate::cli!();
 	print_rust_panic(args);
@@ -93,7 +93,7 @@ pub fn rust_panic<'a>(args: &'a fmt::Arguments<'a>) -> ! {
 }
 
 /// Same as the release version, except the function also prints the kernel's callstack.
-#[cfg(kernel_mode = "debug")]
+#[cfg(config_debug_debug)]
 pub fn rust_panic<'a>(args: &'a fmt::Arguments<'a>) -> ! {
 	crate::cli!();
 	print_rust_panic(args);

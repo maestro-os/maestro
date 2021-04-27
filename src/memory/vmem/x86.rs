@@ -239,7 +239,7 @@ impl X86VMem {
 	}
 
 	/// Asserts that the map operation shall not result in a crash.
-	#[cfg(kernel_mode = "debug")]
+	#[cfg(config_debug_debug)]
 	fn check_map(&self, virt_ptr: *const c_void, phys_ptr: *const c_void, pse: bool) {
 		if !self.is_bound() {
 			return;
@@ -268,7 +268,7 @@ impl X86VMem {
 	}
 
 	/// Asserts that the unmap operation shall not result in a crash.
-	#[cfg(kernel_mode = "debug")]
+	#[cfg(config_debug_debug)]
 	fn check_unmap(&self, virt_ptr: *const c_void, pse: bool) {
 		if !self.is_bound() {
 			return;
@@ -297,7 +297,7 @@ impl X86VMem {
 	}
 
 	/// Asserts that the bind operation shall not result in a crash.
-	#[cfg(kernel_mode = "debug")]
+	#[cfg(config_debug_debug)]
 	fn check_bind(&self) {
 		if self.is_bound() {
 			return;
@@ -431,7 +431,7 @@ impl VMem for X86VMem {
 
 	fn map(&mut self, physaddr: *const c_void, virtaddr: *const c_void, flags: u32)
 		-> Result<(), Errno> {
-		#[cfg(kernel_mode = "debug")]
+		#[cfg(config_debug_debug)]
 		self.check_map(virtaddr, physaddr, false);
 
 		debug_assert!(util::is_aligned(physaddr, memory::PAGE_SIZE));
@@ -474,7 +474,7 @@ impl VMem for X86VMem {
 			let next_physaddr = ((physaddr as usize) + off) as *const c_void;
 			let next_virtaddr = ((virtaddr as usize) + off) as *const c_void;
 			if use_pse {
-				#[cfg(kernel_mode = "debug")]
+				#[cfg(config_debug_debug)]
 				self.check_map(next_virtaddr, next_physaddr, true);
 
 				self.map_pse(next_physaddr, next_virtaddr, flags);
@@ -492,7 +492,7 @@ impl VMem for X86VMem {
 	}
 
 	fn unmap(&mut self, virtaddr: *const c_void) -> Result<(), Errno> {
-		#[cfg(kernel_mode = "debug")]
+		#[cfg(config_debug_debug)]
 		self.check_unmap(virtaddr, false);
 
 		let dir_entry_index = Self::get_addr_element_index(virtaddr, 1);
@@ -527,7 +527,7 @@ impl VMem for X86VMem {
 			};
 			let next_virtaddr = ((virtaddr as usize) + off) as *const c_void;
 			if use_pse {
-				#[cfg(kernel_mode = "debug")]
+				#[cfg(config_debug_debug)]
 				self.check_unmap(next_virtaddr, true);
 
 				self.unmap_pse(next_virtaddr);
@@ -546,7 +546,7 @@ impl VMem for X86VMem {
 
 	fn bind(&self) {
 		if !self.is_bound() {
-			#[cfg(kernel_mode = "debug")]
+			#[cfg(config_debug_debug)]
 			self.check_bind();
 			unsafe { // Call to C function
 				paging_enable(memory::kern_to_phys(self.page_dir as _) as _);

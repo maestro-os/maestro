@@ -649,7 +649,7 @@ impl<T: 'static + Ord> BinaryTree<T> {
 			self.root.unwrap().as_mut()
 		}.color = NodeColor::Black;
 
-		#[cfg(kernel_mode = "debug")]
+		#[cfg(config_debug_debug)]
 		self.check();
 		Ok(())
 	}
@@ -709,7 +709,7 @@ impl<T: 'static + Ord> BinaryTree<T> {
 			}
 		}
 
-		#[cfg(kernel_mode = "debug")]
+		#[cfg(config_debug_debug)]
 		self.check();
 	}
 }
@@ -811,7 +811,7 @@ impl<T: 'static> BinaryTree::<T> {
 
 	/// Checks the integrity of the tree. If the tree is invalid, the function makes the kernel
 	/// panic. This function is available only in debug mode.
-	#[cfg(kernel_mode = "debug")]
+	#[cfg(config_debug_debug)]
 	pub fn check(&self) {
 		if let Some(root) = self.root {
 			Self::foreach_nodes(unsafe { // Call to unsafe function

@@ -195,8 +195,9 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 
 	println!("Reading memory map...");
 	memory::memmap::init(multiboot_ptr);
-	#[cfg(kernel_mode = "debug")]
-	memory::memmap::print_entries();
+	if cfg!(config_debug_debug) {
+		memory::memmap::print_entries();
+	}
 
 	println!("Initializing memory allocation...");
 	memory::alloc::init();
@@ -208,14 +209,14 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 		crate::kernel_panic!("Cannot initialize kernel virtual memory!", 0);
 	}
 
-	#[cfg(test)]
+	#[cfg(config_debug_test)]
 	kernel_selftest();
 
 	acpi::init();
 	//init_pci();
 
 	init_disks();
-	#[cfg(kernel_disk_test = "true")]
+	#[cfg(config_debug_storagetest)]
 	storage::test();
 
 	if create_devices().is_err() {

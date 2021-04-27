@@ -24,7 +24,7 @@ pub trait StorageInterface {
 /// Tests every storage drivers on every storage devices.
 /// The execution of this function removes all the data on every connected writable disks, so it
 /// must be used carefully.
-#[cfg(kernel_storage_test = "true")]
+#[cfg(config_debug_storagetest)]
 pub fn test() {
 	// TODO Iterate on every devices:
 	// - Run several times:
