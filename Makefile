@@ -18,22 +18,21 @@
 # The name of the kernel image
 NAME = maestro
 
-
-
 # Current directory
 PWD := $(shell pwd)
-
-
-
-# The path to the script that generates configuration as compiler arguments
-CONFIG_ARGUMENTS_SCRIPT = scripts/config_args.sh
-# The path to the script that extracts specific configuration attributes
-CONFIG_ATTR_SCRIPT = scripts/config_attr.sh
 
 # The path to the configuration file created by the configuration utility
 CONFIG_FILE = .config
 # Tells whether the configuration file exists
 CONFIG_EXISTS = $(shell stat $(CONFIG_FILE) >/dev/null 2>&1; echo $$?)
+
+# The list of files that, when touched, make the kernel be recompiled entirely.
+TOUCH_UPDATE_FILES = Makefile $(CONFIG_FILE)
+
+# The path to the script that generates configuration as compiler arguments
+CONFIG_ARGUMENTS_SCRIPT = scripts/config_args.sh
+# The path to the script that extracts specific configuration attributes
+CONFIG_ATTR_SCRIPT = scripts/config_attr.sh
 
 ifeq ($(CONFIG_EXISTS), 0)
 # Configuration as arguments for the compiler
@@ -161,14 +160,14 @@ $(LIB_NAME): $(OBJ_DIRS) $(OBJ)
 	$(AR) $(ARFLAGS) $@ $(OBJ)
 
 # The rule to compile assembly objects
-$(OBJ_DIR)%.s.o: $(SRC_DIR)%.s $(HDR) Makefile
+$(OBJ_DIR)%.s.o: $(SRC_DIR)%.s $(HDR) $(TOUCH_UPDATE_FILES)
 	$(CC) $(CFLAGS) -I $(SRC_DIR) -c $< -o $@
 
 # The rule to compile C language objects
-$(OBJ_DIR)%.c.o: $(SRC_DIR)%.c $(HDR) Makefile
+$(OBJ_DIR)%.c.o: $(SRC_DIR)%.c $(HDR) $(TOUCH_UPDATE_FILES)
 	$(CC) $(CFLAGS) -I $(SRC_DIR) -c $< -o $@
 
-$(NAME): $(LIB_NAME) $(RUST_SRC) $(LINKER) Makefile
+$(NAME): $(LIB_NAME) $(RUST_SRC) $(LINKER) $(TOUCH_UPDATE_FILES)
 	RUSTFLAGS='$(RUSTFLAGS)' $(CARGO) build $(CARGOFLAGS) --target $(TARGET)
 ifeq ($(CONFIG_DEBUG), false)
 	cp target/target/release/maestro .
