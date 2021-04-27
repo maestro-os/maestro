@@ -70,9 +70,7 @@
 				"option_type": "bool",
 				"values": [],
 				"value": "false",
-				"deps": [
-					"debug_debug"
-				],
+				"deps": [],
 				"suboptions": []
 			},
 			{

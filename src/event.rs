@@ -12,8 +12,8 @@ use crate::util::lock::mutex::*;
 use crate::util::ptr::SharedPtr;
 use crate::util;
 
-// TODO Arch dependent
 /// The list of interrupt error messages ordered by index of the corresponding interrupt vector.
+#[cfg(config_general_arch = "x86")]
 static ERROR_MESSAGES: &'static [&'static str] = &[
 	"Divide-by-zero Error",
 	"Debug",
@@ -118,7 +118,7 @@ static mut CALLBACKS: MaybeUninit::<
 
 /// Initializes the events handler.
 pub fn init() {
-	let mut guard = MutexGuard::new(unsafe { // Access to global variable
+	let mut guard = MutexGuard::new(unsafe {
 		CALLBACKS.assume_init_mut()
 	});
 	let callbacks = guard.get_mut();
@@ -183,7 +183,7 @@ pub fn register_callback<T: 'static + InterruptCallback>(id: usize, priority: u3
 /// `ring` tells the ring at which the code was running.
 #[no_mangle]
 pub extern "C" fn event_handler(id: u32, code: u32, ring: u32, regs: &util::Regs) {
-	let mutex = unsafe { // Access to global variable
+	let mutex = unsafe {
 		CALLBACKS.assume_init_mut()
 	};
 	if mutex.is_locked() {

@@ -135,6 +135,7 @@ failable_clone_impl!(usize);
 /// depends on the architecture for which the kernel is compiled.
 #[derive(Clone, Copy, Debug)]
 #[repr(C, packed)]
+#[cfg(config_general_arch = "x86")]
 pub struct Regs {
 	pub ebp: u32,
 	pub esp: u32,
@@ -149,6 +150,7 @@ pub struct Regs {
 }
 
 impl fmt::Display for Regs {
+	#[cfg(config_general_arch = "x86")]
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		write!(f, "ebp: {:p} esp: {:p} eip: {:p} eflags: {:p} eax: {:p}\n
 ebx: {:p} ecx: {:p} edx: {:p} esi: {:p} edi: {:p}\n",
