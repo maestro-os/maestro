@@ -1,29 +1,29 @@
-/// This module handles device files such as Block Devices and Char devices.
+/// This module handles device and buses.
 /// A device file is an interface with a device of the system, which can be internal or external,
 /// or even virtual such as a TTY.
 
+pub mod bus;
+pub mod default;
+
 use core::cmp::Ordering;
 use crate::errno::Errno;
+use crate::filesystem::Mode;
+use crate::filesystem::path::Path;
 use crate::util::boxed::Box;
 use crate::util::container::vec::Vec;
 use crate::util::lock::mutex::Mutex;
 use crate::util::lock::mutex::MutexGuard;
-use super::Mode;
-use super::path::Path;
 
-// TODO Unit tests
 /// Returns the major number from a device number.
 pub fn major(dev: u64) -> u32 {
 	(((dev >> 8) & 0xfff) | ((dev >> 32) & !0xfff)) as _
 }
 
-// TODO Unit tests
 /// Returns the minor number from a device number.
 pub fn minor(dev: u64) -> u32 {
 	((dev & 0xff) | ((dev >> 12) & !0xff)) as _
 }
 
-// TODO Unit tests
 /// Returns a device number from a major/minor pair.
 pub fn makedev(major: u32, minor: u32) -> u64 {
 	(((minor & 0xff) as u64)
@@ -218,3 +218,19 @@ pub fn get_device(major: u32, minor: u32, type_: DeviceType)
 		None
 	}
 }*/
+
+#[cfg(test)]
+mod test {
+	use super::*;
+
+	#[test_case]
+	fn device_number() {
+		for maj in 0..256 {
+			for min in 0..256 {
+				let dev = makedev(maj, min);
+				assert_eq!(major(dev), maj);
+				assert_eq!(minor(dev), min);
+			}
+		}
+	}
+}

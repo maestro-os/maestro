@@ -4,7 +4,7 @@
 
 use crate::io;
 use crate::util::container::vec::Vec;
-use crate::util::lock::mutex::Mutex;
+use super::Bus;
 
 /// The port used to specify the configuration address.
 const CONFIG_ADDRESS_PORT: u16 = 0xcf8;
@@ -111,6 +111,17 @@ impl PCIDevice {
 /// Structure representing the PCI manager.
 pub struct PCIManager {}
 
+/// Trait representing a bus.
+impl Bus for PCIManager {
+	fn get_name(&self) -> &str {
+		"PCI"
+	}
+
+	fn is_hotplug(&self) -> bool {
+		false
+	}
+}
+
 impl PCIManager {
 	fn read_word(&self, bus: u8, device: u8, func: u8, off: u8) -> u32 {
 		let addr = ((bus as u32) << 16) | ((device as u32) << 11) | ((func as u32) << 8)
@@ -130,7 +141,7 @@ impl PCIManager {
 			for device in 0..32 {
 				if let Some(dev) = PCIDevice::new(self, bus, device) {
 					if devices.push(dev).is_err() {
-						kernel_panic!("No enough memory to scan PCI devices!");
+						crate::kernel_panic!("No enough memory to scan PCI devices!");
 					}
 				} else {
 					break;
@@ -139,14 +150,5 @@ impl PCIManager {
 		}
 
 		devices
-	}
-}
-
-static mut PCI_MANAGER: Mutex<PCIManager> = Mutex::new(PCIManager {});
-
-/// Returns a mutable reference to the mutex containing the PCI manager.
-pub fn get_manager() -> &'static mut Mutex<PCIManager> {
-	unsafe { // Safe because using Mutex
-		&mut PCI_MANAGER
 	}
 }

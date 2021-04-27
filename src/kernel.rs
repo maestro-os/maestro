@@ -36,7 +36,7 @@
 
 mod acpi;
 mod debug;
-mod default_devices;
+mod device;
 mod elf;
 mod errno;
 mod event;
@@ -50,7 +50,6 @@ mod module;
 mod multiboot;
 #[macro_use]
 mod panic;
-mod pci;
 mod pit;
 #[macro_use]
 mod print;
@@ -68,10 +67,6 @@ mod vga;
 
 use core::ffi::c_void;
 use core::panic::PanicInfo;
-use crate::default_devices::*;
-use crate::filesystem::device::Device;
-use crate::filesystem::device::DeviceType;
-use crate::filesystem::device;
 use crate::filesystem::path::Path;
 use crate::module::Module;
 use crate::process::Process;
@@ -101,20 +96,6 @@ mod io {
 
 extern "C" {
 	fn test_process();
-}
-
-/// Initializes PCI.
-fn init_pci() {
-	let mutex = pci::get_manager();
-	let mut guard = util::lock::mutex::MutexGuard::new(mutex);
-	let devices = guard.get_mut().scan();
-	for i in 0..devices.len() {
-		let dev = &devices[i];
-		// TODO rm
-		println!("-> {:x} {:x} {:x} {:x}", dev.get_device_id(), dev.get_vendor_id(),
-			dev.get_class(), dev.get_subclass());
-		// TODO Allocate DMA zones
-	}
 }
 
 /// Initializes disk interfaces.
@@ -153,23 +134,6 @@ fn init_disks() {
 		let d = dev3.unwrap();
 		println!("3: {} sectors {} {}", d.get_blocks_count(), d.is_atapi(), d.is_sata());
 	}
-}
-
-/// Creates the default devices.
-fn create_devices() -> Result<(), ()> {
-	let null_path = util::to_empty_error(Path::from_string("/dev/null"))?;
-	let null_device = util::to_empty_error(Device::new(1, 3, null_path, 0666, DeviceType::Char,
-		NullDeviceHandle {}))?;
-	device::register_device(null_device)?;
-
-	let zero_path = util::to_empty_error(Path::from_string("/dev/zero"))?;
-	let zero_device = util::to_empty_error(Device::new(1, 3, zero_path, 0666, DeviceType::Char,
-		ZeroDeviceHandle {}))?;
-	device::register_device(zero_device)?;
-
-	// TODO
-
-	Ok(())
 }
 
 /// This is the main function of the Rust source code, responsible for the initialization of the
@@ -214,14 +178,16 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 	kernel_selftest();
 
 	acpi::init();
-	//init_pci();
+	if device::bus::detect().is_err() {
+		crate::kernel_panic!("Failed to detect device buses!", 0);
+	}
 
 	init_disks();
 	#[cfg(config_debug_storagetest)]
 	storage::test();
 
-	if create_devices().is_err() {
-		kernel_panic!("Failed to create devices!");
+	if device::default::create().is_err() {
+		kernel_panic!("Failed to create default devices!");
 	}
 
 	// TODO Load module through userspace instead

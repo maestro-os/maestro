@@ -44,7 +44,7 @@ CONFIG_ARCH := $(shell $(CONFIG_ATTR_SCRIPT) general_arch)
 # Tells whether to compile in debug mode
 CONFIG_DEBUG := $(shell $(CONFIG_ATTR_SCRIPT) debug_debug)
 # Tells whether to compile for unit testing
-CONFIG_DEBUG_TEST := $(shell $(CONFIG_ATTR_SCRIPT) debug_debug)
+CONFIG_DEBUG_TEST := $(shell $(CONFIG_ATTR_SCRIPT) debug_test)
 endif
 
 
