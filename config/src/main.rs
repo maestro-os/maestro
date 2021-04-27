@@ -42,7 +42,7 @@ const DISPLAY_MIN_WIDTH: u16 = 80;
 const DISPLAY_MIN_HEIGHT: u16 = 25;
 
 /// The path to the file containing configuration file options.
-const CONFIG_OPTIONS_FILE: &str = "config_options.json";
+const CONFIG_OPTIONS_FILE: &str = "config/config_options.json";
 /// The path to the output configuration file.
 const CONFIG_FILE: &str = ".config";
 

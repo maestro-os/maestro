@@ -32,13 +32,18 @@ CONFIG_ATTR_SCRIPT = scripts/config_attr.sh
 
 # The path to the configuration file created by the configuration utility
 CONFIG_FILE = .config
+# Tells whether the configuration file exists
+CONFIG_EXISTS = $(shell stat $(CONFIG_FILE) >/dev/null 2>&1; echo $$?)
+
+ifeq ($(CONFIG_EXISTS), 0)
 # Configuration as arguments for the compiler
-CONFIG_ARGUMENTS := $(shell $(CONFIG_ARGUMENTS_SCRIPT))
+CONFIG_ARGS := $(shell $(CONFIG_ARGUMENTS_SCRIPT))
 
 # The target architecture
 CONFIG_ARCH := $(shell $(CONFIG_ATTR_SCRIPT) general_arch)
 # The target architecture
 CONFIG_DEBUG := $(shell $(CONFIG_ATTR_SCRIPT) debug_debug)
+endif
 
 
 
@@ -67,7 +72,7 @@ DEBUG_FLAGS = -D KERNEL_DEBUG -D KERNEL_DEBUG_SANITY -D KERNEL_SELFTEST #-D KERN
 # The C language compiler flags
 CFLAGS = -nostdlib -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -Wall -Wextra\
 -Werror -lgcc
-ifeq ($(CONFIG_DEBUG), release)
+ifeq ($(CONFIG_DEBUG), false)
 CFLAGS += -O3
 else
 CFLAGS += -g3 $(DEBUG_FLAGS)
@@ -119,7 +124,7 @@ OBJ := $(ASM_OBJ) $(C_OBJ)
 CARGO = cargo +nightly
 # Cargo flags
 CARGOFLAGS = --verbose
-ifeq ($(CONFIG_DEBUG), release)
+ifeq ($(CONFIG_DEBUG), false)
 CARGOFLAGS += --release
 endif
 ifeq ($(KERNEL_TEST), true)
@@ -127,10 +132,7 @@ CARGOFLAGS = --tests
 endif
 
 # The Rust language compiler flags
-RUSTFLAGS = -Zmacro-backtrace -C link-arg=-T$(LINKER) $(CONFIG_ARGUMENTS)
-ifeq ($(KERNEL_QEMU_TEST), true)
-RUSTFLAGS += --cfg qemu
-endif
+RUSTFLAGS = -Zmacro-backtrace -C link-arg=-T$(LINKER) $(CONFIG_ARGS)
 
 # The strip program
 STRIP = strip
@@ -140,14 +142,15 @@ RUST_SRC := $(shell find $(SRC_DIR) -type f -name "*.rs")
 
 
 
-# Checks that the configuration exists
-check_config:
-	stat $(CONFIG_FILE) 2>/dev/null || { \
-	echo "File $(CONFIG_FILE) doesn't exist. Use \`make config\` to create it"; exit 1; \
-}
-
+ifeq ($(CONFIG_EXISTS), 0)
 # The rule to compile everything
-all: check_config $(NAME) iso tags
+all: $(NAME) iso tags
+else
+all:
+	echo "File $(CONFIG_FILE) doesn't exist. Use \`make config\` to create it"
+
+.SILENT: all
+endif
 
 # The rule to create object directories
 $(OBJ_DIRS):
@@ -166,8 +169,8 @@ $(OBJ_DIR)%.c.o: $(SRC_DIR)%.c $(HDR) Makefile
 	$(CC) $(CFLAGS) -I $(SRC_DIR) -c $< -o $@
 
 $(NAME): $(LIB_NAME) $(RUST_SRC) $(LINKER) Makefile
-	RUSTFLAGS="$(RUSTFLAGS)" $(CARGO) build $(CARGOFLAGS) --target $(TARGET)
-ifeq ($(CONFIG_DEBUG), release)
+	RUSTFLAGS='$(RUSTFLAGS)' $(CARGO) build $(CARGOFLAGS) --target $(TARGET)
+ifeq ($(CONFIG_DEBUG), false)
 	cp target/target/release/maestro .
 	$(STRIP) $(NAME)
 else
@@ -206,7 +209,8 @@ re: fclean all
 
 # Runs the configuration utility to create the configuration file
 config:
-	cd config/ && cargo run --release
+	cd config/ && cargo build --release
+	config/target/release/config
 
 
 
@@ -257,4 +261,3 @@ clippy:
 
 
 .PHONY: check_config all iso clean fclean re config test debug bochs doc clippy
-.SILENT: check_config

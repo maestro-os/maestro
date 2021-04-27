@@ -286,12 +286,12 @@ impl Scheduler {
 				crate::kernel_loop();
 			}
 		} else {
-			#[cfg(general_scheduler_end_panic)]
-			kernel_panic!("No process remaining to run!");
-
-			#[cfg(not(general_scheduler_end_panic))]
-			unsafe {
-				crate::kernel_halt();
+			if cfg!(config_general_scheduler_end_panic) {
+				kernel_panic!("No process remaining to run!");
+			} else {
+				unsafe {
+					crate::kernel_halt();
+				}
 			}
 		}
 	}
