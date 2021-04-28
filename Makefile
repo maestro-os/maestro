@@ -68,16 +68,13 @@ LIB_NAME = lib$(NAME).a
 # The C language compiler
 CC = i686-elf-gcc # TODO Set according to architecture
 
-# The debug flags for the C compiler
-DEBUG_FLAGS = -D KERNEL_DEBUG -D KERNEL_DEBUG_SANITY -D KERNEL_SELFTEST #-D KERNEL_DEBUG_SPINLOCK
-
 # The C language compiler flags
 CFLAGS = -nostdlib -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -Wall -Wextra\
 -Werror -lgcc
 ifeq ($(CONFIG_DEBUG), false)
 CFLAGS += -O3
 else
-CFLAGS += -g3 $(DEBUG_FLAGS)
+CFLAGS += -g3
 endif
 
 # The archive creator program
