@@ -32,7 +32,7 @@ impl<T> Box<T> {
 
 		let size = size_of_val(value_ref);
 		let ptr = if size > 0 {
-			let ptr = unsafe { // Use of transmute
+			let ptr = unsafe {
 				transmute::<*mut c_void, *mut T>(malloc::alloc(size)?)
 			};
 			unsafe {
@@ -127,9 +127,11 @@ impl<T: ?Sized + Unsize<U>, U: ?Sized> DispatchFromDyn<Box<U>> for Box<T> {}
 
 impl<T: ?Sized> Drop for Box<T> {
 	fn drop(&mut self) {
-		unsafe { // Call to unsafe function
-			drop_in_place(self.ptr.as_ptr());
-			malloc::free(self.ptr.as_ptr() as _);
+		if self.ptr.as_ptr() as *const c_void as usize > 8 {
+			unsafe {
+				drop_in_place(self.ptr.as_ptr());
+				malloc::free(self.ptr.as_ptr() as _);
+			}
 		}
 	}
 }
