@@ -311,26 +311,26 @@ impl<T> Vec<T> {
 			return Err(0);
 		}
 
-		let mut i = self.len() / 2;
-		let mut step_size = self.len() / 4;
+		let mut l = 0;
+		let mut r = self.len();
 
-		while step_size > 0 {
+		while l < r {
+			let i = (l + r) / 2;
 			let ord = f(&self[i]);
 			match ord {
 				Ordering::Less => {
-					i += step_size;
+					l = i;
 				},
 				Ordering::Greater => {
-					i -= step_size;
+					r = i;
 				},
 				_ => {
 					break;
 				},
 			}
-
-			step_size /= 2;
 		}
 
+		let i = (l + r) / 2;
 		if f(&self[i]) == Ordering::Equal {
 			Ok(i)
 		} else {
