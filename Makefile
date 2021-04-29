@@ -147,6 +147,7 @@ all: $(NAME) iso tags
 else
 all:
 	echo "File $(CONFIG_FILE) doesn't exist. Use \`make config\` to create it"
+	false
 
 .SILENT: all
 endif
