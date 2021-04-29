@@ -7,6 +7,7 @@
 
 pub mod boxed;
 pub mod container;
+pub mod id_allocator;
 pub mod list;
 pub mod lock;
 pub mod math;

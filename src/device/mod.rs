@@ -4,6 +4,7 @@
 
 pub mod bus;
 pub mod default;
+pub mod id;
 pub mod ps2;
 pub mod storage;
 
@@ -18,24 +19,6 @@ use crate::util::lock::mutex::Mutex;
 use crate::util::lock::mutex::MutexGuard;
 use storage::StorageInterface;
 use storage::pata::PATAInterface;
-
-/// Returns the major number from a device number.
-pub fn major(dev: u64) -> u32 {
-	(((dev >> 8) & 0xfff) | ((dev >> 32) & !0xfff)) as _
-}
-
-/// Returns the minor number from a device number.
-pub fn minor(dev: u64) -> u32 {
-	((dev & 0xff) | ((dev >> 12) & !0xff)) as _
-}
-
-/// Returns a device number from a major/minor pair.
-pub fn makedev(major: u32, minor: u32) -> u64 {
-	(((minor & 0xff) as u64)
-		| (((major & 0xfff) as u64) << 8)
-		| (((minor & !0xff) as u64) << 12)
-		| (((major & !0xfff) as u64) << 32)) as _
-}
 
 /// Enumeration representing the type of the device.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -124,7 +107,7 @@ impl Device {
 
 	/// Returns the device number.
 	pub fn get_device_number(&self) -> u64 {
-		makedev(self.major, self.minor)
+		id::makedev(self.major, self.minor)
 	}
 
 	/// Returns the handle of the device for I/O operations.
@@ -281,20 +264,4 @@ pub fn detect() -> Result<(), Errno> {
 	// TODO
 
 	Ok(())
-}
-
-#[cfg(test)]
-mod test {
-	use super::*;
-
-	#[test_case]
-	fn device_number() {
-		for maj in 0..256 {
-			for min in 0..256 {
-				let dev = makedev(maj, min);
-				assert_eq!(major(dev), maj);
-				assert_eq!(minor(dev), min);
-			}
-		}
-	}
 }
