@@ -466,7 +466,7 @@ mod test {
 		let v = Vec::<usize>::new();
 
 		if let Err(v) = v.binary_search(&0) {
-			assert!(v == 0);
+			assert_eq!(v, 0);
 		} else {
 			assert!(false);
 		}
@@ -478,7 +478,7 @@ mod test {
 		v.push(0).unwrap();
 
 		if let Ok(v) = v.binary_search(&0) {
-			assert!(v == 0);
+			assert_eq!(v, 0);
 		} else {
 			assert!(false);
 		}
@@ -490,7 +490,7 @@ mod test {
 		v.push(1).unwrap();
 
 		if let Err(v) = v.binary_search(&0) {
-			assert!(v == 0);
+			assert_eq!(v, 0);
 		} else {
 			assert!(false);
 		}
@@ -504,7 +504,7 @@ mod test {
 		v.push(3).unwrap();
 
 		if let Ok(v) = v.binary_search(&2) {
-			assert!(v == 1);
+			assert_eq!(v, 1);
 		} else {
 			assert!(false);
 		}
@@ -520,7 +520,7 @@ mod test {
 		v.push(8).unwrap();
 
 		if let Ok(v) = v.binary_search(&6) {
-			assert!(v == 3);
+			assert_eq!(v, 3);
 		} else {
 			assert!(false);
 		}

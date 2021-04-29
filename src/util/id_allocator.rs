@@ -11,9 +11,9 @@ use crate::util::container::vec::Vec;
 fn find_hole(v: &Vec<u32>) -> Option<usize> {
 	if !v.is_empty() {
 		let mut i = v.len() / 2;
-		let mut step_size = i / 2;
+		let mut step_size = v.len() / 4;
 
-		while i > 0 {
+		while step_size > 0 {
 			if v[i] > i as _ {
 				i -= step_size;
 			} else {
@@ -23,7 +23,7 @@ fn find_hole(v: &Vec<u32>) -> Option<usize> {
 			step_size /= 2;
 		}
 
-		if i < v.len() && v[i] != i as _ {
+		if v[i] != i as _ {
 			Some(i)
 		} else {
 			None
@@ -99,4 +99,65 @@ impl IDAllocator {
 	}
 }
 
-// TODO Unit tests
+#[cfg(test)]
+mod test {
+	use super::*;
+
+	#[test_case]
+	fn find_hole0() {
+		let v = Vec::<u32>::new();
+		assert!(find_hole(&v).is_none());
+	}
+
+	#[test_case]
+	fn find_hole1() {
+		let mut v = Vec::<u32>::new();
+		v.push(0).unwrap();
+		v.push(2).unwrap();
+
+		assert!(find_hole(&v) == Some(1));
+	}
+
+	#[test_case]
+	fn find_hole2() {
+		let mut v = Vec::<u32>::new();
+		v.push(1).unwrap();
+		v.push(2).unwrap();
+
+		assert_eq!(find_hole(&v), Some(0));
+	}
+
+	#[test_case]
+	fn find_hole3() {
+		let mut v = Vec::<u32>::new();
+		for i in 1..100 {
+			v.push(i).unwrap();
+		}
+
+		assert_eq!(find_hole(&v), Some(0));
+	}
+
+	#[test_case]
+	fn find_hole4() {
+		let mut v = Vec::<u32>::new();
+		for i in 0..100 {
+			if i != 10 {
+				v.push(i).unwrap();
+			}
+		}
+
+		assert_eq!(find_hole(&v), Some(10));
+	}
+
+	#[test_case]
+	fn find_hole4() {
+		let mut v = Vec::<u32>::new();
+		for i in 1..100 {
+			if i != 10 {
+				v.push(i).unwrap();
+			}
+		}
+
+		assert_eq!(find_hole(&v), Some(0));
+	}
+}
