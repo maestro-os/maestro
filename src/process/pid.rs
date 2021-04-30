@@ -3,57 +3,42 @@
 /// bitfield to store the used PIDs.
 
 use crate::errno::Errno;
-use crate::errno;
-use crate::util::container::bitfield::Bitfield;
+use crate::util::id_allocator::IDAllocator;
 
 /// Type representing a Process ID. This ID is unique for every running processes.
 pub type Pid = u16;
 
-// TODO Exclude `0` from PIDs
 /// The maximum possible PID.
-const MAX_PID: Pid = 32768; // TODO Move somewhere else?
+const MAX_PID: Pid = 32768;
 
 /// A structure handling PID allocations.
 pub struct PIDManager {
-	/// The bitfield storing which PIDs are allocated.
-	used: Bitfield,
-	/// The cursor, indicating which PID to check next in the bitfield.
-	cursor: usize,
+	/// The PID allocator.
+	allocator: IDAllocator,
 }
 
 impl PIDManager {
 	/// Creates a new instance.
 	pub fn new() -> Result<Self, Errno> {
 		Ok(Self {
-			used: Bitfield::new((MAX_PID + 1) as _)?,
-			cursor: 0,
+			allocator: IDAllocator::new(MAX_PID as _)?,
 		})
 	}
 
-	/// Increments the cursor.
-	fn increment_cursor(&mut self) {
-		self.cursor = (self.cursor + 1) % self.used.len();
-	}
-
 	/// Returns a unused PID and marks it as used.
-	pub fn get_unique_pid(&mut self) -> Result::<Pid, Errno> {
-		if self.used.set_count() >= self.used.len() {
-			return Err(errno::ENOMEM);
+	pub fn get_unique_pid(&mut self) -> Result<Pid, Errno> {
+		match self.allocator.alloc(None) {
+			Ok(i) => {
+				Ok((i + 1) as _)
+			},
+			Err(e) => {
+				Err(e)
+			}
 		}
-
-		while self.used.is_set(self.cursor) {
-			self.increment_cursor();
-		}
-
-		let pid = self.cursor;
-		self.used.set(pid);
-		self.increment_cursor();
-
-		Ok(pid as _)
 	}
 
 	/// Releases the given PID `pid` to make it available for other processes.
 	pub fn release_pid(&mut self, pid: Pid) {
-		self.used.clear(pid as _);
+		self.allocator.free(pid as _)
 	}
 }
