@@ -5,6 +5,8 @@ use crate::util::id_allocator::IDAllocator;
 use crate::util::lock::mutex::Mutex;
 use crate::util::lock::mutex::MutexGuard;
 
+/// The number of major numbers.
+const MAJOR_COUNT: u32 = 256;
 /// The number of minor numbers.
 const MINORS_COUNT: u32 = 256;
 
@@ -37,11 +39,11 @@ pub struct MajorBlock {
 
 impl MajorBlock {
 	/// Creates a new instance with the given major number `major`.
-	fn new(major: u32) -> Self {
-		Self {
+	fn new(major: u32) -> Result<Self, Errno> {
+		Ok(Self {
 			major: major,
-			allocator: IDAllocator::new(Some(MINORS_COUNT)),
-		}
+			allocator: IDAllocator::new(MINORS_COUNT)?,
+		})
 	}
 
 	/// Returns the major number associated with the block.
@@ -50,7 +52,7 @@ impl MajorBlock {
 	}
 
 	/// Allocates a minor number on the current major number block.
-	/// If `minor` is not None, the function shall allocate the specific given minor number.
+	/// If `minor` is not None, the function shall allocate the given minor number.
 	/// If the allocation fails, the function returns an Err.
 	pub fn alloc_minor(&mut self, minor: Option<u32>) -> Result<u32, Errno> {
 		self.allocator.alloc(minor)
@@ -69,7 +71,7 @@ impl Drop for MajorBlock {
 }
 
 /// The major numbers allocator.
-static mut MAJOR_ALLOCATOR: Mutex<IDAllocator> = Mutex::new(IDAllocator::new(None));
+static mut MAJOR_ALLOCATOR: Mutex<Option<IDAllocator>> = Mutex::new(None);
 // TODO
 ///// The list of major blocks allocated for dynamicaly allocated minor/major pairs.
 //static mut DYN_MAJORS: Mutex<Vec<MajorBlock>> = Mutex::new(Vec::new());
@@ -83,8 +85,13 @@ pub fn alloc_major(major: Option<u32>) -> Result<MajorBlock, Errno> {
 	};
 	let mut guard = MutexGuard::new(mutex);
 	let major_allocator = guard.get_mut();
+	if major_allocator.is_none() {
+		*major_allocator = Some(IDAllocator::new(MAJOR_COUNT)?);
+	}
+	let major_allocator = major_allocator.as_mut().unwrap();
+
 	let major = major_allocator.alloc(major)?;
-	let block = MajorBlock::new(major);
+	let block = MajorBlock::new(major)?;
 	Ok(block)
 }
 
@@ -95,7 +102,8 @@ pub fn free_major(block: &mut MajorBlock) {
 		&mut MAJOR_ALLOCATOR
 	};
 	let mut guard = MutexGuard::new(mutex);
-	let major_allocator = guard.get_mut();
+	let major_allocator = guard.get_mut().as_mut().unwrap();
+
 	major_allocator.free(block.get_major());
 }
 

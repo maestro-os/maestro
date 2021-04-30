@@ -9,7 +9,7 @@ use crate::util::math::ceil_division;
 /// The size of the bitfield is specified at initialization.
 pub struct Bitfield {
 	/// The bitfield's memory region.
-	ptr: *mut u8,
+	ptr: *mut u8, // TODO Use a safe container
 	/// The number of bits in the bitfield.
 	len: usize,
 	/// The number of set bits.
@@ -72,6 +72,18 @@ impl Bitfield {
 		*unit &= !(1 << (index % bit_size_of::<u8>()));
 
 		self.set_count -= 1;
+	}
+
+	/// Finds a clear bit. The function returns the offset to the bit. If none is found, the
+	/// function returns None.
+	pub fn find_clear(&mut self) -> Option<usize> {
+		for i in 0..self.len {
+			if !self.is_set(i) {
+				return Some(i);
+			}
+		}
+
+		None
 	}
 
 	// TODO set_all
