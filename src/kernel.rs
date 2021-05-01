@@ -139,8 +139,8 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 	if device::default::create().is_err() {
 		kernel_panic!("Failed to create default devices!");
 	}
-	if device::detect().is_err() {
-		crate::kernel_panic!("Failed to detect device buses!", 0);
+	if device::init().is_err() {
+		crate::kernel_panic!("Failed to initialize devices management!", 0);
 	}
 	#[cfg(config_debug_storagetest)]
 	storage::test();

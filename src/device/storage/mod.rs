@@ -1,5 +1,12 @@
 /// This module implements storage drivers.
 
+use crate::device::manager::DeviceManager;
+use crate::device::manager::PhysicalDevice;
+use crate::device::storage::pata::PATAInterface;
+use crate::errno::Errno;
+use crate::util::boxed::Box;
+use crate::util::container::vec::Vec;
+
 pub mod pata;
 
 /// Trait representing a storage interface. A storage block is the atomic unit for I/O access on
@@ -18,8 +25,47 @@ pub trait StorageInterface {
 	fn write(&self, buf: &[u8], offset: u64, size: u64) -> Result<(), ()>;
 }
 
-// TODO Take into account hotplug devices and buses (PCI, USB, ...)
 // TODO Function to add a device
+
+/// Structure managing storage devices.
+pub struct StorageManager {
+	/// The list of detected interfaces.
+	interfaces: Vec<Box<dyn StorageInterface>>,
+}
+
+impl StorageManager {
+	/// Creates a new instance.
+	pub fn new() -> Self {
+		Self {
+			interfaces: Vec::new(),
+		}
+	}
+}
+
+impl DeviceManager for StorageManager {
+	fn legacy_detect(&mut self) -> Result<(), Errno> {
+		// TODO Detect floppy disks
+
+		for i in 0..4 {
+			let secondary = (i & 0b01) != 0;
+			let slave = (i & 0b10) != 0;
+
+			if let Ok(dev) = PATAInterface::new(secondary, slave) {
+				self.interfaces.push(Box::new(dev)?)?;
+			}
+		}
+
+		Ok(())
+	}
+
+	fn on_plug(&mut self, _dev: &dyn PhysicalDevice) {
+		// TODO
+	}
+
+	fn on_unplug(&mut self, _dev: &dyn PhysicalDevice) {
+		// TODO
+	}
+}
 
 /// Tests every storage drivers on every storage devices.
 /// The execution of this function removes all the data on every connected writable disks, so it
