@@ -8,6 +8,7 @@ use crate::errno::Errno;
 use crate::util::boxed::Box;
 use crate::util::container::vec::Vec;
 
+pub mod mbr;
 pub mod pata;
 
 /// Trait representing a storage interface. A storage block is the atomic unit for I/O access on
@@ -24,7 +25,75 @@ pub trait StorageInterface {
 	fn write(&self, buf: &[u8], offset: u64, size: u64) -> Result<(), ()>;
 }
 
-// TODO Function to add a device
+pub mod partition {
+	use crate::errno::Errno;
+	use crate::errno;
+	use crate::util::container::vec::Vec;
+	use super::StorageInterface;
+	use super::mbr::MBRTable;
+
+	/// Structure representing a disk partition.
+	pub struct Partition {
+		/// The offset to the first sector of the partition.
+		start: u64,
+		/// The number of sectors in the partition.
+		size: u64,
+	}
+
+	impl Partition {
+		/// Creates a new instance with the given start partition `start` and size `size`.
+		pub fn new(start: u64, size: u64) -> Self {
+			Self {
+				start: start,
+				size: size,
+			}
+		}
+
+		/// Returns the offset of the first sector of the partition.
+		pub fn get_start(&self) -> u64 {
+			self.start
+		}
+
+		/// Returns the number fo sectors in the partition.
+		pub fn get_size(&self) -> u64 {
+			self.size
+		}
+	}
+
+	/// Trait representing a partition table.
+	pub trait Table {
+		/// Returns the type of the partition table.
+		fn get_type(&self) -> &'static str;
+
+		/// Reads the partitions list.
+		fn read(&self) -> Result<Vec<Partition>, Errno>;
+	}
+
+	/// Reads the list of partitions from the given storage interface `storage`.
+	pub fn read(storage: &dyn StorageInterface) -> Result<Vec<Partition>, Errno> {
+		if storage.get_block_size() != 512 {
+			return Ok(Vec::new());
+		}
+
+		let mut first_sector: [u8; 512] = [0; 512];
+		if storage.read(&mut first_sector, 0, 1).is_err() {
+			return Err(errno::EIO);
+		}
+
+		// Valid because taking the pointer to the buffer on the stack which has the same size as
+		// the structure
+		let mbr_table = unsafe {
+			&*(first_sector.as_ptr() as *const MBRTable)
+		};
+		if mbr_table.is_valid() {
+			return mbr_table.read();
+		}
+
+		// TODO Try to detect GPT
+
+		Ok(Vec::new())
+	}
+}
 
 /// Structure managing storage devices.
 pub struct StorageManager {
@@ -35,6 +104,8 @@ pub struct StorageManager {
 impl StorageManager {
 	/// Creates a new instance.
 	pub fn new() -> Self {
+		// TODO Allocate major number block
+
 		Self {
 			interfaces: Vec::new(),
 		}
@@ -42,7 +113,8 @@ impl StorageManager {
 
 	/// Adds a storage device.
 	fn add(&mut self, storage: Box<dyn StorageInterface>) -> Result<(), Errno> {
-		// TODO Read to detect partitions
+		let _partitions = partition::read(storage.as_ref())?;
+		// TODO Insert all device files
 
 		self.interfaces.push(storage)
 	}
