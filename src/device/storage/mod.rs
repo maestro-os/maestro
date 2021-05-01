@@ -40,6 +40,13 @@ impl StorageManager {
 			interfaces: Vec::new(),
 		}
 	}
+
+	/// Adds a storage device.
+	fn add(&mut self, storage: Box<dyn StorageInterface>) -> Result<(), Errno> {
+		// TODO Read to detect partitions
+
+		self.interfaces.push(storage)
+	}
 }
 
 impl DeviceManager for StorageManager {
@@ -51,7 +58,7 @@ impl DeviceManager for StorageManager {
 			let slave = (i & 0b10) != 0;
 
 			if let Ok(dev) = PATAInterface::new(secondary, slave) {
-				self.interfaces.push(Box::new(dev)?)?;
+				self.add(Box::new(dev)?)?;
 			}
 		}
 
