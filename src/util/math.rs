@@ -55,6 +55,14 @@ pub fn integer_linear_interpolation<T>(x: T, a_x: T, a_y: T, b_x: T, b_y: T) -> 
 	a_y + ((x - a_x) * (-a_y + b_y)) / (b_x - a_x)
 }
 
+/// Pseudo random number generation based on linear congruential generator.
+/// `x` is the value to compute the next number from. It should either be a seed, or the previous
+/// value returned from this function.
+/// `a`, `c` and `m` are hyperparameters use as follows: (a * x + c) % m.
+pub fn pseudo_rand(x: u32, a: u32, c: u32, m: u32) -> u32 {
+	(a * x + c) % m
+}
+
 #[cfg(test)]
 mod test {
 	use super::*;

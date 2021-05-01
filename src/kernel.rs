@@ -142,8 +142,6 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 	if device::init().is_err() {
 		crate::kernel_panic!("Failed to initialize devices management!", 0);
 	}
-	#[cfg(config_debug_storagetest)]
-	storage::test();
 
 	// TODO Load module through userspace instead
 	println!("Loading modules...");

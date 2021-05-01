@@ -444,10 +444,6 @@ impl StorageInterface for PATAInterface {
 		512
 	}
 
-	fn get_block_alignment(&self) -> usize {
-		512
-	}
-
 	fn get_blocks_count(&self) -> u64 {
 		self.sectors_count
 	}
