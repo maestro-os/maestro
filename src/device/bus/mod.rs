@@ -2,6 +2,7 @@
 
 pub mod pci;
 
+use crate::device::manager;
 use crate::errno::Errno;
 use crate::util::boxed::Box;
 use crate::util::container::vec::Vec;
@@ -32,11 +33,7 @@ pub fn detect() -> Result<(), Errno> {
 
 	// TODO Move into PCI scan itself?
 	for i in 0..devices.len() {
-		let dev = &devices[i];
-		// TODO rm
-		crate::println!("-> {:x} {:x} {:x} {:x}", dev.get_device_id(), dev.get_vendor_id(),
-			dev.get_class(), dev.get_subclass());
-		// TODO Allocate DMA zones
+		manager::on_plug(&devices[i]);
 	}
 
 	let mutex = unsafe {

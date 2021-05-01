@@ -2,6 +2,7 @@
 /// the motherboard. There here-module allows to retrieve informations on the devices attached to
 /// the computer's pCI.
 
+use crate::device::manager::PhysicalDevice;
 use crate::io;
 use crate::util::container::vec::Vec;
 use super::Bus;
@@ -106,6 +107,28 @@ impl PCIDevice {
 	}
 
 	// TODO
+}
+
+impl PhysicalDevice for PCIDevice {
+	fn get_product_id(&self) -> u16 {
+		self.device_id
+	}
+
+	fn get_vendor_id(&self) -> u16 {
+		self.vendor_id
+	}
+
+	fn get_class(&self) -> u16 {
+		self.class as _
+	}
+
+	fn get_subclass(&self) -> u16 {
+		self.subclass as _
+	}
+
+	fn is_hotplug(&self) -> bool {
+		false
+	}
 }
 
 /// Structure representing the PCI manager.
