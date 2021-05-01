@@ -187,24 +187,6 @@ $(NAME).iso: $(NAME) grub.cfg
 	cp grub.cfg iso/boot/grub
 	grub-mkrescue -o $(NAME).iso iso
 
-# The rule to clean the workspace
-clean:
-	rm -rf $(OBJ_DIR)
-	rm -rf $(LIB_NAME)
-	rm -f tags
-	rm -rf iso/
-
-# The rule to clean the workspace, including target binaries
-fclean: clean
-	rm -rf target/
-	rm -f $(NAME)
-	rm -f $(NAME).iso
-	rm -rf $(DOC_DIR)
-	rm -rf config/target/
-
-# The rule to recompile everything
-re: fclean all
-
 
 
 # The rule to create the `tags` file
@@ -213,11 +195,19 @@ tags: $(SRC) $(HDR) $(RUST_SRC)
 
 
 
+# The QEMU disk file
+QEMU_DISK = qemu_disk
+# The size of the QEMU disk in megabytes
+QEMU_DISK_SIZE = 1024
 # Flags for the QEMU emulator
-QEMU_FLAGS = -cdrom $(NAME).iso -device isa-debug-exit,iobase=0xf4,iosize=0x04
+QEMU_FLAGS = -cdrom $(NAME).iso -drive file=$(QEMU_DISK),format=raw,if=virtio -device isa-debug-exit,iobase=0xf4,iosize=0x04
+
+# Creates the disk for the QEMU emulator
+$(QEMU_DISK):
+	dd if=/dev/zero of=$(QEMU_DISK) bs=1M count=$(QEMU_DISK_SIZE) status=progress
 
 # The rule to test the kernel using QEMU
-test: iso
+test: iso $(QEMU_DISK)
 	qemu-system-i386 $(QEMU_FLAGS) -d int
 
 # The rule to run a CPU test of the kernel using QEMU (aka running the kernel and storing a lot of
@@ -278,4 +268,25 @@ config: $(CONFIG_FILE)
 
 
 
-.PHONY: check_config all iso clean fclean re config test debug bochs doc clippy $(CONFIG_FILE)
+# The rule to clean the workspace
+clean:
+	rm -rf $(OBJ_DIR)
+	rm -rf $(LIB_NAME)
+	rm -f tags
+	rm -rf iso/
+
+# The rule to clean the workspace, including target binaries
+fclean: clean
+	rm -rf target/
+	rm -f $(NAME)
+	rm -f $(NAME).iso
+	rm -rf $(DOC_DIR)
+	rm -rf config/target/
+	rm -f $(QEMU_DISK)
+
+# The rule to recompile everything
+re: fclean all
+
+
+
+.PHONY: check_config all iso test debug bochs doc clippy $(CONFIG_FILE) config clean fclean re

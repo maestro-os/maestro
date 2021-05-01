@@ -1,17 +1,29 @@
+# Configuration file
+.config
+
+# Compiled object files
 *.a
 *.o
+
+# Random garbage
 *.gch
 *.swp
 
+# Rust compilation files
+target/
+*.rlib
+
+# ISO and ELF
 iso/
 maestro
 *.iso
+
+# Tags file
 tags
 
-.config
-
-*_out
-
-target/
-*.rlib
+# Compiled documentation
 doc/
+
+# Debug files
+*_out
+qemu_disk

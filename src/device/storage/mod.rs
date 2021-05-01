@@ -128,8 +128,8 @@ impl DeviceManager for StorageManager {
 		// TODO Detect floppy disks
 
 		for i in 0..4 {
-			let secondary = (i & 0b01) != 0;
-			let slave = (i & 0b10) != 0;
+			let secondary = (i & 0b10) != 0;
+			let slave = (i & 0b01) != 0;
 
 			if let Ok(dev) = PATAInterface::new(secondary, slave) {
 				self.add(Box::new(dev)?)?;
