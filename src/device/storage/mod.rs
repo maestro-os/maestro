@@ -63,29 +63,59 @@ impl StorageManager {
 	/// `seed` is the seed for pseudo random generation. The function will set this variable to
 	/// another value for the next iteration.
 	#[cfg(config_debug_storagetest)]
-	fn test_interface(interface: &mut dyn StorageInterface, seed: &mut u32) -> bool {
+	fn test_interface(interface: &mut dyn StorageInterface, seed: u32) -> bool {
 		let block_size = interface.get_block_size();
-		let mut s = *seed;
+		let mut s = seed;
 		for i in 0..interface.get_blocks_count() {
 			let mut buff: [u8; 512] = [0; 512]; // TODO Set to block size
 			s = Self::random_block(block_size, &mut buff, s);
-			interface.write(&buff, i, block_size as _).unwrap();
+			if interface.write(&buff, i, block_size as _).is_err() {
+				crate::println!("\nCannot write to disk on block {}.", i);
+				return false;
+			}
 		}
 
-		s = *seed;
+		s = seed;
 		for i in 0..interface.get_blocks_count() {
 			let mut buff: [u8; 512] = [0; 512]; // TODO Set to block size
 			s = Self::random_block(interface.get_block_size(), &mut buff, s);
 
 			let mut buf: [u8; 512] = [0; 512]; // TODO Set to block size
-			interface.read(&mut buf, i, block_size as _).unwrap();
+			if interface.read(&mut buf, i, block_size as _).is_err() {
+				crate::println!("\nCannot read from disk on block {}.", i);
+				return false;
+			}
 
 			if buf != buff {
 				return false;
 			}
 		}
 
-		*seed = crate::util::math::pseudo_rand(*seed, 11, 22, 100);
+		true
+	}
+
+	/// Performs testing of storage devices and drivers.
+	/// If every tests pass, the function returns `true`. Else, it returns `false`.
+	fn perform_test(&mut self) -> bool {
+		let mut seed = 42;
+		let iterations_count = 10;
+		for i in 0..iterations_count {
+			for j in 0..self.interfaces.len() {
+				crate::print!("Processing iteration: {}/{}; device: {}/{}...",
+					i + 1, iterations_count,
+					j + 1, self.interfaces.len());
+
+				let interface = &mut self.interfaces[j];
+				if !Self::test_interface(interface.as_mut(), seed) {
+					return false;
+				}
+
+				seed = crate::util::math::pseudo_rand(seed, 11, 22, 100);
+			}
+
+			crate::print!("\r");
+		}
+
 		true
 	}
 
@@ -96,27 +126,11 @@ impl StorageManager {
 	pub fn test(&mut self) {
 		crate::println!("Running disks tests... ({} devices)", self.interfaces.len());
 
-		let mut seed = 42;
-		let iterations_count = 100;
-		for i in 0..iterations_count {
-			for j in 0..self.interfaces.len() {
-				crate::print!("Iteration: {}/{}; Device: {}/{}",
-					i + 1, iterations_count,
-					j + 1, self.interfaces.len());
-
-				let interface = &mut self.interfaces[j];
-				if !Self::test_interface(interface.as_mut(), &mut seed) {
-					crate::println!("Disk test failed!");
-					unsafe {
-						crate::kernel_halt();
-					}
-				}
-			}
-
-			crate::print!("\r");
+		if self.perform_test() {
+			crate::println!("Done!");
+		} else {
+			crate::println!("Storage test failed!");
 		}
-
-		crate::println!("Done!");
 		unsafe {
 			crate::kernel_halt();
 		}
