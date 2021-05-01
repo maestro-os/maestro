@@ -58,6 +58,8 @@ const SELECT_SLAVE: u8 = 0xb0;
 
 /// Reads sectors from the disk.
 const COMMAND_READ_SECTORS: u8 = 0x20;
+/// Writes sectors on the disk.
+const COMMAND_WRITE_SECTORS: u8 = 0x30;
 /// Flush cache command.
 const COMMAND_CACHE_FLUSH: u8 = 0xe7;
 /// Identifies the selected drive.
@@ -240,6 +242,7 @@ impl PATAInterface {
 	/// Flushes the drive's cache. The device is assumed to be selected.
 	fn cache_flush(&self) {
 		self.send_command(COMMAND_CACHE_FLUSH);
+		self.wait_busy();
 	}
 
 	/// Sets the number `count` of sectors to read/write. The device is assumed to be selected.
@@ -373,11 +376,10 @@ impl PATAInterface {
 	/// The function uses LBA28, thus the offset is assumed to be in range.
 	fn read28(&self, buf: &mut [u8], offset: u64, size: u64) -> Result<(), ()> {
 		self.select();
-		self.wait(false);
+		self.wait(true);
 
-		let reads_count = math::ceil_division(size, 256) as usize;
-
-		for i in 0..reads_count {
+		let blocks_count = math::ceil_division(size, 256) as usize;
+		for i in 0..blocks_count {
 			unsafe {
 				let drive = if self.slave {
 					0xf0
@@ -403,13 +405,13 @@ impl PATAInterface {
 				self.wait_io()?;
 
 				for k in 0..256 {
-					let index = ((i * 256 * 512) + (j * 256) + k) * 2;
+					let index = ((i * 256 * 256) + (j * 256) + k) * 2;
 					let word = unsafe {
 						io::inw(data_port)
 					};
 
 					buf[index] = (word & 0xff) as _;
-					buf[index + 1] = ((word << 8) & 0xff) as _;
+					buf[index + 1] = ((word >> 8) & 0xff) as _;
 				}
 			}
 		}
@@ -426,9 +428,50 @@ impl PATAInterface {
 
 	/// Writes `size` blocks to storage at block offset `offset`, reading the data from `buf`.
 	/// The function uses LBA28, thus the offset is assumed to be in range.
-	fn write28(&self, _buf: &[u8], _offset: u64, _size: u64) -> Result<(), ()> {
-		// TODO
-		Err(())
+	fn write28(&self, buf: &[u8], offset: u64, size: u64) -> Result<(), ()> {
+		self.select();
+		self.wait(true);
+
+		let blocks_count = math::ceil_division(size, 256) as usize;
+		for i in 0..blocks_count {
+			unsafe {
+				let drive = if self.slave {
+					0xf0
+				} else {
+					0xe0
+				} | ((offset >> 24) & 0x0f) as u8;
+				let count = (size % 256) as u8;
+				let lo_lba = (offset & 0xff) as u8;
+				let mid_lba = ((offset >> 8) & 0xff) as u8;
+				let hi_lba = ((offset >> 16) & 0xff) as u8;
+
+				io::outb(self.get_register_port(DRIVE_REGISTER_OFFSET), drive);
+				io::outb(self.get_register_port(SECTORS_COUNT_REGISTER_OFFSET), count);
+				io::outb(self.get_register_port(LBA_LO_REGISTER_OFFSET), lo_lba);
+				io::outb(self.get_register_port(LBA_MID_REGISTER_OFFSET), mid_lba);
+				io::outb(self.get_register_port(LBA_HI_REGISTER_OFFSET), hi_lba);
+			}
+
+			self.send_command(COMMAND_WRITE_SECTORS);
+
+			let data_port = self.get_register_port(DATA_REGISTER_OFFSET);
+			for j in 0..(size as usize) {
+				self.wait_io()?;
+
+				for k in 0..256 {
+					let index = ((i * 256 * 256) + (j * 256) + k) * 2;
+					let word = ((buf[index + 1] as u16) << 8) | (buf[index] as u16);
+
+					unsafe {
+						io::outw(data_port, word)
+					}
+				}
+			}
+
+			self.cache_flush();
+		}
+
+		Ok(())
 	}
 
 	/// Writes `size` blocks to storage at block offset `offset`, reading the data from `buf`.

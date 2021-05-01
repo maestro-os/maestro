@@ -1,5 +1,6 @@
 /// This module implements storage drivers.
 
+use core::cmp::min;
 use crate::device::manager::DeviceManager;
 use crate::device::manager::PhysicalDevice;
 use crate::device::storage::pata::PATAInterface;
@@ -47,41 +48,45 @@ impl StorageManager {
 	}
 
 	/// Fills a random buffer `buff` of size `size` with seed `seed`.
+	/// The function returns the seed for the next block.
 	#[cfg(config_debug_storagetest)]
 	fn random_block(size: usize, buff: &mut [u8], seed: u32) -> u32 {
 		let mut s = seed;
 
 		for i in 0..size {
-			s = crate::util::math::pseudo_rand(s, 22, 44, 100);
+			s = crate::util::math::pseudo_rand(s, 1664525, 1013904223, 0x100);
 			buff[i] = (s & 0xff) as u8;
 		}
 
 		s
 	}
 
+	// TODO Test with several blocks at a time
 	/// Tests the given interface with the given interface `interface`.
 	/// `seed` is the seed for pseudo random generation. The function will set this variable to
 	/// another value for the next iteration.
 	#[cfg(config_debug_storagetest)]
 	fn test_interface(interface: &mut dyn StorageInterface, seed: u32) -> bool {
 		let block_size = interface.get_block_size();
+		let blocks_count = min(1024, interface.get_blocks_count());
+
 		let mut s = seed;
-		for i in 0..interface.get_blocks_count() {
+		for i in 0..blocks_count {
 			let mut buff: [u8; 512] = [0; 512]; // TODO Set to block size
 			s = Self::random_block(block_size, &mut buff, s);
-			if interface.write(&buff, i, block_size as _).is_err() {
+			if interface.write(&buff, i, 1).is_err() {
 				crate::println!("\nCannot write to disk on block {}.", i);
 				return false;
 			}
 		}
 
 		s = seed;
-		for i in 0..interface.get_blocks_count() {
+		for i in 0..blocks_count {
 			let mut buff: [u8; 512] = [0; 512]; // TODO Set to block size
 			s = Self::random_block(interface.get_block_size(), &mut buff, s);
 
 			let mut buf: [u8; 512] = [0; 512]; // TODO Set to block size
-			if interface.read(&mut buf, i, block_size as _).is_err() {
+			if interface.read(&mut buf, i, 1).is_err() {
 				crate::println!("\nCannot read from disk on block {}.", i);
 				return false;
 			}
@@ -110,10 +115,14 @@ impl StorageManager {
 					return false;
 				}
 
-				seed = crate::util::math::pseudo_rand(seed, 11, 22, 100);
+				seed = crate::util::math::pseudo_rand(seed, 1103515245, 12345, 0x100);
 			}
 
-			crate::print!("\r");
+			if i < iterations_count - 1 {
+				crate::print!("\r");
+			} else {
+				crate::println!();
+			}
 		}
 
 		true

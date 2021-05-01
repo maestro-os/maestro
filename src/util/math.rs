@@ -1,5 +1,7 @@
 /// This module contains mathematical utility functions.
 
+use core::intrinsics::wrapping_add;
+use core::intrinsics::wrapping_mul;
 use crate::util;
 
 /// Computes ceil(n0 / n1) without using floating point numbers.
@@ -60,7 +62,7 @@ pub fn integer_linear_interpolation<T>(x: T, a_x: T, a_y: T, b_x: T, b_y: T) -> 
 /// value returned from this function.
 /// `a`, `c` and `m` are hyperparameters use as follows: (a * x + c) % m.
 pub fn pseudo_rand(x: u32, a: u32, c: u32, m: u32) -> u32 {
-	(a * x + c) % m
+	(wrapping_add(wrapping_mul(a, x), c)) % m
 }
 
 #[cfg(test)]
