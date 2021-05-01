@@ -200,7 +200,7 @@ QEMU_DISK = qemu_disk
 # The size of the QEMU disk in megabytes
 QEMU_DISK_SIZE = 1024
 # Flags for the QEMU emulator
-QEMU_FLAGS = -cdrom $(NAME).iso -drive file=$(QEMU_DISK),format=raw,if=virtio -device isa-debug-exit,iobase=0xf4,iosize=0x04
+QEMU_FLAGS = -cdrom $(NAME).iso -drive file=$(QEMU_DISK),format=raw -device isa-debug-exit,iobase=0xf4,iosize=0x04
 
 # Creates the disk for the QEMU emulator
 $(QEMU_DISK):
