@@ -44,7 +44,7 @@ impl Bitfield {
 
 	/// Tells whether bit `index` is set.
 	pub fn is_set(&self, index: usize) -> bool {
-		let unit = unsafe { // Pointer arithmetic and dereference of raw pointer
+		let unit = unsafe {
 			*self.ptr.offset((index / bit_size_of::<u8>()) as _)
 		};
 		(unit >> (index % bit_size_of::<u8>())) & 1 == 1
@@ -54,7 +54,7 @@ impl Bitfield {
 	pub fn set(&mut self, index: usize) {
 		debug_assert!(index < self.len);
 
-		let unit = unsafe { // Pointer arithmetic and dereference of raw pointer
+		let unit = unsafe {
 			&mut *self.ptr.offset((index / bit_size_of::<u8>()) as _)
 		};
 		*unit |= 1 << (index % bit_size_of::<u8>());
@@ -66,7 +66,7 @@ impl Bitfield {
 	pub fn clear(&mut self, index: usize) {
 		debug_assert!(index < self.len);
 
-		let unit = unsafe { // Pointer arithmetic and dereference of raw pointer
+		let unit = unsafe {
 			&mut *self.ptr.offset((index / bit_size_of::<u8>()) as _)
 		};
 		*unit &= !(1 << (index % bit_size_of::<u8>()));

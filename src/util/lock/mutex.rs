@@ -30,7 +30,7 @@ impl<'a, T> LockPayload<'a, T> {
 impl<'a, T> Drop for LockPayload<'a, T> {
 	/// Called when the LockPayload gets out of the scope of execution.
 	fn drop(&mut self) {
-		unsafe { // Call to unsafe function
+		unsafe {
 			self.mutex.unlock();
 		}
 	}

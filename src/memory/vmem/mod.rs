@@ -66,7 +66,7 @@ pub fn new() -> Result::<Box::<dyn VMem>, Errno> {
 
 /// Clones the virtual memory context handler `vmem`.
 pub fn clone(vmem: &Box::<dyn VMem>) -> Result::<Box::<dyn VMem>, Errno> {
-	let vmem = unsafe { // Dereference of raw pointer
+	let vmem = unsafe {
 		&*(vmem.as_ptr() as *const x86::X86VMem)
 	};
 	Ok(Box::new(vmem.failable_clone()?)? as Box::<dyn VMem>)

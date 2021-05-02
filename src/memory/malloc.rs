@@ -81,7 +81,7 @@ static mut FREE_LISTS: MaybeUninit::<[List::<FreeChunk>; FREE_LIST_BINS]> = Mayb
 /// Checks the chunks inside of each free lists.
 #[cfg(config_debug_debug)]
 fn check_free_lists() {
-	let free_lists = unsafe { // Access to global variable and call to unsafe function
+	let free_lists = unsafe {
 		FREE_LISTS.assume_init_mut()
 	};
 
@@ -101,7 +101,7 @@ fn get_free_list(size: usize, insert: bool) -> Option<&'static mut FreeList> {
 	let mut i = math::log2(size / FREE_LIST_SMALLEST_SIZE);
 	i = min(i, FREE_LIST_BINS - 1);
 
-	let free_lists = unsafe { // Access to global variable and call to unsafe function
+	let free_lists = unsafe {
 		FREE_LISTS.assume_init_mut()
 	};
 
@@ -153,14 +153,14 @@ impl Chunk {
 
 	/// Returns a pointer to the chunks' data.
 	pub fn get_ptr(&mut self) -> *mut c_void {
-		unsafe { // Pointer arithmetic
+		unsafe {
 			(self as *mut Self as *mut c_void).add(size_of::<Self>())
 		}
 	}
 
 	/// Returns a const pointer to the chunks' data.
 	pub fn get_const_ptr(&self) -> *const c_void {
-		unsafe { // Pointer arithmetic
+		unsafe {
 			(self as *const Self as *const c_void).add(size_of::<Self>())
 		}
 	}
@@ -209,7 +209,7 @@ impl Chunk {
 	/// the chunk is used.
 	pub fn as_free_chunk(&mut self) -> &mut FreeChunk {
 		debug_assert!(!self.is_used());
-		unsafe { // Dereference of raw pointer
+		unsafe {
 			&mut *(self as *mut Self as *mut FreeChunk)
 		}
 	}
@@ -218,7 +218,7 @@ impl Chunk {
 	/// `size`. If the chunk cannot be split, the function returns None.
 	fn get_split_next_chunk(&mut self, size: usize) -> Option::<*mut FreeChunk> {
 		let min_data_size = get_min_chunk_size();
-		let next_ptr = util::align(unsafe { // Pointer arithmetic
+		let next_ptr = util::align(unsafe {
 			self.get_ptr().add(max(size, min_data_size))
 		}, ALIGNEMENT);
 
@@ -247,7 +247,7 @@ impl Chunk {
 		if let Some(next_ptr) = self.get_split_next_chunk(size) {
 			let curr_new_size = (next_ptr as usize) - (self.get_ptr() as usize);
 			let next_size = self.size - curr_new_size - size_of::<Chunk>();
-			let next = unsafe { // Call to unsafe function and dereference of raw pointer
+			let next = unsafe {
 				util::write_ptr(next_ptr, FreeChunk::new(next_size));
 				&mut *next_ptr
 			};
@@ -276,7 +276,7 @@ impl Chunk {
 
 			if !n.is_used() {
 				self.size += size_of::<Chunk>() + n.size;
-				unsafe { // Call to unsafe function
+				unsafe {
 					next.unlink_floating();
 				}
 				n.as_free_chunk().free_list_remove();
@@ -322,7 +322,7 @@ impl Chunk {
 		}
 		self.size += available_size;
 
-		unsafe { // Call to unsafe function
+		unsafe {
 			node.unlink_floating();
 		}
 		n.as_free_chunk().free_list_remove();
@@ -360,7 +360,7 @@ impl FreeChunk {
 	/// Creates a new free with the given size `size` in bytes, meant to be the first chunk of a
 	/// block. The chunk is **not** inserted into the free list.
 	pub fn new_first(ptr: *mut c_void, size: usize) {
-		unsafe { // Call to unsafe function
+		unsafe {
 			util::write_ptr(ptr as *mut FreeChunk, Self {
 				chunk: Chunk {
 					magic: CHUNK_MAGIC,
@@ -455,7 +455,7 @@ impl Block {
 
 		let ptr = buddy::alloc_kernel(order)?;
 		debug_assert!(ptr as *const _ >= memory::PROCESS_END);
-		let block = unsafe { // Call to unsafe function and dereference of raw pointer
+		let block = unsafe {
 			util::write_ptr(ptr as *mut Block, Self {
 				list: ListNode::new_single(),
 				order: order,
@@ -488,7 +488,7 @@ impl Block {
 
 /// Initializes the memory allocator.
 pub fn init() {
-	let free_lists = unsafe { // Access to global variable and call to unsafe function
+	let free_lists = unsafe {
 		FREE_LISTS.assume_init_mut()
 	};
 
@@ -506,7 +506,7 @@ fn get_available_chunk(size: usize) -> Result<&'static mut FreeChunk, Errno> {
 			f.get_front().unwrap().get_mut(f.get_inner_offset())
 		} else {
 			let block = Block::new(size)?;
-			unsafe { // Dereference of raw pointer
+			unsafe {
 				&mut *(&mut block.first_chunk as *mut _ as *mut FreeChunk)
 			}
 		}
@@ -537,7 +537,7 @@ pub fn alloc(n: usize) -> Result<*mut c_void, Errno> {
 	chunk.set_used(true);
 
 	let ptr = chunk.get_ptr();
-	unsafe { // Call to C function
+	unsafe {
 		util::bzero(ptr, n);
 	}
 	Ok(ptr)
@@ -546,7 +546,7 @@ pub fn alloc(n: usize) -> Result<*mut c_void, Errno> {
 /// Returns the size of the given memory allocation in bytes.
 /// The pointer `ptr` MUST point to the beginning of a valid, used chunk of memory.
 pub fn get_size(ptr: *mut c_void) -> usize {
-	let chunk = unsafe { // Call to unsafe function
+	let chunk = unsafe {
 		Chunk::from_ptr(ptr)
 	};
 	#[cfg(config_debug_debug)]
@@ -560,7 +560,7 @@ pub fn get_size(ptr: *mut c_void) -> usize {
 /// chunk of memory. `n` is the new size of the chunk of memory. If the reallocation fails, the
 /// chunk is left untouched and the function returns an error.
 pub fn realloc(ptr: *mut c_void, n: usize) -> Result<*mut c_void, Errno> {
-	let chunk = unsafe { // Call to unsafe function
+	let chunk = unsafe {
 		Chunk::from_ptr(ptr)
 	};
 	#[cfg(config_debug_debug)]
@@ -571,7 +571,7 @@ pub fn realloc(ptr: *mut c_void, n: usize) -> Result<*mut c_void, Errno> {
 	if n > chunk_size {
 		if !chunk.grow(n - chunk_size) {
 			let new_ptr = alloc(n)?;
-			unsafe { // Call to C function
+			unsafe {
 				util::memcpy(new_ptr, ptr, min(chunk.get_size(), n));
 			}
 			free(ptr);
@@ -591,7 +591,7 @@ pub fn realloc(ptr: *mut c_void, n: usize) -> Result<*mut c_void, Errno> {
 /// Frees the memory at the pointer `ptr` previously allocated with `alloc`. Subsequent uses of the
 /// associated memory are undefined.
 pub fn free(ptr: *mut c_void) {
-	let chunk = unsafe { // Call to unsafe function
+	let chunk = unsafe {
 		Chunk::from_ptr(ptr)
 	};
 	#[cfg(config_debug_debug)]
@@ -599,13 +599,13 @@ pub fn free(ptr: *mut c_void) {
 	assert!(chunk.is_used());
 
 	chunk.set_used(false);
-	unsafe { // Call to unsafe function
+	unsafe {
 		util::write_ptr(&mut chunk.as_free_chunk().free_list, ListNode::new_single());
 	}
 
 	let c = chunk.coalesce();
 	if c.list.is_single() {
-		let block = unsafe { // Call to unsafe function
+		let block = unsafe {
 			Block::from_first_chunk(c)
 		};
 		buddy::free_kernel(block as *mut _ as _, block.order);
@@ -626,7 +626,7 @@ mod test {
 	#[test_case]
 	fn alloc_free1() {
 		let ptr = alloc(1).unwrap();
-		unsafe { // Call to C function
+		unsafe {
 			util::memset(ptr, -1, 1);
 		}
 		free(ptr);
@@ -635,7 +635,7 @@ mod test {
 	#[test_case]
 	fn alloc_free1() {
 		let ptr = alloc(8).unwrap();
-		unsafe { // Call to C function
+		unsafe {
 			util::memset(ptr, -1, 8);
 		}
 		free(ptr);
@@ -644,7 +644,7 @@ mod test {
 	#[test_case]
 	fn alloc_free2() {
 		let ptr = alloc(memory::PAGE_SIZE).unwrap();
-		unsafe { // Call to C function
+		unsafe {
 			util::memset(ptr, -1, memory::PAGE_SIZE);
 		}
 		free(ptr);
@@ -653,7 +653,7 @@ mod test {
 	#[test_case]
 	fn alloc_free3() {
 		let ptr = alloc(memory::PAGE_SIZE * 10).unwrap();
-		unsafe { // Call to C function
+		unsafe {
 			util::memset(ptr, -1, memory::PAGE_SIZE * 10);
 		}
 		free(ptr);
@@ -666,7 +666,7 @@ mod test {
 		for i in 0..ptrs.len() {
 			let size = i + 1;
 			let ptr = alloc(size).unwrap();
-			unsafe { // Call to C function
+			unsafe {
 				util::memset(ptr, -1, size);
 			}
 			ptrs[i] = ptr;
@@ -685,7 +685,7 @@ mod test {
 
 	fn lifo_test(i: usize) {
 		let ptr = alloc(i).unwrap();
-		unsafe { // Call to C function
+		unsafe {
 			util::memset(ptr, -1, i);
 		}
 		if i > 1 {
@@ -704,7 +704,7 @@ mod test {
 		for i in 1..memory::PAGE_SIZE {
 			let ptr = alloc(i).unwrap();
 			assert!(get_size(ptr) >= i);
-			unsafe { // Call to C function
+			unsafe {
 				util::memset(ptr, -1, i);
 			}
 			assert!(get_size(ptr) >= i);
@@ -723,7 +723,7 @@ mod test {
 		for i in 1..memory::PAGE_SIZE {
 			ptr = realloc(ptr, i).unwrap();
 			assert!(get_size(ptr) >= i);
-			unsafe { // Call to C function
+			unsafe {
 				util::memset(ptr, -1, i);
 			}
 			assert!(get_size(ptr) >= i);
@@ -741,7 +741,7 @@ mod test {
 		for i in (1..memory::PAGE_SIZE).rev() {
 			ptr = realloc(ptr, i).unwrap();
 			assert!(get_size(ptr) >= i);
-			unsafe { // Call to C function
+			unsafe {
 				util::memset(ptr, -1, i);
 			}
 			assert!(get_size(ptr) >= i);
@@ -755,7 +755,7 @@ mod test {
 	fn realloc2() {
 		let mut ptr0 = alloc(8).unwrap();
 		let mut ptr1 = alloc(8).unwrap();
-		unsafe { // Call to C function
+		unsafe {
 			util::memset(ptr0, -1, 8);
 			util::memset(ptr1, -1, 8);
 		}
@@ -776,7 +776,7 @@ mod test {
 	fn realloc3() {
 		let mut ptr0 = alloc(8).unwrap();
 		let mut ptr1 = alloc(8).unwrap();
-		unsafe { // Call to C function
+		unsafe {
 			util::memset(ptr0, -1, 8);
 			util::memset(ptr1, -1, 8);
 		}
@@ -797,13 +797,13 @@ mod test {
 	#[test_case]
 	fn free0() {
 		let ptr0 = alloc(16).unwrap();
-		unsafe { // Call to C function
+		unsafe {
 			util::memset(ptr0, -1, 16);
 		}
 		free(ptr0);
 
 		let ptr1 = alloc(16).unwrap();
-		unsafe { // Call to C function
+		unsafe {
 			util::memset(ptr1, -1, 16);
 		}
 		free(ptr1);

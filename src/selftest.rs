@@ -15,7 +15,7 @@ pub mod qemu {
 
 	/// Exits QEMU with the given status.
 	pub fn exit(status: u32) -> ! {
-		unsafe { // Call to unsafe functions
+		unsafe {
 			io::outl(EXIT_PORT, status);
 			crate::kernel_halt();
 		}
@@ -49,7 +49,7 @@ pub fn runner(tests: &[&dyn Testable]) {
 
 	#[cfg(config_debug_qemu)]
 	qemu::exit(qemu::SUCCESS); // TODO Handle assertion fail (exit with FAILURE)
-	unsafe { // Call to unsafe function
+	unsafe {
 		crate::kernel_halt();
 	}
 }

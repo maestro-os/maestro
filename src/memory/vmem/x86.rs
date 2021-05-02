@@ -96,7 +96,7 @@ fn alloc_obj() -> Result<*mut u32, Errno> {
 /// Returns the object at index `index` of given object `obj`.
 fn obj_get(obj: *const u32, index: usize) -> u32 {
 	debug_assert!(index < 1024);
-	unsafe { // Pointer arithmetic and derference of raw pointer
+	unsafe {
 		*obj_get_ptr(obj, index)
 	}
 }
@@ -104,7 +104,7 @@ fn obj_get(obj: *const u32, index: usize) -> u32 {
 /// Sets the object at index `index` of given object `obj` with value `value`.
 fn obj_set(obj: *mut u32, index: usize, value: u32) {
 	debug_assert!(index < 1024);
-	unsafe { // Pointer arithmetic and derference of raw pointer
+	unsafe {
 		*obj_get_mut_ptr(obj, index) = value;
 	}
 }
@@ -117,7 +117,7 @@ fn obj_get_ptr(obj: *const u32, index: usize) -> *const u32 {
 		obj_ptr = ((obj as usize) + (memory::PROCESS_END as usize)) as _;
 	}
 
-	unsafe { // Pointer arithmetic
+	unsafe {
 		obj_ptr.add(index)
 	}
 }
@@ -130,7 +130,7 @@ fn obj_get_mut_ptr(obj: *mut u32, index: usize) -> *mut u32 {
 		obj_ptr = ((obj as usize) + (memory::PROCESS_END as usize)) as _;
 	}
 
-	unsafe { // Pointer arithmetic
+	unsafe {
 		obj_ptr.add(index)
 	}
 }
@@ -366,7 +366,7 @@ impl X86VMem {
 	/// location. If no entry is found, the function returns None.
 	pub fn get_flags(&self, ptr: *const c_void) -> Option<u32> {
 		if let Some(e) = self.resolve(ptr) {
-			Some(unsafe { // Dereference of raw pointer
+			Some(unsafe {
 				*e
 			} & FLAGS_MASK)
 		} else {
@@ -412,7 +412,7 @@ impl X86VMem {
 impl VMem for X86VMem {
 	fn translate(&self, ptr: *const c_void) -> Option<*const c_void> {
 		if let Some(e) = self.resolve(ptr) {
-			let entry_value = unsafe { // Dereference of raw pointer
+			let entry_value = unsafe {
 				*e
 			};
 			let remain_mask = if entry_value & FLAG_GLOBAL == 0 {
@@ -548,21 +548,21 @@ impl VMem for X86VMem {
 		if !self.is_bound() {
 			#[cfg(config_debug_debug)]
 			self.check_bind();
-			unsafe { // Call to C function
+			unsafe {
 				paging_enable(memory::kern_to_phys(self.page_dir as _) as _);
 			}
 		}
 	}
 
 	fn is_bound(&self) -> bool {
-		unsafe { // Call to C function
+		unsafe {
 			cr3_get() == memory::kern_to_phys(self.page_dir as _) as _
 		}
 	}
 
 	fn flush(&self) {
 		if self.is_bound() {
-			unsafe { // Call to C function
+			unsafe {
 				tlb_reload();
 			}
 		}

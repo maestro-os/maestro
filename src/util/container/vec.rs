@@ -85,7 +85,7 @@ impl<T> Vec<T> {
 
 	/// Returns a slice containing the data.
 	pub fn as_slice(&self) -> &[T] {
-		unsafe { // Call to unsafe function
+		unsafe {
 			if let Some(p) = self.data {
 				slice::from_raw_parts(p.as_ptr(), self.len)
 			} else {
@@ -96,7 +96,7 @@ impl<T> Vec<T> {
 
 	/// Returns a mutable slice containing the data.
 	pub fn as_mut_slice(&mut self) -> &mut [T] {
-		unsafe { // Call to unsafe function
+		unsafe {
 			if let Some(p) = self.data {
 				slice::from_raw_parts_mut(p.as_ptr() as *mut T, self.len)
 			} else {
@@ -116,7 +116,7 @@ impl<T> Vec<T> {
 			self.vector_panic(0);
 		}
 
-		unsafe { // Pointer arithmetic and dereference of raw pointer
+		unsafe {
 			ptr::read(self.data.unwrap().as_ptr())
 		}
 	}
@@ -127,7 +127,7 @@ impl<T> Vec<T> {
 			self.vector_panic(0);
 		}
 
-		unsafe { // Pointer arithmetic and dereference of raw pointer
+		unsafe {
 			ptr::read(self.data.unwrap().as_ptr().offset((self.len - 1) as _))
 		}
 	}
@@ -141,7 +141,7 @@ impl<T> Vec<T> {
 		debug_assert!(self.capacity >= self.len + 1);
 
 		let ptr = self.data.unwrap().as_ptr();
-		unsafe { // Pointer arithmetic and dereference of raw pointer
+		unsafe {
 			ptr::copy(ptr.offset(index as _), ptr.offset((index + 1) as _), self.len - index);
 			ptr::write(ptr.offset(index as _), element);
 		}
@@ -157,10 +157,10 @@ impl<T> Vec<T> {
 		}
 
 		let ptr = self.data.unwrap().as_ptr();
-		let v = unsafe { // Pointer arithmetic and dereference of raw pointer
+		let v = unsafe {
 			ptr::read(ptr.offset(index as _))
 		};
-		unsafe { // Pointer arithmetic and dereference of raw pointer
+		unsafe {
 			ptr::copy(ptr.offset((index + 1) as _), ptr.offset(index as _), self.len - index - 1);
 		}
 		self.len -= 1;
@@ -176,7 +176,7 @@ impl<T> Vec<T> {
 
 		let self_ptr = self.data.unwrap().as_ptr();
 		let other_ptr = other.data.unwrap().as_ptr();
-		unsafe { // Pointer arithmetic and dereference of raw pointer
+		unsafe {
 			ptr::copy(other_ptr, self_ptr.offset(self.len as _), other.len);
 		}
 
@@ -196,7 +196,7 @@ impl<T> Vec<T> {
 		}
 		debug_assert!(self.capacity >= self.len + 1);
 
-		unsafe { // Pointer arithmetic and dereference of raw pointer
+		unsafe {
 			ptr::write(self.data.unwrap().as_ptr().offset(self.len as _), value);
 		}
 		self.len += 1;
@@ -207,7 +207,7 @@ impl<T> Vec<T> {
 	pub fn pop(&mut self) -> Option<T> {
 		if !self.is_empty() {
 			self.len -= 1;
-			unsafe { // Pointer arithmetic and dereference of raw pointer
+			unsafe {
 				Some(ptr::read(self.data.unwrap().as_ptr().offset(self.len as _)))
 			}
 		} else {

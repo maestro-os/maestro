@@ -186,10 +186,10 @@ pub fn foreach_sections<F>(sections: *const c_void, sections_count: usize, shndx
 
 	for i in 0..sections_count {
 		let hdr_offset = i * size_of::<ELF32SectionHeader>();
-		let hdr = unsafe { // Pointer arithmetic
+		let hdr = unsafe {
 			&*(sections.offset(hdr_offset as isize) as *const ELF32SectionHeader)
 		};
-		let n = unsafe { // Call to unsafe function
+		let n = unsafe {
 			util::ptr_to_str(memory::kern_to_virt((names_section.sh_addr + hdr.sh_name) as _))
 		};
 		f(hdr, n);
@@ -202,7 +202,7 @@ pub fn foreach_sections<F>(sections: *const c_void, sections_count: usize, shndx
 /// If the offset is outside of the section, the behaviour is undefined.
 pub fn get_symbol_name(strtab_section: &ELF32SectionHeader, offset: u32) -> Option<&'static str> {
 	debug_assert!(offset < strtab_section.sh_size);
-	Some(unsafe { // Call to unsafe function
+	Some(unsafe {
 		util::ptr_to_str(memory::kern_to_virt((strtab_section.sh_addr + offset) as _))
 	})
 }
@@ -230,7 +230,7 @@ pub fn get_function_name(sections: *const c_void, sections_count: usize, shndx: 
 
 			let mut i: usize = 0;
 			while i < hdr.sh_size as usize {
-				let sym = unsafe { // Pointer arithmetic and dereference of raw pointer
+				let sym = unsafe {
 					&*(ptr.add(i) as *const ELF32Sym)
 				};
 

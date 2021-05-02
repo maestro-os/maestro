@@ -50,7 +50,7 @@ pub fn init() {
 	let tss_ptr = gdt::get_segment_ptr(gdt::TSS_OFFSET);
 
 	let limit = size_of::<TSSEntry>() as u64;
-	let base = unsafe { // Call to ASM function
+	let base = unsafe {
 		tss_get() as u64
 	};
 	let flags = 0b0100000010001001 as u64;
@@ -60,7 +60,7 @@ pub fn init() {
 		| (((limit >> 16) & 0x0f) << 48)
 		| (((base >> 24) & 0xff) << 56);
 
-	unsafe { // Derference of raw pointer
+	unsafe {
 		*tss_ptr = tss_value;
 	}
 }
@@ -68,7 +68,7 @@ pub fn init() {
 /// x86. Updates the TSS into the GDT.
 #[inline(always)]
 pub fn flush() {
-	unsafe { // Call to C function
+	unsafe {
 		tss_flush();
 	}
 }
@@ -76,7 +76,7 @@ pub fn flush() {
 /// Returns a reference to the TSS structure.
 #[inline(always)]
 pub fn get() -> &'static mut TSSEntry {
-	unsafe { // Call to C function and dereference of raw pointer
+	unsafe {
 		&mut *tss_get()
 	}
 }

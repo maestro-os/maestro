@@ -98,7 +98,7 @@ fn get_memory_end() -> *const c_void {
 /// Fills the memory mapping structure according to Multiboot's informations.
 pub fn init(multiboot_ptr: *const c_void) {
 	let boot_info = multiboot::get_boot_info();
-	let mem_info = unsafe { // Access to global variable
+	let mem_info = unsafe {
 		MEM_INFO.assume_init_mut()
 	};
 	mem_info.memory_maps_size = boot_info.memory_maps_size;

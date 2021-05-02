@@ -41,7 +41,7 @@ impl<T> List<T> {
 	/// Returns the number of elements in the list.
 	pub fn size(&self) -> usize {
 		if let Some(front) = self.front {
-			unsafe { // Call to unsafe function
+			unsafe {
 				front.as_ref()
 			}.right_size()
 		} else {
@@ -57,7 +57,7 @@ impl<T> List<T> {
 	/// Returns a mutable reference to the front node if the list is not empty.
 	pub fn get_front(&mut self) -> Option::<&'static mut ListNode> {
 		if let Some(front) = self.front {
-			Some(unsafe { // Dereference of raw pointer
+			Some(unsafe {
 				&mut *front.as_ptr()
 			})
 		} else {
@@ -70,7 +70,7 @@ impl<T> List<T> {
 		node.prev = None;
 		node.next = self.front;
 		self.front = NonNull::new(node as _);
-		unsafe { // Call to unsafe function
+		unsafe {
 			node.link_back();
 		}
 	}
@@ -78,11 +78,11 @@ impl<T> List<T> {
 	/// Unlinks the first element at the front of the list.
 	pub fn unlink_front(&mut self) {
 		if let Some(mut front) = self.front {
-			let f = unsafe { // Call to unsafe function
+			let f = unsafe {
 				front.as_mut()
 			};
 
-			unsafe { // Call to unsafe function
+			unsafe {
 				f.unlink_floating();
 			}
 			self.front = f.next;
@@ -92,7 +92,7 @@ impl<T> List<T> {
 	/// Executes the given closure `f` for each nodes in the list.
 	pub fn foreach<F>(&self, f: F) where F: Fn(&ListNode) {
 		if let Some(front) = self.front {
-			unsafe { // Call to unsafe function
+			unsafe {
 				front.as_ref()
 			}.foreach(f);
 		}
@@ -101,7 +101,7 @@ impl<T> List<T> {
 	/// Same as `foreach` except the nodes are mutable.
 	pub fn foreach_mut<F>(&mut self, f: F) where F: Fn(&mut ListNode) {
 		if let Some(mut front) = self.front {
-			unsafe { // Call to unsafe function
+			unsafe {
 				front.as_mut()
 			}.foreach_mut(f);
 		}
@@ -171,7 +171,7 @@ impl ListNode {
 	/// Returns a reference to the structure storing the node.
 	/// `offset` is the offset of the field of the node in the structure.
 	pub fn get<T>(&self, offset: usize) -> &'static T {
-		unsafe { // Dereference of raw pointer
+		unsafe {
 			&*(((self as *const _ as usize) - offset) as *const T)
 		}
 	}
@@ -179,7 +179,7 @@ impl ListNode {
 	/// Returns a mutable reference to the structure storing the node.
 	/// `offset` is the offset of the field of the node in the structure.
 	pub fn get_mut<T>(&mut self, offset: usize) -> &'static mut T {
-		unsafe { // Dereference of raw pointer
+		unsafe {
 			&mut *(((self as *mut _ as usize) - offset) as *mut T)
 		}
 	}
@@ -192,7 +192,7 @@ impl ListNode {
 	/// Returns the previous element if it exsits, or None.
 	pub fn get_prev(&self) -> Option<&'static mut ListNode> {
 		if let Some(ptr) = self.prev {
-			Some(unsafe { // Dereference of raw pointer
+			Some(unsafe {
 				&mut *ptr.as_ptr()
 			})
 		} else {
@@ -203,7 +203,7 @@ impl ListNode {
 	/// Returns the next element if it exsits, or None.
 	pub fn get_next(&self) -> Option<&'static mut ListNode> {
 		if let Some(ptr) = self.next {
-			Some(unsafe { // Dereference of raw pointer
+			Some(unsafe {
 				&mut *ptr.as_ptr()
 			})
 		} else {
@@ -218,7 +218,7 @@ impl ListNode {
 
 		while curr.is_some() {
 			i += 1;
-			curr = option_to_const(unsafe { // Dereference of raw pointer
+			curr = option_to_const(unsafe {
 				(*curr.unwrap()).prev
 			});
 		}
@@ -232,7 +232,7 @@ impl ListNode {
 
 		while curr.is_some() {
 			i += 1;
-			curr = option_to_const(unsafe { // Dereference of raw pointer
+			curr = option_to_const(unsafe {
 				(*curr.unwrap()).next
 			});
 		}
@@ -259,7 +259,7 @@ impl ListNode {
 
 		while curr.is_some() {
 			let c = curr.unwrap();
-			unsafe { // Dereference of raw pointer
+			unsafe {
 				f(&mut *c);
 				curr = option_to_mut((*c).next);
 			}
@@ -334,7 +334,7 @@ impl ListNode {
 			}
 		}
 
-		unsafe { // Call to unsafe function
+		unsafe {
 			self.unlink_floating();
 		}
 	}
@@ -342,7 +342,7 @@ impl ListNode {
 
 impl Drop for ListNode {
 	fn drop(&mut self) {
-		unsafe { // Call to unsafe function
+		unsafe {
 			self.unlink_floating();
 		}
 	}

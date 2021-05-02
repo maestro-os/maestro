@@ -88,7 +88,7 @@ static mut ZONES: MaybeUninit<[Mutex<Zone>; ZONES_COUNT]> = MaybeUninit::uninit(
 
 /// Prepares the buddy allocator. Calling this function is required before setting the zone slots.
 pub fn prepare() {
-	unsafe { // Calling unsafe function
+	unsafe {
 		util::zero_object(&mut ZONES);
 	}
 }
@@ -98,7 +98,7 @@ pub fn prepare() {
 /// Setting each zone slot is required before using the allocator. If one or more slot isn't set,
 /// the behaviour of the allocator is undefined.
 pub fn set_zone_slot(slot: usize, zone: Zone) {
-	let z = unsafe { // Assuming that a global variable is initialized
+	let z = unsafe {
 		ZONES.assume_init_mut()
 	};
 	debug_assert!(slot < z.len());
@@ -129,7 +129,7 @@ pub fn get_order(pages: usize) -> FrameOrder {
 
 /// Returns a mutable reference to a zone suitable for an allocation with the given type `type_`.
 fn get_suitable_zone(type_: usize) -> Option<&'static mut Mutex<Zone>> {
-	let zones = unsafe { // Assuming global variable is initialized
+	let zones = unsafe {
 		ZONES.assume_init_mut()
 	};
 
@@ -148,7 +148,7 @@ fn get_suitable_zone(type_: usize) -> Option<&'static mut Mutex<Zone>> {
 
 /// Returns a mutable reference to the zone that contains the given pointer.
 fn get_zone_for_pointer(ptr: *const c_void) -> Option<&'static mut Mutex<Zone>> {
-	let zones = unsafe { // Assuming global variable is initialized
+	let zones = unsafe {
 		ZONES.assume_init_mut()
 	};
 
@@ -230,7 +230,7 @@ pub fn free_kernel(ptr: *const c_void, order: FrameOrder) {
 pub fn allocated_pages_count() -> usize {
 	let mut n = 0;
 
-	let z = unsafe { // Assuming global variable is initialized
+	let z = unsafe {
 		ZONES.assume_init_mut()
 	};
 	for i in 0..z.len() {
@@ -257,7 +257,7 @@ impl Zone {
 				continue;
 			}
 
-			let f = unsafe { // Dereference of raw pointer
+			let f = unsafe {
 				&mut *self.get_frame(frame)
 			};
 			f.mark_free(self);
@@ -309,7 +309,7 @@ impl Zone {
 		for i in (order as usize)..self.free_list.len() {
 			let f = self.free_list[i];
 			if let Some(f_) = f {
-				unsafe { // Dereference of raw pointer
+				unsafe {
 					debug_assert!(!(*f_).is_used());
 					debug_assert!(((*f_).get_ptr(self) as usize) >= (self.begin as usize));
 					debug_assert!(((*f_).get_ptr(self) as usize)
@@ -350,7 +350,7 @@ impl Zone {
 				let mut is_first = true;
 
 				loop {
-					let f = unsafe { // Dereference of raw pointer
+					let f = unsafe {
 						&*frame
 					};
 					let id = f.get_id(self);
@@ -363,7 +363,7 @@ impl Zone {
 
 					let frame_ptr = f.get_ptr(self);
 					debug_assert!(frame_ptr >= self.begin);
-					unsafe { // Pointer arithmetic
+					unsafe {
 						let zone_end = self.begin.add(zone_size);
 						debug_assert!(frame_ptr < zone_end);
 						debug_assert!(frame_ptr.add(f.get_size()) <= zone_end);
@@ -493,14 +493,14 @@ impl Frame {
 
 		if has_prev {
 			let prev = zone.get_frame(self.prev);
-			unsafe { // Dereference of raw pointer
+			unsafe {
 				(*prev).next = if has_next { self.next } else { self.prev };
 			}
 		}
 
 		if has_next {
 			let next = zone.get_frame(self.next);
-			unsafe { // Dereference of raw pointer
+			unsafe {
 				(*next).prev = if has_prev { self.prev } else { self.next };
 			}
 		}
@@ -533,7 +533,7 @@ impl Frame {
 				break;
 			}
 
-			let buddy_frame = unsafe { // Dereference of raw pointer
+			let buddy_frame = unsafe {
 				&mut *zone.get_frame(buddy)
 			};
 			buddy_frame.mark_free(zone);
@@ -568,7 +568,7 @@ impl Frame {
 				break;
 			}
 
-			let buddy_frame = unsafe { // Dereference of raw pointer
+			let buddy_frame = unsafe {
 				&mut *zone.get_frame(buddy)
 			};
 			#[cfg(config_debug_debug)]

@@ -18,7 +18,7 @@ pub fn init() {
 	let frames_count = mmap_info.available_memory
 		/ (memory::PAGE_SIZE + buddy::get_frame_metadata_size());
 	let metadata_size = frames_count * buddy::get_frame_metadata_size();
-	let metadata_end = unsafe { // Pointer arithmetic
+	let metadata_end = unsafe {
 		metadata_begin.add(metadata_size)
 	};
 	let phys_metadata_end = memory::kern_to_phys(metadata_end);

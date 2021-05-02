@@ -36,7 +36,7 @@ pub const ENTRIES_COUNT: usize = 0x81;
 /// Disables interruptions.
 #[macro_export]
 macro_rules! cli {
-	() => (unsafe { // Assembly instruction
+	() => (unsafe {
 		asm!("cli")
 	});
 }
@@ -44,7 +44,7 @@ macro_rules! cli {
 /// Enables interruptions.
 #[macro_export]
 macro_rules! sti {
-	() => (unsafe { // Assembly instruction
+	() => (unsafe {
 		asm!("sti")
 	});
 }
@@ -52,7 +52,7 @@ macro_rules! sti {
 /// Waits for an interruption.
 #[macro_export]
 macro_rules! hlt {
-	() => (unsafe { // Assembly instruction
+	() => (unsafe {
 		asm!("hlt")
 	});
 }

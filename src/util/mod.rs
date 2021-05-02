@@ -60,7 +60,7 @@ pub fn bit_size_of<T>() -> usize {
 macro_rules! offset_of {
 	($type:ty, $field:ident) => {
 		#[allow(unused_unsafe)]
-		unsafe { // Dereference of raw pointer
+		unsafe {
 			let ptr = core::ptr::NonNull::<c_void>::dangling().as_ptr();
 			(&(*(ptr as *const $type)).$field) as *const _ as usize - ptr as usize
 		}

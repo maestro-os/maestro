@@ -327,14 +327,14 @@ static SPECIAL_KEYS: [(u8, KeyboardKey); 38] = [
 
 /// Tells whether the PS/2 buffer is ready for reading.
 fn can_read() -> bool {
-	unsafe { // IO operation
+	unsafe {
 		io::inb(STATUS_REGISTER) & 0b1 != 0
 	}
 }
 
 /// Tells whether the PS/2 buffer is ready for writing.
 fn can_write() -> bool {
-	unsafe { // IO operation
+	unsafe {
 		io::inb(STATUS_REGISTER) & 0b10 == 0
 	}
 }
@@ -352,7 +352,7 @@ fn wait_write() {
 /// Clears the PS/2 controller's buffer.
 fn clear_buffer() {
 	while can_read() {
-		unsafe { // IO operation
+		unsafe {
 			io::inb(DATA_REGISTER);
 		}
 	}
@@ -364,12 +364,12 @@ fn keyboard_send(data: u8) -> Result<(), ()> {
 
 	for _ in 0..MAX_ATTEMPTS {
 		wait_write();
-		unsafe { // IO operation
+		unsafe {
 			io::outb(DATA_REGISTER, data);
 		}
 
 		wait_read();
-		response = unsafe { // IO operation
+		response = unsafe {
 			io::inb(DATA_REGISTER)
 		};
 		if response == KEYBOARD_ACK {
@@ -388,12 +388,12 @@ fn keyboard_send(data: u8) -> Result<(), ()> {
 fn send_command(command: u8, expected_response: u8) -> Result<(), ()> {
 	for _ in 0..MAX_ATTEMPTS {
 		wait_write();
-		unsafe { // IO operation
+		unsafe {
 			io::outb(COMMAND_REGISTER, command);
 		}
 
 		wait_read();
-		let response = unsafe { // IO operation
+		let response = unsafe {
 			io::inb(DATA_REGISTER)
 		};
 		if response == expected_response {
@@ -406,12 +406,12 @@ fn send_command(command: u8, expected_response: u8) -> Result<(), ()> {
 /// Disables PS/2 devices.
 fn disable_devices() {
 	wait_write();
-	unsafe { // IO operation
+	unsafe {
 		io::outb(COMMAND_REGISTER, 0xad);
 	}
 
 	wait_write();
-	unsafe { // IO operation
+	unsafe {
 		io::outb(COMMAND_REGISTER, 0xa7);
 	}
 }
@@ -419,7 +419,7 @@ fn disable_devices() {
 /// Enables the keyboard device.
 fn enable_keyboard() -> Result<(), ()> {
 	wait_write();
-	unsafe { // IO operation
+	unsafe {
 		io::outb(COMMAND_REGISTER, 0xae);
 	}
 
@@ -434,12 +434,12 @@ fn enable_keyboard() -> Result<(), ()> {
 /// TODO doc
 fn get_config_byte() -> u8 {
 	wait_write();
-	unsafe { // IO operation
+	unsafe {
 		io::outb(COMMAND_REGISTER, 0x20);
 	}
 
 	wait_read();
-	unsafe { // IO operation
+	unsafe {
 		io::inb(DATA_REGISTER)
 	}
 }
@@ -447,12 +447,12 @@ fn get_config_byte() -> u8 {
 /// TODO doc
 fn set_config_byte(config: u8) {
 	wait_write();
-	unsafe { // IO operation
+	unsafe {
 		io::outb(COMMAND_REGISTER, 0x60);
 	}
 
 	wait_write();
-	unsafe { // IO operation
+	unsafe {
 		io::outb(DATA_REGISTER, config);
 	}
 }
@@ -469,7 +469,7 @@ fn test_device() -> Result<(), ()> {
 
 /// Reads one byte of keycode from the controller.
 fn read_keycode_byte() -> u8 {
-	unsafe { // IO operation
+	unsafe {
 		io::inb(DATA_REGISTER)
 	}
 }
@@ -529,12 +529,12 @@ impl InterruptCallback for KeyboardCallback {
 		while can_read() {
 			let (key, action) = read_keystroke();
 
-			unsafe { // Dereference of raw pointer
+			unsafe {
 				((*self.module).keyboard_callback)(key, action);
 			}
 
 			if key == KeyboardKey::KeyPause && action == KeyboardAction::Pressed {
-				unsafe { // Dereference of raw pointer
+				unsafe {
 					((*self.module).keyboard_callback)(key, KeyboardAction::Released);
 				}
 			}

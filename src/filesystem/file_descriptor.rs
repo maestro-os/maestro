@@ -29,7 +29,7 @@ impl FileDescriptor {
 
 	/// Returns a mutable reference to the file associated to the descriptor.
 	pub fn get_file(&mut self) -> &mut File {
-		unsafe { // Call to unsafe function
+		unsafe {
 			self.file.as_mut()
 		}
 	}

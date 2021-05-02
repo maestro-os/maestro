@@ -81,7 +81,7 @@ pub fn get(tty: usize) -> &'static mut Mutex<TTY> {
 
 /// Returns a reference to the current TTY.
 pub fn current() -> &'static mut Mutex<TTY> {
-	unsafe { // Access to global variable
+	unsafe { // Safe because using Mutex
 		get(*CURRENT_TTY.lock().get())
 	}
 }
@@ -106,7 +106,7 @@ pub fn switch(tty: usize) {
 	if tty >= TTYS_COUNT {
 		return;
 	}
-	unsafe { // Access to global variable
+	unsafe { // Safe because using Mutex
 		*CURRENT_TTY.lock().get_mut() = tty;
 	}
 
@@ -137,7 +137,7 @@ impl TTY {
 
 	/// Updates the TTY to the screen.
 	pub fn update(&mut self) {
-		let current_tty = unsafe { // Access to global variable
+		let current_tty = unsafe { // Safe because using Mutex
 			*CURRENT_TTY.lock().get()
 		};
 		if self.id == current_tty && !self.update {
@@ -145,7 +145,7 @@ impl TTY {
 		}
 
 		let buff = &self.history[get_history_offset(0, self.screen_y)];
-		unsafe { // Call to unsafe function
+		unsafe {
 			vmem::write_lock_wrap(|| {
 				core::ptr::copy_nonoverlapping(buff as *const _, vga::BUFFER_VIRT as *mut _,
 					(vga::WIDTH as usize) * (vga::HEIGHT as usize) * size_of::<vga::Char>());

@@ -28,7 +28,7 @@ pub fn make_segment_selector(offset: u32, ring: u32) -> u16 {
 
 /// x86. Returns the pointer to the segment at offset `offset`.
 pub fn get_segment_ptr(offset: u32) -> *mut u64 {
-	unsafe { // Pointer arithmetic
+	unsafe {
 		memory::kern_to_virt(PHYS_PTR.add(offset as _)) as _
 	}
 }

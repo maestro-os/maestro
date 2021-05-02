@@ -212,7 +212,7 @@ pub extern "C" fn event_handler(id: u32, code: u32, ring: u32, regs: &util::Regs
 				// TODO Fix: The stack might be removed while being used (example: process is
 				// killed, its exit status is retrieved from another CPU core and then the process
 				// is removed)
-				unsafe { // Call to ASM function
+				unsafe {
 					crate::kernel_loop_reset(tss::get().esp0 as _);
 				}
 			},

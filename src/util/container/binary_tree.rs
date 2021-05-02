@@ -38,7 +38,7 @@ struct BinaryTreeNode<T> {
 fn unwrap_pointer<T>(ptr: &Option::<NonNull::<BinaryTreeNode::<T>>>)
 	-> Option::<&'static BinaryTreeNode::<T>> {
 	if let Some(p) = ptr {
-		unsafe { // Dereference of raw pointer
+		unsafe {
 			Some(&*p.as_ptr())
 		}
 	} else {
@@ -50,7 +50,7 @@ fn unwrap_pointer<T>(ptr: &Option::<NonNull::<BinaryTreeNode::<T>>>)
 fn unwrap_pointer_mut<T>(ptr: &mut Option::<NonNull::<BinaryTreeNode::<T>>>)
 	-> Option::<&'static mut BinaryTreeNode::<T>> {
 	if let Some(p) = ptr {
-		unsafe { // Call to unsafe function
+		unsafe {
 			Some(&mut *(p.as_ptr() as *mut _))
 		}
 	} else {
@@ -70,7 +70,7 @@ impl<T: 'static> BinaryTreeNode<T> {
 
 			value: value,
 		};
-		unsafe { // Call to unsafe function
+		unsafe {
 			util::write_ptr(ptr, s);
 		}
 		Ok(NonNull::new(ptr).unwrap())
@@ -225,7 +225,7 @@ impl<T: 'static> BinaryTreeNode<T> {
 	/// Applies a left tree rotation with the current node as pivot.
 	pub fn left_rotate(&mut self) {
 		let root = self.get_parent_mut();
-		let root_ptr = unsafe { // Dereference of raw pointer
+		let root_ptr = unsafe {
 			&mut *(root.unwrap() as *mut Self)
 		};
 		let left = self.left;
@@ -235,7 +235,7 @@ impl<T: 'static> BinaryTreeNode<T> {
 
 		root_ptr.right = left;
 		if left.is_some() {
-			unsafe { // Dereference of raw pointer
+			unsafe {
 				&mut *(left.unwrap().as_ptr() as *mut Self)
 			}.parent = NonNull::new(root_ptr);
 		}
@@ -244,7 +244,7 @@ impl<T: 'static> BinaryTreeNode<T> {
 	/// Applies a right tree rotation with the current node as pivot.
 	pub fn right_rotate(&mut self) {
 		let root = self.get_parent_mut();
-		let root_ptr = unsafe { // Dereference of raw pointer
+		let root_ptr = unsafe {
 			&mut *(root.unwrap() as *mut Self)
 		};
 		let right = self.right;
@@ -254,7 +254,7 @@ impl<T: 'static> BinaryTreeNode<T> {
 
 		root_ptr.left = right;
 		if right.is_some() {
-			unsafe { // Dereference of raw pointer
+			unsafe {
 				&mut *(right.unwrap().as_ptr() as *mut Self)
 			}.parent = NonNull::new(root_ptr);
 		}
@@ -398,7 +398,7 @@ impl<T: 'static + Ord> BinaryTree<T> {
 	/// Returns a reference to the root node.
 	fn get_root(&self) -> Option::<&BinaryTreeNode::<T>> {
 		if let Some(r) = self.root.as_ref() {
-			unsafe { // Call to unsafe function
+			unsafe {
 				Some(r.as_ref())
 			}
 		} else {
@@ -409,7 +409,7 @@ impl<T: 'static + Ord> BinaryTree<T> {
 	/// Returns a mutable reference to the root node.
 	fn get_root_mut(&mut self) -> Option::<&mut BinaryTreeNode::<T>> {
 		if let Some(r) = self.root.as_mut() {
-			unsafe { // Call to unsafe function
+			unsafe {
 				Some(r.as_mut())
 			}
 		} else {
@@ -542,7 +542,7 @@ impl<T: 'static + Ord> BinaryTree<T> {
 	fn update_root(&mut self, node: &mut BinaryTreeNode::<T>) {
 		let mut root = NonNull::new(node as *mut BinaryTreeNode::<T>);
 		loop {
-			let parent = unsafe { // Call to unsafe function
+			let parent = unsafe {
 				root.unwrap().as_mut()
 			}.parent;
 			if parent.is_none() {
@@ -621,7 +621,7 @@ impl<T: 'static + Ord> BinaryTree<T> {
 	/// `cmp` is the comparison function.
 	pub fn insert(&mut self, val: T) -> Result<(), Errno> {
 		let mut node = BinaryTreeNode::new(val)?;
-		let n = unsafe { // Call to unsafe function
+		let n = unsafe {
 			node.as_mut()
 		};
 
@@ -639,13 +639,13 @@ impl<T: 'static + Ord> BinaryTree<T> {
 			debug_assert!(self.root.is_none());
 			self.root = Some(node);
 
-			let n = unsafe { // Call to unsafe function
+			let n = unsafe {
 				node.as_mut()
 			};
 			// TODO self.insert_equilibrate(n);
 			self.update_root(n);
 		}
-		unsafe { // Call to unsafe function
+		unsafe {
 			self.root.unwrap().as_mut()
 		}.color = NodeColor::Black;
 
@@ -687,7 +687,7 @@ impl<T: 'static + Ord> BinaryTree<T> {
 			};
 
 			if let Some(mut r) = replacement {
-				unsafe { // Call to unsafe function
+				unsafe {
 					r.as_mut()
 				}.parent = node.parent;
 			}
@@ -730,7 +730,7 @@ impl<T: 'static> BinaryTree::<T> {
 		}
 
 		if let Some(mut n) = first {
-			Self::foreach_nodes(unsafe { // Call to unsafe function
+			Self::foreach_nodes(unsafe {
 				n.as_mut()
 			}, f, traversal_type);
 		}
@@ -741,7 +741,7 @@ impl<T: 'static> BinaryTree::<T> {
 		}
 
 		if let Some(mut n) = second {
-			Self::foreach_nodes(unsafe { // Call to unsafe function
+			Self::foreach_nodes(unsafe {
 				n.as_mut()
 			}, f, traversal_type);
 		}
@@ -766,7 +766,7 @@ impl<T: 'static> BinaryTree::<T> {
 		}
 
 		if let Some(mut n) = first {
-			Self::foreach_nodes_mut(unsafe { // Call to unsafe function
+			Self::foreach_nodes_mut(unsafe {
 				n.as_mut()
 			}, f, traversal_type);
 		}
@@ -777,7 +777,7 @@ impl<T: 'static> BinaryTree::<T> {
 		}
 
 		if let Some(mut n) = second {
-			Self::foreach_nodes_mut(unsafe { // Call to unsafe function
+			Self::foreach_nodes_mut(unsafe {
 				n.as_mut()
 			}, f, traversal_type);
 		}
@@ -790,7 +790,7 @@ impl<T: 'static> BinaryTree::<T> {
 	/// Calls the given closure for every values.
 	pub fn foreach<F: FnMut(&T)>(&self, mut f: F, traversal_type: TraversalType) {
 		if let Some(n) = self.root {
-			Self::foreach_nodes(unsafe { // Call to unsafe function
+			Self::foreach_nodes(unsafe {
 				n.as_ref()
 			}, &mut | n: &BinaryTreeNode::<T> | {
 				f(&n.value);
@@ -801,7 +801,7 @@ impl<T: 'static> BinaryTree::<T> {
 	/// Calls the given closure for every values.
 	pub fn foreach_mut<F: FnMut(&mut T)>(&mut self, mut f: F, traversal_type: TraversalType) {
 		if let Some(mut n) = self.root {
-			Self::foreach_nodes_mut(unsafe { // Call to unsafe function
+			Self::foreach_nodes_mut(unsafe {
 				n.as_mut()
 			}, &mut | n: &mut BinaryTreeNode::<T> | {
 				f(&mut n.value);
@@ -814,7 +814,7 @@ impl<T: 'static> BinaryTree::<T> {
 	#[cfg(config_debug_debug)]
 	pub fn check(&self) {
 		if let Some(root) = self.root {
-			Self::foreach_nodes(unsafe { // Call to unsafe function
+			Self::foreach_nodes(unsafe {
 				root.as_ref()
 			}, &mut | n: &BinaryTreeNode::<T> | {
 				if let Some(left) = n.get_left() {
@@ -986,7 +986,7 @@ impl<T: FailableClone + Ord> FailableClone for BinaryTree::<T> {
 impl<T: fmt::Display> fmt::Display for BinaryTree::<T> {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		if let Some(mut n) = self.root {
-			Self::foreach_nodes(unsafe { // Call to unsafe function
+			Self::foreach_nodes(unsafe {
 				n.as_mut()
 			}, &mut | n | {
 				for _ in 0..n.get_node_depth() {
@@ -1010,7 +1010,7 @@ impl<T: fmt::Display> fmt::Display for BinaryTree::<T> {
 impl<T> Drop for BinaryTree::<T> {
 	fn drop(&mut self) {
 		if let Some(mut n) = self.root {
-			Self::foreach_nodes_mut(unsafe { // Call to unsafe function
+			Self::foreach_nodes_mut(unsafe {
 				n.as_mut()
 			}, &mut | n | {
 				malloc::free(n as *mut _ as *mut _);

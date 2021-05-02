@@ -57,7 +57,7 @@ pub fn print_callstack(ebp: *const u32, max_depth: usize) {
 			break;
 		}*/
 
-		let eip = unsafe { // Dereference of raw pointer
+		let eip = unsafe {
 			*((ebp_ as usize + size_of::<usize>()) as *const u32) as *const c_void
 		};
 		if eip == (0 as *const _) {

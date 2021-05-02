@@ -30,7 +30,7 @@ fn print_panic(reason: &str, code: u32) {
 	crate::println!("Kernel has been forced to halt due to internal problem, sorry :/");
 	crate::println!("Reason: {}", reason);
 	crate::println!("Error code: {}", code);
-	crate::println!("CR2: {:p}\n", unsafe { // Call to C function
+	crate::println!("CR2: {:p}\n", unsafe {
 		memory::vmem::x86::cr2_get()
 	} as *const c_void);
 	crate::println!("If you believe this is a bug on the kernel side, please feel free to report
@@ -58,12 +58,12 @@ pub fn kernel_panic_(reason: &str, code: u32, file: &str, line: u32, col: u32) -
 	// TODO Print running process registers
 	crate::println!();
 
-	let ebp = unsafe { // Call to unsafe macro
+	let ebp = unsafe {
 		crate::register_get!("ebp") as *const _
 	};
 	debug::print_callstack(ebp, 8);
 
-	unsafe { // Call to ASM function
+	unsafe {
 		crate::kernel_halt();
 	}
 }
@@ -74,7 +74,7 @@ fn print_rust_panic<'a>(args: &'a fmt::Arguments<'a>) {
 	crate::println!("--- KERNEL PANIC ---\n");
 	crate::println!("Kernel has been forced to halt due to internal problem, sorry :/");
 	crate::println!("Reason: {}", args);
-	crate::println!("CR2: {:p}\n", unsafe { // Call to C function
+	crate::println!("CR2: {:p}\n", unsafe {
 		memory::vmem::x86::cr2_get()
 	} as *const c_void);
 	crate::println!("If you believe this is a bug on the kernel side, please feel free to report
@@ -87,7 +87,7 @@ pub fn rust_panic<'a>(args: &'a fmt::Arguments<'a>) -> ! {
 	crate::cli!();
 	print_rust_panic(args);
 
-	unsafe { // Call to ASM function
+	unsafe {
 		crate::kernel_halt();
 	}
 }
@@ -99,7 +99,7 @@ pub fn rust_panic<'a>(args: &'a fmt::Arguments<'a>) -> ! {
 	print_rust_panic(args);
 	crate::println!();
 
-	let ebp = unsafe { // Call to unsafe macro
+	let ebp = unsafe {
 		crate::register_get!("ebp") as *const _
 	};
 	debug::print_callstack(ebp, 8);
