@@ -1,15 +1,31 @@
 /// This module implements storage drivers.
 
 use core::cmp::min;
+use crate::device::Device;
+use crate::device::DeviceHandle;
+use crate::device::DeviceType;
+use crate::device::id::MajorBlock;
+use crate::device::id;
 use crate::device::manager::DeviceManager;
 use crate::device::manager::PhysicalDevice;
 use crate::device::storage::pata::PATAInterface;
+use crate::device;
 use crate::errno::Errno;
+use crate::filesystem::Mode;
+use crate::filesystem::path::Path;
 use crate::util::boxed::Box;
+use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 
 pub mod mbr;
 pub mod pata;
+
+/// The major number for storage devices.
+const STORAGE_MAJOR: u32 = 8;
+/// The mode of the device file for a storage device.
+const STORAGE_MODE: Mode = 0660;
+/// The maximum number of partitions in a disk.
+const MAX_PARTITIONS: u32 = 16;
 
 /// Trait representing a storage interface. A storage block is the atomic unit for I/O access on
 /// the storage device.
@@ -95,29 +111,99 @@ pub mod partition {
 	}
 }
 
+/// Handle for the device file of a storage device or a storage device partition.
+pub struct StorageDeviceHandle {
+	/// The id of the device in the storage manager's list.
+	id: u32,
+	/// The if of the partition to be handled. If 0, the device handles the whole device.
+	partition: u32,
+
+	/// The reference to the storage manager.
+	storage_manager: *mut StorageManager, // TODO Use a weak ptr?
+}
+
+impl StorageDeviceHandle {
+	/// Creates a new instance for the given storage device with identifier `id` and the given
+	/// partition number `partition. If the partition number is `0`, the device file is linked to
+	/// the entire device instead of a partition.
+	/// `storage_manager` is the storage manager associated with the device.
+	pub fn new(id: u32, partition: u32, storage_manager: *mut StorageManager) -> Self {
+		Self {
+			id: id,
+			partition: partition,
+
+			storage_manager: storage_manager,
+		}
+	}
+}
+
+impl DeviceHandle for StorageDeviceHandle {
+	fn read(&mut self, _offset: usize, _buff: &mut [u8]) -> Result<usize, Errno> {
+		// TODO
+		Ok(0)
+	}
+
+	fn write(&mut self, _offset: usize, _buff: &[u8]) -> Result<usize, Errno> {
+		// TODO
+		Ok(0)
+	}
+}
+
 /// Structure managing storage devices.
 pub struct StorageManager {
+	/// The allocated device major number for storage devices.
+	major_block: MajorBlock,
 	/// The list of detected interfaces.
 	interfaces: Vec<Box<dyn StorageInterface>>,
 }
 
 impl StorageManager {
 	/// Creates a new instance.
-	pub fn new() -> Self {
-		// TODO Allocate major number block
-
-		Self {
+	pub fn new() -> Result<Self, Errno> {
+		Ok(Self {
+			major_block: id::alloc_major(Some(STORAGE_MAJOR))?,
 			interfaces: Vec::new(),
-		}
+		})
 	}
 
+	// TODO Handle the case where there is more devices that the number of devices that can be
+	// handled in the range of minor numbers
+	// TODO When failing, remove previously registered devices
 	/// Adds a storage device.
 	fn add(&mut self, storage: Box<dyn StorageInterface>) -> Result<(), Errno> {
-		let _partitions = partition::read(storage.as_ref())?;
-		// TODO Insert all device files
+		let major = self.major_block.get_major();
+		let storage_id = self.interfaces.len() as u32;
+
+		let mut prefix = String::from("/dev/sd")?;
+		prefix.push(unsafe { // Safe because the id stays in range of the alphabet
+			char::from_u32_unchecked((('a' as u8) + (storage_id as u8)) as _)
+		})?;
+
+		let device_type = if storage.get_block_size() == 1 {
+			DeviceType::Char
+		} else {
+			DeviceType::Block
+		};
+
+		let main_path = Path::from_string(prefix.as_str())?;
+		let main_handle = StorageDeviceHandle::new(storage_id, 0, self);
+		let main_device = Device::new(major, storage_id * MAX_PARTITIONS, main_path, STORAGE_MODE,
+			device_type, main_handle)?;
+		device::register_device(main_device)?;
+
+		let partitions = partition::read(storage.as_ref())?;
+		for i in 0..min(MAX_PARTITIONS, partitions.len() as u32) {
+			let path = Path::from_string(prefix.as_str())?; // TODO Add i + 1 as char at the end
+			let handle = StorageDeviceHandle::new(storage_id, i, self);
+			let device = Device::new(major, storage_id * MAX_PARTITIONS + i, path, STORAGE_MODE,
+				device_type, handle)?;
+			device::register_device(device)?;
+		}
 
 		self.interfaces.push(storage)
 	}
+
+	// TODO Function to remove a device
 
 	/// Fills a random buffer `buff` of size `size` with seed `seed`.
 	/// The function returns the seed for the next block.
@@ -173,6 +259,7 @@ impl StorageManager {
 
 	/// Performs testing of storage devices and drivers.
 	/// If every tests pass, the function returns `true`. Else, it returns `false`.
+	#[cfg(config_debug_storagetest)]
 	fn perform_test(&mut self) -> bool {
 		let mut seed = 42;
 		let iterations_count = 10;

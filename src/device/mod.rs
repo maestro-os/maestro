@@ -123,7 +123,7 @@ static mut BLOCK_DEVICES: Mutex::<Vec::<Mutex::<Device>>> = Mutex::new(Vec::new(
 static mut CHAR_DEVICES: Mutex::<Vec::<Mutex::<Device>>> = Mutex::new(Vec::new());
 
 /// Registers the given device. If the minor/major number is already used, the function fails.
-pub fn register_device(device: Device) -> Result<(), ()> {
+pub fn register_device(device: Device) -> Result<(), Errno> {
 	let mut guard = match device.get_type() {
 		DeviceType::Block => {
 			unsafe { // Safe because using mutex
@@ -159,11 +159,7 @@ pub fn register_device(device: Device) -> Result<(), ()> {
 
 	// TODO Add new device file
 
-	if container.insert(index, Mutex::new(device)).is_ok() {
-		Ok(())
-	} else {
-		Err(())
-	}
+	container.insert(index, Mutex::new(device))
 }
 
 // TODO Function to remove a device
@@ -214,7 +210,7 @@ pub fn init() -> Result<(), Errno> {
 	keyboard_manager.legacy_detect()?;
 	manager::register_manager(keyboard_manager)?;
 
-	let mut storage_manager = StorageManager::new();
+	let mut storage_manager = StorageManager::new()?;
 	storage_manager.legacy_detect()?;
 	#[cfg(config_debug_storagetest)]
 	storage_manager.test(); // TODO Move after bus detection

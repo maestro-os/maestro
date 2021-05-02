@@ -35,7 +35,7 @@ impl String {
 
 	/// Returns a reference to the wrapped string.
 	pub fn as_str(&self) -> &str {
-		unsafe { // Call to unsafe function
+		unsafe {
 			str::from_utf8_unchecked(self.data.as_slice())
 		}
 	}
@@ -45,8 +45,45 @@ impl String {
 		self.as_str().len()
 	}
 
-	// TODO push
-	// TODO pop
+	/// Tells whether the string is empty.
+	pub fn is_empty(&mut self) -> bool {
+		self.data.is_empty()
+	}
+
+	// TODO Unit tests
+	/// Appends the given char `ch` to the end of the string.
+	pub fn push(&mut self, ch: char) -> Result<(), Errno> {
+		match ch.len_utf8() {
+			1 => self.data.push(ch as u8)?,
+			_ => {
+				let val = ch as u32;
+				for i in 0..4 {
+					if let Err(e) = self.data.push(((val >> (8 * i)) & 0xff) as _) {
+						// TODO Clean
+						for _ in 0..i {
+							self.data.pop();
+						}
+
+						return Err(e);
+					}
+				}
+			},
+		}
+
+		Ok(())
+	}
+
+	// TODO Unit tests
+	/// Removes the last character from the string and returns it.
+	/// If the string is empty, the function returns None.
+	pub fn pop(&mut self) -> Option<char> {
+		if self.is_empty() {
+			None
+		} else {
+			// TODO
+			None
+		}
+	}
 
 	/// Appends the string `other` to the current one.
 	pub fn push_str(&mut self, other: &String) -> Result<(), Errno> {
