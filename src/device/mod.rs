@@ -13,9 +13,13 @@ pub mod storage;
 use core::cmp::Ordering;
 use crate::device::manager::DeviceManager;
 use crate::errno::Errno;
+use crate::filesystem::File;
+use crate::filesystem::FileType;
 use crate::filesystem::Mode;
 use crate::filesystem::path::Path;
+use crate::filesystem;
 use crate::util::boxed::Box;
+use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::lock::mutex::Mutex;
 use crate::util::lock::mutex::MutexGuard;
@@ -115,7 +119,36 @@ impl Device {
 	/// Returns the handle of the device for I/O operations.
 	pub fn get_handle(&mut self) -> &mut dyn DeviceHandle {
 		self.handle.as_mut()
-	} }
+	}
+
+	// TODO Put file creation on the userspace side?
+	/// Creates the device file associated with the structure. If the file already exist, the
+	/// function does nothing.
+	pub fn create_file(&mut self) -> Result<(), Errno> {
+		let file_type = match self.type_ {
+			DeviceType::Block => FileType::BlockDevice,
+			DeviceType::Char => FileType::CharDevice,
+		};
+
+		let file = File::new(String::from("TODO")?, file_type, 0, 0, self.mode);
+		filesystem::create_file(&self.path, file)?;
+
+		Ok(())
+	}
+
+	/// If exists, removes the device file. iF the file doesn't exist, the function does nothing.
+	pub fn remove_file(&mut self) {
+		if let Some(file) = filesystem::get_file_from_path(&self.path) {
+			file.unlink();
+		}
+	}
+}
+
+impl Drop for Device {
+	fn drop(&mut self) {
+		self.remove_file();
+	}
+}
 
 /// The list of registered block devices.
 static mut BLOCK_DEVICES: Mutex::<Vec::<Mutex::<Device>>> = Mutex::new(Vec::new());
@@ -123,7 +156,7 @@ static mut BLOCK_DEVICES: Mutex::<Vec::<Mutex::<Device>>> = Mutex::new(Vec::new(
 static mut CHAR_DEVICES: Mutex::<Vec::<Mutex::<Device>>> = Mutex::new(Vec::new());
 
 /// Registers the given device. If the minor/major number is already used, the function fails.
-pub fn register_device(device: Device) -> Result<(), Errno> {
+pub fn register_device(mut device: Device) -> Result<(), Errno> {
 	let mut guard = match device.get_type() {
 		DeviceType::Block => {
 			unsafe { // Safe because using mutex
@@ -157,8 +190,7 @@ pub fn register_device(device: Device) -> Result<(), Errno> {
 		Err(i) => i,
 	};
 
-	// TODO Add new device file
-
+	device.create_file()?;
 	container.insert(index, Mutex::new(device))
 }
 

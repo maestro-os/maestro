@@ -7,7 +7,6 @@ pub mod path;
 
 use crate::errno::Errno;
 use crate::errno;
-use crate::limits;
 use crate::time::Timestamp;
 use crate::time;
 use crate::util::container::string::String;
@@ -19,6 +18,8 @@ pub type Uid = u16;
 pub type Gid = u16;
 /// Type representing a file mode.
 pub type Mode = u16;
+/// Type representing an inode ID.
+pub type INode = u32;
 
 /// TODO doc
 pub const S_IRWXU: Mode = 00700;
@@ -88,7 +89,7 @@ pub struct File {
 	mode: Mode,
 
 	/// The inode. None means that the file is not stored on any filesystem.
-	inode: Option::<u32>, // TODO
+	inode: Option::<INode>,
 
 	/// Timestamp of the last modification of the metadata.
 	ctime: Timestamp,
@@ -110,9 +111,8 @@ pub struct File {
 impl File {
 	/// Creates a new instance.
 	pub fn new(name: String, file_type: FileType, uid: Uid, gid: Gid, mode: Mode) -> Self {
-		debug_assert!(name.len() <= limits::NAME_MAX);
-
 		let timestamp = time::get();
+
 		Self {
 			name: name,
 			size: 0,
@@ -129,17 +129,6 @@ impl File {
 			mtime: timestamp,
 			atime: timestamp,
 		}
-	}
-
-	/// Returns the file's name.
-	pub fn get_name(&self) -> &String {
-		&self.name
-	}
-
-	/// Sets the file's name.
-	pub fn set_name(&mut self, name: String) {
-		self.name = name;
-		// TODO Update to disk directly?
 	}
 
 	/// Returns the size of the file in bytes.
@@ -222,13 +211,16 @@ impl File {
 		}
 	}
 
-	// TODO
+	/// Unlinks the current file.
+	pub fn unlink(&mut self) {
+		// TODO
+	}
 }
 
 /// Adds the file `file` to the VFS. The file will be located into the directory at path `path`.
 /// The directory must exist. If an error happens, the function returns an Err with the appropriate
 /// Errno.
-pub fn add_file(_path: Path, _file: File) -> Result::<(), Errno> {
+pub fn create_file(_path: &Path, _file: File) -> Result::<(), Errno> {
 	// TODO
 	Err(errno::ENOMEM)
 }

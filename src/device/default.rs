@@ -1,5 +1,6 @@
 /// This module implements default devices.
 
+use core::str;
 use crate::device::Device;
 use crate::filesystem::path::Path;
 use crate::errno::Errno;
@@ -36,8 +37,30 @@ impl DeviceHandle for ZeroDeviceHandle {
 	}
 }
 
+/// Structure representing the current TTY.
+pub struct CurrentTTYDeviceHandle {}
+
+impl DeviceHandle for CurrentTTYDeviceHandle {
+	fn read(&mut self, _offset: usize, _buff: &mut [u8]) -> Result<usize, Errno> {
+		// TODO Read from TTY input
+		Ok(0)
+	}
+
+	fn write(&mut self, _offset: usize, buff: &[u8]) -> Result<usize, Errno> {
+		// Invalid UTF8 isn't important since the TTY is supposed to write exactly the data it gets
+		let s = unsafe {
+			str::from_utf8_unchecked(buff)
+		};
+
+		crate::print!("{}", s);
+		Ok(buff.len())
+	}
+}
+
 /// Creates the default devices.
 pub fn create() -> Result<(), Errno> {
+	// TODO Allocate major blocks
+
 	let null_path = Path::from_string("/dev/null")?;
 	let null_device = Device::new(1, 3, null_path, 0666, DeviceType::Char, NullDeviceHandle {})?;
 	device::register_device(null_device)?;
@@ -45,6 +68,11 @@ pub fn create() -> Result<(), Errno> {
 	let zero_path = Path::from_string("/dev/zero")?;
 	let zero_device = Device::new(1, 3, zero_path, 0666, DeviceType::Char, ZeroDeviceHandle {})?;
 	device::register_device(zero_device)?;
+
+	let current_tty_path = Path::from_string("/dev/tty")?;
+	let current_tty_device = Device::new(5, 0, current_tty_path, 0666, DeviceType::Char,
+		CurrentTTYDeviceHandle {})?;
+	device::register_device(current_tty_device)?;
 
 	// TODO
 

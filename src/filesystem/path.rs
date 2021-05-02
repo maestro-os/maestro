@@ -5,6 +5,8 @@ use crate::util::FailableClone;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 
+// TODO In path, check that every component matches the maximum allowed length
+
 /// The character used as a path separator.
 pub const PATH_SEPARATOR: char = '/';
 
