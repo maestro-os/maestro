@@ -298,9 +298,7 @@ impl StorageManager {
 		} else {
 			crate::println!("Storage test failed!");
 		}
-		unsafe {
-			crate::kernel_halt();
-		}
+		crate::halt();
 	}
 }
 

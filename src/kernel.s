@@ -26,7 +26,7 @@ kernel_wait:
 	ret
 
 /*
- * Enters the kernel loop, processes every interrupts indefinitely.
+ * Enters the kernel loop and processes every interrupts indefinitely.
  */
 kernel_loop:
 	sti
@@ -41,7 +41,7 @@ kernel_loop_reset:
 	jmp kernel_loop
 
 /*
- * Halts the kernel forever.
+ * Halts the kernel until reboot.
  */
 kernel_halt:
 	cli

@@ -71,11 +71,43 @@ use crate::process::Process;
 /// Current kernel version.
 const KERNEL_VERSION: &'static str = "1.0";
 
-extern "C" {
-	pub fn kernel_wait();
-	pub fn kernel_loop() -> !;
-	pub fn kernel_loop_reset(stack: *mut c_void) -> !;
-	pub fn kernel_halt() -> !;
+mod kern {
+	use core::ffi::c_void;
+
+	extern "C" {
+		pub fn kernel_wait();
+		pub fn kernel_loop() -> !;
+		pub fn kernel_loop_reset(stack: *mut c_void) -> !;
+		pub fn kernel_halt() -> !;
+	}
+}
+
+/// Makes the kernel wait for an interrupt, then returns.
+/// This function enables interrupts.
+pub fn wait() {
+	unsafe {
+		kern::kernel_wait();
+	}
+}
+
+/// Enters the kernel loop and processes every interrupts indefinitely.
+pub fn enter_loop() -> ! {
+	unsafe {
+		kern::kernel_loop();
+	}
+}
+
+/// Resets the stack to the given value, then calls `enter_loop`.
+/// The function is unsafe because the pointer passed in parameter might be invalid.
+pub unsafe fn loop_reset(stack: *mut c_void) -> ! {
+	kern::kernel_loop_reset(stack);
+}
+
+/// Halts the kernel until reboot.
+pub fn halt() -> ! {
+	unsafe {
+		kern::kernel_halt();
+	}
 }
 
 mod io {
@@ -167,9 +199,7 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 		kernel_panic!("Failed to create test process!", 0);
 	}
 
-	unsafe {
-		kernel_loop();
-	}
+	enter_loop();
 }
 
 /// Called on Rust panic.
@@ -190,13 +220,10 @@ fn panic(panic_info: &PanicInfo) -> ! {
 fn panic(panic_info: &PanicInfo) -> ! {
 	println!("FAILED\n");
 	println!("Error: {}\n", panic_info);
-	unsafe {
-		kernel_halt();
-	}
+	halt();
 }
 
-/// TODO doc
+/// Function that is required to be implemented by the Rust compiler and is used only when
+/// panicking.
 #[lang = "eh_personality"]
-fn eh_personality() {
-	// TODO Do something?
-}
+fn eh_personality() {}

@@ -47,9 +47,7 @@ impl<T> Semaphore<T> {
 		}
 
 		while !self.can_acquire(pid) {
-			unsafe {
-				crate::kernel_wait();
-			}
+			crate::wait();
 		}
 
 		f(&mut self.data);

@@ -213,7 +213,7 @@ pub extern "C" fn event_handler(id: u32, code: u32, ring: u32, regs: &util::Regs
 				// killed, its exit status is retrieved from another CPU core and then the process
 				// is removed)
 				unsafe {
-					crate::kernel_loop_reset(tss::get().esp0 as _);
+					crate::loop_reset(tss::get().esp0 as _);
 				}
 			},
 			InterruptResultAction::Panic => {

@@ -284,16 +284,12 @@ impl Scheduler {
 				stack::switch(tmp_stack, f, ctx_switch_data).unwrap();
 			}
 
-			unsafe {
-				crate::kernel_loop();
-			}
+			crate::enter_loop();
 		} else {
 			if cfg!(config_general_scheduler_end_panic) {
 				kernel_panic!("No process remaining to run!");
 			} else {
-				unsafe {
-					crate::kernel_halt();
-				}
+				crate::halt();
 			}
 		}
 	}

@@ -68,9 +68,7 @@ pub extern "C" fn syscall_handler(regs: &util::Regs) -> u32 {
 
 		_ => {
 			curr_proc.kill(signal::SIGSYS).unwrap(); // TODO Handle properly
-			unsafe {
-				crate::kernel_loop();
-			}
+			crate::enter_loop();
 		}
 	};
 

@@ -127,6 +127,7 @@ impl<T: ?Sized + Unsize<U>, U: ?Sized> DispatchFromDyn<Box<U>> for Box<T> {}
 
 impl<T: ?Sized> Drop for Box<T> {
 	fn drop(&mut self) {
+		// TODO Clean (condition to check if dangling pointer)
 		if self.ptr.as_ptr() as *const c_void as usize > 8 {
 			unsafe {
 				drop_in_place(self.ptr.as_ptr());
