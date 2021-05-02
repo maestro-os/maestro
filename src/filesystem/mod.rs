@@ -220,6 +220,7 @@ impl File {
 /// Adds the file `file` to the VFS. The file will be located into the directory at path `path`.
 /// The directory must exist. If an error happens, the function returns an Err with the appropriate
 /// Errno.
+/// If the path is relative, the function starts from the root.
 pub fn create_file(_path: &Path, _file: File) -> Result::<(), Errno> {
 	// TODO
 	Err(errno::ENOMEM)
@@ -227,6 +228,7 @@ pub fn create_file(_path: &Path, _file: File) -> Result::<(), Errno> {
 
 /// Returns a reference to the file at path `path`. If the file doesn't exist, the function returns
 /// None.
+/// If the path is relative, the function starts from the root.
 pub fn get_file_from_path(_path: &Path) -> Option::<&'static mut File> {
 	// TODO
 	None

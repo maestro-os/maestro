@@ -271,7 +271,7 @@ impl<T> Index<usize> for Vec<T> {
 			self.vector_panic(index);
 		}
 
-		unsafe { // Dereference of raw pointer
+		unsafe { // Safe because in range of the container
 			&*self.data.unwrap().as_ptr().offset(index as _)
 		}
 	}
@@ -284,7 +284,7 @@ impl<T> IndexMut<usize> for Vec<T> {
 			self.vector_panic(index);
 		}
 
-		unsafe { // Dereference of raw pointer
+		unsafe { // Safe because in range of the container
 			&mut *self.data.unwrap().as_ptr().offset(index as _)
 		}
 	}

@@ -1,5 +1,7 @@
 /// This module handles files path.
 
+use core::ops::Index;
+use core::ops::IndexMut;
 use crate::errno::Errno;
 use crate::util::FailableClone;
 use crate::util::container::string::String;
@@ -47,21 +49,35 @@ impl Path {
 		self.absolute
 	}
 
-	// TODO Use `push` on string for separator
+	/// Returns the number of elements in the path, namely, the number of elements separated by
+	/// `/`.
+	pub fn get_elements_count(&self) -> usize {
+		self.parts.len()
+	}
+
 	/// Converts the path into a String and returns it.
 	pub fn as_string(&self) -> Result<String, Errno> {
-		let separator = String::from("/")?;
 		let mut s = String::new();
 		if self.absolute {
-			s.push_str(&separator)?;
+			s.push('/')?;
 		}
 		for i in 0..self.parts.len() {
 			s.push_str(&self.parts[i])?;
 			if i + 1 < self.parts.len() {
-				s.push_str(&separator)?;
+				s.push('/')?;
 			}
 		}
 		Ok(s)
+	}
+
+	/// Pushes the given filename `filename` onto the path.
+	pub fn push(&mut self, filename: String) -> Result<(), Errno> {
+		self.parts.push(filename)
+	}
+
+	/// Pops the filename on top of the path.
+	pub fn pop(&mut self) {
+		self.parts.pop();
 	}
 
 	/// Reduces the path, removing all useless `.` and `..`.
@@ -110,6 +126,24 @@ impl FailableClone for Path {
 		})
 	}
 }
+
+impl Index<usize> for Path {
+	type Output = String;
+
+	#[inline]
+	fn index(&self, index: usize) -> &Self::Output {
+		&self.parts[index]
+	}
+}
+
+impl IndexMut<usize> for Path {
+	#[inline]
+	fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+		&mut self.parts[index]
+	}
+}
+
+// TODO Iterator
 
 #[cfg(test)]
 mod test {
