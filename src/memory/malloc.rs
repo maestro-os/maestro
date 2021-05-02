@@ -85,8 +85,8 @@ fn check_free_lists() {
 		FREE_LISTS.assume_init_mut()
 	};
 
-	for i in 0..FREE_LIST_BINS {
-		free_lists[i].foreach(| node | {
+	for free_list in free_lists {
+		free_list.foreach(| node | {
 			node.get::<FreeChunk>(crate::offset_of!(FreeChunk, free_list)).check();
 		});
 	}
@@ -678,8 +678,8 @@ mod test {
 			}
 		}
 
-		for i in 0..ptrs.len() {
-			free(ptrs[i]);
+		for p in ptrs.iter() {
+			free(*p);
 		}
 	}
 

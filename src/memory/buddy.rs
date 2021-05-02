@@ -669,8 +669,8 @@ mod test {
 			}
 		}
 
-		for i in 0..frames.len() {
-			free_kernel(frames[i], 0);
+		for frame in frames.iter() {
+			free_kernel(*frame, 0);
 		}
 
 		debug_assert_eq!(allocated_pages_count(), alloc_pages);

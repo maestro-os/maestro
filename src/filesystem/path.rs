@@ -61,12 +61,14 @@ impl Path {
 		if self.absolute {
 			s.push('/')?;
 		}
-		for i in 0..self.parts.len() {
-			s.push_str(&self.parts[i])?;
+
+		for (i, p) in self.parts.iter().enumerate() {
+			s.push_str(p)?;
 			if i + 1 < self.parts.len() {
 				s.push('/')?;
 			}
 		}
+
 		Ok(s)
 	}
 

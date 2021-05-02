@@ -264,12 +264,11 @@ impl StorageManager {
 		let mut seed = 42;
 		let iterations_count = 10;
 		for i in 0..iterations_count {
-			for j in 0..self.interfaces.len() {
+			for (j, interface) in self.interfaces.iter_mut().enumerate() {
 				crate::print!("Processing iteration: {}/{}; device: {}/{}...",
 					i + 1, iterations_count,
 					j + 1, self.interfaces.len());
 
-				let interface = &mut self.interfaces[j];
 				if !Self::test_interface(interface.as_mut(), seed) {
 					return false;
 				}

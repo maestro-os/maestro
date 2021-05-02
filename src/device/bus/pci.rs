@@ -157,7 +157,7 @@ impl PCIManager {
 
 	// TODO Cache devices?
 	/// Scans for PCI devices and returns the list.
-	pub fn scan(&mut self) -> Vec::<PCIDevice> {
+	pub fn scan(&mut self) -> Vec<PCIDevice> {
 		let mut devices = Vec::new();
 
 		for bus in 0..=255 {

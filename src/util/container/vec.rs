@@ -215,6 +215,11 @@ impl<T> Vec<T> {
 		}
 	}
 
+	/// Creates an immutable iterator.
+	pub fn iter(&self) -> VecIterator<'_, T> {
+		VecIterator::new(self)
+	}
+
 	/// Clears the vector, removing all values.
 	pub fn clear(&mut self) {
 		for e in self.into_iter() {

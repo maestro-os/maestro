@@ -282,7 +282,6 @@ impl MemMapping {
 			vmem: self.vmem,
 		};
 
-		// TODO Clean
 		unsafe { // Safe because the global variable is wrapped into a Mutex
 			let mut ref_counter_lock = super::PHYSICAL_REF_COUNTER.lock();
 			let ref_counter = ref_counter_lock.get_mut();
@@ -290,6 +289,7 @@ impl MemMapping {
 			for i in 0..self.size {
 				if let Some(phys_ptr) = self.get_physical_page(i) {
 					if let Err(errno) = ref_counter.increment(phys_ptr) {
+						// TODO Clean
 						for j in 0..i {
 							if let Some(phys_ptr) = self.get_physical_page(j) {
 								ref_counter.decrement(phys_ptr);

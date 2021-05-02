@@ -215,7 +215,7 @@ mod test {
 		for i in 0..100 {
 			src[i] = i;
 		}
-		unsafe { // Call to C function
+		unsafe {
 			memcpy(dest.as_mut_ptr() as _, src.as_ptr() as _, 100 * size_of::<usize>());
 		}
 		for i in 0..100 {
@@ -231,7 +231,7 @@ mod test {
 		for i in 10..90 {
 			src[i] = i;
 		}
-		unsafe { // Call to C function
+		unsafe {
 			memcpy(dest.as_mut_ptr() as _, src.as_ptr() as _, 100 * size_of::<usize>());
 		}
 		for i in 0..10 {
@@ -253,7 +253,7 @@ mod test {
 		for i in 0..100 {
 			src[i] = i;
 		}
-		unsafe { // Call to C function
+		unsafe {
 			memmove(dest.as_mut_ptr() as _, src.as_ptr() as _, 100 * size_of::<usize>());
 		}
 		for i in 0..100 {
@@ -268,7 +268,7 @@ mod test {
 		for i in 0..100 {
 			buff[i] = i;
 		}
-		unsafe { // Call to C function
+		unsafe {
 			memmove(buff.as_mut_ptr() as _, buff.as_ptr() as _, 100 * size_of::<usize>());
 		}
 		for i in 0..100 {
@@ -287,7 +287,7 @@ mod test {
 			b0[i] = i as _;
 			b1[i] = i as _;
 		}
-		let val = unsafe { // Call to C function
+		let val = unsafe {
 			memcmp(b0.as_mut_ptr() as _, b1.as_ptr() as _, 100)
 		};
 		assert_eq!(val, 0);
@@ -302,7 +302,7 @@ mod test {
 			b0[i] = i as _;
 			b1[i] = 0;
 		}
-		let val = unsafe { // Call to C function
+		let val = unsafe {
 			memcmp(b0.as_mut_ptr() as _, b1.as_ptr() as _, 100)
 		};
 		assert_eq!(val, 1);
@@ -319,7 +319,7 @@ mod test {
 		for i in 0..100 {
 			buff[i] = i;
 		}
-		unsafe { // Call to C function
+		unsafe {
 			bzero(buff.as_mut_ptr() as _, 100 * size_of::<usize>());
 		}
 		for i in 0..100 {

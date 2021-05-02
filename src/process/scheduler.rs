@@ -124,10 +124,12 @@ impl Scheduler {
 		// TODO Optimize
 		for i in 0..self.processes.len() {
 			let proc = &mut self.processes[i];
+
 			if proc.lock().get().get_pid() == pid {
 				return Some(proc.clone());
 			}
 		}
+
 		None
 	}
 

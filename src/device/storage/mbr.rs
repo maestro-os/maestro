@@ -65,8 +65,7 @@ impl partition::Table for MBRTable {
 	fn read(&self) -> Result<Vec<Partition>, Errno> {
 		let mut partitions = Vec::<Partition>::new();
 
-		for i in 0..self.partitions.len() {
-			let mbr_partition = &self.partitions[i];
+		for mbr_partition in self.partitions.iter() {
 			if mbr_partition.is_active() {
 				// TODO Add support for CHS?
 				let partition = Partition::new(mbr_partition.lba_start as _,

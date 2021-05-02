@@ -32,8 +32,8 @@ pub fn detect() -> Result<(), Errno> {
 	let devices = pci_manager.scan();
 
 	// TODO Move into PCI scan itself?
-	for i in 0..devices.len() {
-		manager::on_plug(&devices[i]);
+	for device in devices.iter() {
+		manager::on_plug(device);
 	}
 
 	let mutex = unsafe {

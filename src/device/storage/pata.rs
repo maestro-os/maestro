@@ -330,8 +330,8 @@ impl PATAInterface {
 
 		let data_port = self.get_register_port(DATA_REGISTER_OFFSET);
 		let mut data: [u16; 256] = [0; 256];
-		for i in 0..data.len() {
-			data[i] = unsafe {
+		for d in data.iter_mut() {
+			*d = unsafe {
 				io::inw(data_port)
 			};
 		}

@@ -156,10 +156,10 @@ pub fn get_section(sections: *const c_void, sections_count: usize, shndx: usize,
 	};
 
 	for i in 0..sections_count {
-		let hdr = unsafe { // Pointer arithmetic and dereference of raw pointer
+		let hdr = unsafe {
 			&*(sections.offset((i * entsize) as isize) as *const ELF32SectionHeader)
 		};
-		let n = unsafe { // Call to unsafe function
+		let n = unsafe {
 			util::ptr_to_str(memory::kern_to_virt((names_section.sh_addr + hdr.sh_name) as _))
 		};
 
