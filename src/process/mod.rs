@@ -1,5 +1,5 @@
-/// This module handles processes.
-/// TODO
+/// A process is a task running on the kernel. A multitasking system allows several processes to
+/// run at the same time by sharing the CPU resources using a scheduler.
 
 pub mod mem_space;
 pub mod pid;
@@ -8,6 +8,7 @@ pub mod semaphore;
 pub mod signal;
 pub mod tss;
 
+use crate::util::Regs;
 use core::ffi::c_void;
 use core::mem::MaybeUninit;
 use core::ptr::NonNull;
@@ -21,11 +22,9 @@ use crate::filesystem::file_descriptor::FileDescriptor;
 use crate::filesystem::path::Path;
 use crate::memory::vmem;
 use crate::util::FailableClone;
-use crate::util::Regs;
 use crate::util::container::vec::Vec;
 use crate::util::lock::mutex::*;
 use crate::util::ptr::SharedPtr;
-use crate::util;
 use mem_space::MemSpace;
 use mem_space::{MAPPING_FLAG_WRITE, MAPPING_FLAG_USER, MAPPING_FLAG_NOLAZY};
 use pid::PIDManager;
@@ -66,8 +65,7 @@ pub enum State {
 /// Type representing an exit status.
 type ExitStatus = u8;
 
-/// The Process Control Block (PCB).
-/// TODO doc
+/// The Process Control Block (PCB). This structure stores all the informations about a process.
 pub struct Process {
 	/// The ID of the process.
 	pid: Pid,
@@ -130,7 +128,7 @@ impl InterruptCallback for ProcessFaultCallback {
 		true
 	}
 
-	fn call(&mut self, id: u32, code: u32, regs: &util::Regs, ring: u32) -> InterruptResult {
+	fn call(&mut self, id: u32, code: u32, regs: &Regs, ring: u32) -> InterruptResult {
 		if ring < 3 {
 			return InterruptResult::new(true, InterruptResultAction::Panic);
 		}
@@ -429,12 +427,12 @@ impl Process {
 	}
 
 	/// Returns the process's saved state registers.
-	pub fn get_regs(&self) -> &util::Regs {
+	pub fn get_regs(&self) -> &Regs {
 		&self.regs
 	}
 
 	/// Sets the process's saved state registers.
-	pub fn set_regs(&mut self, regs: &util::Regs) {
+	pub fn set_regs(&mut self, regs: &Regs) {
 		self.regs = *regs;
 	}
 
