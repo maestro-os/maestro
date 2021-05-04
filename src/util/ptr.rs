@@ -2,6 +2,7 @@
 
 use core::marker::Unsize;
 use core::mem::size_of;
+//use core::mem::size_of_val;
 use core::ops::CoerceUnsized;
 use core::ops::DispatchFromDyn;
 use core::ops::{Deref, DerefMut};
@@ -11,32 +12,62 @@ use crate::errno::Errno;
 use crate::memory::malloc;
 use crate::util::write_ptr;
 
+// TODO Use a spinlock?
+
+/// Drops the given inner structure if necessary.
+fn check_inner_drop<T: ?Sized>(inner: &mut SharedPtrInner<T>) {
+	inner.check_obj_drop();
+
+	if inner.must_drop() {
+		unsafe {
+			drop_in_place(inner);
+			malloc::free(inner as *mut _ as *mut _);
+		}
+	}
+}
+
 /// Inner structure of the shared pointer. The same instance of this structure is shared with
 /// every clones of a SharedPtr structure. This structure holds the number of SharedPtr holding it.
 /// Each time the pointer is cloned, the counter is incremented. Each time a copy is dropped, the
-/// counter is decrementer. The inner structure is dropped at the moment the counter reaches `0`.
+/// counter is decrementer. The inner structure and the object wrapped by the shared pointer is
+/// dropped at the moment the counter reaches `0`.
 #[derive(Debug)]
 struct SharedPtrInner<T: ?Sized> {
-	/// The nubmer of shared pointers holding the structure.
-	count: usize,
-	/// The object stored by the structure.
+	/// The number of shared pointers holding the structure.
+	shared_count: usize,
+	/// The number of weak pointers holding the structure.
+	weak_count: usize,
+
+	/// The object stored by the shared pointer.
 	obj: T,
 }
 
 impl<T> SharedPtrInner<T> {
-	/// Creates a new instance with the given object. The counter is initialized to `1`.
+	/// Creates a new instance with the given object. The shared pointer counter is initialized to
+	/// `1`.
 	fn new(value: T) -> Self {
 		Self {
+			shared_count: 1,
+			weak_count: 0,
+
 			obj: value,
-			count: 1,
 		}
 	}
 }
 
 impl<T: ?Sized> SharedPtrInner<T> {
-	/// Tells whether the inner structure should be dropped.
+	/// Tells whether the inner structure must be dropped.
 	fn must_drop(&self) -> bool {
-		self.count <= 0
+		self.shared_count <= 0 && self.weak_count <= 0
+	}
+
+	/// Drops the object if necessary.
+	fn check_obj_drop(&self) {
+		// TODO
+		//if self.shared_count <= 0 {
+			//drop_in_place(self.obj.as_ptr());
+			//malloc::free(self.obj.as_ptr() as *mut _);
+		//}
 	}
 }
 
@@ -46,31 +77,42 @@ impl<T: ?Sized> SharedPtrInner<T> {
 #[derive(Debug)]
 pub struct SharedPtr<T: ?Sized> {
 	/// A pointer to the inner structure shared by every clones of this structure.
-	ptr: NonNull<SharedPtrInner<T>>,
+	inner: NonNull<SharedPtrInner<T>>,
 }
 
 impl<T> SharedPtr<T> {
 	/// Creates a new shared pointer for the given value `value`.
 	pub fn new(value: T) -> Result<SharedPtr::<T>, Errno> {
-		let ptr = malloc::alloc(size_of::<SharedPtrInner::<T>>())? as *mut SharedPtrInner<T>;
+		let inner = malloc::alloc(size_of::<SharedPtrInner<T>>())? as *mut SharedPtrInner<T>;
 		unsafe {
-			write_ptr(ptr, SharedPtrInner::new(value));
+			write_ptr(inner, SharedPtrInner::new(value));
 		}
 
 		Ok(Self {
-			ptr: NonNull::new(ptr).unwrap(),
+			inner: NonNull::new(inner).unwrap(),
 		})
+	}
+
+	/// Creates a weak pointer for the current shared pointer.
+	pub fn new_weak(&self) -> WeakPtr<T> {
+		unsafe {
+			&mut *(self.inner.as_ptr() as *mut SharedPtrInner::<T>)
+		}.weak_count += 1;
+
+		WeakPtr {
+			inner: self.inner,
+		}
 	}
 }
 
 impl<T: ?Sized> Clone for SharedPtr<T> {
 	fn clone(&self) -> Self {
 		unsafe {
-			&mut *(self.ptr.as_ptr() as *mut SharedPtrInner::<T>)
-		}.count += 1;
+			&mut *(self.inner.as_ptr() as *mut SharedPtrInner::<T>)
+		}.shared_count += 1;
 
 		SharedPtr {
-			ptr: self.ptr,
+			inner: self.inner,
 		}
 	}
 }
@@ -78,7 +120,7 @@ impl<T: ?Sized> Clone for SharedPtr<T> {
 impl<T: ?Sized> AsRef<T> for SharedPtr<T> {
 	fn as_ref(&self) -> &T {
 		unsafe {
-			&(*self.ptr.as_ptr()).obj
+			&(*self.inner.as_ref()).obj
 		}
 	}
 }
@@ -86,7 +128,7 @@ impl<T: ?Sized> AsRef<T> for SharedPtr<T> {
 impl<T: ?Sized> AsMut<T> for SharedPtr<T> {
 	fn as_mut(&mut self) -> &mut T {
 		unsafe {
-			&mut (*self.ptr.as_ptr()).obj
+			&mut (*self.inner.as_mut()).obj
 		}
 	}
 }
@@ -112,16 +154,61 @@ impl<T: ?Sized + Unsize<U>, U: ?Sized> DispatchFromDyn<SharedPtr<U>> for SharedP
 impl<T: ?Sized> Drop for SharedPtr<T> {
 	fn drop(&mut self) {
 		unsafe {
-			(*self.ptr.as_mut()).count -= 1;
-			if self.ptr.as_ref().must_drop() {
-				drop_in_place(self.ptr.as_ptr());
-				malloc::free(self.ptr.as_ptr() as *mut _);
-			}
+			let inner = self.inner.as_mut();
+			inner.shared_count -= 1;
+			check_inner_drop(inner);
 		}
 	}
 }
 
-// TODO WeakPtr
+/// A weak pointer is a type of pointer that can be created from a shared pointer. It works by
+/// keeping a reference to the same object as the shared pointer it was created from. However, a
+/// weak pointer cannot have the ownership of the object. Meaning that when all shared pointers
+/// drop the object, the weak pointer shall loose the access to the object.
+pub struct WeakPtr<T: ?Sized> {
+	/// A pointer to the inner structure shared by every clones of this structure.
+	inner: NonNull<SharedPtrInner<T>>,
+}
+
+impl<T: ?Sized> WeakPtr<T> {
+	/// Returns an immutable reference to the object.
+	pub fn get(&self) -> Option<&T> {
+		let obj = unsafe {
+			&self.inner.as_ref().obj
+		};
+		Some(obj) // TODO
+	}
+
+	/// Returns a mutable reference to the object.
+	pub fn get_mut(&mut self) -> Option<&mut T> {
+		let obj = unsafe {
+			&mut self.inner.as_mut().obj
+		};
+		Some(obj) // TODO
+	}
+}
+
+impl<T: ?Sized> Clone for WeakPtr<T> {
+	fn clone(&self) -> Self {
+		unsafe {
+			&mut *(self.inner.as_ptr() as *mut SharedPtrInner::<T>)
+		}.shared_count += 1;
+
+		WeakPtr {
+			inner: self.inner,
+		}
+	}
+}
+
+impl<T: ?Sized> Drop for WeakPtr<T> {
+	fn drop(&mut self) {
+		unsafe {
+			let inner = self.inner.as_mut();
+			inner.weak_count -= 1;
+			check_inner_drop(inner);
+		}
+	}
+}
 
 #[cfg(test)]
 mod test {
@@ -143,6 +230,18 @@ mod test {
 		drop(b1);
 
 		debug_assert_eq!(*b, 42);
+	}
+
+	#[test_case]
+	fn weak_ptr0() {
+		let shared = SharedPtr::new(42 as usize).unwrap();
+		let weak = shared.new_weak();
+		debug_assert_eq!(*shared.as_ref(), 42);
+		debug_assert_eq!(weak.get(), Some(&42));
+
+		drop(shared);
+
+		debug_assert!(weak.get().is_none());
 	}
 
 	// TODO More tests
