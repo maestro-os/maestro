@@ -1,8 +1,8 @@
 /// This module contains pointer-like structures.
 
+//use core::mem::size_of_val;
 use core::marker::Unsize;
 use core::mem::size_of;
-//use core::mem::size_of_val;
 use core::ops::CoerceUnsized;
 use core::ops::DispatchFromDyn;
 use core::ops::{Deref, DerefMut};
@@ -10,9 +10,8 @@ use core::ptr::NonNull;
 use core::ptr::drop_in_place;
 use crate::errno::Errno;
 use crate::memory::malloc;
+use crate::util::lock::spinlock::Spinlock;
 use crate::util::write_ptr;
-
-// TODO Use a spinlock?
 
 /// Drops the given inner structure if necessary.
 fn check_inner_drop<T: ?Sized>(inner: &mut SharedPtrInner<T>) {
@@ -31,8 +30,10 @@ fn check_inner_drop<T: ?Sized>(inner: &mut SharedPtrInner<T>) {
 /// Each time the pointer is cloned, the counter is incremented. Each time a copy is dropped, the
 /// counter is decrementer. The inner structure and the object wrapped by the shared pointer is
 /// dropped at the moment the counter reaches `0`.
-#[derive(Debug)]
 struct SharedPtrInner<T: ?Sized> {
+	/// The spinlock to be locked at each access.
+	spinlock: Spinlock, // TODO Use
+
 	/// The number of shared pointers holding the structure.
 	shared_count: usize,
 	/// The number of weak pointers holding the structure.
@@ -47,6 +48,8 @@ impl<T> SharedPtrInner<T> {
 	/// `1`.
 	fn new(value: T) -> Self {
 		Self {
+			spinlock: Spinlock::new(),
+
 			shared_count: 1,
 			weak_count: 0,
 
@@ -74,7 +77,6 @@ impl<T: ?Sized> SharedPtrInner<T> {
 /// A shared pointer is a structure which allows to share ownership of a value between several
 /// objects. The object counts the number of references to it. When this count reaches zero, the
 /// value is freed.
-#[derive(Debug)]
 pub struct SharedPtr<T: ?Sized> {
 	/// A pointer to the inner structure shared by every clones of this structure.
 	inner: NonNull<SharedPtrInner<T>>,
