@@ -451,11 +451,12 @@ impl Process {
 	/// Opens a file, creates a file descriptor and returns a mutable reference to it.
 	/// `file` the file to open.
 	/// If the file cannot be open, the function returns an Err.
-	pub fn open_file(&mut self, file: &mut File) -> Result::<&mut FileDescriptor, Errno> {
+	pub fn open_file(&mut self, file: SharedPtr<File>) -> Result::<&mut FileDescriptor, Errno> {
 		let id = self.get_available_fd()?;
 		let index = self.file_descriptors.binary_search_by(| fd | {
 			fd.get_id().cmp(&id)
 		}).unwrap_err();
+
 		let fd = FileDescriptor::new(id, file);
 		if self.file_descriptors.insert(index, fd).is_ok() {
 			Ok(&mut self.file_descriptors[index])

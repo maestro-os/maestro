@@ -7,6 +7,7 @@ pub mod filesystem;
 pub mod mountpoint;
 pub mod path;
 
+use crate::file::mountpoint::MountPoint;
 use core::mem::MaybeUninit;
 use crate::errno::Errno;
 use crate::errno;
@@ -15,6 +16,7 @@ use crate::time;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::lock::mutex::Mutex;
+use crate::util::ptr::SharedPtr;
 use crate::util::ptr::WeakPtr;
 use path::Path;
 
@@ -233,6 +235,12 @@ impl File {
 	}
 }
 
+impl Drop for File {
+	fn drop(&mut self) {
+		// TODO Sync to disk
+	}
+}
+
 /// The access counter allows to count the relative number of accesses count on a file.
 pub struct AccessCounter {
 	/// The number of accesses to the file relative to the previous file in the pool.
@@ -243,10 +251,8 @@ pub struct AccessCounter {
 ///	Cache storing files in memory. This cache allows to speedup accesses to the disk. It is
 /// synchronized with the disk when necessary.
 pub struct FCache {
-	/// The major number of the root device.
-	root_major: u32,
-	/// The minor number of the root device.
-	root_minor: u32,
+	/// A pointer to the root mount point.
+	root_mount: SharedPtr<MountPoint>,
 
 	/// A fixed-size pool storing files, sorted by path.
 	files_pool: Vec<File>,
@@ -259,9 +265,11 @@ pub struct FCache {
 impl FCache {
 	/// Creates a new instance with the given major and minor for the root device.
 	pub fn new(root_major: u32, root_minor: u32) -> Result<Self, Errno> {
+		let root_mount = MountPoint::new(root_major, root_minor, Path::root());
+		let shared_ptr = mountpoint::register_mountpoint(root_mount)?;
+
 		Ok(Self {
-			root_major: root_major,
-			root_minor: root_minor,
+			root_mount: shared_ptr,
 
 			files_pool: Vec::<File>::with_capacity(FILES_POOL_SIZE)?,
 			accesses_pool: Vec::<AccessCounter>::with_capacity(FILES_POOL_SIZE)?,
@@ -271,7 +279,13 @@ impl FCache {
 	/// Loads the file with the given path `path`. If the file is already loaded, the behaviour is
 	/// undefined.
 	fn load_file(&mut self, _path: &Path) {
-		// TODO
+		let len = self.files_pool.len();
+		if len >= FILES_POOL_SIZE {
+			self.files_pool.pop();
+			self.accesses_pool.pop();
+		}
+
+		// TODO Push file
 	}
 
 	/// Adds the file `file` to the VFS. The file will be located into the directory at path
@@ -282,6 +296,7 @@ impl FCache {
 	/// If the file isn't present in the pool, the function shall load it.
 	pub fn create_file(&mut self, _path: &Path, _file: File) -> Result<(), Errno> {
 		// TODO
+
 		Err(errno::ENOMEM)
 	}
 
@@ -289,8 +304,9 @@ impl FCache {
 	/// returns None.
 	/// If the path is relative, the function starts from the root.
 	/// If the file isn't present in the pool, the function shall load it.
-	pub fn get_file_from_path(&mut self, _path: &Path) -> Option<&'static mut File> {
+	pub fn get_file_from_path(&mut self, _path: &Path) -> Option<SharedPtr<File>> {
 		// TODO
+
 		None
 	}
 

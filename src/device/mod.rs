@@ -153,7 +153,7 @@ impl Device {
 		let mut guard = MutexGuard::new(mutex);
 		let files_cache = guard.get_mut();
 
-		if let Some(file) = files_cache.get_file_from_path(&self.path) {
+		if let Some(mut file) = files_cache.get_file_from_path(&self.path) {
 			file.unlink();
 		}
 	}
