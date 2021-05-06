@@ -7,6 +7,7 @@ use crate::file::File;
 use crate::file::path::Path;
 use crate::file;
 use crate::process::Process;
+use crate::util::lock::mutex::MutexGuard;
 use crate::util;
 
 /// TODO doc
@@ -52,7 +53,11 @@ fn get_file_absolute_path(process: &Process, path_str: &str) -> Result<Path, Err
 }
 
 fn get_file(path: Path, flags: u32) -> Result::<&'static mut File, Errno> {
-	if let Some(file) = file::get_file_from_path(&path) {
+	let mutex = file::get_files_cache();
+	let mut guard = MutexGuard::new(mutex);
+	let files_cache = guard.get_mut();
+
+	if let Some(file) = files_cache.get_file_from_path(&path) {
 		Ok(file)
 	} else {
 		if flags & O_CREAT != 0 {

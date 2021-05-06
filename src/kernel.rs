@@ -166,6 +166,11 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 	#[cfg(config_debug_test)]
 	kernel_selftest();
 
+	// TODO Parse from command line arguments
+	if file::init(1, 3).is_err() {
+		kernel_panic!("Failed to create default devices!");
+	}
+
 	acpi::init();
 
 	if device::default::create().is_err() {

@@ -7,12 +7,14 @@ pub mod filesystem;
 pub mod mountpoint;
 pub mod path;
 
+use core::mem::MaybeUninit;
 use crate::errno::Errno;
 use crate::errno;
 use crate::time::Timestamp;
 use crate::time;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
+use crate::util::lock::mutex::Mutex;
 use crate::util::ptr::WeakPtr;
 use path::Path;
 
@@ -58,6 +60,8 @@ pub const S_ISVTX: Mode = 01000;
 
 /// The size of the files pool.
 pub const FILES_POOL_SIZE: usize = 1024;
+/// The upper bount for the file accesses counter.
+pub const ACCESSES_UPPER_BOUND: usize = 128;
 
 /// Enumeration representing the different file types.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -229,6 +233,13 @@ impl File {
 	}
 }
 
+/// The access counter allows to count the relative number of accesses count on a file.
+pub struct AccessCounter {
+	/// The number of accesses to the file relative to the previous file in the pool.
+	/// This number is limited by ACCESSES_UPPER_BOUND.
+	accesses_count: usize,
+}
+
 ///	Cache storing files in memory. This cache allows to speedup accesses to the disk. It is
 /// synchronized with the disk when necessary.
 pub struct FCache {
@@ -237,8 +248,12 @@ pub struct FCache {
 	/// The minor number of the root device.
 	root_minor: u32,
 
-	/// A fixed-size pool storing files, sorted by approximated number of accesses count.
-	pool: Vec<File>,
+	/// A fixed-size pool storing files, sorted by path.
+	files_pool: Vec<File>,
+	/// A pool of the same size as the files pool, storing approximate relative accesses count for
+	/// each files.
+	/// The element at an index is associated to the element in the files pool at the same index.
+	accesses_pool: Vec<AccessCounter>,
 }
 
 impl FCache {
@@ -248,28 +263,60 @@ impl FCache {
 			root_major: root_major,
 			root_minor: root_minor,
 
-			pool: Vec::<File>::with_capacity(FILES_POOL_SIZE)?,
+			files_pool: Vec::<File>::with_capacity(FILES_POOL_SIZE)?,
+			accesses_pool: Vec::<AccessCounter>::with_capacity(FILES_POOL_SIZE)?,
 		})
 	}
 
-	// TODO
+	/// Loads the file with the given path `path`. If the file is already loaded, the behaviour is
+	/// undefined.
+	fn load_file(&mut self, _path: &Path) {
+		// TODO
+	}
+
+	/// Adds the file `file` to the VFS. The file will be located into the directory at path
+	/// `path`.
+	/// The directory must exist. If an error happens, the function returns an Err with the
+	/// appropriate Errno.
+	/// If the path is relative, the function starts from the root.
+	/// If the file isn't present in the pool, the function shall load it.
+	pub fn create_file(&mut self, _path: &Path, _file: File) -> Result<(), Errno> {
+		// TODO
+		Err(errno::ENOMEM)
+	}
+
+	/// Returns a reference to the file at path `path`. If the file doesn't exist, the function
+	/// returns None.
+	/// If the path is relative, the function starts from the root.
+	/// If the file isn't present in the pool, the function shall load it.
+	pub fn get_file_from_path(&mut self, _path: &Path) -> Option<&'static mut File> {
+		// TODO
+		None
+	}
+
+	// TODO File remove
 }
 
-/// Adds the file `file` to the VFS. The file will be located into the directory at path `path`.
-/// The directory must exist. If an error happens, the function returns an Err with the appropriate
-/// Errno.
-/// If the path is relative, the function starts from the root.
-pub fn create_file(_path: &Path, _file: File) -> Result<(), Errno> {
-	// TODO
-	Err(errno::ENOMEM)
+/// The instance of the file cache.
+static mut FILES_CACHE: MaybeUninit<Mutex<FCache>> = MaybeUninit::uninit();
+
+/// Initializes files management.
+/// `root_major` is the major number of the device at the root of the VFS.
+/// `root_minor` is the minor number of the device at the root of the VFS.
+pub fn init(root_major: u32, root_minor: u32) -> Result<(), Errno> {
+	let cache = FCache::new(root_major, root_minor)?;
+	unsafe {
+		FILES_CACHE = MaybeUninit::new(Mutex::new(cache));
+	}
+
+	Ok(())
 }
 
-/// Returns a reference to the file at path `path`. If the file doesn't exist, the function returns
-/// None.
-/// If the path is relative, the function starts from the root.
-pub fn get_file_from_path(_path: &Path) -> Option<&'static mut File> {
-	// TODO
-	None
+/// Returns a mutable reference to the file cache.
+pub fn get_files_cache() -> &'static mut Mutex<FCache> {
+	unsafe { // Safe because using Mutex
+		FILES_CACHE.assume_init_mut()
+	}
 }
 
 /// Creates directories recursively on path `path`. On success, the function returns the deepest

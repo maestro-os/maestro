@@ -60,6 +60,7 @@ impl DeviceHandle for CurrentTTYDeviceHandle {
 /// Creates the default devices.
 pub fn create() -> Result<(), Errno> {
 	// TODO Allocate major blocks
+	// TODO Create files
 
 	let null_path = Path::from_string("/dev/null")?;
 	let null_device = Device::new(1, 3, null_path, 0666, DeviceType::Char, NullDeviceHandle {})?;

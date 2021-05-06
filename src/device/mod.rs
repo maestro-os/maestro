@@ -137,14 +137,23 @@ impl Device {
 
 		let dir = file::create_dirs(&dir_path)?;
 		let file = File::new(filename, dir, file_type, 0, 0, self.mode);
-		file::create_file(&dir_path, file)?; // TODO Cancel directories creation on fail
+
+		let mutex = file::get_files_cache();
+		let mut guard = MutexGuard::new(mutex);
+		let files_cache = guard.get_mut();
+		// TODO Cancel directories creation on fail
+		files_cache.create_file(&dir_path, file)?;
 
 		Ok(())
 	}
 
 	/// If exists, removes the device file. iF the file doesn't exist, the function does nothing.
 	pub fn remove_file(&mut self) {
-		if let Some(file) = file::get_file_from_path(&self.path) {
+		let mutex = file::get_files_cache();
+		let mut guard = MutexGuard::new(mutex);
+		let files_cache = guard.get_mut();
+
+		if let Some(file) = files_cache.get_file_from_path(&self.path) {
 			file.unlink();
 		}
 	}
