@@ -1,6 +1,6 @@
 /// This module contains pointer-like structures.
 
-//use core::mem::size_of_val;
+use core::marker::PhantomData;
 use core::marker::Unsize;
 use core::mem::size_of;
 use core::ops::CoerceUnsized;
@@ -10,13 +10,12 @@ use core::ptr::NonNull;
 use core::ptr::drop_in_place;
 use crate::errno::Errno;
 use crate::memory::malloc;
-use crate::util::lock::spinlock::Spinlock;
+use crate::util::lock::mutex::Mutex;
+use crate::util::lock::mutex::MutexGuard;
 use crate::util::write_ptr;
 
 /// Drops the given inner structure if necessary.
 fn check_inner_drop<T: ?Sized>(inner: &mut SharedPtrInner<T>) {
-	inner.check_obj_drop();
-
 	if inner.must_drop() {
 		unsafe {
 			drop_in_place(inner);
@@ -25,19 +24,22 @@ fn check_inner_drop<T: ?Sized>(inner: &mut SharedPtrInner<T>) {
 	}
 }
 
+/// Structure holding the number of pointers to a resource.
+struct RefCounter {
+	/// The number of shared pointers.
+	shared_count: usize,
+	/// The number of weak pointers.
+	weak_count: usize,
+}
+
 /// Inner structure of the shared pointer. The same instance of this structure is shared with
 /// every clones of a SharedPtr structure. This structure holds the number of SharedPtr holding it.
 /// Each time the pointer is cloned, the counter is incremented. Each time a copy is dropped, the
 /// counter is decrementer. The inner structure and the object wrapped by the shared pointer is
 /// dropped at the moment the counter reaches `0`.
 struct SharedPtrInner<T: ?Sized> {
-	/// The spinlock to be locked at each access.
-	spinlock: Spinlock, // TODO Use
-
-	/// The number of shared pointers holding the structure.
-	shared_count: usize,
-	/// The number of weak pointers holding the structure.
-	weak_count: usize,
+	/// The lock to use to modify the pointers count.
+	lock: Mutex<RefCounter>,
 
 	/// The object stored by the shared pointer.
 	obj: T,
@@ -48,10 +50,10 @@ impl<T> SharedPtrInner<T> {
 	/// `1`.
 	fn new(value: T) -> Self {
 		Self {
-			spinlock: Spinlock::new(),
-
-			shared_count: 1,
-			weak_count: 0,
+			lock: Mutex::new(RefCounter {
+				shared_count: 1,
+				weak_count: 0,
+			}),
 
 			obj: value,
 		}
@@ -59,18 +61,18 @@ impl<T> SharedPtrInner<T> {
 }
 
 impl<T: ?Sized> SharedPtrInner<T> {
-	/// Tells whether the inner structure must be dropped.
-	fn must_drop(&self) -> bool {
-		self.shared_count <= 0 && self.weak_count <= 0
+	/// Tells whether the object can be accessed from a weak pointer.
+	fn is_weak_available(&mut self) -> bool {
+		let guard = MutexGuard::new(&mut self.lock);
+		let refs = guard.get();
+		refs.shared_count > 0
 	}
 
-	/// Drops the object if necessary.
-	fn check_obj_drop(&self) {
-		// TODO
-		//if self.shared_count <= 0 {
-			//drop_in_place(self.obj.as_ptr());
-			//malloc::free(self.obj.as_ptr() as *mut _);
-		//}
+	/// Tells whether the inner structure must be dropped.
+	fn must_drop(&mut self) -> bool {
+		let guard = MutexGuard::new(&mut self.lock);
+		let refs = guard.get();
+		refs.shared_count <= 0 && refs.weak_count <= 0
 	}
 }
 
@@ -80,6 +82,8 @@ impl<T: ?Sized> SharedPtrInner<T> {
 pub struct SharedPtr<T: ?Sized> {
 	/// A pointer to the inner structure shared by every clones of this structure.
 	inner: NonNull<SharedPtrInner<T>>,
+
+	phantom: PhantomData<SharedPtrInner<T>>,
 }
 
 impl<T> SharedPtr<T> {
@@ -92,29 +96,46 @@ impl<T> SharedPtr<T> {
 
 		Ok(Self {
 			inner: NonNull::new(inner).unwrap(),
+
+			phantom: PhantomData,
 		})
+	}
+}
+
+impl<T: ?Sized> SharedPtr<T> {
+	/// Returns a mutable reference to the inner structure.
+	fn get_inner(&self) -> &mut SharedPtrInner<T> {
+		unsafe {
+			&mut *(self.inner.as_ptr() as *mut SharedPtrInner::<T>)
+		}
 	}
 
 	/// Creates a weak pointer for the current shared pointer.
 	pub fn new_weak(&self) -> WeakPtr<T> {
-		unsafe {
-			&mut *(self.inner.as_ptr() as *mut SharedPtrInner::<T>)
-		}.weak_count += 1;
+		let inner = self.get_inner();
+		let mut guard = MutexGuard::new(&mut inner.lock);
+		let refs = guard.get_mut();
+		refs.weak_count += 1;
 
 		WeakPtr {
 			inner: self.inner,
+
+			phantom: PhantomData,
 		}
 	}
 }
 
 impl<T: ?Sized> Clone for SharedPtr<T> {
 	fn clone(&self) -> Self {
-		unsafe {
-			&mut *(self.inner.as_ptr() as *mut SharedPtrInner::<T>)
-		}.shared_count += 1;
+		let inner = self.get_inner();
+		let mut guard = MutexGuard::new(&mut inner.lock);
+		let refs = guard.get_mut();
+		refs.shared_count += 1;
 
-		SharedPtr {
+		Self {
 			inner: self.inner,
+
+			phantom: PhantomData,
 		}
 	}
 }
@@ -155,11 +176,14 @@ impl<T: ?Sized + Unsize<U>, U: ?Sized> DispatchFromDyn<SharedPtr<U>> for SharedP
 
 impl<T: ?Sized> Drop for SharedPtr<T> {
 	fn drop(&mut self) {
-		unsafe {
-			let inner = self.inner.as_mut();
-			inner.shared_count -= 1;
-			check_inner_drop(inner);
+		let inner = self.get_inner();
+		{
+			let mut guard = MutexGuard::new(&mut inner.lock);
+			let refs = guard.get_mut();
+			refs.shared_count -= 1;
 		}
+
+		check_inner_drop(inner);
 	}
 }
 
@@ -170,45 +194,64 @@ impl<T: ?Sized> Drop for SharedPtr<T> {
 pub struct WeakPtr<T: ?Sized> {
 	/// A pointer to the inner structure shared by every clones of this structure.
 	inner: NonNull<SharedPtrInner<T>>,
+
+	phantom: PhantomData<SharedPtrInner<T>>,
 }
 
 impl<T: ?Sized> WeakPtr<T> {
+	/// Returns a mutable reference to the inner structure.
+	fn get_inner(&self) -> &mut SharedPtrInner<T> {
+		unsafe {
+			&mut *(self.inner.as_ptr() as *mut SharedPtrInner::<T>)
+		}
+	}
+
 	/// Returns an immutable reference to the object.
 	pub fn get(&self) -> Option<&T> {
-		let obj = unsafe {
-			&self.inner.as_ref().obj
-		};
-		Some(obj) // TODO
+		let inner = self.get_inner();
+		if inner.is_weak_available() {
+			Some(&inner.obj)
+		} else {
+			None
+		}
 	}
 
 	/// Returns a mutable reference to the object.
 	pub fn get_mut(&mut self) -> Option<&mut T> {
-		let obj = unsafe {
-			&mut self.inner.as_mut().obj
-		};
-		Some(obj) // TODO
+		let inner = self.get_inner();
+		if inner.is_weak_available() {
+			Some(&mut inner.obj)
+		} else {
+			None
+		}
 	}
 }
 
 impl<T: ?Sized> Clone for WeakPtr<T> {
 	fn clone(&self) -> Self {
-		unsafe {
-			&mut *(self.inner.as_ptr() as *mut SharedPtrInner::<T>)
-		}.shared_count += 1;
+		let inner = self.get_inner();
+		let mut guard = MutexGuard::new(&mut inner.lock);
+		let refs = guard.get_mut();
+		refs.shared_count += 1;
 
-		WeakPtr {
+		Self {
 			inner: self.inner,
+
+			phantom: PhantomData,
 		}
 	}
 }
 
 impl<T: ?Sized> Drop for WeakPtr<T> {
 	fn drop(&mut self) {
-		unsafe {
-			let inner = self.inner.as_mut();
-			inner.weak_count -= 1;
-			check_inner_drop(inner);
+		let inner = self.get_inner();
+		{
+			let mut guard = MutexGuard::new(&mut inner.lock);
+			let refs = guard.get_mut();
+			refs.weak_count -= 1;
 		}
+
+		check_inner_drop(inner);
 	}
 }
 
