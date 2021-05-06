@@ -13,11 +13,11 @@ pub mod storage;
 use core::cmp::Ordering;
 use crate::device::manager::DeviceManager;
 use crate::errno::Errno;
-use crate::filesystem::File;
-use crate::filesystem::FileType;
-use crate::filesystem::Mode;
-use crate::filesystem::path::Path;
-use crate::filesystem;
+use crate::file::File;
+use crate::file::FileType;
+use crate::file::Mode;
+use crate::file::path::Path;
+use crate::file;
 use crate::util::FailableClone;
 use crate::util::boxed::Box;
 use crate::util::container::vec::Vec;
@@ -135,16 +135,16 @@ impl Device {
 		let mut dir_path = self.path.failable_clone()?;
 		dir_path.pop();
 
-		let dir = filesystem::create_dirs(&dir_path)?;
+		let dir = file::create_dirs(&dir_path)?;
 		let file = File::new(filename, dir, file_type, 0, 0, self.mode);
-		filesystem::create_file(&dir_path, file)?; // TODO Cancel directories creation on fail
+		file::create_file(&dir_path, file)?; // TODO Cancel directories creation on fail
 
 		Ok(())
 	}
 
 	/// If exists, removes the device file. iF the file doesn't exist, the function does nothing.
 	pub fn remove_file(&mut self) {
-		if let Some(file) = filesystem::get_file_from_path(&self.path) {
+		if let Some(file) = file::get_file_from_path(&self.path) {
 			file.unlink();
 		}
 	}

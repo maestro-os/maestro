@@ -1,7 +1,7 @@
 /// TODO doc
 
 use core::ptr::NonNull;
-use crate::filesystem::File;
+use crate::file::File;
 use crate::util::FailableClone;
 
 /// Structure representing a file descriptor.

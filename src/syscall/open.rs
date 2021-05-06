@@ -3,9 +3,9 @@
 use core::ffi::c_void;
 use crate::errno::Errno;
 use crate::errno;
-use crate::filesystem::File;
-use crate::filesystem::path::Path;
-use crate::filesystem;
+use crate::file::File;
+use crate::file::path::Path;
+use crate::file;
 use crate::process::Process;
 use crate::util;
 
@@ -52,7 +52,7 @@ fn get_file_absolute_path(process: &Process, path_str: &str) -> Result<Path, Err
 }
 
 fn get_file(path: Path, flags: u32) -> Result::<&'static mut File, Errno> {
-	if let Some(file) = filesystem::get_file_from_path(&path) {
+	if let Some(file) = file::get_file_from_path(&path) {
 		Ok(file)
 	} else {
 		if flags & O_CREAT != 0 {

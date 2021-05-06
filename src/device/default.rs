@@ -2,10 +2,10 @@
 
 use core::str;
 use crate::device::Device;
-use crate::filesystem::path::Path;
-use crate::errno::Errno;
 use crate::device::DeviceHandle;
 use crate::device;
+use crate::errno::Errno;
+use crate::file::path::Path;
 use super::DeviceType;
 
 /// Structure representing a device which does nothing.

@@ -40,7 +40,7 @@ mod device;
 mod elf;
 mod errno;
 mod event;
-mod filesystem;
+mod file;
 mod gdt;
 #[macro_use]
 mod idt;
@@ -65,7 +65,7 @@ mod vga;
 
 use core::ffi::c_void;
 use core::panic::PanicInfo;
-use crate::filesystem::path::Path;
+use crate::file::path::Path;
 use crate::process::Process;
 
 /// Current kernel version.
