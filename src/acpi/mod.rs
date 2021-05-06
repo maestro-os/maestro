@@ -85,6 +85,11 @@ pub fn init() {
 	if let Some(_rsdp) = rsdp {
 		// TODO Check the structure
 		// TODO Get other structures
+
+		// TODO Check century register
+		if time::add_clock_source(time::cmos::CMOSClock::new(false)).is_err() {
+			crate::kernel_panic!("Not enough memory to create the CMOS clock source!");
+		}
 	} else {
 		if time::add_clock_source(time::cmos::CMOSClock::new(false)).is_err() {
 			crate::kernel_panic!("Not enough memory to create the CMOS clock source!");

@@ -18,8 +18,8 @@ use crate::filesystem::FileType;
 use crate::filesystem::Mode;
 use crate::filesystem::path::Path;
 use crate::filesystem;
+use crate::util::FailableClone;
 use crate::util::boxed::Box;
-use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::lock::mutex::Mutex;
 use crate::util::lock::mutex::MutexGuard;
@@ -130,8 +130,14 @@ impl Device {
 			DeviceType::Char => FileType::CharDevice,
 		};
 
-		let file = File::new(String::from("TODO")?, file_type, 0, 0, self.mode);
-		filesystem::create_file(&self.path, file)?;
+		let path_len = self.path.get_elements_count();
+		let filename = self.path[path_len - 1].failable_clone()?;
+		let mut dir_path = self.path.failable_clone()?;
+		dir_path.pop();
+
+		let dir = filesystem::create_dirs(&dir_path)?;
+		let file = File::new(filename, dir, file_type, 0, 0, self.mode);
+		filesystem::create_file(&dir_path, file)?; // TODO Cancel directories creation on fail
 
 		Ok(())
 	}
@@ -151,12 +157,13 @@ impl Drop for Device {
 }
 
 /// The list of registered block devices.
-static mut BLOCK_DEVICES: Mutex::<Vec::<Mutex::<Device>>> = Mutex::new(Vec::new());
+static mut BLOCK_DEVICES: Mutex<Vec<Mutex<Device>>> = Mutex::new(Vec::new());
 /// The list of registered block devices.
-static mut CHAR_DEVICES: Mutex::<Vec::<Mutex::<Device>>> = Mutex::new(Vec::new());
+static mut CHAR_DEVICES: Mutex<Vec<Mutex<Device>>> = Mutex::new(Vec::new());
 
 /// Registers the given device. If the minor/major number is already used, the function fails.
-pub fn register_device(mut device: Device) -> Result<(), Errno> {
+/// The function *doesn't* create the device file.
+pub fn register_device(device: Device) -> Result<(), Errno> {
 	let mut guard = match device.get_type() {
 		DeviceType::Block => {
 			unsafe { // Safe because using mutex
@@ -190,7 +197,6 @@ pub fn register_device(mut device: Device) -> Result<(), Errno> {
 		Err(i) => i,
 	};
 
-	device.create_file()?;
 	container.insert(index, Mutex::new(device))
 }
 

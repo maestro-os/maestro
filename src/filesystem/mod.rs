@@ -3,6 +3,8 @@
 /// mounted into subdirectories.
 
 pub mod file_descriptor;
+pub mod filesystem;
+pub mod mountpoint;
 pub mod path;
 
 use crate::errno::Errno;
@@ -10,6 +12,8 @@ use crate::errno;
 use crate::time::Timestamp;
 use crate::time;
 use crate::util::container::string::String;
+use crate::util::container::vec::Vec;
+use crate::util::ptr::WeakPtr;
 use path::Path;
 
 /// Type representing a user ID.
@@ -52,6 +56,9 @@ pub const S_ISGID: Mode = 02000;
 /// TODO doc
 pub const S_ISVTX: Mode = 01000;
 
+/// The size of the files pool.
+pub const FILES_POOL_SIZE: usize = 1024;
+
 /// Enumeration representing the different file types.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum FileType {
@@ -75,9 +82,12 @@ pub enum FileType {
 pub struct File {
 	/// The name of the file.
 	name: String,
+
+	/// Pointer to the parent file.
+	parent: WeakPtr<File>,
+
 	/// The size of the file in bytes.
 	size: usize,
-
 	/// The type of the file.
 	file_type: FileType,
 
@@ -110,13 +120,15 @@ pub struct File {
 
 impl File {
 	/// Creates a new instance.
-	pub fn new(name: String, file_type: FileType, uid: Uid, gid: Gid, mode: Mode) -> Self {
+	pub fn new(name: String, parent: WeakPtr<File>, file_type: FileType, uid: Uid, gid: Gid,
+		mode: Mode) -> Self {
 		let timestamp = time::get();
 
 		Self {
 			name: name,
-			size: 0,
+			parent: parent,
 
+			size: 0,
 			file_type: file_type,
 
 			uid: uid,
@@ -217,11 +229,37 @@ impl File {
 	}
 }
 
+///	Cache storing files in memory. This cache allows to speedup accesses to the disk. It is
+/// synchronized with the disk when necessary.
+pub struct FCache {
+	/// The major number of the root device.
+	root_major: u32,
+	/// The minor number of the root device.
+	root_minor: u32,
+
+	/// A fixed-size pool storing files, sorted by approximated number of accesses count.
+	pool: Vec<File>,
+}
+
+impl FCache {
+	/// Creates a new instance with the given major and minor for the root device.
+	pub fn new(root_major: u32, root_minor: u32) -> Result<Self, Errno> {
+		Ok(Self {
+			root_major: root_major,
+			root_minor: root_minor,
+
+			pool: Vec::<File>::with_capacity(FILES_POOL_SIZE)?,
+		})
+	}
+
+	// TODO
+}
+
 /// Adds the file `file` to the VFS. The file will be located into the directory at path `path`.
 /// The directory must exist. If an error happens, the function returns an Err with the appropriate
 /// Errno.
 /// If the path is relative, the function starts from the root.
-pub fn create_file(_path: &Path, _file: File) -> Result::<(), Errno> {
+pub fn create_file(_path: &Path, _file: File) -> Result<(), Errno> {
 	// TODO
 	Err(errno::ENOMEM)
 }
@@ -229,7 +267,15 @@ pub fn create_file(_path: &Path, _file: File) -> Result::<(), Errno> {
 /// Returns a reference to the file at path `path`. If the file doesn't exist, the function returns
 /// None.
 /// If the path is relative, the function starts from the root.
-pub fn get_file_from_path(_path: &Path) -> Option::<&'static mut File> {
+pub fn get_file_from_path(_path: &Path) -> Option<&'static mut File> {
 	// TODO
 	None
+}
+
+/// Creates directories recursively on path `path`. On success, the function returns the deepest
+/// directory that has been created.
+/// If the directories already exist, the function does nothing.
+pub fn create_dirs(_path: &Path) -> Result<WeakPtr<File>, Errno> {
+	// TODO
+	Err(errno::ENOMEM)
 }

@@ -17,7 +17,7 @@ pub struct Path {
 	/// Tells whether the path is absolute or relative.
 	absolute: bool,
 	/// An array containing the different parts of the path which are separated with `/`.
-	parts: Vec::<String>,
+	parts: Vec<String>,
 }
 
 impl Path {

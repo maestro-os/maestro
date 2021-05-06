@@ -254,7 +254,7 @@ impl<T: PartialEq> PartialEq for Vec::<T> {
 
 impl<T> FailableClone for Vec::<T> where T: FailableClone {
 	/// Clones the vector and its content.
-	fn failable_clone(&self) -> Result<Vec::<T>, Errno> {
+	fn failable_clone(&self) -> Result<Self, Errno> {
 		let mut v = Self {
 			len: self.len,
 			capacity: self.capacity,
