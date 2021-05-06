@@ -58,7 +58,7 @@ fn get_file(path: Path, flags: u32) -> Result<SharedPtr<File>, Errno> {
 	let mut guard = MutexGuard::new(mutex);
 	let files_cache = guard.get_mut();
 
-	if let Some(file) = files_cache.get_file_from_path(&path) {
+	if let Ok(file) = files_cache.get_file_from_path(&path) {
 		Ok(file)
 	} else {
 		if flags & O_CREAT != 0 {

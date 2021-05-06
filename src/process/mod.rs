@@ -19,6 +19,7 @@ use crate::file::File;
 use crate::file::Uid;
 use crate::file::file_descriptor::FileDescriptor;
 use crate::file::path::Path;
+use crate::file;
 use crate::memory::vmem;
 use crate::util::FailableClone;
 use crate::util::Regs;
@@ -48,6 +49,16 @@ const DEFAULT_EFLAGS: u32 = 0x1202;
 
 /// The opcode of the `hlt` instruction.
 const HLT_INSTRUCTION: u8 = 0xf4;
+
+/// The path to the TTY device file.
+const TTY_DEVICE_PATH: &str = "/dev/tty";
+
+/// The file descriptor number of the standard input stream.
+const STDIN_FILENO: u32 = 0;
+/// The file descriptor number of the standard output stream.
+const STDOUT_FILENO: u32 = 1;
+/// The file descriptor number of the standard error stream.
+const STDERR_FILENO: u32 = 2;
 
 /// An enumeration containing possible states for a process.
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -243,7 +254,7 @@ impl Process {
 		let user_stack = mem_space.map_stack(None, USER_STACK_SIZE, USER_STACK_FLAGS)?;
 		let kernel_stack = mem_space.map_stack(None, KERNEL_STACK_SIZE, KERNEL_STACK_FLAGS)?;
 
-		let process = Self {
+		let mut process = Self {
 			pid: pid,
 			pgid: pid,
 
@@ -283,6 +294,18 @@ impl Process {
 
 			exit_status: 0,
 		};
+
+		{
+			let mutex = file::get_files_cache();
+			let mut guard = MutexGuard::new(mutex);
+			let files_cache = guard.get_mut();
+
+			let tty_path = Path::from_string(TTY_DEVICE_PATH)?;
+			let tty_file = files_cache.get_file_from_path(&tty_path)?;
+			let _stdin_fd = process.open_file(tty_file);
+			// TODO Ensure the file descriptor is STDIN_FILENO
+			// TODO Duplicate stdin_fd into STDOUT_FILENO and STDERR_FILENO
+		}
 
 		let mutex = unsafe {
 			SCHEDULER.assume_init_mut()

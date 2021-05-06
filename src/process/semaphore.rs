@@ -13,7 +13,7 @@ pub struct Semaphore<T> {
 	data: T,
 
 	/// The FIFO containing the processes waiting to acquire the resource.
-	fifo: Mutex::<Vec::<Pid>>, // TODO Use a dedicated FIFO structure
+	fifo: Mutex<Vec<Pid>>, // TODO Use a dedicated FIFO structure
 }
 
 impl<T> Semaphore<T> {

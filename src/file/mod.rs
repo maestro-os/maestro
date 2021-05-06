@@ -304,10 +304,10 @@ impl FCache {
 	/// returns None.
 	/// If the path is relative, the function starts from the root.
 	/// If the file isn't present in the pool, the function shall load it.
-	pub fn get_file_from_path(&mut self, _path: &Path) -> Option<SharedPtr<File>> {
+	pub fn get_file_from_path(&mut self, _path: &Path) -> Result<SharedPtr<File>, Errno> {
 		// TODO
 
-		None
+		Err(errno::ENOMEM)
 	}
 
 	// TODO File remove
