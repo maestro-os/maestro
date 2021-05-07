@@ -249,7 +249,6 @@ impl Process {
 			guard.get_mut().get_unique_pid()
 		}?;
 
-		// TODO Handle leaks on fail
 		let mut mem_space = MemSpace::new()?;
 		let user_stack = mem_space.map_stack(None, USER_STACK_SIZE, USER_STACK_FLAGS)?;
 		let kernel_stack = mem_space.map_stack(None, KERNEL_STACK_SIZE, KERNEL_STACK_FLAGS)?;

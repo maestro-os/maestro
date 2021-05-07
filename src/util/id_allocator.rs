@@ -26,12 +26,14 @@ impl IDAllocator {
 	pub fn alloc(&mut self, id: Option<u32>) -> Result<u32, Errno> {
 		if let Some(i) = id {
 			if !self.used.is_set(i as _) {
+				self.used.set(i as _);
 				Ok(i)
 			} else {
 				Err(errno::ENOMEM)
 			}
 		} else {
 			if let Some(i) = self.used.find_clear() {
+				self.used.set(i);
 				Ok(i as _)
 			} else {
 				Err(errno::ENOMEM)

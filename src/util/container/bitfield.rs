@@ -20,6 +20,7 @@ impl Bitfield {
 	/// Creates a new bitfield with the given number of bits `len`.
 	pub fn new(len: usize) -> Result<Self, Errno> {
 		let size = ceil_division(len, bit_size_of::<u8>());
+
 		Ok(Self {
 			ptr: malloc::alloc(size)? as *mut _,
 			len: len,
@@ -104,10 +105,10 @@ mod test {
 	#[test_case]
 	fn bitfield_set0() {
 		let mut bitfield = Bitfield::new(42).unwrap();
-		debug_assert_eq!(bitfield.len(), 42);
+		assert_eq!(bitfield.len(), 42);
 
 		for i in 0..bitfield.len() {
-			debug_assert!(!bitfield.is_set(i));
+			assert!(!bitfield.is_set(i));
 		}
 
 		for i in 0..bitfield.len() {
@@ -115,21 +116,21 @@ mod test {
 		}
 
 		for i in 0..bitfield.len() {
-			debug_assert!(bitfield.is_set(i));
+			assert!(bitfield.is_set(i));
 		}
 	}
 
 	#[test_case]
 	fn bitfield_clear0() {
 		let mut bitfield = Bitfield::new(42).unwrap();
-		debug_assert_eq!(bitfield.len(), 42);
+		assert_eq!(bitfield.len(), 42);
 
 		for i in 0..bitfield.len() {
 			bitfield.set(i);
 		}
 
 		for i in 0..bitfield.len() {
-			debug_assert!(bitfield.is_set(i));
+			assert!(bitfield.is_set(i));
 		}
 
 		for i in 0..bitfield.len() {
@@ -137,7 +138,7 @@ mod test {
 		}
 
 		for i in 0..bitfield.len() {
-			debug_assert!(!bitfield.is_set(i));
+			assert!(!bitfield.is_set(i));
 		}
 	}
 

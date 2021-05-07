@@ -5,6 +5,7 @@ use core::cmp::max;
 use core::fmt;
 use core::mem::size_of;
 use core::ptr::NonNull;
+use core::ptr::drop_in_place;
 use crate::errno::Errno;
 use crate::memory::malloc;
 use crate::util::FailableClone;
@@ -20,7 +21,7 @@ enum NodeColor {
 	Black,
 }
 
-/// TODO doc
+/// A node in the binary tree.
 struct BinaryTreeNode<T> {
 	/// Pointer to the parent node
 	parent: Option::<NonNull<Self>>,
@@ -1013,7 +1014,10 @@ impl<T> Drop for BinaryTree::<T> {
 			Self::foreach_nodes_mut(unsafe {
 				n.as_mut()
 			}, &mut | n | {
-				malloc::free(n as *mut _ as *mut _);
+				unsafe {
+					drop_in_place(&mut n.value);
+					malloc::free(n as *mut _ as *mut _);
+				}
 			}, TraversalType::PostOrder);
 		}
 	}

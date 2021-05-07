@@ -29,6 +29,8 @@ impl PIDManager {
 	pub fn get_unique_pid(&mut self) -> Result<Pid, Errno> {
 		match self.allocator.alloc(None) {
 			Ok(i) => {
+				debug_assert!(i <= MAX_PID as _);
+
 				Ok((i + 1) as _)
 			},
 			Err(e) => {
@@ -39,6 +41,9 @@ impl PIDManager {
 
 	/// Releases the given PID `pid` to make it available for other processes.
 	pub fn release_pid(&mut self, pid: Pid) {
-		self.allocator.free(pid as _)
+		debug_assert!(pid >= 1);
+		debug_assert!(pid <= MAX_PID as _);
+
+		self.allocator.free((pid - 1) as _)
 	}
 }
