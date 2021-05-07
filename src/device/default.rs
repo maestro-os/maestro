@@ -60,19 +60,23 @@ impl DeviceHandle for CurrentTTYDeviceHandle {
 /// Creates the default devices.
 pub fn create() -> Result<(), Errno> {
 	// TODO Allocate major blocks
-	// TODO Create files
 
 	let null_path = Path::from_string("/dev/null")?;
-	let null_device = Device::new(1, 3, null_path, 0666, DeviceType::Char, NullDeviceHandle {})?;
+	let mut null_device = Device::new(1, 3, null_path, 0666, DeviceType::Char,
+		NullDeviceHandle {})?;
+	null_device.create_file()?;
 	device::register_device(null_device)?;
 
 	let zero_path = Path::from_string("/dev/zero")?;
-	let zero_device = Device::new(1, 3, zero_path, 0666, DeviceType::Char, ZeroDeviceHandle {})?;
+	let mut zero_device = Device::new(1, 3, zero_path, 0666, DeviceType::Char,
+		ZeroDeviceHandle {})?;
+	zero_device.create_file()?;
 	device::register_device(zero_device)?;
 
 	let current_tty_path = Path::from_string("/dev/tty")?;
-	let current_tty_device = Device::new(5, 0, current_tty_path, 0666, DeviceType::Char,
+	let mut current_tty_device = Device::new(5, 0, current_tty_path, 0666, DeviceType::Char,
 		CurrentTTYDeviceHandle {})?;
+	current_tty_device.create_file()?;
 	device::register_device(current_tty_device)?;
 
 	// TODO
