@@ -46,10 +46,12 @@ impl<T> Vec<T> {
 		Ok(())
 	}
 
-	/// Increases the capacity to at least `min` elements.
+	/// Increases the capacity of at least `min` elements.
 	fn increase_capacity(&mut self, min: usize) -> Result<(), Errno> {
-		self.capacity = max(self.capacity, min); // TODO Larger allocations than needed to avoid
-		// reallocation all the time
+		if self.capacity == 0 {
+			self.capacity = 1;
+		}
+		self.capacity = max(self.capacity + self.capacity / 2, self.len + min);
 		self.realloc()
 	}
 
@@ -133,9 +135,7 @@ impl<T> Vec<T> {
 	/// Inserts an element at position index within the vector, shifting all elements after it to
 	/// the right.
 	pub fn insert(&mut self, index: usize, element: T) -> Result<(), Errno> {
-		if self.capacity < self.len + 1 {
-			self.increase_capacity(self.capacity + 1)?;
-		}
+		self.increase_capacity(1)?;
 		debug_assert!(self.capacity >= self.len + 1);
 
 		unsafe {
@@ -170,9 +170,7 @@ impl<T> Vec<T> {
 
 	/// Moves all the elements of `other` into `Self`, leaving `other` empty.
 	pub fn append(&mut self, other: &mut Vec::<T>) -> Result<(), Errno> {
-		if self.capacity < self.len + other.len {
-			self.increase_capacity(self.capacity + other.len)?;
-		}
+		self.increase_capacity(other.len)?;
 
 		unsafe {
 			let self_ptr = self.data.as_mut().unwrap().as_ptr_mut();
@@ -191,9 +189,7 @@ impl<T> Vec<T> {
 
 	/// Appends an element to the back of a collection.
 	pub fn push(&mut self, value: T) -> Result<(), Errno> {
-		if self.capacity < self.len + 1 {
-			self.increase_capacity(self.capacity + 1)?;
-		}
+		self.increase_capacity(1)?;
 		debug_assert!(self.capacity >= self.len + 1);
 
 		unsafe {
