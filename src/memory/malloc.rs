@@ -1,11 +1,14 @@
 /// This module implements the memory allocation utility for kernelside operations.
-/// The interface is inspired from the C function `malloc`.
+/// TODO doc
 
 use core::cmp::{min, max};
 use core::ffi::c_void;
 use core::mem::MaybeUninit;
 use core::mem::size_of;
+use core::ops::Index;
+use core::ops::IndexMut;
 use core::ptr::null_mut;
+use core::slice;
 use crate::errno::Errno;
 use crate::list_new;
 use crate::memory::buddy;
@@ -532,7 +535,7 @@ fn get_available_chunk(size: usize) -> Result<&'static mut FreeChunk, Errno> {
 // TODO Mutex
 /// Allocates `n` bytes of kernel memory and returns a pointer to the beginning of the allocated
 /// chunk. If the allocation fails, the function shall return an error.
-pub fn alloc(n: usize) -> Result<*mut c_void, Errno> {
+pub unsafe fn alloc(n: usize) -> Result<*mut c_void, Errno> {
 	if n <= 0 {
 		return Ok(null_mut::<c_void>());
 	}
@@ -547,19 +550,15 @@ pub fn alloc(n: usize) -> Result<*mut c_void, Errno> {
 	chunk.set_used(true);
 
 	let ptr = chunk.get_ptr();
-	unsafe {
-		util::bzero(ptr, n);
-	}
+	util::bzero(ptr, n);
 	Ok(ptr)
 }
 
 // TODO Mutex
 /// Returns the size of the given memory allocation in bytes.
 /// The pointer `ptr` MUST point to the beginning of a valid, used chunk of memory.
-pub fn get_size(ptr: *mut c_void) -> usize {
-	let chunk = unsafe {
-		Chunk::from_ptr(ptr)
-	};
+pub unsafe fn get_size(ptr: *mut c_void) -> usize {
+	let chunk = Chunk::from_ptr(ptr);
 	#[cfg(config_debug_debug)]
 	chunk.check();
 	assert!(chunk.is_used());
@@ -570,10 +569,8 @@ pub fn get_size(ptr: *mut c_void) -> usize {
 /// Changes the size of the memory previously allocated with `alloc`. `ptr` is the pointer to the
 /// chunk of memory. `n` is the new size of the chunk of memory. If the reallocation fails, the
 /// chunk is left untouched and the function returns an error.
-pub fn realloc(ptr: *mut c_void, n: usize) -> Result<*mut c_void, Errno> {
-	let chunk = unsafe {
-		Chunk::from_ptr(ptr)
-	};
+pub unsafe fn realloc(ptr: *mut c_void, n: usize) -> Result<*mut c_void, Errno> {
+	let chunk = Chunk::from_ptr(ptr);
 	#[cfg(config_debug_debug)]
 	chunk.check();
 	assert!(chunk.is_used());
@@ -582,9 +579,7 @@ pub fn realloc(ptr: *mut c_void, n: usize) -> Result<*mut c_void, Errno> {
 	if n > chunk_size {
 		if !chunk.grow(n - chunk_size) {
 			let new_ptr = alloc(n)?;
-			unsafe {
-				util::memcpy(new_ptr, ptr, min(chunk.get_size(), n));
-			}
+			util::memcpy(new_ptr, ptr, min(chunk.get_size(), n));
 			free(ptr);
 			Ok(new_ptr)
 		} else {
@@ -601,27 +596,114 @@ pub fn realloc(ptr: *mut c_void, n: usize) -> Result<*mut c_void, Errno> {
 // TODO Mutex
 /// Frees the memory at the pointer `ptr` previously allocated with `alloc`. Subsequent uses of the
 /// associated memory are undefined.
-pub fn free(ptr: *mut c_void) {
-	let chunk = unsafe {
-		Chunk::from_ptr(ptr)
-	};
+pub unsafe fn free(ptr: *mut c_void) {
+	let chunk = Chunk::from_ptr(ptr);
 	#[cfg(config_debug_debug)]
 	chunk.check();
 	assert!(chunk.is_used());
 
 	chunk.set_used(false);
-	unsafe {
-		util::write_ptr(&mut chunk.as_free_chunk().free_list, ListNode::new_single());
-	}
+	util::write_ptr(&mut chunk.as_free_chunk().free_list, ListNode::new_single());
 
 	let c = chunk.coalesce();
 	if c.list.is_single() {
-		let block = unsafe {
-			Block::from_first_chunk(c)
-		};
+		let block = Block::from_first_chunk(c);
 		buddy::free_kernel(block as *mut _ as _, block.order);
 	} else {
 		c.as_free_chunk().free_list_insert();
+	}
+}
+
+/// Structure representing a kernelside allocation.
+pub struct Alloc<T> {
+	/// Slice representing the allocation.
+	slice: *mut [T],
+}
+
+impl<T> Alloc<T> {
+	/// Allocates `size` element in the kernel memory and returns a structure wrapping a slice
+	/// allowing to access it. If the allocation fails, the function shall return an error.
+	pub fn new(size: usize) -> Result<Self, Errno> {
+		let slice = unsafe {
+			let ptr = alloc(size)?;
+			slice::from_raw_parts_mut::<T>(ptr as _, size)
+		};
+
+		Ok(Self {
+			slice: slice,
+		})
+	}
+
+	/// Returns an immutable reference to the underlying slice.
+	pub fn get_slice(&self) -> &[T] {
+		unsafe {
+			&*self.slice
+		}
+	}
+
+	/// Returns a mutable reference to the underlying slice.
+	pub fn get_slice_mut(&mut self) -> &mut [T] {
+		unsafe {
+			&mut *self.slice
+		}
+	}
+
+	/// Returns the allocation as pointer.
+	pub unsafe fn as_ptr(&self) -> *const T {
+		self.get_slice().as_ptr() as _
+	}
+
+	/// Returns the allocation as mutable pointer.
+	pub unsafe fn as_ptr_mut(&mut self) -> *mut T {
+		self.get_slice_mut().as_mut_ptr() as _
+	}
+
+	/// Changes the size of the memory allocation. `n` is the new size of the chunk of memory.
+	/// If the reallocation fails, the chunk is left untouched and the function returns an error.
+	pub fn realloc(&mut self, n: usize) -> Result<(), Errno> {
+		unsafe {
+			let ptr = realloc(self.as_ptr_mut() as _, n)?;
+			self.slice = slice::from_raw_parts_mut::<T>(ptr as _, n);
+		}
+
+		Ok(())
+	}
+
+	/// Frees the allocation.
+	pub fn free(self) {}
+}
+
+impl<T> Index<usize> for Alloc<T> {
+	type Output = T;
+
+	#[inline]
+	fn index(&self, index: usize) -> &Self::Output {
+		let slice = self.get_slice();
+
+		if index >= slice.len() {
+			// TODO Panic
+		}
+		&slice[index]
+	}
+}
+
+impl<T> IndexMut<usize> for Alloc<T> {
+	#[inline]
+	fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+		let slice = self.get_slice_mut();
+
+		if index >= slice.len() {
+			// TODO Panic
+		}
+		&mut slice[index]
+	}
+}
+
+impl<T> Drop for Alloc<T> {
+	fn drop(&mut self) {
+		unsafe {
+			free(self.as_ptr_mut() as _);
+		}
 	}
 }
 

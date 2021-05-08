@@ -1,15 +1,15 @@
 /// This module stores the Bitfield structure.
 
 use crate::errno::Errno;
-use crate::memory::malloc;
 use crate::util::bit_size_of;
+use crate::util::container::vec::Vec;
 use crate::util::math::ceil_division;
 
 /// A bitfield is a data structure meant to contain only boolean values.
 /// The size of the bitfield is specified at initialization.
 pub struct Bitfield {
-	/// The bitfield's memory region.
-	ptr: *mut u8, // TODO Use a safe container
+	/// The bitfield's data.
+	data: Vec<u8>,
 	/// The number of bits in the bitfield.
 	len: usize,
 	/// The number of set bits.
@@ -22,7 +22,7 @@ impl Bitfield {
 		let size = ceil_division(len, bit_size_of::<u8>());
 
 		Ok(Self {
-			ptr: malloc::alloc(size)? as *mut _,
+			data: Vec::with_capacity(size)?,
 			len: len,
 			set_count: 0,
 		})
@@ -45,9 +45,7 @@ impl Bitfield {
 
 	/// Tells whether bit `index` is set.
 	pub fn is_set(&self, index: usize) -> bool {
-		let unit = unsafe {
-			*self.ptr.offset((index / bit_size_of::<u8>()) as _)
-		};
+		let unit = self.data[(index / bit_size_of::<u8>()) as _];
 		(unit >> (index % bit_size_of::<u8>())) & 1 == 1
 	}
 
@@ -55,9 +53,7 @@ impl Bitfield {
 	pub fn set(&mut self, index: usize) {
 		debug_assert!(index < self.len);
 
-		let unit = unsafe {
-			&mut *self.ptr.offset((index / bit_size_of::<u8>()) as _)
-		};
+		let unit = &mut self.data[(index / bit_size_of::<u8>()) as _];
 		*unit |= 1 << (index % bit_size_of::<u8>());
 
 		self.set_count += 1;
@@ -67,9 +63,7 @@ impl Bitfield {
 	pub fn clear(&mut self, index: usize) {
 		debug_assert!(index < self.len);
 
-		let unit = unsafe {
-			&mut *self.ptr.offset((index / bit_size_of::<u8>()) as _)
-		};
+		let unit = &mut self.data[(index / bit_size_of::<u8>()) as _];
 		*unit &= !(1 << (index % bit_size_of::<u8>()));
 
 		self.set_count -= 1;
@@ -90,12 +84,6 @@ impl Bitfield {
 	// TODO set_all
 	// TODO clear_all
 	// TODO fill
-}
-
-impl Drop for Bitfield {
-	fn drop(&mut self) {
-		malloc::free(self.ptr as *mut _);
-	}
 }
 
 #[cfg(test)]

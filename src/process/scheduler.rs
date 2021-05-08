@@ -10,7 +10,6 @@
 
 use core::cmp::max;
 use core::ffi::c_void;
-use core::ptr::NonNull;
 use crate::errno::Errno;
 use crate::event::{InterruptCallback, InterruptResult};
 use crate::event;
@@ -67,15 +66,15 @@ impl InterruptCallback for TickCallback {
 /// The structure representing the process scheduler.
 pub struct Scheduler {
 	/// A vector containing the temporary stacks for each CPU cores.
-	tmp_stacks: Vec::<NonNull::<c_void>>,
+	tmp_stacks: Vec<malloc::Alloc<u8>>,
 
 	/// The ticking callback, called at a regular interval to make the scheduler work.
-	tick_callback: Option::<SharedPtr::<TickCallback>>,
+	tick_callback: Option<SharedPtr<TickCallback>>,
 
 	/// The list of all processes.
-	processes: Vec::<SharedPtr::<Mutex::<Process>>>,
+	processes: Vec<SharedPtr<Mutex<Process>>>,
 	/// The currently running process.
-	curr_proc: Option::<SharedPtr::<Mutex::<Process>>>,
+	curr_proc: Option<SharedPtr<Mutex<Process>>>,
 
 	/// The sum of all priorities, used to compute the average priority.
 	priority_sum: usize,
@@ -91,8 +90,7 @@ impl Scheduler {
 	pub fn new(cores_count: usize) -> Result<SharedPtr::<Mutex::<Self>>, Errno> {
 		let mut tmp_stacks = Vec::new();
 		for _ in 0..cores_count {
-			// TODO Fix leaks in case of memory allocation fail
-			tmp_stacks.push(NonNull::new(malloc::alloc(TMP_STACK_SIZE)?).unwrap())?;
+			tmp_stacks.push(malloc::Alloc::new(TMP_STACK_SIZE)?)?;
 		}
 
 		let mut s = SharedPtr::new(Mutex::new(Self {
@@ -276,7 +274,9 @@ impl Scheduler {
 				}
 			};
 
-			let tmp_stack = self.tmp_stacks[core_id].as_ptr();
+			let tmp_stack = unsafe {
+				self.tmp_stacks[core_id].as_ptr_mut() as *mut c_void
+			};
 			let ctx_switch_data = ContextSwitchData {
 				proc: self.curr_proc.as_mut().unwrap().clone(),
 			};

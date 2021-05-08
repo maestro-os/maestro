@@ -13,6 +13,7 @@ use crate::util;
 
 // TODO Fix: an element in a tree might be at the wrong place after being modified by mutable
 // reference
+// TODO Use boxes for nodes?
 
 /// The color of a binary tree node.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -24,11 +25,11 @@ enum NodeColor {
 /// A node in the binary tree.
 struct BinaryTreeNode<T> {
 	/// Pointer to the parent node
-	parent: Option::<NonNull<Self>>,
+	parent: Option<NonNull<Self>>,
 	/// Pointer to the left child
-	left: Option::<NonNull<Self>>,
+	left: Option<NonNull<Self>>,
 	/// Pointer to the right child
-	right: Option::<NonNull<Self>>,
+	right: Option<NonNull<Self>>,
 	/// The color of the node
 	color: NodeColor,
 
@@ -62,7 +63,9 @@ fn unwrap_pointer_mut<T>(ptr: &mut Option::<NonNull::<BinaryTreeNode::<T>>>)
 impl<T: 'static> BinaryTreeNode<T> {
 	/// Creates a new node with the given `value`. The node is colored Red by default.
 	pub fn new(value: T) -> Result<NonNull::<Self>, Errno> {
-		let ptr = malloc::alloc(size_of::<Self>())? as *mut Self;
+		let ptr = unsafe {
+			malloc::alloc(size_of::<Self>())? as *mut Self
+		};
 		let s = Self {
 			parent: None,
 			left: None,
@@ -380,7 +383,7 @@ pub enum TraversalType {
 /// TODO doc
 pub struct BinaryTree<T: 'static> {
 	/// The root node of the binary tree.
-	root: Option::<NonNull<BinaryTreeNode::<T>>>,
+	root: Option<NonNull<BinaryTreeNode<T>>>,
 }
 
 impl<T: 'static + Ord> BinaryTree<T> {
@@ -701,10 +704,14 @@ impl<T: 'static + Ord> BinaryTree<T> {
 				} = replacement;
 
 				node.unlink();
-				malloc::free(node as *mut _ as *mut _);
+				unsafe {
+					malloc::free(node as *mut _ as *mut _);
+				}
 			} else {
 				node.unlink();
-				malloc::free(node as *mut _ as *mut _);
+				unsafe {
+					malloc::free(node as *mut _ as *mut _);
+				}
 
 				self.root = replacement;
 			}

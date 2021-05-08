@@ -2,8 +2,6 @@
 
 use core::cmp::Ordering;
 use core::cmp::max;
-use core::ffi::c_void;
-use core::mem::size_of;
 use core::ops::Index;
 use core::ops::IndexMut;
 use core::ptr::NonNull;
@@ -24,7 +22,7 @@ pub struct Vec<T> {
 	/// The number of elements that can be stored in the vector with its current buffer
 	capacity: usize,
 	/// A pointer to the first element of the vector
-	data: Option<NonNull<T>>,
+	data: Option<malloc::Alloc<T>>,
 }
 
 impl<T> Vec<T> {
@@ -40,13 +38,11 @@ impl<T> Vec<T> {
 	// TODO Handle fail (do not use unwrap)
 	/// Reallocates the vector's data with the vector's capacity.
 	fn realloc(&mut self) -> Result<(), Errno> {
-		let size = self.capacity * size_of::<T>();
-		let ptr = if self.data.is_some() {
-			malloc::realloc(self.data.unwrap().as_ptr() as *mut c_void, size)? as *mut T
+		if let Some(data) = &mut self.data {
+			data.realloc(self.capacity)?;
 		} else {
-			malloc::alloc(size)? as *mut T
+			self.data = Some(malloc::Alloc::new(self.capacity)?);
 		};
-		self.data = NonNull::new(ptr);
 		debug_assert!(self.data.is_some());
 		Ok(())
 	}
@@ -85,10 +81,12 @@ impl<T> Vec<T> {
 
 	/// Returns a slice containing the data.
 	pub fn as_slice(&self) -> &[T] {
-		unsafe {
-			if let Some(p) = self.data {
+		if let Some(p) = &self.data {
+			unsafe {
 				slice::from_raw_parts(p.as_ptr(), self.len)
-			} else {
+			}
+		} else {
+			unsafe {
 				slice::from_raw_parts(NonNull::dangling().as_ptr(), 0)
 			}
 		}
@@ -96,10 +94,12 @@ impl<T> Vec<T> {
 
 	/// Returns a mutable slice containing the data.
 	pub fn as_mut_slice(&mut self) -> &mut [T] {
-		unsafe {
-			if let Some(p) = self.data {
-				slice::from_raw_parts_mut(p.as_ptr() as *mut T, self.len)
-			} else {
+		if let Some(p) = &mut self.data {
+			unsafe {
+				slice::from_raw_parts_mut(p.as_ptr_mut(), self.len)
+			}
+		} else {
+			unsafe {
 				slice::from_raw_parts_mut(NonNull::dangling().as_ptr(), 0)
 			}
 		}
@@ -111,24 +111,24 @@ impl<T> Vec<T> {
 	}
 
 	/// Returns the first element of the vector.
-	pub fn first(&mut self) -> T {
+	pub fn first(&self) -> T {
 		if self.is_empty() {
 			self.vector_panic(0);
 		}
 
 		unsafe {
-			ptr::read(self.data.unwrap().as_ptr())
+			ptr::read(&self.data.as_ref().unwrap()[0] as _)
 		}
 	}
 
 	/// Returns the first element of the vector.
-	pub fn last(&mut self) -> T {
+	pub fn last(&self) -> T {
 		if self.is_empty() {
 			self.vector_panic(0);
 		}
 
 		unsafe {
-			ptr::read(self.data.unwrap().as_ptr().offset((self.len - 1) as _))
+			ptr::read(&self.data.as_ref().unwrap()[self.len - 1] as _)
 		}
 	}
 
@@ -140,11 +140,11 @@ impl<T> Vec<T> {
 		}
 		debug_assert!(self.capacity >= self.len + 1);
 
-		let ptr = self.data.unwrap().as_ptr();
 		unsafe {
+			let ptr = self.data.as_mut().unwrap().as_ptr_mut();
 			ptr::copy(ptr.offset(index as _), ptr.offset((index + 1) as _), self.len - index);
-			ptr::write(ptr.offset(index as _), element);
 		}
+		self.data.as_mut().unwrap()[index] = element;
 		self.len += 1;
 		Ok(())
 	}
@@ -156,15 +156,14 @@ impl<T> Vec<T> {
 			self.vector_panic(0);
 		}
 
-		let ptr = self.data.unwrap().as_ptr();
+		let data = self.data.as_mut().unwrap();
 		let v = unsafe {
-			ptr::read(ptr.offset(index as _))
-		};
-		unsafe {
+			let ptr = data.as_ptr_mut();
+			let v = ptr::read(&data[index]);
 			ptr::copy(ptr.offset((index + 1) as _), ptr.offset(index as _), self.len - index - 1);
-		}
+			v
+		};
 		self.len -= 1;
-
 		v
 	}
 
@@ -174,9 +173,9 @@ impl<T> Vec<T> {
 			self.increase_capacity(self.capacity + other.len)?;
 		}
 
-		let self_ptr = self.data.unwrap().as_ptr();
-		let other_ptr = other.data.unwrap().as_ptr();
 		unsafe {
+			let self_ptr = self.data.as_mut().unwrap().as_ptr_mut();
+			let other_ptr = other.data.as_mut().unwrap().as_ptr();
 			ptr::copy(other_ptr, self_ptr.offset(self.len as _), other.len);
 		}
 
@@ -197,7 +196,7 @@ impl<T> Vec<T> {
 		debug_assert!(self.capacity >= self.len + 1);
 
 		unsafe {
-			ptr::write(self.data.unwrap().as_ptr().offset(self.len as _), value);
+			ptr::write(self.data.as_mut().unwrap().as_ptr_mut().offset(self.len as _), value);
 		}
 		self.len += 1;
 		Ok(())
@@ -208,7 +207,7 @@ impl<T> Vec<T> {
 		if !self.is_empty() {
 			self.len -= 1;
 			unsafe {
-				Some(ptr::read(self.data.unwrap().as_ptr().offset(self.len as _)))
+				Some(ptr::read(self.data.as_mut().unwrap().as_ptr().offset(self.len as _)))
 			}
 		} else {
 			None
@@ -229,8 +228,7 @@ impl<T> Vec<T> {
 		self.len = 0;
 		self.capacity = 0;
 
-		if let Some(ptr) = self.data {
-			malloc::free(ptr.as_ptr() as _);
+		if self.data.is_some() {
 			self.data = None;
 		}
 	}
@@ -255,10 +253,17 @@ impl<T: PartialEq> PartialEq for Vec::<T> {
 impl<T> FailableClone for Vec::<T> where T: FailableClone {
 	/// Clones the vector and its content.
 	fn failable_clone(&self) -> Result<Self, Errno> {
+		let data = {
+			if self.data.is_some() {
+				Some(malloc::Alloc::new(self.capacity)?)
+			} else {
+				None
+			}
+		};
 		let mut v = Self {
 			len: self.len,
 			capacity: self.capacity,
-			data: NonNull::new(malloc::alloc(self.capacity)? as *mut T),
+			data: data,
 		};
 		for i in 0..self.len() {
 			v[i] = self[i].failable_clone()?;
@@ -276,9 +281,7 @@ impl<T> Index<usize> for Vec<T> {
 			self.vector_panic(index);
 		}
 
-		unsafe { // Safe because in range of the container
-			&*self.data.unwrap().as_ptr().offset(index as _)
-		}
+		&self.data.as_ref().unwrap()[index]
 	}
 }
 
@@ -289,9 +292,7 @@ impl<T> IndexMut<usize> for Vec<T> {
 			self.vector_panic(index);
 		}
 
-		unsafe { // Safe because in range of the container
-			&mut *self.data.unwrap().as_ptr().offset(index as _)
-		}
+		&mut self.data.as_mut().unwrap()[index]
 	}
 }
 

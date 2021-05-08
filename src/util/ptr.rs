@@ -89,7 +89,9 @@ pub struct SharedPtr<T: ?Sized> {
 impl<T> SharedPtr<T> {
 	/// Creates a new shared pointer for the given value `value`.
 	pub fn new(value: T) -> Result<SharedPtr::<T>, Errno> {
-		let inner = malloc::alloc(size_of::<SharedPtrInner<T>>())? as *mut SharedPtrInner<T>;
+		let inner = unsafe {
+			malloc::alloc(size_of::<SharedPtrInner<T>>())? as *mut SharedPtrInner<T>
+		};
 		unsafe {
 			write_ptr(inner, SharedPtrInner::new(value));
 		}
