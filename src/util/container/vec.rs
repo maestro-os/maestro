@@ -35,7 +35,6 @@ impl<T> Vec<T> {
 		}
 	}
 
-	// TODO Handle fail (do not use unwrap)
 	/// Reallocates the vector's data with the vector's capacity.
 	fn realloc(&mut self) -> Result<(), Errno> {
 		if let Some(data) = &mut self.data {
@@ -47,7 +46,6 @@ impl<T> Vec<T> {
 		Ok(())
 	}
 
-	// TODO Handle fail
 	/// Increases the capacity to at least `min` elements.
 	fn increase_capacity(&mut self, min: usize) -> Result<(), Errno> {
 		self.capacity = max(self.capacity, min); // TODO Larger allocations than needed to avoid
@@ -158,12 +156,15 @@ impl<T> Vec<T> {
 
 		let data = self.data.as_mut().unwrap();
 		let v = unsafe {
-			let ptr = data.as_ptr_mut();
-			let v = ptr::read(&data[index]);
-			ptr::copy(ptr.offset((index + 1) as _), ptr.offset(index as _), self.len - index - 1);
-			v
+			ptr::read(&data[index])
 		};
+		unsafe {
+			let ptr = data.as_ptr_mut();
+			ptr::copy(ptr.offset((index + 1) as _), ptr.offset(index as _), self.len - index - 1);
+		}
+
 		self.len -= 1;
+
 		v
 	}
 
@@ -196,7 +197,7 @@ impl<T> Vec<T> {
 		debug_assert!(self.capacity >= self.len + 1);
 
 		unsafe {
-			ptr::write(self.data.as_mut().unwrap().as_ptr_mut().offset(self.len as _), value);
+			ptr::write(&mut self.data.as_mut().unwrap()[self.len] as _, value);
 		}
 		self.len += 1;
 		Ok(())
@@ -207,7 +208,7 @@ impl<T> Vec<T> {
 		if !self.is_empty() {
 			self.len -= 1;
 			unsafe {
-				Some(ptr::read(self.data.as_mut().unwrap().as_ptr().offset(self.len as _)))
+				Some(ptr::read(&self.data.as_ref().unwrap()[self.len] as _))
 			}
 		} else {
 			None
