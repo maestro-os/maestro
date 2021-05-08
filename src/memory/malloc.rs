@@ -1,6 +1,5 @@
-/// This file handles allocations of chunks of kernel memory.
-///
-/// TODO: More documentation
+/// This module implements the memory allocation utility for kernelside operations.
+/// The interface is inspired from the C function `malloc`.
 
 use core::cmp::{min, max};
 use core::ffi::c_void;
@@ -21,6 +20,7 @@ use crate::util;
 type ChunkFlags = u8;
 
 /// The magic number for every chunks
+#[cfg(config_debug_malloc_magic)]
 const CHUNK_MAGIC: u32 = 0xdeadbeef;
 
 /// Chunk flag indicating that the chunk is being used
@@ -42,7 +42,8 @@ const FREE_LIST_BINS: usize = 8;
 #[repr(C, align(8))]
 struct Chunk {
 	/// The magic number to check integrity of the chunk.
-	magic: u32, // TODO Option to disable
+	#[cfg(config_debug_malloc_magic)]
+	magic: u32,
 	/// The linked list storing the chunks
 	list: ListNode,
 	/// The chunk's flags
@@ -174,7 +175,9 @@ impl Chunk {
 	/// debug mode.
 	#[cfg(config_debug_debug)]
 	pub fn check(&self) {
+		#[cfg(config_debug_malloc_magic)]
 		debug_assert_eq!(self.magic, CHUNK_MAGIC);
+
 		debug_assert!(self as *const _ as *const c_void >= memory::PROCESS_END);
 		debug_assert!(self.get_size() >= get_min_chunk_size());
 
@@ -185,9 +188,11 @@ impl Chunk {
 		if let Some(prev) = self.list.get_prev() {
 			let p = prev.get::<Chunk>(crate::offset_of!(Chunk, list));
 			debug_assert!(p as *const _ as *const c_void >= memory::PROCESS_END);
-			debug_assert_eq!(p.magic, CHUNK_MAGIC);
-			debug_assert!(p.get_size() >= get_min_chunk_size());
 
+			#[cfg(config_debug_malloc_magic)]
+			debug_assert_eq!(p.magic, CHUNK_MAGIC);
+
+			debug_assert!(p.get_size() >= get_min_chunk_size());
 			debug_assert!((p.get_const_ptr() as usize) + p.get_size()
 				<= (self as *const Self as usize));
 		}
@@ -195,9 +200,11 @@ impl Chunk {
 		if let Some(next) = self.list.get_next() {
 			let n = next.get::<Chunk>(crate::offset_of!(Chunk, list));
 			debug_assert!(n as *const _ as *const c_void >= memory::PROCESS_END);
-			debug_assert_eq!(n.magic, CHUNK_MAGIC);
-			debug_assert!(n.get_size() >= get_min_chunk_size());
 
+			#[cfg(config_debug_malloc_magic)]
+			debug_assert_eq!(n.magic, CHUNK_MAGIC);
+
+			debug_assert!(n.get_size() >= get_min_chunk_size());
 			debug_assert!((self.get_const_ptr() as usize) + self.get_size()
 				<= (n as *const Self as usize));
 		}
@@ -363,6 +370,7 @@ impl FreeChunk {
 		unsafe {
 			util::write_ptr(ptr as *mut FreeChunk, Self {
 				chunk: Chunk {
+					#[cfg(config_debug_malloc_magic)]
 					magic: CHUNK_MAGIC,
 					list: ListNode::new_single(),
 					flags: 0,
@@ -377,6 +385,7 @@ impl FreeChunk {
 	pub fn new(size: usize) -> Self {
 		Self {
 			chunk: Chunk {
+				#[cfg(config_debug_malloc_magic)]
 				magic: CHUNK_MAGIC,
 				list: ListNode::new_single(),
 				flags: 0,
@@ -460,6 +469,7 @@ impl Block {
 				list: ListNode::new_single(),
 				order: order,
 				first_chunk: Chunk {
+					#[cfg(config_debug_malloc_magic)]
 					magic: CHUNK_MAGIC,
 					list: ListNode::new_single(),
 					flags: 0,
@@ -543,6 +553,7 @@ pub fn alloc(n: usize) -> Result<*mut c_void, Errno> {
 	Ok(ptr)
 }
 
+// TODO Mutex
 /// Returns the size of the given memory allocation in bytes.
 /// The pointer `ptr` MUST point to the beginning of a valid, used chunk of memory.
 pub fn get_size(ptr: *mut c_void) -> usize {

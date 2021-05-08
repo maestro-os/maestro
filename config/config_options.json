@@ -82,6 +82,16 @@
 				"value": "false",
 				"deps": [],
 				"suboptions": []
+			},
+			{
+				"name": "malloc_magic",
+				"display_name": "Malloc magic number",
+				"desc": "Tells whether the kernel should place a magic number on the memory chunks to check for corruption",
+				"option_type": "bool",
+				"values": [],
+				"value": "true",
+				"deps": [],
+				"suboptions": []
 			}
 		]
 	}

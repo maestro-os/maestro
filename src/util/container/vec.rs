@@ -229,8 +229,8 @@ impl<T> Vec<T> {
 		self.len = 0;
 		self.capacity = 0;
 
-		if self.data.is_some() {
-			malloc::free(self.data.unwrap().as_ptr() as _);
+		if let Some(ptr) = self.data {
+			malloc::free(ptr.as_ptr() as _);
 			self.data = None;
 		}
 	}
