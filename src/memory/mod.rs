@@ -1,4 +1,6 @@
-/// TODO Documentation
+/// The memory is one of the main component of the system.
+/// This module handles almost every memory-related features, including physical memory map
+/// retrieving, memory allocation, virtual memory management, ...
 
 pub mod alloc;
 pub mod buddy;
@@ -20,31 +22,10 @@ pub const ALLOC_BEGIN: *const c_void = 0x40000000 as *const _;
 /// Pointer to the end of the virtual memory reserved to the process.
 pub const PROCESS_END: *const c_void = 0xc0000000 as *const _;
 
-// TODO Remove?
-/// Converts the page number to a pointer to the beginning of the pages.
-pub fn page_to_ptr(page: usize) -> *const c_void {
-	(page * PAGE_SIZE) as *const _
-}
-
-// TODO Remove?
-/// Converts a pointer to the page index containing it.
-pub fn ptr_to_page(ptr: *const c_void) -> usize {
-	(ptr as usize) / PAGE_SIZE
-}
-
-/// Gives the table index for the given address.
-pub fn addr_table(addr: *const c_void) -> usize {
-	((addr as usize) >> 22) & 0x3ff
-}
-
-/// Gives the page index for the given address.
-pub fn addr_page(addr: *const c_void) -> usize {
-	((addr as usize) >> 12) & 0x3ff
-}
-
-/// Gives the offset of the pointer in its page.
-pub fn addr_remain(addr: *const c_void) -> usize {
-	(addr as usize) & 0xfff
+/// Symbols to the beginning and the end of the kernel.
+extern "C" {
+	static kernel_begin: c_void;
+	static kernel_end: c_void;
 }
 
 /// Returns a pointer to the beginning of the kernel in the virtual address space.
@@ -95,10 +76,4 @@ pub fn kern_to_phys(ptr: *const c_void) -> *const c_void {
 	} else {
 		ptr
 	}
-}
-
-/// Symbols to the beginning and the end of the kernel.
-extern "C" {
-	static kernel_begin: c_void;
-	static kernel_end: c_void;
 }
