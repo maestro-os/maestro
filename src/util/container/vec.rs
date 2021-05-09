@@ -37,6 +37,7 @@ impl<T> Vec<T> {
 
 	/// Reallocates the vector's data with the vector's capacity.
 	fn realloc(&mut self) -> Result<(), Errno> {
+		debug_assert!(self.capacity >= self.len);
 		if let Some(data) = &mut self.data {
 			data.realloc(self.capacity)?;
 		} else {
@@ -48,10 +49,14 @@ impl<T> Vec<T> {
 
 	/// Increases the capacity of at least `min` elements.
 	fn increase_capacity(&mut self, min: usize) -> Result<(), Errno> {
+		if self.len + min < self.capacity {
+			return Ok(());
+		}
+
 		if self.capacity == 0 {
 			self.capacity = 1;
 		}
-		self.capacity = max(self.capacity + self.capacity / 2, self.len + min);
+		self.capacity = max(self.capacity + self.capacity / 4, self.len + min);
 		self.realloc()
 	}
 
