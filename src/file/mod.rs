@@ -31,35 +31,35 @@ pub type Mode = u16;
 /// Type representing an inode ID.
 pub type INode = u32;
 
-/// TODO doc
+/// User: Read, Write and Execute.
 pub const S_IRWXU: Mode = 00700;
-/// TODO doc
+/// User: Read.
 pub const S_IRUSR: Mode = 00400;
-/// TODO doc
+/// User: Write.
 pub const S_IWUSR: Mode = 00200;
-/// TODO doc
+/// User: Execute.
 pub const S_IXUSR: Mode = 00100;
-/// TODO doc
+/// Group: Read, Write and Execute.
 pub const S_IRWXG: Mode = 00070;
-/// TODO doc
+/// Group: Read.
 pub const S_IRGRP: Mode = 00040;
-/// TODO doc
+/// Group: Write.
 pub const S_IWGRP: Mode = 00020;
-/// TODO doc
+/// Group: Execute.
 pub const S_IXGRP: Mode = 00010;
-/// TODO doc
+/// Other: Read, Write and Execute.
 pub const S_IRWXO: Mode = 00007;
-/// TODO doc
+/// Other: Read.
 pub const S_IROTH: Mode = 00004;
-/// TODO doc
+/// Other: Write.
 pub const S_IWOTH: Mode = 00002;
-/// TODO doc
+/// Other: Execute.
 pub const S_IXOTH: Mode = 00001;
-/// TODO doc
+/// Setuid.
 pub const S_ISUID: Mode = 04000;
-/// TODO doc
+/// Setgid.
 pub const S_ISGID: Mode = 02000;
-/// TODO doc
+/// Sticky bit.
 pub const S_ISVTX: Mode = 01000;
 
 /// The number of buckets in the hash map storing a directory's subfiles.
@@ -123,14 +123,17 @@ pub struct File {
 	/// The file's subfiles (applicable only if the file is a directory).
 	subfiles: Option<HashMap<String, WeakPtr<File>>>,
 
+	/// The link's target (applicable only if the file is a symbolic link).
+	link_target: String,
+
 	// TODO Store file data:
-	// - Regular: text
-	// - Directory: children files
-	// - Link: target
 	// - FIFO: buffer (on ram only)
 	// - Socket: buffer (on ram only)
-	// - BlockDevice: major and minor
-	// - CharDevice: major and minor
+
+	/// The device's major number (applicable only if the file is a block or char device)
+	device_major: u32,
+	/// The device's minor number (applicable only if the file is a block or char device)
+	device_minor: u32,
 }
 
 impl File {
@@ -166,6 +169,11 @@ impl File {
 			atime: timestamp,
 
 			subfiles: subfiles_hash_map,
+
+			link_target: String::new(),
+
+			device_major: 0,
+			device_minor: 0,
 		})
 	}
 
@@ -275,12 +283,14 @@ impl File {
 	/// Tells whether the directory is empty or not. If the file is not a directory, the behaviour
 	/// is undefined.
 	pub fn is_empty_directory(&self) -> bool {
+		debug_assert_eq!(self.file_type, FileType::Directory);
 		self.subfiles.as_ref().unwrap().is_empty()
 	}
 
 	/// Adds the file `file` to the current file's subfiles. If the file isn't a directory, the
 	/// behaviour is undefined.
 	pub fn add_subfile(&mut self, file: WeakPtr<File>) -> Result<(), Errno> {
+		debug_assert_eq!(self.file_type, FileType::Directory);
 		let name = file.get().unwrap().get_name().failable_clone()?;
 		self.subfiles.as_mut().unwrap().insert(name, file)?;
 		Ok(())
@@ -289,7 +299,54 @@ impl File {
 	/// Removes the file with name `name` from the current file's subfiles. If the file isn't a
 	/// directory, the behaviour is undefined.
 	pub fn remove_subfile(&mut self, name: String) {
+		debug_assert_eq!(self.file_type, FileType::Directory);
 		self.subfiles.as_mut().unwrap().remove(name);
+	}
+
+	/// Returns the symbolic link's target. If the file isn't a symbolic link, the behaviour is
+	/// undefined.
+	pub fn get_link_target(&self) -> &String {
+		debug_assert_eq!(self.file_type, FileType::Link);
+		&self.link_target
+	}
+
+	/// Sets the symbolic link's target. If the file isn't a symbolic link, the behaviour is
+	/// undefined.
+	pub fn set_link_target(&mut self, target: String) {
+		debug_assert_eq!(self.file_type, FileType::Link);
+		self.link_target = target;
+	}
+
+	/// Returns the device's major number. If the file isn't a block or char device, the behaviour
+	/// is undefined.
+	pub fn get_device_major(&self) -> u32 {
+		debug_assert!(self.file_type == FileType::BlockDevice
+			|| self.file_type == FileType::CharDevice);
+		self.device_major
+	}
+
+	/// Sets the device's major number. If the file isn't a block or char device, the behaviour
+	/// is undefined.
+	pub fn set_device_major(&mut self, major: u32) {
+		debug_assert!(self.file_type == FileType::BlockDevice
+			|| self.file_type == FileType::CharDevice);
+		self.device_major = major;
+	}
+
+	/// Returns the device's minor number. If the file isn't a block or char device, the behaviour
+	/// is undefined.
+	pub fn get_device_minor(&self) -> u32 {
+		debug_assert!(self.file_type == FileType::BlockDevice
+			|| self.file_type == FileType::CharDevice);
+		self.device_minor
+	}
+
+	/// Sets the device's minor number. If the file isn't a block or char device, the behaviour
+	/// is undefined.
+	pub fn set_device_minor(&mut self, minor: u32) {
+		debug_assert!(self.file_type == FileType::BlockDevice
+			|| self.file_type == FileType::CharDevice);
+		self.device_minor = minor;
 	}
 
 	/// Synchronizes the file with the device.
@@ -365,6 +422,15 @@ impl FCache {
 	/// If the path is relative, the function starts from the root.
 	/// If the file isn't present in the pool, the function shall load it.
 	pub fn create_file(&mut self, _path: &Path, _file: File) -> Result<(), Errno> {
+		// TODO
+
+		Err(errno::ENOMEM)
+	}
+
+	// TODO Function to list file at root
+
+	/// Returns the file at the root of the VFS with name `name`.
+	pub fn get_root_file(&mut self, _name: String) -> Result<SharedPtr<File>, Errno> {
 		// TODO
 
 		Err(errno::ENOMEM)
