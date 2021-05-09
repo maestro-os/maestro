@@ -23,8 +23,9 @@ impl String {
 
 	/// Creates a new instance. If the string cannot be allocated, the function return Err.
 	pub fn from(s: &str) -> Result<Self, Errno> {
-		let mut v = Vec::new(); // TODO Reserve space
-		for b in s.as_bytes() {
+		let bytes = s.as_bytes();
+		let mut v = Vec::with_capacity(bytes.len())?;
+		for b in bytes {
 			v.push(*b)?;
 		}
 

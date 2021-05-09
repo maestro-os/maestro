@@ -182,7 +182,7 @@ pub fn alloc(order: FrameOrder, flags: Flags) -> Result<*mut c_void, Errno> {
 			if let Some(f) = frame {
 				f.split(zone, order);
 				f.mark_used();
-				zone.allocated_pages += math::pow2(order) as usize;
+				zone.allocated_pages += math::pow2(order as usize);
 
 				let ptr = f.get_ptr(zone);
 				debug_assert!(util::is_aligned(ptr, memory::PAGE_SIZE));
@@ -217,7 +217,7 @@ pub fn free(ptr: *const c_void, order: FrameOrder) {
 		(*frame).mark_free(zone);
 		(*frame).coalesce(zone);
 	}
-	zone.allocated_pages -= math::pow2(order) as usize;
+	zone.allocated_pages -= math::pow2(order as usize);
 }
 
 /// Frees the given memory frame. `ptr` is the *virtual* address to the beginning of the frame and
@@ -407,7 +407,7 @@ impl Frame {
 
 	/// Returns the size of the frame in pages.
 	pub fn get_pages(&self) -> usize {
-		math::pow2(self.order) as _
+		math::pow2(self.order as usize)
 	}
 
 	/// Returns the size of the frame in bytes.

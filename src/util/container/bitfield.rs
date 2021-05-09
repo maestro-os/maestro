@@ -21,11 +21,15 @@ impl Bitfield {
 	pub fn new(len: usize) -> Result<Self, Errno> {
 		let size = ceil_division(len, bit_size_of::<u8>());
 
-		Ok(Self {
+		let mut bitfield = Self {
 			data: Vec::with_capacity(size)?,
 			len: len,
 			set_count: 0,
-		})
+		};
+		for _ in 0..size {
+			bitfield.data.push(0)?;
+		}
+		Ok(bitfield)
 	}
 
 	/// Returns the number of bit in the bitfield.

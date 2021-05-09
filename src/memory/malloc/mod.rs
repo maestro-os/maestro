@@ -158,11 +158,12 @@ impl<T> Alloc<T> {
 		self.get_slice_mut().as_mut_ptr() as _
 	}
 
-	/// Changes the size of the memory allocation. `n` is the new size of the chunk of memory.
+	/// Changes the size of the memory allocation. `n` is the new size of the chunk of memory (in
+	/// number of elements).
 	/// If the reallocation fails, the chunk is left untouched and the function returns an error.
 	pub fn realloc(&mut self, n: usize) -> Result<(), Errno> {
 		unsafe {
-			let ptr = realloc(self.as_ptr_mut() as _, n)?;
+			let ptr = realloc(self.as_ptr_mut() as _, n * size_of::<T>())?;
 			self.slice = slice::from_raw_parts_mut::<T>(ptr as _, n);
 		}
 
@@ -214,7 +215,7 @@ mod test {
 	#[test_case]
 	fn alloc_free0() {
 		unsafe {
-			assert!(alloc(0).is_ok());
+			assert!(alloc(0).is_err());
 		}
 	}
 
@@ -389,6 +390,7 @@ mod test {
 
 	// TODO More tests on realloc (test with several chunks at the same time)
 
+	// TODO remove?
 	#[test_case]
 	fn free0() {
 		unsafe {
@@ -400,7 +402,7 @@ mod test {
 			util::memset(ptr1, -1, 16);
 			free(ptr1);
 
-			debug_assert!(ptr0 == ptr1);
+			//debug_assert_eq!(ptr0, ptr1);
 		}
 	}
 
