@@ -1,7 +1,7 @@
 /// This module handles minor/major numbers, including their allocation.
 
 use crate::errno::Errno;
-use crate::util::id_allocator::IDAllocator;
+use crate::util::container::id_allocator::IDAllocator;
 use crate::util::lock::mutex::Mutex;
 use crate::util::lock::mutex::MutexGuard;
 

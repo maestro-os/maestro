@@ -3,7 +3,7 @@
 /// bitfield to store the used PIDs.
 
 use crate::errno::Errno;
-use crate::util::id_allocator::IDAllocator;
+use crate::util::container::id_allocator::IDAllocator;
 
 /// Type representing a Process ID. This ID is unique for every running processes.
 pub type Pid = u16;

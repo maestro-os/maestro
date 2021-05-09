@@ -3,5 +3,6 @@
 
 pub mod binary_tree;
 pub mod bitfield;
+pub mod id_allocator;
 pub mod string;
 pub mod vec;
