@@ -14,6 +14,7 @@ use crate::file::mountpoint::MountPoint;
 use crate::time::Timestamp;
 use crate::time;
 use crate::util::FailableClone;
+use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::lock::mutex::Mutex;
@@ -61,6 +62,9 @@ pub const S_ISGID: Mode = 02000;
 /// TODO doc
 pub const S_ISVTX: Mode = 01000;
 
+/// The number of buckets in the hash map storing a directory's subfiles.
+pub const SUBFILES_HASHMAP_BUCKETS: usize = 16;
+
 /// The size of the files pool.
 pub const FILES_POOL_SIZE: usize = 1024;
 /// The upper bount for the file accesses counter.
@@ -85,6 +89,7 @@ pub enum FileType {
 	CharDevice,
 }
 
+// TODO Use a structure wrapping files for lazy allocations
 /// Structure representing a file.
 pub struct File {
 	/// The name of the file.
@@ -115,6 +120,9 @@ pub struct File {
 	/// Timestamp of the last access to the file.
 	atime: Timestamp,
 
+	/// The file's subfiles (applicable only if the file is a directory).
+	subfiles: Option<HashMap<String, WeakPtr<File>>>,
+
 	// TODO Store file data:
 	// - Regular: text
 	// - Directory: children files
@@ -128,10 +136,19 @@ pub struct File {
 impl File {
 	/// Creates a new instance.
 	/// TODO document arguments
-	pub fn new(name: String, file_type: FileType, uid: Uid, gid: Gid, mode: Mode) -> Self {
+	pub fn new(name: String, file_type: FileType, uid: Uid, gid: Gid, mode: Mode)
+		-> Result<Self, Errno> {
 		let timestamp = time::get();
 
-		Self {
+		let subfiles_hash_map = {
+			if file_type == FileType::Directory {
+				Some(HashMap::<String, WeakPtr<File>>::new(SUBFILES_HASHMAP_BUCKETS)?)
+			} else {
+				None
+			}
+		};
+
+		Ok(Self {
 			name: name,
 			parent: None,
 
@@ -147,7 +164,9 @@ impl File {
 			ctime: timestamp,
 			mtime: timestamp,
 			atime: timestamp,
-		}
+
+			subfiles: subfiles_hash_map,
+		})
 	}
 
 	/// Returns the name of the file.
@@ -251,6 +270,26 @@ impl File {
 			return true;
 		}
 		self.mode & S_IXOTH != 0
+	}
+
+	/// Tells whether the directory is empty or not. If the file is not a directory, the behaviour
+	/// is undefined.
+	pub fn is_empty_directory(&self) -> bool {
+		self.subfiles.as_ref().unwrap().is_empty()
+	}
+
+	/// Adds the file `file` to the current file's subfiles. If the file isn't a directory, the
+	/// behaviour is undefined.
+	pub fn add_subfile(&mut self, file: WeakPtr<File>) -> Result<(), Errno> {
+		let name = file.get().unwrap().get_name().failable_clone()?;
+		self.subfiles.as_mut().unwrap().insert(name, file)?;
+		Ok(())
+	}
+
+	/// Removes the file with name `name` from the current file's subfiles. If the file isn't a
+	/// directory, the behaviour is undefined.
+	pub fn remove_subfile(&mut self, name: String) {
+		self.subfiles.as_mut().unwrap().remove(name);
 	}
 
 	/// Synchronizes the file with the device.

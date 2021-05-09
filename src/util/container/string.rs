@@ -2,6 +2,8 @@
 
 use core::fmt::Debug;
 use core::fmt;
+use core::hash::Hash;
+use core::hash::Hasher;
 use core::str;
 use crate::errno::Errno;
 use crate::util::FailableClone;
@@ -126,6 +128,12 @@ impl PartialEq<str> for String {
 impl PartialEq<&str> for String {
 	fn eq(&self, other: &&str) -> bool {
 		self == *other
+	}
+}
+
+impl Hash for String {
+	fn hash<H: Hasher>(&self, state: &mut H) {
+		self.as_str().hash(state);
 	}
 }
 
