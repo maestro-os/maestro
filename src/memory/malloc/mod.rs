@@ -15,20 +15,24 @@ use core::ops::IndexMut;
 use core::slice;
 use crate::errno::Errno;
 use crate::errno;
-use crate::memory;
 use crate::util::list::ListNode;
-use crate::util::math;
+use crate::util::lock::mutex::Mutex;
+use crate::util::lock::mutex::MutexGuard;
 use crate::util;
+
+/// The allocator's mutex.
+static mut MUTEX: Mutex<()> = Mutex::new(());
 
 /// Initializes the memory allocator.
 pub fn init() {
 	chunk::init_free_lists();
 }
 
-// TODO Mutex
 /// Allocates `n` bytes of kernel memory and returns a pointer to the beginning of the allocated
 /// chunk. If the allocation fails, the function shall return an error.
 pub unsafe fn alloc(n: usize) -> Result<*mut c_void, Errno> {
+	let _ = MutexGuard::new(&mut MUTEX);
+
 	if n <= 0 {
 		return Err(errno::EINVAL);
 	}
@@ -49,10 +53,11 @@ pub unsafe fn alloc(n: usize) -> Result<*mut c_void, Errno> {
 	Ok(ptr)
 }
 
-// TODO Mutex
 /// Returns the size of the given memory allocation in bytes.
 /// The pointer `ptr` MUST point to the beginning of a valid, used chunk of memory.
 pub unsafe fn get_size(ptr: *mut c_void) -> usize {
+	let _ = MutexGuard::new(&mut MUTEX);
+
 	let chunk = Chunk::from_ptr(ptr);
 	#[cfg(config_debug_debug)]
 	chunk.check();
@@ -60,12 +65,13 @@ pub unsafe fn get_size(ptr: *mut c_void) -> usize {
 	chunk.get_size()
 }
 
-// TODO Mutex
 /// Changes the size of the memory previously allocated with `alloc`. `ptr` is the pointer to the
 /// chunk of memory.
 /// `n` is the new size of the chunk of memory.
 /// If the reallocation fails, the chunk is left untouched and the function returns an error.
 pub unsafe fn realloc(ptr: *mut c_void, n: usize) -> Result<*mut c_void, Errno> {
+	let _ = MutexGuard::new(&mut MUTEX);
+
 	if n <= 0 {
 		return Err(errno::EINVAL);
 	}
@@ -93,10 +99,11 @@ pub unsafe fn realloc(ptr: *mut c_void, n: usize) -> Result<*mut c_void, Errno> 
 	}
 }
 
-// TODO Mutex
 /// Frees the memory at the pointer `ptr` previously allocated with `alloc`. Subsequent uses of the
 /// associated memory are undefined.
 pub unsafe fn free(ptr: *mut c_void) {
+	let _ = MutexGuard::new(&mut MUTEX);
+
 	let chunk = Chunk::from_ptr(ptr);
 	#[cfg(config_debug_debug)]
 	chunk.check();
@@ -210,6 +217,8 @@ impl<T> Drop for Alloc<T> {
 
 #[cfg(test)]
 mod test {
+	use crate::memory;
+	use crate::util::math;
 	use super::*;
 
 	#[test_case]

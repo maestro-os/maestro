@@ -49,6 +49,11 @@ impl Path {
 		self.absolute
 	}
 
+	/// Tells whether the path is empty.
+	pub fn is_empty(&self) -> bool {
+		self.parts.is_empty()
+	}
+
 	/// Returns the number of elements in the path, namely, the number of elements separated by
 	/// `/`.
 	pub fn get_elements_count(&self) -> usize {

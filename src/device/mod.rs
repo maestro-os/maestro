@@ -132,11 +132,12 @@ impl Device {
 
 		let path_len = self.path.get_elements_count();
 		let filename = self.path[path_len - 1].failable_clone()?;
+
 		let mut dir_path = self.path.failable_clone()?;
 		dir_path.pop();
+		file::create_dirs(&dir_path)?;
 
-		let dir = file::create_dirs(&dir_path)?;
-		let file = File::new(filename, dir, file_type, 0, 0, self.mode);
+		let file = File::new(filename, file_type, 0, 0, self.mode);
 
 		let mutex = file::get_files_cache();
 		let mut guard = MutexGuard::new(mutex);

@@ -7,12 +7,13 @@ pub mod filesystem;
 pub mod mountpoint;
 pub mod path;
 
-use crate::file::mountpoint::MountPoint;
 use core::mem::MaybeUninit;
 use crate::errno::Errno;
 use crate::errno;
+use crate::file::mountpoint::MountPoint;
 use crate::time::Timestamp;
 use crate::time;
+use crate::util::FailableClone;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::lock::mutex::Mutex;
@@ -90,7 +91,7 @@ pub struct File {
 	name: String,
 
 	/// Pointer to the parent file.
-	parent: WeakPtr<File>,
+	parent: Option<WeakPtr<File>>,
 
 	/// The size of the file in bytes.
 	size: usize,
@@ -126,13 +127,13 @@ pub struct File {
 
 impl File {
 	/// Creates a new instance.
-	pub fn new(name: String, parent: WeakPtr<File>, file_type: FileType, uid: Uid, gid: Gid,
-		mode: Mode) -> Self {
+	/// TODO document arguments
+	pub fn new(name: String, file_type: FileType, uid: Uid, gid: Gid, mode: Mode) -> Self {
 		let timestamp = time::get();
 
 		Self {
 			name: name,
-			parent: parent,
+			parent: None,
 
 			size: 0,
 			file_type: file_type,
@@ -147,6 +148,36 @@ impl File {
 			mtime: timestamp,
 			atime: timestamp,
 		}
+	}
+
+	/// Returns the name of the file.
+	pub fn get_name(&self) -> &String {
+		&self.name
+	}
+
+	/// Returns a reference to the parent file.
+	pub fn get_parent(&self) -> Option<&File> {
+		self.parent.as_ref()?.get()
+	}
+
+	/// Returns the absolute path of the file.
+	pub fn get_path(&self) -> Result<Path, Errno> {
+		let name = self.get_name().failable_clone()?;
+
+		if let Some(parent) = self.get_parent() {
+			let mut path = parent.get_path()?;
+			path.push(name)?;
+			Ok(path)
+		} else {
+			let mut path = Path::root();
+			path.push(name)?;
+			Ok(path)
+		}
+	}
+
+	/// Sets the file's parent.
+	pub fn set_parent(&mut self, parent: Option<WeakPtr<File>>) {
+		self.parent = parent;
 	}
 
 	/// Returns the size of the file in bytes.
@@ -222,7 +253,7 @@ impl File {
 		self.mode & S_IXOTH != 0
 	}
 
-	/// Synchronizes the file's content with the device.
+	/// Synchronizes the file with the device.
 	pub fn sync(&self) {
 		if self.inode.is_some() {
 			// TODO
@@ -237,7 +268,7 @@ impl File {
 
 impl Drop for File {
 	fn drop(&mut self) {
-		// TODO Sync to disk
+		self.sync();
 	}
 }
 
@@ -335,10 +366,17 @@ pub fn get_files_cache() -> &'static mut Mutex<FCache> {
 	}
 }
 
-/// Creates directories recursively on path `path`. On success, the function returns the deepest
-/// directory that has been created.
-/// If the directories already exist, the function does nothing.
-pub fn create_dirs(_path: &Path) -> Result<WeakPtr<File>, Errno> {
+/// Removes the file at path `path` and its subfiles recursively if it's a directory.
+/// If relative, the path is taken from the root.
+pub fn remove_recursive(_path: &Path) {
 	// TODO
+}
+
+/// Creates the directories necessary to reach path `path`. On success, the function returns
+/// the number of created directories (without the directories that already existed).
+/// If relative, the path is taken from the root.
+pub fn create_dirs(_path: &Path) -> Result<usize, Errno> {
+	// TODO
+
 	Err(errno::ENOMEM)
 }
