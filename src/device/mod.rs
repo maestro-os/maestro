@@ -8,6 +8,7 @@ pub mod id;
 pub mod keyboard;
 pub mod manager;
 pub mod ps2;
+pub mod ramdisk;
 pub mod storage;
 
 use core::cmp::Ordering;

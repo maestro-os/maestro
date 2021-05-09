@@ -169,11 +169,14 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 
 	// TODO Parse from command line arguments
 	if file::init(1, 3).is_err() {
-		kernel_panic!("Failed to create default devices!");
+		kernel_panic!("Failed to initialize files management!");
 	}
 
 	acpi::init();
 
+	if device::ramdisk::create().is_err() {
+		kernel_panic!("Failed to create ramdisks!");
+	}
 	if device::default::create().is_err() {
 		kernel_panic!("Failed to create default devices!");
 	}
