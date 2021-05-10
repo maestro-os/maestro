@@ -1,5 +1,9 @@
 /// This module implements storage drivers.
 
+pub mod mbr;
+pub mod pata;
+pub mod ramdisk;
+
 use core::cmp::min;
 use crate::device::Device;
 use crate::device::DeviceHandle;
@@ -16,9 +20,6 @@ use crate::file::path::Path;
 use crate::util::boxed::Box;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
-
-pub mod mbr;
-pub mod pata;
 
 /// The major number for storage devices.
 const STORAGE_MAJOR: u32 = 8;

@@ -174,7 +174,7 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 
 	acpi::init();
 
-	if device::ramdisk::create().is_err() {
+	if device::storage::ramdisk::create().is_err() {
 		kernel_panic!("Failed to create ramdisks!");
 	}
 	if device::default::create().is_err() {
