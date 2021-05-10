@@ -8,6 +8,7 @@ pub mod mountpoint;
 pub mod path;
 
 use core::mem::MaybeUninit;
+use crate::device::DeviceType;
 use crate::errno::Errno;
 use crate::errno;
 use crate::file::mountpoint::MountPoint;
@@ -391,8 +392,9 @@ pub struct FCache {
 
 impl FCache {
 	/// Creates a new instance with the given major and minor for the root device.
-	pub fn new(root_major: u32, root_minor: u32) -> Result<Self, Errno> {
-		let root_mount = MountPoint::new(root_major, root_minor, Path::root());
+	pub fn new(root_device_type: DeviceType, root_major: u32, root_minor: u32)
+		-> Result<Self, Errno> {
+		let root_mount = MountPoint::new(root_device_type, root_major, root_minor, Path::root())?;
 		let shared_ptr = mountpoint::register_mountpoint(root_mount)?;
 
 		Ok(Self {
@@ -427,7 +429,7 @@ impl FCache {
 		Err(errno::ENOMEM)
 	}
 
-	// TODO Function to list file at root
+	// TODO Function to list files at root
 
 	/// Returns the file at the root of the VFS with name `name`.
 	pub fn get_root_file(&mut self, _name: String) -> Result<SharedPtr<File>, Errno> {
@@ -453,10 +455,12 @@ impl FCache {
 static mut FILES_CACHE: MaybeUninit<Mutex<FCache>> = MaybeUninit::uninit();
 
 /// Initializes files management.
+/// `root_device_type` is the type of the root device file. If not a device, the behaviour is
+/// undefined.
 /// `root_major` is the major number of the device at the root of the VFS.
 /// `root_minor` is the minor number of the device at the root of the VFS.
-pub fn init(root_major: u32, root_minor: u32) -> Result<(), Errno> {
-	let cache = FCache::new(root_major, root_minor)?;
+pub fn init(root_device_type: DeviceType, root_major: u32, root_minor: u32) -> Result<(), Errno> {
+	let cache = FCache::new(root_device_type, root_major, root_minor)?;
 	unsafe {
 		FILES_CACHE = MaybeUninit::new(Mutex::new(cache));
 	}

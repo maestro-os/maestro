@@ -92,8 +92,8 @@ pub fn create() -> Result<(), Errno> {
 		path.push(String::from("/dev")?)?;
 		path.push(name)?;
 
-		let handle = RAMDiskHandle::new();
-		let mut device = Device::new(1, 3, path, 0666, DeviceType::Block, handle)?;
+		let mut device = Device::new(RAM_DISK_MAJOR, i as _, path, 0666, DeviceType::Block,
+			RAMDiskHandle::new())?;
 		device.create_file()?;
 		device::register_device(device)?;
 	}
