@@ -145,7 +145,7 @@ RUST_SRC := $(shell find $(SRC_DIR) -type f -name "*.rs")
 
 ifeq ($(CONFIG_EXISTS), 0)
 # The rule to compile everything
-all: $(NAME) iso tags
+all: $(NAME) iso tags doc
 else
 all:
 	echo "File $(CONFIG_FILE) doesn't exist. Use \`make config\` to create it"

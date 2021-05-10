@@ -10,7 +10,6 @@ pub mod list;
 pub mod lock;
 pub mod math;
 pub mod ptr;
-pub mod scope_end_hook;
 
 use core::ffi::c_void;
 use core::fmt;
