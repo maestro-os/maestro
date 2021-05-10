@@ -130,6 +130,8 @@ ifeq ($(CONFIG_DEBUG_TEST), true)
 CARGOFLAGS = --tests
 endif
 
+CARGOFLAGS += --target $(TARGET)
+
 # The Rust language compiler flags
 RUSTFLAGS = -Zmacro-backtrace -C link-arg=-T$(LINKER) $(CONFIG_ARGS)
 
@@ -169,7 +171,7 @@ $(OBJ_DIR)%.c.o: $(SRC_DIR)%.c $(HDR) $(TOUCH_UPDATE_FILES)
 	$(CC) $(CFLAGS) -I $(SRC_DIR) -c $< -o $@
 
 $(NAME): $(LIB_NAME) $(RUST_SRC) $(LINKER) $(TOUCH_UPDATE_FILES)
-	RUSTFLAGS='$(RUSTFLAGS)' $(CARGO) build $(CARGOFLAGS) --target $(TARGET)
+	RUSTFLAGS='$(RUSTFLAGS)' $(CARGO) build $(CARGOFLAGS)
 ifeq ($(CONFIG_DEBUG), false)
 	cp target/target/release/maestro .
 	$(STRIP) $(NAME)
@@ -233,13 +235,16 @@ DOC_DIR = doc/
 
 # Builds the documentation
 doc: $(DOC_SRC_DIR)
+	RUSTFLAGS='$(RUSTFLAGS)' $(CARGO) doc $(CARGOFLAGS)
 	sphinx-build $(DOC_SRC_DIR) $(DOC_DIR)
+	rm -rf $(DOC_DIR)/references/
+	cp -r target/target/doc/ $(DOC_DIR)/references/
 
 
 
 # Runs clippy on the Rust code
 clippy:
-	RUSTFLAGS="$(RUSTFLAGS)" $(CARGO) clippy $(CARGOFLAGS) --target $(TARGET)
+	RUSTFLAGS='$(RUSTFLAGS)' $(CARGO) clippy $(CARGOFLAGS)
 
 
 

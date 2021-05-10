@@ -1,6 +1,5 @@
-/*
- * This file is the main source file for the kernel, but it is not the entry point of the kernel.
- */
+//! Maestro is a Unix kernel written in Rust. This reference documents interfaces for modules and
+//! the kernel's internals.
 
 #![no_std]
 #![no_main]

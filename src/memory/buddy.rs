@@ -1,11 +1,11 @@
-/// This module contains the buddy allocator which allows to allocate 2^^n pages large frames of
-/// memory.
-///
-/// This allocator works by dividing frames of memory in two until the a frame of the required size
-/// is available.
-///
-/// The order of a frame is the `n` in the expression `2^^n` that represents the size of a frame in
-/// pages.
+//! This module contains the buddy allocator which allows to allocate 2^^n pages large frames of
+//! memory.
+//!
+//! This allocator works by dividing frames of memory in two until the a frame of the required size
+//! is available.
+//!
+//! The order of a frame is the `n` in the expression `2^^n` that represents the size of a frame in
+//! pages.
 
 use core::cmp::min;
 use core::ffi::c_void;

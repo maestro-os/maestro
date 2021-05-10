@@ -70,7 +70,7 @@ This documentation describes the way the Maestro kernel and its interfaces work.
 Interface references
 ====================
 
-TODO: Give a link to the functions/structures/modules references
+The references to the kernel's internals and module interfaces can be found `here <references/maestro/index.html>`_.
 
 
 

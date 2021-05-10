@@ -1,6 +1,6 @@
-/// The memory is one of the main component of the system.
-/// This module handles almost every memory-related features, including physical memory map
-/// retrieving, memory allocation, virtual memory management, ...
+//! The memory is one of the main component of the system.
+//! This module handles almost every memory-related features, including physical memory map
+//! retrieving, memory allocation, virtual memory management, ...
 
 pub mod alloc;
 pub mod buddy;
