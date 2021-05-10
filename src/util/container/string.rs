@@ -8,6 +8,7 @@ use core::str;
 use crate::errno::Errno;
 use crate::util::FailableClone;
 use crate::util::container::vec::Vec;
+use crate::util::math;
 
 /// Returns the number of characters required to represent the given number `n` as a String.
 fn get_number_len(mut n: i64, base: u8) -> usize {
@@ -58,6 +59,7 @@ impl String {
 
 	// TODO Support other bases than only 10?
 	// TODO Use a generic type?
+	// TODO Optimize
 	/// Creates a new instance filled with the string representation of a given number `n`.
 	pub fn from_number(n: i64) -> Result<Self, Errno> {
 		let len = get_number_len(n, 10);
@@ -74,7 +76,8 @@ impl String {
 				if i == 0 {
 					(n % 10).abs() as u8
 				} else {
-					(n / ((10 * i) as i64) % 10).abs() as u8
+					let shift = math::pow(10, i) as i64;
+					(n / shift % 10).abs() as u8
 				}
 			};
 			v.push(('0' as u8) + b)?;

@@ -22,10 +22,20 @@ pub fn ceil_division<T>(n0: T, n1: T) -> T
 /// Computes 2^^n on unsigned integers (where `^^` is an exponent).
 /// The behaviour is undefined for n < 0.
 #[inline(always)]
-pub fn pow2<T>(n: T) -> T
-	where T: From<u8>
-		+ core::ops::Shl<Output = T> {
+pub fn pow2<T>(n: T) -> T where T: From<u8> + core::ops::Shl<Output = T> {
 	T::from(1) << n
+}
+
+/// Computes a^^b on integers (where `^^` is an exponent).
+#[inline(always)]
+pub fn pow<T>(a: T, b: usize) -> T where T: From<u8> + core::ops::Mul<Output = T> + Copy {
+	let mut n = T::from(1);
+
+	for _ in 0..b {
+		n = n * a;
+	}
+
+	n
 }
 
 /// Computes floor(log2(n)) on unsigned integers without using floating-point numbers.
@@ -71,15 +81,39 @@ mod test {
 
 	#[test_case]
 	fn log2_0() {
-		debug_assert!(log2(0) == 0);
-		//debug_assert!(log2(-1) == 0);
+		assert_eq!(log2(0), 0);
+		//assert_eq!(log2(-1), 0);
 	}
 
 	#[test_case]
 	fn log2_1() {
 		for i in 1..util::bit_size_of::<usize>() {
-			debug_assert!(log2(pow2(i)) == i);
+			assert_eq!(log2(pow2(i)), i);
 		}
+	}
+
+	#[test_case]
+	fn pow0() {
+		for i in 0..10 {
+			assert_eq!(pow::<u32>(1, i), 1);
+		}
+	}
+
+	#[test_case]
+	fn pow1() {
+		for i in 0..10 {
+			assert_eq!(pow::<u32>(2, i), pow2::<u32>(i as _));
+		}
+	}
+
+	#[test_case]
+	fn pow1() {
+		assert_eq!(pow::<u32>(10, 0), 1);
+		assert_eq!(pow::<u32>(10, 1), 10);
+		assert_eq!(pow::<u32>(10, 2), 100);
+		assert_eq!(pow::<u32>(10, 3), 1000);
+		assert_eq!(pow::<u32>(10, 4), 10000);
+		assert_eq!(pow::<u32>(10, 5), 100000);
 	}
 
 	// TODO Test every functions
