@@ -183,10 +183,6 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 		kernel_panic!("Failed to create default devices!");
 	}
 
-	// TODO Load module through userspace instead
-	println!("Loading modules...");
-	// TODO Load modules from file and register into a vector
-
 	println!("Initializing processes...");
 	if process::init().is_err() {
 		kernel_panic!("Failed to init processes!", 0);

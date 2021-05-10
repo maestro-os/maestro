@@ -1,14 +1,18 @@
-/// This module handles TTYs.
+/// The TTY (TeleTypeWriter) is an electromechanical device that was used in the past to send and
+/// receive typed messages through a communication channel.
+/// Nowdays, computers have replaced TTYs, but Unix kernels still emulate them and provide
+/// backward compatibility.
+
+mod ansi;
 
 use core::cmp::*;
 use core::mem::MaybeUninit;
 use core::mem::size_of;
 use crate::memory::vmem;
+use crate::pit;
 use crate::util::lock::mutex::*;
 use crate::util;
 use crate::vga;
-
-// TODO Implement streams and termcaps
 
 /// The number of TTYs.
 const TTYS_COUNT: usize = 8;
@@ -22,9 +26,6 @@ const EMPTY_CHAR: vga::Char = (vga::DEFAULT_COLOR as vga::Char) << 8;
 
 /// The size of a tabulation in space-equivalent.
 const TAB_SIZE: usize = 4;
-
-/// The character to initialize ANSI escape sequences.
-const ANSI_ESCAPE: char = 0x1b as char;
 
 /// The frequency of the bell in Hz.
 const BELL_FREQUENCY: u32 = 2000;
@@ -69,7 +70,7 @@ pub struct TTY {
 /// The array of every TTYs.
 static mut TTYS: MaybeUninit<[Mutex<TTY>; TTYS_COUNT]> = MaybeUninit::uninit();
 /// The current TTY's id.
-static mut CURRENT_TTY: Mutex::<usize> = Mutex::new(0);
+static mut CURRENT_TTY: Mutex<usize> = Mutex::new(0);
 
 /// Returns a mutable reference to the TTY with identifier `tty`.
 pub fn get(tty: usize) -> &'static mut Mutex<TTY> {
@@ -190,6 +191,7 @@ impl TTY {
 		self.update();
 	}
 
+	/// Fixes the position of the cursor after executing an action.
 	fn fix_pos(&mut self) {
 		if self.cursor_x < 0 {
 			let p = -self.cursor_x;
@@ -238,31 +240,35 @@ impl TTY {
 		debug_assert!(self.cursor_y - self.screen_y < vga::HEIGHT);
 	}
 
-	fn cursor_forward(&mut self, x: usize, y: usize)
-	{
+	/// Moves the cursor forward `x` characters horizontally and `y` characters vertically.
+	fn cursor_forward(&mut self, x: usize, y: usize) {
 		self.cursor_x += x as vga::Pos;
 		self.cursor_y += y as vga::Pos;
 		self.fix_pos();
 	}
 
-	fn cursor_backward(&mut self, x: usize, y: usize)
-	{
+	/// Moves the cursor backwards `x` characters horizontally and `y` characters vertically.
+	fn cursor_backward(&mut self, x: usize, y: usize) {
 		self.cursor_x -= x as vga::Pos;
 		self.cursor_y -= y as vga::Pos;
 		self.fix_pos();
 	}
 
-	fn newline(&mut self)
-	{
+	/// Moves to the next line.
+	fn newline(&mut self) {
 		self.cursor_x = 0;
 		self.cursor_y += 1;
 		self.fix_pos();
 	}
 
+	/// Writes the character `c` to the TTY.
 	pub fn putchar(&mut self, c: char) {
 		match c {
+			'\x07' => {
+				pit::beep();
+			},
 			'\x08' => {
-				// TODO Bell beep
+				// TODO Backspace
 			},
 			'\t' => {
 				self.cursor_forward(get_tab_size(self.cursor_x), 0);
@@ -270,9 +276,13 @@ impl TTY {
 			'\n' => {
 				self.newline();
 			},
+			'\x0c' => {
+				// TODO Move printer to a top of page
+			},
 			'\r' => {
 				self.cursor_x = 0;
 			},
+
 			_ => {
 				let tty_char = (c as vga::Char) | ((self.current_color as vga::Char) << 8);
 				let pos = get_history_offset(self.cursor_x, self.cursor_y);
@@ -280,18 +290,23 @@ impl TTY {
 				self.cursor_forward(1, 0);
 			}
 		}
+
 		self.update();
 	}
 
 	/// Writes string `buffer` to TTY.
 	pub fn write(&mut self, buffer: &str) {
-		for i in 0..buffer.len() {
+		let mut i = 0;
+
+		while i < buffer.len() {
 			let c = buffer.as_bytes()[i] as char;
-			if c != ANSI_ESCAPE {
-				self.putchar(c);
+			if c == ansi::ESCAPE_CHAR {
+				i += ansi::handle(self, &buffer[i..buffer.len()]);
 			} else {
-				// TODO Handle ANSI
+				self.putchar(c);
+				i += 1;
 			}
+
 			self.update();
 		}
 	}

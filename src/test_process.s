@@ -1,12 +1,9 @@
-# TODO doc?
-
 .global write
 .global _exit
 .global fork
 .global getpid
 .global getppid
 
-# TODO doc?
 write:
 	push %ebp
 	mov %esp, %ebp
@@ -29,7 +26,6 @@ write:
 	pop %ebp
 	ret
 
-# TODO doc?
 _exit:
 	push %ebp
 	mov %esp, %ebp
@@ -46,7 +42,6 @@ _exit:
 	pop %ebp
 	ret
 
-# TODO doc?
 fork:
 	mov $7, %eax
 	int $0x80
@@ -54,13 +49,11 @@ fork:
 
 # TODO waitpid
 
-# TODO doc?
 getpid:
 	mov $9, %eax
 	int $0x80
 	ret
 
-# TODO doc?
 getppid:
 	mov $10, %eax
 	int $0x80

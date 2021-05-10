@@ -26,23 +26,27 @@ impl Filesystem for Ext2Fs {
 
 	fn detect(&self, _io: &mut dyn DeviceHandle) -> bool {
 		// TODO
+
 		false
 	}
 
 	fn load_file(&mut self, _io: &mut dyn DeviceHandle, _path: Path) -> Result<File, Errno> {
 		// TODO
+
 		Err(errno::ENOMEM)
 	}
 
 	fn read_node(&mut self, _io: &mut dyn DeviceHandle, _node: INode, _buf: &mut [u8])
 		-> Result<(), Errno> {
 		// TODO
+
 		Err(errno::ENOMEM)
 	}
 
 	fn write_node(&mut self, _io: &mut dyn DeviceHandle, _node: INode, _buf: &mut [u8])
 		-> Result<(), Errno> {
 		// TODO
+
 		Err(errno::ENOMEM)
 	}
 }

@@ -100,3 +100,8 @@ pub fn set_frequency(frequency: Frequency) {
 	}
 	set_value(c as u16);
 }
+
+/// Makes PC speaker ring the bell.
+pub fn beep() {
+	// TODO
+}

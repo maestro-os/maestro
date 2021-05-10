@@ -41,7 +41,10 @@ impl<T> Vec<T> {
 	fn realloc(&mut self) -> Result<(), Errno> {
 		debug_assert!(self.capacity >= self.len);
 		if let Some(data) = &mut self.data {
-			data.realloc(self.capacity)?;
+			// Safe because the memory is rewritten when the object is placed into the vector
+			unsafe {
+				data.realloc_zero(self.capacity)?;
+			}
 		} else {
 			// Safe because the memory is rewritten when the object is placed into the vector
 			let data_ptr = unsafe {
