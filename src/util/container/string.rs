@@ -106,7 +106,6 @@ impl String {
 		self.data.is_empty()
 	}
 
-	// TODO Unit tests
 	/// Appends the given char `ch` to the end of the string.
 	pub fn push(&mut self, ch: char) -> Result<(), Errno> {
 		match ch.len_utf8() {
@@ -321,4 +320,26 @@ mod test {
 	}
 
 	// TODO Test min and max values
+
+	#[test_case]
+	fn string_push0() {
+		let mut s = String::new();
+		assert_eq!(s.len(), 0);
+
+		s.push('a').unwrap();
+		assert_eq!(s.len(), 1);
+		assert_eq!(s, "a");
+	}
+
+	#[test_case]
+	fn string_push1() {
+		let mut s = String::new();
+		assert_eq!(s.len(), 0);
+
+		for i in 0..10 {
+			s.push('a').unwrap();
+			assert_eq!(s.len(), i + 1);
+		}
+		assert_eq!(s, "aaaaaaaaaa");
+	}
 }

@@ -5,6 +5,7 @@ use core::cmp::max;
 use core::ops::Index;
 use core::ops::IndexMut;
 use core::ptr::NonNull;
+use core::ptr::drop_in_place;
 use core::ptr;
 use core::slice;
 use crate::errno::Errno;
@@ -189,9 +190,6 @@ impl<T> Vec<T> {
 		Ok(())
 	}
 
-	// TODO reserve
-	// TODO resize
-
 	/// Appends an element to the back of a collection.
 	pub fn push(&mut self, value: T) -> Result<(), Errno> {
 		self.increase_capacity(1)?;
@@ -221,6 +219,20 @@ impl<T> Vec<T> {
 		VecIterator::new(self)
 	}
 
+	/// Truncates the vector to the given new len `len`. If `len` is greater than the current
+	/// length, the function has no effect.
+	pub fn truncate(&mut self, len: usize) {
+		if len < self.len() {
+			for i in len..self.len {
+				unsafe {
+					drop_in_place(&mut self[i]);
+				}
+			}
+
+			self.len = len;
+		}
+	}
+
 	/// Clears the vector, removing all values.
 	pub fn clear(&mut self) {
 		for e in self.into_iter() {
@@ -233,6 +245,21 @@ impl<T> Vec<T> {
 		if self.data.is_some() {
 			self.data = None;
 		}
+	}
+}
+
+impl<T: Default> Vec::<T> {
+	/// Resizes the vector to the given length `new_len`. If new elements have to be created, the
+	/// default value is used.
+	pub fn resize(&mut self, new_len: usize) -> Result<(), Errno> {
+		if new_len < self.len() {
+			self.truncate(new_len);
+		} else {
+			self.increase_capacity(new_len - self.len)?;
+			self.len = new_len;
+		}
+
+		Ok(())
 	}
 }
 
@@ -533,4 +560,55 @@ mod test {
 			assert!(false);
 		}
 	}
+
+	#[test_case]
+	fn vec_truncate0() {
+		let mut v = Vec::<usize>::new();
+		v.push(0).unwrap();
+		v.push(2).unwrap();
+		v.push(4).unwrap();
+		v.push(6).unwrap();
+		v.push(8).unwrap();
+
+		v.truncate(0);
+		assert!(v.is_empty());
+	}
+
+	#[test_case]
+	fn vec_truncate1() {
+		let mut v = Vec::<usize>::new();
+		v.push(0).unwrap();
+		v.push(2).unwrap();
+		v.push(4).unwrap();
+		v.push(6).unwrap();
+		v.push(8).unwrap();
+
+		v.truncate(1);
+		assert_eq!(v.len(), 1);
+		assert_eq!(v[0], 0);
+	}
+
+	#[test_case]
+	fn vec_truncate2() {
+		let mut v = Vec::<usize>::new();
+		v.push(0).unwrap();
+		v.push(2).unwrap();
+		v.push(4).unwrap();
+		v.push(6).unwrap();
+		v.push(8).unwrap();
+
+		for i in (0..=5).rev() {
+			v.truncate(i);
+			assert_eq!(v.len(), i);
+		}
+	}
+
+	#[test_case]
+	fn vec_truncate3() {
+		let mut v = Vec::<usize>::new();
+		v.truncate(10000);
+		assert_eq!(v.len(), 0);
+	}
+
+	// TODO Test resize
 }
