@@ -10,6 +10,7 @@ use crate::errno::Errno;
 use crate::file::path::Path;
 use crate::memory::malloc;
 use crate::util::container::string::String;
+use crate::util::math;
 use super::StorageInterface;
 
 /// The ramdisks' major number.
@@ -19,7 +20,6 @@ const RAM_DISK_COUNT: usize = 16;
 /// The size of the ramdisk in bytes.
 const RAM_DISK_SIZE: usize = 4 * 1024 * 1024;
 
-// TODO Add a mechanism to swap on the disk?
 // TODO Add a mechanism to free when cleared?
 
 /// Structure representing a ram disk.
@@ -53,33 +53,49 @@ impl RAMDisk {
 
 impl StorageInterface for RAMDisk {
 	fn get_block_size(&self) -> u64 {
-		1
+		512
 	}
 
 	fn get_blocks_count(&self) -> u64 {
 		(RAM_DISK_SIZE as u64) / self.get_block_size()
 	}
 
-	fn read(&mut self, buf: &mut [u8], _offset: u64, _size: u64) -> Result<(), Errno> {
+	fn read(&mut self, buf: &mut [u8], offset: u64, size: u64) -> Result<(), Errno> {
 		if !self.is_allocated() {
 			for i in 0..buf.len() {
 				buf[i] = 0;
 			}
+		} else {
+			let block_size = self.get_block_size();
+			let off = offset * block_size;
 
-			return Ok(());
+			for i in 0..size {
+				for j in 0..block_size {
+					let buf_index = (i * block_size + j) as usize;
+					let disk_index = (off + buf_index as u64) as usize;
+
+					buf[buf_index] = self.data.as_ref().unwrap()[disk_index];
+				}
+			}
 		}
-
-		// TODO
 
 		Ok(())
 	}
 
-	fn write(&mut self, _buf: &[u8], _offset: u64, _size: u64) -> Result<(), Errno> {
-		if !self.is_allocated() {
-			self.allocate()?;
-		}
+	fn write(&mut self, buf: &[u8], offset: u64, size: u64) -> Result<(), Errno> {
+		self.allocate()?;
 
-		// TODO
+		let block_size = self.get_block_size();
+		let off = offset * block_size;
+
+		for i in 0..size {
+			for j in 0..block_size {
+				let buf_index = (i * block_size + j) as usize;
+				let disk_index = (off + buf_index as u64) as usize;
+
+				self.data.as_mut().unwrap()[disk_index] = buf[buf_index];
+			}
+		}
 
 		Ok(())
 	}
@@ -103,19 +119,25 @@ impl RAMDiskHandle {
 impl DeviceHandle for RAMDiskHandle {
 	fn read(&mut self, offset: u64, buff: &mut [u8]) -> Result<usize, Errno> {
 		let block_off = offset / self.disk.get_block_size();
-		let block_size = 0; // TODO
-		self.disk.read(buff, block_off, block_size)?;
+		let blocks_count = math::ceil_division(buff.len() as u64, self.disk.get_block_size());
+
+		self.disk.read(buff, block_off, blocks_count)?;
 
 		Ok(buff.len())
 	}
 
 	fn write(&mut self, offset: u64, buff: &[u8]) -> Result<usize, Errno> {
-		let block_off = offset / self.disk.get_block_size();
-		let block_size = 0; // TODO
+		let block_size = self.disk.get_block_size();
+		let block_off = offset / block_size;
+		let blocks_count = math::ceil_division(buff.len() as u64, block_size);
 
 		// TODO Read first and last sectors to complete them
+		//let begin_inner_off = offset % block_size;
+		//if begin_inner_off != 0 {
+			// TODO
+		//}
 
-		self.disk.write(buff, block_off, block_size)?;
+		self.disk.write(buff, block_off, blocks_count)?;
 
 		Ok(buff.len())
 	}
