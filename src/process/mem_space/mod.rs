@@ -1,6 +1,9 @@
 //! This module implements the MemSpace structure which is responsible for handling the memory
 //! mapping of execution contexts.
-//! TODO doc
+//!
+//! The memory space contains two types of structures:
+//! - Mapping: A region of virtual memory that is allocated
+//! - Gap: A region of virtual memory that is available to be allocated
 
 mod gap;
 mod mapping;

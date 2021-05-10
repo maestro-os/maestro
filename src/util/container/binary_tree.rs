@@ -380,7 +380,8 @@ pub enum TraversalType {
 	PostOrder,
 }
 
-/// TODO doc
+/// A binary tree is a structure which allows, when properly balanced, to performs actions
+/// (insertion, removal, searching) in O(log n) complexity.
 pub struct BinaryTree<T: 'static> {
 	/// The root node of the binary tree.
 	root: Option<NonNull<BinaryTreeNode<T>>>,

@@ -1,5 +1,5 @@
-//! This module handles PS/2 devices.
-//! TODO doc
+//! Personal System/2 (PS/2) is a connector designed for keyboards and mouses.
+//! It has now been deprecated in favor of USB keyboards/mouses.
 
 // TODO Externalize this module into a kernel module when the interface for loading them will be
 // ready
@@ -41,11 +41,11 @@ const KEYBOARD_ACK: u8 = 0xfa;
 /// TODO doc
 const KEYBOARD_RESEND: u8 = 0xf4;
 
-/// TODO doc
+/// The ID of the Scroll Lock LED.
 const LED_SCROLL_LOCK: u8 = 0b001;
-/// TODO doc
+/// The ID of the Number Lock LED.
 const LED_NUMBER_LOCK: u8 = 0b010;
-/// TODO doc
+/// The ID of the Caps Lock LED.
 const LED_CAPS_LOCK: u8 = 0b100;
 
 // TODO Turn commands and flags into constants.
@@ -431,7 +431,7 @@ fn enable_keyboard() -> Result<(), ()> {
 	Ok(())
 }
 
-/// TODO doc
+/// Returns the configuration byte.
 fn get_config_byte() -> u8 {
 	wait_write();
 	unsafe {
@@ -444,7 +444,7 @@ fn get_config_byte() -> u8 {
 	}
 }
 
-/// TODO doc
+/// Sets the configuration byte.
 fn set_config_byte(config: u8) {
 	wait_write();
 	unsafe {
@@ -462,7 +462,7 @@ fn test_controller() -> Result<(), ()> {
 	send_command(0xaa, TEST_CONTROLLER_PASS)
 }
 
-/// TODO doc
+/// Tests the keyboard device.
 fn test_device() -> Result<(), ()> {
 	send_command(0xab, TEST_KEYBOARD_PASS)
 }

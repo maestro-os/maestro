@@ -1,4 +1,5 @@
-//! TODO doc
+//! In the malloc allocator, a block is a memory allocation performed from another allocator, which
+//! is too big to be used directly for allocation, so it has to be divided into chunks.
 
 use core::ffi::c_void;
 use core::mem::size_of;

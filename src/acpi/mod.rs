@@ -19,12 +19,13 @@ const SCAN_END: *const c_void = unsafe {
 /// The signature of the RSDP structure.
 const RSDP_SIGNATURE: &str = "RSD PTR ";
 
-/// TODO doc
+/// The Root System Description Pointer (RSDP) is a structure storing a pointer to the other
+/// structures used by ACPI.
 #[repr(C)]
 struct RSDP {
 	/// TODO doc
 	signature: [u8; 8],
-	/// TODO doc
+	/// The checksum to check against all the structure's bytes.
 	checksum: u8,
 	/// TODO doc
 	oemid: [u8; 6],
@@ -34,17 +35,18 @@ struct RSDP {
 	rsdt_address: u32,
 }
 
-/// TODO doc
+/// This structure is the version 2.0 of the RSDP. This structure contains the field from the
+/// previous version, plus some extra fields.
 #[repr(C)]
 struct RSDP2 {
-	/// TODO doc
+	/// The version 1.0 on structure.
 	rsdp: RSDP,
 
 	/// TODO doc
 	length: u32,
 	/// TODO doc
 	xsdt_address: u64,
-	/// TODO doc
+	/// The checksum to check against all the structure's bytes.
 	extended_checksum: u8,
 	/// TODO doc
 	reserved: [u8; 3],

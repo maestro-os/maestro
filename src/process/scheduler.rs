@@ -36,7 +36,13 @@ const AVERAGE_PRIORITY_QUANTA: usize = 10;
 const MAX_PRIORITY_QUANTA: usize = 30;
 
 extern "C" {
+	/// This function switches to a userspace context.
+	/// `regs` is the structure of registers to restore to resume the context.
+	/// `data_selector` is the user data segment selector.
+	/// `code_selector` is the user code segment selector.
 	fn context_switch(regs: &Regs, data_selector: u16, code_selector: u16) -> !;
+	/// This function switches to a kernelspace context.
+	/// `regs` is the structure of registers to restore to resume the context.
 	fn context_switch_kernel(regs: &Regs) -> !;
 }
 

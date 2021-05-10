@@ -6,10 +6,11 @@ use crate::errno::Errno;
 use crate::util::boxed::Box;
 
 extern "C" {
+	/// Performs the stack switching for the given stack and closure to execute.
 	fn stack_switch_(stack: *mut c_void, func_ptr: *const c_void, data: *mut c_void);
 }
 
-/// TODO doc
+/// Performs the execution of the given function `f`.
 #[no_mangle]
 extern "C" fn stack_switch_in(func_ptr: *const c_void, data: *mut c_void) {
 	let f = unsafe {

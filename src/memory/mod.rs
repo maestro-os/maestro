@@ -24,7 +24,11 @@ pub const PROCESS_END: *const c_void = 0xc0000000 as *const _;
 
 /// Symbols to the beginning and the end of the kernel.
 extern "C" {
+	/// The kernel begin symbol, giving the pointer to the begin of the kernel image in the virtual
+	/// memory. This memory location should never be accessed using this symbol.
 	static kernel_begin: c_void;
+	/// The kernel end symbol, giving the pointer to the end of the kernel image in the virtual
+	/// memory. This memory location should never be accessed using this symbol.
 	static kernel_end: c_void;
 }
 

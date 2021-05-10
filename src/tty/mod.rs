@@ -1,4 +1,4 @@
-//! The TTY (TeleTypeWriter) is an electromechanical device that was used in the past to send and
+//! The TeleTypeWriter (TTY) is an electromechanical device that was used in the past to send and
 //! receive typed messages through a communication channel.
 //! Nowdays, computers have replaced TTYs, but Unix kernels still emulate them and provide
 //! backward compatibility.

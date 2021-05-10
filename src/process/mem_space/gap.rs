@@ -1,4 +1,4 @@
-//! TODO doc
+//! A gap is a region of the virtual memory which is available for allocation.
 
 use core::cmp::Ordering;
 use core::ffi::c_void;

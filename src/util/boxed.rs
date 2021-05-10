@@ -1,4 +1,4 @@
-//! This file contains the Box structure.
+//! The Box structure allows to hold an object on the heap and handles its memory properly.
 
 use core::ffi::c_void;
 use core::marker::Unsize;

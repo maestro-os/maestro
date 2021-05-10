@@ -1,4 +1,8 @@
-//! TODO doc
+//! In the malloc allocator, a chunk of memory is a subdivision of a Block. It represents a portion
+//! of memory that might be available for allocation, or might be already allocated.
+//! Chunks of the same blocks are linked to each others by a double linked list, which allows to
+//! split and merge nearby chunks when necessary.
+//! If a chunk is not allocated, it is stored in a free list, stored by size.
 
 use core::cmp::{min, max};
 use core::ffi::c_void;

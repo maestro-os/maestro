@@ -1,7 +1,6 @@
 //! This module contains utilities used everywhere in the kernel.
-//! All the features here are guaranteed to not require memory allocators.
 //!
-//! Data structures and containers are considered two separated things:
+//! Data structures and containers are considered being two different things:
 //! - Data structures do not require memory allocations
 //! - Containers require memory allocations
 

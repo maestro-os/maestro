@@ -1,4 +1,5 @@
-//! This module contains mathematical utility functions.
+//! Since floating point numbers are slow, unprecise and may even disabled by default, the kernel
+/// uses! only integers. The functions in this module implement utilities for integer mathematics.
 
 use core::intrinsics::wrapping_add;
 use core::intrinsics::wrapping_mul;

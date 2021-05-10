@@ -11,7 +11,6 @@
 
 /*
  * This function switches to a userspace context.
- * TODO document arguments
  */
 context_switch:
 	cli
@@ -57,7 +56,6 @@ context_switch:
 
 /*
  * This function switches to a kernelspace context.
- * TODO document arguments
  */
 context_switch_kernel:
 	cli

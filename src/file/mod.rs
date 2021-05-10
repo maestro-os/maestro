@@ -140,7 +140,11 @@ pub struct File {
 
 impl File {
 	/// Creates a new instance.
-	/// TODO document arguments
+	/// `name` is the name of the file.
+	/// `file_type` is the type of the file.
+	/// `uid` is the id of the owner user.
+	/// `gid` is the id of the owner group.
+	/// `mode` is the permission of the file.
 	pub fn new(name: String, file_type: FileType, uid: Uid, gid: Gid, mode: Mode)
 		-> Result<Self, Errno> {
 		let timestamp = time::get();
