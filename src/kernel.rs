@@ -187,15 +187,10 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 	println!("Loading modules...");
 	// TODO Load modules from file and register into a vector
 
-	// TODO Disk
-	// TODO Virtual file system
-
 	println!("Initializing processes...");
 	if process::init().is_err() {
 		kernel_panic!("Failed to init processes!", 0);
 	}
-
-	// TODO Load init ramdisk
 
 	// TODO Start first process from disk (init program)
 	let test_begin = unsafe {

@@ -2,6 +2,7 @@
 /// The root filesystem is passed to the kernel as an argument when booting. Other filesystems are
 /// mounted into subdirectories.
 
+pub mod ext2;
 pub mod file_descriptor;
 pub mod filesystem;
 pub mod mountpoint;
@@ -372,7 +373,7 @@ impl Drop for File {
 /// The access counter allows to count the relative number of accesses count on a file.
 pub struct AccessCounter {
 	/// The number of accesses to the file relative to the previous file in the pool.
-	/// This number is limited by ACCESSES_UPPER_BOUND.
+	/// This number is limited by `ACCESSES_UPPER_BOUND`.
 	accesses_count: usize,
 }
 
@@ -454,12 +455,21 @@ impl FCache {
 /// The instance of the file cache.
 static mut FILES_CACHE: MaybeUninit<Mutex<FCache>> = MaybeUninit::uninit();
 
+/// Registers the filesystems that are implemented inside of the kernel itself.
+fn register_default_fs() -> Result<(), Errno> {
+	filesystem::register(ext2::Ext2Fs::new())?;
+
+	Ok(())
+}
+
 /// Initializes files management.
 /// `root_device_type` is the type of the root device file. If not a device, the behaviour is
 /// undefined.
 /// `root_major` is the major number of the device at the root of the VFS.
 /// `root_minor` is the minor number of the device at the root of the VFS.
 pub fn init(root_device_type: DeviceType, root_major: u32, root_minor: u32) -> Result<(), Errno> {
+	register_default_fs()?;
+
 	let cache = FCache::new(root_device_type, root_major, root_minor)?;
 	unsafe {
 		FILES_CACHE = MaybeUninit::new(Mutex::new(cache));

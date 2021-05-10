@@ -6,7 +6,6 @@ use crate::device::DeviceType;
 use crate::device;
 use crate::errno::Errno;
 use crate::file::filesystem::Filesystem;
-use crate::util::boxed::Box;
 use crate::util::container::vec::Vec;
 use crate::util::lock::mutex::Mutex;
 use crate::util::lock::mutex::MutexGuard;
@@ -27,7 +26,7 @@ pub struct MountPoint {
 	path: Path,
 
 	/// An instance of the filesystem associated with the mountpoint.
-	filesystem: Box<dyn Filesystem>,
+	filesystem: SharedPtr<dyn Filesystem>,
 }
 
 impl MountPoint {
@@ -77,7 +76,10 @@ impl MountPoint {
 		&self.path
 	}
 
-	// TODO Function to get filesystem
+	/// Returns a mutable reference to the filesystem associated with the device.
+	pub fn get_filesystem(&mut self) -> &mut SharedPtr<dyn Filesystem> {
+		&mut self.filesystem
+	}
 }
 
 /// The list of mountpoints.

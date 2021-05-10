@@ -4,7 +4,10 @@ use crate::device::Device;
 use crate::device::DeviceHandle;
 use crate::errno::Errno;
 use crate::errno;
-use crate::util::boxed::Box;
+use crate::util::container::vec::Vec;
+use crate::util::lock::mutex::Mutex;
+use crate::util::lock::mutex::MutexGuard;
+use crate::util::ptr::SharedPtr;
 use super::File;
 use super::INode;
 use super::path::Path;
@@ -29,11 +32,34 @@ pub trait Filesystem {
 	// TODO
 }
 
-// TODO Array to register filesystems
+/// The list of mountpoints.
+static mut FILESYSTEMS: Mutex<Vec<SharedPtr<dyn Filesystem>>> = Mutex::new(Vec::new());
+
+/// Registers a new filesystem `fs`.
+pub fn register<T: 'static + Filesystem>(fs: T) -> Result<(), Errno> {
+	let mutex = unsafe { // Safe because using Mutex
+		&mut FILESYSTEMS
+	};
+	let mut guard = MutexGuard::new(mutex);
+	let container = guard.get_mut();
+	container.push(SharedPtr::new(fs)?)
+}
+
+// TODO Function to unregister a filesystem
 
 /// Detects the filesystem on the given device `device`.
-pub fn detect(_device: &mut Device) -> Result<Box<dyn Filesystem>, Errno> {
-	// TODO
+pub fn detect(device: &mut Device) -> Result<SharedPtr<dyn Filesystem>, Errno> {
+	let mutex = unsafe { // Safe because using Mutex
+		&mut FILESYSTEMS
+	};
+	let mut guard = MutexGuard::new(mutex);
+	let container = guard.get_mut();
 
-	Err(errno::ENOMEM)
+	for fs in container.iter() {
+		if fs.detect(device.get_handle()) {
+			return Ok(fs.clone()); // TODO Use a weak pointer?
+		}
+	}
+
+	Err(errno::ENODEV)
 }
