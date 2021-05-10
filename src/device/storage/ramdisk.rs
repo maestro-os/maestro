@@ -43,7 +43,7 @@ impl RAMDisk {
 	/// If not allocated, allocates the disk.
 	pub fn allocate(&mut self) -> Result<(), Errno> {
 		if self.data.is_none() {
-			self.data = Some(malloc::Alloc::new(RAM_DISK_SIZE)?);
+			self.data = Some(malloc::Alloc::new_default(RAM_DISK_SIZE)?);
 		}
 
 		Ok(())

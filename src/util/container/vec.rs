@@ -11,6 +11,7 @@ use core::slice;
 use crate::errno::Errno;
 use crate::memory::malloc;
 use crate::util::FailableClone;
+use crate::util;
 
 /// A vector container is a dynamically-resizable array of elements.
 /// When resizing a vector, the elements can be moved, thus the callee should not rely on pointers
@@ -42,7 +43,11 @@ impl<T> Vec<T> {
 		if let Some(data) = &mut self.data {
 			data.realloc(self.capacity)?;
 		} else {
-			self.data = Some(malloc::Alloc::new(self.capacity)?);
+			// Safe because the memory is rewritten when the object is placed into the vector
+			let data_ptr = unsafe {
+				malloc::Alloc::new_zero(self.capacity)?
+			};
+			self.data = Some(data_ptr);
 		};
 		debug_assert!(self.data.is_some());
 		Ok(())
@@ -147,8 +152,8 @@ impl<T> Vec<T> {
 		unsafe {
 			let ptr = self.data.as_mut().unwrap().as_ptr_mut();
 			ptr::copy(ptr.offset(index as _), ptr.offset((index + 1) as _), self.len - index);
+			util::write_ptr(&mut self.data.as_mut().unwrap()[index] as _, element);
 		}
-		self.data.as_mut().unwrap()[index] = element;
 		self.len += 1;
 		Ok(())
 	}
@@ -284,19 +289,28 @@ impl<T> FailableClone for Vec::<T> where T: FailableClone {
 	fn failable_clone(&self) -> Result<Self, Errno> {
 		let data = {
 			if self.data.is_some() {
-				Some(malloc::Alloc::new(self.capacity)?)
+				// Safe because initialization uses ManuallyDrop on invalid objects
+				let data_ptr = unsafe {
+					malloc::Alloc::new_zero(self.capacity)?
+				};
+				Some(data_ptr)
 			} else {
 				None
 			}
 		};
+
 		let mut v = Self {
 			len: self.len,
 			capacity: self.capacity,
 			data: data,
 		};
 		for i in 0..self.len() {
-			v[i] = self[i].failable_clone()?;
+			// Safe because the pointer is guaranteed to be correct thanks to the Alloc structure
+			unsafe {
+				util::write_ptr(&mut v[i] as _, self[i].failable_clone()?);
+			}
 		}
+
 		Ok(v)
 	}
 }

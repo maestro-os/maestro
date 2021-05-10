@@ -126,12 +126,50 @@ pub struct Alloc<T> {
 	slice: *mut [T],
 }
 
-impl<T> Alloc<T> {
-	// TODO Mark unsafe? (zeroed elements might be invalid)
+impl<T: Default> Alloc<T> {
 	/// Allocates `size` element in the kernel memory and returns a structure wrapping a slice
 	/// allowing to access it. If the allocation fails, the function shall return an error.
-	pub fn new(size: usize) -> Result<Self, Errno> {
+	/// The function will fill the memory with the default value for the object T.
+	pub fn new_default(size: usize) -> Result<Self, Errno> {
 		let slice = unsafe {
+			let ptr = alloc(size * size_of::<T>())?;
+			slice::from_raw_parts_mut::<T>(ptr as _, size)
+		};
+		for i in 0..size {
+			slice[i] = T::default();
+		}
+
+		Ok(Self {
+			slice: slice,
+		})
+	}
+}
+
+impl<T: Clone> Alloc<T> {
+	/// Allocates `size` element in the kernel memory and returns a structure wrapping a slice
+	/// allowing to access it. If the allocation fails, the function shall return an error.
+	/// `val` is a value that will be cloned to fill the memory.
+	pub fn new_clonable(size: usize, val: T) -> Result<Self, Errno> {
+		let slice = unsafe {
+			let ptr = alloc(size * size_of::<T>())?;
+			slice::from_raw_parts_mut::<T>(ptr as _, size)
+		};
+		for i in 0..size {
+			slice[i] = val.clone();
+		}
+
+		Ok(Self {
+			slice: slice,
+		})
+	}
+}
+
+impl<T> Alloc<T> {
+	/// Allocates `size` element in the kernel memory and returns a structure wrapping a slice
+	/// allowing to access it. If the allocation fails, the function shall return an error.
+	/// The function is unsafe zero memory might be an inconsistent state for the object T.
+	pub unsafe fn new_zero(size: usize) -> Result<Self, Errno> {
+		let slice = {
 			let ptr = alloc(size * size_of::<T>())?;
 			slice::from_raw_parts_mut::<T>(ptr as _, size)
 		};
@@ -165,6 +203,7 @@ impl<T> Alloc<T> {
 		self.get_slice_mut().as_mut_ptr() as _
 	}
 
+	// TODO Mark unsafe and write alternatives
 	/// Changes the size of the memory allocation. `n` is the new size of the chunk of memory (in
 	/// number of elements).
 	/// If the reallocation fails, the chunk is left untouched and the function returns an error.

@@ -90,7 +90,7 @@ impl Scheduler {
 	pub fn new(cores_count: usize) -> Result<SharedPtr::<Mutex::<Self>>, Errno> {
 		let mut tmp_stacks = Vec::new();
 		for _ in 0..cores_count {
-			tmp_stacks.push(malloc::Alloc::new(TMP_STACK_SIZE)?)?;
+			tmp_stacks.push(malloc::Alloc::new_default(TMP_STACK_SIZE)?)?;
 		}
 
 		let mut s = SharedPtr::new(Mutex::new(Self {
