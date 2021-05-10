@@ -1,5 +1,6 @@
 //! This module handles minor/major numbers, including their allocation.
 
+use crate::device::DeviceType;
 use crate::errno::Errno;
 use crate::util::container::id_allocator::IDAllocator;
 use crate::util::lock::mutex::Mutex;
@@ -31,19 +32,29 @@ pub fn makedev(major: u32, minor: u32) -> u64 {
 /// Structure representing a block of minor numbers. The structure is associated with a unique
 /// major number, and it can allocate every minor numbers with it.
 pub struct MajorBlock {
+	/// The device type.
+	device_type: DeviceType,
 	/// The block's major number.
 	major: u32,
+
 	/// The minor number allocator.
 	allocator: IDAllocator,
 }
 
 impl MajorBlock {
 	/// Creates a new instance with the given major number `major`.
-	fn new(major: u32) -> Result<Self, Errno> {
+	fn new(device_type: DeviceType, major: u32) -> Result<Self, Errno> {
 		Ok(Self {
+			device_type: device_type,
 			major: major,
+
 			allocator: IDAllocator::new(MINORS_COUNT)?,
 		})
+	}
+
+	/// Returns the device type.
+	pub fn get_device_type(&self) -> DeviceType {
+		self.device_type
 	}
 
 	/// Returns the major number associated with the block.
@@ -71,19 +82,28 @@ impl Drop for MajorBlock {
 }
 
 /// The major numbers allocator.
-static mut MAJOR_ALLOCATOR: Mutex<Option<IDAllocator>> = Mutex::new(None);
-// TODO
-///// The list of major blocks allocated for dynamicaly allocated minor/major pairs.
-//static mut DYN_MAJORS: Mutex<Vec<MajorBlock>> = Mutex::new(Vec::new());
+static mut BLOCK_MAJOR_ALLOCATOR: Mutex<Option<IDAllocator>> = Mutex::new(None);
+/// The major numbers allocator.
+static mut CHAR_MAJOR_ALLOCATOR: Mutex<Option<IDAllocator>> = Mutex::new(None);
 
 /// Allocates a major number.
+/// `device_type` is the type of device for the major block to be allocated.
 /// If `major` is not None, the function shall allocate the specific given major number.
 /// If the allocation fails, the function returns an Err.
-pub fn alloc_major(major: Option<u32>) -> Result<MajorBlock, Errno> {
-	let mutex = unsafe { // Safe because using Mutex
-		&mut MAJOR_ALLOCATOR
+pub fn alloc_major(device_type: DeviceType, major: Option<u32>) -> Result<MajorBlock, Errno> {
+	let mut guard = match device_type {
+		DeviceType::Block => {
+			unsafe { // Safe because using mutex
+				MutexGuard::new(&mut BLOCK_MAJOR_ALLOCATOR)
+			}
+		},
+		DeviceType::Char => {
+			unsafe { // Safe because using mutex
+				MutexGuard::new(&mut CHAR_MAJOR_ALLOCATOR)
+			}
+		}
 	};
-	let mut guard = MutexGuard::new(mutex);
+
 	let major_allocator = guard.get_mut();
 	if major_allocator.is_none() {
 		*major_allocator = Some(IDAllocator::new(MAJOR_COUNT)?);
@@ -91,33 +111,29 @@ pub fn alloc_major(major: Option<u32>) -> Result<MajorBlock, Errno> {
 	let major_allocator = major_allocator.as_mut().unwrap();
 
 	let major = major_allocator.alloc(major)?;
-	let block = MajorBlock::new(major)?;
+	let block = MajorBlock::new(device_type, major)?;
 	Ok(block)
 }
 
 /// Frees the given major block `block`.
 /// **WARNING**: This function should be called directly, but only from the MajorBlock itself.
 pub fn free_major(block: &mut MajorBlock) {
-	let mutex = unsafe { // Safe because using Mutex
-		&mut MAJOR_ALLOCATOR
+	let mut guard = match block.get_device_type() {
+		DeviceType::Block => {
+			unsafe { // Safe because using mutex
+				MutexGuard::new(&mut BLOCK_MAJOR_ALLOCATOR)
+			}
+		},
+		DeviceType::Char => {
+			unsafe { // Safe because using mutex
+				MutexGuard::new(&mut CHAR_MAJOR_ALLOCATOR)
+			}
+		}
 	};
-	let mut guard = MutexGuard::new(mutex);
-	let major_allocator = guard.get_mut().as_mut().unwrap();
 
+	let major_allocator = guard.get_mut().as_mut().unwrap();
 	major_allocator.free(block.get_major());
 }
-
-/* TODO
-/// Allocates a dynamic major and minor number. If none is available, the function fails.
-pub fn alloc_dyn() -> Result<(u32, u32), ()> {
-	// TODO
-	Err(())
-}
-
-/// Frees the given pair of major/minor numbers `major` and `minor`.
-pub fn free_dyn(major: u32, minor: u32) {
-	// TODO
-}*/
 
 #[cfg(test)]
 mod test {

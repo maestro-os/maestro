@@ -164,7 +164,7 @@ impl StorageManager {
 	/// Creates a new instance.
 	pub fn new() -> Result<Self, Errno> {
 		Ok(Self {
-			major_block: id::alloc_major(Some(STORAGE_MAJOR))?,
+			major_block: id::alloc_major(DeviceType::Block, Some(STORAGE_MAJOR))?,
 			interfaces: Vec::new(),
 		})
 	}
