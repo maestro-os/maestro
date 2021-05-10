@@ -1,11 +1,12 @@
 /// A mount point is a directory in which a filesystem is mounted.
 
-use crate::errno;
 use crate::device::Device;
 use crate::device::DeviceType;
 use crate::device;
 use crate::errno::Errno;
+use crate::errno;
 use crate::file::filesystem::Filesystem;
+use crate::util::boxed::Box;
 use crate::util::container::vec::Vec;
 use crate::util::lock::mutex::Mutex;
 use crate::util::lock::mutex::MutexGuard;
@@ -26,7 +27,7 @@ pub struct MountPoint {
 	path: Path,
 
 	/// An instance of the filesystem associated with the mountpoint.
-	filesystem: SharedPtr<dyn Filesystem>,
+	filesystem: Box<dyn Filesystem>,
 }
 
 impl MountPoint {
@@ -38,7 +39,8 @@ impl MountPoint {
 	pub fn new(device_type: DeviceType, major: u32, minor: u32, path: Path)
 		-> Result<Self, Errno> {
 		let mut device = device::get_device(device_type, major, minor).ok_or(errno::ENODEV)?;
-		let filesystem = filesystem::detect(device.as_mut())?;
+		let fs_type = filesystem::detect(device.as_mut())?;
+		let filesystem = fs_type.new_filesystem(device.as_mut().get_handle())?;
 
 		Ok(Self {
 			device_type: device_type,
@@ -77,8 +79,8 @@ impl MountPoint {
 	}
 
 	/// Returns a mutable reference to the filesystem associated with the device.
-	pub fn get_filesystem(&mut self) -> &mut SharedPtr<dyn Filesystem> {
-		&mut self.filesystem
+	pub fn get_filesystem(&mut self) -> &mut dyn Filesystem {
+		self.filesystem.as_mut()
 	}
 }
 

@@ -4,6 +4,7 @@ use crate::device::Device;
 use crate::device::DeviceHandle;
 use crate::errno::Errno;
 use crate::errno;
+use crate::util::boxed::Box;
 use crate::util::container::vec::Vec;
 use crate::util::lock::mutex::Mutex;
 use crate::util::lock::mutex::MutexGuard;
@@ -17,9 +18,6 @@ pub trait Filesystem {
 	/// Returns the name of the filesystem.
 	fn get_name(&self) -> &str;
 
-	/// Tells whether the given device has the current filesystem.
-	fn detect(&self, io: &mut dyn DeviceHandle) -> bool;
-
 	/// Loads the file at path `path`.
 	fn load_file(&mut self, io: &mut dyn DeviceHandle, path: Path) -> Result<File, Errno>;
 	/// Reads from the given node `node` into the buffer `buf`.
@@ -32,32 +30,44 @@ pub trait Filesystem {
 	// TODO
 }
 
-/// The list of mountpoints.
-static mut FILESYSTEMS: Mutex<Vec<SharedPtr<dyn Filesystem>>> = Mutex::new(Vec::new());
+/// Trait representing a filesystem type.
+pub trait FilesystemType {
+	/// Returns the name of the filesystem.
+	fn get_name(&self) -> &str;
 
-/// Registers a new filesystem `fs`.
-pub fn register<T: 'static + Filesystem>(fs: T) -> Result<(), Errno> {
-	let mutex = unsafe { // Safe because using Mutex
-		&mut FILESYSTEMS
-	};
-	let mut guard = MutexGuard::new(mutex);
-	let container = guard.get_mut();
-	container.push(SharedPtr::new(fs)?)
+	/// Tells whether the given device has the current filesystem.
+	fn detect(&self, io: &mut dyn DeviceHandle) -> bool;
+
+	/// Creates a new instance of the filesystem.
+	fn new_filesystem(&self, io: &mut dyn DeviceHandle) -> Result<Box<dyn Filesystem>, Errno>;
 }
 
-// TODO Function to unregister a filesystem
+/// The list of mountpoints.
+static mut FILESYSTEMS: Mutex<Vec<SharedPtr<dyn FilesystemType>>> = Mutex::new(Vec::new());
 
-/// Detects the filesystem on the given device `device`.
-pub fn detect(device: &mut Device) -> Result<SharedPtr<dyn Filesystem>, Errno> {
+/// Registers a new filesystem type `fs`.
+pub fn register<T: 'static + FilesystemType>(fs_type: T) -> Result<(), Errno> {
+	let mutex = unsafe { // Safe because using Mutex
+		&mut FILESYSTEMS
+	};
+	let mut guard = MutexGuard::new(mutex);
+	let container = guard.get_mut();
+	container.push(SharedPtr::new(fs_type)?)
+}
+
+// TODO Function to unregister a filesystem type
+
+/// Detects the filesystem type on the given device `device`.
+pub fn detect(device: &mut Device) -> Result<SharedPtr<dyn FilesystemType>, Errno> {
 	let mutex = unsafe { // Safe because using Mutex
 		&mut FILESYSTEMS
 	};
 	let mut guard = MutexGuard::new(mutex);
 	let container = guard.get_mut();
 
-	for fs in container.iter() {
-		if fs.detect(device.get_handle()) {
-			return Ok(fs.clone()); // TODO Use a weak pointer?
+	for fs_type in container.iter() {
+		if fs_type.detect(device.get_handle()) {
+			return Ok(fs_type.clone()); // TODO Use a weak pointer?
 		}
 	}
 

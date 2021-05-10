@@ -12,11 +12,11 @@ use super::DeviceType;
 pub struct NullDeviceHandle {}
 
 impl DeviceHandle for NullDeviceHandle {
-	fn read(&mut self, _offset: usize, _buff: &mut [u8]) -> Result<usize, Errno> {
+	fn read(&mut self, _offset: u64, _buff: &mut [u8]) -> Result<usize, Errno> {
 		Ok(0)
 	}
 
-	fn write(&mut self, _offset: usize, buff: &[u8]) -> Result<usize, Errno> {
+	fn write(&mut self, _offset: u64, buff: &[u8]) -> Result<usize, Errno> {
 		Ok(buff.len())
 	}
 }
@@ -25,14 +25,14 @@ impl DeviceHandle for NullDeviceHandle {
 pub struct ZeroDeviceHandle {}
 
 impl DeviceHandle for ZeroDeviceHandle {
-	fn read(&mut self, _offset: usize, buff: &mut [u8]) -> Result<usize, Errno> {
+	fn read(&mut self, _offset: u64, buff: &mut [u8]) -> Result<usize, Errno> {
 		for i in 0..buff.len() {
 			buff[i] = 0;
 		}
 		Ok(buff.len())
 	}
 
-	fn write(&mut self, _offset: usize, buff: &[u8]) -> Result<usize, Errno> {
+	fn write(&mut self, _offset: u64, buff: &[u8]) -> Result<usize, Errno> {
 		Ok(buff.len())
 	}
 }
@@ -41,12 +41,12 @@ impl DeviceHandle for ZeroDeviceHandle {
 pub struct CurrentTTYDeviceHandle {}
 
 impl DeviceHandle for CurrentTTYDeviceHandle {
-	fn read(&mut self, _offset: usize, _buff: &mut [u8]) -> Result<usize, Errno> {
+	fn read(&mut self, _offset: u64, _buff: &mut [u8]) -> Result<usize, Errno> {
 		// TODO Read from TTY input
 		Ok(0)
 	}
 
-	fn write(&mut self, _offset: usize, buff: &[u8]) -> Result<usize, Errno> {
+	fn write(&mut self, _offset: u64, buff: &[u8]) -> Result<usize, Errno> {
 		// Invalid UTF8 isn't important since the TTY is supposed to write exactly the data it gets
 		let s = unsafe {
 			str::from_utf8_unchecked(buff)

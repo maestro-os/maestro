@@ -32,14 +32,16 @@ const MAX_PARTITIONS: u32 = 16;
 /// the storage device.
 pub trait StorageInterface {
 	/// Returns the size of the storage blocks in bytes.
-	fn get_block_size(&self) -> usize;
+	/// This value must always stay the same.
+	fn get_block_size(&self) -> u64;
 	/// Returns the number of storage blocks.
+	/// This value must always stay the same.
 	fn get_blocks_count(&self) -> u64;
 
 	/// Reads `size` blocks from storage at block offset `offset`, writting the data to `buf`.
-	fn read(&self, buf: &mut [u8], offset: u64, size: u64) -> Result<(), ()>;
+	fn read(&mut self, buf: &mut [u8], offset: u64, size: u64) -> Result<(), Errno>;
 	/// Writes `size` blocks to storage at block offset `offset`, reading the data from `buf`.
-	fn write(&self, buf: &[u8], offset: u64, size: u64) -> Result<(), ()>;
+	fn write(&mut self, buf: &[u8], offset: u64, size: u64) -> Result<(), Errno>;
 }
 
 pub mod partition {
@@ -87,7 +89,7 @@ pub mod partition {
 	}
 
 	/// Reads the list of partitions from the given storage interface `storage`.
-	pub fn read(storage: &dyn StorageInterface) -> Result<Vec<Partition>, Errno> {
+	pub fn read(storage: &mut dyn StorageInterface) -> Result<Vec<Partition>, Errno> {
 		if storage.get_block_size() != 512 {
 			return Ok(Vec::new());
 		}
@@ -139,12 +141,12 @@ impl StorageDeviceHandle {
 }
 
 impl DeviceHandle for StorageDeviceHandle {
-	fn read(&mut self, _offset: usize, _buff: &mut [u8]) -> Result<usize, Errno> {
+	fn read(&mut self, _offset: u64, _buff: &mut [u8]) -> Result<usize, Errno> {
 		// TODO
 		Ok(0)
 	}
 
-	fn write(&mut self, _offset: usize, _buff: &[u8]) -> Result<usize, Errno> {
+	fn write(&mut self, _offset: u64, _buff: &[u8]) -> Result<usize, Errno> {
 		// TODO
 		Ok(0)
 	}
@@ -171,7 +173,7 @@ impl StorageManager {
 	// handled in the range of minor numbers
 	// TODO When failing, remove previously registered devices
 	/// Adds a storage device.
-	fn add(&mut self, storage: Box<dyn StorageInterface>) -> Result<(), Errno> {
+	fn add(&mut self, mut storage: Box<dyn StorageInterface>) -> Result<(), Errno> {
 		let major = self.major_block.get_major();
 		let storage_id = self.interfaces.len() as u32;
 
@@ -192,7 +194,7 @@ impl StorageManager {
 			device_type, main_handle)?;
 		device::register_device(main_device)?;
 
-		let partitions = partition::read(storage.as_ref())?;
+		let partitions = partition::read(storage.as_mut())?;
 		for i in 0..min(MAX_PARTITIONS, partitions.len() as u32) {
 			let path = Path::from_string(prefix.as_str())?; // TODO Add i + 1 as char at the end
 			let handle = StorageDeviceHandle::new(storage_id, i, self);

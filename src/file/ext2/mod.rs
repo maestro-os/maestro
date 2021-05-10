@@ -7,7 +7,29 @@ use crate::errno;
 use crate::file::File;
 use crate::file::INode;
 use crate::file::filesystem::Filesystem;
+use crate::file::filesystem::FilesystemType;
 use crate::file::path::Path;
+use crate::util::boxed::Box;
+
+/// Structure representing the ext2 filesystem type.
+pub struct Ext2FsType {}
+
+impl FilesystemType for Ext2FsType {
+	fn get_name(&self) -> &str {
+		"ext2"
+	}
+
+	fn detect(&self, _io: &mut dyn DeviceHandle) -> bool {
+		// TODO
+
+		false
+	}
+
+	fn new_filesystem(&self, _io: &mut dyn DeviceHandle) -> Result<Box<dyn Filesystem>, Errno> {
+		// TODO
+		Err(errno::ENOMEM)
+	}
+}
 
 /// Structure representing a instance of the ext2 filesystem.
 pub struct Ext2Fs {}
@@ -22,12 +44,6 @@ impl Ext2Fs {
 impl Filesystem for Ext2Fs {
 	fn get_name(&self) -> &str {
 		"ext2"
-	}
-
-	fn detect(&self, _io: &mut dyn DeviceHandle) -> bool {
-		// TODO
-
-		false
 	}
 
 	fn load_file(&mut self, _io: &mut dyn DeviceHandle, _path: Path) -> Result<File, Errno> {

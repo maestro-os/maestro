@@ -457,7 +457,7 @@ static mut FILES_CACHE: MaybeUninit<Mutex<FCache>> = MaybeUninit::uninit();
 
 /// Registers the filesystems that are implemented inside of the kernel itself.
 fn register_default_fs() -> Result<(), Errno> {
-	filesystem::register(ext2::Ext2Fs::new())?;
+	filesystem::register(ext2::Ext2FsType {})?;
 
 	Ok(())
 }

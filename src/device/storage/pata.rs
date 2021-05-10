@@ -12,6 +12,8 @@
 ///
 /// TODO
 
+use crate::errno::Errno;
+use crate::errno;
 use crate::io;
 use crate::util::math;
 use super::StorageInterface;
@@ -360,21 +362,21 @@ impl PATAInterface {
 	}
 
 	/// Waits for the drive to be ready for IO operation. The device is assumed to be selected.
-	fn wait_io(&self) -> Result<(), ()> {
+	fn wait_io(&self) -> Result<(), Errno> {
 		loop {
 			let status = self.get_status();
 			if (status & STATUS_BSY == 0) && (status & STATUS_DRQ != 0) {
 				return Ok(());
 			}
 			if (status & STATUS_ERR != 0) && (status & STATUS_DF != 0) {
-				return Err(());
+				return Err(errno::EINVAL); // TODO Set correct errno
 			}
 		}
 	}
 
 	/// Reads `size` blocks from storage at block offset `offset`, writting the data to `buf`.
 	/// The function uses LBA28, thus the offset is assumed to be in range.
-	fn read28(&self, buf: &mut [u8], offset: u64, size: u64) -> Result<(), ()> {
+	fn read28(&self, buf: &mut [u8], offset: u64, size: u64) -> Result<(), Errno> {
 		self.select();
 		self.wait(true);
 
@@ -421,14 +423,14 @@ impl PATAInterface {
 
 	/// Reads `size` blocks from storage at block offset `offset`, writting the data to `buf`.
 	/// The function uses LBA48.
-	fn read48(&self, _buf: &mut [u8], _offset: u64, _size: u64) -> Result<(), ()> {
+	fn read48(&self, _buf: &mut [u8], _offset: u64, _size: u64) -> Result<(), Errno> {
 		// TODO
-		Err(())
+		Err(errno::EINVAL) // TODO Set correct errno
 	}
 
 	/// Writes `size` blocks to storage at block offset `offset`, reading the data from `buf`.
 	/// The function uses LBA28, thus the offset is assumed to be in range.
-	fn write28(&self, buf: &[u8], offset: u64, size: u64) -> Result<(), ()> {
+	fn write28(&self, buf: &[u8], offset: u64, size: u64) -> Result<(), Errno> {
 		self.select();
 		self.wait(true);
 
@@ -476,14 +478,14 @@ impl PATAInterface {
 
 	/// Writes `size` blocks to storage at block offset `offset`, reading the data from `buf`.
 	/// The function uses LBA48.
-	fn write48(&self, _buf: &[u8], _offset: u64, _size: u64) -> Result<(), ()> {
+	fn write48(&self, _buf: &[u8], _offset: u64, _size: u64) -> Result<(), Errno> {
 		// TODO
-		Err(())
+		Err(errno::EINVAL) // TODO Set correct errno
 	}
 }
 
 impl StorageInterface for PATAInterface {
-	fn get_block_size(&self) -> usize {
+	fn get_block_size(&self) -> u64 {
 		512
 	}
 
@@ -491,9 +493,9 @@ impl StorageInterface for PATAInterface {
 		self.sectors_count
 	}
 
-	fn read(&self, buf: &mut [u8], offset: u64, size: u64) -> Result<(), ()> {
+	fn read(&mut self, buf: &mut [u8], offset: u64, size: u64) -> Result<(), Errno> {
 		if offset >= self.sectors_count || offset + size >= self.sectors_count {
-			return Err(());
+			return Err(errno::EINVAL);
 		}
 
 		if offset <= (1 << 29) - 1 {
@@ -503,9 +505,9 @@ impl StorageInterface for PATAInterface {
 		}
 	}
 
-	fn write(&self, buf: &[u8], offset: u64, size: u64) -> Result<(), ()> {
+	fn write(&mut self, buf: &[u8], offset: u64, size: u64) -> Result<(), Errno> {
 		if offset >= self.sectors_count || offset + size >= self.sectors_count {
-			return Err(());
+			return Err(errno::EINVAL);
 		}
 
 		if offset <= (1 << 29) - 1 {

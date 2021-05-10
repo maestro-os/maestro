@@ -10,6 +10,7 @@ use crate::errno::Errno;
 use crate::file::path::Path;
 use crate::memory::malloc;
 use crate::util::container::string::String;
+use super::StorageInterface;
 
 /// The ramdisks' major number.
 const RAM_DISK_MAJOR: u32 = 1;
@@ -50,6 +51,40 @@ impl RAMDisk {
 	}
 }
 
+impl StorageInterface for RAMDisk {
+	fn get_block_size(&self) -> u64 {
+		1
+	}
+
+	fn get_blocks_count(&self) -> u64 {
+		(RAM_DISK_SIZE as u64) / self.get_block_size()
+	}
+
+	fn read(&mut self, buf: &mut [u8], _offset: u64, _size: u64) -> Result<(), Errno> {
+		if !self.is_allocated() {
+			for i in 0..buf.len() {
+				buf[i] = 0;
+			}
+
+			return Ok(());
+		}
+
+		// TODO
+
+		Ok(())
+	}
+
+	fn write(&mut self, _buf: &[u8], _offset: u64, _size: u64) -> Result<(), Errno> {
+		if !self.is_allocated() {
+			self.allocate()?;
+		}
+
+		// TODO
+
+		Ok(())
+	}
+}
+
 /// Structure representing a device for a ram disk.
 struct RAMDiskHandle {
 	/// The ramdisk.
@@ -66,16 +101,23 @@ impl RAMDiskHandle {
 }
 
 impl DeviceHandle for RAMDiskHandle {
-	fn read(&mut self, _offset: usize, _buff: &mut [u8]) -> Result<usize, Errno> {
-		// TODO
+	fn read(&mut self, offset: u64, buff: &mut [u8]) -> Result<usize, Errno> {
+		let block_off = offset / self.disk.get_block_size();
+		let block_size = 0; // TODO
+		self.disk.read(buff, block_off, block_size)?;
 
-		Ok(0)
+		Ok(buff.len())
 	}
 
-	fn write(&mut self, _offset: usize, _buff: &[u8]) -> Result<usize, Errno> {
-		// TODO
+	fn write(&mut self, offset: u64, buff: &[u8]) -> Result<usize, Errno> {
+		let block_off = offset / self.disk.get_block_size();
+		let block_size = 0; // TODO
 
-		Ok(0)
+		// TODO Read first and last sectors to complete them
+
+		self.disk.write(buff, block_off, block_size)?;
+
+		Ok(buff.len())
 	}
 }
 
