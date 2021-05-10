@@ -1,4 +1,4 @@
-//! This module contains the buddy allocator which allows to allocate 2^^n pages large frames of
+//! This module contains the buddy allocator which allows to allocate `2^^n` pages large frames of
 //! memory.
 //!
 //! This allocator works by dividing frames of memory in two until the a frame of the required size

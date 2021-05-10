@@ -53,7 +53,7 @@ impl PartialOrd::<*const c_void> for PageRefCounter {
 	}
 }
 
-/// Structure representing the physical pages reference counter.
+/// Structure representing the reference counter for all physical pages.
 pub struct PhysRefCounter {
 	/// The binary tree storing the number of references for each pages.
 	tree: BinaryTree::<PageRefCounter>,
