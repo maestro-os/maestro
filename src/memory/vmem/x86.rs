@@ -1,21 +1,21 @@
-/// x86 virtual memory works with a tree structure. Each element is an array of subelements. The
-/// position of the elements in the arrays allows to tell the virtual address for the mapping.
-/// Under 32 bits, elements are array of 32 bits long words that can contain 1024 entries. The
-/// following elements are available:
-/// - Page directory: The main element, contains page tables
-/// - Page table: Represents a block of 4MB, each entry is a page
-///
-/// Under 32 bits, pages are 4096 bytes large. Each entries of elements contains the physical
-/// address to the element/page and some flags. The flags can be stored with the address in only
-/// 4 bytes large entries because addresses have to be page-aligned, freeing 12 bits in the entry
-/// for the flags.
-///
-/// For each entries of each elements, the kernel must keep track of how many elements are being
-/// used. This can be done with a simple counter: when an entry is allocated, the counter is
-/// incremented and when an entry is freed, the counter is decremented. When the counter reaches 0,
-/// the element can be freed.
-///
-/// The Page Size Extension (PSE) allows to map 4MB large blocks without using a page table.
+//! x86 virtual memory works with a tree structure. Each element is an array of subelements. The
+//! position of the elements in the arrays allows to tell the virtual address for the mapping.
+//! Under 32 bits, elements are array of 32 bits long words that can contain 1024 entries. The
+//! following elements are available:
+//! - Page directory: The main element, contains page tables
+//! - Page table: Represents a block of 4MB, each entry is a page
+//!
+//! Under 32 bits, pages are 4096 bytes large. Each entries of elements contains the physical
+//! address to the element/page and some flags. The flags can be stored with the address in only
+//! 4 bytes large entries because addresses have to be page-aligned, freeing 12 bits in the entry
+//! for the flags.
+//!
+//! For each entries of each elements, the kernel must keep track of how many elements are being
+//! used. This can be done with a simple counter: when an entry is allocated, the counter is
+//! incremented and when an entry is freed, the counter is decremented. When the counter reaches 0,
+//! the element can be freed.
+//!
+//! The Page Size Extension (PSE) allows to map 4MB large blocks without using a page table.
 
 use core::ffi::c_void;
 use core::ptr::null;

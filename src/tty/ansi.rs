@@ -1,4 +1,4 @@
-/// This modules implements the ANSI escape codes for the TTY interface.
+//! This modules implements the ANSI escape codes for the TTY interface.
 
 use super::TTY;
 

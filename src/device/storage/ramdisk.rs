@@ -1,6 +1,6 @@
-/// A ramdisk is a virtual storage device stored on the RAM. From the point of view of the
-/// userspace, it works exactly the same.
-/// Ramdisks are lazily allocated so they do not use much memory as long as they are not used.
+//! A ramdisk is a virtual storage device stored on the RAM. From the point of view of the
+//! userspace, it works exactly the same.
+//! Ramdisks are lazily allocated so they do not use much memory as long as they are not used.
 
 use crate::device::Device;
 use crate::device::DeviceHandle;

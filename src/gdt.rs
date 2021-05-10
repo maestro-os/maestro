@@ -1,6 +1,6 @@
-/// Under the x86 architecture, the GDT (Global Descriptior Table) is a table of structure that
-/// describes the segments of memory. It is a deprecated structure that still must be used in order
-/// to switch to protected mode, handle protection rings and load the Task State Segment (TSS).
+//! Under the x86 architecture, the GDT (Global Descriptior Table) is a table of structure that
+//! describes the segments of memory. It is a deprecated structure that still must be used in order
+//! to switch to protected mode, handle protection rings and load the Task State Segment (TSS).
 
 use core::ffi::c_void;
 use crate::memory;

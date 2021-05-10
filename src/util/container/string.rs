@@ -1,4 +1,4 @@
-/// This module implements the String structure which wraps the `str` type.
+//! This module implements the String structure which wraps the `str` type.
 
 use core::fmt::Debug;
 use core::fmt;

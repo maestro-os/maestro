@@ -1,4 +1,4 @@
-/// This file contains the Box structure.
+//! This file contains the Box structure.
 
 use core::ffi::c_void;
 use core::marker::Unsize;

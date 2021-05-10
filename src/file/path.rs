@@ -1,4 +1,4 @@
-/// This module handles files path.
+//! This module handles files path.
 
 use core::ops::Index;
 use core::ops::IndexMut;

@@ -1,5 +1,5 @@
-/// This module handles PS/2 devices.
-/// TODO doc
+//! This module handles PS/2 devices.
+//! TODO doc
 
 // TODO Externalize this module into a kernel module when the interface for loading them will be
 // ready

@@ -1,4 +1,4 @@
-/// A mount point is a directory in which a filesystem is mounted.
+//! A mount point is a directory in which a filesystem is mounted.
 
 use crate::device::Device;
 use crate::device::DeviceType;

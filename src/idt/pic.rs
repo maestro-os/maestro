@@ -1,3 +1,6 @@
+//! The PIC is a component handling external interruptions, which allows to block interruptions
+//! until the CPU tells that it's ready to handle another one.
+
 use crate::io;
 
 /// TODO doc

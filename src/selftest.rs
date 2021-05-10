@@ -1,4 +1,4 @@
-/// This module handles selftesting of the kernel.
+//! This module handles selftesting of the kernel.
 
 /// This module contains utilities to manipulate QEMU for testing.
 #[cfg(config_debug_qemu)]

@@ -1,5 +1,5 @@
-/// This module implements an identifier allocator, allowing to allocate and free indexes in a
-/// range between [0; max], where `max` is given.
+//! This module implements an identifier allocator, allowing to allocate and free indexes in a
+//! range between [0; max], where `max` is given.
 
 use crate::errno::Errno;
 use crate::errno;

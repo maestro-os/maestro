@@ -1,4 +1,4 @@
-/// This module contains mathematical utility functions.
+//! This module contains mathematical utility functions.
 
 use core::intrinsics::wrapping_add;
 use core::intrinsics::wrapping_mul;

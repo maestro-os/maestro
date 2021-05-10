@@ -1,4 +1,4 @@
-/// This module contains the Semaphore structure.
+//! This module contains the Semaphore structure.
 
 use crate::errno::Errno;
 use crate::util::container::vec::Vec;

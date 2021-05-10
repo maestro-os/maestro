@@ -1,5 +1,5 @@
-/// A memory mapping is a region of virtual memory that a process can access. It may be mapped
-/// at the process's creation or by the process itself using system calls.
+//! A memory mapping is a region of virtual memory that a process can access. It may be mapped
+//! at the process's creation or by the process itself using system calls.
 
 use core::cmp::Ordering;
 use core::ffi::c_void;

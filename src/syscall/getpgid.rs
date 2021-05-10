@@ -1,5 +1,5 @@
-/// This module implements the `getpgid` system call, which allows to get the process group ID of a
-/// process.
+//! This module implements the `getpgid` system call, which allows to get the process group ID of a
+//! process.
 
 use crate::errno::Errno;
 use crate::errno;

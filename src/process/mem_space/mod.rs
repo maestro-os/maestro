@@ -1,6 +1,6 @@
-/// This module implements the MemSpace structure which is responsible for handling the memory
-/// mapping of execution contexts.
-/// TODO doc
+//! This module implements the MemSpace structure which is responsible for handling the memory
+//! mapping of execution contexts.
+//! TODO doc
 
 mod gap;
 mod mapping;

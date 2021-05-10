@@ -1,5 +1,5 @@
-/// This file handles memory allocators initialization for the kernel. Memory allocators are
-/// located in the library `mem_alloc`.
+//! This file handles memory allocators initialization for the kernel. Memory allocators are
+//! located in the library `mem_alloc`.
 
 use core::ffi::c_void;
 use crate::memory::buddy;

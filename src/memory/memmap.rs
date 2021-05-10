@@ -1,6 +1,6 @@
-/// This module handles the memory informations, which stores global informations on the system
-/// memory by retrieving them from the boot informations. These data are meant to be used by the
-/// memory allocators.
+//! This module handles the memory informations, which stores global informations on the system
+//! memory by retrieving them from the boot informations. These data are meant to be used by the
+//! memory allocators.
 
 use core::cmp::*;
 use core::mem::MaybeUninit;

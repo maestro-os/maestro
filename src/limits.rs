@@ -1,4 +1,4 @@
-/// This module contains the system limits.
+//! This module contains the system limits.
 
 use crate::memory;
 

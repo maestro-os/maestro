@@ -1,4 +1,4 @@
-/// This module implements the `write` system call, which allows to write data to a file.
+//! This module implements the `write` system call, which allows to write data to a file.
 
 use core::slice;
 use core::str;

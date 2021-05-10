@@ -1,4 +1,4 @@
-/// A filesystem is the representation of the file hierarchy on a storage device.
+//! A filesystem is the representation of the file hierarchy on a storage device.
 
 use crate::device::Device;
 use crate::device::DeviceHandle;

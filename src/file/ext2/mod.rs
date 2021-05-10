@@ -1,5 +1,5 @@
-/// The ext2 filesystem is a classical filesystem used in Unix systems.
-/// It is nowdays obsolete and has been replaced by ext3 and ext4.
+//! The ext2 filesystem is a classical filesystem used in Unix systems.
+//! It is nowdays obsolete and has been replaced by ext3 and ext4.
 
 use crate::device::DeviceHandle;
 use crate::errno::Errno;

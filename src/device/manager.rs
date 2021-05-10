@@ -1,4 +1,4 @@
-/// The device manager is the structure which links the physical devices to device files.
+//! The device manager is the structure which links the physical devices to device files.
 
 use crate::errno::Errno;
 use crate::util::boxed::Box;

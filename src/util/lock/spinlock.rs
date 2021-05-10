@@ -1,5 +1,5 @@
-/// This module contains the Spinlock structure, which is considered as being a low level feature.
-/// Unless for special cases, other locks should be used instead.
+//! This module contains the Spinlock structure, which is considered as being a low level feature.
+//! Unless for special cases, other locks should be used instead.
 
 extern "C" {
 	pub fn spin_lock(lock: *mut i32);

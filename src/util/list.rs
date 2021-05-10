@@ -1,7 +1,7 @@
-/// This module implements the LinkedList utility.
-///
-/// What's called a "floating linked list" is a linked list which doesn't have a beginning, it may
-/// be accessed only in its middle, through its elements.
+//! This module implements the LinkedList utility.
+//!
+//! What's called a "floating linked list" is a linked list which doesn't have a beginning, it may
+//! be accessed only in its middle, through its elements.
 
 use core::marker::PhantomData;
 use core::ptr::NonNull;

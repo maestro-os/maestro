@@ -1,5 +1,5 @@
-/// This module implements CMOS control features.
-/// The CMOS is a persistent memory used to store some BIOS settings.
+//! This module implements CMOS control features.
+//! The CMOS is a persistent memory used to store some BIOS settings.
 
 use crate::idt;
 use crate::io;

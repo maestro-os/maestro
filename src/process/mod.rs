@@ -1,5 +1,5 @@
-/// A process is a task running on the kernel. A multitasking system allows several processes to
-/// run at the same time by sharing the CPU resources using a scheduler.
+//! A process is a task running on the kernel. A multitasking system allows several processes to
+//! run at the same time by sharing the CPU resources using a scheduler.
 
 pub mod mem_space;
 pub mod pid;

@@ -1,4 +1,4 @@
-/// This file handles macros `print` and `println`.
+//! This file handles macros `print` and `println`.
 
 use crate::tty;
 use crate::util::lock::mutex::MutexGuard;

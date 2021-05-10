@@ -1,4 +1,4 @@
-/// TODO doc
+//! TODO doc
 
 use core::ffi::c_void;
 use core::mem::size_of;

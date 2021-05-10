@@ -1,4 +1,4 @@
-/// This module implements process signals.
+//! This module implements process signals.
 
 use crate::errno::Errno;
 use crate::errno;

@@ -1,7 +1,7 @@
-/// This module implements a physical pages reference counter, which is used to keep track of the
-/// physical pages that are referenced by several mappings.
-/// For each page that is referenced more than once, the counter stores the number of references to
-/// that page. A binary tree is used to find the page from its pointer.
+//! This module implements a physical pages reference counter, which is used to keep track of the
+//! physical pages that are referenced by several mappings.
+//! For each page that is referenced more than once, the counter stores the number of references to
+//! that page. A binary tree is used to find the page from its pointer.
 
 use core::cmp::Ordering;
 use core::ffi::c_void;

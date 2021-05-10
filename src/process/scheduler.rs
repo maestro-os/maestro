@@ -1,12 +1,12 @@
-/// The role of the process scheduler is to interrupt the currently running process periodicaly
-/// to switch to another process that is in running state. The interruption is fired by the PIT
-/// on IDT0.
-///
-/// A scheduler cycle is a period during which the scheduler iterates through every processes.
-/// The scheduler works by assigning a number of quantum for each process, based on the number of
-/// running processes and their priority.
-/// This number represents the number of ticks during which the process keeps running until
-/// switching to the next process.
+//! The role of the process scheduler is to interrupt the currently running process periodicaly
+//! to switch to another process that is in running state. The interruption is fired by the PIT
+//! on IDT0.
+//!
+//! A scheduler cycle is a period during which the scheduler iterates through every processes.
+//! The scheduler works by assigning a number of quantum for each process, based on the number of
+//! running processes and their priority.
+//! This number represents the number of ticks during which the process keeps running until
+//! switching to the next process.
 
 use core::cmp::max;
 use core::ffi::c_void;

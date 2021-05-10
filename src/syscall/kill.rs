@@ -1,4 +1,4 @@
-/// This module implements the `kill` system call, which allows to send a signal to a process.
+//! This module implements the `kill` system call, which allows to send a signal to a process.
 
 use crate::errno::Errno;
 use crate::errno;

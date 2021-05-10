@@ -1,5 +1,5 @@
-/// A file descriptor is a sort of pointer to a file, allowing a process to manipulate the
-/// filesystem through system calls.
+//! A file descriptor is a sort of pointer to a file, allowing a process to manipulate the
+//! filesystem through system calls.
 
 use crate::file::File;
 use crate::util::FailableClone;

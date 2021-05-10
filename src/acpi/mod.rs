@@ -1,4 +1,4 @@
-/// This module implements ACPI related features.
+//! This module implements ACPI related features.
 
 use core::ffi::c_void;
 use core::intrinsics::wrapping_add;

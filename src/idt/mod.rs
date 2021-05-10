@@ -1,6 +1,8 @@
-/// TODO doc
+//! The Interrupt Descriptor Table (IDT) is a table under the x86 architecture storing the list of
+//! interrupt handlers, allowing to catch and handle interruptions.
 
 pub mod pic;
+
 use core::ffi::c_void;
 use core::mem::MaybeUninit;
 use crate::util;

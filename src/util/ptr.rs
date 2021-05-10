@@ -1,4 +1,4 @@
-/// This module contains pointer-like structures.
+//! This module contains pointer-like structures.
 
 use core::marker::PhantomData;
 use core::marker::Unsize;

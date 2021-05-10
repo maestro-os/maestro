@@ -1,6 +1,6 @@
-/// This module handles time-releated features.
-/// The kernel stores a list of clock sources. A clock source is an object that allow to get the
-/// current timestamp.
+//! This module handles time-releated features.
+//! The kernel stores a list of clock sources. A clock source is an object that allow to get the
+//! current timestamp.
 
 use crate::errno::Errno;
 use crate::util::boxed::Box;

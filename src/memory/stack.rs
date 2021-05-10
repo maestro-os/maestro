@@ -1,4 +1,4 @@
-/// This module implements stack utility functions.
+//! This module implements stack utility functions.
 
 use core::ffi::c_void;
 use core::mem::transmute;

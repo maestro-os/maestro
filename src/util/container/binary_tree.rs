@@ -1,4 +1,4 @@
-/// This module implements a binary tree container.
+//! This module implements a binary tree container.
 
 use core::cmp::Ordering;
 use core::cmp::max;

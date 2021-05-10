@@ -1,4 +1,4 @@
-/// This module implements the Vec container.
+//! This module implements the Vec container.
 
 use core::cmp::Ordering;
 use core::cmp::max;

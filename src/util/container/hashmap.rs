@@ -1,4 +1,5 @@
-/// A hashmap is a data structure that stores key/value pairs into buckets and uses the hash of the key to quickly get the bucket storing the value.
+//! A hashmap is a data structure that stores key/value pairs into buckets and uses the hash of the
+//! key to quickly get the bucket storing the value.
 
 use core::hash::Hash;
 use core::hash::Hasher;

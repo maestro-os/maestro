@@ -1,4 +1,4 @@
-/// This module implements debugging tools.
+//! This module implements debugging tools.
 
 use core::ffi::c_void;
 use core::mem::size_of;

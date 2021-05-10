@@ -1,6 +1,6 @@
-/// The PCI (Peripheral Component Interconnect) is a bus which allows to attach hardware devices on
-/// the motherboard. There here-module allows to retrieve informations on the devices attached to
-/// the computer's pCI.
+//! The PCI (Peripheral Component Interconnect) is a bus which allows to attach hardware devices on
+//! the motherboard. There here-module allows to retrieve informations on the devices attached to
+//! the computer's pCI.
 
 use crate::device::manager::PhysicalDevice;
 use crate::io;

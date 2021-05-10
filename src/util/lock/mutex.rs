@@ -1,4 +1,4 @@
-/// This module contains the Mutex and MutexGuard structure.
+//! This module contains the Mutex and MutexGuard structure.
 
 use crate::util::lock::spinlock::Spinlock;
 

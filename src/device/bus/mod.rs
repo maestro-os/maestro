@@ -1,4 +1,4 @@
-/// This module implements internal buses, including PCI and USB.
+//! This module implements internal buses, including PCI and USB.
 
 pub mod pci;
 

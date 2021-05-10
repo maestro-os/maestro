@@ -1,6 +1,6 @@
-/// This module implements the memory allocation utility for kernelside operations.
-/// An unsafe interface is provided, inspired from the C language's malloc interface.
-/// The module also provides the structure `Alloc` which safely manages a memory allocation.
+//! This module implements the memory allocation utility for kernelside operations.
+//! An unsafe interface is provided, inspired from the C language's malloc interface.
+//! The module also provides the structure `Alloc` which safely manages a memory allocation.
 
 mod block;
 mod chunk;

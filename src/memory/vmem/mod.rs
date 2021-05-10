@@ -1,5 +1,5 @@
-/// The virtual memory makes the kernel able to isolate processes, which is essential for modern
-/// systems.
+//! The virtual memory makes the kernel able to isolate processes, which is essential for modern
+//! systems.
 
 // TODO Make this file fully cross-platform
 

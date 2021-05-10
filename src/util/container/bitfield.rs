@@ -1,4 +1,4 @@
-/// This module stores the Bitfield structure.
+//! This module stores the Bitfield structure.
 
 use crate::errno::Errno;
 use crate::util::bit_size_of;

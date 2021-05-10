@@ -1,4 +1,4 @@
-/// This module stores the errno utilities.
+//! This module stores the errno utilities.
 
 /// Type representing an Unix errno.
 pub type Errno = i32;

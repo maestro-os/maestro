@@ -1,4 +1,4 @@
-/// This module implements the keyboard device manager.
+//! This module implements the keyboard device manager.
 
 use crate::device::manager::DeviceManager;
 use crate::device::manager::PhysicalDevice;

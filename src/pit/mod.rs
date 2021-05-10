@@ -1,5 +1,5 @@
-/// This module handles the PIT (Programmable Interrupt Timer) which allows to trigger
-/// interruptions at a fixed interval.
+//! This module handles the PIT (Programmable Interrupt Timer) which allows to trigger
+//! interruptions at a fixed interval.
 
 use crate::idt;
 use crate::io;

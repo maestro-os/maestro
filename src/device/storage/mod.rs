@@ -1,4 +1,4 @@
-/// This module implements storage drivers.
+//! This module implements storage drivers.
 
 pub mod mbr;
 pub mod pata;

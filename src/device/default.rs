@@ -1,4 +1,4 @@
-/// This module implements default devices.
+//! This module implements default devices.
 
 use core::str;
 use crate::device::Device;

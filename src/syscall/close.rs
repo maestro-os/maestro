@@ -1,4 +1,4 @@
-/// TODO doc
+//! TODO doc
 
 use crate::errno::Errno;
 use crate::errno;

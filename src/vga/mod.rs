@@ -1,7 +1,7 @@
-/// This file handles the VGA text mode, allowing to easily write text on the
-/// screen.
-///
-/// Note: The VGA text mode runs only when booting with a Legacy BIOS.
+//! This file handles the VGA text mode, allowing to easily write text on the
+//! screen.
+//!
+//! Note: The VGA text mode runs only when booting with a Legacy BIOS.
 
 use crate::io;
 use crate::memory::vmem;

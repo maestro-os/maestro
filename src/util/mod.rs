@@ -1,9 +1,9 @@
-/// This module contains utilities used everywhere in the kernel.
-/// All the features here are guaranteed to not require memory allocators.
-///
-/// Data structures and containers are considered two separated things:
-/// - Data structures do not require memory allocations
-/// - Containers require memory allocations
+//! This module contains utilities used everywhere in the kernel.
+//! All the features here are guaranteed to not require memory allocators.
+//!
+//! Data structures and containers are considered two separated things:
+//! - Data structures do not require memory allocations
+//! - Containers require memory allocations
 
 pub mod boxed;
 pub mod container;

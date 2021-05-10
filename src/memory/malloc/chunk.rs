@@ -1,4 +1,4 @@
-/// TODO doc
+//! TODO doc
 
 use core::cmp::{min, max};
 use core::ffi::c_void;

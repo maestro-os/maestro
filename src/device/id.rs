@@ -1,4 +1,4 @@
-/// This module handles minor/major numbers, including their allocation.
+//! This module handles minor/major numbers, including their allocation.
 
 use crate::errno::Errno;
 use crate::util::container::id_allocator::IDAllocator;

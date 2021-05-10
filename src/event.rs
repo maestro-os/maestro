@@ -1,5 +1,5 @@
-/// This file handles interruptions, it provides an interface allowing to register callbacks for
-/// each interrupts. Each callback has a priority number and is called in descreasing order.
+//! This file handles interruptions, it provides an interface allowing to register callbacks for
+//! each interrupts. Each callback has a priority number and is called in descreasing order.
 
 use core::cmp::Ordering;
 use core::mem::MaybeUninit;
