@@ -167,21 +167,20 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 	#[cfg(config_debug_test)]
 	kernel_selftest();
 
-	// TODO Parse from command line arguments
-	if file::init(device::DeviceType::Block, 1, 0).is_err() {
-		kernel_panic!("Failed to initialize files management!");
-	}
-
 	acpi::init();
 
 	if device::storage::ramdisk::create().is_err() {
 		kernel_panic!("Failed to create ramdisks!");
 	}
-	if device::default::create().is_err() {
-		kernel_panic!("Failed to create default devices!");
-	}
 	if device::init().is_err() {
 		crate::kernel_panic!("Failed to initialize devices management!", 0);
+	}
+	// TODO Parse from command line arguments
+	if file::init(device::DeviceType::Block, 1, 0).is_err() {
+		kernel_panic!("Failed to initialize files management!");
+	}
+	if device::default::create().is_err() {
+		kernel_panic!("Failed to create default devices!");
 	}
 
 	// TODO Load module through userspace instead

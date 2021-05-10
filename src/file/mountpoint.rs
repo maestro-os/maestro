@@ -1,6 +1,9 @@
 /// A mount point is a directory in which a filesystem is mounted.
 
+use crate::errno;
+use crate::device::Device;
 use crate::device::DeviceType;
+use crate::device;
 use crate::errno::Errno;
 use crate::file::filesystem::Filesystem;
 use crate::util::boxed::Box;
@@ -35,6 +38,9 @@ impl MountPoint {
 	/// `path` is the path on which the filesystem is to be mounted.
 	pub fn new(device_type: DeviceType, major: u32, minor: u32, path: Path)
 		-> Result<Self, Errno> {
+		let mut device = device::get_device(device_type, major, minor).ok_or(errno::ENODEV)?;
+		let filesystem = filesystem::detect(device.as_mut())?;
+
 		Ok(Self {
 			device_type: device_type,
 			major: major,
@@ -42,7 +48,7 @@ impl MountPoint {
 
 			path: path,
 
-			filesystem: filesystem::detect(device_type, major, minor)?,
+			filesystem: filesystem,
 		})
 	}
 
@@ -61,12 +67,16 @@ impl MountPoint {
 		self.minor
 	}
 
+	/// Returns a reference to the mounted device.
+	pub fn get_device(&self) -> Option<SharedPtr<Device>> {
+		device::get_device(self.device_type, self.major, self.minor)
+	}
+
 	/// Returns a reference to the path where the filesystem is mounted.
 	pub fn get_path(&self) -> &Path {
 		&self.path
 	}
 
-	// TODO Function to get device
 	// TODO Function to get filesystem
 }
 

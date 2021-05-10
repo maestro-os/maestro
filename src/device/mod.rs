@@ -23,6 +23,7 @@ use crate::util::boxed::Box;
 use crate::util::container::vec::Vec;
 use crate::util::lock::mutex::Mutex;
 use crate::util::lock::mutex::MutexGuard;
+use crate::util::ptr::SharedPtr;
 use keyboard::KeyboardManager;
 use storage::StorageManager;
 
@@ -167,9 +168,9 @@ impl Drop for Device {
 }
 
 /// The list of registered block devices.
-static mut BLOCK_DEVICES: Mutex<Vec<Mutex<Device>>> = Mutex::new(Vec::new());
+static mut BLOCK_DEVICES: Mutex<Vec<SharedPtr<Device>>> = Mutex::new(Vec::new());
 /// The list of registered block devices.
-static mut CHAR_DEVICES: Mutex<Vec<Mutex<Device>>> = Mutex::new(Vec::new());
+static mut CHAR_DEVICES: Mutex<Vec<SharedPtr<Device>>> = Mutex::new(Vec::new());
 
 /// Registers the given device. If the minor/major number is already used, the function fails.
 /// The function *doesn't* create the device file.
@@ -190,9 +191,7 @@ pub fn register_device(device: Device) -> Result<(), Errno> {
 
 	let device_number = device.get_device_number();
 	let index = container.binary_search_by(| d | {
-		let dn = unsafe { // Safe because reading values that cannot be modified
-			d.get_payload().get_device_number()
-		};
+		let dn = d.get_device_number();
 
 		if device_number < dn {
 			Ordering::Less
@@ -207,15 +206,14 @@ pub fn register_device(device: Device) -> Result<(), Errno> {
 		Err(i) => i,
 	};
 
-	container.insert(index, Mutex::new(device))
+	container.insert(index, SharedPtr::new(device)?)
 }
 
 // TODO Function to remove a device
 
-/*
 /// Returns a mutable reference to the device with the given major number, minor number and type.
-pub fn get_device(major: u32, minor: u32, type_: DeviceType)
-	-> Option<&'static mut Mutex<Device>> {
+/// If the device doesn't exist, the function returns None.
+pub fn get_device(type_: DeviceType, major: u32, minor: u32) -> Option<SharedPtr<Device>> {
 	let mut guard = match type_ {
 		DeviceType::Block => {
 			unsafe { // Safe because using mutex
@@ -230,11 +228,9 @@ pub fn get_device(major: u32, minor: u32, type_: DeviceType)
 	};
 	let container = guard.get_mut();
 
-	let device_number = makedev(major, minor);
+	let device_number = id::makedev(major, minor);
 	let index = container.binary_search_by(| d | {
-		let dn = unsafe { // Safe because reading values that cannot be modified
-			d.get_payload().get_device_number()
-		};
+		let dn = d.get_device_number();
 
 		if device_number < dn {
 			Ordering::Less
@@ -246,11 +242,11 @@ pub fn get_device(major: u32, minor: u32, type_: DeviceType)
 	});
 
 	if let Ok(i) = index {
-		Some(&mut container[i])
+		Some(container[i].clone())
 	} else {
 		None
 	}
-}*/
+}
 
 /// Initializes devices management.
 pub fn init() -> Result<(), Errno> {
