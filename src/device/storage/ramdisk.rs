@@ -10,7 +10,6 @@ use crate::errno::Errno;
 use crate::file::path::Path;
 use crate::memory::malloc;
 use crate::util::container::string::String;
-use crate::util::math;
 use super::StorageInterface;
 
 /// The ramdisks' major number.
@@ -118,28 +117,11 @@ impl RAMDiskHandle {
 
 impl DeviceHandle for RAMDiskHandle {
 	fn read(&mut self, offset: u64, buff: &mut [u8]) -> Result<usize, Errno> {
-		let block_off = offset / self.disk.get_block_size();
-		let blocks_count = math::ceil_division(buff.len() as u64, self.disk.get_block_size());
-
-		self.disk.read(buff, block_off, blocks_count)?;
-
-		Ok(buff.len())
+		self.disk.read_bytes(buff, offset)
 	}
 
 	fn write(&mut self, offset: u64, buff: &[u8]) -> Result<usize, Errno> {
-		let block_size = self.disk.get_block_size();
-		let block_off = offset / block_size;
-		let blocks_count = math::ceil_division(buff.len() as u64, block_size);
-
-		// TODO Read first and last sectors to complete them
-		//let begin_inner_off = offset % block_size;
-		//if begin_inner_off != 0 {
-			// TODO
-		//}
-
-		self.disk.write(buff, block_off, blocks_count)?;
-
-		Ok(buff.len())
+		self.disk.write_bytes(buff, offset)
 	}
 }
 

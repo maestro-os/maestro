@@ -17,9 +17,11 @@ use crate::device;
 use crate::errno::Errno;
 use crate::file::Mode;
 use crate::file::path::Path;
+use crate::memory::malloc;
 use crate::util::boxed::Box;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
+use crate::util::math;
 
 /// The major number for storage devices.
 const STORAGE_MAJOR: u32 = 8;
@@ -42,6 +44,80 @@ pub trait StorageInterface {
 	fn read(&mut self, buf: &mut [u8], offset: u64, size: u64) -> Result<(), Errno>;
 	/// Writes `size` blocks to storage at block offset `offset`, reading the data from `buf`.
 	fn write(&mut self, buf: &[u8], offset: u64, size: u64) -> Result<(), Errno>;
+
+	// TODO Unit tests
+	/// Reads bytes from storage at offset `offset`, writting the data to `buf`.
+	fn read_bytes(&mut self, buf: &mut [u8], offset: u64) -> Result<usize, Errno> {
+		let block_size = self.get_block_size() as usize;
+		let block_off = (offset as usize) / block_size;
+		let mut blocks_count = math::ceil_division(buf.len(), block_size);
+
+		let begin_inner_off = (offset as usize) % block_size;
+		let end_inner_off = ((offset as usize) + buf.len()) % block_size;
+		let mut tmp_buf = malloc::Alloc::<u8>::new_default(block_size as _)?;
+
+		if begin_inner_off != 0 {
+			self.read(tmp_buf.get_slice_mut(), 0, 1)?;
+			for i in 0..begin_inner_off {
+				buf[i] = tmp_buf[i];
+			}
+
+			blocks_count -= 1;
+		}
+
+		if end_inner_off != 0 {
+			self.read(tmp_buf.get_slice_mut(), (blocks_count - 1) as _, 1)?;
+			for i in end_inner_off..block_size {
+				buf[i] = tmp_buf[i];
+			}
+
+			blocks_count -= 1;
+		}
+
+		let middle_begin = block_size - begin_inner_off;
+		let middle_end = blocks_count * block_size + end_inner_off;
+		self.read(&mut buf[middle_begin..middle_end], block_off as _, blocks_count as _)?;
+
+		Ok(buf.len())
+	}
+
+	// TODO Unit tests
+	/// Writes bytes to storage at offset `offset`, reading the data from `buf`.
+	fn write_bytes(&mut self, buf: &[u8], offset: u64) -> Result<usize, Errno> {
+		let block_size = self.get_block_size() as usize;
+		let block_off = (offset as usize) / block_size;
+		let mut blocks_count = math::ceil_division(buf.len(), block_size);
+
+		let begin_inner_off = (offset as usize) % block_size;
+		let end_inner_off = ((offset as usize) + buf.len()) % block_size;
+		let mut tmp_buf = malloc::Alloc::<u8>::new_default(block_size as _)?;
+
+		if begin_inner_off != 0 {
+			self.read(tmp_buf.get_slice_mut(), 0, 1)?;
+			for i in 0..begin_inner_off {
+				tmp_buf[i] = buf[i];
+			}
+
+			self.write(tmp_buf.get_slice(), 0, 1)?;
+			blocks_count -= 1;
+		}
+
+		if end_inner_off != 0 {
+			self.read(tmp_buf.get_slice_mut(), (blocks_count - 1) as _, 1)?;
+			for i in end_inner_off..block_size {
+				tmp_buf[i] = buf[i];
+			}
+
+			self.write(tmp_buf.get_slice(), (blocks_count - 1) as _, 1)?;
+			blocks_count -= 1;
+		}
+
+		let middle_begin = block_size - begin_inner_off;
+		let middle_end = blocks_count * block_size + end_inner_off;
+		self.write(&buf[middle_begin..middle_end], block_off as _, blocks_count as _)?;
+
+		Ok(buf.len())
+	}
 }
 
 pub mod partition {
