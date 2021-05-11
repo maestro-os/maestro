@@ -45,7 +45,7 @@ pub trait StorageInterface {
 	/// Writes `size` blocks to storage at block offset `offset`, reading the data from `buf`.
 	fn write(&mut self, buf: &[u8], offset: u64, size: u64) -> Result<(), Errno>;
 
-	// TODO Unit tests
+	// Unit testing is done through ramdisk testing
 	/// Reads bytes from storage at offset `offset`, writting the data to `buf`.
 	fn read_bytes(&mut self, buf: &mut [u8], offset: u64) -> Result<usize, Errno> {
 		let block_size = self.get_block_size() as usize;
@@ -58,7 +58,7 @@ pub trait StorageInterface {
 
 		if begin_inner_off != 0 {
 			self.read(tmp_buf.get_slice_mut(), 0, 1)?;
-			for i in 0..begin_inner_off {
+			for i in begin_inner_off..block_size {
 				buf[i] = tmp_buf[i];
 			}
 
@@ -67,7 +67,7 @@ pub trait StorageInterface {
 
 		if end_inner_off != 0 {
 			self.read(tmp_buf.get_slice_mut(), (blocks_count - 1) as _, 1)?;
-			for i in end_inner_off..block_size {
+			for i in 0..end_inner_off {
 				buf[i] = tmp_buf[i];
 			}
 
@@ -76,12 +76,14 @@ pub trait StorageInterface {
 
 		let middle_begin = block_size - begin_inner_off;
 		let middle_end = blocks_count * block_size + end_inner_off;
-		self.read(&mut buf[middle_begin..middle_end], block_off as _, blocks_count as _)?;
+		if middle_begin < middle_end {
+			self.read(&mut buf[middle_begin..middle_end], block_off as _, blocks_count as _)?;
+		}
 
 		Ok(buf.len())
 	}
 
-	// TODO Unit tests
+	// Unit testing is done through ramdisk testing
 	/// Writes bytes to storage at offset `offset`, reading the data from `buf`.
 	fn write_bytes(&mut self, buf: &[u8], offset: u64) -> Result<usize, Errno> {
 		let block_size = self.get_block_size() as usize;
@@ -94,7 +96,7 @@ pub trait StorageInterface {
 
 		if begin_inner_off != 0 {
 			self.read(tmp_buf.get_slice_mut(), 0, 1)?;
-			for i in 0..begin_inner_off {
+			for i in begin_inner_off..block_size {
 				tmp_buf[i] = buf[i];
 			}
 
@@ -104,7 +106,7 @@ pub trait StorageInterface {
 
 		if end_inner_off != 0 {
 			self.read(tmp_buf.get_slice_mut(), (blocks_count - 1) as _, 1)?;
-			for i in end_inner_off..block_size {
+			for i in 0..end_inner_off {
 				tmp_buf[i] = buf[i];
 			}
 
@@ -114,7 +116,9 @@ pub trait StorageInterface {
 
 		let middle_begin = block_size - begin_inner_off;
 		let middle_end = blocks_count * block_size + end_inner_off;
-		self.write(&buf[middle_begin..middle_end], block_off as _, blocks_count as _)?;
+		if middle_begin < middle_end {
+			self.write(&buf[middle_begin..middle_end], block_off as _, blocks_count as _)?;
+		}
 
 		Ok(buf.len())
 	}

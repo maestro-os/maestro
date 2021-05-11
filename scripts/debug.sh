@@ -2,7 +2,7 @@
 
 # This script allows to run gdb to debug the kernel using QEMU.
 
-make || exit 1
+make maestro.iso || exit 1
 
 setsid qemu-system-i386 -cdrom maestro.iso -drive file=qemu_disk,format=raw -d int -s -S >debug_out 2>&1 &
 QEMU_PID=$!

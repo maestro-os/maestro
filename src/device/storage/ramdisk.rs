@@ -144,3 +144,111 @@ pub fn create() -> Result<(), Errno> {
 
 	Ok(())
 }
+
+#[cfg(test)]
+mod test {
+	use super::*;
+
+	#[test_case]
+	fn ramdisk0() {
+		let mut ramdisk = RAMDiskHandle::new();
+		let mut buff: [u8; 512] = [0; 512];
+		ramdisk.read(0, &mut buff).unwrap();
+
+		for i in 0..buff.len() {
+			assert_eq!(buff[i], 0);
+		}
+	}
+
+	#[test_case]
+	fn ramdisk1() {
+		let mut ramdisk = RAMDiskHandle::new();
+		let mut buff: [u8; 512] = [0; 512];
+
+		for i in (0..RAM_DISK_SIZE).step_by(buff.len()) {
+			ramdisk.read(i as _, &mut buff).unwrap();
+
+			for j in 0..buff.len() {
+				assert_eq!(buff[j], 0);
+			}
+		}
+	}
+
+	#[test_case]
+	fn ramdisk2() {
+		let mut ramdisk = RAMDiskHandle::new();
+		let mut buff: [u8; 512] = [0; 512];
+		for i in 0..buff.len() {
+			buff[i] = 1;
+		}
+
+		for i in (0..RAM_DISK_SIZE).step_by(buff.len()) {
+			ramdisk.write(i as _, &mut buff).unwrap();
+		}
+
+		for i in (0..RAM_DISK_SIZE).step_by(buff.len()) {
+			ramdisk.read(i as _, &mut buff).unwrap();
+
+			for j in 0..buff.len() {
+				assert_eq!(buff[j], 1);
+			}
+		}
+	}
+
+	#[test_case]
+	fn ramdisk3() {
+		let mut ramdisk = RAMDiskHandle::new();
+		let mut buff: [u8; 100] = [0; 100];
+		for i in 0..buff.len() {
+			buff[i] = 1;
+		}
+
+		ramdisk.write(0, &mut buff).unwrap();
+
+		for i in (0..RAM_DISK_SIZE).step_by(buff.len()) {
+			ramdisk.read(i as _, &mut buff).unwrap();
+
+			for j in 0..buff.len() {
+				let val = {
+					if i == 0 {
+						1
+					} else {
+						0
+					}
+				};
+
+				assert_eq!(buff[j], val);
+			}
+		}
+	}
+
+	#[test_case]
+	fn ramdisk4() {
+		let mut ramdisk = RAMDiskHandle::new();
+		let mut buff: [u8; 100] = [0; 100];
+		for i in 0..buff.len() {
+			buff[i] = 1;
+		}
+
+		ramdisk.write(42, &mut buff).unwrap();
+
+		for i in (0..RAM_DISK_SIZE).step_by(buff.len()) {
+			ramdisk.read(i as _, &mut buff).unwrap();
+
+			for j in 0..buff.len() {
+				let val = {
+					let abs_index = i * buff.len() + j;
+					if abs_index >= 42 && abs_index < 42 + buff.len() {
+						1
+					} else {
+						0
+					}
+				};
+
+				assert_eq!(buff[j], val);
+			}
+		}
+	}
+
+	// TODO
+}
