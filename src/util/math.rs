@@ -5,6 +5,17 @@ use core::intrinsics::wrapping_add;
 use core::intrinsics::wrapping_mul;
 use crate::util;
 
+/// Clamps the given value `n` between `min` and `max`.
+pub fn clamp<T: PartialOrd>(n: T, min: T, max: T) -> T {
+	if n < min {
+		min
+	} else if n > max {
+		max
+	} else {
+		n
+	}
+}
+
 /// Computes ceil(n0 / n1) without using floating point numbers.
 #[inline(always)]
 pub fn ceil_division<T>(n0: T, n1: T) -> T
