@@ -199,6 +199,21 @@ pub fn to_empty_error<T, E>(r: Result<T, E>) -> Result<T, ()> {
 	}
 }
 
+/// Returns the length of the number at the beginning of the given string `s`.
+pub fn nbr_len(s: &[u8]) -> usize {
+	let mut i = 0;
+
+	while i < s.len() {
+		if (s[i] < '0' as u8) || (s[i] > '9' as u8) {
+			break;
+		}
+
+		i += 1;
+	}
+
+	i
+}
+
 #[cfg(test)]
 mod test {
 	use super::*;

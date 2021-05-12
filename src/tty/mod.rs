@@ -61,6 +61,9 @@ pub struct TTY {
 	/// The content of the TTY's history
 	history: [vga::Char; HISTORY_SIZE],
 
+	/// The ANSI escape codes buffer.
+	ansi_buffer: ansi::ANSIBuffer,
+
 	/// The number of prompted characters
 	prompted_chars: usize,
 	/// Tells whether TTY updates are enabled or not
@@ -119,6 +122,7 @@ pub fn switch(tty: usize) {
 }
 
 impl TTY {
+	// TODO Clean
 	/// Creates a new TTY.
 	pub fn init(&mut self) {
 		self.id = 0;
@@ -127,6 +131,7 @@ impl TTY {
 		self.screen_y = 0;
 		self.current_color = vga::DEFAULT_COLOR;
 		self.history = [0; HISTORY_SIZE];
+		self.ansi_buffer = ansi::ANSIBuffer::new();
 		self.prompted_chars = 0;
 		self.update = true;
 	}
@@ -254,10 +259,10 @@ impl TTY {
 		self.fix_pos();
 	}
 
-	/// Moves to the next line.
-	fn newline(&mut self) {
+	/// Moves the cursor `n` lines down.
+	fn newline(&mut self, n: usize) {
 		self.cursor_x = 0;
-		self.cursor_y += 1;
+		self.cursor_y += n as i16;
 		self.fix_pos();
 	}
 
@@ -274,7 +279,7 @@ impl TTY {
 				self.cursor_forward(get_tab_size(self.cursor_x), 0);
 			},
 			'\n' => {
-				self.newline();
+				self.newline(1);
 			},
 			'\x0c' => {
 				// TODO Move printer to a top of page
@@ -301,7 +306,7 @@ impl TTY {
 		while i < buffer.len() {
 			let c = buffer.as_bytes()[i] as char;
 			if c == ansi::ESCAPE_CHAR {
-				i += ansi::handle(self, &buffer[i..buffer.len()]);
+				i += ansi::handle(self, &buffer[i..buffer.len()].as_bytes());
 			} else {
 				self.putchar(c);
 				i += 1;
