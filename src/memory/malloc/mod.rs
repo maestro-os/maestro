@@ -224,7 +224,7 @@ impl<T> Index<usize> for Alloc<T> {
 		let slice = self.get_slice();
 
 		if index >= slice.len() {
-			panic!("index out of bounds on memory allocation");
+			panic!("index out of bounds of memory allocation");
 		}
 		&slice[index]
 	}
@@ -236,7 +236,7 @@ impl<T> IndexMut<usize> for Alloc<T> {
 		let slice = self.get_slice_mut();
 
 		if index >= slice.len() {
-			panic!("index out of bounds on memory allocation");
+			panic!("index out of bounds of memory allocation");
 		}
 		&mut slice[index]
 	}

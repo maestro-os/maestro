@@ -7,6 +7,7 @@ use crate::device::DeviceHandle;
 use crate::device::DeviceType;
 use crate::device;
 use crate::errno::Errno;
+use crate::errno;
 use crate::file::path::Path;
 use crate::memory::malloc;
 use crate::util::container::string::String;
@@ -60,6 +61,10 @@ impl StorageInterface for RAMDisk {
 	}
 
 	fn read(&mut self, buf: &mut [u8], offset: u64, size: u64) -> Result<(), Errno> {
+		if offset > self.get_blocks_count() || offset + size > self.get_blocks_count() {
+			return Err(errno::EINVAL);
+		}
+
 		if !self.is_allocated() {
 			for i in 0..buf.len() {
 				buf[i] = 0;
@@ -82,6 +87,10 @@ impl StorageInterface for RAMDisk {
 	}
 
 	fn write(&mut self, buf: &[u8], offset: u64, size: u64) -> Result<(), Errno> {
+		if offset > self.get_blocks_count() || offset + size > self.get_blocks_count() {
+			return Err(errno::EINVAL);
+		}
+
 		self.allocate()?;
 
 		let block_size = self.get_block_size();
@@ -148,6 +157,7 @@ pub fn create() -> Result<(), Errno> {
 #[cfg(test)]
 mod test {
 	use super::*;
+	use core::cmp::min;
 
 	#[test_case]
 	fn ramdisk0() {
@@ -166,9 +176,10 @@ mod test {
 		let mut buff: [u8; 512] = [0; 512];
 
 		for i in (0..RAM_DISK_SIZE).step_by(buff.len()) {
-			ramdisk.read(i as _, &mut buff).unwrap();
+			let size = min(buff.len(), RAM_DISK_SIZE - i);
+			ramdisk.read(i as _, &mut buff[0..size]).unwrap();
 
-			for j in 0..buff.len() {
+			for j in 0..size {
 				assert_eq!(buff[j], 0);
 			}
 		}
@@ -183,13 +194,15 @@ mod test {
 		}
 
 		for i in (0..RAM_DISK_SIZE).step_by(buff.len()) {
-			ramdisk.write(i as _, &mut buff).unwrap();
+			let size = min(buff.len(), RAM_DISK_SIZE - i);
+			ramdisk.write(i as _, &mut buff[0..size]).unwrap();
 		}
 
 		for i in (0..RAM_DISK_SIZE).step_by(buff.len()) {
-			ramdisk.read(i as _, &mut buff).unwrap();
+			let size = min(buff.len(), RAM_DISK_SIZE - i);
+			ramdisk.read(i as _, &mut buff[0..size]).unwrap();
 
-			for j in 0..buff.len() {
+			for j in 0..size {
 				assert_eq!(buff[j], 1);
 			}
 		}
@@ -206,9 +219,10 @@ mod test {
 		ramdisk.write(0, &mut buff).unwrap();
 
 		for i in (0..RAM_DISK_SIZE).step_by(buff.len()) {
-			ramdisk.read(i as _, &mut buff).unwrap();
+			let size = min(buff.len(), RAM_DISK_SIZE - i);
+			ramdisk.read(i as _, &mut buff[0..size]).unwrap();
 
-			for j in 0..buff.len() {
+			for j in 0..size {
 				let val = {
 					if i == 0 {
 						1
@@ -225,7 +239,7 @@ mod test {
 	#[test_case]
 	fn ramdisk4() {
 		let mut ramdisk = RAMDiskHandle::new();
-		let mut buff: [u8; 100] = [0; 100];
+		let mut buff: [u8; 512] = [0; 512];
 		for i in 0..buff.len() {
 			buff[i] = 1;
 		}
@@ -233,11 +247,12 @@ mod test {
 		ramdisk.write(42, &mut buff).unwrap();
 
 		for i in (0..RAM_DISK_SIZE).step_by(buff.len()) {
-			ramdisk.read(i as _, &mut buff).unwrap();
+			let size = min(buff.len(), RAM_DISK_SIZE - i);
+			ramdisk.read(i as _, &mut buff[0..size]).unwrap();
 
-			for j in 0..buff.len() {
+			for j in 0..size {
 				let val = {
-					let abs_index = i * buff.len() + j;
+					let abs_index = i + j;
 					if abs_index >= 42 && abs_index < 42 + buff.len() {
 						1
 					} else {
