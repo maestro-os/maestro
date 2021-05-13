@@ -1,6 +1,30 @@
 //! The ext2 filesystem is a classical filesystem used in Unix systems.
 //! It is nowdays obsolete and has been replaced by ext3 and ext4.
+//!
+//! The filesystem divides the storage device into several substructures:
+//! - Block Group: stored in the Block Group Descriptor Table (BGDT)
+//! - Block: stored inside of block groups
+//! - INode: represents a file in the filesystem
+//!
+//! The access to an INode data is divided into several parts, each overflowing on the next when
+//! full:
+//! - Direct Block Pointers: each inode has 12 of them
+//! - Singly Indirect Block Pointer: a pointer to a block dedicated to storing a list of more
+//! blocks to store the inode's data. The number of blocks it can store depends on the size of a
+//! block.
+//! - Doubly Indirect Block Pointer: a pointer to a block storing pointers to Singly Indirect Block
+//! Pointers, each storing pointers to more blocks.
+//! - Triply Indirect Block Pointer: a pointer to a block storing pointers to Doubly Indirect Block
+//! Pointers, each storing pointers to Singly Indirect Block Pointers, each storing pointers to
+//! more blocks.
+//!
+//! Since the size of a block pointer is 4 bytes, the maximum size of a file is:
+//! `(12 * n) + ((n/4) * n) + ((n/4)^^2 * n) + ((n/4)^^3 * n)`
+//! Where `n` is the size of a block.
 
+use core::mem::MaybeUninit;
+use core::mem::size_of;
+use core::slice;
 use crate::device::DeviceHandle;
 use crate::errno::Errno;
 use crate::errno;
@@ -9,12 +33,17 @@ use crate::file::INode;
 use crate::file::filesystem::Filesystem;
 use crate::file::filesystem::FilesystemType;
 use crate::file::path::Path;
+use crate::time;
 use crate::util::boxed::Box;
+use crate::util::math;
 
 /// The offset of the superblock from the beginning of the device.
 const SUPERBLOCK_OFFSET: usize = 1024;
 /// The filesystem's signature.
 const EXT2_SIGNATURE: u16 = 0xef53;
+
+/// The block offset of the Block Group Descriptor Table.
+const BGDT_BLOCK_OFFSET: usize = 2;
 
 /// State telling that the filesystem is clean.
 const FS_STATE_CLEAN: u16 = 1;
@@ -146,6 +175,22 @@ const TYPE_INDICATOR_SOCKET: u8 = 6;
 /// Directory entry type indicator: Symbolic link
 const TYPE_INDICATOR_SYMLINK: u8 = 7;
 
+/// Reads an object of the given type on the given device.
+/// `offset` is the offset in bytes on the disk.
+/// `io` is the I/O interface of the device.
+/// The function is marked unsafe because if the read object is invalid, the behaviour is
+/// undefined.
+unsafe fn read<T>(offset: usize, io: &mut dyn DeviceHandle) -> Result<T, Errno> {
+	let size = size_of::<T>();
+	let mut obj = MaybeUninit::<T>::uninit();
+
+	let ptr = obj.as_mut_ptr() as *mut u8;
+	let buffer = slice::from_raw_parts_mut(ptr, size);
+	io.read(offset as _, buffer)?;
+
+	Ok(obj.assume_init())
+}
+
 /// The ext2 superblock structure.
 #[repr(C, packed)]
 struct Superblock {
@@ -161,10 +206,10 @@ struct Superblock {
 	total_unallocated_inodes: u32,
 	/// Block number of the block containing the superblock.
 	superblock_block_number: u32,
-	/// TODO doc
-	block_size_mask_shift: u32,
-	/// TODO doc
-	fragment_size_mask_shift: u32,
+	/// log2(block_size) - 10
+	block_size_log: u32,
+	/// log2(fragment_size) - 10
+	fragment_size_log: u32,
 	/// The number of blocks per block group.
 	blocks_per_block_group: u32,
 	/// The number of fragments per block group.
@@ -237,7 +282,37 @@ struct Superblock {
 	/// The head of orphan inodes list.
 	orphan_inode_head: u32,
 
-	// TODO Add padding?
+	/// Structure padding.
+	_padding: [u8; 788],
+}
+
+impl Superblock {
+	/// Creates a new instance by reading from the given device.
+	pub fn read(io: &mut dyn DeviceHandle) -> Result<Self, Errno> {
+		unsafe {
+			read::<Self>(SUPERBLOCK_OFFSET, io)
+		}
+	}
+
+	/// Tells whether the superblock is valid.
+	pub fn is_valid(&self) -> bool {
+		self.signature == EXT2_SIGNATURE
+	}
+
+	/// Returns the size of a block.
+	pub fn get_block_size(&self) -> usize {
+		math::pow2(self.block_size_log + 10) as _
+	}
+
+	/// Returns the size of a fragment.
+	pub fn get_fragment_size(&self) -> usize {
+		math::pow2(self.fragment_size_log + 10) as _
+	}
+
+	/// Writes the superblock on the device.
+	pub fn write(&self) {
+		// TODO
+	}
 }
 
 /// TODO doc
@@ -256,7 +331,26 @@ struct BlockGroupDescriptor {
 	/// Number of directories in group.
 	directories_number: u16,
 
-	// TODO Add padding?
+	/// Structure padding.
+	_padding: [u8; 14],
+}
+
+impl BlockGroupDescriptor {
+	/// Reads the `i`th block group descriptor from the given device.
+	/// `superblock` is the filesystem's superblock.
+	/// `io` is the I/O interface.
+	pub fn read(i: usize, superblock: &Superblock, io: &mut dyn DeviceHandle)
+		-> Result<Self, Errno> {
+		let off = superblock.get_block_size() * BGDT_BLOCK_OFFSET + i * size_of::<Self>();
+		unsafe {
+			read::<Self>(off, io)
+		}
+	}
+
+	/// Writes the block group descriptor on the device.
+	pub fn write(&self, _i: usize, _superblock: &Superblock, _io: &mut dyn DeviceHandle) {
+		// TODO
+	}
 }
 
 /// TODO doc
@@ -288,11 +382,11 @@ struct Ext2INode {
 	os_specific_0: u32,
 	/// Direct block pointers.
 	direct_block_ptrs: [u32; 12],
-	/// TODO doc
+	/// Simply indirect block pointer.
 	singly_indirect_block_ptr: u32,
-	/// TODO doc
+	/// Doubly indirect block pointer.
 	doubly_indirect_block_ptr: u32,
-	/// TODO doc
+	/// Triply indirect block pointer.
 	triply_indirect_block_ptr: u32,
 	/// Generation number.
 	generation: u32,
@@ -304,6 +398,28 @@ struct Ext2INode {
 	fragment_addr: u32,
 	/// OS-specific value.
 	os_specific_1: u32,
+}
+
+impl Ext2INode {
+	/// Reads the `i`th inode from the given device.
+	/// `superblock` is the filesystem's superblock.
+	/// `io` is the I/O interface.
+	pub fn read(i: usize, superblock: &Superblock, io: &mut dyn DeviceHandle)
+		-> Result<Self, Errno> {
+		let _block_group = (i - 1) / (superblock.inodes_per_block_group as usize);
+		let block_group_offset = (i - 1) % superblock.inodes_per_block_group as usize;
+		let _containing_block = (block_group_offset * size_of::<Self>()) / superblock.get_block_size();
+
+		let off = 0; // TODO
+		unsafe {
+			read::<Self>(off, io)
+		}
+	}
+
+	/// Writes the block group descriptor on the device.
+	pub fn write(&self, _i: usize, _superblock: &Superblock, _io: &mut dyn DeviceHandle) {
+		// TODO
+	}
 }
 
 /// TODO doc
@@ -320,33 +436,39 @@ struct DirectoryEntry {
 	name: [u8; 0],
 }
 
-/// Structure representing the ext2 filesystem type.
-pub struct Ext2FsType {}
-
-impl FilesystemType for Ext2FsType {
-	fn get_name(&self) -> &str {
-		"ext2"
-	}
-
-	fn detect(&self, _io: &mut dyn DeviceHandle) -> bool {
-		// TODO
-
-		false
-	}
-
-	fn new_filesystem(&self, _io: &mut dyn DeviceHandle) -> Result<Box<dyn Filesystem>, Errno> {
-		// TODO
-		Err(errno::ENOMEM)
-	}
-}
-
 /// Structure representing a instance of the ext2 filesystem.
-pub struct Ext2Fs {}
+struct Ext2Fs {
+	/// The filesystem's superblock.
+	superblock: Superblock,
+}
 
 impl Ext2Fs {
 	/// Creates a new instance.
-	pub fn new() -> Self {
-		Self {}
+	/// If the filesystem cannot be mounted, the function returns an Err.
+	fn new(mut superblock: Superblock) -> Result<Self, Errno> {
+		debug_assert!(superblock.is_valid());
+
+		let timestamp = time::get();
+		if superblock.mount_count_since_fsck >= superblock.mount_count_before_fsck {
+			return Err(errno::EINVAL);
+		}
+		if superblock.last_fsck_timestamp + superblock.fsck_interval >= timestamp {
+			return Err(errno::EINVAL);
+		}
+
+		superblock.mount_count_since_fsck += 1;
+		superblock.last_fsck_timestamp = timestamp;
+		superblock.write();
+
+		Ok(Self {
+			superblock: superblock,
+		})
+	}
+
+	/// Returns the number of block groups.
+	fn get_block_groups_count(&self) -> usize {
+		math::ceil_division(self.superblock.total_blocks,
+			self.superblock.blocks_per_block_group) as _
 	}
 }
 
@@ -373,5 +495,29 @@ impl Filesystem for Ext2Fs {
 		// TODO
 
 		Err(errno::ENOMEM)
+	}
+}
+
+/// Structure representing the ext2 filesystem type.
+pub struct Ext2FsType {}
+
+impl FilesystemType for Ext2FsType {
+	fn get_name(&self) -> &str {
+		"ext2"
+	}
+
+	// TODO Also check partition type
+	fn detect(&self, io: &mut dyn DeviceHandle) -> bool {
+		if let Ok(superblock) = Superblock::read(io) {
+			superblock.is_valid()
+		} else {
+			// TODO Return an error?
+			false
+		}
+	}
+
+	// TODO Rename to `read_filesystem`
+	fn new_filesystem(&self, io: &mut dyn DeviceHandle) -> Result<Box<dyn Filesystem>, Errno> {
+		Ok(Box::new(Ext2Fs::new(Superblock::read(io)?)?)? as _)
 	}
 }
