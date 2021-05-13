@@ -187,7 +187,7 @@ fn parse_sgr(tty: &mut TTY, command: Option<i16>) -> ANSIState {
 		24 => ANSIState::Valid, // TODO Not underlined
 
 		25 => {
-			tty.set_blinking(true);
+			tty.set_blinking(false);
 			ANSIState::Valid
 		},
 
