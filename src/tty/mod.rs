@@ -170,19 +170,46 @@ impl TTY {
 	/// Reinitializes TTY's current attributes.
 	pub fn reset_attrs(&mut self) {
 		self.current_color = vga::DEFAULT_COLOR;
-		// TODO
 	}
 
 	/// Sets the current foreground color `color` for TTY.
 	pub fn set_fgcolor(&mut self, color: vga::Color) {
-		self.current_color &= !(0xff as vga::Color);
+		self.current_color &= !(0x7f as vga::Color);
 		self.current_color |= color;
+	}
+
+	/// Resets the current foreground color `color` for TTY.
+	pub fn reset_fgcolor(&mut self) {
+		self.set_fgcolor(vga::DEFAULT_COLOR);
 	}
 
 	/// Sets the current background color `color` for TTY.
 	pub fn set_bgcolor(&mut self, color: vga::Color) {
-		self.current_color &= !((0xff << 4) as vga::Color);
+		self.current_color &= !((0x7f << 4) as vga::Color);
 		self.current_color |= color << 4;
+	}
+
+	/// Resets the current background color `color` for TTY.
+	pub fn reset_bgcolor(&mut self) {
+		self.set_bgcolor(vga::DEFAULT_COLOR);
+	}
+
+	/// Swaps the foreground and background colors.
+	pub fn swap_colors(&mut self) {
+		let fg = self.current_color & 0x7f;
+		let bg = self.current_color & (0x7f << 4);
+		self.set_fgcolor(fg);
+		self.set_bgcolor(bg);
+	}
+
+	/// Sets the blinking state of the text for TTY. `true` means blinking text, `false` means not
+	/// blinking.
+	pub fn set_blinking(&mut self, blinking: bool) {
+		if blinking {
+			self.current_color |= 0x80;
+		} else {
+			self.current_color &= !0x80;
+		}
 	}
 
 	/// Clears the TTY's history.
@@ -306,7 +333,8 @@ impl TTY {
 		while i < buffer.len() {
 			let c = buffer.as_bytes()[i] as char;
 			if c == ansi::ESCAPE_CHAR {
-				i += ansi::handle(self, &buffer[i..buffer.len()].as_bytes());
+				let (_, j) = ansi::handle(self, &buffer[i..buffer.len()].as_bytes());
+				i += j;
 			} else {
 				self.putchar(c);
 				i += 1;

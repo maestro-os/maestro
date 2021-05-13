@@ -28,22 +28,37 @@ pub const HEIGHT: Pos = 25;
 /// The size in bytes of the VGA text buffer.
 pub const BUFFER_SIZE: u32 = (WIDTH * HEIGHT * core::mem::size_of::<i16>() as Pos) as u32;
 
-/// VGA text mode colors.
+/// VGA text mode color: Black
 pub const COLOR_BLACK: Color			= 0x0;
+/// VGA text mode color: Blue
 pub const COLOR_BLUE: Color			    = 0x1;
+/// VGA text mode color: Green
 pub const COLOR_GREEN: Color			= 0x2;
+/// VGA text mode color: Cyan
 pub const COLOR_CYAN: Color			    = 0x3;
+/// VGA text mode color: Red
 pub const COLOR_RED: Color			    = 0x4;
+/// VGA text mode color: Magenta
 pub const COLOR_MAGENTA: Color		    = 0x5;
+/// VGA text mode color: Brown
 pub const COLOR_BROWN: Color			= 0x6;
+/// VGA text mode color: Light Grey
 pub const COLOR_LIGHT_GREY: Color	    = 0x7;
+/// VGA text mode color: Dark Grey
 pub const COLOR_DARK_GREY: Color		= 0x8;
+/// VGA text mode color: Light Blue
 pub const COLOR_LIGHT_BLUE: Color	    = 0x9;
+/// VGA text mode color: Light Green
 pub const COLOR_LIGHT_GREEN: Color	    = 0xa;
+/// VGA text mode color: Light Cyan
 pub const COLOR_LIGHT_CYAN: Color	    = 0xb;
+/// VGA text mode color: Light Red
 pub const COLOR_LIGHT_RED: Color		= 0xc;
+/// VGA text mode color: Light Magenta
 pub const COLOR_LIGHT_MAGENTA: Color	= 0xd;
+/// VGA text mode color: Yellow
 pub const COLOR_YELLOW: Color		    = 0xe;
+/// VGA text mode color: White
 pub const COLOR_WHITE: Color			= 0xf;
 
 /// VGA text mode default color.
