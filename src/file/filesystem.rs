@@ -24,7 +24,7 @@ pub trait Filesystem {
 	fn read_node(&mut self, io: &mut dyn DeviceHandle, node: INode, buf: &mut [u8])
 		-> Result<(), Errno>;
 	/// Writes to the given node `node` from the buffer `buf`.
-	fn write_node(&mut self, io: &mut dyn DeviceHandle, node: INode, buf: &mut [u8])
+	fn write_node(&mut self, io: &mut dyn DeviceHandle, node: INode, buf: &[u8])
 		-> Result<(), Errno>;
 
 	// TODO
@@ -39,7 +39,7 @@ pub trait FilesystemType {
 	fn detect(&self, io: &mut dyn DeviceHandle) -> bool;
 
 	/// Creates a new instance of the filesystem.
-	fn new_filesystem(&self, io: &mut dyn DeviceHandle) -> Result<Box<dyn Filesystem>, Errno>;
+	fn read_filesystem(&self, io: &mut dyn DeviceHandle) -> Result<Box<dyn Filesystem>, Errno>;
 }
 
 /// The list of mountpoints.
