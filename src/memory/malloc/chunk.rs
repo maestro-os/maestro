@@ -10,7 +10,6 @@ use core::mem::MaybeUninit;
 use core::mem::size_of;
 use crate::errno::Errno;
 use crate::list_new;
-use crate::memory;
 use crate::util::list::List;
 use crate::util::list::ListNode;
 use crate::util::math;
@@ -131,7 +130,7 @@ impl Chunk {
 		#[cfg(config_debug_malloc_magic)]
 		debug_assert_eq!(self.magic, CHUNK_MAGIC);
 
-		debug_assert!(self as *const _ as *const c_void >= memory::PROCESS_END);
+		debug_assert!(self as *const _ as *const c_void >= crate::memory::PROCESS_END);
 		debug_assert!(self.get_size() >= get_min_chunk_size());
 
 		if !self.is_used() {
@@ -140,7 +139,7 @@ impl Chunk {
 
 		if let Some(prev) = self.list.get_prev() {
 			let p = prev.get::<Chunk>(crate::offset_of!(Chunk, list));
-			debug_assert!(p as *const _ as *const c_void >= memory::PROCESS_END);
+			debug_assert!(p as *const _ as *const c_void >= crate::memory::PROCESS_END);
 
 			#[cfg(config_debug_malloc_magic)]
 			debug_assert_eq!(p.magic, CHUNK_MAGIC);
@@ -152,7 +151,7 @@ impl Chunk {
 
 		if let Some(next) = self.list.get_next() {
 			let n = next.get::<Chunk>(crate::offset_of!(Chunk, list));
-			debug_assert!(n as *const _ as *const c_void >= memory::PROCESS_END);
+			debug_assert!(n as *const _ as *const c_void >= crate::memory::PROCESS_END);
 
 			#[cfg(config_debug_malloc_magic)]
 			debug_assert_eq!(n.magic, CHUNK_MAGIC);
