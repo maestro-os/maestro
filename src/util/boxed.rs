@@ -30,17 +30,20 @@ impl<T> Box<T> {
 	pub fn new(value: T) -> Result<Box::<T>, Errno> {
 		let value_ref = &ManuallyDrop::new(value);
 
-		let size = size_of_val(value_ref);
-		let ptr = if size > 0 {
-			let ptr = unsafe {
-				transmute::<*mut c_void, *mut T>(malloc::alloc(size)?)
-			};
-			unsafe {
-				copy_nonoverlapping(value_ref as *const _ as *const u8, ptr as *mut u8, size);
+		let ptr = {
+			let size = size_of_val(value_ref);
+			if size > 0 {
+				let ptr = unsafe {
+					transmute::<*mut c_void, *mut T>(malloc::alloc(size)?)
+				};
+				unsafe {
+					copy_nonoverlapping(value_ref as *const _ as *const u8, ptr as *mut u8, size);
+				}
+
+				NonNull::new(ptr).unwrap()
+			} else {
+				NonNull::dangling()
 			}
-			NonNull::new(ptr).unwrap()
-		} else {
-			NonNull::dangling()
 		};
 
 		Ok(Self {

@@ -567,9 +567,7 @@ impl Ext2INode {
 		let begin_blk_id = (off / blk_size as u64) as usize;
 		let end_blk_id = ((off + buff.len() as u64) / (blk_size as u64)) as usize;
 
-		let mut blk_buff = unsafe { // Safe because the data is never read before being written
-			malloc::Alloc::<u8>::new_zero(blk_size)?
-		};
+		let mut blk_buff = malloc::Alloc::<u8>::new_default(blk_size)?;
 		for i in begin_blk_id..end_blk_id {
 			let blk_off = self.get_content_block_off(i as _, superblock, io).unwrap().unwrap();
 			read_block(blk_off as _, superblock, io, blk_buff.get_slice_mut())?;
@@ -593,25 +591,56 @@ impl Ext2INode {
 	}
 
 	/// Iterates over directory entries and calls the given function `f` for each.
+	/// `f` returns a boolean telling whether the iteration may continue.
+	/// `superblock` is the filesystem's superblock.
+	/// `io` is the I/O interface.
 	/// If the file is not a directory, the behaviour is undefined.
-	pub fn foreach_directory_entry<F: FnMut(DirectoryEntry)>(&self, _f: F,
-		_superblock: &Superblock, _io: &mut dyn DeviceHandle) -> Result<(), Errno> {
+	pub fn foreach_directory_entry<F: FnMut(Box<DirectoryEntry>) -> bool>(&self, mut f: F,
+		superblock: &Superblock, io: &mut dyn DeviceHandle) -> Result<(), Errno> {
 		debug_assert_eq!(self.get_type(), FileType::Directory);
 
-		// TODO
+		let blk_size = superblock.get_block_size();
+		let mut buff = malloc::Alloc::<u8>::new_default(blk_size)?;
+		let mut i = 0;
+		while i < self.get_size(superblock) {
+			self.read_content(i, buff.get_slice_mut(), superblock, io)?;
+
+			let mut j = 0;
+			while j < blk_size {
+				let entry = unsafe {
+					DirectoryEntry::from(&mut buff.get_slice_mut()[j..])?
+				};
+				let total_size = entry.total_size as usize;
+
+				if !f(entry) {
+					return Ok(());
+				}
+
+				j += total_size;
+			}
+			debug_assert_eq!(j as u64, i + blk_size as u64);
+
+			i += blk_size as u64;
+		}
 
 		Ok(())
 	}
 
-	/// Returns the directory entry with the given name `name`. If the entry doesn't exist, the
-	/// function returns None.
+	/// Returns the directory entry with the given name `name`.
+	/// `superblock` is the filesystem's superblock.
+	/// `io` is the I/O interface.
+	/// If the entry doesn't exist, the function returns None.
 	pub fn get_directory_entry(&self, name: &str, superblock: &Superblock,
-		io: &mut dyn DeviceHandle) -> Result<Option<DirectoryEntry>, Errno> {
+		io: &mut dyn DeviceHandle) -> Result<Option<Box<DirectoryEntry>>, Errno> {
 		let mut entry = None;
 
+		// TODO If the binary tree feature is enabled, use it
 		self.foreach_directory_entry(| e | {
 			if e.get_name(superblock) == name {
 				entry = Some(e);
+				false
+			} else {
+				true
 			}
 		}, superblock, io)?;
 
@@ -627,7 +656,8 @@ impl Ext2INode {
 	}
 }
 
-/// TODO doc
+/// A directory entry is a structure stored in the content of an inode of type Directory. Each
+/// directory entry represent a file that is the stored in the directory and points to its inode.
 #[repr(C, packed)]
 struct DirectoryEntry {
 	/// The inode associated with the entry.
@@ -639,12 +669,16 @@ struct DirectoryEntry {
 	/// Name length most-significant bits or type indicator (if enabled).
 	name_length_hi: u8,
 	/// The entry's name.
-	name: [u8; 0],
+	name: [u8],
 }
 
 impl DirectoryEntry {
-	// TODO When creating an instance, check the length of the allocation against the length of the
-	// fields + name
+	/// Creates a new instance from a slice.
+	pub unsafe fn from(_slice: &[u8]) -> Result<Box<Self>, Errno> {
+		// TODO
+
+		Err(errno::ENOMEM)
+	}
 
 	/// Returns the length the entry's name.
 	/// `superblock` is the filesystem's superblock.
