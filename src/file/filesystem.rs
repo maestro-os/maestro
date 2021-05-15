@@ -19,11 +19,17 @@ pub trait Filesystem {
 	fn get_name(&self) -> &str;
 
 	/// Loads the file at path `path`.
+	/// The path must be absolute relative the filesystem's root directory and must not contain
+	/// any `.` or `..` component.
 	fn load_file(&mut self, io: &mut dyn DeviceHandle, path: Path) -> Result<File, Errno>;
 	/// Reads from the given node `node` into the buffer `buf`.
+	/// The path must be absolute relative the filesystem's root directory and must not contain
+	/// any `.` or `..` component.
 	fn read_node(&mut self, io: &mut dyn DeviceHandle, node: INode, buf: &mut [u8])
 		-> Result<(), Errno>;
 	/// Writes to the given node `node` from the buffer `buf`.
+	/// The path must be absolute relative the filesystem's root directory and must not contain
+	/// any `.` or `..` component.
 	fn write_node(&mut self, io: &mut dyn DeviceHandle, node: INode, buf: &[u8])
 		-> Result<(), Errno>;
 

@@ -34,9 +34,13 @@ use crate::file::INode;
 use crate::file::filesystem::Filesystem;
 use crate::file::filesystem::FilesystemType;
 use crate::file::path::Path;
+use crate::file;
+use crate::memory::malloc;
 use crate::time;
+use crate::util::FailableClone;
 use crate::util::boxed::Box;
 use crate::util::math;
+use crate::util;
 
 /// The offset of the superblock from the beginning of the device.
 const SUPERBLOCK_OFFSET: u64 = 1024;
@@ -357,9 +361,10 @@ impl BlockGroupDescriptor {
 	/// Reads the `i`th block group descriptor from the given device.
 	/// `superblock` is the filesystem's superblock.
 	/// `io` is the I/O interface.
-	pub fn read(i: usize, superblock: &Superblock, io: &mut dyn DeviceHandle)
+	pub fn read(i: u32, superblock: &Superblock, io: &mut dyn DeviceHandle)
 		-> Result<Self, Errno> {
-		let off = superblock.get_block_size() * BGDT_BLOCK_OFFSET + i * size_of::<Self>();
+		let off = (superblock.get_block_size() * BGDT_BLOCK_OFFSET)
+			+ (i as usize * size_of::<Self>());
 		unsafe {
 			read::<Self>(off as _, io)
 		}
@@ -419,21 +424,31 @@ struct Ext2INode {
 }
 
 impl Ext2INode {
+	/// Returns the size of an inode.
+	/// `superblock` is the filesystem's superblock.
+	pub fn get_inode_size(superblock: &Superblock) -> usize {
+		if superblock.major_version >= 1 {
+			superblock.inode_size as _
+		} else {
+			128
+		}
+	}
+
 	/// Reads the `i`th inode from the given device.
 	/// `superblock` is the filesystem's superblock.
 	/// `io` is the I/O interface.
-	pub fn read(i: usize, superblock: &Superblock, io: &mut dyn DeviceHandle)
+	pub fn read(i: u32, superblock: &Superblock, io: &mut dyn DeviceHandle)
 		-> Result<Self, Errno> {
 		let blk_size = superblock.get_block_size();
-		let blk_grp = (i - 1) / (superblock.inodes_per_block_group as usize);
-		let inode_off = (i - 1) % (superblock.inodes_per_block_group as usize);
-		// TODO Size of inode may be defined in the superblock according to the version
-		let inode_size = size_of::<Self>();
-		let inode_table_blk_off = (inode_off * inode_size) / blk_size;
+		let blk_grp = (i - 1) / superblock.inodes_per_block_group;
+		let inode_off = (i - 1) % superblock.inodes_per_block_group;
+		let inode_size = Self::get_inode_size(superblock);
+		let inode_table_blk_off = (inode_off * inode_size as u32) / (blk_size as u32);
 
 		let bgd = BlockGroupDescriptor::read(blk_grp, superblock, io)?;
-		let inode_table_blk = bgd.inode_table_start_addr as usize + inode_table_blk_off;
-		let off = inode_table_blk * blk_size + inode_off * inode_size;
+		let inode_table_blk = bgd.inode_table_start_addr + inode_table_blk_off;
+		let off = (inode_table_blk as usize * blk_size)
+			+ ((inode_off * inode_size as u32) as usize);
 		unsafe {
 			read::<Self>(off as _, io)
 		}
@@ -454,6 +469,11 @@ impl Ext2INode {
 
 			_ => FileType::Regular,
 		}
+	}
+
+	/// Returns the permissions of the file.
+	pub fn get_permissions(&self) -> file::Mode {
+		self.type_permissions & 0x0fff
 	}
 
 	/// Returns the size of the file.
@@ -547,9 +567,14 @@ impl Ext2INode {
 		let begin_blk_id = (off / blk_size as u64) as usize;
 		let end_blk_id = ((off + buff.len() as u64) / (blk_size as u64)) as usize;
 
+		let mut blk_buff = unsafe { // Safe because the data is never read before being written
+			malloc::Alloc::<u8>::new_zero(blk_size)?
+		};
 		for i in begin_blk_id..end_blk_id {
-			let _blk_off = self.get_content_block_off(i as _, superblock, io).unwrap();
-			// TODO
+			let blk_off = self.get_content_block_off(i as _, superblock, io).unwrap().unwrap();
+			read_block(blk_off as _, superblock, io, blk_buff.get_slice_mut())?;
+
+			// TODO Write content of blk_buff to buff
 		}
 
 		Ok(())
@@ -569,12 +594,28 @@ impl Ext2INode {
 
 	/// Iterates over directory entries and calls the given function `f` for each.
 	/// If the file is not a directory, the behaviour is undefined.
-	pub fn foreach_directory_entry<F: Fn(&DirectoryEntry)>(&self, _f: F, _superblock: &Superblock,
-		_io: &mut dyn DeviceHandle) -> Result<(), Errno> {
+	pub fn foreach_directory_entry<F: FnMut(DirectoryEntry)>(&self, _f: F,
+		_superblock: &Superblock, _io: &mut dyn DeviceHandle) -> Result<(), Errno> {
 		debug_assert_eq!(self.get_type(), FileType::Directory);
+
 		// TODO
 
 		Ok(())
+	}
+
+	/// Returns the directory entry with the given name `name`. If the entry doesn't exist, the
+	/// function returns None.
+	pub fn get_directory_entry(&self, name: &str, superblock: &Superblock,
+		io: &mut dyn DeviceHandle) -> Result<Option<DirectoryEntry>, Errno> {
+		let mut entry = None;
+
+		self.foreach_directory_entry(| e | {
+			if e.get_name(superblock) == name {
+				entry = Some(e);
+			}
+		}, superblock, io)?;
+
+		Ok(entry)
 	}
 
 	/// Writes the inode on the device.
@@ -587,6 +628,7 @@ impl Ext2INode {
 }
 
 /// TODO doc
+#[repr(C, packed)]
 struct DirectoryEntry {
 	/// The inode associated with the entry.
 	inode: u32,
@@ -598,6 +640,37 @@ struct DirectoryEntry {
 	name_length_hi: u8,
 	/// The entry's name.
 	name: [u8; 0],
+}
+
+impl DirectoryEntry {
+	// TODO When creating an instance, check the length of the allocation against the length of the
+	// fields + name
+
+	/// Returns the length the entry's name.
+	/// `superblock` is the filesystem's superblock.
+	fn get_name_length(&self, superblock: &Superblock) -> usize {
+		if superblock.required_features & REQUIRED_FEATURE_DIRECTORY_TYPE == 0 {
+			((self.name_length_hi as usize) << 8) | (self.name_length_lo as usize)
+		} else {
+			self.name_length_lo as usize
+		}
+	}
+
+	/// Returns the entry's name.
+	/// `superblock` is the filesystem's superblock.
+	pub fn get_name(&self, superblock: &Superblock) -> &str {
+		let name_length = self.get_name_length(superblock);
+		unsafe {
+			util::ptr_to_str_len(&self.name[0], name_length)
+		}
+	}
+
+	// TODO Function to set the name
+
+	/// Tells whether the entry is valid.
+	pub fn is_valid(&self) -> bool {
+		self.inode != 0
+	}
 }
 
 /// Structure representing a instance of the ext2 filesystem.
@@ -641,15 +714,29 @@ impl Filesystem for Ext2Fs {
 		"ext2"
 	}
 
-	fn load_file(&mut self, io: &mut dyn DeviceHandle, _path: Path) -> Result<File, Errno> {
-		let root_inode = Ext2INode::read(ROOT_DIRECTORY_INODE as _, &self.superblock, io)?;
-		root_inode.foreach_directory_entry(| _e | {
-			// TODO
-		}, &self.superblock, io)?;
+	fn load_file(&mut self, io: &mut dyn DeviceHandle, path: Path) -> Result<File, Errno> {
+		debug_assert!(path.is_absolute());
 
-		// TODO
+		let mut inode = Ext2INode::read(ROOT_DIRECTORY_INODE as _, &self.superblock, io)?;
+		debug_assert_eq!(inode.get_type(), FileType::Directory);
 
-		Err(errno::ENOMEM)
+		for i in 0..path.get_elements_count() {
+			if inode.get_type() != FileType::Directory {
+				return Err(errno::ENOENT);
+			}
+
+			let name = path[i].as_str();
+			if let Some(entry) = inode.get_directory_entry(name, &self.superblock, io)? {
+				inode = Ext2INode::read(entry.inode, &self.superblock, io)?;
+			} else {
+				return Err(errno::ENOENT);
+			}
+		}
+
+		let name = path[path.get_elements_count() - 1].failable_clone()?;
+		let file = File::new(name, inode.get_type(), inode.uid, inode.gid,
+			inode.get_permissions())?;
+		Ok(file)
 	}
 
 	fn read_node(&mut self, _io: &mut dyn DeviceHandle, _node: INode, _buf: &mut [u8])

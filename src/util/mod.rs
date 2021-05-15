@@ -175,10 +175,19 @@ pub fn zero_object<T>(obj: &mut T) {
 	}
 }
 
-/// Converts the given pointer to a string of characters. The string must be valid and must end
-/// with `\0`. The ownership of the string is not taken, thus the caller must drop it manually.
+/// Converts the given pointer `ptr` to a string of characters. The string must be valid and must
+/// end with `\0`.
+/// The ownership of the string is not taken, thus the caller must drop it manually.
 pub unsafe fn ptr_to_str(ptr: *const c_void) -> &'static str {
 	let len = strlen(ptr);
+	let slice = core::slice::from_raw_parts(ptr as *const u8, len);
+	core::str::from_utf8_unchecked(slice)
+}
+
+/// Converts the given reference `ptr` to a string of characters. The string must be valid.
+/// `len` is the length of the string.
+/// The ownership of the string is not taken, thus the caller must drop it manually.
+pub unsafe fn ptr_to_str_len<'a>(ptr: &'a u8, len: usize) -> &'a str {
 	let slice = core::slice::from_raw_parts(ptr as *const u8, len);
 	core::str::from_utf8_unchecked(slice)
 }
