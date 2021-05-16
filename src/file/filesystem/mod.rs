@@ -24,9 +24,25 @@ pub trait Filesystem {
 	fn is_readonly(&self) -> bool;
 
 	/// Loads the file at path `path`.
+	/// `io` is the I/O interface.
+	/// `path` is the file's path.
 	/// The path must be absolute relative the filesystem's root directory and must not contain
 	/// any `.` or `..` component.
 	fn load_file(&mut self, io: &mut dyn DeviceHandle, path: Path) -> Result<File, Errno>;
+	/// Adds a file to the filesystem.
+	/// `io` is the I/O interface.
+	/// `path` is the parent directory's path.
+	/// `file` is the file to be added.
+	/// The path must be absolute relative the filesystem's root directory and must not contain
+	/// any `.` or `..` component.
+	fn add_file(&mut self, io: &mut dyn DeviceHandle, path: Path, file: File) -> Result<(), Errno>;
+	/// Removes a file from the filesystem.
+	/// `io` is the I/O interface.
+	/// `path` is the file's path.
+	/// The path must be absolute relative the filesystem's root directory and must not contain
+	/// any `.` or `..` component.
+	fn remove_file(&mut self, io: &mut dyn DeviceHandle, path: Path) -> Result<(), Errno>;
+
 	/// Reads from the given node `node` into the buffer `buf`.
 	/// The path must be absolute relative the filesystem's root directory and must not contain
 	/// any `.` or `..` component.
@@ -37,8 +53,6 @@ pub trait Filesystem {
 	/// any `.` or `..` component.
 	fn write_node(&mut self, io: &mut dyn DeviceHandle, node: INode, buf: &[u8])
 		-> Result<(), Errno>;
-
-	// TODO
 }
 
 /// Trait representing a filesystem type.
@@ -49,8 +63,11 @@ pub trait FilesystemType {
 	/// Tells whether the given device has the current filesystem.
 	fn detect(&self, io: &mut dyn DeviceHandle) -> bool;
 
+	/// Creates a new filesystem on the device and returns its instance.
+	fn create_filesystem(&self, io: &mut dyn DeviceHandle) -> Result<Box<dyn Filesystem>, Errno>;
+
 	/// Creates a new instance of the filesystem.
-	fn read_filesystem(&self, io: &mut dyn DeviceHandle) -> Result<Box<dyn Filesystem>, Errno>;
+	fn load_filesystem(&self, io: &mut dyn DeviceHandle) -> Result<Box<dyn Filesystem>, Errno>;
 }
 
 /// The list of mountpoints.

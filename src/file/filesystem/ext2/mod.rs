@@ -47,6 +47,19 @@ const SUPERBLOCK_OFFSET: u64 = 1024;
 /// The filesystem's signature.
 const EXT2_SIGNATURE: u16 = 0xef53;
 
+/// Default filesystem major version.
+const DEFAULT_MAJOR: u32 = 1;
+/// Default filesystem minor version.
+const DEFAULT_MINOR: u16 = 1;
+/// Default filesystem block size.
+const DEFAULT_BLOCK_SIZE: u64 = 1024; // TODO
+/// Default number of blocks per block group.
+const DEFAULT_BLOCKS_PER_GROUP: u32 = 1024; // TODO
+/// Default number of mounts in between each fsck.
+const DEFAULT_MOUNT_COUNT_BEFORE_FSCK: u16 = 1000;
+/// Default elapsed time in between each fsck in seconds.
+const DEFAULT_FSCK_INTERVAL: u32 = 16070400;
+
 /// The block offset of the Block Group Descriptor Table.
 const BGDT_BLOCK_OFFSET: usize = 2;
 
@@ -784,6 +797,19 @@ impl Filesystem for Ext2Fs {
 		Ok(file)
 	}
 
+	fn add_file(&mut self, _io: &mut dyn DeviceHandle, _path: Path, _file: File)
+		-> Result<(), Errno> {
+		// TODO
+
+		Err(errno::ENOMEM)
+	}
+
+	fn remove_file(&mut self, _io: &mut dyn DeviceHandle, _path: Path) -> Result<(), Errno> {
+		// TODO
+
+		Err(errno::ENOMEM)
+	}
+
 	fn read_node(&mut self, _io: &mut dyn DeviceHandle, _node: INode, _buf: &mut [u8])
 		-> Result<(), Errno> {
 		// TODO
@@ -817,7 +843,80 @@ impl FilesystemType for Ext2FsType {
 		}
 	}
 
-	fn read_filesystem(&self, io: &mut dyn DeviceHandle) -> Result<Box<dyn Filesystem>, Errno> {
+	fn create_filesystem(&self, io: &mut dyn DeviceHandle) -> Result<Box<dyn Filesystem>, Errno> {
+		let timestamp = time::get();
+		let inodes_count = 0; // TODO
+		let inodes_per_block_group = 0; // TODO
+		let blocks_count = (io.get_size() / DEFAULT_BLOCK_SIZE) as u32;
+
+		let _superblock = Superblock {
+			total_inodes: inodes_count,
+			total_blocks: blocks_count,
+			superuser_blocks: 0,
+			total_unallocated_blocks: blocks_count,
+			total_unallocated_inodes: inodes_count,
+			superblock_block_number: (SUPERBLOCK_OFFSET / DEFAULT_BLOCK_SIZE) as _,
+			block_size_log: (math::log2(DEFAULT_BLOCK_SIZE as usize) - 10) as _,
+			fragment_size_log: 0, // TODO
+			blocks_per_block_group: DEFAULT_BLOCKS_PER_GROUP,
+			fragments_per_block_group: 0, // TODO
+			inodes_per_block_group: inodes_per_block_group,
+			last_mount_timestamp: timestamp,
+			last_write_timestamp: timestamp,
+			mount_count_since_fsck: 0,
+			mount_count_before_fsck: DEFAULT_MOUNT_COUNT_BEFORE_FSCK,
+			signature: EXT2_SIGNATURE,
+			fs_state: FS_STATE_CLEAN,
+			error_action: ERR_ACTION_READ_ONLY,
+			minor_version: DEFAULT_MINOR,
+			last_fsck_timestamp: timestamp,
+			fsck_interval: DEFAULT_FSCK_INTERVAL,
+			os_id: 0xdeadbeef,
+			major_version: DEFAULT_MAJOR,
+			uid_reserved: 0,
+			gid_reserved: 0,
+
+			first_non_reserved_inode: 11,
+			inode_size: 128,
+			superblock_block_group: ((SUPERBLOCK_OFFSET / DEFAULT_BLOCK_SIZE) as u32
+				/ DEFAULT_BLOCKS_PER_GROUP) as _,
+			optional_features: 0,
+			required_features: 0,
+			write_required_features: WRITE_REQUIRED_64_BITS,
+			filesystem_id: [0; 16], // TODO
+			volume_name: [0; 16], // TODO
+			last_mount_path: [0; 64], // TODO
+			compression_algorithms: 0,
+			files_preallocate_count: 0,
+			direactories_preallocate_count: 0,
+			_unused: 0,
+			journal_id: [0; 16], // TODO
+			journal_inode: 0, // TODO
+			journal_device: 0, // TODO
+			orphan_inode_head: 0, // TODO
+
+			_padding: [0; 788],
+		};
+
+		let _block_group_number = math::ceil_division(blocks_count, DEFAULT_BLOCKS_PER_GROUP);
+		// TODO
+		/*let _bgdt = BlockGroupDescriptor {
+			block_usage_bitmap_addr: u32,
+			inode_usage_bitmap_addr: u32,
+			inode_table_start_addr: u32,
+			unallocated_blocks_number: u16,
+			unallocated_inodes_number: u16,
+			directories_number: u16,
+
+			_padding: [0; 14],
+		};*/
+
+		// TODO Write superblock, block group descriptor table and all blocks
+
+		Err(errno::ENOMEM)
+	}
+
+	fn load_filesystem(&self, io: &mut dyn DeviceHandle) -> Result<Box<dyn Filesystem>, Errno> {
 		Ok(Box::new(Ext2Fs::new(Superblock::read(io)?)?)? as _)
 	}
 }

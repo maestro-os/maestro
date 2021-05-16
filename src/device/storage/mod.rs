@@ -255,6 +255,11 @@ impl StorageDeviceHandle {
 }
 
 impl DeviceHandle for StorageDeviceHandle {
+	fn get_size(&self) -> u64 {
+		// TODO
+		0
+	}
+
 	fn read(&mut self, _offset: u64, _buff: &mut [u8]) -> Result<usize, Errno> {
 		// TODO
 		Ok(0)

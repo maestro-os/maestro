@@ -125,6 +125,10 @@ impl RAMDiskHandle {
 }
 
 impl DeviceHandle for RAMDiskHandle {
+	fn get_size(&self) -> u64 {
+		RAM_DISK_SIZE as _
+	}
+
 	fn read(&mut self, offset: u64, buff: &mut [u8]) -> Result<usize, Errno> {
 		self.disk.read_bytes(buff, offset)
 	}

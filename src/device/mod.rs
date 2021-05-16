@@ -38,6 +38,9 @@ pub enum DeviceType {
 
 /// Trait providing a interface for device I/O.
 pub trait DeviceHandle {
+	/// Returns the size of the device in bytes.
+	fn get_size(&self) -> u64;
+
 	/// Reads data from the device and writes it to the buffer `buff`.
 	/// `offset` is the offset in the file.
 	/// The function returns the number of bytes read.

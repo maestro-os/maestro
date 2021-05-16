@@ -12,6 +12,10 @@ use super::DeviceType;
 pub struct NullDeviceHandle {}
 
 impl DeviceHandle for NullDeviceHandle {
+	fn get_size(&self) -> u64 {
+		0
+	}
+
 	fn read(&mut self, _offset: u64, _buff: &mut [u8]) -> Result<usize, Errno> {
 		Ok(0)
 	}
@@ -25,6 +29,10 @@ impl DeviceHandle for NullDeviceHandle {
 pub struct ZeroDeviceHandle {}
 
 impl DeviceHandle for ZeroDeviceHandle {
+	fn get_size(&self) -> u64 {
+		0
+	}
+
 	fn read(&mut self, _offset: u64, buff: &mut [u8]) -> Result<usize, Errno> {
 		for i in 0..buff.len() {
 			buff[i] = 0;
@@ -41,6 +49,10 @@ impl DeviceHandle for ZeroDeviceHandle {
 pub struct CurrentTTYDeviceHandle {}
 
 impl DeviceHandle for CurrentTTYDeviceHandle {
+	fn get_size(&self) -> u64 {
+		0
+	}
+
 	fn read(&mut self, _offset: u64, _buff: &mut [u8]) -> Result<usize, Errno> {
 		// TODO Read from TTY input
 		Ok(0)

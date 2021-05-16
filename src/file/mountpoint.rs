@@ -40,7 +40,7 @@ impl MountPoint {
 		-> Result<Self, Errno> {
 		let mut device = device::get_device(device_type, major, minor).ok_or(errno::ENODEV)?;
 		let fs_type = filesystem::detect(device.as_mut())?;
-		let filesystem = fs_type.read_filesystem(device.as_mut().get_handle())?;
+		let filesystem = fs_type.load_filesystem(device.as_mut().get_handle())?;
 
 		Ok(Self {
 			device_type: device_type,
