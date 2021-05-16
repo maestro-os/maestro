@@ -82,6 +82,11 @@ impl MountPoint {
 	pub fn get_filesystem(&mut self) -> &mut dyn Filesystem {
 		self.filesystem.as_mut()
 	}
+
+	/// Tells whether the mountpoint's filesystem is mounted in read-only.
+	pub fn is_readonly(&self) -> bool {
+		self.filesystem.is_readonly()
+	}
 }
 
 /// The list of mountpoints.

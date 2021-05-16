@@ -674,10 +674,14 @@ struct DirectoryEntry {
 
 impl DirectoryEntry {
 	/// Creates a new instance from a slice.
-	pub unsafe fn from(_slice: &[u8]) -> Result<Box<Self>, Errno> {
-		// TODO
+	pub unsafe fn from(slice: &[u8]) -> Result<Box<Self>, Errno> {
+		let ptr = malloc::alloc(slice.len())? as *mut u8;
+		let alloc_slice = slice::from_raw_parts_mut(ptr, slice.len());
+		for i in 0..slice.len() {
+			alloc_slice[i] = slice[i];
+		}
 
-		Err(errno::ENOMEM)
+		Ok(Box::from_raw(alloc_slice as *mut [u8] as *mut [()] as *mut Self))
 	}
 
 	/// Returns the length the entry's name.
@@ -719,6 +723,7 @@ impl Ext2Fs {
 	fn new(mut superblock: Superblock) -> Result<Self, Errno> {
 		debug_assert!(superblock.is_valid());
 
+		// TODO Check that the driver supports required features
 		let timestamp = time::get();
 		if superblock.mount_count_since_fsck >= superblock.mount_count_before_fsck {
 			return Err(errno::EINVAL);
@@ -746,6 +751,12 @@ impl Ext2Fs {
 impl Filesystem for Ext2Fs {
 	fn get_name(&self) -> &str {
 		"ext2"
+	}
+
+	/// Tells whether the filesystem is mounted in read-only.
+	fn is_readonly(&self) -> bool {
+		// TODO Check that the driver supports write-required features
+		false
 	}
 
 	fn load_file(&mut self, io: &mut dyn DeviceHandle, path: Path) -> Result<File, Errno> {
