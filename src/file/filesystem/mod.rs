@@ -1,5 +1,7 @@
 //! A filesystem is the representation of the file hierarchy on a storage device.
 
+pub mod ext2;
+
 use crate::device::Device;
 use crate::device::DeviceHandle;
 use crate::errno::Errno;
@@ -81,4 +83,12 @@ pub fn detect(device: &mut Device) -> Result<SharedPtr<dyn FilesystemType>, Errn
 	}
 
 	Err(errno::ENODEV)
+}
+
+/// Registers the filesystems that are implemented inside of the kernel itself.
+/// This function must be called only once, at initialization.
+pub fn register_defaults() -> Result<(), Errno> {
+	register(ext2::Ext2FsType {})?;
+
+	Ok(())
 }

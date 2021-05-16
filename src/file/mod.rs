@@ -2,7 +2,6 @@
 //! The root filesystem is passed to the kernel as an argument when booting. Other filesystems are
 //! mounted into subdirectories.
 
-pub mod ext2;
 pub mod file_descriptor;
 pub mod filesystem;
 pub mod mountpoint;
@@ -459,20 +458,13 @@ impl FCache {
 /// The instance of the file cache.
 static mut FILES_CACHE: MaybeUninit<Mutex<FCache>> = MaybeUninit::uninit();
 
-/// Registers the filesystems that are implemented inside of the kernel itself.
-fn register_default_fs() -> Result<(), Errno> {
-	filesystem::register(ext2::Ext2FsType {})?;
-
-	Ok(())
-}
-
 /// Initializes files management.
 /// `root_device_type` is the type of the root device file. If not a device, the behaviour is
 /// undefined.
 /// `root_major` is the major number of the device at the root of the VFS.
 /// `root_minor` is the minor number of the device at the root of the VFS.
 pub fn init(root_device_type: DeviceType, root_major: u32, root_minor: u32) -> Result<(), Errno> {
-	register_default_fs()?;
+	filesystem::register_defaults()?;
 
 	let cache = FCache::new(root_device_type, root_major, root_minor)?;
 	unsafe {
