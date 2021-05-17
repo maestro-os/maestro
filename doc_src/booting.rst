@@ -17,6 +17,16 @@ Advantages of this standard on the kernelside include:
 
 
 
+Command line arguments
+----------------------
+
+Multiboot allows passing command line arguments to the kernel at boot. The following arguments are supported:
+
+- `root=xxx,xxx` (required): Tells the major/minor version numbers of the VFS's root device
+- `silent`: Tells the kernel not to show logs on screen while booting
+
+
+
 Kernel boot sequence
 ====================
 
