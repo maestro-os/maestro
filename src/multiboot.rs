@@ -4,6 +4,7 @@
 use core::ffi::c_void;
 use core::mem::ManuallyDrop;
 use core::ptr::null;
+use crate::util;
 
 pub const BOOTLOADER_MAGIC: u32 = 0x36d76289;
 pub const TAG_ALIGN: usize = 8;
@@ -370,20 +371,20 @@ impl Tag {
 
 /// Structure representing the informations given to the kernel at boot time.
 pub struct BootInfo {
-	/// TODO
+	/// The command line used to boot the kernel.
 	pub cmdline: &'static str,
 	/// TODO
 	pub loader_name: &'static str,
 
-	/// TODO
+	/// The lower memory size.
 	pub mem_lower: u32,
-	/// TODO
+	/// The upper memory size.
 	pub mem_upper: u32,
-	/// TODO
+	/// The size of physical memory mappings.
 	pub memory_maps_size: usize,
-	/// TODO
+	/// The size of a physical memory mapping entry.
 	pub memory_maps_entry_size: usize,
-	/// TODO
+	/// The list of physical memory mappings.
 	pub memory_maps: *const MmapEntry,
 
 	/// TODO
@@ -392,10 +393,30 @@ pub struct BootInfo {
 	pub elf_entsize: u32,
 	/// TODO
 	pub elf_shndx: u32,
-	/// TODO
+	/// A pointer to the kernel's ELF sections.
 	pub elf_sections: *const c_void,
 
 	// TODO
+}
+
+impl BootInfo {
+	/// Checks whether the command line is valid. If invalid, prints an error message and halts the
+	/// kernel.
+	pub fn check_cmdline(&self) {
+		// TODO
+	}
+
+	/// Returns the VFS root's device.
+	pub fn get_root_dev(&self) -> (u32, u32) {
+		// TODO Parse the command line
+		(1, 0)
+	}
+
+	/// Tells whether the kernel is silent at boot.
+	pub fn is_silent(&self) -> bool {
+		// TODO Parse the command line
+		false
+	}
 }
 
 /// The field storing the informations given to the kernel at boot time.
@@ -436,13 +457,18 @@ pub fn get_tags_size(ptr: *const c_void) -> usize {
 
 /// Reads the given `tag` and fills the boot informations structure accordingly.
 fn handle_tag(boot_info: &mut BootInfo, tag: *const Tag) {
-	let type_ = unsafe { (*tag).type_ };
+	let type_ = unsafe {
+		(*tag).type_
+	};
+
 	match type_ {
 		TAG_TYPE_CMDLINE => {
-			/*let t = tag as *const _ as *const TagString;
-			let ptr = &(*t).string;
-			boot_info.cmdline = &*(ptr as *const _ as *const [u8] as *const str);*/
-			// TODO
+			let t = tag as *const TagString;
+
+			unsafe {
+				let ptr = &*(&(*t).string as *const u8);
+				boot_info.cmdline = util::ptr_to_str_len(ptr, (*t).size as _);
+			}
 		},
 
 		TAG_TYPE_BOOT_LOADER_NAME => {
@@ -454,11 +480,12 @@ fn handle_tag(boot_info: &mut BootInfo, tag: *const Tag) {
 		},
 
 		TAG_TYPE_BASIC_MEMINFO => {
-			unsafe {
-				let t = tag as *const _ as *const TagBasicMeminfo;
-				boot_info.mem_lower = (*t).mem_lower;
-				boot_info.mem_upper = (*t).mem_upper;
-			}
+			let t = unsafe {
+				&*(tag as *const TagBasicMeminfo)
+			};
+
+			boot_info.mem_lower = t.mem_lower;
+			boot_info.mem_upper = t.mem_upper;
 		},
 
 		TAG_TYPE_BOOTDEV => {
@@ -466,8 +493,9 @@ fn handle_tag(boot_info: &mut BootInfo, tag: *const Tag) {
 		},
 
 		TAG_TYPE_MMAP => {
+			let t = tag as *const TagMmap;
+
 			unsafe {
-				let t = tag as *const _ as *const TagMmap;
 				boot_info.memory_maps_size = (*t).size as usize;
 				boot_info.memory_maps_entry_size = (*t).entry_size as usize;
 				boot_info.memory_maps = &(*t).entries as *const _;
@@ -475,8 +503,9 @@ fn handle_tag(boot_info: &mut BootInfo, tag: *const Tag) {
 		},
 
 		TAG_TYPE_ELF_SECTIONS => {
+			let t = tag as *const TagELFSections;
+
 			unsafe {
-				let t = tag as *const _ as *const TagELFSections;
 				boot_info.elf_num = (*t).num;
 				boot_info.elf_entsize = (*t).entsize;
 				boot_info.elf_shndx = (*t).shndx;

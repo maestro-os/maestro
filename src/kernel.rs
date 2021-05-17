@@ -148,10 +148,12 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 	pit::init();
 	event::init();
 
-	println!("Booting Maestro kernel version {}", KERNEL_VERSION);
 	// TODO CPUID
 	multiboot::read_tags(multiboot_ptr);
+	multiboot::get_boot_info().check_cmdline();
+	// TODO Print only if not silent (but keep logs anyways)
 
+	println!("Booting Maestro kernel version {}", KERNEL_VERSION);
 	println!("Reading memory map...");
 	memory::memmap::init(multiboot_ptr);
 	if cfg!(config_debug_debug) {
@@ -180,8 +182,9 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 	if device::init().is_err() {
 		crate::kernel_panic!("Failed to initialize devices management!", 0);
 	}
-	// TODO Parse from command line arguments
-	if file::init(device::DeviceType::Block, 1, 0).is_err() {
+
+	let (root_major, root_minor) = multiboot::get_boot_info().get_root_dev();
+	if file::init(device::DeviceType::Block, root_major, root_minor).is_err() {
 		kernel_panic!("Failed to initialize files management!");
 	}
 	if device::default::create().is_err() {
