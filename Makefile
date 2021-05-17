@@ -49,6 +49,50 @@ endif
 
 
 
+# ------------------------------------------------------------------------------
+#    Checking for configuration file & documentation compilation
+# ------------------------------------------------------------------------------
+
+
+
+# The path to the documentation sources
+DOC_SRC_DIR = doc_src/
+# The path to the documentation build directory
+DOC_DIR = doc/
+
+
+
+ifeq ($(CONFIG_EXISTS), 0)
+# The rule to compile everything
+all: $(NAME) iso tags doc
+
+# Builds the documentation
+doc: $(DOC_SRC_DIR)
+	RUSTFLAGS='$(RUSTFLAGS)' $(CARGO) doc $(CARGOFLAGS)
+	sphinx-build $(DOC_SRC_DIR) $(DOC_DIR)
+	rm -rf $(DOC_DIR)/references/
+	cp -r target/target/doc/ $(DOC_DIR)/references/
+else
+noconfig:
+	echo "File $(CONFIG_FILE) doesn't exist. Use \`make config\` to create it"
+	false
+
+all: noconfig
+doc: noconfig
+
+.SILENT: noconfig
+endif
+
+.PHONY: all doc
+
+
+
+# ------------------------------------------------------------------------------
+#    Kernel compilation
+# ------------------------------------------------------------------------------
+
+
+
 # The path to the architecture specific directory
 ARCH_PATH = $(PWD)/arch/$(CONFIG_ARCH)/
 
@@ -142,18 +186,6 @@ STRIP = strip
 RUST_SRC := $(shell find $(SRC_DIR) -type f -name "*.rs")
 
 
-
-ifeq ($(CONFIG_EXISTS), 0)
-# The rule to compile everything
-all: $(NAME) iso tags doc
-else
-all:
-	echo "File $(CONFIG_FILE) doesn't exist. Use \`make config\` to create it"
-	false
-
-.SILENT: all
-endif
-
 # The rule to create object directories
 $(OBJ_DIRS):
 	mkdir -p $(OBJ_DIRS)
@@ -189,11 +221,21 @@ $(NAME).iso: $(NAME) grub.cfg
 	cp grub.cfg iso/boot/grub
 	grub-mkrescue -o $(NAME).iso iso
 
-
-
 # The rule to create the `tags` file
 tags: $(SRC) $(HDR) $(RUST_SRC)
 	ctags $(SRC) $(HDR) $(RUST_SRC)
+
+# Runs clippy on the Rust code
+clippy:
+	RUSTFLAGS='$(RUSTFLAGS)' $(CARGO) clippy $(CARGOFLAGS)
+
+.PHONY: iso clippy
+
+
+
+# ------------------------------------------------------------------------------
+#    Emulators
+# ------------------------------------------------------------------------------
 
 
 
@@ -226,25 +268,13 @@ bochs: iso
 virtualbox: iso
 	virtualbox
 
-
-
-# The path to the documentation sources
-DOC_SRC_DIR = doc_src/
-# The path to the documentation build directory
-DOC_DIR = doc/
-
-# Builds the documentation
-doc: $(DOC_SRC_DIR)
-	RUSTFLAGS='$(RUSTFLAGS)' $(CARGO) doc $(CARGOFLAGS)
-	sphinx-build $(DOC_SRC_DIR) $(DOC_DIR)
-	rm -rf $(DOC_DIR)/references/
-	cp -r target/target/doc/ $(DOC_DIR)/references/
+.PHONY: test cputest bochs virtualbox
 
 
 
-# Runs clippy on the Rust code
-clippy:
-	RUSTFLAGS='$(RUSTFLAGS)' $(CARGO) clippy $(CARGOFLAGS)
+# ------------------------------------------------------------------------------
+#    Configuration
+# ------------------------------------------------------------------------------
 
 
 
@@ -271,6 +301,14 @@ $(CONFIG_FILE): $(CONFIG_UTIL_PATH)
 # Runs the configuration utility to create the configuration file
 config: $(CONFIG_FILE)
 
+.PHONY: config $(CONFIG_FILE)
+
+
+
+# ------------------------------------------------------------------------------
+#    Cleaning up
+# ------------------------------------------------------------------------------
+
 
 
 # The rule to clean the workspace
@@ -292,6 +330,4 @@ fclean: clean
 # The rule to recompile everything
 re: fclean all
 
-
-
-.PHONY: check_config all iso test debug bochs doc clippy $(CONFIG_FILE) config clean fclean re
+.PHONY: clean fclean re
