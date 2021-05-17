@@ -24,6 +24,7 @@
 
 use core::mem::MaybeUninit;
 use core::mem::size_of;
+use core::mem::size_of_val;
 use core::slice;
 use crate::device::DeviceHandle;
 use crate::errno::Errno;
@@ -61,7 +62,7 @@ const DEFAULT_MOUNT_COUNT_BEFORE_FSCK: u16 = 1000;
 const DEFAULT_FSCK_INTERVAL: u32 = 16070400;
 
 /// The block offset of the Block Group Descriptor Table.
-const BGDT_BLOCK_OFFSET: usize = 2;
+const BGDT_BLOCK_OFFSET: usize = 2; // TODO Compute using block size
 
 /// State telling that the filesystem is clean.
 const FS_STATE_CLEAN: u16 = 1;
@@ -212,6 +213,21 @@ unsafe fn read<T>(offset: u64, io: &mut dyn DeviceHandle) -> Result<T, Errno> {
 	Ok(obj.assume_init())
 }
 
+/// Writes an object of the given type on the given device.
+/// `obj` is the object to write.
+/// `offset` is the offset in bytes on the device.
+/// `io` is the I/O interface of the device.
+fn write<T>(obj: T, offset: u64, io: &mut dyn DeviceHandle) -> Result<(), Errno> {
+	let size = size_of_val(&obj);
+	let ptr = &obj as *const T as *const u8;
+	let buffer = unsafe {
+		slice::from_raw_parts(ptr, size)
+	};
+	io.write(offset, buffer)?;
+
+	Ok(())
+}
+
 /// Reads the `i`th block on the given device and writes the data onto the given buffer.
 /// `i` is the offset of the block on the device.
 /// `superblock` is the filesystem's superblock.
@@ -225,6 +241,8 @@ fn read_block(i: u64, superblock: &Superblock, io: &mut dyn DeviceHandle, buff: 
 
 	Ok(())
 }
+
+// TODO Write block
 
 /// The ext2 superblock structure.
 #[repr(C, packed)]
@@ -849,7 +867,7 @@ impl FilesystemType for Ext2FsType {
 		let inodes_per_block_group = 0; // TODO
 		let blocks_count = (io.get_size() / DEFAULT_BLOCK_SIZE) as u32;
 
-		let _superblock = Superblock {
+		let superblock = Superblock {
 			total_inodes: inodes_count,
 			total_blocks: blocks_count,
 			superuser_blocks: 0,
@@ -897,23 +915,31 @@ impl FilesystemType for Ext2FsType {
 
 			_padding: [0; 788],
 		};
+		let block_size = superblock.get_block_size();
 
-		let _block_group_number = math::ceil_division(blocks_count, DEFAULT_BLOCKS_PER_GROUP);
-		// TODO
-		/*let _bgdt = BlockGroupDescriptor {
-			block_usage_bitmap_addr: u32,
-			inode_usage_bitmap_addr: u32,
-			inode_table_start_addr: u32,
-			unallocated_blocks_number: u16,
-			unallocated_inodes_number: u16,
-			directories_number: u16,
+		write(superblock, SUPERBLOCK_OFFSET, io)?;
 
-			_padding: [0; 14],
-		};*/
+		let bgdt_off = BGDT_BLOCK_OFFSET * block_size;
+		let block_groups_count = blocks_count / DEFAULT_BLOCKS_PER_GROUP;
+		for i in 0..block_groups_count {
+			let bgd = BlockGroupDescriptor {
+				block_usage_bitmap_addr: 0, // TODO
+				inode_usage_bitmap_addr: 0, // TODO
+				inode_table_start_addr: 0, // TODO
+				unallocated_blocks_number: DEFAULT_BLOCKS_PER_GROUP as _, // TODO Subtract inodes and bitmaps blocks
+				unallocated_inodes_number: inodes_per_block_group as _,
+				directories_number: 0, // TODO Add root?
 
-		// TODO Write superblock, block group descriptor table and all blocks
+				_padding: [0; 14],
+			};
 
-		Err(errno::ENOMEM)
+			let off = (bgdt_off + size_of::<BlockGroupDescriptor>() * i as usize) as u64;
+			write(bgd, off, io)?;
+		}
+
+		// TODO Create root directory?
+
+		self.load_filesystem(io)
 	}
 
 	fn load_filesystem(&self, io: &mut dyn DeviceHandle) -> Result<Box<dyn Filesystem>, Errno> {
