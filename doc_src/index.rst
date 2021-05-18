@@ -14,10 +14,10 @@ Maestro documentation
    dependencies
    compilation
    selftest
+   debug
 
    booting
-
-   debug
+   distribution
 
    VGA
    TTY
@@ -36,12 +36,7 @@ Maestro documentation
 
    process
 
-   disk/PATA
-   disk/MBR
-   disk/GPT
-
-   filesystem/VFS
-   filesystem/ext2
+   device/list
 
    ELF
    modules

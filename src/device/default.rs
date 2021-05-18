@@ -21,7 +21,7 @@ impl DeviceHandle for NullDeviceHandle {
 	}
 
 	fn write(&mut self, _offset: u64, buff: &[u8]) -> Result<usize, Errno> {
-		Ok(buff.len())
+		Ok(0)
 	}
 }
 
@@ -78,7 +78,7 @@ pub fn create() -> Result<(), Errno> {
 		NullDeviceHandle {})?)?;
 
 	let zero_path = Path::from_string("/dev/zero")?;
-	device::register_device(Device::new(1, 3, zero_path, 0666, DeviceType::Char,
+	device::register_device(Device::new(1, 5, zero_path, 0666, DeviceType::Char,
 		ZeroDeviceHandle {})?)?;
 
 	let current_tty_path = Path::from_string("/dev/tty")?;
