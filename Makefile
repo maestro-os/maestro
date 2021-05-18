@@ -290,7 +290,7 @@ $(CONFIG_UTIL_PATH): $(CONFIG_UTIL_SRC)
 	rm -rf $(CONFIG_UTIL_BUILD_PATH)
 	cp -r config/ $(CONFIG_UTIL_BUILD_PATH)
 	cd $(CONFIG_UTIL_BUILD_PATH) && cargo build --release
-	cp -Tr $(CONFIG_UTIL_BUILD_PATH) config/
+	cp -r $(CONFIG_UTIL_BUILD_PATH)/target/ config/target/
 	rm -r $(CONFIG_UTIL_BUILD_PATH)
 
 # Runs the configuration utility to create the configuration file
