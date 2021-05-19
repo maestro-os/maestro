@@ -35,6 +35,7 @@
 #![reexport_test_harness_main = "kernel_selftest"]
 
 mod acpi;
+mod cmdline;
 mod debug;
 mod device;
 mod elf;
@@ -150,7 +151,12 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 
 	// TODO CPUID
 	multiboot::read_tags(multiboot_ptr);
-	multiboot::get_boot_info().check_cmdline();
+	let args_parser = cmdline::ArgsParser::parse(&multiboot::get_boot_info().cmdline);
+	if let Err(e) = args_parser {
+		println!("Invalid command line arguments: {}", e);
+		halt();
+	}
+	let args_parser = args_parser.unwrap();
 	// TODO Print only if not silent (but keep logs anyways)
 
 	println!("Booting Maestro kernel version {}", KERNEL_VERSION);
@@ -183,7 +189,7 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 		crate::kernel_panic!("Failed to initialize devices management!", 0);
 	}
 
-	let (root_major, root_minor) = multiboot::get_boot_info().get_root_dev();
+	let (root_major, root_minor) = args_parser.get_root_dev();
 	if file::init(device::DeviceType::Block, root_major, root_minor).is_err() {
 		kernel_panic!("Failed to initialize files management!");
 	}

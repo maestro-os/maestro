@@ -21,7 +21,7 @@ impl DeviceHandle for NullDeviceHandle {
 	}
 
 	fn write(&mut self, _offset: u64, buff: &[u8]) -> Result<usize, Errno> {
-		Ok(0)
+		Ok(buff.len())
 	}
 }
 

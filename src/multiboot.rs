@@ -399,26 +399,6 @@ pub struct BootInfo {
 	// TODO
 }
 
-impl BootInfo {
-	/// Checks whether the command line is valid. If invalid, prints an error message and halts the
-	/// kernel.
-	pub fn check_cmdline(&self) {
-		// TODO
-	}
-
-	/// Returns the VFS root's device.
-	pub fn get_root_dev(&self) -> (u32, u32) {
-		// TODO Parse the command line
-		(1, 0)
-	}
-
-	/// Tells whether the kernel is silent at boot.
-	pub fn is_silent(&self) -> bool {
-		// TODO Parse the command line
-		false
-	}
-}
-
 /// The field storing the informations given to the kernel at boot time.
 static mut BOOT_INFO: BootInfo = BootInfo {
 	cmdline: "",
