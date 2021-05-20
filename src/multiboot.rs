@@ -4,6 +4,7 @@
 use core::ffi::c_void;
 use core::mem::ManuallyDrop;
 use core::ptr::null;
+use crate::memory;
 use crate::util;
 
 pub const BOOTLOADER_MAGIC: u32 = 0x36d76289;
@@ -446,8 +447,8 @@ fn handle_tag(boot_info: &mut BootInfo, tag: *const Tag) {
 			let t = tag as *const TagString;
 
 			unsafe {
-				let ptr = &*(&(*t).string as *const u8);
-				boot_info.cmdline = util::ptr_to_str_len(ptr, (*t).size as _);
+				let ptr = memory::kern_to_virt(&(*t).string as *const _ as *const _);
+				boot_info.cmdline = util::ptr_to_str(ptr);
 			}
 		},
 

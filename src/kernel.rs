@@ -151,26 +151,15 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 
 	// TODO CPUID
 	multiboot::read_tags(multiboot_ptr);
-	let args_parser = cmdline::ArgsParser::parse(&multiboot::get_boot_info().cmdline);
-	if let Err(e) = args_parser {
-		println!("Invalid command line arguments: {}", e);
-		halt();
-	}
-	let args_parser = args_parser.unwrap();
-	// TODO Print only if not silent (but keep logs anyways)
 
-	println!("Booting Maestro kernel version {}", KERNEL_VERSION);
-	println!("Reading memory map...");
 	memory::memmap::init(multiboot_ptr);
 	if cfg!(config_debug_debug) {
 		memory::memmap::print_entries();
 	}
 
-	println!("Initializing memory allocation...");
 	memory::alloc::init();
 	memory::malloc::init();
 
-	println!("Initializing virtual memory handler...");
 	let kernel_vmem = memory::vmem::kernel();
 	if kernel_vmem.is_err() {
 		crate::kernel_panic!("Cannot initialize kernel virtual memory!", 0);
@@ -179,6 +168,16 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 	#[cfg(test)]
 	#[cfg(config_debug_test)]
 	kernel_selftest();
+
+	let args_parser = cmdline::ArgsParser::parse(&multiboot::get_boot_info().cmdline);
+	if let Err(e) = args_parser {
+		e.print();
+		halt();
+	}
+	let args_parser = args_parser.unwrap();
+	// TODO Print only if not silent (but keep logs anyways)
+
+	println!("Booting Maestro kernel version {}", KERNEL_VERSION);
 
 	acpi::init();
 
