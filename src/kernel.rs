@@ -46,6 +46,7 @@ mod gdt;
 #[macro_use]
 mod idt;
 mod limits;
+mod logger;
 mod memory;
 mod module;
 mod multiboot;
@@ -156,10 +157,8 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 	if cfg!(config_debug_debug) {
 		memory::memmap::print_entries();
 	}
-
 	memory::alloc::init();
 	memory::malloc::init();
-
 	let kernel_vmem = memory::vmem::kernel();
 	if kernel_vmem.is_err() {
 		crate::kernel_panic!("Cannot initialize kernel virtual memory!", 0);
@@ -175,7 +174,7 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 		halt();
 	}
 	let args_parser = args_parser.unwrap();
-	// TODO Print only if not silent (but keep logs anyways)
+	logger::set_silent(args_parser.is_silent());
 
 	println!("Booting Maestro kernel version {}", KERNEL_VERSION);
 

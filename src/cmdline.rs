@@ -1,5 +1,5 @@
-/// When booting, the kernel can take command line arguments. This module implements a parse for
-/// these arguments.
+//! When booting, the kernel can take command line arguments. This module implements a parse for
+//! these arguments.
 
 use core::cmp::min;
 use core::str;
