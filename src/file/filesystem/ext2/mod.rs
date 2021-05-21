@@ -179,6 +179,10 @@ const INODE_FLAG_JOURNAL_FILE: u32 = 0x40000;
 
 /// The inode of the root directory.
 const ROOT_DIRECTORY_INODE: u32 = 2;
+/// The root directory's default mode.
+const ROOT_DIRECTORY_DEFAULT_MODE: u16 = INODE_PERMISSION_IRWXU
+	| INODE_PERMISSION_IRGRP | INODE_PERMISSION_IXGRP
+	| INODE_PERMISSION_IROTH | INODE_PERMISSION_IXOTH;
 
 /// Directory entry type indicator: Unknown
 const TYPE_INDICATOR_UNKNOWN: u8 = 0;
@@ -217,9 +221,9 @@ unsafe fn read<T>(offset: u64, io: &mut dyn DeviceHandle) -> Result<T, Errno> {
 /// `obj` is the object to write.
 /// `offset` is the offset in bytes on the device.
 /// `io` is the I/O interface of the device.
-fn write<T>(obj: T, offset: u64, io: &mut dyn DeviceHandle) -> Result<(), Errno> {
+fn write<T>(obj: &T, offset: u64, io: &mut dyn DeviceHandle) -> Result<(), Errno> {
 	let size = size_of_val(&obj);
-	let ptr = &obj as *const T as *const u8;
+	let ptr = obj as *const T as *const u8;
 	let buffer = unsafe {
 		slice::from_raw_parts(ptr, size)
 	};
@@ -417,13 +421,13 @@ struct Ext2INode {
 	/// Lower 32 bits of size in bytes.
 	size_low: u32,
 	/// Timestamp of the last modification of the metadata.
-	ctime: u16,
+	ctime: u32,
 	/// Timestamp of the last modification of the content.
-	mtime: u16,
+	mtime: u32,
 	/// Timestamp of the last access.
-	atime: u16,
+	atime: u32,
 	/// Timestamp of the deletion.
-	dtime: u16,
+	dtime: u32,
 	/// Group ID.
 	gid: u16,
 	/// The number of hard links to this inode.
@@ -451,7 +455,7 @@ struct Ext2INode {
 	/// Block address of fragment.
 	fragment_addr: u32,
 	/// OS-specific value.
-	os_specific_1: u32,
+	os_specific_1: [u8; 12],
 }
 
 impl Ext2INode {
@@ -679,7 +683,7 @@ impl Ext2INode {
 	}
 
 	/// Writes the inode on the device.
-	pub fn write(&self, _i: usize, _superblock: &Superblock, _io: &mut dyn DeviceHandle)
+	pub fn write(&self, _i: u32, _superblock: &Superblock, _io: &mut dyn DeviceHandle)
 		-> Result<(), Errno> {
 		// TODO
 
@@ -863,9 +867,10 @@ impl FilesystemType for Ext2FsType {
 
 	fn create_filesystem(&self, io: &mut dyn DeviceHandle) -> Result<Box<dyn Filesystem>, Errno> {
 		let timestamp = time::get();
-		let inodes_count = 0; // TODO
-		let inodes_per_block_group = 0; // TODO
 		let blocks_count = (io.get_size() / DEFAULT_BLOCK_SIZE) as u32;
+		let block_groups_count = blocks_count / DEFAULT_BLOCKS_PER_GROUP;
+		let inodes_per_block_group = 0; // TODO
+		let inodes_count = block_groups_count * inodes_per_block_group;
 
 		let superblock = Superblock {
 			total_inodes: inodes_count,
@@ -916,28 +921,62 @@ impl FilesystemType for Ext2FsType {
 			_padding: [0; 788],
 		};
 		let block_size = superblock.get_block_size();
+		let inode_size = superblock.inode_size;
 
-		write(superblock, SUPERBLOCK_OFFSET, io)?;
+		write(&superblock, SUPERBLOCK_OFFSET, io)?;
 
 		let bgdt_off = BGDT_BLOCK_OFFSET * block_size;
-		let block_groups_count = blocks_count / DEFAULT_BLOCKS_PER_GROUP;
+		let block_usage_bitmap_size = math::ceil_division(DEFAULT_BLOCKS_PER_GROUP,
+			(block_size * 8) as _);
+		let inode_usage_bitmap_size = math::ceil_division(inodes_per_block_group,
+			(block_size * 8) as _);
+		let inode_table_size = math::ceil_division(inodes_per_block_group * inode_size as u32,
+			(block_size * 8) as _);
+		let available_blocks = DEFAULT_BLOCKS_PER_GROUP
+			- (block_usage_bitmap_size + inode_usage_bitmap_size + inode_table_size);
 		for i in 0..block_groups_count {
+			// TODO Take into account the BGDT into the addresses/available blocks/inodes
+			// TODO Add root directory
 			let bgd = BlockGroupDescriptor {
-				block_usage_bitmap_addr: 0, // TODO
-				inode_usage_bitmap_addr: 0, // TODO
-				inode_table_start_addr: 0, // TODO
-				unallocated_blocks_number: DEFAULT_BLOCKS_PER_GROUP as _, // TODO Subtract inodes and bitmaps blocks
+				block_usage_bitmap_addr: i * DEFAULT_BLOCKS_PER_GROUP,
+				inode_usage_bitmap_addr: i * DEFAULT_BLOCKS_PER_GROUP + block_usage_bitmap_size,
+				inode_table_start_addr: i * DEFAULT_BLOCKS_PER_GROUP + block_usage_bitmap_size
+					+ inode_usage_bitmap_size,
+				unallocated_blocks_number: available_blocks as _,
 				unallocated_inodes_number: inodes_per_block_group as _,
-				directories_number: 0, // TODO Add root?
+				directories_number: 0,
 
 				_padding: [0; 14],
 			};
 
 			let off = (bgdt_off + size_of::<BlockGroupDescriptor>() * i as usize) as u64;
-			write(bgd, off, io)?;
+			write(&bgd, off, io)?;
 		}
 
-		// TODO Create root directory?
+		let root_dir = Ext2INode {
+			type_permissions: ROOT_DIRECTORY_DEFAULT_MODE,
+			uid: 0,
+			size_low: 0,
+			ctime: timestamp,
+			mtime: timestamp,
+			atime: timestamp,
+			dtime: 0,
+			gid: 0,
+			hard_links_count: 1,
+			used_sectors: 0,
+			flags: 0,
+			os_specific_0: 0,
+			direct_block_ptrs: [0; DIRECT_BLOCKS_COUNT],
+			singly_indirect_block_ptr: 0,
+			doubly_indirect_block_ptr: 0,
+			triply_indirect_block_ptr: 0,
+			generation: 0,
+			extended_attributes_block: 0,
+			size_high: 0,
+			fragment_addr: 0,
+			os_specific_1: [0; 12],
+		};
+		root_dir.write(ROOT_DIRECTORY_INODE, &superblock, io)?;
 
 		self.load_filesystem(io)
 	}
