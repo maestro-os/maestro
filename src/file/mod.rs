@@ -19,6 +19,7 @@ use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::lock::mutex::Mutex;
+use crate::util::lock::mutex::MutexGuard;
 use crate::util::ptr::SharedPtr;
 use crate::util::ptr::WeakPtr;
 use path::Path;
@@ -421,6 +422,7 @@ impl FCache {
 		// TODO Push file
 	}
 
+	// TODO Use the cache
 	/// Adds the file `file` to the VFS. The file will be located into the directory at path
 	/// `path`.
 	/// The directory must exist. If an error happens, the function returns an Err with the
@@ -428,31 +430,34 @@ impl FCache {
 	/// If the path is relative, the function starts from the root.
 	/// If the file isn't present in the pool, the function shall load it.
 	pub fn create_file(&mut self, _path: &Path, _file: File) -> Result<(), Errno> {
-		// TODO
-
+		// TODO Create the file relative to mountpoint
 		Err(errno::ENOMEM)
 	}
 
-	// TODO Function to list files at root
-
-	/// Returns the file at the root of the VFS with name `name`.
-	pub fn get_root_file(&mut self, _name: String) -> Result<SharedPtr<File>, Errno> {
-		// TODO
-
+	// TODO Use the cache
+	/// Removes the file at path `path` from the VFS.
+	/// If the file is a non-empty directory, the function returns an error.
+	pub fn remove_file(&mut self, _path: &Path) -> Result<(), Errno> {
+		// TODO Remove the file relative to mountpoint
 		Err(errno::ENOMEM)
 	}
 
+	// TODO Use the cache
 	/// Returns a reference to the file at path `path`. If the file doesn't exist, the function
 	/// returns None.
 	/// If the path is relative, the function starts from the root.
 	/// If the file isn't present in the pool, the function shall load it.
-	pub fn get_file_from_path(&mut self, _path: &Path) -> Result<SharedPtr<File>, Errno> {
-		// TODO
+	pub fn get_file_from_path(&mut self, path: &Path) -> Result<SharedPtr<File>, Errno> {
+		let mut path = Path::root().concat(path)?;
+		path.reduce()?;
+		let inner_path = path.failable_clone()?; // TODO Remove first part
 
-		Err(errno::ENOMEM)
+		let mut deepest_mountpoint = mountpoint::get_deepest(&path).ok_or(errno::ENOENT)?;
+		let mut dev = deepest_mountpoint.get_device();
+
+		let file = deepest_mountpoint.get_filesystem().load_file(dev.get_handle(), inner_path)?;
+		SharedPtr::new(file)
 	}
-
-	// TODO File remove
 }
 
 /// The instance of the file cache.
@@ -467,7 +472,7 @@ pub fn init(root_device_type: DeviceType, root_major: u32, root_minor: u32) -> R
 	filesystem::register_defaults()?;
 
 	let cache = FCache::new(root_device_type, root_major, root_minor)?;
-	unsafe {
+	unsafe { // Safe because using Mutex and because this code is executed only once at boot
 		FILES_CACHE = MaybeUninit::new(Mutex::new(cache));
 	}
 
@@ -481,16 +486,37 @@ pub fn get_files_cache() -> &'static mut Mutex<FCache> {
 	}
 }
 
-/// Removes the file at path `path` and its subfiles recursively if it's a directory.
-/// If relative, the path is taken from the root.
-pub fn remove_recursive(_path: &Path) {
-	// TODO
-}
-
 /// Creates the directories necessary to reach path `path`. On success, the function returns
 /// the number of created directories (without the directories that already existed).
 /// If relative, the path is taken from the root.
-pub fn create_dirs(_path: &Path) -> Result<usize, Errno> {
+pub fn create_dirs(path: &Path) -> Result<usize, Errno> {
+	let mut guard = MutexGuard::new(get_files_cache());
+	let fcache = guard.get_mut();
+
+	let mut path = Path::root().concat(path)?;
+	path.reduce()?;
+	let mut p = Path::root();
+
+	let mut created_count = 0;
+	for i in 0..path.get_elements_count() {
+		p.push(path[i].failable_clone()?)?;
+
+		if fcache.get_file_from_path(&p).is_err() {
+			let dir = File::new(path[i].failable_clone()?, FileType::Directory, 0, 0, 0755)?;
+			fcache.create_file(&p, dir)?;
+
+			created_count += 1;
+		}
+	}
+
+	Ok(created_count)
+}
+
+/// Removes the file at path `path` and its subfiles recursively if it's a directory.
+/// If relative, the path is taken from the root.
+pub fn remove_recursive(path: &Path) -> Result<(), Errno> {
+	let mut path = Path::root().concat(path)?;
+	path.reduce()?;
 	// TODO
 
 	Err(errno::ENOMEM)

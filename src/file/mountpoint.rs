@@ -14,6 +14,11 @@ use crate::util::ptr::SharedPtr;
 use super::filesystem;
 use super::path::Path;
 
+// TODO rm
+use crate::file::filesystem::FilesystemType;
+
+// TODO When removing a mountpoint, return an error if another mountpoint is present in a subdir
+
 /// Structure representing a mount point.
 pub struct MountPoint {
 	/// The device type.
@@ -39,6 +44,11 @@ impl MountPoint {
 	pub fn new(device_type: DeviceType, major: u32, minor: u32, path: Path)
 		-> Result<Self, Errno> {
 		let mut device = device::get_device(device_type, major, minor).ok_or(errno::ENODEV)?;
+
+		// TODO rm
+		let fs_type = filesystem::ext2::Ext2FsType {};
+		fs_type.create_filesystem(device.as_mut().get_handle())?;
+
 		let fs_type = filesystem::detect(device.as_mut())?;
 		let filesystem = fs_type.load_filesystem(device.as_mut().get_handle())?;
 
@@ -69,8 +79,8 @@ impl MountPoint {
 	}
 
 	/// Returns a reference to the mounted device.
-	pub fn get_device(&self) -> Option<SharedPtr<Device>> {
-		device::get_device(self.device_type, self.major, self.minor)
+	pub fn get_device(&self) -> SharedPtr<Device> {
+		device::get_device(self.device_type, self.major, self.minor).unwrap()
 	}
 
 	/// Returns a reference to the path where the filesystem is mounted.
@@ -103,4 +113,31 @@ pub fn register_mountpoint(mountpoint: MountPoint) -> Result<SharedPtr<MountPoin
 	let shared_ptr = SharedPtr::new(mountpoint)?;
 	container.push(shared_ptr.clone())?;
 	Ok(shared_ptr)
+}
+
+/// Returns the deepest mountpoint in the path `path`. If no mountpoint is in the path, the
+/// function returns None.
+pub fn get_deepest(path: &Path) -> Option<SharedPtr<MountPoint>> {
+	let mutex = unsafe { // Safe because using Mutex
+		&mut MOUNT_POINTS
+	};
+	let mut guard = MutexGuard::new(mutex);
+	let container = guard.get_mut();
+
+	let mut max: Option<SharedPtr<MountPoint>> = None;
+	for m in container.iter() {
+		let mount_path = m.get_path();
+
+		if let Some(max) = max.as_ref() {
+			if max.get_path().get_elements_count() >= mount_path.get_elements_count() {
+				continue;
+			}
+		}
+
+		if path.begins_with(mount_path) {
+			max = Some(m.clone());
+		}
+	}
+
+	max
 }

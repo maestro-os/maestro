@@ -178,16 +178,21 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 
 	println!("Booting Maestro kernel version {}", KERNEL_VERSION);
 
+	println!("Initializing ACPI...");
 	acpi::init();
 
+	println!("Initializing ramdisks...");
 	if device::storage::ramdisk::create().is_err() {
 		kernel_panic!("Failed to create ramdisks!");
 	}
+	println!("Initializing devices management...");
 	if device::init().is_err() {
 		crate::kernel_panic!("Failed to initialize devices management!", 0);
 	}
 
 	let (root_major, root_minor) = args_parser.get_root_dev();
+	println!("Root device is {} {}", root_major, root_minor);
+	println!("Initializing files management...");
 	if file::init(device::DeviceType::Block, root_major, root_minor).is_err() {
 		kernel_panic!("Failed to initialize files management!");
 	}

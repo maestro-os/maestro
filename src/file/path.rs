@@ -1,5 +1,6 @@
 //! This module handles files path.
 
+use core::cmp::min;
 use core::ops::Index;
 use core::ops::IndexMut;
 use crate::errno::Errno;
@@ -85,6 +86,22 @@ impl Path {
 	/// Pops the filename on top of the path.
 	pub fn pop(&mut self) {
 		self.parts.pop();
+	}
+
+	/// Tells whether the current path begins with the path `other`.
+	pub fn begins_with(&self, other: &Self) -> bool {
+		if self.absolute != other.absolute {
+			return false;
+		}
+
+		let len = min(self.parts.len(), other.parts.len());
+		for i in 0..len {
+			if self.parts[i] != other.parts[i] {
+				return false;
+			}
+		}
+
+		true
 	}
 
 	/// Reduces the path, removing all useless `.` and `..`.

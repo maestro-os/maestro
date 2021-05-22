@@ -222,7 +222,7 @@ unsafe fn read<T>(offset: u64, io: &mut dyn DeviceHandle) -> Result<T, Errno> {
 /// `offset` is the offset in bytes on the device.
 /// `io` is the I/O interface of the device.
 fn write<T>(obj: &T, offset: u64, io: &mut dyn DeviceHandle) -> Result<(), Errno> {
-	let size = size_of_val(&obj);
+	let size = size_of_val(obj);
 	let ptr = obj as *const T as *const u8;
 	let buffer = unsafe {
 		slice::from_raw_parts(ptr, size)
@@ -367,8 +367,8 @@ impl Superblock {
 	}
 
 	/// Writes the superblock on the device.
-	pub fn write(&self) {
-		// TODO
+	pub fn write(&self, io: &mut dyn DeviceHandle) -> Result<(), Errno> {
+		write::<Self>(self, SUPERBLOCK_OFFSET, io)
 	}
 }
 
@@ -755,7 +755,7 @@ struct Ext2Fs {
 impl Ext2Fs {
 	/// Creates a new instance.
 	/// If the filesystem cannot be mounted, the function returns an Err.
-	fn new(mut superblock: Superblock) -> Result<Self, Errno> {
+	fn new(mut superblock: Superblock, io: &mut dyn DeviceHandle) -> Result<Self, Errno> {
 		debug_assert!(superblock.is_valid());
 
 		// TODO Check that the driver supports required features
@@ -763,13 +763,13 @@ impl Ext2Fs {
 		if superblock.mount_count_since_fsck >= superblock.mount_count_before_fsck {
 			return Err(errno::EINVAL);
 		}
-		if superblock.last_fsck_timestamp + superblock.fsck_interval >= timestamp {
+		if timestamp >= superblock.last_fsck_timestamp + superblock.fsck_interval {
 			return Err(errno::EINVAL);
 		}
 
 		superblock.mount_count_since_fsck += 1;
 		superblock.last_fsck_timestamp = timestamp;
-		superblock.write();
+		superblock.write(io)?;
 
 		Ok(Self {
 			superblock: superblock,
@@ -922,8 +922,7 @@ impl FilesystemType for Ext2FsType {
 		};
 		let block_size = superblock.get_block_size();
 		let inode_size = superblock.inode_size;
-
-		write(&superblock, SUPERBLOCK_OFFSET, io)?;
+		superblock.write(io)?;
 
 		let bgdt_off = BGDT_BLOCK_OFFSET * block_size;
 		let block_usage_bitmap_size = math::ceil_division(DEFAULT_BLOCKS_PER_GROUP,
@@ -982,6 +981,7 @@ impl FilesystemType for Ext2FsType {
 	}
 
 	fn load_filesystem(&self, io: &mut dyn DeviceHandle) -> Result<Box<dyn Filesystem>, Errno> {
-		Ok(Box::new(Ext2Fs::new(Superblock::read(io)?)?)? as _)
+		let superblock = Superblock::read(io)?;
+		Ok(Box::new(Ext2Fs::new(superblock, io)?)? as _)
 	}
 }
