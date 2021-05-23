@@ -238,21 +238,6 @@ impl File {
 		self.mode
 	}
 
-	/// Returns the timestamp to the last modification of the file's metadata.
-	pub fn get_ctime(&self) -> Timestamp {
-		self.ctime
-	}
-
-	/// Returns the timestamp to the last modification to the file.
-	pub fn get_mtime(&self) -> Timestamp {
-		self.mtime
-	}
-
-	/// Returns the timestamp to the last access to the file.
-	pub fn get_atime(&self) -> Timestamp {
-		self.atime
-	}
-
 	/// Tells if the file can be read from by the given UID and GID.
 	pub fn can_read(&self, uid: Uid, gid: Gid) -> bool {
 		if self.uid == uid && self.mode & S_IRUSR != 0 {
@@ -284,6 +269,48 @@ impl File {
 			return true;
 		}
 		self.mode & S_IXOTH != 0
+	}
+
+	/// Returns the index of the inode associated with the file. This value is dependent on the
+	/// filesystem.
+	/// If no INode is associated with the file, the function returns None.
+	pub fn get_inode(&self) -> Option<INode> {
+		self.inode
+	}
+
+	/// Sets the file's inode.
+	pub fn set_inode(&mut self, inode: Option<INode>) {
+		self.inode = inode;
+	}
+
+	/// Returns the timestamp of the last modification of the file's metadata.
+	pub fn get_ctime(&self) -> Timestamp {
+		self.ctime
+	}
+
+	/// Sets the timestamp of the last modification of the file's metadata.
+	pub fn set_ctime(&mut self, ctime: Timestamp) {
+		self.ctime = ctime;
+	}
+
+	/// Returns the timestamp of the last modification to the file.
+	pub fn get_mtime(&self) -> Timestamp {
+		self.mtime
+	}
+
+	/// Sets the timestamp of the last modification to the file.
+	pub fn set_mtime(&mut self, mtime: Timestamp) {
+		self.mtime = mtime;
+	}
+
+	/// Returns the timestamp of the last access to the file.
+	pub fn get_atime(&self) -> Timestamp {
+		self.atime
+	}
+
+	/// Sets the timestamp of the last access to the file.
+	pub fn set_atime(&mut self, atime: Timestamp) {
+		self.atime = atime;
 	}
 
 	/// Tells whether the directory is empty or not. If the file is not a directory, the behaviour
@@ -437,7 +464,9 @@ impl FCache {
 		let mut dev = deepest_mountpoint.get_device();
 		let inner_path = path.range_from(deepest_mountpoint.get_path().get_elements_count()..)?;
 
-		deepest_mountpoint.get_filesystem().add_file(dev.get_handle(), inner_path, file)?;
+		let parent_inode = deepest_mountpoint.get_filesystem().get_inode(dev.get_handle(),
+			inner_path)?;
+		deepest_mountpoint.get_filesystem().add_file(dev.get_handle(), parent_inode, file)?;
 		Ok(())
 	}
 
@@ -450,9 +479,16 @@ impl FCache {
 
 		let mut deepest_mountpoint = mountpoint::get_deepest(&path).ok_or(errno::ENOENT)?;
 		let mut dev = deepest_mountpoint.get_device();
-		let inner_path = path.range_from(deepest_mountpoint.get_path().get_elements_count()..)?;
 
-		deepest_mountpoint.get_filesystem().remove_file(dev.get_handle(), inner_path)?;
+		let path_len = path.get_elements_count();
+		let entry_name = &path[path_len - 1];
+		let mountpoint_path_len = deepest_mountpoint.get_path().get_elements_count();
+		let parent_inner_path = path.range(mountpoint_path_len..(path_len - 1))?;
+
+		let parent_inode = deepest_mountpoint.get_filesystem().get_inode(dev.get_handle(),
+			parent_inner_path)?;
+		deepest_mountpoint.get_filesystem().remove_file(dev.get_handle(), parent_inode,
+			entry_name)?;
 		Ok(())
 	}
 
@@ -468,8 +504,10 @@ impl FCache {
 		let mut deepest_mountpoint = mountpoint::get_deepest(&path).ok_or(errno::ENOENT)?;
 		let mut dev = deepest_mountpoint.get_device();
 		let inner_path = path.range_from(deepest_mountpoint.get_path().get_elements_count()..)?;
+		let entry_name = inner_path[inner_path.get_elements_count() - 1].failable_clone()?;
 
-		let file = deepest_mountpoint.get_filesystem().load_file(dev.get_handle(), inner_path)?;
+		let inode = deepest_mountpoint.get_filesystem().get_inode(dev.get_handle(), inner_path)?;
+		let file = deepest_mountpoint.get_filesystem().load_file(dev.get_handle(), inode, entry_name)?;
 		SharedPtr::new(file)
 	}
 }

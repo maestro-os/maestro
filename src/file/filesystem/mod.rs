@@ -7,6 +7,7 @@ use crate::device::DeviceHandle;
 use crate::errno::Errno;
 use crate::errno;
 use crate::util::boxed::Box;
+use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::lock::mutex::Mutex;
 use crate::util::lock::mutex::MutexGuard;
@@ -23,34 +24,39 @@ pub trait Filesystem {
 	/// Tells whether the filesystem is mounted in read-only.
 	fn is_readonly(&self) -> bool;
 
-	/// Loads the file at path `path`.
+	/// Returns the inode of the file at path `path`.
 	/// `io` is the I/O interface.
 	/// `path` is the file's path.
 	/// The path must be absolute relative the filesystem's root directory and must not contain
 	/// any `.` or `..` component.
-	fn load_file(&mut self, io: &mut dyn DeviceHandle, path: Path) -> Result<File, Errno>;
-	/// Adds a file to the filesystem.
+	fn get_inode(&mut self, io: &mut dyn DeviceHandle, path: Path) -> Result<INode, Errno>;
+
+	/// Loads the file at inode `inode`.
 	/// `io` is the I/O interface.
-	/// `path` is the parent directory's path.
+	/// `inode` is the file's inode.
+	/// `name` is the file's name.
+	fn load_file(&mut self, io: &mut dyn DeviceHandle, inode: INode, name: String)
+		-> Result<File, Errno>;
+
+	/// Adds a file to the filesystem at inode `inode`.
+	/// `io` is the I/O interface.
+	/// `parent_inode` is the parent file's inode.
 	/// `file` is the file to be added.
-	/// The path must be absolute relative the filesystem's root directory and must not contain
-	/// any `.` or `..` component.
-	fn add_file(&mut self, io: &mut dyn DeviceHandle, path: Path, file: File) -> Result<(), Errno>;
+	fn add_file(&mut self, io: &mut dyn DeviceHandle, parent_inode: INode, file: File)
+		-> Result<(), Errno>;
+
 	/// Removes a file from the filesystem.
 	/// `io` is the I/O interface.
-	/// `path` is the file's path.
-	/// The path must be absolute relative the filesystem's root directory and must not contain
-	/// any `.` or `..` component.
-	fn remove_file(&mut self, io: &mut dyn DeviceHandle, path: Path) -> Result<(), Errno>;
+	/// `parent_inode` is the parent file's inode.
+	/// `name` is the file's name.
+	fn remove_file(&mut self, io: &mut dyn DeviceHandle, parent_inode: INode, name: &String)
+		-> Result<(), Errno>;
 
 	/// Reads from the given node `node` into the buffer `buf`.
-	/// The path must be absolute relative the filesystem's root directory and must not contain
-	/// any `.` or `..` component.
 	fn read_node(&mut self, io: &mut dyn DeviceHandle, node: INode, buf: &mut [u8])
 		-> Result<(), Errno>;
+
 	/// Writes to the given node `node` from the buffer `buf`.
-	/// The path must be absolute relative the filesystem's root directory and must not contain
-	/// any `.` or `..` component.
 	fn write_node(&mut self, io: &mut dyn DeviceHandle, node: INode, buf: &[u8])
 		-> Result<(), Errno>;
 }

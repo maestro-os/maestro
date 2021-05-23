@@ -96,6 +96,11 @@ impl String {
 		}
 	}
 
+	/// Returns a slice containing the bytes representation of the string.
+	pub fn as_bytes(&self) -> &[u8] {
+		self.as_str().as_bytes()
+	}
+
 	/// Returns the length of the String in characters count.
 	pub fn len(&self) -> usize {
 		self.as_str().len()
