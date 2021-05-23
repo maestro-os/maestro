@@ -54,6 +54,8 @@ const DEFAULT_MAJOR: u32 = 1;
 const DEFAULT_MINOR: u16 = 1;
 /// Default filesystem block size.
 const DEFAULT_BLOCK_SIZE: u64 = 1024; // TODO
+/// Default inode size.
+const DEFAULT_INODE_SIZE: u16 = 128;
 /// Default number of blocks per block group.
 const DEFAULT_BLOCKS_PER_GROUP: u32 = 1024; // TODO
 /// Default number of mounts in between each fsck.
@@ -268,11 +270,11 @@ struct Superblock {
 	/// log2(fragment_size) - 10
 	fragment_size_log: u32,
 	/// The number of blocks per block group.
-	blocks_per_block_group: u32,
+	blocks_per_group: u32,
 	/// The number of fragments per block group.
-	fragments_per_block_group: u32,
+	fragments_per_group: u32,
 	/// The number of inodes per block group.
-	inodes_per_block_group: u32,
+	inodes_per_group: u32,
 	/// The timestamp of the last mount operation.
 	last_mount_timestamp: u32,
 	/// The timestamp of the last write operation.
@@ -309,7 +311,7 @@ struct Superblock {
 	/// The size of the inode structure in bytes.
 	inode_size: u16,
 	/// The block group containing the superblock.
-	superblock_block_group: u16,
+	superblock_group: u16,
 	/// Optional features for the implementation to support.
 	optional_features: u32,
 	/// Required features for the implementation to support.
@@ -404,11 +406,6 @@ impl BlockGroupDescriptor {
 			read::<Self>(off as _, io)
 		}
 	}
-
-	/// Writes the block group descriptor on the device.
-	pub fn write(&self, _i: usize, _superblock: &Superblock, _io: &mut dyn DeviceHandle) {
-		// TODO
-	}
 }
 
 /// TODO doc
@@ -475,8 +472,8 @@ impl Ext2INode {
 	pub fn read(i: u32, superblock: &Superblock, io: &mut dyn DeviceHandle)
 		-> Result<Self, Errno> {
 		let blk_size = superblock.get_block_size();
-		let blk_grp = (i - 1) / superblock.inodes_per_block_group;
-		let inode_off = (i - 1) % superblock.inodes_per_block_group;
+		let blk_grp = (i - 1) / superblock.inodes_per_group;
+		let inode_off = (i - 1) % superblock.inodes_per_group;
 		let inode_size = Self::get_inode_size(superblock);
 		let inode_table_blk_off = (inode_off * inode_size as u32) / (blk_size as u32);
 
@@ -779,7 +776,7 @@ impl Ext2Fs {
 	/// Returns the number of block groups.
 	fn get_block_groups_count(&self) -> usize {
 		math::ceil_division(self.superblock.total_blocks,
-			self.superblock.blocks_per_block_group) as _
+			self.superblock.blocks_per_group) as _
 	}
 }
 
@@ -868,9 +865,22 @@ impl FilesystemType for Ext2FsType {
 	fn create_filesystem(&self, io: &mut dyn DeviceHandle) -> Result<Box<dyn Filesystem>, Errno> {
 		let timestamp = time::get();
 		let blocks_count = (io.get_size() / DEFAULT_BLOCK_SIZE) as u32;
-		let block_groups_count = blocks_count / DEFAULT_BLOCKS_PER_GROUP;
-		let inodes_per_block_group = 0; // TODO
-		let inodes_count = block_groups_count * inodes_per_block_group;
+		let groups_count = blocks_count / DEFAULT_BLOCKS_PER_GROUP;
+
+		let inodes_per_group = 0; // TODO
+
+		let inodes_count = groups_count * inodes_per_group;
+
+		let bgdt_off = BGDT_BLOCK_OFFSET * DEFAULT_BLOCK_SIZE as usize;
+		let block_usage_bitmap_size = math::ceil_division(DEFAULT_BLOCKS_PER_GROUP,
+			(DEFAULT_BLOCK_SIZE * 8) as _);
+		let inode_usage_bitmap_size = math::ceil_division(inodes_per_group,
+			(DEFAULT_BLOCK_SIZE * 8) as _);
+		let inode_table_size = math::ceil_division(inodes_per_group * DEFAULT_INODE_SIZE as u32,
+			(DEFAULT_BLOCK_SIZE * 8) as _);
+
+		let available_blocks_per_group = DEFAULT_BLOCKS_PER_GROUP
+			- (block_usage_bitmap_size + inode_usage_bitmap_size + inode_table_size);
 
 		let superblock = Superblock {
 			total_inodes: inodes_count,
@@ -881,9 +891,9 @@ impl FilesystemType for Ext2FsType {
 			superblock_block_number: (SUPERBLOCK_OFFSET / DEFAULT_BLOCK_SIZE) as _,
 			block_size_log: (math::log2(DEFAULT_BLOCK_SIZE as usize) - 10) as _,
 			fragment_size_log: 0, // TODO
-			blocks_per_block_group: DEFAULT_BLOCKS_PER_GROUP,
-			fragments_per_block_group: 0, // TODO
-			inodes_per_block_group: inodes_per_block_group,
+			blocks_per_group: DEFAULT_BLOCKS_PER_GROUP,
+			fragments_per_group: 0, // TODO
+			inodes_per_group: inodes_per_group,
 			last_mount_timestamp: timestamp,
 			last_write_timestamp: timestamp,
 			mount_count_since_fsck: 0,
@@ -900,8 +910,8 @@ impl FilesystemType for Ext2FsType {
 			gid_reserved: 0,
 
 			first_non_reserved_inode: 11,
-			inode_size: 128,
-			superblock_block_group: ((SUPERBLOCK_OFFSET / DEFAULT_BLOCK_SIZE) as u32
+			inode_size: DEFAULT_INODE_SIZE,
+			superblock_group: ((SUPERBLOCK_OFFSET / DEFAULT_BLOCK_SIZE) as u32
 				/ DEFAULT_BLOCKS_PER_GROUP) as _,
 			optional_features: 0,
 			required_features: 0,
@@ -920,20 +930,9 @@ impl FilesystemType for Ext2FsType {
 
 			_padding: [0; 788],
 		};
-		let block_size = superblock.get_block_size();
-		let inode_size = superblock.inode_size;
 		superblock.write(io)?;
 
-		let bgdt_off = BGDT_BLOCK_OFFSET * block_size;
-		let block_usage_bitmap_size = math::ceil_division(DEFAULT_BLOCKS_PER_GROUP,
-			(block_size * 8) as _);
-		let inode_usage_bitmap_size = math::ceil_division(inodes_per_block_group,
-			(block_size * 8) as _);
-		let inode_table_size = math::ceil_division(inodes_per_block_group * inode_size as u32,
-			(block_size * 8) as _);
-		let available_blocks = DEFAULT_BLOCKS_PER_GROUP
-			- (block_usage_bitmap_size + inode_usage_bitmap_size + inode_table_size);
-		for i in 0..block_groups_count {
+		for i in 0..groups_count {
 			// TODO Take into account the BGDT into the addresses/available blocks/inodes
 			// TODO Add root directory
 			let bgd = BlockGroupDescriptor {
@@ -941,8 +940,8 @@ impl FilesystemType for Ext2FsType {
 				inode_usage_bitmap_addr: i * DEFAULT_BLOCKS_PER_GROUP + block_usage_bitmap_size,
 				inode_table_start_addr: i * DEFAULT_BLOCKS_PER_GROUP + block_usage_bitmap_size
 					+ inode_usage_bitmap_size,
-				unallocated_blocks_number: available_blocks as _,
-				unallocated_inodes_number: inodes_per_block_group as _,
+				unallocated_blocks_number: available_blocks_per_group as _,
+				unallocated_inodes_number: inodes_per_group as _,
 				directories_number: 0,
 
 				_padding: [0; 14],

@@ -429,17 +429,31 @@ impl FCache {
 	/// appropriate Errno.
 	/// If the path is relative, the function starts from the root.
 	/// If the file isn't present in the pool, the function shall load it.
-	pub fn create_file(&mut self, _path: &Path, _file: File) -> Result<(), Errno> {
-		// TODO Create the file relative to mountpoint
-		Err(errno::ENOMEM)
+	pub fn create_file(&mut self, path: &Path, file: File) -> Result<(), Errno> {
+		let mut path = Path::root().concat(path)?;
+		path.reduce()?;
+
+		let mut deepest_mountpoint = mountpoint::get_deepest(&path).ok_or(errno::ENOENT)?;
+		let mut dev = deepest_mountpoint.get_device();
+		let inner_path = path.range_from(deepest_mountpoint.get_path().get_elements_count()..)?;
+
+		deepest_mountpoint.get_filesystem().add_file(dev.get_handle(), inner_path, file)?;
+		Ok(())
 	}
 
 	// TODO Use the cache
 	/// Removes the file at path `path` from the VFS.
 	/// If the file is a non-empty directory, the function returns an error.
-	pub fn remove_file(&mut self, _path: &Path) -> Result<(), Errno> {
-		// TODO Remove the file relative to mountpoint
-		Err(errno::ENOMEM)
+	pub fn remove_file(&mut self, path: &Path) -> Result<(), Errno> {
+		let mut path = Path::root().concat(path)?;
+		path.reduce()?;
+
+		let mut deepest_mountpoint = mountpoint::get_deepest(&path).ok_or(errno::ENOENT)?;
+		let mut dev = deepest_mountpoint.get_device();
+		let inner_path = path.range_from(deepest_mountpoint.get_path().get_elements_count()..)?;
+
+		deepest_mountpoint.get_filesystem().remove_file(dev.get_handle(), inner_path)?;
+		Ok(())
 	}
 
 	// TODO Use the cache
@@ -450,10 +464,10 @@ impl FCache {
 	pub fn get_file_from_path(&mut self, path: &Path) -> Result<SharedPtr<File>, Errno> {
 		let mut path = Path::root().concat(path)?;
 		path.reduce()?;
-		let inner_path = path.failable_clone()?; // TODO Remove first part
 
 		let mut deepest_mountpoint = mountpoint::get_deepest(&path).ok_or(errno::ENOENT)?;
 		let mut dev = deepest_mountpoint.get_device();
+		let inner_path = path.range_from(deepest_mountpoint.get_path().get_elements_count()..)?;
 
 		let file = deepest_mountpoint.get_filesystem().load_file(dev.get_handle(), inner_path)?;
 		SharedPtr::new(file)

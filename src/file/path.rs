@@ -3,6 +3,9 @@
 use core::cmp::min;
 use core::ops::Index;
 use core::ops::IndexMut;
+use core::ops::Range;
+use core::ops::RangeFrom;
+use core::ops::RangeTo;
 use crate::errno::Errno;
 use crate::util::FailableClone;
 use crate::util::container::string::String;
@@ -102,6 +105,30 @@ impl Path {
 		}
 
 		true
+	}
+
+	/// Returns a subpath in the given range `range`.
+	pub fn range(&self, range: Range<usize>) -> Result<Path, Errno> {
+		Ok(Self {
+			absolute: self.absolute,
+			parts: self.parts.clone_range(range)?,
+		})
+	}
+
+	/// Returns a subpath in the given range `range`.
+	pub fn range_from(&self, range: RangeFrom<usize>) -> Result<Path, Errno> {
+		Ok(Self {
+			absolute: self.absolute,
+			parts: self.parts.clone_range_from(range)?,
+		})
+	}
+
+	/// Returns a subpath in the given range `range`.
+	pub fn range_to(&self, range: RangeTo<usize>) -> Result<Path, Errno> {
+		Ok(Self {
+			absolute: self.absolute,
+			parts: self.parts.clone_range_to(range)?,
+		})
 	}
 
 	/// Reduces the path, removing all useless `.` and `..`.

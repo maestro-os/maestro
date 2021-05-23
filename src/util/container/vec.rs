@@ -2,8 +2,12 @@
 
 use core::cmp::Ordering;
 use core::cmp::max;
+use core::cmp::min;
 use core::ops::Index;
 use core::ops::IndexMut;
+use core::ops::Range;
+use core::ops::RangeFrom;
+use core::ops::RangeTo;
 use core::ptr::NonNull;
 use core::ptr::drop_in_place;
 use core::ptr;
@@ -71,10 +75,14 @@ impl<T> Vec<T> {
 
 	/// Creates a new emoty vector with the given capacity.
 	pub fn with_capacity(capacity: usize) -> Result<Self, Errno> {
-		let mut vec = Self::new();
-		vec.capacity = capacity;
-		vec.realloc()?;
-		Ok(vec)
+		if capacity > 0 {
+			let mut vec = Self::new();
+			vec.capacity = capacity;
+			vec.realloc()?;
+			Ok(vec)
+		} else {
+			Ok(Self::new())
+		}
 	}
 
 	/// Returns the number of elements inside of the vector.
@@ -287,7 +295,7 @@ impl<T: PartialEq> PartialEq for Vec::<T> {
 	}
 }
 
-impl<T> FailableClone for Vec::<T> where T: FailableClone {
+impl<T> FailableClone for Vec<T> where T: FailableClone {
 	/// Clones the vector and its content.
 	fn failable_clone(&self) -> Result<Self, Errno> {
 		let data = {
@@ -307,6 +315,7 @@ impl<T> FailableClone for Vec::<T> where T: FailableClone {
 			capacity: self.capacity,
 			data: data,
 		};
+
 		for i in 0..self.len() {
 			// Safe because the pointer is guaranteed to be correct thanks to the Alloc structure
 			unsafe {
@@ -314,6 +323,48 @@ impl<T> FailableClone for Vec::<T> where T: FailableClone {
 			}
 		}
 
+		Ok(v)
+	}
+}
+
+impl<T> Vec<T> where T: FailableClone {
+	/// Clones the vector, keeping the given range.
+	pub fn clone_range(&self, range: Range<usize>) -> Result<Self, Errno> {
+		let len = {
+			if range.start <= range.end {
+				min(range.end, self.len) - range.start
+			} else {
+				0
+			}
+		};
+
+		let mut v = Self::with_capacity(len)?;
+
+		for i in 0..len {
+			v.push(self[range.start + i].failable_clone()?)?;
+		}
+		Ok(v)
+	}
+
+	/// Clones the vector, keeping the given range.
+	pub fn clone_range_from(&self, range: RangeFrom<usize>) -> Result<Self, Errno> {
+		let len = self.len - range.start;
+		let mut v = Self::with_capacity(len)?;
+
+		for i in 0..len {
+			v.push(self[range.start + i].failable_clone()?)?;
+		}
+		Ok(v)
+	}
+
+	/// Clones the vector, keeping the given range.
+	pub fn clone_range_to(&self, range: RangeTo<usize>) -> Result<Self, Errno> {
+		let len = range.end;
+		let mut v = Self::with_capacity(len)?;
+
+		for i in 0..len {
+			v.push(self[i].failable_clone()?)?;
+		}
 		Ok(v)
 	}
 }
