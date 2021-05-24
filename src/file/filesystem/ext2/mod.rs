@@ -22,6 +22,7 @@
 //! `(12 * n) + ((n/4) * n) + ((n/4)^^2 * n) + ((n/4)^^3 * n)`
 //! Where `n` is the size of a block.
 
+use core::cmp::min;
 use core::mem::MaybeUninit;
 use core::mem::size_of;
 use core::mem::size_of_val;
@@ -640,11 +641,45 @@ impl Ext2INode {
 	/// `buff` is the buffer in which the data is to be read.
 	/// `superblock` is the filesystem's superblock.
 	/// `io` is the I/O interface.
-	pub fn write_content(&self, _off: usize, _buff: &mut [u8], _superblock: &Superblock,
+	pub fn write_content(&self, _off: u64, _buff: &[u8], _superblock: &Superblock,
 		_io: &mut dyn DeviceHandle) -> Result<(), Errno> {
 		// TODO
 
 		Ok(())
+	}
+
+	/// Reads the directory entry at offset `off` and returns it.
+	/// `superblock` is the filesystem's superblock.
+	/// `io` is the I/O interface.
+	/// `off` is the offset of the directory entry.
+	/// If the file is not a directory, the behaviour is undefined.
+	fn read_dirent(&self, superblock: &Superblock, io: &mut dyn DeviceHandle, off: u64)
+		-> Result<Box<DirectoryEntry>, Errno> {
+		let mut buff: [u8; 8] = [0; 8];
+		self.read_content(off as _, &mut buff, superblock, io)?;
+		let entry = unsafe {
+			DirectoryEntry::from(&buff)?
+		};
+
+		let mut buff = malloc::Alloc::<u8>::new_default(entry.total_size as _)?;
+		self.read_content(off as _, buff.get_slice_mut(), superblock, io)?;
+
+		unsafe {
+			DirectoryEntry::from(buff.get_slice())
+		}
+	}
+
+	/// Writes the directory entry at offset `off`.
+	/// `superblock` is the filesystem's superblock.
+	/// `io` is the I/O interface.
+	/// `off` is the offset of the directory entry.
+	/// If the file is not a directory, the behaviour is undefined.
+	fn write_dirent(&self, superblock: &Superblock, io: &mut dyn DeviceHandle,
+		entry: &DirectoryEntry, off: u64) -> Result<(), Errno> {
+		let buff = unsafe {
+			slice::from_raw_parts(entry as *const _ as *const u8, entry.total_size as _)
+		};
+		self.write_content(off, buff, superblock, io)
 	}
 
 	/// Iterates over directory entries and calls the given function `f` for each.
@@ -654,7 +689,7 @@ impl Ext2INode {
 	/// `superblock` is the filesystem's superblock.
 	/// `io` is the I/O interface.
 	/// If the file is not a directory, the behaviour is undefined.
-	pub fn foreach_directory_entry<F: FnMut(usize, Box<DirectoryEntry>) -> bool>(&self, mut f: F,
+	pub fn foreach_directory_entry<F: FnMut(u64, Box<DirectoryEntry>) -> bool>(&self, mut f: F,
 		superblock: &Superblock, io: &mut dyn DeviceHandle) -> Result<(), Errno> {
 		debug_assert_eq!(self.get_type(), FileType::Directory);
 
@@ -671,7 +706,7 @@ impl Ext2INode {
 				};
 				let total_size = entry.total_size as usize;
 
-				if !f(j, entry) {
+				if !f(j as _, entry) {
 					return Ok(());
 				}
 
@@ -707,13 +742,14 @@ impl Ext2INode {
 		Ok(entry)
 	}
 
+	// TODO Take into account the fact that the last entry may be expanded if needed
 	/// Looks for a free entry in the inode.
 	/// `superblock` is the filesystem's superblock.
 	/// `io` is the I/O interface.
 	/// `min_size` is the minimum size of the entry in bytes.
 	/// If the function finds an entry, it returns its offset. Else, the function returns None.
 	fn get_free_entry(&self, superblock: &Superblock, io: &mut dyn DeviceHandle, min_size: usize)
-		-> Result<Option<usize>, Errno> {
+		-> Result<Option<u64>, Errno> {
 		let mut off_option = None;
 
 		self.foreach_directory_entry(| off, e | {
@@ -738,29 +774,29 @@ impl Ext2INode {
 	/// error.
 	/// If the file is not a directory, the behaviour is undefined.
 	pub fn add_dirent(&self, superblock: &Superblock, io: &mut dyn DeviceHandle,
-		_entry_inode: u32, name: &String, _file_type: FileType) -> Result<(), Errno> {
-		// TODO Ensure that the block size is large enough for every names?
+		entry_inode: u32, name: &String, file_type: FileType) -> Result<(), Errno> {
 		let blk_size = superblock.get_block_size();
-		let entry_size = 8 + name.as_bytes().len();
+		let name_length = name.as_bytes().len();
+		let entry_size = 8 + name_length;
 		if entry_size > blk_size {
 			return Err(errno::ENAMETOOLONG);
 		}
 
 		if let Some(free_entry_off) = self.get_free_entry(superblock, io, entry_size)? {
-			let mut buff: [u8; 8] = [0; 8];
-			self.read_content(free_entry_off as _, &mut buff, superblock, io)?;
-			let free_entry = unsafe {
-				DirectoryEntry::from(&buff)?
-			};
-
+			let mut free_entry = self.read_dirent(superblock, io, free_entry_off)?;
 			let split = free_entry.total_size as usize - entry_size > 8;
+
 			if split {
 				// TODO Split entry
 			}
 
-			// TODO Write the entry
+			free_entry.inode = entry_inode;
+			free_entry.set_name(superblock, name);
+			free_entry.set_type(superblock, file_type);
+			self.write_dirent(superblock, io, &free_entry, free_entry_off)?;
 		} else {
-			// TODO Expand the size of the inode's content and add a new entry
+			let entry = DirectoryEntry::new(superblock, entry_inode, file_type, name)?;
+			self.write_dirent(superblock, io, &entry, self.get_size(superblock))?;
 		}
 
 		Err(errno::ENOMEM)
@@ -793,6 +829,27 @@ struct DirectoryEntry {
 }
 
 impl DirectoryEntry {
+	/// Creates a new instance.
+	/// `superblock` is the filesystem's superblock.
+	/// `inode` is the entry's inode.
+	/// `file_type` is the entry's type.
+	/// `name` is the entry's name.
+	pub fn new(superblock: &Superblock, inode: u32, file_type: FileType, name: &String)
+		-> Result<Box<Self>, Errno> {
+		let len = 8 + name.as_bytes().len();
+		let slice = unsafe {
+			slice::from_raw_parts_mut(malloc::alloc(len)? as *mut u8, len)
+		};
+
+		let mut entry = unsafe {
+			Box::from_raw(slice as *mut [u8] as *mut [()] as *mut Self)
+		};
+		entry.inode = inode;
+		entry.set_type(superblock, file_type);
+		entry.set_name(superblock, name);
+		Ok(entry)
+	}
+
 	/// Creates a new instance from a slice.
 	pub unsafe fn from(slice: &[u8]) -> Result<Box<Self>, Errno> {
 		let ptr = malloc::alloc(slice.len())? as *mut u8;
@@ -823,7 +880,56 @@ impl DirectoryEntry {
 		}
 	}
 
-	// TODO Function to set the name
+	/// Sets the name of the entry.
+	/// If the length of the entry is shorted than the required space, the name shall be truncated.
+	pub fn set_name(&mut self, superblock: &Superblock, name: &String) {
+		let slice = name.as_bytes();
+		let len = min(slice.len(), self.total_size as usize - 8);
+
+		for i in 0..len {
+			self.name[i] = slice[i];
+		}
+
+		self.name_length_lo = (len & 0xff) as u8;
+		if superblock.required_features & REQUIRED_FEATURE_DIRECTORY_TYPE == 0 {
+			self.name_length_hi = ((len >> 8) & 0xff) as u8;
+		}
+	}
+
+	/// Returns the file type associated with the entry (if the option is enabled).
+	pub fn get_type(&self, superblock: &Superblock) -> Option<FileType> {
+		if superblock.required_features & REQUIRED_FEATURE_DIRECTORY_TYPE == 0 {
+			match self.name_length_hi {
+				TYPE_INDICATOR_UNKNOWN => None,
+				TYPE_INDICATOR_REGULAR => Some(FileType::Regular),
+				TYPE_INDICATOR_DIRECTORY => Some(FileType::Directory),
+				TYPE_INDICATOR_CHAR_DEVICE => Some(FileType::CharDevice),
+				TYPE_INDICATOR_BLOCK_DEVICE => Some(FileType::BlockDevice),
+				TYPE_INDICATOR_FIFO => Some(FileType::FIFO),
+				TYPE_INDICATOR_SOCKET => Some(FileType::Socket),
+				TYPE_INDICATOR_SYMLINK => Some(FileType::Link),
+
+				_ => None,
+			}
+		} else {
+			None
+		}
+	}
+
+	/// Sets the file type associated with the entry (if the option is enabled).
+	pub fn set_type(&mut self, superblock: &Superblock, file_type: FileType) {
+		if superblock.required_features & REQUIRED_FEATURE_DIRECTORY_TYPE == 0 {
+			self.name_length_hi = match file_type {
+				FileType::Regular => TYPE_INDICATOR_REGULAR,
+				FileType::Directory => TYPE_INDICATOR_DIRECTORY,
+				FileType::CharDevice => TYPE_INDICATOR_CHAR_DEVICE,
+				FileType::BlockDevice => TYPE_INDICATOR_BLOCK_DEVICE,
+				FileType::FIFO => TYPE_INDICATOR_FIFO,
+				FileType::Socket => TYPE_INDICATOR_SOCKET,
+				FileType::Link => TYPE_INDICATOR_SYMLINK,
+			};
+		}
+	}
 
 	/// Tells whether the entry is valid.
 	pub fn is_free(&self) -> bool {
