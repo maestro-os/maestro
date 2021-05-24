@@ -26,6 +26,7 @@ use core::cmp::min;
 use core::mem::MaybeUninit;
 use core::mem::size_of;
 use core::mem::size_of_val;
+use core::ptr::copy_nonoverlapping;
 use core::slice;
 use crate::device::DeviceHandle;
 use crate::errno::Errno;
@@ -626,11 +627,16 @@ impl Ext2INode {
 		let end_blk_id = ((off + buff.len() as u64) / (blk_size as u64)) as usize;
 
 		let mut blk_buff = malloc::Alloc::<u8>::new_default(blk_size)?;
+		let mut buff_off = 0;
 		for i in begin_blk_id..end_blk_id {
 			let blk_off = self.get_content_block_off(i as _, superblock, io).unwrap().unwrap();
 			read_block(blk_off as _, superblock, io, blk_buff.get_slice_mut())?;
 
-			// TODO Write content of blk_buff to buff
+			let len = min(buff.len() - buff_off, blk_size);
+			unsafe { // Safe because staying in range
+				copy_nonoverlapping(blk_buff.get_slice()[0] as *mut u8, buff[0] as *mut u8, len);
+			}
+			buff_off += len;
 		}
 
 		Ok(())
@@ -638,12 +644,28 @@ impl Ext2INode {
 
 	/// Writes the content of the inode.
 	/// `off` is the offset at which the inode is written.
-	/// `buff` is the buffer in which the data is to be read.
+	/// `buff` is the buffer in which the data is to be written.
 	/// `superblock` is the filesystem's superblock.
 	/// `io` is the I/O interface.
-	pub fn write_content(&self, _off: u64, _buff: &[u8], _superblock: &Superblock,
-		_io: &mut dyn DeviceHandle) -> Result<(), Errno> {
-		// TODO
+	pub fn write_content(&self, off: u64, buff: &[u8], superblock: &Superblock,
+		io: &mut dyn DeviceHandle) -> Result<(), Errno> {
+		if off >= self.get_size(&superblock)
+			|| off + buff.len() as u64 >= self.get_size(&superblock) {
+			return Err(errno::EINVAL);
+		}
+
+		let blk_size = superblock.get_block_size();
+		let begin_blk_id = (off / blk_size as u64) as usize;
+		let end_blk_id = ((off + buff.len() as u64) / (blk_size as u64)) as usize;
+
+		let mut _blk_buff = malloc::Alloc::<u8>::new_default(blk_size)?;
+		let mut _buff_off = 0;
+		for i in begin_blk_id..end_blk_id {
+			let _blk_off = self.get_content_block_off(i as _, superblock, io).unwrap().unwrap();
+			// TODO Write
+
+			// buff_off += len;
+		}
 
 		Ok(())
 	}
@@ -969,27 +991,45 @@ impl Ext2Fs {
 
 	/// Returns the number of block groups.
 	fn get_block_groups_count(&self) -> usize {
-		math::ceil_division(self.superblock.total_blocks,
-			self.superblock.blocks_per_group) as _
+		// TODO Do not take the last superblock if not entire? Or mark non-existing blocks as used?
+		math::ceil_division(self.superblock.total_blocks, self.superblock.blocks_per_group) as _
 	}
 
 	/// Returns the id of a free inode in the filesystem.
-	fn get_free_inode(&self) -> Result<u32, Errno> {
-		// TODO
-		Ok(0)
+	/// `io` is the I/O interface.
+	fn get_free_inode(&self, io: &mut dyn DeviceHandle) -> Result<u32, Errno> {
+		for i in 0..self.get_block_groups_count() {
+			let bgd = BlockGroupDescriptor::read(i as _, &self.superblock, io)?;
+			if bgd.unallocated_inodes_number > 0 {
+				// TODO Find the first available inode in the bitmap
+				// TODO Return the inode
+			}
+		}
+
+		Err(errno::ENOSPC)
 	}
 
 	/// Marks the inode `inode` used on the filesystem.
-	fn mark_inode_used(&self, _inode: u32) -> Result<(), Errno> {
-		// TODO
+	/// `io` is the I/O interface.
+	fn mark_inode_used(&self, _io: &mut dyn DeviceHandle, _inode: u32) -> Result<(), Errno> {
+		// TODO Find the block group descriptor associated with the inode
+		// TODO Decrement the number of available inodes
+		// TODO Mark the inode as used
+
 		Ok(())
 	}
 
 	/// Marks the inode `inode` available on the filesystem.
-	fn free_inode(&self, _inode: u32) -> Result<(), Errno> {
-		// TODO
+	/// `io` is the I/O interface.
+	fn free_inode(&self, _io: &mut dyn DeviceHandle, _inode: u32) -> Result<(), Errno> {
+		// TODO Find the block group descriptor associated with the inode
+		// TODO Increment the number of available inodes
+		// TODO Mark the inode as free
+
 		Ok(())
 	}
+
+	// TODO Block allocation functions
 }
 
 impl Filesystem for Ext2Fs {
@@ -1043,7 +1083,7 @@ impl Filesystem for Ext2Fs {
 		let parent = Ext2INode::read(parent_inode, &self.superblock, io)?;
 		debug_assert_eq!(parent.get_type(), FileType::Directory);
 
-		let inode_index = self.get_free_inode()?;
+		let inode_index = self.get_free_inode(io)?;
 		let inode = Ext2INode {
 			mode: Ext2INode::get_file_mode(&file),
 			uid: file.get_uid(),
@@ -1071,7 +1111,7 @@ impl Filesystem for Ext2Fs {
 
 		parent.add_dirent(&self.superblock, io, inode_index, file.get_name(),
 			file.get_file_type())?;
-		self.mark_inode_used(inode_index)
+		self.mark_inode_used(io, inode_index)
 	}
 
 	fn remove_file(&mut self, io: &mut dyn DeviceHandle, parent_inode: INode, _name: &String)
