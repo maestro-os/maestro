@@ -204,7 +204,7 @@ pub fn to_empty_error<T, E>(r: Result<T, E>) -> Result<T, ()> {
 	if let Ok(t) = r {
 		Ok(t)
 	} else {
-		 Err(())
+		Err(())
 	}
 }
 

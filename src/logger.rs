@@ -1,5 +1,6 @@
 //! This modules handles kernel logging.
-//! If the logger is silent, it will not print the logs on the screen but it will keep it in memory anyways.
+//! If the logger is silent, it will not print the logs on the screen but it will keep it in memory
+//! anyways.
 
 use crate::tty;
 use crate::util::lock::mutex::Mutex;

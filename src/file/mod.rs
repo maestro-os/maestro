@@ -507,7 +507,8 @@ impl FCache {
 		let entry_name = inner_path[inner_path.get_elements_count() - 1].failable_clone()?;
 
 		let inode = deepest_mountpoint.get_filesystem().get_inode(dev.get_handle(), inner_path)?;
-		let file = deepest_mountpoint.get_filesystem().load_file(dev.get_handle(), inode, entry_name)?;
+		let file = deepest_mountpoint.get_filesystem().load_file(dev.get_handle(), inode,
+			entry_name)?;
 		SharedPtr::new(file)
 	}
 }
