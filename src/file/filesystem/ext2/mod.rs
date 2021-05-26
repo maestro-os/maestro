@@ -130,35 +130,35 @@ const INODE_TYPE_SYMLINK: u16 = 0xa000;
 const INODE_TYPE_SOCKET: u16 = 0xc000;
 
 /// User: Read, Write and Execute.
-const INODE_PERMISSION_IRWXU: u16 = 00700;
+const INODE_PERMISSION_IRWXU: u16 = 0o0700;
 /// User: Read.
-const INODE_PERMISSION_IRUSR: u16 = 00400;
+const INODE_PERMISSION_IRUSR: u16 = 0o0400;
 /// User: Write.
-const INODE_PERMISSION_IWUSR: u16 = 00200;
+const INODE_PERMISSION_IWUSR: u16 = 0o0200;
 /// User: Execute.
-const INODE_PERMISSION_IXUSR: u16 = 00100;
+const INODE_PERMISSION_IXUSR: u16 = 0o0100;
 /// Group: Read, Write and Execute.
-const INODE_PERMISSION_IRWXG: u16 = 00070;
+const INODE_PERMISSION_IRWXG: u16 = 0o0070;
 /// Group: Read.
-const INODE_PERMISSION_IRGRP: u16 = 00040;
+const INODE_PERMISSION_IRGRP: u16 = 0o0040;
 /// Group: Write.
-const INODE_PERMISSION_IWGRP: u16 = 00020;
+const INODE_PERMISSION_IWGRP: u16 = 0o0020;
 /// Group: Execute.
-const INODE_PERMISSION_IXGRP: u16 = 00010;
+const INODE_PERMISSION_IXGRP: u16 = 0o0010;
 /// Other: Read, Write and Execute.
-const INODE_PERMISSION_IRWXO: u16 = 00007;
+const INODE_PERMISSION_IRWXO: u16 = 0o0007;
 /// Other: Read.
-const INODE_PERMISSION_IROTH: u16 = 00004;
+const INODE_PERMISSION_IROTH: u16 = 0o0004;
 /// Other: Write.
-const INODE_PERMISSION_IWOTH: u16 = 00002;
+const INODE_PERMISSION_IWOTH: u16 = 0o0002;
 /// Other: Execute.
-const INODE_PERMISSION_IXOTH: u16 = 00001;
+const INODE_PERMISSION_IXOTH: u16 = 0o0001;
 /// Setuid.
-const INODE_PERMISSION_ISUID: u16 = 04000;
+const INODE_PERMISSION_ISUID: u16 = 0o4000;
 /// Setgid.
-const INODE_PERMISSION_ISGID: u16 = 02000;
+const INODE_PERMISSION_ISGID: u16 = 0o2000;
 /// Sticky bit.
-const INODE_PERMISSION_ISVTX: u16 = 01000;
+const INODE_PERMISSION_ISVTX: u16 = 0o1000;
 
 /// Secure deletion
 const INODE_FLAG_SECURE_DELETION: u32 = 0x00001;
@@ -378,7 +378,8 @@ impl Superblock {
 	}
 }
 
-/// TODO doc
+/// Structure representing a block group descriptor to be stored into the Block Group Descriptor
+/// Table (BGDT).
 #[repr(C, packed)]
 struct BlockGroupDescriptor {
 	/// The block address of the block usage bitmap.
@@ -995,14 +996,58 @@ impl Ext2Fs {
 		math::ceil_division(self.superblock.total_blocks, self.superblock.blocks_per_group) as _
 	}
 
+	/// Searches in the given bitmap block `bitmap` for the first element that is not set.
+	/// The function returns the index to the element. If every elements are set, the function
+	/// returns None.
+	fn search_bitmap_blk(bitmap: &[u8]) -> Option<usize> {
+		for i in 0..bitmap.len() {
+			if bitmap[i] == 0xff {
+				continue;
+			}
+
+			for j in 0..size_of::<u8>() {
+				// TODO Check endianness
+				if bitmap[i] >> j & 0b1 == 0 {
+					return Some(i * size_of::<u8>() + j);
+				}
+			}
+		}
+
+		None
+	}
+
+	/// Searches into a bitmap starting at block `start`.
+	/// `io` is the I/O interface.
+	/// `start` is the starting block.
+	/// `size` is the number of entries.
+	fn search_bitmap(&self, io: &mut dyn DeviceHandle, start: u32, size: u32)
+		-> Result<Option<u32>, Errno> {
+		let blk_size = self.superblock.get_block_size();
+		let mut buff = malloc::Alloc::<u8>::new_default(blk_size)?;
+		let mut i = 0;
+
+		while i < size {
+			let bitmap_blk_index = start + (i / blk_size as u32);
+			read_block(bitmap_blk_index as _, &self.superblock, io, buff.get_slice_mut())?;
+
+			if let Some(inode) = Self::search_bitmap_blk(buff.get_slice()) {
+				return Ok(Some(inode as _));
+			}
+
+			i += (size_of::<u8>() * blk_size) as u32;
+		}
+
+		Ok(None)
+	}
+
 	/// Returns the id of a free inode in the filesystem.
 	/// `io` is the I/O interface.
-	fn get_free_inode(&self, io: &mut dyn DeviceHandle) -> Result<u32, Errno> {
+	pub fn get_free_inode(&self, io: &mut dyn DeviceHandle) -> Result<u32, Errno> {
 		for i in 0..self.get_block_groups_count() {
 			let bgd = BlockGroupDescriptor::read(i as _, &self.superblock, io)?;
 			if bgd.unallocated_inodes_number > 0 {
-				// TODO Find the first available inode in the bitmap
-				// TODO Return the inode
+				self.search_bitmap(io, bgd.block_usage_bitmap_addr,
+					self.superblock.blocks_per_group)?;
 			}
 		}
 
@@ -1011,7 +1056,10 @@ impl Ext2Fs {
 
 	/// Marks the inode `inode` used on the filesystem.
 	/// `io` is the I/O interface.
-	fn mark_inode_used(&self, _io: &mut dyn DeviceHandle, _inode: u32) -> Result<(), Errno> {
+	/// `inode` is the inode number.
+	/// `directory` tells whether the inode is allocated for a directory.
+	pub fn mark_inode_used(&self, _io: &mut dyn DeviceHandle, _inode: u32, _directory: bool)
+		-> Result<(), Errno> {
 		// TODO Find the block group descriptor associated with the inode
 		// TODO Decrement the number of available inodes
 		// TODO Mark the inode as used
@@ -1021,7 +1069,10 @@ impl Ext2Fs {
 
 	/// Marks the inode `inode` available on the filesystem.
 	/// `io` is the I/O interface.
-	fn free_inode(&self, _io: &mut dyn DeviceHandle, _inode: u32) -> Result<(), Errno> {
+	/// `inode` is the inode number.
+	/// `directory` tells whether the inode is allocated for a directory.
+	pub fn free_inode(&self, _io: &mut dyn DeviceHandle, _inode: u32, _directory: bool)
+		-> Result<(), Errno> {
 		// TODO Find the block group descriptor associated with the inode
 		// TODO Increment the number of available inodes
 		// TODO Mark the inode as free
@@ -1029,7 +1080,31 @@ impl Ext2Fs {
 		Ok(())
 	}
 
-	// TODO Block allocation functions
+	/// Returns the id of a free block in the filesystem.
+	/// `io` is the I/O interface.
+	pub fn get_free_block(&self, _io: &mut dyn DeviceHandle) -> Result<u32, Errno> {
+		// TODO
+
+		Err(errno::ENOSPC)
+	}
+
+	/// Marks the block `blk` used on the filesystem.
+	/// `io` is the I/O interface.
+	/// `blk` is the block number.
+	pub fn mark_block_used(&self, _io: &mut dyn DeviceHandle, _blk: u32) -> Result<(), Errno> {
+		// TODO
+
+		Ok(())
+	}
+
+	/// Marks the block `blk` available on the filesystem.
+	/// `io` is the I/O interface.
+	/// `blk` is the block number.
+	pub fn free_block(&self, _io: &mut dyn DeviceHandle, _blk: u32) -> Result<(), Errno> {
+		// TODO
+
+		Ok(())
+	}
 }
 
 impl Filesystem for Ext2Fs {
@@ -1111,7 +1186,7 @@ impl Filesystem for Ext2Fs {
 
 		parent.add_dirent(&self.superblock, io, inode_index, file.get_name(),
 			file.get_file_type())?;
-		self.mark_inode_used(io, inode_index)
+		self.mark_inode_used(io, inode_index, file.get_file_type() == FileType::Directory)
 	}
 
 	fn remove_file(&mut self, io: &mut dyn DeviceHandle, parent_inode: INode, _name: &String)
