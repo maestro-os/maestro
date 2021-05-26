@@ -14,7 +14,7 @@ impl<'a, T> MutexGuard<'a, T> {
 	/// Creates an instance of MutexGuard for the given `mutex` and locks it.
 	pub fn new(mutex: &'a mut Mutex<T>) -> Self {
 		let g = Self {
-			mutex: mutex,
+			mutex,
 		};
 		g.mutex.spin.lock();
 		g
@@ -61,7 +61,7 @@ impl<T> Mutex<T> {
 	pub const fn new(data: T) -> Self {
 		Self {
 			spin: Spinlock::new(),
-			data: data,
+			data,
 		}
 	}
 

@@ -79,12 +79,12 @@ impl Device {
 		type_: DeviceType, handle: H)
 		-> Result<Self, Errno> {
 		Ok(Self {
-			major: major,
-			minor: minor,
+			major,
+			minor,
 
-			path: path,
-			mode: mode,
-			type_: type_,
+			path,
+			mode,
+			type_,
 
 			handle: Box::new(handle)?,
 		})

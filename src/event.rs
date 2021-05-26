@@ -14,7 +14,7 @@ use crate::util;
 
 /// The list of interrupt error messages ordered by index of the corresponding interrupt vector.
 #[cfg(config_general_arch = "x86")]
-static ERROR_MESSAGES: &'static [&'static str] = &[
+static ERROR_MESSAGES: &[&str] = &[
 	"Divide-by-zero Error",
 	"Debug",
 	"Non-maskable Interrupt",
@@ -81,8 +81,8 @@ impl InterruptResult {
 	/// Creates a new instance.
 	pub fn new(skip_next: bool, action: InterruptResultAction) -> Self {
 		Self {
-			skip_next: skip_next,
-			action: action,
+			skip_next,
+			action,
 		}
 	}
 }
@@ -167,7 +167,7 @@ pub fn register_callback<T: 'static + InterruptCallback>(id: usize, priority: u3
 
 	let ptr = SharedPtr::new(callback)?;
 	v.insert(index, CallbackWrapper {
-		priority: priority,
+		priority,
 		callback: ptr.clone(),
 	})?;
 	Ok(ptr)

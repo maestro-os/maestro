@@ -26,7 +26,7 @@ use crate::util::container::vec::Vec;
 /// The major number for storage devices.
 const STORAGE_MAJOR: u32 = 8;
 /// The mode of the device file for a storage device.
-const STORAGE_MODE: Mode = 0660;
+const STORAGE_MODE: Mode = 0o660;
 /// The maximum number of partitions in a disk.
 const MAX_PARTITIONS: u32 = 16;
 
@@ -177,8 +177,8 @@ pub mod partition {
 		/// Creates a new instance with the given start partition `start` and size `size`.
 		pub fn new(start: u64, size: u64) -> Self {
 			Self {
-				start: start,
-				size: size,
+				start,
+				size,
 			}
 		}
 
@@ -246,10 +246,10 @@ impl StorageDeviceHandle {
 	/// `storage_manager` is the storage manager associated with the device.
 	pub fn new(id: u32, partition: u32, storage_manager: *mut StorageManager) -> Self {
 		Self {
-			id: id,
-			partition: partition,
+			id,
+			partition,
 
-			storage_manager: storage_manager,
+			storage_manager,
 		}
 	}
 }

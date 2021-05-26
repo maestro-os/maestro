@@ -23,7 +23,7 @@ impl Bitfield {
 
 		let mut bitfield = Self {
 			data: Vec::with_capacity(size)?,
-			len: len,
+			len,
 			set_count: 0,
 		};
 		for _ in 0..size {

@@ -54,10 +54,10 @@ impl<'a> ParseError<'a> {
 	/// Creates a new instance.
 	pub fn new(cmdline: &'a str, err: &'static str, token: Option<(usize, usize)>) -> Self {
 		Self {
-			cmdline: cmdline,
-			err: err,
+			cmdline,
+			err,
 
-			token: token,
+			token,
 		}
 	}
 
@@ -130,7 +130,7 @@ impl ArgsParser {
 					str::from_utf8_unchecked(&slice[*i..j])
 				}) {
 				let tok = Token {
-					s: s,
+					s,
 					begin: *i,
 				};
 				*i = j;

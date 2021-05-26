@@ -254,16 +254,16 @@ impl Process {
 		let kernel_stack = mem_space.map_stack(None, KERNEL_STACK_SIZE, KERNEL_STACK_FLAGS)?;
 
 		let mut process = Self {
-			pid: pid,
+			pid,
 			pgid: pid,
 
 			state: State::Running,
-			owner: owner,
+			owner,
 
 			priority: 0,
 			quantum_count: 0,
 
-			parent: parent,
+			parent,
 			children: Vec::new(),
 			process_group: Vec::new(),
 
@@ -280,12 +280,12 @@ impl Process {
 				edi: 0x0,
 			},
 			syscalling: false,
-			mem_space: mem_space,
+			mem_space,
 
-			user_stack: user_stack,
-			kernel_stack: kernel_stack,
+			user_stack,
+			kernel_stack,
 
-			cwd: cwd,
+			cwd,
 			file_descriptors: Vec::new(),
 
 			signals_queue: Vec::new(),
@@ -539,7 +539,7 @@ impl Process {
 		regs.eax = 0;
 
 		let process = Self {
-			pid: pid,
+			pid,
 			pgid: self.pgid,
 
 			state: State::Running,
@@ -552,7 +552,7 @@ impl Process {
 			children: Vec::new(),
 			process_group: Vec::new(),
 
-			regs: regs,
+			regs,
 			syscalling: self.syscalling,
 			mem_space: self.mem_space.fork()?,
 

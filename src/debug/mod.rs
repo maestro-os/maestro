@@ -23,13 +23,14 @@ pub unsafe fn print_memory(ptr: *const c_void, n: usize) {
 
 		j = 0;
 		while j < 16 && i + j < n {
-			let v = *(((ptr as usize) + (i + j)) as *const u8);
-			let c = if v < 32 || v > 127 {
+			let val = *(((ptr as usize) + (i + j)) as *const u8);
+			let character = if val < 32 || val > 127 {
 				'.'
 			} else {
-				v as char
+				val as char
 			};
-			crate::print!("{}", c);
+
+			crate::print!("{}", character);
 			j += 1;
 		}
 

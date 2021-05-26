@@ -44,7 +44,7 @@ impl Path {
 
 		Ok(Self {
 			absolute: path.chars().next().unwrap() == PATH_SEPARATOR,
-			parts: parts,
+			parts,
 		})
 	}
 

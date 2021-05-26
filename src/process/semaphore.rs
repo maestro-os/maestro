@@ -20,7 +20,7 @@ impl<T> Semaphore<T> {
 	/// Creates a new semaphore with the given data `data`.
 	pub fn new(data: T) -> Self {
 		Self {
-			data: data,
+			data,
 
 			fifo: Mutex::new(Vec::new()),
 		}

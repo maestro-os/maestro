@@ -62,11 +62,11 @@ impl PCIDevice {
 			}
 
 			Some(Self {
-				bus: bus,
-				device: device,
+				bus,
+				device,
 
-				vendor_id: vendor_id,
-				device_id: device_id,
+				vendor_id,
+				device_id,
 
 				status: ((data[1] >> 16) & 0xffff) as _,
 				command: (data[1] & 0xffff) as _,

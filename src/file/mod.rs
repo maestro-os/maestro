@@ -158,15 +158,15 @@ impl File {
 		};
 
 		Ok(Self {
-			name: name,
+			name,
 			parent: None,
 
 			size: 0,
-			file_type: file_type,
+			file_type,
 
-			uid: uid,
-			gid: gid,
-			mode: mode,
+			uid,
+			gid,
+			mode,
 
 			inode: None,
 
@@ -408,7 +408,7 @@ pub struct AccessCounter {
 	accesses_count: usize,
 }
 
-///	Cache storing files in memory. This cache allows to speedup accesses to the disk. It is
+/// Cache storing files in memory. This cache allows to speedup accesses to the disk. It is
 /// synchronized with the disk when necessary.
 pub struct FCache {
 	/// A pointer to the root mount point.
@@ -554,7 +554,7 @@ pub fn create_dirs(path: &Path) -> Result<usize, Errno> {
 		p.push(path[i].failable_clone()?)?;
 
 		if fcache.get_file_from_path(&p).is_err() {
-			let dir = File::new(path[i].failable_clone()?, FileType::Directory, 0, 0, 0755)?;
+			let dir = File::new(path[i].failable_clone()?, FileType::Directory, 0, 0, 0o755)?;
 			fcache.create_file(&p, dir)?;
 
 			created_count += 1;

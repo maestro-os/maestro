@@ -71,7 +71,7 @@ use crate::file::path::Path;
 use crate::process::Process;
 
 /// Current kernel version.
-const KERNEL_VERSION: &'static str = "1.0";
+const KERNEL_VERSION: &str = "1.0";
 
 mod kern {
 	use core::ffi::c_void;

@@ -86,7 +86,7 @@ pub enum SignalAction {
 }
 
 /// Array containing the default actions for each signal.
-static DEFAULT_ACTIONS: &'static [SignalAction] = &[
+static DEFAULT_ACTIONS: &[SignalAction] = &[
 	SignalAction::Abort, // SIGABRT
 	SignalAction::Terminate, // SIGALRM
 	SignalAction::Abort, // SIGBUS
@@ -120,7 +120,7 @@ static DEFAULT_ACTIONS: &'static [SignalAction] = &[
 
 /// Structure representing a process signal.
 pub struct Signal {
-	///	The signal type.
+	/// The signal type.
 	type_: SignalType,
 
 	// TODO
@@ -132,7 +132,7 @@ impl Signal {
 	pub fn new(type_: SignalType) -> Result<Self, Errno> {
 		if (type_ as usize) < SIGNALS_COUNT {
 			Ok(Self {
-				type_: type_,
+				type_,
 			})
 		} else {
 			Err(errno::EINVAL)

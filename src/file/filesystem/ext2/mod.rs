@@ -606,6 +606,7 @@ impl Ext2INode {
 			let target = (i - DIRECT_BLOCKS_COUNT - entries_per_blk) as u32;
 			Self::resolve_indirections(2, self.singly_indirect_block_ptr, target, superblock, io)
 		} else {
+			#[allow(clippy::suspicious_operation_groupings)]
 			let target = (i - DIRECT_BLOCKS_COUNT - (entries_per_blk * entries_per_blk)) as u32;
 			Self::resolve_indirections(3, self.singly_indirect_block_ptr, target, superblock, io)
 		}
@@ -986,7 +987,7 @@ impl Ext2Fs {
 		superblock.write(io)?;
 
 		Ok(Self {
-			superblock: superblock,
+			superblock,
 		})
 	}
 

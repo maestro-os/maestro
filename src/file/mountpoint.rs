@@ -53,13 +53,13 @@ impl MountPoint {
 		let filesystem = fs_type.load_filesystem(device.as_mut().get_handle())?;
 
 		Ok(Self {
-			device_type: device_type,
-			major: major,
-			minor: minor,
+			device_type,
+			major,
+			minor,
 
-			path: path,
+			path,
 
-			filesystem: filesystem,
+			filesystem,
 		})
 	}
 

@@ -158,7 +158,7 @@ impl<T> Vec<T> {
 	/// the right.
 	pub fn insert(&mut self, index: usize, element: T) -> Result<(), Errno> {
 		self.increase_capacity(1)?;
-		debug_assert!(self.capacity >= self.len + 1);
+		debug_assert!(self.capacity > self.len);
 
 		unsafe {
 			let ptr = self.data.as_mut().unwrap().as_ptr_mut();
@@ -209,7 +209,7 @@ impl<T> Vec<T> {
 	/// Appends an element to the back of a collection.
 	pub fn push(&mut self, value: T) -> Result<(), Errno> {
 		self.increase_capacity(1)?;
-		debug_assert!(self.capacity >= self.len + 1);
+		debug_assert!(self.capacity > self.len);
 
 		unsafe {
 			ptr::write(&mut self.data.as_mut().unwrap()[self.len] as _, value);
@@ -313,7 +313,7 @@ impl<T> FailableClone for Vec<T> where T: FailableClone {
 		let mut v = Self {
 			len: self.len,
 			capacity: self.capacity,
-			data: data,
+			data,
 		};
 
 		for i in 0..self.len() {
@@ -454,7 +454,7 @@ impl<'a, T> VecIterator<'a, T> {
 	/// Creates a vector iterator for the given reference.
 	fn new(vec: &'a Vec::<T>) -> Self {
 		VecIterator {
-			vec: vec,
+			vec,
 			index: 0,
 		}
 	}

@@ -278,11 +278,11 @@ impl Zone {
 	pub fn new(type_: Flags, metadata_begin: *mut c_void, pages_count: FrameID, begin: *mut c_void)
 		-> Zone {
 		let mut z = Zone {
-			type_: type_,
+			type_,
 			allocated_pages: 0,
-			metadata_begin: metadata_begin,
-			begin: begin,
-			pages_count: pages_count,
+			metadata_begin,
+			begin,
+			pages_count,
 			free_list: [None; (MAX_ORDER + 1) as usize],
 		};
 		z.fill_free_list();

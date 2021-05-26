@@ -65,11 +65,11 @@ impl MemMapping {
 		debug_assert!(size > 0);
 
 		Self {
-			begin: begin,
-			size: size,
-			flags: flags,
+			begin,
+			size,
+			flags,
 
-			vmem: vmem,
+			vmem,
 		}
 	}
 

@@ -100,7 +100,7 @@ impl Scheduler {
 		}
 
 		let mut s = SharedPtr::new(Mutex::new(Self {
-			tmp_stacks: tmp_stacks,
+			tmp_stacks,
 
 			tick_callback: None,
 
@@ -112,6 +112,7 @@ impl Scheduler {
 
 			cursor: 0,
 		}))?;
+
 		{
 			let callback = TickCallback {
 				scheduler: s.clone(),
@@ -291,12 +292,10 @@ impl Scheduler {
 			}
 
 			crate::enter_loop();
+		} else if cfg!(config_general_scheduler_end_panic) {
+			kernel_panic!("No process remaining to run!");
 		} else {
-			if cfg!(config_general_scheduler_end_panic) {
-				kernel_panic!("No process remaining to run!");
-			} else {
-				crate::halt();
-			}
+			crate::halt();
 		}
 	}
 }

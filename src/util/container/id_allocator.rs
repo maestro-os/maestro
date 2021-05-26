@@ -31,13 +31,11 @@ impl IDAllocator {
 			} else {
 				Err(errno::ENOMEM)
 			}
+		} else if let Some(i) = self.used.find_clear() {
+			self.used.set(i);
+			Ok(i as _)
 		} else {
-			if let Some(i) = self.used.find_clear() {
-				self.used.set(i);
-				Ok(i as _)
-			} else {
-				Err(errno::ENOMEM)
-			}
+			Err(errno::ENOMEM)
 		}
 	}
 

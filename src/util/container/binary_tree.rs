@@ -72,7 +72,7 @@ impl<T: 'static> BinaryTreeNode<T> {
 			right: None,
 			color: NodeColor::Red,
 
-			value: value,
+			value,
 		};
 		unsafe {
 			util::write_ptr(ptr, s);
@@ -607,11 +607,9 @@ impl<T: 'static + Ord> BinaryTree<T> {
 					node.left_rotate();
 					node = parent;
 				}
-			} else {
-				if node.is_left_child() {
-					node.right_rotate();
-					node = parent;
-				}
+			} else if node.is_left_child() {
+				node.right_rotate();
+				node = parent;
 			}
 
 			let parent = node.get_parent_mut().unwrap();
@@ -854,7 +852,7 @@ impl<'a, T> BinaryTreeIterator<'a, T> {
 	/// Creates a binary tree iterator for the given reference.
 	fn new(tree: &'a BinaryTree::<T>) -> Self {
 		BinaryTreeIterator {
-			tree: tree,
+			tree,
 			node: tree.root,
 		}
 	}
@@ -929,7 +927,7 @@ impl<'a, T> BinaryTreeMutIterator<'a, T> {
 	fn new(tree: &'a mut BinaryTree::<T>) -> Self {
 		let root = tree.root;
 		BinaryTreeMutIterator {
-			tree: tree,
+			tree,
 			node: root,
 		}
 	}

@@ -137,7 +137,7 @@ impl<T> Alloc<T> {
 		};
 
 		Ok(Self {
-			slice: slice,
+			slice,
 		})
 	}
 

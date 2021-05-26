@@ -60,13 +60,11 @@ fn get_file(path: Path, flags: u32) -> Result<SharedPtr<File>, Errno> {
 
 	if let Ok(file) = files_cache.get_file_from_path(&path) {
 		Ok(file)
+	} else if flags & O_CREAT != 0 {
+		// TODO Create file, return errno on fail
+		Err(-errno::ENOENT as _)
 	} else {
-		if flags & O_CREAT != 0 {
-			// TODO Create file, return errno on fail
-			Err(-errno::ENOENT as _)
-		} else {
-			Err(-errno::ENOENT as _)
-		}
+		Err(-errno::ENOENT as _)
 	}
 }
 

@@ -56,17 +56,15 @@ pub fn kill(proc: &mut Process, regs: &util::Regs) -> Result<i32, Errno> {
 
 			proc.kill(sig)?;
 			return Ok(0);
-		} else {
-			if let Some(mut proc) = Process::get_by_pid(-pid as _) {
-				let mut guard = MutexGuard::new(&mut proc);
-				let proc = guard.get_mut();
-				for p in proc.get_group_processes() {
-					try_kill(*p as _, sig).unwrap();
-				}
-
-				proc.kill(sig)?;
-				return Ok(0);
+		} else if let Some(mut proc) = Process::get_by_pid(-pid as _) {
+			let mut guard = MutexGuard::new(&mut proc);
+			let proc = guard.get_mut();
+			for p in proc.get_group_processes() {
+				try_kill(*p as _, sig).unwrap();
 			}
+
+			proc.kill(sig)?;
+			return Ok(0);
 		}
 
 		Err(errno::ESRCH)

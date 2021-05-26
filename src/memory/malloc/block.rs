@@ -40,7 +40,7 @@ impl Block {
 		let block = unsafe {
 			util::write_ptr(ptr as *mut Block, Self {
 				list: ListNode::new_single(),
-				order: order,
+				order,
 				first_chunk: Chunk::new(),
 			});
 			&mut *(ptr as *mut Block)

@@ -125,8 +125,8 @@ impl PATAInterface {
 	/// `slave` tells whether the disk is the slave disk.
 	pub fn new(secondary: bool, slave: bool) -> Result<Self, &'static str> {
 		let mut s = Self {
-			secondary: secondary,
-			slave: slave,
+			secondary,
+			slave,
 
 			lba48: false,
 
@@ -498,7 +498,7 @@ impl StorageInterface for PATAInterface {
 			return Err(errno::EINVAL);
 		}
 
-		if offset <= (1 << 29) - 1 {
+		if offset < (1 << 29) - 1 {
 			self.read28(buf, offset, size)
 		} else {
 			self.read48(buf, offset, size)
@@ -510,7 +510,7 @@ impl StorageInterface for PATAInterface {
 			return Err(errno::EINVAL);
 		}
 
-		if offset <= (1 << 29) - 1 {
+		if offset < (1 << 29) - 1 {
 			self.write28(buf, offset, size)
 		} else {
 			self.write48(buf, offset, size)

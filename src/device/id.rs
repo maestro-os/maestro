@@ -45,8 +45,8 @@ impl MajorBlock {
 	/// Creates a new instance with the given major number `major`.
 	fn new(device_type: DeviceType, major: u32) -> Result<Self, Errno> {
 		Ok(Self {
-			device_type: device_type,
-			major: major,
+			device_type,
+			major,
 
 			allocator: IDAllocator::new(MINORS_COUNT)?,
 		})

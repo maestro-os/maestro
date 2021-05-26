@@ -157,7 +157,7 @@ impl CMOSClock {
 	/// If it isn't available, the 21st century is assumed.
 	pub fn new(century_register: bool) -> Self {
 		Self {
-			century_register: century_register,
+			century_register,
 		}
 	}
 

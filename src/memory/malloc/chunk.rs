@@ -326,7 +326,7 @@ impl FreeChunk {
 					magic: CHUNK_MAGIC,
 					list: ListNode::new_single(),
 					flags: 0,
-					size: size,
+					size,
 				},
 				free_list: ListNode::new_single(),
 			});
@@ -341,7 +341,7 @@ impl FreeChunk {
 				magic: CHUNK_MAGIC,
 				list: ListNode::new_single(),
 				flags: 0,
-				size: size,
+				size,
 			},
 			free_list: ListNode::new_single(),
 		}

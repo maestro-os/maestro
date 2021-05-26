@@ -28,7 +28,7 @@ impl<T> List<T> {
 	pub const fn new(inner_offset: usize) -> Self {
 		List::<T> {
 			front: None,
-			inner_offset: inner_offset,
+			inner_offset,
 			_phantom: core::marker::PhantomData::<T>,
 		}
 	}

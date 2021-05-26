@@ -28,8 +28,8 @@ impl MemGap {
 		debug_assert!(size > 0);
 
 		Self {
-			begin: begin,
-			size: size,
+			begin,
+			size,
 
 			list: ListNode::new_single(),
 		}

@@ -22,7 +22,7 @@ const RSDP_SIGNATURE: &str = "RSD PTR ";
 /// The Root System Description Pointer (RSDP) is a structure storing a pointer to the other
 /// structures used by ACPI.
 #[repr(C)]
-struct RSDP {
+struct Rsdp {
 	/// TODO doc
 	signature: [u8; 8],
 	/// The checksum to check against all the structure's bytes.
@@ -38,9 +38,9 @@ struct RSDP {
 /// This structure is the version 2.0 of the RSDP. This structure contains the field from the
 /// previous version, plus some extra fields.
 #[repr(C)]
-struct RSDP2 {
+struct Rsdp2 {
 	/// The version 1.0 on structure.
-	rsdp: RSDP,
+	rsdp: Rsdp,
 
 	/// TODO doc
 	length: u32,
@@ -67,11 +67,11 @@ fn check_checksum<T>(s: &T) -> bool {
 }
 
 /// Finds the RSDP and returns a reference to it.
-unsafe fn find_rsdp() -> Option<&'static mut RSDP> {
+unsafe fn find_rsdp() -> Option<&'static mut Rsdp> {
 	let mut i = SCAN_BEGIN;
 	while i < SCAN_END {
 		if util::memcmp(i, RSDP_SIGNATURE.as_ptr() as _, RSDP_SIGNATURE.len()) == 0 {
-			return Some(&mut *(i as *mut RSDP));
+			return Some(&mut *(i as *mut Rsdp));
 		}
 		i = i.add(16);
 	}
@@ -89,12 +89,10 @@ pub fn init() {
 		// TODO Get other structures
 
 		// TODO Check century register
-		if time::add_clock_source(time::cmos::CMOSClock::new(false)).is_err() {
+		if time::add_clock_source(time::cmos::CMOSClock::new(true)).is_err() {
 			crate::kernel_panic!("Not enough memory to create the CMOS clock source!");
 		}
-	} else {
-		if time::add_clock_source(time::cmos::CMOSClock::new(false)).is_err() {
-			crate::kernel_panic!("Not enough memory to create the CMOS clock source!");
-		}
+	} else if time::add_clock_source(time::cmos::CMOSClock::new(false)).is_err() {
+		crate::kernel_panic!("Not enough memory to create the CMOS clock source!");
 	}
 }

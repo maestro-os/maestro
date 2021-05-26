@@ -229,7 +229,7 @@ impl<'a, K: Hash + Eq, V> HashMapIterator<'a, K, V> {
 	/// Creates a hash map iterator for the given reference.
 	fn new(hm: &'a HashMap<K, V>) -> Self {
 		Self {
-			hm: hm,
+			hm,
 
 			curr_bucket: 0,
 			curr_element: 0,

@@ -150,9 +150,9 @@ static mut ID: MaybeUninit::<[InterruptDescriptor; ENTRIES_COUNT]>
 fn create_id(address: *const c_void, selector: u16, type_attr: u8) -> InterruptDescriptor {
 	InterruptDescriptor {
 		offset: ((address as u32) & 0xffff) as u16,
-		selector: selector,
+		selector,
 		zero: 0,
-		type_attr: type_attr,
+		type_attr,
 		offset_2: (((address as u32) & 0xffff0000) >> util::bit_size_of::<u16>()) as u16,
 	}
 }

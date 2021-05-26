@@ -18,8 +18,8 @@ impl FileDescriptor {
 	/// Creates a new file descriptor.
 	pub fn new(id: u32, file: SharedPtr<File>) -> Self {
 		Self {
-			id: id,
-			file: file,
+			id,
+			file,
 		}
 	}
 

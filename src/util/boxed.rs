@@ -47,7 +47,7 @@ impl<T> Box<T> {
 		};
 
 		Ok(Self {
-			ptr: ptr,
+			ptr,
 		})
 	}
 
