@@ -10,7 +10,6 @@ pub mod manager;
 pub mod ps2;
 pub mod storage;
 
-use core::cmp::Ordering;
 use crate::device::manager::DeviceManager;
 use crate::errno::Errno;
 use crate::file::File;
@@ -195,14 +194,7 @@ pub fn register_device(device: Device) -> Result<(), Errno> {
 	let device_number = device.get_device_number();
 	let index = container.binary_search_by(| d | {
 		let dn = d.get_device_number();
-
-		if device_number < dn {
-			Ordering::Less
-		} else if device_number > dn {
-			Ordering::Greater
-		} else {
-			Ordering::Equal
-		}
+		device_number.cmp(&dn)
 	});
 	let index = match index {
 		Ok(i) => i,
@@ -234,14 +226,7 @@ pub fn get_device(type_: DeviceType, major: u32, minor: u32) -> Option<SharedPtr
 	let device_number = id::makedev(major, minor);
 	let index = container.binary_search_by(| d | {
 		let dn = d.get_device_number();
-
-		if device_number < dn {
-			Ordering::Less
-		} else if device_number > dn {
-			Ordering::Greater
-		} else {
-			Ordering::Equal
-		}
+		device_number.cmp(&dn)
 	});
 
 	if let Ok(i) = index {

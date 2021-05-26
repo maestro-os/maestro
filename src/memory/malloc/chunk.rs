@@ -457,8 +457,8 @@ pub fn init_free_lists() {
 		FREE_LISTS.assume_init_mut()
 	};
 
-	for i in 0..FREE_LIST_BINS {
-		free_lists[i] = list_new!(FreeChunk, free_list);
+	for free_list in free_lists {
+		*free_list = list_new!(FreeChunk, free_list);
 	}
 }
 

@@ -113,10 +113,9 @@ impl MemSpace {
 	fn gap_get(buckets: &mut [List::<MemGap>], size: usize) -> Option::<&mut MemGap> {
 		let bucket_index = Self::get_gap_bucket_index(size);
 
-		for i in bucket_index..GAPS_BUCKETS_COUNT {
-			let bucket = &mut buckets[i];
-
+		for bucket in buckets.iter_mut().take(GAPS_BUCKETS_COUNT).skip(bucket_index) {
 			let mut node = bucket.get_front();
+
 			while node.is_some() {
 				let n = node.unwrap();
 				let value = n.get_mut::<MemGap>(bucket.get_inner_offset());

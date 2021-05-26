@@ -57,8 +57,8 @@ impl PCIDevice {
 			let device_id = ((first_word >> 16) & 0xffff) as u16;
 			let mut data: [u32; 16] = [0; 16];
 			data[0] = first_word;
-			for i in 1..data.len() {
-				data[i] = manager.read_word(bus, device, 0, (i * 4) as _);
+			for (i, d) in data.iter_mut().enumerate().skip(1) {
+				*d = manager.read_word(bus, device, 0, (i * 4) as _);
 			}
 
 			Some(Self {

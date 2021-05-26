@@ -56,7 +56,7 @@ const MODE_5: u8 = 0x5;
 const BASE_FREQUENCY: Frequency = 1193180;
 
 /// The current frequency of the PIT.
-static mut CURRENT_FREQUENCY: Mutex::<Frequency> = Mutex::new(0 as Frequency);
+static mut CURRENT_FREQUENCY: Mutex::<Frequency> = Mutex::new(0);
 
 /// Initializes the PIT.
 /// This function disables interrupts.
@@ -94,7 +94,7 @@ pub fn set_frequency(frequency: Frequency) {
 	} else {
 		0
 	};
-	c = c & 0xffff;
+	c &= 0xffff;
 	if c & !0xffff != 0 {
 		c = 0;
 	}

@@ -53,7 +53,7 @@ pub fn init() {
 	let base = unsafe {
 		tss_get() as u64
 	};
-	let flags = 0b0100000010001001 as u64;
+	let flags = 0b0100000010001001_u64;
 	let tss_value = (limit & 0xffff)
 		| ((base & 0xffffff) << 16)
 		| (flags << 40)

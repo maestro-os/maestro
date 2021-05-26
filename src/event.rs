@@ -1,7 +1,6 @@
 //! This file handles interruptions, it provides an interface allowing to register callbacks for
 //! each interrupts. Each callback has a priority number and is called in descreasing order.
 
-use core::cmp::Ordering;
 use core::mem::MaybeUninit;
 use crate::errno::Errno;
 use crate::idt::pic;
@@ -123,8 +122,8 @@ pub fn init() {
 	});
 	let callbacks = guard.get_mut();
 
-	for i in 0..callbacks.len() {
-		callbacks[i] = None;
+	for c in callbacks {
+		*c = None;
 	}
 }
 
@@ -149,13 +148,7 @@ pub fn register_callback<T: 'static + InterruptCallback>(id: usize, priority: u3
 
 	let index = {
 		let r = v.binary_search_by(| x | {
-			if x.priority < priority {
-				Ordering::Less
-			} else if x.priority > priority {
-				Ordering::Greater
-			} else {
-				Ordering::Equal
-			}
+			x.priority.cmp(&priority)
 		});
 
 		if let Err(l) = r {

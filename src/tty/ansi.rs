@@ -64,6 +64,7 @@ impl ANSIBuffer {
 	/// The function returns the number of characters that have been pushed.
 	pub fn push(&mut self, buffer: &[u8]) -> usize {
 		let len = min(buffer.len(), BUFFER_SIZE - self.cursor);
+		#[allow(clippy::needless_range_loop)]
 		for i in 0..len {
 			self.buffer[self.cursor + i] = buffer[i];
 		}
@@ -331,16 +332,16 @@ pub fn handle(tty: &mut TTY, buffer: &[u8]) -> (ANSIState, usize) {
 	let (state, len) = parse(tty);
 	match state {
 		ANSIState::Valid => {
-			for i in len..buffer.len() {
-				tty.putchar(buffer[i] as char);
+			for b in buffer.iter().skip(len) {
+				tty.putchar(*b as char);
 			}
 			tty.update();
 			tty.ansi_buffer.clear();
 		},
 
 		ANSIState::Invalid => {
-			for i in 0..buffer.len() {
-				tty.putchar(buffer[i] as char);
+			for b in buffer.iter() {
+				tty.putchar(*b as char);
 			}
 			tty.update();
 			tty.ansi_buffer.clear();

@@ -3,7 +3,6 @@
 
 use core::ffi::c_void;
 use core::mem::ManuallyDrop;
-use core::ptr::null;
 use crate::memory;
 use crate::util;
 
@@ -347,7 +346,7 @@ struct TagLoadBaseAddr {
 impl MmapEntry {
 	/// Tells if a Multiboot mmap entry is valid.
 	pub fn is_valid(&self) -> bool {
-		(self.addr + self.len) < ((1 as u64) << (4 * 8))
+		(self.addr + self.len) < (1_u64 << (4 * 8))
 	}
 
 	/// Returns the string describing the memory region according to its type.
@@ -424,7 +423,7 @@ pub fn get_boot_info() -> &'static BootInfo {
 
 /// Returns the size in bytes of Multiboot tags pointed by `ptr`.
 pub fn get_tags_size(ptr: *const c_void) -> usize {
-	debug_assert!(ptr != null::<c_void>());
+	debug_assert!(!ptr.is_null());
 
 	unsafe {
 		let mut tag = ptr.offset(8) as *const Tag;

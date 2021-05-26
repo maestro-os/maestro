@@ -140,11 +140,7 @@ impl Scheduler {
 
 	/// Returns the current running process. If no process is running, the function returns None.
 	pub fn get_current_process(&mut self) -> Option::<SharedPtr::<Mutex::<Process>>> {
-		if let Some(c) = &mut self.curr_proc {
-			Some(c.clone())
-		} else {
-			None
-		}
+		self.curr_proc.as_ref().cloned()
 	}
 
 	/// Updates the scheduler's heuristic with the new priority of a process.

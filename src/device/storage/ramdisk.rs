@@ -66,8 +66,8 @@ impl StorageInterface for RAMDisk {
 		}
 
 		if !self.is_allocated() {
-			for i in 0..buf.len() {
-				buf[i] = 0;
+			for b in buf {
+				*b = 0;
 			}
 		} else {
 			let block_size = self.get_block_size();

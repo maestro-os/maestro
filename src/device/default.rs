@@ -34,9 +34,10 @@ impl DeviceHandle for ZeroDeviceHandle {
 	}
 
 	fn read(&mut self, _offset: u64, buff: &mut [u8]) -> Result<usize, Errno> {
-		for i in 0..buff.len() {
-			buff[i] = 0;
+		for b in buff.iter_mut() {
+			*b = 0;
 		}
+
 		Ok(buff.len())
 	}
 

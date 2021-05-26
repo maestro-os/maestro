@@ -4,7 +4,6 @@
 // TODO Externalize this module into a kernel module when the interface for loading them will be
 // ready
 
-use core::cmp::Ordering;
 use crate::event::{InterruptCallback, InterruptResult, InterruptResultAction};
 use crate::event;
 use crate::io;
@@ -491,13 +490,7 @@ fn read_keystroke() -> (KeyboardKey, KeyboardAction) {
 	};
 
 	let cmp = | k: &(u8, KeyboardKey) | {
-		if k.0 < keycode {
-			Ordering::Less
-		} else if k.0 > keycode {
-			Ordering::Greater
-		} else {
-			Ordering::Equal
-		}
+		k.0.cmp(&keycode)
 	};
 	let list = if !special {
 		&NORMAL_KEYS[..]
@@ -506,7 +499,7 @@ fn read_keystroke() -> (KeyboardKey, KeyboardAction) {
 	};
 	let index = list.binary_search_by(cmp);
 	let key = if let Ok(i) = index {
-		list[i].1.clone()
+		list[i].1
 	} else {
 		KeyboardKey::KeyUnknown
 	};

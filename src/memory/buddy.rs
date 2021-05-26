@@ -48,7 +48,7 @@ pub const FLAG_NOFAIL: Flags = 0b100; // TODO Move OOM killer outside?
 pub const KERNEL_ZONE_LIMIT: *const c_void = 0x40000000 as _;
 
 /// Value indicating that the frame is used.
-pub const FRAME_STATE_USED: FrameID = !(0 as FrameID);
+pub const FRAME_STATE_USED: FrameID = !0_u32;
 
 /// Structure representing an allocatable zone of memory.
 pub struct Zone {
@@ -133,6 +133,7 @@ fn get_suitable_zone(type_: usize) -> Option<&'static mut Mutex<Zone>> {
 		ZONES.assume_init_mut()
 	};
 
+	#[allow(clippy::needless_range_loop)]
 	for i in 0..zones.len() {
 		let is_valid = {
 			let guard = MutexGuard::new(&mut zones[i]);
@@ -152,6 +153,7 @@ fn get_zone_for_pointer(ptr: *const c_void) -> Option<&'static mut Mutex<Zone>> 
 		ZONES.assume_init_mut()
 	};
 
+	#[allow(clippy::needless_range_loop)]
 	for i in 0..zones.len() {
 		let is_valid = {
 			let guard = MutexGuard::new(&mut zones[i]);
@@ -174,8 +176,9 @@ pub fn alloc(order: FrameOrder, flags: Flags) -> Result<*mut c_void, Errno> {
 	let begin_zone = (flags & ZONE_TYPE_MASK) as usize;
 	for i in begin_zone..ZONES_COUNT {
 		let z = get_suitable_zone(i);
-		if z.is_some() {
-			let mut guard = MutexGuard::new(z.unwrap());
+
+		if let Some(z) = z {
+			let mut guard = MutexGuard::new(z);
 			let zone = guard.get_mut();
 
 			let frame = zone.get_available_frame(order);
@@ -233,8 +236,9 @@ pub fn allocated_pages_count() -> usize {
 	let z = unsafe {
 		ZONES.assume_init_mut()
 	};
+	#[allow(clippy::needless_range_loop)]
 	for i in 0..z.len() {
-		let guard = MutexGuard::new(&mut z[i]); // TODO Remove `mut`?
+		let guard = MutexGuard::new(&mut z[i]);
 		n += guard.get().get_allocated_pages();
 	}
 	n

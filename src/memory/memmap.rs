@@ -5,7 +5,6 @@
 use core::cmp::*;
 use core::mem::MaybeUninit;
 use core::mem::size_of;
-use core::ptr::null;
 use crate::elf;
 use crate::memory::*;
 use crate::memory;
@@ -44,7 +43,7 @@ pub fn get_info() -> &'static MemoryInfo {
 /// Prints the memory mapping.
 pub fn print_entries() {
 	let mem_info = get_info();
-	debug_assert!(mem_info.memory_maps != null::<multiboot::MmapEntry>());
+	debug_assert!(!mem_info.memory_maps.is_null());
 
 	crate::println!("--- Memory mapping ---");
 	crate::println!("<begin> <end> <type>");
@@ -79,7 +78,7 @@ fn get_phys_alloc_begin(multiboot_ptr: *const c_void) -> *const c_void {
 /// Returns a pointer to the end of the system memory.
 fn get_memory_end() -> *const c_void {
 	let mem_info = get_info();
-	debug_assert!(mem_info.memory_maps != null::<multiboot::MmapEntry>());
+	debug_assert!(!mem_info.memory_maps.is_null());
 
 	let mut t = mem_info.memory_maps;
 	let mut end: usize = 0;

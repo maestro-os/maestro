@@ -365,13 +365,11 @@ impl X86VMem {
 	/// might return a page directory entry if a large block is present at the corresponding
 	/// location. If no entry is found, the function returns None.
 	pub fn get_flags(&self, ptr: *const c_void) -> Option<u32> {
-		if let Some(e) = self.resolve(ptr) {
-			Some(unsafe {
-				*e
-			} & FLAGS_MASK)
-		} else {
-			None
-		}
+		self.resolve(ptr).map(| e | {
+			unsafe {
+				*e & FLAGS_MASK
+			}
+		})
 	}
 
 	/// Maps the given physical address `physaddr` to the given virtual address `virtaddr` with the

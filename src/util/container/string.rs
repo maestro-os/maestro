@@ -23,7 +23,7 @@ fn get_number_len(mut n: i64, base: u8) -> usize {
 
 		while n != 0 {
 			len += 1;
-			n = n / (base as i64);
+			n /= base as i64;
 		}
 
 		len
@@ -68,7 +68,7 @@ impl String {
 
 		let mut l = len;
 		if n < 0 {
-			v.push('-' as u8)?;
+			v.push(b'-')?;
 			l -= 1;
 		}
 		for i in (0..l).rev() {
@@ -80,7 +80,8 @@ impl String {
 					(n / shift % 10).abs() as u8
 				}
 			};
-			v.push(('0' as u8) + b)?;
+
+			v.push(b'0' + b)?;
 		}
 		debug_assert_eq!(v.len(), len);
 

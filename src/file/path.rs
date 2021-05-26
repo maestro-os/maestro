@@ -136,9 +136,8 @@ impl Path {
 		let mut i = 0;
 		while i < self.parts.len() {
 			let part = &self.parts[i];
-			if part == "." {
-				self.parts.remove(i);
-			} else if part == ".." && self.absolute && i == 0 {
+
+			if part == "." || (part == ".." && self.absolute && i == 0) {
 				self.parts.remove(i);
 			} else if part == ".." && i > 0 && self.parts[i - 1] != ".." {
 				self.parts.remove(i);
@@ -162,6 +161,7 @@ impl Path {
 		let mut self_parts = self.parts.failable_clone()?;
 		let mut other_parts = other.parts.failable_clone()?;
 		self_parts.append(&mut other_parts)?;
+
 		Ok(Self {
 			absolute: self.absolute,
 			parts: self_parts,

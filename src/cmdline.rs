@@ -163,7 +163,7 @@ impl ArgsParser {
 	}
 
 	/// Parses the given command line and returns a new instance.
-	pub fn parse<'a>(cmdline: &'a str) -> Result<Self, ParseError<'a>> {
+	pub fn parse(cmdline: &str) -> Result<Self, ParseError<'_>> {
 		let mut s = Self {
 			root_major: 0,
 			root_minor: 0,

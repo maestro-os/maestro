@@ -726,7 +726,7 @@ impl Ext2INode {
 			let mut j = 0;
 			while j < blk_size {
 				let entry = unsafe {
-					DirectoryEntry::from(&mut buff.get_slice_mut()[j..])?
+					DirectoryEntry::from(&buff.get_slice()[j..])?
 				};
 				let total_size = entry.total_size as usize;
 
@@ -878,9 +878,7 @@ impl DirectoryEntry {
 	pub unsafe fn from(slice: &[u8]) -> Result<Box<Self>, Errno> {
 		let ptr = malloc::alloc(slice.len())? as *mut u8;
 		let alloc_slice = slice::from_raw_parts_mut(ptr, slice.len());
-		for i in 0..slice.len() {
-			alloc_slice[i] = slice[i];
-		}
+		alloc_slice.clone_from_slice(&slice);
 
 		Ok(Box::from_raw(alloc_slice as *mut [u8] as *mut [()] as *mut Self))
 	}
@@ -909,10 +907,7 @@ impl DirectoryEntry {
 	pub fn set_name(&mut self, superblock: &Superblock, name: &String) {
 		let slice = name.as_bytes();
 		let len = min(slice.len(), self.total_size as usize - 8);
-
-		for i in 0..len {
-			self.name[i] = slice[i];
-		}
+		self.name[..len].clone_from_slice(&slice[..len]);
 
 		self.name_length_lo = (len & 0xff) as u8;
 		if superblock.required_features & REQUIRED_FEATURE_DIRECTORY_TYPE == 0 {
@@ -1001,14 +996,14 @@ impl Ext2Fs {
 	/// The function returns the index to the element. If every elements are set, the function
 	/// returns None.
 	fn search_bitmap_blk(bitmap: &[u8]) -> Option<usize> {
-		for i in 0..bitmap.len() {
-			if bitmap[i] == 0xff {
+		for (i, b) in bitmap.iter().enumerate() {
+			if *b == 0xff {
 				continue;
 			}
 
 			for j in 0..size_of::<u8>() {
 				// TODO Check endianness
-				if bitmap[i] >> j & 0b1 == 0 {
+				if *b >> j & 0b1 == 0 {
 					return Some(i * size_of::<u8>() + j);
 				}
 			}

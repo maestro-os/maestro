@@ -7,7 +7,6 @@ mod ansi;
 
 use core::cmp::*;
 use core::mem::MaybeUninit;
-use core::mem::size_of;
 use crate::memory::vmem;
 use crate::pit;
 use crate::util::lock::mutex::*;
@@ -153,13 +152,14 @@ impl TTY {
 		let buff = &self.history[get_history_offset(0, self.screen_y)];
 		unsafe {
 			vmem::write_lock_wrap(|| {
-				core::ptr::copy_nonoverlapping(buff as *const _, vga::BUFFER_VIRT as *mut _,
-					(vga::WIDTH as usize) * (vga::HEIGHT as usize) * size_of::<vga::Char>());
+				core::ptr::copy_nonoverlapping(buff as *const vga::Char,
+					vga::BUFFER_VIRT as *mut vga::Char,
+					(vga::WIDTH as usize) * (vga::HEIGHT as usize));
 			});
 		}
 
 		let y = self.cursor_y - self.screen_y;
-		if y >= 0 && y < vga::HEIGHT {
+		if (0..vga::HEIGHT).contains(&y) {
 			vga::move_cursor(self.cursor_x, y);
 			vga::enable_cursor();
 		} else {
@@ -174,7 +174,7 @@ impl TTY {
 
 	/// Sets the current foreground color `color` for TTY.
 	pub fn set_fgcolor(&mut self, color: vga::Color) {
-		self.current_color &= !(0x7f as vga::Color);
+		self.current_color &= !0x7f;
 		self.current_color |= color;
 	}
 

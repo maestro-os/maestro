@@ -54,8 +54,8 @@ impl MountPoint {
 
 		Ok(Self {
 			device_type,
-			major,
 			minor,
+			major,
 
 			path,
 

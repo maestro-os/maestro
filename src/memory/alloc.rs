@@ -2,6 +2,7 @@
 //! located in the library `mem_alloc`.
 
 use core::ffi::c_void;
+use core::ptr::null_mut;
 use crate::memory::buddy;
 use crate::memory::memmap;
 use crate::memory;
@@ -27,10 +28,10 @@ pub fn init() {
 	let kernel_zone_begin = util::align(phys_metadata_end, memory::PAGE_SIZE) as *mut c_void;
 	let kernel_zone = buddy::Zone::new(buddy::FLAG_ZONE_TYPE_KERNEL, metadata_begin,
 		frames_count as _, kernel_zone_begin);
-	let user_zone = buddy::Zone::new(buddy::FLAG_ZONE_TYPE_USER, 0 as *mut c_void, 0,
-		0 as *mut c_void);
-	let dma_zone = buddy::Zone::new(buddy::FLAG_ZONE_TYPE_DMA, 0 as *mut c_void, 0,
-		0 as *mut c_void);
+	let user_zone = buddy::Zone::new(buddy::FLAG_ZONE_TYPE_USER, null_mut::<c_void>(), 0,
+		null_mut::<c_void>());
+	let dma_zone = buddy::Zone::new(buddy::FLAG_ZONE_TYPE_DMA, null_mut::<c_void>(), 0,
+		null_mut::<c_void>());
 	buddy::set_zone_slot(1, kernel_zone);
 	buddy::set_zone_slot(0, user_zone);
 	buddy::set_zone_slot(2, dma_zone);

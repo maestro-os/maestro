@@ -6,6 +6,7 @@ use core::fmt;
 use core::mem::size_of;
 use core::ptr::NonNull;
 use core::ptr::drop_in_place;
+use core::ptr;
 use crate::errno::Errno;
 use crate::memory::malloc;
 use crate::util::FailableClone;
@@ -124,7 +125,7 @@ impl<T: 'static> BinaryTreeNode<T> {
 	pub fn is_left_child(&self) -> bool {
 		if let Some(parent) = self.get_parent() {
 			if let Some(n) = parent.get_left() {
-				return n as *const _ == self as *const _;
+				return ptr::eq(n as *const _, self as *const _);
 			}
 		}
 
@@ -135,7 +136,7 @@ impl<T: 'static> BinaryTreeNode<T> {
 	pub fn is_right_child(&self) -> bool {
 		if let Some(parent) = self.get_parent() {
 			if let Some(n) = parent.get_right() {
-				return n as *const _ == self as *const _;
+				return ptr::eq(n as *const _, self as *const _);
 			}
 		}
 
@@ -238,9 +239,9 @@ impl<T: 'static> BinaryTreeNode<T> {
 		root_ptr.parent = NonNull::new(self);
 
 		root_ptr.right = left;
-		if left.is_some() {
+		if let Some(left) = left {
 			unsafe {
-				&mut *(left.unwrap().as_ptr() as *mut Self)
+				&mut *(left.as_ptr() as *mut Self)
 			}.parent = NonNull::new(root_ptr);
 		}
 	}
@@ -257,9 +258,9 @@ impl<T: 'static> BinaryTreeNode<T> {
 		root_ptr.parent = NonNull::new(self);
 
 		root_ptr.left = right;
-		if right.is_some() {
+		if let Some(right) = right {
 			unsafe {
-				&mut *(right.unwrap().as_ptr() as *mut Self)
+				&mut *(right.as_ptr() as *mut Self)
 			}.parent = NonNull::new(root_ptr);
 		}
 	}
@@ -676,17 +677,18 @@ impl<T: 'static + Ord> BinaryTree<T> {
 			let left = node.get_left_mut();
 			let right = node.get_right_mut();
 
-			let replacement: Option::<NonNull::<BinaryTreeNode::<T>>>
-				= if left.is_some() && right.is_some() {
-				let leftmost = Self::get_leftmost_node::<T_>(right.unwrap());
-				leftmost.unlink();
-				NonNull::new(leftmost as *mut _)
-			} else if left.is_some() {
-				NonNull::new(left.unwrap() as *mut _)
-			} else if right.is_some() {
-				NonNull::new(right.unwrap() as *mut _)
-			} else {
-				None
+			let replacement: Option::<NonNull::<BinaryTreeNode::<T>>> = {
+				if left.is_some() && right.is_some() {
+					let leftmost = Self::get_leftmost_node::<T_>(right.unwrap());
+					leftmost.unlink();
+					NonNull::new(leftmost as *mut _)
+				} else if let Some(left) = left {
+					NonNull::new(left as *mut _)
+				} else if let Some(right) = right {
+					NonNull::new(right as *mut _)
+				} else {
+					None
+				}
 			};
 
 			if let Some(mut r) = replacement {
@@ -825,10 +827,10 @@ impl<T: 'static> BinaryTree::<T> {
 				root.as_ref()
 			}, &mut | n: &BinaryTreeNode::<T> | {
 				if let Some(left) = n.get_left() {
-					debug_assert!(left.get_parent().unwrap() as *const _ == n as *const _);
+					debug_assert!(ptr::eq(left.get_parent().unwrap() as *const _, n as *const _));
 				}
 				if let Some(right) = n.get_right() {
-					debug_assert!(right.get_parent().unwrap() as *const _ == n as *const _);
+					debug_assert!(ptr::eq(right.get_parent().unwrap() as *const _, n as *const _));
 				}
 			}, TraversalType::PreOrder);
 		}
@@ -866,9 +868,7 @@ impl<'a, T: Ord> Iterator for BinaryTreeIterator<'a, T> {
 	fn next(&mut self) -> Option<Self::Item> {
 		let node = self.node;
 		self.node = {
-			if self.node.is_none() {
-				return None;
-			}
+			self.node?;
 
 			let n = unwrap_pointer(&node).unwrap();
 			if let Some(left) = n.get_left() {
@@ -941,9 +941,7 @@ impl<'a, T: Ord> Iterator for BinaryTreeMutIterator<'a, T> {
 	fn next(&mut self) -> Option<Self::Item> {
 		let mut node = self.node;
 		self.node = {
-			if self.node.is_none() {
-				return None;
-			}
+			self.node?;
 
 			let n = unwrap_pointer(&node).unwrap();
 			if let Some(left) = n.get_left() {

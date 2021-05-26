@@ -298,7 +298,7 @@ impl StorageManager {
 
 		let mut prefix = String::from("/dev/sd")?;
 		prefix.push(unsafe { // Safe because the id stays in range of the alphabet
-			char::from_u32_unchecked((('a' as u8) + (storage_id as u8)) as _)
+			char::from_u32_unchecked((b'a' + (storage_id as u8)) as _)
 		})?;
 
 		let device_type = if storage.get_block_size() == 1 {

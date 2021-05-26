@@ -7,11 +7,13 @@ mod chunk;
 
 use block::Block;
 use chunk::Chunk;
+use core::cmp::Ordering;
 use core::cmp::min;
 use core::ffi::c_void;
 use core::mem::size_of;
 use core::ops::Index;
 use core::ops::IndexMut;
+use core::ptr::drop_in_place;
 use core::slice;
 use crate::errno::Errno;
 use crate::errno;
@@ -33,7 +35,7 @@ pub fn init() {
 pub unsafe fn alloc(n: usize) -> Result<*mut c_void, Errno> {
 	let _ = MutexGuard::new(&mut MUTEX);
 
-	if n <= 0 {
+	if n == 0 {
 		return Err(errno::EINVAL);
 	}
 
@@ -72,7 +74,7 @@ pub unsafe fn get_size(ptr: *mut c_void) -> usize {
 pub unsafe fn realloc(ptr: *mut c_void, n: usize) -> Result<*mut c_void, Errno> {
 	let _ = MutexGuard::new(&mut MUTEX);
 
-	if n <= 0 {
+	if n == 0 {
 		return Err(errno::EINVAL);
 	}
 
@@ -82,20 +84,26 @@ pub unsafe fn realloc(ptr: *mut c_void, n: usize) -> Result<*mut c_void, Errno> 
 	assert!(chunk.is_used());
 
 	let chunk_size = chunk.get_size();
-	if n > chunk_size {
-		if !chunk.grow(n - chunk_size) {
-			let new_ptr = alloc(n)?;
-			util::memcpy(new_ptr, ptr, min(chunk.get_size(), n));
-			free(ptr);
-			Ok(new_ptr)
-		} else {
+	match n.cmp(&chunk_size) {
+		Ordering::Less => {
+			chunk.shrink(chunk_size - n);
 			Ok(ptr)
-		}
-	} else if n < chunk_size {
-		chunk.shrink(chunk_size - n);
-		Ok(ptr)
-	} else {
-		Ok(ptr)
+		},
+
+		Ordering::Greater => {
+			if !chunk.grow(n - chunk_size) {
+				let new_ptr = alloc(n)?;
+				util::memcpy(new_ptr, ptr, min(chunk.get_size(), n));
+				free(ptr);
+				Ok(new_ptr)
+			} else {
+				Ok(ptr)
+			}
+		},
+
+		Ordering::Equal => {
+			Ok(ptr)
+		},
 	}
 }
 
@@ -114,7 +122,7 @@ pub unsafe fn free(ptr: *mut c_void) {
 
 	let c = chunk.coalesce();
 	if c.list.is_single() {
-		drop(Block::from_first_chunk(c));
+		drop_in_place(Block::from_first_chunk(c));
 	} else {
 		c.as_free_chunk().free_list_insert();
 	}
