@@ -5,6 +5,7 @@
 //! - Block Group: stored in the Block Group Descriptor Table (BGDT)
 //! - Block: stored inside of block groups
 //! - INode: represents a file in the filesystem
+//! - Directory entry: an entry stored into the inode's content
 //!
 //! The access to an INode data is divided into several parts, each overflowing on the next when
 //! full:
@@ -252,7 +253,19 @@ fn read_block(i: u64, superblock: &Superblock, io: &mut dyn DeviceHandle, buff: 
 	Ok(())
 }
 
-// TODO Write block
+/// Writes the `i`th block on the given device, reading the data onto the given buffer.
+/// `i` is the offset of the block on the device.
+/// `superblock` is the filesystem's superblock.
+/// `io` is the I/O interface of the device.
+/// `buff` is the buffer to read from.
+/// If the block is outside of the storage's bounds, the function returns a error.
+fn write_block(i: u64, superblock: &Superblock, io: &mut dyn DeviceHandle, buff: &[u8])
+	-> Result<(), Errno> {
+	let blk_size = superblock.get_block_size() as u64;
+	io.write(i * blk_size, buff)?;
+
+	Ok(())
+}
 
 /// The ext2 superblock structure.
 #[repr(C, packed)]
@@ -988,7 +1001,7 @@ impl Ext2Fs {
 
 	/// Returns the number of block groups.
 	fn get_block_groups_count(&self) -> usize {
-		// TODO Do not take the last superblock if not entire? Or mark non-existing blocks as used?
+		// TODO Do not take the last group if not entire? Or mark non-existing blocks as used?
 		math::ceil_division(self.superblock.total_blocks, self.superblock.blocks_per_group) as _
 	}
 
@@ -1042,8 +1055,8 @@ impl Ext2Fs {
 		for i in 0..self.get_block_groups_count() {
 			let bgd = BlockGroupDescriptor::read(i as _, &self.superblock, io)?;
 			if bgd.unallocated_inodes_number > 0 {
-				self.search_bitmap(io, bgd.block_usage_bitmap_addr,
-					self.superblock.blocks_per_group)?;
+				self.search_bitmap(io, bgd.inode_usage_bitmap_addr,
+					self.superblock.inodes_per_group)?;
 			}
 		}
 
@@ -1059,6 +1072,7 @@ impl Ext2Fs {
 		// TODO Find the block group descriptor associated with the inode
 		// TODO Decrement the number of available inodes
 		// TODO Mark the inode as used
+		// TODO If directory, increment the directories count
 
 		Ok(())
 	}
@@ -1072,14 +1086,21 @@ impl Ext2Fs {
 		// TODO Find the block group descriptor associated with the inode
 		// TODO Increment the number of available inodes
 		// TODO Mark the inode as free
+		// TODO If directory, decrement the directories count
 
 		Ok(())
 	}
 
 	/// Returns the id of a free block in the filesystem.
 	/// `io` is the I/O interface.
-	pub fn get_free_block(&self, _io: &mut dyn DeviceHandle) -> Result<u32, Errno> {
-		// TODO
+	pub fn get_free_block(&self, io: &mut dyn DeviceHandle) -> Result<u32, Errno> {
+		for i in 0..self.get_block_groups_count() {
+			let bgd = BlockGroupDescriptor::read(i as _, &self.superblock, io)?;
+			if bgd.unallocated_blocks_number > 0 {
+				self.search_bitmap(io, bgd.block_usage_bitmap_addr,
+					self.superblock.blocks_per_group)?;
+			}
+		}
 
 		Err(errno::ENOSPC)
 	}
