@@ -32,8 +32,6 @@ impl FileDescriptor {
 	pub fn get_file(&mut self) -> &SharedPtr<File> {
 		&self.file
 	}
-
-	// TODO
 }
 
 crate::failable_clone_impl!(FileDescriptor);

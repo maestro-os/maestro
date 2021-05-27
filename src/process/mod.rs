@@ -301,9 +301,10 @@ impl Process {
 
 			let tty_path = Path::from_string(TTY_DEVICE_PATH)?;
 			let tty_file = files_cache.get_file_from_path(&tty_path)?;
-			let _stdin_fd = process.open_file(tty_file);
-			// TODO Ensure the file descriptor is STDIN_FILENO
-			// TODO Duplicate stdin_fd into STDOUT_FILENO and STDERR_FILENO
+			let stdin_fd = process.open_file(tty_file)?;
+			assert_eq!(stdin_fd.get_id(), STDIN_FILENO);
+			process.duplicate_fd(STDIN_FILENO, Some(STDOUT_FILENO))?;
+			process.duplicate_fd(STDIN_FILENO, Some(STDERR_FILENO))?;
 		}
 
 		let mutex = unsafe {
@@ -351,9 +352,7 @@ impl Process {
 				let mut guard = MutexGuard::new(&mut mutex);
 				let new_group_process = guard.get_mut();
 				let i = new_group_process.process_group.binary_search(&self.pid).unwrap_err();
-				// TODO Beware of memory shortage
-				new_group_process.process_group.insert(i, self.pid).unwrap();
-				Ok(())
+				new_group_process.process_group.insert(i, self.pid)
 			} else {
 				Err(errno::ESRCH)
 			}
@@ -473,7 +472,7 @@ impl Process {
 	/// Opens a file, creates a file descriptor and returns a mutable reference to it.
 	/// `file` the file to open.
 	/// If the file cannot be open, the function returns an Err.
-	pub fn open_file(&mut self, file: SharedPtr<File>) -> Result::<&mut FileDescriptor, Errno> {
+	pub fn open_file(&mut self, file: SharedPtr<File>) -> Result<&mut FileDescriptor, Errno> {
 		let id = self.get_available_fd()?;
 		let index = self.file_descriptors.binary_search_by(| fd | {
 			fd.get_id().cmp(&id)
@@ -487,9 +486,40 @@ impl Process {
 		}
 	}
 
+	/// Duplicates the file descriptor with id `id`.
+	/// `new_id` if specified, the id of the new file descriptor. If already used, the previous
+	/// file descriptor shall be closed.
+	pub fn duplicate_fd(&mut self, id: u32, new_id: Option<u32>)
+		-> Result<&mut FileDescriptor, Errno> {
+		let new_id = {
+			if let Some(new_id) = new_id {
+				new_id
+			} else {
+				self.get_available_fd()?
+			}
+		};
+
+		let index = self.file_descriptors.binary_search_by(| fd | {
+			fd.get_id().cmp(&new_id)
+		});
+		let index = {
+			if let Ok(i) = index {
+				self.file_descriptors.remove(i);
+				i
+			} else {
+				index.unwrap_err()
+			}
+		};
+
+		let curr_fd = self.get_fd(id).ok_or(errno::EBADF)?;
+		let new_fd = FileDescriptor::new(new_id, curr_fd.get_file().clone());
+		self.file_descriptors.insert(index, new_fd)?;
+		Ok(&mut self.file_descriptors[index])
+	}
+
 	/// Returns the file descriptor with ID `id`. If the file descriptor doesn't exist, the
 	/// function returns None.
-	pub fn get_fd(&mut self, id: u32) -> Option::<&mut FileDescriptor> {
+	pub fn get_fd(&mut self, id: u32) -> Option<&mut FileDescriptor> {
 		let result = self.file_descriptors.binary_search_by(| fd | {
 			fd.get_id().cmp(&id)
 		});

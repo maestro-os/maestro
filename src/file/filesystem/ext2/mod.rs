@@ -426,7 +426,9 @@ impl BlockGroupDescriptor {
 	}
 }
 
-/// TODO doc
+/// An inode represents a file in the filesystem. The name of the file is not included in the inode
+/// but in the directory entry associated with it since several entries can refer to the same
+/// inode (hard links).
 #[repr(C, packed)]
 struct Ext2INode {
 	/// Type and permissions.
@@ -1261,7 +1263,8 @@ impl FilesystemType for Ext2FsType {
 			(DEFAULT_BLOCK_SIZE * 8) as _);
 		let inode_usage_bitmap_size = math::ceil_division(DEFAULT_INODES_PER_GROUP,
 			(DEFAULT_BLOCK_SIZE * 8) as _);
-		let inode_table_size = math::ceil_division(DEFAULT_INODES_PER_GROUP * DEFAULT_INODE_SIZE as u32,
+		let inode_table_size = math::ceil_division(DEFAULT_INODES_PER_GROUP
+			* DEFAULT_INODE_SIZE as u32,
 			(DEFAULT_BLOCK_SIZE * 8) as _);
 
 		let available_blocks_per_group = DEFAULT_BLOCKS_PER_GROUP
