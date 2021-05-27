@@ -7,7 +7,6 @@
 #![feature(allow_internal_unstable)]
 #![feature(asm)]
 #![feature(coerce_unsized)]
-#![feature(const_fn)]
 #![feature(const_fn_trait_bound)]
 #![feature(const_maybe_uninit_assume_init)]
 #![feature(const_mut_refs)]

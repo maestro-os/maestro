@@ -296,8 +296,8 @@ $(CONFIG_UTIL_PATH): $(CONFIG_UTIL_SRC)
 # Runs the configuration utility to create the configuration file
 $(CONFIG_FILE): $(CONFIG_UTIL_PATH)
 	$(CONFIG_UTIL_PATH)
-	@stat $(CONFIG_FILE) >/dev/null 2>&1 && echo "The configuration file is now ready. You may want to type \`make\
-clean\` before compiling with \`make\`" || true
+	@stat $(CONFIG_FILE) >/dev/null 2>&1 && echo "The configuration file is now ready. You may want to type \
+\`make clean\` before compiling with \`make\`" || true
 
 # Runs the configuration utility to create the configuration file
 config: $(CONFIG_FILE)
