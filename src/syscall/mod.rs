@@ -8,13 +8,17 @@ mod close;
 mod dup2;
 mod dup;
 mod fork;
+mod getgid;
 mod getpgid;
 mod getpid;
 mod getppid;
+mod getuid;
 mod kill;
 mod open;
 mod read;
+mod setgid;
 mod setpgid;
+mod setuid;
 mod umask;
 mod uname;
 mod unlink;
@@ -32,13 +36,17 @@ use crate::util;
 use dup2::dup2;
 use dup::dup;
 use fork::fork;
+use getgid::getgid;
 use getpgid::getpgid;
 use getpid::getpid;
 use getppid::getppid;
+use getuid::getuid;
 use kill::kill;
 use open::open;
 use read::read;
+use setgid::setgid;
 use setpgid::setpgid;
+use setuid::setuid;
 use umask::umask;
 use uname::uname;
 use unlink::unlink;
@@ -94,6 +102,7 @@ pub extern "C" fn syscall_handler(regs: &util::Regs) -> u32 {
 		// TODO fdatasync
 		9 => _exit(curr_proc, regs),
 		10 => fork(curr_proc, regs),
+		11 => waitpid(curr_proc, regs),
 		// TODO execl
 		// TODO execlp
 		// TODO execle
@@ -105,19 +114,18 @@ pub extern "C" fn syscall_handler(regs: &util::Regs) -> u32 {
 		// TODO getrlimit
 		// TODO setrlimit
 		// TODO getrusage
-		// TODO getuid
-		// TODO setuid
+        12 => getuid(curr_proc, regs),
+        13 => setuid(curr_proc, regs),
 		// TODO geteuid
 		// TODO seteuid
-		// TODO getgid
-		// TODO setgid
+        14 => getgid(curr_proc, regs),
+        15 => setgid(curr_proc, regs),
 		// TODO getegid
 		// TODO setegid
-		11 => waitpid(curr_proc, regs),
-		12 => getpid(curr_proc, regs),
-		13 => getppid(curr_proc, regs),
-		14 => getpgid(curr_proc, regs),
-		15 => setpgid(curr_proc, regs),
+		16 => getpid(curr_proc, regs),
+		17 => getppid(curr_proc, regs),
+		18 => getpgid(curr_proc, regs),
+		19 => setpgid(curr_proc, regs),
 		// TODO getsid
 		// TODO setsid
 		// TODO gettid
@@ -129,7 +137,7 @@ pub extern "C" fn syscall_handler(regs: &util::Regs) -> u32 {
 		// TODO munlockall
 		// TODO mprotect
 		// TODO signal
-		16 => kill(curr_proc, regs),
+		20 => kill(curr_proc, regs),
 		// TODO pause
 		// TODO socket
 		// TODO getsockname
@@ -146,7 +154,7 @@ pub extern "C" fn syscall_handler(regs: &util::Regs) -> u32 {
 		// TODO times
 		// TODO gettimeofday
 		// TODO ptrace
-		17 => uname(curr_proc, regs),
+		21 => uname(curr_proc, regs),
 		// TODO reboot
 
 		_ => {
