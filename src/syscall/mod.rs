@@ -5,6 +5,8 @@
 mod _exit;
 mod chroot;
 mod close;
+mod dup2;
+mod dup;
 mod fork;
 mod getpgid;
 mod getpid;
@@ -27,6 +29,8 @@ use _exit::_exit;
 use chroot::chroot;
 use close::close;
 use crate::util;
+use dup2::dup2;
+use dup::dup;
 use fork::fork;
 use getpgid::getpgid;
 use getpid::getpid;
@@ -62,14 +66,14 @@ pub extern "C" fn syscall_handler(regs: &util::Regs) -> u32 {
 		// TODO pipe2
 		// TODO link
 		// TODO fcntl
-		// TODO dup
-		// TODO dup2
+        2 => dup(curr_proc, regs),
+        3 => dup2(curr_proc, regs),
 		// TODO poll
 		// TODO ppoll
 		// TODO flock
-		2 => close(curr_proc, regs),
-		3 => unlink(curr_proc, regs),
-		4 => chroot(curr_proc, regs),
+		4 => close(curr_proc, regs),
+		5 => unlink(curr_proc, regs),
+		6 => chroot(curr_proc, regs),
 		// TODO chdir
 		// TODO chown
 		// TODO chmod
@@ -80,16 +84,16 @@ pub extern "C" fn syscall_handler(regs: &util::Regs) -> u32 {
 		// TODO lseek
 		// TODO truncate
 		// TODO ftruncate
-		5 => read(curr_proc, regs),
-		6 => write(curr_proc, regs),
+		7 => read(curr_proc, regs),
+		8 => write(curr_proc, regs),
 		// TODO mount
 		// TODO umount
 		// TODO sync
 		// TODO syncfs
 		// TODO fsync
 		// TODO fdatasync
-		7 => _exit(curr_proc, regs),
-		8 => fork(curr_proc, regs),
+		9 => _exit(curr_proc, regs),
+		10 => fork(curr_proc, regs),
 		// TODO execl
 		// TODO execlp
 		// TODO execle
@@ -109,11 +113,11 @@ pub extern "C" fn syscall_handler(regs: &util::Regs) -> u32 {
 		// TODO setgid
 		// TODO getegid
 		// TODO setegid
-		9 => waitpid(curr_proc, regs),
-		10 => getpid(curr_proc, regs),
-		11 => getppid(curr_proc, regs),
-		12 => getpgid(curr_proc, regs),
-		13 => setpgid(curr_proc, regs),
+		11 => waitpid(curr_proc, regs),
+		12 => getpid(curr_proc, regs),
+		13 => getppid(curr_proc, regs),
+		14 => getpgid(curr_proc, regs),
+		15 => setpgid(curr_proc, regs),
 		// TODO getsid
 		// TODO setsid
 		// TODO gettid
@@ -125,7 +129,7 @@ pub extern "C" fn syscall_handler(regs: &util::Regs) -> u32 {
 		// TODO munlockall
 		// TODO mprotect
 		// TODO signal
-		14 => kill(curr_proc, regs),
+		16 => kill(curr_proc, regs),
 		// TODO pause
 		// TODO socket
 		// TODO getsockname
@@ -142,7 +146,7 @@ pub extern "C" fn syscall_handler(regs: &util::Regs) -> u32 {
 		// TODO times
 		// TODO gettimeofday
 		// TODO ptrace
-		15 => uname(curr_proc, regs),
+		17 => uname(curr_proc, regs),
 		// TODO reboot
 
 		_ => {

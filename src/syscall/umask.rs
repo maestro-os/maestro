@@ -1,4 +1,4 @@
-//! The umask syscall is used to set the process's file creation mask.
+//! The `umask` syscall is used to set the process's file creation mask.
 
 use crate::errno::Errno;
 use crate::process::Process;
