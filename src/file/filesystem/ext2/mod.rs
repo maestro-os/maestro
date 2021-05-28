@@ -424,6 +424,16 @@ impl BlockGroupDescriptor {
 			read::<Self>(off as _, io)
 		}
 	}
+
+	/// Writes the current block group descriptor.
+	/// `i` the id of the group descriptor to write.
+	/// `io` is the I/O interface.
+	pub fn write(&self, i: u32, io: &mut dyn DeviceHandle)
+		-> Result<(), Errno> {
+		let bgdt_off = BGDT_BLOCK_OFFSET * DEFAULT_BLOCK_SIZE as usize;
+		let off = (bgdt_off + size_of::<Self>() * i as usize) as u64;
+		write(self, off, io)
+	}
 }
 
 /// An inode represents a file in the filesystem. The name of the file is not included in the inode
@@ -1051,6 +1061,18 @@ impl Ext2Fs {
 		Ok(None)
 	}
 
+	/// Changes the state of the given entry in the the given bitmap.
+	/// `io` is the I/O interface.
+	/// `start` is the starting block.
+	/// `i` is the index of the entry to modify.
+	/// `val` is the value to set the entry to.
+	fn set_bitmap(_io: &mut dyn DeviceHandle, _start: u32, _i: u32, _val: bool)
+		-> Result<(), Errno> {
+		// TODO
+
+		Ok(())
+	}
+
 	/// Returns the id of a free inode in the filesystem.
 	/// `io` is the I/O interface.
 	pub fn get_free_inode(&self, io: &mut dyn DeviceHandle) -> Result<u32, Errno> {
@@ -1069,28 +1091,40 @@ impl Ext2Fs {
 	/// `io` is the I/O interface.
 	/// `inode` is the inode number.
 	/// `directory` tells whether the inode is allocated for a directory.
-	pub fn mark_inode_used(&self, _io: &mut dyn DeviceHandle, _inode: u32, _directory: bool)
+	/// If the inode is already marked as used, the behaviour is undefined.
+	pub fn mark_inode_used(&self, io: &mut dyn DeviceHandle, inode: u32, directory: bool)
 		-> Result<(), Errno> {
-		// TODO Find the block group descriptor associated with the inode
-		// TODO Decrement the number of available inodes
-		// TODO Mark the inode as used
-		// TODO If directory, increment the directories count
+		let group = inode / self.superblock.inodes_per_group;
+		let mut bgd = BlockGroupDescriptor::read(group, &self.superblock, io)?;
+		bgd.unallocated_inodes_number -= 1;
+		if directory {
+			bgd.directories_number += 1;
+		}
 
-		Ok(())
+		let bitfield_index = inode % self.superblock.inodes_per_group;
+		Self::set_bitmap(io, bgd.inode_usage_bitmap_addr, bitfield_index, true)?;
+
+		bgd.write(group, io)
 	}
 
 	/// Marks the inode `inode` available on the filesystem.
 	/// `io` is the I/O interface.
 	/// `inode` is the inode number.
 	/// `directory` tells whether the inode is allocated for a directory.
-	pub fn free_inode(&self, _io: &mut dyn DeviceHandle, _inode: u32, _directory: bool)
+	/// If the inode is already marked as free, the behaviour is undefined.
+	pub fn free_inode(&self, io: &mut dyn DeviceHandle, inode: u32, directory: bool)
 		-> Result<(), Errno> {
-		// TODO Find the block group descriptor associated with the inode
-		// TODO Increment the number of available inodes
-		// TODO Mark the inode as free
-		// TODO If directory, decrement the directories count
+		let group = inode / self.superblock.inodes_per_group;
+		let mut bgd = BlockGroupDescriptor::read(group, &self.superblock, io)?;
+		bgd.unallocated_inodes_number += 1;
+		if directory {
+			bgd.directories_number -= 1;
+		}
 
-		Ok(())
+		let bitfield_index = inode % self.superblock.inodes_per_group;
+		Self::set_bitmap(io, bgd.inode_usage_bitmap_addr, bitfield_index, false)?;
+
+		bgd.write(group, io)
 	}
 
 	/// Returns the id of a free block in the filesystem.
@@ -1110,19 +1144,29 @@ impl Ext2Fs {
 	/// Marks the block `blk` used on the filesystem.
 	/// `io` is the I/O interface.
 	/// `blk` is the block number.
-	pub fn mark_block_used(&self, _io: &mut dyn DeviceHandle, _blk: u32) -> Result<(), Errno> {
-		// TODO
+	pub fn mark_block_used(&self, io: &mut dyn DeviceHandle, blk: u32) -> Result<(), Errno> {
+		let group = blk / self.superblock.blocks_per_group;
+		let mut bgd = BlockGroupDescriptor::read(group, &self.superblock, io)?;
+		bgd.unallocated_blocks_number -= 1;
 
-		Ok(())
+		let bitfield_index = blk % self.superblock.blocks_per_group;
+		Self::set_bitmap(io, bgd.block_usage_bitmap_addr, bitfield_index, true)?;
+
+		bgd.write(group, io)
 	}
 
 	/// Marks the block `blk` available on the filesystem.
 	/// `io` is the I/O interface.
 	/// `blk` is the block number.
-	pub fn free_block(&self, _io: &mut dyn DeviceHandle, _blk: u32) -> Result<(), Errno> {
-		// TODO
+	pub fn free_block(&self, io: &mut dyn DeviceHandle, blk: u32) -> Result<(), Errno> {
+		let group = blk / self.superblock.blocks_per_group;
+		let mut bgd = BlockGroupDescriptor::read(group, &self.superblock, io)?;
+		bgd.unallocated_blocks_number += 1;
 
-		Ok(())
+		let bitfield_index = blk % self.superblock.blocks_per_group;
+		Self::set_bitmap(io, bgd.block_usage_bitmap_addr, bitfield_index, false)?;
+
+		bgd.write(group, io)
 	}
 }
 
@@ -1258,7 +1302,6 @@ impl FilesystemType for Ext2FsType {
 
 		let inodes_count = groups_count * DEFAULT_INODES_PER_GROUP;
 
-		let bgdt_off = BGDT_BLOCK_OFFSET * DEFAULT_BLOCK_SIZE as usize;
 		let block_usage_bitmap_size = math::ceil_division(DEFAULT_BLOCKS_PER_GROUP,
 			(DEFAULT_BLOCK_SIZE * 8) as _);
 		let inode_usage_bitmap_size = math::ceil_division(DEFAULT_INODES_PER_GROUP,
@@ -1335,8 +1378,7 @@ impl FilesystemType for Ext2FsType {
 				_padding: [0; 14],
 			};
 
-			let off = (bgdt_off + size_of::<BlockGroupDescriptor>() * i as usize) as u64;
-			write(&bgd, off, io)?;
+			bgd.write(i, io)?;
 		}
 
 		let root_dir = Ext2INode {
