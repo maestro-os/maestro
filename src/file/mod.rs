@@ -9,6 +9,7 @@ pub mod path;
 
 use core::mem::MaybeUninit;
 use crate::device::DeviceType;
+use crate::device;
 use crate::errno::Errno;
 use crate::errno;
 use crate::file::mountpoint::MountPoint;
@@ -380,6 +381,92 @@ impl File {
 		debug_assert!(self.file_type == FileType::BlockDevice
 			|| self.file_type == FileType::CharDevice);
 		self.device_minor = minor;
+	}
+
+	/// Reads from the current file at offset `off` and places the data into the buffer `buff`.
+	/// The function returns the number of characters read.
+	pub fn read(&self, off: usize, buff: &mut [u8]) -> Result<usize, Errno> {
+		match self.file_type {
+			FileType::Regular => {
+				// TODO
+				Err(errno::ENOMEM)
+			},
+
+			FileType::Directory => {
+				// TODO
+				Err(errno::ENOMEM)
+			},
+
+			FileType::Link => {
+				// TODO
+				Err(errno::ENOMEM)
+			},
+
+			FileType::FIFO => {
+				// TODO
+				Err(errno::ENOMEM)
+			},
+
+			FileType::Socket => {
+				// TODO
+				Err(errno::ENOMEM)
+			},
+
+			FileType::BlockDevice => {
+				let mut dev = device::get_device(DeviceType::Block, self.device_major,
+					self.device_minor).ok_or(errno::ENODEV)?;
+				dev.get_handle().read(off as _, buff)
+			},
+
+			FileType::CharDevice => {
+				let mut dev = device::get_device(DeviceType::Char, self.device_major,
+					self.device_minor).ok_or(errno::ENODEV)?;
+				dev.get_handle().read(off as _, buff)
+			},
+		}
+	}
+
+	/// Writes to the current file at offset `off`, reading the data from the buffer `buff`.
+	/// The function returns the number of characters written.
+	pub fn write(&self, off: usize, buff: &[u8]) -> Result<usize, Errno> {
+		match self.file_type {
+			FileType::Regular => {
+				// TODO
+				Err(errno::ENOMEM)
+			},
+
+			FileType::Directory => {
+				// TODO
+				Err(errno::ENOMEM)
+			},
+
+			FileType::Link => {
+				// TODO
+				Err(errno::ENOMEM)
+			},
+
+			FileType::FIFO => {
+				// TODO
+				Err(errno::ENOMEM)
+			},
+
+			FileType::Socket => {
+				// TODO
+				Err(errno::ENOMEM)
+			},
+
+			FileType::BlockDevice => {
+				let mut dev = device::get_device(DeviceType::Block, self.device_major,
+					self.device_minor).ok_or(errno::ENODEV)?;
+				dev.get_handle().write(off as _, buff)
+			},
+
+			FileType::CharDevice => {
+				let mut dev = device::get_device(DeviceType::Char, self.device_major,
+					self.device_minor).ok_or(errno::ENODEV)?;
+				dev.get_handle().write(off as _, buff)
+			},
+		}
 	}
 
 	/// Synchronizes the file with the device.

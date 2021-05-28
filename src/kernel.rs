@@ -69,6 +69,8 @@ use core::panic::PanicInfo;
 use crate::file::path::Path;
 use crate::process::Process;
 
+/// The kernel's name.
+const KERNEL_NAME: &str = "maestro";
 /// Current kernel version.
 const KERNEL_VERSION: &str = "1.0";
 
