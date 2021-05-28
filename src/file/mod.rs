@@ -513,7 +513,7 @@ impl FCache {
 	/// Creates a new instance with the given major and minor for the root device.
 	pub fn new(root_device_type: DeviceType, root_major: u32, root_minor: u32)
 		-> Result<Self, Errno> {
-		let root_mount = MountPoint::new(root_device_type, root_major, root_minor, Path::root())?;
+		let root_mount = MountPoint::new(root_device_type, root_major, root_minor, 0, Path::root())?;
 		let shared_ptr = mountpoint::register_mountpoint(root_mount)?;
 
 		Ok(Self {

@@ -17,6 +17,31 @@ use super::path::Path;
 // TODO rm
 use crate::file::filesystem::FilesystemType;
 
+/// TODO doc
+const FLAG_MANDLOCK: u32    = 0b000000000001;
+/// TODO doc
+const FLAG_NOATIME: u32     = 0b000000000010;
+/// TODO doc
+const FLAG_NODEV: u32       = 0b000000000100;
+/// TODO doc
+const FLAG_NODIRATIME: u32  = 0b000000001000;
+/// TODO doc
+const FLAG_NOEXEC: u32      = 0b000000010000;
+/// TODO doc
+const FLAG_NOSUID: u32      = 0b000000100000;
+/// TODO doc
+const FLAG_RDONLY: u32      = 0b000001000000;
+/// TODO doc
+const FLAG_REC: u32         = 0b000010000000;
+/// TODO doc
+const FLAG_RELATIME: u32    = 0b000100000000;
+/// TODO doc
+const FLAG_SILENT: u32      = 0b001000000000;
+/// TODO doc
+const FLAG_STRICTATIME: u32 = 0b010000000000;
+/// TODO doc
+const FLAG_SYNCHRONOUS: u32 = 0b100000000000;
+
 // TODO When removing a mountpoint, return an error if another mountpoint is present in a subdir
 
 /// Structure representing a mount point.
@@ -28,6 +53,8 @@ pub struct MountPoint {
 	/// The major number of the device.
 	major: u32,
 
+    /// Mount flags.
+    flags: u32,
 	/// The path to the mount directory.
 	path: Path,
 
@@ -40,8 +67,9 @@ impl MountPoint {
 	/// `device_type` is the type of the device.
 	/// `major` is the major number of the device.
 	/// `minor` is the minor number of the device.
+    /// `flags` are the mount flags.
 	/// `path` is the path on which the filesystem is to be mounted.
-	pub fn new(device_type: DeviceType, major: u32, minor: u32, path: Path)
+	pub fn new(device_type: DeviceType, major: u32, minor: u32, flags: u32, path: Path)
 		-> Result<Self, Errno> {
 		let mut device = device::get_device(device_type, major, minor).ok_or(errno::ENODEV)?;
 
@@ -57,6 +85,7 @@ impl MountPoint {
 			minor,
 			major,
 
+            flags,
 			path,
 
 			filesystem,
@@ -83,6 +112,11 @@ impl MountPoint {
 		device::get_device(self.device_type, self.major, self.minor).unwrap()
 	}
 
+    /// Returns the mountpoint's flags.
+    pub fn get_flags(&self) -> u32 {
+        self.flags
+    }
+
 	/// Returns a reference to the path where the filesystem is mounted.
 	pub fn get_path(&self) -> &Path {
 		&self.path
@@ -95,7 +129,7 @@ impl MountPoint {
 
 	/// Tells whether the mountpoint's filesystem is mounted in read-only.
 	pub fn is_readonly(&self) -> bool {
-		self.filesystem.is_readonly()
+	    self.flags & FLAG_RDONLY != 0 || self.filesystem.is_readonly()
 	}
 }
 

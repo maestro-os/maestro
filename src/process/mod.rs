@@ -16,6 +16,7 @@ use crate::errno;
 use crate::event::{InterruptCallback, InterruptResult, InterruptResultAction};
 use crate::event;
 use crate::file::File;
+use crate::file::Gid;
 use crate::file::Uid;
 use crate::file::file_descriptor::FileDescriptor;
 use crate::file::path::Path;
@@ -53,6 +54,9 @@ const HLT_INSTRUCTION: u8 = 0xf4;
 /// The path to the TTY device file.
 const TTY_DEVICE_PATH: &str = "/dev/tty";
 
+/// The default file creation mask.
+const DEFAULT_UMASK: u16 = 0o022;
+
 /// The file descriptor number of the standard input stream.
 const STDIN_FILENO: u32 = 0;
 /// The file descriptor number of the standard output stream.
@@ -83,11 +87,18 @@ pub struct Process {
 	/// The ID of the process group.
 	pgid: Pid,
 
+	/// The ID of the process's user owner.
+	uid: Uid,
+	/// The ID of the process's group owner.
+	gid: Gid,
+
+    // TODO euid and egid
+
+    /// File creation mask.
+    umask: u16,
+
 	/// The current state of the process.
 	state: State,
-	/// The ID of the process's owner.
-	owner: Uid,
-
 	/// The priority of the process.
 	priority: usize,
 	/// The number of quantum run during the cycle.
@@ -236,10 +247,11 @@ impl Process {
 	/// Creates a new process, assigns an unique PID to it and places it into the scheduler's
 	/// queue. The process is set to state `Running` by default.
 	/// `parent` is the parent of the process (optional).
-	/// `owner` is the ID of the process's owner.
+	/// `uid` is the ID of the process's user owner.
+	/// `gid` is the ID of the process's group owner.
 	/// `entry_point` is the pointer to the first instruction of the process.
 	/// `cwd` the path to the process's working directory.
-	pub fn new(parent: Option::<NonNull::<Process>>, owner: Uid, entry_point: *const c_void,
+	pub fn new(parent: Option::<NonNull::<Process>>, uid: Uid, gid: Gid, entry_point: *const c_void,
 		cwd: Path) -> Result::<SharedPtr::<Mutex::<Self>>, Errno> {
 		let pid = {
 			let mutex = unsafe {
@@ -257,9 +269,12 @@ impl Process {
 			pid,
 			pgid: pid,
 
-			state: State::Running,
-			owner,
+			uid,
+            gid,
 
+            umask: DEFAULT_UMASK,
+
+			state: State::Running,
 			priority: 0,
 			quantum_count: 0,
 
@@ -377,6 +392,36 @@ impl Process {
 		}
 	}
 
+	/// Returns the process's user owner ID.
+	pub fn get_uid(&self) -> Uid {
+		self.uid
+	}
+
+	/// Sets the process's user owner ID.
+	pub fn set_uid(&mut self, uid: Uid) {
+		self.uid = uid;
+	}
+
+	/// Returns the process's group owner ID.
+	pub fn get_gid(&self) -> Gid {
+		self.gid
+	}
+
+	/// Sets the process's group owner ID.
+	pub fn set_gid(&mut self, gid: Gid) {
+		self.gid = gid;
+	}
+
+    /// Returns the file creation mask.
+    pub fn get_umask(&self) -> u16 {
+        self.umask
+    }
+
+    /// Sets the file creation mask.
+    pub fn set_umask(&mut self, umask: u16) {
+        self.umask = umask;
+    }
+
 	/// Returns the process's current state.
 	pub fn get_state(&self) -> State {
 		self.state
@@ -385,11 +430,6 @@ impl Process {
 	/// Sets the process's state to `new_state`.
 	pub fn set_state(&mut self, new_state: State) {
 		self.state = new_state;
-	}
-
-	/// Returns the process's owner ID.
-	pub fn get_owner(&self) -> Uid {
-		self.owner
 	}
 
 	/// Returns the priority of the process. A greater number means a higher priority relative to
@@ -572,9 +612,12 @@ impl Process {
 			pid,
 			pgid: self.pgid,
 
-			state: State::Running,
-			owner: self.owner,
+			uid: self.uid,
+			gid: self.gid,
 
+            umask: self.umask,
+
+			state: State::Running,
 			priority: self.priority,
 			quantum_count: 0,
 
