@@ -1026,10 +1026,10 @@ impl Ext2Fs {
 				continue;
 			}
 
-			for j in 0..size_of::<u8>() {
-				// TODO Check endianness
+			for j in 0..8 {
+				// TODO Check endianness?
 				if *b >> j & 0b1 == 0 {
-					return Some(i * size_of::<u8>() + j);
+					return Some(i * 8 + j);
 				}
 			}
 		}
@@ -1048,14 +1048,14 @@ impl Ext2Fs {
 		let mut i = 0;
 
 		while i < size {
-			let bitmap_blk_index = start + (i / blk_size as u32);
+			let bitmap_blk_index = start + (i / (blk_size * 8) as u32);
 			read_block(bitmap_blk_index as _, &self.superblock, io, buff.get_slice_mut())?;
 
 			if let Some(inode) = Self::search_bitmap_blk(buff.get_slice()) {
 				return Ok(Some(inode as _));
 			}
 
-			i += (size_of::<u8>() * blk_size) as u32;
+			i += (blk_size * 8) as u32;
 		}
 
 		Ok(None)
@@ -1066,11 +1066,24 @@ impl Ext2Fs {
 	/// `start` is the starting block.
 	/// `i` is the index of the entry to modify.
 	/// `val` is the value to set the entry to.
-	fn set_bitmap(_io: &mut dyn DeviceHandle, _start: u32, _i: u32, _val: bool)
+	fn set_bitmap(&self, io: &mut dyn DeviceHandle, start: u32, i: u32, val: bool)
 		-> Result<(), Errno> {
-		// TODO
+		let blk_size = self.superblock.get_block_size();
+		let mut buff = malloc::Alloc::<u8>::new_default(blk_size)?;
 
-		Ok(())
+		let bitmap_blk_index = start + (i / (blk_size * 8) as u32);
+		read_block(bitmap_blk_index as _, &self.superblock, io, buff.get_slice_mut())?;
+
+		let bitmap_byte_index = i % (blk_size as u32);
+		let bitmap_bit_index = i % 8;
+		// TODO Check endianness?
+		if val {
+			buff[bitmap_byte_index as usize] |= 1 << bitmap_bit_index;
+		} else {
+			buff[bitmap_byte_index as usize] &= !(1 << bitmap_bit_index);
+		}
+
+		write_block(bitmap_blk_index as _, &self.superblock, io, buff.get_slice_mut())
 	}
 
 	/// Returns the id of a free inode in the filesystem.
@@ -1102,7 +1115,7 @@ impl Ext2Fs {
 		}
 
 		let bitfield_index = inode % self.superblock.inodes_per_group;
-		Self::set_bitmap(io, bgd.inode_usage_bitmap_addr, bitfield_index, true)?;
+		self.set_bitmap(io, bgd.inode_usage_bitmap_addr, bitfield_index, true)?;
 
 		bgd.write(group, io)
 	}
@@ -1122,7 +1135,7 @@ impl Ext2Fs {
 		}
 
 		let bitfield_index = inode % self.superblock.inodes_per_group;
-		Self::set_bitmap(io, bgd.inode_usage_bitmap_addr, bitfield_index, false)?;
+		self.set_bitmap(io, bgd.inode_usage_bitmap_addr, bitfield_index, false)?;
 
 		bgd.write(group, io)
 	}
@@ -1150,7 +1163,7 @@ impl Ext2Fs {
 		bgd.unallocated_blocks_number -= 1;
 
 		let bitfield_index = blk % self.superblock.blocks_per_group;
-		Self::set_bitmap(io, bgd.block_usage_bitmap_addr, bitfield_index, true)?;
+		self.set_bitmap(io, bgd.block_usage_bitmap_addr, bitfield_index, true)?;
 
 		bgd.write(group, io)
 	}
@@ -1164,7 +1177,7 @@ impl Ext2Fs {
 		bgd.unallocated_blocks_number += 1;
 
 		let bitfield_index = blk % self.superblock.blocks_per_group;
-		Self::set_bitmap(io, bgd.block_usage_bitmap_addr, bitfield_index, false)?;
+		self.set_bitmap(io, bgd.block_usage_bitmap_addr, bitfield_index, false)?;
 
 		bgd.write(group, io)
 	}
