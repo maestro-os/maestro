@@ -3,8 +3,8 @@
 # This script allows to run gdb to debug the kernel using QEMU.
 
 make maestro.iso || exit 1
+make qemu_disk || exit 1
 
-# FIXME: Disk may not be created
 setsid qemu-system-i386 -cdrom maestro.iso -drive file=qemu_disk,format=raw -d int -s -S >debug_out 2>&1 &
 QEMU_PID=$!
 

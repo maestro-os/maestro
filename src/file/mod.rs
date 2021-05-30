@@ -568,14 +568,16 @@ impl FCache {
 		let mut dev = deepest_mountpoint.get_device();
 
 		let path_len = path.get_elements_count();
-		let entry_name = &path[path_len - 1];
-		let mountpoint_path_len = deepest_mountpoint.get_path().get_elements_count();
-		let parent_inner_path = path.range(mountpoint_path_len..(path_len - 1))?;
+		if path_len > 0 {
+			let entry_name = &path[path_len - 1];
+			let mountpoint_path_len = deepest_mountpoint.get_path().get_elements_count();
+			let parent_inner_path = path.range(mountpoint_path_len..(path_len - 1))?;
 
-		let parent_inode = deepest_mountpoint.get_filesystem().get_inode(dev.get_handle(),
-			parent_inner_path)?;
-		deepest_mountpoint.get_filesystem().remove_file(dev.get_handle(), parent_inode,
-			entry_name)?;
+			let parent_inode = deepest_mountpoint.get_filesystem().get_inode(dev.get_handle(),
+				parent_inner_path)?;
+			deepest_mountpoint.get_filesystem().remove_file(dev.get_handle(), parent_inode,
+				entry_name)?;
+		}
 		Ok(())
 	}
 
@@ -591,12 +593,19 @@ impl FCache {
 		let mut deepest_mountpoint = mountpoint::get_deepest(&path).ok_or(errno::ENOENT)?;
 		let mut dev = deepest_mountpoint.get_device();
 		let inner_path = path.range_from(deepest_mountpoint.get_path().get_elements_count()..)?;
-		let entry_name = inner_path[inner_path.get_elements_count() - 1].failable_clone()?;
+		if inner_path.get_elements_count() > 0 {
+			let entry_name = inner_path[inner_path.get_elements_count() - 1].failable_clone()?;
+			let inode = deepest_mountpoint.get_filesystem().get_inode(dev.get_handle(),
+				inner_path)?;
 
-		let inode = deepest_mountpoint.get_filesystem().get_inode(dev.get_handle(), inner_path)?;
-		let file = deepest_mountpoint.get_filesystem().load_file(dev.get_handle(), inode,
-			entry_name)?;
-		SharedPtr::new(file)
+			SharedPtr::new(deepest_mountpoint.get_filesystem().load_file(dev.get_handle(), inode,
+				entry_name)?)
+		} else {
+			let inode = deepest_mountpoint.get_filesystem().get_inode(dev.get_handle(),
+				Path::root())?;
+			SharedPtr::new(deepest_mountpoint.get_filesystem().load_file(dev.get_handle(), inode,
+				String::from("")?)?)
+		}
 	}
 }
 
@@ -639,14 +648,14 @@ pub fn create_dirs(path: &Path) -> Result<usize, Errno> {
 
 	let mut created_count = 0;
 	for i in 0..path.get_elements_count() {
-		p.push(path[i].failable_clone()?)?;
-
 		if fcache.get_file_from_path(&p).is_err() {
 			let dir = File::new(path[i].failable_clone()?, FileType::Directory, 0, 0, 0o755)?;
 			fcache.create_file(&p, dir)?;
 
 			created_count += 1;
 		}
+
+		p.push(path[i].failable_clone()?)?;
 	}
 
 	Ok(created_count)

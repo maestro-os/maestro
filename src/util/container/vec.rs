@@ -192,16 +192,18 @@ impl<T> Vec<T> {
 
 	/// Moves all the elements of `other` into `Self`, leaving `other` empty.
 	pub fn append(&mut self, other: &mut Vec::<T>) -> Result<(), Errno> {
-		self.increase_capacity(other.len)?;
+		if other.len() > 0 {
+			self.increase_capacity(other.len)?;
 
-		unsafe {
-			let self_ptr = self.data.as_mut().unwrap().as_ptr_mut();
-			let other_ptr = other.data.as_mut().unwrap().as_ptr();
-			ptr::copy(other_ptr, self_ptr.offset(self.len as _), other.len);
+			unsafe {
+				let self_ptr = self.data.as_mut().unwrap().as_ptr_mut();
+				let other_ptr = other.data.as_mut().unwrap().as_ptr();
+				ptr::copy(other_ptr, self_ptr.offset(self.len as _), other.len);
+			}
+
+			self.len += other.len;
+			other.clear();
 		}
-
-		self.len += other.len;
-		other.clear();
 
 		Ok(())
 	}
