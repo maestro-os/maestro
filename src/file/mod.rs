@@ -550,6 +550,7 @@ impl FCache {
 		let mut deepest_mountpoint = mountpoint::get_deepest(&path).ok_or(errno::ENOENT)?;
 		let mut dev = deepest_mountpoint.get_device();
 		let inner_path = path.range_from(deepest_mountpoint.get_path().get_elements_count()..)?;
+		crate::println!("-> {}", inner_path.as_string()?.as_str()); // TODO rm
 
 		let parent_inode = deepest_mountpoint.get_filesystem().get_inode(dev.get_handle(),
 			inner_path)?;
@@ -648,14 +649,15 @@ pub fn create_dirs(path: &Path) -> Result<usize, Errno> {
 
 	let mut created_count = 0;
 	for i in 0..path.get_elements_count() {
+		p.push(path[i].failable_clone()?)?;
+
 		if fcache.get_file_from_path(&p).is_err() {
-			let dir = File::new(path[i].failable_clone()?, FileType::Directory, 0, 0, 0o755)?;
-			fcache.create_file(&p, dir)?;
+			crate::println!("Creating dir: {}", p); // TODO rm
+			let dir = File::new(p[i].failable_clone()?, FileType::Directory, 0, 0, 0o755)?;
+			fcache.create_file(&p.range_to(..i)?, dir)?;
 
 			created_count += 1;
 		}
-
-		p.push(path[i].failable_clone()?)?;
 	}
 
 	Ok(created_count)

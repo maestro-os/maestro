@@ -211,6 +211,12 @@ impl Debug for String {
 	}
 }
 
+impl fmt::Display for String {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		f.write_str(self.as_str())
+	}
+}
+
 #[cfg(test)]
 mod test {
 	use super::*;

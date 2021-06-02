@@ -46,6 +46,8 @@ use crate::util::container::string::String;
 use crate::util::math;
 use crate::util;
 
+// TODO Take into account user's UID/GID when allocating block/inode to handle reserved blocks/inodes
+
 /// The offset of the superblock from the beginning of the device.
 const SUPERBLOCK_OFFSET: u64 = 1024;
 /// The filesystem's signature.
@@ -385,6 +387,15 @@ impl Superblock {
 		math::pow2(self.fragment_size_log + 10) as _
 	}
 
+	/// Returns the first inode that isn't reserved.
+	pub fn get_first_available_inode(&self) -> u32 {
+		if self.major_version >= 1 {
+			self.first_non_reserved_inode
+		} else {
+			10
+		}
+	}
+
 	/// Writes the superblock on the device.
 	pub fn write(&self, io: &mut dyn DeviceHandle) -> Result<(), Errno> {
 		write::<Self>(self, SUPERBLOCK_OFFSET, io)
@@ -690,11 +701,14 @@ impl Ext2INode {
 		for i in begin_blk_id..end_blk_id {
 			let _blk_off = self.get_content_block_off(i as _, superblock, io).unwrap().unwrap();
 			// TODO Write
+			todo!();
 
 			// buff_off += len;
 		}
 
-		Ok(())
+		// TODO Update content size
+		todo!();
+		//Ok(())
 	}
 
 	/// Reads the directory entry at offset `off` and returns it.
@@ -885,6 +899,8 @@ impl DirectoryEntry {
 	/// `name` is the entry's name.
 	pub fn new(superblock: &Superblock, inode: u32, file_type: FileType, name: &String)
 		-> Result<Box<Self>, Errno> {
+		debug_assert!(inode >= 1);
+
 		let len = 8 + name.as_bytes().len();
 		let slice = unsafe {
 			slice::from_raw_parts_mut(malloc::alloc(len)? as *mut u8, len)
@@ -894,6 +910,7 @@ impl DirectoryEntry {
 			Box::from_raw(slice as *mut [u8] as *mut [()] as *mut Self)
 		};
 		entry.inode = inode;
+		entry.total_size = 8;
 		entry.set_type(superblock, file_type);
 		entry.set_name(superblock, name);
 		Ok(entry)
@@ -1012,9 +1029,9 @@ impl Ext2Fs {
 	}
 
 	/// Returns the number of block groups.
-	fn get_block_groups_count(&self) -> usize {
+	fn get_block_groups_count(&self) -> u32 {
 		// TODO Do not take the last group if not entire? Or mark non-existing blocks as used?
-		math::ceil_division(self.superblock.total_blocks, self.superblock.blocks_per_group) as _
+		math::ceil_division(self.superblock.total_blocks, self.superblock.blocks_per_group)
 	}
 
 	/// Searches in the given bitmap block `bitmap` for the first element that is not set.
@@ -1092,8 +1109,10 @@ impl Ext2Fs {
 		for i in 0..self.get_block_groups_count() {
 			let bgd = BlockGroupDescriptor::read(i as _, &self.superblock, io)?;
 			if bgd.unallocated_inodes_number > 0 {
-				self.search_bitmap(io, bgd.inode_usage_bitmap_addr,
-					self.superblock.inodes_per_group)?;
+				if let Some(j) = self.search_bitmap(io, bgd.inode_usage_bitmap_addr,
+					self.superblock.inodes_per_group)? {
+					return Ok(i * self.superblock.inodes_per_group + j + 1);
+				}
 			}
 		}
 
@@ -1107,14 +1126,16 @@ impl Ext2Fs {
 	/// If the inode is already marked as used, the behaviour is undefined.
 	pub fn mark_inode_used(&self, io: &mut dyn DeviceHandle, inode: u32, directory: bool)
 		-> Result<(), Errno> {
-		let group = inode / self.superblock.inodes_per_group;
+		debug_assert!(inode >= 1);
+
+		let group = (inode - 1) / self.superblock.inodes_per_group;
 		let mut bgd = BlockGroupDescriptor::read(group, &self.superblock, io)?;
 		bgd.unallocated_inodes_number -= 1;
 		if directory {
 			bgd.directories_number += 1;
 		}
 
-		let bitfield_index = inode % self.superblock.inodes_per_group;
+		let bitfield_index = (inode - 1) % self.superblock.inodes_per_group;
 		self.set_bitmap(io, bgd.inode_usage_bitmap_addr, bitfield_index, true)?;
 
 		bgd.write(group, io)
@@ -1127,14 +1148,16 @@ impl Ext2Fs {
 	/// If the inode is already marked as free, the behaviour is undefined.
 	pub fn free_inode(&self, io: &mut dyn DeviceHandle, inode: u32, directory: bool)
 		-> Result<(), Errno> {
-		let group = inode / self.superblock.inodes_per_group;
+		debug_assert!(inode >= 1);
+
+		let group = (inode - 1) / self.superblock.inodes_per_group;
 		let mut bgd = BlockGroupDescriptor::read(group, &self.superblock, io)?;
 		bgd.unallocated_inodes_number += 1;
 		if directory {
 			bgd.directories_number -= 1;
 		}
 
-		let bitfield_index = inode % self.superblock.inodes_per_group;
+		let bitfield_index = (inode - 1) % self.superblock.inodes_per_group;
 		self.set_bitmap(io, bgd.inode_usage_bitmap_addr, bitfield_index, false)?;
 
 		bgd.write(group, io)
@@ -1146,8 +1169,10 @@ impl Ext2Fs {
 		for i in 0..self.get_block_groups_count() {
 			let bgd = BlockGroupDescriptor::read(i as _, &self.superblock, io)?;
 			if bgd.unallocated_blocks_number > 0 {
-				self.search_bitmap(io, bgd.block_usage_bitmap_addr,
-					self.superblock.blocks_per_group)?;
+				if let Some(j) = self.search_bitmap(io, bgd.block_usage_bitmap_addr,
+					self.superblock.blocks_per_group)? {
+					return Ok(i * self.superblock.blocks_per_group + j);
+				}
 			}
 		}
 
@@ -1231,6 +1256,7 @@ impl Filesystem for Ext2Fs {
 
 	fn add_file(&mut self, io: &mut dyn DeviceHandle, parent_inode: INode, file: File)
 		-> Result<(), Errno> {
+		debug_assert!(parent_inode >= 1);
 		let parent = Ext2INode::read(parent_inode, &self.superblock, io)?;
 		debug_assert_eq!(parent.get_type(), FileType::Directory);
 
@@ -1267,26 +1293,32 @@ impl Filesystem for Ext2Fs {
 
 	fn remove_file(&mut self, io: &mut dyn DeviceHandle, parent_inode: INode, _name: &String)
 		-> Result<(), Errno> {
+		debug_assert!(parent_inode >= 1);
 		let parent = Ext2INode::read(parent_inode, &self.superblock, io)?;
 		debug_assert_eq!(parent.get_type(), FileType::Directory);
 
 		// TODO
+		todo!();
 
-		Err(errno::ENOMEM)
+		//Err(errno::ENOMEM)
 	}
 
-	fn read_node(&mut self, _io: &mut dyn DeviceHandle, _node: INode, _buf: &mut [u8])
+	fn read_node(&mut self, _io: &mut dyn DeviceHandle, inode: INode, _buf: &mut [u8])
 		-> Result<(), Errno> {
+		debug_assert!(inode >= 1);
 		// TODO
+		todo!();
 
-		Err(errno::ENOMEM)
+		//Err(errno::ENOMEM)
 	}
 
-	fn write_node(&mut self, _io: &mut dyn DeviceHandle, _node: INode, _buf: &[u8])
+	fn write_node(&mut self, _io: &mut dyn DeviceHandle, inode: INode, _buf: &[u8])
 		-> Result<(), Errno> {
+		debug_assert!(inode >= 1);
 		// TODO
+		todo!();
 
-		Err(errno::ENOMEM)
+		//Err(errno::ENOMEM)
 	}
 }
 
@@ -1375,6 +1407,7 @@ impl FilesystemType for Ext2FsType {
 			_padding: [0; 788],
 		};
 		superblock.write(io)?;
+		let fs = Ext2Fs::new(superblock, io)?;
 
 		for i in 0..groups_count {
 			// TODO Take into account the BGDT into the addresses/available blocks/inodes
@@ -1392,6 +1425,18 @@ impl FilesystemType for Ext2FsType {
 			};
 
 			bgd.write(i, io)?;
+		}
+
+		// TODO Mark as used the following blocks:
+		// - The first block
+		// - The superblock
+		// - The BGDT
+		// - The blocks used to store the blocks/inodes bitmaps
+		// - The blocks used to store inodes
+
+		for i in 1..fs.superblock.get_first_available_inode() {
+			let is_dir = i == ROOT_DIRECTORY_INODE;
+			fs.mark_inode_used(io, i, is_dir)?;
 		}
 
 		let root_dir = Ext2INode {
@@ -1417,9 +1462,9 @@ impl FilesystemType for Ext2FsType {
 			fragment_addr: 0,
 			os_specific_1: [0; 12],
 		};
-		root_dir.write(ROOT_DIRECTORY_INODE, &superblock, io)?;
+		root_dir.write(ROOT_DIRECTORY_INODE, &fs.superblock, io)?;
 
-		self.load_filesystem(io)
+		Ok(Box::new(fs)?)
 	}
 
 	fn load_filesystem(&self, io: &mut dyn DeviceHandle) -> Result<Box<dyn Filesystem>, Errno> {

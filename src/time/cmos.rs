@@ -207,8 +207,7 @@ impl ClockSource for CMOSClock {
 
 			year += century * 100;
 
-			// TODO Determine why `- 3` instead of `- 1`
-			let days_since_epoch = get_days_since_epoch(year, month - 1, day - 3);
+			let days_since_epoch = get_days_since_epoch(year, month - 1, day - 1); // TODO Fix
 			timestamp = days_since_epoch * 86400 + hour * 3600 + minute * 60 + second;
 		});
 

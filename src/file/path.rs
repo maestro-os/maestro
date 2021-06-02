@@ -1,6 +1,7 @@
 //! This module handles files path.
 
 use core::cmp::min;
+use core::fmt;
 use core::ops::Index;
 use core::ops::IndexMut;
 use core::ops::Range;
@@ -195,6 +196,23 @@ impl IndexMut<usize> for Path {
 }
 
 // TODO Iterator
+
+impl fmt::Display for Path {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		if self.is_absolute() {
+			write!(f, "/")?;
+		}
+
+		for i in 0..self.get_elements_count() {
+			write!(f, "{}", self[i])?;
+			if i + 1 < self.get_elements_count() {
+				write!(f, "/")?;
+			}
+		}
+
+		Ok(())
+	}
+}
 
 #[cfg(test)]
 mod test {

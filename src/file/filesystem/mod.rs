@@ -52,12 +52,12 @@ pub trait Filesystem {
 	fn remove_file(&mut self, io: &mut dyn DeviceHandle, parent_inode: INode, name: &String)
 		-> Result<(), Errno>;
 
-	/// Reads from the given node `node` into the buffer `buf`.
-	fn read_node(&mut self, io: &mut dyn DeviceHandle, node: INode, buf: &mut [u8])
+	/// Reads from the given inode `inode` into the buffer `buf`.
+	fn read_node(&mut self, io: &mut dyn DeviceHandle, inode: INode, buf: &mut [u8])
 		-> Result<(), Errno>;
 
-	/// Writes to the given node `node` from the buffer `buf`.
-	fn write_node(&mut self, io: &mut dyn DeviceHandle, node: INode, buf: &[u8])
+	/// Writes to the given inode `inode` from the buffer `buf`.
+	fn write_node(&mut self, io: &mut dyn DeviceHandle, inode: INode, buf: &[u8])
 		-> Result<(), Errno>;
 }
 
