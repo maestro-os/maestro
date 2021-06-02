@@ -71,7 +71,7 @@ const DEFAULT_MOUNT_COUNT_BEFORE_FSCK: u16 = 1000;
 const DEFAULT_FSCK_INTERVAL: u32 = 16070400;
 
 /// The block offset of the Block Group Descriptor Table.
-const BGDT_BLOCK_OFFSET: usize = 2; // TODO Compute using block size
+const BGDT_BLOCK_OFFSET: u32 = 2; // TODO Compute using block size
 
 /// State telling that the filesystem is clean.
 const FS_STATE_CLEAN: u16 = 1;
@@ -387,6 +387,15 @@ impl Superblock {
 		math::pow2(self.fragment_size_log + 10) as _
 	}
 
+	/// Returns the size of an inode.
+	pub fn get_inode_size(&self) -> usize {
+		if self.major_version >= 1 {
+			self.inode_size as _
+		} else {
+			128
+		}
+	}
+
 	/// Returns the first inode that isn't reserved.
 	pub fn get_first_available_inode(&self) -> u32 {
 		if self.major_version >= 1 {
@@ -429,7 +438,7 @@ impl BlockGroupDescriptor {
 	/// `io` is the I/O interface.
 	pub fn read(i: u32, superblock: &Superblock, io: &mut dyn DeviceHandle)
 		-> Result<Self, Errno> {
-		let off = (superblock.get_block_size() * BGDT_BLOCK_OFFSET)
+		let off = (superblock.get_block_size() * BGDT_BLOCK_OFFSET as usize)
 			+ (i as usize * size_of::<Self>());
 		unsafe {
 			read::<Self>(off as _, io)
@@ -441,7 +450,7 @@ impl BlockGroupDescriptor {
 	/// `io` is the I/O interface.
 	pub fn write(&self, i: u32, io: &mut dyn DeviceHandle)
 		-> Result<(), Errno> {
-		let bgdt_off = BGDT_BLOCK_OFFSET * DEFAULT_BLOCK_SIZE as usize;
+		let bgdt_off = BGDT_BLOCK_OFFSET as usize * DEFAULT_BLOCK_SIZE as usize;
 		let off = (bgdt_off + size_of::<Self>() * i as usize) as u64;
 		write(self, off, io)
 	}
@@ -497,16 +506,6 @@ struct Ext2INode {
 }
 
 impl Ext2INode {
-	/// Returns the size of an inode.
-	/// `superblock` is the filesystem's superblock.
-	pub fn get_inode_size(superblock: &Superblock) -> usize {
-		if superblock.major_version >= 1 {
-			superblock.inode_size as _
-		} else {
-			128
-		}
-	}
-
 	/// Returns the offset of the inode on the disk in bytes.
 	/// `i` is the inode's index (starting at `1`).
 	/// `superblock` is the filesystem's superblock.
@@ -516,7 +515,7 @@ impl Ext2INode {
 		let blk_size = superblock.get_block_size();
 		let blk_grp = (i - 1) / superblock.inodes_per_group;
 		let inode_off = (i - 1) % superblock.inodes_per_group;
-		let inode_size = Self::get_inode_size(superblock);
+		let inode_size = superblock.get_inode_size();
 		let inode_table_blk_off = (inode_off * inode_size as u32) / (blk_size as u32);
 
 		let bgd = BlockGroupDescriptor::read(blk_grp, superblock, io)?;
@@ -1407,11 +1406,9 @@ impl FilesystemType for Ext2FsType {
 			_padding: [0; 788],
 		};
 		superblock.write(io)?;
-		let fs = Ext2Fs::new(superblock, io)?;
 
 		for i in 0..groups_count {
-			// TODO Take into account the BGDT into the addresses/available blocks/inodes
-			// TODO Add root directory
+			// TODO Take into account the superblock and BGDT into the addresses/available blocks/inodes
 			let bgd = BlockGroupDescriptor {
 				block_usage_bitmap_addr: i * DEFAULT_BLOCKS_PER_GROUP,
 				inode_usage_bitmap_addr: i * DEFAULT_BLOCKS_PER_GROUP + block_usage_bitmap_size,
@@ -1423,16 +1420,46 @@ impl FilesystemType for Ext2FsType {
 
 				_padding: [0; 14],
 			};
-
 			bgd.write(i, io)?;
 		}
 
-		// TODO Mark as used the following blocks:
-		// - The first block
-		// - The superblock
-		// - The BGDT
-		// - The blocks used to store the blocks/inodes bitmaps
-		// - The blocks used to store inodes
+		let fs = Ext2Fs::new(superblock, io)?;
+		let blk_size = fs.superblock.get_block_size() as u32;
+
+		fs.mark_block_used(io, 0)?;
+
+		let superblock_blk_offset = SUPERBLOCK_OFFSET as u32 / blk_size;
+		fs.mark_block_used(io, superblock_blk_offset)?;
+
+		let bgdt_size = size_of::<BlockGroupDescriptor>() as u32 * groups_count;
+		let bgdt_blk_count = math::ceil_division(bgdt_size, blk_size);
+		for j in 0..bgdt_blk_count {
+			let blk = BGDT_BLOCK_OFFSET + j as u32;
+			fs.mark_block_used(io, blk)?;
+		}
+
+		for i in 0..groups_count {
+			let bgd = BlockGroupDescriptor::read(i, &fs.superblock, io)?;
+
+			for j in 0..block_usage_bitmap_size {
+				let blk = bgd.block_usage_bitmap_addr + j;
+				fs.mark_block_used(io, blk)?;
+			}
+
+			for j in 0..inode_usage_bitmap_size {
+				let inode = bgd.inode_usage_bitmap_addr + j;
+				fs.mark_inode_used(io, inode, false)?;
+			}
+
+			let inodes_count = fs.superblock.inodes_per_group;
+			let inode_size = fs.superblock.get_inode_size();
+			let inodes_table_size = math::ceil_division(inodes_count * inode_size as u32,
+				blk_size);
+			for j in 0..inodes_table_size {
+				let blk = bgd.inode_table_start_addr + j;
+				fs.mark_block_used(io, blk)?;
+			}
+		}
 
 		for i in 1..fs.superblock.get_first_available_inode() {
 			let is_dir = i == ROOT_DIRECTORY_INODE;
