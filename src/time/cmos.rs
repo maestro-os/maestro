@@ -142,12 +142,14 @@ fn get_days_since_epoch(year: u32, month: u32, day: u32) -> u32 {
 }
 
 /// Structure representing the CMOS clock source.
-/// This source is really slow (waits up to 1 second before reading) and is not very reliable. It
-/// should be used only if nothing else is available.
+/// This source is really slow to initialize (waits up to 1 second before reading).
 /// Maskable interrupts are disabled when retrieving the timestamp.
 pub struct CMOSClock {
 	/// Tells whether the century register is available.
 	century_register: bool,
+
+	/// The clock's current timestamp. If None, the clock is not initialized.
+	timestamp: Option<Timestamp>,
 }
 
 impl CMOSClock {
@@ -156,6 +158,8 @@ impl CMOSClock {
 	pub fn new(century_register: bool) -> Self {
 		Self {
 			century_register,
+
+			timestamp: None,
 		}
 	}
 
@@ -163,18 +167,16 @@ impl CMOSClock {
 	pub fn has_century_register(&self) -> bool {
 		self.century_register
 	}
-}
 
-impl ClockSource for CMOSClock {
-	fn get_name(&self) -> &str {
-		"CMOS"
-	}
-
-	/// Returns the current timestamp in seconds from the CMOS time.
-	fn get_time(&self) -> Timestamp {
-		let mut timestamp: Timestamp = 0;
+	/// Initializes the clock. If already initialized, the function does nothing.
+	fn init(&mut self) {
+		if self.timestamp.is_some() {
+			return;
+		}
 
 		idt::wrap_disable_interrupts(|| {
+			// TODO Init RTC and register callback
+
 			time_wait();
 			let mut second = read(SECOND_REGISTER) as u32;
 			let mut minute = read(MINUTE_REGISTER) as u32;
@@ -208,9 +210,21 @@ impl ClockSource for CMOSClock {
 			year += century * 100;
 
 			let days_since_epoch = get_days_since_epoch(year, month - 1, day - 1); // TODO Fix
-			timestamp = days_since_epoch * 86400 + hour * 3600 + minute * 60 + second;
+			self.timestamp = Some(days_since_epoch * 86400 + hour * 3600 + minute * 60 + second);
 		});
+	}
+}
 
-		timestamp
+impl ClockSource for CMOSClock {
+	fn get_name(&self) -> &str {
+		"CMOS"
+	}
+
+	fn get_time(&mut self) -> Timestamp {
+		if self.timestamp.is_none() {
+			self.init();
+		}
+
+		self.timestamp.unwrap()
 	}
 }

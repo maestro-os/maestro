@@ -17,7 +17,7 @@ pub trait ClockSource {
 	/// The name of the source.
 	fn get_name(&self) -> &str;
 	/// Returns the current timestamp in seconds.
-	fn get_time(&self) -> Timestamp;
+	fn get_time(&mut self) -> Timestamp;
 }
 
 /// Vector containing all the clock sources.
@@ -46,12 +46,12 @@ pub fn get() -> Timestamp {
 	let mutex = unsafe { // Safe because using Mutex
 		&mut CLOCK_SOURCES
 	};
-	let guard = MutexGuard::new(mutex);
-	let sources = guard.get();
+	let mut guard = MutexGuard::new(mutex);
+	let sources = guard.get_mut();
 	if sources.is_empty() {
 		crate::kernel_panic!("No clock source available!");
 	}
 
-	let cmos = &sources[0]; // TODO Select the preferred source
+	let cmos = &mut sources[0]; // TODO Select the preferred source
 	cmos.get_time()
 }
