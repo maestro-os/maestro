@@ -23,6 +23,7 @@
 //! `(12 * n) + ((n/4) * n) + ((n/4)^^2 * n) + ((n/4)^^3 * n)`
 //! Where `n` is the size of a block.
 
+use core::cmp::max;
 use core::cmp::min;
 use core::mem::MaybeUninit;
 use core::mem::size_of;
@@ -1350,12 +1351,9 @@ impl FilesystemType for Ext2FsType {
 			(DEFAULT_BLOCK_SIZE * 8) as _);
 		let inode_usage_bitmap_size = math::ceil_division(DEFAULT_INODES_PER_GROUP,
 			(DEFAULT_BLOCK_SIZE * 8) as _);
-		let inode_table_size = math::ceil_division(DEFAULT_INODES_PER_GROUP
+		let inodes_table_size = math::ceil_division(DEFAULT_INODES_PER_GROUP
 			* DEFAULT_INODE_SIZE as u32,
 			(DEFAULT_BLOCK_SIZE * 8) as _);
-
-		let available_blocks_per_group = DEFAULT_BLOCKS_PER_GROUP
-			- (block_usage_bitmap_size + inode_usage_bitmap_size + inode_table_size);
 
 		let superblock = Superblock {
 			total_inodes: inodes_count,
@@ -1407,14 +1405,27 @@ impl FilesystemType for Ext2FsType {
 		};
 		superblock.write(io)?;
 
+		let blk_size = superblock.get_block_size() as u32;
+		let bgdt_size = math::ceil_division(groups_count
+			* size_of::<BlockGroupDescriptor>() as u32, blk_size);
+		let bgdt_end = BGDT_BLOCK_OFFSET + bgdt_size;
+
 		for i in 0..groups_count {
-			// TODO Take into account the superblock and BGDT into the addresses/available blocks/inodes
+			let metadata_off = max(i * DEFAULT_BLOCKS_PER_GROUP, bgdt_end);
+			let metadata_size = block_usage_bitmap_size + inode_usage_bitmap_size
+				+ inodes_table_size;
+			debug_assert!(bgdt_end + metadata_size <= DEFAULT_BLOCKS_PER_GROUP);
+
+			let block_usage_bitmap_addr = metadata_off;
+			let inode_usage_bitmap_addr = metadata_off + block_usage_bitmap_size;
+			let inode_table_start_addr = metadata_off + block_usage_bitmap_size
+				+ inode_usage_bitmap_size;
+
 			let bgd = BlockGroupDescriptor {
-				block_usage_bitmap_addr: i * DEFAULT_BLOCKS_PER_GROUP,
-				inode_usage_bitmap_addr: i * DEFAULT_BLOCKS_PER_GROUP + block_usage_bitmap_size,
-				inode_table_start_addr: i * DEFAULT_BLOCKS_PER_GROUP + block_usage_bitmap_size
-					+ inode_usage_bitmap_size,
-				unallocated_blocks_number: available_blocks_per_group as _,
+				block_usage_bitmap_addr,
+				inode_usage_bitmap_addr,
+				inode_table_start_addr,
+				unallocated_blocks_number: DEFAULT_BLOCKS_PER_GROUP as _,
 				unallocated_inodes_number: DEFAULT_INODES_PER_GROUP as _,
 				directories_number: 0,
 
@@ -1424,7 +1435,6 @@ impl FilesystemType for Ext2FsType {
 		}
 
 		let fs = Ext2Fs::new(superblock, io)?;
-		let blk_size = fs.superblock.get_block_size() as u32;
 
 		fs.mark_block_used(io, 0)?;
 
@@ -1451,10 +1461,6 @@ impl FilesystemType for Ext2FsType {
 				fs.mark_inode_used(io, inode, false)?;
 			}
 
-			let inodes_count = fs.superblock.inodes_per_group;
-			let inode_size = fs.superblock.get_inode_size();
-			let inodes_table_size = math::ceil_division(inodes_count * inode_size as u32,
-				blk_size);
 			for j in 0..inodes_table_size {
 				let blk = bgd.inode_table_start_addr + j;
 				fs.mark_block_used(io, blk)?;
