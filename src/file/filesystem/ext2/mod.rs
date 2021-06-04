@@ -383,6 +383,12 @@ impl Superblock {
 		math::pow2(self.block_size_log + 10) as _
 	}
 
+	/// Returns the number of block groups.
+	fn get_block_groups_count(&self) -> u32 {
+		// TODO Do not take the last group if not entire? Or mark non-existing blocks as used?
+		math::ceil_division(self.total_blocks, self.blocks_per_group)
+	}
+
 	/// Returns the size of a fragment.
 	pub fn get_fragment_size(&self) -> usize {
 		math::pow2(self.fragment_size_log + 10) as _
@@ -404,6 +410,179 @@ impl Superblock {
 		} else {
 			10
 		}
+	}
+
+	/// Searches in the given bitmap block `bitmap` for the first element that is not set.
+	/// The function returns the index to the element. If every elements are set, the function
+	/// returns None.
+	fn search_bitmap_blk(bitmap: &[u8]) -> Option<u32> {
+		for (i, b) in bitmap.iter().enumerate() {
+			if *b == 0xff {
+				continue;
+			}
+
+			for j in 0..8 {
+				// TODO Check endianness?
+				if (*b >> j) & 0b1 == 0 {
+					return Some((i * 8 + j) as _);
+				}
+			}
+		}
+
+		None
+	}
+
+	/// Searches into a bitmap starting at block `start`.
+	/// `io` is the I/O interface.
+	/// `start` is the starting block.
+	/// `size` is the number of entries.
+	fn search_bitmap(&self, io: &mut dyn DeviceHandle, start: u32, size: u32)
+		-> Result<Option<u32>, Errno> {
+		let blk_size = self.get_block_size();
+		let mut buff = malloc::Alloc::<u8>::new_default(blk_size)?;
+		let mut i = 0;
+
+		while i < size {
+			let bitmap_blk_index = start + i;
+			read_block(bitmap_blk_index as _, self, io, buff.get_slice_mut())?;
+
+			if let Some(j) = Self::search_bitmap_blk(buff.get_slice()) {
+				return Ok(Some(i * (blk_size * 8) as u32 + j));
+			}
+
+			i += 1;
+		}
+
+		Ok(None)
+	}
+
+	/// Changes the state of the given entry in the the given bitmap.
+	/// `io` is the I/O interface.
+	/// `start` is the starting block.
+	/// `i` is the index of the entry to modify.
+	/// `val` is the value to set the entry to.
+	fn set_bitmap(&self, io: &mut dyn DeviceHandle, start: u32, i: u32, val: bool)
+		-> Result<(), Errno> {
+		let blk_size = self.get_block_size();
+		let mut buff = malloc::Alloc::<u8>::new_default(blk_size)?;
+
+		let bitmap_blk_index = start + (i / (blk_size * 8) as u32);
+		read_block(bitmap_blk_index as _, self, io, buff.get_slice_mut())?;
+
+		let bitmap_byte_index = i / 8;
+		let bitmap_bit_index = i % 8;
+		// TODO Check endianness?
+		if val {
+			buff[bitmap_byte_index as usize] |= 1 << bitmap_bit_index;
+		} else {
+			buff[bitmap_byte_index as usize] &= !(1 << bitmap_bit_index);
+		}
+
+		write_block(bitmap_blk_index as _, self, io, buff.get_slice())
+	}
+
+	/// Returns the id of a free inode in the filesystem.
+	/// `io` is the I/O interface.
+	pub fn get_free_inode(&self, io: &mut dyn DeviceHandle) -> Result<u32, Errno> {
+		for i in 0..self.get_block_groups_count() {
+			let bgd = BlockGroupDescriptor::read(i as _, self, io)?;
+			if bgd.unallocated_inodes_number > 0 {
+				if let Some(j) = self.search_bitmap(io, bgd.inode_usage_bitmap_addr,
+					self.inodes_per_group)? {
+					return Ok(i * self.inodes_per_group + j + 1);
+				}
+			}
+		}
+
+		Err(errno::ENOSPC)
+	}
+
+	/// Marks the inode `inode` used on the filesystem.
+	/// `io` is the I/O interface.
+	/// `inode` is the inode number.
+	/// `directory` tells whether the inode is allocated for a directory.
+	/// If the inode is already marked as used, the behaviour is undefined.
+	pub fn mark_inode_used(&self, io: &mut dyn DeviceHandle, inode: u32, directory: bool)
+		-> Result<(), Errno> {
+		debug_assert!(inode >= 1);
+
+		let group = (inode - 1) / self.inodes_per_group;
+		let mut bgd = BlockGroupDescriptor::read(group, self, io)?;
+		bgd.unallocated_inodes_number -= 1;
+		if directory {
+			bgd.directories_number += 1;
+		}
+
+		let bitfield_index = (inode - 1) % self.inodes_per_group;
+		self.set_bitmap(io, bgd.inode_usage_bitmap_addr, bitfield_index, true)?;
+
+		bgd.write(group, io)
+	}
+
+	/// Marks the inode `inode` available on the filesystem.
+	/// `io` is the I/O interface.
+	/// `inode` is the inode number.
+	/// `directory` tells whether the inode is allocated for a directory.
+	/// If the inode is already marked as free, the behaviour is undefined.
+	pub fn free_inode(&self, io: &mut dyn DeviceHandle, inode: u32, directory: bool)
+		-> Result<(), Errno> {
+		debug_assert!(inode >= 1);
+
+		let group = (inode - 1) / self.inodes_per_group;
+		let mut bgd = BlockGroupDescriptor::read(group, self, io)?;
+		bgd.unallocated_inodes_number += 1;
+		if directory {
+			bgd.directories_number -= 1;
+		}
+
+		let bitfield_index = (inode - 1) % self.inodes_per_group;
+		self.set_bitmap(io, bgd.inode_usage_bitmap_addr, bitfield_index, false)?;
+
+		bgd.write(group, io)
+	}
+
+	/// Returns the id of a free block in the filesystem.
+	/// `io` is the I/O interface.
+	pub fn get_free_block(&self, io: &mut dyn DeviceHandle) -> Result<u32, Errno> {
+		for i in 0..self.get_block_groups_count() {
+			let bgd = BlockGroupDescriptor::read(i as _, self, io)?;
+			if bgd.unallocated_blocks_number > 0 {
+				if let Some(j) = self.search_bitmap(io, bgd.block_usage_bitmap_addr,
+					self.blocks_per_group)? {
+					return Ok(i * self.blocks_per_group + j);
+				}
+			}
+		}
+
+		Err(errno::ENOSPC)
+	}
+
+	/// Marks the block `blk` used on the filesystem.
+	/// `io` is the I/O interface.
+	/// `blk` is the block number.
+	pub fn mark_block_used(&self, io: &mut dyn DeviceHandle, blk: u32) -> Result<(), Errno> {
+		let group = blk / self.blocks_per_group;
+		let mut bgd = BlockGroupDescriptor::read(group, self, io)?;
+		bgd.unallocated_blocks_number -= 1;
+
+		let bitfield_index = blk % self.blocks_per_group;
+		self.set_bitmap(io, bgd.block_usage_bitmap_addr, bitfield_index, true)?;
+
+		bgd.write(group, io)
+	}
+
+	/// Marks the block `blk` available on the filesystem.
+	/// `io` is the I/O interface.
+	/// `blk` is the block number.
+	pub fn free_block(&self, io: &mut dyn DeviceHandle, blk: u32) -> Result<(), Errno> {
+		let group = blk / self.blocks_per_group;
+		let mut bgd = BlockGroupDescriptor::read(group, self, io)?;
+		bgd.unallocated_blocks_number += 1;
+
+		let bitfield_index = blk % self.blocks_per_group;
+		self.set_bitmap(io, bgd.block_usage_bitmap_addr, bitfield_index, false)?;
+
+		bgd.write(group, io)
 	}
 
 	/// Writes the superblock on the device.
@@ -600,21 +779,34 @@ impl Ext2INode {
 		}
 	}
 
-	/// Resolves `n` block indirections to find the node's `i`th block, starting from block `blk`.
+	/// Turns a block offset into an Option./ Namely, if the block offset is zero, the function
+	/// returns None.
+	fn blk_offset_to_option(blk: u32) -> Option<u32> {
+		if blk != 0 {
+			Some(blk)
+		} else {
+			None
+		}
+	}
+
+	/// Resolves block indirections.
+	/// `n` is the number of indirections to resolve.
+	/// `begin` is the beginning block.
+	/// `off` is the offset of the block relative to the specified beginning block.
 	/// `superblock` is the filesystem's superblock.
 	/// `io` is the I/O interface.
 	/// If the block doesn't exist, the function returns None.
-	fn resolve_indirections(n: usize, blk: u32, i: u32, superblock: &Superblock,
+	fn resolve_indirections(n: usize, begin: u32, off: u32, superblock: &Superblock,
 		io: &mut dyn DeviceHandle) -> Result<Option<u32>, Errno> {
 		let blk_size = superblock.get_block_size();
 		let entries_per_blk = blk_size / size_of::<u32>();
 
-		let mut b = blk;
-		for j in (0..n).rev() {
-			let inner_off = i / ((j * entries_per_blk) as u32);
-			let off = (blk as u64 * blk_size as u64) + (inner_off as u64);
+		let mut b = begin;
+		for i in (0..n).rev() {
+			let inner_off = off / ((i * entries_per_blk) as u32);
+			let byte_off = (begin as u64 * blk_size as u64) + (inner_off as u64);
 			b = unsafe {
-				read::<u32>(off, io)?
+				read::<u32>(byte_off, io)?
 			};
 
 			if b == 0 {
@@ -622,16 +814,41 @@ impl Ext2INode {
 			}
 		}
 
-		Ok({
-			if b != 0 {
-				Some(b)
-			} else {
-				None
-			}
-		})
+		Ok(Self::blk_offset_to_option(b))
 	}
 
-	/// Returns the block offset of the node's content block with the given id `i`.
+	/// Allocates a new block for the content of the file through block indirections.
+	/// `n` is the number of indirections to resolve.
+	/// `begin` is the beginning block.
+	/// `off` is the offset of the block relative to the specified beginning block.
+	/// `superblock` is the filesystem's superblock.
+	/// `io` is the I/O interface.
+	fn indirections_alloc(n: usize, begin: u32, off: u32, superblock: &Superblock,
+		io: &mut dyn DeviceHandle) -> Result<u32, Errno> {
+		let blk_size = superblock.get_block_size();
+		let entries_per_blk = blk_size / size_of::<u32>();
+
+		let mut b = begin;
+		for i in (0..n).rev() {
+			let inner_off = off / ((i * entries_per_blk) as u32);
+			let byte_off = (begin as u64 * blk_size as u64) + (inner_off as u64);
+
+			if b == 0 {
+				// TODO Allocate
+				todo!();
+				// write::<u32>(&val, byte_off, io)?;
+			} else {
+				b = unsafe {
+					read::<u32>(byte_off, io)?
+				};
+			}
+		}
+
+		Ok(b)
+	}
+
+	/// Returns the block id of the node's content block at the given offset `i`.
+	/// `i` is the block offset in the node's content.
 	/// `superblock` is the filesystem's superblock.
 	/// `io` is the I/O interface.
 	/// If the block doesn't exist, the function returns None.
@@ -641,26 +858,57 @@ impl Ext2INode {
 		let entries_per_blk = blk_size / size_of::<u32>();
 
 		if i < DIRECT_BLOCKS_COUNT {
-			let blk = self.direct_block_ptrs[i];
-
-			Ok({
-				if blk != 0 {
-					Some(blk as _)
-				} else {
-					None
-				}
-			})
+			Ok(Self::blk_offset_to_option(self.direct_block_ptrs[i]))
 		} else if i < DIRECT_BLOCKS_COUNT + entries_per_blk {
 			let target = (i - DIRECT_BLOCKS_COUNT) as u32;
 			Self::resolve_indirections(1, self.singly_indirect_block_ptr, target, superblock, io)
 		} else if i < DIRECT_BLOCKS_COUNT + (entries_per_blk * entries_per_blk) {
 			let target = (i - DIRECT_BLOCKS_COUNT - entries_per_blk) as u32;
-			Self::resolve_indirections(2, self.singly_indirect_block_ptr, target, superblock, io)
+			Self::resolve_indirections(2, self.doubly_indirect_block_ptr, target, superblock, io)
 		} else {
 			#[allow(clippy::suspicious_operation_groupings)]
 			let target = (i - DIRECT_BLOCKS_COUNT - (entries_per_blk * entries_per_blk)) as u32;
-			Self::resolve_indirections(3, self.singly_indirect_block_ptr, target, superblock, io)
+			Self::resolve_indirections(3, self.triply_indirect_block_ptr, target, superblock, io)
 		}
+	}
+
+	/// Allocates a block for the node's content block at the given offset `i`.
+	/// If the block is already allocated, the function does nothing.
+	/// `i` is the block offset in the node's content.
+	/// `superblock` is the filesystem's superblock.
+	/// `io` is the I/O interface.
+	/// On success, the function returns the allocated final block offset.
+	fn alloc_content_block(&mut self, i: usize, superblock: &Superblock, io: &mut dyn DeviceHandle)
+		-> Result<u32, Errno> {
+		let blk_size = superblock.get_block_size();
+		let entries_per_blk = blk_size / size_of::<u32>();
+
+		if i < DIRECT_BLOCKS_COUNT {
+			let blk = 0; // TODO Alloc
+			self.direct_block_ptrs[i] = blk;
+			Ok(blk)
+		} else if i < DIRECT_BLOCKS_COUNT + entries_per_blk {
+			let target = (i - DIRECT_BLOCKS_COUNT) as u32;
+			Self::indirections_alloc(1, self.singly_indirect_block_ptr, target, superblock, io)
+		} else if i < DIRECT_BLOCKS_COUNT + (entries_per_blk * entries_per_blk) {
+			let target = (i - DIRECT_BLOCKS_COUNT - entries_per_blk) as u32;
+			Self::indirections_alloc(2, self.doubly_indirect_block_ptr, target, superblock, io)
+		} else {
+			#[allow(clippy::suspicious_operation_groupings)]
+			let target = (i - DIRECT_BLOCKS_COUNT - (entries_per_blk * entries_per_blk)) as u32;
+			Self::indirections_alloc(3, self.triply_indirect_block_ptr, target, superblock, io)
+		}
+	}
+
+	/// Frees a content block at block offset `i` in file.
+	/// If the block isn't allocated, the function does nothing.
+	/// `i` is the id of the block.
+	/// `superblock` is the filesystem's superblock.
+	/// `io` is the I/O interface.
+	fn free_content_block(&mut self, _i: usize, _superblock: &Superblock,
+		_io: &mut dyn DeviceHandle) {
+		// TODO
+		todo!();
 	}
 
 	/// Reads the content of the inode.
@@ -677,7 +925,7 @@ impl Ext2INode {
 
 		let blk_size = superblock.get_block_size();
 		let begin_blk_id = (off / blk_size as u64) as usize;
-		let end_blk_id = ((off + buff.len() as u64) / (blk_size as u64)) as usize;
+		let end_blk_id = math::ceil_division(off + buff.len() as u64, blk_size as u64) as usize;
 
 		let mut blk_buff = malloc::Alloc::<u8>::new_default(blk_size)?;
 		let mut buff_off = 0;
@@ -686,8 +934,9 @@ impl Ext2INode {
 			read_block(blk_off as _, superblock, io, blk_buff.get_slice_mut())?;
 
 			let len = min(buff.len() - buff_off, blk_size);
+			// FIXME Data may be shifted if `off` is not aligned on block size
 			unsafe { // Safe because staying in range
-				copy_nonoverlapping(blk_buff.get_slice()[0] as *mut u8, buff[0] as *mut u8, len);
+				copy_nonoverlapping(blk_buff.get_slice()[0] as *const u8, buff[0] as *mut u8, len);
 			}
 			buff_off += len;
 		}
@@ -709,17 +958,28 @@ impl Ext2INode {
 
 		let blk_size = superblock.get_block_size();
 		let begin_blk_id = (off / blk_size as u64) as usize;
-		// TODO Take into account when the buff is smaller than the size of a blk (same for read?)
-		let end_blk_id = ((off + buff.len() as u64) / (blk_size as u64)) as usize;
+		let end_blk_id = math::ceil_division(off + buff.len() as u64, blk_size as u64) as usize;
 
-		let mut _blk_buff = malloc::Alloc::<u8>::new_default(blk_size)?;
-		let mut _buff_off = 0;
+		let mut blk_buff = malloc::Alloc::<u8>::new_default(blk_size)?;
+		let mut buff_off = 0;
 		for i in begin_blk_id..end_blk_id {
-			let _blk_off = self.get_content_block_off(i as _, superblock, io).unwrap().unwrap();
-			// TODO Write
-			todo!();
+			let blk_off = {
+				if let Some(blk_off) = self.get_content_block_off(i as _, superblock, io)? {
+					blk_off
+				} else {
+					self.alloc_content_block(i, superblock, io)?
+				}
+			};
+			read_block(blk_off as _, superblock, io, blk_buff.get_slice_mut())?;
 
-			// buff_off += len;
+			let len = min(buff.len() - buff_off, blk_size);
+			// FIXME Data may be shifted if `off` is not aligned on block size
+			unsafe { // Safe because staying in range
+				copy_nonoverlapping(&buff[0] as *const u8, blk_buff.get_slice_mut()[0] as *mut u8, len);
+			}
+			write_block(blk_off as _, superblock, io, blk_buff.get_slice_mut())?;
+
+			buff_off += len;
 		}
 
 		let new_size = off + buff.len() as u64;
@@ -1043,185 +1303,6 @@ impl Ext2Fs {
 			superblock,
 		})
 	}
-
-	/// Returns the number of block groups.
-	fn get_block_groups_count(&self) -> u32 {
-		// TODO Do not take the last group if not entire? Or mark non-existing blocks as used?
-		math::ceil_division(self.superblock.total_blocks, self.superblock.blocks_per_group)
-	}
-
-	/// Searches in the given bitmap block `bitmap` for the first element that is not set.
-	/// The function returns the index to the element. If every elements are set, the function
-	/// returns None.
-	fn search_bitmap_blk(bitmap: &[u8]) -> Option<u32> {
-		for (i, b) in bitmap.iter().enumerate() {
-			if *b == 0xff {
-				continue;
-			}
-
-			for j in 0..8 {
-				// TODO Check endianness?
-				if (*b >> j) & 0b1 == 0 {
-					return Some((i * 8 + j) as _);
-				}
-			}
-		}
-
-		None
-	}
-
-	/// Searches into a bitmap starting at block `start`.
-	/// `io` is the I/O interface.
-	/// `start` is the starting block.
-	/// `size` is the number of entries.
-	fn search_bitmap(&self, io: &mut dyn DeviceHandle, start: u32, size: u32)
-		-> Result<Option<u32>, Errno> {
-		let blk_size = self.superblock.get_block_size();
-		let mut buff = malloc::Alloc::<u8>::new_default(blk_size)?;
-		let mut i = 0;
-
-		while i < size {
-			let bitmap_blk_index = start + i;
-			read_block(bitmap_blk_index as _, &self.superblock, io, buff.get_slice_mut())?;
-
-			if let Some(j) = Self::search_bitmap_blk(buff.get_slice()) {
-				return Ok(Some(i * (blk_size * 8) as u32 + j));
-			}
-
-			i += 1;
-		}
-
-		Ok(None)
-	}
-
-	/// Changes the state of the given entry in the the given bitmap.
-	/// `io` is the I/O interface.
-	/// `start` is the starting block.
-	/// `i` is the index of the entry to modify.
-	/// `val` is the value to set the entry to.
-	fn set_bitmap(&self, io: &mut dyn DeviceHandle, start: u32, i: u32, val: bool)
-		-> Result<(), Errno> {
-		let blk_size = self.superblock.get_block_size();
-		let mut buff = malloc::Alloc::<u8>::new_default(blk_size)?;
-
-		let bitmap_blk_index = start + (i / (blk_size * 8) as u32);
-		read_block(bitmap_blk_index as _, &self.superblock, io, buff.get_slice_mut())?;
-
-		let bitmap_byte_index = i / 8;
-		let bitmap_bit_index = i % 8;
-		// TODO Check endianness?
-		if val {
-			buff[bitmap_byte_index as usize] |= 1 << bitmap_bit_index;
-		} else {
-			buff[bitmap_byte_index as usize] &= !(1 << bitmap_bit_index);
-		}
-
-		write_block(bitmap_blk_index as _, &self.superblock, io, buff.get_slice())
-	}
-
-	/// Returns the id of a free inode in the filesystem.
-	/// `io` is the I/O interface.
-	pub fn get_free_inode(&self, io: &mut dyn DeviceHandle) -> Result<u32, Errno> {
-		for i in 0..self.get_block_groups_count() {
-			let bgd = BlockGroupDescriptor::read(i as _, &self.superblock, io)?;
-			if bgd.unallocated_inodes_number > 0 {
-				if let Some(j) = self.search_bitmap(io, bgd.inode_usage_bitmap_addr,
-					self.superblock.inodes_per_group)? {
-					return Ok(i * self.superblock.inodes_per_group + j + 1);
-				}
-			}
-		}
-
-		Err(errno::ENOSPC)
-	}
-
-	/// Marks the inode `inode` used on the filesystem.
-	/// `io` is the I/O interface.
-	/// `inode` is the inode number.
-	/// `directory` tells whether the inode is allocated for a directory.
-	/// If the inode is already marked as used, the behaviour is undefined.
-	pub fn mark_inode_used(&self, io: &mut dyn DeviceHandle, inode: u32, directory: bool)
-		-> Result<(), Errno> {
-		debug_assert!(inode >= 1);
-
-		let group = (inode - 1) / self.superblock.inodes_per_group;
-		let mut bgd = BlockGroupDescriptor::read(group, &self.superblock, io)?;
-		bgd.unallocated_inodes_number -= 1;
-		if directory {
-			bgd.directories_number += 1;
-		}
-
-		let bitfield_index = (inode - 1) % self.superblock.inodes_per_group;
-		self.set_bitmap(io, bgd.inode_usage_bitmap_addr, bitfield_index, true)?;
-
-		bgd.write(group, io)
-	}
-
-	/// Marks the inode `inode` available on the filesystem.
-	/// `io` is the I/O interface.
-	/// `inode` is the inode number.
-	/// `directory` tells whether the inode is allocated for a directory.
-	/// If the inode is already marked as free, the behaviour is undefined.
-	pub fn free_inode(&self, io: &mut dyn DeviceHandle, inode: u32, directory: bool)
-		-> Result<(), Errno> {
-		debug_assert!(inode >= 1);
-
-		let group = (inode - 1) / self.superblock.inodes_per_group;
-		let mut bgd = BlockGroupDescriptor::read(group, &self.superblock, io)?;
-		bgd.unallocated_inodes_number += 1;
-		if directory {
-			bgd.directories_number -= 1;
-		}
-
-		let bitfield_index = (inode - 1) % self.superblock.inodes_per_group;
-		self.set_bitmap(io, bgd.inode_usage_bitmap_addr, bitfield_index, false)?;
-
-		bgd.write(group, io)
-	}
-
-	/// Returns the id of a free block in the filesystem.
-	/// `io` is the I/O interface.
-	pub fn get_free_block(&self, io: &mut dyn DeviceHandle) -> Result<u32, Errno> {
-		for i in 0..self.get_block_groups_count() {
-			let bgd = BlockGroupDescriptor::read(i as _, &self.superblock, io)?;
-			if bgd.unallocated_blocks_number > 0 {
-				if let Some(j) = self.search_bitmap(io, bgd.block_usage_bitmap_addr,
-					self.superblock.blocks_per_group)? {
-					return Ok(i * self.superblock.blocks_per_group + j);
-				}
-			}
-		}
-
-		Err(errno::ENOSPC)
-	}
-
-	/// Marks the block `blk` used on the filesystem.
-	/// `io` is the I/O interface.
-	/// `blk` is the block number.
-	pub fn mark_block_used(&self, io: &mut dyn DeviceHandle, blk: u32) -> Result<(), Errno> {
-		let group = blk / self.superblock.blocks_per_group;
-		let mut bgd = BlockGroupDescriptor::read(group, &self.superblock, io)?;
-		bgd.unallocated_blocks_number -= 1;
-
-		let bitfield_index = blk % self.superblock.blocks_per_group;
-		self.set_bitmap(io, bgd.block_usage_bitmap_addr, bitfield_index, true)?;
-
-		bgd.write(group, io)
-	}
-
-	/// Marks the block `blk` available on the filesystem.
-	/// `io` is the I/O interface.
-	/// `blk` is the block number.
-	pub fn free_block(&self, io: &mut dyn DeviceHandle, blk: u32) -> Result<(), Errno> {
-		let group = blk / self.superblock.blocks_per_group;
-		let mut bgd = BlockGroupDescriptor::read(group, &self.superblock, io)?;
-		bgd.unallocated_blocks_number += 1;
-
-		let bitfield_index = blk % self.superblock.blocks_per_group;
-		self.set_bitmap(io, bgd.block_usage_bitmap_addr, bitfield_index, false)?;
-
-		bgd.write(group, io)
-	}
 }
 
 impl Filesystem for Ext2Fs {
@@ -1276,7 +1357,7 @@ impl Filesystem for Ext2Fs {
 		let mut parent = Ext2INode::read(parent_inode, &self.superblock, io)?;
 		debug_assert_eq!(parent.get_type(), FileType::Directory);
 
-		let inode_index = self.get_free_inode(io)?;
+		let inode_index = self.superblock.get_free_inode(io)?;
 		let inode = Ext2INode {
 			mode: Ext2INode::get_file_mode(&file),
 			uid: file.get_uid(),
@@ -1304,7 +1385,8 @@ impl Filesystem for Ext2Fs {
 
 		parent.add_dirent(&self.superblock, io, inode_index, file.get_name(),
 			file.get_file_type())?;
-		self.mark_inode_used(io, inode_index, file.get_file_type() == FileType::Directory)?;
+		let dir = file.get_file_type() == FileType::Directory;
+		self.superblock.mark_inode_used(io, inode_index, dir)?;
 		parent.write(parent_inode, &self.superblock, io)
 	}
 
@@ -1451,42 +1533,40 @@ impl FilesystemType for Ext2FsType {
 			bgd.write(i, io)?;
 		}
 
-		let fs = Ext2Fs::new(superblock, io)?;
-
-		fs.mark_block_used(io, 0)?;
+		superblock.mark_block_used(io, 0)?;
 
 		let superblock_blk_offset = SUPERBLOCK_OFFSET as u32 / blk_size;
-		fs.mark_block_used(io, superblock_blk_offset)?;
+		superblock.mark_block_used(io, superblock_blk_offset)?;
 
 		let bgdt_size = size_of::<BlockGroupDescriptor>() as u32 * groups_count;
 		let bgdt_blk_count = math::ceil_division(bgdt_size, blk_size);
 		for j in 0..bgdt_blk_count {
 			let blk = BGDT_BLOCK_OFFSET + j as u32;
-			fs.mark_block_used(io, blk)?;
+			superblock.mark_block_used(io, blk)?;
 		}
 
 		for i in 0..groups_count {
-			let bgd = BlockGroupDescriptor::read(i, &fs.superblock, io)?;
+			let bgd = BlockGroupDescriptor::read(i, &superblock, io)?;
 
 			for j in 0..block_usage_bitmap_size {
 				let blk = bgd.block_usage_bitmap_addr + j;
-				fs.mark_block_used(io, blk)?;
+				superblock.mark_block_used(io, blk)?;
 			}
 
 			for j in 0..inode_usage_bitmap_size {
 				let inode = bgd.inode_usage_bitmap_addr + j;
-				fs.mark_inode_used(io, inode, false)?;
+				superblock.mark_inode_used(io, inode, false)?;
 			}
 
 			for j in 0..inodes_table_size {
 				let blk = bgd.inode_table_start_addr + j;
-				fs.mark_block_used(io, blk)?;
+				superblock.mark_block_used(io, blk)?;
 			}
 		}
 
-		for i in 1..fs.superblock.get_first_available_inode() {
+		for i in 1..superblock.get_first_available_inode() {
 			let is_dir = i == ROOT_DIRECTORY_INODE;
-			fs.mark_inode_used(io, i, is_dir)?;
+			superblock.mark_inode_used(io, i, is_dir)?;
 		}
 
 		let root_dir = Ext2INode {
@@ -1512,13 +1592,15 @@ impl FilesystemType for Ext2FsType {
 			fragment_addr: 0,
 			os_specific_1: [0; 12],
 		};
-		root_dir.write(ROOT_DIRECTORY_INODE, &fs.superblock, io)?;
+		root_dir.write(ROOT_DIRECTORY_INODE, &superblock, io)?;
 
+		let fs = Ext2Fs::new(superblock, io)?;
 		Ok(Box::new(fs)?)
 	}
 
 	fn load_filesystem(&self, io: &mut dyn DeviceHandle) -> Result<Box<dyn Filesystem>, Errno> {
 		let superblock = Superblock::read(io)?;
-		Ok(Box::new(Ext2Fs::new(superblock, io)?)? as _)
+		let fs = Ext2Fs::new(superblock, io)?;
+		Ok(Box::new(fs)? as _)
 	}
 }
