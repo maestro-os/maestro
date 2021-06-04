@@ -400,7 +400,7 @@ impl Superblock {
 	/// Returns the first inode that isn't reserved.
 	pub fn get_first_available_inode(&self) -> u32 {
 		if self.major_version >= 1 {
-			self.first_non_reserved_inode
+			max(self.first_non_reserved_inode, ROOT_DIRECTORY_INODE + 1)
 		} else {
 			10
 		}
@@ -585,6 +585,21 @@ impl Ext2INode {
 		}
 	}
 
+	/// Sets the file's size.
+	/// `superblock` is the filesystem's superblock.
+	/// `size` is the file's size.
+	fn set_size(&mut self, superblock: &Superblock, size: u64) {
+		let has_version = superblock.major_version >= 1;
+		let has_feature = superblock.write_required_features & WRITE_REQUIRED_64_BITS != 0;
+
+		if has_version && has_feature {
+			self.size_high = ((size >> 32) & 0xffff) as u32;
+			self.size_low = (size & 0xffff) as u32;
+		} else {
+			self.size_low = size as u32;
+		}
+	}
+
 	/// Resolves `n` block indirections to find the node's `i`th block, starting from block `blk`.
 	/// `superblock` is the filesystem's superblock.
 	/// `io` is the I/O interface.
@@ -655,7 +670,7 @@ impl Ext2INode {
 	/// `io` is the I/O interface.
 	pub fn read_content(&self, off: u64, buff: &mut [u8], superblock: &Superblock,
 		io: &mut dyn DeviceHandle) -> Result<(), Errno> {
-		if off >= self.get_size(&superblock)
+		if off > self.get_size(&superblock)
 			|| off + buff.len() as u64 >= self.get_size(&superblock) {
 			return Err(errno::EINVAL);
 		}
@@ -685,15 +700,16 @@ impl Ext2INode {
 	/// `buff` is the buffer in which the data is to be written.
 	/// `superblock` is the filesystem's superblock.
 	/// `io` is the I/O interface.
-	pub fn write_content(&self, off: u64, buff: &[u8], superblock: &Superblock,
+	pub fn write_content(&mut self, off: u64, buff: &[u8], superblock: &Superblock,
 		io: &mut dyn DeviceHandle) -> Result<(), Errno> {
-		if off >= self.get_size(&superblock)
-			|| off + buff.len() as u64 >= self.get_size(&superblock) {
+		let curr_size = self.get_size(superblock);
+		if off > curr_size {
 			return Err(errno::EINVAL);
 		}
 
 		let blk_size = superblock.get_block_size();
 		let begin_blk_id = (off / blk_size as u64) as usize;
+		// TODO Take into account when the buff is smaller than the size of a blk (same for read?)
 		let end_blk_id = ((off + buff.len() as u64) / (blk_size as u64)) as usize;
 
 		let mut _blk_buff = malloc::Alloc::<u8>::new_default(blk_size)?;
@@ -706,9 +722,11 @@ impl Ext2INode {
 			// buff_off += len;
 		}
 
-		// TODO Update content size
-		todo!();
-		//Ok(())
+		let new_size = off + buff.len() as u64;
+		if new_size > curr_size {
+			self.set_size(superblock, new_size);
+		}
+		Ok(())
 	}
 
 	/// Reads the directory entry at offset `off` and returns it.
@@ -737,7 +755,7 @@ impl Ext2INode {
 	/// `io` is the I/O interface.
 	/// `off` is the offset of the directory entry.
 	/// If the file is not a directory, the behaviour is undefined.
-	fn write_dirent(&self, superblock: &Superblock, io: &mut dyn DeviceHandle,
+	fn write_dirent(&mut self, superblock: &Superblock, io: &mut dyn DeviceHandle,
 		entry: &DirectoryEntry, off: u64) -> Result<(), Errno> {
 		let buff = unsafe {
 			slice::from_raw_parts(entry as *const _ as *const u8, entry.total_size as _)
@@ -836,7 +854,7 @@ impl Ext2INode {
 	/// If the block allocation fails or if the entry name is already used, the function returns an
 	/// error.
 	/// If the file is not a directory, the behaviour is undefined.
-	pub fn add_dirent(&self, superblock: &Superblock, io: &mut dyn DeviceHandle,
+	pub fn add_dirent(&mut self, superblock: &Superblock, io: &mut dyn DeviceHandle,
 		entry_inode: u32, name: &String, file_type: FileType) -> Result<(), Errno> {
 		let blk_size = superblock.get_block_size();
 		let name_length = name.as_bytes().len();
@@ -856,13 +874,11 @@ impl Ext2INode {
 			free_entry.inode = entry_inode;
 			free_entry.set_name(superblock, name);
 			free_entry.set_type(superblock, file_type);
-			self.write_dirent(superblock, io, &free_entry, free_entry_off)?;
+			self.write_dirent(superblock, io, &free_entry, free_entry_off)
 		} else {
 			let entry = DirectoryEntry::new(superblock, entry_inode, file_type, name)?;
-			self.write_dirent(superblock, io, &entry, self.get_size(superblock))?;
+			self.write_dirent(superblock, io, &entry, self.get_size(superblock))
 		}
-
-		Err(errno::ENOMEM)
 	}
 
 	// TODO remove_dirent
@@ -1037,7 +1053,7 @@ impl Ext2Fs {
 	/// Searches in the given bitmap block `bitmap` for the first element that is not set.
 	/// The function returns the index to the element. If every elements are set, the function
 	/// returns None.
-	fn search_bitmap_blk(bitmap: &[u8]) -> Option<usize> {
+	fn search_bitmap_blk(bitmap: &[u8]) -> Option<u32> {
 		for (i, b) in bitmap.iter().enumerate() {
 			if *b == 0xff {
 				continue;
@@ -1045,8 +1061,8 @@ impl Ext2Fs {
 
 			for j in 0..8 {
 				// TODO Check endianness?
-				if *b >> j & 0b1 == 0 {
-					return Some(i * 8 + j);
+				if (*b >> j) & 0b1 == 0 {
+					return Some((i * 8 + j) as _);
 				}
 			}
 		}
@@ -1065,14 +1081,14 @@ impl Ext2Fs {
 		let mut i = 0;
 
 		while i < size {
-			let bitmap_blk_index = start + (i / (blk_size * 8) as u32);
+			let bitmap_blk_index = start + i;
 			read_block(bitmap_blk_index as _, &self.superblock, io, buff.get_slice_mut())?;
 
-			if let Some(inode) = Self::search_bitmap_blk(buff.get_slice()) {
-				return Ok(Some(inode as _));
+			if let Some(j) = Self::search_bitmap_blk(buff.get_slice()) {
+				return Ok(Some(i * (blk_size * 8) as u32 + j));
 			}
 
-			i += (blk_size * 8) as u32;
+			i += 1;
 		}
 
 		Ok(None)
@@ -1091,7 +1107,7 @@ impl Ext2Fs {
 		let bitmap_blk_index = start + (i / (blk_size * 8) as u32);
 		read_block(bitmap_blk_index as _, &self.superblock, io, buff.get_slice_mut())?;
 
-		let bitmap_byte_index = i % (blk_size as u32);
+		let bitmap_byte_index = i / 8;
 		let bitmap_bit_index = i % 8;
 		// TODO Check endianness?
 		if val {
@@ -1100,7 +1116,7 @@ impl Ext2Fs {
 			buff[bitmap_byte_index as usize] &= !(1 << bitmap_bit_index);
 		}
 
-		write_block(bitmap_blk_index as _, &self.superblock, io, buff.get_slice_mut())
+		write_block(bitmap_blk_index as _, &self.superblock, io, buff.get_slice())
 	}
 
 	/// Returns the id of a free inode in the filesystem.
@@ -1257,7 +1273,7 @@ impl Filesystem for Ext2Fs {
 	fn add_file(&mut self, io: &mut dyn DeviceHandle, parent_inode: INode, file: File)
 		-> Result<(), Errno> {
 		debug_assert!(parent_inode >= 1);
-		let parent = Ext2INode::read(parent_inode, &self.superblock, io)?;
+		let mut parent = Ext2INode::read(parent_inode, &self.superblock, io)?;
 		debug_assert_eq!(parent.get_type(), FileType::Directory);
 
 		let inode_index = self.get_free_inode(io)?;
@@ -1288,7 +1304,8 @@ impl Filesystem for Ext2Fs {
 
 		parent.add_dirent(&self.superblock, io, inode_index, file.get_name(),
 			file.get_file_type())?;
-		self.mark_inode_used(io, inode_index, file.get_file_type() == FileType::Directory)
+		self.mark_inode_used(io, inode_index, file.get_file_type() == FileType::Directory)?;
+		parent.write(parent_inode, &self.superblock, io)
 	}
 
 	fn remove_file(&mut self, io: &mut dyn DeviceHandle, parent_inode: INode, _name: &String)
