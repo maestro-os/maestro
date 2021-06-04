@@ -6,9 +6,9 @@ use crate::errno::Errno;
 use crate::idt::pic;
 use crate::idt;
 use crate::process::tss;
+use crate::util::boxed::Box;
 use crate::util::container::vec::Vec;
 use crate::util::lock::mutex::*;
-use crate::util::ptr::SharedPtr;
 use crate::util;
 
 /// The list of interrupt error messages ordered by index of the corresponding interrupt vector.
@@ -88,10 +88,7 @@ impl InterruptResult {
 
 /// Trait representing a callback that aims to be called whenever an associated interruption is
 /// triggered.
-pub trait InterruptCallback {
-	/// Tells whether the callback is enabled or not.
-	fn is_enabled(&self) -> bool;
-
+pub trait Callback {
 	/// Calls the callback.
 	/// `id` is the id of the interrupt.
 	/// `code` is an optional code associated with the interrupt. If no code is given, the value is
@@ -107,7 +104,28 @@ struct CallbackWrapper {
 	/// The priority associated with the callback. Higher value means higher priority
 	priority: u32,
 	/// The callback
-	callback: SharedPtr::<dyn InterruptCallback>,
+	callback: Box<dyn Callback>,
+}
+
+/// Structure used to detect whenever the object owning the callback is destroyed, allowing to
+/// unregister it automatically.
+pub struct CallbackHook {
+	// TODO Store informations on the callback
+}
+
+impl CallbackHook {
+	/// Creates a new instance.
+	fn new() -> Self {
+		Self {
+			// TODO
+		}
+	}
+}
+
+impl Drop for CallbackHook {
+	fn drop(&mut self) {
+		// TODO Remove the callback
+	}
 }
 
 /// List containing vectors that store callbacks for every interrupt watchdogs.
@@ -133,8 +151,8 @@ pub fn init() {
 /// `callback` is the callback to register.
 ///
 /// If the `id` is invalid or if an allocation fails, the function shall return an error.
-pub fn register_callback<T: 'static + InterruptCallback>(id: usize, priority: u32, callback: T)
-	-> Result<SharedPtr::<T>, Errno> {
+pub fn register_callback<T: 'static + Callback>(id: usize, priority: u32, callback: T)
+	-> Result<CallbackHook, Errno> {
 	debug_assert!(id < idt::ENTRIES_COUNT);
 
 	let mut guard = unsafe {
@@ -158,15 +176,12 @@ pub fn register_callback<T: 'static + InterruptCallback>(id: usize, priority: u3
 		}
 	};
 
-	let ptr = SharedPtr::new(callback)?;
 	v.insert(index, CallbackWrapper {
 		priority,
-		callback: ptr.clone(),
+		callback: Box::new(callback)?,
 	})?;
-	Ok(ptr)
+	Ok(CallbackHook::new()) // TODO
 }
-
-// TODO Callback unregister
 
 /// This function is called whenever an interruption is triggered.
 /// `id` is the identifier of the interrupt type. This value is architecture-dependent.
@@ -188,12 +203,10 @@ pub extern "C" fn event_handler(id: u32, code: u32, ring: u32, regs: &util::Regs
 		let mut last_action = InterruptResultAction::Resume;
 
 		for i in 0..callbacks.len() {
-			if (*callbacks[i].callback).is_enabled() {
-				let result = (*callbacks[i].callback).call(id, code, regs, ring);
-				last_action = result.action;
-				if result.skip_next {
-					break;
-				}
+			let result = (*callbacks[i].callback).call(id, code, regs, ring);
+			last_action = result.action;
+			if result.skip_next {
+				break;
 			}
 		}
 

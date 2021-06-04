@@ -11,7 +11,7 @@
 use core::cmp::max;
 use core::ffi::c_void;
 use crate::errno::Errno;
-use crate::event::{InterruptCallback, InterruptResult};
+use crate::event::{Callback, CallbackHook, InterruptResult};
 use crate::event;
 use crate::gdt;
 use crate::memory::malloc;
@@ -58,11 +58,7 @@ pub struct TickCallback {
 	scheduler: SharedPtr<Mutex<Scheduler>>,
 }
 
-impl InterruptCallback for TickCallback {
-	fn is_enabled(&self) -> bool {
-		true
-	}
-
+impl Callback for TickCallback {
 	fn call(&mut self, _id: u32, _code: u32, regs: &util::Regs, ring: u32) -> InterruptResult {
 		let mut guard = MutexGuard::new(&mut self.scheduler);
 		guard.get_mut().tick(regs, ring);
@@ -74,8 +70,9 @@ pub struct Scheduler {
 	/// A vector containing the temporary stacks for each CPU cores.
 	tmp_stacks: Vec<malloc::Alloc<u8>>,
 
-	/// The ticking callback, called at a regular interval to make the scheduler work.
-	tick_callback: Option<SharedPtr<TickCallback>>,
+	/// The ticking callback hook.
+	/// The ticking callback is called at a regular interval to make the scheduler work.
+	tick_callback_hook: Option<CallbackHook>,
 
 	/// The list of all processes.
 	processes: Vec<SharedPtr<Mutex<Process>>>,
@@ -102,7 +99,7 @@ impl Scheduler {
 		let mut s = SharedPtr::new(Mutex::new(Self {
 			tmp_stacks,
 
-			tick_callback: None,
+			tick_callback_hook: None,
 
 			processes: Vec::<SharedPtr::<Mutex::<Process>>>::new(),
 			curr_proc: None,
@@ -119,7 +116,7 @@ impl Scheduler {
 			};
 			let mut guard = MutexGuard::new(&mut s);
 			let scheduler = guard.get_mut();
-			scheduler.tick_callback = Some(event::register_callback(32, 0, callback)?);
+			scheduler.tick_callback_hook = Some(event::register_callback(32, 0, callback)?);
 		}
 		Ok(s)
 	}
@@ -293,11 +290,5 @@ impl Scheduler {
 		} else {
 			crate::halt();
 		}
-	}
-}
-
-impl Drop for Scheduler {
-	fn drop(&mut self) {
-		// TODO Unregister `tick_callback`
 	}
 }

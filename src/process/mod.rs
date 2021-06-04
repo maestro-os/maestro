@@ -13,7 +13,7 @@ use core::mem::MaybeUninit;
 use core::ptr::NonNull;
 use crate::errno::Errno;
 use crate::errno;
-use crate::event::{InterruptCallback, InterruptResult, InterruptResultAction};
+use crate::event::{Callback, InterruptResult, InterruptResultAction};
 use crate::event;
 use crate::file::File;
 use crate::file::Gid;
@@ -145,11 +145,7 @@ static mut SCHEDULER: MaybeUninit::<SharedPtr::<Mutex::<Scheduler>>> = MaybeUnin
 /// Scheduler ticking callback.
 pub struct ProcessFaultCallback {}
 
-impl InterruptCallback for ProcessFaultCallback {
-	fn is_enabled(&self) -> bool {
-		true
-	}
-
+impl Callback for ProcessFaultCallback {
 	fn call(&mut self, id: u32, code: u32, regs: &Regs, ring: u32) -> InterruptResult {
 		if ring < 3 {
 			return InterruptResult::new(true, InterruptResultAction::Panic);

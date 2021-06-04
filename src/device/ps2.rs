@@ -4,13 +4,12 @@
 // TODO Externalize this module into a kernel module when the interface for loading them will be
 // ready
 
-use crate::event::{InterruptCallback, InterruptResult, InterruptResultAction};
+use crate::event::{Callback, CallbackHook, InterruptResult, InterruptResultAction};
 use crate::event;
 use crate::io;
 use crate::module::Module;
 use crate::module;
 use crate::util::boxed::Box;
-use crate::util::ptr::SharedPtr;
 use crate::util;
 
 /// The interrupt number for keyboard input events.
@@ -513,11 +512,7 @@ struct KeyboardCallback {
 	module: *mut PS2Module, // TODO Use a safe object to handle memory
 }
 
-impl InterruptCallback for KeyboardCallback {
-	fn is_enabled(&self) -> bool {
-		true
-	}
-
+impl Callback for KeyboardCallback {
 	fn call(&mut self, _id: u32, _code: u32, _regs: &util::Regs, _ring: u32) -> InterruptResult {
 		while can_read() {
 			let (key, action) = read_keystroke();
@@ -539,17 +534,17 @@ impl InterruptCallback for KeyboardCallback {
 
 /// The PS2 kernel module structure.
 pub struct PS2Module {
-	/// The callback for keyboard input interrupts.
-	keyboard_interrupt_callback: Option::<SharedPtr::<KeyboardCallback>>,
+	/// The callback hook for keyboard input interrupts.
+	keyboard_interrupt_callback_hook: Option<CallbackHook>,
 	/// The callback handling keyboard inputs.
-	keyboard_callback: Box::<dyn FnMut(KeyboardKey, KeyboardAction)>,
+	keyboard_callback: Box<dyn FnMut(KeyboardKey, KeyboardAction)>,
 }
 
 impl PS2Module {
 	/// Creates the module's instance.
 	pub fn new<F: 'static + FnMut(KeyboardKey, KeyboardAction)>(f: F) -> Self {
 		Self {
-			keyboard_interrupt_callback: None,
+			keyboard_interrupt_callback_hook: None,
 			keyboard_callback: Box::new(f).unwrap(),
 		}
 	}
@@ -585,12 +580,12 @@ impl Module for PS2Module {
 		set_config_byte(get_config_byte() | 0b1);
 		clear_buffer();
 
-		let callback_result = event::register_callback(KEYBOARD_INTERRUPT_ID, 0,
+		let hook_result = event::register_callback(KEYBOARD_INTERRUPT_ID, 0,
 			KeyboardCallback {
 				module: self as _,
 			});
-		if let Ok(callback) = callback_result {
-			self.keyboard_interrupt_callback = Some(callback);
+		if let Ok(hook) = hook_result {
+			self.keyboard_interrupt_callback_hook = Some(hook);
 			Ok(())
 		} else {
 			Err(())
