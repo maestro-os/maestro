@@ -829,14 +829,14 @@ impl Ext2INode {
 		let entries_per_blk = blk_size / size_of::<u32>();
 
 		let mut b = begin;
-		for i in (0..n).rev() {
+		for i in (0..(n + 1)).rev() {
 			let inner_off = off / ((i * entries_per_blk) as u32);
 			let byte_off = (begin as u64 * blk_size as u64) + (inner_off as u64);
 
 			if b == 0 {
-				// TODO Allocate
-				todo!();
-				// write::<u32>(&val, byte_off, io)?;
+				let blk = superblock.get_free_block(io)?;
+				superblock.mark_block_used(io, blk)?;
+				write::<u32>(&blk, byte_off, io)?;
 			} else {
 				b = unsafe {
 					read::<u32>(byte_off, io)?
@@ -884,8 +884,10 @@ impl Ext2INode {
 		let entries_per_blk = blk_size / size_of::<u32>();
 
 		if i < DIRECT_BLOCKS_COUNT {
-			let blk = 0; // TODO Alloc
+			let blk = superblock.get_free_block(io)?;
 			self.direct_block_ptrs[i] = blk;
+			superblock.mark_block_used(io, blk)?;
+
 			Ok(blk)
 		} else if i < DIRECT_BLOCKS_COUNT + entries_per_blk {
 			let target = (i - DIRECT_BLOCKS_COUNT) as u32;
@@ -975,7 +977,8 @@ impl Ext2INode {
 			let len = min(buff.len() - buff_off, blk_size);
 			// FIXME Data may be shifted if `off` is not aligned on block size
 			unsafe { // Safe because staying in range
-				copy_nonoverlapping(&buff[0] as *const u8, blk_buff.get_slice_mut()[0] as *mut u8, len);
+				copy_nonoverlapping(&buff[0] as *const u8, blk_buff.get_slice_mut()[0] as *mut u8,
+					len);
 			}
 			write_block(blk_off as _, superblock, io, blk_buff.get_slice_mut())?;
 
