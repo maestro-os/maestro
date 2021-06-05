@@ -920,27 +920,29 @@ impl Ext2INode {
 	/// `io` is the I/O interface.
 	pub fn read_content(&self, off: u64, buff: &mut [u8], superblock: &Superblock,
 		io: &mut dyn DeviceHandle) -> Result<(), Errno> {
-		if off > self.get_size(&superblock)
-			|| off + buff.len() as u64 >= self.get_size(&superblock) {
+		let size = self.get_size(&superblock);
+		if off > size || off + buff.len() as u64 > size {
 			return Err(errno::EINVAL);
 		}
 
 		let blk_size = superblock.get_block_size();
-		let begin_blk_id = (off / blk_size as u64) as usize;
-		let end_blk_id = math::ceil_division(off + buff.len() as u64, blk_size as u64) as usize;
-
 		let mut blk_buff = malloc::Alloc::<u8>::new_default(blk_size)?;
-		let mut buff_off = 0;
-		for i in begin_blk_id..end_blk_id {
-			let blk_off = self.get_content_block_off(i as _, superblock, io).unwrap().unwrap();
+
+		let mut i = 0;
+		while i < buff.len() {
+			let blk_off = i / blk_size;
+			let blk_inner_off = i % blk_size;
+			let blk_off = self.get_content_block_off(blk_off as _, superblock, io)?.unwrap();
 			read_block(blk_off as _, superblock, io, blk_buff.get_slice_mut())?;
 
-			let len = min(buff.len() - buff_off, blk_size);
-			// FIXME Data may be shifted if `off` is not aligned on block size
+			let len = min(buff.len() - i, blk_size - blk_inner_off);
 			unsafe { // Safe because staying in range
-				copy_nonoverlapping(blk_buff.get_slice()[0] as *const u8, buff[0] as *mut u8, len);
+				copy_nonoverlapping(&blk_buff.get_slice()[blk_inner_off] as *const u8,
+					&mut buff[i] as *mut u8,
+					len);
 			}
-			buff_off += len;
+
+			i += len;
 		}
 
 		Ok(())
@@ -959,14 +961,14 @@ impl Ext2INode {
 		}
 
 		let blk_size = superblock.get_block_size();
-		let begin_blk_id = (off / blk_size as u64) as usize;
-		let end_blk_id = math::ceil_division(off + buff.len() as u64, blk_size as u64) as usize;
-
 		let mut blk_buff = malloc::Alloc::<u8>::new_default(blk_size)?;
-		let mut buff_off = 0;
-		for i in begin_blk_id..end_blk_id {
+
+		let mut i = 0;
+		while i < buff.len() {
+			let blk_off = i / blk_size;
+			let blk_inner_off = i % blk_size;
 			let blk_off = {
-				if let Some(blk_off) = self.get_content_block_off(i as _, superblock, io)? {
+				if let Some(blk_off) = self.get_content_block_off(blk_off as _, superblock, io)? {
 					blk_off
 				} else {
 					self.alloc_content_block(i, superblock, io)?
@@ -974,15 +976,15 @@ impl Ext2INode {
 			};
 			read_block(blk_off as _, superblock, io, blk_buff.get_slice_mut())?;
 
-			let len = min(buff.len() - buff_off, blk_size);
-			// FIXME Data may be shifted if `off` is not aligned on block size
+			let len = min(buff.len() - i, blk_size - blk_inner_off);
 			unsafe { // Safe because staying in range
-				copy_nonoverlapping(&buff[0] as *const u8, blk_buff.get_slice_mut()[0] as *mut u8,
+				copy_nonoverlapping(&buff[i] as *const u8,
+					&mut blk_buff.get_slice_mut()[blk_inner_off] as *mut u8,
 					len);
 			}
 			write_block(blk_off as _, superblock, io, blk_buff.get_slice_mut())?;
 
-			buff_off += len;
+			i += len;
 		}
 
 		let new_size = off + buff.len() as u64;
@@ -1039,12 +1041,15 @@ impl Ext2INode {
 
 		let blk_size = superblock.get_block_size();
 		let mut buff = malloc::Alloc::<u8>::new_default(blk_size)?;
+
+		let size = self.get_size(superblock);
 		let mut i = 0;
-		while i < self.get_size(superblock) {
-			self.read_content(i, buff.get_slice_mut(), superblock, io)?;
+		while i < size {
+			let len = min((size - i) as usize, blk_size);
+			self.read_content(i, &mut buff.get_slice_mut()[..len], superblock, io)?;
 
 			let mut j = 0;
-			while j < blk_size {
+			while j < len {
 				let entry = unsafe {
 					DirectoryEntry::from(&buff.get_slice()[j..])?
 				};
@@ -1056,7 +1061,6 @@ impl Ext2INode {
 
 				j += total_size;
 			}
-			debug_assert_eq!(j as u64, i + blk_size as u64);
 
 			i += blk_size as u64;
 		}
@@ -1189,7 +1193,7 @@ impl DirectoryEntry {
 			Box::from_raw(slice as *mut [u8] as *mut [()] as *mut Self)
 		};
 		entry.inode = inode;
-		entry.total_size = 8;
+		entry.total_size = len as _;
 		entry.set_type(superblock, file_type);
 		entry.set_name(superblock, name);
 		Ok(entry)
@@ -1240,7 +1244,6 @@ impl DirectoryEntry {
 	pub fn get_type(&self, superblock: &Superblock) -> Option<FileType> {
 		if superblock.required_features & REQUIRED_FEATURE_DIRECTORY_TYPE == 0 {
 			match self.name_length_hi {
-				TYPE_INDICATOR_UNKNOWN => None,
 				TYPE_INDICATOR_REGULAR => Some(FileType::Regular),
 				TYPE_INDICATOR_DIRECTORY => Some(FileType::Directory),
 				TYPE_INDICATOR_CHAR_DEVICE => Some(FileType::CharDevice),
@@ -1258,7 +1261,7 @@ impl DirectoryEntry {
 
 	/// Sets the file type associated with the entry (if the option is enabled).
 	pub fn set_type(&mut self, superblock: &Superblock, file_type: FileType) {
-		if superblock.required_features & REQUIRED_FEATURE_DIRECTORY_TYPE == 0 {
+		if superblock.required_features & REQUIRED_FEATURE_DIRECTORY_TYPE != 0 {
 			self.name_length_hi = match file_type {
 				FileType::Regular => TYPE_INDICATOR_REGULAR,
 				FileType::Directory => TYPE_INDICATOR_DIRECTORY,
@@ -1324,7 +1327,7 @@ impl Filesystem for Ext2Fs {
 
 		let mut inode_index = ROOT_DIRECTORY_INODE;
 		for i in 0..path.get_elements_count() {
-			let inode = Ext2INode::read(ROOT_DIRECTORY_INODE as _, &self.superblock, io)?;
+			let inode = Ext2INode::read(inode_index, &self.superblock, io)?;
 			if inode.get_type() != FileType::Directory {
 				return Err(errno::ENOENT);
 			}
