@@ -5,17 +5,17 @@ use crate::device::DeviceType;
 use crate::device;
 use crate::errno::Errno;
 use crate::errno;
-use crate::file::filesystem::Filesystem;
+use crate::file::fs::Filesystem;
 use crate::util::boxed::Box;
 use crate::util::container::vec::Vec;
 use crate::util::lock::mutex::Mutex;
 use crate::util::lock::mutex::MutexGuard;
 use crate::util::ptr::SharedPtr;
-use super::filesystem;
+use super::fs;
 use super::path::Path;
 
 // TODO rm
-use crate::file::filesystem::FilesystemType;
+use crate::file::fs::FilesystemType;
 
 /// TODO doc
 const FLAG_MANDLOCK: u32    = 0b000000000001;
@@ -74,10 +74,10 @@ impl MountPoint {
 		let mut device = device::get_device(device_type, major, minor).ok_or(errno::ENODEV)?;
 
 		// TODO rm
-		let fs_type = filesystem::ext2::Ext2FsType {};
+		let fs_type = fs::ext2::Ext2FsType {};
 		fs_type.create_filesystem(device.as_mut().get_handle())?;
 
-		let fs_type = filesystem::detect(device.as_mut())?;
+		let fs_type = fs::detect(device.as_mut())?;
 		let filesystem = fs_type.load_filesystem(device.as_mut().get_handle())?;
 
 		Ok(Self {

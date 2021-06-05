@@ -3,7 +3,7 @@
 //! mounted into subdirectories.
 
 pub mod file_descriptor;
-pub mod filesystem;
+pub mod fs;
 pub mod mountpoint;
 pub mod path;
 
@@ -619,7 +619,7 @@ static mut FILES_CACHE: MaybeUninit<Mutex<FCache>> = MaybeUninit::uninit();
 /// `root_major` is the major number of the device at the root of the VFS.
 /// `root_minor` is the minor number of the device at the root of the VFS.
 pub fn init(root_device_type: DeviceType, root_major: u32, root_minor: u32) -> Result<(), Errno> {
-	filesystem::register_defaults()?;
+	fs::register_defaults()?;
 
 	let cache = FCache::new(root_device_type, root_major, root_minor)?;
 	unsafe { // Safe because using Mutex and because this code is executed only once at boot
