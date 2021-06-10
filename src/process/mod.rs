@@ -503,7 +503,7 @@ impl Process {
 	fn get_available_fd(&mut self) -> Result::<u32, Errno> {
 		// TODO
 		todo!();
-		Err(errno::EMFILE) // TODO If too many file descriptors are open systemwide, use ENFILE
+		// Err(errno::EMFILE) // TODO If too many file descriptors are open systemwide, use ENFILE
 	}
 
 	/// Opens a file, creates a file descriptor and returns a mutable reference to it.

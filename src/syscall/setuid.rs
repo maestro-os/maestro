@@ -7,5 +7,5 @@ use crate::util;
 /// The implementation of the `setuid` syscall.
 pub fn setuid(_proc: &mut Process, _regs: &util::Regs) -> Result<i32, Errno> {
     // TODO
-	todo!():
+	todo!();
 }
