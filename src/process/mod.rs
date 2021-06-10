@@ -502,6 +502,7 @@ impl Process {
 	/// Err.
 	fn get_available_fd(&mut self) -> Result::<u32, Errno> {
 		// TODO
+		todo!();
 		Err(errno::EMFILE) // TODO If too many file descriptors are open systemwide, use ENFILE
 	}
 

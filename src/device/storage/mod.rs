@@ -257,17 +257,17 @@ impl StorageDeviceHandle {
 impl DeviceHandle for StorageDeviceHandle {
 	fn get_size(&self) -> u64 {
 		// TODO
-		0
+		todo!();
 	}
 
 	fn read(&mut self, _offset: u64, _buff: &mut [u8]) -> Result<usize, Errno> {
 		// TODO
-		Ok(0)
+		todo!();
 	}
 
 	fn write(&mut self, _offset: u64, _buff: &[u8]) -> Result<usize, Errno> {
 		// TODO
-		Ok(0)
+		todo!();
 	}
 }
 
@@ -442,9 +442,11 @@ impl DeviceManager for StorageManager {
 
 	fn on_plug(&mut self, _dev: &dyn PhysicalDevice) {
 		// TODO
+		todo!();
 	}
 
 	fn on_unplug(&mut self, _dev: &dyn PhysicalDevice) {
 		// TODO
+		todo!();
 	}
 }

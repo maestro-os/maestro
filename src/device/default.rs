@@ -56,7 +56,7 @@ impl DeviceHandle for CurrentTTYDeviceHandle {
 
 	fn read(&mut self, _offset: u64, _buff: &mut [u8]) -> Result<usize, Errno> {
 		// TODO Read from TTY input
-		Ok(0)
+		todo!();
 	}
 
 	fn write(&mut self, _offset: u64, buff: &[u8]) -> Result<usize, Errno> {

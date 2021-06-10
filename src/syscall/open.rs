@@ -62,7 +62,7 @@ fn get_file(path: Path, flags: u32) -> Result<SharedPtr<File>, Errno> {
 		Ok(file)
 	} else if flags & O_CREAT != 0 {
 		// TODO Create file, return errno on fail (use umask)
-		Err(-errno::ENOENT as _)
+		todo!();
 	} else {
 		Err(-errno::ENOENT as _)
 	}

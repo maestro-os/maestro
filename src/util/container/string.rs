@@ -139,11 +139,11 @@ impl String {
 	/// If the string is empty, the function returns None.
 	pub fn pop(&mut self) -> Option<char> {
 		if self.is_empty() {
-			None
-		} else {
-			// TODO
-			None
+			return None;
 		}
+
+		// TODO
+		todo!();
 	}
 
 	/// Appends the string `other` to the current one.

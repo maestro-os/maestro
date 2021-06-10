@@ -67,7 +67,7 @@ impl partition::Table for MBRTable {
 
 		for mbr_partition in self.partitions.iter() {
 			if mbr_partition.is_active() {
-				// TODO Add support for CHS?
+				// TODO Add support for CHS
 				let partition = Partition::new(mbr_partition.lba_start as _,
 					mbr_partition.sectors_count as _);
 				partitions.push(partition)?;

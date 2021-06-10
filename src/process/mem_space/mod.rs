@@ -168,7 +168,8 @@ impl MemSpace {
 		-> Result<*const c_void, Errno> {
 		if let Some(_ptr) = ptr {
 			// TODO Insert mapping at exact location if possible
-			Err(errno::ENOMEM)
+			// Err(errno::ENOMEM)
+			todo!();
 		} else {
 			let gap = Self::gap_get(&mut self.gaps_buckets, size);
 			if gap.is_none() {
@@ -237,6 +238,7 @@ impl MemSpace {
 	/// further attempts to access it shall result in a page fault.
 	pub fn unmap(&mut self, _ptr: *const c_void, _size: usize) {
 		// TODO
+		todo!();
 	}
 
 	/// Tells whether the given region of memory `ptr` of size `size` in bytes can be accessed.
@@ -244,7 +246,7 @@ impl MemSpace {
 	/// `write` tells whether to check for write permission.
 	pub fn can_access(&self, _ptr: *const u8, _size: usize, _user: bool, _write: bool) -> bool {
 		// TODO
-		true
+		todo!();
 	}
 
 	/// Binds the CPU to this memory space.

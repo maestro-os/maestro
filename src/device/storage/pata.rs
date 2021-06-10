@@ -425,7 +425,7 @@ impl PATAInterface {
 	/// The function uses LBA48.
 	fn read48(&self, _buf: &mut [u8], _offset: u64, _size: u64) -> Result<(), Errno> {
 		// TODO
-		Err(errno::EINVAL) // TODO Set correct errno
+		todo!();
 	}
 
 	/// Writes `size` blocks to storage at block offset `offset`, reading the data from `buf`.
@@ -480,7 +480,7 @@ impl PATAInterface {
 	/// The function uses LBA48.
 	fn write48(&self, _buf: &[u8], _offset: u64, _size: u64) -> Result<(), Errno> {
 		// TODO
-		Err(errno::EINVAL) // TODO Set correct errno
+		todo!();
 	}
 }
 

@@ -39,5 +39,6 @@ crate::failable_clone_impl!(FileDescriptor);
 impl Drop for FileDescriptor {
 	fn drop(&mut self) {
 		// TODO Close the fd
+		todo!();
 	}
 }

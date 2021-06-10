@@ -46,8 +46,7 @@ pub fn kill(proc: &mut Process, regs: &util::Regs) -> Result<i32, Errno> {
 		Ok(0)
 	} else if pid == -1 {
 		// TODO Send to every processes that the process has permission to send a signal to
-
-		Err(errno::ESRCH)
+		todo!();
 	} else {
 		if -pid == proc.get_pid() as _ {
 			for p in proc.get_group_processes() {

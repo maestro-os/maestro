@@ -65,5 +65,6 @@ impl<T> Semaphore<T> {
 impl<T> Drop for Semaphore<T> {
 	fn drop(&mut self) {
 		// TODO Return an errno for every waiting processes?
+		todo!();
 	}
 }

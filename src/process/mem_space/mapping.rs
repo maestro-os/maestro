@@ -247,8 +247,9 @@ impl MemMapping {
 	pub fn unmap(&self) {
 		// TODO
 		// TODO Remove the physical memory only if the page is not shared
+		todo!();
 
-		self.get_vmem().flush();
+		// self.get_vmem().flush();
 	}
 
 	/// Updates the virtual memory context according to the mapping for the page at offset

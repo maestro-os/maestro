@@ -158,6 +158,7 @@ impl Signal {
 
 		if let Some(_handler) = process.get_signal_handler(self.type_) {
 			// TODO Execute handler
+			todo!();
 		} else {
 			let default_action = DEFAULT_ACTIONS[self.type_ as usize];
 			let exit_code = (128 + self.type_) as u32;

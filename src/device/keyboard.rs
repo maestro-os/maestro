@@ -28,9 +28,11 @@ impl DeviceManager for KeyboardManager {
 
 	fn on_plug(&mut self, _dev: &dyn PhysicalDevice) {
 		// TODO
+		todo!();
 	}
 
 	fn on_unplug(&mut self, _dev: &dyn PhysicalDevice) {
 		// TODO
+		todo!();
 	}
 }

@@ -301,6 +301,7 @@ impl TTY {
 			},
 			'\x08' => {
 				// TODO Backspace
+				todo!();
 			},
 			'\t' => {
 				self.cursor_forward(get_tab_size(self.cursor_x), 0);
@@ -310,6 +311,7 @@ impl TTY {
 			},
 			'\x0c' => {
 				// TODO Move printer to a top of page
+				todo!();
 			},
 			'\r' => {
 				self.cursor_x = 0;
@@ -359,16 +361,6 @@ impl TTY {
 		self.update();
 		self.prompted_chars -= count;
 	}
-
-	/// Handles keyboard insert input for keycode `code`.
-	/*pub fn input_hook(&mut self, code: ps2::key_code) {
-		// TODO
-	}*/
-
-	/// Handles keyboard control input for keycode `code`.
-	/*pub fn ctrl_hook(&mut self, code: ps2::key_code) {
-		// TODO
-	}*/
 
 	/// Handles keyboard erase input for keycode.
 	pub fn erase_hook(&mut self) {
