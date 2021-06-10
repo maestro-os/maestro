@@ -30,6 +30,8 @@ impl FileDescriptor {
 				&mut TOTAL_FD
 			};
 			let mut guard = MutexGuard::new(mutex);
+
+			// TODO Use the correct constant
 			if *guard.get() >= limits::OPEN_MAX {
 				return Err(errno::ENFILE);
 			}

@@ -21,6 +21,7 @@ use crate::file::Uid;
 use crate::file::file_descriptor::FileDescriptor;
 use crate::file::path::Path;
 use crate::file;
+use crate::limits;
 use crate::memory::vmem;
 use crate::util::FailableClone;
 use crate::util::Regs;
@@ -499,11 +500,25 @@ impl Process {
 	}
 
 	/// Returns an available file descriptor ID. If no ID is available, the function returns an
-	/// Err.
-	fn get_available_fd(&mut self) -> Result::<u32, Errno> {
-		// TODO
-		todo!();
-		// Err(errno::EMFILE)
+	/// error.
+	fn get_available_fd(&mut self) -> Result<u32, Errno> {
+		if self.file_descriptors.is_empty() {
+			return Ok(0);
+		}
+
+		// TODO Use a binary search
+		for (i, fd) in self.file_descriptors.iter().enumerate() {
+			if (i as u32) < fd.get_id() {
+				return Ok(i as u32);
+			}
+		}
+
+		let id = self.file_descriptors.len();
+		if id < limits::OPEN_MAX {
+			Ok(id as u32)
+		} else {
+			Err(errno::EMFILE)
+		}
 	}
 
 	/// Opens a file, creates a file descriptor and returns a mutable reference to it.
@@ -516,11 +531,8 @@ impl Process {
 			fd.get_id().cmp(&id)
 		}).unwrap_err();
 
-		if self.file_descriptors.insert(index, fd).is_ok() {
-			Ok(&mut self.file_descriptors[index])
-		} else {
-			Err(errno::ENOMEM)
-		}
+		self.file_descriptors.insert(index, fd)?;
+		Ok(&mut self.file_descriptors[index])
 	}
 
 	/// Duplicates the file descriptor with id `id`.
@@ -562,6 +574,7 @@ impl Process {
 		let result = self.file_descriptors.binary_search_by(| fd | {
 			fd.get_id().cmp(&id)
 		});
+
 		if let Ok(index) = result {
 			Some(&mut self.file_descriptors[index])
 		} else {
@@ -575,6 +588,7 @@ impl Process {
 		let result = self.file_descriptors.binary_search_by(| fd | {
 			fd.get_id().cmp(&id)
 		});
+
 		if let Ok(index) = result {
 			self.file_descriptors.remove(index);
 			Ok(())
