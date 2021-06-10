@@ -412,6 +412,7 @@ impl Superblock {
 		}
 	}
 
+	// TODO Optimize
 	/// Searches in the given bitmap block `bitmap` for the first element that is not set.
 	/// The function returns the index to the element. If every elements are set, the function
 	/// returns None.
@@ -422,7 +423,6 @@ impl Superblock {
 			}
 
 			for j in 0..8 {
-				// TODO Check endianness?
 				if (*b >> j) & 0b1 == 0 {
 					return Some((i * 8 + j) as _);
 				}
@@ -442,7 +442,7 @@ impl Superblock {
 		let mut buff = malloc::Alloc::<u8>::new_default(blk_size)?;
 		let mut i = 0;
 
-		while i < size {
+		while (i * (blk_size * 8) as u32) < size {
 			let bitmap_blk_index = start + i;
 			read_block(bitmap_blk_index as _, self, io, buff.get_slice_mut())?;
 
@@ -471,7 +471,6 @@ impl Superblock {
 
 		let bitmap_byte_index = i / 8;
 		let bitmap_bit_index = i % 8;
-		// TODO Check endianness?
 		if val {
 			buff[bitmap_byte_index as usize] |= 1 << bitmap_bit_index;
 		} else {
@@ -1563,7 +1562,7 @@ impl FilesystemType for Ext2FsType {
 
 			for j in 0..inode_usage_bitmap_size {
 				let inode = bgd.inode_usage_bitmap_addr + j;
-				superblock.mark_inode_used(io, inode, false)?;
+				superblock.mark_block_used(io, inode)?;
 			}
 
 			for j in 0..inodes_table_size {
