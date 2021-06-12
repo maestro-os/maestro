@@ -2,13 +2,15 @@
 //! used to log kernel informations. They can be silenced at boot using the `-silent` command line
 //! argument but they will be kept in the logger anyways.
 
-use crate::logger::LoggerWrite;
+use crate::logger;
+use crate::util::lock::mutex::MutexGuard;
 
 /// Prints the specified message on the current TTY. This function is meant to be used through
 /// `print!` and `println!` macros only.
 pub fn _print(args: core::fmt::Arguments) {
-	let mut w: LoggerWrite = LoggerWrite {};
-	core::fmt::write(&mut w, args).ok();
+    let mutex = logger::get();
+    let mut guard = MutexGuard::new(mutex);
+	core::fmt::write(guard.get_mut(), args).ok();
 }
 
 /// Prints the given formatted string with the given values.

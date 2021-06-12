@@ -175,7 +175,7 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 		halt();
 	}
 	let args_parser = args_parser.unwrap();
-	logger::set_silent(args_parser.is_silent());
+	logger::init(args_parser.is_silent());
 
 	println!("Booting Maestro kernel version {}", KERNEL_VERSION);
 

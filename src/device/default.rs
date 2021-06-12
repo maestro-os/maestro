@@ -1,11 +1,14 @@
 //! This module implements default devices.
 
+use core::cmp::min;
 use core::str;
 use crate::device::Device;
 use crate::device::DeviceHandle;
 use crate::device;
 use crate::errno::Errno;
 use crate::file::path::Path;
+use crate::logger;
+use crate::util::lock::mutex::MutexGuard;
 use super::DeviceType;
 
 /// Structure representing a device which does nothing.
@@ -46,6 +49,35 @@ impl DeviceHandle for ZeroDeviceHandle {
 	}
 }
 
+/// Structure representing the kernel logs.
+pub struct KMsgDeviceHandle {}
+
+impl DeviceHandle for KMsgDeviceHandle {
+	fn get_size(&self) -> u64 {
+        let mutex = logger::get();
+        let guard = MutexGuard::new(mutex);
+
+        guard.get().get_size() as _
+	}
+
+	fn read(&mut self, offset: u64, buff: &mut [u8]) -> Result<usize, Errno> {
+        let mutex = logger::get();
+        let guard = MutexGuard::new(mutex);
+
+        let size = guard.get().get_size();
+        let content = guard.get().get_content();
+
+        let len = min(size, buff.len()) - offset as usize;
+        buff.copy_from_slice(&content[(offset as usize)..(offset as usize + len)]);
+        Ok(len)
+	}
+
+	fn write(&mut self, _offset: u64, buff: &[u8]) -> Result<usize, Errno> {
+        // TODO Write to logger
+		Ok(buff.len())
+	}
+}
+
 /// Structure representing the current TTY.
 pub struct CurrentTTYDeviceHandle {}
 
@@ -82,13 +114,15 @@ pub fn create() -> Result<(), Errno> {
 	device::register_device(Device::new(1, 5, zero_path, 0o666, DeviceType::Char,
 		ZeroDeviceHandle {})?)?;
 
+	let kmsg_path = Path::from_string("/dev/kmsg")?;
+	device::register_device(Device::new(1, 11, kmsg_path, 0o600, DeviceType::Char,
+		KMsgDeviceHandle {})?)?;
+
 	let current_tty_path = Path::from_string("/dev/tty")?;
 	let mut current_tty_device = Device::new(5, 0, current_tty_path, 0o666, DeviceType::Char,
 		CurrentTTYDeviceHandle {})?;
 	current_tty_device.create_file()?; // TODO remove?
 	device::register_device(current_tty_device)?;
-
-	// TODO
 
 	Ok(())
 }
