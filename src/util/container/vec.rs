@@ -412,19 +412,19 @@ impl<T: Ord> Vec<T> {
 impl<T> Vec<T> {
 	pub fn binary_search_by<'a, F>(&'a self, mut f: F) -> Result<usize, usize>
 		where F: FnMut(&'a T) -> Ordering {
-		if self.is_empty() {
-			return Err(0);
-		}
-
 		let mut l = 0;
 		let mut r = self.len();
 
 		while l < r {
 			let i = (l + r) / 2;
+            if i >= self.len() {
+                return Err(i);
+            }
+
 			let ord = f(&self[i]);
 			match ord {
 				Ordering::Less => {
-					l = i;
+					l = i + 1;
 				},
 				Ordering::Greater => {
 					r = i;
@@ -436,7 +436,7 @@ impl<T> Vec<T> {
 		}
 
 		let i = (l + r) / 2;
-		if f(&self[i]) == Ordering::Equal {
+		if i < self.len() && f(&self[i]) == Ordering::Equal {
 			Ok(i)
 		} else {
 			Err(i)

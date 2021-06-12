@@ -263,10 +263,12 @@ impl Scheduler {
 
 				if syscalling {
 					unsafe {
+                        event::force_unlock();
 						context_switch_kernel(&regs);
 					}
 				} else {
 					unsafe {
+                        event::force_unlock();
 						context_switch(&regs,
 							(gdt::USER_DATA_OFFSET | 3) as _,
 							(gdt::USER_CODE_OFFSET | 3) as _);

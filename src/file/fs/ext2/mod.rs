@@ -7,7 +7,7 @@
 //! - INode: represents a file in the filesystem
 //! - Directory entry: an entry stored into the inode's content
 //!
-//! The access to an INode data is divided into several parts, each overflowing on the next when
+//! The access to an INode's data is divided into several parts, each overflowing on the next when
 //! full:
 //! - Direct Block Pointers: each inode has 12 of them
 //! - Singly Indirect Block Pointer: a pointer to a block dedicated to storing a list of more
@@ -48,6 +48,7 @@ use crate::util::math;
 use crate::util;
 
 // TODO Take into account user's UID/GID when allocating block/inode to handle reserved blocks/inodes
+// TODO Document when a function writes on the storage device
 
 /// The offset of the superblock from the beginning of the device.
 const SUPERBLOCK_OFFSET: u64 = 1024;
