@@ -30,6 +30,7 @@ pub fn kill(proc: &mut Process, regs: &util::Regs) -> Result<i32, Errno> {
 	let sig = regs.ecx as u8;
 
 	// TODO Handle sig == 0
+    // TODO Check permission (with real or effective UID)
 	// TODO Handle when killing current process (execute before returning)
 
 	if pid == proc.get_pid() as _ {

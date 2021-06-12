@@ -1,5 +1,6 @@
 //! This module implements the `write` system call, which allows to write data to a file.
 
+use core::cmp::max;
 use core::slice;
 use crate::errno::Errno;
 use crate::errno;
@@ -13,15 +14,18 @@ pub fn write(proc: &mut Process, regs: &util::Regs) -> Result<i32, Errno> {
 	let count = regs.edx as usize;
 
 	if proc.get_mem_space().can_access(buf, count, true, false) {
+        let len = max(count as i32, 0);
 		// Safe because the permission to access the memory has been checked by the previous
 		// condition
 		let data = unsafe {
-			slice::from_raw_parts(buf, count)
+			slice::from_raw_parts(buf, len as usize)
 		};
+
 		let fd = proc.get_fd(fd).ok_or(errno::EBADF)?;
 		// TODO Take offset of fd
 		let len = fd.get_file().write(0, data)?;
 		// TODO Update offset of fd
+
 		Ok(len as _) // TODO Take into account when length is overflowing
 	} else {
 		Err(errno::EFAULT)

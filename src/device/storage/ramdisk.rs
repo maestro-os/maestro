@@ -2,9 +2,11 @@
 //! userspace, it works exactly the same.
 //! Ramdisks are lazily allocated so they do not use much memory as long as they are not used.
 
+use core::mem::ManuallyDrop;
 use crate::device::Device;
 use crate::device::DeviceHandle;
 use crate::device::DeviceType;
+use crate::device::id;
 use crate::device;
 use crate::errno::Errno;
 use crate::errno;
@@ -141,7 +143,7 @@ impl DeviceHandle for RAMDiskHandle {
 /// Creates every ramdisk instances.
 pub fn create() -> Result<(), Errno> {
 	// TODO Undo all on fail?
-	// TODO Alloc major number block
+    let _major = ManuallyDrop::new(id::alloc_major(DeviceType::Char, Some(RAM_DISK_MAJOR))?);
 
 	for i in 0..RAM_DISK_COUNT {
 		let mut name = String::from("name")?;

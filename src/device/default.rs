@@ -1,6 +1,7 @@
 //! This module implements default devices.
 
 use core::cmp::min;
+use core::mem::ManuallyDrop;
 use core::str;
 use crate::device::Device;
 use crate::device::DeviceHandle;
@@ -10,6 +11,7 @@ use crate::file::path::Path;
 use crate::logger;
 use crate::util::lock::mutex::MutexGuard;
 use super::DeviceType;
+use super::id;
 
 /// Structure representing a device which does nothing.
 pub struct NullDeviceHandle {}
@@ -104,7 +106,7 @@ impl DeviceHandle for CurrentTTYDeviceHandle {
 
 /// Creates the default devices.
 pub fn create() -> Result<(), Errno> {
-	// TODO Allocate major blocks
+    let _first_major = ManuallyDrop::new(id::alloc_major(DeviceType::Char, Some(1))?);
 
 	let null_path = Path::from_string("/dev/null")?;
 	device::register_device(Device::new(1, 3, null_path, 0o666, DeviceType::Char,
@@ -117,6 +119,8 @@ pub fn create() -> Result<(), Errno> {
 	let kmsg_path = Path::from_string("/dev/kmsg")?;
 	device::register_device(Device::new(1, 11, kmsg_path, 0o600, DeviceType::Char,
 		KMsgDeviceHandle {})?)?;
+
+    let _fifth_major = ManuallyDrop::new(id::alloc_major(DeviceType::Char, Some(5))?);
 
 	let current_tty_path = Path::from_string("/dev/tty")?;
 	let mut current_tty_device = Device::new(5, 0, current_tty_path, 0o666, DeviceType::Char,

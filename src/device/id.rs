@@ -116,8 +116,8 @@ pub fn alloc_major(device_type: DeviceType, major: Option<u32>) -> Result<MajorB
 }
 
 /// Frees the given major block `block`.
-/// **WARNING**: This function should be called directly, but only from the MajorBlock itself.
-pub fn free_major(block: &mut MajorBlock) {
+/// **WARNING**: This function shouldn't be called directly, but only from the MajorBlock itself.
+fn free_major(block: &mut MajorBlock) {
 	let mut guard = match block.get_device_type() {
 		DeviceType::Block => {
 			unsafe { // Safe because using mutex
