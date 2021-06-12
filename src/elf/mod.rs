@@ -93,8 +93,6 @@ pub const STT_HIPROC: u8 = 15;
 /// TODO doc
 type ELF32Addr = u32;
 
-// TODO Fix function name getting
-
 /// Structure representing an ELF section header in memory.
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]

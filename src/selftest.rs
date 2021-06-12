@@ -1,5 +1,8 @@
 //! This module handles selftesting of the kernel.
 
+/// Boolean value telling whether selftesting is running.
+static mut RUNNING: bool = false;
+
 /// This module contains utilities to manipulate QEMU for testing.
 #[cfg(config_debug_qemu)]
 pub mod qemu {
@@ -42,13 +45,28 @@ impl<T> Testable for T where T: Fn() {
 pub fn runner(tests: &[&dyn Testable]) {
 	crate::println!("Running {} tests", tests.len());
 
+    unsafe { // Safe because the function is called by only one thread
+        RUNNING = true;
+    }
+
 	for test in tests {
 		test.run();
 	}
+
+    unsafe { // Safe because the function is called by only one thread
+        RUNNING = false;
+    }
 
 	crate::println!("No more tests to run");
 
 	#[cfg(config_debug_qemu)]
 	qemu::exit(qemu::SUCCESS); // TODO Handle assertion fail (exit with FAILURE)
 	crate::halt();
+}
+
+/// Tells whether selftesting is running.
+pub fn is_running() -> bool {
+    unsafe { // Safe because the function is called by only one thread
+        RUNNING
+    }
 }

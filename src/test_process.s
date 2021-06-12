@@ -47,8 +47,6 @@ fork:
 	int $0x80
 	ret
 
-# TODO waitpid
-
 getpid:
 	mov $9, %eax
 	int $0x80

@@ -220,24 +220,20 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 }
 
 /// Called on Rust panic.
-#[cfg(not(test))]
 #[panic_handler]
 fn panic(panic_info: &PanicInfo) -> ! {
-	if let Some(s) = panic_info.message() {
-		panic::rust_panic(s);
-	} else {
-		kernel_panic!("Rust panic (no payload)", 0);
-	}
-}
+    #[cfg(test)]
+    if selftest::is_running() {
+        println!("FAILED\n");
+        println!("Error: {}\n", panic_info);
+        halt();
+    }
 
-// TODO Use only if test was running. Else, use classic function
-/// Called on Rust panic during testing.
-#[cfg(test)]
-#[panic_handler]
-fn panic(panic_info: &PanicInfo) -> ! {
-	println!("FAILED\n");
-	println!("Error: {}\n", panic_info);
-	halt();
+    if let Some(s) = panic_info.message() {
+        panic::rust_panic(s);
+    } else {
+        kernel_panic!("Rust panic (no payload)", 0);
+    }
 }
 
 /// Function that is required to be implemented by the Rust compiler and is used only when
