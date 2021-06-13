@@ -373,7 +373,7 @@ impl Tag {
 pub struct BootInfo {
 	/// The command line used to boot the kernel.
 	pub cmdline: &'static str,
-	/// TODO
+	/// The bootloader's name.
 	pub loader_name: &'static str,
 
 	/// The lower memory size.
@@ -387,16 +387,14 @@ pub struct BootInfo {
 	/// The list of physical memory mappings.
 	pub memory_maps: *const MmapEntry,
 
-	/// TODO
+	/// The number of ELF entries.
 	pub elf_num: u32,
-	/// TODO
+	/// The size of ELF entries.
 	pub elf_entsize: u32,
-	/// TODO
+	/// The index of the kernel's ELF section containing the kernel's symbols.
 	pub elf_shndx: u32,
 	/// A pointer to the kernel's ELF sections.
 	pub elf_sections: *const c_void,
-
-	// TODO
 }
 
 /// The field storing the informations given to the kernel at boot time.
@@ -452,7 +450,12 @@ fn handle_tag(boot_info: &mut BootInfo, tag: *const Tag) {
 		},
 
 		TAG_TYPE_BOOT_LOADER_NAME => {
-			// TODO
+			let t = tag as *const TagString;
+
+			unsafe {
+				let ptr = memory::kern_to_virt(&(*t).string as *const _ as *const _);
+				boot_info.loader_name = util::ptr_to_str(ptr);
+			}
 		},
 
 		TAG_TYPE_MODULE => {

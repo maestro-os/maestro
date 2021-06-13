@@ -120,7 +120,6 @@ fn is_leap_year(year: u32) -> bool {
 	}
 }
 
-// TODO Compute in constant time
 /// Returns the number of leap years between the two years.
 /// `y0` and `y1` are the range in years. If `y1` is greater than `y0`, then the behaviour is
 /// undefined.

@@ -102,7 +102,7 @@ pub struct File {
 	parent: Option<WeakPtr<File>>,
 
 	/// The size of the file in bytes.
-	size: usize,
+	size: u64,
 	/// The type of the file.
 	file_type: FileType,
 
@@ -215,7 +215,7 @@ impl File {
 	}
 
 	/// Returns the size of the file in bytes.
-	pub fn get_size(&self) -> usize {
+	pub fn get_size(&self) -> u64 {
 		self.size
 	}
 

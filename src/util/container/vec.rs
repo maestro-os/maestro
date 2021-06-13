@@ -681,4 +681,6 @@ mod test {
 	}
 
 	// TODO Test resize
+
+    // TODO Test range functions
 }
