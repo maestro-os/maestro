@@ -7,8 +7,8 @@ use crate::util;
 
 /// The implementation of the `dup2` syscall.
 pub fn dup2(proc: &mut Process, regs: &util::Regs) -> Result<i32, Errno> {
-    let oldfd = regs.ebx;
-    let newfd = regs.ecx;
+	let oldfd = regs.ebx;
+	let newfd = regs.ecx;
 
-    Ok(proc.duplicate_fd(oldfd, Some(newfd))?.get_id() as _)
+	Ok(proc.duplicate_fd(oldfd, Some(newfd))?.get_id() as _)
 }

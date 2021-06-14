@@ -47,7 +47,8 @@ use crate::util::container::string::String;
 use crate::util::math;
 use crate::util;
 
-// TODO Take into account user's UID/GID when allocating block/inode to handle reserved blocks/inodes
+// TODO Take into account user's UID/GID when allocating block/inode to handle reserved
+// blocks/inodes
 // TODO Document when a function writes on the storage device
 
 /// The offset of the superblock from the beginning of the device.

@@ -186,7 +186,7 @@ pub fn register_callback<T: 'static + Callback>(id: usize, priority: u32, callba
 /// Forces unlocking the event handler's Mutex. This function is to be used when an event callback
 /// never returns while allowing other interrupts to be handled.
 pub unsafe fn force_unlock() {
-    CALLBACKS.assume_init_mut().unlock();
+	CALLBACKS.assume_init_mut().unlock();
 }
 
 /// This function is called whenever an interruption is triggered.
@@ -197,48 +197,48 @@ pub unsafe fn force_unlock() {
 /// `ring` tells the ring at which the code was running.
 #[no_mangle]
 pub extern "C" fn event_handler(id: u32, code: u32, ring: u32, regs: &util::Regs) {
-    let action = {
-        let mutex = unsafe {
-            CALLBACKS.assume_init_mut()
-        };
-        if mutex.is_locked() {
-            crate::kernel_panic!("Event handler deadlock");
-        }
-        let mut guard = MutexGuard::new(mutex);
+	let action = {
+		let mutex = unsafe {
+			CALLBACKS.assume_init_mut()
+		};
+		if mutex.is_locked() {
+			crate::kernel_panic!("Event handler deadlock");
+		}
+		let mut guard = MutexGuard::new(mutex);
 
-        if let Some(callbacks) = &mut guard.get_mut()[id as usize] {
-            let mut last_action = InterruptResultAction::Resume;
+		if let Some(callbacks) = &mut guard.get_mut()[id as usize] {
+			let mut last_action = InterruptResultAction::Resume;
 
-            for i in 0..callbacks.len() {
-                let result = (*callbacks[i].callback).call(id, code, regs, ring);
-                last_action = result.action;
-                if result.skip_next {
-                    break;
-                }
-            }
+			for i in 0..callbacks.len() {
+				let result = (*callbacks[i].callback).call(id, code, regs, ring);
+				last_action = result.action;
+				if result.skip_next {
+					break;
+				}
+			}
 
-            last_action
-        } else if (id as usize) < ERROR_MESSAGES.len() {
-            InterruptResultAction::Panic
-        } else {
-            InterruptResultAction::Resume
-        }
-    };
+			last_action
+		} else if (id as usize) < ERROR_MESSAGES.len() {
+			InterruptResultAction::Panic
+		} else {
+			InterruptResultAction::Resume
+		}
+	};
 
-    match action {
-        InterruptResultAction::Resume => {},
-        InterruptResultAction::Loop => {
-            pic::end_of_interrupt(id as _);
-            // TODO Fix: Use of loop action before TSS init shall result in undefined behaviour
-            // TODO Fix: The stack might be removed while being used (example: process is
-            // killed, its exit status is retrieved from another CPU core and then the process
-            // is removed)
-            unsafe {
-                crate::loop_reset(tss::get().esp0 as _);
-            }
-        },
-        InterruptResultAction::Panic => {
-            crate::kernel_panic!(get_error_message(id), code);
-        },
-    }
+	match action {
+		InterruptResultAction::Resume => {},
+		InterruptResultAction::Loop => {
+			pic::end_of_interrupt(id as _);
+			// TODO Fix: Use of loop action before TSS init shall result in undefined behaviour
+			// TODO Fix: The stack might be removed while being used (example: process is
+			// killed, its exit status is retrieved from another CPU core and then the process
+			// is removed)
+			unsafe {
+				crate::loop_reset(tss::get().esp0 as _);
+			}
+		},
+		InterruptResultAction::Panic => {
+			crate::kernel_panic!(get_error_message(id), code);
+		},
+	}
 }

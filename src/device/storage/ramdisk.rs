@@ -143,7 +143,7 @@ impl DeviceHandle for RAMDiskHandle {
 /// Creates every ramdisk instances.
 pub fn create() -> Result<(), Errno> {
 	// TODO Undo all on fail?
-    let _major = ManuallyDrop::new(id::alloc_major(DeviceType::Block, Some(RAM_DISK_MAJOR))?);
+	let _major = ManuallyDrop::new(id::alloc_major(DeviceType::Block, Some(RAM_DISK_MAJOR))?);
 
 	for i in 0..RAM_DISK_COUNT {
 		let mut name = String::from("name")?;

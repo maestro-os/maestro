@@ -93,10 +93,10 @@ pub struct Process {
 	/// The ID of the process's group owner.
 	gid: Gid,
 
-    // TODO euid and egid
+	// TODO euid and egid
 
-    /// File creation mask.
-    umask: u16,
+	/// File creation mask.
+	umask: u16,
 
 	/// The current state of the process.
 	state: State,
@@ -267,9 +267,9 @@ impl Process {
 			pgid: pid,
 
 			uid,
-            gid,
+			gid,
 
-            umask: DEFAULT_UMASK,
+			umask: DEFAULT_UMASK,
 
 			state: State::Running,
 			priority: 0,
@@ -409,15 +409,15 @@ impl Process {
 		self.gid = gid;
 	}
 
-    /// Returns the file creation mask.
-    pub fn get_umask(&self) -> u16 {
-        self.umask
-    }
+	/// Returns the file creation mask.
+	pub fn get_umask(&self) -> u16 {
+		self.umask
+	}
 
-    /// Sets the file creation mask.
-    pub fn set_umask(&mut self, umask: u16) {
-        self.umask = umask;
-    }
+	/// Sets the file creation mask.
+	pub fn set_umask(&mut self, umask: u16) {
+		self.umask = umask;
+	}
 
 	/// Returns the process's current state.
 	pub fn get_state(&self) -> State {
@@ -628,7 +628,7 @@ impl Process {
 			uid: self.uid,
 			gid: self.gid,
 
-            umask: self.umask,
+			umask: self.umask,
 
 			state: State::Running,
 			priority: self.priority,

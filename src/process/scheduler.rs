@@ -73,8 +73,8 @@ pub struct Scheduler {
 	/// The ticking callback hook.
 	/// The ticking callback is called at a regular interval to make the scheduler work.
 	tick_callback_hook: Option<CallbackHook>,
-    /// The total number of ticks since the instanciation of the scheduler.
-    total_ticks: u64,
+	/// The total number of ticks since the instanciation of the scheduler.
+	total_ticks: u64,
 
 	/// The list of all processes.
 	processes: Vec<SharedPtr<Mutex<Process>>>,
@@ -102,7 +102,7 @@ impl Scheduler {
 			tmp_stacks,
 
 			tick_callback_hook: None,
-            total_ticks: 0,
+			total_ticks: 0,
 
 			processes: Vec::<SharedPtr::<Mutex::<Process>>>::new(),
 			curr_proc: None,
@@ -232,7 +232,7 @@ impl Scheduler {
 	/// `regs` is the state of the registers from the paused context.
 	/// `ring` is the ring of the paused context.
 	fn tick(&mut self, regs: &util::Regs, ring: u32) -> ! {
-        self.total_ticks += 1;
+		self.total_ticks += 1;
 
 		if let Some(mut curr_proc) = self.get_current_process() {
 			let mut guard = MutexGuard::new(&mut curr_proc);
@@ -268,12 +268,12 @@ impl Scheduler {
 
 				if syscalling {
 					unsafe {
-                        event::force_unlock();
+						event::force_unlock();
 						context_switch_kernel(&regs);
 					}
 				} else {
 					unsafe {
-                        event::force_unlock();
+						event::force_unlock();
 						context_switch(&regs,
 							(gdt::USER_DATA_OFFSET | 3) as _,
 							(gdt::USER_CODE_OFFSET | 3) as _);
@@ -299,8 +299,8 @@ impl Scheduler {
 		}
 	}
 
-    /// Returns the total number of ticks since the instanciation of the scheduler.
-    pub fn get_total_ticks(&self) -> u64 {
-        self.total_ticks
-    }
+	/// Returns the total number of ticks since the instanciation of the scheduler.
+	pub fn get_total_ticks(&self) -> u64 {
+		self.total_ticks
+	}
 }

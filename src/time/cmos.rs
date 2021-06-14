@@ -111,18 +111,18 @@ fn time_wait() {
 
 /// Initializes the Real Time Clock.
 fn init_rtc() {
-    idt::wrap_disable_interrupts(|| {
-        unsafe {
-            io::outb(SELECT_PORT, STATUS_A_REGISTER | (1 << 7));
-            io::outb(VALUE_PORT, 0x20);
+	idt::wrap_disable_interrupts(|| {
+		unsafe {
+			io::outb(SELECT_PORT, STATUS_A_REGISTER | (1 << 7));
+			io::outb(VALUE_PORT, 0x20);
 
-            io::outb(SELECT_PORT, STATUS_B_REGISTER | (1 << 7));
-            let prev = io::inb(VALUE_PORT);
+			io::outb(SELECT_PORT, STATUS_B_REGISTER | (1 << 7));
+			let prev = io::inb(VALUE_PORT);
 
-            io::outb(SELECT_PORT, STATUS_B_REGISTER | (1 << 7));
-            io::outb(VALUE_PORT, prev | 0x40);
-        }
-    });
+			io::outb(SELECT_PORT, STATUS_B_REGISTER | (1 << 7));
+			io::outb(VALUE_PORT, prev | 0x40);
+		}
+	});
 }
 
 /// Tells whether the given year is a leap year or not.
@@ -190,7 +190,7 @@ impl CMOSClock {
 		}
 
 		idt::wrap_disable_interrupts(|| {
-            init_rtc();
+			init_rtc();
 
 			time_wait();
 			let mut second = read(SECOND_REGISTER) as u32;

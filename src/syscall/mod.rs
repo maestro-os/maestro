@@ -66,7 +66,7 @@ pub extern "C" fn syscall_handler(regs: &util::Regs) -> u32 {
 
 	let result = match id {
 		0 => open(curr_proc, regs),
-        1 => umask(curr_proc, regs),
+		1 => umask(curr_proc, regs),
 		// TODO utime
 		// TODO mkdir
 		// TODO mknod
@@ -74,8 +74,8 @@ pub extern "C" fn syscall_handler(regs: &util::Regs) -> u32 {
 		// TODO pipe2
 		// TODO link
 		// TODO fcntl
-        2 => dup(curr_proc, regs),
-        3 => dup2(curr_proc, regs),
+		2 => dup(curr_proc, regs),
+		3 => dup2(curr_proc, regs),
 		// TODO poll
 		// TODO ppoll
 		// TODO flock
@@ -114,12 +114,12 @@ pub extern "C" fn syscall_handler(regs: &util::Regs) -> u32 {
 		// TODO getrlimit
 		// TODO setrlimit
 		// TODO getrusage
-        12 => getuid(curr_proc, regs),
-        13 => setuid(curr_proc, regs),
+		12 => getuid(curr_proc, regs),
+		13 => setuid(curr_proc, regs),
 		// TODO geteuid
 		// TODO seteuid
-        14 => getgid(curr_proc, regs),
-        15 => setgid(curr_proc, regs),
+		14 => getgid(curr_proc, regs),
+		15 => setgid(curr_proc, regs),
 		// TODO getegid
 		// TODO setegid
 		16 => getpid(curr_proc, regs),

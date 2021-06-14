@@ -45,17 +45,17 @@ impl<T> Testable for T where T: Fn() {
 pub fn runner(tests: &[&dyn Testable]) {
 	crate::println!("Running {} tests", tests.len());
 
-    unsafe { // Safe because the function is called by only one thread
-        RUNNING = true;
-    }
+	unsafe { // Safe because the function is called by only one thread
+		RUNNING = true;
+	}
 
 	for test in tests {
 		test.run();
 	}
 
-    unsafe { // Safe because the function is called by only one thread
-        RUNNING = false;
-    }
+	unsafe { // Safe because the function is called by only one thread
+		RUNNING = false;
+	}
 
 	crate::println!("No more tests to run");
 
@@ -66,7 +66,7 @@ pub fn runner(tests: &[&dyn Testable]) {
 
 /// Tells whether selftesting is running.
 pub fn is_running() -> bool {
-    unsafe { // Safe because the function is called by only one thread
-        RUNNING
-    }
+	unsafe { // Safe because the function is called by only one thread
+		RUNNING
+	}
 }

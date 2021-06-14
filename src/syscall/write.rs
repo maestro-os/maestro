@@ -14,7 +14,7 @@ pub fn write(proc: &mut Process, regs: &util::Regs) -> Result<i32, Errno> {
 	let count = regs.edx as usize;
 
 	if proc.get_mem_space().can_access(buf, count, true, false) {
-        let len = max(count as i32, 0);
+		let len = max(count as i32, 0);
 		// Safe because the permission to access the memory has been checked by the previous
 		// condition
 		let data = unsafe {

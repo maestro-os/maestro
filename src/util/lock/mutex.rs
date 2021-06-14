@@ -91,9 +91,9 @@ impl<T> Mutex<T> {
 		&mut self.data
 	}
 
-    /// Unlocks the mutex. The function is unsafe because it may lead to concurrency issues if not
-    /// used properly.
-    pub unsafe fn unlock(&mut self) {
-        self.spin.unlock();
-    }
+	/// Unlocks the mutex. The function is unsafe because it may lead to concurrency issues if not
+	/// used properly.
+	pub unsafe fn unlock(&mut self) {
+		self.spin.unlock();
+	}
 }

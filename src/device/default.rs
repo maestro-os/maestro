@@ -56,26 +56,26 @@ pub struct KMsgDeviceHandle {}
 
 impl DeviceHandle for KMsgDeviceHandle {
 	fn get_size(&self) -> u64 {
-        let mutex = logger::get();
-        let guard = MutexGuard::new(mutex);
+		let mutex = logger::get();
+		let guard = MutexGuard::new(mutex);
 
-        guard.get().get_size() as _
+		guard.get().get_size() as _
 	}
 
 	fn read(&mut self, offset: u64, buff: &mut [u8]) -> Result<usize, Errno> {
-        let mutex = logger::get();
-        let guard = MutexGuard::new(mutex);
+		let mutex = logger::get();
+		let guard = MutexGuard::new(mutex);
 
-        let size = guard.get().get_size();
-        let content = guard.get().get_content();
+		let size = guard.get().get_size();
+		let content = guard.get().get_content();
 
-        let len = min(size, buff.len()) - offset as usize;
-        buff.copy_from_slice(&content[(offset as usize)..(offset as usize + len)]);
-        Ok(len)
+		let len = min(size, buff.len()) - offset as usize;
+		buff.copy_from_slice(&content[(offset as usize)..(offset as usize + len)]);
+		Ok(len)
 	}
 
 	fn write(&mut self, _offset: u64, buff: &[u8]) -> Result<usize, Errno> {
-        // TODO Write to logger
+		// TODO Write to logger
 		Ok(buff.len())
 	}
 }
@@ -106,7 +106,7 @@ impl DeviceHandle for CurrentTTYDeviceHandle {
 
 /// Creates the default devices.
 pub fn create() -> Result<(), Errno> {
-    let _first_major = ManuallyDrop::new(id::alloc_major(DeviceType::Char, Some(1))?);
+	let _first_major = ManuallyDrop::new(id::alloc_major(DeviceType::Char, Some(1))?);
 
 	let null_path = Path::from_string("/dev/null")?;
 	device::register_device(Device::new(1, 3, null_path, 0o666, DeviceType::Char,
@@ -120,7 +120,7 @@ pub fn create() -> Result<(), Errno> {
 	device::register_device(Device::new(1, 11, kmsg_path, 0o600, DeviceType::Char,
 		KMsgDeviceHandle {})?)?;
 
-    let _fifth_major = ManuallyDrop::new(id::alloc_major(DeviceType::Char, Some(5))?);
+	let _fifth_major = ManuallyDrop::new(id::alloc_major(DeviceType::Char, Some(5))?);
 
 	let current_tty_path = Path::from_string("/dev/tty")?;
 	let mut current_tty_device = Device::new(5, 0, current_tty_path, 0o666, DeviceType::Char,

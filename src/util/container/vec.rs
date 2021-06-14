@@ -417,9 +417,9 @@ impl<T> Vec<T> {
 
 		while l < r {
 			let i = (l + r) / 2;
-            if i >= self.len() {
-                return Err(i);
-            }
+			if i >= self.len() {
+				return Err(i);
+			}
 
 			let ord = f(&self[i]);
 			match ord {
@@ -682,5 +682,5 @@ mod test {
 
 	// TODO Test resize
 
-    // TODO Test range functions
+	// TODO Test range functions
 }

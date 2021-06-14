@@ -53,8 +53,8 @@ pub struct MountPoint {
 	/// The major number of the device.
 	major: u32,
 
-    /// Mount flags.
-    flags: u32,
+	/// Mount flags.
+	flags: u32,
 	/// The path to the mount directory.
 	path: Path,
 
@@ -67,7 +67,7 @@ impl MountPoint {
 	/// `device_type` is the type of the device.
 	/// `major` is the major number of the device.
 	/// `minor` is the minor number of the device.
-    /// `flags` are the mount flags.
+	/// `flags` are the mount flags.
 	/// `path` is the path on which the filesystem is to be mounted.
 	pub fn new(device_type: DeviceType, major: u32, minor: u32, flags: u32, path: Path)
 		-> Result<Self, Errno> {
@@ -85,7 +85,7 @@ impl MountPoint {
 			minor,
 			major,
 
-            flags,
+			flags,
 			path,
 
 			filesystem,
@@ -112,10 +112,10 @@ impl MountPoint {
 		device::get_device(self.device_type, self.major, self.minor).unwrap()
 	}
 
-    /// Returns the mountpoint's flags.
-    pub fn get_flags(&self) -> u32 {
-        self.flags
-    }
+	/// Returns the mountpoint's flags.
+	pub fn get_flags(&self) -> u32 {
+		self.flags
+	}
 
 	/// Returns a reference to the path where the filesystem is mounted.
 	pub fn get_path(&self) -> &Path {
@@ -129,7 +129,7 @@ impl MountPoint {
 
 	/// Tells whether the mountpoint's filesystem is mounted in read-only.
 	pub fn is_readonly(&self) -> bool {
-	    self.flags & FLAG_RDONLY != 0 || self.filesystem.is_readonly()
+		self.flags & FLAG_RDONLY != 0 || self.filesystem.is_readonly()
 	}
 }
 
