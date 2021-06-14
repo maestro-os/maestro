@@ -97,3 +97,5 @@ impl<T> Mutex<T> {
 		self.spin.unlock();
 	}
 }
+
+unsafe impl<T> Sync for Mutex<T> {}

@@ -106,11 +106,11 @@ pub struct Process {
 	quantum_count: usize,
 
 	/// A pointer to the parent process.
-	parent: Option::<NonNull::<Process>>, // TODO Use a weak pointer
+	parent: Option<NonNull<Process>>, // TODO Use a weak pointer
 	/// The list of children processes.
-	children: Vec::<Pid>,
+	children: Vec<Pid>,
 	/// The list of processes in the process group.
-	process_group: Vec::<Pid>,
+	process_group: Vec<Pid>,
 
 	/// The last saved registers state
 	regs: Regs,
@@ -127,10 +127,10 @@ pub struct Process {
 	/// The current working directory.
 	cwd: Path,
 	/// The list of open file descriptors.
-	file_descriptors: Vec::<FileDescriptor>,
+	file_descriptors: Vec<FileDescriptor>,
 
 	/// The FIFO containing awaiting signals.
-	signals_queue: Vec::<Signal>, // TODO Use a dedicated FIFO structure
+	signals_queue: Vec<Signal>, // TODO Use a dedicated FIFO structure
 	/// The list of signal handlers.
 	signal_handlers: [Option<SignalHandler>; signal::SIGNALS_COUNT],
 
@@ -139,9 +139,9 @@ pub struct Process {
 }
 
 /// The PID manager.
-static mut PID_MANAGER: MaybeUninit::<Mutex::<PIDManager>> = MaybeUninit::uninit();
+static mut PID_MANAGER: MaybeUninit<Mutex<PIDManager>> = MaybeUninit::uninit();
 /// The processes scheduler.
-static mut SCHEDULER: MaybeUninit::<SharedPtr::<Mutex::<Scheduler>>> = MaybeUninit::uninit();
+static mut SCHEDULER: MaybeUninit<SharedPtr<Mutex<Scheduler>>> = MaybeUninit::uninit();
 
 /// Scheduler ticking callback.
 pub struct ProcessFaultCallback {}
@@ -224,7 +224,7 @@ pub fn init() -> Result<(), Errno> {
 impl Process {
 	/// Returns the process with PID `pid`. If the process doesn't exist, the function returns
 	/// None.
-	pub fn get_by_pid(pid: Pid) -> Option::<SharedPtr::<Mutex::<Self>>> {
+	pub fn get_by_pid(pid: Pid) -> Option<SharedPtr<Mutex<Self>>> {
 		let mutex = unsafe {
 			SCHEDULER.assume_init_mut()
 		};
@@ -233,7 +233,7 @@ impl Process {
 	}
 
 	/// Returns the current running process. If no process is running, the function returns None.
-	pub fn get_current() -> Option::<SharedPtr::<Mutex::<Self>>> {
+	pub fn get_current() -> Option<SharedPtr<Mutex<Self>>> {
 		let mutex = unsafe {
 			SCHEDULER.assume_init_mut()
 		};
@@ -248,8 +248,8 @@ impl Process {
 	/// `gid` is the ID of the process's group owner.
 	/// `entry_point` is the pointer to the first instruction of the process.
 	/// `cwd` the path to the process's working directory.
-	pub fn new(parent: Option::<NonNull::<Process>>, uid: Uid, gid: Gid, entry_point: *const c_void,
-		cwd: Path) -> Result::<SharedPtr::<Mutex::<Self>>, Errno> {
+	pub fn new(parent: Option<NonNull<Process>>, uid: Uid, gid: Gid, entry_point: *const c_void,
+		cwd: Path) -> Result<SharedPtr<Mutex<Self>>, Errno> {
 		let pid = {
 			let mutex = unsafe {
 				PID_MANAGER.assume_init_mut()
@@ -436,7 +436,7 @@ impl Process {
 	}
 
 	/// Returns the process's parent if exists.
-	pub fn get_parent(&self) -> Option::<NonNull::<Process>> {
+	pub fn get_parent(&self) -> Option<NonNull<Process>> {
 		self.parent
 	}
 
@@ -609,7 +609,7 @@ impl Process {
 	/// Forks the current process. Duplicating everything for it to be identical, except the PID,
 	/// the parent process and children processes. On fail, the function returns an Err with the
 	/// appropriate Errno.
-	pub fn fork(&mut self) -> Result::<SharedPtr::<Mutex::<Self>>, Errno> {
+	pub fn fork(&mut self) -> Result<SharedPtr<Mutex<Self>>, Errno> {
 		let pid = {
 			let mutex = unsafe {
 				PID_MANAGER.assume_init_mut()

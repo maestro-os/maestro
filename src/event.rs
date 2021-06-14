@@ -129,19 +129,18 @@ impl Drop for CallbackHook {
 }
 
 /// List containing vectors that store callbacks for every interrupt watchdogs.
-static mut CALLBACKS: MaybeUninit::<
-		Mutex::<[Option::<Vec::<CallbackWrapper>>; idt::ENTRIES_COUNT as _]>
-	> = MaybeUninit::uninit();
+static mut CALLBACKS: MaybeUninit<[Mutex<Vec<CallbackWrapper>>; idt::ENTRIES_COUNT as _]>
+	= MaybeUninit::uninit();
 
 /// Initializes the events handler.
+/// This function must be called only once when booting.
 pub fn init() {
-	let mut guard = MutexGuard::new(unsafe {
+	let callbacks = unsafe { // Safe because called only once
 		CALLBACKS.assume_init_mut()
-	});
-	let callbacks = guard.get_mut();
+	};
 
 	for c in callbacks {
-		*c = None;
+		*c.lock().get_mut() = Vec::new();
 	}
 }
 
@@ -155,38 +154,31 @@ pub fn register_callback<T: 'static + Callback>(id: usize, priority: u32, callba
 	-> Result<CallbackHook, Errno> {
 	debug_assert!(id < idt::ENTRIES_COUNT);
 
-	let mut guard = unsafe {
-		MutexGuard::new(CALLBACKS.assume_init_mut())
-	};
-	let vec = &mut guard.get_mut()[id];
-	if vec.is_none() {
-		*vec = Some(Vec::<CallbackWrapper>::new());
-	}
-	let v = vec.as_mut().unwrap();
+	idt::wrap_disable_interrupts(|| {
+		let mut guard = unsafe {
+			CALLBACKS.assume_init_mut()
+		}[id].lock();
+		let vec = &mut guard.get_mut();
 
-	let index = {
-		let r = v.binary_search_by(| x | {
-			x.priority.cmp(&priority)
-		});
+		let index = {
+			let r = vec.binary_search_by(| x | {
+				x.priority.cmp(&priority)
+			});
 
-		if let Err(l) = r {
-			l
-		} else {
-			r.unwrap()
-		}
-	};
+			if let Err(l) = r {
+				l
+			} else {
+				r.unwrap()
+			}
+		};
 
-	v.insert(index, CallbackWrapper {
-		priority,
-		callback: Box::new(callback)?,
-	})?;
-	Ok(CallbackHook::new()) // TODO
-}
+		vec.insert(index, CallbackWrapper {
+			priority,
+			callback: Box::new(callback)?,
+		})?;
 
-/// Forces unlocking the event handler's Mutex. This function is to be used when an event callback
-/// never returns while allowing other interrupts to be handled.
-pub unsafe fn force_unlock() {
-	CALLBACKS.assume_init_mut().unlock();
+		Ok(CallbackHook::new()) // TODO
+	})
 }
 
 /// This function is called whenever an interruption is triggered.
@@ -198,31 +190,27 @@ pub unsafe fn force_unlock() {
 #[no_mangle]
 pub extern "C" fn event_handler(id: u32, code: u32, ring: u32, regs: &util::Regs) {
 	let action = {
-		let mutex = unsafe {
-			CALLBACKS.assume_init_mut()
+		let callbacks = unsafe {
+			CALLBACKS.assume_init_mut()[id as usize].get_mut_payload()
 		};
-		if mutex.is_locked() {
-			crate::kernel_panic!("Event handler deadlock");
-		}
-		let mut guard = MutexGuard::new(mutex);
 
-		if let Some(callbacks) = &mut guard.get_mut()[id as usize] {
-			let mut last_action = InterruptResultAction::Resume;
-
-			for i in 0..callbacks.len() {
-				let result = (*callbacks[i].callback).call(id, code, regs, ring);
-				last_action = result.action;
-				if result.skip_next {
-					break;
-				}
+		let mut last_action = {
+			if (id as usize) < ERROR_MESSAGES.len() {
+				InterruptResultAction::Panic
+			} else {
+				InterruptResultAction::Resume
 			}
+		};
 
-			last_action
-		} else if (id as usize) < ERROR_MESSAGES.len() {
-			InterruptResultAction::Panic
-		} else {
-			InterruptResultAction::Resume
+		for i in 0..callbacks.len() {
+			let result = (callbacks[i].callback).call(id, code, regs, ring);
+			last_action = result.action;
+			if result.skip_next {
+				break;
+			}
 		}
+
+		last_action
 	};
 
 	match action {

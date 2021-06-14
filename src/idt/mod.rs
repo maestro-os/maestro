@@ -240,16 +240,17 @@ pub fn init() {
 /// Executes the given function `f` with maskable interruptions disabled.
 /// If interruptions were enabled before calling this function, they are enabled back before
 /// returning.
-pub fn wrap_disable_interrupts<F: FnMut()>(mut f: F) {
+pub fn wrap_disable_interrupts<T, F: FnOnce() -> T>(f: F) -> T {
 	let enabled = unsafe {
 		interrupt_is_enabled()
 	};
 
 	if enabled {
 		crate::cli!();
-		f();
+		let result = f();
 		crate::sti!();
+		result
 	} else {
-		f();
+		f()
 	}
 }
