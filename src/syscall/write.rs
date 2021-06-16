@@ -22,6 +22,7 @@ pub fn write(proc: &mut Process, regs: &util::Regs) -> Result<i32, Errno> {
 		};
 
 		let fd = proc.get_fd(fd).ok_or(errno::EBADF)?;
+		// TODO Check file permissions?
 		// TODO Take offset of fd
 		let len = fd.get_file().write(0, data)?;
 		// TODO Update offset of fd

@@ -60,8 +60,7 @@ pub struct TickCallback {
 
 impl Callback for TickCallback {
 	fn call(&mut self, _id: u32, _code: u32, regs: &util::Regs, ring: u32) -> InterruptResult {
-		let mut guard = MutexGuard::new(&mut self.scheduler);
-		guard.get_mut().tick(regs, ring);
+		Scheduler::tick(&mut self.scheduler, regs, ring);
 	}
 }
 
@@ -229,20 +228,24 @@ impl Scheduler {
 
 	/// Ticking the scheduler. This function saves the data of the currently running process, then
 	/// switches to the next process to run.
+	/// `mutex` is the scheduler's mutex.
 	/// `regs` is the state of the registers from the paused context.
 	/// `ring` is the ring of the paused context.
-	fn tick(&mut self, regs: &util::Regs, ring: u32) -> ! {
-		self.total_ticks += 1;
+	fn tick(mutex: &mut Mutex<Self>, regs: &util::Regs, ring: u32) -> ! {
+		let mut guard = mutex.lock();
+		let scheduler = guard.get_mut();
 
-		if let Some(mut curr_proc) = self.get_current_process() {
+		scheduler.total_ticks += 1;
+
+		if let Some(mut curr_proc) = scheduler.get_current_process() {
 			let mut guard = MutexGuard::new(&mut curr_proc);
 			let curr_proc = guard.get_mut();
 			curr_proc.regs = *regs;
 			curr_proc.syscalling = ring < 3;
 		}
 
-		if let Some(next_proc) = self.get_next_process() {
-			self.curr_proc = Some(next_proc.clone());
+		if let Some(next_proc) = scheduler.get_next_process() {
+			scheduler.curr_proc = Some(next_proc.clone());
 
 			let core_id = 0; // TODO
 			let f = | data | {
@@ -280,15 +283,16 @@ impl Scheduler {
 			};
 
 			let tmp_stack = unsafe {
-				self.tmp_stacks[core_id].as_ptr_mut() as *mut c_void
+				scheduler.tmp_stacks[core_id].as_ptr_mut() as *mut c_void
 			};
 			let ctx_switch_data = ContextSwitchData {
-				proc: self.curr_proc.as_mut().unwrap().clone(),
+				proc: scheduler.curr_proc.as_mut().unwrap().clone(),
 			};
+
+			drop(guard);
 			unsafe {
 				stack::switch(tmp_stack, f, ctx_switch_data).unwrap();
 			}
-
 			crate::enter_loop();
 		} else if cfg!(config_general_scheduler_end_panic) {
 			kernel_panic!("No process remaining to run!");

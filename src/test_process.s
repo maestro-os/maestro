@@ -12,7 +12,7 @@ write:
 	push %ecx
 	push %edx
 
-	mov $5, %eax
+	mov $8, %eax
 	mov 8(%ebp), %ebx
 	mov 12(%ebp), %ecx
 	mov 16(%ebp), %edx
@@ -32,7 +32,7 @@ _exit:
 
 	push %ebx
 
-	mov $6, %eax
+	mov $9, %eax
 	mov 8(%ebp), %ebx
 	int $0x80
 
@@ -43,16 +43,16 @@ _exit:
 	ret
 
 fork:
-	mov $7, %eax
+	mov $10, %eax
 	int $0x80
 	ret
 
 getpid:
-	mov $9, %eax
+	mov $16, %eax
 	int $0x80
 	ret
 
 getppid:
-	mov $10, %eax
+	mov $17, %eax
 	int $0x80
 	ret

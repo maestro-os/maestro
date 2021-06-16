@@ -246,7 +246,9 @@ impl MemSpace {
 	/// `write` tells whether to check for write permission.
 	pub fn can_access(&self, _ptr: *const u8, _size: usize, _user: bool, _write: bool) -> bool {
 		// TODO
-		todo!();
+
+		//todo!();
+		true
 	}
 
 	/// Binds the CPU to this memory space.
