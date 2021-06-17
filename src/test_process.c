@@ -25,16 +25,8 @@ void test_process(void)
 	//	write(1, "\n", 1);
 	//}
 
-	int pid = fork();
-	if(pid) {
-		//write(1, "parent pid: ", 12);
-		//print_nbr(pid);
-	} else {
-		//write(1, "child pid: ", 11);
-		//print_nbr(getpid());
-	}
-
+	fork();
 	while(1)
-		;
-	asm("hlt");
+		print_nbr(getpid());
+	//asm("hlt");
 }
