@@ -13,25 +13,25 @@ void print_nbr(unsigned nbr)
 	}
 
 	const char c = '0' + (nbr % 10);
-	write(0, &c, 1);
+	write(1, &c, 1);
 }
 
 void test_process(void)
 {
-	for(size_t i = 0; i < 10; ++i) {
-		write(0, "pid: ", 5);
+	/*for(size_t i = 0; i < 10; ++i) {
+		write(1, "pid: ", 5);
 		print_nbr(getpid());
-		write(0, "\n", 1);
-	}
+		write(1, "\n", 1);
+	}*/
 
-	/*int pid = fork();
+	int pid = fork();
 	if(pid) {
-		// Parent
+		write(1, "parent pid: ", 12);
 		print_nbr(pid);
 	} else {
-		// Child
-		//print_nbr(pid);
-	}*/
+		write(1, "child pid: ", 11);
+		print_nbr(getpid());
+	}
 
 	while(1)
 		;

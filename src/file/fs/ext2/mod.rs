@@ -1153,6 +1153,29 @@ impl Ext2INode {
 
 	// TODO remove_dirent
 
+	// TODO get_link_path
+
+	/// Returns the device major and minor numbers associated with the device.
+	/// If the file is not a device file, the behaviour is undefined.
+	pub fn get_device(&self) -> (u32, u32) {
+		debug_assert!(self.get_type() == FileType::BlockDevice
+			|| self.get_type() == FileType::CharDevice);
+
+		(self.direct_block_ptrs[0], self.direct_block_ptrs[1])
+	}
+
+	/// Sets the device major and minor numbers associated with the device.
+	/// `major` is the major number.
+	/// `minor` is the minor number.
+	/// If the file is not a device file, the behaviour is undefined.
+	pub fn set_device(&mut self, major: u32, minor: u32) {
+		debug_assert!(self.get_type() == FileType::BlockDevice
+			|| self.get_type() == FileType::CharDevice);
+
+		self.direct_block_ptrs[0] = major;
+		self.direct_block_ptrs[1] = minor;
+	}
+
 	/// Writes the inode on the device.
 	pub fn write(&self, i: u32, superblock: &Superblock, io: &mut dyn DeviceHandle)
 		-> Result<(), Errno> {
@@ -1349,13 +1372,27 @@ impl Filesystem for Ext2Fs {
 	fn load_file(&mut self, io: &mut dyn DeviceHandle, inode: INode, name: String)
 		-> Result<File, Errno> {
 		let inode_ = Ext2INode::read(inode, &self.superblock, io)?;
+		let file_type = inode_.get_type();
 
-		let mut file = File::new(name, inode_.get_type(), inode_.uid, inode_.gid,
+		let mut file = File::new(name, file_type, inode_.uid, inode_.gid,
 			inode_.get_permissions())?;
 		file.set_inode(Some(inode));
 		file.set_ctime(inode_.ctime);
 		file.set_mtime(inode_.mtime);
 		file.set_atime(inode_.atime);
+
+		match file_type {
+			FileType::Link => {
+				// TODO Read symlink path
+			},
+			FileType::BlockDevice | FileType::CharDevice => {
+				let (major, minor) = inode_.get_device();
+				file.set_device_major(major);
+				file.set_device_minor(minor);
+			},
+
+			_ => {},
+		}
 
 		Ok(file)
 	}
@@ -1367,7 +1404,7 @@ impl Filesystem for Ext2Fs {
 		debug_assert_eq!(parent.get_type(), FileType::Directory);
 
 		let inode_index = self.superblock.get_free_inode(io)?;
-		let inode = Ext2INode {
+		let mut inode = Ext2INode {
 			mode: Ext2INode::get_file_mode(&file),
 			uid: file.get_uid(),
 			size_low: 0,
@@ -1390,6 +1427,16 @@ impl Filesystem for Ext2Fs {
 			fragment_addr: 0,
 			os_specific_1: [0; 12],
 		};
+		match file.get_file_type() {
+			FileType::Link => {
+				// TODO Write symlink path
+			},
+			FileType::BlockDevice | FileType::CharDevice => {
+				inode.set_device(file.get_device_major(), file.get_device_minor());
+			},
+
+			_ => {},
+		}
 		inode.write(inode_index, &self.superblock, io)?;
 
 		parent.add_dirent(&self.superblock, io, inode_index, file.get_name(),

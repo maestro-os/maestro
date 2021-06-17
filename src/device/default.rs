@@ -94,6 +94,7 @@ impl DeviceHandle for CurrentTTYDeviceHandle {
 	}
 
 	fn write(&mut self, _offset: u64, buff: &[u8]) -> Result<usize, Errno> {
+		// TODO Replace by writing raw bytes?
 		// Invalid UTF8 isn't important since the TTY is supposed to write exactly the data it gets
 		let s = unsafe {
 			str::from_utf8_unchecked(buff)

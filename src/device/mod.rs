@@ -140,7 +140,9 @@ impl Device {
 		dir_path.pop();
 		file::create_dirs(&dir_path)?;
 
-		let file = File::new(filename, file_type, 0, 0, self.mode)?;
+		let mut file = File::new(filename, file_type, 0, 0, self.mode)?;
+		file.set_device_major(self.major);
+		file.set_device_minor(self.minor);
 
 		let mutex = file::get_files_cache();
 		let mut guard = MutexGuard::new(mutex);
