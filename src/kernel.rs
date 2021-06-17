@@ -141,6 +141,7 @@ extern "C" {
 /// `multiboot_ptr` is the pointer to the Multiboot booting informations structure.
 #[no_mangle]
 pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
+	crate::cli!();
 	tty::init();
 
 	if magic != multiboot::BOOTLOADER_MAGIC || !util::is_aligned(multiboot_ptr, 8) {

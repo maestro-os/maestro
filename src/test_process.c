@@ -26,6 +26,7 @@ void test_process(void)
 	//}
 
 	fork();
+	fork();
 	while(1)
 		print_nbr(getpid());
 	//asm("hlt");
