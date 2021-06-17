@@ -1,4 +1,5 @@
 .global write
+.global close
 .global _exit
 .global fork
 .global getpid
@@ -20,6 +21,22 @@ write:
 
 	pop %edx
 	pop %ecx
+	pop %ebx
+
+	mov %ebp, %esp
+	pop %ebp
+	ret
+
+close:
+	push %ebp
+	mov %esp, %ebp
+
+	push %ebx
+
+	mov $4, %eax
+	mov 8(%ebp), %ebx
+	int $0x80
+
 	pop %ebx
 
 	mov %ebp, %esp

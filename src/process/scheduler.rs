@@ -199,30 +199,27 @@ impl Scheduler {
 
 	/// Returns the next process to run.
 	fn get_next_process(&mut self) -> Option::<&mut SharedPtr::<Mutex::<Process>>> {
-		if self.processes.is_empty() {
-			None
-		} else {
+		if !self.processes.is_empty() {
 			let processes_count = self.processes.len();
 			let mut i = self.cursor;
 			let mut j = 0;
-			while j < self.processes.len() && !self.can_run(i) {
+			while j < processes_count && !self.can_run(i) {
 				i = (i + 1) % processes_count;
 				j += 1;
 			}
 
-			let process = if j == self.processes.len() {
-				&mut self.processes[self.cursor]
-			} else {
-				self.cursor = i;
-				self.processes[i].lock().get_mut().quantum_count += 1;
-				&mut self.processes[i]
-			};
+			if self.cursor != i {
+				self.processes[self.cursor].lock().get_mut().quantum_count = 0;
+			}
+			self.cursor = i;
 
-			if process.lock().get().get_state() == process::State::Running {
-				Some(process)
+			if self.can_run(self.cursor) {
+				Some(&mut self.processes[self.cursor])
 			} else {
 				None
 			}
+		} else {
+			None
 		}
 	}
 
@@ -255,6 +252,7 @@ impl Scheduler {
 					};
 					let mut guard = MutexGuard::new(&mut data.proc);
 					let proc = guard.get_mut();
+					proc.quantum_count += 1;
 
 					let tss = tss::get();
 					tss.ss0 = gdt::KERNEL_DATA_OFFSET as _;
