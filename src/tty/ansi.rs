@@ -8,9 +8,9 @@ use crate::vga;
 use super::TTY;
 
 /// The character used to initialize ANSI escape sequences.
-pub const ESCAPE_CHAR: char = '\x1b';
+pub const ESCAPE_CHAR: u8 = 0x1b;
 /// The Control Sequence Introducer character.
-const CSI_CHAR: char = '[';
+const CSI_CHAR: u8 = b'[';
 
 /// The size of the buffer used to parse ANSI escape codes.
 pub const BUFFER_SIZE: usize = 16;
@@ -312,7 +312,7 @@ fn parse(tty: &mut TTY) -> (ANSIState, usize) {
 		// TODO Check: let first = buffer.buffer[0];
 		let second = tty.ansi_buffer.buffer[1];
 
-		match second as char {
+		match second {
 			CSI_CHAR => parse_csi(tty),
 			// TODO
 
@@ -333,7 +333,7 @@ pub fn handle(tty: &mut TTY, buffer: &[u8]) -> (ANSIState, usize) {
 	match state {
 		ANSIState::Valid => {
 			for b in buffer.iter().skip(len) {
-				tty.putchar(*b as char);
+				tty.putchar(*b);
 			}
 			tty.update();
 			tty.ansi_buffer.clear();
@@ -341,7 +341,7 @@ pub fn handle(tty: &mut TTY, buffer: &[u8]) -> (ANSIState, usize) {
 
 		ANSIState::Invalid => {
 			for b in buffer.iter() {
-				tty.putchar(*b as char);
+				tty.putchar(*b);
 			}
 			tty.update();
 			tty.ansi_buffer.clear();

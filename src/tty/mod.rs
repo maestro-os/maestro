@@ -294,26 +294,26 @@ impl TTY {
 	}
 
 	/// Writes the character `c` to the TTY.
-	pub fn putchar(&mut self, c: char) {
+	pub fn putchar(&mut self, c: u8) {
 		match c {
-			'\x07' => {
+			0x07 => {
 				pit::beep();
 			},
-			'\x08' => {
+			0x08 => {
 				// TODO Backspace
 				todo!();
 			},
-			'\t' => {
+			b'\t' => {
 				self.cursor_forward(get_tab_size(self.cursor_x), 0);
 			},
-			'\n' => {
+			b'\n' => {
 				self.newline(1);
 			},
-			'\x0c' => {
+			0x0c => {
 				// TODO Move printer to a top of page
 				todo!();
 			},
-			'\r' => {
+			b'\r' => {
 				self.cursor_x = 0;
 			},
 
@@ -329,13 +329,13 @@ impl TTY {
 	}
 
 	/// Writes string `buffer` to TTY.
-	pub fn write(&mut self, buffer: &str) {
+	pub fn write(&mut self, buffer: &[u8]) {
 		let mut i = 0;
 
 		while i < buffer.len() {
-			let c = buffer.as_bytes()[i] as char;
+			let c = buffer[i];
 			if c == ansi::ESCAPE_CHAR {
-				let (_, j) = ansi::handle(self, &buffer[i..buffer.len()].as_bytes());
+				let (_, j) = ansi::handle(self, &buffer[i..buffer.len()]);
 				i += j;
 			} else {
 				self.putchar(c);

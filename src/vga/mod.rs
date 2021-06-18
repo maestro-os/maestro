@@ -1,14 +1,12 @@
 //! This file handles the VGA text mode, allowing to easily write text on the
 //! screen.
+//! This module doesn't support concurrency. It is the callers' reponsibility to handle it.
 //!
 //! Note: The VGA text mode runs only when booting with a Legacy BIOS.
 
 use crate::io;
 use crate::memory::vmem;
 use crate::memory;
-
-// TODO Save enable/disable cursor state
-// TODO Spinlock?
 
 pub type Char = u16;
 pub type Color = u8;

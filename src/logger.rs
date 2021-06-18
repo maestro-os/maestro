@@ -131,7 +131,7 @@ impl Logger {
 impl core::fmt::Write for Logger {
 	fn write_str(&mut self, s: &str) -> Result<(), core::fmt::Error> {
 		if !self.is_silent() {
-			MutexGuard::new(tty::current()).get_mut().write(s);
+			MutexGuard::new(tty::current()).get_mut().write(s.as_bytes());
 		}
 		self.push(s.as_bytes());
 
