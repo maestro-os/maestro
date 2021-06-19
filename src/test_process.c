@@ -19,15 +19,16 @@ void print_nbr(unsigned nbr)
 
 void test_process(void)
 {
-	//for(size_t i = 0; i < 10; ++i) {
-	//	write(1, "pid: ", 5);
-	//	print_nbr(getpid());
-	//	write(1, "\n", 1);
-	//}
-
-	fork();
-	fork();
-	while(1)
+	for(size_t i = 0; i < 10; ++i) {
+		write(1, "pid: ", 5);
 		print_nbr(getpid());
-	//asm("hlt");
+		write(1, "\n", 1);
+	}
+
+	//fork();
+	//fork();
+	while(1)
+		;
+		//print_nbr(getpid());
+	asm("hlt");
 }

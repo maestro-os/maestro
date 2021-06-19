@@ -85,7 +85,7 @@ struct InterruptDescriptor {
 
 extern "C" {
 	fn idt_load(idt: *const c_void);
-	fn interrupt_is_enabled() -> bool;
+	fn interrupt_is_enabled() -> i32;
 }
 
 extern "C" {
@@ -165,6 +165,7 @@ fn get_c_fn_ptr(f: unsafe extern "C" fn()) -> *const c_void {
 }
 
 /// Initializes the IDT. This function must be called only once at kernel initialization.
+/// When returning, maskable interrupts are disabled by default.
 pub fn init() {
 	cli!();
 	pic::init(0x20, 0x28);
@@ -237,15 +238,18 @@ pub fn init() {
 	}
 }
 
+/// Tells whether interruptions are enabled.
+pub fn is_interrupt_enabled() -> bool {
+    unsafe {
+        interrupt_is_enabled() != 0
+    }
+}
+
 /// Executes the given function `f` with maskable interruptions disabled.
 /// If interruptions were enabled before calling this function, they are enabled back before
 /// returning.
 pub fn wrap_disable_interrupts<T, F: FnOnce() -> T>(f: F) -> T {
-	let enabled = unsafe {
-		interrupt_is_enabled()
-	};
-
-	if enabled {
+	if is_interrupt_enabled() {
 		crate::cli!();
 		let result = f();
 		crate::sti!();

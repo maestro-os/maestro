@@ -208,7 +208,7 @@ impl Scheduler {
 				j += 1;
 			}
 
-			if self.cursor != i {
+			if self.cursor != i || self.processes.len() == 1 {
 				self.processes[self.cursor].lock().get_mut().quantum_count = 0;
 			}
 			self.cursor = i;
