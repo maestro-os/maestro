@@ -246,8 +246,10 @@ pub fn init() -> Result<(), Errno> {
 
 	let mut storage_manager = StorageManager::new()?;
 	storage_manager.legacy_detect()?;
+
 	#[cfg(config_debug_storagetest)]
 	storage_manager.test(); // TODO Move after bus detection
+
 	manager::register_manager(storage_manager)?;
 
 	bus::detect()?;

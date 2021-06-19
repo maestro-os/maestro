@@ -135,7 +135,7 @@ impl MemMapping {
 
 	/// Tells whether the page at offset `offset` is waiting for Copy-On-Write.
 	pub fn is_cow(&self, offset: usize) -> bool {
-		self.is_shared(offset) && self.flags & super::MAPPING_FLAG_SHARED == 0
+		(self.flags & super::MAPPING_FLAG_SHARED) == 0 && self.is_shared(offset)
 	}
 
 	/// Returns the flags for the virtual memory context for the given virtual page offset.
@@ -153,25 +153,29 @@ impl MemMapping {
 	}
 
 	/// Maps the mapping to the given virtual memory context with the default page. If the mapping
-	/// is marked as nolazy, the function allocates physical memory to be mapped.
+	/// is marked as nolazy, the function allocates physical memory and maps it instead of the
+    /// default page.
 	pub fn map_default(&mut self) -> Result<(), Errno> {
 		let vmem = self.get_mut_vmem();
 		let nolazy = (self.flags & super::MAPPING_FLAG_NOLAZY) != 0;
 		let default_page = get_default_page();
 
 		for i in 0..self.size {
-			let flags = self.get_vmem_flags(nolazy, i);
-			let phys_ptr = if nolazy {
-				let ptr = buddy::alloc(0, buddy::FLAG_ZONE_TYPE_USER);
-				if let Err(errno) = ptr {
-					self.unmap();
-					return Err(errno);
-				}
-				ptr.unwrap()
-			} else {
-				default_page
-			};
+			let phys_ptr = {
+                if nolazy {
+                    let ptr = buddy::alloc(0, buddy::FLAG_ZONE_TYPE_USER);
+                    if let Err(errno) = ptr {
+                        self.unmap();
+                        return Err(errno);
+                    }
+                    ptr.unwrap()
+                } else {
+                    default_page
+                }
+            };
 			let virt_ptr = ((self.begin as usize) + (i * memory::PAGE_SIZE)) as *const c_void;
+			let flags = self.get_vmem_flags(nolazy, i);
+
 			if let Err(errno) = vmem.map(phys_ptr, virt_ptr, flags) {
 				self.unmap();
 				return Err(errno);
@@ -189,15 +193,13 @@ impl MemMapping {
 	/// The memory space associated with the mapping must be bound before calling this function.
 	pub fn map(&mut self, offset: usize) -> Result<(), Errno> {
 		let vmem = self.get_mut_vmem();
-		let virt_ptr = (self.begin as usize + offset * memory::PAGE_SIZE) as *mut _;
+		let virt_ptr = (self.begin as usize + offset * memory::PAGE_SIZE) as *mut c_void;
 		let cow = self.is_cow(offset);
 		let cow_buffer = {
 			if cow {
-				let cow_buffer = Box::<[u8; memory::PAGE_SIZE]>::new([0; memory::PAGE_SIZE])?;
+				let mut cow_buffer = Box::<[u8; memory::PAGE_SIZE]>::new([0; memory::PAGE_SIZE])?;
 				unsafe {
-					ptr::copy_nonoverlapping(virt_ptr,
-						cow_buffer.as_ptr() as *mut c_void,
-						memory::PAGE_SIZE);
+					ptr::copy_nonoverlapping(virt_ptr, cow_buffer.as_mut_ptr() as _, memory::PAGE_SIZE);
 				}
 				Some(cow_buffer)
 			} else {
@@ -206,7 +208,6 @@ impl MemMapping {
 		};
 
 		let curr_phys_ptr = self.get_physical_page(offset);
-
 		if cow {
 			let phys_ptr = curr_phys_ptr.unwrap();
 			unsafe { // Safe because the global variable is wrapped into a Mutex
@@ -217,9 +218,8 @@ impl MemMapping {
 			return Ok(());
 		}
 
-		let flags = self.get_vmem_flags(true, offset);
-
 		let new_phys_ptr = buddy::alloc(0, buddy::FLAG_ZONE_TYPE_USER)?;
+		let flags = self.get_vmem_flags(true, offset);
 		if let Err(errno) = vmem.map(new_phys_ptr, virt_ptr, flags) {
 			buddy::free(new_phys_ptr, 0);
 			return Err(errno);
@@ -230,8 +230,7 @@ impl MemMapping {
 			if let Some(buffer) = &cow_buffer {
 				unsafe {
 					ptr::copy_nonoverlapping(buffer.as_ptr() as *const c_void,
-						virt_ptr as *mut c_void,
-						memory::PAGE_SIZE);
+						virt_ptr as *mut c_void, memory::PAGE_SIZE);
 				}
 			} else {
 				unsafe {
@@ -257,16 +256,13 @@ impl MemMapping {
 	pub fn update_vmem(&mut self, offset: usize) {
 		let vmem = self.get_mut_vmem();
 		let virt_ptr = (self.begin as usize + offset * memory::PAGE_SIZE) as *const c_void;
-		let phys_ptr_result = vmem.translate(virt_ptr);
-		if phys_ptr_result.is_none() {
-			return;
-		}
-		let phys_ptr = phys_ptr_result.unwrap();
 
-		let allocated = phys_ptr != get_default_page();
-		let flags = self.get_vmem_flags(allocated, offset);
-		vmem.map(phys_ptr, virt_ptr, flags).unwrap();
-		vmem.flush();
+		if let Some(phys_ptr) = vmem.translate(virt_ptr) {
+            let allocated = phys_ptr != get_default_page();
+            let flags = self.get_vmem_flags(allocated, offset);
+            vmem.map(phys_ptr, virt_ptr, flags).unwrap();
+            vmem.flush();
+		}
 	}
 
 	/// Clones the mapping for the fork operation. The other mapping is sharing the same physical
@@ -338,4 +334,10 @@ impl PartialOrd::<*const c_void> for MemMapping {
 	fn partial_cmp(&self, other: &*const c_void) -> Option::<Ordering> {
 		Some(self.begin.cmp(other))
 	}
+}
+
+impl Drop for MemMapping {
+    fn drop(&mut self) {
+        self.unmap();
+    }
 }
