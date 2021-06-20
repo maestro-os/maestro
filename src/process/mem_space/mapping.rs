@@ -154,7 +154,7 @@ impl MemMapping {
 
 	/// Maps the mapping to the given virtual memory context with the default page. If the mapping
 	/// is marked as nolazy, the function allocates physical memory and maps it instead of the
-    /// default page.
+	/// default page.
 	pub fn map_default(&mut self) -> Result<(), Errno> {
 		let vmem = self.get_mut_vmem();
 		let nolazy = (self.flags & super::MAPPING_FLAG_NOLAZY) != 0;
@@ -162,17 +162,17 @@ impl MemMapping {
 
 		for i in 0..self.size {
 			let phys_ptr = {
-                if nolazy {
-                    let ptr = buddy::alloc(0, buddy::FLAG_ZONE_TYPE_USER);
-                    if let Err(errno) = ptr {
-                        self.unmap();
-                        return Err(errno);
-                    }
-                    ptr.unwrap()
-                } else {
-                    default_page
-                }
-            };
+				if nolazy {
+					let ptr = buddy::alloc(0, buddy::FLAG_ZONE_TYPE_USER);
+					if let Err(errno) = ptr {
+						self.unmap();
+						return Err(errno);
+					}
+					ptr.unwrap()
+				} else {
+					default_page
+				}
+			};
 			let virt_ptr = ((self.begin as usize) + (i * memory::PAGE_SIZE)) as *const c_void;
 			let flags = self.get_vmem_flags(nolazy, i);
 
@@ -227,16 +227,16 @@ impl MemMapping {
 		vmem.flush();
 
 		vmem_switch(vmem, || {
-            unsafe {
-                vmem::write_lock_wrap(|| {
-                    if let Some(buffer) = &cow_buffer {
-                        ptr::copy_nonoverlapping(buffer.as_ptr() as *const c_void,
-                            virt_ptr as *mut c_void, memory::PAGE_SIZE);
-                    } else {
-                        util::bzero(virt_ptr as _, memory::PAGE_SIZE);
-                    }
-                });
-            }
+			unsafe {
+				vmem::write_lock_wrap(|| {
+					if let Some(buffer) = &cow_buffer {
+						ptr::copy_nonoverlapping(buffer.as_ptr() as *const c_void,
+							virt_ptr as *mut c_void, memory::PAGE_SIZE);
+					} else {
+						util::bzero(virt_ptr as _, memory::PAGE_SIZE);
+					}
+				});
+			}
 		});
 
 		Ok(())
@@ -258,13 +258,13 @@ impl MemMapping {
 		let virt_ptr = (self.begin as usize + offset * memory::PAGE_SIZE) as *const c_void;
 
 		if let Some(phys_ptr) = vmem.translate(virt_ptr) {
-            let allocated = phys_ptr != get_default_page();
-            let flags = self.get_vmem_flags(allocated, offset);
-            // Cannot fail because the page is already mapped
-            vmem.map(phys_ptr, virt_ptr, flags).unwrap();
+			let allocated = phys_ptr != get_default_page();
+			let flags = self.get_vmem_flags(allocated, offset);
+			// Cannot fail because the page is already mapped
+			vmem.map(phys_ptr, virt_ptr, flags).unwrap();
 
-            // TODO Use page invalidation instead if available
-            vmem.flush();
+			// TODO Use page invalidation instead if available
+			vmem.flush();
 		}
 	}
 
@@ -340,7 +340,7 @@ impl PartialOrd::<*const c_void> for MemMapping {
 }
 
 impl Drop for MemMapping {
-    fn drop(&mut self) {
-        self.unmap();
-    }
+	fn drop(&mut self) {
+		self.unmap();
+	}
 }

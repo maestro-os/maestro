@@ -23,7 +23,7 @@ pub const ALLOC_BEGIN: *const c_void = 0x40000000 as *const _;
 pub const PROCESS_END: *const c_void = 0xc0000000 as *const _;
 /// The size of the kernelspace memory in bytes.
 pub const KERNEL_SIZE: usize = (!(1 as usize) - unsafe {
-    PROCESS_END as usize
+	PROCESS_END as usize
 }) + 1;
 
 /// Symbols to the beginning and the end of the kernel.
@@ -71,7 +71,7 @@ pub fn get_kernel_virtual_end() -> *const c_void {
 /// Converts a kernel physical address to a virtual address.
 pub fn kern_to_virt(ptr: *const c_void) -> *const c_void {
 	if ptr < PROCESS_END {
-        // TODO Check that it will not overflow
+		// TODO Check that it will not overflow
 		((ptr as usize) + (PROCESS_END as usize)) as *const _
 	} else {
 		ptr

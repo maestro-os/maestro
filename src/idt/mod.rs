@@ -240,9 +240,9 @@ pub fn init() {
 
 /// Tells whether interruptions are enabled.
 pub fn is_interrupt_enabled() -> bool {
-    unsafe {
-        interrupt_is_enabled() != 0
-    }
+	unsafe {
+		interrupt_is_enabled() != 0
+	}
 }
 
 /// Executes the given function `f` with maskable interruptions disabled.

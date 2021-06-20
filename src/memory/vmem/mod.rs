@@ -90,9 +90,9 @@ pub fn is_write_lock() -> bool {
 /// Sets whether the kernel can write to read-only pages.
 pub unsafe fn set_write_lock(lock: bool) {
 	if lock {
-        x86::cr0_set(1 << 16);
+		x86::cr0_set(1 << 16);
 	} else {
-        x86::cr0_clear(1 << 16);
+		x86::cr0_clear(1 << 16);
 	}
 }
 
@@ -104,7 +104,7 @@ pub unsafe fn write_lock_wrap<F: Fn() -> T, T>(f: F) -> T {
 	let result = f();
 	set_write_lock(lock);
 
-    result
+	result
 }
 
 /// Executes the given closure `f` while being bound to the given virtual memory context `vmem`.
@@ -124,7 +124,7 @@ pub fn vmem_switch<F: FnMut() -> T, T>(vmem: &dyn VMem, mut f: F) -> T {
 			x86::paging_enable(cr3 as _);
 		}
 
-        result
+		result
 	}
 }
 

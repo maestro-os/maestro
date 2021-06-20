@@ -279,7 +279,7 @@ impl MemSpace {
 					new_mapping.map(i)?;
 				}
 
-                new_mapping.update_vmem(i);
+				new_mapping.update_vmem(i);
 			}
 		}
 		for m in self.mappings.iter_mut() {
@@ -328,22 +328,22 @@ impl MemSpace {
 		}
 
 		if let Some(mapping) = Self::get_mapping_for(&mut self.mappings, virt_addr) {
-            let offset = (virt_addr as usize - mapping.get_begin() as usize) / memory::PAGE_SIZE;
-            if mapping.map(offset).is_err() {
-                // TODO Use OOM-killer
-                // TODO Check if current process has been killed
-                todo!();
+			let offset = (virt_addr as usize - mapping.get_begin() as usize) / memory::PAGE_SIZE;
+			if mapping.map(offset).is_err() {
+				// TODO Use OOM-killer
+				// TODO Check if current process has been killed
+				todo!();
 
-                //if mapping.map(offset).is_err() {
-                //    crate::kernel_panic!("OOM killer is unable to free up space for new allocation!");
-                //}
-            }
+				//if mapping.map(offset).is_err() {
+				//    crate::kernel_panic!("OOM killer is unable to free up space for new allocation!");
+				//}
+			}
 
-            mapping.update_vmem(offset);
-            true
-        } else {
-            false
-        }
+			mapping.update_vmem(offset);
+			true
+		} else {
+			false
+		}
 	}
 }
 

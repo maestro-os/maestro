@@ -610,7 +610,7 @@ impl Process {
 	/// the parent process and children processes. On fail, the function returns an Err with the
 	/// appropriate Errno.
 	pub fn fork(&mut self) -> Result<SharedPtr<Mutex<Self>>, Errno> {
-        // TODO Free if the function fails
+		// TODO Free if the function fails
 		let pid = {
 			let mutex = unsafe {
 				PID_MANAGER.assume_init_mut()
