@@ -2,6 +2,9 @@
 
 use super::ACPITable;
 
+/// The offset of the entries in the MADT.
+const ENTRIES_OFF: usize = 0x2c;
+
 /// The Multiple APIC Description Table.
 #[repr(C)]
 pub struct Madt {
@@ -32,14 +35,25 @@ pub struct Madt {
 
 impl Madt {
 	/// Executes the given closure for each entry in the MADT.
-	pub fn foreach_entry<F: Fn(&EntryHeader)>(&self, _f: F) {
-		// TODO
+	pub fn foreach_entry<F: Fn(&EntryHeader)>(&self, f: F) {
+		let entries_len = self.length as usize - ENTRIES_OFF;
+
+		let mut i = 0;
+		while i < entries_len {
+			let entry = unsafe {
+				&*((self as *const _ as usize + ENTRIES_OFF + i) as *const EntryHeader)
+			};
+
+			f(entry);
+
+			i += entry.get_length() as usize;
+		}
 	}
 }
 
 impl ACPITable for Madt {
 	fn get_expected_signature() -> [u8; 4] {
-		[b'M', b'A', b'D', b'T']
+		[b'A', b'P', b'I', b'C']
 	}
 
 	fn get_signature(&self) -> &[u8; 4] {

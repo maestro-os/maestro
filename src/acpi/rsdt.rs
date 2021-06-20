@@ -1,6 +1,7 @@
 //! This module handles ACPI's Root System Description Table (RSDT).
 
 use core::mem::size_of;
+use crate::memory;
 use super::ACPITable;
 
 /// The Root System Description Table.
@@ -33,11 +34,12 @@ impl Rsdt {
 	pub fn get_table<T: ACPITable>(&self) -> Option<&'static T> {
 		let entries_len = self.length as usize - size_of::<Rsdt>();
 		let entries_count = entries_len / 4;
+		let entries_ptr = (self as *const _ as usize + size_of::<Rsdt>()) as *const u32;
 
 		for i in 0..entries_count {
-			let ptr = (self as *const _ as usize + size_of::<Rsdt>()) + (i * size_of::<u32>());
+			// TODO Cast to acpi header instead
 			let table = unsafe {
-				&*(ptr as *const T)
+				&*((memory::PROCESS_END as usize + *entries_ptr.add(i) as usize) as *const T)
 			};
 
 			if *table.get_signature() == T::get_expected_signature() {
