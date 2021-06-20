@@ -260,7 +260,10 @@ impl MemMapping {
 		if let Some(phys_ptr) = vmem.translate(virt_ptr) {
             let allocated = phys_ptr != get_default_page();
             let flags = self.get_vmem_flags(allocated, offset);
+            // Cannot fail because the page is already mapped
             vmem.map(phys_ptr, virt_ptr, flags).unwrap();
+
+            // TODO Use page invalidation instead if available
             vmem.flush();
 		}
 	}

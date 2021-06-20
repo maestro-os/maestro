@@ -199,28 +199,28 @@ impl Scheduler {
 
 	/// Returns the next process to run.
 	fn get_next_process(&mut self) -> Option::<&mut SharedPtr::<Mutex::<Process>>> {
-		if !self.processes.is_empty() {
-			let processes_count = self.processes.len();
-			let mut i = self.cursor;
-			let mut j = 0;
-			while j < processes_count && !self.can_run(i) {
-				i = (i + 1) % processes_count;
-				j += 1;
-			}
+        if !self.processes.is_empty() {
+            let processes_count = self.processes.len();
+            let mut i = self.cursor;
+            let mut j = 0;
+            while j < processes_count && !self.can_run(i) {
+                i = (i + 1) % processes_count;
+                j += 1;
+            }
 
-			if self.cursor != i || self.processes.len() == 1 {
-				self.processes[self.cursor].lock().get_mut().quantum_count = 0;
-			}
-			self.cursor = i;
+            if self.cursor != i || processes_count == 1 {
+                self.processes[self.cursor].lock().get_mut().quantum_count = 0;
+            }
+            self.cursor = i;
 
-			if self.can_run(self.cursor) {
-				Some(&mut self.processes[self.cursor])
-			} else {
-				None
-			}
-		} else {
-			None
-		}
+            if self.can_run(self.cursor) {
+                Some(&mut self.processes[self.cursor])
+            } else {
+                None
+            }
+        } else {
+            None
+        }
 	}
 
 	/// Ticking the scheduler. This function saves the data of the currently running process, then
@@ -237,6 +237,7 @@ impl Scheduler {
 		if let Some(mut curr_proc) = scheduler.get_current_process() {
 			let mut guard = MutexGuard::new(&mut curr_proc);
 			let curr_proc = guard.get_mut();
+
 			curr_proc.regs = *regs;
 			curr_proc.syscalling = ring < 3;
 		}

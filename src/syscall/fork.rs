@@ -10,5 +10,6 @@ pub fn fork(proc: &mut Process, _regs: &util::Regs) -> Result<i32, Errno> {
 	let mut mutex = proc.fork()?;
 	let mut guard = MutexGuard::new(&mut mutex);
 	let new_proc = guard.get_mut();
+
 	Ok(new_proc.get_pid() as _)
 }

@@ -275,11 +275,11 @@ impl MemSpace {
 		for m in self.mappings.iter_mut() {
 			let new_mapping = m.fork(&mut mem_space.mappings)?;
 			for i in 0..new_mapping.get_size() {
-				if new_mapping.get_flags() & MAPPING_FLAG_NOLAZY == 0 {
-					new_mapping.update_vmem(i);
-				} else {
+				if new_mapping.get_flags() & MAPPING_FLAG_NOLAZY != 0 {
 					new_mapping.map(i)?;
 				}
+
+                new_mapping.update_vmem(i);
 			}
 		}
 		for m in self.mappings.iter_mut() {
@@ -327,17 +327,23 @@ impl MemSpace {
 			return false;
 		}
 
-		let mapping = Self::get_mapping_for(&mut self.mappings, virt_addr).unwrap();
-		let offset = (virt_addr as usize - mapping.get_begin() as usize) / memory::PAGE_SIZE;
-		if mapping.map(offset).is_err() {
-			// TODO Use OOM-killer
-			// TODO Check if current process has been killed
-			if mapping.map(offset).is_err() {
-				crate::kernel_panic!("OOM killer is unable to free up space for new allocation!");
-			}
-		}
+		if let Some(mapping) = Self::get_mapping_for(&mut self.mappings, virt_addr) {
+            let offset = (virt_addr as usize - mapping.get_begin() as usize) / memory::PAGE_SIZE;
+            if mapping.map(offset).is_err() {
+                // TODO Use OOM-killer
+                // TODO Check if current process has been killed
+                todo!();
 
-		true
+                //if mapping.map(offset).is_err() {
+                //    crate::kernel_panic!("OOM killer is unable to free up space for new allocation!");
+                //}
+            }
+
+            mapping.update_vmem(offset);
+            true
+        } else {
+            false
+        }
 	}
 }
 
