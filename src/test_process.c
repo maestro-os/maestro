@@ -25,8 +25,12 @@ void test_process(void)
 	//	write(1, "\n", 1);
 	//}
 
+	//write(1, "Hello world!\n", 13);
+	//print_nbr(getpid());
 	fork();
+	//print_nbr(getpid());
 	fork();
+	//print_nbr(getpid());
 	while(1)
 		print_nbr(getpid());
 	asm("hlt");

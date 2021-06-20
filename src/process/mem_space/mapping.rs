@@ -227,16 +227,16 @@ impl MemMapping {
 		vmem.flush();
 
 		vmem_switch(vmem, || {
-			if let Some(buffer) = &cow_buffer {
-				unsafe {
-					ptr::copy_nonoverlapping(buffer.as_ptr() as *const c_void,
-						virt_ptr as *mut c_void, memory::PAGE_SIZE);
-				}
-			} else {
-				unsafe {
-					util::bzero(virt_ptr as _, memory::PAGE_SIZE);
-				}
-			}
+            unsafe {
+                vmem::write_lock_wrap(|| {
+                    if let Some(buffer) = &cow_buffer {
+                        ptr::copy_nonoverlapping(buffer.as_ptr() as *const c_void,
+                            virt_ptr as *mut c_void, memory::PAGE_SIZE);
+                    } else {
+                        util::bzero(virt_ptr as _, memory::PAGE_SIZE);
+                    }
+                });
+            }
 		});
 
 		Ok(())
