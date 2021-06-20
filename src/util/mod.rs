@@ -58,7 +58,7 @@ macro_rules! offset_of {
 	($type:ty, $field:ident) => {
 		#[allow(unused_unsafe)]
 		unsafe {
-			let ptr = core::ptr::NonNull::<c_void>::dangling().as_ptr();
+			let ptr = core::ptr::NonNull::<core::ffi::c_void>::dangling().as_ptr();
 			(&(*(ptr as *const $type)).$field) as *const _ as usize - ptr as usize
 		}
 	}
