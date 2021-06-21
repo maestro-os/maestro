@@ -1,4 +1,9 @@
 //! This module implements ACPI related features.
+//! The ACPI interface provides informations about the system, allowing to control components such
+//! as cooling and powering.
+//!
+//! The first step in initialization is to read the RSDP table in order to get a pointer to the
+//! RSDT, referring to every other available tables.
 
 use core::ffi::c_void;
 use core::intrinsics::wrapping_add;
@@ -29,14 +34,44 @@ const RSDP_SIGNATURE: &str = "RSD PTR ";
 pub trait ACPITable {
 	/// Returns the expected signature for the structure.
 	fn get_expected_signature() -> [u8; 4];
+}
 
+/// An ACPI table header.
+#[repr(C)]
+pub struct ACPITableHeader {
+	/// The signature of the structure.
+	signature: [u8; 4],
+	/// The length of the structure.
+	length: u32,
+	/// The revision number of the structure.
+	revision: u8,
+	/// The checksum to check against all the structure's bytes.
+	checksum: u8,
+	/// An OEM-supplied string that identifies the OEM.
+	oemid: [u8; 6],
+	/// TODO doc
+	oem_table_id: [u8; 8],
+	/// TODO doc
+	oemrevision: u32,
+	/// TODO doc
+	creator_id: u32,
+	/// TODO doc
+	creator_revision: u32,
+}
+
+impl ACPITableHeader {
 	/// Returns the name of the table.
-	fn get_signature(&self) -> &[u8; 4];
+	pub fn get_signature(&self) -> &[u8; 4] {
+		&self.signature
+	}
+
 	/// Returns the length of the table.
-	fn get_length(&self) -> usize;
+	pub fn get_length(&self) -> usize {
+		self.length as _
+	}
 
 	/// Checks that the table is valid.
-	fn check(&self) -> bool {
+	pub fn check(&self) -> bool {
 		let length = self.get_length();
 		let mut sum: u8 = 0;
 
@@ -112,7 +147,7 @@ pub fn init() {
 		let rsdt = unsafe {
 			&*((memory::PROCESS_END as usize + rsdp.rsdt_address as usize) as *const Rsdt)
 		};
-		if !rsdt.check() {
+		if !rsdt.header.check() {
 			crate::kernel_panic!("Invalid ACPI structure!");
 		}
 

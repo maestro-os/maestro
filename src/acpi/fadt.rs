@@ -1,6 +1,7 @@
 //! This module handles ACPI's Fixed ACPI Description Table (FADT).
 
 use super::ACPITable;
+use super::ACPITableHeader;
 
 /// TODO doc
 pub struct GenericAddr {
@@ -19,24 +20,8 @@ pub struct GenericAddr {
 /// The Fixed ACPI Description Table.
 #[repr(C)]
 pub struct Fadt {
-	/// The signature of the structure.
-	signature: [u8; 4],
-	/// The length of the structure.
-	length: u32,
-	/// The revision number of the structure.
-	revision: u8,
-	/// The checksum to check against all the structure's bytes.
-	checksum: u8,
-	/// An OEM-supplied string that identifies the OEM.
-	oemid: [u8; 6],
-	/// TODO doc
-	oem_table_id: [u8; 8],
-	/// TODO doc
-	oemrevision: u32,
-	/// TODO doc
-	creator_id: u32,
-	/// TODO doc
-	creator_revision: u32,
+	/// The table's header.
+	pub header: ACPITableHeader,
 
 	/// TODO doc
 	pub firmware_ctrl: u32,
@@ -153,13 +138,5 @@ pub struct Fadt {
 impl ACPITable for Fadt {
 	fn get_expected_signature() -> [u8; 4] {
 		[b'F', b'A', b'D', b'T']
-	}
-
-	fn get_signature(&self) -> &[u8; 4] {
-		&self.signature
-	}
-
-	fn get_length(&self) -> usize {
-		self.length as _
 	}
 }

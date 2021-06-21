@@ -1,6 +1,7 @@
 //! This modules handles ACPI's Multiple APIC Description Table (MADT).
 
 use super::ACPITable;
+use super::ACPITableHeader;
 
 /// The offset of the entries in the MADT.
 const ENTRIES_OFF: usize = 0x2c;
@@ -8,24 +9,8 @@ const ENTRIES_OFF: usize = 0x2c;
 /// The Multiple APIC Description Table.
 #[repr(C)]
 pub struct Madt {
-	/// The signature of the structure.
-	signature: [u8; 4],
-	/// The length of the structure.
-	length: u32,
-	/// The revision number of the structure.
-	revision: u8,
-	/// The checksum to check against all the structure's bytes.
-	checksum: u8,
-	/// An OEM-supplied string that identifies the OEM.
-	oemid: [u8; 6],
-	/// TODO doc
-	oem_table_id: [u8; 8],
-	/// TODO doc
-	oemrevision: u32,
-	/// TODO doc
-	creator_id: u32,
-	/// TODO doc
-	creator_revision: u32,
+	/// The table's header.
+	pub header: ACPITableHeader,
 
 	/// TODO doc
 	local_apic_addr: u32,
@@ -36,7 +21,7 @@ pub struct Madt {
 impl Madt {
 	/// Executes the given closure for each entry in the MADT.
 	pub fn foreach_entry<F: Fn(&EntryHeader)>(&self, f: F) {
-		let entries_len = self.length as usize - ENTRIES_OFF;
+		let entries_len = self.header.get_length() as usize - ENTRIES_OFF;
 
 		let mut i = 0;
 		while i < entries_len {
@@ -54,14 +39,6 @@ impl Madt {
 impl ACPITable for Madt {
 	fn get_expected_signature() -> [u8; 4] {
 		[b'A', b'P', b'I', b'C']
-	}
-
-	fn get_signature(&self) -> &[u8; 4] {
-		&self.signature
-	}
-
-	fn get_length(&self) -> usize {
-		self.length as _
 	}
 }
 
