@@ -10,9 +10,6 @@ use crate::memory;
 use crate::util::container::binary_tree::BinaryTree;
 use crate::util;
 
-/// The threshold under which the structure stops counting the number of references for a page.
-const COUNT_THRESHOLD: usize = 1;
-
 /// Structure representing a reference counter for a given page.
 pub struct PageRefCounter {
 	/// Pointer to the physical page associated with the counter.
@@ -82,7 +79,7 @@ impl PhysRefCounter {
 	/// Tells whether the given page is shared.
 	/// `ptr` is the physical address of the page.
 	pub fn is_shared(&self, ptr: *const c_void) -> bool {
-		self.get_ref_count(ptr) > COUNT_THRESHOLD
+		self.get_ref_count(ptr) > 1
 	}
 
 	/// Increments the references count for the given page. If the page isn't stored into the
@@ -91,12 +88,12 @@ impl PhysRefCounter {
 	pub fn increment(&mut self, ptr: *const c_void) -> Result<(), Errno> {
 		let ptr = util::down_align(ptr, memory::PAGE_SIZE);
 		if let Some(counter) = self.tree.get_mut(ptr) {
-			counter.references += COUNT_THRESHOLD;
+			counter.references += 1;
 			Ok(())
 		} else {
 			self.tree.insert(PageRefCounter {
 				page_addr: ptr,
-				references: COUNT_THRESHOLD + 1,
+				references: 1,
 			})
 		}
 	}
@@ -108,7 +105,8 @@ impl PhysRefCounter {
 		let ptr = util::down_align(ptr, memory::PAGE_SIZE);
 		if let Some(counter) = self.tree.get_mut(ptr) {
 			counter.references -= 1;
-			if counter.references <= COUNT_THRESHOLD {
+
+			if counter.references < 1 {
 				self.tree.remove(ptr);
 			}
 		}

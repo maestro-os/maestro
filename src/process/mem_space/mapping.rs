@@ -199,30 +199,42 @@ impl MemMapping {
 			if cow {
 				let mut cow_buffer = Box::<[u8; memory::PAGE_SIZE]>::new([0; memory::PAGE_SIZE])?;
 				unsafe {
-					ptr::copy_nonoverlapping(virt_ptr, cow_buffer.as_mut_ptr() as _, memory::PAGE_SIZE);
+					ptr::copy_nonoverlapping(virt_ptr, cow_buffer.as_mut_ptr() as _,
+						memory::PAGE_SIZE);
 				}
+
 				Some(cow_buffer)
 			} else {
 				None
 			}
 		};
 
-		let curr_phys_ptr = self.get_physical_page(offset);
-		if cow {
-			let phys_ptr = curr_phys_ptr.unwrap();
-			unsafe { // Safe because the global variable is wrapped into a Mutex
-				let mut ref_counter = super::PHYSICAL_REF_COUNTER.lock();
-				ref_counter.get_mut().decrement(phys_ptr);
-			}
-		} else if curr_phys_ptr.is_some() {
+		let prev_phys_ptr = self.get_physical_page(offset);
+		if !cow && prev_phys_ptr.is_some() {
 			return Ok(());
 		}
 
 		let new_phys_ptr = buddy::alloc(0, buddy::FLAG_ZONE_TYPE_USER)?;
 		let flags = self.get_vmem_flags(true, offset);
-		if let Err(errno) = vmem.map(new_phys_ptr, virt_ptr, flags) {
-			buddy::free(new_phys_ptr, 0);
-			return Err(errno);
+
+		{
+			let mut ref_counter = unsafe {
+				super::PHYSICAL_REF_COUNTER.lock()
+			};
+			if let Err(errno) = ref_counter.get_mut().increment(new_phys_ptr) {
+				buddy::free(new_phys_ptr, 0);
+				return Err(errno);
+			}
+			if let Err(errno) = vmem.map(new_phys_ptr, virt_ptr, flags) {
+				ref_counter.get_mut().decrement(new_phys_ptr);
+
+				buddy::free(new_phys_ptr, 0);
+				return Err(errno);
+			}
+
+			if let Some(prev_phys_ptr) = prev_phys_ptr {
+				ref_counter.get_mut().decrement(prev_phys_ptr);
+			}
 		}
 		vmem.flush();
 
