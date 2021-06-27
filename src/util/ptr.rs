@@ -12,10 +12,11 @@ use crate::errno::Errno;
 use crate::memory::malloc;
 use crate::util::lock::mutex::Mutex;
 use crate::util::lock::mutex::MutexGuard;
+use crate::util::lock::mutex::TMutex;
 use crate::util::write_ptr;
 
 /// Drops the given inner structure if necessary.
-fn check_inner_drop<T: ?Sized>(inner: &mut SharedPtrInner<T>) {
+fn check_inner_drop<T: ?Sized, M: TMutex<T>>(inner: &mut SharedPtrInner<T>) {
 	if inner.must_drop() {
 		unsafe {
 			drop_in_place(inner);
@@ -48,14 +49,14 @@ struct SharedPtrInner<T: ?Sized> {
 impl<T> SharedPtrInner<T> {
 	/// Creates a new instance with the given object. The shared pointer counter is initialized to
 	/// `1`.
-	fn new(value: T) -> Self {
+	fn new(obj: T) -> Self {
 		Self {
 			lock: Mutex::new(RefCounter {
 				shared_count: 1,
 				weak_count: 0,
 			}),
 
-			obj: value,
+			obj,
 		}
 	}
 }
@@ -79,16 +80,16 @@ impl<T: ?Sized> SharedPtrInner<T> {
 /// A shared pointer is a structure which allows to share ownership of a value between several
 /// objects. The object counts the number of references to it. When this count reaches zero, the
 /// value is freed.
-pub struct SharedPtr<T: ?Sized> {
+pub struct SharedPtr<T: ?Sized, M: TMutex<T> + ?Sized = Mutex<T>> {
 	/// A pointer to the inner structure shared by every clones of this structure.
-	inner: NonNull<SharedPtrInner<T>>,
+	inner: NonNull<SharedPtrInner<M>>,
 
-	phantom: PhantomData<SharedPtrInner<T>>,
+	phantom: PhantomData<T>,
 }
 
-impl<T> SharedPtr<T> {
+impl<T, M: TMutex<T>> SharedPtr<T, M> {
 	/// Creates a new shared pointer for the given value `value`.
-	pub fn new(value: T) -> Result<SharedPtr::<T>, Errno> {
+	pub fn new(value: T) -> Result<SharedPtr<T>, Errno> {
 		let inner = unsafe {
 			malloc::alloc(size_of::<SharedPtrInner<T>>())? as *mut SharedPtrInner<T>
 		};
@@ -104,16 +105,16 @@ impl<T> SharedPtr<T> {
 	}
 }
 
-impl<T: ?Sized> SharedPtr<T> {
+impl<T: ?Sized, M: TMutex<T>> SharedPtr<T, M> {
 	/// Returns a mutable reference to the inner structure.
-	fn get_inner(&self) -> &mut SharedPtrInner<T> {
+	fn get_inner(&self) -> &mut SharedPtrInner<M> {
 		unsafe {
-			&mut *(self.inner.as_ptr() as *mut SharedPtrInner::<T>)
+			&mut *(self.inner.as_ptr() as *mut SharedPtrInner<M>)
 		}
 	}
 
 	/// Creates a weak pointer for the current shared pointer.
-	pub fn new_weak(&self) -> WeakPtr<T> {
+	pub fn new_weak(&self) -> WeakPtr<T, M> {
 		let inner = self.get_inner();
 		let mut guard = MutexGuard::new(&mut inner.lock);
 		let refs = guard.get_mut();
@@ -127,7 +128,7 @@ impl<T: ?Sized> SharedPtr<T> {
 	}
 }
 
-impl<T: ?Sized> Clone for SharedPtr<T> {
+impl<T: ?Sized, M: TMutex<T>> Clone for SharedPtr<T, M> {
 	fn clone(&self) -> Self {
 		let inner = self.get_inner();
 		let mut guard = MutexGuard::new(&mut inner.lock);
@@ -142,41 +143,33 @@ impl<T: ?Sized> Clone for SharedPtr<T> {
 	}
 }
 
-impl<T: ?Sized> AsRef<T> for SharedPtr<T> {
-	fn as_ref(&self) -> &T {
-		unsafe {
-			&(*self.inner.as_ref()).obj
-		}
-	}
-}
-
-impl<T: ?Sized> AsMut<T> for SharedPtr<T> {
-	fn as_mut(&mut self) -> &mut T {
+impl<T: ?Sized, M: TMutex<T>> AsMut<M> for SharedPtr<T, M> {
+	fn as_mut(&mut self) -> &mut M {
 		unsafe {
 			&mut (*self.inner.as_mut()).obj
 		}
 	}
 }
 
-impl<T: ?Sized> Deref for SharedPtr<T> {
-	type Target = T;
+impl<T: ?Sized, M: TMutex<T>> Deref for SharedPtr<T, M> {
+	type Target = M;
 
 	fn deref(&self) -> &Self::Target {
 		self.as_ref()
 	}
 }
 
-impl<T: ?Sized> DerefMut for SharedPtr<T> {
+impl<T: ?Sized, M: TMutex<T>> DerefMut for SharedPtr<T, M> {
 	fn deref_mut(&mut self) -> &mut Self::Target {
 		self.as_mut()
 	}
 }
 
-impl<T: ?Sized + Unsize<U>, U: ?Sized> CoerceUnsized<SharedPtr<U>> for SharedPtr<T> {}
+impl<T: ?Sized + Unsize<U>, U: ?Sized, M: TMutex<T> + ?Sized + Unsize<MU>, MU: TMutex<U> + ?Sized> CoerceUnsized<SharedPtr<U, MU>> for SharedPtr<T, M> {}
 
-impl<T: ?Sized + Unsize<U>, U: ?Sized> DispatchFromDyn<SharedPtr<U>> for SharedPtr<T> {}
+impl<T: ?Sized + Unsize<U>, U: ?Sized, M: TMutex<T> + ?Sized + Unsize<MU>, MU: TMutex<U> + ?Sized> DispatchFromDyn<SharedPtr<U, MU>> for SharedPtr<T, M> {}
 
-impl<T: ?Sized> Drop for SharedPtr<T> {
+impl<T: ?Sized, M: TMutex<T> + ?Sized> Drop for SharedPtr<T, M> {
 	fn drop(&mut self) {
 		let inner = self.get_inner();
 		{
@@ -193,18 +186,18 @@ impl<T: ?Sized> Drop for SharedPtr<T> {
 /// keeping a reference to the same object as the shared pointer it was created from. However, a
 /// weak pointer cannot have the ownership of the object. Meaning that when all shared pointers
 /// drop the object, the weak pointer shall loose the access to the object.
-pub struct WeakPtr<T: ?Sized> {
+pub struct WeakPtr<T: ?Sized, M: TMutex<T> + ?Sized = Mutex<T>> {
 	/// A pointer to the inner structure shared by every clones of this structure.
-	inner: NonNull<SharedPtrInner<T>>,
+	inner: NonNull<SharedPtrInner<M>>,
 
-	phantom: PhantomData<SharedPtrInner<T>>,
+	phantom: PhantomData<T>,
 }
 
-impl<T: ?Sized> WeakPtr<T> {
+impl<T: ?Sized, M: TMutex<T>> WeakPtr<T, M> {
 	/// Returns a mutable reference to the inner structure.
-	fn get_inner(&self) -> &mut SharedPtrInner<T> {
+	fn get_inner(&self) -> &mut SharedPtrInner<M> {
 		unsafe {
-			&mut *(self.inner.as_ptr() as *mut SharedPtrInner::<T>)
+			&mut *(self.inner.as_ptr() as *mut SharedPtrInner<M>)
 		}
 	}
 
@@ -229,7 +222,7 @@ impl<T: ?Sized> WeakPtr<T> {
 	}
 }
 
-impl<T: ?Sized> Clone for WeakPtr<T> {
+impl<T: ?Sized, M: TMutex<T>> Clone for WeakPtr<T, M> {
 	fn clone(&self) -> Self {
 		let inner = self.get_inner();
 		let mut guard = MutexGuard::new(&mut inner.lock);
@@ -244,7 +237,7 @@ impl<T: ?Sized> Clone for WeakPtr<T> {
 	}
 }
 
-impl<T: ?Sized> Drop for WeakPtr<T> {
+impl<T: ?Sized, M: TMutex<T> + ?Sized> Drop for WeakPtr<T, M> {
 	fn drop(&mut self) {
 		let inner = self.get_inner();
 		{

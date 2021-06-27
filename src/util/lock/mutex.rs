@@ -97,7 +97,7 @@ impl<T> Mutex<T> {
 	}
 }
 
-impl<T> TMutex<T> for Mutex<T> {
+impl<T: ?Sized> TMutex<T> for Mutex<T> {
 	fn is_locked(&self) -> bool {
 		self.spin.is_locked()
 	}
@@ -123,14 +123,14 @@ impl<T> TMutex<T> for Mutex<T> {
 unsafe impl<T> Sync for Mutex<T> {}
 
 /// Structure representing an Mutex which disables interruptions while the object is locked.
-pub struct InterruptMutex<T> {
+pub struct InterruptMutex<T: ?Sized> {
 	/// The spinlock for the underlying data.
 	spin: Spinlock,
+	/// Tells whether interruptions were enabled before locking.
+	interrupt_enabled: bool,
+
 	/// The data associated to the mutex.
 	data: T,
-
-	/// 
-	interrupt_enabled: bool,
 }
 
 impl<T> InterruptMutex<T> {
@@ -138,14 +138,14 @@ impl<T> InterruptMutex<T> {
 	pub const fn new(data: T) -> Self {
 		Self {
 			spin: Spinlock::new(),
-			data,
-
 			interrupt_enabled: false,
+
+			data,
 		}
 	}
 }
 
-impl<T> TMutex<T> for InterruptMutex<T> {
+impl<T: ?Sized> TMutex<T> for InterruptMutex<T> {
 	fn is_locked(&self) -> bool {
 		self.spin.is_locked()
 	}
@@ -177,4 +177,4 @@ impl<T> TMutex<T> for InterruptMutex<T> {
 	}
 }
 
-unsafe impl<T> Sync for InterruptMutex<T> {}
+unsafe impl<T: ?Sized> Sync for InterruptMutex<T> {}
