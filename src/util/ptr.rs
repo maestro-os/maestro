@@ -39,8 +39,8 @@ struct RefCounter {
 /// counter is decrementer. The inner structure and the object wrapped by the shared pointer is
 /// dropped at the moment the counter reaches `0`.
 struct SharedPtrInner<T: ?Sized> {
-	/// The lock to use to modify the pointers count.
-	lock: Mutex<RefCounter>,
+	/// The structure storing the pointers count.
+	ref_counter: Mutex<RefCounter>,
 
 	/// The object stored by the shared pointer.
 	obj: T,
@@ -51,7 +51,7 @@ impl<T> SharedPtrInner<T> {
 	/// `1`.
 	fn new(obj: T) -> Self {
 		Self {
-			lock: Mutex::new(RefCounter {
+			ref_counter: Mutex::new(RefCounter {
 				shared_count: 1,
 				weak_count: 0,
 			}),
@@ -64,22 +64,22 @@ impl<T> SharedPtrInner<T> {
 impl<T: ?Sized> SharedPtrInner<T> {
 	/// Tells whether the object can be accessed from a weak pointer.
 	fn is_weak_available(&mut self) -> bool {
-		let guard = MutexGuard::new(&mut self.lock);
+		let guard = MutexGuard::new(&mut self.ref_counter);
 		let refs = guard.get();
 		refs.shared_count > 0
 	}
 
 	/// Tells whether the inner structure must be dropped.
 	fn must_drop(&mut self) -> bool {
-		let guard = MutexGuard::new(&mut self.lock);
+		let guard = MutexGuard::new(&mut self.ref_counter);
 		let refs = guard.get();
 		refs.shared_count <= 0 && refs.weak_count <= 0
 	}
 }
 
-/// A shared pointer is a structure which allows to share ownership of a value between several
+/// A shared pointer is a structure which allows to share ownership of an object between several
 /// objects. The object counts the number of references to it. When this count reaches zero, the
-/// value is freed.
+/// object is freed.
 pub struct SharedPtr<T: ?Sized, M: TMutex<T> + ?Sized = Mutex<T>> {
 	/// A pointer to the inner structure shared by every clones of this structure.
 	inner: NonNull<SharedPtrInner<M>>,
@@ -88,13 +88,13 @@ pub struct SharedPtr<T: ?Sized, M: TMutex<T> + ?Sized = Mutex<T>> {
 }
 
 impl<T, M: TMutex<T>> SharedPtr<T, M> {
-	/// Creates a new shared pointer for the given value `value`.
-	pub fn new(value: T) -> Result<SharedPtr<T>, Errno> {
+	/// Creates a new shared pointer for the given Mutex `obj` containing the object.
+	pub fn new(obj: M) -> Result<SharedPtr<T>, Errno> {
 		let inner = unsafe {
 			malloc::alloc(size_of::<SharedPtrInner<T>>())? as *mut SharedPtrInner<T>
 		};
 		unsafe {
-			write_ptr(inner, SharedPtrInner::new(value));
+			write_ptr(inner, SharedPtrInner::new(obj));
 		}
 
 		Ok(Self {
@@ -116,7 +116,7 @@ impl<T: ?Sized, M: TMutex<T>> SharedPtr<T, M> {
 	/// Creates a weak pointer for the current shared pointer.
 	pub fn new_weak(&self) -> WeakPtr<T, M> {
 		let inner = self.get_inner();
-		let mut guard = MutexGuard::new(&mut inner.lock);
+		let mut guard = MutexGuard::new(&mut inner.ref_counter);
 		let refs = guard.get_mut();
 		refs.weak_count += 1;
 
@@ -131,7 +131,7 @@ impl<T: ?Sized, M: TMutex<T>> SharedPtr<T, M> {
 impl<T: ?Sized, M: TMutex<T>> Clone for SharedPtr<T, M> {
 	fn clone(&self) -> Self {
 		let inner = self.get_inner();
-		let mut guard = MutexGuard::new(&mut inner.lock);
+		let mut guard = MutexGuard::new(&mut inner.ref_counter);
 		let refs = guard.get_mut();
 		refs.shared_count += 1;
 
@@ -173,7 +173,7 @@ impl<T: ?Sized, M: TMutex<T> + ?Sized> Drop for SharedPtr<T, M> {
 	fn drop(&mut self) {
 		let inner = self.get_inner();
 		{
-			let mut guard = MutexGuard::new(&mut inner.lock);
+			let mut guard = MutexGuard::new(&mut inner.ref_counter);
 			let refs = guard.get_mut();
 			refs.shared_count -= 1;
 		}
@@ -225,7 +225,7 @@ impl<T: ?Sized, M: TMutex<T>> WeakPtr<T, M> {
 impl<T: ?Sized, M: TMutex<T>> Clone for WeakPtr<T, M> {
 	fn clone(&self) -> Self {
 		let inner = self.get_inner();
-		let mut guard = MutexGuard::new(&mut inner.lock);
+		let mut guard = MutexGuard::new(&mut inner.ref_counter);
 		let refs = guard.get_mut();
 		refs.shared_count += 1;
 
@@ -241,7 +241,7 @@ impl<T: ?Sized, M: TMutex<T> + ?Sized> Drop for WeakPtr<T, M> {
 	fn drop(&mut self) {
 		let inner = self.get_inner();
 		{
-			let mut guard = MutexGuard::new(&mut inner.lock);
+			let mut guard = MutexGuard::new(&mut inner.ref_counter);
 			let refs = guard.get_mut();
 			refs.weak_count -= 1;
 		}

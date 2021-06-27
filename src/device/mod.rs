@@ -22,6 +22,7 @@ use crate::util::boxed::Box;
 use crate::util::container::vec::Vec;
 use crate::util::lock::mutex::Mutex;
 use crate::util::lock::mutex::MutexGuard;
+use crate::util::lock::mutex::TMutex;
 use crate::util::ptr::SharedPtr;
 use keyboard::KeyboardManager;
 use storage::StorageManager;
@@ -160,7 +161,8 @@ impl Device {
 		let files_cache = guard.get_mut();
 
 		if let Ok(mut file) = files_cache.get_file_from_path(&self.path) {
-			file.unlink();
+			let mut guard = file.lock();
+			guard.get_mut().unlink();
 		}
 	}
 }
