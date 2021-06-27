@@ -11,7 +11,7 @@ use crate::idt;
 use crate::util::lock::spinlock::Spinlock;
 
 /// Trait representing a Mutex.
-pub trait TMutex<T> {
+pub trait TMutex<T: ?Sized> {
 	/// Tells whether the mutex is already locked. This function should not be called to check if
 	/// the mutex is ready to be locked before locking it, since it may cause race conditions. In
 	/// this case, prefer using `lock` directly.
@@ -19,7 +19,7 @@ pub trait TMutex<T> {
 	/// Locks the mutex. If the mutex is already locked, the thread shall wait until it becomes
 	/// available.
 	/// The function returns a MutexGuard associated with the Mutex.
-	fn lock(&mut self) -> MutexGuard<T, Self> where Self: Sized;
+	fn lock(&mut self) -> MutexGuard<T, Self>;
 
 	/// Returns an immutable reference to the payload. This function is unsafe because it can return
 	/// the payload while the Mutex isn't locked.
@@ -35,14 +35,14 @@ pub trait TMutex<T> {
 /// Type used to declare a guard meant to unlock the associated Mutex at the moment the execution
 /// gets out of the scope of its declaration. This structure is useful to ensure that the mutex
 /// doesen't stay locked after the exectution of a function ended.
-pub struct MutexGuard<'a, T, M: TMutex<T>> {
+pub struct MutexGuard<'a, T: ?Sized, M: TMutex<T> + ?Sized> {
 	/// The mutex associated to the guard
 	mutex: &'a mut M,
 
 	_data: PhantomData<T>,
 }
 
-impl<'a, T, M: TMutex<T>> MutexGuard<'a, T, M> {
+impl<'a, T: ?Sized, M: TMutex<T>> MutexGuard<'a, T, M> {
 	/// Creates an instance of MutexGuard for the given `mutex` and locks it.
 	pub fn new(mutex: &'a mut M) -> Self {
 		Self {
@@ -70,7 +70,7 @@ impl<'a, T, M: TMutex<T>> MutexGuard<'a, T, M> {
 	pub fn unlock(self) {}
 }
 
-impl<'a, T, M: TMutex<T>> Drop for MutexGuard<'a, T, M> {
+impl<'a, T: ?Sized, M: TMutex<T> + ?Sized> Drop for MutexGuard<'a, T, M> {
 	/// Called when the MutexGuard gets out of the scope of execution.
 	fn drop(&mut self) {
 		unsafe {
@@ -80,7 +80,7 @@ impl<'a, T, M: TMutex<T>> Drop for MutexGuard<'a, T, M> {
 }
 
 /// Structure representing a Mutex.
-pub struct Mutex<T> {
+pub struct Mutex<T: ?Sized> {
 	/// The spinlock for the underlying data.
 	spin: Spinlock,
 	/// The data associated to the mutex.
