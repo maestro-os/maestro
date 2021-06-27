@@ -44,9 +44,7 @@ impl Spinlock {
 	}
 
 	/// Wrapper for `spin_unlock`. Unlocks the spinlock.
-	pub fn unlock(&mut self) {
-		unsafe {
-			spin_unlock(&mut self.locked);
-		}
+	pub unsafe fn unlock(&mut self) {
+		spin_unlock(&mut self.locked);
 	}
 }

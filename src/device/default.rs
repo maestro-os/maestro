@@ -10,6 +10,7 @@ use crate::file::path::Path;
 use crate::logger;
 use crate::tty;
 use crate::util::lock::mutex::MutexGuard;
+use crate::util::lock::mutex::TMutex;
 use super::DeviceType;
 use super::id;
 

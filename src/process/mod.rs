@@ -152,14 +152,13 @@ impl Callback for ProcessFaultCallback {
 			return InterruptResult::new(true, InterruptResultAction::Panic);
 		}
 
-		let mutex = unsafe {
+		let mut guard = unsafe {
 			SCHEDULER.assume_init_mut()
-		};
-		let mut guard = MutexGuard::new(mutex);
+		}.lock();
 		let scheduler = guard.get_mut();
 
 		if let Some(mut curr_proc) = scheduler.get_current_process() {
-			let mut curr_proc_guard = MutexGuard::new(&mut curr_proc);
+			let mut curr_proc_guard = curr_proc.lock();
 			let curr_proc = curr_proc_guard.get_mut();
 
 			match id {
@@ -225,19 +224,17 @@ impl Process {
 	/// Returns the process with PID `pid`. If the process doesn't exist, the function returns
 	/// None.
 	pub fn get_by_pid(pid: Pid) -> Option<SharedPtr<Mutex<Self>>> {
-		let mutex = unsafe {
+		let mut guard = unsafe {
 			SCHEDULER.assume_init_mut()
-		};
-		let mut guard = MutexGuard::new(mutex);
+		}.lock();
 		guard.get_mut().get_by_pid(pid)
 	}
 
 	/// Returns the current running process. If no process is running, the function returns None.
 	pub fn get_current() -> Option<SharedPtr<Mutex<Self>>> {
-		let mutex = unsafe {
+		let mut guard = unsafe {
 			SCHEDULER.assume_init_mut()
-		};
-		let mut guard = MutexGuard::new(mutex);
+		}.lock();
 		guard.get_mut().get_current_process()
 	}
 
@@ -319,10 +316,9 @@ impl Process {
 			process.duplicate_fd(STDIN_FILENO, Some(STDERR_FILENO))?;
 		}
 
-		let mutex = unsafe {
+		let mut guard = unsafe {
 			SCHEDULER.assume_init_mut()
-		};
-		let mut guard = MutexGuard::new(mutex);
+		}.lock();
 		guard.get_mut().add_process(process)
 	}
 
@@ -345,7 +341,7 @@ impl Process {
 	pub fn set_pgid(&mut self, pgid: Pid) -> Result<(), Errno> {
 		if self.is_in_group() {
 			let mut mutex = Process::get_by_pid(self.pgid).unwrap();
-			let mut guard = MutexGuard::new(&mut mutex);
+			let mut guard = mutex.lock();
 			let old_group_process = guard.get_mut();
 			let i = old_group_process.process_group.binary_search(&self.pid).unwrap();
 			old_group_process.process_group.remove(i);
@@ -361,7 +357,7 @@ impl Process {
 
 		if pgid != self.pid {
 			if let Some(mut mutex) = Process::get_by_pid(pgid) {
-				let mut guard = MutexGuard::new(&mut mutex);
+				let mut guard = mutex.lock();
 				let new_group_process = guard.get_mut();
 				let i = new_group_process.process_group.binary_search(&self.pid).unwrap_err();
 				new_group_process.process_group.insert(i, self.pid)
@@ -656,10 +652,9 @@ impl Process {
 		};
 		self.add_child(pid)?;
 
-		let mutex = unsafe {
+		let mut guard = unsafe {
 			SCHEDULER.assume_init_mut()
-		};
-		let mut guard = MutexGuard::new(mutex);
+		}.lock();
 		guard.get_mut().add_process(process)
 	}
 

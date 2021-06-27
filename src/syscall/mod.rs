@@ -2,6 +2,10 @@
 //! userspace and kernelspace.
 //! TODO doc
 
+use crate::util::lock::mutex::TMutex;
+use crate::process::Process;
+use crate::process::signal;
+
 mod _exit;
 mod chroot;
 mod close;
@@ -24,10 +28,6 @@ mod uname;
 mod unlink;
 mod waitpid;
 mod write;
-
-use crate::process::Process;
-use crate::util::lock::mutex::MutexGuard;
-use crate::process::signal;
 
 use _exit::_exit;
 use chroot::chroot;
@@ -57,7 +57,7 @@ use write::write;
 #[no_mangle]
 pub extern "C" fn syscall_handler(regs: &util::Regs) -> u32 {
 	let mut mutex = Process::get_current().unwrap();
-	let mut guard = MutexGuard::new(&mut mutex);
+	let mut guard = mutex.lock();
 	let curr_proc = guard.get_mut();
 	curr_proc.set_regs(regs);
 	// TODO Issue with functions that never return

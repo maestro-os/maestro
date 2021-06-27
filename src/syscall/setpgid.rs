@@ -5,7 +5,7 @@ use crate::errno::Errno;
 use crate::errno;
 use crate::process::Process;
 use crate::process::pid::Pid;
-use crate::util::lock::mutex::MutexGuard;
+use crate::util::lock::mutex::TMutex;
 use crate::util;
 
 /// The implementation of the `getpgid` syscall.
@@ -25,7 +25,7 @@ pub fn setpgid(proc: &mut Process, regs: &util::Regs) -> Result<i32, Errno> {
 				return Err(errno::ESRCH);
 			}
 		};
-		let mut guard = MutexGuard::new(&mut mutex);
+		let mut guard = mutex.lock();
 		let proc = guard.get_mut();
 		proc.set_pgid(pgid)?;
 	}

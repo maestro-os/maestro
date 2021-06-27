@@ -116,7 +116,7 @@ impl Scheduler {
 			let callback = TickCallback {
 				scheduler: s.clone(),
 			};
-			let mut guard = MutexGuard::new(&mut s);
+			let mut guard = s.lock();
 			let scheduler = guard.get_mut();
 			scheduler.tick_callback_hook = Some(event::register_callback(32, 0, callback)?);
 		}
@@ -186,7 +186,7 @@ impl Scheduler {
 	/// `i` is the index of the process in the processes list.
 	fn can_run(&self, i: usize) -> bool {
 		let mut mutex = self.processes[i].clone();
-		let guard = MutexGuard::new(&mut mutex);
+		let guard = mutex.lock();
 		let process = guard.get();
 
 		if process.get_state() == process::State::Running {
@@ -235,7 +235,7 @@ impl Scheduler {
 		scheduler.total_ticks += 1;
 
 		if let Some(mut curr_proc) = scheduler.get_current_process() {
-			let mut guard = MutexGuard::new(&mut curr_proc);
+			let mut guard = curr_proc.lock();
 			let curr_proc = guard.get_mut();
 
 			curr_proc.regs = *regs;
@@ -251,7 +251,7 @@ impl Scheduler {
 					let data = unsafe {
 						&mut *(data as *mut ContextSwitchData)
 					};
-					let mut guard = MutexGuard::new(&mut data.proc);
+					let mut guard = data.proc.lock();
 					let proc = guard.get_mut();
 					proc.quantum_count += 1;
 

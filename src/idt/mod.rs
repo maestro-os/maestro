@@ -38,25 +38,34 @@ pub const ENTRIES_COUNT: usize = 0x81;
 /// Disables interruptions.
 #[macro_export]
 macro_rules! cli {
-	() => (unsafe {
-		asm!("cli")
-	});
+	() => (
+		#[allow(unused_unsafe)]
+		unsafe {
+			asm!("cli")
+		}
+	);
 }
 
 /// Enables interruptions.
 #[macro_export]
 macro_rules! sti {
-	() => (unsafe {
-		asm!("sti")
-	});
+	() => (
+		#[allow(unused_unsafe)]
+		unsafe {
+			asm!("sti")
+		}
+	);
 }
 
 /// Waits for an interruption.
 #[macro_export]
 macro_rules! hlt {
-	() => (unsafe {
-		asm!("hlt")
-	});
+	() => (
+		#[allow(unused_unsafe)]
+		unsafe {
+			asm!("hlt")
+		}
+	);
 }
 
 /// Structure representing the IDT.
