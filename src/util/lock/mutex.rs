@@ -42,7 +42,7 @@ pub struct MutexGuard<'a, T: ?Sized, M: TMutex<T> + ?Sized> {
 	_data: PhantomData<T>,
 }
 
-impl<'a, T: ?Sized, M: TMutex<T>> MutexGuard<'a, T, M> {
+impl<'a, T: ?Sized, M: TMutex<T> + ?Sized> MutexGuard<'a, T, M> {
 	/// Creates an instance of MutexGuard for the given `mutex` and locks it.
 	pub fn new(mutex: &'a mut M) -> Self {
 		Self {

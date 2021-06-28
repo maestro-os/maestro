@@ -191,8 +191,8 @@ impl File {
 	}
 
 	/// Returns a reference to the parent file.
-	pub fn get_parent(&self) -> Option<&File> {
-		self.parent.as_ref()?.get()
+	pub fn get_parent(&self) -> Option<&mut Mutex<File>> {
+		self.parent.as_mut()?.get_mut()
 	}
 
 	/// Returns the absolute path of the file.
@@ -200,7 +200,7 @@ impl File {
 		let name = self.get_name().failable_clone()?;
 
 		if let Some(parent) = self.get_parent() {
-			let mut path = parent.get_path()?;
+			let mut path = parent.lock().get().get_path()?;
 			path.push(name)?;
 			Ok(path)
 		} else {
@@ -326,7 +326,7 @@ impl File {
 	/// behaviour is undefined.
 	pub fn add_subfile(&mut self, file: WeakPtr<File>) -> Result<(), Errno> {
 		debug_assert_eq!(self.file_type, FileType::Directory);
-		let name = file.get().unwrap().get_name().failable_clone()?;
+		let name = file.get().unwrap().lock().get().get_name().failable_clone()?;
 		self.subfiles.as_mut().unwrap().insert(name, file)?;
 		Ok(())
 	}
