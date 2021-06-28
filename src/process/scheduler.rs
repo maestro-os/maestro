@@ -49,18 +49,18 @@ extern "C" {
 /// The structure containing the context switching data.
 struct ContextSwitchData {
 	///  The process to switch to.
-	proc: SharedPtr::<Mutex::<Process>>,
+	proc: SharedPtr<Process>,
 }
 
 /// Scheduler ticking callback.
 pub struct TickCallback {
 	/// A reference to the scheduler.
-	scheduler: SharedPtr<Mutex<Scheduler>>,
+	scheduler: SharedPtr<Scheduler>,
 }
 
 impl Callback for TickCallback {
 	fn call(&mut self, _id: u32, _code: u32, regs: &util::Regs, ring: u32) -> InterruptResult {
-		Scheduler::tick(&mut self.scheduler, regs, ring);
+		Scheduler::tick(self.scheduler.as_mut(), regs, ring);
 	}
 }
 
@@ -76,9 +76,9 @@ pub struct Scheduler {
 	total_ticks: u64,
 
 	/// The list of all processes.
-	processes: Vec<SharedPtr<Mutex<Process>>>,
+	processes: Vec<SharedPtr<Process>>,
 	/// The currently running process.
-	curr_proc: Option<SharedPtr<Mutex<Process>>>,
+	curr_proc: Option<SharedPtr<Process>>,
 
 	/// The sum of all priorities, used to compute the average priority.
 	priority_sum: usize,
@@ -91,7 +91,7 @@ pub struct Scheduler {
 
 impl Scheduler {
 	/// Creates a new instance of scheduler.
-	pub fn new(cores_count: usize) -> Result<SharedPtr::<Mutex::<Self>>, Errno> {
+	pub fn new(cores_count: usize) -> Result<SharedPtr<Self>, Errno> {
 		let mut tmp_stacks = Vec::new();
 		for _ in 0..cores_count {
 			tmp_stacks.push(malloc::Alloc::new_default(TMP_STACK_SIZE)?)?;
@@ -103,7 +103,7 @@ impl Scheduler {
 			tick_callback_hook: None,
 			total_ticks: 0,
 
-			processes: Vec::<SharedPtr::<Mutex::<Process>>>::new(),
+			processes: Vec::<SharedPtr<Process>>::new(),
 			curr_proc: None,
 
 			priority_sum: 0,
@@ -124,7 +124,7 @@ impl Scheduler {
 	}
 
 	/// Returns the process with PID `pid`. If the process doesn't exist, the function returns None.
-	pub fn get_by_pid(&mut self, pid: Pid) -> Option::<SharedPtr::<Mutex::<Process>>> {
+	pub fn get_by_pid(&mut self, pid: Pid) -> Option<SharedPtr<Process>> {
 		// TODO Optimize
 		for i in 0..self.processes.len() {
 			let proc = &mut self.processes[i];
@@ -138,7 +138,7 @@ impl Scheduler {
 	}
 
 	/// Returns the current running process. If no process is running, the function returns None.
-	pub fn get_current_process(&mut self) -> Option::<SharedPtr::<Mutex::<Process>>> {
+	pub fn get_current_process(&mut self) -> Option<SharedPtr<Process>> {
 		self.curr_proc.as_ref().cloned()
 	}
 
@@ -155,8 +155,7 @@ impl Scheduler {
 	}
 
 	/// Adds a process to the scheduler.
-	pub fn add_process(&mut self, process: Process)
-		-> Result<SharedPtr::<Mutex::<Process>>, Errno> {
+	pub fn add_process(&mut self, process: Process) -> Result<SharedPtr<Process>, Errno> {
 		let priority = process.get_priority();
 		let ptr = SharedPtr::new(Mutex::new(process))?;
 		self.processes.push(ptr.clone())?;
@@ -198,7 +197,7 @@ impl Scheduler {
 	}
 
 	/// Returns the next process to run.
-	fn get_next_process(&mut self) -> Option::<&mut SharedPtr::<Mutex::<Process>>> {
+	fn get_next_process(&mut self) -> Option<&mut SharedPtr<Process>> {
 		if !self.processes.is_empty() {
 			let processes_count = self.processes.len();
 			let mut i = self.cursor;

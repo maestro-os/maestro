@@ -141,7 +141,7 @@ pub struct Process {
 /// The PID manager.
 static mut PID_MANAGER: MaybeUninit<Mutex<PIDManager>> = MaybeUninit::uninit();
 /// The processes scheduler.
-static mut SCHEDULER: MaybeUninit<SharedPtr<Mutex<Scheduler>>> = MaybeUninit::uninit();
+static mut SCHEDULER: MaybeUninit<SharedPtr<Scheduler>> = MaybeUninit::uninit();
 
 /// Scheduler ticking callback.
 pub struct ProcessFaultCallback {}
@@ -223,7 +223,7 @@ pub fn init() -> Result<(), Errno> {
 impl Process {
 	/// Returns the process with PID `pid`. If the process doesn't exist, the function returns
 	/// None.
-	pub fn get_by_pid(pid: Pid) -> Option<SharedPtr<Mutex<Self>>> {
+	pub fn get_by_pid(pid: Pid) -> Option<SharedPtr<Self>> {
 		let mut guard = unsafe {
 			SCHEDULER.assume_init_mut()
 		}.lock();
@@ -231,7 +231,7 @@ impl Process {
 	}
 
 	/// Returns the current running process. If no process is running, the function returns None.
-	pub fn get_current() -> Option<SharedPtr<Mutex<Self>>> {
+	pub fn get_current() -> Option<SharedPtr<Self>> {
 		let mut guard = unsafe {
 			SCHEDULER.assume_init_mut()
 		}.lock();
@@ -246,7 +246,7 @@ impl Process {
 	/// `entry_point` is the pointer to the first instruction of the process.
 	/// `cwd` the path to the process's working directory.
 	pub fn new(parent: Option<NonNull<Process>>, uid: Uid, gid: Gid, entry_point: *const c_void,
-		cwd: Path) -> Result<SharedPtr<Mutex<Self>>, Errno> {
+		cwd: Path) -> Result<SharedPtr<Self>, Errno> {
 		let pid = {
 			let mutex = unsafe {
 				PID_MANAGER.assume_init_mut()
@@ -605,7 +605,7 @@ impl Process {
 	/// Forks the current process. Duplicating everything for it to be identical, except the PID,
 	/// the parent process and children processes. On fail, the function returns an Err with the
 	/// appropriate Errno.
-	pub fn fork(&mut self) -> Result<SharedPtr<Mutex<Self>>, Errno> {
+	pub fn fork(&mut self) -> Result<SharedPtr<Self>, Errno> {
 		// TODO Free if the function fails
 		let pid = {
 			let mutex = unsafe {

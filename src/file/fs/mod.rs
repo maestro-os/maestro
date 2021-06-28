@@ -86,7 +86,7 @@ pub fn register<T: 'static + FilesystemType>(fs_type: T) -> Result<(), Errno> {
 	};
 	let mut guard = MutexGuard::new(mutex);
 	let container = guard.get_mut();
-	container.push(SharedPtr::new(fs_type)?)
+	container.push(SharedPtr::new(Mutex::new(fs_type))?)
 }
 
 // TODO Function to unregister a filesystem type
@@ -100,7 +100,7 @@ pub fn detect(device: &mut Device) -> Result<SharedPtr<dyn FilesystemType>, Errn
 	let container = guard.get_mut();
 
 	for fs_type in container.iter() {
-		if fs_type.detect(device.get_handle()) {
+		if fs_type.lock().get().detect(device.get_handle()) {
 			return Ok(fs_type.clone()); // TODO Use a weak pointer?
 		}
 	}

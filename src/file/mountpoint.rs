@@ -10,6 +10,7 @@ use crate::util::boxed::Box;
 use crate::util::container::vec::Vec;
 use crate::util::lock::mutex::Mutex;
 use crate::util::lock::mutex::MutexGuard;
+use crate::util::lock::mutex::TMutex;
 use crate::util::ptr::SharedPtr;
 use super::fs;
 use super::path::Path;
@@ -71,14 +72,15 @@ impl MountPoint {
 	/// `path` is the path on which the filesystem is to be mounted.
 	pub fn new(device_type: DeviceType, major: u32, minor: u32, flags: u32, path: Path)
 		-> Result<Self, Errno> {
-		let mut device = device::get_device(device_type, major, minor).ok_or(errno::ENODEV)?;
+		let mut device = device::get_device(device_type, major, minor).ok_or(errno::ENODEV)?.lock()
+            .get_mut();
 
 		// TODO rm
 		let fs_type = fs::ext2::Ext2FsType {};
-		fs_type.create_filesystem(device.as_mut().get_handle())?;
+		fs_type.create_filesystem(device.get_handle())?;
 
-		let fs_type = fs::detect(device.as_mut())?;
-		let filesystem = fs_type.load_filesystem(device.as_mut().get_handle())?;
+		let fs_type = fs::detect(device)?.lock().get();
+		let filesystem = fs_type.load_filesystem(device.get_handle())?;
 
 		Ok(Self {
 			device_type,
@@ -144,7 +146,7 @@ pub fn register_mountpoint(mountpoint: MountPoint) -> Result<SharedPtr<MountPoin
 	};
 	let mut guard = MutexGuard::new(mutex);
 	let container = guard.get_mut();
-	let shared_ptr = SharedPtr::new(mountpoint)?;
+	let shared_ptr = SharedPtr::new(Mutex::new(mountpoint))?;
 	container.push(shared_ptr.clone())?;
 	Ok(shared_ptr)
 }
@@ -160,10 +162,12 @@ pub fn get_deepest(path: &Path) -> Option<SharedPtr<MountPoint>> {
 
 	let mut max: Option<SharedPtr<MountPoint>> = None;
 	for m in container.iter() {
-		let mount_path = m.get_path();
+		let mount_path = m.lock().get().get_path();
 
 		if let Some(max) = max.as_ref() {
-			if max.get_path().get_elements_count() >= mount_path.get_elements_count() {
+            let max_path = max.lock().get().get_path();
+
+			if max_path.get_elements_count() >= mount_path.get_elements_count() {
 				continue;
 			}
 		}

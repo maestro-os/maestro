@@ -21,6 +21,7 @@ use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::lock::mutex::Mutex;
 use crate::util::lock::mutex::MutexGuard;
+use crate::util::lock::mutex::TMutex;
 use crate::util::ptr::SharedPtr;
 use crate::util::ptr::WeakPtr;
 use path::Path;
@@ -415,13 +416,13 @@ impl File {
 			FileType::BlockDevice => {
 				let mut dev = device::get_device(DeviceType::Block, self.device_major,
 					self.device_minor).ok_or(errno::ENODEV)?;
-				dev.get_handle().read(off as _, buff)
+				dev.lock().get_mut().get_handle().read(off as _, buff)
 			},
 
 			FileType::CharDevice => {
 				let mut dev = device::get_device(DeviceType::Char, self.device_major,
 					self.device_minor).ok_or(errno::ENODEV)?;
-				dev.get_handle().read(off as _, buff)
+				dev.lock().get_mut().get_handle().read(off as _, buff)
 			},
 		}
 	}
@@ -458,13 +459,13 @@ impl File {
 			FileType::BlockDevice => {
 				let mut dev = device::get_device(DeviceType::Block, self.device_major,
 					self.device_minor).ok_or(errno::ENODEV)?;
-				dev.get_handle().write(off as _, buff)
+				dev.lock().get_mut().get_handle().write(off as _, buff)
 			},
 
 			FileType::CharDevice => {
 				let mut dev = device::get_device(DeviceType::Char, self.device_major,
 					self.device_minor).ok_or(errno::ENODEV)?;
-				dev.get_handle().write(off as _, buff)
+				dev.lock().get_mut().get_handle().write(off as _, buff)
 			},
 		}
 	}
@@ -549,8 +550,8 @@ impl FCache {
 		let mut path = Path::root().concat(path)?;
 		path.reduce()?;
 
-		let mut deepest_mountpoint = mountpoint::get_deepest(&path).ok_or(errno::ENOENT)?;
-		let mut dev = deepest_mountpoint.get_device();
+		let mut deepest_mountpoint = mountpoint::get_deepest(&path).ok_or(errno::ENOENT)?.lock().get();
+		let mut dev = deepest_mountpoint.get_device().lock().get();
 		let inner_path = path.range_from(deepest_mountpoint.get_path().get_elements_count()..)?;
 
 		let parent_inode = deepest_mountpoint.get_filesystem().get_inode(dev.get_handle(),
@@ -566,8 +567,8 @@ impl FCache {
 		let mut path = Path::root().concat(path)?;
 		path.reduce()?;
 
-		let mut deepest_mountpoint = mountpoint::get_deepest(&path).ok_or(errno::ENOENT)?;
-		let mut dev = deepest_mountpoint.get_device();
+		let mut deepest_mountpoint = mountpoint::get_deepest(&path).ok_or(errno::ENOENT)?.lock().get();
+		let mut dev = deepest_mountpoint.get_device().lock().get();
 
 		let path_len = path.get_elements_count();
 		if path_len > 0 {
@@ -592,22 +593,25 @@ impl FCache {
 		let mut path = Path::root().concat(path)?;
 		path.reduce()?;
 
-		let mut deepest_mountpoint = mountpoint::get_deepest(&path).ok_or(errno::ENOENT)?;
-		let mut dev = deepest_mountpoint.get_device();
+		let mut deepest_mountpoint = mountpoint::get_deepest(&path).ok_or(errno::ENOENT)?.lock().get();
+		let mut dev = deepest_mountpoint.get_device().lock().get();
 		let inner_path = path.range_from(deepest_mountpoint.get_path().get_elements_count()..)?;
-		if inner_path.get_elements_count() > 0 {
-			let entry_name = inner_path[inner_path.get_elements_count() - 1].failable_clone()?;
-			let inode = deepest_mountpoint.get_filesystem().get_inode(dev.get_handle(),
-				inner_path)?;
 
-			SharedPtr::new(deepest_mountpoint.get_filesystem().load_file(dev.get_handle(), inode,
-				entry_name)?)
-		} else {
-			let inode = deepest_mountpoint.get_filesystem().get_inode(dev.get_handle(),
-				Path::root())?;
-			SharedPtr::new(deepest_mountpoint.get_filesystem().load_file(dev.get_handle(), inode,
-				String::from("")?)?)
-		}
+        let file = {
+            if inner_path.get_elements_count() > 0 {
+                let entry_name = inner_path[inner_path.get_elements_count() - 1].failable_clone()?;
+                let inode = deepest_mountpoint.get_filesystem().get_inode(dev.get_handle(),
+                    inner_path)?;
+
+                deepest_mountpoint.get_filesystem().load_file(dev.get_handle(), inode, entry_name)
+            } else {
+                let inode = deepest_mountpoint.get_filesystem().get_inode(dev.get_handle(),
+                    Path::root())?;
+                deepest_mountpoint.get_filesystem().load_file(dev.get_handle(), inode,
+                    String::from("")?)
+            }
+        }?;
+        SharedPtr::new(Mutex::new(file))
 	}
 }
 
