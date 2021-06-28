@@ -16,7 +16,7 @@ use crate::util::lock::mutex::TMutex;
 use crate::util::write_ptr;
 
 /// Drops the given inner structure if necessary.
-fn check_inner_drop<T: ?Sized, M: TMutex<T>>(inner: &mut SharedPtrInner<T>) {
+fn check_inner_drop<T: ?Sized, M: TMutex<T> + ?Sized>(inner: &mut SharedPtrInner<M>) {
 	if inner.must_drop() {
 		unsafe {
 			drop_in_place(inner);
@@ -89,9 +89,9 @@ pub struct SharedPtr<T: ?Sized, M: TMutex<T> + ?Sized = Mutex<T>> {
 
 impl<T, M: TMutex<T>> SharedPtr<T, M> {
 	/// Creates a new shared pointer for the given Mutex `obj` containing the object.
-	pub fn new(obj: M) -> Result<SharedPtr<T>, Errno> {
+	pub fn new(obj: M) -> Result<Self, Errno> {
 		let inner = unsafe {
-			malloc::alloc(size_of::<SharedPtrInner<T>>())? as *mut SharedPtrInner<T>
+			malloc::alloc(size_of::<SharedPtrInner<M>>())? as *mut SharedPtrInner<M>
 		};
 		unsafe {
 			write_ptr(inner, SharedPtrInner::new(obj));
@@ -105,7 +105,7 @@ impl<T, M: TMutex<T>> SharedPtr<T, M> {
 	}
 }
 
-impl<T: ?Sized, M: TMutex<T>> SharedPtr<T, M> {
+impl<T: ?Sized, M: TMutex<T> + ?Sized> SharedPtr<T, M> {
 	/// Returns a mutable reference to the inner structure.
 	fn get_inner(&self) -> &mut SharedPtrInner<M> {
 		unsafe {
@@ -139,6 +139,14 @@ impl<T: ?Sized, M: TMutex<T>> Clone for SharedPtr<T, M> {
 			inner: self.inner,
 
 			phantom: PhantomData,
+		}
+	}
+}
+
+impl<T: ?Sized, M: TMutex<T>> AsRef<M> for SharedPtr<T, M> {
+	fn as_ref(&self) -> &M {
+		unsafe {
+			&(*self.inner.as_ref()).obj
 		}
 	}
 }
@@ -193,7 +201,7 @@ pub struct WeakPtr<T: ?Sized, M: TMutex<T> + ?Sized = Mutex<T>> {
 	phantom: PhantomData<T>,
 }
 
-impl<T: ?Sized, M: TMutex<T>> WeakPtr<T, M> {
+impl<T: ?Sized, M: TMutex<T> + ?Sized> WeakPtr<T, M> {
 	/// Returns a mutable reference to the inner structure.
 	fn get_inner(&self) -> &mut SharedPtrInner<M> {
 		unsafe {
@@ -202,7 +210,7 @@ impl<T: ?Sized, M: TMutex<T>> WeakPtr<T, M> {
 	}
 
 	/// Returns an immutable reference to the object.
-	pub fn get(&self) -> Option<&T> {
+	pub fn get(&self) -> Option<&M> {
 		let inner = self.get_inner();
 		if inner.is_weak_available() {
 			Some(&inner.obj)
@@ -212,7 +220,7 @@ impl<T: ?Sized, M: TMutex<T>> WeakPtr<T, M> {
 	}
 
 	/// Returns a mutable reference to the object.
-	pub fn get_mut(&mut self) -> Option<&mut T> {
+	pub fn get_mut(&mut self) -> Option<&mut M> {
 		let inner = self.get_inner();
 		if inner.is_weak_available() {
 			Some(&mut inner.obj)
