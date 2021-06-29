@@ -83,7 +83,7 @@ impl FileDescriptor {
 
 	/// Returns the size of the file's content in bytes.
 	pub fn get_file_size(&self) -> u64 {
-		self.file.lock().get().get_size()
+		self.file.get_mut().lock().get().get_size()
 	}
 
 	/// Returns the current offset in the file.

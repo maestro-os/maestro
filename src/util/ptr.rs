@@ -113,6 +113,18 @@ impl<T: ?Sized, M: TMutex<T> + ?Sized> SharedPtr<T, M> {
 		}
 	}
 
+	/// Returns an immutable reference to the object.
+	pub fn get(&self) -> &M {
+		let inner = self.get_inner();
+		&inner.obj
+	}
+
+	/// Returns a mutable reference to the object.
+	pub fn get_mut(&self) -> &mut M {
+		let inner = self.get_inner();
+		&mut inner.obj
+	}
+
 	/// Creates a weak pointer for the current shared pointer.
 	pub fn new_weak(&self) -> WeakPtr<T, M> {
 		let inner = self.get_inner();

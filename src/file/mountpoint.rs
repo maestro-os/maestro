@@ -164,7 +164,8 @@ pub fn get_deepest(path: &Path) -> Option<SharedPtr<MountPoint>> {
 	let container = guard.get_mut();
 
 	let mut max: Option<SharedPtr<MountPoint>> = None;
-	for m in container.iter() {
+	for i in 0..container.len() {
+		let m = &mut container[i];
 		let mount_path_guard = m.lock();
 		let mount_path = mount_path_guard.get().get_path();
 
@@ -178,6 +179,7 @@ pub fn get_deepest(path: &Path) -> Option<SharedPtr<MountPoint>> {
 		}
 
 		if path.begins_with(mount_path) {
+			drop(mount_path_guard);
 			max = Some(m.clone());
 		}
 	}

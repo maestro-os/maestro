@@ -197,7 +197,10 @@ pub fn register_device(device: Device) -> Result<(), Errno> {
 
 	let device_number = device.get_device_number();
 	let index = container.binary_search_by(| d | {
-		let dn = d.lock().get_mut().get_device_number();
+		let dn = unsafe {
+			d.get_mut().get_mut_payload()
+		}.get_device_number();
+
 		device_number.cmp(&dn)
 	});
 	let index = match index {
@@ -229,7 +232,10 @@ pub fn get_device(type_: DeviceType, major: u32, minor: u32) -> Option<SharedPtr
 
 	let device_number = id::makedev(major, minor);
 	let index = container.binary_search_by(| d | {
-		let dn = d.lock().get_mut().get_device_number();
+		let dn = unsafe {
+			d.get_mut().get_mut_payload()
+		}.get_device_number();
+
 		device_number.cmp(&dn)
 	});
 

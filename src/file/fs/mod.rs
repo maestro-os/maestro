@@ -100,8 +100,12 @@ pub fn detect(device: &mut Device) -> Result<SharedPtr<dyn FilesystemType>, Errn
 	let mut guard = MutexGuard::new(mutex);
 	let container = guard.get_mut();
 
-	for fs_type in container.iter() {
-		if fs_type.lock().get().detect(device.get_handle()) {
+	for i in 0..container.len() {
+		let fs_type = &mut container[i];
+		let fs_type_guard = fs_type.lock();
+
+		if fs_type_guard.get().detect(device.get_handle()) {
+			drop(fs_type_guard);
 			return Ok(fs_type.clone()); // TODO Use a weak pointer?
 		}
 	}
