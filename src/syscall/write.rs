@@ -25,7 +25,12 @@ pub fn write(proc: &mut Process, regs: &util::Regs) -> Result<i32, Errno> {
 		let fd = proc.get_fd(fd).ok_or(errno::EBADF)?;
 		// TODO Check file permissions?
 		let off = fd.get_offset();
-		let len = fd.get_file().lock().get_mut().write(off as usize, data)?;
+
+		let len = {
+			let file = fd.get_file_mut();
+			let mut file_guard = file.lock();
+			file_guard.get_mut().write(off as usize, data)?
+		};
 		fd.set_offset(off + len as u64);
 
 		Ok(len as _) // TODO Take into account when length is overflowing

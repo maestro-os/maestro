@@ -72,14 +72,17 @@ impl MountPoint {
 	/// `path` is the path on which the filesystem is to be mounted.
 	pub fn new(device_type: DeviceType, major: u32, minor: u32, flags: u32, path: Path)
 		-> Result<Self, Errno> {
-		let mut device = device::get_device(device_type, major, minor).ok_or(errno::ENODEV)?.lock()
-            .get_mut();
+		let mut dev_ptr = device::get_device(device_type, major, minor).ok_or(errno::ENODEV)?;
+		let mut dev_guard = dev_ptr.lock();
+		let device = dev_guard.get_mut();
 
 		// TODO rm
 		let fs_type = fs::ext2::Ext2FsType {};
 		fs_type.create_filesystem(device.get_handle())?;
 
-		let fs_type = fs::detect(device)?.lock().get();
+		let mut fs_type_ptr = fs::detect(device)?;
+		let fs_type_guard = fs_type_ptr.lock();
+		let fs_type = fs_type_guard.get();
 		let filesystem = fs_type.load_filesystem(device.get_handle())?;
 
 		Ok(Self {
@@ -162,10 +165,12 @@ pub fn get_deepest(path: &Path) -> Option<SharedPtr<MountPoint>> {
 
 	let mut max: Option<SharedPtr<MountPoint>> = None;
 	for m in container.iter() {
-		let mount_path = m.lock().get().get_path();
+		let mount_path_guard = m.lock();
+		let mount_path = mount_path_guard.get().get_path();
 
-		if let Some(max) = max.as_ref() {
-            let max_path = max.lock().get().get_path();
+		if let Some(max) = max.as_mut() {
+			let max_guard = max.lock();
+            let max_path = max_guard.get().get_path();
 
 			if max_path.get_elements_count() >= mount_path.get_elements_count() {
 				continue;

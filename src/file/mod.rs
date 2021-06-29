@@ -192,7 +192,7 @@ impl File {
 
 	/// Returns a reference to the parent file.
 	pub fn get_parent(&self) -> Option<&mut Mutex<File>> {
-		self.parent.as_mut()?.get_mut()
+		self.parent.as_ref()?.get_mut()
 	}
 
 	/// Returns the absolute path of the file.
@@ -326,7 +326,7 @@ impl File {
 	/// behaviour is undefined.
 	pub fn add_subfile(&mut self, file: WeakPtr<File>) -> Result<(), Errno> {
 		debug_assert_eq!(self.file_type, FileType::Directory);
-		let name = file.get().unwrap().lock().get().get_name().failable_clone()?;
+		let name = file.get_mut().unwrap().lock().get().get_name().failable_clone()?;
 		self.subfiles.as_mut().unwrap().insert(name, file)?;
 		Ok(())
 	}
@@ -416,13 +416,15 @@ impl File {
 			FileType::BlockDevice => {
 				let mut dev = device::get_device(DeviceType::Block, self.device_major,
 					self.device_minor).ok_or(errno::ENODEV)?;
-				dev.lock().get_mut().get_handle().read(off as _, buff)
+				let mut guard = dev.lock();
+				guard.get_mut().get_handle().read(off as _, buff)
 			},
 
 			FileType::CharDevice => {
 				let mut dev = device::get_device(DeviceType::Char, self.device_major,
 					self.device_minor).ok_or(errno::ENODEV)?;
-				dev.lock().get_mut().get_handle().read(off as _, buff)
+				let mut guard = dev.lock();
+				guard.get_mut().get_handle().read(off as _, buff)
 			},
 		}
 	}
@@ -459,13 +461,15 @@ impl File {
 			FileType::BlockDevice => {
 				let mut dev = device::get_device(DeviceType::Block, self.device_major,
 					self.device_minor).ok_or(errno::ENODEV)?;
-				dev.lock().get_mut().get_handle().write(off as _, buff)
+				let mut guard = dev.lock();
+				guard.get_mut().get_handle().write(off as _, buff)
 			},
 
 			FileType::CharDevice => {
 				let mut dev = device::get_device(DeviceType::Char, self.device_major,
 					self.device_minor).ok_or(errno::ENODEV)?;
-				dev.lock().get_mut().get_handle().write(off as _, buff)
+				let mut guard = dev.lock();
+				guard.get_mut().get_handle().write(off as _, buff)
 			},
 		}
 	}
@@ -550,12 +554,18 @@ impl FCache {
 		let mut path = Path::root().concat(path)?;
 		path.reduce()?;
 
-		let mut deepest_mountpoint = mountpoint::get_deepest(&path).ok_or(errno::ENOENT)?.lock().get();
-		let mut dev = deepest_mountpoint.get_device().lock().get();
-		let inner_path = path.range_from(deepest_mountpoint.get_path().get_elements_count()..)?;
+		let mut ptr = mountpoint::get_deepest(&path).ok_or(errno::ENOENT)?;
+		let mut guard = ptr.lock();
+		let deepest_mountpoint = guard.get_mut();
 
+		let mut dev_ptr = deepest_mountpoint.get_device();
+		let mut dev_guard = dev_ptr.lock();
+		let dev = dev_guard.get_mut();
+
+		let inner_path = path.range_from(deepest_mountpoint.get_path().get_elements_count()..)?;
 		let parent_inode = deepest_mountpoint.get_filesystem().get_inode(dev.get_handle(),
 			inner_path)?;
+
 		deepest_mountpoint.get_filesystem().add_file(dev.get_handle(), parent_inode, file)?;
 		Ok(())
 	}
@@ -567,8 +577,13 @@ impl FCache {
 		let mut path = Path::root().concat(path)?;
 		path.reduce()?;
 
-		let mut deepest_mountpoint = mountpoint::get_deepest(&path).ok_or(errno::ENOENT)?.lock().get();
-		let mut dev = deepest_mountpoint.get_device().lock().get();
+		let mut ptr = mountpoint::get_deepest(&path).ok_or(errno::ENOENT)?;
+		let mut guard = ptr.lock();
+		let deepest_mountpoint = guard.get_mut();
+
+		let mut dev_ptr = deepest_mountpoint.get_device();
+		let mut dev_guard = dev_ptr.lock();
+		let dev = dev_guard.get_mut();
 
 		let path_len = path.get_elements_count();
 		if path_len > 0 {
@@ -593,8 +608,14 @@ impl FCache {
 		let mut path = Path::root().concat(path)?;
 		path.reduce()?;
 
-		let mut deepest_mountpoint = mountpoint::get_deepest(&path).ok_or(errno::ENOENT)?.lock().get();
-		let mut dev = deepest_mountpoint.get_device().lock().get();
+		let mut ptr = mountpoint::get_deepest(&path).ok_or(errno::ENOENT)?;
+		let mut guard = ptr.lock();
+		let deepest_mountpoint = guard.get_mut();
+
+		let mut dev_ptr = deepest_mountpoint.get_device();
+		let mut guard = dev_ptr.lock();
+		let dev = guard.get_mut();
+
 		let inner_path = path.range_from(deepest_mountpoint.get_path().get_elements_count()..)?;
 
         let file = {

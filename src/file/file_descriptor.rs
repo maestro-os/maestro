@@ -76,6 +76,11 @@ impl FileDescriptor {
 		&self.file
 	}
 
+	/// Returns an immutable reference to the file associated to the descriptor.
+	pub fn get_file_mut(&mut self) -> &mut SharedPtr<File> {
+		&mut self.file
+	}
+
 	/// Returns the size of the file's content in bytes.
 	pub fn get_file_size(&self) -> u64 {
 		self.file.lock().get().get_size()

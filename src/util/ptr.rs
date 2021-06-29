@@ -128,7 +128,7 @@ impl<T: ?Sized, M: TMutex<T> + ?Sized> SharedPtr<T, M> {
 	}
 }
 
-impl<T: ?Sized, M: TMutex<T>> Clone for SharedPtr<T, M> {
+impl<T: ?Sized, M: TMutex<T> + ?Sized> Clone for SharedPtr<T, M> {
 	fn clone(&self) -> Self {
 		let inner = self.get_inner();
 		let mut guard = MutexGuard::new(&mut inner.ref_counter);
@@ -143,7 +143,7 @@ impl<T: ?Sized, M: TMutex<T>> Clone for SharedPtr<T, M> {
 	}
 }
 
-impl<T: ?Sized, M: TMutex<T>> AsRef<M> for SharedPtr<T, M> {
+impl<T: ?Sized, M: TMutex<T> + ?Sized> AsRef<M> for SharedPtr<T, M> {
 	fn as_ref(&self) -> &M {
 		unsafe {
 			&(*self.inner.as_ref()).obj
@@ -151,7 +151,7 @@ impl<T: ?Sized, M: TMutex<T>> AsRef<M> for SharedPtr<T, M> {
 	}
 }
 
-impl<T: ?Sized, M: TMutex<T>> AsMut<M> for SharedPtr<T, M> {
+impl<T: ?Sized, M: TMutex<T> + ?Sized> AsMut<M> for SharedPtr<T, M> {
 	fn as_mut(&mut self) -> &mut M {
 		unsafe {
 			&mut (*self.inner.as_mut()).obj
@@ -159,7 +159,7 @@ impl<T: ?Sized, M: TMutex<T>> AsMut<M> for SharedPtr<T, M> {
 	}
 }
 
-impl<T: ?Sized, M: TMutex<T>> Deref for SharedPtr<T, M> {
+impl<T: ?Sized, M: TMutex<T> + ?Sized> Deref for SharedPtr<T, M> {
 	type Target = M;
 
 	fn deref(&self) -> &Self::Target {
@@ -167,15 +167,17 @@ impl<T: ?Sized, M: TMutex<T>> Deref for SharedPtr<T, M> {
 	}
 }
 
-impl<T: ?Sized, M: TMutex<T>> DerefMut for SharedPtr<T, M> {
+impl<T: ?Sized, M: TMutex<T> + ?Sized> DerefMut for SharedPtr<T, M> {
 	fn deref_mut(&mut self) -> &mut Self::Target {
 		self.as_mut()
 	}
 }
 
-impl<T: ?Sized + Unsize<U>, U: ?Sized, M: TMutex<T> + ?Sized + Unsize<MU>, MU: TMutex<U> + ?Sized> CoerceUnsized<SharedPtr<U, MU>> for SharedPtr<T, M> {}
+impl<T: ?Sized + Unsize<U>, U: ?Sized, M: TMutex<T> + ?Sized + Unsize<MU>, MU: TMutex<U> + ?Sized>
+	CoerceUnsized<SharedPtr<U, MU>> for SharedPtr<T, M> {}
 
-impl<T: ?Sized + Unsize<U>, U: ?Sized, M: TMutex<T> + ?Sized + Unsize<MU>, MU: TMutex<U> + ?Sized> DispatchFromDyn<SharedPtr<U, MU>> for SharedPtr<T, M> {}
+impl<T: ?Sized + Unsize<U>, U: ?Sized, M: TMutex<T> + ?Sized + Unsize<MU>, MU: TMutex<U> + ?Sized>
+	DispatchFromDyn<SharedPtr<U, MU>> for SharedPtr<T, M> {}
 
 impl<T: ?Sized, M: TMutex<T> + ?Sized> Drop for SharedPtr<T, M> {
 	fn drop(&mut self) {
@@ -220,7 +222,7 @@ impl<T: ?Sized, M: TMutex<T> + ?Sized> WeakPtr<T, M> {
 	}
 
 	/// Returns a mutable reference to the object.
-	pub fn get_mut(&mut self) -> Option<&mut M> {
+	pub fn get_mut(&self) -> Option<&mut M> {
 		let inner = self.get_inner();
 		if inner.is_weak_available() {
 			Some(&mut inner.obj)
@@ -230,7 +232,7 @@ impl<T: ?Sized, M: TMutex<T> + ?Sized> WeakPtr<T, M> {
 	}
 }
 
-impl<T: ?Sized, M: TMutex<T>> Clone for WeakPtr<T, M> {
+impl<T: ?Sized, M: TMutex<T> + ?Sized> Clone for WeakPtr<T, M> {
 	fn clone(&self) -> Self {
 		let inner = self.get_inner();
 		let mut guard = MutexGuard::new(&mut inner.ref_counter);
