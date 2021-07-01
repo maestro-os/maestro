@@ -87,7 +87,7 @@ impl Scheduler {
 		let callback = | _id: u32, _code: u32, regs: &util::Regs, ring: u32 | {
 			Scheduler::tick(process::get_scheduler(), regs, ring);
 		};
-		let tick_callback_hook = event::register_callback(32, 0, callback)?;
+		let tick_callback_hook = event::register_callback(0x20, 0, callback)?;
 		SharedPtr::new(InterruptMutex::new(Self {
 			tmp_stacks,
 
@@ -268,7 +268,13 @@ impl Scheduler {
 				proc: scheduler.curr_proc.as_mut().unwrap().clone(),
 			};
 
+			// Required because calling the context switch function won't drop the
+			// mutex guard, locking the scheduler forever
 			drop(guard);
+			unsafe {
+				event::unlock_callbacks(0x20);
+			}
+
 			unsafe {
 				stack::switch(tmp_stack, f, ctx_switch_data).unwrap();
 			}

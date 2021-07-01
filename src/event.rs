@@ -186,6 +186,16 @@ pub fn register_callback<T>(id: usize, priority: u32, callback: T) -> Result<Cal
 	})
 }
 
+/// Unlocks the callback vector with id `id`. This function is to be used in case of an event
+/// callback that never returns.
+/// It must be called from the same CPU core as the one that locked the mutex since InterruptMutex
+/// changes the interrupt flag.
+/// This function is marked as unsafe since it may lead to concurrency issues if not used properly.
+#[no_mangle]
+pub unsafe extern "C" fn unlock_callbacks(id: usize) {
+	CALLBACKS.assume_init_mut()[id as usize].unlock();
+}
+
 /// This function is called whenever an interruption is triggered.
 /// `id` is the identifier of the interrupt type. This value is architecture-dependent.
 /// `code` is an optional code associated with the interrupt. If the interrupt type doesn't have a
@@ -195,9 +205,10 @@ pub fn register_callback<T>(id: usize, priority: u32, callback: T) -> Result<Cal
 #[no_mangle]
 pub extern "C" fn event_handler(id: u32, code: u32, ring: u32, regs: &util::Regs) {
 	let action = {
-		let callbacks = unsafe {
-			CALLBACKS.assume_init_mut()[id as usize].get_mut_payload()
-		};
+		let guard = unsafe {
+			&mut CALLBACKS.assume_init_mut()[id as usize]
+		}.lock();
+		let callbacks = guard.get();
 
 		let mut last_action = {
 			if (id as usize) < ERROR_MESSAGES.len() {
