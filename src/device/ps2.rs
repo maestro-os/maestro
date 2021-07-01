@@ -592,10 +592,5 @@ impl Module for PS2Module {
 		}
 	}
 
-	fn destroy(&mut self) {
-		// TODO Unregister callback `keyboard_interrupt_callback` and set it to None
-		todo!();
-	}
-
 	// TODO LEDs state
 }

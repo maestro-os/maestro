@@ -259,6 +259,12 @@ impl<T: ?Sized, M: TMutex<T> + ?Sized> Clone for WeakPtr<T, M> {
 	}
 }
 
+impl<T: ?Sized + Unsize<U>, U: ?Sized, M: TMutex<T> + ?Sized + Unsize<MU>, MU: TMutex<U> + ?Sized>
+	CoerceUnsized<WeakPtr<U, MU>> for WeakPtr<T, M> {}
+
+impl<T: ?Sized + Unsize<U>, U: ?Sized, M: TMutex<T> + ?Sized + Unsize<MU>, MU: TMutex<U> + ?Sized>
+	DispatchFromDyn<WeakPtr<U, MU>> for WeakPtr<T, M> {}
+
 impl<T: ?Sized, M: TMutex<T> + ?Sized> Drop for WeakPtr<T, M> {
 	fn drop(&mut self) {
 		let inner = self.get_inner();
