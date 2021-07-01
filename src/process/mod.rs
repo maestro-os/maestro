@@ -209,8 +209,8 @@ pub fn init() -> Result<(), Errno> {
 			InterruptResult::new(true, InterruptResultAction::Panic)
 		}
 	};
-	event::register_callback(0x0d, u32::MAX, callback)?;
-	event::register_callback(0x0e, u32::MAX, callback)?;
+	let _ = event::register_callback(0x0d, u32::MAX, callback)?;
+	let _ = event::register_callback(0x0e, u32::MAX, callback)?;
 
 	Ok(())
 }

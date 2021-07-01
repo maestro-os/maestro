@@ -57,9 +57,8 @@ pub struct Scheduler {
 	/// A vector containing the temporary stacks for each CPU cores.
 	tmp_stacks: Vec<malloc::Alloc<u8>>,
 
-	/// The ticking callback hook.
-	/// The ticking callback is called at a regular interval to make the scheduler work.
-	tick_callback_hook: Option<CallbackHook>,
+	/// The ticking callback hook, called at a regular interval to make the scheduler work.
+	tick_callback_hook: CallbackHook,
 	/// The total number of ticks since the instanciation of the scheduler.
 	total_ticks: u64,
 
@@ -85,10 +84,14 @@ impl Scheduler {
 			tmp_stacks.push(malloc::Alloc::new_default(TMP_STACK_SIZE)?)?;
 		}
 
-		let s = SharedPtr::new(InterruptMutex::new(Self {
+		let callback = | _id: u32, _code: u32, regs: &util::Regs, ring: u32 | {
+			Scheduler::tick(process::get_scheduler(), regs, ring);
+		};
+		let tick_callback_hook = event::register_callback(32, 0, callback)?;
+		SharedPtr::new(InterruptMutex::new(Self {
 			tmp_stacks,
 
-			tick_callback_hook: None,
+			tick_callback_hook,
 			total_ticks: 0,
 
 			processes: Vec::<SharedPtr<Process>>::new(),
@@ -98,13 +101,7 @@ impl Scheduler {
 			priority_max: 0,
 
 			cursor: 0,
-		}))?;
-
-		let callback = | _id: u32, _code: u32, regs: &util::Regs, ring: u32 | {
-			Scheduler::tick(process::get_scheduler(), regs, ring);
-		};
-		event::register_callback(32, 0, callback)?;
-		Ok(s)
+		}))
 	}
 
 	/// Returns the process with PID `pid`. If the process doesn't exist, the function returns None.

@@ -1,6 +1,7 @@
 //! This file handles interruptions, it provides an interface allowing to register callbacks for
 //! each interrupts. Each callback has a priority number and is called in descreasing order.
 
+use core::ffi::c_void;
 use core::mem::MaybeUninit;
 use crate::errno::Errno;
 use crate::idt::pic;
@@ -103,15 +104,25 @@ struct CallbackWrapper {
 
 /// Structure used to detect whenever the object owning the callback is destroyed, allowing to
 /// unregister it automatically.
+#[must_use]
 pub struct CallbackHook {
-	// TODO Store informations on the callback
+	/// The id of the interrupt the callback is bound to.
+	id: usize,
+	/// The priority of the callback.
+	priority: u32,
+
+	/// The pointer of the callback.
+	ptr: *const c_void,
 }
 
 impl CallbackHook {
 	/// Creates a new instance.
-	fn new() -> Self {
+	fn new(id: usize, priority: u32, ptr: *const c_void) -> Self {
 		Self {
-			// TODO
+			id,
+			priority,
+
+			ptr,
 		}
 	}
 }
@@ -171,7 +182,7 @@ pub fn register_callback<T>(id: usize, priority: u32, callback: T) -> Result<Cal
 			callback: Box::new(callback)?,
 		})?;
 
-		Ok(CallbackHook::new()) // TODO
+		Ok(CallbackHook::new(id, priority, core::ptr::null::<c_void>())) // TODO
 	})
 }
 
