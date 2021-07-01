@@ -151,9 +151,9 @@ impl<T: ?Sized> TMutex<T> for InterruptMutex<T> {
 	}
 
 	fn lock(&mut self) -> MutexGuard<T, Self> {
-		self.spin.lock();
 		self.interrupt_enabled = idt::is_interrupt_enabled();
 		crate::cli!();
+		self.spin.lock();
 
 		MutexGuard::new(self)
 	}
@@ -168,11 +168,10 @@ impl<T: ?Sized> TMutex<T> for InterruptMutex<T> {
 
 	unsafe fn unlock(&mut self) {
 		if self.is_locked() {
+			self.spin.unlock();
 			if self.interrupt_enabled {
 				crate::sti!();
 			}
-
-			self.spin.unlock();
 		}
 	}
 }
