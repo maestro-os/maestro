@@ -4,7 +4,7 @@
 // TODO Externalize this module into a kernel module when the interface for loading them will be
 // ready
 
-use crate::event::{Callback, CallbackHook, InterruptResult, InterruptResultAction};
+use crate::event::{CallbackHook, InterruptResult, InterruptResultAction};
 use crate::event;
 use crate::io;
 use crate::module::Module;
@@ -506,32 +506,6 @@ fn read_keystroke() -> (KeyboardKey, KeyboardAction) {
 	(key, action)
 }
 
-/// Keyboard input events callback.
-struct KeyboardCallback {
-	/// A reference to the PS/2 module instance.
-	module: *mut PS2Module, // TODO Use a safe object to handle memory
-}
-
-impl Callback for KeyboardCallback {
-	fn call(&mut self, _id: u32, _code: u32, _regs: &util::Regs, _ring: u32) -> InterruptResult {
-		while can_read() {
-			let (key, action) = read_keystroke();
-
-			unsafe {
-				((*self.module).keyboard_callback)(key, action);
-			}
-
-			if key == KeyboardKey::KeyPause && action == KeyboardAction::Pressed {
-				unsafe {
-					((*self.module).keyboard_callback)(key, KeyboardAction::Released);
-				}
-			}
-		}
-
-		InterruptResult::new(false, InterruptResultAction::Resume)
-	}
-}
-
 /// The PS2 kernel module structure.
 pub struct PS2Module {
 	/// The callback hook for keyboard input interrupts.
@@ -580,10 +554,20 @@ impl Module for PS2Module {
 		set_config_byte(get_config_byte() | 0b1);
 		clear_buffer();
 
-		let hook_result = event::register_callback(KEYBOARD_INTERRUPT_ID, 0,
-			KeyboardCallback {
-				module: self as _,
-			});
+		let callback = | _id: u32, _code: u32, _regs: &util::Regs, _ring: u32 | {
+			while can_read() {
+				let (key, action) = read_keystroke();
+
+				// TODO Do something with the key
+
+				if key == KeyboardKey::KeyPause && action == KeyboardAction::Pressed {
+					// TODO Release the key
+				}
+			}
+
+			InterruptResult::new(false, InterruptResultAction::Resume)
+		};
+		let hook_result = event::register_callback(KEYBOARD_INTERRUPT_ID, 0, callback);
 		if let Ok(hook) = hook_result {
 			self.keyboard_interrupt_callback_hook = Some(hook);
 			Ok(())

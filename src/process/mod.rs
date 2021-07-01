@@ -13,7 +13,7 @@ use core::mem::MaybeUninit;
 use core::ptr::NonNull;
 use crate::errno::Errno;
 use crate::errno;
-use crate::event::{Callback, InterruptResult, InterruptResultAction};
+use crate::event::{InterruptResult, InterruptResultAction};
 use crate::event;
 use crate::file::File;
 use crate::file::Gid;
@@ -141,13 +141,23 @@ pub struct Process {
 /// The PID manager.
 static mut PID_MANAGER: MaybeUninit<Mutex<PIDManager>> = MaybeUninit::uninit();
 /// The processes scheduler.
-static mut SCHEDULER: MaybeUninit<SharedPtr<Scheduler>> = MaybeUninit::uninit();
+static mut SCHEDULER: MaybeUninit<SharedPtr<Scheduler, InterruptMutex<Scheduler>>>
+	= MaybeUninit::uninit();
 
-/// Scheduler ticking callback.
-pub struct ProcessFaultCallback {}
+/// Initializes processes system. This function must be called only once, at kernel initialization.
+pub fn init() -> Result<(), Errno> {
+	tss::init();
+	tss::flush();
 
-impl Callback for ProcessFaultCallback {
-	fn call(&mut self, id: u32, code: u32, regs: &Regs, ring: u32) -> InterruptResult {
+	let cores_count = 1; // TODO
+	unsafe {
+		PID_MANAGER.write(Mutex::new(PIDManager::new()?));
+		SCHEDULER.write(Scheduler::new(cores_count)?);
+	}
+
+	// TODO Register for all errors that can be caused by a process
+	// TODO Use only one instance?
+	let callback = | id: u32, code: u32, regs: &Regs, ring: u32 | {
 		if ring < 3 {
 			return InterruptResult::new(true, InterruptResultAction::Panic);
 		}
@@ -198,26 +208,18 @@ impl Callback for ProcessFaultCallback {
 		} else {
 			InterruptResult::new(true, InterruptResultAction::Panic)
 		}
-	}
-}
-
-/// Initializes processes system. This function must be called only once, at kernel initialization.
-pub fn init() -> Result<(), Errno> {
-	tss::init();
-	tss::flush();
-
-	let cores_count = 1; // TODO
-	unsafe {
-		PID_MANAGER.write(Mutex::new(PIDManager::new()?));
-		SCHEDULER.write(Scheduler::new(cores_count)?);
-	}
-
-	// TODO Register for all errors that can be caused by a process
-	// TODO Use only one instance?
-	event::register_callback(0x0d, u32::MAX, ProcessFaultCallback {})?;
-	event::register_callback(0x0e, u32::MAX, ProcessFaultCallback {})?;
+	};
+	event::register_callback(0x0d, u32::MAX, callback)?;
+	event::register_callback(0x0e, u32::MAX, callback)?;
 
 	Ok(())
+}
+
+/// Returns a mutable reference to the scheduler's Mutex.
+pub fn get_scheduler() -> &'static mut InterruptMutex<Scheduler> {
+	unsafe { // Safe because using Mutex
+		SCHEDULER.assume_init_mut()
+	}
 }
 
 impl Process {

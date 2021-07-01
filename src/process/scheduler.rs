@@ -11,7 +11,7 @@
 use core::cmp::max;
 use core::ffi::c_void;
 use crate::errno::Errno;
-use crate::event::{Callback, CallbackHook, InterruptResult};
+use crate::event::CallbackHook;
 use crate::event;
 use crate::gdt;
 use crate::memory::malloc;
@@ -52,18 +52,6 @@ struct ContextSwitchData {
 	proc: SharedPtr<Process>,
 }
 
-/// Scheduler ticking callback.
-pub struct TickCallback {
-	/// A reference to the scheduler.
-	scheduler: SharedPtr<Scheduler>,
-}
-
-impl Callback for TickCallback {
-	fn call(&mut self, _id: u32, _code: u32, regs: &util::Regs, ring: u32) -> InterruptResult {
-		Scheduler::tick(self.scheduler.as_mut(), regs, ring);
-	}
-}
-
 /// The structure representing the process scheduler.
 pub struct Scheduler {
 	/// A vector containing the temporary stacks for each CPU cores.
@@ -91,13 +79,13 @@ pub struct Scheduler {
 
 impl Scheduler {
 	/// Creates a new instance of scheduler.
-	pub fn new(cores_count: usize) -> Result<SharedPtr<Self>, Errno> {
+	pub fn new(cores_count: usize) -> Result<SharedPtr<Self, InterruptMutex<Self>>, Errno> {
 		let mut tmp_stacks = Vec::new();
 		for _ in 0..cores_count {
 			tmp_stacks.push(malloc::Alloc::new_default(TMP_STACK_SIZE)?)?;
 		}
 
-		let mut s = SharedPtr::new(Mutex::new(Self {
+		let s = SharedPtr::new(InterruptMutex::new(Self {
 			tmp_stacks,
 
 			tick_callback_hook: None,
@@ -112,14 +100,10 @@ impl Scheduler {
 			cursor: 0,
 		}))?;
 
-		{
-			let callback = TickCallback {
-				scheduler: s.clone(),
-			};
-			let mut guard = s.lock();
-			let scheduler = guard.get_mut();
-			scheduler.tick_callback_hook = Some(event::register_callback(32, 0, callback)?);
-		}
+		let callback = | _id: u32, _code: u32, regs: &util::Regs, ring: u32 | {
+			Scheduler::tick(process::get_scheduler(), regs, ring);
+		};
+		event::register_callback(32, 0, callback)?;
 		Ok(s)
 	}
 
@@ -227,7 +211,7 @@ impl Scheduler {
 	/// `mutex` is the scheduler's mutex.
 	/// `regs` is the state of the registers from the paused context.
 	/// `ring` is the ring of the paused context.
-	fn tick(mutex: &mut Mutex<Self>, regs: &util::Regs, ring: u32) -> ! {
+	fn tick(mutex: &mut InterruptMutex<Self>, regs: &util::Regs, ring: u32) -> ! {
 		let mut guard = mutex.lock();
 		let scheduler = guard.get_mut();
 
