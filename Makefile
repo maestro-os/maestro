@@ -63,8 +63,14 @@ DOC_DIR = doc/
 
 
 ifeq ($(CONFIG_EXISTS), 0)
+
+ ifneq ($(CONFIG_DEBUG_TEST), true)
 # The rule to compile everything
 all: $(NAME) iso tags doc
+ else
+# The rule to compile everything
+all: $(NAME) iso tags
+ endif
 
 # Builds the documentation
 doc: $(DOC_SRC_DIR)
