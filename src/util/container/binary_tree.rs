@@ -573,7 +573,6 @@ impl<T: 'static + Ord> BinaryTree<T> {
 		None
 	}
 
-	// TODO Fix
 	/// Equilibrates the tree after insertion of node `n`.
 	fn insert_equilibrate(&mut self, n: &mut BinaryTreeNode<T>) {
 		let mut node = n;
@@ -583,28 +582,35 @@ impl<T: 'static + Ord> BinaryTree<T> {
 				break;
 			}
 
-			let grandparent = parent.get_parent_mut().unwrap();
-			if let Some(uncle) = node.get_uncle_mut() {
-				if uncle.is_red() {
-					parent.color = NodeColor::Black;
-					uncle.color = NodeColor::Black;
-					grandparent.color = NodeColor::Red;
+			if let Some(grandparent) = parent.get_parent_mut() {
+                if let Some(uncle) = node.get_uncle_mut() {
+                    if uncle.is_red() {
+                        parent.color = NodeColor::Black;
+                        uncle.color = NodeColor::Black;
+                        grandparent.color = NodeColor::Red;
 
-					node = grandparent;
-					continue;
-				}
-			}
+                        node = grandparent;
+                        continue;
+                    }
+                }
+            } else {
+                parent.color = NodeColor::Black;
+                break;
+            }
 
 			if parent.is_left_child() {
 				if node.is_right_child() {
-					node.left_rotate();
+					//node.left_rotate();
+                    parent.right_rotate();
 					node = parent;
 				}
 			} else if node.is_left_child() {
-				node.right_rotate();
+				//node.right_rotate();
+                parent.left_rotate();
 				node = parent;
 			}
 
+            // TODO Check
 			let parent = node.get_parent_mut().unwrap();
 			parent.color = NodeColor::Black;
 			let grandparent = parent.get_parent_mut().unwrap();
@@ -629,7 +635,7 @@ impl<T: 'static + Ord> BinaryTree<T> {
 				p.insert_right(n);
 			}
 
-			// TODO self.insert_equilibrate(n);
+			self.insert_equilibrate(n);
 			self.update_root(n);
 		} else {
 			debug_assert!(self.root.is_none());
@@ -638,7 +644,7 @@ impl<T: 'static + Ord> BinaryTree<T> {
 			let n = unsafe {
 				node.as_mut()
 			};
-			// TODO self.insert_equilibrate(n);
+			self.insert_equilibrate(n);
 			self.update_root(n);
 		}
 		unsafe {
@@ -692,19 +698,21 @@ impl<T: 'static + Ord> BinaryTree<T> {
 			}
 
 			if let Some(parent) = node.get_parent_mut() {
-				*if node.is_left_child() {
-					&mut parent.left
-				} else {
-					&mut parent.right
-				} = replacement;
+                if node.is_left_child() {
+                    parent.left = replacement;
+                } else {
+                    parent.right = replacement;
+                }
 
 				node.unlink();
 				unsafe {
+                    drop_in_place(node);
 					malloc::free(node as *mut _ as *mut _);
 				}
 			} else {
 				node.unlink();
 				unsafe {
+                    drop_in_place(node);
 					malloc::free(node as *mut _ as *mut _);
 				}
 
