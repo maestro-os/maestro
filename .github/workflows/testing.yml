@@ -4,4 +4,5 @@ jobs:
     test:
         runs-on: [self-hosted, linux]
         steps:
+            - run: "ls -lR"
             - run: "testing/test.sh"
