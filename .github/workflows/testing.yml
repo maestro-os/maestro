@@ -4,4 +4,4 @@ jobs:
     test:
         runs-on: [self-hosted, linux]
         steps:
-            - run: "scripts/testing.sh"
+            - run: "testing/test.sh"
