@@ -171,7 +171,7 @@ pub fn get_deepest(path: &Path) -> Option<SharedPtr<MountPoint>> {
 
 		if let Some(max) = max.as_mut() {
 			let max_guard = max.lock();
-            let max_path = max_guard.get().get_path();
+			let max_path = max_guard.get().get_path();
 
 			if max_path.get_elements_count() >= mount_path.get_elements_count() {
 				continue;

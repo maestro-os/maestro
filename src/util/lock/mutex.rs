@@ -1,5 +1,5 @@
 //! This module contains the Mutex and MutexGuard structure.
-//! 
+//!
 //! Mutual exclusion is used to protect data from concurrent access.
 //! A Mutex allows to ensure that one, and only thread accesses the data stored into it at the same
 //! time. Preventing race conditions.

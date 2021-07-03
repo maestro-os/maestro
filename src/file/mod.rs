@@ -618,21 +618,21 @@ impl FCache {
 
 		let inner_path = path.range_from(deepest_mountpoint.get_path().get_elements_count()..)?;
 
-        let file = {
-            if inner_path.get_elements_count() > 0 {
-                let entry_name = inner_path[inner_path.get_elements_count() - 1].failable_clone()?;
-                let inode = deepest_mountpoint.get_filesystem().get_inode(dev.get_handle(),
-                    inner_path)?;
+		let file = {
+			if inner_path.get_elements_count() > 0 {
+				let entry_name = inner_path[inner_path.get_elements_count() - 1].failable_clone()?;
+				let inode = deepest_mountpoint.get_filesystem().get_inode(dev.get_handle(),
+					inner_path)?;
 
-                deepest_mountpoint.get_filesystem().load_file(dev.get_handle(), inode, entry_name)
-            } else {
-                let inode = deepest_mountpoint.get_filesystem().get_inode(dev.get_handle(),
-                    Path::root())?;
-                deepest_mountpoint.get_filesystem().load_file(dev.get_handle(), inode,
-                    String::from("")?)
-            }
-        }?;
-        SharedPtr::new(Mutex::new(file))
+				deepest_mountpoint.get_filesystem().load_file(dev.get_handle(), inode, entry_name)
+			} else {
+				let inode = deepest_mountpoint.get_filesystem().get_inode(dev.get_handle(),
+					Path::root())?;
+				deepest_mountpoint.get_filesystem().load_file(dev.get_handle(), inode,
+					String::from("")?)
+			}
+		}?;
+		SharedPtr::new(Mutex::new(file))
 	}
 }
 
