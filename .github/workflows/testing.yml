@@ -1,0 +1,6 @@
+name: Testing
+on: [commit]
+jobs:
+    test:
+        steps:
+            - run: "scripts/testing.sh"
