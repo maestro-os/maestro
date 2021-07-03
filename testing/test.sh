@@ -2,10 +2,6 @@
 
 # This script tests the compilation of the kernel. It must be run from the root of the project
 
-unset KERNEL_ARCH
-unset KERNEL_MODE
-unset KERNEL_TEST
-unset KERNEL_QEMU_TEST
 status=0
 
 # Executes the given command
@@ -57,31 +53,25 @@ exec_command testing/codecheck.sh
 
 
 
-echo "Testing default compilation..."
-test_compilation
-
-
-
 echo "Testing debug compilation..."
-export KERNEL_MODE=debug
+cp testing/configs/debug .config
 test_compilation
-unset KERNEL_MODE
 
 
 
-echo "Testing test compilation..."
-export KERNEL_MODE=debug
-export KERNEL_TEST=true
+echo "Selftesting compilation..."
+cp testing/configs/selftest .config
 test_compilation
-unset KERNEL_MODE
-unset KERNEL_TEST
+
+
+
+# TODO Run selftests and get the result
 
 
 
 echo "Testing release compilation..."
-export KERNEL_MODE=release
+cp testing/configs/release .config
 test_compilation
-unset KERNEL_MODE
 
 
 

@@ -1,0 +1,7 @@
+general_arch="x86"
+general_scheduler_end_panic="true"
+debug_debug="true"
+debug_test="false"
+debug_storagetest="false"
+debug_qemu="false"
+debug_malloc_magic="true"
