@@ -1,5 +1,5 @@
 name: Testing
-on: [commit]
+on: push
 jobs:
     test:
         steps:
