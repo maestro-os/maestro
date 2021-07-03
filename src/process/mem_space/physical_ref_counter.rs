@@ -5,6 +5,7 @@
 
 use core::cmp::Ordering;
 use core::ffi::c_void;
+use core::ptr;
 use crate::errno::Errno;
 use crate::memory;
 use crate::util::container::binary_tree::BinaryTree;
@@ -20,7 +21,7 @@ pub struct PageRefCounter {
 
 impl Ord for PageRefCounter {
 	fn cmp(&self, other: &Self) -> Ordering {
-		self.page_addr.cmp(&other.page_addr)
+		(self.page_addr as usize).cmp(&(other.page_addr as usize))
 	}
 }
 
@@ -28,25 +29,25 @@ impl Eq for PageRefCounter {}
 
 impl PartialEq for PageRefCounter {
 	fn eq(&self, other: &Self) -> bool {
-		self.page_addr == other.page_addr
+		ptr::eq(self.page_addr, other.page_addr)
 	}
 }
 
 impl PartialOrd for PageRefCounter {
-	fn partial_cmp(&self, other: &Self) -> Option::<Ordering> {
-		Some(self.page_addr.cmp(&other.page_addr))
+	fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+		Some((self.page_addr as usize).cmp(&(other.page_addr as usize)))
 	}
 }
 
-impl PartialEq::<*const c_void> for PageRefCounter {
+impl PartialEq<*const c_void> for PageRefCounter {
 	fn eq(&self, other: &*const c_void) -> bool {
-		self.page_addr == *other
+		ptr::eq(self.page_addr, *other)
 	}
 }
 
-impl PartialOrd::<*const c_void> for PageRefCounter {
-	fn partial_cmp(&self, other: &*const c_void) -> Option::<Ordering> {
-		Some(self.page_addr.cmp(other))
+impl PartialOrd<*const c_void> for PageRefCounter {
+	fn partial_cmp(&self, other: &*const c_void) -> Option<Ordering> {
+		Some((self.page_addr as usize).cmp(&((*other) as usize)))
 	}
 }
 

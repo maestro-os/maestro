@@ -284,8 +284,8 @@ impl MemMapping {
 	/// memory for Copy-On-Write. `container` is the container in which the new mapping is to be
 	/// inserted. The virtual memory context has to be updated after calling this function.
 	/// The function returns a mutable reference to the newly created mapping.
-	pub fn fork<'a>(&mut self, container: &'a mut BinaryTree::<MemMapping>)
-		-> Result::<&'a mut Self, Errno> {
+	pub fn fork<'a>(&mut self, container: &'a mut BinaryTree<MemMapping>)
+		-> Result<&'a mut Self, Errno> {
 		let new_mapping = Self {
 			begin: self.begin,
 			size: self.size,
@@ -321,7 +321,7 @@ impl MemMapping {
 
 impl Ord for MemMapping {
 	fn cmp(&self, other: &Self) -> Ordering {
-		self.begin.cmp(&other.begin)
+		(self.begin as usize).cmp(&(other.begin as usize))
 	}
 }
 
@@ -329,25 +329,25 @@ impl Eq for MemMapping {}
 
 impl PartialEq for MemMapping {
 	fn eq(&self, other: &Self) -> bool {
-		self.begin == other.begin
+		ptr::eq(self.begin, other.begin)
 	}
 }
 
 impl PartialOrd for MemMapping {
-	fn partial_cmp(&self, other: &Self) -> Option::<Ordering> {
-		Some(self.begin.cmp(&other.begin))
+	fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+		Some((self.begin as usize).cmp(&(other.begin as usize)))
 	}
 }
 
-impl PartialEq::<*const c_void> for MemMapping {
+impl PartialEq<*const c_void> for MemMapping {
 	fn eq(&self, other: &*const c_void) -> bool {
-		self.begin == *other
+		ptr::eq(self.begin, *other)
 	}
 }
 
-impl PartialOrd::<*const c_void> for MemMapping {
-	fn partial_cmp(&self, other: &*const c_void) -> Option::<Ordering> {
-		Some(self.begin.cmp(other))
+impl PartialOrd<*const c_void> for MemMapping {
+	fn partial_cmp(&self, other: &*const c_void) -> Option<Ordering> {
+		Some((self.begin as usize).cmp(&((*other) as usize)))
 	}
 }
 
