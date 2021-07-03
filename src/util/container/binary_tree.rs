@@ -9,6 +9,7 @@ use core::ptr::drop_in_place;
 use core::ptr;
 use crate::errno::Errno;
 use crate::memory::malloc;
+use crate::memory;
 use crate::util::FailableClone;
 use crate::util;
 
@@ -38,10 +39,11 @@ struct BinaryTreeNode<T> {
 }
 
 /// Unwraps the given pointer option into a reference option.
-fn unwrap_pointer<T>(ptr: &Option::<NonNull::<BinaryTreeNode::<T>>>)
-	-> Option::<&'static BinaryTreeNode::<T>> {
+fn unwrap_pointer<T>(ptr: &Option<NonNull<BinaryTreeNode<T>>>)
+	-> Option<&'static BinaryTreeNode<T>> {
 	if let Some(p) = ptr {
 		unsafe {
+			debug_assert!(p.as_ptr() as usize > memory::PROCESS_END as usize);
 			Some(&*p.as_ptr())
 		}
 	} else {
@@ -50,10 +52,11 @@ fn unwrap_pointer<T>(ptr: &Option::<NonNull::<BinaryTreeNode::<T>>>)
 }
 
 /// Same as `unwrap_pointer` but returns a mutable reference.
-fn unwrap_pointer_mut<T>(ptr: &mut Option::<NonNull::<BinaryTreeNode::<T>>>)
-	-> Option::<&'static mut BinaryTreeNode::<T>> {
+fn unwrap_pointer_mut<T>(ptr: &mut Option<NonNull<BinaryTreeNode<T>>>)
+	-> Option<&'static mut BinaryTreeNode<T>> {
 	if let Some(p) = ptr {
 		unsafe {
+			debug_assert!(p.as_ptr() as usize > memory::PROCESS_END as usize);
 			Some(&mut *(p.as_ptr() as *mut _))
 		}
 	} else {
