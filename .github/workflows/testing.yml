@@ -4,5 +4,5 @@ jobs:
     test:
         runs-on: [self-hosted, linux]
         steps:
-            - run: "ls -lR"
+            - uses: actions/checkout@v2
             - run: "testing/test.sh"
