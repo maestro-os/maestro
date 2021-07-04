@@ -35,6 +35,7 @@ struct BinaryTreeNode<T> {
 	/// The color of the node
 	color: NodeColor,
 
+    /// The node's value.
 	value: T,
 }
 
@@ -151,15 +152,6 @@ impl<T: 'static> BinaryTreeNode<T> {
 	pub fn is_triangle(&self) -> bool {
 		if let Some(parent) = self.get_parent() {
             return self.is_left_child() != parent.is_left_child();
-		}
-
-		false
-	}
-
-	/// Tells whether the node and its parent and grandparent form a line.
-	pub fn is_line(&self) -> bool {
-		if let Some(parent) = self.get_parent() {
-            return self.is_left_child() == parent.is_left_child();
 		}
 
 		false
@@ -582,6 +574,7 @@ impl<T: 'static + Ord> BinaryTree<T> {
 				break;
 			}
 
+            // The node's parent exists and is red
 			if let Some(grandparent) = parent.get_parent_mut() {
                 if let Some(uncle) = node.get_uncle_mut() {
                     if uncle.is_red() {
@@ -598,19 +591,19 @@ impl<T: 'static + Ord> BinaryTree<T> {
                 break;
             }
 
-			if parent.is_left_child() {
+            // The node'a parent is red and the node is guaranteed to have a grandparent
+			if node.is_triangle() {
+                debug_assert!(parent.get_parent().is_none());
+
 				if node.is_right_child() {
-					//node.left_rotate();
+                    parent.left_rotate();
+				} else {
                     parent.right_rotate();
-					node = parent;
-				}
-			} else if node.is_left_child() {
-				//node.right_rotate();
-                parent.left_rotate();
-				node = parent;
+                }
+
+                node = parent;
 			}
 
-            // TODO Check
 			let parent = node.get_parent_mut().unwrap();
 			parent.color = NodeColor::Black;
 			let grandparent = parent.get_parent_mut().unwrap();
