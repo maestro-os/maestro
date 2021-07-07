@@ -202,42 +202,60 @@ impl<T: 'static> BinaryTreeNode<T> {
 	/// Applies a left tree rotation with the current node as pivot.
     /// If the current node doesn't have a parent, the behaviour is undefined.
 	pub fn left_rotate(&mut self) {
-		let root = self.get_parent_mut();
-        debug_assert!(root.is_some());
-		let root_ptr = unsafe {
-			&mut *(root.unwrap() as *mut Self)
-		};
+		let root = self.get_parent_mut().unwrap();
 		let left = self.left;
 
-		self.left = NonNull::new(root_ptr);
-		root_ptr.parent = NonNull::new(self);
+        if let Some(mut p) = root.parent {
+            let p = unsafe {
+                p.as_mut()
+            };
 
-		root_ptr.right = left;
-		if let Some(left) = left {
-			unsafe {
-				&mut *(left.as_ptr() as *mut Self)
-			}.parent = NonNull::new(root_ptr);
+            if root.is_right_child() {
+                p.right = NonNull::new(self);
+            } else {
+                p.left = NonNull::new(self);
+            }
+        }
+        self.parent = root.parent;
+
+		self.left = NonNull::new(root);
+		root.parent = NonNull::new(self);
+
+		root.right = left;
+		if let Some(mut left) = left {
+            unsafe {
+                left.as_mut()
+            }.parent = NonNull::new(root);
 		}
 	}
 
 	/// Applies a right tree rotation with the current node as pivot.
     /// If the current node doesn't have a parent, the behaviour is undefined.
 	pub fn right_rotate(&mut self) {
-		let root = self.get_parent_mut();
-        debug_assert!(root.is_some());
-		let root_ptr = unsafe {
-			&mut *(root.unwrap() as *mut Self)
-		};
+		let root = self.get_parent_mut().unwrap();
 		let right = self.right;
 
-		self.right = NonNull::new(root_ptr);
-		root_ptr.parent = NonNull::new(self);
+        if let Some(mut p) = root.parent {
+            let p = unsafe {
+                p.as_mut()
+            };
 
-		root_ptr.left = right;
-		if let Some(right) = right {
+            if root.is_right_child() {
+                p.right = NonNull::new(self);
+            } else {
+                p.left = NonNull::new(self);
+            }
+        }
+        self.parent = root.parent;
+
+		self.right = NonNull::new(root);
+		root.parent = NonNull::new(self);
+
+		root.left = right;
+		if let Some(mut right) = right {
 			unsafe {
-				&mut *(right.as_ptr() as *mut Self)
-			}.parent = NonNull::new(root_ptr);
+                right.as_mut()
+            }.parent = NonNull::new(root);
 		}
 	}
 
@@ -591,14 +609,12 @@ impl<T: 'static + Ord> BinaryTree<T> {
                 break;
             }
 
-            // The node'a parent is red and the node is guaranteed to have a grandparent
+            // The node's parent is red and the node is guaranteed to have a grandparent
 			if node.is_triangle() {
-                debug_assert!(parent.get_parent().is_none());
-
 				if node.is_right_child() {
-                    parent.left_rotate();
+                    node.left_rotate();
 				} else {
-                    parent.right_rotate();
+                    node.right_rotate();
                 }
 
                 node = parent;
@@ -821,10 +837,15 @@ impl<T: 'static> BinaryTree<T> {
 			Self::foreach_nodes(unsafe {
 				root.as_ref()
 			}, &mut | n: &BinaryTreeNode<T> | {
+                debug_assert!(n as *const _ as usize >= memory::PROCESS_END as usize);
+
 				if let Some(left) = n.get_left() {
+                    debug_assert!(left as *const _ as usize >= memory::PROCESS_END as usize);
 					debug_assert!(ptr::eq(left.get_parent().unwrap() as *const _, n as *const _));
 				}
+
 				if let Some(right) = n.get_right() {
+                    debug_assert!(right as *const _ as usize >= memory::PROCESS_END as usize);
 					debug_assert!(ptr::eq(right.get_parent().unwrap() as *const _, n as *const _));
 				}
 			}, TraversalType::PreOrder);
