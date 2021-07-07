@@ -227,7 +227,6 @@ impl MemMapping {
 			}
 			if let Err(errno) = vmem.map(new_phys_ptr, virt_ptr, flags) {
 				ref_counter.get_mut().decrement(new_phys_ptr);
-
 				buddy::free(new_phys_ptr, 0);
 				return Err(errno);
 			}
