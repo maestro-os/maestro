@@ -14,7 +14,8 @@ pub fn write(proc: &mut Process, regs: &util::Regs) -> Result<i32, Errno> {
 	let buf = regs.ecx as *const u8;
 	let count = regs.edx as usize;
 
-	crate::println!("{} -> {:p}", proc.get_pid(), proc.get_mem_space_mut().get_vmem().translate(regs.esp as _).unwrap()); // TODO rm
+	crate::println!("{} -> {:p}", proc.get_pid(),
+		proc.get_mem_space_mut().get_vmem().translate(regs.esp as _).unwrap()); // TODO rm
 
 	if proc.get_mem_space().can_access(buf, count, true, false) {
 		let len = max(count as i32, 0);

@@ -26,16 +26,16 @@ void test_process(void)
 	//}
 
 	fork();
-	if(getpid() == 1)
+	/*if(getpid() == 1)
 	{
 		write(1, "1:1\n", 4);
 	}
 	else
 	{
 		write(1, "1:2\n", 4);
-	}
+	}*/
 	fork();
-	switch(getpid()) {
+	/*switch(getpid()) {
 		case 1:
 			write(1, "2:1\n", 4);
 			break;
@@ -48,6 +48,6 @@ void test_process(void)
 		case 4:
 			write(1, "2:4\n", 4);
 			break;
-	}
+	}*/
 	asm("hlt");
 }
