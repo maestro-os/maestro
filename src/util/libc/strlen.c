@@ -1,6 +1,7 @@
 #include <stddef.h>
 
-// TODO Rewrite
+#include "libc.h"
+
 /*
  * Returns the length of the string `s`.
  */
