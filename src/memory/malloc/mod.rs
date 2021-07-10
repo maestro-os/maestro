@@ -14,6 +14,7 @@ use core::mem::size_of;
 use core::ops::Index;
 use core::ops::IndexMut;
 use core::ptr::drop_in_place;
+use core::ptr;
 use core::slice;
 use crate::errno::Errno;
 use crate::errno;
@@ -119,7 +120,7 @@ pub unsafe fn free(ptr: *mut c_void) {
 	assert!(chunk.is_used());
 
 	chunk.set_used(false);
-	util::write_ptr(&mut chunk.as_free_chunk().free_list, ListNode::new_single());
+	ptr::write_volatile(&mut chunk.as_free_chunk().free_list, ListNode::new_single());
 
 	let c = chunk.coalesce();
 	if c.list.is_single() {

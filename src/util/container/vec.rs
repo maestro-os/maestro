@@ -15,7 +15,6 @@ use core::slice;
 use crate::errno::Errno;
 use crate::memory::malloc;
 use crate::util::FailableClone;
-use crate::util;
 
 /// A vector container is a dynamically-resizable array of elements.
 /// When resizing a vector, the elements can be moved, thus the callee should not rely on pointers
@@ -163,7 +162,7 @@ impl<T> Vec<T> {
 		unsafe {
 			let ptr = self.data.as_mut().unwrap().as_ptr_mut();
 			ptr::copy(ptr.offset(index as _), ptr.offset((index + 1) as _), self.len - index);
-			util::write_ptr(&mut self.data.as_mut().unwrap()[index] as _, element);
+			ptr::write_volatile(&mut self.data.as_mut().unwrap()[index] as _, element);
 		}
 		self.len += 1;
 		Ok(())
@@ -321,7 +320,7 @@ impl<T> FailableClone for Vec<T> where T: FailableClone {
 		for i in 0..self.len() {
 			// Safe because the pointer is guaranteed to be correct thanks to the Alloc structure
 			unsafe {
-				util::write_ptr(&mut v[i] as _, self[i].failable_clone()?);
+				ptr::write_volatile(&mut v[i] as _, self[i].failable_clone()?);
 			}
 		}
 

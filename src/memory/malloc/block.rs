@@ -3,6 +3,7 @@
 
 use core::ffi::c_void;
 use core::mem::size_of;
+use core::ptr;
 use crate::errno::Errno;
 use crate::memory::buddy;
 use crate::memory;
@@ -37,8 +38,8 @@ impl Block {
 
 		let ptr = buddy::alloc_kernel(order)?;
 		debug_assert!(ptr as *const _ >= memory::PROCESS_END);
-		let block = unsafe {
-			util::write_ptr(ptr as *mut Block, Self {
+		let block = unsafe { // Safe since `ptr` is valid
+			ptr::write_volatile(ptr as *mut Block, Self {
 				list: ListNode::new_single(),
 				order,
 				first_chunk: Chunk::new(),

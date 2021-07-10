@@ -8,12 +8,12 @@ use core::ops::DispatchFromDyn;
 use core::ops::{Deref, DerefMut};
 use core::ptr::NonNull;
 use core::ptr::drop_in_place;
+use core::ptr;
 use crate::errno::Errno;
 use crate::memory::malloc;
 use crate::util::lock::mutex::Mutex;
 use crate::util::lock::mutex::MutexGuard;
 use crate::util::lock::mutex::TMutex;
-use crate::util::write_ptr;
 
 /// Drops the given inner structure if necessary.
 fn check_inner_drop<T: ?Sized, M: TMutex<T> + ?Sized>(inner: &mut SharedPtrInner<M>) {
@@ -93,8 +93,8 @@ impl<T, M: TMutex<T>> SharedPtr<T, M> {
 		let inner = unsafe {
 			malloc::alloc(size_of::<SharedPtrInner<M>>())? as *mut SharedPtrInner<M>
 		};
-		unsafe {
-			write_ptr(inner, SharedPtrInner::new(obj));
+		unsafe { // Safe because the pointer is valid
+			ptr::write_volatile(inner, SharedPtrInner::new(obj));
 		}
 
 		Ok(Self {

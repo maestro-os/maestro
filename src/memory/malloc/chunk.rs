@@ -8,6 +8,7 @@ use core::cmp::{min, max};
 use core::ffi::c_void;
 use core::mem::MaybeUninit;
 use core::mem::size_of;
+use core::ptr;
 use crate::errno::Errno;
 use crate::list_new;
 use crate::util::list::List;
@@ -206,8 +207,8 @@ impl Chunk {
 		if let Some(next_ptr) = self.get_split_next_chunk(size) {
 			let curr_new_size = (next_ptr as usize) - (self.get_ptr() as usize);
 			let next_size = self.size - curr_new_size - size_of::<Chunk>();
-			let next = unsafe {
-				util::write_ptr(next_ptr, FreeChunk::new(next_size));
+			let next = unsafe { // Safe since `next_ptr` is valid
+				ptr::write_volatile(next_ptr, FreeChunk::new(next_size));
 				&mut *next_ptr
 			};
 			#[cfg(config_debug_debug)]
@@ -320,7 +321,7 @@ impl FreeChunk {
 	/// block. The chunk is **not** inserted into the free list.
 	pub fn new_first(ptr: *mut c_void, size: usize) {
 		unsafe {
-			util::write_ptr(ptr as *mut FreeChunk, Self {
+			ptr::write_volatile(ptr as *mut FreeChunk, Self {
 				chunk: Chunk {
 					#[cfg(config_debug_malloc_magic)]
 					magic: CHUNK_MAGIC,

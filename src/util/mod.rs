@@ -11,9 +11,10 @@ pub mod lock;
 pub mod math;
 pub mod ptr;
 
+use core::str;
 use core::ffi::c_void;
 use core::fmt;
-use core::mem::MaybeUninit;
+use core::mem::size_of;
 use crate::errno::Errno;
 
 /// Tells if pointer `ptr` is aligned on boundary `n`.
@@ -49,7 +50,7 @@ pub fn align(ptr: *const c_void, n: usize) -> *const c_void {
 /// Returns the of a type in bits.
 #[inline(always)]
 pub fn bit_size_of<T>() -> usize {
-	core::mem::size_of::<T>() * 8
+	size_of::<T>() * 8
 }
 
 /// Returns the offset of the given field `field` in structure `type`.
@@ -166,13 +167,13 @@ ebx: {:p} ecx: {:p} edx: {:p} esi: {:p} edi: {:p}\n",
 }
 
 /// Zeroes the given object.
-pub fn zero_object<T>(obj: &mut T) {
+/// The function is marked unsafe since there exist some objects for which a representation full of
+/// zeros is invalid.
+pub unsafe fn zero_object<T>(obj: &mut T) {
 	let ptr = obj as *mut T as *mut c_void;
-	let size = core::mem::size_of::<T>();
+	let size = size_of::<T>();
 
-	unsafe {
-		bzero(ptr, size);
-	}
+	bzero(ptr, size);
 }
 
 /// Converts the given pointer `ptr` to a string of characters. The string must be valid and must
@@ -181,7 +182,7 @@ pub fn zero_object<T>(obj: &mut T) {
 pub unsafe fn ptr_to_str(ptr: *const c_void) -> &'static str {
 	let len = strlen(ptr);
 	let slice = core::slice::from_raw_parts(ptr as *const u8, len);
-	core::str::from_utf8_unchecked(slice)
+	str::from_utf8_unchecked(slice)
 }
 
 /// Converts the given reference `ptr` to a string of characters. The string must be valid.
@@ -189,14 +190,7 @@ pub unsafe fn ptr_to_str(ptr: *const c_void) -> &'static str {
 /// The ownership of the string is not taken, thus the caller must drop it manually.
 pub unsafe fn ptr_to_str_len<'a>(ptr: &'a u8, len: usize) -> &'a str {
 	let slice = core::slice::from_raw_parts(ptr as *const u8, len);
-	core::str::from_utf8_unchecked(slice)
-}
-
-/// Assigns value `val` to pointer `ptr` without calling Drop on it to prevent dropping garbage
-/// data. If `ptr` doesn't point to a valid memory location, the behaviour is undefined.
-pub unsafe fn write_ptr<T>(ptr: *mut T, val: T) {
-	let next = &mut *(ptr as *mut MaybeUninit<T>);
-	next.write(val);
+	str::from_utf8_unchecked(slice)
 }
 
 /// Turns the error into an empty error for the given result.
@@ -208,7 +202,8 @@ pub fn to_empty_error<T, E>(r: Result<T, E>) -> Result<T, ()> {
 	}
 }
 
-/// Returns the length of the number at the beginning of the given string `s`.
+/// Returns the length of the string representation of the number at the beginning of the given
+/// string `s`.
 pub fn nbr_len(s: &[u8]) -> usize {
 	let mut i = 0;
 
@@ -226,7 +221,6 @@ pub fn nbr_len(s: &[u8]) -> usize {
 #[cfg(test)]
 mod test {
 	use super::*;
-	use core::mem::size_of;
 
 	#[test_case]
 	fn memcpy0() {
