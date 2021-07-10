@@ -169,6 +169,7 @@ impl Chunk {
 	/// the chunk is used.
 	pub fn as_free_chunk(&mut self) -> &mut FreeChunk {
 		debug_assert!(!self.is_used());
+
 		unsafe {
 			&mut *(self as *mut Self as *mut FreeChunk)
 		}

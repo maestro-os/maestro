@@ -126,7 +126,7 @@ impl<T> Copy for List<T> {}
 #[macro_export]
 macro_rules! list_new {
 	($type:ty, $field:ident) => {
-		List::<$type>::new(crate::offset_of!($type, $field))
+		crate::util::list::List::<$type>::new(crate::offset_of!($type, $field))
 	}
 }
 
@@ -279,7 +279,7 @@ impl ListNode {
 	}
 
 	/// Inserts the node before node `node` in the given linked list `front`.
-	/// If the node is not single, the behaviour is undefined.
+	/// If the current node is not single, the behaviour is undefined.
 	pub fn insert_before(&mut self, front: &mut Option<*mut ListNode>, node: &mut ListNode) {
 		if front.is_some() && front.unwrap() == node {
 			*front = Some(self);
@@ -289,7 +289,7 @@ impl ListNode {
 	}
 
 	/// Inserts the node before node `node` in a floating linked list.
-	/// If the node is not single, the behaviour is undefined.
+	/// If the current node is not single, the behaviour is undefined.
 	pub fn insert_before_floating(&mut self, node: &mut ListNode) {
 		debug_assert!(self.is_single());
 
@@ -301,7 +301,7 @@ impl ListNode {
 	}
 
 	/// Inserts the node after node `node` in the given linked list `front`.
-	/// If the node is not single, the behaviour is undefined.
+	/// If the current node is not single, the behaviour is undefined.
 	pub fn insert_after(&mut self, node: &mut ListNode) {
 		debug_assert!(self.is_single());
 

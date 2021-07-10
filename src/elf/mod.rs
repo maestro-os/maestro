@@ -196,12 +196,13 @@ pub fn foreach_sections<F>(sections: *const c_void, sections_count: usize, shndx
 /// Returns the name of the symbol at the given offset.
 /// `strtab_section` is a reference to the .strtab section, containing symbol names.
 /// `offset` is the offset of the symbol in the section.
-/// If the offset is outside of the section, the behaviour is undefined.
-pub fn get_symbol_name(strtab_section: &ELF32SectionHeader, offset: u32) -> Option<&'static str> {
+/// If the offset is invalid or outside of the section, the behaviour is undefined.
+pub fn get_symbol_name(strtab_section: &ELF32SectionHeader, offset: u32) -> &'static str {
 	debug_assert!(offset < strtab_section.sh_size);
-	Some(unsafe {
+
+	unsafe {
 		util::ptr_to_str(memory::kern_to_virt((strtab_section.sh_addr + offset) as _))
-	})
+	}
 }
 
 /// Returns an Option containing the name of the function for the given instruction pointer. If the
@@ -211,11 +212,12 @@ pub fn get_symbol_name(strtab_section: &ELF32SectionHeader, offset: u32) -> Opti
 /// `shndx` is the index of the section containing section names.
 /// `entsize` is the size of section entries.
 /// `inst` is the pointer to the instruction on the virtual memory.
-/// If the section `.strtab` doesn't exist, the behaviour is undefined.
+/// If the section `.strtab` doesn't exist, the function returns None.
 pub fn get_function_name(sections: *const c_void, sections_count: usize, shndx: usize,
 	entsize: usize, inst: *const c_void) -> Option<&'static str> {
-	let strtab_section = get_section(sections, sections_count, shndx, entsize, ".strtab").unwrap();
+	let strtab_section = get_section(sections, sections_count, shndx, entsize, ".strtab")?;
 	let mut func_name: Option<&'static str> = None;
+
 	foreach_sections(sections, sections_count, shndx, entsize,
 		|hdr: &ELF32SectionHeader, _name: &str| {
 			if hdr.sh_type != SHT_SYMTAB {
@@ -235,7 +237,7 @@ pub fn get_function_name(sections: *const c_void, sections_count: usize, shndx: 
 				let size = sym.st_size as usize;
 				if (inst as usize) >= value && (inst as usize) < (value + size) {
 					if sym.st_name != 0 {
-						func_name = get_symbol_name(strtab_section, sym.st_name);
+						func_name = Some(get_symbol_name(strtab_section, sym.st_name));
 					}
 
 					break;
@@ -244,5 +246,6 @@ pub fn get_function_name(sections: *const c_void, sections_count: usize, shndx: 
 				i += hdr.sh_entsize as usize;
 			}
 		});
+
 	func_name
 }

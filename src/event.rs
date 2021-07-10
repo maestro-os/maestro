@@ -231,16 +231,16 @@ pub extern "C" fn event_handler(id: u32, code: u32, ring: u32, regs: &util::Regs
 
 	match action {
 		InterruptResultAction::Resume => {},
+
 		InterruptResultAction::Loop => {
 			pic::end_of_interrupt(id as _);
 			// TODO Fix: Use of loop action before TSS init shall result in undefined behaviour
-			// TODO Fix: The stack might be removed while being used (example: process is
-			// killed, its exit status is retrieved from another CPU core and then the process
-			// is removed)
+
 			unsafe {
 				crate::loop_reset(tss::get().esp0 as _);
 			}
 		},
+
 		InterruptResultAction::Panic => {
 			crate::kernel_panic!(get_error_message(id), code);
 		},

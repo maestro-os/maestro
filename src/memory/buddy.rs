@@ -101,6 +101,7 @@ pub fn set_zone_slot(slot: usize, zone: Zone) {
 	let z = unsafe {
 		ZONES.assume_init_mut()
 	};
+
 	debug_assert!(slot < z.len());
 	z[slot] = Mutex::new(zone);
 }

@@ -140,6 +140,8 @@ fn is_leap_year(year: u32) -> bool {
 /// `y0` and `y1` are the range in years. If `y1` is greater than `y0`, then the behaviour is
 /// undefined.
 fn leap_years_between(y0: u32, y1: u32) -> u32 {
+	debug_assert!(y1 <= y0);
+
 	let mut n = 0;
 	for i in y1..y0 {
 		if is_leap_year(i) {
