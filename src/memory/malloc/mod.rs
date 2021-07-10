@@ -17,6 +17,7 @@ use core::ptr::drop_in_place;
 use core::slice;
 use crate::errno::Errno;
 use crate::errno;
+use crate::memory;
 use crate::util::list::ListNode;
 use crate::util::lock::mutex::Mutex;
 use crate::util::lock::mutex::MutexGuard;
@@ -50,7 +51,7 @@ pub unsafe fn alloc(n: usize) -> Result<*mut c_void, Errno> {
 
 	let ptr = chunk.get_ptr();
 	debug_assert!(util::is_aligned(ptr, chunk::ALIGNEMENT));
-	debug_assert_ne!(ptr, 0 as _);
+	debug_assert!(ptr as usize >= memory::PROCESS_END as usize);
 	util::bzero(ptr, n);
 	Ok(ptr)
 }

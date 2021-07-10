@@ -50,7 +50,7 @@ const GAPS_BUCKETS_COUNT: usize = 8;
 const TMP_STACK_SIZE: usize = memory::PAGE_SIZE * 8;
 
 /// The physical pages reference counter.
-pub static mut PHYSICAL_REF_COUNTER: Mutex::<PhysRefCounter> = Mutex::new(PhysRefCounter::new());
+pub static mut PHYSICAL_REF_COUNTER: Mutex<PhysRefCounter> = Mutex::new(PhysRefCounter::new());
 
 /// Structure representing the data passed to the temporary stack used to fork a memory space.
 /// It is necessary to switch stacks because using a stack while mapping it is undefined.

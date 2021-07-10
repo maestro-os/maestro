@@ -11,7 +11,6 @@ use crate::errno::Errno;
 use crate::memory::malloc;
 use crate::memory;
 use crate::util::FailableClone;
-use crate::util;
 
 // TODO Fix: an element in a tree might be at the wrong place after being modified by mutable
 // reference
@@ -79,8 +78,10 @@ impl<T: 'static> BinaryTreeNode<T> {
 
 			value,
 		};
-		unsafe {
-			util::write_ptr(ptr, s);
+
+		debug_assert!(ptr as usize >= memory::PROCESS_END as usize);
+		unsafe { // Safe because the pointer is valid
+			ptr::write_volatile(ptr, s);
 		}
 
 		Ok(NonNull::new(ptr).unwrap())

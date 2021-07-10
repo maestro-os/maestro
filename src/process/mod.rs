@@ -9,6 +9,7 @@ pub mod signal;
 pub mod tss;
 
 use core::ffi::c_void;
+use core::mem::ManuallyDrop;
 use core::mem::MaybeUninit;
 use core::ptr::NonNull;
 use crate::errno::Errno;
@@ -191,6 +192,7 @@ pub fn init() -> Result<(), Errno> {
 					let accessed_ptr = unsafe {
 						vmem::x86::cr2_get()
 					};
+
 					if !curr_proc.mem_space.handle_page_fault(accessed_ptr, code) {
 						curr_proc.kill(signal::SIGSEGV).unwrap();
 					}
@@ -209,8 +211,8 @@ pub fn init() -> Result<(), Errno> {
 			InterruptResult::new(true, InterruptResultAction::Panic)
 		}
 	};
-	let _ = event::register_callback(0x0d, u32::MAX, callback)?;
-	let _ = event::register_callback(0x0e, u32::MAX, callback)?;
+	let _ = ManuallyDrop::new(event::register_callback(0x0d, u32::MAX, callback)?);
+	let _ = ManuallyDrop::new(event::register_callback(0x0e, u32::MAX, callback)?);
 
 	Ok(())
 }
