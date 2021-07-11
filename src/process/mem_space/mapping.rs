@@ -234,6 +234,7 @@ impl MemMapping {
 				ref_counter.get_mut().decrement(prev_phys_ptr);
 			}
 		}
+		vmem.flush();
 
 		vmem_switch(vmem, || {
 			unsafe {
@@ -247,7 +248,6 @@ impl MemMapping {
 				});
 			}
 		});
-		vmem.flush(); // TODO Remove?
 
 		Ok(())
 	}

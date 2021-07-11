@@ -160,8 +160,8 @@ impl TTY {
 
 		let y = self.cursor_y - self.screen_y;
 		if (0..vga::HEIGHT).contains(&y) {
-			vga::move_cursor(self.cursor_x, y);
 			vga::enable_cursor();
+			vga::move_cursor(self.cursor_x, y);
 		} else {
 			vga::disable_cursor();
 		}

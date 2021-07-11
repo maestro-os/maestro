@@ -8,8 +8,11 @@ use crate::io;
 use crate::memory::vmem;
 use crate::memory;
 
+/// Type representing a VGA text mode character.
 pub type Char = u16;
+/// Type representing a VGA text mode color.
 pub type Color = u8;
+/// Type representing a VGA text mode position.
 pub type Pos = i16;
 
 /// Physical address of the VGA text buffer.
@@ -62,7 +65,9 @@ pub const COLOR_WHITE: Color			= 0xf;
 /// VGA text mode default color.
 pub const DEFAULT_COLOR: Color = COLOR_WHITE | (COLOR_BLACK << 4);
 
+/// The beginning scanline for the cursor.
 pub const CURSOR_START: u8 = 0;
+/// The ending scanline for the cursor.
 pub const CURSOR_END: u8 = 15;
 
 /// Returns the value for the given foreground color `fg` and background color `bg`.

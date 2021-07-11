@@ -36,7 +36,7 @@ void test_process(void)
 	{
 		int pid = getpid();
 		if (pid > 30) {
-			print_nbr(getpid());
+			print_nbr(pid);
 		}
 	}
 	asm("hlt");
