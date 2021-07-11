@@ -65,7 +65,10 @@ test_compilation
 
 
 
-# TODO Run selftests and get the result
+echo "Running selftests..."
+make test
+exec_command serial.log
+# TODO Check if the results are correct
 
 
 

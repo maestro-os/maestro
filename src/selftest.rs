@@ -49,18 +49,19 @@ impl<T> Testable for T where T: Fn() {
 			&mut SERIAL
 		};
 
-		crate::print!("test {} ... ", type_name::<T>());
-
-		if let Some(s) = serial {
-			s.write(b"test ");
-			s.write(type_name::<T>().as_bytes());
-			s.write(b" ... ");
-		}
+		let name = type_name::<T>();
+		crate::print!("test {} ... ", name);
 
 		self();
 
+		let status = "ok"; // TODO On panic, retrieve message and print on serial
 		if let Some(s) = serial {
-			s.write(b"ok\n");
+			// TODO Add an additional message on fail
+			s.write(b"{\"name\": \"");
+			s.write(name.as_bytes());
+			s.write(b"\", \"status\": \"");
+			s.write(status.as_bytes());
+			s.write(b"\"}\n");
 		}
 
 		crate::println!("ok");
