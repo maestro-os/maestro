@@ -263,7 +263,7 @@ test: iso $(QEMU_DISK)
 
 # The rule to run the kernel's selftests using QEMU
 selftest: iso $(QEMU_DISK)
-	emu-system-i386 $(QEMU_FLAGS) -nographic >/dev/null 2>&1
+	qemu-system-i386 $(QEMU_FLAGS) -nographic >/dev/null 2>&1
 
 # The rule to run a CPU test of the kernel using QEMU (aka running the kernel and storing a lot of
 # logs into the `cpu_out` file)
