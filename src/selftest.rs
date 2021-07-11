@@ -1,5 +1,15 @@
-//! This module handles selftesting of the kernel.
+//! This module handles selftesting of the kernel. A selftest can be either a unit test or an
+//! integration test.
+//! The kernel uses the serial communication interface to transmit the results of the selftests to
+//! another machine.
 
+use core::any::type_name;
+use crate::device::serial::Serial;
+use crate::device::serial;
+
+/// Field storing an instance of the serial device to be used to transfer unit testing result to
+/// the host.
+static mut SERIAL: Option<Serial> = None;
 /// Boolean value telling whether selftesting is running.
 static mut RUNNING: bool = false;
 
@@ -33,9 +43,26 @@ pub trait Testable {
 }
 
 impl<T> Testable for T where T: Fn() {
+	// TODO Use a special format on serial to be parsed by host?
 	fn run(&self) {
-		crate::print!("test {} ... ", core::any::type_name::<T>());
+		let serial = unsafe {
+			&mut SERIAL
+		};
+
+		crate::print!("test {} ... ", type_name::<T>());
+
+		if let Some(s) = serial {
+			s.write(b"test ");
+			s.write(type_name::<T>().as_bytes());
+			s.write(b" ... ");
+		}
+
 		self();
+
+		if let Some(s) = serial {
+			s.write(b"ok\n");
+		}
+
 		crate::println!("ok");
 	}
 }
@@ -43,6 +70,10 @@ impl<T> Testable for T where T: Fn() {
 /// The test runner for the kernel. This function runs every tests for the kernel and halts the
 /// kernel or exits the emulator if possible.
 pub fn runner(tests: &[&dyn Testable]) {
+	unsafe { // Safe because the function is called by only one thread
+		SERIAL = Serial::from_port(serial::COM1);
+	}
+
 	crate::println!("Running {} tests", tests.len());
 
 	unsafe { // Safe because the function is called by only one thread

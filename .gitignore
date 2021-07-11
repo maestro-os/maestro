@@ -27,3 +27,4 @@ doc/
 # Debug files
 *_out
 qemu_disk
+serial.log
