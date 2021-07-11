@@ -12,9 +12,9 @@ use crate::memory::vmem::vmem_switch;
 use crate::memory::vmem;
 use crate::memory;
 use crate::util::boxed::Box;
-use crate::util::container::binary_tree::BinaryTree;
 use crate::util::lock::mutex::*;
 use crate::util;
+use super::MemSpace;
 
 /// A pointer to the default physical page of memory. This page is meant to be mapped in read-only
 /// and is a placeholder for pages that are accessed without being allocated nor written.
@@ -190,7 +190,6 @@ impl MemMapping {
 	/// function allocates the physical memory to be mapped.
 	/// If the mapping is in forking state, the function shall apply Copy-On-Write and allocate
 	/// a new physical page with the same data.
-	/// The memory space associated with the mapping must be bound before calling this function.
 	pub fn map(&mut self, offset: usize) -> Result<(), Errno> {
 		let vmem = self.get_mut_vmem();
 		let virt_ptr = (self.begin as usize + offset * memory::PAGE_SIZE) as *mut c_void;
@@ -235,7 +234,6 @@ impl MemMapping {
 				ref_counter.get_mut().decrement(prev_phys_ptr);
 			}
 		}
-		vmem.flush();
 
 		vmem_switch(vmem, || {
 			unsafe {
@@ -249,6 +247,7 @@ impl MemMapping {
 				});
 			}
 		});
+		vmem.flush(); // TODO Remove?
 
 		Ok(())
 	}
@@ -280,17 +279,17 @@ impl MemMapping {
 	}
 
 	/// Clones the mapping for the fork operation. The other mapping is sharing the same physical
-	/// memory for Copy-On-Write. `container` is the container in which the new mapping is to be
-	/// inserted. The virtual memory context has to be updated after calling this function.
+	/// memory for Copy-On-Write.
+	/// `container` is the container in which the new mapping is to be inserted.
+	/// The virtual memory context has to be updated after calling this function.
 	/// The function returns a mutable reference to the newly created mapping.
-	pub fn fork<'a>(&mut self, container: &'a mut BinaryTree<MemMapping>)
-		-> Result<&'a mut Self, Errno> {
+	pub fn fork<'a>(&mut self, mem_space: &'a mut MemSpace) -> Result<&'a mut Self, Errno> {
 		let new_mapping = Self {
 			begin: self.begin,
 			size: self.size,
 			flags: self.flags,
 
-			vmem: self.vmem,
+			vmem: NonNull::new(mem_space.get_vmem().as_mut()).unwrap(),
 		};
 
 		unsafe { // Safe because the global variable is wrapped into a Mutex
@@ -313,8 +312,8 @@ impl MemMapping {
 			}
 		};
 
-		container.insert(new_mapping)?;
-		Ok(container.get_mut(self.begin).unwrap())
+		mem_space.mappings.insert(new_mapping)?;
+		Ok(mem_space.mappings.get_mut(self.begin).unwrap())
 	}
 }
 

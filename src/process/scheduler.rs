@@ -248,7 +248,6 @@ impl Scheduler {
 					(proc.is_syscalling(), proc.regs)
 				};
 
-				crate::println!("resuming to {:p}", regs.eip as *const c_void); // TODO rm
 				if syscalling {
 					unsafe {
 						context_switch_kernel(&regs);

@@ -685,7 +685,6 @@ impl Process {
 	/// Exits the process with the given `status`. This function changes the process's status to
 	/// `Zombie`.
 	pub fn exit(&mut self, status: u32) {
-		crate::println!("exit {}", self.get_pid()); // TODO rm
 		self.exit_status = (status & 0xff) as ExitStatus;
 		self.state = State::Zombie;
 	}

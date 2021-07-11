@@ -273,14 +273,14 @@ impl MemSpace {
 		}
 
 		for m in self.mappings.iter_mut() {
-			let new_mapping = m.fork(&mut mem_space.mappings)?;
+			let new_mapping = m.fork(&mut mem_space)?;
 
 			for i in 0..new_mapping.get_size() {
-				m.update_vmem(i);
-
 				if new_mapping.get_flags() & MAPPING_FLAG_NOLAZY != 0 {
 					new_mapping.map(i)?;
 				}
+
+				m.update_vmem(i);
 				new_mapping.update_vmem(i);
 			}
 		}
