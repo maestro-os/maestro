@@ -1089,6 +1089,23 @@ mod test {
 	}
 
 	#[test_case]
+	fn binary_tree_insert3() {
+		let mut b = BinaryTree::<u32>::new();
+
+		let mut val = 0;
+		for _ in 0..100 {
+			val = crate::util::math::pseudo_rand(val, 1664525, 1013904223, 0x100);
+			b.insert(val).unwrap();
+		}
+
+		val = 0;
+		for _ in 0..100 {
+			val = crate::util::math::pseudo_rand(val, 1664525, 1013904223, 0x100);
+			assert_eq!(b.get(val).unwrap(), val);
+		}
+	}
+
+	#[test_case]
 	fn binary_tree_remove0() {
 		let mut b = BinaryTree::<i32>::new();
 
