@@ -93,6 +93,7 @@ pub fn runner(tests: &[&dyn Testable]) {
 
 	#[cfg(config_debug_qemu)]
 	qemu::exit(qemu::SUCCESS); // TODO Handle assertion fail (exit with FAILURE)
+	#[cfg(not(config_debug_qemu))]
 	crate::halt();
 }
 
