@@ -75,24 +75,35 @@ pub struct Serial {
 
 impl Serial {
 	/// Tests whether the given port exists.
-	fn probe(port: u16) -> bool {
+	fn probe(&mut self) -> bool {
 		unsafe {
-			io::outb(port + INTERRUPT_REG_OFF, 0x00);
-			// TODO Set baud rate to 38400
-			io::outb(port + LINE_CTRL_REG_OFF, 0x03);
-			// TODO
+			io::outb(self.regs_off + INTERRUPT_REG_OFF, 0x00);
+			self.set_baud_rate(38400);
+			io::outb(self.regs_off + LINE_CTRL_REG_OFF, 0x03);
+			io::outb(self.regs_off + II_FIFO_REG_OFF, 0xc7);
+			io::outb(self.regs_off + MODEM_CTRL_REG_OFF, 0x0b);
+			io::outb(self.regs_off + MODEM_CTRL_REG_OFF, 0x1e);
+			io::outb(self.regs_off + DATA_REG_OFF, 0xae);
+
+			if io::inb(self.regs_off + DATA_REG_OFF) != 0xae {
+				return false;
+			}
+
+			io::outb(self.regs_off + MODEM_CTRL_REG_OFF, 0x0f);
 		}
 
-		false
+		true
 	}
 
 	/// Creates a new instance for the specified port. If the port doesn't exist, the function
 	/// returns None.
 	pub fn from_port(port: u16) -> Option<Serial> {
-		if Self::probe(port) {
-			Some(Self {
-				regs_off: port,
-			})
+		let mut s = Self {
+			regs_off: port,
+		};
+
+		if s.probe() {
+			Some(s)
 		} else {
 			None
 		}
@@ -126,7 +137,7 @@ impl Serial {
 	/// Writes the given buffer to the port's output.
 	pub fn write(&mut self, buff: &[u8]) {
 		for b in buff {
-			while self.is_transmit_empty() {}
+			while !self.is_transmit_empty() {}
 
 			unsafe {
 				io::outb(self.regs_off + DATA_REG_OFF, *b);
