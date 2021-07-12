@@ -675,73 +675,52 @@ impl<K: 'static + Ord, V: 'static> BinaryTree<K, V> {
 		n
 	}
 
-	// TODO Clean
 	/// Removes a value from the tree. If the value is present several times in the tree, only one
 	/// node is removed.
 	/// `val` is the value to select the node to remove.
 	/// If the key exists, the function returns the value of the removed node.
 	pub fn remove(&mut self, key: K) -> Option<V> {
-		let value = {
-			if let Some(node) = self.get_mut_node(key) {
-				let left = node.get_left_mut();
-				let right = node.get_right_mut();
-
-				let replacement: Option<NonNull<BinaryTreeNode<K, V>>> = {
-					if left.is_some() && right.is_some() {
-						let leftmost = Self::get_leftmost_node(right.unwrap());
-						leftmost.unlink();
-						NonNull::new(leftmost as *mut _)
-					} else if let Some(left) = left {
-						NonNull::new(left as *mut _)
-					} else if let Some(right) = right {
-						NonNull::new(right as *mut _)
-					} else {
-						None
-					}
-				};
-
-				if let Some(mut r) = replacement {
-					unsafe {
-						r.as_mut()
-					}.parent = node.parent;
-				}
-
-				let value = unsafe { // Safe because the pointer is valid
-					ptr::read(&node.value)
-				};
-
-				if let Some(parent) = node.get_parent_mut() {
-					if node.is_left_child() {
-						parent.left = replacement;
-					} else {
-						parent.right = replacement;
-					}
-
-					node.unlink();
-					unsafe {
-						drop_in_place(node);
-						malloc::free(node as *mut _ as *mut _);
-					}
-				} else {
-					node.unlink();
-					unsafe {
-						drop_in_place(node);
-						malloc::free(node as *mut _ as *mut _);
-					}
-
-					self.root = replacement;
-				}
-
-				Some(value)
-			} else {
-				None
-			}
+		let node = self.get_mut_node(key)?;
+		let value = unsafe {
+			ptr::read(&node.value)
 		};
+
+		let left = node.get_left_mut();
+		let right = node.get_right_mut();
+
+		if left.is_some() && right.is_some() {
+			// The node has two children
+
+			let _next = Self::get_leftmost_node(right.unwrap());
+			// `next` may have a child on the right
+
+			// TODO
+		} else if let Some(_left) = left {
+			// The node has only one child on the left
+
+			// TODO
+		} else if let Some(_right) = right {
+			// The node has only one child on the right
+
+			// TODO
+		} else if node.get_parent().is_none() {
+			// The node is unique, thus it is the root
+
+			unsafe {
+				drop_in_place(node);
+				malloc::free(node as *mut _ as *mut _);
+			}
+
+			self.root = None;
+		} else {
+			// The node has no children and is not the root
+
+			// TODO
+		}
 
 		#[cfg(config_debug_debug)]
 		self.check();
-
-		value
+		Some(value)
 	}
 }
 

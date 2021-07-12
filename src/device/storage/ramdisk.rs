@@ -160,7 +160,7 @@ pub fn create() -> Result<(), Errno> {
 	Ok(())
 }
 
-#[cfg(test)]
+/*#[cfg(test)]
 mod test {
 	use super::*;
 	use core::cmp::min;
@@ -270,4 +270,4 @@ mod test {
 			}
 		}
 	}
-}
+}*/
