@@ -22,7 +22,6 @@ use crate::memory;
 use crate::util::FailableClone;
 use crate::util::boxed::Box;
 use crate::util::container::binary_tree::BinaryTree;
-use crate::util::container::binary_tree;
 use crate::util::list::List;
 use crate::util::lock::mutex::Mutex;
 use crate::util::math;
@@ -66,14 +65,14 @@ struct ForkData<'a> {
 pub struct MemSpace {
 	/// Binary tree storing the list of memory gaps, ready for new mappings. Sorted by pointer to
 	/// the beginning of the mapping on the virtual memory.
-	gaps: BinaryTree::<MemGap>,
+	gaps: BinaryTree::<*const c_void, MemGap>, // TODO Sort by size instead?
 	/// The gaps bucket, sorted by size. The minimum size in pages of a gap is: `2^^n`, where `n`
 	/// is the index in the list.
 	gaps_buckets: [List::<MemGap>; GAPS_BUCKETS_COUNT],
 
 	/// Binary tree storing the list of memory mappings. Sorted by pointer to the beginning of the
 	/// mapping on the virtual memory.
-	mappings: BinaryTree::<MemMapping>,
+	mappings: BinaryTree::<*const c_void, MemMapping>,
 
 	/// The virtual memory context handler.
 	vmem: Box::<dyn VMem>,
@@ -88,8 +87,7 @@ impl MemSpace {
 	/// Inserts the given gap into the memory space's structures.
 	fn gap_insert(&mut self, gap: MemGap) -> Result<(), Errno> {
 		let gap_ptr = gap.get_begin();
-		self.gaps.insert(gap)?;
-		let g = self.gaps.get_mut(gap_ptr).unwrap();
+		let g = self.gaps.insert(gap_ptr, gap)?;
 
 		let bucket_index = Self::get_gap_bucket_index(g.get_size());
 		let bucket = &mut self.gaps_buckets[bucket_index];
@@ -182,9 +180,9 @@ impl MemSpace {
 			let mapping = MemMapping::new(gap_ptr, size, flags,
 				NonNull::new(self.vmem.as_mut_ptr()).unwrap());
 			let mapping_ptr = mapping.get_begin();
-			self.mappings.insert(mapping)?;
+			let m = self.mappings.insert(mapping_ptr, mapping)?;
 
-			if self.mappings.get_mut(mapping_ptr).unwrap().map_default().is_err() {
+			if m.map_default().is_err() {
 				self.mappings.remove(mapping_ptr);
 				return Err(errno::ENOMEM);
 			}
@@ -214,11 +212,11 @@ impl MemSpace {
 	/// Returns a mutable reference to the memory mapping containing the given virtual address
 	/// `ptr` from mappings container `mappings`. If no mapping contains the address, the function
 	/// returns None.
-	fn get_mapping_for(mappings: &mut BinaryTree::<MemMapping>, ptr: *const c_void)
+	fn get_mapping_for(mappings: &mut BinaryTree::<*const c_void, MemMapping>, ptr: *const c_void)
 		-> Option::<&mut MemMapping> {
-		mappings.cmp_get(| val | {
-			let begin = val.get_begin();
-			let end = (begin as usize + val.get_size() * memory::PAGE_SIZE) as *const c_void;
+		mappings.cmp_get(| key, value | {
+			let begin = *key;
+			let end = (begin as usize + value.get_size() * memory::PAGE_SIZE) as *const c_void;
 			if ptr >= begin && ptr < end {
 				Ordering::Equal
 			} else if ptr < begin {
@@ -267,12 +265,12 @@ impl MemSpace {
 			vmem: vmem::clone(&self.vmem)?,
 		};
 
-		for g in self.gaps.into_iter() {
+		for (_, g) in self.gaps.into_iter() {
 			let new_gap = g.failable_clone()?;
 			mem_space.gap_insert(new_gap)?;
 		}
 
-		for m in self.mappings.iter_mut() {
+		for (_, m) in self.mappings.iter_mut() {
 			let new_mapping = m.fork(&mut mem_space)?;
 
 			for i in 0..new_mapping.get_size() {
@@ -341,13 +339,5 @@ impl MemSpace {
 		} else {
 			false
 		}
-	}
-}
-
-impl Drop for MemSpace {
-	fn drop(&mut self) {
-		self.mappings.foreach(| m | {
-			m.unmap();
-		}, binary_tree::TraversalType::PreOrder);
 	}
 }

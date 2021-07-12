@@ -1,6 +1,5 @@
 //! A gap is a region of the virtual memory which is available for allocation.
 
-use core::cmp::Ordering;
 use core::ffi::c_void;
 use crate::memory;
 use crate::util::FailableClone;
@@ -59,38 +58,6 @@ impl MemGap {
 		} else {
 			None
 		}
-	}
-}
-
-impl Ord for MemGap {
-	fn cmp(&self, other: &Self) -> Ordering {
-		self.begin.cmp(&other.begin)
-	}
-}
-
-impl Eq for MemGap {}
-
-impl PartialEq for MemGap {
-	fn eq(&self, other: &Self) -> bool {
-		self.begin == other.begin
-	}
-}
-
-impl PartialOrd for MemGap {
-	fn partial_cmp(&self, other: &Self) -> Option::<Ordering> {
-		Some(self.begin.cmp(&other.begin))
-	}
-}
-
-impl PartialEq::<*const c_void> for MemGap {
-	fn eq(&self, other: &*const c_void) -> bool {
-		self.begin == *other
-	}
-}
-
-impl PartialOrd::<*const c_void> for MemGap {
-	fn partial_cmp(&self, other: &*const c_void) -> Option::<Ordering> {
-		Some(self.begin.cmp(other))
 	}
 }
 

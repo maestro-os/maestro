@@ -1,7 +1,6 @@
 //! A memory mapping is a region of virtual memory that a process can access. It may be mapped
 //! at the process's creation or by the process itself using system calls.
 
-use core::cmp::Ordering;
 use core::ffi::c_void;
 use core::ptr::NonNull;
 use core::ptr;
@@ -312,40 +311,7 @@ impl MemMapping {
 			}
 		};
 
-		mem_space.mappings.insert(new_mapping)?;
-		Ok(mem_space.mappings.get_mut(self.begin).unwrap())
-	}
-}
-
-impl Ord for MemMapping {
-	fn cmp(&self, other: &Self) -> Ordering {
-		(self.begin as usize).cmp(&(other.begin as usize))
-	}
-}
-
-impl Eq for MemMapping {}
-
-impl PartialEq for MemMapping {
-	fn eq(&self, other: &Self) -> bool {
-		ptr::eq(self.begin, other.begin)
-	}
-}
-
-impl PartialOrd for MemMapping {
-	fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-		Some((self.begin as usize).cmp(&(other.begin as usize)))
-	}
-}
-
-impl PartialEq<*const c_void> for MemMapping {
-	fn eq(&self, other: &*const c_void) -> bool {
-		ptr::eq(self.begin, *other)
-	}
-}
-
-impl PartialOrd<*const c_void> for MemMapping {
-	fn partial_cmp(&self, other: &*const c_void) -> Option<Ordering> {
-		Some((self.begin as usize).cmp(&((*other) as usize)))
+		mem_space.mappings.insert(new_mapping.get_begin(), new_mapping)
 	}
 }
 
