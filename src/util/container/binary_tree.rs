@@ -12,6 +12,11 @@ use crate::memory::malloc;
 use crate::memory;
 use crate::util::FailableClone;
 
+#[cfg(config_debug_debug)]
+use core::ffi::c_void;
+#[cfg(config_debug_debug)]
+use crate::util::container::vec::Vec;
+
 /// The color of a binary tree node.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum NodeColor {
@@ -585,43 +590,47 @@ impl<K: 'static + Ord, V: 'static> BinaryTree<K, V> {
 	fn insert_equilibrate(&mut self, n: &mut BinaryTreeNode<K, V>) {
 		let mut node = n;
 
-		while let Some(parent) = node.get_parent_mut() {
+		if let Some(parent) = node.get_parent_mut() {
 			if parent.is_black() {
-				break;
+				return;
 			}
 
 			// The node's parent exists and is red
-			if let Some(grandparent) = parent.get_parent_mut() {
-				if let Some(uncle) = node.get_uncle_mut() {
-					if uncle.is_red() {
-						parent.color = NodeColor::Black;
-						uncle.color = NodeColor::Black;
-						grandparent.color = NodeColor::Red;
+			if let Some(uncle) = node.get_uncle_mut() {
+				if uncle.is_red() {
+					let grandparent = parent.get_parent_mut().unwrap();
+					parent.color = NodeColor::Black;
+					uncle.color = NodeColor::Black;
+					grandparent.color = NodeColor::Red;
 
-						node = grandparent;
-						continue;
-					}
+					self.insert_equilibrate(grandparent);
+					return;
 				}
-			} else {
-				parent.color = NodeColor::Black;
-				break;
 			}
 
-			// The node's parent is red and the node is guaranteed to have a grandparent
 			if node.is_triangle() {
-				if node.is_right_child() {
-					node.left_rotate();
-				} else {
+				if parent.is_right_child() {
 					node.right_rotate();
+				} else {
+					node.left_rotate();
 				}
 
 				node = parent;
 			}
 
 			let parent = node.get_parent_mut().unwrap();
-			parent.color = NodeColor::Black;
 			let grandparent = parent.get_parent_mut().unwrap();
+
+			if node.is_right_child() {
+				parent.left_rotate();
+			} else {
+				parent.right_rotate();
+			}
+
+			parent.color = NodeColor::Black;
 			grandparent.color = NodeColor::Red;
+		} else {
+			node.color = NodeColor::Black;
 		}
 	}
 
@@ -642,19 +651,12 @@ impl<K: 'static + Ord, V: 'static> BinaryTree<K, V> {
 			} else {
 				p.insert_right(n);
 			}
-
-			self.insert_equilibrate(n);
-			self.update_root(n);
 		} else {
 			debug_assert!(self.root.is_none());
 			self.root = Some(node);
-
-			self.insert_equilibrate(n);
-			self.update_root(n);
 		}
-		unsafe {
-			self.root.unwrap().as_mut()
-		}.color = NodeColor::Black;
+		self.insert_equilibrate(n);
+		self.update_root(n);
 
 		#[cfg(config_debug_debug)]
 		self.check();
@@ -843,10 +845,17 @@ impl<K: 'static + Ord, V: 'static> BinaryTree<K, V> {
 	#[cfg(config_debug_debug)]
 	pub fn check(&self) {
 		if let Some(root) = self.root {
+			let mut expored_nodes = Vec::<*const c_void>::new();
+
 			Self::foreach_nodes(unsafe {
 				root.as_ref()
 			}, &mut | n: &BinaryTreeNode<K, V> | {
 				assert!(n as *const _ as usize >= memory::PROCESS_END as usize);
+
+				for e in expored_nodes.iter() {
+					assert_ne!(*e, n as *const _ as *const c_void);
+				}
+				expored_nodes.push(n as *const _ as *const c_void).unwrap();
 
 				if let Some(left) = n.get_left() {
 					assert!(left as *const _ as usize >= memory::PROCESS_END as usize);
@@ -1060,24 +1069,24 @@ mod test {
 
 	#[test_case]
 	fn binary_tree0() {
-		let b = BinaryTree::<i32>::new();
+		let b = BinaryTree::<i32, ()>::new();
 		assert!(b.get(0).is_none());
 	}
 
 	#[test_case]
 	fn binary_tree_insert0() {
-		let mut b = BinaryTree::<i32>::new();
+		let mut b = BinaryTree::<i32, i32>::new();
 
-		b.insert(0).unwrap();
+		b.insert(0, 0).unwrap();
 		assert_eq!(*b.get(0).unwrap(), 0);
 	}
 
 	#[test_case]
 	fn binary_tree_insert1() {
-		let mut b = BinaryTree::<i32>::new();
+		let mut b = BinaryTree::<i32, i32>::new();
 
 		for i in 0..10 {
-			b.insert(i).unwrap();
+			b.insert(i, i).unwrap();
 		}
 
 		for i in 0..10 {
@@ -1087,10 +1096,10 @@ mod test {
 
 	#[test_case]
 	fn binary_tree_insert2() {
-		let mut b = BinaryTree::<i32>::new();
+		let mut b = BinaryTree::<i32, i32>::new();
 
 		for i in -9..10 {
-			b.insert(i).unwrap();
+			b.insert(i, i).unwrap();
 		}
 
 		for i in -9..10 {
@@ -1100,27 +1109,27 @@ mod test {
 
 	#[test_case]
 	fn binary_tree_insert3() {
-		let mut b = BinaryTree::<u32>::new();
+		let mut b = BinaryTree::<u32, u32>::new();
 
 		let mut val = 0;
 		for _ in 0..100 {
 			val = crate::util::math::pseudo_rand(val, 1664525, 1013904223, 0x100);
-			b.insert(val).unwrap();
+			b.insert(val, val).unwrap();
 		}
 
 		val = 0;
 		for _ in 0..100 {
 			val = crate::util::math::pseudo_rand(val, 1664525, 1013904223, 0x100);
-			assert_eq!(b.get(val).unwrap(), val);
+			assert_eq!(*b.get(val).unwrap(), val);
 		}
 	}
 
 	#[test_case]
 	fn binary_tree_remove0() {
-		let mut b = BinaryTree::<i32>::new();
+		let mut b = BinaryTree::<i32, i32>::new();
 
 		for i in -9..10 {
-			b.insert(i).unwrap();
+			b.insert(i, i).unwrap();
 		}
 
 		for i in -9..10 {
@@ -1134,10 +1143,10 @@ mod test {
 
 	#[test_case]
 	fn binary_tree_remove1() {
-		let mut b = BinaryTree::<i32>::new();
+		let mut b = BinaryTree::<i32, i32>::new();
 
 		for i in -9..10 {
-			b.insert(i).unwrap();
+			b.insert(i, i).unwrap();
 		}
 
 		for i in (-9..10).rev() {
@@ -1151,10 +1160,10 @@ mod test {
 
 	#[test_case]
 	fn binary_tree_remove2() {
-		let mut b = BinaryTree::<i32>::new();
+		let mut b = BinaryTree::<i32, i32>::new();
 
 		for i in (-9..10).rev() {
-			b.insert(i).unwrap();
+			b.insert(i, i).unwrap();
 		}
 
 		for i in (-9..10).rev() {
@@ -1168,15 +1177,15 @@ mod test {
 
 	#[test_case]
 	fn binary_tree_remove3() {
-		let mut b = BinaryTree::<i32>::new();
+		let mut b = BinaryTree::<i32, i32>::new();
 
 		for i in (-9..10).rev() {
-			b.insert(i).unwrap();
+			b.insert(i, i).unwrap();
 		}
 
 		for i in -9..10 {
 			assert_eq!(*b.get(i).unwrap(), i);
-			b.remove(i);
+			assert_eq!(b.remove(i).unwrap(), i);
 			assert!(b.get(i).is_none());
 		}
 
@@ -1185,11 +1194,11 @@ mod test {
 
 	#[test_case]
 	fn binary_tree_remove4() {
-		let mut b = BinaryTree::<i32>::new();
+		let mut b = BinaryTree::<i32, i32>::new();
 
 		for i in -9..10 {
-			b.insert(i).unwrap();
-			b.remove(i);
+			b.insert(i, i).unwrap();
+			assert_eq!(b.remove(i).unwrap(), i);
 		}
 
 		assert!(b.is_empty());
@@ -1197,16 +1206,16 @@ mod test {
 
 	#[test_case]
 	fn binary_tree_remove5() {
-		let mut b = BinaryTree::<i32>::new();
+		let mut b = BinaryTree::<i32, i32>::new();
 
 		for i in -9..10 {
-			b.insert(i).unwrap();
+			b.insert(i, i).unwrap();
 		}
 
 		for i in -9..10 {
 			if i % 2 == 0 {
 				assert_eq!(*b.get(i).unwrap(), i);
-				b.remove(i);
+				assert_eq!(b.remove(i).unwrap(), i);
 				assert!(b.get(i).is_none());
 			}
 		}
@@ -1216,7 +1225,7 @@ mod test {
 		for i in -9..10 {
 			if i % 2 != 0 {
 				assert_eq!(*b.get(i).unwrap(), i);
-				b.remove(i);
+				assert_eq!(b.remove(i).unwrap(), i);
 				assert!(b.get(i).is_none());
 			}
 		}
@@ -1226,75 +1235,76 @@ mod test {
 
 	#[test_case]
 	fn binary_tree_get_min0() {
-		let mut b = BinaryTree::<i32>::new();
+		let mut b = BinaryTree::<i32, i32>::new();
 		assert!(b.get_min(0).is_none());
 	}
 
 	#[test_case]
 	fn binary_tree_get_min1() {
-		let mut b = BinaryTree::<i32>::new();
-		b.insert(0).unwrap();
+		let mut b = BinaryTree::<i32, i32>::new();
+		b.insert(0, 0).unwrap();
 		assert!(*b.get_min(0).unwrap() >= 0);
 	}
 
 	#[test_case]
 	fn binary_tree_get_min2() {
-		let mut b = BinaryTree::<i32>::new();
-		b.insert(0).unwrap();
+		let mut b = BinaryTree::<i32, i32>::new();
+		b.insert(0, 0).unwrap();
 		assert!(b.get_min(1).is_none());
 	}
 
 	#[test_case]
 	fn binary_tree_get_min3() {
-		let mut b = BinaryTree::<i32>::new();
-		b.insert(-1).unwrap();
-		b.insert(0).unwrap();
-		b.insert(1).unwrap();
+		let mut b = BinaryTree::<i32, i32>::new();
+		b.insert(-1, -1).unwrap();
+		b.insert(0, 0).unwrap();
+		b.insert(1, 1).unwrap();
 		assert!(*b.get_min(0).unwrap() >= 0);
 	}
 
 	#[test_case]
 	fn binary_tree_get_min4() {
-		let mut b = BinaryTree::<i32>::new();
-		b.insert(0).unwrap();
-		b.insert(1).unwrap();
+		let mut b = BinaryTree::<i32, i32>::new();
+		b.insert(0, 0).unwrap();
+		b.insert(1, 1).unwrap();
 		assert!(*b.get_min(0).unwrap() >= 0);
 	}
 
 	#[test_case]
 	fn binary_tree_get_min5() {
-		let mut b = BinaryTree::<i32>::new();
-		b.insert(1).unwrap();
+		let mut b = BinaryTree::<i32, i32>::new();
+		b.insert(1, 1).unwrap();
 		assert!(*b.get_min(0).unwrap() >= 0);
 	}
 
 	#[test_case]
 	fn binary_tree_get_min6() {
-		let mut b = BinaryTree::<i32>::new();
-		b.insert(-1).unwrap();
-		b.insert(1).unwrap();
+		let mut b = BinaryTree::<i32, i32>::new();
+		b.insert(-1, -1).unwrap();
+		b.insert(1, 1).unwrap();
 		assert!(*b.get_min(0).unwrap() >= 0);
 	}
 
 	#[test_case]
 	fn binary_tree_foreach0() {
-		let b = BinaryTree::<i32>::new();
-		b.foreach(| _ | {
+		let b = BinaryTree::<i32, i32>::new();
+		b.foreach(| _, _ | {
 			assert!(false);
 		}, TraversalType::PreOrder);
 	}
 
 	#[test_case]
 	fn binary_tree_foreach1() {
-		let mut b = BinaryTree::<i32>::new();
-		b.insert(0).unwrap();
+		let mut b = BinaryTree::<i32, i32>::new();
+		b.insert(0, 0).unwrap();
 
 		let mut passed = false;
-		b.foreach(| val | {
-			assert_eq!(passed, false);
-			assert_eq!(*val, 0);
+		b.foreach(| key, _ | {
+			assert!(!passed);
+			assert_eq!(*key, 0);
 			passed = true;
 		}, TraversalType::PreOrder);
+		assert!(passed);
 	}
 
 	// TODO More foreach tests
