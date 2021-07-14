@@ -4,6 +4,7 @@ use core::cmp::Ordering;
 use core::cmp::max;
 use core::fmt;
 use core::mem::size_of;
+use core::mem;
 use core::ptr::NonNull;
 use core::ptr::drop_in_place;
 use core::ptr;
@@ -204,6 +205,23 @@ impl<K: 'static + Ord, V: 'static> BinaryTreeNode<K, V> {
 		self.get_parent_mut()?.get_sibling_mut()
 	}
 
+	/// Tells whether the node has at least one red child.
+	pub fn has_red_child(&self) -> bool {
+		if let Some(left) = self.get_left() {
+			if left.is_red() {
+				return true;
+			}
+		}
+
+		if let Some(right) = self.get_right() {
+			if right.is_red() {
+				return true;
+			}
+		}
+
+		false
+	}
+
 	/// Applies a left tree rotation with the current node as pivot.
 	/// If the current node doesn't have a parent, the behaviour is undefined.
 	pub fn left_rotate(&mut self) {
@@ -264,24 +282,22 @@ impl<K: 'static + Ord, V: 'static> BinaryTreeNode<K, V> {
 		}
 	}
 
-	/// Inserts the given node `node` to left of the current node.
+	/// Inserts the given node `node` to left of the current node. If the node already has a left
+	/// child, the behaviour is undefined.
 	pub fn insert_left(&mut self, node: &mut BinaryTreeNode<K, V>) {
-		if let Some(n) = self.get_left_mut() {
-			node.insert_left(n);
-		} else {
-			self.left = NonNull::new(node);
-			node.parent = NonNull::new(self);
-		}
+		debug_assert!(self.get_left().is_none());
+
+		self.left = NonNull::new(node);
+		node.parent = NonNull::new(self);
 	}
 
-	/// Inserts the given node `node` to right of the current node.
+	/// Inserts the given node `node` to right of the current node. If the node already has a right
+	/// child, the behaviour is undefined.
 	pub fn insert_right(&mut self, node: &mut BinaryTreeNode<K, V>) {
-		if let Some(n) = self.get_right_mut() {
-			node.insert_right(n);
-		} else {
-			self.right = NonNull::new(node);
-			node.parent = NonNull::new(self);
-		}
+		debug_assert!(self.get_right().is_none());
+
+		self.right = NonNull::new(node);
+		node.parent = NonNull::new(self);
 	}
 
 	/// Returns the number of nodes in the subtree.
@@ -421,14 +437,14 @@ impl<K: 'static + Ord, V: 'static> BinaryTree<K, V> {
 	}
 
 	/// Returns a reference to the root node.
-	fn get_root(&self) -> Option<&BinaryTreeNode<K, V>> {
+	fn get_root(&self) -> Option<&'static BinaryTreeNode<K, V>> {
 		unsafe {
 			Some(self.root.as_ref()?.as_ref())
 		}
 	}
 
 	/// Returns a mutable reference to the root node.
-	fn get_root_mut(&mut self) -> Option<&mut BinaryTreeNode<K, V>> {
+	fn get_root_mut(&mut self) -> Option<&'static mut BinaryTreeNode<K, V>> {
 		unsafe {
 			Some(self.root.as_mut()?.as_mut())
 		}
@@ -454,7 +470,7 @@ impl<K: 'static + Ord, V: 'static> BinaryTree<K, V> {
 
 	/// Searches for a node with the given key in the tree and returns a reference.
 	/// `key` is the key to find.
-	fn get_node(&self, key: K) -> Option<&BinaryTreeNode<K, V>> {
+	fn get_node(&self, key: K) -> Option<&'static BinaryTreeNode<K, V>> {
 		let mut node = self.get_root();
 
 		while node.is_some() {
@@ -473,7 +489,7 @@ impl<K: 'static + Ord, V: 'static> BinaryTree<K, V> {
 
 	/// Searches for a node with the given key in the tree and returns a mutable reference.
 	/// `key` is the key to find.
-	fn get_mut_node(&mut self, key: K) -> Option<&mut BinaryTreeNode<K, V>> {
+	fn get_mut_node(&mut self, key: K) -> Option<&'static mut BinaryTreeNode<K, V>> {
 		let mut node = self.get_root_mut();
 
 		while node.is_some() {
@@ -675,6 +691,61 @@ impl<K: 'static + Ord, V: 'static> BinaryTree<K, V> {
 		n
 	}
 
+	/// Fixes the tree after deletion in the case where the deleted node and its replacement are
+	/// both black.
+	/// `node` is the node to fix.
+	fn remove_fix_double_black(&mut self, node: &mut BinaryTreeNode<K, V>) {
+		if let Some(parent) = node.get_parent_mut() {
+			if let Some(sibling) = node.get_sibling_mut() {
+				if sibling.is_red() {
+					parent.color = NodeColor::Red;
+					sibling.color = NodeColor::Black;
+
+					if sibling.is_left_child() {
+						sibling.right_rotate();
+					} else {
+						sibling.left_rotate();
+					}
+
+					self.remove_fix_double_black(node);
+				} else {
+					// `sibling` is black
+					let s_left = sibling.get_left();
+					let s_right = sibling.get_right();
+
+					if s_left.is_some() && s_left.unwrap().is_red() {
+						if sibling.is_left_child() {
+							// TODO
+						} else {
+							// TODO
+						}
+
+						parent.color = NodeColor::Black;
+					} else s_right.is_some() && s_right.unwrap().is_red() {
+						if sibling.is_left_child() {
+							// TODO
+						} else {
+							// TODO
+						}
+
+						parent.color = NodeColor::Black;
+					} else {
+						// `sibling` has two black children
+						sibling.color = NodeColor::Red;
+
+						if parent.is_black() {
+							self.remove_fix_double_black(parent);
+						} else {
+							parent.color = NodeColor::Black;
+						}
+					}
+				}
+			} else {
+				self.remove_fix_double_black(parent);
+			}
+		}
+	}
+
 	/// Removes a value from the tree. If the value is present several times in the tree, only one
 	/// node is removed.
 	/// `val` is the value to select the node to remove.
@@ -688,34 +759,90 @@ impl<K: 'static + Ord, V: 'static> BinaryTree<K, V> {
 		let left = node.get_left_mut();
 		let right = node.get_right_mut();
 
-		if left.is_some() && right.is_some() {
-			// The node has two children
+		let mut replacement = {
+			if left.is_some() && right.is_some() {
+				// The node has two children
+				// The leftmost node may have a child on the right
+				Some(Self::get_leftmost_node(right.unwrap()))
+			} else if left.is_some() {
+				// The node has only one child on the left
+				left
+			} else if right.is_some() {
+				// The node has only one child on the right
+				right
+			} else {
+				// The node has no children and is not the root
+				None
+			}
+		};
 
-			let _next = Self::get_leftmost_node(right.unwrap());
-			// `next` may have a child on the right
+		let both_black = node.is_black()
+			&& (replacement.is_none() || replacement.as_ref().unwrap().is_black());
 
-			// TODO
-		} else if let Some(_left) = left {
-			// The node has only one child on the left
+		if replacement.is_none() {
+			if node.get_parent_mut().is_none() {
+				// The node is root and has no children
+				self.root = None;
+			} else {
+				if both_black {
+					self.remove_fix_double_black(node);
+				} else if let Some(sibling) = node.get_sibling_mut() {
+					sibling.color = NodeColor::Red;
+				}
 
-			// TODO
-		} else if let Some(_right) = right {
-			// The node has only one child on the right
-
-			// TODO
-		} else if node.get_parent().is_none() {
-			// The node is unique, thus it is the root
+				node.unlink();
+			}
 
 			unsafe {
 				drop_in_place(node);
 				malloc::free(node as *mut _ as *mut _);
 			}
+		} else if node.get_left_mut().is_none() || node.get_right_mut().is_none() {
+			if let Some(parent) = node.get_parent_mut() {
+				node.unlink();
+				unsafe {
+					drop_in_place(node);
+					malloc::free(node as *mut _ as *mut _);
+				}
 
-			self.root = None;
+				if node.is_left_child() {
+					parent.insert_left(replacement.as_mut().unwrap());
+				} else {
+					parent.insert_right(replacement.as_mut().unwrap());
+				}
+
+				if both_black {
+					self.remove_fix_double_black(replacement.unwrap());
+				} else {
+					replacement.as_mut().unwrap().color = NodeColor::Black;
+				}
+			} else {
+				// The node is the root
+				node.left = None;
+				node.right = None;
+
+				node.key = unsafe {
+					ptr::read(&replacement.as_ref().unwrap().key as _)
+				};
+				node.value = unsafe {
+					ptr::read(&replacement.as_ref().unwrap().value as _)
+				};
+
+				replacement.unwrap().unlink();
+				unsafe {
+					drop_in_place(node);
+					malloc::free(node as *mut _ as *mut _);
+				}
+			}
 		} else {
-			// The node has no children and is not the root
+			mem::swap(&mut node.key, &mut replacement.as_mut().unwrap().key);
+			mem::swap(&mut node.value, &mut replacement.as_mut().unwrap().value);
 
-			// TODO
+			replacement.unwrap().unlink();
+			unsafe {
+				drop_in_place(node);
+				malloc::free(node as *mut _ as *mut _);
+			}
 		}
 
 		#[cfg(config_debug_debug)]
