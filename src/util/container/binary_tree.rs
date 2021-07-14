@@ -813,10 +813,15 @@ impl<K: 'static + Ord, V: 'static> BinaryTree<K, V> {
 		if replacement.is_none() {
 			if node.get_parent_mut().is_none() {
 				// The node is root and has no children
+				unsafe {
+					debug_assert_eq!(self.root.unwrap().as_mut() as *mut BinaryTreeNode<K, V>,
+						node as *mut _);
+				}
 				self.root = None;
 			} else {
 				if both_black {
 					self.remove_fix_double_black(node);
+					self.update_root(node);
 				} else if let Some(sibling) = node.get_sibling_mut() {
 					sibling.color = NodeColor::Red;
 				}
@@ -829,14 +834,16 @@ impl<K: 'static + Ord, V: 'static> BinaryTree<K, V> {
 				malloc::free(node as *mut _ as *mut _);
 			}
 		} else if node.get_left().is_none() || node.get_right().is_none() {
+			let replacement = replacement.as_mut().unwrap();
+
 			if let Some(parent) = node.get_parent_mut() {
-				replacement.as_mut().unwrap().parent = None;
+				replacement.parent = None;
 				if node.is_left_child() {
 					parent.left = None;
-					parent.insert_left(replacement.as_mut().unwrap());
+					parent.insert_left(replacement);
 				} else {
 					parent.right = None;
-					parent.insert_right(replacement.as_mut().unwrap());
+					parent.insert_right(replacement);
 				}
 
 				node.unlink();
@@ -846,33 +853,34 @@ impl<K: 'static + Ord, V: 'static> BinaryTree<K, V> {
 				}
 
 				if both_black {
-					self.remove_fix_double_black(replacement.unwrap());
+					self.remove_fix_double_black(replacement);
+					self.update_root(replacement);
 				} else {
-					replacement.as_mut().unwrap().color = NodeColor::Black;
+					replacement.color = NodeColor::Black;
 				}
 			} else {
 				// The node is the root
 				node.key = unsafe {
-					ptr::read(&replacement.as_ref().unwrap().key as _)
+					ptr::read(&replacement.key as _)
 				};
 				node.value = unsafe {
-					ptr::read(&replacement.as_ref().unwrap().value as _)
+					ptr::read(&replacement.value as _)
 				};
 
 				node.left = None;
 				node.right = None;
 
-				replacement.as_mut().unwrap().unlink();
+				replacement.unlink();
 				unsafe {
-					drop_in_place(replacement.as_mut().unwrap());
-					malloc::free(replacement.as_mut().unwrap() as *mut _ as *mut _);
+					drop_in_place(replacement);
+					malloc::free(replacement as *mut _ as *mut _);
 				}
 			}
 		} else {
-			let r = replacement.as_mut().unwrap();
-			mem::swap(&mut node.key, &mut r.key);
-			mem::swap(&mut node.value, &mut r.value);
-			self.remove_node(r);
+			let replacement = replacement.as_mut().unwrap();
+			mem::swap(&mut node.key, &mut replacement.key);
+			mem::swap(&mut node.value, &mut replacement.value);
+			self.remove_node(replacement);
 		}
 	}
 
@@ -1173,12 +1181,13 @@ impl<K: 'static + FailableClone + Ord, V: FailableClone> FailableClone for Binar
 	}
 }
 
-impl<K: 'static + Ord + fmt::Display, V: fmt::Display> fmt::Display for BinaryTree<K, V> {
+impl<K: 'static + Ord/* + fmt::Display*/, V> fmt::Display for BinaryTree<K, V> {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		if let Some(mut n) = self.root {
 			Self::foreach_nodes(unsafe {
 				n.as_mut()
 			}, &mut | n | {
+				// TODO Optimize
 				for _ in 0..n.get_node_depth() {
 					let _ = write!(f, "\t");
 				}
@@ -1188,7 +1197,7 @@ impl<K: 'static + Ord + fmt::Display, V: fmt::Display> fmt::Display for BinaryTr
 				} else {
 					"black"
 				};
-				let _ = writeln!(f, "{} ({})", n.value, color);
+				let _ = writeln!(f, /*"{} */"({})"/*, n.key*/, color);
 			}, TraversalType::ReverseInOrder);
 			Ok(())
 		} else {
@@ -1286,9 +1295,9 @@ mod test {
 				assert_eq!(*b.get(i).unwrap(), i);
 			}
 
-			crate::println!("{}={}", i, b); // TODO rm
+			//crate::println!("{}={}", i, b); // TODO rm
 			b.remove(i);
-			crate::println!("{}:{}", i, b); // TODO rm
+			//crate::println!("{}:{}", i, b); // TODO rm
 
 			assert!(b.get(i).is_none());
 			for i in (i + 1)..10 {

@@ -1,6 +1,7 @@
 //! This module implements Serial port communications.
 
 use crate::io;
+use crate::util::lock::mutex::Mutex;
 
 /// The offset of COM1 registers.
 pub const COM1: u16 = 0x3f8;
@@ -97,7 +98,7 @@ impl Serial {
 
 	/// Creates a new instance for the specified port. If the port doesn't exist, the function
 	/// returns None.
-	pub fn from_port(port: u16) -> Option<Serial> {
+	fn from_port(port: u16) -> Option<Serial> {
 		let mut s = Self {
 			regs_off: port,
 		};
@@ -146,5 +147,35 @@ impl Serial {
 	}
 }
 
+/// The list of serial ports.
+static mut PORTS: [Option<Mutex<Serial>>; 4] = [
+	None,
+	None,
+	None,
+	None,
+];
 
-// TODO Function to detect serial ports and create devices
+/// Returns an instance to an object allowing to use the given serial communication port. If the
+/// port is not initialized, the function tries to do it. If the port doesn't exist, the function
+/// returns None.
+pub fn get(port: u16) -> Option<&'static mut Mutex<Serial>> {
+	let ports = unsafe { // Safe because using Mutex
+		&mut PORTS
+	};
+
+	let i = match port {
+		COM1 => 0,
+		COM2 => 1,
+		COM3 => 2,
+		COM4 => 3,
+
+		_ => return None,
+	};
+	if ports[i].is_none() {
+		if let Some(s) = Serial::from_port(port) {
+			ports[i] = Some(Mutex::new(s));
+		}
+	}
+
+	ports[i].as_mut()
+}

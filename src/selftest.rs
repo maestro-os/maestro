@@ -4,12 +4,8 @@
 //! another machine.
 
 use core::any::type_name;
-use crate::device::serial::Serial;
-use crate::device::serial;
+//use crate::device::serial;
 
-/// Field storing an instance of the serial device to be used to transfer unit testing result to
-/// the host.
-static mut SERIAL: Option<Serial> = None;
 /// Boolean value telling whether selftesting is running.
 static mut RUNNING: bool = false;
 
@@ -45,24 +41,22 @@ pub trait Testable {
 impl<T> Testable for T where T: Fn() {
 	// TODO Use a special format on serial to be parsed by host?
 	fn run(&self) {
-		let serial = unsafe {
-			&mut SERIAL
-		};
+		//let serial_guard = serial::get(serial::COM1).lock();
 
 		let name = type_name::<T>();
 		crate::print!("test {} ... ", name);
 
 		self();
 
-		let status = "ok"; // TODO On panic, retrieve message and print on serial
-		if let Some(s) = serial {
-			// TODO Add an additional message on fail
-			s.write(b"{\"name\": \"");
-			s.write(name.as_bytes());
-			s.write(b"\", \"status\": \"");
-			s.write(status.as_bytes());
-			s.write(b"\"}\n");
-		}
+		//let status = "ok"; // TODO On panic, retrieve message and print on serial
+		//if let Some(s) = serial {
+		//	// TODO Add an additional message on fail
+		//	s.write(b"{\"name\": \"");
+		//	s.write(name.as_bytes());
+		//	s.write(b"\", \"status\": \"");
+		//	s.write(status.as_bytes());
+		//	s.write(b"\"}\n");
+		//}
 
 		crate::println!("ok");
 	}
@@ -71,10 +65,6 @@ impl<T> Testable for T where T: Fn() {
 /// The test runner for the kernel. This function runs every tests for the kernel and halts the
 /// kernel or exits the emulator if possible.
 pub fn runner(tests: &[&dyn Testable]) {
-	unsafe { // Safe because the function is called by only one thread
-		SERIAL = Serial::from_port(serial::COM1);
-	}
-
 	crate::println!("Running {} tests", tests.len());
 
 	unsafe { // Safe because the function is called by only one thread

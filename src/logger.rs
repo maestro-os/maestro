@@ -3,9 +3,11 @@
 //! anyways.
 
 use core::cmp::min;
+use crate::device::serial;
 use crate::tty;
 use crate::util::lock::mutex::Mutex;
 use crate::util::lock::mutex::MutexGuard;
+use crate::util::lock::mutex::TMutex;
 
 /// The size of the kernel logs buffer in bytes.
 const LOGS_SIZE: usize = 1048576;
@@ -134,6 +136,10 @@ impl core::fmt::Write for Logger {
 			MutexGuard::new(tty::current()).get_mut().write(s.as_bytes());
 		}
 		self.push(s.as_bytes());
+
+		if let Some(serial) = serial::get(serial::COM1) {
+			serial.lock().get_mut().write(s.as_bytes())
+		}
 
 		Ok(())
 	}
