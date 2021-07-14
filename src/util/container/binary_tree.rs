@@ -749,7 +749,6 @@ impl<K: 'static + Ord, V: 'static> BinaryTree<K, V> {
 							parent.right_rotate();
 						} else {
 							s_left.color = parent.color;
-							sibling.color = parent.color;
 							sibling.right_rotate();
 							parent.left_rotate();
 						}
@@ -786,16 +785,8 @@ impl<K: 'static + Ord, V: 'static> BinaryTree<K, V> {
 		}
 	}
 
-	/// Removes a value from the tree. If the value is present several times in the tree, only one
-	/// node is removed.
-	/// `val` is the value to select the node to remove.
-	/// If the key exists, the function returns the value of the removed node.
-	pub fn remove(&mut self, key: K) -> Option<V> {
-		let node = self.get_mut_node(key)?;
-		let value = unsafe {
-			ptr::read(&node.value)
-		};
-
+	/// Removes the given node `node` from the tree.
+	fn remove_node(&mut self, node: &mut BinaryTreeNode<K, V>) {
 		let left = node.get_left_mut();
 		let right = node.get_right_mut();
 
@@ -837,7 +828,7 @@ impl<K: 'static + Ord, V: 'static> BinaryTree<K, V> {
 				drop_in_place(node);
 				malloc::free(node as *mut _ as *mut _);
 			}
-		} else if node.get_left_mut().is_none() || node.get_right_mut().is_none() {
+		} else if node.get_left().is_none() || node.get_right().is_none() {
 			if let Some(parent) = node.get_parent_mut() {
 				replacement.as_mut().unwrap().parent = None;
 				if node.is_left_child() {
@@ -861,9 +852,6 @@ impl<K: 'static + Ord, V: 'static> BinaryTree<K, V> {
 				}
 			} else {
 				// The node is the root
-				node.left = None;
-				node.right = None;
-
 				node.key = unsafe {
 					ptr::read(&replacement.as_ref().unwrap().key as _)
 				};
@@ -871,22 +859,34 @@ impl<K: 'static + Ord, V: 'static> BinaryTree<K, V> {
 					ptr::read(&replacement.as_ref().unwrap().value as _)
 				};
 
-				replacement.unwrap().unlink();
+				node.left = None;
+				node.right = None;
+
+				replacement.as_mut().unwrap().unlink();
 				unsafe {
-					drop_in_place(node);
-					malloc::free(node as *mut _ as *mut _);
+					drop_in_place(replacement.as_mut().unwrap());
+					malloc::free(replacement.as_mut().unwrap() as *mut _ as *mut _);
 				}
 			}
 		} else {
-			mem::swap(&mut node.key, &mut replacement.as_mut().unwrap().key);
-			mem::swap(&mut node.value, &mut replacement.as_mut().unwrap().value);
-
-			replacement.unwrap().unlink();
-			unsafe {
-				drop_in_place(node);
-				malloc::free(node as *mut _ as *mut _);
-			}
+			let r = replacement.as_mut().unwrap();
+			mem::swap(&mut node.key, &mut r.key);
+			mem::swap(&mut node.value, &mut r.value);
+			self.remove_node(r);
 		}
+	}
+
+	/// Removes a value from the tree. If the value is present several times in the tree, only one
+	/// node is removed.
+	/// `val` is the value to select the node to remove.
+	/// If the key exists, the function returns the value of the removed node.
+	pub fn remove(&mut self, key: K) -> Option<V> {
+		let node = self.get_mut_node(key)?;
+		let value = unsafe {
+			ptr::read(&node.value)
+		};
+
+		self.remove_node(node);
 
 		#[cfg(config_debug_debug)]
 		self.check();
