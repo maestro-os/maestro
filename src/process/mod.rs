@@ -430,6 +430,22 @@ impl Process {
 		self.state = new_state;
 	}
 
+	/// Tells whether the current process has informations to be retrieved by the `waitpid` system
+	/// call.
+	pub fn is_waitable(&self) -> bool {
+		// TODO Add stopping and continuation signals
+		self.state == State::Zombie
+	}
+
+	// TODO Provide event's type and process?
+	/// Notifies the process to wake it up if it is waiting for a child process. If the process is
+	/// not in Sleeping state, the function does nothing.
+	pub fn wait_notify(&mut self) {
+		if self.state == State::Sleeping {
+			self.state = State::Running;
+		}
+	}
+
 	/// Returns the priority of the process. A greater number means a higher priority relative to
 	/// other processes.
 	pub fn get_priority(&self) -> usize {
@@ -444,6 +460,11 @@ impl Process {
 	/// Returns a reference to the list of the process's children.
 	pub fn get_children(&self) -> &Vec<Pid> {
 		&self.children
+	}
+
+	/// Tells whether the process has a child with the given pid.
+	pub fn has_child(&self, pid: Pid) -> bool {
+		self.children.binary_search(&pid).is_ok()
 	}
 
 	/// Adds the process with the given PID `pid` as child to the process.

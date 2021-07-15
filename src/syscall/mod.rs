@@ -2,10 +2,6 @@
 //! userspace and kernelspace.
 //! TODO doc
 
-use crate::util::lock::mutex::TMutex;
-use crate::process::Process;
-use crate::process::signal;
-
 mod _exit;
 mod chroot;
 mod close;
@@ -28,6 +24,10 @@ mod uname;
 mod unlink;
 mod waitpid;
 mod write;
+
+use crate::util::lock::mutex::TMutex;
+use crate::process::Process;
+use crate::process::signal;
 
 use _exit::_exit;
 use chroot::chroot;
