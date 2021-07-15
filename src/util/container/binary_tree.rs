@@ -3,6 +3,7 @@
 use core::cmp::Ordering;
 use core::cmp::max;
 use core::fmt;
+use core::mem::ManuallyDrop;
 use core::mem::size_of;
 use core::mem;
 use core::ptr::NonNull;
@@ -706,6 +707,19 @@ impl<K: 'static + Ord, V: 'static> BinaryTree<K, V> {
 		Ok(&mut n.value)
 	}
 
+	/// Deletes the node at the given pointer.
+	unsafe fn drop_node(node: &mut BinaryTreeNode<K, V>) {
+		let ptr = node as *mut _ as *mut _;
+		let mut n = ManuallyDrop::new(node);
+		drop_in_place(&mut n.parent);
+		drop_in_place(&mut n.left);
+		drop_in_place(&mut n.right);
+		drop_in_place(&mut n.color);
+		drop_in_place(&mut n.key);
+
+		malloc::free(ptr);
+	}
+
 	/// Returns the leftmost node in the tree.
 	fn get_leftmost_node(node: &'static mut BinaryTreeNode<K, V>)
 		-> &'static mut BinaryTreeNode<K, V> {
@@ -787,10 +801,10 @@ impl<K: 'static + Ord, V: 'static> BinaryTree<K, V> {
 
 	/// Removes the given node `node` from the tree.
 	fn remove_node(&mut self, node: &mut BinaryTreeNode<K, V>) {
-		let left = node.get_left_mut();
-		let right = node.get_right_mut();
-
 		let mut replacement = {
+			let left = node.get_left_mut();
+			let right = node.get_right_mut();
+
 			if left.is_some() && right.is_some() {
 				// The node has two children
 				// The leftmost node may have a child on the right
@@ -830,8 +844,7 @@ impl<K: 'static + Ord, V: 'static> BinaryTree<K, V> {
 			}
 
 			unsafe {
-				drop_in_place(node);
-				malloc::free(node as *mut _ as *mut _);
+				Self::drop_node(node);
 			}
 		} else if node.get_left().is_none() || node.get_right().is_none() {
 			let replacement = replacement.as_mut().unwrap();
@@ -848,8 +861,7 @@ impl<K: 'static + Ord, V: 'static> BinaryTree<K, V> {
 
 				node.unlink();
 				unsafe {
-					drop_in_place(node);
-					malloc::free(node as *mut _ as *mut _);
+					Self::drop_node(node);
 				}
 
 				if both_black {
@@ -872,8 +884,7 @@ impl<K: 'static + Ord, V: 'static> BinaryTree<K, V> {
 
 				replacement.unlink();
 				unsafe {
-					drop_in_place(replacement);
-					malloc::free(replacement as *mut _ as *mut _);
+					Self::drop_node(replacement);
 				}
 			}
 		} else {
@@ -1056,8 +1067,6 @@ impl<'a, K: Ord, V> BinaryTreeIterator<'a, K, V> {
 impl<'a, K: 'static + Ord, V> Iterator for BinaryTreeIterator<'a, K, V> {
 	type Item = (&'a K, &'a V);
 
-	// TODO Implement every functions?
-
 	fn next(&mut self) -> Option<Self::Item> {
 		let node = self.node;
 		self.node = {
@@ -1128,8 +1137,6 @@ impl<'a, K: Ord, V> BinaryTreeMutIterator<'a, K, V> {
 
 impl<'a, K: 'static + Ord, V> Iterator for BinaryTreeMutIterator<'a, K, V> {
 	type Item = (&'a K, &'a mut V);
-
-	// TODO Implement every functions?
 
 	fn next(&mut self) -> Option<Self::Item> {
 		let mut node = self.node;
@@ -1295,9 +1302,7 @@ mod test {
 				assert_eq!(*b.get(i).unwrap(), i);
 			}
 
-			//crate::println!("{}={}", i, b); // TODO rm
 			b.remove(i);
-			//crate::println!("{}:{}", i, b); // TODO rm
 
 			assert!(b.get(i).is_none());
 			for i in (i + 1)..10 {
