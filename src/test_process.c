@@ -25,19 +25,10 @@ void test_process(void)
 	//	write(1, "\n", 1);
 	//}
 
-	fork();
-	fork();
-	fork();
-	//fork();
-	//fork();
-	//fork();
-	//fork();
-	while(1)
+	while (1)
 	{
-		int pid = getpid();
-		//if (pid > 30) {
-			print_nbr(pid);
-		//}
+		print_nbr(getpid());
+		fork();
 	}
 	asm("hlt");
 }

@@ -700,8 +700,8 @@ impl<K: 'static + Ord, V: 'static> BinaryTree<K, V> {
 			self.root = Some(node);
 		}
 		self.insert_equilibrate(n);
-		#[cfg(config_debug_debug)]
-		self.check();
+		//#[cfg(config_debug_debug)]
+		//self.check();
 		self.update_root(n);
 
 		Ok(&mut n.value)
@@ -907,8 +907,8 @@ impl<K: 'static + Ord, V: 'static> BinaryTree<K, V> {
 
 		self.remove_node(node);
 
-		#[cfg(config_debug_debug)]
-		self.check();
+		//#[cfg(config_debug_debug)]
+		//self.check();
 		Some(value)
 	}
 
@@ -958,8 +958,8 @@ impl<K: 'static + Ord, V: 'static> BinaryTree<K, V> {
 
 		self.remove_node(node);
 
-		#[cfg(config_debug_debug)]
-		self.check();
+		//#[cfg(config_debug_debug)]
+		//self.check();
 		Some(value)
 	}
 }

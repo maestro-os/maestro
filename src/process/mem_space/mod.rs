@@ -166,7 +166,8 @@ impl MemSpace {
 
 			if let Some(new_gap) = gap.consume(size) {
 				if self.gap_insert(new_gap).is_err() {
-					self.mappings.get_mut(mapping_ptr).unwrap().unmap();
+					// TODO Check if the error can happen in this context
+					let _ = self.mappings.get_mut(mapping_ptr).unwrap().unmap();
 					self.mappings.remove(mapping_ptr);
 					return Err(errno::ENOMEM);
 				}

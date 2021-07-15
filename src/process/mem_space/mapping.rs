@@ -164,7 +164,7 @@ impl MemMapping {
 				if nolazy {
 					let ptr = buddy::alloc(0, buddy::FLAG_ZONE_TYPE_USER);
 					if let Err(errno) = ptr {
-						self.unmap();
+						let _ = self.unmap(); // TODO Check if the error can happen in this context
 						return Err(errno);
 					}
 					ptr.unwrap()
@@ -176,7 +176,7 @@ impl MemMapping {
 			let flags = self.get_vmem_flags(nolazy, i);
 
 			if let Err(errno) = vmem.map(phys_ptr, virt_ptr, flags) {
-				self.unmap();
+				let _ = self.unmap(); // TODO Check if the error can happen in this context
 				return Err(errno);
 			}
 		}
@@ -252,12 +252,26 @@ impl MemMapping {
 	}
 
 	/// Unmaps the mapping from the given virtual memory context.
-	pub fn unmap(&self) {
-		// TODO
-		// TODO Remove the physical memory only if the page is not shared
-		todo!();
+	pub fn unmap(&mut self) -> Result<(), Errno> {
+		let vmem = self.get_mut_vmem();
+		vmem.unmap_range(self.begin, self.size)?;
+		vmem.flush();
 
-		// self.get_vmem().flush();
+		for i in 0..self.size {
+			let virt_ptr = (self.begin as usize + i * memory::PAGE_SIZE) as *const c_void;
+
+			if self.is_shared(i) {
+				if let Some(phys_ptr) = vmem.translate(virt_ptr) {
+					let allocated = phys_ptr != get_default_page();
+
+					if allocated {
+						buddy::free(phys_ptr, 0);
+					}
+				}
+			}
+		}
+
+		Ok(())
 	}
 
 	/// Updates the virtual memory context according to the mapping for the page at offset
@@ -317,6 +331,7 @@ impl MemMapping {
 
 impl Drop for MemMapping {
 	fn drop(&mut self) {
-		self.unmap();
+		// TODO Check if the error can happen in this context
+		let _ = self.unmap();
 	}
 }
