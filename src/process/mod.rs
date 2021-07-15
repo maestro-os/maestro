@@ -437,10 +437,8 @@ impl Process {
 		self.state == State::Zombie
 	}
 
-	// TODO Provide event's type and process?
-	/// Notifies the process to wake it up if it is waiting for a child process. If the process is
-	/// not in Sleeping state, the function does nothing.
-	pub fn wait_notify(&mut self) {
+	/// Wakes up the process. If the process is not in Sleeping state, the function does nothing.
+	pub fn wakeup(&mut self) {
 		if self.state == State::Sleeping {
 			self.state = State::Running;
 		}

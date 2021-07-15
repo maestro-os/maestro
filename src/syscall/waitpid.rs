@@ -28,8 +28,7 @@ pub fn any_target(proc: &Process, pid: i32) -> bool {
 		// process at the time of the call to waitpid().
 		todo!();
 	} else {
-		// TODO wait for the child whose process ID is equal to the value of pid.
-		todo!();
+		proc.has_child(pid as _)
 	}
 }
 
@@ -58,7 +57,6 @@ pub fn waitpid(proc: &mut Process, regs: &util::Regs) -> Result<i32, Errno> {
 	// TODO If yes, return the PID and write `wstatus` if available
 
 	if options & WNOHANG != 0 {
-		// TODO Store waiting options into the process's structure?
 		// When a child process is paused or resumed by a signal or is terminated, it changes the
 		// state of the current process to wake it up
 		proc.set_state(process::State::Sleeping);
@@ -66,6 +64,7 @@ pub fn waitpid(proc: &mut Process, regs: &util::Regs) -> Result<i32, Errno> {
 
 		// TODO Check again if a target process is waitable
 		// TODO If yes, return the PID and write `wstatus` if available
+		// TODO If not, sleep again
 		todo!();
 	} else {
 		Ok(0)

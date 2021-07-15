@@ -104,6 +104,11 @@ impl Scheduler {
 		}))
 	}
 
+	/// Returns the number of processes registered on the scheduler.
+	pub fn get_processes_count(&self) -> usize {
+		self.processes.len()
+	}
+
 	/// Returns the process with PID `pid`. If the process doesn't exist, the function returns None.
 	pub fn get_by_pid(&mut self, pid: Pid) -> Option<SharedPtr<Process>> {
 		// TODO Optimize
@@ -276,6 +281,7 @@ impl Scheduler {
 			}
 
 			unsafe {
+				// FIXME: Kernel panic if running out of memory for some reason
 				stack::switch(tmp_stack, f, ctx_switch_data).unwrap();
 			}
 			crate::enter_loop();
