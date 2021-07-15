@@ -18,6 +18,7 @@ use crate::memory::stack;
 use crate::memory::vmem::VMem;
 use crate::memory::vmem;
 use crate::memory;
+use crate::process::oom;
 use crate::util::FailableClone;
 use crate::util::boxed::Box;
 use crate::util::container::binary_tree::BinaryTree;
@@ -298,13 +299,13 @@ impl MemSpace {
 		if let Some(mapping) = Self::get_mapping_for(&mut self.mappings, virt_addr) {
 			let offset = (virt_addr as usize - mapping.get_begin() as usize) / memory::PAGE_SIZE;
 			if mapping.map(offset).is_err() {
-				// TODO Use OOM-killer
+				oom::kill();
 				// TODO Check if current process has been killed
-				todo!();
 
-				//if mapping.map(offset).is_err() {
-				//    crate::kernel_panic!("OOM killer is unable to free up space for new allocation!");
-				//}
+				if mapping.map(offset).is_err() {
+					crate::kernel_panic!("OOM killer is unable to free up space for new \
+allocations!");
+				}
 			}
 
 			mapping.update_vmem(offset);

@@ -2,6 +2,7 @@
 //! run at the same time by sharing the CPU resources using a scheduler.
 
 pub mod mem_space;
+pub mod oom;
 pub mod pid;
 pub mod scheduler;
 pub mod semaphore;
@@ -687,6 +688,29 @@ impl Process {
 	pub fn exit(&mut self, status: u32) {
 		self.exit_status = (status & 0xff) as ExitStatus;
 		self.state = State::Zombie;
+	}
+
+	/// Returns the number of physical memory pages used by the process.
+	pub fn get_memory_usage(&self) -> u32 {
+		// TODO
+		todo!();
+	}
+
+	/// Returns the OOM score, used by the OOM killer to determine the process to kill in case the
+	/// system runs out of memory. A higher score means a higher probability of getting killed.
+	pub fn get_oom_score(&self) -> u16 {
+		let mut score = 0;
+
+		// If the process is owned by the superuser, give it a bonus
+		if self.uid == 0 {
+			score -= 100;
+		}
+
+		// TODO Compute the score using physical memory usage
+		// TODO Take into account userspace-set values (oom may be disabled for this process,
+		// an absolute score or a bonus might be given, etc...)
+
+		score
 	}
 }
 
