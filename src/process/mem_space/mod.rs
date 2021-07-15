@@ -10,7 +10,6 @@ mod mapping;
 mod physical_ref_counter;
 
 use core::cmp::Ordering;
-use core::cmp::min;
 use core::ffi::c_void;
 use core::ptr::NonNull;
 use crate::errno::Errno;
@@ -22,9 +21,7 @@ use crate::memory;
 use crate::util::FailableClone;
 use crate::util::boxed::Box;
 use crate::util::container::binary_tree::BinaryTree;
-use crate::util::list::List;
 use crate::util::lock::mutex::Mutex;
-use crate::util::math;
 use gap::MemGap;
 use mapping::MemMapping;
 use physical_ref_counter::PhysRefCounter;
@@ -41,9 +38,6 @@ pub const MAPPING_FLAG_NOLAZY: u8 = 0b01000;
 /// Flag telling that a memory mapping has its physical memory shared with one or more other
 /// mappings.
 pub const MAPPING_FLAG_SHARED: u8 = 0b10000;
-
-/// The number of buckets for available gaps in memory.
-const GAPS_BUCKETS_COUNT: usize = 8;
 
 /// The size of the temporary stack used to fork a memory space.
 const TMP_STACK_SIZE: usize = memory::PAGE_SIZE * 8;
@@ -65,10 +59,10 @@ struct ForkData<'a> {
 pub struct MemSpace {
 	/// Binary tree storing the list of memory gaps, ready for new mappings. Sorted by pointer to
 	/// the beginning of the mapping on the virtual memory.
-	gaps: BinaryTree::<*const c_void, MemGap>, // TODO Sort by size instead?
-	/// The gaps bucket, sorted by size. The minimum size in pages of a gap is: `2^^n`, where `n`
-	/// is the index in the list.
-	gaps_buckets: [List::<MemGap>; GAPS_BUCKETS_COUNT],
+	gaps: BinaryTree::<*const c_void, MemGap>,
+	/// Binary tree storing the list of memory gaps, sorted by size. The key is the size of the gap
+	/// and the value is the pointer to its beginning.
+	gaps_size: BinaryTree::<usize, *const c_void>,
 
 	/// Binary tree storing the list of memory mappings. Sorted by pointer to the beginning of the
 	/// mapping on the virtual memory.
@@ -79,52 +73,35 @@ pub struct MemSpace {
 }
 
 impl MemSpace {
-	/// Returns the bucket index for a gap of size `size`.
-	fn get_gap_bucket_index(size: usize) -> usize {
-		min(math::log2(size), GAPS_BUCKETS_COUNT - 1)
-	}
-
 	/// Inserts the given gap into the memory space's structures.
 	fn gap_insert(&mut self, gap: MemGap) -> Result<(), Errno> {
 		let gap_ptr = gap.get_begin();
 		let g = self.gaps.insert(gap_ptr, gap)?;
-
-		let bucket_index = Self::get_gap_bucket_index(g.get_size());
-		let bucket = &mut self.gaps_buckets[bucket_index];
-		bucket.insert_front(&mut g.list);
+		self.gaps_size.insert(g.get_size(), gap_ptr)?;
 
 		Ok(())
 	}
 
 	/// Removes the given gap from the memory space's structures.
 	fn gap_remove(&mut self, gap_begin: *const c_void) {
-		let g = self.gaps.get_mut(gap_begin).unwrap();
-
-		let bucket_index = Self::get_gap_bucket_index(g.get_size());
-		let bucket = &mut self.gaps_buckets[bucket_index];
-		g.list.unlink_from(bucket);
-
-		self.gaps.remove(gap_begin);
+		let g = self.gaps.remove(gap_begin).unwrap();
+		self.gaps_size.select_remove(g.get_size(), | val | {
+			*val == gap_begin
+		});
 	}
 
 	/// Returns a reference to a gap with at least size `size`.
-	fn gap_get(buckets: &mut [List::<MemGap>], size: usize) -> Option::<&mut MemGap> {
-		let bucket_index = Self::get_gap_bucket_index(size);
+	/// `gaps` is the binary tree storing gaps, sorted by pointer to their respective beginnings.
+	/// `gaps_size` is the binary tree storing pointers to gaps, sorted by gap sizes.
+	/// `size` is the minimum size of the gap.
+	/// If no gap large enough is available, the function returns None.
+	fn gap_get<'a>(gaps: &'a mut BinaryTree<*const c_void, MemGap>,
+		gaps_size: &mut BinaryTree<usize, *const c_void>, size: usize) -> Option<&'a mut MemGap> {
+		let ptr = gaps_size.get_min(size)?;
+		let gap = gaps.get_mut(*ptr).unwrap();
+		debug_assert!(gap.get_size() >= size);
 
-		for bucket in buckets.iter_mut().take(GAPS_BUCKETS_COUNT).skip(bucket_index) {
-			let mut node = bucket.get_front();
-
-			while node.is_some() {
-				let n = node.unwrap();
-				let value = n.get_mut::<MemGap>(bucket.get_inner_offset());
-				if value.get_size() >= size {
-					return Some(value);
-				}
-				node = n.get_next();
-			}
-		}
-
-		None
+		Some(gap)
 	}
 
 	/// Returns a new binary tree containing the default gaps for a memory space.
@@ -138,7 +115,7 @@ impl MemSpace {
 	pub fn new() -> Result::<Self, Errno> {
 		let mut s = Self {
 			gaps: BinaryTree::new(),
-			gaps_buckets: [crate::list_new!(MemGap, list); GAPS_BUCKETS_COUNT],
+			gaps_size: BinaryTree::new(),
 
 			mappings: BinaryTree::new(),
 
@@ -169,7 +146,7 @@ impl MemSpace {
 			// Err(errno::ENOMEM)
 			todo!();
 		} else {
-			let gap = Self::gap_get(&mut self.gaps_buckets, size);
+			let gap = Self::gap_get(&mut self.gaps, &mut self.gaps_size, size);
 			if gap.is_none() {
 				return Err(errno::ENOMEM);
 			}
@@ -257,18 +234,13 @@ impl MemSpace {
 	/// Performs the actions of `fork`. This function is meant to be called onto a temporary stack.
 	fn do_fork(&mut self) -> Result<MemSpace, Errno> {
 		let mut mem_space = Self {
-			gaps: BinaryTree::new(),
-			gaps_buckets: [crate::list_new!(MemGap, list); GAPS_BUCKETS_COUNT],
+			gaps: self.gaps.failable_clone()?,
+			gaps_size: self.gaps_size.failable_clone()?,
 
 			mappings: BinaryTree::new(),
 
 			vmem: vmem::clone(&self.vmem)?,
 		};
-
-		for (_, g) in self.gaps.into_iter() {
-			let new_gap = g.failable_clone()?;
-			mem_space.gap_insert(new_gap)?;
-		}
 
 		for (_, m) in self.mappings.iter_mut() {
 			let new_mapping = m.fork(&mut mem_space)?;

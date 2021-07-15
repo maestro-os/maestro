@@ -496,12 +496,12 @@ impl<K: 'static + Ord, V: 'static> BinaryTree<K, V> {
 
 	/// Searches for a node with the given key in the tree and returns a reference.
 	/// `key` is the key to find.
-	fn get_node(&self, key: K) -> Option<&'static BinaryTreeNode<K, V>> {
+	fn get_node(&self, key: &K) -> Option<&'static BinaryTreeNode<K, V>> {
 		let mut node = self.get_root();
 
 		while node.is_some() {
 			let n = node.unwrap();
-			let ord = n.key.partial_cmp(&key).unwrap().reverse();
+			let ord = n.key.partial_cmp(key).unwrap().reverse();
 
 			match ord {
 				Ordering::Less => node = n.get_left(),
@@ -515,12 +515,12 @@ impl<K: 'static + Ord, V: 'static> BinaryTree<K, V> {
 
 	/// Searches for a node with the given key in the tree and returns a mutable reference.
 	/// `key` is the key to find.
-	fn get_mut_node(&mut self, key: K) -> Option<&'static mut BinaryTreeNode<K, V>> {
+	fn get_mut_node(&mut self, key: &K) -> Option<&'static mut BinaryTreeNode<K, V>> {
 		let mut node = self.get_root_mut();
 
 		while node.is_some() {
 			let n = node.unwrap();
-			let ord = n.key.partial_cmp(&key).unwrap().reverse();
+			let ord = n.key.partial_cmp(key).unwrap().reverse();
 
 			match ord {
 				Ordering::Less => node = n.get_left_mut(),
@@ -535,22 +535,22 @@ impl<K: 'static + Ord, V: 'static> BinaryTree<K, V> {
 	/// Searches for the given key in the tree and returns a reference.
 	/// `key` is the key to find.
 	#[inline]
-	pub fn get(&self, key: K) -> Option<&V> {
-		let node = self.get_node(key)?;
+	pub fn get<'a>(&'a self, key: K) -> Option<&'a V> {
+		let node = self.get_node(&key)?;
 		Some(&node.value)
 	}
 
 	/// Searches for the given key in the tree and returns a mutable reference.
 	/// `key` is the key to find.
 	#[inline]
-	pub fn get_mut(&mut self, key: K) -> Option<&mut V> {
-		let node = self.get_mut_node(key)?;
+	pub fn get_mut<'a>(&'a mut self, key: K) -> Option<&'a mut V> {
+		let node = self.get_mut_node(&key)?;
 		Some(&mut node.value)
 	}
 
 	/// Searches for a node in the tree using the given comparison function `cmp` instead of the
 	/// Ord trait.
-	pub fn cmp_get<F: Fn(&K, &V) -> Ordering>(&mut self, cmp: F) -> Option<&mut V> {
+	pub fn cmp_get<'a, F: Fn(&K, &V) -> Ordering>(&'a mut self, cmp: F) -> Option<&'a mut V> {
 		let mut node = self.get_root_mut();
 
 		while node.is_some() {
@@ -569,7 +569,7 @@ impl<K: 'static + Ord, V: 'static> BinaryTree<K, V> {
 
 	/// Searches in the tree for a key greater or equal to the given key.
 	/// `key` is the key to find.
-	pub fn get_min(&mut self, key: K) -> Option<&mut V> {
+	pub fn get_min<'a>(&'a mut self, key: K) -> Option<&'a mut V> {
 		let mut node = self.get_root_mut();
 
 		while node.is_some() {
@@ -682,7 +682,7 @@ impl<K: 'static + Ord, V: 'static> BinaryTree<K, V> {
 	/// `key` is the key to insert.
 	/// `val` is the value to insert.
 	/// `cmp` is the comparison function.
-	pub fn insert(&mut self, key: K, val: V) -> Result<&mut V, Errno> {
+	pub fn insert<'a>(&'a mut self, key: K, val: V) -> Result<&'a mut V, Errno> {
 		let mut node = BinaryTreeNode::new(key, val)?;
 		let n = unsafe {
 			node.as_mut()
@@ -897,10 +897,61 @@ impl<K: 'static + Ord, V: 'static> BinaryTree<K, V> {
 
 	/// Removes a value from the tree. If the value is present several times in the tree, only one
 	/// node is removed.
-	/// `val` is the value to select the node to remove.
+	/// `key` is the key to select the node to remove.
 	/// If the key exists, the function returns the value of the removed node.
 	pub fn remove(&mut self, key: K) -> Option<V> {
-		let node = self.get_mut_node(key)?;
+		let node = self.get_mut_node(&key)?;
+		let value = unsafe {
+			ptr::read(&node.value)
+		};
+
+		self.remove_node(node);
+
+		#[cfg(config_debug_debug)]
+		self.check();
+		Some(value)
+	}
+
+	/// Removes a value from the tree. This function is useful when several values have the same
+	/// key since the given closure allows to select the node to remove.
+	/// `key` is the key to select the node to remove.
+	/// `f` the closure that selects the node to be removed. When returning `false`, the closure is
+	/// called with the next node. When returning `true`, the node is removed and the closure isn't
+	/// called anymore.
+	/// If a node is removed, the function returns the value of the removed node.
+	pub fn select_remove<F: FnMut(&V) -> bool>(&mut self, key: K, mut f: F) -> Option<V> {
+		let node = {
+			let mut n = self.get_mut_node(&key)?;
+
+			loop {
+				debug_assert_eq!(n.key.cmp(&key), Ordering::Equal);
+				if f(&n.value) {
+					break;
+				}
+
+				let left = n.get_left_mut();
+				if left.is_some() && left.as_ref().unwrap().key == key {
+					n = left.unwrap();
+				} else {
+					loop {
+						let right = n.get_right_mut();
+						if right.is_some() && right.as_ref().unwrap().key == key {
+							n = right.unwrap();
+							break;
+						}
+
+						n = n.get_parent_mut()?;
+						if n.key != key {
+							return None;
+						}
+					}
+
+					break;
+				}
+			}
+
+			n
+		};
 		let value = unsafe {
 			ptr::read(&node.value)
 		};
@@ -1188,7 +1239,7 @@ impl<K: 'static + FailableClone + Ord, V: FailableClone> FailableClone for Binar
 	}
 }
 
-impl<K: 'static + Ord/* + fmt::Display*/, V> fmt::Display for BinaryTree<K, V> {
+impl<K: 'static + Ord + fmt::Display, V> fmt::Display for BinaryTree<K, V> {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		if let Some(mut n) = self.root {
 			Self::foreach_nodes(unsafe {
@@ -1204,7 +1255,7 @@ impl<K: 'static + Ord/* + fmt::Display*/, V> fmt::Display for BinaryTree<K, V> {
 				} else {
 					"black"
 				};
-				let _ = writeln!(f, /*"{} */"({})"/*, n.key*/, color);
+				let _ = writeln!(f, "{} ({})", n.key, color);
 			}, TraversalType::ReverseInOrder);
 			Ok(())
 		} else {

@@ -28,16 +28,16 @@ void test_process(void)
 	fork();
 	fork();
 	fork();
-	fork();
-	fork();
-	fork();
-	fork();
+	//fork();
+	//fork();
+	//fork();
+	//fork();
 	while(1)
 	{
 		int pid = getpid();
-		if (pid > 30) {
+		//if (pid > 30) {
 			print_nbr(pid);
-		}
+		//}
 	}
 	asm("hlt");
 }

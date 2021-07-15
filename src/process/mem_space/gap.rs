@@ -3,7 +3,6 @@
 use core::ffi::c_void;
 use crate::memory;
 use crate::util::FailableClone;
-use crate::util::list::ListNode;
 use crate::util;
 
 /// A gap in the memory space that can use for new mappings.
@@ -12,9 +11,6 @@ pub struct MemGap {
 	begin: *const c_void,
 	/// The size of the gap in pages.
 	size: usize,
-
-	/// The node in the list storing the gap to be searched by size.
-	pub list: ListNode,
 }
 
 impl MemGap {
@@ -29,8 +25,6 @@ impl MemGap {
 		Self {
 			begin,
 			size,
-
-			list: ListNode::new_single(),
 		}
 	}
 
@@ -66,8 +60,6 @@ impl Clone for MemGap {
 		Self {
 			begin: self.begin,
 			size: self.size,
-
-			list: ListNode::new_single(),
 		}
 	}
 }

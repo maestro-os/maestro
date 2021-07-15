@@ -130,6 +130,9 @@ failable_clone_impl!(u64);
 failable_clone_impl!(isize);
 failable_clone_impl!(usize);
 
+failable_clone_impl!(*mut c_void);
+failable_clone_impl!(*const c_void);
+
 /// Structure representing the list of registers for a context. The content of this structure
 /// depends on the architecture for which the kernel is compiled.
 #[derive(Clone, Copy, Debug)]
