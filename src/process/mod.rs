@@ -707,6 +707,13 @@ impl Process {
 	pub fn exit(&mut self, status: u32) {
 		self.exit_status = (status & 0xff) as ExitStatus;
 		self.state = State::Zombie;
+
+		// TODO Ensure that the parent hasn't been removed?
+		if let Some(mut parent) = self.get_parent() {
+			unsafe {
+				parent.as_mut()
+			}.wakeup();
+		}
 	}
 
 	/// Returns the number of physical memory pages used by the process.

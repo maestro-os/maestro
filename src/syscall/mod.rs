@@ -60,8 +60,8 @@ pub extern "C" fn syscall_handler(regs: &util::Regs) -> u32 {
 	let mut guard = mutex.lock();
 	let curr_proc = guard.get_mut();
 	curr_proc.set_regs(regs);
-	// TODO Issue with functions that never return. For example, `_exit` would lock the process's
-	// mutex, preventing from retrieving its exit status
+	// NOTE: `mutex` **must** be unlocked by functions that don't return. If not unlocked, the
+	// kernel will probably have a deadlock
 
 	let id = regs.eax;
 
