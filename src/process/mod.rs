@@ -134,7 +134,7 @@ pub struct Process {
 	/// The FIFO containing awaiting signals.
 	signals_queue: Vec<Signal>, // TODO Use a dedicated FIFO structure
 	/// The list of signal handlers.
-	signal_handlers: [Option<SignalHandler>; signal::SIGNALS_COUNT],
+	signal_handlers: [SignalHandler; signal::SIGNALS_COUNT],
 
 	/// The exit status of the process after exiting.
 	exit_status: ExitStatus,
@@ -303,7 +303,7 @@ impl Process {
 			file_descriptors: Vec::new(),
 
 			signals_queue: Vec::new(),
-			signal_handlers: [None; signal::SIGNALS_COUNT],
+			signal_handlers: [SignalHandler::Default; signal::SIGNALS_COUNT],
 
 			exit_status: 0,
 		};
@@ -683,8 +683,15 @@ impl Process {
 	}
 
 	/// Returns the signal handler for the signal type `type_`.
-	pub fn get_signal_handler(&self, type_: SignalType) -> Option<SignalHandler> {
+	pub fn get_signal_handler(&self, type_: SignalType) -> SignalHandler {
+		debug_assert!((type_ as usize) < self.signal_handlers.len());
 		self.signal_handlers[type_ as usize]
+	}
+
+	/// Sets the signal handler `handler` for the signal type `type_`.
+	pub fn set_signal_handler(&mut self, type_: SignalType, handler: SignalHandler) {
+		debug_assert!((type_ as usize) < self.signal_handlers.len());
+		self.signal_handlers[type_ as usize] = handler;
 	}
 
 	/// Kills the process with the given signal type `type`. This function enqueues a new signal
@@ -693,8 +700,8 @@ impl Process {
 	pub fn kill(&mut self, type_: SignalType) -> Result<(), Errno> {
 		// TODO Use preallocated memory for the signals queue?
 		let signal = Signal::new(type_)?;
-		if signal.can_catch() && self.get_signal_handler(type_).is_some() {
-			self.signals_queue.push(signal)?;
+		if signal.can_catch() {
+			self.signals_queue.push(signal)?; // TODO Do not queue. Use a bitmap
 		} else {
 			signal.execute_action(self);
 		}

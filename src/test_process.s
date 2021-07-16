@@ -53,12 +53,7 @@ _exit:
 	mov $9, %eax
 	mov 8(%ebp), %ebx
 	int $0x80
-
-	pop %ebx
-
-	mov %ebp, %esp
-	pop %ebp
-	ret
+	ud2
 
 fork:
 	mov $10, %eax

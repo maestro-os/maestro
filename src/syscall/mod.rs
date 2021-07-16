@@ -19,6 +19,7 @@ mod read;
 mod setgid;
 mod setpgid;
 mod setuid;
+mod signal;
 mod umask;
 mod uname;
 mod unlink;
@@ -27,7 +28,7 @@ mod write;
 
 use crate::util::lock::mutex::TMutex;
 use crate::process::Process;
-use crate::process::signal;
+use crate::process::signal as signal_type;
 
 use _exit::_exit;
 use chroot::chroot;
@@ -47,6 +48,7 @@ use read::read;
 use setgid::setgid;
 use setpgid::setpgid;
 use setuid::setuid;
+use signal::signal;
 use umask::umask;
 use uname::uname;
 use unlink::unlink;
@@ -137,8 +139,8 @@ pub extern "C" fn syscall_handler(regs: &util::Regs) -> u32 {
 		// TODO mlockall
 		// TODO munlockall
 		// TODO mprotect
-		// TODO signal
-		20 => kill(curr_proc, regs),
+		20 => signal(curr_proc, regs),
+		21 => kill(curr_proc, regs),
 		// TODO pause
 		// TODO socket
 		// TODO getsockname
@@ -155,11 +157,11 @@ pub extern "C" fn syscall_handler(regs: &util::Regs) -> u32 {
 		// TODO times
 		// TODO gettimeofday
 		// TODO ptrace
-		21 => uname(curr_proc, regs),
+		22 => uname(curr_proc, regs),
 		// TODO reboot
 
 		_ => {
-			curr_proc.kill(signal::SIGSYS).unwrap(); // TODO Handle properly
+			curr_proc.kill(signal_type::SIGSYS).unwrap(); // TODO Handle properly
 			crate::enter_loop();
 		}
 	};

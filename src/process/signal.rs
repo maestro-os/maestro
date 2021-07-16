@@ -7,6 +7,8 @@ use super::State;
 
 /// Type representing the type of a signal.
 pub type SignalType = u8;
+/// Type representing a signal handler.
+pub type SigHandler = extern "C" fn(i32);
 
 /// Process abort.
 pub const SIGABRT: SignalType = 0;
@@ -156,44 +158,53 @@ impl Signal {
 			return;
 		}
 
-		if let Some(_handler) = process.get_signal_handler(self.type_) {
-			// TODO Execute handler
-			todo!();
-		} else {
-			let default_action = DEFAULT_ACTIONS[self.type_ as usize];
-			let exit_code = (128 + self.type_) as u32;
+		match process.get_signal_handler(self.type_) {
+			SignalHandler::Ignore => {},
+			SignalHandler::Default => {
+				let default_action = DEFAULT_ACTIONS[self.type_ as usize];
+				let exit_code = (128 + self.type_) as u32;
 
-			match default_action {
-				SignalAction::Terminate => {
-					process.exit(exit_code);
-				},
+				match default_action {
+					SignalAction::Terminate => {
+						process.exit(exit_code);
+					},
 
-				SignalAction::Abort => {
-					process.exit(exit_code);
-				},
+					SignalAction::Abort => {
+						process.exit(exit_code);
+					},
 
-				SignalAction::Ignore => {},
+					SignalAction::Ignore => {},
 
-				SignalAction::Stop => {
-					// TODO Handle semaphores
-					if process_state == State::Running {
-						process.set_state(State::Sleeping);
-					}
-				},
+					SignalAction::Stop => {
+						// TODO Handle semaphores
+						if process_state == State::Running {
+							process.set_state(State::Sleeping);
+						}
+					},
 
-				SignalAction::Continue => {
-					// TODO Handle semaphores
-					if process_state == State::Sleeping {
-						process.set_state(State::Running);
-					}
-				},
-			}
+					SignalAction::Continue => {
+						// TODO Handle semaphores
+						if process_state == State::Sleeping {
+							process.set_state(State::Running);
+						}
+					},
+				}
+			},
+			SignalHandler::Handler(_handler) => {
+				// TODO Execute handler
+				todo!();
+			},
 		}
 	}
 }
 
-/// Structure representing a signal handler.
-#[derive(Clone, Copy)]
-pub struct SignalHandler {
-	// TODO
+/// Enumeration containing the different possibilities for signal handling.
+#[derive(Clone, Copy, Debug)]
+pub enum SignalHandler {
+	/// Ignores the signal.
+	Ignore,
+	/// Executes the default action.
+	Default,
+	/// A custom action defined by the process.
+	Handler(SigHandler),
 }
