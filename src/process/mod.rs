@@ -27,6 +27,7 @@ use crate::limits;
 use crate::memory::vmem;
 use crate::util::FailableClone;
 use crate::util::Regs;
+use crate::util::container::bitfield::Bitfield;
 use crate::util::container::vec::Vec;
 use crate::util::lock::mutex::*;
 use crate::util::ptr::SharedPtr;
@@ -66,6 +67,8 @@ const STDIN_FILENO: u32 = 0;
 const STDOUT_FILENO: u32 = 1;
 /// The file descriptor number of the standard error stream.
 const STDERR_FILENO: u32 = 2;
+
+// TODO Ensure signals are executed when switching context
 
 /// An enumeration containing possible states for a process.
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -131,8 +134,8 @@ pub struct Process {
 	/// The list of open file descriptors.
 	file_descriptors: Vec<FileDescriptor>,
 
-	/// The FIFO containing awaiting signals.
-	signals_queue: Vec<Signal>, // TODO Use a dedicated FIFO structure
+	/// A bitfield storing signals that have been received and are not handled yet.
+	signals_bitfield: Bitfield,
 	/// The list of signal handlers.
 	signal_handlers: [SignalHandler; signal::SIGNALS_COUNT],
 
@@ -302,7 +305,7 @@ impl Process {
 			cwd,
 			file_descriptors: Vec::new(),
 
-			signals_queue: Vec::new(),
+			signals_bitfield: Bitfield::new(signal::SIGNALS_COUNT)?,
 			signal_handlers: [SignalHandler::Default; signal::SIGNALS_COUNT],
 
 			exit_status: 0,
@@ -669,7 +672,7 @@ impl Process {
 			cwd: self.cwd.failable_clone()?,
 			file_descriptors: self.file_descriptors.failable_clone()?,
 
-			signals_queue: Vec::new(),
+			signals_bitfield: Bitfield::new(signal::SIGNALS_COUNT)?,
 			signal_handlers: self.signal_handlers,
 
 			exit_status: self.exit_status,
@@ -698,10 +701,9 @@ impl Process {
 	/// to be processed. If the process doesn't have a signal handler, the default action for the
 	/// signal is executed.
 	pub fn kill(&mut self, type_: SignalType) -> Result<(), Errno> {
-		// TODO Use preallocated memory for the signals queue?
 		let signal = Signal::new(type_)?;
 		if signal.can_catch() {
-			self.signals_queue.push(signal)?; // TODO Do not queue. Use a bitmap
+			self.signals_bitfield.set(type_ as _);
 		} else {
 			signal.execute_action(self);
 		}
