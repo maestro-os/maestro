@@ -98,7 +98,7 @@ impl MemSpace {
 	/// If no gap large enough is available, the function returns None.
 	fn gap_get<'a>(gaps: &'a mut BinaryTree<*const c_void, MemGap>,
 		gaps_size: &mut BinaryTree<usize, *const c_void>, size: usize) -> Option<&'a mut MemGap> {
-		let ptr = gaps_size.get_min(size)?;
+		let ptr = gaps_size.get_min(size)?.1;
 		let gap = gaps.get_mut(*ptr).unwrap();
 		debug_assert!(gap.get_size() >= size);
 

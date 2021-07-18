@@ -324,6 +324,7 @@ impl<K: 'static + Ord, V: 'static> BinaryTreeNode<K, V> {
 	}
 
 	/// Returns the number of nodes in the subtree.
+	/// This function has `O(n)` complexity.
 	pub fn nodes_count(&self) -> usize {
 		let left_count = {
 			if let Some(l) = self.get_left() {
@@ -344,6 +345,7 @@ impl<K: 'static + Ord, V: 'static> BinaryTreeNode<K, V> {
 	}
 
 	/// Returns the depth of the node in the tree.
+	/// This function has `O(log n)` complexity.
 	pub fn get_node_depth(&self) -> usize {
 		if let Some(p) = self.get_parent() {
 			p.get_node_depth() + 1
@@ -353,6 +355,7 @@ impl<K: 'static + Ord, V: 'static> BinaryTreeNode<K, V> {
 	}
 
 	/// Returns the black depth of the node in the tree.
+	/// This function has `O(log n)` complexity.
 	pub fn get_node_black_depth(&self) -> usize {
 		let parent = {
 			if let Some(p) = self.get_parent() {
@@ -373,6 +376,7 @@ impl<K: 'static + Ord, V: 'static> BinaryTreeNode<K, V> {
 	}
 
 	/// Returns the depth of the subtree.
+	/// This function has `O(log n)` complexity.
 	pub fn get_depth(&self) -> usize {
 		let left_count = {
 			if let Some(l) = self.get_left() {
@@ -476,8 +480,9 @@ impl<K: 'static + Ord, V: 'static> BinaryTree<K, V> {
 		}
 	}
 
-	/// Returns the number of nodes in the tree.
-	pub fn nodes_count(&self) -> usize {
+	/// Returns the number of elements in the tree.
+	/// This function has `O(n)` complexity.
+	pub fn count(&self) -> usize {
 		if let Some(r) = self.get_root() {
 			r.nodes_count()
 		} else {
@@ -486,6 +491,7 @@ impl<K: 'static + Ord, V: 'static> BinaryTree<K, V> {
 	}
 
 	/// Returns the depth of the tree.
+	/// This function has `O(log n)` complexity.
 	pub fn get_depth(&self) -> usize {
 		if let Some(r) = self.get_root() {
 			r.get_depth()
@@ -569,7 +575,7 @@ impl<K: 'static + Ord, V: 'static> BinaryTree<K, V> {
 
 	/// Searches in the tree for a key greater or equal to the given key.
 	/// `key` is the key to find.
-	pub fn get_min<'a>(&'a mut self, key: K) -> Option<&'a mut V> {
+	pub fn get_min<'a>(&'a mut self, key: K) -> Option<(&'a K, &'a mut V)> {
 		let mut node = self.get_root_mut();
 
 		while node.is_some() {
@@ -579,7 +585,7 @@ impl<K: 'static + Ord, V: 'static> BinaryTree<K, V> {
 			if ord == Ordering::Greater {
 				node = n.get_right_mut();
 			} else {
-				return Some(&mut n.value);
+				return Some((&n.key, &mut n.value));
 			}
 		}
 
@@ -1091,6 +1097,11 @@ impl<K: 'static + Ord, V: 'static> BinaryTree<K, V> {
 		}
 	}
 
+	/// Returns an iterator for the current binary tree.
+	pub fn iter(&self) -> BinaryTreeIterator::<K, V> {
+		BinaryTreeIterator::new(self)
+	}
+
 	/// Returns a mutable iterator for the current binary tree.
 	pub fn iter_mut(&mut self) -> BinaryTreeMutIterator::<K, V> {
 		BinaryTreeMutIterator::new(self)
@@ -1112,6 +1123,13 @@ impl<'a, K: Ord, V> BinaryTreeIterator<'a, K, V> {
 			tree,
 			node: tree.root,
 		}
+	}
+
+	/// Makes the iterator jump to the given key. If the key doesn't exist, the iterator ends.
+	pub fn jump(&mut self, key: &K) {
+		self.node = self.tree.get_node(key).and_then(| v | {
+			NonNull::new(v as *const _ as *mut _)
+		});
 	}
 }
 
@@ -1154,7 +1172,7 @@ impl<'a, K: 'static + Ord, V> Iterator for BinaryTreeIterator<'a, K, V> {
 	}
 
 	fn count(self) -> usize {
-		self.tree.nodes_count()
+		self.tree.count()
 	}
 }
 
@@ -1183,6 +1201,11 @@ impl<'a, K: Ord, V> BinaryTreeMutIterator<'a, K, V> {
 			tree,
 			node: root,
 		}
+	}
+
+	/// Makes the iterator jump to the given key. If the key doesn't exist, the iterator ends.
+	pub fn jump(&mut self, key: &K) {
+		self.node = self.tree.get_mut_node(key).and_then(| v | NonNull::new(v));
 	}
 }
 
@@ -1225,7 +1248,7 @@ impl<'a, K: 'static + Ord, V> Iterator for BinaryTreeMutIterator<'a, K, V> {
 	}
 
 	fn count(self) -> usize {
-		self.tree.nodes_count()
+		self.tree.count()
 	}
 }
 
