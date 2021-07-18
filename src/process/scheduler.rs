@@ -168,11 +168,13 @@ impl Scheduler {
 
 	// TODO Clean
 	/// Tells whether the given process `process` can run.
-	fn can_run(process: &Process, priority_sum: usize, priority_max: usize,
-		processes_count: usize) -> bool {
+	fn can_run(process: &Process, _priority_sum: usize, _priority_max: usize,
+		_processes_count: usize) -> bool {
 		if process.get_state() == process::State::Running {
-			process.quantum_count < Self::get_quantum_count(process.get_priority(), priority_sum,
-				priority_max, processes_count)
+			// TODO fix
+			//process.quantum_count < Self::get_quantum_count(process.get_priority(), priority_sum,
+			//	priority_max, processes_count)
+			true
 		} else {
 			false
 		}
