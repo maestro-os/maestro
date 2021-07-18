@@ -6,8 +6,6 @@ use core::cmp::min;
 use crate::device::serial;
 use crate::tty;
 use crate::util::lock::mutex::Mutex;
-use crate::util::lock::mutex::MutexGuard;
-use crate::util::lock::mutex::TMutex;
 
 /// The size of the kernel logs buffer in bytes.
 const LOGS_SIZE: usize = 1048576;
@@ -21,7 +19,7 @@ pub fn init(silent: bool) {
 	let mutex = unsafe { // Safe because using Mutex
 		&mut LOGGER
 	};
-	let mut guard = MutexGuard::new(mutex);
+	let mut guard = mutex.lock(false);
 	guard.get_mut().set_silent(silent);
 }
 
@@ -133,12 +131,13 @@ impl Logger {
 impl core::fmt::Write for Logger {
 	fn write_str(&mut self, s: &str) -> Result<(), core::fmt::Error> {
 		if !self.is_silent() {
-			MutexGuard::new(tty::current()).get_mut().write(s.as_bytes());
+			tty::current().lock(true).get_mut().write(s.as_bytes());
 		}
 		self.push(s.as_bytes());
 
+		// TODO Add a compilation and/or runtime option for this
 		if let Some(serial) = serial::get(serial::COM1) {
-			serial.lock().get_mut().write(s.as_bytes())
+			serial.lock(true).get_mut().write(s.as_bytes())
 		}
 
 		Ok(())

@@ -26,7 +26,6 @@ mod unlink;
 mod waitpid;
 mod write;
 
-use crate::util::lock::mutex::TMutex;
 use crate::process::Process;
 use crate::process::signal as signal_type;
 
@@ -59,7 +58,7 @@ use write::write;
 #[no_mangle]
 pub extern "C" fn syscall_handler(regs: &util::Regs) -> u32 {
 	let mut mutex = Process::get_current().unwrap();
-	let mut guard = mutex.lock();
+	let mut guard = mutex.lock(false); // TODO Make locking inside of the syscall handler itself
 	let curr_proc = guard.get_mut();
 	curr_proc.set_regs(regs);
 	// NOTE: `mutex` **must** be unlocked by functions that don't return. If not unlocked, the

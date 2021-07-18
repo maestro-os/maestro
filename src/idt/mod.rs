@@ -255,15 +255,21 @@ pub fn is_interrupt_enabled() -> bool {
 }
 
 /// Executes the given function `f` with maskable interruptions disabled.
-/// If interruptions were enabled before calling this function, they are enabled back before
-/// returning.
+/// This function saves the state of the interrupt flag and restores it before returning.
 pub fn wrap_disable_interrupts<T, F: FnOnce() -> T>(f: F) -> T {
-	if is_interrupt_enabled() {
-		crate::cli!();
-		let result = f();
+	let int = is_interrupt_enabled();
+
+	// Here is assumed that no interruption will change eflags. Which could cause a race condition
+
+	crate::cli!();
+
+	let result = f();
+
+	if int {
 		crate::sti!();
-		result
 	} else {
-		f()
+		crate::cli!();
 	}
+
+	result
 }

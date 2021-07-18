@@ -7,8 +7,6 @@ use crate::file::File;
 use crate::limits;
 use crate::util::FailableClone;
 use crate::util::lock::mutex::Mutex;
-use crate::util::lock::mutex::MutexGuard;
-use crate::util::lock::mutex::TMutex;
 use crate::util::ptr::SharedPtr;
 
 /// The total number of file descriptors open system-wide.
@@ -21,7 +19,7 @@ fn increment_total() -> Result<(), Errno> {
 	let mutex = unsafe { // Safe because using Mutex
 		&mut TOTAL_FD
 	};
-	let mut guard = MutexGuard::new(mutex);
+	let mut guard = mutex.lock(true);
 
 	// TODO Use the correct constant
 	if *guard.get() >= limits::OPEN_MAX {
@@ -37,7 +35,7 @@ fn decrement_total() {
 	let mutex = unsafe { // Safe because using Mutex
 		&mut TOTAL_FD
 	};
-	let mut guard = MutexGuard::new(mutex);
+	let mut guard = mutex.lock(true);
 	*guard.get_mut() -= 1;
 }
 
@@ -83,7 +81,7 @@ impl FileDescriptor {
 
 	/// Returns the size of the file's content in bytes.
 	pub fn get_file_size(&self) -> u64 {
-		self.file.get_mut().lock().get().get_size()
+		self.file.get_mut().lock(true).get().get_size()
 	}
 
 	/// Returns the current offset in the file.

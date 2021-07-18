@@ -22,8 +22,6 @@ use crate::util::FailableClone;
 use crate::util::boxed::Box;
 use crate::util::container::vec::Vec;
 use crate::util::lock::mutex::Mutex;
-use crate::util::lock::mutex::MutexGuard;
-use crate::util::lock::mutex::TMutex;
 use crate::util::ptr::SharedPtr;
 use keyboard::KeyboardManager;
 use storage::StorageManager;
@@ -147,7 +145,7 @@ impl Device {
 		file.set_device_minor(self.minor);
 
 		let mutex = file::get_files_cache();
-		let mut guard = MutexGuard::new(mutex);
+		let mut guard = mutex.lock(true);
 		let files_cache = guard.get_mut();
 		// TODO Cancel directories creation on fail
 		files_cache.create_file(&dir_path, file)?;
@@ -158,11 +156,11 @@ impl Device {
 	/// If exists, removes the device file. iF the file doesn't exist, the function does nothing.
 	pub fn remove_file(&mut self) {
 		let mutex = file::get_files_cache();
-		let mut guard = MutexGuard::new(mutex);
+		let mut guard = mutex.lock(true);
 		let files_cache = guard.get_mut();
 
 		if let Ok(mut file) = files_cache.get_file_from_path(&self.path) {
-			let mut guard = file.lock();
+			let mut guard = file.lock(true);
 			guard.get_mut().unlink();
 		}
 	}
@@ -185,12 +183,12 @@ pub fn register_device(device: Device) -> Result<(), Errno> {
 	let mut guard = match device.get_type() {
 		DeviceType::Block => {
 			unsafe { // Safe because using mutex
-				MutexGuard::new(&mut BLOCK_DEVICES)
+				BLOCK_DEVICES.lock(true)
 			}
 		},
 		DeviceType::Char => {
 			unsafe { // Safe because using mutex
-				MutexGuard::new(&mut CHAR_DEVICES)
+				CHAR_DEVICES.lock(true)
 			}
 		}
 	};
@@ -209,7 +207,7 @@ pub fn register_device(device: Device) -> Result<(), Errno> {
 		Err(i) => i,
 	};
 
-	container.insert(index, SharedPtr::new(Mutex::new(device))?)
+	container.insert(index, SharedPtr::new(device)?)
 }
 
 // TODO Function to remove a device
@@ -220,12 +218,12 @@ pub fn get_device(type_: DeviceType, major: u32, minor: u32) -> Option<SharedPtr
 	let mut guard = match type_ {
 		DeviceType::Block => {
 			unsafe { // Safe because using mutex
-				MutexGuard::new(&mut BLOCK_DEVICES)
+				BLOCK_DEVICES.lock(true)
 			}
 		},
 		DeviceType::Char => {
 			unsafe { // Safe because using mutex
-				MutexGuard::new(&mut CHAR_DEVICES)
+				CHAR_DEVICES.lock(true)
 			}
 		}
 	};

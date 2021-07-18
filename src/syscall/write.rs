@@ -5,7 +5,6 @@ use core::slice;
 use crate::errno::Errno;
 use crate::errno;
 use crate::process::Process;
-use crate::util::lock::mutex::TMutex;
 use crate::util;
 
 /// The implementation of the `write` syscall.
@@ -28,7 +27,7 @@ pub fn write(proc: &mut Process, regs: &util::Regs) -> Result<i32, Errno> {
 
 		let len = {
 			let file = fd.get_file_mut();
-			let mut file_guard = file.lock();
+			let mut file_guard = file.lock(true);
 			file_guard.get_mut().write(off as usize, data)?
 		};
 		fd.set_offset(off + len as u64);

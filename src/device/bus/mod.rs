@@ -7,7 +7,6 @@ use crate::errno::Errno;
 use crate::util::boxed::Box;
 use crate::util::container::vec::Vec;
 use crate::util::lock::mutex::Mutex;
-use crate::util::lock::mutex::MutexGuard;
 
 /// The list of buses connected to the CPU.
 static mut BUSES: Mutex<Vec<Box<dyn Bus>>> = Mutex::new(Vec::new());
@@ -39,7 +38,7 @@ pub fn detect() -> Result<(), Errno> {
 	let mutex = unsafe {
 		&mut BUSES
 	};
-	let mut guard = MutexGuard::new(mutex);
+	let mut guard = mutex.lock(true);
 	let buses = guard.get_mut();
 	buses.push(Box::new(pci_manager)?)?;
 

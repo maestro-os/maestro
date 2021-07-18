@@ -9,8 +9,6 @@ use crate::file::fs::Filesystem;
 use crate::util::boxed::Box;
 use crate::util::container::vec::Vec;
 use crate::util::lock::mutex::Mutex;
-use crate::util::lock::mutex::MutexGuard;
-use crate::util::lock::mutex::TMutex;
 use crate::util::ptr::SharedPtr;
 use super::fs;
 use super::path::Path;
@@ -73,7 +71,7 @@ impl MountPoint {
 	pub fn new(device_type: DeviceType, major: u32, minor: u32, flags: u32, path: Path)
 		-> Result<Self, Errno> {
 		let mut dev_ptr = device::get_device(device_type, major, minor).ok_or(errno::ENODEV)?;
-		let mut dev_guard = dev_ptr.lock();
+		let mut dev_guard = dev_ptr.lock(true);
 		let device = dev_guard.get_mut();
 
 		// TODO rm
@@ -81,7 +79,7 @@ impl MountPoint {
 		fs_type.create_filesystem(device.get_handle())?;
 
 		let mut fs_type_ptr = fs::detect(device)?;
-		let fs_type_guard = fs_type_ptr.lock();
+		let fs_type_guard = fs_type_ptr.lock(true);
 		let fs_type = fs_type_guard.get();
 		let filesystem = fs_type.load_filesystem(device.get_handle())?;
 
@@ -147,9 +145,9 @@ pub fn register_mountpoint(mountpoint: MountPoint) -> Result<SharedPtr<MountPoin
 	let mutex = unsafe { // Safe because using Mutex
 		&mut MOUNT_POINTS
 	};
-	let mut guard = MutexGuard::new(mutex);
+	let mut guard = mutex.lock(true);
 	let container = guard.get_mut();
-	let shared_ptr = SharedPtr::new(Mutex::new(mountpoint))?;
+	let shared_ptr = SharedPtr::new(mountpoint)?;
 	container.push(shared_ptr.clone())?;
 	Ok(shared_ptr)
 }
@@ -160,17 +158,17 @@ pub fn get_deepest(path: &Path) -> Option<SharedPtr<MountPoint>> {
 	let mutex = unsafe { // Safe because using Mutex
 		&mut MOUNT_POINTS
 	};
-	let mut guard = MutexGuard::new(mutex);
+	let mut guard = mutex.lock(true);
 	let container = guard.get_mut();
 
 	let mut max: Option<SharedPtr<MountPoint>> = None;
 	for i in 0..container.len() {
 		let m = &mut container[i];
-		let mount_path_guard = m.lock();
+		let mount_path_guard = m.lock(true);
 		let mount_path = mount_path_guard.get().get_path();
 
 		if let Some(max) = max.as_mut() {
-			let max_guard = max.lock();
+			let max_guard = max.lock(true);
 			let max_path = max_guard.get().get_path();
 
 			if max_path.get_elements_count() >= mount_path.get_elements_count() {

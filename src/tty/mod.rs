@@ -85,7 +85,7 @@ pub fn get(tty: usize) -> &'static mut Mutex<TTY> {
 /// Returns a reference to the current TTY.
 pub fn current() -> &'static mut Mutex<TTY> {
 	unsafe { // Safe because using Mutex
-		get(*CURRENT_TTY.lock().get())
+		get(*CURRENT_TTY.lock(true).get())
 	}
 }
 
@@ -96,7 +96,7 @@ pub fn init() {
 	}
 
 	for i in 0..TTYS_COUNT {
-		let mut guard = MutexGuard::new(get(i));
+		let mut guard = get(i).lock(true);
 		let t = guard.get_mut();
 		t.init();
 	}
@@ -110,10 +110,10 @@ pub fn switch(tty: usize) {
 		return;
 	}
 	unsafe { // Safe because using Mutex
-		*CURRENT_TTY.lock().get_mut() = tty;
+		*CURRENT_TTY.lock(true).get_mut() = tty;
 	}
 
-	let mut guard = MutexGuard::new(get(tty));
+	let mut guard = get(tty).lock(true);
 	let t = guard.get_mut();
 	vga::enable_cursor();
 	vga::move_cursor(t.cursor_x, t.cursor_y);
@@ -143,7 +143,7 @@ impl TTY {
 	/// Updates the TTY to the screen.
 	pub fn update(&mut self) {
 		let current_tty = unsafe { // Safe because using Mutex
-			*CURRENT_TTY.lock().get()
+			*CURRENT_TTY.lock(true).get()
 		};
 		if self.id == current_tty && !self.update {
 			return;

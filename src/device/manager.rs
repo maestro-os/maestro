@@ -4,7 +4,6 @@ use crate::errno::Errno;
 use crate::util::boxed::Box;
 use crate::util::container::vec::Vec;
 use crate::util::lock::mutex::Mutex;
-use crate::util::lock::mutex::MutexGuard;
 
 /// Trait representing a physical device.
 pub trait PhysicalDevice {
@@ -43,7 +42,7 @@ pub fn register_manager<M: 'static + DeviceManager>(manager: M) -> Result<(), Er
 	let mutex = unsafe {
 		&mut DEVICE_MANAGERS
 	};
-	let mut guard = MutexGuard::new(mutex);
+	let mut guard = mutex.lock(true);
 	let device_managers = guard.get_mut();
 
 	let b = Box::new(manager)?;
@@ -56,7 +55,7 @@ pub fn on_plug(dev: &dyn PhysicalDevice) {
 	let mutex = unsafe {
 		&mut DEVICE_MANAGERS
 	};
-	let mut guard = MutexGuard::new(mutex);
+	let mut guard = mutex.lock(true);
 	let device_managers = guard.get_mut();
 
 	for i in 0..device_managers.len() {
@@ -70,7 +69,7 @@ pub fn on_unplug(dev: &dyn PhysicalDevice) {
 	let mutex = unsafe {
 		&mut DEVICE_MANAGERS
 	};
-	let mut guard = MutexGuard::new(mutex);
+	let mut guard = mutex.lock(true);
 	let device_managers = guard.get_mut();
 
 	for i in 0..device_managers.len() {

@@ -2,49 +2,32 @@
 //!
 //! Mutual exclusion is used to protect data from concurrent access.
 //! A Mutex allows to ensure that one, and only thread accesses the data stored into it at the same
-//! time. Preventing race conditions.
+//! time. Preventing race conditions. They usually work using spinlocks.
 //!
-//! A Mutex usually works using spinlocks.
+//! One particularity with kernel development is that multi-threading is not the only way to get
+//! concurrency issues. Another factor to take into account is that fact that an interruption may
+//! be triggered at any moment while executing the code unless disabled. For this reason, mutexes
+//! in the kernel are equiped with an option allowing to disable interrupts while being locked.
 
 use core::marker::PhantomData;
 use crate::idt;
 use crate::util::lock::spinlock::Spinlock;
 
-/// Trait representing a Mutex.
-pub trait TMutex<T: ?Sized> {
-	/// Tells whether the mutex is already locked. This function should not be called to check if
-	/// the mutex is ready to be locked before locking it, since it may cause race conditions. In
-	/// this case, prefer using `lock` directly.
-	fn is_locked(&self) -> bool;
-	/// Locks the mutex. If the mutex is already locked, the thread shall wait until it becomes
-	/// available.
-	/// The function returns a MutexGuard associated with the Mutex.
-	fn lock(&mut self) -> MutexGuard<T, Self>;
-
-	/// Returns an immutable reference to the payload. This function is unsafe because it can return
-	/// the payload while the Mutex isn't locked.
-	unsafe fn get_payload(&self) -> &T;
-	/// Returns a mutable reference to the payload. This function is unsafe because it can return
-	/// the payload while the Mutex isn't locked.
-	unsafe fn get_mut_payload(&mut self) -> &mut T;
-	/// Unlocks the mutex. The function is unsafe because it may lead to concurrency issues if not
-	/// used properly.
-	unsafe fn unlock(&mut self);
-}
+// TODO Add a deadlock detection mechanism (and mention it into the documentation)
 
 /// Type used to declare a guard meant to unlock the associated Mutex at the moment the execution
 /// gets out of the scope of its declaration. This structure is useful to ensure that the mutex
 /// doesen't stay locked after the exectution of a function ended.
-pub struct MutexGuard<'a, T: ?Sized, M: TMutex<T> + ?Sized> {
+pub struct MutexGuard<'a, T: ?Sized> {
 	/// The mutex associated to the guard
-	mutex: &'a mut M,
+	mutex: &'a mut Mutex<T>,
 
 	_data: PhantomData<T>,
 }
 
-impl<'a, T: ?Sized, M: TMutex<T> + ?Sized> MutexGuard<'a, T, M> {
-	/// Creates an instance of MutexGuard for the given `mutex` and locks it.
-	pub fn new(mutex: &'a mut M) -> Self {
+impl<'a, T: ?Sized> MutexGuard<'a, T> {
+	/// Creates an instance of MutexGuard for the given mutex `mutex`.
+	fn new(mutex: &'a mut Mutex<T>) -> Self {
 		Self {
 			mutex,
 
@@ -70,8 +53,7 @@ impl<'a, T: ?Sized, M: TMutex<T> + ?Sized> MutexGuard<'a, T, M> {
 	pub fn unlock(self) {}
 }
 
-impl<'a, T: ?Sized, M: TMutex<T> + ?Sized> Drop for MutexGuard<'a, T, M> {
-	/// Called when the MutexGuard gets out of the scope of execution.
+impl<'a, T: ?Sized> Drop for MutexGuard<'a, T> {
 	fn drop(&mut self) {
 		unsafe {
 			self.mutex.unlock();
@@ -83,6 +65,12 @@ impl<'a, T: ?Sized, M: TMutex<T> + ?Sized> Drop for MutexGuard<'a, T, M> {
 pub struct Mutex<T: ?Sized> {
 	/// The spinlock for the underlying data.
 	spin: Spinlock,
+	/// Tells whether locking disabled interrupts.
+	int: bool,
+	/// Tells whether interrupts were enabled before locking. This field is used only if `int` is
+	/// `true`.
+	int_enabled: bool,
+
 	/// The data associated to the mutex.
 	data: T,
 }
@@ -92,88 +80,88 @@ impl<T> Mutex<T> {
 	pub const fn new(data: T) -> Self {
 		Self {
 			spin: Spinlock::new(),
+			int: false,
+			int_enabled: false,
+
 			data,
 		}
 	}
 }
 
-impl<T: ?Sized> TMutex<T> for Mutex<T> {
-	fn is_locked(&self) -> bool {
+impl<T: ?Sized> Mutex<T> {
+	/// Tells whether the mutex is already locked. This function should not be called to check if
+	/// the mutex is ready to be locked before locking it, since it may cause race conditions. In
+	/// this case, prefer using `lock` directly.
+	pub fn is_locked(&self) -> bool {
 		self.spin.is_locked()
 	}
 
-	fn lock(&mut self) -> MutexGuard<T, Self> {
-		self.spin.lock();
-		MutexGuard::new(self)
+	/// Locks the mutex. If the mutex is already locked, the thread shall wait until it becomes
+	/// available.
+	/// If `interrupt` is false, interruptions are disabled while locked, then restored when
+	/// unlocked.
+	/// The function returns a MutexGuard associated with the Mutex.
+	pub fn lock(&mut self, interrupt: bool) -> MutexGuard<T> {
+		if interrupt {
+			self.spin.lock();
+
+			// Setting the value after locking to avoid writing on it whilst the mutex was locked
+			self.int = true;
+
+			MutexGuard::new(self)
+		} else {
+			let int_enabled = idt::is_interrupt_enabled();
+
+			// Here is assumed that no interruption will change eflags. Which could cause a race
+			// condition
+
+			// Disabling interrupts before locking to ensure no interrupt will occure while locking
+			crate::cli!();
+			self.spin.lock();
+
+			// Setting the values after locking to avoid writing on them whilst the mutex was
+			// locked
+			self.int = false;
+			self.int_enabled = int_enabled;
+
+			MutexGuard::new(self)
+		}
 	}
 
-	unsafe fn get_payload(&self) -> &T {
+	/// Returns an immutable reference to the payload. This function is unsafe because it can
+	/// return the payload while the Mutex isn't locked.
+	pub unsafe fn get_payload(&self) -> &T {
 		&self.data
 	}
 
-	unsafe fn get_mut_payload(&mut self) -> &mut T {
+	/// Returns a mutable reference to the payload. This function is unsafe because it can return
+	/// the payload while the Mutex isn't locked.
+	pub unsafe fn get_mut_payload(&mut self) -> &mut T {
 		&mut self.data
 	}
 
-	unsafe fn unlock(&mut self) {
+	/// Unlocks the mutex. The function is unsafe because it may lead to concurrency issues if not
+	/// used properly.
+	pub unsafe fn unlock(&mut self) {
 		self.spin.unlock();
-	}
-}
 
-unsafe impl<T> Sync for Mutex<T> {}
-
-/// Structure representing an Mutex which disables interruptions while the object is locked.
-pub struct InterruptMutex<T: ?Sized> {
-	/// The spinlock for the underlying data.
-	spin: Spinlock,
-	/// Tells whether interruptions were enabled before locking.
-	interrupt_enabled: bool,
-
-	/// The data associated to the mutex.
-	data: T,
-}
-
-impl<T> InterruptMutex<T> {
-	/// Creates a new instance with the given data to be owned.
-	pub const fn new(data: T) -> Self {
-		Self {
-			spin: Spinlock::new(),
-			interrupt_enabled: false,
-
-			data,
-		}
-	}
-}
-
-impl<T: ?Sized> TMutex<T> for InterruptMutex<T> {
-	fn is_locked(&self) -> bool {
-		self.spin.is_locked()
-	}
-
-	fn lock(&mut self) -> MutexGuard<T, Self> {
-		self.interrupt_enabled = idt::is_interrupt_enabled();
-		crate::cli!();
-		self.spin.lock();
-
-		MutexGuard::new(self)
-	}
-
-	unsafe fn get_payload(&self) -> &T {
-		&self.data
-	}
-
-	unsafe fn get_mut_payload(&mut self) -> &mut T {
-		&mut self.data
-	}
-
-	unsafe fn unlock(&mut self) {
-		if self.is_locked() {
-			self.spin.unlock();
-			if self.interrupt_enabled {
+		// Restoring interrupts state after unlocking
+		if !self.int {
+			if self.int_enabled {
 				crate::sti!();
+			} else {
+				crate::cli!();
 			}
 		}
 	}
 }
 
-unsafe impl<T: ?Sized> Sync for InterruptMutex<T> {}
+unsafe impl<T> Sync for Mutex<T> {}
+
+impl<T: ?Sized> Drop for Mutex<T> {
+	fn drop(&mut self) {
+		if self.is_locked() {
+			panic!("Dropping a locked mutex");
+		}
+	}
+}

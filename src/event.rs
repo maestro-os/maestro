@@ -145,7 +145,7 @@ pub fn init() {
 	};
 
 	for c in callbacks {
-		*c.lock().get_mut() = Vec::new();
+		*c.lock(false).get_mut() = Vec::new();
 	}
 }
 
@@ -162,7 +162,7 @@ pub fn register_callback<T>(id: usize, priority: u32, callback: T) -> Result<Cal
 	idt::wrap_disable_interrupts(|| {
 		let mut guard = unsafe {
 			CALLBACKS.assume_init_mut()
-		}[id].lock();
+		}[id].lock(false);
 		let vec = &mut guard.get_mut();
 
 		let index = {
@@ -188,7 +188,7 @@ pub fn register_callback<T>(id: usize, priority: u32, callback: T) -> Result<Cal
 
 /// Unlocks the callback vector with id `id`. This function is to be used in case of an event
 /// callback that never returns.
-/// It must be called from the same CPU core as the one that locked the mutex since InterruptMutex
+/// It must be called from the same CPU core as the one that locked the mutex since unlocking
 /// changes the interrupt flag.
 /// This function is marked as unsafe since it may lead to concurrency issues if not used properly.
 #[no_mangle]
@@ -207,7 +207,7 @@ pub extern "C" fn event_handler(id: u32, code: u32, ring: u32, regs: &util::Regs
 	let action = {
 		let guard = unsafe {
 			&mut CALLBACKS.assume_init_mut()[id as usize]
-		}.lock();
+		}.lock(false);
 		let callbacks = guard.get();
 
 		let mut last_action = {

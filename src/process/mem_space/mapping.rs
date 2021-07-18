@@ -24,7 +24,7 @@ fn get_default_page() -> *const c_void {
 	let m = unsafe { // Safe because using a Mutex
 		&mut DEFAULT_PAGE
 	};
-	let mut guard = MutexGuard::new(m);
+	let mut guard = m.lock(true);
 	let default_page = guard.get_mut();
 
 	if default_page.is_none() {
@@ -124,7 +124,7 @@ impl MemMapping {
 	pub fn is_shared(&self, offset: usize) -> bool {
 		if let Some(phys_ptr) = self.get_physical_page(offset) {
 			unsafe { // Safe because the global variable is wrapped into a Mutex
-				let ref_counter = super::PHYSICAL_REF_COUNTER.lock();
+				let ref_counter = super::PHYSICAL_REF_COUNTER.lock(true);
 				ref_counter.get().is_shared(phys_ptr)
 			}
 		} else {
@@ -217,7 +217,7 @@ impl MemMapping {
 
 		{
 			let mut ref_counter = unsafe {
-				super::PHYSICAL_REF_COUNTER.lock()
+				super::PHYSICAL_REF_COUNTER.lock(true)
 			};
 			if let Err(errno) = ref_counter.get_mut().increment(new_phys_ptr) {
 				buddy::free(new_phys_ptr, 0);
@@ -306,7 +306,7 @@ impl MemMapping {
 		};
 
 		unsafe { // Safe because the global variable is wrapped into a Mutex
-			let mut ref_counter_lock = super::PHYSICAL_REF_COUNTER.lock();
+			let mut ref_counter_lock = super::PHYSICAL_REF_COUNTER.lock(true);
 			let ref_counter = ref_counter_lock.get_mut();
 
 			for i in 0..self.size {

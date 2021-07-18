@@ -77,7 +77,7 @@ pub struct Scheduler {
 
 impl Scheduler {
 	/// Creates a new instance of scheduler.
-	pub fn new(cores_count: usize) -> Result<SharedPtr<Self, InterruptMutex<Self>>, Errno> {
+	pub fn new(cores_count: usize) -> Result<SharedPtr<Self>, Errno> {
 		let mut tmp_stacks = Vec::new();
 		for _ in 0..cores_count {
 			tmp_stacks.push(malloc::Alloc::new_default(TMP_STACK_SIZE)?)?;
@@ -87,7 +87,7 @@ impl Scheduler {
 			Scheduler::tick(process::get_scheduler(), regs, ring);
 		};
 		let tick_callback_hook = event::register_callback(0x20, 0, callback)?;
-		SharedPtr::new(InterruptMutex::new(Self {
+		SharedPtr::new(Self {
 			tmp_stacks,
 
 			tick_callback_hook,
@@ -98,7 +98,7 @@ impl Scheduler {
 
 			priority_sum: 0,
 			priority_max: 0,
-		}))
+		})
 	}
 
 	/// Returns the number of processes registered on the scheduler.
@@ -106,7 +106,8 @@ impl Scheduler {
 		self.processes.count()
 	}
 
-	/// Returns the process with PID `pid`. If the process doesn't exist, the function returns None.
+	/// Returns the process with PID `pid`. If the process doesn't exist, the function returns
+	/// None.
 	pub fn get_by_pid(&mut self, pid: Pid) -> Option<SharedPtr<Process>> {
 		Some(self.processes.get(pid)?.clone())
 	}
@@ -132,7 +133,7 @@ impl Scheduler {
 	pub fn add_process(&mut self, process: Process) -> Result<SharedPtr<Process>, Errno> {
 		let pid = process.get_pid();
 		let priority = process.get_priority();
-		let ptr = SharedPtr::new(Mutex::new(process))?;
+		let ptr = SharedPtr::new(process)?;
 		self.processes.insert(pid, ptr.clone())?;
 		self.update_priority(0, priority);
 
@@ -203,7 +204,7 @@ impl Scheduler {
 			// Iterating over processes
 			while let Some((pid, process)) = iter.next() {
 				let runnable = {
-					let guard = process.lock();
+					let guard = process.lock(false);
 					Self::can_run(guard.get(), priority_sum, priority_max, processes_count)
 				};
 				if runnable {
@@ -240,7 +241,7 @@ impl Scheduler {
 		let (next_pid, next_proc) = next_proc?;
 
 		if next_pid != curr_pid || processes_count == 1 {
-			curr_proc.lock().get_mut().quantum_count = 0;
+			curr_proc.lock(false).get_mut().quantum_count = 0;
 		}
 		Some((next_pid, next_proc))
 	}
@@ -250,14 +251,14 @@ impl Scheduler {
 	/// `mutex` is the scheduler's mutex.
 	/// `regs` is the state of the registers from the paused context.
 	/// `ring` is the ring of the paused context.
-	fn tick(mutex: &mut InterruptMutex<Self>, regs: &util::Regs, ring: u32) -> ! {
-		let mut guard = mutex.lock();
+	fn tick(mutex: &mut Mutex<Self>, regs: &util::Regs, ring: u32) -> ! {
+		let mut guard = mutex.lock(false);
 		let scheduler = guard.get_mut();
 
 		scheduler.total_ticks += 1;
 
 		if let Some(mut curr_proc) = scheduler.get_current_process() {
-			let mut guard = curr_proc.lock();
+			let mut guard = curr_proc.lock(false);
 			let curr_proc = guard.get_mut();
 
 			curr_proc.regs = *regs;
@@ -273,7 +274,7 @@ impl Scheduler {
 					let data = unsafe {
 						&mut *(data as *mut ContextSwitchData)
 					};
-					let mut guard = data.proc.lock();
+					let mut guard = data.proc.lock(false);
 					let proc = guard.get_mut();
 					proc.quantum_count += 1;
 

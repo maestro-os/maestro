@@ -2,7 +2,6 @@
 //! or more processes according to a score computed for each of them.
 
 use crate::util::lock::mutex::Mutex;
-use crate::util::lock::mutex::TMutex;
 
 /// Variable telling whether the OOM killer is enabled.
 static mut KILLER_ENABLE: Mutex<bool> = Mutex::new(true);
@@ -12,7 +11,7 @@ pub fn is_killer_enabled() -> bool {
 	let mutex = unsafe { // Safe because using Mutex
 		&mut KILLER_ENABLE
 	};
-	let guard = mutex.lock();
+	let guard = mutex.lock(true);
 	*guard.get()
 }
 
@@ -21,7 +20,7 @@ pub fn set_killer_enabled(enable: bool) {
 	let mutex = unsafe { // Safe because using Mutex
 		&mut KILLER_ENABLE
 	};
-	let mut guard = mutex.lock();
+	let mut guard = mutex.lock(true);
 	*guard.get_mut() = enable;
 }
 

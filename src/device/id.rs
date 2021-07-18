@@ -4,7 +4,6 @@ use crate::device::DeviceType;
 use crate::errno::Errno;
 use crate::util::container::id_allocator::IDAllocator;
 use crate::util::lock::mutex::Mutex;
-use crate::util::lock::mutex::MutexGuard;
 
 /// The number of major numbers.
 const MAJOR_COUNT: u32 = 256;
@@ -94,12 +93,12 @@ pub fn alloc_major(device_type: DeviceType, major: Option<u32>) -> Result<MajorB
 	let mut guard = match device_type {
 		DeviceType::Block => {
 			unsafe { // Safe because using mutex
-				MutexGuard::new(&mut BLOCK_MAJOR_ALLOCATOR)
+				BLOCK_MAJOR_ALLOCATOR.lock(true)
 			}
 		},
 		DeviceType::Char => {
 			unsafe { // Safe because using mutex
-				MutexGuard::new(&mut CHAR_MAJOR_ALLOCATOR)
+				CHAR_MAJOR_ALLOCATOR.lock(true)
 			}
 		}
 	};
@@ -121,12 +120,12 @@ fn free_major(block: &mut MajorBlock) {
 	let mut guard = match block.get_device_type() {
 		DeviceType::Block => {
 			unsafe { // Safe because using mutex
-				MutexGuard::new(&mut BLOCK_MAJOR_ALLOCATOR)
+				BLOCK_MAJOR_ALLOCATOR.lock(true)
 			}
 		},
 		DeviceType::Char => {
 			unsafe { // Safe because using mutex
-				MutexGuard::new(&mut CHAR_MAJOR_ALLOCATOR)
+				CHAR_MAJOR_ALLOCATOR.lock(true)
 			}
 		}
 	};

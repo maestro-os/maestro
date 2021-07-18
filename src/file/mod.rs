@@ -20,8 +20,6 @@ use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::lock::mutex::Mutex;
-use crate::util::lock::mutex::MutexGuard;
-use crate::util::lock::mutex::TMutex;
 use crate::util::ptr::SharedPtr;
 use crate::util::ptr::WeakPtr;
 use path::Path;
@@ -200,7 +198,7 @@ impl File {
 		let name = self.get_name().failable_clone()?;
 
 		if let Some(parent) = self.get_parent() {
-			let mut path = parent.lock().get().get_path()?;
+			let mut path = parent.lock(true).get().get_path()?;
 			path.push(name)?;
 			Ok(path)
 		} else {
@@ -326,7 +324,7 @@ impl File {
 	/// behaviour is undefined.
 	pub fn add_subfile(&mut self, file: WeakPtr<File>) -> Result<(), Errno> {
 		debug_assert_eq!(self.file_type, FileType::Directory);
-		let name = file.get_mut().unwrap().lock().get().get_name().failable_clone()?;
+		let name = file.get_mut().unwrap().lock(true).get().get_name().failable_clone()?;
 		self.subfiles.as_mut().unwrap().insert(name, file)?;
 		Ok(())
 	}
@@ -416,14 +414,14 @@ impl File {
 			FileType::BlockDevice => {
 				let mut dev = device::get_device(DeviceType::Block, self.device_major,
 					self.device_minor).ok_or(errno::ENODEV)?;
-				let mut guard = dev.lock();
+				let mut guard = dev.lock(true);
 				guard.get_mut().get_handle().read(off as _, buff)
 			},
 
 			FileType::CharDevice => {
 				let mut dev = device::get_device(DeviceType::Char, self.device_major,
 					self.device_minor).ok_or(errno::ENODEV)?;
-				let mut guard = dev.lock();
+				let mut guard = dev.lock(true);
 				guard.get_mut().get_handle().read(off as _, buff)
 			},
 		}
@@ -461,14 +459,14 @@ impl File {
 			FileType::BlockDevice => {
 				let mut dev = device::get_device(DeviceType::Block, self.device_major,
 					self.device_minor).ok_or(errno::ENODEV)?;
-				let mut guard = dev.lock();
+				let mut guard = dev.lock(true);
 				guard.get_mut().get_handle().write(off as _, buff)
 			},
 
 			FileType::CharDevice => {
 				let mut dev = device::get_device(DeviceType::Char, self.device_major,
 					self.device_minor).ok_or(errno::ENODEV)?;
-				let mut guard = dev.lock();
+				let mut guard = dev.lock(true);
 				guard.get_mut().get_handle().write(off as _, buff)
 			},
 		}
@@ -555,11 +553,11 @@ impl FCache {
 		path.reduce()?;
 
 		let mut ptr = mountpoint::get_deepest(&path).ok_or(errno::ENOENT)?;
-		let mut guard = ptr.lock();
+		let mut guard = ptr.lock(true);
 		let deepest_mountpoint = guard.get_mut();
 
 		let mut dev_ptr = deepest_mountpoint.get_device();
-		let mut dev_guard = dev_ptr.lock();
+		let mut dev_guard = dev_ptr.lock(true);
 		let dev = dev_guard.get_mut();
 
 		let inner_path = path.range_from(deepest_mountpoint.get_path().get_elements_count()..)?;
@@ -578,11 +576,11 @@ impl FCache {
 		path.reduce()?;
 
 		let mut ptr = mountpoint::get_deepest(&path).ok_or(errno::ENOENT)?;
-		let mut guard = ptr.lock();
+		let mut guard = ptr.lock(true);
 		let deepest_mountpoint = guard.get_mut();
 
 		let mut dev_ptr = deepest_mountpoint.get_device();
-		let mut dev_guard = dev_ptr.lock();
+		let mut dev_guard = dev_ptr.lock(true);
 		let dev = dev_guard.get_mut();
 
 		let path_len = path.get_elements_count();
@@ -609,11 +607,11 @@ impl FCache {
 		path.reduce()?;
 
 		let mut ptr = mountpoint::get_deepest(&path).ok_or(errno::ENOENT)?;
-		let mut guard = ptr.lock();
+		let mut guard = ptr.lock(true);
 		let deepest_mountpoint = guard.get_mut();
 
 		let mut dev_ptr = deepest_mountpoint.get_device();
-		let mut guard = dev_ptr.lock();
+		let mut guard = dev_ptr.lock(true);
 		let dev = guard.get_mut();
 
 		let inner_path = path.range_from(deepest_mountpoint.get_path().get_elements_count()..)?;
@@ -632,7 +630,7 @@ impl FCache {
 					String::from("")?)
 			}
 		}?;
-		SharedPtr::new(Mutex::new(file))
+		SharedPtr::new(file)
 	}
 }
 
@@ -666,7 +664,7 @@ pub fn get_files_cache() -> &'static mut Mutex<FCache> {
 /// the number of created directories (without the directories that already existed).
 /// If relative, the path is taken from the root.
 pub fn create_dirs(path: &Path) -> Result<usize, Errno> {
-	let mut guard = MutexGuard::new(get_files_cache());
+	let mut guard = get_files_cache().lock(true);
 	let fcache = guard.get_mut();
 
 	let mut path = Path::root().concat(path)?;

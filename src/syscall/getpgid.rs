@@ -5,7 +5,6 @@ use crate::errno::Errno;
 use crate::errno;
 use crate::process::Process;
 use crate::process::pid::Pid;
-use crate::util::lock::mutex::TMutex;
 use crate::util;
 
 /// TODO doc
@@ -20,7 +19,7 @@ fn handle_getpgid(pid: Pid, proc: &mut Process) -> Result<i32, Errno> {
 				return Err(errno::ESRCH);
 			}
 		};
-		let mut guard = mutex.lock();
+		let mut guard = mutex.lock(false);
 		let proc = guard.get_mut();
 		Ok(proc.get_pgid() as _)
 	}

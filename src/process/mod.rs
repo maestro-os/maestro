@@ -146,7 +146,7 @@ pub struct Process {
 /// The PID manager.
 static mut PID_MANAGER: MaybeUninit<Mutex<PIDManager>> = MaybeUninit::uninit();
 /// The processes scheduler.
-static mut SCHEDULER: MaybeUninit<SharedPtr<Scheduler, InterruptMutex<Scheduler>>>
+static mut SCHEDULER: MaybeUninit<SharedPtr<Scheduler>>
 	= MaybeUninit::uninit();
 
 /// Initializes processes system. This function must be called only once, at kernel initialization.
@@ -169,11 +169,11 @@ pub fn init() -> Result<(), Errno> {
 
 		let mut guard = unsafe {
 			SCHEDULER.assume_init_mut()
-		}.lock();
+		}.lock(false);
 		let scheduler = guard.get_mut();
 
 		if let Some(mut curr_proc) = scheduler.get_current_process() {
-			let mut curr_proc_guard = curr_proc.lock();
+			let mut curr_proc_guard = curr_proc.lock(true);
 			let curr_proc = curr_proc_guard.get_mut();
 
 			match id {
@@ -222,7 +222,7 @@ pub fn init() -> Result<(), Errno> {
 }
 
 /// Returns a mutable reference to the scheduler's Mutex.
-pub fn get_scheduler() -> &'static mut InterruptMutex<Scheduler> {
+pub fn get_scheduler() -> &'static mut Mutex<Scheduler> {
 	unsafe { // Safe because using Mutex
 		SCHEDULER.assume_init_mut()
 	}
@@ -234,7 +234,7 @@ impl Process {
 	pub fn get_by_pid(pid: Pid) -> Option<SharedPtr<Self>> {
 		let mut guard = unsafe {
 			SCHEDULER.assume_init_mut()
-		}.lock();
+		}.lock(false);
 		guard.get_mut().get_by_pid(pid)
 	}
 
@@ -242,7 +242,7 @@ impl Process {
 	pub fn get_current() -> Option<SharedPtr<Self>> {
 		let mut guard = unsafe {
 			SCHEDULER.assume_init_mut()
-		}.lock();
+		}.lock(false);
 		guard.get_mut().get_current_process()
 	}
 
@@ -259,7 +259,7 @@ impl Process {
 			let mutex = unsafe {
 				PID_MANAGER.assume_init_mut()
 			};
-			let mut guard = MutexGuard::new(mutex);
+			let mut guard = mutex.lock(false);
 			guard.get_mut().get_unique_pid()
 		}?;
 
@@ -313,7 +313,7 @@ impl Process {
 
 		{
 			let mutex = file::get_files_cache();
-			let mut guard = MutexGuard::new(mutex);
+			let mut guard = mutex.lock(true);
 			let files_cache = guard.get_mut();
 
 			let tty_path = Path::from_string(TTY_DEVICE_PATH)?;
@@ -326,7 +326,7 @@ impl Process {
 
 		let mut guard = unsafe {
 			SCHEDULER.assume_init_mut()
-		}.lock();
+		}.lock(false);
 		guard.get_mut().add_process(process)
 	}
 
@@ -349,7 +349,7 @@ impl Process {
 	pub fn set_pgid(&mut self, pgid: Pid) -> Result<(), Errno> {
 		if self.is_in_group() {
 			let mut mutex = Process::get_by_pid(self.pgid).unwrap();
-			let mut guard = mutex.lock();
+			let mut guard = mutex.lock(false);
 			let old_group_process = guard.get_mut();
 			let i = old_group_process.process_group.binary_search(&self.pid).unwrap();
 			old_group_process.process_group.remove(i);
@@ -365,7 +365,7 @@ impl Process {
 
 		if pgid != self.pid {
 			if let Some(mut mutex) = Process::get_by_pid(pgid) {
-				let mut guard = mutex.lock();
+				let mut guard = mutex.lock(false);
 				let new_group_process = guard.get_mut();
 				let i = new_group_process.process_group.binary_search(&self.pid).unwrap_err();
 				new_group_process.process_group.insert(i, self.pid)
@@ -638,7 +638,7 @@ impl Process {
 			let mutex = unsafe {
 				PID_MANAGER.assume_init_mut()
 			};
-			let mut guard = MutexGuard::new(mutex);
+			let mut guard = mutex.lock(false);
 			guard.get_mut().get_unique_pid()
 		}?;
 
@@ -681,7 +681,7 @@ impl Process {
 
 		let mut guard = unsafe {
 			SCHEDULER.assume_init_mut()
-		}.lock();
+		}.lock(false);
 		guard.get_mut().add_process(process)
 	}
 
@@ -760,7 +760,7 @@ impl Drop for Process {
 		let mutex = unsafe {
 			PID_MANAGER.assume_init_mut()
 		};
-		let mut guard = MutexGuard::new(mutex);
+		let mut guard = mutex.lock(false);
 		guard.get_mut().release_pid(self.pid);
 	}
 }

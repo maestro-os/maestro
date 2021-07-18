@@ -3,13 +3,12 @@
 //! argument but they will be kept in the logger anyways.
 
 use crate::logger;
-use crate::util::lock::mutex::MutexGuard;
 
 /// Prints the specified message on the current TTY. This function is meant to be used through
 /// `print!` and `println!` macros only.
 pub fn _print(args: core::fmt::Arguments) {
 	let mutex = logger::get();
-	let mut guard = MutexGuard::new(mutex);
+	let mut guard = mutex.lock(true);
 	core::fmt::write(guard.get_mut(), args).ok();
 }
 

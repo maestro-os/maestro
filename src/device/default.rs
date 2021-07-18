@@ -9,8 +9,6 @@ use crate::errno::Errno;
 use crate::file::path::Path;
 use crate::logger;
 use crate::tty;
-use crate::util::lock::mutex::MutexGuard;
-use crate::util::lock::mutex::TMutex;
 use super::DeviceType;
 use super::id;
 
@@ -58,14 +56,14 @@ pub struct KMsgDeviceHandle {}
 impl DeviceHandle for KMsgDeviceHandle {
 	fn get_size(&self) -> u64 {
 		let mutex = logger::get();
-		let guard = MutexGuard::new(mutex);
+		let guard = mutex.lock(true);
 
 		guard.get().get_size() as _
 	}
 
 	fn read(&mut self, offset: u64, buff: &mut [u8]) -> Result<usize, Errno> {
 		let mutex = logger::get();
-		let guard = MutexGuard::new(mutex);
+		let guard = mutex.lock(true);
 
 		let size = guard.get().get_size();
 		let content = guard.get().get_content();
@@ -95,7 +93,7 @@ impl DeviceHandle for CurrentTTYDeviceHandle {
 	}
 
 	fn write(&mut self, _offset: u64, buff: &[u8]) -> Result<usize, Errno> {
-		tty::current().lock().get_mut().write(buff);
+		tty::current().lock(true).get_mut().write(buff);
 		Ok(buff.len())
 	}
 }

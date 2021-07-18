@@ -7,7 +7,6 @@ use crate::process::Process;
 use crate::process::pid::Pid;
 use crate::process::scheduler::Scheduler;
 use crate::process;
-use crate::util::lock::mutex::TMutex;
 use crate::util;
 
 /// Wait flag. Returns immediately if no child has exited.
@@ -72,14 +71,14 @@ fn get_wstatus(_proc: &Process) -> i32 {
 /// `wstatus` is a reference to the wait status. If None, the wstatus is not written.
 fn check_waitable(proc: &Process, pid: i32, wstatus: &mut Option<&mut i32>)
 	-> Result<Option<Pid>, Errno> {
-	let mut scheduler_guard = process::get_scheduler().lock();
+	let mut scheduler_guard = process::get_scheduler().lock(false);
 	let scheduler = scheduler_guard.get_mut();
 
 	// Iterating on every target processes, checking if they can be waited on
 	let mut i = 0;
 	while let Some(pid) = get_target(scheduler, proc, pid, i) {
 		if let Some(mut p) = scheduler.get_by_pid(pid) {
-			let mut proc_guard = p.lock();
+			let mut proc_guard = p.lock(false);
 			let p = proc_guard.get_mut();
 
 			// If waitable, return

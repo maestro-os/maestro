@@ -39,10 +39,6 @@ pub const FLAG_ZONE_TYPE_USER: Flags = 0b000;
 pub const FLAG_ZONE_TYPE_KERNEL: Flags = 0b001;
 /// Buddy allocator flag. Tells that the allocated frame must be mapped into the DMA zone.
 pub const FLAG_ZONE_TYPE_DMA: Flags = 0b010;
-/// Buddy allocator flag. Tells that the allocation shall not fail (unless not enough memory is
-/// present on the system). This flag is ignored if FLAG_USER is not specified or if the allocation
-/// order is higher than 0. The allocator shall use the OOM killer to recover memory.
-pub const FLAG_NOFAIL: Flags = 0b100; // TODO Move OOM killer outside?
 
 /// Pointer to the end of the kernel zone of memory with the maximum possible size.
 pub const KERNEL_ZONE_LIMIT: *const c_void = 0x40000000 as _;
@@ -137,7 +133,7 @@ fn get_suitable_zone(type_: usize) -> Option<&'static mut Mutex<Zone>> {
 	#[allow(clippy::needless_range_loop)]
 	for i in 0..zones.len() {
 		let is_valid = {
-			let guard = MutexGuard::new(&mut zones[i]);
+			let guard = zones[i].lock(false);
 			let zone = guard.get();
 			zone.type_ == type_ as _
 		};
@@ -157,7 +153,7 @@ fn get_zone_for_pointer(ptr: *const c_void) -> Option<&'static mut Mutex<Zone>> 
 	#[allow(clippy::needless_range_loop)]
 	for i in 0..zones.len() {
 		let is_valid = {
-			let guard = MutexGuard::new(&mut zones[i]);
+			let guard = zones[i].lock(true);
 			let zone = guard.get();
 			ptr >= zone.begin && (ptr as usize) < (zone.begin as usize) + zone.get_size()
 		};
@@ -179,7 +175,7 @@ pub fn alloc(order: FrameOrder, flags: Flags) -> Result<*mut c_void, Errno> {
 		let z = get_suitable_zone(i);
 
 		if let Some(z) = z {
-			let mut guard = MutexGuard::new(z);
+			let mut guard = z.lock(true);
 			let zone = guard.get_mut();
 
 			let frame = zone.get_available_frame(order);
@@ -190,7 +186,8 @@ pub fn alloc(order: FrameOrder, flags: Flags) -> Result<*mut c_void, Errno> {
 
 				let ptr = f.get_ptr(zone);
 				debug_assert!(util::is_aligned(ptr, memory::PAGE_SIZE));
-				debug_assert!(ptr >= zone.begin && ptr < (zone.begin as usize + zone.get_size()) as _);
+				debug_assert!(ptr >= zone.begin
+					&& ptr < (zone.begin as usize + zone.get_size()) as _);
 				return Ok(ptr);
 			}
 		}
@@ -211,7 +208,7 @@ pub fn free(ptr: *const c_void, order: FrameOrder) {
 	debug_assert!(order <= MAX_ORDER);
 
 	let z = get_zone_for_pointer(ptr).unwrap();
-	let mut guard = MutexGuard::new(z);
+	let mut guard = z.lock(true);
 	let zone = guard.get_mut();
 
 	let frame_id = zone.get_frame_id_from_ptr(ptr);
@@ -239,7 +236,7 @@ pub fn allocated_pages_count() -> usize {
 	};
 	#[allow(clippy::needless_range_loop)]
 	for i in 0..z.len() {
-		let guard = MutexGuard::new(&mut z[i]);
+		let guard = z[i].lock(true);
 		n += guard.get().get_allocated_pages();
 	}
 	n

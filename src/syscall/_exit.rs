@@ -1,7 +1,6 @@
 //! The _exit syscall allows to terminate the current process with the given status code.
 
 use crate::process::Process;
-use crate::util::lock::mutex::TMutex;
 use crate::util;
 
 /// The implementation of the `write` syscall.
