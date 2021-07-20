@@ -143,11 +143,14 @@ impl<T: ?Sized> Mutex<T> {
 	/// Unlocks the mutex. The function is unsafe because it may lead to concurrency issues if not
 	/// used properly.
 	pub unsafe fn unlock(&mut self) {
+		let int = self.int;
+		let int_enabled = self.int_enabled;
+
 		self.spin.unlock();
 
-		// Restoring interrupts state after unlocking
-		if !self.int {
-			if self.int_enabled {
+		if !int {
+			// Restoring interrupts state after unlocking
+			if int_enabled {
 				crate::sti!();
 			} else {
 				crate::cli!();

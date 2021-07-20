@@ -140,32 +140,32 @@ pub fn waitpid(regs: &util::Regs) -> Result<i32, Errno> {
 		}
 	}
 
-	if options & WNOHANG == 0 {
-		// Sleeping until a target process is waitable
-		loop {
-			// When a child process is paused or resumed by a signal or is terminated, it changes
-			// the state of the current process to wake it up
-			{
-				let mut mutex = Process::get_current().unwrap();
-				let mut guard = mutex.lock(false);
-				let proc = guard.get_mut();
+	if options & WNOHANG != 0 {
+		return Ok(0);
+	}
 
-				proc.set_state(process::State::Sleeping);
-			}
-			crate::wait();
-			cli!();
+	// Sleeping until a target process is waitable
+	loop {
+		// When a child process is paused or resumed by a signal or is terminated, it changes the
+		// state of the current process to wake it up
+		{
+			let mut mutex = Process::get_current().unwrap();
+			let mut guard = mutex.lock(false);
+			let proc = guard.get_mut();
 
-			{
-				let mut mutex = Process::get_current().unwrap();
-				let mut guard = mutex.lock(false);
-				let proc = guard.get_mut();
+			proc.set_state(process::State::Sleeping);
+		}
 
-				if let Some(p) = check_waitable(proc, pid, &mut wstatus)? {
-					return Ok(p as _);
-				}
+		hlt!();
+
+		{
+			let mut mutex = Process::get_current().unwrap();
+			let mut guard = mutex.lock(false);
+			let proc = guard.get_mut();
+
+			if let Some(p) = check_waitable(proc, pid, &mut wstatus)? {
+				return Ok(p as _);
 			}
 		}
-	} else {
-		Ok(0)
 	}
 }

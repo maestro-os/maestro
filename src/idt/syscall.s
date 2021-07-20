@@ -26,7 +26,9 @@ syscall:
 	mov %ax, %gs
 
 	push %esp
+	sti
 	call syscall_handler
+	cli
 	add $44, %esp
 
 	xor %ebx, %ebx
