@@ -5,6 +5,8 @@
 .global waitpid
 .global getpid
 .global getppid
+.global signal
+.global kill
 
 write:
 	push %ebp
@@ -48,11 +50,10 @@ _exit:
 	push %ebp
 	mov %esp, %ebp
 
-	push %ebx
-
 	mov $9, %eax
 	mov 8(%ebp), %ebx
 	int $0x80
+
 	ud2
 
 fork:
@@ -90,4 +91,42 @@ getpid:
 getppid:
 	mov $17, %eax
 	int $0x80
+	ret
+
+signal:
+	push %ebp
+	mov %esp, %ebp
+
+	push %ebx
+	push %ecx
+
+	mov $20, %eax
+	mov 8(%ebp), %ebx
+	mov 12(%ebp), %ecx
+	int $0x80
+
+	pop %ecx
+	pop %ebx
+
+	mov %ebp, %esp
+	pop %ebp
+	ret
+
+kill:
+	push %ebp
+	mov %esp, %ebp
+
+	push %ebx
+	push %ecx
+
+	mov $21, %eax
+	mov 8(%ebp), %ebx
+	mov 12(%ebp), %ecx
+	int $0x80
+
+	pop %ecx
+	pop %ebx
+
+	mov %ebp, %esp
+	pop %ebp
 	ret

@@ -1,5 +1,7 @@
 #include <stddef.h>
 
+typedef void (*sighandler_t)(int);
+
 void write(int fd, const void *buf, size_t count);
 void close(int status);
 void _exit(int status);
@@ -7,6 +9,8 @@ int fork(void);
 int waitpid(int pid, int *wstatus, int options);
 int getpid(void);
 int getppid(void);
+sighandler_t signal(int signum, sighandler_t handler);
+int kill(int pid, int sig);
 
 void print_nbr(int nbr)
 {
@@ -28,6 +32,13 @@ void print_nbr(int nbr)
 	write(1, &c, 1);
 }
 
+void sig_handle(int sig) {
+	(void) sig;
+
+	write(1, ":(\n", 3);
+	_exit(42);
+}
+
 void test_process(void)
 {
 	//for(size_t i = 0; i < 10; ++i) {
@@ -46,7 +57,11 @@ void test_process(void)
 	int pid = fork();
 	if (pid == 0) {
 		write(1, "forked!\n", 8);
-		_exit(42);
+
+		signal(0, sig_handle);
+		kill(getpid(), 0);
+
+		_exit(43);
 	} else {
 		write(1, "waiting\n", 8);
 		int wstatus = 42;

@@ -620,8 +620,8 @@ impl Process {
 		}
 	}
 
-	/// Returns the exit code if the process has ended.
-	pub fn get_exit_code(&self) -> Option<ExitStatus> {
+	/// Returns the exit status if the process has ended.
+	pub fn get_exit_status(&self) -> Option<ExitStatus> {
 		if self.state == State::Zombie {
 			Some(self.exit_status)
 		} else {

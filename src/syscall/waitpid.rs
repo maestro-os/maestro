@@ -59,9 +59,9 @@ fn get_target(scheduler: &mut Scheduler, proc: &Process, pid: i32, i: usize) -> 
 }
 
 /// Returns the wait status for the given process.
-fn get_wstatus(_proc: &Process) -> i32 {
+fn get_wstatus(proc: &Process) -> i32 {
 	// TODO
-	0
+	proc.get_exit_status().unwrap() as _
 }
 
 /// Checks if at least one process corresponding to the given constraint is waitable. If yes, the

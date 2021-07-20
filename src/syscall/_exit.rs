@@ -10,7 +10,7 @@ pub fn _exit(regs: &util::Regs) -> ! {
 		let mut guard = mutex.lock(false);
 		let proc = guard.get_mut();
 
-		proc.exit(regs.eax);
+		proc.exit(regs.ebx);
 	}
 
 	unsafe {
