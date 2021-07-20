@@ -189,7 +189,7 @@ pub fn init() -> Result<(), Errno> {
 					if inst_prefix == HLT_INSTRUCTION {
 						curr_proc.exit(regs.eax);
 					} else {
-						curr_proc.kill(signal::SIGSEGV).unwrap();
+						curr_proc.kill(Signal::new(signal::SIGSEGV).unwrap());
 					}
 				},
 				0x0e => {
@@ -198,7 +198,7 @@ pub fn init() -> Result<(), Errno> {
 					};
 
 					if !curr_proc.mem_space.handle_page_fault(accessed_ptr, code) {
-						curr_proc.kill(signal::SIGSEGV).unwrap();
+						curr_proc.kill(Signal::new(signal::SIGSEGV).unwrap());
 					}
 				},
 				_ => {},
@@ -697,18 +697,14 @@ impl Process {
 		self.signal_handlers[type_ as usize] = handler;
 	}
 
-	/// Kills the process with the given signal type `type`. This function enqueues a new signal
-	/// to be processed. If the process doesn't have a signal handler, the default action for the
-	/// signal is executed.
-	pub fn kill(&mut self, type_: SignalType) -> Result<(), Errno> {
-		let signal = Signal::new(type_)?;
-		if signal.can_catch() {
-			self.signals_bitfield.set(type_ as _);
+	/// Kills the process with the given signal `sig`. If the process doesn't have a signal
+	/// handler, the default action for the signal is executed.
+	pub fn kill(&mut self, sig: Signal) {
+		if sig.can_catch() {
+			self.signals_bitfield.set(sig.get_type() as _);
 		} else {
-			signal.execute_action(self);
+			sig.execute_action(self);
 		}
-
-		Ok(())
 	}
 
 	/// Exits the process with the given `status`. This function changes the process's status to

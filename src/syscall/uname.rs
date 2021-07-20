@@ -24,7 +24,7 @@ struct Utsname {
 }
 
 /// The implementation of the `uname` syscall.
-pub fn uname(proc: &mut Process, regs: &util::Regs) -> Result<i32, Errno> {
+pub fn uname(regs: &util::Regs) -> Result<i32, Errno> {
 	let buf = regs.ebx as *mut Utsname;
 	let mut utsname = Utsname {
 		sysname: [0; UTSNAME_LENGTH],
@@ -39,6 +39,10 @@ pub fn uname(proc: &mut Process, regs: &util::Regs) -> Result<i32, Errno> {
 	utsname.release.clone_from_slice(&crate::KERNEL_VERSION.as_bytes());
 	// TODO version
 	// TODO machine
+
+	let mut mutex = Process::get_current().unwrap();
+	let mut guard = mutex.lock(false);
+	let proc = guard.get_mut();
 
 	if proc.get_mem_space().can_access(buf as _, size_of::<Utsname>(), true, true) {
 		unsafe {

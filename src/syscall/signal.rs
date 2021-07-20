@@ -17,7 +17,7 @@ const SIG_IGN: *const c_void = 0x0 as _;
 const SIG_DFL: *const c_void = 0x1 as _;
 
 /// The implementation of the `signal` syscall.
-pub fn signal(proc: &mut Process, regs: &util::Regs) -> Result<i32, Errno> {
+pub fn signal(regs: &util::Regs) -> Result<i32, Errno> {
 	let signum = regs.ebx as i32;
 	let handler = regs.ecx as *const c_void;
 
@@ -37,8 +37,15 @@ pub fn signal(proc: &mut Process, regs: &util::Regs) -> Result<i32, Errno> {
 		},
 	};
 
-	let old_handler = proc.get_signal_handler(signum as _);
-	proc.set_signal_handler(signum as _, h);
+	let old_handler = {
+		let mut mutex = Process::get_current().unwrap();
+		let mut guard = mutex.lock(false);
+		let proc = guard.get_mut();
+
+		let old_handler = proc.get_signal_handler(signum as _);
+		proc.set_signal_handler(signum as _, h);
+		old_handler
+	};
 
 	let old_handler_ptr = match old_handler {
 		SignalHandler::Ignore => SIG_IGN,

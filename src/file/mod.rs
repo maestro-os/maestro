@@ -72,6 +72,8 @@ pub const FILES_POOL_SIZE: usize = 1024;
 /// The upper bount for the file accesses counter.
 pub const ACCESSES_UPPER_BOUND: usize = 128;
 
+// TODO Use umask
+
 /// Enumeration representing the different file types.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum FileType {

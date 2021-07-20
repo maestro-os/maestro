@@ -105,16 +105,22 @@ fn check_waitable(proc: &Process, pid: i32, wstatus: &mut Option<&mut i32>)
 }
 
 /// The implementation of the `waitpid` syscall.
-pub fn waitpid(proc: &mut Process, regs: &util::Regs) -> Result<i32, Errno> {
+pub fn waitpid(regs: &util::Regs) -> Result<i32, Errno> {
 	let pid = regs.ebx as i32;
 	let wstatus = regs.ecx as *mut i32;
 	let options = regs.edx as i32;
 
-	let mut wstatus = {
+	{
+		let mut mutex = Process::get_current().unwrap();
+		let mut guard = mutex.lock(false);
+		let proc = guard.get_mut();
+
 		if !proc.get_mem_space().can_access(wstatus as _, size_of::<i32>(), true, true) {
 			return Err(errno::EINVAL);
 		}
+	}
 
+	let mut wstatus = {
 		if wstatus as usize != 0x0 {
 			Some(unsafe {
 				&mut *wstatus
@@ -124,9 +130,14 @@ pub fn waitpid(proc: &mut Process, regs: &util::Regs) -> Result<i32, Errno> {
 		}
 	};
 
-	cli!();
-	if let Some(p) = check_waitable(proc, pid, &mut wstatus)? {
-		return Ok(p as _);
+	{
+		let mut mutex = Process::get_current().unwrap();
+		let mut guard = mutex.lock(false);
+		let proc = guard.get_mut();
+
+		if let Some(p) = check_waitable(proc, pid, &mut wstatus)? {
+			return Ok(p as _);
+		}
 	}
 
 	if options & WNOHANG == 0 {
@@ -134,12 +145,24 @@ pub fn waitpid(proc: &mut Process, regs: &util::Regs) -> Result<i32, Errno> {
 		loop {
 			// When a child process is paused or resumed by a signal or is terminated, it changes
 			// the state of the current process to wake it up
-			proc.set_state(process::State::Sleeping);
+			{
+				let mut mutex = Process::get_current().unwrap();
+				let mut guard = mutex.lock(false);
+				let proc = guard.get_mut();
+
+				proc.set_state(process::State::Sleeping);
+			}
 			crate::wait();
 			cli!();
 
-			if let Some(p) = check_waitable(proc, pid, &mut wstatus)? {
-				return Ok(p as _);
+			{
+				let mut mutex = Process::get_current().unwrap();
+				let mut guard = mutex.lock(false);
+				let proc = guard.get_mut();
+
+				if let Some(p) = check_waitable(proc, pid, &mut wstatus)? {
+					return Ok(p as _);
+				}
 			}
 		}
 	} else {

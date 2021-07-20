@@ -27,7 +27,7 @@ mod waitpid;
 mod write;
 
 use crate::process::Process;
-use crate::process::signal as signal_type;
+use crate::process;
 
 use _exit::_exit;
 use chroot::chroot;
@@ -57,18 +57,11 @@ use write::write;
 /// This function is called whenever a system call is triggered.
 #[no_mangle]
 pub extern "C" fn syscall_handler(regs: &util::Regs) -> u32 {
-	let mut mutex = Process::get_current().unwrap();
-	let mut guard = mutex.lock(false); // TODO Make locking inside of the syscall handler itself
-	let curr_proc = guard.get_mut();
-	curr_proc.set_regs(regs);
-	// NOTE: `mutex` **must** be unlocked by functions that don't return. If not unlocked, the
-	// kernel will probably have a deadlock
-
 	let id = regs.eax;
 
 	let result = match id {
-		0 => open(curr_proc, regs),
-		1 => umask(curr_proc, regs),
+		0 => open(regs),
+		1 => umask(regs),
 		// TODO utime
 		// TODO mkdir
 		// TODO mknod
@@ -76,14 +69,14 @@ pub extern "C" fn syscall_handler(regs: &util::Regs) -> u32 {
 		// TODO pipe2
 		// TODO link
 		// TODO fcntl
-		2 => dup(curr_proc, regs),
-		3 => dup2(curr_proc, regs),
+		2 => dup(regs),
+		3 => dup2(regs),
 		// TODO poll
 		// TODO ppoll
 		// TODO flock
-		4 => close(curr_proc, regs),
-		5 => unlink(curr_proc, regs),
-		6 => chroot(curr_proc, regs),
+		4 => close(regs),
+		5 => unlink(regs),
+		6 => chroot(regs),
 		// TODO chdir
 		// TODO chown
 		// TODO chmod
@@ -94,17 +87,17 @@ pub extern "C" fn syscall_handler(regs: &util::Regs) -> u32 {
 		// TODO lseek
 		// TODO truncate
 		// TODO ftruncate
-		7 => read(curr_proc, regs),
-		8 => write(curr_proc, regs),
+		7 => read(regs),
+		8 => write(regs),
 		// TODO mount
 		// TODO umount
 		// TODO sync
 		// TODO syncfs
 		// TODO fsync
 		// TODO fdatasync
-		9 => _exit(curr_proc, regs),
-		10 => fork(curr_proc, regs),
-		11 => waitpid(curr_proc, regs),
+		9 => _exit(regs),
+		10 => fork(regs),
+		11 => waitpid(regs),
 		// TODO execl
 		// TODO execlp
 		// TODO execle
@@ -116,18 +109,18 @@ pub extern "C" fn syscall_handler(regs: &util::Regs) -> u32 {
 		// TODO getrlimit
 		// TODO setrlimit
 		// TODO getrusage
-		12 => getuid(curr_proc, regs),
-		13 => setuid(curr_proc, regs),
+		12 => getuid(regs),
+		13 => setuid(regs),
 		// TODO geteuid
 		// TODO seteuid
-		14 => getgid(curr_proc, regs),
-		15 => setgid(curr_proc, regs),
+		14 => getgid(regs),
+		15 => setgid(regs),
 		// TODO getegid
 		// TODO setegid
-		16 => getpid(curr_proc, regs),
-		17 => getppid(curr_proc, regs),
-		18 => getpgid(curr_proc, regs),
-		19 => setpgid(curr_proc, regs),
+		16 => getpid(regs),
+		17 => getppid(regs),
+		18 => getpgid(regs),
+		19 => setpgid(regs),
 		// TODO getsid
 		// TODO setsid
 		// TODO gettid
@@ -138,8 +131,8 @@ pub extern "C" fn syscall_handler(regs: &util::Regs) -> u32 {
 		// TODO mlockall
 		// TODO munlockall
 		// TODO mprotect
-		20 => signal(curr_proc, regs),
-		21 => kill(curr_proc, regs),
+		20 => signal(regs),
+		21 => kill(regs),
 		// TODO pause
 		// TODO socket
 		// TODO getsockname
@@ -156,11 +149,15 @@ pub extern "C" fn syscall_handler(regs: &util::Regs) -> u32 {
 		// TODO times
 		// TODO gettimeofday
 		// TODO ptrace
-		22 => uname(curr_proc, regs),
+		22 => uname(regs),
 		// TODO reboot
 
 		_ => {
-			curr_proc.kill(signal_type::SIGSYS).unwrap(); // TODO Handle properly
+			let mut mutex = Process::get_current().unwrap();
+			let mut guard = mutex.lock(false); // TODO Make locking inside of the syscall handler itself
+			let curr_proc = guard.get_mut();
+
+			curr_proc.kill(process::signal::Signal::new(process::signal::SIGSYS).unwrap());
 			crate::enter_loop();
 		}
 	};

@@ -5,6 +5,10 @@ use crate::process::Process;
 use crate::util;
 
 /// The implementation of the `getgid` syscall.
-pub fn getgid(proc: &mut Process, _: &util::Regs) -> Result<i32, Errno> {
+pub fn getgid(_: &util::Regs) -> Result<i32, Errno> {
+	let mut mutex = Process::get_current().unwrap();
+	let mut guard = mutex.lock(false);
+	let proc = guard.get_mut();
+
 	Ok(proc.get_gid() as _)
 }

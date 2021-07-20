@@ -4,12 +4,16 @@ use crate::process::Process;
 use crate::util;
 
 /// The implementation of the `write` syscall.
-pub fn _exit(proc: &mut Process, regs: &util::Regs) -> ! {
-	proc.exit(regs.eax);
+pub fn _exit(regs: &util::Regs) -> ! {
+	{
+		let mut mutex = Process::get_current().unwrap();
+		let mut guard = mutex.lock(false);
+		let proc = guard.get_mut();
+
+		proc.exit(regs.eax);
+	}
 
 	unsafe {
-		// Unlocking the process because the system call is not returning
-		Process::get_current().unwrap().unlock();
 		// Waiting for the next tick
 		asm!("jmp $kernel_loop");
 	}

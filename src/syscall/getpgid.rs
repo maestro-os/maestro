@@ -26,8 +26,12 @@ fn handle_getpgid(pid: Pid, proc: &mut Process) -> Result<i32, Errno> {
 }
 
 /// The implementation of the `getpgid` syscall.
-pub fn getpgid(proc: &mut Process, regs: &util::Regs) -> Result<i32, Errno> {
+pub fn getpgid(regs: &util::Regs) -> Result<i32, Errno> {
 	let pid = regs.ebx as Pid;
+
+	let mut mutex = Process::get_current().unwrap();
+	let mut guard = mutex.lock(false);
+	let proc = guard.get_mut();
 
 	handle_getpgid(pid, proc)
 }

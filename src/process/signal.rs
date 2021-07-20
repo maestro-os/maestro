@@ -121,6 +121,7 @@ static DEFAULT_ACTIONS: &[SignalAction] = &[
 ];
 
 /// Structure representing a process signal.
+#[derive(Clone)]
 pub struct Signal {
 	/// The signal type.
 	type_: SignalType,

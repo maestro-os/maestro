@@ -68,7 +68,7 @@ fn get_file(path: Path, flags: u32) -> Result<SharedPtr<File>, Errno> {
 }
 
 /// The implementation of the `open` syscall.
-pub fn open(proc: &mut Process, regs: &util::Regs) -> Result<i32, Errno> {
+pub fn open(regs: &util::Regs) -> Result<i32, Errno> {
 	let pathname = regs.ebx as *const c_void;
 	let flags = regs.ecx;
 	let _mode = regs.edx as u16;
@@ -80,6 +80,10 @@ pub fn open(proc: &mut Process, regs: &util::Regs) -> Result<i32, Errno> {
 	};
 
 	// TODO Resolve symbolic links up to limit (if too many, ELOOP)
+
+	let mut mutex = Process::get_current().unwrap();
+	let mut guard = mutex.lock(false);
+	let proc = guard.get_mut();
 
 	let file_path = get_file_absolute_path(&proc, path_str)?;
 	let file = get_file(file_path, flags)?;

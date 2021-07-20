@@ -8,11 +8,15 @@ use crate::process::pid::Pid;
 use crate::util;
 
 /// The implementation of the `setpgid` syscall.
-pub fn setpgid(proc: &mut Process, regs: &util::Regs) -> Result<i32, Errno> {
+pub fn setpgid(regs: &util::Regs) -> Result<i32, Errno> {
 	let mut pid = regs.ebx as Pid;
 	let mut pgid = regs.ecx as Pid;
 
 	// TODO Check processes SID
+
+	let mut mutex = Process::get_current().unwrap();
+	let mut guard = mutex.lock(false);
+	let proc = guard.get_mut();
 
 	if pid == 0 {
 		pid = proc.get_pid();

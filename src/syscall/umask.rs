@@ -5,8 +5,12 @@ use crate::process::Process;
 use crate::util;
 
 /// The implementation of the `umask` syscall.
-pub fn umask(proc: &mut Process, regs: &util::Regs) -> Result<i32, Errno> {
+pub fn umask(regs: &util::Regs) -> Result<i32, Errno> {
 	let mask = regs.ebx as u16;
+
+	let mut mutex = Process::get_current().unwrap();
+	let mut guard = mutex.lock(false);
+	let proc = guard.get_mut();
 
 	let prev = proc.get_umask();
 	proc.set_umask(mask & 0o777);
