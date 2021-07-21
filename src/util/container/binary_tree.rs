@@ -1489,7 +1489,7 @@ mod test {
 	fn binary_tree_get_min1() {
 		let mut b = BinaryTree::<i32, i32>::new();
 		b.insert(0, 0).unwrap();
-		assert!(*b.get_min(0).unwrap() >= 0);
+		assert!(*b.get_min(0).unwrap().0 >= 0);
 	}
 
 	#[test_case]
@@ -1505,7 +1505,7 @@ mod test {
 		b.insert(-1, -1).unwrap();
 		b.insert(0, 0).unwrap();
 		b.insert(1, 1).unwrap();
-		assert!(*b.get_min(0).unwrap() >= 0);
+		assert!(*b.get_min(0).unwrap().0 >= 0);
 	}
 
 	#[test_case]
@@ -1513,14 +1513,14 @@ mod test {
 		let mut b = BinaryTree::<i32, i32>::new();
 		b.insert(0, 0).unwrap();
 		b.insert(1, 1).unwrap();
-		assert!(*b.get_min(0).unwrap() >= 0);
+		assert!(*b.get_min(0).unwrap().0 >= 0);
 	}
 
 	#[test_case]
 	fn binary_tree_get_min5() {
 		let mut b = BinaryTree::<i32, i32>::new();
 		b.insert(1, 1).unwrap();
-		assert!(*b.get_min(0).unwrap() >= 0);
+		assert!(*b.get_min(0).unwrap().0 >= 0);
 	}
 
 	#[test_case]
@@ -1528,7 +1528,7 @@ mod test {
 		let mut b = BinaryTree::<i32, i32>::new();
 		b.insert(-1, -1).unwrap();
 		b.insert(1, 1).unwrap();
-		assert!(*b.get_min(0).unwrap() >= 0);
+		assert!(*b.get_min(0).unwrap().0 >= 0);
 	}
 
 	#[test_case]
