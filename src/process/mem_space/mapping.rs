@@ -297,17 +297,27 @@ impl MemMapping {
 	/// The virtual memory context has to be updated after calling this function.
 	/// The function returns a mutable reference to the newly created mapping.
 	pub fn fork<'a>(&mut self, mem_space: &'a mut MemSpace) -> Result<&'a mut Self, Errno> {
-		let new_mapping = Self {
+		let mut new_mapping = Self {
 			begin: self.begin,
 			size: self.size,
 			flags: self.flags,
 
 			vmem: NonNull::new(mem_space.get_vmem().as_mut()).unwrap(),
 		};
+		let nolazy = (new_mapping.get_flags() & super::MAPPING_FLAG_NOLAZY) != 0;
 
-		unsafe { // Safe because the global variable is wrapped into a Mutex
-			let mut ref_counter_lock = super::PHYSICAL_REF_COUNTER.lock(true);
-			let ref_counter = ref_counter_lock.get_mut();
+		if nolazy {
+			for i in 0..self.size {
+				let virt_ptr = (self.begin as usize + i * memory::PAGE_SIZE) as *const c_void;
+				new_mapping.get_mut_vmem().unmap(virt_ptr)?;
+				new_mapping.map(i)?;
+			}
+		} else {
+			// Safe because the global variable is wrapped into a Mutex
+			let mut ref_counter_guard = unsafe {
+				super::PHYSICAL_REF_COUNTER.lock(true)
+			};
+			let ref_counter = ref_counter_guard.get_mut();
 
 			for i in 0..self.size {
 				if let Some(phys_ptr) = self.get_physical_page(i) {
@@ -323,7 +333,7 @@ impl MemMapping {
 					}
 				}
 			}
-		};
+		}
 
 		mem_space.mappings.insert(new_mapping.get_begin(), new_mapping)
 	}

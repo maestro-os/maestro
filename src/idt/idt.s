@@ -84,10 +84,10 @@ GET_REGS \n
 	and $0b11, %eax
 
 	# Pushing arguments to call event_handler
-	push %esp
-	push %eax
-	push $0
-	push $\n
+	push %esp # regs
+	push %eax # ring
+	push $0 # code
+	push $\n # id
 	call event_handler
 	add $16, %esp
 
@@ -137,10 +137,10 @@ GET_REGS \n
 	and $0b11, %ebx
 
 	# Pushing arguments to call event_handler
-	push %eax
-	push %ebx
-	push 8(%esp)
-	push $\n
+	push %eax # regs
+	push %ebx # ring
+	push 8(%esp) # code
+	push $\n # id
 	call event_handler
 	add $16, %esp
 
@@ -178,10 +178,10 @@ GET_REGS irq_\n
 	and $0b11, %eax
 
 	# Pushing arguments to call event_handler
-	push %esp
-	push %eax
-	push $0
-	push $(\n + 0x20)
+	push %esp # regs
+	push %eax # ring
+	push $0 # code
+	push $(\n + 0x20) # id
 	call event_handler
 	add $16, %esp
 

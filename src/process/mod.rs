@@ -630,8 +630,9 @@ impl Process {
 	}
 
 	/// Forks the current process. Duplicating everything for it to be identical, except the PID,
-	/// the parent process and children processes. On fail, the function returns an Err with the
-	/// appropriate Errno.
+	/// the parent process and children processes.
+	/// TODO Update the list of elements that are not copied
+	/// On fail, the function returns an Err with the appropriate Errno.
 	pub fn fork(&mut self) -> Result<SharedPtr<Self>, Errno> {
 		// TODO Free if the function fails
 		let pid = {
@@ -663,7 +664,7 @@ impl Process {
 			process_group: Vec::new(),
 
 			regs,
-			syscalling: self.syscalling,
+			syscalling: false,
 			mem_space: self.mem_space.fork()?,
 
 			user_stack: self.user_stack,
