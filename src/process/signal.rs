@@ -1,5 +1,8 @@
 //! This module implements process signals.
 
+use core::ffi::c_void;
+use core::mem::size_of;
+use core::mem::transmute;
 use crate::errno::Errno;
 use crate::errno;
 use super::Process;
@@ -71,6 +74,13 @@ pub const SIGWINCH: SignalType = 28;
 
 /// The number of different signal types.
 pub const SIGNALS_COUNT: usize = 29;
+
+/// The size of the redzone in userspace, in bytes.
+pub const REDZONE_SIZE: usize = 128;
+
+extern "C" {
+	fn signal_trampoline();
+}
 
 /// Enumeration representing the action to perform for a signal.
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -191,8 +201,25 @@ impl Signal {
 					},
 				}
 			},
+
 			SignalHandler::Handler(_handler) => {
-				// TODO Execute handler
+				let mut regs = process.get_regs().clone();
+				let redzone_end = regs.esp - REDZONE_SIZE as u32;
+
+				// TODO Write the signal number
+				// TODO Write the handler ptr
+				// TODO Write the return esp
+				// TODO Write the return eip
+
+				let signal_trampoline = unsafe {
+					transmute::<unsafe extern "C" fn(), *const c_void>(signal_trampoline)
+				};
+				let signal_esp = redzone_end - (4 * size_of::<usize>() as u32);
+				regs.eip = signal_trampoline as _;
+				regs.esp = signal_esp;
+				process.set_regs(&regs);
+
+				// TODO Handle the case where the process is currently running
 				todo!();
 			},
 		}
