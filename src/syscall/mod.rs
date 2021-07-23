@@ -2,7 +2,6 @@
 //! userspace and kernelspace.
 //! TODO doc
 
-//mod fchdir;
 mod _exit;
 mod brk;
 mod chdir;
@@ -10,6 +9,7 @@ mod chroot;
 mod close;
 mod dup2;
 mod dup;
+mod fchdir;
 mod fork;
 mod getcwd;
 mod getgid;
@@ -36,7 +36,6 @@ mod write;
 use crate::process::Process;
 use crate::process;
 
-//use fchdir::fchdir;
 use _exit::_exit;
 use brk::brk;
 use chdir::chdir;
@@ -45,6 +44,7 @@ use close::close;
 use crate::util;
 use dup2::dup2;
 use dup::dup;
+use fchdir::fchdir;
 use fork::fork;
 use getcwd::getcwd;
 use getgid::getgid;
@@ -93,7 +93,7 @@ pub extern "C" fn syscall_handler(regs: &util::Regs) -> u32 {
 		6 => chroot(regs),
 		7 => getcwd(regs),
 		8 => chdir(regs),
-		//9 => fchdir(regs),
+		9 => fchdir(regs),
 		// TODO chown
 		// TODO fchown
 		// TODO lchown

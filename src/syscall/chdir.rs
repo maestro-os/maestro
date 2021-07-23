@@ -50,6 +50,7 @@ pub fn chdir(regs: &util::Regs) -> Result<i32, Errno> {
 		}
 	}
 
+	// TODO Make the path absolute
 	proc.set_cwd(new_cwd);
 	Ok(0)
 }

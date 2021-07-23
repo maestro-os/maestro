@@ -1,4 +1,4 @@
-//! The `brk` is a deprecated system call on this kernel. Thus it will always fail.
+//! The `brk` system call is deprecated on this kernel. Thus it will always fail.
 
 use crate::errno::Errno;
 use crate::errno;
