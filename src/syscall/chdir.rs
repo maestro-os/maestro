@@ -4,7 +4,9 @@ use core::slice;
 use core::str;
 use crate::errno::Errno;
 use crate::errno;
+use crate::file::FileType;
 use crate::file::path::Path;
+use crate::file;
 use crate::limits;
 use crate::process::Process;
 use crate::util;
@@ -34,8 +36,13 @@ pub fn chdir(regs: &util::Regs) -> Result<i32, Errno> {
 	})?;
 
 	{
-		let fcache = file::get_files_cache();
-		let dir = fcache.get_file_from_path(new_cwd)?;
+		let fcache_mutex = file::get_files_cache();
+		let mut fcache_guard = fcache_mutex.lock(true);
+		let fcache = fcache_guard.get_mut();
+
+		let mut dir_mutex = fcache.get_file_from_path(&new_cwd)?;
+		let dir_guard = dir_mutex.lock(true);
+		let dir = dir_guard.get();
 
 		// TODO Check permissions (for all directories in the path)
 		if dir.get_file_type() != FileType::Directory {
