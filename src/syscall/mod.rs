@@ -4,6 +4,7 @@
 
 //mod fchdir;
 mod _exit;
+mod brk;
 mod chdir;
 mod chroot;
 mod close;
@@ -20,6 +21,7 @@ mod kill;
 mod open;
 mod read;
 mod reboot;
+mod sbrk;
 mod setgid;
 mod setpgid;
 mod setuid;
@@ -36,6 +38,7 @@ use crate::process;
 
 //use fchdir::fchdir;
 use _exit::_exit;
+use brk::brk;
 use chdir::chdir;
 use chroot::chroot;
 use close::close;
@@ -53,6 +56,7 @@ use kill::kill;
 use open::open;
 use read::read;
 use reboot::reboot;
+use sbrk::sbrk;
 use setgid::setgid;
 use setpgid::setpgid;
 use setuid::setuid;
@@ -140,6 +144,8 @@ pub extern "C" fn syscall_handler(regs: &util::Regs) -> u32 {
 		// TODO getsid
 		// TODO setsid
 		// TODO gettid
+		24 => brk(regs),
+		25 => sbrk(regs),
 		// TODO mmap
 		// TODO munmap
 		// TODO mlock
@@ -147,8 +153,8 @@ pub extern "C" fn syscall_handler(regs: &util::Regs) -> u32 {
 		// TODO mlockall
 		// TODO munlockall
 		// TODO mprotect
-		24 => signal(regs),
-		25 => kill(regs),
+		26 => signal(regs),
+		27 => kill(regs),
 		// TODO pause
 		// TODO socket
 		// TODO getsockname
@@ -165,8 +171,8 @@ pub extern "C" fn syscall_handler(regs: &util::Regs) -> u32 {
 		// TODO times
 		// TODO gettimeofday
 		// TODO ptrace
-		26 => uname(regs),
-		27 => reboot(regs),
+		28 => uname(regs),
+		29 => reboot(regs),
 
 		_ => {
 			let mut mutex = Process::get_current().unwrap();
