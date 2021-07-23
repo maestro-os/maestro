@@ -104,12 +104,11 @@ fn check_waitable(proc: &Process, pid: i32, wstatus: &mut Option<&mut i32>)
 	Ok(None)
 }
 
-/// The implementation of the `waitpid` syscall.
-pub fn waitpid(regs: &util::Regs) -> Result<i32, Errno> {
-	let pid = regs.ebx as i32;
-	let wstatus = regs.ecx as *mut i32;
-	let options = regs.edx as i32;
-
+/// Executes the `waitpid` system call.
+/// `pid` is the PID to wait for.
+/// `wstatus` is the pointer on which to write the status.
+/// `options` are flags passed with the syscall.
+pub fn do_waitpid(pid: i32, wstatus: *mut i32, options: i32) -> Result<i32, Errno> {
 	{
 		let mut mutex = Process::get_current().unwrap();
 		let mut guard = mutex.lock(false);
@@ -168,4 +167,13 @@ pub fn waitpid(regs: &util::Regs) -> Result<i32, Errno> {
 			}
 		}
 	}
+}
+
+/// The implementation of the `waitpid` syscall.
+pub fn waitpid(regs: &util::Regs) -> Result<i32, Errno> {
+	let pid = regs.ebx as i32;
+	let wstatus = regs.ecx as *mut i32;
+	let options = regs.edx as i32;
+
+	do_waitpid(pid, wstatus, options)
 }

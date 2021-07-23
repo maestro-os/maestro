@@ -2,13 +2,13 @@
 //! userspace and kernelspace.
 //! TODO doc
 
+//mod fchdir;
 mod _exit;
 mod chdir;
 mod chroot;
 mod close;
 mod dup2;
 mod dup;
-//mod fchdir;
 mod fork;
 mod getcwd;
 mod getgid;
@@ -27,12 +27,14 @@ mod signal;
 mod umask;
 mod uname;
 mod unlink;
+mod wait;
 mod waitpid;
 mod write;
 
 use crate::process::Process;
 use crate::process;
 
+//use fchdir::fchdir;
 use _exit::_exit;
 use chdir::chdir;
 use chroot::chroot;
@@ -40,7 +42,6 @@ use close::close;
 use crate::util;
 use dup2::dup2;
 use dup::dup;
-//use fchdir::fchdir;
 use fork::fork;
 use getcwd::getcwd;
 use getgid::getgid;
@@ -59,6 +60,7 @@ use signal::signal;
 use umask::umask;
 use uname::uname;
 use unlink::unlink;
+use wait::wait;
 use waitpid::waitpid;
 use write::write;
 
@@ -110,7 +112,8 @@ pub extern "C" fn syscall_handler(regs: &util::Regs) -> u32 {
 		// TODO fdatasync
 		12 => _exit(regs),
 		13 => fork(regs),
-		14 => waitpid(regs),
+		14 => wait(regs),
+		15 => waitpid(regs),
 		// TODO execl
 		// TODO execlp
 		// TODO execle
@@ -122,18 +125,18 @@ pub extern "C" fn syscall_handler(regs: &util::Regs) -> u32 {
 		// TODO getrlimit
 		// TODO setrlimit
 		// TODO getrusage
-		15 => getuid(regs),
-		16 => setuid(regs),
+		16 => getuid(regs),
+		17 => setuid(regs),
 		// TODO geteuid
 		// TODO seteuid
-		17 => getgid(regs),
-		18 => setgid(regs),
+		18 => getgid(regs),
+		19 => setgid(regs),
 		// TODO getegid
 		// TODO setegid
-		19 => getpid(regs),
-		20 => getppid(regs),
-		21 => getpgid(regs),
-		22 => setpgid(regs),
+		20 => getpid(regs),
+		21 => getppid(regs),
+		22 => getpgid(regs),
+		23 => setpgid(regs),
 		// TODO getsid
 		// TODO setsid
 		// TODO gettid
@@ -144,8 +147,8 @@ pub extern "C" fn syscall_handler(regs: &util::Regs) -> u32 {
 		// TODO mlockall
 		// TODO munlockall
 		// TODO mprotect
-		23 => signal(regs),
-		24 => kill(regs),
+		24 => signal(regs),
+		25 => kill(regs),
 		// TODO pause
 		// TODO socket
 		// TODO getsockname
@@ -162,8 +165,8 @@ pub extern "C" fn syscall_handler(regs: &util::Regs) -> u32 {
 		// TODO times
 		// TODO gettimeofday
 		// TODO ptrace
-		25 => uname(regs),
-		26 => reboot(regs),
+		26 => uname(regs),
+		27 => reboot(regs),
 
 		_ => {
 			let mut mutex = Process::get_current().unwrap();
