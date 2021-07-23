@@ -6,5 +6,5 @@ use crate::util;
 
 /// The implementation of the `brk` syscall.
 pub fn brk(_regs: &util::Regs) -> Result<i32, Errno> {
-	return Err(errno::ENOMEM);
+	Err(errno::ENOMEM)
 }

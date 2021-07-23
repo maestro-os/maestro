@@ -6,5 +6,5 @@ use crate::util;
 
 /// The implementation of the `sbrk` syscall.
 pub fn sbrk(_regs: &util::Regs) -> Result<i32, Errno> {
-	return Err(errno::ENOMEM);
+	Err(errno::ENOMEM)
 }

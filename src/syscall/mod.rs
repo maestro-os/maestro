@@ -18,6 +18,7 @@ mod getpid;
 mod getppid;
 mod getuid;
 mod kill;
+mod mmap;
 mod open;
 mod read;
 mod reboot;
@@ -53,6 +54,7 @@ use getpid::getpid;
 use getppid::getppid;
 use getuid::getuid;
 use kill::kill;
+use mmap::mmap;
 use open::open;
 use read::read;
 use reboot::reboot;
@@ -146,15 +148,15 @@ pub extern "C" fn syscall_handler(regs: &util::Regs) -> u32 {
 		// TODO gettid
 		24 => brk(regs),
 		25 => sbrk(regs),
-		// TODO mmap
+		26 => mmap(regs),
 		// TODO munmap
 		// TODO mlock
 		// TODO munlock
 		// TODO mlockall
 		// TODO munlockall
 		// TODO mprotect
-		26 => signal(regs),
-		27 => kill(regs),
+		27 => signal(regs),
+		28 => kill(regs),
 		// TODO pause
 		// TODO socket
 		// TODO getsockname
@@ -171,8 +173,8 @@ pub extern "C" fn syscall_handler(regs: &util::Regs) -> u32 {
 		// TODO times
 		// TODO gettimeofday
 		// TODO ptrace
-		28 => uname(regs),
-		29 => reboot(regs),
+		29 => uname(regs),
+		30 => reboot(regs),
 
 		_ => {
 			let mut mutex = Process::get_current().unwrap();
