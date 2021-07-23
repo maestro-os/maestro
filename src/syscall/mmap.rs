@@ -21,6 +21,8 @@ const MAP_SHARED: i32 = 0b001;
 /// Interpret addr exactly.
 const MAP_FIXED: i32 = 0b010;
 
+// TODO Prevent mapping kernel memory
+
 /// Converts mmap's `flags` and `prot` to mem space mapping flags.
 fn get_flags(flags: i32, prot: i32) -> u8 {
 	let mut mem_flags = mem_space::MAPPING_FLAG_USER;
@@ -62,6 +64,7 @@ pub fn mmap(regs: &util::Regs) -> Result<i32, Errno> {
 	};
 	let pages = math::ceil_division(length, memory::PAGE_SIZE);
 
+	// TODO Check for overflow on addr + pages * PAGE_SIZE
 	let ptr = mem_space.map(addr_hint, pages, get_flags(flags, prot))?;
 	// TODO Handle fd and offset
 	Ok(ptr as _)
