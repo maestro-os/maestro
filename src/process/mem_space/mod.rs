@@ -231,7 +231,8 @@ impl MemSpace {
 	/// Tells whether the given zero-terminated string beginning at `ptr` can be accessed.
 	/// `user` tells whether the memory must be accessible from userspace or just kernelspace.
 	/// `write` tells whether to check for write permission.
-	/// If the memory cannot be accessed, the function returns None. If it can be accessed, it returns the length of the string located at the pointer `ptr`.
+	/// If the memory cannot be accessed, the function returns None. If it can be accessed, it
+	/// returns the length of the string located at the pointer `ptr`.
 	pub fn can_access_string(&self, ptr: *const u8, _user: bool, _write: bool) -> Option<usize> {
 		// TODO
 
