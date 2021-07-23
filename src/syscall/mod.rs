@@ -16,6 +16,7 @@ mod getuid;
 mod kill;
 mod open;
 mod read;
+mod reboot;
 mod setgid;
 mod setpgid;
 mod setuid;
@@ -44,6 +45,7 @@ use getuid::getuid;
 use kill::kill;
 use open::open;
 use read::read;
+use reboot::reboot;
 use setgid::setgid;
 use setpgid::setpgid;
 use setuid::setuid;
@@ -150,7 +152,7 @@ pub extern "C" fn syscall_handler(regs: &util::Regs) -> u32 {
 		// TODO gettimeofday
 		// TODO ptrace
 		22 => uname(regs),
-		// TODO reboot
+		23 => reboot(regs),
 
 		_ => {
 			let mut mutex = Process::get_current().unwrap();
