@@ -1337,6 +1337,7 @@ impl Ext2Fs {
 	}
 }
 
+// TODO Add ENOTDIR (if a component into the path is not a directory)
 impl Filesystem for Ext2Fs {
 	fn get_name(&self) -> &str {
 		"ext2"

@@ -52,6 +52,7 @@ fn get_file_absolute_path(process: &Process, path_str: &str) -> Result<Path, Err
 	}
 }
 
+/// TODO doc
 fn get_file(path: Path, flags: u32) -> Result<SharedPtr<File>, Errno> {
 	let mutex = file::get_files_cache();
 	let mut guard = mutex.lock(true);

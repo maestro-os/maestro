@@ -96,7 +96,7 @@ extern "C" {
 
 	pub fn bzero(s: *mut c_void, n: usize);
 
-	pub fn strlen(s: *const c_void) -> usize;
+	pub fn strlen(s: *const u8) -> usize;
 }
 
 /// Trait allowing to perform a clone of a structure that can possibly fail (on memory allocation
@@ -183,7 +183,7 @@ pub unsafe fn zero_object<T>(obj: &mut T) {
 /// end with `\0`.
 /// The ownership of the string is not taken, thus the caller must drop it manually.
 pub unsafe fn ptr_to_str(ptr: *const c_void) -> &'static str {
-	let len = strlen(ptr);
+	let len = strlen(ptr as _);
 	let slice = core::slice::from_raw_parts(ptr as *const u8, len);
 	str::from_utf8_unchecked(slice)
 }

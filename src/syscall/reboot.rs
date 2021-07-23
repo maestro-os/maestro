@@ -54,7 +54,7 @@ pub fn reboot(regs: &util::Regs) -> Result<i32, Errno> {
 
 			// Triggering a triple fault, causing the system to reboot
 			unsafe {
-				asm!("jmp $0xffff, 0");
+				asm!("jmp $0xffff, $0");
 			}
 
 			// In case rebooting didn't work (unlikely)
