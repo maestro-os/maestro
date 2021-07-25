@@ -1,11 +1,12 @@
-//! TODO doc
+//! The open system call allows a process to open a file and get a file descriptor.
 
-use core::ffi::c_void;
 use crate::errno::Errno;
 use crate::errno;
 use crate::file::File;
+use crate::file::FileType;
 use crate::file::path::Path;
 use crate::file;
+use crate::limits;
 use crate::process::Process;
 use crate::util::ptr::SharedPtr;
 use crate::util;
@@ -30,7 +31,7 @@ pub const O_LARGEFILE: u32 = 0b00000010000000;
 pub const O_NOATIME: u32 =   0b00000100000000;
 /// TODO doc
 pub const O_NOCTTY: u32 =    0b00001000000000;
-/// TODO doc
+/// Tells `open` not to follow symbolic links.
 pub const O_NOFOLLOW: u32 =  0b00010000000000;
 /// TODO doc
 pub const O_NONBLOCK: u32 =  0b00100000000000;
@@ -68,26 +69,63 @@ fn get_file(path: Path, flags: u32) -> Result<SharedPtr<File>, Errno> {
 	}
 }
 
+/// Resolves symbolic links and returns the final file. If too many links are to be resolved, the
+/// function returns an error.
+/// `file` is the starting file. If not a link, the function returns the same file directly.
+/// `flags` are the system call's flag.
+fn resolve_links(file: SharedPtr<File>, flags: u32) -> Result<SharedPtr<File>, Errno> {
+	let mut resolve_count = 0;
+	let mut file = file;
+
+	loop {
+		let file_guard = file.lock(true);
+		let f = file_guard.get();
+		if f.get_file_type() != FileType::Link {
+			break;
+		}
+
+		let path = Path::from_string(f.get_link_target().as_str())?;
+		drop(file_guard);
+
+		file = get_file(path, flags)?;
+
+		resolve_count += 1;
+		if resolve_count > limits::SYMLOOP_MAX {
+			return Err(errno::ELOOP);
+		}
+	}
+
+	Ok(file)
+}
+
 /// The implementation of the `open` syscall.
 pub fn open(regs: &util::Regs) -> Result<i32, Errno> {
-	let pathname = regs.ebx as *const c_void;
+	let pathname = regs.ebx as *const u8;
 	let flags = regs.ecx;
 	let _mode = regs.edx as u16;
-
-	// TODO Check that path is in process's memory
-	// TODO Check path length (ENAMETOOLONG)
-	let path_str = unsafe {
-		util::ptr_to_str(pathname)
-	};
-
-	// TODO Resolve symbolic links up to limit (if too many, ELOOP)
 
 	let mut mutex = Process::get_current().unwrap();
 	let mut guard = mutex.lock(false);
 	let proc = guard.get_mut();
 
-	let file_path = get_file_absolute_path(&proc, path_str)?;
-	let file = get_file(file_path, flags)?;
+	let len = proc.get_mem_space().can_access_string(pathname as _, true, false);
+	if len.is_none() {
+		return Err(errno::EFAULT);
+	}
+	let len = len.unwrap();
+	if len > limits::PATH_MAX {
+		return Err(errno::ENAMETOOLONG);
+	}
+
+	let path_str = unsafe {
+		util::ptr_to_str(pathname as _)
+	};
+
+	let mut file = get_file(get_file_absolute_path(&proc, path_str)?, flags)?;
+	if flags & O_NOFOLLOW == 0 {
+		file = resolve_links(file, flags)?;
+	}
+
 	let fd = proc.open_file(file)?;
 	Ok(fd.get_id() as _)
 }
