@@ -8,6 +8,7 @@ use crate::file::path::Path;
 use crate::file;
 use crate::limits;
 use crate::process::Process;
+use crate::util::FailableClone;
 use crate::util::ptr::SharedPtr;
 use crate::util;
 
@@ -41,6 +42,8 @@ pub const O_SYNC: u32 =      0b01000000000000;
 /// TODO doc
 pub const O_TRUNC: u32 =     0b10000000000000;
 
+// TODO Implement all flags
+
 /// Returns the absolute path to the file.
 fn get_file_absolute_path(process: &Process, path_str: &str) -> Result<Path, Errno> {
 	let path = Path::from_string(path_str)?;
@@ -57,8 +60,10 @@ fn get_file_absolute_path(process: &Process, path_str: &str) -> Result<Path, Err
 /// Returns the file at the given path `path`.
 /// If the file doesn't exist and the O_CREAT flag is set, the file is created, then the function
 /// returns it. If the flag is not set, the function returns an error with the appropriate errno.
-/// If the file is to be created, the function uses `mode` to set its permissions.
-fn get_file(path: Path, flags: u32, mode: u16) -> Result<SharedPtr<File>, Errno> {
+/// If the file is to be created, the function uses `mode` to set its permissions and `uid and
+/// `gid` to set the user ID and group ID.
+fn get_file(path: Path, flags: u32, mode: u16, uid: u16, gid: u16)
+	-> Result<SharedPtr<File>, Errno> {
 	let mutex = file::get_files_cache();
 	let mut guard = mutex.lock(true);
 	let files_cache = guard.get_mut();
@@ -66,9 +71,7 @@ fn get_file(path: Path, flags: u32, mode: u16) -> Result<SharedPtr<File>, Errno>
 	if let Ok(file) = files_cache.get_file_from_path(&path) {
 		Ok(file)
 	} else if flags & O_CREAT != 0 {
-		let name = crate::util::container::string::String::from("TODO")?; // TODO
-		let uid = 0; // TODO
-		let gid = 0; // TODO
+		let name = path[path.get_elements_count() - 1].failable_clone()?;
 		let file = File::new(name, FileType::Regular, uid, gid, mode)?;
 		files_cache.create_file(&path, file)?;
 
@@ -83,7 +86,10 @@ fn get_file(path: Path, flags: u32, mode: u16) -> Result<SharedPtr<File>, Errno>
 /// `file` is the starting file. If not a link, the function returns the same file directly.
 /// `flags` are the system call's flag.
 /// `mode` is used in case the file has to be created and represents its permissions to be set.
-fn resolve_links(file: SharedPtr<File>, flags: u32, mode: u16) -> Result<SharedPtr<File>, Errno> {
+/// `uid` is used in case the file has to be created and represents its UID.
+/// `gid` is used in case the file has to be created and represents its GID.
+fn resolve_links(file: SharedPtr<File>, flags: u32, mode: u16, uid: u16, gid: u16)
+	-> Result<SharedPtr<File>, Errno> {
 	let mut resolve_count = 0;
 	let mut file = file;
 
@@ -101,7 +107,7 @@ fn resolve_links(file: SharedPtr<File>, flags: u32, mode: u16) -> Result<SharedP
 		path.reduce()?;
 		drop(file_guard);
 
-		file = get_file(path, flags, mode)?;
+		file = get_file(path, flags, mode, uid, gid)?;
 
 		resolve_count += 1;
 		if resolve_count > limits::SYMLOOP_MAX {
@@ -136,9 +142,12 @@ pub fn open(regs: &util::Regs) -> Result<i32, Errno> {
 	};
 
 	let mode = mode & !proc.get_umask();
-	let mut file = get_file(get_file_absolute_path(&proc, path_str)?, flags, mode)?;
+	let uid = proc.get_uid();
+	let gid = proc.get_gid();
+
+	let mut file = get_file(get_file_absolute_path(&proc, path_str)?, flags, mode, uid, gid)?;
 	if flags & O_NOFOLLOW == 0 {
-		file = resolve_links(file, flags, mode)?;
+		file = resolve_links(file, flags, mode, uid, gid)?;
 	}
 
 	let fd = proc.open_file(file)?;
