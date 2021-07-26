@@ -17,7 +17,6 @@ use crate::errno::Errno;
 use crate::errno;
 use crate::event::{InterruptResult, InterruptResultAction};
 use crate::event;
-use crate::file::File;
 use crate::file::Gid;
 use crate::file::Uid;
 use crate::file::file_descriptor::FDTarget;
@@ -319,7 +318,7 @@ impl Process {
 
 			let tty_path = Path::from_string(TTY_DEVICE_PATH)?;
 			let tty_file = files_cache.get_file_from_path(&tty_path)?;
-			let stdin_fd = process.open_file(tty_file)?;
+			let stdin_fd = process.create_fd(FDTarget::File(tty_file))?;
 			assert_eq!(stdin_fd.get_id(), STDIN_FILENO);
 			process.duplicate_fd(STDIN_FILENO, Some(STDOUT_FILENO))?;
 			process.duplicate_fd(STDIN_FILENO, Some(STDERR_FILENO))?;
@@ -545,12 +544,12 @@ impl Process {
 		}
 	}
 
-	/// Opens a file, creates a file descriptor and returns a mutable reference to it.
-	/// `file` the file to open.
-	/// If the file cannot be open, the function returns an Err.
-	pub fn open_file(&mut self, file: SharedPtr<File>) -> Result<&mut FileDescriptor, Errno> {
+	/// Creates a file descriptor and returns a mutable reference to it.
+	/// `target` is the target of the newly created file descriptor.
+	/// If the target is a file and cannot be open, the function returns an Err.
+	pub fn create_fd(&mut self, target: FDTarget) -> Result<&mut FileDescriptor, Errno> {
 		let id = self.get_available_fd()?;
-		let fd = FileDescriptor::new(id, FDTarget::File(file))?;
+		let fd = FileDescriptor::new(id, target)?;
 		let index = self.file_descriptors.binary_search_by(| fd | {
 			fd.get_id().cmp(&id)
 		}).unwrap_err();

@@ -21,6 +21,8 @@ mod kill;
 mod mmap;
 mod munmap;
 mod open;
+//mod pipe2;
+mod pipe;
 mod read;
 mod reboot;
 mod sbrk;
@@ -58,6 +60,8 @@ use kill::kill;
 use mmap::mmap;
 use munmap::munmap;
 use open::open;
+//use pipe2::pipe2;
+use pipe::pipe;
 use read::read;
 use reboot::reboot;
 use sbrk::sbrk;
@@ -83,21 +87,21 @@ pub extern "C" fn syscall_handler(regs: &util::Regs) -> u32 {
 		// TODO utime
 		// TODO mkdir
 		// TODO mknod
-		// TODO pipe
-		// TODO pipe2
+		2 => pipe(regs),
+		//3 => pipe2(regs),
 		// TODO link
 		// TODO fcntl
-		2 => dup(regs),
-		3 => dup2(regs),
+		4 => dup(regs),
+		5 => dup2(regs),
 		// TODO poll
 		// TODO ppoll
 		// TODO flock
-		4 => close(regs),
-		5 => unlink(regs),
-		6 => chroot(regs),
-		7 => getcwd(regs),
-		8 => chdir(regs),
-		9 => fchdir(regs),
+		6 => close(regs),
+		7 => unlink(regs),
+		8 => chroot(regs),
+		9 => getcwd(regs),
+		10 => chdir(regs),
+		11 => fchdir(regs),
 		// TODO chown
 		// TODO fchown
 		// TODO lchown
@@ -110,18 +114,18 @@ pub extern "C" fn syscall_handler(regs: &util::Regs) -> u32 {
 		// TODO lseek
 		// TODO truncate
 		// TODO ftruncate
-		10 => read(regs),
-		11 => write(regs),
+		12 => read(regs),
+		13 => write(regs),
 		// TODO mount
 		// TODO umount
 		// TODO sync
 		// TODO syncfs
 		// TODO fsync
 		// TODO fdatasync
-		12 => _exit(regs),
-		13 => fork(regs),
-		14 => wait(regs),
-		15 => waitpid(regs),
+		14 => _exit(regs),
+		15 => fork(regs),
+		16 => wait(regs),
+		17 => waitpid(regs),
 		// TODO execl
 		// TODO execlp
 		// TODO execle
@@ -133,32 +137,32 @@ pub extern "C" fn syscall_handler(regs: &util::Regs) -> u32 {
 		// TODO getrlimit
 		// TODO setrlimit
 		// TODO getrusage
-		16 => getuid(regs),
-		17 => setuid(regs),
+		18 => getuid(regs),
+		19 => setuid(regs),
 		// TODO geteuid
 		// TODO seteuid
-		18 => getgid(regs),
-		19 => setgid(regs),
+		20 => getgid(regs),
+		21 => setgid(regs),
 		// TODO getegid
 		// TODO setegid
-		20 => getpid(regs),
-		21 => getppid(regs),
-		22 => getpgid(regs),
-		23 => setpgid(regs),
+		22 => getpid(regs),
+		23 => getppid(regs),
+		24 => getpgid(regs),
+		25 => setpgid(regs),
 		// TODO getsid
 		// TODO setsid
 		// TODO gettid
-		24 => brk(regs),
-		25 => sbrk(regs),
-		26 => mmap(regs),
-		27 => munmap(regs),
+		26 => brk(regs),
+		27 => sbrk(regs),
+		28 => mmap(regs),
+		29 => munmap(regs),
 		// TODO mlock
 		// TODO munlock
 		// TODO mlockall
 		// TODO munlockall
 		// TODO mprotect
-		28 => signal(regs),
-		29 => kill(regs),
+		30 => signal(regs),
+		31 => kill(regs),
 		// TODO pause
 		// TODO socket
 		// TODO getsockname
@@ -175,8 +179,8 @@ pub extern "C" fn syscall_handler(regs: &util::Regs) -> u32 {
 		// TODO times
 		// TODO gettimeofday
 		// TODO ptrace
-		30 => uname(regs),
-		31 => reboot(regs),
+		32 => uname(regs),
+		33 => reboot(regs),
 
 		_ => {
 			let mut mutex = Process::get_current().unwrap();

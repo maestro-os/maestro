@@ -8,6 +8,7 @@ use crate::util::container::vec::Vec;
 const DEFAULT_BUFFER_SIZE: usize = 65536;
 
 // TODO Implement ring buffer
+// TODO Handle `limits::PIPE_BUF`
 
 /// Structure representing a pipe.
 pub struct Pipe {

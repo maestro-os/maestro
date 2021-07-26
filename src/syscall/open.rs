@@ -4,6 +4,7 @@ use crate::errno::Errno;
 use crate::errno;
 use crate::file::File;
 use crate::file::FileType;
+use crate::file::file_descriptor::FDTarget;
 use crate::file::path::Path;
 use crate::file;
 use crate::limits;
@@ -150,6 +151,6 @@ pub fn open(regs: &util::Regs) -> Result<i32, Errno> {
 		file = resolve_links(file, flags, mode, uid, gid)?;
 	}
 
-	let fd = proc.open_file(file)?;
+	let fd = proc.create_fd(FDTarget::File(file))?;
 	Ok(fd.get_id() as _)
 }
