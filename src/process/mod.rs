@@ -25,6 +25,7 @@ use crate::file::path::Path;
 use crate::file;
 use crate::limits;
 use crate::memory::vmem;
+use crate::syscall;
 use crate::util::FailableClone;
 use crate::util::Regs;
 use crate::util::container::bitfield::Bitfield;
@@ -318,7 +319,7 @@ impl Process {
 
 			let tty_path = Path::from_string(TTY_DEVICE_PATH)?;
 			let tty_file = files_cache.get_file_from_path(&tty_path)?;
-			let stdin_fd = process.create_fd(FDTarget::File(tty_file))?;
+			let stdin_fd = process.create_fd(syscall::open::O_RDWR, FDTarget::File(tty_file))?;
 			assert_eq!(stdin_fd.get_id(), STDIN_FILENO);
 			process.duplicate_fd(STDIN_FILENO, Some(STDOUT_FILENO))?;
 			process.duplicate_fd(STDIN_FILENO, Some(STDERR_FILENO))?;
@@ -545,11 +546,13 @@ impl Process {
 	}
 
 	/// Creates a file descriptor and returns a mutable reference to it.
+	/// `flags` are the file descriptor's flags.
 	/// `target` is the target of the newly created file descriptor.
 	/// If the target is a file and cannot be open, the function returns an Err.
-	pub fn create_fd(&mut self, target: FDTarget) -> Result<&mut FileDescriptor, Errno> {
+	pub fn create_fd(&mut self, flags: i32, target: FDTarget)
+		-> Result<&mut FileDescriptor, Errno> {
 		let id = self.get_available_fd()?;
-		let fd = FileDescriptor::new(id, target)?;
+		let fd = FileDescriptor::new(id, flags, target)?;
 		let index = self.file_descriptors.binary_search_by(| fd | {
 			fd.get_id().cmp(&id)
 		}).unwrap_err();
@@ -572,7 +575,8 @@ impl Process {
 		};
 
 		let curr_fd = self.get_fd(id).ok_or(errno::EBADF)?;
-		let new_fd = FileDescriptor::new(new_id, curr_fd.get_target().clone())?;
+		let new_fd = FileDescriptor::new(new_id, curr_fd.get_flags(),
+			curr_fd.get_target().clone())?;
 
 		let index = self.file_descriptors.binary_search_by(| fd | {
 			fd.get_id().cmp(&new_id)

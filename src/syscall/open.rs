@@ -13,35 +13,41 @@ use crate::util::FailableClone;
 use crate::util::ptr::SharedPtr;
 use crate::util;
 
+/// Read only.
+pub const O_RDONLY: i32 =    0b0000000000000001;
+/// Write only.
+pub const O_WRONLY: i32 =    0b0000000000000010;
+/// Read and write.
+pub const O_RDWR: i32 =      0b0000000000000011;
 /// At each write operations on the file descriptor, the cursor is placed at the end of the file so
 /// the data is appended.
-pub const O_APPEND: u32 =    0b00000000000001;
+pub const O_APPEND: i32 =    0b0000000000000100;
 /// TODO doc
-pub const O_ASYNC: u32 =     0b00000000000010;
+pub const O_ASYNC: i32 =     0b0000000000001000;
 /// TODO doc
-pub const O_CLOEXEC: u32 =   0b00000000000100;
+pub const O_CLOEXEC: i32 =   0b0000000000010000;
 /// If the file doesn't exist, create it.
-pub const O_CREAT: u32 =     0b00000000001000;
+pub const O_CREAT: i32 =     0b0000000000100000;
 /// TODO doc
-pub const O_DIRECT: u32 =    0b00000000010000;
+pub const O_DIRECT: i32 =    0b0000000001000000;
 /// TODO doc
-pub const O_DIRECTORY: u32 = 0b00000000100000;
+pub const O_DIRECTORY: i32 = 0b0000000010000000;
 /// TODO doc
-pub const O_EXCL: u32 =      0b00000001000000;
+pub const O_EXCL: i32 =      0b0000000100000000;
 /// TODO doc
-pub const O_LARGEFILE: u32 = 0b00000010000000;
+pub const O_LARGEFILE: i32 = 0b0000001000000000;
 /// TODO doc
-pub const O_NOATIME: u32 =   0b00000100000000;
+pub const O_NOATIME: i32 =   0b0000010000000000;
 /// TODO doc
-pub const O_NOCTTY: u32 =    0b00001000000000;
+pub const O_NOCTTY: i32 =    0b0000100000000000;
 /// Tells `open` not to follow symbolic links.
-pub const O_NOFOLLOW: u32 =  0b00010000000000;
+pub const O_NOFOLLOW: i32 =  0b0001000000000000;
 /// TODO doc
-pub const O_NONBLOCK: u32 =  0b00100000000000;
+pub const O_NONBLOCK: i32 =  0b0010000000000000;
 /// TODO doc
-pub const O_SYNC: u32 =      0b01000000000000;
+pub const O_SYNC: i32 =      0b0100000000000000;
 /// TODO doc
-pub const O_TRUNC: u32 =     0b10000000000000;
+pub const O_TRUNC: i32 =     0b1000000000000000;
 
 // TODO Implement all flags
 
@@ -63,7 +69,7 @@ fn get_file_absolute_path(process: &Process, path_str: &str) -> Result<Path, Err
 /// returns it. If the flag is not set, the function returns an error with the appropriate errno.
 /// If the file is to be created, the function uses `mode` to set its permissions and `uid and
 /// `gid` to set the user ID and group ID.
-fn get_file(path: Path, flags: u32, mode: u16, uid: u16, gid: u16)
+fn get_file(path: Path, flags: i32, mode: u16, uid: u16, gid: u16)
 	-> Result<SharedPtr<File>, Errno> {
 	let mutex = file::get_files_cache();
 	let mut guard = mutex.lock(true);
@@ -89,7 +95,7 @@ fn get_file(path: Path, flags: u32, mode: u16, uid: u16, gid: u16)
 /// `mode` is used in case the file has to be created and represents its permissions to be set.
 /// `uid` is used in case the file has to be created and represents its UID.
 /// `gid` is used in case the file has to be created and represents its GID.
-fn resolve_links(file: SharedPtr<File>, flags: u32, mode: u16, uid: u16, gid: u16)
+fn resolve_links(file: SharedPtr<File>, flags: i32, mode: u16, uid: u16, gid: u16)
 	-> Result<SharedPtr<File>, Errno> {
 	let mut resolve_count = 0;
 	let mut file = file;
@@ -122,7 +128,7 @@ fn resolve_links(file: SharedPtr<File>, flags: u32, mode: u16, uid: u16, gid: u1
 /// The implementation of the `open` syscall.
 pub fn open(regs: &util::Regs) -> Result<i32, Errno> {
 	let pathname = regs.ebx as *const u8;
-	let flags = regs.ecx;
+	let flags = regs.ecx as i32;
 	let mode = regs.edx as u16;
 
 	let mut mutex = Process::get_current().unwrap();
@@ -151,6 +157,6 @@ pub fn open(regs: &util::Regs) -> Result<i32, Errno> {
 		file = resolve_links(file, flags, mode, uid, gid)?;
 	}
 
-	let fd = proc.create_fd(FDTarget::File(file))?;
+	let fd = proc.create_fd(flags, FDTarget::File(file))?;
 	Ok(fd.get_id() as _)
 }

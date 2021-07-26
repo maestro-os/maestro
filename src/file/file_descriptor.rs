@@ -54,6 +54,8 @@ pub enum FDTarget {
 pub struct FileDescriptor {
 	/// The ID of the file descriptor.
 	id: u32,
+	/// The file descriptor's flags.
+	flags: i32,
 	/// A pointer to the file the descriptor is linked to.
 	target: FDTarget,
 
@@ -63,11 +65,12 @@ pub struct FileDescriptor {
 
 impl FileDescriptor {
 	/// Creates a new file descriptor.
-	pub fn new(id: u32, target: FDTarget) -> Result<Self, Errno> {
+	pub fn new(id: u32, flags: i32, target: FDTarget) -> Result<Self, Errno> {
 		increment_total()?;
 
 		Ok(Self {
 			id,
+			flags,
 			target,
 
 			curr_off: 0,
@@ -77,6 +80,11 @@ impl FileDescriptor {
 	/// Returns the id of the file descriptor.
 	pub fn get_id(&self) -> u32 {
 		self.id
+	}
+
+	/// Returns the file descriptor's flags.
+	pub fn get_flags(&self) -> i32 {
+		self.flags
 	}
 
 	/// Returns a mutable reference to the descriptor's target.

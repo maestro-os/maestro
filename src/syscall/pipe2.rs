@@ -1,4 +1,4 @@
-//! The pipe system call allows to create a pipe.
+//! The pipe2 system call allows to create a pipe with given flags.
 
 use core::mem::size_of;
 use crate::errno::Errno;
@@ -10,9 +10,15 @@ use crate::util::ptr::SharedPtr;
 use crate::util;
 use super::open;
 
-/// The implementation of the `pipe` syscall.
-pub fn pipe(regs: &util::Regs) -> Result<i32, Errno> {
+/// The implementation of the `pipe2` syscall.
+pub fn pipe2(regs: &util::Regs) -> Result<i32, Errno> {
 	let pipefd = regs.ebx as *mut [i32; 2];
+	let flags = regs.ecx as i32;
+
+	let accepted_flags = open::O_CLOEXEC | open::O_DIRECT | open::O_NONBLOCK;
+	if flags & !accepted_flags != 0 {
+		return Err(errno::EINVAL);
+	}
 
 	let (fd0, fd1) = {
 		let mut mutex = Process::get_current().unwrap();
@@ -24,8 +30,10 @@ pub fn pipe(regs: &util::Regs) -> Result<i32, Errno> {
 		}
 
 		let pipe = SharedPtr::new(Pipe::new()?);
-		let fd0 = proc.create_fd(open::O_RDONLY, FDTarget::FileDescriptor(pipe.clone()?))?.get_id();
-		let fd1 = proc.create_fd(open::O_WRONLY, FDTarget::FileDescriptor(pipe.clone()?))?.get_id();
+		let fd0 = proc.create_fd(open::O_RDONLY | flags,
+			FDTarget::FileDescriptor(pipe.clone()?))?.get_id();
+		let fd1 = proc.create_fd(open::O_WRONLY | flags,
+			FDTarget::FileDescriptor(pipe.clone()?))?.get_id();
 
 		(fd0, fd1)
 	};

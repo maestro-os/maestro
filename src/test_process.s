@@ -16,7 +16,7 @@ write:
 	push %ecx
 	push %edx
 
-	mov $8, %eax
+	mov $13, %eax
 	mov 8(%ebp), %ebx
 	mov 12(%ebp), %ecx
 	mov 16(%ebp), %edx
@@ -36,7 +36,7 @@ close:
 
 	push %ebx
 
-	mov $4, %eax
+	mov $6, %eax
 	mov 8(%ebp), %ebx
 	int $0x80
 
@@ -50,14 +50,14 @@ _exit:
 	push %ebp
 	mov %esp, %ebp
 
-	mov $9, %eax
+	mov $14, %eax
 	mov 8(%ebp), %ebx
 	int $0x80
 
 	ud2
 
 fork:
-	mov $10, %eax
+	mov $15, %eax
 	int $0x80
 	ret
 
@@ -69,7 +69,7 @@ waitpid:
 	push %ecx
 	push %edx
 
-	mov $11, %eax
+	mov $17, %eax
 	mov 8(%ebp), %ebx
 	mov 12(%ebp), %ecx
 	mov 16(%ebp), %edx
@@ -84,12 +84,12 @@ waitpid:
 	ret
 
 getpid:
-	mov $16, %eax
+	mov $22, %eax
 	int $0x80
 	ret
 
 getppid:
-	mov $17, %eax
+	mov $23, %eax
 	int $0x80
 	ret
 
@@ -100,7 +100,7 @@ signal:
 	push %ebx
 	push %ecx
 
-	mov $20, %eax
+	mov $30, %eax
 	mov 8(%ebp), %ebx
 	mov 12(%ebp), %ecx
 	int $0x80
@@ -119,7 +119,7 @@ kill:
 	push %ebx
 	push %ecx
 
-	mov $21, %eax
+	mov $31, %eax
 	mov 8(%ebp), %ebx
 	mov 12(%ebp), %ecx
 	int $0x80

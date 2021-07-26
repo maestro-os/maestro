@@ -20,8 +20,7 @@ mod getuid;
 mod kill;
 mod mmap;
 mod munmap;
-mod open;
-//mod pipe2;
+mod pipe2;
 mod pipe;
 mod read;
 mod reboot;
@@ -36,6 +35,7 @@ mod unlink;
 mod wait;
 mod waitpid;
 mod write;
+pub mod open;
 
 use crate::process::Process;
 use crate::process;
@@ -60,7 +60,7 @@ use kill::kill;
 use mmap::mmap;
 use munmap::munmap;
 use open::open;
-//use pipe2::pipe2;
+use pipe2::pipe2;
 use pipe::pipe;
 use read::read;
 use reboot::reboot;
@@ -88,7 +88,7 @@ pub extern "C" fn syscall_handler(regs: &util::Regs) -> u32 {
 		// TODO mkdir
 		// TODO mknod
 		2 => pipe(regs),
-		//3 => pipe2(regs),
+		3 => pipe2(regs),
 		// TODO link
 		// TODO fcntl
 		4 => dup(regs),
