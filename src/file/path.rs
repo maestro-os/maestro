@@ -2,6 +2,7 @@
 
 use core::cmp::min;
 use core::fmt;
+use core::ops::Add;
 use core::ops::Index;
 use core::ops::IndexMut;
 use core::ops::Range;
@@ -167,6 +168,14 @@ impl Path {
 			absolute: self.absolute,
 			parts: self_parts,
 		})
+	}
+}
+
+impl Add for Path {
+	type Output = Result<Self, Errno>;
+
+	fn add(self, other: Self) -> Self::Output {
+		self.concat(&other)
 	}
 }
 

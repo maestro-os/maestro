@@ -195,6 +195,7 @@ impl File {
 		self.parent.as_ref()?.get_mut()
 	}
 
+	// FIXME: Potential deadlock when locking parent
 	/// Returns the absolute path of the file.
 	pub fn get_path(&self) -> Result<Path, Errno> {
 		let name = self.get_name().failable_clone()?;
