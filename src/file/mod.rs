@@ -6,6 +6,7 @@ pub mod file_descriptor;
 pub mod fs;
 pub mod mountpoint;
 pub mod path;
+pub mod pipe;
 
 use core::mem::MaybeUninit;
 use crate::device::DeviceType;

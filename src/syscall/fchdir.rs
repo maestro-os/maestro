@@ -3,6 +3,7 @@
 use crate::errno::Errno;
 use crate::errno;
 use crate::file::FileType;
+use crate::file::file_descriptor::FDTarget;
 use crate::process::Process;
 use crate::util;
 
@@ -19,21 +20,24 @@ pub fn fchdir(regs: &util::Regs) -> Result<i32, Errno> {
 	}
 
 	if let Some(fd) = proc.get_fd(fd as _) {
-		let new_cwd = {
-			let dir_mutex = fd.get_file_mut();
-			let mut dir_guard = dir_mutex.lock(true);
-			let dir = dir_guard.get_mut();
+		if let FDTarget::File(dir_mutex) = fd.get_target_mut() {
+			let new_cwd = {
+				let mut dir_guard = dir_mutex.lock(true);
+				let dir = dir_guard.get_mut();
 
-			// TODO Check permission
-			if dir.get_file_type() != FileType::Directory {
-				return Err(errno::ENOTDIR);
-			}
+				// TODO Check permission
+				if dir.get_file_type() != FileType::Directory {
+					return Err(errno::ENOTDIR);
+				}
 
-			dir.get_path()
-		}?;
+				dir.get_path()
+			}?;
 
-		proc.set_cwd(new_cwd);
-		Ok(0)
+			proc.set_cwd(new_cwd);
+			Ok(0)
+		} else {
+			return Err(errno::ENOTDIR);
+		}
 	} else {
 		Err(errno::EBADF)
 	}

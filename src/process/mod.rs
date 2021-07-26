@@ -20,6 +20,7 @@ use crate::event;
 use crate::file::File;
 use crate::file::Gid;
 use crate::file::Uid;
+use crate::file::file_descriptor::FDTarget;
 use crate::file::file_descriptor::FileDescriptor;
 use crate::file::path::Path;
 use crate::file;
@@ -549,7 +550,7 @@ impl Process {
 	/// If the file cannot be open, the function returns an Err.
 	pub fn open_file(&mut self, file: SharedPtr<File>) -> Result<&mut FileDescriptor, Errno> {
 		let id = self.get_available_fd()?;
-		let fd = FileDescriptor::new(id, file)?;
+		let fd = FileDescriptor::new(id, FDTarget::File(file))?;
 		let index = self.file_descriptors.binary_search_by(| fd | {
 			fd.get_id().cmp(&id)
 		}).unwrap_err();
@@ -572,7 +573,7 @@ impl Process {
 		};
 
 		let curr_fd = self.get_fd(id).ok_or(errno::EBADF)?;
-		let new_fd = FileDescriptor::new(new_id, curr_fd.get_file().clone())?;
+		let new_fd = FileDescriptor::new(new_id, curr_fd.get_target().clone())?;
 
 		let index = self.file_descriptors.binary_search_by(| fd | {
 			fd.get_id().cmp(&new_id)

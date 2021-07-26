@@ -4,6 +4,7 @@
 use crate::errno::Errno;
 use crate::errno;
 use crate::file::File;
+use crate::file::pipe::Pipe;
 use crate::limits;
 use crate::util::FailableClone;
 use crate::util::lock::mutex::Mutex;
@@ -39,13 +40,22 @@ fn decrement_total() {
 	*guard.get_mut() -= 1;
 }
 
+/// Enumeration of every possible targets for a file descriptor.
+#[derive(Clone)]
+pub enum FDTarget {
+	/// The file descriptor points to a file.
+	File(SharedPtr<File>),
+	/// The file descriptor points to a pipe.
+	FileDescriptor(SharedPtr<Pipe>),
+}
+
 /// Structure representing a file descriptor.
 #[derive(Clone)]
 pub struct FileDescriptor {
 	/// The ID of the file descriptor.
 	id: u32,
 	/// A pointer to the file the descriptor is linked to.
-	file: SharedPtr<File>,
+	target: FDTarget,
 
 	/// The current offset in the file.
 	curr_off: u64,
@@ -53,12 +63,12 @@ pub struct FileDescriptor {
 
 impl FileDescriptor {
 	/// Creates a new file descriptor.
-	pub fn new(id: u32, file: SharedPtr<File>) -> Result<Self, Errno> {
+	pub fn new(id: u32, target: FDTarget) -> Result<Self, Errno> {
 		increment_total()?;
 
 		Ok(Self {
 			id,
-			file,
+			target,
 
 			curr_off: 0,
 		})
@@ -69,19 +79,23 @@ impl FileDescriptor {
 		self.id
 	}
 
-	/// Returns a mutable reference to the file associated to the descriptor.
-	pub fn get_file(&self) -> &SharedPtr<File> {
-		&self.file
+	/// Returns a mutable reference to the descriptor's target.
+	pub fn get_target(&self) -> &FDTarget {
+		&self.target
 	}
 
-	/// Returns an immutable reference to the file associated to the descriptor.
-	pub fn get_file_mut(&mut self) -> &mut SharedPtr<File> {
-		&mut self.file
+	/// Returns an immutable reference to the descriptor's target.
+	pub fn get_target_mut(&mut self) -> &mut FDTarget {
+		&mut self.target
 	}
 
 	/// Returns the size of the file's content in bytes.
 	pub fn get_file_size(&self) -> u64 {
-		self.file.get_mut().lock(true).get().get_size()
+		if let FDTarget::File(f) = &self.target {
+			f.get_mut().lock(true).get().get_size()
+		} else {
+			0
+		}
 	}
 
 	/// Returns the current offset in the file.
@@ -92,6 +106,46 @@ impl FileDescriptor {
 	/// Sets the current offset in the file.
 	pub fn set_offset(&mut self, off: u64) {
 		self.curr_off = off;
+	}
+
+	/// Reads data from the file.
+	/// `buf` is the slice to write to.
+	/// The functions returns the number of bytes that have been read.
+	pub fn read(&mut self, buf: &mut [u8]) -> Result<usize, Errno> {
+		let len = match &mut self.target {
+			FDTarget::File(f) => {
+				let mut guard = f.lock(true);
+				guard.get_mut().read(self.curr_off as usize, buf)?
+			},
+
+			FDTarget::FileDescriptor(p) => {
+				let mut guard = p.lock(true);
+				guard.get_mut().read(buf)
+			}
+		};
+
+		self.curr_off += len as u64;
+		Ok(len)
+	}
+
+	/// Writes data to the file.
+	/// `buf` is the slice to read from.
+	/// The functions returns the number of bytes that have been written.
+	pub fn write(&mut self, buf: &[u8]) -> Result<usize, Errno> {
+		let len = match &mut self.target {
+			FDTarget::File(f) => {
+				let mut guard = f.lock(true);
+				guard.get_mut().write(self.curr_off as usize, buf)?
+			},
+
+			FDTarget::FileDescriptor(p) => {
+				let mut guard = p.lock(true);
+				guard.get_mut().write(buf)
+			}
+		};
+
+		self.curr_off += len as u64;
+		Ok(len)
 	}
 }
 
