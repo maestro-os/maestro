@@ -21,11 +21,11 @@ use crate::file::Gid;
 use crate::file::Uid;
 use crate::file::file_descriptor::FDTarget;
 use crate::file::file_descriptor::FileDescriptor;
+use crate::file::file_descriptor;
 use crate::file::path::Path;
 use crate::file;
 use crate::limits;
 use crate::memory::vmem;
-use crate::syscall;
 use crate::util::FailableClone;
 use crate::util::Regs;
 use crate::util::container::bitfield::Bitfield;
@@ -319,7 +319,7 @@ impl Process {
 
 			let tty_path = Path::from_string(TTY_DEVICE_PATH)?;
 			let tty_file = files_cache.get_file_from_path(&tty_path)?;
-			let stdin_fd = process.create_fd(syscall::open::O_RDWR, FDTarget::File(tty_file))?;
+			let stdin_fd = process.create_fd(file_descriptor::O_RDWR, FDTarget::File(tty_file))?;
 			assert_eq!(stdin_fd.get_id(), STDIN_FILENO);
 			process.duplicate_fd(STDIN_FILENO, Some(STDOUT_FILENO))?;
 			process.duplicate_fd(STDIN_FILENO, Some(STDERR_FILENO))?;

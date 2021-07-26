@@ -4,18 +4,19 @@ use core::mem::size_of;
 use crate::errno::Errno;
 use crate::errno;
 use crate::file::file_descriptor::FDTarget;
+use crate::file::file_descriptor;
 use crate::file::pipe::Pipe;
 use crate::process::Process;
 use crate::util::ptr::SharedPtr;
 use crate::util;
-use super::open;
 
 /// The implementation of the `pipe2` syscall.
 pub fn pipe2(regs: &util::Regs) -> Result<i32, Errno> {
 	let pipefd = regs.ebx as *mut [i32; 2];
 	let flags = regs.ecx as i32;
 
-	let accepted_flags = open::O_CLOEXEC | open::O_DIRECT | open::O_NONBLOCK;
+	let accepted_flags = file_descriptor::O_CLOEXEC | file_descriptor::O_DIRECT
+		| file_descriptor::O_NONBLOCK;
 	if flags & !accepted_flags != 0 {
 		return Err(errno::EINVAL);
 	}
@@ -30,9 +31,9 @@ pub fn pipe2(regs: &util::Regs) -> Result<i32, Errno> {
 		}
 
 		let pipe = SharedPtr::new(Pipe::new()?);
-		let fd0 = proc.create_fd(open::O_RDONLY | flags,
+		let fd0 = proc.create_fd(file_descriptor::O_RDONLY | flags,
 			FDTarget::FileDescriptor(pipe.clone()?))?.get_id();
-		let fd1 = proc.create_fd(open::O_WRONLY | flags,
+		let fd1 = proc.create_fd(file_descriptor::O_WRONLY | flags,
 			FDTarget::FileDescriptor(pipe.clone()?))?.get_id();
 
 		(fd0, fd1)

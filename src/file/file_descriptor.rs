@@ -10,6 +10,42 @@ use crate::util::FailableClone;
 use crate::util::lock::mutex::Mutex;
 use crate::util::ptr::SharedPtr;
 
+/// Read only.
+pub const O_RDONLY: i32 =    0b0000000000000001;
+/// Write only.
+pub const O_WRONLY: i32 =    0b0000000000000010;
+/// Read and write.
+pub const O_RDWR: i32 =      0b0000000000000011;
+/// At each write operations on the file descriptor, the cursor is placed at the end of the file so
+/// the data is appended.
+pub const O_APPEND: i32 =    0b0000000000000100;
+/// TODO doc
+pub const O_ASYNC: i32 =     0b0000000000001000;
+/// TODO doc
+pub const O_CLOEXEC: i32 =   0b0000000000010000;
+/// If the file doesn't exist, create it.
+pub const O_CREAT: i32 =     0b0000000000100000;
+/// TODO doc
+pub const O_DIRECT: i32 =    0b0000000001000000;
+/// If pathname is not a directory, cause the open to fail.
+pub const O_DIRECTORY: i32 = 0b0000000010000000;
+/// TODO doc
+pub const O_EXCL: i32 =      0b0000000100000000;
+/// TODO doc
+pub const O_LARGEFILE: i32 = 0b0000001000000000;
+/// TODO doc
+pub const O_NOATIME: i32 =   0b0000010000000000;
+/// TODO doc
+pub const O_NOCTTY: i32 =    0b0000100000000000;
+/// Tells `open` not to follow symbolic links.
+pub const O_NOFOLLOW: i32 =  0b0001000000000000;
+/// TODO doc
+pub const O_NONBLOCK: i32 =  0b0010000000000000;
+/// TODO doc
+pub const O_SYNC: i32 =      0b0100000000000000;
+/// TODO doc
+pub const O_TRUNC: i32 =     0b1000000000000000;
+
 /// The total number of file descriptors open system-wide.
 static mut TOTAL_FD: Mutex<usize> = Mutex::new(0);
 
@@ -120,6 +156,10 @@ impl FileDescriptor {
 	/// `buf` is the slice to write to.
 	/// The functions returns the number of bytes that have been read.
 	pub fn read(&mut self, buf: &mut [u8]) -> Result<usize, Errno> {
+		if self.flags & O_RDONLY == 0 {
+			return Err(errno::EINVAL);
+		}
+
 		let len = match &mut self.target {
 			FDTarget::File(f) => {
 				let mut guard = f.lock(true);
@@ -140,6 +180,10 @@ impl FileDescriptor {
 	/// `buf` is the slice to read from.
 	/// The functions returns the number of bytes that have been written.
 	pub fn write(&mut self, buf: &[u8]) -> Result<usize, Errno> {
+		if self.flags & O_WRONLY == 0 {
+			return Err(errno::EINVAL);
+		}
+
 		let len = match &mut self.target {
 			FDTarget::File(f) => {
 				let mut guard = f.lock(true);

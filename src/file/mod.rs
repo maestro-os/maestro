@@ -73,6 +73,7 @@ pub const FILES_POOL_SIZE: usize = 1024;
 /// The upper bount for the file accesses counter.
 pub const ACCESSES_UPPER_BOUND: usize = 128;
 
+// TODO Check files/directories access permissions when getting, creating, removing, etc...
 // TODO Use umask
 
 /// Enumeration representing the different file types.

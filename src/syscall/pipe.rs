@@ -4,11 +4,11 @@ use core::mem::size_of;
 use crate::errno::Errno;
 use crate::errno;
 use crate::file::file_descriptor::FDTarget;
+use crate::file::file_descriptor;
 use crate::file::pipe::Pipe;
 use crate::process::Process;
 use crate::util::ptr::SharedPtr;
 use crate::util;
-use super::open;
 
 /// The implementation of the `pipe` syscall.
 pub fn pipe(regs: &util::Regs) -> Result<i32, Errno> {
@@ -24,8 +24,10 @@ pub fn pipe(regs: &util::Regs) -> Result<i32, Errno> {
 		}
 
 		let pipe = SharedPtr::new(Pipe::new()?);
-		let fd0 = proc.create_fd(open::O_RDONLY, FDTarget::FileDescriptor(pipe.clone()?))?.get_id();
-		let fd1 = proc.create_fd(open::O_WRONLY, FDTarget::FileDescriptor(pipe.clone()?))?.get_id();
+		let fd0 = proc.create_fd(file_descriptor::O_RDONLY,
+			FDTarget::FileDescriptor(pipe.clone()?))?.get_id();
+		let fd1 = proc.create_fd(file_descriptor::O_WRONLY,
+			FDTarget::FileDescriptor(pipe.clone()?))?.get_id();
 
 		(fd0, fd1)
 	};
