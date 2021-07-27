@@ -164,8 +164,8 @@ pub fn get_deepest(path: &Path) -> Option<SharedPtr<MountPoint>> {
 	let mut max: Option<SharedPtr<MountPoint>> = None;
 	for i in 0..container.len() {
 		let m = &mut container[i];
-		let mount_path_guard = m.lock(true);
-		let mount_path = mount_path_guard.get().get_path();
+		let mount_guard = m.lock(true);
+		let mount_path = mount_guard.get().get_path();
 
 		if let Some(max) = max.as_mut() {
 			let max_guard = max.lock(true);
@@ -177,10 +177,39 @@ pub fn get_deepest(path: &Path) -> Option<SharedPtr<MountPoint>> {
 		}
 
 		if path.begins_with(mount_path) {
-			drop(mount_path_guard);
+			drop(mount_guard);
 			max = Some(m.clone());
 		}
 	}
 
 	max
+}
+
+/// Returns a mountpoint with the given device type, major and minor numbers. If no such device is
+/// mounted, the function returns None.
+/// `device_type` is the type of the device.
+/// `major` is the major number of the device.
+/// `minor` is the minor number of the device.
+pub fn get_from_device(device_type: DeviceType, major: u32, minor: u32)
+	-> Option<SharedPtr<MountPoint>> {
+	let mutex = unsafe { // Safe because using Mutex
+		&mut MOUNT_POINTS
+	};
+	let mut guard = mutex.lock(true);
+	let container = guard.get_mut();
+
+	for i in 0..container.len() {
+		let m = &mut container[i];
+		let mount_guard = m.lock(true);
+		let mount = mount_guard.get();
+
+		if mount.get_device_type() == device_type
+			&& mount.get_major() == major
+			&& mount.get_minor() == minor {
+			drop(mount_guard);
+			return Some(m.clone());
+		}
+	}
+
+	None
 }

@@ -35,6 +35,7 @@ use crate::errno::Errno;
 use crate::errno;
 use crate::file::DiskLocation;
 use crate::file::File;
+use crate::file::FileContent;
 use crate::file::FileLocation;
 use crate::file::FileType;
 use crate::file::INode;
@@ -1381,26 +1382,36 @@ impl Filesystem for Ext2Fs {
 		let inode_ = Ext2INode::read(inode, &self.superblock, io)?;
 		let file_type = inode_.get_type();
 
-		let mut file = File::new(name, file_type, inode_.uid, inode_.gid,
+		let file_content = match file_type {
+			FileType::Link => {
+				// TODO Read symlink path
+				todo!();
+			},
+			FileType::FIFO => {
+				// TODO
+				todo!();
+			},
+			FileType::Socket => {
+				// TODO
+				todo!();
+			},
+			FileType::BlockDevice | FileType::CharDevice => {
+				let (major, minor) = inode_.get_device();
+				FileContent::Device(major, minor)
+			},
+
+			_ => {
+				FileContent::Other
+			},
+		};
+
+		let mut file = File::new(name, file_type, file_content, inode_.uid, inode_.gid,
 			inode_.get_permissions())?;
 		file.set_location(FileLocation::Disk(DiskLocation::new(dev.get_major(), dev.get_minor(),
 			inode)));
 		file.set_ctime(inode_.ctime);
 		file.set_mtime(inode_.mtime);
 		file.set_atime(inode_.atime);
-
-		match file_type {
-			FileType::Link => {
-				// TODO Read symlink path
-			},
-			FileType::BlockDevice | FileType::CharDevice => {
-				let (major, minor) = inode_.get_device();
-				file.set_device_major(major);
-				file.set_device_minor(minor);
-			},
-
-			_ => {},
-		}
 
 		Ok(file)
 	}

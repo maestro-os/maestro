@@ -142,7 +142,21 @@ pub enum FileLocation {
 	Disk(DiskLocation),
 }
 
-// TODO Use a structure wrapping files for lazy allocations
+/// Enumeration of all possible file contents for each file types.
+pub enum FileContent {
+	/// The file is a regular file or a directory. The data is not stored here.
+	Other,
+
+	/// The file is a link. The data is the link's target.
+	Link(String),
+	/// The file is a FIFO. The data is a pipe ID.
+	Fifo(u32),
+	/// The file is a socket. The data is a socket ID.
+	Socket(u32),
+	/// The file is a device. The data is a major and minor number.
+	Device(u32, u32),
+}
+
 /// Structure representing a file.
 pub struct File {
 	/// The name of the file.
@@ -176,17 +190,8 @@ pub struct File {
 	/// The file's subfiles (applicable only if the file is a directory).
 	subfiles: Option<HashMap<String, WeakPtr<File>>>,
 
-	/// The link's target (applicable only if the file is a symbolic link).
-	link_target: String,
-
-	// TODO Store file data:
-	// - FIFO: buffer (on ram only)
-	// - Socket: buffer (on ram only)
-
-	/// The device's major number (applicable only if the file is a block or char device)
-	device_major: u32,
-	/// The device's minor number (applicable only if the file is a block or char device)
-	device_minor: u32,
+	/// The content of the file.
+	content: FileContent,
 }
 
 impl File {
@@ -196,8 +201,8 @@ impl File {
 	/// `uid` is the id of the owner user.
 	/// `gid` is the id of the owner group.
 	/// `mode` is the permission of the file.
-	pub fn new(name: String, file_type: FileType, uid: Uid, gid: Gid, mode: Mode)
-		-> Result<Self, Errno> {
+	pub fn new(name: String, file_type: FileType, content: FileContent, uid: Uid, gid: Gid,
+		mode: Mode) -> Result<Self, Errno> {
 		let timestamp = time::get();
 
 		let subfiles_hash_map = {
@@ -227,10 +232,7 @@ impl File {
 
 			subfiles: subfiles_hash_map,
 
-			link_target: String::new(),
-
-			device_major: 0,
-			device_minor: 0,
+			content,
 		})
 	}
 
@@ -390,14 +392,19 @@ impl File {
 	/// undefined.
 	pub fn get_link_target(&self) -> &String {
 		debug_assert_eq!(self.file_type, FileType::Link);
-		&self.link_target
+
+		if let FileContent::Link(target) = &self.content {
+			&target
+		} else {
+			panic!(); // TODO
+		}
 	}
 
 	/// Sets the symbolic link's target. If the file isn't a symbolic link, the behaviour is
 	/// undefined.
 	pub fn set_link_target(&mut self, target: String) {
 		debug_assert_eq!(self.file_type, FileType::Link);
-		self.link_target = target;
+		self.content = FileContent::Link(target);
 	}
 
 	/// Returns the device's major number. If the file isn't a block or char device, the behaviour
@@ -405,15 +412,25 @@ impl File {
 	pub fn get_device_major(&self) -> u32 {
 		debug_assert!(self.file_type == FileType::BlockDevice
 			|| self.file_type == FileType::CharDevice);
-		self.device_major
+
+		if let FileContent::Device(major, _) = self.content {
+			major
+		} else {
+			panic!(); // TODO
+		}
 	}
 
 	/// Sets the device's major number. If the file isn't a block or char device, the behaviour
 	/// is undefined.
-	pub fn set_device_major(&mut self, major: u32) {
+	pub fn set_device_major(&mut self, m: u32) {
 		debug_assert!(self.file_type == FileType::BlockDevice
 			|| self.file_type == FileType::CharDevice);
-		self.device_major = major;
+
+		if let FileContent::Device(_, minor) = self.content {
+			self.content = FileContent::Device(m, minor);
+		} else {
+			panic!(); // TODO
+		}
 	}
 
 	/// Returns the device's minor number. If the file isn't a block or char device, the behaviour
@@ -421,15 +438,25 @@ impl File {
 	pub fn get_device_minor(&self) -> u32 {
 		debug_assert!(self.file_type == FileType::BlockDevice
 			|| self.file_type == FileType::CharDevice);
-		self.device_minor
+
+		if let FileContent::Device(_, minor) = self.content {
+			minor
+		} else {
+			panic!(); // TODO
+		}
 	}
 
 	/// Sets the device's minor number. If the file isn't a block or char device, the behaviour
 	/// is undefined.
-	pub fn set_device_minor(&mut self, minor: u32) {
+	pub fn set_device_minor(&mut self, m: u32) {
 		debug_assert!(self.file_type == FileType::BlockDevice
 			|| self.file_type == FileType::CharDevice);
-		self.device_minor = minor;
+
+		if let FileContent::Device(major, _) = self.content {
+			self.content = FileContent::Device(major, m);
+		} else {
+			panic!(); // TODO
+		}
 	}
 
 	/// Reads from the current file at offset `off` and places the data into the buffer `buff`.
@@ -462,15 +489,15 @@ impl File {
 			},
 
 			FileType::BlockDevice => {
-				let mut dev = device::get_device(DeviceType::Block, self.device_major,
-					self.device_minor).ok_or(errno::ENODEV)?;
+				let mut dev = device::get_device(DeviceType::Block, self.get_device_major(),
+					self.get_device_minor()).ok_or(errno::ENODEV)?;
 				let mut guard = dev.lock(true);
 				guard.get_mut().get_handle().read(off as _, buff)
 			},
 
 			FileType::CharDevice => {
-				let mut dev = device::get_device(DeviceType::Char, self.device_major,
-					self.device_minor).ok_or(errno::ENODEV)?;
+				let mut dev = device::get_device(DeviceType::Char, self.get_device_major(),
+					self.get_device_minor()).ok_or(errno::ENODEV)?;
 				let mut guard = dev.lock(true);
 				guard.get_mut().get_handle().read(off as _, buff)
 			},
@@ -507,15 +534,15 @@ impl File {
 			},
 
 			FileType::BlockDevice => {
-				let mut dev = device::get_device(DeviceType::Block, self.device_major,
-					self.device_minor).ok_or(errno::ENODEV)?;
+				let mut dev = device::get_device(DeviceType::Block, self.get_device_major(),
+					self.get_device_minor()).ok_or(errno::ENODEV)?;
 				let mut guard = dev.lock(true);
 				guard.get_mut().get_handle().write(off as _, buff)
 			},
 
 			FileType::CharDevice => {
-				let mut dev = device::get_device(DeviceType::Char, self.device_major,
-					self.device_minor).ok_or(errno::ENODEV)?;
+				let mut dev = device::get_device(DeviceType::Char, self.get_device_major(),
+					self.get_device_minor()).ok_or(errno::ENODEV)?;
 				let mut guard = dev.lock(true);
 				guard.get_mut().get_handle().write(off as _, buff)
 			},
@@ -745,7 +772,8 @@ pub fn create_dirs(path: &Path) -> Result<usize, Errno> {
 		p.push(path[i].failable_clone()?)?;
 
 		if fcache.get_file_from_path(&p).is_err() {
-			let dir = File::new(p[i].failable_clone()?, FileType::Directory, 0, 0, 0o755)?;
+			let dir = File::new(p[i].failable_clone()?, FileType::Directory, FileContent::Other, 0,
+				0, 0o755)?;
 			fcache.create_file(&p.range_to(..i)?, dir)?;
 
 			created_count += 1;
