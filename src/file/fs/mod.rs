@@ -23,40 +23,40 @@ pub trait Filesystem {
 	fn is_readonly(&self) -> bool;
 
 	/// Returns the inode of the file at path `path`.
-	/// `io` is the I/O interface.
+	/// `dev` is the device.
 	/// `path` is the file's path.
 	/// The path must be absolute relative the filesystem's root directory and must not contain
 	/// any `.` or `..` component.
-	fn get_inode(&mut self, io: &mut Device, path: Path) -> Result<INode, Errno>;
+	fn get_inode(&mut self, dev: &mut Device, path: Path) -> Result<INode, Errno>;
 
 	/// Loads the file at inode `inode`.
-	/// `io` is the I/O interface.
+	/// `dev` is the device.
 	/// `inode` is the file's inode.
 	/// `name` is the file's name.
-	fn load_file(&mut self, io: &mut Device, inode: INode, name: String)
+	fn load_file(&mut self, dev: &mut Device, inode: INode, name: String)
 		-> Result<File, Errno>;
 
 	/// Adds a file to the filesystem at inode `inode`.
-	/// `io` is the I/O interface.
+	/// `dev` is the device.
 	/// `parent_inode` is the parent file's inode.
 	/// `file` is the file to be added.
-	/// On success, the function returns the object `file` with the newly created inode set to it.
-	fn add_file(&mut self, io: &mut Device, parent_inode: INode, file: File)
+	/// On success, the functdev returns the object `file` with the newly created inode set to it.
+	fn add_file(&mut self, dev: &mut Device, parent_inode: INode, file: File)
 		-> Result<File, Errno>;
 
 	/// Removes a file from the filesystem.
-	/// `io` is the I/O interface.
+	/// `dev` is the device.
 	/// `parent_inode` is the parent file's inode.
 	/// `name` is the file's name.
-	fn remove_file(&mut self, io: &mut Device, parent_inode: INode, name: &String)
+	fn remove_file(&mut self, dev: &mut Device, parent_inode: INode, name: &String)
 		-> Result<(), Errno>;
 
 	/// Reads from the given inode `inode` into the buffer `buf`.
-	fn read_node(&mut self, io: &mut Device, inode: INode, buf: &mut [u8])
+	fn read_node(&mut self, dev: &mut Device, inode: INode, buf: &mut [u8])
 		-> Result<(), Errno>;
 
 	/// Writes to the given inode `inode` from the buffer `buf`.
-	fn write_node(&mut self, io: &mut Device, inode: INode, buf: &[u8])
+	fn write_node(&mut self, dev: &mut Device, inode: INode, buf: &[u8])
 		-> Result<(), Errno>;
 }
 
@@ -66,13 +66,16 @@ pub trait FilesystemType {
 	fn get_name(&self) -> &str;
 
 	/// Tells whether the given device has the current filesystem.
-	fn detect(&self, io: &mut Device) -> bool;
+	/// `dev` is the device.
+	fn detect(&self, dev: &mut Device) -> bool;
 
 	/// Creates a new filesystem on the device and returns its instance.
-	fn create_filesystem(&self, io: &mut Device) -> Result<Box<dyn Filesystem>, Errno>;
+	/// `dev` is the device.
+	fn create_filesystem(&self, dev: &mut Device) -> Result<Box<dyn Filesystem>, Errno>;
 
 	/// Creates a new instance of the filesystem.
-	fn load_filesystem(&self, io: &mut Device) -> Result<Box<dyn Filesystem>, Errno>;
+	/// `dev` is the device.
+	fn load_filesystem(&self, dev: &mut Device) -> Result<Box<dyn Filesystem>, Errno>;
 }
 
 /// The list of mountpoints.

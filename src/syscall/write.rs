@@ -38,7 +38,7 @@ pub fn write(regs: &util::Regs) -> Result<i32, Errno> {
 		let fd = proc.get_fd(fd).ok_or(errno::EBADF)?;
 		// TODO Check file permissions?
 
-		fd.write(data)?
+		fd.write(data)? // TODO Writing must be interruptible
 	};
 
 	Ok(len as _) // TODO Take into account when length is overflowing
