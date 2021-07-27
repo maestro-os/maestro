@@ -76,12 +76,12 @@ impl MountPoint {
 
 		// TODO rm
 		let fs_type = fs::ext2::Ext2FsType {};
-		fs_type.create_filesystem(device.get_handle())?;
+		fs_type.create_filesystem(device)?;
 
 		let mut fs_type_ptr = fs::detect(device)?;
 		let fs_type_guard = fs_type_ptr.lock(true);
 		let fs_type = fs_type_guard.get();
-		let filesystem = fs_type.load_filesystem(device.get_handle())?;
+		let filesystem = fs_type.load_filesystem(device)?;
 
 		Ok(Self {
 			device_type,

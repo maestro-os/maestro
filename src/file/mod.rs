@@ -74,7 +74,6 @@ pub const FILES_POOL_SIZE: usize = 1024;
 pub const ACCESSES_UPPER_BOUND: usize = 128;
 
 // TODO Check files/directories access permissions when getting, creating, removing, etc...
-// TODO Use umask
 
 /// Enumeration representing the different file types.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -93,6 +92,54 @@ pub enum FileType {
 	BlockDevice,
 	/// A Character device file.
 	CharDevice,
+}
+
+/// Structure representing the location of a file on a disk.
+#[derive(Clone, Debug)]
+pub struct DiskLocation {
+	/// The disk's major number.
+	major: u32,
+	/// The disk's minor number.
+	minor: u32,
+
+	/// The disk's inode.
+	inode: INode,
+}
+
+impl DiskLocation {
+	/// Creates a new instance.
+	pub fn new(major: u32, minor: u32, inode: INode) -> Self {
+		Self {
+			major,
+			minor,
+
+			inode,
+		}
+	}
+
+	/// Returns the major number.
+	pub fn get_major(&self) -> u32 {
+		self.major
+	}
+
+	/// Returns the minor number.
+	pub fn get_minor(&self) -> u32 {
+		self.minor
+	}
+
+	/// Returns the inode number.
+	pub fn get_inode(&self) -> INode {
+		self.inode
+	}
+}
+
+/// Enumeration of all possible locations for a file.
+#[derive(Clone, Debug)]
+pub enum FileLocation {
+	/// The file is stored nowhere.
+	None,
+	/// The file is stored on a disk.
+	Disk(DiskLocation),
 }
 
 // TODO Use a structure wrapping files for lazy allocations
@@ -116,8 +163,8 @@ pub struct File {
 	/// The mode of the file.
 	mode: Mode,
 
-	/// The inode. None means that the file is not stored on any filesystem.
-	inode: Option::<INode>,
+	/// The location the file is stored on.
+	location: FileLocation,
 
 	/// Timestamp of the last modification of the metadata.
 	ctime: Timestamp,
@@ -172,7 +219,7 @@ impl File {
 			gid,
 			mode,
 
-			inode: None,
+			location: FileLocation::None,
 
 			ctime: timestamp,
 			mtime: timestamp,
@@ -276,16 +323,14 @@ impl File {
 		self.mode & S_IXOTH != 0
 	}
 
-	/// Returns the index of the inode associated with the file. This value is dependent on the
-	/// filesystem.
-	/// If no INode is associated with the file, the function returns None.
-	pub fn get_inode(&self) -> Option<INode> {
-		self.inode
+	/// Returns the location on which the file is stored.
+	pub fn get_location(&self) -> &FileLocation {
+		&self.location
 	}
 
-	/// Sets the file's inode.
-	pub fn set_inode(&mut self, inode: Option<INode>) {
-		self.inode = inode;
+	/// Sets the location on which the file is stored.
+	pub fn set_location(&mut self, location: FileLocation) {
+		self.location = location;
 	}
 
 	/// Returns the timestamp of the last modification of the file's metadata.
@@ -479,9 +524,13 @@ impl File {
 
 	/// Synchronizes the file with the device.
 	pub fn sync(&self) {
-		if self.inode.is_some() {
-			// TODO
-			todo!();
+		match &self.location {
+			FileLocation::Disk(_l) => {
+				// TODO
+				todo!();
+			},
+
+			_ => {},
 		}
 	}
 
@@ -553,24 +602,29 @@ impl FCache {
 	/// appropriate Errno.
 	/// If the path is relative, the function starts from the root.
 	/// If the file isn't present in the pool, the function shall load it.
-	pub fn create_file(&mut self, parent: &Path, file: File) -> Result<(), Errno> {
+	pub fn create_file(&mut self, parent: &Path, file: File) -> Result<SharedPtr<File>, Errno> {
 		let mut path = Path::root().concat(parent)?;
 		path.reduce()?;
 
+		// Getting the path's deepest mountpoint
 		let mut ptr = mountpoint::get_deepest(&path).ok_or(errno::ENOENT)?;
 		let mut guard = ptr.lock(true);
 		let deepest_mountpoint = guard.get_mut();
 
+		// Getting the mountpoint's device
 		let mut dev_ptr = deepest_mountpoint.get_device();
 		let mut dev_guard = dev_ptr.lock(true);
 		let dev = dev_guard.get_mut();
 
+		// Getting the path from the start of the filesystem to the parent directory
 		let inner_path = path.range_from(deepest_mountpoint.get_path().get_elements_count()..)?;
-		let parent_inode = deepest_mountpoint.get_filesystem().get_inode(dev.get_handle(),
-			inner_path)?;
+		// Getting the parent inode
+		let parent_inode = deepest_mountpoint.get_filesystem().get_inode(dev, inner_path)?;
 
-		deepest_mountpoint.get_filesystem().add_file(dev.get_handle(), parent_inode, file)?;
-		Ok(())
+		// Adding the file
+		let file = deepest_mountpoint.get_filesystem().add_file(dev, parent_inode, file)?;
+		// TODO Set parent
+		SharedPtr::new(file)
 	}
 
 	// TODO Use the cache
@@ -580,10 +634,12 @@ impl FCache {
 		let mut path = Path::root().concat(path)?;
 		path.reduce()?;
 
+		// Getting the path's deepest mountpoint
 		let mut ptr = mountpoint::get_deepest(&path).ok_or(errno::ENOENT)?;
 		let mut guard = ptr.lock(true);
 		let deepest_mountpoint = guard.get_mut();
 
+		// Getting the mountpoint's device
 		let mut dev_ptr = deepest_mountpoint.get_device();
 		let mut dev_guard = dev_ptr.lock(true);
 		let dev = dev_guard.get_mut();
@@ -592,12 +648,13 @@ impl FCache {
 		if path_len > 0 {
 			let entry_name = &path[path_len - 1];
 			let mountpoint_path_len = deepest_mountpoint.get_path().get_elements_count();
+			// Getting the path from the start of the fileststem to the parent directory
 			let parent_inner_path = path.range(mountpoint_path_len..(path_len - 1))?;
 
-			let parent_inode = deepest_mountpoint.get_filesystem().get_inode(dev.get_handle(),
+			// Getting the parent inode
+			let parent_inode = deepest_mountpoint.get_filesystem().get_inode(dev,
 				parent_inner_path)?;
-			deepest_mountpoint.get_filesystem().remove_file(dev.get_handle(), parent_inode,
-				entry_name)?;
+			deepest_mountpoint.get_filesystem().remove_file(dev, parent_inode, entry_name)?;
 		}
 		Ok(())
 	}
@@ -611,29 +668,36 @@ impl FCache {
 		let mut path = Path::root().concat(path)?;
 		path.reduce()?;
 
+		// Getting the path's deepest mountpoint
 		let mut ptr = mountpoint::get_deepest(&path).ok_or(errno::ENOENT)?;
 		let mut guard = ptr.lock(true);
 		let deepest_mountpoint = guard.get_mut();
 
+		// Getting the mountpoint's device
 		let mut dev_ptr = deepest_mountpoint.get_device();
 		let mut guard = dev_ptr.lock(true);
 		let dev = guard.get_mut();
 
+		// Getting the path from the start of the fileststem to the file
 		let inner_path = path.range_from(deepest_mountpoint.get_path().get_elements_count()..)?;
 
 		let file = {
-			if inner_path.get_elements_count() > 0 {
-				let entry_name = inner_path[inner_path.get_elements_count() - 1].failable_clone()?;
-				let inode = deepest_mountpoint.get_filesystem().get_inode(dev.get_handle(),
-					inner_path)?;
+			let (entry_name, inode) = if inner_path.is_empty() {
+				let entry_name = String::from("")?;
+				// Getting the root's inode
+				let inode = deepest_mountpoint.get_filesystem().get_inode(dev, Path::root())?;
 
-				deepest_mountpoint.get_filesystem().load_file(dev.get_handle(), inode, entry_name)
+				(entry_name, inode)
 			} else {
-				let inode = deepest_mountpoint.get_filesystem().get_inode(dev.get_handle(),
-					Path::root())?;
-				deepest_mountpoint.get_filesystem().load_file(dev.get_handle(), inode,
-					String::from("")?)
-			}
+				let entry_name = inner_path[inner_path.get_elements_count() - 1].failable_clone()?;
+				// Getting the file's inode
+				let inode = deepest_mountpoint.get_filesystem().get_inode(dev, inner_path)?;
+
+				(entry_name, inode)
+			};
+
+			// Loading the file
+			deepest_mountpoint.get_filesystem().load_file(dev, inode, entry_name)
 		}?;
 		SharedPtr::new(file)
 	}

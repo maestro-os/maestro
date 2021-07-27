@@ -33,9 +33,12 @@ use core::slice;
 use crate::device::DeviceHandle;
 use crate::errno::Errno;
 use crate::errno;
+use crate::file::DiskLocation;
 use crate::file::File;
+use crate::file::FileLocation;
 use crate::file::FileType;
 use crate::file::INode;
+use crate::file::fs::Device;
 use crate::file::fs::Filesystem;
 use crate::file::fs::FilesystemType;
 use crate::file::path::Path;
@@ -1349,7 +1352,8 @@ impl Filesystem for Ext2Fs {
 		todo!();
 	}
 
-	fn get_inode(&mut self, io: &mut dyn DeviceHandle, path: Path) -> Result<INode, Errno> {
+	fn get_inode(&mut self, dev: &mut Device, path: Path) -> Result<INode, Errno> {
+		let io = dev.get_handle();
 		debug_assert!(path.is_absolute());
 
 		let mut inode_index = ROOT_DIRECTORY_INODE;
@@ -1370,14 +1374,17 @@ impl Filesystem for Ext2Fs {
 		Ok(inode_index)
 	}
 
-	fn load_file(&mut self, io: &mut dyn DeviceHandle, inode: INode, name: String)
+	fn load_file(&mut self, dev: &mut Device, inode: INode, name: String)
 		-> Result<File, Errno> {
+		let io = dev.get_handle();
+
 		let inode_ = Ext2INode::read(inode, &self.superblock, io)?;
 		let file_type = inode_.get_type();
 
 		let mut file = File::new(name, file_type, inode_.uid, inode_.gid,
 			inode_.get_permissions())?;
-		file.set_inode(Some(inode));
+		file.set_location(FileLocation::Disk(DiskLocation::new(dev.get_major(), dev.get_minor(),
+			inode)));
 		file.set_ctime(inode_.ctime);
 		file.set_mtime(inode_.mtime);
 		file.set_atime(inode_.atime);
@@ -1398,8 +1405,10 @@ impl Filesystem for Ext2Fs {
 		Ok(file)
 	}
 
-	fn add_file(&mut self, io: &mut dyn DeviceHandle, parent_inode: INode, file: File)
-		-> Result<(), Errno> {
+	fn add_file(&mut self, dev: &mut Device, parent_inode: INode, mut file: File)
+		-> Result<File, Errno> {
+		let io = dev.get_handle();
+
 		debug_assert!(parent_inode >= 1);
 		let mut parent = Ext2INode::read(parent_inode, &self.superblock, io)?;
 		debug_assert_eq!(parent.get_type(), FileType::Directory);
@@ -1444,12 +1453,18 @@ impl Filesystem for Ext2Fs {
 			file.get_file_type())?;
 		let dir = file.get_file_type() == FileType::Directory;
 		self.superblock.mark_inode_used(io, inode_index, dir)?;
-		parent.write(parent_inode, &self.superblock, io)
+		parent.write(parent_inode, &self.superblock, io)?;
+
+		file.set_location(FileLocation::Disk(DiskLocation::new(dev.get_major(), dev.get_minor(),
+			inode_index)));
+		Ok(file)
 	}
 
-	fn remove_file(&mut self, io: &mut dyn DeviceHandle, parent_inode: INode, _name: &String)
+	fn remove_file(&mut self, dev: &mut Device, parent_inode: INode, _name: &String)
 		-> Result<(), Errno> {
+		let io = dev.get_handle();
 		debug_assert!(parent_inode >= 1);
+
 		let parent = Ext2INode::read(parent_inode, &self.superblock, io)?;
 		debug_assert_eq!(parent.get_type(), FileType::Directory);
 
@@ -1459,7 +1474,7 @@ impl Filesystem for Ext2Fs {
 		//Err(errno::ENOMEM)
 	}
 
-	fn read_node(&mut self, _io: &mut dyn DeviceHandle, inode: INode, _buf: &mut [u8])
+	fn read_node(&mut self, _dev: &mut Device, inode: INode, _buf: &mut [u8])
 		-> Result<(), Errno> {
 		debug_assert!(inode >= 1);
 		// TODO
@@ -1468,7 +1483,7 @@ impl Filesystem for Ext2Fs {
 		//Err(errno::ENOMEM)
 	}
 
-	fn write_node(&mut self, _io: &mut dyn DeviceHandle, inode: INode, _buf: &[u8])
+	fn write_node(&mut self, _dev: &mut Device, inode: INode, _buf: &[u8])
 		-> Result<(), Errno> {
 		debug_assert!(inode >= 1);
 		// TODO
@@ -1487,7 +1502,9 @@ impl FilesystemType for Ext2FsType {
 	}
 
 	// TODO Also check partition type
-	fn detect(&self, io: &mut dyn DeviceHandle) -> bool {
+	fn detect(&self, dev: &mut Device) -> bool {
+		let io = dev.get_handle();
+
 		if let Ok(superblock) = Superblock::read(io) {
 			superblock.is_valid()
 		} else {
@@ -1496,8 +1513,10 @@ impl FilesystemType for Ext2FsType {
 		}
 	}
 
-	fn create_filesystem(&self, io: &mut dyn DeviceHandle) -> Result<Box<dyn Filesystem>, Errno> {
+	fn create_filesystem(&self, dev: &mut Device) -> Result<Box<dyn Filesystem>, Errno> {
+		let io = dev.get_handle();
 		let timestamp = time::get();
+
 		let blocks_count = (io.get_size() / DEFAULT_BLOCK_SIZE) as u32;
 		let groups_count = blocks_count / DEFAULT_BLOCKS_PER_GROUP;
 
@@ -1655,7 +1674,9 @@ impl FilesystemType for Ext2FsType {
 		Ok(Box::new(fs)?)
 	}
 
-	fn load_filesystem(&self, io: &mut dyn DeviceHandle) -> Result<Box<dyn Filesystem>, Errno> {
+	fn load_filesystem(&self, dev: &mut Device) -> Result<Box<dyn Filesystem>, Errno> {
+		let io = dev.get_handle();
+
 		let superblock = Superblock::read(io)?;
 		let fs = Ext2Fs::new(superblock, io)?;
 		Ok(Box::new(fs)? as _)

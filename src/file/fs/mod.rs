@@ -3,7 +3,6 @@
 pub mod ext2;
 
 use crate::device::Device;
-use crate::device::DeviceHandle;
 use crate::errno::Errno;
 use crate::errno;
 use crate::util::boxed::Box;
@@ -28,35 +27,36 @@ pub trait Filesystem {
 	/// `path` is the file's path.
 	/// The path must be absolute relative the filesystem's root directory and must not contain
 	/// any `.` or `..` component.
-	fn get_inode(&mut self, io: &mut dyn DeviceHandle, path: Path) -> Result<INode, Errno>;
+	fn get_inode(&mut self, io: &mut Device, path: Path) -> Result<INode, Errno>;
 
 	/// Loads the file at inode `inode`.
 	/// `io` is the I/O interface.
 	/// `inode` is the file's inode.
 	/// `name` is the file's name.
-	fn load_file(&mut self, io: &mut dyn DeviceHandle, inode: INode, name: String)
+	fn load_file(&mut self, io: &mut Device, inode: INode, name: String)
 		-> Result<File, Errno>;
 
 	/// Adds a file to the filesystem at inode `inode`.
 	/// `io` is the I/O interface.
 	/// `parent_inode` is the parent file's inode.
 	/// `file` is the file to be added.
-	fn add_file(&mut self, io: &mut dyn DeviceHandle, parent_inode: INode, file: File)
-		-> Result<(), Errno>;
+	/// On success, the function returns the object `file` with the newly created inode set to it.
+	fn add_file(&mut self, io: &mut Device, parent_inode: INode, file: File)
+		-> Result<File, Errno>;
 
 	/// Removes a file from the filesystem.
 	/// `io` is the I/O interface.
 	/// `parent_inode` is the parent file's inode.
 	/// `name` is the file's name.
-	fn remove_file(&mut self, io: &mut dyn DeviceHandle, parent_inode: INode, name: &String)
+	fn remove_file(&mut self, io: &mut Device, parent_inode: INode, name: &String)
 		-> Result<(), Errno>;
 
 	/// Reads from the given inode `inode` into the buffer `buf`.
-	fn read_node(&mut self, io: &mut dyn DeviceHandle, inode: INode, buf: &mut [u8])
+	fn read_node(&mut self, io: &mut Device, inode: INode, buf: &mut [u8])
 		-> Result<(), Errno>;
 
 	/// Writes to the given inode `inode` from the buffer `buf`.
-	fn write_node(&mut self, io: &mut dyn DeviceHandle, inode: INode, buf: &[u8])
+	fn write_node(&mut self, io: &mut Device, inode: INode, buf: &[u8])
 		-> Result<(), Errno>;
 }
 
@@ -66,13 +66,13 @@ pub trait FilesystemType {
 	fn get_name(&self) -> &str;
 
 	/// Tells whether the given device has the current filesystem.
-	fn detect(&self, io: &mut dyn DeviceHandle) -> bool;
+	fn detect(&self, io: &mut Device) -> bool;
 
 	/// Creates a new filesystem on the device and returns its instance.
-	fn create_filesystem(&self, io: &mut dyn DeviceHandle) -> Result<Box<dyn Filesystem>, Errno>;
+	fn create_filesystem(&self, io: &mut Device) -> Result<Box<dyn Filesystem>, Errno>;
 
 	/// Creates a new instance of the filesystem.
-	fn load_filesystem(&self, io: &mut dyn DeviceHandle) -> Result<Box<dyn Filesystem>, Errno>;
+	fn load_filesystem(&self, io: &mut Device) -> Result<Box<dyn Filesystem>, Errno>;
 }
 
 /// The list of mountpoints.
@@ -102,7 +102,7 @@ pub fn detect(device: &mut Device) -> Result<SharedPtr<dyn FilesystemType>, Errn
 		let fs_type = &mut container[i];
 		let fs_type_guard = fs_type.lock(true);
 
-		if fs_type_guard.get().detect(device.get_handle()) {
+		if fs_type_guard.get().detect(device) {
 			drop(fs_type_guard);
 			return Ok(fs_type.clone()); // TODO Use a weak pointer?
 		}
