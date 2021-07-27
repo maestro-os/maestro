@@ -43,9 +43,14 @@ fn get_file(path: Path, flags: i32, mode: u16, uid: u16, gid: u16)
 	if let Ok(file) = files_cache.get_file_from_path(&path) {
 		Ok(file)
 	} else if flags & file_descriptor::O_CREAT != 0 {
+		// Getting the path of the parent directory
+		let mut parent = path.failable_clone()?;
+		parent.pop();
+
+		// Creating the file
 		let name = path[path.get_elements_count() - 1].failable_clone()?;
 		let file = File::new(name, FileType::Regular, uid, gid, mode)?;
-		files_cache.create_file(&path, file)?;
+		files_cache.create_file(&parent, file)?;
 
 		files_cache.get_file_from_path(&path)
 	} else {
@@ -65,22 +70,27 @@ fn resolve_links(file: SharedPtr<File>, flags: i32, mode: u16, uid: u16, gid: u1
 	let mut resolve_count = 0;
 	let mut file = file;
 
+	// Resolve links until the current file is not a link
 	loop {
 		let file_guard = file.lock(true);
 		let f = file_guard.get();
+
+		// If the current file is not a link, nothing to resolve
 		if f.get_file_type() != FileType::Link {
 			break;
 		}
 
+		// Get the path of the parent directory of the current file
 		let mut parent_path = f.get_path()?;
 		parent_path.pop();
 
+		// Resolve the link
 		let mut path = (parent_path + Path::from_string(f.get_link_target().as_str())?)?;
 		path.reduce()?;
 		drop(file_guard);
-
 		file = get_file(path, flags, mode, uid, gid)?;
 
+		// If the maximum number of resolutions have been reached, stop
 		resolve_count += 1;
 		if resolve_count > limits::SYMLOOP_MAX {
 			return Err(errno::ELOOP);
@@ -100,6 +110,7 @@ pub fn open(regs: &util::Regs) -> Result<i32, Errno> {
 	let mut guard = mutex.lock(false);
 	let proc = guard.get_mut();
 
+	// Check the pathname is accessible by the process
 	let len = proc.get_mem_space().can_access_string(pathname as _, true, false);
 	if len.is_none() {
 		return Err(errno::EFAULT);
@@ -109,7 +120,7 @@ pub fn open(regs: &util::Regs) -> Result<i32, Errno> {
 		return Err(errno::ENAMETOOLONG);
 	}
 
-	let path_str = unsafe {
+	let path_str = unsafe { // Safe because the address is checked before
 		util::ptr_to_str(pathname as _)
 	};
 
@@ -117,17 +128,20 @@ pub fn open(regs: &util::Regs) -> Result<i32, Errno> {
 	let uid = proc.get_uid();
 	let gid = proc.get_gid();
 
+	// Getting the file
 	let mut file = get_file(get_file_absolute_path(&proc, path_str)?, flags, mode, uid, gid)?;
 	if flags & file_descriptor::O_NOFOLLOW == 0 {
 		file = resolve_links(file, flags, mode, uid, gid)?;
 	}
 
+	// If O_DIRECTORY is set and the file is not a directory, return an error
 	if flags & file_descriptor::O_DIRECTORY != 0 {
 		if file.lock(true).get().get_file_type() != FileType::Directory {
 			return Err(errno::ENOTDIR);
 		}
 	}
 
+	// Create and return the file descriptor
 	let fd = proc.create_fd(flags, FDTarget::File(file))?;
 	Ok(fd.get_id() as _)
 }

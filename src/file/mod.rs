@@ -548,13 +548,13 @@ impl FCache {
 
 	// TODO Use the cache
 	/// Adds the file `file` to the VFS. The file will be located into the directory at path
-	/// `path`.
+	/// `parent`.
 	/// The directory must exist. If an error happens, the function returns an Err with the
 	/// appropriate Errno.
 	/// If the path is relative, the function starts from the root.
 	/// If the file isn't present in the pool, the function shall load it.
-	pub fn create_file(&mut self, path: &Path, file: File) -> Result<(), Errno> {
-		let mut path = Path::root().concat(path)?;
+	pub fn create_file(&mut self, parent: &Path, file: File) -> Result<(), Errno> {
+		let mut path = Path::root().concat(parent)?;
 		path.reduce()?;
 
 		let mut ptr = mountpoint::get_deepest(&path).ok_or(errno::ENOENT)?;
