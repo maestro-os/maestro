@@ -76,8 +76,7 @@ impl Device {
 	/// `type_` is the type of the device.
 	/// `handle` is the handle for I/O operations.
 	pub fn new<H: 'static + DeviceHandle>(major: u32, minor: u32, path: Path, mode: Mode,
-		type_: DeviceType, handle: H)
-		-> Result<Self, Errno> {
+		type_: DeviceType, handle: H) -> Result<Self, Errno> {
 		Ok(Self {
 			major,
 			minor,
@@ -91,36 +90,43 @@ impl Device {
 	}
 
 	/// Returns the major number.
+	#[inline]
 	pub fn get_major(&self) -> u32 {
 		self.major
 	}
 
 	/// Returns the minor number.
+	#[inline]
 	pub fn get_minor(&self) -> u32 {
 		self.minor
 	}
 
 	/// Returns the path to the device file.
+	#[inline]
 	pub fn get_path(&self) -> &Path {
 		&self.path
 	}
 
 	/// Returns the device file's mode.
+	#[inline]
 	pub fn get_mode(&self) -> Mode {
 		self.mode
 	}
 
 	/// Returns the type of the device.
+	#[inline]
 	pub fn get_type(&self) -> DeviceType {
 		self.type_
 	}
 
 	/// Returns the device number.
+	#[inline]
 	pub fn get_device_number(&self) -> u64 {
 		id::makedev(self.major, self.minor)
 	}
 
 	/// Returns the handle of the device for I/O operations.
+	#[inline]
 	pub fn get_handle(&mut self) -> &mut dyn DeviceHandle {
 		self.handle.as_mut()
 	}

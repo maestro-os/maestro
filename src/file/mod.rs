@@ -97,6 +97,8 @@ pub enum FileType {
 /// Structure representing the location of a file on a disk.
 #[derive(Clone, Debug)]
 pub struct DiskLocation {
+	/// The type of the device.
+	device_type: DeviceType,
 	/// The disk's major number.
 	major: u32,
 	/// The disk's minor number.
@@ -108,8 +110,10 @@ pub struct DiskLocation {
 
 impl DiskLocation {
 	/// Creates a new instance.
-	pub fn new(major: u32, minor: u32, inode: INode) -> Self {
+	#[inline]
+	pub fn new(device_type: DeviceType, major: u32, minor: u32, inode: INode) -> Self {
 		Self {
+			device_type,
 			major,
 			minor,
 
@@ -117,17 +121,26 @@ impl DiskLocation {
 		}
 	}
 
+	/// Returns the device type.
+	#[inline]
+	pub fn get_device_type(&self) -> DeviceType {
+		self.device_type
+	}
+
 	/// Returns the major number.
+	#[inline]
 	pub fn get_major(&self) -> u32 {
 		self.major
 	}
 
 	/// Returns the minor number.
+	#[inline]
 	pub fn get_minor(&self) -> u32 {
 		self.minor
 	}
 
 	/// Returns the inode number.
+	#[inline]
 	pub fn get_inode(&self) -> INode {
 		self.inode
 	}
@@ -388,75 +401,25 @@ impl File {
 		self.subfiles.as_mut().unwrap().remove(name);
 	}
 
-	/// Returns the symbolic link's target. If the file isn't a symbolic link, the behaviour is
-	/// undefined.
-	pub fn get_link_target(&self) -> &String {
-		debug_assert_eq!(self.file_type, FileType::Link);
-
-		if let FileContent::Link(target) = &self.content {
-			&target
-		} else {
-			panic!(); // TODO
-		}
+	/// Returns the file's content which is specific to the file's type.
+	pub fn get_file_content(&self) -> &FileContent {
+		&self.content
 	}
 
-	/// Sets the symbolic link's target. If the file isn't a symbolic link, the behaviour is
-	/// undefined.
-	pub fn set_link_target(&mut self, target: String) {
-		debug_assert_eq!(self.file_type, FileType::Link);
-		self.content = FileContent::Link(target);
-	}
-
-	/// Returns the device's major number. If the file isn't a block or char device, the behaviour
-	/// is undefined.
-	pub fn get_device_major(&self) -> u32 {
-		debug_assert!(self.file_type == FileType::BlockDevice
-			|| self.file_type == FileType::CharDevice);
-
-		if let FileContent::Device(major, _) = self.content {
-			major
-		} else {
-			panic!(); // TODO
+	/// Sets the file's content which is specific to the file's type. If the content doesn't match
+	/// the type of the file, the behaviour is undefined.
+	pub fn set_file_content(&mut self, content: FileContent) {
+		match content {
+			FileContent::Other => debug_assert!(self.file_type == FileType::Regular
+				|| self.file_type == FileType::Directory),
+			FileContent::Link(_) => debug_assert!(self.file_type == FileType::Link),
+			FileContent::Fifo(_) => debug_assert!(self.file_type == FileType::FIFO),
+			FileContent::Socket(_) => debug_assert!(self.file_type == FileType::Socket),
+			FileContent::Device(..) => debug_assert!(self.file_type == FileType::CharDevice
+				|| self.file_type == FileType::BlockDevice),
 		}
-	}
 
-	/// Sets the device's major number. If the file isn't a block or char device, the behaviour
-	/// is undefined.
-	pub fn set_device_major(&mut self, m: u32) {
-		debug_assert!(self.file_type == FileType::BlockDevice
-			|| self.file_type == FileType::CharDevice);
-
-		if let FileContent::Device(_, minor) = self.content {
-			self.content = FileContent::Device(m, minor);
-		} else {
-			panic!(); // TODO
-		}
-	}
-
-	/// Returns the device's minor number. If the file isn't a block or char device, the behaviour
-	/// is undefined.
-	pub fn get_device_minor(&self) -> u32 {
-		debug_assert!(self.file_type == FileType::BlockDevice
-			|| self.file_type == FileType::CharDevice);
-
-		if let FileContent::Device(_, minor) = self.content {
-			minor
-		} else {
-			panic!(); // TODO
-		}
-	}
-
-	/// Sets the device's minor number. If the file isn't a block or char device, the behaviour
-	/// is undefined.
-	pub fn set_device_minor(&mut self, m: u32) {
-		debug_assert!(self.file_type == FileType::BlockDevice
-			|| self.file_type == FileType::CharDevice);
-
-		if let FileContent::Device(major, _) = self.content {
-			self.content = FileContent::Device(major, m);
-		} else {
-			panic!(); // TODO
-		}
+		self.content = content;
 	}
 
 	/// Reads from the current file at offset `off` and places the data into the buffer `buff`.
@@ -464,8 +427,18 @@ impl File {
 	pub fn read(&self, off: usize, buff: &mut [u8]) -> Result<usize, Errno> {
 		match self.file_type {
 			FileType::Regular => {
-				// TODO
-				todo!();
+				if let FileLocation::Disk(location) = &self.location {
+					let mut mountpoint = mountpoint::get_from_device(location.get_device_type(),
+						location.get_major(), location.get_minor()).unwrap(); // TODO Check unwrap
+					let mut mountpoint_guard = mountpoint.lock(true);
+					let _filesystem = mountpoint_guard.get_mut().get_filesystem();
+
+					// TODO Read from filesystem
+					todo!();
+				} else {
+					// TODO Read from memory? Panic?
+					todo!();
+				}
 			},
 
 			FileType::Directory => {
@@ -488,18 +461,22 @@ impl File {
 				todo!();
 			},
 
-			FileType::BlockDevice => {
-				let mut dev = device::get_device(DeviceType::Block, self.get_device_major(),
-					self.get_device_minor()).ok_or(errno::ENODEV)?;
-				let mut guard = dev.lock(true);
-				guard.get_mut().get_handle().read(off as _, buff)
-			},
+			FileType::BlockDevice | FileType::CharDevice => {
+				if let FileContent::Device(major, minor) = self.get_file_content() {
+					let mut dev = match self.file_type {
+						FileType::BlockDevice => device::get_device(DeviceType::Block, *major,
+							*minor),
+						FileType::CharDevice => device::get_device(DeviceType::Char, *major,
+							*minor),
 
-			FileType::CharDevice => {
-				let mut dev = device::get_device(DeviceType::Char, self.get_device_major(),
-					self.get_device_minor()).ok_or(errno::ENODEV)?;
-				let mut guard = dev.lock(true);
-				guard.get_mut().get_handle().read(off as _, buff)
+						_ => unreachable!(),
+					}.ok_or(errno::ENODEV)?;
+
+					let mut guard = dev.lock(true);
+					guard.get_mut().get_handle().read(off as _, buff)
+				} else {
+					unreachable!();
+				}
 			},
 		}
 	}
@@ -509,8 +486,18 @@ impl File {
 	pub fn write(&self, off: usize, buff: &[u8]) -> Result<usize, Errno> {
 		match self.file_type {
 			FileType::Regular => {
-				// TODO
-				todo!();
+				if let FileLocation::Disk(location) = &self.location {
+					let mut mountpoint = mountpoint::get_from_device(location.get_device_type(),
+						location.get_major(), location.get_minor()).unwrap(); // TODO Check unwrap
+					let mut mountpoint_guard = mountpoint.lock(true);
+					let _filesystem = mountpoint_guard.get_mut().get_filesystem();
+
+					// TODO Write to filesystem
+					todo!();
+				} else {
+					// TODO Write to memory? Panic?
+					todo!();
+				}
 			},
 
 			FileType::Directory => {
@@ -533,18 +520,22 @@ impl File {
 				todo!();
 			},
 
-			FileType::BlockDevice => {
-				let mut dev = device::get_device(DeviceType::Block, self.get_device_major(),
-					self.get_device_minor()).ok_or(errno::ENODEV)?;
-				let mut guard = dev.lock(true);
-				guard.get_mut().get_handle().write(off as _, buff)
-			},
+			FileType::BlockDevice | FileType::CharDevice => {
+				if let FileContent::Device(major, minor) = self.get_file_content() {
+					let mut dev = match self.file_type {
+						FileType::BlockDevice => device::get_device(DeviceType::Block, *major,
+							*minor),
+						FileType::CharDevice => device::get_device(DeviceType::Char, *major,
+							*minor),
 
-			FileType::CharDevice => {
-				let mut dev = device::get_device(DeviceType::Char, self.get_device_major(),
-					self.get_device_minor()).ok_or(errno::ENODEV)?;
-				let mut guard = dev.lock(true);
-				guard.get_mut().get_handle().write(off as _, buff)
+						_ => unreachable!(),
+					}.ok_or(errno::ENODEV)?;
+
+					let mut guard = dev.lock(true);
+					guard.get_mut().get_handle().write(off as _, buff)
+				} else {
+					unreachable!();
+				}
 			},
 		}
 	}

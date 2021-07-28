@@ -84,10 +84,14 @@ fn resolve_links(file: SharedPtr<File>, flags: i32, mode: u16, uid: u16, gid: u1
 		parent_path.pop();
 
 		// Resolve the link
-		let mut path = (parent_path + Path::from_string(f.get_link_target().as_str())?)?;
-		path.reduce()?;
-		drop(file_guard);
-		file = get_file(path, flags, mode, uid, gid)?;
+		if let FileContent::Link(link_target) = f.get_file_content() {
+			let mut path = (parent_path + Path::from_string(link_target.as_str())?)?;
+			path.reduce()?;
+			drop(file_guard);
+			file = get_file(path, flags, mode, uid, gid)?;
+		} else {
+			unreachable!();
+		}
 
 		// If the maximum number of resolutions have been reached, stop
 		resolve_count += 1;

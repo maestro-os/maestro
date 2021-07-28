@@ -1407,8 +1407,8 @@ impl Filesystem for Ext2Fs {
 
 		let mut file = File::new(name, file_type, file_content, inode_.uid, inode_.gid,
 			inode_.get_permissions())?;
-		file.set_location(FileLocation::Disk(DiskLocation::new(dev.get_major(), dev.get_minor(),
-			inode)));
+		file.set_location(FileLocation::Disk(DiskLocation::new(dev.get_type(),
+			dev.get_major(), dev.get_minor(), inode)));
 		file.set_ctime(inode_.ctime);
 		file.set_mtime(inode_.mtime);
 		file.set_atime(inode_.atime);
@@ -1451,9 +1451,14 @@ impl Filesystem for Ext2Fs {
 		match file.get_file_type() {
 			FileType::Link => {
 				// TODO Write symlink path
+				todo!();
 			},
 			FileType::BlockDevice | FileType::CharDevice => {
-				inode.set_device(file.get_device_major(), file.get_device_minor());
+				if let FileContent::Device(major, minor) = file.get_file_content() {
+					inode.set_device(*major, *minor);
+				} else {
+					unreachable!();
+				}
 			},
 
 			_ => {},
@@ -1466,8 +1471,8 @@ impl Filesystem for Ext2Fs {
 		self.superblock.mark_inode_used(io, inode_index, dir)?;
 		parent.write(parent_inode, &self.superblock, io)?;
 
-		file.set_location(FileLocation::Disk(DiskLocation::new(dev.get_major(), dev.get_minor(),
-			inode_index)));
+		file.set_location(FileLocation::Disk(DiskLocation::new(dev.get_type(), dev.get_major(),
+			dev.get_minor(), inode_index)));
 		Ok(file)
 	}
 
@@ -1485,7 +1490,7 @@ impl Filesystem for Ext2Fs {
 		//Err(errno::ENOMEM)
 	}
 
-	fn read_node(&mut self, _dev: &mut Device, inode: INode, _buf: &mut [u8])
+	fn read_node(&mut self, _dev: &mut Device, inode: INode, _off: u64, _buf: &mut [u8])
 		-> Result<(), Errno> {
 		debug_assert!(inode >= 1);
 		// TODO
@@ -1494,7 +1499,7 @@ impl Filesystem for Ext2Fs {
 		//Err(errno::ENOMEM)
 	}
 
-	fn write_node(&mut self, _dev: &mut Device, inode: INode, _buf: &[u8])
+	fn write_node(&mut self, _dev: &mut Device, inode: INode, _off: u64, _buf: &[u8])
 		-> Result<(), Errno> {
 		debug_assert!(inode >= 1);
 		// TODO
