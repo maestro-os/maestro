@@ -50,7 +50,7 @@ fn get_file(path: Path, flags: i32, mode: u16, uid: u16, gid: u16)
 
 		// Creating the file
 		let name = path[path.get_elements_count() - 1].failable_clone()?;
-		let file = File::new(name, FileType::Regular, FileContent::Other, uid, gid, mode)?;
+		let file = File::new(name, FileContent::Regular, uid, gid, mode)?;
 		files_cache.create_file(&parent, file)
 	} else {
 		Err(-errno::ENOENT as _)

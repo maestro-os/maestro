@@ -4,11 +4,11 @@ use crate::errno::Errno;
 use crate::errno;
 use crate::file::File;
 use crate::file::FileContent;
-use crate::file::FileType;
 use crate::file::path::Path;
 use crate::file;
 use crate::process::Process;
 use crate::util::FailableClone;
+use crate::util::container::vec::Vec;
 use crate::util;
 
 /// The implementation of the `mkdir` syscall.
@@ -42,7 +42,7 @@ pub fn mkdir(regs: &util::Regs) -> Result<i32, Errno> {
 		let gid = proc.get_gid();
 
 		// Creating the directory
-		let file = File::new(name, FileType::Directory, FileContent::Other, uid, gid, mode)?;
+		let file = File::new(name, FileContent::Directory(Vec::new()), uid, gid, mode)?;
 		{
 			let mutex = file::get_files_cache();
 			let mut guard = mutex.lock(true);

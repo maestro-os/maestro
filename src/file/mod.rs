@@ -1,6 +1,5 @@
 //! This module handles filesystems. Every filesystems are unified by the Virtual FileSystem (VFS).
-//! The root filesystem is passed to the kernel as an argument when booting. Other filesystems are
-//! mounted into subdirectories.
+//! The root filesystem is passed to the kernel as an argument when booting. Other filesystems are //! mounted into subdirectories.
 
 pub mod file_descriptor;
 pub mod fs;
@@ -8,6 +7,7 @@ pub mod mountpoint;
 pub mod path;
 pub mod pipe;
 
+use core::cmp::max;
 use core::mem::MaybeUninit;
 use crate::device::DeviceType;
 use crate::device;
@@ -17,7 +17,6 @@ use crate::file::mountpoint::MountPoint;
 use crate::time::Timestamp;
 use crate::time;
 use crate::util::FailableClone;
-use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::lock::mutex::Mutex;
@@ -65,9 +64,6 @@ pub const S_ISGID: Mode = 0o2000;
 /// Sticky bit.
 pub const S_ISVTX: Mode = 0o1000;
 
-/// The number of buckets in the hash map storing a directory's subfiles.
-pub const SUBFILES_HASHMAP_BUCKETS: usize = 16;
-
 /// The size of the files pool.
 pub const FILES_POOL_SIZE: usize = 1024;
 /// The upper bount for the file accesses counter.
@@ -85,7 +81,7 @@ pub enum FileType {
 	/// A symbolic link, pointing to another file.
 	Link,
 	/// A named pipe.
-	FIFO,
+	Fifo,
 	/// A Unix domain socket.
 	Socket,
 	/// A Block device file.
@@ -157,17 +153,35 @@ pub enum FileLocation {
 
 /// Enumeration of all possible file contents for each file types.
 pub enum FileContent {
-	/// The file is a regular file or a directory. The data is not stored here.
-	Other,
-
+	/// The file is a regular file. No data.
+	Regular,
+	/// The file is a directory. The data is the list of subfiles.
+	Directory(Vec<String>),
 	/// The file is a link. The data is the link's target.
 	Link(String),
 	/// The file is a FIFO. The data is a pipe ID.
 	Fifo(u32),
 	/// The file is a socket. The data is a socket ID.
 	Socket(u32),
-	/// The file is a device. The data is a major and minor number.
-	Device(u32, u32),
+	/// The file is a block device. The data is a major and minor number.
+	BlockDevice(u32, u32),
+	/// The file is a char device. The data is a major and minor number.
+	CharDevice(u32, u32),
+}
+
+impl FileContent {
+	/// Returns the file type associated with the content type.
+	pub fn get_file_type(&self) -> FileType {
+		match self {
+			Self::Regular => FileType::Regular,
+			Self::Directory(_) => FileType::Directory,
+			Self::Link(_) => FileType::Link,
+			Self::Fifo(_) => FileType::Fifo,
+			Self::Socket(_) => FileType::Socket,
+			Self::BlockDevice(_, _) => FileType::BlockDevice,
+			Self::CharDevice(_, _) => FileType::CharDevice,
+		}
+	}
 }
 
 /// Structure representing a file.
@@ -180,8 +194,6 @@ pub struct File {
 
 	/// The size of the file in bytes.
 	size: u64,
-	/// The type of the file.
-	file_type: FileType,
 
 	/// The ID of the owner user.
 	uid: Uid,
@@ -200,9 +212,6 @@ pub struct File {
 	/// Timestamp of the last access to the file.
 	atime: Timestamp,
 
-	/// The file's subfiles (applicable only if the file is a directory).
-	subfiles: Option<HashMap<String, WeakPtr<File>>>,
-
 	/// The content of the file.
 	content: FileContent,
 }
@@ -210,28 +219,19 @@ pub struct File {
 impl File {
 	/// Creates a new instance.
 	/// `name` is the name of the file.
-	/// `file_type` is the type of the file.
+	/// `file_content` is the content of the file. This value also determines the file type.
 	/// `uid` is the id of the owner user.
 	/// `gid` is the id of the owner group.
 	/// `mode` is the permission of the file.
-	pub fn new(name: String, file_type: FileType, content: FileContent, uid: Uid, gid: Gid,
+	pub fn new(name: String, content: FileContent, uid: Uid, gid: Gid,
 		mode: Mode) -> Result<Self, Errno> {
 		let timestamp = time::get();
-
-		let subfiles_hash_map = {
-			if file_type == FileType::Directory {
-				Some(HashMap::<String, WeakPtr<File>>::new(SUBFILES_HASHMAP_BUCKETS)?)
-			} else {
-				None
-			}
-		};
 
 		Ok(Self {
 			name,
 			parent: None,
 
 			size: 0,
-			file_type,
 
 			uid,
 			gid,
@@ -242,8 +242,6 @@ impl File {
 			ctime: timestamp,
 			mtime: timestamp,
 			atime: timestamp,
-
-			subfiles: subfiles_hash_map,
 
 			content,
 		})
@@ -287,7 +285,7 @@ impl File {
 
 	/// Returns the type of the file.
 	pub fn get_file_type(&self) -> FileType {
-		self.file_type
+		self.content.get_file_type()
 	}
 
 	/// Returns the owner user ID.
@@ -378,164 +376,172 @@ impl File {
 		self.atime = atime;
 	}
 
-	/// Tells whether the directory is empty or not. If the file is not a directory, the behaviour
-	/// is undefined.
-	pub fn is_empty_directory(&self) -> bool {
-		debug_assert_eq!(self.file_type, FileType::Directory);
-		self.subfiles.as_ref().unwrap().is_empty()
-	}
-
-	/// Adds the file `file` to the current file's subfiles. If the file isn't a directory, the
+	/// Tells whether the directory is empty or not. If the current file is not a directory, the
 	/// behaviour is undefined.
-	pub fn add_subfile(&mut self, file: WeakPtr<File>) -> Result<(), Errno> {
-		debug_assert_eq!(self.file_type, FileType::Directory);
-		let name = file.get_mut().unwrap().lock(true).get().get_name().failable_clone()?;
-		self.subfiles.as_mut().unwrap().insert(name, file)?;
-		Ok(())
+	pub fn is_empty_directory(&self) -> bool {
+		if let FileContent::Directory(subfiles) = &self.content {
+			subfiles.is_empty()
+		} else {
+			panic!(); // TODO
+		}
 	}
 
-	/// Removes the file with name `name` from the current file's subfiles. If the file isn't a
+	/// Adds the file with name `name` to the current file's subfiles. If the current file isn't a
 	/// directory, the behaviour is undefined.
-	pub fn remove_subfile(&mut self, name: String) {
-		debug_assert_eq!(self.file_type, FileType::Directory);
-		self.subfiles.as_mut().unwrap().remove(name);
+	pub fn add_subfile(&mut self, name: String) -> Result<(), Errno> {
+		if let FileContent::Directory(subfiles) = &mut self.content {
+			subfiles.push(name)
+		} else {
+			panic!(); // TODO
+		}
 	}
 
-	/// Returns the file's content which is specific to the file's type.
+	/// Removes the file with name `name` from the current file's subfiles. If the current file
+	/// isn't a directory, the behaviour is undefined.
+	pub fn remove_subfile(&mut self, _name: String) {
+		if let FileContent::Directory(_subfiles) = &mut self.content {
+			// TODO
+			todo!();
+			// subfiles.remove(name);
+		} else {
+			panic!(); // TODO
+		}
+	}
+
+	/// Returns the file's content.
 	pub fn get_file_content(&self) -> &FileContent {
 		&self.content
 	}
 
-	/// Sets the file's content which is specific to the file's type. If the content doesn't match
-	/// the type of the file, the behaviour is undefined.
+	/// Sets the file's content, changing the file's type accordingly.
 	pub fn set_file_content(&mut self, content: FileContent) {
-		match content {
-			FileContent::Other => debug_assert!(self.file_type == FileType::Regular
-				|| self.file_type == FileType::Directory),
-			FileContent::Link(_) => debug_assert!(self.file_type == FileType::Link),
-			FileContent::Fifo(_) => debug_assert!(self.file_type == FileType::FIFO),
-			FileContent::Socket(_) => debug_assert!(self.file_type == FileType::Socket),
-			FileContent::Device(..) => debug_assert!(self.file_type == FileType::CharDevice
-				|| self.file_type == FileType::BlockDevice),
-		}
-
 		self.content = content;
 	}
 
 	/// Reads from the current file at offset `off` and places the data into the buffer `buff`.
 	/// The function returns the number of characters read.
-	pub fn read(&self, off: usize, buff: &mut [u8]) -> Result<usize, Errno> {
-		match self.file_type {
-			FileType::Regular => {
+	pub fn read(&self, off: u64, buff: &mut [u8]) -> Result<u64, Errno> {
+		match &self.content {
+			FileContent::Regular => {
 				if let FileLocation::Disk(location) = &self.location {
-					let mut mountpoint = mountpoint::get_from_device(location.get_device_type(),
-						location.get_major(), location.get_minor()).unwrap(); // TODO Check unwrap
-					let mut mountpoint_guard = mountpoint.lock(true);
-					let _filesystem = mountpoint_guard.get_mut().get_filesystem();
+					let mut mountpoint_mutex = mountpoint::get_from_device(
+						location.get_device_type(),
+						location.get_major(),
+						location.get_minor()).unwrap(); // TODO Check unwrap
+					let mut mountpoint_guard = mountpoint_mutex.lock(true);
+					let mountpoint = mountpoint_guard.get_mut();
 
-					// TODO Read from filesystem
-					todo!();
+					let mut device_mutex = mountpoint.get_device().clone();
+					let mut device_guard = device_mutex.lock(true);
+					let device = device_guard.get_mut();
+
+					let filesystem = mountpoint.get_filesystem();
+					filesystem.read_node(device, location.get_inode(), off, buff)
 				} else {
 					// TODO Read from memory? Panic?
 					todo!();
 				}
 			},
 
-			FileType::Directory => {
+			FileContent::Directory(_subdirs) => {
 				// TODO
 				todo!();
 			},
 
-			FileType::Link => {
+			FileContent::Link(_target) => {
 				// TODO
 				todo!();
 			},
 
-			FileType::FIFO => {
+			FileContent::Fifo(_pipe) => {
 				// TODO
 				todo!();
 			},
 
-			FileType::Socket => {
+			FileContent::Socket(_socket) => {
 				// TODO
 				todo!();
 			},
 
-			FileType::BlockDevice | FileType::CharDevice => {
-				if let FileContent::Device(major, minor) = self.get_file_content() {
-					let mut dev = match self.file_type {
-						FileType::BlockDevice => device::get_device(DeviceType::Block, *major,
-							*minor),
-						FileType::CharDevice => device::get_device(DeviceType::Char, *major,
-							*minor),
+			FileContent::BlockDevice(_, _) | FileContent::CharDevice(_, _) => {
+				let mut dev = match self.content {
+					FileContent::BlockDevice(major, minor) => {
+						device::get_device(DeviceType::Block, major, minor)
+					},
+					FileContent::CharDevice(major, minor) => {
+						device::get_device(DeviceType::Char, major, minor)
+					},
 
-						_ => unreachable!(),
-					}.ok_or(errno::ENODEV)?;
+					_ => unreachable!(),
+				}.ok_or(errno::ENODEV)?;
 
-					let mut guard = dev.lock(true);
-					guard.get_mut().get_handle().read(off as _, buff)
-				} else {
-					unreachable!();
-				}
+				let mut guard = dev.lock(true);
+				guard.get_mut().get_handle().read(off as _, buff)
 			},
 		}
 	}
 
 	/// Writes to the current file at offset `off`, reading the data from the buffer `buff`.
 	/// The function returns the number of characters written.
-	pub fn write(&self, off: usize, buff: &[u8]) -> Result<usize, Errno> {
-		match self.file_type {
-			FileType::Regular => {
+	pub fn write(&mut self, off: u64, buff: &[u8]) -> Result<u64, Errno> {
+		match &self.content {
+			FileContent::Regular => {
 				if let FileLocation::Disk(location) = &self.location {
-					let mut mountpoint = mountpoint::get_from_device(location.get_device_type(),
-						location.get_major(), location.get_minor()).unwrap(); // TODO Check unwrap
-					let mut mountpoint_guard = mountpoint.lock(true);
-					let _filesystem = mountpoint_guard.get_mut().get_filesystem();
+					let mut mountpoint_mutex = mountpoint::get_from_device(
+						location.get_device_type(),
+						location.get_major(),
+						location.get_minor()).unwrap(); // TODO Check unwrap
+					let mut mountpoint_guard = mountpoint_mutex.lock(true);
+					let mountpoint = mountpoint_guard.get_mut();
 
-					// TODO Write to filesystem
-					todo!();
+					let mut device_mutex = mountpoint.get_device().clone();
+					let mut device_guard = device_mutex.lock(true);
+					let device = device_guard.get_mut();
+
+					let filesystem = mountpoint.get_filesystem();
+					let len = filesystem.write_node(device, location.get_inode(), off, buff)?;
+					self.size = max(len, self.size);
+					Ok(len)
 				} else {
 					// TODO Write to memory? Panic?
 					todo!();
 				}
 			},
 
-			FileType::Directory => {
+			FileContent::Directory(_subdirs) => {
 				// TODO
 				todo!();
 			},
 
-			FileType::Link => {
+			FileContent::Link(_target) => {
 				// TODO
 				todo!();
 			},
 
-			FileType::FIFO => {
+			FileContent::Fifo(_pipe) => {
 				// TODO
 				todo!();
 			},
 
-			FileType::Socket => {
+			FileContent::Socket(_socket) => {
 				// TODO
 				todo!();
 			},
 
-			FileType::BlockDevice | FileType::CharDevice => {
-				if let FileContent::Device(major, minor) = self.get_file_content() {
-					let mut dev = match self.file_type {
-						FileType::BlockDevice => device::get_device(DeviceType::Block, *major,
-							*minor),
-						FileType::CharDevice => device::get_device(DeviceType::Char, *major,
-							*minor),
+			FileContent::BlockDevice(_, _) | FileContent::CharDevice(_, _) => {
+				let mut dev = match self.content {
+					FileContent::BlockDevice(major, minor) => {
+						device::get_device(DeviceType::Block, major, minor)
+					},
+					FileContent::CharDevice(major, minor) => {
+						device::get_device(DeviceType::Char, major, minor)
+					},
 
-						_ => unreachable!(),
-					}.ok_or(errno::ENODEV)?;
+					_ => unreachable!(),
+				}.ok_or(errno::ENODEV)?;
 
-					let mut guard = dev.lock(true);
-					guard.get_mut().get_handle().write(off as _, buff)
-				} else {
-					unreachable!();
-				}
+				let mut guard = dev.lock(true);
+				guard.get_mut().get_handle().write(off as _, buff)
 			},
 		}
 	}
@@ -763,8 +769,8 @@ pub fn create_dirs(path: &Path) -> Result<usize, Errno> {
 		p.push(path[i].failable_clone()?)?;
 
 		if fcache.get_file_from_path(&p).is_err() {
-			let dir = File::new(p[i].failable_clone()?, FileType::Directory, FileContent::Other, 0,
-				0, 0o755)?;
+			let dir = File::new(p[i].failable_clone()?, FileContent::Directory(Vec::new()), 0, 0,
+				0o755)?;
 			fcache.create_file(&p.range_to(..i)?, dir)?;
 
 			created_count += 1;

@@ -163,17 +163,17 @@ impl FileDescriptor {
 		let len = match &mut self.target {
 			FDTarget::File(f) => {
 				let mut guard = f.lock(true);
-				guard.get_mut().read(self.curr_off as usize, buf)?
+				guard.get_mut().read(self.curr_off, buf)?
 			},
 
 			FDTarget::FileDescriptor(p) => {
 				let mut guard = p.lock(true);
-				guard.get_mut().read(buf)
+				guard.get_mut().read(buf) as _
 			}
 		};
 
 		self.curr_off += len as u64;
-		Ok(len)
+		Ok(len as _)
 	}
 
 	/// Writes data to the file.
@@ -187,17 +187,17 @@ impl FileDescriptor {
 		let len = match &mut self.target {
 			FDTarget::File(f) => {
 				let mut guard = f.lock(true);
-				guard.get_mut().write(self.curr_off as usize, buf)?
+				guard.get_mut().write(self.curr_off, buf)?
 			},
 
 			FDTarget::FileDescriptor(p) => {
 				let mut guard = p.lock(true);
-				guard.get_mut().write(buf)
+				guard.get_mut().write(buf) as _
 			}
 		};
 
 		self.curr_off += len as u64;
-		Ok(len)
+		Ok(len as _)
 	}
 }
 

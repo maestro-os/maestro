@@ -15,7 +15,6 @@ use crate::device::manager::DeviceManager;
 use crate::errno::Errno;
 use crate::file::File;
 use crate::file::FileContent;
-use crate::file::FileType;
 use crate::file::Mode;
 use crate::file::path::Path;
 use crate::file;
@@ -44,11 +43,11 @@ pub trait DeviceHandle {
 	/// Reads data from the device and writes it to the buffer `buff`.
 	/// `offset` is the offset in the file.
 	/// The function returns the number of bytes read.
-	fn read(&mut self, offset: u64, buff: &mut [u8]) -> Result<usize, Errno>;
+	fn read(&mut self, offset: u64, buff: &mut [u8]) -> Result<u64, Errno>;
 	/// Writes data to the device, reading it from the buffer `buff`.
 	/// `offset` is the offset in the file.
 	/// The function returns the number of bytes written.
-	fn write(&mut self, offset: u64, buff: &[u8]) -> Result<usize, Errno>;
+	fn write(&mut self, offset: u64, buff: &[u8]) -> Result<u64, Errno>;
 }
 
 /// Structure representing a device, either a block device or a char device. Each device has a
@@ -135,9 +134,9 @@ impl Device {
 	/// Creates the device file associated with the structure. If the file already exist, the
 	/// function does nothing.
 	pub fn create_file(&mut self) -> Result<(), Errno> {
-		let file_type = match self.type_ {
-			DeviceType::Block => FileType::BlockDevice,
-			DeviceType::Char => FileType::CharDevice,
+		let file_content = match self.type_ {
+			DeviceType::Block => FileContent::BlockDevice(self.major, self.minor),
+			DeviceType::Char => FileContent::CharDevice(self.major, self.minor),
 		};
 
 		let path_len = self.path.get_elements_count();
@@ -147,8 +146,7 @@ impl Device {
 		dir_path.pop();
 		file::create_dirs(&dir_path)?;
 
-		let file = File::new(filename, file_type, FileContent::Device(self.major, self.minor),
-			0, 0, self.mode)?;
+		let file = File::new(filename, file_content, 0, 0, self.mode)?;
 
 		let mutex = file::get_files_cache();
 		let mut guard = mutex.lock(true);

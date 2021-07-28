@@ -50,7 +50,7 @@ pub trait StorageInterface {
 	// Unit testing is done through ramdisk testing
 	/// Reads bytes from storage at offset `offset`, writting the data to `buf`.
 	/// If the offset and size are out of bounds, the function returns an error.
-	fn read_bytes(&mut self, buf: &mut [u8], offset: u64) -> Result<usize, Errno> {
+	fn read_bytes(&mut self, buf: &mut [u8], offset: u64) -> Result<u64, Errno> {
 		let storage_size = self.get_block_size() * self.get_blocks_count();
 		if offset > storage_size || (offset + buf.len() as u64) > storage_size {
 			return Err(errno::EINVAL);
@@ -98,13 +98,13 @@ pub trait StorageInterface {
 			}
 		}
 
-		Ok(buf.len())
+		Ok(buf.len() as _)
 	}
 
 	// Unit testing is done through ramdisk testing
 	/// Writes bytes to storage at offset `offset`, reading the data from `buf`.
 	/// If the offset and size are out of bounds, the function returns an error.
-	fn write_bytes(&mut self, buf: &[u8], offset: u64) -> Result<usize, Errno> {
+	fn write_bytes(&mut self, buf: &[u8], offset: u64) -> Result<u64, Errno> {
 		let storage_size = self.get_block_size() * self.get_blocks_count();
 		if offset > storage_size || (offset + buf.len() as u64) > storage_size {
 			return Err(errno::EINVAL);
@@ -153,8 +153,7 @@ pub trait StorageInterface {
 			}
 		}
 
-		Ok(buf.len())
-
+		Ok(buf.len() as _)
 	}
 }
 
@@ -260,12 +259,12 @@ impl DeviceHandle for StorageDeviceHandle {
 		todo!();
 	}
 
-	fn read(&mut self, _offset: u64, _buff: &mut [u8]) -> Result<usize, Errno> {
+	fn read(&mut self, _offset: u64, _buff: &mut [u8]) -> Result<u64, Errno> {
 		// TODO
 		todo!();
 	}
 
-	fn write(&mut self, _offset: u64, _buff: &[u8]) -> Result<usize, Errno> {
+	fn write(&mut self, _offset: u64, _buff: &[u8]) -> Result<u64, Errno> {
 		// TODO
 		todo!();
 	}

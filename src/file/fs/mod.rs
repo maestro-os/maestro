@@ -54,12 +54,12 @@ pub trait Filesystem {
 	/// Reads from the given inode `inode` into the buffer `buf`.
 	/// `off` is the offset from which the data will be read from the node.
 	fn read_node(&mut self, dev: &mut Device, inode: INode, off: u64, buf: &mut [u8])
-		-> Result<(), Errno>;
+		-> Result<u64, Errno>;
 
 	/// Writes to the given inode `inode` from the buffer `buf`.
 	/// `off` is the offset at which the data will be written in the node.
 	fn write_node(&mut self, dev: &mut Device, inode: INode, off: u64, buf: &[u8])
-		-> Result<(), Errno>;
+		-> Result<u64, Errno>;
 }
 
 /// Trait representing a filesystem type.

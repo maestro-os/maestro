@@ -711,7 +711,7 @@ impl Ext2INode {
 	/// Returns the mode for the given file `file`.
 	fn get_file_mode(file: &File) -> u16 {
 		let t = match file.get_file_type() {
-			FileType::FIFO => INODE_TYPE_FIFO,
+			FileType::Fifo => INODE_TYPE_FIFO,
 			FileType::CharDevice => INODE_TYPE_CHAR_DEVICE,
 			FileType::Directory => INODE_TYPE_DIRECTORY,
 			FileType::BlockDevice => INODE_TYPE_BLOCK_DEVICE,
@@ -739,7 +739,7 @@ impl Ext2INode {
 		let file_type = self.mode & 0xf000;
 
 		match file_type {
-			INODE_TYPE_FIFO => FileType::FIFO,
+			INODE_TYPE_FIFO => FileType::Fifo,
 			INODE_TYPE_CHAR_DEVICE => FileType::CharDevice,
 			INODE_TYPE_DIRECTORY => FileType::Directory,
 			INODE_TYPE_BLOCK_DEVICE => FileType::BlockDevice,
@@ -1278,7 +1278,7 @@ impl DirectoryEntry {
 				TYPE_INDICATOR_DIRECTORY => Some(FileType::Directory),
 				TYPE_INDICATOR_CHAR_DEVICE => Some(FileType::CharDevice),
 				TYPE_INDICATOR_BLOCK_DEVICE => Some(FileType::BlockDevice),
-				TYPE_INDICATOR_FIFO => Some(FileType::FIFO),
+				TYPE_INDICATOR_FIFO => Some(FileType::Fifo),
 				TYPE_INDICATOR_SOCKET => Some(FileType::Socket),
 				TYPE_INDICATOR_SYMLINK => Some(FileType::Link),
 
@@ -1297,7 +1297,7 @@ impl DirectoryEntry {
 				FileType::Directory => TYPE_INDICATOR_DIRECTORY,
 				FileType::CharDevice => TYPE_INDICATOR_CHAR_DEVICE,
 				FileType::BlockDevice => TYPE_INDICATOR_BLOCK_DEVICE,
-				FileType::FIFO => TYPE_INDICATOR_FIFO,
+				FileType::Fifo => TYPE_INDICATOR_FIFO,
 				FileType::Socket => TYPE_INDICATOR_SOCKET,
 				FileType::Link => TYPE_INDICATOR_SYMLINK,
 			};
@@ -1383,11 +1383,16 @@ impl Filesystem for Ext2Fs {
 		let file_type = inode_.get_type();
 
 		let file_content = match file_type {
+			FileType::Regular => FileContent::Regular,
+			FileType::Directory => {
+				// TODO Read subfiles list
+				todo!();
+			},
 			FileType::Link => {
 				// TODO Read symlink path
 				todo!();
 			},
-			FileType::FIFO => {
+			FileType::Fifo => {
 				// TODO
 				todo!();
 			},
@@ -1395,17 +1400,17 @@ impl Filesystem for Ext2Fs {
 				// TODO
 				todo!();
 			},
-			FileType::BlockDevice | FileType::CharDevice => {
+			FileType::BlockDevice => {
 				let (major, minor) = inode_.get_device();
-				FileContent::Device(major, minor)
+				FileContent::BlockDevice(major, minor)
 			},
-
-			_ => {
-				FileContent::Other
+			FileType::CharDevice => {
+				let (major, minor) = inode_.get_device();
+				FileContent::CharDevice(major, minor)
 			},
 		};
 
-		let mut file = File::new(name, file_type, file_content, inode_.uid, inode_.gid,
+		let mut file = File::new(name, file_content, inode_.uid, inode_.gid,
 			inode_.get_permissions())?;
 		file.set_location(FileLocation::Disk(DiskLocation::new(dev.get_type(),
 			dev.get_major(), dev.get_minor(), inode)));
@@ -1448,17 +1453,13 @@ impl Filesystem for Ext2Fs {
 			fragment_addr: 0,
 			os_specific_1: [0; 12],
 		};
-		match file.get_file_type() {
-			FileType::Link => {
-				// TODO Write symlink path
+		match file.get_file_content() {
+			FileContent::Link(_target) => {
+				// TODO Write symlink target
 				todo!();
 			},
-			FileType::BlockDevice | FileType::CharDevice => {
-				if let FileContent::Device(major, minor) = file.get_file_content() {
-					inode.set_device(*major, *minor);
-				} else {
-					unreachable!();
-				}
+			FileContent::BlockDevice(major, minor) | FileContent::CharDevice(major, minor) => {
+				inode.set_device(*major, *minor);
 			},
 
 			_ => {},
@@ -1491,7 +1492,7 @@ impl Filesystem for Ext2Fs {
 	}
 
 	fn read_node(&mut self, _dev: &mut Device, inode: INode, _off: u64, _buf: &mut [u8])
-		-> Result<(), Errno> {
+		-> Result<u64, Errno> {
 		debug_assert!(inode >= 1);
 		// TODO
 		todo!();
@@ -1500,7 +1501,7 @@ impl Filesystem for Ext2Fs {
 	}
 
 	fn write_node(&mut self, _dev: &mut Device, inode: INode, _off: u64, _buf: &[u8])
-		-> Result<(), Errno> {
+		-> Result<u64, Errno> {
 		debug_assert!(inode >= 1);
 		// TODO
 		todo!();
