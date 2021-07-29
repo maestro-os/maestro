@@ -270,7 +270,7 @@ impl DeviceHandle for StorageDeviceHandle {
 	}
 }
 
-/// Structure managing storage devices.
+/// An instance of StorageManager manages devices on a whole major number.
 pub struct StorageManager {
 	/// The allocated device major number for storage devices.
 	major_block: MajorBlock,

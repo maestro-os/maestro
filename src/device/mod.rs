@@ -66,7 +66,7 @@ pub struct Device {
 	type_: DeviceType,
 
 	/// The object handling the device I/O.
-	handle: Box::<dyn DeviceHandle>,
+	handle: Box<dyn DeviceHandle>,
 }
 
 impl Device {

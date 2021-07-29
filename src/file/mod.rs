@@ -1,5 +1,6 @@
 //! This module handles filesystems. Every filesystems are unified by the Virtual FileSystem (VFS).
-//! The root filesystem is passed to the kernel as an argument when booting. Other filesystems are //! mounted into subdirectories.
+//! The root filesystem is passed to the kernel as an argument when booting. Other filesystems are
+//! mounted into subdirectories.
 
 pub mod file_descriptor;
 pub mod fs;
