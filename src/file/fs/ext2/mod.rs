@@ -78,7 +78,7 @@ const DEFAULT_MOUNT_COUNT_BEFORE_FSCK: u16 = 1000;
 const DEFAULT_FSCK_INTERVAL: u32 = 16070400;
 
 /// The block offset of the Block Group Descriptor Table.
-const BGDT_BLOCK_OFFSET: u32 = 2; // TODO Compute using block size
+const BGDT_BLOCK_OFFSET: u64 = 2; // TODO Compute using block size
 
 /// State telling that the filesystem is clean.
 const FS_STATE_CLEAN: u16 = 1;
@@ -623,10 +623,10 @@ impl BlockGroupDescriptor {
 	/// `io` is the I/O interface.
 	pub fn read(i: u32, superblock: &Superblock, io: &mut dyn DeviceHandle)
 		-> Result<Self, Errno> {
-		let off = (superblock.get_block_size() * BGDT_BLOCK_OFFSET as usize)
-			+ (i as usize * size_of::<Self>());
+		let off = (superblock.get_block_size() as u64 * BGDT_BLOCK_OFFSET)
+			+ (i as u64 * size_of::<Self>() as u64);
 		unsafe {
-			read::<Self>(off as _, io)
+			read::<Self>(off, io)
 		}
 	}
 
@@ -635,8 +635,8 @@ impl BlockGroupDescriptor {
 	/// `io` is the I/O interface.
 	pub fn write(&self, i: u32, io: &mut dyn DeviceHandle)
 		-> Result<(), Errno> {
-		let bgdt_off = BGDT_BLOCK_OFFSET as usize * DEFAULT_BLOCK_SIZE as usize;
-		let off = (bgdt_off + size_of::<Self>() * i as usize) as u64;
+		let bgdt_off = BGDT_BLOCK_OFFSET as u64 * DEFAULT_BLOCK_SIZE as u64;
+		let off = bgdt_off + size_of::<Self>() as u64 * i as u64;
 		write(self, off, io)
 	}
 }
@@ -1327,9 +1327,10 @@ impl Ext2Fs {
 		if superblock.mount_count_since_fsck >= superblock.mount_count_before_fsck {
 			return Err(errno::EINVAL);
 		}
-		if timestamp >= superblock.last_fsck_timestamp + superblock.fsck_interval {
+		// TODO Check the fs in the kernel?
+		/*if timestamp >= superblock.last_fsck_timestamp + superblock.fsck_interval {
 			return Err(errno::EINVAL);
-		}
+		}*/
 
 		superblock.mount_count_since_fsck += 1;
 		superblock.last_fsck_timestamp = timestamp;
@@ -1341,7 +1342,6 @@ impl Ext2Fs {
 	}
 }
 
-// TODO Add ENOTDIR (if a component into the path is not a directory)
 impl Filesystem for Ext2Fs {
 	fn get_name(&self) -> &str {
 		"ext2"
@@ -1361,7 +1361,7 @@ impl Filesystem for Ext2Fs {
 		for i in 0..path.get_elements_count() {
 			let inode = Ext2INode::read(inode_index, &self.superblock, io)?;
 			if inode.get_type() != FileType::Directory {
-				return Err(errno::ENOENT);
+				return Err(errno::ENOTDIR);
 			}
 
 			let name = path[i].as_str();
@@ -1600,13 +1600,13 @@ impl FilesystemType for Ext2FsType {
 		let blk_size = superblock.get_block_size() as u32;
 		let bgdt_size = math::ceil_division(groups_count
 			* size_of::<BlockGroupDescriptor>() as u32, blk_size);
-		let bgdt_end = BGDT_BLOCK_OFFSET + bgdt_size;
+		let bgdt_end = BGDT_BLOCK_OFFSET + bgdt_size as u64;
 
 		for i in 0..groups_count {
-			let metadata_off = max(i * DEFAULT_BLOCKS_PER_GROUP, bgdt_end);
+			let metadata_off = max(i * DEFAULT_BLOCKS_PER_GROUP, bgdt_end as u32);
 			let metadata_size = block_usage_bitmap_size + inode_usage_bitmap_size
 				+ inodes_table_size;
-			debug_assert!(bgdt_end + metadata_size <= DEFAULT_BLOCKS_PER_GROUP);
+			debug_assert!(bgdt_end + metadata_size as u64 <= DEFAULT_BLOCKS_PER_GROUP as u64);
 
 			let block_usage_bitmap_addr = metadata_off;
 			let inode_usage_bitmap_addr = metadata_off + block_usage_bitmap_size;
@@ -1634,8 +1634,8 @@ impl FilesystemType for Ext2FsType {
 		let bgdt_size = size_of::<BlockGroupDescriptor>() as u32 * groups_count;
 		let bgdt_blk_count = math::ceil_division(bgdt_size, blk_size);
 		for j in 0..bgdt_blk_count {
-			let blk = BGDT_BLOCK_OFFSET + j as u32;
-			superblock.mark_block_used(io, blk)?;
+			let blk = BGDT_BLOCK_OFFSET + j as u64;
+			superblock.mark_block_used(io, blk as _)?;
 		}
 
 		for i in 0..groups_count {
