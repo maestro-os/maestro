@@ -19,6 +19,7 @@ use crate::errno;
 use crate::file::Mode;
 use crate::file::path::Path;
 use crate::memory::malloc;
+use crate::util::FailableClone;
 use crate::util::boxed::Box;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
@@ -167,26 +168,28 @@ pub mod partition {
 	/// Structure representing a disk partition.
 	pub struct Partition {
 		/// The offset to the first sector of the partition.
-		start: u64,
+		offset: u64,
 		/// The number of sectors in the partition.
 		size: u64,
 	}
 
 	impl Partition {
-		/// Creates a new instance with the given start partition `start` and size `size`.
-		pub fn new(start: u64, size: u64) -> Self {
+		/// Creates a new instance with the given partition offset `offset` and size `size`.
+		pub fn new(offset: u64, size: u64) -> Self {
 			Self {
-				start,
+				offset,
 				size,
 			}
 		}
 
 		/// Returns the offset of the first sector of the partition.
-		pub fn get_start(&self) -> u64 {
-			self.start
+		#[inline]
+		pub fn get_offset(&self) -> u64 {
+			self.offset
 		}
 
-		/// Returns the number fo sectors in the partition.
+		/// Returns the number of sectors in the partition.
+		#[inline]
 		pub fn get_size(&self) -> u64 {
 			self.size
 		}
@@ -229,44 +232,57 @@ pub mod partition {
 
 /// Handle for the device file of a storage device or a storage device partition.
 pub struct StorageDeviceHandle {
-	/// The id of the device in the storage manager's list.
-	id: u32,
-	/// The if of the partition to be handled. If 0, the device handles the whole device.
-	partition: u32,
+	/// A reference to the storage interface.
+	interface: *mut dyn StorageInterface, // TODO Use a weak ptr?
 
-	/// The reference to the storage manager.
-	storage_manager: *mut StorageManager, // TODO Use a weak ptr?
+	/// The offset to the beginning of the partition in bytes.
+	partition_offset: u64,
+	/// The size of the partition in bytes.
+	partition_size: u64,
 }
 
 impl StorageDeviceHandle {
-	/// Creates a new instance for the given storage device with identifier `id` and the given
-	/// partition number `partition. If the partition number is `0`, the device file is linked to
-	/// the entire device instead of a partition.
-	/// `storage_manager` is the storage manager associated with the device.
-	pub fn new(id: u32, partition: u32, storage_manager: *mut StorageManager) -> Self {
+	/// Creates a new instance for the given storage interface and the given partition number. If
+	/// the partition number is `0`, the device file is linked to the entire device instead of a
+	/// partition.
+	/// `interface` is the storage interface.
+	/// `partition_offset` is the offset to the beginning of the partition in bytes.
+	/// `partition_size` is the size of the partition in bytes.
+	pub fn new(interface: *mut dyn StorageInterface, partition_offset: u64,
+		partition_size: u64) -> Self {
 		Self {
-			id,
-			partition,
+			interface,
 
-			storage_manager,
+			partition_offset,
+			partition_size,
 		}
 	}
 }
 
+// TODO Handle partition
 impl DeviceHandle for StorageDeviceHandle {
 	fn get_size(&self) -> u64 {
-		// TODO
-		todo!();
+		let interface = unsafe { // Safe because the pointer is valid
+			&*self.interface
+		};
+
+		interface.get_block_size() * interface.get_blocks_count()
 	}
 
-	fn read(&mut self, _offset: u64, _buff: &mut [u8]) -> Result<u64, Errno> {
-		// TODO
-		todo!();
+	fn read(&mut self, offset: u64, buff: &mut [u8]) -> Result<u64, Errno> {
+		let interface = unsafe { // Safe because the pointer is valid
+			&mut *self.interface
+		};
+
+		interface.read_bytes(buff, offset)
 	}
 
-	fn write(&mut self, _offset: u64, _buff: &[u8]) -> Result<u64, Errno> {
-		// TODO
-		todo!();
+	fn write(&mut self, offset: u64, buff: &[u8]) -> Result<u64, Errno> {
+		let interface = unsafe { // Safe because the pointer is valid
+			&mut *self.interface
+		};
+
+		interface.write_bytes(buff, offset)
 	}
 }
 
@@ -292,32 +308,49 @@ impl StorageManager {
 	// TODO When failing, remove previously registered devices
 	/// Adds a storage device.
 	fn add(&mut self, mut storage: Box<dyn StorageInterface>) -> Result<(), Errno> {
+		// The device files' major number
 		let major = self.major_block.get_major();
+		// The id of the storage interface in the manager's list
 		let storage_id = self.interfaces.len() as u32;
 
+		// The size of a block on the storage device
+		let block_size = storage.get_block_size();
+
+		// The prefix is the path of the main device file
 		let mut prefix = String::from("/dev/sd")?;
 		prefix.push(unsafe { // Safe because the id stays in range of the alphabet
-			char::from_u32_unchecked((b'a' + (storage_id as u8)) as _)
+			char::from_u32_unchecked((b'a' + (storage_id as u8)) as _) // TODO Handle if out of the alphabet
 		})?;
 
-		let device_type = if storage.get_block_size() == 1 {
-			DeviceType::Char
-		} else {
-			DeviceType::Block
-		};
-
+		// the path of the main device file
 		let main_path = Path::from_string(prefix.as_str())?;
-		let main_handle = StorageDeviceHandle::new(storage_id, 0, self);
+		// The total size of the interface in bytes
+		let total_size = block_size * storage.get_blocks_count();
+
+		// Creating the main device file
+		let main_handle = StorageDeviceHandle::new(storage.as_mut_ptr(), 0, total_size);
 		let main_device = Device::new(major, storage_id * MAX_PARTITIONS, main_path, STORAGE_MODE,
-			device_type, main_handle)?;
+			DeviceType::Block, main_handle)?;
 		device::register_device(main_device)?;
 
+		// Creating device files for every partitions (in the limit of MAX_PARTITIONS)
 		let partitions = partition::read(storage.as_mut())?;
-		for i in 0..min(MAX_PARTITIONS, partitions.len() as u32) {
-			let path = Path::from_string(prefix.as_str())?; // TODO Add i + 1 as char at the end
-			let handle = StorageDeviceHandle::new(storage_id, i, self);
-			let device = Device::new(major, storage_id * MAX_PARTITIONS + i, path, STORAGE_MODE,
-				device_type, handle)?;
+		let count = min(MAX_PARTITIONS as usize, partitions.len());
+		for i in 0..count {
+			let partition = &partitions[i];
+
+			// Adding the partition number to the path
+			let path_str = (prefix.failable_clone()? + String::from_number(i as _)?)?;
+			let path = Path::from_string(path_str.as_str())?;
+
+			// Computing the partition's offset and size
+			let off = partition.get_offset() * block_size;
+			let size = partition.get_size() * block_size;
+
+			// Creating the partition's device file
+			let handle = StorageDeviceHandle::new(storage.as_mut_ptr(), off, size);
+			let device = Device::new(major, storage_id * MAX_PARTITIONS + i as u32, path,
+				STORAGE_MODE, DeviceType::Block, handle)?;
 			device::register_device(device)?;
 		}
 

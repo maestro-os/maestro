@@ -4,6 +4,7 @@ use core::fmt::Debug;
 use core::fmt;
 use core::hash::Hash;
 use core::hash::Hasher;
+use core::ops::Add;
 use core::str;
 use crate::errno::Errno;
 use crate::util::FailableClone;
@@ -155,6 +156,15 @@ impl String {
 	/// Turns the string into an empty string.
 	pub fn clear(&mut self) {
 		self.data.clear();
+	}
+}
+
+impl Add for String {
+	type Output = Result<Self, Errno>;
+
+	fn add(mut self, other: Self) -> Self::Output {
+		self.push_str(&other)?;
+		Ok(self)
 	}
 }
 
