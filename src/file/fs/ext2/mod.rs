@@ -77,9 +77,6 @@ const DEFAULT_MOUNT_COUNT_BEFORE_FSCK: u16 = 1000;
 /// Default elapsed time in between each fsck in seconds.
 const DEFAULT_FSCK_INTERVAL: u32 = 16070400;
 
-/// The block offset of the Block Group Descriptor Table.
-const BGDT_BLOCK_OFFSET: u64 = 2; // TODO Compute using block size
-
 /// State telling that the filesystem is clean.
 const FS_STATE_CLEAN: u16 = 1;
 /// State telling that the filesystem has errors.
@@ -122,7 +119,7 @@ const WRITE_REQUIRED_64_BITS: u32 = 0x2;
 const WRITE_REQUIRED_DIRECTORY_BINARY_TREE: u32 = 0x4;
 
 /// The maximum number of direct blocks for each inodes.
-const DIRECT_BLOCKS_COUNT: usize = 12;
+const DIRECT_BLOCKS_COUNT: u8 = 12;
 
 /// INode type: FIFO
 const INODE_TYPE_FIFO: u16 = 0x1000;
@@ -385,8 +382,13 @@ impl Superblock {
 	}
 
 	/// Returns the size of a block.
-	pub fn get_block_size(&self) -> usize {
+	pub fn get_block_size(&self) -> u32 {
 		math::pow2(self.block_size_log + 10) as _
+	}
+
+	/// Returns the block offset of the Block Group Descriptor Table.
+	pub fn get_bgdt_offset(&self) -> u64 {
+		(SUPERBLOCK_OFFSET / self.get_block_size() as u64) + 1
 	}
 
 	/// Returns the number of block groups.
@@ -445,7 +447,7 @@ impl Superblock {
 	fn search_bitmap(&self, io: &mut dyn DeviceHandle, start: u32, size: u32)
 		-> Result<Option<u32>, Errno> {
 		let blk_size = self.get_block_size();
-		let mut buff = malloc::Alloc::<u8>::new_default(blk_size)?;
+		let mut buff = malloc::Alloc::<u8>::new_default(blk_size as _)?;
 		let mut i = 0;
 
 		while (i * (blk_size * 8) as u32) < size {
@@ -470,7 +472,7 @@ impl Superblock {
 	fn set_bitmap(&self, io: &mut dyn DeviceHandle, start: u32, i: u32, val: bool)
 		-> Result<(), Errno> {
 		let blk_size = self.get_block_size();
-		let mut buff = malloc::Alloc::<u8>::new_default(blk_size)?;
+		let mut buff = malloc::Alloc::<u8>::new_default(blk_size as _)?;
 
 		let bitmap_blk_index = start + (i / (blk_size * 8) as u32);
 		read_block(bitmap_blk_index as _, self, io, buff.get_slice_mut())?;
@@ -521,7 +523,7 @@ impl Superblock {
 		let bitfield_index = (inode - 1) % self.inodes_per_group;
 		self.set_bitmap(io, bgd.inode_usage_bitmap_addr, bitfield_index, true)?;
 
-		bgd.write(group, io)
+		bgd.write(group, self, io)
 	}
 
 	/// Marks the inode `inode` available on the filesystem.
@@ -543,7 +545,7 @@ impl Superblock {
 		let bitfield_index = (inode - 1) % self.inodes_per_group;
 		self.set_bitmap(io, bgd.inode_usage_bitmap_addr, bitfield_index, false)?;
 
-		bgd.write(group, io)
+		bgd.write(group, self, io)
 	}
 
 	/// Returns the id of a free block in the filesystem.
@@ -573,7 +575,7 @@ impl Superblock {
 		let bitfield_index = blk % self.blocks_per_group;
 		self.set_bitmap(io, bgd.block_usage_bitmap_addr, bitfield_index, true)?;
 
-		bgd.write(group, io)
+		bgd.write(group, self, io)
 	}
 
 	/// Marks the block `blk` available on the filesystem.
@@ -587,7 +589,7 @@ impl Superblock {
 		let bitfield_index = blk % self.blocks_per_group;
 		self.set_bitmap(io, bgd.block_usage_bitmap_addr, bitfield_index, false)?;
 
-		bgd.write(group, io)
+		bgd.write(group, self, io)
 	}
 
 	/// Writes the superblock on the device.
@@ -619,11 +621,12 @@ struct BlockGroupDescriptor {
 
 impl BlockGroupDescriptor {
 	/// Reads the `i`th block group descriptor from the given device.
+	/// `i` the id of the group descriptor to write.
 	/// `superblock` is the filesystem's superblock.
 	/// `io` is the I/O interface.
 	pub fn read(i: u32, superblock: &Superblock, io: &mut dyn DeviceHandle)
 		-> Result<Self, Errno> {
-		let off = (superblock.get_block_size() as u64 * BGDT_BLOCK_OFFSET)
+		let off = (superblock.get_bgdt_offset() * superblock.get_block_size() as u64)
 			+ (i as u64 * size_of::<Self>() as u64);
 		unsafe {
 			read::<Self>(off, io)
@@ -632,11 +635,12 @@ impl BlockGroupDescriptor {
 
 	/// Writes the current block group descriptor.
 	/// `i` the id of the group descriptor to write.
+	/// `superblock` is the filesystem's superblock.
 	/// `io` is the I/O interface.
-	pub fn write(&self, i: u32, io: &mut dyn DeviceHandle)
+	pub fn write(&self, i: u32, superblock: &Superblock, io: &mut dyn DeviceHandle)
 		-> Result<(), Errno> {
-		let bgdt_off = BGDT_BLOCK_OFFSET as u64 * DEFAULT_BLOCK_SIZE as u64;
-		let off = bgdt_off + size_of::<Self>() as u64 * i as u64;
+		let off = (superblock.get_bgdt_offset() * superblock.get_block_size() as u64)
+			+ (i as u64 * size_of::<Self>() as u64);
 		write(self, off, io)
 	}
 }
@@ -671,7 +675,7 @@ struct Ext2INode {
 	/// OS-specific value.
 	os_specific_0: u32,
 	/// Direct block pointers.
-	direct_block_ptrs: [u32; DIRECT_BLOCKS_COUNT],
+	direct_block_ptrs: [u32; DIRECT_BLOCKS_COUNT as usize],
 	/// Simply indirect block pointer.
 	singly_indirect_block_ptr: u32,
 	/// Doubly indirect block pointer.
@@ -801,14 +805,14 @@ impl Ext2INode {
 	/// `superblock` is the filesystem's superblock.
 	/// `io` is the I/O interface.
 	/// If the block doesn't exist, the function returns None.
-	fn resolve_indirections(n: usize, begin: u32, off: u32, superblock: &Superblock,
+	fn resolve_indirections(n: u8, begin: u32, off: u32, superblock: &Superblock,
 		io: &mut dyn DeviceHandle) -> Result<Option<u32>, Errno> {
 		let blk_size = superblock.get_block_size();
-		let entries_per_blk = blk_size / size_of::<u32>();
+		let entries_per_blk = blk_size / size_of::<u32>() as u32;
 
 		let mut b = begin;
 		for i in (0..n).rev() {
-			let inner_off = off / ((i * entries_per_blk) as u32);
+			let inner_off = off / (i as u32 * entries_per_blk as u32);
 			let byte_off = (begin as u64 * blk_size as u64) + (inner_off as u64);
 			b = unsafe {
 				read::<u32>(byte_off, io)?
@@ -828,14 +832,14 @@ impl Ext2INode {
 	/// `off` is the offset of the block relative to the specified beginning block.
 	/// `superblock` is the filesystem's superblock.
 	/// `io` is the I/O interface.
-	fn indirections_alloc(n: usize, begin: u32, off: u32, superblock: &Superblock,
+	fn indirections_alloc(n: u8, begin: u32, off: u32, superblock: &Superblock,
 		io: &mut dyn DeviceHandle) -> Result<u32, Errno> {
 		let blk_size = superblock.get_block_size();
-		let entries_per_blk = blk_size / size_of::<u32>();
+		let entries_per_blk = blk_size / size_of::<u32>() as u32;
 
 		let mut b = begin;
 		for i in (0..(n + 1)).rev() {
-			let inner_off = off / ((i * entries_per_blk) as u32);
+			let inner_off = off / (i as u32 * entries_per_blk);
 			let byte_off = (begin as u64 * blk_size as u64) + (inner_off as u64);
 
 			if b == 0 {
@@ -857,22 +861,22 @@ impl Ext2INode {
 	/// `superblock` is the filesystem's superblock.
 	/// `io` is the I/O interface.
 	/// If the block doesn't exist, the function returns None.
-	fn get_content_block_off(&self, i: usize, superblock: &Superblock, io: &mut dyn DeviceHandle)
+	fn get_content_block_off(&self, i: u32, superblock: &Superblock, io: &mut dyn DeviceHandle)
 		-> Result<Option<u32>, Errno> {
 		let blk_size = superblock.get_block_size();
-		let entries_per_blk = blk_size / size_of::<u32>();
+		let entries_per_blk = blk_size / size_of::<u32>() as u32;
 
-		if i < DIRECT_BLOCKS_COUNT {
-			Ok(Self::blk_offset_to_option(self.direct_block_ptrs[i]))
-		} else if i < DIRECT_BLOCKS_COUNT + entries_per_blk {
-			let target = (i - DIRECT_BLOCKS_COUNT) as u32;
+		if i < DIRECT_BLOCKS_COUNT as u32 {
+			Ok(Self::blk_offset_to_option(self.direct_block_ptrs[i as usize]))
+		} else if i < DIRECT_BLOCKS_COUNT as u32 + entries_per_blk {
+			let target = i - DIRECT_BLOCKS_COUNT as u32;
 			Self::resolve_indirections(1, self.singly_indirect_block_ptr, target, superblock, io)
-		} else if i < DIRECT_BLOCKS_COUNT + (entries_per_blk * entries_per_blk) {
-			let target = (i - DIRECT_BLOCKS_COUNT - entries_per_blk) as u32;
+		} else if i < DIRECT_BLOCKS_COUNT as u32 + (entries_per_blk * entries_per_blk) {
+			let target = (i - DIRECT_BLOCKS_COUNT as u32 - entries_per_blk) as u32;
 			Self::resolve_indirections(2, self.doubly_indirect_block_ptr, target, superblock, io)
 		} else {
 			#[allow(clippy::suspicious_operation_groupings)]
-			let target = (i - DIRECT_BLOCKS_COUNT - (entries_per_blk * entries_per_blk)) as u32;
+			let target = i - DIRECT_BLOCKS_COUNT as u32 - (entries_per_blk * entries_per_blk);
 			Self::resolve_indirections(3, self.triply_indirect_block_ptr, target, superblock, io)
 		}
 	}
@@ -883,26 +887,26 @@ impl Ext2INode {
 	/// `superblock` is the filesystem's superblock.
 	/// `io` is the I/O interface.
 	/// On success, the function returns the allocated final block offset.
-	fn alloc_content_block(&mut self, i: usize, superblock: &Superblock, io: &mut dyn DeviceHandle)
+	fn alloc_content_block(&mut self, i: u32, superblock: &Superblock, io: &mut dyn DeviceHandle)
 		-> Result<u32, Errno> {
 		let blk_size = superblock.get_block_size();
-		let entries_per_blk = blk_size / size_of::<u32>();
+		let entries_per_blk = blk_size / size_of::<u32>() as u32;
 
-		if i < DIRECT_BLOCKS_COUNT {
+		if i < DIRECT_BLOCKS_COUNT as u32 {
 			let blk = superblock.get_free_block(io)?;
-			self.direct_block_ptrs[i] = blk;
+			self.direct_block_ptrs[i as usize] = blk;
 			superblock.mark_block_used(io, blk)?;
 
 			Ok(blk)
-		} else if i < DIRECT_BLOCKS_COUNT + entries_per_blk {
-			let target = (i - DIRECT_BLOCKS_COUNT) as u32;
+		} else if i < DIRECT_BLOCKS_COUNT as u32 + entries_per_blk {
+			let target = i - DIRECT_BLOCKS_COUNT as u32;
 			Self::indirections_alloc(1, self.singly_indirect_block_ptr, target, superblock, io)
-		} else if i < DIRECT_BLOCKS_COUNT + (entries_per_blk * entries_per_blk) {
-			let target = (i - DIRECT_BLOCKS_COUNT - entries_per_blk) as u32;
+		} else if i < DIRECT_BLOCKS_COUNT as u32 + (entries_per_blk * entries_per_blk) {
+			let target = i - DIRECT_BLOCKS_COUNT as u32 - entries_per_blk;
 			Self::indirections_alloc(2, self.doubly_indirect_block_ptr, target, superblock, io)
 		} else {
 			#[allow(clippy::suspicious_operation_groupings)]
-			let target = (i - DIRECT_BLOCKS_COUNT - (entries_per_blk * entries_per_blk)) as u32;
+			let target = i - DIRECT_BLOCKS_COUNT as u32 - (entries_per_blk * entries_per_blk);
 			Self::indirections_alloc(3, self.triply_indirect_block_ptr, target, superblock, io)
 		}
 	}
@@ -931,16 +935,16 @@ impl Ext2INode {
 		}
 
 		let blk_size = superblock.get_block_size();
-		let mut blk_buff = malloc::Alloc::<u8>::new_default(blk_size)?;
+		let mut blk_buff = malloc::Alloc::<u8>::new_default(blk_size as usize)?;
 
 		let mut i = 0;
 		while i < buff.len() {
-			let blk_off = i / blk_size;
-			let blk_inner_off = i % blk_size;
+			let blk_off = i / blk_size as usize;
+			let blk_inner_off = i % blk_size as usize;
 			let blk_off = self.get_content_block_off(blk_off as _, superblock, io)?.unwrap();
 			read_block(blk_off as _, superblock, io, blk_buff.get_slice_mut())?;
 
-			let len = min(buff.len() - i, blk_size - blk_inner_off);
+			let len = min(buff.len() - i, (blk_size - blk_inner_off as u32) as usize);
 			unsafe { // Safe because staying in range
 				copy_nonoverlapping(&blk_buff.get_slice()[blk_inner_off] as *const u8,
 					&mut buff[i] as *mut u8,
@@ -966,22 +970,22 @@ impl Ext2INode {
 		}
 
 		let blk_size = superblock.get_block_size();
-		let mut blk_buff = malloc::Alloc::<u8>::new_default(blk_size)?;
+		let mut blk_buff = malloc::Alloc::<u8>::new_default(blk_size as usize)?;
 
 		let mut i = 0;
 		while i < buff.len() {
-			let blk_off = i / blk_size;
-			let blk_inner_off = i % blk_size;
+			let blk_off = i / blk_size as usize;
+			let blk_inner_off = i % blk_size as usize;
 			let blk_off = {
 				if let Some(blk_off) = self.get_content_block_off(blk_off as _, superblock, io)? {
 					blk_off
 				} else {
-					self.alloc_content_block(i, superblock, io)?
+					self.alloc_content_block(i as u32, superblock, io)?
 				}
 			};
 			read_block(blk_off as _, superblock, io, blk_buff.get_slice_mut())?;
 
-			let len = min(buff.len() - i, blk_size - blk_inner_off);
+			let len = min(buff.len() - i, (blk_size - blk_inner_off as u32) as usize);
 			unsafe { // Safe because staying in range
 				copy_nonoverlapping(&buff[i] as *const u8,
 					&mut blk_buff.get_slice_mut()[blk_inner_off] as *mut u8,
@@ -1045,12 +1049,12 @@ impl Ext2INode {
 		debug_assert_eq!(self.get_type(), FileType::Directory);
 
 		let blk_size = superblock.get_block_size();
-		let mut buff = malloc::Alloc::<u8>::new_default(blk_size)?;
+		let mut buff = malloc::Alloc::<u8>::new_default(blk_size as usize)?;
 
 		let size = self.get_size(superblock);
 		let mut i = 0;
 		while i < size {
-			let len = min((size - i) as usize, blk_size);
+			let len = min((size - i) as usize, blk_size as usize);
 			self.read_content(i, &mut buff.get_slice_mut()[..len], superblock, io)?;
 
 			let mut j = 0;
@@ -1103,12 +1107,12 @@ impl Ext2INode {
 	/// `io` is the I/O interface.
 	/// `min_size` is the minimum size of the entry in bytes.
 	/// If the function finds an entry, it returns its offset. Else, the function returns None.
-	fn get_free_entry(&self, superblock: &Superblock, io: &mut dyn DeviceHandle, min_size: usize)
+	fn get_free_entry(&self, superblock: &Superblock, io: &mut dyn DeviceHandle, min_size: u32)
 		-> Result<Option<u64>, Errno> {
 		let mut off_option = None;
 
 		self.foreach_directory_entry(| off, e | {
-			if e.is_free() && e.total_size as usize >= min_size {
+			if e.is_free() && e.total_size as u32 >= min_size {
 				off_option = Some(off);
 				false
 			} else {
@@ -1131,7 +1135,7 @@ impl Ext2INode {
 	pub fn add_dirent(&mut self, superblock: &Superblock, io: &mut dyn DeviceHandle,
 		entry_inode: u32, name: &String, file_type: FileType) -> Result<(), Errno> {
 		let blk_size = superblock.get_block_size();
-		let name_length = name.as_bytes().len();
+		let name_length = name.as_bytes().len() as u32;
 		let entry_size = 8 + name_length;
 		if entry_size > blk_size {
 			return Err(errno::ENAMETOOLONG);
@@ -1139,7 +1143,7 @@ impl Ext2INode {
 
 		if let Some(free_entry_off) = self.get_free_entry(superblock, io, entry_size)? {
 			let mut free_entry = self.read_dirent(superblock, io, free_entry_off)?;
-			let split = free_entry.total_size as usize - entry_size > 8;
+			let split = free_entry.total_size as u32 - entry_size > 8;
 
 			if split {
 				// TODO Split entry
@@ -1443,7 +1447,7 @@ impl Filesystem for Ext2Fs {
 			used_sectors: 0,
 			flags: 0,
 			os_specific_0: 0,
-			direct_block_ptrs: [0; DIRECT_BLOCKS_COUNT],
+			direct_block_ptrs: [0; DIRECT_BLOCKS_COUNT as usize],
 			singly_indirect_block_ptr: 0,
 			doubly_indirect_block_ptr: 0,
 			triply_indirect_block_ptr: 0,
@@ -1598,9 +1602,10 @@ impl FilesystemType for Ext2FsType {
 		superblock.write(io)?;
 
 		let blk_size = superblock.get_block_size() as u32;
+		let bgdt_offset = superblock.get_bgdt_offset();
 		let bgdt_size = math::ceil_division(groups_count
 			* size_of::<BlockGroupDescriptor>() as u32, blk_size);
-		let bgdt_end = BGDT_BLOCK_OFFSET + bgdt_size as u64;
+		let bgdt_end = bgdt_offset + bgdt_size as u64;
 
 		for i in 0..groups_count {
 			let metadata_off = max(i * DEFAULT_BLOCKS_PER_GROUP, bgdt_end as u32);
@@ -1623,7 +1628,7 @@ impl FilesystemType for Ext2FsType {
 
 				_padding: [0; 14],
 			};
-			bgd.write(i, io)?;
+			bgd.write(i, &superblock, io)?;
 		}
 
 		superblock.mark_block_used(io, 0)?;
@@ -1634,7 +1639,7 @@ impl FilesystemType for Ext2FsType {
 		let bgdt_size = size_of::<BlockGroupDescriptor>() as u32 * groups_count;
 		let bgdt_blk_count = math::ceil_division(bgdt_size, blk_size);
 		for j in 0..bgdt_blk_count {
-			let blk = BGDT_BLOCK_OFFSET + j as u64;
+			let blk = bgdt_offset + j as u64;
 			superblock.mark_block_used(io, blk as _)?;
 		}
 
@@ -1675,7 +1680,7 @@ impl FilesystemType for Ext2FsType {
 			used_sectors: 0,
 			flags: 0,
 			os_specific_0: 0,
-			direct_block_ptrs: [0; DIRECT_BLOCKS_COUNT],
+			direct_block_ptrs: [0; DIRECT_BLOCKS_COUNT as usize],
 			singly_indirect_block_ptr: 0,
 			doubly_indirect_block_ptr: 0,
 			triply_indirect_block_ptr: 0,
