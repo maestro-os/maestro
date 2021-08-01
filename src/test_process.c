@@ -91,6 +91,16 @@ void test_process(void)
 		write(1, "Content:\n", 9);
 		write(1, buff, len);
 		write(1, "end\n", 4);
+
+		// ------------------------------
+
+		//buff[0] = 'A';
+		//buff[1] = 'B';
+		//buff[2] = 'C';
+		//int len = write(fd, buff, 3);
+		//write(1, "len:", 5);
+		//print_nbr(len);
+		//write(1, "\n", 1);
 	}
 
 	asm("hlt");
