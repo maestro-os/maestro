@@ -45,35 +45,8 @@ pub struct DirectoryEntry {
 }
 
 impl DirectoryEntry {
-	/// Creates a new instance.
-	/// `superblock` is the filesystem's superblock.
-	/// `inode` is the entry's inode.
-	/// `file_type` is the entry's type.
-	/// `name` is the entry's name.
-	pub fn new(superblock: &Superblock, inode: u32, file_type: FileType, name: &String)
-		-> Result<Box<Self>, Errno> {
-		debug_assert!(inode >= 1);
-
-		let len = 8 + name.as_bytes().len();
-		let slice = unsafe {
-			slice::from_raw_parts_mut(malloc::alloc(len)? as *mut u8, len)
-		};
-
-		let mut entry = unsafe {
-			Box::from_raw(slice as *mut [u8] as *mut [()] as *mut Self)
-		};
-		entry.inode = inode;
-		entry.total_size = len as _;
-		entry.set_type(superblock, file_type);
-		entry.set_name(superblock, name);
-		Ok(entry)
-	}
-
 	/// Creates a new free instance.
-	/// `superblock` is the filesystem's superblock.
-	/// `inode` is the entry's inode.
-	/// `file_type` is the entry's type.
-	/// `name` is the entry's name.
+	/// `total_size` is the size of the entry, including the name.
 	pub fn new_free(total_size: u16) -> Result<Box<Self>, Errno> {
 		let slice = unsafe {
 			slice::from_raw_parts_mut(malloc::alloc(total_size as _)? as *mut u8, total_size as _)
@@ -83,6 +56,26 @@ impl DirectoryEntry {
 			Box::from_raw(slice as *mut [u8] as *mut [()] as *mut Self)
 		};
 		entry.total_size = total_size;
+		Ok(entry)
+	}
+
+	/// Creates a new instance.
+	/// `superblock` is the filesystem's superblock.
+	/// `inode` is the entry's inode.
+	/// `total_size` is the size of the entry, including the name.
+	/// `file_type` is the entry's type.
+	/// `name` is the entry's name.
+	/// If the total size is not large enough to hold the entry, the behaviour is undefined.
+	pub fn new(superblock: &Superblock, inode: u32, total_size: u16, file_type: FileType,
+		name: &String) -> Result<Box<Self>, Errno> {
+		debug_assert!(inode >= 1);
+		debug_assert!(total_size as usize >= 8 + name.as_bytes().len());
+
+		let mut entry = Self::new_free(total_size)?;
+		entry.inode = inode;
+		entry.total_size = total_size;
+		entry.set_type(superblock, file_type);
+		entry.set_name(superblock, name);
 		Ok(entry)
 	}
 
@@ -108,11 +101,6 @@ impl DirectoryEntry {
 	/// Returns the total size of the entry.
 	pub fn get_total_size(&self) -> u16 {
 		self.total_size
-	}
-
-	/// Sets the total size of the entry.
-	pub fn set_total_size(&mut self, total_size: u16) {
-		self.total_size = total_size;
 	}
 
 	/// Returns the length the entry's name.

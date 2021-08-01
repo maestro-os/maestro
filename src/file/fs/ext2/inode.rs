@@ -615,8 +615,7 @@ impl Ext2INode {
 			free_entry.set_type(superblock, file_type);
 			self.write_dirent(superblock, io, &free_entry, free_entry_off)
 		} else {
-			let entry = DirectoryEntry::new(superblock, entry_inode, file_type, name)?;
-			// TODO Ensure the entry spans the whole block
+			let entry = DirectoryEntry::new(superblock, entry_inode, blk_size as _, file_type, name)?;
 			self.write_dirent(superblock, io, &entry, self.get_size(superblock))
 		}
 	}
