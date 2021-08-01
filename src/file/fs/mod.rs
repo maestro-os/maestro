@@ -78,7 +78,8 @@ pub trait FilesystemType {
 	/// Creates a new instance of the filesystem to mount it.
 	/// `dev` is the device.
 	/// `mountpath` is the path on which the filesystem is mounted.
-	fn load_filesystem(&self, dev: &mut Device, mountpath: &Path) -> Result<Box<dyn Filesystem>, Errno>;
+	fn load_filesystem(&self, dev: &mut Device, mountpath: &Path)
+		-> Result<Box<dyn Filesystem>, Errno>;
 }
 
 /// The list of mountpoints.
