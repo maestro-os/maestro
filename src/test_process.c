@@ -78,14 +78,19 @@ void test_process(void)
 	//		;
 	//}
 
-	int fd = open("/etc/hostname", 0); // TODO
+	int fd = open("/etc/hostname", 0b11);
 	char buff[1024];
 	if (fd < 0) {
 		write(1, "Error\n", 6);
 	} else {
-		write(1, "Content:\n", 9);
 		int len = read(fd, buff, sizeof(buff));
+		write(1, "len:", 5);
+		print_nbr(len);
+		write(1, "\n", 1);
+
+		write(1, "Content:\n", 9);
 		write(1, buff, len);
+		write(1, "end\n", 4);
 	}
 
 	asm("hlt");

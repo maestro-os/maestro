@@ -53,7 +53,7 @@ fn get_file(path: Path, flags: i32, mode: u16, uid: u16, gid: u16)
 		let file = File::new(name, FileContent::Regular, uid, gid, mode)?;
 		files_cache.create_file(&parent, file)
 	} else {
-		Err(-errno::ENOENT as _)
+		Err(errno::ENOENT)
 	}
 }
 

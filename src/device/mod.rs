@@ -43,11 +43,11 @@ pub trait DeviceHandle {
 	/// Reads data from the device and writes it to the buffer `buff`.
 	/// `offset` is the offset in the file.
 	/// The function returns the number of bytes read.
-	fn read(&mut self, offset: u64, buff: &mut [u8]) -> Result<u64, Errno>;
+	fn read(&mut self, offset: u64, buff: &mut [u8]) -> Result<usize, Errno>;
 	/// Writes data to the device, reading it from the buffer `buff`.
 	/// `offset` is the offset in the file.
 	/// The function returns the number of bytes written.
-	fn write(&mut self, offset: u64, buff: &[u8]) -> Result<u64, Errno>;
+	fn write(&mut self, offset: u64, buff: &[u8]) -> Result<usize, Errno>;
 }
 
 /// Structure representing a device, either a block device or a char device. Each device has a

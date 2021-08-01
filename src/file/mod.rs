@@ -421,7 +421,7 @@ impl File {
 
 	/// Reads from the current file at offset `off` and places the data into the buffer `buff`.
 	/// The function returns the number of characters read.
-	pub fn read(&self, off: u64, buff: &mut [u8]) -> Result<u64, Errno> {
+	pub fn read(&self, off: u64, buff: &mut [u8]) -> Result<usize, Errno> {
 		match &self.content {
 			FileContent::Regular => {
 				if let FileLocation::Disk(location) = &self.location {
@@ -484,7 +484,7 @@ impl File {
 
 	/// Writes to the current file at offset `off`, reading the data from the buffer `buff`.
 	/// The function returns the number of characters written.
-	pub fn write(&mut self, off: u64, buff: &[u8]) -> Result<u64, Errno> {
+	pub fn write(&mut self, off: u64, buff: &[u8]) -> Result<usize, Errno> {
 		match &self.content {
 			FileContent::Regular => {
 				if let FileLocation::Disk(location) = &self.location {
@@ -501,7 +501,7 @@ impl File {
 
 					let filesystem = mountpoint.get_filesystem();
 					let len = filesystem.write_node(device, location.get_inode(), off, buff)?;
-					self.size = max(len, self.size);
+					self.size = max(len as u64, self.size);
 					Ok(len)
 				} else {
 					// TODO Write to memory? Panic?

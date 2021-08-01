@@ -51,7 +51,7 @@ pub trait StorageInterface {
 	// Unit testing is done through ramdisk testing
 	/// Reads bytes from storage at offset `offset`, writting the data to `buf`.
 	/// If the offset and size are out of bounds, the function returns an error.
-	fn read_bytes(&mut self, buf: &mut [u8], offset: u64) -> Result<u64, Errno> {
+	fn read_bytes(&mut self, buf: &mut [u8], offset: u64) -> Result<usize, Errno> {
 		let storage_size = self.get_block_size() * self.get_blocks_count();
 		if offset > storage_size || (offset + buf.len() as u64) > storage_size {
 			return Err(errno::EINVAL);
@@ -99,13 +99,13 @@ pub trait StorageInterface {
 			}
 		}
 
-		Ok(buf.len() as _)
+		Ok(buf.len())
 	}
 
 	// Unit testing is done through ramdisk testing
 	/// Writes bytes to storage at offset `offset`, reading the data from `buf`.
 	/// If the offset and size are out of bounds, the function returns an error.
-	fn write_bytes(&mut self, buf: &[u8], offset: u64) -> Result<u64, Errno> {
+	fn write_bytes(&mut self, buf: &[u8], offset: u64) -> Result<usize, Errno> {
 		let storage_size = self.get_block_size() * self.get_blocks_count();
 		if offset > storage_size || (offset + buf.len() as u64) > storage_size {
 			return Err(errno::EINVAL);
@@ -154,7 +154,7 @@ pub trait StorageInterface {
 			}
 		}
 
-		Ok(buf.len() as _)
+		Ok(buf.len())
 	}
 }
 
@@ -269,7 +269,7 @@ impl DeviceHandle for StorageDeviceHandle {
 		interface.get_block_size() * interface.get_blocks_count()
 	}
 
-	fn read(&mut self, offset: u64, buff: &mut [u8]) -> Result<u64, Errno> {
+	fn read(&mut self, offset: u64, buff: &mut [u8]) -> Result<usize, Errno> {
 		let interface = unsafe { // Safe because the pointer is valid
 			&mut *self.interface
 		};
@@ -277,7 +277,7 @@ impl DeviceHandle for StorageDeviceHandle {
 		interface.read_bytes(buff, offset)
 	}
 
-	fn write(&mut self, offset: u64, buff: &[u8]) -> Result<u64, Errno> {
+	fn write(&mut self, offset: u64, buff: &[u8]) -> Result<usize, Errno> {
 		let interface = unsafe { // Safe because the pointer is valid
 			&mut *self.interface
 		};

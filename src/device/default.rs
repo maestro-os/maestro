@@ -20,11 +20,11 @@ impl DeviceHandle for NullDeviceHandle {
 		0
 	}
 
-	fn read(&mut self, _offset: u64, _buff: &mut [u8]) -> Result<u64, Errno> {
+	fn read(&mut self, _offset: u64, _buff: &mut [u8]) -> Result<usize, Errno> {
 		Ok(0)
 	}
 
-	fn write(&mut self, _offset: u64, buff: &[u8]) -> Result<u64, Errno> {
+	fn write(&mut self, _offset: u64, buff: &[u8]) -> Result<usize, Errno> {
 		Ok(buff.len() as _)
 	}
 }
@@ -37,16 +37,16 @@ impl DeviceHandle for ZeroDeviceHandle {
 		0
 	}
 
-	fn read(&mut self, _offset: u64, buff: &mut [u8]) -> Result<u64, Errno> {
+	fn read(&mut self, _offset: u64, buff: &mut [u8]) -> Result<usize, Errno> {
 		for b in buff.iter_mut() {
 			*b = 0;
 		}
 
-		Ok(buff.len() as _)
+		Ok(buff.len())
 	}
 
-	fn write(&mut self, _offset: u64, buff: &[u8]) -> Result<u64, Errno> {
-		Ok(buff.len() as _)
+	fn write(&mut self, _offset: u64, buff: &[u8]) -> Result<usize, Errno> {
+		Ok(buff.len())
 	}
 }
 
@@ -61,7 +61,7 @@ impl DeviceHandle for KMsgDeviceHandle {
 		guard.get().get_size() as _
 	}
 
-	fn read(&mut self, offset: u64, buff: &mut [u8]) -> Result<u64, Errno> {
+	fn read(&mut self, offset: u64, buff: &mut [u8]) -> Result<usize, Errno> {
 		let mutex = logger::get();
 		let guard = mutex.lock(true);
 
@@ -70,12 +70,12 @@ impl DeviceHandle for KMsgDeviceHandle {
 
 		let len = min(size, buff.len()) - offset as usize;
 		buff.copy_from_slice(&content[(offset as usize)..(offset as usize + len)]);
-		Ok(len as _)
+		Ok(len)
 	}
 
-	fn write(&mut self, _offset: u64, buff: &[u8]) -> Result<u64, Errno> {
+	fn write(&mut self, _offset: u64, buff: &[u8]) -> Result<usize, Errno> {
 		// TODO Write to logger
-		Ok(buff.len() as _)
+		Ok(buff.len())
 	}
 }
 
@@ -87,14 +87,14 @@ impl DeviceHandle for CurrentTTYDeviceHandle {
 		0
 	}
 
-	fn read(&mut self, _offset: u64, _buff: &mut [u8]) -> Result<u64, Errno> {
+	fn read(&mut self, _offset: u64, _buff: &mut [u8]) -> Result<usize, Errno> {
 		// TODO Read from TTY input
 		todo!();
 	}
 
-	fn write(&mut self, _offset: u64, buff: &[u8]) -> Result<u64, Errno> {
+	fn write(&mut self, _offset: u64, buff: &[u8]) -> Result<usize, Errno> {
 		tty::current().lock(true).get_mut().write(buff);
-		Ok(buff.len() as _)
+		Ok(buff.len())
 	}
 }
 

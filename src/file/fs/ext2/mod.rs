@@ -928,8 +928,9 @@ impl Ext2INode {
 	/// `buff` is the buffer in which the data is to be written.
 	/// `superblock` is the filesystem's superblock.
 	/// `io` is the I/O interface.
+	/// The function returns the number of bytes that have been read.
 	pub fn read_content(&self, off: u64, buff: &mut [u8], superblock: &Superblock,
-		io: &mut dyn DeviceHandle) -> Result<(), Errno> {
+		io: &mut dyn DeviceHandle) -> Result<usize, Errno> {
 		let size = self.get_size(&superblock);
 		if off > size || off + buff.len() as u64 > size {
 			return Err(errno::EINVAL);
@@ -955,7 +956,7 @@ impl Ext2INode {
 			i += len;
 		}
 
-		Ok(())
+		Ok(i)
 	}
 
 	/// Writes the content of the inode.
@@ -963,8 +964,9 @@ impl Ext2INode {
 	/// `buff` is the buffer in which the data is to be written.
 	/// `superblock` is the filesystem's superblock.
 	/// `io` is the I/O interface.
+	/// The function returns the number of bytes that have been written.
 	pub fn write_content(&mut self, off: u64, buff: &[u8], superblock: &Superblock,
-		io: &mut dyn DeviceHandle) -> Result<(), Errno> {
+		io: &mut dyn DeviceHandle) -> Result<usize, Errno> {
 		let curr_size = self.get_size(superblock);
 		if off > curr_size {
 			return Err(errno::EINVAL);
@@ -1001,7 +1003,7 @@ impl Ext2INode {
 		if new_size > curr_size {
 			self.set_size(superblock, new_size);
 		}
-		Ok(())
+		Ok(i)
 	}
 
 	/// Reads the directory entry at offset `off` and returns it.
@@ -1035,7 +1037,9 @@ impl Ext2INode {
 		let buff = unsafe {
 			slice::from_raw_parts(entry as *const _ as *const u8, entry.total_size as _)
 		};
-		self.write_content(off, buff, superblock, io)
+
+		self.write_content(off, buff, superblock, io)?;
+		Ok(())
 	}
 
 	/// Iterates over directory entries and calls the given function `f` for each.
@@ -1542,22 +1546,22 @@ impl Filesystem for Ext2Fs {
 		//Err(errno::ENOMEM)
 	}
 
-	fn read_node(&mut self, _dev: &mut Device, inode: INode, _off: u64, _buf: &mut [u8])
-		-> Result<u64, Errno> {
+	fn read_node(&mut self, dev: &mut Device, inode: INode, off: u64, buf: &mut [u8])
+		-> Result<usize, Errno> {
+		let io = dev.get_handle();
 		debug_assert!(inode >= 1);
-		// TODO
-		todo!();
 
-		//Err(errno::ENOMEM)
+		let inode_ = Ext2INode::read(inode, &self.superblock, io)?;
+		inode_.read_content(off, buf, &self.superblock, io)
 	}
 
-	fn write_node(&mut self, _dev: &mut Device, inode: INode, _off: u64, _buf: &[u8])
-		-> Result<u64, Errno> {
+	fn write_node(&mut self, dev: &mut Device, inode: INode, off: u64, buf: &[u8])
+		-> Result<usize, Errno> {
+		let io = dev.get_handle();
 		debug_assert!(inode >= 1);
-		// TODO
-		todo!();
 
-		//Err(errno::ENOMEM)
+		let mut inode_ = Ext2INode::read(inode, &self.superblock, io)?;
+		inode_.write_content(off, buf, &self.superblock, io)
 	}
 }
 

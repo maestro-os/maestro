@@ -131,11 +131,11 @@ impl DeviceHandle for RAMDiskHandle {
 		RAM_DISK_SIZE as _
 	}
 
-	fn read(&mut self, offset: u64, buff: &mut [u8]) -> Result<u64, Errno> {
+	fn read(&mut self, offset: u64, buff: &mut [u8]) -> Result<usize, Errno> {
 		self.disk.read_bytes(buff, offset)
 	}
 
-	fn write(&mut self, offset: u64, buff: &[u8]) -> Result<u64, Errno> {
+	fn write(&mut self, offset: u64, buff: &[u8]) -> Result<usize, Errno> {
 		self.disk.write_bytes(buff, offset)
 	}
 }
