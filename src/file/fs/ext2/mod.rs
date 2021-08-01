@@ -743,7 +743,7 @@ impl Filesystem for Ext2Fs {
 	}
 
 	fn write_node(&mut self, dev: &mut Device, inode: INode, off: u64, buf: &[u8])
-		-> Result<usize, Errno> {
+		-> Result<(), Errno> {
 		let io = dev.get_handle();
 		debug_assert!(inode >= 1);
 

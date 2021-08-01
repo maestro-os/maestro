@@ -59,7 +59,7 @@ pub trait Filesystem {
 	/// Writes to the given inode `inode` from the buffer `buf`.
 	/// `off` is the offset at which the data will be written in the node.
 	fn write_node(&mut self, dev: &mut Device, inode: INode, off: u64, buf: &[u8])
-		-> Result<usize, Errno>;
+		-> Result<(), Errno>;
 }
 
 /// Trait representing a filesystem type.

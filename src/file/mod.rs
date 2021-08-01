@@ -500,9 +500,9 @@ impl File {
 					let device = device_guard.get_mut();
 
 					let filesystem = mountpoint.get_filesystem();
-					let len = filesystem.write_node(device, location.get_inode(), off, buff)?;
-					self.size = max(len as u64, self.size);
-					Ok(len)
+					filesystem.write_node(device, location.get_inode(), off, buff)?;
+					self.size = max(buff.len() as u64, self.size);
+					Ok(buff.len())
 				} else {
 					// TODO Write to memory? Panic?
 					todo!();

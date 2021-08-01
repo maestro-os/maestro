@@ -388,7 +388,7 @@ impl Ext2INode {
 	pub fn read_content(&self, off: u64, buff: &mut [u8], superblock: &Superblock,
 		io: &mut dyn DeviceHandle) -> Result<usize, Errno> {
 		let size = self.get_size(&superblock);
-		if off > size || off + buff.len() as u64 > size {
+		if off > size {
 			return Err(errno::EINVAL);
 		}
 
@@ -396,7 +396,8 @@ impl Ext2INode {
 		let mut blk_buff = malloc::Alloc::<u8>::new_default(blk_size as usize)?;
 
 		let mut i = 0;
-		while i < buff.len() {
+		let max = min(buff.len(), (size - off) as usize);
+		while i < max {
 			let blk_off = i / blk_size as usize;
 			let blk_inner_off = i % blk_size as usize;
 			let blk_off = self.get_content_block_off(blk_off as _, superblock, io)?.unwrap();
@@ -412,7 +413,7 @@ impl Ext2INode {
 			i += len;
 		}
 
-		Ok(i)
+		Ok(min(i, max))
 	}
 
 	/// Writes the content of the inode.
@@ -422,7 +423,7 @@ impl Ext2INode {
 	/// `io` is the I/O interface.
 	/// The function returns the number of bytes that have been written.
 	pub fn write_content(&mut self, off: u64, buff: &[u8], superblock: &Superblock,
-		io: &mut dyn DeviceHandle) -> Result<usize, Errno> {
+		io: &mut dyn DeviceHandle) -> Result<(), Errno> {
 		let curr_size = self.get_size(superblock);
 		if off > curr_size {
 			return Err(errno::EINVAL);
@@ -457,7 +458,7 @@ impl Ext2INode {
 
 		let new_size = off + buff.len() as u64;
 		self.set_size(superblock, max(new_size, curr_size));
-		Ok(i)
+		Ok(())
 	}
 
 	/// Reads the directory entry at offset `off` and returns it.
