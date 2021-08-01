@@ -69,6 +69,23 @@ impl DirectoryEntry {
 		Ok(entry)
 	}
 
+	/// Creates a new free instance.
+	/// `superblock` is the filesystem's superblock.
+	/// `inode` is the entry's inode.
+	/// `file_type` is the entry's type.
+	/// `name` is the entry's name.
+	pub fn new_free(total_size: u16) -> Result<Box<Self>, Errno> {
+		let slice = unsafe {
+			slice::from_raw_parts_mut(malloc::alloc(total_size as _)? as *mut u8, total_size as _)
+		};
+
+		let mut entry = unsafe {
+			Box::from_raw(slice as *mut [u8] as *mut [()] as *mut Self)
+		};
+		entry.total_size = total_size;
+		Ok(entry)
+	}
+
 	/// Creates a new instance from a slice.
 	pub unsafe fn from(slice: &[u8]) -> Result<Box<Self>, Errno> {
 		let ptr = malloc::alloc(slice.len())? as *mut u8;
@@ -91,6 +108,11 @@ impl DirectoryEntry {
 	/// Returns the total size of the entry.
 	pub fn get_total_size(&self) -> u16 {
 		self.total_size
+	}
+
+	/// Sets the total size of the entry.
+	pub fn set_total_size(&mut self, total_size: u16) {
+		self.total_size = total_size;
 	}
 
 	/// Returns the length the entry's name.
@@ -162,5 +184,17 @@ impl DirectoryEntry {
 	/// Tells whether the entry is valid.
 	pub fn is_free(&self) -> bool {
 		self.inode == 0
+	}
+
+	/// Splits the current entry into two entries and return the newly created entry.
+	/// `new_size` is the size of the current entry.
+	/// If the entry is not free, the behaviour is undefined.
+	pub fn split(&mut self, new_size: u16) -> Result<Box<Self>, Errno> {
+		debug_assert!(self.is_free());
+
+		let new_entry_size = self.total_size - new_size;
+		let new_entry = DirectoryEntry::new_free(new_entry_size)?;
+		self.total_size = new_size;
+		Ok(new_entry)
 	}
 }

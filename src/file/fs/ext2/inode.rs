@@ -1,5 +1,6 @@
 //! An inode represents a file in the filesystem.
 
+use core::cmp::max;
 use core::cmp::min;
 use core::mem::size_of;
 use core::ptr::copy_nonoverlapping;
@@ -455,9 +456,7 @@ impl Ext2INode {
 		}
 
 		let new_size = off + buff.len() as u64;
-		if new_size > curr_size {
-			self.set_size(superblock, new_size);
-		}
+		self.set_size(superblock, max(new_size, curr_size));
 		Ok(i)
 	}
 
@@ -568,12 +567,12 @@ impl Ext2INode {
 	/// `io` is the I/O interface.
 	/// `min_size` is the minimum size of the entry in bytes.
 	/// If the function finds an entry, it returns its offset. Else, the function returns None.
-	fn get_free_entry(&self, superblock: &Superblock, io: &mut dyn DeviceHandle, min_size: u32)
+	fn get_free_entry(&self, superblock: &Superblock, io: &mut dyn DeviceHandle, min_size: u16)
 		-> Result<Option<u64>, Errno> {
 		let mut off_option = None;
 
 		self.foreach_directory_entry(| off, e | {
-			if e.is_free() && e.get_total_size() as u32 >= min_size {
+			if e.is_free() && e.get_total_size() >= min_size {
 				off_option = Some(off);
 				false
 			} else {
@@ -596,18 +595,19 @@ impl Ext2INode {
 	pub fn add_dirent(&mut self, superblock: &Superblock, io: &mut dyn DeviceHandle,
 		entry_inode: u32, name: &String, file_type: FileType) -> Result<(), Errno> {
 		let blk_size = superblock.get_block_size();
-		let name_length = name.as_bytes().len() as u32;
+		let name_length = name.as_bytes().len() as u16;
 		let entry_size = 8 + name_length;
-		if entry_size > blk_size {
+		if entry_size as u32 > blk_size {
 			return Err(errno::ENAMETOOLONG);
 		}
 
 		if let Some(free_entry_off) = self.get_free_entry(superblock, io, entry_size)? {
 			let mut free_entry = self.read_dirent(superblock, io, free_entry_off)?;
-			let split = free_entry.get_total_size() as u32 - entry_size > 8;
+			let split = free_entry.get_total_size() > entry_size + 8;
 
 			if split {
-				// TODO Split entry
+				let new_entry = free_entry.split(entry_size)?;
+				self.write_dirent(superblock, io, &new_entry, free_entry_off + entry_size as u64)?;
 			}
 
 			free_entry.set_inode(entry_inode);
@@ -616,6 +616,7 @@ impl Ext2INode {
 			self.write_dirent(superblock, io, &free_entry, free_entry_off)
 		} else {
 			let entry = DirectoryEntry::new(superblock, entry_inode, file_type, name)?;
+			// TODO Ensure the entry spans the whole block
 			self.write_dirent(superblock, io, &entry, self.get_size(superblock))
 		}
 	}

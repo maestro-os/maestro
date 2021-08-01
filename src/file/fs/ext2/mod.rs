@@ -694,6 +694,7 @@ impl Filesystem for Ext2Fs {
 			fragment_addr: 0,
 			os_specific_1: [0; 12],
 		};
+		// TODO When adding a directory, add '.' and '..' in it?
 		match file.get_file_content() {
 			FileContent::Link(_target) => {
 				// TODO Write symlink target
@@ -706,11 +707,11 @@ impl Filesystem for Ext2Fs {
 			_ => {},
 		}
 		inode.write(inode_index, &self.superblock, io)?;
+		let dir = file.get_file_type() == FileType::Directory;
+		self.superblock.mark_inode_used(io, inode_index, dir)?;
 
 		parent.add_dirent(&self.superblock, io, inode_index, file.get_name(),
 			file.get_file_type())?;
-		let dir = file.get_file_type() == FileType::Directory;
-		self.superblock.mark_inode_used(io, inode_index, dir)?;
 		parent.write(parent_inode, &self.superblock, io)?;
 
 		file.set_location(FileLocation::Disk(DiskLocation::new(dev.get_type(), dev.get_major(),
