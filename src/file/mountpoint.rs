@@ -81,7 +81,7 @@ impl MountPoint {
 		let mut fs_type_ptr = fs::detect(device)?;
 		let fs_type_guard = fs_type_ptr.lock(true);
 		let fs_type = fs_type_guard.get();
-		let filesystem = fs_type.load_filesystem(device)?;
+		let filesystem = fs_type.load_filesystem(device, &path)?;
 
 		Ok(Self {
 			device_type,

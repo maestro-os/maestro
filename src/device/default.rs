@@ -103,16 +103,22 @@ pub fn create() -> Result<(), Errno> {
 	let _first_major = ManuallyDrop::new(id::alloc_major(DeviceType::Char, Some(1))?);
 
 	let null_path = Path::from_string("/dev/null")?;
-	device::register_device(Device::new(1, 3, null_path, 0o666, DeviceType::Char,
-		NullDeviceHandle {})?)?;
+	let mut null_device = Device::new(1, 3, null_path, 0o666, DeviceType::Char,
+		NullDeviceHandle {})?;
+	null_device.create_file()?; // TODO remove?
+	device::register_device(null_device)?;
 
 	let zero_path = Path::from_string("/dev/zero")?;
-	device::register_device(Device::new(1, 5, zero_path, 0o666, DeviceType::Char,
-		ZeroDeviceHandle {})?)?;
+	let mut zero_device = Device::new(1, 5, zero_path, 0o666, DeviceType::Char,
+		ZeroDeviceHandle {})?;
+	zero_device.create_file()?; // TODO remove?
+	device::register_device(zero_device)?;
 
 	let kmsg_path = Path::from_string("/dev/kmsg")?;
-	device::register_device(Device::new(1, 11, kmsg_path, 0o600, DeviceType::Char,
-		KMsgDeviceHandle {})?)?;
+	let mut kmsg_device = Device::new(1, 11, kmsg_path, 0o600, DeviceType::Char,
+		KMsgDeviceHandle {})?;
+	kmsg_device.create_file()?; // TODO remove?
+	device::register_device(kmsg_device)?;
 
 	let _fifth_major = ManuallyDrop::new(id::alloc_major(DeviceType::Char, Some(5))?);
 

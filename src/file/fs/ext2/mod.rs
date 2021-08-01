@@ -48,6 +48,7 @@ use crate::memory::malloc;
 use crate::time;
 use crate::util::boxed::Box;
 use crate::util::container::string::String;
+use crate::util::container::vec::Vec;
 use crate::util::math;
 use crate::util;
 
@@ -1065,6 +1066,7 @@ impl Ext2INode {
 					DirectoryEntry::from(&buff.get_slice()[j..len])?
 				};
 				let total_size = entry.total_size as usize;
+				debug_assert!(total_size > 0);
 
 				if !f(i + j as u64, entry) {
 					return Ok(());
@@ -1323,7 +1325,9 @@ struct Ext2Fs {
 impl Ext2Fs {
 	/// Creates a new instance.
 	/// If the filesystem cannot be mounted, the function returns an Err.
-	fn new(mut superblock: Superblock, io: &mut dyn DeviceHandle) -> Result<Self, Errno> {
+	/// `mountpath` is the path on which the filesystem is mounted.
+	fn new(mut superblock: Superblock, io: &mut dyn DeviceHandle, mountpath: Option<&Path>)
+		-> Result<Self, Errno> {
 		debug_assert!(superblock.is_valid());
 
 		// TODO Check that the driver supports required features
@@ -1337,7 +1341,24 @@ impl Ext2Fs {
 		}*/
 
 		superblock.mount_count_since_fsck += 1;
-		superblock.last_fsck_timestamp = timestamp;
+
+		if let Some(mountpath) = mountpath {
+			let mountpath_str = mountpath.as_string()?;
+			let mountpath_bytes = mountpath_str.as_bytes();
+
+			let mut i = 0;
+			while i < min(mountpath_bytes.len(), superblock.last_mount_path.len()) {
+				superblock.last_mount_path[i] = mountpath_bytes[i];
+				i += 1;
+			}
+			while i < superblock.last_mount_path.len() {
+				superblock.last_mount_path[i] = 0;
+				i += 1;
+			}
+
+			superblock.last_mount_timestamp = timestamp;
+		}
+
 		superblock.write(io)?;
 
 		Ok(Self {
@@ -1346,6 +1367,7 @@ impl Ext2Fs {
 	}
 }
 
+// TODO Update the write timestamp when the fs is written
 impl Filesystem for Ext2Fs {
 	fn get_name(&self) -> &str {
 		"ext2"
@@ -1389,8 +1411,31 @@ impl Filesystem for Ext2Fs {
 		let file_content = match file_type {
 			FileType::Regular => FileContent::Regular,
 			FileType::Directory => {
-				// TODO Read subfiles list
-				todo!();
+				let mut subfiles = Vec::new();
+				let mut err = None;
+
+				inode_.foreach_directory_entry(| _, entry | {
+					match String::from(entry.get_name(&self.superblock)) {
+						Ok(s) => {
+							if let Err(e) = subfiles.push(s) {
+								err = Some(e);
+								false
+							} else {
+								true
+							}
+						},
+						Err(e) => {
+							err = Some(e);
+							false
+						},
+					}
+				}, &self.superblock, io)?;
+
+				if let Some(e) = err {
+					return Err(e);
+				}
+
+				FileContent::Directory(subfiles)
 			},
 			FileType::Link => {
 				// TODO Read symlink path
@@ -1692,15 +1737,16 @@ impl FilesystemType for Ext2FsType {
 		};
 		root_dir.write(ROOT_DIRECTORY_INODE, &superblock, io)?;
 
-		let fs = Ext2Fs::new(superblock, io)?;
+		let fs = Ext2Fs::new(superblock, io, None)?;
 		Ok(Box::new(fs)?)
 	}
 
-	fn load_filesystem(&self, dev: &mut Device) -> Result<Box<dyn Filesystem>, Errno> {
+	fn load_filesystem(&self, dev: &mut Device, mountpath: &Path)
+		-> Result<Box<dyn Filesystem>, Errno> {
 		let io = dev.get_handle();
 
 		let superblock = Superblock::read(io)?;
-		let fs = Ext2Fs::new(superblock, io)?;
+		let fs = Ext2Fs::new(superblock, io, Some(mountpath))?;
 		Ok(Box::new(fs)? as _)
 	}
 }
