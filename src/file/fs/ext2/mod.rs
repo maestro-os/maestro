@@ -1368,6 +1368,8 @@ impl Ext2Fs {
 }
 
 // TODO Update the write timestamp when the fs is written
+// TODO Add an option when mounting to specify whether to mount in readonly?
+// TODO Make write operations fails if the filesystem is mounted in readonly?
 impl Filesystem for Ext2Fs {
 	fn get_name(&self) -> &str {
 		"ext2"

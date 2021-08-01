@@ -2,7 +2,9 @@
 
 typedef void (*sighandler_t)(int);
 
-void write(int fd, const void *buf, size_t count);
+int open(char *pathname, int flags);
+size_t read(int fd, void *buf, size_t count);
+size_t write(int fd, const void *buf, size_t count);
 void close(int status);
 void _exit(int status);
 int fork(void);
@@ -53,27 +55,37 @@ void test_process(void)
 	//	fork();
 	//}
 
-	write(1, "Hello world!\n", 13);
-	int pid = fork();
-	if (pid == 0) {
-		write(1, "forked!\n", 8);
+	//write(1, "Hello world!\n", 13);
+	//int pid = fork();
+	//if (pid == 0) {
+	//	write(1, "forked!\n", 8);
 
-		signal(0, sig_handle);
-		kill(getpid(), 0);
+	//	signal(0, sig_handle);
+	//	kill(getpid(), 0);
 
-		_exit(43);
+	//	_exit(43);
+	//} else {
+	//	write(1, "waiting\n", 8);
+	//	int wstatus = 42;
+	//	int ret = waitpid(-1, &wstatus, 0);
+
+	//	write(1, "ret: ", 5);
+	//	print_nbr(ret);
+	//	write(1, "\nstatus: ", 9);
+	//	print_nbr(wstatus);
+
+	//	while (1)
+	//		;
+	//}
+
+	int fd = open("/etc/hostname", 0); // TODO
+	char buff[1024];
+	if (fd < 0) {
+		write(1, "Error\n", 6);
 	} else {
-		write(1, "waiting\n", 8);
-		int wstatus = 42;
-		int ret = waitpid(-1, &wstatus, 0);
-
-		write(1, "ret: ", 5);
-		print_nbr(ret);
-		write(1, "\nstatus: ", 9);
-		print_nbr(wstatus);
-
-		while (1)
-			;
+		write(1, "Content:\n", 9);
+		int len = read(fd, buff, sizeof(buff));
+		write(1, buff, len);
 	}
 
 	asm("hlt");

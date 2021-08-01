@@ -152,7 +152,6 @@ impl Device {
 		let mut guard = mutex.lock(true);
 		let files_cache = guard.get_mut();
 		// TODO Cancel directories creation on fail
-		crate::println!("-> {}", self.path); // TODO rm
 		files_cache.create_file(&dir_path, file)?;
 
 		Ok(())

@@ -1,3 +1,5 @@
+.global open
+.global read
 .global write
 .global close
 .global _exit
@@ -7,6 +9,47 @@
 .global getppid
 .global signal
 .global kill
+
+open:
+	push %ebp
+	mov %esp, %ebp
+
+	push %ebx
+	push %ecx
+
+	mov $0, %eax
+	mov 8(%ebp), %ebx
+	mov 12(%ebp), %ecx
+	int $0x80
+
+	pop %ecx
+	pop %ebx
+
+	mov %ebp, %esp
+	pop %ebp
+	ret
+
+read:
+	push %ebp
+	mov %esp, %ebp
+
+	push %ebx
+	push %ecx
+	push %edx
+
+	mov $14, %eax
+	mov 8(%ebp), %ebx
+	mov 12(%ebp), %ecx
+	mov 16(%ebp), %edx
+	int $0x80
+
+	pop %edx
+	pop %ecx
+	pop %ebx
+
+	mov %ebp, %esp
+	pop %ebp
+	ret
 
 write:
 	push %ebp
