@@ -2,6 +2,7 @@
 	"arch": "x86",
 	"data-layout": "e-m:e-i32:32:32-f32:32:32-S16-p:32:32:32",
 	"disable-redzone": true,
+	"dynamic-linking": true,
 	"eliminate-frame-pointer": false,
 	"executables": true,
 	"features": "-mmx,-sse,+soft-float",

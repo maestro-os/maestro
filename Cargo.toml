@@ -7,3 +7,7 @@ edition = "2018"
 [[bin]]
 name = "maestro"
 path = "src/kernel.rs"
+
+[lib]
+name = "maestro"
+path = "src/kernel.rs"

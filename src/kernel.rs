@@ -2,7 +2,7 @@
 //! the kernel's internals.
 
 #![no_std]
-#![no_main]
+#![allow(unused_attributes)] #![no_main]
 
 #![feature(allow_internal_unstable)]
 #![feature(asm)]
@@ -33,36 +33,36 @@
 #![test_runner(crate::selftest::runner)]
 #![reexport_test_harness_main = "kernel_selftest"]
 
-mod acpi;
-mod cmdline;
-mod debug;
-mod device;
-mod elf;
-mod errno;
-mod event;
-mod file;
-mod gdt;
+pub mod acpi;
+pub mod cmdline;
+pub mod debug;
+pub mod device;
+pub mod elf;
+pub mod errno;
+pub mod event;
+pub mod file;
+pub mod gdt;
 #[macro_use]
-mod idt;
-mod limits;
-mod logger;
-mod memory;
-mod module;
-mod multiboot;
+pub mod idt;
+pub mod limits;
+pub mod logger;
+pub mod memory;
+pub mod module;
+pub mod multiboot;
 #[macro_use]
-mod panic;
-mod pit;
+pub mod panic;
+pub mod pit;
 #[macro_use]
-mod print;
-mod process;
-mod selftest;
-mod syscall;
-mod time;
-mod tty;
+pub mod print;
+pub mod process;
+pub mod selftest;
+pub mod syscall;
+pub mod time;
+pub mod tty;
 #[macro_use]
-mod util;
+pub mod util;
 #[macro_use]
-mod vga;
+pub mod vga;
 
 use core::ffi::c_void;
 use core::panic::PanicInfo;
