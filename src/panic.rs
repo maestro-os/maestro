@@ -43,7 +43,7 @@ it.");
 pub fn kernel_panic_(reason: &str, code: u32, _file: &str, _line: u32, _col: u32) -> ! {
 	crate::cli!();
 	print_panic(reason, code);
-	crate::halt();
+	kern::halt();
 }
 
 /// Same as the release version, except the function also prints process's registers and the
@@ -84,7 +84,7 @@ pub fn rust_panic<'a>(args: &'a fmt::Arguments<'a>) -> ! {
 	crate::cli!();
 	print_rust_panic(args);
 
-	crate::halt();
+	kern::halt();
 }
 
 /// Same as the release version, except the function also prints the kernel's callstack.

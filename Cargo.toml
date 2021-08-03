@@ -8,6 +8,7 @@ edition = "2018"
 [lib]
 name = "abi"
 path = "src/mod_abi.rs"
+crate-type = ["dylib", "rlib"]
 
 # The kernel binary itself
 [[bin]]
