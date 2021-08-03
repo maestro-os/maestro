@@ -582,6 +582,16 @@ impl Filesystem for Ext2Fs {
 				return Err(errno::ENOTDIR);
 			}
 
+			// TODO rm
+			//crate::println!("Files in {}:", path[i]);
+			//let _ = inode.foreach_directory_entry(| _, e | {
+			//	let name = e.as_ref().get_name(&self.superblock);
+			//	let inode = e.as_ref().get_inode();
+			//	crate::println!("=> {} {}", name, inode);
+
+			//	true
+			//}, &self.superblock, io);
+
 			let name = path[i].as_str();
 			if let Some(entry) = inode.get_directory_entry(name, &self.superblock, io)? {
 				inode_index = entry.get_inode();

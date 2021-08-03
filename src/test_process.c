@@ -78,7 +78,8 @@ void test_process(void)
 	//		;
 	//}
 
-	int fd = open("/etc/hostname", 0b11);
+	//int fd = open("/etc/hostname", 0b11);
+	int fd = open("/lib/hello.kmod", 0b11);
 	char buff[1024];
 	if (fd < 0) {
 		write(1, "Error\n", 6);
