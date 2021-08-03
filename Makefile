@@ -35,7 +35,6 @@ CONFIG_ARGUMENTS_SCRIPT = scripts/config_args.sh
 # The path to the script that extracts specific configuration attributes
 CONFIG_ATTR_SCRIPT = scripts/config_attr.sh
 
-ifeq ($(CONFIG_EXISTS), 0)
 # Configuration as arguments for the compiler
 CONFIG_ARGS := $(shell $(CONFIG_ARGUMENTS_SCRIPT))
 
@@ -45,7 +44,6 @@ CONFIG_ARCH := $(shell $(CONFIG_ATTR_SCRIPT) general_arch)
 CONFIG_DEBUG := $(shell $(CONFIG_ATTR_SCRIPT) debug_debug)
 # Tells whether to compile for unit testing
 CONFIG_DEBUG_TEST := $(shell $(CONFIG_ATTR_SCRIPT) debug_test)
-endif
 
 
 
