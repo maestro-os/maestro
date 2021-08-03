@@ -172,15 +172,13 @@ OBJ := $(ASM_OBJ) $(C_OBJ)
 # Cargo
 CARGO = cargo +nightly
 # Cargo flags
-CARGOFLAGS = --verbose
+CARGOFLAGS = --verbose --target $(TARGET) --bin kernel
 ifeq ($(CONFIG_DEBUG), false)
 CARGOFLAGS += --release
 endif
 ifeq ($(CONFIG_DEBUG_TEST), true)
 CARGOFLAGS = --tests
 endif
-
-CARGOFLAGS += --target $(TARGET)
 
 # The Rust language compiler flags
 RUSTFLAGS = -Zmacro-backtrace -C link-arg=-T$(LINKER) $(CONFIG_ARGS)
@@ -211,10 +209,10 @@ $(OBJ_DIR)%.c.o: $(SRC_DIR)%.c $(HDR) $(TOUCH_UPDATE_FILES)
 $(NAME): $(LIB_NAME) $(RUST_SRC) $(LINKER) $(TOUCH_UPDATE_FILES)
 	RUSTFLAGS='$(RUSTFLAGS)' $(CARGO) build $(CARGOFLAGS)
 ifeq ($(CONFIG_DEBUG), false)
-	cp target/target/release/maestro .
+	cp target/target/release/kernel maestro
 	$(STRIP) $(NAME)
 else
-	cp `ls -1 target/target/debug/deps/maestro-* | head -n 1` $@
+	cp target/target/debug/kernel maestro
 endif
 
 # Alias for $(NAME).iso

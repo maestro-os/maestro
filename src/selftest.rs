@@ -13,6 +13,7 @@ static mut RUNNING: bool = false;
 #[cfg(config_debug_qemu)]
 pub mod qemu {
 	use crate::io;
+	use crate::kern;
 
 	/// The port used to trigger QEMU emulator exit with the given exit code.
 	const EXIT_PORT: u16 = 0xf4;
@@ -28,7 +29,7 @@ pub mod qemu {
 			io::outl(EXIT_PORT, status);
 		}
 
-		crate::halt();
+		kern::halt();
 	}
 }
 

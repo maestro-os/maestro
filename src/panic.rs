@@ -6,6 +6,7 @@ use core::ffi::c_void;
 use core::fmt;
 #[cfg(config_debug_debug)]
 use crate::debug;
+use crate::kern;
 use crate::memory;
 use crate::tty;
 
@@ -61,7 +62,7 @@ pub fn kernel_panic_(reason: &str, code: u32, file: &str, line: u32, col: u32) -
 	};
 	debug::print_callstack(ebp, 8);
 
-	crate::halt();
+	kern::halt();
 }
 
 /// Initializes the TTY and prints a Rust panic message.
@@ -98,5 +99,5 @@ pub fn rust_panic<'a>(args: &'a fmt::Arguments<'a>) -> ! {
 	};
 	debug::print_callstack(ebp, 8);
 
-	crate::halt();
+	kern::halt();
 }

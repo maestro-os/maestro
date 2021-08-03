@@ -38,6 +38,7 @@ mod wait;
 mod waitpid;
 mod write;
 
+use crate::kern;
 use crate::process::Process;
 use crate::process;
 
@@ -190,7 +191,7 @@ pub extern "C" fn syscall_handler(regs: &util::Regs) -> u32 {
 			let curr_proc = guard.get_mut();
 
 			curr_proc.kill(process::signal::Signal::new(process::signal::SIGSYS).unwrap());
-			crate::enter_loop();
+			kern::enter_loop();
 		}
 	};
 

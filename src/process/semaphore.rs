@@ -1,6 +1,7 @@
 //! This module contains the Semaphore structure.
 
 use crate::errno::Errno;
+use crate::kern;
 use crate::util::container::vec::Vec;
 use crate::util::lock::mutex::*;
 use super::Pid;
@@ -43,7 +44,7 @@ impl<T> Semaphore<T> {
 		self.fifo.lock(true).get_mut().push(pid)?;
 
 		while !self.can_acquire(pid) {
-			crate::wait();
+			kern::wait();
 		}
 
 		f(&mut self.data);

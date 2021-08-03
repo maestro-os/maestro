@@ -4,10 +4,12 @@ version = "0.1.0"
 authors = ["llenotre <llenotre@student.42.fr>"]
 edition = "2018"
 
-[[bin]]
-name = "maestro"
-path = "src/kernel.rs"
-
+# The kernel is implemented into an library in order to make it accessible from kernel modules as a dependency.
 [lib]
-name = "maestro"
+name = "abi"
+path = "src/mod_abi.rs"
+
+# The kernel binary itself
+[[bin]]
+name = "kernel"
 path = "src/kernel.rs"

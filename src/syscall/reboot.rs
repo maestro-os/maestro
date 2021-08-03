@@ -2,6 +2,7 @@
 
 use crate::errno::Errno;
 use crate::errno;
+use crate::kern;
 use crate::process::Process;
 use crate::util;
 
@@ -58,13 +59,13 @@ pub fn reboot(regs: &util::Regs) -> Result<i32, Errno> {
 			}
 
 			// In case rebooting didn't work (unlikely)
-			crate::halt();
+			kern::halt();
 		},
 
 		CMD_HALT => {
 			// TODO Send a signal to all other cores to stop them
 			crate::println!("Halting..."); // FIXME Potential deadlock?
-			crate::halt();
+			kern::halt();
 		},
 
 		CMD_SUSPEND => {

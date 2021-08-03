@@ -6,6 +6,7 @@ use core::mem::MaybeUninit;
 use crate::errno::Errno;
 use crate::idt::pic;
 use crate::idt;
+use crate::kern;
 use crate::process::tss;
 use crate::util::boxed::Box;
 use crate::util::container::vec::Vec;
@@ -237,7 +238,7 @@ pub extern "C" fn event_handler(id: u32, code: u32, ring: u32, regs: &util::Regs
 			// TODO Fix: Use of loop action before TSS init shall result in undefined behaviour
 
 			unsafe {
-				crate::loop_reset(tss::get().esp0 as _);
+				kern::loop_reset(tss::get().esp0 as _);
 			}
 		},
 
