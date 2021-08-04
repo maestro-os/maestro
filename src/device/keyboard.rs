@@ -17,7 +17,7 @@ impl KeyboardManager {
 
 impl DeviceManager for KeyboardManager {
 	fn legacy_detect(&mut self) -> Result<(), Errno> {
-		let _ps2_module = ps2::PS2Module::new(| c, action | {
+		let _ps2_module = ps2::PS2Handler::new(| c, action | {
 			crate::println!("Key action! {:?} {:?}", c, action);
 			// TODO Write to device file
 		});

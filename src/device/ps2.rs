@@ -7,8 +7,6 @@
 use crate::event::{CallbackHook, InterruptResult, InterruptResultAction};
 use crate::event;
 use crate::io;
-use crate::module::Module;
-use crate::module;
 use crate::util::boxed::Box;
 use crate::util;
 
@@ -506,15 +504,15 @@ fn read_keystroke() -> (KeyboardKey, KeyboardAction) {
 	(key, action)
 }
 
-/// The PS2 kernel module structure.
-pub struct PS2Module {
+/// The PS2 handler structure.
+pub struct PS2Handler {
 	/// The callback hook for keyboard input interrupts.
 	keyboard_interrupt_callback_hook: Option<CallbackHook>,
 	/// The callback handling keyboard inputs.
 	keyboard_callback: Box<dyn FnMut(KeyboardKey, KeyboardAction)>,
 }
 
-impl PS2Module {
+impl PS2Handler {
 	/// Creates the module's instance.
 	pub fn new<F: 'static + FnMut(KeyboardKey, KeyboardAction)>(f: F) -> Self {
 		Self {
@@ -524,20 +522,9 @@ impl PS2Module {
 	}
 }
 
-impl Module for PS2Module {
-	fn get_name(&self) -> &str {
-		"PS/2"
-	}
-
-	fn get_version(&self) -> module::Version {
-		module::Version {
-			major: 0,
-			minor: 0,
-			patch: 0,
-		}
-	}
-
-	fn init(&mut self) -> Result<(), ()> {
+impl PS2Handler {
+	/// Initializes the handler.
+	pub fn init(&mut self) -> Result<(), ()> {
 		// TODO Check if PS/2 controller is existing using ACPI
 
 		// TODO Disable interrupts during init

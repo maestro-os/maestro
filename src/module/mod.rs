@@ -4,70 +4,61 @@
 //!
 //! There's a distinction between a Module and a Kernel module:
 //! - Module: A Rust module, part of the structure of the code.
-//! - Kernel module: A piece of software to be loaded at runtime.
+//! - Kernel module: A piece of software to be loaded at runtime in kernelspace.
 
-use core::cmp::Ordering;
+pub mod version;
 
-/// Structure representing the version of a module.
-/// The version is divided into the following component:
-/// - Major: Version including breaking changes
-/// - Minor: Version including new features
-/// - Patch: Version including bug fixes and optimizations
-#[derive(Eq)]
-pub struct Version {
-	/// The major version
-	pub major: u16,
-	/// The minor version
-	pub minor: u16,
-	/// The patch version
-	pub patch: u16,
+use crate::elf::ELFParser;
+use crate::errno::Errno;
+use crate::util::container::string::String;
+use version::Version;
+
+/// Structure representing a kernel module.
+pub struct Module {
+	/// The module's name.
+	name: String,
+	/// The module's version.
+	version: Version,
+
+	// TODO Store a pointer to the module image
+
+	/// Pointer to the module's destructor.
+	fini: Option<fn()>,
 }
 
-impl Version {
-	/// Compares current version with the given one.
-	fn cmp(&self, other: &Self) -> Ordering {
-		let mut ord = self.major.cmp(&other.major);
-		if ord != Ordering::Equal {
-			return ord;
-		}
+impl Module {
+	/// Loads a kernel module from the given image.
+	pub fn load(image: &[u8]) -> Result<Self, Errno> {
+		let _parser = ELFParser::new(image)?;
 
-		ord = self.minor.cmp(&other.minor);
-		if ord != Ordering::Equal {
-			return ord;
-		}
+		// TODO
+		Ok(Self {
+			name: String::from("TODO")?,
+			version: Version {
+				major: 0,
+				minor: 0,
+				patch: 0,
+			},
 
-		self.patch.cmp(&other.patch)
+			fini: None,
+		})
 	}
 
-	// TODO to_string
-}
-
-impl Ord for Version {
-	fn cmp(&self, other: &Self) -> Ordering {
-		self.cmp(other)
-	}
-}
-
-impl PartialOrd for Version {
-	fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-		Some(self.cmp(other))
-	}
-}
-
-impl PartialEq for Version {
-	fn eq(&self, other: &Self) -> bool {
-		self.major == other.major && self.minor == other.minor && self.patch == other.patch
-	}
-}
-
-/// Structure describing a kernel module.
-pub trait Module {
 	/// Returns the name of the module.
-	fn get_name(&self) -> &str;
+	pub fn get_name(&self) -> &String {
+		&self.name
+	}
 
 	/// Returns the version of the module.
-	fn get_version(&self) -> Version;
+	pub fn get_version(&self) -> &Version {
+		&self.version
+	}
+}
 
-	/// Function called after the module have been loaded for initialization.
-	fn init(&mut self) -> Result<(), ()>;
+impl Drop for Module {
+	fn drop(&mut self) {
+		if let Some(fini) = self.fini {
+			fini();
+		}
+	}
 }
