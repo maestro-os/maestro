@@ -31,12 +31,16 @@ CONFIG_FILE = .config
 CONFIG_EXISTS = $(shell stat $(CONFIG_FILE) >/dev/null 2>&1; echo $$?)
 
 # The path to the script that generates configuration as compiler arguments
-CONFIG_ARGUMENTS_SCRIPT = scripts/config_args.sh
+CONFIG_ARGS_SCRIPT = scripts/config_args.sh
+# The path to the script that generates configuration as environment variables
+CONFIG_ENV_SCRIPT = scripts/config_env.sh
 # The path to the script that extracts specific configuration attributes
 CONFIG_ATTR_SCRIPT = scripts/config_attr.sh
 
 # Configuration as arguments for the compiler
-CONFIG_ARGS := $(shell $(CONFIG_ARGUMENTS_SCRIPT))
+CONFIG_ARGS := $(shell $(CONFIG_ARGS_SCRIPT))
+# Configuration as environment variables
+CONFIG_ENV := $(shell $(CONFIG_ENV_SCRIPT))
 
 # The target architecture
 CONFIG_ARCH := $(shell $(CONFIG_ATTR_SCRIPT) general_arch)
@@ -72,7 +76,7 @@ all: $(NAME) iso tags
 
 # Builds the documentation
 doc: $(DOC_SRC_DIR)
-	RUSTFLAGS='$(RUSTFLAGS)' $(CARGO) doc $(CARGOFLAGS)
+	$(CONFIG_ENV) RUSTFLAGS='$(RUSTFLAGS)' $(CARGO) doc $(CARGOFLAGS)
 	sphinx-build $(DOC_SRC_DIR) $(DOC_DIR)
 	rm -rf $(DOC_DIR)/references/
 	cp -r target/target/doc/ $(DOC_DIR)/references/
@@ -117,8 +121,7 @@ LIB_NAME = lib$(NAME).a
 CC = i686-elf-gcc # TODO Set according to architecture
 
 # The C language compiler flags
-CFLAGS = -nostdlib -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -Wall -Wextra\
--Werror -lgcc
+CFLAGS = -nostdlib -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -Wall -Wextra -Werror -lgcc
 ifeq ($(CONFIG_DEBUG), false)
 CFLAGS += -O3
 else
@@ -170,7 +173,7 @@ OBJ := $(ASM_OBJ) $(C_OBJ)
 # Cargo
 CARGO = cargo +nightly
 # Cargo flags
-CARGOFLAGS = --verbose --target $(TARGET) --bin kernel
+CARGOFLAGS = --verbose --target $(TARGET) -Zextra-link-arg --bin kernel
 ifeq ($(CONFIG_DEBUG), false)
 CARGOFLAGS += --release
 endif
@@ -179,7 +182,7 @@ CARGOFLAGS = --tests
 endif
 
 # The Rust language compiler flags
-RUSTFLAGS = -Zmacro-backtrace -C link-arg=-T$(LINKER) $(CONFIG_ARGS)
+RUSTFLAGS = -Zmacro-backtrace $(CONFIG_ARGS)
 
 # The strip program
 STRIP = strip
@@ -205,7 +208,7 @@ $(OBJ_DIR)%.c.o: $(SRC_DIR)%.c $(HDR) $(TOUCH_UPDATE_FILES)
 	$(CC) $(CFLAGS) -I $(SRC_DIR) -c $< -o $@
 
 $(NAME): $(LIB_NAME) $(RUST_SRC) $(LINKER) $(TOUCH_UPDATE_FILES)
-	RUSTFLAGS='$(RUSTFLAGS)' $(CARGO) build $(CARGOFLAGS)
+	$(CONFIG_ENV) RUSTFLAGS='$(RUSTFLAGS)' $(CARGO) build $(CARGOFLAGS)
 ifeq ($(CONFIG_DEBUG), false)
 	cp target/target/release/kernel maestro
 	$(STRIP) $(NAME)
@@ -229,7 +232,7 @@ tags: $(SRC) $(HDR) $(RUST_SRC)
 
 # Runs clippy on the Rust code
 clippy:
-	RUSTFLAGS='$(RUSTFLAGS)' $(CARGO) clippy $(CARGOFLAGS)
+	$(CONFIG_ENV) RUSTFLAGS='$(RUSTFLAGS)' $(CARGO) clippy $(CARGOFLAGS)
 
 .PHONY: iso clippy
 

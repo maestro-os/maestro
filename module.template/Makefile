@@ -19,22 +19,22 @@ CONFIG_ARCH ?= $(shell cd $(KERN_SRC) && scripts/config_attr.sh general_arch)
 # Tells whether to compile in debug mode
 CONFIG_DEBUG := $(shell cd $(KERN_SRC) && scripts/config_attr.sh debug_debug)
 
-# The absolute path to the linker script
-LINKER_PATH := $(shell realpath "$(KERN_SRC)/arch/$(CONFIG_ARCH)/linker.ld")
 # The absolute path to the target file
 TARGET_PATH := $(shell realpath "$(KERN_SRC)/arch/$(CONFIG_ARCH)/target.json")
 
 # The flags for the Rust compiler
-RUSTFLAGS = -C link-arg=-T$(LINKER_PATH) -C prefer-dynamic $(CONFIG_ARGS)
+RUSTFLAGS = -C prefer-dynamic $(CONFIG_ARGS)
 
 # TODO Error if kern_src is not set
 # TODO Error if selftest is enabled
 
 $(MOD_FILE):
 ifeq ($(CONFIG_DEBUG), true)
-	RUSTFLAGS='$(RUSTFLAGS)' cargo +nightly build --target $(TARGET_PATH)
+	RUSTFLAGS='$(RUSTFLAGS)' cargo +nightly build --target $(TARGET_PATH) -Zextra-link-arg
 	cp target/target/debug/lib$(NAME).so $(MOD_FILE)
 else
-	RUSTFLAGS='$(RUSTFLAGS)' cargo +nightly build --target $(TARGET_PATH) --release
+	RUSTFLAGS='$(RUSTFLAGS)' cargo +nightly build --target $(TARGET_PATH) -Zextra-link-arg --release
 	cp target/target/release/lib$(NAME).so $(MOD_FILE)
 endif
+
+.PHONY: $(MOD_FILE)
