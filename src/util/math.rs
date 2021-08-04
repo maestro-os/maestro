@@ -65,6 +65,16 @@ pub fn log2<T>(n: T) -> T
 	}
 }
 
+/// Tells whether the given number is a power of two.
+pub fn is_power_of_two<T>(n: T) -> bool
+	where T: Copy
+		+ From<u8>
+		+ core::ops::BitAnd<Output = T>
+		+ core::ops::Sub<Output = T>
+		+ core::cmp::PartialEq {
+	n & (n - T::from(1)) != T::from(0)
+}
+
 /// Computes a linear interpolation over integers.
 /// The function computes the interpolation coefficient relative to the parameters `x`, `a_x` and
 /// `b_x`.

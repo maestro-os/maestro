@@ -7,6 +7,7 @@ use core::mem::size_of;
 use crate::errno::Errno;
 use crate::errno;
 use crate::memory;
+use crate::util::math;
 use crate::util;
 
 /// The number of identification bytes in the ELF header.
@@ -64,6 +65,21 @@ const EM_860: u16 = 7;
 const EM_MIPS: u16 = 8;
 /// Required architecture: MIPS RS4000 Big-Endian.
 const EM_MIPS_RS4_BE: u16 = 10;
+
+/// Program header type: Ignored.
+const PT_NULL: u32 = 0;
+/// Program header type: Loadable segment.
+const PT_LOAD: u32 = 1;
+/// Program header type: Dynamic linking information.
+const PT_DYNAMIC: u32 = 2;
+/// Program header type: Interpreter path.
+const PT_INTERP: u32 = 3;
+/// Program header type: Auxiliary information.
+const PT_NOTE: u32 = 4;
+/// Program header type: Unspecified.
+const PT_SHLIB: u32 = 5;
+/// Program header type: The program header table itself.
+const PT_PHDR: u32 = 6;
 
 /// The section header is inactive.
 pub const SHT_NULL: u32 = 0x00000000;
@@ -149,6 +165,7 @@ pub const STT_LOPROC: u8 = 13;
 pub const STT_HIPROC: u8 = 15;
 
 /// Structure representing an ELF header.
+#[derive(Clone, Debug)]
 #[repr(C)]
 pub struct ELF32ELFHeader {
 	/// Identification bytes.
@@ -181,7 +198,47 @@ pub struct ELF32ELFHeader {
 	e_shstrndx: u16,
 }
 
-/// Structure representing an ELF section header in memory.
+/// Structure representing an ELF program header.
+#[derive(Clone, Debug)]
+#[repr(C)]
+pub struct ELF32ProgramHeader {
+	/// Tells what kind of segment this header describes.
+	p_type: u32,
+	/// The offset of the segment's content in the file.
+	p_offset: u32,
+	/// The virtual address of the segment's content.
+	p_vaddr: u32,
+	/// The physical address of the segment's content (if relevant).
+	p_paddr: u32,
+	/// The size of the segment's content in the file.
+	p_filesz: u32,
+	/// The size of the segment's content in memory.
+	p_memsz: u32,
+	/// Segment's flags.
+	p_flags: u32,
+	/// Segment's alignment.
+	p_align: u32,
+}
+
+impl ELF32ProgramHeader {
+	/// Tells whether the program header is valid.
+	/// `file_size` is the size of the file.
+	fn is_valid(&self, file_size: usize) -> bool {
+		// TODO Check p_type
+
+		if (self.p_offset + self.p_filesz) as usize > file_size {
+			return false;
+		}
+
+		if self.p_align != 0 && !math::is_power_of_two(self.p_align) {
+			return false;
+		}
+
+		true
+	}
+}
+
+/// Structure representing an ELF section header.
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
 pub struct ELF32SectionHeader {
@@ -207,6 +264,24 @@ pub struct ELF32SectionHeader {
 	/// If the section is a table of entry, this field holds the size of one entry. Else, holds
 	/// `0`.
 	pub sh_entsize: u32,
+}
+
+impl ELF32SectionHeader {
+	/// Tells whether the section header is valid.
+	/// `file_size` is the size of the file.
+	fn is_valid(&self, file_size: usize) -> bool {
+		// TODO Check sh_name
+
+		if (self.sh_offset + self.sh_size) as usize > file_size {
+			return false;
+		}
+
+		if self.sh_addralign != 0 && !math::is_power_of_two(self.sh_addralign) {
+			return false;
+		}
+
+		true
+	}
 }
 
 /// Structure representing an ELF symbol in memory.
@@ -382,16 +457,36 @@ impl<'a> ELFParser<'a> {
 			return false;
 		}
 
-		if ehdr.e_phoff + ehdr.e_phentsize as u32 * ehdr.e_phnum as u32
-			>= self.image.len() as u32 {
+		if ehdr.e_phoff + ehdr.e_phentsize as u32 * ehdr.e_phnum as u32 > self.image.len() as u32 {
 			return false;
 		}
-		if ehdr.e_shoff + ehdr.e_shentsize as u32 * ehdr.e_shnum as u32
-			>= self.image.len() as u32 {
+		if ehdr.e_shoff + ehdr.e_shentsize as u32 * ehdr.e_shnum as u32 > self.image.len() as u32 {
 			return false;
 		}
 		if ehdr.e_shstrndx >= ehdr.e_shnum {
 			return false;
+		}
+
+		for i in 0..ehdr.e_phnum {
+			let off = (ehdr.e_phoff + ehdr.e_phentsize as u32 * i as u32) as usize;
+			let phdr = unsafe { // Safe because the slice is large enough
+				&*(&self.image[off] as *const u8 as *const ELF32ProgramHeader)
+			};
+
+			if !phdr.is_valid(self.image.len()) {
+				return false;
+			}
+		}
+
+		for i in 0..ehdr.e_shnum {
+			let off = (ehdr.e_shoff + ehdr.e_shentsize as u32 * i as u32) as usize;
+			let shdr = unsafe { // Safe because the slice is large enough
+				&*(&self.image[off] as *const u8 as *const ELF32SectionHeader)
+			};
+
+			if !shdr.is_valid(self.image.len()) {
+				return false;
+			}
 		}
 
 		true
@@ -409,6 +504,13 @@ impl<'a> ELFParser<'a> {
 		} else {
 			Err(errno::EINVAL)
 		}
+	}
+
+	/// Returns the symbol with name `name`. If the symbol doesn't exist, the function returns
+	/// None.
+	pub fn get_symbol(&self, _name: &str) -> Option<&ELF32Sym> {
+		// TODO
+		None
 	}
 
 	// TODO
