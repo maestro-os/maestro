@@ -153,7 +153,7 @@ impl TTY {
 		unsafe {
 			vmem::write_lock_wrap(|| {
 				core::ptr::copy_nonoverlapping(buff as *const vga::Char,
-					vga::BUFFER_VIRT as *mut vga::Char,
+					vga::get_buffer_virt() as *mut vga::Char,
 					(vga::WIDTH as usize) * (vga::HEIGHT as usize));
 			});
 		}

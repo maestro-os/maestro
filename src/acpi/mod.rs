@@ -18,17 +18,17 @@ mod fadt;
 mod madt;
 mod rsdt;
 
-/// The beginning of the zone to scan to get the RSDP.
-const SCAN_BEGIN: *const c_void = unsafe {
-	memory::PROCESS_END as usize + 0xe0000
-} as *const c_void;
-/// The end of the zone to scan to get the RSDP.
-const SCAN_END: *const c_void = unsafe {
-	memory::PROCESS_END as usize + 0xfffff
-} as *const c_void;
-
 /// The signature of the RSDP structure.
 const RSDP_SIGNATURE: &str = "RSD PTR ";
+
+/// Returns the scan range in which is located the RSDP signature.
+#[inline(always)]
+fn get_scan_range() -> (*const c_void, *const c_void) {
+	let begin = (memory::PROCESS_END as usize + 0xe0000) as *const c_void;
+	let end = (memory::PROCESS_END as usize + 0xfffff) as *const c_void;
+
+	(begin, end)
+}
 
 /// Trait representing an ACPI table.
 pub trait ACPITable {
@@ -121,9 +121,10 @@ struct Rsdp2 {
 
 /// Finds the RSDP and returns a reference to it.
 unsafe fn find_rsdp() -> Option<&'static mut Rsdp> {
-	let mut i = SCAN_BEGIN;
+	let (scan_begin, scan_end) = get_scan_range();
+	let mut i = scan_begin;
 
-	while i < SCAN_END {
+	while i < scan_end {
 		if util::memcmp(i, RSDP_SIGNATURE.as_ptr() as _, RSDP_SIGNATURE.len()) == 0 {
 			return Some(&mut *(i as *mut Rsdp));
 		}

@@ -173,7 +173,7 @@ OBJ := $(ASM_OBJ) $(C_OBJ)
 # Cargo
 CARGO = cargo +nightly
 # Cargo flags
-CARGOFLAGS = --verbose --target $(TARGET) -Zextra-link-arg --bin kernel
+CARGOFLAGS = --verbose --target $(TARGET) --bin kernel
 ifeq ($(CONFIG_DEBUG), false)
 CARGOFLAGS += --release
 endif
@@ -182,7 +182,7 @@ CARGOFLAGS = --tests
 endif
 
 # The Rust language compiler flags
-RUSTFLAGS = -Zmacro-backtrace $(CONFIG_ARGS)
+RUSTFLAGS = -Zsymbol-mangling-version=v0 -Zmacro-backtrace $(CONFIG_ARGS)
 
 # The strip program
 STRIP = strip
