@@ -28,7 +28,7 @@ CARGOFLAGS += --release
 endif
 
 # The flags for the Rust compiler
-RUSTFLAGS = -Zmacro-backtrace -C prefer-dynamic $(CONFIG_ARGS)
+RUSTFLAGS = -Zsymbol-mangling-version=v0 -Zmacro-backtrace -C prefer-dynamic $(CONFIG_ARGS)
 
 # TODO Error if kern_src is not set
 # TODO Error if selftest is enabled
