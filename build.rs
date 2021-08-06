@@ -5,12 +5,14 @@
 /// The entry of the build script for the kernel.
 fn main() {
 	// Linking the C/asm library
-    println!("cargo:rustc-link-search=native=./");
-    println!("cargo:rustc-link-lib=static=maestro");
-    println!("cargo:rerun-if-changed=libmaestro.a");
+	println!("cargo:rustc-link-search=native=./");
+	println!("cargo:rustc-link-lib=static=maestro");
+	println!("cargo:rerun-if-changed=libmaestro.a");
 
-	// Adding the linker script
-	let arch = env!("CONFIG_GENERAL_ARCH");
-	println!("cargo:rustc-link-arg=-Tarch/{}/linker.ld", arch);
-    println!("cargo:rerun-if-changed=arch/{}/linker.ld", arch);
+	if env!("BUILD_MODULE") == "true" {
+		// Adding the linker script
+		let arch = env!("CONFIG_GENERAL_ARCH");
+		println!("cargo:rustc-link-arg=-Tarch/{}/linker.ld", arch);
+		println!("cargo:rerun-if-changed=arch/{}/linker.ld", arch);
+	}
 }

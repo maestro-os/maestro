@@ -9,9 +9,9 @@ MOD_FILE = $(NAME).kmod
 KERN_SRC ?=
 
 # Configuration as arguments for the compiler
-CONFIG_ARGS := $(shell cd $(KERN_SRC) && scripts/config_args.sh) --cfg kern_src="$(KERN_SRC)"
+CONFIG_ARGS := $(shell cd $(KERN_SRC) && scripts/config_args.sh)
 # Configuration as arguments as environment variables
-CONFIG_ENV := $(shell cd $(KERN_SRC) && scripts/config_env.sh)
+CONFIG_ENV := BUILD_MODULE=true $(shell cd $(KERN_SRC) && scripts/config_env.sh)
 
 # The architecture to compile for
 CONFIG_ARCH ?= $(shell cd $(KERN_SRC) && scripts/config_attr.sh general_arch)
