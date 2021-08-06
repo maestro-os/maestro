@@ -9,7 +9,7 @@ fn main() {
 	println!("cargo:rustc-link-lib=static=maestro");
 	println!("cargo:rerun-if-changed=libmaestro.a");
 
-	if env!("BUILD_MODULE") == "true" {
+	if env!("BUILD_MODULE") != "true" {
 		// Adding the linker script
 		let arch = env!("CONFIG_GENERAL_ARCH");
 		println!("cargo:rustc-link-arg=-Tarch/{}/linker.ld", arch);
