@@ -184,9 +184,6 @@ endif
 # The Rust language compiler flags
 RUSTFLAGS = -Zsymbol-mangling-version=v0 -Zmacro-backtrace $(CONFIG_ARGS)
 
-# The strip program
-STRIP = strip
-
 # The list of Rust language source files
 RUST_SRC := $(shell find $(SRC_DIR) -type f -name "*.rs")
 
@@ -211,7 +208,6 @@ $(NAME): $(LIB_NAME) $(RUST_SRC) $(LINKER) $(TOUCH_UPDATE_FILES)
 	$(CONFIG_ENV) RUSTFLAGS='$(RUSTFLAGS)' $(CARGO) build $(CARGOFLAGS)
 ifeq ($(CONFIG_DEBUG), false)
 	cp target/target/release/kernel maestro
-	$(STRIP) $(NAME)
 else
 	cp target/target/debug/kernel maestro
 endif
