@@ -452,7 +452,7 @@ impl StorageManager {
 		} else {
 			crate::println!("Storage test failed!");
 		}
-		crate::kern::halt();
+		crate::halt();
 	}
 }
 

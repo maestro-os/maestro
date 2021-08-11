@@ -1,7 +1,7 @@
 # This is the main makefile for the kernel's compilation
 #
 # The kernel is divided into two parts:
-# - Rust code, which represents most the kernel
+# - Rust code, which represents most of the kernel
 # - Assembly and C code
 #
 # The compilation occurs in the following order:
