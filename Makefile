@@ -183,6 +183,9 @@ endif
 
 # The Rust language compiler flags
 RUSTFLAGS = -Zsymbol-mangling-version=v0 -Zmacro-backtrace $(CONFIG_ARGS)
+ifeq ($(CONFIG_DEBUG), true)
+RUSTFLAGS += -Cforce-frame-pointers=y -Cdebuginfo=2
+endif
 
 # The list of Rust language source files
 RUST_SRC := $(shell find $(SRC_DIR) -type f -name "*.rs")
