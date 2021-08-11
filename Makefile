@@ -207,11 +207,10 @@ $(OBJ_DIR)%.c.o: $(SRC_DIR)%.c $(HDR) $(TOUCH_UPDATE_FILES)
 $(NAME): $(LIB_NAME) $(RUST_SRC) $(LINKER) $(TOUCH_UPDATE_FILES)
 	$(CONFIG_ENV) RUSTFLAGS='$(RUSTFLAGS)' $(CARGO) build $(CARGOFLAGS)
 ifeq ($(CONFIG_DEBUG), false)
-	cp target/target/release/libkernel.so maestro
+	$(CC) $(CFLAGS) -o $(NAME) target/target/release/libkernel.a -T$(LINKER)
 else
-	cp target/target/debug/libkernel.so maestro
+	$(CC) $(CFLAGS) -o $(NAME) target/target/debug/libkernel.a -T$(LINKER)
 endif
-	#objcopy --remove-section='.rel.dyn' maestro
 
 # Alias for $(NAME).iso
 iso: $(NAME).iso

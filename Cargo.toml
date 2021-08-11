@@ -8,4 +8,4 @@ edition = "2018"
 [lib]
 name = "kernel"
 path = "src/kernel.rs"
-crate-type = ["dylib"]
+crate-type = ["dylib", "staticlib"]
