@@ -103,7 +103,12 @@ void test_process(void)
 	//	//write(1, "\n", 1);
 	//}
 
-	// TODO int fd = open("/lib/hello.kmod", 0b11);
+	int fd = open("/lib/hello.kmod", 0b11);
+	if (fd < 0) {
+		write(1, "Error\n", 6);
+	} else {
+		// TODO
+	}
 
 	asm("hlt");
 }

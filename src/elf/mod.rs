@@ -169,33 +169,33 @@ pub const STT_HIPROC: u8 = 15;
 #[repr(C)]
 pub struct ELF32ELFHeader {
 	/// Identification bytes.
-	e_ident: [u8; EI_NIDENT],
+	pub e_ident: [u8; EI_NIDENT],
 	/// Identifies the object file type.
-	e_type: u16,
+	pub e_type: u16,
 	/// Specifies the required machine type.
-	e_machine: u16,
+	pub e_machine: u16,
 	/// The file's version.
-	e_version: u32,
+	pub e_version: u32,
 	/// The virtual address of the file's entry point.
-	e_entry: u32,
+	pub e_entry: u32,
 	/// The program header table's file offset in bytes.
-	e_phoff: u32,
+	pub e_phoff: u32,
 	/// The section header table's file offset in bytes.
-	e_shoff: u32,
+	pub e_shoff: u32,
 	/// Processor-specific flags.
-	e_flags: u32,
+	pub e_flags: u32,
 	/// ELF header's size in bytes.
-	e_ehsize: u16,
+	pub e_ehsize: u16,
 	/// The size of one entry in the program header table.
-	e_phentsize: u16,
+	pub e_phentsize: u16,
 	/// The number of entries in the program header table.
-	e_phnum: u16,
+	pub e_phnum: u16,
 	/// The size of one entry in the section header table.
-	e_shentsize: u16,
+	pub e_shentsize: u16,
 	/// The number of entries in the section header table.
-	e_shnum: u16,
+	pub e_shnum: u16,
 	/// The section header table index holding the header of the section name string table.
-	e_shstrndx: u16,
+	pub e_shstrndx: u16,
 }
 
 /// Structure representing an ELF program header.
@@ -203,21 +203,21 @@ pub struct ELF32ELFHeader {
 #[repr(C)]
 pub struct ELF32ProgramHeader {
 	/// Tells what kind of segment this header describes.
-	p_type: u32,
+	pub p_type: u32,
 	/// The offset of the segment's content in the file.
-	p_offset: u32,
+	pub p_offset: u32,
 	/// The virtual address of the segment's content.
-	p_vaddr: u32,
+	pub p_vaddr: u32,
 	/// The physical address of the segment's content (if relevant).
-	p_paddr: u32,
+	pub p_paddr: u32,
 	/// The size of the segment's content in the file.
-	p_filesz: u32,
+	pub p_filesz: u32,
 	/// The size of the segment's content in memory.
-	p_memsz: u32,
+	pub p_memsz: u32,
 	/// Segment's flags.
-	p_flags: u32,
+	pub p_flags: u32,
 	/// Segment's alignment.
-	p_align: u32,
+	pub p_align: u32,
 }
 
 impl ELF32ProgramHeader {
@@ -421,6 +421,36 @@ pub struct ELFParser<'a> {
 }
 
 impl<'a> ELFParser<'a> {
+	/// Returns the image's header.
+	/// If the image is invalid, the behaviour is undefined.
+	pub fn get_header(&self) -> &ELF32ELFHeader {
+		unsafe { // Safe because the slice is large enough
+			&*(&self.image[0] as *const u8 as *const ELF32ELFHeader)
+		}
+	}
+
+	/// Returns the program header at offset `off`.
+	/// If the image is invalid of if the offset is outside of the image, the behaviour is
+	/// undefined.
+	pub fn get_program_header(&self, off: usize) -> &ELF32ProgramHeader {
+		debug_assert!(off < self.image.len());
+
+		unsafe { // Safe because the slice is large enough
+			&*(&self.image[off] as *const u8 as *const ELF32ProgramHeader)
+		}
+	}
+
+	/// Returns the section header at offset `off`.
+	/// If the image is invalid of if the offset is outside of the image, the behaviour is
+	/// undefined.
+	pub fn get_section_header(&self, off: usize) -> &ELF32SectionHeader {
+		debug_assert!(off < self.image.len());
+
+		unsafe { // Safe because the slice is large enough
+			&*(&self.image[off] as *const u8 as *const ELF32SectionHeader)
+		}
+	}
+
 	// TODO Support 64 bit
 	/// Tells whether the ELF image is valid.
 	fn check_image(&self) -> bool {
@@ -446,9 +476,7 @@ impl<'a> ELFParser<'a> {
 		if self.image.len() < size_of::<ELF32ELFHeader>() {
 			return false;
 		}
-		let ehdr = unsafe { // Safe because the slice is large enough
-			&*(&self.image[0] as *const u8 as *const ELF32ELFHeader)
-		};
+		let ehdr = self.get_header();
 
 		// TODO Check e_machine
 		// TODO Check e_version
@@ -469,9 +497,7 @@ impl<'a> ELFParser<'a> {
 
 		for i in 0..ehdr.e_phnum {
 			let off = (ehdr.e_phoff + ehdr.e_phentsize as u32 * i as u32) as usize;
-			let phdr = unsafe { // Safe because the slice is large enough
-				&*(&self.image[off] as *const u8 as *const ELF32ProgramHeader)
-			};
+			let phdr = self.get_program_header(off);
 
 			if !phdr.is_valid(self.image.len()) {
 				return false;
@@ -480,9 +506,7 @@ impl<'a> ELFParser<'a> {
 
 		for i in 0..ehdr.e_shnum {
 			let off = (ehdr.e_shoff + ehdr.e_shentsize as u32 * i as u32) as usize;
-			let shdr = unsafe { // Safe because the slice is large enough
-				&*(&self.image[off] as *const u8 as *const ELF32SectionHeader)
-			};
+			let shdr = self.get_section_header(off);
 
 			if !shdr.is_valid(self.image.len()) {
 				return false;
@@ -503,6 +527,26 @@ impl<'a> ELFParser<'a> {
 			Ok(p)
 		} else {
 			Err(errno::EINVAL)
+		}
+	}
+
+	/// Returns a reference to the ELF image.
+	pub fn get_image(&self) -> &[u8] {
+		&self.image
+	}
+
+	/// Calls the given function `f` for each segments in the image.
+	/// If the function returns `false`, the loop breaks.
+	pub fn foreach_segments<F: FnMut(&ELF32ProgramHeader) -> bool>(&self, mut f: F) {
+		let ehdr = self.get_header();
+		let phoff = ehdr.e_phoff;
+		let phnum = ehdr.e_phnum;
+		let phentsize = ehdr.e_phentsize;
+
+		for i in 0..phnum {
+			if !f(self.get_program_header((phoff + phentsize as u32 * i as u32) as usize)) {
+				break;
+			}
 		}
 	}
 
