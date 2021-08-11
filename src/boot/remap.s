@@ -1,5 +1,4 @@
 .global pse_enable
-.global kernel_remap_update_stack
 
 .section .boot.text
 

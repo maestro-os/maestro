@@ -173,7 +173,7 @@ OBJ := $(ASM_OBJ) $(C_OBJ)
 # Cargo
 CARGO = cargo +nightly
 # Cargo flags
-CARGOFLAGS = --verbose --target $(TARGET) --bin kernel
+CARGOFLAGS = --verbose --target $(TARGET)
 ifeq ($(CONFIG_DEBUG), false)
 CARGOFLAGS += --release
 endif
@@ -207,10 +207,11 @@ $(OBJ_DIR)%.c.o: $(SRC_DIR)%.c $(HDR) $(TOUCH_UPDATE_FILES)
 $(NAME): $(LIB_NAME) $(RUST_SRC) $(LINKER) $(TOUCH_UPDATE_FILES)
 	$(CONFIG_ENV) RUSTFLAGS='$(RUSTFLAGS)' $(CARGO) build $(CARGOFLAGS)
 ifeq ($(CONFIG_DEBUG), false)
-	cp target/target/release/kernel maestro
+	cp target/target/release/libkernel.so maestro
 else
-	cp target/target/debug/kernel maestro
+	cp target/target/debug/libkernel.so maestro
 endif
+	#objcopy --remove-section='.rel.dyn' maestro
 
 # Alias for $(NAME).iso
 iso: $(NAME).iso

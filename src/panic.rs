@@ -6,7 +6,6 @@ use core::ffi::c_void;
 use core::fmt;
 #[cfg(config_debug_debug)]
 use crate::debug;
-use crate::kern;
 use crate::memory;
 use crate::tty;
 
@@ -43,7 +42,7 @@ it.");
 pub fn kernel_panic_(reason: &str, code: u32, _file: &str, _line: u32, _col: u32) -> ! {
 	crate::cli!();
 	print_panic(reason, code);
-	kern::halt();
+	crate::halt();
 }
 
 /// Same as the release version, except the function also prints process's registers and the
@@ -62,7 +61,7 @@ pub fn kernel_panic_(reason: &str, code: u32, file: &str, line: u32, col: u32) -
 	};
 	debug::print_callstack(ebp, 8);
 
-	kern::halt();
+	crate::halt();
 }
 
 /// Initializes the TTY and prints a Rust panic message.
@@ -84,7 +83,7 @@ pub fn rust_panic<'a>(args: &'a fmt::Arguments<'a>) -> ! {
 	crate::cli!();
 	print_rust_panic(args);
 
-	kern::halt();
+	crate::halt();
 }
 
 /// Same as the release version, except the function also prints the kernel's callstack.
@@ -99,5 +98,5 @@ pub fn rust_panic<'a>(args: &'a fmt::Arguments<'a>) -> ! {
 	};
 	debug::print_callstack(ebp, 8);
 
-	kern::halt();
+	crate::halt();
 }

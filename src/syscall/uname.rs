@@ -4,7 +4,6 @@ use core::mem::size_of;
 use core::ptr::copy_nonoverlapping;
 use crate::errno::Errno;
 use crate::errno;
-use crate::kern;
 use crate::process::Process;
 use crate::util;
 
@@ -35,9 +34,9 @@ pub fn uname(regs: &util::Regs) -> Result<i32, Errno> {
 		machine: [0; UTSNAME_LENGTH],
 	};
 
-	utsname.sysname.clone_from_slice(&kern::NAME.as_bytes());
+	utsname.sysname.clone_from_slice(&crate::NAME.as_bytes());
 	// TODO nodename
-	utsname.release.clone_from_slice(&kern::VERSION.as_bytes());
+	utsname.release.clone_from_slice(&crate::VERSION.as_bytes());
 	// TODO version
 	// TODO machine
 

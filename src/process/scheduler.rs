@@ -14,7 +14,6 @@ use crate::errno::Errno;
 use crate::event::CallbackHook;
 use crate::event;
 use crate::gdt;
-use crate::kern;
 use crate::memory::malloc;
 use crate::memory::stack;
 use crate::memory;
@@ -325,11 +324,11 @@ impl Scheduler {
 				// FIXME: Kernel panic if running out of memory for some reason
 				stack::switch(tmp_stack, f, ctx_switch_data).unwrap();
 			}
-			kern::enter_loop();
+			crate::enter_loop();
 		} else if cfg!(config_general_scheduler_end_panic) {
 			kernel_panic!("No process remaining to run!");
 		} else {
-			kern::halt();
+			crate::halt();
 		}
 	}
 

@@ -4,7 +4,6 @@
 
 .section .text
 
-.global error_handler
 .global idt_load
 .extern end_of_interrupt
 

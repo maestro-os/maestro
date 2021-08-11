@@ -6,11 +6,6 @@ edition = "2018"
 
 # The kernel is implemented into an library in order to make it accessible from kernel modules as a dependency.
 [lib]
-name = "abi"
-path = "src/mod_abi.rs"
-crate-type = ["dylib", "rlib"]
-
-# The kernel binary itself
-[[bin]]
 name = "kernel"
 path = "src/kernel.rs"
+crate-type = ["dylib"]
