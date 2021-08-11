@@ -14,6 +14,10 @@ int getppid(void);
 sighandler_t signal(int signum, sighandler_t handler);
 int kill(int pid, int sig);
 
+int init_module(void *module_image, size_t len);
+int finit_module(int fd);
+int delete_module(char *name);
+
 void print_nbr(int nbr)
 {
 	if (nbr < 0)
@@ -107,7 +111,7 @@ void test_process(void)
 	if (fd < 0) {
 		write(1, "Error\n", 6);
 	} else {
-		// TODO
+		print_nbr(finit_module(fd));
 	}
 
 	asm("hlt");

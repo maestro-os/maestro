@@ -11,6 +11,7 @@ mod delete_module;
 mod dup2;
 mod dup;
 mod fchdir;
+mod finit_module;
 mod fork;
 mod getcwd;
 mod getgid;
@@ -53,6 +54,7 @@ use delete_module::delete_module;
 use dup2::dup2;
 use dup::dup;
 use fchdir::fchdir;
+use finit_module::finit_module;
 use fork::fork;
 use getcwd::getcwd;
 use getgid::getgid;
@@ -188,7 +190,8 @@ pub extern "C" fn syscall_handler(regs: &util::Regs) -> u32 {
 		34 => uname(regs),
 		35 => reboot(regs),
 		36 => init_module(regs),
-		37 => delete_module(regs),
+		37 => finit_module(regs),
+		38 => delete_module(regs),
 
 		_ => {
 			let mut mutex = Process::get_current().unwrap();

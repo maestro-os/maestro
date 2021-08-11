@@ -668,6 +668,7 @@ impl Filesystem for Ext2Fs {
 		file.set_ctime(inode_.ctime);
 		file.set_mtime(inode_.mtime);
 		file.set_atime(inode_.atime);
+		file.set_size(inode_.get_size(&self.superblock));
 
 		Ok(file)
 	}

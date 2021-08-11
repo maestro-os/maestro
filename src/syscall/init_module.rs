@@ -30,8 +30,8 @@ pub fn init_module(regs: &util::Regs) -> Result<i32, Errno> {
 	let image = unsafe { // Safe because the pointer is checked before
 		slice::from_raw_parts(module_image, len as usize)
 	};
-	let module = Module::load(image)?;
 
+	let module = Module::load(image)?;
 	if !module::is_loaded(module.get_name()) {
 		module::add(module)?;
 		Ok(0)

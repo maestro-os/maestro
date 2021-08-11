@@ -630,7 +630,7 @@ mod test {
 	fn vmem_x86_vga_text_access() {
 		let vmem = X86VMem::new().unwrap();
 		for i in 0..(80 * 25 * 2) {
-			assert!(vmem.translate(((vga::BUFFER_VIRT as usize) + i) as _) != None);
+			assert!(vmem.translate(((vga::get_buffer_virt() as usize) + i) as _) != None);
 		}
 	}
 }

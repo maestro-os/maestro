@@ -178,7 +178,7 @@ ifeq ($(CONFIG_DEBUG), false)
 CARGOFLAGS += --release
 endif
 ifeq ($(CONFIG_DEBUG_TEST), true)
-CARGOFLAGS = --tests
+CARGOFLAGS += --tests
 endif
 
 # The Rust language compiler flags
