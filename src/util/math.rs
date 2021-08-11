@@ -73,7 +73,7 @@ pub fn is_power_of_two<T>(n: T) -> bool
 		+ core::ops::BitAnd<Output = T>
 		+ core::ops::Sub<Output = T>
 		+ core::cmp::PartialEq {
-	n & (n - T::from(1)) != T::from(0)
+	n == T::from(0) || n & (n - T::from(1)) == T::from(0)
 }
 
 /// Computes a linear interpolation over integers.

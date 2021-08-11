@@ -13,6 +13,7 @@ use core::cmp::min;
 use core::ptr;
 use crate::elf::ELFParser;
 use crate::errno::Errno;
+use crate::errno;
 use crate::memory::malloc;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
@@ -70,11 +71,19 @@ impl Module {
 			true
 		});
 
+		let init = parser.get_symbol("init");
+		if init.is_none() {
+			return Err(errno::EINVAL);
+		}
+		let _init = init.unwrap();
+
 		// TODO Call init function (retrieve name, version and dependencies)
+
+		let _fini = parser.get_symbol("fini");
 
 		Ok(Self {
 			name: String::from("TODO")?, // TODO
-			version: Version {
+			version: Version { // TODO
 				major: 0,
 				minor: 0,
 				patch: 0,
@@ -83,7 +92,7 @@ impl Module {
 			mem: mem as _,
 			mem_size,
 
-			fini: None,
+			fini: None, // TODO
 		})
 	}
 

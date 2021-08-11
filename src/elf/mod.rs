@@ -550,6 +550,12 @@ impl<'a> ELFParser<'a> {
 		}
 	}
 
+	/// Calls the given function `f` for each symbol in the image.
+	/// If the function returns `false`, the loop breaks.
+	pub fn foreach_symbol<F: FnMut(&ELF32Sym) -> bool>(&self, mut _f: F) {
+		// TODO
+	}
+
 	/// Returns the symbol with name `name`. If the symbol doesn't exist, the function returns
 	/// None.
 	pub fn get_symbol(&self, _name: &str) -> Option<&ELF32Sym> {
