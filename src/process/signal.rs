@@ -3,6 +3,7 @@
 use core::ffi::c_void;
 use core::mem::size_of;
 use core::mem::transmute;
+use core::slice;
 use crate::errno::Errno;
 use crate::errno;
 use super::Process;
@@ -202,25 +203,33 @@ impl Signal {
 				}
 			},
 
-			SignalHandler::Handler(_handler) => {
+			SignalHandler::Handler(handler) => {
 				let mut regs = process.get_regs().clone();
 				let redzone_end = regs.esp - REDZONE_SIZE as u32;
 
-				// TODO Write the signal number
-				// TODO Write the handler ptr
-				// TODO Write the return esp
-				// TODO Write the return eip
+				// TODO Check the data isn't written out of the stack
+				let signal_data_size = 4 * size_of::<usize>() as u32;
+				let signal_data = unsafe {
+					slice::from_raw_parts_mut(redzone_end as *mut u32, 4)
+				};
+				unsafe {
+					// The signal number
+					signal_data[0] = self.type_ as _;
+					// The pointer to the signal handler
+					signal_data[1] = handler as _;
+					// The return esp
+					signal_data[2] = regs.esp;
+					// The return eip
+					signal_data[3] = regs.eip;
+				}
 
 				let signal_trampoline = unsafe {
 					transmute::<unsafe extern "C" fn(), *const c_void>(signal_trampoline)
 				};
-				let signal_esp = redzone_end - (4 * size_of::<usize>() as u32);
+				let signal_esp = redzone_end - signal_data_size;
 				regs.eip = signal_trampoline as _;
 				regs.esp = signal_esp;
 				process.set_regs(&regs);
-
-				// TODO Handle the case where the process is currently running
-				todo!();
 			},
 		}
 	}
