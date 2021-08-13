@@ -34,6 +34,7 @@ mod setgid;
 mod setpgid;
 mod setuid;
 mod signal;
+mod sigreturn;
 mod umask;
 mod uname;
 mod unlink;
@@ -77,6 +78,7 @@ use setgid::setgid;
 use setpgid::setpgid;
 use setuid::setuid;
 use signal::signal;
+use sigreturn::sigreturn;
 use umask::umask;
 use uname::uname;
 use unlink::unlink;
@@ -192,6 +194,8 @@ pub extern "C" fn syscall_handler(regs: &util::Regs) -> u32 {
 		36 => init_module(regs),
 		37 => finit_module(regs),
 		38 => delete_module(regs),
+
+		512 => sigreturn(regs),
 
 		_ => {
 			let mut mutex = Process::get_current().unwrap();

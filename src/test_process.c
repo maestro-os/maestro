@@ -59,28 +59,28 @@ void test_process(void)
 	//	fork();
 	//}
 
-	//write(1, "Hello world!\n", 13);
-	//int pid = fork();
-	//if (pid == 0) {
-	//	write(1, "forked!\n", 8);
+	write(1, "Hello world!\n", 13);
+	int pid = fork();
+	if (pid == 0) {
+		write(1, "forked!\n", 8);
 
-	//	signal(0, sig_handle);
-	//	kill(getpid(), 0);
+		signal(0, sig_handle);
+		kill(getpid(), 0);
 
-	//	_exit(43);
-	//} else {
-	//	write(1, "waiting\n", 8);
-	//	int wstatus = 42;
-	//	int ret = waitpid(-1, &wstatus, 0);
+		_exit(43);
+	} else {
+		write(1, "waiting\n", 8);
+		int wstatus = 42;
+		int ret = waitpid(-1, &wstatus, 0);
 
-	//	write(1, "ret: ", 5);
-	//	print_nbr(ret);
-	//	write(1, "\nstatus: ", 9);
-	//	print_nbr(wstatus);
+		write(1, "ret: ", 5);
+		print_nbr(ret);
+		write(1, "\nstatus: ", 9);
+		print_nbr(wstatus);
 
-	//	while (1)
-	//		;
-	//}
+		while (1)
+			;
+	}
 
 	//int fd = open("/etc/hostname", 0b11);
 	//char buff[1024];
@@ -107,12 +107,12 @@ void test_process(void)
 	//	//write(1, "\n", 1);
 	//}
 
-	int fd = open("/lib/hello.kmod", 0b11);
-	if (fd < 0) {
-		write(1, "Error\n", 6);
-	} else {
-		print_nbr(finit_module(fd));
-	}
+	//int fd = open("/lib/hello.kmod", 0b11);
+	//if (fd < 0) {
+	//	write(1, "Error\n", 6);
+	//} else {
+	//	print_nbr(finit_module(fd));
+	//}
 
 	asm("hlt");
 }

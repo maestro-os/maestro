@@ -1,11 +1,14 @@
 //! This module implements process signals.
 
+mod signal_trampoline;
+
 use core::ffi::c_void;
 use core::mem::size_of;
 use core::mem::transmute;
 use core::slice;
 use crate::errno::Errno;
 use crate::errno;
+use signal_trampoline::signal_trampoline;
 use super::Process;
 use super::State;
 
@@ -78,10 +81,6 @@ pub const SIGNALS_COUNT: usize = 29;
 
 /// The size of the redzone in userspace, in bytes.
 pub const REDZONE_SIZE: usize = 128;
-
-extern "C" {
-	fn signal_trampoline();
-}
 
 /// Enumeration representing the action to perform for a signal.
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -208,27 +207,33 @@ impl Signal {
 				let redzone_end = regs.esp - REDZONE_SIZE as u32;
 
 				// TODO Check the data isn't written out of the stack
-				let signal_data_size = 4 * size_of::<usize>() as u32;
+
+				let signal_data_size = 2 * size_of::<usize>() as u32;
+				let signal_esp = redzone_end - signal_data_size;
 				let signal_data = unsafe {
-					slice::from_raw_parts_mut(redzone_end as *mut u32, 4)
+					slice::from_raw_parts_mut(signal_esp as *mut u32, 2)
 				};
-				unsafe {
-					// The signal number
-					signal_data[0] = self.type_ as _;
-					// The pointer to the signal handler
-					signal_data[1] = handler as _;
-					// The return esp
-					signal_data[2] = regs.esp;
-					// The return eip
-					signal_data[3] = regs.eip;
-				}
+				// The pointer to the signal handler
+				signal_data[1] = handler as _;
+				// The signal number
+				signal_data[0] = self.type_ as _;
 
 				let signal_trampoline = unsafe {
-					transmute::<unsafe extern "C" fn(), *const c_void>(signal_trampoline)
+					transmute::<
+						extern "C" fn(*const c_void, i32) -> !,
+						*const c_void
+					>(signal_trampoline)
 				};
-				let signal_esp = redzone_end - signal_data_size;
-				regs.eip = signal_trampoline as _;
+
+				// Setting the stack to point to the signal's data
 				regs.esp = signal_esp;
+				// Setting the program counter to point to the signal trampoline
+				regs.eip = signal_trampoline as _;
+
+				// Saves the current state of the process to be restored when the handler will
+				// return
+				process.signal_save(self.type_);
+				// Setting the process's registers to call the signal handler
 				process.set_regs(&regs);
 			},
 		}

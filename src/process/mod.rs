@@ -118,10 +118,16 @@ pub struct Process {
 	/// The list of processes in the process group.
 	process_group: Vec<Pid>,
 
-	/// The last saved registers state
+	/// The last saved registers state.
 	regs: Regs,
 	/// Tells whether the process was syscalling or not.
 	syscalling: bool,
+
+	/// Tells whether the process is handling a signal.
+	handled_signal: Option<u8>,
+	/// The saved state of registers, used when handling a signal.
+	saved_regs: Regs,
+
 	/// The virtual memory of the process containing every mappings.
 	mem_space: MemSpace,
 
@@ -298,6 +304,21 @@ impl Process {
 				edi: 0x0,
 			},
 			syscalling: false,
+
+			handled_signal: None,
+			saved_regs: Regs {
+				ebp: 0x0,
+				esp: 0x0,
+				eip: 0x0,
+				eflags: 0x0,
+				eax: 0x0,
+				ebx: 0x0,
+				ecx: 0x0,
+				edx: 0x0,
+				esi: 0x0,
+				edi: 0x0,
+			},
+
 			mem_space,
 
 			user_stack,
@@ -669,6 +690,10 @@ impl Process {
 
 			regs,
 			syscalling: false,
+
+			handled_signal: self.handled_signal,
+			saved_regs: self.saved_regs,
+
 			mem_space: self.mem_space.fork()?,
 
 			user_stack: self.user_stack,
@@ -702,13 +727,48 @@ impl Process {
 		self.signal_handlers[type_ as usize] = handler;
 	}
 
+	/// Tells whether the process is handling a signal.
+	pub fn is_handling_signal(&self) -> bool {
+		self.handled_signal.is_some()
+	}
+
 	/// Kills the process with the given signal `sig`. If the process doesn't have a signal
 	/// handler, the default action for the signal is executed.
 	pub fn kill(&mut self, sig: Signal) {
-		if sig.can_catch() {
+		if self.is_handling_signal() && sig.can_catch() {
 			self.signals_bitfield.set(sig.get_type() as _);
 		} else {
 			sig.execute_action(self);
+		}
+	}
+
+	/// Makes the process handle the next signal. If the process is already handling a signal or if
+	/// not signal is queued, the function does nothing.
+	pub fn signal_next(&mut self) {
+		if self.is_handling_signal() {
+			return;
+		}
+
+		if let Some(signum) = self.signals_bitfield.find_set() {
+			let sig = Signal::new(signum as _).unwrap();
+			sig.execute_action(self);
+		}
+	}
+
+	/// Saves the process's state to handle a signal.
+	/// `sig` is the signal number.
+	pub fn signal_save(&mut self, sig: u8) {
+		self.saved_regs = self.regs;
+		self.handled_signal = Some(sig);
+	}
+
+	/// Restores the process's state after handling a signal.
+	pub fn signal_restore(&mut self) {
+		if let Some(sig) = self.handled_signal {
+			self.signals_bitfield.clear(sig as _);
+
+			self.handled_signal = None;
+			self.regs = self.saved_regs;
 		}
 	}
 

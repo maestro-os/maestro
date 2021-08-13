@@ -600,8 +600,7 @@ impl<'a> ELFParser<'a> {
 	/// Returns the symbol with name `name`. If the symbol doesn't exist, the function returns
 	/// None.
 	pub fn get_symbol(&self, _name: &str) -> Option<&ELF32Sym> {
-		let ehdr = self.get_header();
-		let shndx = ehdr.shndx;
+		let _ehdr = self.get_header();
 
 		// TODO
 		None

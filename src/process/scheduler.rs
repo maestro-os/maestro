@@ -42,10 +42,10 @@ extern "C" {
 	/// `regs` is the structure of registers to restore to resume the context.
 	/// `data_selector` is the user data segment selector.
 	/// `code_selector` is the user code segment selector.
-	fn context_switch(regs: &Regs, data_selector: u16, code_selector: u16) -> !;
+	pub fn context_switch(regs: &Regs, data_selector: u16, code_selector: u16) -> !;
 	/// This function switches to a kernelspace context.
 	/// `regs` is the structure of registers to restore to resume the context.
-	fn context_switch_kernel(regs: &Regs) -> !;
+	pub fn context_switch_kernel(regs: &Regs) -> !;
 }
 
 /// The structure containing the context switching data.
@@ -267,7 +267,14 @@ impl Scheduler {
 			curr_proc.syscalling = ring < 3;
 		}
 
-		if let Some(next_proc) = scheduler.get_next_process() {
+		if let Some(next_proc) = &mut scheduler.get_next_process() {
+			{
+				let mut guard = next_proc.1.lock(false);
+				let proc = guard.get_mut();
+
+				proc.signal_next();
+			}
+
 			scheduler.curr_proc = Some(next_proc.clone());
 
 			let core_id = 0; // TODO

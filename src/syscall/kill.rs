@@ -2,9 +2,11 @@
 
 use crate::errno::Errno;
 use crate::errno;
+use crate::gdt;
 use crate::process::Process;
 use crate::process::State;
 use crate::process::pid::Pid;
+use crate::process::scheduler;
 use crate::process::signal::Signal;
 use crate::util;
 
@@ -34,46 +36,66 @@ pub fn kill(regs: &util::Regs) -> Result<i32, Errno> {
 	// TODO Check permission (with real or effective UID)
 	// TODO Handle when killing current process (execute before returning)
 
-	let sig = Signal::new(sig)?;
+	let (result, is_handling, regs) = {
+		let sig = Signal::new(sig)?;
 
-	let mut mutex = Process::get_current().unwrap();
-	let mut guard = mutex.lock(false);
-	let proc = guard.get_mut();
+		let mut mutex = Process::get_current().unwrap();
+		let mut guard = mutex.lock(false);
+		let proc = guard.get_mut();
 
-	if pid == proc.get_pid() as _ {
-		proc.kill(sig);
-		Ok(0)
-	} else if pid > 0 {
-		try_kill(pid, sig)
-	} else if pid == 0 {
-		for p in proc.get_group_processes() {
-			try_kill(*p as _, sig.clone()).unwrap();
-		}
+		// TODO Move into a separate function
+		let result = {
+			if pid == proc.get_pid() as _ {
+				proc.kill(sig);
+				Ok(0)
+			} else if pid > 0 {
+				try_kill(pid, sig)
+			} else if pid == 0 {
+				for p in proc.get_group_processes() {
+					try_kill(*p as _, sig.clone()).unwrap();
+				}
 
-		proc.kill(sig);
-		Ok(0)
-	} else if pid == -1 {
-		// TODO Send to every processes that the process has permission to send a signal to
-		todo!();
-	} else {
-		if -pid == proc.get_pid() as _ {
-			for p in proc.get_group_processes() {
-				try_kill(*p as _, sig.clone()).unwrap();
+				proc.kill(sig);
+				Ok(0)
+			} else if pid == -1 {
+				// TODO Send to every processes that the process has permission to send a signal to
+				todo!();
+			} else {
+				if -pid == proc.get_pid() as _ {
+					for p in proc.get_group_processes() {
+						try_kill(*p as _, sig.clone()).unwrap();
+					}
+
+					proc.kill(sig);
+					return Ok(0);
+				} else if let Some(mut proc) = Process::get_by_pid(-pid as _) {
+					let mut guard = proc.lock(false);
+					let proc = guard.get_mut();
+					for p in proc.get_group_processes() {
+						try_kill(*p as _, sig.clone()).unwrap();
+					}
+
+					proc.kill(sig);
+					return Ok(0);
+				}
+
+				Err(errno::ESRCH)
 			}
+		};
 
-			proc.kill(sig);
-			return Ok(0);
-		} else if let Some(mut proc) = Process::get_by_pid(-pid as _) {
-			let mut guard = proc.lock(false);
-			let proc = guard.get_mut();
-			for p in proc.get_group_processes() {
-				try_kill(*p as _, sig.clone()).unwrap();
-			}
+		// POSIX requires that at least one pending signal is executed before returning
+		proc.signal_next();
+		(result, proc.is_handling_signal(), proc.get_regs().clone())
+	};
 
-			proc.kill(sig);
-			return Ok(0);
+	// If the process is sent to the signal, it must be executed before returning
+	if is_handling {
+		unsafe {
+			scheduler::context_switch(&regs,
+				(gdt::USER_DATA_OFFSET | 3) as _,
+				(gdt::USER_CODE_OFFSET | 3) as _);
 		}
-
-		Err(errno::ESRCH)
 	}
+
+	result
 }
