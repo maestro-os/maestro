@@ -115,12 +115,11 @@ pub const fn get_frame_metadata_size() -> usize {
 /// Returns the buddy order required to fit the given number of pages.
 pub fn get_order(pages: usize) -> FrameOrder {
 	let mut order: FrameOrder = 0;
-	let mut i = 1;
 
-	while i < pages {
-		i *= 2;
+	while (1 << order) < pages {
 		order += 1;
 	}
+
 	order
 }
 

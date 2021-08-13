@@ -544,7 +544,26 @@ impl<'a> ELFParser<'a> {
 		let phentsize = ehdr.e_phentsize;
 
 		for i in 0..phnum {
-			if !f(self.get_program_header((phoff + phentsize as u32 * i as u32) as usize)) {
+			let hdr = self.get_program_header((phoff + phentsize as u32 * i as u32) as usize);
+
+			if !f(hdr) {
+				break;
+			}
+		}
+	}
+
+	/// Calls the given function `f` for each section in the image.
+	/// If the function returns `false`, the loop breaks.
+	pub fn foreach_sections<F: FnMut(&ELF32SectionHeader) -> bool>(&self, mut f: F) {
+		let ehdr = self.get_header();
+		let shoff = ehdr.e_shoff;
+		let shnum = ehdr.e_shnum;
+		let shentsize = ehdr.e_shentsize;
+
+		for i in 0..shnum {
+			let hdr = self.get_section_header((shoff + shentsize as u32 * i as u32) as usize);
+
+			if !f(hdr) {
 				break;
 			}
 		}
@@ -552,13 +571,38 @@ impl<'a> ELFParser<'a> {
 
 	/// Calls the given function `f` for each symbol in the image.
 	/// If the function returns `false`, the loop breaks.
-	pub fn foreach_symbol<F: FnMut(&ELF32Sym) -> bool>(&self, mut _f: F) {
-		// TODO
+	pub fn foreach_symbol<F: FnMut(&ELF32Sym) -> bool>(&self, mut f: F) {
+		self.foreach_sections(| section | {
+			if section.sh_type == SHT_SYMTAB {
+				let begin = section.sh_offset;
+				let mut i = 0;
+
+				// TODO When checking the image, check the size of the section is a multiple of the
+				// size of a symbol
+				while i < section.sh_size {
+					let off = begin as usize + i as usize;
+					let sym = unsafe { // Safe because the slice is large enough
+						&*(&self.image[off] as *const u8 as *const ELF32Sym)
+					};
+
+					if !f(sym) {
+						break;
+					}
+
+					i += size_of::<ELF32Sym>() as u32;
+				}
+			}
+
+			true
+		});
 	}
 
 	/// Returns the symbol with name `name`. If the symbol doesn't exist, the function returns
 	/// None.
 	pub fn get_symbol(&self, _name: &str) -> Option<&ELF32Sym> {
+		let ehdr = self.get_header();
+		let shndx = ehdr.shndx;
+
 		// TODO
 		None
 	}
