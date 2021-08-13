@@ -158,14 +158,24 @@ impl Ext2INode {
 	fn get_disk_offset(i: u32, superblock: &Superblock, io: &mut dyn DeviceHandle)
 		-> Result<u64, Errno> {
 		let blk_size = superblock.get_block_size();
-		let blk_grp = (i - 1) / superblock.inodes_per_group;
-		let inode_off = (i - 1) % superblock.inodes_per_group;
 		let inode_size = superblock.get_inode_size();
-		let inode_table_blk_off = (inode_off * inode_size as u32) / (blk_size as u32);
+
+		// The block group the inode is located in
+		let blk_grp = (i - 1) / superblock.inodes_per_group;
+		// The offset of the inode in the block group's bitfield
+		let inode_grp_off = (i - 1) % superblock.inodes_per_group;
+		// The offset of the inode's block
+		let inode_table_blk_off = (inode_grp_off * inode_size as u32) / (blk_size as u32);
+		// The offset of the inode in the block
+		let inode_blk_off = ((i - 1) * inode_size as u32) % blk_size;
 
 		let bgd = BlockGroupDescriptor::read(blk_grp, superblock, io)?;
-		let inode_table_blk = bgd.inode_table_start_addr + inode_table_blk_off;
-		Ok((inode_table_blk as u64 * blk_size as u64) + (inode_off as u64 * inode_size as u64))
+		// The block containing the inode
+		let blk = bgd.inode_table_start_addr + inode_table_blk_off;
+
+		// The offset of the inode on the disk
+		let inode_offset = (blk as u64 * blk_size as u64) + inode_blk_off as u64;
+		Ok(inode_offset)
 	}
 
 	/// Returns the mode for the given file `file`.

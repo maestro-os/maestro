@@ -1,7 +1,7 @@
 # This is the main makefile for the kernel's compilation
 #
 # The kernel is divided into two parts:
-# - Rust code, which represents most the kernel
+# - Rust code, which represents most of the kernel
 # - Assembly and C code
 #
 # The compilation occurs in the following order:
@@ -31,13 +31,16 @@ CONFIG_FILE = .config
 CONFIG_EXISTS = $(shell stat $(CONFIG_FILE) >/dev/null 2>&1; echo $$?)
 
 # The path to the script that generates configuration as compiler arguments
-CONFIG_ARGUMENTS_SCRIPT = scripts/config_args.sh
+CONFIG_ARGS_SCRIPT = scripts/config_args.sh
+# The path to the script that generates configuration as environment variables
+CONFIG_ENV_SCRIPT = scripts/config_env.sh
 # The path to the script that extracts specific configuration attributes
 CONFIG_ATTR_SCRIPT = scripts/config_attr.sh
 
-ifeq ($(CONFIG_EXISTS), 0)
 # Configuration as arguments for the compiler
-CONFIG_ARGS := $(shell $(CONFIG_ARGUMENTS_SCRIPT))
+CONFIG_ARGS := $(shell $(CONFIG_ARGS_SCRIPT))
+# Configuration as environment variables
+CONFIG_ENV := BUILD_MODULE=false $(shell $(CONFIG_ENV_SCRIPT))
 
 # The target architecture
 CONFIG_ARCH := $(shell $(CONFIG_ATTR_SCRIPT) general_arch)
@@ -45,7 +48,6 @@ CONFIG_ARCH := $(shell $(CONFIG_ATTR_SCRIPT) general_arch)
 CONFIG_DEBUG := $(shell $(CONFIG_ATTR_SCRIPT) debug_debug)
 # Tells whether to compile for unit testing
 CONFIG_DEBUG_TEST := $(shell $(CONFIG_ATTR_SCRIPT) debug_test)
-endif
 
 
 
@@ -74,7 +76,7 @@ all: $(NAME) iso tags
 
 # Builds the documentation
 doc: $(DOC_SRC_DIR)
-	RUSTFLAGS='$(RUSTFLAGS)' $(CARGO) doc $(CARGOFLAGS)
+	$(CONFIG_ENV) RUSTFLAGS='$(RUSTFLAGS)' $(CARGO) doc $(CARGOFLAGS)
 	sphinx-build $(DOC_SRC_DIR) $(DOC_DIR)
 	rm -rf $(DOC_DIR)/references/
 	cp -r target/target/doc/ $(DOC_DIR)/references/
@@ -119,8 +121,7 @@ LIB_NAME = lib$(NAME).a
 CC = i686-elf-gcc # TODO Set according to architecture
 
 # The C language compiler flags
-CFLAGS = -nostdlib -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -Wall -Wextra\
--Werror -lgcc
+CFLAGS = -nostdlib -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -Wall -Wextra -Werror -lgcc
 ifeq ($(CONFIG_DEBUG), false)
 CFLAGS += -O3
 else
@@ -172,21 +173,19 @@ OBJ := $(ASM_OBJ) $(C_OBJ)
 # Cargo
 CARGO = cargo +nightly
 # Cargo flags
-CARGOFLAGS = --verbose
+CARGOFLAGS = --verbose --target $(TARGET)
 ifeq ($(CONFIG_DEBUG), false)
 CARGOFLAGS += --release
 endif
 ifeq ($(CONFIG_DEBUG_TEST), true)
-CARGOFLAGS = --tests
+CARGOFLAGS += --tests
 endif
 
-CARGOFLAGS += --target $(TARGET)
-
 # The Rust language compiler flags
-RUSTFLAGS = -Zmacro-backtrace -C link-arg=-T$(LINKER) $(CONFIG_ARGS)
-
-# The strip program
-STRIP = strip
+RUSTFLAGS = -Zsymbol-mangling-version=v0 -Zmacro-backtrace $(CONFIG_ARGS)
+ifeq ($(CONFIG_DEBUG), true)
+RUSTFLAGS += -Cforce-frame-pointers=y -Cdebuginfo=2
+endif
 
 # The list of Rust language source files
 RUST_SRC := $(shell find $(SRC_DIR) -type f -name "*.rs")
@@ -209,12 +208,11 @@ $(OBJ_DIR)%.c.o: $(SRC_DIR)%.c $(HDR) $(TOUCH_UPDATE_FILES)
 	$(CC) $(CFLAGS) -I $(SRC_DIR) -c $< -o $@
 
 $(NAME): $(LIB_NAME) $(RUST_SRC) $(LINKER) $(TOUCH_UPDATE_FILES)
-	RUSTFLAGS='$(RUSTFLAGS)' $(CARGO) build $(CARGOFLAGS)
+	$(CONFIG_ENV) RUSTFLAGS='$(RUSTFLAGS)' $(CARGO) build $(CARGOFLAGS)
 ifeq ($(CONFIG_DEBUG), false)
-	cp target/target/release/maestro .
-	$(STRIP) $(NAME)
+	$(CC) $(CFLAGS) -o $(NAME) target/target/release/libkernel.a -T$(LINKER)
 else
-	cp `ls -1 target/target/debug/deps/maestro-* | head -n 1` $@
+	$(CC) $(CFLAGS) -o $(NAME) target/target/debug/libkernel.a -T$(LINKER)
 endif
 
 # Alias for $(NAME).iso
@@ -233,7 +231,7 @@ tags: $(SRC) $(HDR) $(RUST_SRC)
 
 # Runs clippy on the Rust code
 clippy:
-	RUSTFLAGS='$(RUSTFLAGS)' $(CARGO) clippy $(CARGOFLAGS)
+	$(CONFIG_ENV) RUSTFLAGS='$(RUSTFLAGS)' $(CARGO) clippy $(CARGOFLAGS)
 
 .PHONY: iso clippy
 

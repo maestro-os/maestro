@@ -17,10 +17,6 @@ pub type Pos = i16;
 
 /// Physical address of the VGA text buffer.
 pub const BUFFER_PHYS: *mut Char = 0xb8000 as _;
-/// Virtual address of the VGA text buffer.
-pub const BUFFER_VIRT: *mut Char = unsafe {
-	(memory::PROCESS_END as usize + BUFFER_PHYS as usize) as _
-};
 
 /// Width of the screen in characters under the VGA text mode.
 pub const WIDTH: Pos = 80;
@@ -70,7 +66,14 @@ pub const CURSOR_START: u8 = 0;
 /// The ending scanline for the cursor.
 pub const CURSOR_END: u8 = 15;
 
+/// Returns the virtual address of the VGA text buffer.
+#[inline]
+pub fn get_buffer_virt() -> *mut Char {
+	(memory::PROCESS_END as usize + BUFFER_PHYS as usize) as _
+}
+
 /// Returns the value for the given foreground color `fg` and background color `bg`.
+#[inline]
 pub fn entry_color(fg: Color, bg: Color) -> Color {
 	fg | (bg << 4)
 }
@@ -80,7 +83,7 @@ pub fn clear() {
 	for i in 0..(WIDTH * HEIGHT) {
 		unsafe {
 			vmem::write_lock_wrap(|| {
-				*BUFFER_VIRT.offset(i as isize) = (DEFAULT_COLOR as Char) << 8;
+				*get_buffer_virt().offset(i as isize) = (DEFAULT_COLOR as Char) << 8;
 			});
 		}
 	}
@@ -136,7 +139,7 @@ pub fn putchar_color(c: char, color: Color, x: Pos, y: Pos) {
 	debug_assert!(pos < BUFFER_SIZE as usize);
 	unsafe {
 		vmem::write_lock_wrap(|| {
-			*BUFFER_VIRT.offset(pos as isize) = c;
+			*get_buffer_virt().offset(pos as isize) = c;
 		});
 	}
 }

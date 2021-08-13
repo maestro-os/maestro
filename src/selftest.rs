@@ -3,8 +3,8 @@
 //! The kernel uses the serial communication interface to transmit the results of the selftests to
 //! another machine.
 
-use core::any::type_name;
 //use crate::device::serial;
+use core::any::type_name;
 
 /// Boolean value telling whether selftesting is running.
 static mut RUNNING: bool = false;

@@ -4,6 +4,8 @@ version = "0.1.0"
 authors = ["llenotre <llenotre@student.42.fr>"]
 edition = "2018"
 
-[[bin]]
-name = "maestro"
+# The kernel is implemented into an library in order to make it accessible from kernel modules as a dependency.
+[lib]
+name = "kernel"
 path = "src/kernel.rs"
+crate-type = ["dylib", "staticlib"]

@@ -152,6 +152,21 @@ impl FileDescriptor {
 		self.curr_off = off;
 	}
 
+	/// Returns the length of the file the descriptor points to.
+	pub fn get_len(&mut self) -> u64 {
+		match &mut self.target {
+			FDTarget::File(f) => {
+				let guard = f.lock(true);
+				guard.get().get_size()
+			},
+
+			FDTarget::FileDescriptor(_p) => {
+				// TODO Get the fd the pipe points to, then make a recursive call
+				todo!();
+			}
+		}
+	}
+
 	/// Reads data from the file.
 	/// `buf` is the slice to write to.
 	/// The functions returns the number of bytes that have been read.

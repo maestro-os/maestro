@@ -65,6 +65,17 @@ pub fn log2<T>(n: T) -> T
 	}
 }
 
+/// Tells whether the given number is a power of two.
+/// If `n` is zero, the behaviour is undefined.
+pub fn is_power_of_two<T>(n: T) -> bool
+	where T: Copy
+		+ From<u8>
+		+ core::ops::BitAnd<Output = T>
+		+ core::ops::Sub<Output = T>
+		+ core::cmp::PartialEq {
+	n == T::from(0) || n & (n - T::from(1)) == T::from(0)
+}
+
 /// Computes a linear interpolation over integers.
 /// The function computes the interpolation coefficient relative to the parameters `x`, `a_x` and
 /// `b_x`.
@@ -126,6 +137,15 @@ mod test {
 		assert_eq!(pow::<u32>(10, 3), 1000);
 		assert_eq!(pow::<u32>(10, 4), 10000);
 		assert_eq!(pow::<u32>(10, 5), 100000);
+	}
+
+	#[test_case]
+	fn is_power_of_two() {
+		for i in 0..31 {
+			let n = (1 as u32) << i;
+			debug_assert!(is_power_of_two(n));
+			debug_assert!(!is_power_of_two(!n));
+		}
 	}
 
 	// TODO Test every functions

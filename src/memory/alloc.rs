@@ -9,19 +9,19 @@ use crate::memory::memmap;
 use crate::memory;
 use crate::util;
 
-/// The maximum number of pages the kernel zone can hold.
-const KERNEL_MAX: usize = memory::KERNEL_SIZE / memory::PAGE_SIZE;
-
 // TODO Clean
 /// Initializes the memory allocators.
 pub fn init() {
 	buddy::prepare();
 	let mmap_info = memmap::get_info();
 
+	// The maximum number of pages the kernel zone can hold.
+	let kernel_max = memory::get_kernelspace_size() / memory::PAGE_SIZE;
+
 	let virt_alloc_begin = memory::kern_to_virt(mmap_info.phys_alloc_begin);
 	let metadata_begin = util::align(virt_alloc_begin, memory::PAGE_SIZE) as *mut c_void;
 	let frames_count = min(mmap_info.available_memory
-		/ (memory::PAGE_SIZE + buddy::get_frame_metadata_size()), KERNEL_MAX);
+		/ (memory::PAGE_SIZE + buddy::get_frame_metadata_size()), kernel_max);
 	let metadata_size = frames_count * buddy::get_frame_metadata_size();
 	let metadata_end = unsafe {
 		metadata_begin.add(metadata_size)

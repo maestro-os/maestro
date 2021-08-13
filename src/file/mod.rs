@@ -284,6 +284,11 @@ impl File {
 		self.size
 	}
 
+	/// Sets the file's size.
+	pub fn set_size(&mut self, size: u64) {
+		self.size = size;
+	}
+
 	/// Returns the type of the file.
 	pub fn get_file_type(&self) -> FileType {
 		self.content.get_file_type()

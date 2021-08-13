@@ -7,9 +7,11 @@ mod brk;
 mod chdir;
 mod chroot;
 mod close;
+mod delete_module;
 mod dup2;
 mod dup;
 mod fchdir;
+mod finit_module;
 mod fork;
 mod getcwd;
 mod getgid;
@@ -17,6 +19,7 @@ mod getpgid;
 mod getpid;
 mod getppid;
 mod getuid;
+mod init_module;
 mod kill;
 mod mkdir;
 mod mmap;
@@ -47,9 +50,11 @@ use chdir::chdir;
 use chroot::chroot;
 use close::close;
 use crate::util;
+use delete_module::delete_module;
 use dup2::dup2;
 use dup::dup;
 use fchdir::fchdir;
+use finit_module::finit_module;
 use fork::fork;
 use getcwd::getcwd;
 use getgid::getgid;
@@ -57,6 +62,7 @@ use getpgid::getpgid;
 use getpid::getpid;
 use getppid::getppid;
 use getuid::getuid;
+use init_module::init_module;
 use kill::kill;
 use mkdir::mkdir;
 use mmap::mmap;
@@ -183,6 +189,9 @@ pub extern "C" fn syscall_handler(regs: &util::Regs) -> u32 {
 		// TODO ptrace
 		34 => uname(regs),
 		35 => reboot(regs),
+		36 => init_module(regs),
+		37 => finit_module(regs),
+		38 => delete_module(regs),
 
 		_ => {
 			let mut mutex = Process::get_current().unwrap();

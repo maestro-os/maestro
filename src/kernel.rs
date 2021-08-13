@@ -2,7 +2,7 @@
 //! the kernel's internals.
 
 #![no_std]
-#![no_main]
+//#![no_main]
 
 #![feature(allow_internal_unstable)]
 #![feature(asm)]
@@ -12,7 +12,6 @@
 #![feature(const_mut_refs)]
 #![feature(const_ptr_offset)]
 #![feature(const_raw_ptr_deref)]
-#![feature(const_raw_ptr_to_usize_cast)]
 #![feature(core_intrinsics)]
 #![feature(custom_test_frameworks)]
 #![feature(dispatch_from_dyn)]
@@ -20,7 +19,6 @@
 #![feature(lang_items)]
 #![feature(llvm_asm)]
 #![feature(maybe_uninit_extra)]
-#![feature(maybe_uninit_ref)]
 #![feature(panic_info_message)]
 #![feature(slice_ptr_get)]
 #![feature(stmt_expr_attributes)]
@@ -33,36 +31,37 @@
 #![test_runner(crate::selftest::runner)]
 #![reexport_test_harness_main = "kernel_selftest"]
 
-mod acpi;
-mod cmdline;
-mod debug;
-mod device;
-mod elf;
-mod errno;
-mod event;
-mod file;
-mod gdt;
+pub mod acpi;
+pub mod cmdline;
+pub mod debug;
+pub mod device;
+pub mod elf;
+pub mod errno;
+pub mod event;
+pub mod file;
+pub mod gdt;
 #[macro_use]
-mod idt;
-mod limits;
-mod logger;
-mod memory;
-mod module;
-mod multiboot;
+pub mod idt;
+pub mod io;
+pub mod limits;
+pub mod logger;
+pub mod memory;
+pub mod module;
+pub mod multiboot;
 #[macro_use]
-mod panic;
-mod pit;
+pub mod panic;
+pub mod pit;
 #[macro_use]
-mod print;
-mod process;
-mod selftest;
-mod syscall;
-mod time;
-mod tty;
+pub mod print;
+pub mod process;
+pub mod selftest;
+pub mod syscall;
+pub mod time;
+pub mod tty;
 #[macro_use]
-mod util;
+pub mod util;
 #[macro_use]
-mod vga;
+pub mod vga;
 
 use core::ffi::c_void;
 use core::panic::PanicInfo;
@@ -70,63 +69,42 @@ use crate::file::path::Path;
 use crate::process::Process;
 
 /// The kernel's name.
-const KERNEL_NAME: &str = "maestro";
+pub const NAME: &str = "maestro";
 /// Current kernel version.
-const KERNEL_VERSION: &str = "1.0";
+pub const VERSION: &str = "1.0";
 
-mod kern {
-	use core::ffi::c_void;
-
-	extern "C" {
-		pub fn kernel_wait();
-		pub fn kernel_loop() -> !;
-		pub fn kernel_loop_reset(stack: *mut c_void) -> !;
-		pub fn kernel_halt() -> !;
-	}
+extern "C" {
+	fn kernel_wait();
+	fn kernel_loop() -> !;
+	fn kernel_loop_reset(stack: *mut c_void) -> !;
+	fn kernel_halt() -> !;
 }
 
 /// Makes the kernel wait for an interrupt, then returns.
 /// This function enables interrupts.
 pub fn wait() {
 	unsafe {
-		kern::kernel_wait();
+		kernel_wait();
 	}
 }
 
 /// Enters the kernel loop and processes every interrupts indefinitely.
 pub fn enter_loop() -> ! {
 	unsafe {
-		kern::kernel_loop();
+		kernel_loop();
 	}
 }
 
 /// Resets the stack to the given value, then calls `enter_loop`.
 /// The function is unsafe because the pointer passed in parameter might be invalid.
 pub unsafe fn loop_reset(stack: *mut c_void) -> ! {
-	kern::kernel_loop_reset(stack);
+	kernel_loop_reset(stack);
 }
 
 /// Halts the kernel until reboot.
 pub fn halt() -> ! {
 	unsafe {
-		kern::kernel_halt();
-	}
-}
-
-mod io {
-	extern "C" {
-		/// Inputs a byte from the specified port.
-		pub fn inb(port: u16) -> u8;
-		/// Inputs a word from the specified port.
-		pub fn inw(port: u16) -> u16;
-		/// Inputs a long from the specified port.
-		pub fn inl(port: u16) -> u32;
-		/// Outputs a byte to the specified port.
-		pub fn outb(port: u16, value: u8);
-		/// Outputs a word to the specified port.
-		pub fn outw(port: u16, value: u16);
-		/// Outputs a long to the specified port.
-		pub fn outl(port: u16, value: u32);
+		kernel_halt();
 	}
 }
 
@@ -173,12 +151,12 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 	let args_parser = cmdline::ArgsParser::parse(&multiboot::get_boot_info().cmdline);
 	if let Err(e) = args_parser {
 		e.print();
-		halt();
+		crate::halt();
 	}
 	let args_parser = args_parser.unwrap();
 	logger::init(args_parser.is_silent());
 
-	println!("Booting Maestro kernel version {}", KERNEL_VERSION);
+	println!("Booting Maestro kernel version {}", crate::VERSION);
 
 	println!("Initializing ACPI...");
 	acpi::init();
@@ -215,7 +193,7 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 		kernel_panic!("Failed to create init process!", 0);
 	}
 
-	enter_loop();
+	crate::enter_loop();
 }
 
 /// Called on Rust panic.
@@ -231,7 +209,7 @@ fn panic(panic_info: &PanicInfo) -> ! {
 	if let Some(s) = panic_info.message() {
 		panic::rust_panic(s);
 	} else {
-		kernel_panic!("Rust panic (no payload)", 0);
+		crate::kernel_panic!("Rust panic (no payload)", 0);
 	}
 }
 

@@ -325,7 +325,7 @@ impl X86VMem {
 		vmem.map_range(null::<c_void>(), memory::PROCESS_END, 262144,
 			FLAG_WRITE | FLAG_GLOBAL)?; // TODO Enable global in cr4
 		// TODO Extend to other DMA
-		vmem.map_range(vga::BUFFER_PHYS as _, vga::BUFFER_VIRT as _, 1,
+		vmem.map_range(vga::BUFFER_PHYS as _, vga::get_buffer_virt() as _, 1,
 			FLAG_CACHE_DISABLE | FLAG_WRITE_THROUGH | FLAG_WRITE)?;
 		vmem.protect_kernel();
 		Ok(vmem)
@@ -630,7 +630,7 @@ mod test {
 	fn vmem_x86_vga_text_access() {
 		let vmem = X86VMem::new().unwrap();
 		for i in 0..(80 * 25 * 2) {
-			assert!(vmem.translate(((vga::BUFFER_VIRT as usize) + i) as _) != None);
+			assert!(vmem.translate(((vga::get_buffer_virt() as usize) + i) as _) != None);
 		}
 	}
 }

@@ -34,9 +34,9 @@ pub fn uname(regs: &util::Regs) -> Result<i32, Errno> {
 		machine: [0; UTSNAME_LENGTH],
 	};
 
-	utsname.sysname.clone_from_slice(&crate::KERNEL_NAME.as_bytes());
+	utsname.sysname.clone_from_slice(&crate::NAME.as_bytes());
 	// TODO nodename
-	utsname.release.clone_from_slice(&crate::KERNEL_VERSION.as_bytes());
+	utsname.release.clone_from_slice(&crate::VERSION.as_bytes());
 	// TODO version
 	// TODO machine
 

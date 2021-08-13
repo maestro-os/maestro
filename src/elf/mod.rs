@@ -1,11 +1,85 @@
 //! The Executable and Linkable Format (ELF) is a format of executable files commonly used in UNIX
-//! systems. This module implements an interface to manipulate this format, including the kernel's
-//! executable itself.
+//! systems. This module implements a parser allowing to handle this format, including the kernel
+//! image itself.
 
 use core::ffi::c_void;
 use core::mem::size_of;
+use crate::errno::Errno;
+use crate::errno;
 use crate::memory;
+use crate::util::math;
 use crate::util;
+
+/// The number of identification bytes in the ELF header.
+const EI_NIDENT: usize = 16;
+
+/// Identification bytes offset: File class.
+const EI_CLASS: usize = 4;
+/// Identification bytes offset: Data encoding.
+const EI_DATA: usize = 5;
+/// Identification bytes offset: Version.
+const EI_VERSION: usize = 6;
+
+/// File's class: Invalid class.
+const ELFCLASSNONE: u8 = 0;
+/// File's class: 32-bit objects.
+const ELFCLASS32: u8 = 1;
+/// File's class: 64-bit objects.
+const ELFCLASS64: u8 = 2;
+
+/// Data encoding: Invalid data encoding.
+const ELFDATANONE: u8 = 0;
+/// Data encoding: Little endian.
+const ELFDATA2LSB: u8 = 1;
+/// Data encoding: Big endian.
+const ELFDATA2MSB: u8 = 2;
+
+/// Object file type: No file type.
+const ET_NONE: u16 = 0;
+/// Object file type: Relocatable file.
+const ET_REL: u16 = 1;
+/// Object file type: Executable file.
+const ET_EXEC: u16 = 2;
+/// Object file type: Shared object file.
+const ET_DYN: u16 = 3;
+/// Object file type: Core file.
+const ET_CORE: u16 = 4;
+/// Object file type: Processor-specific.
+const ET_LOPROC: u16 = 0xff00;
+/// Object file type: Processor-specific.
+const ET_HIPROC: u16 = 0xffff;
+
+/// Required architecture: AT&T WE 32100.
+const EM_M32: u16 = 1;
+/// Required architecture: SPARC.
+const EM_SPARC: u16 = 2;
+/// Required architecture: Intel Architecture.
+const EM_386: u16 = 3;
+/// Required architecture: Motorola 68000.
+const EM_68K: u16 = 4;
+/// Required architecture: Motorola 88000.
+const EM_88K: u16 = 5;
+/// Required architecture: Intel 80860.
+const EM_860: u16 = 7;
+/// Required architecture: MIPS RS3000 Big-Endian.
+const EM_MIPS: u16 = 8;
+/// Required architecture: MIPS RS4000 Big-Endian.
+const EM_MIPS_RS4_BE: u16 = 10;
+
+/// Program header type: Ignored.
+const PT_NULL: u32 = 0;
+/// Program header type: Loadable segment.
+const PT_LOAD: u32 = 1;
+/// Program header type: Dynamic linking information.
+const PT_DYNAMIC: u32 = 2;
+/// Program header type: Interpreter path.
+const PT_INTERP: u32 = 3;
+/// Program header type: Auxiliary information.
+const PT_NOTE: u32 = 4;
+/// Program header type: Unspecified.
+const PT_SHLIB: u32 = 5;
+/// Program header type: The program header table itself.
+const PT_PHDR: u32 = 6;
 
 /// The section header is inactive.
 pub const SHT_NULL: u32 = 0x00000000;
@@ -90,10 +164,81 @@ pub const STT_LOPROC: u8 = 13;
 /// TODO doc
 pub const STT_HIPROC: u8 = 15;
 
-/// TODO doc
-type ELF32Addr = u32;
+/// Structure representing an ELF header.
+#[derive(Clone, Debug)]
+#[repr(C)]
+pub struct ELF32ELFHeader {
+	/// Identification bytes.
+	pub e_ident: [u8; EI_NIDENT],
+	/// Identifies the object file type.
+	pub e_type: u16,
+	/// Specifies the required machine type.
+	pub e_machine: u16,
+	/// The file's version.
+	pub e_version: u32,
+	/// The virtual address of the file's entry point.
+	pub e_entry: u32,
+	/// The program header table's file offset in bytes.
+	pub e_phoff: u32,
+	/// The section header table's file offset in bytes.
+	pub e_shoff: u32,
+	/// Processor-specific flags.
+	pub e_flags: u32,
+	/// ELF header's size in bytes.
+	pub e_ehsize: u16,
+	/// The size of one entry in the program header table.
+	pub e_phentsize: u16,
+	/// The number of entries in the program header table.
+	pub e_phnum: u16,
+	/// The size of one entry in the section header table.
+	pub e_shentsize: u16,
+	/// The number of entries in the section header table.
+	pub e_shnum: u16,
+	/// The section header table index holding the header of the section name string table.
+	pub e_shstrndx: u16,
+}
 
-/// Structure representing an ELF section header in memory.
+/// Structure representing an ELF program header.
+#[derive(Clone, Debug)]
+#[repr(C)]
+pub struct ELF32ProgramHeader {
+	/// Tells what kind of segment this header describes.
+	pub p_type: u32,
+	/// The offset of the segment's content in the file.
+	pub p_offset: u32,
+	/// The virtual address of the segment's content.
+	pub p_vaddr: u32,
+	/// The physical address of the segment's content (if relevant).
+	pub p_paddr: u32,
+	/// The size of the segment's content in the file.
+	pub p_filesz: u32,
+	/// The size of the segment's content in memory.
+	pub p_memsz: u32,
+	/// Segment's flags.
+	pub p_flags: u32,
+	/// Segment's alignment.
+	pub p_align: u32,
+}
+
+impl ELF32ProgramHeader {
+	/// Tells whether the program header is valid.
+	/// `file_size` is the size of the file.
+	fn is_valid(&self, file_size: usize) -> bool {
+		// TODO Check p_type
+
+		if (self.p_offset + self.p_filesz) as usize > file_size {
+			return false;
+		}
+
+		if self.p_align != 0 && !math::is_power_of_two(self.p_align) {
+			return false;
+		}
+
+		true
+	}
+}
+
+/// Structure representing an ELF section header.
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
 pub struct ELF32SectionHeader {
@@ -121,6 +266,24 @@ pub struct ELF32SectionHeader {
 	pub sh_entsize: u32,
 }
 
+impl ELF32SectionHeader {
+	/// Tells whether the section header is valid.
+	/// `file_size` is the size of the file.
+	fn is_valid(&self, file_size: usize) -> bool {
+		// TODO Check sh_name
+
+		if (self.sh_offset + self.sh_size) as usize > file_size {
+			return false;
+		}
+
+		if self.sh_addralign != 0 && !math::is_power_of_two(self.sh_addralign) {
+			return false;
+		}
+
+		true
+	}
+}
+
 /// Structure representing an ELF symbol in memory.
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
@@ -128,7 +291,7 @@ pub struct ELF32Sym {
 	/// Index in the string table section specifying the name of the symbol.
 	pub st_name: u32,
 	/// The value of the symbol.
-	pub st_value: ELF32Addr,
+	pub st_value: u32,
 	/// The size of the symbol.
 	pub st_size: u32,
 	/// The symbol's type and binding attributes.
@@ -248,4 +411,201 @@ pub fn get_function_name(sections: *const c_void, sections_count: usize, shndx: 
 		});
 
 	func_name
+}
+
+/// The ELF parser allows to parse an ELF image and retrieve informations on it.
+/// It is especially useful to load a kernel module or a userspace program.
+pub struct ELFParser<'a> {
+	/// The ELF image.
+	image: &'a [u8],
+}
+
+impl<'a> ELFParser<'a> {
+	/// Returns the image's header.
+	/// If the image is invalid, the behaviour is undefined.
+	pub fn get_header(&self) -> &ELF32ELFHeader {
+		unsafe { // Safe because the slice is large enough
+			&*(&self.image[0] as *const u8 as *const ELF32ELFHeader)
+		}
+	}
+
+	/// Returns the program header at offset `off`.
+	/// If the image is invalid of if the offset is outside of the image, the behaviour is
+	/// undefined.
+	pub fn get_program_header(&self, off: usize) -> &ELF32ProgramHeader {
+		debug_assert!(off < self.image.len());
+
+		unsafe { // Safe because the slice is large enough
+			&*(&self.image[off] as *const u8 as *const ELF32ProgramHeader)
+		}
+	}
+
+	/// Returns the section header at offset `off`.
+	/// If the image is invalid of if the offset is outside of the image, the behaviour is
+	/// undefined.
+	pub fn get_section_header(&self, off: usize) -> &ELF32SectionHeader {
+		debug_assert!(off < self.image.len());
+
+		unsafe { // Safe because the slice is large enough
+			&*(&self.image[off] as *const u8 as *const ELF32SectionHeader)
+		}
+	}
+
+	// TODO Support 64 bit
+	/// Tells whether the ELF image is valid.
+	fn check_image(&self) -> bool {
+		let signature = [0x7f, b'E', b'L', b'F'];
+
+		if self.image.len() < EI_NIDENT {
+			return false;
+		}
+		if self.image[0..signature.len()] != signature {
+			return false;
+		}
+
+		// TODO Check relative to current architecture
+		if self.image[EI_CLASS] != ELFCLASS32 {
+			return false;
+		}
+
+		// TODO Check relative to current architecture
+		if self.image[EI_DATA] != ELFDATA2LSB {
+			return false;
+		}
+
+		if self.image.len() < size_of::<ELF32ELFHeader>() {
+			return false;
+		}
+		let ehdr = self.get_header();
+
+		// TODO Check e_machine
+		// TODO Check e_version
+
+		if ehdr.e_ehsize != size_of::<ELF32ELFHeader>() as u16 {
+			return false;
+		}
+
+		if ehdr.e_phoff + ehdr.e_phentsize as u32 * ehdr.e_phnum as u32 > self.image.len() as u32 {
+			return false;
+		}
+		if ehdr.e_shoff + ehdr.e_shentsize as u32 * ehdr.e_shnum as u32 > self.image.len() as u32 {
+			return false;
+		}
+		if ehdr.e_shstrndx >= ehdr.e_shnum {
+			return false;
+		}
+
+		for i in 0..ehdr.e_phnum {
+			let off = (ehdr.e_phoff + ehdr.e_phentsize as u32 * i as u32) as usize;
+			let phdr = self.get_program_header(off);
+
+			if !phdr.is_valid(self.image.len()) {
+				return false;
+			}
+		}
+
+		for i in 0..ehdr.e_shnum {
+			let off = (ehdr.e_shoff + ehdr.e_shentsize as u32 * i as u32) as usize;
+			let shdr = self.get_section_header(off);
+
+			if !shdr.is_valid(self.image.len()) {
+				return false;
+			}
+		}
+
+		true
+	}
+
+	/// Creates a new instance for the given image.
+	/// The function checks if the image is valid. If not, the function retuns an error.
+	pub fn new(image: &'a [u8]) -> Result<Self, Errno> {
+		let p = Self {
+			image,
+		};
+
+		if p.check_image() {
+			Ok(p)
+		} else {
+			Err(errno::EINVAL)
+		}
+	}
+
+	/// Returns a reference to the ELF image.
+	pub fn get_image(&self) -> &[u8] {
+		&self.image
+	}
+
+	/// Calls the given function `f` for each segments in the image.
+	/// If the function returns `false`, the loop breaks.
+	pub fn foreach_segments<F: FnMut(&ELF32ProgramHeader) -> bool>(&self, mut f: F) {
+		let ehdr = self.get_header();
+		let phoff = ehdr.e_phoff;
+		let phnum = ehdr.e_phnum;
+		let phentsize = ehdr.e_phentsize;
+
+		for i in 0..phnum {
+			let hdr = self.get_program_header((phoff + phentsize as u32 * i as u32) as usize);
+
+			if !f(hdr) {
+				break;
+			}
+		}
+	}
+
+	/// Calls the given function `f` for each section in the image.
+	/// If the function returns `false`, the loop breaks.
+	pub fn foreach_sections<F: FnMut(&ELF32SectionHeader) -> bool>(&self, mut f: F) {
+		let ehdr = self.get_header();
+		let shoff = ehdr.e_shoff;
+		let shnum = ehdr.e_shnum;
+		let shentsize = ehdr.e_shentsize;
+
+		for i in 0..shnum {
+			let hdr = self.get_section_header((shoff + shentsize as u32 * i as u32) as usize);
+
+			if !f(hdr) {
+				break;
+			}
+		}
+	}
+
+	/// Calls the given function `f` for each symbol in the image.
+	/// If the function returns `false`, the loop breaks.
+	pub fn foreach_symbol<F: FnMut(&ELF32Sym) -> bool>(&self, mut f: F) {
+		self.foreach_sections(| section | {
+			if section.sh_type == SHT_SYMTAB {
+				let begin = section.sh_offset;
+				let mut i = 0;
+
+				// TODO When checking the image, check the size of the section is a multiple of the
+				// size of a symbol
+				while i < section.sh_size {
+					let off = begin as usize + i as usize;
+					let sym = unsafe { // Safe because the slice is large enough
+						&*(&self.image[off] as *const u8 as *const ELF32Sym)
+					};
+
+					if !f(sym) {
+						break;
+					}
+
+					i += size_of::<ELF32Sym>() as u32;
+				}
+			}
+
+			true
+		});
+	}
+
+	/// Returns the symbol with name `name`. If the symbol doesn't exist, the function returns
+	/// None.
+	pub fn get_symbol(&self, _name: &str) -> Option<&ELF32Sym> {
+		let ehdr = self.get_header();
+		let shndx = ehdr.shndx;
+
+		// TODO
+		None
+	}
+
+	// TODO
 }

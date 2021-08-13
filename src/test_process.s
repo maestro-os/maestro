@@ -10,6 +10,10 @@
 .global signal
 .global kill
 
+.global init_module
+.global finit_module
+.global delete_module
+
 open:
 	push %ebp
 	mov %esp, %ebp
@@ -163,6 +167,63 @@ kill:
 	push %ecx
 
 	mov $33, %eax
+	mov 8(%ebp), %ebx
+	mov 12(%ebp), %ecx
+	int $0x80
+
+	pop %ecx
+	pop %ebx
+
+	mov %ebp, %esp
+	pop %ebp
+	ret
+
+init_module:
+	push %ebp
+	mov %esp, %ebp
+
+	push %ebx
+	push %ecx
+
+	mov $36, %eax
+	mov 8(%ebp), %ebx
+	mov 12(%ebp), %ecx
+	int $0x80
+
+	pop %ecx
+	pop %ebx
+
+	mov %ebp, %esp
+	pop %ebp
+	ret
+
+finit_module:
+	push %ebp
+	mov %esp, %ebp
+
+	push %ebx
+	push %ecx
+
+	mov $37, %eax
+	mov 8(%ebp), %ebx
+	mov 12(%ebp), %ecx
+	int $0x80
+
+	pop %ecx
+	pop %ebx
+
+	mov %ebp, %esp
+	pop %ebp
+	ret
+
+delete_module:
+	push %ebp
+	mov %esp, %ebp
+
+	push %ebx
+	push %ecx
+
+	mov $38, %eax
 	mov 8(%ebp), %ebx
 	mov 12(%ebp), %ecx
 	int $0x80
