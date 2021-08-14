@@ -268,6 +268,7 @@ impl Scheduler {
 		}
 
 		if let Some(next_proc) = &mut scheduler.get_next_process() {
+			// If a signal is pending on the process, execute it
 			{
 				let mut guard = next_proc.1.lock(false);
 				let proc = guard.get_mut();
@@ -275,6 +276,7 @@ impl Scheduler {
 				proc.signal_next();
 			}
 
+			// Set the process as current
 			scheduler.curr_proc = Some(next_proc.clone());
 
 			let core_id = 0; // TODO

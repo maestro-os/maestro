@@ -13,7 +13,7 @@ use super::Process;
 use super::State;
 
 /// Type representing the type of a signal.
-pub type SignalType = u8;
+pub type SignalType = i32;
 /// Type representing a signal handler.
 pub type SigHandler = extern "C" fn(i32);
 

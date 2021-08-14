@@ -641,7 +641,7 @@ impl Ext2INode {
 		debug_assert!(self.get_type() == FileType::BlockDevice
 			|| self.get_type() == FileType::CharDevice);
 
-		(self.direct_block_ptrs[0], self.direct_block_ptrs[1])
+		(self.direct_block_ptrs[1], self.direct_block_ptrs[0])
 	}
 
 	/// Sets the device major and minor numbers associated with the device.
@@ -652,8 +652,8 @@ impl Ext2INode {
 		debug_assert!(self.get_type() == FileType::BlockDevice
 			|| self.get_type() == FileType::CharDevice);
 
-		self.direct_block_ptrs[0] = major;
-		self.direct_block_ptrs[1] = minor;
+		self.direct_block_ptrs[0] = minor;
+		self.direct_block_ptrs[1] = major;
 	}
 
 	/// Writes the inode on the device.

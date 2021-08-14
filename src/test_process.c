@@ -40,9 +40,7 @@ void print_nbr(int nbr)
 
 void sig_handle(int sig) {
 	(void) sig;
-
 	write(1, ":(\n", 3);
-	_exit(1);
 }
 
 void test_process(void)

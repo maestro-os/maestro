@@ -124,7 +124,7 @@ pub struct Process {
 	syscalling: bool,
 
 	/// Tells whether the process is handling a signal.
-	handled_signal: Option<u8>,
+	handled_signal: Option<SignalType>,
 	/// The saved state of registers, used when handling a signal.
 	saved_regs: Regs,
 
@@ -735,11 +735,12 @@ impl Process {
 	/// Kills the process with the given signal `sig`. If the process doesn't have a signal
 	/// handler, the default action for the signal is executed.
 	pub fn kill(&mut self, sig: Signal) {
-		if self.is_handling_signal() && sig.can_catch() {
-			self.signals_bitfield.set(sig.get_type() as _);
-		} else {
-			sig.execute_action(self);
-		}
+		self.signals_bitfield.set(sig.get_type() as _);
+	}
+
+	/// Tells whether the process has a signal pending.
+	pub fn has_signal_pending(&self) -> bool {
+		self.signals_bitfield.find_set().is_some()
 	}
 
 	/// Makes the process handle the next signal. If the process is already handling a signal or if
@@ -757,7 +758,7 @@ impl Process {
 
 	/// Saves the process's state to handle a signal.
 	/// `sig` is the signal number.
-	pub fn signal_save(&mut self, sig: u8) {
+	pub fn signal_save(&mut self, sig: SignalType) {
 		self.saved_regs = self.regs;
 		self.handled_signal = Some(sig);
 	}
@@ -769,6 +770,9 @@ impl Process {
 
 			self.handled_signal = None;
 			self.regs = self.saved_regs;
+
+			// Ensuring the process doesn't resume executing userspace code in kernelspace
+			self.syscalling = false;
 		}
 	}
 

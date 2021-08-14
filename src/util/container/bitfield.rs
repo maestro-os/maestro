@@ -79,7 +79,7 @@ impl Bitfield {
 
 	/// Finds a clear bit. The function returns the offset to the bit. If none is found, the
 	/// function returns None.
-	pub fn find_clear(&mut self) -> Option<usize> {
+	pub fn find_clear(&self) -> Option<usize> {
 		for i in 0..self.len {
 			if !self.is_set(i) {
 				return Some(i);
@@ -91,7 +91,7 @@ impl Bitfield {
 
 	/// Finds a set bit. The function returns the offset to the bit. If none is found, the function
 	/// returns None.
-	pub fn find_set(&mut self) -> Option<usize> {
+	pub fn find_set(&self) -> Option<usize> {
 		for i in 0..self.len {
 			if self.is_set(i) {
 				return Some(i);
