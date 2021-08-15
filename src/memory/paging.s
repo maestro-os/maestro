@@ -5,6 +5,8 @@
 .global cr0_clear
 .global cr2_get
 .global cr3_get
+.global cr4_get
+.global cr4_set
 
 .global paging_enable
 .global paging_disable
@@ -69,8 +71,9 @@ cr4_get:
 /*
  * (x86) Sets the value of the %cr4 register.
  */
-cr4_get:
-	mov 4(%esp), %cr4
+cr4_set:
+	mov 4(%esp), %eax
+	mov %eax, %cr4
 	ret
 
 /*
