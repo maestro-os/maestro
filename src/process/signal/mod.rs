@@ -143,7 +143,7 @@ impl Signal {
 	/// Creates a new instance.
 	/// `type_` is the signal type.
 	pub fn new(type_: SignalType) -> Result<Self, Errno> {
-		if (type_ as usize) < SIGNALS_COUNT {
+		if type_ >= 0 && type_ < SIGNALS_COUNT as i32 {
 			Ok(Self {
 				type_,
 			})
@@ -169,7 +169,13 @@ impl Signal {
 			return;
 		}
 
-		match process.get_signal_handler(self.type_) {
+		let handler = if self.can_catch() {
+			process.get_signal_handler(self.type_)
+		} else {
+			SignalHandler::Default
+		};
+
+		match handler {
 			SignalHandler::Ignore => {},
 			SignalHandler::Default => {
 				let default_action = DEFAULT_ACTIONS[self.type_ as usize];

@@ -41,6 +41,7 @@ void print_nbr(int nbr)
 void sig_handle(int sig) {
 	(void) sig;
 	write(1, ":(\n", 3);
+	// TODO Try segfaulting here
 }
 
 void test_process(void)
@@ -64,6 +65,14 @@ void test_process(void)
 
 		signal(0, sig_handle);
 		kill(getpid(), 0);
+
+		int pid2 = fork();
+		if (pid2 == 0) {
+			while(1)
+				;
+		}
+
+		kill(pid2, 0);
 
 		_exit(43);
 	} else {

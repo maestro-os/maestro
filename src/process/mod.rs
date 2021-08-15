@@ -462,8 +462,11 @@ impl Process {
 		self.state == State::Zombie
 	}
 
-	/// Wakes up the process. If the process is not in Sleeping state, the function does nothing.
+	/// Wakes up the process. The function sends a signal SIGCHLD to the process and, if it was in
+	/// Sleeping state, changes it to Running.
 	pub fn wakeup(&mut self) {
+		self.kill(signal::Signal::new(signal::SIGCHLD).unwrap());
+
 		if self.state == State::Sleeping {
 			self.state = State::Running;
 		}
@@ -734,8 +737,13 @@ impl Process {
 
 	/// Kills the process with the given signal `sig`. If the process doesn't have a signal
 	/// handler, the default action for the signal is executed.
+	/// `no_handle` tells whether the signal handler must be ignored.
 	pub fn kill(&mut self, sig: Signal) {
-		self.signals_bitfield.set(sig.get_type() as _);
+		if sig.can_catch() {
+			self.signals_bitfield.set(sig.get_type() as _);
+		} else {
+			sig.execute_action(self);
+		}
 	}
 
 	/// Tells whether the process has a signal pending.

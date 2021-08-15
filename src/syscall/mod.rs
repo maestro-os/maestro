@@ -199,7 +199,7 @@ pub extern "C" fn syscall_handler(regs: &util::Regs) -> u32 {
 
 		_ => {
 			let mut mutex = Process::get_current().unwrap();
-			let mut guard = mutex.lock(false); // TODO Make locking inside of the syscall handler itself
+			let mut guard = mutex.lock(false);
 			let curr_proc = guard.get_mut();
 
 			curr_proc.kill(process::signal::Signal::new(process::signal::SIGSYS).unwrap());
