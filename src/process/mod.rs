@@ -805,7 +805,10 @@ impl Process {
 
 	/// Saves the process's state to handle a signal.
 	/// `sig` is the signal number.
+	/// If the process is already handling a signal, the behaviour is undefined.
 	pub fn signal_save(&mut self, sig: SignalType) {
+		debug_assert!(!self.is_handling_signal());
+
 		self.saved_regs = self.regs;
 		self.handled_signal = Some(sig);
 	}

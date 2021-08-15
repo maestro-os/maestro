@@ -73,6 +73,7 @@ void test_process(void)
 		}
 
 		kill(pid2, 0);
+		waitpid(-1, NULL, 0);
 
 		_exit(43);
 	} else {

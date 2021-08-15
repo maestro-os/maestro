@@ -21,6 +21,7 @@ impl DeviceManager for KeyboardManager {
 			crate::println!("Key action! {:?} {:?}", c, action);
 			// TODO Write to device file
 		});
+		// ps2_module.init();
 		// TODO Insert somewhere
 
 		Ok(())

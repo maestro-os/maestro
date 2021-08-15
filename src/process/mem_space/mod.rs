@@ -247,6 +247,11 @@ impl MemSpace {
 		self.vmem.bind();
 	}
 
+	/// Tells whether the memory space is bound.
+	pub fn is_bound(&self) -> bool {
+		self.vmem.is_bound()
+	}
+
 	/// Performs the actions of `fork`. This function is meant to be called onto a temporary stack.
 	fn do_fork(&mut self) -> Result<MemSpace, Errno> {
 		let mut mem_space = Self {

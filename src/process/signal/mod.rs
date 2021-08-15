@@ -163,7 +163,10 @@ impl Signal {
 	}
 
 	/// Executes the action associated with the signal for process `process`.
+	/// If the process is not the current process, the behaviour is undefined.
 	pub fn execute_action(&self, process: &mut Process) {
+		debug_assert!(process.get_mem_space().is_bound());
+
 		let process_state = process.get_state();
 		if process_state == State::Zombie {
 			return;
