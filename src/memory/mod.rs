@@ -43,7 +43,7 @@ pub fn get_kernel_virtual_begin() -> *const c_void {
 /// The size of the kernelspace memory in bytes.
 #[inline(always)]
 pub fn get_kernelspace_size() -> usize {
-	!(1 as usize) - PROCESS_END as usize + 1
+	usize::MAX - PROCESS_END as usize + 1
 }
 
 /// Returns the size of the kernel image in bytes.
@@ -72,8 +72,7 @@ pub fn get_kernel_virtual_end() -> *const c_void {
 
 /// Converts a kernel physical address to a virtual address.
 pub fn kern_to_virt(ptr: *const c_void) -> *const c_void {
-	if ptr < PROCESS_END {
-		// TODO Check that it will not overflow
+	if ptr < get_kernelspace_size() as *const c_void {
 		((ptr as usize) + (PROCESS_END as usize)) as *const _
 	} else {
 		ptr

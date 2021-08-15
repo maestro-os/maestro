@@ -77,6 +77,8 @@ extern "C" {
 	pub fn cr0_clear(flags: u32);
 	pub fn cr2_get() -> *const c_void;
 	pub fn cr3_get() -> *mut c_void;
+	pub fn cr4_get() -> u32;
+	pub fn cr4_set(flags: u32);
 
 	pub fn paging_enable(directory: *const u32);
 	pub fn paging_disable();
@@ -212,30 +214,23 @@ impl X86VMem {
 	/// Protects the kernel's read-only sections from writing in the given page directory `vmem`.
 	fn protect_kernel(&mut self) {
 		let boot_info = multiboot::get_boot_info();
+		let f = | section: &elf::ELF32SectionHeader, _name: &str | {
+			if section.sh_flags & elf::SHF_WRITE != 0
+				|| section.sh_addralign as usize != memory::PAGE_SIZE {
+				return;
+			}
+
+			let phys_addr = memory::kern_to_phys(section.sh_addr as _);
+			let virt_addr = memory::kern_to_virt(section.sh_addr as _);
+			let pages = math::ceil_division(section.sh_size, memory::PAGE_SIZE as _) as usize;
+			if self.map_range(phys_addr, virt_addr, pages as usize, FLAG_USER).is_err() {
+				crate::kernel_panic!("Kernel protection failed!");
+			}
+		};
+
 		elf::foreach_sections(memory::kern_to_virt(boot_info.elf_sections),
 			boot_info.elf_num as usize, boot_info.elf_shndx as usize,
-			boot_info.elf_entsize as usize, | section: &elf::ELF32SectionHeader, _name: &str | {
-				if section.sh_flags & elf::SHF_WRITE != 0
-					|| section.sh_addralign as usize != memory::PAGE_SIZE {
-					return;
-				}
-
-				// TODO Clean (use dedicated functions)
-				let phys_addr = if section.sh_addr < (memory::PROCESS_END as _) {
-					section.sh_addr as *const c_void
-				} else {
-					memory::kern_to_phys(section.sh_addr as _)
-				};
-				let virt_addr = if section.sh_addr >= (memory::PROCESS_END as _) {
-					section.sh_addr as *const c_void
-				} else {
-					memory::kern_to_virt(section.sh_addr as _)
-				};
-				let pages = math::ceil_division(section.sh_size, memory::PAGE_SIZE as _) as usize;
-				if self.map_range(phys_addr, virt_addr, pages as usize, FLAG_USER).is_err() {
-					crate::kernel_panic!("Kernel protection failed!");
-				}
-			});
+			boot_info.elf_entsize as usize, f);
 	}
 
 	/// Asserts that the map operation shall not result in a crash.
@@ -296,38 +291,27 @@ impl X86VMem {
 		}
 	}
 
-	/// Asserts that the bind operation shall not result in a crash.
-	#[cfg(config_debug_debug)]
-	fn check_bind(&self) {
-		if self.is_bound() {
-			return;
-		}
-
-		let esp = unsafe {
-			crate::register_get!("esp") as *const c_void
-		};
-		self.translate(esp).unwrap();
-		// TODO Check that the content of the physical page is the same as the current
-
-		/*for i in 0..262144 {
-			let ptr = (0xc0000000 + i * memory::PAGE_SIZE) as *const c_void;
-			self.translate(ptr).unwrap();
-		}*/
-	}
-
 	/// Initializes a new page directory. The kernel memory is mapped into the context by default.
 	pub fn new() -> Result<Self, Errno> {
 		let mut vmem = Self {
 			page_dir: alloc_obj()?,
 		};
+
 		// TODO If Meltdown mitigation is enabled, only allow read access to a stub for interrupts
-		// TODO Place pages count in a constant, limit to size of physical memory
-		vmem.map_range(null::<c_void>(), memory::PROCESS_END, 262144,
+		// Mapping the kernelspace
+		vmem.map_range(null::<c_void>(),
+			memory::PROCESS_END,
+			memory::get_kernelspace_size() / memory::PAGE_SIZE,
 			FLAG_WRITE | FLAG_GLOBAL)?; // TODO Enable global in cr4
+
 		// TODO Extend to other DMA
+		// Mapping VGA's Direct Access Memory
 		vmem.map_range(vga::BUFFER_PHYS as _, vga::get_buffer_virt() as _, 1,
 			FLAG_CACHE_DISABLE | FLAG_WRITE_THROUGH | FLAG_WRITE)?;
+
+		// Making the kernel image read-only
 		vmem.protect_kernel();
+
 		Ok(vmem)
 	}
 
@@ -544,8 +528,6 @@ impl VMem for X86VMem {
 
 	fn bind(&self) {
 		if !self.is_bound() {
-			#[cfg(config_debug_debug)]
-			self.check_bind();
 			unsafe {
 				paging_enable(memory::kern_to_phys(self.page_dir as _) as _);
 			}

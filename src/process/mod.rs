@@ -491,7 +491,9 @@ impl Process {
 
 	/// Sets the process's state to `new_state`.
 	pub fn set_state(&mut self, new_state: State) {
-		self.state = new_state;
+		if self.state != State::Zombie {
+			self.state = new_state;
+		}
 	}
 
 	/// Tells whether the current process has informations to be retrieved by the `waitpid` system

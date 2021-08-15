@@ -11,8 +11,7 @@
 .global tlb_reload
 
 /*
- * (x86) Returns the value inside of the %cr0 register. This register contains
- * some flags for the processor.
+ * (x86) Returns the value of the %cr0 register.
  */
 cr0_get:
 	mov %cr0, %eax
@@ -45,19 +44,33 @@ cr0_clear:
 	ret
 
 /*
- * (x86) Returns the value inside of the %cr2 register. When a Page Fault
- * occurs, this register is set with the linear address that was accessed.
+ * (x86) Returns the value of the %cr2 register. When a Page Fault occurs, this register is set
+ * with the linear address that caused it.
  */
 cr2_get:
 	mov %cr2, %eax
 	ret
 
 /*
- * (x86) Returns the value inside of the %cr3 register. This register contains
- * the pointer to the current page directory.
+ * (x86) Returns the value of the %cr3 register. This register contains the pointer to the current
+ * page directory.
  */
 cr3_get:
 	mov %cr3, %eax
+	ret
+
+/*
+ * (x86) Returns the value of the %cr4 register.
+ */
+cr4_get:
+	mov %cr4, %eax
+	ret
+
+/*
+ * (x86) Sets the value of the %cr4 register.
+ */
+cr4_get:
+	mov 4(%esp), %cr4
 	ret
 
 /*

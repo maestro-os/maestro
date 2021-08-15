@@ -442,22 +442,4 @@ mod test {
 	}
 
 	// TODO More tests on realloc (test with several chunks at the same time)
-
-	// TODO remove?
-	#[test_case]
-	fn free0() {
-		unsafe {
-			let ptr0 = alloc(16).unwrap();
-			util::memset(ptr0, -1, 16);
-			free(ptr0);
-
-			let ptr1 = alloc(16).unwrap();
-			util::memset(ptr1, -1, 16);
-			free(ptr1);
-
-			//debug_assert_eq!(ptr0, ptr1);
-		}
-	}
-
-	// TODO More tests on free
 }

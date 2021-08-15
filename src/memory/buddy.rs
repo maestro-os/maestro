@@ -748,6 +748,4 @@ mod test {
 
 		debug_assert_eq!(allocated_pages_count(), alloc_pages);
 	}
-
-	// TODO Add more tests
 }
