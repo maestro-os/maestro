@@ -119,14 +119,17 @@ impl Scheduler {
 
 	/// Updates the scheduler's heuristic with the new priority of a process.
 	/// `old` is the old priority of the process.
-	/// `new` is the newe priority of the process.
+	/// `new` is the new priority of the process.
 	/// The function doesn't need to know the process which has been updated since it updates
 	/// global informations.
 	pub fn update_priority(&mut self, old: usize, new: usize) {
 		self.priority_sum = self.priority_sum - old + new;
-		if old >= self.priority_max {
+
+		if new >= self.priority_max {
 			self.priority_max = new;
 		}
+
+		// FIXME: Unable to determine priority_max when new < old
 	}
 
 	/// Adds a process to the scheduler.
@@ -140,7 +143,17 @@ impl Scheduler {
 		Ok(ptr)
 	}
 
-	// TODO Remove process (don't forget to update the priority)
+	/// Removes the process with the given pid `pid`.
+	pub fn remove_process(&mut self, pid: Pid) {
+		if let Some(mut proc_mutex) = self.get_by_pid(pid) {
+			let guard = proc_mutex.lock(false);
+			let process = guard.get();
+
+			let priority = process.get_priority();
+			self.processes.remove(pid);
+			self.update_priority(priority, 0);
+		}
+	}
 
 	// TODO Clean
 	/// Returns the average priority of a process.

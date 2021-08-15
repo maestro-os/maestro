@@ -86,12 +86,16 @@ fn check_waitable(proc: &Process, pid: i32, wstatus: &mut Option<&mut i32>)
 
 			// If waitable, return
 			if p.is_waitable() {
-				// TODO Check if the access to `wstatus` can be revoked in between
 				if let Some(wstatus) = wstatus {
 					**wstatus = get_wstatus(&p);
 				}
 
-				// TODO Clear waitable
+				// TODO Clear waitable (if stopped or continued)
+				if p.get_state() == process::State::Zombie {
+					let pid = p.get_pid();
+					drop(proc_guard);
+					scheduler.remove_process(pid);
+				}
 
 				return Ok(Some(pid as _));
 			}
@@ -132,22 +136,25 @@ pub fn do_waitpid(pid: i32, wstatus: *mut i32, options: i32) -> Result<i32, Errn
 		}
 	};
 
-	{
-		let mut mutex = Process::get_current().unwrap();
-		let mut guard = mutex.lock(false);
-		let proc = guard.get_mut();
-
-		if let Some(p) = check_waitable(proc, pid, &mut wstatus)? {
-			return Ok(p as _);
-		}
-	}
-
-	if options & WNOHANG != 0 {
-		return Ok(0);
-	}
-
 	// Sleeping until a target process is waitable
 	loop {
+		// Check if at least one target process is waitable
+		{
+			let mut mutex = Process::get_current().unwrap();
+			let mut guard = mutex.lock(false);
+			let proc = guard.get_mut();
+
+			// If waitable, return
+			if let Some(p) = check_waitable(proc, pid, &mut wstatus)? {
+				return Ok(p as _);
+			}
+		}
+
+		// If the flag is set, do not wait
+		if options & WNOHANG != 0 {
+			return Ok(0);
+		}
+
 		// When a child process is paused or resumed by a signal or is terminated, it changes the
 		// state of the current process to wake it up
 		{
@@ -159,16 +166,6 @@ pub fn do_waitpid(pid: i32, wstatus: *mut i32, options: i32) -> Result<i32, Errn
 		}
 
 		hlt!();
-
-		{
-			let mut mutex = Process::get_current().unwrap();
-			let mut guard = mutex.lock(false);
-			let proc = guard.get_mut();
-
-			if let Some(p) = check_waitable(proc, pid, &mut wstatus)? {
-				return Ok(p as _);
-			}
-		}
 	}
 }
 

@@ -40,8 +40,9 @@ void print_nbr(int nbr)
 
 void sig_handle(int sig) {
 	(void) sig;
+
 	write(1, ":(\n", 3);
-	// TODO Try segfaulting here
+	//*((int *) 0x0) = 42;
 }
 
 void test_process(void)
@@ -73,7 +74,6 @@ void test_process(void)
 		}
 
 		kill(pid2, 0);
-		waitpid(-1, NULL, 0);
 
 		_exit(43);
 	} else {
