@@ -295,9 +295,9 @@ impl Scheduler {
 					tss.esp0 = proc.kernel_stack as _;
 					proc.mem_space.bind();
 
-					let eip = proc.regs.eip;
-					let vmem = proc.mem_space.get_vmem();
-					debug_assert!(vmem.translate(eip as _).is_some());
+					//let eip = proc.regs.eip;
+					//let vmem = proc.mem_space.get_vmem();
+					//debug_assert!(vmem.translate(eip as _).is_some());
 
 					(proc.is_syscalling(), proc.regs)
 				};

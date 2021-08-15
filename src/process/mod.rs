@@ -167,8 +167,7 @@ pub fn init() -> Result<(), Errno> {
 		SCHEDULER.write(Scheduler::new(cores_count)?);
 	}
 
-	// TODO Register for all errors that can be caused by a process
-	// TODO Use only one instance?
+	// TODO Handle the case where the process is killed while already handling a signal
 	let callback = | id: u32, code: u32, regs: &Regs, ring: u32 | {
 		if ring < 3 {
 			return InterruptResult::new(true, InterruptResultAction::Panic);
@@ -184,6 +183,27 @@ pub fn init() -> Result<(), Errno> {
 			let curr_proc = curr_proc_guard.get_mut();
 
 			match id {
+				// Divide-by-zero
+				// x87 Floating-Point Exception
+				// SIMD Floating-Point Exception
+				0x00 | 0x10 | 0x13 => {
+					curr_proc.kill(Signal::new(signal::SIGFPE).unwrap());
+					curr_proc.signal_next();
+				},
+
+				// Breakpoint
+				0x03 => {
+					curr_proc.kill(Signal::new(signal::SIGTRAP).unwrap());
+					curr_proc.signal_next();
+				},
+
+				// Invalid Opcode
+				0x06 => {
+					curr_proc.kill(Signal::new(signal::SIGILL).unwrap());
+					curr_proc.signal_next();
+				},
+
+				// General Protection Fault
 				0x0d => {
 					let vmem = curr_proc.get_mem_space_mut().get_vmem();
 					let mut inst_prefix = 0;
@@ -197,8 +217,11 @@ pub fn init() -> Result<(), Errno> {
 						curr_proc.exit(regs.eax);
 					} else {
 						curr_proc.kill(Signal::new(signal::SIGSEGV).unwrap());
+						curr_proc.signal_next();
 					}
 				},
+
+				// Page Fault
 				0x0e => {
 					let accessed_ptr = unsafe {
 						vmem::x86::cr2_get()
@@ -206,8 +229,16 @@ pub fn init() -> Result<(), Errno> {
 
 					if !curr_proc.mem_space.handle_page_fault(accessed_ptr, code) {
 						curr_proc.kill(Signal::new(signal::SIGSEGV).unwrap());
+						curr_proc.signal_next();
 					}
 				},
+
+				// Alignment Check
+				0x11 => {
+					curr_proc.kill(Signal::new(signal::SIGBUS).unwrap());
+					curr_proc.signal_next();
+				},
+
 				_ => {},
 			}
 
@@ -222,8 +253,16 @@ pub fn init() -> Result<(), Errno> {
 			InterruptResult::new(true, InterruptResultAction::Panic)
 		}
 	};
+
+	// TODO Use only one instance?
+	let _ = ManuallyDrop::new(event::register_callback(0x00, u32::MAX, callback)?);
+	let _ = ManuallyDrop::new(event::register_callback(0x03, u32::MAX, callback)?);
+	let _ = ManuallyDrop::new(event::register_callback(0x06, u32::MAX, callback)?);
 	let _ = ManuallyDrop::new(event::register_callback(0x0d, u32::MAX, callback)?);
 	let _ = ManuallyDrop::new(event::register_callback(0x0e, u32::MAX, callback)?);
+	let _ = ManuallyDrop::new(event::register_callback(0x10, u32::MAX, callback)?);
+	let _ = ManuallyDrop::new(event::register_callback(0x11, u32::MAX, callback)?);
+	let _ = ManuallyDrop::new(event::register_callback(0x13, u32::MAX, callback)?);
 
 	Ok(())
 }
