@@ -29,16 +29,18 @@ pub fn reboot(regs: &util::Regs) -> Result<i32, Errno> {
 		return Err(errno::EINVAL);
 	}
 
-	let mut mutex = Process::get_current().unwrap();
-	let mut guard = mutex.lock(false);
-	let proc = guard.get_mut();
-	if proc.get_uid() != 0 {
-		return Err(errno::EPERM);
+	{
+		let mut mutex = Process::get_current().unwrap();
+		let mut guard = mutex.lock(false);
+		let proc = guard.get_mut();
+		if proc.get_uid() != 0 {
+			return Err(errno::EPERM);
+		}
 	}
 
 	match cmd {
 		CMD_POWEROFF => {
-			crate::println!("Power down..."); // FIXME Potential deadlock?
+			crate::println!("Power down...");
 			// TODO Use ACPI to power off the system
 
 			// Loop to avoid compilation error
@@ -46,7 +48,7 @@ pub fn reboot(regs: &util::Regs) -> Result<i32, Errno> {
 		},
 
 		CMD_REBOOT => {
-			crate::println!("Rebooting..."); // FIXME Potential deadlock?
+			crate::println!("Rebooting...");
 
 			// TODO Use ACPI reset to ensure everything reboots
 
@@ -63,7 +65,7 @@ pub fn reboot(regs: &util::Regs) -> Result<i32, Errno> {
 
 		CMD_HALT => {
 			// TODO Send a signal to all other cores to stop them
-			crate::println!("Halting..."); // FIXME Potential deadlock?
+			crate::println!("Halting...");
 			crate::halt();
 		},
 

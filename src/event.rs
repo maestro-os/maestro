@@ -129,7 +129,7 @@ impl CallbackHook {
 
 impl Drop for CallbackHook {
 	fn drop(&mut self) {
-		// TODO Remove the callback
+		remove_callback(self.id, self.priority, self.ptr);
 	}
 }
 
@@ -177,13 +177,39 @@ pub fn register_callback<T>(id: usize, priority: u32, callback: T) -> Result<Cal
 			}
 		};
 
+		let b = Box::new(callback)?;
+		let ptr = b.as_ptr();
 		vec.insert(index, CallbackWrapper {
 			priority,
-			callback: Box::new(callback)?,
+			callback: b,
 		})?;
 
-		Ok(CallbackHook::new(id, priority, core::ptr::null::<c_void>())) // TODO
+		Ok(CallbackHook::new(id, priority, ptr as _))
 	})
+}
+
+/// Removes the callback with id `id`, priority `priority` and pointer `ptr`.
+fn remove_callback(id: usize, priority: u32, ptr: *const c_void) {
+	let mut guard = unsafe {
+		CALLBACKS.assume_init_mut()
+	}[id].lock(false);
+	let vec = &mut guard.get_mut();
+
+	let res = vec.binary_search_by(| x | {
+		x.priority.cmp(&priority)
+	});
+	if let Ok(index) = res {
+		let mut i = index;
+
+		while i < vec.len() && vec[i].priority == priority {
+			if vec[i].callback.as_ptr() as *const c_void == ptr {
+				vec.remove(i);
+				break;
+			}
+
+			i += 1;
+		}
+	}
 }
 
 /// Unlocks the callback vector with id `id`. This function is to be used in case of an event

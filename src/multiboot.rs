@@ -32,14 +32,12 @@ pub const TAG_TYPE_EFI32_IH: u32 = 19;
 pub const TAG_TYPE_EFI64_IH: u32 = 20;
 pub const TAG_TYPE_LOAD_BASE_ADDR: u32 = 21;
 
-// TODO Check type
 pub const MEMORY_AVAILABLE: u32 = 1;
 pub const MEMORY_RESERVED: u32 = 2;
 pub const MEMORY_ACPI_RECLAIMABLE: u32 = 3;
 pub const MEMORY_NVS: u32 = 4;
 pub const MEMORY_BADRAM: u32 = 5;
 
-// TODO Check type
 pub const FRAMEBUFFER_TYPE_INDEXED: u32 = 0;
 pub const FRAMEBUFFER_TYPE_RGB: u32 = 1;
 pub const FRAMEBUFFER_TYPE_EGA_TEXT: u32 = 2;
@@ -458,10 +456,6 @@ fn handle_tag(boot_info: &mut BootInfo, tag: *const Tag) {
 			}
 		},
 
-		TAG_TYPE_MODULE => {
-			// TODO
-		},
-
 		TAG_TYPE_BASIC_MEMINFO => {
 			let t = unsafe {
 				&*(tag as *const TagBasicMeminfo)
@@ -469,10 +463,6 @@ fn handle_tag(boot_info: &mut BootInfo, tag: *const Tag) {
 
 			boot_info.mem_lower = t.mem_lower;
 			boot_info.mem_upper = t.mem_upper;
-		},
-
-		TAG_TYPE_BOOTDEV => {
-			// TODO
 		},
 
 		TAG_TYPE_MMAP => {
@@ -495,8 +485,6 @@ fn handle_tag(boot_info: &mut BootInfo, tag: *const Tag) {
 				boot_info.elf_sections = (*t).sections.as_ptr() as _;
 			}
 		},
-
-		// TODO
 
 		_ => {}
 	}

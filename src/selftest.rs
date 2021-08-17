@@ -82,7 +82,7 @@ pub fn runner(tests: &[&dyn Testable]) {
 	crate::println!("No more tests to run");
 
 	#[cfg(config_debug_qemu)]
-	qemu::exit(qemu::SUCCESS); // TODO Handle assertion fail (exit with FAILURE)
+	qemu::exit(qemu::SUCCESS);
 	#[cfg(not(config_debug_qemu))]
 	crate::halt();
 }

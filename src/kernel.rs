@@ -203,6 +203,10 @@ fn panic(panic_info: &PanicInfo) -> ! {
 	if selftest::is_running() {
 		println!("FAILED\n");
 		println!("Error: {}\n", panic_info);
+
+		#[cfg(config_debug_qemu)]
+		selftest::qemu::exit(qemu::FAILURE);
+		#[cfg(not(config_debug_qemu))]
 		halt();
 	}
 
