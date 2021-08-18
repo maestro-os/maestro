@@ -35,6 +35,7 @@ mod setpgid;
 mod setuid;
 mod signal;
 mod sigreturn;
+mod socketpair;
 mod umask;
 mod uname;
 mod unlink;
@@ -79,6 +80,7 @@ use setpgid::setpgid;
 use setuid::setuid;
 use signal::signal;
 use sigreturn::sigreturn;
+use socketpair::socketpair;
 use umask::umask;
 use uname::uname;
 use unlink::unlink;
@@ -174,6 +176,7 @@ pub extern "C" fn syscall_handler(regs: &util::Regs) -> u32 {
 		32 => signal(regs),
 		33 => kill(regs),
 		// TODO pause
+		34 => socketpair(regs),
 		// TODO socket
 		// TODO getsockname
 		// TODO getsockopt
@@ -189,11 +192,11 @@ pub extern "C" fn syscall_handler(regs: &util::Regs) -> u32 {
 		// TODO times
 		// TODO gettimeofday
 		// TODO ptrace
-		34 => uname(regs),
-		35 => reboot(regs),
-		36 => init_module(regs),
-		37 => finit_module(regs),
-		38 => delete_module(regs),
+		35 => uname(regs),
+		36 => reboot(regs),
+		37 => init_module(regs),
+		38 => finit_module(regs),
+		39 => delete_module(regs),
 
 		512 => sigreturn(regs),
 

@@ -588,14 +588,13 @@ impl Process {
 		self.syscalling
 	}
 
-	/// Returns an available file descriptor ID. If no ID is available, the function returns an
-	/// error.
+	/// Returns the available file descriptor with the lowest ID. If no ID is available, the
+	/// function returns an error.
 	fn get_available_fd(&mut self) -> Result<u32, Errno> {
 		if self.file_descriptors.is_empty() {
 			return Ok(0);
 		}
 
-		// TODO Use a binary search
 		for (i, fd) in self.file_descriptors.iter().enumerate() {
 			if (i as u32) < fd.get_id() {
 				return Ok(i as u32);

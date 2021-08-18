@@ -32,9 +32,9 @@ pub fn pipe2(regs: &util::Regs) -> Result<i32, Errno> {
 
 		let pipe = SharedPtr::new(Pipe::new()?);
 		let fd0 = proc.create_fd(file_descriptor::O_RDONLY | flags,
-			FDTarget::FileDescriptor(pipe.clone()?))?.get_id();
+			FDTarget::Pipe(pipe.clone()?))?.get_id();
 		let fd1 = proc.create_fd(file_descriptor::O_WRONLY | flags,
-			FDTarget::FileDescriptor(pipe.clone()?))?.get_id();
+			FDTarget::Pipe(pipe.clone()?))?.get_id();
 
 		(fd0, fd1)
 	};

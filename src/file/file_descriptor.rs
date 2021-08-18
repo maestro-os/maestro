@@ -5,6 +5,7 @@ use crate::errno::Errno;
 use crate::errno;
 use crate::file::File;
 use crate::file::pipe::Pipe;
+use crate::file::socket::SocketSide;
 use crate::limits;
 use crate::util::FailableClone;
 use crate::util::lock::mutex::Mutex;
@@ -82,7 +83,9 @@ pub enum FDTarget {
 	/// The file descriptor points to a file.
 	File(SharedPtr<File>),
 	/// The file descriptor points to a pipe.
-	FileDescriptor(SharedPtr<Pipe>),
+	Pipe(SharedPtr<Pipe>),
+	/// The file descriptor points to a socket.
+	Socket(SharedPtr<SocketSide>),
 }
 
 /// Structure representing a file descriptor.
@@ -160,8 +163,13 @@ impl FileDescriptor {
 				guard.get().get_size()
 			},
 
-			FDTarget::FileDescriptor(_p) => {
+			FDTarget::Pipe(_p) => {
 				// TODO Get the fd the pipe points to, then make a recursive call
+				todo!();
+			}
+
+			FDTarget::Socket(_s) => {
+				// TODO
 				todo!();
 			}
 		}
@@ -181,10 +189,15 @@ impl FileDescriptor {
 				guard.get_mut().read(self.curr_off, buf)?
 			},
 
-			FDTarget::FileDescriptor(p) => {
+			FDTarget::Pipe(p) => {
 				let mut guard = p.lock(true);
 				guard.get_mut().read(buf) as _
 			}
+
+			FDTarget::Socket(s) => {
+				let mut guard = s.lock(true);
+				guard.get_mut().read(buf) as _
+			},
 		};
 
 		self.curr_off += len as u64;
@@ -205,10 +218,15 @@ impl FileDescriptor {
 				guard.get_mut().write(self.curr_off, buf)?
 			},
 
-			FDTarget::FileDescriptor(p) => {
+			FDTarget::Pipe(p) => {
 				let mut guard = p.lock(true);
 				guard.get_mut().write(buf) as _
 			}
+
+			FDTarget::Socket(s) => {
+				let mut guard = s.lock(true);
+				guard.get_mut().write(buf) as _
+			},
 		};
 
 		self.curr_off += len as u64;

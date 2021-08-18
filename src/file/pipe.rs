@@ -1,11 +1,12 @@
 //! A pipe is an object that links two file descriptors together. One reading and another writing,
 //! with a buffer in between.
 
+use core::cmp::min;
 use crate::file::Errno;
 use crate::util::container::vec::Vec;
 
 /// The naximum size of a pipe's buffer.
-const DEFAULT_BUFFER_SIZE: usize = 65536;
+const BUFFER_SIZE: usize = 65536;
 
 // TODO Implement ring buffer
 // TODO Handle `limits::PIPE_BUF`
@@ -22,7 +23,7 @@ impl Pipe {
 		let mut s = Self {
 			buffer: Vec::new(),
 		};
-		s.buffer.resize(DEFAULT_BUFFER_SIZE)?;
+		s.buffer.resize(BUFFER_SIZE)?;
 
 		Ok(s)
 	}
@@ -32,16 +33,26 @@ impl Pipe {
 	/// Reads data from the pipe.
 	/// `buf` is the slice to write to.
 	/// The functions returns the number of bytes that have been read.
-	pub fn read(&mut self, _buf: &mut [u8]) -> usize {
-		// TODO
-		todo!();
+	pub fn read(&mut self, buf: &mut [u8]) -> usize {
+		let len = min(buf.len(), self.buffer.len());
+		for i in 0..len {
+			buf[i] = self.buffer[0];
+			self.buffer.remove(0);
+		}
+
+		len
 	}
 
 	/// Writes data to the pipe.
 	/// `buf` is the slice to read from.
 	/// The functions returns the number of bytes that have been written.
-	pub fn write(&mut self, _buf: &[u8]) -> usize {
-		// TODO
-		todo!();
+	pub fn write(&mut self, buf: &[u8]) -> usize {
+		let len = min(buf.len(), BUFFER_SIZE - self.buffer.len());
+		for i in 0..len {
+			// Won't crash because the memory is preallocated
+			self.buffer.push(buf[i]).unwrap();
+		}
+
+		len
 	}
 }

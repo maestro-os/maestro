@@ -7,6 +7,8 @@ use crate::errno;
 use crate::process::Process;
 use crate::util;
 
+// TODO Return EPIPE and kill with SIGPIPE when writing on a broken pipe
+
 /// The implementation of the `write` syscall.
 pub fn write(regs: &util::Regs) -> Result<i32, Errno> {
 	let fd = regs.ebx;

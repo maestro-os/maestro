@@ -7,6 +7,7 @@ pub mod fs;
 pub mod mountpoint;
 pub mod path;
 pub mod pipe;
+pub mod socket;
 
 use core::cmp::max;
 use core::mem::MaybeUninit;
@@ -71,6 +72,7 @@ pub const FILES_POOL_SIZE: usize = 1024;
 pub const ACCESSES_UPPER_BOUND: usize = 128;
 
 // TODO Check files/directories access permissions when getting, creating, removing, etc...
+// TODO Implement EROFS
 
 /// Enumeration representing the different file types.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
