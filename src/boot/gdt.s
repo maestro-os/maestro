@@ -73,6 +73,7 @@ complete_flush:
 	mov %ax, %es
 	mov %ax, %fs
 	mov %ax, %gs
+	mov $0x18, %ax
 	mov %ax, %ss
 	ret
 
@@ -92,8 +93,6 @@ gdt_move:
 .section .boot.data
 
 .align 8
-
-// TODO Stack segments
 
 /*
  * The beginning of the GDT.
@@ -126,6 +125,17 @@ gdt_kernel_data:
 	.byte 0
 
 /*
+ * Segment for the kernel stack.
+ */
+gdt_kernel_stack:
+	.word 0xffff
+	.word 0
+	.byte 0
+	.byte 0b10010010
+	.byte 0b11001111
+	.byte 0
+
+/*
  * Segment for the user code.
  */
 gdt_user_code:
@@ -140,6 +150,17 @@ gdt_user_code:
  * Segment for the user data.
  */
 gdt_user_data:
+	.word 0xffff
+	.word 0
+	.byte 0
+	.byte 0b11110010
+	.byte 0b11001111
+	.byte 0
+
+/*
+ * Segment for the user stack.
+ */
+gdt_user_stack:
 	.word 0xffff
 	.word 0
 	.byte 0

@@ -27,27 +27,6 @@
 	+ sizeof(gdt_descriptor_t))
 
 /*
- * Offset to the kernel code segment.
- */
-# define GDT_KERNEL_CODE_OFFSET	0x8
-/*
- * Offset to the kernel data segment.
- */
-# define GDT_KERNEL_DATA_OFFSET	0x10
-/*
- * Offset to the user code segment.
- */
-# define GDT_USER_CODE_OFFSET	0x18
-/*
- * Offset to the user data segment.
- */
-# define GDT_USER_DATA_OFFSET	0x20
-/*
- * Offset to the Task State Segment (TSS).
- */
-# define GDT_TSS_OFFSET			0x28
-
-/*
  * Structure representing a GDT entry.
  */
 __attribute__((packed))
