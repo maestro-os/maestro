@@ -9,6 +9,7 @@
 .global getppid
 .global signal
 .global kill
+.global socketpair
 
 .global init_module
 .global finit_module
@@ -178,18 +179,24 @@ kill:
 	pop %ebp
 	ret
 
-init_module:
+socketpair:
 	push %ebp
 	mov %esp, %ebp
 
 	push %ebx
 	push %ecx
+	push %edx
+	push %esi
 
-	mov $36, %eax
+	mov $34, %eax
 	mov 8(%ebp), %ebx
 	mov 12(%ebp), %ecx
+	mov 16(%ebp), %edx
+	mov 20(%ebp), %esi
 	int $0x80
 
+	pop %esi
+	pop %edx
 	pop %ecx
 	pop %ebx
 
@@ -197,7 +204,7 @@ init_module:
 	pop %ebp
 	ret
 
-finit_module:
+init_module:
 	push %ebp
 	mov %esp, %ebp
 
@@ -216,7 +223,7 @@ finit_module:
 	pop %ebp
 	ret
 
-delete_module:
+finit_module:
 	push %ebp
 	mov %esp, %ebp
 
@@ -224,6 +231,25 @@ delete_module:
 	push %ecx
 
 	mov $38, %eax
+	mov 8(%ebp), %ebx
+	mov 12(%ebp), %ecx
+	int $0x80
+
+	pop %ecx
+	pop %ebx
+
+	mov %ebp, %esp
+	pop %ebp
+	ret
+
+delete_module:
+	push %ebp
+	mov %esp, %ebp
+
+	push %ebx
+	push %ecx
+
+	mov $39, %eax
 	mov 8(%ebp), %ebx
 	mov 12(%ebp), %ecx
 	int $0x80

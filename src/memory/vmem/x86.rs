@@ -577,7 +577,7 @@ impl FailableClone for X86VMem {
 
 				let dest_table = alloc_obj()?;
 				unsafe { // Safe because pointers are valid
-					ptr::copy_nonoverlapping(src_table as *const u8,
+					ptr::copy_nonoverlapping::<u8>(src_table as *const u8,
 						dest_table as *mut u8,
 						memory::PAGE_SIZE);
 				}

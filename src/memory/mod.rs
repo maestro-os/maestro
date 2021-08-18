@@ -72,7 +72,7 @@ pub fn get_kernel_virtual_end() -> *const c_void {
 
 /// Converts a kernel physical address to a virtual address.
 pub fn kern_to_virt(ptr: *const c_void) -> *const c_void {
-	if ptr < get_kernelspace_size() as *const c_void {
+	if (ptr as usize) < get_kernelspace_size() {
 		((ptr as usize) + (PROCESS_END as usize)) as *const _
 	} else {
 		ptr
@@ -81,7 +81,7 @@ pub fn kern_to_virt(ptr: *const c_void) -> *const c_void {
 
 /// Converts a kernel virtual address to a physical address.
 pub fn kern_to_phys(ptr: *const c_void) -> *const c_void {
-	if ptr >= PROCESS_END {
+	if ptr as usize >= PROCESS_END as usize {
 		((ptr as usize) - (PROCESS_END as usize)) as *const _
 	} else {
 		ptr

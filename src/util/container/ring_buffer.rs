@@ -93,6 +93,7 @@ impl RingBuffer {
 			buf[l0 + i] = buffer[i];
 		}
 
+		self.read_cursor = (self.read_cursor + len) % buffer_size;
 		len
 	}
 
@@ -116,6 +117,7 @@ impl RingBuffer {
 			buffer[i] = buf[l0 + i];
 		}
 
+		self.write_cursor = (self.write_cursor + len) % buffer_size;
 		len
 	}
 

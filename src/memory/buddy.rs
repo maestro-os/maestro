@@ -195,7 +195,10 @@ pub fn alloc(order: FrameOrder, flags: Flags) -> Result<*mut c_void, Errno> {
 /// Calls `alloc` with order `order`. The allocated frame is in the kernel zone.
 /// The function returns the *virtual* address, not the physical one.
 pub fn alloc_kernel(order: FrameOrder) -> Result<*mut c_void, Errno> {
-	Ok(memory::kern_to_virt(alloc(order, FLAG_ZONE_TYPE_KERNEL)?) as _)
+	let ptr = alloc(order, FLAG_ZONE_TYPE_KERNEL)?;
+	debug_assert!((ptr as usize) < 0x40000000);
+
+	Ok(memory::kern_to_virt(ptr) as _)
 }
 
 /// Frees the given memory frame that was allocated using the buddy allocator. The given order must

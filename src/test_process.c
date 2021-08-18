@@ -13,6 +13,7 @@ int getpid(void);
 int getppid(void);
 sighandler_t signal(int signum, sighandler_t handler);
 int kill(int pid, int sig);
+int socketpair(int domain, int type, int protocol, int vs[2]);
 
 int init_module(void *module_image, size_t len);
 int finit_module(int fd);
@@ -59,36 +60,65 @@ void test_process(void)
 	//	fork();
 	//}
 
-	write(1, "Hello world!\n", 13);
+
+
+	//write(1, "Hello world!\n", 13);
+	//int pid = fork();
+	//if (pid == 0) {
+	//	write(1, "forked!\n", 8);
+
+	//	signal(0, sig_handle);
+	//	kill(getpid(), 0);
+
+	//	int pid2 = fork();
+	//	if (pid2 == 0) {
+	//		while(1)
+	//			;
+	//	}
+
+	//	kill(pid2, 0);
+
+	//	_exit(43);
+	//} else {
+	//	write(1, "waiting\n", 8);
+	//	int wstatus = 42;
+	//	int ret = waitpid(-1, &wstatus, 0);
+
+	//	write(1, "ret: ", 5);
+	//	print_nbr(ret);
+	//	write(1, "\nstatus: ", 9);
+	//	print_nbr(wstatus);
+
+	//	while (1)
+	//		;
+	//}
+
+
+
+	int socks[2];
+	int e = socketpair(0, 0, 0, socks);
+	write(1, "e: ", 3);
+	print_nbr(e);
+	write(1, "\n", 1);
+
 	int pid = fork();
 	if (pid == 0) {
-		write(1, "forked!\n", 8);
+		for (int i = 0; i < 100; ++i)
+			write(1, "l", 1);
 
-		signal(0, sig_handle);
-		kill(getpid(), 0);
-
-		int pid2 = fork();
-		if (pid2 == 0) {
-			while(1)
-				;
-		}
-
-		kill(pid2, 0);
-
-		_exit(43);
+		char buff[10];
+		read(socks[1], buff, sizeof(buff));
+		write(1, buff, sizeof(buff));
+		write(1, "a", 1);
 	} else {
-		write(1, "waiting\n", 8);
-		int wstatus = 42;
-		int ret = waitpid(-1, &wstatus, 0);
-
-		write(1, "ret: ", 5);
-		print_nbr(ret);
-		write(1, "\nstatus: ", 9);
-		print_nbr(wstatus);
+		write(socks[0], "BLEH", 4);
+		write(1, "b", 1);
 
 		while (1)
 			;
 	}
+
+
 
 	//int fd = open("/etc/hostname", 0b11);
 	//char buff[1024];
