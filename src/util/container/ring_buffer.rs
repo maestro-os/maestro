@@ -66,21 +66,57 @@ impl RingBuffer {
 		self.get_size() - self.get_data_len()
 	}
 
+	/// Returns a slice representing the ring buffer's linear buffer.
+	#[inline(always)]
+	fn get_buffer(&mut self) -> &mut [u8] {
+		self.buffer.as_mut_slice()
+	}
+
 	/// Reads data from the buffer and writes it in `buf`. The function returns the number of bytes
 	/// read.
 	pub fn read(&mut self, buf: &mut [u8]) -> usize {
-		let _len = min(buf.len(), self.get_data_len());
+		let cursor = self.read_cursor;
+		let len = min(buf.len(), self.get_data_len());
 
-		// TODO
-		todo!();
+		let buffer_size = self.get_size();
+		let buffer = self.get_buffer();
+
+		// The length of the first read, before going back to the beginning of the buffer
+		let l0 = min(cursor + len, buffer_size) - cursor;
+		for i in 0..l0 {
+			buf[i] = buffer[cursor + i];
+		}
+
+		// The length of the second read, from the beginning of the buffer
+		let l1 = len - l0;
+		for i in 0..l1 {
+			buf[l0 + i] = buffer[i];
+		}
+
+		len
 	}
 
 	/// Writes data in `buf` to the buffer. The function returns the number of bytes written.
 	pub fn write(&mut self, buf: &[u8]) -> usize {
-		let _len = min(buf.len(), self.get_available_len());
+		let cursor = self.write_cursor;
+		let len = min(buf.len(), self.get_available_len());
 
-		// TODO
-		todo!();
+		let buffer_size = self.get_size();
+		let buffer = self.get_buffer();
+
+		// The length of the first read, before going back to the beginning of the buffer
+		let l0 = min(cursor + len, buffer_size) - cursor;
+		for i in 0..l0 {
+			buffer[cursor + i] = buf[i];
+		}
+
+		// The length of the second read, from the beginning of the buffer
+		let l1 = len - l0;
+		for i in 0..l1 {
+			buffer[i] = buf[l0 + i];
+		}
+
+		len
 	}
 
 	/// Clears the buffer.
@@ -90,3 +126,5 @@ impl RingBuffer {
 		self.write_cursor = 0;
 	}
 }
+
+// TODO Unit tests

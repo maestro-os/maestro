@@ -1,4 +1,5 @@
-//! The `socketpair` system call creates a pair of file descriptor to an unnamed socket which can be used for IPC (Inter-Process Communication).
+//! The `socketpair` system call creates a pair of file descriptor to an unnamed socket which can
+//! be used for IPC (Inter-Process Communication).
 
 use core::mem::size_of;
 use crate::errno::Errno;
@@ -8,7 +9,6 @@ use crate::file::file_descriptor;
 use crate::file::socket::Socket;
 use crate::file::socket::SocketSide;
 use crate::process::Process;
-use crate::util::ptr::SharedPtr;
 use crate::util;
 
 /// The implementation of the `socketpair` syscall.
@@ -30,9 +30,9 @@ pub fn socketpair(regs: &util::Regs) -> Result<i32, Errno> {
 		let sock = Socket::new(domain, type_, protocol)?;
 		let sock2 = sock.clone();
 		let fd0 = proc.create_fd(file_descriptor::O_RDWR,
-			FDTarget::Socket(SharedPtr::new(SocketSide::new(sock))?))?.get_id();
+			FDTarget::Socket(SocketSide::new(sock, false)?))?.get_id();
 		let fd1 = proc.create_fd(file_descriptor::O_RDWR,
-			FDTarget::Socket(SharedPtr::new(SocketSide::new(sock2))?))?.get_id();
+			FDTarget::Socket(SocketSide::new(sock2, true)?))?.get_id();
 
 		(fd0, fd1)
 	};

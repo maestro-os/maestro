@@ -3,7 +3,7 @@
 //! ABI defines a region of the stack located after the allocated portion which is called the red
 //! zone. This region must not be clobbered, thus the kernel adds an offset on the stack
 //! corresponding to the size of the red zone.
-//! 
+//!
 //! When the signal handler returns, the process returns directly to execution.
 
 use core::ffi::c_void;

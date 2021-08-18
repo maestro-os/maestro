@@ -7,6 +7,8 @@ use crate::errno;
 use crate::process::Process;
 use crate::util;
 
+// TODO Implement blocking read
+
 /// The implementation of the `read` syscall.
 pub fn read(regs: &util::Regs) -> Result<i32, Errno> {
 	let fd = regs.ebx;

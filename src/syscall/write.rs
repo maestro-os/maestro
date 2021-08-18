@@ -7,6 +7,7 @@ use crate::errno;
 use crate::process::Process;
 use crate::util;
 
+// TODO Implement blocking write
 // TODO Return EPIPE and kill with SIGPIPE when writing on a broken pipe
 
 /// The implementation of the `write` syscall.

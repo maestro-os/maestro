@@ -16,8 +16,14 @@ const WUNTRACED: i32 =  0b010;
 /// Wait flag. Returns if a stopped child has been resumed by delivery of SIGCONT.
 const WCONTINUED: i32 = 0b100;
 
-// TODO If _POSIX_REALTIME_SIGNALS is defined, and the implementation queues the SIGCHLD signal, then if wait() or waitpid() returns because the status of a child process is available, any pending SIGCHLD signal associated with the process ID of the child process shall be discarded. Any other pending SIGCHLD signals shall remain pending.
-// TODO Otherwise, if SIGCHLD is blocked, if wait() or waitpid() return because the status of a child process is available, any pending SIGCHLD signal shall be cleared unless the status of another child process is available.
+// TODO If _POSIX_REALTIME_SIGNALS is defined, and the implementation queues the SIGCHLD signal,
+// then if wait() or waitpid() returns because the status of a child process is available, any
+// pending SIGCHLD signal associated with the process ID of the child process shall be discarded.
+// Any other pending SIGCHLD signals shall remain pending.
+
+// TODO Otherwise, if SIGCHLD is blocked, if wait() or waitpid() return because the status of a
+// child process is available, any pending SIGCHLD signal shall be cleared unless the status of
+// another child process is available.
 
 /// Returns the `i`th target process for the given constraint `pid`.
 /// `scheduler` is a reference to the process scheduler.

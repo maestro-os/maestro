@@ -5,7 +5,7 @@ use core::cmp::min;
 use crate::file::Errno;
 use crate::util::container::vec::Vec;
 
-/// The naximum size of a pipe's buffer.
+/// The maximum size of a pipe's buffer.
 const BUFFER_SIZE: usize = 65536;
 
 // TODO Implement ring buffer
