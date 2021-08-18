@@ -19,6 +19,7 @@
 
 use core::ffi::c_void;
 use core::ptr::null;
+use core::ptr;
 use core::result::Result;
 use crate::elf;
 use crate::errno::Errno;
@@ -297,6 +298,9 @@ impl X86VMem {
 			page_dir: alloc_obj()?,
 		};
 
+		// TODO Map all the kernelspace memory to the save page tables (do not use PSE) so that
+		// modifying for one process modifies for every processes
+
 		// TODO If Meltdown mitigation is enabled, only allow read access to a stub for interrupts
 		// Mapping the kernelspace
 		vmem.map_range(null::<c_void>(),
@@ -455,17 +459,20 @@ impl VMem for X86VMem {
 			};
 			let next_physaddr = ((physaddr as usize) + off) as *const c_void;
 			let next_virtaddr = ((virtaddr as usize) + off) as *const c_void;
+
 			if use_pse {
 				#[cfg(config_debug_debug)]
 				self.check_map(next_virtaddr, next_physaddr, true);
 
 				self.map_pse(next_physaddr, next_virtaddr, flags);
+
 				i += 1024;
 			} else {
 				if let Err(errno) = self.map(next_physaddr, next_virtaddr, flags) {
 					// TODO Undo
 					return Err(errno);
 				}
+
 				i += 1;
 			}
 		}
@@ -508,17 +515,20 @@ impl VMem for X86VMem {
 					&& (pages - i) >= 1024
 			};
 			let next_virtaddr = ((virtaddr as usize) + off) as *const c_void;
+
 			if use_pse {
 				#[cfg(config_debug_debug)]
 				self.check_unmap(next_virtaddr, true);
 
 				self.unmap_pse(next_virtaddr);
+
 				i += 1024;
 			} else {
 				if let Err(errno) = self.unmap(next_virtaddr) {
 					// TODO Undo
 					return Err(errno);
 				}
+
 				i += 1;
 			}
 		}
@@ -551,7 +561,10 @@ impl VMem for X86VMem {
 
 impl FailableClone for X86VMem {
 	fn failable_clone(&self) -> Result<Self, Errno> {
-		let v = alloc_obj()?;
+		let s = Self {
+			page_dir: alloc_obj()?,
+		};
+
 		for i in 0..1024 {
 			let src_dir_entry_value = obj_get(self.page_dir, i);
 			if src_dir_entry_value & FLAG_PRESENT == 0 {
@@ -561,26 +574,21 @@ impl FailableClone for X86VMem {
 			if src_dir_entry_value & FLAG_PAGE_SIZE == 0 {
 				let mut src_table = (src_dir_entry_value & ADDR_MASK) as *const u32;
 				src_table = memory::kern_to_virt(src_table as _) as _;
-				let dest_table_result = alloc_obj();
 
-				if let Ok(dest_table) = dest_table_result {
-					unsafe {
-						util::memcpy(dest_table as _, src_table as _, memory::PAGE_SIZE);
-					}
-					obj_set(v, i, (memory::kern_to_phys(dest_table as _) as u32)
-						| (src_dir_entry_value & FLAGS_MASK));
-				} else {
-					// TODO Free previously allocated tables and directory
-					return Err(dest_table_result.unwrap_err());
+				let dest_table = alloc_obj()?;
+				unsafe { // Safe because pointers are valid
+					ptr::copy_nonoverlapping(src_table as *const u8,
+						dest_table as *mut u8,
+						memory::PAGE_SIZE);
 				}
+				obj_set(s.page_dir, i, (memory::kern_to_phys(dest_table as _) as u32)
+					| (src_dir_entry_value & FLAGS_MASK));
 			} else {
-				obj_set(v, i, src_dir_entry_value);
+				obj_set(s.page_dir, i, src_dir_entry_value);
 			}
 		}
 
-		Ok(Self {
-			page_dir: v
-		})
+		Ok(s)
 	}
 }
 

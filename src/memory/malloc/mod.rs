@@ -57,11 +57,11 @@ pub unsafe fn alloc(n: usize) -> Result<*mut c_void, Errno> {
 }
 
 /// Returns the size of the given memory allocation in bytes.
-/// The pointer `ptr` MUST point to the beginning of a valid, used chunk of memory.
-pub unsafe fn get_size(ptr: *mut c_void) -> usize {
+/// The pointer `ptr` **must** point to the beginning of a valid, used chunk of memory.
+pub unsafe fn get_size(ptr: *const c_void) -> usize {
 	let _ = MUTEX.lock(true);
 
-	let chunk = Chunk::from_ptr(ptr);
+	let chunk = Chunk::from_ptr(ptr as *mut _);
 	#[cfg(config_debug_debug)]
 	chunk.check();
 	assert!(chunk.is_used());
@@ -130,6 +130,8 @@ pub unsafe fn free(ptr: *mut c_void) {
 }
 
 /// Structure representing a kernelside allocation.
+/// The structure holds one or more elements of the given type. Freeing the allocation doesn't call
+/// `drop` on its elements.
 pub struct Alloc<T> {
 	/// Slice representing the allocation.
 	slice: *mut [T],
@@ -174,8 +176,15 @@ impl<T> Alloc<T> {
 		self.get_slice_mut().as_mut_ptr() as _
 	}
 
-	/// Changes the size of the memory allocation. `n` is the new size of the chunk of memory (in
-	/// number of elements).
+	/// Returns the size of the allocation in number of elements.
+	pub fn get_size(&self) -> usize {
+		unsafe { // Safe because the pointer is valid
+			get_size(self.as_ptr() as *const _) / size_of::<T>()
+		}
+	}
+
+	/// Changes the size of the memory allocation. All new elements are initialized to zero.
+	/// `n` is the new size of the chunk of memory (in number of elements).
 	/// If the reallocation fails, the chunk is left untouched and the function returns an error.
 	/// The function is unsafe because zero memory might be an inconsistent state for the object T.
 	pub unsafe fn realloc_zero(&mut self, n: usize) -> Result<(), Errno> {
@@ -204,7 +213,20 @@ impl<T: Default> Alloc<T> {
 		Ok(alloc)
 	}
 
-	// TODO Implement realloc?
+	/// Resizes the current allocation. If new elements are added, the function initializes them
+	/// with the default value.
+	/// `n` is the new size of the chunk of memory (in number of elements).
+	/// If elements are removed, the function `drop` is **not** called on them.
+	pub unsafe fn realloc_default(&mut self, n: usize) -> Result<(), Errno> {
+		let curr_size = self.get_size();
+		self.realloc_zero(n)?;
+
+		for i in curr_size..n {
+			self.get_slice_mut()[i] = T::default();
+		}
+
+		Ok(())
+	}
 }
 
 impl<T: Clone> Alloc<T> {
@@ -221,8 +243,6 @@ impl<T: Clone> Alloc<T> {
 
 		Ok(alloc)
 	}
-
-	// TODO Implement realloc?
 }
 
 impl<T> Index<usize> for Alloc<T> {
@@ -440,6 +460,4 @@ mod test {
 			free(ptr0);
 		}
 	}
-
-	// TODO More tests on realloc (test with several chunks at the same time)
 }

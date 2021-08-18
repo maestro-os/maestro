@@ -55,11 +55,6 @@ pub fn print_callstack(ebp: *const u32, max_depth: usize) {
 	let mut i: usize = 0;
 	let mut ebp_ = ebp;
 	while !ebp_.is_null() && i < max_depth {
-		// TODO
-		/*if !vmem.is_mapped(ebp_) {
-			break;
-		}*/
-
 		let eip = unsafe {
 			*((ebp_ as usize + size_of::<usize>()) as *const u32) as *const c_void
 		};

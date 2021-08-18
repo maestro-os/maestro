@@ -134,10 +134,6 @@ impl Chunk {
 		debug_assert!(self as *const _ as usize >= crate::memory::PROCESS_END as usize);
 		debug_assert!(self.get_size() >= get_min_chunk_size());
 
-		if !self.is_used() {
-			// TODO Check adjacent free list elements?
-		}
-
 		if let Some(prev) = self.list.get_prev() {
 			let p = prev.get::<Chunk>(crate::offset_of!(Chunk, list));
 			debug_assert!(p as *const _ as usize >= crate::memory::PROCESS_END as usize);
