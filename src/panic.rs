@@ -7,7 +7,6 @@ use core::fmt;
 #[cfg(config_debug_debug)]
 use crate::debug;
 use crate::memory;
-use crate::process::Process;
 use crate::tty;
 
 /// Macro triggering a kernel panic.
@@ -54,12 +53,6 @@ pub fn kernel_panic_(reason: &str, code: u32, file: &str, line: u32, col: u32) -
 	print_panic(reason, code);
 
 	crate::println!("\n-- DEBUG --\nFile: {}; Line: {}; Column: {}", file, line, col);
-	if let Some(p) = Process::get_current() {
-		let regs = unsafe {
-			p.get_payload().get_regs()
-		};
-		crate::println!("{}", regs);
-	}
 	crate::println!();
 
 	let ebp = unsafe {
