@@ -189,8 +189,24 @@ impl ArgsParser {
 							Some((begin, size))));
 					}
 
-					s.root_major = tokens[i + 1].s.as_str().parse::<u32>().unwrap(); // TODO Return error on fail
-					s.root_minor = tokens[i + 2].s.as_str().parse::<u32>().unwrap(); // TODO Return error on fail
+					match tokens[i + 1].s.as_str().parse::<u32>() {
+						Ok(n) => {
+							s.root_major = n;
+						},
+						Err(_) => {
+							return Err(ParseError::new(cmdline, "Invalid major number",
+								Some((i + 1, 1))));
+						},
+					};
+					match tokens[i + 2].s.as_str().parse::<u32>() {
+						Ok(n) => {
+							s.root_minor = n;
+						},
+						Err(_) => {
+							return Err(ParseError::new(cmdline, "Invalid minor number",
+								Some((i + 2, 1))));
+						},
+					};
 
 					i += 3;
 					root_specified = true;

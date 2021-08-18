@@ -38,6 +38,7 @@ pub fn pow2<T>(n: T) -> T where T: From<u8> + core::ops::Shl<Output = T> {
 	T::from(1) << n
 }
 
+// TODO Optimize (doable in O(log n))
 /// Computes a^^b on integers (where `^^` is an exponent).
 #[inline(always)]
 pub fn pow<T>(a: T, b: usize) -> T where T: From<u8> + core::ops::Mul<Output = T> + Copy {
@@ -147,6 +148,4 @@ mod test {
 			debug_assert!(!is_power_of_two(!n));
 		}
 	}
-
-	// TODO Test every functions
 }

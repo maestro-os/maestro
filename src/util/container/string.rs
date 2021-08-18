@@ -9,7 +9,6 @@ use core::str;
 use crate::errno::Errno;
 use crate::util::FailableClone;
 use crate::util::container::vec::Vec;
-use crate::util::math;
 
 /// Returns the number of characters required to represent the given number `n` as a String.
 fn get_number_len(mut n: i64, base: u8) -> usize {
@@ -72,17 +71,19 @@ impl String {
 			v.push(b'-')?;
 			l -= 1;
 		}
+
+		let mut shift = 1 as i64;
 		for i in (0..l).rev() {
 			let b = {
 				if i == 0 {
 					(n % 10).abs() as u8
 				} else {
-					let shift = math::pow(10, i) as i64;
 					(n / shift % 10).abs() as u8
 				}
 			};
 
 			v.push(b'0' + b)?;
+			shift *= 10;
 		}
 		debug_assert_eq!(v.len(), len);
 
@@ -117,11 +118,13 @@ impl String {
 	pub fn push(&mut self, ch: char) -> Result<(), Errno> {
 		match ch.len_utf8() {
 			1 => self.data.push(ch as u8)?,
+
 			_ => {
 				let val = ch as u32;
+
 				for i in 0..4 {
 					if let Err(e) = self.data.push(((val >> (8 * i)) & 0xff) as _) {
-						// TODO Clean
+						// Cancelling previous iterations
 						for _ in 0..i {
 							self.data.pop();
 						}

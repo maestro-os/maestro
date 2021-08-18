@@ -322,7 +322,7 @@ impl StorageManager {
 			char::from_u32_unchecked((b'a' + (storage_id as u8)) as _) // TODO Handle if out of the alphabet
 		})?;
 
-		// the path of the main device file
+		// The path of the main device file
 		let main_path = Path::from_string(prefix.as_str())?;
 		// The total size of the interface in bytes
 		let total_size = block_size * storage.get_blocks_count();

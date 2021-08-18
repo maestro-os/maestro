@@ -26,7 +26,7 @@ pub type Flags = i32;
 type FrameID = u32;
 
 /// The number of memory zones.
-pub const ZONES_COUNT: usize = 3;
+pub const ZONES_COUNT: usize = 2;
 
 /// The maximum order of a buddy allocated frame.
 pub const MAX_ORDER: FrameOrder = 17;
@@ -34,11 +34,9 @@ pub const MAX_ORDER: FrameOrder = 17;
 /// The mask for the type of the zone in buddy allocator flags.
 const ZONE_TYPE_MASK: Flags = 0b11;
 /// Buddy allocator flag. Tells that the allocated frame must be mapped into the user zone.
-pub const FLAG_ZONE_TYPE_USER: Flags = 0b000;
+pub const FLAG_ZONE_TYPE_USER: Flags = 0b00;
 /// Buddy allocator flag. Tells that the allocated frame must be mapped into the kernel zone.
-pub const FLAG_ZONE_TYPE_KERNEL: Flags = 0b001;
-/// Buddy allocator flag. Tells that the allocated frame must be mapped into the DMA zone.
-pub const FLAG_ZONE_TYPE_DMA: Flags = 0b010;
+pub const FLAG_ZONE_TYPE_KERNEL: Flags = 0b01;
 
 /// Pointer to the end of the kernel zone of memory with the maximum possible size.
 pub const KERNEL_ZONE_LIMIT: *const c_void = 0x40000000 as _;
