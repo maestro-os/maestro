@@ -85,17 +85,20 @@ impl<T> Vec<T> {
 	}
 
 	/// Returns the number of elements inside of the vector.
+	#[inline(always)]
 	pub fn len(&self) -> usize {
 		self.len
 	}
 
 	/// Returns true if the vector contains no elements.
+	#[inline(always)]
 	pub fn is_empty(&self) -> bool {
 		self.len == 0
 	}
 
 	/// Returns the number of elements that can be stored inside of the vector without needing to
 	/// reallocate the memory.
+	#[inline(always)]
 	pub fn capacity(&self) -> usize {
 		self.capacity
 	}

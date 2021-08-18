@@ -5,5 +5,6 @@ pub mod binary_tree;
 pub mod bitfield;
 pub mod hashmap;
 pub mod id_allocator;
+pub mod ring_buffer;
 pub mod string;
 pub mod vec;
