@@ -2,7 +2,9 @@
 //! the kernel's internals.
 
 #![no_std]
-#![cfg(config_debug_test)] #![no_main]
+
+#![allow(unused_attributes)]
+#![no_main]
 
 #![feature(allow_internal_unstable)]
 #![feature(asm)]
