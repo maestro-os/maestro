@@ -6,23 +6,30 @@ use crate::errno::Errno;
 use crate::device::ps2;
 
 /// Structure managing keyboard devices.
-pub struct KeyboardManager {}
+pub struct KeyboardManager {
+	/// The PS/2 handler.
+	ps2_handler: Option<ps2::PS2Handler>,
+}
 
 impl KeyboardManager {
 	/// Creates a new instance.
 	pub fn new() -> Self {
-		Self {}
+		Self {
+			ps2_handler: None,
+		}
 	}
 }
 
 impl DeviceManager for KeyboardManager {
 	fn legacy_detect(&mut self) -> Result<(), Errno> {
-		let _ps2_module = ps2::PS2Handler::new(| c, action | {
+		let mut ps2_handler = ps2::PS2Handler::new(| c, action | {
 			crate::println!("Key action! {:?} {:?}", c, action);
-			// TODO Write to device file
+			// TODO Write to device file and current TTY
 		});
-		// ps2_module.init();
-		// TODO Insert somewhere
+		if ps2_handler.init().is_err() {
+			return Err(crate::errno::EIO); // TODO
+		}
+		self.ps2_handler = Some(ps2_handler);
 
 		Ok(())
 	}

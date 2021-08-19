@@ -545,6 +545,8 @@ impl PS2Handler {
 			while can_read() {
 				let (key, action) = read_keystroke();
 
+				crate::print!("TODO"); // TODO rm
+
 				// TODO Do something with the key
 
 				if key == KeyboardKey::KeyPause && action == KeyboardAction::Pressed {
