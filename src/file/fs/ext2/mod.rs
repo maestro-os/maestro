@@ -565,10 +565,13 @@ impl Filesystem for Ext2Fs {
 		"ext2"
 	}
 
-	/// Tells whether the filesystem is mounted in read-only.
 	fn is_readonly(&self) -> bool {
 		// TODO Check that the driver supports write-required features
 		todo!();
+	}
+
+	fn must_cache(&self) -> bool {
+		true
 	}
 
 	fn get_inode(&mut self, dev: &mut Device, path: Path) -> Result<INode, Errno> {

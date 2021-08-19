@@ -96,43 +96,57 @@ impl MountPoint {
 	}
 
 	/// Returns the type of the mounted device.
+	#[inline(always)]
 	pub fn get_device_type(&self) -> DeviceType {
 		self.device_type
 	}
 
 	/// Returns the major number of the mounted device.
+	#[inline(always)]
 	pub fn get_major(&self) -> u32 {
 		self.major
 	}
 
 	/// Returns the minor number of the mounted device.
+	#[inline(always)]
 	pub fn get_minor(&self) -> u32 {
 		self.minor
 	}
 
 	/// Returns a reference to the mounted device.
+	#[inline(always)]
 	pub fn get_device(&self) -> SharedPtr<Device> {
 		device::get_device(self.device_type, self.major, self.minor).unwrap()
 	}
 
 	/// Returns the mountpoint's flags.
+	#[inline(always)]
 	pub fn get_flags(&self) -> u32 {
 		self.flags
 	}
 
 	/// Returns a reference to the path where the filesystem is mounted.
+	#[inline(always)]
 	pub fn get_path(&self) -> &Path {
 		&self.path
 	}
 
 	/// Returns a mutable reference to the filesystem associated with the device.
+	#[inline(always)]
 	pub fn get_filesystem(&mut self) -> &mut dyn Filesystem {
 		self.filesystem.as_mut()
 	}
 
 	/// Tells whether the mountpoint's filesystem is mounted in read-only.
+	#[inline(always)]
 	pub fn is_readonly(&self) -> bool {
 		self.flags & FLAG_RDONLY != 0 || self.filesystem.is_readonly()
+	}
+
+	/// Tells the kernel whether it must cache files.
+	#[inline(always)]
+	pub fn must_cache(&self) -> bool {
+		self.filesystem.must_cache()
 	}
 }
 

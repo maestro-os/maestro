@@ -21,6 +21,8 @@ pub trait Filesystem {
 
 	/// Tells whether the filesystem is mounted in read-only.
 	fn is_readonly(&self) -> bool;
+	/// Tells the kernel whether it must cache files.
+	fn must_cache(&self) -> bool;
 
 	/// Returns the inode of the file at path `path`.
 	/// `dev` is the device.
