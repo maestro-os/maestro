@@ -50,11 +50,14 @@ void test_process(void)
 {
 	// Testing printing on standard output
 
-	//for(size_t i = 0; i < 10; ++i) {
-	//	write(1, "pid: ", 5);
-	//	print_nbr(getpid());
-	//	write(1, "\n", 1);
-	//}
+	for(size_t i = 0; i < 10; ++i) {
+		write(1, "pid: ", 5);
+		print_nbr(getpid());
+		write(1, "\n", 1);
+	}
+
+	while(1)
+		;
 
 
 
@@ -105,25 +108,25 @@ void test_process(void)
 
 	// Testing IPC
 
-	int socks[2];
-	int e = socketpair(0, 0, 0, socks);
-	write(1, "e: ", 3);
-	print_nbr(e);
-	write(1, "\n", 1);
+	//int socks[2];
+	//int e = socketpair(0, 0, 0, socks);
+	//write(1, "e: ", 3);
+	//print_nbr(e);
+	//write(1, "\n", 1);
 
-	int pid = fork();
-	if (pid == 0) {
-		char buff[10];
-		read(socks[1], buff, sizeof(buff));
-		write(1, buff, sizeof(buff));
-		write(1, "a", 1);
-	} else {
-		write(socks[0], "BLEH", 4);
-		write(1, "b", 1);
+	//int pid = fork();
+	//if (pid == 0) {
+	//	char buff[10];
+	//	read(socks[1], buff, sizeof(buff));
+	//	write(1, buff, sizeof(buff));
+	//	write(1, "a", 1);
+	//} else {
+	//	write(socks[0], "BLEH", 4);
+	//	write(1, "b", 1);
 
-		while (1)
-			;
-	}
+	//	while (1)
+	//		;
+	//}
 
 
 
