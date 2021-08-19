@@ -2,6 +2,7 @@
 //! systems. This module implements a parser allowing to handle this format, including the kernel
 //! image itself.
 
+use core::cmp::max;
 use core::ffi::c_void;
 use core::mem::size_of;
 use crate::errno::Errno;
@@ -354,6 +355,29 @@ pub fn foreach_sections<F>(sections: *const c_void, sections_count: usize, shndx
 		};
 		f(hdr, n);
 	}
+}
+
+/// Returns the size of the ELF sections' content.
+/// `sections` is a pointer to the ELF sections of the kernel in the virtual memory.
+/// `sections_count` is the number of sections in the kernel.
+/// `entsize` is the size of section entries.
+pub fn get_sections_end(sections: *const c_void, sections_count: usize,
+	entsize: usize) -> *const c_void {
+	let mut end = 0;
+
+	for i in 0..sections_count {
+		let hdr_offset = i * entsize;
+		let hdr = unsafe {
+			&*(sections.add(hdr_offset) as *const ELF32SectionHeader)
+		};
+
+		let addr = unsafe {
+			memory::kern_to_phys(hdr.sh_addr as _).add(hdr.sh_size as _)
+		};
+		end = max(end, addr as usize);
+	}
+
+	end as _
 }
 
 /// Returns the name of the symbol at the given offset.

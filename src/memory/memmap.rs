@@ -4,7 +4,6 @@
 
 use core::cmp::*;
 use core::mem::MaybeUninit;
-use core::mem::size_of;
 use crate::elf;
 use crate::memory::*;
 use crate::memory;
@@ -65,12 +64,24 @@ pub fn print_entries() {
 /// Returns a pointer to the beginning of the allocatable physical memory.
 fn get_phys_alloc_begin(multiboot_ptr: *const c_void) -> *const c_void {
 	let boot_info = multiboot::get_boot_info();
+
+	// The end of the kernel code
+	let mut ptr = memory::get_kernel_end();
+
 	let multiboot_tags_size = multiboot::get_tags_size(multiboot_ptr);
+	// The end of multiboot tags
 	let multiboot_tags_end = ((multiboot_ptr as usize) + multiboot_tags_size) as *const _;
-	let mut ptr = max(multiboot_tags_end, memory::get_kernel_end());
-	let phys_elf_end = (boot_info.elf_sections as usize + boot_info.elf_num as usize
-		* size_of::<elf::ELF32SectionHeader>()) as *const c_void;
-	ptr = max(ptr, phys_elf_end);
+	ptr = max(ptr, multiboot_tags_end);
+
+	// The end of ELF sections list
+	let elf_sections_end = (boot_info.elf_sections as usize + boot_info.elf_num as usize
+		* boot_info.elf_entsize as usize) as *const c_void;
+	ptr = max(ptr, elf_sections_end);
+
+	// The end of the ELF sections' content
+	let elf_end = elf::get_sections_end(boot_info.elf_sections, boot_info.elf_num as _,
+		boot_info.elf_entsize as _);
+	ptr = max(ptr, elf_end);
 
 	util::align(ptr, memory::PAGE_SIZE)
 }

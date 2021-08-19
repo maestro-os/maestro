@@ -48,19 +48,27 @@ void sig_handle(int sig) {
 
 void test_process(void)
 {
+	// Testing printing on standard output
+
 	//for(size_t i = 0; i < 10; ++i) {
 	//	write(1, "pid: ", 5);
 	//	print_nbr(getpid());
 	//	write(1, "\n", 1);
 	//}
 
-	//while (1)
-	//{
-	//	print_nbr(getpid());
-	//	fork();
-	//}
 
 
+	// Fork bomb
+
+	while (1)
+	{
+		print_nbr(getpid());
+		fork();
+	}
+
+
+
+	// Testing wait and signals
 
 	//write(1, "Hello world!\n", 13);
 	//int pid = fork();
@@ -95,30 +103,34 @@ void test_process(void)
 
 
 
-	int socks[2];
-	int e = socketpair(0, 0, 0, socks);
-	write(1, "e: ", 3);
-	print_nbr(e);
-	write(1, "\n", 1);
+	// Testing IPC
 
-	int pid = fork();
-	if (pid == 0) {
-		for (int i = 0; i < 100; ++i)
-			write(1, "l", 1);
+	//int socks[2];
+	//int e = socketpair(0, 0, 0, socks);
+	//write(1, "e: ", 3);
+	//print_nbr(e);
+	//write(1, "\n", 1);
 
-		char buff[10];
-		read(socks[1], buff, sizeof(buff));
-		write(1, buff, sizeof(buff));
-		write(1, "a", 1);
-	} else {
-		write(socks[0], "BLEH", 4);
-		write(1, "b", 1);
+	//int pid = fork();
+	//if (pid == 0) {
+	//	for (int i = 0; i < 100; ++i)
+	//		write(1, "l", 1);
 
-		while (1)
-			;
-	}
+	//	char buff[10];
+	//	read(socks[1], buff, sizeof(buff));
+	//	write(1, buff, sizeof(buff));
+	//	write(1, "a", 1);
+	//} else {
+	//	write(socks[0], "BLEH", 4);
+	//	write(1, "b", 1);
+
+	//	while (1)
+	//		;
+	//}
 
 
+
+	// Testing file read/write
 
 	//int fd = open("/etc/hostname", 0b11);
 	//char buff[1024];
@@ -144,6 +156,10 @@ void test_process(void)
 	//	//print_nbr(len);
 	//	//write(1, "\n", 1);
 	//}
+
+
+
+	// Testing kernel module loading from disk
 
 	//int fd = open("/lib/hello.kmod", 0b11);
 	//if (fd < 0) {
