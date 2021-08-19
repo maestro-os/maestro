@@ -126,6 +126,11 @@ impl FileDescriptor {
 		self.flags
 	}
 
+	/// Sets the file descriptor's flags.
+	pub fn set_flags(&mut self, flags: i32) {
+		self.flags = flags;
+	}
+
 	/// Returns a mutable reference to the descriptor's target.
 	pub fn get_target(&self) -> &FDTarget {
 		&self.target

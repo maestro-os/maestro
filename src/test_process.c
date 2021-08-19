@@ -60,11 +60,11 @@ void test_process(void)
 
 	// Fork bomb
 
-	while (1)
-	{
-		print_nbr(getpid());
-		fork();
-	}
+	//while (1)
+	//{
+	//	print_nbr(getpid());
+	//	fork();
+	//}
 
 
 
@@ -105,28 +105,25 @@ void test_process(void)
 
 	// Testing IPC
 
-	//int socks[2];
-	//int e = socketpair(0, 0, 0, socks);
-	//write(1, "e: ", 3);
-	//print_nbr(e);
-	//write(1, "\n", 1);
+	int socks[2];
+	int e = socketpair(0, 0, 0, socks);
+	write(1, "e: ", 3);
+	print_nbr(e);
+	write(1, "\n", 1);
 
-	//int pid = fork();
-	//if (pid == 0) {
-	//	for (int i = 0; i < 100; ++i)
-	//		write(1, "l", 1);
+	int pid = fork();
+	if (pid == 0) {
+		char buff[10];
+		read(socks[1], buff, sizeof(buff));
+		write(1, buff, sizeof(buff));
+		write(1, "a", 1);
+	} else {
+		write(socks[0], "BLEH", 4);
+		write(1, "b", 1);
 
-	//	char buff[10];
-	//	read(socks[1], buff, sizeof(buff));
-	//	write(1, buff, sizeof(buff));
-	//	write(1, "a", 1);
-	//} else {
-	//	write(socks[0], "BLEH", 4);
-	//	write(1, "b", 1);
-
-	//	while (1)
-	//		;
-	//}
+		while (1)
+			;
+	}
 
 
 

@@ -129,4 +129,55 @@ impl RingBuffer {
 	}
 }
 
-// TODO Unit tests
+#[cfg(test)]
+mod test {
+	use super::*;
+
+	#[test_case]
+	fn ring_buffer0() {
+		let rb = RingBuffer::new(0);
+		let mut buf: [u8; 0] = [0; 0];
+		assert_eq!(rb.read(buf), 0);
+	}
+
+	#[test_case]
+	fn ring_buffer1() {
+		let rb = RingBuffer::new(10);
+		let mut buf: [u8; 0] = [0; 0];
+		assert_eq!(rb.read(buf), 0);
+	}
+
+	#[test_case]
+	fn ring_buffer2() {
+		let rb = RingBuffer::new(10);
+		let mut buf: [u8; 10] = [0; 10];
+		assert_eq!(rb.read(buf), 0);
+	}
+
+	#[test_case]
+	fn ring_buffer3() {
+		let rb = RingBuffer::new(10);
+		let mut buf: [u8; 10] = [0; 10];
+		for i in 0..buf.len() {
+			buf[i] = 42;
+		}
+
+		assert_eq!(rb.write(buf), 10);
+		assert_eq!(rb.get_data_len(), 10);
+		assert_eq!(rb.get_available_len(), 0);
+
+		for i in 0..buf.len() {
+			buf[i] = 0;
+		}
+
+		assert_eq!(rb.read(buf), 10);
+		assert_eq!(rb.get_data_len(), 0);
+		assert_eq!(rb.get_available_len(), 10);
+
+		for i in 0..buf.len() {
+			assert_eq!(buf[i], 42);
+		}
+	}
+
+	// TODO More tests
+}

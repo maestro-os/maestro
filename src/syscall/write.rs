@@ -4,10 +4,10 @@ use core::cmp::max;
 use core::slice;
 use crate::errno::Errno;
 use crate::errno;
+use crate::file::file_descriptor::O_NONBLOCK;
 use crate::process::Process;
 use crate::util;
 
-// TODO Implement blocking write
 // TODO Return EPIPE and kill with SIGPIPE when writing on a broken pipe
 
 /// The implementation of the `write` syscall.
@@ -26,11 +26,11 @@ pub fn write(regs: &util::Regs) -> Result<i32, Errno> {
 		}
 	}
 
-	let len = max(count as i32, 0);
+	let len = max(count, i32::MAX as usize);
 	// Safe because the permission to access the memory has been checked by the previous
 	// condition
 	let data = unsafe {
-		slice::from_raw_parts(buf, len as usize)
+		slice::from_raw_parts(buf, len)
 	};
 
 	let len = {
@@ -40,9 +40,21 @@ pub fn write(regs: &util::Regs) -> Result<i32, Errno> {
 
 		let fd = proc.get_fd(fd).ok_or(errno::EBADF)?;
 		// TODO Check file permissions?
+		// TODO Writing must be interruptible
 
-		fd.write(data)? // TODO Writing must be interruptible
+		if fd.get_flags() & O_NONBLOCK != 0 {
+			// The file descriptor is non blocking
+
+			// TODO If blocking, EAGAIN
+			fd.write(data)?
+		} else {
+			// The file descriptor is blocking
+
+			// TODO Wait until able to write
+			// TODO Write
+			0
+		}
 	};
 
-	Ok(len as _) // TODO Take into account when length is overflowing
+	Ok(len as _)
 }
