@@ -2,7 +2,7 @@
 //! the kernel's internals.
 
 #![no_std]
-//#![no_main]
+#![cfg(config_debug_test)] #![no_main]
 
 #![feature(allow_internal_unstable)]
 #![feature(asm)]
@@ -205,7 +205,7 @@ fn panic(panic_info: &PanicInfo) -> ! {
 		println!("Error: {}\n", panic_info);
 
 		#[cfg(config_debug_qemu)]
-		selftest::qemu::exit(qemu::FAILURE);
+		selftest::qemu::exit(selftest::qemu::FAILURE);
 		#[cfg(not(config_debug_qemu))]
 		halt();
 	}
