@@ -573,14 +573,12 @@ impl FailableClone for X86VMem {
 			}
 
 			if src_dir_entry_value & FLAG_PAGE_SIZE == 0 {
-				let mut src_table = (src_dir_entry_value & ADDR_MASK) as *const u32;
-				src_table = memory::kern_to_virt(src_table as _) as _;
+				let src_table = (src_dir_entry_value & ADDR_MASK) as *const u32;
+				let src_table = memory::kern_to_virt(src_table as _) as _;
 
 				let dest_table = alloc_obj()?;
 				unsafe { // Safe because pointers are valid
-					ptr::copy_nonoverlapping::<u8>(src_table as *const u8,
-						dest_table as *mut u8,
-						memory::PAGE_SIZE);
+					ptr::copy_nonoverlapping::<u32>(src_table, dest_table, 1024);
 				}
 				obj_set(s.page_dir, i, (memory::kern_to_phys(dest_table as _) as u32)
 					| (src_dir_entry_value & FLAGS_MASK));
