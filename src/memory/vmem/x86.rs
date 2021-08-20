@@ -99,6 +99,7 @@ fn alloc_obj() -> Result<*mut u32, Errno> {
 /// Returns the object at index `index` of given object `obj`.
 fn obj_get(obj: *const u32, index: usize) -> u32 {
 	debug_assert!(index < 1024);
+
 	unsafe {
 		*obj_get_ptr(obj, index)
 	}
@@ -107,6 +108,7 @@ fn obj_get(obj: *const u32, index: usize) -> u32 {
 /// Sets the object at index `index` of given object `obj` with value `value`.
 fn obj_set(obj: *mut u32, index: usize, value: u32) {
 	debug_assert!(index < 1024);
+
 	unsafe {
 		*obj_get_mut_ptr(obj, index) = value;
 	}
@@ -575,6 +577,7 @@ impl FailableClone for X86VMem {
 			if src_dir_entry_value & FLAG_PAGE_SIZE == 0 {
 				let src_table = (src_dir_entry_value & ADDR_MASK) as *const u32;
 				let src_table = memory::kern_to_virt(src_table as _) as _;
+				debug_assert!(src_table as usize > memory::get_kernel_virtual_end() as usize);
 
 				let dest_table = alloc_obj()?;
 				unsafe { // Safe because pointers are valid
