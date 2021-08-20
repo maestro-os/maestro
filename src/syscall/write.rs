@@ -1,6 +1,6 @@
 //! This module implements the `write` system call, which allows to write data to a file.
 
-use core::cmp::max;
+use core::cmp::min;
 use core::slice;
 use crate::errno::Errno;
 use crate::errno;
@@ -26,35 +26,43 @@ pub fn write(regs: &util::Regs) -> Result<i32, Errno> {
 		}
 	}
 
-	let len = max(count, i32::MAX as usize);
+	let len = min(count, i32::MAX as usize);
+	if len == 0 {
+		return Ok(0);
+	}
+
 	// Safe because the permission to access the memory has been checked by the previous
 	// condition
 	let data = unsafe {
 		slice::from_raw_parts(buf, len)
 	};
 
-	let len = {
-		let mut mutex = Process::get_current().unwrap();
-		let mut guard = mutex.lock(false);
-		let proc = guard.get_mut();
+	loop {
+		// Trying to write and getting the length of written data
+		let (len, flags) = {
+			let mut mutex = Process::get_current().unwrap();
+			let mut guard = mutex.lock(false);
+			let proc = guard.get_mut();
 
-		let fd = proc.get_fd(fd).ok_or(errno::EBADF)?;
-		// TODO Check file permissions?
-		// TODO Writing must be interruptible
+			let fd = proc.get_fd(fd).ok_or(errno::EBADF)?;
+			// TODO Check file permissions?
 
-		if fd.get_flags() & O_NONBLOCK != 0 {
-			// The file descriptor is non blocking
+			let flags = fd.get_flags();
+			(fd.write(data)?, flags)
+		};
 
-			// TODO If blocking, EAGAIN
-			fd.write(data)?
-		} else {
-			// The file descriptor is blocking
-
-			// TODO Wait until able to write
-			// TODO Write
-			0
+		// TODO Continue until everything was written?
+		// If the length is greater than zero, success
+		if len > 0 {
+			return Ok(len as _);
 		}
-	};
 
-	Ok(len as _)
+		if flags & O_NONBLOCK != 0 {
+			// The file descriptor is non blocking
+			return Err(errno::EAGAIN);
+		}
+
+		// TODO Mark the process as Sleeping and wake it up when data can be written?
+		crate::wait();
+	}
 }

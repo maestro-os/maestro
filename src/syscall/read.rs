@@ -1,6 +1,6 @@
 //! The read system call allows to read the content of an open file.
 
-use core::cmp::max;
+use core::cmp::min;
 use core::slice;
 use crate::errno::Errno;
 use crate::errno;
@@ -24,34 +24,36 @@ pub fn read(regs: &util::Regs) -> Result<i32, Errno> {
 		}
 	}
 
-	let len = max(count, i32::MAX as usize);
+	let len = min(count, i32::MAX as usize);
+	if len == 0 {
+		return Ok(0);
+	}
+
 	// Safe because the permission to access the memory has been checked by the previous
 	// condition
 	let data = unsafe {
 		slice::from_raw_parts_mut(buf, len)
 	};
 
-	let len = {
-		let mut mutex = Process::get_current().unwrap();
-		let mut guard = mutex.lock(false);
-		let proc = guard.get_mut();
+	loop {
+		let (len, flags) = {
+			let mut mutex = Process::get_current().unwrap();
+			let mut guard = mutex.lock(false);
+			let proc = guard.get_mut();
 
-		let fd = proc.get_fd(fd).ok_or(errno::EBADF)?;
-		// TODO Check file permissions?
-		// TODO Reading must be interruptible
+			let fd = proc.get_fd(fd).ok_or(errno::EBADF)?;
+			// TODO Check file permissions?
 
-		if fd.get_flags() & O_NONBLOCK != 0 {
+			let flags = fd.get_flags();
+			(fd.read(data)?, flags)
+		};
+
+		if len > 0 || flags & O_NONBLOCK != 0 {
 			// The file descriptor is non blocking
-
-			fd.read(data)?
-		} else {
-			// The file descriptor is blocking
-
-			// TODO Wait until data is available
-			// TODO Read
-			0
+			return Ok(len as _);
 		}
-	};
 
-	Ok(len as _)
+		// TODO Mark the process as Sleeping and wake it up when data is available?
+		crate::wait();
+	}
 }
