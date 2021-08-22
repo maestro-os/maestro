@@ -127,7 +127,7 @@ impl MemSpace {
 	}
 
 	/// Returns a mutable reference to the vvirtual memory context.
-	pub fn get_vmem(&mut self) -> &mut Box::<dyn VMem> {
+	pub fn get_vmem(&mut self) -> &mut Box<dyn VMem> {
 		&mut self.vmem
 	}
 
@@ -140,7 +140,7 @@ impl MemSpace {
 	/// underlying physical memory is not allocated directly but only an attempt to write the
 	/// memory is detected.
 	/// The function returns a pointer to the newly mapped virtual memory.
-	pub fn map(&mut self, ptr: Option::<*const c_void>, size: usize, flags: u8)
+	pub fn map(&mut self, ptr: Option<*const c_void>, size: usize, flags: u8)
 		-> Result<*const c_void, Errno> {
 		if let Some(_ptr) = ptr {
 			// TODO Insert mapping at exact location if possible
@@ -180,7 +180,7 @@ impl MemSpace {
 	}
 
 	/// Same as `map`, except the function returns a pointer to the end of the memory region.
-	pub fn map_stack(&mut self, ptr: Option::<*const c_void>, size: usize, flags: u8)
+	pub fn map_stack(&mut self, ptr: Option<*const c_void>, size: usize, flags: u8)
 		-> Result<*const c_void, Errno> {
 		let mapping_ptr = self.map(ptr, size, flags)?;
 		Ok(unsafe { // Safe because the new pointer stays in the range of the allocated mapping

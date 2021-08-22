@@ -1,8 +1,9 @@
 //! The `mmap` system call allows the process to allocate memory.
 
-//use crate::errno;
 use core::ffi::c_void;
+use core::intrinsics::wrapping_add;
 use crate::errno::Errno;
+use crate::errno;
 use crate::memory;
 use crate::process::Process;
 use crate::process::mem_space;
@@ -20,8 +21,6 @@ const PROT_EXEC: i32 = 0b100;
 const MAP_SHARED: i32 = 0b001;
 /// Interpret addr exactly.
 const MAP_FIXED: i32 = 0b010;
-
-// TODO Prevent mapping kernel memory
 
 /// Converts mmap's `flags` and `prot` to mem space mapping flags.
 fn get_flags(flags: i32, prot: i32) -> u8 {
@@ -55,16 +54,26 @@ pub fn mmap(regs: &util::Regs) -> Result<i32, Errno> {
 	let proc = guard.get_mut();
 	let mem_space = proc.get_mem_space_mut();
 
+	let addr = util::down_align(addr, memory::PAGE_SIZE);
+	let pages = math::ceil_division(length, memory::PAGE_SIZE);
+	let length = pages * memory::PAGE_SIZE;
+
+	// Checking for overflow
+	let end = wrapping_add(addr as usize, length);
+	if end < addr as usize {
+		return Err(errno::EINVAL);
+	}
+
 	let addr_hint = {
-		if !addr.is_null() {
+		if !addr.is_null()
+			&& (addr as usize) < (memory::PROCESS_END as usize)
+			&& end <= (memory::PROCESS_END as usize) {
 			Some(addr as *const c_void)
 		} else {
 			None
 		}
 	};
-	let pages = math::ceil_division(length, memory::PAGE_SIZE);
 
-	// TODO Check for overflow on addr + pages * PAGE_SIZE
 	let ptr = mem_space.map(addr_hint, pages, get_flags(flags, prot))?;
 	// TODO Handle fd and offset
 	Ok(ptr as _)
