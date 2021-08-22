@@ -67,7 +67,6 @@ pub mod vga;
 
 use core::ffi::c_void;
 use core::panic::PanicInfo;
-use crate::file::path::Path;
 use crate::process::Process;
 
 /// The kernel's name.
@@ -191,7 +190,7 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 	let test_begin = unsafe {
 		core::mem::transmute::<unsafe extern "C" fn(), *const c_void>(test_process)
 	};
-	if Process::new(None, 0, 0, test_begin, Path::root()).is_err() {
+	if Process::new_init(test_begin).is_err() {
 		kernel_panic!("Failed to create init process!", 0);
 	}
 

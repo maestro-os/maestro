@@ -20,6 +20,13 @@ impl IDAllocator {
 		})
 	}
 
+	/// Sets the id `id` as used.
+	pub fn set_used(&mut self, id: u32) {
+		if id <= self.used.len() as _ {
+			self.used.set(id as _);
+		}
+	}
+
 	/// Allocates an identifier.
 	/// If `id` is not None, the function shall allocate the given id.
 	/// If the allocation fails, the function returns an Err.
@@ -41,10 +48,8 @@ impl IDAllocator {
 
 	/// Frees the given identifier `id`.
 	pub fn free(&mut self, id: u32) {
-		if id > self.used.len() as _ || !self.used.is_set(id as _) {
-			crate::kernel_panic!("Freeing identifier that isn't allocated!", 0);
+		if id <= self.used.len() as _ {
+			self.used.clear(id as _);
 		}
-
-		self.used.clear(id as _);
 	}
 }

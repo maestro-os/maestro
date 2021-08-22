@@ -313,15 +313,9 @@ impl MemSpace {
 
 		if let Some(mapping) = Self::get_mapping_for(&mut self.mappings, virt_addr) {
 			let offset = (virt_addr as usize - mapping.get_begin() as usize) / memory::PAGE_SIZE;
-			if mapping.map(offset).is_err() {
-				oom::kill();
-				// TODO Check if current process has been killed
-
-				if mapping.map(offset).is_err() {
-					crate::kernel_panic!("OOM killer is unable to free up space for new \
-allocations!");
-				}
-			}
+			oom::wrap(|| {
+				mapping.map(offset)
+			});
 
 			mapping.update_vmem(offset);
 			true

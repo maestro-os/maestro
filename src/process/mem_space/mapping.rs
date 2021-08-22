@@ -10,6 +10,8 @@ use crate::memory::vmem::VMem;
 use crate::memory::vmem::vmem_switch;
 use crate::memory::vmem;
 use crate::memory;
+use crate::process::mem_space::physical_ref_counter::PhysRefCounter;
+use crate::process::oom;
 use crate::util::boxed::Box;
 use crate::util::lock::mutex::*;
 use crate::util;
@@ -164,7 +166,7 @@ impl MemMapping {
 				if nolazy {
 					let ptr = buddy::alloc(0, buddy::FLAG_ZONE_TYPE_USER);
 					if let Err(errno) = ptr {
-						let _ = self.unmap(); // TODO Check if the error can happen in this context
+						self.unmap()?;
 						return Err(errno);
 					}
 					ptr.unwrap()
@@ -176,7 +178,7 @@ impl MemMapping {
 			let flags = self.get_vmem_flags(nolazy, i);
 
 			if let Err(errno) = vmem.map(phys_ptr, virt_ptr, flags) {
-				let _ = self.unmap(); // TODO Check if the error can happen in this context
+				self.unmap()?;
 				return Err(errno);
 			}
 		}
@@ -291,6 +293,16 @@ impl MemMapping {
 		}
 	}
 
+	/// After a fork operation failed, frees the pages that were already allocated.
+	/// `n` is the number of pages to free from the beginning.
+	pub fn fork_fail_clean(&self, ref_counter: &mut PhysRefCounter, n: usize) {
+		for i in 0..n {
+			if let Some(phys_ptr) = self.get_physical_page(i) {
+				ref_counter.decrement(phys_ptr);
+			}
+		}
+	}
+
 	/// Clones the mapping for the fork operation. The other mapping is sharing the same physical
 	/// memory for Copy-On-Write.
 	/// `container` is the container in which the new mapping is to be inserted.
@@ -322,13 +334,7 @@ impl MemMapping {
 			for i in 0..self.size {
 				if let Some(phys_ptr) = self.get_physical_page(i) {
 					if let Err(errno) = ref_counter.increment(phys_ptr) {
-						// TODO Clean
-						for j in 0..i {
-							if let Some(phys_ptr) = self.get_physical_page(j) {
-								ref_counter.decrement(phys_ptr);
-							}
-						}
-
+						self.fork_fail_clean(ref_counter, i);
 						return Err(errno);
 					}
 				}
@@ -341,7 +347,8 @@ impl MemMapping {
 
 impl Drop for MemMapping {
 	fn drop(&mut self) {
-		// TODO Check if the error can happen in this context
-		let _ = self.unmap();
+		oom::wrap(|| {
+			self.unmap()
+		});
 	}
 }

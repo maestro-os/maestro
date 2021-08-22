@@ -20,9 +20,11 @@ pub struct PIDManager {
 impl PIDManager {
 	/// Creates a new instance.
 	pub fn new() -> Result<Self, Errno> {
-		Ok(Self {
+		let mut s = Self {
 			allocator: IDAllocator::new(MAX_PID as _)?,
-		})
+		};
+		s.allocator.set_used(1);
+		Ok(s)
 	}
 
 	/// Returns a unused PID and marks it as used.
@@ -40,6 +42,7 @@ impl PIDManager {
 	}
 
 	/// Releases the given PID `pid` to make it available for other processes.
+	/// If the PID wasn't allocated, the function does nothing.
 	pub fn release_pid(&mut self, pid: Pid) {
 		debug_assert!(pid >= 1);
 		debug_assert!(pid <= MAX_PID as _);

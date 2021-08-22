@@ -3,13 +3,13 @@
 
 use crate::io;
 
-/// TODO doc
+/// The master PIC's command port.
 const MASTER_COMMAND: u16 = 0x20;
-/// TODO doc
+/// The master PIC's data port.
 const MASTER_DATA: u16 = 0x21;
-/// TODO doc
+/// The slave PIC's command port.
 const SLAVE_COMMAND: u16 = 0xa0;
-/// TODO doc
+/// The slave PIC's data port.
 const SLAVE_DATA: u16 = 0xa1;
 
 /// TODO doc
@@ -39,7 +39,7 @@ const ICW4_BUF_MASTER: u8 = 0x0C;
 /// TODO doc
 const ICW4_SFNM: u8 = 0x10;
 
-/// TODO doc
+/// The end-of-interrupt command.
 const COMMAND_EOI: u8 = 0x20;
 
 /// Initializes the PIC.

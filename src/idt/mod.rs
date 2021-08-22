@@ -7,18 +7,6 @@ use core::ffi::c_void;
 use core::mem::MaybeUninit;
 use crate::util;
 
-/// TODO Doc
-const ID_TYPE_GATE_TASK: u8 = 0b01010000;
-/// TODO Doc
-const ID_TYPE_GATE_INTERRUPT16: u8 = 0b01100000;
-/// TODO Doc
-const ID_TYPE_GATE_TRAP16: u8 = 0b01110000;
-/// TODO Doc
-const ID_TYPE_GATE_INTERRUPT32: u8 = 0b11100000;
-/// TODO Doc
-const ID_TYPE_GATE_TRAP32: u8 = 0b11110000;
-/// TODO Doc
-const ID_TYPE_S: u8 = 0b00001000;
 /// Makes the interrupt switch to ring 0.
 const ID_PRIVILEGE_RING_0: u8 = 0b00000000;
 /// Makes the interrupt switch to ring 1.

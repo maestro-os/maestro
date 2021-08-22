@@ -272,6 +272,7 @@ impl Scheduler {
 
 		scheduler.total_ticks += 1;
 
+		// If a process is running, save its registers
 		if let Some(mut curr_proc) = scheduler.get_current_process() {
 			let mut guard = curr_proc.lock(false);
 			let curr_proc = guard.get_mut();
@@ -292,24 +293,24 @@ impl Scheduler {
 					};
 					let mut guard = data.proc.lock(false);
 					let proc = guard.get_mut();
+					// Incrementing the number of ticks the process had
 					proc.quantum_count += 1;
 
 					let tss = tss::get();
 					tss.ss0 = gdt::KERNEL_DATA_OFFSET as _;
 					tss.ss = gdt::USER_DATA_OFFSET as _;
+					// Setting the kernel stack pointer
 					tss.esp0 = proc.kernel_stack as _;
+					// Binding the memory space
 					proc.mem_space.bind();
 
 					// If a signal is pending on the process, execute it
 					proc.signal_next();
 
-					//let eip = proc.regs.eip;
-					//let vmem = proc.mem_space.get_vmem();
-					//debug_assert!(vmem.translate(eip as _).is_some());
-
 					(proc.is_syscalling(), proc.regs)
 				};
 
+				// Resuming execution
 				if syscalling {
 					unsafe {
 						context_switch_kernel(&regs);
@@ -338,14 +339,13 @@ impl Scheduler {
 			}
 
 			unsafe {
-				// FIXME: Kernel panic if running out of memory for some reason
+				// TODO Handle out of memory
 				stack::switch(tmp_stack, f, ctx_switch_data).unwrap();
 			}
 			crate::enter_loop();
-		} else if cfg!(config_general_scheduler_end_panic) {
-			kernel_panic!("No process remaining to run!");
 		} else {
-			crate::halt();
+			// TODO Wait until is a process becomes runnable
+			todo!();
 		}
 	}
 

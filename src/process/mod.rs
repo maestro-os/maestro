@@ -69,8 +69,6 @@ const STDOUT_FILENO: u32 = 1;
 /// The file descriptor number of the standard error stream.
 const STDERR_FILENO: u32 = 2;
 
-// TODO Ensure signals are executed when switching context
-
 /// An enumeration containing possible states for a process.
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum State {
@@ -167,7 +165,6 @@ pub fn init() -> Result<(), Errno> {
 		SCHEDULER.write(Scheduler::new(cores_count)?);
 	}
 
-	// TODO Handle the case where the process is killed while already handling a signal
 	let callback = | id: u32, code: u32, regs: &Regs, ring: u32 | {
 		if ring < 3 {
 			return InterruptResult::new(true, InterruptResultAction::Panic);
@@ -245,8 +242,6 @@ pub fn init() -> Result<(), Errno> {
 			if curr_proc.get_state() == State::Running {
 				InterruptResult::new(false, InterruptResultAction::Resume)
 			} else {
-				// TODO Avoid skipping other event handlers while ensuring the process won't
-				// resume?
 				InterruptResult::new(true, InterruptResultAction::Loop)
 			}
 		} else {
@@ -292,33 +287,20 @@ impl Process {
 		guard.get_mut().get_current_process()
 	}
 
-	/// Creates a new process, assigns an unique PID to it and places it into the scheduler's
-	/// queue. The process is set to state `Running` by default.
-	/// `parent` is the parent of the process (optional).
-	/// `uid` is the ID of the process's user owner.
-	/// `gid` is the ID of the process's group owner.
+	/// Creates the init process and places it into the scheduler's queue. The process is set to
+	/// state `Running` by default.
 	/// `entry_point` is the pointer to the first instruction of the process.
-	/// `cwd` the path to the process's working directory.
-	pub fn new(parent: Option<NonNull<Process>>, uid: Uid, gid: Gid, entry_point: *const c_void,
-		cwd: Path) -> Result<SharedPtr<Self>, Errno> {
-		let pid = {
-			let mutex = unsafe {
-				PID_MANAGER.assume_init_mut()
-			};
-			let mut guard = mutex.lock(false);
-			guard.get_mut().get_unique_pid()
-		}?;
-
+	pub fn new_init(entry_point: *const c_void) -> Result<SharedPtr<Self>, Errno> {
 		let mut mem_space = MemSpace::new()?;
 		let user_stack = mem_space.map_stack(None, USER_STACK_SIZE, USER_STACK_FLAGS)?;
 		let kernel_stack = mem_space.map_stack(None, KERNEL_STACK_SIZE, KERNEL_STACK_FLAGS)?;
 
 		let mut process = Self {
-			pid,
-			pgid: pid,
+			pid: 1,
+			pgid: 1,
 
-			uid,
-			gid,
+			uid: 0,
+			gid: 0,
 
 			umask: DEFAULT_UMASK,
 
@@ -326,7 +308,7 @@ impl Process {
 			priority: 0,
 			quantum_count: 0,
 
-			parent,
+			parent: None,
 			children: Vec::new(),
 			process_group: Vec::new(),
 
@@ -363,7 +345,7 @@ impl Process {
 			user_stack,
 			kernel_stack,
 
-			cwd,
+			cwd: Path::root(),
 			file_descriptors: Vec::new(),
 
 			signals_bitfield: Bitfield::new(signal::SIGNALS_COUNT)?,
@@ -391,17 +373,26 @@ impl Process {
 		guard.get_mut().add_process(process)
 	}
 
+	/// Tells whether the process is the init process.
+	#[inline(always)]
+	pub fn is_init(&self) -> bool {
+		self.get_pid() == 1
+	}
+
 	/// Returns the process's PID.
+	#[inline(always)]
 	pub fn get_pid(&self) -> Pid {
 		self.pid
 	}
 
 	/// Returns the process's group ID.
+	#[inline(always)]
 	pub fn get_pgid(&self) -> Pid {
 		self.pgid
 	}
 
 	/// Tells whether the process is among a group and is not its owner.
+	#[inline(always)]
 	pub fn is_in_group(&self) -> bool {
 		self.pgid != 0 && self.pgid != self.pid
 	}
@@ -494,6 +485,14 @@ impl Process {
 		if self.state != State::Zombie {
 			self.state = new_state;
 		}
+
+		if self.state == State::Zombie {
+			if self.is_init() {
+				kernel_panic!("Terminated init process!");
+			}
+
+			// TODO Detach children and attach them to the init process
+		}
 	}
 
 	/// Tells whether the current process has informations to be retrieved by the `waitpid` system
@@ -547,8 +546,7 @@ impl Process {
 
 	/// Removes the process with the given PID `pid` as child to the process.
 	pub fn remove_child(&mut self, pid: Pid) {
-		let r = self.children.binary_search(&pid);
-		if let Ok(i) = r {
+		if let Ok(i) = self.children.binary_search(&pid) {
 			self.children.remove(i);
 		}
 	}
@@ -697,12 +695,10 @@ impl Process {
 		}
 	}
 
-	/// Forks the current process. Duplicating everything for it to be identical, except the PID,
-	/// the parent process and children processes.
-	/// TODO Update the list of elements that are not copied
+	/// Forks the current process. The internal state of the process (registers and memory) are
+	/// copied.
 	/// On fail, the function returns an Err with the appropriate Errno.
 	pub fn fork(&mut self) -> Result<SharedPtr<Self>, Errno> {
-		// TODO Free if the function fails
 		let pid = {
 			let mutex = unsafe {
 				PID_MANAGER.assume_init_mut()
@@ -831,9 +827,8 @@ impl Process {
 	/// `Zombie`.
 	pub fn exit(&mut self, status: u32) {
 		self.exit_status = (status & 0xff) as ExitStatus;
-		self.state = State::Zombie;
+		self.set_state(State::Zombie);
 
-		// TODO Ensure that the parent hasn't been removed?
 		if let Some(mut parent) = self.get_parent() {
 			unsafe {
 				parent.as_mut()
@@ -872,6 +867,8 @@ impl Drop for Process {
 				parent.as_mut()
 			}.remove_child(self.pid);
 		}
+
+		// TODO Assert that the process doesn't have any child (when terminated, the process must give all its children to the first process)
 
 		let mutex = unsafe {
 			PID_MANAGER.assume_init_mut()
