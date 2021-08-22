@@ -9,6 +9,7 @@ use crate::file::fs::Filesystem;
 use crate::file::path::Path;
 use crate::util::boxed::Box;
 use crate::util::container::string::String;
+use crate::util::container::vec::Vec;
 
 // TODO Take as parameter when mounting
 /// The maximum amount of memory the filesystem can use in bytes.
