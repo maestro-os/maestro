@@ -390,7 +390,7 @@ impl File {
 		if let FileContent::Directory(subfiles) = &self.content {
 			subfiles.is_empty()
 		} else {
-			panic!(); // TODO
+			panic!("Not a directory!");
 		}
 	}
 
@@ -400,7 +400,7 @@ impl File {
 		if let FileContent::Directory(subfiles) = &mut self.content {
 			subfiles.push(name)
 		} else {
-			panic!(); // TODO
+			panic!("Not a directory!");
 		}
 	}
 
@@ -412,7 +412,7 @@ impl File {
 			todo!();
 			// subfiles.remove(name);
 		} else {
-			panic!(); // TODO
+			panic!("Not a directory!");
 		}
 	}
 
@@ -568,8 +568,14 @@ impl File {
 
 	/// Unlinks the current file.
 	pub fn unlink(&mut self) {
-		// TODO
-		todo!();
+		match &self.location {
+			FileLocation::Disk(_l) => {
+				// TODO
+				// todo!();
+			},
+
+			_ => {},
+		}
 	}
 }
 

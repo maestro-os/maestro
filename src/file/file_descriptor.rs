@@ -6,7 +6,6 @@ use crate::errno;
 use crate::file::File;
 use crate::file::pipe::Pipe;
 use crate::file::socket::SocketSide;
-use crate::limits;
 use crate::util::FailableClone;
 use crate::util::lock::mutex::Mutex;
 use crate::util::ptr::SharedPtr;
@@ -20,35 +19,38 @@ pub const O_RDWR: i32 =      0b0000000000000011;
 /// At each write operations on the file descriptor, the cursor is placed at the end of the file so
 /// the data is appended.
 pub const O_APPEND: i32 =    0b0000000000000100;
-/// TODO doc
+/// Generates a SIGIO when input or output becomes possible on the file descriptor.
 pub const O_ASYNC: i32 =     0b0000000000001000;
 /// TODO doc
 pub const O_CLOEXEC: i32 =   0b0000000000010000;
 /// If the file doesn't exist, create it.
 pub const O_CREAT: i32 =     0b0000000000100000;
-/// TODO doc
+/// Disables caching data.
 pub const O_DIRECT: i32 =    0b0000000001000000;
 /// If pathname is not a directory, cause the open to fail.
 pub const O_DIRECTORY: i32 = 0b0000000010000000;
 /// TODO doc
 pub const O_EXCL: i32 =      0b0000000100000000;
-/// TODO doc
+/// Allows openning large files (more than 2^32 bytes).
 pub const O_LARGEFILE: i32 = 0b0000001000000000;
-/// TODO doc
+/// Don't update file access time.
 pub const O_NOATIME: i32 =   0b0000010000000000;
-/// TODO doc
+/// If refering to a tty, it will not become the process's controlling tty.
 pub const O_NOCTTY: i32 =    0b0000100000000000;
 /// Tells `open` not to follow symbolic links.
 pub const O_NOFOLLOW: i32 =  0b0001000000000000;
-/// TODO doc
+/// I/O is non blocking.
 pub const O_NONBLOCK: i32 =  0b0010000000000000;
-/// TODO doc
+/// When using `write`, the data has been transfered to the hardware before returning.
 pub const O_SYNC: i32 =      0b0100000000000000;
-/// TODO doc
+/// If the file already exists, truncate it to length zero.
 pub const O_TRUNC: i32 =     0b1000000000000000;
 
 /// The total number of file descriptors open system-wide.
 static mut TOTAL_FD: Mutex<usize> = Mutex::new(0);
+
+/// The maximum number of file descriptors that can be open system-wide at once.
+const TOTAL_MAX_FD: usize = 4294967295;
 
 /// Increments the total number of file descriptors open system-wide.
 /// If the maximum amount of file descriptors is reached, the function does nothing and returns an
@@ -59,8 +61,7 @@ fn increment_total() -> Result<(), Errno> {
 	};
 	let mut guard = mutex.lock(true);
 
-	// TODO Use the correct constant
-	if *guard.get() >= limits::OPEN_MAX {
+	if *guard.get() >= TOTAL_MAX_FD {
 		return Err(errno::ENFILE);
 	}
 	*guard.get_mut() += 1;

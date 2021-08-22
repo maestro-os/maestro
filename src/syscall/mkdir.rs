@@ -28,7 +28,7 @@ pub fn mkdir(regs: &util::Regs) -> Result<i32, Errno> {
 
 	let path = Path::from_string(unsafe { // Safe because the address is checked before
 		util::ptr_to_str(pathname as _)
-	})?;
+	}, true)?;
 
 	if !path.is_empty() {
 		let name = path[path.get_elements_count() - 1].failable_clone()?;

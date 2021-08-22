@@ -1,9 +1,10 @@
-//! TODO doc
+//! The `waitpid` system call allows to wait for an event from a child process.
 
 use core::mem::size_of;
 use crate::errno::Errno;
 use crate::errno;
 use crate::process::Process;
+use crate::process::State;
 use crate::process::pid::Pid;
 use crate::process::scheduler::Scheduler;
 use crate::process;
@@ -69,8 +70,16 @@ fn get_target(scheduler: &mut Scheduler, proc: &Process, pid: i32, i: usize) -> 
 
 /// Returns the wait status for the given process.
 fn get_wstatus(proc: &Process) -> i32 {
-	// TODO
-	proc.get_exit_status().unwrap() as _
+	let status = proc.get_exit_status().unwrap();
+	let termsig = 0; // TODO
+	let stopped = proc.get_state() == State::Stopped;
+
+	let mut wstatus = ((status as i32 & 0xff) << 8) | (termsig & 0x7f);
+	if !stopped {
+		wstatus |= 1 << 7;
+	}
+
+	wstatus
 }
 
 /// Checks if at least one process corresponding to the given constraint is waitable. If yes, the

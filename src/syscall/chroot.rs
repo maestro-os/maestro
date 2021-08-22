@@ -1,4 +1,4 @@
-//! TODO doc
+//! The `chroot` system call allows to virtually redefine the system's root for the current process.
 
 use crate::errno::Errno;
 use crate::util;

@@ -1,4 +1,5 @@
-//! TODO doc
+//! The `unlink` system call deletes the given file from its filesystem. If no link remain to the
+//! inode, the function also removes the inode.
 
 use crate::errno::Errno;
 use crate::util;

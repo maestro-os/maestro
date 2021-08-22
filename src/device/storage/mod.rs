@@ -323,7 +323,7 @@ impl StorageManager {
 		})?;
 
 		// The path of the main device file
-		let main_path = Path::from_string(prefix.as_str())?;
+		let main_path = Path::from_string(prefix.as_str(), false)?;
 		// The total size of the interface in bytes
 		let total_size = block_size * storage.get_blocks_count();
 
@@ -341,7 +341,7 @@ impl StorageManager {
 
 			// Adding the partition number to the path
 			let path_str = (prefix.failable_clone()? + String::from_number(i as _)?)?;
-			let path = Path::from_string(path_str.as_str())?;
+			let path = Path::from_string(path_str.as_str(), false)?;
 
 			// Computing the partition's offset and size
 			let off = partition.get_offset() * block_size;

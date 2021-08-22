@@ -19,7 +19,7 @@ use crate::util;
 
 /// Returns the absolute path to the file.
 fn get_file_absolute_path(process: &Process, path_str: &str) -> Result<Path, Errno> {
-	let path = Path::from_string(path_str)?;
+	let path = Path::from_string(path_str, true)?;
 	if !path.is_absolute() {
 		let cwd = process.get_cwd();
 		let mut absolute_path = cwd.concat(&path)?;
@@ -85,7 +85,7 @@ fn resolve_links(file: SharedPtr<File>, flags: i32, mode: u16, uid: u16, gid: u1
 
 		// Resolve the link
 		if let FileContent::Link(link_target) = f.get_file_content() {
-			let mut path = (parent_path + Path::from_string(link_target.as_str())?)?;
+			let mut path = (parent_path + Path::from_string(link_target.as_str(), false)?)?;
 			path.reduce()?;
 			drop(file_guard);
 			file = get_file(path, flags, mode, uid, gid)?;

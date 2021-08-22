@@ -7,8 +7,14 @@ use crate::process::Process;
 use crate::process::pid::Pid;
 use crate::util;
 
-/// TODO doc
-fn handle_getpgid(pid: Pid, proc: &mut Process) -> Result<i32, Errno> {
+/// The implementation of the `getpgid` syscall.
+pub fn getpgid(regs: &util::Regs) -> Result<i32, Errno> {
+	let pid = regs.ebx as Pid;
+
+	let mut mutex = Process::get_current().unwrap();
+	let mut guard = mutex.lock(false);
+	let proc = guard.get_mut();
+
 	if pid == 0 {
 		Ok(proc.get_pid() as _)
 	} else {
@@ -23,15 +29,4 @@ fn handle_getpgid(pid: Pid, proc: &mut Process) -> Result<i32, Errno> {
 		let proc = guard.get_mut();
 		Ok(proc.get_pgid() as _)
 	}
-}
-
-/// The implementation of the `getpgid` syscall.
-pub fn getpgid(regs: &util::Regs) -> Result<i32, Errno> {
-	let pid = regs.ebx as Pid;
-
-	let mut mutex = Process::get_current().unwrap();
-	let mut guard = mutex.lock(false);
-	let proc = guard.get_mut();
-
-	handle_getpgid(pid, proc)
 }

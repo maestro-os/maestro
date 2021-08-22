@@ -8,6 +8,8 @@ use crate::file::file_descriptor::O_NONBLOCK;
 use crate::process::Process;
 use crate::util;
 
+// TODO O_ASYNC
+
 /// The implementation of the `read` syscall.
 pub fn read(regs: &util::Regs) -> Result<i32, Errno> {
 	let fd = regs.ebx;

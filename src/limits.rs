@@ -96,8 +96,7 @@ pub const MAX_INPUT: usize = 255;
 /// string).
 pub const NAME_MAX: usize = 255;
 /// Maximum number of bytes the implementation will store as a pathname in a user-supplied buffer
-/// of unspecified size, including the terminating null character. Minimum number the
-/// implementation will accept as the maximum number of bytes in a pathname.
+/// of unspecified size, including the terminating null character.
 pub const PATH_MAX: usize = 4096;
 /// Maximum number of bytes that is guaranteed to be atomic when writing to a pipe.
 pub const PIPE_BUF: usize = 512;

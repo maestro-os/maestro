@@ -18,17 +18,17 @@ use super::path::Path;
 
 /// TODO doc
 const FLAG_MANDLOCK: u32    = 0b000000000001;
-/// TODO doc
+/// Do not update file (all kinds) access timestamps on the filesystem.
 const FLAG_NOATIME: u32     = 0b000000000010;
-/// TODO doc
+/// Do not allows access to device files on the filesystem.
 const FLAG_NODEV: u32       = 0b000000000100;
-/// TODO doc
+/// Do not update directory access timestamps on the filesystem.
 const FLAG_NODIRATIME: u32  = 0b000000001000;
-/// TODO doc
+/// Do not allow files on the filesystem to be executed.
 const FLAG_NOEXEC: u32      = 0b000000010000;
-/// TODO doc
+/// Ignore setuid and setgid flags on the filesystem.
 const FLAG_NOSUID: u32      = 0b000000100000;
-/// TODO doc
+/// Mounts the filesystem in read-only.
 const FLAG_RDONLY: u32      = 0b000001000000;
 /// TODO doc
 const FLAG_REC: u32         = 0b000010000000;

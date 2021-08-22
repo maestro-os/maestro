@@ -1,4 +1,6 @@
-//! TODO doc
+//! The `fork` system call duplicates the whole current process into a new child process. Execution
+//! resumes at the same location for both processes but the return value is different to allow
+//! differentiation.
 
 use crate::errno::Errno;
 use crate::process::Process;

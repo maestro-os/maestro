@@ -121,16 +121,19 @@ pub fn switch(tty: usize) {
 }
 
 impl TTY {
-	// TODO Clean
 	/// Creates a new TTY.
 	pub fn init(&mut self) {
 		self.id = 0;
 		self.cursor_x = 0;
 		self.cursor_y = 0;
 		self.screen_y = 0;
+
 		self.current_color = vga::DEFAULT_COLOR;
+
 		self.history = [0; HISTORY_SIZE];
+
 		self.ansi_buffer = ansi::ANSIBuffer::new();
+
 		self.prompted_chars = 0;
 		self.update = true;
 	}

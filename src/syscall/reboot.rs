@@ -59,13 +59,14 @@ pub fn reboot(regs: &util::Regs) -> Result<i32, Errno> {
 				asm!("jmp $0xffff, $0");
 			}
 
-			// In case rebooting didn't work (unlikely)
+			// In case rebooting didn't work (very unlikely)
 			crate::halt();
 		},
 
 		CMD_HALT => {
-			// TODO Send a signal to all other cores to stop them
 			crate::println!("Halting...");
+
+			// TODO Send a signal to all other cores to stop them
 			crate::halt();
 		},
 

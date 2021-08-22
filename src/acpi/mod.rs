@@ -7,6 +7,7 @@
 
 use core::ffi::c_void;
 use core::intrinsics::wrapping_add;
+use core::mem::size_of;
 use crate::memory;
 use crate::time;
 use crate::util;
@@ -49,13 +50,13 @@ pub struct ACPITableHeader {
 	checksum: u8,
 	/// An OEM-supplied string that identifies the OEM.
 	oemid: [u8; 6],
-	/// TODO doc
+	/// The manufacturer model ID.
 	oem_table_id: [u8; 8],
-	/// TODO doc
+	/// OEM revision for supplied OEM table ID.
 	oemrevision: u32,
-	/// TODO doc
+	/// Vendor ID of utility that created the table.
 	creator_id: u32,
-	/// TODO doc
+	/// Revision of utility that created the table.
 	creator_revision: u32,
 }
 
@@ -102,6 +103,22 @@ struct Rsdp {
 	rsdt_address: u32,
 }
 
+impl Rsdp {
+	/// Checks that the table is valid.
+	pub fn check(&self) -> bool {
+		let mut sum: u8 = 0;
+
+		for i in 0..size_of::<Self>() {
+			let byte = unsafe { // Safe since every bytes of `s` are readable.
+				*((self as *const Self as *const u8 as usize + i) as *const u8)
+			};
+			sum = wrapping_add(sum, byte);
+		}
+
+		sum == 0
+	}
+}
+
 /// This structure is the version 2.0 of the RSDP. This structure contains the field from the
 /// previous version, plus some extra fields.
 #[repr(C)]
@@ -144,7 +161,10 @@ pub fn init() {
 	let mut century_register = false;
 
 	if let Some(rsdp) = rsdp {
-		// TODO Check rsdp
+		if !rsdp.check() {
+			crate::kernel_panic!("Invalid ACPI pointer!");
+		}
+
 		let rsdt = unsafe {
 			&*((memory::PROCESS_END as usize + rsdp.rsdt_address as usize) as *const Rsdt)
 		};

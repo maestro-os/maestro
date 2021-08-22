@@ -1,6 +1,5 @@
 //! This module handles system calls. A system call is "function" that allows to communcate between
 //! userspace and kernelspace.
-//! TODO doc
 
 mod _exit;
 mod brk;

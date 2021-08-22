@@ -33,7 +33,7 @@ pub fn chdir(regs: &util::Regs) -> Result<i32, Errno> {
 
 	let new_cwd = Path::from_string(unsafe { // Safe because the pointer is checked before
 		str::from_utf8_unchecked(slice::from_raw_parts(path, len))
-	})?;
+	}, true)?;
 
 	{
 		let fcache_mutex = file::get_files_cache();

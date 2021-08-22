@@ -1,4 +1,4 @@
-//! TODO doc
+//! The `close` system call closes the given file descriptor.
 
 use crate::errno::Errno;
 use crate::errno;

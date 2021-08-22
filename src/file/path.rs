@@ -9,11 +9,11 @@ use core::ops::Range;
 use core::ops::RangeFrom;
 use core::ops::RangeTo;
 use crate::errno::Errno;
+use crate::errno;
+use crate::limits;
 use crate::util::FailableClone;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
-
-// TODO In path, check that every component matches the maximum allowed length
 
 /// The character used as a path separator.
 pub const PATH_SEPARATOR: char = '/';
@@ -36,9 +36,20 @@ impl Path {
 	}
 
 	/// Creates a new instance from string.
-	pub fn from_string(path: &str) -> Result<Self, Errno> {
+	/// `path` is the path.
+	/// `user` tells whether the path was supplied by the user (to check the length and return an
+	///	error if too long).
+	pub fn from_string(path: &str, user: bool) -> Result<Self, Errno> {
+		if user && path.len() + 1 >= limits::PATH_MAX {
+			return Err(errno::ENAMETOOLONG);
+		}
+
 		let mut parts = Vec::new();
 		for p in path.split(PATH_SEPARATOR) {
+			if p.len() + 1 >= limits::NAME_MAX {
+				return Err(errno::ENAMETOOLONG);
+			}
+
 			if !p.is_empty() {
 				parts.push(String::from(p)?)?;
 			}
@@ -85,6 +96,10 @@ impl Path {
 
 	/// Pushes the given filename `filename` onto the path.
 	pub fn push(&mut self, filename: String) -> Result<(), Errno> {
+		if filename.len() + 1 >= limits::NAME_MAX {
+			return Err(errno::ENAMETOOLONG);
+		}
+
 		self.parts.push(filename)
 	}
 

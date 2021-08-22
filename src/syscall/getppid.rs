@@ -1,4 +1,4 @@
-//! TODO doc
+//! The `getppid` system call returns the PID of the process's parent.
 
 use crate::errno::Errno;
 use crate::process::Process;

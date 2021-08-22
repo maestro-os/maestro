@@ -377,7 +377,7 @@ impl Process {
 			let mut guard = mutex.lock(true);
 			let files_cache = guard.get_mut();
 
-			let tty_path = Path::from_string(TTY_DEVICE_PATH)?;
+			let tty_path = Path::from_string(TTY_DEVICE_PATH, false)?;
 			let tty_file = files_cache.get_file_from_path(&tty_path)?;
 			let stdin_fd = process.create_fd(file_descriptor::O_RDWR, FDTarget::File(tty_file))?;
 			assert_eq!(stdin_fd.get_id(), STDIN_FILENO);
