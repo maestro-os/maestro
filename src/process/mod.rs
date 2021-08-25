@@ -868,7 +868,8 @@ impl Drop for Process {
 			}.remove_child(self.pid);
 		}
 
-		// TODO Assert that the process doesn't have any child (when terminated, the process must give all its children to the first process)
+		// TODO Assert that the process doesn't have any child (when terminated, the process must
+		// give all its children to the first process)
 
 		let mutex = unsafe {
 			PID_MANAGER.assume_init_mut()

@@ -254,6 +254,7 @@ impl MemMapping {
 	}
 
 	/// Unmaps the mapping from the given virtual memory context.
+	/// If the physical pages the mapping points to are not shared, the function frees them.
 	pub fn unmap(&mut self) -> Result<(), Errno> {
 		let vmem = self.get_mut_vmem();
 		vmem.unmap_range(self.begin, self.size)?;
@@ -262,10 +263,16 @@ impl MemMapping {
 		for i in 0..self.size {
 			let virt_ptr = (self.begin as usize + i * memory::PAGE_SIZE) as *const c_void;
 
-			if self.is_shared(i) {
-				if let Some(phys_ptr) = vmem.translate(virt_ptr) {
-					let allocated = phys_ptr != get_default_page();
+			if let Some(phys_ptr) = vmem.translate(virt_ptr) {
+				{
+					let mut ref_counter = unsafe { // Safe because using Mutex
+						super::PHYSICAL_REF_COUNTER.lock(true)
+					};
+					ref_counter.get_mut().decrement(phys_ptr);
+				}
 
+				if !self.is_shared(i) {
+					let allocated = phys_ptr != get_default_page();
 					if allocated {
 						buddy::free(phys_ptr, 0);
 					}
@@ -285,7 +292,7 @@ impl MemMapping {
 		if let Some(phys_ptr) = vmem.translate(virt_ptr) {
 			let allocated = phys_ptr != get_default_page();
 			let flags = self.get_vmem_flags(allocated, offset);
-			// Cannot fail because the page is already mapped
+			// Cannot fail because the page for the vmem structure is already mapped
 			vmem.map(phys_ptr, virt_ptr, flags).unwrap();
 
 			// TODO Use page invalidation instead if available
