@@ -22,10 +22,7 @@ impl KeyboardManager {
 
 impl DeviceManager for KeyboardManager {
 	fn legacy_detect(&mut self) -> Result<(), Errno> {
-		let mut ps2_handler = ps2::PS2Handler::new(| c, action | {
-			crate::println!("Key action! {:?} {:?}", c, action);
-			// TODO Write to device file and current TTY
-		});
+		let mut ps2_handler = ps2::PS2Handler::new();
 		if ps2_handler.init().is_err() {
 			return Err(crate::errno::EIO); // TODO
 		}

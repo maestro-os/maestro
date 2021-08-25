@@ -6,8 +6,8 @@
 
 use crate::event::{CallbackHook, InterruptResult, InterruptResultAction};
 use crate::event;
+use crate::idt;
 use crate::io;
-use crate::util::boxed::Box;
 use crate::util;
 
 /// The interrupt number for keyboard input events.
@@ -508,16 +508,13 @@ fn read_keystroke() -> (KeyboardKey, KeyboardAction) {
 pub struct PS2Handler {
 	/// The callback hook for keyboard input interrupts.
 	keyboard_interrupt_callback_hook: Option<CallbackHook>,
-	/// The callback handling keyboard inputs.
-	keyboard_callback: Box<dyn FnMut(KeyboardKey, KeyboardAction)>,
 }
 
 impl PS2Handler {
 	/// Creates the module's instance.
-	pub fn new<F: 'static + FnMut(KeyboardKey, KeyboardAction)>(f: F) -> Self {
+	pub fn new() -> Self {
 		Self {
 			keyboard_interrupt_callback_hook: None,
-			keyboard_callback: Box::new(f).unwrap(),
 		}
 	}
 }
@@ -527,42 +524,41 @@ impl PS2Handler {
 	pub fn init(&mut self) -> Result<(), ()> {
 		// TODO Check if PS/2 controller is existing using ACPI
 
-		// TODO Disable interrupts during init
+		idt::wrap_disable_interrupts(|| {
+			disable_devices();
+			clear_buffer();
 
-		disable_devices();
-		clear_buffer();
+			set_config_byte(get_config_byte() & 0b10111100);
 
-		set_config_byte(get_config_byte() & 0b10111100);
+			test_controller()?;
+			test_device()?;
+			enable_keyboard()?;
 
-		test_controller()?;
-		test_device()?;
-		enable_keyboard()?;
+			set_config_byte(get_config_byte() | 0b1);
+			clear_buffer();
 
-		set_config_byte(get_config_byte() | 0b1);
-		clear_buffer();
+			let callback = | _id: u32, _code: u32, _regs: &util::Regs, _ring: u32 | {
+				while can_read() {
+					let (key, action) = read_keystroke();
 
-		let callback = | _id: u32, _code: u32, _regs: &util::Regs, _ring: u32 | {
-			while can_read() {
-				let (key, action) = read_keystroke();
+					// TODO Write to device file and current TTY
+					crate::println!("Key action! {:?} {:?}", key, action);
 
-				crate::print!("TODO"); // TODO rm
-
-				// TODO Do something with the key
-
-				if key == KeyboardKey::KeyPause && action == KeyboardAction::Pressed {
-					// TODO Release the key
+					if key == KeyboardKey::KeyPause && action == KeyboardAction::Pressed {
+						// TODO Write release directly
+					}
 				}
-			}
 
-			InterruptResult::new(false, InterruptResultAction::Resume)
-		};
-		let hook_result = event::register_callback(KEYBOARD_INTERRUPT_ID, 0, callback);
-		if let Ok(hook) = hook_result {
-			self.keyboard_interrupt_callback_hook = Some(hook);
-			Ok(())
-		} else {
-			Err(())
-		}
+				InterruptResult::new(false, InterruptResultAction::Resume)
+			};
+			let hook_result = event::register_callback(KEYBOARD_INTERRUPT_ID, 0, callback);
+			if let Ok(hook) = hook_result {
+				self.keyboard_interrupt_callback_hook = Some(hook);
+				Ok(())
+			} else {
+				Err(())
+			}
+		})
 	}
 
 	// TODO LEDs state

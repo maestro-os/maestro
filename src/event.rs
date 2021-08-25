@@ -99,7 +99,7 @@ struct CallbackWrapper {
 	/// Third argument: `regs` the values of the registers when the interruption was triggered.
 	/// Fourth argument: `ring` tells the ring at which the code was running.
 	/// The return value tells which action to perform next.
-	callback: Box<dyn Fn(u32, u32, &util::Regs, u32) -> InterruptResult>,
+	callback: Box<dyn FnMut(u32, u32, &util::Regs, u32) -> InterruptResult>,
 }
 
 /// Structure used to detect whenever the object owning the callback is destroyed, allowing to
@@ -156,7 +156,7 @@ pub fn init() {
 ///
 /// If the `id` is invalid or if an allocation fails, the function shall return an error.
 pub fn register_callback<T>(id: usize, priority: u32, callback: T) -> Result<CallbackHook, Errno>
-	where T: 'static + Fn(u32, u32, &util::Regs, u32) -> InterruptResult {
+	where T: 'static + FnMut(u32, u32, &util::Regs, u32) -> InterruptResult {
 	debug_assert!(id < idt::ENTRIES_COUNT);
 
 	idt::wrap_disable_interrupts(|| {
@@ -231,10 +231,10 @@ pub unsafe extern "C" fn unlock_callbacks(id: usize) {
 #[no_mangle]
 pub extern "C" fn event_handler(id: u32, code: u32, ring: u32, regs: &util::Regs) {
 	let action = {
-		let guard = unsafe {
+		let mut guard = unsafe {
 			&mut CALLBACKS.assume_init_mut()[id as usize]
 		}.lock(false);
-		let callbacks = guard.get();
+		let callbacks = guard.get_mut();
 
 		let mut last_action = {
 			if (id as usize) < ERROR_MESSAGES.len() {
