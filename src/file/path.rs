@@ -244,88 +244,88 @@ mod test {
 
 	#[test_case]
 	fn path_absolute0() {
-		assert!(Path::from_string("/").unwrap().is_absolute());
+		assert!(Path::from_string("/", false).unwrap().is_absolute());
 	}
 
 	#[test_case]
 	fn path_absolute1() {
-		assert!(Path::from_string("/.").unwrap().is_absolute());
+		assert!(Path::from_string("/.", false).unwrap().is_absolute());
 	}
 
 	#[test_case]
 	fn path_absolute2() {
-		assert!(!Path::from_string(".").unwrap().is_absolute());
+		assert!(!Path::from_string(".", false).unwrap().is_absolute());
 	}
 
 	#[test_case]
 	fn path_absolute3() {
-		assert!(!Path::from_string("..").unwrap().is_absolute());
+		assert!(!Path::from_string("..", false).unwrap().is_absolute());
 	}
 
 	#[test_case]
 	fn path_absolute4() {
-		assert!(!Path::from_string("./").unwrap().is_absolute());
+		assert!(!Path::from_string("./", false).unwrap().is_absolute());
 	}
 
 	#[test_case]
 	fn path_reduce0() {
-		let mut path = Path::from_string("/.").unwrap();
+		let mut path = Path::from_string("/.", false).unwrap();
 		path.reduce().unwrap();
 		assert_eq!(path.as_string().unwrap(), "/");
 	}
 
 	#[test_case]
 	fn path_reduce1() {
-		let mut path = Path::from_string("/..").unwrap();
+		let mut path = Path::from_string("/..", false).unwrap();
 		path.reduce().unwrap();
 		assert_eq!(path.as_string().unwrap(), "/");
 	}
 
 	#[test_case]
 	fn path_reduce2() {
-		let mut path = Path::from_string("./").unwrap();
+		let mut path = Path::from_string("./", false).unwrap();
 		path.reduce().unwrap();
 		assert_eq!(path.as_string().unwrap(), ".");
 	}
 
 	#[test_case]
 	fn path_reduce3() {
-		let mut path = Path::from_string("../").unwrap();
+		let mut path = Path::from_string("../", false).unwrap();
 		path.reduce().unwrap();
 		assert_eq!(path.as_string().unwrap(), "..");
 	}
 
 	#[test_case]
 	fn path_reduce4() {
-		let mut path = Path::from_string("../bleh").unwrap();
+		let mut path = Path::from_string("../bleh", false).unwrap();
 		path.reduce().unwrap();
 		assert_eq!(path.as_string().unwrap(), "../bleh");
 	}
 
 	#[test_case]
 	fn path_reduce5() {
-		let mut path = Path::from_string("../bleh/..").unwrap();
+		let mut path = Path::from_string("../bleh/..", false).unwrap();
 		path.reduce().unwrap();
 		assert_eq!(path.as_string().unwrap(), "..");
 	}
 
 	#[test_case]
 	fn path_reduce6() {
-		let mut path = Path::from_string("../bleh/../bluh").unwrap();
+		let mut path = Path::from_string("../bleh/../bluh", false).unwrap();
 		path.reduce().unwrap();
 		assert_eq!(path.as_string().unwrap(), "../bluh");
 	}
 
 	#[test_case]
 	fn path_reduce7() {
-		let mut path = Path::from_string("/bleh/../bluh").unwrap();
+		let mut path = Path::from_string("/bleh/../bluh", false).unwrap();
 		path.reduce().unwrap();
 		assert_eq!(path.as_string().unwrap(), "/bluh");
 	}
 
 	#[test_case]
 	fn path_reduce8() {
-		let mut path = Path::from_string("/bleh/../../bluh").unwrap();
+		let mut path = Path::from_string("/bleh/../../bluh", false).unwrap();
 		path.reduce().unwrap();
 		assert_eq!(path.as_string().unwrap(), "/bluh");
 	}
