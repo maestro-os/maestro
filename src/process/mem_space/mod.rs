@@ -248,6 +248,7 @@ impl MemSpace {
 		Ok(())
 	}
 
+	// TODO Allow reading kernelspace data that is available to userspace
 	/// Tells whether the given region of memory `ptr` of size `size` in bytes can be accessed.
 	/// `user` tells whether the memory must be accessible from userspace or just kernelspace.
 	/// `write` tells whether to check for write permission.
@@ -255,14 +256,15 @@ impl MemSpace {
 		let mut i = 0;
 
 		while i < size {
-			let page_ptr = (ptr as usize + i * memory::PAGE_SIZE) as *const _;
+			// The beginning of the current page
+			let page_begin = util::down_align((ptr as usize + i) as _, memory::PAGE_SIZE);
 
-			if let Some(mapping) = Self::get_mapping_for(&self.mappings, page_ptr) {
+			if let Some(mapping) = Self::get_mapping_for(&self.mappings, page_begin) {
 				let flags = mapping.get_flags();
-				if write != (flags & MAPPING_FLAG_WRITE != 0) {
+				if write && !(flags & MAPPING_FLAG_WRITE != 0) {
 					return false;
 				}
-				if user != (flags & MAPPING_FLAG_USER != 0) {
+				if user && !(flags & MAPPING_FLAG_USER != 0) {
 					return false;
 				}
 
@@ -275,6 +277,7 @@ impl MemSpace {
 		true
 	}
 
+	// TODO Allow reading kernelspace data that is available to userspace
 	/// Tells whether the given zero-terminated string beginning at `ptr` can be accessed.
 	/// `user` tells whether the memory must be accessible from userspace or just kernelspace.
 	/// `write` tells whether to check for write permission.
@@ -291,10 +294,10 @@ impl MemSpace {
 
 				if let Some(mapping) = Self::get_mapping_for(&self.mappings, curr_ptr as _) {
 					let flags = mapping.get_flags();
-					if write != (flags & MAPPING_FLAG_WRITE != 0) {
+					if write && !(flags & MAPPING_FLAG_WRITE != 0) {
 						return None;
 					}
-					if user != (flags & MAPPING_FLAG_USER != 0) {
+					if user && !(flags & MAPPING_FLAG_USER != 0) {
 						return None;
 					}
 

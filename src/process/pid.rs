@@ -23,7 +23,7 @@ impl PIDManager {
 		let mut s = Self {
 			allocator: IDAllocator::new(MAX_PID as _)?,
 		};
-		s.allocator.set_used(1);
+		s.allocator.set_used(0);
 		Ok(s)
 	}
 
