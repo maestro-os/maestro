@@ -204,7 +204,7 @@ pub fn init() -> Result<(), Errno> {
 				0x0d => {
 					let vmem = curr_proc.get_mem_space_mut().get_vmem();
 					let mut inst_prefix = 0;
-					vmem::vmem_switch(vmem.as_ref(), || {
+					vmem::switch(vmem.as_ref(), || {
 						inst_prefix = unsafe {
 							*(regs.eip as *const u8)
 						};

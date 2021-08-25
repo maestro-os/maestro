@@ -23,6 +23,7 @@ use crate::util::FailableClone;
 use crate::util::boxed::Box;
 use crate::util::container::binary_tree::BinaryTree;
 use crate::util::lock::mutex::Mutex;
+use crate::util;
 use gap::MemGap;
 use mapping::MemMapping;
 use physical_ref_counter::PhysRefCounter;
@@ -137,7 +138,7 @@ impl MemSpace {
 	/// enough to contain the mapping.
 	/// `size` represents the size of the region in number of memory pages.
 	/// `flags` represents the flags for the mapping.
-	/// underlying physical memory is not allocated directly but only an attempt to write the
+	/// The underlying physical memory is not allocated directly but only an attempt to write the
 	/// memory is detected.
 	/// The function returns a pointer to the newly mapped virtual memory.
 	pub fn map(&mut self, ptr: Option<*const c_void>, size: usize, flags: u8)
@@ -188,14 +189,34 @@ impl MemSpace {
 		})
 	}
 
-	/// Returns a mutable reference to the memory mapping containing the given virtual address
-	/// `ptr` from mappings container `mappings`. If no mapping contains the address, the function
-	/// returns None.
-	fn get_mapping_for(mappings: &mut BinaryTree::<*const c_void, MemMapping>, ptr: *const c_void)
-		-> Option::<&mut MemMapping> {
+	/// Returns a reference to the memory mapping containing the given virtual address `ptr` from
+	/// mappings container `mappings`. If no mapping contains the address, the function returns
+	/// None.
+	fn get_mapping_for(mappings: &BinaryTree<*const c_void, MemMapping>, ptr: *const c_void)
+		-> Option<&MemMapping> {
 		mappings.cmp_get(| key, value | {
 			let begin = *key;
 			let end = (begin as usize + value.get_size() * memory::PAGE_SIZE) as *const c_void;
+
+			if ptr >= begin && ptr < end {
+				Ordering::Equal
+			} else if ptr < begin {
+				Ordering::Less
+			} else {
+				Ordering::Greater
+			}
+		})
+	}
+
+	/// Returns a mutable reference to the memory mapping containing the given virtual address
+	/// `ptr` from mappings container `mappings`. If no mapping contains the address, the function
+	/// returns None.
+	fn get_mapping_mut_for(mappings: &mut BinaryTree<*const c_void, MemMapping>,
+		ptr: *const c_void) -> Option<&mut MemMapping> {
+		mappings.cmp_get_mut(| key, value | {
+			let begin = *key;
+			let end = (begin as usize + value.get_size() * memory::PAGE_SIZE) as *const c_void;
+
 			if ptr >= begin && ptr < end {
 				Ordering::Equal
 			} else if ptr < begin {
@@ -213,18 +234,44 @@ impl MemSpace {
 	/// other memory mappings.
 	/// After this function returns, the access to the region of memory shall be revoked and
 	/// further attempts to access it shall result in a page fault.
-	pub fn unmap(&mut self, _ptr: *const c_void, _size: usize) {
-		// TODO
-		todo!();
+	pub fn unmap(&mut self, ptr: *const c_void, size: usize) -> Result<(), Errno> {
+		let i = 0;
+		while i < size {
+			let page_ptr = (ptr as usize + i * memory::PAGE_SIZE) as *const _;
+			let _mapping = Self::get_mapping_mut_for(&mut self.mappings, page_ptr);
+
+			// TODO Shrink or remove the mapping and add one or two gaps if required
+			// TODO Merge new gaps with nearby gaps if required
+			todo!();
+		}
+
+		Ok(())
 	}
 
 	/// Tells whether the given region of memory `ptr` of size `size` in bytes can be accessed.
 	/// `user` tells whether the memory must be accessible from userspace or just kernelspace.
 	/// `write` tells whether to check for write permission.
-	pub fn can_access(&self, _ptr: *const u8, _size: usize, _user: bool, _write: bool) -> bool {
-		// TODO
+	pub fn can_access(&self, ptr: *const u8, size: usize, user: bool, write: bool) -> bool {
+		let mut i = 0;
 
-		//todo!();
+		while i < size {
+			let page_ptr = (ptr as usize + i * memory::PAGE_SIZE) as *const _;
+
+			if let Some(mapping) = Self::get_mapping_for(&self.mappings, page_ptr) {
+				let flags = mapping.get_flags();
+				if write != (flags & MAPPING_FLAG_WRITE != 0) {
+					return false;
+				}
+				if user != (flags & MAPPING_FLAG_USER != 0) {
+					return false;
+				}
+
+				i += mapping.get_size() * memory::PAGE_SIZE;
+			} else {
+				return false;
+			}
+		}
+
 		true
 	}
 
@@ -233,12 +280,48 @@ impl MemSpace {
 	/// `write` tells whether to check for write permission.
 	/// If the memory cannot be accessed, the function returns None. If it can be accessed, it
 	/// returns the length of the string located at the pointer `ptr`.
-	pub fn can_access_string(&self, ptr: *const u8, _user: bool, _write: bool) -> Option<usize> {
-		// TODO
+	pub fn can_access_string(&self, ptr: *const u8, user: bool, write: bool) -> Option<usize> {
+		vmem::switch(self.vmem.as_ref(), || {
+			let mut i = 0;
+			'outer: loop {
+				// Safe because not dereferenced before checking if accessible
+				let curr_ptr = unsafe {
+					ptr.add(i)
+				};
 
-		//todo!();
-		Some(unsafe {
-			crate::util::strlen(ptr)
+				if let Some(mapping) = Self::get_mapping_for(&self.mappings, curr_ptr as _) {
+					let flags = mapping.get_flags();
+					if write != (flags & MAPPING_FLAG_WRITE != 0) {
+						return None;
+					}
+					if user != (flags & MAPPING_FLAG_USER != 0) {
+						return None;
+					}
+
+					// The beginning of the current page
+					let page_begin = util::down_align(curr_ptr as _, memory::PAGE_SIZE);
+					// The offset of the current pointer in its page
+					let inner_off = curr_ptr as usize - page_begin as usize;
+					let check_size = memory::PAGE_SIZE - inner_off;
+
+					for j in 0..check_size {
+						let c = unsafe { // Safe because the pointer is checked before
+							*curr_ptr.add(j)
+						};
+
+						// TODO Optimize by checking several bytes at a time
+						if c == b'\0' {
+							break 'outer;
+						}
+					}
+
+					i += check_size;
+				} else {
+					return None;
+				}
+			}
+
+			Some(i)
 		})
 	}
 
@@ -311,7 +394,7 @@ impl MemSpace {
 			return false;
 		}
 
-		if let Some(mapping) = Self::get_mapping_for(&mut self.mappings, virt_addr) {
+		if let Some(mapping) = Self::get_mapping_mut_for(&mut self.mappings, virt_addr) {
 			let offset = (virt_addr as usize - mapping.get_begin() as usize) / memory::PAGE_SIZE;
 			oom::wrap(|| {
 				mapping.map(offset)

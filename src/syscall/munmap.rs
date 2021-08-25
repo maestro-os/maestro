@@ -35,6 +35,6 @@ pub fn munmap(regs: &util::Regs) -> Result<i32, Errno> {
 		return Err(errno::EINVAL);
 	}
 
-	mem_space.unmap(addr, pages);
+	mem_space.unmap(addr, pages)?;
 	Ok(0)
 }

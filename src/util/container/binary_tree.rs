@@ -556,7 +556,26 @@ impl<K: 'static + Ord, V: 'static> BinaryTree<K, V> {
 
 	/// Searches for a node in the tree using the given comparison function `cmp` instead of the
 	/// Ord trait.
-	pub fn cmp_get<'a, F: Fn(&K, &V) -> Ordering>(&'a mut self, cmp: F) -> Option<&'a mut V> {
+	pub fn cmp_get<'a, F: Fn(&K, &V) -> Ordering>(&'a self, cmp: F) -> Option<&'a V> {
+		let mut node = self.get_root();
+
+		while node.is_some() {
+			let n = node.unwrap();
+			let ord = cmp(&n.key, &n.value).reverse();
+
+			match ord {
+				Ordering::Less => node = n.get_left(),
+				Ordering::Greater => node = n.get_right(),
+				Ordering::Equal => return Some(&n.value),
+			}
+		}
+
+		None
+	}
+
+	/// Searches for a node in the tree using the given comparison function `cmp` instead of the
+	/// Ord trait and returns a mutable reference.
+	pub fn cmp_get_mut<'a, F: Fn(&K, &V) -> Ordering>(&'a mut self, cmp: F) -> Option<&'a mut V> {
 		let mut node = self.get_root_mut();
 
 		while node.is_some() {

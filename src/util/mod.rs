@@ -19,27 +19,27 @@ use crate::errno::Errno;
 
 /// Tells if pointer `ptr` is aligned on boundary `n`.
 #[inline(always)]
-pub fn is_aligned(ptr: *const c_void, n: usize) -> bool {
+pub fn is_aligned<T>(ptr: *const T, n: usize) -> bool {
 	((ptr as usize) & (n - 1)) == 0
 }
 
 /// Aligns down a pointer. The retuned value shall be lower than `ptr` or equal
 /// if the pointer is already aligned.
 #[inline(always)]
-pub fn down_align(ptr: *const c_void, n: usize) -> *const c_void {
-	((ptr as usize) & !(n - 1)) as *const c_void
+pub fn down_align<T>(ptr: *const T, n: usize) -> *const T {
+	((ptr as usize) & !(n - 1)) as *const T
 }
 
 /// Aligns up a pointer. The returned value shall be greater than `ptr`.
 #[inline(always)]
-pub fn up_align(ptr: *const c_void, n: usize) -> *const c_void {
-	((down_align(ptr, n) as usize) + n) as *const c_void
+pub fn up_align<T>(ptr: *const T, n: usize) -> *const T {
+	((down_align(ptr, n) as usize) + n) as *const T
 }
 
 /// Aligns a pointer. The returned value shall be greater than `ptr` or equal if
 /// the pointer is already aligned.
 #[inline(always)]
-pub fn align(ptr: *const c_void, n: usize) -> *const c_void {
+pub fn align<T>(ptr: *const T, n: usize) -> *const T {
 	if is_aligned(ptr, n) {
 		ptr
 	} else {

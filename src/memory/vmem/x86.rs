@@ -456,12 +456,12 @@ impl VMem for X86VMem {
 		let mut i = 0;
 		while i < pages {
 			let off = i * memory::PAGE_SIZE;
-			let use_pse = {
-				util::is_aligned(((virtaddr as usize) + off) as _, 1024 * memory::PAGE_SIZE)
-					&& (pages - i) >= 1024
-			};
 			let next_physaddr = ((physaddr as usize) + off) as *const c_void;
 			let next_virtaddr = ((virtaddr as usize) + off) as *const c_void;
+
+			let use_pse = {
+				util::is_aligned(next_virtaddr, 1024 * memory::PAGE_SIZE) && (pages - i) >= 1024
+			};
 
 			if use_pse {
 				#[cfg(config_debug_debug)]
@@ -513,11 +513,11 @@ impl VMem for X86VMem {
 		let mut i = 0;
 		while i < pages {
 			let off = i * memory::PAGE_SIZE;
-			let use_pse = {
-				util::is_aligned(((virtaddr as usize) + off) as _, 1024 * memory::PAGE_SIZE)
-					&& (pages - i) >= 1024
-			};
 			let next_virtaddr = ((virtaddr as usize) + off) as *const c_void;
+
+			let use_pse = {
+				util::is_aligned(next_virtaddr, 1024 * memory::PAGE_SIZE) && (pages - i) >= 1024
+			};
 
 			if use_pse {
 				#[cfg(config_debug_debug)]

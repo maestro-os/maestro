@@ -7,7 +7,6 @@ use core::ptr;
 use crate::errno::Errno;
 use crate::memory::buddy;
 use crate::memory::vmem::VMem;
-use crate::memory::vmem::vmem_switch;
 use crate::memory::vmem;
 use crate::memory;
 use crate::process::mem_space::physical_ref_counter::PhysRefCounter;
@@ -51,7 +50,7 @@ pub struct MemMapping {
 	flags: u8,
 
 	/// Pointer to the virtual memory context handler.
-	vmem: NonNull::<dyn VMem>, // TODO Use a weak pointer
+	vmem: NonNull<dyn VMem>, // TODO Use a weak pointer
 }
 
 impl MemMapping {
@@ -75,21 +74,25 @@ impl MemMapping {
 	}
 
 	/// Returns a pointer on the virtual memory to the beginning of the mapping.
+	#[inline(always)]
 	pub fn get_begin(&self) -> *const c_void {
 		self.begin
 	}
 
 	/// Returns the size of the mapping in memory pages.
+	#[inline(always)]
 	pub fn get_size(&self) -> usize {
 		self.size
 	}
 
 	/// Returns the mapping's flags.
+	#[inline(always)]
 	pub fn get_flags(&self) -> u8 {
 		self.flags
 	}
 
 	/// Returns a reference to the virtual memory context handler associated with the mapping.
+	#[inline(always)]
 	pub fn get_vmem(&self) -> &'static dyn VMem {
 		unsafe {
 			&*self.vmem.as_ptr()
@@ -98,6 +101,7 @@ impl MemMapping {
 
 	/// Returns a mutable reference to the virtual memory context handler associated with the
 	/// mapping.
+	#[inline(always)]
 	pub fn get_mut_vmem(&mut self) -> &'static mut dyn VMem {
 		unsafe {
 			&mut *self.vmem.as_ptr()
@@ -105,6 +109,7 @@ impl MemMapping {
 	}
 
 	/// Tells whether the mapping contains the given virtual address `ptr`.
+	#[inline(always)]
 	pub fn contains_ptr(&self, ptr: *const c_void) -> bool {
 		ptr >= self.begin && ptr < (self.begin as usize + self.size * memory::PAGE_SIZE) as _
 	}
@@ -237,7 +242,7 @@ impl MemMapping {
 		}
 		vmem.flush();
 
-		vmem_switch(vmem, || {
+		vmem::switch(vmem, || {
 			unsafe {
 				vmem::write_lock_wrap(|| {
 					if let Some(buffer) = &cow_buffer {
