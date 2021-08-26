@@ -165,7 +165,7 @@ pub fn init() -> Result<(), Errno> {
 		SCHEDULER.write(Scheduler::new(cores_count)?);
 	}
 
-	let callback = | id: u32, code: u32, regs: &Regs, ring: u32 | {
+	let callback = | id: u32, _code: u32, regs: &Regs, ring: u32 | {
 		if ring < 3 {
 			return InterruptResult::new(true, InterruptResultAction::Panic);
 		}
@@ -176,7 +176,7 @@ pub fn init() -> Result<(), Errno> {
 		let scheduler = guard.get_mut();
 
 		if let Some(mut curr_proc) = scheduler.get_current_process() {
-			let mut curr_proc_guard = curr_proc.lock(true);
+			let mut curr_proc_guard = curr_proc.lock(false);
 			let curr_proc = curr_proc_guard.get_mut();
 
 			match id {
@@ -218,18 +218,6 @@ pub fn init() -> Result<(), Errno> {
 					}
 				},
 
-				// Page Fault
-				0x0e => {
-					let accessed_ptr = unsafe {
-						vmem::x86::cr2_get()
-					};
-
-					if !curr_proc.mem_space.handle_page_fault(accessed_ptr, code) {
-						curr_proc.kill(Signal::new(signal::SIGSEGV).unwrap());
-						curr_proc.signal_next();
-					}
-				},
-
 				// Alignment Check
 				0x11 => {
 					curr_proc.kill(Signal::new(signal::SIGBUS).unwrap());
@@ -248,13 +236,45 @@ pub fn init() -> Result<(), Errno> {
 			InterruptResult::new(true, InterruptResultAction::Panic)
 		}
 	};
+	let page_fault_callback = | _id: u32, code: u32, _regs: &Regs, ring: u32 | {
+		let mut guard = unsafe {
+			SCHEDULER.assume_init_mut()
+		}.lock(false);
+		let scheduler = guard.get_mut();
+
+		if let Some(mut curr_proc) = scheduler.get_current_process() {
+			let mut curr_proc_guard = curr_proc.lock(false);
+			let curr_proc = curr_proc_guard.get_mut();
+
+			let accessed_ptr = unsafe {
+				vmem::x86::cr2_get()
+			};
+
+			if !curr_proc.mem_space.handle_page_fault(accessed_ptr, code) {
+				if ring < 3 {
+					return InterruptResult::new(true, InterruptResultAction::Panic);
+				} else {
+					curr_proc.kill(Signal::new(signal::SIGSEGV).unwrap());
+					curr_proc.signal_next();
+				}
+			}
+
+			if curr_proc.get_state() == State::Running {
+				InterruptResult::new(false, InterruptResultAction::Resume)
+			} else {
+				InterruptResult::new(true, InterruptResultAction::Loop)
+			}
+		} else {
+			InterruptResult::new(true, InterruptResultAction::Panic)
+		}
+	};
 
 	// TODO Use only one instance?
 	let _ = ManuallyDrop::new(event::register_callback(0x00, u32::MAX, callback)?);
 	let _ = ManuallyDrop::new(event::register_callback(0x03, u32::MAX, callback)?);
 	let _ = ManuallyDrop::new(event::register_callback(0x06, u32::MAX, callback)?);
 	let _ = ManuallyDrop::new(event::register_callback(0x0d, u32::MAX, callback)?);
-	let _ = ManuallyDrop::new(event::register_callback(0x0e, u32::MAX, callback)?);
+	let _ = ManuallyDrop::new(event::register_callback(0x0e, u32::MAX, page_fault_callback)?);
 	let _ = ManuallyDrop::new(event::register_callback(0x10, u32::MAX, callback)?);
 	let _ = ManuallyDrop::new(event::register_callback(0x11, u32::MAX, callback)?);
 	let _ = ManuallyDrop::new(event::register_callback(0x13, u32::MAX, callback)?);
