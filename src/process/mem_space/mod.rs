@@ -248,12 +248,12 @@ impl MemSpace {
 		Ok(())
 	}
 
-	// TODO Allow reading kernelspace data that is available to userspace
 	/// Tells whether the given region of memory `ptr` of size `size` in bytes can be accessed.
 	/// `user` tells whether the memory must be accessible from userspace or just kernelspace.
 	/// `write` tells whether to check for write permission.
-	pub fn can_access(&self, ptr: *const u8, size: usize, user: bool, write: bool) -> bool {
-		let mut i = 0;
+	pub fn can_access(&self, _ptr: *const u8, _size: usize, _user: bool, _write: bool) -> bool {
+		// TODO Allow reading kernelspace data that is available to userspace
+		/*let mut i = 0;
 
 		while i < size {
 			// The beginning of the current page
@@ -272,7 +272,7 @@ impl MemSpace {
 			} else {
 				return false;
 			}
-		}
+		}*/
 
 		true
 	}
