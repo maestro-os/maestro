@@ -12,7 +12,6 @@ pub mod tss;
 use core::ffi::c_void;
 use core::mem::ManuallyDrop;
 use core::mem::MaybeUninit;
-use core::ptr::NonNull;
 use crate::errno::Errno;
 use crate::errno;
 use crate::event::{InterruptResult, InterruptResultAction};
@@ -32,6 +31,7 @@ use crate::util::container::bitfield::Bitfield;
 use crate::util::container::vec::Vec;
 use crate::util::lock::mutex::*;
 use crate::util::ptr::SharedPtr;
+use crate::util::ptr::WeakPtr;
 use mem_space::MemSpace;
 use mem_space::{MAPPING_FLAG_WRITE, MAPPING_FLAG_USER, MAPPING_FLAG_NOLAZY};
 use pid::PIDManager;
@@ -110,7 +110,7 @@ pub struct Process {
 	quantum_count: usize,
 
 	/// A pointer to the parent process.
-	parent: Option<NonNull<Process>>, // TODO Use a weak pointer
+	parent: Option<WeakPtr<Process>>,
 	/// The list of children processes.
 	children: Vec<Pid>,
 	/// The list of processes in the process group.
@@ -269,7 +269,6 @@ pub fn init() -> Result<(), Errno> {
 		}
 	};
 
-	// TODO Use only one instance?
 	let _ = ManuallyDrop::new(event::register_callback(0x00, u32::MAX, callback)?);
 	let _ = ManuallyDrop::new(event::register_callback(0x03, u32::MAX, callback)?);
 	let _ = ManuallyDrop::new(event::register_callback(0x06, u32::MAX, callback)?);
@@ -459,10 +458,10 @@ impl Process {
 
 	/// Returns the parent process's PID.
 	pub fn get_parent_pid(&self) -> Pid {
-		if let Some(mut parent) = self.parent {
-			unsafe {
-				parent.as_mut()
-			}.get_pid()
+		if let Some(parent) = &self.parent {
+			let parent = parent.get_mut().unwrap();
+			let guard = parent.lock(false);
+			guard.get().get_pid()
 		} else {
 			self.get_pid()
 		}
@@ -545,8 +544,8 @@ impl Process {
 	}
 
 	/// Returns the process's parent if exists.
-	pub fn get_parent(&self) -> Option<NonNull<Process>> {
-		self.parent
+	pub fn get_parent(&self) -> Option<&WeakPtr<Process>> {
+		self.parent.as_ref()
 	}
 
 	/// Returns a reference to the list of the process's children.
@@ -725,9 +724,10 @@ impl Process {
 
 	/// Forks the current process. The internal state of the process (registers and memory) are
 	/// copied.
+	/// `parent` is the parent of the new process.
 	/// On fail, the function returns an Err with the appropriate Errno.
 	/// If the process is not running, the behaviour is undefined.
-	pub fn fork(&mut self) -> Result<SharedPtr<Self>, Errno> {
+	pub fn fork(&mut self, parent: WeakPtr<Self>) -> Result<SharedPtr<Self>, Errno> {
 		debug_assert_eq!(self.get_state(), State::Running);
 
 		let pid = {
@@ -754,7 +754,7 @@ impl Process {
 			priority: self.priority,
 			quantum_count: 0,
 
-			parent: NonNull::new(self as _),
+			parent: Some(parent),
 			children: Vec::new(),
 			process_group: Vec::new(),
 
@@ -860,10 +860,10 @@ impl Process {
 		self.exit_status = (status & 0xff) as ExitStatus;
 		self.set_state(State::Zombie);
 
-		if let Some(mut parent) = self.get_parent() {
-			unsafe {
-				parent.as_mut()
-			}.wakeup();
+		if let Some(parent) = self.get_parent() {
+			let parent = parent.get_mut().unwrap();
+			let mut guard = parent.lock(false);
+			guard.get_mut().wakeup();
 		}
 	}
 
@@ -901,10 +901,10 @@ impl Drop for Process {
 		debug_assert_eq!(self.get_state(), State::Zombie);
 		debug_assert!(self.mem_space.is_none());
 
-		if let Some(mut parent) = self.get_parent() {
-			unsafe {
-				parent.as_mut()
-			}.remove_child(self.pid);
+		if let Some(parent) = self.get_parent() {
+			let parent = parent.get_mut().unwrap();
+			let mut guard = parent.lock(false);
+			guard.get_mut().remove_child(self.pid);
 		}
 
 		let mutex = unsafe {

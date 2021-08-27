@@ -113,8 +113,8 @@ void test_process(void)
 
 	int pid = fork();
 	if (pid == 0) {
-		//while (1)
-		for (int i = 0; i < 100; ++i)
+		//for (int i = 0; i < 100; ++i)
+		while (1)
 			write(socks[0], "BLEH", 4);
 	} else {
 		while (1) {

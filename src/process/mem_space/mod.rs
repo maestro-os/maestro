@@ -23,7 +23,6 @@ use crate::util::FailableClone;
 use crate::util::boxed::Box;
 use crate::util::container::binary_tree::BinaryTree;
 use crate::util::lock::mutex::Mutex;
-use crate::util;
 use gap::MemGap;
 use mapping::MemMapping;
 use physical_ref_counter::PhysRefCounter;
@@ -277,14 +276,14 @@ impl MemSpace {
 		true
 	}
 
-	// TODO Allow reading kernelspace data that is available to userspace
 	/// Tells whether the given zero-terminated string beginning at `ptr` can be accessed.
 	/// `user` tells whether the memory must be accessible from userspace or just kernelspace.
 	/// `write` tells whether to check for write permission.
 	/// If the memory cannot be accessed, the function returns None. If it can be accessed, it
 	/// returns the length of the string located at the pointer `ptr`.
-	pub fn can_access_string(&self, ptr: *const u8, user: bool, write: bool) -> Option<usize> {
-		vmem::switch(self.vmem.as_ref(), || {
+	pub fn can_access_string(&self, ptr: *const u8, _user: bool, _write: bool) -> Option<usize> {
+		// TODO Allow reading kernelspace data that is available to userspace
+		/*vmem::switch(self.vmem.as_ref(), || {
 			let mut i = 0;
 			'outer: loop {
 				// Safe because not dereferenced before checking if accessible
@@ -325,7 +324,12 @@ impl MemSpace {
 			}
 
 			Some(i)
-		})
+		})*/
+
+		// TODO rm
+		unsafe {
+			Some(crate::util::strlen(ptr))
+		}
 	}
 
 	/// Binds the CPU to this memory space.

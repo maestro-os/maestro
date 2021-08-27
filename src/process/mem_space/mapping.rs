@@ -50,7 +50,7 @@ pub struct MemMapping {
 	flags: u8,
 
 	/// Pointer to the virtual memory context handler.
-	vmem: NonNull<dyn VMem>, // TODO Use a weak pointer
+	vmem: NonNull<dyn VMem>,
 }
 
 impl MemMapping {
