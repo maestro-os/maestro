@@ -21,7 +21,7 @@ pub fn read(regs: &util::Regs) -> Result<i32, Errno> {
 		let mut guard = mutex.lock(false);
 		let proc = guard.get_mut();
 
-		if !proc.get_mem_space().can_access(buf, count, true, true) {
+		if !proc.get_mem_space().unwrap().can_access(buf, count, true, true) {
 			return Err(errno::EFAULT);
 		}
 	}

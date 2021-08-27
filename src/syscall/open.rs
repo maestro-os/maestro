@@ -114,7 +114,7 @@ pub fn open(regs: &util::Regs) -> Result<i32, Errno> {
 	let proc = guard.get_mut();
 
 	// Check the pathname is accessible by the process
-	let len = proc.get_mem_space().can_access_string(pathname as _, true, false);
+	let len = proc.get_mem_space().unwrap().can_access_string(pathname as _, true, false);
 	if len.is_none() {
 		return Err(errno::EFAULT);
 	}

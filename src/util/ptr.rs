@@ -41,6 +41,9 @@ struct SharedPtrInner<T: ?Sized> {
 	ref_counter: Mutex<RefCounter>,
 
 	/// The object stored by the shared pointer.
+	/// When locked, this object requires to disable interruptions because the pointer may contain
+	/// sensitive data (for example, it may point to a process. In which case, if an interrupt for
+	/// the scheduler happens while cloning the shared pointer, a deadlock may occur).
 	obj: Mutex<T>,
 }
 
@@ -62,14 +65,14 @@ impl<T> SharedPtrInner<T> {
 impl<T: ?Sized> SharedPtrInner<T> {
 	/// Tells whether the object can be accessed from a weak pointer.
 	fn is_weak_available(&mut self) -> bool {
-		let guard = self.ref_counter.lock(true);
+		let guard = self.ref_counter.lock(false);
 		let refs = guard.get();
 		refs.shared_count > 0
 	}
 
 	/// Tells whether the inner structure must be dropped.
 	fn must_drop(&mut self) -> bool {
-		let guard = self.ref_counter.lock(true);
+		let guard = self.ref_counter.lock(false);
 		let refs = guard.get();
 		refs.shared_count <= 0 && refs.weak_count <= 0
 	}
@@ -126,7 +129,7 @@ impl<T: ?Sized> SharedPtr<T> {
 	/// Creates a weak pointer for the current shared pointer.
 	pub fn new_weak(&self) -> WeakPtr<T> {
 		let inner = self.get_inner();
-		let mut guard = inner.ref_counter.lock(true);
+		let mut guard = inner.ref_counter.lock(false);
 		let refs = guard.get_mut();
 		refs.weak_count += 1;
 
@@ -141,7 +144,7 @@ impl<T: ?Sized> SharedPtr<T> {
 impl<T: ?Sized> Clone for SharedPtr<T> {
 	fn clone(&self) -> Self {
 		let inner = self.get_inner();
-		let mut guard = inner.ref_counter.lock(true);
+		let mut guard = inner.ref_counter.lock(false);
 		let refs = guard.get_mut();
 		refs.shared_count += 1;
 
@@ -191,7 +194,7 @@ impl<T: ?Sized> Drop for SharedPtr<T> {
 	fn drop(&mut self) {
 		let inner = self.get_inner();
 		{
-			let mut guard = inner.ref_counter.lock(true);
+			let mut guard = inner.ref_counter.lock(false);
 			let refs = guard.get_mut();
 			refs.shared_count -= 1;
 		}
@@ -243,7 +246,7 @@ impl<T: ?Sized> WeakPtr<T> {
 impl<T: ?Sized> Clone for WeakPtr<T> {
 	fn clone(&self) -> Self {
 		let inner = self.get_inner();
-		let mut guard = inner.ref_counter.lock(true);
+		let mut guard = inner.ref_counter.lock(false);
 		let refs = guard.get_mut();
 		refs.shared_count += 1;
 
@@ -263,7 +266,7 @@ impl<T: ?Sized> Drop for WeakPtr<T> {
 	fn drop(&mut self) {
 		let inner = self.get_inner();
 		{
-			let mut guard = inner.ref_counter.lock(true);
+			let mut guard = inner.ref_counter.lock(false);
 			let refs = guard.get_mut();
 			refs.weak_count -= 1;
 		}

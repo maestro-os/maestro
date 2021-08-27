@@ -20,7 +20,7 @@ pub fn getcwd(regs: &util::Regs) -> Result<i32, Errno> {
 		let proc = guard.get_mut();
 
 		// Checking that the buffer is accessible
-		if !proc.get_mem_space().can_access(buf, size as _, true, true) {
+		if !proc.get_mem_space().unwrap().can_access(buf, size as _, true, true) {
 			return Err(errno::EFAULT);
 		}
 

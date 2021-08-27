@@ -20,7 +20,7 @@ pub fn chdir(regs: &util::Regs) -> Result<i32, Errno> {
 	let proc = guard.get_mut();
 
 	// Checking that the buffer is accessible and retrieving the length of the string
-	let len = proc.get_mem_space().can_access_string(path, true, false);
+	let len = proc.get_mem_space().unwrap().can_access_string(path, true, false);
 	if len.is_none() {
 		return Err(errno::EFAULT);
 	}

@@ -44,7 +44,8 @@ pub fn uname(regs: &util::Regs) -> Result<i32, Errno> {
 	let mut guard = mutex.lock(false);
 	let proc = guard.get_mut();
 
-	if proc.get_mem_space().can_access(buf as _, size_of::<Utsname>(), true, true) {
+	let len = size_of::<Utsname>();
+	if proc.get_mem_space().unwrap().can_access(buf as _, len, true, true) {
 		unsafe {
 			copy_nonoverlapping(&utsname as *const Utsname, buf, 1);
 		}

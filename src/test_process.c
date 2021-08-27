@@ -113,16 +113,18 @@ void test_process(void)
 
 	int pid = fork();
 	if (pid == 0) {
-		write(socks[0], "BLEH", 4);
-		write(1, "b", 1);
+		//while (1)
+		for (int i = 0; i < 100; ++i)
+			write(socks[0], "BLEH", 4);
 	} else {
-		char buff[10];
-		read(socks[1], buff, sizeof(buff));
-		write(1, buff, sizeof(buff));
-		write(1, "a", 1);
+		while (1) {
+			char buff[10];
 
-		while(1)
-			;
+			int len = read(socks[1], buff, sizeof(buff));
+			if (len >= 0) {
+				write(1, buff, len);
+			}
+		}
 	}
 
 

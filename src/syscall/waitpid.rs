@@ -136,7 +136,8 @@ pub fn do_waitpid(pid: i32, wstatus: *mut i32, options: i32) -> Result<i32, Errn
 		let mut guard = mutex.lock(false);
 		let proc = guard.get_mut();
 
-		if !proc.get_mem_space().can_access(wstatus as _, size_of::<i32>(), true, true) {
+		let len = size_of::<i32>();
+		if !proc.get_mem_space().unwrap().can_access(wstatus as _, len, true, true) {
 			return Err(errno::EINVAL);
 		}
 	}

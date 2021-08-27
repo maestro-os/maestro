@@ -597,11 +597,11 @@ impl FailableClone for X86VMem {
 }
 
 impl Drop for X86VMem {
-	/// Destroys the given page directory, including its children elements. If the page directory
-	/// is being used, the kernel shall panic.
+	/// Destroys the given page directory, including its children elements.
+	/// If the page directory is being used, the kernel shall panic.
 	fn drop(&mut self) {
 		if self.is_bound() {
-			crate::kernel_panic!("Dropping virtual memory context handler while in use!", 0);
+			crate::kernel_panic!("Dropping virtual memory context handler while in use!");
 		}
 
 		for i in 0..1024 {

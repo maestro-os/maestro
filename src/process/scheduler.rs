@@ -294,6 +294,7 @@ impl Scheduler {
 					};
 					let mut guard = data.proc.lock(false);
 					let proc = guard.get_mut();
+					debug_assert_eq!(proc.get_state(), process::State::Running);
 					// Incrementing the number of ticks the process had
 					proc.quantum_count += 1;
 
@@ -303,7 +304,7 @@ impl Scheduler {
 					// Setting the kernel stack pointer
 					tss.esp0 = proc.kernel_stack as _;
 					// Binding the memory space
-					proc.mem_space.bind();
+					proc.get_mem_space().unwrap().bind();
 
 					// If a signal is pending on the process, execute it
 					proc.signal_next();
@@ -350,6 +351,7 @@ impl Scheduler {
 			}
 		} else {
 			// TODO Bind to kernel vmem
+			todo!();
 		}
 
 		crate::enter_loop();

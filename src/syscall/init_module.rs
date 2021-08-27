@@ -22,7 +22,7 @@ pub fn init_module(regs: &util::Regs) -> Result<i32, Errno> {
 			return Err(errno::EPERM);
 		}
 
-		if !proc.get_mem_space().can_access(module_image, len as _, true, true) {
+		if !proc.get_mem_space().unwrap().can_access(module_image, len as _, true, true) {
 			return Err(errno::EFAULT);
 		}
 	}

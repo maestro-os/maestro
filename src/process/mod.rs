@@ -127,7 +127,7 @@ pub struct Process {
 	saved_regs: Regs,
 
 	/// The virtual memory of the process containing every mappings.
-	mem_space: MemSpace,
+	mem_space: Option<MemSpace>,
 
 	/// A pointer to the userspace stack.
 	user_stack: *const c_void,
@@ -202,7 +202,7 @@ pub fn init() -> Result<(), Errno> {
 
 				// General Protection Fault
 				0x0d => {
-					let vmem = curr_proc.get_mem_space_mut().get_vmem();
+					let vmem = curr_proc.get_mem_space_mut().unwrap().get_vmem();
 					let mut inst_prefix = 0;
 					vmem::switch(vmem.as_ref(), || {
 						inst_prefix = unsafe {
@@ -250,7 +250,7 @@ pub fn init() -> Result<(), Errno> {
 				vmem::x86::cr2_get()
 			};
 
-			if !curr_proc.mem_space.handle_page_fault(accessed_ptr, code) {
+			if !curr_proc.get_mem_space_mut().unwrap().handle_page_fault(accessed_ptr, code) {
 				if ring < 3 {
 					return InterruptResult::new(true, InterruptResultAction::Panic);
 				} else {
@@ -360,7 +360,7 @@ impl Process {
 				edi: 0x0,
 			},
 
-			mem_space,
+			mem_space: Some(mem_space),
 
 			user_stack,
 			kernel_stack,
@@ -374,17 +374,20 @@ impl Process {
 			exit_status: 0,
 		};
 
+		// Creating STDIN, STDOUT and STDERR
 		{
 			let mutex = file::get_files_cache();
 			let mut guard = mutex.lock(true);
 			let files_cache = guard.get_mut();
 
-			let tty_path = Path::from_string(TTY_DEVICE_PATH, false)?;
-			let tty_file = files_cache.get_file_from_path(&tty_path)?;
-			let stdin_fd = process.create_fd(file_descriptor::O_RDWR, FDTarget::File(tty_file))?;
+			let tty_path = Path::from_string(TTY_DEVICE_PATH, false).unwrap();
+			let tty_file = files_cache.get_file_from_path(&tty_path).unwrap();
+			let stdin_fd = process.create_fd(file_descriptor::O_RDWR, FDTarget::File(tty_file))
+				.unwrap();
 			assert_eq!(stdin_fd.get_id(), STDIN_FILENO);
-			process.duplicate_fd(STDIN_FILENO, Some(STDOUT_FILENO))?;
-			process.duplicate_fd(STDIN_FILENO, Some(STDERR_FILENO))?;
+
+			process.duplicate_fd(STDIN_FILENO, Some(STDOUT_FILENO)).unwrap();
+			process.duplicate_fd(STDIN_FILENO, Some(STDERR_FILENO)).unwrap();
 		}
 
 		let mut guard = unsafe {
@@ -512,6 +515,9 @@ impl Process {
 			}
 
 			// TODO Attach every child to the init process
+
+			// Removing the memory space to save memory
+			// TODO self.mem_space = None;
 		}
 	}
 
@@ -572,13 +578,15 @@ impl Process {
 	}
 
 	/// Returns a reference to the process's memory space.
-	pub fn get_mem_space(&self) -> &MemSpace {
-		&self.mem_space
+	/// If the process is terminated, the function returns None.
+	pub fn get_mem_space(&self) -> Option<&MemSpace> {
+		self.mem_space.as_ref()
 	}
 
 	/// Returns a mutable reference to the process's memory space.
-	pub fn get_mem_space_mut(&mut self) -> &mut MemSpace {
-		&mut self.mem_space
+	/// If the process is terminated, the function returns None.
+	pub fn get_mem_space_mut(&mut self) -> Option<&mut MemSpace> {
+		self.mem_space.as_mut()
 	}
 
 	/// Returns a reference to the process's current working directory.
@@ -718,7 +726,10 @@ impl Process {
 	/// Forks the current process. The internal state of the process (registers and memory) are
 	/// copied.
 	/// On fail, the function returns an Err with the appropriate Errno.
+	/// If the process is not running, the behaviour is undefined.
 	pub fn fork(&mut self) -> Result<SharedPtr<Self>, Errno> {
+		debug_assert_eq!(self.get_state(), State::Running);
+
 		let pid = {
 			let mutex = unsafe {
 				PID_MANAGER.assume_init_mut()
@@ -753,7 +764,7 @@ impl Process {
 			handled_signal: self.handled_signal,
 			saved_regs: self.saved_regs,
 
-			mem_space: self.mem_space.fork()?,
+			mem_space: Some(self.get_mem_space_mut().unwrap().fork()?),
 
 			user_stack: self.user_stack,
 			kernel_stack: self.kernel_stack,
@@ -885,6 +896,10 @@ impl Drop for Process {
 		debug_assert!(!self.is_init());
 		// When terminated, a process gives all its children to the init process
 		debug_assert!(self.get_children().is_empty());
+
+		// Checking the process is a zombie
+		debug_assert_eq!(self.get_state(), State::Zombie);
+		debug_assert!(self.mem_space.is_none());
 
 		if let Some(mut parent) = self.get_parent() {
 			unsafe {

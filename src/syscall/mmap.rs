@@ -52,7 +52,7 @@ pub fn mmap(regs: &util::Regs) -> Result<i32, Errno> {
 	let mut mutex = Process::get_current().unwrap();
 	let mut guard = mutex.lock(false);
 	let proc = guard.get_mut();
-	let mem_space = proc.get_mem_space_mut();
+	let mem_space = proc.get_mem_space_mut().unwrap();
 
 	let addr = util::down_align(addr, memory::PAGE_SIZE);
 	let pages = math::ceil_division(length, memory::PAGE_SIZE);

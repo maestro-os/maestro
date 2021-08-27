@@ -19,7 +19,8 @@ pub fn pipe(regs: &util::Regs) -> Result<i32, Errno> {
 		let mut guard = mutex.lock(false);
 		let proc = guard.get_mut();
 
-		if !proc.get_mem_space().can_access(pipefd as _, size_of::<i32>() * 2, true, true) {
+		let len = size_of::<i32>() * 2;
+		if !proc.get_mem_space().unwrap().can_access(pipefd as _, len, true, true) {
 			return Err(errno::EFAULT);
 		}
 
