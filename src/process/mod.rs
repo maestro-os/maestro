@@ -316,8 +316,8 @@ impl Process {
 		let kernel_stack = mem_space.map_stack(None, KERNEL_STACK_SIZE, KERNEL_STACK_FLAGS)?;
 
 		let mut process = Self {
-			pid: 1,
-			pgid: 1,
+			pid: pid::INIT_PID,
+			pgid: pid::INIT_PID,
 
 			uid: 0,
 			gid: 0,
@@ -396,7 +396,7 @@ impl Process {
 	/// Tells whether the process is the init process.
 	#[inline(always)]
 	pub fn is_init(&self) -> bool {
-		self.get_pid() == 1
+		self.get_pid() == pid::INIT_PID
 	}
 
 	/// Returns the process's PID.
@@ -511,7 +511,7 @@ impl Process {
 				kernel_panic!("Terminated init process!");
 			}
 
-			// TODO Detach children and attach them to the init process
+			// TODO Attach every child to the init process
 		}
 	}
 
@@ -882,14 +882,15 @@ impl Process {
 
 impl Drop for Process {
 	fn drop(&mut self) {
+		debug_assert!(!self.is_init());
+		// When terminated, a process gives all its children to the init process
+		debug_assert!(self.get_children().is_empty());
+
 		if let Some(mut parent) = self.get_parent() {
 			unsafe {
 				parent.as_mut()
 			}.remove_child(self.pid);
 		}
-
-		// TODO Assert that the process doesn't have any child (when terminated, the process must
-		// give all its children to the first process)
 
 		let mutex = unsafe {
 			PID_MANAGER.assume_init_mut()

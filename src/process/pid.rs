@@ -10,6 +10,8 @@ pub type Pid = u16;
 
 /// The maximum possible PID.
 const MAX_PID: Pid = 32768;
+/// The PID of the init process.
+pub const INIT_PID: Pid = 1;
 
 /// A structure handling PID allocations.
 pub struct PIDManager {
@@ -23,7 +25,7 @@ impl PIDManager {
 		let mut s = Self {
 			allocator: IDAllocator::new(MAX_PID as _)?,
 		};
-		s.allocator.set_used(0);
+		s.allocator.set_used((INIT_PID - 1) as _);
 		Ok(s)
 	}
 

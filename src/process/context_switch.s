@@ -44,12 +44,6 @@ context_switch:
 	mov (%eax), %ebp
 	mov 16(%eax), %eax
 
-	# Calling end_of_interrupt
-	pusha
-	push $0x0
-	call end_of_interrupt
-	add $4, %esp
-	popa
 	add $4, %esp
 
 	iret
@@ -59,11 +53,6 @@ context_switch:
  */
 context_switch_kernel:
 	cli
-
-	# Calling end_of_interrupt
-	push $0x0
-	call end_of_interrupt
-	add $4, %esp
 
 	mov 4(%esp), %eax
 

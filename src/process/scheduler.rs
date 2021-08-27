@@ -14,6 +14,7 @@ use crate::errno::Errno;
 use crate::event::CallbackHook;
 use crate::event;
 use crate::gdt;
+use crate::idt::pic;
 use crate::memory::malloc;
 use crate::memory::stack;
 use crate::memory;
@@ -331,22 +332,27 @@ impl Scheduler {
 				proc: scheduler.curr_proc.as_mut().unwrap().1.clone(),
 			};
 
-			// Required because calling the context switch function won't drop the
-			// mutex guard, locking the scheduler forever
+			// Required because calling the context switch function won't drop the mutex guard,
+			// locking the scheduler forever
 			drop(guard);
+
+			// Allowing next interrupts to be handled (disabling interrupts to avoid receiving
+			// interrupts now)
+			cli!();
 			unsafe {
 				event::unlock_callbacks(0x20);
 			}
+			pic::end_of_interrupt(0x0);
 
 			unsafe {
 				// TODO Handle out of memory
 				stack::switch(tmp_stack, f, ctx_switch_data).unwrap();
 			}
-			crate::enter_loop();
 		} else {
-			// TODO Wait until is a process becomes runnable
-			todo!();
+			// TODO Bind to kernel vmem
 		}
+
+		crate::enter_loop();
 	}
 
 	/// Returns the total number of ticks since the instanciation of the scheduler.

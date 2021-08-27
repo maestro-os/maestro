@@ -34,7 +34,7 @@ pub fn kill() {
 		kernel_panic!("Out of memory");
 	}
 
-	// TODO Get the process with the highest OOM score
+	// TODO Get the process with the highest OOM score (ignore init process)
 }
 
 /// Executes the given function. On fail due to a lack of memory, the function runs the OOM killer,
