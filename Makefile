@@ -187,6 +187,9 @@ ifeq ($(CONFIG_DEBUG), true)
 RUSTFLAGS += -Cforce-frame-pointers=y -Cdebuginfo=2
 endif
 
+# TODO rm
+RUSTFLAGS += -Cdebuginfo=2
+
 # The list of Rust language source files
 RUST_SRC := $(shell find $(SRC_DIR) -type f -name "*.rs")
 

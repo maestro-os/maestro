@@ -181,7 +181,7 @@ pub fn do_waitpid(pid: i32, wstatus: *mut i32, options: i32) -> Result<i32, Errn
 			proc.set_state(process::State::Sleeping);
 		}
 
-		hlt!();
+		crate::wait();
 	}
 }
 

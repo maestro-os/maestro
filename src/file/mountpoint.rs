@@ -14,7 +14,7 @@ use super::fs;
 use super::path::Path;
 
 // TODO rm
-//use crate::file::fs::FilesystemType;
+use crate::file::fs::FilesystemType;
 
 /// TODO doc
 const FLAG_MANDLOCK: u32    = 0b000000000001;
@@ -75,8 +75,8 @@ impl MountPoint {
 		let device = dev_guard.get_mut();
 
 		// TODO rm
-		//let fs_type = fs::ext2::Ext2FsType {};
-		//fs_type.create_filesystem(device)?;
+		let fs_type = fs::ext2::Ext2FsType {};
+		fs_type.create_filesystem(device)?;
 
 		let mut fs_type_ptr = fs::detect(device)?;
 		let fs_type_guard = fs_type_ptr.lock(true);

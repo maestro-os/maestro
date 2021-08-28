@@ -24,7 +24,7 @@ use crate::util::container::vec::Vec;
 use crate::util::lock::mutex::Mutex;
 use crate::util::ptr::SharedPtr;
 use keyboard::KeyboardManager;
-use storage::StorageManager;
+//use storage::StorageManager;
 
 /// Enumeration representing the type of the device.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -255,13 +255,14 @@ pub fn init() -> Result<(), Errno> {
 	keyboard_manager.legacy_detect()?;
 	manager::register_manager(keyboard_manager)?;
 
-	let mut storage_manager = StorageManager::new()?;
-	storage_manager.legacy_detect()?;
+	// TODO fix
+	//let mut storage_manager = StorageManager::new()?;
+	//storage_manager.legacy_detect()?;
 
-	#[cfg(config_debug_storagetest)]
-	storage_manager.test(); // TODO Move after bus detection
+	//#[cfg(config_debug_storagetest)]
+	//storage_manager.test(); // TODO Move after bus detection
 
-	manager::register_manager(storage_manager)?;
+	//manager::register_manager(storage_manager)?;
 
 	bus::detect()?;
 
