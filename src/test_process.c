@@ -104,15 +104,17 @@ void test_process(void)
 
 
 	// Testing stop signals
+	// TODO Test waitpid
+	// TODO Execute signal directly when killing self
 
 	int pid = fork();
 	if (pid == 0) {
 		kill(getpid(), 13);
 
-		for (int i = 0; i < 200; ++i)
+		for (int i = 0; i < 100; ++i)
 			write(1, "2", 1);
 	} else {
-		for (int i = 0; i < 200; ++i)
+		for (int i = 0; i < 100; ++i)
 			write(1, "1", 1);
 
 		kill(pid, 4);
