@@ -17,15 +17,6 @@ const WUNTRACED: i32 =  0b010;
 /// Wait flag. Returns if a stopped child has been resumed by delivery of SIGCONT.
 const WCONTINUED: i32 = 0b100;
 
-// TODO If _POSIX_REALTIME_SIGNALS is defined, and the implementation queues the SIGCHLD signal,
-// then if wait() or waitpid() returns because the status of a child process is available, any
-// pending SIGCHLD signal associated with the process ID of the child process shall be discarded.
-// Any other pending SIGCHLD signals shall remain pending.
-
-// TODO Otherwise, if SIGCHLD is blocked, if wait() or waitpid() return because the status of a
-// child process is available, any pending SIGCHLD signal shall be cleared unless the status of
-// another child process is available.
-
 /// Returns the `i`th target process for the given constraint `pid`.
 /// `scheduler` is a reference to the process scheduler.
 /// `proc` is the current process.
@@ -56,9 +47,12 @@ fn get_target(scheduler: &mut Scheduler, proc: &Process, pid: i32, i: usize) -> 
 			None
 		}
 	} else if pid == 0 {
-		// TODO wait for any child process whose process group ID is equal to that of the calling
-		// process at the time of the call to waitpid().
-		todo!();
+		let group = proc.get_group_processes();
+		if i < group.len() {
+			Some(group[i])
+		} else {
+			None
+		}
 	} else {
 		if i == 0 && scheduler.get_by_pid(pid as _).is_some() {
 			Some(pid as _)
@@ -70,11 +64,11 @@ fn get_target(scheduler: &mut Scheduler, proc: &Process, pid: i32, i: usize) -> 
 
 /// Returns the wait status for the given process.
 fn get_wstatus(proc: &Process) -> i32 {
-	let status = proc.get_exit_status().unwrap();
-	let termsig = 0; // TODO
+	let status = proc.get_exit_status().unwrap_or(0);
+	let termsig = proc.get_termsig();
 	let stopped = proc.get_state() == State::Stopped;
 
-	let mut wstatus = ((status as i32 & 0xff) << 8) | (termsig & 0x7f);
+	let mut wstatus = ((status as i32 & 0xff) << 8) | (termsig as i32 & 0x7f);
 	if !stopped {
 		wstatus |= 1 << 7;
 	}
@@ -105,7 +99,8 @@ fn check_waitable(proc: &Process, pid: i32, wstatus: &mut Option<&mut i32>)
 					**wstatus = get_wstatus(&p);
 				}
 
-				// TODO Clear waitable (if stopped or continued)
+				p.clear_waitable();
+
 				if p.get_state() == process::State::Zombie {
 					let pid = p.get_pid();
 					drop(proc_guard);

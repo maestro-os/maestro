@@ -125,6 +125,8 @@ pub struct Process {
 	handled_signal: Option<SignalType>,
 	/// The saved state of registers, used when handling a signal.
 	saved_regs: Regs,
+	/// Tells whether the process has information that can be retrieved by wait/waitpid.
+	waitable: bool,
 
 	/// The virtual memory of the process containing every mappings.
 	mem_space: Option<MemSpace>,
@@ -146,6 +148,8 @@ pub struct Process {
 
 	/// The exit status of the process after exiting.
 	exit_status: ExitStatus,
+	/// The terminating signal.
+	termsig: u8,
 }
 
 /// The PID manager.
@@ -358,6 +362,7 @@ impl Process {
 				esi: 0x0,
 				edi: 0x0,
 			},
+			waitable: false,
 
 			mem_space: Some(mem_space),
 
@@ -371,6 +376,7 @@ impl Process {
 			signal_handlers: [SignalHandler::Default; signal::SIGNALS_COUNT],
 
 			exit_status: 0,
+			termsig: 0,
 		};
 
 		// Creating STDIN, STDOUT and STDERR
@@ -518,14 +524,26 @@ impl Process {
 			// Removing the memory space to save memory
 			// TODO Handle the case where the memory space is bound
 			// TODO self.mem_space = None;
+
+			self.waitable = true;
 		}
 	}
 
 	/// Tells whether the current process has informations to be retrieved by the `waitpid` system
 	/// call.
 	pub fn is_waitable(&self) -> bool {
-		// TODO Add stopping and continuation signals
-		self.state == State::Zombie
+		self.waitable
+	}
+
+	/// Sets the process waitable with the given signal type `type_`.
+	pub fn set_waitable(&mut self, type_: u8) {
+		self.waitable = true;
+		self.termsig = type_;
+	}
+
+	/// Clears the waitable flag.
+	pub fn clear_waitable(&mut self) {
+		self.waitable = false;
 	}
 
 	/// Wakes up the process. The function sends a signal SIGCHLD to the process and, if it was in
@@ -723,6 +741,11 @@ impl Process {
 		}
 	}
 
+	/// Returns the signal that killed the process.
+	pub fn get_termsig(&self) -> u8 {
+		self.termsig
+	}
+
 	/// Forks the current process. The internal state of the process (registers and memory) are
 	/// copied.
 	/// `parent` is the parent of the new process.
@@ -764,6 +787,7 @@ impl Process {
 
 			handled_signal: self.handled_signal,
 			saved_regs: self.saved_regs,
+			waitable: false,
 
 			mem_space: Some(self.get_mem_space_mut().unwrap().fork()?),
 
@@ -777,6 +801,7 @@ impl Process {
 			signal_handlers: self.signal_handlers,
 
 			exit_status: self.exit_status,
+			termsig: 0,
 		};
 		self.add_child(pid)?;
 

@@ -97,6 +97,17 @@ pub enum SignalAction {
 	Continue,
 }
 
+/// Enumeration containing the different possibilities for signal handling.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SignalHandler {
+	/// Ignores the signal.
+	Ignore,
+	/// Executes the default action.
+	Default,
+	/// A custom action defined by the process.
+	Handler(SigHandler),
+}
+
 /// Array containing the default actions for each signal.
 static DEFAULT_ACTIONS: &[SignalAction] = &[
 	SignalAction::Abort, // SIGABRT
@@ -178,6 +189,10 @@ impl Signal {
 			SignalHandler::Default
 		};
 
+		if handler != SignalHandler::Ignore {
+			process.set_waitable(self.type_ as _);
+		}
+
 		match handler {
 			SignalHandler::Ignore => {},
 			SignalHandler::Default => {
@@ -247,15 +262,4 @@ impl Signal {
 			},
 		}
 	}
-}
-
-/// Enumeration containing the different possibilities for signal handling.
-#[derive(Clone, Copy, Debug)]
-pub enum SignalHandler {
-	/// Ignores the signal.
-	Ignore,
-	/// Executes the default action.
-	Default,
-	/// A custom action defined by the process.
-	Handler(SigHandler),
 }
