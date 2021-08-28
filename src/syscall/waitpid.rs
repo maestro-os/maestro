@@ -144,7 +144,7 @@ pub fn do_waitpid(pid: i32, wstatus: *mut i32, options: i32) -> Result<i32, Errn
 
 	let mut wstatus = {
 		if wstatus as usize != 0x0 {
-			Some(unsafe {
+			Some(unsafe { // Safe because the pointer is checked before
 				&mut *wstatus
 			})
 		} else {

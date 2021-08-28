@@ -516,6 +516,7 @@ impl Process {
 			// TODO Attach every child to the init process
 
 			// Removing the memory space to save memory
+			// TODO Handle the case where the memory space is bound
 			// TODO self.mem_space = None;
 		}
 	}

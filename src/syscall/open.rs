@@ -138,10 +138,9 @@ pub fn open(regs: &util::Regs) -> Result<i32, Errno> {
 	}
 
 	// If O_DIRECTORY is set and the file is not a directory, return an error
-	if flags & file_descriptor::O_DIRECTORY != 0 {
-		if file.lock(true).get().get_file_type() != FileType::Directory {
-			return Err(errno::ENOTDIR);
-		}
+	if flags & file_descriptor::O_DIRECTORY != 0
+		&& file.lock(true).get().get_file_type() != FileType::Directory {
+		return Err(errno::ENOTDIR);
 	}
 
 	// Create and return the file descriptor

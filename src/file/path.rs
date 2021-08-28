@@ -38,7 +38,7 @@ impl Path {
 	/// Creates a new instance from string.
 	/// `path` is the path.
 	/// `user` tells whether the path was supplied by the user (to check the length and return an
-	///	error if too long).
+	/// error if too long).
 	pub fn from_string(path: &str, user: bool) -> Result<Self, Errno> {
 		if user && path.len() + 1 >= limits::PATH_MAX {
 			return Err(errno::ENAMETOOLONG);

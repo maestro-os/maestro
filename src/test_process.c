@@ -70,62 +70,63 @@ void test_process(void)
 
 	// Testing wait and signals
 
-	//write(1, "Hello world!\n", 13);
-	//int pid = fork();
-	//if (pid == 0) {
-	//	write(1, "forked!\n", 8);
+	write(1, "Hello world!\n", 13);
+	int pid = fork();
+	print_nbr(getpid());
+	if (pid == 0) {
+		//write(1, "forked!\n", 8);
 
-	//	signal(0, sig_handle);
-	//	kill(getpid(), 0);
+		//signal(0, sig_handle);
+		//kill(getpid(), 0);
 
-	//	int pid2 = fork();
-	//	if (pid2 == 0) {
-	//		while(1)
-	//			;
-	//	}
+		//int pid2 = fork();
+		//if (pid2 == 0) {
+		//	while(1)
+		//		;
+		//}
 
-	//	kill(pid2, 0);
+		//kill(pid2, 0);
 
-	//	_exit(43);
-	//} else {
-	//	write(1, "waiting\n", 8);
-	//	int wstatus = 42;
-	//	int ret = waitpid(-1, &wstatus, 0);
+		//_exit(43);
+	} else {
+		//write(1, "waiting\n", 8);
+		//int wstatus = 42;
+		//int ret = waitpid(-1, &wstatus, 0);
 
-	//	write(1, "ret: ", 5);
-	//	print_nbr(ret);
-	//	write(1, "\nstatus: ", 9);
-	//	print_nbr(wstatus);
+		//write(1, "ret: ", 5);
+		//print_nbr(ret);
+		//write(1, "\nstatus: ", 9);
+		//print_nbr(wstatus);
 
-	//	while (1)
-	//		;
-	//}
+		while (1)
+			;
+	}
 
 
 
 	// Testing IPC
 
-	int socks[2];
-	int e = socketpair(0, 0, 0, socks);
-	write(1, "e: ", 3);
-	print_nbr(e);
-	write(1, "\n", 1);
+	//int socks[2];
+	//int e = socketpair(0, 0, 0, socks);
+	//write(1, "e: ", 3);
+	//print_nbr(e);
+	//write(1, "\n", 1);
 
-	int pid = fork();
-	if (pid == 0) {
-		//for (int i = 0; i < 100; ++i)
-		while (1)
-			write(socks[0], "BLEH", 4);
-	} else {
-		while (1) {
-			char buff[10];
+	//int pid = fork();
+	//if (pid == 0) {
+	//	//for (int i = 0; i < 100; ++i)
+	//	while (1)
+	//		write(socks[0], "BLEH", 4);
+	//} else {
+	//	while (1) {
+	//		char buff[10];
 
-			int len = read(socks[1], buff, sizeof(buff));
-			if (len >= 0) {
-				write(1, buff, len);
-			}
-		}
-	}
+	//		int len = read(socks[1], buff, sizeof(buff));
+	//		if (len >= 0) {
+	//			write(1, buff, len);
+	//		}
+	//	}
+	//}
 
 
 
