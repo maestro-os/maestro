@@ -168,6 +168,11 @@ impl Signal {
 		self.type_
 	}
 
+	/// Tells whether the signal is a continuation signal.
+	pub fn is_continuation(&self) -> bool {
+		DEFAULT_ACTIONS[self.type_ as usize] == SignalAction::Continue
+	}
+
 	/// Tells whether the signal can be caught.
 	pub fn can_catch(&self) -> bool {
 		self.type_ != SIGKILL && self.type_ != SIGSTOP && self.type_ != SIGSYS

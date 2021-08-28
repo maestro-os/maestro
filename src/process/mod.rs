@@ -832,6 +832,10 @@ impl Process {
 	/// handler, the default action for the signal is executed.
 	/// `no_handle` tells whether the signal handler must be ignored.
 	pub fn kill(&mut self, sig: Signal) {
+		if self.get_state() == State::Sleeping && sig.is_continuation() {
+			self.set_state(State::Running);
+		}
+
 		if sig.can_catch() {
 			self.signals_bitfield.set(sig.get_type() as _);
 		} else {
