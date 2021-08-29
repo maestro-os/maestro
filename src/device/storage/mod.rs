@@ -287,6 +287,7 @@ impl DeviceHandle for StorageDeviceHandle {
 }
 
 /// An instance of StorageManager manages devices on a whole major number.
+/// The manager has name `storage`.
 pub struct StorageManager {
 	/// The allocated device major number for storage devices.
 	major_block: MajorBlock,
@@ -457,6 +458,10 @@ impl StorageManager {
 }
 
 impl DeviceManager for StorageManager {
+	fn get_name(&self) -> &str {
+		"storage"
+	}
+
 	fn legacy_detect(&mut self) -> Result<(), Errno> {
 		// TODO Detect floppy disks
 

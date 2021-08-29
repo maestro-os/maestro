@@ -4,6 +4,7 @@
 // TODO Externalize this module into a kernel module when the interface for loading them will be
 // ready
 
+use crate::device::manager;
 use crate::event::{CallbackHook, InterruptResult, InterruptResultAction};
 use crate::event;
 use crate::idt;
@@ -13,28 +14,27 @@ use crate::util;
 /// The interrupt number for keyboard input events.
 const KEYBOARD_INTERRUPT_ID: usize = 33;
 
-/// TODO doc
+/// The PS/2 controller data port.
 const DATA_REGISTER: u16 = 0x60;
-/// TODO doc
+/// The PS/2 controller status port.
 const STATUS_REGISTER: u16 = 0x64;
-/// TODO doc
+/// The PS/2 controller status port.
 const COMMAND_REGISTER: u16 = 0x64;
 
 /// The maximum number of attempts for sending a command to the PS/2 controller.
 const MAX_ATTEMPTS: usize = 3;
 
-/// TODO doc
+/// Response telling the test passed.
 const TEST_CONTROLLER_PASS: u8 = 0x55;
-/// TODO doc
+/// Response telling the test failed.
 const TEST_CONTROLLER_FAIL: u8 = 0xfc;
 
-/// TODO doc
+/// Response telling the keyboard test passed.
 const TEST_KEYBOARD_PASS: u8 = 0x00;
-// TODO TEST_KEYBOARD_FAIL
 
-/// TODO doc
+/// Keyboard acknowledgement.
 const KEYBOARD_ACK: u8 = 0xfa;
-/// TODO doc
+/// Response telling to resend the command.
 const KEYBOARD_RESEND: u8 = 0xf4;
 
 /// The ID of the Scroll Lock LED.
@@ -512,16 +512,16 @@ pub struct PS2Handler {
 
 impl PS2Handler {
 	/// Creates the module's instance.
-	pub fn new() -> Self {
-		Self {
+	pub fn new() -> Result<Self, ()> {
+		let mut s = Self {
 			keyboard_interrupt_callback_hook: None,
-		}
+		};
+		s.init()?;
+		Ok(s)
 	}
-}
 
-impl PS2Handler {
 	/// Initializes the handler.
-	pub fn init(&mut self) -> Result<(), ()> {
+	fn init(&mut self) -> Result<(), ()> {
 		// TODO Check if PS/2 controller is existing using ACPI
 
 		idt::wrap_disable_interrupts(|| {
@@ -541,11 +541,18 @@ impl PS2Handler {
 				while can_read() {
 					let (key, action) = read_keystroke();
 
-					// TODO Write to device file and current TTY
-					crate::println!("Key action! {:?} {:?}", key, action);
+					// TODO Do not retrieve at each keystroke
+					if let Some(manager) = manager::get_by_name("kbd") {
+						if let Some(manager) = manager.get_mut() {
+							let mut guard = manager.lock(true);
+							let _manager = guard.get_mut();
 
-					if key == KeyboardKey::KeyPause && action == KeyboardAction::Pressed {
-						// TODO Write release directly
+							// TODO Write input
+
+							if key == KeyboardKey::KeyPause && action == KeyboardAction::Pressed {
+								// TODO Write release directly
+							}
+						}
 					}
 				}
 

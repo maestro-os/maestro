@@ -1,9 +1,10 @@
 //! The device manager is the structure which links the physical devices to device files.
 
 use crate::errno::Errno;
-use crate::util::boxed::Box;
 use crate::util::container::vec::Vec;
 use crate::util::lock::mutex::Mutex;
+use crate::util::ptr::SharedPtr;
+use crate::util::ptr::WeakPtr;
 
 /// Trait representing a physical device.
 pub trait PhysicalDevice {
@@ -23,6 +24,9 @@ pub trait PhysicalDevice {
 
 /// Trait representing a structure managing the link between physical devices and device files.
 pub trait DeviceManager {
+	/// Returns the manager's name. This name must not change.
+	fn get_name(&self) -> &str;
+
 	/// Detects devices the legacy way.
 	/// **WARNING**: This function must be called only once.
 	fn legacy_detect(&mut self) -> Result<(), Errno>;
@@ -34,8 +38,9 @@ pub trait DeviceManager {
 	fn on_unplug(&mut self, dev: &dyn PhysicalDevice);
 }
 
+// TODO Order by name
 /// The list of device managers.
-static mut DEVICE_MANAGERS: Mutex<Vec<Box<dyn DeviceManager>>> = Mutex::new(Vec::new());
+static mut DEVICE_MANAGERS: Mutex<Vec<SharedPtr<dyn DeviceManager>>> = Mutex::new(Vec::new());
 
 /// Registers the given device manager.
 pub fn register_manager<M: 'static + DeviceManager>(manager: M) -> Result<(), Errno> {
@@ -45,8 +50,28 @@ pub fn register_manager<M: 'static + DeviceManager>(manager: M) -> Result<(), Er
 	let mut guard = mutex.lock(true);
 	let device_managers = guard.get_mut();
 
-	let b = Box::new(manager)?;
-	device_managers.push(b)
+	let m = SharedPtr::new(manager)?;
+	device_managers.push(m)
+}
+
+/// Returns the device manager with name `name`.
+pub fn get_by_name(name: &str) -> Option<WeakPtr<dyn DeviceManager>> {
+	let mutex = unsafe {
+		&mut DEVICE_MANAGERS
+	};
+	let mut guard = mutex.lock(true);
+	let device_managers = guard.get_mut();
+
+	for i in 0..device_managers.len() {
+		let guard = device_managers[i].lock(true);
+
+		if guard.get().get_name() == name {
+			drop(guard);
+			return Some(device_managers[i].new_weak());
+		}
+	}
+
+	None
 }
 
 /// Function that is called when a new device is plugged in.
@@ -59,7 +84,9 @@ pub fn on_plug(dev: &dyn PhysicalDevice) {
 	let device_managers = guard.get_mut();
 
 	for i in 0..device_managers.len() {
-		device_managers[i].on_plug(dev);
+		let mut guard = device_managers[i].lock(true);
+		let manager = guard.get_mut();
+		manager.on_plug(dev);
 	}
 }
 
@@ -73,6 +100,8 @@ pub fn on_unplug(dev: &dyn PhysicalDevice) {
 	let device_managers = guard.get_mut();
 
 	for i in 0..device_managers.len() {
-		device_managers[i].on_unplug(dev);
+		let mut guard = device_managers[i].lock(true);
+		let manager = guard.get_mut();
+		manager.on_unplug(dev);
 	}
 }

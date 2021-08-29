@@ -249,6 +249,45 @@ pub fn get_device(type_: DeviceType, major: u32, minor: u32) -> Option<SharedPtr
 	}
 }
 
+/// Returns the device with the given path `path`.
+/// This function is `O(n)` in time.
+/// If no device with the given path is found, the function returns None.
+pub fn get_by_path(path: &Path) -> Option<SharedPtr<Device>> {
+	{
+		let mut block_guard = unsafe { // Safe because using Mutex
+			BLOCK_DEVICES.lock(true)
+		};
+		let block_container = block_guard.get_mut();
+		for i in 0..block_container.len() {
+			let dev_guard = block_container[i].lock(true);
+			let dev = dev_guard.get();
+
+			if dev.get_path() == path {
+				drop(dev_guard);
+				return Some(block_container[i].clone());
+			}
+		}
+	}
+
+	{
+		let mut char_guard = unsafe { // Safe because using Mutex
+			CHAR_DEVICES.lock(true)
+		};
+		let char_container = char_guard.get_mut();
+		for i in 0..char_container.len() {
+			let dev_guard = char_container[i].lock(true);
+			let dev = dev_guard.get();
+
+			if dev.get_path() == path {
+				drop(dev_guard);
+				return Some(char_container[i].clone());
+			}
+		}
+	}
+
+	None
+}
+
 /// Initializes devices management.
 pub fn init() -> Result<(), Errno> {
 	let mut keyboard_manager = KeyboardManager::new();

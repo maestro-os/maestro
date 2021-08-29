@@ -219,6 +219,20 @@ impl IndexMut<usize> for Path {
 	}
 }
 
+impl Eq for Path {}
+
+impl PartialEq for Path {
+	fn eq(&self, other: &Self) -> bool {
+		for i in 0..self.parts.len() {
+			if self.parts[i] != other.parts[i] {
+				return false;
+			}
+		}
+
+		true
+	}
+}
+
 // TODO Iterator
 
 impl fmt::Display for Path {
