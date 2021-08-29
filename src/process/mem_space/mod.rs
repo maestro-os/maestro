@@ -11,6 +11,7 @@ mod physical_ref_counter;
 
 use core::cmp::Ordering;
 use core::ffi::c_void;
+use core::mem::size_of;
 use core::ptr::NonNull;
 use crate::errno::Errno;
 use crate::errno;
@@ -23,6 +24,7 @@ use crate::util::FailableClone;
 use crate::util::boxed::Box;
 use crate::util::container::binary_tree::BinaryTree;
 use crate::util::lock::mutex::Mutex;
+use crate::util;
 use gap::MemGap;
 use mapping::MemMapping;
 use physical_ref_counter::PhysRefCounter;
@@ -388,6 +390,34 @@ impl MemSpace {
 		}
 	}
 
+	/// Allocates the physical pages to write on the given pointer.
+	/// `virt_addr` is the address to allocate.
+	/// `size` is the size of the region to allocate.
+	/// If the mapping doesn't exist, the function returns an error.
+	pub fn alloc<T>(&mut self, virt_addr: *const T) -> Result<(), Errno> {
+		let mut off = 0;
+
+		while off < size_of::<T>() {
+			let virt_addr = (virt_addr as usize + off) as *const c_void;
+
+			if let Some(mapping) = Self::get_mapping_mut_for(&mut self.mappings, virt_addr) {
+				let page_offset = (virt_addr as usize - mapping.get_begin() as usize)
+					/ memory::PAGE_SIZE;
+				oom::wrap(|| {
+					mapping.map(page_offset)
+				});
+
+				mapping.update_vmem(page_offset);
+			} else {
+				return Err(errno::EINVAL);
+			}
+
+			off += util::up_align(virt_addr, memory::PAGE_SIZE) as usize - virt_addr as usize;
+		}
+
+		Ok(())
+	}
+
 	/// Function called whenever the CPU triggered a page fault for the context. This function
 	/// determines whether the process should continue or not. If continuing, the function must
 	/// resolve the issue before returning.
@@ -402,12 +432,12 @@ impl MemSpace {
 		}
 
 		if let Some(mapping) = Self::get_mapping_mut_for(&mut self.mappings, virt_addr) {
-			let offset = (virt_addr as usize - mapping.get_begin() as usize) / memory::PAGE_SIZE;
+			let page_offset = (virt_addr as usize - mapping.get_begin() as usize) / memory::PAGE_SIZE;
 			oom::wrap(|| {
-				mapping.map(offset)
+				mapping.map(page_offset)
 			});
 
-			mapping.update_vmem(offset);
+			mapping.update_vmem(page_offset);
 			true
 		} else {
 			false

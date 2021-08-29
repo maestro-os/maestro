@@ -189,6 +189,7 @@ endif
 
 # TODO rm
 RUSTFLAGS += -Cdebuginfo=2
+CFLAGS += -g3
 
 # The list of Rust language source files
 RUST_SRC := $(shell find $(SRC_DIR) -type f -name "*.rs")

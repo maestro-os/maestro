@@ -235,13 +235,15 @@ impl Signal {
 				let mut regs = process.get_regs().clone();
 				let redzone_end = regs.esp - REDZONE_SIZE as u32;
 
-				// TODO Check the data isn't written out of the stack
-
-				let signal_data_size = 2 * size_of::<usize>() as u32;
+				let signal_data_size = size_of::<[u32; 2]>() as u32;
 				let signal_esp = redzone_end - signal_data_size;
+
+				// TODO Don't write data out of the stack
+				process.get_mem_space_mut().unwrap().alloc(signal_esp as *mut [u32; 2]).unwrap();
 				let signal_data = unsafe {
 					slice::from_raw_parts_mut(signal_esp as *mut u32, 2)
 				};
+
 				// The pointer to the signal handler
 				signal_data[1] = handler as _;
 				// The signal number
