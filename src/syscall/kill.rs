@@ -2,11 +2,9 @@
 
 use crate::errno::Errno;
 use crate::errno;
-use crate::gdt;
 use crate::process::Process;
 use crate::process::State;
 use crate::process::pid::Pid;
-use crate::process::scheduler;
 use crate::process::signal::Signal;
 use crate::process;
 use crate::util;
@@ -76,7 +74,6 @@ pub fn kill(regs: &util::Regs) -> Result<i32, Errno> {
 
 	// TODO Handle sig == 0
 	// TODO Check permission (with real or effective UID)
-	// TODO Handle when killing current process (execute before returning)
 
 	cli!();
 
@@ -90,47 +87,25 @@ pub fn kill(regs: &util::Regs) -> Result<i32, Errno> {
 
 	// POSIX requires that at least one pending signal is executed before returning
 	if proc.has_signal_pending() {
-		// Set the process's registers to make it resume execution after the current syscall
-		let mut regs = regs.clone();
-		regs.eax = 0;
-		proc.set_regs(&regs);
 		// Set the process to execute the signal action
 		proc.signal_next();
+	}
 
-		// Getting process's information and dropping the guard avoid deadlocks
-		let regs = proc.get_regs().clone();
-		let state = proc.get_state();
-		drop(guard);
+	// Getting process's information and dropping the guard to avoid deadlocks
+	let state = proc.get_state();
+	drop(guard);
 
-		match state {
-			// The process is executing a signal handler. Jump directly to it
-			process::State::Running => {
-				unsafe {
-					scheduler::context_switch(&regs,
-						(gdt::USER_DATA_OFFSET | 3) as _,
-						(gdt::USER_CODE_OFFSET | 3) as _);
-				}
-			},
+	match state {
+		// The process is executing a signal handler. Make the scheduler jump to it
+		process::State::Running => crate::wait(),
 
-			// The process has been stopped. Waiting until wakeup
-			process::State::Stopped => {
-				loop {
-					crate::wait();
+		// The process has been stopped. Waiting until wakeup
+		process::State::Stopped => crate::wait(),
 
-					let mut mutex = Process::get_current().unwrap();
-					let guard = mutex.lock(false);
-					let proc = guard.get();
-					if proc.get_state() != process::State::Stopped {
-						break;
-					}
-				}
-			},
+		// The process has been killed. Stopping execution and waiting for the next tick
+		process::State::Zombie => crate::enter_loop(),
 
-			// The process has been killed. Stopping execution and waiting for the next tick
-			process::State::Zombie => crate::enter_loop(),
-
-			_ => {},
-		}
+		_ => {},
 	}
 
 	Ok(0)

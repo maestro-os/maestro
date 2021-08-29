@@ -458,6 +458,7 @@ impl Process {
 	}
 
 	/// Returns a reference to the list of PIDs of processes in the current process's group.
+	#[inline(always)]
 	pub fn get_group_processes(&self) -> &Vec<Pid> {
 		&self.process_group
 	}
@@ -474,36 +475,43 @@ impl Process {
 	}
 
 	/// Returns the process's user owner ID.
+	#[inline(always)]
 	pub fn get_uid(&self) -> Uid {
 		self.uid
 	}
 
 	/// Sets the process's user owner ID.
+	#[inline(always)]
 	pub fn set_uid(&mut self, uid: Uid) {
 		self.uid = uid;
 	}
 
 	/// Returns the process's group owner ID.
+	#[inline(always)]
 	pub fn get_gid(&self) -> Gid {
 		self.gid
 	}
 
 	/// Sets the process's group owner ID.
+	#[inline(always)]
 	pub fn set_gid(&mut self, gid: Gid) {
 		self.gid = gid;
 	}
 
 	/// Returns the file creation mask.
+	#[inline(always)]
 	pub fn get_umask(&self) -> u16 {
 		self.umask
 	}
 
 	/// Sets the file creation mask.
+	#[inline(always)]
 	pub fn set_umask(&mut self, umask: u16) {
 		self.umask = umask;
 	}
 
 	/// Returns the process's current state.
+	#[inline(always)]
 	pub fn get_state(&self) -> State {
 		self.state
 	}
@@ -531,17 +539,20 @@ impl Process {
 
 	/// Tells whether the current process has informations to be retrieved by the `waitpid` system
 	/// call.
+	#[inline(always)]
 	pub fn is_waitable(&self) -> bool {
 		self.waitable
 	}
 
 	/// Sets the process waitable with the given signal type `type_`.
+	#[inline(always)]
 	pub fn set_waitable(&mut self, type_: u8) {
 		self.waitable = true;
 		self.termsig = type_;
 	}
 
 	/// Clears the waitable flag.
+	#[inline(always)]
 	pub fn clear_waitable(&mut self) {
 		self.waitable = false;
 	}
@@ -558,21 +569,25 @@ impl Process {
 
 	/// Returns the priority of the process. A greater number means a higher priority relative to
 	/// other processes.
+	#[inline(always)]
 	pub fn get_priority(&self) -> usize {
 		self.priority
 	}
 
 	/// Returns the process's parent if exists.
+	#[inline(always)]
 	pub fn get_parent(&self) -> Option<&WeakPtr<Process>> {
 		self.parent.as_ref()
 	}
 
 	/// Returns a reference to the list of the process's children.
+	#[inline(always)]
 	pub fn get_children(&self) -> &Vec<Pid> {
 		&self.children
 	}
 
 	/// Tells whether the process has a child with the given pid.
+	#[inline(always)]
 	pub fn has_child(&self, pid: Pid) -> bool {
 		self.children.binary_search(&pid).is_ok()
 	}
@@ -597,39 +612,52 @@ impl Process {
 
 	/// Returns a reference to the process's memory space.
 	/// If the process is terminated, the function returns None.
+	#[inline(always)]
 	pub fn get_mem_space(&self) -> Option<&MemSpace> {
 		self.mem_space.as_ref()
 	}
 
 	/// Returns a mutable reference to the process's memory space.
 	/// If the process is terminated, the function returns None.
+	#[inline(always)]
 	pub fn get_mem_space_mut(&mut self) -> Option<&mut MemSpace> {
 		self.mem_space.as_mut()
 	}
 
 	/// Returns a reference to the process's current working directory.
+	#[inline(always)]
 	pub fn get_cwd(&self) -> &Path {
 		&self.cwd
 	}
 
 	/// Sets the process's current working directory.
+	#[inline(always)]
 	pub fn set_cwd(&mut self, path: Path) {
 		self.cwd = path;
 	}
 
 	/// Returns the process's saved state registers.
+	#[inline(always)]
 	pub fn get_regs(&self) -> &Regs {
 		&self.regs
 	}
 
 	/// Sets the process's saved state registers.
+	#[inline(always)]
 	pub fn set_regs(&mut self, regs: &Regs) {
 		self.regs = *regs;
 	}
 
 	/// Tells whether the process was syscalling before being interrupted.
+	#[inline(always)]
 	pub fn is_syscalling(&self) -> bool {
 		self.syscalling
+	}
+
+	/// Sets the process's syscalling state.
+	#[inline(always)]
+	pub fn set_syscalling(&mut self, syscalling: bool) {
+		self.syscalling = syscalling;
 	}
 
 	/// Returns the available file descriptor with the lowest ID. If no ID is available, the
@@ -733,6 +761,7 @@ impl Process {
 	}
 
 	/// Returns the exit status if the process has ended.
+	#[inline(always)]
 	pub fn get_exit_status(&self) -> Option<ExitStatus> {
 		if self.state == State::Zombie {
 			Some(self.exit_status)
@@ -742,6 +771,7 @@ impl Process {
 	}
 
 	/// Returns the signal that killed the process.
+	#[inline(always)]
 	pub fn get_termsig(&self) -> u8 {
 		self.termsig
 	}
@@ -812,18 +842,21 @@ impl Process {
 	}
 
 	/// Returns the signal handler for the signal type `type_`.
+	#[inline(always)]
 	pub fn get_signal_handler(&self, type_: SignalType) -> SignalHandler {
 		debug_assert!((type_ as usize) < self.signal_handlers.len());
 		self.signal_handlers[type_ as usize]
 	}
 
 	/// Sets the signal handler `handler` for the signal type `type_`.
+	#[inline(always)]
 	pub fn set_signal_handler(&mut self, type_: SignalType, handler: SignalHandler) {
 		debug_assert!((type_ as usize) < self.signal_handlers.len());
 		self.signal_handlers[type_ as usize] = handler;
 	}
 
 	/// Tells whether the process is handling a signal.
+	#[inline(always)]
 	pub fn is_handling_signal(&self) -> bool {
 		self.handled_signal.is_some()
 	}
@@ -832,7 +865,7 @@ impl Process {
 	/// handler, the default action for the signal is executed.
 	/// `no_handle` tells whether the signal handler must be ignored.
 	pub fn kill(&mut self, sig: Signal) {
-		if self.get_state() == State::Sleeping && sig.is_continuation() {
+		if self.get_state() == State::Stopped && sig.is_continuation() {
 			self.set_state(State::Running);
 		}
 
@@ -844,6 +877,7 @@ impl Process {
 	}
 
 	/// Tells whether the process has a signal pending.
+	#[inline(always)]
 	pub fn has_signal_pending(&self) -> bool {
 		self.signals_bitfield.find_set().is_some()
 	}

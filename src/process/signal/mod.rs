@@ -218,13 +218,13 @@ impl Signal {
 					SignalAction::Stop => {
 						// TODO Handle semaphores
 						if process_state == State::Running {
-							process.set_state(State::Sleeping);
+							process.set_state(State::Stopped);
 						}
 					},
 
 					SignalAction::Continue => {
 						// TODO Handle semaphores
-						if process_state == State::Sleeping {
+						if process_state == State::Stopped {
 							process.set_state(State::Running);
 						}
 					},
