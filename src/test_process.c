@@ -26,15 +26,15 @@ void print_nbr(int nbr)
 	if (nbr >= 10) {
 		print_nbr(nbr / 10);
 	}
-	if (-nbr >= 10) {
-		print_nbr(-nbr / 10);
+	if (nbr <= -10) {
+		print_nbr(-(nbr / 10));
 	}
 
 	char c;
 	if (nbr >= 0) {
 		c = '0' + (nbr % 10);
 	} else {
-		c = '0' + (-nbr % 10);
+		c = '0' + (-(nbr % 10));
 	}
 	write(1, &c, 1);
 }
@@ -111,12 +111,27 @@ void test_process(void)
 		kill(getpid(), 13);
 
 		for (int i = 0; i < 100; ++i)
-			write(1, "2", 1);
+			write(1, "b", 1);
 	} else {
 		for (int i = 0; i < 100; ++i)
-			write(1, "1", 1);
+			write(1, "a", 1);
 
 		kill(pid, 4);
+
+		// If uncommented, success
+		print_nbr(waitpid(-1, 0, 0));
+
+		write(1, "noice", 5);
+
+		// If uncommented, success
+		print_nbr(waitpid(-1, 0, 0));
+
+		write(1, "nOiCe", 5);
+
+		// If uncommented, returns ECHILD
+		print_nbr(waitpid(-1, 0, 0));
+
+		write(1, "NOICE", 5);
 
 		while (1)
 			;

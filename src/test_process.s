@@ -20,14 +20,12 @@ open:
 	mov %esp, %ebp
 
 	push %ebx
-	push %ecx
 
 	mov $0, %eax
 	mov 8(%ebp), %ebx
 	mov 12(%ebp), %ecx
 	int $0x80
 
-	pop %ecx
 	pop %ebx
 
 	mov %ebp, %esp
@@ -39,8 +37,6 @@ read:
 	mov %esp, %ebp
 
 	push %ebx
-	push %ecx
-	push %edx
 
 	mov $14, %eax
 	mov 8(%ebp), %ebx
@@ -48,8 +44,6 @@ read:
 	mov 16(%ebp), %edx
 	int $0x80
 
-	pop %edx
-	pop %ecx
 	pop %ebx
 
 	mov %ebp, %esp
@@ -61,8 +55,6 @@ write:
 	mov %esp, %ebp
 
 	push %ebx
-	push %ecx
-	push %edx
 
 	mov $15, %eax
 	mov 8(%ebp), %ebx
@@ -70,8 +62,6 @@ write:
 	mov 16(%ebp), %edx
 	int $0x80
 
-	pop %edx
-	pop %ecx
 	pop %ebx
 
 	mov %ebp, %esp
@@ -114,8 +104,6 @@ waitpid:
 	mov %esp, %ebp
 
 	push %ebx
-	push %ecx
-	push %edx
 
 	mov $19, %eax
 	mov 8(%ebp), %ebx
@@ -123,8 +111,6 @@ waitpid:
 	mov 16(%ebp), %edx
 	int $0x80
 
-	pop %edx
-	pop %ecx
 	pop %ebx
 
 	mov %ebp, %esp
@@ -146,14 +132,12 @@ signal:
 	mov %esp, %ebp
 
 	push %ebx
-	push %ecx
 
 	mov $32, %eax
 	mov 8(%ebp), %ebx
 	mov 12(%ebp), %ecx
 	int $0x80
 
-	pop %ecx
 	pop %ebx
 
 	mov %ebp, %esp
@@ -165,14 +149,12 @@ kill:
 	mov %esp, %ebp
 
 	push %ebx
-	push %ecx
 
 	mov $33, %eax
 	mov 8(%ebp), %ebx
 	mov 12(%ebp), %ecx
 	int $0x80
 
-	pop %ecx
 	pop %ebx
 
 	mov %ebp, %esp
@@ -184,8 +166,6 @@ socketpair:
 	mov %esp, %ebp
 
 	push %ebx
-	push %ecx
-	push %edx
 	push %esi
 
 	mov $34, %eax
@@ -196,8 +176,6 @@ socketpair:
 	int $0x80
 
 	pop %esi
-	pop %edx
-	pop %ecx
 	pop %ebx
 
 	mov %ebp, %esp
@@ -209,14 +187,12 @@ init_module:
 	mov %esp, %ebp
 
 	push %ebx
-	push %ecx
 
 	mov $37, %eax
 	mov 8(%ebp), %ebx
 	mov 12(%ebp), %ecx
 	int $0x80
 
-	pop %ecx
 	pop %ebx
 
 	mov %ebp, %esp
@@ -228,14 +204,12 @@ finit_module:
 	mov %esp, %ebp
 
 	push %ebx
-	push %ecx
 
 	mov $38, %eax
 	mov 8(%ebp), %ebx
 	mov 12(%ebp), %ecx
 	int $0x80
 
-	pop %ecx
 	pop %ebx
 
 	mov %ebp, %esp
@@ -247,14 +221,12 @@ delete_module:
 	mov %esp, %ebp
 
 	push %ebx
-	push %ecx
 
 	mov $39, %eax
 	mov 8(%ebp), %ebx
 	mov 12(%ebp), %ecx
 	int $0x80
 
-	pop %ecx
 	pop %ebx
 
 	mov %ebp, %esp

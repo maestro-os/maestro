@@ -29,7 +29,7 @@ syscall:
 	sti
 	call syscall_handler
 	cli
-	add $44, %esp
+	add $4, %esp
 
 	xor %ebx, %ebx
 	mov $GDT_USER_DATA_OFFSET, %bx
@@ -38,6 +38,15 @@ syscall:
 	mov %bx, %es
 	mov %bx, %fs
 	mov %bx, %gs
+
+	add $16, %esp
+
+	pop %eax
+	pop %ebx
+	pop %ecx
+	pop %edx
+	pop %esi
+	pop %edi
 
 	mov %ebp, %esp
 	pop %ebp
