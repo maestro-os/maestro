@@ -89,7 +89,7 @@ use write::write;
 
 /// This function is called whenever a system call is triggered.
 #[no_mangle]
-pub extern "C" fn syscall_handler(regs: &util::Regs) -> u32 {
+pub extern "C" fn syscall_handler(regs: &mut util::Regs) {
 	let id = regs.eax;
 
 	let result = match id {
@@ -211,9 +211,13 @@ pub extern "C" fn syscall_handler(regs: &util::Regs) -> u32 {
 		}
 	};
 
-	if let Ok(val) = result {
-		val as _
-	} else {
-		-result.unwrap_err() as _
-	}
+	// Setting the return value
+	let retval = {
+		if let Ok(val) = result {
+			val as _
+		} else {
+			-result.unwrap_err() as _
+		}
+	};
+	regs.eax = retval;
 }

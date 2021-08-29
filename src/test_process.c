@@ -60,11 +60,11 @@ void test_process(void)
 
 	// Fork bomb
 
-	//while (1)
-	//{
-	//	print_nbr(getpid());
-	//	fork();
-	//}
+	while (1)
+	{
+		print_nbr(getpid());
+		fork();
+	}
 
 
 
@@ -104,38 +104,37 @@ void test_process(void)
 
 
 	// Testing stop signals
-	// TODO Test waitpid
 
-	int pid = fork();
-	if (pid == 0) {
-		kill(getpid(), 13);
+	//int pid = fork();
+	//if (pid == 0) {
+	//	kill(getpid(), 13);
 
-		for (int i = 0; i < 100; ++i)
-			write(1, "b", 1);
-	} else {
-		for (int i = 0; i < 100; ++i)
-			write(1, "a", 1);
+	//	for (int i = 0; i < 100; ++i)
+	//		write(1, "b", 1);
+	//} else {
+	//	for (int i = 0; i < 100; ++i)
+	//		write(1, "a", 1);
 
-		kill(pid, 4);
+	//	kill(pid, 4);
 
-		// If uncommented, success
-		print_nbr(waitpid(-1, 0, 0));
+	//	// If uncommented, success
+	//	print_nbr(waitpid(-1, 0, 0));
 
-		write(1, "noice", 5);
+	//	write(1, "noice", 5);
 
-		// If uncommented, success
-		print_nbr(waitpid(-1, 0, 0));
+	//	// If uncommented, success
+	//	print_nbr(waitpid(-1, 0, 0));
 
-		write(1, "nOiCe", 5);
+	//	write(1, "nOiCe", 5);
 
-		// If uncommented, returns ECHILD
-		print_nbr(waitpid(-1, 0, 0));
+	//	// If uncommented, returns ECHILD
+	//	print_nbr(waitpid(-1, 0, 0));
 
-		write(1, "NOICE", 5);
+	//	write(1, "NOICE", 5);
 
-		while (1)
-			;
-	}
+	//	while (1)
+	//		;
+	//}
 
 
 
