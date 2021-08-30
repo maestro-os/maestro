@@ -1,9 +1,14 @@
 //! Personal System/2 (PS/2) is a connector designed for keyboards and mouses.
 //! It has now been deprecated in favor of USB keyboards/mouses.
 
-// TODO Externalize this module into a kernel module when the interface for loading them will be
-// ready
+// TODO Externalize this into a kernel module when the interface for loading them will be ready
 
+use crate::device::DeviceManager;
+use crate::device::keyboard::Keyboard;
+use crate::device::keyboard::KeyboardAction;
+use crate::device::keyboard::KeyboardKey;
+use crate::device::keyboard::KeyboardLED;
+use crate::device::keyboard::KeyboardManager;
 use crate::device::manager;
 use crate::event::{CallbackHook, InterruptResult, InterruptResultAction};
 use crate::event;
@@ -24,6 +29,9 @@ const COMMAND_REGISTER: u16 = 0x64;
 /// The maximum number of attempts for sending a command to the PS/2 controller.
 const MAX_ATTEMPTS: usize = 3;
 
+/// The command to set the state of keyboard LEDs.
+const SET_LED_COMMAND: u8 = 0xed;
+
 /// Response telling the test passed.
 const TEST_CONTROLLER_PASS: u8 = 0x55;
 /// Response telling the test failed.
@@ -37,157 +45,7 @@ const KEYBOARD_ACK: u8 = 0xfa;
 /// Response telling to resend the command.
 const KEYBOARD_RESEND: u8 = 0xf4;
 
-/// The ID of the Scroll Lock LED.
-const LED_SCROLL_LOCK: u8 = 0b001;
-/// The ID of the Number Lock LED.
-const LED_NUMBER_LOCK: u8 = 0b010;
-/// The ID of the Caps Lock LED.
-const LED_CAPS_LOCK: u8 = 0b100;
-
 // TODO Turn commands and flags into constants.
-
-/// Enumation of keyboard keys.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum KeyboardKey {
-	KeyEsc,
-	Key1,
-	Key2,
-	Key3,
-	Key4,
-	Key5,
-	Key6,
-	Key7,
-	Key8,
-	Key9,
-	Key0,
-	KeyMinus,
-	KeyEqual,
-	KeyBackspace,
-	KeyTab,
-	KeyQ,
-	KeyW,
-	KeyE,
-	KeyR,
-	KeyT,
-	KeyY,
-	KeyU,
-	KeyI,
-	KeyO,
-	KeyP,
-	KeyOpenBrace,
-	KeyCloseBrace,
-	KeyEnter,
-	KeyLeftControl,
-	KeyA,
-	KeyS,
-	KeyD,
-	KeyF,
-	KeyG,
-	KeyH,
-	KeyJ,
-	KeyK,
-	KeyL,
-	KeySemiColon,
-	KeySingleQuote,
-	KeyBackTick,
-	KeyLeftShift,
-	KeyBackslash,
-	KeyZ,
-	KeyX,
-	KeyC,
-	KeyV,
-	KeyB,
-	KeyN,
-	KeyM,
-	KeyComma,
-	KeyDot,
-	KeySlash,
-	KeyRightShift,
-	KeyKeypadStar,
-	KeyLeftAlt,
-	KeySpace,
-	KeyCapsLock,
-	KeyF1,
-	KeyF2,
-	KeyF3,
-	KeyF4,
-	KeyF5,
-	KeyF6,
-	KeyF7,
-	KeyF8,
-	KeyF9,
-	KeyF10,
-	KeyNumberLock,
-	KeyScrollLock,
-	KeyKeypad7,
-	KeyKeypad8,
-	KeyKeypad9,
-	KeyKeypadMinus,
-	KeyKeypad4,
-	KeyKeypad5,
-	KeyKeypad6,
-	KeyKeypadPlus,
-	KeyKeypad1,
-	KeyKeypad2,
-	KeyKeypad3,
-	KeyKeypad0,
-	KeyKeypadDot,
-	KeyF11,
-	KeyF12,
-
-	KeyPreviousTrack,
-	KeyNextTrack,
-	KeyKeypadEnter,
-	KeyRightControl,
-	KeyMute,
-	KeyCalculator,
-	KeyPlay,
-	KeyStop,
-	KeyVolumeDown,
-	KeyVolumeUp,
-	KeyWWWHome,
-	KeyKeypadSlash,
-	KeyRightAlt,
-	KeyHome,
-	KeyCursorUp,
-	KeyPageUp,
-	KeyCursorLeft,
-	KeyCursorRight,
-	KeyEnd,
-	KeyCursorDown,
-	KeyPageDown,
-	KeyInsert,
-	KeyDelete,
-	KeyLeftGUI,
-	KeyRightGUI,
-	KeyApps,
-	KeyACPIPower,
-	KeyACPISleep,
-	KeyACPIWake,
-	KeyWWWSearch,
-	KeyWWWFavorites,
-	KeyWWWRefresh,
-	KeyWWWStop,
-	KeyWWWForward,
-	KeyWWWBack,
-	KeyMyComputer,
-	KeyEmail,
-	KeyMediaSelect,
-
-	KeyPrintScreen,
-	KeyPause,
-
-	KeyUnknown,
-}
-
-/// Enumeration of keyboard actions.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum KeyboardAction {
-	/// The key was pressed.
-	Pressed,
-	/// The key was released.
-	Released,
-}
 
 /// A slice containing a pair of keycode and enumeration that allows to associate a keycode with
 /// its enumeration entry.
@@ -504,17 +362,44 @@ fn read_keystroke() -> (KeyboardKey, KeyboardAction) {
 	(key, action)
 }
 
-/// The PS2 handler structure.
-pub struct PS2Handler {
-	/// The callback hook for keyboard input interrupts.
-	keyboard_interrupt_callback_hook: Option<CallbackHook>,
+/// Handles the given keyboard input.
+/// `key` is the key that has been typed.
+/// `action` is the action.
+fn handle_input(key: KeyboardKey, action: KeyboardAction) {
+	// TODO Do not retrieve at each keystroke
+	if let Some(manager) = manager::get_by_name("kbd") {
+		if let Some(manager) = manager.get_mut() {
+			let mut guard = manager.lock(true);
+			let manager = guard.get_mut();
+
+			let kbd_manager = unsafe {
+				&mut *(manager as *mut dyn DeviceManager as *mut KeyboardManager)
+			};
+			kbd_manager.input(key, action);
+
+			if key == KeyboardKey::KeyPause && action == KeyboardAction::Pressed {
+				kbd_manager.input(key, KeyboardAction::Released);
+			}
+		}
+	}
 }
 
-impl PS2Handler {
-	/// Creates the module's instance.
+/// The PS2 keyboard structure.
+pub struct PS2Keyboard {
+	/// The callback hook for keyboard input interrupts.
+	keyboard_interrupt_callback_hook: Option<CallbackHook>,
+
+	/// The state of LEDs.
+	leds_state: u8,
+}
+
+impl PS2Keyboard {
+	/// Creates the keyboard's instance.
 	pub fn new() -> Result<Self, ()> {
 		let mut s = Self {
 			keyboard_interrupt_callback_hook: None,
+
+			leds_state: 0,
 		};
 		s.init()?;
 		Ok(s)
@@ -540,20 +425,7 @@ impl PS2Handler {
 			let callback = | _id: u32, _code: u32, _regs: &util::Regs, _ring: u32 | {
 				while can_read() {
 					let (key, action) = read_keystroke();
-
-					// TODO Do not retrieve at each keystroke
-					if let Some(manager) = manager::get_by_name("kbd") {
-						if let Some(manager) = manager.get_mut() {
-							let mut guard = manager.lock(true);
-							let _manager = guard.get_mut();
-
-							// TODO Write input
-
-							if key == KeyboardKey::KeyPause && action == KeyboardAction::Pressed {
-								// TODO Write release directly
-							}
-						}
-					}
+					handle_input(key, action);
 				}
 
 				InterruptResult::new(false, InterruptResultAction::Resume)
@@ -567,6 +439,23 @@ impl PS2Handler {
 			}
 		})
 	}
+}
 
-	// TODO LEDs state
+impl Keyboard for PS2Keyboard {
+	fn set_led(&mut self, led: KeyboardLED, enabled: bool) {
+		let offset = match led {
+			KeyboardLED::NumberLock => 0,
+			KeyboardLED::CapsLock => 1,
+			KeyboardLED::ScrollLock => 2,
+		};
+
+		if enabled {
+			self.leds_state |= 1 << offset;
+		} else {
+			self.leds_state &= !(1 << offset);
+		}
+
+		let _ = send_command(SET_LED_COMMAND, KEYBOARD_ACK);
+		let _ = keyboard_send(self.leds_state);
+	}
 }
