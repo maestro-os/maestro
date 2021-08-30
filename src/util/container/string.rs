@@ -65,27 +65,21 @@ impl String {
 		let len = get_number_len(n, 10);
 		debug_assert!(len > 0);
 		let mut v = Vec::with_capacity(len)?;
+		v.resize(len)?;
 
 		let mut l = len;
 		if n < 0 {
-			v.push(b'-')?;
+			v[0] = b'-';
 			l -= 1;
 		}
 
 		let mut shift = 1 as i64;
-		for i in (0..l).rev() {
-			let b = {
-				if i == 0 {
-					(n % 10).abs() as u8
-				} else {
-					(n / shift % 10).abs() as u8
-				}
-			};
+		for i in 0..l {
+			let b = (n / shift % 10).abs() as u8;
 
-			v.push(b'0' + b)?;
+			v[len - i - 1] = b'0' + b;
 			shift *= 10;
 		}
-		debug_assert_eq!(v.len(), len);
 
 		Ok(Self {
 			data: v,

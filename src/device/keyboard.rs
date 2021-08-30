@@ -256,7 +256,7 @@ impl KeyboardKey {
 				Self::Key9 => Some("("),
 				Self::Key0 => Some(")"),
 				Self::KeyMinus => Some("_"),
-				Self::KeyEqual => Some("="),
+				Self::KeyEqual => Some("+"),
 				Self::KeyBackspace => Some("\x08"),
 				Self::KeyTab => Some("\t"),
 				Self::KeyQ => Some("Q"),

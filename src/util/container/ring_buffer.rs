@@ -28,7 +28,7 @@ impl RingBuffer {
 	/// `size` is the size of the buffer.
 	pub fn new(size: usize) -> Result<Self, Errno> {
 		let mut buffer = Vec::<u8>::new();
-		buffer.resize(size)?;
+		buffer.resize(size + 1)?;
 
 		Ok(Self {
 			buffer,
@@ -63,7 +63,7 @@ impl RingBuffer {
 	/// Returns the length of the available space in bytes in the buffer.
 	#[inline(always)]
 	pub fn get_available_len(&self) -> usize {
-		self.get_size() - self.get_data_len()
+		self.get_size() - self.get_data_len() - 1
 	}
 
 	/// Returns a slice representing the ring buffer's linear buffer.
@@ -135,7 +135,7 @@ mod test {
 
 	#[test_case]
 	fn ring_buffer0() {
-		let mut rb = RingBuffer::new(0).unwrap();
+		let mut rb = RingBuffer::new(10).unwrap();
 		let mut buf: [u8; 0] = [0; 0];
 		assert_eq!(rb.read(&mut buf), 0);
 	}
@@ -143,19 +143,12 @@ mod test {
 	#[test_case]
 	fn ring_buffer1() {
 		let mut rb = RingBuffer::new(10).unwrap();
-		let mut buf: [u8; 0] = [0; 0];
-		assert_eq!(rb.read(&mut buf), 0);
-	}
-
-	#[test_case]
-	fn ring_buffer2() {
-		let mut rb = RingBuffer::new(10).unwrap();
 		let mut buf: [u8; 10] = [0; 10];
 		assert_eq!(rb.read(&mut buf), 0);
 	}
 
 	#[test_case]
-	fn ring_buffer3() {
+	fn ring_buffer2() {
 		let mut rb = RingBuffer::new(10).unwrap();
 		let mut buf: [u8; 10] = [0; 10];
 		for i in 0..buf.len() {
