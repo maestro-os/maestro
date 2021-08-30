@@ -147,99 +147,186 @@ impl KeyboardKey {
 	/// Returns the TTY characters for the given current.
 	/// `shift` tells whether shift is pressed. This value has to be inverted if caps lock is
 	/// enabled.
-	pub fn get_tty_chars(&self, _shift: bool) -> Option<&str> {
-		match self {
-			Self::KeyEsc => Some("^["),
-			Self::Key1 => Some("1"),
-			Self::Key2 => Some("2"),
-			Self::Key3 => Some("3"),
-			Self::Key4 => Some("4"),
-			Self::Key5 => Some("5"),
-			Self::Key6 => Some("6"),
-			Self::Key7 => Some("7"),
-			Self::Key8 => Some("8"),
-			Self::Key9 => Some("9"),
-			Self::Key0 => Some("0"),
-			Self::KeyMinus => Some("-"),
-			Self::KeyEqual => Some("="),
-			Self::KeyBackspace => Some("\x08"),
-			Self::KeyTab => Some("\t"),
-			Self::KeyQ => Some("q"),
-			Self::KeyW => Some("w"),
-			Self::KeyE => Some("e"),
-			Self::KeyR => Some("r"),
-			Self::KeyT => Some("t"),
-			Self::KeyY => Some("y"),
-			Self::KeyU => Some("u"),
-			Self::KeyI => Some("i"),
-			Self::KeyO => Some("o"),
-			Self::KeyP => Some("p"),
-			Self::KeyOpenBrace => Some("["),
-			Self::KeyCloseBrace => Some("]"),
-			Self::KeyEnter => Some("\n"),
-			Self::KeyA => Some("a"),
-			Self::KeyS => Some("s"),
-			Self::KeyD => Some("d"),
-			Self::KeyF => Some("f"),
-			Self::KeyG => Some("g"),
-			Self::KeyH => Some("h"),
-			Self::KeyJ => Some("j"),
-			Self::KeyK => Some("k"),
-			Self::KeyL => Some("l"),
-			Self::KeySemiColon => Some(";"),
-			Self::KeySingleQuote => Some("'"),
-			Self::KeyBackTick => Some("`"),
-			Self::KeyBackslash => Some("\\"),
-			Self::KeyZ => Some("z"),
-			Self::KeyX => Some("x"),
-			Self::KeyC => Some("c"),
-			Self::KeyV => Some("v"),
-			Self::KeyB => Some("b"),
-			Self::KeyN => Some("n"),
-			Self::KeyM => Some("m"),
-			Self::KeyComma => Some(","),
-			Self::KeyDot => Some("."),
-			Self::KeySlash => Some("/"),
-			Self::KeyKeypadStar => Some("*"),
-			Self::KeySpace => Some(" "),
-			Self::KeyF1 => Some("^[[[A"),
-			Self::KeyF2 => Some("^[[[B"),
-			Self::KeyF3 => Some("^[[[C"),
-			Self::KeyF4 => Some("^[[[D"),
-			Self::KeyF5 => Some("^[[[E"),
-			Self::KeyF6 => Some("^[[17"),
-			Self::KeyF7 => Some("^[[18"),
-			Self::KeyF8 => Some("^[[19"),
-			Self::KeyF9 => Some("^[[20"),
-			Self::KeyF10 => Some("^[[21"),
-			Self::KeyKeypad7 => Some("7"),
-			Self::KeyKeypad8 => Some("8"),
-			Self::KeyKeypad9 => Some("9"),
-			Self::KeyKeypadMinus => Some("-"),
-			Self::KeyKeypad4 => Some("4"),
-			Self::KeyKeypad5 => Some("5"),
-			Self::KeyKeypad6 => Some("6"),
-			Self::KeyKeypadPlus => Some("+"),
-			Self::KeyKeypad1 => Some("1"),
-			Self::KeyKeypad2 => Some("2"),
-			Self::KeyKeypad3 => Some("3"),
-			Self::KeyKeypad0 => Some("0"),
-			Self::KeyKeypadDot => Some("."),
-			Self::KeyF11 => Some("^[[23~"),
-			Self::KeyF12 => Some("^[[24~"),
+	pub fn get_tty_chars(&self, shift: bool) -> Option<&str> {
+		if !shift {
+			match self {
+				Self::KeyEsc => Some("^["),
+				Self::Key1 => Some("1"),
+				Self::Key2 => Some("2"),
+				Self::Key3 => Some("3"),
+				Self::Key4 => Some("4"),
+				Self::Key5 => Some("5"),
+				Self::Key6 => Some("6"),
+				Self::Key7 => Some("7"),
+				Self::Key8 => Some("8"),
+				Self::Key9 => Some("9"),
+				Self::Key0 => Some("0"),
+				Self::KeyMinus => Some("-"),
+				Self::KeyEqual => Some("="),
+				Self::KeyBackspace => Some("\x08"),
+				Self::KeyTab => Some("\t"),
+				Self::KeyQ => Some("q"),
+				Self::KeyW => Some("w"),
+				Self::KeyE => Some("e"),
+				Self::KeyR => Some("r"),
+				Self::KeyT => Some("t"),
+				Self::KeyY => Some("y"),
+				Self::KeyU => Some("u"),
+				Self::KeyI => Some("i"),
+				Self::KeyO => Some("o"),
+				Self::KeyP => Some("p"),
+				Self::KeyOpenBrace => Some("["),
+				Self::KeyCloseBrace => Some("]"),
+				Self::KeyEnter => Some("\n"),
+				Self::KeyA => Some("a"),
+				Self::KeyS => Some("s"),
+				Self::KeyD => Some("d"),
+				Self::KeyF => Some("f"),
+				Self::KeyG => Some("g"),
+				Self::KeyH => Some("h"),
+				Self::KeyJ => Some("j"),
+				Self::KeyK => Some("k"),
+				Self::KeyL => Some("l"),
+				Self::KeySemiColon => Some(";"),
+				Self::KeySingleQuote => Some("'"),
+				Self::KeyBackTick => Some("`"),
+				Self::KeyBackslash => Some("\\"),
+				Self::KeyZ => Some("z"),
+				Self::KeyX => Some("x"),
+				Self::KeyC => Some("c"),
+				Self::KeyV => Some("v"),
+				Self::KeyB => Some("b"),
+				Self::KeyN => Some("n"),
+				Self::KeyM => Some("m"),
+				Self::KeyComma => Some(","),
+				Self::KeyDot => Some("."),
+				Self::KeySlash => Some("/"),
+				Self::KeyKeypadStar => Some("*"),
+				Self::KeySpace => Some(" "),
+				Self::KeyF1 => Some("^[[[A"),
+				Self::KeyF2 => Some("^[[[B"),
+				Self::KeyF3 => Some("^[[[C"),
+				Self::KeyF4 => Some("^[[[D"),
+				Self::KeyF5 => Some("^[[[E"),
+				Self::KeyF6 => Some("^[[17"),
+				Self::KeyF7 => Some("^[[18"),
+				Self::KeyF8 => Some("^[[19"),
+				Self::KeyF9 => Some("^[[20"),
+				Self::KeyF10 => Some("^[[21"),
+				Self::KeyKeypad7 => Some("7"),
+				Self::KeyKeypad8 => Some("8"),
+				Self::KeyKeypad9 => Some("9"),
+				Self::KeyKeypadMinus => Some("-"),
+				Self::KeyKeypad4 => Some("4"),
+				Self::KeyKeypad5 => Some("5"),
+				Self::KeyKeypad6 => Some("6"),
+				Self::KeyKeypadPlus => Some("+"),
+				Self::KeyKeypad1 => Some("1"),
+				Self::KeyKeypad2 => Some("2"),
+				Self::KeyKeypad3 => Some("3"),
+				Self::KeyKeypad0 => Some("0"),
+				Self::KeyKeypadDot => Some("."),
+				Self::KeyF11 => Some("^[[23~"),
+				Self::KeyF12 => Some("^[[24~"),
 
-			Self::KeyKeypadEnter => Some("\n"),
-			Self::KeyKeypadSlash => Some("/"),
-			Self::KeyHome => Some("^[[1~"),
-			Self::KeyCursorUp => Some("^[[A"),
-			Self::KeyPageUp => Some("^[[5~"),
-			Self::KeyCursorLeft => Some("^[[C"),
-			Self::KeyCursorRight => Some("^[[D"),
-			Self::KeyEnd => Some("^[[4~"),
-			Self::KeyCursorDown => Some("^[[B"),
-			Self::KeyPageDown => Some("^[[6~"),
+				Self::KeyKeypadEnter => Some("\n"),
+				Self::KeyKeypadSlash => Some("/"),
+				Self::KeyHome => Some("^[[1~"),
+				Self::KeyCursorUp => Some("^[[A"),
+				Self::KeyPageUp => Some("^[[5~"),
+				Self::KeyCursorLeft => Some("^[[C"),
+				Self::KeyCursorRight => Some("^[[D"),
+				Self::KeyEnd => Some("^[[4~"),
+				Self::KeyCursorDown => Some("^[[B"),
+				Self::KeyPageDown => Some("^[[6~"),
 
-			_ => None,
+				_ => None,
+			}
+		} else {
+			match self {
+				Self::KeyEsc => Some("^["),
+				Self::Key1 => Some("!"),
+				Self::Key2 => Some("@"),
+				Self::Key3 => Some("#"),
+				Self::Key4 => Some("$"),
+				Self::Key5 => Some("%"),
+				Self::Key6 => Some("^"),
+				Self::Key7 => Some("&"),
+				Self::Key8 => Some("*"),
+				Self::Key9 => Some("("),
+				Self::Key0 => Some(")"),
+				Self::KeyMinus => Some("_"),
+				Self::KeyEqual => Some("="),
+				Self::KeyBackspace => Some("\x08"),
+				Self::KeyTab => Some("\t"),
+				Self::KeyQ => Some("Q"),
+				Self::KeyW => Some("W"),
+				Self::KeyE => Some("E"),
+				Self::KeyR => Some("R"),
+				Self::KeyT => Some("T"),
+				Self::KeyY => Some("Y"),
+				Self::KeyU => Some("U"),
+				Self::KeyI => Some("I"),
+				Self::KeyO => Some("O"),
+				Self::KeyP => Some("P"),
+				Self::KeyOpenBrace => Some("{"),
+				Self::KeyCloseBrace => Some("}"),
+				Self::KeyEnter => Some("\n"),
+				Self::KeyA => Some("A"),
+				Self::KeyS => Some("S"),
+				Self::KeyD => Some("D"),
+				Self::KeyF => Some("F"),
+				Self::KeyG => Some("G"),
+				Self::KeyH => Some("H"),
+				Self::KeyJ => Some("J"),
+				Self::KeyK => Some("K"),
+				Self::KeyL => Some("L"),
+				Self::KeySemiColon => Some(":"),
+				Self::KeySingleQuote => Some("\""),
+				Self::KeyBackTick => Some("~"),
+				Self::KeyBackslash => Some("|"),
+				Self::KeyZ => Some("Z"),
+				Self::KeyX => Some("X"),
+				Self::KeyC => Some("C"),
+				Self::KeyV => Some("V"),
+				Self::KeyB => Some("B"),
+				Self::KeyN => Some("N"),
+				Self::KeyM => Some("M"),
+				Self::KeyComma => Some("<"),
+				Self::KeyDot => Some(">"),
+				Self::KeySlash => Some("?"),
+				Self::KeyKeypadStar => Some("*"),
+				Self::KeySpace => Some(" "),
+				// TODO F1 to F10
+				Self::KeyKeypad7 => Some("7"),
+				Self::KeyKeypad8 => Some("8"),
+				Self::KeyKeypad9 => Some("9"),
+				Self::KeyKeypadMinus => Some("-"),
+				Self::KeyKeypad4 => Some("4"),
+				Self::KeyKeypad5 => Some("5"),
+				Self::KeyKeypad6 => Some("6"),
+				Self::KeyKeypadPlus => Some("+"),
+				Self::KeyKeypad1 => Some("1"),
+				Self::KeyKeypad2 => Some("2"),
+				Self::KeyKeypad3 => Some("3"),
+				Self::KeyKeypad0 => Some("0"),
+				Self::KeyKeypadDot => Some("."),
+				// TODO F11 and F12
+
+				// TODO
+				// Self::KeyKeypadEnter => Some("\n"),
+				// Self::KeyKeypadSlash => Some("/"),
+				// Self::KeyHome => Some("^[[1~"),
+				// Self::KeyCursorUp => Some("^[[A"),
+				// Self::KeyPageUp => Some("^[[5~"),
+				// Self::KeyCursorLeft => Some("^[[C"),
+				// Self::KeyCursorRight => Some("^[[D"),
+				// Self::KeyEnd => Some("^[[4~"),
+				// Self::KeyCursorDown => Some("^[[B"),
+				// Self::KeyPageDown => Some("^[[6~"),
+
+				_ => None,
+			}
 		}
 	}
 }
@@ -401,27 +488,31 @@ impl KeyboardManager {
 		}
 
 		if action == KeyboardAction::Pressed {
-			match key {
-				KeyboardKey::KeyF1 => tty::switch(0),
-				KeyboardKey::KeyF2 => tty::switch(1),
-				KeyboardKey::KeyF3 => tty::switch(2),
-				KeyboardKey::KeyF4 => tty::switch(3),
-				KeyboardKey::KeyF5 => tty::switch(4),
-				KeyboardKey::KeyF6 => tty::switch(5),
-				KeyboardKey::KeyF7 => tty::switch(6),
-				KeyboardKey::KeyF8 => tty::switch(7),
-				KeyboardKey::KeyF9 => tty::switch(8),
-				KeyboardKey::KeyF10 => tty::switch(9),
-				KeyboardKey::KeyF11 => tty::switch(10),
-				KeyboardKey::KeyF12 => tty::switch(11),
+			if self.ctrl && self.alt {
+				match key {
+					KeyboardKey::KeyF1 => tty::switch(0),
+					KeyboardKey::KeyF2 => tty::switch(1),
+					KeyboardKey::KeyF3 => tty::switch(2),
+					KeyboardKey::KeyF4 => tty::switch(3),
+					KeyboardKey::KeyF5 => tty::switch(4),
+					KeyboardKey::KeyF6 => tty::switch(5),
+					KeyboardKey::KeyF7 => tty::switch(6),
+					KeyboardKey::KeyF8 => tty::switch(7),
+					KeyboardKey::KeyF9 => tty::switch(8),
+					KeyboardKey::KeyF10 => tty::switch(9),
+					KeyboardKey::KeyF11 => tty::switch(10),
+					KeyboardKey::KeyF12 => tty::switch(11),
 
-				_ => {
-					let shift = self.shift != self.caps_lock.is_enabled();
+					_ => {
+					},
+				}
+			}
 
-					if let Some(_tty_chars) = key.get_tty_chars(shift) {
-						// TODO Write on TTY input
-					}
-				},
+			let shift = self.shift != self.caps_lock.is_enabled();
+
+			if let Some(tty_chars) = key.get_tty_chars(shift) {
+				// TODO Write on TTY input
+				crate::print!("{}", tty_chars); // TODO rm
 			}
 		}
 	}
@@ -429,8 +520,10 @@ impl KeyboardManager {
 	/// Sets the state of the LED on every keyboards.
 	/// `led` is the keyboard LED.
 	/// `enabled` tells whether the LED is lit.
-	pub fn set_led(&self, _led: KeyboardLED, _enabled: bool) {
-		// TODO
+	pub fn set_led(&mut self, led: KeyboardLED, enabled: bool) {
+		if let Some(ps2) = &mut self.ps2_keyboard {
+			ps2.set_led(led, enabled);
+		}
 	}
 }
 
@@ -445,7 +538,7 @@ impl DeviceManager for KeyboardManager {
 	}
 
 	fn on_plug(&mut self, _dev: &dyn PhysicalDevice) {
-		// TODO
+		// TODO (When plugging a keyboard, don't forget to set the LEDs state)
 	}
 
 	fn on_unplug(&mut self, _dev: &dyn PhysicalDevice) {

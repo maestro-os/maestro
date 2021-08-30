@@ -59,14 +59,13 @@ pub struct TTY {
 
 	/// The content of the TTY's history
 	history: [vga::Char; HISTORY_SIZE],
+	/// Tells whether TTY updates are enabled or not
+	update: bool,
 
 	/// The ANSI escape codes buffer.
 	ansi_buffer: ansi::ANSIBuffer,
-
 	/// The number of prompted characters
 	prompted_chars: usize,
-	/// Tells whether TTY updates are enabled or not
-	update: bool,
 }
 
 /// The array of every TTYs.
@@ -131,11 +130,10 @@ impl TTY {
 		self.current_color = vga::DEFAULT_COLOR;
 
 		self.history = [0; HISTORY_SIZE];
+		self.update = true;
 
 		self.ansi_buffer = ansi::ANSIBuffer::new();
-
 		self.prompted_chars = 0;
-		self.update = true;
 	}
 
 	/// Returns the id of the TTY.
@@ -304,7 +302,6 @@ impl TTY {
 			},
 			0x08 => {
 				// TODO Backspace
-				todo!();
 			},
 			b'\t' => {
 				self.cursor_forward(get_tab_size(self.cursor_x), 0);
@@ -314,7 +311,6 @@ impl TTY {
 			},
 			0x0c => {
 				// TODO Move printer to a top of page
-				todo!();
 			},
 			b'\r' => {
 				self.cursor_x = 0;
