@@ -114,8 +114,8 @@ pub fn switch(tty: usize) {
 
 	let mut guard = get(tty).lock(true);
 	let t = guard.get_mut();
+	vga::move_cursor(t.cursor_x, t.cursor_y - t.screen_y);
 	vga::enable_cursor();
-	vga::move_cursor(t.cursor_x, t.cursor_y);
 	t.update();
 }
 
@@ -129,7 +129,7 @@ impl TTY {
 
 		self.current_color = vga::DEFAULT_COLOR;
 
-		self.history = [0; HISTORY_SIZE];
+		self.history = [(vga::DEFAULT_COLOR as vga::Char) << 8; HISTORY_SIZE];
 		self.update = true;
 
 		self.ansi_buffer = ansi::ANSIBuffer::new();
@@ -146,7 +146,7 @@ impl TTY {
 		let current_tty = unsafe { // Safe because using Mutex
 			*CURRENT_TTY.lock(true).get()
 		};
-		if self.id == current_tty && !self.update {
+		if self.id != current_tty || !self.update {
 			return;
 		}
 
@@ -160,12 +160,7 @@ impl TTY {
 		}
 
 		let y = self.cursor_y - self.screen_y;
-		if (0..vga::HEIGHT).contains(&y) {
-			vga::enable_cursor();
-			vga::move_cursor(self.cursor_x, y);
-		} else {
-			vga::disable_cursor();
-		}
+		vga::move_cursor(self.cursor_x, y);
 	}
 
 	/// Reinitializes TTY's current attributes.
@@ -219,7 +214,7 @@ impl TTY {
 		self.cursor_y = 0;
 		self.screen_y = 0;
 		for i in 0..self.history.len() {
-			self.history[i] = 0;
+			self.history[i] = (vga::DEFAULT_COLOR as vga::Char) << 8;
 		}
 		self.update();
 	}
@@ -229,7 +224,7 @@ impl TTY {
 		if self.cursor_x < 0 {
 			let p = -self.cursor_x;
 			self.cursor_x = vga::WIDTH - (p % vga::WIDTH);
-			self.cursor_y += p / vga::WIDTH - 1;
+			self.cursor_y -= p / vga::WIDTH + 1;
 		}
 
 		if self.cursor_x >= vga::WIDTH {
@@ -295,7 +290,7 @@ impl TTY {
 	}
 
 	/// Writes the character `c` to the TTY.
-	pub fn putchar(&mut self, c: u8) {
+	fn putchar(&mut self, c: u8) {
 		match c {
 			0x07 => {
 				pit::beep();
@@ -323,8 +318,6 @@ impl TTY {
 				self.cursor_forward(1, 0);
 			}
 		}
-
-		self.update();
 	}
 
 	/// Writes string `buffer` to TTY.
@@ -340,9 +333,9 @@ impl TTY {
 				self.putchar(c);
 				i += 1;
 			}
-
-			self.update();
 		}
+
+		self.update();
 	}
 
 	/// Erases `count` characters in TTY.
