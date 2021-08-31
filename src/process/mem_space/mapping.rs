@@ -262,7 +262,9 @@ impl MemMapping {
 	/// If the physical pages the mapping points to are not shared, the function frees them.
 	pub fn unmap(&mut self) -> Result<(), Errno> {
 		let vmem = self.get_mut_vmem();
-		vmem.unmap_range(self.begin, self.size)?;
+		oom::wrap(|| {
+			vmem.unmap_range(self.begin, self.size)
+		});
 		vmem.flush();
 
 		for i in 0..self.size {

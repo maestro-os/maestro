@@ -30,24 +30,14 @@ pub trait VMem: FailableClone {
 		-> Result<(), Errno>;
 	/// Maps the given range of physical address `physaddr` to the given range of virtual address
 	/// `virtaddr`. The range is `pages` pages large.
+	/// If the operation fails, the virtual memory is left altered midway.
 	fn map_range(&mut self, physaddr: *const c_void, virtaddr: *const c_void, pages: usize,
 		flags: u32) -> Result<(), Errno>;
-
-	/// Maps the physical address `ptr` to the same address in virtual memory with the given flags
-	/// `flags`.
-	fn identity(&mut self, ptr: *const c_void, flags: u32) -> Result<(), Errno> {
-		self.map(ptr, ptr, flags)
-	}
-	/// Identity maps a range beginning at physical address `from` with pages `pages` and flags
-	/// `flags`.
-	fn identity_range(&mut self, ptr: *const c_void, pages: usize, flags: u32)
-		-> Result<(), Errno> {
-		self.map_range(ptr, ptr, pages, flags)
-	}
 
 	/// Unmaps the page at virtual address `virtaddr`.
 	fn unmap(&mut self, virtaddr: *const c_void) -> Result<(), Errno>;
 	/// Unmaps the given range beginning at virtual address `virtaddr` with size of `pages` pages.
+	/// If the operation fails, the virtual memory is left altered midway.
 	fn unmap_range(&mut self, virtaddr: *const c_void, pages: usize) -> Result<(), Errno>;
 
 	/// Binds the virtual memory context handler.

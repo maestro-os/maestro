@@ -340,7 +340,7 @@ pub fn get_section(sections: *const c_void, sections_count: usize, shndx: usize,
 /// `entsize` is the size of section entries.
 /// `f` is the closure to be called for each sections.
 pub fn foreach_sections<F>(sections: *const c_void, sections_count: usize, shndx: usize,
-	entsize: usize, mut f: F) where F: FnMut(&ELF32SectionHeader, &str) {
+	entsize: usize, mut f: F) where F: FnMut(&ELF32SectionHeader, &str) -> bool {
 	let names_section = unsafe {
 		&*(sections.add(shndx * entsize) as *const ELF32SectionHeader)
 	};
@@ -353,7 +353,10 @@ pub fn foreach_sections<F>(sections: *const c_void, sections_count: usize, shndx
 		let n = unsafe {
 			util::ptr_to_str(memory::kern_to_virt((names_section.sh_addr + hdr.sh_name) as _))
 		};
-		f(hdr, n);
+
+		if !f(hdr, n) {
+			break;
+		}
 	}
 }
 
@@ -408,7 +411,7 @@ pub fn get_function_name(sections: *const c_void, sections_count: usize, shndx: 
 	foreach_sections(sections, sections_count, shndx, entsize,
 		|hdr: &ELF32SectionHeader, _name: &str| {
 			if hdr.sh_type != SHT_SYMTAB {
-				return;
+				return true;
 			}
 
 			let ptr = memory::kern_to_virt(hdr.sh_addr as _) as *const u8;
@@ -427,11 +430,13 @@ pub fn get_function_name(sections: *const c_void, sections_count: usize, shndx: 
 						func_name = Some(get_symbol_name(strtab_section, sym.st_name));
 					}
 
-					break;
+					return false;
 				}
 
 				i += hdr.sh_entsize as usize;
 			}
+
+			true
 		});
 
 	func_name

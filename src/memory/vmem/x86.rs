@@ -215,26 +215,33 @@ mod table {
 
 impl X86VMem {
 	/// Protects the kernel's read-only sections from writing in the given page directory `vmem`.
-	fn protect_kernel(&mut self) {
+	fn protect_kernel(&mut self) -> Result<(), Errno> {
 		let boot_info = multiboot::get_boot_info();
+
+		let mut res = Ok(());
 		let f = | section: &elf::ELF32SectionHeader, _name: &str | {
 			if section.sh_flags & elf::SHF_WRITE != 0
 				|| section.sh_addralign as usize != memory::PAGE_SIZE {
-				return;
+				return true;
 			}
 
 			let phys_addr = memory::kern_to_phys(section.sh_addr as _);
 			let virt_addr = memory::kern_to_virt(section.sh_addr as _);
 			let pages = math::ceil_division(section.sh_size, memory::PAGE_SIZE as _) as usize;
-			if self.map_range(phys_addr, virt_addr, pages as usize, FLAG_USER).is_err() {
-				crate::kernel_panic!("Kernel protection failed!");
+			if let Err(e) = self.map_range(phys_addr, virt_addr, pages as usize, FLAG_USER) {
+				res = Err(e);
+				return false;
 			}
+
+			true
 		};
 
 		// Protecting kernel code from writting
 		elf::foreach_sections(memory::kern_to_virt(boot_info.elf_sections),
 			boot_info.elf_num as usize, boot_info.elf_shndx as usize,
 			boot_info.elf_entsize as usize, f);
+
+		res
 	}
 
 	/// Asserts that the map operation shall not result in a crash.
@@ -317,7 +324,7 @@ impl X86VMem {
 			FLAG_CACHE_DISABLE | FLAG_WRITE_THROUGH | FLAG_WRITE)?;
 
 		// Making the kernel image read-only
-		vmem.protect_kernel();
+		vmem.protect_kernel()?;
 
 		Ok(vmem)
 	}
@@ -378,12 +385,6 @@ impl X86VMem {
 
 		obj_set(self.page_dir, dir_entry_index,
 			(physaddr as u32) | (flags | FLAG_PRESENT | FLAG_PAGE_SIZE));
-	}
-
-	/// Maps the physical address `ptr` to the same address in virtual memory with the given flags
-	/// `flags`, using blocks of 1024 pages (PSE).
-	pub fn identity_pse(&mut self, ptr: *const c_void, flags: u32) {
-		self.map_pse(ptr, ptr, flags);
 	}
 
 	/// Unmaps the large block (PSE) at the given virtual address `virtaddr`.
@@ -468,14 +469,9 @@ impl VMem for X86VMem {
 				self.check_map(next_virtaddr, next_physaddr, true);
 
 				self.map_pse(next_physaddr, next_virtaddr, flags);
-
 				i += 1024;
 			} else {
-				if let Err(errno) = self.map(next_physaddr, next_virtaddr, flags) {
-					// TODO Undo
-					return Err(errno);
-				}
-
+				self.map(next_physaddr, next_virtaddr, flags)?;
 				i += 1;
 			}
 		}
@@ -524,14 +520,9 @@ impl VMem for X86VMem {
 				self.check_unmap(next_virtaddr, true);
 
 				self.unmap_pse(next_virtaddr);
-
 				i += 1024;
 			} else {
-				if let Err(errno) = self.unmap(next_virtaddr) {
-					// TODO Undo
-					return Err(errno);
-				}
-
+				self.unmap(next_virtaddr)?;
 				i += 1;
 			}
 		}
