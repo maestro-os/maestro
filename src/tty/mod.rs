@@ -256,7 +256,7 @@ impl TTY {
 				self.history[i] = self.history[diff + i];
 			}
 			for i in size..self.history.len() {
-				self.history[i] = 0;
+				self.history[i] = (vga::DEFAULT_COLOR as vga::Char) << 8;
 			}
 
 			self.screen_y = HISTORY_LINES - vga::HEIGHT;
