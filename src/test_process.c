@@ -75,7 +75,7 @@ void test_process(void)
 	if (pid == 0) {
 		write(1, "forked!\n", 8);
 
-		signal(0, sig_handle);
+		signal(1, sig_handle);
 		kill(getpid(), 1);
 
 		int pid2 = fork();

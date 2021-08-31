@@ -8,6 +8,7 @@ use core::mem::transmute;
 use core::slice;
 use crate::errno::Errno;
 use crate::errno;
+use crate::process::oom;
 use signal_trampoline::signal_trampoline;
 use super::Process;
 use super::State;
@@ -181,12 +182,12 @@ impl Signal {
 	/// Executes the action associated with the signal for process `process`.
 	/// If the process is not the current process, the behaviour is undefined.
 	pub fn execute_action(&self, process: &mut Process) {
-		debug_assert!(process.get_mem_space().unwrap().is_bound());
-
 		let process_state = process.get_state();
 		if process_state == State::Zombie {
 			return;
 		}
+
+		debug_assert!(process.get_mem_space().unwrap().is_bound());
 
 		let handler = if self.can_catch() {
 			process.get_signal_handler(self.type_)
@@ -239,7 +240,9 @@ impl Signal {
 				let signal_esp = redzone_end - signal_data_size;
 
 				// TODO Don't write data out of the stack
-				process.get_mem_space_mut().unwrap().alloc(signal_esp as *mut [u32; 2]).unwrap();
+				oom::wrap(|| {
+					process.get_mem_space_mut().unwrap().alloc(signal_esp as *mut [u32; 2])
+				});
 				let signal_data = unsafe {
 					slice::from_raw_parts_mut(signal_esp as *mut u32, 2)
 				};
