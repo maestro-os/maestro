@@ -92,12 +92,15 @@ pub struct Process {
 	/// The ID of the process group.
 	pgid: Pid,
 
-	/// The ID of the process's user owner.
+	/// The real ID of the process's user owner.
 	uid: Uid,
-	/// The ID of the process's group owner.
+	/// The real ID of the process's group owner.
 	gid: Gid,
 
-	// TODO euid and egid
+	/// The effective ID of the process's user owner.
+	euid: Uid,
+	/// The effective ID of the process's group owner.
+	egid: Gid,
 
 	/// File creation mask.
 	umask: u16,
@@ -325,6 +328,9 @@ impl Process {
 			uid: 0,
 			gid: 0,
 
+			euid: 0,
+			egid: 0,
+
 			umask: DEFAULT_UMASK,
 
 			state: State::Running,
@@ -474,28 +480,40 @@ impl Process {
 		}
 	}
 
-	/// Returns the process's user owner ID.
+	/// Returns the process's real user owner ID.
 	#[inline(always)]
 	pub fn get_uid(&self) -> Uid {
 		self.uid
 	}
 
-	/// Sets the process's user owner ID.
+	/// Sets the process's real user owner ID.
 	#[inline(always)]
 	pub fn set_uid(&mut self, uid: Uid) {
 		self.uid = uid;
 	}
 
-	/// Returns the process's group owner ID.
+	/// Returns the process's real group owner ID.
 	#[inline(always)]
 	pub fn get_gid(&self) -> Gid {
 		self.gid
 	}
 
-	/// Sets the process's group owner ID.
+	/// Sets the process's real group owner ID.
 	#[inline(always)]
 	pub fn set_gid(&mut self, gid: Gid) {
 		self.gid = gid;
+	}
+
+	/// Returns the process's effective user owner ID.
+	#[inline(always)]
+	pub fn get_euid(&self) -> Uid {
+		self.euid
+	}
+
+	/// Returns the process's effective group owner ID.
+	#[inline(always)]
+	pub fn get_egid(&self) -> Gid {
+		self.egid
 	}
 
 	/// Returns the file creation mask.
@@ -801,6 +819,9 @@ impl Process {
 
 			uid: self.uid,
 			gid: self.gid,
+
+			euid: self.euid,
+			egid: self.egid,
 
 			umask: self.umask,
 

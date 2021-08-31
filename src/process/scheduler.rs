@@ -25,6 +25,7 @@ use crate::process;
 use crate::util::Regs;
 use crate::util::container::binary_tree::BinaryTree;
 use crate::util::container::binary_tree::BinaryTreeMutIterator;
+use crate::util::container::binary_tree::TraversalType;
 use crate::util::container::vec::Vec;
 use crate::util::lock::mutex::*;
 use crate::util::math;
@@ -105,6 +106,11 @@ impl Scheduler {
 	/// Returns the number of processes registered on the scheduler.
 	pub fn get_processes_count(&self) -> usize {
 		self.processes.count()
+	}
+
+	/// Calls the given function `f` for each processes.
+	pub fn foreach_process<F: FnMut(&Pid, &mut SharedPtr<Process>)>(&mut self, f: F) {
+		self.processes.foreach_mut(f, TraversalType::InOrder);
 	}
 
 	/// Returns the process with PID `pid`. If the process doesn't exist, the function returns

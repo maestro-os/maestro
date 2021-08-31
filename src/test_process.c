@@ -76,7 +76,7 @@ void test_process(void)
 		write(1, "forked!\n", 8);
 
 		signal(0, sig_handle);
-		kill(getpid(), 0);
+		kill(getpid(), 1);
 
 		int pid2 = fork();
 		if (pid2 == 0) {
@@ -84,7 +84,7 @@ void test_process(void)
 				;
 		}
 
-		kill(pid2, 0);
+		kill(pid2, 1);
 
 		_exit(43);
 	} else {
@@ -107,7 +107,7 @@ void test_process(void)
 
 	//int pid = fork();
 	//if (pid == 0) {
-	//	kill(getpid(), 13);
+	//	kill(getpid(), 14);
 
 	//	for (int i = 0; i < 100; ++i)
 	//		write(1, "b", 1);
@@ -115,7 +115,7 @@ void test_process(void)
 	//	for (int i = 0; i < 100; ++i)
 	//		write(1, "a", 1);
 
-	//	kill(pid, 4);
+	//	kill(pid, 5);
 
 	//	// If uncommented, success
 	//	print_nbr(waitpid(-1, 0, 0));
