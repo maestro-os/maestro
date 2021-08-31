@@ -18,63 +18,63 @@ pub type SignalType = i32;
 pub type SigHandler = extern "C" fn(i32);
 
 /// Process abort.
-pub const SIGABRT: SignalType = 0;
+pub const SIGABRT: SignalType = 1;
 /// Alarm clock.
-pub const SIGALRM: SignalType = 1;
+pub const SIGALRM: SignalType = 2;
 /// Access to an undefined portion of a memory object.
-pub const SIGBUS: SignalType = 2;
+pub const SIGBUS: SignalType = 3;
 /// Child process terminated.
-pub const SIGCHLD: SignalType = 3;
+pub const SIGCHLD: SignalType = 4;
 /// Continue executing.
-pub const SIGCONT: SignalType = 4;
+pub const SIGCONT: SignalType = 5;
 /// Erroneous arithmetic operation.
-pub const SIGFPE: SignalType = 5;
+pub const SIGFPE: SignalType = 6;
 /// Hangup.
-pub const SIGHUP: SignalType = 6;
+pub const SIGHUP: SignalType = 7;
 /// Illigal instruction.
-pub const SIGILL: SignalType = 7;
+pub const SIGILL: SignalType = 8;
 /// Terminal interrupt.
-pub const SIGINT: SignalType = 8;
+pub const SIGINT: SignalType = 9;
 /// Kill.
-pub const SIGKILL: SignalType = 9;
+pub const SIGKILL: SignalType = 10;
 /// Write on a pipe with no one to read it.
-pub const SIGPIPE: SignalType = 10;
+pub const SIGPIPE: SignalType = 11;
 /// Terminal quit.
-pub const SIGQUIT: SignalType = 11;
+pub const SIGQUIT: SignalType = 12;
 /// Invalid memory reference.
-pub const SIGSEGV: SignalType = 12;
+pub const SIGSEGV: SignalType = 13;
 /// Stop executing.
-pub const SIGSTOP: SignalType = 13;
+pub const SIGSTOP: SignalType = 14;
 /// Termination.
-pub const SIGTERM: SignalType = 14;
+pub const SIGTERM: SignalType = 15;
 /// Terminal stop.
-pub const SIGTSTP: SignalType = 15;
+pub const SIGTSTP: SignalType = 16;
 /// Background process attempting read.
-pub const SIGTTIN: SignalType = 16;
+pub const SIGTTIN: SignalType = 17;
 /// Background process attempting write.
-pub const SIGTTOU: SignalType = 17;
+pub const SIGTTOU: SignalType = 18;
 /// User-defined signal 1.
-pub const SIGUSR1: SignalType = 18;
+pub const SIGUSR1: SignalType = 19;
 /// User-defined signal 2.
-pub const SIGUSR2: SignalType = 19;
+pub const SIGUSR2: SignalType = 20;
 /// Pollable event.
-pub const SIGPOLL: SignalType = 20;
+pub const SIGPOLL: SignalType = 21;
 /// Profiling timer expired.
-pub const SIGPROF: SignalType = 21;
+pub const SIGPROF: SignalType = 22;
 /// Bad system call.
-pub const SIGSYS: SignalType = 22;
+pub const SIGSYS: SignalType = 23;
 /// Trace/breakpoint trap.
-pub const SIGTRAP: SignalType = 23;
+pub const SIGTRAP: SignalType = 24;
 /// High bandwidth data is available at a socket.
-pub const SIGURG: SignalType = 24;
+pub const SIGURG: SignalType = 25;
 /// Virtual timer expired.
-pub const SIGVTALRM: SignalType = 25;
+pub const SIGVTALRM: SignalType = 26;
 /// CPU time limit exceeded.
-pub const SIGXCPU: SignalType = 26;
+pub const SIGXCPU: SignalType = 27;
 /// File size limit exceeded.
-pub const SIGXFSZ: SignalType = 27;
+pub const SIGXFSZ: SignalType = 28;
 /// Window resize.
-pub const SIGWINCH: SignalType = 28;
+pub const SIGWINCH: SignalType = 29;
 
 /// The number of different signal types.
 pub const SIGNALS_COUNT: usize = 29;
@@ -154,7 +154,7 @@ impl Signal {
 	/// Creates a new instance.
 	/// `type_` is the signal type.
 	pub fn new(type_: SignalType) -> Result<Self, Errno> {
-		if type_ >= 0 && type_ < SIGNALS_COUNT as i32 {
+		if type_ >= 1 && type_ < SIGNALS_COUNT as i32 {
 			Ok(Self {
 				type_,
 			})
