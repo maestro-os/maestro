@@ -10,13 +10,17 @@ use crate::process;
 use crate::util;
 
 /// Tries to kill the process with PID `pid` with the signal `sig`.
-fn try_kill(pid: i32, sig: Signal) -> Result<i32, Errno> {
+/// If `sig` is None, the function doesn't send a signal, but still checks if there is a process
+/// that could be killed.
+fn try_kill(pid: i32, sig: Option<Signal>) -> Result<i32, Errno> {
 	if let Some(mut proc) = Process::get_by_pid(pid as Pid) {
 		let mut guard = proc.lock(false);
 		let proc = guard.get_mut();
 
 		if proc.get_state() != State::Zombie {
-			proc.kill(sig);
+			if let Some(sig) = sig {
+				proc.kill(sig);
+			}
 			Ok(0)
 		} else {
 			Err(errno::ESRCH)
@@ -28,42 +32,53 @@ fn try_kill(pid: i32, sig: Signal) -> Result<i32, Errno> {
 
 /// Sends the signal `sig` to the processes according to the given value `pid`.
 /// `proc` is the current process.
-fn send_signal(pid: i32, sig: Signal, proc: &mut Process) -> Result<i32, Errno> {
+/// If `sig` is None, the function doesn't send a signal, but still checks if there is a process
+/// that could be killed.
+fn send_signal(pid: i32, sig: Option<Signal>, proc: &mut Process) -> Result<i32, Errno> {
 	if pid == proc.get_pid() as _ {
-		proc.kill(sig);
+		if let Some(sig) = sig {
+			proc.kill(sig);
+		}
 		Ok(0)
 	} else if pid > 0 {
 		try_kill(pid, sig)
-	} else if pid == 0 {
-		for p in proc.get_group_processes() {
-			try_kill(*p as _, sig.clone()).unwrap();
+	} else if pid == 0 || -pid as Pid == proc.get_pid() {
+		let group = proc.get_group_processes();
+
+		if let Some(sig) = sig {
+			for p in group {
+				try_kill(*p as _, Some(sig.clone())).unwrap();
+			}
 		}
 
-		proc.kill(sig);
-		Ok(0)
+		if !group.is_empty() {
+			Ok(0)
+		} else {
+			Err(errno::ESRCH)
+		}
 	} else if pid == -1 {
 		// TODO Send to every processes that the process has permission to send a signal to
 		todo!();
 	} else {
-		if -pid == proc.get_pid() as _ {
-			for p in proc.get_group_processes() {
-				try_kill(*p as _, sig.clone()).unwrap();
-			}
-
-			proc.kill(sig);
-			return Ok(0);
-		} else if let Some(mut proc) = Process::get_by_pid(-pid as _) {
+		if let Some(mut proc) = Process::get_by_pid(-pid as _) {
 			let mut guard = proc.lock(false);
 			let proc = guard.get_mut();
-			for p in proc.get_group_processes() {
-				try_kill(*p as _, sig.clone()).unwrap();
+			let group = proc.get_group_processes();
+
+			if let Some(sig) = sig {
+				for p in group {
+					try_kill(*p as _, Some(sig.clone())).unwrap();
+				}
 			}
 
-			proc.kill(sig);
-			return Ok(0);
+			if !group.is_empty() {
+				Ok(0)
+			} else {
+				Err(errno::ESRCH)
+			}
+		} else {
+			Err(errno::ESRCH)
 		}
-
-		Err(errno::ESRCH)
 	}
 }
 
@@ -72,12 +87,17 @@ pub fn kill(regs: &util::Regs) -> Result<i32, Errno> {
 	let pid = regs.ebx as i32;
 	let sig = regs.ecx as i32;
 
-	// TODO Handle sig == 0
 	// TODO Check permission (with real or effective UID)
 
 	cli!();
 
-	let sig = Signal::new(sig)?;
+	let sig = {
+		if sig > 0 {
+			Some(Signal::new(sig)?)
+		} else {
+			None
+		}
+	};
 
 	let mut mutex = Process::get_current().unwrap();
 	let mut guard = mutex.lock(false);
