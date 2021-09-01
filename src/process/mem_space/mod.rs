@@ -69,7 +69,7 @@ pub struct MemSpace {
 
 	/// Binary tree storing the list of memory mappings. Sorted by pointer to the beginning of the
 	/// mapping on the virtual memory.
-	mappings: BinaryTree::<*const c_void, MemMapping>,
+	mappings: BinaryTree<*const c_void, MemMapping>,
 
 	/// The virtual memory context handler.
 	vmem: Box::<dyn VMem>,
@@ -432,7 +432,8 @@ impl MemSpace {
 		}
 
 		if let Some(mapping) = Self::get_mapping_mut_for(&mut self.mappings, virt_addr) {
-			let page_offset = (virt_addr as usize - mapping.get_begin() as usize) / memory::PAGE_SIZE;
+			let page_offset = (virt_addr as usize - mapping.get_begin() as usize)
+				/ memory::PAGE_SIZE;
 			oom::wrap(|| {
 				mapping.map(page_offset)
 			});
