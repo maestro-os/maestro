@@ -66,8 +66,12 @@ pub mod util;
 pub mod vga;
 
 use core::ffi::c_void;
+use core::mem::MaybeUninit;
 use core::panic::PanicInfo;
+use crate::memory::vmem::VMem;
 use crate::process::Process;
+use crate::util::boxed::Box;
+use crate::util::lock::mutex::Mutex;
 
 /// The kernel's name.
 pub const NAME: &str = "maestro";
@@ -109,6 +113,17 @@ pub fn halt() -> ! {
 	}
 }
 
+/// Field storing the kernel's virtual memory context.
+static mut KERNEL_VMEM: MaybeUninit<Mutex<Box<dyn VMem>>> = MaybeUninit::uninit();
+
+/// Binds the kernel's virtual memory context.
+pub fn bind_vmem() {
+	let guard = unsafe { // Safe because using Mutex
+		KERNEL_VMEM.assume_init_mut()
+	}.lock(false);
+	guard.get().bind();
+}
+
 extern "C" {
 	fn test_process();
 }
@@ -143,6 +158,9 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 	let kernel_vmem = memory::vmem::kernel();
 	if kernel_vmem.is_err() {
 		crate::kernel_panic!("Cannot initialize kernel virtual memory!", 0);
+	}
+	unsafe {
+		*KERNEL_VMEM.assume_init_mut() = Mutex::new(kernel_vmem.unwrap());
 	}
 
 	#[cfg(test)]

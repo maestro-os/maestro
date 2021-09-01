@@ -111,6 +111,7 @@ pub enum SignalHandler {
 
 /// Array containing the default actions for each signal.
 static DEFAULT_ACTIONS: &[SignalAction] = &[
+	SignalAction::Ignore, // No signal
 	SignalAction::Abort, // SIGABRT
 	SignalAction::Terminate, // SIGALRM
 	SignalAction::Abort, // SIGBUS

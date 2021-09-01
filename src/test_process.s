@@ -7,6 +7,8 @@
 .global waitpid
 .global getpid
 .global getppid
+.global mmap
+.global munmap
 .global signal
 .global kill
 .global socketpair
@@ -125,6 +127,50 @@ getpid:
 getppid:
 	mov $25, %eax
 	int $0x80
+	ret
+
+mmap:
+	push %ebp
+	mov %esp, %ebp
+
+	push %ebx
+	push %esi
+	push %edi
+	push %ebp
+
+	mov $30, %eax
+	mov 8(%ebp), %ebx
+	mov 12(%ebp), %ecx
+	mov 16(%ebp), %edx
+	mov 20(%ebp), %esi
+	mov 24(%ebp), %edi
+	mov 28(%ebp), %ebp
+	int $0x80
+
+	pop %ebp
+	pop %edi
+	pop %esi
+	pop %ebx
+
+	mov %ebp, %esp
+	pop %ebp
+	ret
+
+munmap:
+	push %ebp
+	mov %esp, %ebp
+
+	push %ebx
+
+	mov $31, %eax
+	mov 8(%ebp), %ebx
+	mov 12(%ebp), %ecx
+	int $0x80
+
+	pop %ebx
+
+	mov %ebp, %esp
+	pop %ebp
 	ret
 
 signal:

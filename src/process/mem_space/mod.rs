@@ -142,13 +142,13 @@ impl MemSpace {
 	/// The underlying physical memory is not allocated directly but only an attempt to write the
 	/// memory is detected.
 	/// The function returns a pointer to the newly mapped virtual memory.
-	pub fn map(&mut self, ptr: Option<*const c_void>, size: usize, flags: u8)
+	pub fn map(&mut self, _ptr: Option<*const c_void>, size: usize, flags: u8)
 		-> Result<*const c_void, Errno> {
-		if let Some(_ptr) = ptr {
+		//if let Some(_ptr) = ptr {
 			// TODO Insert mapping at exact location if possible
 			// Err(errno::ENOMEM)
-			todo!();
-		} else {
+			//todo!();
+		//} else {
 			let gap = Self::gap_get(&mut self.gaps, &mut self.gaps_size, size);
 			if gap.is_none() {
 				return Err(errno::ENOMEM);
@@ -178,7 +178,7 @@ impl MemSpace {
 
 			self.gap_remove(gap_ptr);
 			Ok(mapping_ptr)
-		}
+		//}
 	}
 
 	/// Same as `map`, except the function returns a pointer to the end of the memory region.

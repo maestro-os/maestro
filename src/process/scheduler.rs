@@ -339,13 +339,10 @@ impl Scheduler {
 				proc: scheduler.curr_proc.as_mut().unwrap().1.clone(),
 			};
 
-			// Required because calling the context switch function won't drop the mutex guard,
-			// locking the scheduler forever
-			drop(guard);
-
 			// Allowing next interrupts to be handled (disabling interrupts to avoid receiving
 			// interrupts now)
 			cli!();
+			drop(guard);
 			unsafe {
 				event::unlock_callbacks(0x20);
 			}
@@ -355,11 +352,20 @@ impl Scheduler {
 				// TODO Handle out of memory
 				stack::switch(tmp_stack, f, ctx_switch_data).unwrap();
 			}
+
+			unreachable!();
 		} else {
-			// TODO Bind to kernel vmem
-			todo!();
+			crate::bind_vmem();
 		}
 
+		// Allowing next interrupts to be handled (disabling interrupts to avoid receiving
+		// interrupts now)
+		cli!();
+		drop(guard);
+		unsafe {
+			event::unlock_callbacks(0x20);
+		}
+		pic::end_of_interrupt(0x0);
 		crate::enter_loop();
 	}
 

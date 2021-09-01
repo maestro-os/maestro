@@ -147,7 +147,7 @@ pub struct Process {
 	/// A bitfield storing signals that have been received and are not handled yet.
 	signals_bitfield: Bitfield,
 	/// The list of signal handlers.
-	signal_handlers: [SignalHandler; signal::SIGNALS_COUNT],
+	signal_handlers: [SignalHandler; signal::SIGNALS_COUNT + 1],
 
 	/// The exit status of the process after exiting.
 	exit_status: ExitStatus,
@@ -378,8 +378,8 @@ impl Process {
 			cwd: Path::root(),
 			file_descriptors: Vec::new(),
 
-			signals_bitfield: Bitfield::new(signal::SIGNALS_COUNT)?,
-			signal_handlers: [SignalHandler::Default; signal::SIGNALS_COUNT],
+			signals_bitfield: Bitfield::new(signal::SIGNALS_COUNT + 1)?,
+			signal_handlers: [SignalHandler::Default; signal::SIGNALS_COUNT + 1],
 
 			exit_status: 0,
 			termsig: 0,
@@ -848,7 +848,7 @@ impl Process {
 			cwd: self.cwd.failable_clone()?,
 			file_descriptors: self.file_descriptors.failable_clone()?,
 
-			signals_bitfield: Bitfield::new(signal::SIGNALS_COUNT)?,
+			signals_bitfield: Bitfield::new(signal::SIGNALS_COUNT + 1)?,
 			signal_handlers: self.signal_handlers,
 
 			exit_status: self.exit_status,
