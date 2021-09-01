@@ -15,10 +15,26 @@ pub struct Rsdt {
 // TODO XSDT
 
 impl Rsdt {
+	/// Iterates over every ACPI tables.
+	pub fn foreach_table<F: FnMut(*const ACPITableHeader)>(&self, mut f: F) {
+		let entries_len = self.header.get_length() as usize - size_of::<Rsdt>();
+		let entries_count = entries_len / 4;
+		let entries_ptr = (self as *const _ as usize + size_of::<Rsdt>()) as *const u32;
+
+		for i in 0..entries_count {
+			let header_ptr = unsafe {
+				*entries_ptr.add(i) as *const ACPITableHeader
+			};
+
+			f(header_ptr);
+		}
+	}
+
+	// TODO rm?
 	/// Returns a reference to the ACPI table with type T.
 	pub fn get_table<T: ACPITable>(&self) -> Option<&'static T> {
 		let entries_len = self.header.get_length() as usize - size_of::<Rsdt>();
-		let entries_count = entries_len / 4;
+		let entries_count = entries_len / size_of::<u32>();
 		let entries_ptr = (self as *const _ as usize + size_of::<Rsdt>()) as *const u32;
 
 		for i in 0..entries_count {

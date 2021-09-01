@@ -62,14 +62,6 @@ pub fn clone(vmem: &Box::<dyn VMem>) -> Result::<Box::<dyn VMem>, Errno> {
 	Ok(Box::new(vmem.failable_clone()?)? as Box::<dyn VMem>)
 }
 
-/// Creates and loads the kernel's virtual memory context handler, protecting its code from
-/// writing.
-pub fn kernel() -> Result<Box::<dyn VMem>, Errno> {
-	let kernel_vmem = new()?;
-	kernel_vmem.bind();
-	Ok(kernel_vmem)
-}
-
 /// Tells whether the read-only pages protection is enabled.
 pub fn is_write_lock() -> bool {
 	unsafe {

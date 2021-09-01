@@ -155,12 +155,17 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 	}
 	memory::alloc::init();
 	memory::malloc::init();
-	let kernel_vmem = memory::vmem::kernel();
-	if kernel_vmem.is_err() {
-		crate::kernel_panic!("Cannot initialize kernel virtual memory!", 0);
-	}
-	unsafe {
-		*KERNEL_VMEM.assume_init_mut() = Mutex::new(kernel_vmem.unwrap());
+
+	match memory::vmem::new() {
+		Ok(kernel_vmem) => {
+			unsafe {
+				*KERNEL_VMEM.assume_init_mut() = Mutex::new(kernel_vmem);
+			}
+		},
+
+		Err(_) => {
+			crate::kernel_panic!("Cannot initialize kernel virtual memory!", 0);
+		}
 	}
 
 	#[cfg(test)]
