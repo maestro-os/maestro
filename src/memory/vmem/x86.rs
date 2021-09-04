@@ -569,9 +569,6 @@ impl FailableClone for X86VMem {
 				let src_table = (src_dir_entry_value & ADDR_MASK) as *const u32;
 				let src_table = memory::kern_to_virt(src_table as _) as _;
 
-				// TODO rm
-				debug_assert!(src_table as usize > memory::get_kernel_virtual_end() as usize);
-
 				let dest_table = alloc_obj()?;
 				unsafe { // Safe because pointers are valid
 					ptr::copy_nonoverlapping::<u32>(src_table, dest_table, 1024);
