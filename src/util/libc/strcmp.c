@@ -4,7 +4,8 @@
 #include "libc.h"
 
 /*
- * Compares two strings `s1` and `s2` and returns the diffence between the first characters that differ.
+ * Compares two strings `s1` and `s2` and returns the diffence between the first
+ * characters that differ.
  */
 int strcmp(const char *s1, const char *s2)
 {
