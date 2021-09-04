@@ -93,6 +93,7 @@ extern "C" {
 
 	pub fn bzero(s: *mut c_void, n: usize);
 
+	pub fn strcmp(s1: *const u8, s2: *const u8) -> i32;
 	pub fn strlen(s: *const u8) -> usize;
 }
 
@@ -329,13 +330,13 @@ mod test {
 
 	#[test_case]
 	fn memmove0() {
-		let mut buff: [usize; 100] = [0; 100];
+		let mut buff: [u8; 100] = [0; 100];
 
 		for i in 0..100 {
-			buff[i] = i;
+			buff[i] = i as _;
 		}
 		unsafe {
-			bzero(buff.as_mut_ptr() as _, 100 * size_of::<usize>());
+			bzero(buff.as_mut_ptr() as _, 100);
 		}
 		for i in 0..100 {
 			debug_assert_eq!(buff[i], 0);
@@ -343,6 +344,46 @@ mod test {
 	}
 
 	// TODO More tests on memmove
+
+	#[test_case]
+	fn strcmp0() {
+		let buff: [u8; 100] = [0; 100];
+
+		let i = unsafe {
+			strcmp(buff.as_ptr() as _, buff.as_ptr() as _)
+		};
+		assert_eq!(i, 0);
+	}
+
+	#[test_case]
+	fn strcmp1() {
+		let mut buff1: [u8; 100] = [0; 100];
+		let mut buff2: [u8; 100] = [0; 100];
+
+		for i in 0..100 {
+			buff1[i] = (100 - i - 1) as _;
+			buff2[i] = (100 - i - 1) as _;
+		}
+		let i = unsafe {
+			strcmp(buff1.as_ptr() as _, buff2.as_ptr() as _)
+		};
+		assert_eq!(i, 0);
+	}
+
+	#[test_case]
+	fn strcmp2() {
+		let mut buff1: [u8; 100] = [0; 100];
+		let mut buff2: [u8; 100] = [0; 100];
+
+		for i in 0..100 {
+			buff1[i] = (100 - i - 1) as _;
+			buff2[i] = 1;
+		}
+		let i = unsafe {
+			strcmp(buff1.as_ptr() as _, buff2.as_ptr() as _)
+		};
+		assert_eq!(i, 98);
+	}
 
 	// TODO Test `strlen`
 }
