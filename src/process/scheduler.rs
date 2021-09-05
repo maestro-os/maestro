@@ -274,6 +274,9 @@ impl Scheduler {
 	/// `regs` is the state of the registers from the paused context.
 	/// `ring` is the ring of the paused context.
 	fn tick(mutex: &mut Mutex<Self>, regs: &util::Regs, ring: u32) -> ! {
+		// Disabling interrupts to avoid getting one right after unlocking mutexes
+		cli!();
+
 		let mut guard = mutex.lock(false);
 		let scheduler = guard.get_mut();
 
@@ -339,9 +342,6 @@ impl Scheduler {
 				proc: scheduler.curr_proc.as_mut().unwrap().1.clone(),
 			};
 
-			// Allowing next interrupts to be handled (disabling interrupts to avoid receiving
-			// interrupts now)
-			cli!();
 			drop(guard);
 			unsafe {
 				event::unlock_callbacks(0x20);
@@ -358,9 +358,6 @@ impl Scheduler {
 			crate::bind_vmem();
 		}
 
-		// Allowing next interrupts to be handled (disabling interrupts to avoid receiving
-		// interrupts now)
-		cli!();
 		drop(guard);
 		unsafe {
 			event::unlock_callbacks(0x20);

@@ -3,9 +3,11 @@
 use crate::errno::Errno;
 use crate::errno;
 use crate::file::Uid;
+use crate::gdt;
 use crate::process::Process;
 use crate::process::State;
 use crate::process::pid::Pid;
+use crate::process::scheduler;
 use crate::process::signal::Signal;
 use crate::process;
 use crate::util;
@@ -112,6 +114,49 @@ fn send_signal(pid: i32, sig: Option<Signal>, proc: &mut Process) -> Result<i32,
 	}
 }
 
+/// Updates the execution flow of the current process according to its state.
+fn handle_state() {
+	loop {
+		cli!();
+
+		let mut mutex = Process::get_current().unwrap();
+		let mut guard = mutex.lock(false);
+		let proc = guard.get_mut();
+
+		match proc.get_state() {
+			// The process is executing a signal handler. Make the scheduler jump to it
+			process::State::Running => {
+				if proc.is_handling_signal() {
+					let regs = proc.get_regs().clone();
+					drop(guard);
+
+					unsafe {
+						scheduler::context_switch(&regs,
+							(gdt::USER_DATA_OFFSET | 3) as _,
+							(gdt::USER_CODE_OFFSET | 3) as _);
+					}
+				} else {
+					return;
+				}
+			},
+
+			// The process has been stopped. Waiting until wakeup
+			process::State::Stopped => {
+				drop(guard);
+				crate::wait();
+			},
+
+			// The process has been killed. Stopping execution and waiting for the next tick
+			process::State::Zombie => {
+				drop(guard);
+				crate::enter_loop();
+			},
+
+			_ => {},
+		}
+	}
+}
+
 /// The implementation of the `kill` syscall.
 pub fn kill(regs: &util::Regs) -> Result<i32, Errno> {
 	let pid = regs.ebx as i32;
@@ -127,7 +172,7 @@ pub fn kill(regs: &util::Regs) -> Result<i32, Errno> {
 		}
 	};
 
-	let state = {
+	{
 		let mut mutex = Process::get_current().unwrap();
 		let mut guard = mutex.lock(false);
 		let proc = guard.get_mut();
@@ -136,26 +181,17 @@ pub fn kill(regs: &util::Regs) -> Result<i32, Errno> {
 
 		// POSIX requires that at least one pending signal is executed before returning
 		if proc.has_signal_pending() {
+			// Setting the return value of the system call to `0` after executing a signal
+			let mut return_regs = regs.clone();
+			return_regs.eax = 0;
+			proc.set_regs(&return_regs);
+
 			// Set the process to execute the signal action
 			proc.signal_next();
 		}
-
-		// Getting process's information and dropping the guard to avoid deadlocks
-		proc.get_state()
-	};
-
-	match state {
-		// The process is executing a signal handler. Make the scheduler jump to it
-		process::State::Running => crate::wait(),
-
-		// The process has been stopped. Waiting until wakeup
-		process::State::Stopped => crate::wait(),
-
-		// The process has been killed. Stopping execution and waiting for the next tick
-		process::State::Zombie => crate::enter_loop(),
-
-		_ => {},
 	}
+
+	handle_state();
 
 	Ok(0)
 }

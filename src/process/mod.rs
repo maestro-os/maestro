@@ -38,6 +38,7 @@ use pid::PIDManager;
 use pid::Pid;
 use scheduler::Scheduler;
 use signal::Signal;
+use signal::SignalAction;
 use signal::SignalHandler;
 use signal::SignalType;
 
@@ -669,7 +670,7 @@ impl Process {
 	/// Tells whether the process was syscalling before being interrupted.
 	#[inline(always)]
 	pub fn is_syscalling(&self) -> bool {
-		self.syscalling
+		self.syscalling && !self.is_handling_signal()
 	}
 
 	/// Sets the process's syscalling state.
@@ -886,7 +887,8 @@ impl Process {
 	/// handler, the default action for the signal is executed.
 	/// `no_handle` tells whether the signal handler must be ignored.
 	pub fn kill(&mut self, sig: Signal) {
-		if self.get_state() == State::Stopped && sig.is_continuation() {
+		if self.get_state() == State::Stopped
+			&& sig.get_default_action() == SignalAction::Continue {
 			self.set_state(State::Running);
 		}
 
@@ -906,10 +908,6 @@ impl Process {
 	/// Makes the process handle the next signal. If the process is already handling a signal or if
 	/// not signal is queued, the function does nothing.
 	pub fn signal_next(&mut self) {
-		if self.is_handling_signal() {
-			return;
-		}
-
 		if let Some(signum) = self.signals_bitfield.find_set() {
 			let sig = Signal::new(signum as _).unwrap();
 			sig.execute_action(self);
@@ -933,9 +931,6 @@ impl Process {
 
 			self.handled_signal = None;
 			self.regs = self.saved_regs;
-
-			// Ensuring the process doesn't resume executing userspace code in kernelspace
-			self.syscalling = false;
 		}
 	}
 
