@@ -2,14 +2,15 @@
 //! mapping of execution contexts.
 //!
 //! The memory space contains two types of structures:
-//! - Mapping: A region of virtual memory that is allocated
-//! - Gap: A region of virtual memory that is available to be allocated
+//! - Mapping: A chunk of virtual memory that is allocated
+//! - Gap: A chunk of virtual memory that is available to be allocated
 
 mod gap;
 mod mapping;
 mod physical_ref_counter;
 
 use core::cmp::Ordering;
+use core::cmp::min;
 use core::ffi::c_void;
 use core::mem::size_of;
 use core::ptr::NonNull;
@@ -62,17 +63,17 @@ struct ForkData<'a> {
 pub struct MemSpace {
 	/// Binary tree storing the list of memory gaps, ready for new mappings. Sorted by pointer to
 	/// the beginning of the mapping on the virtual memory.
-	gaps: BinaryTree::<*const c_void, MemGap>,
+	gaps: BinaryTree<*const c_void, MemGap>,
 	/// Binary tree storing the list of memory gaps, sorted by size. The key is the size of the gap
 	/// and the value is the pointer to its beginning.
-	gaps_size: BinaryTree::<usize, *const c_void>,
+	gaps_size: BinaryTree<usize, *const c_void>,
 
 	/// Binary tree storing the list of memory mappings. Sorted by pointer to the beginning of the
 	/// mapping on the virtual memory.
 	mappings: BinaryTree<*const c_void, MemMapping>,
 
 	/// The virtual memory context handler.
-	vmem: Box::<dyn VMem>,
+	vmem: Box<dyn VMem>,
 }
 
 impl MemSpace {
@@ -133,15 +134,16 @@ impl MemSpace {
 		&mut self.vmem
 	}
 
-	/// Maps a region of memory.
-	/// `ptr` represents the address of the beginning of the region on the virtual memory.
+	/// Maps a chunk of memory.
+	/// `ptr` represents the address of the beginning of the mapping on the virtual memory.
 	/// If the address is None, the function shall find a gap in the memory space that is large
 	/// enough to contain the mapping.
-	/// `size` represents the size of the region in number of memory pages.
+	/// `size` represents the size of the mapping in number of memory pages.
 	/// `flags` represents the flags for the mapping.
 	/// The underlying physical memory is not allocated directly but only an attempt to write the
 	/// memory is detected.
 	/// The function returns a pointer to the newly mapped virtual memory.
+	/// The function has complexity `O(log n)`.
 	pub fn map(&mut self, _ptr: Option<*const c_void>, size: usize, flags: u8)
 		-> Result<*const c_void, Errno> {
 		//if let Some(_ptr) = ptr {
@@ -181,7 +183,7 @@ impl MemSpace {
 		//}
 	}
 
-	/// Same as `map`, except the function returns a pointer to the end of the memory region.
+	/// Same as `map`, except the function returns a pointer to the end of the memory mapping.
 	pub fn map_stack(&mut self, ptr: Option<*const c_void>, size: usize, flags: u8)
 		-> Result<*const c_void, Errno> {
 		let mapping_ptr = self.map(ptr, size, flags)?;
@@ -228,28 +230,61 @@ impl MemSpace {
 		})
 	}
 
-	/// Unmaps the given region of memory.
-	/// `ptr` represents the address of the beginning of the region on the virtual memory.
-	/// `size` represents the size of the region in number of memory pages.
-	/// The function frees the physical memory the region points to unless shared by one or several
+	// TODO Optimize (currently O(n log n))
+	/// Unmaps the given mapping of memory.
+	/// `ptr` represents the address of the beginning of the mapping on the virtual memory.
+	/// `size` represents the size of the mapping in number of memory pages.
+	/// The function frees the physical memory the mapping points to unless shared by one or several
 	/// other memory mappings.
-	/// After this function returns, the access to the region of memory shall be revoked and
+	/// After this function returns, the access to the mapping of memory shall be revoked and
 	/// further attempts to access it shall result in a page fault.
 	pub fn unmap(&mut self, ptr: *const c_void, size: usize) -> Result<(), Errno> {
-		let i = 0;
-		while i < size {
-			let page_ptr = (ptr as usize + i * memory::PAGE_SIZE) as *const _;
-			let _mapping = Self::get_mapping_mut_for(&mut self.mappings, page_ptr);
+		let mut i = 0;
 
-			// TODO Shrink or remove the mapping and add one or two gaps if required
-			// TODO Merge new gaps with nearby gaps if required
-			todo!();
+		while i < size {
+			// The pointer of the page
+			let page_ptr = (ptr as usize + i * memory::PAGE_SIZE) as *const _;
+
+			// The mapping containing the page
+			if let Some(mapping) = Self::get_mapping_mut_for(&mut self.mappings, page_ptr) {
+				// The offset in the mapping of the beginning of pages to unmap
+				let begin = (page_ptr as usize - mapping.get_begin() as usize)
+					/ memory::PAGE_SIZE;
+				// The number of pages to unmap in the mapping
+				let s = min(size - i, mapping.get_size() - begin);
+
+				if begin == 0 {
+					// TODO If preceded by a gap:
+					//     Increase its size
+					// Else:
+					//     Create a gap
+				}
+
+				if begin + s >= mapping.get_size() {
+					// TODO If followed by a gap:
+					//     Get its size and remove it
+					// TODO Create a new gap filling the removed mapping + the removed gap
+				}
+
+				if begin == 0 && begin + s >= mapping.get_size() {
+					// TODO Remove the full mapping
+				} else if begin == 0 {
+					// TODO Shrink the mapping from the beginning
+				} else if begin + s >= mapping.get_size() {
+					// TODO Shrink the mapping from the end
+				}
+
+				i += s;
+			} else {
+				i += 1;
+			}
 		}
 
+		// TODO Update vmem
 		Ok(())
 	}
 
-	/// Tells whether the given region of memory `ptr` of size `size` in bytes can be accessed.
+	/// Tells whether the given mapping of memory `ptr` of size `size` in bytes can be accessed.
 	/// `user` tells whether the memory must be accessible from userspace or just kernelspace.
 	/// `write` tells whether to check for write permission.
 	pub fn can_access(&self, _ptr: *const u8, _size: usize, _user: bool, _write: bool) -> bool {
@@ -392,7 +427,7 @@ impl MemSpace {
 
 	/// Allocates the physical pages to write on the given pointer.
 	/// `virt_addr` is the address to allocate.
-	/// `size` is the size of the region to allocate.
+	/// `size` is the size of the mapping to allocate.
 	/// If the mapping doesn't exist, the function returns an error.
 	pub fn alloc<T>(&mut self, virt_addr: *const T) -> Result<(), Errno> {
 		let mut off = 0;

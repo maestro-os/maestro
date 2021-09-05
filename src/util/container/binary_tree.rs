@@ -561,7 +561,7 @@ impl<K: 'static + Ord, V: 'static> BinaryTree<K, V> {
 
 		while node.is_some() {
 			let n = node.unwrap();
-			let ord = cmp(&n.key, &n.value).reverse();
+			let ord = cmp(&n.key, &n.value);
 
 			match ord {
 				Ordering::Less => node = n.get_left(),
@@ -580,7 +580,7 @@ impl<K: 'static + Ord, V: 'static> BinaryTree<K, V> {
 
 		while node.is_some() {
 			let n = node.unwrap();
-			let ord = cmp(&n.key, &n.value).reverse();
+			let ord = cmp(&n.key, &n.value);
 
 			match ord {
 				Ordering::Less => node = n.get_left_mut(),

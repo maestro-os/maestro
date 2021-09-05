@@ -78,36 +78,36 @@ void test_process(void)
 
 	// Testing wait and signals
 
-	write(1, "Hello world!\n", 13);
-	int pid = fork();
-	if (pid == 0) {
-		write(1, "forked!\n", 8);
+	//write(1, "Hello world!\n", 13);
+	//int pid = fork();
+	//if (pid == 0) {
+	//	write(1, "forked!\n", 8);
 
-		signal(1, sig_handle);
-		kill(getpid(), 1);
+	//	signal(1, sig_handle);
+	//	kill(getpid(), 1);
 
-		int pid2 = fork();
-		if (pid2 == 0) {
-			while(1)
-				;
-		}
+	//	int pid2 = fork();
+	//	if (pid2 == 0) {
+	//		while(1)
+	//			;
+	//	}
 
-		kill(pid2, 1);
+	//	kill(pid2, 1);
 
-		_exit(43);
-	} else {
-		write(1, "waiting\n", 8);
-		int wstatus = 42;
-		int ret = waitpid(-1, &wstatus, 0);
+	//	_exit(43);
+	//} else {
+	//	write(1, "waiting\n", 8);
+	//	int wstatus = 42;
+	//	int ret = waitpid(-1, &wstatus, 0);
 
-		write(1, "ret: ", 5);
-		print_nbr(ret);
-		write(1, "\nstatus: ", 9);
-		print_nbr(wstatus);
+	//	write(1, "ret: ", 5);
+	//	print_nbr(ret);
+	//	write(1, "\nstatus: ", 9);
+	//	print_nbr(wstatus);
 
-		while (1)
-			;
-	}
+	//	while (1)
+	//		;
+	//}
 
 
 
@@ -175,14 +175,14 @@ void test_process(void)
 	// Testing mmap/munmap
 	// TODO Test with fork
 
-	//char *ptr = mmap(NULL, 4096, 0b111, 0, 0, 0);
-	//for(size_t i = 0; i < 26; ++i)
-	//	ptr[i] = 'a' + i;
-	//write(1, ptr, 26);
-	//munmap(ptr, 4096);
+	char *ptr = mmap(NULL, 4096, 0b111, 0, 0, 0);
+	for(size_t i = 0; i < 26; ++i)
+		ptr[i] = 'a' + i;
+	write(1, ptr, 26);
+	munmap(ptr, 4096);
 
-	//while(1)
-	//	;
+	while(1)
+		;
 
 
 
