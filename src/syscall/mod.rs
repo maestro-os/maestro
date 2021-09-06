@@ -206,7 +206,7 @@ pub extern "C" fn syscall_handler(regs: &mut util::Regs) {
 			let curr_proc = guard.get_mut();
 
 			// SIGSYS cannot be caught, thus the process will be terminated
-			curr_proc.kill(process::signal::Signal::new(process::signal::SIGSYS).unwrap());
+			curr_proc.kill(process::signal::Signal::new(process::signal::SIGSYS).unwrap(), true);
 			crate::enter_loop();
 		}
 	};

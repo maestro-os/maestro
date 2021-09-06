@@ -192,19 +192,19 @@ pub fn init() -> Result<(), Errno> {
 				// x87 Floating-Point Exception
 				// SIMD Floating-Point Exception
 				0x00 | 0x10 | 0x13 => {
-					curr_proc.kill(Signal::new(signal::SIGFPE).unwrap());
+					curr_proc.kill(Signal::new(signal::SIGFPE).unwrap(), true);
 					curr_proc.signal_next();
 				},
 
 				// Breakpoint
 				0x03 => {
-					curr_proc.kill(Signal::new(signal::SIGTRAP).unwrap());
+					curr_proc.kill(Signal::new(signal::SIGTRAP).unwrap(), true);
 					curr_proc.signal_next();
 				},
 
 				// Invalid Opcode
 				0x06 => {
-					curr_proc.kill(Signal::new(signal::SIGILL).unwrap());
+					curr_proc.kill(Signal::new(signal::SIGILL).unwrap(), true);
 					curr_proc.signal_next();
 				},
 
@@ -221,14 +221,14 @@ pub fn init() -> Result<(), Errno> {
 					if inst_prefix == HLT_INSTRUCTION {
 						curr_proc.exit(regs.eax);
 					} else {
-						curr_proc.kill(Signal::new(signal::SIGSEGV).unwrap());
+						curr_proc.kill(Signal::new(signal::SIGSEGV).unwrap(), true);
 						curr_proc.signal_next();
 					}
 				},
 
 				// Alignment Check
 				0x11 => {
-					curr_proc.kill(Signal::new(signal::SIGBUS).unwrap());
+					curr_proc.kill(Signal::new(signal::SIGBUS).unwrap(), true);
 					curr_proc.signal_next();
 				},
 
@@ -262,7 +262,7 @@ pub fn init() -> Result<(), Errno> {
 				if ring < 3 {
 					return InterruptResult::new(true, InterruptResultAction::Panic);
 				} else {
-					curr_proc.kill(Signal::new(signal::SIGSEGV).unwrap());
+					curr_proc.kill(Signal::new(signal::SIGSEGV).unwrap(), true);
 					curr_proc.signal_next();
 				}
 			}
@@ -579,7 +579,7 @@ impl Process {
 	/// Wakes up the process. The function sends a signal SIGCHLD to the process and, if it was in
 	/// Sleeping state, changes it to Running.
 	pub fn wakeup(&mut self) {
-		self.kill(signal::Signal::new(signal::SIGCHLD).unwrap());
+		self.kill(signal::Signal::new(signal::SIGCHLD).unwrap(), false);
 
 		if self.state == State::Sleeping {
 			self.state = State::Running;
@@ -885,17 +885,19 @@ impl Process {
 
 	/// Kills the process with the given signal `sig`. If the process doesn't have a signal
 	/// handler, the default action for the signal is executed.
-	/// `no_handle` tells whether the signal handler must be ignored.
-	pub fn kill(&mut self, sig: Signal) {
+	/// If `no_handler` is true and if the process is already handling a signal, the function
+	/// executes the default action of the signal regardless the user-specified action.
+	pub fn kill(&mut self, sig: Signal, no_handler: bool) {
 		if self.get_state() == State::Stopped
 			&& sig.get_default_action() == SignalAction::Continue {
 			self.set_state(State::Running);
 		}
 
-		if sig.can_catch() {
-			self.signals_bitfield.set(sig.get_type() as _);
+		let no_handler = self.is_handling_signal() && no_handler;
+		if !sig.can_catch() || no_handler {
+			sig.execute_action(self, no_handler);
 		} else {
-			sig.execute_action(self);
+			self.signals_bitfield.set(sig.get_type() as _);
 		}
 	}
 
@@ -910,7 +912,7 @@ impl Process {
 	pub fn signal_next(&mut self) {
 		if let Some(signum) = self.signals_bitfield.find_set() {
 			let sig = Signal::new(signum as _).unwrap();
-			sig.execute_action(self);
+			sig.execute_action(self, false);
 		}
 	}
 

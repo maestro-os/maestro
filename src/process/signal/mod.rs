@@ -182,7 +182,9 @@ impl Signal {
 
 	/// Executes the action associated with the signal for process `process`.
 	/// If the process is not the current process, the behaviour is undefined.
-	pub fn execute_action(&self, process: &mut Process) {
+	/// If `no_handler` is true, the function executes the default action of the signal regardless
+	/// the user-specified action.
+	pub fn execute_action(&self, process: &mut Process, no_handler: bool) {
 		let process_state = process.get_state();
 		if process_state == State::Zombie {
 			return;
@@ -190,10 +192,10 @@ impl Signal {
 
 		debug_assert!(process.get_mem_space().unwrap().is_bound());
 
-		let handler = if self.can_catch() {
-			process.get_signal_handler(self.type_)
-		} else {
+		let handler = if !self.can_catch() || no_handler {
 			SignalHandler::Default
+		} else {
+			process.get_signal_handler(self.type_)
 		};
 
 		if handler != SignalHandler::Ignore {

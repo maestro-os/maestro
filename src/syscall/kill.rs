@@ -24,7 +24,7 @@ fn try_kill(pid: i32, sig: Option<Signal>, euid: Uid) -> Result<i32, Errno> {
 		if proc.get_state() != State::Zombie {
 			if euid == proc.get_uid() || euid == proc.get_euid() {
 				if let Some(sig) = sig {
-					proc.kill(sig);
+					proc.kill(sig, false);
 				}
 
 				Ok(0)
@@ -46,7 +46,7 @@ fn try_kill(pid: i32, sig: Option<Signal>, euid: Uid) -> Result<i32, Errno> {
 fn send_signal(pid: i32, sig: Option<Signal>, proc: &mut Process) -> Result<i32, Errno> {
 	if pid == proc.get_pid() as _ {
 		if let Some(sig) = sig {
-			proc.kill(sig);
+			proc.kill(sig, false);
 		}
 		Ok(0)
 	} else if pid > 0 {
@@ -79,7 +79,7 @@ fn send_signal(pid: i32, sig: Option<Signal>, proc: &mut Process) -> Result<i32,
 					let p = proc_guard.get_mut();
 
 					if proc.get_euid() == p.get_uid() || proc.get_euid() == p.get_euid() {
-						p.kill(sig.clone());
+						p.kill(sig.clone(), false);
 						found = true;
 					}
 				}
