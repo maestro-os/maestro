@@ -21,36 +21,40 @@ const PIT_COMMAND: u16 = 0x43;
 /// The command to enable the PC speaker.
 const BEEPER_ENABLE_COMMAND: u8 = 0x61;
 
-/// TODO doc
-const SELECT_CHANNEL_0: u8 = 0x0;
-/// TODO doc
-const SELECT_CHANNEL_1: u8 = 0x40;
-/// TODO doc
-const SELECT_CHANNEL_2: u8 = 0x80;
-/// TODO doc
-const READ_BACK_COMMAND: u8 = 0xc0;
+/// Select PIT channel 0.
+const SELECT_CHANNEL_0: u8 = 0b00 << 6;
+/// Select PIT channel 1.
+const SELECT_CHANNEL_1: u8 = 0b01 << 6;
+/// Select PIT channel 2.
+const SELECT_CHANNEL_2: u8 = 0b10 << 6;
+/// The read back command, used to read the current state of the PIT (doesn't work on 8253 and
+/// older).
+const READ_BACK_COMMAND: u8 = 0b11 << 6;
 
-/// TODO doc
-const ACCESS_LATCH_COUNT_VALUE: u8 = 0x0;
-/// TODO doc
-const ACCESS_LOBYTE: u8 = 0x10;
-/// TODO doc
-const ACCESS_HIBYTE: u8 = 0x20;
-/// TODO doc
-const ACCESS_LOBYTE_HIBYTE: u8 = 0x30;
+/// Tells the PIT to copy the current count to the latch register to be read by the CPU.
+const ACCESS_LATCH_COUNT_VALUE: u8 = 0b00 << 4;
+/// Tells the PIT to read only the lowest 8 bits of the counter value.
+const ACCESS_LOBYTE: u8 = 0b01 << 4;
+/// Tells the PIT to read only the highest 8 bits of the counter value.
+const ACCESS_HIBYTE: u8 = 0b10 << 4;
+/// Tells the PIT to read the whole counter value.
+const ACCESS_LOBYTE_HIBYTE: u8 = 0b11 << 4;
 
-/// TODO doc
-const MODE_0: u8 = 0x0;
-/// TODO doc
-const MODE_1: u8 = 0x1;
-/// TODO doc
-const MODE_2: u8 = 0x2;
-/// TODO doc
-const MODE_3: u8 = 0x3;
-/// TODO doc
-const MODE_4: u8 = 0x4;
-/// TODO doc
-const MODE_5: u8 = 0x5;
+/// Interrupt on terminal count.
+const MODE_0: u8 = 0b000 << 1;
+/// Hardware re-triggerable one-shot.
+const MODE_1: u8 = 0b001 << 1;
+/// Rate generator.
+const MODE_2: u8 = 0b010 << 1;
+/// Square wave generator.
+const MODE_3: u8 = 0b011 << 1;
+/// Software triggered strobe.
+const MODE_4: u8 = 0b100 << 1;
+/// Hardware triggered strobe.
+const MODE_5: u8 = 0b101 << 1;
+
+/// Tells whether the BCD mode is enabled.
+const BCD_MODE: u8 = 0b1;
 
 /// The base frequency of the PIT.
 const BASE_FREQUENCY: Frequency = 1193180;
@@ -63,9 +67,11 @@ static mut CURRENT_FREQUENCY: Mutex::<Frequency> = Mutex::new(0);
 pub fn init() {
 	idt::wrap_disable_interrupts(|| {
 		unsafe {
-			io::outb(PIT_COMMAND, SELECT_CHANNEL_0 | ACCESS_LOBYTE_HIBYTE | MODE_4);
-			io::outb(PIT_COMMAND, SELECT_CHANNEL_2 | ACCESS_LOBYTE_HIBYTE | MODE_4);
+			io::outb(PIT_COMMAND, SELECT_CHANNEL_0 | ACCESS_LOBYTE_HIBYTE | MODE_2);
+			io::outb(PIT_COMMAND, SELECT_CHANNEL_2 | ACCESS_LOBYTE_HIBYTE | MODE_2);
 		}
+
+		set_frequency(1); // TODO
 	});
 }
 
