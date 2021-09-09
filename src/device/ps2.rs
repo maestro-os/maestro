@@ -286,15 +286,15 @@ fn enable_keyboard() -> Result<(), ()> {
 	}
 
 	// Setting keyboard's scancode
-	send_command(KEYBOARD_SCANCODE, KEYBOARD_ACK)?;
+	keyboard_send(KEYBOARD_SCANCODE)?;
 	keyboard_send(1)?;
 
 	// Setting keyboard's typematic byte
-	send_command(KEYBOARD_TYPEMATIC, KEYBOARD_ACK)?;
+	keyboard_send(KEYBOARD_TYPEMATIC)?;
 	keyboard_send(0)?;
 
 	// Enabling keyboard scanning
-	send_command(KEYBOARD_ENABLE, KEYBOARD_ACK)?;
+	keyboard_send(KEYBOARD_ENABLE)?;
 
 	Ok(())
 }
@@ -469,7 +469,7 @@ impl Keyboard for PS2Keyboard {
 			self.leds_state &= !(1 << offset);
 		}
 
-		let _ = send_command(KEYBOARD_LED, KEYBOARD_ACK);
+		let _ = keyboard_send(KEYBOARD_LED);
 		let _ = keyboard_send(self.leds_state);
 	}
 }
