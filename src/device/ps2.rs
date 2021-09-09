@@ -29,9 +29,6 @@ const COMMAND_REGISTER: u16 = 0x64;
 /// The maximum number of attempts for sending a command to the PS/2 controller.
 const MAX_ATTEMPTS: usize = 3;
 
-/// The command to set the state of keyboard LEDs.
-const SET_LED_COMMAND: u8 = 0xed;
-
 /// Response telling the test passed.
 const TEST_CONTROLLER_PASS: u8 = 0x55;
 /// Response telling the test failed.
@@ -39,6 +36,17 @@ const TEST_CONTROLLER_FAIL: u8 = 0xfc;
 
 /// Response telling the keyboard test passed.
 const TEST_KEYBOARD_PASS: u8 = 0x00;
+
+/// Command to set the keyboard's LEDs state.
+const KEYBOARD_LED: u8 = 0xed;
+/// Command to set the keyboard's scancode set.
+const KEYBOARD_SCANCODE: u8 = 0xf0;
+/// Command to set the keyboard's typematic byte.
+const KEYBOARD_TYPEMATIC: u8 = 0xf3;
+/// Command to enable keyboard scanning.
+const KEYBOARD_ENABLE: u8 = 0xf4;
+/// Command to disable keyboard scaning.
+const KEYBOARD_DISABLE: u8 = 0xf5;
 
 /// Keyboard acknowledgement.
 const KEYBOARD_ACK: u8 = 0xfa;
@@ -277,11 +285,17 @@ fn enable_keyboard() -> Result<(), ()> {
 		io::outb(COMMAND_REGISTER, 0xae);
 	}
 
-	keyboard_send(0xf0)?;
+	// Setting keyboard's scancode
+	send_command(KEYBOARD_SCANCODE, KEYBOARD_ACK)?;
 	keyboard_send(1)?;
-	keyboard_send(0xf3)?;
+
+	// Setting keyboard's typematic byte
+	send_command(KEYBOARD_TYPEMATIC, KEYBOARD_ACK)?;
 	keyboard_send(0)?;
-	keyboard_send(0xf4)?;
+
+	// Enabling keyboard scanning
+	send_command(KEYBOARD_ENABLE, KEYBOARD_ACK)?;
+
 	Ok(())
 }
 
@@ -316,7 +330,7 @@ fn test_controller() -> Result<(), ()> {
 	send_command(0xaa, TEST_CONTROLLER_PASS)
 }
 
-/// Tests the keyboard device.
+/// Tests the first device.
 fn test_device() -> Result<(), ()> {
 	send_command(0xab, TEST_KEYBOARD_PASS)
 }
@@ -455,7 +469,7 @@ impl Keyboard for PS2Keyboard {
 			self.leds_state &= !(1 << offset);
 		}
 
-		let _ = send_command(SET_LED_COMMAND, KEYBOARD_ACK);
+		let _ = send_command(KEYBOARD_LED, KEYBOARD_ACK);
 		let _ = keyboard_send(self.leds_state);
 	}
 }
