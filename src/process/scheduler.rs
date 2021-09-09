@@ -60,6 +60,8 @@ struct ContextSwitchData {
 pub struct Scheduler {
 	/// A vector containing the temporary stacks for each CPU cores.
 	tmp_stacks: Vec<malloc::Alloc<u8>>,
+	/// A vector containing context switch data for each CPU cores.
+	ctx_switch_data: Vec<Option<ContextSwitchData>>,
 
 	/// The ticking callback hook, called at a regular interval to make the scheduler work.
 	tick_callback_hook: CallbackHook,
@@ -81,8 +83,10 @@ impl Scheduler {
 	/// Creates a new instance of scheduler.
 	pub fn new(cores_count: usize) -> Result<SharedPtr<Self>, Errno> {
 		let mut tmp_stacks = Vec::new();
+		let mut ctx_switch_data = Vec::new();
 		for _ in 0..cores_count {
 			tmp_stacks.push(malloc::Alloc::new_default(TMP_STACK_SIZE)?)?;
+			ctx_switch_data.push(None)?;
 		}
 
 		let callback = | _id: u32, _code: u32, regs: &util::Regs, ring: u32 | {
@@ -91,6 +95,7 @@ impl Scheduler {
 		let tick_callback_hook = event::register_callback(0x20, 0, callback)?;
 		SharedPtr::new(Self {
 			tmp_stacks,
+			ctx_switch_data,
 
 			tick_callback_hook,
 			total_ticks: 0,
@@ -338,9 +343,10 @@ impl Scheduler {
 			let tmp_stack = unsafe {
 				scheduler.tmp_stacks[core_id].as_ptr_mut() as *mut c_void
 			};
-			let ctx_switch_data = ContextSwitchData {
+			scheduler.ctx_switch_data[core_id] = Some(ContextSwitchData {
 				proc: scheduler.curr_proc.as_mut().unwrap().1.clone(),
-			};
+			});
+			let ctx_switch_data_ptr = &mut scheduler.ctx_switch_data[core_id] as *mut _;
 
 			drop(guard);
 			unsafe {
@@ -349,8 +355,7 @@ impl Scheduler {
 			pic::end_of_interrupt(0x0);
 
 			unsafe {
-				// TODO Handle out of memory
-				stack::switch(tmp_stack, f, ctx_switch_data).unwrap();
+				stack::switch(tmp_stack, f, ctx_switch_data_ptr);
 			}
 
 			unreachable!();

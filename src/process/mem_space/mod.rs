@@ -12,6 +12,7 @@ mod physical_ref_counter;
 use core::cmp::Ordering;
 use core::cmp::min;
 use core::ffi::c_void;
+use core::mem::replace;
 use core::mem::size_of;
 use core::ptr::NonNull;
 use crate::errno::Errno;
@@ -416,13 +417,15 @@ impl MemSpace {
 			data.result = data.self_.do_fork();
 		};
 
-		unsafe {
-			stack::switch(tmp_stack_top, f, ForkData {
-				self_: self,
+		let mut fork_data = Box::new(ForkData {
+			self_: self,
 
-				result: Err(0),
-			})?.result
+			result: Err(0),
+		})?;
+		unsafe {
+			stack::switch(tmp_stack_top, f, fork_data.as_mut_ptr());
 		}
+		replace(&mut fork_data.result, Err(0))
 	}
 
 	/// Allocates the physical pages to write on the given pointer.
