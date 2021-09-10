@@ -287,8 +287,7 @@ fn enable_keyboard() -> Result<(), ()> {
 
 	// Setting the keyboard's LEDs
 	keyboard_send(KEYBOARD_LED)?;
-	keyboard_send(0b111)?;
-	//keyboard_send(0); TODO
+	keyboard_send(0)?;
 
 	// Setting keyboard's scancode
 	keyboard_send(KEYBOARD_SCANCODE)?;
@@ -463,9 +462,9 @@ impl PS2Keyboard {
 impl Keyboard for PS2Keyboard {
 	fn set_led(&mut self, led: KeyboardLED, enabled: bool) {
 		let offset = match led {
-			KeyboardLED::NumberLock => 0,
-			KeyboardLED::CapsLock => 1,
-			KeyboardLED::ScrollLock => 2,
+			KeyboardLED::ScrollLock => 0,
+			KeyboardLED::NumberLock => 1,
+			KeyboardLED::CapsLock => 2,
 		};
 
 		if enabled {

@@ -37,7 +37,6 @@ impl Block {
 		debug_assert!(first_chunk_size >= min_size);
 
 		let ptr = buddy::alloc_kernel(order)?;
-		debug_assert!(ptr as *const _ >= memory::PROCESS_END);
 		let block = unsafe { // Safe since `ptr` is valid
 			ptr::write_volatile(ptr as *mut Block, Self {
 				list: ListNode::new_single(),

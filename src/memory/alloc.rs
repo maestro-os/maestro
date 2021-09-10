@@ -33,7 +33,9 @@ pub fn init() {
 	// The beginning of the kernel's zone
 	let kernel_zone_begin = util::align(phys_metadata_end, memory::PAGE_SIZE) as *mut c_void;
 	// The maximum number of pages the kernel zone can hold.
-	let kernel_max = memory::get_kernelspace_size() / memory::PAGE_SIZE;
+	let kernel_max = (memory::get_kernelspace_size()
+		- (metadata_end as usize - memory::PROCESS_END as usize))
+			/ memory::PAGE_SIZE;
 	// The number of frames the kernel zone holds.
 	let kernel_zone_frames = min(frames_count, kernel_max);
 	// The kernel's zone

@@ -196,7 +196,10 @@ pub fn alloc(order: FrameOrder, flags: Flags) -> Result<*mut c_void, Errno> {
 /// The function returns the *virtual* address, not the physical one.
 pub fn alloc_kernel(order: FrameOrder) -> Result<*mut c_void, Errno> {
 	let ptr = alloc(order, FLAG_ZONE_TYPE_KERNEL)?;
-	Ok(memory::kern_to_virt(ptr) as _)
+	let virt_ptr = memory::kern_to_virt(ptr) as _;
+	debug_assert!(virt_ptr as *const _ >= memory::PROCESS_END);
+
+	Ok(virt_ptr)
 }
 
 /// Frees the given memory frame that was allocated using the buddy allocator. The given order must
