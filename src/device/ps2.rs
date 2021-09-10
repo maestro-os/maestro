@@ -285,6 +285,11 @@ fn enable_keyboard() -> Result<(), ()> {
 		io::outb(COMMAND_REGISTER, 0xae);
 	}
 
+	// Setting the keyboard's LEDs
+	keyboard_send(KEYBOARD_LED)?;
+	keyboard_send(0b111)?;
+	//keyboard_send(0); TODO
+
 	// Setting keyboard's scancode
 	keyboard_send(KEYBOARD_SCANCODE)?;
 	keyboard_send(1)?;

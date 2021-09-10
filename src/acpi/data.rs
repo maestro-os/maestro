@@ -122,6 +122,8 @@ impl ACPIData {
 			crate::kernel_panic!("Invalid ACPI pointer!");
 		}
 
+		crate::println!("A"); // TODO rm
+
 		// Temporary vmem used to read the data.
 		let mut tmp_vmem = vmem::new()?;
 		let rsdt_phys_ptr = rsdp.rsdt_address as *const c_void;
@@ -130,13 +132,18 @@ impl ACPIData {
 		tmp_vmem.map_range(rsdt_map_begin, memory::PAGE_SIZE as _, 2, 0)?;
 		tmp_vmem.flush();
 
+		crate::println!("B"); // TODO rm
+
 		tmp_vmem.bind();
+		crate::println!("C"); // TODO rm
 		let (off, ptr) = {
 			let rsdt_ptr = (memory::PAGE_SIZE
 				+ (rsdt_phys_ptr as usize - rsdt_map_begin as usize)) as *const Rsdt;
 			let rsdt = unsafe { // Safe because the pointer has been mapped before
 				&*rsdt_ptr
 			};
+
+			crate::println!("D"); // TODO rm
 
 			if !rsdt.header.check() {
 				crate::kernel_panic!("Invalid ACPI structure!");
@@ -156,11 +163,14 @@ impl ACPIData {
 
 				// Mapping the table to read its length
 				let table_map_begin = util::down_align(table_ptr, memory::PAGE_SIZE);
+				crate::println!("D {:p}", table_map_begin); // TODO rm
 				if tmp_vmem.map_range(table_map_begin as _,
 					(memory::PAGE_SIZE * 3) as _, 2, 0).is_err() {
 					crate::kernel_panic!("Unexpected error when reading ACPI data");
 				}
 				tmp_vmem.flush();
+
+				crate::println!("E"); // TODO rm
 
 				let table_offset = table_ptr as usize - table_map_begin as usize;
 				let table = unsafe { // Safe because the pointer has been mapped before
@@ -171,17 +181,26 @@ impl ACPIData {
 					(table_ptr as *const c_void).add(table.get_length())
 				};
 
+				crate::println!("F"); // TODO rm
+
 				if end > highest {
 					highest = end;
 				}
 			});
 
+			crate::println!("G"); // TODO rm
+
 			// Mapping the full ACPI data
 			let begin = util::down_align(lowest, memory::PAGE_SIZE);
 			let end = util::align(highest, memory::PAGE_SIZE);
 			let pages = (end as usize - begin as usize) / memory::PAGE_SIZE;
+			for _ in 0..1000000 {
+				crate::println!("{:p} {:p} {}", begin, end, pages);
+			}
 			tmp_vmem.map_range(begin, memory::PAGE_SIZE as _, pages, 0)?;
 			tmp_vmem.flush();
+
+			crate::println!("H"); // TODO rm
 
 			let size = pages * memory::PAGE_SIZE;
 			let dest = unsafe {
@@ -192,9 +211,12 @@ impl ACPIData {
 				copy_nonoverlapping(src, dest, size);
 			}
 
+			crate::println!("I"); // TODO rm
+
 			(begin as usize, dest)
 		};
 		crate::bind_vmem();
+		crate::println!("J"); // TODO rm
 
 		Ok(Some(Self {
 			off,

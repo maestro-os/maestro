@@ -196,8 +196,6 @@ pub fn alloc(order: FrameOrder, flags: Flags) -> Result<*mut c_void, Errno> {
 /// The function returns the *virtual* address, not the physical one.
 pub fn alloc_kernel(order: FrameOrder) -> Result<*mut c_void, Errno> {
 	let ptr = alloc(order, FLAG_ZONE_TYPE_KERNEL)?;
-	debug_assert!((ptr as usize) < 0x40000000);
-
 	Ok(memory::kern_to_virt(ptr) as _)
 }
 

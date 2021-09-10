@@ -7,9 +7,9 @@
 
 use core::intrinsics::wrapping_add;
 use crate::time;
-use data::ACPIData;
-use fadt::Fadt;
-use madt::Madt;
+//use data::ACPIData;
+//use fadt::Fadt;
+//use madt::Madt;
 
 mod data;
 mod fadt;
@@ -76,9 +76,9 @@ impl ACPITableHeader {
 
 /// Initializes ACPI.
 pub fn init() {
-	let mut century_register = false;
+	let/* mut*/ century_register = false;
 
-	let data = ACPIData::read();
+	/*let data = ACPIData::read();
 	if data.is_err() {
 		crate::kernel_panic!("Invalid ACPI data!");
 	}
@@ -102,7 +102,7 @@ pub fn init() {
 				false
 			}
 		};
-	}
+	}*/
 
 	let cmos_clock = time::cmos::CMOSClock::new(century_register);
 	if time::add_clock_source(cmos_clock).is_err() {
