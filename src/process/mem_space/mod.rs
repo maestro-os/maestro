@@ -10,7 +10,7 @@ mod mapping;
 mod physical_ref_counter;
 
 use core::cmp::Ordering;
-use core::cmp::min;
+use core::cmp::{min, max};
 use core::ffi::c_void;
 use core::mem::replace;
 use core::mem::size_of;
@@ -261,26 +261,45 @@ impl MemSpace {
 	fn create_unmap_gap(&self, ptr: *const c_void, size: usize) -> MemGap {
 		// The pointer to the beginning of the chunk to be unmapped
 		let mut gap_begin = util::down_align(ptr, memory::PAGE_SIZE);
+		// The gap's size in bytes
+		let gap_size = size * memory::PAGE_SIZE;
 		// The size of the new gap
-		let mut gap_size = size;
+		let mut gap_end = unsafe {
+			gap_begin.add(size * memory::PAGE_SIZE)
+		};
 
+		// The previous gap, located before the gap being created
 		let prev_gap = Self::gap_by_ptr(&self.gaps, unsafe {
 			gap_begin.sub(1)
 		});
+		// The next gap, located after the gap being created
 		let next_gap = Self::gap_by_ptr(&self.gaps, unsafe {
 			gap_begin.add(gap_size * memory::PAGE_SIZE)
 		});
+
+		// Expanding to absorb the previous gap
 		if let Some(prev_gap) = prev_gap {
-			// TODO Take into account that the gap may overlap with the chunk to unmap
-			gap_begin = prev_gap.get_begin();
-			gap_size += prev_gap.get_size();
-		}
-		if let Some(next_gap) = next_gap {
-			// TODO Take into account that the gap may overlap with the chunk to unmap
-			gap_size += next_gap.get_size();
+			// The gap's size in bytes
+			let size = prev_gap.get_size() * memory::PAGE_SIZE;
+
+			gap_begin = min(gap_begin, prev_gap.get_begin());
+			gap_end = max(gap_end, unsafe {
+				prev_gap.get_begin().add(size)
+			});
 		}
 
-		MemGap::new(gap_begin, gap_size)
+		// Expanding to absorb the next gap
+		if let Some(next_gap) = next_gap {
+			// The gap's size in bytes
+			let size = next_gap.get_size() * memory::PAGE_SIZE;
+
+			gap_begin = min(gap_begin, next_gap.get_begin());
+			gap_end = max(gap_end, unsafe {
+				next_gap.get_begin().add(size)
+			});
+		}
+
+		MemGap::new(gap_begin, (gap_end as usize - gap_begin as usize) / memory::PAGE_SIZE)
 	}
 
 	// TODO Optimize (currently O(n log n), can be reduced to O(log n) by avoiding to make a new
