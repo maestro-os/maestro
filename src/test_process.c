@@ -68,11 +68,11 @@ void test_process(void)
 
 	// Fork bomb
 
-	while (1)
-	{
-		print_nbr(getpid());
-		fork();
-	}
+	//while (1)
+	//{
+	//	print_nbr(getpid());
+	//	fork();
+	//}
 
 
 
@@ -175,15 +175,19 @@ void test_process(void)
 	// Testing mmap/munmap
 	// TODO Test with fork
 
-	//size_t len = 100 * 4096;
-	//char *ptr = mmap(NULL, len, 0b111, 0, 0, 0);
+	size_t len = 100 * 4096;
+	char *ptr = mmap(NULL, len, 0b111, 0, 0, 0);
+	for(size_t i = 0; i < 26; ++i)
+		ptr[i] = 'a' + i;
+	write(1, ptr, 26);
+
+	munmap(ptr, len);
 	//for(size_t i = 0; i < 26; ++i)
 	//	ptr[i] = 'a' + i;
 	//write(1, ptr, 26);
-	//munmap(ptr, len);
 
-	//while(1)
-	//	;
+	while(1)
+		;
 
 
 

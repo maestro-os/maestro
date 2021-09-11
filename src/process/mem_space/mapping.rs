@@ -2,6 +2,7 @@
 //! at the process's creation or by the process itself using system calls.
 
 use core::ffi::c_void;
+use core::mem::ManuallyDrop;
 use core::ptr::NonNull;
 use core::ptr;
 use crate::errno::Errno;
@@ -41,6 +42,7 @@ fn get_default_page() -> *const c_void {
 }
 
 /// A mapping in the memory space.
+#[derive(Clone)]
 pub struct MemMapping {
 	/// Pointer on the virtual memory to the beginning of the mapping
 	begin: *const c_void,
@@ -258,36 +260,84 @@ impl MemMapping {
 		Ok(())
 	}
 
+	/// Frees the physical page at offset `offset` of the mapping.
+	/// If the page is shared, it is not freed but the reference counter is decreased.
+	fn free_phys_page(&mut self, offset: usize) {
+		let vmem = self.get_mut_vmem();
+		let virt_ptr = (self.begin as usize + offset * memory::PAGE_SIZE) as *const c_void;
+
+		if let Some(phys_ptr) = vmem.translate(virt_ptr) {
+			{
+				let mut ref_counter = unsafe { // Safe because using Mutex
+					super::PHYSICAL_REF_COUNTER.lock(true)
+				};
+				ref_counter.get_mut().decrement(phys_ptr);
+			}
+
+			if !self.is_shared(offset) {
+				let allocated = phys_ptr != get_default_page();
+				if allocated {
+					buddy::free(phys_ptr, 0);
+				}
+			}
+		}
+	}
+
 	/// Unmaps the mapping from the given virtual memory context.
 	/// If the physical pages the mapping points to are not shared, the function frees them.
 	pub fn unmap(&mut self) -> Result<(), Errno> {
+		// Removing physical pages
+		for i in 0..self.size {
+			self.free_phys_page(i);
+		}
+
+		// Unmapping physical pages
 		let vmem = self.get_mut_vmem();
 		oom::wrap(|| {
 			vmem.unmap_range(self.begin, self.size)
 		});
 		vmem.flush();
 
-		for i in 0..self.size {
-			let virt_ptr = (self.begin as usize + i * memory::PAGE_SIZE) as *const c_void;
+		Ok(())
+	}
 
-			if let Some(phys_ptr) = vmem.translate(virt_ptr) {
-				{
-					let mut ref_counter = unsafe { // Safe because using Mutex
-						super::PHYSICAL_REF_COUNTER.lock(true)
-					};
-					ref_counter.get_mut().decrement(phys_ptr);
-				}
-
-				if !self.is_shared(i) {
-					let allocated = phys_ptr != get_default_page();
-					if allocated {
-						buddy::free(phys_ptr, 0);
-					}
-				}
+	/// Partially unmaps the current mapping, creating up to two new mappings.
+	/// `begin` is the index of the first page to be unmapped.
+	/// `size` is the number of pages to unmap.
+	/// If the region to be unmapped is out of bounds, it is truncated to the end of the mapping.
+	/// The newly created mappings correspond to the remaining pages.
+	/// If the mapping is totaly unmapped, the function returns no new mappings.
+	/// The function doesn't flush the virtual memory context.
+	pub fn partial_unmap(mut self, begin: usize, size: usize) -> (Option<Self>, Option<Self>) {
+		let prev = {
+			if begin > 0 {
+				Some(Self::new(self.get_begin(), begin, self.flags, self.vmem))
+			} else {
+				None
 			}
+		};
+		let next = {
+			let end = begin + size;
+
+			if end < self.get_size() {
+				let gap_begin = unsafe {
+					self.get_begin().add(end * memory::PAGE_SIZE)
+				};
+				let gap_size = self.size - end;
+				Some(Self::new(gap_begin, gap_size, self.flags, self.vmem))
+			} else {
+				None
+			}
+		};
+
+		for i in begin..(begin + size) {
+			self.free_phys_page(i);
 		}
 
-		Ok(())
+		// Prevent calling `drop` to avoid freeing remaining pages
+		let _ = ManuallyDrop::new(self);
+
+		(prev, next)
 	}
 
 	/// Updates the virtual memory context according to the mapping for the page at offset

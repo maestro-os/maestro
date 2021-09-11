@@ -109,6 +109,26 @@ impl MemSpace {
 		Some(gap)
 	}
 
+	/// Returns a reference to the gap containing the pointer `ptr`.
+	/// `gaps` is the binary tree storing gaps, sorted by pointer to their respective beginnings.
+	/// `ptr` is the pointer.
+	/// If no gap contain the pointer, the function returns None.
+	fn gap_by_ptr<'a>(gaps: &'a BinaryTree<*const c_void, MemGap>, ptr: *const c_void)
+		-> Option<&'a MemGap> {
+		gaps.cmp_get(| key, value | {
+			let begin = *key;
+			let end = (begin as usize + value.get_size() * memory::PAGE_SIZE) as *const c_void;
+
+			if ptr >= begin && ptr < end {
+				Ordering::Equal
+			} else if ptr < begin {
+				Ordering::Less
+			} else {
+				Ordering::Greater
+			}
+		})
+	}
+
 	/// Returns a new binary tree containing the default gaps for a memory space.
 	fn create_default_gaps(&mut self) -> Result::<(), Errno> {
 		let begin = memory::ALLOC_BEGIN;
@@ -152,6 +172,7 @@ impl MemSpace {
 			// Err(errno::ENOMEM)
 			//todo!();
 		//} else {
+			// Getting a gap large enough
 			let gap = Self::gap_get(&mut self.gaps, &mut self.gaps_size, size);
 			if gap.is_none() {
 				return Err(errno::ENOMEM);
@@ -160,26 +181,29 @@ impl MemSpace {
 			let gap = gap.unwrap();
 			let gap_ptr = gap.get_begin();
 
+			// Creating the mapping
 			let mapping = MemMapping::new(gap_ptr, size, flags,
 				NonNull::new(self.vmem.as_mut_ptr()).unwrap());
 			let mapping_ptr = mapping.get_begin();
 			let m = self.mappings.insert(mapping_ptr, mapping)?;
 
+			// Mapping the default page
 			if m.map_default().is_err() {
 				self.mappings.remove(mapping_ptr);
 				return Err(errno::ENOMEM);
 			}
 
+			// Splitting the old gap to fit the mapping
 			if let Some(new_gap) = gap.consume(size) {
 				if self.gap_insert(new_gap).is_err() {
-					// TODO Check if the error can happen in this context
-					let _ = self.mappings.get_mut(mapping_ptr).unwrap().unmap();
 					self.mappings.remove(mapping_ptr);
 					return Err(errno::ENOMEM);
 				}
 			}
 
+			// Removing the old gap
 			self.gap_remove(gap_ptr);
+
 			Ok(mapping_ptr)
 		//}
 	}
@@ -231,17 +255,50 @@ impl MemSpace {
 		})
 	}
 
-	// TODO Optimize (currently O(n log n))
-	/// Unmaps the given mapping of memory.
-	/// `ptr` represents the address of the beginning of the mapping on the virtual memory.
+	/// Creates the gap to unmap a chunk of memory.
+	/// `ptr` represents the address of the beginning of the chunk to unmap.
 	/// `size` represents the size of the mapping in number of memory pages.
-	/// The function frees the physical memory the mapping points to unless shared by one or several
-	/// other memory mappings.
+	fn create_unmap_gap(&self, ptr: *const c_void, size: usize) -> MemGap {
+		// The pointer to the beginning of the chunk to be unmapped
+		let mut gap_begin = util::down_align(ptr, memory::PAGE_SIZE);
+		// The size of the new gap
+		let mut gap_size = size;
+
+		let prev_gap = Self::gap_by_ptr(&self.gaps, unsafe {
+			gap_begin.sub(1)
+		});
+		let next_gap = Self::gap_by_ptr(&self.gaps, unsafe {
+			gap_begin.add(gap_size * memory::PAGE_SIZE)
+		});
+		if let Some(prev_gap) = prev_gap {
+			// TODO Take into account that the gap may overlap with the chunk to unmap
+			gap_begin = prev_gap.get_begin();
+			gap_size += prev_gap.get_size();
+		}
+		if let Some(next_gap) = next_gap {
+			// TODO Take into account that the gap may overlap with the chunk to unmap
+			gap_size += next_gap.get_size();
+		}
+
+		MemGap::new(gap_begin, gap_size)
+	}
+
+	// TODO Optimize (currently O(n log n), can be reduced to O(log n) by avoiding to make a new
+	// binary tree search at each iterations)
+	/// Unmaps the given mapping of memory.
+	/// `ptr` represents the address of the beginning of the chunk to unmap.
+	/// `size` represents the size of the mapping in number of memory pages.
+	/// The function frees the physical memory the mapping points to unless shared by one or
+	/// several other memory mappings.
 	/// After this function returns, the access to the mapping of memory shall be revoked and
 	/// further attempts to access it shall result in a page fault.
+	/// If `ptr` is not aligned, the behaviour is undefined.
 	pub fn unmap(&mut self, ptr: *const c_void, size: usize) -> Result<(), Errno> {
-		let mut i = 0;
+		// The new gap covering the unmapped chunk
+		let gap = self.create_unmap_gap(ptr, size);
+		self.gap_insert(gap)?;
 
+		let mut i = 0;
 		while i < size {
 			// The pointer of the page
 			let page_ptr = (ptr as usize + i * memory::PAGE_SIZE) as *const _;
@@ -252,36 +309,43 @@ impl MemSpace {
 				let begin = (page_ptr as usize - mapping.get_begin() as usize)
 					/ memory::PAGE_SIZE;
 				// The number of pages to unmap in the mapping
-				let s = min(size - i, mapping.get_size() - begin);
+				let pages = min(size - i, mapping.get_size() - begin);
 
-				if begin == 0 {
-					// TODO If preceded by a gap:
-					//     Increase its size
-					// Else:
-					//     Create a gap
+				// The pointer to the beginning of the mapping
+				let mapping_begin_ptr = mapping.get_begin();
+				// The mapping
+				let mapping = self.mappings.remove(mapping_begin_ptr).unwrap();
+
+				// Newly created mappings after removing parts of the previous one
+				let (prev, next) = mapping.partial_unmap(begin, pages);
+				if let Some(p) = prev {
+					oom::wrap(|| {
+						self.mappings.insert(p.get_begin(), p.clone())?;
+						Ok(())
+					});
+				}
+				if let Some(n) = next {
+					oom::wrap(|| {
+						self.mappings.insert(n.get_begin(), n.clone())?;
+						Ok(())
+					});
 				}
 
-				if begin + s >= mapping.get_size() {
-					// TODO If followed by a gap:
-					//     Get its size and remove it
-					// TODO Create a new gap filling the removed mapping + the removed gap
-				}
-
-				if begin == 0 && begin + s >= mapping.get_size() {
-					// TODO Remove the full mapping
-				} else if begin == 0 {
-					// TODO Shrink the mapping from the beginning
-				} else if begin + s >= mapping.get_size() {
-					// TODO Shrink the mapping from the end
-				}
-
-				i += s;
+				i += pages;
 			} else {
 				i += 1;
 			}
 		}
 
-		// TODO Update vmem
+		// TODO Remove all gaps overlapping with the newly created gap
+
+		// Unmapping the chunk from virtual memory
+		let vmem = self.get_vmem();
+		oom::wrap(|| {
+			vmem.unmap_range(ptr, size)
+		});
+		vmem.flush();
+
 		Ok(())
 	}
 
