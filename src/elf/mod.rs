@@ -303,7 +303,8 @@ pub struct ELF32Sym {
 	pub st_shndx: u16,
 }
 
-/// Returns a reference to the section with name `name`. If the section is not found, returns None.
+/// Returns a reference to the kernel section with name `name`. If the section is not found,
+/// returns None.
 /// `sections` is a pointer to the ELF sections of the kernel in the virtual memory.
 /// `sections_count` is the number of sections in the kernel.
 /// `shndx` is the index of the section containing section names.
@@ -332,8 +333,8 @@ pub fn get_section(sections: *const c_void, sections_count: usize, shndx: usize,
 	None
 }
 
-/// Iterates over the given section headers list `sections`, calling the given closure `f` for
-/// every elements with a reference and the name of the section.
+/// Iterates over the given kernel section headers list `sections`, calling the given closure `f`
+/// for every elements with a reference and the name of the section.
 /// `sections` is a pointer to the ELF sections of the kernel in the virtual memory.
 /// `sections_count` is the number of sections in the kernel.
 /// `shndx` is the index of the section containing section names.
@@ -360,7 +361,7 @@ pub fn foreach_sections<F>(sections: *const c_void, sections_count: usize, shndx
 	}
 }
 
-/// Returns the size of the ELF sections' content.
+/// Returns the size of the kernel ELF sections' content.
 /// `sections` is a pointer to the ELF sections of the kernel in the virtual memory.
 /// `sections_count` is the number of sections in the kernel.
 /// `entsize` is the size of section entries.
@@ -383,7 +384,7 @@ pub fn get_sections_end(sections: *const c_void, sections_count: usize,
 	end as _
 }
 
-/// Returns the name of the symbol at the given offset.
+/// Returns the name of the kernel symbol at the given offset.
 /// `strtab_section` is a reference to the .strtab section, containing symbol names.
 /// `offset` is the offset of the symbol in the section.
 /// If the offset is invalid or outside of the section, the behaviour is undefined.
@@ -395,8 +396,8 @@ pub fn get_symbol_name(strtab_section: &ELF32SectionHeader, offset: u32) -> &'st
 	}
 }
 
-/// Returns an Option containing the name of the function for the given instruction pointer. If the
-/// name cannot be retrieved, the function returns None.
+/// Returns the name of the kernel function for the given instruction pointer. If the name cannot
+/// be retrieved, the function returns None.
 /// `sections` is a pointer to the ELF sections of the kernel in the virtual memory.
 /// `sections_count` is the number of sections in the kernel.
 /// `shndx` is the index of the section containing section names.
