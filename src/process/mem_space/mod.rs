@@ -313,10 +313,9 @@ impl MemSpace {
 	/// further attempts to access it shall result in a page fault.
 	/// If `ptr` is not aligned, the behaviour is undefined.
 	pub fn unmap(&mut self, ptr: *const c_void, size: usize) -> Result<(), Errno> {
-		// The new gap covering the unmapped chunk
-		let gap = self.create_unmap_gap(ptr, size);
-		self.gap_insert(gap)?;
+		debug_assert!(util::is_aligned(ptr, memory::PAGE_SIZE));
 
+		// Removing every regions in the chunk to unmap
 		let mut i = 0;
 		while i < size {
 			// The pointer of the page
@@ -356,7 +355,32 @@ impl MemSpace {
 			}
 		}
 
-		// TODO Remove all gaps overlapping with the newly created gap
+		// Removing gaps already present in the chunk to unmap
+		let mut i = 0;
+		while i < size {
+			// The current pointer
+			let begin = unsafe {
+				ptr.add(i * memory::PAGE_SIZE)
+			};
+
+			// If a gap is located at the pointer `begin`, remove it
+			if let Some(g) = self.gaps.remove(begin) {
+				let size = g.get_size();
+				self.gaps_size.select_remove(size, | val | {
+					*val == begin
+				});
+
+				i += size;
+			} else {
+				i += 1;
+			}
+		}
+
+		// The new gap covering the unmapped chunk
+		oom::wrap(|| {
+			let gap = self.create_unmap_gap(ptr, size);
+			self.gap_insert(gap)
+		});
 
 		// Unmapping the chunk from virtual memory
 		let vmem = self.get_vmem();
