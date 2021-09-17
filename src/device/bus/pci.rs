@@ -12,6 +12,15 @@ const CONFIG_ADDRESS_PORT: u16 = 0xcf8;
 /// The port used to retrieve the devices informations.
 const CONFIG_DATA_PORT: u16 = 0xcfc;
 
+pub enum PCIDeviceInfo {
+	/// A casual PCI device.
+	Device(),
+	/// PCI-to-PCI bridge.
+	PCIBridge(),
+	/// PCI-to-CardBus bridge.
+	CardBusBridge(),
+}
+
 /// Structure representing a device attached to the PCI bus.
 pub struct PCIDevice {
 	/// The PCI bus of the device.
@@ -24,26 +33,27 @@ pub struct PCIDevice {
 	/// The device's vendor ID.
 	vendor_id: u16,
 
-	/// TODO doc
-	status: u16,
-	/// TODO doc
-	command: u16,
-
 	/// The device's class code, telling what the device is.
 	class: u8,
 	/// The device's subclass code, giving more informations on the device.
 	subclass: u8,
 	/// Value giving more informations on the device's compatibilities.
 	prog_if: u8,
-	/// TODO doc
+	/// The device's revision ID.
 	revision_id: u8,
 
-	/// TODO doc
+	/// Built-In Self Test status.
 	bist: u8,
 	/// Defines the header type of the device, to determine what informations follow.
 	header_type: u8,
 
-	// TODO Fill additional informations
+	/// Specifies the latency timer in units of PCI bus clocks.
+	latency_timer: u8,
+	/// Specifies the system cache line size in 32-bit units.
+	cache_line_size: u8,
+
+	/// Additional informations about the device.
+	info: [u32; 12],
 }
 
 impl PCIDevice {
@@ -68,9 +78,6 @@ impl PCIDevice {
 				vendor_id,
 				device_id,
 
-				status: ((data[1] >> 16) & 0xffff) as _,
-				command: (data[1] & 0xffff) as _,
-
 				class: ((data[2] >> 24) & 0xff) as _,
 				subclass: ((data[2] >> 16) & 0xff) as _,
 				prog_if: ((data[2] >> 8) & 0xff) as _,
@@ -79,7 +86,23 @@ impl PCIDevice {
 				bist: ((data[3] >> 24) & 0xff) as _,
 				header_type: ((data[3] >> 16) & 0xff) as _,
 
-				// TODO Fill additional informations
+				latency_timer: ((data[3] >> 8) & 0xff) as _,
+				cache_line_size: (data[3] & 0xff) as _,
+
+				info: [
+					data[4],
+					data[5],
+					data[6],
+					data[7],
+					data[8],
+					data[9],
+					data[10],
+					data[11],
+					data[12],
+					data[13],
+					data[14],
+					data[15],
+				],
 			})
 		} else {
 			None
@@ -87,26 +110,52 @@ impl PCIDevice {
 	}
 
 	/// Returns the device ID.
+	#[inline(always)]
 	pub fn get_device_id(&self) -> u16 {
 		self.device_id
 	}
 
 	/// Returns the vendor ID.
+	#[inline(always)]
 	pub fn get_vendor_id(&self) -> u16 {
 		self.vendor_id
 	}
 
 	/// Returns the class of the device.
+	#[inline(always)]
 	pub fn get_class(&self) -> u8 {
 		self.class
 	}
 
 	/// Returns the subclass of the device.
+	#[inline(always)]
 	pub fn get_subclass(&self) -> u8 {
 		self.subclass
 	}
 
-	// TODO
+	/// Returns the `n`'th BAR.
+	/// If the BAR doesn't exist, the function returns None.
+	pub fn get_BAR(&self, n: u8) -> Option<u32> {
+		match self.header_type {
+			0x00 => {
+				if n < 6 {
+					self.info[n]
+				} else {
+					None
+				}
+			},
+
+			0x01 => {
+				if n < 2 {
+					self.info[n]
+				} else {
+					None
+				}
+			},
+
+			None,
+		}
+	}
 }
 
 impl PhysicalDevice for PCIDevice {
