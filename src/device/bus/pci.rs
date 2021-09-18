@@ -1,6 +1,13 @@
 //! The PCI (Peripheral Component Interconnect) is a bus which allows to attach hardware devices on
 //! the motherboard. There here-module allows to retrieve informations on the devices attached to
-//! the computer's pCI.
+//! the computer's PCI.
+//!
+//! The device ID, vendor ID, class and subclass of a device allows to determine which driver is
+//! required for the device.
+//!
+//! A PCI device can specify one or several BARs (Base Address Registers). They specify the address
+//! of the device's registers in memory, allowing communications through DMA (Direct Memory
+//! Access).
 
 use crate::device::manager::PhysicalDevice;
 use crate::io;
@@ -11,15 +18,6 @@ use super::Bus;
 const CONFIG_ADDRESS_PORT: u16 = 0xcf8;
 /// The port used to retrieve the devices informations.
 const CONFIG_DATA_PORT: u16 = 0xcfc;
-
-pub enum PCIDeviceInfo {
-	/// A casual PCI device.
-	Device(),
-	/// PCI-to-PCI bridge.
-	PCIBridge(),
-	/// PCI-to-CardBus bridge.
-	CardBusBridge(),
-}
 
 /// Structure representing a device attached to the PCI bus.
 pub struct PCIDevice {
@@ -135,11 +133,11 @@ impl PCIDevice {
 
 	/// Returns the `n`'th BAR.
 	/// If the BAR doesn't exist, the function returns None.
-	pub fn get_BAR(&self, n: u8) -> Option<u32> {
+	pub fn get_bar(&self, n: u8) -> Option<u32> {
 		match self.header_type {
 			0x00 => {
 				if n < 6 {
-					self.info[n]
+					Some(self.info[n as usize])
 				} else {
 					None
 				}
@@ -147,13 +145,24 @@ impl PCIDevice {
 
 			0x01 => {
 				if n < 2 {
-					self.info[n]
+					Some(self.info[n as usize])
 				} else {
 					None
 				}
 			},
 
-			None,
+			_ => None,
+		}
+	}
+
+	/// Returns the interrupt PIN used by the device.
+	pub fn get_interrupt_pin(&self) -> Option<u8> {
+		let n = ((self.info[11] >> 8) & 0xff) as u8;
+
+		if n != 0 {
+			Some(n)
+		} else {
+			None
 		}
 	}
 }
@@ -195,6 +204,7 @@ impl Bus for PCIManager {
 }
 
 impl PCIManager {
+	/// Reads 16 bits from the PCI register specified by `bus`, `device`, `func` and `off`.
 	fn read_word(&self, bus: u8, device: u8, func: u8, off: u8) -> u32 {
 		let addr = ((bus as u32) << 16) | ((device as u32) << 11) | ((func as u32) << 8)
 			| ((off as u32) & 0xfc) | 0x80000000;

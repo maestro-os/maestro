@@ -68,7 +68,10 @@ pub mod vga;
 use core::ffi::c_void;
 use core::mem::MaybeUninit;
 use core::panic::PanicInfo;
+use core::ptr::null;
+use crate::errno::Errno;
 use crate::memory::vmem::VMem;
+use crate::memory::vmem;
 use crate::process::Process;
 use crate::util::boxed::Box;
 use crate::util::lock::mutex::Mutex;
@@ -116,6 +119,38 @@ pub fn halt() -> ! {
 /// Field storing the kernel's virtual memory context.
 static mut KERNEL_VMEM: MaybeUninit<Mutex<Box<dyn VMem>>> = MaybeUninit::uninit();
 
+/// Initializes the kernel's virtual memory context.
+fn init_vmem() -> Result<(), Errno> {
+	let mut kernel_vmem = vmem::new()?;
+
+	// TODO If Meltdown mitigation is enabled, only allow read access to a stub of the
+	// kernel for interrupts
+
+	// TODO Enable GLOBAL in cr4
+
+	// Mapping the kernelspace
+	kernel_vmem.map_range(null::<c_void>(),
+		memory::PROCESS_END,
+		memory::get_kernelspace_size() / memory::PAGE_SIZE,
+		vmem::x86::FLAG_WRITE | vmem::x86::FLAG_GLOBAL)?;
+
+	// Mapping VGA's buffer
+	let vga_flags = vmem::x86::FLAG_CACHE_DISABLE | vmem::x86::FLAG_WRITE_THROUGH
+		| vmem::x86::FLAG_WRITE;
+	kernel_vmem.map_range(vga::BUFFER_PHYS as _, vga::get_buffer_virt() as _, 1, vga_flags)?;
+
+	// Making the kernel image read-only
+	kernel_vmem.protect_kernel()?;
+
+	unsafe {
+		*KERNEL_VMEM.assume_init_mut() = Mutex::new(kernel_vmem);
+	}
+
+	// Binding the kernel virtual memory context
+	bind_vmem();
+	Ok(())
+}
+
 /// Binds the kernel's virtual memory context.
 pub fn bind_vmem() {
 	let guard = unsafe { // Safe because using Mutex
@@ -156,16 +191,8 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 	memory::alloc::init();
 	memory::malloc::init();
 
-	match memory::vmem::new() {
-		Ok(kernel_vmem) => {
-			unsafe {
-				*KERNEL_VMEM.assume_init_mut() = Mutex::new(kernel_vmem);
-			}
-		},
-
-		Err(_) => {
-			crate::kernel_panic!("Cannot initialize kernel virtual memory!", 0);
-		}
+	if init_vmem().is_err() {
+		crate::kernel_panic!("Cannot initialize kernel virtual memory!", 0);
 	}
 
 	#[cfg(test)]

@@ -7,9 +7,13 @@
 pub mod x86;
 
 use core::ffi::c_void;
+use crate::elf;
 use crate::errno::Errno;
+use crate::memory;
+use crate::multiboot;
 use crate::util::FailableClone;
 use crate::util::boxed::Box;
+use crate::util::math;
 
 /// Trait representing virtual memory context handler. This trait is the interface to manipulate
 /// virtual memory on any architecture. Each architecture has its own structure implementing this
@@ -47,6 +51,36 @@ pub trait VMem: FailableClone {
 	/// Flushes the modifications of the context if bound. This function should be called after
 	/// applying modifications to the context.
 	fn flush(&self);
+
+	/// Protects the kernel's read-only sections from writing.
+	fn protect_kernel(&mut self) -> Result<(), Errno> {
+		let boot_info = multiboot::get_boot_info();
+
+		let mut res = Ok(());
+		let f = | section: &elf::ELF32SectionHeader, _name: &str | {
+			if section.sh_flags & elf::SHF_WRITE != 0
+				|| section.sh_addralign as usize != memory::PAGE_SIZE {
+				return true;
+			}
+
+			let phys_addr = memory::kern_to_phys(section.sh_addr as _);
+			let virt_addr = memory::kern_to_virt(section.sh_addr as _);
+			let pages = math::ceil_division(section.sh_size, memory::PAGE_SIZE as _) as usize;
+			if let Err(e) = self.map_range(phys_addr, virt_addr, pages as usize, x86::FLAG_USER) {
+				res = Err(e);
+				return false;
+			}
+
+			true
+		};
+
+		// Protecting kernel code from writting
+		elf::foreach_sections(memory::kern_to_virt(boot_info.elf_sections),
+			boot_info.elf_num as usize, boot_info.elf_shndx as usize,
+			boot_info.elf_entsize as usize, f);
+
+		res
+	}
 }
 
 /// Creates a new virtual memory context handler for the current architecture.

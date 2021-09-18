@@ -18,19 +18,15 @@
 //! The Page Size Extension (PSE) allows to map 4MB large blocks without using a page table.
 
 use core::ffi::c_void;
-use core::ptr::null;
 use core::ptr;
 use core::result::Result;
-use crate::elf;
 use crate::errno::Errno;
 use crate::memory::buddy;
 use crate::memory::vmem::VMem;
 use crate::memory;
-use crate::multiboot;
 use crate::util::FailableClone;
-use crate::util::math;
+use crate::util::lock::mutex::Mutex;
 use crate::util;
-use crate::vga;
 
 /// x86 paging flag. If set, prevents the CPU from updating the associated addresses when the TLB
 /// is flushed.
@@ -73,17 +69,62 @@ pub const PAGE_FAULT_RESERVED: u32 = 0b01000;
 pub const PAGE_FAULT_INSTRUCTION: u32 = 0b10000;
 
 extern "C" {
+	/// Returns the content of the %cr0 register.
 	pub fn cr0_get() -> u32;
+	/// Sets the given flags in the %cr0 register.
 	pub fn cr0_set(flags: u32);
+	/// Clears the given flags in the %cr0 register.
 	pub fn cr0_clear(flags: u32);
+	/// Returns the content of the %cr2 register.
 	pub fn cr2_get() -> *const c_void;
+	/// Returns the content of the %cr3 register.
 	pub fn cr3_get() -> *mut c_void;
+	/// Returns the content of the %cr4 register.
 	pub fn cr4_get() -> u32;
+	/// Sets the content of the %cr4 register.
 	pub fn cr4_set(flags: u32);
 
+	/// Enables paging with the given page directory.
 	pub fn paging_enable(directory: *const u32);
+	/// Disables paging.
 	pub fn paging_disable();
+	/// Reloads the TLB (Translation Lookaside Buffer).
 	pub fn tlb_reload();
+}
+
+/// When editing a virtual memory context, the kernel might edit pages in kernel space. These pages
+/// being shared with every contexts, another context might be modifying the space pages at the
+/// same time.
+/// To prevent this issue, this mutex has to be locked whenever modifying kernel space mappings.
+static mut GLOBAL_MUTEX: Mutex<()> = Mutex::new(());
+
+/// Tells whether the kernel tables are initialized.
+static mut KERNEL_TABLES_INIT: bool = false;
+/// Array storing kernel space paging tables.
+static mut KERNEL_TABLES: [*mut u32; 256] = [0 as _; 256];
+
+/// Returns the array of kernel space paging tables. If the table is not initialized, the function
+/// initializes it.
+/// The first time this function is called, it is **not** thread safe.
+unsafe fn get_kernel_tables() -> Result<&'static [*mut u32; 256], Errno> {
+	if !KERNEL_TABLES_INIT {
+		for i in 0..KERNEL_TABLES.len() {
+			KERNEL_TABLES[i] = alloc_obj()?;
+		}
+
+		KERNEL_TABLES_INIT = true;
+	}
+
+	Ok(&KERNEL_TABLES)
+}
+
+/// Returns the physical address to the `n`th kernel space paging table.
+/// The first time this function is called, it is **not** thread safe.
+unsafe fn get_kernel_table(n: usize) -> Result<*mut u32, Errno> {
+	let tables = get_kernel_tables()?;
+	debug_assert!(n < tables.len());
+
+	Ok(memory::kern_to_phys(tables[n] as _) as _)
 }
 
 /// Allocates a paging object and returns its virtual address.
@@ -162,7 +203,17 @@ mod table {
 		debug_assert!(flags & ADDR_MASK == 0);
 		debug_assert!(flags & FLAG_PAGE_SIZE == 0);
 
-		let v = alloc_obj()?;
+		let v = {
+			if index < 768 {
+				alloc_obj()?
+			} else {
+				// Safe because only one thread is running the first time this function is called
+				unsafe {
+					get_kernel_table(index - 768)?
+				}
+			}
+		};
+
 		obj_set(vmem, index, (memory::kern_to_phys(v as _) as u32) | (flags | FLAG_PRESENT));
 		Ok(())
 	}
@@ -187,6 +238,8 @@ mod table {
 		Ok(())
 	}
 
+	// TODO Use a counter instead. Increment it when mapping a page in the table and decrement it
+	// when unmapping. Then return `true` if the counter has the value `0`
 	/// Tells whether the table at index `index` in the page directory is empty.
 	pub fn is_empty(vmem: *mut u32, index: usize) -> bool {
 		debug_assert!(index < 1024);
@@ -214,36 +267,6 @@ mod table {
 }
 
 impl X86VMem {
-	/// Protects the kernel's read-only sections from writing in the given page directory `vmem`.
-	fn protect_kernel(&mut self) -> Result<(), Errno> {
-		let boot_info = multiboot::get_boot_info();
-
-		let mut res = Ok(());
-		let f = | section: &elf::ELF32SectionHeader, _name: &str | {
-			if section.sh_flags & elf::SHF_WRITE != 0
-				|| section.sh_addralign as usize != memory::PAGE_SIZE {
-				return true;
-			}
-
-			let phys_addr = memory::kern_to_phys(section.sh_addr as _);
-			let virt_addr = memory::kern_to_virt(section.sh_addr as _);
-			let pages = math::ceil_division(section.sh_size, memory::PAGE_SIZE as _) as usize;
-			if let Err(e) = self.map_range(phys_addr, virt_addr, pages as usize, FLAG_USER) {
-				res = Err(e);
-				return false;
-			}
-
-			true
-		};
-
-		// Protecting kernel code from writting
-		elf::foreach_sections(memory::kern_to_virt(boot_info.elf_sections),
-			boot_info.elf_num as usize, boot_info.elf_shndx as usize,
-			boot_info.elf_entsize as usize, f);
-
-		res
-	}
-
 	/// Asserts that the map operation shall not result in a crash.
 	#[cfg(config_debug_debug)]
 	fn check_map(&self, virt_ptr: *const c_void, phys_ptr: *const c_void, pse: bool) {
@@ -291,6 +314,7 @@ impl X86VMem {
 				1
 			}
 		};
+
 		for i in 0..size {
 			let virt_ptr = unsafe {
 				virt_ptr.add(i * memory::PAGE_SIZE)
@@ -298,33 +322,26 @@ impl X86VMem {
 			if virt_ptr != aligned_stack_page {
 				return;
 			}
+
 			assert_ne!(virt_ptr, aligned_stack_page);
 		}
 	}
 
 	/// Initializes a new page directory. The kernel memory is mapped into the context by default.
 	pub fn new() -> Result<Self, Errno> {
-		let mut vmem = Self {
+		let vmem = Self {
 			page_dir: alloc_obj()?,
 		};
 
-		// TODO Map all the kernelspace memory to the save page tables (do not use PSE) so that
-		// modifying for one process modifies for every processes
+		let flags = FLAG_PRESENT | FLAG_WRITE | FLAG_USER;
+		for i in 0..256 {
+			// Safe because only one thread is running when the first vmem is created
+			let ptr = unsafe {
+				get_kernel_table(i)?
+			};
 
-		// TODO If Meltdown mitigation is enabled, only allow read access to a stub for interrupts
-		// Mapping the kernelspace
-		vmem.map_range(null::<c_void>(),
-			memory::PROCESS_END,
-			memory::get_kernelspace_size() / memory::PAGE_SIZE,
-			FLAG_WRITE | FLAG_GLOBAL)?; // TODO Enable global in cr4
-
-		// TODO Extend to other DMA
-		// Mapping VGA's Direct Access Memory
-		vmem.map_range(vga::BUFFER_PHYS as _, vga::get_buffer_virt() as _, 1,
-			FLAG_CACHE_DISABLE | FLAG_WRITE_THROUGH | FLAG_WRITE)?;
-
-		// Making the kernel image read-only
-		vmem.protect_kernel()?;
+			obj_set(vmem.page_dir, 768 + i, ptr as u32 | flags);
+		}
 
 		Ok(vmem)
 	}
@@ -370,12 +387,32 @@ impl X86VMem {
 		})
 	}
 
+	/// Tells whether to use PSE mapping for the given virtual address `addr` and remaining pages
+	/// `pages`.
+	fn use_pse(addr: *const c_void, pages: usize) -> bool {
+		// The end address of the hypothetical PSE block
+		let pse_end = unsafe {
+			addr.add(1024 * memory::PAGE_SIZE)
+		};
+
+		// Ensuring no PSE block is created in kernel space
+		pse_end < memory::PROCESS_END
+		// Ensuring the virtual address doesn't overflow
+			&& pse_end >= addr
+		// Checking the address is aligned on the PSE boundary
+			&& util::is_aligned(addr, 1024 * memory::PAGE_SIZE)
+		// Checking that there remain enough pages to make a PSE block
+			&& pages >= 1024
+	}
+
 	/// Maps the given physical address `physaddr` to the given virtual address `virtaddr` with the
 	/// given flags using blocks of 1024 pages (PSE).
-	pub fn map_pse(&mut self, physaddr: *const c_void, virtaddr: *const c_void, flags: u32) {
+	fn map_pse(&mut self, physaddr: *const c_void, virtaddr: *const c_void, mut flags: u32) {
 		debug_assert!(util::is_aligned(physaddr, memory::PAGE_SIZE));
 		debug_assert!(util::is_aligned(virtaddr, memory::PAGE_SIZE));
 		debug_assert!(flags & ADDR_MASK == 0);
+
+		flags |= FLAG_PRESENT | FLAG_PAGE_SIZE;
 
 		let dir_entry_index = Self::get_addr_element_index(virtaddr, 1);
 		let dir_entry_value = obj_get(self.page_dir, dir_entry_index);
@@ -383,12 +420,11 @@ impl X86VMem {
 			table::delete(self.page_dir, dir_entry_index);
 		}
 
-		obj_set(self.page_dir, dir_entry_index,
-			(physaddr as u32) | (flags | FLAG_PRESENT | FLAG_PAGE_SIZE));
+		obj_set(self.page_dir, dir_entry_index, (physaddr as u32) | flags);
 	}
 
 	/// Unmaps the large block (PSE) at the given virtual address `virtaddr`.
-	pub fn unmap_pse(&mut self, virtaddr: *const c_void) {
+	fn unmap_pse(&mut self, virtaddr: *const c_void) {
 		let dir_entry_index = Self::get_addr_element_index(virtaddr, 1);
 		let dir_entry_value = obj_get(self.page_dir, dir_entry_index);
 		if dir_entry_value & FLAG_PRESENT == 0 || dir_entry_value & FLAG_PAGE_SIZE == 0 {
@@ -419,7 +455,7 @@ impl VMem for X86VMem {
 		}
 	}
 
-	fn map(&mut self, physaddr: *const c_void, virtaddr: *const c_void, flags: u32)
+	fn map(&mut self, physaddr: *const c_void, virtaddr: *const c_void, mut flags: u32)
 		-> Result<(), Errno> {
 		#[cfg(config_debug_debug)]
 		self.check_map(virtaddr, physaddr, false);
@@ -427,6 +463,13 @@ impl VMem for X86VMem {
 		debug_assert!(util::is_aligned(physaddr, memory::PAGE_SIZE));
 		debug_assert!(util::is_aligned(virtaddr, memory::PAGE_SIZE));
 		debug_assert!(flags & ADDR_MASK == 0);
+
+		flags |= FLAG_PRESENT;
+
+		// Locking the global mutex to avoid data races while modifying kernel space tables
+		let _ = unsafe {
+			GLOBAL_MUTEX.lock(true)
+		};
 
 		let dir_entry_index = Self::get_addr_element_index(virtaddr, 1);
 		let mut dir_entry_value = obj_get(self.page_dir, dir_entry_index);
@@ -436,14 +479,18 @@ impl VMem for X86VMem {
 			table::expand(self.page_dir, dir_entry_index)?;
 		}
 
-		dir_entry_value = obj_get(self.page_dir, dir_entry_index);
-		obj_set(self.page_dir, dir_entry_index, dir_entry_value | flags);
-		dir_entry_value |= flags;
+		if dir_entry_index < 768 {
+			// Setting the table's flags
+			dir_entry_value = obj_get(self.page_dir, dir_entry_index);
+			dir_entry_value &= ADDR_MASK;
+			dir_entry_value |= flags;
+			obj_set(self.page_dir, dir_entry_index, dir_entry_value);
+		}
 
 		debug_assert!(dir_entry_value & FLAG_PAGE_SIZE == 0);
 		let table = (dir_entry_value & ADDR_MASK) as *mut u32;
 		let table_entry_index = Self::get_addr_element_index(virtaddr, 0);
-		obj_set(table, table_entry_index, (physaddr as u32) | (flags | FLAG_PRESENT));
+		obj_set(table, table_entry_index, (physaddr as u32) | flags);
 
 		Ok(())
 	}
@@ -452,6 +499,7 @@ impl VMem for X86VMem {
 		flags: u32) -> Result<(), Errno> {
 		debug_assert!(util::is_aligned(physaddr, memory::PAGE_SIZE));
 		debug_assert!(util::is_aligned(virtaddr, memory::PAGE_SIZE));
+		debug_assert!(pages <= (1024 * 1024) - (virtaddr as usize / memory::PAGE_SIZE));
 		debug_assert!(flags & ADDR_MASK == 0);
 
 		let mut i = 0;
@@ -460,11 +508,7 @@ impl VMem for X86VMem {
 			let next_physaddr = ((physaddr as usize) + off) as *const c_void;
 			let next_virtaddr = ((virtaddr as usize) + off) as *const c_void;
 
-			let use_pse = {
-				util::is_aligned(next_virtaddr, 1024 * memory::PAGE_SIZE) && (pages - i) >= 1024
-			};
-
-			if use_pse {
+			if Self::use_pse(next_virtaddr, pages - i) {
 				#[cfg(config_debug_debug)]
 				self.check_map(next_virtaddr, next_physaddr, true);
 
@@ -483,6 +527,13 @@ impl VMem for X86VMem {
 		#[cfg(config_debug_debug)]
 		self.check_unmap(virtaddr, false);
 
+		debug_assert!(util::is_aligned(virtaddr, memory::PAGE_SIZE));
+
+		// Locking the global mutex to avoid data races while modifying kernel space tables
+		let _ = unsafe {
+			GLOBAL_MUTEX.lock(true)
+		};
+
 		let dir_entry_index = Self::get_addr_element_index(virtaddr, 1);
 		let dir_entry_value = obj_get(self.page_dir, dir_entry_index);
 		if dir_entry_value & FLAG_PRESENT == 0 {
@@ -495,7 +546,8 @@ impl VMem for X86VMem {
 		let table_entry_index = Self::get_addr_element_index(virtaddr, 0);
 		obj_set(table, table_entry_index, 0);
 
-		if table::is_empty(self.page_dir, dir_entry_index) {
+		// Removing the table if it is empty and if not a kernel space table
+		if table::is_empty(self.page_dir, dir_entry_index) && dir_entry_index < 768 {
 			table::delete(self.page_dir, dir_entry_index);
 		}
 
@@ -511,20 +563,9 @@ impl VMem for X86VMem {
 			let off = i * memory::PAGE_SIZE;
 			let next_virtaddr = ((virtaddr as usize) + off) as *const c_void;
 
-			let use_pse = {
-				util::is_aligned(next_virtaddr, 1024 * memory::PAGE_SIZE) && (pages - i) >= 1024
-			};
-
-			if use_pse {
-				#[cfg(config_debug_debug)]
-				self.check_unmap(next_virtaddr, true);
-
-				self.unmap_pse(next_virtaddr);
-				i += 1024;
-			} else {
-				self.unmap(next_virtaddr)?;
-				i += 1;
-			}
+			// TODO Use unmap_pse if the table is PSE
+			self.unmap(next_virtaddr)?;
+			i += 1;
 		}
 
 		Ok(())
@@ -569,10 +610,23 @@ impl FailableClone for X86VMem {
 				let src_table = (src_dir_entry_value & ADDR_MASK) as *const u32;
 				let src_table = memory::kern_to_virt(src_table as _) as _;
 
-				let dest_table = alloc_obj()?;
-				unsafe { // Safe because pointers are valid
-					ptr::copy_nonoverlapping::<u32>(src_table, dest_table, 1024);
-				}
+				let dest_table = {
+					if i < 768 {
+						let dest_table = alloc_obj()?;
+
+						unsafe { // Safe because pointers are valid
+							ptr::copy_nonoverlapping::<u32>(src_table, dest_table, 1024);
+						}
+						dest_table
+					} else {
+						// Safe because only one thread is running the first time this function is
+						// called
+						unsafe {
+							get_kernel_table(i - 768)?
+						}
+					}
+				};
+
 				obj_set(s.page_dir, i, (memory::kern_to_phys(dest_table as _) as u32)
 					| (src_dir_entry_value & FLAGS_MASK));
 			} else {
