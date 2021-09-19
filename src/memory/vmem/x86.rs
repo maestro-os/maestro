@@ -660,6 +660,7 @@ impl Drop for X86VMem {
 
 #[cfg(test)]
 mod test {
+	use crate::vga;
 	use super::*;
 
 	#[test_case]
