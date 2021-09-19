@@ -22,16 +22,21 @@ pub trait Bus {
 	// TODO
 }
 
-// TODO Function to get the list of buses
-// TODO Fucntion to get a bus with given name
+/// Returns the list of buses connected to the system.
+pub fn get_buses() -> &'static mut Mutex<Vec<Box<dyn Bus>>> {
+	unsafe { // Safe because using Mutex
+		&mut BUSES
+	}
+}
+
+// TODO Function to add a bus
+
+// TODO Function to get a bus with given name
 
 /// Detects internal buses and registers them.
 pub fn detect() -> Result<(), Errno> {
 	let mut pci_manager = pci::PCIManager {};
-	let devices = pci_manager.scan();
-
-	// TODO Move into PCI scan itself?
-	for device in devices.iter() {
+	for device in pci_manager.scan().iter() {
 		manager::on_plug(device);
 	}
 
@@ -40,7 +45,5 @@ pub fn detect() -> Result<(), Errno> {
 	};
 	let mut guard = mutex.lock(true);
 	let buses = guard.get_mut();
-	buses.push(Box::new(pci_manager)?)?;
-
-	Ok(())
+	buses.push(Box::new(pci_manager)?)
 }

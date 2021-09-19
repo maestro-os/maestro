@@ -290,6 +290,8 @@ pub fn get_by_path(path: &Path) -> Option<SharedPtr<Device>> {
 
 /// Initializes devices management.
 pub fn init() -> Result<(), Errno> {
+	bus::detect()?;
+
 	let mut keyboard_manager = KeyboardManager::new();
 	keyboard_manager.legacy_detect()?;
 	manager::register_manager(keyboard_manager)?;
@@ -302,8 +304,6 @@ pub fn init() -> Result<(), Errno> {
 	//storage_manager.test(); // TODO Move after bus detection
 
 	//manager::register_manager(storage_manager)?;
-
-	bus::detect()?;
 
 	Ok(())
 }

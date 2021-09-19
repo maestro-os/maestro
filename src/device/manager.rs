@@ -8,8 +8,8 @@ use crate::util::ptr::WeakPtr;
 
 /// Trait representing a physical device.
 pub trait PhysicalDevice {
-	/// Returns the product ID of the device.
-	fn get_product_id(&self) -> u16;
+	/// Returns the device ID of the device.
+	fn get_device_id(&self) -> u16;
 	/// Returns the vendor ID of the device.
 	fn get_vendor_id(&self) -> u16;
 
