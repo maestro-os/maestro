@@ -462,7 +462,7 @@ impl VMem for X86VMem {
 
 		debug_assert!(util::is_aligned(physaddr, memory::PAGE_SIZE));
 		debug_assert!(util::is_aligned(virtaddr, memory::PAGE_SIZE));
-		debug_assert!(flags & ADDR_MASK == 0);
+		debug_assert_eq!(flags & ADDR_MASK, 0);
 
 		flags |= FLAG_PRESENT;
 
@@ -482,7 +482,6 @@ impl VMem for X86VMem {
 		if dir_entry_index < 768 {
 			// Setting the table's flags
 			dir_entry_value = obj_get(self.page_dir, dir_entry_index);
-			dir_entry_value &= ADDR_MASK;
 			dir_entry_value |= flags;
 			obj_set(self.page_dir, dir_entry_index, dir_entry_value);
 		}
@@ -500,7 +499,7 @@ impl VMem for X86VMem {
 		debug_assert!(util::is_aligned(physaddr, memory::PAGE_SIZE));
 		debug_assert!(util::is_aligned(virtaddr, memory::PAGE_SIZE));
 		debug_assert!(pages <= (1024 * 1024) - (virtaddr as usize / memory::PAGE_SIZE));
-		debug_assert!(flags & ADDR_MASK == 0);
+		debug_assert_eq!(flags & ADDR_MASK, 0);
 
 		let mut i = 0;
 		while i < pages {
@@ -646,8 +645,9 @@ impl Drop for X86VMem {
 			crate::kernel_panic!("Dropping virtual memory context handler while in use!");
 		}
 
-		for i in 0..1024 {
+		for i in 0..768 {
 			let dir_entry_value = obj_get(self.page_dir, i);
+
 			if (dir_entry_value & FLAG_PRESENT) != 0 && (dir_entry_value & FLAG_PAGE_SIZE) == 0 {
 				let table = (dir_entry_value & ADDR_MASK) as *mut u32;
 				free_obj(memory::kern_to_virt(table as _) as _);
