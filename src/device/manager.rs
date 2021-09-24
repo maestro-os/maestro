@@ -17,6 +17,9 @@ pub trait PhysicalDevice {
 	fn get_class(&self) -> u16;
 	/// Returns the subclass of the device.
 	fn get_subclass(&self) -> u16;
+	/// TODO doc
+	/// If not applicable, the function returns zero.
+	fn get_prog_if(&self) -> u8;
 
 	/// Tells whether the device is a hotplug device or not.
 	fn is_hotplug(&self) -> bool;

@@ -8,6 +8,7 @@ use core::cmp::min;
 use crate::device::Device;
 use crate::device::DeviceHandle;
 use crate::device::DeviceType;
+use crate::device::bus::pci;
 use crate::device::id::MajorBlock;
 use crate::device::id;
 use crate::device::manager::DeviceManager;
@@ -477,11 +478,31 @@ impl DeviceManager for StorageManager {
 		Ok(())
 	}
 
-	fn on_plug(&mut self, _dev: &dyn PhysicalDevice) {
-		// TODO
+	fn on_plug(&mut self, dev: &dyn PhysicalDevice) {
+		// Ignoring non-storage devices
+		if dev.get_class() != pci::CLASS_MASS_STORAGE_CONTROLLER {
+			return;
+		}
+
+		match dev.get_subclass() {
+			// IDE controller
+			0x01 => {
+				let prog_if = dev.get_prog_if();
+				let _primary_pci_mode = prog_if & 0b1;
+				let _secondary_pci_mode = prog_if & 0b100;
+				let _dma = prog_if & 0b10000000;
+
+				// TODO
+			}
+
+			// TODO Handle other controller types
+
+			_ => {},
+		}
 	}
 
 	fn on_unplug(&mut self, _dev: &dyn PhysicalDevice) {
 		// TODO
+		todo!();
 	}
 }

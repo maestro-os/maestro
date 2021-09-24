@@ -10,15 +10,62 @@
 //! Access).
 
 use core::mem::size_of;
+use crate::device::DeviceManager;
 use crate::device::manager::PhysicalDevice;
+use crate::device::manager;
+use crate::errno::Errno;
 use crate::io;
 use crate::util::container::vec::Vec;
-use super::Bus;
 
 /// The port used to specify the configuration address.
 const CONFIG_ADDRESS_PORT: u16 = 0xcf8;
 /// The port used to retrieve the devices informations.
 const CONFIG_DATA_PORT: u16 = 0xcfc;
+
+/// Device class: Unclassified
+pub const CLASS_UNCLASSIFIED: u16 = 0x00;
+/// Device class: Mass Storage Controller
+pub const CLASS_MASS_STORAGE_CONTROLLER: u16 = 0x01;
+/// Device class: Network Controller
+pub const CLASS_NETWORK_CONTROLLER: u16 = 0x02;
+/// Device class: Display Controller
+pub const CLASS_DISPLAY_CONTROLLER: u16 = 0x03;
+/// Device class: Multimedia Controller
+pub const CLASS_MULTIMEDIA_CONTROLLER: u16 = 0x04;
+/// Device class: Memory Controller
+pub const CLASS_MEMORY_CONTROLLER: u16 = 0x05;
+/// Device class: Bridge
+pub const CLASS_BRIDGE: u16 = 0x06;
+/// Device class: Simple Communication Controller
+pub const CLASS_SIMPLE_COMMUNICATION_CONTROLLER: u16 = 0x07;
+/// Device class: Base System Peripheral
+pub const CLASS_BASE_SYSTEM_PERIPHERAL: u16 = 0x08;
+/// Device class: Input Device Controller
+pub const CLASS_INPUT_DEVICE_CONTROLLER: u16 = 0x09;
+/// Device class: Docking Station
+pub const CLASS_DOCKING_STATION: u16 = 0x0a;
+/// Device class: Processor
+pub const CLASS_PROCESSOR: u16 = 0x0b;
+/// Device class: Serial Bus Controller
+pub const CLASS_SERIAL_BUS_CONTROLLER: u16 = 0x0c;
+/// Device class: Wireless Controller
+pub const CLASS_WIRELESS_CONTROLLER: u16 = 0x0d;
+/// Device class: Intelligent Controller
+pub const CLASS_INTELLIGENT_CONTROLLER: u16 = 0x0e;
+/// Device class: Satellite Communication Controller
+pub const CLASS_SATELLITE_COMMUNICATION_CONTROLLER: u16 = 0x0f;
+/// Device class: Encryption Controller
+pub const CLASS_ENCRYPTION_CONTROLLER: u16 = 0x10;
+/// Device class: Signal Processing Controller
+pub const CLASS_SIGNAL_PROCESSING_CONTROLLER: u16 = 0x11;
+/// Device class: Processing Accelerator
+pub const CLASS_PROCESSING_ACCELERATOR: u16 = 0x12;
+/// Device class: Non-Essential Instrumentation
+pub const CLASS_NON_ESSENTIAL_INSTRUMENTATION: u16 = 0x13;
+/// Device class: Co-Processor
+pub const CLASS_CO_PROCESSOR: u16 = 0x40;
+/// Device class: Unassigned
+pub const CLASS_UNASSIGNED: u16 = 0xff;
 
 /// Structure representing a device attached to the PCI bus.
 pub struct PCIDevice {
@@ -118,30 +165,6 @@ impl PCIDevice {
 		self.device
 	}
 
-	/// Returns the device ID.
-	#[inline(always)]
-	pub fn get_device_id(&self) -> u16 {
-		self.device_id
-	}
-
-	/// Returns the vendor ID.
-	#[inline(always)]
-	pub fn get_vendor_id(&self) -> u16 {
-		self.vendor_id
-	}
-
-	/// Returns the class of the device.
-	#[inline(always)]
-	pub fn get_class(&self) -> u8 {
-		self.class
-	}
-
-	/// Returns the subclass of the device.
-	#[inline(always)]
-	pub fn get_subclass(&self) -> u8 {
-		self.subclass
-	}
-
 	/// Returns the header type of the device.
 	#[inline(always)]
 	pub fn get_header_type(&self) -> u8 {
@@ -202,52 +225,65 @@ impl PhysicalDevice for PCIDevice {
 		self.subclass as _
 	}
 
+	fn get_prog_if(&self) -> u8 {
+		self.prog_if
+	}
+
 	fn is_hotplug(&self) -> bool {
 		false
 	}
 }
 
-/// Structure representing the PCI manager.
-pub struct PCIManager {}
+/// Reads 16 bits from the PCI register specified by `bus`, `device`, `func` and `off`.
+fn read_word(bus: u8, device: u8, func: u8, off: u8) -> u16 {
+	// The PCI address
+	let addr = ((bus as u32) << 16) | ((device as u32) << 11) | ((func as u32) << 8)
+		| ((off as u32) & 0xfc) | 0x80000000;
 
-/// Trait representing a bus.
-impl Bus for PCIManager {
-	fn get_name(&self) -> &str {
-		"PCI"
-	}
+	let val = unsafe {
+		// Setting the address
+		io::outl(CONFIG_ADDRESS_PORT, addr);
+		// Reading the value
+		io::inl(CONFIG_DATA_PORT)
+	};
+	((val >> ((off & 2) * 8)) & 0xffff) as _
+}
 
-	fn is_hotplug(&self) -> bool {
-		false
+/// Reads a device's data and writes it into `data`.
+fn read_data(bus: u8, device: u8, func: u8, data: &mut [u32; 16]) {
+	for (i, d) in data.iter_mut().enumerate() {
+		let v0 = read_word(bus, device, func, ((2 * i) * size_of::<u16>()) as _);
+		let v1 = read_word(bus, device, func, ((2 * i + 1) * size_of::<u16>()) as _);
+
+		*d = ((v1 as u32) << 16) | v0 as u32;
 	}
+}
+
+/// This manager handles every devices connected to the PCI bus. Since the PCI bus is not a hotplug
+/// bus, calling on_unplug on this structure has no effect.
+pub struct PCIManager {
+	/// The list of PCI devices.
+	devices: Vec<PCIDevice>,
 }
 
 impl PCIManager {
-	// FIXME Currently reading 32 bits?
-	/// Reads 16 bits from the PCI register specified by `bus`, `device`, `func` and `off`.
-	fn read_word(bus: u8, device: u8, func: u8, off: u8) -> u32 {
-		let addr = ((bus as u32) << 16) | ((device as u32) << 11) | ((func as u32) << 8)
-			| ((off as u32) & 0xfc) | 0x80000000;
-		unsafe {
-			io::outl(CONFIG_ADDRESS_PORT, addr);
-			io::inl(CONFIG_DATA_PORT)
+	/// Creates a new instance.
+	pub fn new() -> Self {
+		Self {
+			devices: Vec::new(),
 		}
 	}
 
-	/// Reads a device's data and writes it into `data`.
-	fn read_data(bus: u8, device: u8, func: u8, data: &mut [u32; 16]) {
-		for (i, d) in data.iter_mut().enumerate().skip(1) {
-			*d = Self::read_word(bus, device, func, (i * size_of::<u32>()) as _);
+	/// Scans for PCI devices and registers them on the manager.
+	/// If the PCI has already been scanned, this function does nothing.
+	pub fn scan(&mut self) -> Result<(), Errno> {
+		if !self.devices.is_empty() {
+			return Ok(());
 		}
-	}
-
-	// TODO Cache devices?
-	/// Scans for PCI devices and returns the list.
-	pub fn scan(&mut self) -> Vec<PCIDevice> {
-		let mut devices = Vec::new();
 
 		for bus in 0..=255 {
 			for device in 0..32 {
-				let first_word = Self::read_word(bus, device, 0, 0);
+				let first_word = read_word(bus, device, 0, 0);
 				let vendor_id = (first_word & 0xffff) as u16;
 				// If the device doesn't exist, ignore
 				if vendor_id == 0xffff {
@@ -256,7 +292,7 @@ impl PCIManager {
 
 				// Reading device's PCI data
 				let mut data: [u32; 16] = [0; 16];
-				Self::read_data(bus, device, 0, &mut data);
+				read_data(bus, device, 0, &mut data);
 
 				let header_type = ((data[3] >> 16) & 0xff) as u8;
 				let max_functions_count = {
@@ -271,7 +307,7 @@ impl PCIManager {
 
 				// Iterating on every functions of the device
 				for func in 0..max_functions_count {
-					let first_word = Self::read_word(bus, device, func, 0);
+					let first_word = read_word(bus, device, func, 0);
 					let vendor_id = (first_word & 0xffff) as u16;
 					// If the function doesn't exist, ignore
 					if vendor_id == 0xffff {
@@ -279,16 +315,30 @@ impl PCIManager {
 					}
 
 					// Reading function's PCI data
-					Self::read_data(bus, device, 0, &mut data);
+					read_data(bus, device, func, &mut data);
 
+					// Registering the device
 					let dev = PCIDevice::new(bus, device, func, &data);
-					if devices.push(dev).is_err() {
-						crate::kernel_panic!("No enough memory to scan PCI devices!");
-					}
+					manager::on_plug(&dev);
+					self.devices.push(dev)?;
 				}
 			}
 		}
 
-		devices
+		Ok(())
 	}
+}
+
+impl DeviceManager for PCIManager {
+	fn get_name(&self) -> &str {
+		"PCI"
+	}
+
+	fn legacy_detect(&mut self) -> Result<(), Errno> {
+		Ok(())
+	}
+
+	fn on_plug(&mut self, _dev: &dyn PhysicalDevice) {}
+
+	fn on_unplug(&mut self, _dev: &dyn PhysicalDevice) {}
 }
