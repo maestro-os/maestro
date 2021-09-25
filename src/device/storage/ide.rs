@@ -4,6 +4,7 @@ use crate::device::bar::BAR;
 use crate::device::bus::pci;
 use crate::device::storage::PhysicalDevice;
 use crate::device::storage::StorageInterface;
+use crate::device::storage::pata::PATAInterface;
 use crate::errno::Errno;
 use crate::io;
 use crate::util::boxed::Box;
@@ -106,9 +107,15 @@ impl IDEController {
 	/// Detects a disk on the controller.
 	/// `secondary` tells whether the disk is on the secondary bus.
 	/// `slave` tells whether the disk is the slave disk.
-	pub fn detect(&self, _secondary: bool, _slave: bool) -> Option<Box<dyn StorageInterface>> {
-		// TODO
-		None
+	pub fn detect(&self, secondary: bool, slave: bool)
+		-> Result<Option<Box<dyn StorageInterface>>, Errno> {
+		// TODO Add support for DMA and SATA
+
+		if let Ok(interface) = PATAInterface::new(secondary, slave) {
+			Ok(Some(Box::new(interface)?))
+		} else {
+			Ok(None)
+		}
 	}
 
 	/// Detects all disks on the controller. For each disks, the function calls the given closure
@@ -122,7 +129,7 @@ impl IDEController {
 			let secondary = (i & 0b10) != 0;
 			let slave = (i & 0b01) != 0;
 
-			if let Some(disk) = self.detect(secondary, slave) {
+			if let Some(disk) = self.detect(secondary, slave)? {
 				interfaces.push(disk)?;
 			}
 		}
