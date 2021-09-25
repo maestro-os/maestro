@@ -12,6 +12,8 @@
 //!
 //! TODO
 
+// TODO Add support for third and fourth bus
+
 use crate::errno::Errno;
 use crate::errno;
 use crate::io;
@@ -28,9 +30,9 @@ const PRIMARY_ALTERNATE_STATUS_PORT: u16 = 0x3f6;
 /// The beginning of the port range for the secondary ATA bus.
 const SECONDARY_ATA_BUS_PORT_BEGIN: u16 = 0x170;
 /// The port for the secondary disk's device control register.
-const SECONDARY_DEVICE_CONTROL_PORT: u16 = 0x3e6; // TODO Check
+const SECONDARY_DEVICE_CONTROL_PORT: u16 = 0x376;
 /// The port for the secondary disk's alternate status register.
-const SECONDARY_ALTERNATE_STATUS_PORT: u16 = 0x3e6; // TODO Check
+const SECONDARY_ALTERNATE_STATUS_PORT: u16 = 0x376;
 
 /// Offset to the data register.
 const DATA_REGISTER_OFFSET: u16 = 0;

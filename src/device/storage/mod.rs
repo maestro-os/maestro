@@ -1,5 +1,6 @@
 //! This module implements storage drivers.
 
+pub mod ide;
 pub mod mbr;
 pub mod pata;
 pub mod ramdisk;
@@ -13,6 +14,7 @@ use crate::device::id::MajorBlock;
 use crate::device::id;
 use crate::device::manager::DeviceManager;
 use crate::device::manager::PhysicalDevice;
+use crate::device::storage::ide::IDEController;
 use crate::device::storage::pata::PATAInterface;
 use crate::device;
 use crate::errno::Errno;
@@ -20,6 +22,7 @@ use crate::errno;
 use crate::file::Mode;
 use crate::file::path::Path;
 use crate::memory::malloc;
+use crate::process::oom;
 use crate::util::FailableClone;
 use crate::util::boxed::Box;
 use crate::util::container::string::String;
@@ -487,12 +490,15 @@ impl DeviceManager for StorageManager {
 		match dev.get_subclass() {
 			// IDE controller
 			0x01 => {
-				let prog_if = dev.get_prog_if();
-				let _primary_pci_mode = prog_if & 0b1;
-				let _secondary_pci_mode = prog_if & 0b100;
-				let _dma = prog_if & 0b10000000;
+				let ide = IDEController::new(dev);
+				oom::wrap(|| {
+					let mut interfaces = ide.detect_all()?;
+					for _ in 0..interfaces.len() {
+						self.add(interfaces.pop().unwrap())?;
+					}
 
-				// TODO
+					Ok(())
+				});
 			}
 
 			// TODO Handle other controller types

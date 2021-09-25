@@ -2,6 +2,7 @@
 //! A device file is an interface with a device of the system, which can be internal or external,
 //! or even virtual such as a TTY.
 
+pub mod bar;
 pub mod bus;
 pub mod default;
 pub mod id;

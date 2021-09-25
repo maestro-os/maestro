@@ -1,5 +1,6 @@
 //! The device manager is the structure which links the physical devices to device files.
 
+use crate::device::bar::BAR;
 use crate::errno::Errno;
 use crate::util::container::vec::Vec;
 use crate::util::lock::mutex::Mutex;
@@ -23,6 +24,10 @@ pub trait PhysicalDevice {
 
 	/// Tells whether the device is a hotplug device or not.
 	fn is_hotplug(&self) -> bool;
+
+	/// Returns the `n`'th BAR.
+	/// If the BAR doesn't exist, the function returns None.
+	fn get_bar(&self, n: u8) -> Option<BAR>;
 }
 
 /// Trait representing a structure managing the link between physical devices and device files.

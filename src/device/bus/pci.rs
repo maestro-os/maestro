@@ -11,6 +11,7 @@
 
 use core::mem::size_of;
 use crate::device::DeviceManager;
+use crate::device::bar::BAR;
 use crate::device::manager::PhysicalDevice;
 use crate::device::manager;
 use crate::errno::Errno;
@@ -172,9 +173,8 @@ impl PCIDevice {
 		self.header_type & 0b01111111
 	}
 
-	/// Returns the `n`'th BAR.
-	/// If the BAR doesn't exist, the function returns None.
-	pub fn get_bar(&self, n: u8) -> Option<u32> {
+	/// Returns the value for the `n`th BAR.
+	pub fn get_bar_value(&self, n: u8) -> Option<u32> {
 		match self.get_header_type() {
 			0x00 => {
 				if n < 6 {
@@ -231,6 +231,10 @@ impl PhysicalDevice for PCIDevice {
 
 	fn is_hotplug(&self) -> bool {
 		false
+	}
+
+	fn get_bar(&self, n: u8) -> Option<BAR> {
+		BAR::from_pci(self, n)
 	}
 }
 
