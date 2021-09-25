@@ -182,7 +182,7 @@ CARGOFLAGS += --tests
 endif
 
 # The Rust language compiler flags
-RUSTFLAGS = -Zsymbol-mangling-version=v0 -Zmacro-backtrace $(CONFIG_ARGS)
+RUSTFLAGS = -Zmacro-backtrace $(CONFIG_ARGS) #-Zsymbol-mangling-version=v0 
 ifeq ($(CONFIG_DEBUG), true)
 RUSTFLAGS += -Cforce-frame-pointers=y -Cdebuginfo=2
 endif

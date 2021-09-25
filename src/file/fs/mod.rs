@@ -36,8 +36,7 @@ pub trait Filesystem {
 	/// `dev` is the device.
 	/// `inode` is the file's inode.
 	/// `name` is the file's name.
-	fn load_file(&mut self, dev: &mut Device, inode: INode, name: String)
-		-> Result<File, Errno>;
+	fn load_file(&mut self, dev: &mut Device, inode: INode, name: String) -> Result<File, Errno>;
 
 	/// Adds a file to the filesystem at inode `inode`.
 	/// `dev` is the device.

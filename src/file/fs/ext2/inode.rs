@@ -14,6 +14,7 @@ use crate::file;
 use crate::memory::malloc;
 use crate::util::boxed::Box;
 use crate::util::container::string::String;
+use crate::util::math;
 use super::Superblock;
 use super::block_group_descriptor::BlockGroupDescriptor;
 use super::directory_entry::DirectoryEntry;
@@ -279,8 +280,8 @@ impl Ext2INode {
 
 		let mut b = begin;
 		for i in (0..n).rev() {
-			let inner_off = off / (i as u32 * entries_per_blk as u32);
-			let byte_off = (begin as u64 * blk_size as u64) + (inner_off as u64);
+			let inner_off = off / math::pow(entries_per_blk as u32, i as _);
+			let byte_off = (b as u64 * blk_size as u64) + (inner_off as u64);
 			b = unsafe {
 				read::<u32>(byte_off, io)?
 			};
@@ -306,8 +307,8 @@ impl Ext2INode {
 
 		let mut b = begin;
 		for i in (0..(n + 1)).rev() {
-			let inner_off = off / (i as u32 * entries_per_blk);
-			let byte_off = (begin as u64 * blk_size as u64) + (inner_off as u64);
+			let inner_off = off / math::pow(entries_per_blk as u32, i as _);
+			let byte_off = (b as u64 * blk_size as u64) + (inner_off as u64);
 
 			if b == 0 {
 				let blk = superblock.get_free_block(io)?;
@@ -408,8 +409,8 @@ impl Ext2INode {
 		let mut i = 0;
 		let max = min(buff.len(), (size - off) as usize);
 		while i < max {
-			let blk_off = i / blk_size as usize;
-			let blk_inner_off = i % blk_size as usize;
+			let blk_off = (off + i as u64) / blk_size as u64;
+			let blk_inner_off = ((off + i as u64) % blk_size as u64) as usize;
 			let blk_off = self.get_content_block_off(blk_off as _, superblock, io)?.unwrap();
 			read_block(blk_off as _, superblock, io, blk_buff.get_slice_mut())?;
 
@@ -444,13 +445,13 @@ impl Ext2INode {
 
 		let mut i = 0;
 		while i < buff.len() {
-			let blk_off = i / blk_size as usize;
-			let blk_inner_off = i % blk_size as usize;
+			let blk_off = (off + i as u64) / blk_size as u64;
+			let blk_inner_off = ((off + i as u64) % blk_size as u64) as usize;
 			let blk_off = {
 				if let Some(blk_off) = self.get_content_block_off(blk_off as _, superblock, io)? {
 					blk_off
 				} else {
-					self.alloc_content_block(i as u32, superblock, io)?
+					self.alloc_content_block(blk_off as u32, superblock, io)?
 				}
 			};
 			read_block(blk_off as _, superblock, io, blk_buff.get_slice_mut())?;
@@ -466,8 +467,8 @@ impl Ext2INode {
 			i += len;
 		}
 
-		let new_size = off + buff.len() as u64;
-		self.set_size(superblock, max(new_size, curr_size));
+		let new_size = max(off + buff.len() as u64, curr_size);
+		self.set_size(superblock, new_size);
 		Ok(())
 	}
 
@@ -572,7 +573,6 @@ impl Ext2INode {
 		Ok(entry)
 	}
 
-	// TODO Take into account the fact that the last entry may be expanded if needed
 	/// Looks for a free entry in the inode.
 	/// `superblock` is the filesystem's superblock.
 	/// `io` is the I/O interface.
