@@ -339,7 +339,6 @@ fclean: clean
 	rm -f $(NAME).iso
 	rm -rf $(DOC_DIR)
 	rm -rf config/target/
-	rm -f $(QEMU_DISK)
 
 # The rule to recompile everything
 re: fclean all

@@ -367,12 +367,12 @@ impl StorageManager {
 	/// Fills a random buffer `buff` of size `size` with seed `seed`.
 	/// The function returns the seed for the next block.
 	#[cfg(config_debug_storagetest)]
-	fn random_block(size: usize, buff: &mut [u8], seed: u32) -> u32 {
+	fn random_block(size: u64, buff: &mut [u8], seed: u32) -> u32 {
 		let mut s = seed;
 
 		for i in 0..size {
 			s = crate::util::math::pseudo_rand(s, 1664525, 1013904223, 0x100);
-			buff[i] = (s & 0xff) as u8;
+			buff[i as usize] = (s & 0xff) as u8;
 		}
 
 		s
@@ -423,10 +423,14 @@ impl StorageManager {
 		let mut seed = 42;
 		let iterations_count = 10;
 		for i in 0..iterations_count {
-			for (j, interface) in self.interfaces.iter_mut().enumerate() {
+			let interfaces_count = self.interfaces.len();
+
+			for j in 0..interfaces_count {
+				let interface = &mut self.interfaces[j];
+
 				crate::print!("Processing iteration: {}/{}; device: {}/{}...",
 					i + 1, iterations_count,
-					j + 1, self.interfaces.len());
+					j + 1, interfaces_count);
 
 				if !Self::test_interface(interface.as_mut(), seed) {
 					return false;

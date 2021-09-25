@@ -301,8 +301,20 @@ pub fn init() -> Result<(), Errno> {
 
 	bus::detect()?;
 
+	// Testing disk I/O (if enabled)
 	#[cfg(config_debug_storagetest)]
-	storage_manager.test();
+	{
+		// Getting back the storage manager since it has been moved
+		let storage_manager = manager::get_by_name("storage").unwrap();
+		let storage_manager = unsafe {
+			storage_manager.get_mut().unwrap().get_mut_payload()
+		};
+		let storage_manager = unsafe {
+			&mut *(storage_manager as *mut _ as *mut StorageManager)
+		};
+
+		storage_manager.test();
+	}
 
 	Ok(())
 }

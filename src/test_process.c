@@ -176,51 +176,54 @@ void test_process(void)
 
 	// Testing mmap/munmap
 
-	size_t len = 100 * 4096;
-	char *ptr = mmap(NULL, len, 0b111, 0, 0, 0);
+	//size_t len = 100 * 4096;
+	//char *ptr = mmap(NULL, len, 0b111, 0, 0, 0);
 
-	fork();
+	//fork();
 
-	for(size_t i = 0; i < 26; ++i)
-		ptr[i] = 'a' + i;
-	write(1, ptr, 26);
-
-	munmap(ptr, len);
 	//for(size_t i = 0; i < 26; ++i)
 	//	ptr[i] = 'a' + i;
 	//write(1, ptr, 26);
 
-	while(1)
-		;
+	//munmap(ptr, len);
+	////for(size_t i = 0; i < 26; ++i)
+	////	ptr[i] = 'a' + i;
+	////write(1, ptr, 26);
+
+	//while(1)
+	//	;
 
 
 
 	// Testing file read/write
 
-	//int fd = open("/etc/hostname", 0b11);
-	//char buff[1024];
-	//if (fd < 0) {
-	//	write(1, "Error\n", 6);
-	//} else {
-	//	int len = read(fd, buff, sizeof(buff));
-	//	write(1, "len:", 5);
-	//	print_nbr(len);
-	//	write(1, "\n", 1);
+	int fd = open("/etc/hostname", 0b11);
+	char buff[1024];
+	if (fd < 0) {
+		write(1, "Error\n", 6);
+	} else {
+		int len = read(fd, buff, sizeof(buff));
+		write(1, "len:", 5);
+		print_nbr(len);
+		write(1, "\n", 1);
 
-	//	write(1, "Content:\n", 9);
-	//	write(1, buff, len);
-	//	write(1, "end\n", 4);
+		write(1, "Content:\n", 9);
+		write(1, buff, len);
+		write(1, "end\n", 4);
 
-	//	// ------------------------------
+		// ------------------------------
 
-	//	//buff[0] = 'A';
-	//	//buff[1] = 'B';
-	//	//buff[2] = 'C';
-	//	//int len = write(fd, buff, 3);
-	//	//write(1, "len:", 5);
-	//	//print_nbr(len);
-	//	//write(1, "\n", 1);
-	//}
+		//buff[0] = 'A';
+		//buff[1] = 'B';
+		//buff[2] = 'C';
+		//int len = write(fd, buff, 3);
+		//write(1, "len:", 5);
+		//print_nbr(len);
+		//write(1, "\n", 1);
+	}
+
+	while(1)
+		;
 
 
 
