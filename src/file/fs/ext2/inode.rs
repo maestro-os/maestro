@@ -637,23 +637,23 @@ impl Ext2INode {
 
 	/// Returns the device major and minor numbers associated with the device.
 	/// If the file is not a device file, the behaviour is undefined.
-	pub fn get_device(&self) -> (u32, u32) {
+	pub fn get_device(&self) -> (u8, u8) {
 		debug_assert!(self.get_type() == FileType::BlockDevice
 			|| self.get_type() == FileType::CharDevice);
 
 		let dev = self.direct_block_ptrs[0];
-		((dev >> 8) & 0xff, dev & 0xff)
+		(((dev >> 8) & 0xff) as u8, (dev & 0xff) as u8)
 	}
 
 	/// Sets the device major and minor numbers associated with the device.
 	/// `major` is the major number.
 	/// `minor` is the minor number.
 	/// If the file is not a device file, the behaviour is undefined.
-	pub fn set_device(&mut self, major: u32, minor: u32) {
+	pub fn set_device(&mut self, major: u8, minor: u8) {
 		debug_assert!(self.get_type() == FileType::BlockDevice
 			|| self.get_type() == FileType::CharDevice);
 
-		self.direct_block_ptrs[0] = major << 8 | minor;
+		self.direct_block_ptrs[0] = ((major as u32) << 8) | (minor as u32);
 	}
 
 	/// Writes the inode on the device.

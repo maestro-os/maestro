@@ -766,39 +766,3 @@ pub fn get_files_cache() -> &'static mut Mutex<FCache> {
 		FILES_CACHE.assume_init_mut()
 	}
 }
-
-/// Creates the directories necessary to reach path `path`. On success, the function returns
-/// the number of created directories (without the directories that already existed).
-/// If relative, the path is taken from the root.
-pub fn create_dirs(path: &Path) -> Result<usize, Errno> {
-	let mut guard = get_files_cache().lock(true);
-	let fcache = guard.get_mut();
-
-	let mut path = Path::root().concat(path)?;
-	path.reduce()?;
-	let mut p = Path::root();
-
-	let mut created_count = 0;
-	for i in 0..path.get_elements_count() {
-		p.push(path[i].failable_clone()?)?;
-
-		if fcache.get_file_from_path(&p).is_err() {
-			let dir = File::new(p[i].failable_clone()?, FileContent::Directory(Vec::new()), 0, 0,
-				0o755)?;
-			fcache.create_file(&p.range_to(..i)?, dir)?;
-
-			created_count += 1;
-		}
-	}
-
-	Ok(created_count)
-}
-
-/// Removes the file at path `path` and its subfiles recursively if it's a directory.
-/// If relative, the path is taken from the root.
-pub fn remove_recursive(path: &Path) -> Result<(), Errno> {
-	let mut path = Path::root().concat(path)?;
-	path.reduce()?;
-	// TODO
-	todo!();
-}

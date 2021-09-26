@@ -216,7 +216,7 @@ void test_process(void)
 		//buff[0] = 'A';
 		//buff[1] = 'B';
 		//buff[2] = 'C';
-		//int len = write(fd, buff, 3);
+		//len = write(fd, buff, 3);
 		//write(1, "len:", 5);
 		//print_nbr(len);
 		//write(1, "\n", 1);

@@ -42,7 +42,7 @@ pub trait Filesystem {
 	/// `dev` is the device.
 	/// `parent_inode` is the parent file's inode.
 	/// `file` is the file to be added.
-	/// On success, the functdev returns the object `file` with the newly created inode set to it.
+	/// On success, the function returns the object `file` with the newly created inode set to it.
 	fn add_file(&mut self, dev: &mut Device, parent_inode: INode, file: File)
 		-> Result<File, Errno>;
 

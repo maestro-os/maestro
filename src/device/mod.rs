@@ -14,6 +14,7 @@ pub mod storage;
 
 use crate::device::manager::DeviceManager;
 use crate::errno::Errno;
+use crate::file::FCache;
 use crate::file::File;
 use crate::file::FileContent;
 use crate::file::Mode;
@@ -131,6 +132,40 @@ impl Device {
 		self.handle.as_mut()
 	}
 
+	/// Creates the directories necessary to reach path `path`. On success, the function returns
+	/// the number of created directories (without the directories that already existed).
+	/// If relative, the path is taken from the root.
+	fn create_dirs(fcache: &mut FCache, path: &Path) -> Result<usize, Errno> {
+		let mut path = Path::root().concat(path)?;
+		path.reduce()?;
+		let mut p = Path::root();
+
+		let mut created_count = 0;
+		for i in 0..path.get_elements_count() {
+			p.push(path[i].failable_clone()?)?;
+
+			if fcache.get_file_from_path(&p).is_err() {
+				let dir = File::new(p[i].failable_clone()?, FileContent::Directory(Vec::new()), 0, 0,
+					0o755)?;
+				fcache.create_file(&p.range_to(..i)?, dir)?;
+
+				created_count += 1;
+			}
+		}
+
+		Ok(created_count)
+	}
+
+	/// Removes the file at path `path` and its subfiles recursively if it's a directory.
+	/// If relative, the path is taken from the root.
+	fn remove_recursive(_fcache: &mut FCache, path: &Path) -> Result<(), Errno> {
+		let mut path = Path::root().concat(path)?;
+		path.reduce()?;
+
+		// TODO
+		todo!();
+	}
+
 	// TODO Put file creation on the userspace side?
 	/// Creates the device file associated with the structure. If the file already exist, the
 	/// function does nothing.
@@ -143,17 +178,25 @@ impl Device {
 		let path_len = self.path.get_elements_count();
 		let filename = self.path[path_len - 1].failable_clone()?;
 
-		let mut dir_path = self.path.failable_clone()?;
-		dir_path.pop();
-		file::create_dirs(&dir_path)?;
-
-		let file = File::new(filename, file_content, 0, 0, self.mode)?;
-
+		// Locking the files' cache
 		let mutex = file::get_files_cache();
 		let mut guard = mutex.lock(true);
 		let files_cache = guard.get_mut();
-		// TODO Cancel directories creation on fail
-		files_cache.create_file(&dir_path, file)?;
+		// Tells whether the file already exists
+		let file_exists = files_cache.get_file_from_path(&self.path).is_ok();
+
+		if !file_exists {
+			// Creating the directories in which the device file is located
+			let mut dir_path = self.path.failable_clone()?;
+			dir_path.pop();
+			Self::create_dirs(files_cache, &dir_path)?;
+
+			let file = File::new(filename, file_content, 0, 0, self.mode)?;
+
+			// TODO Cancel directories creation on fail
+			// Creating the device file
+			files_cache.create_file(&dir_path, file)?;
+		}
 
 		Ok(())
 	}

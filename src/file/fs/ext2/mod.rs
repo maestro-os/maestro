@@ -656,11 +656,11 @@ impl Filesystem for Ext2Fs {
 			},
 			FileType::BlockDevice => {
 				let (major, minor) = inode_.get_device();
-				FileContent::BlockDevice(major, minor)
+				FileContent::BlockDevice(major as u32, minor as u32)
 			},
 			FileType::CharDevice => {
 				let (major, minor) = inode_.get_device();
-				FileContent::CharDevice(major, minor)
+				FileContent::CharDevice(major as u32, minor as u32)
 			},
 		};
 
@@ -684,7 +684,6 @@ impl Filesystem for Ext2Fs {
 		let mut parent = Ext2INode::read(parent_inode, &self.superblock, io)?;
 		debug_assert_eq!(parent.get_type(), FileType::Directory);
 
-		let inode_index = self.superblock.get_free_inode(io)?;
 		let mut inode = Ext2INode {
 			mode: Ext2INode::get_file_mode(&file),
 			uid: file.get_uid(),
@@ -715,11 +714,17 @@ impl Filesystem for Ext2Fs {
 				todo!();
 			},
 			FileContent::BlockDevice(major, minor) | FileContent::CharDevice(major, minor) => {
-				inode.set_device(*major, *minor);
+				if *major > (u8::MAX as u32) || *minor > (u8::MAX as u32) {
+					return Err(errno::ENODEV);
+				}
+
+				inode.set_device(*major as u8, *minor as u8);
 			},
 
 			_ => {},
 		}
+
+		let inode_index = self.superblock.get_free_inode(io)?;
 		inode.write(inode_index, &self.superblock, io)?;
 		let dir = file.get_file_type() == FileType::Directory;
 		self.superblock.mark_inode_used(io, inode_index, dir)?;
@@ -762,7 +767,8 @@ impl Filesystem for Ext2Fs {
 		debug_assert!(inode >= 1);
 
 		let mut inode_ = Ext2INode::read(inode, &self.superblock, io)?;
-		inode_.write_content(off, buf, &self.superblock, io)
+		inode_.write_content(off, buf, &self.superblock, io)?;
+		inode_.write(inode, &self.superblock, io)
 	}
 }
 
