@@ -641,7 +641,8 @@ impl Ext2INode {
 		debug_assert!(self.get_type() == FileType::BlockDevice
 			|| self.get_type() == FileType::CharDevice);
 
-		(self.direct_block_ptrs[1], self.direct_block_ptrs[0])
+		let dev = self.direct_block_ptrs[0];
+		((dev >> 8) & 0xff, dev & 0xff)
 	}
 
 	/// Sets the device major and minor numbers associated with the device.
@@ -652,8 +653,7 @@ impl Ext2INode {
 		debug_assert!(self.get_type() == FileType::BlockDevice
 			|| self.get_type() == FileType::CharDevice);
 
-		self.direct_block_ptrs[0] = minor;
-		self.direct_block_ptrs[1] = major;
+		self.direct_block_ptrs[0] = major << 8 | minor;
 	}
 
 	/// Writes the inode on the device.
