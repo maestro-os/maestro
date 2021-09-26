@@ -294,6 +294,7 @@ impl Ext2INode {
 		Ok(Self::blk_offset_to_option(b))
 	}
 
+	// TODO Check correctness
 	/// Allocates a new block for the content of the file through block indirections.
 	/// `n` is the number of indirections to resolve.
 	/// `begin` is the beginning block.

@@ -20,6 +20,32 @@ use crate::util::container::vec::Vec;
 use crate::util::lock::mutex::Mutex;
 use version::Version;
 
+/// The magic number that must be present inside of a module.
+pub const MODULE_MAGIC: u64 = 0x9792df56efb7c93f;
+
+/// Macro used to declare a kernel module. This macro must be used only inside of a kernel module.
+/// `name` (str) is the module's name.
+/// `version` (Version) is the module's version.
+#[macro_export]
+macro_rules! module {
+	($name:expr, $version:expr) => {
+		#[no_mangle]
+		pub extern "C" fn mod_magic() -> u64 {
+			kernel::module::MODULE_MAGIC
+		}
+
+		#[no_mangle]
+		pub extern "C" fn mod_name() -> &'static str {
+			$name
+		}
+
+		#[no_mangle]
+		pub extern "C" fn mod_version() -> kernel::module::version::Version {
+			$version
+		}
+	}
+}
+
 /// Structure representing a kernel module.
 pub struct Module {
 	/// The module's name.

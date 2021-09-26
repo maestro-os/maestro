@@ -18,6 +18,15 @@ pub struct Version {
 }
 
 impl Version {
+	/// Creates a new instance.
+	pub fn new(major: u16, minor: u16, patch: u16) -> Self {
+		Self {
+			major,
+			minor,
+			patch,
+		}
+	}
+
 	/// Compares current version with the given one.
 	fn cmp(&self, other: &Self) -> Ordering {
 		let mut ord = self.major.cmp(&other.major);

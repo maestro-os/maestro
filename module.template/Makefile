@@ -22,16 +22,21 @@ CONFIG_DEBUG := $(shell cd $(KERN_SRC) && scripts/config_attr.sh debug_debug)
 TARGET_PATH := $(shell realpath "$(KERN_SRC)/arch/$(CONFIG_ARCH)/target.json")
 
 # The flags for Cargo
-CARGOFLAGS = --target $(TARGET_PATH)
+CARGOFLAGS = --target $(TARGET_PATH) --verbose
 ifeq ($(CONFIG_DEBUG), false)
 CARGOFLAGS += --release
 endif
 
 # The flags for the Rust compiler
-RUSTFLAGS = -Zsymbol-mangling-version=v0 -Zmacro-backtrace -C prefer-dynamic $(CONFIG_ARGS)
+RUSTFLAGS = -Zmacro-backtrace -C prefer-dynamic $(CONFIG_ARGS)
 
-# TODO Error if kern_src is not set
+ifeq ($(KERN_SRC), )
+$(error Set the KERN_SRC environment variable with the path to the sources of the kernel)
+endif
+
 # TODO Error if selftest is enabled
+
+all: $(MOD_FILE)
 
 $(MOD_FILE):
 	$(CONFIG_ENV) RUSTFLAGS='$(RUSTFLAGS)' cargo +nightly build $(CARGOFLAGS)
@@ -41,4 +46,12 @@ else
 	cp target/target/release/lib$(NAME).so $(MOD_FILE)
 endif
 
-.PHONY: $(MOD_FILE)
+clean:
+	rm -rf target/
+
+fclean: clean
+	rm -f $(MOD_FILE)
+
+re: fclean all
+
+.PHONY: all $(MOD_FILE) clean fclean re
