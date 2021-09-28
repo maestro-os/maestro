@@ -8,11 +8,6 @@ MOD_FILE = $(NAME).kmod
 # The path to the kernel's sources
 KERN_SRC ?=
 
-# Configuration as arguments for the compiler
-CONFIG_ARGS := $(shell cd $(KERN_SRC) && scripts/config_args.sh)
-# Configuration as arguments as environment variables
-CONFIG_ENV := BUILD_MODULE=true $(shell cd $(KERN_SRC) && scripts/config_env.sh)
-
 # The architecture to compile for
 CONFIG_ARCH ?= $(shell cd $(KERN_SRC) && scripts/config_attr.sh general_arch)
 # Tells whether to compile in debug mode
@@ -21,14 +16,11 @@ CONFIG_DEBUG := $(shell cd $(KERN_SRC) && scripts/config_attr.sh debug_debug)
 # The absolute path to the target file
 TARGET_PATH := $(shell realpath "$(KERN_SRC)/arch/$(CONFIG_ARCH)/target.json")
 
-# The flags for Cargo
-CARGOFLAGS = --target $(TARGET_PATH) --verbose
-ifeq ($(CONFIG_DEBUG), false)
-CARGOFLAGS += --release
-endif
-
 # The flags for the Rust compiler
-RUSTFLAGS = -Zmacro-backtrace -C prefer-dynamic $(CONFIG_ARGS)
+RUSTFLAGS = -Zmacro-backtrace --crate-type dylib -C prefer-dynamic -L $(KERN_SRC)/target/target/debug -L $(KERN_SRC)/target/target/debug/deps --target $(TARGET_PATH)
+ifeq ($(CONFIG_DEBUG), false)
+RUSTFLAGS += -C opt-level=3
+endif
 
 ifeq ($(KERN_SRC), )
 $(error Set the KERN_SRC environment variable with the path to the sources of the kernel)
@@ -39,15 +31,10 @@ endif
 all: $(MOD_FILE)
 
 $(MOD_FILE):
-	$(CONFIG_ENV) RUSTFLAGS='$(RUSTFLAGS)' cargo +nightly build $(CARGOFLAGS)
-ifeq ($(CONFIG_DEBUG), true)
-	cp target/target/debug/lib$(NAME).so $(MOD_FILE)
-else
-	cp target/target/release/lib$(NAME).so $(MOD_FILE)
-endif
+	rustc src/mod.rs -o $(MOD_FILE) $(RUSTFLAGS)
 
 clean:
-	rm -rf target/
+	#rm -rf target/
 
 fclean: clean
 	rm -f $(MOD_FILE)

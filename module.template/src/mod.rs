@@ -2,16 +2,22 @@
 
 #![no_std]
 
-use abi::print;
+extern crate kernel;
 
-// This function is called on module intialization
+use kernel::module::version::Version;
+use kernel::print;
+
+// hello module, version 1.0.0
+kernel::module!("hello", Version::new(1, 0, 0));
+
+/// Called on module load
 #[no_mangle]
 pub extern "C" fn init() {
-	abi::println!("Hello world!");
+	kernel::println!("Hello world!");
 }
 
-// This function is called on module destruction
+/// Called on module unload
 #[no_mangle]
 pub extern "C" fn fini() {
-	abi::println!("Goodbye!");
+	kernel::println!("Goodbye!");
 }
