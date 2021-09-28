@@ -23,17 +23,14 @@ use version::Version;
 /// The magic number that must be present inside of a module.
 pub const MODULE_MAGIC: u64 = 0x9792df56efb7c93f;
 
+// TODO Add a symbol containing the magic number
+
 /// Macro used to declare a kernel module. This macro must be used only inside of a kernel module.
 /// `name` (str) is the module's name.
 /// `version` (Version) is the module's version.
 #[macro_export]
 macro_rules! module {
 	($name:expr, $version:expr) => {
-		#[no_mangle]
-		pub extern "C" fn mod_magic() -> u64 {
-			kernel::module::MODULE_MAGIC
-		}
-
 		#[no_mangle]
 		pub extern "C" fn mod_name() -> &'static str {
 			$name
@@ -56,7 +53,7 @@ pub struct Module {
 	// TODO Add dependencies handling
 
 	/// The module's memory.
-	mem: *const u8,
+	mem: malloc::Alloc::<u8>,
 	/// The size of the module's memory.
 	mem_size: usize,
 
@@ -79,33 +76,50 @@ impl Module {
 	/// Loads a kernel module from the given image.
 	pub fn load(image: &[u8]) -> Result<Self, Errno> {
 		let parser = ELFParser::new(image)?;
+
 		// TODO Read and check the magic number
 
+		// Allocating memory for the module
 		let mem_size = Self::get_load_size(&parser);
-		let mem = unsafe {
-			malloc::alloc(mem_size)?
-		} as *mut u8;
+		let mut mem = unsafe {
+			malloc::Alloc::<u8>::new_zero(mem_size)
+		}?;
 
+		// Copying the module's image
 		parser.foreach_segments(| seg | {
 			let len = min(seg.p_memsz, seg.p_filesz) as usize;
 			unsafe { // Safe because the module ELF image is valid
 				ptr::copy_nonoverlapping(&image[seg.p_offset as usize],
-					mem.offset(seg.p_vaddr as _),
+					&mut mem.get_slice_mut()[seg.p_vaddr as usize],
 					len);
 			}
 
 			true
 		});
 
-		let init = parser.get_symbol("init");
-		if init.is_none() {
-			return Err(errno::EINVAL);
-		}
-		let _init = init.unwrap();
+		// TODO Perform relocations
 
-		// TODO Call init function (retrieve name, version and dependencies)
+		// Function returning the module's name
+		let _mod_name = parser.get_symbol("mod_name").ok_or(errno::EINVAL);
+		// TODO Get name
 
-		let _fini = parser.get_symbol("fini");
+		// Function returning the module's version
+		let _mod_version = parser.get_symbol("mod_version").ok_or(errno::EINVAL);
+		// TODO Get version
+
+		// Initialization function
+		let _init = parser.get_symbol("init").ok_or(errno::EINVAL);
+		// TODO Call init function
+
+		// Destructor function
+		let fini_ptr = {
+			if let Some(_fini) = parser.get_symbol("fini") {
+				// TODO Retrieve pointer from symbol
+				None
+			} else {
+				None
+			}
+		};
 
 		Ok(Self {
 			name: String::from("TODO")?, // TODO
@@ -118,7 +132,7 @@ impl Module {
 			mem: mem as _,
 			mem_size,
 
-			fini: None, // TODO
+			fini: fini_ptr,
 		})
 	}
 
@@ -135,10 +149,6 @@ impl Module {
 
 impl Drop for Module {
 	fn drop(&mut self) {
-		unsafe { // Safe because the pointer is valid
-			malloc::free(self.mem as _);
-		}
-
 		if let Some(fini) = self.fini {
 			fini();
 		}

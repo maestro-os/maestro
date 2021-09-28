@@ -27,7 +27,10 @@ impl Version {
 		}
 	}
 
-	/// Compares current version with the given one.
+	// TODO to_string
+}
+
+impl Ord for Version {
 	fn cmp(&self, other: &Self) -> Ordering {
 		let mut ord = self.major.cmp(&other.major);
 		if ord != Ordering::Equal {
@@ -40,14 +43,6 @@ impl Version {
 		}
 
 		self.patch.cmp(&other.patch)
-	}
-
-	// TODO to_string
-}
-
-impl Ord for Version {
-	fn cmp(&self, other: &Self) -> Ordering {
-		self.cmp(other)
 	}
 }
 
