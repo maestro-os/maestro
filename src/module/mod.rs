@@ -98,22 +98,23 @@ impl Module {
 		});
 
 		// TODO Perform relocations
+		// TODO Fill GOT
 
 		// Function returning the module's name
-		let _mod_name = parser.get_symbol("mod_name").ok_or(errno::EINVAL);
+		let _mod_name = parser.get_symbol_by_name("mod_name").ok_or(errno::EINVAL)?;
 		// TODO Get name
 
 		// Function returning the module's version
-		let _mod_version = parser.get_symbol("mod_version").ok_or(errno::EINVAL);
+		let _mod_version = parser.get_symbol_by_name("mod_version").ok_or(errno::EINVAL)?;
 		// TODO Get version
 
 		// Initialization function
-		let _init = parser.get_symbol("init").ok_or(errno::EINVAL);
+		let _init = parser.get_symbol_by_name("init").ok_or(errno::EINVAL)?;
 		// TODO Call init function
 
 		// Destructor function
 		let fini_ptr = {
-			if let Some(_fini) = parser.get_symbol("fini") {
+			if let Some(_fini) = parser.get_symbol_by_name("fini") {
 				// TODO Retrieve pointer from symbol
 				None
 			} else {
