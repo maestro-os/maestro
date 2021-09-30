@@ -10,6 +10,7 @@ pub mod version;
 
 use core::cmp::max;
 use core::cmp::min;
+use core::mem::transmute;
 use core::ptr;
 use crate::elf::ELFParser;
 use crate::errno::Errno;
@@ -58,7 +59,7 @@ pub struct Module {
 	mem_size: usize,
 
 	/// Pointer to the module's destructor.
-	fini: Option<fn()>,
+	fini: Option<extern "C" fn()>,
 }
 
 impl Module {
@@ -73,6 +74,7 @@ impl Module {
 		size
 	}
 
+	// TODO On fail, print the reason in kernel logs
 	/// Loads a kernel module from the given image.
 	pub fn load(image: &[u8]) -> Result<Self, Errno> {
 		let parser = ELFParser::new(image)?;
@@ -81,9 +83,7 @@ impl Module {
 
 		// Allocating memory for the module
 		let mem_size = Self::get_load_size(&parser);
-		let mut mem = unsafe {
-			malloc::Alloc::<u8>::new_zero(mem_size)
-		}?;
+		let mut mem = malloc::Alloc::<u8>::new_default(mem_size)?;
 
 		// Copying the module's image
 		parser.foreach_segments(| seg | {
@@ -100,40 +100,53 @@ impl Module {
 		// TODO Perform relocations
 		// TODO Fill GOT
 
-		// Function returning the module's name
-		let _mod_name = parser.get_symbol_by_name("mod_name").ok_or(errno::EINVAL)?;
-		// TODO Get name
+		// Getting the module's name
+		let mod_name = parser.get_symbol_by_name("mod_name").ok_or(errno::EINVAL)?;
+		let name_str = unsafe {
+			let ptr = mem.as_ptr().add(mod_name.st_value as usize);
+			let func: extern "C" fn() -> &'static str = transmute(ptr);
+			(func)()
+		};
+		let name = String::from(name_str)?;
 
-		// Function returning the module's version
-		let _mod_version = parser.get_symbol_by_name("mod_version").ok_or(errno::EINVAL)?;
-		// TODO Get version
+		// Getting the module's version
+		let mod_version = parser.get_symbol_by_name("mod_version").ok_or(errno::EINVAL)?;
+		let version = unsafe {
+			let ptr = mem.as_ptr().add(mod_version.st_value as usize);
+			let func: extern "C" fn() -> Version = transmute(ptr);
+			(func)()
+		};
 
-		// Initialization function
-		let _init = parser.get_symbol_by_name("init").ok_or(errno::EINVAL)?;
-		// TODO Call init function
+		// Initializing module
+		let init = parser.get_symbol_by_name("init").ok_or(errno::EINVAL)?;
+		unsafe {
+			let ptr = mem.as_ptr().add(init.st_value as usize);
+			let func: extern "C" fn() -> Version = transmute(ptr);
+			(func)();
+		}
 
-		// Destructor function
-		let fini_ptr = {
-			if let Some(_fini) = parser.get_symbol_by_name("fini") {
-				// TODO Retrieve pointer from symbol
-				None
+		// Retrieving destructor function
+		let fini = {
+			if let Some(fini) = parser.get_symbol_by_name("fini") {
+				unsafe {
+					let ptr = mem.as_ptr().add(fini.st_value as usize);
+					let func: extern "C" fn() = transmute(ptr);
+					Some(func)
+				}
 			} else {
 				None
 			}
 		};
 
+		crate::println!("Loaded module {} version {}", name, version);
 		Ok(Self {
-			name: String::from("TODO")?, // TODO
-			version: Version { // TODO
-				major: 0,
-				minor: 0,
-				patch: 0,
-			},
+			name,
+			version,
 
 			mem: mem as _,
 			mem_size,
 
-			fini: fini_ptr,
+			fini,
 		})
 	}
 
@@ -150,6 +163,8 @@ impl Module {
 
 impl Drop for Module {
 	fn drop(&mut self) {
+		crate::println!("Unloaded module {}", self.name);
+
 		if let Some(fini) = self.fini {
 			fini();
 		}

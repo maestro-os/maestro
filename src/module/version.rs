@@ -5,6 +5,9 @@
 //! - Patch: Version including bug fixes and optimizations
 
 use core::cmp::Ordering;
+use core::fmt::Display;
+use core::fmt::Error;
+use core::fmt::Formatter;
 
 /// Structure representing a version.
 #[derive(Clone, Debug, Eq)]
@@ -58,4 +61,8 @@ impl PartialEq for Version {
 	}
 }
 
-// TODO Implement fmt::Display
+impl Display for Version {
+	fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), Error> {
+		write!(fmt, "{}.{}.{}", self.major, self.minor, self.patch)
+	}
+}
