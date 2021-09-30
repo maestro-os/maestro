@@ -13,6 +13,7 @@ use core::cmp::min;
 use core::mem::transmute;
 use core::ptr;
 use crate::elf::ELFParser;
+use crate::elf;
 use crate::errno::Errno;
 use crate::errno;
 use crate::memory::malloc;
@@ -87,17 +88,28 @@ impl Module {
 
 		// Copying the module's image
 		parser.foreach_segments(| seg | {
-			let len = min(seg.p_memsz, seg.p_filesz) as usize;
-			unsafe { // Safe because the module ELF image is valid
-				ptr::copy_nonoverlapping(&image[seg.p_offset as usize],
-					&mut mem.get_slice_mut()[seg.p_vaddr as usize],
-					len);
+			if seg.p_type != elf::PT_NULL {
+				let len = min(seg.p_memsz, seg.p_filesz) as usize;
+				unsafe { // Safe because the module ELF image is valid
+					ptr::copy_nonoverlapping(&image[seg.p_offset as usize],
+						&mut mem.get_slice_mut()[seg.p_vaddr as usize],
+						len);
+				}
 			}
 
 			true
 		});
 
 		// TODO Perform relocations
+		parser.foreach_rel(| _rel | {
+			// TODO
+			true
+		});
+		parser.foreach_rela(| _rela | {
+			// TODO
+			true
+		});
+
 		// TODO Fill GOT
 
 		// Getting the module's name

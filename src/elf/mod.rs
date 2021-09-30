@@ -13,75 +13,75 @@ use crate::util::math;
 use crate::util;
 
 /// The number of identification bytes in the ELF header.
-const EI_NIDENT: usize = 16;
+pub const EI_NIDENT: usize = 16;
 
 /// Identification bytes offset: File class.
-const EI_CLASS: usize = 4;
+pub const EI_CLASS: usize = 4;
 /// Identification bytes offset: Data encoding.
-const EI_DATA: usize = 5;
+pub const EI_DATA: usize = 5;
 /// Identification bytes offset: Version.
-const EI_VERSION: usize = 6;
+pub const EI_VERSION: usize = 6;
 
 /// File's class: Invalid class.
-const ELFCLASSNONE: u8 = 0;
+pub const ELFCLASSNONE: u8 = 0;
 /// File's class: 32-bit objects.
-const ELFCLASS32: u8 = 1;
+pub const ELFCLASS32: u8 = 1;
 /// File's class: 64-bit objects.
-const ELFCLASS64: u8 = 2;
+pub const ELFCLASS64: u8 = 2;
 
 /// Data encoding: Invalid data encoding.
-const ELFDATANONE: u8 = 0;
+pub const ELFDATANONE: u8 = 0;
 /// Data encoding: Little endian.
-const ELFDATA2LSB: u8 = 1;
+pub const ELFDATA2LSB: u8 = 1;
 /// Data encoding: Big endian.
-const ELFDATA2MSB: u8 = 2;
+pub const ELFDATA2MSB: u8 = 2;
 
 /// Object file type: No file type.
-const ET_NONE: u16 = 0;
+pub const ET_NONE: u16 = 0;
 /// Object file type: Relocatable file.
-const ET_REL: u16 = 1;
+pub const ET_REL: u16 = 1;
 /// Object file type: Executable file.
-const ET_EXEC: u16 = 2;
+pub const ET_EXEC: u16 = 2;
 /// Object file type: Shared object file.
-const ET_DYN: u16 = 3;
+pub const ET_DYN: u16 = 3;
 /// Object file type: Core file.
-const ET_CORE: u16 = 4;
+pub const ET_CORE: u16 = 4;
 /// Object file type: Processor-specific.
-const ET_LOPROC: u16 = 0xff00;
+pub const ET_LOPROC: u16 = 0xff00;
 /// Object file type: Processor-specific.
-const ET_HIPROC: u16 = 0xffff;
+pub const ET_HIPROC: u16 = 0xffff;
 
 /// Required architecture: AT&T WE 32100.
-const EM_M32: u16 = 1;
+pub const EM_M32: u16 = 1;
 /// Required architecture: SPARC.
-const EM_SPARC: u16 = 2;
+pub const EM_SPARC: u16 = 2;
 /// Required architecture: Intel Architecture.
-const EM_386: u16 = 3;
+pub const EM_386: u16 = 3;
 /// Required architecture: Motorola 68000.
-const EM_68K: u16 = 4;
+pub const EM_68K: u16 = 4;
 /// Required architecture: Motorola 88000.
-const EM_88K: u16 = 5;
+pub const EM_88K: u16 = 5;
 /// Required architecture: Intel 80860.
-const EM_860: u16 = 7;
+pub const EM_860: u16 = 7;
 /// Required architecture: MIPS RS3000 Big-Endian.
-const EM_MIPS: u16 = 8;
+pub const EM_MIPS: u16 = 8;
 /// Required architecture: MIPS RS4000 Big-Endian.
-const EM_MIPS_RS4_BE: u16 = 10;
+pub const EM_MIPS_RS4_BE: u16 = 10;
 
 /// Program header type: Ignored.
-const PT_NULL: u32 = 0;
+pub const PT_NULL: u32 = 0;
 /// Program header type: Loadable segment.
-const PT_LOAD: u32 = 1;
+pub const PT_LOAD: u32 = 1;
 /// Program header type: Dynamic linking information.
-const PT_DYNAMIC: u32 = 2;
+pub const PT_DYNAMIC: u32 = 2;
 /// Program header type: Interpreter path.
-const PT_INTERP: u32 = 3;
+pub const PT_INTERP: u32 = 3;
 /// Program header type: Auxiliary information.
-const PT_NOTE: u32 = 4;
+pub const PT_NOTE: u32 = 4;
 /// Program header type: Unspecified.
-const PT_SHLIB: u32 = 5;
+pub const PT_SHLIB: u32 = 5;
 /// Program header type: The program header table itself.
-const PT_PHDR: u32 = 6;
+pub const PT_PHDR: u32 = 6;
 
 /// The section header is inactive.
 pub const SHT_NULL: u32 = 0x00000000;
@@ -165,6 +165,29 @@ pub const STT_FILE: u8 = 4;
 pub const STT_LOPROC: u8 = 13;
 /// TODO doc
 pub const STT_HIPROC: u8 = 15;
+
+/// TODO doc
+pub const R_386_NONE: u8 = 0;
+/// TODO doc
+pub const R_386_32: u8 = 1;
+/// TODO doc
+pub const R_386_PC32: u8 = 2;
+/// TODO doc
+pub const R_386_GOT32: u8 = 3;
+/// TODO doc
+pub const R_386_PLT32: u8 = 4;
+/// TODO doc
+pub const R_386_COPY: u8 = 5;
+/// TODO doc
+pub const R_386_GLOB_DAT: u8 = 6;
+/// TODO doc
+pub const R_386_JMP_SLOT: u8 = 7;
+/// TODO doc
+pub const R_386_RELATIVE: u8 = 8;
+/// TODO doc
+pub const R_386_GOTOFF: u8 = 9;
+/// TODO doc
+pub const R_386_GOTPC: u8 = 10;
 
 /// Structure representing an ELF header.
 #[derive(Clone, Debug)]
@@ -304,6 +327,21 @@ pub struct ELF32Sym {
 	pub st_shndx: u16,
 }
 
+trait Relocation {
+	/// Returns the `r_info` field of the relocation.
+	fn get_info(&self) -> u32;
+
+	/// Returns the relocation's symbol.
+	fn get_sym(&self) -> u32 {
+		self.get_info() >> 8
+	}
+
+	/// Returns the relocation type.
+	fn get_type(&self) -> u8 {
+		(self.get_info() & 0xff) as _
+	}
+}
+
 /// Structure representing an ELF relocation.
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
@@ -312,6 +350,12 @@ pub struct ELF32Rel {
 	pub r_offset: u32,
 	/// The relocation type and symbol index.
 	pub r_info: u32,
+}
+
+impl Relocation for ELF32Rel {
+	fn get_info(&self) -> u32 {
+		self.r_info
+	}
 }
 
 /// Structure representing an ELF relocation with an addend.
@@ -324,6 +368,12 @@ pub struct ELF32Rela {
 	pub r_info: u32,
 	/// A constant value used to compute the relocation.
 	pub r_addend: u32,
+}
+
+impl Relocation for ELF32Rela {
+	fn get_info(&self) -> u32 {
+		self.r_info
+	}
 }
 
 /// Returns a reference to the kernel section with name `name`. If the section is not found,
@@ -630,6 +680,57 @@ impl<'a> ELFParser<'a> {
 		}
 	}
 
+	/// Iterates on every relocations that don't have an addend and calls the function `f` for
+	/// each.
+	/// If the function returns `false`, the loop breaks.
+	pub fn foreach_rel<F: FnMut(&ELF32Rel) -> bool>(&self, mut f: F) {
+		self.foreach_sections(| _, section | {
+			if section.sh_type != SHT_REL {
+				return true;
+			}
+
+			let shoff = section.sh_offset;
+			let entsize = section.sh_entsize;
+			let num = section.sh_size / entsize;
+
+			for i in 0..num {
+				let off = (shoff + entsize as u32 * i as u32) as usize;
+				let hdr = self.get_struct::<ELF32Rel>(off);
+
+				if !f(hdr) {
+					return false;
+				}
+			}
+
+			true
+		});
+	}
+
+	/// Iterates on every relocations that have an addend and calls the function `f` for each.
+	/// If the function returns `false`, the loop breaks.
+	pub fn foreach_rela<F: FnMut(&ELF32Rela) -> bool>(&self, mut f: F) {
+		self.foreach_sections(| _, section | {
+			if section.sh_type != SHT_RELA {
+				return true;
+			}
+
+			let shoff = section.sh_offset;
+			let entsize = section.sh_entsize;
+			let num = section.sh_size / entsize;
+
+			for i in 0..num {
+				let off = (shoff + entsize as u32 * i as u32) as usize;
+				let hdr = self.get_struct::<ELF32Rela>(off);
+
+				if !f(hdr) {
+					return false;
+				}
+			}
+
+			true
+		});
+	}
+
 	/// Calls the given function `f` for each symbol in the image.
 	/// The first argument of the function is the offset of the symbol in the image.
 	/// The second argument is a reference to the symbol.
@@ -649,7 +750,7 @@ impl<'a> ELFParser<'a> {
 					};
 
 					if !f(off, sym) {
-						break;
+						return false;
 					}
 
 					i += size_of::<ELF32Sym>() as u32;
