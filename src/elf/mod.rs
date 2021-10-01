@@ -327,7 +327,8 @@ pub struct ELF32Sym {
 	pub st_shndx: u16,
 }
 
-trait Relocation {
+/// Trait implemented for relocation objects.
+pub trait Relocation {
 	/// Returns the `r_info` field of the relocation.
 	fn get_info(&self) -> u32;
 

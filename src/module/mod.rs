@@ -13,6 +13,7 @@ use core::cmp::min;
 use core::mem::transmute;
 use core::ptr;
 use crate::elf::ELFParser;
+use crate::elf::Relocation;
 use crate::elf;
 use crate::errno::Errno;
 use crate::errno;
@@ -100,17 +101,51 @@ impl Module {
 			true
 		});
 
-		// TODO Perform relocations
-		parser.foreach_rel(| _rel | {
-			// TODO
-			true
-		});
-		parser.foreach_rela(| _rela | {
-			// TODO
-			true
-		});
-
 		// TODO Fill GOT
+
+		// TODO Move somewhere else
+		// Closure performing a relocation.
+		// TODO doc arguments
+		let perform_reloc = | offset: u32, _sym: u32, type_: u8, addend: u32 | {
+			// The virtual address at which the image is located
+			let base_addr = unsafe {
+				mem.as_ptr() as u32
+			};
+			// The offset inside of the GOT
+			let got_offset = 0; // TODO
+			// The address of the GOT
+			let got_addr = 0; // TODO
+			// The offset of the PLT entry for the symbol.
+			let plt_offset = 0; // TODO
+			// The value of the symbol
+			let sym_val = 0; // TODO
+
+			let offset = match type_ {
+				elf::R_386_32 => Some(sym_val + addend),
+				elf::R_386_PC32 => Some(sym_val + addend - offset),
+				elf::R_386_GOT32 => Some(got_offset + addend),
+				elf::R_386_PLT32 => Some(plt_offset + addend - offset),
+				elf::R_386_GLOB_DAT | elf::R_386_JMP_SLOT => Some(sym_val),
+				elf::R_386_RELATIVE => Some(base_addr + addend),
+				elf::R_386_GOTOFF => Some(sym_val + addend - got_addr),
+				elf::R_386_GOTPC => Some(got_addr + addend - offset),
+
+				_ => None,
+			};
+
+			if let Some(_offset) = offset {
+				// TODO Perform relocation
+			}
+		};
+
+		parser.foreach_rel(| rel | {
+			perform_reloc(rel.r_offset, rel.get_sym(), rel.get_type(), 0);
+			true
+		});
+		parser.foreach_rela(| rela | {
+			perform_reloc(rela.r_offset, rela.get_sym(), rela.get_type(), rela.r_addend);
+			true
+		});
 
 		// Getting the module's name
 		let mod_name = parser.get_symbol_by_name("mod_name").ok_or(errno::EINVAL)?;
@@ -150,7 +185,7 @@ impl Module {
 			}
 		};
 
-		crate::println!("Loaded module {} version {}", name, version);
+		crate::println!("Loaded module `{}` version {}", name, version);
 		Ok(Self {
 			name,
 			version,
@@ -175,7 +210,7 @@ impl Module {
 
 impl Drop for Module {
 	fn drop(&mut self) {
-		crate::println!("Unloaded module {}", self.name);
+		crate::println!("Unloaded module `{}`", self.name);
 
 		if let Some(fini) = self.fini {
 			fini();
