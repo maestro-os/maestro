@@ -40,7 +40,7 @@ CONFIG_ATTR_SCRIPT = scripts/config_attr.sh
 # Configuration as arguments for the compiler
 CONFIG_ARGS := $(shell $(CONFIG_ARGS_SCRIPT))
 # Configuration as environment variables
-CONFIG_ENV := BUILD_MODULE=false $(shell $(CONFIG_ENV_SCRIPT))
+CONFIG_ENV := $(shell $(CONFIG_ENV_SCRIPT))
 
 # The target architecture
 CONFIG_ARCH := $(shell $(CONFIG_ATTR_SCRIPT) general_arch)

@@ -683,8 +683,10 @@ impl<'a> ELFParser<'a> {
 
 	/// Iterates on every relocations that don't have an addend and calls the function `f` for
 	/// each.
+	/// The first argument of the closure is the header of the section containing the relocation
+	/// and the second argument is the relocation.
 	/// If the function returns `false`, the loop breaks.
-	pub fn foreach_rel<F: FnMut(&ELF32Rel) -> bool>(&self, mut f: F) {
+	pub fn foreach_rel<F: FnMut(&ELF32SectionHeader, &ELF32Rel) -> bool>(&self, mut f: F) {
 		self.foreach_sections(| _, section | {
 			if section.sh_type != SHT_REL {
 				return true;
@@ -698,7 +700,7 @@ impl<'a> ELFParser<'a> {
 				let off = (shoff + entsize as u32 * i as u32) as usize;
 				let hdr = self.get_struct::<ELF32Rel>(off);
 
-				if !f(hdr) {
+				if !f(section, hdr) {
 					return false;
 				}
 			}
@@ -708,8 +710,10 @@ impl<'a> ELFParser<'a> {
 	}
 
 	/// Iterates on every relocations that have an addend and calls the function `f` for each.
+	/// The first argument of the closure is the header of the section containing the relocation
+	/// and the second argument is the relocation.
 	/// If the function returns `false`, the loop breaks.
-	pub fn foreach_rela<F: FnMut(&ELF32Rela) -> bool>(&self, mut f: F) {
+	pub fn foreach_rela<F: FnMut(&ELF32SectionHeader, &ELF32Rela) -> bool>(&self, mut f: F) {
 		self.foreach_sections(| _, section | {
 			if section.sh_type != SHT_RELA {
 				return true;
@@ -723,7 +727,7 @@ impl<'a> ELFParser<'a> {
 				let off = (shoff + entsize as u32 * i as u32) as usize;
 				let hdr = self.get_struct::<ELF32Rela>(off);
 
-				if !f(hdr) {
+				if !f(section, hdr) {
 					return false;
 				}
 			}
@@ -800,5 +804,38 @@ impl<'a> ELFParser<'a> {
 		});
 
 		Some(self.get_struct::<ELF32Sym>(r?))
+	}
+
+	/// TODO doc
+	pub fn get_symbol_by_index(&self, section_index: u32, symbol_index: u32) -> Option<&ELF32Sym> {
+		let ehdr = self.get_header();
+		let shoff = ehdr.e_shoff;
+		let shnum = ehdr.e_shnum;
+		let shentsize = ehdr.e_shentsize;
+		if section_index >= shnum as u32 {
+			return None;
+		}
+
+		let off = (shoff + shentsize as u32 * section_index as u32) as usize;
+		let section_hdr = self.get_struct::<ELF32SectionHeader>(off);
+		if symbol_index >= section_hdr.sh_size / size_of::<ELF32Sym>() as u32 {
+			return None;
+		}
+
+		let off = section_hdr.sh_offset as usize + symbol_index as usize;
+		let sym = unsafe { // Safe because the slice is large enough
+			&*(&self.image[off] as *const u8 as *const ELF32Sym)
+		};
+
+		Some(sym)
+	}
+
+	/// TODO doc
+	pub fn get_symbol_name(&self, strtab: &ELF32SectionHeader, sym: &ELF32Sym) -> Option<&[u8]> {
+		if sym.st_name != 0 {
+			Some(&self.image[(strtab.sh_offset + sym.st_name) as usize..])
+		} else {
+			None
+		}
 	}
 }

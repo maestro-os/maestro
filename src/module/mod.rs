@@ -101,12 +101,14 @@ impl Module {
 			true
 		});
 
-		// TODO Fill GOT
+		// The names section
+		let strtab_section = parser.get_section_by_name(".strtab").ok_or(errno::EINVAL)?;
 
 		// TODO Move somewhere else
 		// Closure performing a relocation.
 		// TODO doc arguments
-		let perform_reloc = | offset: u32, _sym: u32, type_: u8, addend: u32 | {
+		let perform_reloc = | section: u32, offset: u32, sym: u32, type_: u8,
+			addend: u32 | {
 			// The virtual address at which the image is located
 			let base_addr = unsafe {
 				mem.as_ptr() as u32
@@ -117,10 +119,33 @@ impl Module {
 			let got_addr = 0; // TODO
 			// The offset of the PLT entry for the symbol.
 			let plt_offset = 0; // TODO
-			// The value of the symbol
-			let sym_val = 0; // TODO
 
-			let offset = match type_ {
+			// The symbol
+			let sym = parser.get_symbol_by_index(section, sym);
+			// The value of the symbol
+			let sym_val = {
+				if let Some(sym) = sym {
+					if sym.st_shndx == 0 {
+						// The symbol is undefined. Look inside of the kernel image or other
+						// modules
+
+						if let Some(_name) = parser.get_symbol_name(strtab_section, sym) {
+							// TODO Get symbol address from kernel or other modules
+							0
+						} else {
+							// TODO Error
+							0
+						}
+					} else {
+						// The symbol is defined
+						sym.st_value
+					}
+				} else {
+					0
+				}
+			};
+
+			let value = match type_ {
 				elf::R_386_32 => Some(sym_val + addend),
 				elf::R_386_PC32 => Some(sym_val + addend - offset),
 				elf::R_386_GOT32 => Some(got_offset + addend),
@@ -133,17 +158,21 @@ impl Module {
 				_ => None,
 			};
 
-			if let Some(_offset) = offset {
-				// TODO Perform relocation
+			if let Some(value) = value {
+				unsafe {
+					let addr = (base_addr + offset) as *mut u32;
+					*addr = value;
+				}
 			}
 		};
 
-		parser.foreach_rel(| rel | {
-			perform_reloc(rel.r_offset, rel.get_sym(), rel.get_type(), 0);
+		parser.foreach_rel(| section, rel | {
+			perform_reloc(section.sh_link, rel.r_offset, rel.get_sym(), rel.get_type(), 0);
 			true
 		});
-		parser.foreach_rela(| rela | {
-			perform_reloc(rela.r_offset, rela.get_sym(), rela.get_type(), rela.r_addend);
+		parser.foreach_rela(| section, rela | {
+			perform_reloc(section.sh_link, rela.r_offset, rela.get_sym(), rela.get_type(),
+				rela.r_addend);
 			true
 		});
 
