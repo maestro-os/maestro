@@ -12,12 +12,16 @@ use core::cmp::max;
 use core::cmp::min;
 use core::mem::transmute;
 use core::ptr;
-use crate::elf::ELFParser;
+use crate::elf::ELF32SectionHeader;
+use crate::elf::ELF32Sym;
 use crate::elf::Relocation;
+use crate::elf::parser::ELFParser;
 use crate::elf;
 use crate::errno::Errno;
 use crate::errno;
 use crate::memory::malloc;
+use crate::memory;
+use crate::multiboot;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::lock::mutex::Mutex;
@@ -76,6 +80,40 @@ impl Module {
 		size
 	}
 
+	/// Resolves an external symbol from the kernel or another module. If the symbol doesn't exist,
+	/// the function returns None.
+	/// `name` is the name of the symbol to look for.
+	fn resolve_symbol(name: &[u8]) -> Option<&ELF32Sym> {
+			let boot_info = multiboot::get_boot_info();
+			// The symbol on the kernel side
+			let kernel_sym = elf::get_kernel_symbol(memory::kern_to_virt(boot_info.elf_sections),
+				boot_info.elf_num as usize, boot_info.elf_shndx as usize,
+				boot_info.elf_entsize as usize, name)?;
+
+			// TODO Check other modules
+			Some(kernel_sym)
+	}
+
+	/// Returns the value for the symbol `sym`. If the symbol is undefined, the function resolves
+	/// the value using the kernel's symbols and the module's symbols.
+	/// `parser` is the ELF parser.
+	/// `strtab` is the strtab section.
+	/// If the symbol cannot be resolved, the function returns None.
+	fn get_symbol_value(parser: &ELFParser, strtab: &ELF32SectionHeader,
+		sym: &ELF32Sym) -> Option<u32> {
+		if sym.st_shndx == 0 {
+			// The symbol is undefined. Look inside of the kernel image or other
+			// modules
+
+			let name = parser.get_symbol_name(strtab, sym)?;
+			Some(Self::resolve_symbol(name)?.st_value)
+		} else {
+			// The symbol is defined
+			Some(sym.st_value)
+		}
+	}
+
+	// TODO Print a warning when a symbol cannot be resolved
 	// TODO On fail, print the reason in kernel logs
 	/// Loads a kernel module from the given image.
 	pub fn load(image: &[u8]) -> Result<Self, Errno> {
@@ -102,7 +140,7 @@ impl Module {
 		});
 
 		// The names section
-		let strtab_section = parser.get_section_by_name(".strtab").ok_or(errno::EINVAL)?;
+		let strtab = parser.get_section_by_name(".strtab").ok_or(errno::EINVAL)?;
 
 		// TODO Move somewhere else
 		// Closure performing a relocation.
@@ -120,26 +158,10 @@ impl Module {
 			// The offset of the PLT entry for the symbol.
 			let plt_offset = 0; // TODO
 
-			// The symbol
-			let sym = parser.get_symbol_by_index(section, sym);
 			// The value of the symbol
 			let sym_val = {
-				if let Some(sym) = sym {
-					if sym.st_shndx == 0 {
-						// The symbol is undefined. Look inside of the kernel image or other
-						// modules
-
-						if let Some(_name) = parser.get_symbol_name(strtab_section, sym) {
-							// TODO Get symbol address from kernel or other modules
-							0
-						} else {
-							// TODO Error
-							0
-						}
-					} else {
-						// The symbol is defined
-						sym.st_value
-					}
+				if let Some(sym) = parser.get_symbol_by_index(section, sym) {
+					Self::get_symbol_value(&parser, strtab, sym).unwrap_or(0)
 				} else {
 					0
 				}
