@@ -548,7 +548,7 @@ pub fn get_kernel_symbol(sections: *const c_void, sections_count: usize, shndx: 
 					if sym_name.as_bytes() == name {
 						symbol = Some(sym);
 						return false;
-	 				}
+					}
 				}
 
 				i += hdr.sh_entsize as usize;
