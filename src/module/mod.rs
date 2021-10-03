@@ -84,29 +84,28 @@ impl Module {
 	/// the function returns None.
 	/// `name` is the name of the symbol to look for.
 	fn resolve_symbol(name: &[u8]) -> Option<&ELF32Sym> {
-			let boot_info = multiboot::get_boot_info();
-			// The symbol on the kernel side
-			let kernel_sym = elf::get_kernel_symbol(memory::kern_to_virt(boot_info.elf_sections),
-				boot_info.elf_num as usize, boot_info.elf_shndx as usize,
-				boot_info.elf_entsize as usize, name)?;
+		let boot_info = multiboot::get_boot_info();
+		// The symbol on the kernel side
+		let kernel_sym = elf::get_kernel_symbol(memory::kern_to_virt(boot_info.elf_sections),
+			boot_info.elf_num as usize, boot_info.elf_shndx as usize,
+			boot_info.elf_entsize as usize, name)?;
 
-			// TODO Check other modules
-			Some(kernel_sym)
+		// TODO Check other modules
+		Some(kernel_sym)
 	}
 
 	/// Returns the value for the symbol `sym`. If the symbol is undefined, the function resolves
 	/// the value using the kernel's symbols and the module's symbols.
 	/// `parser` is the ELF parser.
-	/// `strtab` is the strtab section.
+	/// `dynstr` is the dynstr section.
 	/// If the symbol cannot be resolved, the function returns None.
-	fn get_symbol_value(parser: &ELFParser, strtab: &ELF32SectionHeader,
+	fn get_symbol_value(parser: &ELFParser, dynstr: &ELF32SectionHeader,
 		sym: &ELF32Sym) -> Option<u32> {
 		if sym.st_shndx == 0 {
-			// The symbol is undefined. Look inside of the kernel image or other
-			// modules
-
-			let name = parser.get_symbol_name(strtab, sym)?;
-			Some(Self::resolve_symbol(name)?.st_value)
+			// The symbol is undefined. Look inside of the kernel image or other modules
+			let name = parser.get_symbol_name(dynstr, sym)?;
+			let other_sym = Self::resolve_symbol(name)?;
+			Some(other_sym.st_value)
 		} else {
 			// The symbol is defined
 			Some(sym.st_value)
@@ -139,8 +138,9 @@ impl Module {
 			true
 		});
 
-		// The names section
-		let strtab = parser.get_section_by_name(".strtab").ok_or(errno::EINVAL)?;
+		// TODO Get from symbol table's sh_link instead
+		// The names section for external symbols
+		let dynstr = parser.get_section_by_name(".dynstr").ok_or(errno::EINVAL)?;
 
 		// TODO Move somewhere else
 		// Closure performing a relocation.
@@ -161,7 +161,7 @@ impl Module {
 			// The value of the symbol
 			let sym_val = {
 				if let Some(sym) = parser.get_symbol_by_index(section, sym) {
-					Self::get_symbol_value(&parser, strtab, sym).unwrap_or(0)
+					Self::get_symbol_value(&parser, dynstr, sym).unwrap_or(0)
 				} else {
 					0
 				}
@@ -181,9 +181,17 @@ impl Module {
 			};
 
 			if let Some(value) = value {
-				unsafe {
-					let addr = (base_addr + offset) as *mut u32;
-					*addr = value;
+				let addr = (base_addr + offset) as *mut u32;
+
+				match type_ {
+					elf::R_386_RELATIVE => unsafe {
+						*addr += value;
+					},
+					// TODO
+
+					_ => unsafe {
+						*addr = value;
+					},
 				}
 			}
 		};
@@ -215,11 +223,13 @@ impl Module {
 			(func)()
 		};
 
+		crate::println!("Loading module `{}` version {}", name, version);
+
 		// Initializing module
 		let init = parser.get_symbol_by_name("init").ok_or(errno::EINVAL)?;
 		unsafe {
 			let ptr = mem.as_ptr().add(init.st_value as usize);
-			let func: extern "C" fn() -> Version = transmute(ptr);
+			let func: extern "C" fn() = transmute(ptr);
 			(func)();
 		}
 
@@ -236,7 +246,6 @@ impl Module {
 			}
 		};
 
-		crate::println!("Loaded module `{}` version {}", name, version);
 		Ok(Self {
 			name,
 			version,
@@ -261,11 +270,11 @@ impl Module {
 
 impl Drop for Module {
 	fn drop(&mut self) {
-		crate::println!("Unloaded module `{}`", self.name);
-
 		if let Some(fini) = self.fini {
 			fini();
 		}
+
+		crate::println!("Unloaded module `{}`", self.name);
 	}
 }
 

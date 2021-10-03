@@ -300,18 +300,15 @@ impl<'a> ELFParser<'a> {
 			return None;
 		}
 
-		let off = (ehdr.e_shoff + ehdr.e_shentsize as u32 * section_index as u32) as usize;
-		let section_hdr = self.get_struct::<ELF32SectionHeader>(off);
+		let section_off = (ehdr.e_shoff + ehdr.e_shentsize as u32 * section_index as u32) as usize;
+		let section_hdr = self.get_struct::<ELF32SectionHeader>(section_off);
 		if symbol_index >= section_hdr.sh_size / section_hdr.sh_entsize {
 			return None;
 		}
 
-		let off = (section_hdr.sh_offset + section_hdr.sh_entsize * symbol_index as u32) as usize;
-		let sym = unsafe { // Safe because the slice is large enough
-			&*(&self.image[off] as *const u8 as *const ELF32Sym)
-		};
-
-		Some(sym)
+		let sym_off = (section_hdr.sh_offset + section_hdr.sh_entsize * symbol_index as u32)
+			as usize;
+		Some(self.get_struct::<ELF32Sym>(sym_off))
 	}
 
 	/// TODO doc
