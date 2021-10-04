@@ -10,6 +10,8 @@ pub struct BAR {
 	/// The amount of space required by the device.
 	size: usize,
 
+	/// The BAR type.
+	type_: u8,
 	/// Tells whether the memory is prefetchable.
 	prefetchable: bool,
 }
@@ -27,7 +29,8 @@ impl BAR {
 		let size = 0;
 
 		if (value & 0b1) == 0 {
-			let address = match (value >> 1) & 0b11 {
+			let type_ = ((value >> 1) & 0b11) as u8;
+			let address = match type_ {
 				0x0 => (value & 0xfffffff0) as u64,
 				0x1 => (value & 0xfff0) as u64,
 				0x2 => {
@@ -43,6 +46,7 @@ impl BAR {
 				address,
 				size,
 
+				type_,
 				prefetchable: value & 0b1000 != 0,
 			})
 		} else {
@@ -50,6 +54,7 @@ impl BAR {
 				address: (value & 0xfffffffc) as u64,
 				size,
 
+				type_: 0,
 				prefetchable: false,
 			})
 		}
@@ -65,6 +70,12 @@ impl BAR {
 	#[inline(always)]
 	pub fn get_size(&self) -> usize {
 		self.size
+	}
+
+	/// Returns the type of the BAR.
+	#[inline(always)]
+	pub fn get_type(&self) -> u8 {
+		self.type_
 	}
 
 	/// Tells whether the memory is prefetchable.

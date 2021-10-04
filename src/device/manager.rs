@@ -14,6 +14,11 @@ pub trait PhysicalDevice {
 	/// Returns the vendor ID of the device.
 	fn get_vendor_id(&self) -> u16;
 
+	/// Returns the command register if present.
+	fn get_command_reg(&self) -> Option<u16>;
+	/// Returns the status register if present.
+	fn get_status_reg(&self) -> Option<u16>;
+
 	/// Returns the class of the device.
 	fn get_class(&self) -> u16;
 	/// Returns the subclass of the device.

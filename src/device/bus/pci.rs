@@ -82,6 +82,11 @@ pub struct PCIDevice {
 	/// The device's vendor ID.
 	vendor_id: u16,
 
+	/// The command register.
+	command: u16,
+	/// The status register.
+	status: u16,
+
 	/// The device's class code, telling what the device is.
 	class: u8,
 	/// The device's subclass code, giving more informations on the device.
@@ -119,6 +124,9 @@ impl PCIDevice {
 
 			vendor_id: (data[0] & 0xffff) as _,
 			device_id: ((data[0] >> 16) & 0xffff) as _,
+
+			command: (data[1] & 0xffff) as _,
+			status: ((data[1] >> 16) & 0xffff) as _,
 
 			class: ((data[2] >> 24) & 0xff) as _,
 			subclass: ((data[2] >> 16) & 0xff) as _,
@@ -215,6 +223,14 @@ impl PhysicalDevice for PCIDevice {
 
 	fn get_vendor_id(&self) -> u16 {
 		self.vendor_id
+	}
+
+	fn get_command_reg(&self) -> Option<u16> {
+		Some(self.command)
+	}
+
+	fn get_status_reg(&self) -> Option<u16> {
+		Some(self.status)
 	}
 
 	fn get_class(&self) -> u16 {
