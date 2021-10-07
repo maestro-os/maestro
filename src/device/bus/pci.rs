@@ -12,6 +12,7 @@
 use core::mem::size_of;
 use crate::device::DeviceManager;
 use crate::device::bar::BAR;
+use crate::device::driver;
 use crate::device::manager::PhysicalDevice;
 use crate::device::manager;
 use crate::errno::Errno;
@@ -297,6 +298,7 @@ impl PCIManager {
 	/// Scans for PCI devices and registers them on the manager.
 	/// If the PCI has already been scanned, this function does nothing.
 	pub fn scan(&mut self) -> Result<(), Errno> {
+		// Avoid calling `on_plug` twice for the same devices
 		if !self.devices.is_empty() {
 			return Ok(());
 		}
@@ -339,6 +341,7 @@ impl PCIManager {
 
 					// Registering the device
 					let dev = PCIDevice::new(bus, device, func, &data);
+					driver::on_plug(&dev);
 					manager::on_plug(&dev);
 					self.devices.push(dev)?;
 				}
@@ -346,6 +349,13 @@ impl PCIManager {
 		}
 
 		Ok(())
+	}
+
+	/// Returns the list of PCI devices.
+	/// If the PCI hasn't been scanned, the function returns an empty vector.
+	#[inline(always)]
+	pub fn get_devices(&self) -> &Vec<PCIDevice> {
+		&self.devices
 	}
 }
 

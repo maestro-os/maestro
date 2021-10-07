@@ -113,10 +113,12 @@ impl Module {
 	}
 
 	// TODO Print a warning when a symbol cannot be resolved
-	// TODO On fail, print the reason in kernel logs
 	/// Loads a kernel module from the given image.
 	pub fn load(image: &[u8]) -> Result<Self, Errno> {
-		let parser = ELFParser::new(image)?;
+		let parser = ELFParser::new(image).or_else(| e | {
+			crate::println!("Failed to parse module file");
+			Err(e)
+		})?;
 
 		// TODO Read and check the magic number
 
@@ -140,7 +142,10 @@ impl Module {
 
 		// TODO Get from symbol table's sh_link instead
 		// The names section for external symbols
-		let dynstr = parser.get_section_by_name(".dynstr").ok_or(errno::EINVAL)?;
+		let dynstr = parser.get_section_by_name(".dynstr").or_else(|| {
+			crate::println!("Missing section `.dynstr` in module file");
+			None
+		}).ok_or(errno::EINVAL)?;
 
 		// TODO Move somewhere else
 		// Closure performing a relocation.
@@ -207,7 +212,10 @@ impl Module {
 		});
 
 		// Getting the module's name
-		let mod_name = parser.get_symbol_by_name("mod_name").ok_or(errno::EINVAL)?;
+		let mod_name = parser.get_symbol_by_name("mod_name").or_else(|| {
+			crate::println!("Missing `mod_name` symbol in module image");
+			None
+		}).ok_or(errno::EINVAL)?;
 		let name_str = unsafe {
 			let ptr = mem.as_ptr().add(mod_name.st_value as usize);
 			let func: extern "C" fn() -> &'static str = transmute(ptr);
@@ -216,7 +224,10 @@ impl Module {
 		let name = String::from(name_str)?;
 
 		// Getting the module's version
-		let mod_version = parser.get_symbol_by_name("mod_version").ok_or(errno::EINVAL)?;
+		let mod_version = parser.get_symbol_by_name("mod_version").or_else(|| {
+			crate::println!("Missing `mod_version` symbol in module image");
+			None
+		}).ok_or(errno::EINVAL)?;
 		let version = unsafe {
 			let ptr = mem.as_ptr().add(mod_version.st_value as usize);
 			let func: extern "C" fn() -> Version = transmute(ptr);
@@ -226,7 +237,10 @@ impl Module {
 		crate::println!("Loading module `{}` version {}", name, version);
 
 		// Initializing module
-		let init = parser.get_symbol_by_name("init").ok_or(errno::EINVAL)?;
+		let init = parser.get_symbol_by_name("init").or_else(|| {
+			crate::println!("Missing `init` symbol in module image");
+			None
+		}).ok_or(errno::EINVAL)?;
 		unsafe {
 			let ptr = mem.as_ptr().add(init.st_value as usize);
 			let func: extern "C" fn() = transmute(ptr);

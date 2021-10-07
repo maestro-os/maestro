@@ -17,7 +17,7 @@ pub fn _print(args: core::fmt::Arguments) {
 #[macro_export]
 macro_rules! print {
 	($($arg:tt)*) => {{
-		crate::print::_print(format_args!($($arg)*));
+		$crate::print::_print(format_args!($($arg)*));
 	}};
 }
 
@@ -25,8 +25,8 @@ macro_rules! print {
 #[allow_internal_unstable(print_internals, format_args_nl)]
 #[macro_export]
 macro_rules! println {
-	() => (crate::print!("\n"));
+	() => ($crate::print!("\n"));
 	($($arg:tt)*) => {{
-		crate::print::_print(format_args_nl!($($arg)*));
+		$crate::print::_print(format_args_nl!($($arg)*));
 	}};
 }

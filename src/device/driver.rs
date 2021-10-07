@@ -55,3 +55,35 @@ pub fn get_by_name(name: &str) -> Option<WeakPtr<dyn Driver>> {
 
 	None
 }
+
+/// Function that is called when a new device is plugged in.
+/// `dev` is the device that has been plugged in.
+pub fn on_plug(dev: &dyn PhysicalDevice) {
+	let mutex = unsafe {
+		&mut DRIVERS
+	};
+	let mut guard = mutex.lock(true);
+	let drivers = guard.get_mut();
+
+	for i in 0..drivers.len() {
+		let mut guard = drivers[i].lock(true);
+		let manager = guard.get_mut();
+		manager.on_plug(dev);
+	}
+}
+
+/// Function that is called when a device is plugged out.
+/// `dev` is the device that has been plugged out.
+pub fn on_unplug(dev: &dyn PhysicalDevice) {
+	let mutex = unsafe {
+		&mut DRIVERS
+	};
+	let mut guard = mutex.lock(true);
+	let drivers = guard.get_mut();
+
+	for i in 0..drivers.len() {
+		let mut guard = drivers[i].lock(true);
+		let manager = guard.get_mut();
+		manager.on_unplug(dev);
+	}
+}

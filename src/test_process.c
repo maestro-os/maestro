@@ -229,7 +229,7 @@ void test_process(void)
 
 	// Testing kernel module loading from disk
 
-	int fd = open("/lib/hello.kmod", 0b11);
+	int fd = open("/lib/e1000.kmod", 0b11);
 	if (fd < 0) {
 		write(1, "Error\n", 6);
 	} else {
