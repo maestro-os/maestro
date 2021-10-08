@@ -154,7 +154,10 @@ impl Module {
 			// The offset inside of the GOT
 			let got_offset = 0; // TODO
 			// The address of the GOT
-			let got_addr = 0; // TODO
+			let got_addr = base_addr + match parser.get_symbol_by_name("_GLOBAL_OFFSET_TABLE_") {
+				Some(sym) => sym.st_value,
+				None => 0,
+			};
 			// The offset of the PLT entry for the symbol.
 			let plt_offset = 0; // TODO
 
@@ -163,31 +166,29 @@ impl Module {
 			let sym_val = Self::get_symbol_value(&parser, section, sym).unwrap_or(0);
 
 			let value = match type_ {
-				elf::R_386_32 => Some(sym_val + addend),
-				elf::R_386_PC32 => Some(sym_val + addend - offset),
-				elf::R_386_GOT32 => Some(got_offset + addend),
-				elf::R_386_PLT32 => Some(plt_offset + addend - offset),
-				elf::R_386_GLOB_DAT | elf::R_386_JMP_SLOT => Some(sym_val),
-				elf::R_386_RELATIVE => Some(base_addr + addend),
-				elf::R_386_GOTOFF => Some(sym_val + addend - got_addr),
-				elf::R_386_GOTPC => Some(got_addr + addend - offset),
+				elf::R_386_32 => sym_val + addend,
+				elf::R_386_PC32 => sym_val + addend - offset,
+				elf::R_386_GOT32 => got_offset + addend,
+				elf::R_386_PLT32 => plt_offset + addend - offset,
+				elf::R_386_GLOB_DAT | elf::R_386_JMP_SLOT => sym_val,
+				elf::R_386_RELATIVE => base_addr + addend,
+				elf::R_386_GOTOFF => sym_val + addend - got_addr,
+				elf::R_386_GOTPC => got_addr + addend - offset,
 
-				_ => None,
+				_ => {
+					return;
+				}
 			};
 
-			if let Some(value) = value {
-				let addr = (base_addr + offset) as *mut u32;
+			let addr = (base_addr + offset) as *mut u32;
+			match type_ {
+				elf::R_386_RELATIVE => unsafe {
+					*addr += value;
+				},
 
-				match type_ {
-					elf::R_386_RELATIVE => unsafe {
-						*addr += value;
-					},
-					// TODO
-
-					_ => unsafe {
-						*addr = value;
-					},
-				}
+				_ => unsafe {
+					*addr = value;
+				},
 			}
 		};
 
