@@ -12,7 +12,6 @@ use core::cmp::max;
 use core::cmp::min;
 use core::mem::transmute;
 use core::ptr;
-use crate::elf::ELF32SectionHeader;
 use crate::elf::ELF32Sym;
 use crate::elf::Relocation;
 use crate::elf::parser::ELFParser;
@@ -97,13 +96,17 @@ impl Module {
 	/// Returns the value for the symbol `sym`. If the symbol is undefined, the function resolves
 	/// the value using the kernel's symbols and the module's symbols.
 	/// `parser` is the ELF parser.
-	/// `dynstr` is the dynstr section.
+	/// `section` is the section's index.
+	/// `sym` is the symbol's index.
 	/// If the symbol cannot be resolved, the function returns None.
-	fn get_symbol_value(parser: &ELFParser, dynstr: &ELF32SectionHeader,
-		sym: &ELF32Sym) -> Option<u32> {
+	fn get_symbol_value(parser: &ELFParser, section: u32, sym: u32) -> Option<u32> {
+		let section = parser.get_section_by_index(section)?;
+		let sym = parser.get_symbol_by_index(section, sym)?;
+		let strtab = parser.get_section_by_index(section.sh_link)?;
+
 		if sym.st_shndx == 0 {
 			// The symbol is undefined. Look inside of the kernel image or other modules
-			let name = parser.get_symbol_name(dynstr, sym)?;
+			let name = parser.get_symbol_name(strtab, sym)?;
 			let other_sym = Self::resolve_symbol(name)?;
 			Some(other_sym.st_value)
 		} else {
@@ -140,18 +143,10 @@ impl Module {
 			true
 		});
 
-		// TODO Get from symbol table's sh_link instead
-		// The names section for external symbols
-		let dynstr = parser.get_section_by_name(".dynstr").or_else(|| {
-			crate::println!("Missing section `.dynstr` in module file");
-			None
-		}).ok_or(errno::EINVAL)?;
-
 		// TODO Move somewhere else
 		// Closure performing a relocation.
 		// TODO doc arguments
-		let perform_reloc = | section: u32, offset: u32, sym: u32, type_: u8,
-			addend: u32 | {
+		let perform_reloc = | section: u32, offset: u32, sym: u32, type_: u8, addend: u32 | {
 			// The virtual address at which the image is located
 			let base_addr = unsafe {
 				mem.as_ptr() as u32
@@ -164,13 +159,8 @@ impl Module {
 			let plt_offset = 0; // TODO
 
 			// The value of the symbol
-			let sym_val = {
-				if let Some(sym) = parser.get_symbol_by_index(section, sym) {
-					Self::get_symbol_value(&parser, dynstr, sym).unwrap_or(0)
-				} else {
-					0
-				}
-			};
+			// TODO Error on None?
+			let sym_val = Self::get_symbol_value(&parser, section, sym).unwrap_or(0);
 
 			let value = match type_ {
 				elf::R_386_32 => Some(sym_val + addend),
@@ -241,10 +231,14 @@ impl Module {
 			crate::println!("Missing `init` symbol in module image");
 			None
 		}).ok_or(errno::EINVAL)?;
-		unsafe {
+		let ok = unsafe {
 			let ptr = mem.as_ptr().add(init.st_value as usize);
-			let func: extern "C" fn() = transmute(ptr);
-			(func)();
+			let func: extern "C" fn() -> bool = transmute(ptr);
+			(func)()
+		};
+		if !ok {
+			crate::println!("Failed to load module `{}`", name);
+			return Err(errno::EINVAL);
 		}
 
 		// Retrieving destructor function

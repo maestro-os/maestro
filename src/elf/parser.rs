@@ -253,6 +253,18 @@ impl<'a> ELFParser<'a> {
 		});
 	}
 
+	/// Returns the section with index `section_index`. If the section doesn't exist, the function
+	/// return None.
+	pub fn get_section_by_index(&self, section_index: u32) -> Option<&ELF32SectionHeader> {
+		let ehdr = self.get_header();
+		if section_index >= ehdr.e_shnum as u32 {
+			return None;
+		}
+
+		let section_off = (ehdr.e_shoff + ehdr.e_shentsize as u32 * section_index as u32) as usize;
+		Some(self.get_struct::<ELF32SectionHeader>(section_off))
+	}
+
 	/// Returns the section with name `name`. If the section doesn't exist, the function returns
 	/// None.
 	pub fn get_section_by_name(&self, name: &str) -> Option<&ELF32SectionHeader> {
@@ -273,10 +285,27 @@ impl<'a> ELFParser<'a> {
 		Some(self.get_struct::<ELF32SectionHeader>(r?))
 	}
 
+	/// Returns the symbol with the given section and symbol index. If the symbol doesn't exist,
+	/// the function returns None.
+	/// `section` is the symbol's section.
+	/// `symbol_index` is the symbol index.
+	pub fn get_symbol_by_index(&self, section: &ELF32SectionHeader, symbol_index: u32)
+		-> Option<&ELF32Sym> {
+		if section.sh_type != SHT_SYMTAB && section.sh_type != SHT_DYNSYM {
+			return None;
+		}
+		if symbol_index >= section.sh_size / section.sh_entsize {
+			return None;
+		}
+
+		let sym_off = (section.sh_offset + section.sh_entsize * symbol_index as u32) as usize;
+		Some(self.get_struct::<ELF32Sym>(sym_off))
+	}
+
 	/// Returns the symbol with name `name`. If the symbol doesn't exist, the function returns
 	/// None.
 	pub fn get_symbol_by_name(&self, name: &str) -> Option<&ELF32Sym> {
-		let strtab_section = self.get_section_by_name(".strtab")?;
+		let strtab_section = self.get_section_by_name(".strtab")?; // TODO Use sh_link
 		let mut r = None;
 
 		self.foreach_symbol(| off, sym | {
@@ -293,29 +322,13 @@ impl<'a> ELFParser<'a> {
 		Some(self.get_struct::<ELF32Sym>(r?))
 	}
 
-	/// TODO doc
-	pub fn get_symbol_by_index(&self, section_index: u32, symbol_index: u32) -> Option<&ELF32Sym> {
-		let ehdr = self.get_header();
-		if section_index >= ehdr.e_shnum as u32 {
-			return None;
-		}
-
-		let section_off = (ehdr.e_shoff + ehdr.e_shentsize as u32 * section_index as u32) as usize;
-		let section_hdr = self.get_struct::<ELF32SectionHeader>(section_off);
-		if symbol_index >= section_hdr.sh_size / section_hdr.sh_entsize {
-			return None;
-		}
-
-		let sym_off = (section_hdr.sh_offset + section_hdr.sh_entsize * symbol_index as u32)
-			as usize;
-		Some(self.get_struct::<ELF32Sym>(sym_off))
-	}
-
-	/// TODO doc
+	/// Returns the name of the symbol `sym` using the string table section `strtab`. If the symbol
+	/// name doesn't exist, the function returns None.
 	pub fn get_symbol_name(&self, strtab: &ELF32SectionHeader, sym: &ELF32Sym) -> Option<&[u8]> {
 		if sym.st_name != 0 {
 			let begin_off = (strtab.sh_offset + sym.st_name) as usize;
 			let ptr = &self.image[begin_off];
+			// TODO Use a strnlen limited with the size of the section
 			let len = unsafe {
 				util::strlen(ptr)
 			};
