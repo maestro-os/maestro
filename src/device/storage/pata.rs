@@ -370,8 +370,8 @@ impl PATAInterface {
 			if (status & STATUS_BSY == 0) && (status & STATUS_DRQ != 0) {
 				return Ok(());
 			}
-			if (status & STATUS_ERR != 0) && (status & STATUS_DF != 0) {
-				return Err(errno::EINVAL); // TODO Set correct errno
+			if (status & STATUS_ERR != 0) || (status & STATUS_DF != 0) {
+				return Err(errno::EIO);
 			}
 		}
 	}

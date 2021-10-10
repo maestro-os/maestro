@@ -280,8 +280,9 @@ impl Ext2INode {
 
 		let mut b = begin;
 		for i in (0..n).rev() {
-			let inner_off = off / math::pow(entries_per_blk as u32, i as _);
-			let byte_off = (b as u64 * blk_size as u64) + (inner_off as u64);
+			let inner_index = off / math::pow(entries_per_blk as u32, i as _);
+			let inner_off = inner_index as u64 * size_of::<u32>() as u64;
+			let byte_off = (b as u64 * blk_size as u64) + inner_off as u64;
 			b = unsafe {
 				read::<u32>(byte_off, io)?
 			};
@@ -308,8 +309,9 @@ impl Ext2INode {
 
 		let mut b = begin;
 		for i in (0..(n + 1)).rev() {
-			let inner_off = off / math::pow(entries_per_blk as u32, i as _);
-			let byte_off = (b as u64 * blk_size as u64) + (inner_off as u64);
+			let inner_index = off / math::pow(entries_per_blk as u32, i as _);
+			let inner_off = inner_index as u64 * size_of::<u32>() as u64;
+			let byte_off = (b as u64 * blk_size as u64) + inner_off as u64;
 
 			if b == 0 {
 				let blk = superblock.get_free_block(io)?;

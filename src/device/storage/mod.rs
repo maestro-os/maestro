@@ -56,12 +56,12 @@ pub trait StorageInterface {
 	/// Reads bytes from storage at offset `offset`, writting the data to `buf`.
 	/// If the offset and size are out of bounds, the function returns an error.
 	fn read_bytes(&mut self, buf: &mut [u8], offset: u64) -> Result<usize, Errno> {
-		let storage_size = self.get_block_size() * self.get_blocks_count();
-		if offset > storage_size || (offset + buf.len() as u64) > storage_size {
+		let block_size = self.get_block_size();
+		let blk_begin = offset / block_size;
+		let blk_end = (offset + buf.len() as u64) / block_size;
+		if blk_begin >= self.get_blocks_count() || blk_end >= self.get_blocks_count() {
 			return Err(errno::EINVAL);
 		}
-
-		let block_size = self.get_block_size() as usize;
 
 		// TODO Alloc only if needed?
 		let mut tmp_buf = malloc::Alloc::<u8>::new_default(block_size as _)?;
@@ -69,14 +69,14 @@ pub trait StorageInterface {
 		let mut i = 0;
 		while i < buf.len() {
 			let storage_i = offset + i as u64;
-			let block_off = (storage_i as usize) / block_size;
-			let block_inner_off = (storage_i as usize) % block_size;
+			let block_off = (storage_i as usize) / block_size as usize;
+			let block_inner_off = (storage_i as usize) % block_size as usize;
 			let block_aligned = block_inner_off == 0;
 
 			if !block_aligned {
 				self.read(tmp_buf.get_slice_mut(), block_off as _, 1)?;
 
-				let diff = min(buf.len(), block_size - block_inner_off);
+				let diff = min(buf.len(), block_size as usize - block_inner_off);
 				for j in 0..diff {
 					buf[i + j] = tmp_buf[block_inner_off + j];
 				}
@@ -84,10 +84,10 @@ pub trait StorageInterface {
 				i += diff;
 			} else {
 				let remaining_bytes = buf.len() - i;
-				let remaining_blocks = remaining_bytes / block_size;
+				let remaining_blocks = remaining_bytes / block_size as usize;
 
-				if remaining_bytes >= block_size {
-					let slice_len = remaining_blocks * block_size;
+				if remaining_bytes >= block_size as usize {
+					let slice_len = remaining_blocks * block_size as usize;
 					self.read(&mut buf[i..(i + slice_len)], block_off as _,
 						remaining_blocks as _)?;
 
@@ -110,12 +110,12 @@ pub trait StorageInterface {
 	/// Writes bytes to storage at offset `offset`, reading the data from `buf`.
 	/// If the offset and size are out of bounds, the function returns an error.
 	fn write_bytes(&mut self, buf: &[u8], offset: u64) -> Result<usize, Errno> {
-		let storage_size = self.get_block_size() * self.get_blocks_count();
-		if offset > storage_size || (offset + buf.len() as u64) > storage_size {
+		let block_size = self.get_block_size();
+		let blk_begin = offset / block_size;
+		let blk_end = (offset + buf.len() as u64) / block_size;
+		if blk_begin >= self.get_blocks_count() || blk_end >= self.get_blocks_count() {
 			return Err(errno::EINVAL);
 		}
-
-		let block_size = self.get_block_size() as usize;
 
 		// TODO Alloc only if needed?
 		let mut tmp_buf = malloc::Alloc::<u8>::new_default(block_size as _)?;
@@ -123,14 +123,14 @@ pub trait StorageInterface {
 		let mut i = 0;
 		while i < buf.len() {
 			let storage_i = offset + i as u64;
-			let block_off = (storage_i as usize) / block_size;
-			let block_inner_off = (storage_i as usize) % block_size;
+			let block_off = (storage_i as usize) / block_size as usize;
+			let block_inner_off = (storage_i as usize) % block_size as usize;
 			let block_aligned = block_inner_off == 0;
 
 			if !block_aligned {
 				self.read(tmp_buf.get_slice_mut(), block_off as _, 1)?;
 
-				let diff = min(buf.len(), block_size - block_inner_off);
+				let diff = min(buf.len(), block_size as usize - block_inner_off);
 				for j in 0..diff {
 					tmp_buf[block_inner_off + j] = buf[i + j];
 				}
@@ -139,10 +139,10 @@ pub trait StorageInterface {
 				i += diff;
 			} else {
 				let remaining_bytes = buf.len() - i;
-				let remaining_blocks = remaining_bytes / block_size;
+				let remaining_blocks = remaining_bytes / block_size as usize;
 
-				if remaining_bytes >= block_size {
-					let slice_len = remaining_blocks * block_size;
+				if remaining_bytes >= block_size as usize {
+					let slice_len = remaining_blocks * block_size as usize;
 					self.write(&buf[i..(i + slice_len)], block_off as _, remaining_blocks as _)?;
 
 					i += slice_len;
