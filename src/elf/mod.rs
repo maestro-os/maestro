@@ -107,20 +107,6 @@ pub const SHT_REL: u32 = 0x00000009;
 pub const SHT_SHLIB: u32 = 0x0000000a;
 /// The section holds a symbol table.
 pub const SHT_DYNSYM: u32 = 0x0000000b;
-/// TODO doc
-pub const SHT_INIT_ARRAY: u32 = 0x0000000e;
-/// TODO doc
-pub const SHT_FINI_ARRAY: u32 = 0x0000000f;
-/// TODO doc
-pub const SHT_PREINIT_ARRAY: u32 = 0x00000010;
-/// TODO doc
-pub const SHT_GROUP: u32 = 0x00000011;
-/// TODO doc
-pub const SHT_SYMTAB_SHNDX: u32 = 0x00000012;
-/// TODO doc
-pub const SHT_NUM: u32 = 0x00000013;
-/// TODO doc
-pub const SHT_LOOS: u32 = 0x60000000;
 
 /// The section contains writable data.
 pub const SHF_WRITE: u32 = 0x00000001;
@@ -159,34 +145,31 @@ pub const STT_OBJECT: u8 = 1;
 pub const STT_FUNC: u8 = 2;
 /// The symbol is associated with a section.
 pub const STT_SECTION: u8 = 3;
-/// TODO doc
+/// A file symbol has STB_LOCAL binding, its section index is SHN_ABS, and it precedes the other
+/// STB_LOCAL symbols for the file, if it is present.
 pub const STT_FILE: u8 = 4;
-/// TODO doc
-pub const STT_LOPROC: u8 = 13;
-/// TODO doc
-pub const STT_HIPROC: u8 = 15;
 
-/// TODO doc
+/// No relocation.
 pub const R_386_NONE: u8 = 0;
-/// TODO doc
+/// Relocation type.
 pub const R_386_32: u8 = 1;
-/// TODO doc
+/// Relocation type.
 pub const R_386_PC32: u8 = 2;
-/// TODO doc
+/// Relocation type.
 pub const R_386_GOT32: u8 = 3;
-/// TODO doc
+/// Relocation type.
 pub const R_386_PLT32: u8 = 4;
-/// TODO doc
+/// Relocation type.
 pub const R_386_COPY: u8 = 5;
-/// TODO doc
+/// Relocation type.
 pub const R_386_GLOB_DAT: u8 = 6;
-/// TODO doc
+/// Relocation type.
 pub const R_386_JMP_SLOT: u8 = 7;
-/// TODO doc
+/// Relocation type.
 pub const R_386_RELATIVE: u8 = 8;
-/// TODO doc
+/// Relocation type.
 pub const R_386_GOTOFF: u8 = 9;
-/// TODO doc
+/// Relocation type.
 pub const R_386_GOTPC: u8 = 10;
 
 /// Structure representing an ELF header.
