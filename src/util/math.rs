@@ -38,17 +38,18 @@ pub fn pow2<T>(n: T) -> T where T: From<u8> + core::ops::Shl<Output = T> {
 	T::from(1) << n
 }
 
-// TODO Optimize (doable in O(log n))
 /// Computes a^^b on integers (where `^^` is an exponent).
 #[inline(always)]
 pub fn pow<T>(a: T, b: usize) -> T where T: From<u8> + core::ops::Mul<Output = T> + Copy {
-	let mut n = T::from(1);
-
-	for _ in 0..b {
-		n = n * a;
+	if b == 0 {
+		T::from(1)
+	} else if b == 1 {
+		a
+	} else if b % 2 == 0 {
+		pow(a * a, b / 2)
+	} else {
+		a * pow(a * a, b / 2)
 	}
-
-	n
 }
 
 /// Computes floor(log2(n)) on unsigned integers without using floating-point numbers.
@@ -131,7 +132,7 @@ mod test {
 	}
 
 	#[test_case]
-	fn pow1() {
+	fn pow2() {
 		assert_eq!(pow::<u32>(10, 0), 1);
 		assert_eq!(pow::<u32>(10, 1), 10);
 		assert_eq!(pow::<u32>(10, 2), 100);
