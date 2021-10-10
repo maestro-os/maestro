@@ -96,10 +96,11 @@ impl Module {
 	/// Returns the value for the symbol `sym`. If the symbol is undefined, the function resolves
 	/// the value using the kernel's symbols and the module's symbols.
 	/// `parser` is the ELF parser.
+	/// `base` is the current module's base.
 	/// `section` is the section's index.
 	/// `sym` is the symbol's index.
 	/// If the symbol cannot be resolved, the function returns None.
-	fn get_symbol_value(parser: &ELFParser, section: u32, sym: u32) -> Option<u32> {
+	fn get_symbol_value(parser: &ELFParser, base: usize, section: u32, sym: u32) -> Option<u32> {
 		let section = parser.get_section_by_index(section)?;
 		let sym = parser.get_symbol_by_index(section, sym)?;
 		let strtab = parser.get_section_by_index(section.sh_link)?;
@@ -111,7 +112,7 @@ impl Module {
 			Some(other_sym.st_value)
 		} else {
 			// The symbol is defined
-			Some(sym.st_value)
+			Some(base as u32 + sym.st_value)
 		}
 	}
 
@@ -163,7 +164,8 @@ impl Module {
 
 			// The value of the symbol
 			// TODO Error on None?
-			let sym_val = Self::get_symbol_value(&parser, section, sym).unwrap_or(0);
+			let sym_val = Self::get_symbol_value(&parser, base_addr as _, section, sym)
+				.unwrap_or(0);
 
 			let value = match type_ {
 				elf::R_386_32 => sym_val + addend,
