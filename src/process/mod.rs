@@ -9,9 +9,12 @@ pub mod semaphore;
 pub mod signal;
 pub mod tss;
 
+use core::cmp::min;
 use core::ffi::c_void;
 use core::mem::ManuallyDrop;
 use core::mem::MaybeUninit;
+use crate::elf::parser::ELFParser;
+use crate::elf;
 use crate::errno::Errno;
 use crate::errno;
 use crate::event::{InterruptResult, InterruptResultAction};
@@ -24,7 +27,9 @@ use crate::file::file_descriptor;
 use crate::file::path::Path;
 use crate::file;
 use crate::limits;
+use crate::memory::malloc;
 use crate::memory::vmem;
+use crate::memory;
 use crate::util::FailableClone;
 use crate::util::Regs;
 use crate::util::container::bitfield::Bitfield;
@@ -316,8 +321,7 @@ impl Process {
 
 	/// Creates the init process and places it into the scheduler's queue. The process is set to
 	/// state `Running` by default.
-	/// `entry_point` is the pointer to the first instruction of the process.
-	pub fn new_init(entry_point: *const c_void) -> Result<SharedPtr<Self>, Errno> {
+	pub fn new() -> Result<SharedPtr<Self>, Errno> {
 		let mut mem_space = MemSpace::new()?;
 		let user_stack = mem_space.map_stack(None, USER_STACK_SIZE, USER_STACK_FLAGS)?;
 		let kernel_stack = mem_space.map_stack(None, KERNEL_STACK_SIZE, KERNEL_STACK_FLAGS)?;
@@ -345,7 +349,7 @@ impl Process {
 			regs: Regs {
 				ebp: 0x0,
 				esp: user_stack as _,
-				eip: entry_point as _,
+				eip: 0x0,
 				eflags: DEFAULT_EFLAGS,
 				eax: 0x0,
 				ebx: 0x0,
@@ -861,6 +865,72 @@ impl Process {
 			SCHEDULER.assume_init_mut()
 		}.lock(false);
 		guard.get_mut().add_process(process)
+	}
+
+	/// Executes a program into the current process.
+	/// `path` is the path to the program.
+	/// `argv` is the list of arguments.
+	/// `envp` is the environment.
+	/// If the current process is not in running state, the behaviour is undefined.
+	pub fn exec(&mut self, path: &Path, _argv: &[&str], _envp: &[&str]) -> Result<(), Errno> {
+		debug_assert_eq!(self.state, State::Running);
+		debug_assert!(self.mem_space.is_some());
+
+		// Reading the file's content
+		let image = {
+			let mutex = file::get_files_cache();
+			let mut guard = mutex.lock(true);
+			let files_cache = guard.get_mut();
+
+			let mut file_mutex = files_cache.get_file_from_path(&path)?;
+			let file_lock = file_mutex.lock(true);
+			let file = file_lock.get();
+
+			let len = file.get_size();
+			let mut image = unsafe {
+				malloc::Alloc::new_zero(len as usize)?
+			};
+			file.read(0, image.get_slice_mut())?;
+
+			image
+		};
+
+		// TODO Support other formats?
+		let parser = ELFParser::new(image.get_slice())?;
+
+		// The base at which the program is loaded
+		let _load_base = memory::PAGE_SIZE as *mut u8; // TODO Support ASLR
+
+		// The current process's memory space
+		let mem_space = self.mem_space.as_mut().unwrap();
+
+		// Allocating memory for segments
+		parser.foreach_segments(| seg | {
+			if seg.p_type != elf::PT_NULL {
+				let _len = min(seg.p_memsz, seg.p_filesz) as usize;
+				// TODO Alloc physical memory
+				// TODO Map the physical memory at the required offset
+			}
+
+			true
+		});
+		mem_space.get_vmem().flush();
+
+		parser.foreach_segments(| seg | {
+			if seg.p_type != elf::PT_NULL {
+				let _len = min(seg.p_memsz, seg.p_filesz) as usize;
+				// TODO Copy data
+			}
+
+			true
+		});
+
+		// TODO Perform relocations
+
+		// TODO Reset registers and set entry point
+		// TODO Fill the stack with argv and envp
+
+		Ok(())
 	}
 
 	/// Returns the signal handler for the signal type `type_`.

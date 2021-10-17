@@ -70,6 +70,7 @@ use core::mem::MaybeUninit;
 use core::panic::PanicInfo;
 use core::ptr::null;
 use crate::errno::Errno;
+use crate::file::path::Path;
 use crate::memory::vmem::VMem;
 use crate::memory::vmem;
 use crate::process::Process;
@@ -80,6 +81,9 @@ use crate::util::lock::mutex::Mutex;
 pub const NAME: &str = "maestro";
 /// Current kernel version.
 pub const VERSION: &str = "1.0";
+
+/// The path to the init process binary.
+const INIT_PATH: &str = "/sbin/init";
 
 extern "C" {
 	fn kernel_wait();
@@ -170,6 +174,35 @@ extern "C" {
 	fn test_process();
 }
 
+/// Launches the init process.
+/// On fail, the kernel panics.
+fn init() {
+	// TODO Add a compilation option to enable test process
+	//let test_begin = unsafe {
+	//	core::mem::transmute::<unsafe extern "C" fn(), *const c_void>(test_process)
+	//};
+	//if Process::new_init(test_begin).is_err() {
+	//	kernel_panic!("Failed to create init process!", 0);
+	//}
+
+	match Process::new() {
+		Ok(mut mutex) => {
+			let mut lock = mutex.lock(false);
+			let proc = lock.get_mut();
+
+			// TODO Handle error properly
+			let path = Path::from_string(INIT_PATH, false).unwrap();
+			// TODO Add default env
+			// TODO Handle error properly
+			proc.exec(&path, &[INIT_PATH], &[]).unwrap();
+		},
+
+		Err(_) => {
+			kernel_panic!("Failed to create init process!", 0);
+		}
+	};
+}
+
 /// This is the main function of the Rust source code, responsible for the initialization of the
 /// kernel. When calling this function, the CPU must be in Protected Mode with the GDT loaded with
 /// space for the Task State Segment.
@@ -243,14 +276,7 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 		kernel_panic!("Failed to init processes!", 0);
 	}
 
-	// TODO Start first process from disk (init program)
-	let test_begin = unsafe {
-		core::mem::transmute::<unsafe extern "C" fn(), *const c_void>(test_process)
-	};
-	if Process::new_init(test_begin).is_err() {
-		kernel_panic!("Failed to create init process!", 0);
-	}
-
+	init();
 	crate::enter_loop();
 }
 
