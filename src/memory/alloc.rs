@@ -1,4 +1,14 @@
 //! This file handles memory allocators initialization for the kernel.
+//! The physical memory is divided into zones. Each zones contains frames that can be allocated by
+//! the buddy allocator
+//!
+//! The following zones exist:
+//! - Kernel: Memory to be allocated by the kernel, shared accross processes. This zone requires
+//! that every frames of virtual memory are associated with a unique physical frame.
+//! - MMIO: Memory used for Memory Mapped I/O. This zones requires only virtual memory, thus it
+//! overlaps with the user zone which allocates the physical memory.
+//! - User: Memory used for userspace mappings. This zone doesn't requires virtual memory to
+//! correspond with the physical memory, thus it can be located outside of the kernelspace.
 
 use core::cmp::min;
 use core::ffi::c_void;
@@ -9,7 +19,9 @@ use crate::util;
 
 /// Initializes the memory allocators.
 pub fn init() {
-	buddy::prepare();
+	unsafe {
+		buddy::prepare();
+	}
 	let mmap_info = memmap::get_info();
 
 	// The pointer to the beginning of available memory
@@ -58,4 +70,8 @@ pub fn init() {
 	let user_zone = buddy::Zone::new(buddy::FLAG_ZONE_TYPE_USER, userspace_metadata_begin,
 		userspace_frames as _, userspace_zone_begin);
 	buddy::set_zone_slot(buddy::FLAG_ZONE_TYPE_USER as _, user_zone);
+
+
+
+	// TODO MMIO zone
 }

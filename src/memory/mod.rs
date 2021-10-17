@@ -1,6 +1,11 @@
 //! The memory is one of the main component of the system.
 //! This module handles almost every memory-related features, including physical memory map
 //! retrieving, memory allocation, virtual memory management, ...
+//!
+//! The system's memory is divided in two chunks:
+//! - Userspace: Virtual memory below `PROCESS_END`, used by the currently running process
+//! - Kernelspace: Virtual memory above `PROCESS_END`, used by the kernel itself and shared accross
+//! processes
 
 pub mod alloc;
 pub mod buddy;

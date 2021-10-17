@@ -151,6 +151,13 @@ fn init_vmem() -> Result<(), Errno> {
 	Ok(())
 }
 
+/// Returns the kernel's virtual memory context.
+pub fn get_vmem() -> &'static mut Mutex<Box<dyn VMem>> {
+	unsafe { // Safe because using Mutex
+		KERNEL_VMEM.assume_init_mut()
+	}
+}
+
 /// Binds the kernel's virtual memory context.
 pub fn bind_vmem() {
 	let guard = unsafe { // Safe because using Mutex

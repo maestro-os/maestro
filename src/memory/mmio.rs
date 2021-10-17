@@ -3,41 +3,8 @@
 use core::ffi::c_void;
 use core::slice;
 use crate::errno::Errno;
-use crate::memory::vmem::VMem;
+use crate::memory::vmem;
 use crate::memory;
-
-/// A view of a MMIO region, allowing to access it.
-pub struct MMIOView<'a> {
-	/// The reference to the MMIO.
-	mmio: &'a mut MMIO,
-}
-
-impl<'a> MMIOView<'a> {
-	/// Creates a new instance for the given MMIO.
-	fn new(mmio: &'a mut MMIO) -> Self {
-		Self {
-			mmio,
-		}
-	}
-
-	/// Returns a slice to the MMIO.
-	pub fn get_slice(&self) -> &[u8] {
-		let len = self.mmio.pages * memory::PAGE_SIZE;
-
-		unsafe {
-			slice::from_raw_parts(self.mmio.virt_begin as _, len)
-		}
-	}
-
-	/// Returns a slice to the MMIO.
-	pub fn get_slice_mut(&mut self) -> &mut [u8] {
-		let len = self.mmio.pages * memory::PAGE_SIZE;
-
-		unsafe {
-			slice::from_raw_parts_mut(self.mmio.virt_begin as _, len)
-		}
-	}
-}
 
 /// Structure representing a MMIO region.
 pub struct MMIO {
@@ -51,16 +18,33 @@ pub struct MMIO {
 }
 
 impl MMIO {
+	/// Maps the MMIO's memory.
+	fn map(&self) -> Result<(), Errno> {
+		let mut paging_lock = crate::get_vmem().lock(false);
+		let paging = paging_lock.get_mut();
+
+		// Mapping the memory
+		let flags = vmem::x86::FLAG_GLOBAL | vmem::x86::FLAG_CACHE_DISABLE
+			| vmem::x86::FLAG_WRITE_THROUGH | vmem::x86::FLAG_WRITE;
+		paging.map_range(self.phys_begin, self.virt_begin, self.pages, flags)?;
+		paging.flush();
+
+		Ok(())
+	}
+
 	/// Creates a new instance.
 	pub fn new(phys_begin: *mut c_void, pages: usize) -> Result<Self, Errno> {
+		// Allocating virtual memory
 		let virt_begin = phys_begin; // TODO Allocate
 
-		Ok(Self {
+		let s = Self {
 			phys_begin,
 			virt_begin,
 
 			pages,
-		})
+		};
+		s.map()?;
+		Ok(s)
 	}
 
 	/// Returns the physical address of the beginning of the MMIO.
@@ -81,11 +65,27 @@ impl MMIO {
 		self.pages
 	}
 
-	/// Maps the MMIO to the given paging context.
-	pub fn get_view(&mut self, paging: &mut dyn VMem) -> MMIOView {
-		// TODO
+	/// Returns a slice to the MMIO.
+	pub fn get_slice(&self) -> &[u8] {
+		let len = self.pages * memory::PAGE_SIZE;
 
-		paging.flush();
-		MMIOView::new(self)
+		unsafe { // Safe because the memory is mapped
+			slice::from_raw_parts(self.virt_begin as _, len)
+		}
+	}
+
+	/// Returns a slice to the MMIO.
+	pub fn get_slice_mut(&mut self) -> &mut [u8] {
+		let len = self.pages * memory::PAGE_SIZE;
+
+		unsafe { // Safe because the memory is mapped
+			slice::from_raw_parts_mut(self.virt_begin as _, len)
+		}
+	}
+}
+
+impl Drop for MMIO {
+	fn drop(&mut self) {
+		// TODO Unmap?
 	}
 }

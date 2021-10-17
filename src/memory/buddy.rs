@@ -25,21 +25,19 @@ pub type Flags = i32;
 /// Type representing the identifier of a frame.
 type FrameID = u32;
 
-/// The number of memory zones.
-pub const ZONES_COUNT: usize = 2;
-
 /// The maximum order of a buddy allocated frame.
 pub const MAX_ORDER: FrameOrder = 17;
 
+/// The number of memory zones.
+pub const ZONES_COUNT: usize = 3;
 /// The mask for the type of the zone in buddy allocator flags.
 const ZONE_TYPE_MASK: Flags = 0b11;
 /// Buddy allocator flag. Tells that the allocated frame must be mapped into the user zone.
 pub const FLAG_ZONE_TYPE_USER: Flags = 0b00;
 /// Buddy allocator flag. Tells that the allocated frame must be mapped into the kernel zone.
-pub const FLAG_ZONE_TYPE_KERNEL: Flags = 0b01;
-
-/// Pointer to the end of the kernel zone of memory with the maximum possible size.
-pub const KERNEL_ZONE_LIMIT: *const c_void = 0x40000000 as _;
+pub const FLAG_ZONE_TYPE_MMIO: Flags = 0b01;
+/// Buddy allocator flag. Tells that the allocated frame must be mapped into the MMIO zone.
+pub const FLAG_ZONE_TYPE_KERNEL: Flags = 0b10;
 
 /// Value indicating that the frame is used.
 pub const FRAME_STATE_USED: FrameID = !0_u32;
@@ -81,10 +79,8 @@ struct Frame {
 static mut ZONES: MaybeUninit<[Mutex<Zone>; ZONES_COUNT]> = MaybeUninit::uninit();
 
 /// Prepares the buddy allocator. Calling this function is required before setting the zone slots.
-pub fn prepare() {
-	unsafe {
-		util::zero_object(&mut ZONES);
-	}
+pub unsafe fn prepare() {
+	util::zero_object(&mut ZONES);
 }
 
 /// Sets the zone at the given slot `slot`. It is required to call function `prepare` once before
@@ -101,11 +97,13 @@ pub fn set_zone_slot(slot: usize, zone: Zone) {
 }
 
 /// The size in bytes of a frame allocated by the buddy allocator with the given `order`.
+#[inline(always)]
 pub fn get_frame_size(order: FrameOrder) -> usize {
 	memory::PAGE_SIZE << order
 }
 
 /// Returns the size of the metadata for one frame.
+#[inline(always)]
 pub const fn get_frame_metadata_size() -> usize {
 	size_of::<Frame>()
 }
