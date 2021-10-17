@@ -35,6 +35,7 @@ use crate::util::Regs;
 use crate::util::container::bitfield::Bitfield;
 use crate::util::container::vec::Vec;
 use crate::util::lock::mutex::*;
+use crate::util::math;
 use crate::util::ptr::SharedPtr;
 use crate::util::ptr::WeakPtr;
 use mem_space::MemSpace;
@@ -907,9 +908,9 @@ impl Process {
 		// Allocating memory for segments
 		parser.foreach_segments(| seg | {
 			if seg.p_type != elf::PT_NULL {
-				let _len = min(seg.p_memsz, seg.p_filesz) as usize;
-				// TODO Alloc physical memory
-				// TODO Map the physical memory at the required offset
+				let len = min(seg.p_memsz, seg.p_filesz) as usize;
+				let _pages = math::ceil_division(len, memory::PAGE_SIZE);
+				// TODO Map in mem_space
 			}
 
 			true

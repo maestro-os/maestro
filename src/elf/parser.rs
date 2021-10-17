@@ -1,5 +1,7 @@
 //! This module implements the ELF parser.
 
+use crate::elf::relocation::ELF32Rel;
+use crate::elf::relocation::ELF32Rela;
 use crate::errno::Errno;
 use crate::errno;
 use super::*;

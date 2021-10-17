@@ -3,6 +3,7 @@
 //! image itself.
 
 pub mod parser;
+pub mod relocation;
 
 use core::cmp::max;
 use core::cmp::min;
@@ -308,56 +309,6 @@ pub struct ELF32Sym {
 	pub st_other: u8,
 	/// The index of the section the symbol is in.
 	pub st_shndx: u16,
-}
-
-/// Trait implemented for relocation objects.
-pub trait Relocation {
-	/// Returns the `r_info` field of the relocation.
-	fn get_info(&self) -> u32;
-
-	/// Returns the relocation's symbol.
-	fn get_sym(&self) -> u32 {
-		self.get_info() >> 8
-	}
-
-	/// Returns the relocation type.
-	fn get_type(&self) -> u8 {
-		(self.get_info() & 0xff) as _
-	}
-}
-
-/// Structure representing an ELF relocation.
-#[derive(Clone, Copy, Debug)]
-#[repr(C)]
-pub struct ELF32Rel {
-	/// The location of the relocation action.
-	pub r_offset: u32,
-	/// The relocation type and symbol index.
-	pub r_info: u32,
-}
-
-impl Relocation for ELF32Rel {
-	fn get_info(&self) -> u32 {
-		self.r_info
-	}
-}
-
-/// Structure representing an ELF relocation with an addend.
-#[derive(Clone, Copy, Debug)]
-#[repr(C)]
-pub struct ELF32Rela {
-	/// The location of the relocation action.
-	pub r_offset: u32,
-	/// The relocation type and symbol index.
-	pub r_info: u32,
-	/// A constant value used to compute the relocation.
-	pub r_addend: u32,
-}
-
-impl Relocation for ELF32Rela {
-	fn get_info(&self) -> u32 {
-		self.r_info
-	}
 }
 
 /// Returns a reference to the kernel section with name `name`. If the section is not found,
