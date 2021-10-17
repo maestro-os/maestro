@@ -175,8 +175,7 @@ extern "C" {
 }
 
 /// Launches the init process.
-/// On fail, the kernel panics.
-fn init() {
+fn init() -> Result<(), &'static str> {
 	// TODO Add a compilation option to enable test process
 	//let test_begin = unsafe {
 	//	core::mem::transmute::<unsafe extern "C" fn(), *const c_void>(test_process)
@@ -185,22 +184,25 @@ fn init() {
 	//	kernel_panic!("Failed to create init process!", 0);
 	//}
 
-	match Process::new() {
-		Ok(mut mutex) => {
-			let mut lock = mutex.lock(false);
-			let proc = lock.get_mut();
+	let mut mutex = Process::new().or(Err("Failed to create init process!"))?;
+	let mut lock = mutex.lock(false);
+	let proc = lock.get_mut();
 
-			// TODO Handle error properly
-			let path = Path::from_string(INIT_PATH, false).unwrap();
-			// TODO Add default env
-			// TODO Handle error properly
-			proc.exec(&path, &[INIT_PATH], &[]).unwrap();
-		},
+	let path = Path::from_string(INIT_PATH, false).or(Err("Unknown error"))?;
 
-		Err(_) => {
-			kernel_panic!("Failed to create init process!", 0);
-		}
+	// TODO Add default env
+	let result = proc.exec(&path, &[INIT_PATH], &[]);
+	if result.is_ok() {
+		return Ok(());
+	}
+
+	let err_str = match result.unwrap_err() {
+		errno::ENOENT => "Cannot file init process binary!",
+		errno::ENOMEM => "Not enough memory to run the init process!",
+
+		_ => "Unknown error",
 	};
+	Err(err_str)
 }
 
 /// This is the main function of the Rust source code, responsible for the initialization of the
@@ -276,7 +278,9 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 		kernel_panic!("Failed to init processes!", 0);
 	}
 
-	init();
+	if let Err(e) = init() {
+		kernel_panic!(e, 0);
+	}
 	crate::enter_loop();
 }
 
