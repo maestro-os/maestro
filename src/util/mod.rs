@@ -133,7 +133,7 @@ failable_clone_impl!(*const c_void);
 
 /// Structure representing the list of registers for a context. The content of this structure
 /// depends on the architecture for which the kernel is compiled.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default)]
 #[repr(C, packed)]
 //#[cfg(config_general_arch = "x86")]
 pub struct Regs {

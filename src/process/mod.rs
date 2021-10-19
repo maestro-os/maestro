@@ -13,6 +13,7 @@ use core::cmp::min;
 use core::ffi::c_void;
 use core::mem::ManuallyDrop;
 use core::mem::MaybeUninit;
+use core::ptr;
 use crate::elf::parser::ELFParser;
 use crate::elf::relocation::Relocation;
 use crate::elf;
@@ -363,18 +364,7 @@ impl Process {
 			syscalling: false,
 
 			handled_signal: None,
-			saved_regs: Regs {
-				ebp: 0x0,
-				esp: 0x0,
-				eip: 0x0,
-				eflags: 0x0,
-				eax: 0x0,
-				ebx: 0x0,
-				ecx: 0x0,
-				edx: 0x0,
-				esi: 0x0,
-				edi: 0x0,
-			},
+			saved_regs: Regs::default(),
 			waitable: false,
 
 			mem_space: Some(mem_space),
@@ -922,8 +912,12 @@ impl Process {
 
 		parser.foreach_segments(| seg | {
 			if seg.p_type != elf::PT_NULL {
-				let _len = min(seg.p_memsz, seg.p_filesz) as usize;
-				// TODO Copy data
+				let len = min(seg.p_memsz, seg.p_filesz) as usize;
+				unsafe { // Safe because the module ELF image is valid
+					ptr::copy_nonoverlapping(&image[seg.p_offset as usize],
+						load_base.add(seg.p_vaddr as usize),
+						len);
+				}
 			}
 
 			true
@@ -933,9 +927,15 @@ impl Process {
 		let get_sym = | name: &str | parser.get_symbol_by_name(name);
 
 		// Closure returning the value for a given symbol
-		let get_sym_val = | _sym_section: u32, _section: u32 | {
-			// TODO
-			None
+		let get_sym_val = | sym_section: u32, sym: u32 | {
+			let section = parser.get_section_by_index(sym_section)?;
+			let sym = parser.get_symbol_by_index(section, sym)?;
+
+			if sym.is_defined() {
+				Some(load_base as u32 + sym.st_value)
+			} else {
+				None // TODO Prepare for the interpreter?
+			}
 		};
 
 		parser.foreach_rel(| section, rel | {
@@ -951,7 +951,9 @@ impl Process {
 			true
 		});
 
-		// TODO Reset registers and set entry point
+		let hdr = parser.get_header();
+		self.regs.eip = hdr.e_entry;
+
 		// TODO Fill the stack with argv and envp
 
 		Ok(())
