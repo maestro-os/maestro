@@ -951,10 +951,22 @@ impl Process {
 			true
 		});
 
-		let hdr = parser.get_header();
-		self.regs.eip = hdr.e_entry;
-
 		// TODO Fill the stack with argv and envp
+
+		// Setting the process's entry point
+		let hdr = parser.get_header();
+		self.regs = Regs {
+			ebp: 0x0,
+			esp: self.user_stack as _,
+			eip: hdr.e_entry,
+			eflags: DEFAULT_EFLAGS,
+			eax: 0x0,
+			ebx: 0x0,
+			ecx: 0x0,
+			edx: 0x0,
+			esi: 0x0,
+			edi: 0x0,
+		};
 
 		Ok(())
 	}
