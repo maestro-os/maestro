@@ -311,6 +311,13 @@ pub struct ELF32Sym {
 	pub st_shndx: u16,
 }
 
+impl ELF32Sym {
+	/// Tells whether the symbol is defined.
+	pub fn is_defined(&self) -> bool {
+		self.st_shndx != 0
+	}
+}
+
 /// Returns a reference to the kernel section with name `name`. If the section is not found,
 /// returns None.
 /// `sections` is a pointer to the ELF sections of the kernel in the virtual memory.

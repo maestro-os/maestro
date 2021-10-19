@@ -14,6 +14,7 @@ use core::ffi::c_void;
 use core::mem::ManuallyDrop;
 use core::mem::MaybeUninit;
 use crate::elf::parser::ELFParser;
+use crate::elf::relocation::Relocation;
 use crate::elf;
 use crate::errno::Errno;
 use crate::errno;
@@ -868,6 +869,8 @@ impl Process {
 		guard.get_mut().add_process(process)
 	}
 
+	// TODO Ensure there is no way to write in kernel space (check segments position and
+	// relocations)
 	/// Executes a program into the current process.
 	/// `path` is the path to the program.
 	/// `argv` is the list of arguments.
@@ -900,7 +903,7 @@ impl Process {
 		let parser = ELFParser::new(image.get_slice())?;
 
 		// The base at which the program is loaded
-		let _load_base = memory::PAGE_SIZE as *mut u8; // TODO Support ASLR
+		let load_base = memory::PAGE_SIZE as *mut u8; // TODO Support ASLR
 
 		// The current process's memory space
 		let mem_space = self.mem_space.as_mut().unwrap();
@@ -926,7 +929,27 @@ impl Process {
 			true
 		});
 
-		// TODO Perform relocations
+		// Closure returning a symbol from its name
+		let get_sym = | name: &str | parser.get_symbol_by_name(name);
+
+		// Closure returning the value for a given symbol
+		let get_sym_val = | _sym_section: u32, _section: u32 | {
+			// TODO
+			None
+		};
+
+		parser.foreach_rel(| section, rel | {
+			unsafe {
+				rel.perform(load_base as _, section, get_sym, get_sym_val);
+			}
+			true
+		});
+		parser.foreach_rela(| section, rela | {
+			unsafe {
+				rela.perform(load_base as _, section, get_sym, get_sym_val);
+			}
+			true
+		});
 
 		// TODO Reset registers and set entry point
 		// TODO Fill the stack with argv and envp

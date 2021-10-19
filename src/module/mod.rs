@@ -93,29 +93,6 @@ impl Module {
 		Some(kernel_sym)
 	}
 
-	/// Returns the value for the symbol `sym`. If the symbol is undefined, the function resolves
-	/// the value using the kernel's symbols and the module's symbols.
-	/// `parser` is the ELF parser.
-	/// `base` is the current module's base.
-	/// `section` is the section's index.
-	/// `sym` is the symbol's index.
-	/// If the symbol cannot be resolved, the function returns None.
-	fn get_symbol_value(parser: &ELFParser, base: usize, section: u32, sym: u32) -> Option<u32> {
-		let section = parser.get_section_by_index(section)?;
-		let sym = parser.get_symbol_by_index(section, sym)?;
-		let strtab = parser.get_section_by_index(section.sh_link)?;
-
-		if sym.st_shndx == 0 {
-			// The symbol is undefined. Look inside of the kernel image or other modules
-			let name = parser.get_symbol_name(strtab, sym)?;
-			let other_sym = Self::resolve_symbol(name)?;
-			Some(other_sym.st_value)
-		} else {
-			// The symbol is defined
-			Some(base as u32 + sym.st_value)
-		}
-	}
-
 	// TODO Print a warning when a symbol cannot be resolved
 	/// Loads a kernel module from the given image.
 	pub fn load(image: &[u8]) -> Result<Self, Errno> {
@@ -129,6 +106,11 @@ impl Module {
 		// Allocating memory for the module
 		let mem_size = Self::get_load_size(&parser);
 		let mut mem = malloc::Alloc::<u8>::new_default(mem_size)?;
+
+		// The base virtual address at which the module is loaded
+		let load_base = unsafe {
+			mem.as_ptr() as u32
+		};
 
 		// Copying the module's image
 		parser.foreach_segments(| seg | {
@@ -144,15 +126,36 @@ impl Module {
 			true
 		});
 
+		// Closure returning a symbol from its name
+		let get_sym = | name: &str | parser.get_symbol_by_name(name);
+
+		// Closure returning the value of the given symbol
+		let get_sym_val = | sym_section: u32, sym: u32 | {
+			let section = parser.get_section_by_index(sym_section)?;
+			let sym = parser.get_symbol_by_index(section, sym)?;
+
+			if !sym.is_defined() {
+				let strtab = parser.get_section_by_index(section.sh_link)?;
+
+				// Looking inside of the kernel image or other modules
+				let name = parser.get_symbol_name(strtab, sym)?;
+				let other_sym = Self::resolve_symbol(name)?;
+				Some(other_sym.st_value)
+			} else {
+				Some(load_base + sym.st_value)
+			}
+		};
+
 		parser.foreach_rel(| section, rel | {
-			rel.perform();
-			//perform_reloc(section.sh_link, rel.r_offset, rel.get_sym(), rel.get_type(), 0);
+			unsafe {
+				rel.perform(load_base as _, section, get_sym, get_sym_val);
+			}
 			true
 		});
 		parser.foreach_rela(| section, rela | {
-			rel.perform();
-			//perform_reloc(section.sh_link, rela.r_offset, rela.get_sym(), rela.get_type(),
-			//	rela.r_addend);
+			unsafe {
+				rela.perform(load_base as _, section, get_sym, get_sym_val);
+			}
 			true
 		});
 
