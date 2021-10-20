@@ -51,6 +51,8 @@ pub struct MemMapping {
 	/// The mapping's flags.
 	flags: u8,
 
+	// TODO fd info
+
 	/// Pointer to the virtual memory context handler.
 	vmem: NonNull<dyn VMem>,
 }

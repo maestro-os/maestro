@@ -4,10 +4,12 @@ use core::cmp::min;
 use core::ffi::c_void;
 use core::ptr;
 use core::slice;
+use core::str;
 use crate::elf::parser::ELFParser;
 use crate::elf::relocation::Relocation;
 use crate::elf;
 use crate::errno::Errno;
+use crate::errno;
 use crate::file::path::Path;
 use crate::file;
 use crate::memory::malloc;
@@ -15,9 +17,29 @@ use crate::memory::vmem;
 use crate::memory;
 use crate::process::Process;
 use crate::process::exec::Executor;
+use crate::process::mem_space::MemSpace;
 use crate::process;
 use crate::util::Regs;
 use crate::util::math;
+
+/// Reads the file at the given path `path`.
+fn read_file(path: &Path) -> Result<malloc::Alloc<u8>, Errno> {
+	let mutex = file::get_files_cache();
+	let mut guard = mutex.lock(true);
+	let files_cache = guard.get_mut();
+
+	let mut file_mutex = files_cache.get_file_from_path(&path)?;
+	let file_lock = file_mutex.lock(true);
+	let file = file_lock.get();
+
+	let len = file.get_size();
+	let mut image = unsafe {
+		malloc::Alloc::new_zero(len as usize)?
+	};
+	file.read(0, image.get_slice_mut())?;
+
+	Ok(image)
+}
 
 /// The program executor for ELF files.
 pub struct ELFExecutor {
@@ -29,27 +51,8 @@ impl ELFExecutor {
 	/// Creates a new instance to execute the given program.
 	/// `path` is the path to the program.
 	pub fn new(path: &Path) -> Result<Self, Errno> {
-		// Reading the file's content
-		let image = {
-			let mutex = file::get_files_cache();
-			let mut guard = mutex.lock(true);
-			let files_cache = guard.get_mut();
-
-			let mut file_mutex = files_cache.get_file_from_path(&path)?;
-			let file_lock = file_mutex.lock(true);
-			let file = file_lock.get();
-
-			let len = file.get_size();
-			let mut image = unsafe {
-				malloc::Alloc::new_zero(len as usize)?
-			};
-			file.read(0, image.get_slice_mut())?;
-
-			image
-		};
-
 		Ok(Self {
-			image,
+			image: read_file(path)?,
 		})
 	}
 
@@ -150,9 +153,21 @@ impl ELFExecutor {
 		stack_off += 2;
 		debug_assert!(stack_off < stack_slice.len());
 	}
+
+	/// Loads the interpreter from the given path for the given process.
+	/// `mem_space` is the memory space on which the interpreter is loaded.
+	/// `interp` is the path to the interpreter.
+	/// If the memory space is not bound, the behaviour is undefined.
+	fn load_interpreter(&self, _mem_space: &mut MemSpace, interp: &Path) -> Result<(), Errno> {
+		let _image = read_file(interp)?;
+
+		// TODO
+		Ok(())
+	}
 }
 
 impl Executor for ELFExecutor {
+	// TODO Create a new mem space, do everything, then replace the old mem space (to ensure the syscall can fail without affecting the process)
 	// TODO Ensure there is no way to write in kernel space (check segments position and
 	// relocations)
 	fn exec(&self, process: &mut Process, argv: &[&str], envp: &[&str]) -> Result<(), Errno> {
@@ -163,12 +178,19 @@ impl Executor for ELFExecutor {
 
 		// The top of the user stack
 		let user_stack = process.user_stack;
-		// The base at which the program is loaded
-		let load_base = memory::PAGE_SIZE as *mut u8; // TODO Support ASLR
 
 		// The current process's memory space
 		debug_assert!(process.mem_space.is_some());
 		let mem_space = process.mem_space.as_mut().unwrap();
+
+		if let Some(interpreter_path) = parser.get_interpreter_path() {
+			let interpreter_path_str = str::from_utf8(interpreter_path).or(Err(errno::EINVAL))?;
+			let interpreter_path = Path::from_string(interpreter_path_str, true)?;
+			self.load_interpreter(mem_space, &interpreter_path)?;
+		}
+
+		// The base at which the program is loaded
+		let load_base = memory::PAGE_SIZE as *mut u8; // TODO Support ASLR
 
 		// Allocating memory for segments
 		parser.foreach_segments(| seg | {

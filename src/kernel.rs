@@ -85,6 +85,11 @@ pub const VERSION: &str = "1.0";
 
 /// The path to the init process binary.
 const INIT_PATH: &str = "/sbin/init";
+/// The default environment for the init process.
+const DEFAULT_ENVIRONMENT: &[&str] = &[
+	"PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin",
+	"TERM=maestro",
+];
 
 extern "C" {
 	fn kernel_wait();
@@ -190,9 +195,7 @@ fn init() -> Result<(), &'static str> {
 	let proc = lock.get_mut();
 
 	let path = Path::from_string(INIT_PATH, false).or(Err("Unknown error"))?;
-
-	// TODO Add default env
-	let result = exec(proc, &path, &[INIT_PATH], &[]);
+	let result = exec(proc, &path, &[INIT_PATH], DEFAULT_ENVIRONMENT);
 	if result.is_ok() {
 		return Ok(());
 	}
