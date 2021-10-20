@@ -14,6 +14,7 @@ use core::ffi::c_void;
 use core::mem::ManuallyDrop;
 use core::mem::MaybeUninit;
 use core::ptr;
+use core::slice;
 use crate::elf::parser::ELFParser;
 use crate::elf::relocation::Relocation;
 use crate::elf;
@@ -859,6 +860,103 @@ impl Process {
 		guard.get_mut().add_process(process)
 	}
 
+	// TODO Clean
+	// TODO Ensure the stack capacity is not exceeded
+	/// Initializes the stack data of the process according to the System V ABI.
+	/// `argv` is the list of arguments.
+	/// `envp` is the environment.
+	pub fn init_stack(&self, argv: &[&str], envp: &[&str]) {
+		// The size of the block storing the arguments and environment
+		let mut info_block_size = 0;
+		for e in envp {
+			info_block_size += e.as_bytes().len() + 1;
+		}
+		for a in argv {
+			info_block_size += a.as_bytes().len() + 1;
+		}
+
+		// The padding before the information block allowing to preserve stack alignment
+		let info_block_pad = 4 - (info_block_size % 4);
+
+		// The size of the environment pointers + the null fourbyte
+		let envp_size = envp.len() * 4 + 4;
+		// The size of the argument pointers + the null fourbyte + argc
+		let argv_size = argv.len() * 4 + 8;
+		// The total size of the stack data in bytes
+		let total_size = info_block_size + info_block_pad + 4 + envp_size + argv_size;
+
+		// A slice on the stack representing the region to fill
+		let stack_slice = unsafe {
+			slice::from_raw_parts_mut((self.user_stack as usize - total_size) as *mut u32,
+				total_size / 4)
+		};
+		// A slice on the stack representing the information block
+		let info_slice = unsafe {
+			slice::from_raw_parts_mut((self.user_stack as usize - info_block_size) as *mut u8,
+				info_block_size)
+		};
+
+		// The offset in the information block
+		let mut info_off = 0;
+		// The offset in the pointers list
+		let mut stack_off = 0;
+
+		// Setting argc
+		stack_slice[stack_off] = argv.len() as u32;
+		stack_off += 1;
+
+		// Setting arguments
+		for arg in argv {
+			// The offset of the beginning of the argument in the information block
+			let begin = info_off;
+
+			// Copying the argument into the information block
+			for b in arg.as_bytes() {
+				info_slice[info_off] = *b;
+				info_off += 1;
+			}
+			// Setting the nullbyte to end the string
+			info_slice[info_off] = 0;
+			info_off += 1;
+
+			debug_assert!(info_off < info_block_size);
+
+			// Setting the argument's pointer
+			stack_slice[stack_off] = &mut info_slice[begin] as *mut _ as u32;
+			stack_off += 1;
+		}
+		// Setting the nullbyte to end argv
+		stack_slice[stack_off] = 0;
+		stack_off += 1;
+
+		// Setting environment
+		for var in envp {
+			// The offset of the beginning of the variable in the information block
+			let begin = info_off;
+
+			// Copying the variable into the information block
+			for b in var.as_bytes() {
+				info_slice[info_off] = *b;
+				info_off += 1;
+			}
+			// Setting the nullbyte to end the string
+			info_slice[info_off] = 0;
+			info_off += 1;
+
+			debug_assert!(info_off < info_block_size);
+
+			// Setting the variable's pointer
+			stack_slice[stack_off] = &mut info_slice[begin] as *mut _ as u32;
+			stack_off += 1;
+		}
+		// Setting the nullbytes to end envp
+		for i in 0..2 {
+			stack_slice[stack_off + i] = 0;
+		}
+		stack_off += 2;
+		debug_assert!(stack_off < stack_slice.len());
+	}
+
 	// TODO Ensure there is no way to write in kernel space (check segments position and
 	// relocations)
 	/// Executes a program into the current process.
@@ -866,7 +964,7 @@ impl Process {
 	/// `argv` is the list of arguments.
 	/// `envp` is the environment.
 	/// If the current process is not in running state, the behaviour is undefined.
-	pub fn exec(&mut self, path: &Path, _argv: &[&str], _envp: &[&str]) -> Result<(), Errno> {
+	pub fn exec(&mut self, path: &Path, argv: &[&str], envp: &[&str]) -> Result<(), Errno> {
 		debug_assert_eq!(self.state, State::Running);
 		debug_assert!(self.mem_space.is_some());
 
@@ -951,14 +1049,18 @@ impl Process {
 			true
 		});
 
-		// TODO Fill the stack with argv and envp
+		// TODO Reset signals, etc...
+
+		self.init_stack(argv, envp);
+
+		// TODO Enable floats and SSE
 
 		// Setting the process's entry point
 		let hdr = parser.get_header();
 		self.regs = Regs {
 			ebp: 0x0,
 			esp: self.user_stack as _,
-			eip: hdr.e_entry,
+			eip: load_base as u32 + hdr.e_entry,
 			eflags: DEFAULT_EFLAGS,
 			eax: 0x0,
 			ebx: 0x0,
