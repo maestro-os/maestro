@@ -74,6 +74,7 @@ use crate::file::path::Path;
 use crate::memory::vmem::VMem;
 use crate::memory::vmem;
 use crate::process::Process;
+use crate::process::exec::exec;
 use crate::util::boxed::Box;
 use crate::util::lock::mutex::Mutex;
 
@@ -191,7 +192,7 @@ fn init() -> Result<(), &'static str> {
 	let path = Path::from_string(INIT_PATH, false).or(Err("Unknown error"))?;
 
 	// TODO Add default env
-	let result = proc.exec(&path, &[INIT_PATH], &[]);
+	let result = exec(proc, &path, &[INIT_PATH], &[]);
 	if result.is_ok() {
 		return Ok(());
 	}
