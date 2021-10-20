@@ -340,4 +340,25 @@ impl<'a> ELFParser<'a> {
 			None
 		}
 	}
+
+	/// Returns the path to the ELF's interpreter.
+	/// If the ELF doesn't have an interpreter, the function returns None.
+	pub fn get_interpreter_path(&self) -> Option<&[u8]> {
+		let mut path: Option<&[u8]> = None;
+
+		self.foreach_sections(| _, section | {
+			if section.sh_type == PT_INTERP {
+				let begin = section.sh_offset as usize;
+				let end = (section.sh_offset + section.sh_size) as usize;
+				// TODO Ensure the slice doesn't exceed the size of the image
+				path = Some(&self.image[begin..end]);
+
+				false
+			} else {
+				true
+			}
+		});
+
+		path
+	}
 }
