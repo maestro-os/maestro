@@ -201,7 +201,8 @@ fn init() -> Result<(), &'static str> {
 	}
 
 	let err_str = match result.unwrap_err() {
-		errno::ENOENT => "Cannot file init process binary!",
+		errno::ENOENT => "Cannot find init process binary!",
+		errno::ENOEXEC => "Init file is not executable!",
 		errno::ENOMEM => "Not enough memory to run the init process!",
 
 		_ => "Unknown error",

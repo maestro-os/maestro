@@ -313,10 +313,15 @@ impl File {
 
 	/// Tells if the file can be read from by the given UID and GID.
 	pub fn can_read(&self, uid: Uid, gid: Gid) -> bool {
-		if self.uid == uid && self.mode & S_IRUSR != 0 {
+		// If root, bypass checks
+		if uid == 0 || gid == 0 {
 			return true;
 		}
-		if self.gid == gid && self.mode & S_IRGRP != 0 {
+
+		if self.mode & S_IRUSR != 0 && self.uid == uid {
+			return true;
+		}
+		if self.mode & S_IRGRP != 0 && self.gid == gid {
 			return true;
 		}
 		self.mode & S_IROTH != 0
@@ -324,10 +329,15 @@ impl File {
 
 	/// Tells if the file can be written to by the given UID and GID.
 	pub fn can_write(&self, uid: Uid, gid: Gid) -> bool {
-		if self.uid == uid && self.mode & S_IWUSR != 0 {
+		// If root, bypass checks
+		if uid == 0 || gid == 0 {
 			return true;
 		}
-		if self.gid == gid && self.mode & S_IWGRP != 0 {
+
+		if self.mode & S_IWUSR != 0 && self.uid == uid {
+			return true;
+		}
+		if self.mode & S_IWGRP != 0 && self.gid == gid {
 			return true;
 		}
 		self.mode & S_IWOTH != 0
@@ -335,10 +345,15 @@ impl File {
 
 	/// Tells if the file can be executed by the given UID and GID.
 	pub fn can_execute(&self, uid: Uid, gid: Gid) -> bool {
-		if self.uid == uid && self.mode & S_IXUSR != 0 {
+		// If root, bypass checks
+		if uid == 0 || gid == 0 {
 			return true;
 		}
-		if self.gid == gid && self.mode & S_IXGRP != 0 {
+
+		if self.mode & S_IXUSR != 0 && self.uid == uid {
+			return true;
+		}
+		if self.mode & S_IXGRP != 0 && self.gid == gid {
 			return true;
 		}
 		self.mode & S_IXOTH != 0

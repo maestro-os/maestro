@@ -22,20 +22,31 @@ use crate::process;
 use crate::util::Regs;
 use crate::util::math;
 
-/// Reads the file at the given path `path`.
+/// Reads the file at the given path `path`. If the file is not executable, the function returns an
+/// error.
 fn read_file(path: &Path) -> Result<malloc::Alloc<u8>, Errno> {
 	let mutex = file::get_files_cache();
 	let mut guard = mutex.lock(true);
 	let files_cache = guard.get_mut();
 
+	// Getting the file from path
 	let mut file_mutex = files_cache.get_file_from_path(&path)?;
 	let file_lock = file_mutex.lock(true);
 	let file = file_lock.get();
 
+	// TODO Support users other than root
+	// Check that the file can be executed by the user
+	if !file.can_execute(0, 0) {
+		return Err(errno::ENOEXEC);
+	}
+
+	// Allocating memory for the file's content
 	let len = file.get_size();
 	let mut image = unsafe {
 		malloc::Alloc::new_zero(len as usize)?
 	};
+
+	// Reading the file
 	file.read(0, image.get_slice_mut())?;
 
 	Ok(image)
