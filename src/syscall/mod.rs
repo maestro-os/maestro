@@ -22,6 +22,7 @@ mod init_module;
 mod kill;
 mod mkdir;
 mod mmap;
+mod msync;
 mod munmap;
 mod open;
 mod pipe2;
@@ -67,6 +68,7 @@ use init_module::init_module;
 use kill::kill;
 use mkdir::mkdir;
 use mmap::mmap;
+use msync::msync;
 use munmap::munmap;
 use open::open;
 use pipe2::pipe2;
@@ -172,10 +174,11 @@ pub extern "C" fn syscall_handler(regs: &mut util::Regs) {
 		// TODO mlockall
 		// TODO munlockall
 		// TODO mprotect
-		32 => signal(regs),
-		33 => kill(regs),
+		32 => msync(regs),
+		33 => signal(regs),
+		34 => kill(regs),
 		// TODO pause
-		34 => socketpair(regs),
+		35 => socketpair(regs),
 		// TODO socket
 		// TODO getsockname
 		// TODO getsockopt
@@ -191,11 +194,11 @@ pub extern "C" fn syscall_handler(regs: &mut util::Regs) {
 		// TODO times
 		// TODO gettimeofday
 		// TODO ptrace
-		35 => uname(regs),
-		36 => reboot(regs),
-		37 => init_module(regs),
-		38 => finit_module(regs),
-		39 => delete_module(regs),
+		36 => uname(regs),
+		37 => reboot(regs),
+		38 => init_module(regs),
+		39 => finit_module(regs),
+		40 => delete_module(regs),
 
 		512 => sigreturn(regs),
 

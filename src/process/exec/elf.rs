@@ -178,7 +178,8 @@ impl ELFExecutor {
 }
 
 impl Executor for ELFExecutor {
-	// TODO Create a new mem space, do everything, then replace the old mem space (to ensure the syscall can fail without affecting the process)
+	// TODO Create a new mem space, do everything, then replace the old mem space (to ensure the
+	// syscall can fail without affecting the process)
 	// TODO Ensure there is no way to write in kernel space (check segments position and
 	// relocations)
 	fn exec(&self, process: &mut Process, argv: &[&str], envp: &[&str]) -> Result<(), Errno> {

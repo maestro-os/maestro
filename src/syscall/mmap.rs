@@ -7,7 +7,6 @@ use crate::errno;
 use crate::memory;
 use crate::process::Process;
 use crate::process::mem_space;
-use crate::util::math;
 use crate::util;
 
 /// Data can be read.
@@ -46,17 +45,16 @@ pub fn mmap(regs: &util::Regs) -> Result<i32, Errno> {
 	let length = regs.ecx as usize;
 	let prot = regs.edx as i32;
 	let flags = regs.esi as i32;
-	let _fd = regs.edi as i32;
-	let _offset = regs.ebp as u32;
+	let fd = regs.edi as i32;
+	let offset = regs.ebp as u32;
 
-	let mut mutex = Process::get_current().unwrap();
-	let mut guard = mutex.lock(false);
-	let proc = guard.get_mut();
-	let mem_space = proc.get_mem_space_mut().unwrap();
+	// Checking alignment of `addr` and `length`
+	if !util::is_aligned(addr, memory::PAGE_SIZE) || length % memory::PAGE_SIZE != 0 {
+		return Err(errno::EINVAL);
+	}
 
-	let addr = util::down_align(addr, memory::PAGE_SIZE);
-	let pages = math::ceil_division(length, memory::PAGE_SIZE);
-	let length = pages * memory::PAGE_SIZE;
+	// The length in number of pages
+	let pages = length / memory::PAGE_SIZE;
 
 	// Checking for overflow
 	let end = wrapping_add(addr as usize, length);
@@ -74,7 +72,38 @@ pub fn mmap(regs: &util::Regs) -> Result<i32, Errno> {
 		}
 	};
 
-	let ptr = mem_space.map(addr_hint, pages, get_flags(flags, prot))?;
-	// TODO Handle fd and offset
+	// Getting the current process
+	let mut mutex = Process::get_current().unwrap();
+	let mut guard = mutex.lock(false);
+	let proc = guard.get_mut();
+
+	// The file descriptor used by the mapping
+	let fd = {
+		if fd >= 0 {
+			if let Some(fd) = proc.get_fd(fd as _) {
+				Some(fd.clone())
+			} else {
+				None
+			}
+		} else {
+			None
+		}
+	};
+
+	if let Some(_fd) = &fd {
+		// Checking the alignment of the offset
+		if offset as usize % memory::PAGE_SIZE != 0 {
+			return Err(errno::EINVAL);
+		}
+
+		// TODO Check the read/write state of the fd matches the mapping
+	} else {
+		// TODO If the mapping requires a fd, return an error
+	}
+
+	// The process's memory space
+	let mem_space = proc.get_mem_space_mut().unwrap();
+	// The pointer on the virtual memory to the beginning of the mapping
+	let ptr = mem_space.map(addr_hint, pages, get_flags(flags, prot), fd, offset as _)?;
 	Ok(ptr as _)
 }

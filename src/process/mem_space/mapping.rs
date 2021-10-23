@@ -6,6 +6,7 @@ use core::mem::ManuallyDrop;
 use core::ptr::NonNull;
 use core::ptr;
 use crate::errno::Errno;
+use crate::file::file_descriptor::FileDescriptor;
 use crate::memory::buddy;
 use crate::memory::vmem::VMem;
 use crate::memory::vmem;
@@ -51,7 +52,11 @@ pub struct MemMapping {
 	/// The mapping's flags.
 	flags: u8,
 
-	// TODO fd info
+	/// The file descriptor of the file that mapping points to. If None, the mapping doesn't point
+	/// to any file.
+	fd: Option<FileDescriptor>,
+	/// The offset inside of the file pointed to by the file descriptor.
+	off: usize,
 
 	/// Pointer to the virtual memory context handler.
 	vmem: NonNull<dyn VMem>,
@@ -63,8 +68,12 @@ impl MemMapping {
 	/// must be page-aligned.
 	/// `size` is the size of the mapping in pages. The size must be greater than 0.
 	/// `flags` the mapping's flags
+	/// `fd` is the file descriptor of the file the mapping points to. If None, the mapping doesn't
+	/// point to any file.
+	/// `off` is the offset inside of the file pointed to by the given file descriptor.
 	/// `vmem` is the virtual memory context handler.
-	pub fn new(begin: *const c_void, size: usize, flags: u8, vmem: NonNull::<dyn VMem>) -> Self {
+	pub fn new(begin: *const c_void, size: usize, flags: u8, fd: Option<FileDescriptor>,
+		off: usize, vmem: NonNull<dyn VMem>,) -> Self {
 		debug_assert!(util::is_aligned(begin, memory::PAGE_SIZE));
 		debug_assert!(size > 0);
 
@@ -72,6 +81,9 @@ impl MemMapping {
 			begin,
 			size,
 			flags,
+
+			fd,
+			off,
 
 			vmem,
 		}
@@ -311,13 +323,17 @@ impl MemMapping {
 	/// If the mapping is totaly unmapped, the function returns no new mappings.
 	/// The function doesn't flush the virtual memory context.
 	pub fn partial_unmap(mut self, begin: usize, size: usize) -> (Option<Self>, Option<Self>) {
+		// The mapping located before the gap to be created
 		let prev = {
 			if begin > 0 {
-				Some(Self::new(self.get_begin(), begin, self.flags, self.vmem))
+				Some(Self::new(self.get_begin(), begin, self.flags, self.fd.clone(), self.off,
+					self.vmem))
 			} else {
 				None
 			}
 		};
+
+		// The mapping located after the gap to be created
 		let next = {
 			let end = begin + size;
 
@@ -326,7 +342,9 @@ impl MemMapping {
 					self.get_begin().add(end * memory::PAGE_SIZE)
 				};
 				let gap_size = self.size - end;
-				Some(Self::new(gap_begin, gap_size, self.flags, self.vmem))
+
+				Some(Self::new(gap_begin, gap_size, self.flags, self.fd.clone(), self.off,
+					self.vmem))
 			} else {
 				None
 			}
@@ -380,6 +398,9 @@ impl MemMapping {
 			size: self.size,
 			flags: self.flags,
 
+			fd: self.fd.clone(),
+			off: self.off,
+
 			vmem: NonNull::new(mem_space.get_vmem().as_mut()).unwrap(),
 		};
 		let nolazy = (new_mapping.get_flags() & super::MAPPING_FLAG_NOLAZY) != 0;
@@ -408,6 +429,17 @@ impl MemMapping {
 		}
 
 		mem_space.mappings.insert(new_mapping.get_begin(), new_mapping)
+	}
+
+	/// Synchronizes the data on the memory mapping back to the filesystem. If the mapping is not
+	/// associated with a file, the function does nothing.
+	pub fn fs_sync(&mut self) -> Result<(), Errno> {
+		if let Some(_fd) = &self.fd {
+			// TODO
+			todo!();
+		}
+
+		Ok(())
 	}
 }
 
