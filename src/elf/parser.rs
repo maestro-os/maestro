@@ -346,10 +346,10 @@ impl<'a> ELFParser<'a> {
 	pub fn get_interpreter_path(&self) -> Option<&[u8]> {
 		let mut path: Option<&[u8]> = None;
 
-		self.foreach_sections(| _, section | {
-			if section.sh_type == PT_INTERP {
-				let begin = section.sh_offset as usize;
-				let end = (section.sh_offset + section.sh_size) as usize;
+		self.foreach_segments(| segment | {
+			if segment.p_type == PT_INTERP {
+				let begin = segment.p_offset as usize;
+				let end = (segment.p_offset + segment.p_filesz) as usize;
 				// TODO Ensure the slice doesn't exceed the size of the image
 				path = Some(&self.image[begin..end]);
 

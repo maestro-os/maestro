@@ -70,11 +70,11 @@ void test_process(void)
 
 	// Fork bomb
 
-	//while (1)
-	//{
-	//	print_nbr(getpid());
-	//	fork();
-	//}
+	while (1)
+	{
+		print_nbr(getpid());
+		fork();
+	}
 
 
 
@@ -229,12 +229,12 @@ void test_process(void)
 
 	// Testing kernel module loading from disk
 
-	int fd = open("/lib/e1000.kmod", 0b11);
-	if (fd < 0) {
-		write(1, "Error\n", 6);
-	} else {
-		print_nbr(finit_module(fd));
-	}
+	//int fd = open("/lib/e1000.kmod", 0b11);
+	//if (fd < 0) {
+	//	write(1, "Error\n", 6);
+	//} else {
+	//	print_nbr(finit_module(fd));
+	//}
 
 	while(1)
 		;

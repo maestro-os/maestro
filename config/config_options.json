@@ -64,6 +64,18 @@
 				"suboptions": []
 			},
 			{
+				"name": "testprocess",
+				"display_name": "Test process",
+				"desc": "Runs the integrated test process instead of loading an executable from the disk",
+				"option_type": "bool",
+				"values": [],
+				"value": "false",
+				"deps": [
+					"debug_debug"
+				],
+				"suboptions": []
+			},
+			{
 				"name": "storagetest",
 				"display_name": "Storage testing",
 				"desc": "Tests all attached storage devices and their drives. **WARNING**: This option will erase all data on all storage devices",

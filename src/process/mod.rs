@@ -656,6 +656,11 @@ impl Process {
 		self.regs = *regs;
 	}
 
+	/// Sets the pointer for the program counter.
+	pub fn set_program_counter(&mut self, ptr: *const c_void) {
+		self.regs.eip = ptr as _;
+	}
+
 	/// Tells whether the process was syscalling before being interrupted.
 	#[inline(always)]
 	pub fn is_syscalling(&self) -> bool {

@@ -180,34 +180,38 @@ extern "C" {
 	fn test_process();
 }
 
-/// Launches the init process.
-fn init() -> Result<(), &'static str> {
-	// TODO Add a compilation option to enable test process
-	//let test_begin = unsafe {
-	//	core::mem::transmute::<unsafe extern "C" fn(), *const c_void>(test_process)
-	//};
-	//if Process::new_init(test_begin).is_err() {
-	//	kernel_panic!("Failed to create init process!", 0);
-	//}
-
-	let mut mutex = Process::new().or(Err("Failed to create init process!"))?;
-	let mut lock = mutex.lock(false);
-	let proc = lock.get_mut();
-
-	let path = Path::from_string(INIT_PATH, false).or(Err("Unknown error"))?;
-	let result = exec(proc, &path, &[INIT_PATH], DEFAULT_ENVIRONMENT);
-	if result.is_ok() {
-		return Ok(());
-	}
-
-	let err_str = match result.unwrap_err() {
+/// Returns the error message for the given errno for init process execution.
+fn get_init_error_message(errno: Errno) -> &'static str {
+	match errno {
 		errno::ENOENT => "Cannot find init process binary!",
 		errno::ENOEXEC => "Init file is not executable!",
 		errno::ENOMEM => "Not enough memory to run the init process!",
 
 		_ => "Unknown error",
-	};
-	Err(err_str)
+	}
+}
+
+/// Launches the init process.
+fn init() -> Result<(), &'static str> {
+	let mut mutex = Process::new().or(Err("Failed to create init process!"))?;
+	let mut lock = mutex.lock(false);
+	let proc = lock.get_mut();
+
+	if cfg!(config_debug_testprocess) {
+		// The pointer to the beginning of the test process
+		let test_begin = unsafe {
+			core::mem::transmute::<unsafe extern "C" fn(), *const c_void>(test_process)
+		};
+
+		proc.set_program_counter(test_begin);
+		Ok(())
+	} else {
+		let path = Path::from_string(INIT_PATH, false).or(Err("Unknown error"))?;
+		match exec(proc, &path, &[INIT_PATH], DEFAULT_ENVIRONMENT) {
+			Ok(_) => Ok(()),
+			Err(errno) => Err(get_init_error_message(errno)),
+		}
+	}
 }
 
 /// This is the main function of the Rust source code, responsible for the initialization of the
