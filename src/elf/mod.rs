@@ -10,6 +10,7 @@ use core::cmp::min;
 use core::ffi::c_void;
 use core::mem::size_of;
 use crate::memory;
+use crate::process::mem_space;
 use crate::util::math;
 use crate::util;
 
@@ -83,6 +84,13 @@ pub const PT_NOTE: u32 = 4;
 pub const PT_SHLIB: u32 = 5;
 /// Program header type: The program header table itself.
 pub const PT_PHDR: u32 = 6;
+
+/// Segment flag: Execute.
+pub const PF_X: u32 = 0x1;
+/// Segment flag: Write.
+pub const PF_W: u32 = 0x2;
+/// Segment flag: Read.
+pub const PF_R: u32 = 0x4;
 
 /// The section header is inactive.
 pub const SHT_NULL: u32 = 0x00000000;
@@ -244,6 +252,20 @@ impl ELF32ProgramHeader {
 		}
 
 		true
+	}
+
+	/// Returns the flags to map the current segment into a process's memory space.
+	pub fn get_mem_space_flags(&self) -> u8 {
+		let mut flags = mem_space::MAPPING_FLAG_USER;
+
+		if self.p_flags & PF_X != 0 {
+			flags |= mem_space::MAPPING_FLAG_EXEC;
+		}
+		if self.p_flags & PF_W != 0 {
+			flags |= mem_space::MAPPING_FLAG_WRITE;
+		}
+
+		flags
 	}
 }
 

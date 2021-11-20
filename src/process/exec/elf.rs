@@ -178,8 +178,6 @@ impl ELFExecutor {
 }
 
 impl Executor for ELFExecutor {
-	// TODO Create a new mem space, do everything, then replace the old mem space (to ensure the
-	// syscall can fail without affecting the process)
 	// TODO Ensure there is no way to write in kernel space (check segments position and
 	// relocations)
 	fn exec(&self, process: &mut Process, argv: &[&str], envp: &[&str]) -> Result<(), Errno> {
@@ -191,8 +189,10 @@ impl Executor for ELFExecutor {
 		// The top of the user stack
 		let user_stack = process.user_stack;
 
-		// The current process's memory space
+		// TODO Create a new mem space, do everything, then replace the old mem space (to ensure
+		// the syscall can fail without affecting the process)
 		debug_assert!(process.mem_space.is_some());
+		// The current process's memory space
 		let mem_space = process.mem_space.as_mut().unwrap();
 
 		if let Some(interpreter_path) = parser.get_interpreter_path() {
@@ -204,26 +204,50 @@ impl Executor for ELFExecutor {
 		// The base at which the program is loaded
 		let load_base = memory::PAGE_SIZE as *mut u8; // TODO Support ASLR
 
+		// Stores a result for the next iteration to allow the transmition of errors
+		let mut result: Result<*const c_void, Errno> = Ok(ptr::null());
 		// Allocating memory for segments
 		parser.foreach_segments(| seg | {
 			if seg.p_type != elf::PT_NULL {
+				// The pointer to the beginning of the segment in the virtual memory
+				let begin = unsafe {
+					load_base.add(seg.p_vaddr as usize)
+				};
+
+				// The length of the segment in bytes
 				let len = min(seg.p_memsz, seg.p_filesz) as usize;
-				let _pages = math::ceil_division(len, memory::PAGE_SIZE);
-				// TODO Map in mem_space
+				// The length of the segment in pages
+				let pages = math::ceil_division(len, memory::PAGE_SIZE);
+
+				// The mapping's flags
+				let flags = seg.get_mem_space_flags();
+
+				result = mem_space.map(Some(begin as _), pages, flags, None, 0);
 			}
 
-			true
+			// Break the iteration on error
+			result.is_ok()
 		});
+		result?;
+
 		mem_space.get_vmem().flush();
 
+		// Switching to the process's vmem to write onto the virtual memory
 		vmem::switch(mem_space.get_vmem().as_ref(), || {
+			// Copying the segments' content into the virtual memory
 			parser.foreach_segments(| seg | {
 				if seg.p_type != elf::PT_NULL {
+					// The pointer to the beginning of the segment in the file
+					let file_begin = &self.image[seg.p_offset as usize];
+					// The pointer to the beginning of the segment in the virtual memory
+					let begin = unsafe {
+						load_base.add(seg.p_vaddr as usize)
+					};
+					// The length of the segment in bytes
 					let len = min(seg.p_memsz, seg.p_filesz) as usize;
-					unsafe { // Safe because the module ELF image is valid
-						ptr::copy_nonoverlapping(&self.image[seg.p_offset as usize],
-							load_base.add(seg.p_vaddr as usize),
-							len);
+
+					unsafe { // Safe because the module ELF image is valid at this point
+						ptr::copy_nonoverlapping(file_begin, begin, len);
 					}
 				}
 

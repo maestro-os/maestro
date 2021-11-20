@@ -168,13 +168,13 @@ impl MemSpace {
 	/// memory is detected.
 	/// The function returns a pointer to the newly mapped virtual memory.
 	/// The function has complexity `O(log n)`.
-	pub fn map(&mut self, _ptr: Option<*const c_void>, size: usize, flags: u8,
+	pub fn map(&mut self, ptr: Option<*const c_void>, size: usize, flags: u8,
 		fd: Option<FileDescriptor>, off: usize) -> Result<*const c_void, Errno> {
-		//if let Some(_ptr) = ptr {
-			// TODO Insert mapping at exact location if possible
-			// Err(errno::ENOMEM)
-			//todo!();
-		//} else {
+		if let Some(_ptr) = ptr {
+			// TODO Insert mapping at exact location
+
+			Err(errno::ENOMEM)
+		} else {
 			// Getting a gap large enough
 			let gap = Self::gap_get(&mut self.gaps, &mut self.gaps_size, size);
 			if gap.is_none() {
@@ -208,7 +208,7 @@ impl MemSpace {
 			self.gap_remove(gap_ptr);
 
 			Ok(mapping_ptr)
-		//}
+		}
 	}
 
 	/// Same as `map`, except the function returns a pointer to the end of the memory mapping.
