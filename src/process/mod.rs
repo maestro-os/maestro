@@ -632,6 +632,12 @@ impl Process {
 		self.mem_space.as_mut()
 	}
 
+	/// Sets the new memory space for the process, dropping the previous if any.
+	#[inline(always)]
+	pub fn set_mem_space(&mut self, mem_space: Option<MemSpace>) {
+		self.mem_space = mem_space;
+	}
+
 	/// Returns a reference to the process's current working directory.
 	#[inline(always)]
 	pub fn get_cwd(&self) -> &Path {

@@ -10,6 +10,8 @@ use crate::elf::relocation::Relocation;
 use crate::elf;
 use crate::errno::Errno;
 use crate::errno;
+use crate::file::Gid;
+use crate::file::Uid;
 use crate::file::path::Path;
 use crate::file;
 use crate::memory::malloc;
@@ -24,7 +26,9 @@ use crate::util::math;
 
 /// Reads the file at the given path `path`. If the file is not executable, the function returns an
 /// error.
-fn read_file(path: &Path) -> Result<malloc::Alloc<u8>, Errno> {
+/// `uid` is the User ID of the executing user.
+/// `gid` is the Group ID of the executing user.
+fn read_exec_file(path: &Path, uid: Uid, gid: Gid) -> Result<malloc::Alloc<u8>, Errno> {
 	let mutex = file::get_files_cache();
 	let mut guard = mutex.lock(true);
 	let files_cache = guard.get_mut();
@@ -34,9 +38,8 @@ fn read_file(path: &Path) -> Result<malloc::Alloc<u8>, Errno> {
 	let file_lock = file_mutex.lock(true);
 	let file = file_lock.get();
 
-	// TODO Support users other than root
 	// Check that the file can be executed by the user
-	if !file.can_execute(0, 0) {
+	if !file.can_execute(uid, gid) {
 		return Err(errno::ENOEXEC);
 	}
 
@@ -61,9 +64,11 @@ pub struct ELFExecutor {
 impl ELFExecutor {
 	/// Creates a new instance to execute the given program.
 	/// `path` is the path to the program.
-	pub fn new(path: &Path) -> Result<Self, Errno> {
+	/// `uid` is the User ID of the executing user.
+	/// `gid` is the Group ID of the executing user.
+	pub fn new(path: &Path, uid: Uid, gid: Gid) -> Result<Self, Errno> {
 		Ok(Self {
-			image: read_file(path)?,
+			image: read_exec_file(path, uid, gid)?,
 		})
 	}
 
@@ -169,8 +174,11 @@ impl ELFExecutor {
 	/// `mem_space` is the memory space on which the interpreter is loaded.
 	/// `interp` is the path to the interpreter.
 	/// If the memory space is not bound, the behaviour is undefined.
-	fn load_interpreter(&self, _mem_space: &mut MemSpace, interp: &Path) -> Result<(), Errno> {
-		let _image = read_file(interp)?;
+	/// `uid` is the User ID of the executing user.
+	/// `gid` is the Group ID of the executing user.
+	fn load_interpreter(&self, _mem_space: &mut MemSpace, uid: Uid, gid: Gid, interp: &Path)
+		-> Result<(), Errno> {
+		let _image = read_exec_file(interp, uid, gid)?;
 
 		// TODO
 		Ok(())
@@ -189,16 +197,15 @@ impl Executor for ELFExecutor {
 		// The top of the user stack
 		let user_stack = process.user_stack;
 
-		// TODO Create a new mem space, do everything, then replace the old mem space (to ensure
-		// the syscall can fail without affecting the process)
-		debug_assert!(process.mem_space.is_some());
-		// The current process's memory space
-		let mem_space = process.mem_space.as_mut().unwrap();
+		// The process's new memory space
+		let mut mem_space = MemSpace::new()?;
 
+		// Loading the interpreter, if any
 		if let Some(interpreter_path) = parser.get_interpreter_path() {
 			let interpreter_path_str = str::from_utf8(interpreter_path).or(Err(errno::EINVAL))?;
 			let interpreter_path = Path::from_string(interpreter_path_str, true)?;
-			self.load_interpreter(mem_space, &interpreter_path)?;
+			self.load_interpreter(&mut mem_space, process.get_euid(), process.get_egid(),
+				&interpreter_path)?;
 		}
 
 		// The base at which the program is loaded
@@ -284,6 +291,9 @@ impl Executor for ELFExecutor {
 
 			self.init_stack(user_stack, argv, envp);
 		});
+
+		// Sets the new memory space to the process
+		process.set_mem_space(Some(mem_space));
 
 		// TODO Reset signals, etc...
 

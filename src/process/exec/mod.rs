@@ -26,6 +26,6 @@ pub fn exec(process: &mut Process, path: &Path, argv: &[&str], envp: &[&str])
 
 	// TODO Support other formats than ELF (wasm?)
 
-	let exec = elf::ELFExecutor::new(path)?;
+	let exec = elf::ELFExecutor::new(path, process.get_euid(), process.get_egid())?;
 	exec.exec(process, argv, envp)
 }
