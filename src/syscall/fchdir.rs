@@ -5,10 +5,10 @@ use crate::errno;
 use crate::file::FileType;
 use crate::file::file_descriptor::FDTarget;
 use crate::process::Process;
-use crate::util;
+use crate::process::Regs;
 
 /// The implementation of the `fchdir` syscall.
-pub fn fchdir(regs: &util::Regs) -> Result<i32, Errno> {
+pub fn fchdir(regs: &Regs) -> Result<i32, Errno> {
 	let fd = regs.ebx as i32;
 
 	let mut mutex = Process::get_current().unwrap();

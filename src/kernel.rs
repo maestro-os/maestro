@@ -185,7 +185,7 @@ fn get_init_error_message(errno: Errno) -> &'static str {
 	match errno {
 		errno::ENOENT => "Cannot find init process binary!",
 		errno::ENOEXEC => "Init file is not executable!",
-		errno::ENOMEM => "Not enough memory to run the init process!",
+		errno::ENOMEM => "Cannot allocate memory to run the init process!",
 
 		_ => "Unknown error",
 	}

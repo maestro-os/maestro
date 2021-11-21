@@ -3,10 +3,10 @@
 use crate::errno::Errno;
 use crate::errno;
 use crate::process::Process;
-use crate::util;
+use crate::process::Regs;
 
 /// The implementation of the `delete_module` syscall.
-pub fn delete_module(regs: &util::Regs) -> Result<i32, Errno> {
+pub fn delete_module(regs: &Regs) -> Result<i32, Errno> {
 	let _name = regs.ebx as *const u8;
 
 	{

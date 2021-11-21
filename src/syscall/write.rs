@@ -6,13 +6,13 @@ use crate::errno::Errno;
 use crate::errno;
 use crate::file::file_descriptor::O_NONBLOCK;
 use crate::process::Process;
-use crate::util;
+use crate::process::Regs;
 
 // TODO Return EPIPE and kill with SIGPIPE when writing on a broken pipe
 // TODO O_ASYNC
 
 /// The implementation of the `write` syscall.
-pub fn write(regs: &util::Regs) -> Result<i32, Errno> {
+pub fn write(regs: &Regs) -> Result<i32, Errno> {
 	let fd = regs.ebx;
 	let buf = regs.ecx as *const u8;
 	let count = regs.edx as usize;

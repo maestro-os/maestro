@@ -14,7 +14,7 @@ use crate::event::{CallbackHook, InterruptResult, InterruptResultAction};
 use crate::event;
 use crate::idt;
 use crate::io;
-use crate::util;
+use crate::process::Regs;
 
 /// The interrupt number for keyboard input events.
 const KEYBOARD_INTERRUPT_ID: usize = 33;
@@ -440,7 +440,7 @@ impl PS2Keyboard {
 			set_config_byte(get_config_byte() | 0b1);
 			clear_buffer();
 
-			let callback = | _id: u32, _code: u32, _regs: &util::Regs, _ring: u32 | {
+			let callback = | _id: u32, _code: u32, _regs: &Regs, _ring: u32 | {
 				while can_read() {
 					let (key, action) = read_keystroke();
 					handle_input(key, action);

@@ -2,10 +2,10 @@
 
 use crate::errno::Errno;
 use crate::process::Process;
-use crate::util;
+use crate::process::Regs;
 
 /// The implementation of the `umask` syscall.
-pub fn umask(regs: &util::Regs) -> Result<i32, Errno> {
+pub fn umask(regs: &Regs) -> Result<i32, Errno> {
 	let mask = regs.ebx as u16;
 
 	let mut mutex = Process::get_current().unwrap();

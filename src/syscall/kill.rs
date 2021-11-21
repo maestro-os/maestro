@@ -5,12 +5,12 @@ use crate::errno;
 use crate::file::Uid;
 use crate::gdt;
 use crate::process::Process;
+use crate::process::Regs;
 use crate::process::State;
 use crate::process::pid::Pid;
 use crate::process::scheduler;
 use crate::process::signal::Signal;
 use crate::process;
-use crate::util;
 
 /// Tries to kill the process with PID `pid` with the signal `sig`.
 /// `euid` is the effective user ID of the sender process.
@@ -158,7 +158,7 @@ fn handle_state() {
 }
 
 /// The implementation of the `kill` syscall.
-pub fn kill(regs: &util::Regs) -> Result<i32, Errno> {
+pub fn kill(regs: &Regs) -> Result<i32, Errno> {
 	let pid = regs.ebx as i32;
 	let sig = regs.ecx as i32;
 

@@ -2,10 +2,10 @@
 
 use crate::errno::Errno;
 use crate::process::Process;
-use crate::util;
+use crate::process::Regs;
 
 /// The implementation of the `dup` syscall.
-pub fn dup(regs: &util::Regs) -> Result<i32, Errno> {
+pub fn dup(regs: &Regs) -> Result<i32, Errno> {
 	let oldfd = regs.ebx;
 
 	let mut mutex = Process::get_current().unwrap();

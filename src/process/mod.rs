@@ -11,6 +11,7 @@ pub mod signal;
 pub mod tss;
 
 use core::ffi::c_void;
+use core::fmt;
 use core::mem::ManuallyDrop;
 use core::mem::MaybeUninit;
 use crate::errno::Errno;
@@ -27,14 +28,12 @@ use crate::file;
 use crate::limits;
 use crate::memory::vmem;
 use crate::util::FailableClone;
-use crate::util::Regs;
 use crate::util::container::bitfield::Bitfield;
 use crate::util::container::vec::Vec;
 use crate::util::lock::mutex::*;
 use crate::util::ptr::SharedPtr;
 use crate::util::ptr::WeakPtr;
 use mem_space::MemSpace;
-use mem_space::{MAPPING_FLAG_WRITE, MAPPING_FLAG_USER, MAPPING_FLAG_NOLAZY};
 use pid::PIDManager;
 use pid::Pid;
 use scheduler::Scheduler;
@@ -42,15 +41,6 @@ use signal::Signal;
 use signal::SignalAction;
 use signal::SignalHandler;
 use signal::SignalType;
-
-/// The size of the userspace stack of a process in number of pages.
-const USER_STACK_SIZE: usize = 2048;
-/// The flags for the userspace stack mapping.
-const USER_STACK_FLAGS: u8 = MAPPING_FLAG_WRITE | MAPPING_FLAG_USER;
-/// The size of the kernelspace stack of a process in number of pages.
-const KERNEL_STACK_SIZE: usize = 64;
-/// The flags for the kernelspace stack mapping.
-const KERNEL_STACK_FLAGS: u8 = MAPPING_FLAG_WRITE | MAPPING_FLAG_NOLAZY;
 
 /// The default value of the eflags register.
 const DEFAULT_EFLAGS: u32 = 0x1202;
@@ -70,6 +60,59 @@ const STDIN_FILENO: u32 = 0;
 const STDOUT_FILENO: u32 = 1;
 /// The file descriptor number of the standard error stream.
 const STDERR_FILENO: u32 = 2;
+
+/// Structure representing the list of registers for a context. The content of this structure
+/// depends on the architecture for which the kernel is compiled.
+#[derive(Clone, Copy, Debug)]
+#[repr(C, packed)]
+//#[cfg(config_general_arch = "x86")]
+pub struct Regs {
+	pub ebp: u32,
+	pub esp: u32,
+	pub eip: u32,
+	pub eflags: u32,
+	pub eax: u32,
+	pub ebx: u32,
+	pub ecx: u32,
+	pub edx: u32,
+	pub esi: u32,
+	pub edi: u32,
+}
+
+impl Default for Regs {
+	fn default() -> Self {
+		Self {
+			ebp: 0x0,
+			esp: 0x0,
+			eip: 0x0,
+			eflags: DEFAULT_EFLAGS,
+			eax: 0x0,
+			ebx: 0x0,
+			ecx: 0x0,
+			edx: 0x0,
+			esi: 0x0,
+			edi: 0x0,
+		}
+	}
+}
+
+impl fmt::Display for Regs {
+	//#[cfg(config_general_arch = "x86")]
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		write!(f, "ebp: {:p} esp: {:p} eip: {:p} eflags: {:p} eax: {:p}\n
+ebx: {:p} ecx: {:p} edx: {:p} esi: {:p} edi: {:p}\n",
+			self.ebp as *const c_void,
+			self.esp as *const c_void,
+			self.eip as *const c_void,
+			self.eflags as *const c_void,
+			self.eax as *const c_void,
+			self.ebx as *const c_void,
+			self.ecx as *const c_void,
+			self.edx as *const c_void,
+			self.esi as *const c_void,
+			self.edi as *const c_void)
+	}
+}
 
 /// An enumeration containing possible states for a process.
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -135,11 +178,10 @@ pub struct Process {
 
 	/// The virtual memory of the process containing every mappings.
 	mem_space: Option<MemSpace>,
-
 	/// A pointer to the userspace stack.
-	user_stack: *const c_void,
+	user_stack: Option<*const c_void>,
 	/// A pointer to the kernelspace stack.
-	kernel_stack: *const c_void,
+	kernel_stack: Option<*const c_void>,
 
 	/// The current working directory.
 	cwd: Path,
@@ -318,10 +360,6 @@ impl Process {
 	/// Creates the init process and places it into the scheduler's queue. The process is set to
 	/// state `Running` by default.
 	pub fn new() -> Result<SharedPtr<Self>, Errno> {
-		let mut mem_space = MemSpace::new()?;
-		let user_stack = mem_space.map_stack(None, USER_STACK_SIZE, USER_STACK_FLAGS)?;
-		let kernel_stack = mem_space.map_stack(None, KERNEL_STACK_SIZE, KERNEL_STACK_FLAGS)?;
-
 		let mut process = Self {
 			pid: pid::INIT_PID,
 			pgid: pid::INIT_PID,
@@ -342,28 +380,16 @@ impl Process {
 			children: Vec::new(),
 			process_group: Vec::new(),
 
-			regs: Regs {
-				ebp: 0x0,
-				esp: user_stack as _,
-				eip: 0x0,
-				eflags: DEFAULT_EFLAGS,
-				eax: 0x0,
-				ebx: 0x0,
-				ecx: 0x0,
-				edx: 0x0,
-				esi: 0x0,
-				edi: 0x0,
-			},
+			regs: Regs::default(),
 			syscalling: false,
 
 			handled_signal: None,
 			saved_regs: Regs::default(),
 			waitable: false,
 
-			mem_space: Some(mem_space),
-
-			user_stack,
-			kernel_stack,
+			mem_space: None,
+			user_stack: None,
+			kernel_stack: None,
 
 			cwd: Path::root(),
 			file_descriptors: Vec::new(),

@@ -3,11 +3,11 @@
 
 use crate::gdt;
 use crate::process::Process;
+use crate::process::Regs;
 use crate::process::scheduler;
-use crate::util;
 
 /// The implementation of the `sigreturn` syscall.
-pub fn sigreturn(_regs: &util::Regs) -> ! {
+pub fn sigreturn(_regs: &Regs) -> ! {
 	cli!();
 
 	let mut mutex = Process::get_current().unwrap();

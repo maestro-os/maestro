@@ -2,10 +2,10 @@
 //! inode, the function also removes the inode.
 
 use crate::errno::Errno;
-use crate::util;
+use crate::process::Regs;
 
 /// The implementation of the `unlink` syscall.
-pub fn unlink(_regs: &util::Regs) -> Result<i32, Errno> {
+pub fn unlink(_regs: &Regs) -> Result<i32, Errno> {
 	// TODO
 	todo!();
 }

@@ -101,10 +101,10 @@ impl MemSpace {
 	/// `gaps_size` is the binary tree storing pointers to gaps, sorted by gap sizes.
 	/// `size` is the minimum size of the gap.
 	/// If no gap large enough is available, the function returns None.
-	fn gap_get<'a>(gaps: &'a mut BinaryTree<*const c_void, MemGap>,
-		gaps_size: &mut BinaryTree<usize, *const c_void>, size: usize) -> Option<&'a mut MemGap> {
+	fn gap_get<'a>(gaps: &'a BinaryTree<*const c_void, MemGap>, gaps_size: &BinaryTree<usize,
+		*const c_void>, size: usize) -> Option<&'a MemGap> {
 		let ptr = gaps_size.get_min(size)?.1;
-		let gap = gaps.get_mut(*ptr).unwrap();
+		let gap = gaps.get(*ptr).unwrap();
 		debug_assert!(gap.get_size() >= size);
 
 		Some(gap)
@@ -131,7 +131,7 @@ impl MemSpace {
 	}
 
 	/// Returns a new binary tree containing the default gaps for a memory space.
-	fn create_default_gaps(&mut self) -> Result::<(), Errno> {
+	fn create_default_gaps(&mut self) -> Result<(), Errno> {
 		let begin = memory::ALLOC_BEGIN;
 		let size = (memory::PROCESS_END as usize - begin as usize) / memory::PAGE_SIZE;
 		self.gap_insert(MemGap::new(begin, size))
@@ -163,52 +163,77 @@ impl MemSpace {
 	/// `size` represents the size of the mapping in number of memory pages.
 	/// `flags` represents the flags for the mapping.
 	/// `fd` is the file descriptor pointing to the file to map to.
-	/// `off` is the offset in bytes into the file.
+	/// `fd_off` is the offset in bytes into the file.
 	/// The underlying physical memory is not allocated directly but only an attempt to write the
 	/// memory is detected.
 	/// The function returns a pointer to the newly mapped virtual memory.
 	/// The function has complexity `O(log n)`.
 	pub fn map(&mut self, ptr: Option<*const c_void>, size: usize, flags: u8,
-		fd: Option<FileDescriptor>, off: usize) -> Result<*const c_void, Errno> {
-		if let Some(_ptr) = ptr {
-			// TODO Insert mapping at exact location
+		fd: Option<FileDescriptor>, fd_off: usize) -> Result<*const c_void, Errno> {
+		if size <= 0 {
+			return Err(errno::EINVAL);
+		}
 
-			Err(errno::ENOMEM)
-		} else {
-			// Getting a gap large enough
-			let gap = Self::gap_get(&mut self.gaps, &mut self.gaps_size, size);
-			if gap.is_none() {
-				return Err(errno::ENOMEM);
-			}
+		// The gap to use and the offset in said gap
+		let (gap, off) = {
+			if let Some(ptr) = ptr {
+				// Unmapping memory previously mapped at this location
+				self.unmap(ptr, size)?; // FIXME Must be undone on fail
 
-			let gap = gap.unwrap();
-			let gap_ptr = gap.get_begin();
+				// Getting the gap for the pointer
+				let gap = Self::gap_by_ptr(&self.gaps, ptr).ok_or(errno::ENOMEM)?;
 
-			// Creating the mapping
-			let mapping = MemMapping::new(gap_ptr, size, flags, fd, off,
-				NonNull::new(self.vmem.as_mut_ptr()).unwrap());
-			let mapping_ptr = mapping.get_begin();
-			let m = self.mappings.insert(mapping_ptr, mapping)?;
-
-			// Mapping the default page
-			if m.map_default().is_err() {
-				self.mappings.remove(mapping_ptr);
-				return Err(errno::ENOMEM);
-			}
-
-			// Splitting the old gap to fit the mapping
-			if let Some(new_gap) = gap.consume(size) {
-				if self.gap_insert(new_gap).is_err() {
-					self.mappings.remove(mapping_ptr);
+				// The offset in the gap
+				let off = (gap.get_begin() as usize - ptr as usize) / memory::PAGE_SIZE;
+				if size > gap.get_size() - off {
 					return Err(errno::ENOMEM);
 				}
+
+				(gap, off)
+			} else {
+				// Getting a gap large enough
+				let gap = Self::gap_get(&self.gaps, &self.gaps_size, size).ok_or(errno::ENOMEM)?;
+
+				(gap, 0)
+			}
+		};
+
+		// The address to the beginning of the mapping
+		let addr = (gap.get_begin() as usize + off * memory::PAGE_SIZE) as _;
+
+		// FIXME Adjust size to non-aligned memory addresses
+		// Creating the mapping
+		let mapping = MemMapping::new(addr, size, flags, fd, fd_off,
+			NonNull::new(self.vmem.as_mut_ptr()).unwrap());
+		let mapping_ptr = mapping.get_begin();
+		let m = self.mappings.insert(mapping_ptr, mapping)?;
+
+		// Mapping the default page
+		if m.map_default().is_err() {
+			self.mappings.remove(mapping_ptr);
+			return Err(errno::ENOMEM);
+		}
+
+		// Splitting the old gap to fit the mapping
+		let (left_gap, right_gap) = gap.consume(0, size);
+
+		// Removing the old gap
+		let gap_begin = gap.get_begin();
+		self.gap_remove(gap_begin);
+
+		// Inserting the new gaps
+		oom::wrap(|| {
+			if let Some(new_gap) = &left_gap {
+				self.gap_insert(new_gap.clone())?;
+			}
+			if let Some(new_gap) = &right_gap {
+				self.gap_insert(new_gap.clone())?;
 			}
 
-			// Removing the old gap
-			self.gap_remove(gap_ptr);
+			Ok(())
+		});
 
-			Ok(mapping_ptr)
-		}
+		Ok(mapping_ptr)
 	}
 
 	/// Same as `map`, except the function returns a pointer to the end of the memory mapping.
@@ -323,6 +348,10 @@ impl MemSpace {
 	/// If `ptr` is not aligned, the behaviour is undefined.
 	pub fn unmap(&mut self, ptr: *const c_void, size: usize) -> Result<(), Errno> {
 		debug_assert!(util::is_aligned(ptr, memory::PAGE_SIZE));
+
+		if size <= 0 {
+			return Ok(());
+		}
 
 		// Removing every regions in the chunk to unmap
 		let mut i = 0;

@@ -2,9 +2,9 @@
 
 use crate::errno::Errno;
 use crate::errno;
-use crate::util;
+use crate::process::Regs;
 
 /// The implementation of the `brk` syscall.
-pub fn brk(_regs: &util::Regs) -> Result<i32, Errno> {
+pub fn brk(_regs: &Regs) -> Result<i32, Errno> {
 	Err(errno::ENOMEM)
 }

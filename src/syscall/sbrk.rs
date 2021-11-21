@@ -2,9 +2,9 @@
 
 use crate::errno::Errno;
 use crate::errno;
-use crate::util;
+use crate::process::Regs;
 
 /// The implementation of the `sbrk` syscall.
-pub fn sbrk(_regs: &util::Regs) -> Result<i32, Errno> {
+pub fn sbrk(_regs: &Regs) -> Result<i32, Errno> {
 	Err(errno::ENOMEM)
 }

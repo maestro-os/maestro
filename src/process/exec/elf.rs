@@ -18,11 +18,21 @@ use crate::memory::malloc;
 use crate::memory::vmem;
 use crate::memory;
 use crate::process::Process;
+use crate::process::Regs;
 use crate::process::exec::Executor;
 use crate::process::mem_space::MemSpace;
+use crate::process::mem_space::{MAPPING_FLAG_WRITE, MAPPING_FLAG_USER, MAPPING_FLAG_NOLAZY};
 use crate::process;
-use crate::util::Regs;
 use crate::util::math;
+
+/// The size of the userspace stack of a process in number of pages.
+const USER_STACK_SIZE: usize = 2048;
+/// The flags for the userspace stack mapping.
+const USER_STACK_FLAGS: u8 = MAPPING_FLAG_WRITE | MAPPING_FLAG_USER;
+/// The size of the kernelspace stack of a process in number of pages.
+const KERNEL_STACK_SIZE: usize = 64;
+/// The flags for the kernelspace stack mapping.
+const KERNEL_STACK_FLAGS: u8 = MAPPING_FLAG_WRITE | MAPPING_FLAG_NOLAZY;
 
 /// Reads the file at the given path `path`. If the file is not executable, the function returns an
 /// error.
@@ -194,9 +204,6 @@ impl Executor for ELFExecutor {
 		// Parsing the ELF file
 		let parser = ELFParser::new(self.image.get_slice())?;
 
-		// The top of the user stack
-		let user_stack = process.user_stack;
-
 		// The process's new memory space
 		let mut mem_space = MemSpace::new()?;
 
@@ -229,13 +236,21 @@ impl Executor for ELFExecutor {
 				// The mapping's flags
 				let flags = seg.get_mem_space_flags();
 
-				result = mem_space.map(Some(begin as _), pages, flags, None, 0);
+				if pages > 0 {
+					result = mem_space.map(Some(begin as _), pages, flags, None, 0);
+				}
 			}
 
 			// Break the iteration on error
 			result.is_ok()
 		});
 		result?;
+
+		// TODO Allocate a user and kernel stack
+		// The user stack
+		let user_stack = mem_space.map_stack(None, USER_STACK_SIZE, USER_STACK_FLAGS)?;
+		// The kernel stack
+		let kernel_stack = mem_space.map_stack(None, KERNEL_STACK_SIZE, KERNEL_STACK_FLAGS)?;
 
 		mem_space.get_vmem().flush();
 
@@ -254,7 +269,9 @@ impl Executor for ELFExecutor {
 					let len = min(seg.p_memsz, seg.p_filesz) as usize;
 
 					unsafe { // Safe because the module ELF image is valid at this point
-						ptr::copy_nonoverlapping(file_begin, begin, len);
+						vmem::write_lock_wrap(|| {
+							ptr::copy_nonoverlapping(file_begin, begin, len);
+						});
 					}
 				}
 
@@ -292,8 +309,12 @@ impl Executor for ELFExecutor {
 			self.init_stack(user_stack, argv, envp);
 		});
 
-		// Sets the new memory space to the process
+		// Setting the new memory space to the process
 		process.set_mem_space(Some(mem_space));
+
+		// Setting the process's stacks
+		process.user_stack = Some(user_stack);
+		process.kernel_stack = Some(kernel_stack);
 
 		// TODO Reset signals, etc...
 
@@ -303,7 +324,7 @@ impl Executor for ELFExecutor {
 		let hdr = parser.get_header();
 		process.regs = Regs {
 			ebp: 0x0,
-			esp: process.user_stack as _,
+			esp: user_stack as _,
 			eip: load_base as u32 + hdr.e_entry,
 			eflags: process::DEFAULT_EFLAGS,
 			eax: 0x0,

@@ -3,10 +3,10 @@
 use crate::errno::Errno;
 use crate::errno;
 use crate::process::Process;
-use crate::util;
+use crate::process::Regs;
 
 /// The implementation of the `close` syscall.
-pub fn close(regs: &util::Regs) -> Result<i32, Errno> {
+pub fn close(regs: &Regs) -> Result<i32, Errno> {
 	let fd = regs.ebx;
 
 	let mut mutex = Process::get_current().unwrap();

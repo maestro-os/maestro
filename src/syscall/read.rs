@@ -6,12 +6,12 @@ use crate::errno::Errno;
 use crate::errno;
 use crate::file::file_descriptor::O_NONBLOCK;
 use crate::process::Process;
-use crate::util;
+use crate::process::Regs;
 
 // TODO O_ASYNC
 
 /// The implementation of the `read` syscall.
-pub fn read(regs: &util::Regs) -> Result<i32, Errno> {
+pub fn read(regs: &Regs) -> Result<i32, Errno> {
 	let fd = regs.ebx;
 	let buf = regs.ecx as *mut u8;
 	let count = regs.edx as usize;

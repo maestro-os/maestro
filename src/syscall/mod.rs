@@ -51,7 +51,7 @@ use brk::brk;
 use chdir::chdir;
 use chroot::chroot;
 use close::close;
-use crate::util;
+use crate::process::Regs;
 use delete_module::delete_module;
 use dup2::dup2;
 use dup::dup;
@@ -91,7 +91,7 @@ use write::write;
 
 /// This function is called whenever a system call is triggered.
 #[no_mangle]
-pub extern "C" fn syscall_handler(regs: &mut util::Regs) {
+pub extern "C" fn syscall_handler(regs: &mut Regs) {
 	let id = regs.eax;
 
 	let result = match id {

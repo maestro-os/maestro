@@ -6,10 +6,10 @@ use core::mem::transmute;
 use crate::errno::Errno;
 use crate::errno;
 use crate::process::Process;
+use crate::process::Regs;
 use crate::process::signal::SigHandler;
 use crate::process::signal::SignalHandler;
 use crate::process::signal;
-use crate::util;
 
 /// Ignoring the signal.
 const SIG_IGN: *const c_void = 0x0 as _;
@@ -17,7 +17,7 @@ const SIG_IGN: *const c_void = 0x0 as _;
 const SIG_DFL: *const c_void = 0x1 as _;
 
 /// The implementation of the `signal` syscall.
-pub fn signal(regs: &util::Regs) -> Result<i32, Errno> {
+pub fn signal(regs: &Regs) -> Result<i32, Errno> {
 	let signum = regs.ebx as i32;
 	let handler = regs.ecx as *const c_void;
 

@@ -13,7 +13,6 @@ pub mod ptr;
 
 use core::str;
 use core::ffi::c_void;
-use core::fmt;
 use core::mem::size_of;
 use crate::errno::Errno;
 
@@ -130,42 +129,6 @@ failable_clone_impl!(usize);
 
 failable_clone_impl!(*mut c_void);
 failable_clone_impl!(*const c_void);
-
-/// Structure representing the list of registers for a context. The content of this structure
-/// depends on the architecture for which the kernel is compiled.
-#[derive(Clone, Copy, Debug, Default)]
-#[repr(C, packed)]
-//#[cfg(config_general_arch = "x86")]
-pub struct Regs {
-	pub ebp: u32,
-	pub esp: u32,
-	pub eip: u32,
-	pub eflags: u32,
-	pub eax: u32,
-	pub ebx: u32,
-	pub ecx: u32,
-	pub edx: u32,
-	pub esi: u32,
-	pub edi: u32,
-}
-
-impl fmt::Display for Regs {
-	//#[cfg(config_general_arch = "x86")]
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		write!(f, "ebp: {:p} esp: {:p} eip: {:p} eflags: {:p} eax: {:p}\n
-ebx: {:p} ecx: {:p} edx: {:p} esi: {:p} edi: {:p}\n",
-			self.ebp as *const c_void,
-			self.esp as *const c_void,
-			self.eip as *const c_void,
-			self.eflags as *const c_void,
-			self.eax as *const c_void,
-			self.ebx as *const c_void,
-			self.ecx as *const c_void,
-			self.edx as *const c_void,
-			self.esi as *const c_void,
-			self.edi as *const c_void)
-	}
-}
 
 /// Zeroes the given object.
 /// The function is marked unsafe since there exist some objects for which a representation full of

@@ -5,6 +5,7 @@ use crate::errno::Errno;
 use crate::errno;
 use crate::memory;
 use crate::process::Process;
+use crate::process::Regs;
 use crate::util;
 
 /// Schedules a synchronization and returns directly.
@@ -15,7 +16,7 @@ const MS_SYNC: i32 = 0b010;
 const MS_INVALIDATE: i32 = 0b100;
 
 /// The implementation of the `msync` syscall.
-pub fn msync(regs: &util::Regs) -> Result<i32, Errno> {
+pub fn msync(regs: &Regs) -> Result<i32, Errno> {
 	let addr = regs.ebx as *mut c_void;
 	let length = regs.ecx as usize;
 	let flags = regs.edx as i32;

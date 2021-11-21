@@ -6,10 +6,10 @@ use crate::memory::malloc;
 use crate::module::Module;
 use crate::module;
 use crate::process::Process;
-use crate::util;
+use crate::process::Regs;
 
 /// The implementation of the `finit_module` syscall.
-pub fn finit_module(regs: &util::Regs) -> Result<i32, Errno> {
+pub fn finit_module(regs: &Regs) -> Result<i32, Errno> {
 	let fd = regs.ebx as u32;
 
 	let image = {

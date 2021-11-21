@@ -7,11 +7,11 @@ use crate::file::file_descriptor::FDTarget;
 use crate::file::file_descriptor;
 use crate::file::pipe::Pipe;
 use crate::process::Process;
+use crate::process::Regs;
 use crate::util::ptr::SharedPtr;
-use crate::util;
 
 /// The implementation of the `pipe` syscall.
-pub fn pipe(regs: &util::Regs) -> Result<i32, Errno> {
+pub fn pipe(regs: &Regs) -> Result<i32, Errno> {
 	let pipefd = regs.ebx as *mut [i32; 2];
 
 	let (fd0, fd1) = {

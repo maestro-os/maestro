@@ -1,10 +1,10 @@
 //! The _exit syscall allows to terminate the current process with the given status code.
 
 use crate::process::Process;
-use crate::util;
+use crate::process::Regs;
 
 /// The implementation of the `write` syscall.
-pub fn _exit(regs: &util::Regs) -> ! {
+pub fn _exit(regs: &Regs) -> ! {
 	{
 		let mut mutex = Process::get_current().unwrap();
 		let mut guard = mutex.lock(false);

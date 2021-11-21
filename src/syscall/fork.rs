@@ -4,10 +4,10 @@
 
 use crate::errno::Errno;
 use crate::process::Process;
-use crate::util;
+use crate::process::Regs;
 
 /// The implementation of the `fork` syscall.
-pub fn fork(regs: &util::Regs) -> Result<i32, Errno> {
+pub fn fork(regs: &Regs) -> Result<i32, Errno> {
 	let mut new_mutex = {
 		// The current process
 		let mut curr_mutex = Process::get_current().unwrap();

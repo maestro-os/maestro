@@ -4,11 +4,11 @@ use core::mem::size_of;
 use crate::errno::Errno;
 use crate::errno;
 use crate::process::Process;
+use crate::process::Regs;
 use crate::process::State;
 use crate::process::pid::Pid;
 use crate::process::scheduler::Scheduler;
 use crate::process;
-use crate::util;
 
 /// Wait flag. Returns immediately if no child has exited.
 const WNOHANG: i32 =    0b001;
@@ -181,7 +181,7 @@ pub fn do_waitpid(pid: i32, wstatus: *mut i32, options: i32) -> Result<i32, Errn
 }
 
 /// The implementation of the `waitpid` syscall.
-pub fn waitpid(regs: &util::Regs) -> Result<i32, Errno> {
+pub fn waitpid(regs: &Regs) -> Result<i32, Errno> {
 	let pid = regs.ebx as i32;
 	let wstatus = regs.ecx as *mut i32;
 	let options = regs.edx as i32;

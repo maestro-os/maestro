@@ -6,6 +6,7 @@ use crate::errno::Errno;
 use crate::errno;
 use crate::memory;
 use crate::process::Process;
+use crate::process::Regs;
 use crate::process::mem_space;
 use crate::util;
 
@@ -40,7 +41,7 @@ fn get_flags(flags: i32, prot: i32) -> u8 {
 }
 
 /// The implementation of the `mmap` syscall.
-pub fn mmap(regs: &util::Regs) -> Result<i32, Errno> {
+pub fn mmap(regs: &Regs) -> Result<i32, Errno> {
 	let addr = regs.ebx as *mut c_void;
 	let length = regs.ecx as usize;
 	let prot = regs.edx as i32;
@@ -103,6 +104,7 @@ pub fn mmap(regs: &util::Regs) -> Result<i32, Errno> {
 
 	// The process's memory space
 	let mem_space = proc.get_mem_space_mut().unwrap();
+	// FIXME Passing the hint as an exact location
 	// The pointer on the virtual memory to the beginning of the mapping
 	let ptr = mem_space.map(addr_hint, pages, get_flags(flags, prot), fd, offset as _)?;
 	Ok(ptr as _)

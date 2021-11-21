@@ -5,7 +5,7 @@ use core::ptr::copy_nonoverlapping;
 use crate::errno::Errno;
 use crate::errno;
 use crate::process::Process;
-use crate::util;
+use crate::process::Regs;
 
 /// The length of a field of the utsname structure.
 const UTSNAME_LENGTH: usize = 256;
@@ -24,7 +24,7 @@ struct Utsname {
 }
 
 /// The implementation of the `uname` syscall.
-pub fn uname(regs: &util::Regs) -> Result<i32, Errno> {
+pub fn uname(regs: &Regs) -> Result<i32, Errno> {
 	let buf = regs.ebx as *mut Utsname;
 	let mut utsname = Utsname {
 		sysname: [0; UTSNAME_LENGTH],

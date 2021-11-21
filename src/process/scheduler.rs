@@ -19,10 +19,10 @@ use crate::memory::malloc;
 use crate::memory::stack;
 use crate::memory;
 use crate::process::Process;
+use crate::process::Regs;
 use crate::process::pid::Pid;
 use crate::process::tss;
 use crate::process;
-use crate::util::Regs;
 use crate::util::container::binary_tree::BinaryTree;
 use crate::util::container::binary_tree::BinaryTreeMutIterator;
 use crate::util::container::binary_tree::TraversalType;
@@ -30,7 +30,6 @@ use crate::util::container::vec::Vec;
 use crate::util::lock::mutex::*;
 use crate::util::math;
 use crate::util::ptr::SharedPtr;
-use crate::util;
 
 /// The size of the temporary stack for context switching.
 const TMP_STACK_SIZE: usize = memory::PAGE_SIZE;
@@ -89,7 +88,7 @@ impl Scheduler {
 			ctx_switch_data.push(None)?;
 		}
 
-		let callback = | _id: u32, _code: u32, regs: &util::Regs, ring: u32 | {
+		let callback = | _id: u32, _code: u32, regs: &Regs, ring: u32 | {
 			Scheduler::tick(process::get_scheduler(), regs, ring);
 		};
 		let tick_callback_hook = event::register_callback(0x20, 0, callback)?;
@@ -278,7 +277,7 @@ impl Scheduler {
 	/// `mutex` is the scheduler's mutex.
 	/// `regs` is the state of the registers from the paused context.
 	/// `ring` is the ring of the paused context.
-	fn tick(mutex: &mut Mutex<Self>, regs: &util::Regs, ring: u32) -> ! {
+	fn tick(mutex: &mut Mutex<Self>, regs: &Regs, ring: u32) -> ! {
 		// Disabling interrupts to avoid getting one right after unlocking mutexes
 		cli!();
 
@@ -316,7 +315,7 @@ impl Scheduler {
 					tss.ss0 = gdt::KERNEL_DATA_OFFSET as _;
 					tss.ss = gdt::USER_DATA_OFFSET as _;
 					// Setting the kernel stack pointer
-					tss.esp0 = proc.kernel_stack as _;
+					tss.esp0 = proc.kernel_stack.unwrap() as _;
 					// Binding the memory space
 					proc.get_mem_space().unwrap().bind();
 

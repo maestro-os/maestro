@@ -6,11 +6,11 @@ use core::mem::MaybeUninit;
 use crate::errno::Errno;
 use crate::idt::pic;
 use crate::idt;
+use crate::process::Regs;
 use crate::process::tss;
 use crate::util::boxed::Box;
 use crate::util::container::vec::Vec;
 use crate::util::lock::mutex::*;
-use crate::util;
 
 /// The list of interrupt error messages ordered by index of the corresponding interrupt vector.
 #[cfg(config_general_arch = "x86")]
@@ -99,7 +99,7 @@ struct CallbackWrapper {
 	/// Third argument: `regs` the values of the registers when the interruption was triggered.
 	/// Fourth argument: `ring` tells the ring at which the code was running.
 	/// The return value tells which action to perform next.
-	callback: Box<dyn FnMut(u32, u32, &util::Regs, u32) -> InterruptResult>,
+	callback: Box<dyn FnMut(u32, u32, &Regs, u32) -> InterruptResult>,
 }
 
 /// Structure used to detect whenever the object owning the callback is destroyed, allowing to
@@ -156,7 +156,7 @@ pub fn init() {
 ///
 /// If the `id` is invalid or if an allocation fails, the function shall return an error.
 pub fn register_callback<T>(id: usize, priority: u32, callback: T) -> Result<CallbackHook, Errno>
-	where T: 'static + FnMut(u32, u32, &util::Regs, u32) -> InterruptResult {
+	where T: 'static + FnMut(u32, u32, &Regs, u32) -> InterruptResult {
 	debug_assert!(id < idt::ENTRIES_COUNT);
 
 	idt::wrap_disable_interrupts(|| {
@@ -229,7 +229,7 @@ pub unsafe extern "C" fn unlock_callbacks(id: usize) {
 /// `regs` is the state of the registers at the moment of the interrupt.
 /// `ring` tells the ring at which the code was running.
 #[no_mangle]
-pub extern "C" fn event_handler(id: u32, code: u32, ring: u32, regs: &util::Regs) {
+pub extern "C" fn event_handler(id: u32, code: u32, ring: u32, regs: &Regs) {
 	let action = {
 		let mut guard = unsafe {
 			&mut CALLBACKS.assume_init_mut()[id as usize]

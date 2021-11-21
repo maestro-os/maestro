@@ -3,7 +3,7 @@
 use crate::errno::Errno;
 use crate::errno;
 use crate::process::Process;
-use crate::util;
+use crate::process::Regs;
 
 /// First magic number.
 const MAGIC: u32 = 0xde145e83;
@@ -20,7 +20,7 @@ const CMD_HALT: u32 = 2;
 const CMD_SUSPEND: u32 = 3;
 
 /// The implementation of the `reboot` syscall.
-pub fn reboot(regs: &util::Regs) -> Result<i32, Errno> {
+pub fn reboot(regs: &Regs) -> Result<i32, Errno> {
 	let magic = regs.ebx as u32;
 	let magic2 = regs.ecx as u32;
 	let cmd = regs.edx as u32;

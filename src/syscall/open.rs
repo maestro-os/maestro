@@ -11,6 +11,7 @@ use crate::file::path::Path;
 use crate::file;
 use crate::limits;
 use crate::process::Process;
+use crate::process::Regs;
 use crate::util::FailableClone;
 use crate::util::ptr::SharedPtr;
 use crate::util;
@@ -104,7 +105,7 @@ fn resolve_links(file: SharedPtr<File>, flags: i32, mode: u16, uid: u16, gid: u1
 }
 
 /// The implementation of the `open` syscall.
-pub fn open(regs: &util::Regs) -> Result<i32, Errno> {
+pub fn open(regs: &Regs) -> Result<i32, Errno> {
 	let pathname = regs.ebx as *const u8;
 	let flags = regs.ecx as i32;
 	let mode = regs.edx as u16;

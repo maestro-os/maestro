@@ -3,10 +3,10 @@
 use crate::errno::Errno;
 use crate::errno;
 use crate::process::Process;
-use crate::util;
+use crate::process::Regs;
 
 /// The implementation of the `getcwd` syscall.
-pub fn getcwd(regs: &util::Regs) -> Result<i32, Errno> {
+pub fn getcwd(regs: &Regs) -> Result<i32, Errno> {
 	let buf = regs.ebx as *mut u8;
 	let size = regs.ecx as u32;
 

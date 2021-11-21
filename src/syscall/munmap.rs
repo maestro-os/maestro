@@ -6,11 +6,12 @@ use crate::errno::Errno;
 use crate::errno;
 use crate::memory;
 use crate::process::Process;
+use crate::process::Regs;
 use crate::util::math;
 use crate::util;
 
 /// The implementation of the `munmap` syscall.
-pub fn munmap(regs: &util::Regs) -> Result<i32, Errno> {
+pub fn munmap(regs: &Regs) -> Result<i32, Errno> {
 	let addr = regs.ebx as *mut c_void;
 	let length = regs.ecx as usize;
 

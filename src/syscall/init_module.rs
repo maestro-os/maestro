@@ -6,10 +6,10 @@ use crate::errno;
 use crate::module::Module;
 use crate::module;
 use crate::process::Process;
-use crate::util;
+use crate::process::Regs;
 
 /// The implementation of the `init_module` syscall.
-pub fn init_module(regs: &util::Regs) -> Result<i32, Errno> {
+pub fn init_module(regs: &Regs) -> Result<i32, Errno> {
 	let module_image = regs.ebx as *const u8;
 	let len = regs.ecx;
 

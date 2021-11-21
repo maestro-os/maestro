@@ -594,17 +594,17 @@ impl<K: 'static + Ord, V: 'static> BinaryTree<K, V> {
 
 	/// Searches in the tree for a key greater or equal to the given key.
 	/// `key` is the key to find.
-	pub fn get_min<'a>(&'a mut self, key: K) -> Option<(&'a K, &'a mut V)> {
-		let mut node = self.get_root_mut();
+	pub fn get_min<'a>(&'a self, key: K) -> Option<(&'a K, &'a V)> {
+		let mut node = self.get_root();
 
 		while node.is_some() {
 			let n = node.unwrap();
 			let ord = n.key.partial_cmp(&key).unwrap().reverse();
 
 			if ord == Ordering::Greater {
-				node = n.get_right_mut();
+				node = n.get_right();
 			} else {
-				return Some((&n.key, &mut n.value));
+				return Some((&n.key, &n.value));
 			}
 		}
 

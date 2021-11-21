@@ -7,12 +7,13 @@ use crate::file::FileContent;
 use crate::file::path::Path;
 use crate::file;
 use crate::process::Process;
+use crate::process::Regs;
 use crate::util::FailableClone;
 use crate::util::container::vec::Vec;
 use crate::util;
 
 /// The implementation of the `mkdir` syscall.
-pub fn mkdir(regs: &util::Regs) -> Result<i32, Errno> {
+pub fn mkdir(regs: &Regs) -> Result<i32, Errno> {
 	let pathname = regs.ebx as *const u8;
 	let mode = regs.ebx as u16;
 
