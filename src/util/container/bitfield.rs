@@ -101,8 +101,20 @@ impl Bitfield {
 		None
 	}
 
-	// TODO set_all
-	// TODO clear_all
+	/// Clears every elements in the bitfield.
+	pub fn clear_all(&mut self) {
+		for i in 0..self.data.len() {
+			self.data[i] = 0;
+		}
+	}
+
+	/// Clears every elements in the bitfield.
+	pub fn set_all(&mut self) {
+		for i in 0..self.data.len() {
+			self.data[i] = !0;
+		}
+	}
+
 	// TODO fill
 }
 

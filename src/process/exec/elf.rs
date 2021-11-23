@@ -2,6 +2,7 @@
 
 use core::cmp::min;
 use core::ffi::c_void;
+use core::mem::size_of;
 use core::ptr;
 use core::slice;
 use core::str;
@@ -22,6 +23,8 @@ use crate::process::Regs;
 use crate::process::exec::Executor;
 use crate::process::mem_space::MemSpace;
 use crate::process::mem_space::{MAPPING_FLAG_WRITE, MAPPING_FLAG_USER, MAPPING_FLAG_NOLAZY};
+use crate::process::signal::SignalHandler;
+use crate::process::signal;
 use crate::process;
 use crate::util::math;
 
@@ -82,13 +85,12 @@ impl ELFExecutor {
 		})
 	}
 
-	// TODO Clean
-	// TODO Ensure the stack capacity is not exceeded
-	/// Initializes the stack data of the process according to the System V ABI.
-	/// `user_stack` is the pointer to the top of the user stack.
-	/// `argv` is the list of arguments.
-	/// `envp` is the environment.
-	fn init_stack(&self, user_stack: *const c_void, argv: &[&str], envp: &[&str]) {
+	/// Returns two values:
+	/// - The size in bytes of the buffer to store the arguments and environment variables, padding
+	/// included.
+	/// - The required size in bytes for the data to be written on the stack before the program
+	/// starts.
+	fn get_init_stack_size(argv: &[&str], envp: &[&str]) -> (usize, usize) {
 		// The size of the block storing the arguments and environment
 		let mut info_block_size = 0;
 		for e in envp {
@@ -108,15 +110,30 @@ impl ELFExecutor {
 		// The total size of the stack data in bytes
 		let total_size = info_block_size + info_block_pad + 4 + envp_size + argv_size;
 
+		(info_block_size + info_block_pad, total_size)
+	}
+
+	// TODO Clean
+	/// Initializes the stack data of the process according to the System V ABI.
+	/// `user_stack` the pointer to the user stack.
+	/// `argv` is the list of arguments.
+	/// `envp` is the environment.
+	/// The function returns the distance between the top of the stack and the new bottom after the
+	/// data has been written.
+	fn init_stack(&self, user_stack: *const c_void, argv: &[&str], envp: &[&str]) {
+		let (info_size, total_size) = Self::get_init_stack_size(argv, envp);
+
+		// A slice on the stack representing the region which will containing the arguments and
+		// environment variables
+		let info_slice = unsafe {
+			slice::from_raw_parts_mut((user_stack as usize - info_size) as *mut u8,
+				info_size / size_of::<u8>())
+		};
+
 		// A slice on the stack representing the region to fill
 		let stack_slice = unsafe {
 			slice::from_raw_parts_mut((user_stack as usize - total_size) as *mut u32,
-				total_size / 4)
-		};
-		// A slice on the stack representing the information block
-		let info_slice = unsafe {
-			slice::from_raw_parts_mut((user_stack as usize - info_block_size) as *mut u8,
-				info_block_size)
+				total_size / size_of::<u32>())
 		};
 
 		// The offset in the information block
@@ -142,8 +159,6 @@ impl ELFExecutor {
 			info_slice[info_off] = 0;
 			info_off += 1;
 
-			debug_assert!(info_off < info_block_size);
-
 			// Setting the argument's pointer
 			stack_slice[stack_off] = &mut info_slice[begin] as *mut _ as u32;
 			stack_off += 1;
@@ -166,8 +181,6 @@ impl ELFExecutor {
 			info_slice[info_off] = 0;
 			info_off += 1;
 
-			debug_assert!(info_off < info_block_size);
-
 			// Setting the variable's pointer
 			stack_slice[stack_off] = &mut info_slice[begin] as *mut _ as u32;
 			stack_off += 1;
@@ -177,7 +190,7 @@ impl ELFExecutor {
 			stack_slice[stack_off + i] = 0;
 		}
 		stack_off += 2;
-		debug_assert!(stack_off < stack_slice.len());
+		debug_assert!(stack_off <= total_size);
 	}
 
 	/// Loads the interpreter from the given path for the given process.
@@ -196,6 +209,7 @@ impl ELFExecutor {
 }
 
 impl Executor for ELFExecutor {
+	// TODO Clean
 	// TODO Ensure there is no way to write in kernel space (check segments position and
 	// relocations)
 	fn exec(&self, process: &mut Process, argv: &[&str], envp: &[&str]) -> Result<(), Errno> {
@@ -246,11 +260,25 @@ impl Executor for ELFExecutor {
 		});
 		result?;
 
-		// TODO Allocate a user and kernel stack
-		// The user stack
-		let user_stack = mem_space.map_stack(None, USER_STACK_SIZE, USER_STACK_FLAGS)?;
 		// The kernel stack
 		let kernel_stack = mem_space.map_stack(None, KERNEL_STACK_SIZE, KERNEL_STACK_FLAGS)?;
+
+		// The user stack
+		let user_stack = mem_space.map_stack(None, USER_STACK_SIZE, USER_STACK_FLAGS)?;
+
+		// The size in bytes of the initial data on the stack
+		let total_size = Self::get_init_stack_size(argv, envp).1;
+		// The number of pages to allocate on the user stack to write the initial data
+		let pages_count = math::ceil_division(total_size, memory::PAGE_SIZE);
+		// Checking that the data doesn't exceed the stack's size
+		if pages_count >= USER_STACK_SIZE {
+			return Err(errno::ENOMEM);
+		}
+
+		// Allocating the pages on the stack to write the initial data
+		for i in 0..pages_count {
+			mem_space.alloc((user_stack as usize - (i + 1) * memory::PAGE_SIZE) as *const c_void)?;
+		}
 
 		mem_space.get_vmem().flush();
 
@@ -306,6 +334,7 @@ impl Executor for ELFExecutor {
 				true
 			});
 
+			// Initializing the userspace stack
 			self.init_stack(user_stack, argv, envp);
 		});
 
@@ -316,15 +345,20 @@ impl Executor for ELFExecutor {
 		process.user_stack = Some(user_stack);
 		process.kernel_stack = Some(kernel_stack);
 
-		// TODO Reset signals, etc...
+		// Resetting signals
+		process.signals_bitfield.clear_all();
+		process.signal_handlers = [SignalHandler::Default; signal::SIGNALS_COUNT + 1];
 
 		// TODO Enable floats and SSE
+
+		// The pointer to the bottom of the stack
+		let stack_bottom = (user_stack as usize - total_size) as _;
 
 		// Setting the process's entry point
 		let hdr = parser.get_header();
 		process.regs = Regs {
 			ebp: 0x0,
-			esp: user_stack as _,
+			esp: stack_bottom,
 			eip: load_base as u32 + hdr.e_entry,
 			eflags: process::DEFAULT_EFLAGS,
 			eax: 0x0,
