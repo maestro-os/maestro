@@ -206,6 +206,8 @@ impl MemSpace {
 		let mapping = MemMapping::new(addr, size, flags, fd, fd_off,
 			NonNull::new(self.vmem.as_mut_ptr()).unwrap());
 		let mapping_ptr = mapping.get_begin();
+		debug_assert!(ptr.is_none() || mapping_ptr == ptr.unwrap());
+
 		let m = self.mappings.insert(mapping_ptr, mapping)?;
 
 		// Mapping the default page
@@ -215,7 +217,7 @@ impl MemSpace {
 		}
 
 		// Splitting the old gap to fit the mapping
-		let (left_gap, right_gap) = gap.consume(0, size);
+		let (left_gap, right_gap) = gap.consume(off, size);
 
 		// Removing the old gap
 		let gap_begin = gap.get_begin();

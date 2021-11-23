@@ -50,7 +50,7 @@ impl MemGap {
 		let mut left = None;
 		if off > 0 {
 			let addr = self.begin;
-			let size = min(off, size);
+			let size = min(off, self.size);
 
 			if size > 0 {
 				left = Some(Self::new(addr, size));

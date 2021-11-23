@@ -255,6 +255,7 @@ impl ELF32ProgramHeader {
 	}
 
 	/// Returns the flags to map the current segment into a process's memory space.
+	/// This function should be used only for userspace programs.
 	pub fn get_mem_space_flags(&self) -> u8 {
 		let mut flags = mem_space::MAPPING_FLAG_USER;
 
