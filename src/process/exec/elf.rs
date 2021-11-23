@@ -208,7 +208,10 @@ impl ELFExecutor {
 		debug_assert!(stack_off <= total_size);
 	}
 
-	/// TODO doc
+	/// Allocates memory in userspace for an ELF segment.
+	/// `load_base` is the address at which the executable is loaded.
+	/// `mem_space` is the memory space to allocate into.
+	/// `seg` is the segment for which the memory is allocated.
 	fn alloc_segment(load_base: *const u8, mem_space: &mut MemSpace, seg: &ELF32ProgramHeader)
 		-> Result<(), Errno> {
 		if seg.p_type == elf::PT_LOAD {
@@ -281,16 +284,20 @@ impl Executor for ELFExecutor {
 
 		// The size in bytes of the initial data on the stack
 		let total_size = Self::get_init_stack_size(argv, envp).1;
-		// The number of pages to allocate on the user stack to write the initial data
-		let pages_count = math::ceil_division(total_size, memory::PAGE_SIZE);
-		// Checking that the data doesn't exceed the stack's size
-		if pages_count >= USER_STACK_SIZE {
-			return Err(errno::ENOMEM);
-		}
+		// Pre-allocating pages on the user stack to write the initial data
+		{
+			// The number of pages to allocate on the user stack to write the initial data
+			let pages_count = math::ceil_division(total_size, memory::PAGE_SIZE);
+			// Checking that the data doesn't exceed the stack's size
+			if pages_count >= USER_STACK_SIZE {
+				return Err(errno::ENOMEM);
+			}
 
-		// Allocating the pages on the stack to write the initial data
-		for i in 0..pages_count {
-			mem_space.alloc((user_stack as usize - (i + 1) * memory::PAGE_SIZE) as *const c_void)?;
+			// Allocating the pages on the stack to write the initial data
+			for i in 0..pages_count {
+				let ptr = (user_stack as usize - (i + 1) * memory::PAGE_SIZE) as *const c_void;
+				mem_space.alloc(ptr)?;
+			}
 		}
 
 		mem_space.get_vmem().flush();
