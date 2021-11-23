@@ -217,7 +217,7 @@ ifeq ($(CONFIG_DEBUG_TEST), false)
 	$(CC) $(CFLAGS) -o $(NAME) target/target/debug/libkernel.a -T$(LINKER)
  endif
 else
-	cp $(shell find target/target/debug/deps/ -name 'kernel-*' -executable) maestro # TODO Clean
+	cp `find target/target/debug/deps/ -name 'kernel-*' -executable` maestro
 endif
 
 # Alias for $(NAME).iso

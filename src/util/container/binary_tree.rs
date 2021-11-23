@@ -1500,7 +1500,7 @@ mod test {
 
 	#[test_case]
 	fn binary_tree_get_min0() {
-		let mut b = BinaryTree::<i32, i32>::new();
+		let b = BinaryTree::<i32, i32>::new();
 		assert!(b.get_min(0).is_none());
 	}
 
