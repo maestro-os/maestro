@@ -44,6 +44,10 @@ use signal::SignalType;
 
 /// The default value of the eflags register.
 const DEFAULT_EFLAGS: u32 = 0x1202;
+/// The default value of the FPCW.
+const DEFAULT_FPCW: u32 = 0b1100111111;
+/// The default value of the MXCSR.
+const DEFAULT_MXCSR: u32 = 0b1111111000000;
 
 /// The opcode of the `hlt` instruction.
 const HLT_INSTRUCTION: u8 = 0xf4;
@@ -77,6 +81,11 @@ pub struct Regs {
 	pub edx: u32,
 	pub esi: u32,
 	pub edi: u32,
+
+	// TODO Add floating-point registers
+
+	pub fpcw: u32,
+	pub mxcsr: u32,
 }
 
 impl Default for Regs {
@@ -92,6 +101,9 @@ impl Default for Regs {
 			edx: 0x0,
 			esi: 0x0,
 			edi: 0x0,
+
+			fpcw: DEFAULT_FPCW,
+			mxcsr: DEFAULT_MXCSR,
 		}
 	}
 }
@@ -111,6 +123,8 @@ ebx: {:p} ecx: {:p} edx: {:p} esi: {:p} edi: {:p}\n",
 			self.edx as *const c_void,
 			self.esi as *const c_void,
 			self.edi as *const c_void)
+
+		// TODO Print all registers
 	}
 }
 

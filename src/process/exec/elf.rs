@@ -26,7 +26,6 @@ use crate::process::mem_space::MemSpace;
 use crate::process::mem_space::{MAPPING_FLAG_WRITE, MAPPING_FLAG_USER, MAPPING_FLAG_NOLAZY};
 use crate::process::signal::SignalHandler;
 use crate::process::signal;
-use crate::process;
 use crate::util::math;
 
 /// The size of the userspace stack of a process in number of pages.
@@ -371,23 +370,14 @@ impl Executor for ELFExecutor {
 
 		// TODO Enable floats and SSE
 
-		// The pointer to the bottom of the stack
-		let stack_bottom = (user_stack as usize - total_size) as _;
-
 		// Setting the process's entry point
 		let hdr = parser.get_header();
-		process.regs = Regs {
-			ebp: 0x0,
-			esp: stack_bottom,
-			eip: load_base as u32 + hdr.e_entry,
-			eflags: process::DEFAULT_EFLAGS,
-			eax: 0x0,
-			ebx: 0x0,
-			ecx: 0x0,
-			edx: 0x0,
-			esi: 0x0,
-			edi: 0x0,
-		};
+
+		// Setting the process's registers
+		let mut regs = Regs::default();
+		regs.esp = (user_stack as usize - total_size) as _;
+		regs.eip = load_base as u32 + hdr.e_entry;
+		process.regs = regs;
 
 		Ok(())
 	}
