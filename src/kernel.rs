@@ -35,6 +35,7 @@
 
 pub mod acpi;
 pub mod cmdline;
+pub mod cpuid;
 pub mod debug;
 pub mod device;
 pub mod elf;
@@ -222,19 +223,27 @@ fn init() -> Result<(), &'static str> {
 #[no_mangle]
 pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 	crate::cli!();
+	// Initializing TTY
 	tty::init();
 
 	if magic != multiboot::BOOTLOADER_MAGIC || !util::is_aligned(multiboot_ptr, 8) {
 		kernel_panic!("Bootloader non compliant with Multiboot2!", 0);
 	}
 
+	// Initializing IDT, PIT and events handler
 	idt::init();
 	pit::init();
 	event::init();
 
-	// TODO CPUID
+	// Ensuring the CPU has SSE
+	if !cpuid::has_sse() {
+		kernel_panic!("SSE support is required to run this kernel :(");
+	}
+
+	// Reading multiboot informations
 	multiboot::read_tags(multiboot_ptr);
 
+	// Initializing memory allocation
 	memory::memmap::init(multiboot_ptr);
 	if cfg!(config_debug_debug) {
 		memory::memmap::print_entries();
@@ -246,10 +255,12 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 		crate::kernel_panic!("Cannot initialize kernel virtual memory!", 0);
 	}
 
+	// Performing kernel self-tests
 	#[cfg(test)]
 	#[cfg(config_debug_test)]
 	kernel_selftest();
 
+	// Parsing bootloader command line arguments
 	let args_parser = cmdline::ArgsParser::parse(&multiboot::get_boot_info().cmdline);
 	if let Err(e) = args_parser {
 		e.print();
