@@ -23,6 +23,33 @@ extern "C" {
 	pub fn context_switch_kernel(regs: &Regs) -> !;
 }
 
+// TODO Ensure the buffer is on a 32 bits address (required by fxsave and fxrstor)
+/// Wrapper allowing to align the fxstate buffer.
+#[repr(align(16))]
+struct FXStateWrapper([u8; 512]);
+
+/// Saves the current x87 FPU, MMX and SSE state to the given buffer.
+#[no_mangle]
+pub extern "C" fn save_fxstate(fxstate: &mut [u8; 512]) {
+	let mut buff = FXStateWrapper([0; 512]);
+	unsafe {
+		asm!("fxsave [eax]", in("eax") &mut buff);
+	}
+
+	fxstate.copy_from_slice(&buff.0);
+}
+
+/// Restores the x87 FPU, MMX and SSE state from the given buffer.
+#[no_mangle]
+pub extern "C" fn store_fxstate(fxstate: &[u8; 512]) {
+	let mut buff = FXStateWrapper([0; 512]);
+	buff.0.copy_from_slice(fxstate);
+
+	unsafe {
+		asm!("fxrstor [eax]", in("eax") &buff);
+	}
+}
+
 /// Structure representing the list of registers for a context. The content of this structure
 /// depends on the architecture for which the kernel is compiled.
 #[derive(Clone, Copy, Debug)]
@@ -40,10 +67,8 @@ pub struct Regs {
 	pub esi: u32,
 	pub edi: u32,
 
-	// TODO Add floating-point registers
-
-	pub fpcw: u32,
-	pub mxcsr: u32,
+	/// x87 FPU, MMX and SSE state.
+	pub fxstate: [u8; 512],
 }
 
 impl Regs {
@@ -77,8 +102,9 @@ impl Default for Regs {
 			esi: 0x0,
 			edi: 0x0,
 
-			fpcw: DEFAULT_FPCW,
-			mxcsr: DEFAULT_MXCSR,
+			fxstate: [0; 512], // TODO Fill with default values
+			//fpcw: DEFAULT_FPCW,
+			//mxcsr: DEFAULT_MXCSR,
 		}
 	}
 }

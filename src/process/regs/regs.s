@@ -2,12 +2,8 @@
  * This file implements functions for the structure containing registers's states
  */
 
-.global REGS_SIZE
-.global GET_REGS
-.global END_INTERRUPT
-
 // The size in bytes of the structure storing the registers' states
-.set REGS_SIZE, 48
+.set REGS_SIZE, 552
 
 /*
  * This macro stores the values of every registers after an interruption was triggered.
