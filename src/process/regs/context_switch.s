@@ -23,33 +23,32 @@ context_switch:
 	mov %ax, %fs
 	mov %ax, %gs
 
-	# Setting registers, except %eax
-	mov 4(%ebp), %eax
-	mov 20(%eax), %ebx
-	mov 24(%eax), %ecx
-	mov 28(%eax), %edx
-	mov 32(%eax), %esi
-	mov 36(%eax), %edi
-
 	# Restoring the fx state
-	push 0x28(%eax)
+	mov 4(%ebp), %eax
+	add $0x28, %eax
+	push %eax
 	call restore_fxstate
 	add $4, %esp
+
+	# Setting registers, except %eax
+	mov 4(%ebp), %eax
+	mov 0x14(%eax), %ebx
+	mov 0x18(%eax), %ecx
+	mov 0x1c(%eax), %edx
+	mov 0x20(%eax), %esi
+	mov 0x24(%eax), %edi
 
 	# Placing iret data on the stack
 	# (Note: If set, the interrupt flag in eflags will enable the interruptions back after using `iret`)
 	push 8(%ebp) # data segment selector
-	push 4(%eax) # esp
-	push 12(%eax) # eflags
+	push 0x4(%eax) # esp
+	push 0xc(%eax) # eflags
 	push 12(%ebp) # code segment selector
-	push 8(%eax) # eip
+	push 0x8(%eax) # eip
 
 	# Setting %eax
-	push 16(%ebp)
-	mov (%eax), %ebp
-	mov 16(%eax), %eax
-
-	add $4, %esp
+	mov 0x0(%eax), %ebp
+	mov 0x10(%eax), %eax
 
 	iret
 
@@ -58,6 +57,13 @@ context_switch:
  */
 context_switch_kernel:
 	cli
+
+	# Restoring the fx state
+	mov 4(%ebp), %eax
+	add $0x28, %eax
+	push %eax
+	call restore_fxstate
+	add $4, %esp
 
 	mov 4(%esp), %eax
 
@@ -69,22 +75,17 @@ context_switch_kernel:
 	push %ebx
 	popf
 
-	# Restoring the fx state
-	push 0x28(%eax)
-	call restore_fxstate
-	add $4, %esp
-
 	# Setting registers
-	mov (%eax), %ebp
-	mov 4(%eax), %esp
-	mov 8(%eax), %ebx
+	mov 0x0(%eax), %ebp
+	mov 0x4(%eax), %esp
+	mov 0x8(%eax), %ebx
 	movl %ebx, jmp_addr
-	mov 20(%eax), %ebx
-	mov 24(%eax), %ecx
-	mov 28(%eax), %edx
-	mov 32(%eax), %esi
-	mov 36(%eax), %edi
-	mov 16(%eax), %eax
+	mov 0x14(%eax), %ebx
+	mov 0x18(%eax), %ecx
+	mov 0x1c(%eax), %edx
+	mov 0x20(%eax), %esi
+	mov 0x24(%eax), %edi
+	mov 0x10(%eax), %eax
 
 	# TODO FIXME: Writing to global memory is not thread-safe
 	# Setting the interrupt flag and jumping to kernel code execution

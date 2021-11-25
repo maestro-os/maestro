@@ -14,11 +14,6 @@
 	# Allocating space on the stack to store the registers
 	sub $REGS_SIZE, %esp
 
-	# Saving the fx state
-	push 0x28(%esp)
-	call save_fxstate
-	pop
-
 	# Filling registers in the structure
 	mov %edi, 0x24(%esp)
 	mov %esi, 0x20(%esp)
@@ -26,6 +21,13 @@
 	mov %ecx, 0x18(%esp)
 	mov %ebx, 0x14(%esp)
 	mov %eax, 0x10(%esp)
+
+	# Restoring the fx state
+	mov %esp, %eax
+	add $0x28, %eax
+	push %eax
+	call save_fxstate
+	add $4, %esp
 
 	mov 12(%ebp), %eax
 	mov %eax, 0xc(%esp) # eflags
@@ -61,9 +63,11 @@ esp_end_\n:
  */
 .macro END_INTERRUPT
 	# Restoring the fx state
-	push 0x28(%esp)
+	mov %esp, %eax
+	add $0x28, %eax
+	push %eax
 	call restore_fxstate
-	pop
+	add $4, %esp
 
 	# Restoring registers
 	mov 0x24(%esp), %edi

@@ -316,7 +316,7 @@ impl Scheduler {
 
 				// Resuming execution
 				unsafe {
-					regs.switch(syscalling);
+					regs.switch(!syscalling);
 				}
 			};
 
