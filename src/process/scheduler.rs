@@ -38,17 +38,6 @@ const AVERAGE_PRIORITY_QUANTA: usize = 10;
 /// The number of quanta for the process with the maximum priority.
 const MAX_PRIORITY_QUANTA: usize = 30;
 
-extern "C" {
-	/// This function switches to a userspace context.
-	/// `regs` is the structure of registers to restore to resume the context.
-	/// `data_selector` is the user data segment selector.
-	/// `code_selector` is the user code segment selector.
-	pub fn context_switch(regs: &Regs, data_selector: u16, code_selector: u16) -> !;
-	/// This function switches to a kernelspace context.
-	/// `regs` is the structure of registers to restore to resume the context.
-	pub fn context_switch_kernel(regs: &Regs) -> !;
-}
-
 /// The structure containing the context switching data.
 struct ContextSwitchData {
 	///  The process to switch to.
@@ -326,16 +315,8 @@ impl Scheduler {
 				};
 
 				// Resuming execution
-				if syscalling {
-					unsafe {
-						context_switch_kernel(&regs);
-					}
-				} else {
-					unsafe {
-						context_switch(&regs,
-							(gdt::USER_DATA_OFFSET | 3) as _,
-							(gdt::USER_CODE_OFFSET | 3) as _);
-					}
+				unsafe {
+					regs.switch(syscalling);
 				}
 			};
 

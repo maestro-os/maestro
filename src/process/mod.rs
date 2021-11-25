@@ -5,13 +5,13 @@ pub mod exec;
 pub mod mem_space;
 pub mod oom;
 pub mod pid;
+pub mod regs;
 pub mod scheduler;
 pub mod semaphore;
 pub mod signal;
 pub mod tss;
 
 use core::ffi::c_void;
-use core::fmt;
 use core::mem::ManuallyDrop;
 use core::mem::MaybeUninit;
 use crate::errno::Errno;
@@ -42,13 +42,6 @@ use signal::SignalAction;
 use signal::SignalHandler;
 use signal::SignalType;
 
-/// The default value of the eflags register.
-const DEFAULT_EFLAGS: u32 = 0x1202;
-/// The default value of the FPCW.
-const DEFAULT_FPCW: u32 = 0b1100111111;
-/// The default value of the MXCSR.
-const DEFAULT_MXCSR: u32 = 0b1111111000000;
-
 /// The opcode of the `hlt` instruction.
 const HLT_INSTRUCTION: u8 = 0xf4;
 
@@ -65,68 +58,8 @@ const STDOUT_FILENO: u32 = 1;
 /// The file descriptor number of the standard error stream.
 const STDERR_FILENO: u32 = 2;
 
-/// Structure representing the list of registers for a context. The content of this structure
-/// depends on the architecture for which the kernel is compiled.
-#[derive(Clone, Copy, Debug)]
-#[repr(C, packed)]
-//#[cfg(config_general_arch = "x86")]
-pub struct Regs {
-	pub ebp: u32,
-	pub esp: u32,
-	pub eip: u32,
-	pub eflags: u32,
-	pub eax: u32,
-	pub ebx: u32,
-	pub ecx: u32,
-	pub edx: u32,
-	pub esi: u32,
-	pub edi: u32,
-
-	// TODO Add floating-point registers
-
-	pub fpcw: u32,
-	pub mxcsr: u32,
-}
-
-impl Default for Regs {
-	fn default() -> Self {
-		Self {
-			ebp: 0x0,
-			esp: 0x0,
-			eip: 0x0,
-			eflags: DEFAULT_EFLAGS,
-			eax: 0x0,
-			ebx: 0x0,
-			ecx: 0x0,
-			edx: 0x0,
-			esi: 0x0,
-			edi: 0x0,
-
-			fpcw: DEFAULT_FPCW,
-			mxcsr: DEFAULT_MXCSR,
-		}
-	}
-}
-
-impl fmt::Display for Regs {
-	//#[cfg(config_general_arch = "x86")]
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		write!(f, "ebp: {:p} esp: {:p} eip: {:p} eflags: {:p} eax: {:p}\n
-ebx: {:p} ecx: {:p} edx: {:p} esi: {:p} edi: {:p}\n",
-			self.ebp as *const c_void,
-			self.esp as *const c_void,
-			self.eip as *const c_void,
-			self.eflags as *const c_void,
-			self.eax as *const c_void,
-			self.ebx as *const c_void,
-			self.ecx as *const c_void,
-			self.edx as *const c_void,
-			self.esi as *const c_void,
-			self.edi as *const c_void)
-
-		// TODO Print all registers
-	}
-}
+// TODO Remove later (need to refactor a big part of the project)
+pub use regs::Regs;
 
 /// An enumeration containing possible states for a process.
 #[derive(Copy, Clone, Debug, PartialEq)]

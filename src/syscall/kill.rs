@@ -3,12 +3,10 @@
 use crate::errno::Errno;
 use crate::errno;
 use crate::file::Uid;
-use crate::gdt;
 use crate::process::Process;
 use crate::process::Regs;
 use crate::process::State;
 use crate::process::pid::Pid;
-use crate::process::scheduler;
 use crate::process::signal::Signal;
 use crate::process;
 
@@ -131,9 +129,7 @@ fn handle_state() {
 					drop(guard);
 
 					unsafe {
-						scheduler::context_switch(&regs,
-							(gdt::USER_DATA_OFFSET | 3) as _,
-							(gdt::USER_CODE_OFFSET | 3) as _);
+						regs.switch(true);
 					}
 				} else {
 					return;

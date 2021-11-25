@@ -76,6 +76,7 @@ context_switch_kernel:
 	mov 36(%eax), %edi
 	mov 16(%eax), %eax
 
+	# TODO FIXME: Writting to global memory is not thread-safe
 	# Setting the interrupt flag and jumping to kernel code execution
 	# (Note: These two instructions, if placed in this order are atomic on x86, meaning that an interrupt cannot happen in between)
 	sti
