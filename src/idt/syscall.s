@@ -2,9 +2,11 @@
  * This file implements the function that handles the system calls.
  */
 
-.text
+.include "src/process/regs/regs.s"
 
 .global syscall
+
+.section .text
 
 /*
  * The function handling system calls.
@@ -15,16 +17,7 @@ syscall:
 	mov %esp, %ebp
 
 	# Storing registers state
-	push %edi
-	push %esi
-	push %edx
-	push %ecx
-	push %ebx
-	push %eax
-	push 12(%ebp) # eflags
-	push 4(%ebp) # eip
-	push 16(%ebp) # esp
-	push (%ebp) # ebp
+GET_REGS
 
 	# Setting segments
 	mov $GDT_KERNEL_DATA_OFFSET, %ax
@@ -50,15 +43,4 @@ syscall:
 	mov %bx, %gs
 
 	# Restoring registers state
-	add $16, %esp
-	pop %eax
-	pop %ebx
-	pop %ecx
-	pop %edx
-	pop %esi
-	pop %edi
-
-	mov %ebp, %esp
-	pop %ebp
-	sti
-	iret
+END_INTERRUPT
