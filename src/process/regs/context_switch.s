@@ -30,8 +30,11 @@ context_switch:
 	mov 28(%eax), %edx
 	mov 32(%eax), %esi
 	mov 36(%eax), %edi
-	fstcw 40(%eax)
-	stmxcsr 44(%eax)
+
+	# Restoring the fx state
+	push 0x28(%eax)
+	call restore_fxstate
+	add $4, %esp
 
 	# Placing iret data on the stack
 	# (Note: If set, the interrupt flag in eflags will enable the interruptions back after using `iret`)
@@ -66,6 +69,11 @@ context_switch_kernel:
 	push %ebx
 	popf
 
+	# Restoring the fx state
+	push 0x28(%eax)
+	call restore_fxstate
+	add $4, %esp
+
 	# Setting registers
 	mov (%eax), %ebp
 	mov 4(%eax), %esp
@@ -76,8 +84,6 @@ context_switch_kernel:
 	mov 28(%eax), %edx
 	mov 32(%eax), %esi
 	mov 36(%eax), %edi
-	fstcw 40(%eax)
-	stmxcsr 44(%eax)
 	mov 16(%eax), %eax
 
 	# TODO FIXME: Writing to global memory is not thread-safe

@@ -7,8 +7,8 @@ use crate::gdt;
 
 /// The default value of the eflags register.
 const DEFAULT_EFLAGS: u32 = 0x1202;
-/// The default value of the FPCW.
-const DEFAULT_FPCW: u32 = 0b1100111111;
+/// The default value of the FCW.
+const DEFAULT_FCW: u32 = 0b1100111111;
 /// The default value of the MXCSR.
 const DEFAULT_MXCSR: u32 = 0b1111111000000;
 
@@ -41,7 +41,7 @@ pub extern "C" fn save_fxstate(fxstate: &mut [u8; 512]) {
 
 /// Restores the x87 FPU, MMX and SSE state from the given buffer.
 #[no_mangle]
-pub extern "C" fn store_fxstate(fxstate: &[u8; 512]) {
+pub extern "C" fn restore_fxstate(fxstate: &[u8; 512]) {
 	let mut buff = FXStateWrapper([0; 512]);
 	buff.0.copy_from_slice(fxstate);
 
@@ -103,7 +103,7 @@ impl Default for Regs {
 			edi: 0x0,
 
 			fxstate: [0; 512], // TODO Fill with default values
-			//fpcw: DEFAULT_FPCW,
+			//fpcw: DEFAULT_FCW,
 			//mxcsr: DEFAULT_MXCSR,
 		}
 	}

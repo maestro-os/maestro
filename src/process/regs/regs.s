@@ -14,20 +14,23 @@
 	# Allocating space on the stack to store the registers
 	sub $REGS_SIZE, %esp
 
+	# Saving the fx state
+	push 0x28(%esp)
+	call save_fxstate
+	pop
+
 	# Filling registers in the structure
-	ldmxcsr -0x4(%ebp)
-	fldcw -0x8(%ebp)
-	mov %edi, -0xc(%ebp)
-	mov %esi, -0x10(%ebp)
-	mov %edx, -0x14(%ebp)
-	mov %ecx, -0x18(%ebp)
-	mov %ebx, -0x1c(%ebp)
-	mov %eax, -0x20(%ebp)
+	mov %edi, 0x24(%esp)
+	mov %esi, 0x20(%esp)
+	mov %edx, 0x1c(%esp)
+	mov %ecx, 0x18(%esp)
+	mov %ebx, 0x14(%esp)
+	mov %eax, 0x10(%esp)
 
 	mov 12(%ebp), %eax
-	mov %eax, -0x24(%ebp) # eflags
+	mov %eax, 0xc(%esp) # eflags
 	mov 4(%ebp), %eax
-	mov %eax, -0x28(%ebp) # eip
+	mov %eax, 0x8(%esp) # eip
 
 	cmpl $0x8, 8(%ebp)
 	je ring0_\n
@@ -37,17 +40,17 @@
 ring0_\n:
 	mov %ebp, %eax
 	add $16, %eax
-	mov %eax, -0x2c(%ebp) # esp
+	mov %eax, 0x4(%esp) # esp
 	jmp esp_end_\n
 
 # If the interruption was raised while executing on ring 3
 ring3_\n:
 	mov 16(%ebp), %eax
-	mov %eax, -0x2c(%ebp) # esp
+	mov %eax, 0x4(%esp) # esp
 
 esp_end_\n:
 	mov (%ebp), %eax
-	mov %eax, -0x30(%ebp) # ebp
+	mov %eax, 0x0(%esp) # ebp
 .endm
 
 
@@ -57,15 +60,18 @@ esp_end_\n:
  * then terminates the interrupt handler to restore the previous context.
  */
 .macro END_INTERRUPT
+	# Restoring the fx state
+	push 0x28(%esp)
+	call restore_fxstate
+	pop
+
 	# Restoring registers
-	stmxcsr -0x4(%ebp)
-	fstcw -0x8(%ebp)
-	mov -0xc(%ebp), %edi
-	mov -0x10(%ebp), %esi
-	mov -0x14(%ebp), %edx
-	mov -0x18(%ebp), %ecx
-	mov -0x1c(%ebp), %ebx
-	mov -0x20(%ebp), %eax
+	mov 0x24(%esp), %edi
+	mov 0x20(%esp), %esi
+	mov 0x1c(%esp), %edx
+	mov 0x18(%esp), %ecx
+	mov 0x14(%esp), %ebx
+	mov 0x10(%esp), %eax
 
 	# Freeing the space allocated on the stack
 	add $REGS_SIZE, %esp
