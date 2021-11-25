@@ -23,21 +23,23 @@ context_switch:
 	mov %ax, %fs
 	mov %ax, %gs
 
-	# Setting general purpose registers, except %eax
+	# Setting registers, except %eax
 	mov 4(%ebp), %eax
 	mov 20(%eax), %ebx
 	mov 24(%eax), %ecx
 	mov 28(%eax), %edx
 	mov 32(%eax), %esi
 	mov 36(%eax), %edi
+	fstcw 40(%eax)
+	stmxcsr 44(%eax)
 
 	# Placing iret data on the stack
 	# (Note: If set, the interrupt flag in eflags will enable the interruptions back after using `iret`)
-	push 8(%ebp)
-	push 4(%eax)
-	push 12(%eax)
-	push 12(%ebp)
-	push 8(%eax)
+	push 8(%ebp) # data segment selector
+	push 4(%eax) # esp
+	push 12(%eax) # eflags
+	push 12(%ebp) # code segment selector
+	push 8(%eax) # eip
 
 	# Setting %eax
 	push 16(%ebp)
@@ -64,7 +66,7 @@ context_switch_kernel:
 	push %ebx
 	popf
 
-	# Setting general purpose registers
+	# Setting registers
 	mov (%eax), %ebp
 	mov 4(%eax), %esp
 	mov 8(%eax), %ebx
@@ -74,9 +76,11 @@ context_switch_kernel:
 	mov 28(%eax), %edx
 	mov 32(%eax), %esi
 	mov 36(%eax), %edi
+	fstcw 40(%eax)
+	stmxcsr 44(%eax)
 	mov 16(%eax), %eax
 
-	# TODO FIXME: Writting to global memory is not thread-safe
+	# TODO FIXME: Writing to global memory is not thread-safe
 	# Setting the interrupt flag and jumping to kernel code execution
 	# (Note: These two instructions, if placed in this order are atomic on x86, meaning that an interrupt cannot happen in between)
 	sti
