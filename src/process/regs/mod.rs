@@ -90,7 +90,7 @@ impl Regs {
 
 impl Default for Regs {
 	fn default() -> Self {
-		Self {
+		let mut s = Self {
 			ebp: 0x0,
 			esp: 0x0,
 			eip: 0x0,
@@ -102,10 +102,20 @@ impl Default for Regs {
 			esi: 0x0,
 			edi: 0x0,
 
-			fxstate: [0; 512], // TODO Fill with default values
-			//fpcw: DEFAULT_FCW,
-			//mxcsr: DEFAULT_MXCSR,
-		}
+			fxstate: [0; 512],
+		};
+
+		// Setting the default FPU control word
+		s.fxstate[0] = (DEFAULT_FCW & 0xff) as _;
+		s.fxstate[1] = ((DEFAULT_FCW >> 8) & 0xff) as _;
+
+		// Setting the default MXCSR
+		s.fxstate[24] = (DEFAULT_MXCSR & 0xff) as _;
+		s.fxstate[25] = ((DEFAULT_MXCSR >> 8) & 0xff) as _;
+		s.fxstate[26] = ((DEFAULT_MXCSR >> 16) & 0xff) as _;
+		s.fxstate[27] = ((DEFAULT_MXCSR >> 24) & 0xff) as _;
+
+		s
 	}
 }
 
@@ -124,7 +134,5 @@ ebx: {:p} ecx: {:p} edx: {:p} esi: {:p} edi: {:p}\n",
 			self.edx as *const c_void,
 			self.esi as *const c_void,
 			self.edi as *const c_void)
-
-		// TODO Print all registers
 	}
 }
