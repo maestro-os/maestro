@@ -30,6 +30,7 @@ mod pipe;
 mod read;
 mod reboot;
 mod sbrk;
+mod set_thread_area;
 mod setgid;
 mod setpgid;
 mod setuid;
@@ -76,6 +77,7 @@ use pipe::pipe;
 use read::read;
 use reboot::reboot;
 use sbrk::sbrk;
+use set_thread_area::set_thread_area;
 use setgid::setgid;
 use setpgid::setpgid;
 use setuid::setuid;
@@ -95,26 +97,53 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 	let id = regs.eax;
 
 	let result = match id {
-		0 => open(regs),
-		1 => umask(regs),
+		0x00 => open(regs),
+		0x01 => umask(regs),
+		0x02 => mkdir(regs),
+		0x03 => pipe(regs),
+		0x04 => pipe2(regs),
+		0x05 => dup(regs),
+		0x06 => dup2(regs),
+		0x07 => close(regs),
+		0x08 => unlink(regs),
+		0x09 => chroot(regs),
+		0x0a => getcwd(regs),
+		0x0b => chdir(regs),
+		0x0c => fchdir(regs),
+		0x0d => read(regs),
+		0x0e => write(regs),
+		0x0f => _exit(regs),
+		0x10 => fork(regs),
+		0x11 => wait(regs),
+		0x12 => waitpid(regs),
+		0x13 => getuid(regs),
+		0x14 => setuid(regs),
+		0x15 => getgid(regs),
+		0x16 => setgid(regs),
+		0x17 => getpid(regs),
+		0x18 => getppid(regs),
+		0x19 => getpgid(regs),
+		0x1a => setpgid(regs),
+		0x1b => brk(regs),
+		0x1c => sbrk(regs),
+		0x1d => mmap(regs),
+		0x1e => munmap(regs),
+		0x1f => msync(regs),
+		0x20 => signal(regs),
+		0x21 => kill(regs),
+		0x22 => socketpair(regs),
+		0x23 => uname(regs),
+		0x24 => reboot(regs),
+		0x25 => init_module(regs),
+		0x26 => finit_module(regs),
+		0x27 => delete_module(regs),
 		// TODO utime
-		3 => mkdir(regs),
 		// TODO mknod
-		4 => pipe(regs),
-		5 => pipe2(regs),
 		// TODO link
 		// TODO fcntl
-		6 => dup(regs),
-		7 => dup2(regs),
 		// TODO poll
 		// TODO ppoll
 		// TODO flock
-		8 => close(regs),
-		9 => unlink(regs),
-		10 => chroot(regs),
-		11 => getcwd(regs),
-		12 => chdir(regs),
-		13 => fchdir(regs),
 		// TODO chown
 		// TODO fchown
 		// TODO lchown
@@ -127,18 +156,12 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 		// TODO lseek
 		// TODO truncate
 		// TODO ftruncate
-		14 => read(regs),
-		15 => write(regs),
 		// TODO mount
 		// TODO umount
 		// TODO sync
 		// TODO syncfs
 		// TODO fsync
 		// TODO fdatasync
-		16 => _exit(regs),
-		17 => fork(regs),
-		18 => wait(regs),
-		19 => waitpid(regs),
 		// TODO execl
 		// TODO execlp
 		// TODO execle
@@ -150,35 +173,18 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 		// TODO getrlimit
 		// TODO setrlimit
 		// TODO getrusage
-		20 => getuid(regs),
-		21 => setuid(regs),
 		// TODO geteuid
 		// TODO seteuid
-		22 => getgid(regs),
-		23 => setgid(regs),
 		// TODO getegid
 		// TODO setegid
-		24 => getpid(regs),
-		25 => getppid(regs),
-		26 => getpgid(regs),
-		27 => setpgid(regs),
 		// TODO getsid
 		// TODO setsid
 		// TODO gettid
-		28 => brk(regs),
-		29 => sbrk(regs),
-		30 => mmap(regs),
-		31 => munmap(regs),
 		// TODO mlock
 		// TODO munlock
 		// TODO mlockall
 		// TODO munlockall
 		// TODO mprotect
-		32 => msync(regs),
-		33 => signal(regs),
-		34 => kill(regs),
-		// TODO pause
-		35 => socketpair(regs),
 		// TODO socket
 		// TODO getsockname
 		// TODO getsockopt
@@ -194,13 +200,10 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 		// TODO times
 		// TODO gettimeofday
 		// TODO ptrace
-		36 => uname(regs),
-		37 => reboot(regs),
-		38 => init_module(regs),
-		39 => finit_module(regs),
-		40 => delete_module(regs),
+		// TODO pause
+		0xf3 => set_thread_area(regs),
 
-		512 => sigreturn(regs),
+		0x200 => sigreturn(regs),
 
 		// The system call doesn't exist. Killing the process with SIGSYS
 		_ => {
