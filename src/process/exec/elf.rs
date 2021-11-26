@@ -28,6 +28,53 @@ use crate::process::signal::SignalHandler;
 use crate::process::signal;
 use crate::util::math;
 
+/// TODO doc
+const AT_NULL: i32 = 0;
+/// TODO doc
+const AT_IGNORE: i32 = 1;
+/// TODO doc
+const AT_EXECFD: i32 = 2;
+/// TODO doc
+const AT_PHDR: i32 = 3;
+/// TODO doc
+const AT_PHENT: i32 = 4;
+/// TODO doc
+const AT_PHNUM: i32 = 5;
+/// TODO doc
+const AT_PAGESZ: i32 = 6;
+/// TODO doc
+const AT_BASE: i32 = 7;
+/// TODO doc
+const AT_FLAGS: i32 = 8;
+/// TODO doc
+const AT_ENTRY: i32 = 9;
+/// TODO doc
+const AT_NOTELF: i32 = 10;
+/// TODO doc
+const AT_UID: i32 = 11;
+/// TODO doc
+const AT_EUID: i32 = 12;
+/// TODO doc
+const AT_GID: i32 = 13;
+/// TODO doc
+const AT_EGID: i32 = 14;
+/// TODO doc
+const AT_PLATFORM: i32 = 15;
+/// TODO doc
+const AT_HWCAP: i32 = 16;
+/// TODO doc
+const AT_CLKTCK: i32 = 17;
+/// TODO doc
+const AT_SECURE: i32 = 23;
+/// TODO doc
+const AT_BASE_PLATFORM: i32 = 24;
+/// TODO doc
+const AT_RANDOM: i32 = 25;
+/// TODO doc
+const AT_HWCAP2: i32 = 26;
+/// TODO doc
+const AT_EXECFN: i32 = 31;
+
 /// The size of the userspace stack of a process in number of pages.
 const USER_STACK_SIZE: usize = 2048;
 /// The flags for the userspace stack mapping.
@@ -36,6 +83,15 @@ const USER_STACK_FLAGS: u8 = MAPPING_FLAG_WRITE | MAPPING_FLAG_USER;
 const KERNEL_STACK_SIZE: usize = 64;
 /// The flags for the kernelspace stack mapping.
 const KERNEL_STACK_FLAGS: u8 = MAPPING_FLAG_WRITE | MAPPING_FLAG_NOLAZY;
+
+/// An entry of System V's Auxilary Vectors.
+#[repr(C)]
+struct AuxEntry {
+	/// The entry's type.
+	a_type: i32,
+	/// The entry's value.
+	a_val: isize,
+}
 
 /// Reads the file at the given path `path`. If the file is not executable, the function returns an
 /// error.
