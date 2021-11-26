@@ -10,12 +10,18 @@ use crate::multiboot;
 /// size `n` in bytes.
 pub unsafe fn print_memory(ptr: *const c_void, n: usize) {
 	let mut i = 0;
+
 	while i < n {
 		crate::print!("{:#08x}  ", ptr as usize + i);
 
 		let mut j = 0;
-		while j < 16 && i + j < n {
-			crate::print!("{:02x} ", *(((ptr as usize) + (i + j)) as *const u8));
+		while j < 16 {
+			if i + j < n {
+				crate::print!("{:02x} ", *(((ptr as usize) + (i + j)) as *const u8));
+			} else {
+				crate::print!("   ");
+			}
+
 			j += 1;
 		}
 
@@ -24,7 +30,7 @@ pub unsafe fn print_memory(ptr: *const c_void, n: usize) {
 		j = 0;
 		while j < 16 && i + j < n {
 			let val = *(((ptr as usize) + (i + j)) as *const u8);
-			let character = {
+			let c = {
 				if (32..127).contains(&val) {
 					val as char
 				} else {
@@ -32,7 +38,7 @@ pub unsafe fn print_memory(ptr: *const c_void, n: usize) {
 				}
 			};
 
-			crate::print!("{}", character);
+			crate::print!("{}", c);
 			j += 1;
 		}
 

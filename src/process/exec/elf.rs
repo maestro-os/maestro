@@ -25,7 +25,7 @@ use crate::process::exec::Executor;
 use crate::process::mem_space::MemSpace;
 use crate::process::mem_space::{MAPPING_FLAG_WRITE, MAPPING_FLAG_USER, MAPPING_FLAG_NOLAZY};
 use crate::process::signal::SignalHandler;
-use crate::process::signal;
+use crate::util::container::vec::Vec;
 use crate::util::math;
 
 /// TODO doc
@@ -91,6 +91,31 @@ struct AuxEntry {
 	a_type: i32,
 	/// The entry's value.
 	a_val: isize,
+}
+
+impl AuxEntry {
+	/// Creates a new instance with the given type `a_type` and value `a_val`.
+	pub fn new(a_type: i32, a_val: isize) -> Self {
+		Self {
+			a_type,
+			a_val,
+		}
+	}
+
+	// TODO Add interpreter support
+	/// Fills an auxilary vector for the given process `process`.
+	fn fill_auxilary(process: &Process) -> Result<Vec<Self>, Errno> {
+		let mut aux = Vec::new();
+		aux.push(AuxEntry::new(AT_NULL, 0))?;
+		aux.push(AuxEntry::new(AT_PAGESZ, memory::PAGE_SIZE as _))?;
+		aux.push(AuxEntry::new(AT_UID, process.get_uid() as _))?;
+		aux.push(AuxEntry::new(AT_EUID, process.get_euid() as _))?;
+		aux.push(AuxEntry::new(AT_GID, process.get_gid() as _))?;
+		aux.push(AuxEntry::new(AT_EGID, process.get_egid() as _))?;
+		// TODO AT_SECURE
+
+		Ok(aux)
+	}
 }
 
 /// Reads the file at the given path `path`. If the file is not executable, the function returns an
@@ -160,7 +185,7 @@ impl ELFExecutor {
 	/// included.
 	/// - The required size in bytes for the data to be written on the stack before the program
 	/// starts.
-	fn get_init_stack_size(argv: &[&str], envp: &[&str]) -> (usize, usize) {
+	fn get_init_stack_size(argv: &[&str], envp: &[&str], aux: &Vec<AuxEntry>) -> (usize, usize) {
 		// The size of the block storing the arguments and environment
 		let mut info_block_size = 0;
 		for e in envp {
@@ -173,12 +198,15 @@ impl ELFExecutor {
 		// The padding before the information block allowing to preserve stack alignment
 		let info_block_pad = 4 - (info_block_size % 4);
 
+		// The size of the auxilary vector
+		let aux_size = aux.len() * size_of::<AuxEntry>();
 		// The size of the environment pointers + the null fourbyte
 		let envp_size = envp.len() * 4 + 4;
 		// The size of the argument pointers + the null fourbyte + argc
 		let argv_size = argv.len() * 4 + 8;
+
 		// The total size of the stack data in bytes
-		let total_size = info_block_size + info_block_pad + 4 + envp_size + argv_size;
+		let total_size = info_block_size + info_block_pad + aux_size + envp_size + argv_size;
 
 		(info_block_size + info_block_pad, total_size)
 	}
@@ -190,14 +218,14 @@ impl ELFExecutor {
 	/// `envp` is the environment.
 	/// The function returns the distance between the top of the stack and the new bottom after the
 	/// data has been written.
-	fn init_stack(&self, user_stack: *const c_void, argv: &[&str], envp: &[&str]) {
-		let (info_size, total_size) = Self::get_init_stack_size(argv, envp);
+	fn init_stack(&self, user_stack: *const c_void, argv: &[&str], envp: &[&str],
+		aux: &Vec<AuxEntry>) {
+		let (info_size, total_size) = Self::get_init_stack_size(argv, envp, aux);
 
 		// A slice on the stack representing the region which will containing the arguments and
 		// environment variables
 		let info_slice = unsafe {
-			slice::from_raw_parts_mut((user_stack as usize - info_size) as *mut u8,
-				info_size / size_of::<u8>())
+			slice::from_raw_parts_mut((user_stack as usize - info_size) as *mut u8, info_size)
 		};
 
 		// A slice on the stack representing the region to fill
@@ -256,11 +284,13 @@ impl ELFExecutor {
 			stack_off += 1;
 		}
 		// Setting the nullbytes to end envp
-		for i in 0..2 {
-			stack_slice[stack_off + i] = 0;
+		stack_slice[stack_off] = 0;
+		stack_off += 1;
+
+		for (i, a) in aux.iter().enumerate() {
+			stack_slice[stack_off + i * 2] = a.a_type as _;
+			stack_slice[stack_off + i * 2 + 1] = a.a_val as _;
 		}
-		stack_off += 2;
-		debug_assert!(stack_off <= total_size);
 	}
 
 	/// Allocates memory in userspace for an ELF segment.
@@ -337,8 +367,11 @@ impl Executor for ELFExecutor {
 		// The user stack
 		let user_stack = mem_space.map_stack(None, USER_STACK_SIZE, USER_STACK_FLAGS)?;
 
+		// The auxilary vector
+		let aux = AuxEntry::fill_auxilary(process)?;
+
 		// The size in bytes of the initial data on the stack
-		let total_size = Self::get_init_stack_size(argv, envp).1;
+		let total_size = Self::get_init_stack_size(argv, envp, &aux).1;
 		// Pre-allocating pages on the user stack to write the initial data
 		{
 			// The number of pages to allocate on the user stack to write the initial data
@@ -410,7 +443,7 @@ impl Executor for ELFExecutor {
 			});
 
 			// Initializing the userspace stack
-			self.init_stack(user_stack, argv, envp);
+			self.init_stack(user_stack, argv, envp, &aux);
 		});
 
 		// Setting the new memory space to the process
@@ -422,9 +455,9 @@ impl Executor for ELFExecutor {
 
 		// Resetting signals
 		process.signals_bitfield.clear_all();
-		process.signal_handlers = [SignalHandler::Default; signal::SIGNALS_COUNT + 1];
-
-		// TODO Enable floats and SSE
+		for i in 0..process.signal_handlers.len() {
+			process.signal_handlers[i] = SignalHandler::Default;
+		}
 
 		// Setting the process's entry point
 		let hdr = parser.get_header();
