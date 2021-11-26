@@ -239,6 +239,7 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 	if !cpu::sse::is_present() {
 		kernel_panic!("SSE support is required to run this kernel :(");
 	}
+	cpu::sse::enable();
 
 	// Reading multiboot informations
 	multiboot::read_tags(multiboot_ptr);
