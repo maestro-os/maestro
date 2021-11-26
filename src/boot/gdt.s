@@ -66,14 +66,13 @@ switch_protected:
 	or $1, %al
 	mov %eax, %cr0
 
-	jmp $0x8, $complete_flush
+	jmp $GDT_KERNEL_CODE_OFFSET, $complete_flush
 complete_flush:
-	mov $0x10, %ax
+	mov $GDT_KERNEL_DATA_OFFSET, %ax
 	mov %ax, %ds
 	mov %ax, %es
 	mov %ax, %fs
 	mov %ax, %gs
-	mov $0x18, %ax
 	mov %ax, %ss
 	ret
 
@@ -125,17 +124,6 @@ gdt_kernel_data:
 	.byte 0
 
 /*
- * Segment for the kernel stack.
- */
-gdt_kernel_stack:
-	.word 0xffff
-	.word 0
-	.byte 0
-	.byte 0b10010010
-	.byte 0b11001111
-	.byte 0
-
-/*
  * Segment for the user code.
  */
 gdt_user_code:
@@ -150,17 +138,6 @@ gdt_user_code:
  * Segment for the user data.
  */
 gdt_user_data:
-	.word 0xffff
-	.word 0
-	.byte 0
-	.byte 0b11110010
-	.byte 0b11001111
-	.byte 0
-
-/*
- * Segment for the user stack.
- */
-gdt_user_stack:
 	.word 0xffff
 	.word 0
 	.byte 0

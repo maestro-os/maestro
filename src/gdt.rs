@@ -12,16 +12,12 @@ const PHYS_PTR: *mut c_void = 0x800 as _;
 pub const KERNEL_CODE_OFFSET: u32 = 8;
 /// The offset of the kernel data segment.
 pub const KERNEL_DATA_OFFSET: u32 = 16;
-/// The offset of the kernel stack segment.
-pub const KERNEL_STACK_OFFSET: u32 = 24;
 /// The offset of the user code segment.
-pub const USER_CODE_OFFSET: u32 = 32;
+pub const USER_CODE_OFFSET: u32 = 24;
 /// The offset of the user data segment.
-pub const USER_DATA_OFFSET: u32 = 40;
-/// The offset of the user stack segment.
-pub const USER_STACK_OFFSET: u32 = 48;
+pub const USER_DATA_OFFSET: u32 = 32;
 /// The offset of the Task State Segment (TSS).
-pub const TSS_OFFSET: u32 = 56;
+pub const TSS_OFFSET: u32 = 48;
 
 /// x86. Creates a segment selector for the given segment offset and ring.
 #[inline(always)]
