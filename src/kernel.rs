@@ -35,7 +35,7 @@
 
 pub mod acpi;
 pub mod cmdline;
-pub mod cpuid;
+pub mod cpu;
 pub mod debug;
 pub mod device;
 pub mod elf;
@@ -236,7 +236,7 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 	event::init();
 
 	// Ensuring the CPU has SSE
-	if !cpuid::has_sse() {
+	if !cpu::sse::is_present() {
 		kernel_panic!("SSE support is required to run this kernel :(");
 	}
 

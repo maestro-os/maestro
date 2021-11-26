@@ -14,6 +14,7 @@ pub mod tss;
 use core::ffi::c_void;
 use core::mem::ManuallyDrop;
 use core::mem::MaybeUninit;
+use crate::cpu;
 use crate::errno::Errno;
 use crate::errno;
 use crate::event::{InterruptResult, InterruptResultAction};
@@ -245,7 +246,7 @@ pub fn init() -> Result<(), Errno> {
 			let curr_proc = curr_proc_guard.get_mut();
 
 			let accessed_ptr = unsafe {
-				vmem::x86::cr2_get()
+				cpu::cr2_get()
 			};
 
 			if !curr_proc.get_mem_space_mut().unwrap().handle_page_fault(accessed_ptr, code) {

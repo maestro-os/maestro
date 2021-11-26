@@ -7,6 +7,7 @@
 pub mod x86;
 
 use core::ffi::c_void;
+use crate::cpu;
 use crate::elf;
 use crate::errno::Errno;
 use crate::memory;
@@ -99,16 +100,16 @@ pub fn clone(vmem: &Box::<dyn VMem>) -> Result::<Box::<dyn VMem>, Errno> {
 /// Tells whether the read-only pages protection is enabled.
 pub fn is_write_lock() -> bool {
 	unsafe {
-		(x86::cr0_get() & (1 << 16)) != 0
+		(cpu::cr0_get() & (1 << 16)) != 0
 	}
 }
 
 /// Sets whether the kernel can write to read-only pages.
 pub unsafe fn set_write_lock(lock: bool) {
 	if lock {
-		x86::cr0_set(1 << 16);
+		cpu::cr0_set(1 << 16);
 	} else {
-		x86::cr0_clear(1 << 16);
+		cpu::cr0_clear(1 << 16);
 	}
 }
 
@@ -130,13 +131,16 @@ pub fn switch<F: FnMut() -> T, T>(vmem: &dyn VMem, mut f: F) -> T {
 	if vmem.is_bound() {
 		f()
 	} else {
+		// Getting the current vmem
 		let cr3 = unsafe {
-			x86::cr3_get()
+			cpu::cr3_get()
 		};
+		// Binding the temporary vmem
 		vmem.bind();
 
 		let result = f();
 
+		// Restoring the previous vmem
 		unsafe {
 			x86::paging_enable(cr3 as _);
 		}

@@ -20,6 +20,7 @@
 use core::ffi::c_void;
 use core::ptr;
 use core::result::Result;
+use crate::cpu;
 use crate::errno::Errno;
 use crate::memory::buddy;
 use crate::memory::vmem::VMem;
@@ -69,21 +70,6 @@ pub const PAGE_FAULT_RESERVED: u32 = 0b01000;
 pub const PAGE_FAULT_INSTRUCTION: u32 = 0b10000;
 
 extern "C" {
-	/// Returns the content of the %cr0 register.
-	pub fn cr0_get() -> u32;
-	/// Sets the given flags in the %cr0 register.
-	pub fn cr0_set(flags: u32);
-	/// Clears the given flags in the %cr0 register.
-	pub fn cr0_clear(flags: u32);
-	/// Returns the content of the %cr2 register.
-	pub fn cr2_get() -> *const c_void;
-	/// Returns the content of the %cr3 register.
-	pub fn cr3_get() -> *mut c_void;
-	/// Returns the content of the %cr4 register.
-	pub fn cr4_get() -> u32;
-	/// Sets the content of the %cr4 register.
-	pub fn cr4_set(flags: u32);
-
 	/// Enables paging with the given page directory.
 	pub fn paging_enable(directory: *const u32);
 	/// Disables paging.
@@ -580,7 +566,7 @@ impl VMem for X86VMem {
 
 	fn is_bound(&self) -> bool {
 		unsafe {
-			cr3_get() == memory::kern_to_phys(self.page_dir as _) as _
+			cpu::cr3_get() == memory::kern_to_phys(self.page_dir as _) as _
 		}
 	}
 
