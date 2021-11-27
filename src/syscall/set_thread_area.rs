@@ -1,5 +1,6 @@
 //! This module implements the `set_thread_area` system call, which allows to set a TLS area.
 
+use core::mem::size_of;
 use crate::errno::Errno;
 use crate::errno;
 use crate::gdt;
@@ -82,7 +83,7 @@ pub fn set_thread_area(regs: &Regs) -> Result<i32, Errno> {
 
 	entry.set_base(*base_addr as _);
 	entry.set_limit(*limit as _);
-	// TODO Modify the of other fields of the entry
+	// TODO Modify the other fields of the entry
 	entry.set_present(true); // TODO Handle clearing
 
     // Updating the GDT
@@ -90,7 +91,7 @@ pub fn set_thread_area(regs: &Regs) -> Result<i32, Errno> {
 
 	// If the entry is allocated, tell the userspace its ID
 	if (*entry_number as i32) == -1 {
-	    *entry_number = id as _;
+	    *entry_number = (gdt::TLS_OFFSET + *entry_number as usize * size_of::<gdt::Entry>()) as _;
 	}
 
 	Ok(0)
