@@ -25,7 +25,7 @@ pub fn get_free_entry(process: &mut Process) -> Result<usize, Errno> {
 /// Returns an entry ID for the given process and entry number.
 /// If the id is `-1`, the function shall find a free entry.
 pub fn get_entry<'a>(proc: &'a mut Process, entry_number: i32)
-    -> Result<(usize, &'a mut gdt::Entry), Errno> {
+	-> Result<(usize, &'a mut gdt::Entry), Errno> {
 	// Checking the entry number is in bound
 	if entry_number < 0 || entry_number > process::TLS_ENTRIES_COUNT as _ {
 		return Err(errno::EINVAL);
@@ -64,7 +64,7 @@ pub fn set_thread_area(regs: &Regs) -> Result<i32, Errno> {
 
 	// The entry number
 	let entry_number = unsafe { // Safe because the structure is large enough
-        &mut *(&mut info[0] as *mut _ as *mut i32)
+		&mut *(&mut info[0] as *mut _ as *mut i32)
 	};
 
 	// Getting the entry with its id
@@ -72,13 +72,13 @@ pub fn set_thread_area(regs: &Regs) -> Result<i32, Errno> {
 	debug_assert!(id < process::TLS_ENTRIES_COUNT);
 
 	let base_addr = unsafe { // Safe because the structure is large enough
-        &*(&mut info[4] as *const _ as *const i32)
+		&*(&mut info[4] as *const _ as *const i32)
 	};
 	let limit = unsafe { // Safe because the structure is large enough
-        &*(&mut info[8] as *const _ as *const i32)
+		&*(&mut info[8] as *const _ as *const i32)
 	};
 	let _flags = unsafe { // Safe because the structure is large enough
-        &*(&mut info[12] as *const _ as *const i32)
+		&*(&mut info[12] as *const _ as *const i32)
 	};
 
 	entry.set_base(*base_addr as _);
@@ -86,12 +86,12 @@ pub fn set_thread_area(regs: &Regs) -> Result<i32, Errno> {
 	// TODO Modify the other fields of the entry
 	entry.set_present(true); // TODO Handle clearing
 
-    // Updating the GDT
+	// Updating the GDT
 	proc.update_tls(id);
 
 	// If the entry is allocated, tell the userspace its ID
 	if (*entry_number as i32) == -1 {
-	    *entry_number = (gdt::TLS_OFFSET + *entry_number as usize * size_of::<gdt::Entry>()) as _;
+		*entry_number = (gdt::TLS_OFFSET + *entry_number as usize * size_of::<gdt::Entry>()) as _;
 	}
 
 	Ok(0)

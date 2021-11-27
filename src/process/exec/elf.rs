@@ -355,10 +355,10 @@ impl Executor for ELFExecutor {
 
 		// The kernel stack
 		let kernel_stack = mem_space.map_stack(None, process::KERNEL_STACK_SIZE,
-            process::KERNEL_STACK_FLAGS)?;
+			process::KERNEL_STACK_FLAGS)?;
 		// The user stack
 		let user_stack = mem_space.map_stack(None, process::USER_STACK_SIZE,
-		    process::USER_STACK_FLAGS)?;
+			process::USER_STACK_FLAGS)?;
 
 		// The auxilary vector
 		let aux = AuxEntry::fill_auxilary(process)?;

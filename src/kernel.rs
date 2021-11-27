@@ -204,10 +204,10 @@ fn init() -> Result<(), &'static str> {
 			core::mem::transmute::<unsafe extern "C" fn(), *const c_void>(test_process)
 		};
 
-        proc.init_dummy(test_begin)
+		proc.init_dummy(test_begin)
 	} else {
 		let path = Path::from_string(INIT_PATH, false).or(Err("Unknown error"))?;
-        exec(proc, &path, &[INIT_PATH], DEFAULT_ENVIRONMENT)
+		exec(proc, &path, &[INIT_PATH], DEFAULT_ENVIRONMENT)
 	};
 
 	match result {

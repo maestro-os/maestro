@@ -524,11 +524,9 @@ impl Process {
 		}
 
 		if self.state == State::Zombie {
-			if self.is_init() {
-				kernel_panic!("Terminated init process!");
+			if !self.is_init() {
+				// TODO Attach every child to the init process
 			}
-
-			// TODO Attach every child to the init process
 
 			// Removing the memory space to save memory
 			// TODO Handle the case where the memory space is bound
@@ -658,18 +656,18 @@ impl Process {
 	/// Initializes the process to run without a program.
 	/// `pc` is the initial program counter.
 	pub fn init_dummy(&mut self, pc: *const c_void) -> Result<(), Errno> {
-	    // Creating the memory space and the stacks
-	    let mut mem_space = MemSpace::new()?;
+		// Creating the memory space and the stacks
+		let mut mem_space = MemSpace::new()?;
 		let kernel_stack = mem_space.map_stack(None, KERNEL_STACK_SIZE, KERNEL_STACK_FLAGS)?;
 		let user_stack = mem_space.map_stack(None, USER_STACK_SIZE, USER_STACK_FLAGS)?;
 
-	    self.mem_space = Some(mem_space);
-	    self.kernel_stack = Some(kernel_stack);
-	    self.user_stack = Some(user_stack);
+		self.mem_space = Some(mem_space);
+		self.kernel_stack = Some(kernel_stack);
+		self.user_stack = Some(user_stack);
 
-        // Setting the registers' initial state
-        let mut regs = Regs::default();
-	    regs.esp = user_stack as _;
+		// Setting the registers' initial state
+		let mut regs = Regs::default();
+		regs.esp = user_stack as _;
 		regs.eip = pc as _;
 		self.regs = regs;
 
@@ -952,15 +950,15 @@ impl Process {
 		&mut self.tls_entries
 	}
 
-    /// Updates the `n`th TLS entry in the GDT.
-    /// If `n` is out of bounds, the function does nothing.
+	/// Updates the `n`th TLS entry in the GDT.
+	/// If `n` is out of bounds, the function does nothing.
 	pub fn update_tls(&self, n: usize) {
-	    if n < TLS_ENTRIES_COUNT {
-	        unsafe { // Safe because the offset is checked by the condition
-	            self.tls_entries[n].update_gdt(gdt::TLS_OFFSET + n * size_of::<gdt::Entry>());
-	        }
-	    }
-    }
+		if n < TLS_ENTRIES_COUNT {
+			unsafe { // Safe because the offset is checked by the condition
+				self.tls_entries[n].update_gdt(gdt::TLS_OFFSET + n * size_of::<gdt::Entry>());
+			}
+		}
+	}
 
 	/// Exits the process with the given `status`. This function changes the process's status to
 	/// `Zombie`.
@@ -1001,13 +999,9 @@ impl Process {
 
 impl Drop for Process {
 	fn drop(&mut self) {
-		debug_assert!(!self.is_init());
-		// When terminated, a process gives all its children to the init process
-		debug_assert!(self.get_children().is_empty());
-
-		// Checking the process is a zombie
-		debug_assert_eq!(self.get_state(), State::Zombie);
-		debug_assert!(self.mem_space.is_none());
+		if self.is_init() {
+			kernel_panic!("Terminated init process!");
+		}
 
 		if let Some(parent) = self.get_parent() {
 			let parent = parent.get_mut().unwrap();
