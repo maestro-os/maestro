@@ -45,6 +45,7 @@ mod waitpid;
 mod write;
 
 use crate::process::Process;
+use crate::process::signal::Signal;
 use crate::process;
 
 use _exit::_exit;
@@ -207,12 +208,14 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 
 		// The system call doesn't exist. Killing the process with SIGSYS
 		_ => {
-			let mut mutex = Process::get_current().unwrap();
-			let mut guard = mutex.lock(false);
-			let curr_proc = guard.get_mut();
+		    {
+			    let mut mutex = Process::get_current().unwrap();
+			    let mut guard = mutex.lock(false);
+			    let curr_proc = guard.get_mut();
 
-			// SIGSYS cannot be caught, thus the process will be terminated
-			curr_proc.kill(process::signal::Signal::new(process::signal::SIGSYS).unwrap(), true);
+			    // SIGSYS cannot be caught, thus the process will be terminated
+			    curr_proc.kill(Signal::new(process::signal::SIGSYS).unwrap(), true);
+		    }
 			crate::enter_loop();
 		}
 	};

@@ -284,11 +284,17 @@ impl Scheduler {
 			curr_proc.syscalling = ring < 3;
 		}
 
+        // The current core ID
+		let core_id = 0; // TODO
+        // A pointer to the temporary stack for the current core
+		let tmp_stack = unsafe {
+			scheduler.tmp_stacks[core_id].as_ptr_mut() as *mut c_void
+		};
+
 		if let Some(next_proc) = &mut scheduler.get_next_process() {
 			// Set the process as current
 			scheduler.curr_proc = Some(next_proc.clone());
 
-			let core_id = 0; // TODO
 			let f = | data | {
 				let (syscalling, regs) = {
 					let data = unsafe {
@@ -325,9 +331,6 @@ impl Scheduler {
 				}
 			};
 
-			let tmp_stack = unsafe {
-				scheduler.tmp_stacks[core_id].as_ptr_mut() as *mut c_void
-			};
 			scheduler.ctx_switch_data[core_id] = Some(ContextSwitchData {
 				proc: scheduler.curr_proc.as_mut().unwrap().1.clone(),
 			});
@@ -345,15 +348,16 @@ impl Scheduler {
 
 			unreachable!();
 		} else {
-			crate::bind_vmem();
-		}
+		    drop(guard);
+		    unsafe {
+			    event::unlock_callbacks(0x20);
+		    }
+		    pic::end_of_interrupt(0x0);
 
-		drop(guard);
-		unsafe {
-			event::unlock_callbacks(0x20);
+		    unsafe {
+		        crate::loop_reset(tmp_stack);
+		    }
 		}
-		pic::end_of_interrupt(0x0);
-		crate::enter_loop();
 	}
 
 	/// Returns the total number of ticks since the instanciation of the scheduler.

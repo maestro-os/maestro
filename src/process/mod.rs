@@ -524,9 +524,11 @@ impl Process {
 		}
 
 		if self.state == State::Zombie {
-			if !self.is_init() {
-				// TODO Attach every child to the init process
+			if self.is_init() {
+			    kernel_panic!("Terminated init process!");
 			}
+
+			// TODO Attach every child to the init process
 
 			// Removing the memory space to save memory
 			// TODO Handle the case where the memory space is bound
