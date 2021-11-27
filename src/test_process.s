@@ -23,7 +23,7 @@ open:
 
 	push %ebx
 
-	mov $0, %eax
+	mov $0x0, %eax
 	mov 8(%ebp), %ebx
 	mov 12(%ebp), %ecx
 	int $0x80
@@ -40,7 +40,7 @@ read:
 
 	push %ebx
 
-	mov $14, %eax
+	mov $0xd, %eax
 	mov 8(%ebp), %ebx
 	mov 12(%ebp), %ecx
 	mov 16(%ebp), %edx
@@ -58,7 +58,7 @@ write:
 
 	push %ebx
 
-	mov $15, %eax
+	mov $0xe, %eax
 	mov 8(%ebp), %ebx
 	mov 12(%ebp), %ecx
 	mov 16(%ebp), %edx
@@ -76,7 +76,7 @@ close:
 
 	push %ebx
 
-	mov $8, %eax
+	mov $0x7, %eax
 	mov 8(%ebp), %ebx
 	int $0x80
 
@@ -90,14 +90,14 @@ _exit:
 	push %ebp
 	mov %esp, %ebp
 
-	mov $16, %eax
+	mov $0x0f, %eax
 	mov 8(%ebp), %ebx
 	int $0x80
 
 	ud2
 
 fork:
-	mov $17, %eax
+	mov $0x10, %eax
 	int $0x80
 	ret
 
@@ -107,7 +107,7 @@ waitpid:
 
 	push %ebx
 
-	mov $19, %eax
+	mov $0x12, %eax
 	mov 8(%ebp), %ebx
 	mov 12(%ebp), %ecx
 	mov 16(%ebp), %edx
@@ -120,12 +120,12 @@ waitpid:
 	ret
 
 getpid:
-	mov $24, %eax
+	mov $0x17, %eax
 	int $0x80
 	ret
 
 getppid:
-	mov $25, %eax
+	mov $0x18, %eax
 	int $0x80
 	ret
 
@@ -138,7 +138,7 @@ mmap:
 	push %edi
 	push %ebp
 
-	mov $30, %eax
+	mov $0x1d, %eax
 	mov 8(%ebp), %ebx
 	mov 12(%ebp), %ecx
 	mov 16(%ebp), %edx
@@ -162,7 +162,7 @@ munmap:
 
 	push %ebx
 
-	mov $31, %eax
+	mov $0x1e, %eax
 	mov 8(%ebp), %ebx
 	mov 12(%ebp), %ecx
 	int $0x80
@@ -179,7 +179,7 @@ signal:
 
 	push %ebx
 
-	mov $32, %eax
+	mov $0x20, %eax
 	mov 8(%ebp), %ebx
 	mov 12(%ebp), %ecx
 	int $0x80
@@ -196,7 +196,7 @@ kill:
 
 	push %ebx
 
-	mov $33, %eax
+	mov $0x21, %eax
 	mov 8(%ebp), %ebx
 	mov 12(%ebp), %ecx
 	int $0x80
@@ -214,7 +214,7 @@ socketpair:
 	push %ebx
 	push %esi
 
-	mov $34, %eax
+	mov $0x22, %eax
 	mov 8(%ebp), %ebx
 	mov 12(%ebp), %ecx
 	mov 16(%ebp), %edx
@@ -234,7 +234,7 @@ init_module:
 
 	push %ebx
 
-	mov $37, %eax
+	mov $0x25, %eax
 	mov 8(%ebp), %ebx
 	mov 12(%ebp), %ecx
 	int $0x80
@@ -251,7 +251,7 @@ finit_module:
 
 	push %ebx
 
-	mov $38, %eax
+	mov $0x26, %eax
 	mov 8(%ebp), %ebx
 	mov 12(%ebp), %ecx
 	int $0x80
@@ -268,7 +268,7 @@ delete_module:
 
 	push %ebx
 
-	mov $39, %eax
+	mov $0x27, %eax
 	mov 8(%ebp), %ebx
 	mov 12(%ebp), %ecx
 	int $0x80

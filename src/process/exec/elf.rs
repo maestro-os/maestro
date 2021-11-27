@@ -23,8 +23,8 @@ use crate::process::Process;
 use crate::process::Regs;
 use crate::process::exec::Executor;
 use crate::process::mem_space::MemSpace;
-use crate::process::mem_space::{MAPPING_FLAG_WRITE, MAPPING_FLAG_USER, MAPPING_FLAG_NOLAZY};
 use crate::process::signal::SignalHandler;
+use crate::process;
 use crate::util::container::vec::Vec;
 use crate::util::math;
 
@@ -74,15 +74,6 @@ const AT_RANDOM: i32 = 25;
 const AT_HWCAP2: i32 = 26;
 /// TODO doc
 const AT_EXECFN: i32 = 31;
-
-/// The size of the userspace stack of a process in number of pages.
-const USER_STACK_SIZE: usize = 2048;
-/// The flags for the userspace stack mapping.
-const USER_STACK_FLAGS: u8 = MAPPING_FLAG_WRITE | MAPPING_FLAG_USER;
-/// The size of the kernelspace stack of a process in number of pages.
-const KERNEL_STACK_SIZE: usize = 64;
-/// The flags for the kernelspace stack mapping.
-const KERNEL_STACK_FLAGS: u8 = MAPPING_FLAG_WRITE | MAPPING_FLAG_NOLAZY;
 
 /// An entry of System V's Auxilary Vectors.
 #[repr(C)]
@@ -363,9 +354,11 @@ impl Executor for ELFExecutor {
 		result?;
 
 		// The kernel stack
-		let kernel_stack = mem_space.map_stack(None, KERNEL_STACK_SIZE, KERNEL_STACK_FLAGS)?;
+		let kernel_stack = mem_space.map_stack(None, process::KERNEL_STACK_SIZE,
+            process::KERNEL_STACK_FLAGS)?;
 		// The user stack
-		let user_stack = mem_space.map_stack(None, USER_STACK_SIZE, USER_STACK_FLAGS)?;
+		let user_stack = mem_space.map_stack(None, process::USER_STACK_SIZE,
+		    process::USER_STACK_FLAGS)?;
 
 		// The auxilary vector
 		let aux = AuxEntry::fill_auxilary(process)?;
@@ -377,7 +370,7 @@ impl Executor for ELFExecutor {
 			// The number of pages to allocate on the user stack to write the initial data
 			let pages_count = math::ceil_division(total_size, memory::PAGE_SIZE);
 			// Checking that the data doesn't exceed the stack's size
-			if pages_count >= USER_STACK_SIZE {
+			if pages_count >= process::USER_STACK_SIZE {
 				return Err(errno::ENOMEM);
 			}
 

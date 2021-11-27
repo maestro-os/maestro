@@ -78,8 +78,7 @@ context_switch_kernel:
 	# Setting registers
 	mov 0x0(%eax), %ebp
 	mov 0x4(%eax), %esp
-	mov 0x8(%eax), %ebx
-	movl %ebx, jmp_addr
+	push 0x8(%eax) # eip
 	mov 0x14(%eax), %ebx
 	mov 0x18(%eax), %ecx
 	mov 0x1c(%eax), %edx
@@ -87,15 +86,7 @@ context_switch_kernel:
 	mov 0x24(%eax), %edi
 	mov 0x10(%eax), %eax
 
-	# TODO FIXME: Writing to global memory is not thread-safe
 	# Setting the interrupt flag and jumping to kernel code execution
 	# (Note: These two instructions, if placed in this order are atomic on x86, meaning that an interrupt cannot happen in between)
 	sti
-	jmp *jmp_addr
-
-.section .data
-
-// A location in memory storing the pointer to jump to.
-// This location has to be used to avoid using a register.
-jmp_addr:
-	.long 0
+	ret

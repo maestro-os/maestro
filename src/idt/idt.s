@@ -48,35 +48,33 @@ END_INTERRUPT
 .global error\n
 
 error\n:
-	# Copying the error code after the stack frame and popping it
-	sub $4, %esp
+	# Retrieving the error code and writing it after the stack pointer so that it can be retrieved
+	# after the stack frame
 	push %eax
-	mov 8(%esp), %eax
-	mov %eax, -36(%esp)
+	mov 4(%esp), %eax
+	mov %eax, -4(%esp)
 	pop %eax
-	add $8, %esp
+
+	# Removing the code from its previous location on the stack
+	add $4, %esp
 
 	push %ebp
 	mov %esp, %ebp
 
+	# Allocating space for the error code
+	push -8(%esp)
+
 	# Allocating space for registers and retrieving them
 GET_REGS \n
 
-	# Retrieving the error code on the stack
-	sub $4, %esp
-
-	# Getting pointer to structure containing register values
-	mov %esp, %eax
-	add $40, %eax
-
 	# Getting the ring
-	mov 8(%ebp), %ebx
-	and $0b11, %ebx
+	mov 8(%ebp), %eax
+	and $0b11, %eax
 
 	# Pushing arguments to call event_handler
-	push %eax # regs
-	push %ebx # ring
-	push 8(%esp) # code
+	push %esp # regs
+	push %eax # ring
+	push (REGS_SIZE + 8)(%esp) # code
 	push $\n # id
 	call event_handler
 	add $16, %esp

@@ -54,6 +54,15 @@ const TTY_DEVICE_PATH: &str = "/dev/tty";
 /// The default file creation mask.
 const DEFAULT_UMASK: u16 = 0o022;
 
+/// The size of the userspace stack of a process in number of pages.
+const USER_STACK_SIZE: usize = 2048;
+/// The flags for the userspace stack mapping.
+const USER_STACK_FLAGS: u8 = mem_space::MAPPING_FLAG_WRITE | mem_space::MAPPING_FLAG_USER;
+/// The size of the kernelspace stack of a process in number of pages.
+const KERNEL_STACK_SIZE: usize = 64;
+/// The flags for the kernelspace stack mapping.
+const KERNEL_STACK_FLAGS: u8 = mem_space::MAPPING_FLAG_WRITE | mem_space::MAPPING_FLAG_NOLAZY;
+
 /// The file descriptor number of the standard input stream.
 const STDIN_FILENO: u32 = 0;
 /// The file descriptor number of the standard output stream.
@@ -646,9 +655,25 @@ impl Process {
 		self.regs = *regs;
 	}
 
-	/// Sets the pointer for the program counter.
-	pub fn set_program_counter(&mut self, ptr: *const c_void) {
-		self.regs.eip = ptr as _;
+	/// Initializes the process to run without a program.
+	/// `pc` is the initial program counter.
+	pub fn init_dummy(&mut self, pc: *const c_void) -> Result<(), Errno> {
+	    // Creating the memory space and the stacks
+	    let mut mem_space = MemSpace::new()?;
+		let kernel_stack = mem_space.map_stack(None, KERNEL_STACK_SIZE, KERNEL_STACK_FLAGS)?;
+		let user_stack = mem_space.map_stack(None, USER_STACK_SIZE, USER_STACK_FLAGS)?;
+
+	    self.mem_space = Some(mem_space);
+	    self.kernel_stack = Some(kernel_stack);
+	    self.user_stack = Some(user_stack);
+
+        // Setting the registers' initial state
+        let mut regs = Regs::default();
+	    regs.esp = user_stack as _;
+		regs.eip = pc as _;
+		self.regs = regs;
+
+		Ok(())
 	}
 
 	/// Tells whether the process was syscalling before being interrupted.

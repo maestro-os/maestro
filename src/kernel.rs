@@ -198,20 +198,21 @@ fn init() -> Result<(), &'static str> {
 	let mut lock = mutex.lock(false);
 	let proc = lock.get_mut();
 
-	if cfg!(config_debug_testprocess) {
+	let result = if cfg!(config_debug_testprocess) {
 		// The pointer to the beginning of the test process
 		let test_begin = unsafe {
 			core::mem::transmute::<unsafe extern "C" fn(), *const c_void>(test_process)
 		};
 
-		proc.set_program_counter(test_begin);
-		Ok(())
+        proc.init_dummy(test_begin)
 	} else {
 		let path = Path::from_string(INIT_PATH, false).or(Err("Unknown error"))?;
-		match exec(proc, &path, &[INIT_PATH], DEFAULT_ENVIRONMENT) {
-			Ok(_) => Ok(()),
-			Err(errno) => Err(get_init_error_message(errno)),
-		}
+        exec(proc, &path, &[INIT_PATH], DEFAULT_ENVIRONMENT)
+	};
+
+	match result {
+		Ok(_) => Ok(()),
+		Err(errno) => Err(get_init_error_message(errno)),
 	}
 }
 
