@@ -20,7 +20,7 @@ syscall:
 GET_REGS
 
 	# Setting segments
-	mov $GDT_KERNEL_DATA_OFFSET, %ax
+	mov $GDT_KERNEL_DS, %ax
 	mov %ax, %ds
 	mov %ax, %es
 	mov %ax, %fs
@@ -35,7 +35,7 @@ GET_REGS
 
 	# Restoring segments
 	xor %ebx, %ebx
-	mov $GDT_USER_DATA_OFFSET, %bx
+	mov $GDT_USER_DS, %bx
 	or $3, %bx
 	mov %bx, %ds
 	mov %bx, %es

@@ -301,8 +301,8 @@ impl Scheduler {
 					proc.quantum_count += 1;
 
 					let tss = tss::get();
-					tss.ss0 = gdt::KERNEL_DATA_OFFSET as _;
-					tss.ss = gdt::USER_DATA_OFFSET as _;
+					tss.ss0 = gdt::KERNEL_DS as _;
+					tss.ss = gdt::USER_DS as _;
 					// Setting the kernel stack pointer
 					tss.esp0 = proc.kernel_stack.unwrap() as _;
 					// Binding the memory space

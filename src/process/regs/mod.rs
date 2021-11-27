@@ -78,8 +78,8 @@ impl Regs {
 	/// behaviour.
 	pub unsafe fn switch(&self, user: bool) -> ! {
 		if user {
-			let user_data_selector = gdt::USER_DATA_OFFSET | 3;
-			let user_code_selector = gdt::USER_CODE_OFFSET | 3;
+			let user_data_selector = gdt::USER_DS | 3;
+			let user_code_selector = gdt::USER_CS | 3;
 
 			context_switch(self, user_data_selector as _, user_code_selector as _);
 		} else {

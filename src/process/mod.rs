@@ -26,6 +26,7 @@ use crate::file::file_descriptor::FileDescriptor;
 use crate::file::file_descriptor;
 use crate::file::path::Path;
 use crate::file;
+use crate::gdt;
 use crate::limits;
 use crate::memory::vmem;
 use crate::util::FailableClone;
@@ -58,6 +59,9 @@ const STDIN_FILENO: u32 = 0;
 const STDOUT_FILENO: u32 = 1;
 /// The file descriptor number of the standard error stream.
 const STDERR_FILENO: u32 = 2;
+
+/// The number of TLS entries per process.
+pub const TLS_ENTRIES_COUNT: usize = 3;
 
 // TODO Remove later (need to refactor a big part of the project)
 pub use regs::Regs;
@@ -140,6 +144,9 @@ pub struct Process {
 	signals_bitfield: Bitfield,
 	/// The list of signal handlers.
 	signal_handlers: [SignalHandler; signal::SIGNALS_COUNT + 1],
+
+	/// TLS entries.
+	tls_entries: [gdt::Entry; TLS_ENTRIES_COUNT],
 
 	/// The exit status of the process after exiting.
 	exit_status: ExitStatus,
@@ -344,6 +351,8 @@ impl Process {
 
 			signals_bitfield: Bitfield::new(signal::SIGNALS_COUNT + 1)?,
 			signal_handlers: [SignalHandler::Default; signal::SIGNALS_COUNT + 1],
+
+			tls_entries: [gdt::Entry::default(); TLS_ENTRIES_COUNT],
 
 			exit_status: 0,
 			termsig: 0,
@@ -826,6 +835,8 @@ impl Process {
 			signals_bitfield: Bitfield::new(signal::SIGNALS_COUNT + 1)?,
 			signal_handlers: self.signal_handlers,
 
+			tls_entries: self.tls_entries,
+
 			exit_status: self.exit_status,
 			termsig: 0,
 		};
@@ -908,6 +919,11 @@ impl Process {
 			self.handled_signal = None;
 			self.regs = self.saved_regs;
 		}
+	}
+
+	/// Returns the list of TLS entries for the process.
+	pub fn get_tls_entries(&mut self) -> &mut [gdt::Entry] {
+		&mut self.tls_entries
 	}
 
 	/// Exits the process with the given `status`. This function changes the process's status to
