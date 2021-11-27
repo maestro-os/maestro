@@ -30,10 +30,52 @@ pub struct Entry {
 }
 
 impl Entry {
+    /// Returns the entry's base address.
+    #[inline(always)]
+    pub fn get_base(&self) -> u32 {
+        ((self.val >> 16 & 0xffffff) | (self.val >> 56 & 0xff)) as _
+    }
+
+    /// Sets the entry's base address.
+    #[inline(always)]
+    pub fn set_base(&mut self, base: u32) {
+        self.val &= !(0xffffff << 16);
+        self.val &= !(0xff << 56);
+
+        self.val |= (base as u64 & 0xffffff) << 16;
+        self.val |= ((base as u64 >> 24) & 0xff) << 56;
+    }
+
+    /// Returns the entry's limit.
+    #[inline(always)]
+    pub fn get_limit(&self) -> u32 {
+        ((self.val & 0xffff) | (self.val >> 48 & 0xf)) as _
+    }
+
+    /// Sets the entry's limit. If the given limit is more than (2^20 - 1), the value is truncated.
+    #[inline(always)]
+    pub fn set_limit(&mut self, limit: u32) {
+        self.val &= !0xffff;
+        self.val &= !(0xf << 48);
+
+        self.val |= limit as u64 & 0xffff;
+        self.val |= ((limit as u64 >> 16) & 0xf) << 48;
+    }
+
 	/// Tells whether the entry is present.
 	#[inline(always)]
 	pub fn is_present(&self) -> bool {
 		(self.val >> 47 & 1) != 0
+	}
+
+	/// Sets the entry present or not.
+	#[inline(always)]
+	pub fn set_present(&mut self, present: bool) {
+	    if present {
+		    self.val |= 1 << 47;
+	    } else {
+		    self.val &= !(1 << 47);
+	    }
 	}
 }
 

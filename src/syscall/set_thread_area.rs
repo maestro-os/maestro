@@ -2,6 +2,7 @@
 
 use crate::errno::Errno;
 use crate::errno;
+use crate::gdt;
 use crate::process::Process;
 use crate::process::Regs;
 use crate::process;
@@ -18,6 +19,28 @@ pub fn get_free_entry(process: &mut Process) -> Result<usize, Errno> {
 	}
 
 	Err(errno::ESRCH)
+}
+
+/// Returns an entry ID for the given process and entry number.
+/// If the id is `-1`, the function shall find a free entry.
+pub fn get_entry<'a>(proc: &'a mut Process, entry_number: i32)
+    -> Result<(usize, &'a mut gdt::Entry), Errno> {
+	// Checking the entry number is in bound
+	if entry_number < 0 || entry_number > process::TLS_ENTRIES_COUNT as _ {
+		return Err(errno::EINVAL);
+	}
+
+	// The entry's ID
+	let id = {
+		if entry_number == -1 {
+			// Allocating an entry
+			get_free_entry(proc)?
+		} else {
+			entry_number as usize
+		}
+	};
+
+	Ok((id, &mut proc.get_tls_entries()[id]))
 }
 
 /// The implementation of the `set_thread_area` syscall.
@@ -38,36 +61,32 @@ pub fn set_thread_area(regs: &Regs) -> Result<i32, Errno> {
 		&mut *u_info
 	};
 
-	// TODO Clean
-	let entry_number = info[0] as i32 | (info[1] as i32) << 8 | (info[2] as i32) << 16
-		| (info[3] as i32) << 24;
-
-	// TODO Move in a separate function
-	// Getting the entry for the given number
-	let _entry = {
-		// Checking the entry number is in bound
-		if entry_number < 0 || entry_number > process::TLS_ENTRIES_COUNT as _ {
-			return Err(errno::EINVAL);
-		}
-
-		// The entry's ID
-		let id = {
-			if entry_number == -1 {
-				// Allocating an entry
-				get_free_entry(proc)?
-			} else {
-				entry_number as usize
-			}
-		};
-
-		&mut proc.get_tls_entries()[id]
+	// The entry number
+	let entry_number = unsafe { // Safe because the structure is large enough
+        &mut *(&mut info[0] as *mut _ as *mut i32)
 	};
 
-	// TODO Modify the entry
+	// Getting the entry with its id
+	let (id, entry) = get_entry(proc, *entry_number as _)?;
+
+	let base_addr = unsafe { // Safe because the structure is large enough
+        &*(&mut info[4] as *const _ as *const i32)
+	};
+	let limit = unsafe { // Safe because the structure is large enough
+        &*(&mut info[8] as *const _ as *const i32)
+	};
+	let _flags = unsafe { // Safe because the structure is large enough
+        &*(&mut info[12] as *const _ as *const i32)
+	};
+
+	entry.set_base(*base_addr as _);
+	entry.set_limit(*limit as _);
+	// TODO Modify the of other fields of the entry
+	entry.set_present(true); // TODO Handle clearing
 
 	// If the entry is allocated, tell the userspace its ID
-	if entry_number == -1 {
-		// TODO Write the entry number in the structure
+	if (*entry_number as i32) == -1 {
+	    *entry_number = id as _;
 	}
 
 	Ok(0)
