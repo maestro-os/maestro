@@ -308,6 +308,11 @@ impl Scheduler {
 					// Binding the memory space
 					proc.get_mem_space().unwrap().bind();
 
+                    // Updating TLS entries in the GDT
+					for i in 0..process::TLS_ENTRIES_COUNT {
+					    proc.update_tls(i);
+					}
+
 					// If a signal is pending on the process, execute it
 					proc.signal_next();
 

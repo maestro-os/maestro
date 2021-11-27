@@ -14,6 +14,7 @@ pub mod tss;
 use core::ffi::c_void;
 use core::mem::ManuallyDrop;
 use core::mem::MaybeUninit;
+use core::mem::size_of;
 use crate::cpu;
 use crate::errno::Errno;
 use crate::errno;
@@ -925,6 +926,16 @@ impl Process {
 	pub fn get_tls_entries(&mut self) -> &mut [gdt::Entry] {
 		&mut self.tls_entries
 	}
+
+    /// Updates the `n`th TLS entry in the GDT.
+    /// If `n` is out of bounds, the function does nothing.
+	pub fn update_tls(&self, n: usize) {
+	    if n < TLS_ENTRIES_COUNT {
+	        unsafe { // Safe because the offset is checked by the condition
+	            self.tls_entries[n].update_gdt(gdt::TLS_OFFSET + n * size_of::<gdt::Entry>());
+	        }
+	    }
+    }
 
 	/// Exits the process with the given `status`. This function changes the process's status to
 	/// `Zombie`.

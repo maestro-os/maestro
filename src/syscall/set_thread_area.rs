@@ -68,6 +68,7 @@ pub fn set_thread_area(regs: &Regs) -> Result<i32, Errno> {
 
 	// Getting the entry with its id
 	let (id, entry) = get_entry(proc, *entry_number as _)?;
+	debug_assert!(id < process::TLS_ENTRIES_COUNT);
 
 	let base_addr = unsafe { // Safe because the structure is large enough
         &*(&mut info[4] as *const _ as *const i32)
@@ -83,6 +84,9 @@ pub fn set_thread_area(regs: &Regs) -> Result<i32, Errno> {
 	entry.set_limit(*limit as _);
 	// TODO Modify the of other fields of the entry
 	entry.set_present(true); // TODO Handle clearing
+
+    // Updating the GDT
+	proc.update_tls(id);
 
 	// If the entry is allocated, tell the userspace its ID
 	if (*entry_number as i32) == -1 {
