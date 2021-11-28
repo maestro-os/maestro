@@ -22,6 +22,7 @@ mod init_module;
 mod kill;
 mod mkdir;
 mod mmap;
+mod modify_ldt;
 mod msync;
 mod munmap;
 mod open;
@@ -70,6 +71,7 @@ use init_module::init_module;
 use kill::kill;
 use mkdir::mkdir;
 use mmap::mmap;
+use modify_ldt::modify_ldt;
 use msync::msync;
 use munmap::munmap;
 use open::open;
@@ -203,6 +205,7 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 		// TODO ptrace
 		// TODO pause
 		0xf3 => set_thread_area(regs),
+		0x7b => modify_ldt(regs),
 
 		0x200 => sigreturn(regs),
 
