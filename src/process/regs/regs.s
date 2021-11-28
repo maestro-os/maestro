@@ -15,7 +15,7 @@
 	sub $REGS_SIZE, %esp
 
 	# Filling registers in the structure
-	mov %fs, 0x2c(%esp)
+	mov %fs, 0x29(%esp)
 	mov %gs, 0x28(%esp)
 	mov %edi, 0x24(%esp)
 	mov %esi, 0x20(%esp)
@@ -24,9 +24,9 @@
 	mov %ebx, 0x14(%esp)
 	mov %eax, 0x10(%esp)
 
-	# Restoring the fx state
+	# Saving the fx state
 	mov %esp, %eax
-	add $0x30, %eax
+	add $0x2a, %eax
 	push %eax
 	call save_fxstate
 	add $4, %esp
@@ -66,13 +66,13 @@ esp_end_\n:
 .macro END_INTERRUPT
 	# Restoring the fx state
 	mov %esp, %eax
-	add $0x30, %eax
+	add $0x2a, %eax
 	push %eax
 	call restore_fxstate
 	add $4, %esp
 
 	# Restoring registers
-	mov 0x2c(%esp), %fs
+	mov 0x29(%esp), %fs
 	mov 0x28(%esp), %gs
 	mov 0x24(%esp), %edi
 	mov 0x20(%esp), %esi
