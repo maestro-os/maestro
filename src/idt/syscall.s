@@ -23,8 +23,6 @@ GET_REGS
 	mov $GDT_KERNEL_DS, %ax
 	mov %ax, %ds
 	mov %ax, %es
-	mov %ax, %fs
-	mov %ax, %gs
 
 	# Calling the system call handler
 	push %esp
@@ -39,8 +37,6 @@ GET_REGS
 	or $3, %bx
 	mov %bx, %ds
 	mov %bx, %es
-	mov %bx, %fs
-	mov %bx, %gs
 
 	# Restoring registers state
 END_INTERRUPT

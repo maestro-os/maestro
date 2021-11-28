@@ -67,6 +67,9 @@ pub struct Regs {
 	pub esi: u32,
 	pub edi: u32,
 
+	pub gs: u8,
+    pub fs: u8,
+
 	/// x87 FPU, MMX and SSE state.
 	pub fxstate: [u8; 512],
 }
@@ -102,6 +105,9 @@ impl Default for Regs {
 			esi: 0x0,
 			edi: 0x0,
 
+			gs: 0x0,
+			fs: 0x0,
+
 			fxstate: [0; 512],
 		};
 
@@ -134,5 +140,7 @@ ebx: {:p} ecx: {:p} edx: {:p} esi: {:p} edi: {:p}\n",
 			self.edx as *const c_void,
 			self.esi as *const c_void,
 			self.edi as *const c_void)
+
+		// TODO Print segments
 	}
 }
