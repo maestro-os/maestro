@@ -10,6 +10,7 @@ pub mod scheduler;
 pub mod semaphore;
 pub mod signal;
 pub mod tss;
+pub mod user_desc;
 
 use core::ffi::c_void;
 use core::mem::ManuallyDrop;

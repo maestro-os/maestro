@@ -1,15 +1,14 @@
 //! This module implements the `set_thread_area` system call, which allows to set a TLS area.
 
+use core::ffi::c_void;
 use core::mem::size_of;
 use crate::errno::Errno;
 use crate::errno;
 use crate::gdt;
 use crate::process::Process;
 use crate::process::Regs;
+use crate::process::user_desc::UserDesc;
 use crate::process;
-
-/// Returns the size of the user_desc structure in bytes.
-const USER_DESC_SIZE: usize = 13;
 
 /// Returns the ID of a free TLS entry for the given process.
 pub fn get_free_entry(process: &mut Process) -> Result<usize, Errno> {
@@ -46,43 +45,28 @@ pub fn get_entry<'a>(proc: &'a mut Process, entry_number: i32)
 
 /// The implementation of the `set_thread_area` syscall.
 pub fn set_thread_area(regs: &Regs) -> Result<i32, Errno> {
-	let u_info = regs.ebx as *mut [i8; USER_DESC_SIZE];
+	let u_info = regs.ebx as *mut c_void;
 
 	let mut mutex = Process::get_current().unwrap();
 	let mut guard = mutex.lock(false);
 	let proc = guard.get_mut();
 
 	// Checking the process can access the given pointer
-	if !proc.get_mem_space().unwrap().can_access(u_info as *const _, USER_DESC_SIZE, true, true) {
+	if !proc.get_mem_space().unwrap().can_access(u_info as _, size_of::<UserDesc>(), true, true) {
 		return Err(errno::EFAULT);
 	}
 
 	// A reference to the user_desc structure
-	let info = unsafe { // Safe because the access was check before
-		&mut *u_info
-	};
-
-	// The entry number
-	let entry_number = unsafe { // Safe because the structure is large enough
-		&mut *(&mut info[0] as *mut _ as *mut i32)
+	let mut info = unsafe { // Safe because the access was checked before
+        UserDesc::from_ptr(u_info)
 	};
 
 	// Getting the entry with its id
-	let (id, entry) = get_entry(proc, *entry_number as _)?;
+	let (id, entry) = get_entry(proc, info.get_entry_number())?;
 	debug_assert!(id < process::TLS_ENTRIES_COUNT);
 
-	let base_addr = unsafe { // Safe because the structure is large enough
-		&*(&mut info[4] as *const _ as *const i32)
-	};
-	let limit = unsafe { // Safe because the structure is large enough
-		&*(&mut info[8] as *const _ as *const i32)
-	};
-	let _flags = unsafe { // Safe because the structure is large enough
-		&*(&mut info[12] as *const _ as *const i32)
-	};
-
-	entry.set_base(*base_addr as _);
-	entry.set_limit(*limit as _);
+	entry.set_base(info.get_base_addr() as _);
+	entry.set_limit(info.get_limit() as _);
 	// TODO Modify the other fields of the entry
 	entry.set_present(true); // TODO Handle clearing
 
@@ -90,8 +74,10 @@ pub fn set_thread_area(regs: &Regs) -> Result<i32, Errno> {
 	proc.update_tls(id);
 
 	// If the entry is allocated, tell the userspace its ID
-	if (*entry_number as i32) == -1 {
-		*entry_number = (gdt::TLS_OFFSET + *entry_number as usize * size_of::<gdt::Entry>()) as _;
+	let entry_number = info.get_entry_number();
+	if entry_number == -1 {
+	    let val = (gdt::TLS_OFFSET + entry_number as usize * size_of::<gdt::Entry>()) as _;
+		info.set_entry_number(val);
 	}
 
 	Ok(0)
