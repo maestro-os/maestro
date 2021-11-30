@@ -51,5 +51,33 @@ impl UserDesc {
 	    }
     }
 
-    // TODO
+	/// Tells whether the segment is 32 bits.
+    #[inline(always)]
+	pub fn is_32bits(&self) -> bool {
+		(self.val[9] & 0b1) != 0 // TODO Check mask
+	}
+
+	/// Tells whether the segment is writable.
+    #[inline(always)]
+	pub fn is_writable(&self) -> bool {
+		(self.val[9] & 0b1000) == 0 // TODO Check mask
+	}
+
+	/// Tells whether the segment's limit is in number of pages.
+    #[inline(always)]
+	pub fn is_limit_in_pages(&self) -> bool {
+		(self.val[9] & 0b10000) != 0 // TODO Check mask
+	}
+
+	/// Tells whether the segment is present.
+    #[inline(always)]
+	pub fn is_present(&self) -> bool {
+		(self.val[9] & 0b100000) == 0 // TODO Check mask
+	}
+
+	/// Tells whether the segment is usable.
+    #[inline(always)]
+	pub fn is_usable(&self) -> bool {
+		(self.val[9] & 0b1000000) != 0 // TODO Check mask
+	}
 }
