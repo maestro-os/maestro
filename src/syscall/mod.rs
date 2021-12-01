@@ -39,6 +39,7 @@ mod setuid;
 mod signal;
 mod sigreturn;
 mod socketpair;
+mod time;
 mod umask;
 mod uname;
 mod unlink;
@@ -90,6 +91,7 @@ use setuid::setuid;
 use signal::signal;
 use sigreturn::sigreturn;
 use socketpair::socketpair;
+use time::time;
 use umask::umask;
 use uname::uname;
 use unlink::unlink;
@@ -115,7 +117,7 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 		0x00a => unlink(regs),
 		0x00b => execve(regs),
 		0x00c => chdir(regs),
-		// TODO 0x00d => time(regs),
+		0x00d => time(regs),
 		// TODO 0x00e => mknod(regs),
 		// TODO 0x00f => chmod(regs),
 		// TODO 0x010 => lchown(regs),
