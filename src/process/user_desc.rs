@@ -2,6 +2,7 @@
 //! value for a descriptor, either a local or global descriptor.
 
 use core::ffi::c_void;
+use crate::gdt;
 
 /// The size of the user_desc structure in bytes.
 const USER_DESC_SIZE: usize = 13;
@@ -79,5 +80,11 @@ impl UserDesc {
     #[inline(always)]
 	pub fn is_usable(&self) -> bool {
 		(self.val[9] & 0b1000000) != 0 // TODO Check mask
+	}
+
+	/// Converts the current descriptor to a GDT entry.
+	pub fn to_descriptor(&self) -> gdt::Entry {
+		// TODO
+		todo!();
 	}
 }

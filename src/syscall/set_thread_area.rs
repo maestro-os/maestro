@@ -65,11 +65,8 @@ pub fn set_thread_area(regs: &Regs) -> Result<i32, Errno> {
 	let (id, entry) = get_entry(proc, info.get_entry_number())?;
 	debug_assert!(id < process::TLS_ENTRIES_COUNT);
 
-	entry.set_base(info.get_base_addr() as _);
-	entry.set_limit(info.get_limit() as _);
-	// TODO Modify the other fields of the entry
-	entry.set_present(true); // TODO Handle clearing
-
+	// Updating the entry
+	*entry = info.to_descriptor();
 	// Updating the GDT
 	proc.update_tls(id);
 
