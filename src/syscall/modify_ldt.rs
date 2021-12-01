@@ -6,7 +6,7 @@ use crate::process::Regs;
 
 /// The implementation of the `set_thread_area` syscall.
 pub fn modify_ldt(_regs: &Regs) -> Result<i32, Errno> {
-    // TODO
+	// TODO
 
-    Ok(0)
+	Ok(0)
 }

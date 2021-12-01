@@ -284,9 +284,9 @@ impl Scheduler {
 			curr_proc.syscalling = ring < 3;
 		}
 
-        // The current core ID
+		// The current core ID
 		let core_id = 0; // TODO
-        // A pointer to the temporary stack for the current core
+		// A pointer to the temporary stack for the current core
 		let tmp_stack = unsafe {
 			scheduler.tmp_stacks[core_id].as_ptr_mut() as *mut c_void
 		};
@@ -348,15 +348,15 @@ impl Scheduler {
 
 			unreachable!();
 		} else {
-		    drop(guard);
-		    unsafe {
-			    event::unlock_callbacks(0x20);
-		    }
-		    pic::end_of_interrupt(0x0);
+			drop(guard);
+			unsafe {
+				event::unlock_callbacks(0x20);
+			}
+			pic::end_of_interrupt(0x0);
 
-		    unsafe {
-		        crate::loop_reset(tmp_stack);
-		    }
+			unsafe {
+				crate::loop_reset(tmp_stack);
+			}
 		}
 	}
 

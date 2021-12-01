@@ -526,7 +526,7 @@ impl Process {
 
 		if self.state == State::Zombie {
 			if self.is_init() {
-			    kernel_panic!("Terminated init process!");
+				kernel_panic!("Terminated init process!");
 			}
 
 			// TODO Attach every child to the init process

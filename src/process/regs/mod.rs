@@ -68,7 +68,7 @@ pub struct Regs {
 	pub edi: u32,
 
 	pub gs: u8,
-    pub fs: u8,
+	pub fs: u8,
 
 	/// x87 FPU, MMX and SSE state.
 	pub fxstate: [u8; 512],

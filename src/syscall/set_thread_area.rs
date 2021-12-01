@@ -58,7 +58,7 @@ pub fn set_thread_area(regs: &Regs) -> Result<i32, Errno> {
 
 	// A reference to the user_desc structure
 	let mut info = unsafe { // Safe because the access was checked before
-        UserDesc::from_ptr(u_info)
+		UserDesc::from_ptr(u_info)
 	};
 
 	// Getting the entry with its id
@@ -73,7 +73,7 @@ pub fn set_thread_area(regs: &Regs) -> Result<i32, Errno> {
 	// If the entry is allocated, tell the userspace its ID
 	let entry_number = info.get_entry_number();
 	if entry_number == -1 {
-	    let val = (gdt::TLS_OFFSET + entry_number as usize * size_of::<gdt::Entry>()) as _;
+		let val = (gdt::TLS_OFFSET + entry_number as usize * size_of::<gdt::Entry>()) as _;
 		info.set_entry_number(val);
 	}
 

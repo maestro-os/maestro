@@ -10,74 +10,74 @@ const USER_DESC_SIZE: usize = 13;
 /// The `user_desc` structure.
 #[repr(transparent)]
 pub struct UserDesc {
-    val: &'static mut [i8; USER_DESC_SIZE],
+	val: &'static mut [i8; USER_DESC_SIZE],
 }
 
 impl UserDesc {
-    /// Creates a new instance from the given pointer.
-    pub unsafe fn from_ptr(ptr: *mut c_void) -> Self {
-        Self {
-            val: &mut *(ptr as *mut [i8; USER_DESC_SIZE]),
-        }
-    }
+	/// Creates a new instance from the given pointer.
+	pub unsafe fn from_ptr(ptr: *mut c_void) -> Self {
+		Self {
+			val: &mut *(ptr as *mut [i8; USER_DESC_SIZE]),
+		}
+	}
 
-    /// Returns the entry number.
-    #[inline(always)]
-    pub fn get_entry_number(&self) -> i32 {
-        unsafe { // Safe because the structure is large enough
-		    *(&self.val[0] as *const _ as *const i32)
-	    }
-    }
+	/// Returns the entry number.
+	#[inline(always)]
+	pub fn get_entry_number(&self) -> i32 {
+		unsafe { // Safe because the structure is large enough
+			*(&self.val[0] as *const _ as *const i32)
+		}
+	}
 
-    /// Sets the entry number.
-    pub fn set_entry_number(&mut self, number: i32) {
-        unsafe { // Safe because the structure is large enough
-		    *(&mut self.val[0] as *mut _ as *mut i32) = number;
-	    }
-    }
+	/// Sets the entry number.
+	pub fn set_entry_number(&mut self, number: i32) {
+		unsafe { // Safe because the structure is large enough
+			*(&mut self.val[0] as *mut _ as *mut i32) = number;
+		}
+	}
 
-    /// Returns the base address.
-    #[inline(always)]
-    pub fn get_base_addr(&self) -> i32 {
-	    unsafe { // Safe because the structure is large enough
-		    *(&self.val[4] as *const _ as *const i32)
-	    }
-    }
+	/// Returns the base address.
+	#[inline(always)]
+	pub fn get_base_addr(&self) -> i32 {
+		unsafe { // Safe because the structure is large enough
+			*(&self.val[4] as *const _ as *const i32)
+		}
+	}
 
-    /// Returns the limit.
-    #[inline(always)]
-    pub fn get_limit(&self) -> i32 {
-	    unsafe { // Safe because the structure is large enough
-		    *(&self.val[8] as *const _ as *const i32)
-	    }
-    }
+	/// Returns the limit.
+	#[inline(always)]
+	pub fn get_limit(&self) -> i32 {
+		unsafe { // Safe because the structure is large enough
+			*(&self.val[8] as *const _ as *const i32)
+		}
+	}
 
 	/// Tells whether the segment is 32 bits.
-    #[inline(always)]
+	#[inline(always)]
 	pub fn is_32bits(&self) -> bool {
 		(self.val[9] & 0b1) != 0 // TODO Check mask
 	}
 
 	/// Tells whether the segment is writable.
-    #[inline(always)]
+	#[inline(always)]
 	pub fn is_writable(&self) -> bool {
 		(self.val[9] & 0b1000) == 0 // TODO Check mask
 	}
 
 	/// Tells whether the segment's limit is in number of pages.
-    #[inline(always)]
+	#[inline(always)]
 	pub fn is_limit_in_pages(&self) -> bool {
 		(self.val[9] & 0b10000) != 0 // TODO Check mask
 	}
 
 	/// Tells whether the segment is present.
-    #[inline(always)]
+	#[inline(always)]
 	pub fn is_present(&self) -> bool {
 		(self.val[9] & 0b100000) == 0 // TODO Check mask
 	}
 
 	/// Tells whether the segment is usable.
-    #[inline(always)]
+	#[inline(always)]
 	pub fn is_usable(&self) -> bool {
 		(self.val[9] & 0b1000000) != 0 // TODO Check mask
 	}
