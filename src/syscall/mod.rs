@@ -9,6 +9,7 @@ mod close;
 mod delete_module;
 mod dup2;
 mod dup;
+mod execve;
 mod fchdir;
 mod finit_module;
 mod fork;
@@ -49,6 +50,8 @@ use crate::process::Process;
 use crate::process::signal::Signal;
 use crate::process;
 
+//use sbrk::sbrk;
+//use wait::wait;
 use _exit::_exit;
 use brk::brk;
 use chdir::chdir;
@@ -58,6 +61,7 @@ use crate::process::Regs;
 use delete_module::delete_module;
 use dup2::dup2;
 use dup::dup;
+use execve::execve;
 use fchdir::fchdir;
 use finit_module::finit_module;
 use fork::fork;
@@ -79,7 +83,6 @@ use pipe2::pipe2;
 use pipe::pipe;
 use read::read;
 use reboot::reboot;
-//use sbrk::sbrk;
 use set_thread_area::set_thread_area;
 use setgid::setgid;
 use setpgid::setpgid;
@@ -90,7 +93,6 @@ use socketpair::socketpair;
 use umask::umask;
 use uname::uname;
 use unlink::unlink;
-//use wait::wait;
 use waitpid::waitpid;
 use write::write;
 
@@ -111,7 +113,7 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 		// TODO 0x008 => creat(regs),
 		// TODO 0x009 => link(regs),
 		0x00a => unlink(regs),
-		// TODO 0x00b => execve(regs),
+		0x00b => execve(regs),
 		0x00c => chdir(regs),
 		// TODO 0x00d => time(regs),
 		// TODO 0x00e => mknod(regs),
