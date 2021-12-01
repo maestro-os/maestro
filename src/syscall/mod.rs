@@ -14,6 +14,8 @@ mod fchdir;
 mod finit_module;
 mod fork;
 mod getcwd;
+mod getegid;
+mod geteuid;
 mod getgid;
 mod getpgid;
 mod getpid;
@@ -67,6 +69,8 @@ use fchdir::fchdir;
 use finit_module::finit_module;
 use fork::fork;
 use getcwd::getcwd;
+use getegid::getegid;
+use geteuid::geteuid;
 use getgid::getgid;
 use getpgid::getpgid;
 use getpid::getpid;
@@ -153,8 +157,8 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 		0x02e => setgid(regs),
 		0x02f => getgid(regs),
 		0x030 => signal(regs),
-		// TODO 0x031 => geteuid(regs),
-		// TODO 0x032 => getegid(regs),
+		0x031 => geteuid(regs),
+		0x032 => getegid(regs),
 		// TODO 0x033 => acct(regs),
 		// TODO 0x034 => umount2(regs),
 		// TODO 0x035 => lock(regs),
