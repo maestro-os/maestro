@@ -104,12 +104,8 @@ fn resolve_links(file: SharedPtr<File>, flags: i32, mode: u16, uid: u16, gid: u1
 	Ok(file)
 }
 
-/// The implementation of the `open` syscall.
-pub fn open(regs: &Regs) -> Result<i32, Errno> {
-	let pathname = regs.ebx as *const u8;
-	let flags = regs.ecx as i32;
-	let mode = regs.edx as u16;
-
+/// Performs the open system call.
+pub fn open_(pathname: *const u8, flags: i32, mode: u16) -> Result<i32, Errno> {
 	let mut mutex = Process::get_current().unwrap();
 	let mut guard = mutex.lock(false);
 	let proc = guard.get_mut();
@@ -147,4 +143,13 @@ pub fn open(regs: &Regs) -> Result<i32, Errno> {
 	// Create and return the file descriptor
 	let fd = proc.create_fd(flags, FDTarget::File(file))?;
 	Ok(fd.get_id() as _)
+}
+
+/// The implementation of the `open` syscall.
+pub fn open(regs: &Regs) -> Result<i32, Errno> {
+	let pathname = regs.ebx as *const u8;
+	let flags = regs.ecx as i32;
+	let mode = regs.edx as u16;
+
+	open_(pathname, flags, mode)
 }

@@ -6,6 +6,7 @@ mod brk;
 mod chdir;
 mod chroot;
 mod close;
+mod creat;
 mod delete_module;
 mod dup2;
 mod dup;
@@ -31,6 +32,7 @@ mod munmap;
 mod open;
 mod pipe2;
 mod pipe;
+mod r#break;
 mod read;
 mod reboot;
 mod sbrk;
@@ -61,6 +63,7 @@ use chdir::chdir;
 use chroot::chroot;
 use close::close;
 use crate::process::Regs;
+use creat::creat;
 use delete_module::delete_module;
 use dup2::dup2;
 use dup::dup;
@@ -86,6 +89,7 @@ use munmap::munmap;
 use open::open;
 use pipe2::pipe2;
 use pipe::pipe;
+use r#break::r#break;
 use read::read;
 use reboot::reboot;
 use set_thread_area::set_thread_area;
@@ -116,7 +120,7 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 		0x005 => open(regs),
 		0x006 => close(regs),
 		0x007 => waitpid(regs),
-		// TODO 0x008 => creat(regs),
+		0x008 => creat(regs),
 		// TODO 0x009 => link(regs),
 		0x00a => unlink(regs),
 		0x00b => execve(regs),
@@ -125,7 +129,7 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 		// TODO 0x00e => mknod(regs),
 		// TODO 0x00f => chmod(regs),
 		// TODO 0x010 => lchown(regs),
-		// TODO 0x011 => break(regs),
+		0x011 => r#break(regs),
 		// TODO 0x012 => oldstat(regs),
 		// TODO 0x013 => lseek(regs),
 		0x014 => getpid(regs),
