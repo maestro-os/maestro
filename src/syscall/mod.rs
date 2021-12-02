@@ -25,6 +25,7 @@ mod getuid;
 mod init_module;
 mod kill;
 mod mkdir;
+mod mknod;
 mod mmap;
 mod modify_ldt;
 mod msync;
@@ -82,6 +83,7 @@ use getuid::getuid;
 use init_module::init_module;
 use kill::kill;
 use mkdir::mkdir;
+use mknod::mknod;
 use mmap::mmap;
 use modify_ldt::modify_ldt;
 use msync::msync;
@@ -126,7 +128,7 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 		0x00b => execve(regs),
 		0x00c => chdir(regs),
 		0x00d => time(regs),
-		// TODO 0x00e => mknod(regs),
+		0x00e => mknod(regs),
 		// TODO 0x00f => chmod(regs),
 		// TODO 0x010 => lchown(regs),
 		0x011 => r#break(regs),
