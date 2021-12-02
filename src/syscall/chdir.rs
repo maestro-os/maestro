@@ -1,7 +1,6 @@
 //! The chdir system call allows to change the current working directory of the current process.
 
 use core::slice;
-use core::str;
 use crate::errno::Errno;
 use crate::errno;
 use crate::file::FileType;
@@ -31,8 +30,8 @@ pub fn chdir(regs: &Regs) -> Result<i32, Errno> {
 		return Err(errno::ENAMETOOLONG);
 	}
 
-	let new_cwd = Path::from_string(unsafe { // Safe because the pointer is checked before
-		str::from_utf8_unchecked(slice::from_raw_parts(path, len))
+	let new_cwd = Path::from_str(unsafe { // Safe because the pointer is checked before
+		slice::from_raw_parts(path, len)
 	}, true)?;
 
 	{

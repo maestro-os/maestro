@@ -370,9 +370,9 @@ impl Tag {
 /// Structure representing the informations given to the kernel at boot time.
 pub struct BootInfo {
 	/// The command line used to boot the kernel.
-	pub cmdline: &'static str,
+	pub cmdline: &'static [u8],
 	/// The bootloader's name.
-	pub loader_name: &'static str,
+	pub loader_name: &'static [u8],
 
 	/// The lower memory size.
 	pub mem_lower: u32,
@@ -397,8 +397,8 @@ pub struct BootInfo {
 
 /// The field storing the informations given to the kernel at boot time.
 static mut BOOT_INFO: BootInfo = BootInfo {
-	cmdline: "",
-	loader_name: "",
+	cmdline: b"",
+	loader_name: b"",
 	mem_lower: 0,
 	mem_upper: 0,
 	memory_maps_size: 0,
@@ -442,8 +442,8 @@ fn handle_tag(boot_info: &mut BootInfo, tag: *const Tag) {
 			let t = tag as *const TagString;
 
 			unsafe {
-				let ptr = memory::kern_to_virt(&(*t).string as *const _ as *const _);
-				boot_info.cmdline = util::ptr_to_str(ptr);
+				let ptr = memory::kern_to_virt(&(*t).string as *const _ as *const _) as *const u8;
+				boot_info.cmdline = util::str_from_ptr(ptr);
 			}
 		},
 
@@ -451,8 +451,8 @@ fn handle_tag(boot_info: &mut BootInfo, tag: *const Tag) {
 			let t = tag as *const TagString;
 
 			unsafe {
-				let ptr = memory::kern_to_virt(&(*t).string as *const _ as *const _);
-				boot_info.loader_name = util::ptr_to_str(ptr);
+				let ptr = memory::kern_to_virt(&(*t).string as *const _ as *const _) as *const u8;
+				boot_info.loader_name = util::str_from_ptr(ptr);
 			}
 		},
 

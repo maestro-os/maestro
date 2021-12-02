@@ -169,7 +169,7 @@ impl Module {
 			let func: extern "C" fn() -> &'static str = transmute(ptr);
 			(func)()
 		};
-		let name = String::from(name_str)?;
+		let name = String::from(name_str.as_bytes())?;
 
 		// Getting the module's version
 		let mod_version = parser.get_symbol_by_name("mod_version").or_else(|| {

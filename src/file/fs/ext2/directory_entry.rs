@@ -8,7 +8,6 @@ use crate::file::FileType;
 use crate::memory::malloc;
 use crate::util::boxed::Box;
 use crate::util::container::string::String;
-use crate::util;
 use super::Superblock;
 
 /// Directory entry type indicator: Unknown
@@ -115,11 +114,9 @@ impl DirectoryEntry {
 
 	/// Returns the entry's name.
 	/// `superblock` is the filesystem's superblock.
-	pub fn get_name(&self, superblock: &Superblock) -> &str {
+	pub fn get_name(&self, superblock: &Superblock) -> &[u8] {
 		let name_length = self.get_name_length(superblock);
-		unsafe {
-			util::ptr_to_str_len(&self.name[0], name_length)
-		}
+		&self.name[..name_length]
 	}
 
 	/// Sets the name of the entry.

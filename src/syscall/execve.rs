@@ -1,7 +1,6 @@
 //! The `execve` system call allows to execute a program from a file.
 
 use core::slice;
-use core::str;
 use crate::errno::Errno;
 use crate::errno;
 use crate::file::File;
@@ -53,8 +52,8 @@ pub fn execve(regs: &Regs) -> Result<i32, Errno> {
 
 	// TODO Ensure from_utf8_unchecked is safe with invalid UTF-8 (probably not)
 	// The path to the executable file
-	let path = Path::from_string(unsafe { // Safe because the address is checked before
-		str::from_utf8_unchecked(slice::from_raw_parts(pathname, pathname_len))
+	let path = Path::from_str(unsafe { // Safe because the address is checked before
+		slice::from_raw_parts(pathname, pathname_len)
 	}, true)?;
 
 	let mutex = file::get_files_cache();

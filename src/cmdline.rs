@@ -34,7 +34,7 @@ struct Token {
 impl Token {
 	/// Returns the length of the token.
 	pub fn len(&self) -> usize {
-		self.s.as_str().as_bytes().len()
+		self.s.len()
 	}
 }
 
@@ -42,7 +42,7 @@ impl Token {
 #[derive(Debug)]
 pub struct ParseError<'a> {
 	/// The command line.
-	cmdline: &'a str,
+	cmdline: &'a [u8],
 	/// An error message.
 	err: &'static str,
 
@@ -52,7 +52,7 @@ pub struct ParseError<'a> {
 
 impl<'a> ParseError<'a> {
 	/// Creates a new instance.
-	pub fn new(cmdline: &'a str, err: &'static str, token: Option<(usize, usize)>) -> Self {
+	pub fn new(cmdline: &'a [u8], err: &'static str, token: Option<(usize, usize)>) -> Self {
 		Self {
 			cmdline,
 			err,
@@ -66,14 +66,10 @@ impl<'a> ParseError<'a> {
 		crate::println!("Error while parsing command line arguments: {}", self.err);
 
 		if let Some((begin, size)) = self.token {
-			let slice = &self.cmdline.as_bytes();
-			let cmdline_len = slice.len();
 			let mut i = 0;
-			while i < cmdline_len {
-				let l = min(cmdline_len - i, vga::WIDTH as usize - 1);
-				let s = unsafe {
-					str::from_utf8_unchecked(&slice[i..(i + l)])
-				};
+			while i < self.cmdline.len() {
+				let l = min(self.cmdline.len() - i, vga::WIDTH as usize - 1);
+				let s = str::from_utf8(&self.cmdline[i..(i + l)]).unwrap(); // TODO Handle properly
 				crate::println!("{}", s);
 
 				let mut j = i;
@@ -116,19 +112,15 @@ impl ArgsParser {
 	}
 
 	/// Creates a new token starting a the given offset `i` in the given command line `cmdline`.
-	fn new_token<'a>(cmdline: &'a str, i: &mut usize) -> Result<Option<Token>, ParseError<'a>> {
-		let slice = &cmdline.as_bytes();
-
-		Self::skip_spaces(slice, i);
+	fn new_token<'a>(cmdline: &'a [u8], i: &mut usize) -> Result<Option<Token>, ParseError<'a>> {
+		Self::skip_spaces(cmdline, i);
 		let mut j = *i;
-		while j < slice.len() && !Self::is_space(slice[j] as char) {
+		while j < cmdline.len() && !Self::is_space(cmdline[j] as char) {
 			j += 1;
 		}
 
 		if j > *i {
-			if let Ok(s) = String::from(unsafe {
-					str::from_utf8_unchecked(&slice[*i..j])
-				}) {
+			if let Ok(s) = String::from(&cmdline[*i..j]) {
 				let tok = Token {
 					s,
 					begin: *i,
@@ -147,7 +139,7 @@ impl ArgsParser {
 	/// Tokenizes the command line arguments and returns an array containing all the tokens.
 	/// Every characters are interpreted as ASCII characters. If a non-ASCII character is passed,
 	/// the function returns an error.
-	fn tokenize(cmdline: &str) -> Result<Vec<Token>, ParseError> {
+	fn tokenize(cmdline: &[u8]) -> Result<Vec<Token>, ParseError> {
 		let mut tokens = Vec::new();
 		let mut i = 0;
 
@@ -163,7 +155,7 @@ impl ArgsParser {
 	}
 
 	/// Parses the given command line and returns a new instance.
-	pub fn parse(cmdline: &str) -> Result<Self, ParseError<'_>> {
+	pub fn parse(cmdline: &[u8]) -> Result<Self, ParseError<'_>> {
 		let mut s = Self {
 			root_major: 0,
 			root_minor: 0,
@@ -178,10 +170,10 @@ impl ArgsParser {
 		let tokens = Self::tokenize(cmdline)?;
 		let mut i = 0;
 		while i < tokens.len() {
-			let token_str = tokens[i].s.as_str();
+			let token_str = tokens[i].s.as_bytes();
 
 			match token_str {
-				"-root" => {
+				b"-root" => {
 					if tokens.len() < i + 3 {
 						let begin = tokens[i].begin;
 						let size = tokens[i].len();
@@ -189,7 +181,7 @@ impl ArgsParser {
 							Some((begin, size))));
 					}
 
-					match tokens[i + 1].s.as_str().parse::<u32>() {
+					match tokens[i + 1].s.as_str().unwrap().parse::<u32>() { // TODO Handle properly
 						Ok(n) => {
 							s.root_major = n;
 						},
@@ -198,7 +190,7 @@ impl ArgsParser {
 								Some((i + 1, 1))));
 						},
 					};
-					match tokens[i + 2].s.as_str().parse::<u32>() {
+					match tokens[i + 2].s.as_str().unwrap().parse::<u32>() { // TODO Handle properly
 						Ok(n) => {
 							s.root_minor = n;
 						},
@@ -212,7 +204,7 @@ impl ArgsParser {
 					root_specified = true;
 				},
 
-				"-init" => {
+				b"-init" => {
 					if tokens.len() < i + 2 {
 						let begin = tokens[i].begin;
 						let size = tokens[i].len();
@@ -229,7 +221,7 @@ impl ArgsParser {
 					i += 2;
 				},
 
-				"-silent" => {
+				b"-silent" => {
 					s.silent = true;
 
 					i += 1;
@@ -272,46 +264,46 @@ mod test {
 
 	#[test_case]
 	fn cmdline0() {
-		assert!(ArgsParser::parse("").is_err());
+		assert!(ArgsParser::parse(b"").is_err());
 	}
 
 	#[test_case]
 	fn cmdline1() {
-		assert!(ArgsParser::parse("-bleh").is_err());
+		assert!(ArgsParser::parse(b"-bleh").is_err());
 	}
 
 	#[test_case]
 	fn cmdline2() {
-		assert!(ArgsParser::parse("-root -bleh").is_err());
+		assert!(ArgsParser::parse(b"-root -bleh").is_err());
 	}
 
 	#[test_case]
 	fn cmdline3() {
-		assert!(ArgsParser::parse("-root 1 0 -bleh").is_err());
+		assert!(ArgsParser::parse(b"-root 1 0 -bleh").is_err());
 	}
 
 	#[test_case]
 	fn cmdline4() {
-		assert!(ArgsParser::parse("-root 1 0").is_ok());
+		assert!(ArgsParser::parse(b"-root 1 0").is_ok());
 	}
 
 	#[test_case]
 	fn cmdline5() {
-		assert!(ArgsParser::parse("-root 1 0 -silent").is_ok());
+		assert!(ArgsParser::parse(b"-root 1 0 -silent").is_ok());
 	}
 
 	#[test_case]
 	fn cmdline6() {
-		assert!(ArgsParser::parse("-root 1 0 -init").is_err());
+		assert!(ArgsParser::parse(b"-root 1 0 -init").is_err());
 	}
 
 	#[test_case]
 	fn cmdline7() {
-		assert!(ArgsParser::parse("-root 1 0 -init bleh").is_ok());
+		assert!(ArgsParser::parse(b"-root 1 0 -init bleh").is_ok());
 	}
 
 	#[test_case]
 	fn cmdline8() {
-		assert!(ArgsParser::parse("-root 1 0 -init bleh -silent").is_ok());
+		assert!(ArgsParser::parse(b"-root 1 0 -init bleh -silent").is_ok());
 	}
 }

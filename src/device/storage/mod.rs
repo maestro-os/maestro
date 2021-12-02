@@ -322,13 +322,11 @@ impl StorageManager {
 		let block_size = storage.get_block_size();
 
 		// The prefix is the path of the main device file
-		let mut prefix = String::from("/dev/sd")?;
-		prefix.push(unsafe { // Safe because the id stays in range of the alphabet
-			char::from_u32_unchecked((b'a' + (storage_id as u8)) as _) // TODO Handle if out of the alphabet
-		})?;
+		let mut prefix = String::from(b"/dev/sd")?;
+		prefix.push(b'a' + (storage_id as u8))?; // TODO Handle if out of the alphabet
 
 		// The path of the main device file
-		let main_path = Path::from_string(prefix.as_str(), false)?;
+		let main_path = Path::from_str(prefix.as_bytes(), false)?;
 		// The total size of the interface in bytes
 		let total_size = block_size * storage.get_blocks_count();
 
@@ -346,7 +344,7 @@ impl StorageManager {
 
 			// Adding the partition number to the path
 			let path_str = (prefix.failable_clone()? + String::from_number(i as _)?)?;
-			let path = Path::from_string(path_str.as_str(), false)?;
+			let path = Path::from_str(path_str.as_bytes(), false)?;
 
 			// Computing the partition's offset and size
 			let off = partition.get_offset() * block_size;

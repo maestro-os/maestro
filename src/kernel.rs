@@ -206,7 +206,7 @@ fn init() -> Result<(), &'static str> {
 
 		proc.init_dummy(test_begin)
 	} else {
-		let path = Path::from_string(INIT_PATH, false).or(Err("Unknown error"))?;
+		let path = Path::from_str(INIT_PATH.as_bytes(), false).or(Err("Unknown error"))?;
 		exec(proc, &path, &[INIT_PATH], DEFAULT_ENVIRONMENT)
 	};
 

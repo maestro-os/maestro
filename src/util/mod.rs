@@ -11,9 +11,9 @@ pub mod lock;
 pub mod math;
 pub mod ptr;
 
-use core::str;
 use core::ffi::c_void;
 use core::mem::size_of;
+use core::slice;
 use crate::errno::Errno;
 
 /// Tells if pointer `ptr` is aligned on boundary `n`.
@@ -50,6 +50,11 @@ pub fn align<T>(ptr: *const T, n: usize) -> *const T {
 #[inline(always)]
 pub fn bit_size_of<T>() -> usize {
 	size_of::<T>() * 8
+}
+
+/// Returns a slice representing a C string beginning at the given pointer.
+pub unsafe fn str_from_ptr(ptr: *const u8) -> &'static [u8] {
+	slice::from_raw_parts(ptr, strlen(ptr))
 }
 
 /// Returns the offset of the given field `field` in structure `type`.
@@ -138,23 +143,6 @@ pub unsafe fn zero_object<T>(obj: &mut T) {
 	let size = size_of::<T>();
 
 	bzero(ptr, size);
-}
-
-/// Converts the given pointer `ptr` to a string of characters. The string must be valid and must
-/// end with `\0`.
-/// The ownership of the string is not taken, thus the caller must drop it manually.
-pub unsafe fn ptr_to_str(ptr: *const c_void) -> &'static str {
-	let len = strlen(ptr as _);
-	let slice = core::slice::from_raw_parts(ptr as *const u8, len);
-	str::from_utf8_unchecked(slice)
-}
-
-/// Converts the given reference `ptr` to a string of characters. The string must be valid.
-/// `len` is the length of the string.
-/// The ownership of the string is not taken, thus the caller must drop it manually.
-pub unsafe fn ptr_to_str_len<'a>(ptr: &'a u8, len: usize) -> &'a str {
-	let slice = core::slice::from_raw_parts(ptr as *const u8, len);
-	str::from_utf8_unchecked(slice)
 }
 
 /// Turns the error into an empty error for the given result.

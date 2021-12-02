@@ -333,8 +333,7 @@ impl Executor for ELFExecutor {
 
 		// Loading the interpreter, if any
 		if let Some(interpreter_path) = parser.get_interpreter_path() {
-			let interpreter_path_str = str::from_utf8(interpreter_path).or(Err(errno::EINVAL))?;
-			let interpreter_path = Path::from_string(interpreter_path_str, true)?;
+			let interpreter_path = Path::from_str(interpreter_path, true)?;
 			self.load_interpreter(&mut mem_space, process.get_euid(), process.get_egid(),
 				&interpreter_path)?;
 		}

@@ -146,11 +146,11 @@ pub fn create() -> Result<(), Errno> {
 	let _major = ManuallyDrop::new(id::alloc_major(DeviceType::Block, Some(RAM_DISK_MAJOR))?);
 
 	for i in 0..RAM_DISK_COUNT {
-		let mut name = String::from("name")?;
+		let mut name = String::from(b"ram")?;
 		name.push_str(&String::from_number(i as _)?)?;
 
 		let mut path = Path::root();
-		path.push(String::from("/dev")?)?;
+		path.push(String::from(b"dev")?)?;
 		path.push(name)?;
 
 		device::register_device(Device::new(RAM_DISK_MAJOR, i as _, path, 0o666, DeviceType::Block,

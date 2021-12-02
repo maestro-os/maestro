@@ -226,8 +226,8 @@ impl File {
 	/// `uid` is the id of the owner user.
 	/// `gid` is the id of the owner group.
 	/// `mode` is the permission of the file.
-	pub fn new(name: String, content: FileContent, uid: Uid, gid: Gid,
-		mode: Mode) -> Result<Self, Errno> {
+	pub fn new(name: String, content: FileContent, uid: Uid, gid: Gid, mode: Mode)
+		-> Result<Self, Errno> {
 		let timestamp = time::get();
 
 		Ok(Self {
@@ -736,11 +736,10 @@ impl FCache {
 
 		let file = {
 			let (entry_name, inode) = if inner_path.is_empty() {
-				let entry_name = String::from("")?;
 				// Getting the root's inode
 				let inode = deepest_mountpoint.get_filesystem().get_inode(dev, Path::root())?;
 
-				(entry_name, inode)
+				(String::new(), inode)
 			} else {
 				let entry_name = inner_path[inner_path.get_elements_count() - 1].failable_clone()?;
 				// Getting the file's inode

@@ -2,6 +2,7 @@
 
 use core::ffi::c_void;
 use core::mem::size_of;
+use core::str;
 use crate::elf;
 use crate::memory;
 use crate::multiboot;
@@ -71,6 +72,8 @@ pub fn print_callstack(ebp: *const u32, max_depth: usize) {
 		if let Some(name) = elf::get_function_name(memory::kern_to_virt(boot_info.elf_sections),
 			boot_info.elf_num as usize, boot_info.elf_shndx as usize,
 			boot_info.elf_entsize as usize, eip) {
+
+			let name = str::from_utf8(name).unwrap_or("<Invalid UTF8>");
 			crate::println!("{}: {:p} -> {}", i, eip, name);
 		} else {
 			crate::println!("{}: {:p} -> ???", i, eip);

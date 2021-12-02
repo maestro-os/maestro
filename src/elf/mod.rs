@@ -349,7 +349,7 @@ impl ELF32Sym {
 /// `entsize` is the size of section entries.
 /// `name` is the name of the required section.
 pub fn get_section(sections: *const c_void, sections_count: usize, shndx: usize, entsize: usize,
-	name: &str) -> Option<&ELF32SectionHeader> {
+	name: &[u8]) -> Option<&ELF32SectionHeader> {
 	debug_assert!(!sections.is_null());
 	let names_section = unsafe {
 		&*(sections.add(shndx * entsize) as *const ELF32SectionHeader)
@@ -359,8 +359,9 @@ pub fn get_section(sections: *const c_void, sections_count: usize, shndx: usize,
 		let hdr = unsafe {
 			&*(sections.add(i * entsize) as *const ELF32SectionHeader)
 		};
+		let ptr = memory::kern_to_virt((names_section.sh_addr + hdr.sh_name) as _) as _;
 		let n = unsafe {
-			util::ptr_to_str(memory::kern_to_virt((names_section.sh_addr + hdr.sh_name) as _))
+			util::str_from_ptr(ptr)
 		};
 
 		if n == name {
@@ -379,7 +380,7 @@ pub fn get_section(sections: *const c_void, sections_count: usize, shndx: usize,
 /// `entsize` is the size of section entries.
 /// `f` is the closure to be called for each sections.
 pub fn foreach_sections<F>(sections: *const c_void, sections_count: usize, shndx: usize,
-	entsize: usize, mut f: F) where F: FnMut(&ELF32SectionHeader, &str) -> bool {
+	entsize: usize, mut f: F) where F: FnMut(&ELF32SectionHeader, &[u8]) -> bool {
 	let names_section = unsafe {
 		&*(sections.add(shndx * entsize) as *const ELF32SectionHeader)
 	};
@@ -389,8 +390,9 @@ pub fn foreach_sections<F>(sections: *const c_void, sections_count: usize, shndx
 		let hdr = unsafe {
 			&*(sections.add(hdr_offset) as *const ELF32SectionHeader)
 		};
+		let ptr = memory::kern_to_virt((names_section.sh_addr + hdr.sh_name) as _) as _;
 		let n = unsafe {
-			util::ptr_to_str(memory::kern_to_virt((names_section.sh_addr + hdr.sh_name) as _))
+			util::str_from_ptr(ptr)
 		};
 
 		if !f(hdr, n) {
@@ -426,11 +428,11 @@ pub fn get_sections_end(sections: *const c_void, sections_count: usize,
 /// `strtab_section` is a reference to the .strtab section, containing symbol names.
 /// `offset` is the offset of the symbol in the section.
 /// If the offset is invalid or outside of the section, the behaviour is undefined.
-pub fn get_symbol_name(strtab_section: &ELF32SectionHeader, offset: u32) -> &'static str {
+pub fn get_symbol_name(strtab_section: &ELF32SectionHeader, offset: u32) -> &'static [u8] {
 	debug_assert!(offset < strtab_section.sh_size);
 
 	unsafe {
-		util::ptr_to_str(memory::kern_to_virt((strtab_section.sh_addr + offset) as _))
+		util::str_from_ptr(memory::kern_to_virt((strtab_section.sh_addr + offset) as _) as _)
 	}
 }
 
@@ -442,12 +444,13 @@ pub fn get_symbol_name(strtab_section: &ELF32SectionHeader, offset: u32) -> &'st
 /// `entsize` is the size of section entries.
 /// `inst` is the pointer to the instruction on the virtual memory.
 pub fn get_function_name(sections: *const c_void, sections_count: usize, shndx: usize,
-	entsize: usize, inst: *const c_void) -> Option<&'static str> {
-	let strtab_section = get_section(sections, sections_count, shndx, entsize, ".strtab")?;
-	let mut func_name: Option<&'static str> = None;
+	entsize: usize, inst: *const c_void) -> Option<&'static [u8]> {
+	let strtab_section = get_section(sections, sections_count, shndx, entsize,
+		".strtab".as_bytes())?;
+	let mut func_name: Option<&'static [u8]> = None;
 
 	foreach_sections(sections, sections_count, shndx, entsize,
-		| hdr: &ELF32SectionHeader, _name: &str | {
+		| hdr: &ELF32SectionHeader, _name: &[u8] | {
 			if hdr.sh_type != SHT_SYMTAB {
 				return true;
 			}
@@ -489,11 +492,12 @@ pub fn get_function_name(sections: *const c_void, sections_count: usize, shndx: 
 /// `name` is the name of the symbol to get.
 pub fn get_kernel_symbol(sections: *const c_void, sections_count: usize, shndx: usize,
 	entsize: usize, name: &[u8]) -> Option<&'static ELF32Sym> {
-	let strtab_section = get_section(sections, sections_count, shndx, entsize, ".strtab")?;
+	let strtab_section = get_section(sections, sections_count, shndx, entsize,
+		".strtab".as_bytes())?;
 	let mut symbol: Option<&'static ELF32Sym> = None;
 
 	foreach_sections(sections, sections_count, shndx, entsize,
-		| hdr: &ELF32SectionHeader, _name: &str | {
+		| hdr: &ELF32SectionHeader, _name: &[u8] | {
 			if hdr.sh_type != SHT_SYMTAB {
 				return true;
 			}
@@ -509,7 +513,7 @@ pub fn get_kernel_symbol(sections: *const c_void, sections_count: usize, shndx: 
 
 				if sym.st_name != 0 {
 					let sym_name = get_symbol_name(strtab_section, sym.st_name);
-					if sym_name.as_bytes() == name {
+					if sym_name == name {
 						symbol = Some(sym);
 						return false;
 					}

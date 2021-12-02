@@ -102,19 +102,19 @@ impl DeviceHandle for CurrentTTYDeviceHandle {
 pub fn create() -> Result<(), Errno> {
 	let _first_major = ManuallyDrop::new(id::alloc_major(DeviceType::Char, Some(1))?);
 
-	let null_path = Path::from_string("/dev/null", false)?;
+	let null_path = Path::from_str("/dev/null".as_bytes(), false)?;
 	let mut null_device = Device::new(1, 3, null_path, 0o666, DeviceType::Char,
 		NullDeviceHandle {})?;
 	null_device.create_file()?; // TODO remove?
 	device::register_device(null_device)?;
 
-	let zero_path = Path::from_string("/dev/zero", false)?;
+	let zero_path = Path::from_str("/dev/zero".as_bytes(), false)?;
 	let mut zero_device = Device::new(1, 5, zero_path, 0o666, DeviceType::Char,
 		ZeroDeviceHandle {})?;
 	zero_device.create_file()?; // TODO remove?
 	device::register_device(zero_device)?;
 
-	let kmsg_path = Path::from_string("/dev/kmsg", false)?;
+	let kmsg_path = Path::from_str("/dev/kmsg".as_bytes(), false)?;
 	let mut kmsg_device = Device::new(1, 11, kmsg_path, 0o600, DeviceType::Char,
 		KMsgDeviceHandle {})?;
 	kmsg_device.create_file()?; // TODO remove?
@@ -122,7 +122,7 @@ pub fn create() -> Result<(), Errno> {
 
 	let _fifth_major = ManuallyDrop::new(id::alloc_major(DeviceType::Char, Some(5))?);
 
-	let current_tty_path = Path::from_string("/dev/tty", false)?;
+	let current_tty_path = Path::from_str("/dev/tty".as_bytes(), false)?;
 	let mut current_tty_device = Device::new(5, 0, current_tty_path, 0o666, DeviceType::Char,
 		CurrentTTYDeviceHandle {})?;
 	current_tty_device.create_file()?; // TODO remove?

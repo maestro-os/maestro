@@ -559,7 +559,7 @@ impl Ext2INode {
 	/// `io` is the I/O interface.
 	/// If the entry doesn't exist, the function returns None.
 	/// If the file is not a directory, the behaviour is undefined.
-	pub fn get_directory_entry(&self, name: &str, superblock: &Superblock,
+	pub fn get_directory_entry(&self, name: &[u8], superblock: &Superblock,
 		io: &mut dyn DeviceHandle) -> Result<Option<Box<DirectoryEntry>>, Errno> {
 		let mut entry = None;
 

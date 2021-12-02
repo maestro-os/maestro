@@ -58,7 +58,7 @@ pub trait VMem: FailableClone {
 		let boot_info = multiboot::get_boot_info();
 
 		let mut res = Ok(());
-		let f = | section: &elf::ELF32SectionHeader, _name: &str | {
+		let f = | section: &elf::ELF32SectionHeader, _name: &[u8] | {
 			if section.sh_flags & elf::SHF_WRITE != 0
 				|| section.sh_addralign as usize != memory::PAGE_SIZE {
 				return true;

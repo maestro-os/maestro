@@ -595,8 +595,9 @@ impl Filesystem for Ext2Fs {
 			//	true
 			//}, &self.superblock, io);
 
-			let name = path[i].as_str();
-			if let Some(entry) = inode.get_directory_entry(name, &self.superblock, io)? {
+			let name = &path[i];
+			if let Some(entry) = inode.get_directory_entry(name.as_bytes(), &self.superblock,
+				io)? {
 				inode_index = entry.get_inode();
 			} else {
 				return Err(errno::ENOENT);

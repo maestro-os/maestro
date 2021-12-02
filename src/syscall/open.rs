@@ -1,5 +1,6 @@
 //! The open system call allows a process to open a file and get a file descriptor.
 
+use core::slice;
 use crate::errno::Errno;
 use crate::errno;
 use crate::file::File;
@@ -14,13 +15,12 @@ use crate::process::Process;
 use crate::process::Regs;
 use crate::util::FailableClone;
 use crate::util::ptr::SharedPtr;
-use crate::util;
 
 // TODO Implement all flags
 
 /// Returns the absolute path to the file.
-fn get_file_absolute_path(process: &Process, path_str: &str) -> Result<Path, Errno> {
-	let path = Path::from_string(path_str, true)?;
+fn get_file_absolute_path(process: &Process, path_str: &[u8]) -> Result<Path, Errno> {
+	let path = Path::from_str(path_str, true)?;
 	if !path.is_absolute() {
 		let cwd = process.get_cwd();
 		let mut absolute_path = cwd.concat(&path)?;
@@ -86,7 +86,7 @@ fn resolve_links(file: SharedPtr<File>, flags: i32, mode: u16, uid: u16, gid: u1
 
 		// Resolve the link
 		if let FileContent::Link(link_target) = f.get_file_content() {
-			let mut path = (parent_path + Path::from_string(link_target.as_str(), false)?)?;
+			let mut path = (parent_path + Path::from_str(link_target.as_bytes(), false)?)?;
 			path.reduce()?;
 			drop(file_guard);
 			file = get_file(path, flags, mode, uid, gid)?;
@@ -121,7 +121,7 @@ pub fn open_(pathname: *const u8, flags: i32, mode: u16) -> Result<i32, Errno> {
 	}
 
 	let path_str = unsafe { // Safe because the address is checked before
-		util::ptr_to_str(pathname as _)
+		slice::from_raw_parts(pathname, len)
 	};
 
 	let mode = mode & !proc.get_umask();
