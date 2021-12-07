@@ -68,10 +68,10 @@ ifeq ($(CONFIG_EXISTS), 0)
 
  ifneq ($(CONFIG_DEBUG_TEST), true)
 # The rule to compile everything
-all: $(NAME) iso tags doc
+all: $(NAME) iso doc
  else
 # The rule to compile everything
-all: $(NAME) iso tags
+all: $(NAME) iso
  endif
 
 # Builds the documentation
@@ -230,10 +230,6 @@ $(NAME).iso: $(NAME) grub.cfg
 	cp grub.cfg iso/boot/grub
 	grub-mkrescue -o $(NAME).iso iso
 
-# The rule to create the `tags` file
-tags: $(SRC) $(HDR) $(RUST_SRC)
-	ctags $(SRC) $(HDR) $(RUST_SRC)
-
 # Runs clippy on the Rust code
 clippy:
 	$(CONFIG_ENV) RUSTFLAGS='$(RUSTFLAGS)' $(CARGO) clippy $(CARGOFLAGS)
@@ -330,7 +326,6 @@ config: $(CONFIG_FILE)
 clean:
 	rm -rf $(OBJ_DIR)
 	rm -rf $(LIB_NAME)
-	rm -f tags
 	rm -rf iso/
 
 # The rule to clean the workspace, including target binaries
