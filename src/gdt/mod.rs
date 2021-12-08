@@ -5,7 +5,9 @@
 pub mod ldt;
 
 use core::ffi::c_void;
+use crate::errno::Errno;
 use crate::memory;
+use crate::util::FailableClone;
 
 /// The address in physical memory to the beginning of the GDT.
 const PHYS_PTR: *mut c_void = 0x800 as _;
@@ -119,6 +121,12 @@ impl Default for Entry {
 		Self {
 			val: 0,
 		}
+	}
+}
+
+impl FailableClone for Entry {
+	fn failable_clone(&self) -> Result<Self, Errno> {
+		Ok(self.clone())
 	}
 }
 

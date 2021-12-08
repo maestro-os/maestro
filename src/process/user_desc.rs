@@ -89,6 +89,8 @@ impl UserDesc {
 		entry.set_base(self.get_base_addr() as _);
 		entry.set_limit(self.get_limit() as _);
 
+		// TODO contents
+
 		let mut access_byte = 0b01100010;
 		if self.is_present() && self.is_usable() {
 			access_byte |= 1 << 7;

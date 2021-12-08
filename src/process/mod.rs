@@ -28,6 +28,7 @@ use crate::file::file_descriptor::FileDescriptor;
 use crate::file::file_descriptor;
 use crate::file::path::Path;
 use crate::file;
+use crate::gdt::ldt::LDT;
 use crate::gdt;
 use crate::limits;
 use crate::memory::vmem;
@@ -158,6 +159,8 @@ pub struct Process {
 
 	/// TLS entries.
 	tls_entries: [gdt::Entry; TLS_ENTRIES_COUNT],
+	/// The process's local descriptor table.
+	ldt: LDT,
 
 	/// The exit status of the process after exiting.
 	exit_status: ExitStatus,
@@ -364,6 +367,7 @@ impl Process {
 			signal_handlers: [SignalHandler::Default; signal::SIGNALS_COUNT + 1],
 
 			tls_entries: [gdt::Entry::default(); TLS_ENTRIES_COUNT],
+			ldt: LDT::new()?,
 
 			exit_status: 0,
 			termsig: 0,
@@ -863,6 +867,7 @@ impl Process {
 			signal_handlers: self.signal_handlers,
 
 			tls_entries: self.tls_entries,
+			ldt: self.ldt.failable_clone()?,
 
 			exit_status: self.exit_status,
 			termsig: 0,

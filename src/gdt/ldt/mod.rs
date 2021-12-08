@@ -2,6 +2,7 @@
 
 use crate::errno::Errno;
 use crate::errno;
+use crate::util::FailableClone;
 use crate::util::container::vec::Vec;
 use super::Entry;
 
@@ -12,6 +13,7 @@ extern "C" {
 
 /// The LDT descriptor structure.
 #[repr(C, packed)]
+#[derive(Clone, Copy)]
 struct LDTDescriptor {
 	/// The size of the LDT in bytes.
 	size: u16,
@@ -23,7 +25,6 @@ struct LDTDescriptor {
 pub struct LDT {
 	/// The list of entries in the LDT.
 	entries: Vec<Entry>,
-
 	/// The LDT descriptor.
 	desc: LDTDescriptor,
 }
@@ -75,5 +76,14 @@ impl LDT {
 		unsafe {
 			ldt_load(&self.desc as *const _);
 		}
+	}
+}
+
+impl FailableClone for LDT {
+	fn failable_clone(&self) -> Result<Self, Errno> {
+		Ok(Self {
+			entries: self.entries.failable_clone()?,
+			desc: self.desc.clone(),
+		})
 	}
 }
