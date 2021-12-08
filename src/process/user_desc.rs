@@ -84,26 +84,26 @@ impl UserDesc {
 
 	/// Converts the current descriptor to a GDT entry.
 	pub fn to_descriptor(&self) -> gdt::Entry {
-        let mut entry = gdt::Entry::default();
+		let mut entry = gdt::Entry::default();
 
-	entry.set_base(self.get_base_addr() as _);
-        entry.set_limit(self.get_limit() as _);
+		entry.set_base(self.get_base_addr() as _);
+		entry.set_limit(self.get_limit() as _);
 
-        let mut access_byte = 0b01100010;
-        if self.is_present() && self.is_usable() {
-            access_byte |= 1 << 7;
-        }
-        entry.set_access_byte(access_byte);
+		let mut access_byte = 0b01100010;
+		if self.is_present() && self.is_usable() {
+			access_byte |= 1 << 7;
+		}
+		entry.set_access_byte(access_byte);
 
-        let mut flags = 0b0000;
-        if self.is_32bits() {
-            flags |= 1 << 2;
-        }
-        if self.is_limit_in_pages() {
-            flags |= 1 << 3;
-        }
-        entry.set_flags(flags);
+		let mut flags = 0b0000;
+		if self.is_32bits() {
+			flags |= 1 << 2;
+		}
+		if self.is_limit_in_pages() {
+			flags |= 1 << 3;
+		}
+		entry.set_flags(flags);
 
-        entry
+		entry
 	}
 }

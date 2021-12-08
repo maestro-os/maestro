@@ -64,31 +64,31 @@ impl Entry {
 		self.val |= ((limit as u64 >> 16) & 0xf) << 48;
 	}
 
-    /// Returns the value of the access byte.
+	/// Returns the value of the access byte.
 	#[inline(always)]
-    pub fn get_access_byte(&self) -> u8 {
-        ((self.val >> 40) & 0xff) as _
-    }
+	pub fn get_access_byte(&self) -> u8 {
+		((self.val >> 40) & 0xff) as _
+	}
 
-    /// Sets the value of the access byte.
+	/// Sets the value of the access byte.
 	#[inline(always)]
-    pub fn set_access_byte(&mut self, byte: u8) {
-        self.val &= !(0xff << 40);
-        self.val |= (byte as u64) << 40;
-    }
+	pub fn set_access_byte(&mut self, byte: u8) {
+		self.val &= !(0xff << 40);
+		self.val |= (byte as u64) << 40;
+	}
 
-    /// Returns the flags.
+	/// Returns the flags.
 	#[inline(always)]
-    pub fn get_flags(&self) -> u8 {
-        ((self.val >> 52) & 0x0f) as _
-    }
+	pub fn get_flags(&self) -> u8 {
+		((self.val >> 52) & 0x0f) as _
+	}
 
-    /// Sets the flags.
+	/// Sets the flags.
 	#[inline(always)]
-    pub fn set_flags(&mut self, flags: u8) {
-        self.val &= !(0x0f << 52);
-        self.val |= ((flags as u64) & 0x0f) << 52;
-    }
+	pub fn set_flags(&mut self, flags: u8) {
+		self.val &= !(0x0f << 52);
+		self.val |= ((flags as u64) & 0x0f) << 52;
+	}
 
 	/// Tells whether the entry is present.
 	#[inline(always)]
