@@ -47,9 +47,10 @@ pub fn modify_ldt(regs: &Regs) -> Result<i32, Errno> {
 			};
 
 			// The LDT descriptor
-			let _desc = info.to_descriptor();
-
-			// TODO Write entry
+			let desc = info.to_descriptor();
+			// The LDT
+			let ldt = proc.get_ldt_mut()?;
+			ldt.add(desc)?; // TODO Set entry at index
 			Ok(0)
 		},
 		2 => {

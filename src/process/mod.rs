@@ -160,7 +160,7 @@ pub struct Process {
 	/// TLS entries.
 	tls_entries: [gdt::Entry; TLS_ENTRIES_COUNT],
 	/// The process's local descriptor table.
-	ldt: LDT,
+	ldt: Option<LDT>,
 
 	/// The exit status of the process after exiting.
 	exit_status: ExitStatus,
@@ -367,7 +367,7 @@ impl Process {
 			signal_handlers: [SignalHandler::Default; signal::SIGNALS_COUNT + 1],
 
 			tls_entries: [gdt::Entry::default(); TLS_ENTRIES_COUNT],
-			ldt: LDT::new()?,
+			ldt: None,
 
 			exit_status: 0,
 			termsig: 0,
@@ -867,7 +867,13 @@ impl Process {
 			signal_handlers: self.signal_handlers,
 
 			tls_entries: self.tls_entries,
-			ldt: self.ldt.failable_clone()?,
+			ldt: {
+				if let Some(ldt) = &self.ldt {
+					Some(ldt.failable_clone()?)
+				} else {
+					None
+				}
+			},
 
 			exit_status: self.exit_status,
 			termsig: 0,
@@ -956,6 +962,16 @@ impl Process {
 	/// Returns the list of TLS entries for the process.
 	pub fn get_tls_entries(&mut self) -> &mut [gdt::Entry] {
 		&mut self.tls_entries
+	}
+
+	/// Returns a mutable reference to the process's LDT.
+	/// If the LDT doesn't exist, the function creates one.
+	pub fn get_ldt_mut(&mut self) -> Result<&mut LDT, Errno> {
+		if self.ldt.is_none() {
+			self.ldt = Some(LDT::new()?);
+		}
+
+		Ok(self.ldt.as_mut().unwrap())
 	}
 
 	/// Updates the `n`th TLS entry in the GDT.
