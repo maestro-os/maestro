@@ -70,7 +70,7 @@ impl MountPoint {
 	/// `path` is the path on which the filesystem is to be mounted.
 	pub fn new(device_type: DeviceType, major: u32, minor: u32, flags: u32, path: Path)
 		-> Result<Self, Errno> {
-		let mut dev_ptr = device::get_device(device_type, major, minor).ok_or(errno::ENODEV)?;
+		let dev_ptr = device::get_device(device_type, major, minor).ok_or(errno::ENODEV)?;
 		let mut dev_guard = dev_ptr.lock(true);
 		let device = dev_guard.get_mut();
 
@@ -78,7 +78,7 @@ impl MountPoint {
 		//let fs_type = fs::ext2::Ext2FsType {};
 		//fs_type.create_filesystem(device)?;
 
-		let mut fs_type_ptr = fs::detect(device)?;
+		let fs_type_ptr = fs::detect(device)?;
 		let fs_type_guard = fs_type_ptr.lock(true);
 		let fs_type = fs_type_guard.get();
 		let filesystem = fs_type.load_filesystem(device, &path)?;
@@ -151,15 +151,12 @@ impl MountPoint {
 }
 
 /// The list of mountpoints.
-static mut MOUNT_POINTS: Mutex<Vec<SharedPtr<MountPoint>>> = Mutex::new(Vec::new());
+static MOUNT_POINTS: Mutex<Vec<SharedPtr<MountPoint>>> = Mutex::new(Vec::new());
 
 /// Registers a new mountpoint `mountpoint`. If a mountpoint is already present at the same path,
 /// the function fails.
 pub fn register_mountpoint(mountpoint: MountPoint) -> Result<SharedPtr<MountPoint>, Errno> {
-	let mutex = unsafe { // Safe because using Mutex
-		&mut MOUNT_POINTS
-	};
-	let mut guard = mutex.lock(true);
+	let mut guard = MOUNT_POINTS.lock(true);
 	let container = guard.get_mut();
 	let shared_ptr = SharedPtr::new(mountpoint)?;
 	container.push(shared_ptr.clone())?;
@@ -169,10 +166,7 @@ pub fn register_mountpoint(mountpoint: MountPoint) -> Result<SharedPtr<MountPoin
 /// Returns the deepest mountpoint in the path `path`. If no mountpoint is in the path, the
 /// function returns None.
 pub fn get_deepest(path: &Path) -> Option<SharedPtr<MountPoint>> {
-	let mutex = unsafe { // Safe because using Mutex
-		&mut MOUNT_POINTS
-	};
-	let mut guard = mutex.lock(true);
+	let mut guard = MOUNT_POINTS.lock(true);
 	let container = guard.get_mut();
 
 	let mut max: Option<SharedPtr<MountPoint>> = None;
@@ -206,10 +200,7 @@ pub fn get_deepest(path: &Path) -> Option<SharedPtr<MountPoint>> {
 /// `minor` is the minor number of the device.
 pub fn get_from_device(device_type: DeviceType, major: u32, minor: u32)
 	-> Option<SharedPtr<MountPoint>> {
-	let mutex = unsafe { // Safe because using Mutex
-		&mut MOUNT_POINTS
-	};
-	let mut guard = mutex.lock(true);
+	let mut guard = MOUNT_POINTS.lock(true);
 	let container = guard.get_mut();
 
 	for i in 0..container.len() {

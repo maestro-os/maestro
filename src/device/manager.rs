@@ -53,14 +53,11 @@ pub trait DeviceManager {
 
 // TODO Order by name
 /// The list of device managers.
-static mut DEVICE_MANAGERS: Mutex<Vec<SharedPtr<dyn DeviceManager>>> = Mutex::new(Vec::new());
+static DEVICE_MANAGERS: Mutex<Vec<SharedPtr<dyn DeviceManager>>> = Mutex::new(Vec::new());
 
 /// Registers the given device manager.
 pub fn register_manager<M: 'static + DeviceManager>(manager: M) -> Result<(), Errno> {
-	let mutex = unsafe {
-		&mut DEVICE_MANAGERS
-	};
-	let mut guard = mutex.lock(true);
+	let mut guard = DEVICE_MANAGERS.lock(true);
 	let device_managers = guard.get_mut();
 
 	let m = SharedPtr::new(manager)?;
@@ -69,10 +66,7 @@ pub fn register_manager<M: 'static + DeviceManager>(manager: M) -> Result<(), Er
 
 /// Returns the device manager with name `name`.
 pub fn get_by_name(name: &str) -> Option<WeakPtr<dyn DeviceManager>> {
-	let mutex = unsafe {
-		&mut DEVICE_MANAGERS
-	};
-	let mut guard = mutex.lock(true);
+	let mut guard = DEVICE_MANAGERS.lock(true);
 	let device_managers = guard.get_mut();
 
 	for i in 0..device_managers.len() {
@@ -90,10 +84,7 @@ pub fn get_by_name(name: &str) -> Option<WeakPtr<dyn DeviceManager>> {
 /// Function that is called when a new device is plugged in.
 /// `dev` is the device that has been plugged in.
 pub fn on_plug(dev: &dyn PhysicalDevice) {
-	let mutex = unsafe {
-		&mut DEVICE_MANAGERS
-	};
-	let mut guard = mutex.lock(true);
+	let mut guard = DEVICE_MANAGERS.lock(true);
 	let device_managers = guard.get_mut();
 
 	for i in 0..device_managers.len() {
@@ -106,10 +97,7 @@ pub fn on_plug(dev: &dyn PhysicalDevice) {
 /// Function that is called when a device is plugged out.
 /// `dev` is the device that has been plugged out.
 pub fn on_unplug(dev: &dyn PhysicalDevice) {
-	let mutex = unsafe {
-		&mut DEVICE_MANAGERS
-	};
-	let mut guard = mutex.lock(true);
+	let mut guard = DEVICE_MANAGERS.lock(true);
 	let device_managers = guard.get_mut();
 
 	for i in 0..device_managers.len() {

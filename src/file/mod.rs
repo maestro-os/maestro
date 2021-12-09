@@ -10,7 +10,6 @@ pub mod pipe;
 pub mod socket;
 
 use core::cmp::max;
-use core::mem::MaybeUninit;
 use crate::device::DeviceType;
 use crate::device;
 use crate::errno::Errno;
@@ -447,14 +446,14 @@ impl File {
 		match &self.content {
 			FileContent::Regular => {
 				if let FileLocation::Disk(location) = &self.location {
-					let mut mountpoint_mutex = mountpoint::get_from_device(
+					let mountpoint_mutex = mountpoint::get_from_device(
 						location.get_device_type(),
 						location.get_major(),
 						location.get_minor()).unwrap(); // TODO Check unwrap
 					let mut mountpoint_guard = mountpoint_mutex.lock(true);
 					let mountpoint = mountpoint_guard.get_mut();
 
-					let mut device_mutex = mountpoint.get_device().clone();
+					let device_mutex = mountpoint.get_device().clone();
 					let mut device_guard = device_mutex.lock(true);
 					let device = device_guard.get_mut();
 
@@ -487,7 +486,7 @@ impl File {
 			},
 
 			FileContent::BlockDevice(_, _) | FileContent::CharDevice(_, _) => {
-				let mut dev = match self.content {
+				let dev = match self.content {
 					FileContent::BlockDevice(major, minor) => {
 						device::get_device(DeviceType::Block, major, minor)
 					},
@@ -510,14 +509,14 @@ impl File {
 		match &self.content {
 			FileContent::Regular => {
 				if let FileLocation::Disk(location) = &self.location {
-					let mut mountpoint_mutex = mountpoint::get_from_device(
+					let mountpoint_mutex = mountpoint::get_from_device(
 						location.get_device_type(),
 						location.get_major(),
 						location.get_minor()).unwrap(); // TODO Check unwrap
 					let mut mountpoint_guard = mountpoint_mutex.lock(true);
 					let mountpoint = mountpoint_guard.get_mut();
 
-					let mut device_mutex = mountpoint.get_device().clone();
+					let device_mutex = mountpoint.get_device().clone();
 					let mut device_guard = device_mutex.lock(true);
 					let device = device_guard.get_mut();
 
@@ -552,7 +551,7 @@ impl File {
 			},
 
 			FileContent::BlockDevice(_, _) | FileContent::CharDevice(_, _) => {
-				let mut dev = match self.content {
+				let dev = match self.content {
 					FileContent::BlockDevice(major, minor) => {
 						device::get_device(DeviceType::Block, major, minor)
 					},
@@ -660,12 +659,12 @@ impl FCache {
 		path.reduce()?;
 
 		// Getting the path's deepest mountpoint
-		let mut ptr = mountpoint::get_deepest(&path).ok_or(errno::ENOENT)?;
+		let ptr = mountpoint::get_deepest(&path).ok_or(errno::ENOENT)?;
 		let mut guard = ptr.lock(true);
 		let deepest_mountpoint = guard.get_mut();
 
 		// Getting the mountpoint's device
-		let mut dev_ptr = deepest_mountpoint.get_device();
+		let dev_ptr = deepest_mountpoint.get_device();
 		let mut dev_guard = dev_ptr.lock(true);
 		let dev = dev_guard.get_mut();
 
@@ -688,12 +687,12 @@ impl FCache {
 		path.reduce()?;
 
 		// Getting the path's deepest mountpoint
-		let mut ptr = mountpoint::get_deepest(&path).ok_or(errno::ENOENT)?;
+		let ptr = mountpoint::get_deepest(&path).ok_or(errno::ENOENT)?;
 		let mut guard = ptr.lock(true);
 		let deepest_mountpoint = guard.get_mut();
 
 		// Getting the mountpoint's device
-		let mut dev_ptr = deepest_mountpoint.get_device();
+		let dev_ptr = deepest_mountpoint.get_device();
 		let mut dev_guard = dev_ptr.lock(true);
 		let dev = dev_guard.get_mut();
 
@@ -722,12 +721,12 @@ impl FCache {
 		path.reduce()?;
 
 		// Getting the path's deepest mountpoint
-		let mut ptr = mountpoint::get_deepest(&path).ok_or(errno::ENOENT)?;
+		let ptr = mountpoint::get_deepest(&path).ok_or(errno::ENOENT)?;
 		let mut guard = ptr.lock(true);
 		let deepest_mountpoint = guard.get_mut();
 
 		// Getting the mountpoint's device
-		let mut dev_ptr = deepest_mountpoint.get_device();
+		let dev_ptr = deepest_mountpoint.get_device();
 		let mut guard = dev_ptr.lock(true);
 		let dev = guard.get_mut();
 
@@ -756,7 +755,7 @@ impl FCache {
 }
 
 /// The instance of the file cache.
-static mut FILES_CACHE: MaybeUninit<Mutex<FCache>> = MaybeUninit::uninit();
+static FILES_CACHE: Mutex<Option<FCache>> = Mutex::new(None);
 
 /// Initializes files management.
 /// `root_device_type` is the type of the root device file. If not a device, the behaviour is
@@ -767,16 +766,14 @@ pub fn init(root_device_type: DeviceType, root_major: u32, root_minor: u32) -> R
 	fs::register_defaults()?;
 
 	let cache = FCache::new(root_device_type, root_major, root_minor)?;
-	unsafe { // Safe because using Mutex and because this code is executed only once at boot
-		FILES_CACHE = MaybeUninit::new(Mutex::new(cache));
-	}
+	let mut guard = FILES_CACHE.lock(true);
+	*guard.get_mut() = Some(cache);
 
 	Ok(())
 }
 
 /// Returns a mutable reference to the file cache.
-pub fn get_files_cache() -> &'static mut Mutex<FCache> {
-	unsafe { // Safe because using Mutex
-		FILES_CACHE.assume_init_mut()
-	}
+/// If the cache is not initialized, the Option is None.
+pub fn get_files_cache() -> &'static Mutex<Option<FCache>> {
+	&FILES_CACHE
 }

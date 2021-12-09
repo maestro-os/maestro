@@ -11,14 +11,14 @@ use crate::process::pid::Pid;
 pub fn getpgid(regs: &Regs) -> Result<i32, Errno> {
 	let pid = regs.ebx as Pid;
 
-	let mut mutex = Process::get_current().unwrap();
+	let mutex = Process::get_current().unwrap();
 	let mut guard = mutex.lock(false);
 	let proc = guard.get_mut();
 
 	if pid == 0 {
 		Ok(proc.get_pid() as _)
 	} else {
-		let mut mutex = {
+		let mutex = {
 			if let Some(proc) = Process::get_by_pid(pid) {
 				proc
 			} else {

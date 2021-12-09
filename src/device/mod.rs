@@ -185,19 +185,19 @@ impl Device {
 		let mut guard = mutex.lock(true);
 		let files_cache = guard.get_mut();
 		// Tells whether the file already exists
-		let file_exists = files_cache.get_file_from_path(&self.path).is_ok();
+		let file_exists = files_cache.as_mut().unwrap().get_file_from_path(&self.path).is_ok();
 
 		if !file_exists {
 			// Creating the directories in which the device file is located
 			let mut dir_path = self.path.failable_clone()?;
 			dir_path.pop();
-			Self::create_dirs(files_cache, &dir_path)?;
+			Self::create_dirs(files_cache.as_mut().unwrap(), &dir_path)?;
 
 			let file = File::new(filename, file_content, 0, 0, self.mode)?;
 
 			// TODO Cancel directories creation on fail
 			// Creating the device file
-			files_cache.create_file(&dir_path, file)?;
+			files_cache.as_mut().unwrap().create_file(&dir_path, file)?;
 		}
 
 		Ok(())
@@ -209,7 +209,7 @@ impl Device {
 		let mut guard = mutex.lock(true);
 		let files_cache = guard.get_mut();
 
-		if let Ok(mut file) = files_cache.get_file_from_path(&self.path) {
+		if let Ok(file) = files_cache.as_mut().unwrap().get_file_from_path(&self.path) {
 			let mut guard = file.lock(true);
 			guard.get_mut().unlink();
 		}
@@ -223,24 +223,16 @@ impl Drop for Device {
 }
 
 /// The list of registered block devices.
-static mut BLOCK_DEVICES: Mutex<Vec<SharedPtr<Device>>> = Mutex::new(Vec::new());
+static BLOCK_DEVICES: Mutex<Vec<SharedPtr<Device>>> = Mutex::new(Vec::new());
 /// The list of registered block devices.
-static mut CHAR_DEVICES: Mutex<Vec<SharedPtr<Device>>> = Mutex::new(Vec::new());
+static CHAR_DEVICES: Mutex<Vec<SharedPtr<Device>>> = Mutex::new(Vec::new());
 
 /// Registers the given device. If the minor/major number is already used, the function fails.
 /// The function *doesn't* create the device file.
 pub fn register_device(device: Device) -> Result<(), Errno> {
 	let mut guard = match device.get_type() {
-		DeviceType::Block => {
-			unsafe { // Safe because using mutex
-				BLOCK_DEVICES.lock(true)
-			}
-		},
-		DeviceType::Char => {
-			unsafe { // Safe because using mutex
-				CHAR_DEVICES.lock(true)
-			}
-		}
+		DeviceType::Block => BLOCK_DEVICES.lock(true),
+		DeviceType::Char => CHAR_DEVICES.lock(true),
 	};
 	let container = guard.get_mut();
 
@@ -266,16 +258,8 @@ pub fn register_device(device: Device) -> Result<(), Errno> {
 /// If the device doesn't exist, the function returns None.
 pub fn get_device(type_: DeviceType, major: u32, minor: u32) -> Option<SharedPtr<Device>> {
 	let mut guard = match type_ {
-		DeviceType::Block => {
-			unsafe { // Safe because using mutex
-				BLOCK_DEVICES.lock(true)
-			}
-		},
-		DeviceType::Char => {
-			unsafe { // Safe because using mutex
-				CHAR_DEVICES.lock(true)
-			}
-		}
+		DeviceType::Block => BLOCK_DEVICES.lock(true),
+		DeviceType::Char => CHAR_DEVICES.lock(true),
 	};
 	let container = guard.get_mut();
 
@@ -300,10 +284,9 @@ pub fn get_device(type_: DeviceType, major: u32, minor: u32) -> Option<SharedPtr
 /// If no device with the given path is found, the function returns None.
 pub fn get_by_path(path: &Path) -> Option<SharedPtr<Device>> {
 	{
-		let mut block_guard = unsafe { // Safe because using Mutex
-			BLOCK_DEVICES.lock(true)
-		};
+		let mut block_guard = BLOCK_DEVICES.lock(true);
 		let block_container = block_guard.get_mut();
+
 		for i in 0..block_container.len() {
 			let dev_guard = block_container[i].lock(true);
 			let dev = dev_guard.get();
@@ -316,10 +299,9 @@ pub fn get_by_path(path: &Path) -> Option<SharedPtr<Device>> {
 	}
 
 	{
-		let mut char_guard = unsafe { // Safe because using Mutex
-			CHAR_DEVICES.lock(true)
-		};
+		let mut char_guard = CHAR_DEVICES.lock(true);
 		let char_container = char_guard.get_mut();
+
 		for i in 0..char_container.len() {
 			let dev_guard = char_container[i].lock(true);
 			let dev = dev_guard.get();

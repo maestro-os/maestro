@@ -9,6 +9,7 @@
 //! be triggered at any moment while executing the code unless disabled. For this reason, mutexes
 //! in the kernel are equiped with an option allowing to disable interrupts while being locked.
 
+use core::cell::UnsafeCell;
 use core::marker::PhantomData;
 use crate::idt;
 use crate::util::lock::spinlock::Spinlock;
@@ -20,14 +21,14 @@ use crate::util::lock::spinlock::Spinlock;
 /// doesen't stay locked after the exectution of a function ended.
 pub struct MutexGuard<'a, T: ?Sized> {
 	/// The mutex associated to the guard
-	mutex: &'a mut Mutex<T>,
+	mutex: &'a Mutex<T>,
 
 	_data: PhantomData<T>,
 }
 
 impl<'a, T: ?Sized> MutexGuard<'a, T> {
 	/// Creates an instance of MutexGuard for the given mutex `mutex`.
-	fn new(mutex: &'a mut Mutex<T>) -> Self {
+	fn new(mutex: &'a Mutex<T>) -> Self {
 		Self {
 			mutex,
 
@@ -61,8 +62,8 @@ impl<'a, T: ?Sized> Drop for MutexGuard<'a, T> {
 	}
 }
 
-/// Structure representing a Mutex.
-pub struct Mutex<T: ?Sized> {
+/// The inner structure of the Mutex structure.
+pub struct MutexIn<T: ?Sized> {
 	/// The spinlock for the underlying data.
 	spin: Spinlock,
 	/// Tells whether locking disabled interrupts.
@@ -75,15 +76,23 @@ pub struct Mutex<T: ?Sized> {
 	data: T,
 }
 
+/// Structure representing a Mutex.
+pub struct Mutex<T: ?Sized> {
+	/// An unsafe cell to the inner structure of the Mutex.
+	inner: UnsafeCell<MutexIn<T>>,
+}
+
 impl<T> Mutex<T> {
 	/// Creates a new Mutex with the given data to be owned.
 	pub const fn new(data: T) -> Self {
 		Self {
-			spin: Spinlock::new(),
-			int: false,
-			int_enabled: false,
+			inner: UnsafeCell::new(MutexIn {
+				spin: Spinlock::new(),
+				int: false,
+				int_enabled: false,
 
-			data,
+				data,
+			})
 		}
 	}
 }
@@ -93,7 +102,9 @@ impl<T: ?Sized> Mutex<T> {
 	/// the mutex is ready to be locked before locking it, since it may cause race conditions. In
 	/// this case, prefer using `lock` directly.
 	pub fn is_locked(&self) -> bool {
-		self.spin.is_locked()
+		unsafe { // Safe because using the spinlock
+			(*self.inner.get()).spin.is_locked()
+		}
 	}
 
 	/// Locks the mutex. If the mutex is already locked, the thread shall wait until it becomes
@@ -101,12 +112,16 @@ impl<T: ?Sized> Mutex<T> {
 	/// If `interrupt` is false, interruptions are disabled while locked, then restored when
 	/// unlocked.
 	/// The function returns a MutexGuard associated with the Mutex.
-	pub fn lock(&mut self, interrupt: bool) -> MutexGuard<T> {
+	pub fn lock(&self, interrupt: bool) -> MutexGuard<T> {
+		let inner = unsafe { // Safe because using the spinlock later
+			&mut *self.inner.get()
+		};
+
 		if interrupt {
-			self.spin.lock();
+			inner.spin.lock();
 
 			// Setting the value after locking to avoid writing on it whilst the mutex was locked
-			self.int = true;
+			inner.int = true;
 
 			MutexGuard::new(self)
 		} else {
@@ -117,12 +132,12 @@ impl<T: ?Sized> Mutex<T> {
 
 			// Disabling interrupts before locking to ensure no interrupt will occure while locking
 			crate::cli!();
-			self.spin.lock();
+			inner.spin.lock();
 
 			// Setting the values after locking to avoid writing on them whilst the mutex was
 			// locked
-			self.int = false;
-			self.int_enabled = int_enabled;
+			inner.int = false;
+			inner.int_enabled = int_enabled;
 
 			MutexGuard::new(self)
 		}
@@ -131,22 +146,24 @@ impl<T: ?Sized> Mutex<T> {
 	/// Returns an immutable reference to the payload. This function is unsafe because it can
 	/// return the payload while the Mutex isn't locked.
 	pub unsafe fn get_payload(&self) -> &T {
-		&self.data
+		&(*self.inner.get()).data
 	}
 
 	/// Returns a mutable reference to the payload. This function is unsafe because it can return
 	/// the payload while the Mutex isn't locked.
-	pub unsafe fn get_mut_payload(&mut self) -> &mut T {
-		&mut self.data
+	pub unsafe fn get_mut_payload(&self) -> &mut T {
+		&mut (*self.inner.get()).data
 	}
 
 	/// Unlocks the mutex. The function is unsafe because it may lead to concurrency issues if not
 	/// used properly.
-	pub unsafe fn unlock(&mut self) {
-		let int = self.int;
-		let int_enabled = self.int_enabled;
+	pub unsafe fn unlock(&self) {
+		let inner = &mut (*self.inner.get());
 
-		self.spin.unlock();
+		let int = inner.int;
+		let int_enabled = inner.int_enabled;
+
+		inner.spin.unlock();
 
 		if !int {
 			// Restoring interrupts state after unlocking

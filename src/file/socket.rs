@@ -80,7 +80,7 @@ impl SocketSide {
 	/// Creates a new instance.
 	/// `sock` is the socket associated with the socket side.
 	/// `other` allows to tell on which side is which.
-	pub fn new(mut sock: SharedPtr<Socket>, other: bool) -> Result<SharedPtr<Self>, Errno> {
+	pub fn new(sock: SharedPtr<Socket>, other: bool) -> Result<SharedPtr<Self>, Errno> {
 		let s = SharedPtr::new(Self {
 			sock: sock.clone(),
 			other,

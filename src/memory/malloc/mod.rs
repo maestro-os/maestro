@@ -24,7 +24,7 @@ use crate::util::lock::mutex::Mutex;
 use crate::util;
 
 /// The allocator's mutex.
-static mut MUTEX: Mutex<()> = Mutex::new(());
+static MUTEX: Mutex<()> = Mutex::new(());
 
 /// Initializes the memory allocator.
 pub fn init() {

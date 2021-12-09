@@ -8,23 +8,17 @@ use crate::util::lock::mutex::Mutex;
 const MAX_TRIES: u32 = 5;
 
 /// Variable telling whether the OOM killer is enabled.
-static mut KILLER_ENABLE: Mutex<bool> = Mutex::new(true);
+static KILLER_ENABLE: Mutex<bool> = Mutex::new(true);
 
 /// Tells whether the OOM killer is enabled.
 pub fn is_killer_enabled() -> bool {
-	let mutex = unsafe { // Safe because using Mutex
-		&mut KILLER_ENABLE
-	};
-	let guard = mutex.lock(true);
+	let guard = KILLER_ENABLE.lock(true);
 	*guard.get()
 }
 
 /// Enables or disables the OOM killer.
 pub fn set_killer_enabled(enable: bool) {
-	let mutex = unsafe { // Safe because using Mutex
-		&mut KILLER_ENABLE
-	};
-	let mut guard = mutex.lock(true);
+	let mut guard = KILLER_ENABLE.lock(true);
 	*guard.get_mut() = enable;
 }
 

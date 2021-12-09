@@ -11,23 +11,18 @@ use crate::util::lock::mutex::Mutex;
 const LOGS_SIZE: usize = 1048576;
 
 /// The kernel's logger.
-static mut LOGGER: Mutex<Logger> = Mutex::new(Logger::new());
+static LOGGER: Mutex<Logger> = Mutex::new(Logger::new());
 
 /// Initializes logging.
 /// `silent` tells whether the logger is silent.
 pub fn init(silent: bool) {
-	let mutex = unsafe { // Safe because using Mutex
-		&mut LOGGER
-	};
-	let mut guard = mutex.lock(false);
+	let mut guard = LOGGER.lock(false);
 	guard.get_mut().set_silent(silent);
 }
 
 /// Returns a mutable reference to the logger's Mutex.
-pub fn get() -> &'static mut Mutex<Logger> {
-	unsafe { // Safe because using Mutex
-		&mut LOGGER
-	}
+pub fn get() -> &'static Mutex<Logger> {
+	&LOGGER
 }
 
 /// Kernel logger, used to print/store kernel logs.

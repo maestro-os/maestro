@@ -245,14 +245,12 @@ impl Drop for Module {
 }
 
 /// The list of modules.
-static mut MODULES: Mutex<Vec<Module>> = Mutex::new(Vec::new());
+static MODULES: Mutex<Vec<Module>> = Mutex::new(Vec::new());
 
 // TODO Optimize
 /// Tells whether a module with the given name is loaded.
 pub fn is_loaded(name: &String) -> bool {
-	let modules_guard = unsafe { // Safe because using Mutex
-		MODULES.lock(true)
-	};
+	let modules_guard = MODULES.lock(true);
 	let modules = modules_guard.get();
 
 	for m in modules {
@@ -266,9 +264,7 @@ pub fn is_loaded(name: &String) -> bool {
 
 /// Adds the given module to the modules list.
 pub fn add(module: Module) -> Result<(), Errno> {
-	let mut modules_guard = unsafe { // Safe because using Mutex
-		MODULES.lock(true)
-	};
+	let mut modules_guard = MODULES.lock(true);
 	let modules = modules_guard.get_mut();
 	modules.push(module)
 }

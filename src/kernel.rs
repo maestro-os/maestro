@@ -193,7 +193,7 @@ fn get_init_error_message(errno: Errno) -> &'static str {
 
 /// Launches the init process.
 fn init() -> Result<(), &'static str> {
-	let mut mutex = Process::new().or(Err("Failed to create init process!"))?;
+	let mutex = Process::new().or(Err("Failed to create init process!"))?;
 	let mut lock = mutex.lock(false);
 	let proc = lock.get_mut();
 

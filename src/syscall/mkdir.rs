@@ -17,7 +17,7 @@ pub fn mkdir(regs: &Regs) -> Result<i32, Errno> {
 	let pathname = regs.ebx as *const u8;
 	let mode = regs.ebx as u16;
 
-	let mut mutex = Process::get_current().unwrap();
+	let mutex = Process::get_current().unwrap();
 	let mut guard = mutex.lock(false);
 	let proc = guard.get_mut();
 
@@ -50,7 +50,7 @@ pub fn mkdir(regs: &Regs) -> Result<i32, Errno> {
 			let mutex = file::get_files_cache();
 			let mut guard = mutex.lock(true);
 			let files_cache = guard.get_mut();
-			files_cache.create_file(&parent_path, file)?;
+			files_cache.as_mut().unwrap().create_file(&parent_path, file)?;
 		}
 	}
 

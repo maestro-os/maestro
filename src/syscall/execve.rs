@@ -35,7 +35,7 @@ pub fn execve(regs: &Regs) -> Result<i32, Errno> {
 
 	// Checking that parameters are accessible by the process
 	let (uid, gid, pathname_len) = {
-		let mut mutex = Process::get_current().unwrap();
+		let mutex = Process::get_current().unwrap();
 		let mut guard = mutex.lock(false);
 		let proc = guard.get_mut();
 
@@ -61,7 +61,7 @@ pub fn execve(regs: &Regs) -> Result<i32, Errno> {
 	let files_cache = guard.get_mut();
 
 	// The file
-	let mut file = files_cache.get_file_from_path(&path)?;
+	let file = files_cache.as_mut().unwrap().get_file_from_path(&path)?;
 
 	// Iterating on script files' iterators
 	let mut i = 0;

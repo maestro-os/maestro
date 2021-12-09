@@ -19,7 +19,7 @@ pub fn munmap(regs: &Regs) -> Result<i32, Errno> {
 		return Err(errno::EINVAL);
 	}
 
-	let mut mutex = Process::get_current().unwrap();
+	let mutex = Process::get_current().unwrap();
 	let mut guard = mutex.lock(false);
 	let proc = guard.get_mut();
 	let mem_space = proc.get_mem_space_mut().unwrap();

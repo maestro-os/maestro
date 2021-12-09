@@ -43,7 +43,7 @@ const FREE_LIST_BINS: usize = 8;
 type FreeList = List<FreeChunk>;
 
 /// List storing free lists for each free chunk. The chunks are storted by size.
-static mut FREE_LISTS: MaybeUninit::<[List::<FreeChunk>; FREE_LIST_BINS]> = MaybeUninit::uninit();
+static mut FREE_LISTS: MaybeUninit<[List<FreeChunk>; FREE_LIST_BINS]> = MaybeUninit::uninit();
 
 /// A chunk of allocated or free memory stored in linked lists.
 #[repr(C, align(8))]

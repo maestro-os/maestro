@@ -42,7 +42,7 @@ fn get_file(path: Path, flags: i32, mode: u16, uid: u16, gid: u16)
 	let mut guard = mutex.lock(true);
 	let files_cache = guard.get_mut();
 
-	if let Ok(file) = files_cache.get_file_from_path(&path) {
+	if let Ok(file) = files_cache.as_mut().unwrap().get_file_from_path(&path) {
 		Ok(file)
 	} else if flags & file_descriptor::O_CREAT != 0 {
 		// Getting the path of the parent directory
@@ -52,7 +52,7 @@ fn get_file(path: Path, flags: i32, mode: u16, uid: u16, gid: u16)
 		// Creating the file
 		let name = path[path.get_elements_count() - 1].failable_clone()?;
 		let file = File::new(name, FileContent::Regular, uid, gid, mode)?;
-		files_cache.create_file(&parent, file)
+		files_cache.as_mut().unwrap().create_file(&parent, file)
 	} else {
 		Err(errno::ENOENT)
 	}
@@ -106,7 +106,7 @@ fn resolve_links(file: SharedPtr<File>, flags: i32, mode: u16, uid: u16, gid: u1
 
 /// Performs the open system call.
 pub fn open_(pathname: *const u8, flags: i32, mode: u16) -> Result<i32, Errno> {
-	let mut mutex = Process::get_current().unwrap();
+	let mutex = Process::get_current().unwrap();
 	let mut guard = mutex.lock(false);
 	let proc = guard.get_mut();
 

@@ -71,21 +71,19 @@ pub struct TTY {
 /// The array of every TTYs.
 static mut TTYS: MaybeUninit<[Mutex<TTY>; TTYS_COUNT]> = MaybeUninit::uninit();
 /// The current TTY's id.
-static mut CURRENT_TTY: Mutex<usize> = Mutex::new(0);
+static CURRENT_TTY: Mutex<usize> = Mutex::new(0);
 
 /// Returns a mutable reference to the TTY with identifier `tty`.
-pub fn get(tty: usize) -> &'static mut Mutex<TTY> {
+pub fn get(tty: usize) -> &'static Mutex<TTY> {
 	debug_assert!(tty < TTYS_COUNT);
 	unsafe {
-		&mut TTYS.assume_init_mut()[tty]
+		&TTYS.assume_init_mut()[tty]
 	}
 }
 
 /// Returns a reference to the current TTY.
-pub fn current() -> &'static mut Mutex<TTY> {
-	unsafe { // Safe because using Mutex
-		get(*CURRENT_TTY.lock(true).get())
-	}
+pub fn current() -> &'static Mutex<TTY> {
+	get(*CURRENT_TTY.lock(true).get())
 }
 
 /// Initializes every TTYs.
@@ -108,9 +106,7 @@ pub fn switch(tty: usize) {
 	if tty >= TTYS_COUNT {
 		return;
 	}
-	unsafe { // Safe because using Mutex
-		*CURRENT_TTY.lock(true).get_mut() = tty;
-	}
+	*CURRENT_TTY.lock(true).get_mut() = tty;
 
 	let mut guard = get(tty).lock(true);
 	let t = guard.get_mut();
@@ -143,9 +139,7 @@ impl TTY {
 
 	/// Updates the TTY to the screen.
 	pub fn update(&mut self) {
-		let current_tty = unsafe { // Safe because using Mutex
-			*CURRENT_TTY.lock(true).get()
-		};
+		let current_tty = *CURRENT_TTY.lock(true).get();
 		if self.id != current_tty || !self.update {
 			return;
 		}

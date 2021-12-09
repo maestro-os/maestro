@@ -8,9 +8,9 @@ use crate::process::Regs;
 
 /// The implementation of the `fork` syscall.
 pub fn fork(regs: &Regs) -> Result<i32, Errno> {
-	let mut new_mutex = {
+	let new_mutex = {
 		// The current process
-		let mut curr_mutex = Process::get_current().unwrap();
+		let curr_mutex = Process::get_current().unwrap();
 		// A weak pointer to the new process's parent
 		let parent = curr_mutex.new_weak();
 

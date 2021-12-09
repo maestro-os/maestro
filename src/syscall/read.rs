@@ -17,7 +17,7 @@ pub fn read(regs: &Regs) -> Result<i32, Errno> {
 	let count = regs.edx as usize;
 
 	{
-		let mut mutex = Process::get_current().unwrap();
+		let mutex = Process::get_current().unwrap();
 		let mut guard = mutex.lock(false);
 		let proc = guard.get_mut();
 
@@ -39,7 +39,7 @@ pub fn read(regs: &Regs) -> Result<i32, Errno> {
 
 	loop {
 		let (len, flags) = {
-			let mut mutex = Process::get_current().unwrap();
+			let mutex = Process::get_current().unwrap();
 			let mut guard = mutex.lock(false);
 			let proc = guard.get_mut();
 

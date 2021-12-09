@@ -20,14 +20,11 @@ use super::MemSpace;
 
 /// A pointer to the default physical page of memory. This page is meant to be mapped in read-only
 /// and is a placeholder for pages that are accessed without being allocated nor written.
-static mut DEFAULT_PAGE: Mutex::<Option::<*const c_void>> = Mutex::new(None);
+static DEFAULT_PAGE: Mutex<Option<*const c_void>> = Mutex::new(None);
 
 /// Returns a pointer to the default physical page.
 fn get_default_page() -> *const c_void {
-	let m = unsafe { // Safe because using a Mutex
-		&mut DEFAULT_PAGE
-	};
-	let mut guard = m.lock(true);
+	let mut guard = DEFAULT_PAGE.lock(true);
 	let default_page = guard.get_mut();
 
 	if default_page.is_none() {

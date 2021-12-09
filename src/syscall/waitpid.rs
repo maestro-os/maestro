@@ -89,7 +89,7 @@ fn check_waitable(proc: &Process, pid: i32, wstatus: &mut Option<&mut i32>)
 	// Iterating on every target processes, checking if they can be waited on
 	let mut i = 0;
 	while let Some(pid) = get_target(scheduler, proc, pid, i) {
-		if let Some(mut p) = scheduler.get_by_pid(pid) {
+		if let Some(p) = scheduler.get_by_pid(pid) {
 			let mut proc_guard = p.lock(false);
 			let p = proc_guard.get_mut();
 
@@ -127,7 +127,7 @@ fn check_waitable(proc: &Process, pid: i32, wstatus: &mut Option<&mut i32>)
 /// `options` are flags passed with the syscall.
 pub fn do_waitpid(pid: i32, wstatus: *mut i32, options: i32) -> Result<i32, Errno> {
 	{
-		let mut mutex = Process::get_current().unwrap();
+		let mutex = Process::get_current().unwrap();
 		let mut guard = mutex.lock(false);
 		let proc = guard.get_mut();
 
@@ -151,7 +151,7 @@ pub fn do_waitpid(pid: i32, wstatus: *mut i32, options: i32) -> Result<i32, Errn
 	loop {
 		// Check if at least one target process is waitable
 		{
-			let mut mutex = Process::get_current().unwrap();
+			let mutex = Process::get_current().unwrap();
 			let mut guard = mutex.lock(false);
 			let proc = guard.get_mut();
 
@@ -169,7 +169,7 @@ pub fn do_waitpid(pid: i32, wstatus: *mut i32, options: i32) -> Result<i32, Errn
 		// When a child process is paused or resumed by a signal or is terminated, it changes the
 		// state of the current process to wake it up
 		{
-			let mut mutex = Process::get_current().unwrap();
+			let mutex = Process::get_current().unwrap();
 			let mut guard = mutex.lock(false);
 			let proc = guard.get_mut();
 

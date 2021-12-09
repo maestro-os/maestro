@@ -21,21 +21,16 @@ pub trait ClockSource {
 }
 
 /// Vector containing all the clock sources.
-static mut CLOCK_SOURCES: Mutex::<Vec::<Box::<dyn ClockSource>>> = Mutex::new(Vec::new());
+static CLOCK_SOURCES: Mutex<Vec<Box<dyn ClockSource>>> = Mutex::new(Vec::new());
 
 /// Returns a reference to the list of clock sources.
-pub fn get_clock_sources() -> &'static Mutex::<Vec::<Box::<dyn ClockSource>>> {
-	unsafe { // Safe because using Mutex
-		&CLOCK_SOURCES
-	}
+pub fn get_clock_sources() -> &'static Mutex<Vec<Box<dyn ClockSource>>> {
+	&CLOCK_SOURCES
 }
 
 /// Adds the new clock source to the clock sources list.
 pub fn add_clock_source<T: 'static + ClockSource>(source: T) -> Result<(), Errno> {
-	let mutex = unsafe { // Safe because using Mutex
-		&mut CLOCK_SOURCES
-	};
-	let mut guard = mutex.lock(true);
+	let mut guard = CLOCK_SOURCES.lock(true);
 	let sources = guard.get_mut();
 	sources.push(Box::new(source)?)?;
 	Ok(())
@@ -43,10 +38,7 @@ pub fn add_clock_source<T: 'static + ClockSource>(source: T) -> Result<(), Errno
 
 /// Returns the current timestamp from the preferred clock source.
 pub fn get() -> Timestamp {
-	let mutex = unsafe { // Safe because using Mutex
-		&mut CLOCK_SOURCES
-	};
-	let mut guard = mutex.lock(true);
+	let mut guard = CLOCK_SOURCES.lock(true);
 	let sources = guard.get_mut();
 	if sources.is_empty() {
 		crate::kernel_panic!("No clock source available!");

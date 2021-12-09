@@ -10,7 +10,7 @@ pub fn dup2(regs: &Regs) -> Result<i32, Errno> {
 	let oldfd = regs.ebx;
 	let newfd = regs.ecx;
 
-	let mut mutex = Process::get_current().unwrap();
+	let mutex = Process::get_current().unwrap();
 	let mut guard = mutex.lock(false);
 	let proc = guard.get_mut();
 

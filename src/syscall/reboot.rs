@@ -30,7 +30,7 @@ pub fn reboot(regs: &Regs) -> Result<i32, Errno> {
 	}
 
 	{
-		let mut mutex = Process::get_current().unwrap();
+		let mutex = Process::get_current().unwrap();
 		let mut guard = mutex.lock(false);
 		let proc = guard.get_mut();
 		if proc.get_uid() != 0 {

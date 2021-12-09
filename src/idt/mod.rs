@@ -140,8 +140,7 @@ extern "C" {
 }
 
 /// The list of IDT entries.
-static mut ID: MaybeUninit::<[InterruptDescriptor; ENTRIES_COUNT]>
-	= MaybeUninit::uninit();
+static mut ID: MaybeUninit<[InterruptDescriptor; ENTRIES_COUNT]> = MaybeUninit::uninit();
 
 /// Creates an IDT entry.
 fn create_id(address: *const c_void, selector: u16, type_attr: u8) -> InterruptDescriptor {

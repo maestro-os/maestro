@@ -171,8 +171,7 @@ pub struct Process {
 /// The PID manager.
 static mut PID_MANAGER: MaybeUninit<Mutex<PIDManager>> = MaybeUninit::uninit();
 /// The processes scheduler.
-static mut SCHEDULER: MaybeUninit<SharedPtr<Scheduler>>
-	= MaybeUninit::uninit();
+static mut SCHEDULER: MaybeUninit<SharedPtr<Scheduler>> = MaybeUninit::uninit();
 
 /// Initializes processes system. This function must be called only once, at kernel initialization.
 pub fn init() -> Result<(), Errno> {
@@ -195,7 +194,7 @@ pub fn init() -> Result<(), Errno> {
 		}.lock(false);
 		let scheduler = guard.get_mut();
 
-		if let Some(mut curr_proc) = scheduler.get_current_process() {
+		if let Some(curr_proc) = scheduler.get_current_process() {
 			let mut curr_proc_guard = curr_proc.lock(false);
 			let curr_proc = curr_proc_guard.get_mut();
 
@@ -262,7 +261,7 @@ pub fn init() -> Result<(), Errno> {
 		}.lock(false);
 		let scheduler = guard.get_mut();
 
-		if let Some(mut curr_proc) = scheduler.get_current_process() {
+		if let Some(curr_proc) = scheduler.get_current_process() {
 			let mut curr_proc_guard = curr_proc.lock(false);
 			let curr_proc = curr_proc_guard.get_mut();
 
@@ -380,7 +379,7 @@ impl Process {
 			let files_cache = guard.get_mut();
 
 			let tty_path = Path::from_str(TTY_DEVICE_PATH.as_bytes(), false).unwrap();
-			let tty_file = files_cache.get_file_from_path(&tty_path).unwrap();
+			let tty_file = files_cache.as_mut().unwrap().get_file_from_path(&tty_path).unwrap();
 			let stdin_fd = process.create_fd(file_descriptor::O_RDWR, FDTarget::File(tty_file))
 				.unwrap();
 			assert_eq!(stdin_fd.get_id(), STDIN_FILENO);
@@ -422,7 +421,7 @@ impl Process {
 	/// Sets the process's group ID to the given value `pgid`.
 	pub fn set_pgid(&mut self, pgid: Pid) -> Result<(), Errno> {
 		if self.is_in_group() {
-			let mut mutex = Process::get_by_pid(self.pgid).unwrap();
+			let mutex = Process::get_by_pid(self.pgid).unwrap();
 			let mut guard = mutex.lock(false);
 			let old_group_process = guard.get_mut();
 			let i = old_group_process.process_group.binary_search(&self.pid).unwrap();
@@ -438,7 +437,7 @@ impl Process {
 		};
 
 		if pgid != self.pid {
-			if let Some(mut mutex) = Process::get_by_pid(pgid) {
+			if let Some(mutex) = Process::get_by_pid(pgid) {
 				let mut guard = mutex.lock(false);
 				let new_group_process = guard.get_mut();
 				let i = new_group_process.process_group.binary_search(&self.pid).unwrap_err();

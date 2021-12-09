@@ -145,7 +145,7 @@ impl Scheduler {
 
 	/// Removes the process with the given pid `pid`.
 	pub fn remove_process(&mut self, pid: Pid) {
-		if let Some(mut proc_mutex) = self.get_by_pid(pid) {
+		if let Some(proc_mutex) = self.get_by_pid(pid) {
 			let guard = proc_mutex.lock(false);
 			let process = guard.get();
 
@@ -207,7 +207,7 @@ impl Scheduler {
 
 		// Getting the current process, or take the first process in the list if no process is
 		// running
-		let (curr_pid, mut curr_proc) = self.curr_proc.clone().or_else(|| {
+		let (curr_pid, curr_proc) = self.curr_proc.clone().or_else(|| {
 			let (pid, proc) = self.processes.get_min(0)?;
 			Some((*pid, proc.clone()))
 		})?;
@@ -276,7 +276,7 @@ impl Scheduler {
 		scheduler.total_ticks += 1;
 
 		// If a process is running, save its registers
-		if let Some(mut curr_proc) = scheduler.get_current_process() {
+		if let Some(curr_proc) = scheduler.get_current_process() {
 			let mut guard = curr_proc.lock(false);
 			let curr_proc = guard.get_mut();
 

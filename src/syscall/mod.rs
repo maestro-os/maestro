@@ -499,7 +499,7 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 		// The system call doesn't exist. Killing the process with SIGSYS
 		_ => {
 			{
-				let mut mutex = Process::get_current().unwrap();
+				let mutex = Process::get_current().unwrap();
 				let mut guard = mutex.lock(false);
 				let curr_proc = guard.get_mut();
 

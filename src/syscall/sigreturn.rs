@@ -8,7 +8,7 @@ use crate::process::Regs;
 pub fn sigreturn(_regs: &Regs) -> ! {
 	cli!();
 
-	let mut mutex = Process::get_current().unwrap();
+	let mutex = Process::get_current().unwrap();
 	let mut guard = mutex.lock(false);
 	let proc = guard.get_mut();
 

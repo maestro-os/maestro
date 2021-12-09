@@ -46,20 +46,17 @@ pub const O_SYNC: i32 =      0b0100000000000000;
 /// If the file already exists, truncate it to length zero.
 pub const O_TRUNC: i32 =     0b1000000000000000;
 
-/// The total number of file descriptors open system-wide.
-static mut TOTAL_FD: Mutex<usize> = Mutex::new(0);
-
 /// The maximum number of file descriptors that can be open system-wide at once.
 const TOTAL_MAX_FD: usize = 4294967295;
+
+/// The total number of file descriptors open system-wide.
+static TOTAL_FD: Mutex<usize> = Mutex::new(0);
 
 /// Increments the total number of file descriptors open system-wide.
 /// If the maximum amount of file descriptors is reached, the function does nothing and returns an
 /// error with the appropriate errno.
 fn increment_total() -> Result<(), Errno> {
-	let mutex = unsafe { // Safe because using Mutex
-		&mut TOTAL_FD
-	};
-	let mut guard = mutex.lock(true);
+	let mut guard = TOTAL_FD.lock(true);
 
 	if *guard.get() >= TOTAL_MAX_FD {
 		return Err(errno::ENFILE);
@@ -71,10 +68,7 @@ fn increment_total() -> Result<(), Errno> {
 
 /// Decrements the total number of file descriptors open system-wide.
 fn decrement_total() {
-	let mutex = unsafe { // Safe because using Mutex
-		&mut TOTAL_FD
-	};
-	let mut guard = mutex.lock(true);
+	let mut guard = TOTAL_FD.lock(true);
 	*guard.get_mut() -= 1;
 }
 

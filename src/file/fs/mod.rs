@@ -85,14 +85,11 @@ pub trait FilesystemType {
 }
 
 /// The list of mountpoints.
-static mut FILESYSTEMS: Mutex<Vec<SharedPtr<dyn FilesystemType>>> = Mutex::new(Vec::new());
+static FILESYSTEMS: Mutex<Vec<SharedPtr<dyn FilesystemType>>> = Mutex::new(Vec::new());
 
 /// Registers a new filesystem type `fs`.
 pub fn register<T: 'static + FilesystemType>(fs_type: T) -> Result<(), Errno> {
-	let mutex = unsafe { // Safe because using Mutex
-		&mut FILESYSTEMS
-	};
-	let mut guard = mutex.lock(true);
+	let mut guard = FILESYSTEMS.lock(true);
 	let container = guard.get_mut();
 	container.push(SharedPtr::new(fs_type)?)
 }
@@ -101,10 +98,7 @@ pub fn register<T: 'static + FilesystemType>(fs_type: T) -> Result<(), Errno> {
 
 /// Detects the filesystem type on the given device `device`.
 pub fn detect(device: &mut Device) -> Result<SharedPtr<dyn FilesystemType>, Errno> {
-	let mutex = unsafe { // Safe because using Mutex
-		&mut FILESYSTEMS
-	};
-	let mut guard = mutex.lock(true);
+	let mut guard = FILESYSTEMS.lock(true);
 	let container = guard.get_mut();
 
 	for i in 0..container.len() {

@@ -10,7 +10,7 @@ pub fn delete_module(regs: &Regs) -> Result<i32, Errno> {
 	let _name = regs.ebx as *const u8;
 
 	{
-		let mut proc_mutex = Process::get_current().unwrap();
+		let proc_mutex = Process::get_current().unwrap();
 		let proc_guard = proc_mutex.lock(false);
 		let proc = proc_guard.get();
 

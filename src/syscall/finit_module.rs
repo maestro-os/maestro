@@ -13,7 +13,7 @@ pub fn finit_module(regs: &Regs) -> Result<i32, Errno> {
 	let fd = regs.ebx as u32;
 
 	let image = {
-		let mut proc_mutex = Process::get_current().unwrap();
+		let proc_mutex = Process::get_current().unwrap();
 		let mut proc_guard = proc_mutex.lock(false);
 		let proc = proc_guard.get_mut();
 

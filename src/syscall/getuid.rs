@@ -6,7 +6,7 @@ use crate::process::Regs;
 
 /// The implementation of the `getuid` syscall.
 pub fn getuid(_: &Regs) -> Result<i32, Errno> {
-	let mut mutex = Process::get_current().unwrap();
+	let mutex = Process::get_current().unwrap();
 	let mut guard = mutex.lock(false);
 	let proc = guard.get_mut();
 

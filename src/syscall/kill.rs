@@ -15,7 +15,7 @@ use crate::process;
 /// If `sig` is None, the function doesn't send a signal, but still checks if there is a process
 /// that could be killed.
 fn try_kill(pid: i32, sig: Option<Signal>, euid: Uid) -> Result<i32, Errno> {
-	if let Some(mut proc) = Process::get_by_pid(pid as Pid) {
+	if let Some(proc) = Process::get_by_pid(pid as Pid) {
 		let mut guard = proc.lock(false);
 		let proc = guard.get_mut();
 
@@ -90,7 +90,7 @@ fn send_signal(pid: i32, sig: Option<Signal>, proc: &mut Process) -> Result<i32,
 			Err(errno::ESRCH)
 		}
 	} else {
-		if let Some(mut proc) = Process::get_by_pid(-pid as _) {
+		if let Some(proc) = Process::get_by_pid(-pid as _) {
 			let mut guard = proc.lock(false);
 			let proc = guard.get_mut();
 			let group = proc.get_group_processes();
@@ -117,7 +117,7 @@ fn handle_state() {
 	loop {
 		cli!();
 
-		let mut mutex = Process::get_current().unwrap();
+		let mutex = Process::get_current().unwrap();
 		let mut guard = mutex.lock(false);
 		let proc = guard.get_mut();
 
@@ -169,7 +169,7 @@ pub fn kill(regs: &Regs) -> Result<i32, Errno> {
 	};
 
 	{
-		let mut mutex = Process::get_current().unwrap();
+		let mutex = Process::get_current().unwrap();
 		let mut guard = mutex.lock(false);
 		let proc = guard.get_mut();
 

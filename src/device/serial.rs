@@ -159,10 +159,6 @@ static mut PORTS: [Option<Mutex<Serial>>; 4] = [
 /// port is not initialized, the function tries to do it. If the port doesn't exist, the function
 /// returns None.
 pub fn get(port: u16) -> Option<&'static mut Mutex<Serial>> {
-	let ports = unsafe { // Safe because using Mutex
-		&mut PORTS
-	};
-
 	let i = match port {
 		COM1 => 0,
 		COM2 => 1,
@@ -170,6 +166,10 @@ pub fn get(port: u16) -> Option<&'static mut Mutex<Serial>> {
 		COM4 => 3,
 
 		_ => return None,
+	};
+
+	let ports = unsafe { // Safe because using Mutex
+		&mut PORTS
 	};
 	if ports[i].is_none() {
 		if let Some(s) = Serial::from_port(port) {

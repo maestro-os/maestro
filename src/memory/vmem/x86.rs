@@ -82,7 +82,7 @@ extern "C" {
 /// being shared with every contexts, another context might be modifying the space pages at the
 /// same time.
 /// To prevent this issue, this mutex has to be locked whenever modifying kernel space mappings.
-static mut GLOBAL_MUTEX: Mutex<()> = Mutex::new(());
+static GLOBAL_MUTEX: Mutex<()> = Mutex::new(());
 
 /// Tells whether the kernel tables are initialized.
 static mut KERNEL_TABLES_INIT: bool = false;
@@ -453,9 +453,7 @@ impl VMem for X86VMem {
 		flags |= FLAG_PRESENT;
 
 		// Locking the global mutex to avoid data races while modifying kernel space tables
-		let _ = unsafe {
-			GLOBAL_MUTEX.lock(true)
-		};
+		let _ = GLOBAL_MUTEX.lock(true);
 
 		let dir_entry_index = Self::get_addr_element_index(virtaddr, 1);
 		let mut dir_entry_value = obj_get(self.page_dir, dir_entry_index);
@@ -515,9 +513,7 @@ impl VMem for X86VMem {
 		debug_assert!(util::is_aligned(virtaddr, memory::PAGE_SIZE));
 
 		// Locking the global mutex to avoid data races while modifying kernel space tables
-		let _ = unsafe {
-			GLOBAL_MUTEX.lock(true)
-		};
+		let _ = GLOBAL_MUTEX.lock(true);
 
 		let dir_entry_index = Self::get_addr_element_index(virtaddr, 1);
 		let dir_entry_value = obj_get(self.page_dir, dir_entry_index);

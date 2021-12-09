@@ -14,7 +14,7 @@ use crate::process::Regs;
 pub fn chdir(regs: &Regs) -> Result<i32, Errno> {
 	let path = regs.ebx as *const u8;
 
-	let mut mutex = Process::get_current().unwrap();
+	let mutex = Process::get_current().unwrap();
 	let mut guard = mutex.lock(false);
 	let proc = guard.get_mut();
 
@@ -39,7 +39,7 @@ pub fn chdir(regs: &Regs) -> Result<i32, Errno> {
 		let mut fcache_guard = fcache_mutex.lock(true);
 		let fcache = fcache_guard.get_mut();
 
-		let mut dir_mutex = fcache.get_file_from_path(&new_cwd)?;
+		let dir_mutex = fcache.as_mut().unwrap().get_file_from_path(&new_cwd)?;
 		let dir_guard = dir_mutex.lock(true);
 		let dir = dir_guard.get();
 

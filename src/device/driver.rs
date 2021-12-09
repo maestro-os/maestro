@@ -22,14 +22,11 @@ pub trait Driver {
 }
 
 /// The list of drivers.
-static mut DRIVERS: Mutex<Vec<SharedPtr<dyn Driver>>> = Mutex::new(Vec::new());
+static DRIVERS: Mutex<Vec<SharedPtr<dyn Driver>>> = Mutex::new(Vec::new());
 
 /// Registers the given driver.
 pub fn register<D: 'static + Driver>(driver: D) -> Result<(), Errno> {
-	let mutex = unsafe {
-		&mut DRIVERS
-	};
-	let mut guard = mutex.lock(true);
+	let mut guard = DRIVERS.lock(true);
 	let drivers = guard.get_mut();
 
 	let m = SharedPtr::new(driver)?;
@@ -38,10 +35,7 @@ pub fn register<D: 'static + Driver>(driver: D) -> Result<(), Errno> {
 
 /// Returns the driver with name `name`.
 pub fn get_by_name(name: &str) -> Option<WeakPtr<dyn Driver>> {
-	let mutex = unsafe {
-		&mut DRIVERS
-	};
-	let mut guard = mutex.lock(true);
+	let mut guard = DRIVERS.lock(true);
 	let drivers = guard.get_mut();
 
 	for i in 0..drivers.len() {
@@ -59,10 +53,7 @@ pub fn get_by_name(name: &str) -> Option<WeakPtr<dyn Driver>> {
 /// Function that is called when a new device is plugged in.
 /// `dev` is the device that has been plugged in.
 pub fn on_plug(dev: &dyn PhysicalDevice) {
-	let mutex = unsafe {
-		&mut DRIVERS
-	};
-	let mut guard = mutex.lock(true);
+	let mut guard = DRIVERS.lock(true);
 	let drivers = guard.get_mut();
 
 	for i in 0..drivers.len() {
@@ -75,10 +66,7 @@ pub fn on_plug(dev: &dyn PhysicalDevice) {
 /// Function that is called when a device is plugged out.
 /// `dev` is the device that has been plugged out.
 pub fn on_unplug(dev: &dyn PhysicalDevice) {
-	let mutex = unsafe {
-		&mut DRIVERS
-	};
-	let mut guard = mutex.lock(true);
+	let mut guard = DRIVERS.lock(true);
 	let drivers = guard.get_mut();
 
 	for i in 0..drivers.len() {

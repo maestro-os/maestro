@@ -15,7 +15,7 @@ pub fn pipe(regs: &Regs) -> Result<i32, Errno> {
 	let pipefd = regs.ebx as *mut [i32; 2];
 
 	let (fd0, fd1) = {
-		let mut mutex = Process::get_current().unwrap();
+		let mutex = Process::get_current().unwrap();
 		let mut guard = mutex.lock(false);
 		let proc = guard.get_mut();
 

@@ -60,7 +60,7 @@ const BCD_MODE: u8 = 0b1;
 const BASE_FREQUENCY: Frequency = 1193180;
 
 /// The current frequency of the PIT.
-static mut CURRENT_FREQUENCY: Mutex::<Frequency> = Mutex::new(0);
+static CURRENT_FREQUENCY: Mutex<Frequency> = Mutex::new(0);
 
 /// Initializes the PIT.
 /// This function disables interrupts.
@@ -89,10 +89,7 @@ pub fn set_value(count: u16) {
 /// Sets the current frequency of the PIT to `frequency` in hertz.
 /// This function disables interrupts.
 pub fn set_frequency(frequency: Frequency) {
-	let m = unsafe { // Safe because using a Mutex
-		&mut CURRENT_FREQUENCY
-	};
-	let mut guard = m.lock(true);
+	let mut guard = CURRENT_FREQUENCY.lock(true);
 	*guard.get_mut() = frequency;
 
 	let mut c = if frequency != 0 {
