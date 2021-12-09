@@ -46,11 +46,13 @@ pub fn modify_ldt(regs: &Regs) -> Result<i32, Errno> {
 				UserDesc::from_ptr(ptr)
 			};
 
+			// TODO Add support for entry removal
+
 			// The LDT descriptor
 			let desc = info.to_descriptor();
 			// The LDT
 			let ldt = proc.get_ldt_mut()?;
-			ldt.add(desc)?; // TODO Set entry at index
+			ldt.set(info.get_entry_number(), desc)?;
 			Ok(0)
 		},
 		2 => {

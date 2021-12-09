@@ -46,15 +46,25 @@ impl LDT {
 
 	/// Updates the LDT's descriptor according to the entries.
 	fn update_desc(&mut self) {
-		self.desc.size = (self.entries.len() * 8 - 1) as _;
-		self.desc.offset = &self.desc as *const _ as u32;
+		self.desc.size = (self.entries.len() * 8 + 1) as _;
+		self.desc.offset = &self.desc[0] as *const _ as u32;
 	}
 
-	/// Adds an entry to the LDT.
-	/// If the LDT is full, the function fails.
-	pub fn add(&mut self, entry: Entry) -> Result<(), Errno> {
-		if self.entries.len() * 8 - 1 > u16::MAX as _ {
-			return Err(errno::ENOMEM);
+	/// Returns the entry at index `i`.
+	/// If the entry doesn't exist, the function returns None.
+	pub fn get(&self, i: usize) -> Option<Entry> {
+		if i < self.entries.len() {
+			Some(self.entries[i])
+		} else {
+			None
+		}
+	}
+
+	/// Sets the entry at index `i`.
+	/// If the index is out of bounds, the function fails.
+	pub fn set(&mut self, i: usize, entry: Entry) -> Result<(), Errno> {
+		if i * 8 - 1 > u16::MAX as _ {
+			return Err(errno::EINVAL);
 		}
 
 		self.entries.push(entry)?;
