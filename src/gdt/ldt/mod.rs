@@ -40,14 +40,17 @@ impl LDT {
 				offset: 0,
 			}
 		};
-		s.add(Entry::default())?;
+
+		// Adding the null entry
+		s.set(0, Entry::default())?;
+
 		Ok(s)
 	}
 
 	/// Updates the LDT's descriptor according to the entries.
 	fn update_desc(&mut self) {
 		self.desc.size = (self.entries.len() * 8 + 1) as _;
-		self.desc.offset = &self.desc[0] as *const _ as u32;
+		self.desc.offset = &self.entries[0] as *const _ as u32;
 	}
 
 	/// Returns the entry at index `i`.

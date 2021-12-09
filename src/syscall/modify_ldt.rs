@@ -52,7 +52,7 @@ pub fn modify_ldt(regs: &Regs) -> Result<i32, Errno> {
 			let desc = info.to_descriptor();
 			// The LDT
 			let ldt = proc.get_ldt_mut()?;
-			ldt.set(info.get_entry_number(), desc)?;
+			ldt.set(info.get_entry_number() as _, desc)?;
 			Ok(0)
 		},
 		2 => {
