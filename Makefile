@@ -245,7 +245,7 @@ clippy:
 
 
 # The QEMU disk file
-QEMU_DISK = ${HOME}/sgoinfre/qemu_disk
+QEMU_DISK = qemu_disk
 # The size of the QEMU disk in megabytes
 QEMU_DISK_SIZE = 1024
 # Flags for the QEMU emulator

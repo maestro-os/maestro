@@ -13,7 +13,6 @@ use core::ffi::c_void;
 use crate::errno::Errno;
 use crate::event::CallbackHook;
 use crate::event;
-use crate::gdt;
 use crate::idt::pic;
 use crate::memory::malloc;
 use crate::memory::stack;
@@ -21,7 +20,6 @@ use crate::memory;
 use crate::process::Process;
 use crate::process::Regs;
 use crate::process::pid::Pid;
-use crate::process::tss;
 use crate::process;
 use crate::util::container::binary_tree::BinaryTree;
 use crate::util::container::binary_tree::BinaryTreeMutIterator;
@@ -302,26 +300,8 @@ impl Scheduler {
 					};
 					let mut guard = data.proc.lock(false);
 					let proc = guard.get_mut();
-					debug_assert_eq!(proc.get_state(), process::State::Running);
-					// Incrementing the number of ticks the process had
-					proc.quantum_count += 1;
 
-					let tss = tss::get();
-					tss.ss0 = gdt::KERNEL_DS as _;
-					tss.ss = gdt::USER_DS as _;
-					// Setting the kernel stack pointer
-					tss.esp0 = proc.kernel_stack.unwrap() as _;
-					// Binding the memory space
-					proc.get_mem_space().unwrap().bind();
-
-					// Updating TLS entries in the GDT
-					for i in 0..process::TLS_ENTRIES_COUNT {
-						proc.update_tls(i);
-					}
-
-					// If a signal is pending on the process, execute it
-					proc.signal_next();
-
+					proc.prepare_switch();
 					(proc.is_syscalling(), proc.regs)
 				};
 

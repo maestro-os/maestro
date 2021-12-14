@@ -659,6 +659,38 @@ impl Process {
 		self.regs = *regs;
 	}
 
+	/// Prepares for context switching to the process.
+	/// A call to this function MUST be followed by a context switch to the process.
+	pub fn prepare_switch(&mut self) {
+		debug_assert_eq!(self.get_state(), State::Running);
+
+		// Incrementing the number of ticks the process had
+		self.quantum_count += 1;
+
+		// Filling the TSS
+		let tss = tss::get();
+		tss.ss0 = gdt::KERNEL_DS as _;
+		tss.ss = gdt::USER_DS as _;
+		// Setting the kernel stack pointer
+		tss.esp0 = self.kernel_stack.unwrap() as _;
+
+		// Binding the memory space
+		self.get_mem_space().unwrap().bind();
+
+		// Updating TLS entries in the GDT
+		for i in 0..TLS_ENTRIES_COUNT {
+			self.update_tls(i);
+		}
+
+		// Updating LDT if present
+		if let Some(ldt) = &self.ldt {
+			ldt.load();
+		}
+
+		// If a signal is pending on the process, execute it
+		self.signal_next();
+	}
+
 	/// Initializes the process to run without a program.
 	/// `pc` is the initial program counter.
 	pub fn init_dummy(&mut self, pc: *const c_void) -> Result<(), Errno> {
