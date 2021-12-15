@@ -70,9 +70,6 @@ switch_protected:
 complete_flush:
 	mov $GDT_KERNEL_DS, %ax
 	mov %ax, %ds
-	mov %ax, %es
-	mov %ax, %fs
-	mov %ax, %gs
 	mov %ax, %ss
 	ret
 
@@ -98,7 +95,6 @@ gdt_move:
  * Every segment covers the whole memory space.
  */
 gdt_start:
-gdt_null:
 	.quad 0
 
 /*

@@ -2,12 +2,12 @@
 //! the process.
 
 use core::ffi::c_void;
-use core::mem::size_of;
 use crate::errno::Errno;
 use crate::errno;
 use crate::process::Process;
 use crate::process::Regs;
 use crate::process::user_desc::UserDesc;
+use crate::process::user_desc;
 
 /// The implementation of the `set_thread_area` syscall.
 pub fn modify_ldt(regs: &Regs) -> Result<i32, Errno> {
@@ -30,14 +30,16 @@ pub fn modify_ldt(regs: &Regs) -> Result<i32, Errno> {
 		return Err(errno::EFAULT);
 	}
 
+	crate::println!("modify_ldt: {} {:p} {}", func, ptr, bytecount); // TODO rm
+
 	match func {
 		0 => {
 			// TODO Read entry
 
-			Ok(size_of::<UserDesc>() as _)
+			Ok(user_desc::USER_DESC_SIZE as _)
 		},
 		1 | 0x11 => {
-			if bytecount != size_of::<UserDesc>() as _ {
+			if bytecount != user_desc::USER_DESC_SIZE as _ {
 				return Err(errno::EINVAL);
 			}
 
@@ -45,6 +47,7 @@ pub fn modify_ldt(regs: &Regs) -> Result<i32, Errno> {
 			let info = unsafe { // Safe because the access was checked before
 				UserDesc::from_ptr(ptr)
 			};
+			crate::println!("{}", info); // TODO rm
 
 			// TODO Add support for entry removal
 

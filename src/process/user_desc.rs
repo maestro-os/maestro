@@ -2,10 +2,11 @@
 //! value for a descriptor, either a local or global descriptor.
 
 use core::ffi::c_void;
+use core::fmt;
 use crate::gdt;
 
 /// The size of the user_desc structure in bytes.
-const USER_DESC_SIZE: usize = 13;
+pub const USER_DESC_SIZE: usize = 16;
 
 /// The `user_desc` structure.
 #[repr(transparent)]
@@ -107,5 +108,20 @@ impl UserDesc {
 		entry.set_flags(flags);
 
 		entry
+	}
+}
+
+impl fmt::Display for UserDesc {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		write!(f, "UserDesc:\n")?;
+		write!(f, "entry_number: {}\n", self.get_entry_number())?;
+		write!(f, "base_addr: {:p}\n", self.get_base_addr() as *const c_void)?;
+		write!(f, "limit: {:x}\n", self.get_limit())?;
+		write!(f, "seg_32bit: {}\n", self.is_32bits())?;
+		// TODO write!(f, "contents: {}\n", self.)?;
+		write!(f, "read_exec_only: {}\n", !self.is_writable())?;
+		write!(f, "limit_in_pages: {}\n", self.is_limit_in_pages())?;
+		write!(f, "seg_not_present: {}\n", !self.is_present())?;
+		write!(f, "useable: {}\n", self.is_usable())
 	}
 }

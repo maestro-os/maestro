@@ -19,9 +19,6 @@ context_switch:
 	# Setting segment registers
 	mov 8(%ebp), %eax
 	mov %ax, %ds
-	mov %ax, %es
-	mov %ax, %fs
-	mov %ax, %gs
 
 	# Restoring the fx state
 	mov 4(%ebp), %eax

@@ -67,8 +67,8 @@ pub struct Regs {
 	pub esi: u32,
 	pub edi: u32,
 
-	pub gs: u8,
-	pub fs: u8,
+	pub gs: u32,
+	pub fs: u32,
 
 	/// x87 FPU, MMX and SSE state.
 	pub fxstate: [u8; 512],
@@ -146,7 +146,5 @@ gs: {:x} fs: {:x}\n",
 			self.edi as *const c_void,
 			gs,
 			fs)
-
-		// TODO Print segments
 	}
 }

@@ -15,8 +15,8 @@
 	sub $REGS_SIZE, %esp
 
 	# Filling registers in the structure
-	movb %fs, 0x29(%esp)
-	movb %gs, 0x28(%esp)
+	mov %fs, 0x2c(%esp)
+	mov %gs, 0x28(%esp)
 	mov %edi, 0x24(%esp)
 	mov %esi, 0x20(%esp)
 	mov %edx, 0x1c(%esp)
@@ -72,8 +72,8 @@ esp_end_\n:
 	add $4, %esp
 
 	# Restoring registers
-	movb 0x29(%esp), %fs
-	movb 0x28(%esp), %gs
+	mov 0x2c(%esp), %fs
+	mov 0x28(%esp), %gs
 	mov 0x24(%esp), %edi
 	mov 0x20(%esp), %esi
 	mov 0x1c(%esp), %edx

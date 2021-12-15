@@ -56,10 +56,13 @@ pub fn set_thread_area(regs: &Regs) -> Result<i32, Errno> {
 		return Err(errno::EFAULT);
 	}
 
+	crate::println!("set_thread_area: {:p}", u_info); // TODO rm
+
 	// A reference to the user_desc structure
 	let mut info = unsafe { // Safe because the access was checked before
 		UserDesc::from_ptr(u_info)
 	};
+	crate::println!("{}", info); // TODO rm
 
 	// Getting the entry with its id
 	let (id, entry) = get_entry(proc, info.get_entry_number())?;
