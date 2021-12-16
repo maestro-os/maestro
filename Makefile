@@ -256,6 +256,10 @@ QEMU_FLAGS = -smp cpus=2 -cdrom $(NAME).iso -drive file=$(QEMU_DISK),format=raw 
 $(QEMU_DISK):
 	dd if=/dev/zero of=$(QEMU_DISK) bs=1M count=$(QEMU_DISK_SIZE) status=progress
 
+# Runs the kernel with QEMU
+run: iso $(QEMU_DISK)
+	qemu-system-i386 $(QEMU_FLAGS)
+
 # The rule to test the kernel using QEMU
 test: iso $(QEMU_DISK)
 	qemu-system-i386 $(QEMU_FLAGS) -d int

@@ -7,6 +7,7 @@ mod ansi;
 
 use core::cmp::*;
 use core::mem::MaybeUninit;
+use crate::device::serial;
 use crate::memory::vmem;
 use crate::pit;
 use crate::util::lock::mutex::*;
@@ -327,6 +328,11 @@ impl TTY {
 				self.putchar(c);
 				i += 1;
 			}
+		}
+
+		// TODO Add a compilation and/or runtime option for this
+		if let Some(serial) = serial::get(serial::COM1) {
+			serial.lock(true).get_mut().write(buffer);
 		}
 
 		self.update();

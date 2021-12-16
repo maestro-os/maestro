@@ -3,7 +3,6 @@
 //! anyways.
 
 use core::cmp::min;
-use crate::device::serial;
 use crate::tty;
 use crate::util::lock::mutex::Mutex;
 
@@ -129,11 +128,6 @@ impl core::fmt::Write for Logger {
 			tty::current().lock(true).get_mut().write(s.as_bytes());
 		}
 		self.push(s.as_bytes());
-
-		// TODO Add a compilation and/or runtime option for this
-		if let Some(serial) = serial::get(serial::COM1) {
-			serial.lock(true).get_mut().write(s.as_bytes())
-		}
 
 		Ok(())
 	}
