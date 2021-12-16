@@ -67,7 +67,7 @@ pub trait Filesystem {
 /// Trait representing a filesystem type.
 pub trait FilesystemType {
 	/// Returns the name of the filesystem.
-	fn get_name(&self) -> &str;
+	fn get_name(&self) -> &[u8];
 
 	/// Tells whether the given device has the current filesystem.
 	/// `dev` is the device.
@@ -95,6 +95,25 @@ pub fn register<T: 'static + FilesystemType>(fs_type: T) -> Result<(), Errno> {
 }
 
 // TODO Function to unregister a filesystem type
+
+// TODO Optimize
+/// Returns the filesystem with name `name`.
+pub fn get_fs(name: &[u8]) -> Option<SharedPtr<dyn FilesystemType>> {
+	let mut guard = FILESYSTEMS.lock(true);
+	let container = guard.get_mut();
+
+	for i in 0..container.len() {
+		let fs_type = &mut container[i];
+		let fs_type_guard = fs_type.lock(true);
+
+		if fs_type_guard.get().get_name() == name {
+			drop(fs_type_guard);
+			return Some(fs_type.clone());
+		}
+	}
+
+	None
+}
 
 /// Detects the filesystem type on the given device `device`.
 pub fn detect(device: &mut Device) -> Result<SharedPtr<dyn FilesystemType>, Errno> {

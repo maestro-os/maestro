@@ -1,5 +1,5 @@
 /*
- * TODO doc
+ * This file implements assembly related to the LDT.
  */
 
 .global ldt_load

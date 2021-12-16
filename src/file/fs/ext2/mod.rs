@@ -777,8 +777,8 @@ impl Filesystem for Ext2Fs {
 pub struct Ext2FsType {}
 
 impl FilesystemType for Ext2FsType {
-	fn get_name(&self) -> &str {
-		"ext2"
+	fn get_name(&self) -> &[u8] {
+		b"ext2"
 	}
 
 	// TODO Also check partition type

@@ -29,6 +29,7 @@ mod mkdir;
 mod mknod;
 mod mmap;
 mod modify_ldt;
+mod mount;
 mod msync;
 mod munmap;
 mod open;
@@ -48,6 +49,7 @@ mod sigreturn;
 mod socketpair;
 mod time;
 mod umask;
+//mod umount;
 mod uname;
 mod unlink;
 mod wait;
@@ -90,6 +92,7 @@ use mkdir::mkdir;
 use mknod::mknod;
 use mmap::mmap;
 use modify_ldt::modify_ldt;
+use mount::mount;
 use msync::msync;
 use munmap::munmap;
 use open::open;
@@ -108,6 +111,7 @@ use sigreturn::sigreturn;
 use socketpair::socketpair;
 use time::time;
 use umask::umask;
+//use umount::umount;
 use uname::uname;
 use unlink::unlink;
 use waitpid::waitpid;
@@ -141,7 +145,7 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 		// TODO 0x012 => oldstat(regs),
 		// TODO 0x013 => lseek(regs),
 		0x014 => getpid(regs),
-		// TODO 0x015 => mount(regs),
+		0x015 => mount(regs),
 		// TODO 0x016 => umount(regs),
 		0x017 => setuid(regs),
 		0x018 => getuid(regs),
