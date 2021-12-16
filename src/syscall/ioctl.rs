@@ -10,7 +10,7 @@ use crate::process::regs::Regs;
 pub fn ioctl(regs: &Regs) -> Result<i32, Errno> {
 	let fd = regs.ebx as i32;
 	let request = regs.ecx as u32;
-	let _argp = regs.edx as *const c_void;
+	let argp = regs.edx as *const c_void;
 
 	// Getting the process
 	let mutex = Process::get_current().unwrap();
@@ -20,11 +20,7 @@ pub fn ioctl(regs: &Regs) -> Result<i32, Errno> {
 	// TODO Check access to args (if needed)
 
 	// Getting the file descriptor
-	let _file_descriptor = proc.get_fd(fd as _).ok_or(errno::EBADF)?;
+	let file_descriptor = proc.get_fd(fd as _).ok_or(errno::EBADF)?;
 
-	match request {
-		// TODO
-
-		_ => Err(errno::EINVAL),
-	}
+	Ok(file_descriptor.ioctl(request, argp)? as _)
 }

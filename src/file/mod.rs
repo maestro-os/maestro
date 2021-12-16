@@ -10,6 +10,7 @@ pub mod pipe;
 pub mod socket;
 
 use core::cmp::max;
+use core::ffi::c_void;
 use crate::device::DeviceType;
 use crate::device;
 use crate::errno::Errno;
@@ -565,6 +566,17 @@ impl File {
 				let mut guard = dev.lock(true);
 				guard.get_mut().get_handle().write(off as _, buff)
 			},
+		}
+	}
+
+	/// Performs an ioctl operation on the file.
+	pub fn ioctl(&mut self, request: u32, argp: *const c_void) -> Result<u32, Errno> {
+		if let FileContent::CharDevice(major, minor) = self.content {
+			let dev = device::get_device(DeviceType::Char, major, minor).ok_or(errno::ENODEV)?;
+			let mut guard = dev.lock(true);
+			guard.get_mut().get_handle().ioctl(request, argp)
+		} else {
+			Err(errno::ENOTTY)
 		}
 	}
 

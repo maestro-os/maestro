@@ -1,6 +1,7 @@
 //! A file descriptor is a sort of pointer to a file, allowing a process to manipulate the
 //! filesystem through system calls.
 
+use core::ffi::c_void;
 use crate::errno::Errno;
 use crate::errno;
 use crate::file::File;
@@ -231,6 +232,23 @@ impl FileDescriptor {
 
 		self.curr_off += len as u64;
 		Ok(len as _)
+	}
+
+	/// Performs an ioctl operation on the file descriptor.
+	pub fn ioctl(&mut self, request: u32, argp: *const c_void) -> Result<u32, Errno> {
+		match &mut self.target {
+			FDTarget::File(f) => {
+				let mut guard = f.lock(true);
+				guard.get_mut().ioctl(request, argp)
+			},
+
+			FDTarget::Pipe(_) => {
+				// TODO Get corresponding fd
+				todo!();
+			}
+
+			FDTarget::Socket(_) => Err(errno::EINVAL),
+		}
 	}
 }
 

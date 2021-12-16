@@ -1,11 +1,13 @@
 //! This module implements default devices.
 
 use core::cmp::min;
+use core::ffi::c_void;
 use core::mem::ManuallyDrop;
 use crate::device::Device;
 use crate::device::DeviceHandle;
 use crate::device;
 use crate::errno::Errno;
+use crate::errno;
 use crate::file::path::Path;
 use crate::logger;
 use crate::tty;
@@ -27,6 +29,11 @@ impl DeviceHandle for NullDeviceHandle {
 	fn write(&mut self, _offset: u64, buff: &[u8]) -> Result<usize, Errno> {
 		Ok(buff.len() as _)
 	}
+
+	fn ioctl(&mut self, _request: u32, _argp: *const c_void) -> Result<u32, Errno> {
+		// TODO
+		Err(errno::EINVAL)
+	}
 }
 
 /// Structure representing a device gives null bytes.
@@ -47,6 +54,11 @@ impl DeviceHandle for ZeroDeviceHandle {
 
 	fn write(&mut self, _offset: u64, buff: &[u8]) -> Result<usize, Errno> {
 		Ok(buff.len())
+	}
+
+	fn ioctl(&mut self, _request: u32, _argp: *const c_void) -> Result<u32, Errno> {
+		// TODO
+		Err(errno::EINVAL)
 	}
 }
 
@@ -77,6 +89,11 @@ impl DeviceHandle for KMsgDeviceHandle {
 		// TODO Write to logger
 		Ok(buff.len())
 	}
+
+	fn ioctl(&mut self, _request: u32, _argp: *const c_void) -> Result<u32, Errno> {
+		// TODO
+		Err(errno::EINVAL)
+	}
 }
 
 /// Structure representing the current TTY.
@@ -95,6 +112,11 @@ impl DeviceHandle for CurrentTTYDeviceHandle {
 	fn write(&mut self, _offset: u64, buff: &[u8]) -> Result<usize, Errno> {
 		tty::current().lock(true).get_mut().write(buff);
 		Ok(buff.len())
+	}
+
+	fn ioctl(&mut self, _request: u32, _argp: *const c_void) -> Result<u32, Errno> {
+		// TODO
+		Err(errno::EINVAL)
 	}
 }
 

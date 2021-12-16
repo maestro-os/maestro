@@ -14,6 +14,7 @@ pub mod ps2;
 pub mod serial;
 pub mod storage;
 
+use core::ffi::c_void;
 use crate::device::manager::DeviceManager;
 use crate::errno::Errno;
 use crate::file::FCache;
@@ -52,6 +53,9 @@ pub trait DeviceHandle {
 	/// `offset` is the offset in the file.
 	/// The function returns the number of bytes written.
 	fn write(&mut self, offset: u64, buff: &[u8]) -> Result<usize, Errno>;
+
+	/// Performs an ioctl operation on the device.
+	fn ioctl(&mut self, request: u32, argp: *const c_void) -> Result<u32, Errno>;
 }
 
 /// Structure representing a device, either a block device or a char device. Each device has a

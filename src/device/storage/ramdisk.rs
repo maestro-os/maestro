@@ -2,6 +2,7 @@
 //! userspace, it works exactly the same.
 //! Ramdisks are lazily allocated so they do not use much memory as long as they are not used.
 
+use core::ffi::c_void;
 use core::mem::ManuallyDrop;
 use crate::device::Device;
 use crate::device::DeviceHandle;
@@ -137,6 +138,11 @@ impl DeviceHandle for RAMDiskHandle {
 
 	fn write(&mut self, offset: u64, buff: &[u8]) -> Result<usize, Errno> {
 		self.disk.write_bytes(buff, offset)
+	}
+
+	fn ioctl(&mut self, _request: u32, _argp: *const c_void) -> Result<u32, Errno> {
+		// TODO
+		Err(errno::EINVAL)
 	}
 }
 

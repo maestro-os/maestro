@@ -6,6 +6,7 @@ pub mod pata;
 pub mod ramdisk;
 
 use core::cmp::min;
+use core::ffi::c_void;
 use crate::device::Device;
 use crate::device::DeviceHandle;
 use crate::device::DeviceType;
@@ -287,6 +288,11 @@ impl DeviceHandle for StorageDeviceHandle {
 		};
 
 		interface.write_bytes(buff, offset)
+	}
+
+	fn ioctl(&mut self, _request: u32, _argp: *const c_void) -> Result<u32, Errno> {
+		// TODO
+		Err(errno::EINVAL)
 	}
 }
 
