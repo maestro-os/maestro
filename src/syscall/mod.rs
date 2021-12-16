@@ -53,6 +53,7 @@ mod unlink;
 mod wait;
 mod waitpid;
 mod write;
+mod writev;
 
 use crate::process::Process;
 use crate::process::signal::Signal;
@@ -111,6 +112,7 @@ use uname::uname;
 use unlink::unlink;
 use waitpid::waitpid;
 use write::write;
+use writev::writev;
 
 /// This function is called whenever a system call is triggered.
 #[no_mangle]
@@ -264,7 +266,7 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 		// TODO 0x08f => flock(regs),
 		0x090 => msync(regs),
 		// TODO 0x091 => readv(regs),
-		// TODO 0x092 => writev(regs),
+		0x092 => writev(regs),
 		// TODO 0x093 => getsid(regs),
 		// TODO 0x094 => fdatasync(regs),
 		// TODO 0x095 => _sysctl(regs),

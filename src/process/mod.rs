@@ -2,6 +2,7 @@
 //! run at the same time by sharing the CPU resources using a scheduler.
 
 pub mod exec;
+pub mod iovec;
 pub mod mem_space;
 pub mod oom;
 pub mod pid;
