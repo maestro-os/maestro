@@ -45,7 +45,7 @@ pub fn get_entry<'a>(proc: &'a mut Process, entry_number: i32)
 		}
 	};
 
-	Ok((TLS_BEGIN_INDEX + id, &mut proc.get_tls_entries()[id]))
+	Ok((id, &mut proc.get_tls_entries()[id]))
 }
 
 /// The implementation of the `set_thread_area` syscall.
@@ -78,7 +78,7 @@ pub fn set_thread_area(regs: &Regs) -> Result<i32, Errno> {
 	// If the entry is allocated, tell the userspace its ID
 	let entry_number = info.get_entry_number();
 	if entry_number == -1 {
-		info.set_entry_number(id as _);
+		info.set_entry_number((TLS_BEGIN_INDEX + id) as _);
 	}
 
 	Ok(0)
