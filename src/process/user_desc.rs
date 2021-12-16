@@ -56,31 +56,31 @@ impl UserDesc {
 	/// Tells whether the segment is 32 bits.
 	#[inline(always)]
 	pub fn is_32bits(&self) -> bool {
-		(self.val[9] & 0b1) != 0 // TODO Check mask
+		(self.val[12] & 0b1) != 0
 	}
 
 	/// Tells whether the segment is writable.
 	#[inline(always)]
-	pub fn is_writable(&self) -> bool {
-		(self.val[9] & 0b1000) == 0 // TODO Check mask
+	pub fn is_read_exec_only(&self) -> bool {
+		(self.val[12] & 0b1000) == 0
 	}
 
 	/// Tells whether the segment's limit is in number of pages.
 	#[inline(always)]
 	pub fn is_limit_in_pages(&self) -> bool {
-		(self.val[9] & 0b10000) != 0 // TODO Check mask
+		(self.val[12] & 0b10000) != 0
 	}
 
 	/// Tells whether the segment is present.
 	#[inline(always)]
 	pub fn is_present(&self) -> bool {
-		(self.val[9] & 0b100000) == 0 // TODO Check mask
+		(self.val[12] & 0b100000) == 0
 	}
 
 	/// Tells whether the segment is usable.
 	#[inline(always)]
 	pub fn is_usable(&self) -> bool {
-		(self.val[9] & 0b1000000) != 0 // TODO Check mask
+		(self.val[12] & 0b1000000) != 0
 	}
 
 	/// Converts the current descriptor to a GDT entry.
@@ -92,9 +92,12 @@ impl UserDesc {
 
 		// TODO contents
 
-		let mut access_byte = 0b01100010;
+		let mut access_byte = 0b01110010;
 		if self.is_present() && self.is_usable() {
 			access_byte |= 1 << 7;
+		}
+		if self.is_read_exec_only() {
+			access_byte |= 1 << 3;
 		}
 		entry.set_access_byte(access_byte);
 
@@ -119,7 +122,7 @@ impl fmt::Display for UserDesc {
 		write!(f, "limit: {:x}\n", self.get_limit())?;
 		write!(f, "seg_32bit: {}\n", self.is_32bits())?;
 		// TODO write!(f, "contents: {}\n", self.)?;
-		write!(f, "read_exec_only: {}\n", !self.is_writable())?;
+		write!(f, "read_exec_only: {}\n", !self.is_read_exec_only())?;
 		write!(f, "limit_in_pages: {}\n", self.is_limit_in_pages())?;
 		write!(f, "seg_not_present: {}\n", !self.is_present())?;
 		write!(f, "useable: {}\n", self.is_usable())

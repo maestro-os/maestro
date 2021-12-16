@@ -1,4 +1,4 @@
-//! TODO doc
+//! This module handles the local descriptor table.
 
 use crate::errno::Errno;
 use crate::errno;
@@ -49,7 +49,7 @@ impl LDT {
 
 	/// Updates the LDT's descriptor according to the entries.
 	fn update_desc(&mut self) {
-		self.desc.size = (self.entries.len() * 8 + 1) as _;
+		self.desc.size = (self.entries.len() * 8 - 1) as _;
 		self.desc.offset = &self.entries[0] as *const _ as u32;
 	}
 
@@ -70,7 +70,7 @@ impl LDT {
 			return Err(errno::EINVAL);
 		}
 
-		self.entries.push(entry)?;
+		self.entries.insert(i, entry)?;
 		self.update_desc();
 
 		Ok(())

@@ -5,6 +5,7 @@
 pub mod ldt;
 
 use core::ffi::c_void;
+use core::fmt;
 use crate::errno::Errno;
 use crate::memory;
 use crate::util::FailableClone;
@@ -37,7 +38,7 @@ impl Entry {
 	/// Returns the entry's base address.
 	#[inline(always)]
 	pub fn get_base(&self) -> u32 {
-		((self.val >> 16 & 0xffffff) | (self.val >> 56 & 0xff)) as _
+		(((self.val >> 16) & 0xffffff) | ((self.val >> 32) & 0xff000000)) as _
 	}
 
 	/// Sets the entry's base address.
@@ -53,7 +54,7 @@ impl Entry {
 	/// Returns the entry's limit.
 	#[inline(always)]
 	pub fn get_limit(&self) -> u32 {
-		((self.val & 0xffff) | (self.val >> 48 & 0xf)) as _
+		((self.val & 0xffff) | (((self.val >> 48) & 0xf) << 16)) as _
 	}
 
 	/// Sets the entry's limit. If the given limit is more than (2^20 - 1), the value is truncated.
@@ -130,6 +131,18 @@ impl FailableClone for Entry {
 	}
 }
 
+impl fmt::Display for Entry {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		write!(f, "Descriptor Table Entry:\n")?;
+		write!(f, "base: {:x}\n", self.get_base())?;
+		write!(f, "limit: {:x}\n", self.get_limit())?;
+		write!(f, "access byte: {:x}\n", self.get_access_byte())?;
+		write!(f, "flags: {:x}\n", self.get_flags())?;
+		write!(f, "present: {}\n", self.is_present())
+	}
+}
+
+// TODO Add support for LDT
 /// x86. Creates a segment selector for the given segment offset and ring.
 #[inline(always)]
 pub fn make_segment_selector(offset: u32, ring: u32) -> u16 {

@@ -30,8 +30,6 @@ pub fn modify_ldt(regs: &Regs) -> Result<i32, Errno> {
 		return Err(errno::EFAULT);
 	}
 
-	crate::println!("modify_ldt: {} {:p} {}", func, ptr, bytecount); // TODO rm
-
 	match func {
 		0 => {
 			// TODO Read entry
@@ -47,7 +45,6 @@ pub fn modify_ldt(regs: &Regs) -> Result<i32, Errno> {
 			let info = unsafe { // Safe because the access was checked before
 				UserDesc::from_ptr(ptr)
 			};
-			crate::println!("{}", info); // TODO rm
 
 			// TODO Add support for entry removal
 
@@ -55,7 +52,11 @@ pub fn modify_ldt(regs: &Regs) -> Result<i32, Errno> {
 			let desc = info.to_descriptor();
 			// The LDT
 			let ldt = proc.get_ldt_mut()?;
+
+			// Setting the entry and reloading the LDT
 			ldt.set(info.get_entry_number() as _, desc)?;
+			ldt.load();
+
 			Ok(0)
 		},
 		2 => {

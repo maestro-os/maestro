@@ -38,6 +38,7 @@ mod read;
 mod reboot;
 mod sbrk;
 mod set_thread_area;
+mod set_tid_address;
 mod setgid;
 mod setpgid;
 mod setuid;
@@ -95,6 +96,7 @@ use r#break::r#break;
 use read::read;
 use reboot::reboot;
 use set_thread_area::set_thread_area;
+use set_tid_address::set_tid_address;
 use setgid::setgid;
 use setpgid::setpgid;
 use setuid::setuid;
@@ -369,7 +371,7 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 		// TODO 0x0ff => epoll_ctl(regs),
 		// TODO 0x100 => epoll_wait(regs),
 		// TODO 0x101 => remap_file_pages(regs),
-		// TODO 0x102 => set_tid_address(regs),
+		0x102 => set_tid_address(regs),
 		// TODO 0x103 => timer_create(regs),
 		// TODO 0x104 => timer_settime(regs),
 		// TODO 0x105 => timer_gettime(regs),
