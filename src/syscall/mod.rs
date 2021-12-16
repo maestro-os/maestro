@@ -23,6 +23,7 @@ mod getpid;
 mod getppid;
 mod getuid;
 mod init_module;
+mod ioctl;
 mod kill;
 mod mkdir;
 mod mknod;
@@ -82,6 +83,7 @@ use getpid::getpid;
 use getppid::getppid;
 use getuid::getuid;
 use init_module::init_module;
+use ioctl::ioctl;
 use kill::kill;
 use mkdir::mkdir;
 use mknod::mknod;
@@ -170,7 +172,7 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 		// TODO 0x033 => acct(regs),
 		// TODO 0x034 => umount2(regs),
 		// TODO 0x035 => lock(regs),
-		// TODO 0x036 => ioctl(regs),
+		0x036 => ioctl(regs),
 		// TODO 0x037 => fcntl(regs),
 		// TODO 0x038 => mpx(regs),
 		0x039 => setpgid(regs),
