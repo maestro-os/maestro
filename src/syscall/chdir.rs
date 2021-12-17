@@ -1,12 +1,10 @@
 //! The chdir system call allows to change the current working directory of the current process.
 
-use core::slice;
 use crate::errno::Errno;
 use crate::errno;
 use crate::file::FileType;
 use crate::file::path::Path;
 use crate::file;
-use crate::limits;
 use crate::process::Process;
 use crate::process::Regs;
 
@@ -18,21 +16,7 @@ pub fn chdir(regs: &Regs) -> Result<i32, Errno> {
 	let mut guard = mutex.lock(false);
 	let proc = guard.get_mut();
 
-	// Checking that the buffer is accessible and retrieving the length of the string
-	let len = proc.get_mem_space().unwrap().can_access_string(path, true, false);
-	if len.is_none() {
-		return Err(errno::EFAULT);
-	}
-	let len = len.unwrap();
-
-	// Checking the length of the path
-	if len > limits::PATH_MAX {
-		return Err(errno::ENAMETOOLONG);
-	}
-
-	let new_cwd = Path::from_str(unsafe { // Safe because the pointer is checked before
-		slice::from_raw_parts(path, len)
-	}, true)?;
+	let new_cwd = Path::from_str(super::util::get_str(proc, path)?, true)?;
 
 	{
 		let fcache_mutex = file::get_files_cache();

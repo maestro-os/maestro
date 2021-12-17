@@ -1,6 +1,5 @@
 //! The open system call allows a process to open a file and get a file descriptor.
 
-use core::slice;
 use crate::errno::Errno;
 use crate::errno;
 use crate::file::File;
@@ -110,19 +109,8 @@ pub fn open_(pathname: *const u8, flags: i32, mode: u16) -> Result<i32, Errno> {
 	let mut guard = mutex.lock(false);
 	let proc = guard.get_mut();
 
-	// Check the pathname is accessible by the process
-	let len = proc.get_mem_space().unwrap().can_access_string(pathname as _, true, false);
-	if len.is_none() {
-		return Err(errno::EFAULT);
-	}
-	let len = len.unwrap();
-	if len > limits::PATH_MAX {
-		return Err(errno::ENAMETOOLONG);
-	}
-
-	let path_str = unsafe { // Safe because the address is checked before
-		slice::from_raw_parts(pathname, len)
-	};
+	// Getting the path string
+	let path_str = super::util::get_str(proc, pathname)?;
 
 	let mode = mode & !proc.get_umask();
 	let uid = proc.get_uid();

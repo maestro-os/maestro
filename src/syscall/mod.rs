@@ -1,6 +1,7 @@
 //! This module handles system calls. A system call is "function" that allows to communcate between
 //! userspace and kernelspace.
 
+//mod umount;
 mod _exit;
 mod brk;
 mod chdir;
@@ -49,19 +50,20 @@ mod sigreturn;
 mod socketpair;
 mod time;
 mod umask;
-//mod umount;
 mod uname;
 mod unlink;
 mod wait;
 mod waitpid;
 mod write;
 mod writev;
+pub mod util;
 
 use crate::process::Process;
 use crate::process::signal::Signal;
 use crate::process;
 
 //use sbrk::sbrk;
+//use umount::umount;
 //use wait::wait;
 use _exit::_exit;
 use brk::brk;
@@ -111,7 +113,6 @@ use sigreturn::sigreturn;
 use socketpair::socketpair;
 use time::time;
 use umask::umask;
-//use umount::umount;
 use uname::uname;
 use unlink::unlink;
 use waitpid::waitpid;

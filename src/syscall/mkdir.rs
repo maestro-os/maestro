@@ -1,8 +1,6 @@
 //! The mkdir system call allows to create a directory.
 
-use core::slice;
 use crate::errno::Errno;
-use crate::errno;
 use crate::file::File;
 use crate::file::FileContent;
 use crate::file::path::Path;
@@ -21,17 +19,8 @@ pub fn mkdir(regs: &Regs) -> Result<i32, Errno> {
 	let mut guard = mutex.lock(false);
 	let proc = guard.get_mut();
 
-	// Check the pathname is accessible by the process
-	let len = proc.get_mem_space().unwrap().can_access_string(pathname as _, true, false);
-	if len.is_none() {
-		return Err(errno::EFAULT);
-	}
-
-	// TODO Ensure from_utf8_unchecked is safe with invalid UTF-8 (probably not)
 	// The path to the directory to create
-	let path = Path::from_str(unsafe { // Safe because the address is checked before
-		slice::from_raw_parts(pathname, len.unwrap())
-	}, true)?;
+	let path = Path::from_str(super::util::get_str(proc, pathname)?, true)?;
 
 	if !path.is_empty() {
 		let name = path[path.get_elements_count() - 1].failable_clone()?;

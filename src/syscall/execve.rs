@@ -1,6 +1,5 @@
 //! The `execve` system call allows to execute a program from a file.
 
-use core::slice;
 use crate::errno::Errno;
 use crate::errno;
 use crate::file::File;
@@ -34,27 +33,18 @@ pub fn execve(regs: &Regs) -> Result<i32, Errno> {
 	let _envp = regs.edx as *const () as *const *const u8;
 
 	// Checking that parameters are accessible by the process
-	let (uid, gid, pathname_len) = {
+	let (uid, gid, path) = {
 		let mutex = Process::get_current().unwrap();
 		let mut guard = mutex.lock(false);
 		let proc = guard.get_mut();
 
-		let pathname_len = proc.get_mem_space().unwrap().can_access_string(pathname, true, false);
-		if pathname_len.is_none() {
-			return Err(errno::EFAULT);
-		}
+		let path = Path::from_str(super::util::get_str(proc, pathname)?, true)?;
 
 		// TODO Check argv and envp
 
 		// TODO Figure out if the real or effective id should be used
-		(proc.get_euid(), proc.get_egid(), pathname_len.unwrap())
+		(proc.get_euid(), proc.get_egid(), path)
 	};
-
-	// TODO Ensure from_utf8_unchecked is safe with invalid UTF-8 (probably not)
-	// The path to the executable file
-	let path = Path::from_str(unsafe { // Safe because the address is checked before
-		slice::from_raw_parts(pathname, pathname_len)
-	}, true)?;
 
 	let mutex = file::get_files_cache();
 	let mut guard = mutex.lock(true);

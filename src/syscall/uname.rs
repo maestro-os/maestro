@@ -38,7 +38,7 @@ pub fn uname(regs: &Regs) -> Result<i32, Errno> {
 	// TODO nodename
 	utsname.release.copy_from_slice(&crate::VERSION.as_bytes());
 	// TODO version (OS version)
-	// TODO machine (architecture)
+	utsname.machine.copy_from_slice(&"x86".as_bytes()); // TODO Adapt to current architecture
 
 	let mutex = Process::get_current().unwrap();
 	let mut guard = mutex.lock(false);
