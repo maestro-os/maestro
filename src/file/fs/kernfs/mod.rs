@@ -1,6 +1,5 @@
 //! Kernfs implements utilities allowing to create a virtual filesystem.
 
-use crate::device::Device;
 use crate::errno::Errno;
 use crate::file::File;
 use crate::file::FileType;
@@ -70,35 +69,35 @@ impl Filesystem for KernFS {
 		false
 	}
 
-	fn get_inode(&mut self, dev: &mut Device, path: Path) -> Result<INode, Errno> {
+	fn get_inode(&mut self, _io: &mut dyn IO, _path: Path) -> Result<INode, Errno> {
 		// TODO
 		todo!();
 	}
 
-	fn load_file(&mut self, dev: &mut Device, inode: INode, name: String) -> Result<File, Errno> {
+	fn load_file(&mut self, _io: &mut dyn IO, _inode: INode, _name: String) -> Result<File, Errno> {
 		// TODO
 		todo!();
 	}
 
-	fn add_file(&mut self, dev: &mut Device, parent_inode: INode, file: File)
+	fn add_file(&mut self, _io: &mut dyn IO, _parent_inode: INode, _file: File)
 		-> Result<File, Errno> {
 		// TODO
 		todo!();
 	}
 
-	fn remove_file(&mut self, dev: &mut Device, parent_inode: INode, name: &String)
+	fn remove_file(&mut self, _io: &mut dyn IO, _parent_inode: INode, _name: &String)
 		-> Result<(), Errno> {
 		// TODO
 		todo!();
 	}
 
-	fn read_node(&mut self, dev: &mut Device, inode: INode, off: u64, buf: &mut [u8])
+	fn read_node(&mut self, _io: &mut dyn IO, _inode: INode, _off: u64, _buf: &mut [u8])
 		-> Result<usize, Errno> {
 		// TODO
 		todo!();
 	}
 
-	fn write_node(&mut self, dev: &mut Device, inode: INode, off: u64, buf: &[u8])
+	fn write_node(&mut self, _io: &mut dyn IO, _inode: INode, _off: u64, _buf: &[u8])
 		-> Result<(), Errno> {
 		// TODO
 		todo!();

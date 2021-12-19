@@ -11,14 +11,17 @@ pub mod socket;
 
 use core::cmp::max;
 use core::ffi::c_void;
+use crate::device::Device;
 use crate::device::DeviceType;
 use crate::device;
 use crate::errno::Errno;
 use crate::errno;
 use crate::file::mountpoint::MountPoint;
+use crate::file::mountpoint::MountSource;
 use crate::time::Timestamp;
 use crate::time;
 use crate::util::FailableClone;
+use crate::util::IO;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::lock::mutex::Mutex;
@@ -94,30 +97,34 @@ pub enum FileType {
 }
 
 /// Structure representing the location of a file on a disk.
-#[derive(Clone, Debug)]
 pub struct FileLocation {
-	/// The ID of the mountpoint.
-	mountpoint_id: u32,
+	/// The path of the mountpoint.
+	mountpoint_path: Path,
 
 	/// The disk's inode.
 	inode: INode,
 }
 
-impl DiskLocation {
+impl FileLocation {
 	/// Creates a new instance.
 	#[inline]
-	pub fn new(mountpoint_id: u32, inode: INode) -> Self {
+	pub fn new(mountpoint_path: Path, inode: INode) -> Self {
 		Self {
-			mountpoint_id,
+			mountpoint_path,
 
 			inode,
 		}
 	}
 
-	/// Returns the ID of the mountpoint.
+	/// Returns the path of the mountpoint.
 	#[inline]
-	pub fn get_mountpoint_id(&self) -> u32 {
-		self.mountpoint_id
+	pub fn get_mountpoint_path(&self) -> &Path {
+		&self.mountpoint_path
+	}
+
+    /// Returns the mountpoint associated with the file's location.
+	pub fn get_mountpoint(&self) -> Option<SharedPtr<MountPoint>> {
+	    mountpoint::from_path(&self.mountpoint_path)
 	}
 
 	/// Returns the inode number.
@@ -179,7 +186,7 @@ pub struct File {
 	mode: Mode,
 
 	/// The location the file is stored on.
-	location: FileLocation,
+	location: Option<FileLocation>,
 
 	/// Timestamp of the last modification of the metadata.
 	ctime: Timestamp,
@@ -213,7 +220,7 @@ impl File {
 			gid,
 			mode,
 
-			location: FileLocation::None,
+			location: None,
 
 			ctime: timestamp,
 			mtime: timestamp,
@@ -252,11 +259,6 @@ impl File {
 	/// Sets the file's parent.
 	pub fn set_parent(&mut self, parent: Option<WeakPtr<File>>) {
 		self.parent = parent;
-	}
-
-	/// Returns the size of the file in bytes.
-	pub fn get_size(&self) -> u64 {
-		self.size
 	}
 
 	/// Sets the file's size.
@@ -333,12 +335,12 @@ impl File {
 	}
 
 	/// Returns the location on which the file is stored.
-	pub fn get_location(&self) -> &FileLocation {
+	pub fn get_location(&self) -> &Option<FileLocation> {
 		&self.location
 	}
 
 	/// Sets the location on which the file is stored.
-	pub fn set_location(&mut self, location: FileLocation) {
+	pub fn set_location(&mut self, location: Option<FileLocation>) {
 		self.location = location;
 	}
 
@@ -414,21 +416,48 @@ impl File {
 		self.content = content;
 	}
 
-	/// Reads from the current file at offset `off` and places the data into the buffer `buff`.
-	/// The function returns the number of characters read.
-	pub fn read(&self, off: u64, buff: &mut [u8]) -> Result<usize, Errno> {
+	/// Performs an ioctl operation on the file.
+	pub fn ioctl(&mut self, request: u32, argp: *const c_void) -> Result<u32, Errno> {
+		if let FileContent::CharDevice(major, minor) = self.content {
+			let dev = device::get_device(DeviceType::Char, major, minor).ok_or(errno::ENODEV)?;
+			let mut guard = dev.lock(true);
+			guard.get_mut().get_handle().ioctl(request, argp)
+		} else {
+			Err(errno::ENOTTY)
+		}
+	}
+
+	/// Synchronizes the file with the device.
+	pub fn sync(&self) {
+		// TODO
+	}
+
+	/// Unlinks the current file.
+	pub fn unlink(&mut self) {
+		// TODO
+	}
+}
+
+impl IO for File {
+	fn get_size(&self) -> u64 {
+		self.size
+	}
+
+	fn read(&mut self, off: u64, buff: &mut [u8]) -> Result<usize, Errno> {
 		match &self.content {
 			FileContent::Regular => {
-				let mountpoint_mutex = self.location.get_mountpoint().unwrap(); // TODO Check unwrap
+			    let location = self.location.as_ref().ok_or(errno::EIO)?;
+
+				let mountpoint_mutex = location.get_mountpoint().ok_or(errno::EIO)?;
 				let mut mountpoint_guard = mountpoint_mutex.lock(true);
 				let mountpoint = mountpoint_guard.get_mut();
 
-				let device_mutex = mountpoint.get_device().clone();
-				let mut device_guard = device_mutex.lock(true);
-				let device = device_guard.get_mut();
+                let io_mutex = mountpoint.get_source().get_io().clone();
+                let mut io_guard = io_mutex.lock(true);
+                let io = io_guard.get_mut();
 
 				let filesystem = mountpoint.get_filesystem();
-				filesystem.read_node(device, location.get_inode(), off, buff)
+				filesystem.read_node(io, location.get_inode(), off, buff)
 			},
 
 			FileContent::Directory(_subdirs) => {
@@ -469,31 +498,24 @@ impl File {
 		}
 	}
 
-	/// Writes to the current file at offset `off`, reading the data from the buffer `buff`.
-	/// The function returns the number of characters written.
-	pub fn write(&mut self, off: u64, buff: &[u8]) -> Result<usize, Errno> {
+	fn write(&mut self, off: u64, buff: &[u8]) -> Result<usize, Errno> {
 		match &self.content {
 			FileContent::Regular => {
-				if let FileLocation::Disk(location) = &self.location {
-					let mountpoint_mutex = mountpoint::get_from_device(
-						location.get_device_type(),
-						location.get_major(),
-						location.get_minor()).unwrap(); // TODO Check unwrap
-					let mut mountpoint_guard = mountpoint_mutex.lock(true);
-					let mountpoint = mountpoint_guard.get_mut();
+			    let location = self.location.as_ref().ok_or(errno::EIO)?;
 
-					let device_mutex = mountpoint.get_device().clone();
-					let mut device_guard = device_mutex.lock(true);
-					let device = device_guard.get_mut();
+				let mountpoint_mutex = location.get_mountpoint().ok_or(errno::EIO)?;
+				let mut mountpoint_guard = mountpoint_mutex.lock(true);
+				let mountpoint = mountpoint_guard.get_mut();
 
-					let filesystem = mountpoint.get_filesystem();
-					filesystem.write_node(device, location.get_inode(), off, buff)?;
-					self.size = max(buff.len() as u64, self.size);
-					Ok(buff.len())
-				} else {
-					// TODO Write to memory? Panic?
-					todo!();
-				}
+                let io_mutex = mountpoint.get_source().get_io();
+                let mut io_guard = io_mutex.lock(true);
+                let io = io_guard.get_mut();
+
+				let filesystem = mountpoint.get_filesystem();
+				filesystem.write_node(io, location.get_inode(), off, buff)?;
+
+				self.size = max(off + buff.len() as u64, self.size);
+				Ok(buff.len())
 			},
 
 			FileContent::Directory(_subdirs) => {
@@ -533,41 +555,6 @@ impl File {
 			},
 		}
 	}
-
-	/// Performs an ioctl operation on the file.
-	pub fn ioctl(&mut self, request: u32, argp: *const c_void) -> Result<u32, Errno> {
-		if let FileContent::CharDevice(major, minor) = self.content {
-			let dev = device::get_device(DeviceType::Char, major, minor).ok_or(errno::ENODEV)?;
-			let mut guard = dev.lock(true);
-			guard.get_mut().get_handle().ioctl(request, argp)
-		} else {
-			Err(errno::ENOTTY)
-		}
-	}
-
-	/// Synchronizes the file with the device.
-	pub fn sync(&self) {
-		match &self.location {
-			FileLocation::Disk(_l) => {
-				// TODO
-				// todo!();
-			},
-
-			_ => {},
-		}
-	}
-
-	/// Unlinks the current file.
-	pub fn unlink(&mut self) {
-		match &self.location {
-			FileLocation::Disk(_l) => {
-				// TODO
-				// todo!();
-			},
-
-			_ => {},
-		}
-	}
 }
 
 impl Drop for File {
@@ -598,10 +585,11 @@ pub struct FCache {
 }
 
 impl FCache {
-	/// Creates a new instance with the given major and minor for the root device.
-	pub fn new(root_device_type: DeviceType, root_major: u32, root_minor: u32)
-		-> Result<Self, Errno> {
-		let root_mount = MountPoint::new(root_device_type, root_major, root_minor, 0, Path::root())?;
+	/// Creates a new instance.
+	/// `root_device` is the device for the root of the VFS.
+	pub fn new(root_device: SharedPtr<Device>) -> Result<Self, Errno> {
+		let mount_source = MountSource::Device(root_device);
+		let root_mount = MountPoint::new(mount_source, None, 0, Path::root())?;
 		let shared_ptr = mountpoint::register(root_mount)?;
 
 		Ok(Self {
@@ -638,20 +626,20 @@ impl FCache {
 		// Getting the path's deepest mountpoint
 		let ptr = mountpoint::get_deepest(&path).ok_or(errno::ENOENT)?;
 		let mut guard = ptr.lock(true);
-		let deepest_mountpoint = guard.get_mut();
-
-		// Getting the mountpoint's device
-		let dev_ptr = deepest_mountpoint.get_device();
-		let mut dev_guard = dev_ptr.lock(true);
-		let dev = dev_guard.get_mut();
+		let mountpoint = guard.get_mut();
 
 		// Getting the path from the start of the filesystem to the parent directory
-		let inner_path = path.range_from(deepest_mountpoint.get_path().get_elements_count()..)?;
-		// Getting the parent inode
-		let parent_inode = deepest_mountpoint.get_filesystem().get_inode(dev, inner_path)?;
+		let inner_path = path.range_from(mountpoint.get_path().get_elements_count()..)?;
 
-		// Adding the file
-		let file = deepest_mountpoint.get_filesystem().add_file(dev, parent_inode, file)?;
+		// Getting the IO interface
+        let io_mutex = mountpoint.get_source().get_io();
+        let mut io_guard = io_mutex.lock(true);
+        let io = io_guard.get_mut();
+
+		let fs = mountpoint.get_filesystem();
+		let parent_inode = fs.get_inode(io, inner_path)?;
+		let file = fs.add_file(io, parent_inode, file)?;
+
 		// TODO Set parent
 		SharedPtr::new(file)
 	}
@@ -666,24 +654,23 @@ impl FCache {
 		// Getting the path's deepest mountpoint
 		let ptr = mountpoint::get_deepest(&path).ok_or(errno::ENOENT)?;
 		let mut guard = ptr.lock(true);
-		let deepest_mountpoint = guard.get_mut();
+		let mountpoint = guard.get_mut();
 
-		// Getting the mountpoint's device
-		let dev_ptr = deepest_mountpoint.get_device();
-		let mut dev_guard = dev_ptr.lock(true);
-		let dev = dev_guard.get_mut();
+		// Getting the IO interface
+        let io_mutex = mountpoint.get_source().get_io();
+        let mut io_guard = io_mutex.lock(true);
+        let io = io_guard.get_mut();
 
 		let path_len = path.get_elements_count();
 		if path_len > 0 {
 			let entry_name = &path[path_len - 1];
-			let mountpoint_path_len = deepest_mountpoint.get_path().get_elements_count();
+			let mountpoint_path_len = mountpoint.get_path().get_elements_count();
 			// Getting the path from the start of the fileststem to the parent directory
 			let parent_inner_path = path.range(mountpoint_path_len..(path_len - 1))?;
 
 			// Getting the parent inode
-			let parent_inode = deepest_mountpoint.get_filesystem().get_inode(dev,
-				parent_inner_path)?;
-			deepest_mountpoint.get_filesystem().remove_file(dev, parent_inode, entry_name)?;
+			let parent_inode = mountpoint.get_filesystem().get_inode(io, parent_inner_path)?;
+			mountpoint.get_filesystem().remove_file(io, parent_inode, entry_name)?;
 		}
 		Ok(())
 	}
@@ -700,32 +687,32 @@ impl FCache {
 		// Getting the path's deepest mountpoint
 		let ptr = mountpoint::get_deepest(&path).ok_or(errno::ENOENT)?;
 		let mut guard = ptr.lock(true);
-		let deepest_mountpoint = guard.get_mut();
+		let mountpoint = guard.get_mut();
 
-		// Getting the mountpoint's device
-		let dev_ptr = deepest_mountpoint.get_device();
-		let mut guard = dev_ptr.lock(true);
-		let dev = guard.get_mut();
+		// Getting the IO interface
+        let io_mutex = mountpoint.get_source().get_io();
+        let mut io_guard = io_mutex.lock(true);
+        let io = io_guard.get_mut();
 
 		// Getting the path from the start of the fileststem to the file
-		let inner_path = path.range_from(deepest_mountpoint.get_path().get_elements_count()..)?;
+		let inner_path = path.range_from(mountpoint.get_path().get_elements_count()..)?;
 
 		let file = {
 			let (entry_name, inode) = if inner_path.is_empty() {
 				// Getting the root's inode
-				let inode = deepest_mountpoint.get_filesystem().get_inode(dev, Path::root())?;
+				let inode = mountpoint.get_filesystem().get_inode(io, Path::root())?;
 
 				(String::new(), inode)
 			} else {
 				let entry_name = inner_path[inner_path.get_elements_count() - 1].failable_clone()?;
 				// Getting the file's inode
-				let inode = deepest_mountpoint.get_filesystem().get_inode(dev, inner_path)?;
+				let inode = mountpoint.get_filesystem().get_inode(io, inner_path)?;
 
 				(entry_name, inode)
 			};
 
 			// Loading the file
-			deepest_mountpoint.get_filesystem().load_file(dev, inode, entry_name)
+			mountpoint.get_filesystem().load_file(io, inode, entry_name)
 		}?;
 		SharedPtr::new(file)
 	}
@@ -742,7 +729,9 @@ static FILES_CACHE: Mutex<Option<FCache>> = Mutex::new(None);
 pub fn init(root_device_type: DeviceType, root_major: u32, root_minor: u32) -> Result<(), Errno> {
 	fs::register_defaults()?;
 
-	let cache = FCache::new(root_device_type, root_major, root_minor)?;
+    let root_dev = device::get_device(root_device_type, root_major, root_minor)
+        .ok_or(errno::ENODEV)?;
+	let cache = FCache::new(root_dev)?;
 	let mut guard = FILES_CACHE.lock(true);
 	*guard.get_mut() = Some(cache);
 

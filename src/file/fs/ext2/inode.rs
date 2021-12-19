@@ -5,13 +5,13 @@ use core::cmp::min;
 use core::mem::size_of;
 use core::ptr::copy_nonoverlapping;
 use core::slice;
-use crate::device::DeviceHandle;
 use crate::errno::Errno;
 use crate::errno;
 use crate::file::File;
 use crate::file::FileType;
 use crate::file;
 use crate::memory::malloc;
+use crate::util::IO;
 use crate::util::boxed::Box;
 use crate::util::container::string::String;
 use crate::util::math;
@@ -156,7 +156,7 @@ impl Ext2INode {
 	/// `i` is the inode's index (starting at `1`).
 	/// `superblock` is the filesystem's superblock.
 	/// `io` is the I/O interface.
-	fn get_disk_offset(i: u32, superblock: &Superblock, io: &mut dyn DeviceHandle)
+	fn get_disk_offset(i: u32, superblock: &Superblock, io: &mut dyn IO)
 		-> Result<u64, Errno> {
 		let blk_size = superblock.get_block_size();
 		let inode_size = superblock.get_inode_size();
@@ -197,7 +197,7 @@ impl Ext2INode {
 	/// Reads the `i`th inode from the given device. The index `i` starts at `1`.
 	/// `superblock` is the filesystem's superblock.
 	/// `io` is the I/O interface.
-	pub fn read(i: u32, superblock: &Superblock, io: &mut dyn DeviceHandle)
+	pub fn read(i: u32, superblock: &Superblock, io: &mut dyn IO)
 		-> Result<Self, Errno> {
 		let off = Self::get_disk_offset(i, superblock, io)?;
 		unsafe {
@@ -274,7 +274,7 @@ impl Ext2INode {
 	/// `io` is the I/O interface.
 	/// If the block doesn't exist, the function returns None.
 	fn resolve_indirections(n: u8, begin: u32, off: u32, superblock: &Superblock,
-		io: &mut dyn DeviceHandle) -> Result<Option<u32>, Errno> {
+		io: &mut dyn IO) -> Result<Option<u32>, Errno> {
 		let blk_size = superblock.get_block_size();
 		let entries_per_blk = blk_size / size_of::<u32>() as u32;
 
@@ -303,7 +303,7 @@ impl Ext2INode {
 	/// `superblock` is the filesystem's superblock.
 	/// `io` is the I/O interface.
 	fn indirections_alloc(n: u8, begin: u32, off: u32, superblock: &Superblock,
-		io: &mut dyn DeviceHandle) -> Result<u32, Errno> {
+		io: &mut dyn IO) -> Result<u32, Errno> {
 		let blk_size = superblock.get_block_size();
 		let entries_per_blk = blk_size / size_of::<u32>() as u32;
 
@@ -332,7 +332,7 @@ impl Ext2INode {
 	/// `superblock` is the filesystem's superblock.
 	/// `io` is the I/O interface.
 	/// If the block doesn't exist, the function returns None.
-	fn get_content_block_off(&self, i: u32, superblock: &Superblock, io: &mut dyn DeviceHandle)
+	fn get_content_block_off(&self, i: u32, superblock: &Superblock, io: &mut dyn IO)
 		-> Result<Option<u32>, Errno> {
 		let blk_size = superblock.get_block_size();
 		let entries_per_blk = blk_size / size_of::<u32>() as u32;
@@ -358,7 +358,7 @@ impl Ext2INode {
 	/// `superblock` is the filesystem's superblock.
 	/// `io` is the I/O interface.
 	/// On success, the function returns the allocated final block offset.
-	fn alloc_content_block(&mut self, i: u32, superblock: &Superblock, io: &mut dyn DeviceHandle)
+	fn alloc_content_block(&mut self, i: u32, superblock: &Superblock, io: &mut dyn IO)
 		-> Result<u32, Errno> {
 		let blk_size = superblock.get_block_size();
 		let entries_per_blk = blk_size / size_of::<u32>() as u32;
@@ -388,7 +388,7 @@ impl Ext2INode {
 	/// `superblock` is the filesystem's superblock.
 	/// `io` is the I/O interface.
 	fn free_content_block(&mut self, _i: usize, _superblock: &Superblock,
-		_io: &mut dyn DeviceHandle) {
+		_io: &mut dyn IO) {
 		// TODO
 		todo!();
 	}
@@ -400,7 +400,7 @@ impl Ext2INode {
 	/// `io` is the I/O interface.
 	/// The function returns the number of bytes that have been read.
 	pub fn read_content(&self, off: u64, buff: &mut [u8], superblock: &Superblock,
-		io: &mut dyn DeviceHandle) -> Result<usize, Errno> {
+		io: &mut dyn IO) -> Result<usize, Errno> {
 		let size = self.get_size(&superblock);
 		if off > size {
 			return Err(errno::EINVAL);
@@ -437,7 +437,7 @@ impl Ext2INode {
 	/// `io` is the I/O interface.
 	/// The function returns the number of bytes that have been written.
 	pub fn write_content(&mut self, off: u64, buff: &[u8], superblock: &Superblock,
-		io: &mut dyn DeviceHandle) -> Result<(), Errno> {
+		io: &mut dyn IO) -> Result<(), Errno> {
 		let curr_size = self.get_size(superblock);
 		if off > curr_size {
 			return Err(errno::EINVAL);
@@ -480,7 +480,7 @@ impl Ext2INode {
 	/// `io` is the I/O interface.
 	/// `off` is the offset of the directory entry.
 	/// If the file is not a directory, the behaviour is undefined.
-	fn read_dirent(&self, superblock: &Superblock, io: &mut dyn DeviceHandle, off: u64)
+	fn read_dirent(&self, superblock: &Superblock, io: &mut dyn IO, off: u64)
 		-> Result<Box<DirectoryEntry>, Errno> {
 		let mut buff: [u8; 8] = [0; 8];
 		self.read_content(off as _, &mut buff, superblock, io)?;
@@ -501,8 +501,8 @@ impl Ext2INode {
 	/// `io` is the I/O interface.
 	/// `off` is the offset of the directory entry.
 	/// If the file is not a directory, the behaviour is undefined.
-	fn write_dirent(&mut self, superblock: &Superblock, io: &mut dyn DeviceHandle,
-		entry: &DirectoryEntry, off: u64) -> Result<(), Errno> {
+	fn write_dirent(&mut self, superblock: &Superblock, io: &mut dyn IO, entry: &DirectoryEntry,
+	    off: u64) -> Result<(), Errno> {
 		let buff = unsafe {
 			slice::from_raw_parts(entry as *const _ as *const u8, entry.get_total_size() as _)
 		};
@@ -519,7 +519,7 @@ impl Ext2INode {
 	/// `io` is the I/O interface.
 	/// If the file is not a directory, the behaviour is undefined.
 	pub fn foreach_directory_entry<F: FnMut(u64, Box<DirectoryEntry>) -> bool>(&self, mut f: F,
-		superblock: &Superblock, io: &mut dyn DeviceHandle) -> Result<(), Errno> {
+		superblock: &Superblock, io: &mut dyn IO) -> Result<(), Errno> {
 		debug_assert_eq!(self.get_type(), FileType::Directory);
 
 		let blk_size = superblock.get_block_size();
@@ -559,8 +559,8 @@ impl Ext2INode {
 	/// `io` is the I/O interface.
 	/// If the entry doesn't exist, the function returns None.
 	/// If the file is not a directory, the behaviour is undefined.
-	pub fn get_directory_entry(&self, name: &[u8], superblock: &Superblock,
-		io: &mut dyn DeviceHandle) -> Result<Option<Box<DirectoryEntry>>, Errno> {
+	pub fn get_directory_entry(&self, name: &[u8], superblock: &Superblock, io: &mut dyn IO)
+	    -> Result<Option<Box<DirectoryEntry>>, Errno> {
 		let mut entry = None;
 
 		// TODO If the binary tree feature is enabled, use it
@@ -581,7 +581,7 @@ impl Ext2INode {
 	/// `io` is the I/O interface.
 	/// `min_size` is the minimum size of the entry in bytes.
 	/// If the function finds an entry, it returns its offset. Else, the function returns None.
-	fn get_free_entry(&self, superblock: &Superblock, io: &mut dyn DeviceHandle, min_size: u16)
+	fn get_free_entry(&self, superblock: &Superblock, io: &mut dyn IO, min_size: u16)
 		-> Result<Option<u64>, Errno> {
 		let mut off_option = None;
 
@@ -606,7 +606,7 @@ impl Ext2INode {
 	/// If the block allocation fails or if the entry name is already used, the function returns an
 	/// error.
 	/// If the file is not a directory, the behaviour is undefined.
-	pub fn add_dirent(&mut self, superblock: &Superblock, io: &mut dyn DeviceHandle,
+	pub fn add_dirent(&mut self, superblock: &Superblock, io: &mut dyn IO,
 		entry_inode: u32, name: &String, file_type: FileType) -> Result<(), Errno> {
 		let blk_size = superblock.get_block_size();
 		let name_length = name.as_bytes().len() as u16;
@@ -660,8 +660,7 @@ impl Ext2INode {
 	}
 
 	/// Writes the inode on the device.
-	pub fn write(&self, i: u32, superblock: &Superblock, io: &mut dyn DeviceHandle)
-		-> Result<(), Errno> {
+	pub fn write(&self, i: u32, superblock: &Superblock, io: &mut dyn IO) -> Result<(), Errno> {
 		let off = Self::get_disk_offset(i, superblock, io)?;
 		write(self, off, io)
 	}

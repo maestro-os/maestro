@@ -1,18 +1,18 @@
 //! A mount point is a directory in which a filesystem is mounted.
 
 use crate::device::Device;
-use crate::device::DeviceType;
-//use crate::device;
 use crate::errno::Errno;
-//use crate::file::File;
+use crate::file::File;
 use crate::file::fs::Filesystem;
 use crate::file::fs::FilesystemType;
+use crate::file::fs;
+use crate::file;
+use crate::util::FailableClone;
+use crate::util::IO;
 use crate::util::boxed::Box;
-use crate::util::container::string::String;
-use crate::util::container::vec::Vec;
+use crate::util::container::hashmap::HashMap;
 use crate::util::lock::mutex::Mutex;
 use crate::util::ptr::SharedPtr;
-//use super::fs;
 use super::path::Path;
 
 /// TODO doc
@@ -42,10 +42,44 @@ const FLAG_SYNCHRONOUS: u32 = 0b100000000000;
 
 // TODO When removing a mountpoint, return an error if another mountpoint is present in a subdir
 
+/// Enumeration of mount sources.
+pub enum MountSource {
+    /// The mountpoint is mounted from a device.
+    Device(SharedPtr<Device>),
+    /// The mountpoint is mounted from a file.
+    File(SharedPtr<File>),
+}
+
+impl MountSource {
+    /// Creates a mount source from a dummy string.
+    pub fn from_str(string: &[u8]) -> Result<Self, Errno> {
+        // TODO Handle kernfs
+
+        let path = Path::from_str(string, true)?;
+        let file = {
+            let mutex = file::get_files_cache();
+            let mut guard = mutex.lock(true);
+            let fcache = guard.get_mut().as_mut().unwrap();
+
+            fcache.get_file_from_path(&path)?
+        };
+
+        Ok(Self::File(file))
+    }
+
+    /// Returns the IO interface for the mount source.
+    pub fn get_io(&self) -> SharedPtr<dyn IO> {
+        match self {
+            Self::Device(dev) => dev.clone() as _,
+            Self::File(file) => file.clone() as _,
+        }
+    }
+}
+
 /// Structure representing a mount point.
 pub struct MountPoint {
 	/// The source of the mountpoint.
-	source: String,
+	source: MountSource,
 
 	/// Mount flags.
 	flags: u32,
@@ -62,20 +96,16 @@ impl MountPoint {
 	/// `fs_type` is the filesystem type. If None, the function tries to detect it automaticaly.
 	/// `flags` are the mount flags.
 	/// `path` is the path on which the filesystem is to be mounted.
-	pub fn new(source: String, fs_type: Option<SharedPtr<dyn FilesystemType>>, flags: u32,
+	pub fn new(source: MountSource, fs_type: Option<SharedPtr<dyn FilesystemType>>, flags: u32,
 		path: Path) -> Result<Self, Errno> {
-		// TODO Support kernfs
-		/*let source_path = Path::from_str(source.as_bytes(), true)?;
+        let io_mutex = source.get_io();
+        let mut io_guard = io_mutex.lock(true);
+        let io = io_guard.get_mut();
 
-		{
-			let fcache = file::get_files_caches().lock(false).get_mut();
-			let source_mutex = fcache.get_file_from_path();
-		};
-
-		let fs_type_ptr = fs_type.or(fs::detect(source)?);
+		let fs_type_ptr = fs_type.or(Some(fs::detect(io)?)).unwrap();
 		let fs_type_guard = fs_type_ptr.lock(true);
 		let fs_type = fs_type_guard.get();
-		let filesystem = fs_type.load_filesystem(source, &path)?;
+		let filesystem = fs_type.load_filesystem(io, path.failable_clone()?)?;
 
 		Ok(Self {
 			source,
@@ -84,20 +114,13 @@ impl MountPoint {
 			path,
 
 			filesystem,
-		})*/
-		todo!();
+		})
 	}
 
 	/// Returns the source of the mountpoint.
 	#[inline(always)]
-	pub fn get_source(&self) -> &String {
+	pub fn get_source(&self) -> &MountSource {
 		&self.source
-	}
-
-	/// Returns a reference to the mounted device.
-	#[inline(always)]
-	pub fn get_device(&self) -> SharedPtr<Device> {
-		device::get_device(self.device_type, self.major, self.minor).unwrap()
 	}
 
 	/// Returns the mountpoint's flags.
@@ -132,15 +155,18 @@ impl MountPoint {
 }
 
 /// The list of mountpoints.
-static MOUNT_POINTS: Mutex<HashMap<Path, SharedPtr<MountPoint>>> = Mutex::new(HashMap::new());
+static MOUNT_POINTS: Mutex<HashMap<Path, SharedPtr<MountPoint>>> = Mutex::new(HashMap::new(None));
 
 /// Registers a new mountpoint `mountpoint`. If a mountpoint is already present at the same path,
 /// the function fails.
 pub fn register(mountpoint: MountPoint) -> Result<SharedPtr<MountPoint>, Errno> {
 	let mut guard = MOUNT_POINTS.lock(true);
 	let container = guard.get_mut();
+
+	let path = mountpoint.get_path().failable_clone()?;
+
 	let shared_ptr = SharedPtr::new(mountpoint)?;
-	container.push(shared_ptr.clone())?;
+	container.insert(path, shared_ptr.clone())?;
 	Ok(shared_ptr)
 }
 
@@ -151,8 +177,7 @@ pub fn get_deepest(path: &Path) -> Option<SharedPtr<MountPoint>> {
 	let container = guard.get_mut();
 
 	let mut max: Option<SharedPtr<MountPoint>> = None;
-	for i in 0..container.len() {
-		let m = &mut container[i];
+	for m in container.iter() {
 		let mount_guard = m.lock(true);
 		let mount_path = mount_guard.get().get_path();
 
@@ -176,5 +201,8 @@ pub fn get_deepest(path: &Path) -> Option<SharedPtr<MountPoint>> {
 
 /// Returns the mountpoint with path `path`. If it doesn't exist, the function returns None.
 pub fn from_path(path: &Path) -> Option<SharedPtr<MountPoint>> {
-	// TODO
+	let mut guard = MOUNT_POINTS.lock(true);
+	let container = guard.get_mut();
+
+	Some(container.get(path)?.clone())
 }

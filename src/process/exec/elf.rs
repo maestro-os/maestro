@@ -25,6 +25,7 @@ use crate::process::exec::Executor;
 use crate::process::mem_space::MemSpace;
 use crate::process::signal::SignalHandler;
 use crate::process;
+use crate::util::IO;
 use crate::util::container::vec::Vec;
 use crate::util::math;
 
@@ -120,8 +121,8 @@ fn read_exec_file(path: &Path, uid: Uid, gid: Gid) -> Result<malloc::Alloc<u8>, 
 
 	// Getting the file from path
 	let file_mutex = files_cache.as_mut().unwrap().get_file_from_path(&path)?;
-	let file_lock = file_mutex.lock(true);
-	let file = file_lock.get();
+	let mut file_lock = file_mutex.lock(true);
+	let file = file_lock.get_mut();
 
 	// Check that the file can be executed by the user
 	if !file.can_execute(uid, gid) {

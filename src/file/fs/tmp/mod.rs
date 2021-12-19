@@ -7,7 +7,6 @@ use crate::file::Errno;
 use crate::file::File;
 use crate::file::FileType;
 use crate::file::INode;
-use crate::file::fs::Device;
 use crate::file::fs::Filesystem;
 use crate::file::fs::kernfs::KernFSNode;
 use crate::file::path::Path;
@@ -58,12 +57,17 @@ impl KernFSNode for TmpFSFile {
 }
 
 impl IO for TmpFSFile {
-	fn read(&self, offset: u64, buff: &mut [u8]) -> Result<u64, Errno> {
+    fn get_size(&self) -> u64 {
+        // TODO
+        todo!();
+    }
+
+	fn read(&mut self, _offset: u64, _buff: &mut [u8]) -> Result<usize, Errno> {
 		// TODO
 		todo!();
 	}
 
-	fn write(&mut self, offset: u64) -> Result<u64, Errno> {
+	fn write(&mut self, _offset: u64, _buff: &[u8]) -> Result<usize, Errno> {
 		// TODO
 		todo!();
 	}
@@ -120,37 +124,38 @@ impl Filesystem for TmpFS {
 		false
 	}
 
-	fn get_inode(&mut self, _dev: &mut Device, _path: Path) -> Result<INode, Errno> {
-		let root = &self.files[ROOT_INODE];
+	fn get_inode(&mut self, _dev: &mut dyn IO, _path: Path) -> Result<INode, Errno> {
+		let _root = &self.files[ROOT_INODE];
+
 		// TODO
 		todo!();
 	}
 
-	fn load_file(&mut self, _dev: &mut Device, _inode: INode, _name: String)
+	fn load_file(&mut self, _dev: &mut dyn IO, _inode: INode, _name: String)
 		-> Result<File, Errno> {
 		// TODO
 		todo!();
 	}
 
-	fn add_file(&mut self, _dev: &mut Device, _parent_inode: INode, _file: File)
+	fn add_file(&mut self, _dev: &mut dyn IO, _parent_inode: INode, _file: File)
 		-> Result<File, Errno> {
 		// TODO
 		todo!();
 	}
 
-	fn remove_file(&mut self, _dev: &mut Device, _parent_inode: INode, _name: &String)
+	fn remove_file(&mut self, _dev: &mut dyn IO, _parent_inode: INode, _name: &String)
 		-> Result<(), Errno> {
 		// TODO
 		todo!();
 	}
 
-	fn read_node(&mut self, _dev: &mut Device, _inode: INode, _off: u64, _buf: &mut [u8])
+	fn read_node(&mut self, _dev: &mut dyn IO, _inode: INode, _off: u64, _buf: &mut [u8])
 		-> Result<usize, Errno> {
 		// TODO
 		todo!();
 	}
 
-	fn write_node(&mut self, _dev: &mut Device, _inode: INode, _off: u64, _buf: &[u8])
+	fn write_node(&mut self, _dev: &mut dyn IO, _inode: INode, _off: u64, _buf: &[u8])
 		-> Result<(), Errno> {
 		// TODO
 		todo!();
@@ -162,15 +167,15 @@ pub trait FilesystemType {
 		"tmpfs"
 	}
 
-	fn detect(&self, _dev: &mut Device) -> bool {
+	fn detect(&self, _dev: &mut dyn IO) -> bool {
 		false
 	}
 
-	fn create_filesystem(&self, _dev: &mut Device) -> Result<Box<dyn Filesystem>, Errno> {
+	fn create_filesystem(&self, _dev: &mut dyn IO) -> Result<Box<dyn Filesystem>, Errno> {
 		Ok(Box::new(TmpFS::new(DEFAULT_MAX_SIZE)?)?)
 	}
 
-	fn load_filesystem(&self, dev: &mut Device, _mountpath: &Path)
+	fn load_filesystem(&self, dev: &mut dyn IO, _mountpath: &Path)
 		-> Result<Box<dyn Filesystem>, Errno> {
 		self.create_filesystem(dev)
 	}

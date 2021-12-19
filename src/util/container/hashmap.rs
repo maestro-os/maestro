@@ -8,8 +8,10 @@ use core::ops::Index;
 use core::ops::IndexMut;
 use core::ptr;
 use crate::errno::Errno;
-use crate::errno;
 use super::vec::Vec;
+
+/// The default number of buckets in a hashmap.
+const DEFAULT_BUCKETS_COUNT: usize = 64;
 
 /// Bitwise XOR hasher.
 struct XORHasher {
@@ -61,7 +63,7 @@ impl<K: Eq + Hash, V> Bucket<K, V> {
 	/// present, the function return None.
 	pub fn get(&self, k: &K) -> Option<&V> {
 		for i in 0..self.elements.len() {
-			if self.elements[i].0 == k {
+			if self.elements[i].0 == *k {
 				return Some(&self.elements[i].1);
 			}
 		}
@@ -73,7 +75,7 @@ impl<K: Eq + Hash, V> Bucket<K, V> {
 	/// the function return None.
 	pub fn get_mut(&mut self, k: &K) -> Option<&mut V> {
 		for i in 0..self.elements.len() {
-			if self.elements[i].0 == k {
+			if self.elements[i].0 == *k {
 				return Some(&mut self.elements[i].1);
 			}
 		}
@@ -109,24 +111,21 @@ impl<K: Eq + Hash, V> Bucket<K, V> {
 
 /// Structure representing a hashmap.
 pub struct HashMap<K: Eq + Hash, V> {
+    /// The number of buckets in the hashmap.
+    buckets_count: usize,
+
 	/// The vector containing buckets.
 	buckets: Vec<Bucket<K, V>>,
 }
 
 impl<K: Eq + Hash, V> HashMap::<K, V> {
 	/// Creates a new instance.
-	pub fn new(buckets_count: usize) -> Result<Self, Errno> {
-		if buckets_count == 0 {
-			return Err(errno::EINVAL);
-		}
+	pub const fn new(buckets_count: Option<usize>) -> Self {
+		Self {
+		    buckets_count: buckets_count.or(Some(DEFAULT_BUCKETS_COUNT)).unwrap(),
 
-		let mut map = Self {
-			buckets: Vec::with_capacity(buckets_count)?,
-		};
-		for _ in 0..buckets_count {
-			map.buckets.push(Bucket::new())?;
+			buckets: Vec::new(),
 		}
-		Ok(map)
 	}
 
 	/// Returns the number of elements in the hash map.
@@ -203,14 +202,14 @@ impl<K: Eq + Hash, V> Index<K> for HashMap<K, V> {
 
 	#[inline]
 	fn index(&self, k: K) -> &Self::Output {
-		self.get(k).expect("no entry found for key")
+		self.get(&k).expect("no entry found for key")
 	}
 }
 
 impl<K: Eq + Hash, V> IndexMut<K> for HashMap<K, V> {
 	#[inline]
 	fn index_mut(&mut self, k: K) -> &mut Self::Output {
-		self.get_mut(k).expect("no entry found for key")
+		self.get_mut(&k).expect("no entry found for key")
 	}
 }
 

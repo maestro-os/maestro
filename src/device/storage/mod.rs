@@ -25,6 +25,7 @@ use crate::file::path::Path;
 use crate::memory::malloc;
 use crate::process::oom;
 use crate::util::FailableClone;
+use crate::util::IO;
 use crate::util::boxed::Box;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
@@ -266,6 +267,13 @@ impl StorageDeviceHandle {
 
 // TODO Handle partition
 impl DeviceHandle for StorageDeviceHandle {
+	fn ioctl(&mut self, _request: u32, _argp: *const c_void) -> Result<u32, Errno> {
+		// TODO
+		Err(errno::EINVAL)
+	}
+}
+
+impl IO for StorageDeviceHandle {
 	fn get_size(&self) -> u64 {
 		let interface = unsafe { // Safe because the pointer is valid
 			&*self.interface
@@ -288,11 +296,6 @@ impl DeviceHandle for StorageDeviceHandle {
 		};
 
 		interface.write_bytes(buff, offset)
-	}
-
-	fn ioctl(&mut self, _request: u32, _argp: *const c_void) -> Result<u32, Errno> {
-		// TODO
-		Err(errno::EINVAL)
 	}
 }
 

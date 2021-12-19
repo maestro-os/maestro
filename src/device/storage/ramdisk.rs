@@ -13,6 +13,7 @@ use crate::errno::Errno;
 use crate::errno;
 use crate::file::path::Path;
 use crate::memory::malloc;
+use crate::util::IO;
 use crate::util::container::string::String;
 use super::StorageInterface;
 
@@ -128,6 +129,13 @@ impl RAMDiskHandle {
 }
 
 impl DeviceHandle for RAMDiskHandle {
+	fn ioctl(&mut self, _request: u32, _argp: *const c_void) -> Result<u32, Errno> {
+		// TODO
+		Err(errno::EINVAL)
+	}
+}
+
+impl IO for RAMDiskHandle {
 	fn get_size(&self) -> u64 {
 		RAM_DISK_SIZE as _
 	}
@@ -138,11 +146,6 @@ impl DeviceHandle for RAMDiskHandle {
 
 	fn write(&mut self, offset: u64, buff: &[u8]) -> Result<usize, Errno> {
 		self.disk.write_bytes(buff, offset)
-	}
-
-	fn ioctl(&mut self, _request: u32, _argp: *const c_void) -> Result<u32, Errno> {
-		// TODO
-		Err(errno::EINVAL)
 	}
 }
 

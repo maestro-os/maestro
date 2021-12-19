@@ -8,6 +8,7 @@ use crate::file::File;
 use crate::file::pipe::Pipe;
 use crate::file::socket::SocketSide;
 use crate::util::FailableClone;
+use crate::util::IO;
 use crate::util::lock::mutex::Mutex;
 use crate::util::ptr::SharedPtr;
 

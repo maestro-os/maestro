@@ -24,6 +24,7 @@ use crate::file::Mode;
 use crate::file::path::Path;
 use crate::file;
 use crate::util::FailableClone;
+use crate::util::IO;
 use crate::util::boxed::Box;
 use crate::util::container::vec::Vec;
 use crate::util::lock::mutex::Mutex;
@@ -41,19 +42,7 @@ pub enum DeviceType {
 }
 
 /// Trait providing a interface for device I/O.
-pub trait DeviceHandle {
-	/// Returns the size of the device in bytes.
-	fn get_size(&self) -> u64;
-
-	/// Reads data from the device and writes it to the buffer `buff`.
-	/// `offset` is the offset in the file.
-	/// The function returns the number of bytes read.
-	fn read(&mut self, offset: u64, buff: &mut [u8]) -> Result<usize, Errno>;
-	/// Writes data to the device, reading it from the buffer `buff`.
-	/// `offset` is the offset in the file.
-	/// The function returns the number of bytes written.
-	fn write(&mut self, offset: u64, buff: &[u8]) -> Result<usize, Errno>;
-
+pub trait DeviceHandle: IO {
 	/// Performs an ioctl operation on the device.
 	fn ioctl(&mut self, request: u32, argp: *const c_void) -> Result<u32, Errno>;
 }
@@ -217,6 +206,20 @@ impl Device {
 			let mut guard = file.lock(true);
 			guard.get_mut().unlink();
 		}
+	}
+}
+
+impl IO for Device {
+    fn get_size(&self) -> u64 {
+        self.handle.get_size()
+    }
+
+	fn read(&mut self, offset: u64, buff: &mut [u8]) -> Result<usize, Errno> {
+	    self.handle.read(offset, buff)
+	}
+
+	fn write(&mut self, offset: u64, buff: &[u8]) -> Result<usize, Errno> {
+	    self.handle.write(offset, buff)
 	}
 }
 

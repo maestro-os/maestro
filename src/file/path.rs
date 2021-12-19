@@ -2,6 +2,7 @@
 
 use core::cmp::min;
 use core::fmt;
+use core::hash::Hash;
 use core::ops::Add;
 use core::ops::Index;
 use core::ops::IndexMut;
@@ -19,6 +20,7 @@ use crate::util::container::vec::Vec;
 pub const PATH_SEPARATOR: char = '/';
 
 /// A structure representing a path to a file.
+#[derive(Hash)]
 pub struct Path {
 	/// Tells whether the path is absolute or relative.
 	absolute: bool,

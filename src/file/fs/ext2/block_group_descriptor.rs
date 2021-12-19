@@ -2,8 +2,8 @@
 //! represents a block group, which is a subdivision of the filesystem.
 
 use core::mem::size_of;
-use crate::device::DeviceHandle;
 use crate::errno::Errno;
+use crate::util::IO;
 use super::Superblock;
 use super::read;
 use super::write;
@@ -34,7 +34,7 @@ impl BlockGroupDescriptor {
 	/// `i` the id of the group descriptor to write.
 	/// `superblock` is the filesystem's superblock.
 	/// `io` is the I/O interface.
-	pub fn read(i: u32, superblock: &Superblock, io: &mut dyn DeviceHandle)
+	pub fn read(i: u32, superblock: &Superblock, io: &mut dyn IO)
 		-> Result<Self, Errno> {
 		let off = (superblock.get_bgdt_offset() * superblock.get_block_size() as u64)
 			+ (i as u64 * size_of::<Self>() as u64);
@@ -47,7 +47,7 @@ impl BlockGroupDescriptor {
 	/// `i` the id of the group descriptor to write.
 	/// `superblock` is the filesystem's superblock.
 	/// `io` is the I/O interface.
-	pub fn write(&self, i: u32, superblock: &Superblock, io: &mut dyn DeviceHandle)
+	pub fn write(&self, i: u32, superblock: &Superblock, io: &mut dyn IO)
 		-> Result<(), Errno> {
 		let off = (superblock.get_bgdt_offset() * superblock.get_block_size() as u64)
 			+ (i as u64 * size_of::<Self>() as u64);

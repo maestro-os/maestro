@@ -8,6 +8,7 @@ use crate::file;
 use crate::idt;
 use crate::process::Process;
 use crate::process::Regs;
+use crate::util::IO;
 
 /// The maximum length of the shebang.
 const SHEBANG_MAX: usize = 257;
