@@ -495,7 +495,7 @@ impl StorageInterface for PATAInterface {
 		self.sectors_count
 	}
 
-	fn read(&mut self, buf: &mut [u8], offset: u64, size: u64) -> Result<(), Errno> {
+	fn read(&self, buf: &mut [u8], offset: u64, size: u64) -> Result<(), Errno> {
 		if offset >= self.sectors_count || offset + size >= self.sectors_count {
 			return Err(errno::EINVAL);
 		}

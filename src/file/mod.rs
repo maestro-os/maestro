@@ -443,7 +443,7 @@ impl IO for File {
 		self.size
 	}
 
-	fn read(&mut self, off: u64, buff: &mut [u8]) -> Result<usize, Errno> {
+	fn read(&self, off: u64, buff: &mut [u8]) -> Result<usize, Errno> {
 		match &self.content {
 			FileContent::Regular => {
 			    let location = self.location.as_ref().ok_or(errno::EIO)?;

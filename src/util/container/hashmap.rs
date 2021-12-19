@@ -119,10 +119,19 @@ pub struct HashMap<K: Eq + Hash, V> {
 }
 
 impl<K: Eq + Hash, V> HashMap::<K, V> {
-	/// Creates a new instance.
-	pub const fn new(buckets_count: Option<usize>) -> Self {
+	/// Creates a new instance with the default number of buckets.
+	pub const fn new() -> Self {
 		Self {
-		    buckets_count: buckets_count.or(Some(DEFAULT_BUCKETS_COUNT)).unwrap(),
+		    buckets_count: DEFAULT_BUCKETS_COUNT,
+
+			buckets: Vec::new(),
+		}
+	}
+
+    /// Creates a new instance with the given number of buckets.
+	pub const fn with_buckets(buckets_count: usize) -> Self {
+		Self {
+		    buckets_count,
 
 			buckets: Vec::new(),
 		}

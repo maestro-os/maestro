@@ -214,7 +214,7 @@ impl IO for Device {
         self.handle.get_size()
     }
 
-	fn read(&mut self, offset: u64, buff: &mut [u8]) -> Result<usize, Errno> {
+	fn read(&self, offset: u64, buff: &mut [u8]) -> Result<usize, Errno> {
 	    self.handle.read(offset, buff)
 	}
 

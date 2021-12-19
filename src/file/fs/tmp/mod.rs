@@ -62,7 +62,7 @@ impl IO for TmpFSFile {
         todo!();
     }
 
-	fn read(&mut self, _offset: u64, _buff: &mut [u8]) -> Result<usize, Errno> {
+	fn read(&self, _offset: u64, _buff: &mut [u8]) -> Result<usize, Errno> {
 		// TODO
 		todo!();
 	}
@@ -94,7 +94,7 @@ impl TmpFS {
 
 			files: Vec::new(),
 		};
-		fs.files.insert(ROOT_INODE, TmpFSFile::new(FileType::Directory));
+		fs.files.insert(ROOT_INODE, TmpFSFile::new(FileType::Directory))?;
 		fs.increase_size(fs.files[0].get_used_size())?;
 
 		Ok(fs)
