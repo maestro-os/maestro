@@ -1,6 +1,7 @@
 //! A filesystem is the representation of the file hierarchy on a storage device.
 
 pub mod ext2;
+pub mod kernfs;
 pub mod tmp;
 
 use crate::device::Device;
@@ -18,7 +19,7 @@ use super::path::Path;
 /// Trait representing a filesystem.
 pub trait Filesystem {
 	/// Returns the name of the filesystem.
-	fn get_name(&self) -> &str;
+	fn get_name(&self) -> &[u8];
 
 	/// Tells whether the filesystem is mounted in read-only.
 	fn is_readonly(&self) -> bool;

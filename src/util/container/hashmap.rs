@@ -59,7 +59,7 @@ impl<K: Eq + Hash, V> Bucket<K, V> {
 
 	/// Returns an immutable reference to the value with the given key `k`. If the key isn't
 	/// present, the function return None.
-	pub fn get(&self, k: K) -> Option<&V> {
+	pub fn get(&self, k: &K) -> Option<&V> {
 		for i in 0..self.elements.len() {
 			if self.elements[i].0 == k {
 				return Some(&self.elements[i].1);
@@ -71,7 +71,7 @@ impl<K: Eq + Hash, V> Bucket<K, V> {
 
 	/// Returns a mutable reference to the value with the given key `k`. If the key isn't present,
 	/// the function return None.
-	pub fn get_mut(&mut self, k: K) -> Option<&mut V> {
+	pub fn get_mut(&mut self, k: &K) -> Option<&mut V> {
 		for i in 0..self.elements.len() {
 			if self.elements[i].0 == k {
 				return Some(&mut self.elements[i].1);
@@ -159,14 +159,14 @@ impl<K: Eq + Hash, V> HashMap::<K, V> {
 
 	/// Returns an immutable reference to the value with the given key `k`. If the key isn't
 	/// present, the function return None.
-	pub fn get(&self, k: K) -> Option<&V> {
+	pub fn get(&self, k: &K) -> Option<&V> {
 		let index = self.get_bucket_index(&k);
 		self.buckets[index].get(k)
 	}
 
 	/// Returns a mutable reference to the value with the given key `k`. If the key isn't present,
 	/// the function return None.
-	pub fn get_mut(&mut self, k: K) -> Option<&mut V> {
+	pub fn get_mut(&mut self, k: &K) -> Option<&mut V> {
 		let index = self.get_bucket_index(&k);
 		self.buckets[index].get_mut(k)
 	}

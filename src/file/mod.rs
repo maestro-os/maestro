@@ -95,13 +95,9 @@ pub enum FileType {
 
 /// Structure representing the location of a file on a disk.
 #[derive(Clone, Debug)]
-pub struct DiskLocation {
-	/// The type of the device.
-	device_type: DeviceType,
-	/// The disk's major number.
-	major: u32,
-	/// The disk's minor number.
-	minor: u32,
+pub struct FileLocation {
+	/// The ID of the mountpoint.
+	mountpoint_id: u32,
 
 	/// The disk's inode.
 	inode: INode,
@@ -110,32 +106,18 @@ pub struct DiskLocation {
 impl DiskLocation {
 	/// Creates a new instance.
 	#[inline]
-	pub fn new(device_type: DeviceType, major: u32, minor: u32, inode: INode) -> Self {
+	pub fn new(mountpoint_id: u32, inode: INode) -> Self {
 		Self {
-			device_type,
-			major,
-			minor,
+			mountpoint_id,
 
 			inode,
 		}
 	}
 
-	/// Returns the device type.
+	/// Returns the ID of the mountpoint.
 	#[inline]
-	pub fn get_device_type(&self) -> DeviceType {
-		self.device_type
-	}
-
-	/// Returns the major number.
-	#[inline]
-	pub fn get_major(&self) -> u32 {
-		self.major
-	}
-
-	/// Returns the minor number.
-	#[inline]
-	pub fn get_minor(&self) -> u32 {
-		self.minor
+	pub fn get_mountpoint_id(&self) -> u32 {
+		self.mountpoint_id
 	}
 
 	/// Returns the inode number.
@@ -143,15 +125,6 @@ impl DiskLocation {
 	pub fn get_inode(&self) -> INode {
 		self.inode
 	}
-}
-
-/// Enumeration of all possible locations for a file.
-#[derive(Clone, Debug)]
-pub enum FileLocation {
-	/// The file is stored nowhere.
-	None,
-	/// The file is stored on a disk.
-	Disk(DiskLocation),
 }
 
 /// Enumeration of all possible file contents for each file types.
@@ -446,24 +419,16 @@ impl File {
 	pub fn read(&self, off: u64, buff: &mut [u8]) -> Result<usize, Errno> {
 		match &self.content {
 			FileContent::Regular => {
-				if let FileLocation::Disk(location) = &self.location {
-					let mountpoint_mutex = mountpoint::get_from_device(
-						location.get_device_type(),
-						location.get_major(),
-						location.get_minor()).unwrap(); // TODO Check unwrap
-					let mut mountpoint_guard = mountpoint_mutex.lock(true);
-					let mountpoint = mountpoint_guard.get_mut();
+				let mountpoint_mutex = self.location.get_mountpoint().unwrap(); // TODO Check unwrap
+				let mut mountpoint_guard = mountpoint_mutex.lock(true);
+				let mountpoint = mountpoint_guard.get_mut();
 
-					let device_mutex = mountpoint.get_device().clone();
-					let mut device_guard = device_mutex.lock(true);
-					let device = device_guard.get_mut();
+				let device_mutex = mountpoint.get_device().clone();
+				let mut device_guard = device_mutex.lock(true);
+				let device = device_guard.get_mut();
 
-					let filesystem = mountpoint.get_filesystem();
-					filesystem.read_node(device, location.get_inode(), off, buff)
-				} else {
-					// TODO Read from memory? Panic?
-					todo!();
-				}
+				let filesystem = mountpoint.get_filesystem();
+				filesystem.read_node(device, location.get_inode(), off, buff)
 			},
 
 			FileContent::Directory(_subdirs) => {
@@ -637,7 +602,7 @@ impl FCache {
 	pub fn new(root_device_type: DeviceType, root_major: u32, root_minor: u32)
 		-> Result<Self, Errno> {
 		let root_mount = MountPoint::new(root_device_type, root_major, root_minor, 0, Path::root())?;
-		let shared_ptr = mountpoint::register_mountpoint(root_mount)?;
+		let shared_ptr = mountpoint::register(root_mount)?;
 
 		Ok(Self {
 			root_mount: shared_ptr,

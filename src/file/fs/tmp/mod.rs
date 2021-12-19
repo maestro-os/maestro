@@ -1,53 +1,116 @@
 //! Tmpfs (Temporary file system) is, as its name states a temporary filesystem. The files are
 //! stored on the kernel's memory and thus are removed when the filesystem is unmounted.
 
+use core::mem::size_of;
+use crate::errno;
 use crate::file::Errno;
 use crate::file::File;
+use crate::file::FileType;
 use crate::file::INode;
 use crate::file::fs::Device;
 use crate::file::fs::Filesystem;
+use crate::file::fs::kernfs::KernFSNode;
 use crate::file::path::Path;
+use crate::util::IO;
 use crate::util::boxed::Box;
+use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 
-// TODO Take as parameter when mounting
-/// The maximum amount of memory the filesystem can use in bytes.
-const TMPFS_MAX_SIZE: usize = 512 * 1024 * 1024;
+/// The default maximum amount of memory the filesystem can use in bytes.
+const DEFAULT_MAX_SIZE: usize = 512 * 1024 * 1024;
+/// The inode index for the root directory.
+const ROOT_INODE: usize = 0;
 
-// TODO Use structure `File` directly instead?
-/// Structure representing a file stored in a tmpfs.
-pub struct TmpfsFile {
+/// Structure representing a file in a tmpfs.
+pub struct TmpFSFile {
+	/// The type of the file.
+	type_: FileType,
+
 	// TODO
 }
 
+impl TmpFSFile {
+	/// Creates a new instance.
+	/// `type_` is the file type.
+	pub fn new(type_: FileType) -> Self {
+		Self {
+			type_,
+		}
+	}
+
+	/// Returns the size used by the file in bytes.
+	pub fn get_used_size(&self) -> usize {
+		// TODO Add size of content
+		size_of::<Self>()
+	}
+}
+
+impl KernFSNode for TmpFSFile {
+	fn get_type(&self) -> FileType {
+		self.type_
+	}
+
+	fn get_entries(&self) -> &HashMap<String, Self> where Self: Sized {
+		// TODO
+		todo!();
+	}
+}
+
+impl IO for TmpFSFile {
+	fn read(&self, offset: u64, buff: &mut [u8]) -> Result<u64, Errno> {
+		// TODO
+		todo!();
+	}
+
+	fn write(&mut self, offset: u64) -> Result<u64, Errno> {
+		// TODO
+		todo!();
+	}
+}
+
 /// Structure representing the temporary file system.
-pub struct Tmpfs {
+pub struct TmpFS {
 	/// The maximum amount of memory in bytes the filesystem can use.
 	max_size: usize,
 	/// The currently used amount of memory in bytes.
 	size: usize,
 
 	/// The files, ordered by inode number.
-	files: Vec<TmpfsFile>,
+	files: Vec<TmpFSFile>,
 }
 
-impl Tmpfs {
+impl TmpFS {
 	/// Creates a new instance.
 	/// `max_size` is the maximum amount of memory the filesystem can use in bytes.
-	pub fn new(max_size: usize) -> Self {
-		Self {
+	pub fn new(max_size: usize) -> Result<Self, Errno> {
+		let mut fs = Self {
 			max_size,
 			size: 0,
 
 			files: Vec::new(),
+		};
+		fs.files.insert(ROOT_INODE, TmpFSFile::new(FileType::Directory));
+		fs.increase_size(fs.files[0].get_used_size())?;
+
+		Ok(fs)
+	}
+
+	/// Increases the total size of the fs by `s`. If the size is too large, the function returns
+	/// an error.
+	fn increase_size(&mut self, s: usize) -> Result<(), Errno> {
+		if self.size + s < self.max_size {
+			self.size += s;
+			Ok(())
+		} else {
+			Err(errno::ENOSPC)
 		}
 	}
 }
 
-impl Filesystem for Tmpfs {
-	fn get_name(&self) -> &str {
-		"tmpfs"
+impl Filesystem for TmpFS {
+	fn get_name(&self) -> &[u8] {
+		b"tmpfs"
 	}
 
 	fn is_readonly(&self) -> bool {
@@ -58,6 +121,7 @@ impl Filesystem for Tmpfs {
 	}
 
 	fn get_inode(&mut self, _dev: &mut Device, _path: Path) -> Result<INode, Errno> {
+		let root = &self.files[ROOT_INODE];
 		// TODO
 		todo!();
 	}
@@ -103,7 +167,7 @@ pub trait FilesystemType {
 	}
 
 	fn create_filesystem(&self, _dev: &mut Device) -> Result<Box<dyn Filesystem>, Errno> {
-		Ok(Box::new(Tmpfs::new(TMPFS_MAX_SIZE))?)
+		Ok(Box::new(TmpFS::new(DEFAULT_MAX_SIZE)?)?)
 	}
 
 	fn load_filesystem(&self, dev: &mut Device, _mountpath: &Path)
