@@ -158,6 +158,7 @@ impl<T> Vec<T> {
 		}
 	}
 
+    // FIXME Invalid in case the element is inserted outside of the vector
 	/// Inserts an element at position index within the vector, shifting all elements after it to
 	/// the right.
 	pub fn insert(&mut self, index: usize, element: T) -> Result<(), Errno> {

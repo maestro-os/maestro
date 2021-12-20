@@ -155,28 +155,38 @@ impl<K: Eq + Hash, V> HashMap::<K, V> {
 
 	/// Returns the number of buckets.
 	pub fn get_buckets_count(&self) -> usize {
-		self.buckets.len()
+	    self.buckets_count
 	}
 
 	/// Returns the bucket index for the key `k`.
 	fn get_bucket_index(&self, k: &K) -> usize {
 		let mut hasher = XORHasher::new();
 		k.hash(&mut hasher);
-		(hasher.finish() / (self.buckets.len() as u64)) as usize
+		(hasher.finish() / (self.buckets_count as u64)) as usize
 	}
 
 	/// Returns an immutable reference to the value with the given key `k`. If the key isn't
 	/// present, the function return None.
 	pub fn get(&self, k: &K) -> Option<&V> {
 		let index = self.get_bucket_index(&k);
-		self.buckets[index].get(k)
+
+		if index < self.buckets.len() {
+		    self.buckets[index].get(k)
+		} else {
+		    None
+		}
 	}
 
 	/// Returns a mutable reference to the value with the given key `k`. If the key isn't present,
 	/// the function return None.
 	pub fn get_mut(&mut self, k: &K) -> Option<&mut V> {
 		let index = self.get_bucket_index(&k);
-		self.buckets[index].get_mut(k)
+
+		if index < self.buckets.len() {
+		    self.buckets[index].get_mut(k)
+		} else {
+		    None
+		}
 	}
 
 	/// Creates an iterator for the hash map.
@@ -188,6 +198,14 @@ impl<K: Eq + Hash, V> HashMap::<K, V> {
 	/// returns the previous value.
 	pub fn insert(&mut self, k: K, v: V) -> Result<Option<V>, Errno> {
 		let index = self.get_bucket_index(&k);
+		if index >= self.buckets.len() {
+		    // Creating buckets
+		    let begin = self.buckets.len();
+		    for i in begin..=index {
+		        self.buckets.insert(i, Bucket::new())?;
+		    }
+		}
+
 		self.buckets[index].insert(k, v)
 	}
 
@@ -195,7 +213,12 @@ impl<K: Eq + Hash, V> HashMap::<K, V> {
 	/// value.
 	pub fn remove(&mut self, k: K) -> Option<V> {
 		let index = self.get_bucket_index(&k);
-		self.buckets[index].remove(&k)
+
+		if index < self.buckets.len() {
+		    self.buckets[index].remove(&k)
+		} else {
+		    None
+		}
 	}
 
 	/// Drops all elements in the hash map.
@@ -253,14 +276,14 @@ impl<'a, K: Hash + Eq, V> Iterator for HashMapIterator<'a, K, V> {
 			return None;
 		}
 
-		let v = &self.hm.buckets[self.curr_bucket].elements[self.curr_element].1;
-
+        // If the last element has been reached, getting the next non-empty bucket
 		if self.curr_element >= self.hm.buckets[self.curr_bucket].elements.len() {
 			self.curr_element = 0;
+			self.curr_bucket += 1;
 
-			for i in (self.curr_bucket + 1)..self.hm.buckets.len() {
+			for i in self.curr_bucket..self.hm.buckets.len() {
 				if !self.hm.buckets[i].elements.is_empty() {
-					self.curr_bucket = i;
+			        self.curr_bucket += i;
 					break;
 				}
 			}
@@ -270,7 +293,9 @@ impl<'a, K: Hash + Eq, V> Iterator for HashMapIterator<'a, K, V> {
 			}
 		}
 
-		Some(v)
+        let e = &self.hm.buckets[self.curr_bucket].elements[self.curr_element].1;
+        self.curr_element += 1;
+		Some(e)
 	}
 
 	fn count(self) -> usize {
@@ -284,7 +309,7 @@ mod test {
 
 	#[test_case]
 	fn hash_map0() {
-		if let Err(e) = HashMap::<u32, u32>::new(0) {
+		if let Err(e) = HashMap::<u32, u32>::new() {
 			assert_eq!(e, errno::EINVAL);
 		} else {
 			assert!(false);
@@ -293,7 +318,7 @@ mod test {
 
 	#[test_case]
 	fn hash_map1() {
-		let mut hash_map = HashMap::<u32, u32>::new(16).unwrap();
+		let mut hash_map = HashMap::<u32, u32>::new().unwrap();
 
 		assert_eq!(hash_map.len(), 0);
 
@@ -310,7 +335,7 @@ mod test {
 
 	#[test_case]
 	fn hash_map2() {
-		let mut hash_map = HashMap::<u32, u32>::new(16).unwrap();
+		let mut hash_map = HashMap::<u32, u32>::new().unwrap();
 
 		for i in 0..100 {
 			assert_eq!(hash_map.len(), i);
