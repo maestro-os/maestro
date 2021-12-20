@@ -92,7 +92,7 @@ use kill::kill;
 use mkdir::mkdir;
 use mknod::mknod;
 use mmap::mmap;
-use modify_ldt::modify_ldt;
+//use modify_ldt::modify_ldt;
 use mount::mount;
 use msync::msync;
 use munmap::munmap;
@@ -125,7 +125,7 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 	let id = regs.eax;
 
 	let result = match id {
-		// TODO 0x000 => restart_syscall(regs),
+		// 0x000 => restart_syscall(regs),
 		0x001 => _exit(regs),
 		0x002 => fork(regs),
 		0x003 => read(regs),
@@ -248,7 +248,7 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 		// TODO 0x078 => clone(regs),
 		// TODO 0x079 => setdomainname(regs),
 		0x07a => uname(regs),
-		0x07b => modify_ldt(regs),
+		// 0x07b => modify_ldt(regs),
 		// TODO 0x07c => adjtimex(regs),
 		// TODO 0x07d => mprotect(regs),
 		// TODO 0x07e => sigprocmask(regs),
