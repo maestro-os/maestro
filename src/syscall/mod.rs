@@ -1,7 +1,6 @@
 //! This module handles system calls. A system call is "function" that allows to communcate between
 //! userspace and kernelspace.
 
-//mod umount;
 mod _exit;
 mod brk;
 mod chdir;
@@ -50,6 +49,7 @@ mod sigreturn;
 mod socketpair;
 mod time;
 mod umask;
+mod umount;
 mod uname;
 mod unlink;
 mod wait;
@@ -63,7 +63,6 @@ use crate::process::signal::Signal;
 use crate::process;
 
 //use sbrk::sbrk;
-//use umount::umount;
 //use wait::wait;
 use _exit::_exit;
 use brk::brk;
@@ -113,6 +112,7 @@ use sigreturn::sigreturn;
 use socketpair::socketpair;
 use time::time;
 use umask::umask;
+use umount::umount;
 use uname::uname;
 use unlink::unlink;
 use waitpid::waitpid;
@@ -147,7 +147,7 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 		// TODO 0x013 => lseek(regs),
 		0x014 => getpid(regs),
 		0x015 => mount(regs),
-		// TODO 0x016 => umount(regs),
+		0x016 => umount(regs),
 		0x017 => setuid(regs),
 		0x018 => getuid(regs),
 		// TODO 0x019 => stime(regs),
