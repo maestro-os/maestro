@@ -17,6 +17,7 @@ use core::ffi::c_void;
 use core::mem::ManuallyDrop;
 use core::mem::MaybeUninit;
 use core::mem::size_of;
+use core::ptr::NonNull;
 use crate::cpu;
 use crate::errno::Errno;
 use crate::errno;
@@ -101,6 +102,8 @@ pub struct Process {
 	pid: Pid,
 	/// The ID of the process group.
 	pgid: Pid,
+	/// The thread ID of the process.
+	tid: Pid,
 
 	/// The real ID of the process's user owner.
 	uid: Uid,
@@ -162,6 +165,11 @@ pub struct Process {
 	tls_entries: [gdt::Entry; TLS_ENTRIES_COUNT],
 	/// The process's local descriptor table.
 	ldt: Option<LDT>,
+
+    /// TODO doc
+	set_child_tid: Option<NonNull<i32>>,
+    /// TODO doc
+	clear_child_tid: Option<NonNull<i32>>,
 
 	/// The exit status of the process after exiting.
 	exit_status: ExitStatus,
@@ -332,6 +340,7 @@ impl Process {
 		let mut process = Self {
 			pid: pid::INIT_PID,
 			pgid: pid::INIT_PID,
+			tid: pid::INIT_PID,
 
 			uid: 0,
 			gid: 0,
@@ -368,6 +377,9 @@ impl Process {
 
 			tls_entries: [gdt::Entry::default(); TLS_ENTRIES_COUNT],
 			ldt: None,
+
+			set_child_tid: None,
+			clear_child_tid: None,
 
 			exit_status: 0,
 			termsig: 0,
@@ -411,6 +423,12 @@ impl Process {
 	#[inline(always)]
 	pub fn get_pgid(&self) -> Pid {
 		self.pgid
+	}
+
+	/// Returns the process's thread ID.
+	#[inline(always)]
+	pub fn get_tid(&self) -> Pid {
+		self.tid
 	}
 
 	/// Tells whether the process is among a group and is not its owner.
@@ -863,6 +881,7 @@ impl Process {
 		let process = Self {
 			pid,
 			pgid: self.pgid,
+			tid: self.pid,
 
 			uid: self.uid,
 			gid: self.gid,
@@ -906,6 +925,9 @@ impl Process {
 					None
 				}
 			},
+
+			set_child_tid: self.set_child_tid,
+			clear_child_tid: self.clear_child_tid,
 
 			exit_status: self.exit_status,
 			termsig: 0,
@@ -1014,6 +1036,11 @@ impl Process {
 				self.tls_entries[n].update_gdt(gdt::TLS_OFFSET + n * size_of::<gdt::Entry>());
 			}
 		}
+	}
+
+    /// Sets the `clear_child_tid` attribute of the process.
+	pub fn set_clear_child_tid(&mut self, ptr: Option<NonNull<i32>>) {
+	    self.clear_child_tid = ptr;
 	}
 
 	/// Exits the process with the given `status`. This function changes the process's status to

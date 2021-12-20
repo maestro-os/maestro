@@ -209,7 +209,8 @@ impl MemMapping {
 		Ok(())
 	}
 
-	/// Maps the page at offset `offset` in the mapping to the given virtual memory context. The
+    // TODO Add support for file descriptors
+	/// Maps the page at offset `offset` in the mapping to the virtual memory context. The
 	/// function allocates the physical memory to be mapped.
 	/// If the mapping is in forking state, the function shall apply Copy-On-Write and allocate
 	/// a new physical page with the same data.
