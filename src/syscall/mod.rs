@@ -21,6 +21,7 @@ mod getgid;
 mod getpgid;
 mod getpid;
 mod getppid;
+mod gettid;
 mod getuid;
 mod init_module;
 mod ioctl;
@@ -62,6 +63,7 @@ use crate::process::Process;
 use crate::process::signal::Signal;
 use crate::process;
 
+//use modify_ldt::modify_ldt;
 //use sbrk::sbrk;
 //use wait::wait;
 use _exit::_exit;
@@ -85,6 +87,7 @@ use getgid::getgid;
 use getpgid::getpgid;
 use getpid::getpid;
 use getppid::getppid;
+use gettid::gettid;
 use getuid::getuid;
 use init_module::init_module;
 use ioctl::ioctl;
@@ -92,7 +95,6 @@ use kill::kill;
 use mkdir::mkdir;
 use mknod::mknod;
 use mmap::mmap;
-//use modify_ldt::modify_ldt;
 use mount::mount;
 use msync::msync;
 use munmap::munmap;
@@ -347,7 +349,7 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 		// TODO 0x0db => madvise(regs),
 		// TODO 0x0dc => getdents64(regs),
 		// TODO 0x0dd => fcntl64(regs),
-		// TODO 0x0e0 => gettid(regs),
+		0x0e0 => gettid(regs),
 		// TODO 0x0e1 => readahead(regs),
 		// TODO 0x0e2 => setxattr(regs),
 		// TODO 0x0e3 => lsetxattr(regs),
