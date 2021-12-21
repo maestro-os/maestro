@@ -10,7 +10,6 @@ use crate::file::file_descriptor::FDTarget;
 use crate::file::file_descriptor;
 use crate::file::path::Path;
 use crate::file;
-use crate::limits;
 use crate::process::Process;
 use crate::process::Regs;
 use crate::util::FailableClone;
@@ -58,52 +57,6 @@ fn get_file(path: Path, flags: i32, mode: file::Mode, uid: u16, gid: u16)
 	}
 }
 
-/// Resolves symbolic links and returns the final file. If too many links are to be resolved, the
-/// function returns an error.
-/// `file` is the starting file. If not a link, the function returns the same file directly.
-/// `flags` are the system call's flag.
-/// `mode` is used in case the file has to be created and represents its permissions to be set.
-/// `uid` is used in case the file has to be created and represents its UID.
-/// `gid` is used in case the file has to be created and represents its GID.
-fn resolve_links(file: SharedPtr<File>, flags: i32, mode: file::Mode, uid: u16, gid: u16)
-	-> Result<SharedPtr<File>, Errno> {
-	let mut resolve_count = 0;
-	let mut file = file;
-
-	// Resolve links until the current file is not a link
-	loop {
-		let file_guard = file.lock(true);
-		let f = file_guard.get();
-
-		// If the current file is not a link, nothing to resolve
-		if f.get_file_type() != FileType::Link {
-			break;
-		}
-
-		// Get the path of the parent directory of the current file
-		let mut parent_path = f.get_path()?;
-		parent_path.pop();
-
-		// Resolve the link
-		if let FileContent::Link(link_target) = f.get_file_content() {
-			let mut path = (parent_path + Path::from_str(link_target.as_bytes(), false)?)?;
-			path.reduce()?;
-			drop(file_guard);
-			file = get_file(path, flags, mode, uid, gid)?;
-		} else {
-			unreachable!();
-		}
-
-		// If the maximum number of resolutions have been reached, stop
-		resolve_count += 1;
-		if resolve_count > limits::SYMLOOP_MAX {
-			return Err(errno::ELOOP);
-		}
-	}
-
-	Ok(file)
-}
-
 /// Performs the open system call.
 pub fn open_(pathname: *const u8, flags: i32, mode: file::Mode) -> Result<i32, Errno> {
 	let mutex = Process::get_current().unwrap();
@@ -113,6 +66,7 @@ pub fn open_(pathname: *const u8, flags: i32, mode: file::Mode) -> Result<i32, E
 	// Getting the path string
 	let path_str = super::util::get_str(proc, pathname)?;
 
+    // TODO Use effective IDs instead?
 	let mode = mode & !proc.get_umask();
 	let uid = proc.get_uid();
 	let gid = proc.get_gid();
@@ -120,7 +74,8 @@ pub fn open_(pathname: *const u8, flags: i32, mode: file::Mode) -> Result<i32, E
 	// Getting the file
 	let mut file = get_file(get_file_absolute_path(&proc, path_str)?, flags, mode, uid, gid)?;
 	if flags & file_descriptor::O_NOFOLLOW == 0 {
-		file = resolve_links(file, flags, mode, uid, gid)?;
+		let path = file::resolve_links(file)?;
+		file = get_file(path, flags, mode, uid, gid)?;
 	}
 
 	// If O_DIRECTORY is set and the file is not a directory, return an error

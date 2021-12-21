@@ -568,7 +568,7 @@ impl Filesystem for Ext2Fs {
 
 	fn is_readonly(&self) -> bool {
 		// TODO Check that the driver supports write-required features
-		todo!();
+		false
 	}
 
 	fn must_cache(&self) -> bool {

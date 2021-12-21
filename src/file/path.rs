@@ -176,15 +176,20 @@ impl Path {
 
 	/// Concats the current path with another path `other` to create a new path. The path is not
 	/// automaticaly reduced.
+	/// If the `other` path is absolute, the resulting path exactly equals `other`.
 	pub fn concat(&self, other: &Self) -> Result<Self, Errno> {
-		let mut self_parts = self.parts.failable_clone()?;
-		let mut other_parts = other.parts.failable_clone()?;
-		self_parts.append(&mut other_parts)?;
+	    if other.is_absolute() {
+	        other.failable_clone()
+	    } else {
+		    let mut self_parts = self.parts.failable_clone()?;
+		    let mut other_parts = other.parts.failable_clone()?;
+		    self_parts.append(&mut other_parts)?;
 
-		Ok(Self {
-			absolute: self.absolute,
-			parts: self_parts,
-		})
+		    Ok(Self {
+			    absolute: self.absolute,
+			    parts: self_parts,
+		    })
+	    }
 	}
 }
 

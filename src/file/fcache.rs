@@ -95,6 +95,10 @@ impl FCache {
         let io = io_guard.get_mut();
 
 		let fs = mountpoint.get_filesystem();
+		if fs.is_readonly() {
+			return Err(errno::EROFS);
+		}
+
 		let parent_inode = fs.get_inode(io, inner_path)?;
 		let file = fs.add_file(io, parent_inode, file)?;
 
@@ -126,9 +130,14 @@ impl FCache {
 			// Getting the path from the start of the fileststem to the parent directory
 			let parent_inner_path = path.range(mountpoint_path_len..(path_len - 1))?;
 
+			let fs = mountpoint.get_filesystem();
+			if fs.is_readonly() {
+			    return Err(errno::EROFS);
+			}
+
 			// Getting the parent inode
-			let parent_inode = mountpoint.get_filesystem().get_inode(io, parent_inner_path)?;
-			mountpoint.get_filesystem().remove_file(io, parent_inode, entry_name)?;
+			let parent_inode = fs.get_inode(io, parent_inner_path)?;
+			fs.remove_file(io, parent_inode, entry_name)?;
 		}
 		Ok(())
 	}
@@ -155,22 +164,24 @@ impl FCache {
 		// Getting the path from the start of the fileststem to the file
 		let inner_path = path.range_from(mountpoint.get_path().get_elements_count()..)?;
 
+		let fs = mountpoint.get_filesystem();
+
 		let file = {
 			let (entry_name, inode) = if inner_path.is_empty() {
 				// Getting the root's inode
-				let inode = mountpoint.get_filesystem().get_inode(io, Path::root())?;
+				let inode = fs.get_inode(io, Path::root())?;
 
 				(String::new(), inode)
 			} else {
 				let entry_name = inner_path[inner_path.get_elements_count() - 1].failable_clone()?;
 				// Getting the file's inode
-				let inode = mountpoint.get_filesystem().get_inode(io, inner_path)?;
+				let inode = fs.get_inode(io, inner_path)?;
 
 				(entry_name, inode)
 			};
 
 			// Loading the file
-			mountpoint.get_filesystem().load_file(io, inode, entry_name)
+			fs.load_file(io, inode, entry_name)
 		}?;
 		SharedPtr::new(file)
 	}

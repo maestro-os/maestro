@@ -18,6 +18,7 @@ use crate::errno::Errno;
 use crate::errno;
 use crate::file::fcache::FCache;
 use crate::file::mountpoint::MountPoint;
+use crate::limits;
 use crate::time::Timestamp;
 use crate::time;
 use crate::util::FailableClone;
@@ -83,8 +84,6 @@ pub const S_ISUID: Mode = 0o4000;
 pub const S_ISGID: Mode = 0o2000;
 /// Sticky bit.
 pub const S_ISVTX: Mode = 0o1000;
-
-// TODO Implement EROFS
 
 /// Enumeration representing the different file types.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -275,7 +274,7 @@ impl File {
 		self.parent.as_ref()?.get_mut()
 	}
 
-	// FIXME: Potential deadlock when locking parent
+	// FIXME: Potential deadlock when locking parent?
 	/// Returns the absolute path of the file.
 	pub fn get_path(&self) -> Result<Path, Errno> {
 		let name = self.get_name().failable_clone()?;
@@ -600,6 +599,63 @@ impl IO for File {
 impl Drop for File {
 	fn drop(&mut self) {
 		self.sync();
+	}
+}
+
+/// Resolves symbolic links and returns the final path. If too many links are to be resolved, the
+/// function returns an error.
+/// `file` is the starting file. If not a link, the function returns the path to this file.
+/// If the file pointed by the link(s) doesn't exist, the function returns the path where the file
+/// should be located.
+pub fn resolve_links(file: SharedPtr<File>) -> Result<Path, Errno> {
+	let mut resolve_count = 0;
+	let mut file = file;
+
+	// Resolve links until the current file is not a link
+	while resolve_count <= limits::SYMLOOP_MAX {
+		let file_guard = file.lock(true);
+		let f = file_guard.get();
+
+		// Get the path of the parent directory of the current file
+		let mut parent_path = f.get_path()?;
+		parent_path.pop();
+
+		// If the file is a link, resolve it. Else, break the loop
+		if let FileContent::Link(link_target) = f.get_file_content() {
+		    // Resolving the link
+			let mut path = (parent_path + Path::from_str(link_target.as_bytes(), false)?)?;
+			path.reduce()?;
+			drop(file_guard);
+
+            // Getting the file from path
+	        let mutex = fcache::get();
+	        let mut guard = mutex.lock(true);
+	        let files_cache = guard.get_mut().as_mut().unwrap();
+
+			match files_cache.get_file_from_path(&path) {
+			    Ok(next_file) => file = next_file,
+			    Err(e) => return {
+                    if e == errno::ENOENT {
+                        Ok(path)
+			        } else {
+			            Err(e)
+			        }
+			    },
+			}
+		} else {
+			break;
+		}
+
+		resolve_count += 1;
+	}
+
+	if resolve_count <= limits::SYMLOOP_MAX {
+		let file_guard = file.lock(true);
+		let f = file_guard.get();
+
+	    f.get_path()
+	} else {
+		Err(errno::ELOOP)
 	}
 }
 
