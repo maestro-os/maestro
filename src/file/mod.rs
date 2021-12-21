@@ -25,9 +25,7 @@ use crate::util::FailableClone;
 use crate::util::IO;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
-use crate::util::lock::mutex::Mutex;
 use crate::util::ptr::SharedPtr;
-use crate::util::ptr::WeakPtr;
 use path::Path;
 
 /// Type representing a user ID.
@@ -125,7 +123,7 @@ impl FileType {
 /// Structure representing the location of a file on a disk.
 pub struct FileLocation {
 	/// The path of the mountpoint.
-	mountpoint_path: Path,
+	mountpoint_path: Path, // TODO Replace by an allocated ID to save memory
 
 	/// The disk's inode.
 	inode: INode,
@@ -206,8 +204,8 @@ pub struct File {
 	/// The name of the file.
 	name: String,
 
-	/// Pointer to the parent file.
-	parent: Option<WeakPtr<File>>,
+	/// The path of the file's parent.
+	parent_path: Path,
 
 	/// The size of the file in bytes.
 	size: u64,
@@ -241,12 +239,12 @@ impl File {
 	/// `gid` is the id of the owner group.
 	/// `mode` is the permission of the file.
 	pub fn new(name: String, content: FileContent, uid: Uid, gid: Gid, mode: Mode)
-		-> Result<Self, Errno> {
+	    -> Result<Self, Errno> {
 		let timestamp = time::get();
 
 		Ok(Self {
 			name,
-			parent: None,
+			parent_path: Path::root(),
 
 			size: 0,
 
@@ -269,30 +267,23 @@ impl File {
 		&self.name
 	}
 
-	/// Returns a reference to the parent file.
-	pub fn get_parent(&self) -> Option<&mut Mutex<File>> {
-		self.parent.as_ref()?.get_mut()
+	/// Returns the absolute path of the file's parent.
+	pub fn get_parent_path(&self) -> &Path {
+		&self.parent_path
 	}
 
-	// FIXME: Potential deadlock when locking parent?
-	/// Returns the absolute path of the file.
+    /// Returns the absolute path of the file.
 	pub fn get_path(&self) -> Result<Path, Errno> {
-		let name = self.get_name().failable_clone()?;
+	    let mut parent_path = self.parent_path.failable_clone()?;
+	    parent_path.push(self.name.failable_clone()?)?;
 
-		if let Some(parent) = self.get_parent() {
-			let mut path = parent.lock(true).get().get_path()?;
-			path.push(name)?;
-			Ok(path)
-		} else {
-			let mut path = Path::root();
-			path.push(name)?;
-			Ok(path)
-		}
+	    Ok(parent_path)
 	}
 
-	/// Sets the file's parent.
-	pub fn set_parent(&mut self, parent: Option<WeakPtr<File>>) {
-		self.parent = parent;
+	/// Sets the file's parent path.
+	/// If the path isn't absolute, the behaviour is undefined.
+	pub fn set_parent_path(&mut self, parent_path: Path) {
+		self.parent_path = parent_path;
 	}
 
 	/// Sets the file's size.
@@ -617,13 +608,13 @@ pub fn resolve_links(file: SharedPtr<File>) -> Result<Path, Errno> {
 		let f = file_guard.get();
 
 		// Get the path of the parent directory of the current file
-		let mut parent_path = f.get_path()?;
-		parent_path.pop();
+		let parent_path = f.get_parent_path();
 
 		// If the file is a link, resolve it. Else, break the loop
 		if let FileContent::Link(link_target) = f.get_file_content() {
 		    // Resolving the link
-			let mut path = (parent_path + Path::from_str(link_target.as_bytes(), false)?)?;
+		    let link_path = Path::from_str(link_target.as_bytes(), false)?;
+			let mut path = (parent_path.failable_clone()? + link_path)?;
 			path.reduce()?;
 			drop(file_guard);
 

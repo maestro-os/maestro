@@ -30,7 +30,7 @@ pub struct Path {
 
 impl Path {
 	/// Creates a new instance to the root directory.
-	pub fn root() -> Self {
+	pub const fn root() -> Self {
 		Self {
 			absolute: true,
 			parts: Vec::new(),

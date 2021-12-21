@@ -140,8 +140,8 @@ impl Device {
 			p.push(path[i].failable_clone()?)?;
 
 			if fcache.get_file_from_path(&p).is_err() {
-				let dir = File::new(p[i].failable_clone()?, FileContent::Directory(Vec::new()), 0, 0,
-					0o755)?;
+				let dir = File::new(p[i].failable_clone()?, FileContent::Directory(Vec::new()), 0,
+				    0, 0o755)?;
 				fcache.create_file(&p.range_to(..i)?, dir)?;
 
 				created_count += 1;
