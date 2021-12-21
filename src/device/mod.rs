@@ -166,8 +166,15 @@ impl Device {
 	/// function does nothing.
 	pub fn create_file(&mut self) -> Result<(), Errno> {
 		let file_content = match self.type_ {
-			DeviceType::Block => FileContent::BlockDevice(self.major, self.minor),
-			DeviceType::Char => FileContent::CharDevice(self.major, self.minor),
+			DeviceType::Block => FileContent::BlockDevice {
+			    major: self.major,
+			    minor: self.minor,
+			},
+
+			DeviceType::Char => FileContent::CharDevice {
+			    major: self.major,
+			    minor: self.minor,
+			},
 		};
 
 		let path_len = self.path.get_elements_count();

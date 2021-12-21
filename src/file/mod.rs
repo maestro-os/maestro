@@ -34,9 +34,24 @@ pub type Uid = u16;
 /// Type representing a group ID.
 pub type Gid = u16;
 /// Type representing a file mode.
-pub type Mode = u16;
+pub type Mode = u32;
 /// Type representing an inode ID.
 pub type INode = u32;
+
+/// File type: socket
+pub const S_IFSOCK: Mode = 0o140000;
+/// File type: symbolic link
+pub const S_IFLNK: Mode = 0o120000;
+/// File type: regular file
+pub const S_IFREG: Mode = 0o100000;
+/// File type: block device
+pub const S_IFBLK: Mode = 0o060000;
+/// File type: directory
+pub const S_IFDIR: Mode = 0o040000;
+/// File type: character device
+pub const S_IFCHR: Mode = 0o020000;
+/// File type: FIFO
+pub const S_IFIFO: Mode = 0o010000;
 
 /// User: Read, Write and Execute.
 pub const S_IRWXU: Mode = 0o0700;
@@ -96,6 +111,24 @@ pub enum FileType {
 	CharDevice,
 }
 
+impl FileType {
+    /// Returns the type corresponding to the given mode `mode`.
+    /// If the type doesn't exist, the function returns None.
+    pub fn from_mode(mode: Mode) -> Option<Self> {
+	    match mode & 0o770000 {
+            S_IFSOCK => Some(Self::Socket),
+            S_IFLNK => Some(Self::Link),
+            S_IFREG | 0 => Some(Self::Regular),
+            S_IFBLK => Some(Self::BlockDevice),
+            S_IFDIR => Some(Self::Directory),
+            S_IFCHR => Some(Self::CharDevice),
+            S_IFIFO => Some(Self::Fifo),
+
+	        _ => None,
+	    }
+    }
+}
+
 /// Structure representing the location of a file on a disk.
 pub struct FileLocation {
 	/// The path of the mountpoint.
@@ -146,10 +179,18 @@ pub enum FileContent {
 	Fifo(u32),
 	/// The file is a socket. The data is a socket ID.
 	Socket(u32),
-	/// The file is a block device. The data is a major and minor number.
-	BlockDevice(u32, u32),
-	/// The file is a char device. The data is a major and minor number.
-	CharDevice(u32, u32),
+
+	/// The file is a block device.
+	BlockDevice {
+	    major: u32,
+	    minor: u32,
+	},
+
+	/// The file is a char device.
+	CharDevice {
+	    major: u32,
+	    minor: u32,
+	},
 }
 
 impl FileContent {
@@ -161,8 +202,8 @@ impl FileContent {
 			Self::Link(_) => FileType::Link,
 			Self::Fifo(_) => FileType::Fifo,
 			Self::Socket(_) => FileType::Socket,
-			Self::BlockDevice(_, _) => FileType::BlockDevice,
-			Self::CharDevice(_, _) => FileType::CharDevice,
+			Self::BlockDevice { .. } => FileType::BlockDevice,
+			Self::CharDevice { .. } => FileType::CharDevice,
 		}
 	}
 }
@@ -418,7 +459,10 @@ impl File {
 
 	/// Performs an ioctl operation on the file.
 	pub fn ioctl(&mut self, request: u32, argp: *const c_void) -> Result<u32, Errno> {
-		if let FileContent::CharDevice(major, minor) = self.content {
+		if let FileContent::CharDevice {
+		    major,
+		    minor,
+		} = self.content {
 			let dev = device::get_device(DeviceType::Char, major, minor).ok_or(errno::ENODEV)?;
 			let mut guard = dev.lock(true);
 			guard.get_mut().get_handle().ioctl(request, argp)
@@ -480,12 +524,13 @@ impl IO for File {
 				todo!();
 			},
 
-			FileContent::BlockDevice(_, _) | FileContent::CharDevice(_, _) => {
+			FileContent::BlockDevice { .. } | FileContent::CharDevice { .. } => {
 				let dev = match self.content {
-					FileContent::BlockDevice(major, minor) => {
+					FileContent::BlockDevice { major, minor } => {
 						device::get_device(DeviceType::Block, major, minor)
 					},
-					FileContent::CharDevice(major, minor) => {
+
+					FileContent::CharDevice { major, minor } => {
 						device::get_device(DeviceType::Char, major, minor)
 					},
 
@@ -538,12 +583,13 @@ impl IO for File {
 				todo!();
 			},
 
-			FileContent::BlockDevice(_, _) | FileContent::CharDevice(_, _) => {
+			FileContent::BlockDevice { .. } | FileContent::CharDevice { .. } => {
 				let dev = match self.content {
-					FileContent::BlockDevice(major, minor) => {
+					FileContent::BlockDevice { major, minor } => {
 						device::get_device(DeviceType::Block, major, minor)
 					},
-					FileContent::CharDevice(major, minor) => {
+
+					FileContent::CharDevice { major, minor } => {
 						device::get_device(DeviceType::Char, major, minor)
 					},
 
@@ -584,6 +630,7 @@ pub struct FCache {
 	accesses_pool: Vec<AccessCounter>,
 }
 
+// TODO Add symbolic links resolution
 impl FCache {
 	/// Creates a new instance.
 	/// `root_device` is the device for the root of the VFS.

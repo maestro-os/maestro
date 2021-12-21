@@ -35,7 +35,7 @@ fn get_file_absolute_path(process: &Process, path_str: &[u8]) -> Result<Path, Er
 /// returns it. If the flag is not set, the function returns an error with the appropriate errno.
 /// If the file is to be created, the function uses `mode` to set its permissions and `uid and
 /// `gid` to set the user ID and group ID.
-fn get_file(path: Path, flags: i32, mode: u16, uid: u16, gid: u16)
+fn get_file(path: Path, flags: i32, mode: file::Mode, uid: u16, gid: u16)
 	-> Result<SharedPtr<File>, Errno> {
 	let mutex = file::get_files_cache();
 	let mut guard = mutex.lock(true);
@@ -64,7 +64,7 @@ fn get_file(path: Path, flags: i32, mode: u16, uid: u16, gid: u16)
 /// `mode` is used in case the file has to be created and represents its permissions to be set.
 /// `uid` is used in case the file has to be created and represents its UID.
 /// `gid` is used in case the file has to be created and represents its GID.
-fn resolve_links(file: SharedPtr<File>, flags: i32, mode: u16, uid: u16, gid: u16)
+fn resolve_links(file: SharedPtr<File>, flags: i32, mode: file::Mode, uid: u16, gid: u16)
 	-> Result<SharedPtr<File>, Errno> {
 	let mut resolve_count = 0;
 	let mut file = file;
@@ -104,7 +104,7 @@ fn resolve_links(file: SharedPtr<File>, flags: i32, mode: u16, uid: u16, gid: u1
 }
 
 /// Performs the open system call.
-pub fn open_(pathname: *const u8, flags: i32, mode: u16) -> Result<i32, Errno> {
+pub fn open_(pathname: *const u8, flags: i32, mode: file::Mode) -> Result<i32, Errno> {
 	let mutex = Process::get_current().unwrap();
 	let mut guard = mutex.lock(false);
 	let proc = guard.get_mut();
@@ -137,7 +137,7 @@ pub fn open_(pathname: *const u8, flags: i32, mode: u16) -> Result<i32, Errno> {
 pub fn open(regs: &Regs) -> Result<i32, Errno> {
 	let pathname = regs.ebx as *const u8;
 	let flags = regs.ecx as i32;
-	let mode = regs.edx as u16;
+	let mode = regs.edx as file::Mode;
 
 	open_(pathname, flags, mode)
 }

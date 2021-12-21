@@ -191,7 +191,7 @@ impl Ext2INode {
 			FileType::Socket => INODE_TYPE_SOCKET,
 		};
 
-		file.get_mode() | t
+		file.get_mode() as u16 | t
 	}
 
 	/// Reads the `i`th inode from the given device. The index `i` starts at `1`.
@@ -225,7 +225,7 @@ impl Ext2INode {
 	/// Returns the permissions of the file.
 	#[inline]
 	pub fn get_permissions(&self) -> file::Mode {
-		self.mode & 0x0fff
+		self.mode as file::Mode & 0x0fff
 	}
 
 	/// Returns the size of the file.

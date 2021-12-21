@@ -56,7 +56,7 @@ const HLT_INSTRUCTION: u8 = 0xf4;
 const TTY_DEVICE_PATH: &str = "/dev/tty";
 
 /// The default file creation mask.
-const DEFAULT_UMASK: u16 = 0o022;
+const DEFAULT_UMASK: file::Mode = 0o022;
 
 /// The size of the userspace stack of a process in number of pages.
 const USER_STACK_SIZE: usize = 2048;
@@ -115,8 +115,8 @@ pub struct Process {
 	/// The effective ID of the process's group owner.
 	egid: Gid,
 
-	/// File creation mask.
-	umask: u16,
+	/// The process's current umask.
+	umask: file::Mode,
 
 	/// The current state of the process.
 	state: State,
@@ -524,13 +524,13 @@ impl Process {
 
 	/// Returns the file creation mask.
 	#[inline(always)]
-	pub fn get_umask(&self) -> u16 {
+	pub fn get_umask(&self) -> file::Mode {
 		self.umask
 	}
 
 	/// Sets the file creation mask.
 	#[inline(always)]
-	pub fn set_umask(&mut self, umask: u16) {
+	pub fn set_umask(&mut self, umask: file::Mode) {
 		self.umask = umask;
 	}
 

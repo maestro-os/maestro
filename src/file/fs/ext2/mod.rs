@@ -654,11 +654,19 @@ impl Filesystem for Ext2Fs {
 			},
 			FileType::BlockDevice => {
 				let (major, minor) = inode_.get_device();
-				FileContent::BlockDevice(major as u32, minor as u32)
+
+				FileContent::BlockDevice {
+				    major: major as _,
+				    minor: minor as _,
+				}
 			},
 			FileType::CharDevice => {
 				let (major, minor) = inode_.get_device();
-				FileContent::CharDevice(major as u32, minor as u32)
+
+				FileContent::CharDevice {
+				    major: major as _,
+				    minor: minor as _,
+				}
 			},
 		};
 
@@ -673,6 +681,7 @@ impl Filesystem for Ext2Fs {
 		Ok(file)
 	}
 
+    // TODO Check if the file exists. If it does, return EEXIST
 	fn add_file(&mut self, io: &mut dyn IO, parent_inode: INode, mut file: File)
 		-> Result<File, Errno> {
 		debug_assert!(parent_inode >= 1);
@@ -708,7 +717,9 @@ impl Filesystem for Ext2Fs {
 				// TODO Write symlink target
 				todo!();
 			},
-			FileContent::BlockDevice(major, minor) | FileContent::CharDevice(major, minor) => {
+
+			FileContent::BlockDevice { major, minor }
+			    | FileContent::CharDevice { major, minor } => {
 				if *major > (u8::MAX as u32) || *minor > (u8::MAX as u32) {
 					return Err(errno::ENODEV);
 				}

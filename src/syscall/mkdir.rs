@@ -13,7 +13,7 @@ use crate::util::container::vec::Vec;
 /// The implementation of the `mkdir` syscall.
 pub fn mkdir(regs: &Regs) -> Result<i32, Errno> {
 	let pathname = regs.ebx as *const u8;
-	let mode = regs.ebx as u16;
+	let mode = regs.ebx as file::Mode;
 
 	let mutex = Process::get_current().unwrap();
 	let mut guard = mutex.lock(false);
