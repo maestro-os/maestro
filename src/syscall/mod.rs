@@ -39,7 +39,6 @@ mod pipe;
 mod r#break;
 mod read;
 mod reboot;
-mod sbrk;
 mod set_thread_area;
 mod set_tid_address;
 mod setgid;
@@ -64,7 +63,6 @@ use crate::process::signal::Signal;
 use crate::process;
 
 //use modify_ldt::modify_ldt;
-//use sbrk::sbrk;
 //use wait::wait;
 use _exit::_exit;
 use brk::brk;
