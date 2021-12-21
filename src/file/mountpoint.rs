@@ -3,10 +3,10 @@
 use crate::device::Device;
 use crate::errno::Errno;
 use crate::file::File;
+use crate::file::fcache;
 use crate::file::fs::Filesystem;
 use crate::file::fs::FilesystemType;
 use crate::file::fs;
-use crate::file;
 use crate::util::FailableClone;
 use crate::util::IO;
 use crate::util::boxed::Box;
@@ -57,7 +57,7 @@ impl MountSource {
 
         let path = Path::from_str(string, true)?;
         let file = {
-            let mutex = file::get_files_cache();
+            let mutex = fcache::get();
             let mut guard = mutex.lock(true);
             let fcache = guard.get_mut().as_mut().unwrap();
 

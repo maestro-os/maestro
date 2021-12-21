@@ -3,8 +3,8 @@
 use crate::errno::Errno;
 use crate::errno;
 use crate::file::FileType;
+use crate::file::fcache;
 use crate::file::path::Path;
-use crate::file;
 use crate::process::Process;
 use crate::process::Regs;
 
@@ -19,7 +19,7 @@ pub fn chdir(regs: &Regs) -> Result<i32, Errno> {
 	let new_cwd = Path::from_str(super::util::get_str(proc, path)?, true)?;
 
 	{
-		let fcache_mutex = file::get_files_cache();
+		let fcache_mutex = fcache::get();
 		let mut fcache_guard = fcache_mutex.lock(true);
 		let fcache = fcache_guard.get_mut();
 

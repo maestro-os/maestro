@@ -4,12 +4,12 @@ use core::ffi::c_void;
 use crate::errno::Errno;
 use crate::errno;
 use crate::file::FileType;
+use crate::file::fcache;
 use crate::file::fs;
 use crate::file::mountpoint::MountPoint;
 use crate::file::mountpoint::MountSource;
 use crate::file::mountpoint;
 use crate::file::path::Path;
-use crate::file;
 use crate::process::Process;
 use crate::process::Regs;
 
@@ -42,7 +42,7 @@ pub fn mount(regs: &Regs) -> Result<i32, Errno> {
     // Getting the target file
 	let target_path = Path::from_str(target_slice, true)?;
 	let target_mutex = {
-		let mut guard = file::get_files_cache().lock(false);
+		let mut guard = fcache::get().lock(false);
 		let fcache = guard.get_mut().as_mut().unwrap();
 
 		fcache.get_file_from_path(&target_path)?

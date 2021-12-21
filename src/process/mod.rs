@@ -25,6 +25,7 @@ use crate::event::{InterruptResult, InterruptResultAction};
 use crate::event;
 use crate::file::Gid;
 use crate::file::Uid;
+use crate::file::fcache;
 use crate::file::file_descriptor::FDTarget;
 use crate::file::file_descriptor::FileDescriptor;
 use crate::file::file_descriptor;
@@ -387,7 +388,7 @@ impl Process {
 
 		// Creating STDIN, STDOUT and STDERR
 		{
-			let mutex = file::get_files_cache();
+			let mutex = fcache::get();
 			let mut guard = mutex.lock(true);
 			let files_cache = guard.get_mut();
 

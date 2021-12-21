@@ -17,12 +17,12 @@ pub mod storage;
 use core::ffi::c_void;
 use crate::device::manager::DeviceManager;
 use crate::errno::Errno;
-use crate::file::FCache;
 use crate::file::File;
 use crate::file::FileContent;
 use crate::file::Mode;
+use crate::file::fcache::FCache;
+use crate::file::fcache;
 use crate::file::path::Path;
-use crate::file;
 use crate::util::FailableClone;
 use crate::util::IO;
 use crate::util::boxed::Box;
@@ -181,9 +181,10 @@ impl Device {
 		let filename = self.path[path_len - 1].failable_clone()?;
 
 		// Locking the files' cache
-		let mutex = file::get_files_cache();
+		let mutex = fcache::get();
 		let mut guard = mutex.lock(true);
 		let files_cache = guard.get_mut();
+
 		// Tells whether the file already exists
 		let file_exists = files_cache.as_mut().unwrap().get_file_from_path(&self.path).is_ok();
 
@@ -205,7 +206,7 @@ impl Device {
 
 	/// If exists, removes the device file. iF the file doesn't exist, the function does nothing.
 	pub fn remove_file(&mut self) {
-		let mutex = file::get_files_cache();
+		let mutex = fcache::get();
 		let mut guard = mutex.lock(true);
 		let files_cache = guard.get_mut();
 

@@ -3,8 +3,8 @@
 use crate::errno::Errno;
 use crate::errno;
 use crate::file::File;
+use crate::file::fcache;
 use crate::file::path::Path;
-use crate::file;
 use crate::idt;
 use crate::process::Process;
 use crate::process::Regs;
@@ -47,7 +47,7 @@ pub fn execve(regs: &Regs) -> Result<i32, Errno> {
 		(proc.get_euid(), proc.get_egid(), path)
 	};
 
-	let mutex = file::get_files_cache();
+	let mutex = fcache::get();
 	let mut guard = mutex.lock(true);
 	let files_cache = guard.get_mut();
 

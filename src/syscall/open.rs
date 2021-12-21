@@ -5,6 +5,7 @@ use crate::errno;
 use crate::file::File;
 use crate::file::FileContent;
 use crate::file::FileType;
+use crate::file::fcache;
 use crate::file::file_descriptor::FDTarget;
 use crate::file::file_descriptor;
 use crate::file::path::Path;
@@ -37,7 +38,7 @@ fn get_file_absolute_path(process: &Process, path_str: &[u8]) -> Result<Path, Er
 /// `gid` to set the user ID and group ID.
 fn get_file(path: Path, flags: i32, mode: file::Mode, uid: u16, gid: u16)
 	-> Result<SharedPtr<File>, Errno> {
-	let mutex = file::get_files_cache();
+	let mutex = fcache::get();
 	let mut guard = mutex.lock(true);
 	let files_cache = guard.get_mut();
 

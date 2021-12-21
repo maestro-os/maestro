@@ -3,6 +3,7 @@
 use crate::errno::Errno;
 use crate::file::File;
 use crate::file::FileContent;
+use crate::file::fcache;
 use crate::file::path::Path;
 use crate::file;
 use crate::process::Process;
@@ -36,9 +37,10 @@ pub fn mkdir(regs: &Regs) -> Result<i32, Errno> {
 		// Creating the directory
 		let file = File::new(name, FileContent::Directory(Vec::new()), uid, gid, mode)?;
 		{
-			let mutex = file::get_files_cache();
+			let mutex = fcache::get();
 			let mut guard = mutex.lock(true);
 			let files_cache = guard.get_mut();
+
 			files_cache.as_mut().unwrap().create_file(&parent_path, file)?;
 		}
 	}
