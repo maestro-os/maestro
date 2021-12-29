@@ -172,8 +172,8 @@ failable_clone_impl!(*const c_void);
 
 /// Trait representing a data I/O.
 pub trait IO {
-    /// Returns the size of the underlying data.
-    fn get_size(&self) -> u64;
+	/// Returns the size of the underlying data.
+	fn get_size(&self) -> u64;
 
 	/// Reads data from the I/O and writes it into `buff`.
 	/// `offset` is the offset in the I/O to the beginning of the data to be read.

@@ -9,7 +9,7 @@ use crate::process::Regs;
 
 /// The implementation of the `unlink` syscall.
 pub fn unlink(regs: &Regs) -> Result<i32, Errno> {
-    let pathname = regs.ebx as *const u8;
+	let pathname = regs.ebx as *const u8;
 
 	let path = {
 		// Getting the process
@@ -20,9 +20,9 @@ pub fn unlink(regs: &Regs) -> Result<i32, Errno> {
 		Path::from_str(super::util::get_str(proc, pathname)?, true)?
 	};
 
-    // TODO If the file is busy, remove only when the last fd to it is closed
+	// TODO If the file is busy, remove only when the last fd to it is closed
 
-    // Removing the file
+	// Removing the file
 	{
 		let mutex = fcache::get();
 		let mut guard = mutex.lock(true);

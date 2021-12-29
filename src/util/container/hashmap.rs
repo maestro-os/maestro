@@ -111,8 +111,8 @@ impl<K: Eq + Hash, V> Bucket<K, V> {
 
 /// Structure representing a hashmap.
 pub struct HashMap<K: Eq + Hash, V> {
-    /// The number of buckets in the hashmap.
-    buckets_count: usize,
+	/// The number of buckets in the hashmap.
+	buckets_count: usize,
 
 	/// The vector containing buckets.
 	buckets: Vec<Bucket<K, V>>,
@@ -122,16 +122,16 @@ impl<K: Eq + Hash, V> HashMap::<K, V> {
 	/// Creates a new instance with the default number of buckets.
 	pub const fn new() -> Self {
 		Self {
-		    buckets_count: DEFAULT_BUCKETS_COUNT,
+			buckets_count: DEFAULT_BUCKETS_COUNT,
 
 			buckets: Vec::new(),
 		}
 	}
 
-    /// Creates a new instance with the given number of buckets.
+	/// Creates a new instance with the given number of buckets.
 	pub const fn with_buckets(buckets_count: usize) -> Self {
 		Self {
-		    buckets_count,
+			buckets_count,
 
 			buckets: Vec::new(),
 		}
@@ -155,7 +155,7 @@ impl<K: Eq + Hash, V> HashMap::<K, V> {
 
 	/// Returns the number of buckets.
 	pub fn get_buckets_count(&self) -> usize {
-	    self.buckets_count
+		self.buckets_count
 	}
 
 	/// Returns the bucket index for the key `k`.
@@ -171,9 +171,9 @@ impl<K: Eq + Hash, V> HashMap::<K, V> {
 		let index = self.get_bucket_index(&k);
 
 		if index < self.buckets.len() {
-		    self.buckets[index].get(k)
+			self.buckets[index].get(k)
 		} else {
-		    None
+			None
 		}
 	}
 
@@ -183,9 +183,9 @@ impl<K: Eq + Hash, V> HashMap::<K, V> {
 		let index = self.get_bucket_index(&k);
 
 		if index < self.buckets.len() {
-		    self.buckets[index].get_mut(k)
+			self.buckets[index].get_mut(k)
 		} else {
-		    None
+			None
 		}
 	}
 
@@ -199,11 +199,11 @@ impl<K: Eq + Hash, V> HashMap::<K, V> {
 	pub fn insert(&mut self, k: K, v: V) -> Result<Option<V>, Errno> {
 		let index = self.get_bucket_index(&k);
 		if index >= self.buckets.len() {
-		    // Creating buckets
-		    let begin = self.buckets.len();
-		    for i in begin..=index {
-		        self.buckets.insert(i, Bucket::new())?;
-		    }
+			// Creating buckets
+			let begin = self.buckets.len();
+			for i in begin..=index {
+				self.buckets.insert(i, Bucket::new())?;
+			}
 		}
 
 		self.buckets[index].insert(k, v)
@@ -215,9 +215,9 @@ impl<K: Eq + Hash, V> HashMap::<K, V> {
 		let index = self.get_bucket_index(&k);
 
 		if index < self.buckets.len() {
-		    self.buckets[index].remove(&k)
+			self.buckets[index].remove(&k)
 		} else {
-		    None
+			None
 		}
 	}
 
@@ -276,14 +276,14 @@ impl<'a, K: Hash + Eq, V> Iterator for HashMapIterator<'a, K, V> {
 			return None;
 		}
 
-        // If the last element has been reached, getting the next non-empty bucket
+		// If the last element has been reached, getting the next non-empty bucket
 		if self.curr_element >= self.hm.buckets[self.curr_bucket].elements.len() {
 			self.curr_element = 0;
 			self.curr_bucket += 1;
 
 			for i in self.curr_bucket..self.hm.buckets.len() {
 				if !self.hm.buckets[i].elements.is_empty() {
-			        self.curr_bucket += i;
+					self.curr_bucket += i;
 					break;
 				}
 			}
@@ -293,8 +293,8 @@ impl<'a, K: Hash + Eq, V> Iterator for HashMapIterator<'a, K, V> {
 			}
 		}
 
-        let e = &self.hm.buckets[self.curr_bucket].elements[self.curr_element].1;
-        self.curr_element += 1;
+		let e = &self.hm.buckets[self.curr_bucket].elements[self.curr_element].1;
+		self.curr_element += 1;
 		Some(e)
 	}
 

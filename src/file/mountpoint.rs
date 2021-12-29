@@ -44,36 +44,36 @@ const FLAG_SYNCHRONOUS: u32 = 0b100000000000;
 
 /// Enumeration of mount sources.
 pub enum MountSource {
-    /// The mountpoint is mounted from a device.
-    Device(SharedPtr<Device>),
-    /// The mountpoint is mounted from a file.
-    File(SharedPtr<File>),
+	/// The mountpoint is mounted from a device.
+	Device(SharedPtr<Device>),
+	/// The mountpoint is mounted from a file.
+	File(SharedPtr<File>),
 }
 
 impl MountSource {
-    /// Creates a mount source from a dummy string.
-    pub fn from_str(string: &[u8]) -> Result<Self, Errno> {
-        // TODO Handle kernfs
+	/// Creates a mount source from a dummy string.
+	pub fn from_str(string: &[u8]) -> Result<Self, Errno> {
+		// TODO Handle kernfs
 
-        let path = Path::from_str(string, true)?;
-        let file = {
-            let mutex = fcache::get();
-            let mut guard = mutex.lock(true);
-            let fcache = guard.get_mut().as_mut().unwrap();
+		let path = Path::from_str(string, true)?;
+		let file = {
+			let mutex = fcache::get();
+			let mut guard = mutex.lock(true);
+			let fcache = guard.get_mut().as_mut().unwrap();
 
-            fcache.get_file_from_path(&path)?
-        };
+			fcache.get_file_from_path(&path)?
+		};
 
-        Ok(Self::File(file))
-    }
+		Ok(Self::File(file))
+	}
 
-    /// Returns the IO interface for the mount source.
-    pub fn get_io(&self) -> SharedPtr<dyn IO> {
-        match self {
-            Self::Device(dev) => dev.clone() as _,
-            Self::File(file) => file.clone() as _,
-        }
-    }
+	/// Returns the IO interface for the mount source.
+	pub fn get_io(&self) -> SharedPtr<dyn IO> {
+		match self {
+			Self::Device(dev) => dev.clone() as _,
+			Self::File(file) => file.clone() as _,
+		}
+	}
 }
 
 /// Structure representing a mount point.
@@ -98,9 +98,9 @@ impl MountPoint {
 	/// `path` is the path on which the filesystem is to be mounted.
 	pub fn new(source: MountSource, fs_type: Option<SharedPtr<dyn FilesystemType>>, flags: u32,
 		path: Path) -> Result<Self, Errno> {
-        let io_mutex = source.get_io();
-        let mut io_guard = io_mutex.lock(true);
-        let io = io_guard.get_mut();
+		let io_mutex = source.get_io();
+		let mut io_guard = io_mutex.lock(true);
+		let io = io_guard.get_mut();
 
 		let fs_type_ptr = fs_type.or(Some(fs::detect(io)?)).unwrap();
 		let fs_type_guard = fs_type_ptr.lock(true);

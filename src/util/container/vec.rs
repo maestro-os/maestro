@@ -158,7 +158,7 @@ impl<T> Vec<T> {
 		}
 	}
 
-    // FIXME Invalid in case the element is inserted outside of the vector
+	// FIXME Invalid in case the element is inserted outside of the vector
 	/// Inserts an element at position index within the vector, shifting all elements after it to
 	/// the right.
 	pub fn insert(&mut self, index: usize, element: T) -> Result<(), Errno> {
@@ -497,11 +497,11 @@ impl<'a, T> IntoIterator for &'a Vec<T> {
 }
 
 impl<T: Hash> Hash for Vec<T> {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        for i in 0..self.len() {
-            self[i].hash(state);
-        }
-    }
+	fn hash<H: Hasher>(&self, state: &mut H) {
+		for i in 0..self.len() {
+			self[i].hash(state);
+		}
+	}
 }
 
 impl<T> Drop for Vec<T> {

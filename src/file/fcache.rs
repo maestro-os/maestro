@@ -90,9 +90,9 @@ impl FCache {
 		let inner_path = path.range_from(mountpoint.get_path().get_elements_count()..)?;
 
 		// Getting the IO interface
-        let io_mutex = mountpoint.get_source().get_io();
-        let mut io_guard = io_mutex.lock(true);
-        let io = io_guard.get_mut();
+		let io_mutex = mountpoint.get_source().get_io();
+		let mut io_guard = io_mutex.lock(true);
+		let io = io_guard.get_mut();
 
 		let fs = mountpoint.get_filesystem();
 		if fs.is_readonly() {
@@ -119,9 +119,9 @@ impl FCache {
 		let mountpoint = guard.get_mut();
 
 		// Getting the IO interface
-        let io_mutex = mountpoint.get_source().get_io();
-        let mut io_guard = io_mutex.lock(true);
-        let io = io_guard.get_mut();
+		let io_mutex = mountpoint.get_source().get_io();
+		let mut io_guard = io_mutex.lock(true);
+		let io = io_guard.get_mut();
 
 		let path_len = path.get_elements_count();
 		if path_len > 0 {
@@ -132,7 +132,7 @@ impl FCache {
 
 			let fs = mountpoint.get_filesystem();
 			if fs.is_readonly() {
-			    return Err(errno::EROFS);
+				return Err(errno::EROFS);
 			}
 
 			// Getting the parent inode
@@ -157,9 +157,9 @@ impl FCache {
 		let mountpoint = guard.get_mut();
 
 		// Getting the IO interface
-        let io_mutex = mountpoint.get_source().get_io();
-        let mut io_guard = io_mutex.lock(true);
-        let io = io_guard.get_mut();
+		let io_mutex = mountpoint.get_source().get_io();
+		let mut io_guard = io_mutex.lock(true);
+		let io = io_guard.get_mut();
 
 		// Getting the path from the start of the fileststem to the file
 		let inner_path = path.range_from(mountpoint.get_path().get_elements_count()..)?;

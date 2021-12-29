@@ -103,21 +103,21 @@ pub enum FileType {
 }
 
 impl FileType {
-    /// Returns the type corresponding to the given mode `mode`.
-    /// If the type doesn't exist, the function returns None.
-    pub fn from_mode(mode: Mode) -> Option<Self> {
-	    match mode & 0o770000 {
-            S_IFSOCK => Some(Self::Socket),
-            S_IFLNK => Some(Self::Link),
-            S_IFREG | 0 => Some(Self::Regular),
-            S_IFBLK => Some(Self::BlockDevice),
-            S_IFDIR => Some(Self::Directory),
-            S_IFCHR => Some(Self::CharDevice),
-            S_IFIFO => Some(Self::Fifo),
+	/// Returns the type corresponding to the given mode `mode`.
+	/// If the type doesn't exist, the function returns None.
+	pub fn from_mode(mode: Mode) -> Option<Self> {
+		match mode & 0o770000 {
+			S_IFSOCK => Some(Self::Socket),
+			S_IFLNK => Some(Self::Link),
+			S_IFREG | 0 => Some(Self::Regular),
+			S_IFBLK => Some(Self::BlockDevice),
+			S_IFDIR => Some(Self::Directory),
+			S_IFCHR => Some(Self::CharDevice),
+			S_IFIFO => Some(Self::Fifo),
 
-	        _ => None,
-	    }
-    }
+			_ => None,
+		}
+	}
 }
 
 /// Structure representing the location of a file on a disk.
@@ -146,9 +146,9 @@ impl FileLocation {
 		&self.mountpoint_path
 	}
 
-    /// Returns the mountpoint associated with the file's location.
+	/// Returns the mountpoint associated with the file's location.
 	pub fn get_mountpoint(&self) -> Option<SharedPtr<MountPoint>> {
-	    mountpoint::from_path(&self.mountpoint_path)
+		mountpoint::from_path(&self.mountpoint_path)
 	}
 
 	/// Returns the inode number.
@@ -173,14 +173,14 @@ pub enum FileContent {
 
 	/// The file is a block device.
 	BlockDevice {
-	    major: u32,
-	    minor: u32,
+		major: u32,
+		minor: u32,
 	},
 
 	/// The file is a char device.
 	CharDevice {
-	    major: u32,
-	    minor: u32,
+		major: u32,
+		minor: u32,
 	},
 }
 
@@ -239,7 +239,7 @@ impl File {
 	/// `gid` is the id of the owner group.
 	/// `mode` is the permission of the file.
 	pub fn new(name: String, content: FileContent, uid: Uid, gid: Gid, mode: Mode)
-	    -> Result<Self, Errno> {
+		-> Result<Self, Errno> {
 		let timestamp = time::get();
 
 		Ok(Self {
@@ -272,12 +272,12 @@ impl File {
 		&self.parent_path
 	}
 
-    /// Returns the absolute path of the file.
+	/// Returns the absolute path of the file.
 	pub fn get_path(&self) -> Result<Path, Errno> {
-	    let mut parent_path = self.parent_path.failable_clone()?;
-	    parent_path.push(self.name.failable_clone()?)?;
+		let mut parent_path = self.parent_path.failable_clone()?;
+		parent_path.push(self.name.failable_clone()?)?;
 
-	    Ok(parent_path)
+		Ok(parent_path)
 	}
 
 	/// Sets the file's parent path.
@@ -444,8 +444,8 @@ impl File {
 	/// Performs an ioctl operation on the file.
 	pub fn ioctl(&mut self, request: u32, argp: *const c_void) -> Result<u32, Errno> {
 		if let FileContent::CharDevice {
-		    major,
-		    minor,
+			major,
+			minor,
 		} = self.content {
 			let dev = device::get_device(DeviceType::Char, major, minor).ok_or(errno::ENODEV)?;
 			let mut guard = dev.lock(true);
@@ -474,15 +474,15 @@ impl IO for File {
 	fn read(&self, off: u64, buff: &mut [u8]) -> Result<usize, Errno> {
 		match &self.content {
 			FileContent::Regular => {
-			    let location = self.location.as_ref().ok_or(errno::EIO)?;
+				let location = self.location.as_ref().ok_or(errno::EIO)?;
 
 				let mountpoint_mutex = location.get_mountpoint().ok_or(errno::EIO)?;
 				let mut mountpoint_guard = mountpoint_mutex.lock(true);
 				let mountpoint = mountpoint_guard.get_mut();
 
-                let io_mutex = mountpoint.get_source().get_io().clone();
-                let mut io_guard = io_mutex.lock(true);
-                let io = io_guard.get_mut();
+				let io_mutex = mountpoint.get_source().get_io().clone();
+				let mut io_guard = io_mutex.lock(true);
+				let io = io_guard.get_mut();
 
 				let filesystem = mountpoint.get_filesystem();
 				filesystem.read_node(io, location.get_inode(), off, buff)
@@ -530,15 +530,15 @@ impl IO for File {
 	fn write(&mut self, off: u64, buff: &[u8]) -> Result<usize, Errno> {
 		match &self.content {
 			FileContent::Regular => {
-			    let location = self.location.as_ref().ok_or(errno::EIO)?;
+				let location = self.location.as_ref().ok_or(errno::EIO)?;
 
 				let mountpoint_mutex = location.get_mountpoint().ok_or(errno::EIO)?;
 				let mut mountpoint_guard = mountpoint_mutex.lock(true);
 				let mountpoint = mountpoint_guard.get_mut();
 
-                let io_mutex = mountpoint.get_source().get_io();
-                let mut io_guard = io_mutex.lock(true);
-                let io = io_guard.get_mut();
+				let io_mutex = mountpoint.get_source().get_io();
+				let mut io_guard = io_mutex.lock(true);
+				let io = io_guard.get_mut();
 
 				let filesystem = mountpoint.get_filesystem();
 				filesystem.write_node(io, location.get_inode(), off, buff)?;
@@ -612,26 +612,26 @@ pub fn resolve_links(file: SharedPtr<File>) -> Result<Path, Errno> {
 
 		// If the file is a link, resolve it. Else, break the loop
 		if let FileContent::Link(link_target) = f.get_file_content() {
-		    // Resolving the link
-		    let link_path = Path::from_str(link_target.as_bytes(), false)?;
+			// Resolving the link
+			let link_path = Path::from_str(link_target.as_bytes(), false)?;
 			let mut path = (parent_path.failable_clone()? + link_path)?;
 			path.reduce()?;
 			drop(file_guard);
 
-            // Getting the file from path
-	        let mutex = fcache::get();
-	        let mut guard = mutex.lock(true);
-	        let files_cache = guard.get_mut().as_mut().unwrap();
+			// Getting the file from path
+			let mutex = fcache::get();
+			let mut guard = mutex.lock(true);
+			let files_cache = guard.get_mut().as_mut().unwrap();
 
 			match files_cache.get_file_from_path(&path) {
-			    Ok(next_file) => file = next_file,
-			    Err(e) => return {
-                    if e == errno::ENOENT {
-                        Ok(path)
-			        } else {
-			            Err(e)
-			        }
-			    },
+				Ok(next_file) => file = next_file,
+				Err(e) => return {
+					if e == errno::ENOENT {
+						Ok(path)
+					} else {
+						Err(e)
+					}
+				},
 			}
 		} else {
 			break;
@@ -644,7 +644,7 @@ pub fn resolve_links(file: SharedPtr<File>) -> Result<Path, Errno> {
 		let file_guard = file.lock(true);
 		let f = file_guard.get();
 
-	    f.get_path()
+		f.get_path()
 	} else {
 		Err(errno::ELOOP)
 	}
@@ -658,11 +658,11 @@ pub fn resolve_links(file: SharedPtr<File>) -> Result<Path, Errno> {
 pub fn init(root_device_type: DeviceType, root_major: u32, root_minor: u32) -> Result<(), Errno> {
 	fs::register_defaults()?;
 
-    // The root device
-    let root_dev = device::get_device(root_device_type, root_major, root_minor)
-        .ok_or(errno::ENODEV)?;
+	// The root device
+	let root_dev = device::get_device(root_device_type, root_major, root_minor)
+		.ok_or(errno::ENODEV)?;
 
-    // Creating the files cache
+	// Creating the files cache
 	let cache = FCache::new(root_dev)?;
 	let mut guard = fcache::get().lock(true);
 	*guard.get_mut() = Some(cache);

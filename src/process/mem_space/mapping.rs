@@ -209,7 +209,7 @@ impl MemMapping {
 		Ok(())
 	}
 
-    // TODO Add support for file descriptors
+	// TODO Add support for file descriptors
 	/// Maps the page at offset `offset` in the mapping to the virtual memory context. The
 	/// function allocates the physical memory to be mapped.
 	/// If the mapping is in forking state, the function shall apply Copy-On-Write and allocate
@@ -345,7 +345,7 @@ impl MemMapping {
 				};
 				let gap_size = self.size - end;
 
-                let off = self.off + (begin + gap_size) * memory::PAGE_SIZE;
+				let off = self.off + (begin + gap_size) * memory::PAGE_SIZE;
 				Some(Self::new(gap_begin, gap_size, self.flags, self.fd.clone(), off, self.vmem))
 			} else {
 				None

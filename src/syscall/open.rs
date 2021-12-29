@@ -66,7 +66,7 @@ pub fn open_(pathname: *const u8, flags: i32, mode: file::Mode) -> Result<i32, E
 	// Getting the path string
 	let path_str = super::util::get_str(proc, pathname)?;
 
-    // TODO Use effective IDs instead?
+	// TODO Use effective IDs instead?
 	let mode = mode & !proc.get_umask();
 	let uid = proc.get_uid();
 	let gid = proc.get_gid();

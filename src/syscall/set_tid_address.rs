@@ -9,12 +9,12 @@ use crate::process::regs::Regs;
 pub fn set_tid_address(regs: &Regs) -> Result<i32, Errno> {
 	let tidptr = regs.ebx as *mut i32;
 
-    // Getting process
+	// Getting process
 	let mutex = Process::get_current().unwrap();
 	let mut guard = mutex.lock(false);
 	let proc = guard.get_mut();
 
-    let ptr = NonNull::new(tidptr);
+	let ptr = NonNull::new(tidptr);
 	proc.set_clear_child_tid(ptr);
 
 	// TODO Write TID at address? (if accessible)

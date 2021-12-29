@@ -502,7 +502,7 @@ impl Ext2INode {
 	/// `off` is the offset of the directory entry.
 	/// If the file is not a directory, the behaviour is undefined.
 	fn write_dirent(&mut self, superblock: &Superblock, io: &mut dyn IO, entry: &DirectoryEntry,
-	    off: u64) -> Result<(), Errno> {
+		off: u64) -> Result<(), Errno> {
 		let buff = unsafe {
 			slice::from_raw_parts(entry as *const _ as *const u8, entry.get_total_size() as _)
 		};
@@ -560,7 +560,7 @@ impl Ext2INode {
 	/// If the entry doesn't exist, the function returns None.
 	/// If the file is not a directory, the behaviour is undefined.
 	pub fn get_directory_entry(&self, name: &[u8], superblock: &Superblock, io: &mut dyn IO)
-	    -> Result<Option<Box<DirectoryEntry>>, Errno> {
+		-> Result<Option<Box<DirectoryEntry>>, Errno> {
 		let mut entry = None;
 
 		// TODO If the binary tree feature is enabled, use it

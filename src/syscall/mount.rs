@@ -36,10 +36,10 @@ pub fn mount(regs: &Regs) -> Result<i32, Errno> {
 		(source_slice, target_slice, filesystemtype_slice)
 	};
 
-    // Getting the mount source
+	// Getting the mount source
 	let mount_source = MountSource::from_str(source_slice)?;
 
-    // Getting the target file
+	// Getting the target file
 	let target_path = Path::from_str(target_slice, true)?;
 	let target_mutex = {
 		let mut guard = fcache::get().lock(false);

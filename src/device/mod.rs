@@ -141,7 +141,7 @@ impl Device {
 
 			if fcache.get_file_from_path(&p).is_err() {
 				let dir = File::new(p[i].failable_clone()?, FileContent::Directory(Vec::new()), 0,
-				    0, 0o755)?;
+					0, 0o755)?;
 				fcache.create_file(&p.range_to(..i)?, dir)?;
 
 				created_count += 1;
@@ -167,13 +167,13 @@ impl Device {
 	pub fn create_file(&mut self) -> Result<(), Errno> {
 		let file_content = match self.type_ {
 			DeviceType::Block => FileContent::BlockDevice {
-			    major: self.major,
-			    minor: self.minor,
+				major: self.major,
+				minor: self.minor,
 			},
 
 			DeviceType::Char => FileContent::CharDevice {
-			    major: self.major,
-			    minor: self.minor,
+				major: self.major,
+				minor: self.minor,
 			},
 		};
 
@@ -218,16 +218,16 @@ impl Device {
 }
 
 impl IO for Device {
-    fn get_size(&self) -> u64 {
-        self.handle.get_size()
-    }
+	fn get_size(&self) -> u64 {
+		self.handle.get_size()
+	}
 
 	fn read(&self, offset: u64, buff: &mut [u8]) -> Result<usize, Errno> {
-	    self.handle.read(offset, buff)
+		self.handle.read(offset, buff)
 	}
 
 	fn write(&mut self, offset: u64, buff: &[u8]) -> Result<usize, Errno> {
-	    self.handle.write(offset, buff)
+		self.handle.write(offset, buff)
 	}
 }
 

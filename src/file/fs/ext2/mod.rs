@@ -504,8 +504,8 @@ impl Superblock {
 
 /// Structure representing a instance of the ext2 filesystem.
 struct Ext2Fs {
-    /// The path at which the filesystem is mounted.
-    mountpath: Path,
+	/// The path at which the filesystem is mounted.
+	mountpath: Path,
 
 	/// The filesystem's superblock.
 	superblock: Superblock,
@@ -530,7 +530,7 @@ impl Ext2Fs {
 
 		superblock.mount_count_since_fsck += 1;
 
-        // Setting the last mount path
+		// Setting the last mount path
 		{
 			let mountpath_str = mountpath.as_string()?;
 			let mountpath_bytes = mountpath_str.as_bytes();
@@ -551,7 +551,7 @@ impl Ext2Fs {
 		superblock.write(io)?;
 
 		Ok(Self {
-		    mountpath,
+			mountpath,
 
 			superblock,
 		})
@@ -656,16 +656,16 @@ impl Filesystem for Ext2Fs {
 				let (major, minor) = inode_.get_device();
 
 				FileContent::BlockDevice {
-				    major: major as _,
-				    minor: minor as _,
+					major: major as _,
+					minor: minor as _,
 				}
 			},
 			FileType::CharDevice => {
 				let (major, minor) = inode_.get_device();
 
 				FileContent::CharDevice {
-				    major: major as _,
-				    minor: minor as _,
+					major: major as _,
+					minor: minor as _,
 				}
 			},
 		};
@@ -681,7 +681,7 @@ impl Filesystem for Ext2Fs {
 		Ok(file)
 	}
 
-    // TODO Check if the file exists. If it does, return EEXIST
+	// TODO Check if the file exists. If it does, return EEXIST
 	fn add_file(&mut self, io: &mut dyn IO, parent_inode: INode, mut file: File)
 		-> Result<File, Errno> {
 		debug_assert!(parent_inode >= 1);
@@ -719,7 +719,7 @@ impl Filesystem for Ext2Fs {
 			},
 
 			FileContent::BlockDevice { major, minor }
-			    | FileContent::CharDevice { major, minor } => {
+				| FileContent::CharDevice { major, minor } => {
 				if *major > (u8::MAX as u32) || *minor > (u8::MAX as u32) {
 					return Err(errno::ENODEV);
 				}
@@ -954,7 +954,7 @@ impl FilesystemType for Ext2FsType {
 	}
 
 	fn load_filesystem(&self, io: &mut dyn IO, mountpath: Path)
-	    -> Result<Box<dyn Filesystem>, Errno> {
+		-> Result<Box<dyn Filesystem>, Errno> {
 		let superblock = Superblock::read(io)?;
 		let fs = Ext2Fs::new(superblock, io, mountpath)?;
 

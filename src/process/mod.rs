@@ -167,9 +167,9 @@ pub struct Process {
 	/// The process's local descriptor table.
 	ldt: Option<LDT>,
 
-    /// TODO doc
+	/// TODO doc
 	set_child_tid: Option<NonNull<i32>>,
-    /// TODO doc
+	/// TODO doc
 	clear_child_tid: Option<NonNull<i32>>,
 
 	/// The exit status of the process after exiting.
@@ -1039,9 +1039,9 @@ impl Process {
 		}
 	}
 
-    /// Sets the `clear_child_tid` attribute of the process.
+	/// Sets the `clear_child_tid` attribute of the process.
 	pub fn set_clear_child_tid(&mut self, ptr: Option<NonNull<i32>>) {
-	    self.clear_child_tid = ptr;
+		self.clear_child_tid = ptr;
 	}
 
 	/// Exits the process with the given `status`. This function changes the process's status to
