@@ -309,23 +309,14 @@ mod test {
 
 	#[test_case]
 	fn hash_map0() {
-		if let Err(e) = HashMap::<u32, u32>::new() {
-			assert_eq!(e, errno::EINVAL);
-		} else {
-			assert!(false);
-		}
-	}
-
-	#[test_case]
-	fn hash_map1() {
-		let mut hash_map = HashMap::<u32, u32>::new().unwrap();
+		let mut hash_map = HashMap::<u32, u32>::new();
 
 		assert_eq!(hash_map.len(), 0);
 
 		hash_map.insert(0, 0).unwrap();
 
 		assert_eq!(hash_map.len(), 1);
-		assert_eq!(*hash_map.get(0).unwrap(), 0);
+		assert_eq!(*hash_map.get(&0).unwrap(), 0);
 		assert_eq!(hash_map[0], 0);
 
 		assert_eq!(hash_map.remove(0).unwrap(), 0);
@@ -334,8 +325,8 @@ mod test {
 	}
 
 	#[test_case]
-	fn hash_map2() {
-		let mut hash_map = HashMap::<u32, u32>::new().unwrap();
+	fn hash_map1() {
+		let mut hash_map = HashMap::<u32, u32>::new();
 
 		for i in 0..100 {
 			assert_eq!(hash_map.len(), i);
@@ -343,7 +334,7 @@ mod test {
 			hash_map.insert(i as _, 0).unwrap();
 
 			assert_eq!(hash_map.len(), i + 1);
-			assert_eq!(*hash_map.get(i as _).unwrap(), 0);
+			assert_eq!(*hash_map.get(&(i as _)).unwrap(), 0);
 			assert_eq!(hash_map[i as _], 0);
 		}
 
