@@ -1,5 +1,7 @@
 //! The I/O functions allow to communicate with the other components on the system.
 
+use core::arch::asm;
+
 /// Inputs a byte from the specified port.
 pub unsafe fn inb(port: u16) -> u8 {
 	let ret: i8;

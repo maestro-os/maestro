@@ -29,7 +29,7 @@ macro_rules! cli {
 	() => (
 		#[allow(unused_unsafe)]
 		unsafe {
-			asm!("cli")
+			core::arch::asm!("cli");
 		}
 	);
 }
@@ -40,7 +40,7 @@ macro_rules! sti {
 	() => (
 		#[allow(unused_unsafe)]
 		unsafe {
-			asm!("sti")
+			core::arch::asm!("sti");
 		}
 	);
 }
@@ -51,7 +51,7 @@ macro_rules! hlt {
 	() => (
 		#[allow(unused_unsafe)]
 		unsafe {
-			asm!("hlt")
+			core::arch::asm!("hlt");
 		}
 	);
 }

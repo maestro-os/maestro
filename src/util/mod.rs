@@ -83,7 +83,7 @@ macro_rules! container_of {
 macro_rules! register_get {
 	($reg:expr) => {{
 		let mut val: u32;
-		asm!(concat!("mov {}, ", $reg), out(reg) val);
+		core::arch::asm!(concat!("mov {}, ", $reg), out(reg) val);
 
 		val
 	}};
