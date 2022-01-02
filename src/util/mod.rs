@@ -101,6 +101,41 @@ extern "C" {
 	pub fn strlen(s: *const u8) -> usize;
 }
 
+/// Zeroes the given object.
+/// The function is marked unsafe since there exist some objects for which a representation full of
+/// zeros is invalid.
+pub unsafe fn zero_object<T>(obj: &mut T) {
+	let ptr = obj as *mut T as *mut c_void;
+	let size = size_of::<T>();
+
+	bzero(ptr, size);
+}
+
+/// Turns the error into an empty error for the given result.
+pub fn to_empty_error<T, E>(r: Result<T, E>) -> Result<T, ()> {
+	if let Ok(t) = r {
+		Ok(t)
+	} else {
+		Err(())
+	}
+}
+
+/// Returns the length of the string representation of the number at the beginning of the given
+/// string `s`.
+pub fn nbr_len(s: &[u8]) -> usize {
+	let mut i = 0;
+
+	while i < s.len() {
+		if (s[i] < '0' as u8) || (s[i] > '9' as u8) {
+			break;
+		}
+
+		i += 1;
+	}
+
+	i
+}
+
 /// Trait allowing to perform a clone of a structure that can possibly fail (on memory allocation
 /// failure, for example).
 pub trait FailableClone {
@@ -135,39 +170,17 @@ failable_clone_impl!(usize);
 failable_clone_impl!(*mut c_void);
 failable_clone_impl!(*const c_void);
 
-/// Zeroes the given object.
-/// The function is marked unsafe since there exist some objects for which a representation full of
-/// zeros is invalid.
-pub unsafe fn zero_object<T>(obj: &mut T) {
-	let ptr = obj as *mut T as *mut c_void;
-	let size = size_of::<T>();
+/// Trait representing a data I/O.
+pub trait IO {
+	/// Reads data from the I/O and writes it into `buff`.
+	/// `offset` is the offset in the I/O to the beginning of the data to be read.
+	/// The function returns the number of bytes read.
+	fn read(&self, offset: u64, buff: &mut [u8]) -> Result<u64, Errno>;
 
-	bzero(ptr, size);
-}
-
-/// Turns the error into an empty error for the given result.
-pub fn to_empty_error<T, E>(r: Result<T, E>) -> Result<T, ()> {
-	if let Ok(t) = r {
-		Ok(t)
-	} else {
-		Err(())
-	}
-}
-
-/// Returns the length of the string representation of the number at the beginning of the given
-/// string `s`.
-pub fn nbr_len(s: &[u8]) -> usize {
-	let mut i = 0;
-
-	while i < s.len() {
-		if (s[i] < '0' as u8) || (s[i] > '9' as u8) {
-			break;
-		}
-
-		i += 1;
-	}
-
-	i
+	/// Reads data from `buff` and writes it into the I/O.
+	/// `offset` is the offset in the I/O to the beginning of the data to write.
+	/// The function returns the number of bytes written.
+	fn write(&mut self, offset: u64) -> Result<u64, Errno>;
 }
 
 #[cfg(test)]

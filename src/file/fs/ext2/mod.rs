@@ -37,7 +37,6 @@ use core::slice;
 use crate::device::DeviceHandle;
 use crate::errno::Errno;
 use crate::errno;
-use crate::file::DiskLocation;
 use crate::file::File;
 use crate::file::FileContent;
 use crate::file::FileLocation;
@@ -561,8 +560,8 @@ impl Ext2Fs {
 // TODO Add an option when mounting to specify whether to mount in readonly?
 // TODO Make write operations fails if the filesystem is mounted in readonly?
 impl Filesystem for Ext2Fs {
-	fn get_name(&self) -> &str {
-		"ext2"
+	fn get_name(&self) -> &[u8] {
+		b"ext2"
 	}
 
 	fn is_readonly(&self) -> bool {
@@ -667,8 +666,7 @@ impl Filesystem for Ext2Fs {
 
 		let mut file = File::new(name, file_content, inode_.uid, inode_.gid,
 			inode_.get_permissions())?;
-		file.set_location(FileLocation::Disk(DiskLocation::new(dev.get_type(),
-			dev.get_major(), dev.get_minor(), inode)));
+		file.set_location(FileLocation::new(, inode));
 		file.set_ctime(inode_.ctime);
 		file.set_mtime(inode_.mtime);
 		file.set_atime(inode_.atime);

@@ -2,19 +2,18 @@
 
 use crate::device::Device;
 use crate::device::DeviceType;
-use crate::device;
+//use crate::device;
 use crate::errno::Errno;
-use crate::errno;
+//use crate::file::File;
 use crate::file::fs::Filesystem;
+use crate::file::fs::FilesystemType;
 use crate::util::boxed::Box;
+use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::lock::mutex::Mutex;
 use crate::util::ptr::SharedPtr;
-use super::fs;
+//use super::fs;
 use super::path::Path;
-
-// TODO rm
-//use crate::file::fs::FilesystemType;
 
 /// TODO doc
 const FLAG_MANDLOCK: u32    = 0b000000000001;
@@ -45,12 +44,8 @@ const FLAG_SYNCHRONOUS: u32 = 0b100000000000;
 
 /// Structure representing a mount point.
 pub struct MountPoint {
-	/// The device type.
-	device_type: DeviceType,
-	/// The minor number of the device.
-	minor: u32,
-	/// The major number of the device.
-	major: u32,
+	/// The source of the mountpoint.
+	source: String,
 
 	/// Mount flags.
 	flags: u32,
@@ -63,54 +58,40 @@ pub struct MountPoint {
 
 impl MountPoint {
 	/// Creates a new instance.
-	/// `device_type` is the type of the device.
-	/// `major` is the major number of the device.
-	/// `minor` is the minor number of the device.
+	/// `source` is the source of the mountpoint.
+	/// `fs_type` is the filesystem type. If None, the function tries to detect it automaticaly.
 	/// `flags` are the mount flags.
 	/// `path` is the path on which the filesystem is to be mounted.
-	pub fn new(device_type: DeviceType, major: u32, minor: u32, flags: u32, path: Path)
-		-> Result<Self, Errno> {
-		let dev_ptr = device::get_device(device_type, major, minor).ok_or(errno::ENODEV)?;
-		let mut dev_guard = dev_ptr.lock(true);
-		let device = dev_guard.get_mut();
+	pub fn new(source: String, fs_type: Option<SharedPtr<dyn FilesystemType>>, flags: u32,
+		path: Path) -> Result<Self, Errno> {
+		// TODO Support kernfs
+		/*let source_path = Path::from_str(source.as_bytes(), true)?;
 
-		// TODO rm
-		//let fs_type = fs::ext2::Ext2FsType {};
-		//fs_type.create_filesystem(device)?;
+		{
+			let fcache = file::get_files_caches().lock(false).get_mut();
+			let source_mutex = fcache.get_file_from_path();
+		};
 
-		let fs_type_ptr = fs::detect(device)?;
+		let fs_type_ptr = fs_type.or(fs::detect(source)?);
 		let fs_type_guard = fs_type_ptr.lock(true);
 		let fs_type = fs_type_guard.get();
-		let filesystem = fs_type.load_filesystem(device, &path)?;
+		let filesystem = fs_type.load_filesystem(source, &path)?;
 
 		Ok(Self {
-			device_type,
-			minor,
-			major,
+			source,
 
 			flags,
 			path,
 
 			filesystem,
-		})
+		})*/
+		todo!();
 	}
 
-	/// Returns the type of the mounted device.
+	/// Returns the source of the mountpoint.
 	#[inline(always)]
-	pub fn get_device_type(&self) -> DeviceType {
-		self.device_type
-	}
-
-	/// Returns the major number of the mounted device.
-	#[inline(always)]
-	pub fn get_major(&self) -> u32 {
-		self.major
-	}
-
-	/// Returns the minor number of the mounted device.
-	#[inline(always)]
-	pub fn get_minor(&self) -> u32 {
-		self.minor
+	pub fn get_source(&self) -> &String {
+		&self.source
 	}
 
 	/// Returns a reference to the mounted device.
@@ -151,11 +132,11 @@ impl MountPoint {
 }
 
 /// The list of mountpoints.
-static MOUNT_POINTS: Mutex<Vec<SharedPtr<MountPoint>>> = Mutex::new(Vec::new());
+static MOUNT_POINTS: Mutex<HashMap<Path, SharedPtr<MountPoint>>> = Mutex::new(HashMap::new());
 
 /// Registers a new mountpoint `mountpoint`. If a mountpoint is already present at the same path,
 /// the function fails.
-pub fn register_mountpoint(mountpoint: MountPoint) -> Result<SharedPtr<MountPoint>, Errno> {
+pub fn register(mountpoint: MountPoint) -> Result<SharedPtr<MountPoint>, Errno> {
 	let mut guard = MOUNT_POINTS.lock(true);
 	let container = guard.get_mut();
 	let shared_ptr = SharedPtr::new(mountpoint)?;
@@ -193,28 +174,7 @@ pub fn get_deepest(path: &Path) -> Option<SharedPtr<MountPoint>> {
 	max
 }
 
-/// Returns a mountpoint with the given device type, major and minor numbers. If no such device is
-/// mounted, the function returns None.
-/// `device_type` is the type of the device.
-/// `major` is the major number of the device.
-/// `minor` is the minor number of the device.
-pub fn get_from_device(device_type: DeviceType, major: u32, minor: u32)
-	-> Option<SharedPtr<MountPoint>> {
-	let mut guard = MOUNT_POINTS.lock(true);
-	let container = guard.get_mut();
-
-	for i in 0..container.len() {
-		let m = &mut container[i];
-		let mount_guard = m.lock(true);
-		let mount = mount_guard.get();
-
-		if mount.get_device_type() == device_type
-			&& mount.get_major() == major
-			&& mount.get_minor() == minor {
-			drop(mount_guard);
-			return Some(m.clone());
-		}
-	}
-
-	None
+/// Returns the mountpoint with path `path`. If it doesn't exist, the function returns None.
+pub fn from_path(path: &Path) -> Option<SharedPtr<MountPoint>> {
+	// TODO
 }
