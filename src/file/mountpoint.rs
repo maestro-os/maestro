@@ -6,6 +6,7 @@ use crate::file::File;
 use crate::file::fcache;
 use crate::file::fs::Filesystem;
 use crate::file::fs::FilesystemType;
+use crate::file::fs;
 use crate::util::FailableClone;
 use crate::util::IO;
 use crate::util::boxed::Box;
@@ -95,20 +96,19 @@ impl MountPoint {
 	/// `fs_type` is the filesystem type. If None, the function tries to detect it automaticaly.
 	/// `flags` are the mount flags.
 	/// `path` is the path on which the filesystem is to be mounted.
-	pub fn new(_source: MountSource, _fs_type: Option<SharedPtr<dyn FilesystemType>>, _flags: u32,
-		_path: Path) -> Result<Self, Errno> {
-		// TODO Support kernfs
-		/*let source_path = Path::from_str(source.as_bytes(), true)?;
+	pub fn new(source: MountSource, fs_type: Option<SharedPtr<dyn FilesystemType>>, flags: u32,
+		path: Path) -> Result<Self, Errno> {
+		let io_mutex = source.get_io();
+		let mut io_guard = io_mutex.lock(true);
+		let io = io_guard.get_mut();
 
-		{
-			let fcache = file::get_files_caches().lock(false).get_mut();
-			let source_mutex = fcache.get_file_from_path();
+		let fs_type_ptr = match fs_type {
+			Some(fs_type) => fs_type,
+			None => fs::detect(io)?,
 		};
-
-		let fs_type_ptr = fs_type.or(fs::detect(source)?);
 		let fs_type_guard = fs_type_ptr.lock(true);
 		let fs_type = fs_type_guard.get();
-		let filesystem = fs_type.load_filesystem(source, &path)?;
+		let filesystem = fs_type.load_filesystem(io, path.failable_clone()?)?;
 
 		Ok(Self {
 			source,
@@ -117,8 +117,7 @@ impl MountPoint {
 			path,
 
 			filesystem,
-		})*/
-		todo!();
+		})
 	}
 
 	/// Returns the source of the mountpoint.
