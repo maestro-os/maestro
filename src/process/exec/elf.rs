@@ -14,8 +14,8 @@ use crate::errno::Errno;
 use crate::errno;
 use crate::file::Gid;
 use crate::file::Uid;
+use crate::file::fcache;
 use crate::file::path::Path;
-use crate::file;
 use crate::memory::malloc;
 use crate::memory::vmem;
 use crate::memory;
@@ -25,6 +25,7 @@ use crate::process::exec::Executor;
 use crate::process::mem_space::MemSpace;
 use crate::process::signal::SignalHandler;
 use crate::process;
+use crate::util::IO;
 use crate::util::container::vec::Vec;
 use crate::util::math;
 
@@ -114,14 +115,14 @@ impl AuxEntry {
 /// `uid` is the User ID of the executing user.
 /// `gid` is the Group ID of the executing user.
 fn read_exec_file(path: &Path, uid: Uid, gid: Gid) -> Result<malloc::Alloc<u8>, Errno> {
-	let mutex = file::get_files_cache();
+	let mutex = fcache::get();
 	let mut guard = mutex.lock(true);
 	let files_cache = guard.get_mut();
 
 	// Getting the file from path
 	let file_mutex = files_cache.as_mut().unwrap().get_file_from_path(&path)?;
-	let file_lock = file_mutex.lock(true);
-	let file = file_lock.get();
+	let mut file_lock = file_mutex.lock(true);
+	let file = file_lock.get_mut();
 
 	// Check that the file can be executed by the user
 	if !file.can_execute(uid, gid) {

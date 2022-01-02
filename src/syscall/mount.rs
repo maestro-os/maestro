@@ -4,11 +4,12 @@ use core::ffi::c_void;
 use crate::errno::Errno;
 use crate::errno;
 use crate::file::FileType;
+use crate::file::fcache;
 use crate::file::fs;
 use crate::file::mountpoint::MountPoint;
+use crate::file::mountpoint::MountSource;
 use crate::file::mountpoint;
 use crate::file::path::Path;
-use crate::file;
 use crate::process::Process;
 use crate::process::Regs;
 
@@ -35,25 +36,18 @@ pub fn mount(regs: &Regs) -> Result<i32, Errno> {
 		(source_slice, target_slice, filesystemtype_slice)
 	};
 
-	// TODO Handle non-file sources
-	let source_path = Path::from_str(source_slice, true)?;
-	let target_path = Path::from_str(target_slice, true)?;
+	// Getting the mount source
+	let mount_source = MountSource::from_str(source_slice)?;
 
-	let (source_mutex, target_mutex) = {
-		let mut guard = file::get_files_cache().lock(false);
+	// Getting the target file
+	let target_path = Path::from_str(target_slice, true)?;
+	let target_mutex = {
+		let mut guard = fcache::get().lock(false);
 		let fcache = guard.get_mut().as_mut().unwrap();
 
-		let source = fcache.get_file_from_path(&source_path)?;
-		let target = fcache.get_file_from_path(&target_path)?;
-
-		(source, target)
+		fcache.get_file_from_path(&target_path)?
 	};
-
-	// TODO Lock both at the same time. Implement an algorithm to avoid deadlocks
-	let source_guard = source_mutex.lock(true);
 	let target_guard = target_mutex.lock(true);
-
-	let source_file = source_guard.get();
 	let target_file = target_guard.get();
 
 	// Checking the target is a directory
@@ -67,7 +61,7 @@ pub fn mount(regs: &Regs) -> Result<i32, Errno> {
 
 	// TODO Use `data`
 	// Creating mountpoint
-	let mount = MountPoint::new(source_mutex, Some(fs_type), mountflags, target_path)?;
+	let mount = MountPoint::new(mount_source, Some(fs_type), mountflags, target_path)?;
 	mountpoint::register(mount)?;
 
 	Ok(0)

@@ -83,7 +83,7 @@ macro_rules! container_of {
 macro_rules! register_get {
 	($reg:expr) => {{
 		let mut val: u32;
-		asm!(concat!("mov {}, ", $reg), out(reg) val);
+		core::arch::asm!(concat!("mov {}, ", $reg), out(reg) val);
 
 		val
 	}};
@@ -172,15 +172,18 @@ failable_clone_impl!(*const c_void);
 
 /// Trait representing a data I/O.
 pub trait IO {
+	/// Returns the size of the underlying data.
+	fn get_size(&self) -> u64;
+
 	/// Reads data from the I/O and writes it into `buff`.
 	/// `offset` is the offset in the I/O to the beginning of the data to be read.
 	/// The function returns the number of bytes read.
-	fn read(&self, offset: u64, buff: &mut [u8]) -> Result<u64, Errno>;
+	fn read(&self, offset: u64, buff: &mut [u8]) -> Result<usize, Errno>;
 
 	/// Reads data from `buff` and writes it into the I/O.
 	/// `offset` is the offset in the I/O to the beginning of the data to write.
 	/// The function returns the number of bytes written.
-	fn write(&mut self, offset: u64) -> Result<u64, Errno>;
+	fn write(&mut self, offset: u64, buff: &[u8]) -> Result<usize, Errno>;
 }
 
 #[cfg(test)]

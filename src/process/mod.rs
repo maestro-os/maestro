@@ -17,6 +17,7 @@ use core::ffi::c_void;
 use core::mem::ManuallyDrop;
 use core::mem::MaybeUninit;
 use core::mem::size_of;
+use core::ptr::NonNull;
 use crate::cpu;
 use crate::errno::Errno;
 use crate::errno;
@@ -24,6 +25,7 @@ use crate::event::{InterruptResult, InterruptResultAction};
 use crate::event;
 use crate::file::Gid;
 use crate::file::Uid;
+use crate::file::fcache;
 use crate::file::file_descriptor::FDTarget;
 use crate::file::file_descriptor::FileDescriptor;
 use crate::file::file_descriptor;
@@ -55,7 +57,7 @@ const HLT_INSTRUCTION: u8 = 0xf4;
 const TTY_DEVICE_PATH: &str = "/dev/tty";
 
 /// The default file creation mask.
-const DEFAULT_UMASK: u16 = 0o022;
+const DEFAULT_UMASK: file::Mode = 0o022;
 
 /// The size of the userspace stack of a process in number of pages.
 const USER_STACK_SIZE: usize = 2048;
@@ -101,6 +103,8 @@ pub struct Process {
 	pid: Pid,
 	/// The ID of the process group.
 	pgid: Pid,
+	/// The thread ID of the process.
+	tid: Pid,
 
 	/// The real ID of the process's user owner.
 	uid: Uid,
@@ -112,8 +116,8 @@ pub struct Process {
 	/// The effective ID of the process's group owner.
 	egid: Gid,
 
-	/// File creation mask.
-	umask: u16,
+	/// The process's current umask.
+	umask: file::Mode,
 
 	/// The current state of the process.
 	state: State,
@@ -162,6 +166,11 @@ pub struct Process {
 	tls_entries: [gdt::Entry; TLS_ENTRIES_COUNT],
 	/// The process's local descriptor table.
 	ldt: Option<LDT>,
+
+	/// TODO doc
+	set_child_tid: Option<NonNull<i32>>,
+	/// TODO doc
+	clear_child_tid: Option<NonNull<i32>>,
 
 	/// The exit status of the process after exiting.
 	exit_status: ExitStatus,
@@ -332,6 +341,7 @@ impl Process {
 		let mut process = Self {
 			pid: pid::INIT_PID,
 			pgid: pid::INIT_PID,
+			tid: pid::INIT_PID,
 
 			uid: 0,
 			gid: 0,
@@ -369,13 +379,16 @@ impl Process {
 			tls_entries: [gdt::Entry::default(); TLS_ENTRIES_COUNT],
 			ldt: None,
 
+			set_child_tid: None,
+			clear_child_tid: None,
+
 			exit_status: 0,
 			termsig: 0,
 		};
 
 		// Creating STDIN, STDOUT and STDERR
 		{
-			let mutex = file::get_files_cache();
+			let mutex = fcache::get();
 			let mut guard = mutex.lock(true);
 			let files_cache = guard.get_mut();
 
@@ -411,6 +424,12 @@ impl Process {
 	#[inline(always)]
 	pub fn get_pgid(&self) -> Pid {
 		self.pgid
+	}
+
+	/// Returns the process's thread ID.
+	#[inline(always)]
+	pub fn get_tid(&self) -> Pid {
+		self.tid
 	}
 
 	/// Tells whether the process is among a group and is not its owner.
@@ -506,13 +525,13 @@ impl Process {
 
 	/// Returns the file creation mask.
 	#[inline(always)]
-	pub fn get_umask(&self) -> u16 {
+	pub fn get_umask(&self) -> file::Mode {
 		self.umask
 	}
 
 	/// Sets the file creation mask.
 	#[inline(always)]
-	pub fn set_umask(&mut self, umask: u16) {
+	pub fn set_umask(&mut self, umask: file::Mode) {
 		self.umask = umask;
 	}
 
@@ -863,6 +882,7 @@ impl Process {
 		let process = Self {
 			pid,
 			pgid: self.pgid,
+			tid: self.pid,
 
 			uid: self.uid,
 			gid: self.gid,
@@ -906,6 +926,9 @@ impl Process {
 					None
 				}
 			},
+
+			set_child_tid: self.set_child_tid,
+			clear_child_tid: self.clear_child_tid,
 
 			exit_status: self.exit_status,
 			termsig: 0,
@@ -1014,6 +1037,11 @@ impl Process {
 				self.tls_entries[n].update_gdt(gdt::TLS_OFFSET + n * size_of::<gdt::Entry>());
 			}
 		}
+	}
+
+	/// Sets the `clear_child_tid` attribute of the process.
+	pub fn set_clear_child_tid(&mut self, ptr: Option<NonNull<i32>>) {
+		self.clear_child_tid = ptr;
 	}
 
 	/// Exits the process with the given `status`. This function changes the process's status to

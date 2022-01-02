@@ -25,6 +25,7 @@ use crate::file::path::Path;
 use crate::memory::malloc;
 use crate::process::oom;
 use crate::util::FailableClone;
+use crate::util::IO;
 use crate::util::boxed::Box;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
@@ -48,7 +49,7 @@ pub trait StorageInterface {
 
 	/// Reads `size` blocks from storage at block offset `offset`, writting the data to `buf`.
 	/// If the offset and size are out of bounds, the function returns an error.
-	fn read(&mut self, buf: &mut [u8], offset: u64, size: u64) -> Result<(), Errno>;
+	fn read(&self, buf: &mut [u8], offset: u64, size: u64) -> Result<(), Errno>;
 	/// Writes `size` blocks to storage at block offset `offset`, reading the data from `buf`.
 	/// If the offset and size are out of bounds, the function returns an error.
 	fn write(&mut self, buf: &[u8], offset: u64, size: u64) -> Result<(), Errno>;
@@ -56,7 +57,7 @@ pub trait StorageInterface {
 	// Unit testing is done through ramdisk testing
 	/// Reads bytes from storage at offset `offset`, writting the data to `buf`.
 	/// If the offset and size are out of bounds, the function returns an error.
-	fn read_bytes(&mut self, buf: &mut [u8], offset: u64) -> Result<usize, Errno> {
+	fn read_bytes(&self, buf: &mut [u8], offset: u64) -> Result<usize, Errno> {
 		let block_size = self.get_block_size();
 		let blk_begin = offset / block_size;
 		let blk_end = (offset + buf.len() as u64) / block_size;
@@ -266,6 +267,13 @@ impl StorageDeviceHandle {
 
 // TODO Handle partition
 impl DeviceHandle for StorageDeviceHandle {
+	fn ioctl(&mut self, _request: u32, _argp: *const c_void) -> Result<u32, Errno> {
+		// TODO
+		Err(errno::EINVAL)
+	}
+}
+
+impl IO for StorageDeviceHandle {
 	fn get_size(&self) -> u64 {
 		let interface = unsafe { // Safe because the pointer is valid
 			&*self.interface
@@ -274,7 +282,7 @@ impl DeviceHandle for StorageDeviceHandle {
 		interface.get_block_size() * interface.get_blocks_count()
 	}
 
-	fn read(&mut self, offset: u64, buff: &mut [u8]) -> Result<usize, Errno> {
+	fn read(&self, offset: u64, buff: &mut [u8]) -> Result<usize, Errno> {
 		let interface = unsafe { // Safe because the pointer is valid
 			&mut *self.interface
 		};
@@ -288,11 +296,6 @@ impl DeviceHandle for StorageDeviceHandle {
 		};
 
 		interface.write_bytes(buff, offset)
-	}
-
-	fn ioctl(&mut self, _request: u32, _argp: *const c_void) -> Result<u32, Errno> {
-		// TODO
-		Err(errno::EINVAL)
 	}
 }
 

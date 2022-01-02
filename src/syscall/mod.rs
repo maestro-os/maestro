@@ -1,7 +1,6 @@
 //! This module handles system calls. A system call is "function" that allows to communcate between
 //! userspace and kernelspace.
 
-//mod umount;
 mod _exit;
 mod brk;
 mod chdir;
@@ -22,6 +21,7 @@ mod getgid;
 mod getpgid;
 mod getpid;
 mod getppid;
+mod gettid;
 mod getuid;
 mod init_module;
 mod ioctl;
@@ -39,7 +39,6 @@ mod pipe;
 mod r#break;
 mod read;
 mod reboot;
-mod sbrk;
 mod set_thread_area;
 mod set_tid_address;
 mod setgid;
@@ -50,6 +49,7 @@ mod sigreturn;
 mod socketpair;
 mod time;
 mod umask;
+mod umount;
 mod uname;
 mod unlink;
 mod wait;
@@ -62,8 +62,7 @@ use crate::process::Process;
 use crate::process::signal::Signal;
 use crate::process;
 
-//use sbrk::sbrk;
-//use umount::umount;
+//use modify_ldt::modify_ldt;
 //use wait::wait;
 use _exit::_exit;
 use brk::brk;
@@ -86,6 +85,7 @@ use getgid::getgid;
 use getpgid::getpgid;
 use getpid::getpid;
 use getppid::getppid;
+use gettid::gettid;
 use getuid::getuid;
 use init_module::init_module;
 use ioctl::ioctl;
@@ -93,7 +93,6 @@ use kill::kill;
 use mkdir::mkdir;
 use mknod::mknod;
 use mmap::mmap;
-use modify_ldt::modify_ldt;
 use mount::mount;
 use msync::msync;
 use munmap::munmap;
@@ -113,6 +112,7 @@ use sigreturn::sigreturn;
 use socketpair::socketpair;
 use time::time;
 use umask::umask;
+use umount::umount;
 use uname::uname;
 use unlink::unlink;
 use waitpid::waitpid;
@@ -125,7 +125,7 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 	let id = regs.eax;
 
 	let result = match id {
-		// TODO 0x000 => restart_syscall(regs),
+		// 0x000 => restart_syscall(regs),
 		0x001 => _exit(regs),
 		0x002 => fork(regs),
 		0x003 => read(regs),
@@ -147,7 +147,7 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 		// TODO 0x013 => lseek(regs),
 		0x014 => getpid(regs),
 		0x015 => mount(regs),
-		// TODO 0x016 => umount(regs),
+		0x016 => umount(regs),
 		0x017 => setuid(regs),
 		0x018 => getuid(regs),
 		// TODO 0x019 => stime(regs),
@@ -248,7 +248,7 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 		// TODO 0x078 => clone(regs),
 		// TODO 0x079 => setdomainname(regs),
 		0x07a => uname(regs),
-		0x07b => modify_ldt(regs),
+		// 0x07b => modify_ldt(regs),
 		// TODO 0x07c => adjtimex(regs),
 		// TODO 0x07d => mprotect(regs),
 		// TODO 0x07e => sigprocmask(regs),
@@ -347,7 +347,7 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 		// TODO 0x0db => madvise(regs),
 		// TODO 0x0dc => getdents64(regs),
 		// TODO 0x0dd => fcntl64(regs),
-		// TODO 0x0e0 => gettid(regs),
+		0x0e0 => gettid(regs),
 		// TODO 0x0e1 => readahead(regs),
 		// TODO 0x0e2 => setxattr(regs),
 		// TODO 0x0e3 => lsetxattr(regs),

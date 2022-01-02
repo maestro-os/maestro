@@ -11,6 +11,7 @@ use crate::errno;
 use crate::file::path::Path;
 use crate::logger;
 use crate::tty;
+use crate::util::IO;
 use super::DeviceType;
 use super::id;
 
@@ -18,21 +19,23 @@ use super::id;
 pub struct NullDeviceHandle {}
 
 impl DeviceHandle for NullDeviceHandle {
+	fn ioctl(&mut self, _request: u32, _argp: *const c_void) -> Result<u32, Errno> {
+		// TODO
+		Err(errno::EINVAL)
+	}
+}
+
+impl IO for NullDeviceHandle {
 	fn get_size(&self) -> u64 {
 		0
 	}
 
-	fn read(&mut self, _offset: u64, _buff: &mut [u8]) -> Result<usize, Errno> {
+	fn read(&self, _offset: u64, _buff: &mut [u8]) -> Result<usize, Errno> {
 		Ok(0)
 	}
 
 	fn write(&mut self, _offset: u64, buff: &[u8]) -> Result<usize, Errno> {
 		Ok(buff.len() as _)
-	}
-
-	fn ioctl(&mut self, _request: u32, _argp: *const c_void) -> Result<u32, Errno> {
-		// TODO
-		Err(errno::EINVAL)
 	}
 }
 
@@ -40,11 +43,18 @@ impl DeviceHandle for NullDeviceHandle {
 pub struct ZeroDeviceHandle {}
 
 impl DeviceHandle for ZeroDeviceHandle {
+	fn ioctl(&mut self, _request: u32, _argp: *const c_void) -> Result<u32, Errno> {
+		// TODO
+		Err(errno::EINVAL)
+	}
+}
+
+impl IO for ZeroDeviceHandle {
 	fn get_size(&self) -> u64 {
 		0
 	}
 
-	fn read(&mut self, _offset: u64, buff: &mut [u8]) -> Result<usize, Errno> {
+	fn read(&self, _offset: u64, buff: &mut [u8]) -> Result<usize, Errno> {
 		for b in buff.iter_mut() {
 			*b = 0;
 		}
@@ -55,17 +65,19 @@ impl DeviceHandle for ZeroDeviceHandle {
 	fn write(&mut self, _offset: u64, buff: &[u8]) -> Result<usize, Errno> {
 		Ok(buff.len())
 	}
-
-	fn ioctl(&mut self, _request: u32, _argp: *const c_void) -> Result<u32, Errno> {
-		// TODO
-		Err(errno::EINVAL)
-	}
 }
 
 /// Structure representing the kernel logs.
 pub struct KMsgDeviceHandle {}
 
 impl DeviceHandle for KMsgDeviceHandle {
+	fn ioctl(&mut self, _request: u32, _argp: *const c_void) -> Result<u32, Errno> {
+		// TODO
+		Err(errno::EINVAL)
+	}
+}
+
+impl IO for KMsgDeviceHandle {
 	fn get_size(&self) -> u64 {
 		let mutex = logger::get();
 		let guard = mutex.lock(true);
@@ -73,7 +85,7 @@ impl DeviceHandle for KMsgDeviceHandle {
 		guard.get().get_size() as _
 	}
 
-	fn read(&mut self, offset: u64, buff: &mut [u8]) -> Result<usize, Errno> {
+	fn read(&self, offset: u64, buff: &mut [u8]) -> Result<usize, Errno> {
 		let mutex = logger::get();
 		let guard = mutex.lock(true);
 
@@ -89,22 +101,24 @@ impl DeviceHandle for KMsgDeviceHandle {
 		// TODO Write to logger
 		Ok(buff.len())
 	}
-
-	fn ioctl(&mut self, _request: u32, _argp: *const c_void) -> Result<u32, Errno> {
-		// TODO
-		Err(errno::EINVAL)
-	}
 }
 
 /// Structure representing the current TTY.
 pub struct CurrentTTYDeviceHandle {}
 
 impl DeviceHandle for CurrentTTYDeviceHandle {
+	fn ioctl(&mut self, _request: u32, _argp: *const c_void) -> Result<u32, Errno> {
+		// TODO
+		Err(errno::EINVAL)
+	}
+}
+
+impl IO for CurrentTTYDeviceHandle {
 	fn get_size(&self) -> u64 {
 		0
 	}
 
-	fn read(&mut self, _offset: u64, _buff: &mut [u8]) -> Result<usize, Errno> {
+	fn read(&self, _offset: u64, _buff: &mut [u8]) -> Result<usize, Errno> {
 		// TODO Read from TTY input
 		todo!();
 	}
@@ -112,11 +126,6 @@ impl DeviceHandle for CurrentTTYDeviceHandle {
 	fn write(&mut self, _offset: u64, buff: &[u8]) -> Result<usize, Errno> {
 		tty::current().lock(true).get_mut().write(buff);
 		Ok(buff.len())
-	}
-
-	fn ioctl(&mut self, _request: u32, _argp: *const c_void) -> Result<u32, Errno> {
-		// TODO
-		Err(errno::EINVAL)
 	}
 }
 

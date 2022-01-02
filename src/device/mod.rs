@@ -17,13 +17,14 @@ pub mod storage;
 use core::ffi::c_void;
 use crate::device::manager::DeviceManager;
 use crate::errno::Errno;
-use crate::file::FCache;
 use crate::file::File;
 use crate::file::FileContent;
 use crate::file::Mode;
+use crate::file::fcache::FCache;
+use crate::file::fcache;
 use crate::file::path::Path;
-use crate::file;
 use crate::util::FailableClone;
+use crate::util::IO;
 use crate::util::boxed::Box;
 use crate::util::container::vec::Vec;
 use crate::util::lock::mutex::Mutex;
@@ -41,19 +42,7 @@ pub enum DeviceType {
 }
 
 /// Trait providing a interface for device I/O.
-pub trait DeviceHandle {
-	/// Returns the size of the device in bytes.
-	fn get_size(&self) -> u64;
-
-	/// Reads data from the device and writes it to the buffer `buff`.
-	/// `offset` is the offset in the file.
-	/// The function returns the number of bytes read.
-	fn read(&mut self, offset: u64, buff: &mut [u8]) -> Result<usize, Errno>;
-	/// Writes data to the device, reading it from the buffer `buff`.
-	/// `offset` is the offset in the file.
-	/// The function returns the number of bytes written.
-	fn write(&mut self, offset: u64, buff: &[u8]) -> Result<usize, Errno>;
-
+pub trait DeviceHandle: IO {
 	/// Performs an ioctl operation on the device.
 	fn ioctl(&mut self, request: u32, argp: *const c_void) -> Result<u32, Errno>;
 }
@@ -151,8 +140,8 @@ impl Device {
 			p.push(path[i].failable_clone()?)?;
 
 			if fcache.get_file_from_path(&p).is_err() {
-				let dir = File::new(p[i].failable_clone()?, FileContent::Directory(Vec::new()), 0, 0,
-					0o755)?;
+				let dir = File::new(p[i].failable_clone()?, FileContent::Directory(Vec::new()), 0,
+					0, 0o755)?;
 				fcache.create_file(&p.range_to(..i)?, dir)?;
 
 				created_count += 1;
@@ -177,17 +166,25 @@ impl Device {
 	/// function does nothing.
 	pub fn create_file(&mut self) -> Result<(), Errno> {
 		let file_content = match self.type_ {
-			DeviceType::Block => FileContent::BlockDevice(self.major, self.minor),
-			DeviceType::Char => FileContent::CharDevice(self.major, self.minor),
+			DeviceType::Block => FileContent::BlockDevice {
+				major: self.major,
+				minor: self.minor,
+			},
+
+			DeviceType::Char => FileContent::CharDevice {
+				major: self.major,
+				minor: self.minor,
+			},
 		};
 
 		let path_len = self.path.get_elements_count();
 		let filename = self.path[path_len - 1].failable_clone()?;
 
 		// Locking the files' cache
-		let mutex = file::get_files_cache();
+		let mutex = fcache::get();
 		let mut guard = mutex.lock(true);
 		let files_cache = guard.get_mut();
+
 		// Tells whether the file already exists
 		let file_exists = files_cache.as_mut().unwrap().get_file_from_path(&self.path).is_ok();
 
@@ -209,7 +206,7 @@ impl Device {
 
 	/// If exists, removes the device file. iF the file doesn't exist, the function does nothing.
 	pub fn remove_file(&mut self) {
-		let mutex = file::get_files_cache();
+		let mutex = fcache::get();
 		let mut guard = mutex.lock(true);
 		let files_cache = guard.get_mut();
 
@@ -217,6 +214,20 @@ impl Device {
 			let mut guard = file.lock(true);
 			guard.get_mut().unlink();
 		}
+	}
+}
+
+impl IO for Device {
+	fn get_size(&self) -> u64 {
+		self.handle.get_size()
+	}
+
+	fn read(&self, offset: u64, buff: &mut [u8]) -> Result<usize, Errno> {
+		self.handle.read(offset, buff)
+	}
+
+	fn write(&mut self, offset: u64, buff: &[u8]) -> Result<usize, Errno> {
+		self.handle.write(offset, buff)
 	}
 }
 

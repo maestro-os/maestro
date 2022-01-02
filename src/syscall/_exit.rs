@@ -1,5 +1,6 @@
 //! The _exit syscall allows to terminate the current process with the given status code.
 
+use core::arch::asm;
 use crate::process::Process;
 use crate::process::Regs;
 

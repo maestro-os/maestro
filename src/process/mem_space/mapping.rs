@@ -52,7 +52,8 @@ pub struct MemMapping {
 	/// The file descriptor of the file that mapping points to. If None, the mapping doesn't point
 	/// to any file.
 	fd: Option<FileDescriptor>,
-	/// The offset inside of the file pointed to by the file descriptor.
+	/// The offset inside of the file pointed to by the file descriptor. If there is no file
+	/// descriptor, the value is undefined.
 	off: usize,
 
 	/// Pointer to the virtual memory context handler.
@@ -70,7 +71,7 @@ impl MemMapping {
 	/// `off` is the offset inside of the file pointed to by the given file descriptor.
 	/// `vmem` is the virtual memory context handler.
 	pub fn new(begin: *const c_void, size: usize, flags: u8, fd: Option<FileDescriptor>,
-		off: usize, vmem: NonNull<dyn VMem>,) -> Self {
+		off: usize, vmem: NonNull<dyn VMem>) -> Self {
 		debug_assert!(util::is_aligned(begin, memory::PAGE_SIZE));
 		debug_assert!(size > 0);
 
@@ -133,6 +134,7 @@ impl MemMapping {
 		let vmem = self.get_vmem();
 		let virt_ptr = (self.begin as usize + offset * memory::PAGE_SIZE) as *const c_void;
 		let phys_ptr = vmem.translate(virt_ptr)?;
+
 		if phys_ptr != get_default_page() {
 			Some(phys_ptr)
 		} else {
@@ -162,12 +164,14 @@ impl MemMapping {
 	/// `offset` is the offset of the page in the mapping.
 	fn get_vmem_flags(&self, allocated: bool, offset: usize) -> u32 {
 		let mut flags = 0;
+
 		if (self.flags & super::MAPPING_FLAG_WRITE) != 0 && allocated && !self.is_cow(offset) {
 			flags |= vmem::x86::FLAG_WRITE;
 		}
 		if (self.flags & super::MAPPING_FLAG_USER) != 0 {
 			flags |= vmem::x86::FLAG_USER;
 		}
+
 		flags
 	}
 
@@ -205,7 +209,8 @@ impl MemMapping {
 		Ok(())
 	}
 
-	/// Maps the page at offset `offset` in the mapping to the given virtual memory context. The
+	// TODO Add support for file descriptors
+	/// Maps the page at offset `offset` in the mapping to the virtual memory context. The
 	/// function allocates the physical memory to be mapped.
 	/// If the mapping is in forking state, the function shall apply Copy-On-Write and allocate
 	/// a new physical page with the same data.
@@ -340,8 +345,8 @@ impl MemMapping {
 				};
 				let gap_size = self.size - end;
 
-				Some(Self::new(gap_begin, gap_size, self.flags, self.fd.clone(), self.off,
-					self.vmem))
+				let off = self.off + (begin + gap_size) * memory::PAGE_SIZE;
+				Some(Self::new(gap_begin, gap_size, self.flags, self.fd.clone(), off, self.vmem))
 			} else {
 				None
 			}

@@ -6,6 +6,7 @@
 //!
 //! When the signal handler returns, the process returns directly to execution.
 
+use core::arch::asm;
 use core::ffi::c_void;
 use core::mem::transmute;
 
@@ -26,7 +27,7 @@ pub extern "C" fn signal_trampoline(handler: *const c_void, sig: i32) -> ! {
 
 	// Calling `sigreturn` to end signal handling.
 	unsafe {
-		asm!("mov eax, 512\nint 0x80");
+		asm!("mov eax, 0x077\nint 0x80"); // TODO Adapt the system call number to the arch
 	}
 
 	// Trying to kill the process if reaching this for some reason

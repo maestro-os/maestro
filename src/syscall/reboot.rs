@@ -1,5 +1,6 @@
 //! The `reboot` system call allows the superuser to power off, reboot, halt or suspend the system.
 
+use core::arch::asm;
 use crate::errno::Errno;
 use crate::errno;
 use crate::process::Process;

@@ -13,6 +13,7 @@ use crate::errno::Errno;
 use crate::errno;
 use crate::file::path::Path;
 use crate::memory::malloc;
+use crate::util::IO;
 use crate::util::container::string::String;
 use super::StorageInterface;
 
@@ -63,7 +64,7 @@ impl StorageInterface for RAMDisk {
 		(RAM_DISK_SIZE as u64) / self.get_block_size()
 	}
 
-	fn read(&mut self, buf: &mut [u8], offset: u64, size: u64) -> Result<(), Errno> {
+	fn read(&self, buf: &mut [u8], offset: u64, size: u64) -> Result<(), Errno> {
 		if offset > self.get_blocks_count() || offset + size > self.get_blocks_count() {
 			return Err(errno::EINVAL);
 		}
@@ -128,21 +129,23 @@ impl RAMDiskHandle {
 }
 
 impl DeviceHandle for RAMDiskHandle {
+	fn ioctl(&mut self, _request: u32, _argp: *const c_void) -> Result<u32, Errno> {
+		// TODO
+		Err(errno::EINVAL)
+	}
+}
+
+impl IO for RAMDiskHandle {
 	fn get_size(&self) -> u64 {
 		RAM_DISK_SIZE as _
 	}
 
-	fn read(&mut self, offset: u64, buff: &mut [u8]) -> Result<usize, Errno> {
+	fn read(&self, offset: u64, buff: &mut [u8]) -> Result<usize, Errno> {
 		self.disk.read_bytes(buff, offset)
 	}
 
 	fn write(&mut self, offset: u64, buff: &[u8]) -> Result<usize, Errno> {
 		self.disk.write_bytes(buff, offset)
-	}
-
-	fn ioctl(&mut self, _request: u32, _argp: *const c_void) -> Result<u32, Errno> {
-		// TODO
-		Err(errno::EINVAL)
 	}
 }
 

@@ -3,6 +3,8 @@
 use core::cmp::Ordering;
 use core::cmp::max;
 use core::cmp::min;
+use core::hash::Hash;
+use core::hash::Hasher;
 use core::ops::Index;
 use core::ops::IndexMut;
 use core::ops::Range;
@@ -156,6 +158,7 @@ impl<T> Vec<T> {
 		}
 	}
 
+	// FIXME Invalid in case the element is inserted outside of the vector
 	/// Inserts an element at position index within the vector, shifting all elements after it to
 	/// the right.
 	pub fn insert(&mut self, index: usize, element: T) -> Result<(), Errno> {
@@ -268,7 +271,7 @@ impl<T> Vec<T> {
 	}
 }
 
-impl<T: Default> Vec::<T> {
+impl<T: Default> Vec<T> {
 	/// Resizes the vector to the given length `new_len`. If new elements have to be created, the
 	/// default value is used.
 	pub fn resize(&mut self, new_len: usize) -> Result<(), Errno> {
@@ -283,7 +286,7 @@ impl<T: Default> Vec::<T> {
 	}
 }
 
-impl<T: PartialEq> PartialEq for Vec::<T> {
+impl<T: PartialEq> PartialEq for Vec<T> {
 	fn eq(&self, other: &Vec::<T>) -> bool {
 		if self.len() != other.len() {
 			return false;
@@ -490,6 +493,14 @@ impl<'a, T> IntoIterator for &'a Vec<T> {
 
 	fn into_iter(self) -> Self::IntoIter {
 		VecIterator::new(&self)
+	}
+}
+
+impl<T: Hash> Hash for Vec<T> {
+	fn hash<H: Hasher>(&self, state: &mut H) {
+		for i in 0..self.len() {
+			self[i].hash(state);
+		}
 	}
 }
 
