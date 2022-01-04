@@ -15,7 +15,7 @@ use crate::util::lock::Mutex;
 use crate::util::ptr::SharedPtr;
 use super::path::Path;
 
-/// TODO doc
+/// Permits mandatory locking on files.
 const FLAG_MANDLOCK: u32    = 0b000000000001;
 /// Do not update file (all kinds) access timestamps on the filesystem.
 const FLAG_NOATIME: u32     = 0b000000000010;
@@ -31,13 +31,14 @@ const FLAG_NOSUID: u32      = 0b000000100000;
 const FLAG_RDONLY: u32      = 0b000001000000;
 /// TODO doc
 const FLAG_REC: u32         = 0b000010000000;
-/// TODO doc
+/// Update atime only if less than or equal to mtime or ctime.
 const FLAG_RELATIME: u32    = 0b000100000000;
-/// TODO doc
+/// Suppresses certain warning messages in the kernel logs.
 const FLAG_SILENT: u32      = 0b001000000000;
-/// TODO doc
+/// Always update the last access time when files on this filesystem are accessed. Overrides
+/// NOATIME and RELATIME.
 const FLAG_STRICTATIME: u32 = 0b010000000000;
-/// TODO doc
+/// Makes writes on this filesystem synchronous.
 const FLAG_SYNCHRONOUS: u32 = 0b100000000000;
 
 // TODO When removing a mountpoint, return an error if another mountpoint is present in a subdir
@@ -98,17 +99,24 @@ impl MountPoint {
 	/// `path` is the path on which the filesystem is to be mounted.
 	pub fn new(source: MountSource, fs_type: Option<SharedPtr<dyn FilesystemType>>, flags: u32,
 		path: Path) -> Result<Self, Errno> {
+		// Getting the I/O interface
 		let io_mutex = source.get_io();
 		let mut io_guard = io_mutex.lock();
 		let io = io_guard.get_mut();
 
+		// Tells whether the filesystem will be mounted in read-only
+		let readonly = flags & FLAG_RDONLY != 0;
+
+		// Getting the filesystem type
 		let fs_type_ptr = match fs_type {
 			Some(fs_type) => fs_type,
 			None => fs::detect(io)?,
 		};
 		let fs_type_guard = fs_type_ptr.lock();
 		let fs_type = fs_type_guard.get();
-		let filesystem = fs_type.load_filesystem(io, path.failable_clone()?)?;
+
+		// Loading the filesystem
+		let filesystem = fs_type.load_filesystem(io, path.failable_clone()?, readonly)?;
 
 		Ok(Self {
 			source,

@@ -36,8 +36,8 @@ pub struct KernFS {
 
 	/// The root node of the filesystem.
 	nodes: Vec<Option<Box<dyn KernFSNode>>>,
-	/// The list of free nodes indexes in the nodes list.
-	free_nodes: Vec<usize>,
+	/// The list of free inodes in the nodes list.
+	free_nodes: Vec<INode>,
 }
 
 impl KernFS {
@@ -52,6 +52,28 @@ impl KernFS {
 			nodes: Vec::new(),
 			free_nodes: Vec::new(),
 		}
+	}
+
+	/// Allocates an inode.
+	fn alloc_inode(&mut self) -> Result<INode, Errno> {
+		if let Some(inode) = self.free_nodes.pop() {
+			Ok(inode)
+		} else {
+			self.nodes.push(None)?;
+			Ok((self.nodes.len() - 1) as _)
+		}
+	}
+
+	/// Frees the inode `inode`.
+	fn free_inode(&mut self, inode: INode) -> Result<(), Errno> {
+		if inode as usize == self.nodes.len() - 1 {
+			self.nodes.pop();
+		} else {
+			self.nodes[inode as _] = None;
+			self.free_nodes.push(inode)?;
+		}
+
+		Ok(())
 	}
 
 	/// Adds the given node `node` at the given path `path`.

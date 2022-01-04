@@ -123,28 +123,8 @@ pub const SHF_WRITE: u32 = 0x00000001;
 pub const SHF_ALLOC: u32 = 0x00000002;
 /// The section contains executable machine instructions.
 pub const SHF_EXECINSTR: u32 = 0x00000004;
-/// TODO doc
-pub const SHF_MERGE: u32 = 0x00000010;
-/// TODO doc
-pub const SHF_STRINGS: u32 = 0x00000020;
-/// TODO doc
-pub const SHF_INFO_LINK: u32 = 0x00000040;
-/// TODO doc
-pub const SHF_LINK_ORDER: u32 = 0x00000080;
-/// TODO doc
-pub const SHF_OS_NONCONFORMING: u32 = 0x00000100;
-/// TODO doc
-pub const SHF_GROUP: u32 = 0x00000200;
-/// TODO doc
-pub const SHF_TLS: u32 = 0x00000400;
-/// TODO doc
-pub const SHF_MASKOS: u32 = 0x0ff00000;
 /// All bits included in this mask are reserved for processor-specific semantics.
 pub const SHF_MASKPROC: u32 = 0xf0000000;
-/// TODO doc
-pub const SHF_ORDERED: u32 = 0x04000000;
-/// TODO doc
-pub const SHF_EXCLUDE: u32 = 0x08000000;
 
 /// The symbol's type is not specified.
 pub const STT_NOTYPE: u8 = 0;

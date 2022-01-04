@@ -72,7 +72,7 @@ pub trait FilesystemType {
 
 	/// Tells whether the given IO interface has the current filesystem.
 	/// `io` is the IO interface.
-	fn detect(&self, io: &mut dyn IO) -> bool;
+	fn detect(&self, io: &mut dyn IO) -> Result<bool, Errno>;
 
 	/// Creates a new filesystem on the IO interface and returns its instance.
 	/// `io` is the IO interface.
@@ -81,7 +81,8 @@ pub trait FilesystemType {
 	/// Creates a new instance of the filesystem to mount it.
 	/// `io` is the IO interface.
 	/// `mountpath` is the path on which the filesystem is mounted.
-	fn load_filesystem(&self, io: &mut dyn IO, mountpath: Path)
+	/// `readonly` tells whether the filesystem is mounted in read-only.
+	fn load_filesystem(&self, io: &mut dyn IO, mountpath: Path, readonly: bool)
 		-> Result<Box<dyn Filesystem>, Errno>;
 }
 
@@ -125,7 +126,7 @@ pub fn detect(io: &mut dyn IO) -> Result<SharedPtr<dyn FilesystemType>, Errno> {
 		let fs_type = &mut container[i];
 		let fs_type_guard = fs_type.lock();
 
-		if fs_type_guard.get().detect(io) {
+		if fs_type_guard.get().detect(io)? {
 			drop(fs_type_guard);
 			return Ok(fs_type.clone()); // TODO Use a weak pointer?
 		}

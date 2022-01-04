@@ -29,51 +29,53 @@ use crate::util::IO;
 use crate::util::container::vec::Vec;
 use crate::util::math;
 
-/// TODO doc
+/// Used to define the end of the entries list.
 const AT_NULL: i32 = 0;
-/// TODO doc
+/// Entry with no meaning, to be ignored.
 const AT_IGNORE: i32 = 1;
-/// TODO doc
+/// Entry containing a file descriptor to the application object file in case the program is run
+/// using an interpreter.
 const AT_EXECFD: i32 = 2;
-/// TODO doc
+/// Entry containing a pointer to the program header table for the interpreter.
 const AT_PHDR: i32 = 3;
-/// TODO doc
+/// The size in bytes of one entry in the program header table to which AT_PHDR points.
 const AT_PHENT: i32 = 4;
-/// TODO doc
+/// The number of entries in the program header table to which AT_PHDR points.
 const AT_PHNUM: i32 = 5;
-/// TODO doc
+/// The system's page size in bytes.
 const AT_PAGESZ: i32 = 6;
-/// TODO doc
+/// The base address at which the interpreter program was loaded in memory.
 const AT_BASE: i32 = 7;
-/// TODO doc
+/// Contains flags.
 const AT_FLAGS: i32 = 8;
-/// TODO doc
+/// Entry with the pointer to the entry point of the program to which the interpreter should
+/// transfer control.
 const AT_ENTRY: i32 = 9;
-/// TODO doc
+/// A boolean value. If non-zero, the program is non-ELF.
 const AT_NOTELF: i32 = 10;
-/// TODO doc
+/// The real user ID of the process.
 const AT_UID: i32 = 11;
-/// TODO doc
+/// The effective user ID of the process.
 const AT_EUID: i32 = 12;
-/// TODO doc
+/// The real group ID of the process.
 const AT_GID: i32 = 13;
-/// TODO doc
+/// The effective group ID of the process.
 const AT_EGID: i32 = 14;
-/// TODO doc
+/// Entry pointing to a string containing the platform name.
 const AT_PLATFORM: i32 = 15;
-/// TODO doc
+/// A bitmask of CPU features. Equivalent to the value returned by CPUID 1.EDX.
 const AT_HWCAP: i32 = 16;
-/// TODO doc
+/// The frequency at which times() increments.
 const AT_CLKTCK: i32 = 17;
-/// TODO doc
+/// A boolean value. If non-zero, the program is started in secure mode (suid).
 const AT_SECURE: i32 = 23;
-/// TODO doc
+/// Entry pointing to a string containing the base platform name.
 const AT_BASE_PLATFORM: i32 = 24;
-/// TODO doc
+/// Points to 16 randomly generated secure bytes.
 const AT_RANDOM: i32 = 25;
-/// TODO doc
+/// Extended hardware feature mask.
 const AT_HWCAP2: i32 = 26;
-/// TODO doc
+/// A pointer to the filename of the executed program.
 const AT_EXECFN: i32 = 31;
 
 /// An entry of System V's Auxilary Vectors.

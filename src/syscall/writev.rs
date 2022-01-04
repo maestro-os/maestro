@@ -1,4 +1,4 @@
-//! TODO doc
+//! The writev system call allows to write sparse data on a file descriptor in on call.
 
 use core::cmp::min;
 use core::mem::size_of;

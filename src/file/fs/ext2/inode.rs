@@ -141,7 +141,7 @@ pub struct Ext2INode {
 	pub triply_indirect_block_ptr: u32,
 	/// Generation number.
 	pub generation: u32,
-	/// TODO doc
+	/// The file's ACL.
 	pub extended_attributes_block: u32,
 	/// Higher 32 bits of size in bytes.
 	pub size_high: u32,
@@ -156,8 +156,12 @@ impl Ext2INode {
 	/// `i` is the inode's index (starting at `1`).
 	/// `superblock` is the filesystem's superblock.
 	/// `io` is the I/O interface.
-	fn get_disk_offset(i: u32, superblock: &Superblock, io: &mut dyn IO)
-		-> Result<u64, Errno> {
+	fn get_disk_offset(i: u32, superblock: &Superblock, io: &mut dyn IO) -> Result<u64, Errno> {
+		// Checking the inode is correct
+		if i == 0 {
+			return Err(errno::EINVAL);
+		}
+
 		let blk_size = superblock.get_block_size();
 		let inode_size = superblock.get_inode_size();
 
@@ -197,9 +201,9 @@ impl Ext2INode {
 	/// Reads the `i`th inode from the given device. The index `i` starts at `1`.
 	/// `superblock` is the filesystem's superblock.
 	/// `io` is the I/O interface.
-	pub fn read(i: u32, superblock: &Superblock, io: &mut dyn IO)
-		-> Result<Self, Errno> {
+	pub fn read(i: u32, superblock: &Superblock, io: &mut dyn IO) -> Result<Self, Errno> {
 		let off = Self::get_disk_offset(i, superblock, io)?;
+
 		unsafe {
 			read::<Self>(off, io)
 		}

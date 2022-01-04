@@ -23,7 +23,7 @@ pub const O_RDWR: i32 =      0b0000000000000011;
 pub const O_APPEND: i32 =    0b0000000000000100;
 /// Generates a SIGIO when input or output becomes possible on the file descriptor.
 pub const O_ASYNC: i32 =     0b0000000000001000;
-/// TODO doc
+/// Close-on-exec.
 pub const O_CLOEXEC: i32 =   0b0000000000010000;
 /// If the file doesn't exist, create it.
 pub const O_CREAT: i32 =     0b0000000000100000;
@@ -31,7 +31,7 @@ pub const O_CREAT: i32 =     0b0000000000100000;
 pub const O_DIRECT: i32 =    0b0000000001000000;
 /// If pathname is not a directory, cause the open to fail.
 pub const O_DIRECTORY: i32 = 0b0000000010000000;
-/// TODO doc
+/// Ensure the file is created (when used with O_CREAT). If not, the call fails.
 pub const O_EXCL: i32 =      0b0000000100000000;
 /// Allows openning large files (more than 2^32 bytes).
 pub const O_LARGEFILE: i32 = 0b0000001000000000;

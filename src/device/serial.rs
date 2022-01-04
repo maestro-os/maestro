@@ -35,11 +35,11 @@ const SCRATCH_REG_OFF: u16 = 7;
 
 /// Bit of the Interrupt Enable Register telling whether data is available.
 const INTERRUPT_DATA_AVAILABLE: u8 = 0b1;
-/// TODO doc
+/// Bit of the Interrupt Enable Register telling whether the transmitter is empty.
 const INTERRUPT_TRANSMITTER_EMPTY: u8 = 0b10;
-/// TODO doc
+/// Bit of the Interrupt Enable Register telling whether an interrupt error happened.
 const INTERRUPT_ERROR: u8 = 0b100;
-/// TODO doc
+/// Bit of the Interrupt Enable Register telling whether the interrupt status changed.
 const INTERRUPT_STATUS_CHANGE: u8 = 0b1000;
 
 /// The offset of the DLAB bit in the line control register.

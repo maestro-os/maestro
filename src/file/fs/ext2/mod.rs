@@ -254,7 +254,7 @@ pub struct Superblock {
 	volume_name: [u8; 16],
 	/// The path the volume was last mounted to.
 	last_mount_path: [u8; 64],
-	/// TODO doc
+	/// Used compression algorithms.
 	compression_algorithms: u32,
 	/// The number of blocks to preallocate for files.
 	files_preallocate_count: u8,
@@ -300,8 +300,7 @@ impl Superblock {
 
 	/// Returns the number of block groups.
 	fn get_block_groups_count(&self) -> u32 {
-		// TODO Do not take the last group if not entire? Or mark non-existing blocks as used?
-		math::ceil_division(self.total_blocks, self.blocks_per_group)
+		self.total_blocks / self.blocks_per_group
 	}
 
 	/// Returns the size of a fragment.
@@ -327,7 +326,6 @@ impl Superblock {
 		}
 	}
 
-	// TODO Optimize
 	/// Searches in the given bitmap block `bitmap` for the first element that is not set.
 	/// The function returns the index to the element. If every elements are set, the function
 	/// returns None.
@@ -509,24 +507,50 @@ struct Ext2Fs {
 
 	/// The filesystem's superblock.
 	superblock: Superblock,
+
+	/// Tells whether the filesystem is mounted in read-only.
+	readonly: bool,
 }
 
 impl Ext2Fs {
 	/// Creates a new instance.
 	/// If the filesystem cannot be mounted, the function returns an Err.
 	/// `mountpath` is the path on which the filesystem is mounted.
-	fn new(mut superblock: Superblock, io: &mut dyn IO, mountpath: Path) -> Result<Self, Errno> {
+	/// `readonly` tells whether the filesystem is mounted in read-only.
+	fn new(mut superblock: Superblock, io: &mut dyn IO, mountpath: Path, readonly: bool)
+		-> Result<Self, Errno> {
 		debug_assert!(superblock.is_valid());
 
-		// TODO Check that the driver supports required features
+		// Checking the filesystem doesn't require features that are not implemented by the driver
+		if superblock.major_version >= 1 {
+			// TODO Implement journal
+			let unsupported_required_features = REQUIRED_FEATURE_COMPRESSION
+				| REQUIRED_FEATURE_JOURNAL_REPLAY
+				| REQUIRED_FEATURE_JOURNAL_DEVIXE;
+
+			if superblock.required_features & unsupported_required_features != 0 {
+				// TODO Log?
+				return Err(errno::EINVAL);
+			}
+
+			// TODO Implement
+			let unsupported_write_features = WRITE_REQUIRED_SPARSE_SUPERBLOCKS
+				| WRITE_REQUIRED_64_BITS
+				| WRITE_REQUIRED_DIRECTORY_BINARY_TREE;
+
+			if !readonly && superblock.write_required_features & unsupported_write_features != 0 {
+				// TODO Log?
+				return Err(errno::EROFS);
+			}
+		}
+
 		let timestamp = time::get();
 		if superblock.mount_count_since_fsck >= superblock.mount_count_before_fsck {
 			return Err(errno::EINVAL);
 		}
-		// TODO Check the fs in the kernel?
-		/*if timestamp >= superblock.last_fsck_timestamp + superblock.fsck_interval {
+		if timestamp >= superblock.last_fsck_timestamp + superblock.fsck_interval {
 			return Err(errno::EINVAL);
-		}*/
+		}
 
 		superblock.mount_count_since_fsck += 1;
 
@@ -554,21 +578,20 @@ impl Ext2Fs {
 			mountpath,
 
 			superblock,
+
+			readonly,
 		})
 	}
 }
 
 // TODO Update the write timestamp when the fs is written
-// TODO Add an option when mounting to specify whether to mount in readonly?
-// TODO Make write operations fail if the filesystem is mounted in readonly?
 impl Filesystem for Ext2Fs {
 	fn get_name(&self) -> &[u8] {
 		b"ext2"
 	}
 
 	fn is_readonly(&self) -> bool {
-		// TODO Check that the driver supports write-required features
-		false
+		self.readonly
 	}
 
 	fn must_cache(&self) -> bool {
@@ -674,9 +697,16 @@ impl Filesystem for Ext2Fs {
 	// TODO Check if the file exists. If it does, return EEXIST
 	fn add_file(&mut self, io: &mut dyn IO, parent_inode: INode, mut file: File)
 		-> Result<File, Errno> {
-		debug_assert!(parent_inode >= 1);
+		if self.readonly {
+			return Err(errno::EROFS);
+		}
+
 		let mut parent = Ext2INode::read(parent_inode, &self.superblock, io)?;
-		debug_assert_eq!(parent.get_type(), FileType::Directory);
+
+		// Checking the parent file is a directory
+		if parent.get_type() != FileType::Directory {
+			return Err(errno::ENOTDIR);
+		}
 
 		let mut inode = Ext2INode {
 			mode: Ext2INode::get_file_mode(&file),
@@ -735,6 +765,10 @@ impl Filesystem for Ext2Fs {
 
 	fn remove_file(&mut self, io: &mut dyn IO, parent_inode: INode, _name: &String)
 		-> Result<(), Errno> {
+		if self.readonly {
+			return Err(errno::EROFS);
+		}
+
 		debug_assert!(parent_inode >= 1);
 
 		let parent = Ext2INode::read(parent_inode, &self.superblock, io)?;
@@ -742,8 +776,6 @@ impl Filesystem for Ext2Fs {
 
 		// TODO
 		todo!();
-
-		//Err(errno::ENOMEM)
 	}
 
 	fn read_node(&mut self, io: &mut dyn IO, inode: INode, off: u64, buf: &mut [u8])
@@ -756,6 +788,10 @@ impl Filesystem for Ext2Fs {
 
 	fn write_node(&mut self, io: &mut dyn IO, inode: INode, off: u64, buf: &[u8])
 		-> Result<(), Errno> {
+		if self.readonly {
+			return Err(errno::EROFS);
+		}
+
 		debug_assert!(inode >= 1);
 
 		let mut inode_ = Ext2INode::read(inode, &self.superblock, io)?;
@@ -772,14 +808,8 @@ impl FilesystemType for Ext2FsType {
 		b"ext2"
 	}
 
-	// TODO Also check partition type
-	fn detect(&self, io: &mut dyn IO) -> bool {
-		if let Ok(superblock) = Superblock::read(io) {
-			superblock.is_valid()
-		} else {
-			// TODO Return an error?
-			false
-		}
+	fn detect(&self, io: &mut dyn IO) -> Result<bool, Errno> {
+		Ok(Superblock::read(io)?.is_valid())
 	}
 
 	fn create_filesystem(&self, io: &mut dyn IO) -> Result<Box<dyn Filesystem>, Errno> {
@@ -806,9 +836,9 @@ impl FilesystemType for Ext2FsType {
 			total_unallocated_inodes: inodes_count,
 			superblock_block_number: (SUPERBLOCK_OFFSET / DEFAULT_BLOCK_SIZE) as _,
 			block_size_log: (math::log2(DEFAULT_BLOCK_SIZE as usize) - 10) as _,
-			fragment_size_log: 0, // TODO
+			fragment_size_log: 0,
 			blocks_per_group: DEFAULT_BLOCKS_PER_GROUP,
-			fragments_per_group: 0, // TODO
+			fragments_per_group: 0,
 			inodes_per_group: DEFAULT_INODES_PER_GROUP,
 			last_mount_timestamp: timestamp,
 			last_write_timestamp: timestamp,
@@ -939,14 +969,14 @@ impl FilesystemType for Ext2FsType {
 		};
 		root_dir.write(inode::ROOT_DIRECTORY_INODE, &superblock, io)?;
 
-		let fs = Ext2Fs::new(superblock, io, Path::root())?;
+		let fs = Ext2Fs::new(superblock, io, Path::root(), true)?;
 		Ok(Box::new(fs)?)
 	}
 
-	fn load_filesystem(&self, io: &mut dyn IO, mountpath: Path)
+	fn load_filesystem(&self, io: &mut dyn IO, mountpath: Path, readonly: bool)
 		-> Result<Box<dyn Filesystem>, Errno> {
 		let superblock = Superblock::read(io)?;
-		let fs = Ext2Fs::new(superblock, io, mountpath)?;
+		let fs = Ext2Fs::new(superblock, io, mountpath, readonly)?;
 
 		Ok(Box::new(fs)? as _)
 	}
