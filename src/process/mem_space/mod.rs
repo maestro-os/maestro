@@ -427,7 +427,6 @@ impl MemSpace {
 		oom::wrap(|| {
 			vmem.unmap_range(ptr, size)
 		});
-		vmem.flush();
 
 		Ok(())
 	}

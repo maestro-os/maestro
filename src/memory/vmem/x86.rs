@@ -74,6 +74,9 @@ extern "C" {
 	pub fn paging_enable(directory: *const u32);
 	/// Disables paging.
 	pub fn paging_disable();
+
+	/// Executes the `invlpg` instruction for the address `addr`.
+	fn invlpg(addr: *const c_void);
 	/// Reloads the TLB (Translation Lookaside Buffer).
 	pub fn tlb_reload();
 }
@@ -475,6 +478,9 @@ impl VMem for X86VMem {
 		let table_entry_index = Self::get_addr_element_index(virtaddr, 0);
 		obj_set(table, table_entry_index, (physaddr as u32) | flags);
 
+		// Invalidating the page
+		self.invalidate_page(virtaddr);
+
 		Ok(())
 	}
 
@@ -497,6 +503,9 @@ impl VMem for X86VMem {
 
 				self.map_pse(next_physaddr, next_virtaddr, flags);
 				i += 1024;
+
+				// Invalidating the pages
+				self.invalidate_page(next_virtaddr); // TODO Check if invalidating the whole table
 			} else {
 				self.map(next_physaddr, next_virtaddr, flags)?;
 				i += 1;
@@ -527,6 +536,9 @@ impl VMem for X86VMem {
 		let table_entry_index = Self::get_addr_element_index(virtaddr, 0);
 		obj_set(table, table_entry_index, 0);
 
+		// Invalidating the page
+		self.invalidate_page(virtaddr);
+
 		// Removing the table if it is empty and if not a kernel space table
 		if table::is_empty(self.page_dir, dir_entry_index) && dir_entry_index < 768 {
 			table::delete(self.page_dir, dir_entry_index);
@@ -544,9 +556,22 @@ impl VMem for X86VMem {
 			let off = i * memory::PAGE_SIZE;
 			let next_virtaddr = ((virtaddr as usize) + off) as *const c_void;
 
-			// TODO Use unmap_pse if the table is PSE
-			self.unmap(next_virtaddr)?;
-			i += 1;
+			// Checking whether the page is mapped in PSE
+			let dir_entry_index = Self::get_addr_element_index(virtaddr, 1);
+			let dir_entry_value = obj_get(self.page_dir, dir_entry_index);
+			let is_pse = (dir_entry_value & FLAG_PAGE_SIZE != 0)
+				&& Self::use_pse(next_virtaddr, pages - i);
+
+			if is_pse {
+				self.unmap_pse(next_virtaddr);
+				i += 1024;
+
+				// Invalidating the pages
+				self.invalidate_page(next_virtaddr); // TODO Check if invalidating the whole table
+			} else {
+				self.unmap(next_virtaddr)?;
+				i += 1;
+			}
 		}
 
 		Ok(())
@@ -566,7 +591,17 @@ impl VMem for X86VMem {
 		}
 	}
 
+	fn invalidate_page(&self, addr: *const c_void) {
+		// TODO Also invalidate on other CPU core (TLB shootdown)
+
+		unsafe {
+			invlpg(addr);
+		}
+	}
+
 	fn flush(&self) {
+		// TODO Also invalidate on other CPU core (TLB shootdown)
+
 		if self.is_bound() {
 			unsafe {
 				tlb_reload();

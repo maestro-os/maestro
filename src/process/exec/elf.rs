@@ -383,8 +383,6 @@ impl Executor for ELFExecutor {
 			}
 		}
 
-		mem_space.get_vmem().flush();
-
 		// Switching to the process's vmem to write onto the virtual memory
 		vmem::switch(mem_space.get_vmem().as_ref(), || {
 			// Copying the segments' content into the virtual memory

@@ -27,7 +27,6 @@ impl MMIO {
 		let flags = vmem::x86::FLAG_GLOBAL | vmem::x86::FLAG_CACHE_DISABLE
 			| vmem::x86::FLAG_WRITE_THROUGH | vmem::x86::FLAG_WRITE;
 		paging.map_range(self.phys_begin, self.virt_begin, self.pages, flags)?;
-		paging.flush();
 
 		Ok(())
 	}

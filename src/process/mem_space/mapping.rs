@@ -205,7 +205,6 @@ impl MemMapping {
 			}
 		}
 
-		vmem.flush();
 		Ok(())
 	}
 
@@ -258,7 +257,6 @@ impl MemMapping {
 				ref_counter.get_mut().decrement(prev_phys_ptr);
 			}
 		}
-		vmem.flush();
 
 		vmem::switch(vmem, || {
 			unsafe {
@@ -312,7 +310,6 @@ impl MemMapping {
 		oom::wrap(|| {
 			vmem.unmap_range(self.begin, self.size)
 		});
-		vmem.flush();
 
 		Ok(())
 	}
@@ -373,9 +370,6 @@ impl MemMapping {
 			let flags = self.get_vmem_flags(allocated, offset);
 			// Cannot fail because the page for the vmem structure is already mapped
 			vmem.map(phys_ptr, virt_ptr, flags).unwrap();
-
-			// TODO Use page invalidation instead if available
-			vmem.flush();
 		}
 	}
 

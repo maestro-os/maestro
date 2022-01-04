@@ -5,15 +5,10 @@ use super::ACPITableHeader;
 
 /// TODO doc
 pub struct GenericAddr {
-	/// TODO doc
 	addr_space: u8,
-	/// TODO doc
 	bit_width: u8,
-	/// TODO doc
 	bit_offset: u8,
-	/// TODO doc
 	access_size: u8,
-	/// TODO doc
 	address: u8,
 }
 

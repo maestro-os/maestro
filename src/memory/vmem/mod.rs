@@ -31,24 +31,31 @@ pub trait VMem: FailableClone {
 
 	/// Maps the the given physical address `physaddr` to the given virtual address `virtaddr` with
 	/// the given flags.
+	/// This function automaticaly invalidates the page in the cache.
 	fn map(&mut self, physaddr: *const c_void, virtaddr: *const c_void, flags: u32)
 		-> Result<(), Errno>;
 	/// Maps the given range of physical address `physaddr` to the given range of virtual address
 	/// `virtaddr`. The range is `pages` pages large.
 	/// If the operation fails, the virtual memory is left altered midway.
+	/// This function automaticaly invalidates the page(s) in the cache.
 	fn map_range(&mut self, physaddr: *const c_void, virtaddr: *const c_void, pages: usize,
 		flags: u32) -> Result<(), Errno>;
 
 	/// Unmaps the page at virtual address `virtaddr`.
+	/// This function automaticaly invalidates the page in the cache.
 	fn unmap(&mut self, virtaddr: *const c_void) -> Result<(), Errno>;
 	/// Unmaps the given range beginning at virtual address `virtaddr` with size of `pages` pages.
 	/// If the operation fails, the virtual memory is left altered midway.
+	/// This function automaticaly invalidates the page(s) in the cache.
 	fn unmap_range(&mut self, virtaddr: *const c_void, pages: usize) -> Result<(), Errno>;
 
 	/// Binds the virtual memory context handler.
 	fn bind(&self);
 	/// Tells whether the handler is bound or not.
 	fn is_bound(&self) -> bool;
+
+	/// Invalides the page at address `addr`.
+	fn invalidate_page(&self, addr: *const c_void);
 	/// Flushes the modifications of the context if bound. This function should be called after
 	/// applying modifications to the context.
 	fn flush(&self);

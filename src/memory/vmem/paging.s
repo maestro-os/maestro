@@ -6,6 +6,7 @@
 
 .global paging_enable
 .global paging_disable
+.global invlpg
 .global tlb_reload
 
 /*
@@ -39,11 +40,25 @@ paging_disable:
 	ret
 
 /*
+ * (x86) Executes the invlpg for the given page address.
+ */
+invlpg:
+	push %eax
+
+	mov 4(%esp), %eax
+	invlpg (%eax)
+
+	pop %eax
+	ret
+
+/*
  * (x86) Reloads the Translate Lookaside Buffer.
  */
 tlb_reload:
 	push %eax
+
 	movl %cr3, %eax
 	movl %eax, %cr3
+
 	pop %eax
 	ret
