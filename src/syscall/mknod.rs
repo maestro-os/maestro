@@ -22,7 +22,7 @@ pub fn mknod(regs: &Regs) -> Result<i32, Errno> {
 	let (path, umask, uid, gid) = {
 		// Getting the process
 		let mutex = Process::get_current().unwrap();
-		let mut guard = mutex.lock(false);
+		let mut guard = mutex.lock();
 		let proc = guard.get_mut();
 
 		let umask = proc.get_umask();
@@ -70,7 +70,7 @@ pub fn mknod(regs: &Regs) -> Result<i32, Errno> {
 	let file = File::new(name, file_content, uid, gid, mode)?;
 	{
 		let mutex = fcache::get();
-		let mut guard = mutex.lock(true);
+		let mut guard = mutex.lock();
 		let files_cache = guard.get_mut();
 
 		files_cache.as_mut().unwrap().create_file(&parent_path, file)?;

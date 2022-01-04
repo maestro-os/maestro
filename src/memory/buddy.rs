@@ -76,7 +76,7 @@ struct Frame {
 }
 
 /// The array of buddy allocator zones.
-static mut ZONES: MaybeUninit<[Mutex<Zone>; ZONES_COUNT]> = MaybeUninit::uninit();
+static mut ZONES: MaybeUninit<[IntMutex<Zone>; ZONES_COUNT]> = MaybeUninit::uninit();
 
 /// Prepares the buddy allocator. Calling this function is required before setting the zone slots.
 pub unsafe fn prepare() {
@@ -93,7 +93,7 @@ pub fn set_zone_slot(slot: usize, zone: Zone) {
 	};
 
 	debug_assert!(slot < z.len());
-	z[slot] = Mutex::new(zone);
+	z[slot] = IntMutex::new(zone);
 }
 
 /// The size in bytes of a frame allocated by the buddy allocator with the given `order`.
@@ -120,7 +120,7 @@ pub fn get_order(pages: usize) -> FrameOrder {
 }
 
 /// Returns a mutable reference to a zone suitable for an allocation with the given type `type_`.
-fn get_suitable_zone(type_: usize) -> Option<&'static mut Mutex<Zone>> {
+fn get_suitable_zone(type_: usize) -> Option<&'static mut IntMutex<Zone>> {
 	let zones = unsafe {
 		ZONES.assume_init_mut()
 	};
@@ -128,7 +128,7 @@ fn get_suitable_zone(type_: usize) -> Option<&'static mut Mutex<Zone>> {
 	#[allow(clippy::needless_range_loop)]
 	for i in 0..zones.len() {
 		let is_valid = {
-			let guard = zones[i].lock(false);
+			let guard = zones[i].lock();
 			let zone = guard.get();
 			zone.type_ == type_ as _
 		};
@@ -140,7 +140,7 @@ fn get_suitable_zone(type_: usize) -> Option<&'static mut Mutex<Zone>> {
 }
 
 /// Returns a mutable reference to the zone that contains the given pointer.
-fn get_zone_for_pointer(ptr: *const c_void) -> Option<&'static mut Mutex<Zone>> {
+fn get_zone_for_pointer(ptr: *const c_void) -> Option<&'static mut IntMutex<Zone>> {
 	let zones = unsafe {
 		ZONES.assume_init_mut()
 	};
@@ -148,7 +148,7 @@ fn get_zone_for_pointer(ptr: *const c_void) -> Option<&'static mut Mutex<Zone>> 
 	#[allow(clippy::needless_range_loop)]
 	for i in 0..zones.len() {
 		let is_valid = {
-			let guard = zones[i].lock(true);
+			let guard = zones[i].lock();
 			let zone = guard.get();
 			ptr >= zone.begin && (ptr as usize) < (zone.begin as usize) + zone.get_size()
 		};
@@ -170,7 +170,7 @@ pub fn alloc(order: FrameOrder, flags: Flags) -> Result<*mut c_void, Errno> {
 		let z = get_suitable_zone(i);
 
 		if let Some(z) = z {
-			let mut guard = z.lock(true);
+			let mut guard = z.lock();
 			let zone = guard.get_mut();
 
 			let frame = zone.get_available_frame(order);
@@ -207,7 +207,7 @@ pub fn free(ptr: *const c_void, order: FrameOrder) {
 	debug_assert!(order <= MAX_ORDER);
 
 	let z = get_zone_for_pointer(ptr).unwrap();
-	let mut guard = z.lock(true);
+	let mut guard = z.lock();
 	let zone = guard.get_mut();
 
 	let frame_id = zone.get_frame_id_from_ptr(ptr);
@@ -235,7 +235,7 @@ pub fn allocated_pages_count() -> usize {
 	};
 	#[allow(clippy::needless_range_loop)]
 	for i in 0..z.len() {
-		let guard = z[i].lock(true);
+		let guard = z[i].lock();
 		n += guard.get().get_allocated_pages();
 	}
 	n

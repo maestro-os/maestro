@@ -87,7 +87,7 @@ impl SocketSide {
 		});
 
 		{
-			let mut guard = sock.lock(true);
+			let mut guard = sock.lock();
 			guard.get_mut().sides.push(s.clone()?)?;
 		}
 
@@ -98,7 +98,7 @@ impl SocketSide {
 	/// `buf` is the slice to write to.
 	/// The functions returns the number of bytes that have been read.
 	pub fn read(&mut self, buf: &mut [u8]) -> usize {
-		let mut guard = self.sock.lock(true);
+		let mut guard = self.sock.lock();
 		let sock = guard.get_mut();
 
 		if self.other {
@@ -112,7 +112,7 @@ impl SocketSide {
 	/// `buf` is the slice to read from.
 	/// The functions returns the number of bytes that have been written.
 	pub fn write(&mut self, buf: &[u8]) -> usize {
-		let mut guard = self.sock.lock(true);
+		let mut guard = self.sock.lock();
 		let sock = guard.get_mut();
 
 		if self.other {

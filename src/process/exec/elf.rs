@@ -116,12 +116,12 @@ impl AuxEntry {
 /// `gid` is the Group ID of the executing user.
 fn read_exec_file(path: &Path, uid: Uid, gid: Gid) -> Result<malloc::Alloc<u8>, Errno> {
 	let mutex = fcache::get();
-	let mut guard = mutex.lock(true);
+	let mut guard = mutex.lock();
 	let files_cache = guard.get_mut();
 
 	// Getting the file from path
 	let file_mutex = files_cache.as_mut().unwrap().get_file_from_path(&path)?;
-	let mut file_lock = file_mutex.lock(true);
+	let mut file_lock = file_mutex.lock();
 	let file = file_lock.get_mut();
 
 	// Check that the file can be executed by the user

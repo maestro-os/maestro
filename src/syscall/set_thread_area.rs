@@ -53,7 +53,7 @@ pub fn set_thread_area(regs: &Regs) -> Result<i32, Errno> {
 	let u_info = regs.ebx as *mut c_void;
 
 	let mutex = Process::get_current().unwrap();
-	let mut guard = mutex.lock(false);
+	let mut guard = mutex.lock();
 	let proc = guard.get_mut();
 
 	// Checking the process can access the given pointer

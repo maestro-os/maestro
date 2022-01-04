@@ -453,7 +453,7 @@ impl VMem for X86VMem {
 		flags |= FLAG_PRESENT;
 
 		// Locking the global mutex to avoid data races while modifying kernel space tables
-		let _ = GLOBAL_MUTEX.lock(true);
+		let _ = GLOBAL_MUTEX.lock();
 
 		let dir_entry_index = Self::get_addr_element_index(virtaddr, 1);
 		let mut dir_entry_value = obj_get(self.page_dir, dir_entry_index);
@@ -513,7 +513,7 @@ impl VMem for X86VMem {
 		debug_assert!(util::is_aligned(virtaddr, memory::PAGE_SIZE));
 
 		// Locking the global mutex to avoid data races while modifying kernel space tables
-		let _ = GLOBAL_MUTEX.lock(true);
+		let _ = GLOBAL_MUTEX.lock();
 
 		let dir_entry_index = Self::get_addr_element_index(virtaddr, 1);
 		let dir_entry_value = obj_get(self.page_dir, dir_entry_index);

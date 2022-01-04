@@ -25,7 +25,7 @@ pub fn mount(regs: &Regs) -> Result<i32, Errno> {
 	let (source_slice, target_slice, filesystemtype_slice) = {
 		// Getting the process
 		let mutex = Process::get_current().unwrap();
-		let guard = mutex.lock(false);
+		let guard = mutex.lock();
 		let proc = guard.get();
 
 		// Getting strings
@@ -42,12 +42,12 @@ pub fn mount(regs: &Regs) -> Result<i32, Errno> {
 	// Getting the target file
 	let target_path = Path::from_str(target_slice, true)?;
 	let target_mutex = {
-		let mut guard = fcache::get().lock(false);
+		let mut guard = fcache::get().lock();
 		let fcache = guard.get_mut().as_mut().unwrap();
 
 		fcache.get_file_from_path(&target_path)?
 	};
-	let target_guard = target_mutex.lock(true);
+	let target_guard = target_mutex.lock();
 	let target_file = target_guard.get();
 
 	// Checking the target is a directory

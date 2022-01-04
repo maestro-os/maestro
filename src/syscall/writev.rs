@@ -22,7 +22,7 @@ pub fn writev(regs: &Regs) -> Result<i32, Errno> {
 	}
 
 	let mutex = Process::get_current().unwrap();
-	let mut guard = mutex.lock(false);
+	let mut guard = mutex.lock();
 	let proc = guard.get_mut();
 
 	// Checking that the vector is accessible

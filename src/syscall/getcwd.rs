@@ -16,7 +16,7 @@ pub fn getcwd(regs: &Regs) -> Result<i32, Errno> {
 
 	let cwd = {
 		let mutex = Process::get_current().unwrap();
-		let mut guard = mutex.lock(false);
+		let mut guard = mutex.lock();
 		let proc = guard.get_mut();
 
 		// Checking that the buffer is accessible

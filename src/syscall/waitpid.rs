@@ -83,14 +83,14 @@ fn get_wstatus(proc: &Process) -> i32 {
 /// `wstatus` is a reference to the wait status. If None, the wstatus is not written.
 fn check_waitable(proc: &Process, pid: i32, wstatus: &mut Option<&mut i32>)
 	-> Result<Option<Pid>, Errno> {
-	let mut scheduler_guard = process::get_scheduler().lock(false);
+	let mut scheduler_guard = process::get_scheduler().lock();
 	let scheduler = scheduler_guard.get_mut();
 
 	// Iterating on every target processes, checking if they can be waited on
 	let mut i = 0;
 	while let Some(pid) = get_target(scheduler, proc, pid, i) {
 		if let Some(p) = scheduler.get_by_pid(pid) {
-			let mut proc_guard = p.lock(false);
+			let mut proc_guard = p.lock();
 			let p = proc_guard.get_mut();
 
 			// If waitable, return
@@ -128,7 +128,7 @@ fn check_waitable(proc: &Process, pid: i32, wstatus: &mut Option<&mut i32>)
 pub fn do_waitpid(pid: i32, wstatus: *mut i32, options: i32) -> Result<i32, Errno> {
 	{
 		let mutex = Process::get_current().unwrap();
-		let mut guard = mutex.lock(false);
+		let mut guard = mutex.lock();
 		let proc = guard.get_mut();
 
 		let len = size_of::<i32>();
@@ -152,7 +152,7 @@ pub fn do_waitpid(pid: i32, wstatus: *mut i32, options: i32) -> Result<i32, Errn
 		// Check if at least one target process is waitable
 		{
 			let mutex = Process::get_current().unwrap();
-			let mut guard = mutex.lock(false);
+			let mut guard = mutex.lock();
 			let proc = guard.get_mut();
 
 			// If waitable, return
@@ -170,7 +170,7 @@ pub fn do_waitpid(pid: i32, wstatus: *mut i32, options: i32) -> Result<i32, Errn
 		// state of the current process to wake it up
 		{
 			let mutex = Process::get_current().unwrap();
-			let mut guard = mutex.lock(false);
+			let mut guard = mutex.lock();
 			let proc = guard.get_mut();
 
 			proc.set_state(process::State::Sleeping);

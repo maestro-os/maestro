@@ -58,7 +58,7 @@ impl MountSource {
 		let path = Path::from_str(string, true)?;
 		let file = {
 			let mutex = fcache::get();
-			let mut guard = mutex.lock(true);
+			let mut guard = mutex.lock();
 			let fcache = guard.get_mut().as_mut().unwrap();
 
 			fcache.get_file_from_path(&path)?
@@ -99,14 +99,14 @@ impl MountPoint {
 	pub fn new(source: MountSource, fs_type: Option<SharedPtr<dyn FilesystemType>>, flags: u32,
 		path: Path) -> Result<Self, Errno> {
 		let io_mutex = source.get_io();
-		let mut io_guard = io_mutex.lock(true);
+		let mut io_guard = io_mutex.lock();
 		let io = io_guard.get_mut();
 
 		let fs_type_ptr = match fs_type {
 			Some(fs_type) => fs_type,
 			None => fs::detect(io)?,
 		};
-		let fs_type_guard = fs_type_ptr.lock(true);
+		let fs_type_guard = fs_type_ptr.lock();
 		let fs_type = fs_type_guard.get();
 		let filesystem = fs_type.load_filesystem(io, path.failable_clone()?)?;
 
@@ -163,7 +163,7 @@ static MOUNT_POINTS: Mutex<HashMap<Path, SharedPtr<MountPoint>>> = Mutex::new(Ha
 /// Registers a new mountpoint `mountpoint`. If a mountpoint is already present at the same path,
 /// the function fails.
 pub fn register(mountpoint: MountPoint) -> Result<SharedPtr<MountPoint>, Errno> {
-	let mut guard = MOUNT_POINTS.lock(true);
+	let mut guard = MOUNT_POINTS.lock();
 	let container = guard.get_mut();
 
 	let path = mountpoint.get_path().failable_clone()?;
@@ -176,16 +176,16 @@ pub fn register(mountpoint: MountPoint) -> Result<SharedPtr<MountPoint>, Errno> 
 /// Returns the deepest mountpoint in the path `path`. If no mountpoint is in the path, the
 /// function returns None.
 pub fn get_deepest(path: &Path) -> Option<SharedPtr<MountPoint>> {
-	let mut guard = MOUNT_POINTS.lock(true);
+	let mut guard = MOUNT_POINTS.lock();
 	let container = guard.get_mut();
 
 	let mut max: Option<SharedPtr<MountPoint>> = None;
 	for m in container.iter() {
-		let mount_guard = m.lock(true);
+		let mount_guard = m.lock();
 		let mount_path = mount_guard.get().get_path();
 
 		if let Some(max) = max.as_mut() {
-			let max_guard = max.lock(true);
+			let max_guard = max.lock();
 			let max_path = max_guard.get().get_path();
 
 			if max_path.get_elements_count() >= mount_path.get_elements_count() {
@@ -204,7 +204,7 @@ pub fn get_deepest(path: &Path) -> Option<SharedPtr<MountPoint>> {
 
 /// Returns the mountpoint with path `path`. If it doesn't exist, the function returns None.
 pub fn from_path(path: &Path) -> Option<SharedPtr<MountPoint>> {
-	let mut guard = MOUNT_POINTS.lock(true);
+	let mut guard = MOUNT_POINTS.lock();
 	let container = guard.get_mut();
 
 	Some(container.get(path)?.clone())

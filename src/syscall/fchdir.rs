@@ -12,7 +12,7 @@ pub fn fchdir(regs: &Regs) -> Result<i32, Errno> {
 	let fd = regs.ebx as i32;
 
 	let mutex = Process::get_current().unwrap();
-	let mut guard = mutex.lock(false);
+	let mut guard = mutex.lock();
 	let proc = guard.get_mut();
 
 	if fd < 0 {
@@ -22,7 +22,7 @@ pub fn fchdir(regs: &Regs) -> Result<i32, Errno> {
 	if let Some(fd) = proc.get_fd(fd as _) {
 		if let FDTarget::File(dir_mutex) = fd.get_target_mut() {
 			let new_cwd = {
-				let mut dir_guard = dir_mutex.lock(true);
+				let mut dir_guard = dir_mutex.lock();
 				let dir = dir_guard.get_mut();
 
 				// TODO Check permission

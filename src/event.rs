@@ -134,7 +134,7 @@ impl Drop for CallbackHook {
 }
 
 /// List containing vectors that store callbacks for every interrupt watchdogs.
-static mut CALLBACKS: MaybeUninit<[Mutex<Vec<CallbackWrapper>>; idt::ENTRIES_COUNT as _]>
+static mut CALLBACKS: MaybeUninit<[IntMutex<Vec<CallbackWrapper>>; idt::ENTRIES_COUNT as _]>
 	= MaybeUninit::uninit();
 
 /// Initializes the events handler.
@@ -145,7 +145,7 @@ pub fn init() {
 	};
 
 	for c in callbacks {
-		*c.lock(false).get_mut() = Vec::new();
+		*c.lock().get_mut() = Vec::new();
 	}
 }
 
@@ -162,7 +162,7 @@ pub fn register_callback<T>(id: usize, priority: u32, callback: T) -> Result<Cal
 	idt::wrap_disable_interrupts(|| {
 		let mut guard = unsafe {
 			CALLBACKS.assume_init_mut()
-		}[id].lock(false);
+		}[id].lock();
 		let vec = &mut guard.get_mut();
 
 		let index = {
@@ -192,7 +192,7 @@ pub fn register_callback<T>(id: usize, priority: u32, callback: T) -> Result<Cal
 fn remove_callback(id: usize, priority: u32, ptr: *const c_void) {
 	let mut guard = unsafe {
 		CALLBACKS.assume_init_mut()
-	}[id].lock(false);
+	}[id].lock();
 	let vec = &mut guard.get_mut();
 
 	let res = vec.binary_search_by(| x | {
@@ -233,7 +233,7 @@ pub extern "C" fn event_handler(id: u32, code: u32, ring: u32, regs: &Regs) {
 	let action = {
 		let mut guard = unsafe {
 			&mut CALLBACKS.assume_init_mut()[id as usize]
-		}.lock(false);
+		}.lock();
 		let callbacks = guard.get_mut();
 
 		let mut last_action = {

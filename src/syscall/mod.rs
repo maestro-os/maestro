@@ -511,7 +511,7 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 		_ => {
 			{
 				let mutex = Process::get_current().unwrap();
-				let mut guard = mutex.lock(false);
+				let mut guard = mutex.lock();
 				let curr_proc = guard.get_mut();
 
 				// SIGSYS cannot be caught, thus the process will be terminated

@@ -15,7 +15,7 @@ pub fn time(regs: &Regs) -> Result<i32, Errno> {
 
 	if !tloc.is_null() {
 		let mutex = Process::get_current().unwrap();
-		let mut guard = mutex.lock(false);
+		let mut guard = mutex.lock();
 		let proc = guard.get_mut();
 
 		if !proc.get_mem_space().unwrap().can_access(tloc as _, size_of::<u32>(), true, true) {

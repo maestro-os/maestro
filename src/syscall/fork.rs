@@ -14,13 +14,13 @@ pub fn fork(regs: &Regs) -> Result<i32, Errno> {
 		// A weak pointer to the new process's parent
 		let parent = curr_mutex.new_weak();
 
-		let mut curr_guard = curr_mutex.lock(false);
+		let mut curr_guard = curr_mutex.lock();
 		let curr_proc = curr_guard.get_mut();
 
 		curr_proc.set_regs(regs);
 		curr_proc.fork(parent)?
 	};
-	let mut new_guard = new_mutex.lock(false);
+	let mut new_guard = new_mutex.lock();
 	let new_proc = new_guard.get_mut();
 
 	Ok(new_proc.get_pid() as _)

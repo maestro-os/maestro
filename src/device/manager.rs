@@ -57,7 +57,7 @@ static DEVICE_MANAGERS: Mutex<Vec<SharedPtr<dyn DeviceManager>>> = Mutex::new(Ve
 
 /// Registers the given device manager.
 pub fn register_manager<M: 'static + DeviceManager>(manager: M) -> Result<(), Errno> {
-	let mut guard = DEVICE_MANAGERS.lock(true);
+	let mut guard = DEVICE_MANAGERS.lock();
 	let device_managers = guard.get_mut();
 
 	let m = SharedPtr::new(manager)?;
@@ -66,11 +66,11 @@ pub fn register_manager<M: 'static + DeviceManager>(manager: M) -> Result<(), Er
 
 /// Returns the device manager with name `name`.
 pub fn get_by_name(name: &str) -> Option<WeakPtr<dyn DeviceManager>> {
-	let mut guard = DEVICE_MANAGERS.lock(true);
+	let mut guard = DEVICE_MANAGERS.lock();
 	let device_managers = guard.get_mut();
 
 	for i in 0..device_managers.len() {
-		let guard = device_managers[i].lock(true);
+		let guard = device_managers[i].lock();
 
 		if guard.get().get_name() == name {
 			drop(guard);
@@ -84,11 +84,11 @@ pub fn get_by_name(name: &str) -> Option<WeakPtr<dyn DeviceManager>> {
 /// Function that is called when a new device is plugged in.
 /// `dev` is the device that has been plugged in.
 pub fn on_plug(dev: &dyn PhysicalDevice) {
-	let mut guard = DEVICE_MANAGERS.lock(true);
+	let mut guard = DEVICE_MANAGERS.lock();
 	let device_managers = guard.get_mut();
 
 	for i in 0..device_managers.len() {
-		let mut guard = device_managers[i].lock(true);
+		let mut guard = device_managers[i].lock();
 		let manager = guard.get_mut();
 		manager.on_plug(dev);
 	}
@@ -97,11 +97,11 @@ pub fn on_plug(dev: &dyn PhysicalDevice) {
 /// Function that is called when a device is plugged out.
 /// `dev` is the device that has been plugged out.
 pub fn on_unplug(dev: &dyn PhysicalDevice) {
-	let mut guard = DEVICE_MANAGERS.lock(true);
+	let mut guard = DEVICE_MANAGERS.lock();
 	let device_managers = guard.get_mut();
 
 	for i in 0..device_managers.len() {
-		let mut guard = device_managers[i].lock(true);
+		let mut guard = device_managers[i].lock();
 		let manager = guard.get_mut();
 		manager.on_unplug(dev);
 	}

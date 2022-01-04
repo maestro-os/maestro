@@ -90,7 +90,7 @@ static FILESYSTEMS: Mutex<Vec<SharedPtr<dyn FilesystemType>>> = Mutex::new(Vec::
 
 /// Registers a new filesystem type `fs`.
 pub fn register<T: 'static + FilesystemType>(fs_type: T) -> Result<(), Errno> {
-	let mut guard = FILESYSTEMS.lock(true);
+	let mut guard = FILESYSTEMS.lock();
 	let container = guard.get_mut();
 	container.push(SharedPtr::new(fs_type)?)
 }
@@ -100,12 +100,12 @@ pub fn register<T: 'static + FilesystemType>(fs_type: T) -> Result<(), Errno> {
 // TODO Optimize
 /// Returns the filesystem with name `name`.
 pub fn get_fs(name: &[u8]) -> Option<SharedPtr<dyn FilesystemType>> {
-	let mut guard = FILESYSTEMS.lock(true);
+	let mut guard = FILESYSTEMS.lock();
 	let container = guard.get_mut();
 
 	for i in 0..container.len() {
 		let fs_type = &mut container[i];
-		let fs_type_guard = fs_type.lock(true);
+		let fs_type_guard = fs_type.lock();
 
 		if fs_type_guard.get().get_name() == name {
 			drop(fs_type_guard);
@@ -118,12 +118,12 @@ pub fn get_fs(name: &[u8]) -> Option<SharedPtr<dyn FilesystemType>> {
 
 /// Detects the filesystem type on the given IO interface `io`.
 pub fn detect(io: &mut dyn IO) -> Result<SharedPtr<dyn FilesystemType>, Errno> {
-	let mut guard = FILESYSTEMS.lock(true);
+	let mut guard = FILESYSTEMS.lock();
 	let container = guard.get_mut();
 
 	for i in 0..container.len() {
 		let fs_type = &mut container[i];
-		let fs_type_guard = fs_type.lock(true);
+		let fs_type_guard = fs_type.lock();
 
 		if fs_type_guard.get().detect(io) {
 			drop(fs_type_guard);

@@ -12,13 +12,13 @@ static KILLER_ENABLE: Mutex<bool> = Mutex::new(true);
 
 /// Tells whether the OOM killer is enabled.
 pub fn is_killer_enabled() -> bool {
-	let guard = KILLER_ENABLE.lock(true);
+	let guard = KILLER_ENABLE.lock();
 	*guard.get()
 }
 
 /// Enables or disables the OOM killer.
 pub fn set_killer_enabled(enable: bool) {
-	let mut guard = KILLER_ENABLE.lock(true);
+	let mut guard = KILLER_ENABLE.lock();
 	*guard.get_mut() = enable;
 }
 

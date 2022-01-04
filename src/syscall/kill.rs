@@ -16,7 +16,7 @@ use crate::process;
 /// that could be killed.
 fn try_kill(pid: i32, sig: Option<Signal>, euid: Uid) -> Result<i32, Errno> {
 	if let Some(proc) = Process::get_by_pid(pid as Pid) {
-		let mut guard = proc.lock(false);
+		let mut guard = proc.lock();
 		let proc = guard.get_mut();
 
 		if proc.get_state() != State::Zombie {
@@ -64,7 +64,7 @@ fn send_signal(pid: i32, sig: Option<Signal>, proc: &mut Process) -> Result<i32,
 			Err(errno::ESRCH)
 		}
 	} else if pid == -1 {
-		let mut scheduler_guard = process::get_scheduler().lock(false);
+		let mut scheduler_guard = process::get_scheduler().lock();
 		let scheduler = scheduler_guard.get_mut();
 
 		// Variable telling whether at least one process is killed
@@ -73,7 +73,7 @@ fn send_signal(pid: i32, sig: Option<Signal>, proc: &mut Process) -> Result<i32,
 		scheduler.foreach_process(| pid, p | {
 			if *pid != process::pid::INIT_PID && *pid != proc.get_pid() {
 				if let Some(sig) = &sig {
-					let mut proc_guard = p.lock(false);
+					let mut proc_guard = p.lock();
 					let p = proc_guard.get_mut();
 
 					if proc.get_euid() == p.get_uid() || proc.get_euid() == p.get_euid() {
@@ -91,7 +91,7 @@ fn send_signal(pid: i32, sig: Option<Signal>, proc: &mut Process) -> Result<i32,
 		}
 	} else {
 		if let Some(proc) = Process::get_by_pid(-pid as _) {
-			let mut guard = proc.lock(false);
+			let mut guard = proc.lock();
 			let proc = guard.get_mut();
 			let group = proc.get_group_processes();
 
@@ -118,7 +118,7 @@ fn handle_state() {
 		cli!();
 
 		let mutex = Process::get_current().unwrap();
-		let mut guard = mutex.lock(false);
+		let mut guard = mutex.lock();
 		let proc = guard.get_mut();
 
 		match proc.get_state() {
@@ -170,7 +170,7 @@ pub fn kill(regs: &Regs) -> Result<i32, Errno> {
 
 	{
 		let mutex = Process::get_current().unwrap();
-		let mut guard = mutex.lock(false);
+		let mut guard = mutex.lock();
 		let proc = guard.get_mut();
 
 		send_signal(pid, sig, proc)?;

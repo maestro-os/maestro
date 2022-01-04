@@ -84,7 +84,7 @@ pub fn get(tty: usize) -> &'static Mutex<TTY> {
 
 /// Returns a reference to the current TTY.
 pub fn current() -> &'static Mutex<TTY> {
-	get(*CURRENT_TTY.lock(true).get())
+	get(*CURRENT_TTY.lock().get())
 }
 
 /// Initializes every TTYs.
@@ -94,7 +94,7 @@ pub fn init() {
 	}
 
 	for i in 0..TTYS_COUNT {
-		let mut guard = get(i).lock(true);
+		let mut guard = get(i).lock();
 		let t = guard.get_mut();
 		t.init();
 	}
@@ -107,9 +107,9 @@ pub fn switch(tty: usize) {
 	if tty >= TTYS_COUNT {
 		return;
 	}
-	*CURRENT_TTY.lock(true).get_mut() = tty;
+	*CURRENT_TTY.lock().get_mut() = tty;
 
-	let mut guard = get(tty).lock(true);
+	let mut guard = get(tty).lock();
 	let t = guard.get_mut();
 	vga::move_cursor(t.cursor_x, t.cursor_y - t.screen_y);
 	vga::enable_cursor();
@@ -140,7 +140,7 @@ impl TTY {
 
 	/// Updates the TTY to the screen.
 	pub fn update(&mut self) {
-		let current_tty = *CURRENT_TTY.lock(true).get();
+		let current_tty = *CURRENT_TTY.lock().get();
 		if self.id != current_tty || !self.update {
 			return;
 		}
@@ -332,7 +332,7 @@ impl TTY {
 
 		// TODO Add a compilation and/or runtime option for this
 		if let Some(serial) = serial::get(serial::COM1) {
-			serial.lock(true).get_mut().write(buffer);
+			serial.lock().get_mut().write(buffer);
 		}
 
 		self.update();

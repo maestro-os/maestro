@@ -41,7 +41,7 @@ pub fn uname(regs: &Regs) -> Result<i32, Errno> {
 	utsname.machine.copy_from_slice(&"x86".as_bytes()); // TODO Adapt to current architecture
 
 	let mutex = Process::get_current().unwrap();
-	let mut guard = mutex.lock(false);
+	let mut guard = mutex.lock();
 	let proc = guard.get_mut();
 
 	let len = size_of::<Utsname>();

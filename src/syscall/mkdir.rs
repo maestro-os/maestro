@@ -17,7 +17,7 @@ pub fn mkdir(regs: &Regs) -> Result<i32, Errno> {
 	let mode = regs.ebx as file::Mode;
 
 	let mutex = Process::get_current().unwrap();
-	let mut guard = mutex.lock(false);
+	let mut guard = mutex.lock();
 	let proc = guard.get_mut();
 
 	// The path to the directory to create
@@ -38,7 +38,7 @@ pub fn mkdir(regs: &Regs) -> Result<i32, Errno> {
 		let file = File::new(name, FileContent::Directory(Vec::new()), uid, gid, mode)?;
 		{
 			let mutex = fcache::get();
-			let mut guard = mutex.lock(true);
+			let mut guard = mutex.lock();
 			let files_cache = guard.get_mut();
 
 			files_cache.as_mut().unwrap().create_file(&parent_path, file)?;

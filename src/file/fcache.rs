@@ -83,7 +83,7 @@ impl FCache {
 
 		// Getting the path's deepest mountpoint
 		let ptr = mountpoint::get_deepest(&path).ok_or(errno::ENOENT)?;
-		let mut guard = ptr.lock(true);
+		let mut guard = ptr.lock();
 		let mountpoint = guard.get_mut();
 
 		// Getting the path from the start of the filesystem to the parent directory
@@ -91,7 +91,7 @@ impl FCache {
 
 		// Getting the IO interface
 		let io_mutex = mountpoint.get_source().get_io();
-		let mut io_guard = io_mutex.lock(true);
+		let mut io_guard = io_mutex.lock();
 		let io = io_guard.get_mut();
 
 		let fs = mountpoint.get_filesystem();
@@ -115,12 +115,12 @@ impl FCache {
 
 		// Getting the path's deepest mountpoint
 		let ptr = mountpoint::get_deepest(&path).ok_or(errno::ENOENT)?;
-		let mut guard = ptr.lock(true);
+		let mut guard = ptr.lock();
 		let mountpoint = guard.get_mut();
 
 		// Getting the IO interface
 		let io_mutex = mountpoint.get_source().get_io();
-		let mut io_guard = io_mutex.lock(true);
+		let mut io_guard = io_mutex.lock();
 		let io = io_guard.get_mut();
 
 		let path_len = path.get_elements_count();
@@ -153,12 +153,12 @@ impl FCache {
 
 		// Getting the path's deepest mountpoint
 		let ptr = mountpoint::get_deepest(&path).ok_or(errno::ENOENT)?;
-		let mut guard = ptr.lock(true);
+		let mut guard = ptr.lock();
 		let mountpoint = guard.get_mut();
 
 		// Getting the IO interface
 		let io_mutex = mountpoint.get_source().get_io();
-		let mut io_guard = io_mutex.lock(true);
+		let mut io_guard = io_mutex.lock();
 		let io = io_guard.get_mut();
 
 		// Getting the path from the start of the fileststem to the file

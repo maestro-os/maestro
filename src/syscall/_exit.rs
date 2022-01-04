@@ -8,7 +8,7 @@ use crate::process::Regs;
 pub fn _exit(regs: &Regs) -> ! {
 	{
 		let mutex = Process::get_current().unwrap();
-		let mut guard = mutex.lock(false);
+		let mut guard = mutex.lock();
 		let proc = guard.get_mut();
 
 		proc.exit(regs.ebx);

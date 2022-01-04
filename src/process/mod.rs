@@ -39,8 +39,8 @@ use crate::util::FailableClone;
 use crate::util::container::bitfield::Bitfield;
 use crate::util::container::vec::Vec;
 use crate::util::lock::mutex::*;
-use crate::util::ptr::SharedPtr;
-use crate::util::ptr::WeakPtr;
+use crate::util::ptr::IntSharedPtr;
+use crate::util::ptr::IntWeakPtr;
 use mem_space::MemSpace;
 use pid::PIDManager;
 use pid::Pid;
@@ -127,7 +127,7 @@ pub struct Process {
 	quantum_count: usize,
 
 	/// A pointer to the parent process.
-	parent: Option<WeakPtr<Process>>,
+	parent: Option<IntWeakPtr<Process>>,
 	/// The list of children processes.
 	children: Vec<Pid>,
 	/// The list of processes in the process group.
@@ -181,7 +181,7 @@ pub struct Process {
 /// The PID manager.
 static mut PID_MANAGER: MaybeUninit<Mutex<PIDManager>> = MaybeUninit::uninit();
 /// The processes scheduler.
-static mut SCHEDULER: MaybeUninit<SharedPtr<Scheduler>> = MaybeUninit::uninit();
+static mut SCHEDULER: MaybeUninit<IntSharedPtr<Scheduler>> = MaybeUninit::uninit();
 
 /// Initializes processes system. This function must be called only once, at kernel initialization.
 pub fn init() -> Result<(), Errno> {
@@ -201,11 +201,11 @@ pub fn init() -> Result<(), Errno> {
 
 		let mut guard = unsafe {
 			SCHEDULER.assume_init_mut()
-		}.lock(false);
+		}.lock();
 		let scheduler = guard.get_mut();
 
 		if let Some(curr_proc) = scheduler.get_current_process() {
-			let mut curr_proc_guard = curr_proc.lock(false);
+			let mut curr_proc_guard = curr_proc.lock();
 			let curr_proc = curr_proc_guard.get_mut();
 
 			match id {
@@ -268,11 +268,11 @@ pub fn init() -> Result<(), Errno> {
 	let page_fault_callback = | _id: u32, code: u32, _regs: &Regs, ring: u32 | {
 		let mut guard = unsafe {
 			SCHEDULER.assume_init_mut()
-		}.lock(false);
+		}.lock();
 		let scheduler = guard.get_mut();
 
 		if let Some(curr_proc) = scheduler.get_current_process() {
-			let mut curr_proc_guard = curr_proc.lock(false);
+			let mut curr_proc_guard = curr_proc.lock();
 			let curr_proc = curr_proc_guard.get_mut();
 
 			let accessed_ptr = unsafe {
@@ -311,7 +311,7 @@ pub fn init() -> Result<(), Errno> {
 }
 
 /// Returns a mutable reference to the scheduler's Mutex.
-pub fn get_scheduler() -> &'static mut Mutex<Scheduler> {
+pub fn get_scheduler() -> &'static mut IntMutex<Scheduler> {
 	unsafe { // Safe because using Mutex
 		SCHEDULER.assume_init_mut()
 	}
@@ -320,24 +320,24 @@ pub fn get_scheduler() -> &'static mut Mutex<Scheduler> {
 impl Process {
 	/// Returns the process with PID `pid`. If the process doesn't exist, the function returns
 	/// None.
-	pub fn get_by_pid(pid: Pid) -> Option<SharedPtr<Self>> {
+	pub fn get_by_pid(pid: Pid) -> Option<IntSharedPtr<Self>> {
 		let mut guard = unsafe {
 			SCHEDULER.assume_init_mut()
-		}.lock(false);
+		}.lock();
 		guard.get_mut().get_by_pid(pid)
 	}
 
 	/// Returns the current running process. If no process is running, the function returns None.
-	pub fn get_current() -> Option<SharedPtr<Self>> {
+	pub fn get_current() -> Option<IntSharedPtr<Self>> {
 		let mut guard = unsafe {
 			SCHEDULER.assume_init_mut()
-		}.lock(false);
+		}.lock();
 		guard.get_mut().get_current_process()
 	}
 
 	/// Creates the init process and places it into the scheduler's queue. The process is set to
 	/// state `Running` by default.
-	pub fn new() -> Result<SharedPtr<Self>, Errno> {
+	pub fn new() -> Result<IntSharedPtr<Self>, Errno> {
 		let mut process = Self {
 			pid: pid::INIT_PID,
 			pgid: pid::INIT_PID,
@@ -389,7 +389,7 @@ impl Process {
 		// Creating STDIN, STDOUT and STDERR
 		{
 			let mutex = fcache::get();
-			let mut guard = mutex.lock(true);
+			let mut guard = mutex.lock();
 			let files_cache = guard.get_mut();
 
 			let tty_path = Path::from_str(TTY_DEVICE_PATH.as_bytes(), false).unwrap();
@@ -404,7 +404,7 @@ impl Process {
 
 		let mut guard = unsafe {
 			SCHEDULER.assume_init_mut()
-		}.lock(false);
+		}.lock();
 		guard.get_mut().add_process(process)
 	}
 
@@ -442,7 +442,7 @@ impl Process {
 	pub fn set_pgid(&mut self, pgid: Pid) -> Result<(), Errno> {
 		if self.is_in_group() {
 			let mutex = Process::get_by_pid(self.pgid).unwrap();
-			let mut guard = mutex.lock(false);
+			let mut guard = mutex.lock();
 			let old_group_process = guard.get_mut();
 			let i = old_group_process.process_group.binary_search(&self.pid).unwrap();
 			old_group_process.process_group.remove(i);
@@ -458,7 +458,7 @@ impl Process {
 
 		if pgid != self.pid {
 			if let Some(mutex) = Process::get_by_pid(pgid) {
-				let mut guard = mutex.lock(false);
+				let mut guard = mutex.lock();
 				let new_group_process = guard.get_mut();
 				let i = new_group_process.process_group.binary_search(&self.pid).unwrap_err();
 				new_group_process.process_group.insert(i, self.pid)
@@ -480,7 +480,7 @@ impl Process {
 	pub fn get_parent_pid(&self) -> Pid {
 		if let Some(parent) = &self.parent {
 			let parent = parent.get_mut().unwrap();
-			let guard = parent.lock(false);
+			let guard = parent.lock();
 			guard.get().get_pid()
 		} else {
 			self.get_pid()
@@ -601,7 +601,7 @@ impl Process {
 
 	/// Returns the process's parent if exists.
 	#[inline(always)]
-	pub fn get_parent(&self) -> Option<&WeakPtr<Process>> {
+	pub fn get_parent(&self) -> Option<&IntWeakPtr<Process>> {
 		self.parent.as_ref()
 	}
 
@@ -865,14 +865,14 @@ impl Process {
 	/// `parent` is the parent of the new process.
 	/// On fail, the function returns an Err with the appropriate Errno.
 	/// If the process is not running, the behaviour is undefined.
-	pub fn fork(&mut self, parent: WeakPtr<Self>) -> Result<SharedPtr<Self>, Errno> {
+	pub fn fork(&mut self, parent: IntWeakPtr<Self>) -> Result<IntSharedPtr<Self>, Errno> {
 		debug_assert_eq!(self.get_state(), State::Running);
 
 		let pid = {
 			let mutex = unsafe {
 				PID_MANAGER.assume_init_mut()
 			};
-			let mut guard = mutex.lock(false);
+			let mut guard = mutex.lock();
 			guard.get_mut().get_unique_pid()
 		}?;
 
@@ -937,7 +937,7 @@ impl Process {
 
 		let mut guard = unsafe {
 			SCHEDULER.assume_init_mut()
-		}.lock(false);
+		}.lock();
 		guard.get_mut().add_process(process)
 	}
 
@@ -1052,7 +1052,7 @@ impl Process {
 
 		if let Some(parent) = self.get_parent() {
 			let parent = parent.get_mut().unwrap();
-			let mut guard = parent.lock(false);
+			let mut guard = parent.lock();
 			guard.get_mut().wakeup();
 		}
 	}
@@ -1089,14 +1089,14 @@ impl Drop for Process {
 
 		if let Some(parent) = self.get_parent() {
 			let parent = parent.get_mut().unwrap();
-			let mut guard = parent.lock(false);
+			let mut guard = parent.lock();
 			guard.get_mut().remove_child(self.pid);
 		}
 
 		let mutex = unsafe {
 			PID_MANAGER.assume_init_mut()
 		};
-		let mut guard = mutex.lock(false);
+		let mut guard = mutex.lock();
 		guard.get_mut().release_pid(self.pid);
 	}
 }

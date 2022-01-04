@@ -23,7 +23,7 @@ pub fn pipe2(regs: &Regs) -> Result<i32, Errno> {
 
 	let (fd0, fd1) = {
 		let mutex = Process::get_current().unwrap();
-		let mut guard = mutex.lock(false);
+		let mut guard = mutex.lock();
 		let proc = guard.get_mut();
 
 		let len = size_of::<i32>() * 2;

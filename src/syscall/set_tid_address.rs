@@ -11,7 +11,7 @@ pub fn set_tid_address(regs: &Regs) -> Result<i32, Errno> {
 
 	// Getting process
 	let mutex = Process::get_current().unwrap();
-	let mut guard = mutex.lock(false);
+	let mut guard = mutex.lock();
 	let proc = guard.get_mut();
 
 	let ptr = NonNull::new(tidptr);

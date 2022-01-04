@@ -80,14 +80,14 @@ impl DeviceHandle for KMsgDeviceHandle {
 impl IO for KMsgDeviceHandle {
 	fn get_size(&self) -> u64 {
 		let mutex = logger::get();
-		let guard = mutex.lock(true);
+		let guard = mutex.lock();
 
 		guard.get().get_size() as _
 	}
 
 	fn read(&self, offset: u64, buff: &mut [u8]) -> Result<usize, Errno> {
 		let mutex = logger::get();
-		let guard = mutex.lock(true);
+		let guard = mutex.lock();
 
 		let size = guard.get().get_size();
 		let content = guard.get().get_content();
@@ -124,7 +124,7 @@ impl IO for CurrentTTYDeviceHandle {
 	}
 
 	fn write(&mut self, _offset: u64, buff: &[u8]) -> Result<usize, Errno> {
-		tty::current().lock(true).get_mut().write(buff);
+		tty::current().lock().get_mut().write(buff);
 		Ok(buff.len())
 	}
 }

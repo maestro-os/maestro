@@ -181,7 +181,7 @@ impl Device {
 
 		// Locking the files' cache
 		let mutex = fcache::get();
-		let mut guard = mutex.lock(true);
+		let mut guard = mutex.lock();
 		let files_cache = guard.get_mut();
 
 		// Tells whether the file already exists
@@ -206,11 +206,11 @@ impl Device {
 	/// If exists, removes the device file. iF the file doesn't exist, the function does nothing.
 	pub fn remove_file(&mut self) {
 		let mutex = fcache::get();
-		let mut guard = mutex.lock(true);
+		let mut guard = mutex.lock();
 		let files_cache = guard.get_mut();
 
 		if let Ok(file) = files_cache.as_mut().unwrap().get_file_from_path(&self.path) {
-			let mut guard = file.lock(true);
+			let mut guard = file.lock();
 			guard.get_mut().unlink();
 		}
 	}
@@ -245,8 +245,8 @@ static CHAR_DEVICES: Mutex<Vec<SharedPtr<Device>>> = Mutex::new(Vec::new());
 /// The function *doesn't* create the device file.
 pub fn register_device(device: Device) -> Result<(), Errno> {
 	let mut guard = match device.get_type() {
-		DeviceType::Block => BLOCK_DEVICES.lock(true),
-		DeviceType::Char => CHAR_DEVICES.lock(true),
+		DeviceType::Block => BLOCK_DEVICES.lock(),
+		DeviceType::Char => CHAR_DEVICES.lock(),
 	};
 	let container = guard.get_mut();
 
@@ -272,8 +272,8 @@ pub fn register_device(device: Device) -> Result<(), Errno> {
 /// If the device doesn't exist, the function returns None.
 pub fn get_device(type_: DeviceType, major: u32, minor: u32) -> Option<SharedPtr<Device>> {
 	let mut guard = match type_ {
-		DeviceType::Block => BLOCK_DEVICES.lock(true),
-		DeviceType::Char => CHAR_DEVICES.lock(true),
+		DeviceType::Block => BLOCK_DEVICES.lock(),
+		DeviceType::Char => CHAR_DEVICES.lock(),
 	};
 	let container = guard.get_mut();
 
@@ -298,11 +298,11 @@ pub fn get_device(type_: DeviceType, major: u32, minor: u32) -> Option<SharedPtr
 /// If no device with the given path is found, the function returns None.
 pub fn get_by_path(path: &Path) -> Option<SharedPtr<Device>> {
 	{
-		let mut block_guard = BLOCK_DEVICES.lock(true);
+		let mut block_guard = BLOCK_DEVICES.lock();
 		let block_container = block_guard.get_mut();
 
 		for i in 0..block_container.len() {
-			let dev_guard = block_container[i].lock(true);
+			let dev_guard = block_container[i].lock();
 			let dev = dev_guard.get();
 
 			if dev.get_path() == path {
@@ -313,11 +313,11 @@ pub fn get_by_path(path: &Path) -> Option<SharedPtr<Device>> {
 	}
 
 	{
-		let mut char_guard = CHAR_DEVICES.lock(true);
+		let mut char_guard = CHAR_DEVICES.lock();
 		let char_container = char_guard.get_mut();
 
 		for i in 0..char_container.len() {
-			let dev_guard = char_container[i].lock(true);
+			let dev_guard = char_container[i].lock();
 			let dev = dev_guard.get();
 
 			if dev.get_path() == path {

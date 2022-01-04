@@ -28,7 +28,7 @@ impl<T> Semaphore<T> {
 
 	/// Tells whether the process with PID `pid` can acquire the resource.
 	fn can_acquire(&mut self, pid: Pid) -> bool {
-		let guard = self.fifo.lock(true);
+		let guard = self.fifo.lock();
 		let fifo = guard.get();
 		fifo.is_empty() || fifo[0] == pid
 	}
@@ -40,7 +40,7 @@ impl<T> Semaphore<T> {
 	/// If this function is called while no process is running, the behaviour is undefined.
 	/// `pid` is the PID of the process using the resource.
 	pub fn acquire<F: Fn(&mut T)>(&mut self, pid: Pid, f: F) -> Result<(), Errno> {
-		self.fifo.lock(true).get_mut().push(pid)?;
+		self.fifo.lock().get_mut().push(pid)?;
 
 		while !self.can_acquire(pid) {
 			crate::wait();
@@ -49,7 +49,7 @@ impl<T> Semaphore<T> {
 		f(&mut self.data);
 
 		{
-			let mut guard = self.fifo.lock(true);
+			let mut guard = self.fifo.lock();
 			debug_assert!(!guard.get_mut().is_empty());
 			guard.get_mut().remove(0);
 		}

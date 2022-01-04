@@ -36,7 +36,7 @@ pub fn execve(regs: &Regs) -> Result<i32, Errno> {
 	// Checking that parameters are accessible by the process
 	let (uid, gid, path) = {
 		let mutex = Process::get_current().unwrap();
-		let mut guard = mutex.lock(false);
+		let mut guard = mutex.lock();
 		let proc = guard.get_mut();
 
 		let path = Path::from_str(super::util::get_str(proc, pathname)?, true)?;
@@ -48,7 +48,7 @@ pub fn execve(regs: &Regs) -> Result<i32, Errno> {
 	};
 
 	let mutex = fcache::get();
-	let mut guard = mutex.lock(true);
+	let mut guard = mutex.lock();
 	let files_cache = guard.get_mut();
 
 	// The file
@@ -58,7 +58,7 @@ pub fn execve(regs: &Regs) -> Result<i32, Errno> {
 	let mut i = 0;
 	while i < 4 {
 		// Locking file
-		let guard = file.lock(false);
+		let guard = file.lock();
 		let f = guard.get();
 
 		// Checking execute permission

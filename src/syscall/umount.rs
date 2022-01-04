@@ -15,7 +15,7 @@ pub fn umount(regs: &Regs) -> Result<i32, Errno> {
 	let target_slice = {
 		// Getting the process
 		let mutex = Process::get_current().unwrap();
-		let guard = mutex.lock(false);
+		let guard = mutex.lock();
 		let proc = guard.get();
 
 		super::util::get_str(proc, target)?

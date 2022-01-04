@@ -58,7 +58,7 @@ static TOTAL_FD: Mutex<usize> = Mutex::new(0);
 /// If the maximum amount of file descriptors is reached, the function does nothing and returns an
 /// error with the appropriate errno.
 fn increment_total() -> Result<(), Errno> {
-	let mut guard = TOTAL_FD.lock(true);
+	let mut guard = TOTAL_FD.lock();
 
 	if *guard.get() >= TOTAL_MAX_FD {
 		return Err(errno::ENFILE);
@@ -70,7 +70,7 @@ fn increment_total() -> Result<(), Errno> {
 
 /// Decrements the total number of file descriptors open system-wide.
 fn decrement_total() {
-	let mut guard = TOTAL_FD.lock(true);
+	let mut guard = TOTAL_FD.lock();
 	*guard.get_mut() -= 1;
 }
 
@@ -141,7 +141,7 @@ impl FileDescriptor {
 	/// Returns the size of the file's content in bytes.
 	pub fn get_file_size(&self) -> u64 {
 		if let FDTarget::File(f) = &self.target {
-			f.get_mut().lock(true).get().get_size()
+			f.get_mut().lock().get().get_size()
 		} else {
 			0
 		}
@@ -161,7 +161,7 @@ impl FileDescriptor {
 	pub fn get_len(&mut self) -> u64 {
 		match &mut self.target {
 			FDTarget::File(f) => {
-				let guard = f.lock(true);
+				let guard = f.lock();
 				guard.get().get_size()
 			},
 
@@ -187,17 +187,17 @@ impl FileDescriptor {
 
 		let len = match &mut self.target {
 			FDTarget::File(f) => {
-				let mut guard = f.lock(true);
+				let mut guard = f.lock();
 				guard.get_mut().read(self.curr_off, buf)?
 			},
 
 			FDTarget::Pipe(p) => {
-				let mut guard = p.lock(true);
+				let mut guard = p.lock();
 				guard.get_mut().read(buf) as _
 			}
 
 			FDTarget::Socket(s) => {
-				let mut guard = s.lock(true);
+				let mut guard = s.lock();
 				guard.get_mut().read(buf) as _
 			},
 		};
@@ -216,17 +216,17 @@ impl FileDescriptor {
 
 		let len = match &mut self.target {
 			FDTarget::File(f) => {
-				let mut guard = f.lock(true);
+				let mut guard = f.lock();
 				guard.get_mut().write(self.curr_off, buf)?
 			},
 
 			FDTarget::Pipe(p) => {
-				let mut guard = p.lock(true);
+				let mut guard = p.lock();
 				guard.get_mut().write(buf) as _
 			}
 
 			FDTarget::Socket(s) => {
-				let mut guard = s.lock(true);
+				let mut guard = s.lock();
 				guard.get_mut().write(buf) as _
 			},
 		};
@@ -239,7 +239,7 @@ impl FileDescriptor {
 	pub fn ioctl(&mut self, request: u32, argp: *const c_void) -> Result<u32, Errno> {
 		match &mut self.target {
 			FDTarget::File(f) => {
-				let mut guard = f.lock(true);
+				let mut guard = f.lock();
 				guard.get_mut().ioctl(request, argp)
 			},
 

@@ -13,18 +13,18 @@ pub fn chdir(regs: &Regs) -> Result<i32, Errno> {
 	let path = regs.ebx as *const u8;
 
 	let mutex = Process::get_current().unwrap();
-	let mut guard = mutex.lock(false);
+	let mut guard = mutex.lock();
 	let proc = guard.get_mut();
 
 	let new_cwd = Path::from_str(super::util::get_str(proc, path)?, true)?;
 
 	{
 		let fcache_mutex = fcache::get();
-		let mut fcache_guard = fcache_mutex.lock(true);
+		let mut fcache_guard = fcache_mutex.lock();
 		let fcache = fcache_guard.get_mut();
 
 		let dir_mutex = fcache.as_mut().unwrap().get_file_from_path(&new_cwd)?;
-		let dir_guard = dir_mutex.lock(true);
+		let dir_guard = dir_mutex.lock();
 		let dir = dir_guard.get();
 
 		// TODO Check permissions (for all directories in the path)

@@ -11,7 +11,7 @@ pub fn delete_module(regs: &Regs) -> Result<i32, Errno> {
 
 	{
 		let proc_mutex = Process::get_current().unwrap();
-		let proc_guard = proc_mutex.lock(false);
+		let proc_guard = proc_mutex.lock();
 		let proc = proc_guard.get();
 
 		if proc.get_uid() != 0 {

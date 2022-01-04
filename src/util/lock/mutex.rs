@@ -10,7 +10,7 @@
 //! in the kernel are equiped with an option allowing to disable interrupts while being locked.
 
 use core::cell::UnsafeCell;
-use core::marker::PhantomData;
+use core::mem::MaybeUninit;
 use crate::idt;
 use crate::util::lock::spinlock::Spinlock;
 
@@ -19,20 +19,16 @@ use crate::util::lock::spinlock::Spinlock;
 /// Type used to declare a guard meant to unlock the associated Mutex at the moment the execution
 /// gets out of the scope of its declaration. This structure is useful to ensure that the mutex
 /// doesen't stay locked after the exectution of a function ended.
-pub struct MutexGuard<'a, T: ?Sized> {
+pub struct MutexGuard<'a, T: ?Sized, I: IntManager> {
 	/// The mutex associated to the guard
-	mutex: &'a Mutex<T>,
-
-	_data: PhantomData<T>,
+	mutex: &'a Mutex<T, I>,
 }
 
-impl<'a, T: ?Sized> MutexGuard<'a, T> {
+impl<'a, T: ?Sized, I: IntManager> MutexGuard<'a, T, I> {
 	/// Creates an instance of MutexGuard for the given mutex `mutex`.
-	fn new(mutex: &'a Mutex<T>) -> Self {
+	fn new(mutex: &'a Mutex<T, I>) -> Self {
 		Self {
 			mutex,
-
-			_data: PhantomData,
 		}
 	}
 
@@ -54,7 +50,7 @@ impl<'a, T: ?Sized> MutexGuard<'a, T> {
 	pub fn unlock(self) {}
 }
 
-impl<'a, T: ?Sized> Drop for MutexGuard<'a, T> {
+impl<'a, T: ?Sized, I: IntManager> Drop for MutexGuard<'a, T, I> {
 	fn drop(&mut self) {
 		unsafe {
 			self.mutex.unlock();
@@ -62,34 +58,73 @@ impl<'a, T: ?Sized> Drop for MutexGuard<'a, T> {
 	}
 }
 
+/// Trait representing an interrupt manager.
+/// When locking a resource, it way require the kernel to mask interrupts. This trait represents an
+/// object which masks interrupts when locked.
+/// This trait is meant to be used internally only.
+pub trait IntManager {
+	/// Returns the saved interrupt state.
+	fn get_state(&self) -> bool;
+	/// Saves the given interrupt state.
+	fn set_state(&mut self, state: bool);
+}
+
+/// A dummy interrupt manager which doesn't do anything. Used by resources that do not need
+/// interrupts to be masked.
+/// This structure is meant to be used internally only.
+pub struct DummyIntManager {}
+
+impl IntManager for DummyIntManager {
+	fn get_state(&self) -> bool {
+		idt::is_interrupt_enabled()
+	}
+
+	fn set_state(&mut self, _: bool) {}
+}
+
+/// A normal interrupt manager.
+/// This structure is meant to be used internally only.
+pub struct NormalIntManager {
+	/// Tells whether interrupts were enabled before locking.
+	int_enabled: bool,
+}
+
+impl IntManager for NormalIntManager {
+	fn get_state(&self) -> bool {
+		self.int_enabled
+	}
+
+	fn set_state(&mut self, state: bool) {
+		self.int_enabled = state;
+	}
+}
+
 /// The inner structure of the Mutex structure.
-pub struct MutexIn<T: ?Sized> {
+struct MutexIn<T: ?Sized, I: IntManager> {
 	/// The spinlock for the underlying data.
 	spin: Spinlock,
-	/// Tells whether locking disabled interrupts.
-	int: bool,
-	/// Tells whether interrupts were enabled before locking. This field is used only if `int` is
-	/// `true`.
-	int_enabled: bool,
+	/// The interrupt manager.
+	int_manager: MaybeUninit<I>,
 
 	/// The data associated to the mutex.
 	data: T,
 }
 
 /// Structure representing a Mutex.
-pub struct Mutex<T: ?Sized> {
+/// The object wrapped in this structure can be accessed by only one thread at a time.
+/// If interrupts need to be disabled while accessing, the type `IntMutex` can be used instead.
+pub struct Mutex<T: ?Sized, I: IntManager = DummyIntManager> {
 	/// An unsafe cell to the inner structure of the Mutex.
-	inner: UnsafeCell<MutexIn<T>>,
+	inner: UnsafeCell<MutexIn<T, I>>,
 }
 
-impl<T> Mutex<T> {
+impl<T, I: IntManager> Mutex<T, I> {
 	/// Creates a new Mutex with the given data to be owned.
 	pub const fn new(data: T) -> Self {
 		Self {
 			inner: UnsafeCell::new(MutexIn {
 				spin: Spinlock::new(),
-				int: false,
-				int_enabled: false,
+				int_manager: MaybeUninit::uninit(),
 
 				data,
 			})
@@ -97,7 +132,7 @@ impl<T> Mutex<T> {
 	}
 }
 
-impl<T: ?Sized> Mutex<T> {
+impl<T: ?Sized, I: IntManager> Mutex<T, I> {
 	/// Tells whether the mutex is already locked. This function should not be called to check if
 	/// the mutex is ready to be locked before locking it, since it may cause race conditions. In
 	/// this case, prefer using `lock` directly.
@@ -109,38 +144,28 @@ impl<T: ?Sized> Mutex<T> {
 
 	/// Locks the mutex. If the mutex is already locked, the thread shall wait until it becomes
 	/// available.
-	/// If `interrupt` is false, interruptions are disabled while locked, then restored when
-	/// unlocked.
 	/// The function returns a MutexGuard associated with the Mutex.
-	pub fn lock(&self, interrupt: bool) -> MutexGuard<T> {
+	pub fn lock(&self) -> MutexGuard<T, I> {
 		let inner = unsafe { // Safe because using the spinlock later
 			&mut *self.inner.get()
 		};
 
-		if interrupt {
-			inner.spin.lock();
+		let state = idt::is_interrupt_enabled();
 
-			// Setting the value after locking to avoid writing on it whilst the mutex was locked
-			inner.int = true;
+		// Here is assumed that no interruption will change eflags' INT. Which could cause a race
+		// condition
 
-			MutexGuard::new(self)
-		} else {
-			let int_enabled = idt::is_interrupt_enabled();
+		// Disabling interrupts before locking to ensure no interrupt will occure while locking
+		crate::cli!();
+		inner.spin.lock();
 
-			// Here is assumed that no interruption will change eflags. Which could cause a race
-			// condition
-
-			// Disabling interrupts before locking to ensure no interrupt will occure while locking
-			crate::cli!();
-			inner.spin.lock();
-
-			// Setting the values after locking to avoid writing on them whilst the mutex was
-			// locked
-			inner.int = false;
-			inner.int_enabled = int_enabled;
-
-			MutexGuard::new(self)
+		// Setting the values after locking to avoid writing on them whilst the mutex was
+		// locked
+		unsafe {
+			inner.int_manager.assume_init_mut().set_state(state);
 		}
+
+		MutexGuard::new(self)
 	}
 
 	/// Returns an immutable reference to the payload. This function is unsafe because it can
@@ -157,31 +182,34 @@ impl<T: ?Sized> Mutex<T> {
 
 	/// Unlocks the mutex. The function is unsafe because it may lead to concurrency issues if not
 	/// used properly.
+	/// If the mutex is not locked, the behaviour is undefined.
 	pub unsafe fn unlock(&self) {
 		let inner = &mut (*self.inner.get());
 
-		let int = inner.int;
-		let int_enabled = inner.int_enabled;
+		// The state to restore
+		let state = inner.int_manager.assume_init_ref().get_state();
 
 		inner.spin.unlock();
 
-		if !int {
-			// Restoring interrupts state after unlocking
-			if int_enabled {
-				crate::sti!();
-			} else {
-				crate::cli!();
-			}
+		// Restoring interrupts state after unlocking
+		if state {
+			crate::sti!();
+		} else {
+			crate::cli!();
 		}
 	}
 }
 
-unsafe impl<T> Sync for Mutex<T> {}
+unsafe impl<T, I: IntManager> Sync for Mutex<T, I> {}
 
-impl<T: ?Sized> Drop for Mutex<T> {
+impl<T: ?Sized, I: IntManager> Drop for Mutex<T, I> {
 	fn drop(&mut self) {
 		if self.is_locked() {
 			panic!("Dropping a locked mutex");
 		}
 	}
 }
+
+/// This type represents a mutex that works just like a normal one. Unless when locked, interrupts
+/// are disabled. The interrupt state is then restored when the mutex is unlocked.
+pub type IntMutex<T> = Mutex<T, NormalIntManager>;

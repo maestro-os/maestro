@@ -27,7 +27,7 @@ use crate::util::container::binary_tree::TraversalType;
 use crate::util::container::vec::Vec;
 use crate::util::lock::mutex::*;
 use crate::util::math;
-use crate::util::ptr::SharedPtr;
+use crate::util::ptr::IntSharedPtr;
 
 /// The size of the temporary stack for context switching.
 const TMP_STACK_SIZE: usize = memory::PAGE_SIZE;
@@ -39,7 +39,7 @@ const MAX_PRIORITY_QUANTA: usize = 30;
 /// The structure containing the context switching data.
 struct ContextSwitchData {
 	///  The process to switch to.
-	proc: SharedPtr<Process>,
+	proc: IntSharedPtr<Process>,
 }
 
 /// The structure representing the process scheduler.
@@ -55,9 +55,9 @@ pub struct Scheduler {
 	total_ticks: u64,
 
 	/// A binary tree containing all processes registered to the current scheduler.
-	processes: BinaryTree<Pid, SharedPtr<Process>>,
+	processes: BinaryTree<Pid, IntSharedPtr<Process>>,
 	/// The currently running process with its PID.
-	curr_proc: Option<(Pid, SharedPtr<Process>)>,
+	curr_proc: Option<(Pid, IntSharedPtr<Process>)>,
 
 	/// The sum of all priorities, used to compute the average priority.
 	priority_sum: usize,
@@ -67,7 +67,7 @@ pub struct Scheduler {
 
 impl Scheduler {
 	/// Creates a new instance of scheduler.
-	pub fn new(cores_count: usize) -> Result<SharedPtr<Self>, Errno> {
+	pub fn new(cores_count: usize) -> Result<IntSharedPtr<Self>, Errno> {
 		let mut tmp_stacks = Vec::new();
 		let mut ctx_switch_data = Vec::new();
 		for _ in 0..cores_count {
@@ -79,7 +79,8 @@ impl Scheduler {
 			Scheduler::tick(process::get_scheduler(), regs, ring);
 		};
 		let tick_callback_hook = event::register_callback(0x20, 0, callback)?;
-		SharedPtr::new(Self {
+
+		IntSharedPtr::new(Self {
 			tmp_stacks,
 			ctx_switch_data,
 
@@ -100,18 +101,18 @@ impl Scheduler {
 	}
 
 	/// Calls the given function `f` for each processes.
-	pub fn foreach_process<F: FnMut(&Pid, &mut SharedPtr<Process>)>(&mut self, f: F) {
+	pub fn foreach_process<F: FnMut(&Pid, &mut IntSharedPtr<Process>)>(&mut self, f: F) {
 		self.processes.foreach_mut(f, TraversalType::InOrder);
 	}
 
 	/// Returns the process with PID `pid`. If the process doesn't exist, the function returns
 	/// None.
-	pub fn get_by_pid(&mut self, pid: Pid) -> Option<SharedPtr<Process>> {
+	pub fn get_by_pid(&mut self, pid: Pid) -> Option<IntSharedPtr<Process>> {
 		Some(self.processes.get(pid)?.clone())
 	}
 
 	/// Returns the current running process. If no process is running, the function returns None.
-	pub fn get_current_process(&mut self) -> Option<SharedPtr<Process>> {
+	pub fn get_current_process(&mut self) -> Option<IntSharedPtr<Process>> {
 		Some(self.curr_proc.as_ref().cloned()?.1)
 	}
 
@@ -131,10 +132,10 @@ impl Scheduler {
 	}
 
 	/// Adds a process to the scheduler.
-	pub fn add_process(&mut self, process: Process) -> Result<SharedPtr<Process>, Errno> {
+	pub fn add_process(&mut self, process: Process) -> Result<IntSharedPtr<Process>, Errno> {
 		let pid = process.get_pid();
 		let priority = process.get_priority();
-		let ptr = SharedPtr::new(process)?;
+		let ptr = IntSharedPtr::new(process)?;
 		self.processes.insert(pid, ptr.clone())?;
 		self.update_priority(0, priority);
 
@@ -144,7 +145,7 @@ impl Scheduler {
 	/// Removes the process with the given pid `pid`.
 	pub fn remove_process(&mut self, pid: Pid) {
 		if let Some(proc_mutex) = self.get_by_pid(pid) {
-			let guard = proc_mutex.lock(false);
+			let guard = proc_mutex.lock();
 			let process = guard.get();
 
 			let priority = process.get_priority();
@@ -194,7 +195,7 @@ impl Scheduler {
 	// TODO Clean
 	/// Returns the next process to run with its PID. If the process is changed, the quantum count
 	/// of the previous process is reset.
-	fn get_next_process(&mut self) -> Option<(Pid, SharedPtr<Process>)> {
+	fn get_next_process(&mut self) -> Option<(Pid, IntSharedPtr<Process>)> {
 		let priority_sum = self.priority_sum;
 		let priority_max = self.priority_max;
 		let processes_count = self.processes.count();
@@ -211,13 +212,14 @@ impl Scheduler {
 		})?;
 
 		// Closure iterating the tree to find an available process
-		let next = | iter: &mut BinaryTreeMutIterator<Pid, SharedPtr<Process>>, i: &mut usize | {
-			let mut proc: Option<(Pid, SharedPtr<Process>)> = None;
+		let next = | iter: &mut BinaryTreeMutIterator<Pid, IntSharedPtr<Process>>,
+			i: &mut usize | {
+			let mut proc: Option<(Pid, IntSharedPtr<Process>)> = None;
 
 			// Iterating over processes
 			while let Some((pid, process)) = iter.next() {
 				let runnable = {
-					let guard = process.lock(false);
+					let guard = process.lock();
 					Self::can_run(guard.get(), priority_sum, priority_max, processes_count)
 				};
 				if runnable {
@@ -254,7 +256,7 @@ impl Scheduler {
 		let (next_pid, next_proc) = next_proc?;
 
 		if next_pid != curr_pid || processes_count == 1 {
-			curr_proc.lock(false).get_mut().quantum_count = 0;
+			curr_proc.lock().get_mut().quantum_count = 0;
 		}
 		Some((next_pid, next_proc))
 	}
@@ -264,18 +266,18 @@ impl Scheduler {
 	/// `mutex` is the scheduler's mutex.
 	/// `regs` is the state of the registers from the paused context.
 	/// `ring` is the ring of the paused context.
-	fn tick(mutex: &mut Mutex<Self>, regs: &Regs, ring: u32) -> ! {
+	fn tick(mutex: &mut IntMutex<Self>, regs: &Regs, ring: u32) -> ! {
 		// Disabling interrupts to avoid getting one right after unlocking mutexes
 		cli!();
 
-		let mut guard = mutex.lock(false);
+		let mut guard = mutex.lock();
 		let scheduler = guard.get_mut();
 
 		scheduler.total_ticks += 1;
 
 		// If a process is running, save its registers
 		if let Some(curr_proc) = scheduler.get_current_process() {
-			let mut guard = curr_proc.lock(false);
+			let mut guard = curr_proc.lock();
 			let curr_proc = guard.get_mut();
 
 			curr_proc.regs = *regs;
@@ -298,7 +300,7 @@ impl Scheduler {
 					let data = unsafe {
 						&mut *(data as *mut ContextSwitchData)
 					};
-					let mut guard = data.proc.lock(false);
+					let mut guard = data.proc.lock();
 					let proc = guard.get_mut();
 
 					proc.prepare_switch();

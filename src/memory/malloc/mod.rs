@@ -34,7 +34,7 @@ pub fn init() {
 /// Allocates `n` bytes of kernel memory and returns a pointer to the beginning of the allocated
 /// chunk. If the allocation fails, the function shall return an error.
 pub unsafe fn alloc(n: usize) -> Result<*mut c_void, Errno> {
-	let _ = MUTEX.lock(true);
+	let _ = MUTEX.lock();
 
 	if n == 0 {
 		return Err(errno::EINVAL);
@@ -59,7 +59,7 @@ pub unsafe fn alloc(n: usize) -> Result<*mut c_void, Errno> {
 /// Returns the size of the given memory allocation in bytes.
 /// The pointer `ptr` **must** point to the beginning of a valid, used chunk of memory.
 pub unsafe fn get_size(ptr: *const c_void) -> usize {
-	let _ = MUTEX.lock(true);
+	let _ = MUTEX.lock();
 
 	let chunk = Chunk::from_ptr(ptr as *mut _);
 	#[cfg(config_debug_debug)]
@@ -73,7 +73,7 @@ pub unsafe fn get_size(ptr: *const c_void) -> usize {
 /// `n` is the new size of the chunk of memory.
 /// If the reallocation fails, the chunk is left untouched and the function returns an error.
 pub unsafe fn realloc(ptr: *mut c_void, n: usize) -> Result<*mut c_void, Errno> {
-	let _ = MUTEX.lock(true);
+	let _ = MUTEX.lock();
 
 	if n == 0 {
 		return Err(errno::EINVAL);
@@ -111,7 +111,7 @@ pub unsafe fn realloc(ptr: *mut c_void, n: usize) -> Result<*mut c_void, Errno> 
 /// Frees the memory at the pointer `ptr` previously allocated with `alloc`. Subsequent uses of the
 /// associated memory are undefined.
 pub unsafe fn free(ptr: *mut c_void) {
-	let _ = MUTEX.lock(true);
+	let _ = MUTEX.lock();
 
 	let chunk = Chunk::from_ptr(ptr);
 	#[cfg(config_debug_debug)]

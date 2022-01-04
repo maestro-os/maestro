@@ -448,7 +448,7 @@ impl File {
 			minor,
 		} = self.content {
 			let dev = device::get_device(DeviceType::Char, major, minor).ok_or(errno::ENODEV)?;
-			let mut guard = dev.lock(true);
+			let mut guard = dev.lock();
 			guard.get_mut().get_handle().ioctl(request, argp)
 		} else {
 			Err(errno::ENOTTY)
@@ -477,11 +477,11 @@ impl IO for File {
 				let location = self.location.as_ref().ok_or(errno::EIO)?;
 
 				let mountpoint_mutex = location.get_mountpoint().ok_or(errno::EIO)?;
-				let mut mountpoint_guard = mountpoint_mutex.lock(true);
+				let mut mountpoint_guard = mountpoint_mutex.lock();
 				let mountpoint = mountpoint_guard.get_mut();
 
 				let io_mutex = mountpoint.get_source().get_io().clone();
-				let mut io_guard = io_mutex.lock(true);
+				let mut io_guard = io_mutex.lock();
 				let io = io_guard.get_mut();
 
 				let filesystem = mountpoint.get_filesystem();
@@ -521,7 +521,7 @@ impl IO for File {
 					_ => unreachable!(),
 				}.ok_or(errno::ENODEV)?;
 
-				let mut guard = dev.lock(true);
+				let mut guard = dev.lock();
 				guard.get_mut().get_handle().read(off as _, buff)
 			},
 		}
@@ -533,11 +533,11 @@ impl IO for File {
 				let location = self.location.as_ref().ok_or(errno::EIO)?;
 
 				let mountpoint_mutex = location.get_mountpoint().ok_or(errno::EIO)?;
-				let mut mountpoint_guard = mountpoint_mutex.lock(true);
+				let mut mountpoint_guard = mountpoint_mutex.lock();
 				let mountpoint = mountpoint_guard.get_mut();
 
 				let io_mutex = mountpoint.get_source().get_io();
-				let mut io_guard = io_mutex.lock(true);
+				let mut io_guard = io_mutex.lock();
 				let io = io_guard.get_mut();
 
 				let filesystem = mountpoint.get_filesystem();
@@ -580,7 +580,7 @@ impl IO for File {
 					_ => unreachable!(),
 				}.ok_or(errno::ENODEV)?;
 
-				let mut guard = dev.lock(true);
+				let mut guard = dev.lock();
 				guard.get_mut().get_handle().write(off as _, buff)
 			},
 		}
@@ -604,7 +604,7 @@ pub fn resolve_links(file: SharedPtr<File>) -> Result<Path, Errno> {
 
 	// Resolve links until the current file is not a link
 	while resolve_count <= limits::SYMLOOP_MAX {
-		let file_guard = file.lock(true);
+		let file_guard = file.lock();
 		let f = file_guard.get();
 
 		// Get the path of the parent directory of the current file
@@ -620,7 +620,7 @@ pub fn resolve_links(file: SharedPtr<File>) -> Result<Path, Errno> {
 
 			// Getting the file from path
 			let mutex = fcache::get();
-			let mut guard = mutex.lock(true);
+			let mut guard = mutex.lock();
 			let files_cache = guard.get_mut().as_mut().unwrap();
 
 			match files_cache.get_file_from_path(&path) {
@@ -641,7 +641,7 @@ pub fn resolve_links(file: SharedPtr<File>) -> Result<Path, Errno> {
 	}
 
 	if resolve_count <= limits::SYMLOOP_MAX {
-		let file_guard = file.lock(true);
+		let file_guard = file.lock();
 		let f = file_guard.get();
 
 		f.get_path()
@@ -664,7 +664,7 @@ pub fn init(root_device_type: DeviceType, root_major: u32, root_minor: u32) -> R
 
 	// Creating the files cache
 	let cache = FCache::new(root_dev)?;
-	let mut guard = fcache::get().lock(true);
+	let mut guard = fcache::get().lock();
 	*guard.get_mut() = Some(cache);
 
 	Ok(())

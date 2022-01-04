@@ -171,7 +171,7 @@ pub fn get_vmem() -> &'static mut Mutex<Box<dyn VMem>> {
 pub fn bind_vmem() {
 	let guard = unsafe { // Safe because using Mutex
 		KERNEL_VMEM.assume_init_mut()
-	}.lock(false);
+	}.lock();
 	guard.get().bind();
 }
 
@@ -193,7 +193,7 @@ fn get_init_error_message(errno: Errno) -> &'static str {
 /// Launches the init process.
 fn init() -> Result<(), &'static str> {
 	let mutex = Process::new().or(Err("Failed to create init process!"))?;
-	let mut lock = mutex.lock(false);
+	let mut lock = mutex.lock();
 	let proc = lock.get_mut();
 
 	let result = if cfg!(config_debug_testprocess) {

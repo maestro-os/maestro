@@ -30,7 +30,7 @@ pub fn get_clock_sources() -> &'static Mutex<Vec<Box<dyn ClockSource>>> {
 
 /// Adds the new clock source to the clock sources list.
 pub fn add_clock_source<T: 'static + ClockSource>(source: T) -> Result<(), Errno> {
-	let mut guard = CLOCK_SOURCES.lock(true);
+	let mut guard = CLOCK_SOURCES.lock();
 	let sources = guard.get_mut();
 	sources.push(Box::new(source)?)?;
 	Ok(())
@@ -38,7 +38,7 @@ pub fn add_clock_source<T: 'static + ClockSource>(source: T) -> Result<(), Errno
 
 /// Returns the current timestamp from the preferred clock source.
 pub fn get() -> Timestamp {
-	let mut guard = CLOCK_SOURCES.lock(true);
+	let mut guard = CLOCK_SOURCES.lock();
 	let sources = guard.get_mut();
 	if sources.is_empty() {
 		crate::kernel_panic!("No clock source available!");

@@ -14,7 +14,7 @@ pub fn finit_module(regs: &Regs) -> Result<i32, Errno> {
 
 	let image = {
 		let proc_mutex = Process::get_current().unwrap();
-		let mut proc_guard = proc_mutex.lock(false);
+		let mut proc_guard = proc_mutex.lock();
 		let proc = proc_guard.get_mut();
 
 		if proc.get_uid() != 0 {

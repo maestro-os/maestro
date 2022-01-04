@@ -19,7 +19,7 @@ pub fn write(regs: &Regs) -> Result<i32, Errno> {
 
 	{
 		let mutex = Process::get_current().unwrap();
-		let mut guard = mutex.lock(false);
+		let mut guard = mutex.lock();
 		let proc = guard.get_mut();
 
 		if !proc.get_mem_space().unwrap().can_access(buf, count, true, false) {
@@ -42,7 +42,7 @@ pub fn write(regs: &Regs) -> Result<i32, Errno> {
 		// Trying to write and getting the length of written data
 		let (len, flags) = {
 			let mutex = Process::get_current().unwrap();
-			let mut guard = mutex.lock(false);
+			let mut guard = mutex.lock();
 			let proc = guard.get_mut();
 
 			let fd = proc.get_fd(fd).ok_or(errno::EBADF)?;

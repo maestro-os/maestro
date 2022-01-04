@@ -14,7 +14,7 @@ pub fn unlink(regs: &Regs) -> Result<i32, Errno> {
 	let path = {
 		// Getting the process
 		let mutex = Process::get_current().unwrap();
-		let mut guard = mutex.lock(false);
+		let mut guard = mutex.lock();
 		let proc = guard.get_mut();
 
 		Path::from_str(super::util::get_str(proc, pathname)?, true)?
@@ -25,7 +25,7 @@ pub fn unlink(regs: &Regs) -> Result<i32, Errno> {
 	// Removing the file
 	{
 		let mutex = fcache::get();
-		let mut guard = mutex.lock(true);
+		let mut guard = mutex.lock();
 		let files_cache = guard.get_mut();
 
 		files_cache.as_mut().unwrap().remove_file(&path)?;

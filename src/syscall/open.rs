@@ -38,7 +38,7 @@ fn get_file_absolute_path(process: &Process, path_str: &[u8]) -> Result<Path, Er
 fn get_file(path: Path, flags: i32, mode: file::Mode, uid: u16, gid: u16)
 	-> Result<SharedPtr<File>, Errno> {
 	let mutex = fcache::get();
-	let mut guard = mutex.lock(true);
+	let mut guard = mutex.lock();
 	let files_cache = guard.get_mut();
 
 	if let Ok(file) = files_cache.as_mut().unwrap().get_file_from_path(&path) {
@@ -60,7 +60,7 @@ fn get_file(path: Path, flags: i32, mode: file::Mode, uid: u16, gid: u16)
 /// Performs the open system call.
 pub fn open_(pathname: *const u8, flags: i32, mode: file::Mode) -> Result<i32, Errno> {
 	let mutex = Process::get_current().unwrap();
-	let mut guard = mutex.lock(false);
+	let mut guard = mutex.lock();
 	let proc = guard.get_mut();
 
 	// Getting the path string
@@ -80,7 +80,7 @@ pub fn open_(pathname: *const u8, flags: i32, mode: file::Mode) -> Result<i32, E
 
 	// If O_DIRECTORY is set and the file is not a directory, return an error
 	if flags & file_descriptor::O_DIRECTORY != 0
-		&& file.lock(true).get().get_file_type() != FileType::Directory {
+		&& file.lock().get().get_file_type() != FileType::Directory {
 		return Err(errno::ENOTDIR);
 	}
 
