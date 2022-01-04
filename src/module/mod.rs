@@ -23,7 +23,7 @@ use crate::memory;
 use crate::multiboot;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
-use crate::util::lock::mutex::Mutex;
+use crate::util::lock::Mutex;
 use version::Version;
 
 /// The magic number that must be present inside of a module.

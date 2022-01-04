@@ -10,10 +10,10 @@ use core::ptr::drop_in_place;
 use core::ptr;
 use crate::errno::Errno;
 use crate::memory::malloc;
-use crate::util::lock::mutex::DummyIntManager;
-use crate::util::lock::mutex::IntManager;
-use crate::util::lock::mutex::Mutex;
-use crate::util::lock::mutex::NormalIntManager;
+use crate::util::lock::DummyIntManager;
+use crate::util::lock::IntManager;
+use crate::util::lock::Mutex;
+use crate::util::lock::NormalIntManager;
 
 /// Drops the given inner structure if necessary.
 fn check_inner_drop<T: ?Sized, I: IntManager>(inner: &mut SharedPtrInner<T, I>) {

@@ -2,7 +2,7 @@
 //! or more processes according to a score computed for each of them.
 
 use crate::process::Errno;
-use crate::util::lock::mutex::Mutex;
+use crate::util::lock::Mutex;
 
 /// The maximum number of times the kernel tries to kill a process to retrieve memory.
 const MAX_TRIES: u32 = 5;

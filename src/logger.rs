@@ -4,7 +4,7 @@
 
 use core::cmp::min;
 use crate::tty;
-use crate::util::lock::mutex::IntMutex;
+use crate::util::lock::IntMutex;
 
 /// The size of the kernel logs buffer in bytes.
 const LOGS_SIZE: usize = 1048576;

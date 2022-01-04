@@ -14,7 +14,7 @@ use core::mem::size_of;
 use crate::errno::Errno;
 use crate::errno;
 use crate::memory;
-use crate::util::lock::mutex::*;
+use crate::util::lock::*;
 use crate::util::math;
 use crate::util;
 

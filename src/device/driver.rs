@@ -4,7 +4,7 @@
 use crate::device::manager::PhysicalDevice;
 use crate::errno::Errno;
 use crate::util::container::vec::Vec;
-use crate::util::lock::mutex::Mutex;
+use crate::util::lock::Mutex;
 use crate::util::ptr::SharedPtr;
 use crate::util::ptr::WeakPtr;
 

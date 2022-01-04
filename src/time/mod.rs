@@ -5,7 +5,7 @@
 use crate::errno::Errno;
 use crate::util::boxed::Box;
 use crate::util::container::vec::Vec;
-use crate::util::lock::mutex::*;
+use crate::util::lock::*;
 
 pub mod cmos;
 

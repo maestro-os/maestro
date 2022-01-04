@@ -10,7 +10,7 @@ use core::mem::MaybeUninit;
 use crate::device::serial;
 use crate::memory::vmem;
 use crate::pit;
-use crate::util::lock::mutex::*;
+use crate::util::lock::*;
 use crate::util;
 use crate::vga;
 
@@ -26,6 +26,9 @@ const EMPTY_CHAR: vga::Char = (vga::DEFAULT_COLOR as vga::Char) << 8;
 
 /// The size of a tabulation in space-equivalent.
 const TAB_SIZE: usize = 4;
+
+/// The maximum number of characters in the input buffer of a TTY.
+const INPUT_MAX: usize = 4096;
 
 /// The frequency of the bell in Hz.
 const BELL_FREQUENCY: u32 = 2000;
@@ -63,10 +66,16 @@ pub struct TTY {
 	/// Tells whether TTY updates are enabled or not
 	update: bool,
 
+	/// The buffer containing the input characters.
+	input_buffer: [u8; INPUT_MAX],
+	/// The current size of the input buffer.
+	input_size: usize,
+
+	/// Tells whether the canonical mode is enabled.
+	canonical_mode: bool,
+
 	/// The ANSI escape codes buffer.
 	ansi_buffer: ansi::ANSIBuffer,
-	/// The number of prompted characters
-	prompted_chars: usize,
 }
 
 /// The array of every TTYs.
@@ -130,7 +139,6 @@ impl TTY {
 		self.update = true;
 
 		self.ansi_buffer = ansi::ANSIBuffer::new();
-		self.prompted_chars = 0;
 	}
 
 	/// Returns the id of the TTY.
@@ -338,12 +346,53 @@ impl TTY {
 		self.update();
 	}
 
+	/// Tells whether the canonical mode is enabled.
+	#[inline(always)]
+	pub fn is_canonical_mode(&self) -> bool {
+		self.canonical_mode
+	}
+
+	/// Takes the given string `buffer` as input.
+	pub fn input(&mut self, buffer: &[u8]) {
+		// The length to write to the input buffer
+		let len = min(self.input_size + buffer.len(), self.input_buffer.len());
+		// The slice containing the input
+		let input = &buffer[..len];
+
+		if self.is_canonical_mode() {
+			// Writing to the input buffer
+			self.input_buffer[self.input_size..].copy_from_slice(input);
+			self.input_size += len;
+
+			// Processing input
+			let mut i = self.input_size - len;
+			while i < self.input_size {
+				match self.input_buffer[i] {
+					b'\n' => {
+						// TODO Make `self.input_buffer[..i]` available to device file
+						// TODO Erase from input buffer
+					},
+
+					// TODO Handle other special characters
+
+					_ => i += 1,
+				}
+			}
+		} else {
+			// TODO Make available to device file
+		}
+
+		// Writing onto the TTY
+		self.write(input);
+	}
+
 	/// Erases `count` characters in TTY.
-	pub fn erase(&mut self, mut count: usize) {
-		count = max(count, self.prompted_chars);
-		if count == 0 {
+	pub fn erase(&mut self, count: usize) {
+		let count = min(count, self.input_buffer.len());
+		if count > self.input_size {
 			return;
 		}
+
 		self.cursor_backward(count, 0);
 
 		let begin = get_history_offset(self.cursor_x, self.cursor_y);
@@ -351,7 +400,7 @@ impl TTY {
 			self.history[i] = EMPTY_CHAR;
 		}
 		self.update();
-		self.prompted_chars -= count;
+		self.input_size -= count;
 	}
 
 	/// Handles keyboard erase input for keycode.

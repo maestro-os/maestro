@@ -3,7 +3,7 @@
 
 use crate::idt;
 use crate::io;
-use crate::util::lock::mutex::*;
+use crate::util::lock::*;
 use crate::util::math;
 
 /// The type representing the frequency of the PIT in Hertz.

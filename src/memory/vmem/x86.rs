@@ -26,7 +26,7 @@ use crate::memory::buddy;
 use crate::memory::vmem::VMem;
 use crate::memory;
 use crate::util::FailableClone;
-use crate::util::lock::mutex::Mutex;
+use crate::util::lock::Mutex;
 use crate::util;
 
 /// x86 paging flag. If set, prevents the CPU from updating the associated addresses when the TLB

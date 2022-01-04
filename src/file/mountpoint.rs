@@ -11,7 +11,7 @@ use crate::util::FailableClone;
 use crate::util::IO;
 use crate::util::boxed::Box;
 use crate::util::container::hashmap::HashMap;
-use crate::util::lock::mutex::Mutex;
+use crate::util::lock::Mutex;
 use crate::util::ptr::SharedPtr;
 use super::path::Path;
 

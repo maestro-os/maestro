@@ -3,7 +3,7 @@
 use crate::device::DeviceType;
 use crate::errno::Errno;
 use crate::util::container::id_allocator::IDAllocator;
-use crate::util::lock::mutex::Mutex;
+use crate::util::lock::Mutex;
 
 /// The number of major numbers.
 const MAJOR_COUNT: u32 = 256;

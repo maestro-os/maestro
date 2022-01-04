@@ -38,7 +38,7 @@ use crate::memory::vmem;
 use crate::util::FailableClone;
 use crate::util::container::bitfield::Bitfield;
 use crate::util::container::vec::Vec;
-use crate::util::lock::mutex::*;
+use crate::util::lock::*;
 use crate::util::ptr::IntSharedPtr;
 use crate::util::ptr::IntWeakPtr;
 use mem_space::MemSpace;

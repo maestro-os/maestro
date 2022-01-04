@@ -10,7 +10,7 @@ use crate::process::Regs;
 use crate::process::tss;
 use crate::util::boxed::Box;
 use crate::util::container::vec::Vec;
-use crate::util::lock::mutex::*;
+use crate::util::lock::*;
 
 /// The list of interrupt error messages ordered by index of the corresponding interrupt vector.
 #[cfg(config_general_arch = "x86")]

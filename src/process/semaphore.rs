@@ -2,7 +2,7 @@
 
 use crate::errno::Errno;
 use crate::util::container::vec::Vec;
-use crate::util::lock::mutex::*;
+use crate::util::lock::*;
 use super::Pid;
 
 /// A semaphore is a structure which locks access to a data such that only one thread can access it

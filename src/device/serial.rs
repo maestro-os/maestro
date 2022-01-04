@@ -1,7 +1,7 @@
 //! This module implements Serial port communications.
 
 use crate::io;
-use crate::util::lock::mutex::Mutex;
+use crate::util::lock::Mutex;
 
 /// The offset of COM1 registers.
 pub const COM1: u16 = 0x3f8;

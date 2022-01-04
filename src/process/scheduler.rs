@@ -25,7 +25,7 @@ use crate::util::container::binary_tree::BinaryTree;
 use crate::util::container::binary_tree::BinaryTreeMutIterator;
 use crate::util::container::binary_tree::TraversalType;
 use crate::util::container::vec::Vec;
-use crate::util::lock::mutex::*;
+use crate::util::lock::*;
 use crate::util::math;
 use crate::util::ptr::IntSharedPtr;
 

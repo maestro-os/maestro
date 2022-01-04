@@ -10,7 +10,7 @@ use crate::util::IO;
 use crate::util::boxed::Box;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
-use crate::util::lock::mutex::Mutex;
+use crate::util::lock::Mutex;
 use crate::util::ptr::SharedPtr;
 use super::File;
 use super::INode;

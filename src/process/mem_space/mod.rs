@@ -26,7 +26,7 @@ use crate::process::oom;
 use crate::util::FailableClone;
 use crate::util::boxed::Box;
 use crate::util::container::binary_tree::BinaryTree;
-use crate::util::lock::mutex::Mutex;
+use crate::util::lock::Mutex;
 use crate::util;
 use gap::MemGap;
 use mapping::MemMapping;

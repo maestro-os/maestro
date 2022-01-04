@@ -20,7 +20,7 @@ use crate::errno::Errno;
 use crate::errno;
 use crate::memory;
 use crate::util::list::ListNode;
-use crate::util::lock::mutex::Mutex;
+use crate::util::lock::Mutex;
 use crate::util;
 
 /// The allocator's mutex.

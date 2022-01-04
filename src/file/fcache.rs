@@ -11,7 +11,7 @@ use crate::file::path::Path;
 use crate::util::FailableClone;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
-use crate::util::lock::mutex::Mutex;
+use crate::util::lock::Mutex;
 use crate::util::ptr::SharedPtr;
 
 /// The size of the files pool.

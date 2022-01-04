@@ -65,7 +65,6 @@ pub mod util;
 pub mod vga;
 
 use core::ffi::c_void;
-use core::mem::MaybeUninit;
 use core::panic::PanicInfo;
 use core::ptr::null;
 use crate::errno::Errno;
@@ -75,7 +74,7 @@ use crate::memory::vmem;
 use crate::process::Process;
 use crate::process::exec::exec;
 use crate::util::boxed::Box;
-use crate::util::lock::mutex::Mutex;
+use crate::util::lock::Mutex;
 
 /// The kernel's name.
 pub const NAME: &str = "maestro";
@@ -126,7 +125,7 @@ pub fn halt() -> ! {
 }
 
 /// Field storing the kernel's virtual memory context.
-static mut KERNEL_VMEM: MaybeUninit<Mutex<Box<dyn VMem>>> = MaybeUninit::uninit();
+static KERNEL_VMEM: Mutex<Option<Box<dyn VMem>>> = Mutex::new(None);
 
 /// Initializes the kernel's virtual memory context.
 fn init_vmem() -> Result<(), Errno> {
@@ -151,9 +150,8 @@ fn init_vmem() -> Result<(), Errno> {
 	// Making the kernel image read-only
 	kernel_vmem.protect_kernel()?;
 
-	unsafe {
-		*KERNEL_VMEM.assume_init_mut() = Mutex::new(kernel_vmem);
-	}
+	// Assigning to the global variable
+	*KERNEL_VMEM.lock().get_mut() = Some(kernel_vmem);
 
 	// Binding the kernel virtual memory context
 	bind_vmem();
@@ -161,18 +159,23 @@ fn init_vmem() -> Result<(), Errno> {
 }
 
 /// Returns the kernel's virtual memory context.
-pub fn get_vmem() -> &'static mut Mutex<Box<dyn VMem>> {
-	unsafe { // Safe because using Mutex
-		KERNEL_VMEM.assume_init_mut()
-	}
+pub fn get_vmem() -> &'static Mutex<Option<Box<dyn VMem>>> {
+	&KERNEL_VMEM
+}
+
+/// Tells whether memory management has been fully initialized.
+pub fn is_memory_init() -> bool {
+	get_vmem().lock().get().is_some()
 }
 
 /// Binds the kernel's virtual memory context.
+/// If the kernel vmem is not initialized, the function does nothing.
 pub fn bind_vmem() {
-	let guard = unsafe { // Safe because using Mutex
-		KERNEL_VMEM.assume_init_mut()
-	}.lock();
-	guard.get().bind();
+	let guard = KERNEL_VMEM.lock();
+
+	if let Some(vmem) = guard.get().as_ref() {
+		vmem.bind();
+	}
 }
 
 extern "C" {
@@ -254,6 +257,8 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 	if init_vmem().is_err() {
 		crate::kernel_panic!("Cannot initialize kernel virtual memory!", 0);
 	}
+
+	// From here, the kernel considers that memory management has been fully initialized
 
 	// Performing kernel self-tests
 	#[cfg(test)]

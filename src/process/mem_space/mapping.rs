@@ -14,7 +14,7 @@ use crate::memory;
 use crate::process::mem_space::physical_ref_counter::PhysRefCounter;
 use crate::process::oom;
 use crate::util::boxed::Box;
-use crate::util::lock::mutex::*;
+use crate::util::lock::*;
 use crate::util;
 use super::MemSpace;
 
