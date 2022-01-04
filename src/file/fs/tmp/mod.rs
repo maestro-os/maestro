@@ -50,7 +50,7 @@ impl KernFSNode for TmpFSFile {
 		self.type_
 	}
 
-	fn get_entries(&self) -> &HashMap<String, Self> where Self: Sized {
+	fn get_entries(&self) -> &HashMap<String, INode> {
 		// TODO
 		todo!();
 	}
