@@ -10,7 +10,6 @@ pub mod id;
 pub mod keyboard;
 pub mod manager;
 pub mod network;
-pub mod ps2;
 pub mod serial;
 pub mod storage;
 

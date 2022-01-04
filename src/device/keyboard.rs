@@ -2,9 +2,7 @@
 
 use crate::device::manager::DeviceManager;
 use crate::device::manager::PhysicalDevice;
-use crate::device::ps2;
 use crate::errno::Errno;
-use crate::errno;
 use crate::tty;
 
 /// Enumation of keyboard keys.
@@ -410,9 +408,6 @@ pub trait Keyboard {
 /// Structure managing keyboard devices.
 /// The manager has the name `kbd`.
 pub struct KeyboardManager {
-	/// The PS/2 keyboard.
-	ps2_keyboard: Option<ps2::PS2Keyboard>,
-
 	/// The ctrl key state.
 	ctrl: bool,
 	/// The shift key state.
@@ -436,8 +431,6 @@ impl KeyboardManager {
 	/// Creates a new instance.
 	pub fn new() -> Self {
 		let s = Self {
-			ps2_keyboard: None,
-
 			ctrl: false,
 			shift: false,
 			alt: false,
@@ -520,10 +513,13 @@ impl KeyboardManager {
 	/// Sets the state of the LED on every keyboards.
 	/// `led` is the keyboard LED.
 	/// `enabled` tells whether the LED is lit.
-	pub fn set_led(&mut self, led: KeyboardLED, enabled: bool) {
-		if let Some(ps2) = &mut self.ps2_keyboard {
+	pub fn set_led(&mut self, _led: KeyboardLED, _enabled: bool) {
+		// TODO Iterate on keyboards
+		/*if let Some(ps2) = &mut self.ps2_keyboard {
 			ps2.set_led(led, enabled);
-		}
+		}*/
+
+		todo!();
 	}
 }
 
@@ -533,7 +529,6 @@ impl DeviceManager for KeyboardManager {
 	}
 
 	fn legacy_detect(&mut self) -> Result<(), Errno> {
-		self.ps2_keyboard = Some(ps2::PS2Keyboard::new().or(Err(errno::EIO))?);
 		Ok(())
 	}
 

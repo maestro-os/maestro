@@ -560,7 +560,7 @@ impl Ext2Fs {
 
 // TODO Update the write timestamp when the fs is written
 // TODO Add an option when mounting to specify whether to mount in readonly?
-// TODO Make write operations fails if the filesystem is mounted in readonly?
+// TODO Make write operations fail if the filesystem is mounted in readonly?
 impl Filesystem for Ext2Fs {
 	fn get_name(&self) -> &[u8] {
 		b"ext2"
@@ -584,16 +584,6 @@ impl Filesystem for Ext2Fs {
 			if inode.get_type() != FileType::Directory {
 				return Err(errno::ENOTDIR);
 			}
-
-			// TODO rm
-			//crate::println!("Files in {}:", path[i]);
-			//let _ = inode.foreach_directory_entry(| _, e | {
-			//	let name = e.as_ref().get_name(&self.superblock);
-			//	let inode = e.as_ref().get_inode();
-			//	crate::println!("=> {} {}", name, inode);
-
-			//	true
-			//}, &self.superblock, io);
 
 			let name = &path[i];
 			if let Some(entry) = inode.get_directory_entry(name.as_bytes(), &self.superblock,
