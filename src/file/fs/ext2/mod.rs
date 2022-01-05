@@ -534,9 +534,7 @@ impl Ext2Fs {
 			}
 
 			// TODO Implement
-			let unsupported_write_features = WRITE_REQUIRED_SPARSE_SUPERBLOCKS
-				| WRITE_REQUIRED_64_BITS
-				| WRITE_REQUIRED_DIRECTORY_BINARY_TREE;
+			let unsupported_write_features = WRITE_REQUIRED_DIRECTORY_BINARY_TREE;
 
 			if !readonly && superblock.write_required_features & unsupported_write_features != 0 {
 				// TODO Log?
@@ -548,9 +546,10 @@ impl Ext2Fs {
 		if superblock.mount_count_since_fsck >= superblock.mount_count_before_fsck {
 			return Err(errno::EINVAL);
 		}
-		if timestamp >= superblock.last_fsck_timestamp + superblock.fsck_interval {
+		// TODO
+		/*if timestamp >= superblock.last_fsck_timestamp + superblock.fsck_interval {
 			return Err(errno::EINVAL);
-		}
+		}*/
 
 		superblock.mount_count_since_fsck += 1;
 
@@ -584,7 +583,7 @@ impl Ext2Fs {
 	}
 }
 
-// TODO Update the write timestamp when the fs is written
+// TODO Update the write timestamp when the fs is written (take mount flags into account)
 impl Filesystem for Ext2Fs {
 	fn get_name(&self) -> &[u8] {
 		b"ext2"
