@@ -18,6 +18,7 @@ use core::ptr;
 use core::slice;
 use crate::errno::Errno;
 use crate::errno;
+use crate::memory::malloc::ptr::NonNull;
 use crate::memory;
 use crate::util::list::ListNode;
 use crate::util::lock::Mutex;
@@ -134,7 +135,7 @@ pub unsafe fn free(ptr: *mut c_void) {
 /// `drop` on its elements.
 pub struct Alloc<T> {
 	/// Slice representing the allocation.
-	slice: *mut [T],
+	slice: NonNull<[T]>,
 }
 
 impl<T> Alloc<T> {
@@ -142,10 +143,10 @@ impl<T> Alloc<T> {
 	/// allowing to access it. If the allocation fails, the function shall return an error.
 	/// The function is unsafe because zero memory might be an inconsistent state for the object T.
 	pub unsafe fn new_zero(size: usize) -> Result<Self, Errno> {
-		let slice = {
+		let slice = NonNull::new({
 			let ptr = alloc(size * size_of::<T>())?;
 			slice::from_raw_parts_mut::<T>(ptr as _, size)
-		};
+		}).unwrap();
 
 		Ok(Self {
 			slice,
@@ -155,14 +156,14 @@ impl<T> Alloc<T> {
 	/// Returns an immutable reference to the underlying slice.
 	pub fn get_slice(&self) -> &[T] {
 		unsafe {
-			&*self.slice
+			&*self.slice.as_ref()
 		}
 	}
 
 	/// Returns a mutable reference to the underlying slice.
 	pub fn get_slice_mut(&mut self) -> &mut [T] {
 		unsafe {
-			&mut *self.slice
+			self.slice.as_mut()
 		}
 	}
 
@@ -178,9 +179,7 @@ impl<T> Alloc<T> {
 
 	/// Returns the size of the allocation in number of elements.
 	pub fn get_size(&self) -> usize {
-		unsafe { // Safe because the pointer is valid
-			get_size(self.as_ptr() as *const _) / size_of::<T>()
-		}
+		self.slice.len()
 	}
 
 	/// Changes the size of the memory allocation. All new elements are initialized to zero.
@@ -189,7 +188,7 @@ impl<T> Alloc<T> {
 	/// The function is unsafe because zero memory might be an inconsistent state for the object T.
 	pub unsafe fn realloc_zero(&mut self, n: usize) -> Result<(), Errno> {
 		let ptr = realloc(self.as_ptr_mut() as _, n * size_of::<T>())?;
-		self.slice = slice::from_raw_parts_mut::<T>(ptr as _, n);
+		self.slice = NonNull::new(slice::from_raw_parts_mut::<T>(ptr as _, n)).unwrap();
 
 		Ok(())
 	}

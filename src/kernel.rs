@@ -21,6 +21,7 @@
 #![feature(maybe_uninit_extra)]
 #![feature(panic_info_message)]
 #![feature(slice_ptr_get)]
+#![feature(slice_ptr_len)]
 #![feature(stmt_expr_attributes)]
 #![feature(unsize)]
 

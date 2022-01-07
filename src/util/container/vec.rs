@@ -26,8 +26,6 @@ use crate::util::FailableClone;
 pub struct Vec<T> {
 	/// The number of elements present in the vector
 	len: usize,
-	/// The number of elements that can be stored in the vector with its current buffer
-	capacity: usize,
 	/// A pointer to the first element of the vector
 	data: Option<malloc::Alloc<T>>,
 }
@@ -37,53 +35,50 @@ impl<T> Vec<T> {
 	pub const fn new() -> Self {
 		Self {
 			len: 0,
-			capacity: 0,
 			data: None,
 		}
 	}
 
 	/// Reallocates the vector's data with the vector's capacity.
-	fn realloc(&mut self) -> Result<(), Errno> {
-		debug_assert!(self.capacity >= self.len);
+	/// `capacity` is the new capacity in number of elements.
+	fn realloc(&mut self, capacity: usize) -> Result<(), Errno> {
 		if let Some(data) = &mut self.data {
+			debug_assert!(data.get_size() >= self.len);
+
 			// Safe because the memory is rewritten when the object is placed into the vector
 			unsafe {
-				data.realloc_zero(self.capacity)?;
+				data.realloc_zero(capacity)?;
 			}
 		} else {
 			// Safe because the memory is rewritten when the object is placed into the vector
 			let data_ptr = unsafe {
-				malloc::Alloc::new_zero(self.capacity)?
+				malloc::Alloc::new_zero(capacity)?
 			};
+
 			self.data = Some(data_ptr);
 		};
+
 		debug_assert!(self.data.is_some());
 		Ok(())
 	}
 
 	/// Increases the capacity of at least `min` elements.
 	fn increase_capacity(&mut self, min: usize) -> Result<(), Errno> {
-		if self.len + min < self.capacity {
+		if self.len + min == 0 || self.len + min < self.capacity() {
 			return Ok(());
 		}
 
-		if self.capacity == 0 {
-			self.capacity = 1;
-		}
-		self.capacity = max(self.capacity + self.capacity / 4, self.len + min);
-		self.realloc()
+		let curr_capacity = self.capacity();
+		let capacity = max(curr_capacity + (curr_capacity / 4), self.len + min);
+		self.realloc(capacity)
 	}
 
 	/// Creates a new emoty vector with the given capacity.
 	pub fn with_capacity(capacity: usize) -> Result<Self, Errno> {
-		if capacity > 0 {
-			let mut vec = Self::new();
-			vec.capacity = capacity;
-			vec.realloc()?;
-			Ok(vec)
-		} else {
-			Ok(Self::new())
-		}
+		let mut vec = Self::new();
+		vec.realloc(capacity)?;
+
+		Ok(vec)
 	}
 
 	/// Returns the number of elements inside of the vector.
@@ -102,7 +97,11 @@ impl<T> Vec<T> {
 	/// reallocate the memory.
 	#[inline(always)]
 	pub fn capacity(&self) -> usize {
-		self.capacity
+		if let Some(d) = &self.data {
+			d.get_size()
+		} else {
+			0
+		}
 	}
 
 	/// Returns a slice containing the data.
@@ -158,12 +157,15 @@ impl<T> Vec<T> {
 		}
 	}
 
-	// FIXME Invalid in case the element is inserted outside of the vector
 	/// Inserts an element at position index within the vector, shifting all elements after it to
 	/// the right.
 	pub fn insert(&mut self, index: usize, element: T) -> Result<(), Errno> {
+		if index > self.len() {
+			self.vector_panic(index);
+		}
+
 		self.increase_capacity(1)?;
-		debug_assert!(self.capacity > self.len);
+		debug_assert!(self.capacity() > self.len);
 
 		unsafe {
 			let ptr = self.data.as_mut().unwrap().as_ptr_mut();
@@ -177,8 +179,8 @@ impl<T> Vec<T> {
 	/// Removes and returns the element at position index within the vector, shifting all elements
 	/// after it to the left.
 	pub fn remove(&mut self, index: usize) -> T {
-		if self.is_empty() {
-			self.vector_panic(0);
+		if index >= self.len() {
+			self.vector_panic(index);
 		}
 
 		let data = self.data.as_mut().unwrap();
@@ -216,7 +218,7 @@ impl<T> Vec<T> {
 	/// Appends an element to the back of a collection.
 	pub fn push(&mut self, value: T) -> Result<(), Errno> {
 		self.increase_capacity(1)?;
-		debug_assert!(self.capacity > self.len);
+		debug_assert!(self.capacity() > self.len);
 
 		unsafe {
 			ptr::write(&mut self.data.as_mut().unwrap()[self.len] as _, value);
@@ -263,7 +265,6 @@ impl<T> Vec<T> {
 		}
 
 		self.len = 0;
-		self.capacity = 0;
 
 		if self.data.is_some() {
 			self.data = None;
@@ -309,7 +310,7 @@ impl<T> FailableClone for Vec<T> where T: FailableClone {
 			if self.data.is_some() {
 				// Safe because initialization uses ManuallyDrop on invalid objects
 				let data_ptr = unsafe {
-					malloc::Alloc::new_zero(self.capacity)?
+					malloc::Alloc::new_zero(self.len)?
 				};
 				Some(data_ptr)
 			} else {
@@ -319,7 +320,6 @@ impl<T> FailableClone for Vec<T> where T: FailableClone {
 
 		let mut v = Self {
 			len: self.len,
-			capacity: self.capacity,
 			data,
 		};
 

@@ -40,7 +40,6 @@ pub struct FCache {
 	accesses_pool: Vec<AccessCounter>,
 }
 
-// TODO Add symbolic links resolution
 // TODO Check files/directories access permissions when getting, creating, removing, etc...
 impl FCache {
 	/// Creates a new instance.
