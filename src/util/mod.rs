@@ -52,11 +52,6 @@ pub fn bit_size_of<T>() -> usize {
 	size_of::<T>() * 8
 }
 
-/// Returns a slice representing a C string beginning at the given pointer.
-pub unsafe fn str_from_ptr(ptr: *const u8) -> &'static [u8] {
-	slice::from_raw_parts(ptr, strlen(ptr))
-}
-
 /// Returns the offset of the given field `field` in structure `type`.
 #[macro_export]
 macro_rules! offset_of {
@@ -90,15 +85,20 @@ macro_rules! register_get {
 }
 
 extern "C" {
+	/// Copies the given memory area `src` to `dest` with size `n`.
+	/// If the given memory areas are overlapping, the behaviour is undefined.
 	pub fn memcpy(dest: *mut c_void, src: *const c_void, n: usize) -> *mut c_void;
+	/// Same as memcpy, except the function can handle overlapping memory areas.
 	pub fn memmove(dest: *mut c_void, src: *const c_void, n: usize) -> *mut c_void;
+	/// Compares strings of byte `s1` and `s2` with length `n` and returns the
+	/// diffence between the first bytes that differ.
 	pub fn memcmp(s1: *const c_void, s2: *const c_void, n: usize) -> i32;
+	/// Fills the `n` first bytes of the memory area pointed to by `s`, with the
+	/// value `c`.
 	pub fn memset(s: *mut c_void, c: i32, n: usize) -> *mut c_void;
 
+	/// Zeros the given chunk of memory `s` with the given size `n`.
 	pub fn bzero(s: *mut c_void, n: usize);
-
-	pub fn strcmp(s1: *const u8, s2: *const u8) -> i32;
-	pub fn strlen(s: *const u8) -> usize;
 }
 
 /// Zeroes the given object.
@@ -109,6 +109,35 @@ pub unsafe fn zero_object<T>(obj: &mut T) {
 	let size = size_of::<T>();
 
 	bzero(ptr, size);
+}
+
+/// Returns the length of the string `s`.
+/// If the pointer or the string is invalid, the behaviour is undefined.
+pub unsafe fn strlen(s: *const u8) -> usize {
+	let mut i = 0;
+
+	while *s.add(i) != b'\0' {
+		i += 1;
+	}
+
+	i
+}
+
+/// Like `strlen`, but limited to the first `n` bytes.
+/// If the pointer or the string is invalid, the behaviour is undefined.
+pub unsafe fn strnlen(s: *const u8, n: usize) -> usize {
+	let mut i = 0;
+
+	while i < n && *s.add(i) != b'\0' {
+		i += 1;
+	}
+
+	i
+}
+
+/// Returns a slice representing a C string beginning at the given pointer.
+pub unsafe fn str_from_ptr(ptr: *const u8) -> &'static [u8] {
+	slice::from_raw_parts(ptr, strlen(ptr))
 }
 
 /// Turns the error into an empty error for the given result.
@@ -311,46 +340,4 @@ mod test {
 	}
 
 	// TODO More tests on memmove
-
-	#[test_case]
-	fn strcmp0() {
-		let buff: [u8; 100] = [0; 100];
-
-		let i = unsafe {
-			strcmp(buff.as_ptr() as _, buff.as_ptr() as _)
-		};
-		assert_eq!(i, 0);
-	}
-
-	#[test_case]
-	fn strcmp1() {
-		let mut buff1: [u8; 100] = [0; 100];
-		let mut buff2: [u8; 100] = [0; 100];
-
-		for i in 0..100 {
-			buff1[i] = (100 - i - 1) as _;
-			buff2[i] = (100 - i - 1) as _;
-		}
-		let i = unsafe {
-			strcmp(buff1.as_ptr() as _, buff2.as_ptr() as _)
-		};
-		assert_eq!(i, 0);
-	}
-
-	#[test_case]
-	fn strcmp2() {
-		let mut buff1: [u8; 100] = [0; 100];
-		let mut buff2: [u8; 100] = [0; 100];
-
-		for i in 0..100 {
-			buff1[i] = (100 - i - 1) as _;
-			buff2[i] = 1;
-		}
-		let i = unsafe {
-			strcmp(buff1.as_ptr() as _, buff2.as_ptr() as _)
-		};
-		assert_eq!(i, 98);
-	}
-
-	// TODO Test `strlen`
 }

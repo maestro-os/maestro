@@ -142,7 +142,6 @@ impl fmt::Display for Entry {
 	}
 }
 
-// TODO Add support for LDT
 /// x86. Creates a segment selector for the given segment offset and ring.
 #[inline(always)]
 pub fn make_segment_selector(offset: u32, ring: u32) -> u16 {

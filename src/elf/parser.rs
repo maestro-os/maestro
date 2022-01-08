@@ -330,9 +330,8 @@ impl<'a> ELFParser<'a> {
 		if sym.st_name != 0 {
 			let begin_off = (strtab.sh_offset + sym.st_name) as usize;
 			let ptr = &self.image[begin_off];
-			// TODO Use a strnlen limited with the size of the section
-			let len = unsafe {
-				util::strlen(ptr)
+			let len = unsafe { // Safe because limited to the size of the section
+				util::strnlen(ptr, (strtab.sh_size - sym.st_name) as _)
 			};
 
 			Some(&self.image[begin_off..(begin_off + len)])

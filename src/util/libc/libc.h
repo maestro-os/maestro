@@ -7,6 +7,7 @@
 // Gives the offset of the pointer `ptr` relative to its down-aligned
 // counterpart.
 # define ALIGN_MASK(ptr, n)	((intptr_t) (ptr) & ((n) - 1))
+
 // Tells whether the pointer `ptr` is aligned on boundary `n`.
 // If `n` is zero, the behaviour is undefined.
 # define IS_ALIGNED(ptr, n)	(ALIGN_MASK(ptr, n) == 0)
@@ -22,8 +23,5 @@ void *memmove(void *dest, const void *src, size_t n);
 int memcmp(const void *s1, const void *s2, size_t n);
 
 void bzero(void *s, size_t n);
-
-int strcmp(const char *s1, const char *s2);
-size_t strlen(const char *s);
 
 #endif

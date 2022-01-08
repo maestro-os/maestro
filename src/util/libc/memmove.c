@@ -4,9 +4,6 @@
 #include "libc.h"
 
 // TODO Optimize
-/*
- * Same as memcpy, except the function can handle overlapping memory areas.
- */
 void *memmove(void *dest, const void *src, size_t n)
 {
 	void *begin = dest;

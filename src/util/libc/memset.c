@@ -14,10 +14,6 @@ static long make_field(const int c)
 	return field;
 }
 
-/*
- * Fills the `n` first bytes of the memory area pointed to by `s`, with the
- * value `c`.
- */
 void *memset(void *s, int c, size_t n)
 {
 	void *begin = s;

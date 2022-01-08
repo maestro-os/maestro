@@ -434,9 +434,10 @@ impl MemSpace {
 	/// Tells whether the given mapping of memory `ptr` of size `size` in bytes can be accessed.
 	/// `user` tells whether the memory must be accessible from userspace or just kernelspace.
 	/// `write` tells whether to check for write permission.
-	pub fn can_access(&self, _ptr: *const u8, _size: usize, _user: bool, _write: bool) -> bool {
+	pub fn can_access(&self, ptr: *const u8, size: usize, user: bool, write: bool) -> bool {
 		// TODO Allow reading kernelspace data that is available to userspace
-		/*let mut i = 0;
+
+		let mut i = 0;
 
 		while i < size {
 			// The beginning of the current page
@@ -455,7 +456,7 @@ impl MemSpace {
 			} else {
 				return false;
 			}
-		}*/
+		}
 
 		true
 	}
@@ -465,9 +466,10 @@ impl MemSpace {
 	/// `write` tells whether to check for write permission.
 	/// If the memory cannot be accessed, the function returns None. If it can be accessed, it
 	/// returns the length of the string located at the pointer `ptr`.
-	pub fn can_access_string(&self, ptr: *const u8, _user: bool, _write: bool) -> Option<usize> {
+	pub fn can_access_string(&self, ptr: *const u8, user: bool, write: bool) -> Option<usize> {
 		// TODO Allow reading kernelspace data that is available to userspace
-		/*vmem::switch(self.vmem.as_ref(), || {
+
+		vmem::switch(self.vmem.as_ref(), || {
 			let mut i = 0;
 			'outer: loop {
 				// Safe because not dereferenced before checking if accessible
@@ -508,12 +510,7 @@ impl MemSpace {
 			}
 
 			Some(i)
-		})*/
-
-		// TODO rm
-		unsafe {
-			Some(crate::util::strlen(ptr))
-		}
+		})
 	}
 
 	/// Binds the CPU to this memory space.

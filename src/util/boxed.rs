@@ -15,6 +15,8 @@ use core::ptr::copy_nonoverlapping;
 use core::ptr::drop_in_place;
 use crate::errno::Errno;
 use crate::memory::malloc;
+use crate::memory;
+use crate::util::FailableClone;
 
 /// This structure allows to store an object in an allocated region of memory.
 /// The object is owned by the Box and will be freed whenever the Box is dropped.
@@ -32,6 +34,7 @@ impl<T> Box<T> {
 
 		let ptr = {
 			let size = size_of_val(value_ref);
+
 			if size > 0 {
 				let ptr = unsafe {
 					transmute::<*mut c_void, *mut T>(malloc::alloc(size)?)
@@ -115,13 +118,12 @@ impl<T: ?Sized> DerefMut for Box<T> {
 	}
 }
 
-impl<T: ?Sized + Clone> Box<T> {
-	/// Clones the Box and its content. The type of the wrapped data must implement the Clone trait.
-	/// If the allocation fails, the function shall return an error.
+impl<T: ?Sized + Clone> FailableClone for Box<T> {
 	fn failable_clone(&self) -> Result<Self, Errno> {
 		let obj = unsafe {
 			&*self.ptr.as_ptr()
 		};
+
 		Box::new(obj.clone())
 	}
 }
@@ -132,11 +134,12 @@ impl<T: ?Sized + Unsize<U>, U: ?Sized> DispatchFromDyn<Box<U>> for Box<T> {}
 
 impl<T: ?Sized> Drop for Box<T> {
 	fn drop(&mut self) {
-		// TODO Clean (condition to check if dangling pointer)
-		if self.ptr.as_ptr() as *const c_void as usize > 8 {
+		let ptr = self.ptr.as_ptr();
+
+		if (ptr as *const c_void as usize) < memory::PAGE_SIZE {
 			unsafe {
-				drop_in_place(self.ptr.as_ptr());
-				malloc::free(self.ptr.as_ptr() as _);
+				drop_in_place(ptr);
+				malloc::free(ptr as _);
 			}
 		}
 	}
@@ -151,6 +154,4 @@ mod test {
 		let b = Box::new(42 as usize);
 		debug_assert_eq!(*b.unwrap(), 42);
 	}
-
-	// TODO More tests
 }

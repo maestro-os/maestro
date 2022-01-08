@@ -3,9 +3,6 @@
 
 #include "libc.h"
 
-/*
- * Zeros the given chunk of memory `s` with the given size `n`.
- */
 void bzero(void *s, size_t n)
 {
 	// The end of the memory to be written

@@ -9,6 +9,9 @@
 //! concurrency issues. Another factor to take into account is that fact that an interruption may
 //! be triggered at any moment while executing the code unless disabled. For this reason, mutexes
 //! in the kernel are equiped with an option allowing to disable interrupts while being locked.
+//!
+//! If an exception is raised while a mutex that disables interruptions is acquired, the behaviour
+//! is undefined.
 
 pub mod spinlock;
 

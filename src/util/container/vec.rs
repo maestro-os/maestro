@@ -26,7 +26,7 @@ use crate::util::FailableClone;
 pub struct Vec<T> {
 	/// The number of elements present in the vector
 	len: usize,
-	/// A pointer to the first element of the vector
+	/// The vector's data
 	data: Option<malloc::Alloc<T>>,
 }
 
@@ -58,11 +58,10 @@ impl<T> Vec<T> {
 			self.data = Some(data_ptr);
 		};
 
-		debug_assert!(self.data.is_some());
 		Ok(())
 	}
 
-	/// Increases the capacity of at least `min` elements.
+	/// Increases the capacity of so that at least `min` more elements can fit.
 	fn increase_capacity(&mut self, min: usize) -> Result<(), Errno> {
 		if self.len + min == 0 || self.len + min < self.capacity() {
 			return Ok(());

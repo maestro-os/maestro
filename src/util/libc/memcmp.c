@@ -3,10 +3,6 @@
 
 #include "libc.h"
 
-/*
- * Compares strings of byte `s1` and `s2` with length `n` and returns the
- * diffence between the first characters that differ.
- */
 int memcmp(const void *s1, const void *s2, size_t n)
 {
 	// The index of the current byte
