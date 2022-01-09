@@ -35,6 +35,7 @@
 pub mod acpi;
 pub mod cmdline;
 pub mod cpu;
+pub mod crypto;
 pub mod debug;
 pub mod device;
 pub mod elf;
