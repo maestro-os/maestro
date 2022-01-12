@@ -9,7 +9,8 @@ static const uint32_t CONSTANTS[4] = {
 };
 
 // Performs the quarter round operation on `a`, `b`, `c` and `d`.
-static inline void quarter_round(uint32_t *a, uint32_t *b, uint32_t *c, uint32_t *d)
+static inline void quarter_round(uint32_t *a, uint32_t *b, uint32_t *c,
+	uint32_t *d)
 {
 	*a += *b;
 	*d ^= *a;
@@ -56,13 +57,16 @@ static void get_block(uint32_t *k, uint32_t b, uint32_t *n, uint32_t *out)
 		out[i] += init_s[i];
 }
 
-// Encodes the given data in `buff` using ChaCha20, with the given key `k` and the given nonces
-// `n`.
+// Encodes the given data in `buff` using ChaCha20, with the given key `k` and
+// the given nonces `n`.
 // `len` is the length of the buffer in bytes.
 // `k` and `n` must have 8 and 3 elements respectively.
 // It is important that nonces are not repeated for the same key.
-// `out` is the buffer which will contain the result. Its length must be `ceil(len / 64) * 64`.
-void chacha20_encode(uint8_t *buff, size_t len, uint32_t *k, uint32_t *n, uint8_t *out) {
+// `out` is the buffer which will contain the result. Its length must be
+// `ceil(len / 64) * 64`.
+void chacha20_encode(uint8_t *buff, size_t len, uint32_t *k, uint32_t *n,
+	uint8_t *out)
+{
 	for (size_t i = 0; i < len / 64; ++i)
 	{
 		uint8_t key_stream[64];
