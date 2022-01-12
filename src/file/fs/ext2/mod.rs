@@ -567,7 +567,10 @@ impl Ext2Fs {
 				superblock.last_mount_path[i] = 0;
 				i += 1;
 			}
+		}
 
+		// Setting the last mount timestamp
+		if let Some(timestamp) = timestamp {
 			superblock.last_mount_timestamp = timestamp;
 		}
 
@@ -812,7 +815,7 @@ impl FilesystemType for Ext2FsType {
 	}
 
 	fn create_filesystem(&self, io: &mut dyn IO) -> Result<Box<dyn Filesystem>, Errno> {
-		let timestamp = time::get();
+		let timestamp = time::get().unwrap_or(0);
 
 		let blocks_count = (io.get_size() / DEFAULT_BLOCK_SIZE) as u32;
 		let groups_count = blocks_count / DEFAULT_BLOCKS_PER_GROUP;

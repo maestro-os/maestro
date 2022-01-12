@@ -240,7 +240,7 @@ impl File {
 	/// `mode` is the permission of the file.
 	pub fn new(name: String, content: FileContent, uid: Uid, gid: Gid, mode: Mode)
 		-> Result<Self, Errno> {
-		let timestamp = time::get();
+		let timestamp = time::get().unwrap_or(0);
 
 		Ok(Self {
 			name,

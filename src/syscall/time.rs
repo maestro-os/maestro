@@ -24,7 +24,7 @@ pub fn time(regs: &Regs) -> Result<i32, Errno> {
 	}
 
 	// Getting the current timestamp
-	let time = time::get();
+	let time = time::get().unwrap_or(0);
 
 	// Writing the timestamp to the given location, if not null
 	if !tloc.is_null() {

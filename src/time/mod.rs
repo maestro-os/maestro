@@ -7,8 +7,6 @@ use crate::util::boxed::Box;
 use crate::util::container::vec::Vec;
 use crate::util::lock::*;
 
-pub mod cmos;
-
 /// Type representing a timestamp.
 pub type Timestamp = u32;
 
@@ -20,6 +18,7 @@ pub trait ClockSource {
 	fn get_time(&mut self) -> Timestamp;
 }
 
+// TODO Order by name to allow binary search
 /// Vector containing all the clock sources.
 static CLOCK_SOURCES: Mutex<Vec<Box<dyn ClockSource>>> = Mutex::new(Vec::new());
 
@@ -36,14 +35,30 @@ pub fn add_clock_source<T: 'static + ClockSource>(source: T) -> Result<(), Errno
 	Ok(())
 }
 
-/// Returns the current timestamp from the preferred clock source.
-pub fn get() -> Timestamp {
+/// Removes the clock source with the given name.
+/// If the clock source doesn't exist, the function does nothing.
+pub fn remove_clock_source(name: &str) {
 	let mut guard = CLOCK_SOURCES.lock();
 	let sources = guard.get_mut();
-	if sources.is_empty() {
-		crate::kernel_panic!("No clock source available!");
-	}
 
-	let cmos = &mut sources[0]; // TODO Select the preferred source
-	cmos.get_time()
+	for i in 0..sources.len() {
+		if sources[i].get_name() == name {
+			sources.remove(i);
+			return;
+		}
+	}
+}
+
+/// Returns the current timestamp from the preferred clock source.
+/// If no clock source is available, the function returns None.
+pub fn get() -> Option<Timestamp> {
+	let mut guard = CLOCK_SOURCES.lock();
+	let sources = guard.get_mut();
+
+	if !sources.is_empty() {
+		let cmos = &mut sources[0]; // TODO Select the preferred source
+		Some(cmos.get_time())
+	} else {
+		None
+	}
 }

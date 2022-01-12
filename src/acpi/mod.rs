@@ -6,7 +6,6 @@
 //! RSDT, referring to every other available tables.
 
 use core::intrinsics::wrapping_add;
-use crate::time;
 //use data::ACPIData;
 //use fadt::Fadt;
 //use madt::Madt;
@@ -76,8 +75,7 @@ impl ACPITableHeader {
 
 /// Initializes ACPI.
 pub fn init() {
-	let/* mut*/ century_register = false;
-
+	// TODO
 	/*let data = ACPIData::read();
 	if data.is_err() {
 		crate::kernel_panic!("Invalid ACPI data!");
@@ -103,9 +101,4 @@ pub fn init() {
 			}
 		};
 	}*/
-
-	let cmos_clock = time::cmos::CMOSClock::new(century_register);
-	if time::add_clock_source(cmos_clock).is_err() {
-		crate::kernel_panic!("Not enough memory to create the CMOS clock source!");
-	}
 }
