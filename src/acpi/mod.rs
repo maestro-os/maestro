@@ -6,9 +6,9 @@
 //! RSDT, referring to every other available tables.
 
 use core::intrinsics::wrapping_add;
-//use data::ACPIData;
-//use fadt::Fadt;
-//use madt::Madt;
+use data::ACPIData;
+use fadt::Fadt;
+use madt::Madt;
 
 mod data;
 mod fadt;
@@ -73,32 +73,39 @@ impl ACPITableHeader {
 	}
 }
 
-/// Initializes ACPI.
-pub fn init() {
-	// TODO
-	/*let data = ACPIData::read();
-	if data.is_err() {
-		crate::kernel_panic!("Invalid ACPI data!");
-	}
-	if let Some(data) = data.unwrap() {
-		if let Some(madt) = data.get_table::<Madt>() {
-			madt.foreach_entry(| e: &madt::EntryHeader | {
-				match e.get_type() {
-					0 => {
-						// TODO Register a new CPU
-					},
+/// Boolean value telling whether the century register of the CMOS exist.
+static mut CENTURY_REGISTER: bool = false;
 
-					_ => {},
-				}
+/// Tells whether the century register of the CMOS is present.
+pub fn is_century_register_present() -> bool {
+	unsafe { // Safe because the value is only set once
+		CENTURY_REGISTER
+	}
+}
+
+/// Initializes ACPI.
+/// This function must be called only once, at boot.
+pub fn init() {
+	// Reading ACPI data
+	let data = ACPIData::read().unwrap_or_else(| _ | {
+		crate::kernel_panic!("Invalid ACPI data!");
+	});
+
+	if let Some(data) = data {
+		if let Some(madt) = data.get_table::<Madt>() {
+			// Registering CPU cores
+			madt.foreach_entry(| e: &madt::EntryHeader | match e.get_type() {
+				0 => {
+					// TODO Register a new CPU
+				},
+
+				_ => {},
 			});
 		}
 
-		century_register = {
-			if let Some(fadt) = data.get_table::<Fadt>() {
-				fadt.century != 0
-			} else {
-				false
-			}
-		};
-	}*/
+		// Setting the century register value
+		unsafe { // Safe because the value is only set once
+			CENTURY_REGISTER = data.get_table::<Fadt>().map_or(false, | fadt | fadt.century != 0);
+		}
+	}
 }
