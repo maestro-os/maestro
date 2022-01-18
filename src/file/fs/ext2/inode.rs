@@ -227,9 +227,13 @@ impl Ext2INode {
 	}
 
 	/// Returns the permissions of the file.
-	#[inline]
 	pub fn get_permissions(&self) -> file::Mode {
 		self.mode as file::Mode & 0x0fff
+	}
+
+	/// Sets the permissions of the file.
+	pub fn set_permissions(&mut self, perm: file::Mode) {
+		self.mode |= (perm & 0x0fff) as u16;
 	}
 
 	/// Returns the size of the file.
@@ -558,6 +562,30 @@ impl Ext2INode {
 		Ok(())
 	}
 
+	/// If the entry is a directory, tells whether it is empty.
+	/// If not a directory, the function returns 0.
+	/// `superblock` is the filesystem's superblock.
+	/// `io` is the I/O interface.
+	pub fn get_dir_entries_count(&self, superblock: &Superblock, io: &mut dyn IO)
+		-> Result<usize, Errno> {
+		if self.get_type() != FileType::Directory {
+			return Ok(0);
+		}
+
+		let mut count = 0;
+
+		self.foreach_directory_entry(| _, entry | {
+			let name = entry.get_name(superblock);
+			if name != b"." && name != b".." {
+				count += 1;
+			}
+
+			true
+		}, superblock, io)?;
+
+		Ok(count)
+	}
+
 	/// Returns the directory entry with the given name `name`.
 	/// `superblock` is the filesystem's superblock.
 	/// `io` is the I/O interface.
@@ -610,8 +638,8 @@ impl Ext2INode {
 	/// If the block allocation fails or if the entry name is already used, the function returns an
 	/// error.
 	/// If the file is not a directory, the behaviour is undefined.
-	pub fn add_dirent(&mut self, superblock: &Superblock, io: &mut dyn IO,
-		entry_inode: u32, name: &String, file_type: FileType) -> Result<(), Errno> {
+	pub fn add_dirent(&mut self, superblock: &Superblock, io: &mut dyn IO, entry_inode: u32,
+		name: &String, file_type: FileType) -> Result<(), Errno> {
 		let blk_size = superblock.get_block_size();
 		let name_length = name.as_bytes().len() as u16;
 		let entry_size = 8 + name_length;
@@ -638,7 +666,15 @@ impl Ext2INode {
 		}
 	}
 
-	// TODO remove_dirent
+	/// Removes the entry from the current directory.
+	/// `superblock` is the filesystem's superblock.
+	/// `io` is the I/O interface.
+	/// `name` is the name of the entry.
+	pub fn remove_dirent(&mut self, _superblock: &Superblock, _io: &mut dyn IO, _name: &String)
+		-> Result<(), Errno> {
+		// TODO
+		todo!();
+	}
 
 	// TODO get_link_path
 

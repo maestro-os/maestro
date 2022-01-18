@@ -137,6 +137,25 @@ impl Filesystem for KernFS {
 		todo!();
 	}
 
+	fn add_link(&mut self, _io: &mut dyn IO, _parent_inode: INode, _name: &String, _inode: INode)
+		-> Result<(), Errno> {
+		if self.readonly {
+			return Err(errno::EROFS);
+		}
+
+		// TODO
+		todo!();
+	}
+
+	fn update_inode(&mut self, _io: &mut dyn IO, _file: File) -> Result<(), Errno> {
+		if self.readonly {
+			return Err(errno::EROFS);
+		}
+
+		// TODO
+		todo!();
+	}
+
 	fn remove_file(&mut self, _: &mut dyn IO, _parent_inode: INode, _name: &String)
 		-> Result<(), Errno> {
 		if self.readonly {

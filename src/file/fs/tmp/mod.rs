@@ -143,6 +143,17 @@ impl Filesystem for TmpFS {
 		todo!();
 	}
 
+	fn add_link(&mut self, _io: &mut dyn IO, _parent_inode: INode, _name: &String, _inode: INode)
+		-> Result<(), Errno> {
+		// TODO
+		todo!();
+	}
+
+	fn update_inode(&mut self, _io: &mut dyn IO, _file: File) -> Result<(), Errno> {
+		// TODO
+		todo!();
+	}
+
 	fn remove_file(&mut self, _dev: &mut dyn IO, _parent_inode: INode, _name: &String)
 		-> Result<(), Errno> {
 		// TODO

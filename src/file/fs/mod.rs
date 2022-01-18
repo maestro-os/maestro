@@ -47,7 +47,22 @@ pub trait Filesystem {
 	fn add_file(&mut self, io: &mut dyn IO, parent_inode: INode, file: File)
 		-> Result<File, Errno>;
 
-	/// Removes a file from the filesystem.
+	/// Adds a hard link to the filesystem.
+	/// If this feature is not supported by the filesystem, the function returns an error.
+	/// `io` is the IO interface.
+	/// `parent_inode` is the parent file's inode.
+	/// `name` is the name of the link.
+	/// `inode` is the inode the link points to.
+	fn add_link(&mut self, io: &mut dyn IO, parent_inode: INode, name: &String, inode: INode)
+		-> Result<(), Errno>;
+
+	/// Updates the given inode.
+	/// `io` is the IO interface.
+	/// `file` the file structure containing the new values for the inode.
+	fn update_inode(&mut self, io: &mut dyn IO, file: File) -> Result<(), Errno>;
+
+	/// Removes a file from the filesystem. If the links count of the inode reaches zero, the inode
+	/// is also removed.
 	/// `io` is the IO interface.
 	/// `parent_inode` is the parent file's inode.
 	/// `name` is the file's name.

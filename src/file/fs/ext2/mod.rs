@@ -765,7 +765,51 @@ impl Filesystem for Ext2Fs {
 		Ok(file)
 	}
 
-	fn remove_file(&mut self, io: &mut dyn IO, parent_inode: INode, _name: &String)
+	fn add_link(&mut self, io: &mut dyn IO, parent_inode: INode, name: &String, inode: INode)
+		-> Result<(), Errno> {
+		if self.readonly {
+			return Err(errno::EROFS);
+		}
+
+		// Parent inode
+		let mut parent = Ext2INode::read(parent_inode, &self.superblock, io)?;
+
+		// Checking the parent file is a directory
+		if parent.get_type() != FileType::Directory {
+			return Err(errno::ENOTDIR);
+		}
+
+		// The inode
+		let mut inode_ = Ext2INode::read(inode, &self.superblock, io)?;
+		inode_.hard_links_count += 1;
+		inode_.write(inode, &self.superblock, io)?;
+
+		// Writing directory entry
+		parent.add_dirent(&self.superblock, io, inode, name, inode_.get_type())?;
+		parent.write(parent_inode, &self.superblock, io)
+	}
+
+	fn update_inode(&mut self, io: &mut dyn IO, file: File) -> Result<(), Errno> {
+		if self.readonly {
+			return Err(errno::EROFS);
+		}
+
+		// The inode number
+		let inode = file.get_location().as_ref().unwrap().get_inode();
+		// The inode
+		let mut inode_ = Ext2INode::read(inode, &self.superblock, io)?;
+
+		// Updating file attributes
+		inode_.uid = file.get_uid();
+		inode_.gid = file.get_gid();
+		inode_.set_permissions(file.get_mode());
+		inode_.ctime = file.get_ctime();
+		inode_.mtime = file.get_mtime();
+		inode_.atime = file.get_atime();
+		inode_.write(inode, &self.superblock, io)
+	}
+
+	fn remove_file(&mut self, io: &mut dyn IO, parent_inode: INode, name: &String)
 		-> Result<(), Errno> {
 		if self.readonly {
 			return Err(errno::EROFS);
@@ -773,11 +817,41 @@ impl Filesystem for Ext2Fs {
 
 		debug_assert!(parent_inode >= 1);
 
-		let parent = Ext2INode::read(parent_inode, &self.superblock, io)?;
-		debug_assert_eq!(parent.get_type(), FileType::Directory);
+		// The parent inode
+		let mut parent = Ext2INode::read(parent_inode, &self.superblock, io)?;
 
-		// TODO
-		todo!();
+		// Checking the parent file is a directory
+		if parent.get_type() != FileType::Directory {
+			return Err(errno::ENOTDIR);
+		}
+
+		// The inode number
+		let inode = parent.get_directory_entry(name.as_bytes(), &self.superblock, io)?
+			.ok_or(errno::ENOENT)?.get_inode();
+		// The inode
+		let mut inode_ = Ext2INode::read(inode, &self.superblock, io)?;
+
+		// If the inode is a directory, ensure it is empty
+		if inode_.get_dir_entries_count(&self.superblock, io)? == 0 {
+			return Err(errno::ENOTEMPTY);
+		}
+
+		// Removing the directory entry
+		parent.remove_dirent(&self.superblock, io, name)?;
+
+		// If this is the last link, remove the inode
+		if inode_.hard_links_count <= 1 {
+			let timestamp = time::get().unwrap_or(0);
+			inode_.dtime = timestamp;
+
+			// Freeing inode
+			self.superblock.free_inode(io, inode, inode_.get_type() == FileType::Directory)?;
+		}
+		// Decrementing the hard links count
+		inode_.hard_links_count -= 1;
+
+		// Writing the inode
+		inode_.write(inode, &self.superblock, io)
 	}
 
 	fn read_node(&mut self, io: &mut dyn IO, inode: INode, off: u64, buf: &mut [u8])
