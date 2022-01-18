@@ -310,8 +310,8 @@ impl Ext2INode {
 	/// `off` is the offset of the block relative to the specified beginning block.
 	/// `superblock` is the filesystem's superblock.
 	/// `io` is the I/O interface.
-	fn indirections_alloc(n: u8, begin: u32, off: u32, superblock: &Superblock,
-		io: &mut dyn IO) -> Result<u32, Errno> {
+	fn indirections_alloc(n: u8, begin: u32, off: u32, superblock: &Superblock, io: &mut dyn IO)
+		-> Result<u32, Errno> {
 		let blk_size = superblock.get_block_size();
 		let entries_per_blk = blk_size / size_of::<u32>() as u32;
 
@@ -390,15 +390,45 @@ impl Ext2INode {
 		}
 	}
 
+	/// Frees a block of the content of the file through block indirections.
+	/// `n` is the number of indirections to resolve.
+	/// `begin` is the beginning block.
+	/// `off` is the offset of the block relative to the specified beginning block.
+	/// `superblock` is the filesystem's superblock.
+	/// `io` is the I/O interface.
+	fn indirections_free(_n: u8, _begin: u32, _off: u32, _superblock: &Superblock, _io: &mut dyn IO)
+		-> Result<(), Errno> {
+		// TODO
+		todo!();
+	}
+
 	/// Frees a content block at block offset `i` in file.
 	/// If the block isn't allocated, the function does nothing.
 	/// `i` is the id of the block.
 	/// `superblock` is the filesystem's superblock.
 	/// `io` is the I/O interface.
-	fn free_content_block(&mut self, _i: usize, _superblock: &Superblock,
-		_io: &mut dyn IO) {
-		// TODO
-		todo!();
+	fn free_content_block(&mut self, i: u32, superblock: &Superblock, io: &mut dyn IO)
+		-> Result<(), Errno> {
+		let blk_size = superblock.get_block_size();
+		let entries_per_blk = blk_size / size_of::<u32>() as u32;
+
+		if i < DIRECT_BLOCKS_COUNT as u32 {
+			let blk = self.direct_block_ptrs[i as usize];
+			self.direct_block_ptrs[i as usize] = 0;
+			superblock.free_block(io, blk)?;
+
+			Ok(())
+		} else if i < DIRECT_BLOCKS_COUNT as u32 + entries_per_blk {
+			let target = i - DIRECT_BLOCKS_COUNT as u32;
+			Self::indirections_free(1, self.singly_indirect_block_ptr, target, superblock, io)
+		} else if i < DIRECT_BLOCKS_COUNT as u32 + (entries_per_blk * entries_per_blk) {
+			let target = i - DIRECT_BLOCKS_COUNT as u32 - entries_per_blk;
+			Self::indirections_free(2, self.doubly_indirect_block_ptr, target, superblock, io)
+		} else {
+			#[allow(clippy::suspicious_operation_groupings)]
+			let target = i - DIRECT_BLOCKS_COUNT as u32 - (entries_per_blk * entries_per_blk);
+			Self::indirections_free(3, self.triply_indirect_block_ptr, target, superblock, io)
+		}
 	}
 
 	/// Reads the content of the inode.
@@ -586,19 +616,20 @@ impl Ext2INode {
 		Ok(count)
 	}
 
-	/// Returns the directory entry with the given name `name`.
+	/// Returns the directory entry with the given name `name`. The function also returns the
+	/// offset of the entry in the inode.
 	/// `superblock` is the filesystem's superblock.
 	/// `io` is the I/O interface.
 	/// If the entry doesn't exist, the function returns None.
 	/// If the file is not a directory, the behaviour is undefined.
 	pub fn get_directory_entry(&self, name: &[u8], superblock: &Superblock, io: &mut dyn IO)
-		-> Result<Option<Box<DirectoryEntry>>, Errno> {
+		-> Result<Option<(u64, Box<DirectoryEntry>)>, Errno> {
 		let mut entry = None;
 
 		// TODO If the binary tree feature is enabled, use it
-		self.foreach_directory_entry(| _, e | {
+		self.foreach_directory_entry(| off, e | {
 			if !e.is_free() && e.get_name(superblock) == name {
-				entry = Some(e);
+				entry = Some((off, e));
 				false
 			} else {
 				true
@@ -670,8 +701,20 @@ impl Ext2INode {
 	/// `superblock` is the filesystem's superblock.
 	/// `io` is the I/O interface.
 	/// `name` is the name of the entry.
-	pub fn remove_dirent(&mut self, _superblock: &Superblock, _io: &mut dyn IO, _name: &String)
+	pub fn remove_dirent(&mut self, superblock: &Superblock, io: &mut dyn IO, name: &String)
 		-> Result<(), Errno> {
+		let (_entry_off, _entry) = self.get_directory_entry(name.as_bytes(), superblock, io)?
+			.ok_or(errno::ENOENT)?;
+
+		// TODO Get prev entry
+		// TODO If prev entry is free and mergable, merge
+
+		// TODO Get next entry
+		// TODO If next entry is free and mergable, merge
+
+		// TODO If one block (or several? Check if an entry can span multiple blocks) is empty,
+		// free it
+
 		// TODO
 		todo!();
 	}

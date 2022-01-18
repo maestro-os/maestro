@@ -611,7 +611,7 @@ impl Filesystem for Ext2Fs {
 			}
 
 			let name = &path[i];
-			if let Some(entry) = inode.get_directory_entry(name.as_bytes(), &self.superblock,
+			if let Some((_, entry)) = inode.get_directory_entry(name.as_bytes(), &self.superblock,
 				io)? {
 				inode_index = entry.get_inode();
 			} else {
@@ -827,7 +827,7 @@ impl Filesystem for Ext2Fs {
 
 		// The inode number
 		let inode = parent.get_directory_entry(name.as_bytes(), &self.superblock, io)?
-			.ok_or(errno::ENOENT)?.get_inode();
+			.ok_or(errno::ENOENT)?.1.get_inode();
 		// The inode
 		let mut inode_ = Ext2INode::read(inode, &self.superblock, io)?;
 
@@ -843,6 +843,8 @@ impl Filesystem for Ext2Fs {
 		if inode_.hard_links_count <= 1 {
 			let timestamp = time::get().unwrap_or(0);
 			inode_.dtime = timestamp;
+
+			// TODO Free all content blocks
 
 			// Freeing inode
 			self.superblock.free_inode(io, inode, inode_.get_type() == FileType::Directory)?;
