@@ -26,6 +26,7 @@ mod getuid;
 mod init_module;
 mod ioctl;
 mod kill;
+mod link;
 mod mkdir;
 mod mknod;
 mod mmap;
@@ -90,6 +91,7 @@ use getuid::getuid;
 use init_module::init_module;
 use ioctl::ioctl;
 use kill::kill;
+use link::link;
 use mkdir::mkdir;
 use mknod::mknod;
 use mmap::mmap;
@@ -134,7 +136,7 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 		0x006 => close(regs),
 		0x007 => waitpid(regs),
 		0x008 => creat(regs),
-		// TODO 0x009 => link(regs),
+		0x009 => link(regs),
 		0x00a => unlink(regs),
 		0x00b => execve(regs),
 		0x00c => chdir(regs),
