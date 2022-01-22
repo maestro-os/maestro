@@ -281,8 +281,8 @@ impl Ext2INode {
 	/// `superblock` is the filesystem's superblock.
 	/// `io` is the I/O interface.
 	/// If the block doesn't exist, the function returns None.
-	fn resolve_indirections(n: u8, begin: u32, off: u32, superblock: &Superblock,
-		io: &mut dyn IO) -> Result<Option<u32>, Errno> {
+	fn resolve_indirections(n: u8, begin: u32, off: u32, superblock: &Superblock, io: &mut dyn IO)
+		-> Result<Option<u32>, Errno> {
 		let blk_size = superblock.get_block_size();
 		let entries_per_blk = blk_size / size_of::<u32>() as u32;
 
@@ -301,38 +301,6 @@ impl Ext2INode {
 		}
 
 		Ok(Self::blk_offset_to_option(b))
-	}
-
-	// TODO Check correctness
-	/// Allocates a new block for the content of the file through block indirections.
-	/// `n` is the number of indirections to resolve.
-	/// `begin` is the beginning block.
-	/// `off` is the offset of the block relative to the specified beginning block.
-	/// `superblock` is the filesystem's superblock.
-	/// `io` is the I/O interface.
-	fn indirections_alloc(n: u8, begin: u32, off: u32, superblock: &Superblock, io: &mut dyn IO)
-		-> Result<u32, Errno> {
-		let blk_size = superblock.get_block_size();
-		let entries_per_blk = blk_size / size_of::<u32>() as u32;
-
-		let mut b = begin;
-		for i in (0..(n + 1)).rev() {
-			let inner_index = off / math::pow(entries_per_blk as u32, i as _);
-			let inner_off = inner_index as u64 * size_of::<u32>() as u64;
-			let byte_off = (b as u64 * blk_size as u64) + inner_off as u64;
-
-			if b == 0 {
-				let blk = superblock.get_free_block(io)?;
-				superblock.mark_block_used(io, blk)?;
-				write::<u32>(&blk, byte_off, io)?;
-			} else {
-				b = unsafe {
-					read::<u32>(byte_off, io)?
-				};
-			}
-		}
-
-		Ok(b)
 	}
 
 	/// Returns the block id of the node's content block at the given offset `i`.
@@ -358,6 +326,37 @@ impl Ext2INode {
 			let target = i - DIRECT_BLOCKS_COUNT as u32 - (entries_per_blk * entries_per_blk);
 			Self::resolve_indirections(3, self.triply_indirect_block_ptr, target, superblock, io)
 		}
+	}
+
+	/// Allocates a new block for the content of the file through block indirections.
+	/// `n` is the number of indirections to resolve.
+	/// `begin` is the beginning block.
+	/// `off` is the offset of the block relative to the specified beginning block.
+	/// `superblock` is the filesystem's superblock.
+	/// `io` is the I/O interface.
+	fn indirections_alloc(n: u8, begin: u32, off: u32, superblock: &Superblock, io: &mut dyn IO)
+		-> Result<u32, Errno> {
+		let blk_size = superblock.get_block_size();
+		let entries_per_blk = blk_size / size_of::<u32>() as u32;
+
+		let mut b = begin;
+		for i in (0..=n).rev() {
+			let inner_index = off / math::pow(entries_per_blk as u32, i as _);
+			let inner_off = inner_index as u64 * size_of::<u32>() as u64;
+			let byte_off = (b as u64 * blk_size as u64) + inner_off as u64;
+
+			if b == 0 {
+				let blk = superblock.get_free_block(io)?;
+				superblock.mark_block_used(io, blk)?;
+				write::<u32>(&blk, byte_off, io)?;
+			} else {
+				b = unsafe {
+					read::<u32>(byte_off, io)?
+				};
+			}
+		}
+
+		Ok(b)
 	}
 
 	/// Allocates a block for the node's content block at the given offset `i`.
@@ -390,14 +389,42 @@ impl Ext2INode {
 		}
 	}
 
+	/// Tells whether the given block has all its entries empty.
+	fn is_blk_empty(blk: &[u8]) -> bool {
+		let ptr = blk.as_ptr() as *const usize;
+		let len = blk.len() / size_of::<usize>();
+
+		// Checking the buffer in bulk with the usize type
+		for i in 0..len {
+			let v = unsafe { // Safe because in range of the slice
+				*ptr.add(i)
+			};
+
+			if v != 0 {
+				return false;
+			}
+		}
+
+		// Remaining bytes to check
+		let remaining = blk.len() % size_of::<usize>();
+		// Checking the remaining bytes
+		for b in &blk[remaining..] {
+			if *b != 0 {
+				return false;
+			}
+		}
+
+		true
+	}
+
 	/// Frees a block of the content of the file through block indirections.
 	/// `n` is the number of indirections to resolve.
 	/// `begin` is the beginning block.
 	/// `off` is the offset of the block relative to the specified beginning block.
 	/// `superblock` is the filesystem's superblock.
 	/// `io` is the I/O interface.
-	fn indirections_free(_n: u8, _begin: u32, _off: u32, _superblock: &Superblock, _io: &mut dyn IO)
-		-> Result<(), Errno> {
+	fn indirections_free(_n: u8, _begin: u32, _off: u32, _superblock: &Superblock,
+		_io: &mut dyn IO) -> Result<(), Errno> {
 		// TODO
 		todo!();
 	}
@@ -550,7 +577,7 @@ impl Ext2INode {
 	}
 
 	/// Iterates over directory entries and calls the given function `f` for each.
-	/// The function takes the offset of the entry in the inode and the entry itself.
+	/// The function takes the inode, the offset of the entry in the inode and the entry itself.
 	/// Free entries are also included.
 	/// `f` returns a boolean telling whether the iteration may continue.
 	/// `superblock` is the filesystem's superblock.
@@ -560,6 +587,7 @@ impl Ext2INode {
 		-> Result<(), Errno> where F: FnMut(u64, Box<DirectoryEntry>) -> Result<bool, Errno> {
 		debug_assert_eq!(self.get_type(), FileType::Directory);
 
+		// Allocating a buffer
 		let blk_size = superblock.get_block_size();
 		let mut buff = malloc::Alloc::<u8>::new_default(blk_size as usize)?;
 
@@ -696,42 +724,78 @@ impl Ext2INode {
 		}
 	}
 
+	// TODO Clean: Code from `foreach_directory_entry` has been duplicated to avoid borrow errors
 	/// Removes the entry from the current directory.
 	/// `superblock` is the filesystem's superblock.
 	/// `io` is the I/O interface.
 	/// `name` is the name of the entry.
 	pub fn remove_dirent(&mut self, superblock: &Superblock, io: &mut dyn IO, name: &String)
 		-> Result<(), Errno> {
+		debug_assert_eq!(self.get_type(), FileType::Directory);
+
+		// Allocating a buffer
+		let blk_size = superblock.get_block_size();
+		let mut buff = malloc::Alloc::<u8>::new_default(blk_size as usize)?;
+
 		// The previous free entry with its offset
 		let mut prev_free: Option<(u64, Box<DirectoryEntry>)> = None;
-		self.foreach_directory_entry(| off, mut e | {
-			if !e.is_free() {
-				if e.get_name(superblock) == name.as_bytes() {
-					// The entry has name `name`, free it
-					e.set_inode(0);
-					self.write_dirent(superblock, io, &e, off)?;
-				} else {
-					// The entry is not free, skip it
-					prev_free = None;
-					return Ok(true);
+
+		let size = self.get_size(superblock);
+		let mut i = 0;
+		while i < size {
+			let len = min((size - i) as usize, blk_size as usize);
+			self.read_content(i, &mut buff.get_slice_mut()[..len], superblock, io)?;
+
+			let mut j = 0;
+			while j < len {
+				// Safe because the data is block-aligned and an entry cannot be larger than the
+				// size of a block
+				let mut entry = unsafe {
+					DirectoryEntry::from(&buff.get_slice()[j..len])?
+				};
+				// The total size of the entry
+				let total_size = entry.get_total_size() as usize;
+				// The offset of the entry
+				let off = i + j as u64;
+
+				if !entry.is_free() {
+					if entry.get_name(superblock) == name.as_bytes() {
+						// The entry has name `name`, free it
+						entry.set_inode(0);
+						self.write_dirent(superblock, io, &entry, off)?;
+					} else {
+						// The entry is not free, skip it
+						prev_free = None;
+						continue;
+					}
 				}
+
+				if let Some((prev_free_off, prev_free)) = &mut prev_free {
+					// Merging previous entry with the current if they are on the same page
+					if *prev_free_off >= i {
+						prev_free.merge(entry);
+						self.write_dirent(superblock, io, &prev_free, *prev_free_off)?;
+					}
+				} else {
+					prev_free = Some((off, entry));
+				}
+
+				j += total_size;
 			}
 
-			if let Some((prev_free_off, prev_free)) = &mut prev_free {
-				// Merging previous entry with the current
-				// FIXME Cannot merge on several pages
-				prev_free.merge(e);
-				self.write_dirent(superblock, io, &prev_free, *prev_free_off)?;
-			} else {
-				prev_free = Some((off, e));
+			i += blk_size as u64;
+		}
+
+		// If the last content blocks can be freed, free them
+		if let Some((last_free_off, _)) = prev_free {
+			// The first content block that can be freed
+			let first_free_blk = math::ceil_division(last_free_off, blk_size as u64) as u32;
+			// The number of content blocks in the inode
+			let blk_count = math::ceil_division(self.get_size(superblock), blk_size as u64) as u32;
+
+			for i in first_free_blk..blk_count {
+				self.free_content_block(i, superblock, io)?;
 			}
-
-			Ok(true)
-		}, superblock, io)?;
-
-		if let Some((_last_free_off, _)) = prev_free {
-			// TODO If the last blocks can be freed, free them
-			todo!();
 		}
 
 		Ok(())

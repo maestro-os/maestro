@@ -185,7 +185,8 @@ impl DirectoryEntry {
 	}
 
 	/// Merges the current entry with the given entry `entry`.
-	/// `entry` is considered to be located right after the current entry.
+	/// If both entries are not on the same page or if `entry` is not located right after the
+	/// current entry, the behaviour is undefined.
 	/// If one the entry is not free, the behaviour is undefined.
 	pub fn merge(&mut self, entry: Box<Self>) {
 		debug_assert!(self.is_free());
