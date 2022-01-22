@@ -93,6 +93,7 @@ impl DirectoryEntry {
 	}
 
 	/// Sets the entry's inode.
+	/// If `inode` is zero, the entry is set free.
 	pub fn set_inode(&mut self, inode: u32) {
 		self.inode = inode;
 	}
@@ -181,5 +182,15 @@ impl DirectoryEntry {
 		let new_entry = DirectoryEntry::new_free(new_entry_size)?;
 		self.total_size = new_size;
 		Ok(new_entry)
+	}
+
+	/// Merges the current entry with the given entry `entry`.
+	/// `entry` is considered to be located right after the current entry.
+	/// If one the entry is not free, the behaviour is undefined.
+	pub fn merge(&mut self, entry: Box<Self>) {
+		debug_assert!(self.is_free());
+		debug_assert!(entry.is_free());
+
+		self.total_size += entry.total_size;
 	}
 }

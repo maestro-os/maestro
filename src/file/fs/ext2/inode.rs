@@ -556,8 +556,8 @@ impl Ext2INode {
 	/// `superblock` is the filesystem's superblock.
 	/// `io` is the I/O interface.
 	/// If the file is not a directory, the behaviour is undefined.
-	pub fn foreach_directory_entry<F: FnMut(u64, Box<DirectoryEntry>) -> bool>(&self, mut f: F,
-		superblock: &Superblock, io: &mut dyn IO) -> Result<(), Errno> {
+	pub fn foreach_directory_entry<F>(&self, mut f: F, superblock: &Superblock, io: &mut dyn IO)
+		-> Result<(), Errno> where F: FnMut(u64, Box<DirectoryEntry>) -> Result<bool, Errno> {
 		debug_assert_eq!(self.get_type(), FileType::Directory);
 
 		let blk_size = superblock.get_block_size();
@@ -579,7 +579,7 @@ impl Ext2INode {
 				let total_size = entry.get_total_size() as usize;
 				debug_assert!(total_size > 0);
 
-				if !f(i + j as u64, entry) {
+				if !f(i + j as u64, entry)? {
 					return Ok(());
 				}
 
@@ -610,29 +610,28 @@ impl Ext2INode {
 				count += 1;
 			}
 
-			true
+			Ok(true)
 		}, superblock, io)?;
 
 		Ok(count)
 	}
 
-	/// Returns the directory entry with the given name `name`. The function also returns the
-	/// offset of the entry in the inode.
+	/// Returns the directory entry with the given name `name`.
 	/// `superblock` is the filesystem's superblock.
 	/// `io` is the I/O interface.
 	/// If the entry doesn't exist, the function returns None.
 	/// If the file is not a directory, the behaviour is undefined.
 	pub fn get_directory_entry(&self, name: &[u8], superblock: &Superblock, io: &mut dyn IO)
-		-> Result<Option<(u64, Box<DirectoryEntry>)>, Errno> {
+		-> Result<Option<Box<DirectoryEntry>>, Errno> {
 		let mut entry = None;
 
 		// TODO If the binary tree feature is enabled, use it
-		self.foreach_directory_entry(| off, e | {
+		self.foreach_directory_entry(| _, e | {
 			if !e.is_free() && e.get_name(superblock) == name {
-				entry = Some((off, e));
-				false
+				entry = Some(e);
+				Ok(false)
 			} else {
-				true
+				Ok(true)
 			}
 		}, superblock, io)?;
 
@@ -651,9 +650,9 @@ impl Ext2INode {
 		self.foreach_directory_entry(| off, e | {
 			if e.is_free() && e.get_total_size() >= min_size {
 				off_option = Some(off);
-				false
+				Ok(false)
 			} else {
-				true
+				Ok(true)
 			}
 		}, superblock, io)?;
 
@@ -703,20 +702,39 @@ impl Ext2INode {
 	/// `name` is the name of the entry.
 	pub fn remove_dirent(&mut self, superblock: &Superblock, io: &mut dyn IO, name: &String)
 		-> Result<(), Errno> {
-		let (_entry_off, _entry) = self.get_directory_entry(name.as_bytes(), superblock, io)?
-			.ok_or(errno::ENOENT)?;
+		// The previous free entry with its offset
+		let mut prev_free: Option<(u64, Box<DirectoryEntry>)> = None;
+		self.foreach_directory_entry(| off, mut e | {
+			if !e.is_free() {
+				if e.get_name(superblock) == name.as_bytes() {
+					// The entry has name `name`, free it
+					e.set_inode(0);
+					self.write_dirent(superblock, io, &e, off)?;
+				} else {
+					// The entry is not free, skip it
+					prev_free = None;
+					return Ok(true);
+				}
+			}
 
-		// TODO Get prev entry
-		// TODO If prev entry is free and mergable, merge
+			if let Some((prev_free_off, prev_free)) = &mut prev_free {
+				// Merging previous entry with the current
+				// FIXME Cannot merge on several pages
+				prev_free.merge(e);
+				self.write_dirent(superblock, io, &prev_free, *prev_free_off)?;
+			} else {
+				prev_free = Some((off, e));
+			}
 
-		// TODO Get next entry
-		// TODO If next entry is free and mergable, merge
+			Ok(true)
+		}, superblock, io)?;
 
-		// TODO If one block (or several? Check if an entry can span multiple blocks) is empty,
-		// free it
+		if let Some((_last_free_off, _)) = prev_free {
+			// TODO If the last blocks can be freed, free them
+			todo!();
+		}
 
-		// TODO
-		todo!();
+		Ok(())
 	}
 
 	// TODO get_link_path
