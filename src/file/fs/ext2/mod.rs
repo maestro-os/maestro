@@ -658,8 +658,10 @@ impl Filesystem for Ext2Fs {
 				FileContent::Directory(subfiles)
 			},
 
-			FileType::Link => FileContent::Link(inode_.read_link()?),
+			FileType::Link => FileContent::Link(inode_.get_link(&self.superblock, io)?),
+
 			FileType::Fifo => FileContent::Fifo,
+
 			FileType::Socket => FileContent::Socket,
 
 			FileType::BlockDevice => {
@@ -736,7 +738,9 @@ impl Filesystem for Ext2Fs {
 		};
 
 		match file.get_file_content() {
-			FileContent::Link(target) => inode.write_link(target.as_bytes())?,
+			FileContent::Link(target) => {
+				inode.set_link(&self.superblock, io, target.as_bytes())?
+			},
 
 			FileContent::BlockDevice { major, minor }
 				| FileContent::CharDevice { major, minor } => {

@@ -3,13 +3,16 @@
 use core::cmp::max;
 use core::cmp::min;
 use core::mem::size_of;
+use core::ptr::addr_of;
 use core::ptr::copy_nonoverlapping;
+use core::ptr;
 use core::slice;
 use crate::errno::Errno;
 use crate::errno;
 use crate::file::File;
 use crate::file::FileType;
 use crate::file;
+use crate::limits;
 use crate::memory::malloc;
 use crate::util::IO;
 use crate::util::boxed::Box;
@@ -97,6 +100,9 @@ const INODE_FLAG_JOURNAL_FILE: u32 = 0x40000;
 
 /// The size of a sector in bytes.
 const SECTOR_SIZE: u32 = 512;
+
+/// The limit length for a symlink to be stored in the inode itself instead of a separate block.
+const SYMLINK_INODE_STORE_LIMIT: u64 = 60;
 
 /// The inode of the root directory.
 pub const ROOT_DIRECTORY_INODE: u32 = 2;
@@ -553,6 +559,37 @@ impl Ext2INode {
 		Ok(())
 	}
 
+	/// Truncates the file to the given size `size`.
+	/// `superblock` is the filesystem's superblock.
+	/// `io` is the I/O interface.
+	/// `size` is the new size of the inode's content.
+	/// If `size` is greater than or equal to the previous size, the function does nothing.
+	pub fn truncate(&mut self, superblock: &Superblock, io: &mut dyn IO, size: u64)
+		-> Result<(), Errno> {
+		let old_size = self.get_size(superblock);
+		if size >= old_size {
+			return Ok(());
+		}
+
+		// Changing the size
+		self.set_size(superblock, size);
+
+		// The size of a block
+		let blk_size = superblock.get_block_size();
+
+		// The index of the beginning block to free
+		let begin = math::ceil_division(size, blk_size as _) as u32;
+		// The index of the end block to free
+		let end = math::ceil_division(old_size, blk_size as _) as u32;
+
+		for i in begin..end {
+			// TODO Optimize
+			self.free_content_block(i, superblock, io)?;
+		}
+
+		Ok(())
+	}
+
 	/// Reads the directory entry at offset `off` and returns it.
 	/// `superblock` is the filesystem's superblock.
 	/// `io` is the I/O interface.
@@ -821,25 +858,55 @@ impl Ext2INode {
 		Ok(())
 	}
 
-	/// Reads the link target of the inode.
+	/// Returns the link target of the inode.
+	/// `superblock` is the filesystem's superblock.
+	/// `io` is the I/O interface.
 	/// The function returns a string containing the target.
 	/// If the inode is not a symbolic link, the behaviour is undefined.
-	pub fn read_link(&self) -> Result<String, Errno> {
+	pub fn get_link(&self, superblock: &Superblock, io: &mut dyn IO) -> Result<String, Errno> {
 		debug_assert_eq!(self.get_type(), FileType::Link);
 
-		// TODO
-		todo!();
+		// The length of the link
+		let len = self.get_size(superblock);
+
+		// If small enough, read from inode. Else, read content
+		if len <= SYMLINK_INODE_STORE_LIMIT {
+			let buff = unsafe { // Safe because in range
+				let ptr = addr_of!(self.direct_block_ptrs) as *const u8;
+				slice::from_raw_parts(ptr, len as usize)
+			};
+
+			String::from(buff)
+		} else {
+			let mut buff = malloc::Alloc::<u8>::new_default(limits::SYMLINK_MAX)?;
+			self.read_content(0, buff.get_slice_mut(), superblock, io)?;
+
+			String::from(&buff.get_slice()[..(len as usize)])
+		}
 	}
 
-	/// Writes the link target of the inode.
+	/// Sets the link target of the inode.
 	/// `target` is the new target.
 	/// If the inode is not a symbolic link, the behaviour is undefined.
 	/// If the target is too long, it is truncated.
-	pub fn write_link(&mut self, _target: &[u8]) -> Result<(), Errno> {
+	pub fn set_link(&mut self, superblock: &Superblock, io: &mut dyn IO, target: &[u8])
+		-> Result<(), Errno> {
 		debug_assert_eq!(self.get_type(), FileType::Link);
 
-		// TODO
-		todo!();
+		// If small enough, write to inode. Else, write to content
+		if (target.len() as u64) <= SYMLINK_INODE_STORE_LIMIT {
+			self.truncate(superblock, io, 0)?;
+
+			unsafe { // Safe because in range
+				let ptr = addr_of!(self.direct_block_ptrs) as *mut u8;
+				ptr::copy_nonoverlapping(target.as_ptr(), ptr, target.len());
+			};
+		} else {
+			self.truncate(superblock, io, target.len() as _)?;
+			self.write_content(0, target, superblock, io)?;
+		}
+
+		Ok(())
 	}
 
 	/// Returns the device major and minor numbers associated with the device.
