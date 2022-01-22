@@ -166,10 +166,10 @@ pub enum FileContent {
 	Directory(Vec<String>),
 	/// The file is a link. The data is the link's target.
 	Link(String),
-	/// The file is a FIFO. The data is a pipe ID.
-	Fifo(u32),
-	/// The file is a socket. The data is a socket ID.
-	Socket(u32),
+	/// The file is a FIFO.
+	Fifo,
+	/// The file is a socket.
+	Socket,
 
 	/// The file is a block device.
 	BlockDevice {
@@ -191,8 +191,8 @@ impl FileContent {
 			Self::Regular => FileType::Regular,
 			Self::Directory(_) => FileType::Directory,
 			Self::Link(_) => FileType::Link,
-			Self::Fifo(_) => FileType::Fifo,
-			Self::Socket(_) => FileType::Socket,
+			Self::Fifo => FileType::Fifo,
+			Self::Socket => FileType::Socket,
 			Self::BlockDevice { .. } => FileType::BlockDevice,
 			Self::CharDevice { .. } => FileType::CharDevice,
 		}
@@ -498,12 +498,12 @@ impl IO for File {
 				todo!();
 			},
 
-			FileContent::Fifo(_pipe) => {
+			FileContent::Fifo => {
 				// TODO
 				todo!();
 			},
 
-			FileContent::Socket(_socket) => {
+			FileContent::Socket => {
 				// TODO
 				todo!();
 			},
@@ -557,12 +557,12 @@ impl IO for File {
 				todo!();
 			},
 
-			FileContent::Fifo(_pipe) => {
+			FileContent::Fifo => {
 				// TODO
 				todo!();
 			},
 
-			FileContent::Socket(_socket) => {
+			FileContent::Socket => {
 				// TODO
 				todo!();
 			},

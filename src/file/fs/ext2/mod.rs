@@ -628,6 +628,7 @@ impl Filesystem for Ext2Fs {
 
 		let file_content = match file_type {
 			FileType::Regular => FileContent::Regular,
+
 			FileType::Directory => {
 				let mut subfiles = Vec::new();
 				let mut err = None;
@@ -656,18 +657,11 @@ impl Filesystem for Ext2Fs {
 
 				FileContent::Directory(subfiles)
 			},
-			FileType::Link => {
-				// TODO Read symlink path
-				todo!();
-			},
-			FileType::Fifo => {
-				// TODO
-				todo!();
-			},
-			FileType::Socket => {
-				// TODO
-				todo!();
-			},
+
+			FileType::Link => FileContent::Link(inode_.read_link()?),
+			FileType::Fifo => FileContent::Fifo,
+			FileType::Socket => FileContent::Socket,
+
 			FileType::BlockDevice => {
 				let (major, minor) = inode_.get_device();
 
@@ -676,6 +670,7 @@ impl Filesystem for Ext2Fs {
 					minor: minor as _,
 				}
 			},
+
 			FileType::CharDevice => {
 				let (major, minor) = inode_.get_device();
 
@@ -697,7 +692,6 @@ impl Filesystem for Ext2Fs {
 		Ok(file)
 	}
 
-	// TODO Check if the file exists. If it does, return EEXIST
 	fn add_file(&mut self, io: &mut dyn IO, parent_inode: INode, mut file: File)
 		-> Result<File, Errno> {
 		if self.readonly {
@@ -709,6 +703,12 @@ impl Filesystem for Ext2Fs {
 		// Checking the parent file is a directory
 		if parent.get_type() != FileType::Directory {
 			return Err(errno::ENOTDIR);
+		}
+
+		// Checking if the file already exists
+		if parent.get_directory_entry(file.get_name().as_bytes(), &self.superblock,
+			io)?.is_some() {
+			return Err(errno::EEXIST);
 		}
 
 		let mut inode = Ext2INode {
@@ -734,12 +734,9 @@ impl Filesystem for Ext2Fs {
 			fragment_addr: 0,
 			os_specific_1: [0; 12],
 		};
-		// TODO When adding a directory, add '.' and '..' in it?
+
 		match file.get_file_content() {
-			FileContent::Link(_target) => {
-				// TODO Write symlink target
-				todo!();
-			},
+			FileContent::Link(target) => inode.write_link(target.as_bytes())?,
 
 			FileContent::BlockDevice { major, minor }
 				| FileContent::CharDevice { major, minor } => {

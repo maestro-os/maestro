@@ -95,6 +95,9 @@ const INODE_FLAG_AFS_DIRECTORY: u32 = 0x20000;
 /// Journal file data
 const INODE_FLAG_JOURNAL_FILE: u32 = 0x40000;
 
+/// The size of a sector in bytes.
+const SECTOR_SIZE: u32 = 512;
+
 /// The inode of the root directory.
 pub const ROOT_DIRECTORY_INODE: u32 = 2;
 /// The root directory's default mode.
@@ -334,8 +337,8 @@ impl Ext2INode {
 	/// `off` is the offset of the block relative to the specified beginning block.
 	/// `superblock` is the filesystem's superblock.
 	/// `io` is the I/O interface.
-	fn indirections_alloc(n: u8, begin: u32, off: u32, superblock: &Superblock, io: &mut dyn IO)
-		-> Result<u32, Errno> {
+	fn indirections_alloc(&mut self, n: u8, begin: u32, off: u32, superblock: &Superblock,
+		io: &mut dyn IO) -> Result<u32, Errno> {
 		let blk_size = superblock.get_block_size();
 		let entries_per_blk = blk_size / size_of::<u32>() as u32;
 
@@ -348,6 +351,10 @@ impl Ext2INode {
 			if b == 0 {
 				let blk = superblock.get_free_block(io)?;
 				superblock.mark_block_used(io, blk)?;
+
+				// Incrementing the number of used sectors
+				self.used_sectors += math::ceil_division(blk_size, SECTOR_SIZE);
+
 				write::<u32>(&blk, byte_off, io)?;
 			} else {
 				b = unsafe {
@@ -375,17 +382,20 @@ impl Ext2INode {
 			self.direct_block_ptrs[i as usize] = blk;
 			superblock.mark_block_used(io, blk)?;
 
+			// Incrementing the number of used sectors
+			self.used_sectors += math::ceil_division(blk_size, SECTOR_SIZE);
+
 			Ok(blk)
 		} else if i < DIRECT_BLOCKS_COUNT as u32 + entries_per_blk {
 			let target = i - DIRECT_BLOCKS_COUNT as u32;
-			Self::indirections_alloc(1, self.singly_indirect_block_ptr, target, superblock, io)
+			self.indirections_alloc(1, self.singly_indirect_block_ptr, target, superblock, io)
 		} else if i < DIRECT_BLOCKS_COUNT as u32 + (entries_per_blk * entries_per_blk) {
 			let target = i - DIRECT_BLOCKS_COUNT as u32 - entries_per_blk;
-			Self::indirections_alloc(2, self.doubly_indirect_block_ptr, target, superblock, io)
+			self.indirections_alloc(2, self.doubly_indirect_block_ptr, target, superblock, io)
 		} else {
 			#[allow(clippy::suspicious_operation_groupings)]
 			let target = i - DIRECT_BLOCKS_COUNT as u32 - (entries_per_blk * entries_per_blk);
-			Self::indirections_alloc(3, self.triply_indirect_block_ptr, target, superblock, io)
+			self.indirections_alloc(3, self.triply_indirect_block_ptr, target, superblock, io)
 		}
 	}
 
@@ -423,7 +433,7 @@ impl Ext2INode {
 	/// `off` is the offset of the block relative to the specified beginning block.
 	/// `superblock` is the filesystem's superblock.
 	/// `io` is the I/O interface.
-	fn indirections_free(_n: u8, _begin: u32, _off: u32, _superblock: &Superblock,
+	fn indirections_free(&self, _n: u8, _begin: u32, _off: u32, _superblock: &Superblock,
 		_io: &mut dyn IO) -> Result<(), Errno> {
 		// TODO
 		todo!();
@@ -444,17 +454,20 @@ impl Ext2INode {
 			self.direct_block_ptrs[i as usize] = 0;
 			superblock.free_block(io, blk)?;
 
+			// Decrementing the number of used sectors
+			self.used_sectors -= math::ceil_division(blk_size, SECTOR_SIZE);
+
 			Ok(())
 		} else if i < DIRECT_BLOCKS_COUNT as u32 + entries_per_blk {
 			let target = i - DIRECT_BLOCKS_COUNT as u32;
-			Self::indirections_free(1, self.singly_indirect_block_ptr, target, superblock, io)
+			self.indirections_free(1, self.singly_indirect_block_ptr, target, superblock, io)
 		} else if i < DIRECT_BLOCKS_COUNT as u32 + (entries_per_blk * entries_per_blk) {
 			let target = i - DIRECT_BLOCKS_COUNT as u32 - entries_per_blk;
-			Self::indirections_free(2, self.doubly_indirect_block_ptr, target, superblock, io)
+			self.indirections_free(2, self.doubly_indirect_block_ptr, target, superblock, io)
 		} else {
 			#[allow(clippy::suspicious_operation_groupings)]
 			let target = i - DIRECT_BLOCKS_COUNT as u32 - (entries_per_blk * entries_per_blk);
-			Self::indirections_free(3, self.triply_indirect_block_ptr, target, superblock, io)
+			self.indirections_free(3, self.triply_indirect_block_ptr, target, superblock, io)
 		}
 	}
 
@@ -591,12 +604,15 @@ impl Ext2INode {
 		let blk_size = superblock.get_block_size();
 		let mut buff = malloc::Alloc::<u8>::new_default(blk_size as usize)?;
 
+		// The size of the inode
 		let size = self.get_size(superblock);
+		// Iterating over the inode's content blocks
 		let mut i = 0;
 		while i < size {
 			let len = min((size - i) as usize, blk_size as usize);
 			self.read_content(i, &mut buff.get_slice_mut()[..len], superblock, io)?;
 
+			// Iterating over the block's entries
 			let mut j = 0;
 			while j < len {
 				// Safe because the data is block-aligned and an entry cannot be larger than the
@@ -604,10 +620,14 @@ impl Ext2INode {
 				let entry = unsafe {
 					DirectoryEntry::from(&buff.get_slice()[j..len])?
 				};
+				// The total size of the entry
 				let total_size = entry.get_total_size() as usize;
 				debug_assert!(total_size > 0);
+				// The offset of the entry
+				let off = i + j as u64;
 
-				if !f(i + j as u64, entry)? {
+				// Calling the closure
+				if !f(off, entry)? {
 					return Ok(());
 				}
 
@@ -801,7 +821,26 @@ impl Ext2INode {
 		Ok(())
 	}
 
-	// TODO get_link_path
+	/// Reads the link target of the inode.
+	/// The function returns a string containing the target.
+	/// If the inode is not a symbolic link, the behaviour is undefined.
+	pub fn read_link(&self) -> Result<String, Errno> {
+		debug_assert_eq!(self.get_type(), FileType::Link);
+
+		// TODO
+		todo!();
+	}
+
+	/// Writes the link target of the inode.
+	/// `target` is the new target.
+	/// If the inode is not a symbolic link, the behaviour is undefined.
+	/// If the target is too long, it is truncated.
+	pub fn write_link(&mut self, _target: &[u8]) -> Result<(), Errno> {
+		debug_assert_eq!(self.get_type(), FileType::Link);
+
+		// TODO
+		todo!();
+	}
 
 	/// Returns the device major and minor numbers associated with the device.
 	/// If the file is not a device file, the behaviour is undefined.

@@ -52,8 +52,8 @@ pub fn mknod(regs: &Regs) -> Result<i32, Errno> {
 	// The file's content
 	let file_content = match file_type {
 		FileType::Regular => FileContent::Regular,
-		FileType::Fifo => FileContent::Fifo(0), // TODO Get an ID
-		FileType::Socket => FileContent::Socket(0), // TODO Get an ID
+		FileType::Fifo => FileContent::Fifo,
+		FileType::Socket => FileContent::Socket,
 		FileType::BlockDevice => FileContent::BlockDevice {
 			major,
 			minor,
