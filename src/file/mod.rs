@@ -399,18 +399,18 @@ impl File {
 		self.atime = atime;
 	}
 
-	/// Tells whether the directory is empty or not. If the current file is not a directory, the
-	/// behaviour is undefined.
-	pub fn is_empty_directory(&self) -> bool {
+	/// Tells whether the directory is empty or not.
+	/// If the current file isn't a directory, the function returns an error.
+	pub fn is_empty_directory(&self) -> Result<bool, Errno> {
 		if let FileContent::Directory(subfiles) = &self.content {
-			subfiles.is_empty()
+			Ok(subfiles.is_empty())
 		} else {
-			panic!("Not a directory!");
+			Err(errno::ENOTDIR)
 		}
 	}
 
-	/// Adds the file with name `name` to the current file's subfiles. If the current file isn't a
-	/// directory, the behaviour is undefined.
+	/// Adds the file with name `name` to the current file's subfiles.
+	/// If the current file isn't a directory, the function returns an error.
 	pub fn add_subfile(&mut self, name: String) -> Result<(), Errno> {
 		if let FileContent::Directory(subfiles) = &mut self.content {
 			subfiles.push(name)
@@ -419,13 +419,22 @@ impl File {
 		}
 	}
 
-	/// Removes the file with name `name` from the current file's subfiles. If the current file
-	/// isn't a directory, the behaviour is undefined.
-	pub fn remove_subfile(&mut self, _name: &String) -> Result<(), Errno> {
-		if let FileContent::Directory(_subfiles) = &mut self.content {
-			// TODO
-			todo!();
-			// subfiles.remove(name);
+	/// Removes the file with name `name` from the current file's subfiles.
+	/// If the current file isn't a directory, the function returns an error.
+	pub fn remove_subfile(&mut self, name: &String) -> Result<(), Errno> {
+		if let FileContent::Directory(subfiles) = &mut self.content {
+			let mut i = 0;
+
+			// TODO Optimize
+			while i < subfiles.len() {
+				if subfiles[i] == *name {
+					subfiles.remove(i);
+				}
+
+				i += 1;
+			}
+
+			Ok(())
 		} else {
 			Err(errno::ENOTDIR)
 		}

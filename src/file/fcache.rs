@@ -99,9 +99,9 @@ impl FCache {
 		}
 
 		let parent_inode = fs.get_inode(io, inner_path)?;
-		let file = fs.add_file(io, parent_inode, file)?;
+		let mut file = fs.add_file(io, parent_inode, file)?;
+		file.set_parent_path(parent.failable_clone()?);
 
-		// TODO Set parent
 		SharedPtr::new(file)
 	}
 
