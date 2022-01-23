@@ -49,6 +49,7 @@ mod signal;
 mod sigreturn;
 mod socketpair;
 mod time;
+mod truncate;
 mod umask;
 mod umount;
 mod uname;
@@ -113,6 +114,7 @@ use signal::signal;
 use sigreturn::sigreturn;
 use socketpair::socketpair;
 use time::time;
+use truncate::truncate;
 use umask::umask;
 use umount::umount;
 use uname::uname;
@@ -219,7 +221,7 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 		// TODO 0x059 => readdir(regs),
 		0x05a => mmap(regs),
 		0x05b => munmap(regs),
-		// TODO 0x05c => truncate(regs),
+		0x05c => truncate(regs),
 		// TODO 0x05d => ftruncate(regs),
 		// TODO 0x05e => fchmod(regs),
 		// TODO 0x05f => fchown(regs),

@@ -147,7 +147,7 @@ impl Filesystem for KernFS {
 		todo!();
 	}
 
-	fn update_inode(&mut self, _io: &mut dyn IO, _file: File) -> Result<(), Errno> {
+	fn update_inode(&mut self, _io: &mut dyn IO, _file: &File) -> Result<(), Errno> {
 		if self.readonly {
 			return Err(errno::EROFS);
 		}

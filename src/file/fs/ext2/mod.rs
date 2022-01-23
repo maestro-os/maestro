@@ -791,7 +791,7 @@ impl Filesystem for Ext2Fs {
 		parent.write(parent_inode, &self.superblock, io)
 	}
 
-	fn update_inode(&mut self, io: &mut dyn IO, file: File) -> Result<(), Errno> {
+	fn update_inode(&mut self, io: &mut dyn IO, file: &File) -> Result<(), Errno> {
 		if self.readonly {
 			return Err(errno::EROFS);
 		}
@@ -800,6 +800,9 @@ impl Filesystem for Ext2Fs {
 		let inode = file.get_location().as_ref().unwrap().get_inode();
 		// The inode
 		let mut inode_ = Ext2INode::read(inode, &self.superblock, io)?;
+
+		// Changing file size if it has been truncated
+		inode_.truncate(&self.superblock, io, file.get_size())?;
 
 		// Updating file attributes
 		inode_.uid = file.get_uid();

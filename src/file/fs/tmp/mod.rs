@@ -149,7 +149,7 @@ impl Filesystem for TmpFS {
 		todo!();
 	}
 
-	fn update_inode(&mut self, _io: &mut dyn IO, _file: File) -> Result<(), Errno> {
+	fn update_inode(&mut self, _io: &mut dyn IO, _file: &File) -> Result<(), Errno> {
 		// TODO
 		todo!();
 	}

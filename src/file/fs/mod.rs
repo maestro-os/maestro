@@ -59,7 +59,7 @@ pub trait Filesystem {
 	/// Updates the given inode.
 	/// `io` is the IO interface.
 	/// `file` the file structure containing the new values for the inode.
-	fn update_inode(&mut self, io: &mut dyn IO, file: File) -> Result<(), Errno>;
+	fn update_inode(&mut self, io: &mut dyn IO, file: &File) -> Result<(), Errno>;
 
 	/// Removes a file from the filesystem. If the links count of the inode reaches zero, the inode
 	/// is also removed.

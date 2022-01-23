@@ -415,19 +415,19 @@ impl File {
 		if let FileContent::Directory(subfiles) = &mut self.content {
 			subfiles.push(name)
 		} else {
-			panic!("Not a directory!");
+			Err(errno::ENOTDIR)
 		}
 	}
 
 	/// Removes the file with name `name` from the current file's subfiles. If the current file
 	/// isn't a directory, the behaviour is undefined.
-	pub fn remove_subfile(&mut self, _name: String) {
+	pub fn remove_subfile(&mut self, _name: &String) -> Result<(), Errno> {
 		if let FileContent::Directory(_subfiles) = &mut self.content {
 			// TODO
 			todo!();
 			// subfiles.remove(name);
 		} else {
-			panic!("Not a directory!");
+			Err(errno::ENOTDIR)
 		}
 	}
 
@@ -456,13 +456,55 @@ impl File {
 	}
 
 	/// Synchronizes the file with the device.
-	pub fn sync(&self) {
-		// TODO
+	pub fn sync(&self) -> Result<(), Errno> {
+		let location = self.location.as_ref().ok_or(errno::EIO)?;
+
+		let mountpoint_mutex = location.get_mountpoint().ok_or(errno::EIO)?;
+		let mut mountpoint_guard = mountpoint_mutex.lock();
+		let mountpoint = mountpoint_guard.get_mut();
+
+		let io_mutex = mountpoint.get_source().get_io().clone();
+		let mut io_guard = io_mutex.lock();
+		let io = io_guard.get_mut();
+
+		let filesystem = mountpoint.get_filesystem();
+		filesystem.update_inode(io, self)
 	}
 
 	/// Unlinks the current file.
-	pub fn unlink(&mut self) {
-		// TODO
+	pub fn unlink(&mut self) -> Result<(), Errno> {
+		let mut fcache_guard = fcache::get().lock();
+		let fcache = fcache_guard.get_mut().as_mut().unwrap();
+
+		// TODO Handle the case where the parent directory is on another filesystem
+
+		// Getting the parent directory
+		let parent_path = self.get_parent_path();
+		let parent_mutex = fcache.get_file_from_path(parent_path)?;
+		let mut parent_guard = parent_mutex.lock();
+		let parent = parent_guard.get_mut();
+		let parent_inode = parent.get_location().as_ref().unwrap().get_inode();
+
+		let location = self.location.as_ref().ok_or(errno::EIO)?;
+
+		// Getting the mountpoint of the file
+		let mountpoint_mutex = location.get_mountpoint().ok_or(errno::EIO)?;
+		let mut mountpoint_guard = mountpoint_mutex.lock();
+		let mountpoint = mountpoint_guard.get_mut();
+
+		// Getting the I/O handle
+		let io_mutex = mountpoint.get_source().get_io().clone();
+		let mut io_guard = io_mutex.lock();
+		let io = io_guard.get_mut();
+
+		// Removing the file from the filesystem
+		let filesystem = mountpoint.get_filesystem();
+		filesystem.remove_file(io, parent_inode, self.get_name())?;
+
+		// Removing the file from the kernel's cache
+		parent.remove_subfile(self.get_name())?;
+
+		Ok(())
 	}
 }
 
@@ -488,15 +530,9 @@ impl IO for File {
 				filesystem.read_node(io, location.get_inode(), off, buff)
 			},
 
-			FileContent::Directory(_subdirs) => {
-				// TODO
-				todo!();
-			},
+			FileContent::Directory(_) => Err(errno::EISDIR),
 
-			FileContent::Link(_target) => {
-				// TODO
-				todo!();
-			},
+			FileContent::Link(_) => Err(errno::EINVAL),
 
 			FileContent::Fifo => {
 				// TODO
@@ -547,15 +583,9 @@ impl IO for File {
 				Ok(buff.len())
 			},
 
-			FileContent::Directory(_subdirs) => {
-				// TODO
-				todo!();
-			},
+			FileContent::Directory(_) => Err(errno::EISDIR),
 
-			FileContent::Link(_target) => {
-				// TODO
-				todo!();
-			},
+			FileContent::Link(_) => Err(errno::EINVAL),
 
 			FileContent::Fifo => {
 				// TODO
@@ -589,7 +619,9 @@ impl IO for File {
 
 impl Drop for File {
 	fn drop(&mut self) {
-		self.sync();
+		if let Err(_e) = self.sync() {
+			// TODO Log the error
+		}
 	}
 }
 

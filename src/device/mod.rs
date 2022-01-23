@@ -204,15 +204,17 @@ impl Device {
 	}
 
 	/// If exists, removes the device file. iF the file doesn't exist, the function does nothing.
-	pub fn remove_file(&mut self) {
+	pub fn remove_file(&mut self) -> Result<(), Errno> {
 		let mutex = fcache::get();
 		let mut guard = mutex.lock();
 		let files_cache = guard.get_mut();
 
 		if let Ok(file) = files_cache.as_mut().unwrap().get_file_from_path(&self.path) {
 			let mut guard = file.lock();
-			guard.get_mut().unlink();
+			guard.get_mut().unlink()?;
 		}
+
+		Ok(())
 	}
 }
 
@@ -232,7 +234,9 @@ impl IO for Device {
 
 impl Drop for Device {
 	fn drop(&mut self) {
-		self.remove_file();
+		if let Err(_e) = self.remove_file() {
+			// TODO Log the error
+		}
 	}
 }
 
