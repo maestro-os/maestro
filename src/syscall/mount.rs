@@ -22,7 +22,7 @@ pub fn mount(regs: &Regs) -> Result<i32, Errno> {
 	let _data = regs.edi as *const c_void;
 
 	// Getting slices to strings
-	let (source_slice, target_slice, filesystemtype_slice) = {
+	let (source_slice, target_slice, filesystemtype_slice, uid, gid) = {
 		// Getting the process
 		let mutex = Process::get_current().unwrap();
 		let guard = mutex.lock();
@@ -33,7 +33,7 @@ pub fn mount(regs: &Regs) -> Result<i32, Errno> {
 		let target_slice = super::util::get_str(proc, target)?;
 		let filesystemtype_slice = super::util::get_str(proc, filesystemtype)?;
 
-		(source_slice, target_slice, filesystemtype_slice)
+		(source_slice, target_slice, filesystemtype_slice, proc.get_euid(), proc.get_egid())
 	};
 
 	// Getting the mount source
@@ -45,7 +45,7 @@ pub fn mount(regs: &Regs) -> Result<i32, Errno> {
 		let mut guard = fcache::get().lock();
 		let fcache = guard.get_mut().as_mut().unwrap();
 
-		fcache.get_file_from_path(&target_path)?
+		fcache.get_file_from_path(&target_path, uid, gid)?
 	};
 	let target_guard = target_mutex.lock();
 	let target_file = target_guard.get();

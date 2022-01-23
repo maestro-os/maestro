@@ -40,7 +40,10 @@ use crate::file::File;
 use crate::file::FileContent;
 use crate::file::FileLocation;
 use crate::file::FileType;
+use crate::file::Gid;
 use crate::file::INode;
+use crate::file::Mode;
+use crate::file::Uid;
 use crate::file::fs::Filesystem;
 use crate::file::fs::FilesystemType;
 use crate::file::path::Path;
@@ -600,26 +603,27 @@ impl Filesystem for Ext2Fs {
 		true
 	}
 
-	fn get_inode(&mut self, io: &mut dyn IO, path: Path) -> Result<INode, Errno> {
-		debug_assert!(path.is_absolute());
+	fn get_inode(&mut self, io: &mut dyn IO, parent: Option<INode>, name: Option<&String>)
+		-> Result<INode, Errno> {
+		let parent_inode = parent.unwrap_or(inode::ROOT_DIRECTORY_INODE);
 
-		let mut inode_index = inode::ROOT_DIRECTORY_INODE;
-		for i in 0..path.get_elements_count() {
-			let inode = Ext2INode::read(inode_index, &self.superblock, io)?;
-			if inode.get_type() != FileType::Directory {
-				return Err(errno::ENOTDIR);
-			}
+		if name.is_none() {
+			return Ok(parent_inode);
+		}
+		let name = name.unwrap();
 
-			let name = &path[i];
-			if let Some(entry) = inode.get_directory_entry(name.as_bytes(), &self.superblock,
-				io)? {
-				inode_index = entry.get_inode();
-			} else {
-				return Err(errno::ENOENT);
-			}
+		// Getting the parent inode
+		let parent = Ext2INode::read(parent_inode, &self.superblock, io)?;
+		if parent.get_type() != FileType::Directory {
+			return Err(errno::ENOTDIR);
 		}
 
-		Ok(inode_index)
+		// Getting the entry with the given name
+		if let Some(entry) = parent.get_directory_entry(name.as_bytes(), &self.superblock, io)? {
+			Ok(entry.get_inode())
+		} else {
+			Err(errno::ENOENT)
+		}
 	}
 
 	fn load_file(&mut self, io: &mut dyn IO, inode: INode, name: String) -> Result<File, Errno> {
@@ -683,9 +687,9 @@ impl Filesystem for Ext2Fs {
 			},
 		};
 
-		let mut file = File::new(name, file_content, inode_.uid, inode_.gid,
-			inode_.get_permissions())?;
-		file.set_location(Some(FileLocation::new(self.mountpath.failable_clone()?, inode)));
+		let file_location = FileLocation::new(self.mountpath.failable_clone()?, inode);
+		let mut file = File::new(name, inode_.uid, inode_.gid, inode_.get_permissions(),
+			file_location, file_content)?;
 		file.set_ctime(inode_.ctime);
 		file.set_mtime(inode_.mtime);
 		file.set_atime(inode_.atime);
@@ -694,8 +698,8 @@ impl Filesystem for Ext2Fs {
 		Ok(file)
 	}
 
-	fn add_file(&mut self, io: &mut dyn IO, parent_inode: INode, mut file: File)
-		-> Result<File, Errno> {
+	fn add_file(&mut self, io: &mut dyn IO, parent_inode: INode, name: String, uid: Uid, gid: Gid,
+		mode: Mode, content: FileContent) -> Result<File, Errno> {
 		if self.readonly {
 			return Err(errno::EROFS);
 		}
@@ -708,20 +712,25 @@ impl Filesystem for Ext2Fs {
 		}
 
 		// Checking if the file already exists
-		if parent.get_directory_entry(file.get_name().as_bytes(), &self.superblock,
-			io)?.is_some() {
+		if parent.get_directory_entry(name.as_bytes(), &self.superblock, io)?.is_some() {
 			return Err(errno::EEXIST);
 		}
 
+		let inode_index = self.superblock.get_free_inode(io)?;
+		let location = FileLocation::new(self.mountpath.failable_clone()?, inode_index);
+
+		// The file
+		let file = File::new(name, uid, gid, mode, location, content)?;
+
 		let mut inode = Ext2INode {
-			mode: Ext2INode::get_file_mode(&file),
-			uid: file.get_uid(),
+			mode: Ext2INode::get_file_mode(file.get_file_type(), mode),
+			uid,
 			size_low: 0,
 			ctime: file.get_ctime(),
 			mtime: file.get_mtime(),
 			atime: file.get_atime(),
 			dtime: 0,
-			gid: file.get_gid(),
+			gid,
 			hard_links_count: 1,
 			used_sectors: 0,
 			flags: 0,
@@ -754,7 +763,6 @@ impl Filesystem for Ext2Fs {
 			_ => {},
 		}
 
-		let inode_index = self.superblock.get_free_inode(io)?;
 		inode.write(inode_index, &self.superblock, io)?;
 		let dir = file.get_file_type() == FileType::Directory;
 		self.superblock.mark_inode_used(io, inode_index, dir)?;
@@ -763,7 +771,6 @@ impl Filesystem for Ext2Fs {
 			file.get_file_type())?;
 		parent.write(parent_inode, &self.superblock, io)?;
 
-		file.set_location(Some(FileLocation::new(self.mountpath.failable_clone()?, inode_index)));
 		Ok(file)
 	}
 
@@ -797,7 +804,7 @@ impl Filesystem for Ext2Fs {
 		}
 
 		// The inode number
-		let inode = file.get_location().as_ref().unwrap().get_inode();
+		let inode = file.get_location().get_inode();
 		// The inode
 		let mut inode_ = Ext2INode::read(inode, &self.superblock, io)?;
 

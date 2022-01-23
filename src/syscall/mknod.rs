@@ -3,7 +3,6 @@
 use crate::device::id;
 use crate::errno::Errno;
 use crate::errno;
-use crate::file::File;
 use crate::file::FileContent;
 use crate::file::FileType;
 use crate::file::fcache;
@@ -67,13 +66,17 @@ pub fn mknod(regs: &Regs) -> Result<i32, Errno> {
 	};
 
 	// Creating the node
-	let file = File::new(name, file_content, uid, gid, mode)?;
 	{
 		let mutex = fcache::get();
 		let mut guard = mutex.lock();
-		let files_cache = guard.get_mut();
+		let files_cache = guard.get_mut().as_mut().unwrap();
 
-		files_cache.as_mut().unwrap().create_file(&parent_path, file)?;
+		// Getting parent directory
+		let parent_mutex = files_cache.get_file_from_path(&parent_path, uid, gid)?;
+		let mut parent_guard = parent_mutex.lock();
+		let parent = parent_guard.get_mut();
+
+		files_cache.create_file(parent, name, uid, gid, mode, file_content)?;
 	}
 
 	Ok(0)

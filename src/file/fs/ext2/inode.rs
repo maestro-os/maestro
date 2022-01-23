@@ -9,8 +9,8 @@ use core::ptr;
 use core::slice;
 use crate::errno::Errno;
 use crate::errno;
-use crate::file::File;
 use crate::file::FileType;
+use crate::file::Mode;
 use crate::file;
 use crate::limits;
 use crate::memory::malloc;
@@ -192,9 +192,9 @@ impl Ext2INode {
 		Ok(inode_offset)
 	}
 
-	/// Returns the mode for the given file `file`.
-	pub fn get_file_mode(file: &File) -> u16 {
-		let t = match file.get_file_type() {
+	/// Returns the mode for the given file type `file_type` and mode `mode`.
+	pub fn get_file_mode(file_type: FileType, mode: Mode) -> u16 {
+		let t = match file_type {
 			FileType::Fifo => INODE_TYPE_FIFO,
 			FileType::CharDevice => INODE_TYPE_CHAR_DEVICE,
 			FileType::Directory => INODE_TYPE_DIRECTORY,
@@ -204,7 +204,7 @@ impl Ext2INode {
 			FileType::Socket => INODE_TYPE_SOCKET,
 		};
 
-		file.get_mode() as u16 | t
+		mode as u16 | t
 	}
 
 	/// Reads the `i`th inode from the given device. The index `i` starts at `1`.

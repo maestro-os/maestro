@@ -14,6 +14,8 @@ pub fn truncate(regs: &Regs) -> Result<i32, Errno> {
 	let mutex = Process::get_current().unwrap();
 	let mut guard = mutex.lock();
 	let proc = guard.get_mut();
+	let uid = proc.get_euid();
+	let gid = proc.get_egid();
 
 	let path = Path::from_str(super::util::get_str(proc, path)?, true)?;
 
@@ -21,7 +23,7 @@ pub fn truncate(regs: &Regs) -> Result<i32, Errno> {
 	let mut guard = mutex.lock();
 	let files_cache = guard.get_mut();
 
-	let file_mutex = files_cache.as_mut().unwrap().get_file_from_path(&path)?;
+	let file_mutex = files_cache.as_mut().unwrap().get_file_from_path(&path, uid, gid)?;
 	let mut file_guard = file_mutex.lock();
 	let file = file_guard.get_mut();
 	file.set_size(length as _);

@@ -337,6 +337,7 @@ impl Process {
 
 	/// Creates the init process and places it into the scheduler's queue. The process is set to
 	/// state `Running` by default.
+	/// The created process has user root.
 	pub fn new() -> Result<IntSharedPtr<Self>, Errno> {
 		let mut process = Self {
 			pid: pid::INIT_PID,
@@ -393,7 +394,8 @@ impl Process {
 			let files_cache = guard.get_mut();
 
 			let tty_path = Path::from_str(TTY_DEVICE_PATH.as_bytes(), false).unwrap();
-			let tty_file = files_cache.as_mut().unwrap().get_file_from_path(&tty_path).unwrap();
+			let tty_file = files_cache.as_mut().unwrap()
+				.get_file_from_path(&tty_path, process.uid, process.gid).unwrap();
 			let stdin_fd = process.create_fd(file_descriptor::O_RDWR, FDTarget::File(tty_file))
 				.unwrap();
 			assert_eq!(stdin_fd.get_id(), STDIN_FILENO);

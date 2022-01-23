@@ -5,8 +5,12 @@ use core::mem::size_of;
 use crate::errno;
 use crate::file::Errno;
 use crate::file::File;
+use crate::file::FileContent;
 use crate::file::FileType;
+use crate::file::Gid;
 use crate::file::INode;
+use crate::file::Mode;
+use crate::file::Uid;
 use crate::file::fs::Filesystem;
 use crate::file::fs::kernfs::KernFSNode;
 use crate::file::path::Path;
@@ -124,9 +128,8 @@ impl Filesystem for TmpFS {
 		false
 	}
 
-	fn get_inode(&mut self, _dev: &mut dyn IO, _path: Path) -> Result<INode, Errno> {
-		let _root = &self.files[ROOT_INODE];
-
+	fn get_inode(&mut self, _io: &mut dyn IO, _parent: Option<INode>, _name: Option<&String>)
+		-> Result<INode, Errno> {
 		// TODO
 		todo!();
 	}
@@ -137,8 +140,8 @@ impl Filesystem for TmpFS {
 		todo!();
 	}
 
-	fn add_file(&mut self, _dev: &mut dyn IO, _parent_inode: INode, _file: File)
-		-> Result<File, Errno> {
+	fn add_file(&mut self, _io: &mut dyn IO, _parent_inode: INode, _name: String, _uid: Uid,
+		_gid: Gid, _mode: Mode, _content: FileContent) -> Result<File, Errno> {
 		// TODO
 		todo!();
 	}

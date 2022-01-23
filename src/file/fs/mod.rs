@@ -6,6 +6,10 @@ pub mod tmp;
 
 use crate::errno::Errno;
 use crate::errno;
+use crate::file::FileContent;
+use crate::file::Gid;
+use crate::file::Mode;
+use crate::file::Uid;
 use crate::util::IO;
 use crate::util::boxed::Box;
 use crate::util::container::string::String;
@@ -26,12 +30,14 @@ pub trait Filesystem {
 	/// Tells the kernel whether it must cache files.
 	fn must_cache(&self) -> bool;
 
-	/// Returns the inode of the file at path `path`.
+	/// Returns the inode of the file with name `name`, located in the directory with inode
+	/// `parent`.
 	/// `io` is the IO interface.
-	/// `path` is the file's path.
-	/// The path must be absolute relative the filesystem's root directory and must not contain
-	/// any `.` or `..` component.
-	fn get_inode(&mut self, io: &mut dyn IO, path: Path) -> Result<INode, Errno>;
+	/// `parent` is the inode's parent. If none, the function uses the root of the filesystem.
+	/// `name` is the name of the file. If none, the function returns the parent's inode.
+	/// If the parent is not a directory, the function returns an error.
+	fn get_inode(&mut self, io: &mut dyn IO, parent: Option<INode>, name: Option<&String>)
+		-> Result<INode, Errno>;
 
 	/// Loads the file at inode `inode`.
 	/// `io` is the IO interface.
@@ -42,10 +48,14 @@ pub trait Filesystem {
 	/// Adds a file to the filesystem at inode `inode`.
 	/// `io` is the IO interface.
 	/// `parent_inode` is the parent file's inode.
-	/// `file` is the file to be added.
-	/// On success, the function returns the object `file` with the newly created inode set to it.
-	fn add_file(&mut self, io: &mut dyn IO, parent_inode: INode, file: File)
-		-> Result<File, Errno>;
+	/// `name` is the name of the file.
+	/// `uid` is the id of the owner user.
+	/// `gid` is the id of the owner group.
+	/// `mode` is the permission of the file.
+	/// `content` is the content of the file. This value also determines the file type.
+	/// On success, the function returns the newly created file.
+	fn add_file(&mut self, io: &mut dyn IO, parent_inode: INode, name: String, uid: Uid, gid: Gid,
+		mode: Mode, content: FileContent) -> Result<File, Errno>;
 
 	/// Adds a hard link to the filesystem.
 	/// If this feature is not supported by the filesystem, the function returns an error.

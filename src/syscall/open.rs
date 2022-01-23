@@ -5,6 +5,9 @@ use crate::errno;
 use crate::file::File;
 use crate::file::FileContent;
 use crate::file::FileType;
+use crate::file::Gid;
+use crate::file::Mode;
+use crate::file::Uid;
 use crate::file::fcache;
 use crate::file::file_descriptor::FDTarget;
 use crate::file::file_descriptor;
@@ -35,23 +38,27 @@ fn get_file_absolute_path(process: &Process, path_str: &[u8]) -> Result<Path, Er
 /// returns it. If the flag is not set, the function returns an error with the appropriate errno.
 /// If the file is to be created, the function uses `mode` to set its permissions and `uid and
 /// `gid` to set the user ID and group ID.
-fn get_file(path: Path, flags: i32, mode: file::Mode, uid: u16, gid: u16)
+fn get_file(path: Path, flags: i32, mode: Mode, uid: Uid, gid: Gid)
 	-> Result<SharedPtr<File>, Errno> {
 	let mutex = fcache::get();
 	let mut guard = mutex.lock();
-	let files_cache = guard.get_mut();
+	let files_cache = guard.get_mut().as_mut().unwrap();
 
-	if let Ok(file) = files_cache.as_mut().unwrap().get_file_from_path(&path) {
+	if let Ok(file) = files_cache.get_file_from_path(&path, uid, gid) {
 		Ok(file)
 	} else if flags & file_descriptor::O_CREAT != 0 {
 		// Getting the path of the parent directory
-		let mut parent = path.failable_clone()?;
-		parent.pop();
+		let mut parent_path = path.failable_clone()?;
+		parent_path.pop();
+
+		// The parent directory
+		let parent_mutex = files_cache.get_file_from_path(&parent_path, uid, gid)?;
+		let mut parent_guard = parent_mutex.lock();
+		let parent = parent_guard.get_mut();
 
 		// Creating the file
 		let name = path[path.get_elements_count() - 1].failable_clone()?;
-		let file = File::new(name, FileContent::Regular, uid, gid, mode)?;
-		files_cache.as_mut().unwrap().create_file(&parent, file)
+		files_cache.create_file(parent, name, uid, gid, mode, FileContent::Regular)
 	} else {
 		Err(errno::ENOENT)
 	}
@@ -68,13 +75,13 @@ pub fn open_(pathname: *const u8, flags: i32, mode: file::Mode) -> Result<i32, E
 
 	// TODO Use effective IDs instead?
 	let mode = mode & !proc.get_umask();
-	let uid = proc.get_uid();
-	let gid = proc.get_gid();
+	let uid = proc.get_euid();
+	let gid = proc.get_egid();
 
 	// Getting the file
 	let mut file = get_file(get_file_absolute_path(&proc, path_str)?, flags, mode, uid, gid)?;
 	if flags & file_descriptor::O_NOFOLLOW == 0 {
-		let path = file::resolve_links(file)?;
+		let path = file::resolve_links(file, uid, gid)?;
 		file = get_file(path, flags, mode, uid, gid)?;
 	}
 

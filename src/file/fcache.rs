@@ -4,6 +4,11 @@ use crate::device::Device;
 use crate::errno::Errno;
 use crate::errno;
 use crate::file::File;
+use crate::file::FileContent;
+use crate::file::FileType;
+use crate::file::Gid;
+use crate::file::Mode;
+use crate::file::Uid;
 use crate::file::mountpoint::MountPoint;
 use crate::file::mountpoint::MountSource;
 use crate::file::mountpoint;
@@ -40,7 +45,6 @@ pub struct FCache {
 	accesses_pool: Vec<AccessCounter>,
 }
 
-// TODO Check files/directories access permissions when getting, creating, removing, etc...
 impl FCache {
 	/// Creates a new instance.
 	/// `root_device` is the device for the root of the VFS.
@@ -70,83 +74,15 @@ impl FCache {
 	}
 
 	// TODO Use the cache
-	/// Adds the file `file` to the VFS. The file will be located into the directory at path
-	/// `parent`.
-	/// The directory must exist. If an error happens, the function returns an Err with the
-	/// appropriate Errno.
-	/// If the path is relative, the function starts from the root.
-	/// If the file isn't present in the pool, the function shall load it.
-	pub fn create_file(&mut self, parent: &Path, file: File) -> Result<SharedPtr<File>, Errno> {
-		let mut path = Path::root().concat(parent)?;
-		path.reduce()?;
-
-		// Getting the path's deepest mountpoint
-		let ptr = mountpoint::get_deepest(&path).ok_or(errno::ENOENT)?;
-		let mut guard = ptr.lock();
-		let mountpoint = guard.get_mut();
-
-		// Getting the path from the start of the filesystem to the parent directory
-		let inner_path = path.range_from(mountpoint.get_path().get_elements_count()..)?;
-
-		// Getting the IO interface
-		let io_mutex = mountpoint.get_source().get_io();
-		let mut io_guard = io_mutex.lock();
-		let io = io_guard.get_mut();
-
-		let fs = mountpoint.get_filesystem();
-		if fs.is_readonly() {
-			return Err(errno::EROFS);
-		}
-
-		let parent_inode = fs.get_inode(io, inner_path)?;
-		let mut file = fs.add_file(io, parent_inode, file)?;
-		file.set_parent_path(parent.failable_clone()?);
-
-		SharedPtr::new(file)
-	}
-
-	// TODO Use the cache
-	/// Removes the file at path `path` from the VFS.
-	/// If the file is a non-empty directory, the function returns an error.
-	pub fn remove_file(&mut self, path: &Path) -> Result<(), Errno> {
-		let mut path = Path::root().concat(path)?;
-		path.reduce()?;
-
-		// Getting the path's deepest mountpoint
-		let ptr = mountpoint::get_deepest(&path).ok_or(errno::ENOENT)?;
-		let mut guard = ptr.lock();
-		let mountpoint = guard.get_mut();
-
-		// Getting the IO interface
-		let io_mutex = mountpoint.get_source().get_io();
-		let mut io_guard = io_mutex.lock();
-		let io = io_guard.get_mut();
-
-		let path_len = path.get_elements_count();
-		if path_len > 0 {
-			let entry_name = &path[path_len - 1];
-			let mountpoint_path_len = mountpoint.get_path().get_elements_count();
-			// Getting the path from the start of the fileststem to the parent directory
-			let parent_inner_path = path.range(mountpoint_path_len..(path_len - 1))?;
-
-			let fs = mountpoint.get_filesystem();
-			if fs.is_readonly() {
-				return Err(errno::EROFS);
-			}
-
-			// Getting the parent inode
-			let parent_inode = fs.get_inode(io, parent_inner_path)?;
-			fs.remove_file(io, parent_inode, entry_name)?;
-		}
-		Ok(())
-	}
-
-	// TODO Use the cache
+	// TODO Add a param to choose between the mountpoint and the fs root?
 	/// Returns a reference to the file at path `path`. If the file doesn't exist, the function
 	/// returns None.
 	/// If the path is relative, the function starts from the root.
 	/// If the file isn't present in the pool, the function shall load it.
-	pub fn get_file_from_path(&mut self, path: &Path) -> Result<SharedPtr<File>, Errno> {
+	/// `uid` is the User ID of the user creating the file.
+	/// `gid` is the Group ID of the user creating the file.
+	pub fn get_file_from_path(&mut self, path: &Path, uid: Uid, gid: Gid)
+		-> Result<SharedPtr<File>, Errno> {
 		let mut path = Path::root().concat(path)?;
 		path.reduce()?;
 
@@ -163,26 +99,118 @@ impl FCache {
 		// Getting the path from the start of the fileststem to the file
 		let inner_path = path.range_from(mountpoint.get_path().get_elements_count()..)?;
 
+		// The filesystem
 		let fs = mountpoint.get_filesystem();
 
+		// The current inode
+		let mut inode = fs.get_inode(io, None, None)?;
+
 		let file = {
-			let (entry_name, inode) = if inner_path.is_empty() {
-				// Getting the root's inode
-				let inode = fs.get_inode(io, Path::root())?;
-
-				(String::new(), inode)
+			// If the path is empty, return the root
+			if inner_path.is_empty() {
+				fs.load_file(io, inode, String::new())?
 			} else {
-				let entry_name = inner_path[inner_path.get_elements_count() - 1].failable_clone()?;
-				// Getting the file's inode
-				let inode = fs.get_inode(io, inner_path)?;
+				for i in 0..inner_path.get_elements_count() {
+					let name = &inner_path[i];
+					let file = fs.load_file(io, inode, name.failable_clone()?)?;
 
-				(entry_name, inode)
-			};
+					// Checking permissions
+					if !file.can_read(uid, gid) {
+						return Err(errno::EPERM);
+					}
 
-			// Loading the file
-			fs.load_file(io, inode, entry_name)
-		}?;
+					if i < inner_path.get_elements_count() - 1 {
+						inode = fs.get_inode(io, Some(inode), Some(name))?;
+					}
+				}
+
+				let name = &inner_path[inner_path.get_elements_count() - 1];
+				fs.load_file(io, inode, name.failable_clone()?)?
+			}
+		};
+
 		SharedPtr::new(file)
+	}
+
+	// TODO Use the cache
+	/// Creates a file, adds it to the VFS, then returns it. The file will be located into the
+	/// directory `parent`.
+	/// If `parent` is not a directory, the function returns an error.
+	/// `name` is the name of the file.
+	/// `uid` is the id of the owner user.
+	/// `gid` is the id of the owner group.
+	/// `mode` is the permission of the file.
+	/// `content` is the content of the file. This value also determines the file type.
+	pub fn create_file(&mut self, parent: &mut File, name: String, uid: Uid, gid: Gid, mode: Mode,
+		content: FileContent) -> Result<SharedPtr<File>, Errno> {
+		// Checking for errors
+		if parent.get_file_type() != FileType::Directory {
+			return Err(errno::ENOTDIR);
+		}
+		if !parent.can_write(uid, gid) {
+			return Err(errno::EPERM);
+		}
+
+		// Getting the mountpoint
+		let mountpoint_mutex = parent.get_location().get_mountpoint().ok_or(errno::ENOENT)?;
+		let mut mountpoint_guard = mountpoint_mutex.lock();
+		let mountpoint = mountpoint_guard.get_mut();
+
+		// Getting the IO interface
+		let io_mutex = mountpoint.get_source().get_io();
+		let mut io_guard = io_mutex.lock();
+		let io = io_guard.get_mut();
+
+		let fs = mountpoint.get_filesystem();
+		if fs.is_readonly() {
+			return Err(errno::EROFS);
+		}
+
+		// The parent directory's inode
+		let parent_inode = parent.get_location().get_inode();
+		// Adding the file to the filesystem
+		let mut file = fs.add_file(io, parent_inode, name, uid, gid, mode, content)?;
+
+		// Adding the file to the parent's subfiles
+		file.set_parent_path(parent.get_path()?);
+		parent.add_subfile(file.get_name().failable_clone()?)?;
+
+		SharedPtr::new(file)
+	}
+
+	// TODO Use the cache
+	/// Removes the file `file` from the VFS.
+	/// If the file doesn't exist, the function returns an error.
+	/// If the file is a non-empty directory, the function returns an error.
+	/// `uid` is the User ID of the user removing the file.
+	/// `gid` is the Group ID of the user removing the file.
+	pub fn remove_file(&mut self, file: &File, uid: Uid, gid: Gid) -> Result<(), Errno> {
+		// The parent directory.
+		let parent_mutex = self.get_file_from_path(file.get_parent_path(), uid, gid)?;
+		let parent_guard = parent_mutex.lock();
+		let parent = parent_guard.get();
+		let parent_inode = parent.get_location().get_inode();
+
+		// Checking permissions
+		if !file.can_write(uid, gid) || !parent.can_write(uid, gid) {
+			return Err(errno::EPERM);
+		}
+
+		// Getting the mountpoint
+		let mountpoint_mutex = file.get_location().get_mountpoint().ok_or(errno::ENOENT)?;
+		let mut mountpoint_guard = mountpoint_mutex.lock();
+		let mountpoint = mountpoint_guard.get_mut();
+
+		// Getting the IO interface
+		let io_mutex = mountpoint.get_source().get_io();
+		let mut io_guard = io_mutex.lock();
+		let io = io_guard.get_mut();
+
+		// Removing the file
+		let fs = mountpoint.get_filesystem();
+		fs.remove_file(io, parent_inode, file.get_name())?;
+
+		Ok(())
 	}
 }
 

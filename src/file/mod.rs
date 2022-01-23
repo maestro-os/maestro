@@ -217,9 +217,6 @@ pub struct File {
 	/// The mode of the file.
 	mode: Mode,
 
-	/// The location the file is stored on.
-	location: Option<FileLocation>,
-
 	/// Timestamp of the last modification of the metadata.
 	ctime: Timestamp,
 	/// Timestamp of the last modification of the file.
@@ -227,6 +224,8 @@ pub struct File {
 	/// Timestamp of the last access to the file.
 	atime: Timestamp,
 
+	/// The location the file is stored on.
+	location: FileLocation,
 	/// The content of the file.
 	content: FileContent,
 }
@@ -234,12 +233,13 @@ pub struct File {
 impl File {
 	/// Creates a new instance.
 	/// `name` is the name of the file.
-	/// `file_content` is the content of the file. This value also determines the file type.
 	/// `uid` is the id of the owner user.
 	/// `gid` is the id of the owner group.
 	/// `mode` is the permission of the file.
-	pub fn new(name: String, content: FileContent, uid: Uid, gid: Gid, mode: Mode)
-		-> Result<Self, Errno> {
+	/// `location` is the location of the file.
+	/// `content` is the content of the file. This value also determines the file type.
+	fn new(name: String, uid: Uid, gid: Gid, mode: Mode, location: FileLocation,
+		content: FileContent) -> Result<Self, Errno> {
 		let timestamp = time::get().unwrap_or(0);
 
 		Ok(Self {
@@ -252,12 +252,11 @@ impl File {
 			gid,
 			mode,
 
-			location: None,
-
 			ctime: timestamp,
 			mtime: timestamp,
 			atime: timestamp,
 
+			location,
 			content,
 		})
 	}
@@ -360,12 +359,12 @@ impl File {
 	}
 
 	/// Returns the location on which the file is stored.
-	pub fn get_location(&self) -> &Option<FileLocation> {
+	pub fn get_location(&self) -> &FileLocation {
 		&self.location
 	}
 
 	/// Sets the location on which the file is stored.
-	pub fn set_location(&mut self, location: Option<FileLocation>) {
+	pub fn set_location(&mut self, location: FileLocation) {
 		self.location = location;
 	}
 
@@ -466,9 +465,7 @@ impl File {
 
 	/// Synchronizes the file with the device.
 	pub fn sync(&self) -> Result<(), Errno> {
-		let location = self.location.as_ref().ok_or(errno::EIO)?;
-
-		let mountpoint_mutex = location.get_mountpoint().ok_or(errno::EIO)?;
+		let mountpoint_mutex = self.location.get_mountpoint().ok_or(errno::EIO)?;
 		let mut mountpoint_guard = mountpoint_mutex.lock();
 		let mountpoint = mountpoint_guard.get_mut();
 
@@ -478,42 +475,6 @@ impl File {
 
 		let filesystem = mountpoint.get_filesystem();
 		filesystem.update_inode(io, self)
-	}
-
-	/// Unlinks the current file.
-	pub fn unlink(&mut self) -> Result<(), Errno> {
-		let mut fcache_guard = fcache::get().lock();
-		let fcache = fcache_guard.get_mut().as_mut().unwrap();
-
-		// TODO Handle the case where the parent directory is on another filesystem
-
-		// Getting the parent directory
-		let parent_path = self.get_parent_path();
-		let parent_mutex = fcache.get_file_from_path(parent_path)?;
-		let mut parent_guard = parent_mutex.lock();
-		let parent = parent_guard.get_mut();
-		let parent_inode = parent.get_location().as_ref().unwrap().get_inode();
-
-		let location = self.location.as_ref().ok_or(errno::EIO)?;
-
-		// Getting the mountpoint of the file
-		let mountpoint_mutex = location.get_mountpoint().ok_or(errno::EIO)?;
-		let mut mountpoint_guard = mountpoint_mutex.lock();
-		let mountpoint = mountpoint_guard.get_mut();
-
-		// Getting the I/O handle
-		let io_mutex = mountpoint.get_source().get_io().clone();
-		let mut io_guard = io_mutex.lock();
-		let io = io_guard.get_mut();
-
-		// Removing the file from the filesystem
-		let filesystem = mountpoint.get_filesystem();
-		filesystem.remove_file(io, parent_inode, self.get_name())?;
-
-		// Removing the file from the kernel's cache
-		parent.remove_subfile(self.get_name())?;
-
-		Ok(())
 	}
 }
 
@@ -525,9 +486,7 @@ impl IO for File {
 	fn read(&self, off: u64, buff: &mut [u8]) -> Result<usize, Errno> {
 		match &self.content {
 			FileContent::Regular => {
-				let location = self.location.as_ref().ok_or(errno::EIO)?;
-
-				let mountpoint_mutex = location.get_mountpoint().ok_or(errno::EIO)?;
+				let mountpoint_mutex = self.location.get_mountpoint().ok_or(errno::EIO)?;
 				let mut mountpoint_guard = mountpoint_mutex.lock();
 				let mountpoint = mountpoint_guard.get_mut();
 
@@ -536,7 +495,7 @@ impl IO for File {
 				let io = io_guard.get_mut();
 
 				let filesystem = mountpoint.get_filesystem();
-				filesystem.read_node(io, location.get_inode(), off, buff)
+				filesystem.read_node(io, self.location.get_inode(), off, buff)
 			},
 
 			FileContent::Directory(_) => Err(errno::EISDIR),
@@ -575,9 +534,7 @@ impl IO for File {
 	fn write(&mut self, off: u64, buff: &[u8]) -> Result<usize, Errno> {
 		match &self.content {
 			FileContent::Regular => {
-				let location = self.location.as_ref().ok_or(errno::EIO)?;
-
-				let mountpoint_mutex = location.get_mountpoint().ok_or(errno::EIO)?;
+				let mountpoint_mutex = self.location.get_mountpoint().ok_or(errno::EIO)?;
 				let mut mountpoint_guard = mountpoint_mutex.lock();
 				let mountpoint = mountpoint_guard.get_mut();
 
@@ -586,7 +543,7 @@ impl IO for File {
 				let io = io_guard.get_mut();
 
 				let filesystem = mountpoint.get_filesystem();
-				filesystem.write_node(io, location.get_inode(), off, buff)?;
+				filesystem.write_node(io, self.location.get_inode(), off, buff)?;
 
 				self.size = max(off + buff.len() as u64, self.size);
 				Ok(buff.len())
@@ -639,7 +596,9 @@ impl Drop for File {
 /// `file` is the starting file. If not a link, the function returns the path to this file.
 /// If the file pointed by the link(s) doesn't exist, the function returns the path where the file
 /// should be located.
-pub fn resolve_links(file: SharedPtr<File>) -> Result<Path, Errno> {
+/// `uid` is the User ID of the user.
+/// `gid` is the Group ID of the user.
+pub fn resolve_links(file: SharedPtr<File>, uid: Uid, gid: Gid) -> Result<Path, Errno> {
 	let mut resolve_count = 0;
 	let mut file = file;
 
@@ -664,7 +623,7 @@ pub fn resolve_links(file: SharedPtr<File>) -> Result<Path, Errno> {
 			let mut guard = mutex.lock();
 			let files_cache = guard.get_mut().as_mut().unwrap();
 
-			match files_cache.get_file_from_path(&path) {
+			match files_cache.get_file_from_path(&path, uid, gid) {
 				Ok(next_file) => file = next_file,
 				Err(e) => return {
 					if e == errno::ENOENT {

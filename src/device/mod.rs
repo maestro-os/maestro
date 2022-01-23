@@ -16,7 +16,6 @@ pub mod storage;
 use core::ffi::c_void;
 use crate::device::manager::DeviceManager;
 use crate::errno::Errno;
-use crate::file::File;
 use crate::file::FileContent;
 use crate::file::Mode;
 use crate::file::fcache::FCache;
@@ -132,19 +131,26 @@ impl Device {
 	fn create_dirs(fcache: &mut FCache, path: &Path) -> Result<usize, Errno> {
 		let mut path = Path::root().concat(path)?;
 		path.reduce()?;
+
+		// The path of the parent directory
 		let mut p = Path::root();
-
+		// The number of created directories
 		let mut created_count = 0;
-		for i in 0..path.get_elements_count() {
-			p.push(path[i].failable_clone()?)?;
 
-			if fcache.get_file_from_path(&p).is_err() {
-				let dir = File::new(p[i].failable_clone()?, FileContent::Directory(Vec::new()), 0,
-					0, 0o755)?;
-				fcache.create_file(&p.range_to(..i)?, dir)?;
+		for i in 0..path.get_elements_count() {
+			let name = path[i].failable_clone()?;
+
+			if let Ok(parent_mutex) = fcache.get_file_from_path(&p, 0, 0) {
+				let mut parent_guard = parent_mutex.lock();
+				let parent = parent_guard.get_mut();
+
+				fcache.create_file(parent, name.failable_clone()?, 0, 0, 0o755,
+					FileContent::Directory(Vec::new()))?;
 
 				created_count += 1;
 			}
+
+			p.push(name)?;
 		}
 
 		Ok(created_count)
@@ -182,22 +188,26 @@ impl Device {
 		// Locking the files' cache
 		let mutex = fcache::get();
 		let mut guard = mutex.lock();
-		let files_cache = guard.get_mut();
+		let files_cache = guard.get_mut().as_mut().unwrap();
 
 		// Tells whether the file already exists
-		let file_exists = files_cache.as_mut().unwrap().get_file_from_path(&self.path).is_ok();
+		let file_exists = files_cache.get_file_from_path(&self.path, 0, 0)
+			.is_ok();
 
 		if !file_exists {
 			// Creating the directories in which the device file is located
 			let mut dir_path = self.path.failable_clone()?;
 			dir_path.pop();
-			Self::create_dirs(files_cache.as_mut().unwrap(), &dir_path)?;
+			Self::create_dirs(files_cache, &dir_path)?;
 
-			let file = File::new(filename, file_content, 0, 0, self.mode)?;
+			// Getting the parent directory
+			let parent_mutex = files_cache.get_file_from_path(&dir_path, 0, 0)?;
+			let mut parent_guard = parent_mutex.lock();
+			let parent = parent_guard.get_mut();
 
 			// TODO Cancel directories creation on fail
 			// Creating the device file
-			files_cache.as_mut().unwrap().create_file(&dir_path, file)?;
+			files_cache.create_file(parent, filename, 0, 0, self.mode, file_content)?;
 		}
 
 		Ok(())
@@ -207,11 +217,11 @@ impl Device {
 	pub fn remove_file(&mut self) -> Result<(), Errno> {
 		let mutex = fcache::get();
 		let mut guard = mutex.lock();
-		let files_cache = guard.get_mut();
+		let files_cache = guard.get_mut().as_mut().unwrap();
 
-		if let Ok(file) = files_cache.as_mut().unwrap().get_file_from_path(&self.path) {
-			let mut guard = file.lock();
-			guard.get_mut().unlink()?;
+		if let Ok(file_mutex) = files_cache.get_file_from_path(&self.path, 0, 0) {
+			let file_guard = file_mutex.lock();
+			files_cache.remove_file(file_guard.get(), 0, 0)?;
 		}
 
 		Ok(())
