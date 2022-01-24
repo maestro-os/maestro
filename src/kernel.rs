@@ -184,17 +184,6 @@ extern "C" {
 	fn test_process();
 }
 
-/// Returns the error message for the given errno for init process execution.
-fn get_init_error_message(errno: Errno) -> &'static str {
-	match errno {
-		errno::ENOENT => "Cannot find init process binary!",
-		errno::ENOEXEC => "Init file is not executable!",
-		errno::ENOMEM => "Cannot allocate memory to run the init process!",
-
-		_ => "Unknown error",
-	}
-}
-
 /// Launches the init process.
 fn init() -> Result<(), &'static str> {
 	let mutex = Process::new().or(Err("Failed to create init process!"))?;
@@ -209,14 +198,13 @@ fn init() -> Result<(), &'static str> {
 
 		proc.init_dummy(test_begin)
 	} else {
-		let path = Path::from_str(INIT_PATH.as_bytes(), false).or(Err("Unknown error"))?;
-		exec(proc, &path, &[INIT_PATH], DEFAULT_ENVIRONMENT)
+		Path::from_str(INIT_PATH.as_bytes(), false).and_then(| path | {
+			exec(proc, &path, &[INIT_PATH], DEFAULT_ENVIRONMENT)
+		})
 	};
 
-	match result {
-		Ok(_) => Ok(()),
-		Err(errno) => Err(get_init_error_message(errno)),
-	}
+	result.or_else(| e | Err(errno::strerror(e)))?;
+	Ok(())
 }
 
 /// This is the main function of the Rust source code, responsible for the initialization of the

@@ -87,9 +87,9 @@ impl FCache {
 		path.reduce()?;
 
 		// Getting the path's deepest mountpoint
-		let ptr = mountpoint::get_deepest(&path).ok_or(errno::ENOENT)?;
-		let mut guard = ptr.lock();
-		let mountpoint = guard.get_mut();
+		let mountpoint_mutex = mountpoint::get_deepest(&path).ok_or(errno::ENOENT)?;
+		let mut mountpoint_guard = mountpoint_mutex.lock();
+		let mountpoint = mountpoint_guard.get_mut();
 
 		// Getting the IO interface
 		let io_mutex = mountpoint.get_source().get_io();
@@ -115,13 +115,11 @@ impl FCache {
 					let file = fs.load_file(io, inode, name.failable_clone()?)?;
 
 					// Checking permissions
-					if !file.can_read(uid, gid) {
+					if i < inner_path.get_elements_count() - 1 && !file.can_read(uid, gid) {
 						return Err(errno::EPERM);
 					}
 
-					if i < inner_path.get_elements_count() - 1 {
-						inode = fs.get_inode(io, Some(inode), Some(name))?;
-					}
+					inode = fs.get_inode(io, Some(inode), Some(name))?;
 				}
 
 				let name = &inner_path[inner_path.get_elements_count() - 1];

@@ -585,9 +585,10 @@ impl IO for File {
 
 impl Drop for File {
 	fn drop(&mut self) {
-		if let Err(_e) = self.sync() {
+		// TODO Fix deadlock
+		/*if let Err(_e) = self.sync() {
 			// TODO Log the error
-		}
+		}*/
 	}
 }
 
