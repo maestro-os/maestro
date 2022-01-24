@@ -380,7 +380,7 @@ impl Ext2INode {
 	/// `io` is the I/O interface.
 	/// On success, the function returns the allocated final block offset.
 	fn alloc_content_block(&mut self, i: u32, superblock: &Superblock, io: &mut dyn IO)
-		-> Result<(), Errno> {
+		-> Result<u32, Errno> {
 		let blk_size = superblock.get_block_size();
 		let entries_per_blk = blk_size / size_of::<u32>() as u32;
 
@@ -397,27 +397,18 @@ impl Ext2INode {
 			// TODO If the first ptr is zero, alloc
 
 			let target = i - DIRECT_BLOCKS_COUNT as u32;
-			let blk = self.indirections_alloc(1, self.singly_indirect_block_ptr, target,
-				superblock, io)?;
-
-			self.singly_indirect_block_ptr = blk;
+			self.indirections_alloc(1, self.singly_indirect_block_ptr, target, superblock, io)
 		} else if i < DIRECT_BLOCKS_COUNT as u32 + (entries_per_blk * entries_per_blk) {
 			// TODO If the first ptr is zero, alloc
 
 			let target = i - DIRECT_BLOCKS_COUNT as u32 - entries_per_blk;
-			let blk = self.indirections_alloc(2, self.doubly_indirect_block_ptr, target,
-				superblock, io)?;
-
-			self.doubly_indirect_block_ptr = blk;
+			self.indirections_alloc(2, self.doubly_indirect_block_ptr, target, superblock, io)
 		} else {
 			// TODO If the first ptr is zero, alloc
 
 			#[allow(clippy::suspicious_operation_groupings)]
 			let target = i - DIRECT_BLOCKS_COUNT as u32 - (entries_per_blk * entries_per_blk);
-			let blk = self.indirections_alloc(3, self.triply_indirect_block_ptr, target,
-				superblock, io)?;
-
-			self.triply_indirect_block_ptr = blk;
+			self.indirections_alloc(3, self.triply_indirect_block_ptr, target, superblock, io)
 		}
 	}
 
@@ -456,7 +447,7 @@ impl Ext2INode {
 	/// `superblock` is the filesystem's superblock.
 	/// `io` is the I/O interface.
 	/// The function returns a boolean telling whether the block at `begin` has been freed.
-	fn indirections_free(&self, n: u8, begin: u32, off: u32, superblock: &Superblock,
+	fn indirections_free(&mut self, n: u8, begin: u32, off: u32, superblock: &Superblock,
 		io: &mut dyn IO) -> Result<bool, Errno> {
 		let blk_size = superblock.get_block_size();
 		let entries_per_blk = blk_size / size_of::<u32>() as u32;
