@@ -343,6 +343,7 @@ impl Ext2INode {
 	/// `off` is the offset of the block relative to the specified beginning block.
 	/// `superblock` is the filesystem's superblock.
 	/// `io` is the I/O interface.
+	/// The function returns the the allocated block.
 	fn indirections_alloc(&mut self, n: u8, begin: u32, off: u32, superblock: &Superblock,
 		io: &mut dyn IO) -> Result<u32, Errno> {
 		let blk_size = superblock.get_block_size();
@@ -379,7 +380,7 @@ impl Ext2INode {
 	/// `io` is the I/O interface.
 	/// On success, the function returns the allocated final block offset.
 	fn alloc_content_block(&mut self, i: u32, superblock: &Superblock, io: &mut dyn IO)
-		-> Result<u32, Errno> {
+		-> Result<(), Errno> {
 		let blk_size = superblock.get_block_size();
 		let entries_per_blk = blk_size / size_of::<u32>() as u32;
 
@@ -393,15 +394,30 @@ impl Ext2INode {
 
 			Ok(blk)
 		} else if i < DIRECT_BLOCKS_COUNT as u32 + entries_per_blk {
+			// TODO If the first ptr is zero, alloc
+
 			let target = i - DIRECT_BLOCKS_COUNT as u32;
-			self.indirections_alloc(1, self.singly_indirect_block_ptr, target, superblock, io)
+			let blk = self.indirections_alloc(1, self.singly_indirect_block_ptr, target,
+				superblock, io)?;
+
+			self.singly_indirect_block_ptr = blk;
 		} else if i < DIRECT_BLOCKS_COUNT as u32 + (entries_per_blk * entries_per_blk) {
+			// TODO If the first ptr is zero, alloc
+
 			let target = i - DIRECT_BLOCKS_COUNT as u32 - entries_per_blk;
-			self.indirections_alloc(2, self.doubly_indirect_block_ptr, target, superblock, io)
+			let blk = self.indirections_alloc(2, self.doubly_indirect_block_ptr, target,
+				superblock, io)?;
+
+			self.doubly_indirect_block_ptr = blk;
 		} else {
+			// TODO If the first ptr is zero, alloc
+
 			#[allow(clippy::suspicious_operation_groupings)]
 			let target = i - DIRECT_BLOCKS_COUNT as u32 - (entries_per_blk * entries_per_blk);
-			self.indirections_alloc(3, self.triply_indirect_block_ptr, target, superblock, io)
+			let blk = self.indirections_alloc(3, self.triply_indirect_block_ptr, target,
+				superblock, io)?;
+
+			self.triply_indirect_block_ptr = blk;
 		}
 	}
 
@@ -439,10 +455,45 @@ impl Ext2INode {
 	/// `off` is the offset of the block relative to the specified beginning block.
 	/// `superblock` is the filesystem's superblock.
 	/// `io` is the I/O interface.
-	fn indirections_free(&self, _n: u8, _begin: u32, _off: u32, _superblock: &Superblock,
-		_io: &mut dyn IO) -> Result<(), Errno> {
-		// TODO
-		todo!();
+	/// The function returns a boolean telling whether the block at `begin` has been freed.
+	fn indirections_free(&self, n: u8, begin: u32, off: u32, superblock: &Superblock,
+		io: &mut dyn IO) -> Result<bool, Errno> {
+		let blk_size = superblock.get_block_size();
+		let entries_per_blk = blk_size / size_of::<u32>() as u32;
+
+		if n > 0 {
+			// The value subtracted from `begin` for the next indirection
+			let blk_off = math::pow(entries_per_blk as u32, n as _);
+
+			let inner_index = off / blk_off;
+			let inner_off = inner_index as u64 * size_of::<u32>() as u64;
+			let byte_off = (begin as u64 * blk_size as u64) + inner_off as u64;
+
+			let b = unsafe {
+				read::<u32>(byte_off, io)?
+			};
+
+			if self.indirections_free(n - 1, b, off - blk_off, superblock, io)? {
+				// Reading the current block
+				let mut buff = malloc::Alloc::<u8>::new_default(blk_size as _)?;
+				read_block(begin as _, superblock, io, buff.get_slice_mut())?;
+
+				// If the current block is empty, free it
+				if Self::is_blk_empty(buff.get_slice()) {
+					superblock.free_block(io, begin)?;
+
+					// Decrementing the number of used sectors
+					self.used_sectors -= math::ceil_division(blk_size, SECTOR_SIZE);
+
+					return Ok(true);
+				}
+			}
+
+			Ok(false)
+		} else {
+			superblock.free_block(io, begin)?;
+			Ok(true)
+		}
 	}
 
 	/// Frees a content block at block offset `i` in file.
@@ -462,19 +513,30 @@ impl Ext2INode {
 
 			// Decrementing the number of used sectors
 			self.used_sectors -= math::ceil_division(blk_size, SECTOR_SIZE);
+		}
 
-			Ok(())
-		} else if i < DIRECT_BLOCKS_COUNT as u32 + entries_per_blk {
+		if i < DIRECT_BLOCKS_COUNT as u32 + entries_per_blk {
 			let target = i - DIRECT_BLOCKS_COUNT as u32;
-			self.indirections_free(1, self.singly_indirect_block_ptr, target, superblock, io)
+
+			if self.indirections_free(1, self.singly_indirect_block_ptr, target, superblock, io)? {
+				self.singly_indirect_block_ptr = 0;
+			}
 		} else if i < DIRECT_BLOCKS_COUNT as u32 + (entries_per_blk * entries_per_blk) {
 			let target = i - DIRECT_BLOCKS_COUNT as u32 - entries_per_blk;
-			self.indirections_free(2, self.doubly_indirect_block_ptr, target, superblock, io)
+
+			if self.indirections_free(2, self.doubly_indirect_block_ptr, target, superblock, io)? {
+				self.doubly_indirect_block_ptr = 0;
+			}
 		} else {
 			#[allow(clippy::suspicious_operation_groupings)]
 			let target = i - DIRECT_BLOCKS_COUNT as u32 - (entries_per_blk * entries_per_blk);
-			self.indirections_free(3, self.triply_indirect_block_ptr, target, superblock, io)
+
+			if self.indirections_free(3, self.triply_indirect_block_ptr, target, superblock, io)? {
+				self.triply_indirect_block_ptr = 0;
+			}
 		}
+
+		Ok(())
 	}
 
 	/// Reads the content of the inode.
@@ -541,6 +603,7 @@ impl Ext2INode {
 					self.alloc_content_block(blk_off as u32, superblock, io)?
 				}
 			};
+			// TODO Do not read if the block was just allocated
 			read_block(blk_off as _, superblock, io, blk_buff.get_slice_mut())?;
 
 			let len = min(buff.len() - i, (blk_size - blk_inner_off as u32) as usize);
