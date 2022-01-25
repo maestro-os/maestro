@@ -20,19 +20,6 @@ use crate::util::ptr::SharedPtr;
 
 // TODO Implement all flags
 
-/// Returns the absolute path to the file.
-fn get_file_absolute_path(process: &Process, path_str: &[u8]) -> Result<Path, Errno> {
-	let path = Path::from_str(path_str, true)?;
-	if !path.is_absolute() {
-		let cwd = process.get_cwd();
-		let mut absolute_path = cwd.concat(&path)?;
-		absolute_path.reduce()?;
-		Ok(absolute_path)
-	} else {
-		Ok(path)
-	}
-}
-
 /// Returns the file at the given path `path`.
 /// If the file doesn't exist and the O_CREAT flag is set, the file is created, then the function
 /// returns it. If the flag is not set, the function returns an error with the appropriate errno.
@@ -73,13 +60,13 @@ pub fn open_(pathname: *const u8, flags: i32, mode: file::Mode) -> Result<i32, E
 	// Getting the path string
 	let path_str = super::util::get_str(proc, pathname)?;
 
-	// TODO Use effective IDs instead?
 	let mode = mode & !proc.get_umask();
 	let uid = proc.get_euid();
 	let gid = proc.get_egid();
 
 	// Getting the file
-	let mut file = get_file(get_file_absolute_path(&proc, path_str)?, flags, mode, uid, gid)?;
+	let abs_path = super::util::get_absolute_path(&proc, Path::from_str(path_str, true)?)?;
+	let mut file = get_file(abs_path, flags, mode, uid, gid)?;
 	if flags & file_descriptor::O_NOFOLLOW == 0 {
 		let path = file::resolve_links(file, uid, gid)?;
 		file = get_file(path, flags, mode, uid, gid)?;

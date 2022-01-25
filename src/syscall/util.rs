@@ -3,6 +3,7 @@
 use core::slice;
 use crate::errno::Errno;
 use crate::errno;
+use crate::file::path::Path;
 use crate::process::Process;
 
 /// Checks that the string at the given pointer `s` is accessible by the process `proc`, then
@@ -19,4 +20,19 @@ pub fn get_str(proc: &Process, s: *const u8) -> Result<&'static [u8], Errno> {
 	};
 
 	Ok(slice)
+}
+
+/// Returns the absolute path according to the process's current working directory.
+/// `process` is the process.
+/// `path` is the path.
+pub fn get_absolute_path(process: &Process, path: Path) -> Result<Path, Errno> {
+	if !path.is_absolute() {
+		let cwd = process.get_cwd();
+		let mut absolute_path = cwd.concat(&path)?;
+		absolute_path.reduce()?;
+
+		Ok(absolute_path)
+	} else {
+		Ok(path)
+	}
 }

@@ -492,6 +492,7 @@ impl MemSpace {
 					let inner_off = curr_ptr as usize - page_begin as usize;
 					let check_size = memory::PAGE_SIZE - inner_off;
 
+					// Looking for the null byte
 					for j in 0..check_size {
 						let c = unsafe { // Safe because the pointer is checked before
 							*curr_ptr.add(j)
@@ -501,9 +502,9 @@ impl MemSpace {
 						if c == b'\0' {
 							break 'outer;
 						}
-					}
 
-					i += check_size;
+						i += 1;
+					}
 				} else {
 					return None;
 				}

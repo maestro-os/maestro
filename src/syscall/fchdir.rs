@@ -15,30 +15,34 @@ pub fn fchdir(regs: &Regs) -> Result<i32, Errno> {
 	let mut guard = mutex.lock();
 	let proc = guard.get_mut();
 
+	let uid = proc.get_euid();
+	let gid = proc.get_egid();
+
 	if fd < 0 {
 		return Err(errno::EBADF);
 	}
 
-	if let Some(fd) = proc.get_fd(fd as _) {
-		if let FDTarget::File(dir_mutex) = fd.get_target_mut() {
-			let new_cwd = {
-				let mut dir_guard = dir_mutex.lock();
-				let dir = dir_guard.get_mut();
+	let fd = proc.get_fd(fd as _).ok_or(errno::EBADF)?;
+	if let FDTarget::File(dir_mutex) = fd.get_target_mut() {
+		let new_cwd = {
+			let mut dir_guard = dir_mutex.lock();
+			let dir = dir_guard.get_mut();
 
-				// TODO Check permission
-				if dir.get_file_type() != FileType::Directory {
-					return Err(errno::ENOTDIR);
-				}
+			// Checking for errors
+			if !dir.can_read(uid, gid) {
+				return Err(errno::EACCES);
+			}
+			if dir.get_file_type() != FileType::Directory {
+				return Err(errno::ENOTDIR);
+			}
 
-				dir.get_path()
-			}?;
+			dir.get_path()
+		}?;
 
-			proc.set_cwd(new_cwd);
-			Ok(0)
-		} else {
-			return Err(errno::ENOTDIR);
-		}
+		let new_cwd = super::util::get_absolute_path(&proc, new_cwd)?;
+		proc.set_cwd(new_cwd)?;
+		Ok(0)
 	} else {
-		Err(errno::EBADF)
+		Err(errno::ENOTDIR)
 	}
 }

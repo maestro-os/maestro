@@ -16,7 +16,8 @@ pub fn chdir(regs: &Regs) -> Result<i32, Errno> {
 	let mut guard = mutex.lock();
 	let proc = guard.get_mut();
 
-	let new_cwd = Path::from_str(super::util::get_str(proc, path)?, true)?;
+	let path_str = super::util::get_str(proc, path)?;
+	let new_cwd = super::util::get_absolute_path(&proc, Path::from_str(path_str, true)?)?;
 
 	{
 		let fcache_mutex = fcache::get();
@@ -28,13 +29,15 @@ pub fn chdir(regs: &Regs) -> Result<i32, Errno> {
 		let dir_guard = dir_mutex.lock();
 		let dir = dir_guard.get();
 
-		// TODO Check permissions (for all directories in the path)
+		// Checking for errors
+		if !dir.can_read(proc.get_euid(), proc.get_egid()) {
+			return Err(errno::EACCES);
+		}
 		if dir.get_file_type() != FileType::Directory {
 			return Err(errno::ENOTDIR);
 		}
 	}
 
-	// TODO Make the path absolute
-	proc.set_cwd(new_cwd);
+	proc.set_cwd(new_cwd)?;
 	Ok(0)
 }

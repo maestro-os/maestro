@@ -42,6 +42,11 @@ impl<T> Vec<T> {
 	/// Reallocates the vector's data with the vector's capacity.
 	/// `capacity` is the new capacity in number of elements.
 	fn realloc(&mut self, capacity: usize) -> Result<(), Errno> {
+		if capacity == 0 {
+			self.data = None;
+			return Ok(());
+		}
+
 		if let Some(data) = &mut self.data {
 			debug_assert!(data.get_size() >= self.len);
 
@@ -264,10 +269,7 @@ impl<T> Vec<T> {
 		}
 
 		self.len = 0;
-
-		if self.data.is_some() {
-			self.data = None;
-		}
+		self.data = None;
 	}
 }
 
@@ -306,7 +308,7 @@ impl<T> FailableClone for Vec<T> where T: FailableClone {
 	/// Clones the vector and its content.
 	fn failable_clone(&self) -> Result<Self, Errno> {
 		let data = {
-			if self.data.is_some() {
+			if self.len > 0 {
 				// Safe because initialization uses ManuallyDrop on invalid objects
 				let data_ptr = unsafe {
 					malloc::Alloc::new_zero(self.len)?
