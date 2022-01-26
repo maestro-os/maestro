@@ -3,7 +3,7 @@
  */
 
 // The size in bytes of the structure storing the registers' states
-.set REGS_SIZE, 554
+.set REGS_SIZE, 560
 
 /*
  * This macro stores the values of every registers after an interruption was triggered.
@@ -26,7 +26,7 @@
 
 	# Saving the fx state
 	mov %esp, %eax
-	add $0x2a, %eax
+	add $0x30, %eax
 	push %eax
 	call save_fxstate
 	add $4, %esp
@@ -66,7 +66,7 @@ esp_end_\n:
 .macro END_INTERRUPT
 	# Restoring the fx state
 	mov %esp, %eax
-	add $0x2a, %eax
+	add $0x30, %eax
 	push %eax
 	call restore_fxstate
 	add $4, %esp
