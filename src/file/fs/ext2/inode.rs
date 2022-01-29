@@ -373,6 +373,7 @@ impl Ext2INode {
 		Ok(b)
 	}
 
+	// TODO Clean (avoid copy-pasting code)
 	/// Allocates a block for the node's content block at the given offset `i`.
 	/// If the block is already allocated, the function does nothing.
 	/// `i` is the block offset in the node's content.
@@ -385,26 +386,49 @@ impl Ext2INode {
 		let entries_per_blk = blk_size / size_of::<u32>() as u32;
 
 		if i < DIRECT_BLOCKS_COUNT as u32 {
-			let blk = superblock.get_free_block(io)?;
-			self.direct_block_ptrs[i as usize] = blk;
-			superblock.mark_block_used(io, blk)?;
+			if self.direct_block_ptrs[i as usize] == 0 {
+				let blk = superblock.get_free_block(io)?;
+				self.direct_block_ptrs[i as usize] = blk;
+				superblock.mark_block_used(io, blk)?;
 
-			// Incrementing the number of used sectors
-			self.used_sectors += math::ceil_division(blk_size, SECTOR_SIZE);
+				// Incrementing the number of used sectors
+				self.used_sectors += math::ceil_division(blk_size, SECTOR_SIZE);
+			}
 
-			Ok(blk)
+			Ok(self.direct_block_ptrs[i as usize])
 		} else if i < DIRECT_BLOCKS_COUNT as u32 + entries_per_blk {
-			// TODO If the first ptr is zero, alloc
+			if self.singly_indirect_block_ptr == 0 {
+				let blk = superblock.get_free_block(io)?;
+				self.singly_indirect_block_ptr = blk;
+				superblock.mark_block_used(io, blk)?;
+
+				// Incrementing the number of used sectors
+				self.used_sectors += math::ceil_division(blk_size, SECTOR_SIZE);
+			}
 
 			let target = i - DIRECT_BLOCKS_COUNT as u32;
 			self.indirections_alloc(1, self.singly_indirect_block_ptr, target, superblock, io)
 		} else if i < DIRECT_BLOCKS_COUNT as u32 + (entries_per_blk * entries_per_blk) {
-			// TODO If the first ptr is zero, alloc
+			if self.doubly_indirect_block_ptr == 0 {
+				let blk = superblock.get_free_block(io)?;
+				self.doubly_indirect_block_ptr = blk;
+				superblock.mark_block_used(io, blk)?;
+
+				// Incrementing the number of used sectors
+				self.used_sectors += math::ceil_division(blk_size, SECTOR_SIZE);
+			}
 
 			let target = i - DIRECT_BLOCKS_COUNT as u32 - entries_per_blk;
 			self.indirections_alloc(2, self.doubly_indirect_block_ptr, target, superblock, io)
 		} else {
-			// TODO If the first ptr is zero, alloc
+			if self.triply_indirect_block_ptr == 0 {
+				let blk = superblock.get_free_block(io)?;
+				self.triply_indirect_block_ptr = blk;
+				superblock.mark_block_used(io, blk)?;
+
+				// Incrementing the number of used sectors
+				self.used_sectors += math::ceil_division(blk_size, SECTOR_SIZE);
+			}
 
 			#[allow(clippy::suspicious_operation_groupings)]
 			let target = i - DIRECT_BLOCKS_COUNT as u32 - (entries_per_blk * entries_per_blk);
@@ -589,20 +613,26 @@ impl Ext2INode {
 			let blk_inner_off = ((off + i as u64) % blk_size as u64) as usize;
 			let blk_off = {
 				if let Some(blk_off) = self.get_content_block_off(blk_off as _, superblock, io)? {
+					// Reading block
+					read_block(blk_off as _, superblock, io, blk_buff.get_slice_mut())?;
 					blk_off
 				} else {
+					// Zero-ing buffer
+					for b in blk_buff.get_slice_mut() {
+						*b = 0;
+					}
 					self.alloc_content_block(blk_off as u32, superblock, io)?
 				}
 			};
-			// TODO Do not read if the block was just allocated
-			read_block(blk_off as _, superblock, io, blk_buff.get_slice_mut())?;
 
+			// Writing data to buffer
 			let len = min(buff.len() - i, (blk_size - blk_inner_off as u32) as usize);
 			unsafe { // Safe because staying in range
 				copy_nonoverlapping(&buff[i] as *const u8,
 					&mut blk_buff.get_slice_mut()[blk_inner_off] as *mut u8,
 					len);
 			}
+			// Writing block
 			write_block(blk_off as _, superblock, io, blk_buff.get_slice_mut())?;
 
 			i += len;
@@ -635,11 +665,80 @@ impl Ext2INode {
 		let begin = math::ceil_division(size, blk_size as _) as u32;
 		// The index of the end block to free
 		let end = math::ceil_division(old_size, blk_size as _) as u32;
-
 		for i in begin..end {
 			// TODO Optimize
 			self.free_content_block(i, superblock, io)?;
 		}
+
+		Ok(())
+	}
+
+	/// Frees all content blocks by doing redirections.
+	/// `begin` is the beginning block.
+	/// `n` is the number of indicrections.
+	/// `superblock` is the filesystem's superblock.
+	/// `io` is the I/O interface.
+	fn indirect_free_all(begin: u32, n: usize, superblock: &Superblock, io: &mut dyn IO)
+		-> Result<(), Errno> {
+		let blk_size = superblock.get_block_size();
+		let entries_per_blk = blk_size as usize / size_of::<u32>();
+
+		// Reading the block
+		let mut blk_buff = malloc::Alloc::<u32>::new_default(entries_per_blk)?;
+		read_block(begin as _, superblock, io, blk_buff.get_slice_mut())?;
+
+		// Free every entries recursively
+		for i in 0..entries_per_blk {
+			let b = blk_buff[i];
+
+			// If the entry is not empty, free it
+			if b != 0 {
+				// If indirections remain, free entries recursively
+				if n > 0 {
+					Self::indirect_free_all(b, n - 1, superblock, io)?;
+				}
+
+				superblock.free_block(io, b)?;
+			}
+		}
+
+		superblock.free_block(io, begin)
+	}
+
+	/// Frees all the content blocks of the inode.
+	/// `range` is the range on which content blocks will be removed.
+	/// `superblock` is the filesystem's superblock.
+	/// `io` is the I/O interface.
+	pub fn free_content(&mut self, superblock: &Superblock, io: &mut dyn IO)
+		-> Result<(), Errno> {
+		for i in 0..(DIRECT_BLOCKS_COUNT as usize) {
+			if self.direct_block_ptrs[i] != 0 {
+				superblock.free_block(io, self.direct_block_ptrs[i])?;
+				self.direct_block_ptrs[i] = 0;
+			}
+		}
+
+		if self.singly_indirect_block_ptr != 0 {
+			Self::indirect_free_all(self.singly_indirect_block_ptr, 1, superblock, io)?;
+
+			superblock.free_block(io, self.singly_indirect_block_ptr)?;
+			self.singly_indirect_block_ptr = 0;
+		}
+		if self.doubly_indirect_block_ptr != 0 {
+			Self::indirect_free_all(self.doubly_indirect_block_ptr, 2, superblock, io)?;
+
+			superblock.free_block(io, self.doubly_indirect_block_ptr)?;
+			self.doubly_indirect_block_ptr = 0;
+		}
+		if self.triply_indirect_block_ptr != 0 {
+			Self::indirect_free_all(self.triply_indirect_block_ptr, 3, superblock, io)?;
+
+			superblock.free_block(io, self.triply_indirect_block_ptr)?;
+			self.triply_indirect_block_ptr = 0;
+		}
+
+		// Updating the number of used sectors
+		self.used_sectors = 0;
 
 		Ok(())
 	}

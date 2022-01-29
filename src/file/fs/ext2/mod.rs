@@ -161,10 +161,13 @@ fn write<T>(obj: &T, offset: u64, io: &mut dyn IO) -> Result<(), Errno> {
 /// `io` is the I/O interface of the device.
 /// `buff` is the buffer to write the data on.
 /// If the block is outside of the storage's bounds, the function returns a error.
-fn read_block(i: u64, superblock: &Superblock, io: &mut dyn IO, buff: &mut [u8])
+fn read_block<T>(i: u64, superblock: &Superblock, io: &mut dyn IO, buff: &mut [T])
 	-> Result<(), Errno> {
 	let blk_size = superblock.get_block_size() as u64;
-	io.read(i * blk_size, buff)?;
+	let buffer = unsafe {
+		slice::from_raw_parts_mut(buff.as_mut_ptr() as *mut u8, size_of::<T>() * buff.len())
+	};
+	io.read(i * blk_size, buffer)?;
 
 	Ok(())
 }
@@ -175,10 +178,13 @@ fn read_block(i: u64, superblock: &Superblock, io: &mut dyn IO, buff: &mut [u8])
 /// `io` is the I/O interface of the device.
 /// `buff` is the buffer to read from.
 /// If the block is outside of the storage's bounds, the function returns a error.
-fn write_block(i: u64, superblock: &Superblock, io: &mut dyn IO, buff: &[u8])
+fn write_block<T>(i: u64, superblock: &Superblock, io: &mut dyn IO, buff: &[T])
 	-> Result<(), Errno> {
 	let blk_size = superblock.get_block_size() as u64;
-	io.write(i * blk_size, buff)?;
+	let buffer = unsafe {
+		slice::from_raw_parts(buff.as_ptr() as *const u8, size_of::<T>() * buff.len())
+	};
+	io.write(i * blk_size, buffer)?;
 
 	Ok(())
 }
@@ -856,7 +862,7 @@ impl Filesystem for Ext2Fs {
 			let timestamp = time::get().unwrap_or(0);
 			inode_.dtime = timestamp;
 
-			// TODO Free all content blocks
+			inode_.free_content(&self.superblock, io)?;
 
 			// Freeing inode
 			self.superblock.free_inode(io, inode, inode_.get_type() == FileType::Directory)?;
