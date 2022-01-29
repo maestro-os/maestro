@@ -21,6 +21,7 @@ mod getgid;
 mod getpgid;
 mod getpid;
 mod getppid;
+mod getrusage;
 mod gettid;
 mod getuid;
 mod init_module;
@@ -55,11 +56,11 @@ mod umask;
 mod umount;
 mod uname;
 mod unlink;
+mod util;
 mod wait;
 mod waitpid;
 mod write;
 mod writev;
-pub mod util;
 
 use crate::process::Process;
 use crate::process::signal::Signal;
@@ -88,6 +89,7 @@ use getgid::getgid;
 use getpgid::getpgid;
 use getpid::getpid;
 use getppid::getppid;
+use getrusage::getrusage;
 use gettid::gettid;
 use getuid::getuid;
 use init_module::init_module;
@@ -208,7 +210,7 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 		// TODO 0x04a => sethostname(regs),
 		// TODO 0x04b => setrlimit(regs),
 		// TODO 0x04c => getrlimit(regs),
-		// TODO 0x04d => getrusage(regs),
+		0x04d => getrusage(regs),
 		// TODO 0x04e => gettimeofday(regs),
 		// TODO 0x04f => settimeofday(regs),
 		// TODO 0x050 => getgroups(regs),

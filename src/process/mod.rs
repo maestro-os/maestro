@@ -7,6 +7,7 @@ pub mod mem_space;
 pub mod oom;
 pub mod pid;
 pub mod regs;
+pub mod rusage;
 pub mod scheduler;
 pub mod semaphore;
 pub mod signal;
@@ -44,6 +45,7 @@ use crate::util::ptr::IntWeakPtr;
 use mem_space::MemSpace;
 use pid::PIDManager;
 use pid::Pid;
+use rusage::RUsage;
 use scheduler::Scheduler;
 use signal::Signal;
 use signal::SignalAction;
@@ -158,7 +160,7 @@ pub struct Process {
 	file_descriptors: Vec<FileDescriptor>,
 
 	/// A bitfield storing signals that have been received and are not handled yet.
-	signals_bitfield: Bitfield,
+	sigmask: Bitfield,
 	/// The list of signal handlers.
 	signal_handlers: [SignalHandler; signal::SIGNALS_COUNT + 1],
 
@@ -171,6 +173,9 @@ pub struct Process {
 	set_child_tid: Option<NonNull<i32>>,
 	/// TODO doc
 	clear_child_tid: Option<NonNull<i32>>,
+
+	/// The process's resources usage.
+	rusage: RUsage,
 
 	/// The exit status of the process after exiting.
 	exit_status: ExitStatus,
@@ -374,7 +379,7 @@ impl Process {
 			cwd: Path::root(),
 			file_descriptors: Vec::new(),
 
-			signals_bitfield: Bitfield::new(signal::SIGNALS_COUNT + 1)?,
+			sigmask: Bitfield::new(signal::SIGNALS_COUNT + 1)?,
 			signal_handlers: [SignalHandler::Default; signal::SIGNALS_COUNT + 1],
 
 			tls_entries: [gdt::Entry::default(); TLS_ENTRIES_COUNT],
@@ -382,6 +387,8 @@ impl Process {
 
 			set_child_tid: None,
 			clear_child_tid: None,
+
+			rusage: RUsage::default(),
 
 			exit_status: 0,
 			termsig: 0,
@@ -924,7 +931,7 @@ impl Process {
 			cwd: self.cwd.failable_clone()?,
 			file_descriptors: self.file_descriptors.failable_clone()?,
 
-			signals_bitfield: Bitfield::new(signal::SIGNALS_COUNT + 1)?,
+			sigmask: Bitfield::new(signal::SIGNALS_COUNT + 1)?,
 			signal_handlers: self.signal_handlers,
 
 			tls_entries: self.tls_entries,
@@ -938,6 +945,8 @@ impl Process {
 
 			set_child_tid: self.set_child_tid,
 			clear_child_tid: self.clear_child_tid,
+
+			rusage: RUsage::default(),
 
 			exit_status: self.exit_status,
 			termsig: 0,
@@ -984,22 +993,35 @@ impl Process {
 		if !sig.can_catch() || no_handler {
 			sig.execute_action(self, no_handler);
 		} else {
-			self.signals_bitfield.set(sig.get_type() as _);
+			self.sigmask.set(sig.get_type() as _);
 		}
+	}
+
+	/// Returns an immutable reference to the process's signal mask.
+	#[inline(always)]
+	pub fn get_sigmask(&self) -> &[u8] {
+		self.sigmask.as_slice()
+	}
+
+	/// Returns a mutable reference to the process's signal mask.
+	#[inline(always)]
+	pub fn get_sigmask_mut(&mut self) -> &mut [u8] {
+		self.sigmask.as_mut_slice()
 	}
 
 	/// Tells whether the process has a signal pending.
 	#[inline(always)]
 	pub fn has_signal_pending(&self) -> bool {
-		self.signals_bitfield.find_set().is_some()
+		self.sigmask.find_set().is_some()
 	}
 
 	/// Makes the process handle the next signal. If the process is already handling a signal or if
-	/// not signal is queued, the function does nothing.
+	/// no signal is queued, the function does nothing.
 	pub fn signal_next(&mut self) {
-		if let Some(signum) = self.signals_bitfield.find_set() {
-			let sig = Signal::new(signum as _).unwrap();
-			sig.execute_action(self, false);
+		if let Some(signum) = self.sigmask.find_set() {
+			if let Ok(sig) = Signal::new(signum as _) {
+				sig.execute_action(self, false);
+			}
 		}
 	}
 
@@ -1016,7 +1038,7 @@ impl Process {
 	/// Restores the process's state after handling a signal.
 	pub fn signal_restore(&mut self) {
 		if let Some(sig) = self.handled_signal {
-			self.signals_bitfield.clear(sig as _);
+			self.sigmask.clear(sig as _);
 
 			self.handled_signal = None;
 			self.regs = self.saved_regs;
@@ -1051,6 +1073,11 @@ impl Process {
 	/// Sets the `clear_child_tid` attribute of the process.
 	pub fn set_clear_child_tid(&mut self, ptr: Option<NonNull<i32>>) {
 		self.clear_child_tid = ptr;
+	}
+
+	/// Returns an immutable reference to the process's resource usage structure.
+	pub fn get_rusage(&self) -> &RUsage {
+		&self.rusage
 	}
 
 	/// Exits the process with the given `status`. This function changes the process's status to

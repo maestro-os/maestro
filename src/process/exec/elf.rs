@@ -447,7 +447,7 @@ impl Executor for ELFExecutor {
 		process.kernel_stack = Some(kernel_stack);
 
 		// Resetting signals
-		process.signals_bitfield.clear_all();
+		process.sigmask.clear_all();
 		for i in 0..process.signal_handlers.len() {
 			process.signal_handlers[i] = SignalHandler::Default;
 		}

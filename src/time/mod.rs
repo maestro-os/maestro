@@ -7,8 +7,19 @@ use crate::util::boxed::Box;
 use crate::util::container::vec::Vec;
 use crate::util::lock::*;
 
-/// Type representing a timestamp.
+/// Type representing a timestamp in seconds. Equivalent to POSIX's `time_t`.
 pub type Timestamp = u32;
+/// Type representing a timestamp in microseconds. Equivalent to POSIX's `suseconds_t`.
+pub type UTimestamp = u64;
+
+/// POSIX structure representing a timestamp.
+#[derive(Clone, Default)]
+pub struct Timeval {
+	/// Seconds
+	tv_sec: Timestamp,
+	/// Microseconds
+	tv_usec: UTimestamp,
+}
 
 /// Trait representing a source able to provide the current timestamp.
 pub trait ClockSource {

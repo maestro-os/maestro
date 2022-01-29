@@ -156,7 +156,7 @@ impl Signal {
 	/// Creates a new instance.
 	/// `type_` is the signal type.
 	pub fn new(type_: SignalType) -> Result<Self, Errno> {
-		if type_ >= 1 && type_ < SIGNALS_COUNT as i32 {
+		if type_ >= 1 && (type_ - 1) < SIGNALS_COUNT as i32 {
 			Ok(Self {
 				type_,
 			})

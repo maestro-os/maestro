@@ -37,6 +37,18 @@ impl Bitfield {
 		self.len
 	}
 
+	/// Returns an immutable reference to a slice containing the bitfield.
+	#[inline(always)]
+	pub fn as_slice(&self) -> &[u8] {
+		self.data.as_slice()
+	}
+
+	/// Returns a mutable reference to a slice containing the bitfield.
+	#[inline(always)]
+	pub fn as_mut_slice(&mut self) -> &mut [u8] {
+		self.data.as_mut_slice()
+	}
+
 	/// Returns the size of the memory region of the bitfield in bytes.
 	pub fn mem_size(&self) -> usize {
 		ceil_division(self.len, bit_size_of::<u8>())
