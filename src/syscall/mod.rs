@@ -40,6 +40,7 @@ mod pipe;
 mod r#break;
 mod read;
 mod reboot;
+mod rt_sigprocmask;
 mod set_thread_area;
 mod set_tid_address;
 mod setgid;
@@ -105,6 +106,7 @@ use pipe::pipe;
 use r#break::r#break;
 use read::read;
 use reboot::reboot;
+use rt_sigprocmask::rt_sigprocmask;
 use set_thread_area::set_thread_area;
 use set_tid_address::set_tid_address;
 use setgid::setgid;
@@ -304,7 +306,7 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 		// TODO 0x0ac => prctl(regs),
 		// TODO 0x0ad => rt_sigreturn(regs),
 		// TODO 0x0ae => rt_sigaction(regs),
-		// TODO 0x0af => rt_sigprocmask(regs),
+		0x0af => rt_sigprocmask(regs),
 		// TODO 0x0b0 => rt_sigpending(regs),
 		// TODO 0x0b1 => rt_sigtimedwait(regs),
 		// TODO 0x0b2 => rt_sigqueueinfo(regs),
