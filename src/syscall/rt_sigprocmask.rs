@@ -25,7 +25,13 @@ pub fn rt_sigprocmask(regs: &Regs) -> Result<i32, Errno> {
 	let mut guard = mutex.lock();
 	let proc = guard.get_mut();
 
-	// TODO Check access to `set` and `oldset`
+	// Checking access to pointers
+	if !proc.get_mem_space().unwrap().can_access(set, sigsetsize as _, true, false) {
+		return Err(errno::EINVAL);
+	}
+	if !proc.get_mem_space().unwrap().can_access(oldset, sigsetsize as _, true, true) {
+		return Err(errno::EINVAL);
+	}
 
 	// Getting slices to pointers
 	let set_slice = if !set.is_null() {
@@ -45,6 +51,7 @@ pub fn rt_sigprocmask(regs: &Regs) -> Result<i32, Errno> {
 
 	// The current set
 	let curr = proc.get_sigmask_mut();
+	println!("{:?} {:?} {:?}", curr, set, oldset);
 
 	if let Some(oldset) = oldset_slice {
 		// Saving the old set

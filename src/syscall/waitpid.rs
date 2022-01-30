@@ -1,12 +1,14 @@
 //! The `waitpid` system call allows to wait for an event from a child process.
 
 use core::mem::size_of;
+use core::ptr::NonNull;
 use crate::errno::Errno;
 use crate::errno;
 use crate::process::Process;
 use crate::process::Regs;
 use crate::process::State;
 use crate::process::pid::Pid;
+use crate::process::rusage::RUsage;
 use crate::process::scheduler::Scheduler;
 use crate::process;
 
@@ -22,8 +24,8 @@ const WCONTINUED: i32 = 0b100;
 /// `proc` is the current process.
 /// `pid` is the constraint given to the system call.
 /// `i` is the index of the target process.
-/// The function built such as iterating on `i` until the function returns None gives every targets
-/// for the system call.
+/// The function is built such as iterating on `i` until the function returns None gives every
+/// targets for the system call.
 fn get_target(scheduler: &mut Scheduler, proc: &Process, pid: i32, i: usize) -> Option<Pid> {
 	if pid < -1 {
 		let _group_leader = scheduler.get_by_pid(-pid as _)?;
@@ -76,38 +78,58 @@ fn get_wstatus(proc: &Process) -> i32 {
 	wstatus
 }
 
+/// Waits on the given process.
+/// `proc` is the current process.
+/// `wstatus` is a reference to the wait status. If None, the wstatus is not written.
+/// `rusage` is the pointer to the resource usage structure.
+fn wait_proc(proc: &mut Process, wstatus: &mut Option<&mut i32>,
+	rusage: &mut Option<&mut RUsage>) {
+	if let Some(wstatus) = wstatus {
+		**wstatus = get_wstatus(&proc);
+	}
+	if let Some(rusage) = rusage {
+		**rusage = proc.get_rusage().clone();
+	}
+
+	proc.clear_waitable();
+}
+
 /// Checks if at least one process corresponding to the given constraint is waitable. If yes, the
 /// function clears its waitable state, sets the wstatus and returns the process's PID.
 /// `proc` is the current process.
 /// `pid` is the constraint given to the system call.
 /// `wstatus` is a reference to the wait status. If None, the wstatus is not written.
-fn check_waitable(proc: &Process, pid: i32, wstatus: &mut Option<&mut i32>)
-	-> Result<Option<Pid>, Errno> {
+/// `rusage` is the pointer to the resource usage structure.
+fn check_waitable(proc: &mut Process, pid: i32, wstatus: &mut Option<&mut i32>,
+	rusage: &mut Option<&mut RUsage>) -> Result<Option<Pid>, Errno> {
 	let mut scheduler_guard = process::get_scheduler().lock();
 	let scheduler = scheduler_guard.get_mut();
 
 	// Iterating on every target processes, checking if they can be waited on
 	let mut i = 0;
 	while let Some(pid) = get_target(scheduler, proc, pid, i) {
-		if let Some(p) = scheduler.get_by_pid(pid) {
+		if pid == proc.get_pid() {
+			// If waitable, return
+			if proc.is_waitable() {
+				wait_proc(proc, wstatus, rusage);
+				return Ok(Some(pid));
+			}
+		} else if let Some(p) = scheduler.get_by_pid(pid) {
 			let mut proc_guard = p.lock();
 			let p = proc_guard.get_mut();
 
 			// If waitable, return
 			if p.is_waitable() {
-				if let Some(wstatus) = wstatus {
-					**wstatus = get_wstatus(&p);
-				}
+				wait_proc(proc, wstatus, rusage);
 
-				p.clear_waitable();
-
-				if p.get_state() == process::State::Zombie {
-					let pid = p.get_pid();
+				// If the process was a zombie, remove it
+				if proc.get_state() == process::State::Zombie {
+					let pid = proc.get_pid();
 					drop(proc_guard);
 					scheduler.remove_process(pid);
 				}
 
-				return Ok(Some(pid as _));
+				return Ok(Some(pid));
 			}
 		}
 
@@ -125,27 +147,37 @@ fn check_waitable(proc: &Process, pid: i32, wstatus: &mut Option<&mut i32>)
 /// `pid` is the PID to wait for.
 /// `wstatus` is the pointer on which to write the status.
 /// `options` are flags passed with the syscall.
-pub fn do_waitpid(pid: i32, wstatus: *mut i32, options: i32) -> Result<i32, Errno> {
-	{
+/// `rusage` is the pointer to the resource usage structure.
+pub fn do_waitpid(pid: i32, wstatus: Option<NonNull<i32>>, options: i32,
+	rusage: Option<NonNull<RUsage>>) -> Result<i32, Errno> {
+	if wstatus.is_some() || rusage.is_some() {
 		let mutex = Process::get_current().unwrap();
 		let mut guard = mutex.lock();
 		let proc = guard.get_mut();
 
-		let len = size_of::<i32>();
-		if !proc.get_mem_space().unwrap().can_access(wstatus as _, len, true, true) {
-			return Err(errno::EINVAL);
+		// Checking access to wstatus
+		if let Some(wstatus) = wstatus {
+			let len = size_of::<i32>();
+			if !proc.get_mem_space().unwrap().can_access(wstatus.as_ptr() as _, len, true, true) {
+				return Err(errno::EINVAL);
+			}
+		}
+
+		// Checking access to rusage
+		if let Some(rusage) = rusage {
+			let len = size_of::<RUsage>();
+			if !proc.get_mem_space().unwrap().can_access(rusage.as_ptr() as _, len, true, true) {
+				return Err(errno::EINVAL);
+			}
 		}
 	}
 
-	let mut wstatus = {
-		if wstatus as usize != 0x0 {
-			Some(unsafe { // Safe because the pointer is checked before
-				&mut *wstatus
-			})
-		} else {
-			None
-		}
-	};
+	let mut wstatus = wstatus.map(| wstatus | unsafe { // Safe because the access is checked before
+		&mut *wstatus.as_ptr()
+	});
+	let mut rusage = rusage.map(| rusage | unsafe { // Safe because the access is checked before
+		&mut *rusage.as_ptr()
+	});
 
 	// Sleeping until a target process is waitable
 	loop {
@@ -156,7 +188,7 @@ pub fn do_waitpid(pid: i32, wstatus: *mut i32, options: i32) -> Result<i32, Errn
 			let proc = guard.get_mut();
 
 			// If waitable, return
-			if let Some(p) = check_waitable(proc, pid, &mut wstatus)? {
+			if let Some(p) = check_waitable(proc, pid, &mut wstatus, &mut rusage)? {
 				return Ok(p as _);
 			}
 		}
@@ -186,5 +218,5 @@ pub fn waitpid(regs: &Regs) -> Result<i32, Errno> {
 	let wstatus = regs.ecx as *mut i32;
 	let options = regs.edx as i32;
 
-	do_waitpid(pid, wstatus, options)
+	do_waitpid(pid, NonNull::new(wstatus), options, None)
 }

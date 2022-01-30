@@ -57,6 +57,7 @@ mod umount;
 mod uname;
 mod unlink;
 mod util;
+mod wait4;
 mod wait;
 mod waitpid;
 mod write;
@@ -123,6 +124,7 @@ use umask::umask;
 use umount::umount;
 use uname::uname;
 use unlink::unlink;
+use wait4::wait4;
 use waitpid::waitpid;
 use write::write;
 use writev::writev;
@@ -133,7 +135,7 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 	let id = regs.eax;
 
 	let result = match id {
-		// 0x000 => restart_syscall(regs),
+		0x000 => Ok(0), // restart_syscall
 		0x001 => _exit(regs),
 		0x002 => fork(regs),
 		0x003 => read(regs),
@@ -247,7 +249,7 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 		// TODO 0x06f => vhangup(regs),
 		// TODO 0x070 => idle(regs),
 		// TODO 0x071 => vm86old(regs),
-		// TODO 0x072 => wait4(regs),
+		0x072 => wait4(regs),
 		// TODO 0x073 => swapoff(regs),
 		// TODO 0x074 => sysinfo(regs),
 		// TODO 0x075 => ipc(regs),
@@ -263,7 +265,7 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 		// TODO 0x07f => create_module(regs),
 		0x080 => init_module(regs),
 		0x081 => delete_module(regs),
-		// TODO 0x082 => get_kernel_syms(regs),
+		// get_kernel_syms (not implemented)
 		// TODO 0x083 => quotactl(regs),
 		0x084 => getpgid(regs),
 		0x085 => fchdir(regs),
