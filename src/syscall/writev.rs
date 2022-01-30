@@ -38,6 +38,11 @@ pub fn writev(regs: &Regs) -> Result<i32, Errno> {
 	// TODO Compute total length, then check it is in bound
 	// Checking access to each buffers
 	for i in iov_slice {
+		// Ignoring zero entry
+		if i.iov_base.is_null() || i.iov_len == 0 {
+			continue;
+		}
+
 		if !proc.get_mem_space().unwrap().can_access(i.iov_base as *const _, i.iov_len, true,
 			false) {
 			return Err(errno::EFAULT);
@@ -49,6 +54,11 @@ pub fn writev(regs: &Regs) -> Result<i32, Errno> {
 	let mut total_len = 0;
 
 	for i in iov_slice {
+		// Ignoring zero entry
+		if i.iov_base.is_null() || i.iov_len == 0 {
+			continue;
+		}
+
 		// The size to write. This is limited to avoid an overflow on the total length
 		let l = min(i.iov_len, i32::MAX as usize - total_len);
 		// The slice on the data
