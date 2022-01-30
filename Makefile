@@ -25,6 +25,12 @@ TOUCH_UPDATE_FILES = Makefile
 
 
 
+# ------------------------------------------------------------------------------
+#    Configuration variables
+# ------------------------------------------------------------------------------
+
+
+
 # The path to the configuration file created by the configuration utility
 CONFIG_FILE = .config
 # Tells whether the configuration file exists
@@ -52,51 +58,7 @@ CONFIG_DEBUG_TEST := $(shell $(CONFIG_ATTR_SCRIPT) debug_test)
 
 
 # ------------------------------------------------------------------------------
-#    Checking for configuration file & documentation compilation
-# ------------------------------------------------------------------------------
-
-
-
-# The path to the documentation sources
-DOC_SRC_DIR = doc_src/
-# The path to the documentation build directory
-DOC_DIR = doc/
-
-
-
-ifeq ($(CONFIG_EXISTS), 0)
-
- ifneq ($(CONFIG_DEBUG_TEST), true)
-# The rule to compile everything
-all: $(NAME) iso doc
- else
-# The rule to compile everything
-all: $(NAME) iso
- endif
-
-# Builds the documentation
-doc: $(DOC_SRC_DIR)
-	$(CONFIG_ENV) RUSTFLAGS='$(RUSTFLAGS)' $(CARGO) doc $(CARGOFLAGS)
-	sphinx-build $(DOC_SRC_DIR) $(DOC_DIR)
-	rm -rf $(DOC_DIR)/references/
-	cp -r target/target/doc/ $(DOC_DIR)/references/
-else
-noconfig:
-	echo "File $(CONFIG_FILE) doesn't exist. Use \`make config\` to create it"
-	false
-
-all: noconfig
-doc: noconfig
-
-.SILENT: noconfig
-endif
-
-.PHONY: all doc
-
-
-
-# ------------------------------------------------------------------------------
-#    Kernel compilation
+#    Kernel compilation variables
 # ------------------------------------------------------------------------------
 
 
@@ -189,6 +151,59 @@ endif
 
 # The list of Rust language source files
 RUST_SRC := $(shell find $(SRC_DIR) -type f -name "*.rs")
+
+
+
+# ------------------------------------------------------------------------------
+#    Checking for configuration file & documentation compilation
+# ------------------------------------------------------------------------------
+
+
+
+# The path to the documentation sources
+DOC_SRC_DIR = doc_src/
+# The list of documentation sources
+DOC_SRC = $(shell find $(DOC_SRC_DIR) -type f)
+# The path to the documentation build directory
+DOC_DIR = doc/
+
+
+
+ifeq ($(CONFIG_EXISTS), 0)
+ ifneq ($(CONFIG_DEBUG_TEST), true)
+# The rule to compile everything
+all: $(NAME) iso doc
+ else
+# The rule to compile everything
+all: $(NAME) iso
+ endif
+
+# Builds the documentation
+doc: $(SRC) $(DOC_SRC)
+	$(CONFIG_ENV) RUSTFLAGS='$(RUSTFLAGS)' $(CARGO) doc $(CARGOFLAGS)
+	sphinx-build $(DOC_SRC_DIR) $(DOC_DIR)
+	rm -rf $(DOC_DIR)/references/
+	cp -r target/target/doc/ $(DOC_DIR)/references/
+else
+noconfig:
+	echo "File $(CONFIG_FILE) doesn't exist. Use \`make config\` to create it"
+	false
+
+all: noconfig
+doc: noconfig
+
+.PHONY: noconfig
+.SILENT: noconfig
+endif
+
+.PHONY: all doc
+
+
+
+# ------------------------------------------------------------------------------
+#    Kernel compilation
+# ------------------------------------------------------------------------------
+
 
 
 # The rule to create object directories
