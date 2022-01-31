@@ -18,7 +18,7 @@ pub fn writev(regs: &Regs) -> Result<i32, Errno> {
 
 	// Checking the size of the vector is in bounds
 	if iovcnt < 0 || iovcnt as usize > limits::IOV_MAX {
-		return Err(errno::EINVAL);
+		return Err(errno!(EINVAL));
 	}
 
 	let mutex = Process::get_current().unwrap();
@@ -28,7 +28,7 @@ pub fn writev(regs: &Regs) -> Result<i32, Errno> {
 	// Checking that the vector is accessible
 	if !proc.get_mem_space().unwrap().can_access(iov as *const _,
 		iovcnt as usize * size_of::<IOVec>(), true, false) {
-		return Err(errno::EFAULT);
+		return Err(errno!(EFAULT));
 	}
 
 	let iov_slice = unsafe { // Safe because the access is checked before
@@ -45,11 +45,11 @@ pub fn writev(regs: &Regs) -> Result<i32, Errno> {
 
 		if !proc.get_mem_space().unwrap().can_access(i.iov_base as *const _, i.iov_len, true,
 			false) {
-			return Err(errno::EFAULT);
+			return Err(errno!(EFAULT));
 		}
 	}
 
-	let fd = proc.get_fd(fd).ok_or(errno::EBADF)?;
+	let fd = proc.get_fd(fd).ok_or(errno!(EBADF))?;
 
 	let mut total_len = 0;
 

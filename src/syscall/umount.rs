@@ -23,7 +23,7 @@ pub fn umount(regs: &Regs) -> Result<i32, Errno> {
 
 	// Getting the mountpoint
 	let target_path = Path::from_str(target_slice, true)?;
-	let _mountpoint = mountpoint::from_path(&target_path).ok_or(errno::EINVAL)?;
+	let _mountpoint = mountpoint::from_path(&target_path).ok_or(errno!(EINVAL))?;
 
 	// TODO Check if busy (EBUSY)
 	// TODO If not, unmount

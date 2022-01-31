@@ -21,7 +21,7 @@ pub fn get_free_entry(process: &mut Process) -> Result<usize, Errno> {
 		}
 	}
 
-	Err(errno::ESRCH)
+	Err(errno!(ESRCH))
 }
 
 /// Returns an entry ID for the given process and entry number.
@@ -32,7 +32,7 @@ pub fn get_entry<'a>(proc: &'a mut Process, entry_number: i32)
 
 	// Checking the entry number is in bound
 	if entry_number != -1 && entry_number < TLS_BEGIN_INDEX as i32 || entry_number > end_entry {
-		return Err(errno::EINVAL);
+		return Err(errno!(EINVAL));
 	}
 
 	// The entry's ID
@@ -58,7 +58,7 @@ pub fn set_thread_area(regs: &Regs) -> Result<i32, Errno> {
 
 	// Checking the process can access the given pointer
 	if !proc.get_mem_space().unwrap().can_access(u_info as _, size_of::<UserDesc>(), true, true) {
-		return Err(errno::EFAULT);
+		return Err(errno!(EFAULT));
 	}
 
 

@@ -39,6 +39,7 @@ pub mod crypto;
 pub mod debug;
 pub mod device;
 pub mod elf;
+#[macro_use]
 pub mod errno;
 pub mod event;
 pub mod file;
@@ -185,12 +186,12 @@ extern "C" {
 }
 
 /// Launches the init process.
-fn init() -> Result<(), &'static str> {
-	let mutex = Process::new().or(Err("Failed to create init process!"))?;
+fn init() -> Result<(), Errno> {
+	let mutex = Process::new()?;
 	let mut lock = mutex.lock();
 	let proc = lock.get_mut();
 
-	let result = if cfg!(config_debug_testprocess) {
+	if cfg!(config_debug_testprocess) {
 		// The pointer to the beginning of the test process
 		let test_begin = unsafe {
 			core::mem::transmute::<unsafe extern "C" fn(), *const c_void>(test_process)
@@ -201,10 +202,7 @@ fn init() -> Result<(), &'static str> {
 		Path::from_str(INIT_PATH.as_bytes(), false).and_then(| path | {
 			exec(proc, &path, &[INIT_PATH], DEFAULT_ENVIRONMENT)
 		})
-	};
-
-	result.or_else(| e | Err(errno::strerror(e)))?;
-	Ok(())
+	}
 }
 
 /// This is the main function of the Rust source code, responsible for the initialization of the
@@ -219,7 +217,7 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 	tty::init();
 
 	if magic != multiboot::BOOTLOADER_MAGIC || !util::is_aligned(multiboot_ptr, 8) {
-		kernel_panic!("Bootloader non compliant with Multiboot2!", 0);
+		kernel_panic!("Bootloader non compliant with Multiboot2!");
 	}
 
 	// Initializing IDT, PIT and events handler
@@ -245,7 +243,7 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 	memory::malloc::init();
 
 	if init_vmem().is_err() {
-		crate::kernel_panic!("Cannot initialize kernel virtual memory!", 0);
+		crate::kernel_panic!("Cannot initialize kernel virtual memory!");
 	}
 
 	// From here, the kernel considers that memory management has been fully initialized
@@ -275,7 +273,7 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 	}
 	println!("Initializing devices management...");
 	if device::init().is_err() {
-		crate::kernel_panic!("Failed to initialize devices management!", 0);
+		crate::kernel_panic!("Failed to initialize devices management!");
 	}
 
 	let (root_major, root_minor) = args_parser.get_root_dev();
@@ -290,11 +288,11 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 
 	println!("Initializing processes...");
 	if process::init().is_err() {
-		kernel_panic!("Failed to init processes!", 0);
+		kernel_panic!("Failed to init processes!");
 	}
 
 	if let Err(e) = init() {
-		kernel_panic!(e, 0);
+		kernel_panic!("{}", e);
 	}
 	crate::enter_loop();
 }
@@ -316,7 +314,7 @@ fn panic(panic_info: &PanicInfo) -> ! {
 	if let Some(s) = panic_info.message() {
 		panic::rust_panic(s);
 	} else {
-		crate::kernel_panic!("Rust panic (no payload)", 0);
+		crate::kernel_panic!("Rust panic (no payload)");
 	}
 }
 

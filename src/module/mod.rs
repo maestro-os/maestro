@@ -163,7 +163,7 @@ impl Module {
 		let mod_name = parser.get_symbol_by_name("mod_name").or_else(|| {
 			crate::println!("Missing `mod_name` symbol in module image");
 			None
-		}).ok_or(errno::EINVAL)?;
+		}).ok_or(errno!(EINVAL))?;
 		let name_str = unsafe {
 			let ptr = mem.as_ptr().add(mod_name.st_value as usize);
 			let func: extern "C" fn() -> &'static str = transmute(ptr);
@@ -175,7 +175,7 @@ impl Module {
 		let mod_version = parser.get_symbol_by_name("mod_version").or_else(|| {
 			crate::println!("Missing `mod_version` symbol in module image");
 			None
-		}).ok_or(errno::EINVAL)?;
+		}).ok_or(errno!(EINVAL))?;
 		let version = unsafe {
 			let ptr = mem.as_ptr().add(mod_version.st_value as usize);
 			let func: extern "C" fn() -> Version = transmute(ptr);
@@ -188,7 +188,7 @@ impl Module {
 		let init = parser.get_symbol_by_name("init").or_else(|| {
 			crate::println!("Missing `init` symbol in module image");
 			None
-		}).ok_or(errno::EINVAL)?;
+		}).ok_or(errno!(EINVAL))?;
 		let ok = unsafe {
 			let ptr = mem.as_ptr().add(init.st_value as usize);
 			let func: extern "C" fn() -> bool = transmute(ptr);
@@ -196,7 +196,7 @@ impl Module {
 		};
 		if !ok {
 			crate::println!("Failed to load module `{}`", name);
-			return Err(errno::EINVAL);
+			return Err(errno!(EINVAL));
 		}
 
 		// Retrieving destructor function

@@ -187,7 +187,7 @@ pub fn alloc(order: FrameOrder, flags: Flags) -> Result<*mut c_void, Errno> {
 			}
 		}
 	}
-	Err(errno::ENOMEM)
+	Err(errno!(ENOMEM))
 }
 
 /// Calls `alloc` with order `order`. The allocated frame is in the kernel zone.

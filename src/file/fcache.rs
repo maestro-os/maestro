@@ -87,7 +87,7 @@ impl FCache {
 		path.reduce()?;
 
 		// Getting the path's deepest mountpoint
-		let mountpoint_mutex = mountpoint::get_deepest(&path).ok_or(errno::ENOENT)?;
+		let mountpoint_mutex = mountpoint::get_deepest(&path).ok_or(errno!(ENOENT))?;
 		let mut mountpoint_guard = mountpoint_mutex.lock();
 		let mountpoint = mountpoint_guard.get_mut();
 
@@ -116,7 +116,7 @@ impl FCache {
 
 					// Checking permissions
 					if i < inner_path.get_elements_count() - 1 && !file.can_read(uid, gid) {
-						return Err(errno::EPERM);
+						return Err(errno!(EPERM));
 					}
 
 					inode = fs.get_inode(io, Some(inode), Some(name))?;
@@ -143,14 +143,14 @@ impl FCache {
 		content: FileContent) -> Result<SharedPtr<File>, Errno> {
 		// Checking for errors
 		if parent.get_file_type() != FileType::Directory {
-			return Err(errno::ENOTDIR);
+			return Err(errno!(ENOTDIR));
 		}
 		if !parent.can_write(uid, gid) {
-			return Err(errno::EPERM);
+			return Err(errno!(EPERM));
 		}
 
 		// Getting the mountpoint
-		let mountpoint_mutex = parent.get_location().get_mountpoint().ok_or(errno::ENOENT)?;
+		let mountpoint_mutex = parent.get_location().get_mountpoint().ok_or(errno!(ENOENT))?;
 		let mut mountpoint_guard = mountpoint_mutex.lock();
 		let mountpoint = mountpoint_guard.get_mut();
 
@@ -161,7 +161,7 @@ impl FCache {
 
 		let fs = mountpoint.get_filesystem();
 		if fs.is_readonly() {
-			return Err(errno::EROFS);
+			return Err(errno!(EROFS));
 		}
 
 		// The parent directory's inode
@@ -191,11 +191,11 @@ impl FCache {
 
 		// Checking permissions
 		if !file.can_write(uid, gid) || !parent.can_write(uid, gid) {
-			return Err(errno::EPERM);
+			return Err(errno!(EPERM));
 		}
 
 		// Getting the mountpoint
-		let mountpoint_mutex = file.get_location().get_mountpoint().ok_or(errno::ENOENT)?;
+		let mountpoint_mutex = file.get_location().get_mountpoint().ok_or(errno!(ENOENT))?;
 		let mut mountpoint_guard = mountpoint_mutex.lock();
 		let mountpoint = mountpoint_guard.get_mut();
 

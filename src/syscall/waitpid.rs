@@ -137,7 +137,7 @@ fn check_waitable(proc: &mut Process, pid: i32, wstatus: &mut Option<&mut i32>,
 	}
 	if i == 0 {
 		// No target
-		return Err(errno::ECHILD);
+		return Err(errno!(ECHILD));
 	}
 
 	Ok(None)
@@ -159,7 +159,7 @@ pub fn do_waitpid(pid: i32, wstatus: Option<NonNull<i32>>, options: i32,
 		if let Some(wstatus) = wstatus {
 			let len = size_of::<i32>();
 			if !proc.get_mem_space().unwrap().can_access(wstatus.as_ptr() as _, len, true, true) {
-				return Err(errno::EINVAL);
+				return Err(errno!(EINVAL));
 			}
 		}
 
@@ -167,7 +167,7 @@ pub fn do_waitpid(pid: i32, wstatus: Option<NonNull<i32>>, options: i32,
 		if let Some(rusage) = rusage {
 			let len = size_of::<RUsage>();
 			if !proc.get_mem_space().unwrap().can_access(rusage.as_ptr() as _, len, true, true) {
-				return Err(errno::EINVAL);
+				return Err(errno!(EINVAL));
 			}
 		}
 	}

@@ -15,7 +15,6 @@
 // TODO Add support for third and fourth bus
 
 use crate::errno::Errno;
-use crate::errno;
 use crate::io;
 use crate::util::math;
 use super::StorageInterface;
@@ -371,7 +370,7 @@ impl PATAInterface {
 				return Ok(());
 			}
 			if (status & STATUS_ERR != 0) || (status & STATUS_DF != 0) {
-				return Err(errno::EIO);
+				return Err(crate::errno!(EIO));
 			}
 		}
 	}
@@ -497,7 +496,7 @@ impl StorageInterface for PATAInterface {
 
 	fn read(&self, buf: &mut [u8], offset: u64, size: u64) -> Result<(), Errno> {
 		if offset >= self.sectors_count || offset + size >= self.sectors_count {
-			return Err(errno::EINVAL);
+			return Err(crate::errno!(EINVAL));
 		}
 
 		if offset < (1 << 29) - 1 {
@@ -509,7 +508,7 @@ impl StorageInterface for PATAInterface {
 
 	fn write(&mut self, buf: &[u8], offset: u64, size: u64) -> Result<(), Errno> {
 		if offset >= self.sectors_count || offset + size >= self.sectors_count {
-			return Err(errno::EINVAL);
+			return Err(crate::errno!(EINVAL));
 		}
 
 		if offset < (1 << 29) - 1 {

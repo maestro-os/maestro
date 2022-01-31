@@ -537,7 +537,7 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 		if let Ok(val) = result {
 			val as _
 		} else {
-			-result.unwrap_err() as _
+			(-result.unwrap_err().as_int()) as _
 		}
 	};
 	regs.eax = retval;

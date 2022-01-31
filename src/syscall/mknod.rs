@@ -31,11 +31,11 @@ pub fn mknod(regs: &Regs) -> Result<i32, Errno> {
 	};
 
 	if path.is_empty() {
-		return Err(errno::EEXIST);
+		return Err(errno!(EEXIST));
 	}
 
 	let mode = mode & !umask;
-	let file_type = FileType::from_mode(mode).ok_or(errno::EPERM)?;
+	let file_type = FileType::from_mode(mode).ok_or(errno!(EPERM))?;
 
 	// The file name
 	let name = path[path.get_elements_count() - 1].failable_clone()?;
@@ -62,7 +62,7 @@ pub fn mknod(regs: &Regs) -> Result<i32, Errno> {
 			minor,
 		},
 
-		_ => return Err(errno::EPERM),
+		_ => return Err(errno!(EPERM)),
 	};
 
 	// Creating the node

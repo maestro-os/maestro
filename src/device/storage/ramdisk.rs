@@ -66,7 +66,7 @@ impl StorageInterface for RAMDisk {
 
 	fn read(&self, buf: &mut [u8], offset: u64, size: u64) -> Result<(), Errno> {
 		if offset > self.get_blocks_count() || offset + size > self.get_blocks_count() {
-			return Err(errno::EINVAL);
+			return Err(errno!(EINVAL));
 		}
 
 		if !self.is_allocated() {
@@ -92,7 +92,7 @@ impl StorageInterface for RAMDisk {
 
 	fn write(&mut self, buf: &[u8], offset: u64, size: u64) -> Result<(), Errno> {
 		if offset > self.get_blocks_count() || offset + size > self.get_blocks_count() {
-			return Err(errno::EINVAL);
+			return Err(errno!(EINVAL));
 		}
 
 		self.allocate()?;
@@ -131,7 +131,7 @@ impl RAMDiskHandle {
 impl DeviceHandle for RAMDiskHandle {
 	fn ioctl(&mut self, _request: u32, _argp: *const c_void) -> Result<u32, Errno> {
 		// TODO
-		Err(errno::EINVAL)
+		Err(errno!(EINVAL))
 	}
 }
 

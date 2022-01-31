@@ -16,6 +16,6 @@ pub fn close(regs: &Regs) -> Result<i32, Errno> {
 	if proc.close_fd(fd).is_ok() {
 		Ok(0)
 	} else {
-		Err(errno::EBADF)
+		Err(errno!(EBADF))
 	}
 }

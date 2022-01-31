@@ -15,7 +15,7 @@ pub fn delete_module(regs: &Regs) -> Result<i32, Errno> {
 		let proc = proc_guard.get();
 
 		if proc.get_uid() != 0 {
-			return Err(errno::EPERM);
+			return Err(errno!(EPERM));
 		}
 
 		// TODO Check the name is accessible to the process

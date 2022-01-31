@@ -111,7 +111,7 @@ impl TmpFS {
 			self.size += s;
 			Ok(())
 		} else {
-			Err(errno::ENOSPC)
+			Err(errno!(ENOSPC))
 		}
 	}
 }

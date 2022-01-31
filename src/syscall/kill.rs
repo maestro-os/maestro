@@ -15,26 +15,23 @@ use crate::process;
 /// If `sig` is None, the function doesn't send a signal, but still checks if there is a process
 /// that could be killed.
 fn try_kill(pid: i32, sig: Option<Signal>, euid: Uid) -> Result<i32, Errno> {
-	if let Some(proc) = Process::get_by_pid(pid as Pid) {
-		let mut guard = proc.lock();
-		let proc = guard.get_mut();
+	let proc = Process::get_by_pid(pid as Pid).ok_or(errno!(ESRCH))?;
+	let mut guard = proc.lock();
+	let proc = guard.get_mut();
 
-		if proc.get_state() != State::Zombie {
-			if euid == proc.get_uid() || euid == proc.get_euid() {
-				if let Some(sig) = sig {
-					proc.kill(sig, false);
-				}
-
-				Ok(0)
-			} else {
-				Err(errno::EPERM)
-			}
-		} else {
-			Err(errno::ESRCH)
-		}
-	} else {
-		Err(errno::ESRCH)
+	if proc.get_state() == State::Zombie {
+		return Err(errno!(ESRCH));
 	}
+
+	if euid != proc.get_uid() && euid != proc.get_euid() {
+		return Err(errno!(EPERM));
+	}
+
+	if let Some(sig) = sig {
+		proc.kill(sig, false);
+	}
+
+	Ok(0)
 }
 
 /// Sends the signal `sig` to the processes according to the given value `pid`.
@@ -61,7 +58,7 @@ fn send_signal(pid: i32, sig: Option<Signal>, proc: &mut Process) -> Result<i32,
 		if !group.is_empty() {
 			Ok(0)
 		} else {
-			Err(errno::ESRCH)
+			Err(errno!(ESRCH))
 		}
 	} else if pid == -1 {
 		let mut scheduler_guard = process::get_scheduler().lock();
@@ -87,7 +84,7 @@ fn send_signal(pid: i32, sig: Option<Signal>, proc: &mut Process) -> Result<i32,
 		if found {
 			Ok(0)
 		} else {
-			Err(errno::ESRCH)
+			Err(errno!(ESRCH))
 		}
 	} else {
 		if let Some(proc) = Process::get_by_pid(-pid as _) {
@@ -104,10 +101,10 @@ fn send_signal(pid: i32, sig: Option<Signal>, proc: &mut Process) -> Result<i32,
 			if !group.is_empty() {
 				Ok(0)
 			} else {
-				Err(errno::ESRCH)
+				Err(errno!(ESRCH))
 			}
 		} else {
-			Err(errno::ESRCH)
+			Err(errno!(ESRCH))
 		}
 	}
 }

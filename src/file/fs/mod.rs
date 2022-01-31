@@ -157,7 +157,7 @@ pub fn detect(io: &mut dyn IO) -> Result<SharedPtr<dyn FilesystemType>, Errno> {
 		}
 	}
 
-	Err(errno::ENODEV)
+	Err(errno!(ENODEV))
 }
 
 /// Registers the filesystems that are implemented inside of the kernel itself.

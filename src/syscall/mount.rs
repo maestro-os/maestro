@@ -52,12 +52,12 @@ pub fn mount(regs: &Regs) -> Result<i32, Errno> {
 
 	// Checking the target is a directory
 	if target_file.get_file_type() != FileType::Directory {
-		return Err(errno::ENOTDIR);
+		return Err(errno!(ENOTDIR));
 	}
 
 	// TODO Check for loop between source and target
 
-	let fs_type = fs::get_fs(filesystemtype_slice).ok_or(errno::ENODEV)?;
+	let fs_type = fs::get_fs(filesystemtype_slice).ok_or(errno!(ENODEV))?;
 
 	// TODO Use `data`
 	// Creating mountpoint

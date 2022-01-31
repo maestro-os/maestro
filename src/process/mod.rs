@@ -472,7 +472,7 @@ impl Process {
 				let i = new_group_process.process_group.binary_search(&self.pid).unwrap_err();
 				new_group_process.process_group.insert(i, self.pid)
 			} else {
-				Err(errno::ESRCH)
+				Err(errno!(ESRCH))
 			}
 		} else {
 			Ok(())
@@ -777,7 +777,7 @@ impl Process {
 		if id < limits::OPEN_MAX {
 			Ok(id as u32)
 		} else {
-			Err(errno::EMFILE)
+			Err(errno!(EMFILE))
 		}
 	}
 
@@ -810,7 +810,7 @@ impl Process {
 			}
 		};
 
-		let curr_fd = self.get_fd(id).ok_or(errno::EBADF)?;
+		let curr_fd = self.get_fd(id).ok_or(errno!(EBADF))?;
 		let new_fd = FileDescriptor::new(new_id, curr_fd.get_flags(),
 			curr_fd.get_target().clone())?;
 
@@ -856,7 +856,7 @@ impl Process {
 			self.file_descriptors.remove(index);
 			Ok(())
 		} else {
-			Err(errno::EBADF)
+			Err(errno!(EBADF))
 		}
 	}
 

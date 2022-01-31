@@ -27,10 +27,10 @@ pub fn rt_sigprocmask(regs: &Regs) -> Result<i32, Errno> {
 
 	// Checking access to pointers
 	if !proc.get_mem_space().unwrap().can_access(set, sigsetsize as _, true, false) {
-		return Err(errno::EINVAL);
+		return Err(errno!(EINVAL));
 	}
 	if !proc.get_mem_space().unwrap().can_access(oldset, sigsetsize as _, true, true) {
-		return Err(errno::EINVAL);
+		return Err(errno!(EINVAL));
 	}
 
 	// Getting slices to pointers
@@ -81,7 +81,7 @@ pub fn rt_sigprocmask(regs: &Regs) -> Result<i32, Errno> {
 				}
 			},
 
-			_ => return Err(errno::EINVAL),
+			_ => return Err(errno!(EINVAL)),
 		}
 	}
 

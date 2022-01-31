@@ -18,7 +18,7 @@ pub fn pipe2(regs: &Regs) -> Result<i32, Errno> {
 	let accepted_flags = file_descriptor::O_CLOEXEC | file_descriptor::O_DIRECT
 		| file_descriptor::O_NONBLOCK;
 	if flags & !accepted_flags != 0 {
-		return Err(errno::EINVAL);
+		return Err(errno!(EINVAL));
 	}
 
 	let (fd0, fd1) = {
@@ -28,7 +28,7 @@ pub fn pipe2(regs: &Regs) -> Result<i32, Errno> {
 
 		let len = size_of::<i32>() * 2;
 		if !proc.get_mem_space().unwrap().can_access(pipefd as _, len, true, true) {
-			return Err(errno::EFAULT);
+			return Err(errno!(EFAULT));
 		}
 
 		let pipe = SharedPtr::new(Pipe::new()?);

@@ -22,7 +22,7 @@ pub fn read(regs: &Regs) -> Result<i32, Errno> {
 		let proc = guard.get_mut();
 
 		if !proc.get_mem_space().unwrap().can_access(buf, count, true, true) {
-			return Err(errno::EFAULT);
+			return Err(errno!(EFAULT));
 		}
 	}
 
@@ -43,7 +43,7 @@ pub fn read(regs: &Regs) -> Result<i32, Errno> {
 			let mut guard = mutex.lock();
 			let proc = guard.get_mut();
 
-			let fd = proc.get_fd(fd).ok_or(errno::EBADF)?;
+			let fd = proc.get_fd(fd).ok_or(errno!(EBADF))?;
 			// TODO Check file permissions?
 
 			let flags = fd.get_flags();

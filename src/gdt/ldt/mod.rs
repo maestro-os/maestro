@@ -67,7 +67,7 @@ impl LDT {
 	/// If the index is out of bounds, the function fails.
 	pub fn set(&mut self, i: usize, entry: Entry) -> Result<(), Errno> {
 		if i > 0 && i * 8 - 1 > u16::MAX as _ {
-			return Err(errno::EINVAL);
+			return Err(errno!(EINVAL));
 		}
 
 		self.entries.insert(i, entry)?;

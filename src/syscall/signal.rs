@@ -22,7 +22,7 @@ pub fn signal(regs: &Regs) -> Result<i32, Errno> {
 	let handler = regs.ecx as *const c_void;
 
 	if signum as usize >= signal::SIGNALS_COUNT {
-		return Err(errno::EINVAL);
+		return Err(errno!(EINVAL));
 	}
 
 	let h = match handler {

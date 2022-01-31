@@ -168,7 +168,7 @@ impl Ext2INode {
 	fn get_disk_offset(i: u32, superblock: &Superblock, io: &mut dyn IO) -> Result<u64, Errno> {
 		// Checking the inode is correct
 		if i == 0 {
-			return Err(errno::EINVAL);
+			return Err(errno!(EINVAL));
 		}
 
 		let blk_size = superblock.get_block_size();
@@ -564,7 +564,7 @@ impl Ext2INode {
 		io: &mut dyn IO) -> Result<usize, Errno> {
 		let size = self.get_size(&superblock);
 		if off > size {
-			return Err(errno::EINVAL);
+			return Err(errno!(EINVAL));
 		}
 
 		let blk_size = superblock.get_block_size();
@@ -601,7 +601,7 @@ impl Ext2INode {
 		io: &mut dyn IO) -> Result<(), Errno> {
 		let curr_size = self.get_size(superblock);
 		if off > curr_size {
-			return Err(errno::EINVAL);
+			return Err(errno!(EINVAL));
 		}
 
 		let blk_size = superblock.get_block_size();
@@ -912,7 +912,7 @@ impl Ext2INode {
 		let name_length = name.as_bytes().len() as u16;
 		let entry_size = 8 + name_length;
 		if entry_size as u32 > blk_size {
-			return Err(errno::ENAMETOOLONG);
+			return Err(errno!(ENAMETOOLONG));
 		}
 
 		if let Some(free_entry_off) = self.get_free_entry(superblock, io, entry_size)? {

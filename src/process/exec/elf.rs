@@ -128,7 +128,7 @@ fn read_exec_file(path: &Path, uid: Uid, gid: Gid) -> Result<malloc::Alloc<u8>, 
 
 	// Check that the file can be executed by the user
 	if !file.can_execute(uid, gid) {
-		return Err(errno::ENOEXEC);
+		return Err(errno!(ENOEXEC));
 	}
 
 	// Allocating memory for the file's content
@@ -373,7 +373,7 @@ impl Executor for ELFExecutor {
 			let pages_count = math::ceil_division(total_size, memory::PAGE_SIZE);
 			// Checking that the data doesn't exceed the stack's size
 			if pages_count >= process::USER_STACK_SIZE {
-				return Err(errno::ENOMEM);
+				return Err(errno!(ENOMEM));
 			}
 
 			// Allocating the pages on the stack to write the initial data

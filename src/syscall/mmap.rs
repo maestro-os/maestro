@@ -51,7 +51,7 @@ pub fn mmap(regs: &Regs) -> Result<i32, Errno> {
 
 	// Checking alignment of `addr` and `length`
 	if !util::is_aligned(addr, memory::PAGE_SIZE) || length % memory::PAGE_SIZE != 0 {
-		return Err(errno::EINVAL);
+		return Err(errno!(EINVAL));
 	}
 
 	// The length in number of pages
@@ -60,7 +60,7 @@ pub fn mmap(regs: &Regs) -> Result<i32, Errno> {
 	// Checking for overflow
 	let end = wrapping_add(addr as usize, length);
 	if end < addr as usize {
-		return Err(errno::EINVAL);
+		return Err(errno!(EINVAL));
 	}
 
 	let addr_hint = {
@@ -94,7 +94,7 @@ pub fn mmap(regs: &Regs) -> Result<i32, Errno> {
 	if let Some(_fd) = &fd {
 		// Checking the alignment of the offset
 		if offset as usize % memory::PAGE_SIZE != 0 {
-			return Err(errno::EINVAL);
+			return Err(errno!(EINVAL));
 		}
 
 		// TODO Check the read/write state of the fd matches the mapping

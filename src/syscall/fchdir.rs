@@ -19,10 +19,10 @@ pub fn fchdir(regs: &Regs) -> Result<i32, Errno> {
 	let gid = proc.get_egid();
 
 	if fd < 0 {
-		return Err(errno::EBADF);
+		return Err(errno!(EBADF));
 	}
 
-	let fd = proc.get_fd(fd as _).ok_or(errno::EBADF)?;
+	let fd = proc.get_fd(fd as _).ok_or(errno!(EBADF))?;
 	if let FDTarget::File(dir_mutex) = fd.get_target_mut() {
 		let new_cwd = {
 			let mut dir_guard = dir_mutex.lock();
@@ -30,10 +30,10 @@ pub fn fchdir(regs: &Regs) -> Result<i32, Errno> {
 
 			// Checking for errors
 			if !dir.can_read(uid, gid) {
-				return Err(errno::EACCES);
+				return Err(errno!(EACCES));
 			}
 			if dir.get_file_type() != FileType::Directory {
-				return Err(errno::ENOTDIR);
+				return Err(errno!(ENOTDIR));
 			}
 
 			dir.get_path()
@@ -43,6 +43,6 @@ pub fn fchdir(regs: &Regs) -> Result<i32, Errno> {
 		proc.set_cwd(new_cwd)?;
 		Ok(0)
 	} else {
-		Err(errno::ENOTDIR)
+		Err(errno!(ENOTDIR))
 	}
 }

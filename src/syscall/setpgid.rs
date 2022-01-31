@@ -32,7 +32,7 @@ pub fn setpgid(regs: &Regs) -> Result<i32, Errno> {
 			if let Some(proc) = Process::get_by_pid(pid) {
 				proc
 			} else {
-				return Err(errno::ESRCH);
+				return Err(errno!(ESRCH));
 			}
 		};
 		let mut guard = mutex.lock();

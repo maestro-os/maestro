@@ -2,6 +2,7 @@
 //! used to log kernel informations. They can be silenced at boot using the `-silent` command line
 //! argument but they will be kept in the logger anyways.
 
+use core::fmt;
 use crate::logger;
 
 /// Prints the specified message on the current TTY. This function is meant to be used through
@@ -9,7 +10,7 @@ use crate::logger;
 pub fn _print(args: core::fmt::Arguments) {
 	let mutex = logger::get();
 	let mut guard = mutex.lock();
-	core::fmt::write(guard.get_mut(), args).ok();
+	fmt::write(guard.get_mut(), args).ok();
 }
 
 /// Prints the given formatted string with the given values.

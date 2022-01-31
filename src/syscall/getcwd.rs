@@ -11,7 +11,7 @@ pub fn getcwd(regs: &Regs) -> Result<i32, Errno> {
 	let size = regs.ecx as u32;
 
 	if size == 0 && !buf.is_null() {
-		return Err(errno::EINVAL);
+		return Err(errno!(EINVAL));
 	}
 
 	let cwd = {
@@ -21,14 +21,14 @@ pub fn getcwd(regs: &Regs) -> Result<i32, Errno> {
 
 		// Checking that the buffer is accessible
 		if !proc.get_mem_space().unwrap().can_access(buf, size as _, true, true) {
-			return Err(errno::EFAULT);
+			return Err(errno!(EFAULT));
 		}
 
 		proc.get_cwd().as_string()?
 	};
 	// Checking that the buffer is large enough
 	if (size as usize) < cwd.len() + 1 {
-		return Err(errno::ERANGE);
+		return Err(errno!(ERANGE));
 	}
 
 	for i in 0..cwd.len() {

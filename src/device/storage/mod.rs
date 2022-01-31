@@ -62,7 +62,7 @@ pub trait StorageInterface {
 		let blk_begin = offset / block_size;
 		let blk_end = (offset + buf.len() as u64) / block_size;
 		if blk_begin >= self.get_blocks_count() || blk_end >= self.get_blocks_count() {
-			return Err(errno::EINVAL);
+			return Err(errno!(EINVAL));
 		}
 
 		// TODO Alloc only if needed?
@@ -116,7 +116,7 @@ pub trait StorageInterface {
 		let blk_begin = offset / block_size;
 		let blk_end = (offset + buf.len() as u64) / block_size;
 		if blk_begin >= self.get_blocks_count() || blk_end >= self.get_blocks_count() {
-			return Err(errno::EINVAL);
+			return Err(errno!(EINVAL));
 		}
 
 		// TODO Alloc only if needed?
@@ -218,7 +218,7 @@ pub mod partition {
 
 		let mut first_sector: [u8; 512] = [0; 512];
 		if storage.read(&mut first_sector, 0, 1).is_err() {
-			return Err(errno::EIO);
+			return Err(errno!(EIO));
 		}
 
 		// Valid because taking the pointer to the buffer on the stack which has the same size as
@@ -269,7 +269,7 @@ impl StorageDeviceHandle {
 impl DeviceHandle for StorageDeviceHandle {
 	fn ioctl(&mut self, _request: u32, _argp: *const c_void) -> Result<u32, Errno> {
 		// TODO
-		Err(errno::EINVAL)
+		Err(errno!(EINVAL))
 	}
 }
 

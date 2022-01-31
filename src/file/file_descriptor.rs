@@ -61,7 +61,7 @@ fn increment_total() -> Result<(), Errno> {
 	let mut guard = TOTAL_FD.lock();
 
 	if *guard.get() >= TOTAL_MAX_FD {
-		return Err(errno::ENFILE);
+		return Err(errno!(ENFILE));
 	}
 	*guard.get_mut() += 1;
 
@@ -182,7 +182,7 @@ impl FileDescriptor {
 	/// The functions returns the number of bytes that have been read.
 	pub fn read(&mut self, buf: &mut [u8]) -> Result<usize, Errno> {
 		if self.flags & O_RDONLY == 0 {
-			return Err(errno::EINVAL);
+			return Err(errno!(EINVAL));
 		}
 
 		let len = match &mut self.target {
@@ -211,7 +211,7 @@ impl FileDescriptor {
 	/// The functions returns the number of bytes that have been written.
 	pub fn write(&mut self, buf: &[u8]) -> Result<usize, Errno> {
 		if self.flags & O_WRONLY == 0 {
-			return Err(errno::EINVAL);
+			return Err(errno!(EINVAL));
 		}
 
 		let len = match &mut self.target {
@@ -248,7 +248,7 @@ impl FileDescriptor {
 				todo!();
 			}
 
-			FDTarget::Socket(_) => Err(errno::EINVAL),
+			FDTarget::Socket(_) => Err(errno!(EINVAL)),
 		}
 	}
 }

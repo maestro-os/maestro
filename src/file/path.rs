@@ -46,13 +46,13 @@ impl Path {
 	/// error if too long).
 	pub fn from_str(path: &[u8], user: bool) -> Result<Self, Errno> {
 		if user && path.len() + 1 >= limits::PATH_MAX {
-			return Err(errno::ENAMETOOLONG);
+			return Err(errno!(ENAMETOOLONG));
 		}
 
 		let mut parts = Vec::new();
 		for p in path.split(| c | *c == PATH_SEPARATOR as u8) {
 			if p.len() + 1 >= limits::NAME_MAX {
-				return Err(errno::ENAMETOOLONG);
+				return Err(errno!(ENAMETOOLONG));
 			}
 
 			if !p.is_empty() {
@@ -102,7 +102,7 @@ impl Path {
 	/// Pushes the given filename `filename` onto the path.
 	pub fn push(&mut self, filename: String) -> Result<(), Errno> {
 		if filename.len() + 1 >= limits::NAME_MAX {
-			return Err(errno::ENAMETOOLONG);
+			return Err(errno!(ENAMETOOLONG));
 		}
 
 		self.parts.push(filename)

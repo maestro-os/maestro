@@ -161,7 +161,7 @@ impl Signal {
 				type_,
 			})
 		} else {
-			Err(errno::EINVAL)
+			Err(errno!(EINVAL))
 		}
 	}
 

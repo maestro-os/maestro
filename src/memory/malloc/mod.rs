@@ -38,7 +38,7 @@ pub unsafe fn alloc(n: usize) -> Result<*mut c_void, Errno> {
 	let _ = MUTEX.lock();
 
 	if n == 0 {
-		return Err(errno::EINVAL);
+		return Err(errno!(EINVAL));
 	}
 
 	let chunk = chunk::get_available_chunk(n)?.get_chunk();
@@ -77,7 +77,7 @@ pub unsafe fn realloc(ptr: *mut c_void, n: usize) -> Result<*mut c_void, Errno> 
 	let _ = MUTEX.lock();
 
 	if n == 0 {
-		return Err(errno::EINVAL);
+		return Err(errno!(EINVAL));
 	}
 
 	let chunk = Chunk::from_ptr(ptr);

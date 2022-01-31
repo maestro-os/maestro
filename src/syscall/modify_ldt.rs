@@ -17,7 +17,7 @@ pub fn modify_ldt(regs: &Regs) -> Result<i32, Errno> {
 
 	// Checking the given pointer is not null
 	if ptr.is_null() {
-		return Err(errno::EINVAL);
+		return Err(errno!(EINVAL));
 	}
 
 	// Getting the current process
@@ -27,7 +27,7 @@ pub fn modify_ldt(regs: &Regs) -> Result<i32, Errno> {
 
 	// Checking the process can access the given pointer
 	if !proc.get_mem_space().unwrap().can_access(ptr as _, bytecount as _, true, true) {
-		return Err(errno::EFAULT);
+		return Err(errno!(EFAULT));
 	}
 
 	match func {
@@ -38,7 +38,7 @@ pub fn modify_ldt(regs: &Regs) -> Result<i32, Errno> {
 		},
 		1 | 0x11 => {
 			if bytecount != user_desc::USER_DESC_SIZE as _ {
-				return Err(errno::EINVAL);
+				return Err(errno!(EINVAL));
 			}
 
 			// A reference to the user_desc structure
@@ -71,7 +71,7 @@ pub fn modify_ldt(regs: &Regs) -> Result<i32, Errno> {
 		},
 
 		_ => {
-			return Err(errno::ENOSYS);
+			return Err(errno!(ENOSYS));
 		},
 	}
 }

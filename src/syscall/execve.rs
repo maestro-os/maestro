@@ -63,7 +63,7 @@ pub fn execve(regs: &Regs) -> Result<i32, Errno> {
 
 		// Checking execute permission
 		if !f.can_execute(uid, gid) {
-			return Err(errno::EACCES);
+			return Err(errno!(EACCES));
 		}
 
 		let mut shebang: [u8; SHEBANG_MAX] = [0; SHEBANG_MAX];

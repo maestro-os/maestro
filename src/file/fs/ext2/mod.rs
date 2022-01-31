@@ -413,7 +413,7 @@ impl Superblock {
 			}
 		}
 
-		Err(errno::ENOSPC)
+		Err(errno!(ENOSPC))
 	}
 
 	/// Marks the inode `inode` used on the filesystem.
@@ -472,7 +472,7 @@ impl Superblock {
 			}
 		}
 
-		Err(errno::ENOSPC)
+		Err(errno!(ENOSPC))
 	}
 
 	/// Marks the block `blk` used on the filesystem.
@@ -539,7 +539,7 @@ impl Ext2Fs {
 
 			if superblock.required_features & unsupported_required_features != 0 {
 				// TODO Log?
-				return Err(errno::EINVAL);
+				return Err(errno!(EINVAL));
 			}
 
 			// TODO Implement
@@ -547,13 +547,13 @@ impl Ext2Fs {
 
 			if !readonly && superblock.write_required_features & unsupported_write_features != 0 {
 				// TODO Log?
-				return Err(errno::EROFS);
+				return Err(errno!(EROFS));
 			}
 		}
 
 		let timestamp = time::get();
 		if superblock.mount_count_since_fsck >= superblock.mount_count_before_fsck {
-			return Err(errno::EINVAL);
+			return Err(errno!(EINVAL));
 		}
 		// TODO
 		/*if timestamp >= superblock.last_fsck_timestamp + superblock.fsck_interval {
@@ -621,14 +621,14 @@ impl Filesystem for Ext2Fs {
 		// Getting the parent inode
 		let parent = Ext2INode::read(parent_inode, &self.superblock, io)?;
 		if parent.get_type() != FileType::Directory {
-			return Err(errno::ENOTDIR);
+			return Err(errno!(ENOTDIR));
 		}
 
 		// Getting the entry with the given name
 		if let Some(entry) = parent.get_directory_entry(name.as_bytes(), &self.superblock, io)? {
 			Ok(entry.get_inode())
 		} else {
-			Err(errno::ENOENT)
+			Err(errno!(ENOENT))
 		}
 	}
 
@@ -707,19 +707,19 @@ impl Filesystem for Ext2Fs {
 	fn add_file(&mut self, io: &mut dyn IO, parent_inode: INode, name: String, uid: Uid, gid: Gid,
 		mode: Mode, content: FileContent) -> Result<File, Errno> {
 		if self.readonly {
-			return Err(errno::EROFS);
+			return Err(errno!(EROFS));
 		}
 
 		let mut parent = Ext2INode::read(parent_inode, &self.superblock, io)?;
 
 		// Checking the parent file is a directory
 		if parent.get_type() != FileType::Directory {
-			return Err(errno::ENOTDIR);
+			return Err(errno!(ENOTDIR));
 		}
 
 		// Checking if the file already exists
 		if parent.get_directory_entry(name.as_bytes(), &self.superblock, io)?.is_some() {
-			return Err(errno::EEXIST);
+			return Err(errno!(EEXIST));
 		}
 
 		let inode_index = self.superblock.get_free_inode(io)?;
@@ -760,7 +760,7 @@ impl Filesystem for Ext2Fs {
 			FileContent::BlockDevice { major, minor }
 				| FileContent::CharDevice { major, minor } => {
 				if *major > (u8::MAX as u32) || *minor > (u8::MAX as u32) {
-					return Err(errno::ENODEV);
+					return Err(errno!(ENODEV));
 				}
 
 				inode.set_device(*major as u8, *minor as u8);
@@ -783,7 +783,7 @@ impl Filesystem for Ext2Fs {
 	fn add_link(&mut self, io: &mut dyn IO, parent_inode: INode, name: &String, inode: INode)
 		-> Result<(), Errno> {
 		if self.readonly {
-			return Err(errno::EROFS);
+			return Err(errno!(EROFS));
 		}
 
 		// Parent inode
@@ -791,7 +791,7 @@ impl Filesystem for Ext2Fs {
 
 		// Checking the parent file is a directory
 		if parent.get_type() != FileType::Directory {
-			return Err(errno::ENOTDIR);
+			return Err(errno!(ENOTDIR));
 		}
 
 		// The inode
@@ -806,7 +806,7 @@ impl Filesystem for Ext2Fs {
 
 	fn update_inode(&mut self, io: &mut dyn IO, file: &File) -> Result<(), Errno> {
 		if self.readonly {
-			return Err(errno::EROFS);
+			return Err(errno!(EROFS));
 		}
 
 		// The inode number
@@ -830,7 +830,7 @@ impl Filesystem for Ext2Fs {
 	fn remove_file(&mut self, io: &mut dyn IO, parent_inode: INode, name: &String)
 		-> Result<(), Errno> {
 		if self.readonly {
-			return Err(errno::EROFS);
+			return Err(errno!(EROFS));
 		}
 
 		debug_assert!(parent_inode >= 1);
@@ -840,18 +840,18 @@ impl Filesystem for Ext2Fs {
 
 		// Checking the parent file is a directory
 		if parent.get_type() != FileType::Directory {
-			return Err(errno::ENOTDIR);
+			return Err(errno!(ENOTDIR));
 		}
 
 		// The inode number
 		let inode = parent.get_directory_entry(name.as_bytes(), &self.superblock, io)?
-			.ok_or(errno::ENOENT)?.get_inode();
+			.ok_or(errno!(ENOENT))?.get_inode();
 		// The inode
 		let mut inode_ = Ext2INode::read(inode, &self.superblock, io)?;
 
 		// If the inode is a directory, ensure it is empty
 		if inode_.get_dir_entries_count(&self.superblock, io)? == 0 {
-			return Err(errno::ENOTEMPTY);
+			return Err(errno!(ENOTEMPTY));
 		}
 
 		// Removing the directory entry
@@ -885,7 +885,7 @@ impl Filesystem for Ext2Fs {
 	fn write_node(&mut self, io: &mut dyn IO, inode: INode, off: u64, buf: &[u8])
 		-> Result<(), Errno> {
 		if self.readonly {
-			return Err(errno::EROFS);
+			return Err(errno!(EROFS));
 		}
 
 		debug_assert!(inode >= 1);

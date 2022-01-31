@@ -268,7 +268,7 @@ pub extern "C" fn event_handler(id: u32, code: u32, ring: u32, regs: &Regs) {
 		},
 
 		InterruptResultAction::Panic => {
-			crate::kernel_panic!(get_error_message(id), code);
+			crate::kernel_panic!("{} (code: {})", get_error_message(id), code);
 		},
 	}
 }

@@ -27,7 +27,7 @@ pub fn reboot(regs: &Regs) -> Result<i32, Errno> {
 	let cmd = regs.edx as u32;
 
 	if magic != MAGIC || magic2 != MAGIC2 {
-		return Err(errno::EINVAL);
+		return Err(errno!(EINVAL));
 	}
 
 	{
@@ -35,7 +35,7 @@ pub fn reboot(regs: &Regs) -> Result<i32, Errno> {
 		let mut guard = mutex.lock();
 		let proc = guard.get_mut();
 		if proc.get_uid() != 0 {
-			return Err(errno::EPERM);
+			return Err(errno!(EPERM));
 		}
 	}
 
@@ -77,6 +77,6 @@ pub fn reboot(regs: &Regs) -> Result<i32, Errno> {
 			Ok(0)
 		},
 
-		_ => Err(errno::EINVAL),
+		_ => Err(errno!(EINVAL)),
 	}
 }

@@ -16,7 +16,7 @@ pub fn munmap(regs: &Regs) -> Result<i32, Errno> {
 	let length = regs.ecx as usize;
 
 	if !util::is_aligned(addr, memory::PAGE_SIZE) || length == 0 {
-		return Err(errno::EINVAL);
+		return Err(errno!(EINVAL));
 	}
 
 	let mutex = Process::get_current().unwrap();
@@ -30,13 +30,13 @@ pub fn munmap(regs: &Regs) -> Result<i32, Errno> {
 	// Checking for overflow
 	let end = wrapping_add(addr as usize, length);
 	if end < addr as usize {
-		return Err(errno::EINVAL);
+		return Err(errno!(EINVAL));
 	}
 
 	// Prevent from unmapping kernel memory
 	if (addr as usize) >= (memory::PROCESS_END as usize)
 		|| end > (memory::PROCESS_END as usize) {
-		return Err(errno::EINVAL);
+		return Err(errno!(EINVAL));
 	}
 
 	mem_space.unmap(addr, pages)?;

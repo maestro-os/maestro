@@ -47,7 +47,7 @@ fn get_file(path: Path, flags: i32, mode: Mode, uid: Uid, gid: Gid)
 		let name = path[path.get_elements_count() - 1].failable_clone()?;
 		files_cache.create_file(parent, name, uid, gid, mode, FileContent::Regular)
 	} else {
-		Err(errno::ENOENT)
+		Err(errno!(ENOENT))
 	}
 }
 
@@ -75,7 +75,7 @@ pub fn open_(pathname: *const u8, flags: i32, mode: file::Mode) -> Result<i32, E
 	// If O_DIRECTORY is set and the file is not a directory, return an error
 	if flags & file_descriptor::O_DIRECTORY != 0
 		&& file.lock().get().get_file_type() != FileType::Directory {
-		return Err(errno::ENOTDIR);
+		return Err(errno!(ENOTDIR));
 	}
 
 	// Create and return the file descriptor

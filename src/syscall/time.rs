@@ -19,7 +19,7 @@ pub fn time(regs: &Regs) -> Result<i32, Errno> {
 		let proc = guard.get_mut();
 
 		if !proc.get_mem_space().unwrap().can_access(tloc as _, size_of::<u32>(), true, true) {
-			return Err(errno::EFAULT);
+			return Err(errno!(EFAULT));
 		}
 	}
 

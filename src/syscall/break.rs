@@ -6,5 +6,5 @@ use crate::process::Regs;
 
 /// The implementation of the `break` syscall.
 pub fn r#break(_regs: &Regs) -> Result<i32, Errno> {
-	Err(errno::ENOSYS)
+	Err(errno!(ENOSYS))
 }

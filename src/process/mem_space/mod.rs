@@ -174,11 +174,11 @@ impl MemSpace {
 		// Checking arguments are valid
 		if let Some(ptr) = ptr {
 			if !util::is_aligned(ptr, memory::PAGE_SIZE) {
-				return Err(errno::EINVAL);
+				return Err(errno!(EINVAL));
 			}
 		}
 		if size <= 0 {
-			return Err(errno::EINVAL);
+			return Err(errno!(EINVAL));
 		}
 
 		// The gap to use and the offset in said gap
@@ -188,18 +188,18 @@ impl MemSpace {
 				self.unmap(ptr, size)?; // FIXME Must be undone on fail
 
 				// Getting the gap for the pointer
-				let gap = Self::gap_by_ptr(&self.gaps, ptr).ok_or(errno::ENOMEM)?;
+				let gap = Self::gap_by_ptr(&self.gaps, ptr).ok_or(errno!(ENOMEM))?;
 
 				// The offset in the gap
 				let off = (gap.get_begin() as usize - ptr as usize) / memory::PAGE_SIZE;
 				if size > gap.get_size() - off {
-					return Err(errno::ENOMEM);
+					return Err(errno!(ENOMEM));
 				}
 
 				(gap, off)
 			} else {
 				// Getting a gap large enough
-				let gap = Self::gap_get(&self.gaps, &self.gaps_size, size).ok_or(errno::ENOMEM)?;
+				let gap = Self::gap_get(&self.gaps, &self.gaps_size, size).ok_or(errno!(ENOMEM))?;
 
 				(gap, 0)
 			}
@@ -220,7 +220,7 @@ impl MemSpace {
 		// Mapping the default page
 		if m.map_default().is_err() {
 			self.mappings.remove(mapping_ptr);
-			return Err(errno::ENOMEM);
+			return Err(errno!(ENOMEM));
 		}
 
 		// Splitting the old gap to fit the mapping
@@ -571,12 +571,12 @@ impl MemSpace {
 		let mut fork_data = Box::new(ForkData {
 			self_: self,
 
-			result: Err(0),
+			result: Err(errno!(EINVAL)), // Place a default errno
 		})?;
 		unsafe {
 			stack::switch(tmp_stack_top, f, fork_data.as_mut_ptr());
 		}
-		replace(&mut fork_data.result, Err(0))
+		replace(&mut fork_data.result, Err(errno!(EINVAL)))
 	}
 
 	/// Allocates the physical pages to write on the given pointer.
@@ -598,7 +598,7 @@ impl MemSpace {
 
 				mapping.update_vmem(page_offset);
 			} else {
-				return Err(errno::EINVAL);
+				return Err(errno!(EINVAL));
 			}
 
 			off += util::up_align(virt_addr, memory::PAGE_SIZE) as usize - virt_addr as usize;

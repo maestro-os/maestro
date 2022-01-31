@@ -31,10 +31,10 @@ pub fn chdir(regs: &Regs) -> Result<i32, Errno> {
 
 		// Checking for errors
 		if !dir.can_read(proc.get_euid(), proc.get_egid()) {
-			return Err(errno::EACCES);
+			return Err(errno!(EACCES));
 		}
 		if dir.get_file_type() != FileType::Directory {
-			return Err(errno::ENOTDIR);
+			return Err(errno!(ENOTDIR));
 		}
 	}
 

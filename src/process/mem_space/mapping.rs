@@ -32,7 +32,7 @@ fn get_default_page() -> *const c_void {
 		if let Ok(ptr) = ptr {
 			*default_page = Some(ptr);
 		} else {
-			kernel_panic!("Cannot allocate default memory page!", 0);
+			kernel_panic!("Cannot allocate default memory page!");
 		}
 	}
 

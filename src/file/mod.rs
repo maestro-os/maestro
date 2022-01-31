@@ -404,7 +404,7 @@ impl File {
 		if let FileContent::Directory(subfiles) = &self.content {
 			Ok(subfiles.is_empty())
 		} else {
-			Err(errno::ENOTDIR)
+			Err(errno!(ENOTDIR))
 		}
 	}
 
@@ -414,7 +414,7 @@ impl File {
 		if let FileContent::Directory(subfiles) = &mut self.content {
 			subfiles.push(name)
 		} else {
-			Err(errno::ENOTDIR)
+			Err(errno!(ENOTDIR))
 		}
 	}
 
@@ -435,7 +435,7 @@ impl File {
 
 			Ok(())
 		} else {
-			Err(errno::ENOTDIR)
+			Err(errno!(ENOTDIR))
 		}
 	}
 
@@ -455,17 +455,17 @@ impl File {
 			major,
 			minor,
 		} = self.content {
-			let dev = device::get_device(DeviceType::Char, major, minor).ok_or(errno::ENODEV)?;
+			let dev = device::get_device(DeviceType::Char, major, minor).ok_or(errno!(ENODEV))?;
 			let mut guard = dev.lock();
 			guard.get_mut().get_handle().ioctl(request, argp)
 		} else {
-			Err(errno::ENOTTY)
+			Err(errno!(ENOTTY))
 		}
 	}
 
 	/// Synchronizes the file with the device.
 	pub fn sync(&self) -> Result<(), Errno> {
-		let mountpoint_mutex = self.location.get_mountpoint().ok_or(errno::EIO)?;
+		let mountpoint_mutex = self.location.get_mountpoint().ok_or(errno!(EIO))?;
 		let mut mountpoint_guard = mountpoint_mutex.lock();
 		let mountpoint = mountpoint_guard.get_mut();
 
@@ -486,7 +486,7 @@ impl IO for File {
 	fn read(&self, off: u64, buff: &mut [u8]) -> Result<usize, Errno> {
 		match &self.content {
 			FileContent::Regular => {
-				let mountpoint_mutex = self.location.get_mountpoint().ok_or(errno::EIO)?;
+				let mountpoint_mutex = self.location.get_mountpoint().ok_or(errno!(EIO))?;
 				let mut mountpoint_guard = mountpoint_mutex.lock();
 				let mountpoint = mountpoint_guard.get_mut();
 
@@ -498,9 +498,9 @@ impl IO for File {
 				filesystem.read_node(io, self.location.get_inode(), off, buff)
 			},
 
-			FileContent::Directory(_) => Err(errno::EISDIR),
+			FileContent::Directory(_) => Err(errno!(EISDIR)),
 
-			FileContent::Link(_) => Err(errno::EINVAL),
+			FileContent::Link(_) => Err(errno!(EINVAL)),
 
 			FileContent::Fifo => {
 				// TODO
@@ -523,7 +523,7 @@ impl IO for File {
 					},
 
 					_ => unreachable!(),
-				}.ok_or(errno::ENODEV)?;
+				}.ok_or(errno!(ENODEV))?;
 
 				let mut guard = dev.lock();
 				guard.get_mut().get_handle().read(off as _, buff)
@@ -534,7 +534,7 @@ impl IO for File {
 	fn write(&mut self, off: u64, buff: &[u8]) -> Result<usize, Errno> {
 		match &self.content {
 			FileContent::Regular => {
-				let mountpoint_mutex = self.location.get_mountpoint().ok_or(errno::EIO)?;
+				let mountpoint_mutex = self.location.get_mountpoint().ok_or(errno!(EIO))?;
 				let mut mountpoint_guard = mountpoint_mutex.lock();
 				let mountpoint = mountpoint_guard.get_mut();
 
@@ -549,9 +549,9 @@ impl IO for File {
 				Ok(buff.len())
 			},
 
-			FileContent::Directory(_) => Err(errno::EISDIR),
+			FileContent::Directory(_) => Err(errno!(EISDIR)),
 
-			FileContent::Link(_) => Err(errno::EINVAL),
+			FileContent::Link(_) => Err(errno!(EINVAL)),
 
 			FileContent::Fifo => {
 				// TODO
@@ -574,7 +574,7 @@ impl IO for File {
 					},
 
 					_ => unreachable!(),
-				}.ok_or(errno::ENODEV)?;
+				}.ok_or(errno!(ENODEV))?;
 
 				let mut guard = dev.lock();
 				guard.get_mut().get_handle().write(off as _, buff)
@@ -627,7 +627,7 @@ pub fn resolve_links(file: SharedPtr<File>, uid: Uid, gid: Gid) -> Result<Path, 
 			match files_cache.get_file_from_path(&path, uid, gid) {
 				Ok(next_file) => file = next_file,
 				Err(e) => return {
-					if e == errno::ENOENT {
+					if e == errno!(ENOENT) {
 						Ok(path)
 					} else {
 						Err(e)
@@ -647,7 +647,7 @@ pub fn resolve_links(file: SharedPtr<File>, uid: Uid, gid: Gid) -> Result<Path, 
 
 		f.get_path()
 	} else {
-		Err(errno::ELOOP)
+		Err(errno!(ELOOP))
 	}
 }
 
@@ -661,7 +661,7 @@ pub fn init(root_device_type: DeviceType, root_major: u32, root_minor: u32) -> R
 
 	// The root device
 	let root_dev = device::get_device(root_device_type, root_major, root_minor)
-		.ok_or(errno::ENODEV)?;
+		.ok_or(errno!(ENODEV))?;
 
 	// Creating the files cache
 	let cache = FCache::new(root_dev)?;

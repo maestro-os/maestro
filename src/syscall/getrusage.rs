@@ -33,7 +33,7 @@ pub fn getrusage(regs: &Regs) -> Result<i32, Errno> {
 			RUsage::default()
 		}
 
-		_ => return Err(errno::EINVAL),
+		_ => return Err(errno!(EINVAL)),
 	};
 
 	unsafe { // Safe because the access has been checked before

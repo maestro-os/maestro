@@ -52,6 +52,6 @@ pub fn uname(regs: &Regs) -> Result<i32, Errno> {
 
 		Ok(0)
 	} else {
-		Err(errno::EFAULT)
+		Err(errno!(EFAULT))
 	}
 }

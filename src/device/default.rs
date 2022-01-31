@@ -22,7 +22,7 @@ pub struct NullDeviceHandle {}
 impl DeviceHandle for NullDeviceHandle {
 	fn ioctl(&mut self, _request: u32, _argp: *const c_void) -> Result<u32, Errno> {
 		// TODO
-		Err(errno::EINVAL)
+		Err(errno!(EINVAL))
 	}
 }
 
@@ -46,7 +46,7 @@ pub struct ZeroDeviceHandle {}
 impl DeviceHandle for ZeroDeviceHandle {
 	fn ioctl(&mut self, _request: u32, _argp: *const c_void) -> Result<u32, Errno> {
 		// TODO
-		Err(errno::EINVAL)
+		Err(errno!(EINVAL))
 	}
 }
 
@@ -74,7 +74,7 @@ pub struct KMsgDeviceHandle {}
 impl DeviceHandle for KMsgDeviceHandle {
 	fn ioctl(&mut self, _request: u32, _argp: *const c_void) -> Result<u32, Errno> {
 		// TODO
-		Err(errno::EINVAL)
+		Err(errno!(EINVAL))
 	}
 }
 
@@ -111,7 +111,7 @@ pub struct RandomDeviceHandle {}
 impl DeviceHandle for RandomDeviceHandle {
 	fn ioctl(&mut self, _request: u32, _argp: *const c_void) -> Result<u32, Errno> {
 		// TODO
-		Err(errno::EINVAL)
+		Err(errno!(EINVAL))
 	}
 }
 
@@ -141,7 +141,7 @@ pub struct URandomDeviceHandle {}
 impl DeviceHandle for URandomDeviceHandle {
 	fn ioctl(&mut self, _request: u32, _argp: *const c_void) -> Result<u32, Errno> {
 		// TODO
-		Err(errno::EINVAL)
+		Err(errno!(EINVAL))
 	}
 }
 
@@ -167,7 +167,7 @@ pub struct CurrentTTYDeviceHandle {}
 impl DeviceHandle for CurrentTTYDeviceHandle {
 	fn ioctl(&mut self, _request: u32, _argp: *const c_void) -> Result<u32, Errno> {
 		// TODO
-		Err(errno::EINVAL)
+		Err(errno!(EINVAL))
 	}
 }
 

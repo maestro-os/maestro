@@ -23,11 +23,11 @@ pub fn msync(regs: &Regs) -> Result<i32, Errno> {
 
 	// Checking address alignment
 	if !util::is_aligned(addr, memory::PAGE_SIZE) {
-		return Err(errno::EINVAL);
+		return Err(errno!(EINVAL));
 	}
 	// Checking for conflicts in flags
 	if flags & MS_ASYNC != 0 && flags & MS_SYNC != 0 {
-		return Err(errno::EINVAL);
+		return Err(errno!(EINVAL));
 	}
 
 	// Getting the current process
@@ -40,7 +40,7 @@ pub fn msync(regs: &Regs) -> Result<i32, Errno> {
 
 	let mut i = 0;
 	while i < length {
-		let mapping = mem_space.get_mapping_mut_for(addr).ok_or(errno::ENOMEM)?;
+		let mapping = mem_space.get_mapping_mut_for(addr).ok_or(errno!(ENOMEM))?;
 		mapping.fs_sync()?; // TODO Use flags
 
 		i += mapping.get_size() * memory::PAGE_SIZE;

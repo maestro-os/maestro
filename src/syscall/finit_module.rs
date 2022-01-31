@@ -18,7 +18,7 @@ pub fn finit_module(regs: &Regs) -> Result<i32, Errno> {
 		let proc = proc_guard.get_mut();
 
 		if proc.get_uid() != 0 {
-			return Err(errno::EPERM);
+			return Err(errno!(EPERM));
 		}
 
 		if let Some(fd) = proc.get_fd(fd) {
@@ -30,7 +30,7 @@ pub fn finit_module(regs: &Regs) -> Result<i32, Errno> {
 
 			image
 		} else {
-			return Err(errno::EBADF);
+			return Err(errno!(EBADF));
 		}
 	};
 
@@ -39,6 +39,6 @@ pub fn finit_module(regs: &Regs) -> Result<i32, Errno> {
 		module::add(module)?;
 		Ok(0)
 	} else {
-		Err(errno::EEXIST)
+		Err(errno!(EEXIST))
 	}
 }

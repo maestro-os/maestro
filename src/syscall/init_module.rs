@@ -19,11 +19,11 @@ pub fn init_module(regs: &Regs) -> Result<i32, Errno> {
 		let proc = proc_guard.get();
 
 		if proc.get_uid() != 0 {
-			return Err(errno::EPERM);
+			return Err(errno!(EPERM));
 		}
 
 		if !proc.get_mem_space().unwrap().can_access(module_image, len as _, true, true) {
-			return Err(errno::EFAULT);
+			return Err(errno!(EFAULT));
 		}
 	}
 
@@ -36,6 +36,6 @@ pub fn init_module(regs: &Regs) -> Result<i32, Errno> {
 		module::add(module)?;
 		Ok(0)
 	} else {
-		Err(errno::EEXIST)
+		Err(errno!(EEXIST))
 	}
 }

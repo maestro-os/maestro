@@ -123,7 +123,7 @@ impl<'a> ELFParser<'a> {
 		if p.check_image() {
 			Ok(p)
 		} else {
-			Err(errno::EINVAL)
+			Err(errno!(EINVAL))
 		}
 	}
 

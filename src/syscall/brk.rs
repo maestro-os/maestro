@@ -6,5 +6,5 @@ use crate::process::Regs;
 
 /// The implementation of the `brk` syscall.
 pub fn brk(_regs: &Regs) -> Result<i32, Errno> {
-	Err(errno::ENOMEM)
+	Err(errno!(ENOMEM))
 }

@@ -21,7 +21,7 @@ pub fn pipe(regs: &Regs) -> Result<i32, Errno> {
 
 		let len = size_of::<i32>() * 2;
 		if !proc.get_mem_space().unwrap().can_access(pipefd as _, len, true, true) {
-			return Err(errno::EFAULT);
+			return Err(errno!(EFAULT));
 		}
 
 		let pipe = SharedPtr::new(Pipe::new()?)?;

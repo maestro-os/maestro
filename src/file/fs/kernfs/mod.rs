@@ -109,14 +109,14 @@ impl Filesystem for KernFS {
 	fn get_inode(&mut self, _io: &mut dyn IO, parent: Option<INode>, name: Option<&String>)
 		-> Result<INode, Errno> {
 		if self.nodes.is_empty() {
-			return Err(errno::ENOENT);
+			return Err(errno!(ENOENT));
 		}
 
 		let parent_inode = parent.unwrap_or(0);
 
 		if let Some(name) = name {
-			let parent = self.nodes[parent_inode as _].as_ref().ok_or(errno::ENOENT)?;
-			let inode = *parent.get_entry(name).ok_or(errno::ENOENT)?;
+			let parent = self.nodes[parent_inode as _].as_ref().ok_or(errno!(ENOENT))?;
+			let inode = *parent.get_entry(name).ok_or(errno!(ENOENT))?;
 			Ok(inode)
 		} else {
 			Ok(parent_inode)
@@ -124,7 +124,7 @@ impl Filesystem for KernFS {
 	}
 
 	fn load_file(&mut self, _: &mut dyn IO, inode: INode, _name: String) -> Result<File, Errno> {
-		let _node = self.nodes[inode as _].as_ref().ok_or(errno::ENOENT)?;
+		let _node = self.nodes[inode as _].as_ref().ok_or(errno!(ENOENT))?;
 
 		// TODO
 		todo!();
@@ -133,7 +133,7 @@ impl Filesystem for KernFS {
 	fn add_file(&mut self, _io: &mut dyn IO, _parent_inode: INode, _name: String, _uid: Uid,
 		_gid: Gid, _mode: Mode, _content: FileContent) -> Result<File, Errno> {
 		if self.readonly {
-			return Err(errno::EROFS);
+			return Err(errno!(EROFS));
 		}
 
 		// TODO
@@ -143,7 +143,7 @@ impl Filesystem for KernFS {
 	fn add_link(&mut self, _io: &mut dyn IO, _parent_inode: INode, _name: &String, _inode: INode)
 		-> Result<(), Errno> {
 		if self.readonly {
-			return Err(errno::EROFS);
+			return Err(errno!(EROFS));
 		}
 
 		// TODO
@@ -152,7 +152,7 @@ impl Filesystem for KernFS {
 
 	fn update_inode(&mut self, _io: &mut dyn IO, _file: &File) -> Result<(), Errno> {
 		if self.readonly {
-			return Err(errno::EROFS);
+			return Err(errno!(EROFS));
 		}
 
 		// TODO
@@ -162,7 +162,7 @@ impl Filesystem for KernFS {
 	fn remove_file(&mut self, _: &mut dyn IO, _parent_inode: INode, _name: &String)
 		-> Result<(), Errno> {
 		if self.readonly {
-			return Err(errno::EROFS);
+			return Err(errno!(EROFS));
 		}
 
 		// TODO
@@ -178,7 +178,7 @@ impl Filesystem for KernFS {
 	fn write_node(&mut self, _: &mut dyn IO, _inode: INode, _off: u64, _buf: &[u8])
 		-> Result<(), Errno> {
 		if self.readonly {
-			return Err(errno::EROFS);
+			return Err(errno!(EROFS));
 		}
 
 		// TODO
