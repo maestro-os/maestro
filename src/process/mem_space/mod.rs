@@ -168,8 +168,15 @@ impl MemSpace {
 	/// memory is detected.
 	/// The function returns a pointer to the newly mapped virtual memory.
 	/// The function has complexity `O(log n)`.
+	/// If the given pointer is not page-aligned, the function returns an error.
 	pub fn map(&mut self, ptr: Option<*const c_void>, size: usize, flags: u8,
 		fd: Option<FileDescriptor>, fd_off: usize) -> Result<*const c_void, Errno> {
+		// Checking arguments are valid
+		if let Some(ptr) = ptr {
+			if !util::is_aligned(ptr, memory::PAGE_SIZE) {
+				return Err(errno::EINVAL);
+			}
+		}
 		if size <= 0 {
 			return Err(errno::EINVAL);
 		}
