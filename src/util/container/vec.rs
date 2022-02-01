@@ -481,7 +481,7 @@ impl<'a, T> Iterator for VecIterator<'a, T> {
 
 	fn next(&mut self) -> Option<Self::Item> {
 		// If both ends of the iterator are meeting, stop
-		if self.index_front > self.index_back {
+		if self.index_front >= self.vec.len() - self.index_back {
 			return None;
 		}
 
@@ -503,7 +503,7 @@ impl<'a, T> Iterator for VecIterator<'a, T> {
 impl<'a, T> DoubleEndedIterator for VecIterator<'a, T> {
 	fn next_back(&mut self) -> Option<Self::Item> {
 		// If both ends of the iterator are meeting, stop
-		if self.index_front > self.index_back {
+		if self.index_front >= self.vec.len() - self.index_back {
 			return None;
 		}
 
