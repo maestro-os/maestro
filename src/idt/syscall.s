@@ -19,10 +19,9 @@ syscall:
 	# Storing registers state
 GET_REGS
 
-	# Setting segments
+	# Setting data segment
 	mov $GDT_KERNEL_DS, %ax
 	mov %ax, %ds
-	mov %ax, %es
 
 	# Calling the system call handler
 	push %esp
@@ -31,12 +30,11 @@ GET_REGS
 	cli
 	add $4, %esp
 
-	# Restoring segments
+	# Restoring data segment
 	xor %ebx, %ebx
 	mov $GDT_USER_DS, %bx
 	or $3, %bx
 	mov %bx, %ds
-	mov %bx, %es
 
 	# Restoring registers state
 END_INTERRUPT

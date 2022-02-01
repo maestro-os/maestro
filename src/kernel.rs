@@ -212,7 +212,7 @@ fn init() -> Result<(), Errno> {
 /// `multiboot_ptr` is the pointer to the Multiboot booting informations structure.
 #[no_mangle]
 pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
-	crate::cli!();
+	cli!();
 	// Initializing TTY
 	tty::init();
 
@@ -243,7 +243,7 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 	memory::malloc::init();
 
 	if init_vmem().is_err() {
-		crate::kernel_panic!("Cannot initialize kernel virtual memory!");
+		kernel_panic!("Cannot initialize kernel virtual memory!");
 	}
 
 	// From here, the kernel considers that memory management has been fully initialized
@@ -257,44 +257,36 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 	let args_parser = cmdline::ArgsParser::parse(&multiboot::get_boot_info().cmdline);
 	if let Err(e) = args_parser {
 		e.print();
-		crate::halt();
+		halt();
 	}
 	let args_parser = args_parser.unwrap();
 	logger::init(args_parser.is_silent());
 
-	println!("Booting Maestro kernel version {}", crate::VERSION);
+	println!("Booting Maestro kernel version {}", VERSION);
 
 	println!("Initializing ACPI...");
 	acpi::init();
 
 	println!("Initializing ramdisks...");
-	if device::storage::ramdisk::create().is_err() {
-		kernel_panic!("Failed to create ramdisks!");
-	}
+	device::storage::ramdisk::create()
+		.unwrap_or_else(| e | kernel_panic!("Failed to create ramdisks! ({})", e));
 	println!("Initializing devices management...");
-	if device::init().is_err() {
-		crate::kernel_panic!("Failed to initialize devices management!");
-	}
+	device::init()
+		.unwrap_or_else(| e | kernel_panic!("Failed to initialize devices management! ({})", e));
 
 	let (root_major, root_minor) = args_parser.get_root_dev();
 	println!("Root device is {} {}", root_major, root_minor);
 	println!("Initializing files management...");
-	if file::init(device::DeviceType::Block, root_major, root_minor).is_err() {
-		kernel_panic!("Failed to initialize files management!");
-	}
-	if device::default::create().is_err() {
-		kernel_panic!("Failed to create default devices!");
-	}
+	file::init(device::DeviceType::Block, root_major, root_minor)
+		.unwrap_or_else(| e | kernel_panic!("Failed to initialize files management! ({})", e));
+	device::default::create()
+		.unwrap_or_else(| e | kernel_panic!("Failed to create default devices! ({})", e));
 
 	println!("Initializing processes...");
-	if process::init().is_err() {
-		kernel_panic!("Failed to init processes!");
-	}
+	process::init().unwrap_or_else(| e | kernel_panic!("Failed to init processes! ({})", e));
 
-	if let Err(e) = init() {
-		kernel_panic!("{}", e);
-	}
-	crate::enter_loop();
+	init().unwrap_or_else(| e | kernel_panic!("{}", e));
+	enter_loop();
 }
 
 /// Called on Rust panic.

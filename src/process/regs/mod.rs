@@ -125,15 +125,15 @@ impl Default for Regs {
 	}
 }
 
+//#[cfg(config_general_arch = "x86")]
 impl fmt::Display for Regs {
-	//#[cfg(config_general_arch = "x86")]
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		let fs = self.fs;
 		let gs = self.gs;
 
 		write!(f, "ebp: {:p} esp: {:p} eip: {:p} eflags: {:p} eax: {:p}\n
 ebx: {:p} ecx: {:p} edx: {:p} esi: {:p} edi: {:p}\n
-gs: {:x} fs: {:x}\n",
+gs: 0x{:x} fs: 0x{:x}\n",
 			self.ebp as *const c_void,
 			self.esp as *const c_void,
 			self.eip as *const c_void,

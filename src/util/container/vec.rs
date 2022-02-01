@@ -454,8 +454,12 @@ impl<T> Vec<T> {
 pub struct VecIterator<'a, T> {
 	/// The vector to iterate into.
 	vec: &'a Vec::<T>,
-	/// The current index of the iterator.
-	index: usize,
+
+	/// The current index of the iterator starting from the beginning.
+	index_front: usize,
+
+	/// The current index of the iterator starting from the end.
+	index_back: usize,
 }
 
 impl<'a, T> VecIterator<'a, T> {
@@ -463,7 +467,9 @@ impl<'a, T> VecIterator<'a, T> {
 	fn new(vec: &'a Vec::<T>) -> Self {
 		VecIterator {
 			vec,
-			index: 0,
+
+			index_front: 0,
+			index_back: 0,
 		}
 	}
 }
@@ -474,9 +480,15 @@ impl<'a, T> Iterator for VecIterator<'a, T> {
 	// TODO Implement every functions?
 
 	fn next(&mut self) -> Option<Self::Item> {
-		if self.index < self.vec.len() {
-			let e = &self.vec[self.index];
-			self.index += 1;
+		// If both ends of the iterator are meeting, stop
+		if self.index_front > self.index_back {
+			return None;
+		}
+
+		if self.index_front < self.vec.len() {
+			let e = &self.vec[self.index_front];
+			self.index_front += 1;
+
 			Some(e)
 		} else {
 			None
@@ -485,6 +497,24 @@ impl<'a, T> Iterator for VecIterator<'a, T> {
 
 	fn count(self) -> usize {
 		self.vec.len()
+	}
+}
+
+impl<'a, T> DoubleEndedIterator for VecIterator<'a, T> {
+	fn next_back(&mut self) -> Option<Self::Item> {
+		// If both ends of the iterator are meeting, stop
+		if self.index_front > self.index_back {
+			return None;
+		}
+
+		if self.index_back < self.vec.len() {
+			let e = &self.vec[self.vec.len() - self.index_back - 1];
+			self.index_back += 1;
+
+			Some(e)
+		} else {
+			None
+		}
 	}
 }
 

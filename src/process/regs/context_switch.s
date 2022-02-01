@@ -34,6 +34,8 @@ context_switch:
 	mov 0x1c(%eax), %edx
 	mov 0x20(%eax), %esi
 	mov 0x24(%eax), %edi
+	mov 0x28(%eax), %gs
+	mov 0x2c(%eax), %fs
 
 	# Placing iret data on the stack
 	# (Note: If set, the interrupt flag in eflags will enable the interruptions back after using `iret`)
@@ -81,6 +83,8 @@ context_switch_kernel:
 	mov 0x1c(%eax), %edx
 	mov 0x20(%eax), %esi
 	mov 0x24(%eax), %edi
+	mov 0x28(%eax), %gs
+	mov 0x2c(%eax), %fs
 	mov 0x10(%eax), %eax
 
 	# Setting the interrupt flag and jumping to kernel code execution

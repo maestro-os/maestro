@@ -100,13 +100,13 @@ impl AuxEntry {
 	/// Fills an auxilary vector for the given process `process`.
 	fn fill_auxilary(process: &Process) -> Result<Vec<Self>, Errno> {
 		let mut aux = Vec::new();
-		aux.push(AuxEntry::new(AT_NULL, 0))?;
 		aux.push(AuxEntry::new(AT_PAGESZ, memory::PAGE_SIZE as _))?;
 		aux.push(AuxEntry::new(AT_UID, process.get_uid() as _))?;
 		aux.push(AuxEntry::new(AT_EUID, process.get_euid() as _))?;
 		aux.push(AuxEntry::new(AT_GID, process.get_gid() as _))?;
 		aux.push(AuxEntry::new(AT_EGID, process.get_egid() as _))?;
 		// TODO AT_SECURE
+		aux.push(AuxEntry::new(AT_NULL, 0))?;
 
 		Ok(aux)
 	}
@@ -281,10 +281,18 @@ impl ELFExecutor {
 		stack_slice[stack_off] = 0;
 		stack_off += 1;
 
-		for (i, a) in aux.iter().enumerate() {
-			stack_slice[stack_off + i * 2] = a.a_type as _;
-			stack_slice[stack_off + i * 2 + 1] = a.a_val as _;
+		// Setting the auxilary vector
+		for a in aux.iter() {
+			stack_slice[stack_off] = a.a_type as _;
+			stack_slice[stack_off + 1] = a.a_val as _;
+
+			stack_off += 2;
 		}
+
+		// TODO rm
+		/*unsafe {
+			crate::debug::print_memory(stack_slice.as_ptr() as *const _, total_size);
+		}*/
 	}
 
 	/// Allocates memory in userspace for an ELF segment.

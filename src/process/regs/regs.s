@@ -14,9 +14,13 @@
 	# Allocating space on the stack to store the registers
 	sub $REGS_SIZE, %esp
 
-	# Filling registers in the structure
+	# Filling segments in the structure
+	movl $0, 0x2c(%esp)
 	mov %fs, 0x2c(%esp)
+	movl $0, 0x28(%esp)
 	mov %gs, 0x28(%esp)
+
+	# Filling registers in the structure
 	mov %edi, 0x24(%esp)
 	mov %esi, 0x20(%esp)
 	mov %edx, 0x1c(%esp)
@@ -71,9 +75,11 @@ esp_end_\n:
 	call restore_fxstate
 	add $4, %esp
 
-	# Restoring registers
+	# Restoring segments
 	mov 0x2c(%esp), %fs
 	mov 0x28(%esp), %gs
+
+	# Restoring registers
 	mov 0x24(%esp), %edi
 	mov 0x20(%esp), %esi
 	mov 0x1c(%esp), %edx
