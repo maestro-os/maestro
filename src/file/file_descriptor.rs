@@ -13,40 +13,40 @@ use crate::util::lock::Mutex;
 use crate::util::ptr::SharedPtr;
 
 /// Read only.
-pub const O_RDONLY: i32 =    0b0000000000000001;
+pub const O_RDONLY: i32 =    0b00000000000000000000000000000000;
 /// Write only.
-pub const O_WRONLY: i32 =    0b0000000000000010;
+pub const O_WRONLY: i32 =    0b00000000000000000000000000000001;
 /// Read and write.
-pub const O_RDWR: i32 =      0b0000000000000011;
+pub const O_RDWR: i32 =      0b00000000000000000000000000000010;
 /// At each write operations on the file descriptor, the cursor is placed at the end of the file so
 /// the data is appended.
-pub const O_APPEND: i32 =    0b0000000000000100;
+pub const O_APPEND: i32 =    0b00000000000000000000010000000000;
 /// Generates a SIGIO when input or output becomes possible on the file descriptor.
-pub const O_ASYNC: i32 =     0b0000000000001000;
+pub const O_ASYNC: i32 =     0b00000000000000000010000000000000;
 /// Close-on-exec.
-pub const O_CLOEXEC: i32 =   0b0000000000010000;
+pub const O_CLOEXEC: i32 =   0b00000000000010000000000000000000;
 /// If the file doesn't exist, create it.
-pub const O_CREAT: i32 =     0b0000000000100000;
+pub const O_CREAT: i32 =     0b00000000000000000000000001000000;
 /// Disables caching data.
-pub const O_DIRECT: i32 =    0b0000000001000000;
+pub const O_DIRECT: i32 =    0b00000000000000000100000000000000;
 /// If pathname is not a directory, cause the open to fail.
-pub const O_DIRECTORY: i32 = 0b0000000010000000;
+pub const O_DIRECTORY: i32 = 0b00000000000000010000000000000000;
 /// Ensure the file is created (when used with O_CREAT). If not, the call fails.
-pub const O_EXCL: i32 =      0b0000000100000000;
+pub const O_EXCL: i32 =      0b00000000000000000000000010000000;
 /// Allows openning large files (more than 2^32 bytes).
-pub const O_LARGEFILE: i32 = 0b0000001000000000;
+pub const O_LARGEFILE: i32 = 0b00000000000000001000000000000000;
 /// Don't update file access time.
-pub const O_NOATIME: i32 =   0b0000010000000000;
+pub const O_NOATIME: i32 =   0b00000000000001000000000000000000;
 /// If refering to a tty, it will not become the process's controlling tty.
-pub const O_NOCTTY: i32 =    0b0000100000000000;
+pub const O_NOCTTY: i32 =    0b00000000000000000000000100000000;
 /// Tells `open` not to follow symbolic links.
-pub const O_NOFOLLOW: i32 =  0b0001000000000000;
+pub const O_NOFOLLOW: i32 =  0b00000000000000100000000000000000;
 /// I/O is non blocking.
-pub const O_NONBLOCK: i32 =  0b0010000000000000;
+pub const O_NONBLOCK: i32 =  0b00000000000000000000100000000000;
 /// When using `write`, the data has been transfered to the hardware before returning.
-pub const O_SYNC: i32 =      0b0100000000000000;
+pub const O_SYNC: i32 =      0b00000000000100000001000000000000;
 /// If the file already exists, truncate it to length zero.
-pub const O_TRUNC: i32 =     0b1000000000000000;
+pub const O_TRUNC: i32 =     0b00000000000000000000001000000000;
 
 /// The maximum number of file descriptors that can be open system-wide at once.
 const TOTAL_MAX_FD: usize = 4294967295;
@@ -128,6 +128,26 @@ impl FileDescriptor {
 		self.flags = flags;
 	}
 
+	/// Tells whether the file descriptor can be read from.
+	pub fn can_read(&self) -> bool {
+		match self.flags & 0b11 {
+			O_RDONLY => true,
+			O_RDWR => true,
+
+			_ => false,
+		}
+	}
+
+	/// Tells whether the file descriptor can be written to.
+	pub fn can_write(&self) -> bool {
+		match self.flags & 0b11 {
+			O_WRONLY => true,
+			O_RDWR => true,
+
+			_ => false,
+		}
+	}
+
 	/// Returns a mutable reference to the descriptor's target.
 	pub fn get_target(&self) -> &FDTarget {
 		&self.target
@@ -181,7 +201,7 @@ impl FileDescriptor {
 	/// `buf` is the slice to write to.
 	/// The functions returns the number of bytes that have been read.
 	pub fn read(&mut self, buf: &mut [u8]) -> Result<usize, Errno> {
-		if self.flags & O_RDONLY == 0 {
+		if !self.can_read() {
 			return Err(errno!(EINVAL));
 		}
 
@@ -210,7 +230,7 @@ impl FileDescriptor {
 	/// `buf` is the slice to read from.
 	/// The functions returns the number of bytes that have been written.
 	pub fn write(&mut self, buf: &[u8]) -> Result<usize, Errno> {
-		if self.flags & O_WRONLY == 0 {
+		if !self.can_write() {
 			return Err(errno!(EINVAL));
 		}
 
