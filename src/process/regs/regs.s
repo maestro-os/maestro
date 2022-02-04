@@ -64,10 +64,9 @@ esp_end_\n:
 
 
 /*
- * This macro restores the registers' states, frees the space allocated by the function GET_REGS,
- * then terminates the interrupt handler to restore the previous context.
+ * This macro restores the registers' states and frees the space allocated by the function GET_REGS.
  */
-.macro END_INTERRUPT
+.macro RESTORE_REGS
 	# Restoring the fx state
 	mov %esp, %eax
 	add $0x30, %eax
@@ -89,9 +88,4 @@ esp_end_\n:
 
 	# Freeing the space allocated on the stack
 	add $REGS_SIZE, %esp
-
-	# Restoring the context
-	mov %ebp, %esp
-	pop %ebp
-	iret
 .endm

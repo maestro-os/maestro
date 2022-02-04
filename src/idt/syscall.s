@@ -36,5 +36,9 @@ GET_REGS
 	or $3, %bx
 	mov %bx, %ds
 
-	# Restoring registers state
-END_INTERRUPT
+RESTORE_REGS
+
+	# Restoring the context
+	mov %ebp, %esp
+	pop %ebp
+	iret

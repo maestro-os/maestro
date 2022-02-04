@@ -159,8 +159,10 @@ pub struct Process {
 	/// The list of open file descriptors.
 	file_descriptors: Vec<FileDescriptor>,
 
-	/// A bitfield storing signals that have been received and are not handled yet.
+	/// A bitfield storing the set of blocked signals.
 	sigmask: Bitfield,
+	/// A bitfield storing the set of pending signals.
+	sigpending: Bitfield,
 	/// The list of signal handlers.
 	signal_handlers: [SignalHandler; signal::SIGNALS_COUNT + 1],
 
@@ -380,6 +382,7 @@ impl Process {
 			file_descriptors: Vec::new(),
 
 			sigmask: Bitfield::new(signal::SIGNALS_COUNT + 1)?,
+			sigpending: Bitfield::new(signal::SIGNALS_COUNT + 1)?,
 			signal_handlers: [SignalHandler::Default; signal::SIGNALS_COUNT + 1],
 
 			tls_entries: [gdt::Entry::default(); TLS_ENTRIES_COUNT],
@@ -931,7 +934,8 @@ impl Process {
 			cwd: self.cwd.failable_clone()?,
 			file_descriptors: self.file_descriptors.failable_clone()?,
 
-			sigmask: Bitfield::new(signal::SIGNALS_COUNT + 1)?,
+			sigmask: self.sigmask.failable_clone()?,
+			sigpending: Bitfield::new(signal::SIGNALS_COUNT + 1)?,
 			signal_handlers: self.signal_handlers,
 
 			tls_entries: self.tls_entries,
@@ -993,36 +997,66 @@ impl Process {
 		if !sig.can_catch() || no_handler {
 			sig.execute_action(self, no_handler);
 		} else {
-			self.sigmask.set(sig.get_type() as _);
+			self.sigpending.set(sig.get_type() as _);
 		}
 	}
 
-	/// Returns an immutable reference to the process's signal mask.
+	/// Returns an immutable reference to the process's blocked signals mask.
 	#[inline(always)]
 	pub fn get_sigmask(&self) -> &[u8] {
 		self.sigmask.as_slice()
 	}
 
-	/// Returns a mutable reference to the process's signal mask.
+	/// Returns a mutable reference to the process's blocked signals mask.
 	#[inline(always)]
 	pub fn get_sigmask_mut(&mut self) -> &mut [u8] {
 		self.sigmask.as_mut_slice()
 	}
 
+	/// Returns an immutable reference to the process's pending signals mask.
+	#[inline(always)]
+	pub fn get_pending_signals(&self) -> &[u8] {
+		self.sigpending.as_slice()
+	}
+
+	/// Returns a mutable reference to the process's pending signals mask.
+	#[inline(always)]
+	pub fn get_pending_signals_mut(&mut self) -> &mut [u8] {
+		self.sigpending.as_mut_slice()
+	}
+
 	/// Tells whether the process has a signal pending.
 	#[inline(always)]
 	pub fn has_signal_pending(&self) -> bool {
-		self.sigmask.find_set().is_some()
+		self.sigpending.find_set().is_some()
 	}
 
 	/// Makes the process handle the next signal. If the process is already handling a signal or if
 	/// no signal is queued, the function does nothing.
 	pub fn signal_next(&mut self) {
-		if let Some(signum) = self.sigmask.find_set() {
-			if let Ok(sig) = Signal::new(signum as _) {
-				sig.execute_action(self, false);
+		// Looking for a pending signal with respect to the signal mask
+		let mut sig = None;
+		self.sigpending.for_each(| i, b | {
+			if let Ok(s) = Signal::new(i as _) {
+				if b && !(s.can_catch() && self.sigmask.is_set(i)) {
+					sig = Some(s);
+					return false;
+				}
 			}
+
+			true
+		});
+
+		// If a signal is to be executed, execute it
+		if let Some(sig) = sig {
+			sig.execute_action(self, false);
 		}
+	}
+
+	/// Clear the signal from the list of pending signals.
+	/// If the signal is already cleared, the function does nothing.
+	pub fn signal_clear(&mut self, sig: SignalType) {
+		self.sigpending.clear(sig as _);
 	}
 
 	/// Saves the process's state to handle a signal.
@@ -1037,9 +1071,7 @@ impl Process {
 
 	/// Restores the process's state after handling a signal.
 	pub fn signal_restore(&mut self) {
-		if let Some(sig) = self.handled_signal {
-			self.sigmask.clear(sig as _);
-
+		if self.handled_signal.is_some() {
 			self.handled_signal = None;
 			self.regs = self.saved_regs;
 		}

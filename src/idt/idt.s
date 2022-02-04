@@ -35,7 +35,12 @@ GET_REGS \n
 	call event_handler
 	add $16, %esp
 
-END_INTERRUPT
+RESTORE_REGS
+
+	# Restoring the context
+	mov %ebp, %esp
+	pop %ebp
+	iret
 .endm
 
 
@@ -79,10 +84,14 @@ GET_REGS \n
 	call event_handler
 	add $16, %esp
 
+RESTORE_REGS
+
 	# Freeing the space allocated for the error code
 	add $4, %esp
 
-END_INTERRUPT
+	mov %ebp, %esp
+	pop %ebp
+	iret
 .endm
 
 
@@ -117,7 +126,12 @@ GET_REGS irq_\n
 	call end_of_interrupt
 	add $4, %esp
 
-END_INTERRUPT
+RESTORE_REGS
+
+	# Restoring the context
+	mov %ebp, %esp
+	pop %ebp
+	iret
 .endm
 
 

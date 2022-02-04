@@ -1,6 +1,7 @@
 //! This module stores the Bitfield structure.
 
 use crate::errno::Errno;
+use crate::util::FailableClone;
 use crate::util::bit_size_of;
 use crate::util::container::vec::Vec;
 use crate::util::math::ceil_division;
@@ -55,7 +56,7 @@ impl Bitfield {
 	}
 
 	/// Returns the number of set bits.
-	pub fn set_count(&self) -> usize {
+	pub fn get_set_count(&self) -> usize {
 		self.set_count
 	}
 
@@ -118,6 +119,8 @@ impl Bitfield {
 		for i in 0..self.data.len() {
 			self.data[i] = 0;
 		}
+
+		self.set_count = 0;
 	}
 
 	/// Clears every elements in the bitfield.
@@ -125,9 +128,31 @@ impl Bitfield {
 		for i in 0..self.data.len() {
 			self.data[i] = !0;
 		}
+
+		self.set_count = self.len();
 	}
 
-	// TODO fill
+	/// Calls the given function `f` for each bits in the field.
+	/// The first argument of the function is the index of the bit.
+	/// The second argument is the value of the bit.
+	/// If the function returns `false`, the iteration stops. Else, it continues.
+	pub fn for_each<F: FnMut(usize, bool) -> bool>(&self, mut f: F) {
+		for i in 0..self.len() {
+			if !f(i, self.is_set(i)) {
+				break;
+			}
+		}
+	}
+}
+
+impl FailableClone for Bitfield {
+	fn failable_clone(&self) -> Result<Self, Errno> {
+		Ok(Self {
+			data: self.data.failable_clone()?,
+			len: self.len,
+			set_count: self.set_count,
+		})
+	}
 }
 
 #[cfg(test)]

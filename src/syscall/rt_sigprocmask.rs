@@ -51,7 +51,6 @@ pub fn rt_sigprocmask(regs: &Regs) -> Result<i32, Errno> {
 
 	// The current set
 	let curr = proc.get_sigmask_mut();
-	println!("{:?} {:?} {:?}", curr, set, oldset);
 
 	if let Some(oldset) = oldset_slice {
 		// Saving the old set

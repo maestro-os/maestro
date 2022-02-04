@@ -1,5 +1,6 @@
 //! The `set_tid_address` system call sets the `clear_child_tid` attribute with the given pointer.
 
+use core::mem::size_of;
 use core::ptr::NonNull;
 use crate::errno::Errno;
 use crate::process::Process;
@@ -17,7 +18,15 @@ pub fn set_tid_address(regs: &Regs) -> Result<i32, Errno> {
 	let ptr = NonNull::new(tidptr);
 	proc.set_clear_child_tid(ptr);
 
-	// TODO Write TID at address? (if accessible)
+	let tid = proc.get_tid();
 
-	Ok(proc.get_tid() as _)
+	// Setting the TID at pointer if accessible
+	if !tidptr.is_null()
+		&& proc.get_mem_space().unwrap().can_access(tidptr as _, size_of::<i32>(), true, true) {
+		unsafe {
+			*tidptr = tid as _;
+		}
+	}
+
+	Ok(tid as _)
 }

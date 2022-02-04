@@ -185,6 +185,8 @@ impl Signal {
 	/// If `no_handler` is true, the function executes the default action of the signal regardless
 	/// the user-specified action.
 	pub fn execute_action(&self, process: &mut Process, no_handler: bool) {
+		process.signal_clear(self.type_);
+
 		let process_state = process.get_state();
 		if process_state == State::Zombie {
 			return;
@@ -212,11 +214,7 @@ impl Signal {
 				let exit_code = (128 + self.type_) as u32;
 
 				match default_action {
-					SignalAction::Terminate => {
-						process.exit(exit_code);
-					},
-
-					SignalAction::Abort => {
+					SignalAction::Terminate | SignalAction::Abort => {
 						process.exit(exit_code);
 					},
 
