@@ -467,7 +467,10 @@ impl Superblock {
 			if bgd.unallocated_blocks_number > 0 {
 				if let Some(j) = self.search_bitmap(io, bgd.block_usage_bitmap_addr,
 					self.blocks_per_group)? {
-					return Ok(i * self.blocks_per_group + j);
+					let blk = i * self.blocks_per_group + j;
+					debug_assert!((blk as u64) > 2);
+
+					return Ok(blk);
 				}
 			}
 		}
@@ -479,6 +482,8 @@ impl Superblock {
 	/// `io` is the I/O interface.
 	/// `blk` is the block number.
 	pub fn mark_block_used(&self, io: &mut dyn IO, blk: u32) -> Result<(), Errno> {
+		debug_assert!((blk as u64) > 2);
+
 		let group = blk / self.blocks_per_group;
 		let mut bgd = BlockGroupDescriptor::read(group, self, io)?;
 		bgd.unallocated_blocks_number -= 1;
@@ -493,6 +498,8 @@ impl Superblock {
 	/// `io` is the I/O interface.
 	/// `blk` is the block number.
 	pub fn free_block(&self, io: &mut dyn IO, blk: u32) -> Result<(), Errno> {
+		debug_assert!((blk as u64) > SUPERBLOCK_OFFSET);
+
 		let group = blk / self.blocks_per_group;
 		let mut bgd = BlockGroupDescriptor::read(group, self, io)?;
 		bgd.unallocated_blocks_number += 1;
