@@ -283,6 +283,21 @@ impl Ext2INode {
 		}
 	}
 
+	/// Returns the number of indirections for the given content block offset.
+	/// `off` is the block offset.
+	/// `entries_per_blk` is the number of entries per block.
+	fn get_content_blk_indirections_count(off: u32, entries_per_blk: u32) -> u8 {
+		if off < DIRECT_BLOCKS_COUNT as u32 {
+			0
+		} else if off < DIRECT_BLOCKS_COUNT as u32 + entries_per_blk {
+			1
+		} else if off < DIRECT_BLOCKS_COUNT as u32 + (entries_per_blk * entries_per_blk) {
+			2
+		} else {
+			3
+		}
+	}
+
 	/// Resolves block indirections.
 	/// `n` is the number of indirections to resolve.
 	/// `begin` is the beginning block.
@@ -322,18 +337,37 @@ impl Ext2INode {
 		let blk_size = superblock.get_block_size();
 		let entries_per_blk = blk_size / size_of::<u32>() as u32;
 
-		if i < DIRECT_BLOCKS_COUNT as u32 {
-			Ok(Self::blk_offset_to_option(self.direct_block_ptrs[i as usize]))
-		} else if i < DIRECT_BLOCKS_COUNT as u32 + entries_per_blk {
-			let target = i - DIRECT_BLOCKS_COUNT as u32;
-			Self::resolve_indirections(1, self.singly_indirect_block_ptr, target, superblock, io)
-		} else if i < DIRECT_BLOCKS_COUNT as u32 + (entries_per_blk * entries_per_blk) {
-			let target = (i - DIRECT_BLOCKS_COUNT as u32 - entries_per_blk) as u32;
-			Self::resolve_indirections(2, self.doubly_indirect_block_ptr, target, superblock, io)
+		// The number of indirections to perform
+		let level = Self::get_content_blk_indirections_count(i, entries_per_blk);
+
+		// If direct block, handle it directly
+		if level == 0 {
+			return Ok(Self::blk_offset_to_option(self.direct_block_ptrs[i as usize]));
+		}
+
+		// The id on the beginning block to indirect from
+		let begin_id = match level {
+			1 => self.singly_indirect_block_ptr,
+			2 => self.doubly_indirect_block_ptr,
+			3 => self.triply_indirect_block_ptr,
+
+			_ => unreachable!(),
+		};
+
+		if let Some(begin) = Self::blk_offset_to_option(begin_id) {
+			let target = i - DIRECT_BLOCKS_COUNT as u32 - {
+				match level {
+					1 => 0,
+					2 => entries_per_blk,
+					3 => entries_per_blk * entries_per_blk,
+
+					_ => unreachable!(),
+				}
+			};
+
+			Self::resolve_indirections(level, begin, target, superblock, io)
 		} else {
-			#[allow(clippy::suspicious_operation_groupings)]
-			let target = i - DIRECT_BLOCKS_COUNT as u32 - (entries_per_blk * entries_per_blk);
-			Self::resolve_indirections(3, self.triply_indirect_block_ptr, target, superblock, io)
+			Ok(None)
 		}
 	}
 
@@ -362,7 +396,7 @@ impl Ext2INode {
 				// Incrementing the number of used sectors
 				self.used_sectors += math::ceil_division(blk_size, SECTOR_SIZE);
 
-				write::<u32>(&blk, byte_off, io)?;
+				write::<u32>(&blk, byte_off, io)?; // FIXME: Bad byte_off?
 			} else {
 				b = unsafe {
 					read::<u32>(byte_off, io)?
@@ -373,7 +407,6 @@ impl Ext2INode {
 		Ok(b)
 	}
 
-	// TODO Clean (avoid copy-pasting code)
 	/// Allocates a block for the node's content block at the given offset `i`.
 	/// If the block is already allocated, the function does nothing.
 	/// `i` is the block offset in the node's content.
@@ -385,54 +418,57 @@ impl Ext2INode {
 		let blk_size = superblock.get_block_size();
 		let entries_per_blk = blk_size / size_of::<u32>() as u32;
 
-		if i < DIRECT_BLOCKS_COUNT as u32 {
-			if self.direct_block_ptrs[i as usize] == 0 {
-				let blk = superblock.get_free_block(io)?;
-				self.direct_block_ptrs[i as usize] = blk;
-				superblock.mark_block_used(io, blk)?;
+		// The number of indirections to perform
+		let level = Self::get_content_blk_indirections_count(i, entries_per_blk);
 
-				// Incrementing the number of used sectors
-				self.used_sectors += math::ceil_division(blk_size, SECTOR_SIZE);
+		// If direct block, handle it directly
+		if level == 0 {
+			let blk = superblock.get_free_block(io)?;
+			self.direct_block_ptrs[i as usize] = blk;
+			superblock.mark_block_used(io, blk)?;
+
+			// Incrementing the number of used sectors
+			self.used_sectors += math::ceil_division(blk_size, SECTOR_SIZE);
+
+			return Ok(blk);
+		}
+
+		// The id on the beginning block to indirect from
+		let begin_id = match level {
+			1 => self.singly_indirect_block_ptr,
+			2 => self.doubly_indirect_block_ptr,
+			3 => self.triply_indirect_block_ptr,
+
+			_ => unreachable!(),
+		};
+
+		let target = i - DIRECT_BLOCKS_COUNT as u32 - {
+			match level {
+				1 => 0,
+				2 => entries_per_blk,
+				3 => entries_per_blk * entries_per_blk,
+
+				_ => unreachable!(),
 			}
+		};
 
-			Ok(self.direct_block_ptrs[i as usize])
-		} else if i < DIRECT_BLOCKS_COUNT as u32 + entries_per_blk {
-			if self.singly_indirect_block_ptr == 0 {
-				let blk = superblock.get_free_block(io)?;
-				self.singly_indirect_block_ptr = blk;
-				superblock.mark_block_used(io, blk)?;
-
-				// Incrementing the number of used sectors
-				self.used_sectors += math::ceil_division(blk_size, SECTOR_SIZE);
-			}
-
-			let target = i - DIRECT_BLOCKS_COUNT as u32;
-			self.indirections_alloc(1, self.singly_indirect_block_ptr, target, superblock, io)
-		} else if i < DIRECT_BLOCKS_COUNT as u32 + (entries_per_blk * entries_per_blk) {
-			if self.doubly_indirect_block_ptr == 0 {
-				let blk = superblock.get_free_block(io)?;
-				self.doubly_indirect_block_ptr = blk;
-				superblock.mark_block_used(io, blk)?;
-
-				// Incrementing the number of used sectors
-				self.used_sectors += math::ceil_division(blk_size, SECTOR_SIZE);
-			}
-
-			let target = i - DIRECT_BLOCKS_COUNT as u32 - entries_per_blk;
-			self.indirections_alloc(2, self.doubly_indirect_block_ptr, target, superblock, io)
+		if let Some(begin) = Self::blk_offset_to_option(begin_id) {
+			self.indirections_alloc(level, begin, target, superblock, io)
 		} else {
-			if self.triply_indirect_block_ptr == 0 {
-				let blk = superblock.get_free_block(io)?;
-				self.triply_indirect_block_ptr = blk;
-				superblock.mark_block_used(io, blk)?;
+			let begin = superblock.get_free_block(io)?;
+			match level {
+				1 => self.singly_indirect_block_ptr = begin,
+				2 => self.doubly_indirect_block_ptr = begin,
+				3 => self.triply_indirect_block_ptr = begin,
 
-				// Incrementing the number of used sectors
-				self.used_sectors += math::ceil_division(blk_size, SECTOR_SIZE);
+				_ => unreachable!(),
 			}
+			superblock.mark_block_used(io, begin)?;
 
-			#[allow(clippy::suspicious_operation_groupings)]
-			let target = i - DIRECT_BLOCKS_COUNT as u32 - (entries_per_blk * entries_per_blk);
-			self.indirections_alloc(3, self.triply_indirect_block_ptr, target, superblock, io)
+			// Incrementing the number of used sectors
+			self.used_sectors += math::ceil_division(blk_size, SECTOR_SIZE);
+
+			self.indirections_alloc(level, begin, target, superblock, io)
 		}
 	}
 
@@ -521,33 +557,55 @@ impl Ext2INode {
 		let blk_size = superblock.get_block_size();
 		let entries_per_blk = blk_size / size_of::<u32>() as u32;
 
-		if i < DIRECT_BLOCKS_COUNT as u32 {
-			let blk = self.direct_block_ptrs[i as usize];
+		// The number of indirections to perform
+		let level = Self::get_content_blk_indirections_count(i, entries_per_blk);
+
+		// If direct block, handle it directly
+		if level == 0 {
+			superblock.free_block(io, self.direct_block_ptrs[i as usize])?;
 			self.direct_block_ptrs[i as usize] = 0;
-			superblock.free_block(io, blk)?;
 
 			// Decrementing the number of used sectors
 			self.used_sectors -= math::ceil_division(blk_size, SECTOR_SIZE);
+
+			return Ok(());
 		}
 
-		if i < DIRECT_BLOCKS_COUNT as u32 + entries_per_blk {
-			let target = i - DIRECT_BLOCKS_COUNT as u32;
+		// The id on the beginning block to indirect from
+		let begin_id = match level {
+			1 => self.singly_indirect_block_ptr,
+			2 => self.doubly_indirect_block_ptr,
+			3 => self.triply_indirect_block_ptr,
 
-			if self.indirections_free(1, self.singly_indirect_block_ptr, target, superblock, io)? {
-				self.singly_indirect_block_ptr = 0;
+			_ => unreachable!(),
+		};
+
+		let target = i - DIRECT_BLOCKS_COUNT as u32 - {
+			match level {
+				1 => 0,
+				2 => entries_per_blk,
+				3 => entries_per_blk * entries_per_blk,
+
+				_ => unreachable!(),
 			}
-		} else if i < DIRECT_BLOCKS_COUNT as u32 + (entries_per_blk * entries_per_blk) {
-			let target = i - DIRECT_BLOCKS_COUNT as u32 - entries_per_blk;
+		};
 
-			if self.indirections_free(2, self.doubly_indirect_block_ptr, target, superblock, io)? {
-				self.doubly_indirect_block_ptr = 0;
-			}
-		} else {
-			#[allow(clippy::suspicious_operation_groupings)]
-			let target = i - DIRECT_BLOCKS_COUNT as u32 - (entries_per_blk * entries_per_blk);
+		if let Some(begin) = Self::blk_offset_to_option(begin_id) {
+			let empty = self.indirections_free(level, begin, target, superblock, io)?;
 
-			if self.indirections_free(3, self.triply_indirect_block_ptr, target, superblock, io)? {
-				self.triply_indirect_block_ptr = 0;
+			// If the block has zero entries left, free it
+			if empty {
+				superblock.free_block(io, begin)?;
+				match level {
+					1 => self.singly_indirect_block_ptr = 0,
+					2 => self.doubly_indirect_block_ptr = 0,
+					3 => self.triply_indirect_block_ptr = 0,
+
+					_ => unreachable!(),
+				}
+
+				// Incrementing the number of used sectors
+				self.used_sectors -= math::ceil_division(blk_size, SECTOR_SIZE);
 			}
 		}
 
@@ -819,7 +877,8 @@ impl Ext2INode {
 				};
 				// The total size of the entry
 				let total_size = entry.get_total_size() as usize;
-				debug_assert!(total_size > 0);
+				debug_assert!(total_size > 0 && total_size <= blk_size as usize);
+
 				// The offset of the entry
 				let off = i + j as u64;
 

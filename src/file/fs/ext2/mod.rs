@@ -423,40 +423,45 @@ impl Superblock {
 	/// If the inode is already marked as used, the behaviour is undefined.
 	pub fn mark_inode_used(&self, io: &mut dyn IO, inode: u32, directory: bool)
 		-> Result<(), Errno> {
-		debug_assert!(inode >= 1);
+		if inode > 0 {
+			let group = (inode - 1) / self.inodes_per_group;
+			let mut bgd = BlockGroupDescriptor::read(group, self, io)?;
+			bgd.unallocated_inodes_number -= 1;
+			if directory {
+				bgd.directories_number += 1;
+			}
 
-		let group = (inode - 1) / self.inodes_per_group;
-		let mut bgd = BlockGroupDescriptor::read(group, self, io)?;
-		bgd.unallocated_inodes_number -= 1;
-		if directory {
-			bgd.directories_number += 1;
+			let bitfield_index = (inode - 1) % self.inodes_per_group;
+			self.set_bitmap(io, bgd.inode_usage_bitmap_addr, bitfield_index, true)?;
+
+			bgd.write(group, self, io)?;
 		}
 
-		let bitfield_index = (inode - 1) % self.inodes_per_group;
-		self.set_bitmap(io, bgd.inode_usage_bitmap_addr, bitfield_index, true)?;
-
-		bgd.write(group, self, io)
+		Ok(())
 	}
 
 	/// Marks the inode `inode` available on the filesystem.
 	/// `io` is the I/O interface.
 	/// `inode` is the inode number.
 	/// `directory` tells whether the inode is allocated for a directory.
+	/// If `inode` is zero, the function does nothing.
 	/// If the inode is already marked as free, the behaviour is undefined.
 	pub fn free_inode(&self, io: &mut dyn IO, inode: u32, directory: bool) -> Result<(), Errno> {
-		debug_assert!(inode >= 1);
+		if inode > 0 {
+			let group = (inode - 1) / self.inodes_per_group;
+			let mut bgd = BlockGroupDescriptor::read(group, self, io)?;
+			bgd.unallocated_inodes_number += 1;
+			if directory {
+				bgd.directories_number -= 1;
+			}
 
-		let group = (inode - 1) / self.inodes_per_group;
-		let mut bgd = BlockGroupDescriptor::read(group, self, io)?;
-		bgd.unallocated_inodes_number += 1;
-		if directory {
-			bgd.directories_number -= 1;
+			let bitfield_index = (inode - 1) % self.inodes_per_group;
+			self.set_bitmap(io, bgd.inode_usage_bitmap_addr, bitfield_index, false)?;
+
+			bgd.write(group, self, io)?;
 		}
 
-		let bitfield_index = (inode - 1) % self.inodes_per_group;
-		self.set_bitmap(io, bgd.inode_usage_bitmap_addr, bitfield_index, false)?;
-
-		bgd.write(group, self, io)
+		Ok(())
 	}
 
 	/// Returns the id of a free block in the filesystem.
@@ -481,33 +486,43 @@ impl Superblock {
 	/// Marks the block `blk` used on the filesystem.
 	/// `io` is the I/O interface.
 	/// `blk` is the block number.
+	/// If `blk` is zero, the function does nothing.
 	pub fn mark_block_used(&self, io: &mut dyn IO, blk: u32) -> Result<(), Errno> {
-		debug_assert!((blk as u64) > 2);
+		if blk > 0 {
+			debug_assert!((blk as u64) > 2);
 
-		let group = blk / self.blocks_per_group;
-		let mut bgd = BlockGroupDescriptor::read(group, self, io)?;
-		bgd.unallocated_blocks_number -= 1;
+			let group = blk / self.blocks_per_group;
+			let mut bgd = BlockGroupDescriptor::read(group, self, io)?;
+			bgd.unallocated_blocks_number -= 1;
 
-		let bitfield_index = blk % self.blocks_per_group;
-		self.set_bitmap(io, bgd.block_usage_bitmap_addr, bitfield_index, true)?;
+			let bitfield_index = blk % self.blocks_per_group;
+			self.set_bitmap(io, bgd.block_usage_bitmap_addr, bitfield_index, true)?;
 
-		bgd.write(group, self, io)
+			bgd.write(group, self, io)?;
+		}
+
+		Ok(())
 	}
 
 	/// Marks the block `blk` available on the filesystem.
 	/// `io` is the I/O interface.
 	/// `blk` is the block number.
+	/// If `blk` is zero, the function does nothing.
 	pub fn free_block(&self, io: &mut dyn IO, blk: u32) -> Result<(), Errno> {
-		debug_assert!((blk as u64) > SUPERBLOCK_OFFSET);
+		if blk > 0 {
+			debug_assert!((blk as u64) > SUPERBLOCK_OFFSET);
 
-		let group = blk / self.blocks_per_group;
-		let mut bgd = BlockGroupDescriptor::read(group, self, io)?;
-		bgd.unallocated_blocks_number += 1;
+			let group = blk / self.blocks_per_group;
+			let mut bgd = BlockGroupDescriptor::read(group, self, io)?;
+			bgd.unallocated_blocks_number += 1;
 
-		let bitfield_index = blk % self.blocks_per_group;
-		self.set_bitmap(io, bgd.block_usage_bitmap_addr, bitfield_index, false)?;
+			let bitfield_index = blk % self.blocks_per_group;
+			self.set_bitmap(io, bgd.block_usage_bitmap_addr, bitfield_index, false)?;
 
-		bgd.write(group, self, io)
+			bgd.write(group, self, io)?;
+		}
+
+		Ok(())
 	}
 
 	/// Writes the superblock on the device.
