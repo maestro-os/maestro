@@ -13,6 +13,7 @@ use crate::file::mountpoint::MountPoint;
 use crate::file::mountpoint::MountSource;
 use crate::file::mountpoint;
 use crate::file::path::Path;
+use crate::limits;
 use crate::util::FailableClone;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
@@ -74,15 +75,17 @@ impl FCache {
 	}
 
 	// TODO Use the cache
-	// TODO Add a param to choose between the mountpoint and the fs root?
 	/// Returns a reference to the file at path `path`. If the file doesn't exist, the function
 	/// returns None.
 	/// If the path is relative, the function starts from the root.
 	/// If the file isn't present in the pool, the function shall load it.
 	/// `uid` is the User ID of the user creating the file.
 	/// `gid` is the Group ID of the user creating the file.
-	pub fn get_file_from_path(&mut self, path: &Path, uid: Uid, gid: Gid)
-		-> Result<SharedPtr<File>, Errno> {
+	/// `follow_links` is true, the function follows symbolic links.
+	/// `follows_count` is the number of links that have been followed since the beginning of the
+	/// path resolution.
+	fn get_file_from_path_(&mut self, path: &Path, uid: Uid, gid: Gid, follow_links: bool,
+		follows_count: usize) -> Result<SharedPtr<File>, Errno> {
 		let mut path = Path::root().concat(path)?;
 		path.reduce()?;
 
@@ -96,7 +99,7 @@ impl FCache {
 		let mut io_guard = io_mutex.lock();
 		let io = io_guard.get_mut();
 
-		// Getting the path from the start of the fileststem to the file
+		// Getting the path from the start of the filesystem to the file
 		let inner_path = path.range_from(mountpoint.get_path().get_elements_count()..)?;
 
 		// The filesystem
@@ -104,28 +107,109 @@ impl FCache {
 
 		// The current inode
 		let mut inode = fs.get_inode(io, None, None)?;
+		// If the path is empty, return the root
+		if inner_path.is_empty() {
+			return SharedPtr::new(fs.load_file(io, inode, String::new())?);
+		}
 
-		let file = {
-			// If the path is empty, return the root
-			if inner_path.is_empty() {
-				fs.load_file(io, inode, String::new())?
-			} else {
-				for i in 0..inner_path.get_elements_count() {
-					let name = &inner_path[i];
-					let file = fs.load_file(io, inode, name.failable_clone()?)?;
+		for i in 0..inner_path.get_elements_count() {
+			// Checking permissions
+			let file = fs.load_file(io, inode, inner_path[i].failable_clone()?)?;
+			if i < inner_path.get_elements_count() - 1 && !file.can_read(uid, gid) {
+				return Err(errno!(EPERM));
+			}
 
-					// Checking permissions
-					if i < inner_path.get_elements_count() - 1 && !file.can_read(uid, gid) {
-						return Err(errno!(EPERM));
+			inode = fs.get_inode(io, Some(inode), Some(&inner_path[i]))?;
+			let file = fs.load_file(io, inode, inner_path[i].failable_clone()?)?;
+
+			if follow_links {
+				// If symbolic link, resolve it
+				if let FileContent::Link(link_path) = file.get_file_content() {
+					if follows_count > limits::SYMLOOP_MAX {
+						return Err(errno!(ELOOP));
 					}
 
-					inode = fs.get_inode(io, Some(inode), Some(name))?;
-				}
+					let mut parent_path = path.failable_clone()?;
+					parent_path.pop();
 
-				let name = &inner_path[inner_path.get_elements_count() - 1];
-				fs.load_file(io, inode, name.failable_clone()?)?
+					let link_path = Path::from_str(link_path.as_bytes(), false)?;
+					let mut new_path = parent_path.concat(&link_path)?;
+					new_path.reduce()?;
+
+					drop(io);
+					drop(io_guard);
+					drop(mountpoint);
+					drop(mountpoint_guard);
+					return self.get_file_from_path_(&new_path, uid, gid, follow_links,
+						follows_count + 1);
+				}
 			}
-		};
+		}
+
+		let name = &inner_path[inner_path.get_elements_count() - 1];
+		SharedPtr::new(fs.load_file(io, inode, name.failable_clone()?)?)
+	}
+
+	// TODO Add a param to choose between the mountpoint and the fs root?
+	/// Returns a reference to the file at path `path`. If the file doesn't exist, the function
+	/// returns an error.
+	/// If the path is relative, the function starts from the root.
+	/// If the file isn't present in the pool, the function shall load it.
+	/// `uid` is the User ID of the user creating the file.
+	/// `gid` is the Group ID of the user creating the file.
+	/// `follow_links` is true, the function follows symbolic links.
+	pub fn get_file_from_path(&mut self, path: &Path, uid: Uid, gid: Gid, follow_links: bool)
+		-> Result<SharedPtr<File>, Errno> {
+		self.get_file_from_path_(path, uid, gid, follow_links, 0)
+	}
+
+	// TODO Use the cache
+	/// Returns a reference to the file `name` located in the directory `parent`. If the file
+	/// doesn't exist, the function returns an error.
+	/// `parent` is the parent directory.
+	/// `name` is the name of the file.
+	/// `uid` is the User ID of the user creating the file.
+	/// `gid` is the Group ID of the user creating the file.
+	/// `follow_links` is true, the function follows symbolic links.
+	pub fn get_file_from_parent(&mut self, parent: &mut File, name: String, uid: Uid, gid: Gid,
+		follow_links: bool) -> Result<SharedPtr<File>, Errno> {
+		// Checking for errors
+		if parent.get_file_type() != FileType::Directory {
+			return Err(errno!(ENOTDIR));
+		}
+		if !parent.can_read(uid, gid) {
+			return Err(errno!(EPERM));
+		}
+
+		// Getting the path's deepest mountpoint
+		let mountpoint_mutex = parent.get_location().get_mountpoint().ok_or(errno!(ENOENT))?;
+		let mut mountpoint_guard = mountpoint_mutex.lock();
+		let mountpoint = mountpoint_guard.get_mut();
+
+		// Getting the IO interface
+		let io_mutex = mountpoint.get_source().get_io();
+		let mut io_guard = io_mutex.lock();
+		let io = io_guard.get_mut();
+
+		// The filesystem
+		let fs = mountpoint.get_filesystem();
+
+		let inode = fs.get_inode(io, Some(parent.get_location().get_inode()), Some(&name))?;
+		let file = fs.load_file(io, inode, name)?;
+
+		if follow_links {
+			if let FileContent::Link(link_path) = file.get_file_content() {
+				let link_path = Path::from_str(link_path.as_bytes(), false)?;
+				let mut new_path = parent.get_path()?.concat(&link_path)?;
+				new_path.reduce()?;
+
+				drop(io);
+				drop(io_guard);
+				drop(mountpoint);
+				drop(mountpoint_guard);
+				return self.get_file_from_path_(&new_path, uid, gid, follow_links, 1);
+			}
+		}
 
 		SharedPtr::new(file)
 	}
@@ -184,7 +268,7 @@ impl FCache {
 	/// `gid` is the Group ID of the user removing the file.
 	pub fn remove_file(&mut self, file: &File, uid: Uid, gid: Gid) -> Result<(), Errno> {
 		// The parent directory.
-		let parent_mutex = self.get_file_from_path(file.get_parent_path(), uid, gid)?;
+		let parent_mutex = self.get_file_from_path(file.get_parent_path(), uid, gid, true)?;
 		let parent_guard = parent_mutex.lock();
 		let parent = parent_guard.get();
 		let parent_inode = parent.get_location().get_inode();

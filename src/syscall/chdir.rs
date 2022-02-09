@@ -25,7 +25,7 @@ pub fn chdir(regs: &Regs) -> Result<i32, Errno> {
 		let fcache = fcache_guard.get_mut();
 
 		let dir_mutex = fcache.as_mut().unwrap().get_file_from_path(&new_cwd, proc.get_euid(),
-			proc.get_egid())?;
+			proc.get_egid(), true)?;
 		let dir_guard = dir_mutex.lock();
 		let dir = dir_guard.get();
 

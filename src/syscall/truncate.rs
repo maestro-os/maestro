@@ -23,7 +23,7 @@ pub fn truncate(regs: &Regs) -> Result<i32, Errno> {
 	let mut guard = mutex.lock();
 	let files_cache = guard.get_mut();
 
-	let file_mutex = files_cache.as_mut().unwrap().get_file_from_path(&path, uid, gid)?;
+	let file_mutex = files_cache.as_mut().unwrap().get_file_from_path(&path, uid, gid, true)?;
 	let mut file_guard = file_mutex.lock();
 	let file = file_guard.get_mut();
 	file.set_size(length as _);

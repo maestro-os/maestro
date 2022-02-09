@@ -45,7 +45,7 @@ pub fn mount(regs: &Regs) -> Result<i32, Errno> {
 		let mut guard = fcache::get().lock();
 		let fcache = guard.get_mut().as_mut().unwrap();
 
-		fcache.get_file_from_path(&target_path, uid, gid)?
+		fcache.get_file_from_path(&target_path, uid, gid, true)?
 	};
 	let target_guard = target_mutex.lock();
 	let target_file = target_guard.get();

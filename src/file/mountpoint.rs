@@ -62,7 +62,7 @@ impl MountSource {
 			let mut guard = mutex.lock();
 			let fcache = guard.get_mut().as_mut().unwrap();
 
-			fcache.get_file_from_path(&path, 0, 0)?
+			fcache.get_file_from_path(&path, 0, 0, true)?
 		};
 
 		Ok(Self::File(file))

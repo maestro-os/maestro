@@ -35,7 +35,7 @@ pub fn unlink(regs: &Regs) -> Result<i32, Errno> {
 		let files_cache = guard.get_mut().as_mut().unwrap();
 
 		// Getting file
-		let file_mutex = files_cache.get_file_from_path(&path, uid, gid)?;
+		let file_mutex = files_cache.get_file_from_path(&path, uid, gid, true)?;
 		let mut file_guard = file_mutex.lock();
 		let file = file_guard.get_mut();
 

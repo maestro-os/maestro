@@ -31,20 +31,28 @@ fn get_file(path: Path, flags: i32, mode: Mode, uid: Uid, gid: Gid)
 	let mut guard = mutex.lock();
 	let files_cache = guard.get_mut().as_mut().unwrap();
 
-	if let Ok(file) = files_cache.get_file_from_path(&path, uid, gid) {
+	// Getting the path of the parent directory
+	let mut parent_path = path.failable_clone()?;
+	parent_path.pop();
+
+	// The parent directory
+	let parent_mutex = files_cache.get_file_from_path(&parent_path, uid, gid, true)?;
+	let mut parent_guard = parent_mutex.lock();
+	let parent = parent_guard.get_mut();
+
+	// The file's basename
+	let name = path[path.get_elements_count() - 1].failable_clone()?;
+
+	// Tells whether to follow symbolic links on the last component of the path.
+	let follow_links = flags & file_descriptor::O_NOFOLLOW == 0;
+
+	let file_result = files_cache.get_file_from_parent(parent, name.failable_clone()?, uid, gid,
+		follow_links);
+	if let Ok(file) = file_result {
+		// If the file is found, return it
 		Ok(file)
 	} else if flags & file_descriptor::O_CREAT != 0 {
-		// Getting the path of the parent directory
-		let mut parent_path = path.failable_clone()?;
-		parent_path.pop();
-
-		// The parent directory
-		let parent_mutex = files_cache.get_file_from_path(&parent_path, uid, gid)?;
-		let mut parent_guard = parent_mutex.lock();
-		let parent = parent_guard.get_mut();
-
 		// Creating the file
-		let name = path[path.get_elements_count() - 1].failable_clone()?;
 		files_cache.create_file(parent, name, uid, gid, mode, FileContent::Regular)
 	} else {
 		Err(errno!(ENOENT))
@@ -66,11 +74,7 @@ pub fn open_(pathname: *const u8, flags: i32, mode: file::Mode) -> Result<i32, E
 
 	// Getting the file
 	let abs_path = super::util::get_absolute_path(&proc, Path::from_str(path_str, true)?)?;
-	let mut file = get_file(abs_path, flags, mode, uid, gid)?;
-	if flags & file_descriptor::O_NOFOLLOW == 0 {
-		let path = file::resolve_links(file, uid, gid)?;
-		file = get_file(path, flags, mode, uid, gid)?;
-	}
+	let file = get_file(abs_path, flags, mode, uid, gid)?;
 
 	// If O_DIRECTORY is set and the file is not a directory, return an error
 	if flags & file_descriptor::O_DIRECTORY != 0

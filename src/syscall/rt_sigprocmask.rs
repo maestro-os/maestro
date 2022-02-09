@@ -25,23 +25,26 @@ pub fn rt_sigprocmask(regs: &Regs) -> Result<i32, Errno> {
 	let mut guard = mutex.lock();
 	let proc = guard.get_mut();
 
-	// Checking access to pointers
-	if !proc.get_mem_space().unwrap().can_access(set, sigsetsize as _, true, false) {
-		return Err(errno!(EINVAL));
-	}
-	if !proc.get_mem_space().unwrap().can_access(oldset, sigsetsize as _, true, true) {
-		return Err(errno!(EINVAL));
-	}
-
 	// Getting slices to pointers
 	let set_slice = if !set.is_null() {
+		// Checking access
+		if !proc.get_mem_space().unwrap().can_access(set, sigsetsize as _, true, false) {
+			return Err(errno!(EINVAL));
+		}
+
 		Some(unsafe { // Safe because access has been checked before
 			slice::from_raw_parts(set, sigsetsize as _)
 		})
 	} else {
 		None
 	};
+
 	let oldset_slice = if !oldset.is_null() {
+		// Checking access
+		if !proc.get_mem_space().unwrap().can_access(oldset, sigsetsize as _, true, true) {
+			return Err(errno!(EINVAL));
+		}
+
 		Some(unsafe { // Safe because access has been checked before
 			slice::from_raw_parts_mut(oldset, sigsetsize as _)
 		})

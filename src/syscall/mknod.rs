@@ -72,7 +72,7 @@ pub fn mknod(regs: &Regs) -> Result<i32, Errno> {
 		let files_cache = guard.get_mut().as_mut().unwrap();
 
 		// Getting parent directory
-		let parent_mutex = files_cache.get_file_from_path(&parent_path, uid, gid)?;
+		let parent_mutex = files_cache.get_file_from_path(&parent_path, uid, gid, true)?;
 		let mut parent_guard = parent_mutex.lock();
 		let parent = parent_guard.get_mut();
 

@@ -122,7 +122,7 @@ fn read_exec_file(path: &Path, uid: Uid, gid: Gid) -> Result<malloc::Alloc<u8>, 
 	let files_cache = guard.get_mut();
 
 	// Getting the file from path
-	let file_mutex = files_cache.as_mut().unwrap().get_file_from_path(&path, uid, gid)?;
+	let file_mutex = files_cache.as_mut().unwrap().get_file_from_path(&path, uid, gid, true)?;
 	let mut file_lock = file_mutex.lock();
 	let file = file_lock.get_mut();
 

@@ -52,7 +52,7 @@ pub fn execve(regs: &Regs) -> Result<i32, Errno> {
 	let files_cache = guard.get_mut();
 
 	// The file
-	let file = files_cache.as_mut().unwrap().get_file_from_path(&path, uid, gid)?;
+	let file = files_cache.as_mut().unwrap().get_file_from_path(&path, uid, gid, true)?;
 
 	// Iterating on script files' iterators
 	let mut i = 0;

@@ -624,7 +624,7 @@ pub fn resolve_links(file: SharedPtr<File>, uid: Uid, gid: Gid) -> Result<Path, 
 			let mut guard = mutex.lock();
 			let files_cache = guard.get_mut().as_mut().unwrap();
 
-			match files_cache.get_file_from_path(&path, uid, gid) {
+			match files_cache.get_file_from_path(&path, uid, gid, false) {
 				Ok(next_file) => file = next_file,
 				Err(e) => return {
 					if e == errno!(ENOENT) {

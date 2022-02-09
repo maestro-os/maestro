@@ -537,6 +537,7 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 		if let Ok(val) = result {
 			val as _
 		} else {
+			crate::println!("{}", result.unwrap_err()); // TODO rm
 			(-result.unwrap_err().as_int()) as _
 		}
 	};

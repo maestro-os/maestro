@@ -140,7 +140,7 @@ impl Device {
 		for i in 0..path.get_elements_count() {
 			let name = path[i].failable_clone()?;
 
-			if let Ok(parent_mutex) = fcache.get_file_from_path(&p, 0, 0) {
+			if let Ok(parent_mutex) = fcache.get_file_from_path(&p, 0, 0, true) {
 				let mut parent_guard = parent_mutex.lock();
 				let parent = parent_guard.get_mut();
 
@@ -191,8 +191,7 @@ impl Device {
 		let files_cache = guard.get_mut().as_mut().unwrap();
 
 		// Tells whether the file already exists
-		let file_exists = files_cache.get_file_from_path(&self.path, 0, 0)
-			.is_ok();
+		let file_exists = files_cache.get_file_from_path(&self.path, 0, 0, true).is_ok();
 
 		if !file_exists {
 			// Creating the directories in which the device file is located
@@ -201,7 +200,7 @@ impl Device {
 			Self::create_dirs(files_cache, &dir_path)?;
 
 			// Getting the parent directory
-			let parent_mutex = files_cache.get_file_from_path(&dir_path, 0, 0)?;
+			let parent_mutex = files_cache.get_file_from_path(&dir_path, 0, 0, true)?;
 			let mut parent_guard = parent_mutex.lock();
 			let parent = parent_guard.get_mut();
 
@@ -219,7 +218,7 @@ impl Device {
 		let mut guard = mutex.lock();
 		let files_cache = guard.get_mut().as_mut().unwrap();
 
-		if let Ok(file_mutex) = files_cache.get_file_from_path(&self.path, 0, 0) {
+		if let Ok(file_mutex) = files_cache.get_file_from_path(&self.path, 0, 0, true) {
 			let file_guard = file_mutex.lock();
 			files_cache.remove_file(file_guard.get(), 0, 0)?;
 		}
