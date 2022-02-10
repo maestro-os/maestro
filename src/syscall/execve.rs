@@ -43,7 +43,6 @@ pub fn execve(regs: &Regs) -> Result<i32, Errno> {
 
 		// TODO Check argv and envp
 
-		// TODO Figure out if the real or effective id should be used
 		(proc.get_euid(), proc.get_egid(), path)
 	};
 
@@ -80,9 +79,7 @@ pub fn execve(regs: &Regs) -> Result<i32, Errno> {
 		}
 	}
 
-	idt::wrap_disable_interrupts(|| {
-		// TODO Execute with arguments and environment
-
-		crate::enter_loop();
-	})
+	// Running the process
+	exec(proc, path, argv, envp)?;
+	crate::enter_loop();
 }

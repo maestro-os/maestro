@@ -362,6 +362,7 @@ impl Executor for ELFExecutor {
 	// TODO Clean
 	// TODO Ensure there is no way to write in kernel space (check segments position and
 	// relocations)
+	// TODO Handle suid and sgid
 	fn exec(&self, process: &mut Process, argv: &[&str], envp: &[&str]) -> Result<(), Errno> {
 		debug_assert_eq!(process.state, crate::process::State::Running);
 
@@ -380,7 +381,6 @@ impl Executor for ELFExecutor {
 
 		// FIXME Use 0x0 as a load base only if the program is non-relocatable
 		// The base at which the program is loaded
-		//let load_base = memory::PAGE_SIZE as *mut u8; // TODO Support ASLR
 		let load_base = 0x0 as *mut u8; // TODO Support ASLR
 
 		// The kernel stack
