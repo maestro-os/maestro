@@ -10,33 +10,33 @@ pub struct RUsage {
 	/// System CPU time used.
 	ru_stime: Timeval,
 	/// Maximum resident set size.
-	ru_maxrss: i32,       
+	ru_maxrss: i32,
 	/// Integral shared memory size.
-	ru_ixrss: i32,        
+	ru_ixrss: i32,
 	/// Integral unshared data size.
-	ru_idrss: i32,        
+	ru_idrss: i32,
 	/// Integral unshared stack size.
-	ru_isrss: i32,        
+	ru_isrss: i32,
 	/// Page reclaims (soft page faults).
-	ru_minflt: i32,       
+	ru_minflt: i32,
 	/// Page faults (hard page faults).
-	ru_majflt: i32,       
+	ru_majflt: i32,
 	/// Swaps.
-	ru_nswap: i32,        
+	ru_nswap: i32,
 	/// Block input operations.
-	ru_inblock: i32,      
+	ru_inblock: i32,
 	/// Block output operations.
-	ru_oublock: i32,      
+	ru_oublock: i32,
 	/// IPC messages sent.
-	ru_msgsnd: i32,       
+	ru_msgsnd: i32,
 	/// IPC messages received.
-	ru_msgrcv: i32,       
+	ru_msgrcv: i32,
 	/// Signals received.
-	ru_nsignals: i32,     
+	ru_nsignals: i32,
 	/// Voluntary context switches.
-	ru_nvcsw: i32,        
+	ru_nvcsw: i32,
 	/// Involuntary context switches.
-	ru_nivcsw: i32,       
+	ru_nivcsw: i32,
 }
 
 // TODO Place calls in kernel's code to update usage
