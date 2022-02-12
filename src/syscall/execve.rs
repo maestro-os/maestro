@@ -5,9 +5,9 @@ use crate::errno;
 use crate::file::File;
 use crate::file::fcache;
 use crate::file::path::Path;
-use crate::idt;
 use crate::process::Process;
 use crate::process::Regs;
+use crate::process::exec::exec;
 use crate::util::IO;
 
 /// The maximum length of the shebang.
@@ -30,28 +30,29 @@ pub fn read_shebang(file: &File, buff: &mut [u8; SHEBANG_MAX]) -> Result<Option<
 /// The implementation of the `execve` syscall.
 pub fn execve(regs: &Regs) -> Result<i32, Errno> {
 	let pathname = regs.ebx as *const u8;
-	let _argv = regs.ecx as *const () as *const *const u8;
-	let _envp = regs.edx as *const () as *const *const u8;
+	let argv = regs.ecx as *const () as *const *const u8;
+	let envp = regs.edx as *const () as *const *const u8;
+
+	let proc_mutex = Process::get_current().unwrap();
+	let mut proc_guard = proc_mutex.lock();
+	let proc = proc_guard.get_mut();
 
 	// Checking that parameters are accessible by the process
-	let (uid, gid, path) = {
-		let mutex = Process::get_current().unwrap();
-		let mut guard = mutex.lock();
-		let proc = guard.get_mut();
+	let path = Path::from_str(super::util::get_str(proc, pathname)?, true)?;
+	let argv = super::util::get_str_array(proc, argv)?;
+	let envp = super::util::get_str_array(proc, envp)?;
 
-		let path = Path::from_str(super::util::get_str(proc, pathname)?, true)?;
-
-		// TODO Check argv and envp
-
-		(proc.get_euid(), proc.get_egid(), path)
-	};
-
-	let mutex = fcache::get();
-	let mut guard = mutex.lock();
-	let files_cache = guard.get_mut();
+	let uid = proc.get_euid();
+	let gid = proc.get_egid();
 
 	// The file
-	let file = files_cache.as_mut().unwrap().get_file_from_path(&path, uid, gid, true)?;
+	let file = {
+		let files_mutex = fcache::get();
+		let mut files_guard = files_mutex.lock();
+		let files_cache = files_guard.get_mut();
+
+		files_cache.as_mut().unwrap().get_file_from_path(&path, uid, gid, true)?
+	};
 
 	// Iterating on script files' iterators
 	let mut i = 0;
@@ -80,6 +81,8 @@ pub fn execve(regs: &Regs) -> Result<i32, Errno> {
 	}
 
 	// Running the process
-	exec(proc, path, argv, envp)?;
+	exec(proc, &path, &argv, &envp)?;
+
+	drop(proc_guard);
 	crate::enter_loop();
 }

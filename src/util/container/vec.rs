@@ -18,6 +18,39 @@ use crate::errno::Errno;
 use crate::memory::malloc;
 use crate::util::FailableClone;
 
+/// Macro allowing to create a vector with the given set of values.
+#[macro_export]
+macro_rules! vec {
+	// Creating an empty vec
+	() => {
+		crate::util::container::vec::Vec::new()
+	};
+
+	// Creating a vec filled with `n` times `elem`
+	($elem:expr ; $n:expr) => {
+		(|| {
+			let mut v = crate::util::container::vec::Vec::with_capacity(n)?;
+			v.resize(n, elem)?;
+
+			Ok(v)
+		})()
+	};
+
+	// Creating a vec from the given slice
+	($($x:expr), + $(,) ?) => {{
+		let slice = [$($x),+];
+
+		(|| {
+			let mut v = crate::util::container::vec::Vec::with_capacity(slice.len())?;
+			for i in slice.iter() {
+				v.push(*i)?;
+			}
+
+			Ok(v)
+		})()
+	}};
+}
+
 /// A vector container is a dynamically-resizable array of elements.
 /// When resizing a vector, the elements can be moved, thus the callee should not rely on pointers
 /// to elements inside a vector.

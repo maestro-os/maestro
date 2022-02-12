@@ -179,14 +179,15 @@ impl ELFExecutor {
 	/// included.
 	/// - The required size in bytes for the data to be written on the stack before the program
 	/// starts.
-	fn get_init_stack_size(argv: &[&str], envp: &[&str], aux: &Vec<AuxEntry>) -> (usize, usize) {
+	fn get_init_stack_size(argv: &Vec<&[u8]>, envp: &Vec<&[u8]>, aux: &Vec<AuxEntry>)
+		-> (usize, usize) {
 		// The size of the block storing the arguments and environment
 		let mut info_block_size = 0;
 		for e in envp {
-			info_block_size += e.as_bytes().len() + 1;
+			info_block_size += e.len() + 1;
 		}
 		for a in argv {
-			info_block_size += a.as_bytes().len() + 1;
+			info_block_size += a.len() + 1;
 		}
 
 		// The padding before the information block allowing to preserve stack alignment
@@ -212,7 +213,7 @@ impl ELFExecutor {
 	/// `envp` is the environment.
 	/// The function returns the distance between the top of the stack and the new bottom after the
 	/// data has been written.
-	fn init_stack(&self, user_stack: *const c_void, argv: &[&str], envp: &[&str],
+	fn init_stack(&self, user_stack: *const c_void, argv: &Vec<&[u8]>, envp: &Vec<&[u8]>,
 		aux: &Vec<AuxEntry>) {
 		let (info_size, total_size) = Self::get_init_stack_size(argv, envp, aux);
 
@@ -243,7 +244,7 @@ impl ELFExecutor {
 			let begin = info_off;
 
 			// Copying the argument into the information block
-			for b in arg.as_bytes() {
+			for b in arg.iter() {
 				info_slice[info_off] = *b;
 				info_off += 1;
 			}
@@ -265,7 +266,7 @@ impl ELFExecutor {
 			let begin = info_off;
 
 			// Copying the variable into the information block
-			for b in var.as_bytes() {
+			for b in var.iter() {
 				info_slice[info_off] = *b;
 				info_off += 1;
 			}
@@ -363,7 +364,8 @@ impl Executor for ELFExecutor {
 	// TODO Ensure there is no way to write in kernel space (check segments position and
 	// relocations)
 	// TODO Handle suid and sgid
-	fn exec(&self, process: &mut Process, argv: &[&str], envp: &[&str]) -> Result<(), Errno> {
+	fn exec(&self, process: &mut Process, argv: &Vec<&[u8]>, envp: &Vec<&[u8]>)
+		-> Result<(), Errno> {
 		debug_assert_eq!(process.state, crate::process::State::Running);
 
 		// Parsing the ELF file

@@ -17,8 +17,6 @@
 #![feature(dispatch_from_dyn)]
 #![feature(fundamental)]
 #![feature(lang_items)]
-#![feature(llvm_asm)]
-#![feature(maybe_uninit_extra)]
 #![feature(panic_info_message)]
 #![feature(slice_ptr_get)]
 #![feature(slice_ptr_len)]
@@ -85,11 +83,9 @@ pub const NAME: &str = "maestro";
 pub const VERSION: &str = "1.0";
 
 /// The path to the init process binary.
-const INIT_PATH: &str = "/sbin/init";
+const INIT_PATH: &[u8] = b"/sbin/init";
 /// The default environment for the init process.
-const DEFAULT_ENVIRONMENT: &[&str] = &[
-	"PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin",
-	"TERM=maestro",
+const DEFAULT_ENVIRONMENT: &[&[u8]] = &[
 ];
 
 extern "C" {
@@ -199,8 +195,13 @@ fn init() -> Result<(), Errno> {
 
 		proc.init_dummy(test_begin)
 	} else {
-		Path::from_str(INIT_PATH.as_bytes(), false).and_then(| path | {
-			exec(proc, &path, &[INIT_PATH], DEFAULT_ENVIRONMENT)
+		Path::from_str(INIT_PATH, false).and_then(| path | {
+			exec(proc, &path, &vec![
+				INIT_PATH
+			]?, &vec![
+				&b"PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin"[..],
+				&b"TERM=maestro"[..],
+			]?)
 		})
 	}
 }
