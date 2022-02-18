@@ -510,8 +510,6 @@ impl<'a, T> VecIterator<'a, T> {
 impl<'a, T> Iterator for VecIterator<'a, T> {
 	type Item = &'a T;
 
-	// TODO Implement every functions?
-
 	fn next(&mut self) -> Option<Self::Item> {
 		// If both ends of the iterator are meeting, stop
 		if self.index_front >= self.vec.len() - self.index_back {

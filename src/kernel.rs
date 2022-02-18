@@ -84,9 +84,6 @@ pub const VERSION: &str = "1.0";
 
 /// The path to the init process binary.
 const INIT_PATH: &[u8] = b"/sbin/init";
-/// The default environment for the init process.
-const DEFAULT_ENVIRONMENT: &[&[u8]] = &[
-];
 
 extern "C" {
 	fn kernel_wait();

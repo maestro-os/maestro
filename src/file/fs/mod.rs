@@ -164,6 +164,7 @@ pub fn detect(io: &mut dyn IO) -> Result<SharedPtr<dyn FilesystemType>, Errno> {
 /// This function must be called only once, at initialization.
 pub fn register_defaults() -> Result<(), Errno> {
 	register(ext2::Ext2FsType {})?;
+	register(tmp::TmpFsType {})?;
 
 	Ok(())
 }

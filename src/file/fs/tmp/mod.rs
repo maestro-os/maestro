@@ -12,6 +12,7 @@ use crate::file::INode;
 use crate::file::Mode;
 use crate::file::Uid;
 use crate::file::fs::Filesystem;
+use crate::file::fs::FilesystemType;
 use crate::file::fs::kernfs::KernFSNode;
 use crate::file::path::Path;
 use crate::util::IO;
@@ -84,6 +85,9 @@ pub struct TmpFS {
 	/// The currently used amount of memory in bytes.
 	size: usize,
 
+	/// Tells whether the filesystem is readyonly.
+	readonly: bool,
+
 	/// The files, ordered by inode number.
 	files: Vec<TmpFSFile>,
 }
@@ -91,10 +95,13 @@ pub struct TmpFS {
 impl TmpFS {
 	/// Creates a new instance.
 	/// `max_size` is the maximum amount of memory the filesystem can use in bytes.
-	pub fn new(max_size: usize) -> Result<Self, Errno> {
+	/// `readonly` tells whether the filesystem is readonly.
+	pub fn new(max_size: usize, readonly: bool) -> Result<Self, Errno> {
 		let mut fs = Self {
 			max_size,
 			size: 0,
+
+			readonly,
 
 			files: Vec::new(),
 		};
@@ -122,7 +129,7 @@ impl Filesystem for TmpFS {
 	}
 
 	fn is_readonly(&self) -> bool {
-		false
+		self.readonly
 	}
 	fn must_cache(&self) -> bool {
 		false
@@ -176,21 +183,24 @@ impl Filesystem for TmpFS {
 	}
 }
 
-pub trait FilesystemType {
-	fn get_name(&self) -> &str {
-		"tmpfs"
+/// Structure representing the tmpfs file system type.
+pub struct TmpFsType {}
+
+impl FilesystemType for TmpFsType {
+	fn get_name(&self) -> &[u8] {
+		b"tmpfs"
 	}
 
-	fn detect(&self, _dev: &mut dyn IO) -> bool {
-		false
+	fn detect(&self, _dev: &mut dyn IO) -> Result<bool, Errno> {
+		Ok(false)
 	}
 
 	fn create_filesystem(&self, _dev: &mut dyn IO) -> Result<Box<dyn Filesystem>, Errno> {
-		Ok(Box::new(TmpFS::new(DEFAULT_MAX_SIZE)?)?)
+		Ok(Box::new(TmpFS::new(DEFAULT_MAX_SIZE, false)?)?)
 	}
 
-	fn load_filesystem(&self, dev: &mut dyn IO, _mountpath: &Path)
+	fn load_filesystem(&self, _dev: &mut dyn IO, _mountpath: Path, readonly: bool)
 		-> Result<Box<dyn Filesystem>, Errno> {
-		self.create_filesystem(dev)
+		Ok(Box::new(TmpFS::new(DEFAULT_MAX_SIZE, readonly)?)?)
 	}
 }
