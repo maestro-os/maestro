@@ -18,6 +18,8 @@ use crate::file::fs::kernfs::KernFS;
 use crate::file::fs::kernfs::KernFSNode;
 use crate::file::fs::kernfs::ROOT_INODE;
 use crate::file::path::Path;
+use crate::time::Timestamp;
+use crate::time;
 use crate::util::IO;
 use crate::util::boxed::Box;
 use crate::util::container::hashmap::HashMap;
@@ -36,19 +38,45 @@ pub struct TmpFSFile {
 	regular_content: Vec<u8>, // TODO Only if the file is regular
 	/// The content of the file, if it is a directory.
 	entries: HashMap<String, INode>, // TODO Only if the file is a directory
+
+	/// The file's permissions.
+	mode: Mode,
+	/// The file's user ID.
+	uid: Uid,
+	/// The file's group ID.
+	gid: Gid,
+
+	/// TODO doc
+	atime: Timestamp,
+	/// TODO doc
+	ctime: Timestamp,
+	/// TODO doc
+	mtime: Timestamp,
 }
 
 impl TmpFSFile {
 	/// Creates a new instance.
 	/// `content` is the file's content.
+	/// `mode` is the file's permissions.
+	/// `uid` is the file owner's uid.
+	/// `gid` is the file owner's gid.
+	/// `ts` is the current timestamp.
 	/// If the file is a directory, the given list of entries is ignored since they cannot be
 	/// associated to any inode immediately.
-	pub fn new(content: FileContent) -> Self {
+	pub fn new(content: FileContent, mode: Mode, uid: Uid, gid: Gid, ts: Timestamp) -> Self {
 		Self {
 			content,
 
 			regular_content: Vec::new(),
 			entries: HashMap::new(),
+
+			mode,
+			uid,
+			gid,
+
+			atime: ts,
+			ctime: ts,
+			mtime: ts,
 		}
 	}
 
@@ -61,6 +89,54 @@ impl TmpFSFile {
 impl KernFSNode for TmpFSFile {
 	fn get_type(&self) -> FileType {
 		self.content.get_file_type()
+	}
+
+	fn get_mode(&self) -> Mode {
+		self.mode
+	}
+
+	fn set_mode(&mut self, mode: Mode) {
+		self.mode = mode;
+	}
+
+	fn get_uid(&self) -> Uid {
+		self.uid
+	}
+
+	fn set_uid(&mut self, uid: Uid) {
+		self.uid = uid;
+	}
+
+	fn get_gid(&self) -> Gid {
+		self.gid
+	}
+
+	fn set_gid(&mut self, gid: Gid) {
+		self.gid = gid;
+	}
+
+	fn get_atime(&self) -> Timestamp {
+		self.atime
+	}
+
+	fn set_atime(&mut self, ts: Timestamp) {
+		self.atime = ts;
+	}
+
+	fn get_ctime(&self) -> Timestamp {
+		self.ctime
+	}
+
+	fn set_ctime(&mut self, ts: Timestamp) {
+		self.ctime = ts;
+	}
+
+	fn get_mtime(&self) -> Timestamp {
+		self.mtime
+	}
+
+	fn set_mtime(&mut self, ts: Timestamp) {
+		self.mtime = ts;
 	}
 
 	fn get_entries(&self) -> &HashMap<String, INode> {
@@ -210,8 +286,11 @@ impl TmpFS {
 			fs: KernFS::new(String::from(b"tmpfs")?, readonly),
 		};
 
+		// The current timestamp
+		let ts = time::get().unwrap_or(0);
+
 		// Adding the root node
-		let root_node = TmpFSFile::new(FileContent::Directory(crate::vec![]));
+		let root_node = TmpFSFile::new(FileContent::Directory(crate::vec![]), 0o777, 0, 0, ts);
 		fs.update_size(root_node.get_used_size() as _, | fs | {
 			fs.fs.set_node(ROOT_INODE, Box::new(root_node)?)
 		})?;

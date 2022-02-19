@@ -37,6 +37,11 @@ pub type Mode = u32;
 /// Type representing an inode ID.
 pub type INode = u32;
 
+/// The root user ID.
+pub const ROOT_UID: Uid = 0;
+/// The root group ID.
+pub const ROOT_GID: Gid = 0;
+
 /// File type: socket
 pub const S_IFSOCK: Mode = 0o140000;
 /// File type: symbolic link
@@ -313,7 +318,7 @@ impl File {
 	/// Tells if the file can be read from by the given UID and GID.
 	pub fn can_read(&self, uid: Uid, gid: Gid) -> bool {
 		// If root, bypass checks
-		if uid == 0 || gid == 0 {
+		if uid == ROOT_UID || gid == ROOT_GID {
 			return true;
 		}
 
@@ -329,7 +334,7 @@ impl File {
 	/// Tells if the file can be written to by the given UID and GID.
 	pub fn can_write(&self, uid: Uid, gid: Gid) -> bool {
 		// If root, bypass checks
-		if uid == 0 || gid == 0 {
+		if uid == ROOT_UID || gid == ROOT_GID {
 			return true;
 		}
 
@@ -345,7 +350,7 @@ impl File {
 	/// Tells if the file can be executed by the given UID and GID.
 	pub fn can_execute(&self, uid: Uid, gid: Gid) -> bool {
 		// If root, bypass checks
-		if uid == 0 || gid == 0 {
+		if uid == ROOT_UID || gid == ROOT_GID {
 			return true;
 		}
 

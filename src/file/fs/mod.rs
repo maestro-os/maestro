@@ -2,6 +2,7 @@
 
 pub mod ext2;
 pub mod kernfs;
+pub mod procfs;
 pub mod tmp;
 
 use crate::errno::Errno;
@@ -165,6 +166,8 @@ pub fn detect(io: &mut dyn IO) -> Result<SharedPtr<dyn FilesystemType>, Errno> {
 pub fn register_defaults() -> Result<(), Errno> {
 	register(ext2::Ext2FsType {})?;
 	register(tmp::TmpFsType {})?;
+	register(procfs::ProcFsType {})?;
+	// TODO sysfs
 
 	Ok(())
 }

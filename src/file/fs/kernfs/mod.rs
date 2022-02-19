@@ -11,6 +11,7 @@ use crate::file::Mode;
 use crate::file::Uid;
 use crate::file::fs::Filesystem;
 use crate::file::path::Path;
+use crate::time::Timestamp;
 use crate::util::FailableClone;
 use crate::util::IO;
 use crate::util::boxed::Box;
@@ -25,6 +26,35 @@ pub const ROOT_INODE: INode = 0;
 pub trait KernFSNode: IO {
 	/// Returns the type of the node.
 	fn get_type(&self) -> FileType;
+
+	/// Returns the permissions of the file.
+	fn get_mode(&self) -> Mode;
+	/// Sets the permissions of the file.
+	fn set_mode(&mut self, mode: Mode);
+
+	/// Returns the UID of the file's owner.
+	fn get_uid(&self) -> Uid;
+	/// Sets the UID of the file's owner.
+	fn set_uid(&mut self, uid: Uid);
+	/// Returns the GID of the file's owner.
+	fn get_gid(&self) -> Gid;
+	/// Sets the GID of the file's owner.
+	fn set_gid(&mut self, gid: Gid);
+
+	/// Returns the timestamp of the last access to the file.
+	fn get_atime(&self) -> Timestamp;
+	/// Sets the timestamp of the last access to the file.
+	fn set_atime(&mut self, ts: Timestamp);
+
+	/// Returns the timestamp of the last modification of the file's metadata.
+	fn get_ctime(&self) -> Timestamp;
+	/// Sets the timestamp of the last modification of the file's metadata.
+	fn set_ctime(&mut self, ts: Timestamp);
+
+	/// Returns the timestamp of the last modification of the file's content.
+	fn get_mtime(&self) -> Timestamp;
+	/// Sets the timestamp of the last modification of the file's content.
+	fn set_mtime(&mut self, ts: Timestamp);
 
 	/// Returns the list of entries in the node.
 	fn get_entries(&self) -> &HashMap<String, INode>;
@@ -137,7 +167,7 @@ impl KernFS {
 	/// Removes the node with inode `inode`.
 	pub fn remove_node(&mut self, _inode: INode) -> Result<(), Errno> {
 		// If the previous node has entries, free everything recursively
-		// TODO
+		// TODO (Handles cases where multiple links are present)
 		/*for (_, inode) in old.get_entries().iter() {
 			self.remove_node(*inode);
 		}*/
