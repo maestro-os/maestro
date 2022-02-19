@@ -82,7 +82,7 @@ pub trait Filesystem {
 	/// Reads from the given inode `inode` into the buffer `buf`.
 	/// `off` is the offset from which the data will be read from the node.
 	fn read_node(&mut self, io: &mut dyn IO, inode: INode, off: u64, buf: &mut [u8])
-		-> Result<usize, Errno>;
+		-> Result<u64, Errno>;
 
 	/// Writes to the given inode `inode` from the buffer `buf`.
 	/// `off` is the offset at which the data will be written in the node.

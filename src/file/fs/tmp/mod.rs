@@ -1,6 +1,7 @@
 //! Tmpfs (Temporary file system) is, as its name states a temporary filesystem. The files are
 //! stored on the kernel's memory and thus are removed when the filesystem is unmounted.
 
+use core::cmp::min;
 use core::mem::size_of;
 use crate::errno;
 use crate::file::Errno;
@@ -13,7 +14,9 @@ use crate::file::Mode;
 use crate::file::Uid;
 use crate::file::fs::Filesystem;
 use crate::file::fs::FilesystemType;
+use crate::file::fs::kernfs::KernFS;
 use crate::file::fs::kernfs::KernFSNode;
+use crate::file::fs::kernfs::ROOT_INODE;
 use crate::file::path::Path;
 use crate::util::IO;
 use crate::util::boxed::Box;
@@ -23,73 +26,176 @@ use crate::util::container::vec::Vec;
 
 /// The default maximum amount of memory the filesystem can use in bytes.
 const DEFAULT_MAX_SIZE: usize = 512 * 1024 * 1024;
-/// The inode index for the root directory.
-const ROOT_INODE: usize = 0;
 
 /// Structure representing a file in a tmpfs.
 pub struct TmpFSFile {
-	/// The type of the file.
-	type_: FileType,
+	/// The file's content.
+	content: FileContent,
 
-	// TODO
+	/// The content of the file, if it is a regular file.
+	regular_content: Vec<u8>, // TODO Only if the file is regular
+	/// The content of the file, if it is a directory.
+	entries: HashMap<String, INode>, // TODO Only if the file is a directory
 }
 
 impl TmpFSFile {
 	/// Creates a new instance.
-	/// `type_` is the file type.
-	pub fn new(type_: FileType) -> Self {
+	/// `content` is the file's content.
+	/// If the file is a directory, the given list of entries is ignored since they cannot be
+	/// associated to any inode immediately.
+	pub fn new(content: FileContent) -> Self {
 		Self {
-			type_,
+			content,
+
+			regular_content: Vec::new(),
+			entries: HashMap::new(),
 		}
 	}
 
 	/// Returns the size used by the file in bytes.
 	pub fn get_used_size(&self) -> usize {
-		// TODO Add size of content
-		size_of::<Self>()
+		size_of::<Self>() + self.get_size() as usize
 	}
 }
 
 impl KernFSNode for TmpFSFile {
 	fn get_type(&self) -> FileType {
-		self.type_
+		self.content.get_file_type()
 	}
 
 	fn get_entries(&self) -> &HashMap<String, INode> {
-		// TODO
-		todo!();
+		&self.entries
 	}
 }
 
 impl IO for TmpFSFile {
 	fn get_size(&self) -> u64 {
-		// TODO
-		todo!();
+		match &self.content {
+			FileContent::Regular => self.regular_content.len() as _,
+			FileContent::Directory(_) => {
+				let names_len = self.entries.iter()
+					.map(| (name, _) | name.len() as u64)
+					.sum::<u64>();
+
+				// Adding the length of inodes
+				names_len + (self.entries.len() as u64 * size_of::<INode>() as u64)
+			},
+			FileContent::Link(path) => path.len() as _,
+			FileContent::Fifo => 0, // TODO Add the size of the id?
+			FileContent::Socket => 0, // TODO Add the size of the id?
+			FileContent::BlockDevice { .. } | FileContent::CharDevice { .. } => 0,
+		}
 	}
 
-	fn read(&self, _offset: u64, _buff: &mut [u8]) -> Result<usize, Errno> {
-		// TODO
-		todo!();
+	fn read(&self, offset: u64, buff: &mut [u8]) -> Result<u64, Errno> {
+		// TODO Avoid redundant code with casual files
+		match &self.content {
+			FileContent::Regular => {
+				if offset <= self.regular_content.len() as _ {
+					buff.copy_from_slice(&self.regular_content.as_slice()[(offset as usize)..]);
+					Ok(min(buff.len() as u64, self.regular_content.len() as u64 - offset))
+				} else {
+					Ok(0)
+				}
+			},
+
+			FileContent::Directory(_) => Err(errno!(EINVAL)),
+
+			FileContent::Link(_) => Err(errno!(EINVAL)),
+
+			FileContent::Fifo => {
+				// TODO
+				todo!();
+			},
+
+			FileContent::Socket => {
+				// TODO
+				todo!();
+			},
+
+			FileContent::BlockDevice {
+				major: _,
+				minor: _
+			} => {
+				// TODO
+				todo!();
+			},
+
+			FileContent::CharDevice {
+				major: _,
+				minor: _
+			} => {
+				// TODO
+				todo!();
+			},
+		}
 	}
 
-	fn write(&mut self, _offset: u64, _buff: &[u8]) -> Result<usize, Errno> {
-		// TODO
-		todo!();
+	fn write(&mut self, offset: u64, buff: &[u8]) -> Result<u64, Errno> {
+		// TODO Avoid redundant code with casual files
+		match &self.content {
+			FileContent::Regular => {
+				if offset <= self.regular_content.len() as u64 {
+					if offset + buff.len() as u64 <= usize::MAX as u64 {
+						// Increase the size of storage if necessary
+						if offset + buff.len() as u64 > self.regular_content.len() as u64 {
+							self.regular_content.resize(offset as usize + buff.len())?;
+						}
+
+						self.regular_content.as_mut_slice()[(offset as usize)..]
+							.copy_from_slice(&buff);
+						Ok(buff.len() as _)
+					} else {
+						Err(errno!(EFBIG))
+					}
+				} else {
+					Err(errno!(EINVAL))
+				}
+			},
+
+			FileContent::Directory(_) => Err(errno!(EINVAL)),
+
+			FileContent::Link(_) => Err(errno!(EINVAL)),
+
+			FileContent::Fifo => {
+				// TODO
+				todo!();
+			},
+
+			FileContent::Socket => {
+				// TODO
+				todo!();
+			},
+
+			FileContent::BlockDevice {
+				major: _,
+				minor: _
+			} => {
+				// TODO
+				todo!();
+			},
+
+			FileContent::CharDevice {
+				major: _,
+				minor: _
+			} => {
+				// TODO
+				todo!();
+			},
+		}
 	}
 }
 
 /// Structure representing the temporary file system.
+/// On the inside, the tmpfs works using a kernfs.
 pub struct TmpFS {
 	/// The maximum amount of memory in bytes the filesystem can use.
 	max_size: usize,
 	/// The currently used amount of memory in bytes.
 	size: usize,
 
-	/// Tells whether the filesystem is readyonly.
-	readonly: bool,
-
-	/// The files, ordered by inode number.
-	files: Vec<TmpFSFile>,
+	/// The kernfs.
+	fs: KernFS,
 }
 
 impl TmpFS {
@@ -101,50 +207,68 @@ impl TmpFS {
 			max_size,
 			size: 0,
 
-			readonly,
-
-			files: Vec::new(),
+			fs: KernFS::new(String::from(b"tmpfs")?, readonly),
 		};
-		fs.files.insert(ROOT_INODE, TmpFSFile::new(FileType::Directory))?;
-		fs.increase_size(fs.files[0].get_used_size())?;
+
+		// Adding the root node
+		let root_node = TmpFSFile::new(FileContent::Directory(crate::vec![]));
+		fs.update_size(root_node.get_used_size() as _, | fs | {
+			fs.fs.set_node(ROOT_INODE, Box::new(root_node)?)
+		})?;
 
 		Ok(fs)
 	}
 
-	/// Increases the total size of the fs by `s`. If the size is too large, the function returns
-	/// an error.
-	fn increase_size(&mut self, s: usize) -> Result<(), Errno> {
-		if self.size + s < self.max_size {
-			self.size += s;
+	/// Executes the given function `f`. On success, the function adds `s` to the total size of the
+	/// filesystem.
+	/// If `f` fails, the function doesn't change the total size and returns the error.
+	/// If the new total size is too large, `f` is not executed and the function returns an error.
+	fn update_size<F: FnOnce(&mut Self) -> Result<(), Errno>>(&mut self, s: isize, f: F)
+		-> Result<(), Errno> {
+		if s < 0 {
+			f(self)?;
+
+			if self.size < (-s as usize) {
+				// If the result would underflow, set the total to zero
+				self.size = 0;
+			} else {
+				self.size -= -s as usize;
+			}
+
 			Ok(())
 		} else {
-			Err(errno!(ENOSPC))
+			if self.size + (s as usize) < self.max_size {
+				f(self)?;
+
+				self.size += s as usize;
+				Ok(())
+			} else {
+				Err(errno!(ENOSPC))
+			}
 		}
 	}
 }
 
 impl Filesystem for TmpFS {
 	fn get_name(&self) -> &[u8] {
-		b"tmpfs"
+		self.fs.get_name()
 	}
 
 	fn is_readonly(&self) -> bool {
-		self.readonly
+		self.fs.is_readonly()
 	}
+
 	fn must_cache(&self) -> bool {
-		false
+		self.fs.must_cache()
 	}
 
-	fn get_inode(&mut self, _io: &mut dyn IO, _parent: Option<INode>, _name: Option<&String>)
+	fn get_inode(&mut self, io: &mut dyn IO, parent: Option<INode>, name: Option<&String>)
 		-> Result<INode, Errno> {
-		// TODO
-		todo!();
+		self.fs.get_inode(io, parent, name)
 	}
 
-	fn load_file(&mut self, _dev: &mut dyn IO, _inode: INode, _name: String)
-		-> Result<File, Errno> {
-		// TODO
-		todo!();
+	fn load_file(&mut self, io: &mut dyn IO, inode: INode, name: String) -> Result<File, Errno> {
+		self.fs.load_file(io, inode, name)
 	}
 
 	fn add_file(&mut self, _io: &mut dyn IO, _parent_inode: INode, _name: String, _uid: Uid,
@@ -164,19 +288,18 @@ impl Filesystem for TmpFS {
 		todo!();
 	}
 
-	fn remove_file(&mut self, _dev: &mut dyn IO, _parent_inode: INode, _name: &String)
+	fn remove_file(&mut self, _io: &mut dyn IO, _parent_inode: INode, _name: &String)
 		-> Result<(), Errno> {
 		// TODO
 		todo!();
 	}
 
-	fn read_node(&mut self, _dev: &mut dyn IO, _inode: INode, _off: u64, _buf: &mut [u8])
-		-> Result<usize, Errno> {
-		// TODO
-		todo!();
+	fn read_node(&mut self, io: &mut dyn IO, inode: INode, off: u64, buf: &mut [u8])
+		-> Result<u64, Errno> {
+		self.fs.read_node(io, inode, off, buf)
 	}
 
-	fn write_node(&mut self, _dev: &mut dyn IO, _inode: INode, _off: u64, _buf: &[u8])
+	fn write_node(&mut self, _io: &mut dyn IO, _inode: INode, _off: u64, _buf: &[u8])
 		-> Result<(), Errno> {
 		// TODO
 		todo!();
@@ -191,15 +314,15 @@ impl FilesystemType for TmpFsType {
 		b"tmpfs"
 	}
 
-	fn detect(&self, _dev: &mut dyn IO) -> Result<bool, Errno> {
+	fn detect(&self, _io: &mut dyn IO) -> Result<bool, Errno> {
 		Ok(false)
 	}
 
-	fn create_filesystem(&self, _dev: &mut dyn IO) -> Result<Box<dyn Filesystem>, Errno> {
+	fn create_filesystem(&self, _io: &mut dyn IO) -> Result<Box<dyn Filesystem>, Errno> {
 		Ok(Box::new(TmpFS::new(DEFAULT_MAX_SIZE, false)?)?)
 	}
 
-	fn load_filesystem(&self, _dev: &mut dyn IO, _mountpath: Path, readonly: bool)
+	fn load_filesystem(&self, _io: &mut dyn IO, _mountpath: Path, readonly: bool)
 		-> Result<Box<dyn Filesystem>, Errno> {
 		Ok(Box::new(TmpFS::new(DEFAULT_MAX_SIZE, readonly)?)?)
 	}

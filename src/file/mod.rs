@@ -483,7 +483,7 @@ impl IO for File {
 		self.size
 	}
 
-	fn read(&self, off: u64, buff: &mut [u8]) -> Result<usize, Errno> {
+	fn read(&self, off: u64, buff: &mut [u8]) -> Result<u64, Errno> {
 		match &self.content {
 			FileContent::Regular => {
 				let mountpoint_mutex = self.location.get_mountpoint().ok_or(errno!(EIO))?;
@@ -531,7 +531,7 @@ impl IO for File {
 		}
 	}
 
-	fn write(&mut self, off: u64, buff: &[u8]) -> Result<usize, Errno> {
+	fn write(&mut self, off: u64, buff: &[u8]) -> Result<u64, Errno> {
 		match &self.content {
 			FileContent::Regular => {
 				let mountpoint_mutex = self.location.get_mountpoint().ok_or(errno!(EIO))?;
@@ -546,7 +546,7 @@ impl IO for File {
 				filesystem.write_node(io, self.location.get_inode(), off, buff)?;
 
 				self.size = max(off + buff.len() as u64, self.size);
-				Ok(buff.len())
+				Ok(buff.len() as _)
 			},
 
 			FileContent::Directory(_) => Err(errno!(EISDIR)),

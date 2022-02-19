@@ -140,11 +140,11 @@ impl IO for RAMDiskHandle {
 		RAM_DISK_SIZE as _
 	}
 
-	fn read(&self, offset: u64, buff: &mut [u8]) -> Result<usize, Errno> {
+	fn read(&self, offset: u64, buff: &mut [u8]) -> Result<u64, Errno> {
 		self.disk.read_bytes(buff, offset)
 	}
 
-	fn write(&mut self, offset: u64, buff: &[u8]) -> Result<usize, Errno> {
+	fn write(&mut self, offset: u64, buff: &[u8]) -> Result<u64, Errno> {
 		self.disk.write_bytes(buff, offset)
 	}
 }

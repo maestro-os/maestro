@@ -897,7 +897,7 @@ impl Filesystem for Ext2Fs {
 	}
 
 	fn read_node(&mut self, io: &mut dyn IO, inode: INode, off: u64, buf: &mut [u8])
-		-> Result<usize, Errno> {
+		-> Result<u64, Errno> {
 		debug_assert!(inode >= 1);
 
 		let inode_ = Ext2INode::read(inode, &self.superblock, io)?;

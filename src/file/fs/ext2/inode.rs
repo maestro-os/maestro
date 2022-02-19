@@ -619,7 +619,7 @@ impl Ext2INode {
 	/// `io` is the I/O interface.
 	/// The function returns the number of bytes that have been read.
 	pub fn read_content(&self, off: u64, buff: &mut [u8], superblock: &Superblock,
-		io: &mut dyn IO) -> Result<usize, Errno> {
+		io: &mut dyn IO) -> Result<u64, Errno> {
 		let size = self.get_size(&superblock);
 		if off > size {
 			return Err(errno!(EINVAL));
@@ -629,24 +629,24 @@ impl Ext2INode {
 		let mut blk_buff = malloc::Alloc::<u8>::new_default(blk_size as usize)?;
 
 		let mut i = 0;
-		let max = min(buff.len(), (size - off) as usize);
+		let max = min(buff.len() as u64, size - off);
 		while i < max {
 			let blk_off = (off + i as u64) / blk_size as u64;
 			let blk_inner_off = ((off + i as u64) % blk_size as u64) as usize;
-			let len = min(buff.len() - i, (blk_size - blk_inner_off as u32) as usize);
+			let len = min(buff.len() as u64 - i, (blk_size - blk_inner_off as u32) as u64);
 
 			if let Some(blk_off) = self.get_content_block_off(blk_off as _, superblock, io)? {
 				read_block(blk_off as _, superblock, io, blk_buff.get_slice_mut())?;
 
 				unsafe { // Safe because staying in range
 					copy_nonoverlapping(&blk_buff.get_slice()[blk_inner_off] as *const u8,
-						&mut buff[i] as *mut u8,
-						len);
+						&mut buff[i as usize] as *mut u8,
+						len as _);
 				}
 			} else {
 				// No content block, writting zeros
 				for j in 0..len {
-					buff[i + j] = 0;
+					buff[(i + j) as usize] = 0;
 				}
 			}
 

@@ -54,10 +54,11 @@ pub trait StorageInterface {
 	/// If the offset and size are out of bounds, the function returns an error.
 	fn write(&mut self, buf: &[u8], offset: u64, size: u64) -> Result<(), Errno>;
 
+	// TODO Clean
 	// Unit testing is done through ramdisk testing
 	/// Reads bytes from storage at offset `offset`, writting the data to `buf`.
 	/// If the offset and size are out of bounds, the function returns an error.
-	fn read_bytes(&self, buf: &mut [u8], offset: u64) -> Result<usize, Errno> {
+	fn read_bytes(&self, buf: &mut [u8], offset: u64) -> Result<u64, Errno> {
 		let block_size = self.get_block_size();
 		let blk_begin = offset / block_size;
 		let blk_end = (offset + buf.len() as u64) / block_size;
@@ -105,13 +106,14 @@ pub trait StorageInterface {
 			}
 		}
 
-		Ok(buf.len())
+		Ok(buf.len() as _)
 	}
 
+	// TODO Clean
 	// Unit testing is done through ramdisk testing
 	/// Writes bytes to storage at offset `offset`, reading the data from `buf`.
 	/// If the offset and size are out of bounds, the function returns an error.
-	fn write_bytes(&mut self, buf: &[u8], offset: u64) -> Result<usize, Errno> {
+	fn write_bytes(&mut self, buf: &[u8], offset: u64) -> Result<u64, Errno> {
 		let block_size = self.get_block_size();
 		let blk_begin = offset / block_size;
 		let blk_end = (offset + buf.len() as u64) / block_size;
@@ -160,7 +162,7 @@ pub trait StorageInterface {
 			}
 		}
 
-		Ok(buf.len())
+		Ok(buf.len() as _)
 	}
 }
 
@@ -282,7 +284,7 @@ impl IO for StorageDeviceHandle {
 		interface.get_block_size() * interface.get_blocks_count()
 	}
 
-	fn read(&self, offset: u64, buff: &mut [u8]) -> Result<usize, Errno> {
+	fn read(&self, offset: u64, buff: &mut [u8]) -> Result<u64, Errno> {
 		let interface = unsafe { // Safe because the pointer is valid
 			&mut *self.interface
 		};
@@ -290,7 +292,7 @@ impl IO for StorageDeviceHandle {
 		interface.read_bytes(buff, offset)
 	}
 
-	fn write(&mut self, offset: u64, buff: &[u8]) -> Result<usize, Errno> {
+	fn write(&mut self, offset: u64, buff: &[u8]) -> Result<u64, Errno> {
 		let interface = unsafe { // Safe because the pointer is valid
 			&mut *self.interface
 		};

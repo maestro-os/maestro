@@ -269,7 +269,7 @@ impl<'a, K: Hash + Eq, V> HashMapIterator<'a, K, V> {
 }
 
 impl<'a, K: Hash + Eq, V> Iterator for HashMapIterator<'a, K, V> {
-	type Item = &'a V;
+	type Item = &'a (K, V);
 
 	fn next(&mut self) -> Option<Self::Item> {
 		if self.curr_bucket >= self.hm.buckets.len() {
@@ -293,7 +293,7 @@ impl<'a, K: Hash + Eq, V> Iterator for HashMapIterator<'a, K, V> {
 			}
 		}
 
-		let e = &self.hm.buckets[self.curr_bucket].elements[self.curr_element].1;
+		let e = &self.hm.buckets[self.curr_bucket].elements[self.curr_element];
 		self.curr_element += 1;
 		Some(e)
 	}

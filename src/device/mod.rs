@@ -232,11 +232,11 @@ impl IO for Device {
 		self.handle.get_size()
 	}
 
-	fn read(&self, offset: u64, buff: &mut [u8]) -> Result<usize, Errno> {
+	fn read(&self, offset: u64, buff: &mut [u8]) -> Result<u64, Errno> {
 		self.handle.read(offset, buff)
 	}
 
-	fn write(&mut self, offset: u64, buff: &[u8]) -> Result<usize, Errno> {
+	fn write(&mut self, offset: u64, buff: &[u8]) -> Result<u64, Errno> {
 		self.handle.write(offset, buff)
 	}
 }
