@@ -1,4 +1,4 @@
-//! This module implements the root node of the procfs.
+//! This module implements a procfs node which allows to get the list of mountpoint.
 
 use crate::errno::Errno;
 use crate::file::FileType;
@@ -14,25 +14,24 @@ use crate::util::IO;
 use crate::util::boxed::Box;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
-use super::mount::ProcFSMount;
 
-/// Structure representing the root of the procfs.
-pub struct ProcFSRoot {}
+/// Structure representing the mount node of the procfs.
+pub struct ProcFSMount {}
 
-impl ProcFSRoot {
+impl ProcFSMount {
 	/// Creates a new instance.
 	pub fn new() -> Self {
 		Self {}
 	}
 }
 
-impl KernFSNode for ProcFSRoot {
+impl KernFSNode for ProcFSMount {
 	fn get_type(&self) -> FileType {
-		FileType::Directory
+		FileType::Regular
 	}
 
 	fn get_mode(&self) -> Mode {
-		0o555
+		0o444
 	}
 
 	fn set_mode(&mut self, _mode: Mode) {}
@@ -68,21 +67,18 @@ impl KernFSNode for ProcFSRoot {
 	fn set_mtime(&mut self, _ts: Timestamp) {}
 
 	fn get_entries(&self) -> Result<HashMap<String, Box<dyn INode>>, Errno> {
-		let mut entries = HashMap::new();
-		// TODO Add every processes
-		entries.insert(String::from(b"mount")?, ProcFSMount::new());
-
-		Ok(entries)
+		Ok(HashMap::new())
 	}
 }
 
-impl IO for ProcFSRoot {
+impl IO for ProcFSMount {
 	fn get_size(&self) -> u64 {
 		0
 	}
 
 	fn read(&self, _offset: u64, _buff: &mut [u8]) -> Result<u64, Errno> {
-		Err(errno!(EINVAL))
+		// TODO
+		todo!();
 	}
 
 	fn write(&mut self, _offset: u64, _buff: &[u8]) -> Result<u64, Errno> {

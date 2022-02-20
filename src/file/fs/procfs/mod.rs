@@ -1,18 +1,19 @@
 //! The procfs is a virtual filesystem which provides informations about processes.
 
+pub mod mount;
 pub mod root;
 
 use crate::errno::Errno;
 use crate::file::File;
 use crate::file::FileContent;
 use crate::file::Gid;
-use crate::file::INode;
 use crate::file::Mode;
 use crate::file::Uid;
 use crate::file::fs::Filesystem;
 use crate::file::fs::FilesystemType;
 use crate::file::fs::kernfs::KernFS;
 use crate::file::fs::kernfs::ROOT_INODE;
+use crate::file::inode::INode;
 use crate::file::path::Path;
 use crate::util::IO;
 use crate::util::boxed::Box;
@@ -55,22 +56,23 @@ impl Filesystem for ProcFS {
 		self.fs.must_cache()
 	}
 
-	fn get_inode(&mut self, io: &mut dyn IO, parent: Option<INode>, name: Option<&String>)
-		-> Result<INode, Errno> {
+	fn get_inode(&mut self, io: &mut dyn IO, parent: Option<Box<dyn INode>>, name: Option<&String>)
+		-> Result<Box<dyn INode>, Errno> {
 		self.fs.get_inode(io, parent, name)
 	}
 
-	fn load_file(&mut self, io: &mut dyn IO, inode: INode, name: String) -> Result<File, Errno> {
+	fn load_file(&mut self, io: &mut dyn IO, inode: Box<dyn INode>, name: String)
+		-> Result<File, Errno> {
 		self.fs.load_file(io, inode, name)
 	}
 
-	fn add_file(&mut self, _io: &mut dyn IO, _parent_inode: INode, _name: String, _uid: Uid,
+	fn add_file(&mut self, _io: &mut dyn IO, _parent_inode: Box<dyn INode>, _name: String, _uid: Uid,
 		_gid: Gid, _mode: Mode, _content: FileContent) -> Result<File, Errno> {
 		Err(errno!(EPERM))
 	}
 
-	fn add_link(&mut self, _io: &mut dyn IO, _parent_inode: INode, _name: &String, _inode: INode)
-		-> Result<(), Errno> {
+	fn add_link(&mut self, _io: &mut dyn IO, _parent_inode: Box<dyn INode>, _name: &String,
+		_inode: Box<dyn INode>) -> Result<(), Errno> {
 		Err(errno!(EPERM))
 	}
 
@@ -78,17 +80,17 @@ impl Filesystem for ProcFS {
 		Err(errno!(EPERM))
 	}
 
-	fn remove_file(&mut self, _io: &mut dyn IO, _parent_inode: INode, _name: &String)
+	fn remove_file(&mut self, _io: &mut dyn IO, _parent_inode: Box<dyn INode>, _name: &String)
 		-> Result<(), Errno> {
 		Err(errno!(EPERM))
 	}
 
-	fn read_node(&mut self, io: &mut dyn IO, inode: INode, off: u64, buf: &mut [u8])
+	fn read_node(&mut self, io: &mut dyn IO, inode: Box<dyn INode>, off: u64, buf: &mut [u8])
 		-> Result<u64, Errno> {
 		self.fs.read_node(io, inode, off, buf)
 	}
 
-	fn write_node(&mut self, io: &mut dyn IO, inode: INode, off: u64, buf: &[u8])
+	fn write_node(&mut self, io: &mut dyn IO, inode: Box<dyn INode>, off: u64, buf: &[u8])
 		-> Result<(), Errno> {
 		self.fs.write_node(io, inode, off, buf)
 	}

@@ -41,11 +41,12 @@ use crate::file::FileContent;
 use crate::file::FileLocation;
 use crate::file::FileType;
 use crate::file::Gid;
-use crate::file::INode;
 use crate::file::Mode;
 use crate::file::Uid;
 use crate::file::fs::Filesystem;
 use crate::file::fs::FilesystemType;
+use crate::file::inode::INode;
+use crate::file::inode::UnixINode;
 use crate::file::path::Path;
 use crate::memory::malloc;
 use crate::time;
@@ -329,7 +330,7 @@ impl Superblock {
 	/// Returns the first inode that isn't reserved.
 	pub fn get_first_available_inode(&self) -> u32 {
 		if self.major_version >= 1 {
-			max(self.first_non_reserved_inode, inode::ROOT_DIRECTORY_INODE + 1)
+			max(self.first_non_reserved_inode, inode::ROOT_DIRECTORY_INODE as u32 + 1)
 		} else {
 			10
 		}
@@ -631,12 +632,12 @@ impl Filesystem for Ext2Fs {
 		true
 	}
 
-	fn get_inode(&mut self, io: &mut dyn IO, parent: Option<INode>, name: Option<&String>)
-		-> Result<INode, Errno> {
-		let parent_inode = parent.unwrap_or(inode::ROOT_DIRECTORY_INODE);
+	fn get_inode(&mut self, io: &mut dyn IO, parent: Option<Box<dyn INode>>, name: Option<&String>)
+		-> Result<Box<dyn INode>, Errno> {
+		let parent_inode = parent.map(| i | i as u32).unwrap_or(inode::ROOT_DIRECTORY_INODE);
 
 		if name.is_none() {
-			return Ok(parent_inode);
+			return Ok(Box::new(UnixINode::from(parent_inode))?);
 		}
 		let name = name.unwrap();
 
@@ -648,13 +649,14 @@ impl Filesystem for Ext2Fs {
 
 		// Getting the entry with the given name
 		if let Some(entry) = parent.get_directory_entry(name.as_bytes(), &self.superblock, io)? {
-			Ok(entry.get_inode())
+			Ok(Box::new(UnixINode::from(entry.get_inode()))?)
 		} else {
 			Err(errno!(ENOENT))
 		}
 	}
 
-	fn load_file(&mut self, io: &mut dyn IO, inode: INode, name: String) -> Result<File, Errno> {
+	fn load_file(&mut self, io: &mut dyn IO, inode: Box<dyn INode>, name: String)
+		-> Result<File, Errno> {
 		let inode_ = Ext2INode::read(inode, &self.superblock, io)?;
 		let file_type = inode_.get_type();
 
@@ -726,8 +728,8 @@ impl Filesystem for Ext2Fs {
 		Ok(file)
 	}
 
-	fn add_file(&mut self, io: &mut dyn IO, parent_inode: INode, name: String, uid: Uid, gid: Gid,
-		mode: Mode, content: FileContent) -> Result<File, Errno> {
+	fn add_file(&mut self, io: &mut dyn IO, parent_inode: Box<dyn INode>, name: String, uid: Uid,
+		gid: Gid, mode: Mode, content: FileContent) -> Result<File, Errno> {
 		if self.readonly {
 			return Err(errno!(EROFS));
 		}
@@ -802,8 +804,8 @@ impl Filesystem for Ext2Fs {
 		Ok(file)
 	}
 
-	fn add_link(&mut self, io: &mut dyn IO, parent_inode: INode, name: &String, inode: INode)
-		-> Result<(), Errno> {
+	fn add_link(&mut self, io: &mut dyn IO, parent_inode: Box<dyn INode>, name: &String,
+		inode: Box<dyn INode>) -> Result<(), Errno> {
 		if self.readonly {
 			return Err(errno!(EROFS));
 		}
@@ -849,7 +851,7 @@ impl Filesystem for Ext2Fs {
 		inode_.write(inode, &self.superblock, io)
 	}
 
-	fn remove_file(&mut self, io: &mut dyn IO, parent_inode: INode, name: &String)
+	fn remove_file(&mut self, io: &mut dyn IO, parent_inode: Box<dyn INode>, name: &String)
 		-> Result<(), Errno> {
 		if self.readonly {
 			return Err(errno!(EROFS));
@@ -896,7 +898,7 @@ impl Filesystem for Ext2Fs {
 		inode_.write(inode, &self.superblock, io)
 	}
 
-	fn read_node(&mut self, io: &mut dyn IO, inode: INode, off: u64, buf: &mut [u8])
+	fn read_node(&mut self, io: &mut dyn IO, inode: Box<dyn INode>, off: u64, buf: &mut [u8])
 		-> Result<u64, Errno> {
 		debug_assert!(inode >= 1);
 
@@ -904,7 +906,7 @@ impl Filesystem for Ext2Fs {
 		inode_.read_content(off, buf, &self.superblock, io)
 	}
 
-	fn write_node(&mut self, io: &mut dyn IO, inode: INode, off: u64, buf: &[u8])
+	fn write_node(&mut self, io: &mut dyn IO, inode: Box<dyn INode>, off: u64, buf: &[u8])
 		-> Result<(), Errno> {
 		if self.readonly {
 			return Err(errno!(EROFS));
