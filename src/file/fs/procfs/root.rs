@@ -8,7 +8,6 @@ use crate::file::ROOT_GID;
 use crate::file::ROOT_UID;
 use crate::file::Uid;
 use crate::file::fs::kernfs::KernFSNode;
-use crate::file::inode::INode;
 use crate::time::Timestamp;
 use crate::util::IO;
 use crate::util::boxed::Box;
@@ -67,10 +66,10 @@ impl KernFSNode for ProcFSRoot {
 
 	fn set_mtime(&mut self, _ts: Timestamp) {}
 
-	fn get_entries(&self) -> Result<HashMap<String, Box<dyn INode>>, Errno> {
+	fn get_entries(&self) -> Result<HashMap<String, Box<dyn KernFSNode>>, Errno> {
 		let mut entries = HashMap::new();
 		// TODO Add every processes
-		entries.insert(String::from(b"mount")?, ProcFSMount::new());
+		entries.insert(String::from(b"mount")?, Box::new(ProcFSMount::new())? as _);
 
 		Ok(entries)
 	}

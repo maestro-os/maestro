@@ -5,12 +5,12 @@
 pub mod fcache;
 pub mod file_descriptor;
 pub mod fs;
-pub mod inode;
 pub mod mountpoint;
 pub mod path;
 pub mod pipe;
 pub mod socket;
 
+use core::any::Any;
 use core::cmp::max;
 use core::ffi::c_void;
 use crate::device::DeviceType;
@@ -28,7 +28,6 @@ use crate::util::boxed::Box;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::ptr::SharedPtr;
-use inode::INode;
 use path::Path;
 
 /// Type representing a user ID.
@@ -131,14 +130,14 @@ pub struct FileLocation {
 	/// The path of the mountpoint.
 	mountpoint_path: Path, // TODO Replace by an allocated ID to save memory
 
-	/// The disk's inode.
-	inode: Box<dyn INode>,
+	/// The file's inode.
+	inode: Box<dyn Any>,
 }
 
 impl FileLocation {
 	/// Creates a new instance.
 	#[inline]
-	pub fn new(mountpoint_path: Path, inode: dyn INode) -> Self {
+	pub fn new(mountpoint_path: Path, inode: Box<dyn Any>) -> Self {
 		Self {
 			mountpoint_path,
 
@@ -159,7 +158,7 @@ impl FileLocation {
 
 	/// Returns the inode number.
 	#[inline]
-	pub fn get_inode(&self) -> Box<dyn INode> {
+	pub fn get_inode(&self) -> Box<dyn Any> {
 		self.inode
 	}
 }
