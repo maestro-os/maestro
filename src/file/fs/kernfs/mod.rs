@@ -19,7 +19,7 @@ use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
 
 /// Trait representing a node in a kernfs.
-pub trait KernFSNode: Any + IO {
+pub trait KernFSNode: IO {
 	/// Returns the type of the node.
 	fn get_type(&self) -> FileType;
 
