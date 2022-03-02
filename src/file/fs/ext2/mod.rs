@@ -634,14 +634,13 @@ impl Filesystem for Ext2Fs {
 	}
 
 	fn get_root_inode(&self, _io: &mut dyn IO) -> Result<Box<dyn INode>, Errno> {
-		// TODO
-		todo!();
+		Ok(Box::new(ExtINodeNbr { inode: inode::ROOT_DIRECTORY_INODE })?)
 	}
 
 	fn get_inode(&mut self, io: &mut dyn IO, parent: Option<&Box<dyn INode>>, name: &String)
 		-> Result<Box<dyn INode>, Errno> {
 		let parent_inode = parent.map(| i | {
-				<dyn Any>::downcast_ref::<ExtINodeNbr>(i).unwrap().inode
+				<dyn Any>::downcast_ref::<ExtINodeNbr>(i.as_ref()).unwrap().inode
 			})
 			.unwrap_or(inode::ROOT_DIRECTORY_INODE);
 
@@ -661,7 +660,7 @@ impl Filesystem for Ext2Fs {
 
 	fn load_file(&mut self, io: &mut dyn IO, inode: &Box<dyn INode>, name: String)
 		-> Result<File, Errno> {
-		let inode = <dyn Any>::downcast_ref::<ExtINodeNbr>(inode).unwrap().inode;
+		let inode = <dyn Any>::downcast_ref::<ExtINodeNbr>(inode.as_ref()).unwrap().inode;
 		let inode_ = Ext2INode::read(inode, &self.superblock, io)?;
 		let file_type = inode_.get_type();
 
@@ -740,7 +739,8 @@ impl Filesystem for Ext2Fs {
 			return Err(errno!(EROFS));
 		}
 
-		let parent_inode = <dyn Any>::downcast_ref::<ExtINodeNbr>(parent_inode).unwrap().inode;
+		let parent_inode = <dyn Any>::downcast_ref::<ExtINodeNbr>(parent_inode.as_ref()).unwrap()
+			.inode;
 		let mut parent = Ext2INode::read(parent_inode, &self.superblock, io)?;
 
 		// Checking the parent file is a directory
@@ -813,13 +813,14 @@ impl Filesystem for Ext2Fs {
 	}
 
 	fn add_link(&mut self, io: &mut dyn IO, parent_inode: &Box<dyn INode>, name: &String,
-		inode: Box<dyn INode>) -> Result<(), Errno> {
+		inode: &Box<dyn INode>) -> Result<(), Errno> {
 		if self.readonly {
 			return Err(errno!(EROFS));
 		}
 
 		// Parent inode
-		let parent_inode = <dyn Any>::downcast_ref::<ExtINodeNbr>(parent_inode).unwrap().inode;
+		let parent_inode = <dyn Any>::downcast_ref::<ExtINodeNbr>(parent_inode.as_ref()).unwrap()
+			.inode;
 		let mut parent = Ext2INode::read(parent_inode, &self.superblock, io)?;
 
 		// Checking the parent file is a directory
@@ -828,7 +829,7 @@ impl Filesystem for Ext2Fs {
 		}
 
 		// The inode
-		let inode = <dyn Any>::downcast_ref::<ExtINodeNbr>(&inode).unwrap().inode;
+		let inode = <dyn Any>::downcast_ref::<ExtINodeNbr>(inode.as_ref()).unwrap().inode;
 		let mut inode_ = Ext2INode::read(inode, &self.superblock, io)?;
 		inode_.hard_links_count += 1;
 		inode_.write(inode, &self.superblock, io)?;
@@ -846,7 +847,7 @@ impl Filesystem for Ext2Fs {
 		// The inode number
 		let inode = file.get_location().get_inode();
 		// The inode
-		let inode = <dyn Any>::downcast_ref::<ExtINodeNbr>(inode).unwrap().inode;
+		let inode = <dyn Any>::downcast_ref::<ExtINodeNbr>(inode.as_ref()).unwrap().inode;
 		let mut inode_ = Ext2INode::read(inode, &self.superblock, io)?;
 
 		// Changing file size if it has been truncated
@@ -868,7 +869,8 @@ impl Filesystem for Ext2Fs {
 			return Err(errno!(EROFS));
 		}
 
-		let parent_inode = <dyn Any>::downcast_ref::<ExtINodeNbr>(parent_inode).unwrap().inode;
+		let parent_inode = <dyn Any>::downcast_ref::<ExtINodeNbr>(parent_inode.as_ref()).unwrap()
+			.inode;
 		debug_assert!(parent_inode >= 1);
 
 		// The parent inode
@@ -912,7 +914,7 @@ impl Filesystem for Ext2Fs {
 
 	fn read_node(&mut self, io: &mut dyn IO, inode: &Box<dyn INode>, off: u64, buf: &mut [u8])
 		-> Result<u64, Errno> {
-		let inode = <dyn Any>::downcast_ref::<ExtINodeNbr>(inode).unwrap().inode;
+		let inode = <dyn Any>::downcast_ref::<ExtINodeNbr>(inode.as_ref()).unwrap().inode;
 		debug_assert!(inode >= 1);
 
 		let inode_ = Ext2INode::read(inode, &self.superblock, io)?;
@@ -925,7 +927,7 @@ impl Filesystem for Ext2Fs {
 			return Err(errno!(EROFS));
 		}
 
-		let inode = <dyn Any>::downcast_ref::<ExtINodeNbr>(inode).unwrap().inode;
+		let inode = <dyn Any>::downcast_ref::<ExtINodeNbr>(inode.as_ref()).unwrap().inode;
 		debug_assert!(inode >= 1);
 
 		let mut inode_ = Ext2INode::read(inode, &self.superblock, io)?;

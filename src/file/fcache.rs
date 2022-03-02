@@ -106,7 +106,7 @@ impl FCache {
 		let fs = mountpoint.get_filesystem();
 
 		// The root inode
-		let mut inode = fs.get_inode(io, None, &String::from(b"")?)?;
+		let mut inode = fs.get_root_inode(io)?;
 		// If the path is empty, return the root
 		if inner_path.is_empty() {
 			return SharedPtr::new(fs.load_file(io, &inode, String::new())?);

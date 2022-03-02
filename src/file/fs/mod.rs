@@ -69,7 +69,7 @@ pub trait Filesystem {
 	/// `name` is the name of the link.
 	/// `inode` is the inode the link points to.
 	fn add_link(&mut self, io: &mut dyn IO, parent_inode: &Box<dyn INode>, name: &String,
-		inode: Box<dyn INode>) -> Result<(), Errno>;
+		inode: &Box<dyn INode>) -> Result<(), Errno>;
 
 	/// Updates the given inode.
 	/// `io` is the IO interface.

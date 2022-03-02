@@ -77,7 +77,7 @@ impl Filesystem for ProcFS {
 	}
 
 	fn add_link(&mut self, _io: &mut dyn IO, _parent_inode: &Box<dyn INode>, _name: &String,
-		_inode: Box<dyn INode>) -> Result<(), Errno> {
+		_inode: &Box<dyn INode>) -> Result<(), Errno> {
 		Err(errno!(EPERM))
 	}
 

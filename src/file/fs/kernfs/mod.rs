@@ -147,7 +147,7 @@ impl Filesystem for KernFS {
 	fn get_inode(&mut self, _io: &mut dyn IO, parent: Option<&Box<dyn INode>>, name: &String)
 		-> Result<Box<dyn INode>, Errno> {
 		let parent_mutex = parent.map(| p | {
-				&<dyn Any>::downcast_ref::<KernFSINode>(p).unwrap().node
+				&<dyn Any>::downcast_ref::<KernFSINode>(p.as_ref()).unwrap().node
 			})
 			.or_else(|| self.root_node.as_ref())
 			.ok_or(errno!(ENOENT))?;
@@ -176,7 +176,7 @@ impl Filesystem for KernFS {
 	}
 
 	fn add_link(&mut self, _io: &mut dyn IO, _parent_inode: &Box<dyn INode>, _name: &String,
-		_inode: Box<dyn INode>) -> Result<(), Errno> {
+		_inode: &Box<dyn INode>) -> Result<(), Errno> {
 		if self.readonly {
 			return Err(errno!(EROFS));
 		}
