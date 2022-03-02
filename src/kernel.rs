@@ -21,11 +21,13 @@
 #![feature(slice_ptr_get)]
 #![feature(slice_ptr_len)]
 #![feature(stmt_expr_attributes)]
+#![feature(trait_upcasting)]
 #![feature(unsize)]
 
 #![deny(warnings)]
 #![allow(dead_code)]
 #![allow(unused_macros)]
+#![allow(incomplete_features)]
 
 #![test_runner(crate::selftest::runner)]
 #![reexport_test_harness_main = "kernel_selftest"]

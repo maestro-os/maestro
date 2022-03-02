@@ -1,7 +1,6 @@
 //! Tmpfs (Temporary file system) is, as its name states a temporary filesystem. The files are
 //! stored on the kernel's memory and thus are removed when the filesystem is unmounted.
 
-use core::any::Any;
 use core::cmp::min;
 use core::mem::size_of;
 use crate::errno;
@@ -16,6 +15,7 @@ use crate::file::fs::Filesystem;
 use crate::file::fs::FilesystemType;
 use crate::file::fs::kernfs::KernFS;
 use crate::file::fs::kernfs::KernFSNode;
+use crate::file::inode::INode;
 use crate::file::path::Path;
 use crate::time::Timestamp;
 use crate::time;
@@ -341,24 +341,24 @@ impl Filesystem for TmpFS {
 		self.fs.must_cache()
 	}
 
-	fn get_inode(&mut self, io: &mut dyn IO, parent: Option<Box<dyn Any>>, name: Option<&String>)
-		-> Result<Box<dyn Any>, Errno> {
+	fn get_inode(&mut self, io: &mut dyn IO, parent: Option<Box<dyn INode>>, name: Option<&String>)
+		-> Result<Box<dyn INode>, Errno> {
 		self.fs.get_inode(io, parent, name)
 	}
 
-	fn load_file(&mut self, io: &mut dyn IO, inode: Box<dyn Any>, name: String)
+	fn load_file(&mut self, io: &mut dyn IO, inode: Box<dyn INode>, name: String)
 		-> Result<File, Errno> {
 		self.fs.load_file(io, inode, name)
 	}
 
-	fn add_file(&mut self, _io: &mut dyn IO, _parent_inode: Box<dyn Any>, _name: String,
+	fn add_file(&mut self, _io: &mut dyn IO, _parent_inode: Box<dyn INode>, _name: String,
 		_uid: Uid, _gid: Gid, _mode: Mode, _content: FileContent) -> Result<File, Errno> {
 		// TODO
 		todo!();
 	}
 
-	fn add_link(&mut self, _io: &mut dyn IO, _parent_inode: Box<dyn Any>, _name: &String,
-		_inode: Box<dyn Any>) -> Result<(), Errno> {
+	fn add_link(&mut self, _io: &mut dyn IO, _parent_inode: Box<dyn INode>, _name: &String,
+		_inode: Box<dyn INode>) -> Result<(), Errno> {
 		// TODO
 		todo!();
 	}
@@ -368,18 +368,18 @@ impl Filesystem for TmpFS {
 		todo!();
 	}
 
-	fn remove_file(&mut self, _io: &mut dyn IO, _parent_inode: Box<dyn Any>, _name: &String)
+	fn remove_file(&mut self, _io: &mut dyn IO, _parent_inode: Box<dyn INode>, _name: &String)
 		-> Result<(), Errno> {
 		// TODO
 		todo!();
 	}
 
-	fn read_node(&mut self, io: &mut dyn IO, inode: Box<dyn Any>, off: u64, buf: &mut [u8])
+	fn read_node(&mut self, io: &mut dyn IO, inode: Box<dyn INode>, off: u64, buf: &mut [u8])
 		-> Result<u64, Errno> {
 		self.fs.read_node(io, inode, off, buf)
 	}
 
-	fn write_node(&mut self, _io: &mut dyn IO, _inode: Box<dyn Any>, _off: u64, _buf: &[u8])
+	fn write_node(&mut self, _io: &mut dyn IO, _inode: Box<dyn INode>, _off: u64, _buf: &[u8])
 		-> Result<(), Errno> {
 		// TODO
 		todo!();

@@ -5,13 +5,13 @@ pub mod kernfs;
 pub mod procfs;
 pub mod tmp;
 
-use core::any::Any;
 use crate::errno::Errno;
 use crate::errno;
 use crate::file::FileContent;
 use crate::file::Gid;
 use crate::file::Mode;
 use crate::file::Uid;
+use crate::file::inode::INode;
 use crate::util::IO;
 use crate::util::boxed::Box;
 use crate::util::container::string::String;
@@ -37,14 +37,14 @@ pub trait Filesystem {
 	/// `parent` is the inode's parent. If none, the function uses the root of the filesystem.
 	/// `name` is the name of the file. If none, the function returns the parent's inode.
 	/// If the parent is not a directory, the function returns an error.
-	fn get_inode(&mut self, io: &mut dyn IO, parent: Option<Box<dyn Any>>, name: Option<&String>)
-		-> Result<Box<dyn Any>, Errno>;
+	fn get_inode(&mut self, io: &mut dyn IO, parent: Option<Box<dyn INode>>, name: Option<&String>)
+		-> Result<Box<dyn INode>, Errno>;
 
 	/// Loads the file at inode `inode`.
 	/// `io` is the IO interface.
 	/// `inode` is the file's inode.
 	/// `name` is the file's name.
-	fn load_file(&mut self, io: &mut dyn IO, inode: Box<dyn Any>, name: String)
+	fn load_file(&mut self, io: &mut dyn IO, inode: &Box<dyn INode>, name: String)
 		-> Result<File, Errno>;
 
 	/// Adds a file to the filesystem at inode `inode`.
@@ -56,7 +56,7 @@ pub trait Filesystem {
 	/// `mode` is the permission of the file.
 	/// `content` is the content of the file. This value also determines the file type.
 	/// On success, the function returns the newly created file.
-	fn add_file(&mut self, io: &mut dyn IO, parent_inode: Box<dyn Any>, name: String, uid: Uid,
+	fn add_file(&mut self, io: &mut dyn IO, parent_inode: &Box<dyn INode>, name: String, uid: Uid,
 		gid: Gid, mode: Mode, content: FileContent) -> Result<File, Errno>;
 
 	/// Adds a hard link to the filesystem.
@@ -65,8 +65,8 @@ pub trait Filesystem {
 	/// `parent_inode` is the parent file's inode.
 	/// `name` is the name of the link.
 	/// `inode` is the inode the link points to.
-	fn add_link(&mut self, io: &mut dyn IO, parent_inode: Box<dyn Any>, name: &String,
-		inode: Box<dyn Any>) -> Result<(), Errno>;
+	fn add_link(&mut self, io: &mut dyn IO, parent_inode: &Box<dyn INode>, name: &String,
+		inode: Box<dyn INode>) -> Result<(), Errno>;
 
 	/// Updates the given inode.
 	/// `io` is the IO interface.
@@ -78,17 +78,17 @@ pub trait Filesystem {
 	/// `io` is the IO interface.
 	/// `parent_inode` is the parent file's inode.
 	/// `name` is the file's name.
-	fn remove_file(&mut self, io: &mut dyn IO, parent_inode: Box<dyn Any>, name: &String)
+	fn remove_file(&mut self, io: &mut dyn IO, parent_inode: &Box<dyn INode>, name: &String)
 		-> Result<(), Errno>;
 
 	/// Reads from the given inode `inode` into the buffer `buf`.
 	/// `off` is the offset from which the data will be read from the node.
-	fn read_node(&mut self, io: &mut dyn IO, inode: Box<dyn Any>, off: u64, buf: &mut [u8])
+	fn read_node(&mut self, io: &mut dyn IO, inode: &Box<dyn INode>, off: u64, buf: &mut [u8])
 		-> Result<u64, Errno>;
 
 	/// Writes to the given inode `inode` from the buffer `buf`.
 	/// `off` is the offset at which the data will be written in the node.
-	fn write_node(&mut self, io: &mut dyn IO, inode: Box<dyn Any>, off: u64, buf: &[u8])
+	fn write_node(&mut self, io: &mut dyn IO, inode: &Box<dyn INode>, off: u64, buf: &[u8])
 		-> Result<(), Errno>;
 }
 

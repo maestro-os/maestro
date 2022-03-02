@@ -11,6 +11,7 @@ use crate::errno::Errno;
 use crate::errno;
 use crate::file::FileType;
 use crate::file::Mode;
+use crate::file::inode::INode;
 use crate::file;
 use crate::limits;
 use crate::memory::malloc;
@@ -110,6 +111,14 @@ pub const ROOT_DIRECTORY_INODE: u32 = 2;
 pub const ROOT_DIRECTORY_DEFAULT_MODE: u16 = INODE_PERMISSION_IRWXU
 	| INODE_PERMISSION_IRGRP | INODE_PERMISSION_IXGRP
 	| INODE_PERMISSION_IROTH | INODE_PERMISSION_IXOTH;
+
+/// Ext INode number.
+pub struct ExtINodeNbr {
+	/// The inode number.
+	pub inode: u32,
+}
+
+impl INode for ExtINodeNbr {}
 
 /// An inode represents a file in the filesystem. The name of the file is not included in the inode
 /// but in the directory entry associated with it since several entries can refer to the same

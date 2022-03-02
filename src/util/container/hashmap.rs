@@ -211,11 +211,11 @@ impl<K: Eq + Hash, V> HashMap::<K, V> {
 
 	/// Removes an element from the hash map. If the key was present, the function returns the
 	/// value.
-	pub fn remove(&mut self, k: K) -> Option<V> {
-		let index = self.get_bucket_index(&k);
+	pub fn remove(&mut self, k: &K) -> Option<V> {
+		let index = self.get_bucket_index(k);
 
 		if index < self.buckets.len() {
-			self.buckets[index].remove(&k)
+			self.buckets[index].remove(k)
 		} else {
 			None
 		}
