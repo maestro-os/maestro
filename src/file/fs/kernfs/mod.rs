@@ -18,6 +18,7 @@ use crate::util::IO;
 use crate::util::boxed::Box;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
+use crate::util::ptr::SharedPtr;
 
 /// Trait representing a node in a kernfs.
 pub trait KernFSNode: IO {
@@ -54,22 +55,22 @@ pub trait KernFSNode: IO {
 	fn set_mtime(&mut self, ts: Timestamp);
 
 	/// Returns the list of entries in the node.
-	fn get_entries(&self) -> Result<HashMap<String, Box<dyn KernFSNode>>, Errno>;
+	fn get_entries(&self) -> &HashMap<String, SharedPtr<dyn KernFSNode>>;
 
 	/// Returns the inode of the entry with name `name`.
 	/// If the entry doesn't exist, the function returns an error.
 	/// Reimplementing this function is highly recommended since the default implementation is
 	/// using get_entries, which can be fairly slow depending on the amount of elements in the
 	/// node.
-	fn get_entry(&self, name: &String) -> Result<Box<dyn KernFSNode>, Errno> {
-		self.get_entries()?.remove(name).ok_or(errno!(ENOENT))
+	fn get_entry(&self, name: &String) -> Result<SharedPtr<dyn KernFSNode>, Errno> {
+		Ok(self.get_entries().get(name).ok_or(errno!(ENOENT))?.clone())
 	}
 }
 
 /// Structure wrapping a reference to a kernfs node into an inode.
 pub struct KernFSINode {
 	/// The node.
-	pub node: Box<dyn KernFSNode>,
+	pub node: SharedPtr<dyn KernFSNode>,
 }
 
 impl INode for KernFSINode {}
@@ -82,7 +83,7 @@ pub struct KernFS {
 	readonly: bool,
 
 	/// The root node of the filesystem.
-	root_node: Option<Box<dyn KernFSNode>>,
+	root_node: Option<SharedPtr<dyn KernFSNode>>,
 }
 
 impl KernFS {
@@ -99,13 +100,13 @@ impl KernFS {
 	}
 
 	/// Sets the root node of the filesystem.
-	pub fn set_root(&mut self, root: Option<Box<dyn KernFSNode>>) {
+	pub fn set_root(&mut self, root: Option<SharedPtr<dyn KernFSNode>>) {
 		self.root_node = root;
 	}
 
 	/// Adds the given node `node` at the given path `path`.
 	/// The function returns the allocated inode.
-	pub fn add_node(&mut self, path: &Path, _node: Box<dyn KernFSNode>)
+	pub fn add_node(&mut self, path: &Path, _node: SharedPtr<dyn KernFSNode>)
 		-> Result<Box<dyn INode>, Errno> {
 		let mut parent_path = path.failable_clone()?;
 		parent_path.pop();
@@ -116,7 +117,7 @@ impl KernFS {
 	}
 
 	/// Removes the node with inode `inode`.
-	pub fn remove_node(&mut self, _inode: Box<dyn INode>) -> Result<(), Errno> {
+	pub fn remove_node(&mut self, _inode: &Box<dyn INode>) -> Result<(), Errno> {
 		// If the previous node has entries, free everything recursively
 		// TODO (Handles cases where multiple links are present)
 
@@ -138,28 +139,33 @@ impl Filesystem for KernFS {
 		false
 	}
 
-	fn get_inode(&mut self, _io: &mut dyn IO, parent: Option<Box<dyn INode>>, name: Option<&String>)
-		-> Result<Box<dyn INode>, Errno> {
-		let parent = parent.map(| p | <dyn Any>::downcast_ref::<KernFSINode>(&p).unwrap().node)
-			.or_else(|| self.root_node)
-			.ok_or(errno!(ENOENT))?;
-
-		if let Some(name) = name {
-			Ok(Box::new(KernFSINode {
-				node: parent.get_entry(name)?
-			})?)
-		} else {
-			Ok(Box::new(KernFSINode { node: parent })?)
-		}
+	fn get_root_inode(&self, _io: &mut dyn IO) -> Result<Box<dyn INode>, Errno> {
+		// TODO
+		todo!();
 	}
 
-	fn load_file(&mut self, _: &mut dyn IO, _inode: Box<dyn INode>, _name: String)
+	fn get_inode(&mut self, _io: &mut dyn IO, parent: Option<&Box<dyn INode>>, name: &String)
+		-> Result<Box<dyn INode>, Errno> {
+		let parent_mutex = parent.map(| p | {
+				&<dyn Any>::downcast_ref::<KernFSINode>(p).unwrap().node
+			})
+			.or_else(|| self.root_node.as_ref())
+			.ok_or(errno!(ENOENT))?;
+		let parent_guard = parent_mutex.lock();
+		let parent = parent_guard.get();
+
+		Ok(Box::new(KernFSINode {
+			node: parent.get_entry(name)?
+		})?)
+	}
+
+	fn load_file(&mut self, _: &mut dyn IO, _inode: &Box<dyn INode>, _name: String)
 		-> Result<File, Errno> {
 		// TODO
 		todo!();
 	}
 
-	fn add_file(&mut self, _io: &mut dyn IO, _parent_inode: Box<dyn INode>, _name: String,
+	fn add_file(&mut self, _io: &mut dyn IO, _parent_inode: &Box<dyn INode>, _name: String,
 		_uid: Uid, _gid: Gid, _mode: Mode, _content: FileContent) -> Result<File, Errno> {
 		if self.readonly {
 			return Err(errno!(EROFS));
@@ -169,7 +175,7 @@ impl Filesystem for KernFS {
 		todo!();
 	}
 
-	fn add_link(&mut self, _io: &mut dyn IO, _parent_inode: Box<dyn INode>, _name: &String,
+	fn add_link(&mut self, _io: &mut dyn IO, _parent_inode: &Box<dyn INode>, _name: &String,
 		_inode: Box<dyn INode>) -> Result<(), Errno> {
 		if self.readonly {
 			return Err(errno!(EROFS));
@@ -188,7 +194,7 @@ impl Filesystem for KernFS {
 		todo!();
 	}
 
-	fn remove_file(&mut self, _: &mut dyn IO, _parent_inode: Box<dyn INode>, _name: &String)
+	fn remove_file(&mut self, _: &mut dyn IO, _parent_inode: &Box<dyn INode>, _name: &String)
 		-> Result<(), Errno> {
 		if self.readonly {
 			return Err(errno!(EROFS));
@@ -198,13 +204,13 @@ impl Filesystem for KernFS {
 		todo!();
 	}
 
-	fn read_node(&mut self, _: &mut dyn IO, _inode: Box<dyn INode>, _off: u64, _buf: &mut [u8])
+	fn read_node(&mut self, _: &mut dyn IO, _inode: &Box<dyn INode>, _off: u64, _buf: &mut [u8])
 		-> Result<u64, Errno> {
 		// TODO
 		todo!();
 	}
 
-	fn write_node(&mut self, _: &mut dyn IO, _inode: Box<dyn INode>, _off: u64, _buf: &[u8])
+	fn write_node(&mut self, _: &mut dyn IO, _inode: &Box<dyn INode>, _off: u64, _buf: &[u8])
 		-> Result<(), Errno> {
 		if self.readonly {
 			return Err(errno!(EROFS));

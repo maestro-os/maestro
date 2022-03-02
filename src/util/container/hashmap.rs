@@ -8,6 +8,7 @@ use core::ops::Index;
 use core::ops::IndexMut;
 use core::ptr;
 use crate::errno::Errno;
+use crate::util::FailableClone;
 use super::vec::Vec;
 
 /// The default number of buckets in a hashmap.
@@ -106,6 +107,20 @@ impl<K: Eq + Hash, V> Bucket<K, V> {
 		}
 
 		None
+	}
+}
+
+impl<K: Eq + Hash + FailableClone, V: FailableClone> FailableClone for Bucket<K, V> {
+	fn failable_clone(&self) -> Result<Self, Errno> {
+		let mut v = Vec::with_capacity(self.elements.len())?;
+		for i in 0..self.elements.len() {
+			let (key, value) = &self.elements[i];
+			v[i] = (key.failable_clone()?, value.failable_clone()?);
+		}
+
+		Ok(Self {
+			elements: v,
+		})
 	}
 }
 
@@ -242,6 +257,16 @@ impl<K: Eq + Hash, V> IndexMut<K> for HashMap<K, V> {
 	#[inline]
 	fn index_mut(&mut self, k: K) -> &mut Self::Output {
 		self.get_mut(&k).expect("no entry found for key")
+	}
+}
+
+impl<K: Eq + Hash + FailableClone, V: FailableClone> FailableClone for HashMap<K, V> {
+	fn failable_clone(&self) -> Result<Self, Errno> {
+		Ok(Self {
+			buckets_count: self.buckets_count,
+
+			buckets: self.buckets.failable_clone()?,
+		})
 	}
 }
 

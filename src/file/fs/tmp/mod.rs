@@ -24,6 +24,7 @@ use crate::util::boxed::Box;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
+use crate::util::ptr::SharedPtr;
 
 /// The default maximum amount of memory the filesystem can use in bytes.
 const DEFAULT_MAX_SIZE: usize = 512 * 1024 * 1024;
@@ -36,7 +37,7 @@ pub struct TmpFSFile {
 	/// The content of the file, if it is a regular file.
 	regular_content: Vec<u8>, // TODO Only if the file is regular
 	/// The content of the file, if it is a directory.
-	entries: HashMap<String, Box<dyn KernFSNode>>, // TODO Only if the file is a directory
+	entries: HashMap<String, SharedPtr<dyn KernFSNode>>, // TODO Only if the file is a directory
 
 	/// The file's permissions.
 	mode: Mode,
@@ -138,8 +139,8 @@ impl KernFSNode for TmpFSFile {
 		self.mtime = ts;
 	}
 
-	fn get_entries(&self) -> Result<HashMap<String, Box<dyn KernFSNode>>, Errno> {
-		Ok(self.entries)
+	fn get_entries(&self) -> &HashMap<String, SharedPtr<dyn KernFSNode>> {
+		&self.entries
 	}
 }
 
@@ -291,7 +292,7 @@ impl TmpFS {
 		// Adding the root node
 		let root_node = TmpFSFile::new(FileContent::Directory(crate::vec![]), 0o777, 0, 0, ts);
 		fs.update_size(root_node.get_used_size() as _, | fs | {
-			fs.fs.set_root(Some(Box::new(root_node)?));
+			fs.fs.set_root(Some(SharedPtr::new(root_node)?));
 			Ok(())
 		})?;
 
@@ -341,23 +342,28 @@ impl Filesystem for TmpFS {
 		self.fs.must_cache()
 	}
 
-	fn get_inode(&mut self, io: &mut dyn IO, parent: Option<Box<dyn INode>>, name: Option<&String>)
+	fn get_root_inode(&self, _io: &mut dyn IO) -> Result<Box<dyn INode>, Errno> {
+		// TODO
+		todo!();
+	}
+
+	fn get_inode(&mut self, io: &mut dyn IO, parent: Option<&Box<dyn INode>>, name: &String)
 		-> Result<Box<dyn INode>, Errno> {
 		self.fs.get_inode(io, parent, name)
 	}
 
-	fn load_file(&mut self, io: &mut dyn IO, inode: Box<dyn INode>, name: String)
+	fn load_file(&mut self, io: &mut dyn IO, inode: &Box<dyn INode>, name: String)
 		-> Result<File, Errno> {
 		self.fs.load_file(io, inode, name)
 	}
 
-	fn add_file(&mut self, _io: &mut dyn IO, _parent_inode: Box<dyn INode>, _name: String,
+	fn add_file(&mut self, _io: &mut dyn IO, _parent_inode: &Box<dyn INode>, _name: String,
 		_uid: Uid, _gid: Gid, _mode: Mode, _content: FileContent) -> Result<File, Errno> {
 		// TODO
 		todo!();
 	}
 
-	fn add_link(&mut self, _io: &mut dyn IO, _parent_inode: Box<dyn INode>, _name: &String,
+	fn add_link(&mut self, _io: &mut dyn IO, _parent_inode: &Box<dyn INode>, _name: &String,
 		_inode: Box<dyn INode>) -> Result<(), Errno> {
 		// TODO
 		todo!();
@@ -368,18 +374,18 @@ impl Filesystem for TmpFS {
 		todo!();
 	}
 
-	fn remove_file(&mut self, _io: &mut dyn IO, _parent_inode: Box<dyn INode>, _name: &String)
+	fn remove_file(&mut self, _io: &mut dyn IO, _parent_inode: &Box<dyn INode>, _name: &String)
 		-> Result<(), Errno> {
 		// TODO
 		todo!();
 	}
 
-	fn read_node(&mut self, io: &mut dyn IO, inode: Box<dyn INode>, off: u64, buf: &mut [u8])
+	fn read_node(&mut self, io: &mut dyn IO, inode: &Box<dyn INode>, off: u64, buf: &mut [u8])
 		-> Result<u64, Errno> {
 		self.fs.read_node(io, inode, off, buf)
 	}
 
-	fn write_node(&mut self, _io: &mut dyn IO, _inode: Box<dyn INode>, _off: u64, _buf: &[u8])
+	fn write_node(&mut self, _io: &mut dyn IO, _inode: &Box<dyn INode>, _off: u64, _buf: &[u8])
 		-> Result<(), Errno> {
 		// TODO
 		todo!();

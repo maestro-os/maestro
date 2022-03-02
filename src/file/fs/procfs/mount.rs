@@ -10,9 +10,9 @@ use crate::file::Uid;
 use crate::file::fs::kernfs::KernFSNode;
 use crate::time::Timestamp;
 use crate::util::IO;
-use crate::util::boxed::Box;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
+use crate::util::ptr::SharedPtr;
 
 /// Structure representing the mount node of the procfs.
 pub struct ProcFSMount {}
@@ -65,8 +65,8 @@ impl KernFSNode for ProcFSMount {
 
 	fn set_mtime(&mut self, _ts: Timestamp) {}
 
-	fn get_entries(&self) -> Result<HashMap<String, Box<dyn KernFSNode>>, Errno> {
-		Ok(HashMap::new())
+	fn get_entries(&self) -> &HashMap<String, SharedPtr<dyn KernFSNode>> {
+		unreachable!();
 	}
 }
 

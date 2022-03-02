@@ -10,18 +10,26 @@ use crate::file::Uid;
 use crate::file::fs::kernfs::KernFSNode;
 use crate::time::Timestamp;
 use crate::util::IO;
-use crate::util::boxed::Box;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
+use crate::util::ptr::SharedPtr;
 use super::mount::ProcFSMount;
 
 /// Structure representing the root of the procfs.
-pub struct ProcFSRoot {}
+pub struct ProcFSRoot {
+	/// The entries.
+	entries: HashMap<String, SharedPtr<dyn KernFSNode>>,
+}
 
 impl ProcFSRoot {
 	/// Creates a new instance.
-	pub fn new() -> Self {
-		Self {}
+	pub fn new() -> Result<Self, Errno> {
+		let mut entries = HashMap::new();
+		entries.insert(String::from(b"mount")?, SharedPtr::new(ProcFSMount::new())? as _)?;
+
+		Ok(Self {
+			entries,
+		})
 	}
 }
 
@@ -66,12 +74,8 @@ impl KernFSNode for ProcFSRoot {
 
 	fn set_mtime(&mut self, _ts: Timestamp) {}
 
-	fn get_entries(&self) -> Result<HashMap<String, Box<dyn KernFSNode>>, Errno> {
-		let mut entries = HashMap::new();
-		// TODO Add every processes
-		entries.insert(String::from(b"mount")?, Box::new(ProcFSMount::new())? as _);
-
-		Ok(entries)
+	fn get_entries(&self) -> &HashMap<String, SharedPtr<dyn KernFSNode>> {
+		&self.entries
 	}
 }
 

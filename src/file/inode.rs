@@ -4,4 +4,4 @@ use core::any::Any;
 
 /// Trait representing an INode. A structure implementing this trait can contain
 /// filesystem-specific data.
-pub trait INode: 'static + Any {}
+pub trait INode: Any {}

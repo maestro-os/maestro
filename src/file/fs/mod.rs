@@ -31,13 +31,16 @@ pub trait Filesystem {
 	/// Tells the kernel whether it must cache files.
 	fn must_cache(&self) -> bool;
 
+	/// Returns the root inode of the filesystem.
+	fn get_root_inode(&self, io: &mut dyn IO) -> Result<Box<dyn INode>, Errno>;
+
 	/// Returns the inode of the file with name `name`, located in the directory with inode
 	/// `parent`.
 	/// `io` is the IO interface.
 	/// `parent` is the inode's parent. If none, the function uses the root of the filesystem.
-	/// `name` is the name of the file. If none, the function returns the parent's inode.
+	/// `name` is the name of the file.
 	/// If the parent is not a directory, the function returns an error.
-	fn get_inode(&mut self, io: &mut dyn IO, parent: Option<Box<dyn INode>>, name: Option<&String>)
+	fn get_inode(&mut self, io: &mut dyn IO, parent: Option<&Box<dyn INode>>, name: &String)
 		-> Result<Box<dyn INode>, Errno>;
 
 	/// Loads the file at inode `inode`.

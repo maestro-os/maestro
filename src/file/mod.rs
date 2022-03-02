@@ -159,8 +159,8 @@ impl FileLocation {
 
 	/// Returns the inode number.
 	#[inline]
-	pub fn get_inode(&self) -> Box<dyn INode> {
-		self.inode
+	pub fn get_inode(&self) -> &Box<dyn INode> {
+		&self.inode
 	}
 }
 
@@ -501,7 +501,7 @@ impl IO for File {
 				let io = io_guard.get_mut();
 
 				let filesystem = mountpoint.get_filesystem();
-				filesystem.read_node(io, self.location.get_inode(), off, buff)
+				filesystem.read_node(io, &self.location.get_inode(), off, buff)
 			},
 
 			FileContent::Directory(_) => Err(errno!(EISDIR)),
@@ -549,7 +549,7 @@ impl IO for File {
 				let io = io_guard.get_mut();
 
 				let filesystem = mountpoint.get_filesystem();
-				filesystem.write_node(io, self.location.get_inode(), off, buff)?;
+				filesystem.write_node(io, &self.location.get_inode(), off, buff)?;
 
 				self.size = max(off + buff.len() as u64, self.size);
 				Ok(buff.len() as _)
