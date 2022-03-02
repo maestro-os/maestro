@@ -344,7 +344,7 @@ mod test {
 		assert_eq!(*hash_map.get(&0).unwrap(), 0);
 		assert_eq!(hash_map[0], 0);
 
-		assert_eq!(hash_map.remove(0).unwrap(), 0);
+		assert_eq!(hash_map.remove(&0).unwrap(), 0);
 
 		assert_eq!(hash_map.len(), 0);
 	}
@@ -365,7 +365,7 @@ mod test {
 
 		for i in (0..100).rev() {
 			assert_eq!(hash_map.len(), i + 1);
-			assert_eq!(hash_map.remove(i as _).unwrap(), 0);
+			assert_eq!(hash_map.remove(&(i as _)).unwrap(), 0);
 			assert_eq!(hash_map.len(), i);
 		}
 	}
