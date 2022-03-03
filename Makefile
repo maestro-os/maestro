@@ -80,7 +80,11 @@ OBJ_DIR = $(PWD)/obj/
 LIB_NAME = lib$(NAME).a
 
 # The C language compiler
-CC = i686-elf-gcc # TODO Set according to architecture
+ifeq ($(CONFIG_ARCH),x86)
+CC = i686-elf-gcc
+else
+CC = $(CONFIG_ARCH)-elf-gcc
+endif
 
 # The C language compiler flags
 CFLAGS = -nostdlib -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -Wall -Wextra -Werror -lgcc
@@ -110,27 +114,13 @@ OBJ_DIRS := $(patsubst $(SRC_DIR)%, $(OBJ_DIR)%, $(DIRS))
 # The list of all sources to compile
 SRC := $(ASM_SRC) $(C_SRC)
 
-# TODO
-#CRTI_OBJ = $(OBJ_DIR)crti.s.o
-# TODO
-#CRTBEGIN_OBJ := $(shell $(CC) $(CFLAGS) -print-file-name=crtbegin.o)
-
 # The list of assembly objects
 ASM_OBJ := $(patsubst $(SRC_DIR)%.s, $(OBJ_DIR)%.s.o, $(ASM_SRC))
 # The list of C language objects
 C_OBJ := $(patsubst $(SRC_DIR)%.c, $(OBJ_DIR)%.c.o, $(C_SRC))
 
-# TODO
-#CRTEND_OBJ := $(shell $(CC) $(CFLAGS) -print-file-name=crtend.o)
-# TODO
-#CRTN_OBJ = $(OBJ_DIR)crtn.s.o
-
 # The list of objects
 OBJ := $(ASM_OBJ) $(C_OBJ)
-# Object files that are result of code which is part of the sources
-#INTERNAL_OBJ := $(CRTI_OBJ) $(OBJ) $(CRTN_OBJ)
-# TODO
-#OBJ_LINK_LIST := $(CRTI_OBJ) $(CRTBEGIN_OBJ) $(OBJ) $(CRTEND_OBJ) $(CRTN_OBJ)
 
 # Cargo
 CARGO = cargo +nightly
