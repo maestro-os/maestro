@@ -136,7 +136,7 @@ impl<T: ?Sized> Drop for Box<T> {
 	fn drop(&mut self) {
 		let ptr = self.ptr.as_ptr();
 
-		if (ptr as *const c_void as usize) < memory::PAGE_SIZE {
+		if (ptr as *const c_void as usize) >= memory::PAGE_SIZE {
 			unsafe {
 				drop_in_place(ptr);
 				malloc::free(ptr as _);

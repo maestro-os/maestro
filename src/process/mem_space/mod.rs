@@ -317,7 +317,7 @@ impl MemSpace {
 		});
 		// The next gap, located after the gap being created
 		let next_gap = Self::gap_by_ptr(&self.gaps, unsafe {
-			gap_begin.add(gap_size * memory::PAGE_SIZE)
+			gap_begin.add(gap_size)
 		});
 
 		// Expanding to absorb the previous gap

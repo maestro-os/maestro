@@ -16,6 +16,7 @@ pub mod storage;
 use core::ffi::c_void;
 use crate::device::manager::DeviceManager;
 use crate::errno::Errno;
+use crate::errno;
 use crate::file::FileContent;
 use crate::file::Mode;
 use crate::file::fcache::FCache;
@@ -144,8 +145,11 @@ impl Device {
 				let mut parent_guard = parent_mutex.lock();
 				let parent = parent_guard.get_mut();
 
-				fcache.create_file(parent, name.failable_clone()?, 0, 0, 0o755,
-					FileContent::Directory(Vec::new()))?;
+				match fcache.create_file(parent, name.failable_clone()?, 0, 0, 0o755,
+					FileContent::Directory(Vec::new())) {
+                    Err(e) if e.as_int() != errno::EEXIST => return Err(e),
+                    _ => {},
+                }
 
 				created_count += 1;
 			}
