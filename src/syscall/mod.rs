@@ -42,6 +42,7 @@ mod poll;
 mod r#break;
 mod read;
 mod reboot;
+mod rt_sigaction;
 mod rt_sigprocmask;
 mod set_thread_area;
 mod set_tid_address;
@@ -65,6 +66,7 @@ mod write;
 mod writev;
 
 use crate::process::Process;
+use crate::process::Regs;
 use crate::process::signal::Signal;
 use crate::process;
 
@@ -75,7 +77,6 @@ use brk::brk;
 use chdir::chdir;
 use chroot::chroot;
 use close::close;
-use crate::process::Regs;
 use creat::creat;
 use delete_module::delete_module;
 use dup2::dup2;
@@ -111,6 +112,7 @@ use poll::poll;
 use r#break::r#break;
 use read::read;
 use reboot::reboot;
+use rt_sigaction::rt_sigaction;
 use rt_sigprocmask::rt_sigprocmask;
 use set_thread_area::set_thread_area;
 use set_tid_address::set_tid_address;
@@ -311,7 +313,7 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 		// TODO 0x0ab => getresgid(regs),
 		// TODO 0x0ac => prctl(regs),
 		// TODO 0x0ad => rt_sigreturn(regs),
-		// TODO 0x0ae => rt_sigaction(regs),
+		0x0ae => rt_sigaction(regs),
 		0x0af => rt_sigprocmask(regs),
 		// TODO 0x0b0 => rt_sigpending(regs),
 		// TODO 0x0b1 => rt_sigtimedwait(regs),

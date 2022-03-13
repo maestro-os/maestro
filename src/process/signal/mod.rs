@@ -8,7 +8,10 @@ use core::mem::transmute;
 use core::slice;
 use crate::errno::Errno;
 use crate::errno;
+use crate::file::Uid;
 use crate::process::oom;
+use crate::process::pid::Pid;
+use crate::time::Clock;
 use signal_trampoline::signal_trampoline;
 use super::Process;
 use super::State;
@@ -96,6 +99,87 @@ pub enum SignalAction {
 	Stop,
 	/// Continue the process, if it is stopped; otherwise, ignore the signal.
 	Continue,
+}
+
+/// Union representing a signal value.
+#[repr(C)]
+union SigVal {
+    /// The value as an int.
+    sigval_int: i32,
+    /// The value as a pointer.
+    sigval_ptr: *mut c_void,
+}
+
+/// Structure storing signal informations.
+#[repr(C)]
+pub struct SigInfo {
+    /// Signal number.
+    si_signo: i32,
+    /// An errno value.
+    si_errno: i32,
+    /// Signal code.
+    si_code: i32,
+    /// Trap number that caused hardware-generated signal.
+    si_trapno: i32,
+    /// Sending process ID.
+    si_pid: Pid,
+    /// Real user ID of sending process.
+    si_uid: Uid,
+    /// Exit value or signal.
+    si_status: i32,
+    /// User time consumed.
+    si_utime: Clock,
+    /// System time consumed.
+    si_stime: Clock,
+    /// Signal value
+    si_value: SigVal,
+    /// POSIX.1b signal.
+    si_int: i32,
+    /// POSIX.1b signal.
+    si_ptr: *mut c_void,
+    /// Timer overrun count.
+    si_overrun: i32,
+    /// Timer ID.
+    si_timerid: i32,
+    /// Memory location which caused fault.
+    si_addr: *mut c_void,
+    /// Band event.
+    si_band: i32, // FIXME long (64bits?)
+    /// File descriptor.
+    si_fd: i32,
+    /// Least significant bit of address.
+    si_addr_lsb: i16,
+    /// Lower bound when address violation.
+    si_lower: *mut c_void,
+    /// Upper bound when address violation.
+    si_upper: *mut c_void,
+    /// Protection key on PTE that caused fault.
+    si_pkey: i32,
+    /// Address of system call instruction.
+    si_call_addr: *mut c_void,
+    /// Number of attempted system call.
+    si_syscall: i32,
+    /// Architecture of attempted system call.
+    si_arch: u32,
+}
+
+// TODO Check the type is correct
+/// Type representing a signal mask.
+pub type SigSet = u32;
+
+/// Structure storing an action to be executed when a signal is received.
+#[repr(C)]
+pub struct SigAction {
+    /// The action associated with the signal.
+    pub sa_handler: fn(i32),
+    /// Used instead of `sa_handler` if SA_SIGINFO is specified in `sa_flags`.
+    pub sa_sigaction: fn(i32, *mut SigInfo, *mut c_void),
+    /// A mask of signals that should be masked while executing the signal handler.
+    pub sa_mask: SigSet,
+    /// A set of flags which modifies the behaviour of the signal.
+    pub sa_flags: i32,
+    /// Unused.
+    pub sa_restorer: fn(),
 }
 
 /// Enumeration containing the different possibilities for signal handling.
@@ -244,7 +328,7 @@ impl Signal {
 					let signal_data_size = size_of::<[u32; 2]>() as u32;
 					let signal_esp = redzone_end - signal_data_size;
 
-					// TODO Don't write data out of the stack
+					// FIXME Don't write data out of the stack
 					oom::wrap(|| {
 						process.get_mem_space_mut().unwrap().alloc(signal_esp as *mut [u32; 2])
 					});

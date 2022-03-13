@@ -14,6 +14,7 @@ const SIG_UNBLOCK: i32 = 1;
 /// Sets the mask with the given one.
 const SIG_SETMASK: i32 = 2;
 
+// TODO Use SigSet in crate::process::signal
 /// The implementation of the `rt_sigprocmask` syscall.
 pub fn rt_sigprocmask(regs: &Regs) -> Result<i32, Errno> {
 	let how = regs.ebx as i32;

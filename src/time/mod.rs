@@ -11,6 +11,8 @@ use crate::util::lock::*;
 pub type Timestamp = u32;
 /// Type representing a timestamp in microseconds. Equivalent to POSIX's `suseconds_t`.
 pub type UTimestamp = u64;
+/// Type representing an elapsed number of ticks. Equivalent to POSIX's `clock_t`.
+pub type Clock = u32;
 
 /// POSIX structure representing a timestamp.
 #[derive(Clone, Default)]
