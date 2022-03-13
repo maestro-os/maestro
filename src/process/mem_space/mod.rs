@@ -181,7 +181,7 @@ impl MemSpace {
 	/// The function has complexity `O(log n)`.
 	/// If the given pointer is not page-aligned, the function returns an error.
 	pub fn map(&mut self, ptr: Option<*const c_void>, size: usize, flags: u8,
-		fd: Option<FileDescriptor>, fd_off: usize) -> Result<*const c_void, Errno> {
+		fd: Option<FileDescriptor>, fd_off: u64) -> Result<*const c_void, Errno> {
 		// Checking arguments are valid
 		if let Some(ptr) = ptr {
 			if !util::is_aligned(ptr, memory::PAGE_SIZE) {
@@ -218,19 +218,16 @@ impl MemSpace {
 
 		// The address to the beginning of the mapping
 		let addr = (gap.get_begin() as usize + off * memory::PAGE_SIZE) as _;
-
-		// FIXME Adjust size to non-aligned memory addresses
 		// Creating the mapping
 		let mapping = MemMapping::new(addr, size, flags, fd, fd_off,
 			NonNull::new(self.vmem.as_mut_ptr()).unwrap());
-		let mapping_ptr = mapping.get_begin();
-		debug_assert!(ptr.is_none() || mapping_ptr == ptr.unwrap());
+		debug_assert!(ptr.is_none() || addr == ptr.unwrap());
 
-		let m = self.mappings.insert(mapping_ptr, mapping)?;
+		let m = self.mappings.insert(addr, mapping)?;
 
 		// Mapping the default page
 		if m.map_default().is_err() {
-			self.mappings.remove(mapping_ptr);
+			self.mappings.remove(addr);
 			return Err(errno!(ENOMEM));
 		}
 
@@ -242,18 +239,14 @@ impl MemSpace {
 		self.gap_remove(gap_begin);
 
 		// Inserting the new gaps
-		oom::wrap(|| {
-			if let Some(new_gap) = &left_gap {
-				self.gap_insert(new_gap.clone())?;
-			}
-			if let Some(new_gap) = &right_gap {
-				self.gap_insert(new_gap.clone())?;
-			}
+		if let Some(new_gap) = left_gap {
+			oom::wrap(|| self.gap_insert(new_gap.clone()));
+		}
+		if let Some(new_gap) = right_gap {
+			oom::wrap(|| self.gap_insert(new_gap.clone()));
+		}
 
-			Ok(())
-		});
-
-		Ok(mapping_ptr)
+		Ok(addr)
 	}
 
 	/// Same as `map`, except the function returns a pointer to the end of the memory mapping.
@@ -396,13 +389,13 @@ impl MemSpace {
 				let (prev, next) = mapping.partial_unmap(begin, pages);
 				if let Some(p) = prev {
 					oom::wrap(|| {
-						self.mappings.insert(p.get_begin(), p.clone())?;
+						self.mappings.insert(p.get_begin(), p)?;
 						Ok(())
 					});
 				}
 				if let Some(n) = next {
 					oom::wrap(|| {
-						self.mappings.insert(n.get_begin(), n.clone())?;
+						self.mappings.insert(n.get_begin(), n)?;
 						Ok(())
 					});
 				}
@@ -642,6 +635,11 @@ impl MemSpace {
 	pub fn set_brk_ptr(&mut self, ptr: *const c_void) -> Result<(), Errno> {
 		if ptr >= self.brk_ptr {
 			// Allocate memory
+
+			// Checking the pointer is valid
+			if ptr > memory::PROCESS_END {
+				return Err(errno!(ENOMEM));
+			}
 
 			let begin = util::align(self.brk_ptr, memory::PAGE_SIZE);
 			let pages = math::ceil_division(ptr as usize - begin as usize, memory::PAGE_SIZE);

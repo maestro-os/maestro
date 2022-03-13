@@ -30,6 +30,7 @@ mod kill;
 mod link;
 mod mkdir;
 mod mknod;
+mod mmap2;
 mod mmap;
 mod modify_ldt;
 mod mount;
@@ -101,6 +102,7 @@ use kill::kill;
 use link::link;
 use mkdir::mkdir;
 use mknod::mknod;
+use mmap2::mmap2;
 use mmap::mmap;
 use mount::mount;
 use msync::msync;
@@ -332,7 +334,7 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 		// TODO 0x0bd => putpmsg(regs),
 		// TODO 0x0be => vfork(regs),
 		// TODO 0x0bf => ugetrlimit(regs),
-		// TODO 0x0c0 => mmap2(regs),
+		0x0c0 => mmap2(regs),
 		// TODO 0x0c1 => truncate64(regs),
 		// TODO 0x0c2 => ftruncate64(regs),
 		// TODO 0x0c3 => stat64(regs),

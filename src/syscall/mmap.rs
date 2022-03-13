@@ -40,15 +40,10 @@ fn get_flags(flags: i32, prot: i32) -> u8 {
 	mem_flags
 }
 
-/// The implementation of the `mmap` syscall.
-pub fn mmap(regs: &Regs) -> Result<i32, Errno> {
-	let addr = regs.ebx as *mut c_void;
-	let length = regs.ecx as usize;
-	let prot = regs.edx as i32;
-	let flags = regs.esi as i32;
-	let fd = regs.edi as i32;
-	let offset = regs.ebp as u32;
-
+/// Performs the `mmap` system call.
+/// This function takes a `u64` for `offset` to allow implementing the `mmap2` syscall.
+pub fn do_mmap(addr: *mut c_void, length: usize, prot: i32, flags: i32, fd: i32, offset: u64)
+	-> Result<i32, Errno> {
 	// Checking alignment of `addr` and `length`
 	if !util::is_aligned(addr, memory::PAGE_SIZE) || length % memory::PAGE_SIZE != 0 {
 		return Err(errno!(EINVAL));
@@ -106,6 +101,18 @@ pub fn mmap(regs: &Regs) -> Result<i32, Errno> {
 	let mem_space = proc.get_mem_space_mut().unwrap();
 	// FIXME Passing the hint as an exact location
 	// The pointer on the virtual memory to the beginning of the mapping
-	let ptr = mem_space.map(addr_hint, pages, get_flags(flags, prot), fd, offset as _)?;
+	let ptr = mem_space.map(addr_hint, pages, get_flags(flags, prot), fd, offset)?;
 	Ok(ptr as _)
+}
+
+/// The implementation of the `mmap` syscall.
+pub fn mmap(regs: &Regs) -> Result<i32, Errno> {
+	let addr = regs.ebx as *mut c_void;
+	let length = regs.ecx as usize;
+	let prot = regs.edx as i32;
+	let flags = regs.esi as i32;
+	let fd = regs.edi as i32;
+	let offset = regs.ebp as u32;
+
+	do_mmap(addr, length, prot, flags, fd, offset as _)
 }

@@ -45,7 +45,7 @@ paging_disable:
 invlpg:
 	push %eax
 
-	mov 4(%esp), %eax
+	mov 8(%esp), %eax
 	invlpg (%eax)
 
 	pop %eax

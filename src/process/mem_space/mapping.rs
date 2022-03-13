@@ -2,7 +2,6 @@
 //! at the process's creation or by the process itself using system calls.
 
 use core::ffi::c_void;
-use core::mem::ManuallyDrop;
 use core::ptr::NonNull;
 use core::ptr;
 use crate::errno::Errno;
@@ -40,7 +39,6 @@ fn get_default_page() -> *const c_void {
 }
 
 /// A mapping in the memory space.
-#[derive(Clone)]
 pub struct MemMapping {
 	/// Pointer on the virtual memory to the beginning of the mapping
 	begin: *const c_void,
@@ -54,7 +52,7 @@ pub struct MemMapping {
 	fd: Option<FileDescriptor>,
 	/// The offset inside of the file pointed to by the file descriptor. If there is no file
 	/// descriptor, the value is undefined.
-	off: usize,
+	off: u64,
 
 	/// Pointer to the virtual memory context handler.
 	vmem: NonNull<dyn VMem>,
@@ -71,7 +69,7 @@ impl MemMapping {
 	/// `off` is the offset inside of the file pointed to by the given file descriptor.
 	/// `vmem` is the virtual memory context handler.
 	pub fn new(begin: *const c_void, size: usize, flags: u8, fd: Option<FileDescriptor>,
-		off: usize, vmem: NonNull<dyn VMem>) -> Self {
+		off: u64, vmem: NonNull<dyn VMem>) -> Self {
 		debug_assert!(util::is_aligned(begin, memory::PAGE_SIZE));
 		debug_assert!(size > 0);
 
@@ -342,19 +340,18 @@ impl MemMapping {
 				};
 				let gap_size = self.size - end;
 
-				let off = self.off + (begin + gap_size) * memory::PAGE_SIZE;
+				let off = self.off + (end * memory::PAGE_SIZE) as u64;
 				Some(Self::new(gap_begin, gap_size, self.flags, self.fd.clone(), off, self.vmem))
 			} else {
 				None
 			}
 		};
 
+		// Freeing pages that will be replaced by the gap
 		for i in begin..(begin + size) {
 			self.free_phys_page(i);
 		}
-
-		// Prevent calling `drop` to avoid freeing remaining pages
-		let _ = ManuallyDrop::new(self);
+		self.size = 0;
 
 		(prev, next)
 	}
