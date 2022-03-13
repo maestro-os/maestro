@@ -299,6 +299,7 @@ impl ELFExecutor {
 	fn alloc_segment(load_base: *const u8, mem_space: &mut MemSpace, seg: &ELF32ProgramHeader)
 		-> Result<(), Errno> {
 		if seg.p_type == elf::PT_LOAD {
+            // TODO Handle alignments lower than page size
 			// Checking the alignment is correct
 			if (seg.p_align as usize) < memory::PAGE_SIZE || !math::is_power_of_two(seg.p_align) {
 				return Err(errno!(EINVAL));
@@ -311,10 +312,8 @@ impl ELFExecutor {
 				load_base.add(seg.p_vaddr as usize - pad)
 			};
 
-			// The length of the segment in bytes
-			let len = min(seg.p_memsz, seg.p_filesz) as usize;
 			// The length of the memory to allocate in pages
-			let pages = math::ceil_division(pad + len, memory::PAGE_SIZE);
+			let pages = math::ceil_division(pad + seg.p_memsz as usize, memory::PAGE_SIZE);
 
 			// The mapping's flags
 			let flags = seg.get_mem_space_flags();
