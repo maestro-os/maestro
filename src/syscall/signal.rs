@@ -7,14 +7,10 @@ use crate::errno::Errno;
 use crate::errno;
 use crate::process::Process;
 use crate::process::Regs;
+use crate::process::signal::SigAction;
 use crate::process::signal::SigHandler;
 use crate::process::signal::SignalHandler;
 use crate::process::signal;
-
-/// Ignoring the signal.
-const SIG_IGN: *const c_void = 0x0 as _;
-/// The default action for the signal.
-const SIG_DFL: *const c_void = 0x1 as _;
 
 /// The implementation of the `signal` syscall.
 pub fn signal(regs: &Regs) -> Result<i32, Errno> {
@@ -26,14 +22,20 @@ pub fn signal(regs: &Regs) -> Result<i32, Errno> {
 	}
 
 	let h = match handler {
-		SIG_IGN => SignalHandler::Ignore,
-		SIG_DFL => SignalHandler::Default,
+		signal::SIG_IGN => SignalHandler::Ignore,
+		signal::SIG_DFL => SignalHandler::Default,
 		_ => {
 			let handler_fn = unsafe {
 				transmute::<*const c_void, SigHandler>(handler)
 			};
 
-			SignalHandler::Handler(handler_fn)
+			SignalHandler::Handler(SigAction {
+				sa_handler: Some(handler_fn),
+				sa_sigaction: None,
+				sa_mask: 0,
+				sa_flags: 0,
+				sa_restorer: None,
+			})
 		},
 	};
 
@@ -48,23 +50,19 @@ pub fn signal(regs: &Regs) -> Result<i32, Errno> {
 	};
 
 	let old_handler_ptr = match old_handler {
-		SignalHandler::Ignore => SIG_IGN,
-		SignalHandler::Default => SIG_DFL,
+		SignalHandler::Ignore => signal::SIG_IGN,
+		SignalHandler::Default => signal::SIG_DFL,
 
-		SignalHandler::Handler(handler) => {
-			let handler_ptr = unsafe {
-				transmute::<SigHandler, *const c_void>(handler)
-			};
+		SignalHandler::Handler(action) => {
+			if let Some(handler) = action.sa_handler {
+				let handler_ptr = unsafe {
+					transmute::<SigHandler, *const c_void>(handler)
+				};
 
-			handler_ptr
-		},
-
-		SignalHandler::Action(action) => {
-			let handler_ptr = unsafe {
-				transmute::<SigHandler, *const c_void>(action.sa_handler)
-			};
-
-			handler_ptr
+				handler_ptr
+			} else {
+				0 as _
+			}
 		},
 	};
 	Ok(old_handler_ptr as _)

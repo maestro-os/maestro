@@ -80,6 +80,11 @@ pub const SIGXFSZ: SignalType = 28;
 /// Window resize.
 pub const SIGWINCH: SignalType = 29;
 
+/// Ignoring the signal.
+pub const SIG_IGN: *const c_void = 0x0 as _;
+/// The default action for the signal.
+pub const SIG_DFL: *const c_void = 0x1 as _;
+
 /// The number of different signal types.
 pub const SIGNALS_COUNT: usize = 29;
 
@@ -172,15 +177,15 @@ pub type SigSet = u32;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct SigAction {
 	/// The action associated with the signal.
-	pub sa_handler: SigHandler,
+	pub sa_handler: Option<SigHandler>,
 	/// Used instead of `sa_handler` if SA_SIGINFO is specified in `sa_flags`.
-	pub sa_sigaction: extern "C" fn(i32, *mut SigInfo, *mut c_void),
+	pub sa_sigaction: Option<extern "C" fn(i32, *mut SigInfo, *mut c_void)>,
 	/// A mask of signals that should be masked while executing the signal handler.
 	pub sa_mask: SigSet,
 	/// A set of flags which modifies the behaviour of the signal.
 	pub sa_flags: i32,
 	/// Unused.
-	pub sa_restorer: extern "C" fn(),
+	pub sa_restorer: Option<extern "C" fn()>,
 }
 
 /// Enumeration containing the different possibilities for signal handling.
@@ -191,9 +196,36 @@ pub enum SignalHandler {
 	/// Executes the default action.
 	Default,
 	/// A custom action defined with a call to signal.
-	Handler(SigHandler),
-	/// A custom action defined with a call to sigaction.
-	Action(SigAction),
+	Handler(SigAction),
+}
+
+impl SignalHandler {
+	/// Returns an instance of SigAction associated with the handler.
+	pub fn get_action(&self) -> SigAction {
+		match self {
+			Self::Ignore => SigAction {
+				sa_handler: unsafe {
+					transmute::<_, _>(SIG_IGN)
+				},
+				sa_sigaction: #[allow(invalid_value)] unsafe { core::mem::zeroed() },
+				sa_mask: 0,
+				sa_flags: 0,
+				sa_restorer: #[allow(invalid_value)] unsafe { core::mem::zeroed() },
+			},
+
+			Self::Default => SigAction {
+				sa_handler: unsafe {
+					transmute::<_, _>(SIG_DFL)
+				},
+				sa_sigaction: #[allow(invalid_value)] unsafe { core::mem::zeroed() },
+				sa_mask: 0,
+				sa_flags: 0,
+				sa_restorer: #[allow(invalid_value)] unsafe { core::mem::zeroed() },
+			},
+
+			Self::Handler(action) => action.clone(),
+		}
+	}
 }
 
 /// Array containing the default actions for each signal.
@@ -323,8 +355,10 @@ impl Signal {
 				}
 			},
 
-			SignalHandler::Handler(handler) => {
+			// TODO Handle sa_sigaction, sa_flags and sa_mask
+			SignalHandler::Handler(action) => {
 				if !process.is_handling_signal() {
+					// TODO Handle the case where an alternate stack is specified (only if the action has the flag)
 					let mut regs = process.get_regs().clone();
 					let redzone_end = regs.esp - REDZONE_SIZE as u32;
 
@@ -340,7 +374,7 @@ impl Signal {
 					};
 
 					// The pointer to the signal handler
-					signal_data[1] = handler as _;
+					signal_data[1] = action.sa_handler.map(| f | f as _).unwrap_or(0);
 					// The signal number
 					signal_data[0] = self.type_ as _;
 
@@ -362,11 +396,6 @@ impl Signal {
 					// Setting the process's registers to call the signal handler
 					process.set_regs(&regs);
 				}
-			},
-
-			SignalHandler::Action(_action) => {
-				// TODO
-				todo!();
 			},
 		}
 	}

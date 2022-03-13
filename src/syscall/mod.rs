@@ -133,6 +133,7 @@ use waitpid::waitpid;
 use write::write;
 use writev::writev;
 
+// TODO Add a strace-like feature gated by a compilation option
 /// This function is called whenever a system call is triggered.
 #[no_mangle]
 pub extern "C" fn syscall_handler(regs: &mut Regs) {
@@ -541,7 +542,6 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 		if let Ok(val) = result {
 			val as _
 		} else {
-			crate::println!("{}", result.unwrap_err()); // TODO rm
 			(-result.unwrap_err().as_int()) as _
 		}
 	};
