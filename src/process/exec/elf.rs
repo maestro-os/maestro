@@ -299,7 +299,7 @@ impl ELFExecutor {
 	fn alloc_segment(load_base: *const u8, mem_space: &mut MemSpace, seg: &ELF32ProgramHeader)
 		-> Result<(), Errno> {
 		if seg.p_type == elf::PT_LOAD {
-            // TODO Handle alignments lower than page size
+			// TODO Handle alignments lower than page size
 			// Checking the alignment is correct
 			if (seg.p_align as usize) < memory::PAGE_SIZE || !math::is_power_of_two(seg.p_align) {
 				return Err(errno!(EINVAL));

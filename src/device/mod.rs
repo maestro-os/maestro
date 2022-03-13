@@ -147,9 +147,9 @@ impl Device {
 
 				match fcache.create_file(parent, name.failable_clone()?, 0, 0, 0o755,
 					FileContent::Directory(Vec::new())) {
-                    Err(e) if e.as_int() != errno::EEXIST => return Err(e),
-                    _ => {},
-                }
+					Err(e) if e.as_int() != errno::EEXIST => return Err(e),
+					_ => {},
+				}
 
 				created_count += 1;
 			}

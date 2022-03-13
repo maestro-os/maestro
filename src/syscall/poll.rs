@@ -33,55 +33,55 @@ const POLLWRBAND: i16 = 0b0; // TODO Put the correct value
 /// Structure representing a file descriptor passed to the `poll` system call.
 #[repr(C)]
 struct PollFD {
-    /// The file descriptor.
-    fd: i32,
-    /// The input mask telling which events to look for.
-    events: i16,
-    /// The output mask telling which events happened.
-    revents: i16,
+	/// The file descriptor.
+	fd: i32,
+	/// The input mask telling which events to look for.
+	events: i16,
+	/// The output mask telling which events happened.
+	revents: i16,
 }
 
 /// The implementation of the `poll` syscall.
 pub fn poll(regs: &Regs) -> Result<i32, Errno> {
-    let fds = regs.ebx as *mut PollFD;
-    let nfds = regs.ecx as usize;
-    let timeout = regs.edx as i32;
+	let fds = regs.ebx as *mut PollFD;
+	let nfds = regs.ecx as usize;
+	let timeout = regs.edx as i32;
 
-    // The timeout. None means no timeout
-    let to: Option<Timestamp> = if timeout >= 0 {
-        Some(timeout as _)
-    } else {
-        None
-    };
+	// The timeout. None means no timeout
+	let to: Option<Timestamp> = if timeout >= 0 {
+		Some(timeout as _)
+	} else {
+		None
+	};
 
-    let mutex = Process::get_current().unwrap();
-    let mut guard = mutex.lock();
-    let _proc = guard.get_mut();
+	let mutex = Process::get_current().unwrap();
+	let mut guard = mutex.lock();
+	let _proc = guard.get_mut();
 
-    // TODO Check access to `fds`
+	// TODO Check access to `fds`
 
-    let fds = unsafe { // Safe because access has been checked before
-        slice::from_raw_parts(fds, nfds)
-    };
+	let fds = unsafe { // Safe because access has been checked before
+		slice::from_raw_parts(fds, nfds)
+	};
 
-    // The start timestamp
-    let start_ts = time::get().unwrap_or(0);
+	// The start timestamp
+	let start_ts = time::get().unwrap_or(0);
 
-    loop {
-        // Checking whether the system call timed out
-        if let Some(timeout) = to {
-            if time::get().unwrap_or(0) >= start_ts + timeout {
-                return Ok(0);
-            }
-        }
+	loop {
+		// Checking whether the system call timed out
+		if let Some(timeout) = to {
+			if time::get().unwrap_or(0) >= start_ts + timeout {
+				return Ok(0);
+			}
+		}
 
-        // Checking the file descriptors list
-        for _fd in fds {
-            // TODO
-            todo!();
-        }
+		// Checking the file descriptors list
+		for _fd in fds {
+			// TODO
+			todo!();
+		}
 
-        // TODO Make process Sleeping until an event happens on a file descriptor in `fds`
-        crate::wait();
-    }
+		// TODO Make process Sleeping until an event happens on a file descriptor in `fds`
+		crate::wait();
+	}
 }

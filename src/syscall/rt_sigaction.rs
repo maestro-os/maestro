@@ -7,13 +7,13 @@ use crate::process::signal::SigAction;
 
 /// The implementation of the `rt_sigaction` syscall.
 pub fn rt_sigaction(regs: &Regs) -> Result<i32, Errno> {
-    let _signum = regs.ebx as i32;
-    let act = regs.ecx as *const SigAction;
-    let oldact = regs.edx as *mut SigAction;
+	let _signum = regs.ebx as i32;
+	let act = regs.ecx as *const SigAction;
+	let oldact = regs.edx as *mut SigAction;
 
-    let mutex = Process::get_current().unwrap();
-    let mut guard = mutex.lock();
-    let _proc = guard.get_mut();
+	let mutex = Process::get_current().unwrap();
+	let mut guard = mutex.lock();
+	let _proc = guard.get_mut();
 
 	// Checking access to the given pointers
 	if !act.is_null() {
