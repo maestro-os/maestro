@@ -169,17 +169,18 @@ pub type SigSet = u32;
 
 /// Structure storing an action to be executed when a signal is received.
 #[repr(C)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct SigAction {
 	/// The action associated with the signal.
-	pub sa_handler: fn(i32),
+	pub sa_handler: SigHandler,
 	/// Used instead of `sa_handler` if SA_SIGINFO is specified in `sa_flags`.
-	pub sa_sigaction: fn(i32, *mut SigInfo, *mut c_void),
+	pub sa_sigaction: extern "C" fn(i32, *mut SigInfo, *mut c_void),
 	/// A mask of signals that should be masked while executing the signal handler.
 	pub sa_mask: SigSet,
 	/// A set of flags which modifies the behaviour of the signal.
 	pub sa_flags: i32,
 	/// Unused.
-	pub sa_restorer: fn(),
+	pub sa_restorer: extern "C" fn(),
 }
 
 /// Enumeration containing the different possibilities for signal handling.
@@ -189,8 +190,10 @@ pub enum SignalHandler {
 	Ignore,
 	/// Executes the default action.
 	Default,
-	/// A custom action defined by the process.
+	/// A custom action defined with a call to signal.
 	Handler(SigHandler),
+	/// A custom action defined with a call to sigaction.
+	Action(SigAction),
 }
 
 /// Array containing the default actions for each signal.
@@ -359,6 +362,11 @@ impl Signal {
 					// Setting the process's registers to call the signal handler
 					process.set_regs(&regs);
 				}
+			},
+
+			SignalHandler::Action(_action) => {
+				// TODO
+				todo!();
 			},
 		}
 	}

@@ -50,9 +50,18 @@ pub fn signal(regs: &Regs) -> Result<i32, Errno> {
 	let old_handler_ptr = match old_handler {
 		SignalHandler::Ignore => SIG_IGN,
 		SignalHandler::Default => SIG_DFL,
+
 		SignalHandler::Handler(handler) => {
 			let handler_ptr = unsafe {
 				transmute::<SigHandler, *const c_void>(handler)
+			};
+
+			handler_ptr
+		},
+
+		SignalHandler::Action(action) => {
+			let handler_ptr = unsafe {
+				transmute::<SigHandler, *const c_void>(action.sa_handler)
 			};
 
 			handler_ptr
