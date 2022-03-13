@@ -38,6 +38,7 @@ mod munmap;
 mod open;
 mod pipe2;
 mod pipe;
+mod poll;
 mod r#break;
 mod read;
 mod reboot;
@@ -106,6 +107,7 @@ use munmap::munmap;
 use open::open;
 use pipe2::pipe2;
 use pipe::pipe;
+use poll::poll;
 use r#break::r#break;
 use read::read;
 use reboot::reboot;
@@ -303,7 +305,7 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 		// TODO 0x0a5 => getresuid(regs),
 		// TODO 0x0a6 => vm86(regs),
 		// TODO 0x0a7 => query_module(regs),
-		// TODO 0x0a8 => poll(regs),
+		0x0a8 => poll(regs),
 		// TODO 0x0a9 => nfsservctl(regs),
 		// TODO 0x0aa => setresgid(regs),
 		// TODO 0x0ab => getresgid(regs),

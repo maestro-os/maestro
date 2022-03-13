@@ -61,6 +61,7 @@ pub fn remove_clock_source(name: &str) {
 }
 
 /// Returns the current timestamp from the preferred clock source.
+/// TODO specify the time unit
 /// If no clock source is available, the function returns None.
 pub fn get() -> Option<Timestamp> {
 	let mut guard = CLOCK_SOURCES.lock();
