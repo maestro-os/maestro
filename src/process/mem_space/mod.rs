@@ -15,6 +15,7 @@ use core::ffi::c_void;
 use core::mem::replace;
 use core::mem::size_of;
 use core::ptr::NonNull;
+use core::ptr::null;
 use crate::errno::Errno;
 use crate::errno;
 use crate::file::file_descriptor::FileDescriptor;
@@ -27,6 +28,7 @@ use crate::util::FailableClone;
 use crate::util::boxed::Box;
 use crate::util::container::binary_tree::BinaryTree;
 use crate::util::lock::Mutex;
+use crate::util::math;
 use crate::util;
 use gap::MemGap;
 use mapping::MemMapping;
@@ -73,6 +75,11 @@ pub struct MemSpace {
 	/// Binary tree storing the list of memory mappings. Sorted by pointer to the beginning of the
 	/// mapping on the virtual memory.
 	mappings: BinaryTree<*const c_void, MemMapping>,
+
+	/// The initial pointer of the `brk` system call.
+	brk_init: *const c_void,
+	/// The current pointer of the `brk` system call.
+	brk_ptr: *const c_void,
 
 	/// The virtual memory context handler.
 	vmem: Box<dyn VMem>,
@@ -138,12 +145,16 @@ impl MemSpace {
 	}
 
 	/// Creates a new virtual memory object.
+	/// `brk_ptr` is the initial pointer for the `brk` syscall.
 	pub fn new() -> Result::<Self, Errno> {
 		let mut s = Self {
 			gaps: BinaryTree::new(),
 			gaps_size: BinaryTree::new(),
 
 			mappings: BinaryTree::new(),
+
+			brk_init: null::<_>(),
+			brk_ptr: null::<_>(),
 
 			vmem: vmem::new()?,
 		};
@@ -164,8 +175,8 @@ impl MemSpace {
 	/// `flags` represents the flags for the mapping.
 	/// `fd` is the file descriptor pointing to the file to map to.
 	/// `fd_off` is the offset in bytes into the file.
-	/// The underlying physical memory is not allocated directly but only an attempt to write the
-	/// memory is detected.
+	/// The underlying physical memory is not allocated directly but only when an attempt to write
+	/// the memory is detected.
 	/// The function returns a pointer to the newly mapped virtual memory.
 	/// The function has complexity `O(log n)`.
 	/// If the given pointer is not page-aligned, the function returns an error.
@@ -539,6 +550,9 @@ impl MemSpace {
 
 			mappings: BinaryTree::new(),
 
+			brk_init: self.brk_init,
+			brk_ptr: self.brk_ptr,
+
 			vmem: vmem::clone(&self.vmem)?,
 		};
 
@@ -604,6 +618,49 @@ impl MemSpace {
 			off += util::up_align(virt_addr, memory::PAGE_SIZE) as usize - virt_addr as usize;
 		}
 
+		Ok(())
+	}
+
+	/// Returns the pointer for the `brk` syscall.
+	pub fn get_brk_ptr(&self) -> *const c_void {
+		self.brk_ptr
+	}
+
+	/// Sets the initial pointer for the `brk` syscall.
+	/// This function MUST be called only once, before the program starts.
+	/// `ptr` MUST be page-aligned.
+	pub fn set_brk_init(&mut self, ptr: *const c_void) {
+		debug_assert!(util::is_aligned(ptr, memory::PAGE_SIZE));
+
+		self.brk_init = ptr;
+		self.brk_ptr = ptr;
+	}
+
+	/// Sets the pointer for the `brk` syscall. If `alloc` is true, this function will allocate or
+	/// free virtual memory if needed. If the memory cannot be allocated, the function returns an
+	/// error.
+	pub fn set_brk_ptr(&mut self, ptr: *const c_void) -> Result<(), Errno> {
+		if ptr >= self.brk_ptr {
+			// Allocate memory
+
+			let begin = util::align(self.brk_ptr, memory::PAGE_SIZE);
+			let pages = math::ceil_division(ptr as usize - begin as usize, memory::PAGE_SIZE);
+			let flags = MAPPING_FLAG_WRITE | MAPPING_FLAG_USER;
+			self.map(Some(begin), pages, flags, None, 0)?;
+		} else {
+			// Free memory
+
+			// Checking the pointer is valid
+			if ptr < self.brk_init {
+				return Err(errno!(ENOMEM));
+			}
+
+			let begin = util::align(ptr, memory::PAGE_SIZE);
+			let pages = math::ceil_division(begin as usize - ptr as usize, memory::PAGE_SIZE);
+			self.unmap(begin, pages)?;
+		}
+
+		self.brk_ptr = ptr;
 		Ok(())
 	}
 

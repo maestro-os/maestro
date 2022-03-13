@@ -1,8 +1,10 @@
 //! This module implements ELF program execution with respects the System V ABI.
 
+use core::cmp::max;
 use core::cmp::min;
 use core::ffi::c_void;
 use core::mem::size_of;
+use core::ptr::null;
 use core::ptr;
 use core::slice;
 use core::str;
@@ -28,6 +30,7 @@ use crate::process;
 use crate::util::IO;
 use crate::util::container::vec::Vec;
 use crate::util::math;
+use crate::util;
 
 /// Used to define the end of the entries list.
 const AT_NULL: i32 = 0;
@@ -296,40 +299,47 @@ impl ELFExecutor {
 	/// `load_base` is the address at which the executable is loaded.
 	/// `mem_space` is the memory space to allocate into.
 	/// `seg` is the segment for which the memory is allocated.
+	/// If loaded, the function return the pointer to the end of the segment in virtual memory.
 	fn alloc_segment(load_base: *const u8, mem_space: &mut MemSpace, seg: &ELF32ProgramHeader)
-		-> Result<(), Errno> {
-		if seg.p_type == elf::PT_LOAD {
-			// TODO Handle alignments lower than page size
-			// Checking the alignment is correct
-			if (seg.p_align as usize) < memory::PAGE_SIZE || !math::is_power_of_two(seg.p_align) {
-				return Err(errno!(EINVAL));
-			}
+		-> Result<Option<*const c_void>, Errno> {
+		if seg.p_type != elf::PT_LOAD {
+			return Ok(None);
+		}
 
-			// The size of the padding before the segment
-			let pad = (seg.p_vaddr % seg.p_align) as usize;
-			// The pointer to the beginning of the virtual memory chunk to allocate
-			let mem_begin = unsafe {
-				load_base.add(seg.p_vaddr as usize - pad)
-			};
+		// TODO Handle alignments lower than page size
+		// Checking the alignment is correct
+		if (seg.p_align as usize) < memory::PAGE_SIZE || !math::is_power_of_two(seg.p_align) {
+			return Err(errno!(EINVAL));
+		}
 
-			// The length of the memory to allocate in pages
-			let pages = math::ceil_division(pad + seg.p_memsz as usize, memory::PAGE_SIZE);
+		// The size of the padding before the segment
+		let pad = (seg.p_vaddr % seg.p_align) as usize;
+		// The pointer to the beginning of the virtual memory chunk to allocate
+		let mem_begin = unsafe {
+			load_base.add(seg.p_vaddr as usize - pad)
+		};
 
-			// The mapping's flags
-			let flags = seg.get_mem_space_flags();
+		// The length of the memory to allocate in pages
+		let pages = math::ceil_division(pad + seg.p_memsz as usize, memory::PAGE_SIZE);
 
-			if pages > 0 {
-				// TODO Lazy allocation
-				mem_space.map(Some(mem_begin as _), pages, flags, None, 0)?;
+		// The mapping's flags
+		let flags = seg.get_mem_space_flags();
 
-				// Pre-allocating the pages to make them writable
-				for i in 0..pages {
-					mem_space.alloc((mem_begin as usize + i * memory::PAGE_SIZE) as *const u8)?;
-				}
+		if pages > 0 {
+			// TODO Lazy allocation
+			mem_space.map(Some(mem_begin as _), pages, flags, None, 0)?;
+
+			// Pre-allocating the pages to make them writable
+			for i in 0..pages {
+				mem_space.alloc((mem_begin as usize + i * memory::PAGE_SIZE) as *const u8)?;
 			}
 		}
 
-		Ok(())
+		// The pointer to the end of the virtual memory chunk
+		let mem_end = unsafe {
+			mem_begin.add(pages * memory::PAGE_SIZE)
+		};
+		Ok(Some(mem_end as _))
 	}
 
 	/// Copies the segment's data into memory.
@@ -413,12 +423,22 @@ impl Executor for ELFExecutor {
 		}
 
 		// Allocating memory for segments
-		let mut result: Result<(), Errno> = Ok(());
+		let mut result: Result<*const c_void, Errno> = Ok(null::<_>());
 		parser.foreach_segments(| seg | {
-			result = Self::alloc_segment(load_base, &mut mem_space, seg);
+			result = Self::alloc_segment(load_base, &mut mem_space, seg).map(| end | {
+				if let Some(end) = end {
+					max(end, result.unwrap())
+				} else {
+					result.unwrap()
+				}
+			});
+
 			result.is_ok()
 		});
-		result?;
+
+		// The initial pointer for `brk`
+		let brk_ptr = util::align(result?, memory::PAGE_SIZE);
+		mem_space.set_brk_init(brk_ptr);
 
 		// Switching to the process's vmem to write onto the virtual memory
 		vmem::switch(mem_space.get_vmem().as_ref(), || {
