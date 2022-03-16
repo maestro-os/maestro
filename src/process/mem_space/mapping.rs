@@ -39,6 +39,7 @@ fn get_default_page() -> *const c_void {
 }
 
 /// A mapping in the memory space.
+#[derive(Clone)]
 pub struct MemMapping {
 	/// Pointer on the virtual memory to the beginning of the mapping
 	begin: *const c_void,
@@ -53,6 +54,9 @@ pub struct MemMapping {
 	/// The offset inside of the file pointed to by the file descriptor. If there is no file
 	/// descriptor, the value is undefined.
 	off: u64,
+
+	/// Tells whether the mapping must be unmapped when the structure is dropped.
+	unmap_on_drop: bool,
 
 	/// Pointer to the virtual memory context handler.
 	vmem: NonNull<dyn VMem>,
@@ -80,6 +84,8 @@ impl MemMapping {
 
 			fd,
 			off,
+
+			unmap_on_drop: false,
 
 			vmem,
 		}
@@ -394,6 +400,8 @@ impl MemMapping {
 			fd: self.fd.clone(),
 			off: self.off,
 
+			unmap_on_drop: self.unmap_on_drop,
+
 			vmem: NonNull::new(mem_space.get_vmem().as_mut()).unwrap(),
 		};
 		let nolazy = (new_mapping.get_flags() & super::MAPPING_FLAG_NOLAZY) != 0;
@@ -434,12 +442,19 @@ impl MemMapping {
 
 		Ok(())
 	}
+
+	/// Sets whether the mapping will be unmapped when the structure is dropped.
+	pub fn set_unmap_on_drop(&mut self, unmap: bool) {
+		self.unmap_on_drop = unmap;
+	}
 }
 
 impl Drop for MemMapping {
 	fn drop(&mut self) {
-		oom::wrap(|| {
-			self.unmap()
-		});
+		if self.unmap_on_drop {
+			oom::wrap(|| {
+				self.unmap()
+			});
+		}
 	}
 }

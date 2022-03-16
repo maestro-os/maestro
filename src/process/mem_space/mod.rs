@@ -387,15 +387,29 @@ impl MemSpace {
 
 				// Newly created mappings after removing parts of the previous one
 				let (prev, next) = mapping.partial_unmap(begin, pages);
-				if let Some(p) = prev {
+				if let Some(mut p) = prev {
+					// TODO Clean (the set_unmap_on_drop is used to avoid double unmapping because
+					// of the call to drop if the insertion fails)
 					oom::wrap(|| {
-						self.mappings.insert(p.get_begin(), p)?;
+						let mut val = p.clone();
+						val.set_unmap_on_drop(false);
+						let val = self.mappings.insert(val.get_begin(), val)?;
+						val.set_unmap_on_drop(true);
+						p.set_unmap_on_drop(false);
+
 						Ok(())
 					});
 				}
-				if let Some(n) = next {
+				if let Some(mut n) = next {
+					// TODO Clean (the set_unmap_on_drop is used to avoid double unmapping because
+					// of the call to drop if the insertion fails)
 					oom::wrap(|| {
-						self.mappings.insert(n.get_begin(), n)?;
+						let mut val = n.clone();
+						val.set_unmap_on_drop(false);
+						let val = self.mappings.insert(val.get_begin(), val)?;
+						val.set_unmap_on_drop(true);
+						n.set_unmap_on_drop(false);
+
 						Ok(())
 					});
 				}
