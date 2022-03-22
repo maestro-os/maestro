@@ -25,6 +25,7 @@ use crate::errno;
 use crate::event::{InterruptResult, InterruptResultAction};
 use crate::event;
 use crate::file::Gid;
+use crate::file::ROOT_UID;
 use crate::file::Uid;
 use crate::file::fcache;
 use crate::file::file_descriptor::FDTarget;
@@ -328,10 +329,21 @@ impl Process {
 	/// Returns the process with PID `pid`. If the process doesn't exist, the function returns
 	/// None.
 	pub fn get_by_pid(pid: Pid) -> Option<IntSharedPtr<Self>> {
-		let mut guard = unsafe {
+		let guard = unsafe {
 			SCHEDULER.assume_init_mut()
 		}.lock();
-		guard.get_mut().get_by_pid(pid)
+
+		guard.get().get_by_pid(pid)
+	}
+
+	/// Returns the process with TID `tid`. If the process doesn't exist, the function returns
+	/// None.
+	pub fn get_by_tid(tid: Pid) -> Option<IntSharedPtr<Self>> {
+		let guard = unsafe {
+			SCHEDULER.assume_init_mut()
+		}.lock();
+
+		guard.get().get_by_tid(tid)
 	}
 
 	/// Returns the current running process. If no process is running, the function returns None.
@@ -339,6 +351,7 @@ impl Process {
 		let mut guard = unsafe {
 			SCHEDULER.assume_init_mut()
 		}.lock();
+
 		guard.get_mut().get_current_process()
 	}
 
@@ -1129,6 +1142,11 @@ impl Process {
 	pub fn get_memory_usage(&self) -> u32 {
 		// TODO
 		todo!();
+	}
+
+	/// Tells whether the given user ID has the permission to kill the current process.
+	pub fn can_kill(&self, uid: Uid) -> bool {
+		uid == ROOT_UID || uid == self.uid // TODO Also check saved user ID
 	}
 
 	/// Returns the OOM score, used by the OOM killer to determine the process to kill in case the

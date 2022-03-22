@@ -54,6 +54,7 @@ mod signal;
 mod sigreturn;
 mod socketpair;
 mod time;
+mod tkill;
 mod truncate;
 mod umask;
 mod umount;
@@ -125,6 +126,7 @@ use signal::signal;
 use sigreturn::sigreturn;
 use socketpair::socketpair;
 use time::time;
+use tkill::tkill;
 use truncate::truncate;
 use umask::umask;
 use umount::umount;
@@ -378,7 +380,7 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 		// TODO 0x0eb => removexattr(regs),
 		// TODO 0x0ec => lremovexattr(regs),
 		// TODO 0x0ed => fremovexattr(regs),
-		// TODO 0x0ee => tkill(regs),
+		0x0ee => tkill(regs),
 		// TODO 0x0ef => sendfile64(regs),
 		// TODO 0x0f0 => futex(regs),
 		// TODO 0x0f1 => sched_setaffinity(regs),

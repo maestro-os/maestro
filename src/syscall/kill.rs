@@ -11,10 +11,11 @@ use crate::process::signal::Signal;
 use crate::process;
 
 /// Tries to kill the process with PID `pid` with the signal `sig`.
+/// `uid` is the real user ID of the sender process.
 /// `euid` is the effective user ID of the sender process.
 /// If `sig` is None, the function doesn't send a signal, but still checks if there is a process
 /// that could be killed.
-fn try_kill(pid: i32, sig: Option<Signal>, euid: Uid) -> Result<i32, Errno> {
+fn try_kill(pid: i32, sig: Option<Signal>, uid: Uid, euid: Uid) -> Result<i32, Errno> {
 	let proc = Process::get_by_pid(pid as Pid).ok_or(errno!(ESRCH))?;
 	let mut guard = proc.lock();
 	let proc = guard.get_mut();
@@ -23,7 +24,7 @@ fn try_kill(pid: i32, sig: Option<Signal>, euid: Uid) -> Result<i32, Errno> {
 		return Err(errno!(ESRCH));
 	}
 
-	if euid != proc.get_uid() && euid != proc.get_euid() {
+	if proc.can_kill(uid) || proc.can_kill(euid) {
 		return Err(errno!(EPERM));
 	}
 
@@ -45,13 +46,13 @@ fn send_signal(pid: i32, sig: Option<Signal>, proc: &mut Process) -> Result<i32,
 		}
 		Ok(0)
 	} else if pid > 0 {
-		try_kill(pid, sig, proc.get_euid())
+		try_kill(pid, sig, proc.get_uid(), proc.get_euid())
 	} else if pid == 0 || -pid as Pid == proc.get_pid() {
 		let group = proc.get_group_processes();
 
 		if let Some(sig) = sig {
 			for p in group {
-				try_kill(*p as _, Some(sig.clone()), proc.get_euid()).unwrap();
+				try_kill(*p as _, Some(sig.clone()), proc.get_uid(), proc.get_euid()).unwrap();
 			}
 		}
 
@@ -94,7 +95,7 @@ fn send_signal(pid: i32, sig: Option<Signal>, proc: &mut Process) -> Result<i32,
 
 			if let Some(sig) = sig {
 				for p in group {
-					try_kill(*p as _, Some(sig.clone()), proc.get_euid()).unwrap();
+					try_kill(*p as _, Some(sig.clone()), proc.get_uid(), proc.get_euid()).unwrap();
 				}
 			}
 

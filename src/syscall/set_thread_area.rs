@@ -11,7 +11,7 @@ use crate::process::user_desc::UserDesc;
 use crate::process;
 
 /// The index of the first entry for TLS segments in the GDT.
-const TLS_BEGIN_INDEX: usize = gdt::TLS_OFFSET / 8;
+const TLS_BEGIN_INDEX: usize = gdt::TLS_OFFSET / size_of::<gdt::Entry>();
 
 /// Returns the ID of a free TLS entry for the given process.
 pub fn get_free_entry(process: &mut Process) -> Result<usize, Errno> {
@@ -60,7 +60,6 @@ pub fn set_thread_area(regs: &Regs) -> Result<i32, Errno> {
 	if !proc.get_mem_space().unwrap().can_access(u_info as _, size_of::<UserDesc>(), true, true) {
 		return Err(errno!(EFAULT));
 	}
-
 
 	// A reference to the user_desc structure
 	let mut info = unsafe { // Safe because the access was checked before

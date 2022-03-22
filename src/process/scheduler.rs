@@ -107,8 +107,15 @@ impl Scheduler {
 
 	/// Returns the process with PID `pid`. If the process doesn't exist, the function returns
 	/// None.
-	pub fn get_by_pid(&mut self, pid: Pid) -> Option<IntSharedPtr<Process>> {
+	pub fn get_by_pid(&self, pid: Pid) -> Option<IntSharedPtr<Process>> {
 		Some(self.processes.get(pid)?.clone())
+	}
+
+	/// Returns the process with TID `tid`. If the process doesn't exist, the function returns
+	/// None.
+	pub fn get_by_tid(&self, _tid: Pid) -> Option<IntSharedPtr<Process>> {
+		// TODO
+		todo!();
 	}
 
 	/// Returns the current running process. If no process is running, the function returns None.
