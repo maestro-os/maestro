@@ -436,15 +436,7 @@ impl<T> IndexMut<usize> for Vec<T> {
 
 impl<T: Ord> Vec<T> {
 	pub fn binary_search(&self, x: &T) -> Result<usize, usize> {
-		self.binary_search_by(move | y | {
-			if *y < *x {
-				Ordering::Less
-			} else if *y > *x {
-				Ordering::Greater
-			} else {
-				Ordering::Equal
-			}
-		})
+		self.binary_search_by(move | y | y.cmp(x))
 	}
 }
 

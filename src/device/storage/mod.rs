@@ -1,5 +1,6 @@
 //! This module implements storage drivers.
 
+pub mod cache;
 pub mod ide;
 pub mod mbr;
 pub mod pata;
