@@ -101,7 +101,7 @@ impl<T> Vec<T> {
 
 	/// Increases the capacity of so that at least `min` more elements can fit.
 	fn increase_capacity(&mut self, min: usize) -> Result<(), Errno> {
-		if self.len + min == 0 || self.len + min < self.capacity() {
+		if self.len + min <= self.capacity() {
 			return Ok(());
 		}
 

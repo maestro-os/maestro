@@ -84,7 +84,7 @@ impl IO for ProcFSRoot {
 		0
 	}
 
-	fn read(&self, _offset: u64, _buff: &mut [u8]) -> Result<u64, Errno> {
+	fn read(&mut self, _offset: u64, _buff: &mut [u8]) -> Result<u64, Errno> {
 		Err(errno!(EINVAL))
 	}
 

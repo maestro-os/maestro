@@ -4,6 +4,7 @@ use crate::device::bar::BAR;
 use crate::device::bus::pci;
 use crate::device::storage::PhysicalDevice;
 use crate::device::storage::StorageInterface;
+use crate::device::storage::cache::CachedStorageInterface;
 use crate::device::storage::pata::PATAInterface;
 use crate::errno::Errno;
 use crate::io;
@@ -112,7 +113,11 @@ impl IDEController {
 		// TODO Add support for DMA and SATA
 
 		if let Ok(interface) = PATAInterface::new(secondary, slave) {
-			Ok(Some(Box::new(interface)?))
+			let interface = Box::new(interface)?;
+			// TODO Use a constant for the sectors count
+			let cached_interface = CachedStorageInterface::new(interface, 128)?;
+
+			Ok(Some(Box::new(cached_interface)?))
 		} else {
 			Ok(None)
 		}

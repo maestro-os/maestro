@@ -98,6 +98,9 @@ const STATUS_RDY: u8 = 0b01000000;
 /// Indicates the drive is preparing to send/receive data.
 const STATUS_BSY: u8 = 0b10000000;
 
+/// The size of a sector in bytes.
+const SECTOR_SIZE: u64 = 512;
+
 // TODO Synchronize both master and slave disks so that another thread cannot trigger a select
 // while operating on a drive
 
@@ -487,14 +490,14 @@ impl PATAInterface {
 
 impl StorageInterface for PATAInterface {
 	fn get_block_size(&self) -> u64 {
-		512
+		SECTOR_SIZE
 	}
 
 	fn get_blocks_count(&self) -> u64 {
 		self.sectors_count
 	}
 
-	fn read(&self, buf: &mut [u8], offset: u64, size: u64) -> Result<(), Errno> {
+	fn read(&mut self, buf: &mut [u8], offset: u64, size: u64) -> Result<(), Errno> {
 		if offset >= self.sectors_count || offset + size >= self.sectors_count {
 			return Err(crate::errno!(EINVAL));
 		}

@@ -64,7 +64,7 @@ impl StorageInterface for RAMDisk {
 		(RAM_DISK_SIZE as u64) / self.get_block_size()
 	}
 
-	fn read(&self, buf: &mut [u8], offset: u64, size: u64) -> Result<(), Errno> {
+	fn read(&mut self, buf: &mut [u8], offset: u64, size: u64) -> Result<(), Errno> {
 		if offset > self.get_blocks_count() || offset + size > self.get_blocks_count() {
 			return Err(errno!(EINVAL));
 		}
@@ -140,7 +140,7 @@ impl IO for RAMDiskHandle {
 		RAM_DISK_SIZE as _
 	}
 
-	fn read(&self, offset: u64, buff: &mut [u8]) -> Result<u64, Errno> {
+	fn read(&mut self, offset: u64, buff: &mut [u8]) -> Result<u64, Errno> {
 		self.disk.read_bytes(buff, offset)
 	}
 

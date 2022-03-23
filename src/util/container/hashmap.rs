@@ -6,7 +6,6 @@ use core::hash::Hasher;
 use core::mem::size_of_val;
 use core::ops::Index;
 use core::ops::IndexMut;
-use core::ptr;
 use crate::errno::Errno;
 use crate::util::FailableClone;
 use super::vec::Vec;
@@ -97,12 +96,7 @@ impl<K: Eq + Hash, V> Bucket<K, V> {
 	pub fn remove(&mut self, k: &K) -> Option<V> {
 		for i in 0..self.elements.len() {
 			if self.elements[i].0 == *k {
-				let val = unsafe {
-					ptr::read(&self.elements[i].1 as _)
-				};
-				self.elements.remove(i);
-
-				return Some(val);
+				return Some(self.elements.remove(i).1);
 			}
 		}
 

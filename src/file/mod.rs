@@ -489,7 +489,7 @@ impl IO for File {
 		self.size
 	}
 
-	fn read(&self, off: u64, buff: &mut [u8]) -> Result<u64, Errno> {
+	fn read(&mut self, off: u64, buff: &mut [u8]) -> Result<u64, Errno> {
 		match &self.content {
 			FileContent::Regular => {
 				let mountpoint_mutex = self.location.get_mountpoint().ok_or(errno!(EIO))?;

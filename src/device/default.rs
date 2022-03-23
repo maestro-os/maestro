@@ -31,7 +31,7 @@ impl IO for NullDeviceHandle {
 		0
 	}
 
-	fn read(&self, _offset: u64, _buff: &mut [u8]) -> Result<u64, Errno> {
+	fn read(&mut self, _offset: u64, _buff: &mut [u8]) -> Result<u64, Errno> {
 		Ok(0)
 	}
 
@@ -55,7 +55,7 @@ impl IO for ZeroDeviceHandle {
 		0
 	}
 
-	fn read(&self, _offset: u64, buff: &mut [u8]) -> Result<u64, Errno> {
+	fn read(&mut self, _offset: u64, buff: &mut [u8]) -> Result<u64, Errno> {
 		for b in buff.iter_mut() {
 			*b = 0;
 		}
@@ -86,7 +86,7 @@ impl IO for KMsgDeviceHandle {
 		guard.get().get_size() as _
 	}
 
-	fn read(&self, offset: u64, buff: &mut [u8]) -> Result<u64, Errno> {
+	fn read(&mut self, offset: u64, buff: &mut [u8]) -> Result<u64, Errno> {
 		let mutex = logger::get();
 		let guard = mutex.lock();
 
@@ -121,7 +121,7 @@ impl IO for RandomDeviceHandle {
 		0
 	}
 
-	fn read(&self, _offset: u64, buff: &mut [u8]) -> Result<u64, Errno> {
+	fn read(&mut self, _offset: u64, buff: &mut [u8]) -> Result<u64, Errno> {
 		if rand(buff).is_some() {
 			Ok(buff.len() as _)
 		} else {
@@ -151,7 +151,7 @@ impl IO for URandomDeviceHandle {
 		0
 	}
 
-	fn read(&self, _offset: u64, _buff: &mut [u8]) -> Result<u64, Errno> {
+	fn read(&mut self, _offset: u64, _buff: &mut [u8]) -> Result<u64, Errno> {
 		// TODO
 		todo!();
 	}
@@ -177,7 +177,7 @@ impl IO for CurrentTTYDeviceHandle {
 		0
 	}
 
-	fn read(&self, _offset: u64, _buff: &mut [u8]) -> Result<u64, Errno> {
+	fn read(&mut self, _offset: u64, _buff: &mut [u8]) -> Result<u64, Errno> {
 		// TODO Read from TTY input
 		todo!();
 	}

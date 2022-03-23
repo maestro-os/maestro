@@ -207,7 +207,7 @@ pub trait IO {
 	/// Reads data from the I/O and writes it into `buff`.
 	/// `offset` is the offset in the I/O to the beginning of the data to be read.
 	/// The function returns the number of bytes read.
-	fn read(&self, offset: u64, buff: &mut [u8]) -> Result<u64, Errno>;
+	fn read(&mut self, offset: u64, buff: &mut [u8]) -> Result<u64, Errno>;
 
 	/// Reads data from `buff` and writes it into the I/O.
 	/// `offset` is the offset in the I/O to the beginning of the data to write.

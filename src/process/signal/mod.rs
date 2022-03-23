@@ -358,7 +358,8 @@ impl Signal {
 			// TODO Handle sa_sigaction, sa_flags and sa_mask
 			SignalHandler::Handler(action) => {
 				if !process.is_handling_signal() {
-					// TODO Handle the case where an alternate stack is specified (only if the action has the flag)
+					// TODO Handle the case where an alternate stack is specified (only if the
+					// action has the flag)
 					let mut regs = process.get_regs().clone();
 					let redzone_end = regs.esp - REDZONE_SIZE as u32;
 

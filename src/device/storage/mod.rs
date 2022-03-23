@@ -16,6 +16,7 @@ use crate::device::id::MajorBlock;
 use crate::device::id;
 use crate::device::manager::DeviceManager;
 use crate::device::manager::PhysicalDevice;
+use crate::device::storage::cache::CachedStorageInterface;
 use crate::device::storage::ide::IDEController;
 use crate::device::storage::pata::PATAInterface;
 use crate::device;
@@ -50,7 +51,7 @@ pub trait StorageInterface {
 
 	/// Reads `size` blocks from storage at block offset `offset`, writting the data to `buf`.
 	/// If the offset and size are out of bounds, the function returns an error.
-	fn read(&self, buf: &mut [u8], offset: u64, size: u64) -> Result<(), Errno>;
+	fn read(&mut self, buf: &mut [u8], offset: u64, size: u64) -> Result<(), Errno>;
 	/// Writes `size` blocks to storage at block offset `offset`, reading the data from `buf`.
 	/// If the offset and size are out of bounds, the function returns an error.
 	fn write(&mut self, buf: &[u8], offset: u64, size: u64) -> Result<(), Errno>;
@@ -59,7 +60,7 @@ pub trait StorageInterface {
 	// Unit testing is done through ramdisk testing
 	/// Reads bytes from storage at offset `offset`, writting the data to `buf`.
 	/// If the offset and size are out of bounds, the function returns an error.
-	fn read_bytes(&self, buf: &mut [u8], offset: u64) -> Result<u64, Errno> {
+	fn read_bytes(&mut self, buf: &mut [u8], offset: u64) -> Result<u64, Errno> {
 		let block_size = self.get_block_size();
 		let blk_begin = offset / block_size;
 		let blk_end = (offset + buf.len() as u64) / block_size;
@@ -285,7 +286,7 @@ impl IO for StorageDeviceHandle {
 		interface.get_block_size() * interface.get_blocks_count()
 	}
 
-	fn read(&self, offset: u64, buff: &mut [u8]) -> Result<u64, Errno> {
+	fn read(&mut self, offset: u64, buff: &mut [u8]) -> Result<u64, Errno> {
 		let interface = unsafe { // Safe because the pointer is valid
 			&mut *self.interface
 		};
@@ -488,7 +489,11 @@ impl DeviceManager for StorageManager {
 			let slave = (i & 0b01) != 0;
 
 			if let Ok(dev) = PATAInterface::new(secondary, slave) {
-				self.add(Box::new(dev)?)?;
+				let interface = Box::new(dev)?;
+				// TODO Use a constant for the sectors count
+				let cached_interface = CachedStorageInterface::new(interface, 128)?;
+
+				self.add(Box::new(cached_interface)?)?;
 			}
 		}
 

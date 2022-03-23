@@ -163,7 +163,7 @@ impl IO for TmpFSFile {
 		}
 	}
 
-	fn read(&self, offset: u64, buff: &mut [u8]) -> Result<u64, Errno> {
+	fn read(&mut self, offset: u64, buff: &mut [u8]) -> Result<u64, Errno> {
 		// TODO Avoid redundant code with casual files
 		match &self.content {
 			FileContent::Regular => {
