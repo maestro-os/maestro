@@ -115,7 +115,7 @@ impl IDEController {
 		if let Ok(interface) = PATAInterface::new(secondary, slave) {
 			let interface = Box::new(interface)?;
 			// TODO Use a constant for the sectors count
-			let cached_interface = CachedStorageInterface::new(interface, 128)?;
+			let cached_interface = CachedStorageInterface::new(interface, 1024)?;
 
 			Ok(Some(Box::new(cached_interface)?))
 		} else {

@@ -16,9 +16,7 @@ use crate::device::id::MajorBlock;
 use crate::device::id;
 use crate::device::manager::DeviceManager;
 use crate::device::manager::PhysicalDevice;
-use crate::device::storage::cache::CachedStorageInterface;
 use crate::device::storage::ide::IDEController;
-use crate::device::storage::pata::PATAInterface;
 use crate::device;
 use crate::errno::Errno;
 use crate::errno;
@@ -484,7 +482,8 @@ impl DeviceManager for StorageManager {
 	fn legacy_detect(&mut self) -> Result<(), Errno> {
 		// TODO Detect floppy disks
 
-		for i in 0..4 {
+		// TODO rm?
+		/*for i in 0..4 {
 			let secondary = (i & 0b10) != 0;
 			let slave = (i & 0b01) != 0;
 
@@ -495,7 +494,7 @@ impl DeviceManager for StorageManager {
 
 				self.add(Box::new(cached_interface)?)?;
 			}
-		}
+		}*/
 
 		Ok(())
 	}

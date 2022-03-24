@@ -31,8 +31,9 @@ pub struct StorageCache {
 	/// Cached sectors.
 	sectors: HashMap<u64, CachedSector>,
 
-	/// Vector storing index of each sectors, stored by decreasing accesses count.
-	access_stats: Vec<u64>,
+	/// Vector storing index of each sectors with its access count, stored by decreasing accesses
+	/// count, then by its sector index.
+	access_stats: Vec<(u64, u32)>,
 }
 
 impl StorageCache {
@@ -54,21 +55,30 @@ impl StorageCache {
 		self.sectors.len() >= self.access_stats.capacity()
 	}
 
-	// TODO Rewrite (doesn't work)
 	/// Increments the access count for the given sector `sector`.
 	fn increment_access(&mut self, sector: u64) -> Result<(), Errno> {
-		let old_access_count = self.sectors.get(&sector).unwrap().access_count;
+		if let Some(cached_sector) = self.sectors.get_mut(&sector) {
+			let old_access_count = cached_sector.access_count;
 
-		// TODO Remove from access stats
+			// Removing old access stat
+			if let Ok(n) = self.access_stats.binary_search_by(| e | {
+				e.1.cmp(&old_access_count).reverse().then(e.0.cmp(&sector))
+			}) {
+				self.access_stats.remove(n);
+			}
 
-		// On overflow, the value becomes zero. This behaviour increases the odds of the
-		// sector to be freed from the cache even though it is often accessed, but it is
-		// acceptable when taking into account the size of the counter
-		let access_count = wrapping_add(old_access_count, 1);
+			// On overflow, the value becomes zero. This behaviour increases the odds of the
+			// sector to be freed from the cache even though it is often accessed, but it is
+			// acceptable when taking into account the size of the counter
+			let access_count = wrapping_add(old_access_count, 1);
+			cached_sector.access_count = access_count;
 
-		let n = self.access_stats.binary_search_by(| e | e.cmp(&(access_count as _)).reverse())
-			.unwrap_or_else(| n | n);
-		self.access_stats.insert(n, sector)?;
+			// Inserting new access stat
+			let n = self.access_stats.binary_search_by(| e | {
+				e.1.cmp(&access_count).reverse().then(e.0.cmp(&sector))
+			}).unwrap_or_else(| n | n);
+			self.access_stats.insert(n, (sector, access_count))?;
+		}
 
 		Ok(())
 	}
@@ -114,8 +124,9 @@ impl StorageCache {
 		// Freeing some slots if needed
 		if self.is_full() {
 			let free_count = 0; // TODO Find an heuristic to compute the most optimal value
-			for _ in 0..max(free_count, 1) {
-				let sector_index = self.access_stats[self.access_stats.len() - 1];
+
+			for _ in 0..max(free_count, 16) {
+				let (sector_index, _) = self.access_stats[self.access_stats.len() - 1];
 
 				let sector = self.sectors.get(&sector_index).unwrap();
 				if sector.written {
@@ -132,11 +143,16 @@ impl StorageCache {
 
 		self.sectors.insert(sector, CachedSector {
 			written: false,
-			access_count: 1,
+			access_count: 0,
 
 			data: alloc,
 		})?;
-		self.access_stats.push(sector)?;
+
+		if let Err(e) = self.increment_access(sector) {
+			self.sectors.remove(&sector);
+			return Err(e);
+		}
+
 		Ok(())
 	}
 

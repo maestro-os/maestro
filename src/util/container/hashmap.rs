@@ -122,9 +122,11 @@ impl<K: Eq + Hash + FailableClone, V: FailableClone> FailableClone for Bucket<K,
 pub struct HashMap<K: Eq + Hash, V> {
 	/// The number of buckets in the hashmap.
 	buckets_count: usize,
-
 	/// The vector containing buckets.
 	buckets: Vec<Bucket<K, V>>,
+
+	/// The number of elements in the container.
+	len: usize,
 }
 
 impl<K: Eq + Hash, V> HashMap::<K, V> {
@@ -132,8 +134,9 @@ impl<K: Eq + Hash, V> HashMap::<K, V> {
 	pub const fn new() -> Self {
 		Self {
 			buckets_count: DEFAULT_BUCKETS_COUNT,
-
 			buckets: Vec::new(),
+
+			len: 0,
 		}
 	}
 
@@ -141,25 +144,20 @@ impl<K: Eq + Hash, V> HashMap::<K, V> {
 	pub const fn with_buckets(buckets_count: usize) -> Self {
 		Self {
 			buckets_count,
-
 			buckets: Vec::new(),
+
+			len: 0,
 		}
 	}
 
 	/// Returns the number of elements in the hash map.
 	pub fn len(&self) -> usize {
-		let mut total = 0;
-
-		for b in self.buckets.iter() {
-			total += b.elements.len();
-		}
-
-		total
+		self.len
 	}
 
 	/// Tells whether the hash map is empty.
 	pub fn is_empty(&self) -> bool {
-		self.len() == 0
+		self.len == 0
 	}
 
 	/// Returns the number of buckets.
@@ -215,7 +213,13 @@ impl<K: Eq + Hash, V> HashMap::<K, V> {
 			}
 		}
 
-		self.buckets[index].insert(k, v)
+		let result = self.buckets[index].insert(k, v)?;
+
+		if result.is_none() {
+			self.len += 1;
+		}
+
+		Ok(result)
 	}
 
 	/// Removes an element from the hash map. If the key was present, the function returns the
@@ -224,7 +228,13 @@ impl<K: Eq + Hash, V> HashMap::<K, V> {
 		let index = self.get_bucket_index(k);
 
 		if index < self.buckets.len() {
-			self.buckets[index].remove(k)
+			let result = self.buckets[index].remove(k);
+
+			if result.is_some() {
+				self.len -= 1;
+			}
+
+			result
 		} else {
 			None
 		}
@@ -235,6 +245,8 @@ impl<K: Eq + Hash, V> HashMap::<K, V> {
 		for i in 0..self.buckets.len() {
 			self.buckets[i].elements.clear();
 		}
+
+		self.len = 0;
 	}
 }
 
@@ -258,8 +270,9 @@ impl<K: Eq + Hash + FailableClone, V: FailableClone> FailableClone for HashMap<K
 	fn failable_clone(&self) -> Result<Self, Errno> {
 		Ok(Self {
 			buckets_count: self.buckets_count,
-
 			buckets: self.buckets.failable_clone()?,
+
+			len: self.len,
 		})
 	}
 }
