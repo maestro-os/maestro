@@ -1,21 +1,17 @@
 //! This module implements storage caches, allowing to cache disk sectors to avoid unnecessary
 //! accesses to the storage device.
 
-use core::cmp::max;
-use core::intrinsics::wrapping_add;
 use crate::device::storage::StorageInterface;
 use crate::errno::Errno;
 use crate::memory::malloc;
 use crate::util::boxed::Box;
 use crate::util::container::hashmap::HashMap;
-use crate::util::container::vec::Vec;
+use crate::util::container::ring_buffer::RingBuffer;
 
 /// Structure representing a cached sector.
 struct CachedSector {
 	/// Tells whether the sector has been written.
 	written: bool,
-	/// The number of times the sector has been accessed.
-	access_count: u32,
 
 	/// The sector's data.
 	data: malloc::Alloc<u8>,
@@ -31,9 +27,9 @@ pub struct StorageCache {
 	/// Cached sectors.
 	sectors: HashMap<u64, CachedSector>,
 
-	/// Vector storing index of each sectors with its access count, stored by decreasing accesses
-	/// count, then by its sector index.
-	access_stats: Vec<(u64, u32)>,
+	/// Fifo storing sector indexes. When the fifo is full, the oldest sector shall be discarded
+	/// from the cache.
+	fifo: RingBuffer<u64>,
 }
 
 impl StorageCache {
@@ -46,49 +42,19 @@ impl StorageCache {
 
 			sectors: HashMap::new(),
 
-			access_stats: Vec::with_capacity(count)?,
+			fifo: RingBuffer::new(count)?,
 		})
 	}
 
 	/// Tells whether the cache is full.
 	pub fn is_full(&self) -> bool {
-		self.sectors.len() >= self.access_stats.capacity()
-	}
-
-	/// Increments the access count for the given sector `sector`.
-	fn increment_access(&mut self, sector: u64) -> Result<(), Errno> {
-		if let Some(cached_sector) = self.sectors.get_mut(&sector) {
-			let old_access_count = cached_sector.access_count;
-
-			// Removing old access stat
-			if let Ok(n) = self.access_stats.binary_search_by(| e | {
-				e.1.cmp(&old_access_count).reverse().then(e.0.cmp(&sector))
-			}) {
-				self.access_stats.remove(n);
-			}
-
-			// On overflow, the value becomes zero. This behaviour increases the odds of the
-			// sector to be freed from the cache even though it is often accessed, but it is
-			// acceptable when taking into account the size of the counter
-			let access_count = wrapping_add(old_access_count, 1);
-			cached_sector.access_count = access_count;
-
-			// Inserting new access stat
-			let n = self.access_stats.binary_search_by(| e | {
-				e.1.cmp(&access_count).reverse().then(e.0.cmp(&sector))
-			}).unwrap_or_else(| n | n);
-			self.access_stats.insert(n, (sector, access_count))?;
-		}
-
-		Ok(())
+		self.sectors.len() >= self.fifo.get_size()
 	}
 
 	/// Reads the sector with index `sector` and writes its content into the buffer `buff`.
 	pub fn read(&mut self, sector: u64, buff: &mut [u8]) -> Result<Option<()>, Errno> {
 		if let Some(CachedSector { data, .. }) = self.sectors.get(&sector) {
 			buff.copy_from_slice(data.get_slice());
-
-			self.increment_access(sector)?;
 			Ok(Some(()))
 		} else {
 			Ok(None)
@@ -102,8 +68,6 @@ impl StorageCache {
 		if let Some(CachedSector { written, data, .. }) = self.sectors.get_mut(&sector) {
 			data.get_slice_mut().copy_from_slice(buff);
 			*written = true;
-
-			self.increment_access(sector)?;
 			Ok(Some(()))
 		} else {
 			Ok(None)
@@ -117,24 +81,16 @@ impl StorageCache {
 	/// `buff` is a buffer containing the sector's data.
 	pub fn insert<F>(&mut self, sector: u64, buff: &[u8], mut flush_hook: F) -> Result<(), Errno>
 		where F: FnMut(u64, &[u8]) -> Result<(), Errno> {
-		if self.access_stats.capacity() == 0 {
-			return Err(crate::errno!(ENOMEM));
-		}
-
 		// Freeing some slots if needed
 		if self.is_full() {
-			let free_count = 0; // TODO Find an heuristic to compute the most optimal value
+			let mut sector_indexes: [u64; 16] = Default::default();
+			let n = self.fifo.read(&mut sector_indexes);
 
-			for _ in 0..max(free_count, 16) {
-				let (sector_index, _) = self.access_stats[self.access_stats.len() - 1];
-
-				let sector = self.sectors.get(&sector_index).unwrap();
+			for i in &sector_indexes[..n] {
+				let sector = self.sectors.remove(i).unwrap();
 				if sector.written {
-					flush_hook(sector_index, sector.data.get_slice())?;
+					flush_hook(*i, sector.data.get_slice())?;
 				}
-
-				self.sectors.remove(&sector_index);
-				self.access_stats.pop();
 			}
 		}
 
@@ -143,15 +99,10 @@ impl StorageCache {
 
 		self.sectors.insert(sector, CachedSector {
 			written: false,
-			access_count: 0,
 
 			data: alloc,
 		})?;
-
-		if let Err(e) = self.increment_access(sector) {
-			self.sectors.remove(&sector);
-			return Err(e);
-		}
+		self.fifo.write(&[sector]);
 
 		Ok(())
 	}
@@ -169,7 +120,7 @@ impl StorageCache {
 		}
 
 		self.sectors.clear();
-		self.access_stats.clear();
+		self.fifo.clear();
 		Ok(())
 	}
 }

@@ -12,7 +12,7 @@ const BUFFER_SIZE: usize = 65536;
 /// Structure representing a pipe.
 pub struct Pipe {
 	/// The pipe's buffer.
-	buffer: RingBuffer,
+	buffer: RingBuffer<u8>,
 }
 
 impl Pipe {

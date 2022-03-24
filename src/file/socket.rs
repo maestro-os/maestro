@@ -22,9 +22,9 @@ pub struct Socket {
 	// TODO Handle network sockets
 
 	/// The buffer containing received data.
-	receive_buffer: RingBuffer,
+	receive_buffer: RingBuffer<u8>,
 	/// The buffer containing sent data.
-	send_buffer: RingBuffer,
+	send_buffer: RingBuffer<u8>,
 
 	/// The list of sides of the socket.
 	sides: Vec<SharedPtr<SocketSide>>,

@@ -11,11 +11,13 @@ use core::cmp::min;
 use crate::errno::Errno;
 use crate::util::container::vec::Vec;
 
+// TODO Refactor to avoid requiring Default and Copy
+
 /// Structure representing a ring buffer. The buffer has a limited size which must be given at
 /// initialization.
-pub struct RingBuffer {
+pub struct RingBuffer<T: Default + Copy> {
 	/// The linear buffer.
-	buffer: Vec<u8>,
+	buffer: Vec<T>,
 
 	/// The offset of the read cursor in the buffer.
 	read_cursor: usize,
@@ -23,11 +25,11 @@ pub struct RingBuffer {
 	write_cursor: usize,
 }
 
-impl RingBuffer {
+impl<T: Default + Copy> RingBuffer<T> {
 	/// Creates a new instance.
 	/// `size` is the size of the buffer.
 	pub fn new(size: usize) -> Result<Self, Errno> {
-		let mut buffer = Vec::<u8>::new();
+		let mut buffer = Vec::<T>::new();
 		buffer.resize(size + 1)?;
 
 		Ok(Self {
@@ -68,13 +70,13 @@ impl RingBuffer {
 
 	/// Returns a slice representing the ring buffer's linear buffer.
 	#[inline(always)]
-	fn get_buffer(&mut self) -> &mut [u8] {
+	fn get_buffer(&mut self) -> &mut [T] {
 		self.buffer.as_mut_slice()
 	}
 
 	/// Reads data from the buffer and writes it in `buf`. The function returns the number of bytes
 	/// read.
-	pub fn read(&mut self, buf: &mut [u8]) -> usize {
+	pub fn read(&mut self, buf: &mut [T]) -> usize {
 		let cursor = self.read_cursor;
 		let len = min(buf.len(), self.get_data_len());
 
@@ -98,7 +100,7 @@ impl RingBuffer {
 	}
 
 	/// Writes data in `buf` to the buffer. The function returns the number of bytes written.
-	pub fn write(&mut self, buf: &[u8]) -> usize {
+	pub fn write(&mut self, buf: &[T]) -> usize {
 		let cursor = self.write_cursor;
 		let len = min(buf.len(), self.get_available_len());
 
