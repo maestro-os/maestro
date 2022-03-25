@@ -162,8 +162,9 @@ pub fn create() -> Result<(), Errno> {
 		path.push(String::from(b"dev")?)?;
 		path.push(name)?;
 
-		device::register_device(Device::new(RAM_DISK_MAJOR, i as _, path, 0o666, DeviceType::Block,
-			RAMDiskHandle::new())?)?;
+		let dev = Device::new(RAM_DISK_MAJOR, i as _, path, 0o666, DeviceType::Block,
+			RAMDiskHandle::new())?;
+		device::register_device(dev)?;
 	}
 
 	Ok(())

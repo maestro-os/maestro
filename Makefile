@@ -296,7 +296,7 @@ bochs: iso
 virtualbox: iso
 	virtualbox
 
-.PHONY: test cputest bochs virtualbox
+.PHONY: test selftest cputest bochs virtualbox
 
 
 

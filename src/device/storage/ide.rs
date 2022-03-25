@@ -4,7 +4,6 @@ use crate::device::bar::BAR;
 use crate::device::bus::pci;
 use crate::device::storage::PhysicalDevice;
 use crate::device::storage::StorageInterface;
-use crate::device::storage::cache::CachedStorageInterface;
 use crate::device::storage::pata::PATAInterface;
 use crate::errno::Errno;
 use crate::io;
@@ -114,10 +113,12 @@ impl IDEController {
 
 		if let Ok(interface) = PATAInterface::new(secondary, slave) {
 			let interface = Box::new(interface)?;
-			// TODO Use a constant for the sectors count
-			let cached_interface = CachedStorageInterface::new(interface, 1024)?;
 
-			Ok(Some(Box::new(cached_interface)?))
+			// Wrapping the interface into a cached interface
+			// TODO Use a constant for the sectors count
+			//let interface = Box::new(CachedStorageInterface::new(interface, 1024)?)?;
+
+			Ok(Some(interface))
 		} else {
 			Ok(None)
 		}

@@ -160,7 +160,6 @@ impl StorageInterface for CachedStorageInterface {
 		self.storage_interface.get_blocks_count()
 	}
 
-	// TODO Optimize to allow calling the storage interface for several blocks at once
 	fn read(&mut self, buf: &mut [u8], offset: u64, size: u64) -> Result<(), Errno> {
 		let block_size = self.get_block_size();
 
@@ -181,7 +180,6 @@ impl StorageInterface for CachedStorageInterface {
 		Ok(())
 	}
 
-	// TODO Optimize to allow calling the storage interface for several blocks at once
 	fn write(&mut self, buf: &[u8], offset: u64, size: u64) -> Result<(), Errno> {
 		let block_size = self.get_block_size();
 
@@ -198,7 +196,6 @@ impl StorageInterface for CachedStorageInterface {
 		}
 
 		Ok(())
-
 	}
 }
 

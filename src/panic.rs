@@ -30,7 +30,7 @@ fn print_panic(reason: Arguments) {
 	crate::println!("CR2: {:p}\n", unsafe {
 		cpu::cr2_get()
 	} as *const c_void);
-	crate::println!("If you believe this is a bug on the kernel side, please feel free to report
+	crate::println!("If you believe this is a bug on the kernel side, please feel free to report \
 it.");
 }
 

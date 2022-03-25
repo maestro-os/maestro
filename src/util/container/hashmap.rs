@@ -169,7 +169,7 @@ impl<K: Eq + Hash, V> HashMap::<K, V> {
 	fn get_bucket_index(&self, k: &K) -> usize {
 		let mut hasher = XORHasher::new();
 		k.hash(&mut hasher);
-		(hasher.finish() / (self.buckets_count as u64)) as usize
+		(hasher.finish() % (self.buckets_count as u64)) as usize
 	}
 
 	/// Returns an immutable reference to the value with the given key `k`. If the key isn't
@@ -315,9 +315,10 @@ impl<'a, K: Hash + Eq, V> Iterator for HashMapIterator<'a, K, V> {
 
 			for i in self.curr_bucket..self.hm.buckets.len() {
 				if !self.hm.buckets[i].elements.is_empty() {
-					self.curr_bucket += i;
 					break;
 				}
+
+				self.curr_bucket += 1;
 			}
 
 			if self.curr_bucket >= self.hm.buckets.len() {
