@@ -320,7 +320,8 @@ impl Ext2INode {
 		let entries_per_blk = blk_size / size_of::<u32>() as u32;
 
 		if n > 0 {
-			let inner_index = off / math::pow(entries_per_blk as u32, n as _);
+			let blk_per_blk = math::pow(entries_per_blk as u32, (n - 1) as _);
+			let inner_index = off / blk_per_blk;
 			let inner_off = inner_index as u64 * size_of::<u32>() as u64;
 			debug_assert!(inner_off < blk_size as u64);
 			let byte_off = (begin as u64 * blk_size as u64) + inner_off as u64;
@@ -330,7 +331,7 @@ impl Ext2INode {
 			};
 
 			// Perform the next indirection if needed
-			let next_off = off - math::pow(entries_per_blk as u32, (n - 1) as _) * inner_index;
+			let next_off = off - blk_per_blk * inner_index;
 			Self::resolve_indirections(n - 1, b, next_off, superblock, io)
 		} else {
 			Ok(Self::blk_offset_to_option(begin))
@@ -394,7 +395,8 @@ impl Ext2INode {
 		let entries_per_blk = blk_size / size_of::<u32>() as u32;
 
 		if n > 0 {
-			let inner_index = off / math::pow(entries_per_blk as u32, n as _);
+			let blk_per_blk = math::pow(entries_per_blk as u32, (n - 1) as _);
+			let inner_index = off / blk_per_blk;
 			let inner_off = inner_index as u64 * size_of::<u32>() as u64;
 			debug_assert!(inner_off < blk_size as u64);
 			let byte_off = (begin as u64 * blk_size as u64) + inner_off as u64;
@@ -413,7 +415,7 @@ impl Ext2INode {
 				b = blk;
 			}
 
-			let next_off = off - math::pow(entries_per_blk as u32, (n - 1) as _) * inner_index;
+			let next_off = off - blk_per_blk * inner_index;
 			self.indirections_alloc(n - 1, b, next_off, superblock, io)
 		} else {
 			Ok(begin)
@@ -526,7 +528,8 @@ impl Ext2INode {
 		let entries_per_blk = blk_size / size_of::<u32>() as u32;
 
 		if n > 0 {
-			let inner_index = off / math::pow(entries_per_blk as u32, n as _);
+			let blk_per_blk = math::pow(entries_per_blk as u32, (n - 1) as _);
+			let inner_index = off / blk_per_blk;
 			let inner_off = inner_index as u64 * size_of::<u32>() as u64;
 			debug_assert!(inner_off < blk_size as u64);
 			let byte_off = (begin as u64 * blk_size as u64) + inner_off as u64;
@@ -535,7 +538,7 @@ impl Ext2INode {
 				read::<u32>(byte_off, io)?
 			};
 
-			let next_off = off - math::pow(entries_per_blk as u32, (n - 1) as _) * inner_index;
+			let next_off = off - blk_per_blk * inner_index;
 			if self.indirections_free(n - 1, b, next_off, superblock, io)? {
 				// Reading the current block
 				let mut buff = malloc::Alloc::<u8>::new_default(blk_size as _)?;

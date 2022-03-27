@@ -160,11 +160,9 @@ impl<'a> ELFParser<'a> {
 		let shnum = ehdr.e_shnum;
 		let shentsize = ehdr.e_shentsize;
 
-		crate::println!("-----"); // TODO rm
 		for i in 0..shnum {
 			let off = (shoff + shentsize as u32 * i as u32) as usize;
 			let hdr = self.get_struct::<ELF32SectionHeader>(off);
-			crate::println!("{} {:?}", off, hdr); // TODO rm
 
 			if !f(off, hdr) {
 				break;
