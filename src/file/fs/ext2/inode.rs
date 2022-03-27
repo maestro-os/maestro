@@ -319,21 +319,22 @@ impl Ext2INode {
 		let blk_size = superblock.get_block_size();
 		let entries_per_blk = blk_size / size_of::<u32>() as u32;
 
-		let mut b = begin;
-		for i in (0..n).rev() {
-			let inner_index = off / math::pow(entries_per_blk as u32, i as _);
+		if n > 0 {
+			let inner_index = off / math::pow(entries_per_blk as u32, n as _);
 			let inner_off = inner_index as u64 * size_of::<u32>() as u64;
-			let byte_off = (b as u64 * blk_size as u64) + inner_off as u64;
-			b = unsafe {
+			debug_assert!(inner_off < blk_size as u64);
+			let byte_off = (begin as u64 * blk_size as u64) + inner_off as u64;
+
+			let b = unsafe {
 				read::<u32>(byte_off, io)?
 			};
 
-			if b == 0 {
-				break;
-			}
+			// Perform the next indirection if needed
+			let next_off = off - math::pow(entries_per_blk as u32, (n - 1) as _) * inner_index;
+			Self::resolve_indirections(n - 1, b, next_off, superblock, io)
+		} else {
+			Ok(Self::blk_offset_to_option(begin))
 		}
-
-		Ok(Self::blk_offset_to_option(b))
 	}
 
 	/// Returns the block id of the node's content block at the given offset `i`.
@@ -392,13 +393,13 @@ impl Ext2INode {
 		let blk_size = superblock.get_block_size();
 		let entries_per_blk = blk_size / size_of::<u32>() as u32;
 
-		let mut b = begin;
-		for i in (0..n).rev() {
-			let inner_index = off / math::pow(entries_per_blk as u32, i as _);
+		if n > 0 {
+			let inner_index = off / math::pow(entries_per_blk as u32, n as _);
 			let inner_off = inner_index as u64 * size_of::<u32>() as u64;
-			let byte_off = (b as u64 * blk_size as u64) + inner_off as u64;
+			debug_assert!(inner_off < blk_size as u64);
+			let byte_off = (begin as u64 * blk_size as u64) + inner_off as u64;
 
-			b = unsafe {
+			let mut b = unsafe {
 				read::<u32>(byte_off, io)?
 			};
 			if b == 0 {
@@ -411,9 +412,12 @@ impl Ext2INode {
 				write::<u32>(&blk, byte_off, io)?;
 				b = blk;
 			}
-		}
 
-		Ok(b)
+			let next_off = off - math::pow(entries_per_blk as u32, (n - 1) as _) * inner_index;
+			self.indirections_alloc(n - 1, b, next_off, superblock, io)
+		} else {
+			Ok(begin)
+		}
 	}
 
 	/// Allocates a block for the node's content block at the given offset `i`.
@@ -522,18 +526,17 @@ impl Ext2INode {
 		let entries_per_blk = blk_size / size_of::<u32>() as u32;
 
 		if n > 0 {
-			// The value subtracted from `begin` for the next indirection
-			let blk_off = math::pow(entries_per_blk as u32, n as _);
-
-			let inner_index = off / blk_off;
+			let inner_index = off / math::pow(entries_per_blk as u32, n as _);
 			let inner_off = inner_index as u64 * size_of::<u32>() as u64;
+			debug_assert!(inner_off < blk_size as u64);
 			let byte_off = (begin as u64 * blk_size as u64) + inner_off as u64;
 
 			let b = unsafe {
 				read::<u32>(byte_off, io)?
 			};
 
-			if self.indirections_free(n - 1, b, off - blk_off, superblock, io)? {
+			let next_off = off - math::pow(entries_per_blk as u32, (n - 1) as _) * inner_index;
+			if self.indirections_free(n - 1, b, next_off, superblock, io)? {
 				// Reading the current block
 				let mut buff = malloc::Alloc::<u8>::new_default(blk_size as _)?;
 				read_block(begin as _, superblock, io, buff.get_slice_mut())?;

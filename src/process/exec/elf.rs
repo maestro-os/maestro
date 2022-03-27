@@ -377,6 +377,13 @@ impl Executor for ELFExecutor {
 		-> Result<(), Errno> {
 		debug_assert_eq!(process.state, crate::process::State::Running);
 
+		// TODO rm
+		for i in self.image.get_slice().chunks(1024) {
+			unsafe {
+				crate::print!("{}", core::str::from_utf8_unchecked(i));
+			}
+		}
+
 		// Parsing the ELF file
 		let parser = ELFParser::new(self.image.get_slice())?;
 
@@ -434,6 +441,13 @@ impl Executor for ELFExecutor {
 			});
 
 			result.is_ok()
+		});
+
+		crate::println!("jflsjlfdkjsljfdkls");
+		// TODO rm
+		parser.foreach_symbol(| _, sym | {
+			crate::println!("-> {}", sym.st_info & 0xf);
+			true
 		});
 
 		// The initial pointer for `brk`
