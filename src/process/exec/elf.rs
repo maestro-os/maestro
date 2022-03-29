@@ -4,7 +4,6 @@ use core::cmp::max;
 use core::cmp::min;
 use core::ffi::c_void;
 use core::mem::size_of;
-use core::ptr::null;
 use core::ptr;
 use core::slice;
 use core::str;
@@ -302,37 +301,56 @@ impl ELFExecutor {
 	/// If loaded, the function return the pointer to the end of the segment in virtual memory.
 	fn alloc_segment(load_base: *const u8, mem_space: &mut MemSpace, seg: &ELF32ProgramHeader)
 		-> Result<Option<*const c_void>, Errno> {
-		if seg.p_type != elf::PT_LOAD {
-			return Ok(None);
-		}
-
-		// TODO Handle alignments lower than page size
 		// Checking the alignment is correct
-		if (seg.p_align as usize) < memory::PAGE_SIZE || !math::is_power_of_two(seg.p_align) {
+		if !math::is_power_of_two(seg.p_align) {
 			return Err(errno!(EINVAL));
 		}
-
-		// The size of the padding before the segment
-		let pad = (seg.p_vaddr % seg.p_align) as usize;
-		// The pointer to the beginning of the virtual memory chunk to allocate
-		let mem_begin = unsafe {
-			load_base.add(seg.p_vaddr as usize - pad)
-		};
-
-		// The length of the memory to allocate in pages
-		let pages = math::ceil_division(pad + seg.p_memsz as usize, memory::PAGE_SIZE);
 
 		// The mapping's flags
 		let flags = seg.get_mem_space_flags();
 
-		if pages > 0 {
-			// TODO Lazy allocation
-			mem_space.map(Some(mem_begin as _), pages, flags, None, 0)?;
+		let (mem_begin, pages) = match seg.p_type {
+			// TODO Handle TLS differently?
+			elf::PT_LOAD | elf::PT_TLS => {
+				// The size of the padding before the segment
+				let pad = seg.p_vaddr as usize % max(seg.p_align as usize, memory::PAGE_SIZE);
+				// The pointer to the beginning of the segment in memory
+				let mem_begin = unsafe {
+					load_base.add(seg.p_vaddr as usize - pad)
+				};
+				// The length of the memory to allocate in pages
+				let pages = math::ceil_division(pad + seg.p_memsz as usize, memory::PAGE_SIZE);
 
-			// Pre-allocating the pages to make them writable
-			for i in 0..pages {
-				mem_space.alloc((mem_begin as usize + i * memory::PAGE_SIZE) as *const u8)?;
-			}
+				if pages > 0 {
+					mem_space.map(Some(mem_begin as _), pages, flags, None, 0)?;
+				}
+
+				(mem_begin, pages)
+			},
+
+			/*elf::PT_TLS => {
+				// The length of the memory to allocate in pages
+				let pages = math::ceil_division(seg.p_memsz as usize, memory::PAGE_SIZE);
+
+				// The pointer to the beginning of the segment in memory
+				let mem_begin = {
+					if pages > 0 {
+						mem_space.map(None, pages, flags, None, 0)?
+					} else {
+						ptr::null::<_>()
+					}
+				};
+
+				(mem_begin, pages)
+			},*/
+
+			_ => return Ok(None),
+		};
+
+		// TODO Lazy allocation
+		// Pre-allocating the pages to make them writable
+		for i in 0..pages {
+			mem_space.alloc((mem_begin as usize + i * memory::PAGE_SIZE) as *const u8)?;
 		}
 
 		// The pointer to the end of the virtual memory chunk
@@ -348,22 +366,31 @@ impl ELFExecutor {
 	/// `seg` is the segment.
 	/// `image` is the ELF file image.
 	fn copy_segment(load_base: *const u8, seg: &ELF32ProgramHeader, image: &[u8]) {
-		if seg.p_type == elf::PT_LOAD {
-			// The pointer to the beginning of the segment in the virtual memory
-			let begin = unsafe {
-				load_base.add(seg.p_vaddr as usize) as *mut _
-			};
-			// The length of the segment in bytes
-			let len = min(seg.p_memsz, seg.p_filesz) as usize;
-			// A slice to the beginning of the section's data in the file
-			let file_begin = &image[seg.p_offset as usize];
+		match seg.p_type {
+			// TODO Handle TLS differently?
+			elf::PT_LOAD | elf::PT_TLS => {
+				// The pointer to the beginning of the segment in the virtual memory
+				let begin = unsafe {
+					load_base.add(seg.p_vaddr as usize) as *mut _
+				};
+				// The length of the segment in bytes
+				let len = min(seg.p_memsz, seg.p_filesz) as usize;
+				// A slice to the beginning of the section's data in the file
+				let file_begin = &image[seg.p_offset as usize];
 
-			// Copying the segment's data
-			unsafe { // Safe because the module ELF image is valid at this point
-				vmem::write_lock_wrap(|| {
-					ptr::copy_nonoverlapping::<u8>(file_begin, begin, len);
-				});
-			}
+				// Copying the segment's data
+				unsafe { // Safe because the module ELF image is valid at this point
+					vmem::write_lock_wrap(|| {
+						ptr::copy_nonoverlapping::<u8>(file_begin, begin, len);
+					});
+				}
+			},
+
+			/*elf::PT_TLS => {
+				// TODO
+			},*/
+
+			_ => return,
 		}
 	}
 }
@@ -423,7 +450,7 @@ impl Executor for ELFExecutor {
 		}
 
 		// Allocating memory for segments
-		let mut result: Result<*const c_void, Errno> = Ok(null::<_>());
+		let mut result: Result<*const c_void, Errno> = Ok(load_base as _);
 		parser.foreach_segments(| seg | {
 			result = Self::alloc_segment(load_base, &mut mem_space, seg).map(| end | {
 				if let Some(end) = end {
@@ -434,13 +461,6 @@ impl Executor for ELFExecutor {
 			});
 
 			result.is_ok()
-		});
-
-		// TODO rm
-		crate::println!("jflsjlfdkjsljfdkls");
-		parser.foreach_symbol(| _, sym | {
-			crate::println!("-> {}", sym.st_info & 0xf);
-			true
 		});
 
 		// The initial pointer for `brk`

@@ -84,6 +84,8 @@ pub const PT_NOTE: u32 = 4;
 pub const PT_SHLIB: u32 = 5;
 /// Program header type: The program header table itself.
 pub const PT_PHDR: u32 = 6;
+/// Program header type: Thread-Local Storage (TLS).
+pub const PT_TLS: u32 = 7;
 
 /// Segment flag: Execute.
 pub const PF_X: u32 = 0x1;
@@ -123,6 +125,8 @@ pub const SHF_WRITE: u32 = 0x00000001;
 pub const SHF_ALLOC: u32 = 0x00000002;
 /// The section contains executable machine instructions.
 pub const SHF_EXECINSTR: u32 = 0x00000004;
+/// Thread-Local Storage (TLS) section.
+pub const SHF_TLS: u32 = 0x400;
 /// All bits included in this mask are reserved for processor-specific semantics.
 pub const SHF_MASKPROC: u32 = 0xf0000000;
 
@@ -137,6 +141,8 @@ pub const STT_SECTION: u8 = 3;
 /// A file symbol has STB_LOCAL binding, its section index is SHN_ABS, and it precedes the other
 /// STB_LOCAL symbols for the file, if it is present.
 pub const STT_FILE: u8 = 4;
+/// Thread-Local Storage (TLS) symbol.
+pub const STT_TLS: u8 = 6;
 
 /// No relocation.
 pub const R_386_NONE: u8 = 0;
