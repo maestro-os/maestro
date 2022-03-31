@@ -12,6 +12,8 @@ mod dup2;
 mod dup;
 mod execve;
 mod fchdir;
+mod fcntl64;
+mod fcntl;
 mod finit_module;
 mod fork;
 mod getcwd;
@@ -85,6 +87,8 @@ use dup2::dup2;
 use dup::dup;
 use execve::execve;
 use fchdir::fchdir;
+use fcntl64::fcntl64;
+use fcntl::fcntl;
 use finit_module::finit_module;
 use fork::fork;
 use getcwd::getcwd;
@@ -199,7 +203,7 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 		// TODO 0x034 => umount2(regs),
 		// TODO 0x035 => lock(regs),
 		0x036 => ioctl(regs),
-		// TODO 0x037 => fcntl(regs),
+		0x037 => fcntl(regs),
 		// TODO 0x038 => mpx(regs),
 		0x039 => setpgid(regs),
 		// TODO 0x03a => ulimit(regs),
@@ -365,7 +369,7 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 		// TODO 0x0da => mincore(regs),
 		// TODO 0x0db => madvise(regs),
 		// TODO 0x0dc => getdents64(regs),
-		// TODO 0x0dd => fcntl64(regs),
+		0x0dd => fcntl64(regs),
 		0x0e0 => gettid(regs),
 		// TODO 0x0e1 => readahead(regs),
 		// TODO 0x0e2 => setxattr(regs),
