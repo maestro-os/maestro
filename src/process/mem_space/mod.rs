@@ -181,7 +181,7 @@ impl MemSpace {
 	/// The function has complexity `O(log n)`.
 	/// If the given pointer is not page-aligned, the function returns an error.
 	pub fn map(&mut self, ptr: Option<*const c_void>, size: usize, flags: u8,
-		fd: Option<FileDescriptor>, fd_off: u64) -> Result<*const c_void, Errno> {
+		fd: Option<FileDescriptor>, fd_off: u64) -> Result<*mut c_void, Errno> {
 		// Checking arguments are valid
 		if let Some(ptr) = ptr {
 			if !util::is_aligned(ptr, memory::PAGE_SIZE) {
@@ -217,11 +217,11 @@ impl MemSpace {
 		};
 
 		// The address to the beginning of the mapping
-		let addr = (gap.get_begin() as usize + off * memory::PAGE_SIZE) as _;
+		let addr = (gap.get_begin() as usize + off * memory::PAGE_SIZE) as *mut c_void;
 		// Creating the mapping
 		let mapping = MemMapping::new(addr, size, flags, fd, fd_off,
 			NonNull::new(self.vmem.as_mut_ptr()).unwrap());
-		debug_assert!(ptr.is_none() || addr == ptr.unwrap());
+		debug_assert!(ptr.is_none() || addr == ptr.unwrap() as _);
 
 		let m = self.mappings.insert(addr, mapping)?;
 
@@ -251,7 +251,7 @@ impl MemSpace {
 
 	/// Same as `map`, except the function returns a pointer to the end of the memory mapping.
 	pub fn map_stack(&mut self, ptr: Option<*const c_void>, size: usize, flags: u8)
-		-> Result<*const c_void, Errno> {
+		-> Result<*mut c_void, Errno> {
 		let mapping_ptr = self.map(ptr, size, flags, None, 0)?;
 		Ok(unsafe { // Safe because the new pointer stays in the range of the allocated mapping
 			mapping_ptr.add(size * memory::PAGE_SIZE)

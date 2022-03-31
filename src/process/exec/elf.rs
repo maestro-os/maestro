@@ -100,9 +100,20 @@ impl AuxEntry {
 
 	// TODO Add interpreter support
 	/// Fills an auxilary vector for the given process `process`.
-	fn fill_auxilary(process: &Process) -> Result<Vec<Self>, Errno> {
+	/// `phdr` is the pointer to the program headers array loaded in the process's memory.
+	/// `parser` is a reference to the ELF parser.
+	fn fill_auxilary(process: &Process, phdr: Option<*const c_void>,
+		parser: &ELFParser) -> Result<Vec<Self>, Errno> {
 		let mut aux = Vec::new();
+
+		if let Some(phdr) = phdr {
+			aux.push(AuxEntry::new(AT_PHDR, phdr as _))?;
+			aux.push(AuxEntry::new(AT_PHENT, parser.get_header().get_phentsize() as _))?;
+			aux.push(AuxEntry::new(AT_PHNUM, parser.get_header().get_phnum() as _))?;
+		}
+
 		aux.push(AuxEntry::new(AT_PAGESZ, memory::PAGE_SIZE as _))?;
+		aux.push(AuxEntry::new(AT_NOTELF, 0))?;
 		aux.push(AuxEntry::new(AT_UID, process.get_uid() as _))?;
 		aux.push(AuxEntry::new(AT_EUID, process.get_euid() as _))?;
 		aux.push(AuxEntry::new(AT_GID, process.get_gid() as _))?;
@@ -301,56 +312,33 @@ impl ELFExecutor {
 	/// If loaded, the function return the pointer to the end of the segment in virtual memory.
 	fn alloc_segment(load_base: *const u8, mem_space: &mut MemSpace, seg: &ELF32ProgramHeader)
 		-> Result<Option<*const c_void>, Errno> {
+		// Loading only loadable segments
+		if seg.p_type != elf::PT_LOAD {
+			return Ok(None);
+		}
+
 		// Checking the alignment is correct
 		if !math::is_power_of_two(seg.p_align) {
 			return Err(errno!(EINVAL));
 		}
 
-		// The mapping's flags
-		let flags = seg.get_mem_space_flags();
-
-		let (mem_begin, pages) = match seg.p_type {
-			// TODO Handle TLS differently?
-			elf::PT_LOAD | elf::PT_TLS => {
-				// The size of the padding before the segment
-				let pad = seg.p_vaddr as usize % max(seg.p_align as usize, memory::PAGE_SIZE);
-				// The pointer to the beginning of the segment in memory
-				let mem_begin = unsafe {
-					load_base.add(seg.p_vaddr as usize - pad)
-				};
-				// The length of the memory to allocate in pages
-				let pages = math::ceil_division(pad + seg.p_memsz as usize, memory::PAGE_SIZE);
-
-				if pages > 0 {
-					mem_space.map(Some(mem_begin as _), pages, flags, None, 0)?;
-				}
-
-				(mem_begin, pages)
-			},
-
-			/*elf::PT_TLS => {
-				// The length of the memory to allocate in pages
-				let pages = math::ceil_division(seg.p_memsz as usize, memory::PAGE_SIZE);
-
-				// The pointer to the beginning of the segment in memory
-				let mem_begin = {
-					if pages > 0 {
-						mem_space.map(None, pages, flags, None, 0)?
-					} else {
-						ptr::null::<_>()
-					}
-				};
-
-				(mem_begin, pages)
-			},*/
-
-			_ => return Ok(None),
+		// The size of the padding before the segment
+		let pad = seg.p_vaddr as usize % max(seg.p_align as usize, memory::PAGE_SIZE);
+		// The pointer to the beginning of the segment in memory
+		let mem_begin = unsafe {
+			load_base.add(seg.p_vaddr as usize - pad)
 		};
+		// The length of the memory to allocate in pages
+		let pages = math::ceil_division(pad + seg.p_memsz as usize, memory::PAGE_SIZE);
 
-		// TODO Lazy allocation
-		// Pre-allocating the pages to make them writable
-		for i in 0..pages {
-			mem_space.alloc((mem_begin as usize + i * memory::PAGE_SIZE) as *const u8)?;
+		if pages > 0 {
+			mem_space.map(Some(mem_begin as _), pages, seg.get_mem_space_flags(), None, 0)?;
+
+			// TODO Lazy allocation
+			// Pre-allocating the pages to make them writable
+			for i in 0..pages {
+				mem_space.alloc((mem_begin as usize + i * memory::PAGE_SIZE) as *const u8)?;
+			}
 		}
 
 		// The pointer to the end of the virtual memory chunk
@@ -366,31 +354,25 @@ impl ELFExecutor {
 	/// `seg` is the segment.
 	/// `image` is the ELF file image.
 	fn copy_segment(load_base: *const u8, seg: &ELF32ProgramHeader, image: &[u8]) {
-		match seg.p_type {
-			// TODO Handle TLS differently?
-			elf::PT_LOAD | elf::PT_TLS => {
-				// The pointer to the beginning of the segment in the virtual memory
-				let begin = unsafe {
-					load_base.add(seg.p_vaddr as usize) as *mut _
-				};
-				// The length of the segment in bytes
-				let len = min(seg.p_memsz, seg.p_filesz) as usize;
-				// A slice to the beginning of the section's data in the file
-				let file_begin = &image[seg.p_offset as usize];
+		// Loading only loadable segments
+		if seg.p_type != elf::PT_LOAD {
+			return;
+		}
 
-				// Copying the segment's data
-				unsafe { // Safe because the module ELF image is valid at this point
-					vmem::write_lock_wrap(|| {
-						ptr::copy_nonoverlapping::<u8>(file_begin, begin, len);
-					});
-				}
-			},
+		// The pointer to the beginning of the segment in the virtual memory
+		let begin = unsafe {
+			load_base.add(seg.p_vaddr as usize) as *mut _
+		};
+		// The length of the segment in bytes
+		let len = min(seg.p_memsz, seg.p_filesz) as usize;
+		// A slice to the beginning of the segment's data in the file
+		let file_begin = &image[seg.p_offset as usize];
 
-			/*elf::PT_TLS => {
-				// TODO
-			},*/
-
-			_ => return,
+		// Copying the segment's data
+		unsafe { // Safe because the module ELF image is valid at this point
+			vmem::write_lock_wrap(|| {
+				ptr::copy_nonoverlapping::<u8>(file_begin, begin, len);
+			});
 		}
 	}
 }
@@ -421,6 +403,27 @@ impl Executor for ELFExecutor {
 		// The base at which the program is loaded
 		let load_base = 0x0 as *mut u8; // TODO Support ASLR
 
+		// Allocating memory for segments
+		let mut result: Result<*const c_void, Errno> = Ok(load_base as _);
+		// The pointer to the program header table in memory
+		let mut phdr: Option<*const c_void> = None;
+		parser.foreach_segments(| seg | {
+			result = Self::alloc_segment(load_base, &mut mem_space, seg).map(| end | {
+				if let Some(end) = end {
+					max(end, result.unwrap())
+				} else {
+					result.unwrap()
+				}
+			});
+
+			// If PHDR, keep the pointer
+			if seg.p_type == elf::PT_PHDR {
+				phdr = Some(seg.p_vaddr as _);
+			}
+
+			result.is_ok()
+		});
+
 		// The kernel stack
 		let kernel_stack = mem_space.map_stack(None, process::KERNEL_STACK_SIZE,
 			process::KERNEL_STACK_FLAGS)?;
@@ -429,7 +432,7 @@ impl Executor for ELFExecutor {
 			process::USER_STACK_FLAGS)?;
 
 		// The auxilary vector
-		let aux = AuxEntry::fill_auxilary(process)?;
+		let aux = AuxEntry::fill_auxilary(process, phdr, &parser)?;
 
 		// The size in bytes of the initial data on the stack
 		let total_size = Self::get_init_stack_size(argv, envp, &aux).1;
@@ -448,20 +451,6 @@ impl Executor for ELFExecutor {
 				mem_space.alloc(ptr)?;
 			}
 		}
-
-		// Allocating memory for segments
-		let mut result: Result<*const c_void, Errno> = Ok(load_base as _);
-		parser.foreach_segments(| seg | {
-			result = Self::alloc_segment(load_base, &mut mem_space, seg).map(| end | {
-				if let Some(end) = end {
-					max(end, result.unwrap())
-				} else {
-					result.unwrap()
-				}
-			});
-
-			result.is_ok()
-		});
 
 		// The initial pointer for `brk`
 		let brk_ptr = util::align(result?, memory::PAGE_SIZE);

@@ -201,6 +201,18 @@ pub struct ELF32ELFHeader {
 	pub e_shstrndx: u16,
 }
 
+impl ELF32ELFHeader {
+	/// Returns the size of one entry in the program header table.
+	pub fn get_phentsize(&self) -> u16 {
+		self.e_phentsize
+	}
+
+	/// Returns the number of entries in the program header table.
+	pub fn get_phnum(&self) -> u16 {
+		self.e_phnum
+	}
+}
+
 /// Structure representing an ELF program header.
 #[derive(Clone, Debug)]
 #[repr(C)]

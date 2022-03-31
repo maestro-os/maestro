@@ -660,9 +660,7 @@ impl Ext2INode {
 				}
 			} else {
 				// No content block, writting zeros
-				for j in 0..len {
-					buff[(i + j) as usize] = 0;
-				}
+				buff[(i as usize)..((i + len) as usize)].fill(0);
 			}
 
 			i += len;

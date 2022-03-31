@@ -1,5 +1,6 @@
 //! The uname syscall is used to retrieve informations about the system.
 
+use core::cmp::min;
 use core::mem::size_of;
 use core::ptr::copy_nonoverlapping;
 use crate::errno::Errno;
@@ -23,6 +24,13 @@ struct Utsname {
 	machine: [u8; UTSNAME_LENGTH],
 }
 
+/// Copies from slice `src` to `dst`. If one slice is smaller than the other, the function stops
+/// when the end of the smallest is reached.
+fn slice_copy(src: &[u8], dst: &mut [u8]) {
+	let len = min(src.len(), dst.len());
+	dst[..len].copy_from_slice(&src[..len]);
+}
+
 /// The implementation of the `uname` syscall.
 pub fn uname(regs: &Regs) -> Result<i32, Errno> {
 	let buf = regs.ebx as *mut Utsname;
@@ -34,11 +42,11 @@ pub fn uname(regs: &Regs) -> Result<i32, Errno> {
 		machine: [0; UTSNAME_LENGTH],
 	};
 
-	utsname.sysname.copy_from_slice(&crate::NAME.as_bytes());
+	slice_copy(&crate::NAME.as_bytes(), &mut utsname.sysname);
 	// TODO nodename
-	utsname.release.copy_from_slice(&crate::VERSION.as_bytes());
+	slice_copy(&crate::VERSION.as_bytes(), &mut utsname.release);
 	// TODO version (OS version)
-	utsname.machine.copy_from_slice(&"x86".as_bytes()); // TODO Adapt to current architecture
+	slice_copy(&"x86".as_bytes(), &mut utsname.machine); // TODO Adapt to current architecture
 
 	let mutex = Process::get_current().unwrap();
 	let mut guard = mutex.lock();

@@ -2,6 +2,7 @@
 
 use core::mem::size_of;
 use core::ptr::NonNull;
+use core::ptr;
 use crate::errno::Errno;
 use crate::process::Process;
 use crate::process::regs::Regs;
@@ -24,7 +25,7 @@ pub fn set_tid_address(regs: &Regs) -> Result<i32, Errno> {
 	if !tidptr.is_null()
 		&& proc.get_mem_space().unwrap().can_access(tidptr as _, size_of::<i32>(), true, true) {
 		unsafe {
-			*tidptr = tid as _;
+			ptr::write_volatile(tidptr, tid as _);
 		}
 	}
 

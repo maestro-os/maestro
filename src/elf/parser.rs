@@ -1,5 +1,6 @@
 //! This module implements the ELF parser.
 
+use core::slice;
 use crate::elf::relocation::ELF32Rel;
 use crate::elf::relocation::ELF32Rela;
 use crate::errno::Errno;
@@ -14,14 +15,6 @@ pub struct ELFParser<'a> {
 }
 
 impl<'a> ELFParser<'a> {
-	/// Returns the image's header.
-	/// If the image is invalid, the behaviour is undefined.
-	pub fn get_header(&self) -> &ELF32ELFHeader {
-		unsafe { // Safe because the slice is large enough
-			&*(&self.image[0] as *const u8 as *const ELF32ELFHeader)
-		}
-	}
-
 	/// Returns the structure at offset `off`. The generic argument `T` tells which structure to
 	/// return.
 	/// If the image is invalid or if the offset is outside of the image, the behaviour is
@@ -31,6 +24,24 @@ impl<'a> ELFParser<'a> {
 
 		unsafe { // Safe because the slice is large enough
 			&*(&self.image[off] as *const u8 as *const T)
+		}
+	}
+
+	/// Returns the image's header.
+	/// If the image is invalid, the behaviour is undefined.
+	pub fn get_header(&self) -> &ELF32ELFHeader {
+		self.get_struct::<ELF32ELFHeader>(0)
+	}
+
+	/// Returns a slice to the array of program headers.
+	pub fn get_phdr_table(&self) -> &[ELF32ProgramHeader] {
+		// TODO Potential problem if e_phentsize doesn't match the size of an entry
+		let phoff = self.get_header().e_phoff;
+		let phnum = self.get_header().e_phnum;
+
+		unsafe { // Safe because the slice is large enough
+			slice::from_raw_parts(&self.image[phoff as usize] as *const u8 as *const _,
+				phnum as usize)
 		}
 	}
 
