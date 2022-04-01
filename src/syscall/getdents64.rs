@@ -1,6 +1,8 @@
 //! The `getdents64` system call allows to get the list of entries in a given directory.
 
 use core::ffi::c_void;
+use core::mem::size_of;
+use core::ptr;
 use crate::errno::Errno;
 use crate::file::FileContent;
 use crate::file::file_descriptor::FDTarget;
@@ -25,7 +27,7 @@ struct LinuxDirent64 {
 pub fn getdents64(regs: &Regs) -> Result<i32, Errno> {
 	let fd = regs.ebx as i32;
 	let dirp = regs.ecx as *mut c_void;
-	let _count = regs.edx as usize;
+	let count = regs.edx as usize;
 
 	if fd < 0 || dirp.is_null() {
 		return Err(errno!(EBADF));
@@ -34,6 +36,11 @@ pub fn getdents64(regs: &Regs) -> Result<i32, Errno> {
 	let mutex = Process::get_current().unwrap();
 	let mut guard = mutex.lock();
 	let proc = guard.get_mut();
+
+	// Checking access
+	if !proc.get_mem_space().unwrap().can_access(dirp as _, count, true, false) {
+		return Err(errno!(EFAULT));
+	}
 
 	let fd = proc.get_fd(fd as _).ok_or(errno!(EBADF))?;
 	let fd_target = fd.get_target();
@@ -49,20 +56,38 @@ pub fn getdents64(regs: &Regs) -> Result<i32, Errno> {
 		FileContent::Directory(entries) => {
 			let mut off = 0;
 
-			for _entry in entries {
-				let _lin_ent = LinuxDirent64 {
-					d_ino: 0, // TODO
-					d_off: 0, // TODO
-					d_reclen: 0, // TODO
-					d_type: 0, // TODO
-					d_name: [], // TODO
+			for entry in entries {
+				let len = size_of::<LinuxDirent64>() + entry.name.len() + 1;
+				// If the buffer would overflow, return an error
+				if off + len > count {
+					return Err(errno!(EINVAL));
+				}
+
+				let lin_ent = unsafe { // Safe because access has been checked before
+					&mut *(dirp.add(off) as *mut LinuxDirent64)
+				};
+				*lin_ent = LinuxDirent64 {
+					d_ino: entry.inode,
+					d_off: (off + len) as _,
+					d_reclen: len as _,
+					d_type: len as _,
+					d_name: [],
 				};
 
-				// TODO
-				off += 0;
+				// Copying file name
+				unsafe {
+					ptr::copy_nonoverlapping(entry.name.as_bytes().as_ptr(),
+						lin_ent.d_name.as_mut_ptr(),
+						entry.name.len());
+
+					// Writing padding byte
+					*lin_ent.d_name.as_mut_ptr().add(entry.name.len()) = 0;
+				}
+
+				off += len;
 			}
 
-			Ok(off)
+			Ok(off as _)
 		},
 
 		_ => Err(errno!(ENOTDIR)),

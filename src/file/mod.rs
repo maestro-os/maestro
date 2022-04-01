@@ -89,6 +89,23 @@ pub const S_ISGID: Mode = 0o2000;
 /// Sticky bit.
 pub const S_ISVTX: Mode = 0o1000;
 
+/// Directory entry type: Block Device
+pub const DT_BLK: u8 = 6;
+/// Directory entry type: Char Device
+pub const DT_CHR: u8 = 2;
+/// Directory entry type: Directory
+pub const DT_DIR: u8 = 4;
+/// Directory entry type: FIFO
+pub const DT_FIFO: u8 = 1;
+/// Directory entry type: Symbolic Link
+pub const DT_LNK: u8 = 10;
+/// Directory entry type: Regular file
+pub const DT_REG: u8 = 8;
+/// Directory entry type: Socket
+pub const DT_SOCK: u8 = 12;
+/// Directory entry type: Unknown
+pub const DT_UNKNOWN: u8 = 0;
+
 /// Enumeration representing the different file types.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum FileType {
@@ -122,6 +139,19 @@ impl FileType {
 			S_IFIFO => Some(Self::Fifo),
 
 			_ => None,
+		}
+	}
+
+	/// Returns the directory entry type.
+	pub fn to_dirent_type(&self) -> u8 {
+		match self {
+			Self::Socket => DT_SOCK,
+			Self::Link => DT_LNK,
+			Self::Regular => DT_REG,
+			Self::BlockDevice => DT_BLK,
+			Self::Directory => DT_DIR,
+			Self::CharDevice => DT_CHR,
+			Self::Fifo => DT_FIFO,
 		}
 	}
 }
@@ -167,11 +197,11 @@ impl FileLocation {
 /// Structure representing a directory entry.
 pub struct DirEntry {
 	/// The entry's inode.
-	inode: INode,
+	pub inode: INode,
 	/// The entry's type.
-	entry_type: FileType,
+	pub entry_type: FileType,
 	/// The entry's name.
-	name: String,
+	pub name: String,
 }
 
 /// Enumeration of all possible file contents for each file types.
