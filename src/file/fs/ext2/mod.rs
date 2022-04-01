@@ -37,6 +37,7 @@ use core::mem::size_of_val;
 use core::slice;
 use crate::errno::Errno;
 use crate::errno;
+use crate::file::DirEntry;
 use crate::file::File;
 use crate::file::FileContent;
 use crate::file::FileLocation;
@@ -668,14 +669,23 @@ impl Filesystem for Ext2Fs {
 			FileType::Regular => FileContent::Regular,
 
 			FileType::Directory => {
-				let mut subfiles = Vec::new();
-				let mut err = None;
+				let mut entries = Vec::new();
+				let mut err = Ok(());
 
 				inode_.foreach_directory_entry(| _, entry | {
+					let inode = Box::new(ExtINodeNbr { inode: entry.get_inode() })?;
+					let entry_type = entry.get_type(&self.superblock)
+						.unwrap_or(FileType::Regular); // TODO If None, check the inode itself to
+					// retrieve the type
+
 					match String::from(entry.get_name(&self.superblock)) {
-						Ok(s) => {
-							if let Err(e) = subfiles.push(s) {
-								err = Some(e);
+						Ok(name) => {
+							if let Err(e) = entries.push(DirEntry {
+								inode: inode as _,
+								entry_type,
+								name,
+							}) {
+								err = Err(e);
 								Ok(false)
 							} else {
 								Ok(true)
@@ -683,17 +693,18 @@ impl Filesystem for Ext2Fs {
 						},
 
 						Err(e) => {
-							err = Some(e);
+							err = Err(e);
 							Ok(false)
 						},
 					}
 				}, &self.superblock, io)?;
 
-				if let Some(e) = err {
+				err?;
+				/*if let Err(e) = err {
 					return Err(e);
-				}
+				}*/
 
-				FileContent::Directory(subfiles)
+				FileContent::Directory(entries)
 			},
 
 			FileType::Link => FileContent::Link(inode_.get_link(&self.superblock, io)?),

@@ -253,9 +253,9 @@ impl FCache {
 		// Adding the file to the filesystem
 		let mut file = fs.add_file(io, &parent_inode, name, uid, gid, mode, content)?;
 
-		// Adding the file to the parent's subfiles
+		// Adding the file to the parent's entries
 		file.set_parent_path(parent.get_path()?);
-		parent.add_subfile(file.get_name().failable_clone()?)?;
+		parent.add_entry(file.to_dir_entry()?)?;
 
 		SharedPtr::new(file)
 	}

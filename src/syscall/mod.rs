@@ -17,6 +17,8 @@ mod fcntl;
 mod finit_module;
 mod fork;
 mod getcwd;
+mod getdents64;
+mod getdents;
 mod getegid;
 mod geteuid;
 mod getgid;
@@ -92,6 +94,8 @@ use fcntl::fcntl;
 use finit_module::finit_module;
 use fork::fork;
 use getcwd::getcwd;
+use getdents64::getdents64;
+use getdents::getdents;
 use getegid::getegid;
 use geteuid::geteuid;
 use getgid::getgid;
@@ -289,7 +293,7 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 		// TODO 0x08a => setfsuid(regs),
 		// TODO 0x08b => setfsgid(regs),
 		// TODO 0x08c => _llseek(regs),
-		// TODO 0x08d => getdents(regs),
+		0x08d => getdents(regs),
 		// TODO 0x08e => _newselect(regs),
 		// TODO 0x08f => flock(regs),
 		0x090 => msync(regs),
@@ -368,7 +372,7 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 		// TODO 0x0d9 => pivot_root(regs),
 		// TODO 0x0da => mincore(regs),
 		// TODO 0x0db => madvise(regs),
-		// TODO 0x0dc => getdents64(regs),
+		0x0dc => getdents64(regs),
 		0x0dd => fcntl64(regs),
 		0x0e0 => gettid(regs),
 		// TODO 0x0e1 => readahead(regs),

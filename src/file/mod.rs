@@ -164,12 +164,22 @@ impl FileLocation {
 	}
 }
 
+/// Structure representing a directory entry.
+pub struct DirEntry {
+	/// The entry's inode.
+	inode: Box<dyn INode>,
+	/// The entry's type.
+	entry_type: FileType,
+	/// The entry's name.
+	name: String,
+}
+
 /// Enumeration of all possible file contents for each file types.
 pub enum FileContent {
 	/// The file is a regular file. No data.
 	Regular,
-	/// The file is a directory. The data is the list of subfiles.
-	Directory(Vec<String>),
+	/// The file is a directory. The data is the list of entries.
+	Directory(Vec<DirEntry>),
 	/// The file is a link. The data is the link's target.
 	Link(String),
 	/// The file is a FIFO.
@@ -407,33 +417,34 @@ impl File {
 	/// Tells whether the directory is empty or not.
 	/// If the current file isn't a directory, the function returns an error.
 	pub fn is_empty_directory(&self) -> Result<bool, Errno> {
-		if let FileContent::Directory(subfiles) = &self.content {
-			Ok(subfiles.is_empty())
+		if let FileContent::Directory(entries) = &self.content {
+			Ok(entries.is_empty())
 		} else {
 			Err(errno!(ENOTDIR))
 		}
 	}
 
-	/// Adds the file with name `name` to the current file's subfiles.
+	/// Adds the directory entry `entry` to the current directory's entries.
 	/// If the current file isn't a directory, the function returns an error.
-	pub fn add_subfile(&mut self, name: String) -> Result<(), Errno> {
-		if let FileContent::Directory(subfiles) = &mut self.content {
-			subfiles.push(name)
+	pub fn add_entry(&mut self, entry: DirEntry) -> Result<(), Errno> {
+		if let FileContent::Directory(entries) = &mut self.content {
+			entries.push(entry)
 		} else {
 			Err(errno!(ENOTDIR))
 		}
 	}
 
-	/// Removes the file with name `name` from the current file's subfiles.
+	/// Removes the file with name `name` from the current file's entries.
 	/// If the current file isn't a directory, the function returns an error.
-	pub fn remove_subfile(&mut self, name: &String) -> Result<(), Errno> {
-		if let FileContent::Directory(subfiles) = &mut self.content {
+	pub fn remove_entry(&mut self, name: &String) -> Result<(), Errno> {
+		if let FileContent::Directory(entries) = &mut self.content {
 			let mut i = 0;
 
 			// TODO Optimize
-			while i < subfiles.len() {
-				if subfiles[i] == *name {
-					subfiles.remove(i);
+			while i < entries.len() {
+				let entry = entries[i];
+				if entry.name == *name {
+					entries.remove(i);
 				}
 
 				i += 1;
@@ -443,6 +454,15 @@ impl File {
 		} else {
 			Err(errno!(ENOTDIR))
 		}
+	}
+
+	/// Creates a directory entry corresponding to the current file.
+	pub fn to_dir_entry(&self) -> Result<DirEntry, Errno> {
+		Ok(DirEntry {
+			inode: self.location.get_inode(),
+			entry_type: self.get_file_type(),
+			name: self.name.failable_clone()?,
+		})
 	}
 
 	/// Returns the file's content.
