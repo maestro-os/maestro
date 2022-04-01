@@ -3,11 +3,12 @@
 use crate::errno::Errno;
 use crate::file::FileType;
 use crate::file::Gid;
+use crate::file::INode;
 use crate::file::Mode;
 use crate::file::ROOT_GID;
 use crate::file::ROOT_UID;
 use crate::file::Uid;
-use crate::file::fs::kernfs::KernFSNode;
+use crate::file::fs::kernfs::node::KernFSNode;
 use crate::time::Timestamp;
 use crate::util::IO;
 use crate::util::container::hashmap::HashMap;
@@ -65,7 +66,7 @@ impl KernFSNode for ProcFSMount {
 
 	fn set_mtime(&mut self, _ts: Timestamp) {}
 
-	fn get_entries(&self) -> &HashMap<String, SharedPtr<dyn KernFSNode>> {
+	fn get_entries(&self) -> &HashMap<String, (INode, SharedPtr<dyn KernFSNode>)> {
 		unreachable!();
 	}
 }

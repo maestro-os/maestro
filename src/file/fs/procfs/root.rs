@@ -3,11 +3,12 @@
 use crate::errno::Errno;
 use crate::file::FileType;
 use crate::file::Gid;
+use crate::file::INode;
 use crate::file::Mode;
 use crate::file::ROOT_GID;
 use crate::file::ROOT_UID;
 use crate::file::Uid;
-use crate::file::fs::kernfs::KernFSNode;
+use crate::file::fs::kernfs::node::KernFSNode;
 use crate::time::Timestamp;
 use crate::util::IO;
 use crate::util::container::hashmap::HashMap;
@@ -18,14 +19,15 @@ use super::mount::ProcFSMount;
 /// Structure representing the root of the procfs.
 pub struct ProcFSRoot {
 	/// The entries.
-	entries: HashMap<String, SharedPtr<dyn KernFSNode>>,
+	entries: HashMap<String, (INode, SharedPtr<dyn KernFSNode>)>,
 }
 
 impl ProcFSRoot {
 	/// Creates a new instance.
 	pub fn new() -> Result<Self, Errno> {
 		let mut entries = HashMap::new();
-		entries.insert(String::from(b"mount")?, SharedPtr::new(ProcFSMount::new())? as _)?;
+		entries.insert(String::from(b"mount")?,
+			(0 /* TODO allocate an inode */, SharedPtr::new(ProcFSMount::new())? as _))?;
 
 		Ok(Self {
 			entries,
@@ -74,7 +76,7 @@ impl KernFSNode for ProcFSRoot {
 
 	fn set_mtime(&mut self, _ts: Timestamp) {}
 
-	fn get_entries(&self) -> &HashMap<String, SharedPtr<dyn KernFSNode>> {
+	fn get_entries(&self) -> &HashMap<String, (INode, SharedPtr<dyn KernFSNode>)> {
 		&self.entries
 	}
 }

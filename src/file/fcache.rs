@@ -109,18 +109,18 @@ impl FCache {
 		let mut inode = fs.get_root_inode(io)?;
 		// If the path is empty, return the root
 		if inner_path.is_empty() {
-			return SharedPtr::new(fs.load_file(io, &inode, String::new())?);
+			return SharedPtr::new(fs.load_file(io, inode, String::new())?);
 		}
 
 		for i in 0..inner_path.get_elements_count() {
 			// Checking permissions
-			let file = fs.load_file(io, &inode, inner_path[i].failable_clone()?)?;
+			let file = fs.load_file(io, inode, inner_path[i].failable_clone()?)?;
 			if i < inner_path.get_elements_count() - 1 && !file.can_read(uid, gid) {
 				return Err(errno!(EPERM));
 			}
 
-			inode = fs.get_inode(io, Some(&inode), &inner_path[i])?;
-			let file = fs.load_file(io, &inode, inner_path[i].failable_clone()?)?;
+			inode = fs.get_inode(io, Some(inode), &inner_path[i])?;
+			let file = fs.load_file(io, inode, inner_path[i].failable_clone()?)?;
 
 			if follow_links {
 				// If symbolic link, resolve it
@@ -147,7 +147,7 @@ impl FCache {
 		}
 
 		let name = &inner_path[inner_path.get_elements_count() - 1];
-		SharedPtr::new(fs.load_file(io, &inode, name.failable_clone()?)?)
+		SharedPtr::new(fs.load_file(io, inode, name.failable_clone()?)?)
 	}
 
 	// TODO Add a param to choose between the mountpoint and the fs root?
@@ -194,8 +194,8 @@ impl FCache {
 		// The filesystem
 		let fs = mountpoint.get_filesystem();
 
-		let inode = fs.get_inode(io, Some(&parent.get_location().get_inode()), &name)?;
-		let file = fs.load_file(io, &inode, name)?;
+		let inode = fs.get_inode(io, Some(parent.get_location().get_inode()), &name)?;
+		let file = fs.load_file(io, inode, name)?;
 
 		if follow_links {
 			if let FileContent::Link(link_path) = file.get_file_content() {
@@ -251,7 +251,7 @@ impl FCache {
 		// The parent directory's inode
 		let parent_inode = parent.get_location().get_inode();
 		// Adding the file to the filesystem
-		let mut file = fs.add_file(io, &parent_inode, name, uid, gid, mode, content)?;
+		let mut file = fs.add_file(io, parent_inode, name, uid, gid, mode, content)?;
 
 		// Adding the file to the parent's entries
 		file.set_parent_path(parent.get_path()?);
@@ -290,7 +290,7 @@ impl FCache {
 
 		// Removing the file
 		let fs = mountpoint.get_filesystem();
-		fs.remove_file(io, &parent_inode, file.get_name())?;
+		fs.remove_file(io, parent_inode, file.get_name())?;
 
 		Ok(())
 	}

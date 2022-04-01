@@ -49,7 +49,7 @@ pub fn getdents(regs: &Regs) -> Result<i32, Errno> {
 		FileContent::Directory(entries) => {
 			let mut off = 0;
 
-			for entry in entries {
+			for _entry in entries {
 				let _lin_ent = LinuxDirent {
 					d_ino: 0, // TODO
 					d_off: 0, // TODO
@@ -58,6 +58,7 @@ pub fn getdents(regs: &Regs) -> Result<i32, Errno> {
 				};
 
 				// TODO
+				off += 0;
 			}
 
 			Ok(off)

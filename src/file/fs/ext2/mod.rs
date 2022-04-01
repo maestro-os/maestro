@@ -28,7 +28,6 @@ mod directory_entry;
 mod inode;
 
 use block_group_descriptor::BlockGroupDescriptor;
-use core::any::Any;
 use core::cmp::max;
 use core::cmp::min;
 use core::mem::MaybeUninit;
@@ -43,12 +42,11 @@ use crate::file::FileContent;
 use crate::file::FileLocation;
 use crate::file::FileType;
 use crate::file::Gid;
+use crate::file::INode;
 use crate::file::Mode;
 use crate::file::Uid;
 use crate::file::fs::Filesystem;
 use crate::file::fs::FilesystemType;
-use crate::file::fs::ext2::inode::ExtINodeNbr;
-use crate::file::inode::INode;
 use crate::file::path::Path;
 use crate::memory::malloc;
 use crate::time;
@@ -634,35 +632,30 @@ impl Filesystem for Ext2Fs {
 		true
 	}
 
-	fn get_root_inode(&self, _io: &mut dyn IO) -> Result<Box<dyn INode>, Errno> {
-		Ok(Box::new(ExtINodeNbr { inode: inode::ROOT_DIRECTORY_INODE })?)
+	fn get_root_inode(&self, _io: &mut dyn IO) -> Result<INode, Errno> {
+		Ok(inode::ROOT_DIRECTORY_INODE as _)
 	}
 
-	fn get_inode(&mut self, io: &mut dyn IO, parent: Option<&Box<dyn INode>>, name: &String)
-		-> Result<Box<dyn INode>, Errno> {
-		let parent_inode = parent.map(| i | {
-				<dyn Any>::downcast_ref::<ExtINodeNbr>(i.as_ref()).unwrap().inode
-			})
-			.unwrap_or(inode::ROOT_DIRECTORY_INODE);
+	fn get_inode(&mut self, io: &mut dyn IO, parent: Option<INode>, name: &String)
+		-> Result<INode, Errno> {
+		let parent_inode = parent.unwrap_or(inode::ROOT_DIRECTORY_INODE as _);
 
 		// Getting the parent inode
-		let parent = Ext2INode::read(parent_inode, &self.superblock, io)?;
+		let parent = Ext2INode::read(parent_inode as _, &self.superblock, io)?;
 		if parent.get_type() != FileType::Directory {
 			return Err(errno!(ENOTDIR));
 		}
 
 		// Getting the entry with the given name
 		if let Some(entry) = parent.get_directory_entry(name.as_bytes(), &self.superblock, io)? {
-			Ok(Box::new(ExtINodeNbr { inode: entry.get_inode() })?)
+			Ok(entry.get_inode() as _)
 		} else {
 			Err(errno!(ENOENT))
 		}
 	}
 
-	fn load_file(&mut self, io: &mut dyn IO, inode: &Box<dyn INode>, name: String)
-		-> Result<File, Errno> {
-		let inode = <dyn Any>::downcast_ref::<ExtINodeNbr>(inode.as_ref()).unwrap().inode;
-		let inode_ = Ext2INode::read(inode, &self.superblock, io)?;
+	fn load_file(&mut self, io: &mut dyn IO, inode: INode, name: String) -> Result<File, Errno> {
+		let inode_ = Ext2INode::read(inode as _, &self.superblock, io)?;
 		let file_type = inode_.get_type();
 
 		let file_content = match file_type {
@@ -673,7 +666,6 @@ impl Filesystem for Ext2Fs {
 				let mut err = Ok(());
 
 				inode_.foreach_directory_entry(| _, entry | {
-					let inode = Box::new(ExtINodeNbr { inode: entry.get_inode() })?;
 					let entry_type = entry.get_type(&self.superblock)
 						.unwrap_or(FileType::Regular); // TODO If None, check the inode itself to
 					// retrieve the type
@@ -681,7 +673,7 @@ impl Filesystem for Ext2Fs {
 					match String::from(entry.get_name(&self.superblock)) {
 						Ok(name) => {
 							if let Err(e) = entries.push(DirEntry {
-								inode: inode as _,
+								inode: entry.get_inode() as _,
 								entry_type,
 								name,
 							}) {
@@ -732,8 +724,7 @@ impl Filesystem for Ext2Fs {
 			},
 		};
 
-		let file_location = FileLocation::new(self.mountpath.failable_clone()?,
-			Box::new(ExtINodeNbr { inode })?);
+		let file_location = FileLocation::new(self.mountpath.failable_clone()?, inode);
 		let mut file = File::new(name, inode_.uid, inode_.gid, inode_.get_permissions(),
 			file_location, file_content)?;
 		file.set_ctime(inode_.ctime);
@@ -744,15 +735,13 @@ impl Filesystem for Ext2Fs {
 		Ok(file)
 	}
 
-	fn add_file(&mut self, io: &mut dyn IO, parent_inode: &Box<dyn INode>, name: String, uid: Uid,
+	fn add_file(&mut self, io: &mut dyn IO, parent_inode: INode, name: String, uid: Uid,
 		gid: Gid, mode: Mode, content: FileContent) -> Result<File, Errno> {
 		if self.readonly {
 			return Err(errno!(EROFS));
 		}
 
-		let parent_inode = <dyn Any>::downcast_ref::<ExtINodeNbr>(parent_inode.as_ref()).unwrap()
-			.inode;
-		let mut parent = Ext2INode::read(parent_inode, &self.superblock, io)?;
+		let mut parent = Ext2INode::read(parent_inode as _, &self.superblock, io)?;
 
 		// Checking the parent file is a directory
 		if parent.get_type() != FileType::Directory {
@@ -765,8 +754,7 @@ impl Filesystem for Ext2Fs {
 		}
 
 		let inode_index = self.superblock.get_free_inode(io)?;
-		let location = FileLocation::new(self.mountpath.failable_clone()?,
-			Box::new(ExtINodeNbr { inode: inode_index })?);
+		let location = FileLocation::new(self.mountpath.failable_clone()?, inode_index as _);
 
 		// The file
 		let file = File::new(name, uid, gid, mode, location, content)?;
@@ -818,21 +806,19 @@ impl Filesystem for Ext2Fs {
 
 		parent.add_dirent(&self.superblock, io, inode_index, file.get_name(),
 			file.get_file_type())?;
-		parent.write(parent_inode, &self.superblock, io)?;
+		parent.write(parent_inode as _, &self.superblock, io)?;
 
 		Ok(file)
 	}
 
-	fn add_link(&mut self, io: &mut dyn IO, parent_inode: &Box<dyn INode>, name: &String,
-		inode: &Box<dyn INode>) -> Result<(), Errno> {
+	fn add_link(&mut self, io: &mut dyn IO, parent_inode: INode, name: &String, inode: INode)
+		-> Result<(), Errno> {
 		if self.readonly {
 			return Err(errno!(EROFS));
 		}
 
 		// Parent inode
-		let parent_inode = <dyn Any>::downcast_ref::<ExtINodeNbr>(parent_inode.as_ref()).unwrap()
-			.inode;
-		let mut parent = Ext2INode::read(parent_inode, &self.superblock, io)?;
+		let mut parent = Ext2INode::read(parent_inode as _, &self.superblock, io)?;
 
 		// Checking the parent file is a directory
 		if parent.get_type() != FileType::Directory {
@@ -840,14 +826,13 @@ impl Filesystem for Ext2Fs {
 		}
 
 		// The inode
-		let inode = <dyn Any>::downcast_ref::<ExtINodeNbr>(inode.as_ref()).unwrap().inode;
-		let mut inode_ = Ext2INode::read(inode, &self.superblock, io)?;
+		let mut inode_ = Ext2INode::read(inode as _, &self.superblock, io)?;
 		inode_.hard_links_count += 1;
-		inode_.write(inode, &self.superblock, io)?;
+		inode_.write(inode as _, &self.superblock, io)?;
 
 		// Writing directory entry
-		parent.add_dirent(&self.superblock, io, inode, name, inode_.get_type())?;
-		parent.write(parent_inode, &self.superblock, io)
+		parent.add_dirent(&self.superblock, io, inode as _, name, inode_.get_type())?;
+		parent.write(parent_inode as _, &self.superblock, io)
 	}
 
 	fn update_inode(&mut self, io: &mut dyn IO, file: &File) -> Result<(), Errno> {
@@ -858,8 +843,7 @@ impl Filesystem for Ext2Fs {
 		// The inode number
 		let inode = file.get_location().get_inode();
 		// The inode
-		let inode = <dyn Any>::downcast_ref::<ExtINodeNbr>(inode.as_ref()).unwrap().inode;
-		let mut inode_ = Ext2INode::read(inode, &self.superblock, io)?;
+		let mut inode_ = Ext2INode::read(inode as _, &self.superblock, io)?;
 
 		// Changing file size if it has been truncated
 		inode_.truncate(&self.superblock, io, file.get_size())?;
@@ -871,21 +855,19 @@ impl Filesystem for Ext2Fs {
 		inode_.ctime = file.get_ctime();
 		inode_.mtime = file.get_mtime();
 		inode_.atime = file.get_atime();
-		inode_.write(inode, &self.superblock, io)
+		inode_.write(inode as _, &self.superblock, io)
 	}
 
-	fn remove_file(&mut self, io: &mut dyn IO, parent_inode: &Box<dyn INode>, name: &String)
+	fn remove_file(&mut self, io: &mut dyn IO, parent_inode: INode, name: &String)
 		-> Result<(), Errno> {
 		if self.readonly {
 			return Err(errno!(EROFS));
 		}
 
-		let parent_inode = <dyn Any>::downcast_ref::<ExtINodeNbr>(parent_inode.as_ref()).unwrap()
-			.inode;
 		debug_assert!(parent_inode >= 1);
 
 		// The parent inode
-		let mut parent = Ext2INode::read(parent_inode, &self.superblock, io)?;
+		let mut parent = Ext2INode::read(parent_inode as _, &self.superblock, io)?;
 
 		// Checking the parent file is a directory
 		if parent.get_type() != FileType::Directory {
@@ -923,27 +905,25 @@ impl Filesystem for Ext2Fs {
 		inode_.write(inode, &self.superblock, io)
 	}
 
-	fn read_node(&mut self, io: &mut dyn IO, inode: &Box<dyn INode>, off: u64, buf: &mut [u8])
+	fn read_node(&mut self, io: &mut dyn IO, inode: INode, off: u64, buf: &mut [u8])
 		-> Result<u64, Errno> {
-		let inode = <dyn Any>::downcast_ref::<ExtINodeNbr>(inode.as_ref()).unwrap().inode;
 		debug_assert!(inode >= 1);
 
-		let inode_ = Ext2INode::read(inode, &self.superblock, io)?;
+		let inode_ = Ext2INode::read(inode as _, &self.superblock, io)?;
 		inode_.read_content(off, buf, &self.superblock, io)
 	}
 
-	fn write_node(&mut self, io: &mut dyn IO, inode: &Box<dyn INode>, off: u64, buf: &[u8])
+	fn write_node(&mut self, io: &mut dyn IO, inode: INode, off: u64, buf: &[u8])
 		-> Result<(), Errno> {
 		if self.readonly {
 			return Err(errno!(EROFS));
 		}
 
-		let inode = <dyn Any>::downcast_ref::<ExtINodeNbr>(inode.as_ref()).unwrap().inode;
 		debug_assert!(inode >= 1);
 
-		let mut inode_ = Ext2INode::read(inode, &self.superblock, io)?;
+		let mut inode_ = Ext2INode::read(inode as _, &self.superblock, io)?;
 		inode_.write_content(off, buf, &self.superblock, io)?;
-		inode_.write(inode, &self.superblock, io)
+		inode_.write(inode as _, &self.superblock, io)
 	}
 }
 

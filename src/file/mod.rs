@@ -5,7 +5,6 @@
 pub mod fcache;
 pub mod file_descriptor;
 pub mod fs;
-pub mod inode;
 pub mod mountpoint;
 pub mod path;
 pub mod pipe;
@@ -18,14 +17,12 @@ use crate::device;
 use crate::errno::Errno;
 use crate::errno;
 use crate::file::fcache::FCache;
-use crate::file::inode::INode;
 use crate::file::mountpoint::MountPoint;
 use crate::limits;
 use crate::time::Timestamp;
 use crate::time;
 use crate::util::FailableClone;
 use crate::util::IO;
-use crate::util::boxed::Box;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::ptr::SharedPtr;
@@ -37,6 +34,9 @@ pub type Uid = u16;
 pub type Gid = u16;
 /// Type representing a file mode.
 pub type Mode = u32;
+
+/// Type representing an inode.
+pub type INode = u64;
 
 /// The root user ID.
 pub const ROOT_UID: Uid = 0;
@@ -132,13 +132,13 @@ pub struct FileLocation {
 	mountpoint_path: Path, // TODO Replace by an allocated ID to save memory
 
 	/// The file's inode.
-	inode: Box<dyn INode>,
+	inode: INode,
 }
 
 impl FileLocation {
 	/// Creates a new instance.
 	#[inline]
-	pub fn new(mountpoint_path: Path, inode: Box<dyn INode>) -> Self {
+	pub fn new(mountpoint_path: Path, inode: INode) -> Self {
 		Self {
 			mountpoint_path,
 
@@ -159,15 +159,15 @@ impl FileLocation {
 
 	/// Returns the inode number.
 	#[inline]
-	pub fn get_inode(&self) -> &Box<dyn INode> {
-		&self.inode
+	pub fn get_inode(&self) -> INode {
+		self.inode
 	}
 }
 
 /// Structure representing a directory entry.
 pub struct DirEntry {
 	/// The entry's inode.
-	inode: Box<dyn INode>,
+	inode: INode,
 	/// The entry's type.
 	entry_type: FileType,
 	/// The entry's name.
@@ -442,8 +442,7 @@ impl File {
 
 			// TODO Optimize
 			while i < entries.len() {
-				let entry = entries[i];
-				if entry.name == *name {
+				if entries[i].name == *name {
 					entries.remove(i);
 				}
 
@@ -521,7 +520,7 @@ impl IO for File {
 				let io = io_guard.get_mut();
 
 				let filesystem = mountpoint.get_filesystem();
-				filesystem.read_node(io, &self.location.get_inode(), off, buff)
+				filesystem.read_node(io, self.location.get_inode(), off, buff)
 			},
 
 			FileContent::Directory(_) => Err(errno!(EISDIR)),
@@ -569,7 +568,7 @@ impl IO for File {
 				let io = io_guard.get_mut();
 
 				let filesystem = mountpoint.get_filesystem();
-				filesystem.write_node(io, &self.location.get_inode(), off, buff)?;
+				filesystem.write_node(io, self.location.get_inode(), off, buff)?;
 
 				self.size = max(off + buff.len() as u64, self.size);
 				Ok(buff.len() as _)
