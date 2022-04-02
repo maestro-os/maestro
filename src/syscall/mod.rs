@@ -57,6 +57,7 @@ mod setuid;
 mod signal;
 mod sigreturn;
 mod socketpair;
+mod statx;
 mod time;
 mod tkill;
 mod truncate;
@@ -133,6 +134,7 @@ use setuid::setuid;
 use signal::signal;
 use sigreturn::sigreturn;
 use socketpair::socketpair;
+use statx::statx;
 use time::time;
 use tkill::tkill;
 use truncate::truncate;
@@ -531,7 +533,7 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 		// TODO 0x17c => pkey_mprotect(regs),
 		// TODO 0x17d => pkey_alloc(regs),
 		// TODO 0x17e => pkey_free(regs),
-		// TODO 0x17f => statx(regs),
+		0x17f => statx(regs),
 		// TODO 0x180 => arch_prctl(regs),
 
 		// The system call doesn't exist. Killing the process with SIGSYS

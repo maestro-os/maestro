@@ -16,6 +16,7 @@ pub type Clock = u32;
 
 /// POSIX structure representing a timestamp.
 #[derive(Clone, Default)]
+#[repr(C)]
 pub struct Timeval {
 	/// Seconds
 	tv_sec: Timestamp,

@@ -10,6 +10,7 @@ use crate::process::Process;
 use crate::process::Regs;
 
 /// Structure representing a Linux directory entry.
+#[repr(C)]
 struct LinuxDirent {
 	/// Inode number.
 	d_ino: u32,
@@ -38,7 +39,7 @@ pub fn getdents(regs: &Regs) -> Result<i32, Errno> {
 	let proc = guard.get_mut();
 
 	// Checking access
-	if !proc.get_mem_space().unwrap().can_access(dirp as _, count as _, true, false) {
+	if !proc.get_mem_space().unwrap().can_access(dirp as _, count as _, true, true) {
 		return Err(errno!(EFAULT));
 	}
 

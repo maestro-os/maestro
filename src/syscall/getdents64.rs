@@ -10,6 +10,7 @@ use crate::process::Process;
 use crate::process::Regs;
 
 /// Structure representing a Linux directory entry with 64 bits offsets.
+#[repr(C)]
 struct LinuxDirent64 {
 	/// 64-bit inode number.
 	d_ino: u64,
@@ -38,7 +39,7 @@ pub fn getdents64(regs: &Regs) -> Result<i32, Errno> {
 	let proc = guard.get_mut();
 
 	// Checking access
-	if !proc.get_mem_space().unwrap().can_access(dirp as _, count, true, false) {
+	if !proc.get_mem_space().unwrap().can_access(dirp as _, count, true, true) {
 		return Err(errno!(EFAULT));
 	}
 
