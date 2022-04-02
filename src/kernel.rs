@@ -193,14 +193,20 @@ fn init() -> Result<(), Errno> {
 
 		proc.init_dummy(test_begin)
 	} else {
-		Path::from_str(INIT_PATH, false).and_then(| path | {
-			exec(proc, &path, &vec![
-				INIT_PATH
-			]?, &vec![
-				&b"PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin"[..],
-				&b"TERM=maestro"[..],
-			]?)
-		})
+		let path = Path::from_str(INIT_PATH, false)?;
+
+		// The initial environment
+		let mut env = vec![
+			&b"PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin"[..],
+			&b"TERM=maestro"[..],
+		]?;
+		if cfg!(config_debug_rust_backtrace) {
+			env.push(&b"RUST_BACKTRACE=full"[..])?;
+		}
+
+		exec(proc, &path, &vec![
+			INIT_PATH
+		]?, &env)
 	}
 }
 

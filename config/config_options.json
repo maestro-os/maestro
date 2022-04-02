@@ -104,6 +104,16 @@
 				"value": "true",
 				"deps": [],
 				"suboptions": []
+			},
+			{
+				"name": "rust_backtrace",
+				"display_name": "RUST_BACKTRACE",
+				"desc": "Enables the RUST_BACKTRACE=full environment variable to debug the init process",
+				"option_type": "bool",
+				"values": [],
+				"value": "false",
+				"deps": [],
+				"suboptions": []
 			}
 		]
 	}

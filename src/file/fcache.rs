@@ -119,9 +119,6 @@ impl FCache {
 				return Err(errno!(EPERM));
 			}
 
-			inode = fs.get_inode(io, Some(inode), &inner_path[i])?;
-			let file = fs.load_file(io, inode, inner_path[i].failable_clone()?)?;
-
 			if follow_links {
 				// If symbolic link, resolve it
 				if let FileContent::Link(link_path) = file.get_file_content() {
@@ -144,10 +141,18 @@ impl FCache {
 						follows_count + 1);
 				}
 			}
+
+			inode = fs.get_inode(io, Some(inode), &inner_path[i])?;
 		}
 
 		let name = &inner_path[inner_path.get_elements_count() - 1];
-		SharedPtr::new(fs.load_file(io, inode, name.failable_clone()?)?)
+		let mut file = fs.load_file(io, inode, name.failable_clone()?)?;
+
+		let mut parent_path = path.failable_clone()?;
+		parent_path.pop();
+		file.set_parent_path(parent_path);
+
+		SharedPtr::new(file)
 	}
 
 	// TODO Add a param to choose between the mountpoint and the fs root?
@@ -195,7 +200,7 @@ impl FCache {
 		let fs = mountpoint.get_filesystem();
 
 		let inode = fs.get_inode(io, Some(parent.get_location().get_inode()), &name)?;
-		let file = fs.load_file(io, inode, name)?;
+		let mut file = fs.load_file(io, inode, name)?;
 
 		if follow_links {
 			if let FileContent::Link(link_path) = file.get_file_content() {
@@ -211,6 +216,7 @@ impl FCache {
 			}
 		}
 
+		file.set_parent_path(parent.get_path()?);
 		SharedPtr::new(file)
 	}
 

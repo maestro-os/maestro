@@ -168,6 +168,8 @@ pub fn statx(regs: &Regs) -> Result<i32, Errno> {
 		return Err(errno!(EFAULT));
 	}
 
+	// TODO Implement all flags
+
 	// Whether symbolic links may be followed
 	let follow_links = flags & AT_SYMLINK_NOFOLLOW == 0;
 

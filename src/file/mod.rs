@@ -142,6 +142,19 @@ impl FileType {
 		}
 	}
 
+	/// Returns the mode corresponding to the type.
+	pub fn to_mode(&self) -> Mode {
+		match self {
+			Self::Socket => S_IFSOCK,
+			Self::Link => S_IFLNK,
+			Self::Regular => S_IFREG,
+			Self::BlockDevice => S_IFBLK,
+			Self::Directory => S_IFDIR,
+			Self::CharDevice => S_IFCHR,
+			Self::Fifo => S_IFIFO,
+		}
+	}
+
 	/// Returns the directory entry type.
 	pub fn to_dirent_type(&self) -> u8 {
 		match self {
@@ -353,7 +366,7 @@ impl File {
 
 	/// Returns the file's mode.
 	pub fn get_mode(&self) -> Mode {
-		self.mode
+		self.mode | self.content.get_file_type().to_mode()
 	}
 
 	/// Tells if the file can be read from by the given UID and GID.
