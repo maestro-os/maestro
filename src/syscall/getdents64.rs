@@ -71,7 +71,7 @@ pub fn getdents64(regs: &Regs) -> Result<i32, Errno> {
 					d_ino: entry.inode,
 					d_off: (off + len) as _,
 					d_reclen: len as _,
-					d_type: len as _,
+					d_type: entry.entry_type.to_dirent_type(),
 					d_name: [],
 				};
 

@@ -661,27 +661,18 @@ impl Filesystem for Ext2Fs {
 		let file_content = match file_type {
 			FileType::Regular => FileContent::Regular,
 
+			// TODO Clean
 			FileType::Directory => {
 				let mut entries = Vec::new();
 				let mut err = Ok(());
 
 				inode_.foreach_directory_entry(| _, entry | {
-					let entry_type = entry.get_type(&self.superblock)
-						.unwrap_or(FileType::Regular); // TODO If None, check the inode itself to
-					// retrieve the type
-
 					match String::from(entry.get_name(&self.superblock)) {
 						Ok(name) => {
-							if let Err(e) = entries.push(DirEntry {
-								inode: entry.get_inode() as _,
-								entry_type,
-								name,
-							}) {
-								err = Err(e);
-								Ok(false)
-							} else {
-								Ok(true)
-							}
+							let entry_type = entry.get_type(&self.superblock);
+							err = entries.push((entry.get_inode(), entry_type, name));
+
+							Ok(err.is_ok())
 						},
 
 						Err(e) => {
@@ -692,11 +683,26 @@ impl Filesystem for Ext2Fs {
 				}, &self.superblock, io)?;
 
 				err?;
-				/*if let Err(e) = err {
-					return Err(e);
-				}*/
 
-				FileContent::Directory(entries)
+				// Creating entries with types
+				let mut final_entries = Vec::new();
+
+				for (inode, mut entry_type, name) in &entries {
+					// If None, retrieving the type from the node itself
+					if entry_type.is_none() {
+						let i = Ext2INode::read(*inode, &self.superblock, io)?;
+						entry_type = Some(i.get_type());
+					}
+
+					let entry_type = entry_type.unwrap();
+					final_entries.push(DirEntry {
+						inode: *inode as _,
+						entry_type,
+						name: name.failable_clone()?,
+					})?;
+				}
+
+				FileContent::Directory(final_entries)
 			},
 
 			FileType::Link => FileContent::Link(inode_.get_link(&self.superblock, io)?),
