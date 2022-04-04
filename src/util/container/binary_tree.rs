@@ -305,8 +305,8 @@ impl<K: 'static + Ord, V: 'static> BinaryTreeNode<K, V> {
 	/// child, the behaviour is undefined.
 	#[inline]
 	pub fn insert_left(&mut self, node: &mut BinaryTreeNode<K, V>) {
-		debug_assert!(self.get_left().is_none());
-		debug_assert!(node.get_parent().is_none());
+		debug_assert!(self.left.is_none());
+		debug_assert!(node.parent.is_none());
 
 		self.left = NonNull::new(node);
 		node.parent = NonNull::new(self);
@@ -316,8 +316,8 @@ impl<K: 'static + Ord, V: 'static> BinaryTreeNode<K, V> {
 	/// child, the behaviour is undefined.
 	#[inline]
 	pub fn insert_right(&mut self, node: &mut BinaryTreeNode<K, V>) {
-		debug_assert!(self.get_right().is_none());
-		debug_assert!(node.get_parent().is_none());
+		debug_assert!(self.right.is_none());
+		debug_assert!(node.parent.is_none());
 
 		self.right = NonNull::new(node);
 		node.parent = NonNull::new(self);
@@ -633,7 +633,7 @@ impl<K: 'static + Ord, V: 'static> BinaryTree<K, V> {
 	}
 
 	/// For node insertion, returns the parent node on which it will be inserted.
-	fn get_insert_node(&mut self, key: &K) -> Option<&mut BinaryTreeNode<K, V>> {
+	fn get_insert_node(&mut self, key: &K) -> Option<&'static mut BinaryTreeNode<K, V>> {
 		let mut node = self.get_root_mut();
 
 		while node.is_some() {
@@ -707,23 +707,46 @@ impl<K: 'static + Ord, V: 'static> BinaryTree<K, V> {
 	/// `key` is the key to insert.
 	/// `val` is the value to insert.
 	/// `cmp` is the comparison function.
+	/// If the key is already used, the previous key/value pair is dropped.
 	pub fn insert<'a>(&'a mut self, key: K, val: V) -> Result<&'a mut V, Errno> {
-		let mut node = BinaryTreeNode::new(key, val)?;
-		let n = unsafe {
-			node.as_mut()
+		let n = {
+			if let Some(p) = self.get_insert_node(&key) {
+				let order = key.cmp(&p.key);
+
+				if order == Ordering::Equal {
+					// Dropping old key/value pair and replacing with the new ones
+					p.key = key;
+					p.value = val;
+
+					return Ok(&mut p.value);
+				}
+
+				let mut node = BinaryTreeNode::new(key, val)?;
+				let n = unsafe {
+					node.as_mut()
+				};
+
+				match order {
+					Ordering::Less => p.insert_left(n),
+					Ordering::Greater => p.insert_right(n),
+
+					_ => unreachable!(),
+				}
+
+				n
+			} else {
+				debug_assert!(self.root.is_none());
+
+				let mut node = BinaryTreeNode::new(key, val)?;
+				let n = unsafe {
+					node.as_mut()
+				};
+				self.root = Some(node);
+
+				n
+			}
 		};
 
-		if let Some(p) = self.get_insert_node(&n.key) {
-			let order = n.key.cmp(&p.key);
-			if order == Ordering::Less {
-				p.insert_left(n);
-			} else {
-				p.insert_right(n);
-			}
-		} else {
-			debug_assert!(self.root.is_none());
-			self.root = Some(node);
-		}
 		self.insert_equilibrate(n);
 		//#[cfg(config_debug_debug)]
 		//self.check();
