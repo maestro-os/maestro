@@ -43,54 +43,65 @@ pub fn getdents64(regs: &Regs) -> Result<i32, Errno> {
 		return Err(errno!(EFAULT));
 	}
 
+	// Getting file descriptor
 	let fd = proc.get_fd(fd as _).ok_or(errno!(EBADF))?;
-	let fd_target = fd.get_target();
-	let file_mutex = match fd_target {
-		FDTarget::File(file) => file,
-		_ => return Err(errno!(ENOTDIR)),
-	};
 
-	let file_guard = file_mutex.lock();
-	let file = file_guard.get();
+	let mut off = 0;
+	let mut entries_count = 0;
+	let start = fd.get_offset();
 
-	match file.get_file_content() {
-		FileContent::Directory(entries) => {
-			let mut off = 0;
+	{
+		// Getting entries from the directory
+		let fd_target = fd.get_target();
+		let file_mutex = match fd_target {
+			FDTarget::File(file) => file,
+			_ => return Err(errno!(ENOTDIR)),
+		};
+		let file_guard = file_mutex.lock();
+		let file = file_guard.get();
+		let entries = match file.get_file_content() {
+			FileContent::Directory(entries) => entries,
+			_ => return Err(errno!(ENOTDIR)),
+		};
 
-			for entry in entries {
-				let len = size_of::<LinuxDirent64>() + entry.name.len() + 1;
-				// If the buffer would overflow, return an error
-				if off + len > count {
-					return Err(errno!(EINVAL));
-				}
-
-				let lin_ent = unsafe { // Safe because access has been checked before
-					&mut *(dirp.add(off) as *mut LinuxDirent64)
-				};
-				*lin_ent = LinuxDirent64 {
-					d_ino: entry.inode,
-					d_off: (off + len) as _,
-					d_reclen: len as _,
-					d_type: entry.entry_type.to_dirent_type(),
-					d_name: [],
-				};
-
-				// Copying file name
-				unsafe {
-					ptr::copy_nonoverlapping(entry.name.as_bytes().as_ptr(),
-						lin_ent.d_name.as_mut_ptr(),
-						entry.name.len());
-
-					// Writing padding byte
-					*lin_ent.d_name.as_mut_ptr().add(entry.name.len()) = 0;
-				}
-
-				off += len;
+		// Iterating over entries and filling the buffer
+		for entry in &entries.as_slice()[(start as usize)..] {
+			let len = size_of::<LinuxDirent64>() + entry.name.len() + 1;
+			// If the buffer is not large enough, return an error
+			if off == 0 && len > count {
+				return Err(errno!(EINVAL));
+			}
+			// If reaching the end of the buffer, break
+			if off + len > count {
+				break;
 			}
 
-			Ok(off as _)
-		},
+			let ent = unsafe { // Safe because access has been checked before
+				&mut *(dirp.add(off) as *mut LinuxDirent64)
+			};
+			*ent = LinuxDirent64 {
+				d_ino: entry.inode,
+				d_off: (off + len) as _,
+				d_reclen: len as _,
+				d_type: entry.entry_type.to_dirent_type(),
+				d_name: [],
+			};
 
-		_ => Err(errno!(ENOTDIR)),
+			// Copying file name
+			unsafe {
+				ptr::copy_nonoverlapping(entry.name.as_bytes().as_ptr(),
+					ent.d_name.as_mut_ptr(),
+					entry.name.len());
+
+				// Writing padding byte
+				*ent.d_name.as_mut_ptr().add(entry.name.len()) = 0;
+			}
+
+			off += len;
+			entries_count += 1;
+		}
 	}
+
+	fd.set_offset(start + entries_count);
+	Ok(off as _)
 }

@@ -96,6 +96,7 @@ pub struct FileDescriptor {
 	target: FDTarget,
 
 	/// The current offset in the file.
+	/// If pointing to a directory, this is the offset in directory entries.
 	curr_off: u64,
 }
 
