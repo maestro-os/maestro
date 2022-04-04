@@ -2,9 +2,11 @@
 //! userspace and kernelspace.
 
 mod _exit;
+mod _llseek;
 mod brk;
 mod chdir;
 mod chroot;
+mod clone;
 mod close;
 mod creat;
 mod delete_module;
@@ -81,9 +83,11 @@ use crate::process;
 //use modify_ldt::modify_ldt;
 //use wait::wait;
 use _exit::_exit;
+use _llseek::_llseek;
 use brk::brk;
 use chdir::chdir;
 use chroot::chroot;
+use clone::clone;
 use close::close;
 use creat::creat;
 use delete_module::delete_module;
@@ -276,7 +280,7 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 		// TODO 0x075 => ipc(regs),
 		// TODO 0x076 => fsync(regs),
 		0x077 => sigreturn(regs),
-		// TODO 0x078 => clone(regs),
+		0x078 => clone(regs),
 		// TODO 0x079 => setdomainname(regs),
 		0x07a => uname(regs),
 		// 0x07b => modify_ldt(regs),
@@ -296,7 +300,7 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 		// TODO 0x089 => afs_syscall(regs),
 		// TODO 0x08a => setfsuid(regs),
 		// TODO 0x08b => setfsgid(regs),
-		// TODO 0x08c => _llseek(regs),
+		0x08c => _llseek(regs),
 		0x08d => getdents(regs),
 		// TODO 0x08e => _newselect(regs),
 		// TODO 0x08f => flock(regs),
