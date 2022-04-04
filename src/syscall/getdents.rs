@@ -7,7 +7,7 @@ use crate::errno::Errno;
 use crate::file::FileContent;
 use crate::file::file_descriptor::FDTarget;
 use crate::process::Process;
-use crate::process::Regs;
+use crate::process::regs::Regs;
 
 /// Structure representing a Linux directory entry.
 #[repr(C)]

@@ -3,7 +3,7 @@
 use crate::errno::Errno;
 use crate::file::path::Path;
 use crate::process::Process;
-use crate::process::Regs;
+use crate::process::regs::Regs;
 
 /// The implementation of the `link` syscall.
 pub fn link(regs: &Regs) -> Result<i32, Errno> {

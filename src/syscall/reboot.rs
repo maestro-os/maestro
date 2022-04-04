@@ -4,7 +4,7 @@ use core::arch::asm;
 use crate::errno::Errno;
 use crate::errno;
 use crate::process::Process;
-use crate::process::Regs;
+use crate::process::regs::Regs;
 
 /// First magic number.
 const MAGIC: u32 = 0xde145e83;

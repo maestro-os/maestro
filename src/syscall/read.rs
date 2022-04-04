@@ -6,7 +6,7 @@ use crate::errno::Errno;
 use crate::errno;
 use crate::file::file_descriptor::O_NONBLOCK;
 use crate::process::Process;
-use crate::process::Regs;
+use crate::process::regs::Regs;
 
 // TODO O_ASYNC
 

@@ -3,7 +3,7 @@
 use crate::errno::Errno;
 use crate::errno;
 use crate::process::Process;
-use crate::process::Regs;
+use crate::process::regs::Regs;
 
 /// The implementation of the `close` syscall.
 pub fn close(regs: &Regs) -> Result<i32, Errno> {

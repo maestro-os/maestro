@@ -3,7 +3,7 @@
 use crate::errno::Errno;
 use crate::file;
 use crate::process::Process;
-use crate::process::Regs;
+use crate::process::regs::Regs;
 
 /// The implementation of the `umask` syscall.
 pub fn umask(regs: &Regs) -> Result<i32, Errno> {

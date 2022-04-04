@@ -7,7 +7,7 @@ use crate::file::file_descriptor::FDTarget;
 use crate::file::file_descriptor;
 use crate::file::pipe::Pipe;
 use crate::process::Process;
-use crate::process::Regs;
+use crate::process::regs::Regs;
 use crate::util::ptr::SharedPtr;
 
 /// The implementation of the `pipe` syscall.

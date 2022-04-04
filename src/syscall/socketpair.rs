@@ -9,7 +9,7 @@ use crate::file::file_descriptor;
 use crate::file::socket::Socket;
 use crate::file::socket::SocketSide;
 use crate::process::Process;
-use crate::process::Regs;
+use crate::process::regs::Regs;
 
 /// The implementation of the `socketpair` syscall.
 pub fn socketpair(regs: &Regs) -> Result<i32, Errno> {

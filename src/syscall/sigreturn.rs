@@ -2,7 +2,7 @@
 //! The system call restores the previous state of the process to allow normal execution.
 
 use crate::process::Process;
-use crate::process::Regs;
+use crate::process::regs::Regs;
 
 /// The implementation of the `sigreturn` syscall.
 pub fn sigreturn(_regs: &Regs) -> ! {

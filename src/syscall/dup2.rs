@@ -3,7 +3,7 @@
 
 use crate::errno::Errno;
 use crate::process::Process;
-use crate::process::Regs;
+use crate::process::regs::Regs;
 
 /// The implementation of the `dup2` syscall.
 pub fn dup2(regs: &Regs) -> Result<i32, Errno> {

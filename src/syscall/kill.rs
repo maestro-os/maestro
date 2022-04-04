@@ -4,9 +4,9 @@ use crate::errno::Errno;
 use crate::errno;
 use crate::file::Uid;
 use crate::process::Process;
-use crate::process::Regs;
 use crate::process::State;
 use crate::process::pid::Pid;
+use crate::process::regs::Regs;
 use crate::process::signal::Signal;
 use crate::process;
 

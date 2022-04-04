@@ -6,7 +6,7 @@ use crate::errno;
 use crate::module::Module;
 use crate::module;
 use crate::process::Process;
-use crate::process::Regs;
+use crate::process::regs::Regs;
 
 /// The implementation of the `init_module` syscall.
 pub fn init_module(regs: &Regs) -> Result<i32, Errno> {

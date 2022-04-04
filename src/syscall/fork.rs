@@ -4,7 +4,7 @@
 
 use crate::errno::Errno;
 use crate::process::Process;
-use crate::process::Regs;
+use crate::process::regs::Regs;
 
 /// The implementation of the `fork` syscall.
 pub fn fork(regs: &Regs) -> Result<i32, Errno> {

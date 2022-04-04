@@ -2,7 +2,7 @@
 
 use crate::errno::Errno;
 use crate::process::Process;
-use crate::process::Regs;
+use crate::process::regs::Regs;
 
 /// The implementation of the `getgid` syscall.
 pub fn getgid(_: &Regs) -> Result<i32, Errno> {

@@ -7,8 +7,8 @@ use crate::errno::Errno;
 use crate::errno;
 use crate::limits;
 use crate::process::Process;
-use crate::process::Regs;
 use crate::process::iovec::IOVec;
+use crate::process::regs::Regs;
 
 /// The implementation of the `writev` syscall.
 pub fn writev(regs: &Regs) -> Result<i32, Errno> {

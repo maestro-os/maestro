@@ -3,7 +3,7 @@
 use crate::errno::Errno;
 use crate::file::file_descriptor;
 use crate::file;
-use crate::process::Regs;
+use crate::process::regs::Regs;
 use super::open;
 
 /// The implementation of the `creat` syscall.

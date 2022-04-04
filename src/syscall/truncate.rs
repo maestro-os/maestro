@@ -4,7 +4,7 @@ use crate::errno::Errno;
 use crate::file::fcache;
 use crate::file::path::Path;
 use crate::process::Process;
-use crate::process::Regs;
+use crate::process::regs::Regs;
 
 /// The implementation of the `truncate` syscall.
 pub fn truncate(regs: &Regs) -> Result<i32, Errno> {

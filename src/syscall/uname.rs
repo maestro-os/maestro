@@ -5,7 +5,7 @@ use core::mem::size_of;
 use crate::errno::Errno;
 use crate::errno;
 use crate::process::Process;
-use crate::process::Regs;
+use crate::process::regs::Regs;
 
 /// The length of a field of the utsname structure.
 const UTSNAME_LENGTH: usize = 65;

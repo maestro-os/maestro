@@ -5,7 +5,7 @@ use core::ffi::c_void;
 use crate::errno::Errno;
 use crate::errno;
 use crate::process::Process;
-use crate::process::Regs;
+use crate::process::regs::Regs;
 use crate::process::user_desc::UserDesc;
 use crate::process::user_desc;
 

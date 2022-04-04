@@ -2,7 +2,7 @@
 
 use core::ffi::c_void;
 use crate::errno::Errno;
-use crate::process::Regs;
+use crate::process::regs::Regs;
 use super::mmap;
 
 /// The implementation of the `mmap2` syscall.

@@ -4,7 +4,7 @@ use core::ptr::copy_nonoverlapping;
 use crate::errno::Errno;
 use crate::errno;
 use crate::process::Process;
-use crate::process::Regs;
+use crate::process::regs::Regs;
 use crate::process::rusage::RUsage;
 
 /// Returns the resource usage of the current process.

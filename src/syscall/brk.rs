@@ -4,7 +4,7 @@
 use core::ffi::c_void;
 use crate::errno::Errno;
 use crate::process::Process;
-use crate::process::Regs;
+use crate::process::regs::Regs;
 
 /// The implementation of the `brk` syscall.
 pub fn brk(regs: &Regs) -> Result<i32, Errno> {

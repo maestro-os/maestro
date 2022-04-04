@@ -3,7 +3,7 @@
 use core::slice;
 use crate::errno::Errno;
 use crate::process::Process;
-use crate::process::Regs;
+use crate::process::regs::Regs;
 use crate::time::Timestamp;
 use crate::time;
 

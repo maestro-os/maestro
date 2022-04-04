@@ -73,7 +73,7 @@ mod write;
 mod writev;
 
 use crate::process::Process;
-use crate::process::Regs;
+use crate::process::regs::Regs;
 use crate::process::signal::Signal;
 use crate::process;
 

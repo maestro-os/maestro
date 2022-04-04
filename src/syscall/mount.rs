@@ -11,7 +11,7 @@ use crate::file::mountpoint::MountSource;
 use crate::file::mountpoint;
 use crate::file::path::Path;
 use crate::process::Process;
-use crate::process::Regs;
+use crate::process::regs::Regs;
 
 /// The implementation of the `mount` syscall.
 pub fn mount(regs: &Regs) -> Result<i32, Errno> {

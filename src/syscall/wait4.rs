@@ -2,7 +2,7 @@
 
 use core::ptr::NonNull;
 use crate::errno::Errno;
-use crate::process::Regs;
+use crate::process::regs::Regs;
 use crate::process::rusage::RUsage;
 use super::waitpid;
 

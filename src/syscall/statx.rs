@@ -10,7 +10,7 @@ use crate::file::mountpoint::MountSource;
 use crate::file::mountpoint;
 use crate::file::path::Path;
 use crate::process::Process;
-use crate::process::Regs;
+use crate::process::regs::Regs;
 use crate::util::IO;
 use crate::util::ptr::SharedPtr;
 

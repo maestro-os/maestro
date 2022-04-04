@@ -2,7 +2,7 @@
 
 use crate::errno::Errno;
 use crate::process::Process;
-use crate::process::Regs;
+use crate::process::regs::Regs;
 
 /// The implementation of the `getuid` syscall.
 pub fn getuid(_: &Regs) -> Result<i32, Errno> {

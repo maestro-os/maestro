@@ -2,7 +2,7 @@
 
 use core::ptr::NonNull;
 use crate::errno::Errno;
-use crate::process::Regs;
+use crate::process::regs::Regs;
 use super::waitpid;
 
 /// The implementation of the `wait` syscall.

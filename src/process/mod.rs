@@ -46,6 +46,7 @@ use crate::util::ptr::IntWeakPtr;
 use mem_space::MemSpace;
 use pid::PIDManager;
 use pid::Pid;
+use regs::Regs;
 use rusage::RUsage;
 use scheduler::Scheduler;
 use signal::Signal;
@@ -80,9 +81,6 @@ const STDERR_FILENO: u32 = 2;
 
 /// The number of TLS entries per process.
 pub const TLS_ENTRIES_COUNT: usize = 3;
-
-// TODO Remove later (need to refactor a big part of the project)
-pub use regs::Regs;
 
 /// An enumeration containing possible states for a process.
 #[derive(Copy, Clone, Debug, PartialEq)]

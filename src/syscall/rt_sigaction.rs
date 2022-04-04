@@ -3,7 +3,7 @@
 use core::mem::size_of;
 use crate::errno::Errno;
 use crate::process::Process;
-use crate::process::Regs;
+use crate::process::regs::Regs;
 use crate::process::signal::SigAction;
 use crate::process::signal::SignalHandler;
 use crate::process::signal;

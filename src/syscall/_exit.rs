@@ -2,7 +2,7 @@
 
 use core::arch::asm;
 use crate::process::Process;
-use crate::process::Regs;
+use crate::process::regs::Regs;
 
 /// The implementation of the `write` syscall.
 pub fn _exit(regs: &Regs) -> ! {

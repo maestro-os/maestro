@@ -6,7 +6,7 @@ use crate::file::FileType;
 use crate::file::fcache;
 use crate::file::path::Path;
 use crate::process::Process;
-use crate::process::Regs;
+use crate::process::regs::Regs;
 
 /// The implementation of the `chdir` syscall.
 pub fn chdir(regs: &Regs) -> Result<i32, Errno> {
