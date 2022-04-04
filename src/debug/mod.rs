@@ -65,7 +65,7 @@ pub fn print_callstack(ebp: *const u32, max_depth: usize) {
 		let eip = unsafe {
 			*((ebp_ as usize + size_of::<usize>()) as *const u32) as *const c_void
 		};
-		if eip.is_null() {
+		if eip < memory::PROCESS_END {
 			break;
 		}
 

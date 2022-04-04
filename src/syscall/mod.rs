@@ -32,6 +32,7 @@ mod init_module;
 mod ioctl;
 mod kill;
 mod link;
+mod madvise;
 mod mkdir;
 mod mknod;
 mod mmap2;
@@ -110,6 +111,7 @@ use init_module::init_module;
 use ioctl::ioctl;
 use kill::kill;
 use link::link;
+use madvise::madvise;
 use mkdir::mkdir;
 use mknod::mknod;
 use mmap2::mmap2;
@@ -373,7 +375,7 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 		// TODO 0x0d8 => setfsgid32(regs),
 		// TODO 0x0d9 => pivot_root(regs),
 		// TODO 0x0da => mincore(regs),
-		// TODO 0x0db => madvise(regs),
+		0x0db => madvise(regs),
 		0x0dc => getdents64(regs),
 		0x0dd => fcntl64(regs),
 		0x0e0 => gettid(regs),

@@ -44,7 +44,9 @@ pub fn read(regs: &Regs) -> Result<i32, Errno> {
 			let proc = guard.get_mut();
 
 			let fd = proc.get_fd(fd).ok_or(errno!(EBADF))?;
-			// TODO Check file permissions?
+			if fd.eof() {
+				return Ok(0);
+			}
 
 			let flags = fd.get_flags();
 			(fd.read(data)?, flags)

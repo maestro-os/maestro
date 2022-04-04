@@ -198,6 +198,25 @@ impl FileDescriptor {
 		}
 	}
 
+	/// Tells whether the file descriptor reached the end of the file.
+	pub fn eof(&self) -> bool {
+		match &self.target {
+			FDTarget::File(f) => {
+				self.curr_off >= f.lock().get().get_size()
+			},
+
+			FDTarget::Pipe(_p) => {
+				// TODO If other side is closed, return `true`. Else, `false`
+				todo!();
+			},
+
+			FDTarget::Socket(_s) => {
+				// TODO If other side is closed, return `true`. Else, `false`
+				todo!();
+			},
+		}
+	}
+
 	/// Reads data from the file.
 	/// `buf` is the slice to write to.
 	/// The functions returns the number of bytes that have been read.
