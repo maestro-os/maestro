@@ -22,7 +22,6 @@ pub fn munmap(regs: &Regs) -> Result<i32, Errno> {
 	let mutex = Process::get_current().unwrap();
 	let mut guard = mutex.lock();
 	let proc = guard.get_mut();
-	let mem_space = proc.get_mem_space_mut().unwrap();
 
 	let pages = math::ceil_division(length, memory::PAGE_SIZE);
 	let length = pages * memory::PAGE_SIZE;
@@ -39,6 +38,6 @@ pub fn munmap(regs: &Regs) -> Result<i32, Errno> {
 		return Err(errno!(EINVAL));
 	}
 
-	mem_space.unmap(addr, pages)?;
+	proc.get_mem_space().unwrap().lock().get_mut().unmap(addr, pages)?;
 	Ok(0)
 }

@@ -311,8 +311,6 @@ impl Signal {
 			return;
 		}
 
-		debug_assert!(process.get_mem_space().unwrap().is_bound());
-
 		let handler = if !self.can_catch() || no_handler {
 			SignalHandler::Default
 		} else {
@@ -368,7 +366,11 @@ impl Signal {
 
 					// FIXME Don't write data out of the stack
 					oom::wrap(|| {
-						process.get_mem_space_mut().unwrap().alloc(signal_esp as *mut [u32; 2])
+						let mem_space_guard = process.get_mem_space().unwrap().lock();
+						let mem_space = mem_space_guard.get_mut();
+
+						debug_assert!(mem_space.is_bound());
+						mem_space.alloc(signal_esp as *mut [u32; 2])
 					});
 					let signal_data = unsafe {
 						slice::from_raw_parts_mut(signal_esp as *mut u32, 2)

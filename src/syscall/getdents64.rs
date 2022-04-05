@@ -7,6 +7,7 @@ use crate::errno::Errno;
 use crate::file::FileContent;
 use crate::file::file_descriptor::FDTarget;
 use crate::process::Process;
+use crate::process::mem_space::ptr::SyscallSlice;
 use crate::process::regs::Regs;
 
 /// Structure representing a Linux directory entry with 64 bits offsets.
@@ -27,10 +28,10 @@ struct LinuxDirent64 {
 /// The implementation of the `getdents64` syscall.
 pub fn getdents64(regs: &Regs) -> Result<i32, Errno> {
 	let fd = regs.ebx as i32;
-	let dirp = regs.ecx as *mut c_void;
+	let dirp: SyscallSlice<c_void> = (regs.ecx as usize).into();
 	let count = regs.edx as usize;
 
-	if fd < 0 || dirp.is_null() {
+	if fd < 0 {
 		return Err(errno!(EBADF));
 	}
 
@@ -38,10 +39,8 @@ pub fn getdents64(regs: &Regs) -> Result<i32, Errno> {
 	let mut guard = mutex.lock();
 	let proc = guard.get_mut();
 
-	// Checking access
-	if !proc.get_mem_space().unwrap().can_access(dirp as _, count, true, true) {
-		return Err(errno!(EFAULT));
-	}
+	let mem_space_guard = proc.get_mem_space().unwrap().lock();
+	let dirp_slice = dirp.get_mut(&mem_space_guard, count)?.ok_or(errno!(EFAULT))?;
 
 	// Getting file descriptor
 	let fd = proc.get_fd(fd as _).ok_or(errno!(EBADF))?;
@@ -77,7 +76,7 @@ pub fn getdents64(regs: &Regs) -> Result<i32, Errno> {
 			}
 
 			let ent = unsafe { // Safe because access has been checked before
-				&mut *(dirp.add(off) as *mut LinuxDirent64)
+				&mut *(&mut dirp_slice[off] as *mut _ as *mut LinuxDirent64)
 			};
 			*ent = LinuxDirent64 {
 				d_ino: entry.inode,

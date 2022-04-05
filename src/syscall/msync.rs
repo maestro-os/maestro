@@ -36,7 +36,8 @@ pub fn msync(regs: &Regs) -> Result<i32, Errno> {
 	let proc = guard.get_mut();
 
 	// The process's memory space
-	let mem_space = proc.get_mem_space_mut().unwrap();
+	let mem_space_guard = proc.get_mem_space().unwrap().lock();
+	let mem_space = mem_space_guard.get_mut();
 
 	let mut i = 0;
 	while i < length {

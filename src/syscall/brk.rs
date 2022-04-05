@@ -14,7 +14,8 @@ pub fn brk(regs: &Regs) -> Result<i32, Errno> {
 	let mut guard = mutex.lock();
 	let proc = guard.get_mut();
 
-	let mem_space = proc.get_mem_space_mut().unwrap();
+	let mem_space_guard = proc.get_mem_space().unwrap().lock();
+	let mem_space = mem_space_guard.get();
 	let old = mem_space.get_brk_ptr();
 
 	if mem_space.set_brk_ptr(addr).is_ok() {

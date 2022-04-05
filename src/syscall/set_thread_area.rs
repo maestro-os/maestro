@@ -1,11 +1,11 @@
 //! This module implements the `set_thread_area` system call, which allows to set a TLS area.
 
-use core::ffi::c_void;
 use core::mem::size_of;
 use crate::errno::Errno;
 use crate::errno;
 use crate::gdt;
 use crate::process::Process;
+use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::regs::Regs;
 use crate::process::user_desc::UserDesc;
 use crate::process;
@@ -50,21 +50,16 @@ pub fn get_entry<'a>(proc: &'a mut Process, entry_number: i32)
 
 /// The implementation of the `set_thread_area` syscall.
 pub fn set_thread_area(regs: &Regs) -> Result<i32, Errno> {
-	let u_info = regs.ebx as *mut c_void;
+	let u_info: SyscallPtr<UserDesc> = (regs.ebx as usize).into();
 
 	let mutex = Process::get_current().unwrap();
 	let mut guard = mutex.lock();
 	let proc = guard.get_mut();
 
-	// Checking the process can access the given pointer
-	if !proc.get_mem_space().unwrap().can_access(u_info as _, size_of::<UserDesc>(), true, true) {
-		return Err(errno!(EFAULT));
-	}
+	let mem_space_guard = proc.get_mem_space().unwrap().lock();
 
 	// A reference to the user_desc structure
-	let mut info = unsafe { // Safe because the access was checked before
-		UserDesc::from_ptr(u_info)
-	};
+	let mut info = u_info.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
 
 	// Getting the entry with its id
 	let (id, entry) = get_entry(proc, info.get_entry_number())?;

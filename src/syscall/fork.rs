@@ -18,7 +18,7 @@ pub fn fork(regs: &Regs) -> Result<i32, Errno> {
 		let curr_proc = curr_guard.get_mut();
 
 		curr_proc.set_regs(regs);
-		curr_proc.fork(parent)?
+		curr_proc.fork(parent, None)?
 	};
 	let mut new_guard = new_mutex.lock();
 	let new_proc = new_guard.get_mut();

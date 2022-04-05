@@ -1,8 +1,8 @@
 //! The `_llseek` system call repositions the offset of a file descriptor.
 
-use core::mem::size_of;
 use crate::errno::Errno;
 use crate::process::Process;
+use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::regs::Regs;
 
 /// Sets the offset from the given value.
@@ -17,18 +17,12 @@ pub fn _llseek(regs: &Regs) -> Result<i32, Errno> {
 	let fd = regs.ebx as u32;
 	let offset_high = regs.ecx as u32;
 	let offset_low = regs.edx as u32;
-	let result = regs.esi as *mut u64;
+	let result: SyscallPtr::<u64> = (regs.esi as usize).into();
 	let whence = regs.edi as u32;
 
 	let mutex = Process::get_current().unwrap();
 	let mut guard = mutex.lock();
 	let proc = guard.get_mut();
-
-	// Checking access
-	if !result.is_null()
-		&& !proc.get_mem_space().unwrap().can_access(result as _, size_of::<u64>(), true, true) {
-		return Err(errno!(EFAULT));
-	}
 
 	// Getting the file descriptor
 	let fd = proc.get_fd(fd).ok_or(errno!(EBADF))?;
@@ -43,15 +37,13 @@ pub fn _llseek(regs: &Regs) -> Result<i32, Errno> {
 		_ => return Err(errno!(EINVAL)),
 	};
 
+	// Writting the result to the userspace
+	if let Some(result) = result.get_mut(&proc.get_mem_space().unwrap().lock())? {
+		*result = off;
+	}
+
 	// Setting the offset
 	fd.set_offset(off);
-
-	// Writting the result to the userspace
-	if !result.is_null() {
-		unsafe { // Safe because access is checked before
-			*result = off;
-		}
-	}
 
 	Ok(0)
 }

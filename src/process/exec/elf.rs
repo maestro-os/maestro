@@ -29,6 +29,7 @@ use crate::process;
 use crate::util::IO;
 use crate::util::container::vec::Vec;
 use crate::util::math;
+use crate::util::ptr::IntSharedPtr;
 use crate::util;
 
 /// Used to define the end of the entries list.
@@ -498,7 +499,7 @@ impl Executor for ELFExecutor {
 		});
 
 		// Setting the new memory space to the process
-		process.set_mem_space(Some(mem_space));
+		process.set_mem_space(Some(IntSharedPtr::new(mem_space)?));
 
 		// Setting the process's stacks
 		process.user_stack = Some(user_stack);

@@ -1,8 +1,8 @@
 //! The `rt_sigaction` system call sets the action for a signal.
 
-use core::mem::size_of;
 use crate::errno::Errno;
 use crate::process::Process;
+use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::regs::Regs;
 use crate::process::signal::SigAction;
 use crate::process::signal::SignalHandler;
@@ -11,8 +11,8 @@ use crate::process::signal;
 /// The implementation of the `rt_sigaction` syscall.
 pub fn rt_sigaction(regs: &Regs) -> Result<i32, Errno> {
 	let signum = regs.ebx as i32;
-	let act = regs.ecx as *const SigAction;
-	let oldact = regs.edx as *mut SigAction;
+	let act: SyscallPtr<SigAction> = (regs.ecx as usize).into();
+	let oldact: SyscallPtr<SigAction> = (regs.edx as usize).into();
 
 	if signum as usize >= signal::SIGNALS_COUNT {
 		return Err(errno!(EINVAL));
@@ -22,33 +22,17 @@ pub fn rt_sigaction(regs: &Regs) -> Result<i32, Errno> {
 	let mut guard = mutex.lock();
 	let proc = guard.get_mut();
 
-	// Checking access to the given pointers
-	if !act.is_null() {
-		if !proc.get_mem_space().unwrap().can_access(act as _, size_of::<SigAction>(), true,
-			false) {
-			return Err(errno!(EFAULT));
-		}
-	}
-	if !oldact.is_null() {
-		if !proc.get_mem_space().unwrap().can_access(oldact as _, size_of::<SigAction>(), true,
-			true) {
-			return Err(errno!(EFAULT));
-		}
-	}
+	let mem_space_guard = proc.get_mem_space().unwrap().lock();
 
 	// Save the old structure
-	if !oldact.is_null() {
+	if let Some(oldact) = oldact.get_mut(&mem_space_guard)? {
 		let action = proc.get_signal_handler(signum).get_action();
-		unsafe { // Safe because access is checked before
-			*oldact = action;
-		}
+		*oldact = action;
 	}
 
 	// Set the new structure
-	if !act.is_null() {
-		unsafe { // Safe because access is checked before
-			proc.set_signal_handler(signum, SignalHandler::Handler(*act));
-		}
+	if let Some(act) = act.get(&mem_space_guard)? {
+		proc.set_signal_handler(signum, SignalHandler::Handler(*act));
 	}
 
 	Ok(0)

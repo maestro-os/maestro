@@ -1,11 +1,11 @@
 //! The read system call allows to read the content of an open file.
 
 use core::cmp::min;
-use core::slice;
 use crate::errno::Errno;
 use crate::errno;
 use crate::file::file_descriptor::O_NONBLOCK;
 use crate::process::Process;
+use crate::process::mem_space::ptr::SyscallSlice;
 use crate::process::regs::Regs;
 
 // TODO O_ASYNC
@@ -13,29 +13,13 @@ use crate::process::regs::Regs;
 /// The implementation of the `read` syscall.
 pub fn read(regs: &Regs) -> Result<i32, Errno> {
 	let fd = regs.ebx;
-	let buf = regs.ecx as *mut u8;
+	let buf: SyscallSlice<u8> = (regs.ecx as usize).into();
 	let count = regs.edx as usize;
-
-	{
-		let mutex = Process::get_current().unwrap();
-		let mut guard = mutex.lock();
-		let proc = guard.get_mut();
-
-		if !proc.get_mem_space().unwrap().can_access(buf, count, true, true) {
-			return Err(errno!(EFAULT));
-		}
-	}
 
 	let len = min(count, i32::MAX as usize);
 	if len == 0 {
 		return Ok(0);
 	}
-
-	// Safe because the permission to access the memory has been checked by the previous
-	// condition
-	let data = unsafe {
-		slice::from_raw_parts_mut(buf, len)
-	};
 
 	loop {
 		let (len, flags) = {
@@ -43,13 +27,16 @@ pub fn read(regs: &Regs) -> Result<i32, Errno> {
 			let mut guard = mutex.lock();
 			let proc = guard.get_mut();
 
+			let mem_space_guard = proc.get_mem_space().unwrap().lock();
+			let buf_slice = buf.get_mut(&mem_space_guard, len)?.ok_or(errno!(EFAULT))?;
+
 			let fd = proc.get_fd(fd).ok_or(errno!(EBADF))?;
 			if fd.eof() {
 				return Ok(0);
 			}
 
 			let flags = fd.get_flags();
-			(fd.read(data)?, flags)
+			(fd.read(buf_slice)?, flags)
 		};
 
 		if len > 0 || flags & O_NONBLOCK != 0 {

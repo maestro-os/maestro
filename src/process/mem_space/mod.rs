@@ -8,6 +8,7 @@
 mod gap;
 mod mapping;
 mod physical_ref_counter;
+pub mod ptr;
 
 use core::cmp::Ordering;
 use core::cmp::{min, max};

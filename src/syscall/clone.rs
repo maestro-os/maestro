@@ -2,16 +2,85 @@
 
 use core::ffi::c_void;
 use crate::errno::Errno;
+use crate::process::ForkOptions;
+use crate::process::Process;
 use crate::process::regs::Regs;
+
+/// TODO doc
+const CLONE_IO: i32 = -0x80000000;
+/// If specified, the parent and child processes share the same memory space.
+const CLONE_VM: i32 = 0x100;
+/// TODO doc
+const CLONE_FS: i32 = 0x200;
+/// TODO doc
+const CLONE_FILES: i32 = 0x400;
+/// TODO doc
+const CLONE_SIGHAND: i32 = 0x800;
+/// TODO doc
+const CLONE_PIDFD: i32 = 0x1000;
+/// TODO doc
+const CLONE_PTRACE: i32 = 0x2000;
+/// TODO doc
+const CLONE_VFORK: i32 = 0x4000;
+/// TODO doc
+const CLONE_PARENT: i32 = 0x8000;
+/// TODO doc
+const CLONE_THREAD: i32 = 0x10000;
+/// TODO doc
+const CLONE_NEWNS: i32 = 0x20000;
+/// TODO doc
+const CLONE_SYSVSEM: i32 = 0x40000;
+/// TODO doc
+const CLONE_SETTLS: i32 = 0x80000;
+/// TODO doc
+const CLONE_PARENT_SETTID: i32 = 0x100000;
+/// TODO doc
+const CLONE_CHILD_CLEARTID: i32 = 0x200000;
+/// TODO doc
+const CLONE_DETACHED: i32 = 0x400000;
+/// TODO doc
+const CLONE_UNTRACED: i32 = 0x800000;
+/// TODO doc
+const CLONE_CHILD_SETTID: i32 = 0x1000000;
+/// TODO doc
+const CLONE_NEWCGROUP: i32 = 0x2000000;
+/// TODO doc
+const CLONE_NEWUTS: i32 = 0x4000000;
+/// TODO doc
+const CLONE_NEWIPC: i32 = 0x8000000;
+/// TODO doc
+const CLONE_NEWUSER: i32 = 0x10000000;
+/// TODO doc
+const CLONE_NEWPID: i32 = 0x20000000;
+/// TODO doc
+const CLONE_NEWNET: i32 = 0x40000000;
 
 /// The implementation of the `clone` syscall.
 pub fn clone(regs: &Regs) -> Result<i32, Errno> {
-	let _flags = regs.ebx as i32;
+	let flags = regs.ebx as i32;
 	let _stack = regs.ecx as *mut c_void;
 	let _parent_tid = regs.edx as *mut i32;
 	let _tls = regs.esi as i32;
 	let _child_tid = regs.edi as *mut i32;
 
-	// TODO
-	todo!();
+	let fork_options = ForkOptions {
+		vm: flags & CLONE_VM != 0,
+	};
+
+	let new_mutex = {
+		// The current process
+		let curr_mutex = Process::get_current().unwrap();
+		// A weak pointer to the new process's parent
+		let parent = curr_mutex.new_weak();
+
+		let mut curr_guard = curr_mutex.lock();
+		let curr_proc = curr_guard.get_mut();
+
+		curr_proc.set_regs(regs);
+		curr_proc.fork(parent, Some(fork_options))?
+	};
+	let mut new_guard = new_mutex.lock();
+	let new_proc = new_guard.get_mut();
+
+	Ok(new_proc.get_pid() as _)
 }

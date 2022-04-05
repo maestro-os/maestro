@@ -1,10 +1,10 @@
 //! The rt_sigprocmask system call allows to change the blocked signal mask.
 
 use core::cmp::min;
-use core::slice;
 use crate::errno::Errno;
 use crate::errno;
 use crate::process::Process;
+use crate::process::mem_space::ptr::SyscallSlice;
 use crate::process::regs::Regs;
 
 /// Performs the union of the given mask with the current mask.
@@ -18,40 +18,19 @@ const SIG_SETMASK: i32 = 2;
 /// The implementation of the `rt_sigprocmask` syscall.
 pub fn rt_sigprocmask(regs: &Regs) -> Result<i32, Errno> {
 	let how = regs.ebx as i32;
-	let set = regs.ecx as *const u8;
-	let oldset = regs.edx as *mut u8;
+	let set: SyscallSlice<u8> = (regs.ecx as usize).into();
+	let oldset: SyscallSlice<u8> = (regs.edx as usize).into();
 	let sigsetsize = regs.esi as u32;
 
 	let mutex = Process::get_current().unwrap();
 	let mut guard = mutex.lock();
 	let proc = guard.get_mut();
 
-	// Getting slices to pointers
-	let set_slice = if !set.is_null() {
-		// Checking access
-		if !proc.get_mem_space().unwrap().can_access(set, sigsetsize as _, true, false) {
-			return Err(errno!(EINVAL));
-		}
+	let mem_space_guard = proc.get_mem_space().unwrap().lock();
 
-		Some(unsafe { // Safe because access has been checked before
-			slice::from_raw_parts(set, sigsetsize as _)
-		})
-	} else {
-		None
-	};
-
-	let oldset_slice = if !oldset.is_null() {
-		// Checking access
-		if !proc.get_mem_space().unwrap().can_access(oldset, sigsetsize as _, true, true) {
-			return Err(errno!(EINVAL));
-		}
-
-		Some(unsafe { // Safe because access has been checked before
-			slice::from_raw_parts_mut(oldset, sigsetsize as _)
-		})
-	} else {
-		None
-	};
+	// Getting slices
+	let set_slice = set.get(&mem_space_guard, sigsetsize as _)?;
+	let oldset_slice = oldset.get(&mem_space_guard, sigsetsize as _)?;
 
 	// The current set
 	let curr = proc.get_sigmask_mut();

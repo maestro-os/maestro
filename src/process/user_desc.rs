@@ -11,17 +11,10 @@ pub const USER_DESC_SIZE: usize = 16;
 /// The `user_desc` structure.
 #[repr(transparent)]
 pub struct UserDesc {
-	val: &'static mut [i8; USER_DESC_SIZE],
+	val: [i8; USER_DESC_SIZE],
 }
 
 impl UserDesc {
-	/// Creates a new instance from the given pointer.
-	pub unsafe fn from_ptr(ptr: *mut c_void) -> Self {
-		Self {
-			val: &mut *(ptr as *mut [i8; USER_DESC_SIZE]),
-		}
-	}
-
 	/// Returns the entry number.
 	#[inline(always)]
 	pub fn get_entry_number(&self) -> i32 {

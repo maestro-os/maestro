@@ -7,6 +7,7 @@ use crate::errno::Errno;
 use crate::file::FileContent;
 use crate::file::file_descriptor::FDTarget;
 use crate::process::Process;
+use crate::process::mem_space::ptr::SyscallSlice;
 use crate::process::regs::Regs;
 
 /// Structure representing a Linux directory entry.
@@ -27,21 +28,15 @@ struct LinuxDirent {
 /// The implementation of the `getdents` syscall.
 pub fn getdents(regs: &Regs) -> Result<i32, Errno> {
 	let fd = regs.ebx as u32;
-	let dirp = regs.ecx as *mut c_void;
+	let dirp: SyscallSlice<c_void> = (regs.ecx as usize).into();
 	let count = regs.edx as u32;
-
-	if dirp.is_null() {
-		return Err(errno!(EINVAL));
-	}
 
 	let mutex = Process::get_current().unwrap();
 	let mut guard = mutex.lock();
 	let proc = guard.get_mut();
 
-	// Checking access
-	if !proc.get_mem_space().unwrap().can_access(dirp as _, count as _, true, true) {
-		return Err(errno!(EFAULT));
-	}
+	let mem_space_guard = proc.get_mem_space().unwrap().lock();
+	let dirp_slice = dirp.get_mut(&mem_space_guard, count as _)?.ok_or(errno!(EFAULT))?;
 
 	// Getting file descriptor
 	let fd = proc.get_fd(fd as _).ok_or(errno!(EBADF))?;
@@ -82,7 +77,7 @@ pub fn getdents(regs: &Regs) -> Result<i32, Errno> {
 			}
 
 			let ent = unsafe { // Safe because access has been checked before
-				&mut *(dirp.add(off) as *mut LinuxDirent)
+				&mut *(&mut dirp_slice[off] as *mut _ as *mut LinuxDirent)
 			};
 			*ent = LinuxDirent {
 				d_ino: entry.inode as _,

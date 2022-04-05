@@ -36,7 +36,6 @@ use crate::file;
 use crate::gdt::ldt::LDT;
 use crate::gdt;
 use crate::limits;
-use crate::memory::vmem;
 use crate::util::FailableClone;
 use crate::util::container::bitfield::Bitfield;
 use crate::util::container::vec::Vec;
@@ -98,6 +97,24 @@ pub enum State {
 /// Type representing an exit status.
 type ExitStatus = u8;
 
+/// Structure representing options to be passed to the fork function.
+pub struct ForkOptions {
+	/// If true, the parent and child process both share the same address space.
+	pub vm: bool,
+
+	// TODO
+}
+
+impl Default for ForkOptions {
+	fn default() -> Self {
+		Self {
+			vm: false,
+
+			// TODO
+		}
+	}
+}
+
 /// The Process Control Block (PCB). This structure stores all the informations about a process.
 pub struct Process {
 	/// The ID of the process.
@@ -147,7 +164,7 @@ pub struct Process {
 	waitable: bool,
 
 	/// The virtual memory of the process containing every mappings.
-	mem_space: Option<MemSpace>,
+	mem_space: Option<IntSharedPtr<MemSpace>>,
 	/// A pointer to the userspace stack.
 	user_stack: Option<*const c_void>,
 	/// A pointer to the kernelspace stack.
@@ -237,13 +254,9 @@ pub fn init() -> Result<(), Errno> {
 
 				// General Protection Fault
 				0x0d => {
-					let vmem = curr_proc.get_mem_space_mut().unwrap().get_vmem();
-					let mut inst_prefix = 0;
-					vmem::switch(vmem.as_ref(), || {
-						inst_prefix = unsafe {
-							*(regs.eip as *const u8)
-						};
-					});
+					let mut inst_prefix = unsafe {
+						*(regs.eip as *const u8)
+					};
 
 					if inst_prefix == HLT_INSTRUCTION {
 						curr_proc.exit(regs.eax);
@@ -285,7 +298,15 @@ pub fn init() -> Result<(), Errno> {
 				cpu::cr2_get()
 			};
 
-			if !curr_proc.get_mem_space_mut().unwrap().handle_page_fault(accessed_ptr, code) {
+			// Handling page fault
+			let success = {
+				let mem_space_guard = curr_proc.get_mem_space().unwrap().lock();
+				let mem_space = mem_space_guard.get();
+
+				mem_space.handle_page_fault(accessed_ptr, code)
+			};
+
+			if !success {
 				if ring < 3 {
 					return InterruptResult::new(true, InterruptResultAction::Panic);
 				} else {
@@ -661,20 +682,13 @@ impl Process {
 	/// Returns a reference to the process's memory space.
 	/// If the process is terminated, the function returns None.
 	#[inline(always)]
-	pub fn get_mem_space(&self) -> Option<&MemSpace> {
+	pub fn get_mem_space(&self) -> Option<&IntSharedPtr<MemSpace>> {
 		self.mem_space.as_ref()
-	}
-
-	/// Returns a mutable reference to the process's memory space.
-	/// If the process is terminated, the function returns None.
-	#[inline(always)]
-	pub fn get_mem_space_mut(&mut self) -> Option<&mut MemSpace> {
-		self.mem_space.as_mut()
 	}
 
 	/// Sets the new memory space for the process, dropping the previous if any.
 	#[inline(always)]
-	pub fn set_mem_space(&mut self, mem_space: Option<MemSpace>) {
+	pub fn set_mem_space(&mut self, mem_space: Option<IntSharedPtr<MemSpace>>) {
 		self.mem_space = mem_space;
 	}
 
@@ -725,7 +739,7 @@ impl Process {
 		tss.esp0 = self.kernel_stack.unwrap() as _;
 
 		// Binding the memory space
-		self.get_mem_space().unwrap().bind();
+		self.get_mem_space().unwrap().lock().get().bind();
 
 		// Updating TLS entries in the GDT
 		for i in 0..TLS_ENTRIES_COUNT {
@@ -749,7 +763,7 @@ impl Process {
 		let kernel_stack = mem_space.map_stack(None, KERNEL_STACK_SIZE, KERNEL_STACK_FLAGS)?;
 		let user_stack = mem_space.map_stack(None, USER_STACK_SIZE, USER_STACK_FLAGS)?;
 
-		self.mem_space = Some(mem_space);
+		self.mem_space = Some(IntSharedPtr::new(mem_space)?);
 		self.kernel_stack = Some(kernel_stack);
 		self.user_stack = Some(user_stack);
 
@@ -893,10 +907,15 @@ impl Process {
 	/// Forks the current process. The internal state of the process (registers and memory) are
 	/// copied.
 	/// `parent` is the parent of the new process.
+	/// `fork_options` are the options for the fork operation. If None, the function uses the
+	/// default values.
 	/// On fail, the function returns an Err with the appropriate Errno.
 	/// If the process is not running, the behaviour is undefined.
-	pub fn fork(&mut self, parent: IntWeakPtr<Self>) -> Result<IntSharedPtr<Self>, Errno> {
+	pub fn fork(&mut self, parent: IntWeakPtr<Self>, fork_options: Option<ForkOptions>)
+		-> Result<IntSharedPtr<Self>, Errno> {
 		debug_assert_eq!(self.get_state(), State::Running);
+
+		let fork_options = fork_options.unwrap_or(ForkOptions::default());
 
 		let pid = {
 			let mutex = unsafe {
@@ -908,6 +927,16 @@ impl Process {
 
 		let mut regs = self.regs;
 		regs.eax = 0;
+
+		let mem_space = {
+			let curr_mem_space = self.get_mem_space().unwrap();
+
+			if fork_options.vm {
+				curr_mem_space.clone()
+			} else {
+				IntSharedPtr::new(curr_mem_space.lock().get().fork()?)?
+			}
+		};
 
 		let process = Self {
 			pid,
@@ -937,7 +966,7 @@ impl Process {
 			saved_regs: self.saved_regs,
 			waitable: false,
 
-			mem_space: Some(self.get_mem_space_mut().unwrap().fork()?),
+			mem_space: Some(mem_space),
 
 			user_stack: self.user_stack,
 			kernel_stack: self.kernel_stack,
