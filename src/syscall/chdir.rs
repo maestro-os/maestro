@@ -17,10 +17,12 @@ pub fn chdir(regs: &Regs) -> Result<i32, Errno> {
 	let mut guard = mutex.lock();
 	let proc = guard.get_mut();
 
-	let mem_space_guard = proc.get_mem_space().unwrap().lock();
-	let path_str = path.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
+	let new_cwd = {
+		let mem_space_guard = proc.get_mem_space().unwrap().lock();
+		let path_str = path.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
 
-	let new_cwd = super::util::get_absolute_path(&proc, Path::from_str(path_str, true)?)?;
+		super::util::get_absolute_path(&proc, Path::from_str(path_str, true)?)?
+	};
 
 	{
 		let fcache_mutex = fcache::get();

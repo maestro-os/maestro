@@ -66,17 +66,18 @@ pub fn open_(pathname: SyscallString, flags: i32, mode: file::Mode) -> Result<i3
 	let mut guard = mutex.lock();
 	let proc = guard.get_mut();
 
-	let mem_space_guard = proc.get_mem_space().unwrap().lock();
-
 	// Getting the path string
-	let path_str = pathname.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
+	let path = {
+		let mem_space_guard = proc.get_mem_space().unwrap().lock();
+		Path::from_str(pathname.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?, true)?
+	};
 
 	let mode = mode & !proc.get_umask();
 	let uid = proc.get_euid();
 	let gid = proc.get_egid();
 
 	// Getting the file
-	let abs_path = super::util::get_absolute_path(&proc, Path::from_str(path_str, true)?)?;
+	let abs_path = super::util::get_absolute_path(&proc, path)?;
 	let file = get_file(abs_path, flags, mode, uid, gid)?;
 
 	// If O_DIRECTORY is set and the file is not a directory, return an error

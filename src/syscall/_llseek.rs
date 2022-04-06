@@ -37,13 +37,15 @@ pub fn _llseek(regs: &Regs) -> Result<i32, Errno> {
 		_ => return Err(errno!(EINVAL)),
 	};
 
+	// Setting the offset
+	fd.set_offset(off);
+
+	let mem_space_guard = proc.get_mem_space().unwrap().lock();
 	// Writting the result to the userspace
-	if let Some(result) = result.get_mut(&proc.get_mem_space().unwrap().lock())? {
+	if let Some(result) = result.get_mut(&mem_space_guard)? {
 		*result = off;
 	}
 
-	// Setting the offset
-	fd.set_offset(off);
 
 	Ok(0)
 }

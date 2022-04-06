@@ -59,7 +59,7 @@ pub fn modify_ldt(regs: &Regs) -> Result<i32, Errno> {
 		},
 		2 => {
 			// Zero-ing the pointer
-			for b in ptr_slice.iter() {
+			for b in ptr_slice.iter_mut() {
 				*b = 0;
 			}
 

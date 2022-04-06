@@ -10,6 +10,7 @@ use crate::process::exec::exec;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::regs::Regs;
 use crate::util::IO;
+use crate::util::container::vec::Vec;
 
 /// The maximum length of the shebang.
 const SHEBANG_MAX: usize = 257;
@@ -38,9 +39,11 @@ pub fn execve(regs: &Regs) -> Result<i32, Errno> {
 	let mut proc_guard = proc_mutex.lock();
 	let proc = proc_guard.get_mut();
 
-	let mem_space_guard = proc.get_mem_space().unwrap().lock();
+	let path = {
+		let mem_space_guard = proc.get_mem_space().unwrap().lock();
+		Path::from_str(pathname.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?, true)?
+	};
 
-	let path = Path::from_str(pathname.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?, true)?;
 	let (argv, envp) = unsafe {
 		(super::util::get_str_array(proc, argv)?, super::util::get_str_array(proc, envp)?)
 	};
@@ -83,8 +86,20 @@ pub fn execve(regs: &Regs) -> Result<i32, Errno> {
 		}
 	}
 
-	// Running the process
-	exec(proc, &path, &*argv, &*envp)?;
+	{
+		// TODO Find a better solution
+		let mut argv_ = Vec::new();
+		for a in &argv {
+			argv_.push(a.as_bytes())?;
+		}
+		let mut envp_ = Vec::new();
+		for e in &envp {
+			envp_.push(e.as_bytes())?;
+		}
+
+		// Running the process
+		exec(proc, &path, &*argv_, &*envp_)?;
+	}
 
 	drop(proc_guard);
 	crate::enter_loop();

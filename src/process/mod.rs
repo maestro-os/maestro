@@ -254,7 +254,7 @@ pub fn init() -> Result<(), Errno> {
 
 				// General Protection Fault
 				0x0d => {
-					let mut inst_prefix = unsafe {
+					let inst_prefix = unsafe {
 						*(regs.eip as *const u8)
 					};
 
@@ -300,8 +300,8 @@ pub fn init() -> Result<(), Errno> {
 
 			// Handling page fault
 			let success = {
-				let mem_space_guard = curr_proc.get_mem_space().unwrap().lock();
-				let mem_space = mem_space_guard.get();
+				let mut mem_space_guard = curr_proc.get_mem_space().unwrap().lock();
+				let mem_space = mem_space_guard.get_mut();
 
 				mem_space.handle_page_fault(accessed_ptr, code)
 			};
@@ -934,7 +934,7 @@ impl Process {
 			if fork_options.vm {
 				curr_mem_space.clone()
 			} else {
-				IntSharedPtr::new(curr_mem_space.lock().get().fork()?)?
+				IntSharedPtr::new(curr_mem_space.lock().get_mut().fork()?)?
 			}
 		};
 

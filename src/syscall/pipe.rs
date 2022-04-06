@@ -18,7 +18,7 @@ pub fn pipe(regs: &Regs) -> Result<i32, Errno> {
 	let proc = guard.get_mut();
 
 	let mem_space_guard = proc.get_mem_space().unwrap().lock();
-	let pipefd_slice = pipefd.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
+	let pipefd_slice = pipefd.get_mut(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
 
 	let pipe = SharedPtr::new(Pipe::new()?)?;
 	let pipe2 = pipe.clone();

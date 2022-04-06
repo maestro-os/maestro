@@ -193,7 +193,7 @@ impl ELFExecutor {
 	/// included.
 	/// - The required size in bytes for the data to be written on the stack before the program
 	/// starts.
-	fn get_init_stack_size(argv: &Vec<&[u8]>, envp: &Vec<&[u8]>, aux: &Vec<AuxEntry>)
+	fn get_init_stack_size(argv: &[&[u8]], envp: &[&[u8]], aux: &[AuxEntry])
 		-> (usize, usize) {
 		// The size of the block storing the arguments and environment
 		let mut info_block_size = 0;
@@ -225,10 +225,11 @@ impl ELFExecutor {
 	/// `user_stack` the pointer to the user stack.
 	/// `argv` is the list of arguments.
 	/// `envp` is the environment.
+	/// `aux` is the auxilary vector.
 	/// The function returns the distance between the top of the stack and the new bottom after the
 	/// data has been written.
-	fn init_stack(&self, user_stack: *const c_void, argv: &Vec<&[u8]>, envp: &Vec<&[u8]>,
-		aux: &Vec<AuxEntry>) {
+	fn init_stack(&self, user_stack: *const c_void, argv: &[&[u8]], envp: &[&[u8]],
+		aux: &[AuxEntry]) {
 		let (info_size, total_size) = Self::get_init_stack_size(argv, envp, aux);
 
 		// A slice on the stack representing the region which will containing the arguments and
@@ -383,7 +384,7 @@ impl Executor for ELFExecutor {
 	// TODO Ensure there is no way to write in kernel space (check segments position and
 	// relocations)
 	// TODO Handle suid and sgid
-	fn exec(&self, process: &mut Process, argv: &Vec<&[u8]>, envp: &Vec<&[u8]>)
+	fn exec(&self, process: &mut Process, argv: &[&[u8]], envp: &[&[u8]])
 		-> Result<(), Errno> {
 		debug_assert_eq!(process.state, crate::process::State::Running);
 

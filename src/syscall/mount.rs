@@ -23,22 +23,17 @@ pub fn mount(regs: &Regs) -> Result<i32, Errno> {
 	let mountflags = regs.esi as u32;
 	let _data: SyscallPtr<c_void> = (regs.edi as usize).into();
 
-	// Getting slices to strings
-	let (source_slice, target_slice, filesystemtype_slice, uid, gid) = {
-		// Getting the process
-		let mutex = Process::get_current().unwrap();
-		let guard = mutex.lock();
-		let proc = guard.get();
+	// Getting the process
+	let mutex = Process::get_current().unwrap();
+	let guard = mutex.lock();
+	let proc = guard.get();
 
-		let mem_space_guard = proc.get_mem_space().unwrap().lock();
+	let mem_space_guard = proc.get_mem_space().unwrap().lock();
 
-		// Getting strings
-		let source_slice = source.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
-		let target_slice = target.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
-		let filesystemtype_slice = filesystemtype.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
-
-		(source_slice, target_slice, filesystemtype_slice, proc.get_euid(), proc.get_egid())
-	};
+	// Getting strings
+	let source_slice = source.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
+	let target_slice = target.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
+	let filesystemtype_slice = filesystemtype.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
 
 	// Getting the mount source
 	let mount_source = MountSource::from_str(source_slice)?;
@@ -49,7 +44,7 @@ pub fn mount(regs: &Regs) -> Result<i32, Errno> {
 		let mut guard = fcache::get().lock();
 		let fcache = guard.get_mut().as_mut().unwrap();
 
-		fcache.get_file_from_path(&target_path, uid, gid, true)?
+		fcache.get_file_from_path(&target_path, proc.get_euid(), proc.get_egid(), true)?
 	};
 	let target_guard = target_mutex.lock();
 	let target_file = target_guard.get();
