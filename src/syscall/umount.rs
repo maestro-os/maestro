@@ -5,21 +5,20 @@ use crate::errno;
 use crate::file::mountpoint;
 use crate::file::path::Path;
 use crate::process::Process;
+use crate::process::mem_space::ptr::SyscallString;
 use crate::process::regs::Regs;
 
 /// The implementation of the `umount` syscall.
 pub fn umount(regs: &Regs) -> Result<i32, Errno> {
-	let target = regs.ebx as *const u8;
+	let target: SyscallString = (regs.ebx as usize).into();
+
+	let mutex = Process::get_current().unwrap();
+	let guard = mutex.lock();
+	let proc = guard.get();
 
 	// Getting a slice to the string
-	let target_slice = {
-		// Getting the process
-		let mutex = Process::get_current().unwrap();
-		let guard = mutex.lock();
-		let proc = guard.get();
-
-		super::util::get_str(proc, target)?
-	};
+	let mem_space = proc.get_mem_space().unwrap().lock();
+	let target_slice = target.get(&mem_space)?.ok_or(errno!(EFAULT))?;
 
 	// Getting the mountpoint
 	let target_path = Path::from_str(target_slice, true)?;

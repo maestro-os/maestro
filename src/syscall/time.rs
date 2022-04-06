@@ -1,9 +1,8 @@
 //! The `time` syscall allows to retrieve the number of seconds elapsed since the UNIX Epoch.
 
-use core::mem::size_of;
 use crate::errno::Errno;
-use crate::errno;
 use crate::process::Process;
+use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::regs::Regs;
 use crate::time;
 
@@ -11,26 +10,21 @@ use crate::time;
 
 /// The implementation of the `time` syscall.
 pub fn time(regs: &Regs) -> Result<i32, Errno> {
-	let tloc = regs.ebx as *mut u32;
+	let tloc: SyscallPtr<u32> = (regs.ebx as usize).into();
 
-	if !tloc.is_null() {
-		let mutex = Process::get_current().unwrap();
-		let mut guard = mutex.lock();
-		let proc = guard.get_mut();
+	let mutex = Process::get_current().unwrap();
+	let mut guard = mutex.lock();
+	let proc = guard.get_mut();
 
-		if !proc.get_mem_space().unwrap().can_access(tloc as _, size_of::<u32>(), true, true) {
-			return Err(errno!(EFAULT));
-		}
-	}
+	let mem_space_guard = proc.get_mem_space().unwrap().lock();
+	let tloc_ptr = tloc.get(&mem_space_guard)?;
 
 	// Getting the current timestamp
 	let time = time::get().unwrap_or(0);
 
 	// Writing the timestamp to the given location, if not null
-	if !tloc.is_null() {
-		unsafe { // Safe because the access is checked before
-			*tloc = time;
-		}
+	if let Some(tloc) = tloc_ptr {
+		*tloc = time;
 	}
 
 	Ok(time as _)

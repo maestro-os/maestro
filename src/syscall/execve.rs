@@ -7,6 +7,7 @@ use crate::file::fcache;
 use crate::file::path::Path;
 use crate::process::Process;
 use crate::process::exec::exec;
+use crate::process::mem_space::ptr::SyscallString;
 use crate::process::regs::Regs;
 use crate::util::IO;
 
@@ -29,7 +30,7 @@ pub fn read_shebang(file: &mut File, buff: &mut [u8; SHEBANG_MAX]) -> Result<Opt
 
 /// The implementation of the `execve` syscall.
 pub fn execve(regs: &Regs) -> Result<i32, Errno> {
-	let pathname = regs.ebx as *const u8;
+	let pathname: SyscallString = (regs.ebx as usize).into();
 	let argv = regs.ecx as *const () as *const *const u8;
 	let envp = regs.edx as *const () as *const *const u8;
 
@@ -37,10 +38,12 @@ pub fn execve(regs: &Regs) -> Result<i32, Errno> {
 	let mut proc_guard = proc_mutex.lock();
 	let proc = proc_guard.get_mut();
 
-	// Checking that parameters are accessible by the process
-	let path = Path::from_str(super::util::get_str(proc, pathname)?, true)?;
-	let argv = super::util::get_str_array(proc, argv)?;
-	let envp = super::util::get_str_array(proc, envp)?;
+	let mem_space_guard = proc.get_mem_space().unwrap().lock();
+
+	let path = Path::from_str(pathname.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?, true)?;
+	let (argv, envp) = unsafe {
+		(super::util::get_str_array(proc, argv)?, super::util::get_str_array(proc, envp)?)
+	};
 
 	let uid = proc.get_euid();
 	let gid = proc.get_egid();
@@ -81,7 +84,7 @@ pub fn execve(regs: &Regs) -> Result<i32, Errno> {
 	}
 
 	// Running the process
-	exec(proc, &path, &argv, &envp)?;
+	exec(proc, &path, &*argv, &*envp)?;
 
 	drop(proc_guard);
 	crate::enter_loop();

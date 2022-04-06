@@ -1,6 +1,5 @@
 //! The statx system call returns the extended status of a file.
 
-use core::mem::size_of;
 use crate::errno::Errno;
 use crate::file::File;
 use crate::file::FileContent;
@@ -10,6 +9,8 @@ use crate::file::mountpoint::MountSource;
 use crate::file::mountpoint;
 use crate::file::path::Path;
 use crate::process::Process;
+use crate::process::mem_space::ptr::SyscallPtr;
+use crate::process::mem_space::ptr::SyscallString;
 use crate::process::regs::Regs;
 use crate::util::IO;
 use crate::util::ptr::SharedPtr;
@@ -147,10 +148,10 @@ fn get_file(proc: &mut Process, follow_links: bool, dirfd: i32, pathname: &[u8],
 /// The implementation of the `statx` syscall.
 pub fn statx(regs: &Regs) -> Result<i32, Errno> {
 	let dirfd = regs.ebx as i32;
-	let pathname = regs.ecx as *const u8;
+	let pathname: SyscallString = (regs.ecx as usize).into();
 	let flags = regs.edx as i32;
 	let _mask = regs.esi as u32;
-	let statxbuff = regs.edi as *mut Statx;
+	let statxbuff: SyscallPtr<Statx> = (regs.edi as usize).into();
 
 	if pathname.is_null() || statxbuff.is_null() {
 		return Err(errno!(EINVAL));
@@ -160,13 +161,13 @@ pub fn statx(regs: &Regs) -> Result<i32, Errno> {
 	let mut guard = mutex.lock();
 	let proc = guard.get_mut();
 
-	// Getting the path string
-	let path_str = super::util::get_str(proc, pathname)?;
+	let mem_space_guard = proc.get_mem_space().unwrap().lock();
 
-	// Checking access
-	if !proc.get_mem_space().unwrap().can_access(statxbuff as _, size_of::<Statx>(), true, true) {
-		return Err(errno!(EFAULT));
-	}
+	// Getting the path string
+	let path_str = pathname.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
+
+	let mem_space_guard = proc.get_mem_space().unwrap().lock();
+	let statx = statxbuff.get_mut(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
 
 	// TODO Implement all flags
 
@@ -205,9 +206,6 @@ pub fn statx(regs: &Regs) -> Result<i32, Errno> {
 	};
 
 	// Filling the structure
-	let statx = unsafe { // Safe bbecause the access is checked before
-		&mut *statxbuff
-	};
 	*statx = Statx {
 		stx_mask: !0, // TODO
 		stx_blksize: 512, // TODO

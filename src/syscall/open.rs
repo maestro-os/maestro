@@ -14,6 +14,7 @@ use crate::file::file_descriptor;
 use crate::file::path::Path;
 use crate::file;
 use crate::process::Process;
+use crate::process::mem_space::ptr::SyscallString;
 use crate::process::regs::Regs;
 use crate::util::FailableClone;
 use crate::util::ptr::SharedPtr;
@@ -60,13 +61,15 @@ fn get_file(path: Path, flags: i32, mode: Mode, uid: Uid, gid: Gid)
 }
 
 /// Performs the open system call.
-pub fn open_(pathname: *const u8, flags: i32, mode: file::Mode) -> Result<i32, Errno> {
+pub fn open_(pathname: SyscallString, flags: i32, mode: file::Mode) -> Result<i32, Errno> {
 	let mutex = Process::get_current().unwrap();
 	let mut guard = mutex.lock();
 	let proc = guard.get_mut();
 
+	let mem_space_guard = proc.get_mem_space().unwrap().lock();
+
 	// Getting the path string
-	let path_str = super::util::get_str(proc, pathname)?;
+	let path_str = pathname.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
 
 	let mode = mode & !proc.get_umask();
 	let uid = proc.get_euid();
@@ -89,7 +92,7 @@ pub fn open_(pathname: *const u8, flags: i32, mode: file::Mode) -> Result<i32, E
 
 /// The implementation of the `open` syscall.
 pub fn open(regs: &Regs) -> Result<i32, Errno> {
-	let pathname = regs.ebx as *const u8;
+	let pathname: SyscallString = (regs.ebx as usize).into();
 	let flags = regs.ecx as i32;
 	let mode = regs.edx as file::Mode;
 

@@ -1,11 +1,10 @@
 //! The uname syscall is used to retrieve informations about the system.
 
-use core::cmp::min;
-use core::mem::size_of;
 use crate::errno::Errno;
-use crate::errno;
 use crate::process::Process;
+use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::regs::Regs;
+use crate::util;
 
 /// The length of a field of the utsname structure.
 const UTSNAME_LENGTH: usize = 65;
@@ -23,27 +22,17 @@ struct Utsname {
 	machine: [u8; UTSNAME_LENGTH],
 }
 
-/// Copies from slice `src` to `dst`. If one slice is smaller than the other, the function stops
-/// when the end of the smallest is reached.
-fn slice_copy(src: &[u8], dst: &mut [u8]) {
-	let len = min(src.len(), dst.len());
-	dst[..len].copy_from_slice(&src[..len]);
-}
-
 /// The implementation of the `uname` syscall.
 pub fn uname(regs: &Regs) -> Result<i32, Errno> {
-	let buf = regs.ebx as *mut Utsname;
+	let buf: SyscallPtr<Utsname> = (regs.ebx as usize).into();
 
 	let mutex = Process::get_current().unwrap();
 	let mut guard = mutex.lock();
 	let proc = guard.get_mut();
-	if !proc.get_mem_space().unwrap().can_access(buf as _, size_of::<Utsname>(), true, true) {
-		return Err(errno!(EFAULT));
-	}
 
-	let utsname = unsafe {
-		&mut *buf
-	};
+	let mem_space_guard = proc.get_mem_space().unwrap().lock();
+	let utsname = buf.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
+
 	*utsname = Utsname {
 		sysname: [0; UTSNAME_LENGTH],
 		nodename: [0; UTSNAME_LENGTH],
@@ -52,11 +41,11 @@ pub fn uname(regs: &Regs) -> Result<i32, Errno> {
 		machine: [0; UTSNAME_LENGTH],
 	};
 
-	slice_copy(&crate::NAME.as_bytes(), &mut utsname.sysname);
-	slice_copy(&[], &mut utsname.nodename);
-	slice_copy(&crate::VERSION.as_bytes(), &mut utsname.release);
-	slice_copy(&[], &mut utsname.version);
-	slice_copy(&"x86".as_bytes(), &mut utsname.machine); // TODO Adapt to current architecture
+	util::slice_copy(&crate::NAME.as_bytes(), &mut utsname.sysname);
+	util::slice_copy(&[], &mut utsname.nodename);
+	util::slice_copy(&crate::VERSION.as_bytes(), &mut utsname.release);
+	util::slice_copy(&[], &mut utsname.version);
+	util::slice_copy(&"x86".as_bytes(), &mut utsname.machine); // TODO Adapt to current architecture
 
 	Ok(0)
 }

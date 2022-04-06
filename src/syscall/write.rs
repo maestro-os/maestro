@@ -1,11 +1,11 @@
 //! This module implements the `write` system call, which allows to write data to a file.
 
 use core::cmp::min;
-use core::slice;
 use crate::errno::Errno;
 use crate::errno;
 use crate::file::file_descriptor::O_NONBLOCK;
 use crate::process::Process;
+use crate::process::mem_space::ptr::SyscallSlice;
 use crate::process::regs::Regs;
 
 // TODO Return EPIPE and kill with SIGPIPE when writing on a broken pipe
@@ -14,29 +14,13 @@ use crate::process::regs::Regs;
 /// The implementation of the `write` syscall.
 pub fn write(regs: &Regs) -> Result<i32, Errno> {
 	let fd = regs.ebx;
-	let buf = regs.ecx as *const u8;
+	let buf: SyscallSlice<u8> = (regs.ecx as usize).into();
 	let count = regs.edx as usize;
-
-	{
-		let mutex = Process::get_current().unwrap();
-		let mut guard = mutex.lock();
-		let proc = guard.get_mut();
-
-		if !proc.get_mem_space().unwrap().can_access(buf, count, true, false) {
-			return Err(errno!(EFAULT));
-		}
-	}
 
 	let len = min(count, i32::MAX as usize);
 	if len == 0 {
 		return Ok(0);
 	}
-
-	// Safe because the permission to access the memory has been checked by the previous
-	// condition
-	let data = unsafe {
-		slice::from_raw_parts(buf, len)
-	};
 
 	loop {
 		// Trying to write and getting the length of written data
@@ -45,11 +29,12 @@ pub fn write(regs: &Regs) -> Result<i32, Errno> {
 			let mut guard = mutex.lock();
 			let proc = guard.get_mut();
 
-			let fd = proc.get_fd(fd).ok_or(errno!(EBADF))?;
-			// TODO Check file permissions?
+			let mem_space_guard = proc.get_mem_space().unwrap().lock();
+			let buf_slice = buf.get_mut(&mem_space_guard, len)?.ok_or(errno!(EFAULT))?;
 
+			let fd = proc.get_fd(fd).ok_or(errno!(EBADF))?;
 			let flags = fd.get_flags();
-			(fd.write(data)?, flags)
+			(fd.write(buf_slice)?, flags)
 		};
 
 		// TODO Continue until everything was written?

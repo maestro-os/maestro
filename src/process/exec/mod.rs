@@ -23,7 +23,7 @@ pub trait Executor {
 /// `path` is the path to the program.
 /// `argv` is the list of arguments.
 /// `envp` is the environment.
-pub fn exec(process: &mut Process, path: &Path, argv: &Vec<&[u8]>, envp: &Vec<&[u8]>)
+pub fn exec(process: &mut Process, path: &Path, argv: &[&[u8]], envp: &[&[u8]])
 	-> Result<(), Errno> {
 
 	// TODO Support other formats than ELF (wasm?)

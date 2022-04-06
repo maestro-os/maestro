@@ -1,11 +1,10 @@
 //! The `waitpid` system call allows to wait for an event from a child process.
 
-use core::mem::size_of;
-use core::ptr::NonNull;
 use crate::errno::Errno;
 use crate::errno;
 use crate::process::Process;
 use crate::process::State;
+use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::pid::Pid;
 use crate::process::regs::Regs;
 use crate::process::rusage::RUsage;
@@ -81,14 +80,13 @@ fn get_wstatus(proc: &Process) -> i32 {
 /// Waits on the given process.
 /// `proc` is the current process.
 /// `wstatus` is a reference to the wait status. If None, the wstatus is not written.
-/// `rusage` is the pointer to the resource usage structure.
-fn wait_proc(proc: &mut Process, wstatus: &mut Option<&mut i32>,
-	rusage: &mut Option<&mut RUsage>) {
+/// `rusage` is the pointer to the resource usage structure. If None, the rusage is not written.
+fn wait_proc(proc: &mut Process, wstatus: Option<&mut i32>, rusage: Option<&mut RUsage>) {
 	if let Some(wstatus) = wstatus {
-		**wstatus = get_wstatus(&proc);
+		*wstatus = get_wstatus(&proc);
 	}
 	if let Some(rusage) = rusage {
-		**rusage = proc.get_rusage().clone();
+		*rusage = proc.get_rusage().clone();
 	}
 
 	proc.clear_waitable();
@@ -100,8 +98,8 @@ fn wait_proc(proc: &mut Process, wstatus: &mut Option<&mut i32>,
 /// `pid` is the constraint given to the system call.
 /// `wstatus` is a reference to the wait status. If None, the wstatus is not written.
 /// `rusage` is the pointer to the resource usage structure.
-fn check_waitable(proc: &mut Process, pid: i32, wstatus: &mut Option<&mut i32>,
-	rusage: &mut Option<&mut RUsage>) -> Result<Option<Pid>, Errno> {
+fn check_waitable(proc: &mut Process, pid: i32, wstatus: Option<&mut i32>,
+	rusage: Option<&mut RUsage>) -> Result<Option<Pid>, Errno> {
 	let mut scheduler_guard = process::get_scheduler().lock();
 	let scheduler = scheduler_guard.get_mut();
 
@@ -148,37 +146,8 @@ fn check_waitable(proc: &mut Process, pid: i32, wstatus: &mut Option<&mut i32>,
 /// `wstatus` is the pointer on which to write the status.
 /// `options` are flags passed with the syscall.
 /// `rusage` is the pointer to the resource usage structure.
-pub fn do_waitpid(pid: i32, wstatus: Option<NonNull<i32>>, options: i32,
-	rusage: Option<NonNull<RUsage>>) -> Result<i32, Errno> {
-	if wstatus.is_some() || rusage.is_some() {
-		let mutex = Process::get_current().unwrap();
-		let mut guard = mutex.lock();
-		let proc = guard.get_mut();
-
-		// Checking access to wstatus
-		if let Some(wstatus) = wstatus {
-			let len = size_of::<i32>();
-			if !proc.get_mem_space().unwrap().can_access(wstatus.as_ptr() as _, len, true, true) {
-				return Err(errno!(EINVAL));
-			}
-		}
-
-		// Checking access to rusage
-		if let Some(rusage) = rusage {
-			let len = size_of::<RUsage>();
-			if !proc.get_mem_space().unwrap().can_access(rusage.as_ptr() as _, len, true, true) {
-				return Err(errno!(EINVAL));
-			}
-		}
-	}
-
-	let mut wstatus = wstatus.map(| wstatus | unsafe { // Safe because the access is checked before
-		&mut *wstatus.as_ptr()
-	});
-	let mut rusage = rusage.map(| rusage | unsafe { // Safe because the access is checked before
-		&mut *rusage.as_ptr()
-	});
-
+pub fn do_waitpid(pid: i32, wstatus: SyscallPtr<i32>, options: i32,
+	rusage: Option<SyscallPtr<RUsage>>) -> Result<i32, Errno> {
 	// Sleeping until a target process is waitable
 	loop {
 		// Check if at least one target process is waitable
@@ -187,8 +156,15 @@ pub fn do_waitpid(pid: i32, wstatus: Option<NonNull<i32>>, options: i32,
 			let mut guard = mutex.lock();
 			let proc = guard.get_mut();
 
+			let mem_space_guard = proc.get_mem_space().unwrap().lock();
+			let wstatus = wstatus.get_mut(&mem_space_guard)?;
+			let rusage = match rusage {
+				Some(rusage) => rusage.get_mut(&mem_space_guard)?,
+				None => None,
+			};
+
 			// If waitable, return
-			if let Some(p) = check_waitable(proc, pid, &mut wstatus, &mut rusage)? {
+			if let Some(p) = check_waitable(proc, pid, wstatus, rusage)? {
 				return Ok(p as _);
 			}
 		}
@@ -215,8 +191,8 @@ pub fn do_waitpid(pid: i32, wstatus: Option<NonNull<i32>>, options: i32,
 /// The implementation of the `waitpid` syscall.
 pub fn waitpid(regs: &Regs) -> Result<i32, Errno> {
 	let pid = regs.ebx as i32;
-	let wstatus = regs.ecx as *mut i32;
+	let wstatus: SyscallPtr<i32> = (regs.ecx as usize).into();
 	let options = regs.edx as i32;
 
-	do_waitpid(pid, NonNull::new(wstatus), options, None)
+	do_waitpid(pid, wstatus, options, None)
 }

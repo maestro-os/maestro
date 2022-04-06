@@ -5,6 +5,7 @@ use core::fmt;
 use core::hash::Hash;
 use core::hash::Hasher;
 use core::ops::Add;
+use core::ops::Deref;
 use core::str;
 use crate::errno::Errno;
 use crate::util::FailableClone;
@@ -158,6 +159,14 @@ impl String {
 	/// Turns the string into an empty string.
 	pub fn clear(&mut self) {
 		self.data.clear();
+	}
+}
+
+impl Deref for String {
+	type Target = [u8];
+
+	fn deref(&self) -> &Self::Target {
+		self.as_bytes()
 	}
 }
 

@@ -9,12 +9,13 @@ use crate::file::fcache;
 use crate::file::path::Path;
 use crate::file;
 use crate::process::Process;
+use crate::process::mem_space::ptr::SyscallString;
 use crate::process::regs::Regs;
 use crate::util::FailableClone;
 
 /// The implementation of the `getuid` syscall.
 pub fn mknod(regs: &Regs) -> Result<i32, Errno> {
-	let pathname = regs.ebx as *const u8;
+	let pathname: SyscallString = (regs.ebx as usize).into();
 	let mode = regs.ecx as file::Mode;
 	let dev = regs.edx as u64;
 
@@ -24,10 +25,13 @@ pub fn mknod(regs: &Regs) -> Result<i32, Errno> {
 		let mut guard = mutex.lock();
 		let proc = guard.get_mut();
 
+		let mem_space_guard = proc.get_mem_space().unwrap().lock();
+
+		let path =Path::from_str(pathname.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?, true)?;
 		let umask = proc.get_umask();
 		let uid = proc.get_uid();
 		let gid = proc.get_gid();
-		(Path::from_str(super::util::get_str(proc, pathname)?, true)?, umask, uid, gid)
+		(path, umask, uid, gid)
 	};
 
 	if path.is_empty() {

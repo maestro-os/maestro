@@ -81,7 +81,7 @@ impl<T: Sized> SyscallPtr<T> {
 /// Wrapper for a slice. Internally, the structure contains only a pointer. The size of the slice
 /// is given when trying to access it.
 pub struct SyscallSlice<T: Sized> {
-	/// The poointer.
+	/// The pointer.
 	ptr: *mut T,
 }
 
@@ -145,5 +145,64 @@ impl<T: Sized> SyscallSlice<T> {
 		} else {
 			Err(errno!(EFAULT))
 		}
+	}
+}
+
+/// Wrapper for a string. Internally, the structure contains only a pointer.
+pub struct SyscallString {
+	/// The pointer.
+	ptr: *mut u8,
+}
+
+impl From<usize> for SyscallString {
+	fn from(val: usize) -> Self {
+		Self {
+			ptr: val as _,
+		}
+	}
+}
+
+impl SyscallString {
+	/// Tells whether the pointer is null.
+	pub fn is_null(&self) -> bool {
+		self.ptr.is_null()
+	}
+
+	/// Returns an immutable pointer to the the data.
+	pub fn as_ptr(&self) -> *const u8 {
+		self.ptr
+	}
+
+	/// Returns a mutable pointer to the the data.
+	pub fn as_ptr_mut(&self) -> *mut u8 {
+		self.ptr
+	}
+
+	/// Returns an immutable reference to the string.
+	/// If the string is not accessible, the function returns an error.
+	pub fn get<'a, const Int: bool>(&self, mem_space: &'a MutexGuard<MemSpace, Int>)
+		-> Result<Option<&'a [u8]>, Errno> {
+		if self.is_null() {
+			return Ok(None);
+		}
+
+		let len = mem_space.get().can_access_string(self.ptr, true, false).ok_or(errno!(EFAULT))?;
+		Ok(Some(unsafe { // Safe because access is checked before
+			slice::from_raw_parts(self.ptr, len)
+		}))
+	}
+
+	/// Returns a mutable reference to the string.
+	/// If the string is not accessible, the function returns an error.
+	pub fn get_mut<'a, const Int: bool>(&self, mem_space: &'a MutexGuard<MemSpace, Int>)
+		-> Result<Option<&'a mut [u8]>, Errno> {
+		if self.is_null() {
+			return Ok(None);
+		}
+
+		let len = mem_space.get().can_access_string(self.ptr, true, true).ok_or(errno!(EFAULT))?;
+		Ok(Some(unsafe { // Safe because access is checked before
+			slice::from_raw_parts_mut(self.ptr, len)
+		}))
 	}
 }

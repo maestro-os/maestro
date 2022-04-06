@@ -11,6 +11,7 @@ pub mod lock;
 pub mod math;
 pub mod ptr;
 
+use core::cmp::min;
 use core::ffi::c_void;
 use core::mem::size_of;
 use core::slice;
@@ -163,6 +164,13 @@ pub fn nbr_len(s: &[u8]) -> usize {
 	}
 
 	i
+}
+
+/// Copies from slice `src` to `dst`. If one slice is smaller than the other, the function stops
+/// when the end of the smallest is reached.
+pub fn slice_copy(src: &[u8], dst: &mut [u8]) {
+	let len = min(src.len(), dst.len());
+	dst[..len].copy_from_slice(&src[..len]);
 }
 
 /// Trait allowing to perform a clone of a structure that can possibly fail (on memory allocation

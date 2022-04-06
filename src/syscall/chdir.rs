@@ -6,17 +6,20 @@ use crate::file::FileType;
 use crate::file::fcache;
 use crate::file::path::Path;
 use crate::process::Process;
+use crate::process::mem_space::ptr::SyscallString;
 use crate::process::regs::Regs;
 
 /// The implementation of the `chdir` syscall.
 pub fn chdir(regs: &Regs) -> Result<i32, Errno> {
-	let path = regs.ebx as *const u8;
+	let path: SyscallString = (regs.ebx as usize).into();
 
 	let mutex = Process::get_current().unwrap();
 	let mut guard = mutex.lock();
 	let proc = guard.get_mut();
 
-	let path_str = super::util::get_str(proc, path)?;
+	let mem_space_guard = proc.get_mem_space().unwrap().lock();
+	let path_str = path.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
+
 	let new_cwd = super::util::get_absolute_path(&proc, Path::from_str(path_str, true)?)?;
 
 	{

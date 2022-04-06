@@ -6,21 +6,24 @@ use crate::file::fcache;
 use crate::file::path::Path;
 use crate::file;
 use crate::process::Process;
+use crate::process::mem_space::ptr::SyscallString;
 use crate::process::regs::Regs;
 use crate::util::FailableClone;
 use crate::util::container::vec::Vec;
 
 /// The implementation of the `mkdir` syscall.
 pub fn mkdir(regs: &Regs) -> Result<i32, Errno> {
-	let pathname = regs.ebx as *const u8;
+	let pathname: SyscallString = (regs.ebx as usize).into();
 	let mode = regs.ecx as file::Mode;
 
 	let mutex = Process::get_current().unwrap();
 	let mut guard = mutex.lock();
 	let proc = guard.get_mut();
 
+	let mem_space_guard = proc.get_mem_space().unwrap().lock();
+
 	// The path to the directory to create
-	let mut path = Path::from_str(super::util::get_str(proc, pathname)?, true)?;
+	let mut path = Path::from_str(pathname.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?, true)?;
 	path = super::util::get_absolute_path(proc, path)?;
 
 	if !path.is_empty() {

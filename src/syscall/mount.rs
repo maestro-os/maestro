@@ -11,15 +11,17 @@ use crate::file::mountpoint::MountSource;
 use crate::file::mountpoint;
 use crate::file::path::Path;
 use crate::process::Process;
+use crate::process::mem_space::ptr::SyscallPtr;
+use crate::process::mem_space::ptr::SyscallString;
 use crate::process::regs::Regs;
 
 /// The implementation of the `mount` syscall.
 pub fn mount(regs: &Regs) -> Result<i32, Errno> {
-	let source = regs.ebx as *const u8;
-	let target = regs.ecx as *const u8;
-	let filesystemtype = regs.edx as *const u8;
+	let source: SyscallString = (regs.ebx as usize).into();
+	let target: SyscallString = (regs.ecx as usize).into();
+	let filesystemtype: SyscallString = (regs.edx as usize).into();
 	let mountflags = regs.esi as u32;
-	let _data = regs.edi as *const c_void;
+	let _data: SyscallPtr<c_void> = (regs.edi as usize).into();
 
 	// Getting slices to strings
 	let (source_slice, target_slice, filesystemtype_slice, uid, gid) = {
@@ -28,10 +30,12 @@ pub fn mount(regs: &Regs) -> Result<i32, Errno> {
 		let guard = mutex.lock();
 		let proc = guard.get();
 
+		let mem_space_guard = proc.get_mem_space().unwrap().lock();
+
 		// Getting strings
-		let source_slice = super::util::get_str(proc, source)?;
-		let target_slice = super::util::get_str(proc, target)?;
-		let filesystemtype_slice = super::util::get_str(proc, filesystemtype)?;
+		let source_slice = source.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
+		let target_slice = target.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
+		let filesystemtype_slice = filesystemtype.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
 
 		(source_slice, target_slice, filesystemtype_slice, proc.get_euid(), proc.get_egid())
 	};

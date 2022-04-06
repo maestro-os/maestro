@@ -5,12 +5,13 @@ use crate::errno::Errno;
 use crate::file::fcache;
 use crate::file::path::Path;
 use crate::process::Process;
+use crate::process::mem_space::ptr::SyscallString;
 use crate::process::regs::Regs;
 use crate::util::FailableClone;
 
 /// The implementation of the `unlink` syscall.
 pub fn unlink(regs: &Regs) -> Result<i32, Errno> {
-	let pathname = regs.ebx as *const u8;
+	let pathname: SyscallString = (regs.ebx as usize).into();
 
 	let (path, uid, gid) = {
 		// Getting the process
@@ -18,7 +19,8 @@ pub fn unlink(regs: &Regs) -> Result<i32, Errno> {
 		let mut guard = mutex.lock();
 		let proc = guard.get_mut();
 
-		let path = Path::from_str(super::util::get_str(proc, pathname)?, true)?;
+		let mem_space_guard = proc.get_mem_space().unwrap().lock();
+		let path = Path::from_str(pathname.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?, true)?;
 		(path, proc.get_euid(), proc.get_egid())
 	};
 
