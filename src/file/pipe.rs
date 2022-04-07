@@ -13,6 +13,9 @@ const BUFFER_SIZE: usize = 65536;
 pub struct Pipe {
 	/// The pipe's buffer.
 	buffer: RingBuffer<u8>,
+
+	/// Tells whether the pipe is closed.
+	closed: bool,
 }
 
 impl Pipe {
@@ -20,6 +23,8 @@ impl Pipe {
 	pub fn new() -> Result<Self, Errno> {
 		Ok(Self {
 			buffer: RingBuffer::new(BUFFER_SIZE)?,
+
+			closed: false,
 		})
 	}
 
@@ -40,7 +45,21 @@ impl Pipe {
 	/// Writes data to the pipe.
 	/// `buf` is the slice to read from.
 	/// The functions returns the number of bytes that have been written.
-	pub fn write(&mut self, buf: &[u8]) -> usize {
-		self.buffer.write(buf)
+	pub fn write(&mut self, buf: &[u8]) -> Result<usize, Errno> {
+		if !self.closed {
+			Ok(self.buffer.write(buf))
+		} else {
+			Err(errno!(EPIPE))
+		}
+	}
+
+	/// Tells whether the pipe is closed.
+	pub fn is_closed(&self) -> bool {
+		self.closed
+	}
+
+	/// Closes the pipe. If the pipe is already closed, the function does nothing.
+	pub fn close(&mut self) {
+		self.closed = true;
 	}
 }

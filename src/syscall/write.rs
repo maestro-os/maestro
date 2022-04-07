@@ -36,7 +36,7 @@ pub fn write(regs: &Regs) -> Result<i32, Errno> {
 
 			let fd = proc.get_fd(fd).ok_or(errno!(EBADF))?;
 			let flags = fd.get_flags();
-			(fd.write(buf_slice)?, flags)
+			(fd.write(buf_slice)?, flags) // TODO On EPIPE, kill current with SIGPIPE
 		};
 
 		// TODO Continue until everything was written?

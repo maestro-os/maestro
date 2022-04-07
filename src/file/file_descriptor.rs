@@ -262,7 +262,7 @@ impl FileDescriptor {
 
 			FDTarget::Pipe(p) => {
 				let mut guard = p.lock();
-				guard.get_mut().write(buf) as _
+				guard.get_mut().write(buf)? as _
 			}
 
 			FDTarget::Socket(s) => {
