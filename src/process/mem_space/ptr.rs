@@ -50,7 +50,7 @@ impl<T: Sized> SyscallPtr<T> {
 			return Ok(None);
 		}
 
-		if mem_space.get().can_access(self.ptr as _, size_of::<MemSpace>(), true, false) {
+		if mem_space.get().can_access(self.ptr as _, size_of::<T>(), true, false) {
 			Ok(Some(unsafe { // Safe because access is checked before
 				&*self.ptr
 			}))
@@ -68,7 +68,7 @@ impl<T: Sized> SyscallPtr<T> {
 			return Ok(None);
 		}
 
-		if mem_space.get().can_access(self.ptr as _, size_of::<MemSpace>(), true, true) {
+		if mem_space.get().can_access(self.ptr as _, size_of::<T>(), true, true) {
 			Ok(Some(unsafe { // Safe because access is checked before
 				&mut *self.ptr
 			}))
@@ -109,38 +109,38 @@ impl<T: Sized> SyscallSlice<T> {
 		self.ptr
 	}
 
-	/// Returns an immutable reference to the value of the pointer.
-	/// `size` is the size of the slice in number of elements.
-	/// If the value is not accessible, the function returns an error.
-	pub fn get<'a, const INT: bool>(&self, mem_space: &'a MutexGuard<MemSpace, INT>, size: usize)
+	/// Returns an immutable reference to the slice.
+	/// `len` is the in number of elements in the slice.
+	/// If the slice is not accessible, the function returns an error.
+	pub fn get<'a, const INT: bool>(&self, mem_space: &'a MutexGuard<MemSpace, INT>, len: usize)
 		-> Result<Option<&'a [T]>, Errno> {
 		if self.is_null() {
 			return Ok(None);
 		}
 
-		let size = size_of::<MemSpace>() * size;
+		let size = size_of::<T>() * len;
 		if mem_space.get().can_access(self.ptr as _, size, true, false) {
 			Ok(Some(unsafe { // Safe because access is checked before
-				slice::from_raw_parts(self.ptr, size)
+				slice::from_raw_parts(self.ptr, len)
 			}))
 		} else {
 			Err(errno!(EFAULT))
 		}
 	}
 
-	/// Returns a mutable reference to the value of the pointer.
-	/// `size` is the size of the slice in number of elements.
-	/// If the value is not accessible, the function returns an error.
+	/// Returns a mutable reference to the slice.
+	/// `len` is the in number of elements in the slice.
+	/// If the slice is not accessible, the function returns an error.
 	pub fn get_mut<'a, const INT: bool>(&self, mem_space: &'a MutexGuard<MemSpace, INT>,
-		size: usize) -> Result<Option<&'a mut [T]>, Errno> {
+		len: usize) -> Result<Option<&'a mut [T]>, Errno> {
 		if self.is_null() {
 			return Ok(None);
 		}
 
-		let size = size_of::<MemSpace>() * size;
+		let size = size_of::<T>() * len;
 		if mem_space.get().can_access(self.ptr as _, size, true, true) {
 			Ok(Some(unsafe { // Safe because access is checked before
-				slice::from_raw_parts_mut(self.ptr, size)
+				slice::from_raw_parts_mut(self.ptr, len)
 			}))
 		} else {
 			Err(errno!(EFAULT))

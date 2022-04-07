@@ -32,7 +32,7 @@ pub fn write(regs: &Regs) -> Result<i32, Errno> {
 			let mem_space = proc.get_mem_space().unwrap();
 			let mem_space_guard = mem_space.lock();
 
-			let buf_slice = buf.get_mut(&mem_space_guard, len)?.ok_or(errno!(EFAULT))?;
+			let buf_slice = buf.get(&mem_space_guard, len)?.ok_or(errno!(EFAULT))?;
 
 			let fd = proc.get_fd(fd).ok_or(errno!(EBADF))?;
 			let flags = fd.get_flags();
