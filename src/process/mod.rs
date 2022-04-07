@@ -300,7 +300,8 @@ pub fn init() -> Result<(), Errno> {
 
 			// Handling page fault
 			let success = {
-				let mut mem_space_guard = curr_proc.get_mem_space().unwrap().lock();
+				let mem_space = curr_proc.get_mem_space().unwrap();
+				let mut mem_space_guard = mem_space.lock();
 				let mem_space = mem_space_guard.get_mut();
 
 				mem_space.handle_page_fault(accessed_ptr, code)
@@ -682,8 +683,8 @@ impl Process {
 	/// Returns a reference to the process's memory space.
 	/// If the process is terminated, the function returns None.
 	#[inline(always)]
-	pub fn get_mem_space(&self) -> Option<&IntSharedPtr<MemSpace>> {
-		self.mem_space.as_ref()
+	pub fn get_mem_space(&self) -> Option<IntSharedPtr<MemSpace>> {
+		self.mem_space.clone()
 	}
 
 	/// Sets the new memory space for the process, dropping the previous if any.

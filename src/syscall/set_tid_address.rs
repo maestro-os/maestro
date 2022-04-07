@@ -15,7 +15,8 @@ pub fn set_tid_address(regs: &Regs) -> Result<i32, Errno> {
 	let mut guard = mutex.lock();
 	let proc = guard.get_mut();
 
-	let mem_space_guard = proc.get_mem_space().unwrap().lock();
+	let mem_space = proc.get_mem_space().unwrap();
+	let mem_space_guard = mem_space.lock();
 
 	let ptr = NonNull::new(tidptr.as_ptr_mut());
 	proc.set_clear_child_tid(ptr);
@@ -23,7 +24,7 @@ pub fn set_tid_address(regs: &Regs) -> Result<i32, Errno> {
 	let tid = proc.get_tid();
 
 	// Setting the TID at pointer if accessible
-	if let Some(tidptr) = tidptr.get(&mem_space_guard)? {
+	if let Some(tidptr) = tidptr.get_mut(&mem_space_guard)? {
 		*tidptr = tid as _;
 	}
 

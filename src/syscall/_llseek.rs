@@ -12,8 +12,6 @@ const SEEK_CUR: u32 = 1;
 /// Sets the offset relative to the end of the file.
 const SEEK_END: u32 = 2;
 
-// TODO Find a cleaner solution (avoid getting the fd twice)
-
 /// The implementation of the `_llseek` syscall.
 pub fn _llseek(regs: &Regs) -> Result<i32, Errno> {
 	let fd = regs.ebx as u32;
@@ -25,6 +23,8 @@ pub fn _llseek(regs: &Regs) -> Result<i32, Errno> {
 	let mutex = Process::get_current().unwrap();
 	let mut guard = mutex.lock();
 	let proc = guard.get_mut();
+
+	let mem_space = proc.get_mem_space().unwrap();
 
 	// Getting the file descriptor
 	let file_desc = proc.get_fd(fd).ok_or(errno!(EBADF))?;
@@ -40,7 +40,7 @@ pub fn _llseek(regs: &Regs) -> Result<i32, Errno> {
 	};
 
 	{
-		let mem_space_guard = proc.get_mem_space().unwrap().lock();
+		let mem_space_guard = mem_space.lock();
 		// Writting the result to the userspace
 		if let Some(result) = result.get_mut(&mem_space_guard)? {
 			*result = off;
@@ -48,7 +48,6 @@ pub fn _llseek(regs: &Regs) -> Result<i32, Errno> {
 	}
 
 	// Setting the offset
-	let file_desc = proc.get_fd(fd).unwrap(); // Won't fail because checked before
 	file_desc.set_offset(off);
 
 	Ok(0)

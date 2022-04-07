@@ -366,7 +366,8 @@ impl Signal {
 
 					// FIXME Don't write data out of the stack
 					oom::wrap(|| {
-						let mut mem_space_guard = process.get_mem_space().unwrap().lock();
+						let mem_space = process.get_mem_space().unwrap();
+						let mut mem_space_guard = mem_space.lock();
 						let mem_space = mem_space_guard.get_mut();
 
 						debug_assert!(mem_space.is_bound());

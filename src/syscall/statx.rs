@@ -161,12 +161,14 @@ pub fn statx(regs: &Regs) -> Result<i32, Errno> {
 	let mut guard = mutex.lock();
 	let proc = guard.get_mut();
 
-	let mem_space_guard = proc.get_mem_space().unwrap().lock();
+	let mem_space = proc.get_mem_space().unwrap();
+	let mem_space_guard = mem_space.lock();
 
 	// Getting the path string
 	let path_str = pathname.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
 
-	let mem_space_guard = proc.get_mem_space().unwrap().lock();
+	let mem_space = proc.get_mem_space().unwrap();
+	let mem_space_guard = mem_space.lock();
 	let statx = statxbuff.get_mut(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
 
 	// TODO Implement all flags

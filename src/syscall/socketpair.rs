@@ -22,8 +22,9 @@ pub fn socketpair(regs: &Regs) -> Result<i32, Errno> {
 	let mut guard = mutex.lock();
 	let proc = guard.get_mut();
 
-	let mem_space_guard = proc.get_mem_space().unwrap().lock();
-	let sv_slice = sv.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
+	let mem_space = proc.get_mem_space().unwrap();
+	let mem_space_guard = mem_space.lock();
+	let sv_slice = sv.get_mut(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
 
 	let sock = Socket::new(domain, type_, protocol)?;
 	let sock2 = sock.clone();

@@ -22,7 +22,8 @@ pub fn init_module(regs: &Regs) -> Result<i32, Errno> {
 			return Err(errno!(EPERM));
 		}
 
-		let mem_space_guard = proc.get_mem_space().unwrap().lock();
+		let mem_space = proc.get_mem_space().unwrap();
+		let mem_space_guard = mem_space.lock();
 		let image = module_image.get(&mem_space_guard, len as usize)?.ok_or(errno!(EFAULT))?;
 
 		Module::load(image)?

@@ -68,7 +68,8 @@ pub fn open_(pathname: SyscallString, flags: i32, mode: file::Mode) -> Result<i3
 
 	// Getting the path string
 	let path = {
-		let mem_space_guard = proc.get_mem_space().unwrap().lock();
+		let mem_space = proc.get_mem_space().unwrap();
+		let mem_space_guard = mem_space.lock();
 		Path::from_str(pathname.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?, true)?
 	};
 

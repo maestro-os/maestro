@@ -40,7 +40,8 @@ pub fn execve(regs: &Regs) -> Result<i32, Errno> {
 	let proc = proc_guard.get_mut();
 
 	let path = {
-		let mem_space_guard = proc.get_mem_space().unwrap().lock();
+		let mem_space = proc.get_mem_space().unwrap();
+		let mem_space_guard = mem_space.lock();
 		Path::from_str(pathname.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?, true)?
 	};
 

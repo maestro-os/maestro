@@ -98,7 +98,9 @@ pub fn do_mmap(addr: *mut c_void, length: usize, prot: i32, flags: i32, fd: i32,
 	}
 
 	// The process's memory space
-	let mut mem_space_guard = proc.get_mem_space().unwrap().lock();
+	let mem_space = proc.get_mem_space().unwrap();
+	let mut mem_space_guard = mem_space.lock();
+
 	// FIXME Passing the hint as an exact location
 	// The pointer on the virtual memory to the beginning of the mapping
 	let ptr = mem_space_guard.get_mut().map(addr_hint, pages, get_flags(flags, prot), fd, offset)?;

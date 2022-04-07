@@ -16,14 +16,14 @@ pub fn time(regs: &Regs) -> Result<i32, Errno> {
 	let mut guard = mutex.lock();
 	let proc = guard.get_mut();
 
-	let mem_space_guard = proc.get_mem_space().unwrap().lock();
-	let tloc_ptr = tloc.get(&mem_space_guard)?;
+	let mem_space = proc.get_mem_space().unwrap();
+	let mem_space_guard = mem_space.lock();
 
 	// Getting the current timestamp
 	let time = time::get().unwrap_or(0);
 
 	// Writing the timestamp to the given location, if not null
-	if let Some(tloc) = tloc_ptr {
+	if let Some(tloc) = tloc.get_mut(&mem_space_guard)? {
 		*tloc = time;
 	}
 

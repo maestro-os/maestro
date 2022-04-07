@@ -25,7 +25,8 @@ pub fn modify_ldt(regs: &Regs) -> Result<i32, Errno> {
 	let mut guard = mutex.lock();
 	let proc = guard.get_mut();
 
-	let mem_space_guard = proc.get_mem_space().unwrap().lock();
+	let mem_space = proc.get_mem_space().unwrap();
+	let mem_space_guard = mem_space.lock();
 	let ptr_slice = ptr.get_mut(&mem_space_guard, bytecount as _)?.ok_or(errno!(EFAULT))?;
 
 	match func {

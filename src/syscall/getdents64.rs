@@ -39,7 +39,8 @@ pub fn getdents64(regs: &Regs) -> Result<i32, Errno> {
 	let mut guard = mutex.lock();
 	let proc = guard.get_mut();
 
-	let mem_space_guard = proc.get_mem_space().unwrap().lock();
+	let mem_space = proc.get_mem_space().unwrap();
+	let mem_space_guard = mem_space.lock();
 	let dirp_slice = dirp.get_mut(&mem_space_guard, count)?.ok_or(errno!(EFAULT))?;
 
 	// Getting file descriptor

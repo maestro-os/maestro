@@ -56,10 +56,11 @@ pub fn set_thread_area(regs: &Regs) -> Result<i32, Errno> {
 	let mut guard = mutex.lock();
 	let proc = guard.get_mut();
 
-	let mem_space_guard = proc.get_mem_space().unwrap().lock();
+	let mem_space = proc.get_mem_space().unwrap();
+	let mem_space_guard = mem_space.lock();
 
 	// A reference to the user_desc structure
-	let mut info = u_info.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
+	let info = u_info.get_mut(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
 
 	// Getting the entry with its id
 	let (id, entry) = get_entry(proc, info.get_entry_number())?;

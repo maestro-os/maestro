@@ -156,10 +156,12 @@ pub fn do_waitpid(pid: i32, wstatus: SyscallPtr<i32>, options: i32,
 			let mut guard = mutex.lock();
 			let proc = guard.get_mut();
 
-			let mem_space_guard = proc.get_mem_space().unwrap().lock();
+			let mem_space = proc.get_mem_space().unwrap();
+			let mem_space_guard = mem_space.lock();
+
 			let wstatus = wstatus.get_mut(&mem_space_guard)?;
 			let rusage = match rusage {
-				Some(rusage) => rusage.get_mut(&mem_space_guard)?,
+				Some(ref rusage) => rusage.get_mut(&mem_space_guard)?,
 				None => None,
 			};
 

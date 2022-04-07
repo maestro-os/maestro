@@ -44,7 +44,7 @@ impl<T: Sized> SyscallPtr<T> {
 	/// Returns an immutable reference to the value of the pointer.
 	/// If the pointer is null, the function returns None.
 	/// If the value is not accessible, the function returns an error.
-	pub fn get<'a, const Int: bool>(&self, mem_space: &'a MutexGuard<MemSpace, Int>)
+	pub fn get<'a, const INT: bool>(&self, mem_space: &'a MutexGuard<MemSpace, INT>)
 		-> Result<Option<&'a T>, Errno> {
 		if self.is_null() {
 			return Ok(None);
@@ -62,7 +62,7 @@ impl<T: Sized> SyscallPtr<T> {
 	/// Returns a mutable reference to the value of the pointer.
 	/// If the pointer is null, the function returns None.
 	/// If the value is not accessible, the function returns an error.
-	pub fn get_mut<'a, const Int: bool>(&self, mem_space: &'a MutexGuard<MemSpace, Int>)
+	pub fn get_mut<'a, const INT: bool>(&self, mem_space: &'a MutexGuard<MemSpace, INT>)
 		-> Result<Option<&'a mut T>, Errno> {
 		if self.is_null() {
 			return Ok(None);
@@ -112,7 +112,7 @@ impl<T: Sized> SyscallSlice<T> {
 	/// Returns an immutable reference to the value of the pointer.
 	/// `size` is the size of the slice in number of elements.
 	/// If the value is not accessible, the function returns an error.
-	pub fn get<'a, const Int: bool>(&self, mem_space: &'a MutexGuard<MemSpace, Int>, size: usize)
+	pub fn get<'a, const INT: bool>(&self, mem_space: &'a MutexGuard<MemSpace, INT>, size: usize)
 		-> Result<Option<&'a [T]>, Errno> {
 		if self.is_null() {
 			return Ok(None);
@@ -131,7 +131,7 @@ impl<T: Sized> SyscallSlice<T> {
 	/// Returns a mutable reference to the value of the pointer.
 	/// `size` is the size of the slice in number of elements.
 	/// If the value is not accessible, the function returns an error.
-	pub fn get_mut<'a, const Int: bool>(&self, mem_space: &'a MutexGuard<MemSpace, Int>,
+	pub fn get_mut<'a, const INT: bool>(&self, mem_space: &'a MutexGuard<MemSpace, INT>,
 		size: usize) -> Result<Option<&'a mut [T]>, Errno> {
 		if self.is_null() {
 			return Ok(None);
@@ -180,7 +180,7 @@ impl SyscallString {
 
 	/// Returns an immutable reference to the string.
 	/// If the string is not accessible, the function returns an error.
-	pub fn get<'a, const Int: bool>(&self, mem_space: &'a MutexGuard<MemSpace, Int>)
+	pub fn get<'a, const INT: bool>(&self, mem_space: &'a MutexGuard<MemSpace, INT>)
 		-> Result<Option<&'a [u8]>, Errno> {
 		if self.is_null() {
 			return Ok(None);
@@ -194,7 +194,7 @@ impl SyscallString {
 
 	/// Returns a mutable reference to the string.
 	/// If the string is not accessible, the function returns an error.
-	pub fn get_mut<'a, const Int: bool>(&self, mem_space: &'a MutexGuard<MemSpace, Int>)
+	pub fn get_mut<'a, const INT: bool>(&self, mem_space: &'a MutexGuard<MemSpace, INT>)
 		-> Result<Option<&'a mut [u8]>, Errno> {
 		if self.is_null() {
 			return Ok(None);

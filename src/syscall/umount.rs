@@ -17,8 +17,9 @@ pub fn umount(regs: &Regs) -> Result<i32, Errno> {
 	let proc = guard.get();
 
 	// Getting a slice to the string
-	let mem_space = proc.get_mem_space().unwrap().lock();
-	let target_slice = target.get(&mem_space)?.ok_or(errno!(EFAULT))?;
+	let mem_space = proc.get_mem_space().unwrap();
+	let mem_space_guard = mem_space.lock();
+	let target_slice = target.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
 
 	// Getting the mountpoint
 	let target_path = Path::from_str(target_slice, true)?;

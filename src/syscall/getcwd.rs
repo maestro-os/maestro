@@ -26,7 +26,8 @@ pub fn getcwd(regs: &Regs) -> Result<i32, Errno> {
 		return Err(errno!(ERANGE));
 	}
 
-	let mem_space_guard = proc.get_mem_space().unwrap().lock();
+	let mem_space = proc.get_mem_space().unwrap();
+	let mem_space_guard = mem_space.lock();
 
 	let cwd_slice = cwd.as_bytes();
 	let buf_slice = buf.get_mut(&mem_space_guard, size as _)?.ok_or(errno!(EINVAL))?;
