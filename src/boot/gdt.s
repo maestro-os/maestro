@@ -70,10 +70,10 @@ switch_protected:
 complete_flush:
 	mov $GDT_KERNEL_DS, %ax
 	mov %ax, %ds
+	mov %ax, %es
 	mov %ax, %ss
 
 	mov $0, %ax
-	mov %ax, %es
 	mov %ax, %fs
 	mov %ax, %gs
 

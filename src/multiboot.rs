@@ -3,6 +3,7 @@
 
 use core::ffi::c_void;
 use core::mem::ManuallyDrop;
+use core::ptr::null;
 use crate::memory;
 use crate::util;
 
@@ -370,9 +371,9 @@ impl Tag {
 /// Structure representing the informations given to the kernel at boot time.
 pub struct BootInfo {
 	/// The command line used to boot the kernel.
-	pub cmdline: &'static [u8],
+	pub cmdline: Option<&'static [u8]>,
 	/// The bootloader's name.
-	pub loader_name: &'static [u8],
+	pub loader_name: Option<&'static [u8]>,
 
 	/// The lower memory size.
 	pub mem_lower: u32,
@@ -397,17 +398,19 @@ pub struct BootInfo {
 
 /// The field storing the informations given to the kernel at boot time.
 static mut BOOT_INFO: BootInfo = BootInfo {
-	cmdline: b"",
-	loader_name: b"",
+	cmdline: None,
+	loader_name: None,
+
 	mem_lower: 0,
 	mem_upper: 0,
 	memory_maps_size: 0,
 	memory_maps_entry_size: 0,
-	memory_maps: 0 as *const _,
+	memory_maps: null(),
+
 	elf_num: 0,
 	elf_entsize: 0,
 	elf_shndx: 0,
-	elf_sections: 0 as *const _,
+	elf_sections: null(),
 };
 
 /// Returns the boot informations provided by Multiboot.
@@ -443,7 +446,7 @@ fn handle_tag(boot_info: &mut BootInfo, tag: *const Tag) {
 
 			unsafe {
 				let ptr = memory::kern_to_virt(&(*t).string as *const _ as *const _) as *const u8;
-				boot_info.cmdline = util::str_from_ptr(ptr);
+				boot_info.cmdline = Some(util::str_from_ptr(ptr));
 			}
 		},
 
@@ -452,7 +455,7 @@ fn handle_tag(boot_info: &mut BootInfo, tag: *const Tag) {
 
 			unsafe {
 				let ptr = memory::kern_to_virt(&(*t).string as *const _ as *const _) as *const u8;
-				boot_info.loader_name = util::str_from_ptr(ptr);
+				boot_info.loader_name = Some(util::str_from_ptr(ptr));
 			}
 		},
 

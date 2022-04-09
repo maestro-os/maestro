@@ -259,7 +259,8 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 	kernel_selftest();
 
 	// Parsing bootloader command line arguments
-	let args_parser = cmdline::ArgsParser::parse(&multiboot::get_boot_info().cmdline);
+	let cmdline = multiboot::get_boot_info().cmdline.unwrap_or(b"");
+	let args_parser = cmdline::ArgsParser::parse(&cmdline);
 	if let Err(e) = args_parser {
 		e.print();
 		halt();
