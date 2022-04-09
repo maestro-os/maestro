@@ -25,6 +25,8 @@ const FILES_POOL_SIZE: usize = 1024;
 /// The upper bount for the file accesses counter.
 const ACCESSES_UPPER_BOUND: usize = 128;
 
+// TODO If a filesystem doesn't return entries `.` and `..`, add them
+
 /// The access counter allows to count the relative number of accesses count on a file.
 struct AccessCounter {
 	/// The number of accesses to the file relative to the previous file in the pool.

@@ -887,7 +887,7 @@ impl Ext2INode {
 				let off = i + j as u64;
 
 				// Calling the closure
-				if !f(off, entry)? {
+				if entry.get_inode() > 0 && !f(off, entry)? {
 					return Ok(());
 				}
 

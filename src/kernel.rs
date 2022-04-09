@@ -290,7 +290,7 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 	println!("Initializing processes...");
 	process::init().unwrap_or_else(| e | kernel_panic!("Failed to init processes! ({})", e));
 
-	init().unwrap_or_else(| e | kernel_panic!("{}", e));
+	init().unwrap_or_else(| e | kernel_panic!("Cannot execute init process: {}", e));
 	enter_loop();
 }
 
