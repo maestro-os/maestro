@@ -12,7 +12,7 @@ use super::partition;
 const MBR_SIGNATURE: u16 = 0x55aa;
 
 /// Structure representing a partition.
-#[repr(C)]
+#[repr(C, packed)]
 pub struct MBRPartition {
 	/// Partition attributes.
 	attrs: u8,
@@ -36,7 +36,7 @@ impl MBRPartition {
 }
 
 /// Structure representing the partition table.
-#[repr(C)]
+#[repr(C, packed)]
 pub struct MBRTable {
 	/// The boot code.
 	boot: [u8; 440],
