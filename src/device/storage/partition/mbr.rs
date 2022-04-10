@@ -5,8 +5,8 @@
 
 use crate::errno::Errno;
 use crate::util::container::vec::Vec;
-use super::partition::Partition;
-use super::partition;
+use super::Partition;
+use super::Table;
 
 /// The signature of the MBR partition table.
 const MBR_SIGNATURE: u16 = 0x55aa;
@@ -50,16 +50,13 @@ pub struct MBRTable {
 	signature: u16,
 }
 
-impl MBRTable {
-	/// Tells whether the table is valid.
-	pub fn is_valid(&self) -> bool {
-		self.signature == MBR_SIGNATURE
-	}
-}
-
-impl partition::Table for MBRTable {
+impl Table for MBRTable {
 	fn get_type(&self) -> &'static str {
 		"MBR"
+	}
+
+	fn is_valid(&self) -> bool {
+		self.signature == MBR_SIGNATURE
 	}
 
 	fn read(&self) -> Result<Vec<Partition>, Errno> {
@@ -67,7 +64,6 @@ impl partition::Table for MBRTable {
 
 		for mbr_partition in self.partitions.iter() {
 			if mbr_partition.is_active() {
-				// TODO Add support for CHS
 				let partition = Partition::new(mbr_partition.lba_start as _,
 					mbr_partition.sectors_count as _);
 				partitions.push(partition)?;
