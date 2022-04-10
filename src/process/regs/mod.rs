@@ -131,9 +131,9 @@ impl fmt::Display for Regs {
 		let fs = self.fs;
 		let gs = self.gs;
 
-		write!(f, "ebp: {:p} esp: {:p} eip: {:p} eflags: {:p} eax: {:p}\n
-ebx: {:p} ecx: {:p} edx: {:p} esi: {:p} edi: {:p}\n
-gs: 0x{:x} fs: 0x{:x}\n",
+		write!(f, "ebp: {:p} esp: {:p} eip: {:p} eflags: {:p} eax: {:p}
+ebx: {:p} ecx: {:p} edx: {:p} esi: {:p} edi: {:p}
+gs: 0x{:x} fs: 0x{:x}",
 			self.ebp as *const c_void,
 			self.esp as *const c_void,
 			self.eip as *const c_void,

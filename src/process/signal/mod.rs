@@ -296,7 +296,10 @@ impl Signal {
 
 	/// Tells whether the signal can be caught.
 	pub fn can_catch(&self) -> bool {
-		self.type_ != SIGKILL && self.type_ != SIGSTOP && self.type_ != SIGSYS
+		match self.type_ {
+			SIGKILL | SIGSEGV | SIGSTOP | SIGSYS => false,
+			_ => true,
+		}
 	}
 
 	/// Executes the action associated with the signal for process `process`.
