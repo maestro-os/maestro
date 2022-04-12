@@ -5,7 +5,6 @@ mod gpt;
 mod mbr;
 
 use crate::errno::Errno;
-use crate::errno;
 use crate::util::container::vec::Vec;
 use mbr::MBRTable;
 use super::StorageInterface;
@@ -49,19 +48,18 @@ pub trait Table {
 	fn is_valid(&self) -> bool;
 
 	/// Reads the partitions list.
-	fn read(&self) -> Result<Vec<Partition>, Errno>;
+	fn get_partitions(&self) -> Result<Vec<Partition>, Errno>;
 }
 
 /// Reads the list of partitions from the given storage interface `storage`.
 pub fn read(storage: &mut dyn StorageInterface) -> Result<Vec<Partition>, Errno> {
+	// TODO Move reading MBR into the MBR module
 	if storage.get_block_size() != 512 {
 		return Ok(Vec::new());
 	}
 
 	let mut first_sector: [u8; 512] = [0; 512];
-	if storage.read(&mut first_sector, 0, 1).is_err() {
-		return Err(errno!(EIO));
-	}
+	storage.read(&mut first_sector, 0, 1)?;
 
 	// Valid because taking the pointer to the buffer on the stack which has the same size as
 	// the structure
@@ -69,7 +67,7 @@ pub fn read(storage: &mut dyn StorageInterface) -> Result<Vec<Partition>, Errno>
 		&*(first_sector.as_ptr() as *const MBRTable)
 	};
 	if mbr_table.is_valid() {
-		return mbr_table.read();
+		return mbr_table.get_partitions();
 	}
 
 	// TODO Try to detect GPT

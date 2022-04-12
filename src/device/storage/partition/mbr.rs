@@ -4,6 +4,7 @@
 //! code.
 
 use crate::errno::Errno;
+use crate::errno;
 use crate::util::container::vec::Vec;
 use super::Partition;
 use super::Table;
@@ -13,7 +14,7 @@ const MBR_SIGNATURE: u16 = 0x55aa;
 
 /// Structure representing a partition.
 #[repr(C, packed)]
-pub struct MBRPartition {
+struct MBRPartition {
 	/// Partition attributes.
 	attrs: u8,
 	/// CHS address of partition start.
@@ -59,9 +60,12 @@ impl Table for MBRTable {
 		self.signature == MBR_SIGNATURE
 	}
 
-	fn read(&self) -> Result<Vec<Partition>, Errno> {
-		let mut partitions = Vec::<Partition>::new();
+	fn get_partitions(&self) -> Result<Vec<Partition>, Errno> {
+		if !self.is_valid() {
+			return Err(errno!(EINVAL));
+		}
 
+		let mut partitions = Vec::<Partition>::new();
 		for mbr_partition in self.partitions.iter() {
 			if mbr_partition.is_active() {
 				let partition = Partition::new(mbr_partition.lba_start as _,
@@ -69,7 +73,6 @@ impl Table for MBRTable {
 				partitions.push(partition)?;
 			}
 		}
-
 		Ok(partitions)
 	}
 }
