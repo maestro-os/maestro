@@ -85,7 +85,7 @@ impl GPT {
 		let mut buff = malloc::Alloc::<u8>::new_default(block_size)?;
 
 		// Reading the first block
-		storage.read(buff.get_slice_mut(), lba, 1)?;
+		storage.read(buff.as_slice_mut(), lba, 1)?;
 
 		// Valid because the header's size doesn't exceeds the size of the block
 		let gpt_hdr = unsafe {
@@ -140,13 +140,13 @@ impl GPT {
 		for i in 0..self.entries_number {
 			// Reading entry
 			let off = (self.entries_start * block_size) + (i * self.entry_size) as u64;
-			storage.read_bytes(buff.get_slice_mut(), off)?;
+			storage.read_bytes(buff.as_slice_mut(), off)?;
 
 			// Inserting entry
 			unsafe {
-				let ptr = malloc::alloc(buff.get_size())? as *mut u8;
-				let alloc_slice = slice::from_raw_parts_mut(ptr, buff.get_size());
-				alloc_slice.copy_from_slice(buff.get_slice());
+				let ptr = malloc::alloc(buff.len())? as *mut u8;
+				let alloc_slice = slice::from_raw_parts_mut(ptr, buff.len());
+				alloc_slice.copy_from_slice(buff.as_slice());
 
 				let entry = Box::from_raw(alloc_slice as *mut [u8] as *mut [()] as *mut GPTEntry);
 				entries.push(entry)?;
