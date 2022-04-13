@@ -118,7 +118,7 @@ impl Module {
 				let len = min(seg.p_memsz, seg.p_filesz) as usize;
 				unsafe { // Safe because the module ELF image is valid
 					ptr::copy_nonoverlapping(&image[seg.p_offset as usize],
-						&mut mem.get_slice_mut()[seg.p_vaddr as usize],
+						&mut mem.as_slice_mut()[seg.p_vaddr as usize],
 						len);
 				}
 			}

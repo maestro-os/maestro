@@ -83,7 +83,7 @@ impl<T> Vec<T> {
 		}
 
 		if let Some(data) = &mut self.data {
-			debug_assert!(data.get_size() >= self.len);
+			debug_assert!(data.len() >= self.len);
 
 			// Safe because the memory is rewritten when the object is placed into the vector
 			unsafe {
@@ -137,7 +137,7 @@ impl<T> Vec<T> {
 	#[inline(always)]
 	pub fn capacity(&self) -> usize {
 		if let Some(d) = &self.data {
-			d.get_size()
+			d.len()
 		} else {
 			0
 		}

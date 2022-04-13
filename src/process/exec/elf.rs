@@ -152,7 +152,7 @@ fn read_exec_file(path: &Path, uid: Uid, gid: Gid) -> Result<malloc::Alloc<u8>, 
 	};
 
 	// Reading the file
-	file.read(0, image.get_slice_mut())?;
+	file.read(0, image.as_slice_mut())?;
 
 	Ok(image)
 }
@@ -389,7 +389,7 @@ impl Executor for ELFExecutor {
 		debug_assert_eq!(process.state, crate::process::State::Running);
 
 		// Parsing the ELF file
-		let parser = ELFParser::new(self.image.get_slice())?;
+		let parser = ELFParser::new(self.image.as_slice())?;
 
 		// The process's new memory space
 		let mut mem_space = MemSpace::new()?;
@@ -462,7 +462,7 @@ impl Executor for ELFExecutor {
 		vmem::switch(mem_space.get_vmem().as_ref(), || {
 			// Copying segments' data
 			parser.foreach_segments(| seg | {
-				Self::copy_segment(load_base, seg, self.image.get_slice());
+				Self::copy_segment(load_base, seg, self.image.as_slice());
 				true
 			});
 

@@ -1,5 +1,8 @@
 //! This module handles system calls. A system call is "function" that allows to communcate between
 //! userspace and kernelspace.
+//!
+//! Documentation for each system call can be retrieved from the man. Type the command:
+//! `man 2 <syscall>`
 
 mod _exit;
 mod _llseek;

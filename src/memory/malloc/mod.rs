@@ -154,14 +154,14 @@ impl<T> Alloc<T> {
 	}
 
 	/// Returns an immutable reference to the underlying slice.
-	pub fn get_slice(&self) -> &[T] {
+	pub fn as_slice(&self) -> &[T] {
 		unsafe {
 			&*self.slice.as_ref()
 		}
 	}
 
 	/// Returns a mutable reference to the underlying slice.
-	pub fn get_slice_mut(&mut self) -> &mut [T] {
+	pub fn as_slice_mut(&mut self) -> &mut [T] {
 		unsafe {
 			self.slice.as_mut()
 		}
@@ -169,16 +169,16 @@ impl<T> Alloc<T> {
 
 	/// Returns the allocation as pointer.
 	pub unsafe fn as_ptr(&self) -> *const T {
-		self.get_slice().as_ptr() as _
+		self.as_slice().as_ptr() as _
 	}
 
 	/// Returns the allocation as mutable pointer.
 	pub unsafe fn as_ptr_mut(&mut self) -> *mut T {
-		self.get_slice_mut().as_mut_ptr() as _
+		self.as_slice_mut().as_mut_ptr() as _
 	}
 
 	/// Returns the size of the allocation in number of elements.
-	pub fn get_size(&self) -> usize {
+	pub fn len(&self) -> usize {
 		self.slice.len()
 	}
 
@@ -217,11 +217,11 @@ impl<T: Default> Alloc<T> {
 	/// `n` is the new size of the chunk of memory (in number of elements).
 	/// If elements are removed, the function `drop` is **not** called on them.
 	pub unsafe fn realloc_default(&mut self, n: usize) -> Result<(), Errno> {
-		let curr_size = self.get_size();
+		let curr_size = self.len();
 		self.realloc_zero(n)?;
 
 		for i in curr_size..n {
-			self.get_slice_mut()[i] = T::default();
+			self.as_slice_mut()[i] = T::default();
 		}
 
 		Ok(())
@@ -249,7 +249,7 @@ impl<T> Index<usize> for Alloc<T> {
 
 	#[inline]
 	fn index(&self, index: usize) -> &Self::Output {
-		let slice = self.get_slice();
+		let slice = self.as_slice();
 
 		if index >= slice.len() {
 			panic!("index out of bounds of memory allocation");
@@ -261,7 +261,7 @@ impl<T> Index<usize> for Alloc<T> {
 impl<T> IndexMut<usize> for Alloc<T> {
 	#[inline]
 	fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-		let slice = self.get_slice_mut();
+		let slice = self.as_slice_mut();
 
 		if index >= slice.len() {
 			panic!("index out of bounds of memory allocation");

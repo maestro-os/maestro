@@ -533,10 +533,10 @@ impl Ext2INode {
 			if self.indirections_free(n - 1, b, next_off, superblock, io)? {
 				// Reading the current block
 				let mut buff = malloc::Alloc::<u8>::new_default(blk_size as _)?;
-				read_block(begin as _, superblock, io, buff.get_slice_mut())?;
+				read_block(begin as _, superblock, io, buff.as_slice_mut())?;
 
 				// If the current block is empty, free it
-				if Self::is_blk_empty(buff.get_slice()) {
+				if Self::is_blk_empty(buff.as_slice()) {
 					superblock.free_block(io, begin)?;
 
 					// Decrementing the number of used sectors
@@ -642,15 +642,15 @@ impl Ext2INode {
 			let len = min(buff.len() as u64 - i, (blk_size - blk_inner_off as u32) as u64);
 
 			if let Some(blk_off) = self.get_content_block_off(blk_off as _, superblock, io)? {
-				read_block(blk_off as _, superblock, io, blk_buff.get_slice_mut())?;
+				read_block(blk_off as _, superblock, io, blk_buff.as_slice_mut())?;
 
 				unsafe { // Safe because staying in range
-					copy_nonoverlapping(&blk_buff.get_slice()[blk_inner_off] as *const u8,
+					copy_nonoverlapping(&blk_buff.as_slice()[blk_inner_off] as *const u8,
 						&mut buff[i as usize] as *mut u8,
 						len as _);
 				}
 			} else {
-				// No content block, writting zeros
+				// No content block, writing zeros
 				buff[(i as usize)..((i + len) as usize)].fill(0);
 			}
 
@@ -683,11 +683,11 @@ impl Ext2INode {
 			let blk_off = {
 				if let Some(blk_off) = self.get_content_block_off(blk_off as _, superblock, io)? {
 					// Reading block
-					read_block(blk_off as _, superblock, io, blk_buff.get_slice_mut())?;
+					read_block(blk_off as _, superblock, io, blk_buff.as_slice_mut())?;
 					blk_off
 				} else {
 					// Zero-ing buffer
-					for b in blk_buff.get_slice_mut() {
+					for b in blk_buff.as_slice_mut() {
 						*b = 0;
 					}
 					self.alloc_content_block(blk_off as u32, superblock, io)?
@@ -698,11 +698,11 @@ impl Ext2INode {
 			let len = min(buff.len() - i, (blk_size - blk_inner_off as u32) as usize);
 			unsafe { // Safe because staying in range
 				copy_nonoverlapping(&buff[i] as *const u8,
-					&mut blk_buff.get_slice_mut()[blk_inner_off] as *mut u8,
+					&mut blk_buff.as_slice_mut()[blk_inner_off] as *mut u8,
 					len);
 			}
 			// Writing block
-			write_block(blk_off as _, superblock, io, blk_buff.get_slice_mut())?;
+			write_block(blk_off as _, superblock, io, blk_buff.as_slice_mut())?;
 
 			i += len;
 		}
@@ -754,7 +754,7 @@ impl Ext2INode {
 
 		// Reading the block
 		let mut blk_buff = malloc::Alloc::<u32>::new_default(entries_per_blk)?;
-		read_block(begin as _, superblock, io, blk_buff.get_slice_mut())?;
+		read_block(begin as _, superblock, io, blk_buff.as_slice_mut())?;
 
 		// Free every entries recursively
 		for i in 0..entries_per_blk {
@@ -826,10 +826,10 @@ impl Ext2INode {
 		};
 
 		let mut buff = malloc::Alloc::<u8>::new_default(entry.get_total_size() as _)?;
-		self.read_content(off as _, buff.get_slice_mut(), superblock, io)?;
+		self.read_content(off as _, buff.as_slice_mut(), superblock, io)?;
 
 		unsafe {
-			DirectoryEntry::from(buff.get_slice())
+			DirectoryEntry::from(buff.as_slice())
 		}
 	}
 
@@ -869,7 +869,7 @@ impl Ext2INode {
 		let mut i = 0;
 		while i < size {
 			let len = min((size - i) as usize, blk_size as usize);
-			self.read_content(i, &mut buff.get_slice_mut()[..len], superblock, io)?;
+			self.read_content(i, &mut buff.as_slice_mut()[..len], superblock, io)?;
 
 			// Iterating over the block's entries
 			let mut j = 0;
@@ -877,7 +877,7 @@ impl Ext2INode {
 				// Safe because the data is block-aligned and an entry cannot be larger than the
 				// size of a block
 				let entry = unsafe {
-					DirectoryEntry::from(&buff.get_slice()[j..len])?
+					DirectoryEntry::from(&buff.as_slice()[j..len])?
 				};
 				// The total size of the entry
 				let total_size = entry.get_total_size() as usize;
@@ -1024,14 +1024,14 @@ impl Ext2INode {
 		let mut i = 0;
 		while i < size {
 			let len = min((size - i) as usize, blk_size as usize);
-			self.read_content(i, &mut buff.get_slice_mut()[..len], superblock, io)?;
+			self.read_content(i, &mut buff.as_slice_mut()[..len], superblock, io)?;
 
 			let mut j = 0;
 			while j < len {
 				// Safe because the data is block-aligned and an entry cannot be larger than the
 				// size of a block
 				let mut entry = unsafe {
-					DirectoryEntry::from(&buff.get_slice()[j..len])?
+					DirectoryEntry::from(&buff.as_slice()[j..len])?
 				};
 				// The total size of the entry
 				let total_size = entry.get_total_size() as usize;
@@ -1102,9 +1102,9 @@ impl Ext2INode {
 			String::from(buff)
 		} else {
 			let mut buff = malloc::Alloc::<u8>::new_default(limits::SYMLINK_MAX)?;
-			self.read_content(0, buff.get_slice_mut(), superblock, io)?;
+			self.read_content(0, buff.as_slice_mut(), superblock, io)?;
 
-			String::from(&buff.get_slice()[..(len as usize)])
+			String::from(&buff.as_slice()[..(len as usize)])
 		}
 	}
 

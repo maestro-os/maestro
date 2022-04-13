@@ -353,7 +353,7 @@ impl PATAInterface {
 		}
 	}
 
-	/// Reads `size` blocks from storage at block offset `offset`, writting the data to `buf`.
+	/// Reads `size` blocks from storage at block offset `offset`, writing the data to `buf`.
 	/// The function uses LBA28, thus the offset is assumed to be in range.
 	fn read28(&self, buf: &mut [u8], offset: u64, size: u64) -> Result<(), Errno> {
 		self.select();
@@ -400,7 +400,7 @@ impl PATAInterface {
 		Ok(())
 	}
 
-	/// Reads `size` blocks from storage at block offset `offset`, writting the data to `buf`.
+	/// Reads `size` blocks from storage at block offset `offset`, writing the data to `buf`.
 	/// The function uses LBA48.
 	fn read48(&self, _buf: &mut [u8], _offset: u64, _size: u64) -> Result<(), Errno> {
 		// TODO
