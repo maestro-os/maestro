@@ -26,7 +26,7 @@ pub fn finit_module(regs: &Regs) -> Result<i32, Errno> {
 			let mut image = unsafe {
 				malloc::Alloc::new_zero(len as usize)?
 			};
-			fd.read(image.get_slice_mut())?;
+			fd.read(image.as_slice_mut())?;
 
 			image
 		} else {
@@ -34,7 +34,7 @@ pub fn finit_module(regs: &Regs) -> Result<i32, Errno> {
 		}
 	};
 
-	let module = Module::load(image.get_slice())?;
+	let module = Module::load(image.as_slice())?;
 	if !module::is_loaded(module.get_name()) {
 		module::add(module)?;
 		Ok(0)

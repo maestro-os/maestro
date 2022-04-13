@@ -82,7 +82,7 @@ pub trait VMem: FailableClone {
 			true
 		};
 
-		// Protecting kernel code from writting
+		// Protecting kernel code from writing
 		elf::foreach_sections(memory::kern_to_virt(boot_info.elf_sections),
 			boot_info.elf_num as usize, boot_info.elf_shndx as usize,
 			boot_info.elf_entsize as usize, f);

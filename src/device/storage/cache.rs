@@ -54,7 +54,7 @@ impl StorageCache {
 	/// Reads the sector with index `sector` and writes its content into the buffer `buff`.
 	pub fn read(&mut self, sector: u64, buff: &mut [u8]) -> Result<Option<()>, Errno> {
 		if let Some(CachedSector { data, .. }) = self.sectors.get(&sector) {
-			buff.copy_from_slice(data.get_slice());
+			buff.copy_from_slice(data.as_slice());
 			Ok(Some(()))
 		} else {
 			Ok(None)
@@ -66,7 +66,7 @@ impl StorageCache {
 	/// cache needs to free up a slot for a sector.
 	pub fn write(&mut self, sector: u64, buff: &[u8]) -> Result<Option<()>, Errno> {
 		if let Some(CachedSector { written, data, .. }) = self.sectors.get_mut(&sector) {
-			data.get_slice_mut().copy_from_slice(buff);
+			data.as_slice_mut().copy_from_slice(buff);
 			*written = true;
 			Ok(Some(()))
 		} else {
@@ -89,13 +89,13 @@ impl StorageCache {
 			for i in &sector_indexes[..n] {
 				let sector = self.sectors.remove(i).unwrap();
 				if sector.written {
-					flush_hook(*i, sector.data.get_slice())?;
+					flush_hook(*i, sector.data.as_slice())?;
 				}
 			}
 		}
 
 		let mut alloc = malloc::Alloc::<u8>::new_default(self.sector_size)?;
-		alloc.get_slice_mut().copy_from_slice(buff);
+		alloc.as_slice_mut().copy_from_slice(buff);
 
 		self.sectors.insert(sector, CachedSector {
 			written: false,
@@ -115,7 +115,7 @@ impl StorageCache {
 		// Writing updated sectors
 		for (index, sector) in self.sectors.iter() {
 			if sector.written {
-				flush_hook(*index, sector.data.get_slice())?;
+				flush_hook(*index, sector.data.as_slice())?;
 			}
 		}
 

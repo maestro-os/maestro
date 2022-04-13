@@ -366,9 +366,9 @@ impl Superblock {
 
 		while (i * (blk_size * 8) as u32) < size {
 			let bitmap_blk_index = start + i;
-			read_block(bitmap_blk_index as _, self, io, buff.get_slice_mut())?;
+			read_block(bitmap_blk_index as _, self, io, buff.as_slice_mut())?;
 
-			if let Some(j) = Self::search_bitmap_blk(buff.get_slice()) {
+			if let Some(j) = Self::search_bitmap_blk(buff.as_slice()) {
 				return Ok(Some(i * (blk_size * 8) as u32 + j));
 			}
 
@@ -388,7 +388,7 @@ impl Superblock {
 		let mut buff = malloc::Alloc::<u8>::new_default(blk_size as _)?;
 
 		let bitmap_blk_index = start + (i / (blk_size * 8) as u32);
-		read_block(bitmap_blk_index as _, self, io, buff.get_slice_mut())?;
+		read_block(bitmap_blk_index as _, self, io, buff.as_slice_mut())?;
 
 		let bitmap_byte_index = i / 8;
 		let bitmap_bit_index = i % 8;
@@ -398,7 +398,7 @@ impl Superblock {
 			buff[bitmap_byte_index as usize] &= !(1 << bitmap_bit_index);
 		}
 
-		write_block(bitmap_blk_index as _, self, io, buff.get_slice())
+		write_block(bitmap_blk_index as _, self, io, buff.as_slice())
 	}
 
 	/// Returns the id of a free inode in the filesystem.

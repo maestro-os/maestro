@@ -47,7 +47,7 @@ pub trait StorageInterface {
 	/// This value must always stay the same.
 	fn get_blocks_count(&self) -> u64;
 
-	/// Reads `size` blocks from storage at block offset `offset`, writting the data to `buf`.
+	/// Reads `size` blocks from storage at block offset `offset`, writing the data to `buf`.
 	/// If the offset and size are out of bounds, the function returns an error.
 	fn read(&mut self, buf: &mut [u8], offset: u64, size: u64) -> Result<(), Errno>;
 	/// Writes `size` blocks to storage at block offset `offset`, reading the data from `buf`.
@@ -56,7 +56,7 @@ pub trait StorageInterface {
 
 	// TODO Clean
 	// Unit testing is done through ramdisk testing
-	/// Reads bytes from storage at offset `offset`, writting the data to `buf`.
+	/// Reads bytes from storage at offset `offset`, writing the data to `buf`.
 	/// If the offset and size are out of bounds, the function returns an error.
 	fn read_bytes(&mut self, buf: &mut [u8], offset: u64) -> Result<u64, Errno> {
 		let block_size = self.get_block_size();
@@ -77,7 +77,7 @@ pub trait StorageInterface {
 			let block_aligned = block_inner_off == 0;
 
 			if !block_aligned {
-				self.read(tmp_buf.get_slice_mut(), block_off as _, 1)?;
+				self.read(tmp_buf.as_slice_mut(), block_off as _, 1)?;
 
 				let diff = min(buf.len(), block_size as usize - block_inner_off);
 				for j in 0..diff {
@@ -96,7 +96,7 @@ pub trait StorageInterface {
 
 					i += slice_len;
 				} else {
-					self.read(tmp_buf.get_slice_mut(), block_off as _, 1)?;
+					self.read(tmp_buf.as_slice_mut(), block_off as _, 1)?;
 					for j in 0..remaining_bytes {
 						buf[i + j] = tmp_buf[j];
 					}
@@ -132,14 +132,14 @@ pub trait StorageInterface {
 			let block_aligned = block_inner_off == 0;
 
 			if !block_aligned {
-				self.read(tmp_buf.get_slice_mut(), block_off as _, 1)?;
+				self.read(tmp_buf.as_slice_mut(), block_off as _, 1)?;
 
 				let diff = min(buf.len(), block_size as usize - block_inner_off);
 				for j in 0..diff {
 					tmp_buf[block_inner_off + j] = buf[i + j];
 				}
 
-				self.write(tmp_buf.get_slice(), block_off as _, 1)?;
+				self.write(tmp_buf.as_slice(), block_off as _, 1)?;
 				i += diff;
 			} else {
 				let remaining_bytes = buf.len() - i;
@@ -151,12 +151,12 @@ pub trait StorageInterface {
 
 					i += slice_len;
 				} else {
-					self.read(tmp_buf.get_slice_mut(), block_off as _, 1)?;
+					self.read(tmp_buf.as_slice_mut(), block_off as _, 1)?;
 					for j in 0..remaining_bytes {
 						tmp_buf[j] = buf[i + j];
 					}
 
-					self.write(tmp_buf.get_slice(), block_off as _, 1)?;
+					self.write(tmp_buf.as_slice(), block_off as _, 1)?;
 					i += remaining_bytes;
 				}
 			}

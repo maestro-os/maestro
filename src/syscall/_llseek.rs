@@ -41,7 +41,7 @@ pub fn _llseek(regs: &Regs) -> Result<i32, Errno> {
 
 	{
 		let mem_space_guard = mem_space.lock();
-		// Writting the result to the userspace
+		// Writing the result to the userspace
 		if let Some(result) = result.get_mut(&mem_space_guard)? {
 			*result = off;
 		}

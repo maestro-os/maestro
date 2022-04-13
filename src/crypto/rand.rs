@@ -38,13 +38,13 @@ impl PRNG for ChaCha20Rand {
 		let mut b = unsafe { // Safe because the buffer is filled after
 			malloc::Alloc::<u8>::new_zero(buf.len()).ok()?
 		};
-		consume_entropy(b.get_slice_mut())?;
+		consume_entropy(b.as_slice_mut())?;
 
 		let key: [u32; 8] = [0; 8]; // TODO Fill with entropy buffer
 		let nonces: [u32; 3] = [0; 3]; // TODO Fill with entropy buffer
 		// TODO On fail, feed the entropy back to the buffer to avoid waste
 
-		chacha20::encode(b.get_slice(), &key, &nonces, buf);
+		chacha20::encode(b.as_slice(), &key, &nonces, buf);
 		Some(())
 	}
 }
