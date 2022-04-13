@@ -141,6 +141,13 @@ pub unsafe fn str_from_ptr(ptr: *const u8) -> &'static [u8] {
 	slice::from_raw_parts(ptr, strlen(ptr))
 }
 
+/// Returns an immutable slice to the given value.
+pub fn as_slice<'a, T>(val: &'a T) -> &'a [u8] {
+	unsafe {
+		slice::from_raw_parts(&val as *const _ as *const u8, size_of::<T>())
+	}
+}
+
 /// Turns the error into an empty error for the given result.
 pub fn to_empty_error<T, E>(r: Result<T, E>) -> Result<T, ()> {
 	if let Ok(t) = r {

@@ -1,18 +1,22 @@
 //! The GUID Partition Table (GPT) is a standard partitions table format. It is a successor of MBR.
 
 use core::mem::size_of;
+use core::slice;
+use crate::crypto::checksum::compute_crc32;
 use crate::device::storage::StorageInterface;
 use crate::errno::Errno;
 use crate::errno;
 use crate::memory::malloc;
+use crate::util::boxed::Box;
 use crate::util::container::vec::Vec;
+use crate::util;
 use super::Partition;
 use super::Table;
 
 /// The signature in the GPT header.
 const GPT_SIGNATURE: &[u8] = b"EFI PART";
-/// The polynomial used in the computation of the CRC32 checksum.
-const CHECKSUM_POLYNOMIAL: u32 = 0x4c11db7;
+/// The polynom used in the computation of the CRC32 checksum.
+const CHECKSUM_POLYNOM: u32 = 0x4c11db7;
 
 /// Type representing a Globally Unique IDentifier.
 type GUID = [u8; 16];
@@ -28,7 +32,7 @@ struct GPTEntry {
 	start: u64,
 	/// The ending LBA.
 	end: u64,
-	/// TODO doc
+	/// Entry's attributes.
 	attributes: u64,
 	/// The partition's name.
 	name: [u16],
@@ -60,8 +64,8 @@ struct GPT {
 	disk_guid: GUID,
 	/// The LBA of the beginning of the GUID partition entries array.
 	entries_start: u64,
-	/// The number of partitions in the table.
-	partitions_number: u32,
+	/// The number of entries in the table.
+	entries_number: u32,
 	/// The size in bytes of each entry in the array.
 	entry_size: u32,
 	/// Checksum of the entries array.
@@ -100,20 +104,56 @@ impl GPT {
 		let main_hdr = Self::read_hdr_struct(storage, 1)?;
 		let _alternate_hdr = Self::read_hdr_struct(storage, main_hdr.alternate_hdr_lba)?;
 
-		// TODO Read and check entries against alternate header
+		let _main_entries = main_hdr.get_entries(storage)?;
+		let _alternate_entries = main_hdr.get_entries(storage)?;
+		// TODO Check entries correctness
 
 		Ok(main_hdr)
 	}
 
 	/// Tells whether the header is valid.
 	pub fn is_valid(&self) -> bool {
+		// Checking signature
 		if self.signature != GPT_SIGNATURE {
 			return false;
 		}
 
-		// TODO Check checksum
+		// Checking checksum
+		let mut tmp = self.clone();
+		tmp.checksum = 0;
+		if compute_crc32(util::as_slice(&tmp), CHECKSUM_POLYNOM) != self.checksum {
+			return false;
+		}
 
 		true
+	}
+
+	/// Returns the list of entries in the table.
+	/// `storage` is the storage device interface.
+	pub fn get_entries(&self, storage: &mut dyn StorageInterface)
+		-> Result<Vec<Box<GPTEntry>>, Errno> {
+		let block_size = storage.get_block_size();
+		let mut entries = Vec::new();
+
+		let mut buff = malloc::Alloc::<u8>::new_default(self.entry_size as _)?;
+
+		for i in 0..self.entries_number {
+			// Reading entry
+			let off = (self.entries_start * block_size) + (i * self.entry_size) as u64;
+			storage.read_bytes(buff.get_slice_mut(), off)?;
+
+			// Inserting entry
+			unsafe {
+				let ptr = malloc::alloc(buff.get_size())? as *mut u8;
+				let alloc_slice = slice::from_raw_parts_mut(ptr, buff.get_size());
+				alloc_slice.copy_from_slice(buff.get_slice());
+
+				let entry = Box::from_raw(alloc_slice as *mut [u8] as *mut [()] as *mut GPTEntry);
+				entries.push(entry)?;
+			}
+		}
+
+		Ok(entries)
 	}
 }
 
