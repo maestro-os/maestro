@@ -131,22 +131,12 @@ impl FileDescriptor {
 
 	/// Tells whether the file descriptor can be read from.
 	pub fn can_read(&self) -> bool {
-		match self.flags & 0b11 {
-			O_RDONLY => true,
-			O_RDWR => true,
-
-			_ => false,
-		}
+		matches!(self.flags & 0b11, O_RDONLY | O_RDWR)
 	}
 
 	/// Tells whether the file descriptor can be written to.
 	pub fn can_write(&self) -> bool {
-		match self.flags & 0b11 {
-			O_WRONLY => true,
-			O_RDWR => true,
-
-			_ => false,
-		}
+		matches!(self.flags & 0b11, O_WRONLY | O_RDWR)
 	}
 
 	/// Returns a mutable reference to the descriptor's target.

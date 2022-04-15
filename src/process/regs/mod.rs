@@ -77,8 +77,10 @@ pub struct Regs {
 impl Regs {
 	/// Switches to the associated register context.
 	/// `user` tells whether the function switchs to userspace.
-	/// The function is unsafe because invalid register values shall result in an undefined
-	/// behaviour.
+	///
+	/// # Safety
+	///
+	/// Invalid register values shall result in an undefined behaviour.
 	pub unsafe fn switch(&self, user: bool) -> ! {
 		if user {
 			let user_data_selector = gdt::USER_DS | 3;

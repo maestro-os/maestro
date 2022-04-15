@@ -20,7 +20,7 @@ pub fn ioctl(regs: &Regs) -> Result<i32, Errno> {
 	// TODO Check access to args (if needed)
 
 	// Getting the file descriptor
-	let file_descriptor = proc.get_fd(fd as _).ok_or(errno!(EBADF))?;
+	let file_descriptor = proc.get_fd(fd as _).ok_or_else(|| errno!(EBADF))?;
 
 	Ok(file_descriptor.ioctl(request, argp)? as _)
 }

@@ -16,7 +16,7 @@ use crate::process;
 /// If `sig` is None, the function doesn't send a signal, but still checks if there is a process
 /// that could be killed.
 fn try_kill(pid: i32, sig: Option<Signal>, uid: Uid, euid: Uid) -> Result<i32, Errno> {
-	let proc = Process::get_by_pid(pid as Pid).ok_or(errno!(ESRCH))?;
+	let proc = Process::get_by_pid(pid as Pid).ok_or_else(|| errno!(ESRCH))?;
 	let mut guard = proc.lock();
 	let proc = guard.get_mut();
 
@@ -87,26 +87,24 @@ fn send_signal(pid: i32, sig: Option<Signal>, proc: &mut Process) -> Result<i32,
 		} else {
 			Err(errno!(ESRCH))
 		}
-	} else {
-		if let Some(proc) = Process::get_by_pid(-pid as _) {
-			let mut guard = proc.lock();
-			let proc = guard.get_mut();
-			let group = proc.get_group_processes();
+	} else if let Some(proc) = Process::get_by_pid(-pid as _) {
+		let mut guard = proc.lock();
+		let proc = guard.get_mut();
+		let group = proc.get_group_processes();
 
-			if let Some(sig) = sig {
-				for p in group {
-					try_kill(*p as _, Some(sig.clone()), proc.get_uid(), proc.get_euid()).unwrap();
-				}
+		if let Some(sig) = sig {
+			for p in group {
+				try_kill(*p as _, Some(sig.clone()), proc.get_uid(), proc.get_euid()).unwrap();
 			}
+		}
 
-			if !group.is_empty() {
-				Ok(0)
-			} else {
-				Err(errno!(ESRCH))
-			}
+		if !group.is_empty() {
+			Ok(0)
 		} else {
 			Err(errno!(ESRCH))
 		}
+	} else {
+		Err(errno!(ESRCH))
 	}
 }
 

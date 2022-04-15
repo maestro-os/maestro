@@ -109,15 +109,15 @@ impl UserDesc {
 
 impl fmt::Display for UserDesc {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		write!(f, "UserDesc:\n")?;
-		write!(f, "entry_number: {}\n", self.get_entry_number())?;
-		write!(f, "base_addr: {:p}\n", self.get_base_addr() as *const c_void)?;
-		write!(f, "limit: {:x}\n", self.get_limit())?;
-		write!(f, "seg_32bit: {}\n", self.is_32bits())?;
-		// TODO write!(f, "contents: {}\n", self.)?;
-		write!(f, "read_exec_only: {}\n", !self.is_read_exec_only())?;
-		write!(f, "limit_in_pages: {}\n", self.is_limit_in_pages())?;
-		write!(f, "seg_not_present: {}\n", !self.is_present())?;
-		write!(f, "useable: {}\n", self.is_usable())
+		writeln!(f, "UserDesc:")?;
+		writeln!(f, "entry_number: {}", self.get_entry_number())?;
+		writeln!(f, "base_addr: {:p}", self.get_base_addr() as *const c_void)?;
+		writeln!(f, "limit: {:x}", self.get_limit())?;
+		writeln!(f, "seg_32bit: {}", self.is_32bits())?;
+		// TODO writeln!(f, "contents: {}", self.)?;
+		writeln!(f, "read_exec_only: {}", !self.is_read_exec_only())?;
+		writeln!(f, "limit_in_pages: {}", self.is_limit_in_pages())?;
+		writeln!(f, "seg_not_present: {}", !self.is_present())?;
+		writeln!(f, "useable: {}", self.is_usable())
 	}
 }

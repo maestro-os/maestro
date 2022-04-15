@@ -82,7 +82,7 @@ impl DirectoryEntry {
 	pub unsafe fn from(slice: &[u8]) -> Result<Box<Self>, Errno> {
 		let ptr = malloc::alloc(slice.len())? as *mut u8;
 		let alloc_slice = slice::from_raw_parts_mut(ptr, slice.len());
-		alloc_slice.copy_from_slice(&slice);
+		alloc_slice.copy_from_slice(slice);
 
 		Ok(Box::from_raw(alloc_slice as *mut [u8] as *mut [()] as *mut Self))
 	}

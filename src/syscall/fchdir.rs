@@ -22,7 +22,7 @@ pub fn fchdir(regs: &Regs) -> Result<i32, Errno> {
 		return Err(errno!(EBADF));
 	}
 
-	let fd = proc.get_fd(fd as _).ok_or(errno!(EBADF))?;
+	let fd = proc.get_fd(fd as _).ok_or_else(|| errno!(EBADF))?;
 	if let FDTarget::File(dir_mutex) = fd.get_target_mut() {
 		let new_cwd = {
 			let mut dir_guard = dir_mutex.lock();
@@ -39,7 +39,7 @@ pub fn fchdir(regs: &Regs) -> Result<i32, Errno> {
 			dir.get_path()
 		}?;
 
-		let new_cwd = super::util::get_absolute_path(&proc, new_cwd)?;
+		let new_cwd = super::util::get_absolute_path(proc, new_cwd)?;
 		proc.set_cwd(new_cwd)?;
 		Ok(0)
 	} else {

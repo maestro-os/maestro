@@ -769,9 +769,11 @@ impl Process {
 		self.user_stack = Some(user_stack);
 
 		// Setting the registers' initial state
-		let mut regs = Regs::default();
-		regs.esp = user_stack as _;
-		regs.eip = pc as _;
+		let regs = Regs {
+			esp: user_stack as _,
+			eip: pc as _,
+			..Default::default()
+		};
 		self.regs = regs;
 
 		Ok(())
@@ -839,7 +841,7 @@ impl Process {
 			}
 		};
 
-		let curr_fd = self.get_fd(id).ok_or(errno!(EBADF))?;
+		let curr_fd = self.get_fd(id).ok_or_else(|| errno!(EBADF))?;
 		let new_fd = FileDescriptor::new(new_id, curr_fd.get_flags(),
 			curr_fd.get_target().clone())?;
 
@@ -916,7 +918,7 @@ impl Process {
 		-> Result<IntSharedPtr<Self>, Errno> {
 		debug_assert_eq!(self.get_state(), State::Running);
 
-		let fork_options = fork_options.unwrap_or(ForkOptions::default());
+		let fork_options = fork_options.unwrap_or_default();
 
 		let pid = {
 			let mutex = unsafe {

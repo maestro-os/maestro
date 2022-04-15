@@ -19,6 +19,10 @@ extern "C" fn stack_switch_in(func_ptr: *const c_void, data: *mut c_void) {
 
 /// Executes the given closure `f` while being on the given stack. `stack` is the pointer to the
 /// beginning of the new stack. `data` is passed as an argument to `f`.
+///
+/// # Safety
+///
+/// If the stack `stack` is invalid, the behaviour is undefined.
 pub unsafe fn switch<T>(stack: *mut c_void, f: fn(*mut c_void), data: *mut T) {
 	stack_switch_(stack, f as _, data as _);
 }

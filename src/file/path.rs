@@ -61,7 +61,7 @@ impl Path {
 		}
 
 		Ok(Self {
-			absolute: path.len() > 0 && path[0] == PATH_SEPARATOR as u8,
+			absolute: !path.is_empty() && path[0] == PATH_SEPARATOR as u8,
 			parts,
 		})
 	}

@@ -523,7 +523,8 @@ impl File {
 			major,
 			minor,
 		} = self.content {
-			let dev = device::get_device(DeviceType::Char, major, minor).ok_or(errno!(ENODEV))?;
+			let dev = device::get_device(DeviceType::Char, major, minor)
+				.ok_or_else(|| errno!(ENODEV))?;
 			let mut guard = dev.lock();
 			guard.get_mut().get_handle().ioctl(request, argp)
 		} else {
@@ -533,7 +534,7 @@ impl File {
 
 	/// Synchronizes the file with the device.
 	pub fn sync(&self) -> Result<(), Errno> {
-		let mountpoint_mutex = self.location.get_mountpoint().ok_or(errno!(EIO))?;
+		let mountpoint_mutex = self.location.get_mountpoint().ok_or_else(|| errno!(EIO))?;
 		let mut mountpoint_guard = mountpoint_mutex.lock();
 		let mountpoint = mountpoint_guard.get_mut();
 
@@ -554,7 +555,7 @@ impl IO for File {
 	fn read(&mut self, off: u64, buff: &mut [u8]) -> Result<u64, Errno> {
 		match &self.content {
 			FileContent::Regular => {
-				let mountpoint_mutex = self.location.get_mountpoint().ok_or(errno!(EIO))?;
+				let mountpoint_mutex = self.location.get_mountpoint().ok_or_else(|| errno!(EIO))?;
 				let mut mountpoint_guard = mountpoint_mutex.lock();
 				let mountpoint = mountpoint_guard.get_mut();
 
@@ -591,7 +592,7 @@ impl IO for File {
 					},
 
 					_ => unreachable!(),
-				}.ok_or(errno!(ENODEV))?;
+				}.ok_or_else(|| errno!(ENODEV))?;
 
 				let mut guard = dev.lock();
 				guard.get_mut().get_handle().read(off as _, buff)
@@ -602,7 +603,7 @@ impl IO for File {
 	fn write(&mut self, off: u64, buff: &[u8]) -> Result<u64, Errno> {
 		match &self.content {
 			FileContent::Regular => {
-				let mountpoint_mutex = self.location.get_mountpoint().ok_or(errno!(EIO))?;
+				let mountpoint_mutex = self.location.get_mountpoint().ok_or_else(|| errno!(EIO))?;
 				let mut mountpoint_guard = mountpoint_mutex.lock();
 				let mountpoint = mountpoint_guard.get_mut();
 
@@ -642,7 +643,7 @@ impl IO for File {
 					},
 
 					_ => unreachable!(),
-				}.ok_or(errno!(ENODEV))?;
+				}.ok_or_else(|| errno!(ENODEV))?;
 
 				let mut guard = dev.lock();
 				guard.get_mut().get_handle().write(off as _, buff)
@@ -729,7 +730,7 @@ pub fn init(root_device_type: DeviceType, root_major: u32, root_minor: u32) -> R
 
 	// The root device
 	let root_dev = device::get_device(root_device_type, root_major, root_minor)
-		.ok_or(errno!(ENODEV))?;
+		.ok_or_else(|| errno!(ENODEV))?;
 
 	// Creating the files cache
 	let cache = FCache::new(root_dev)?;

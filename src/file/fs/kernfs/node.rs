@@ -55,6 +55,6 @@ pub trait KernFSNode: IO {
 	/// using get_entries, which can be fairly slow depending on the amount of elements in the
 	/// node.
 	fn get_entry(&self, name: &String) -> Result<(INode, SharedPtr<dyn KernFSNode>), Errno> {
-		Ok(self.get_entries().get(name).ok_or(errno!(ENOENT))?.clone())
+		Ok(self.get_entries().get(name).ok_or_else(|| errno!(ENOENT))?.clone())
 	}
 }

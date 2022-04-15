@@ -9,6 +9,7 @@
 use core::arch::asm;
 use core::ffi::c_void;
 use core::mem::transmute;
+use core::ptr::null_mut;
 
 /// The signal handler trampoline. The process resumes to this function when it received a signal.
 /// Thus, this code is executed in userspace.
@@ -33,7 +34,7 @@ pub extern "C" fn signal_trampoline(handler: *const c_void, sig: i32) -> ! {
 	// Trying to kill the process if reaching this for some reason
 	unsafe {
 		#[allow(deref_nullptr)]
-		*(0x0 as *mut u32) = 42;
+		*null_mut::<u32>() = 42;
 	}
 	loop {}
 }

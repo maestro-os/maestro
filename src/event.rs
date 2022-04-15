@@ -214,9 +214,12 @@ fn remove_callback(id: usize, priority: u32, ptr: *const c_void) {
 
 /// Unlocks the callback vector with id `id`. This function is to be used in case of an event
 /// callback that never returns.
+///
+/// # Safety
+///
+/// This function is marked as unsafe since it may lead to concurrency issues if not used properly.
 /// It must be called from the same CPU core as the one that locked the mutex since unlocking
 /// changes the interrupt flag.
-/// This function is marked as unsafe since it may lead to concurrency issues if not used properly.
 #[no_mangle]
 pub unsafe extern "C" fn unlock_callbacks(id: usize) {
 	CALLBACKS.assume_init_mut()[id as usize].unlock();

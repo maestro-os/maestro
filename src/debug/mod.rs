@@ -9,6 +9,10 @@ use crate::multiboot;
 
 /// Prints, in hexadecimal, the content of the memory at the given location `ptr`, with the given
 /// size `n` in bytes.
+///
+/// # Safety
+/// The range of memory of size `n` starting at pointer `ptr` must be readable. If not, the
+/// behaviour is undefined.
 pub unsafe fn print_memory(ptr: *const c_void, n: usize) {
 	let mut i = 0;
 

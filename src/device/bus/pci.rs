@@ -305,8 +305,7 @@ impl PCIManager {
 
 		for bus in 0..=255 {
 			for device in 0..32 {
-				let first_word = read_word(bus, device, 0, 0);
-				let vendor_id = (first_word & 0xffff) as u16;
+				let vendor_id = read_word(bus, device, 0, 0);
 				// If the device doesn't exist, ignore
 				if vendor_id == 0xffff {
 					continue;
@@ -329,8 +328,7 @@ impl PCIManager {
 
 				// Iterating on every functions of the device
 				for func in 0..max_functions_count {
-					let first_word = read_word(bus, device, func, 0);
-					let vendor_id = (first_word & 0xffff) as u16;
+					let vendor_id = read_word(bus, device, func, 0);
 					// If the function doesn't exist, ignore
 					if vendor_id == 0xffff {
 						continue;

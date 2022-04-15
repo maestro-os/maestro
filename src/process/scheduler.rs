@@ -224,7 +224,7 @@ impl Scheduler {
 			let mut proc: Option<(Pid, IntSharedPtr<Process>)> = None;
 
 			// Iterating over processes
-			while let Some((pid, process)) = iter.next() {
+			for (pid, process) in iter.next() {
 				let runnable = {
 					let guard = process.lock();
 					Self::can_run(guard.get(), priority_sum, priority_max, processes_count)

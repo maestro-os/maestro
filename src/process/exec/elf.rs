@@ -136,7 +136,7 @@ fn read_exec_file(path: &Path, uid: Uid, gid: Gid) -> Result<malloc::Alloc<u8>, 
 	let files_cache = guard.get_mut();
 
 	// Getting the file from path
-	let file_mutex = files_cache.as_mut().unwrap().get_file_from_path(&path, uid, gid, true)?;
+	let file_mutex = files_cache.as_mut().unwrap().get_file_from_path(path, uid, gid, true)?;
 	let mut file_lock = file_mutex.lock();
 	let file = file_lock.get_mut();
 
@@ -516,9 +516,11 @@ impl Executor for ELFExecutor {
 		let hdr = parser.get_header();
 
 		// Setting the process's registers
-		let mut regs = Regs::default();
-		regs.esp = (user_stack as usize - total_size) as _;
-		regs.eip = load_base as u32 + hdr.e_entry;
+		let regs = Regs {
+			esp: (user_stack as usize - total_size) as _,
+			eip: load_base as u32 + hdr.e_entry,
+			..Default::default()
+		};
 		process.regs = regs;
 
 		Ok(())

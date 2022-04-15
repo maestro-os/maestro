@@ -30,6 +30,7 @@ impl PIDManager {
 	}
 
 	/// Returns a unused PID and marks it as used.
+	#[must_use = "not freeing a PID shall cause a leak"]
 	pub fn get_unique_pid(&mut self) -> Result<Pid, Errno> {
 		match self.allocator.alloc(None) {
 			Ok(i) => {

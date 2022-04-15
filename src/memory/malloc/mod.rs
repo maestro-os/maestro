@@ -34,6 +34,11 @@ pub fn init() {
 
 /// Allocates `n` bytes of kernel memory and returns a pointer to the beginning of the allocated
 /// chunk. If the allocation fails, the function shall return an error.
+///
+/// # Safety
+///
+/// Allocated pointer must always be freed. Failure to do so results in a memory leak.
+/// Writing outside of the allocated range (buffer overflow) results in an undefined behaviour.
 pub unsafe fn alloc(n: usize) -> Result<*mut c_void, Errno> {
 	let _ = MUTEX.lock();
 
@@ -58,6 +63,9 @@ pub unsafe fn alloc(n: usize) -> Result<*mut c_void, Errno> {
 }
 
 /// Returns the size of the given memory allocation in bytes.
+///
+/// # Safety
+///
 /// The pointer `ptr` **must** point to the beginning of a valid, used chunk of memory.
 pub unsafe fn get_size(ptr: *const c_void) -> usize {
 	let _ = MUTEX.lock();
@@ -109,8 +117,13 @@ pub unsafe fn realloc(ptr: *mut c_void, n: usize) -> Result<*mut c_void, Errno> 
 	}
 }
 
-/// Frees the memory at the pointer `ptr` previously allocated with `alloc`. Subsequent uses of the
-/// associated memory are undefined.
+/// Frees the memory at the pointer `ptr` previously allocated with `alloc`.
+///
+/// # Safety
+///
+/// If `ptr` doesn't point to a valid chunk of memory allocated with the `alloc` function, the
+/// behaviour is undefined.
+/// Using memory after it was freed causes an undefined behaviour.
 pub unsafe fn free(ptr: *mut c_void) {
 	let _ = MUTEX.lock();
 
@@ -141,7 +154,11 @@ pub struct Alloc<T> {
 impl<T> Alloc<T> {
 	/// Allocates `size` element in the kernel memory and returns a structure wrapping a slice
 	/// allowing to access it. If the allocation fails, the function shall return an error.
-	/// The function is unsafe because zero memory might be an inconsistent state for the object T.
+	///
+	/// # Safety
+	///
+	/// To use this function, one must ensure that zero memory is not an inconsistent state for the
+	/// object `T`.
 	pub unsafe fn new_zero(size: usize) -> Result<Self, Errno> {
 		let slice = NonNull::new({
 			let ptr = alloc(size * size_of::<T>())?;
@@ -185,7 +202,11 @@ impl<T> Alloc<T> {
 	/// Changes the size of the memory allocation. All new elements are initialized to zero.
 	/// `n` is the new size of the chunk of memory (in number of elements).
 	/// If the reallocation fails, the chunk is left untouched and the function returns an error.
-	/// The function is unsafe because zero memory might be an inconsistent state for the object T.
+	///
+	/// # Safety
+	///
+	/// To use this function, one must ensure that zero memory is not an inconsistent state for the
+	/// object `T`.
 	pub unsafe fn realloc_zero(&mut self, n: usize) -> Result<(), Errno> {
 		let ptr = realloc(self.as_ptr_mut() as _, n * size_of::<T>())?;
 		self.slice = NonNull::new(slice::from_raw_parts_mut::<T>(ptr as _, n)).unwrap();
@@ -215,7 +236,11 @@ impl<T: Default> Alloc<T> {
 	/// Resizes the current allocation. If new elements are added, the function initializes them
 	/// with the default value.
 	/// `n` is the new size of the chunk of memory (in number of elements).
-	/// If elements are removed, the function `drop` is **not** called on them.
+	///
+	/// # Safety
+	///
+	/// If elements are removed, the function `drop` is **not** called on them. Thus, the caller
+	/// must take care of dropping the elements first.
 	pub unsafe fn realloc_default(&mut self, n: usize) -> Result<(), Errno> {
 		let curr_size = self.len();
 		self.realloc_zero(n)?;

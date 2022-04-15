@@ -79,6 +79,10 @@ struct Frame {
 static mut ZONES: MaybeUninit<[IntMutex<Zone>; ZONES_COUNT]> = MaybeUninit::uninit();
 
 /// Prepares the buddy allocator. Calling this function is required before setting the zone slots.
+///
+/// # Safety
+///
+/// This function must be called only once, before initializing the buddy allocator's zones.
 pub unsafe fn prepare() {
 	util::zero_object(&mut ZONES);
 }

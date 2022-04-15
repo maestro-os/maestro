@@ -882,7 +882,7 @@ impl Filesystem for Ext2Fs {
 
 		// The inode number
 		let inode = parent.get_directory_entry(name.as_bytes(), &self.superblock, io)?
-			.ok_or(errno!(ENOENT))?.get_inode();
+			.ok_or_else(|| errno!(ENOENT))?.get_inode();
 		// The inode
 		let mut inode_ = Ext2INode::read(inode, &self.superblock, io)?;
 

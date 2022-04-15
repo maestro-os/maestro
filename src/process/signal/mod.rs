@@ -223,7 +223,7 @@ impl SignalHandler {
 				sa_restorer: #[allow(invalid_value)] unsafe { core::mem::zeroed() },
 			},
 
-			Self::Handler(action) => action.clone(),
+			Self::Handler(action) => *action,
 		}
 	}
 }
@@ -296,10 +296,7 @@ impl Signal {
 
 	/// Tells whether the signal can be caught.
 	pub fn can_catch(&self) -> bool {
-		match self.type_ {
-			SIGKILL | SIGSEGV | SIGSTOP | SIGSYS => false,
-			_ => true,
-		}
+		!matches!(self.type_, SIGKILL | SIGSEGV | SIGSTOP | SIGSYS)
 	}
 
 	/// Executes the action associated with the signal for process `process`.
@@ -381,7 +378,7 @@ impl Signal {
 					};
 
 					// The pointer to the signal handler
-					signal_data[1] = action.sa_handler.map(| f | f as _).unwrap_or(0);
+					signal_data[1] = action.sa_handler.map(| f | f as usize).unwrap_or(0) as _;
 					// The signal number
 					signal_data[0] = self.type_ as _;
 

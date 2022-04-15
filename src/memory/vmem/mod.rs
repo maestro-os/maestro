@@ -112,6 +112,11 @@ pub fn is_write_lock() -> bool {
 }
 
 /// Sets whether the kernel can write to read-only pages.
+///
+/// # Safety
+///
+/// This function disables memory protection on the kernel side, which makes read-only data
+/// writable. Writing on read-only data is undefined.
 pub unsafe fn set_write_lock(lock: bool) {
 	if lock {
 		cpu::cr0_set(1 << 16);
@@ -122,6 +127,11 @@ pub unsafe fn set_write_lock(lock: bool) {
 
 /// Executes the closure given as parameter. During execution, the kernel can write on read-only
 /// pages. The state of the write lock is restored after the closure's execution.
+///
+/// # Safety
+///
+/// This function disables memory protection on the kernel side, which makes read-only data
+/// writable. Writing on read-only data is undefined.
 pub unsafe fn write_lock_wrap<F: Fn() -> T, T>(f: F) -> T {
 	let lock = is_write_lock();
 	set_write_lock(false);

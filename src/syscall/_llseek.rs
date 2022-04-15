@@ -27,7 +27,7 @@ pub fn _llseek(regs: &Regs) -> Result<i32, Errno> {
 	let mem_space = proc.get_mem_space().unwrap();
 
 	// Getting the file descriptor
-	let file_desc = proc.get_fd(fd).ok_or(errno!(EBADF))?;
+	let file_desc = proc.get_fd(fd).ok_or_else(|| errno!(EBADF))?;
 
 	// Computing the offset
 	let off = ((offset_high as u64) << 32) | (offset_low as u64);

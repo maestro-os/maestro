@@ -54,12 +54,10 @@ fn get_target(scheduler: &mut Scheduler, proc: &Process, pid: i32, i: usize) -> 
 		} else {
 			None
 		}
+	} else if i == 0 && scheduler.get_by_pid(pid as _).is_some() {
+		Some(pid as _)
 	} else {
-		if i == 0 && scheduler.get_by_pid(pid as _).is_some() {
-			Some(pid as _)
-		} else {
-			None
-		}
+		None
 	}
 }
 

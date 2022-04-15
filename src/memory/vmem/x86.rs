@@ -97,8 +97,8 @@ static mut KERNEL_TABLES: [*mut u32; 256] = [0 as _; 256];
 /// The first time this function is called, it is **not** thread safe.
 unsafe fn get_kernel_tables() -> Result<&'static [*mut u32; 256], Errno> {
 	if !KERNEL_TABLES_INIT {
-		for i in 0..KERNEL_TABLES.len() {
-			KERNEL_TABLES[i] = alloc_obj()?;
+		for table in &mut KERNEL_TABLES {
+			*table = alloc_obj()?;
 		}
 
 		KERNEL_TABLES_INIT = true;

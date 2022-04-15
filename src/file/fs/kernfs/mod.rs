@@ -108,7 +108,7 @@ impl Filesystem for KernFS {
 		if parent_inode as usize >= self.nodes.len() {
 			return Err(errno!(ENOENT));
 		}
-		let parent_mutex = self.nodes[parent_inode as _].as_ref().ok_or(errno!(ENOENT))?;
+		let parent_mutex = self.nodes[parent_inode as _].as_ref().ok_or_else(|| errno!(ENOENT))?;
 		let parent_guard = parent_mutex.lock();
 		let parent_node = parent_guard.get();
 

@@ -189,7 +189,7 @@ impl MemSpace {
 				return Err(errno!(EINVAL));
 			}
 		}
-		if size <= 0 {
+		if size == 0 {
 			return Err(errno!(EINVAL));
 		}
 
@@ -200,7 +200,7 @@ impl MemSpace {
 				self.unmap(ptr, size)?; // FIXME Must be undone on fail
 
 				// Getting the gap for the pointer
-				let gap = Self::gap_by_ptr(&self.gaps, ptr).ok_or(errno!(ENOMEM))?;
+				let gap = Self::gap_by_ptr(&self.gaps, ptr).ok_or_else(|| errno!(ENOMEM))?;
 
 				// The offset in the gap
 				let off = (gap.get_begin() as usize - ptr as usize) / memory::PAGE_SIZE;
@@ -211,7 +211,8 @@ impl MemSpace {
 				(gap, off)
 			} else {
 				// Getting a gap large enough
-				let gap = Self::gap_get(&self.gaps, &self.gaps_size, size).ok_or(errno!(ENOMEM))?;
+				let gap = Self::gap_get(&self.gaps, &self.gaps_size, size)
+					.ok_or_else(|| errno!(ENOMEM))?;
 
 				(gap, 0)
 			}
@@ -363,7 +364,7 @@ impl MemSpace {
 	pub fn unmap(&mut self, ptr: *const c_void, size: usize) -> Result<(), Errno> {
 		debug_assert!(util::is_aligned(ptr, memory::PAGE_SIZE));
 
-		if size <= 0 {
+		if size == 0 {
 			return Ok(());
 		}
 
@@ -471,10 +472,10 @@ impl MemSpace {
 
 			if let Some(mapping) = Self::get_mapping_for_(&self.mappings, page_begin) {
 				let flags = mapping.get_flags();
-				if write && !(flags & MAPPING_FLAG_WRITE != 0) {
+				if write && (flags & MAPPING_FLAG_WRITE == 0) {
 					return false;
 				}
-				if user && !(flags & MAPPING_FLAG_USER != 0) {
+				if user && (flags & MAPPING_FLAG_USER == 0) {
 					return false;
 				}
 
@@ -505,10 +506,10 @@ impl MemSpace {
 
 				if let Some(mapping) = Self::get_mapping_for_(&self.mappings, curr_ptr as _) {
 					let flags = mapping.get_flags();
-					if write && !(flags & MAPPING_FLAG_WRITE != 0) {
+					if write && (flags & MAPPING_FLAG_WRITE == 0) {
 						return None;
 					}
-					if user && !(flags & MAPPING_FLAG_USER != 0) {
+					if user && (flags & MAPPING_FLAG_USER == 0) {
 						return None;
 					}
 

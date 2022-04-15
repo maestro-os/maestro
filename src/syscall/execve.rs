@@ -42,7 +42,7 @@ pub fn execve(regs: &Regs) -> Result<i32, Errno> {
 	let path = {
 		let mem_space = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space.lock();
-		Path::from_str(pathname.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?, true)?
+		Path::from_str(pathname.get(&mem_space_guard)?.ok_or_else(|| errno!(EFAULT))?, true)?
 	};
 
 	let (argv, envp) = unsafe {

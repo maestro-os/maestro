@@ -156,7 +156,7 @@ pub fn nbr_len(s: &[u8]) -> usize {
 	let mut i = 0;
 
 	while i < s.len() {
-		if (s[i] < '0' as u8) || (s[i] > '9' as u8) {
+		if (s[i] < b'0') || (s[i] > b'9') {
 			break;
 		}
 

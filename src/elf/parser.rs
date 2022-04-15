@@ -140,7 +140,7 @@ impl<'a> ELFParser<'a> {
 
 	/// Returns a reference to the ELF image.
 	pub fn get_image(&self) -> &[u8] {
-		&self.image
+		self.image
 	}
 
 	/// Calls the given function `f` for each segments in the image.

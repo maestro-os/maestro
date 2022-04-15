@@ -626,7 +626,7 @@ impl Ext2INode {
 	/// The function returns the number of bytes that have been read.
 	pub fn read_content(&self, off: u64, buff: &mut [u8], superblock: &Superblock,
 		io: &mut dyn IO) -> Result<u64, Errno> {
-		let size = self.get_size(&superblock);
+		let size = self.get_size(superblock);
 		if off > size {
 			return Err(errno!(EINVAL));
 		}
@@ -1054,7 +1054,7 @@ impl Ext2INode {
 					// Merging previous entry with the current if they are on the same page
 					if *prev_free_off >= i {
 						prev_free.merge(entry);
-						self.write_dirent(superblock, io, &prev_free, *prev_free_off)?;
+						self.write_dirent(superblock, io, prev_free, *prev_free_off)?;
 					}
 				} else {
 					prev_free = Some((off, entry));

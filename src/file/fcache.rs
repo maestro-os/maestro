@@ -92,7 +92,7 @@ impl FCache {
 		path.reduce()?;
 
 		// Getting the path's deepest mountpoint
-		let mountpoint_mutex = mountpoint::get_deepest(&path).ok_or(errno!(ENOENT))?;
+		let mountpoint_mutex = mountpoint::get_deepest(&path).ok_or_else(|| errno!(ENOENT))?;
 		let mut mountpoint_guard = mountpoint_mutex.lock();
 		let mountpoint = mountpoint_guard.get_mut();
 
@@ -135,9 +135,7 @@ impl FCache {
 					let mut new_path = parent_path.concat(&link_path)?;
 					new_path.reduce()?;
 
-					drop(io);
 					drop(io_guard);
-					drop(mountpoint);
 					drop(mountpoint_guard);
 					return self.get_file_from_path_(&new_path, uid, gid, follow_links,
 						follows_count + 1);
@@ -189,7 +187,8 @@ impl FCache {
 		}
 
 		// Getting the path's deepest mountpoint
-		let mountpoint_mutex = parent.get_location().get_mountpoint().ok_or(errno!(ENOENT))?;
+		let mountpoint_mutex = parent.get_location().get_mountpoint()
+			.ok_or_else(|| errno!(ENOENT))?;
 		let mut mountpoint_guard = mountpoint_mutex.lock();
 		let mountpoint = mountpoint_guard.get_mut();
 
@@ -210,9 +209,7 @@ impl FCache {
 				let mut new_path = parent.get_path()?.concat(&link_path)?;
 				new_path.reduce()?;
 
-				drop(io);
 				drop(io_guard);
-				drop(mountpoint);
 				drop(mountpoint_guard);
 				return self.get_file_from_path_(&new_path, uid, gid, follow_links, 1);
 			}
@@ -242,7 +239,8 @@ impl FCache {
 		}
 
 		// Getting the mountpoint
-		let mountpoint_mutex = parent.get_location().get_mountpoint().ok_or(errno!(ENOENT))?;
+		let mountpoint_mutex = parent.get_location().get_mountpoint()
+			.ok_or_else(|| errno!(ENOENT))?;
 		let mut mountpoint_guard = mountpoint_mutex.lock();
 		let mountpoint = mountpoint_guard.get_mut();
 
@@ -287,7 +285,7 @@ impl FCache {
 		}
 
 		// Getting the mountpoint
-		let mountpoint_mutex = file.get_location().get_mountpoint().ok_or(errno!(ENOENT))?;
+		let mountpoint_mutex = file.get_location().get_mountpoint().ok_or_else(|| errno!(ENOENT))?;
 		let mut mountpoint_guard = mountpoint_mutex.lock();
 		let mountpoint = mountpoint_guard.get_mut();
 

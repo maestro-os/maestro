@@ -37,10 +37,10 @@ pub fn getdents(regs: &Regs) -> Result<i32, Errno> {
 
 	let mem_space = proc.get_mem_space().unwrap();
 	let mem_space_guard = mem_space.lock();
-	let dirp_slice = dirp.get_mut(&mem_space_guard, count as _)?.ok_or(errno!(EFAULT))?;
+	let dirp_slice = dirp.get_mut(&mem_space_guard, count as _)?.ok_or_else(|| errno!(EFAULT))?;
 
 	// Getting file descriptor
-	let fd = proc.get_fd(fd as _).ok_or(errno!(EBADF))?;
+	let fd = proc.get_fd(fd as _).ok_or_else(|| errno!(EBADF))?;
 
 	let mut off = 0;
 	let mut entries_count = 0;
