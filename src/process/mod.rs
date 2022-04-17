@@ -910,15 +910,12 @@ impl Process {
 	/// Forks the current process. The internal state of the process (registers and memory) are
 	/// copied.
 	/// `parent` is the parent of the new process.
-	/// `fork_options` are the options for the fork operation. If None, the function uses the
-	/// default values.
+	/// `fork_options` are the options for the fork operation.
 	/// On fail, the function returns an Err with the appropriate Errno.
 	/// If the process is not running, the behaviour is undefined.
-	pub fn fork(&mut self, parent: IntWeakPtr<Self>, fork_options: Option<ForkOptions>)
+	pub fn fork(&mut self, parent: IntWeakPtr<Self>, fork_options: ForkOptions)
 		-> Result<IntSharedPtr<Self>, Errno> {
 		debug_assert_eq!(self.get_state(), State::Running);
-
-		let fork_options = fork_options.unwrap_or_default();
 
 		let pid = {
 			let mutex = unsafe {

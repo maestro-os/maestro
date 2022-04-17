@@ -4,6 +4,7 @@ use core::ffi::c_void;
 use crate::errno::Errno;
 use crate::process::ForkOptions;
 use crate::process::Process;
+use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::regs::Regs;
 
 /// TODO doc
@@ -58,10 +59,10 @@ const CLONE_NEWNET: i32 = 0x40000000;
 /// The implementation of the `clone` syscall.
 pub fn clone(regs: &Regs) -> Result<i32, Errno> {
 	let flags = regs.ebx as i32;
-	let _stack = regs.ecx as *mut c_void;
-	let _parent_tid = regs.edx as *mut i32;
-	let _tls = regs.esi as i32;
-	let _child_tid = regs.edi as *mut i32;
+	let stack = regs.ecx as *mut c_void;
+	let _parent_tid: SyscallPtr<i32> = (regs.edx as usize).into();
+	let _child_tid: SyscallPtr<i32> = (regs.esi as usize).into();
+	let tls = regs.edi as i32;
 
 	let fork_options = ForkOptions {
 		vm: flags & CLONE_VM != 0,
@@ -76,11 +77,32 @@ pub fn clone(regs: &Regs) -> Result<i32, Errno> {
 		let mut curr_guard = curr_mutex.lock();
 		let curr_proc = curr_guard.get_mut();
 
-		curr_proc.set_regs(regs);
-		curr_proc.fork(parent, Some(fork_options))?
+		if flags & CLONE_PARENT_SETTID != 0 {
+			// TODO
+			todo!();
+		}
+
+		curr_proc.fork(parent, fork_options)?
 	};
 	let mut new_guard = new_mutex.lock();
 	let new_proc = new_guard.get_mut();
 
-	Ok(new_proc.get_pid() as _)
+	// Setting the process's registers
+	let mut new_regs = regs.clone();
+	new_regs.esp = stack as _;
+	if flags & CLONE_SETTLS != 0 {
+		new_regs.fs = tls as _;
+	}
+	new_proc.set_regs(regs);
+
+	if flags & CLONE_CHILD_CLEARTID != 0 {
+		// TODO new_proc.set_clear_child_tid(child_tid);
+		todo!();
+	}
+	if flags & CLONE_CHILD_SETTID != 0 {
+		// TODO
+		todo!();
+	}
+
+	Ok(new_proc.get_tid() as _)
 }

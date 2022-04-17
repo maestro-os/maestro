@@ -3,6 +3,7 @@
 //! differentiation.
 
 use crate::errno::Errno;
+use crate::process::ForkOptions;
 use crate::process::Process;
 use crate::process::regs::Regs;
 
@@ -18,7 +19,7 @@ pub fn fork(regs: &Regs) -> Result<i32, Errno> {
 		let curr_proc = curr_guard.get_mut();
 
 		curr_proc.set_regs(regs);
-		curr_proc.fork(parent, None)?
+		curr_proc.fork(parent, ForkOptions::default())?
 	};
 	let mut new_guard = new_mutex.lock();
 	let new_proc = new_guard.get_mut();
