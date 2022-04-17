@@ -99,18 +99,20 @@ type ExitStatus = u8;
 
 /// Structure representing options to be passed to the fork function.
 pub struct ForkOptions {
-	/// If true, the parent and child process both share the same address space.
-	pub vm: bool,
-
-	// TODO
+	/// If true, the parent and child processes both share the same address space.
+	pub share_memory: bool,
+	/// If true, the parent and child processes both share the same file descriptors table.
+	pub share_fd: bool,
+	/// If true, the parent and child processes both share the same signal handlers table.
+	pub share_sighand: bool,
 }
 
 impl Default for ForkOptions {
 	fn default() -> Self {
 		Self {
-			vm: false,
-
-			// TODO
+			share_memory: false,
+			share_fd: false,
+			share_sighand: false,
 		}
 	}
 }
@@ -931,12 +933,14 @@ impl Process {
 		let mem_space = {
 			let curr_mem_space = self.get_mem_space().unwrap();
 
-			if fork_options.vm {
+			if fork_options.share_memory {
 				curr_mem_space.clone()
 			} else {
 				IntSharedPtr::new(curr_mem_space.lock().get_mut().fork()?)?
 			}
 		};
+
+		// TODO Handle sharing file descriptors and signal handlers
 
 		let process = Self {
 			pid,

@@ -6,6 +6,7 @@ use crate::process::ForkOptions;
 use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::regs::Regs;
+use crate::process::user_desc::UserDesc;
 
 /// TODO doc
 const CLONE_IO: i32 = -0x80000000;
@@ -13,9 +14,9 @@ const CLONE_IO: i32 = -0x80000000;
 const CLONE_VM: i32 = 0x100;
 /// TODO doc
 const CLONE_FS: i32 = 0x200;
-/// TODO doc
+/// If specified, the parent and child processes share the same file descriptors table.
 const CLONE_FILES: i32 = 0x400;
-/// TODO doc
+/// If specified, the parent and child processes share the same signal handlers table.
 const CLONE_SIGHAND: i32 = 0x800;
 /// TODO doc
 const CLONE_PIDFD: i32 = 0x1000;
@@ -63,27 +64,26 @@ pub fn clone(regs: &Regs) -> Result<i32, Errno> {
 	let _parent_tid: SyscallPtr<i32> = (regs.edx as usize).into();
 	let _child_tid: SyscallPtr<i32> = (regs.esi as usize).into();
 	let tls = regs.edi as i32;
+	println!("{} {:p} {:p} {:p} {}", flags, stack, _parent_tid.as_ptr(), _child_tid.as_ptr(), tls); // TODO rm
 
-	let fork_options = ForkOptions {
-		vm: flags & CLONE_VM != 0,
-	};
+	// The current process
+	let curr_mutex = Process::get_current().unwrap();
+	// A weak pointer to the new process's parent
+	let parent = curr_mutex.new_weak();
 
-	let new_mutex = {
-		// The current process
-		let curr_mutex = Process::get_current().unwrap();
-		// A weak pointer to the new process's parent
-		let parent = curr_mutex.new_weak();
+	let mut curr_guard = curr_mutex.lock();
+	let curr_proc = curr_guard.get_mut();
 
-		let mut curr_guard = curr_mutex.lock();
-		let curr_proc = curr_guard.get_mut();
+	if flags & CLONE_PARENT_SETTID != 0 {
+		// TODO
+		todo!();
+	}
 
-		if flags & CLONE_PARENT_SETTID != 0 {
-			// TODO
-			todo!();
-		}
-
-		curr_proc.fork(parent, fork_options)?
-	};
+	let new_mutex = curr_proc.fork(parent, ForkOptions {
+		share_memory: flags & CLONE_VM != 0,
+		share_fd: flags & CLONE_FILES != 0,
+		share_sighand: flags & CLONE_SIGHAND != 0,
+	})?;
 	let mut new_guard = new_mutex.lock();
 	let new_proc = new_guard.get_mut();
 
@@ -91,7 +91,10 @@ pub fn clone(regs: &Regs) -> Result<i32, Errno> {
 	let mut new_regs = regs.clone();
 	new_regs.esp = stack as _;
 	if flags & CLONE_SETTLS != 0 {
-		new_regs.fs = tls as _;
+		let _tls: SyscallPtr<UserDesc> = (tls as usize).into();
+
+		// TODO
+		todo!();
 	}
 	new_proc.set_regs(regs);
 

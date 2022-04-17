@@ -188,7 +188,7 @@ impl FileDescriptor {
 		}
 	}
 
-	/// Tells whether the file descriptor reached the end of the file.
+	/// Tells whether the file descriptor reached the end of file.
 	pub fn eof(&self) -> bool {
 		match &self.target {
 			FDTarget::File(f) => {
