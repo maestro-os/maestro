@@ -11,6 +11,11 @@ const BUFFER_SIZE: usize = 65536;
 
 /// Structure representing a pipe.
 pub struct Pipe {
+	/// The reading file descriptor.
+	fd0: u32,
+	/// The writing file descriptor.
+	fd1: u32,
+
 	/// The pipe's buffer.
 	buffer: RingBuffer<u8>,
 
@@ -20,12 +25,35 @@ pub struct Pipe {
 
 impl Pipe {
 	/// Creates a new instance.
-	pub fn new() -> Result<Self, Errno> {
+	pub fn new(fd0: u32, fd1: u32) -> Result<Self, Errno> {
 		Ok(Self {
+			fd0,
+			fd1,
+
 			buffer: RingBuffer::new(BUFFER_SIZE)?,
 
 			closed: false,
 		})
+	}
+
+	/// Returns the file descriptor at the reading end of the pipe.
+	pub fn get_fd0(&self) -> u32 {
+		self.fd0
+	}
+
+	/// Sets the file descriptor at the reading end of the pipe.
+	pub fn set_fd0(&mut self, fd0: u32) {
+		self.fd0 = fd0;
+	}
+
+	/// Returns the file descriptor at the writing end of the pipe.
+	pub fn get_fd1(&self) -> u32 {
+		self.fd1
+	}
+
+	/// Sets the file descriptor at the writing end of the pipe.
+	pub fn set_fd1(&mut self, fd1: u32) {
+		self.fd1 = fd1;
 	}
 
 	// TODO Function to get/set buffer size

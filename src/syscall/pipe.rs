@@ -21,10 +21,16 @@ pub fn pipe(regs: &Regs) -> Result<i32, Errno> {
 	let mem_space_guard = mem_space.lock();
 	let pipefd_slice = pipefd.get_mut(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
 
-	let pipe = SharedPtr::new(Pipe::new()?)?;
-	let pipe2 = pipe.clone();
-	let (fd0_id, _) = proc.create_fd(file_descriptor::O_RDONLY, FDTarget::Pipe(pipe))?;
-	let (fd1_id, _) = proc.create_fd(file_descriptor::O_WRONLY, FDTarget::Pipe(pipe2))?;
+	let pipe = SharedPtr::new(Pipe::new(0, 0)?)?; // File descriptors are set after being created
+	let (fd0_id, _) = proc.create_fd(file_descriptor::O_RDONLY, FDTarget::Pipe(pipe.clone()))?;
+	let (fd1_id, _) = proc.create_fd(file_descriptor::O_WRONLY, FDTarget::Pipe(pipe.clone()))?;
+
+	// Setting file descriptors on the pipe
+	{
+		let mut guard = pipe.lock();
+		guard.get_mut().set_fd0(fd0_id);
+		guard.get_mut().set_fd1(fd1_id);
+	}
 
 	pipefd_slice[0] = fd0_id as _;
 	pipefd_slice[1] = fd1_id as _;

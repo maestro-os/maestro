@@ -859,6 +859,7 @@ impl Process {
 
 			let mut new_fd = curr_fd.failable_clone()?;
 			new_fd.set_id(new_id);
+			new_fd.set_flags(new_fd.get_flags() & !file_descriptor::O_CLOEXEC);
 
 			SharedPtr::new(new_fd)?
 		};
