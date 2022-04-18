@@ -19,6 +19,15 @@ use crate::process::regs::Regs;
 use crate::util::FailableClone;
 use crate::util::ptr::SharedPtr;
 
+/// Mask of status flags to be kept by an open file description.
+const STATUS_FLAGS_MASK: i32 = !(file_descriptor::O_CLOEXEC
+	| file_descriptor::O_CREAT
+	| file_descriptor::O_DIRECTORY
+	| file_descriptor::O_EXCL
+	| file_descriptor::O_NOCTTY
+	| file_descriptor::O_NOFOLLOW
+	| file_descriptor::O_TRUNC);
+
 // TODO Implement all flags
 
 /// Returns the file at the given path `path`.
@@ -88,7 +97,7 @@ pub fn open_(pathname: SyscallString, flags: i32, mode: file::Mode) -> Result<i3
 	}
 
 	// Create and return the file descriptor
-	let (fd_id, _) = proc.create_fd(flags, FDTarget::File(file))?;
+	let (fd_id, _) = proc.create_fd(flags & STATUS_FLAGS_MASK, FDTarget::File(file))?;
 	Ok(fd_id as _)
 }
 
