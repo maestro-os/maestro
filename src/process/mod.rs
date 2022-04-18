@@ -42,6 +42,7 @@ use crate::util::container::vec::Vec;
 use crate::util::lock::*;
 use crate::util::ptr::IntSharedPtr;
 use crate::util::ptr::IntWeakPtr;
+use crate::util::ptr::SharedPtr;
 use mem_space::MemSpace;
 use pid::PIDManager;
 use pid::Pid;
@@ -174,15 +175,15 @@ pub struct Process {
 
 	/// The current working directory.
 	cwd: Path,
-	/// The list of open file descriptors.
-	file_descriptors: Vec<FileDescriptor>,
+	/// The list of open file descriptors with their respective ID.
+	file_descriptors: SharedPtr<Vec<(u32, SharedPtr<FileDescriptor>)>>,
 
 	/// A bitfield storing the set of blocked signals.
 	sigmask: Bitfield,
 	/// A bitfield storing the set of pending signals.
 	sigpending: Bitfield,
 	/// The list of signal handlers.
-	signal_handlers: [SignalHandler; signal::SIGNALS_COUNT + 1],
+	signal_handlers: SharedPtr<[SignalHandler; signal::SIGNALS_COUNT]>,
 
 	/// TLS entries.
 	tls_entries: [gdt::Entry; TLS_ENTRIES_COUNT],
@@ -414,11 +415,11 @@ impl Process {
 			kernel_stack: None,
 
 			cwd: Path::root(),
-			file_descriptors: Vec::new(),
+			file_descriptors: SharedPtr::new(Vec::new())?,
 
-			sigmask: Bitfield::new(signal::SIGNALS_COUNT + 1)?,
-			sigpending: Bitfield::new(signal::SIGNALS_COUNT + 1)?,
-			signal_handlers: [SignalHandler::Default; signal::SIGNALS_COUNT + 1],
+			sigmask: Bitfield::new(signal::SIGNALS_COUNT)?,
+			sigpending: Bitfield::new(signal::SIGNALS_COUNT)?,
+			signal_handlers: SharedPtr::new([SignalHandler::Default; signal::SIGNALS_COUNT])?,
 
 			tls_entries: [gdt::Entry::default(); TLS_ENTRIES_COUNT],
 			ldt: None,
@@ -441,9 +442,9 @@ impl Process {
 			let tty_path = Path::from_str(TTY_DEVICE_PATH.as_bytes(), false).unwrap();
 			let tty_file = files_cache.as_mut().unwrap()
 				.get_file_from_path(&tty_path, process.uid, process.gid, true).unwrap();
-			let stdin_fd = process.create_fd(file_descriptor::O_RDWR, FDTarget::File(tty_file))
-				.unwrap();
-			assert_eq!(stdin_fd.get_id(), STDIN_FILENO);
+			let (stdin_fd_id, _) = process.create_fd(file_descriptor::O_RDWR,
+				FDTarget::File(tty_file)).unwrap();
+			assert_eq!(stdin_fd_id, STDIN_FILENO);
 
 			process.duplicate_fd(STDIN_FILENO, Some(STDOUT_FILENO)).unwrap();
 			process.duplicate_fd(STDIN_FILENO, Some(STDERR_FILENO)).unwrap();
@@ -795,18 +796,21 @@ impl Process {
 
 	/// Returns the available file descriptor with the lowest ID. If no ID is available, the
 	/// function returns an error.
-	fn get_available_fd(&mut self) -> Result<u32, Errno> {
-		if self.file_descriptors.is_empty() {
+	/// `file_descriptors` is the file descriptors table.
+	fn get_available_fd(file_descriptors: &Vec<(u32, SharedPtr<FileDescriptor>)>)
+		-> Result<u32, Errno> {
+		if file_descriptors.is_empty() {
 			return Ok(0);
 		}
 
-		for (i, fd) in self.file_descriptors.iter().enumerate() {
-			if (i as u32) < fd.get_id() {
+		// TODO Use binary search?
+		for (i, (fd_id, _)) in file_descriptors.iter().enumerate() {
+			if (i as u32) < *fd_id {
 				return Ok(i as u32);
 			}
 		}
 
-		let id = self.file_descriptors.len();
+		let id = file_descriptors.len();
 		if id < limits::OPEN_MAX {
 			Ok(id as u32)
 		} else {
@@ -814,79 +818,94 @@ impl Process {
 		}
 	}
 
-	/// Creates a file descriptor and returns a mutable reference to it.
+	/// Creates a file descriptor and returns a pointer to it with its ID.
 	/// `flags` are the file descriptor's flags.
 	/// `target` is the target of the newly created file descriptor.
 	/// If the target is a file and cannot be open, the function returns an Err.
 	pub fn create_fd(&mut self, flags: i32, target: FDTarget)
-		-> Result<&mut FileDescriptor, Errno> {
-		let id = self.get_available_fd()?;
-		let fd = FileDescriptor::new(id, flags, target)?;
-		let index = self.file_descriptors.binary_search_by(| fd | {
-			fd.get_id().cmp(&id)
-		}).unwrap_err();
+		-> Result<(u32, SharedPtr<FileDescriptor>), Errno> {
+		let mut file_descriptors_guard = self.file_descriptors.lock();
+		let file_descriptors = file_descriptors_guard.get_mut();
 
-		self.file_descriptors.insert(index, fd)?;
-		Ok(&mut self.file_descriptors[index])
+		let id = Self::get_available_fd(file_descriptors)?;
+		let fd = FileDescriptor::new(id, flags, target)?;
+		let i = file_descriptors.binary_search_by(| (fd_id, _) | fd_id.cmp(&id)).unwrap_err();
+
+		file_descriptors.insert(i, (id, SharedPtr::new(fd)?))?;
+		Ok(file_descriptors[i].clone())
 	}
 
 	/// Duplicates the file descriptor with id `id`.
 	/// `new_id` if specified, the id of the new file descriptor. If already used, the previous
 	/// file descriptor shall be closed.
+	/// The function returns a pointer to the file descriptor with its ID.
 	pub fn duplicate_fd(&mut self, id: u32, new_id: Option<u32>)
-		-> Result<&mut FileDescriptor, Errno> {
+		-> Result<(u32, SharedPtr<FileDescriptor>), Errno> {
+		let mut file_descriptors_guard = self.file_descriptors.lock();
+		let file_descriptors = file_descriptors_guard.get_mut();
+
 		let new_id = {
 			if let Some(new_id) = new_id {
 				new_id
 			} else {
-				self.get_available_fd()?
+				Self::get_available_fd(file_descriptors)?
 			}
 		};
 
-		let curr_fd = self.get_fd(id).ok_or_else(|| errno!(EBADF))?;
-		let new_fd = FileDescriptor::new(new_id, curr_fd.get_flags(),
-			curr_fd.get_target().clone())?;
+		let new_fd = {
+			let curr_fd_mutex = Self::get_fd_(file_descriptors, id).ok_or_else(|| errno!(EBADF))?;
+			let curr_fd_guard = curr_fd_mutex.lock();
+			let curr_fd = curr_fd_guard.get();
 
-		let index = self.file_descriptors.binary_search_by(| fd | {
-			fd.get_id().cmp(&new_id)
-		});
+			let mut new_fd = curr_fd.failable_clone()?;
+			new_fd.set_id(new_id);
+
+			SharedPtr::new(new_fd)?
+		};
+
+		let index = file_descriptors.binary_search_by(| (fd_id, _) | fd_id.cmp(&new_id));
 		let index = {
 			if let Ok(i) = index {
-				self.file_descriptors[i] = new_fd;
+				file_descriptors[i] = (new_id, new_fd);
 				i
 			} else {
 				let i = index.unwrap_err();
-				self.file_descriptors.insert(i, new_fd)?;
+				file_descriptors.insert(i, (new_id, new_fd))?;
 				i
 			}
 		};
 
-		Ok(&mut self.file_descriptors[index])
+		Ok(file_descriptors[index].clone())
 	}
 
 	/// Returns the file descriptor with ID `id`. If the file descriptor doesn't exist, the
 	/// function returns None.
-	pub fn get_fd(&mut self, id: u32) -> Option<&mut FileDescriptor> {
-		let result = self.file_descriptors.binary_search_by(| fd | {
-			fd.get_id().cmp(&id)
-		});
+	/// `file_descriptors` is the file descriptors table.
+	fn get_fd_(file_descriptors: &Vec<(u32, SharedPtr<FileDescriptor>)>, id: u32)
+		-> Option<SharedPtr<FileDescriptor>> {
+		let result = file_descriptors.binary_search_by(| (fd_id, _) | fd_id.cmp(&id));
+		result.ok().map(| index | file_descriptors[index].1.clone())
+	}
 
-		if let Ok(index) = result {
-			Some(&mut self.file_descriptors[index])
-		} else {
-			None
-		}
+	/// Returns the file descriptor with ID `id`. If the file descriptor doesn't exist, the
+	/// function returns None.
+	pub fn get_fd(&mut self, id: u32) -> Option<SharedPtr<FileDescriptor>> {
+		let file_descriptors_guard = self.file_descriptors.lock();
+		let file_descriptors = file_descriptors_guard.get();
+
+		Self::get_fd_(file_descriptors, id)
 	}
 
 	/// Closes the file descriptor with the ID `id`. The function returns an Err if the file
 	/// descriptor doesn't exist.
 	pub fn close_fd(&mut self, id: u32) -> Result<(), Errno> {
-		let result = self.file_descriptors.binary_search_by(| fd | {
-			fd.get_id().cmp(&id)
-		});
+		let mut file_descriptors_guard = self.file_descriptors.lock();
+		let file_descriptors = file_descriptors_guard.get_mut();
+
+		let result = file_descriptors.binary_search_by(| (fd_id, _) | fd_id.cmp(&id));
 
 		if let Ok(index) = result {
-			self.file_descriptors.remove(index);
+			file_descriptors.remove(index);
 			Ok(())
 		} else {
 			Err(errno!(EBADF))
@@ -930,6 +949,7 @@ impl Process {
 		let mut regs = self.regs;
 		regs.eax = 0;
 
+		// Cloning memory space
 		let mem_space = {
 			let curr_mem_space = self.get_mem_space().unwrap();
 
@@ -940,7 +960,26 @@ impl Process {
 			}
 		};
 
-		// TODO Handle sharing file descriptors and signal handlers
+		// Cloning file descriptors table
+		let file_descriptors = if fork_options.share_fd {
+			self.file_descriptors.clone()
+		} else {
+			let curr_fds_guard = self.file_descriptors.lock();
+			let curr_fds = curr_fds_guard.get();
+
+			let mut fds = Vec::with_capacity(curr_fds.len())?;
+			for fd in curr_fds.iter() {
+				fds.push(fd.clone())?;
+			}
+			SharedPtr::new(fds)?
+		};
+
+		// Cloning signal handlers
+		let signal_handlers = if fork_options.share_sighand {
+			self.signal_handlers.clone()
+		} else {
+			SharedPtr::new(self.signal_handlers.lock().get().clone())?
+		};
 
 		let process = Self {
 			pid,
@@ -976,11 +1015,11 @@ impl Process {
 			kernel_stack: self.kernel_stack,
 
 			cwd: self.cwd.failable_clone()?,
-			file_descriptors: self.file_descriptors.failable_clone()?,
+			file_descriptors: file_descriptors,
 
 			sigmask: self.sigmask.failable_clone()?,
-			sigpending: Bitfield::new(signal::SIGNALS_COUNT + 1)?,
-			signal_handlers: self.signal_handlers,
+			sigpending: Bitfield::new(signal::SIGNALS_COUNT)?,
+			signal_handlers: signal_handlers,
 
 			tls_entries: self.tls_entries,
 			ldt: {
@@ -1010,15 +1049,15 @@ impl Process {
 	/// Returns the signal handler for the signal type `type_`.
 	#[inline(always)]
 	pub fn get_signal_handler(&self, type_: SignalType) -> SignalHandler {
-		debug_assert!((type_ as usize) < self.signal_handlers.len());
-		self.signal_handlers[type_ as usize]
+		debug_assert!((type_ as usize) < signal::SIGNALS_COUNT);
+		self.signal_handlers.lock().get()[type_ as usize]
 	}
 
 	/// Sets the signal handler `handler` for the signal type `type_`.
 	#[inline(always)]
 	pub fn set_signal_handler(&mut self, type_: SignalType, handler: SignalHandler) {
-		debug_assert!((type_ as usize) < self.signal_handlers.len());
-		self.signal_handlers[type_ as usize] = handler;
+		debug_assert!((type_ as usize) < signal::SIGNALS_COUNT);
+		self.signal_handlers.lock().get_mut()[type_ as usize] = handler;
 	}
 
 	/// Tells whether the process is handling a signal.

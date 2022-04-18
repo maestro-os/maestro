@@ -30,12 +30,12 @@ pub fn pipe2(regs: &Regs) -> Result<i32, Errno> {
 	let pipefd_slice = pipefd.get_mut(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
 
 	let pipe = SharedPtr::new(Pipe::new()?);
-	let fd0 = proc.create_fd(file_descriptor::O_RDONLY | flags,
-		FDTarget::Pipe(pipe.clone()?))?.get_id();
-	let fd1 = proc.create_fd(file_descriptor::O_WRONLY | flags,
-		FDTarget::Pipe(pipe.clone()?))?.get_id();
+	let (fd0_id, _) = proc.create_fd(file_descriptor::O_RDONLY | flags,
+		FDTarget::Pipe(pipe.clone()?))?;
+	let (fd1_id, _) = proc.create_fd(file_descriptor::O_WRONLY | flags,
+		FDTarget::Pipe(pipe.clone()?))?;
 
-	pipefd_slice[0] = fd0 as _;
-	pipefd_slice[1] = fd1 as _;
+	pipefd_slice[0] = fd0_id as _;
+	pipefd_slice[1] = fd1_id as _;
 	Ok(0)
 }

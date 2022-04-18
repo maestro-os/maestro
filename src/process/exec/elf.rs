@@ -508,8 +508,13 @@ impl Executor for ELFExecutor {
 
 		// Resetting signals
 		process.sigmask.clear_all();
-		for i in 0..process.signal_handlers.len() {
-			process.signal_handlers[i] = SignalHandler::Default;
+		{
+			let mut handlers_guard = process.signal_handlers.lock();
+			let handlers = handlers_guard.get_mut();
+
+			for i in 0..handlers.len() {
+				handlers[i] = SignalHandler::Default;
+			}
 		}
 
 		// Setting the process's entry point

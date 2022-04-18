@@ -22,8 +22,11 @@ pub fn fchdir(regs: &Regs) -> Result<i32, Errno> {
 		return Err(errno!(EBADF));
 	}
 
-	let fd = proc.get_fd(fd as _).ok_or_else(|| errno!(EBADF))?;
-	if let FDTarget::File(dir_mutex) = fd.get_target_mut() {
+	let file_desc_mutex = proc.get_fd(fd as _).ok_or_else(|| errno!(EBADF))?;
+	let mut file_desc_guard = file_desc_mutex.lock();
+	let file_desc = file_desc_guard.get_mut();
+
+	if let FDTarget::File(dir_mutex) = file_desc.get_target_mut() {
 		let new_cwd = {
 			let mut dir_guard = dir_mutex.lock();
 			let dir = dir_guard.get_mut();

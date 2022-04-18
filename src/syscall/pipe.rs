@@ -23,10 +23,10 @@ pub fn pipe(regs: &Regs) -> Result<i32, Errno> {
 
 	let pipe = SharedPtr::new(Pipe::new()?)?;
 	let pipe2 = pipe.clone();
-	let fd0 = proc.create_fd(file_descriptor::O_RDONLY, FDTarget::Pipe(pipe))?.get_id();
-	let fd1 = proc.create_fd(file_descriptor::O_WRONLY, FDTarget::Pipe(pipe2))?.get_id();
+	let (fd0_id, _) = proc.create_fd(file_descriptor::O_RDONLY, FDTarget::Pipe(pipe))?;
+	let (fd1_id, _) = proc.create_fd(file_descriptor::O_WRONLY, FDTarget::Pipe(pipe2))?;
 
-	pipefd_slice[0] = fd0 as _;
-	pipefd_slice[1] = fd1 as _;
+	pipefd_slice[0] = fd0_id as _;
+	pipefd_slice[1] = fd1_id as _;
 	Ok(0)
 }

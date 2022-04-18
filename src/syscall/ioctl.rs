@@ -20,7 +20,9 @@ pub fn ioctl(regs: &Regs) -> Result<i32, Errno> {
 	// TODO Check access to args (if needed)
 
 	// Getting the file descriptor
-	let file_descriptor = proc.get_fd(fd as _).ok_or_else(|| errno!(EBADF))?;
+	let file_desc_mutex = proc.get_fd(fd as _).ok_or_else(|| errno!(EBADF))?;
+	let mut file_desc_guard = file_desc_mutex.lock();
+	let file_desc = file_desc_guard.get_mut();
 
-	Ok(file_descriptor.ioctl(request, argp)? as _)
+	Ok(file_desc.ioctl(request, argp)? as _)
 }

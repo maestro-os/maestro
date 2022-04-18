@@ -86,7 +86,6 @@ pub enum FDTarget {
 }
 
 /// Structure representing a file descriptor.
-#[derive(Clone)]
 pub struct FileDescriptor {
 	/// The ID of the file descriptor.
 	id: u32,
@@ -117,6 +116,11 @@ impl FileDescriptor {
 	/// Returns the id of the file descriptor.
 	pub fn get_id(&self) -> u32 {
 		self.id
+	}
+
+	/// Sets the id of the file descriptor.
+	pub fn set_id(&mut self, id: u32) {
+		self.id = id;
 	}
 
 	/// Returns the file descriptor's flags.
@@ -283,7 +287,19 @@ impl FileDescriptor {
 	}
 }
 
-crate::failable_clone_impl!(FileDescriptor);
+impl FailableClone for FileDescriptor {
+	fn failable_clone(&self) -> Result<Self, Errno> {
+		increment_total()?;
+
+		Ok(Self {
+			id: self.id,
+			flags: self.flags,
+			target: self.target.clone(),
+
+			curr_off: self.curr_off,
+		})
+	}
+}
 
 impl Drop for FileDescriptor {
 	fn drop(&mut self) {

@@ -14,6 +14,7 @@ use crate::process::mem_space::physical_ref_counter::PhysRefCounter;
 use crate::process::oom;
 use crate::util::boxed::Box;
 use crate::util::lock::*;
+use crate::util::ptr::SharedPtr;
 use crate::util;
 use super::MemSpace;
 
@@ -50,7 +51,7 @@ pub struct MemMapping {
 
 	/// The file descriptor of the file that mapping points to. If None, the mapping doesn't point
 	/// to any file.
-	fd: Option<FileDescriptor>,
+	fd: Option<SharedPtr<FileDescriptor>>,
 	/// The offset inside of the file pointed to by the file descriptor. If there is no file
 	/// descriptor, the value is undefined.
 	off: u64,
@@ -72,7 +73,7 @@ impl MemMapping {
 	/// point to any file.
 	/// `off` is the offset inside of the file pointed to by the given file descriptor.
 	/// `vmem` is the virtual memory context handler.
-	pub fn new(begin: *const c_void, size: usize, flags: u8, fd: Option<FileDescriptor>,
+	pub fn new(begin: *const c_void, size: usize, flags: u8, fd: Option<SharedPtr<FileDescriptor>>,
 		off: u64, vmem: NonNull<dyn VMem>) -> Self {
 		debug_assert!(util::is_aligned(begin, memory::PAGE_SIZE));
 		debug_assert!(size > 0);

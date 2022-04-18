@@ -30,6 +30,7 @@ use crate::util::boxed::Box;
 use crate::util::container::binary_tree::BinaryTree;
 use crate::util::lock::Mutex;
 use crate::util::math;
+use crate::util::ptr::SharedPtr;
 use crate::util;
 use gap::MemGap;
 use mapping::MemMapping;
@@ -182,7 +183,7 @@ impl MemSpace {
 	/// The function has complexity `O(log n)`.
 	/// If the given pointer is not page-aligned, the function returns an error.
 	pub fn map(&mut self, ptr: Option<*const c_void>, size: usize, flags: u8,
-		fd: Option<FileDescriptor>, fd_off: u64) -> Result<*mut c_void, Errno> {
+		fd: Option<SharedPtr<FileDescriptor>>, fd_off: u64) -> Result<*mut c_void, Errno> {
 		// Checking arguments are valid
 		if let Some(ptr) = ptr {
 			if !util::is_aligned(ptr, memory::PAGE_SIZE) {

@@ -12,6 +12,6 @@ pub fn dup(regs: &Regs) -> Result<i32, Errno> {
 	let mut guard = mutex.lock();
 	let proc = guard.get_mut();
 
-	let newfd = proc.duplicate_fd(oldfd, None)?;
-	Ok(newfd.get_id() as _)
+	let (newfd_id, _) = proc.duplicate_fd(oldfd, None)?;
+	Ok(newfd_id as _)
 }

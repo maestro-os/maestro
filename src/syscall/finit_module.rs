@@ -21,17 +21,17 @@ pub fn finit_module(regs: &Regs) -> Result<i32, Errno> {
 			return Err(errno!(EPERM));
 		}
 
-		if let Some(fd) = proc.get_fd(fd) {
-			let len = fd.get_len(); // TODO Error if file is too large for 32bit?
-			let mut image = unsafe {
-				malloc::Alloc::new_zero(len as usize)?
-			};
-			fd.read(image.as_slice_mut())?;
+		let file_desc_mutex = proc.get_fd(fd).ok_or_else(|| errno!(EBADF))?;
+		let mut file_desc_guard = file_desc_mutex.lock();
+		let file_desc = file_desc_guard.get_mut();
 
-			image
-		} else {
-			return Err(errno!(EBADF));
-		}
+		let len = file_desc.get_len(); // TODO Error if file is too large for 32bit?
+		let mut image = unsafe {
+			malloc::Alloc::new_zero(len as usize)?
+		};
+		file_desc.read(image.as_slice_mut())?;
+
+		image
 	};
 
 	let module = Module::load(image.as_slice())?;

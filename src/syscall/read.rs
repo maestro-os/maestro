@@ -31,13 +31,16 @@ pub fn read(regs: &Regs) -> Result<i32, Errno> {
 			let mem_space_guard = mem_space.lock();
 			let buf_slice = buf.get_mut(&mem_space_guard, len)?.ok_or(errno!(EFAULT))?;
 
-			let fd = proc.get_fd(fd).ok_or(errno!(EBADF))?;
-			if fd.eof() {
+			let file_desc_mutex = proc.get_fd(fd).ok_or(errno!(EBADF))?;
+			let mut file_desc_guard = file_desc_mutex.lock();
+			let file_desc = file_desc_guard.get_mut();
+
+			if file_desc.eof() {
 				return Ok(0);
 			}
 
-			let flags = fd.get_flags();
-			(fd.read(buf_slice)?, flags)
+			let flags = file_desc.get_flags();
+			(file_desc.read(buf_slice)?, flags)
 		};
 
 		if len > 0 || flags & O_NONBLOCK != 0 {

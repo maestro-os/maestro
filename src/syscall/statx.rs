@@ -98,8 +98,12 @@ fn get_file(proc: &mut Process, follow_links: bool, dirfd: i32, pathname: &[u8],
 			if dirfd < 0 {
 				return Err(errno!(EBADF));
 			}
-			let fd = proc.get_fd(dirfd as _).ok_or(errno!(EBADF))?;
-			match fd.get_target() {
+
+			let file_desc_mutex = proc.get_fd(dirfd as _).ok_or(errno!(EBADF))?;
+			let file_desc_guard = file_desc_mutex.lock();
+			let file_desc = file_desc_guard.get();
+
+			match file_desc.get_target() {
 				FDTarget::File(f) => Ok(f.clone()),
 				_ => Err(errno!(EBADF)), // TODO Check if correct
 			}
@@ -122,8 +126,11 @@ fn get_file(proc: &mut Process, follow_links: bool, dirfd: i32, pathname: &[u8],
 					return Err(errno!(EBADF));
 				}
 
-				let fd = proc.get_fd(dirfd as _).ok_or(errno!(EBADF))?;
-				match fd.get_target() {
+				let file_desc_mutex = proc.get_fd(dirfd as _).ok_or(errno!(EBADF))?;
+				let file_desc_guard = file_desc_mutex.lock();
+				let file_desc = file_desc_guard.get();
+
+				match file_desc.get_target() {
 					FDTarget::File(file_mutex) => {
 						let file_guard = file_mutex.lock();
 						let file = file_guard.get();

@@ -85,8 +85,9 @@ pub const SIG_IGN: *const c_void = 0x0 as _;
 /// The default action for the signal.
 pub const SIG_DFL: *const c_void = 0x1 as _;
 
-/// The number of different signal types.
-pub const SIGNALS_COUNT: usize = 29;
+/// The size of the signal handlers table (the number of signals + 1, since indexing begins at 1
+/// instead of 0).
+pub const SIGNALS_COUNT: usize = 30;
 
 /// The size of the redzone in userspace, in bytes.
 pub const REDZONE_SIZE: usize = 128;

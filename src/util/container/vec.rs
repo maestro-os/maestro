@@ -354,7 +354,6 @@ impl<T: PartialEq> PartialEq for Vec<T> {
 }
 
 impl<T> FailableClone for Vec<T> where T: FailableClone {
-	/// Clones the vector and its content.
 	fn failable_clone(&self) -> Result<Self, Errno> {
 		let data = {
 			if self.len > 0 {

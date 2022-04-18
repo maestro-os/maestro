@@ -40,15 +40,17 @@ pub fn getdents(regs: &Regs) -> Result<i32, Errno> {
 	let dirp_slice = dirp.get_mut(&mem_space_guard, count as _)?.ok_or_else(|| errno!(EFAULT))?;
 
 	// Getting file descriptor
-	let fd = proc.get_fd(fd as _).ok_or_else(|| errno!(EBADF))?;
+	let file_desc_mutex = proc.get_fd(fd as _).ok_or_else(|| errno!(EBADF))?;
+	let mut file_desc_guard = file_desc_mutex.lock();
+	let file_desc = file_desc_guard.get_mut();
 
 	let mut off = 0;
 	let mut entries_count = 0;
-	let start = fd.get_offset();
+	let start = file_desc.get_offset();
 
 	{
 		// Getting entries from the directory
-		let fd_target = fd.get_target();
+		let fd_target = file_desc.get_target();
 		let file_mutex = match fd_target {
 			FDTarget::File(file) => file,
 			_ => return Err(errno!(ENOTDIR)),
@@ -106,6 +108,6 @@ pub fn getdents(regs: &Regs) -> Result<i32, Errno> {
 		}
 	}
 
-	fd.set_offset(start + entries_count);
+	file_desc.set_offset(start + entries_count);
 	Ok(off as _)
 }
