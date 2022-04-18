@@ -3,9 +3,10 @@
 //! mounted into subdirectories.
 
 pub mod fcache;
-pub mod file_descriptor;
+pub mod fd;
 pub mod fs;
 pub mod mountpoint;
+pub mod open_file;
 pub mod path;
 pub mod pipe;
 pub mod socket;

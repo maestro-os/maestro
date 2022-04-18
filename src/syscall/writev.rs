@@ -29,9 +29,9 @@ pub fn writev(regs: &Regs) -> Result<i32, Errno> {
 
 	let iov_slice = iov.get(&mem_space_guard, iovcnt as _)?.ok_or(errno!(EFAULT))?;
 
-	let file_desc_mutex = proc.get_fd(fd).ok_or(errno!(EBADF))?;
-	let mut file_desc_guard = file_desc_mutex.lock();
-	let file_desc = file_desc_guard.get_mut();
+	let open_file_mutex = proc.get_open_file(fd).ok_or(errno!(EBADF))?;
+	let mut open_file_guard = open_file_mutex.lock();
+	let open_file = open_file_guard.get_mut();
 
 	// TODO If total length gets out of bounds, stop
 	let mut total_len = 0;
@@ -47,7 +47,7 @@ pub fn writev(regs: &Regs) -> Result<i32, Errno> {
 		let ptr = SyscallSlice::<u8>::from(i.iov_base as usize);
 
 		if let Some(slice) = ptr.get(&mem_space_guard, l)? {
-			total_len += file_desc.write(slice)?;
+			total_len += open_file.write(slice)?;
 		}
 	}
 

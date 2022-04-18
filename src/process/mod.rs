@@ -1,6 +1,8 @@
 //! A process is a task running on the kernel. A multitasking system allows several processes to
 //! run at the same time by sharing the CPU resources using a scheduler.
 
+// TODO Maintain the open file descriptors count
+
 pub mod exec;
 pub mod iovec;
 pub mod mem_space;
@@ -28,9 +30,9 @@ use crate::file::Gid;
 use crate::file::ROOT_UID;
 use crate::file::Uid;
 use crate::file::fcache;
-use crate::file::file_descriptor::FDTarget;
-use crate::file::file_descriptor::FileDescriptor;
-use crate::file::file_descriptor;
+use crate::file::open_file::FDTarget;
+use crate::file::open_file::OpenFile;
+use crate::file::open_file;
 use crate::file::path::Path;
 use crate::file;
 use crate::gdt::ldt::LDT;
@@ -176,7 +178,7 @@ pub struct Process {
 	/// The current working directory.
 	cwd: Path,
 	/// The list of open file descriptors with their respective ID.
-	file_descriptors: SharedPtr<Vec<(u32, SharedPtr<FileDescriptor>)>>,
+	file_descriptors: SharedPtr<Vec<(u32, SharedPtr<OpenFile>)>>,
 
 	/// A bitfield storing the set of blocked signals.
 	sigmask: Bitfield,
@@ -442,7 +444,7 @@ impl Process {
 			let tty_path = Path::from_str(TTY_DEVICE_PATH.as_bytes(), false).unwrap();
 			let tty_file = files_cache.as_mut().unwrap()
 				.get_file_from_path(&tty_path, process.uid, process.gid, true).unwrap();
-			let (stdin_fd_id, _) = process.create_fd(file_descriptor::O_RDWR,
+			let (stdin_fd_id, _) = process.create_fd(open_file::O_RDWR,
 				FDTarget::File(tty_file)).unwrap();
 			assert_eq!(stdin_fd_id, STDIN_FILENO);
 
@@ -797,7 +799,7 @@ impl Process {
 	/// Returns the available file descriptor with the lowest ID. If no ID is available, the
 	/// function returns an error.
 	/// `file_descriptors` is the file descriptors table.
-	fn get_available_fd(file_descriptors: &Vec<(u32, SharedPtr<FileDescriptor>)>)
+	fn get_available_fd(file_descriptors: &Vec<(u32, SharedPtr<OpenFile>)>)
 		-> Result<u32, Errno> {
 		if file_descriptors.is_empty() {
 			return Ok(0);
@@ -823,24 +825,25 @@ impl Process {
 	/// `target` is the target of the newly created file descriptor.
 	/// If the target is a file and cannot be open, the function returns an Err.
 	pub fn create_fd(&mut self, flags: i32, target: FDTarget)
-		-> Result<(u32, SharedPtr<FileDescriptor>), Errno> {
+		-> Result<(u32, SharedPtr<OpenFile>), Errno> {
 		let mut file_descriptors_guard = self.file_descriptors.lock();
 		let file_descriptors = file_descriptors_guard.get_mut();
 
 		let id = Self::get_available_fd(file_descriptors)?;
-		let fd = FileDescriptor::new(id, flags, target)?;
+		let open_file = OpenFile::new(flags, target)?;
 		let i = file_descriptors.binary_search_by(| (fd_id, _) | fd_id.cmp(&id)).unwrap_err();
 
-		file_descriptors.insert(i, (id, SharedPtr::new(fd)?))?;
+		file_descriptors.insert(i, (id, SharedPtr::new(open_file)?))?;
 		Ok(file_descriptors[i].clone())
 	}
 
+	// TODO Disable flag O_CLOEXEC for the duplicated fd
 	/// Duplicates the file descriptor with id `id`.
 	/// `new_id` if specified, the id of the new file descriptor. If already used, the previous
 	/// file descriptor shall be closed.
 	/// The function returns a pointer to the file descriptor with its ID.
 	pub fn duplicate_fd(&mut self, id: u32, new_id: Option<u32>)
-		-> Result<(u32, SharedPtr<FileDescriptor>), Errno> {
+		-> Result<(u32, SharedPtr<OpenFile>), Errno> {
 		let mut file_descriptors_guard = self.file_descriptors.lock();
 		let file_descriptors = file_descriptors_guard.get_mut();
 
@@ -852,26 +855,16 @@ impl Process {
 			}
 		};
 
-		let new_fd = {
-			let curr_fd_mutex = Self::get_fd_(file_descriptors, id).ok_or_else(|| errno!(EBADF))?;
-			let curr_fd_guard = curr_fd_mutex.lock();
-			let curr_fd = curr_fd_guard.get();
-
-			let mut new_fd = curr_fd.failable_clone()?;
-			new_fd.set_id(new_id);
-			new_fd.set_flags(new_fd.get_flags() & !file_descriptor::O_CLOEXEC);
-
-			SharedPtr::new(new_fd)?
-		};
+		let open_file = Self::get_open_file_(file_descriptors, id).ok_or_else(|| errno!(EBADF))?;
 
 		let index = file_descriptors.binary_search_by(| (fd_id, _) | fd_id.cmp(&new_id));
 		let index = {
 			if let Ok(i) = index {
-				file_descriptors[i] = (new_id, new_fd);
+				file_descriptors[i] = (new_id, open_file);
 				i
 			} else {
 				let i = index.unwrap_err();
-				file_descriptors.insert(i, (new_id, new_fd))?;
+				file_descriptors.insert(i, (new_id, open_file))?;
 				i
 			}
 		};
@@ -879,22 +872,22 @@ impl Process {
 		Ok(file_descriptors[index].clone())
 	}
 
-	/// Returns the file descriptor with ID `id`. If the file descriptor doesn't exist, the
-	/// function returns None.
+	/// Returns the open file description pointed to by the file descriptor with ID `id`. If the
+	/// file descriptor doesn't exist, the function returns None.
 	/// `file_descriptors` is the file descriptors table.
-	fn get_fd_(file_descriptors: &Vec<(u32, SharedPtr<FileDescriptor>)>, id: u32)
-		-> Option<SharedPtr<FileDescriptor>> {
+	fn get_open_file_(file_descriptors: &Vec<(u32, SharedPtr<OpenFile>)>, id: u32)
+		-> Option<SharedPtr<OpenFile>> {
 		let result = file_descriptors.binary_search_by(| (fd_id, _) | fd_id.cmp(&id));
 		result.ok().map(| index | file_descriptors[index].1.clone())
 	}
 
-	/// Returns the file descriptor with ID `id`. If the file descriptor doesn't exist, the
-	/// function returns None.
-	pub fn get_fd(&mut self, id: u32) -> Option<SharedPtr<FileDescriptor>> {
+	/// Returns the open file description pointed to by the file descriptor with ID `id`. If the
+	/// file descriptor doesn't exist, the function returns None.
+	pub fn get_open_file(&mut self, id: u32) -> Option<SharedPtr<OpenFile>> {
 		let file_descriptors_guard = self.file_descriptors.lock();
 		let file_descriptors = file_descriptors_guard.get();
 
-		Self::get_fd_(file_descriptors, id)
+		Self::get_open_file_(file_descriptors, id)
 	}
 
 	/// Closes the file descriptor with the ID `id`. The function returns an Err if the file

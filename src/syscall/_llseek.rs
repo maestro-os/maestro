@@ -27,16 +27,16 @@ pub fn _llseek(regs: &Regs) -> Result<i32, Errno> {
 	let mem_space = proc.get_mem_space().unwrap();
 
 	// Getting the file descriptor
-	let file_desc_mutex = proc.get_fd(fd).ok_or_else(|| errno!(EBADF))?;
-	let mut file_desc_guard = file_desc_mutex.lock();
-	let file_desc = file_desc_guard.get_mut();
+	let open_file_mutex = proc.get_open_file(fd).ok_or_else(|| errno!(EBADF))?;
+	let mut open_file_guard = open_file_mutex.lock();
+	let open_file = open_file_guard.get_mut();
 
 	// Computing the offset
 	let off = ((offset_high as u64) << 32) | (offset_low as u64);
 	let off = match whence {
 		SEEK_SET => off,
-		SEEK_CUR => file_desc.get_offset() + off,
-		SEEK_END => file_desc.get_file_size() + off,
+		SEEK_CUR => open_file.get_offset() + off,
+		SEEK_END => open_file.get_file_size() + off,
 
 		_ => return Err(errno!(EINVAL)),
 	};
@@ -50,7 +50,7 @@ pub fn _llseek(regs: &Regs) -> Result<i32, Errno> {
 	}
 
 	// Setting the offset
-	file_desc.set_offset(off);
+	open_file.set_offset(off);
 
 	Ok(0)
 }

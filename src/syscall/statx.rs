@@ -4,9 +4,9 @@ use crate::errno::Errno;
 use crate::file::File;
 use crate::file::FileContent;
 use crate::file::fcache;
-use crate::file::file_descriptor::FDTarget;
 use crate::file::mountpoint::MountSource;
 use crate::file::mountpoint;
+use crate::file::open_file::FDTarget;
 use crate::file::path::Path;
 use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallPtr;
@@ -99,11 +99,11 @@ fn get_file(proc: &mut Process, follow_links: bool, dirfd: i32, pathname: &[u8],
 				return Err(errno!(EBADF));
 			}
 
-			let file_desc_mutex = proc.get_fd(dirfd as _).ok_or(errno!(EBADF))?;
-			let file_desc_guard = file_desc_mutex.lock();
-			let file_desc = file_desc_guard.get();
+			let open_file_mutex = proc.get_open_file(dirfd as _).ok_or(errno!(EBADF))?;
+			let open_file_guard = open_file_mutex.lock();
+			let open_file = open_file_guard.get();
 
-			match file_desc.get_target() {
+			match open_file.get_target() {
 				FDTarget::File(f) => Ok(f.clone()),
 				_ => Err(errno!(EBADF)), // TODO Check if correct
 			}
@@ -126,11 +126,11 @@ fn get_file(proc: &mut Process, follow_links: bool, dirfd: i32, pathname: &[u8],
 					return Err(errno!(EBADF));
 				}
 
-				let file_desc_mutex = proc.get_fd(dirfd as _).ok_or(errno!(EBADF))?;
-				let file_desc_guard = file_desc_mutex.lock();
-				let file_desc = file_desc_guard.get();
+				let open_file_mutex = proc.get_open_file(dirfd as _).ok_or(errno!(EBADF))?;
+				let open_file_guard = open_file_mutex.lock();
+				let open_file = open_file_guard.get();
 
-				match file_desc.get_target() {
+				match open_file.get_target() {
 					FDTarget::File(file_mutex) => {
 						let file_guard = file_mutex.lock();
 						let file = file_guard.get();

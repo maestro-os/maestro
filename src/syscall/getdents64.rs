@@ -5,7 +5,7 @@ use core::mem::size_of;
 use core::ptr;
 use crate::errno::Errno;
 use crate::file::FileContent;
-use crate::file::file_descriptor::FDTarget;
+use crate::file::open_file::FDTarget;
 use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallSlice;
 use crate::process::regs::Regs;
@@ -44,17 +44,17 @@ pub fn getdents64(regs: &Regs) -> Result<i32, Errno> {
 	let dirp_slice = dirp.get_mut(&mem_space_guard, count)?.ok_or_else(|| errno!(EFAULT))?;
 
 	// Getting file descriptor
-	let file_desc_mutex = proc.get_fd(fd as _).ok_or_else(|| errno!(EBADF))?;
-	let mut file_desc_guard = file_desc_mutex.lock();
-	let file_desc = file_desc_guard.get_mut();
+	let open_file_mutex = proc.get_open_file(fd as _).ok_or_else(|| errno!(EBADF))?;
+	let mut open_file_guard = open_file_mutex.lock();
+	let open_file = open_file_guard.get_mut();
 
 	let mut off = 0;
 	let mut entries_count = 0;
-	let start = file_desc.get_offset();
+	let start = open_file.get_offset();
 
 	{
 		// Getting entries from the directory
-		let fd_target = file_desc.get_target();
+		let fd_target = open_file.get_target();
 		let file_mutex = match fd_target {
 			FDTarget::File(file) => file,
 			_ => return Err(errno!(ENOTDIR)),
@@ -104,6 +104,6 @@ pub fn getdents64(regs: &Regs) -> Result<i32, Errno> {
 		}
 	}
 
-	file_desc.set_offset(start + entries_count);
+	open_file.set_offset(start + entries_count);
 	Ok(off as _)
 }

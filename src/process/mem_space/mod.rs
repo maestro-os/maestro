@@ -19,7 +19,7 @@ use core::ptr::NonNull;
 use core::ptr::null;
 use crate::errno::Errno;
 use crate::errno;
-use crate::file::file_descriptor::FileDescriptor;
+use crate::file::open_file::OpenFile;
 use crate::memory::stack;
 use crate::memory::vmem::VMem;
 use crate::memory::vmem;
@@ -175,15 +175,15 @@ impl MemSpace {
 	/// enough to contain the mapping.
 	/// `size` represents the size of the mapping in number of memory pages.
 	/// `flags` represents the flags for the mapping.
-	/// `fd` is the file descriptor pointing to the file to map to.
-	/// `fd_off` is the offset in bytes into the file.
+	/// `file` is the open file to map to.
+	/// `file_off` is the offset in bytes into the file.
 	/// The underlying physical memory is not allocated directly but only when an attempt to write
 	/// the memory is detected.
 	/// The function returns a pointer to the newly mapped virtual memory.
 	/// The function has complexity `O(log n)`.
 	/// If the given pointer is not page-aligned, the function returns an error.
 	pub fn map(&mut self, ptr: Option<*const c_void>, size: usize, flags: u8,
-		fd: Option<SharedPtr<FileDescriptor>>, fd_off: u64) -> Result<*mut c_void, Errno> {
+		file: Option<SharedPtr<OpenFile>>, file_off: u64) -> Result<*mut c_void, Errno> {
 		// Checking arguments are valid
 		if let Some(ptr) = ptr {
 			if !util::is_aligned(ptr, memory::PAGE_SIZE) {
@@ -222,7 +222,7 @@ impl MemSpace {
 		// The address to the beginning of the mapping
 		let addr = (gap.get_begin() as usize + off * memory::PAGE_SIZE) as *mut c_void;
 		// Creating the mapping
-		let mapping = MemMapping::new(addr, size, flags, fd, fd_off,
+		let mapping = MemMapping::new(addr, size, flags, file, file_off,
 			NonNull::new(self.vmem.as_mut_ptr()).unwrap());
 		debug_assert!(ptr.is_none() || addr == ptr.unwrap() as _);
 

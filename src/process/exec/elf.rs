@@ -506,6 +506,8 @@ impl Executor for ELFExecutor {
 		process.user_stack = Some(user_stack);
 		process.kernel_stack = Some(kernel_stack);
 
+		// TODO Duplicate file descriptors (but not open file descriptions)
+
 		// Resetting signals
 		process.sigmask.clear_all();
 		{

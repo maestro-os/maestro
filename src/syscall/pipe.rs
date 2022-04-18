@@ -1,8 +1,8 @@
 //! The pipe system call allows to create a pipe.
 
 use crate::errno::Errno;
-use crate::file::file_descriptor::FDTarget;
-use crate::file::file_descriptor;
+use crate::file::open_file::FDTarget;
+use crate::file::open_file;
 use crate::file::pipe::Pipe;
 use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallPtr;
@@ -22,8 +22,8 @@ pub fn pipe(regs: &Regs) -> Result<i32, Errno> {
 	let pipefd_slice = pipefd.get_mut(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
 
 	let pipe = SharedPtr::new(Pipe::new(0, 0)?)?; // File descriptors are set after being created
-	let (fd0_id, _) = proc.create_fd(file_descriptor::O_RDONLY, FDTarget::Pipe(pipe.clone()))?;
-	let (fd1_id, _) = proc.create_fd(file_descriptor::O_WRONLY, FDTarget::Pipe(pipe.clone()))?;
+	let (fd0_id, _) = proc.create_fd(open_file::O_RDONLY, FDTarget::Pipe(pipe.clone()))?;
+	let (fd1_id, _) = proc.create_fd(open_file::O_WRONLY, FDTarget::Pipe(pipe.clone()))?;
 
 	// Setting file descriptors on the pipe
 	{

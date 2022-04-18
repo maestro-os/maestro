@@ -73,26 +73,24 @@ pub fn do_mmap(addr: *mut c_void, length: usize, prot: i32, flags: i32, fd: i32,
 	let mut guard = mutex.lock();
 	let proc = guard.get_mut();
 
-	// The file descriptor used by the mapping
-	let fd = {
-		if fd >= 0 {
-			if let Some(fd) = proc.get_fd(fd as _) {
-				Some(fd.clone())
-			} else {
-				None
-			}
+	// The file the mapping points to
+	let file = if fd >= 0 {
+		if let Some(file) = proc.get_open_file(fd as _) {
+			Some(file.clone())
 		} else {
 			None
 		}
+	} else {
+		None
 	};
 
-	if let Some(_fd) = &fd {
+	if let Some(_file) = &file {
 		// Checking the alignment of the offset
 		if offset as usize % memory::PAGE_SIZE != 0 {
 			return Err(errno!(EINVAL));
 		}
 
-		// TODO Check the read/write state of the fd matches the mapping
+		// TODO Check the read/write state of the open file matches the mapping
 	} else {
 		// TODO If the mapping requires a fd, return an error
 	}
@@ -103,7 +101,8 @@ pub fn do_mmap(addr: *mut c_void, length: usize, prot: i32, flags: i32, fd: i32,
 
 	// FIXME Passing the hint as an exact location
 	// The pointer on the virtual memory to the beginning of the mapping
-	let ptr = mem_space_guard.get_mut().map(addr_hint, pages, get_flags(flags, prot), fd, offset)?;
+	let ptr = mem_space_guard.get_mut().map(addr_hint, pages, get_flags(flags, prot), file,
+		offset)?;
 	Ok(ptr as _)
 }
 

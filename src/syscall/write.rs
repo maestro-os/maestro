@@ -3,7 +3,7 @@
 use core::cmp::min;
 use crate::errno::Errno;
 use crate::errno;
-use crate::file::file_descriptor::O_NONBLOCK;
+use crate::file::open_file::O_NONBLOCK;
 use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallSlice;
 use crate::process::regs::Regs;
@@ -33,12 +33,12 @@ pub fn write(regs: &Regs) -> Result<i32, Errno> {
 			let mem_space_guard = mem_space.lock();
 			let buf_slice = buf.get(&mem_space_guard, len)?.ok_or(errno!(EFAULT))?;
 
-			let file_desc_mutex = proc.get_fd(fd).ok_or(errno!(EBADF))?;
-			let mut file_desc_guard = file_desc_mutex.lock();
-			let file_desc = file_desc_guard.get_mut();
+			let open_file_mutex = proc.get_open_file(fd).ok_or(errno!(EBADF))?;
+			let mut open_file_guard = open_file_mutex.lock();
+			let open_file = open_file_guard.get_mut();
 
-			let flags = file_desc.get_flags();
-			(file_desc.write(buf_slice)?, flags) // TODO On EPIPE, kill current with SIGPIPE
+			let flags = open_file.get_flags();
+			(open_file.write(buf_slice)?, flags) // TODO On EPIPE, kill current with SIGPIPE
 		};
 
 		// TODO Continue until everything was written?
