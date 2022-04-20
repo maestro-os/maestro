@@ -64,7 +64,6 @@ pub fn clone(regs: &Regs) -> Result<i32, Errno> {
 	let _parent_tid: SyscallPtr<i32> = (regs.edx as usize).into();
 	let _child_tid: SyscallPtr<i32> = (regs.esi as usize).into();
 	let tls = regs.edi as i32;
-	println!("{} {:p} {:p} {:p} {}", flags, stack, _parent_tid.as_ptr(), _child_tid.as_ptr(), tls); // TODO rm
 
 	// The current process
 	let curr_mutex = Process::get_current().unwrap();

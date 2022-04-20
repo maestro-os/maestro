@@ -25,7 +25,7 @@ pub fn finit_module(regs: &Regs) -> Result<i32, Errno> {
 		let mut open_file_guard = open_file_mutex.lock();
 		let open_file = open_file_guard.get_mut();
 
-		let len = open_file.get_len(); // TODO Error if file is too large for 32bit?
+		let len = open_file.get_file_size(); // TODO Error if file is too large for 32bit?
 		let mut image = unsafe {
 			malloc::Alloc::new_zero(len as usize)?
 		};

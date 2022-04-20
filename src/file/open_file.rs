@@ -5,7 +5,7 @@ use core::ffi::c_void;
 use crate::errno::Errno;
 use crate::errno;
 use crate::file::File;
-use crate::file::pipe::Pipe;
+use crate::file::pipe::PipeBuffer;
 use crate::file::socket::SocketSide;
 use crate::util::IO;
 use crate::util::ptr::SharedPtr;
@@ -51,7 +51,7 @@ pub enum FDTarget {
 	/// Points to a file.
 	File(SharedPtr<File>),
 	/// Points to a pipe.
-	Pipe(SharedPtr<Pipe>),
+	Pipe(SharedPtr<PipeBuffer>),
 	/// Points to a socket.
 	Socket(SharedPtr<SocketSide>),
 }
@@ -72,12 +72,17 @@ pub struct OpenFile {
 impl OpenFile {
 	/// Creates a new open file description.
 	pub fn new(flags: i32, target: FDTarget) -> Result<Self, Errno> {
-		Ok(Self {
+		let s = Self {
 			flags,
 			target,
 
 			curr_off: 0,
-		})
+		};
+		if let FDTarget::Pipe(pipe) = &s.target {
+			pipe.lock().get_mut().update_end_count(s.can_write(), false);
+		}
+
+		Ok(s)
 	}
 
 	/// Returns the file flags.
@@ -86,8 +91,11 @@ impl OpenFile {
 	}
 
 	/// Sets the open file flags.
+	/// File access mode (O_RDONLY, O_WRONLY, O_RDWR) and file creation flags (O_CREAT, O_EXCL,
+	/// O_NOCTTY, O_TRUNC) are ignored.
 	pub fn set_flags(&mut self, flags: i32) {
-		self.flags = flags;
+		let ignored_flags = O_RDONLY | O_WRONLY | O_RDWR | O_CREAT | O_EXCL | O_NOCTTY | O_TRUNC;
+		self.flags = (self.flags & ignored_flags) | (flags & !ignored_flags);
 	}
 
 	/// Tells whether the open file can be read from.
@@ -129,26 +137,6 @@ impl OpenFile {
 		self.curr_off = off;
 	}
 
-	/// Returns the length of the file.
-	pub fn get_len(&mut self) -> u64 {
-		match &mut self.target {
-			FDTarget::File(f) => {
-				let guard = f.lock();
-				guard.get().get_size()
-			},
-
-			FDTarget::Pipe(_p) => {
-				// TODO Get the fd the pipe points to, then make a recursive call
-				todo!();
-			}
-
-			FDTarget::Socket(_s) => {
-				// TODO
-				todo!();
-			}
-		}
-	}
-
 	/// Tells whether the end of file has been reached.
 	pub fn eof(&self) -> bool {
 		match &self.target {
@@ -156,12 +144,9 @@ impl OpenFile {
 				self.curr_off >= f.lock().get().get_size()
 			},
 
-			FDTarget::Pipe(_p) => {
-				// TODO If other side is closed, return `true`. Else, `false`
-				todo!();
-			},
+			FDTarget::Pipe(pipe) => pipe.lock().get().eof(),
 
-			FDTarget::Socket(_s) => {
+			FDTarget::Socket(_sock) => {
 				// TODO If other side is closed, return `true`. Else, `false`
 				todo!();
 			},
@@ -234,12 +219,23 @@ impl OpenFile {
 				guard.get_mut().ioctl(request, argp)
 			},
 
-			FDTarget::Pipe(_) => {
-				// TODO Get corresponding fd
+			FDTarget::Pipe(_pipe) => {
+				// TODO
 				todo!();
 			}
 
-			FDTarget::Socket(_) => Err(errno!(EINVAL)),
+			FDTarget::Socket(_sock) => {
+				// TODO
+				todo!();
+			},
+		}
+	}
+}
+
+impl Drop for OpenFile {
+	fn drop(&mut self) {
+		if let FDTarget::Pipe(pipe) = &self.target {
+			pipe.lock().get_mut().update_end_count(self.can_write(), true);
 		}
 	}
 }

@@ -3,7 +3,7 @@
 use crate::errno::Errno;
 use crate::file::open_file::FDTarget;
 use crate::file::open_file;
-use crate::file::pipe::Pipe;
+use crate::file::pipe::PipeBuffer;
 use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::regs::Regs;
@@ -21,16 +21,9 @@ pub fn pipe(regs: &Regs) -> Result<i32, Errno> {
 	let mem_space_guard = mem_space.lock();
 	let pipefd_slice = pipefd.get_mut(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
 
-	let pipe = SharedPtr::new(Pipe::new(0, 0)?)?; // File descriptors are set after being created
+	let pipe = SharedPtr::new(PipeBuffer::new()?)?;
 	let (fd0_id, _) = proc.create_fd(open_file::O_RDONLY, FDTarget::Pipe(pipe.clone()))?;
 	let (fd1_id, _) = proc.create_fd(open_file::O_WRONLY, FDTarget::Pipe(pipe.clone()))?;
-
-	// Setting file descriptors on the pipe
-	{
-		let mut guard = pipe.lock();
-		guard.get_mut().set_fd0(fd0_id);
-		guard.get_mut().set_fd1(fd1_id);
-	}
 
 	pipefd_slice[0] = fd0_id as _;
 	pipefd_slice[1] = fd1_id as _;
