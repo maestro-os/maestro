@@ -24,6 +24,16 @@ pub struct Timeval {
 	tv_usec: UTimestamp,
 }
 
+/// Same as `Timeval`, but with nanosecond precision.
+#[derive(Clone, Default)]
+#[repr(C)]
+pub struct Timespec {
+	/// Seconds
+	tv_sec: Timestamp,
+	/// Nanoseconds
+	tv_nsec: u32,
+}
+
 /// Trait representing a source able to provide the current timestamp.
 pub trait ClockSource {
 	/// The name of the source.

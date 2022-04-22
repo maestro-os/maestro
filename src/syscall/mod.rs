@@ -46,6 +46,7 @@ mod modify_ldt;
 mod mount;
 mod msync;
 mod munmap;
+mod nanosleep;
 mod open;
 mod pipe2;
 mod pipe;
@@ -126,6 +127,7 @@ use mmap::mmap;
 use mount::mount;
 use msync::msync;
 use munmap::munmap;
+use nanosleep::nanosleep;
 use open::open;
 use pipe2::pipe2;
 use pipe::pipe;
@@ -325,7 +327,7 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 		// TODO 0x09f => sched_get_priority_max(regs),
 		// TODO 0x0a0 => sched_get_priority_min(regs),
 		// TODO 0x0a1 => sched_rr_get_interval(regs),
-		// TODO 0x0a2 => nanosleep(regs),
+		0x0a2 => nanosleep(regs),
 		// TODO 0x0a3 => mremap(regs),
 		// TODO 0x0a4 => setresuid(regs),
 		// TODO 0x0a5 => getresuid(regs),
