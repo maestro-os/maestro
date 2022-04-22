@@ -37,7 +37,7 @@ struct RefCounter {
 /// dropped at the moment the counter reaches `0`.
 struct SharedPtrInner<T: ?Sized, const INT: bool> {
 	/// The structure storing the pointers count.
-	ref_counter: Mutex<RefCounter>,
+	ref_counter: Mutex<RefCounter, false>,
 
 	/// The object stored by the shared pointer.
 	/// When locked, this object requires to disable interruptions because the pointer may contain

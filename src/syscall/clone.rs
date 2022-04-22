@@ -62,8 +62,8 @@ pub fn clone(regs: &Regs) -> Result<i32, Errno> {
 	let flags = regs.ebx as i32;
 	let stack = regs.ecx as *mut c_void;
 	let _parent_tid: SyscallPtr<i32> = (regs.edx as usize).into();
-	let _child_tid: SyscallPtr<i32> = (regs.esi as usize).into();
-	let tls = regs.edi as i32;
+	let tls = regs.esi as i32;
+	let _child_tid: SyscallPtr<i32> = (regs.edi as usize).into();
 
 	// The current process
 	let curr_mutex = Process::get_current().unwrap();
@@ -88,7 +88,11 @@ pub fn clone(regs: &Regs) -> Result<i32, Errno> {
 
 	// Setting the process's registers
 	let mut new_regs = regs.clone();
-	new_regs.esp = stack as _;
+	new_regs.esp = if stack.is_null() {
+		regs.esp as _
+	} else {
+		stack as _
+	};
 	if flags & CLONE_SETTLS != 0 {
 		let _tls: SyscallPtr<UserDesc> = (tls as usize).into();
 
