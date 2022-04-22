@@ -519,6 +519,8 @@ impl Executor for ELFExecutor {
 			}
 		}
 
+		process.reset_vfork();
+
 		// Setting the process's entry point
 		let hdr = parser.get_header();
 

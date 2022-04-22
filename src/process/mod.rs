@@ -108,6 +108,9 @@ pub struct ForkOptions {
 	pub share_fd: bool,
 	/// If true, the parent and child processes both share the same signal handlers table.
 	pub share_sighand: bool,
+
+	/// If true, the parent is stopped until the child process exits or executes a program.
+	pub vfork: bool,
 }
 
 impl Default for ForkOptions {
@@ -116,8 +119,26 @@ impl Default for ForkOptions {
 			share_memory: false,
 			share_fd: false,
 			share_sighand: false,
+
+			vfork: false,
 		}
 	}
+}
+
+/// The vfork operation is similar to the fork operation except the parent process isn't executed
+/// until the child process exits or executes a program.
+/// The reason for this is to prevent useless copies of memory pages when the child process is
+/// created only to execute a program.
+/// It implies that the child process shares the same memory space as the parent.
+#[derive(PartialEq)]
+enum VForkState {
+	/// The process is not in vfork state.
+	None,
+
+	/// The process is the parent waiting for the child to terminate.
+	Waiting,
+	/// The process is the child the parent waits for.
+	Executing,
 }
 
 /// The Process Control Block (PCB). This structure stores all the informations about a process.
@@ -144,6 +165,9 @@ pub struct Process {
 
 	/// The current state of the process.
 	state: State,
+	/// The current vfork state of the process (see documentation of `VForkState`).
+	vfork_state: VForkState,
+
 	/// The priority of the process.
 	priority: usize,
 	/// The number of quantum run during the cycle.
@@ -398,6 +422,8 @@ impl Process {
 			umask: DEFAULT_UMASK,
 
 			state: State::Running,
+			vfork_state: VForkState::None,
+
 			priority: 0,
 			quantum_count: 0,
 
@@ -610,6 +636,12 @@ impl Process {
 
 			self.waitable = true;
 		}
+	}
+
+	/// Tells whether the scheduler can run the process.
+	pub fn can_run(&self) -> bool {
+		self.get_state() == State::Running
+			&& self.vfork_state != VForkState::Waiting
 	}
 
 	/// Tells whether the current process has informations to be retrieved by the `waitpid` system
@@ -945,11 +977,19 @@ impl Process {
 		let mut regs = self.regs;
 		regs.eax = 0;
 
+		// Handling vfork
+		let vfork_state = if fork_options.vfork {
+			self.vfork_state = VForkState::Waiting; // TODO Cancel if the following code fails
+			VForkState::Executing
+		} else {
+			VForkState::None
+		};
+
 		// Cloning memory space
 		let (mem_space, kernel_stack) = {
 			let curr_mem_space = self.get_mem_space().unwrap();
 
-			if fork_options.share_memory {
+			if fork_options.share_memory || fork_options.vfork {
 				// Allocating a kernel stack for the new process
 				let new_kernel_stack = curr_mem_space.lock().get_mut()
 					.map_stack(None, KERNEL_STACK_SIZE, KERNEL_STACK_FLAGS)?;
@@ -995,6 +1035,8 @@ impl Process {
 			umask: self.umask,
 
 			state: State::Running,
+			vfork_state,
+
 			priority: self.priority,
 			quantum_count: 0,
 
@@ -1195,13 +1237,32 @@ impl Process {
 		&self.rusage
 	}
 
+	/// If the process is a vfork child, resets its state and its parent's state.
+	pub fn reset_vfork(&mut self) {
+		if self.vfork_state != VForkState::Executing {
+			return;
+		}
+
+		self.vfork_state = VForkState::None;
+
+		// Resetting the parent's vfork state if needed
+		if let Some(parent) = self.get_parent() {
+			let parent = parent.get_mut().unwrap();
+			let mut guard = parent.lock();
+			guard.get_mut().vfork_state = VForkState::None;
+		}
+	}
+
 	/// Exits the process with the given `status`. This function changes the process's status to
 	/// `Zombie`.
 	pub fn exit(&mut self, status: u32) {
 		self.exit_status = (status & 0xff) as ExitStatus;
 		self.set_state(State::Zombie);
 
+		self.reset_vfork();
+
 		if let Some(parent) = self.get_parent() {
+			// Wake the parent
 			let parent = parent.get_mut().unwrap();
 			let mut guard = parent.lock();
 			guard.get_mut().wakeup();

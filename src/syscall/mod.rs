@@ -73,6 +73,7 @@ mod umount;
 mod uname;
 mod unlink;
 mod util;
+mod vfork;
 mod wait4;
 mod wait;
 mod waitpid;
@@ -153,6 +154,7 @@ use umask::umask;
 use umount::umount;
 use uname::uname;
 use unlink::unlink;
+use vfork::vfork;
 use wait4::wait4;
 use waitpid::waitpid;
 use write::write;
@@ -355,7 +357,7 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 		// TODO 0x0bb => sendfile(regs),
 		// TODO 0x0bc => getpmsg(regs),
 		// TODO 0x0bd => putpmsg(regs),
-		// TODO 0x0be => vfork(regs),
+		0x0be => vfork(regs),
 		// TODO 0x0bf => ugetrlimit(regs),
 		0x0c0 => mmap2(regs),
 		// TODO 0x0c1 => truncate64(regs),

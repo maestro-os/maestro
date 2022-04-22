@@ -65,50 +65,63 @@ pub fn clone(regs: &Regs) -> Result<i32, Errno> {
 	let tls = regs.esi as i32;
 	let _child_tid: SyscallPtr<i32> = (regs.edi as usize).into();
 
-	// The current process
-	let curr_mutex = Process::get_current().unwrap();
-	// A weak pointer to the new process's parent
-	let parent = curr_mutex.new_weak();
+	let new_tid = {
+		// The current process
+		let curr_mutex = Process::get_current().unwrap();
+		// A weak pointer to the new process's parent
+		let parent = curr_mutex.new_weak();
 
-	let mut curr_guard = curr_mutex.lock();
-	let curr_proc = curr_guard.get_mut();
+		let mut curr_guard = curr_mutex.lock();
+		let curr_proc = curr_guard.get_mut();
 
-	if flags & CLONE_PARENT_SETTID != 0 {
-		// TODO
-		todo!();
-	}
+		if flags & CLONE_PARENT_SETTID != 0 {
+			// TODO
+			todo!();
+		}
 
-	let new_mutex = curr_proc.fork(parent, ForkOptions {
-		share_memory: flags & CLONE_VM != 0,
-		share_fd: flags & CLONE_FILES != 0,
-		share_sighand: flags & CLONE_SIGHAND != 0,
-	})?;
-	let mut new_guard = new_mutex.lock();
-	let new_proc = new_guard.get_mut();
+		let fork_options = ForkOptions {
+			share_memory: flags & CLONE_VM != 0,
+			share_fd: flags & CLONE_FILES != 0,
+			share_sighand: flags & CLONE_SIGHAND != 0,
 
-	// Setting the process's registers
-	let mut new_regs = regs.clone();
-	new_regs.esp = if stack.is_null() {
-		regs.esp as _
-	} else {
-		stack as _
+			vfork: flags & CLONE_VFORK != 0,
+		};
+		let new_mutex = curr_proc.fork(parent, fork_options)?;
+		let mut new_guard = new_mutex.lock();
+		let new_proc = new_guard.get_mut();
+
+		// Setting the process's registers
+		let mut new_regs = regs.clone();
+		new_regs.esp = if stack.is_null() {
+			regs.esp as _
+		} else {
+			stack as _
+		};
+		if flags & CLONE_SETTLS != 0 {
+			let _tls: SyscallPtr<UserDesc> = (tls as usize).into();
+
+			// TODO
+			todo!();
+		}
+		new_proc.set_regs(regs);
+
+		if flags & CLONE_CHILD_CLEARTID != 0 {
+			// TODO new_proc.set_clear_child_tid(child_tid);
+			todo!();
+		}
+		if flags & CLONE_CHILD_SETTID != 0 {
+			// TODO
+			todo!();
+		}
+
+		new_proc.get_tid()
 	};
-	if flags & CLONE_SETTLS != 0 {
-		let _tls: SyscallPtr<UserDesc> = (tls as usize).into();
 
-		// TODO
-		todo!();
-	}
-	new_proc.set_regs(regs);
-
-	if flags & CLONE_CHILD_CLEARTID != 0 {
-		// TODO new_proc.set_clear_child_tid(child_tid);
-		todo!();
-	}
-	if flags & CLONE_CHILD_SETTID != 0 {
-		// TODO
-		todo!();
+	if flags & CLONE_VFORK != 0 {
+		// Letting another process run instead of the current. Because the current process must now
+		// wait for the child process to terminate or execute a program
+		crate::wait();
 	}
 
-	Ok(new_proc.get_tid() as _)
+	Ok(new_tid as _)
 }
