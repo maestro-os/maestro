@@ -261,6 +261,15 @@ impl MemSpace {
 		})
 	}
 
+	/// Same as `unmap`, except the function takes a pointer to the end of the memory mapping.
+	pub fn unmap_stack(&mut self, ptr: *const c_void, size: usize) -> Result<(), Errno> {
+		// Safe because the new pointer stays in the range of the allocated mapping
+		let ptr = unsafe {
+			ptr.sub(size * memory::PAGE_SIZE)
+		};
+		self.unmap(ptr, size)
+	}
+
 	/// Returns a reference to the memory mapping containing the given virtual address `ptr` from
 	/// mappings container `mappings`. If no mapping contains the address, the function returns
 	/// None.

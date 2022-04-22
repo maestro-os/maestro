@@ -932,6 +932,7 @@ impl Process {
 		-> Result<IntSharedPtr<Self>, Errno> {
 		debug_assert_eq!(self.get_state(), State::Running);
 
+		// FIXME PID is leaked if the following code fails
 		let pid = {
 			let mutex = unsafe {
 				PID_MANAGER.assume_init_mut()
@@ -940,17 +941,22 @@ impl Process {
 			guard.get_mut().get_unique_pid()
 		}?;
 
+		// TODO Move out of this function?
 		let mut regs = self.regs;
 		regs.eax = 0;
 
 		// Cloning memory space
-		let mem_space = {
+		let (mem_space, kernel_stack) = {
 			let curr_mem_space = self.get_mem_space().unwrap();
 
 			if fork_options.share_memory {
-				curr_mem_space.clone()
+				// Allocating a kernel stack for the new process
+				let new_kernel_stack = curr_mem_space.lock().get_mut()
+					.map_stack(None, KERNEL_STACK_SIZE, KERNEL_STACK_FLAGS)?;
+
+				(curr_mem_space.clone(), Some(new_kernel_stack as _))
 			} else {
-				IntSharedPtr::new(curr_mem_space.lock().get_mut().fork()?)?
+				(IntSharedPtr::new(curr_mem_space.lock().get_mut().fork()?)?, self.kernel_stack)
 			}
 		};
 
@@ -1006,7 +1012,7 @@ impl Process {
 			mem_space: Some(mem_space),
 
 			user_stack: self.user_stack,
-			kernel_stack: self.kernel_stack,
+			kernel_stack,
 
 			cwd: self.cwd.failable_clone()?,
 			file_descriptors: file_descriptors,
@@ -1237,12 +1243,27 @@ impl Drop for Process {
 			kernel_panic!("Terminated init process!");
 		}
 
+		// Freeing the kernel stack. This is required because the process might share the same
+		// memory space with several other processes. And since, each process has its own kernel
+		// stack, not freeing it could result in a memory leak
+		oom::wrap(|| {
+			if let Some(kernel_stack) = self.kernel_stack {
+				if let Some(mutex) = &self.mem_space {
+					mutex.lock().get_mut().unmap_stack(kernel_stack, KERNEL_STACK_SIZE)?;
+				}
+			}
+
+			Ok(())
+		});
+
+		// Removing the child from the parent process
 		if let Some(parent) = self.get_parent() {
 			let parent = parent.get_mut().unwrap();
 			let mut guard = parent.lock();
 			guard.get_mut().remove_child(self.pid);
 		}
 
+		// Freeing the PID
 		let mutex = unsafe {
 			PID_MANAGER.assume_init_mut()
 		};
