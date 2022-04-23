@@ -176,7 +176,7 @@ pub fn kill(regs: &Regs) -> Result<i32, Errno> {
 			// Setting the return value of the system call to `0` after executing a signal
 			let mut return_regs = regs.clone();
 			return_regs.eax = 0;
-			proc.set_regs(&return_regs);
+			proc.set_regs(return_regs);
 
 			// Set the process to execute the signal action
 			proc.signal_next();

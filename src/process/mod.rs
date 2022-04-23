@@ -757,8 +757,8 @@ impl Process {
 
 	/// Sets the process's saved state registers.
 	#[inline(always)]
-	pub fn set_regs(&mut self, regs: &Regs) {
-		self.regs = *regs;
+	pub fn set_regs(&mut self, regs: Regs) {
+		self.regs = regs;
 	}
 
 	/// Prepares for context switching to the process.
@@ -973,10 +973,6 @@ impl Process {
 			guard.get_mut().get_unique_pid()
 		}?;
 
-		// TODO Move out of this function?
-		let mut regs = self.regs;
-		regs.eax = 0;
-
 		// Handling vfork
 		let vfork_state = if fork_options.vfork {
 			self.vfork_state = VForkState::Waiting; // TODO Cancel if the following code fails
@@ -1044,7 +1040,7 @@ impl Process {
 			children: Vec::new(),
 			process_group: Vec::new(),
 
-			regs,
+			regs: self.regs,
 			syscalling: false,
 
 			handled_signal: self.handled_signal,

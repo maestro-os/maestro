@@ -399,7 +399,7 @@ impl Signal {
 					// return
 					process.signal_save(self.type_);
 					// Setting the process's registers to call the signal handler
-					process.set_regs(&regs);
+					process.set_regs(regs);
 				}
 			},
 		}

@@ -92,18 +92,22 @@ pub fn clone(regs: &Regs) -> Result<i32, Errno> {
 
 		// Setting the process's registers
 		let mut new_regs = regs.clone();
+		// Setting return value to `0`
+		new_regs.eax = 0;
+		// Setting stack
 		new_regs.esp = if stack.is_null() {
 			regs.esp as _
 		} else {
 			stack as _
 		};
+		// Setting TLS
 		if flags & CLONE_SETTLS != 0 {
 			let _tls: SyscallPtr<UserDesc> = (tls as usize).into();
 
 			// TODO
 			todo!();
 		}
-		new_proc.set_regs(regs);
+		new_proc.set_regs(new_regs);
 
 		if flags & CLONE_CHILD_CLEARTID != 0 {
 			// TODO new_proc.set_clear_child_tid(child_tid);
