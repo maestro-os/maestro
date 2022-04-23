@@ -166,6 +166,14 @@ use writev::writev;
 pub extern "C" fn syscall_handler(regs: &mut Regs) {
 	let id = regs.eax;
 
+	let pid = {
+		let mutex = Process::get_current().unwrap();
+		let mut guard = mutex.lock();
+		let proc = guard.get_mut();
+		proc.get_pid()
+	};
+	print!("syscall: {:x} (pid: {})", id, pid); // TODO rm
+
 	let result = match id {
 		0x000 => Ok(0), // restart_syscall
 		0x001 => _exit(regs),
@@ -572,5 +580,6 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 			(-result.unwrap_err().as_int()) as _
 		}
 	};
+	println!("; retval: {}", retval); // TODO rm
 	regs.eax = retval;
 }

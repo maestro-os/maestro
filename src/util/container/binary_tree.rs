@@ -1182,21 +1182,24 @@ impl<'a, K: 'static + Ord, V> Iterator for BinaryTreeIterator<'a, K, V> {
 
 	fn next(&mut self) -> Option<Self::Item> {
 		let node = self.node;
-		self.node = {
-			self.node?;
-
-			let n = unwrap_pointer(&node).unwrap();
+		self.node = if let Some(n) = unwrap_pointer(&node) {
 			if let Some(mut node) = n.get_right() {
 				while let Some(n) = n.get_left() {
 					node = n;
 				}
 
 				NonNull::new(node as *const _ as *mut _)
-			} else if let Some(node) = n.get_parent() {
-				NonNull::new(node as *const _ as *mut _)
+			} else if n.is_left_child() {
+				if let Some(node) = n.get_parent() {
+					NonNull::new(node as *const _ as *mut _)
+				} else {
+					None
+				}
 			} else {
 				None
 			}
+		} else {
+			None
 		};
 
 		if let Some(node) = unwrap_pointer(&node) {
@@ -1248,21 +1251,24 @@ impl<'a, K: 'static + Ord, V> Iterator for BinaryTreeMutIterator<'a, K, V> {
 
 	fn next(&mut self) -> Option<Self::Item> {
 		let mut node = self.node;
-		self.node = {
-			self.node?;
-
-			let n = unwrap_pointer(&node).unwrap();
+		self.node = if let Some(n) = unwrap_pointer(&node) {
 			if let Some(mut node) = n.get_right() {
 				while let Some(n) = n.get_left() {
 					node = n;
 				}
 
 				NonNull::new(node as *const _ as *mut _)
-			} else if let Some(node) = n.get_parent() {
-				NonNull::new(node as *const _ as *mut _)
+			} else if n.is_left_child() {
+				if let Some(node) = n.get_parent() {
+					NonNull::new(node as *const _ as *mut _)
+				} else {
+					None
+				}
 			} else {
 				None
 			}
+		} else {
+			None
 		};
 
 		if let Some(node) = unwrap_pointer_mut(&mut node) {

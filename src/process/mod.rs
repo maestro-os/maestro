@@ -85,7 +85,7 @@ const STDERR_FILENO: u32 = 2;
 pub const TLS_ENTRIES_COUNT: usize = 3;
 
 /// An enumeration containing possible states for a process.
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum State {
 	/// The process is running or waiting to run.
 	Running,
@@ -130,7 +130,7 @@ impl Default for ForkOptions {
 /// The reason for this is to prevent useless copies of memory pages when the child process is
 /// created only to execute a program.
 /// It implies that the child process shares the same memory space as the parent.
-#[derive(PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 enum VForkState {
 	/// The process is not in vfork state.
 	None,

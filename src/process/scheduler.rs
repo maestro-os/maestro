@@ -22,7 +22,7 @@ use crate::process::pid::Pid;
 use crate::process::regs::Regs;
 use crate::process;
 use crate::util::container::binary_tree::BinaryTree;
-use crate::util::container::binary_tree::BinaryTreeMutIterator;
+use crate::util::container::binary_tree::BinaryTreeIterator;
 use crate::util::container::binary_tree::TraversalType;
 use crate::util::container::vec::Vec;
 use crate::util::lock::*;
@@ -202,7 +202,7 @@ impl Scheduler {
 	// TODO Clean
 	/// Returns the next process to run with its PID. If the process is changed, the quantum count
 	/// of the previous process is reset.
-	fn get_next_process(&mut self) -> Option<(Pid, IntSharedPtr<Process>)> {
+	fn get_next_process(&self) -> Option<(Pid, IntSharedPtr<Process>)> {
 		let priority_sum = self.priority_sum;
 		let priority_max = self.priority_max;
 		let processes_count = self.processes.count();
@@ -219,23 +219,19 @@ impl Scheduler {
 		})?;
 
 		// Closure iterating the tree to find an available process
-		let next = | iter: &mut BinaryTreeMutIterator<Pid, IntSharedPtr<Process>>,
-			i: &mut usize | {
+		let next = | iter: BinaryTreeIterator<Pid, IntSharedPtr<Process>> | {
 			let mut proc: Option<(Pid, IntSharedPtr<Process>)> = None;
 
 			// Iterating over processes
-			for (pid, process) in iter.next() {
+			for (pid, process) in iter {
 				let runnable = {
 					let guard = process.lock();
 					Self::can_run(guard.get(), priority_sum, priority_max, processes_count)
 				};
+				// FIXME Potenial race condition? (checking if runnable, then unlocking and using
+				// the result of the check)
 				if runnable {
 					proc = Some((*pid, process.clone()));
-					break;
-				}
-
-				*i += 1;
-				if *i >= processes_count {
 					break;
 				}
 			}
@@ -243,21 +239,17 @@ impl Scheduler {
 			proc
 		};
 
-		let mut iter = self.processes.iter_mut();
+		let mut iter = self.processes.iter();
 		// Setting the iterator next to the current running process
 		iter.jump(&curr_pid);
 		iter.next();
 
-		// The number of processes checked so far
-		let mut i = 0;
-
 		// Running the loop to reach the end of processes list
-		let mut next_proc = next(&mut iter, &mut i);
+		let mut next_proc = next(iter);
 		// If no suitable process is found, going back to the beginning to check the processes
 		// located before the previous process
-		if next_proc.is_none() && i < processes_count {
-			iter = self.processes.iter_mut();
-			next_proc = next(&mut iter, &mut i);
+		if next_proc.is_none() {
+			next_proc = next(self.processes.iter());
 		}
 
 		let (next_pid, next_proc) = next_proc?;
