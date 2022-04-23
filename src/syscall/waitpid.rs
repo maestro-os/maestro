@@ -154,6 +154,11 @@ pub fn do_waitpid(pid: i32, wstatus: SyscallPtr<i32>, options: i32,
 			let mut guard = mutex.lock();
 			let proc = guard.get_mut();
 
+			// TODO Apply to every processes that cannot be waited on
+			if pid == proc.get_pid() as i32 {
+				return Err(errno!(ECANCELED));
+			}
+
 			let mem_space = proc.get_mem_space().unwrap();
 			let mem_space_guard = mem_space.lock();
 
