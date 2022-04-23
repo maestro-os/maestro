@@ -1163,7 +1163,9 @@ impl<'a, K: Ord, V> BinaryTreeIterator<'a, K, V> {
 	fn new(tree: &'a BinaryTree::<K, V>) -> Self {
 		BinaryTreeIterator {
 			tree,
-			node: tree.root,
+			node: tree.root.map(| mut n | unsafe {
+				NonNull::new(BinaryTree::get_leftmost_node(n.as_mut())).unwrap()
+			}),
 		}
 	}
 
@@ -1184,25 +1186,16 @@ impl<'a, K: 'static + Ord, V> Iterator for BinaryTreeIterator<'a, K, V> {
 			self.node?;
 
 			let n = unwrap_pointer(&node).unwrap();
-			if let Some(left) = n.get_left() {
-				NonNull::new(left as *const _ as *mut _)
-			} else if let Some(right) = n.get_right() {
-				NonNull::new(right as *const _ as *mut _)
-			} else {
-				let mut n = n;
-				while n.is_right_child() {
-					n = n.get_parent().unwrap();
+			if let Some(mut node) = n.get_right() {
+				while let Some(n) = n.get_left() {
+					node = n;
 				}
 
-				if n.is_left_child() {
-					if let Some(sibling) = n.get_sibling() {
-						NonNull::new(sibling as *const _ as *mut _)
-					} else {
-						None
-					}
-				} else {
-					None
-				}
+				NonNull::new(node as *const _ as *mut _)
+			} else if let Some(node) = n.get_parent() {
+				NonNull::new(node as *const _ as *mut _)
+			} else {
+				None
 			}
 		};
 
@@ -1211,10 +1204,6 @@ impl<'a, K: 'static + Ord, V> Iterator for BinaryTreeIterator<'a, K, V> {
 		} else {
 			None
 		}
-	}
-
-	fn count(self) -> usize {
-		self.tree.count()
 	}
 }
 
@@ -1238,10 +1227,13 @@ pub struct BinaryTreeMutIterator<'a, K: 'static + Ord, V: 'static> {
 impl<'a, K: Ord, V> BinaryTreeMutIterator<'a, K, V> {
 	/// Creates a binary tree iterator for the given reference.
 	fn new(tree: &'a mut BinaryTree::<K, V>) -> Self {
-		let root = tree.root;
+		let node = tree.root.map(| mut n | unsafe {
+			NonNull::new(BinaryTree::get_leftmost_node(n.as_mut())).unwrap()
+		});
+
 		BinaryTreeMutIterator {
 			tree,
-			node: root,
+			node,
 		}
 	}
 
@@ -1260,25 +1252,16 @@ impl<'a, K: 'static + Ord, V> Iterator for BinaryTreeMutIterator<'a, K, V> {
 			self.node?;
 
 			let n = unwrap_pointer(&node).unwrap();
-			if let Some(left) = n.get_left() {
-				NonNull::new(left as *const _ as *mut _)
-			} else if let Some(right) = n.get_right() {
-				NonNull::new(right as *const _ as *mut _)
-			} else {
-				let mut n = n;
-				while n.is_right_child() {
-					n = n.get_parent().unwrap();
+			if let Some(mut node) = n.get_right() {
+				while let Some(n) = n.get_left() {
+					node = n;
 				}
 
-				if n.is_left_child() {
-					if let Some(sibling) = n.get_sibling() {
-						NonNull::new(sibling as *const _ as *mut _)
-					} else {
-						None
-					}
-				} else {
-					None
-				}
+				NonNull::new(node as *const _ as *mut _)
+			} else if let Some(node) = n.get_parent() {
+				NonNull::new(node as *const _ as *mut _)
+			} else {
+				None
 			}
 		};
 
@@ -1287,10 +1270,6 @@ impl<'a, K: 'static + Ord, V> Iterator for BinaryTreeMutIterator<'a, K, V> {
 		} else {
 			None
 		}
-	}
-
-	fn count(self) -> usize {
-		self.tree.count()
 	}
 }
 
