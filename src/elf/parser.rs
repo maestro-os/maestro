@@ -361,7 +361,18 @@ impl<'a> ELFParser<'a> {
 				let begin = segment.p_offset as usize;
 				let end = (segment.p_offset + segment.p_filesz) as usize;
 				// TODO Ensure the slice doesn't exceed the size of the image
-				path = Some(&self.image[begin..end]);
+				let slice = &self.image[begin..end];
+
+				// Removing the ending `\0` if present
+				for (i, b) in slice.iter().enumerate() {
+					if *b == 0 {
+						path = Some(&slice[..i]);
+						break;
+					}
+				}
+				if path.is_none() {
+					path = Some(slice);
+				}
 
 				false
 			} else {

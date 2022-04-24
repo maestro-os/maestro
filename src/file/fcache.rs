@@ -109,14 +109,21 @@ impl FCache {
 
 		// The root inode
 		let mut inode = fs.get_root_inode(io)?;
+		let mut file = fs.load_file(io, inode, String::new())?;
 		// If the path is empty, return the root
 		if inner_path.is_empty() {
-			return SharedPtr::new(fs.load_file(io, inode, String::new())?);
+			return SharedPtr::new(file);
+		}
+		// Checking permissions
+		if !file.can_read(uid, gid) {
+			return Err(errno!(EPERM));
 		}
 
 		for i in 0..inner_path.get_elements_count() {
+			inode = fs.get_inode(io, Some(inode), &inner_path[i])?;
+
 			// Checking permissions
-			let file = fs.load_file(io, inode, inner_path[i].failable_clone()?)?;
+			file = fs.load_file(io, inode, inner_path[i].failable_clone()?)?;
 			if i < inner_path.get_elements_count() - 1 && !file.can_read(uid, gid) {
 				return Err(errno!(EPERM));
 			}
@@ -141,12 +148,7 @@ impl FCache {
 						follows_count + 1);
 				}
 			}
-
-			inode = fs.get_inode(io, Some(inode), &inner_path[i])?;
 		}
-
-		let name = &inner_path[inner_path.get_elements_count() - 1];
-		let mut file = fs.load_file(io, inode, name.failable_clone()?)?;
 
 		let mut parent_path = path.failable_clone()?;
 		parent_path.pop();
