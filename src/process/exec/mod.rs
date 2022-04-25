@@ -13,6 +13,9 @@ use crate::process::regs::Regs;
 use crate::process::signal::SignalHandler;
 use crate::util::ptr::IntSharedPtr;
 
+// FIXME Crashing when using `execve` when switching to the new memory space because the kernel
+// stack is not located at the same place
+
 /// Structure storing informations to prepare a program image to be executed.
 pub struct ExecInfo<'a> {
 	/// The process's uid.
@@ -83,6 +86,8 @@ pub fn exec(proc: &mut Process, path: &Path, argv: &[&[u8]], envp: &[&[u8]]) -> 
 		envp,
 	})?;
 
+	// FIXME Crashing here because the kernel stack becomes unreachable (not guaranteeded to be at
+	// the same location)
 	// Setting the new memory space to the process
 	proc.set_mem_space(Some(IntSharedPtr::new(program_image.mem_space)?));
 	// Setting the process's stacks

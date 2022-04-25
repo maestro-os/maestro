@@ -175,20 +175,6 @@ impl<'a> ELFExecutor<'a> {
 		})
 	}
 
-	/// Loads the interpreter from the given path for the given process.
-	/// `mem_space` is the memory space on which the interpreter is loaded.
-	/// `interp` is the path to the interpreter.
-	/// If the memory space is not bound, the behaviour is undefined.
-	/// `uid` is the User ID of the executing user.
-	/// `gid` is the Group ID of the executing user.
-	fn load_interpreter(&self, _mem_space: &mut MemSpace, uid: Uid, gid: Gid, interp: &Path)
-		-> Result<(), Errno> {
-		let _image = read_exec_file(interp, uid, gid)?;
-
-		// TODO
-		Ok(())
-	}
-
 	/// Returns two values:
 	/// - The size in bytes of the buffer to store the arguments and environment variables, padding
 	/// included.
@@ -313,7 +299,7 @@ impl<'a> ELFExecutor<'a> {
 	/// `mem_space` is the memory space to allocate into.
 	/// `seg` is the segment for which the memory is allocated.
 	/// If loaded, the function return the pointer to the end of the segment in virtual memory.
-	fn alloc_segment(load_base: *const (), mem_space: &mut MemSpace, seg: &ELF32ProgramHeader)
+	fn alloc_segment(load_base: *const u8, mem_space: &mut MemSpace, seg: &ELF32ProgramHeader)
 		-> Result<Option<*const c_void>, Errno> {
 		// Loading only loadable segments
 		if seg.p_type != elf::PT_LOAD {
@@ -356,7 +342,7 @@ impl<'a> ELFExecutor<'a> {
 	/// `load_base` is the address at which the executable is loaded.
 	/// `seg` is the segment.
 	/// `image` is the ELF file image.
-	fn copy_segment(load_base: *const (), seg: &ELF32ProgramHeader, image: &[u8]) {
+	fn copy_segment(load_base: *const u8, seg: &ELF32ProgramHeader, image: &[u8]) {
 		// Loading only loadable segments
 		if seg.p_type != elf::PT_LOAD {
 			return;
@@ -382,10 +368,12 @@ impl<'a> ELFExecutor<'a> {
 	/// Loads the ELF file parsed by `elf` into the memory space `mem_space` at the base address
 	/// `load_base`.
 	/// `interp` tells whether the function loads an interpreter.
-	/// The function returns the pointer to the end of the loaded segments and the pointer to the
-	/// program header if present.
-	fn load_elf(&self, elf: &ELFParser, mem_space: &mut MemSpace, load_base: *mut (),
-		interp: bool) -> Result<(*const c_void, Option<*const c_void>), Errno> {
+	/// The function returns:
+	/// - The pointer to the end of loaded segments
+	/// - The pointer to the program header if present.
+	/// - The pointer to the entry point.
+	fn load_elf(&self, elf: &ELFParser, mem_space: &mut MemSpace, load_base: *mut u8,
+		interp: bool) -> Result<(*const c_void, Option<*const c_void>, *const c_void), Errno> {
 		// Allocating memory for segments
 		let mut load_end: Result<*const c_void, Errno> = Ok(load_base as _);
 		// The pointer to the program header table in memory
@@ -406,18 +394,22 @@ impl<'a> ELFExecutor<'a> {
 
 			load_end.is_ok()
 		});
-		let load_end = load_end?;
+		let mut load_end = load_end?;
+		let mut entry_point = (load_base as usize + elf.get_header().e_entry as usize)
+			as *const c_void;
 
 		// Loading the interpreter, if present
-		if let Some(interpreter_path) = elf.get_interpreter_path() {
+		if let Some(interp_path) = elf.get_interpreter_path() {
 			// If the interpreter tries to load another interpreter, return an error
 			if interp {
 				return Err(errno!(EINVAL));
 			}
 
-			let interpreter_path = Path::from_str(interpreter_path, true)?;
-			self.load_interpreter(mem_space, self.info.euid, self.info.egid,
-				&interpreter_path)?;
+			let interp_path = Path::from_str(interp_path, true)?;
+			let interp_image = read_exec_file(&interp_path, self.info.euid, self.info.egid)?;
+			let interp_elf = ELFParser::new(interp_image.as_slice())?;
+			(load_end, _, entry_point)
+				= self.load_elf(&interp_elf, mem_space, load_end as _, true)?;
 		}
 
 		// Switching to the process's vmem to write onto the virtual memory
@@ -458,7 +450,7 @@ impl<'a> ELFExecutor<'a> {
 			});
 		});
 
-		Ok((load_end, phdr))
+		Ok((load_end, phdr, entry_point))
 	}
 }
 
@@ -475,10 +467,11 @@ impl<'a> Executor<'a> for ELFExecutor<'a> {
 
 		// FIXME Use 0x0 as a load base only if the program is non-relocatable
 		// The base at which the program is loaded
-		let load_base = 0x0 as *mut (); // TODO Support ASLR
+		let load_base = 0x0 as *mut u8; // TODO Support ASLR
 
 		// Loading the ELF
-		let (load_end, phdr) = self.load_elf(&parser, &mut mem_space, load_base, false)?;
+		let (load_end, phdr, entry_point)
+			= self.load_elf(&parser, &mut mem_space, load_base, false)?;
 
 		// The user stack
 		let user_stack = mem_space.map_stack(None, process::USER_STACK_SIZE,
@@ -515,9 +508,6 @@ impl<'a> Executor<'a> for ELFExecutor<'a> {
 			self.init_stack(user_stack, self.info.argv, self.info.envp, &aux);
 		});
 
-		// The entry point
-		let entry_point = load_base as u32 + parser.get_header().e_entry;
-
 		// The kernel stack
 		let kernel_stack = mem_space.map_stack(None, process::KERNEL_STACK_SIZE,
 			process::KERNEL_STACK_FLAGS)?;
@@ -525,7 +515,7 @@ impl<'a> Executor<'a> for ELFExecutor<'a> {
 		Ok(ProgramImage {
 			mem_space,
 
-			entry_point: entry_point as _,
+			entry_point,
 
 			user_stack,
 			user_stack_begin: (user_stack as usize - total_size) as _,
