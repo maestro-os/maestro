@@ -20,16 +20,14 @@ use crate::file::path::Path;
 use crate::memory::malloc;
 use crate::memory::vmem;
 use crate::memory;
-use crate::process::Process;
+use crate::process::exec::ExecInfo;
 use crate::process::exec::Executor;
+use crate::process::exec::ProgramImage;
 use crate::process::mem_space::MemSpace;
-use crate::process::regs::Regs;
-use crate::process::signal::SignalHandler;
 use crate::process;
 use crate::util::IO;
 use crate::util::container::vec::Vec;
 use crate::util::math;
-use crate::util::ptr::IntSharedPtr;
 use crate::util;
 
 /// Used to define the end of the entries list.
@@ -100,10 +98,10 @@ impl AuxEntry {
 	}
 
 	// TODO Add interpreter support
-	/// Fills an auxilary vector for the given process `process`.
+	/// Fills an auxilary vector with execution informations `info`.
 	/// `phdr` is the pointer to the program headers array loaded in the process's memory.
 	/// `parser` is a reference to the ELF parser.
-	fn fill_auxilary(process: &Process, phdr: Option<*const c_void>,
+	fn fill_auxilary(info: &ExecInfo, phdr: Option<*const c_void>,
 		parser: &ELFParser) -> Result<Vec<Self>, Errno> {
 		let mut aux = Vec::new();
 
@@ -115,10 +113,10 @@ impl AuxEntry {
 
 		aux.push(AuxEntry::new(AT_PAGESZ, memory::PAGE_SIZE as _))?;
 		aux.push(AuxEntry::new(AT_NOTELF, 0))?;
-		aux.push(AuxEntry::new(AT_UID, process.get_uid() as _))?;
-		aux.push(AuxEntry::new(AT_EUID, process.get_euid() as _))?;
-		aux.push(AuxEntry::new(AT_GID, process.get_gid() as _))?;
-		aux.push(AuxEntry::new(AT_EGID, process.get_egid() as _))?;
+		aux.push(AuxEntry::new(AT_UID, info.uid as _))?;
+		aux.push(AuxEntry::new(AT_EUID, info.euid as _))?;
+		aux.push(AuxEntry::new(AT_GID, info.gid as _))?;
+		aux.push(AuxEntry::new(AT_EGID, info.egid as _))?;
 		// TODO AT_SECURE
 		aux.push(AuxEntry::new(AT_NULL, 0))?;
 
@@ -158,19 +156,22 @@ fn read_exec_file(path: &Path, uid: Uid, gid: Gid) -> Result<malloc::Alloc<u8>, 
 }
 
 /// The program executor for ELF files.
-pub struct ELFExecutor {
+pub struct ELFExecutor<'a> {
 	/// The program image.
 	image: malloc::Alloc<u8>,
+	/// Execution informations.
+	info: ExecInfo<'a>,
 }
 
-impl ELFExecutor {
+impl<'a> ELFExecutor<'a> {
 	/// Creates a new instance to execute the given program.
 	/// `path` is the path to the program.
 	/// `uid` is the User ID of the executing user.
 	/// `gid` is the Group ID of the executing user.
-	pub fn new(path: &Path, uid: Uid, gid: Gid) -> Result<Self, Errno> {
+	pub fn new(path: &Path, info: ExecInfo<'a>) -> Result<Self, Errno> {
 		Ok(Self {
-			image: read_exec_file(path, uid, gid)?,
+			image: read_exec_file(path, info.euid, info.egid)?,
+			info,
 		})
 	}
 
@@ -312,7 +313,7 @@ impl ELFExecutor {
 	/// `mem_space` is the memory space to allocate into.
 	/// `seg` is the segment for which the memory is allocated.
 	/// If loaded, the function return the pointer to the end of the segment in virtual memory.
-	fn alloc_segment(load_base: *const u8, mem_space: &mut MemSpace, seg: &ELF32ProgramHeader)
+	fn alloc_segment(load_base: *const (), mem_space: &mut MemSpace, seg: &ELF32ProgramHeader)
 		-> Result<Option<*const c_void>, Errno> {
 		// Loading only loadable segments
 		if seg.p_type != elf::PT_LOAD {
@@ -355,7 +356,7 @@ impl ELFExecutor {
 	/// `load_base` is the address at which the executable is loaded.
 	/// `seg` is the segment.
 	/// `image` is the ELF file image.
-	fn copy_segment(load_base: *const u8, seg: &ELF32ProgramHeader, image: &[u8]) {
+	fn copy_segment(load_base: *const (), seg: &ELF32ProgramHeader, image: &[u8]) {
 		// Loading only loadable segments
 		if seg.p_type != elf::PT_LOAD {
 			return;
@@ -377,44 +378,24 @@ impl ELFExecutor {
 			});
 		}
 	}
-}
 
-impl Executor for ELFExecutor {
-	// TODO Clean
-	// TODO Ensure there is no way to write in kernel space (check segments position and
-	// relocations)
-	// TODO Handle suid and sgid
-	fn exec(&self, process: &mut Process, argv: &[&[u8]], envp: &[&[u8]])
-		-> Result<(), Errno> {
-		debug_assert_eq!(process.state, crate::process::State::Running);
-
-		// Parsing the ELF file
-		let parser = ELFParser::new(self.image.as_slice())?;
-
-		// The process's new memory space
-		let mut mem_space = MemSpace::new()?;
-
-		// Loading the interpreter, if any
-		if let Some(interpreter_path) = parser.get_interpreter_path() {
-			let interpreter_path = Path::from_str(interpreter_path, true)?;
-			self.load_interpreter(&mut mem_space, process.get_euid(), process.get_egid(),
-				&interpreter_path)?;
-		}
-
-		// FIXME Use 0x0 as a load base only if the program is non-relocatable
-		// The base at which the program is loaded
-		let load_base = 0x0 as *mut u8; // TODO Support ASLR
-
+	/// Loads the ELF file parsed by `elf` into the memory space `mem_space` at the base address
+	/// `load_base`.
+	/// `interp` tells whether the function loads an interpreter.
+	/// The function returns the pointer to the end of the loaded segments and the pointer to the
+	/// program header if present.
+	fn load_elf(&self, elf: &ELFParser, mem_space: &mut MemSpace, load_base: *mut (),
+		interp: bool) -> Result<(*const c_void, Option<*const c_void>), Errno> {
 		// Allocating memory for segments
-		let mut result: Result<*const c_void, Errno> = Ok(load_base as _);
+		let mut load_end: Result<*const c_void, Errno> = Ok(load_base as _);
 		// The pointer to the program header table in memory
 		let mut phdr: Option<*const c_void> = None;
-		parser.foreach_segments(| seg | {
-			result = Self::alloc_segment(load_base, &mut mem_space, seg).map(| end | {
+		elf.foreach_segments(| seg | {
+			load_end = Self::alloc_segment(load_base, mem_space, seg).map(| end | {
 				if let Some(end) = end {
-					max(end, result.unwrap())
+					max(end, load_end.unwrap())
 				} else {
-					result.unwrap()
+					load_end.unwrap()
 				}
 			});
 
@@ -423,21 +404,91 @@ impl Executor for ELFExecutor {
 				phdr = Some(seg.p_vaddr as _);
 			}
 
-			result.is_ok()
+			load_end.is_ok()
+		});
+		let load_end = load_end?;
+
+		// Loading the interpreter, if present
+		if let Some(interpreter_path) = elf.get_interpreter_path() {
+			// If the interpreter tries to load another interpreter, return an error
+			if interp {
+				return Err(errno!(EINVAL));
+			}
+
+			let interpreter_path = Path::from_str(interpreter_path, true)?;
+			self.load_interpreter(mem_space, self.info.euid, self.info.egid,
+				&interpreter_path)?;
+		}
+
+		// Switching to the process's vmem to write onto the virtual memory
+		vmem::switch(mem_space.get_vmem().as_ref(), || {
+			// Copying segments' data
+			elf.foreach_segments(| seg | {
+				Self::copy_segment(load_base, seg, self.image.as_slice());
+				true
+			});
+
+			// Closure returning a symbol from its name
+			let get_sym = | name: &str | elf.get_symbol_by_name(name);
+
+			// Closure returning the value for a given symbol
+			let get_sym_val = | sym_section: u32, sym: u32 | {
+				let section = elf.get_section_by_index(sym_section)?;
+				let sym = elf.get_symbol_by_index(section, sym)?;
+
+				if sym.is_defined() {
+					Some(load_base as u32 + sym.st_value)
+				} else {
+					None // TODO Prepare for the interpreter?
+				}
+			};
+
+			// Performing relocations
+			elf.foreach_rel(| section, rel | {
+				unsafe {
+					rel.perform(load_base as _, section, get_sym, get_sym_val);
+				}
+				true
+			});
+			elf.foreach_rela(| section, rela | {
+				unsafe {
+					rela.perform(load_base as _, section, get_sym, get_sym_val);
+				}
+				true
+			});
 		});
 
-		// The kernel stack
-		let kernel_stack = mem_space.map_stack(None, process::KERNEL_STACK_SIZE,
-			process::KERNEL_STACK_FLAGS)?;
+		Ok((load_end, phdr))
+	}
+}
+
+impl<'a> Executor<'a> for ELFExecutor<'a> {
+	// TODO Ensure there is no way to write in kernel space (check segments position and
+	// relocations)
+	// TODO Handle suid and sgid
+	fn build_image(&'a self) -> Result<ProgramImage, Errno> {
+		// Parsing the ELF file
+		let parser = ELFParser::new(self.image.as_slice())?;
+
+		// The process's new memory space
+		let mut mem_space = MemSpace::new()?;
+
+		// FIXME Use 0x0 as a load base only if the program is non-relocatable
+		// The base at which the program is loaded
+		let load_base = 0x0 as *mut (); // TODO Support ASLR
+
+		// Loading the ELF
+		let (load_end, phdr) = self.load_elf(&parser, &mut mem_space, load_base, false)?;
+
 		// The user stack
 		let user_stack = mem_space.map_stack(None, process::USER_STACK_SIZE,
 			process::USER_STACK_FLAGS)?;
 
 		// The auxilary vector
-		let aux = AuxEntry::fill_auxilary(process, phdr, &parser)?;
+		let aux = AuxEntry::fill_auxilary(&self.info, phdr, &parser)?;
 
 		// The size in bytes of the initial data on the stack
-		let total_size = Self::get_init_stack_size(argv, envp, &aux).1;
+		let total_size = Self::get_init_stack_size(self.info.argv, self.info.envp, &aux).1;
 		// Pre-allocating pages on the user stack to write the initial data
 		{
 			// The number of pages to allocate on the user stack to write the initial data
@@ -455,83 +506,31 @@ impl Executor for ELFExecutor {
 		}
 
 		// The initial pointer for `brk`
-		let brk_ptr = util::align(result?, memory::PAGE_SIZE);
+		let brk_ptr = util::align(load_end, memory::PAGE_SIZE);
 		mem_space.set_brk_init(brk_ptr);
 
 		// Switching to the process's vmem to write onto the virtual memory
 		vmem::switch(mem_space.get_vmem().as_ref(), || {
-			// Copying segments' data
-			parser.foreach_segments(| seg | {
-				Self::copy_segment(load_base, seg, self.image.as_slice());
-				true
-			});
-
-			// Closure returning a symbol from its name
-			let get_sym = | name: &str | parser.get_symbol_by_name(name);
-
-			// Closure returning the value for a given symbol
-			let get_sym_val = | sym_section: u32, sym: u32 | {
-				let section = parser.get_section_by_index(sym_section)?;
-				let sym = parser.get_symbol_by_index(section, sym)?;
-
-				if sym.is_defined() {
-					Some(load_base as u32 + sym.st_value)
-				} else {
-					None // TODO Prepare for the interpreter?
-				}
-			};
-
-			// Performing relocations
-			parser.foreach_rel(| section, rel | {
-				unsafe {
-					rel.perform(load_base as _, section, get_sym, get_sym_val);
-				}
-				true
-			});
-			parser.foreach_rela(| section, rela | {
-				unsafe {
-					rela.perform(load_base as _, section, get_sym, get_sym_val);
-				}
-				true
-			});
-
 			// Initializing the userspace stack
-			self.init_stack(user_stack, argv, envp, &aux);
+			self.init_stack(user_stack, self.info.argv, self.info.envp, &aux);
 		});
 
-		// Setting the new memory space to the process
-		process.set_mem_space(Some(IntSharedPtr::new(mem_space)?));
+		// The entry point
+		let entry_point = load_base as u32 + parser.get_header().e_entry;
 
-		// Setting the process's stacks
-		process.user_stack = Some(user_stack);
-		process.kernel_stack = Some(kernel_stack);
+		// The kernel stack
+		let kernel_stack = mem_space.map_stack(None, process::KERNEL_STACK_SIZE,
+			process::KERNEL_STACK_FLAGS)?;
 
-		// TODO Duplicate file descriptors (but not open file descriptions)
+		Ok(ProgramImage {
+			mem_space,
 
-		// Resetting signals
-		process.sigmask.clear_all();
-		{
-			let mut handlers_guard = process.signal_handlers.lock();
-			let handlers = handlers_guard.get_mut();
+			entry_point: entry_point as _,
 
-			for i in 0..handlers.len() {
-				handlers[i] = SignalHandler::Default;
-			}
-		}
+			user_stack,
+			user_stack_begin: (user_stack as usize - total_size) as _,
 
-		process.reset_vfork();
-
-		// Setting the process's entry point
-		let hdr = parser.get_header();
-
-		// Setting the process's registers
-		let regs = Regs {
-			esp: (user_stack as usize - total_size) as _,
-			eip: load_base as u32 + hdr.e_entry,
-			..Default::default()
-		};
-		process.regs = regs;
-
-		Ok(())
+			kernel_stack,
+		})
 	}
 }

@@ -98,7 +98,7 @@ pub fn execve(regs: &Regs) -> Result<i32, Errno> {
 			envp_.push(e.as_bytes())?;
 		}
 
-		// Running the process
+		// Executing the program
 		exec(proc, &path, &*argv_, &*envp_)?;
 	}
 
