@@ -36,18 +36,10 @@ const AVERAGE_PRIORITY_QUANTA: usize = 10;
 /// The number of quanta for the process with the maximum priority.
 const MAX_PRIORITY_QUANTA: usize = 30;
 
-/// The structure containing the context switching data.
-struct ContextSwitchData {
-	///  The process to switch to.
-	proc: IntSharedPtr<Process>,
-}
-
 /// The structure representing the process scheduler.
 pub struct Scheduler {
 	/// A vector containing the temporary stacks for each CPU cores.
 	tmp_stacks: Vec<malloc::Alloc<u8>>,
-	/// A vector containing context switch data for each CPU cores.
-	ctx_switch_data: Vec<Option<ContextSwitchData>>,
 
 	/// The ticking callback hook, called at a regular interval to make the scheduler work.
 	tick_callback_hook: CallbackHook,
@@ -69,10 +61,8 @@ impl Scheduler {
 	/// Creates a new instance of scheduler.
 	pub fn new(cores_count: usize) -> Result<IntSharedPtr<Self>, Errno> {
 		let mut tmp_stacks = Vec::new();
-		let mut ctx_switch_data = Vec::new();
 		for _ in 0..cores_count {
 			tmp_stacks.push(malloc::Alloc::new_default(TMP_STACK_SIZE)?)?;
-			ctx_switch_data.push(None)?;
 		}
 
 		let callback = | _id: u32, _code: u32, regs: &Regs, ring: u32 | {
@@ -82,7 +72,6 @@ impl Scheduler {
 
 		IntSharedPtr::new(Self {
 			tmp_stacks,
-			ctx_switch_data,
 
 			tick_callback_hook,
 			total_ticks: 0,
@@ -294,29 +283,6 @@ impl Scheduler {
 			// Set the process as current
 			scheduler.curr_proc = Some(next_proc.clone());
 
-			let f = | data | {
-				let (syscalling, regs) = {
-					let data = unsafe {
-						&mut *(data as *mut ContextSwitchData)
-					};
-					let mut guard = data.proc.lock();
-					let proc = guard.get_mut();
-
-					proc.prepare_switch();
-					(proc.is_syscalling(), proc.regs)
-				};
-
-				// Resuming execution
-				unsafe {
-					regs.switch(!syscalling);
-				}
-			};
-
-			scheduler.ctx_switch_data[core_id] = Some(ContextSwitchData {
-				proc: scheduler.curr_proc.as_mut().unwrap().1.clone(),
-			});
-			let ctx_switch_data_ptr = &mut scheduler.ctx_switch_data[core_id] as *mut _;
-
 			drop(guard);
 			unsafe {
 				event::unlock_callbacks(0x20);
@@ -324,7 +290,18 @@ impl Scheduler {
 			pic::end_of_interrupt(0x0);
 
 			unsafe {
-				stack::switch(tmp_stack, f, ctx_switch_data_ptr);
+				stack::switch(tmp_stack, || {
+					let (syscalling, regs) = {
+						let mut guard = next_proc.1.lock();
+						let proc = guard.get_mut();
+
+						proc.prepare_switch();
+						(proc.is_syscalling(), proc.regs)
+					};
+
+					// Resuming execution
+					regs.switch(!syscalling);
+				});
 			}
 
 			unreachable!();

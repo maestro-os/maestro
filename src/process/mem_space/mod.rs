@@ -13,7 +13,6 @@ pub mod ptr;
 use core::cmp::Ordering;
 use core::cmp::{min, max};
 use core::ffi::c_void;
-use core::mem::replace;
 use core::mem::size_of;
 use core::ptr::NonNull;
 use core::ptr::null;
@@ -54,16 +53,6 @@ const TMP_STACK_SIZE: usize = memory::PAGE_SIZE * 8;
 
 /// The physical pages reference counter.
 pub static mut PHYSICAL_REF_COUNTER: Mutex<PhysRefCounter> = Mutex::new(PhysRefCounter::new());
-
-/// Structure representing the data passed to the temporary stack used to fork a memory space.
-/// It is necessary to switch stacks because using a stack while mapping it is undefined.
-struct ForkData<'a> {
-	/// A reference to the memory space.
-	self_: &'a mut MemSpace,
-
-	/// The result of the mapping operation.
-	result: Result<MemSpace, Errno>,
-}
 
 /// Structure representing the virtual memory space of a context.
 pub struct MemSpace {
@@ -561,32 +550,6 @@ impl MemSpace {
 		self.vmem.is_bound()
 	}
 
-	/// Performs the actions of `fork`. This function is meant to be called onto a temporary stack.
-	fn do_fork(&mut self) -> Result<MemSpace, Errno> {
-		let mut mem_space = Self {
-			gaps: self.gaps.failable_clone()?,
-			gaps_size: self.gaps_size.failable_clone()?,
-
-			mappings: BinaryTree::new(),
-
-			brk_init: self.brk_init,
-			brk_ptr: self.brk_ptr,
-
-			vmem: vmem::clone(&self.vmem)?,
-		};
-
-		for (_, m) in self.mappings.iter_mut() {
-			let new_mapping = m.fork(&mut mem_space)?;
-
-			for i in 0..new_mapping.get_size() {
-				m.update_vmem(i);
-				new_mapping.update_vmem(i);
-			}
-		}
-
-		Ok(mem_space)
-	}
-
 	/// Clones the current memory space for process forking.
 	pub fn fork(&mut self) -> Result<MemSpace, Errno> {
 		let tmp_stack = Box::<[u8; TMP_STACK_SIZE]>::new([0; TMP_STACK_SIZE])?;
@@ -594,22 +557,32 @@ impl MemSpace {
 			(tmp_stack.as_ptr() as *mut c_void).add(TMP_STACK_SIZE)
 		};
 
-		let f: fn(*mut c_void) -> () = | data: *mut c_void | {
-			let data = unsafe {
-				&mut *(data as *mut ForkData)
-			};
-			data.result = data.self_.do_fork();
-		};
-
-		let mut fork_data = Box::new(ForkData {
-			self_: self,
-
-			result: Err(errno!(EINVAL)), // Place a default errno
-		})?;
 		unsafe {
-			stack::switch(tmp_stack_top, f, fork_data.as_mut_ptr());
+			stack::switch(tmp_stack_top, || {
+				let mut mem_space = Self {
+					gaps: self.gaps.failable_clone()?,
+					gaps_size: self.gaps_size.failable_clone()?,
+
+					mappings: BinaryTree::new(),
+
+					brk_init: self.brk_init,
+					brk_ptr: self.brk_ptr,
+
+					vmem: vmem::clone(&self.vmem)?,
+				};
+
+				for (_, m) in self.mappings.iter_mut() {
+					let new_mapping = m.fork(&mut mem_space)?;
+
+					for i in 0..new_mapping.get_size() {
+						m.update_vmem(i);
+						new_mapping.update_vmem(i);
+					}
+				}
+
+				Ok(mem_space)
+			})
 		}
-		replace(&mut fork_data.result, Err(errno!(EINVAL)))
 	}
 
 	/// Allocates the physical pages to write on the given pointer.

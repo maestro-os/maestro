@@ -14,9 +14,8 @@ stack_switch_:
 	mov %esp, %ebp
 
 	mov 8(%ebp), %esp # `stack` argument
-	push 16(%ebp) # `data` argument
 	push 12(%ebp) # `f` argument
-	call stack_switch_in
+	call *16(%ebp)
 
 	mov %ebp, %esp
 	pop %ebp
