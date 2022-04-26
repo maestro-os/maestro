@@ -84,6 +84,13 @@ impl Scheduler {
 		})
 	}
 
+	/// Returns a pointer to the top of the tmp stack for the given core `core`.
+	pub fn get_tmp_stack(&mut self, core: u32) -> *mut c_void {
+		unsafe {
+			self.tmp_stacks[core as usize].as_ptr_mut().add(TMP_STACK_SIZE) as *mut _
+		}
+	}
+
 	/// Returns the number of processes registered on the scheduler.
 	pub fn get_processes_count(&self) -> usize {
 		self.processes.count()
@@ -274,10 +281,8 @@ impl Scheduler {
 
 		// The current core ID
 		let core_id = 0; // TODO
-		// A pointer to the temporary stack for the current core
-		let tmp_stack = unsafe {
-			scheduler.tmp_stacks[core_id].as_ptr_mut() as *mut c_void
-		};
+		// Getting the temporary stack
+		let tmp_stack = scheduler.get_tmp_stack(core_id);
 
 		if let Some(next_proc) = &mut scheduler.get_next_process() {
 			// Set the process as current

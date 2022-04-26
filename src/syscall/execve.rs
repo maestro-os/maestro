@@ -5,10 +5,12 @@ use crate::errno;
 use crate::file::File;
 use crate::file::fcache;
 use crate::file::path::Path;
+use crate::memory::stack;
 use crate::process::Process;
 use crate::process::exec::exec;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::regs::Regs;
+use crate::process;
 use crate::util::IO;
 use crate::util::container::vec::Vec;
 
@@ -29,12 +31,9 @@ pub fn read_shebang(file: &mut File, buff: &mut [u8; SHEBANG_MAX]) -> Result<Opt
 	}
 }
 
-/// The implementation of the `execve` syscall.
-pub fn execve(regs: &Regs) -> Result<i32, Errno> {
-	let pathname: SyscallString = (regs.ebx as usize).into();
-	let argv = regs.ecx as *const () as *const *const u8;
-	let envp = regs.edx as *const () as *const *const u8;
-
+/// Performs the execution on the current process.
+fn do_exec(pathname: SyscallString, argv: *const *const u8, envp: *const *const u8)
+	-> Result<Regs, Errno> {
 	let proc_mutex = Process::get_current().unwrap();
 	let mut proc_guard = proc_mutex.lock();
 	let proc = proc_guard.get_mut();
@@ -61,7 +60,7 @@ pub fn execve(regs: &Regs) -> Result<i32, Errno> {
 		files_cache.as_mut().unwrap().get_file_from_path(&path, uid, gid, true)?
 	};
 
-	// Iterating on script files' iterators
+	// Handling shebang
 	let mut i = 0;
 	while i < 4 {
 		// Locking file
@@ -87,21 +86,48 @@ pub fn execve(regs: &Regs) -> Result<i32, Errno> {
 		}
 	}
 
-	{
-		// TODO Find a better solution
-		let mut argv_ = Vec::new();
-		for a in &argv {
-			argv_.push(a.as_bytes())?;
-		}
-		let mut envp_ = Vec::new();
-		for e in &envp {
-			envp_.push(e.as_bytes())?;
-		}
-
-		// Executing the program
-		exec(proc, &path, &*argv_, &*envp_)?;
+	// TODO Find a better solution
+	let mut argv_ = Vec::new();
+	for a in &argv {
+		argv_.push(a.as_bytes())?;
+	}
+	let mut envp_ = Vec::new();
+	for e in &envp {
+		envp_.push(e.as_bytes())?;
 	}
 
-	drop(proc_guard);
-	crate::enter_loop();
+	// Executing the program
+	exec(proc, &path, &*argv_, &*envp_)?;
+	Ok(*proc.get_regs())
+}
+
+/// The implementation of the `execve` syscall.
+pub fn execve(regs: &Regs) -> Result<i32, Errno> {
+	// Switching to another stack in order to avoid crashing when switching to the new memory
+	// space
+	unsafe {
+		cli!();
+		// The tmp stack will not be used since the scheduler cannot be ticked when interrupts are
+		// disabled
+		let tmp_stack = {
+			let core = 0; // TODO Get current core ID
+			process::get_scheduler().lock().get_mut().get_tmp_stack(core)
+		};
+
+		stack::switch(tmp_stack, || -> Result<(), Errno> {
+			let regs = {
+				let pathname: SyscallString = (regs.ebx as usize).into();
+				let argv = regs.ecx as *const () as *const *const u8;
+				let envp = regs.edx as *const () as *const *const u8;
+
+				do_exec(pathname, argv, envp)?
+			};
+
+			// Running the program
+			regs.switch(false);
+		})?;
+	}
+
+	// Cannot be reached since `do_exec` won't return on success
+	unreachable!();
 }
