@@ -4,6 +4,7 @@ use core::cmp::max;
 use core::cmp::min;
 use core::ffi::c_void;
 use core::mem::size_of;
+use core::ptr::null_mut;
 use core::ptr;
 use core::slice;
 use core::str;
@@ -317,6 +318,9 @@ impl<'a> ELFExecutor<'a> {
 		let mem_begin = unsafe {
 			load_base.add(seg.p_vaddr as usize - pad)
 		};
+		if mem_begin.is_null() {
+			return Err(errno!(EINVAL));
+		}
 		// The length of the memory to allocate in pages
 		let pages = math::ceil_division(pad + seg.p_memsz as usize, memory::PAGE_SIZE);
 
@@ -399,7 +403,8 @@ impl<'a> ELFExecutor<'a> {
 			as *const c_void;
 
 		// Loading the interpreter, if present
-		if let Some(interp_path) = elf.get_interpreter_path() {
+		let interp_path = elf.get_interpreter_path();
+		if let Some(interp_path) = interp_path {
 			// If the interpreter tries to load another interpreter, return an error
 			if interp {
 				return Err(errno!(EINVAL));
@@ -420,34 +425,36 @@ impl<'a> ELFExecutor<'a> {
 				true
 			});
 
-			// Closure returning a symbol from its name
-			let get_sym = | name: &str | elf.get_symbol_by_name(name);
+			// Performing relocations if no interpreter is present
+			if interp_path.is_none() {
+				// Closure returning a symbol from its name
+				let get_sym = | name: &str | elf.get_symbol_by_name(name);
 
-			// Closure returning the value for a given symbol
-			let get_sym_val = | sym_section: u32, sym: u32 | {
-				let section = elf.get_section_by_index(sym_section)?;
-				let sym = elf.get_symbol_by_index(section, sym)?;
+				// Closure returning the value for a given symbol
+				let get_sym_val = | sym_section: u32, sym: u32 | {
+					let section = elf.get_section_by_index(sym_section)?;
+					let sym = elf.get_symbol_by_index(section, sym)?;
 
-				if sym.is_defined() {
-					Some(load_base as u32 + sym.st_value)
-				} else {
-					None // TODO Prepare for the interpreter?
-				}
-			};
+					if sym.is_defined() {
+						Some(load_base as u32 + sym.st_value)
+					} else {
+						None
+					}
+				};
 
-			// Performing relocations
-			elf.foreach_rel(| section, rel | {
-				unsafe {
-					rel.perform(load_base as _, section, get_sym, get_sym_val);
-				}
-				true
-			});
-			elf.foreach_rela(| section, rela | {
-				unsafe {
-					rela.perform(load_base as _, section, get_sym, get_sym_val);
-				}
-				true
-			});
+				elf.foreach_rel(| section, rel | {
+					unsafe {
+						rel.perform(load_base as _, section, get_sym, get_sym_val);
+					}
+					true
+				});
+				elf.foreach_rela(| section, rela | {
+					unsafe {
+						rela.perform(load_base as _, section, get_sym, get_sym_val);
+					}
+					true
+				});
+			}
 		});
 
 		Ok((load_end, phdr, entry_point))
@@ -465,9 +472,13 @@ impl<'a> Executor<'a> for ELFExecutor<'a> {
 		// The process's new memory space
 		let mut mem_space = MemSpace::new()?;
 
-		// FIXME Use 0x0 as a load base only if the program is non-relocatable
 		// The base at which the program is loaded
-		let load_base = 0x0 as *mut u8; // TODO Support ASLR
+		let load_base = match parser.get_header().e_type {
+			elf::ET_REL | elf::ET_DYN => memory::PAGE_SIZE as *mut u8, // TODO Support ASLR
+			elf::ET_EXEC => null_mut::<u8>(),
+
+			_ => return Err(errno!(EINVAL)),
+		};
 
 		// Loading the ELF
 		let (load_end, phdr, entry_point)

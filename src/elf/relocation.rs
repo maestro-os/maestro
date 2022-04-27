@@ -16,6 +16,7 @@ pub trait Relocation {
 	/// Returns the `r_info` field of the relocation.
 	fn get_info(&self) -> u32;
 
+	// TODO Disable overflow checks
 	/// Performs the relocation.
 	/// `base_addr` is the base address at which the ELF is loaded.
 	/// `rel_section` is the section containing the relocation.
@@ -59,6 +60,7 @@ pub trait Relocation {
 		};
 
 		let addr = (base_addr as u32 + self.get_offset()) as *mut u32;
+		// TODO Check the address is accessible
 		match self.get_type() {
 			elf::R_386_RELATIVE => *addr += value,
 			_ => *addr = value,

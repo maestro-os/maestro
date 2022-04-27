@@ -30,7 +30,7 @@ use crate::util::math;
 use crate::util::ptr::IntSharedPtr;
 
 /// The size of the temporary stack for context switching.
-const TMP_STACK_SIZE: usize = memory::PAGE_SIZE;
+const TMP_STACK_SIZE: usize = 16 * memory::PAGE_SIZE;
 /// The number of quanta for the process with the average priority.
 const AVERAGE_PRIORITY_QUANTA: usize = 10;
 /// The number of quanta for the process with the maximum priority.

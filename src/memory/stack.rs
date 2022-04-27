@@ -1,24 +1,22 @@
 //! This module implements stack utility functions.
 
 use core::ffi::c_void;
-use core::mem::MaybeUninit;
-use core::ptr::copy_nonoverlapping;
 
 extern "C" {
 	/// Performs the stack switching for the given stack and closure to execute.
-	fn stack_switch_(stack: *mut c_void, func_ptr: *mut c_void, f: *const c_void)
-		-> *const c_void;
+	/// `s` is the StackLambda structure.
+	fn stack_switch_(stack: *mut c_void, s: *mut c_void, f: *const c_void);
 }
 
 /// Structure storing a lambda to be executed on an alternate stack.
-struct StackLambda<T, F: FnMut() -> T> {
+struct StackLambda<F: FnMut()> {
 	/// The lambda to be called on the alternate stack.
 	f: F,
 }
 
-impl<T, F: FnMut() -> T> StackLambda<T, F> {
+impl<F: FnMut()> StackLambda<F> {
 	/// Performs the execution of the lambda on the alternate stack.
-	extern "C" fn stack_switch_in(&mut self) -> T {
+	extern "C" fn exec(&mut self) {
 		(self.f)()
 	}
 }
@@ -29,15 +27,11 @@ impl<T, F: FnMut() -> T> StackLambda<T, F> {
 /// # Safety
 ///
 /// If the stack `stack` is invalid, the behaviour is undefined.
-pub unsafe fn switch<T, F: FnMut() -> T>(stack: *mut c_void, f: F) -> T {
-	let f = StackLambda {
+pub unsafe fn switch<F: FnMut()>(stack: *mut c_void, f: F) {
+	let mut f = StackLambda {
 		f,
 	};
-	let func = StackLambda::<T, F>::stack_switch_in;
+	let func = StackLambda::<F>::exec;
 
-	let result_ptr = stack_switch_(stack, &f as *const _ as _, func as *mut _);
-
-	let mut result = MaybeUninit::<T>::uninit();
-	copy_nonoverlapping(result_ptr as *const T, result.assume_init_mut(), 1);
-	result.assume_init()
+	stack_switch_(stack, &mut f as *mut _ as _, func as *const _);
 }

@@ -550,6 +550,32 @@ impl MemSpace {
 		self.vmem.is_bound()
 	}
 
+	/// Performs the fork operation.
+	fn do_fork(&mut self) -> Result<Self, Errno> {
+		let mut mem_space = Self {
+			gaps: self.gaps.failable_clone()?,
+			gaps_size: self.gaps_size.failable_clone()?,
+
+			mappings: BinaryTree::new(),
+
+			brk_init: self.brk_init,
+			brk_ptr: self.brk_ptr,
+
+			vmem: vmem::clone(&self.vmem)?,
+		};
+
+		for (_, m) in self.mappings.iter_mut() {
+			let new_mapping = m.fork(&mut mem_space)?;
+
+			for i in 0..new_mapping.get_size() {
+				m.update_vmem(i);
+				new_mapping.update_vmem(i);
+			}
+		}
+
+		Ok(mem_space)
+	}
+
 	/// Clones the current memory space for process forking.
 	pub fn fork(&mut self) -> Result<MemSpace, Errno> {
 		let tmp_stack = Box::<[u8; TMP_STACK_SIZE]>::new([0; TMP_STACK_SIZE])?;
@@ -557,32 +583,13 @@ impl MemSpace {
 			(tmp_stack.as_ptr() as *mut c_void).add(TMP_STACK_SIZE)
 		};
 
+		let mut result = Err(errno!(EINVAL));
 		unsafe {
 			stack::switch(tmp_stack_top, || {
-				let mut mem_space = Self {
-					gaps: self.gaps.failable_clone()?,
-					gaps_size: self.gaps_size.failable_clone()?,
-
-					mappings: BinaryTree::new(),
-
-					brk_init: self.brk_init,
-					brk_ptr: self.brk_ptr,
-
-					vmem: vmem::clone(&self.vmem)?,
-				};
-
-				for (_, m) in self.mappings.iter_mut() {
-					let new_mapping = m.fork(&mut mem_space)?;
-
-					for i in 0..new_mapping.get_size() {
-						m.update_vmem(i);
-						new_mapping.update_vmem(i);
-					}
-				}
-
-				Ok(mem_space)
+				result = self.do_fork();
 			})
 		}
+		result
 	}
 
 	/// Allocates the physical pages to write on the given pointer.

@@ -103,30 +103,35 @@ fn do_exec(pathname: SyscallString, argv: *const *const u8, envp: *const *const 
 
 /// The implementation of the `execve` syscall.
 pub fn execve(regs: &Regs) -> Result<i32, Errno> {
+	cli!();
+	// The tmp stack will not be used since the scheduler cannot be ticked when interrupts are
+	// disabled
+	let tmp_stack = {
+		let core = 0; // TODO Get current core ID
+		process::get_scheduler().lock().get_mut().get_tmp_stack(core)
+	};
+
 	// Switching to another stack in order to avoid crashing when switching to the new memory
 	// space
+	let mut result = Err(errno!(EINVAL));
 	unsafe {
-		cli!();
-		// The tmp stack will not be used since the scheduler cannot be ticked when interrupts are
-		// disabled
-		let tmp_stack = {
-			let core = 0; // TODO Get current core ID
-			process::get_scheduler().lock().get_mut().get_tmp_stack(core)
-		};
-
-		stack::switch(tmp_stack, || -> Result<(), Errno> {
-			let regs = {
+		stack::switch(tmp_stack, || {
+			let r = (|| {
 				let pathname: SyscallString = (regs.ebx as usize).into();
 				let argv = regs.ecx as *const () as *const *const u8;
 				let envp = regs.edx as *const () as *const *const u8;
 
-				do_exec(pathname, argv, envp)?
-			};
+				do_exec(pathname, argv, envp)
+			})();
 
-			// Running the program
-			regs.switch(false);
-		})?;
+			if let Ok(regs) = r {
+				regs.switch(true);
+			} else {
+				result = r;
+			}
+		});
 	}
+	result?;
 
 	// Cannot be reached since `do_exec` won't return on success
 	unreachable!();
