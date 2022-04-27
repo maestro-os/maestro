@@ -5,7 +5,6 @@ use core::cmp::min;
 use core::ffi::c_void;
 use core::mem::size_of;
 use core::ptr::null_mut;
-use core::ptr;
 use core::slice;
 use core::str;
 use crate::elf::ELF32ProgramHeader;
@@ -318,9 +317,6 @@ impl<'a> ELFExecutor<'a> {
 		let mem_begin = unsafe {
 			load_base.add(seg.p_vaddr as usize - pad)
 		};
-		if mem_begin.is_null() {
-			return Err(errno!(EINVAL));
-		}
 		// The length of the memory to allocate in pages
 		let pages = math::ceil_division(pad + seg.p_memsz as usize, memory::PAGE_SIZE);
 
@@ -364,20 +360,40 @@ impl<'a> ELFExecutor<'a> {
 		// Copying the segment's data
 		unsafe { // Safe because the module ELF image is valid at this point
 			vmem::write_lock_wrap(|| {
-				ptr::copy_nonoverlapping::<u8>(file_begin, begin, len);
+				util::memcpy(begin, file_begin as *const _ as _, len);
 			});
 		}
 	}
 
-	/// Loads the ELF file parsed by `elf` into the memory space `mem_space` at the base address
-	/// `load_base`.
+	/// Loads the ELF file parsed by `elf` into the memory space `mem_space`.
 	/// `interp` tells whether the function loads an interpreter.
 	/// The function returns:
 	/// - The pointer to the end of loaded segments
 	/// - The pointer to the program header if present.
 	/// - The pointer to the entry point.
-	fn load_elf(&self, elf: &ELFParser, mem_space: &mut MemSpace, load_base: *mut u8,
-		interp: bool) -> Result<(*const c_void, Option<*const c_void>, *const c_void), Errno> {
+	fn load_elf(&self, elf: &ELFParser, mem_space: &mut MemSpace, interp: bool)
+		-> Result<(*const c_void, Option<*const c_void>, *const c_void), Errno> {
+		let interp_path = elf.get_interpreter_path();
+		// The base at which the program is loaded
+		let mut load_base = null_mut::<u8>();
+		let mut entry_point = (load_base as usize + elf.get_header().e_entry as usize)
+			as *const c_void;
+
+		// Loading the interpreter, if present
+		if let Some(interp_path) = interp_path {
+			// If the interpreter tries to load another interpreter, return an error
+			if interp {
+				return Err(errno!(EINVAL));
+			}
+
+			let interp_path = Path::from_str(interp_path, true)?;
+			let interp_image = read_exec_file(&interp_path, self.info.euid, self.info.egid)?;
+			let interp_elf = ELFParser::new(interp_image.as_slice())?;
+			let (load_end, _, entry) = self.load_elf(&interp_elf, mem_space, true)?;
+			load_base = load_end as _; // TODO Support ASLR
+			entry_point = entry;
+		}
+
 		// Allocating memory for segments
 		let mut load_end: Result<*const c_void, Errno> = Ok(load_base as _);
 		// The pointer to the program header table in memory
@@ -398,24 +414,7 @@ impl<'a> ELFExecutor<'a> {
 
 			load_end.is_ok()
 		});
-		let mut load_end = load_end?;
-		let mut entry_point = (load_base as usize + elf.get_header().e_entry as usize)
-			as *const c_void;
-
-		// Loading the interpreter, if present
-		let interp_path = elf.get_interpreter_path();
-		if let Some(interp_path) = interp_path {
-			// If the interpreter tries to load another interpreter, return an error
-			if interp {
-				return Err(errno!(EINVAL));
-			}
-
-			let interp_path = Path::from_str(interp_path, true)?;
-			let interp_image = read_exec_file(&interp_path, self.info.euid, self.info.egid)?;
-			let interp_elf = ELFParser::new(interp_image.as_slice())?;
-			(load_end, _, entry_point)
-				= self.load_elf(&interp_elf, mem_space, load_end as _, true)?;
-		}
+		let load_end = load_end?;
 
 		// Switching to the process's vmem to write onto the virtual memory
 		vmem::switch(mem_space.get_vmem().as_ref(), || {
@@ -457,6 +456,7 @@ impl<'a> ELFExecutor<'a> {
 			}
 		});
 
+		crate::println!("entry: {:p}", entry_point); // TODO rm
 		Ok((load_end, phdr, entry_point))
 	}
 }
@@ -472,17 +472,9 @@ impl<'a> Executor<'a> for ELFExecutor<'a> {
 		// The process's new memory space
 		let mut mem_space = MemSpace::new()?;
 
-		// The base at which the program is loaded
-		let load_base = match parser.get_header().e_type {
-			elf::ET_REL | elf::ET_DYN => memory::PAGE_SIZE as *mut u8, // TODO Support ASLR
-			elf::ET_EXEC => null_mut::<u8>(),
-
-			_ => return Err(errno!(EINVAL)),
-		};
-
 		// Loading the ELF
 		let (load_end, phdr, entry_point)
-			= self.load_elf(&parser, &mut mem_space, load_base, false)?;
+			= self.load_elf(&parser, &mut mem_space, false)?;
 
 		// The user stack
 		let user_stack = mem_space.map_stack(None, process::USER_STACK_SIZE,
