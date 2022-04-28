@@ -86,6 +86,7 @@ static CURRENT_TTY: Mutex<usize> = Mutex::new(0);
 /// Returns a mutable reference to the TTY with identifier `tty`.
 pub fn get(tty: usize) -> &'static Mutex<TTY> {
 	debug_assert!(tty < TTYS_COUNT);
+
 	unsafe {
 		&TTYS.assume_init_mut()[tty]
 	}
@@ -105,7 +106,7 @@ pub fn init() {
 	for i in 0..TTYS_COUNT {
 		let mut guard = get(i).lock();
 		let t = guard.get_mut();
-		t.init();
+		t.init(i);
 	}
 
 	switch(0);
@@ -127,8 +128,9 @@ pub fn switch(tty: usize) {
 
 impl TTY {
 	/// Creates a new TTY.
-	pub fn init(&mut self) {
-		self.id = 0;
+	/// `id` is the ID of the TTY.
+	pub fn init(&mut self, id: usize) {
+		self.id = id;
 		self.cursor_x = 0;
 		self.cursor_y = 0;
 		self.screen_y = 0;
@@ -137,6 +139,8 @@ impl TTY {
 
 		self.history = [(vga::DEFAULT_COLOR as vga::Char) << 8; HISTORY_SIZE];
 		self.update = true;
+
+		self.canonical_mode = true;
 
 		self.ansi_buffer = ansi::ANSIBuffer::new();
 	}
@@ -355,13 +359,13 @@ impl TTY {
 	/// Takes the given string `buffer` as input.
 	pub fn input(&mut self, buffer: &[u8]) {
 		// The length to write to the input buffer
-		let len = min(self.input_size + buffer.len(), self.input_buffer.len());
+		let len = min(buffer.len(), self.input_buffer.len() - self.input_size);
 		// The slice containing the input
 		let input = &buffer[..len];
 
 		if self.is_canonical_mode() {
 			// Writing to the input buffer
-			self.input_buffer[self.input_size..].copy_from_slice(input);
+			util::slice_copy(input, &mut self.input_buffer[self.input_size..]);
 			self.input_size += len;
 
 			// Processing input
@@ -370,7 +374,9 @@ impl TTY {
 				match self.input_buffer[i] {
 					b'\n' => {
 						// TODO Make `self.input_buffer[..i]` available to device file
-						// TODO Erase from input buffer
+
+						// Erase input buffer
+						self.input_size = 0;
 					},
 
 					// TODO Handle other special characters

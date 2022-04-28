@@ -500,23 +500,23 @@ impl KeyboardManager {
 					KeyboardKey::KeyF11 => tty::switch(10),
 					KeyboardKey::KeyF12 => tty::switch(11),
 
-					_ => {
-					},
+					_ => {},
 				}
 			}
 
 			// Getting the tty
 			let mut tty_guard = tty::current().lock();
+			let tty = tty_guard.get_mut();
 
 			if key == KeyboardKey::KeyBackspace {
 				// Erasing from TTY
-				tty_guard.get_mut().erase(1);
-			} else {
+				tty.erase(1);
+			} else if !self.ctrl && !self.alt && !self.right_alt && !self.right_ctrl {
 				// Writing on TTY
 				let shift = (self.left_shift || self.right_shift) != self.caps_lock.is_enabled();
 
 				if let Some(tty_chars) = key.get_tty_chars(shift) {
-					tty_guard.get_mut().input(tty_chars);
+					tty.input(tty_chars);
 				}
 			}
 		}
