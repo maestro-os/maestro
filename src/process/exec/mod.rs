@@ -51,7 +51,8 @@ pub struct ProgramImage {
 /// execution.
 pub trait Executor<'a> {
 	/// Builds a program image.
-	fn build_image(&'a self) -> Result<ProgramImage, Errno>;
+	/// `path` is the path to the program.
+	fn build_image(&'a self, path: &Path) -> Result<ProgramImage, Errno>;
 }
 
 /// Builds a program image from the given executable file.
@@ -65,8 +66,8 @@ pub fn build_image(path: &Path, info: ExecInfo)
 
 	// TODO Support other formats than ELF (wasm?)
 
-	let exec = elf::ELFExecutor::new(path, info)?;
-	exec.build_image()
+	let exec = elf::ELFExecutor::new(info)?;
+	exec.build_image(path)
 }
 
 // TODO Find a way to avoid locking the process while parsing the ELF

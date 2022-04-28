@@ -157,20 +157,16 @@ fn read_exec_file(path: &Path, uid: Uid, gid: Gid) -> Result<malloc::Alloc<u8>, 
 
 /// The program executor for ELF files.
 pub struct ELFExecutor<'a> {
-	/// The program image.
-	image: malloc::Alloc<u8>,
 	/// Execution informations.
 	info: ExecInfo<'a>,
 }
 
 impl<'a> ELFExecutor<'a> {
 	/// Creates a new instance to execute the given program.
-	/// `path` is the path to the program.
 	/// `uid` is the User ID of the executing user.
 	/// `gid` is the Group ID of the executing user.
-	pub fn new(path: &Path, info: ExecInfo<'a>) -> Result<Self, Errno> {
+	pub fn new(info: ExecInfo<'a>) -> Result<Self, Errno> {
 		Ok(Self {
-			image: read_exec_file(path, info.euid, info.egid)?,
 			info,
 		})
 	}
@@ -420,7 +416,7 @@ impl<'a> ELFExecutor<'a> {
 		vmem::switch(mem_space.get_vmem().as_ref(), || {
 			// Copying segments' data
 			elf.foreach_segments(| seg | {
-				Self::copy_segment(load_base, seg, self.image.as_slice());
+				Self::copy_segment(load_base, seg, elf.get_image());
 				true
 			});
 
@@ -456,7 +452,6 @@ impl<'a> ELFExecutor<'a> {
 			}
 		});
 
-		crate::println!("entry: {:p}", entry_point); // TODO rm
 		Ok((load_end, phdr, entry_point))
 	}
 }
@@ -465,9 +460,11 @@ impl<'a> Executor<'a> for ELFExecutor<'a> {
 	// TODO Ensure there is no way to write in kernel space (check segments position and
 	// relocations)
 	// TODO Handle suid and sgid
-	fn build_image(&'a self) -> Result<ProgramImage, Errno> {
+	fn build_image(&'a self, path: &Path) -> Result<ProgramImage, Errno> {
+		// The ELF file image
+		let image = read_exec_file(&path, self.info.euid, self.info.egid)?;
 		// Parsing the ELF file
-		let parser = ELFParser::new(self.image.as_slice())?;
+		let parser = ELFParser::new(image.as_slice())?;
 
 		// The process's new memory space
 		let mut mem_space = MemSpace::new()?;
