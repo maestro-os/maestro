@@ -409,8 +409,10 @@ pub trait Keyboard {
 pub struct KeyboardManager {
 	/// The ctrl key state.
 	ctrl: bool,
-	/// The shift key state.
-	shift: bool,
+	/// The left shift key state.
+	left_shift: bool,
+	/// The right shift key state.
+	right_shift: bool,
 	/// The alt key state.
 	alt: bool,
 	/// The right alt key state.
@@ -431,7 +433,8 @@ impl KeyboardManager {
 	pub fn new() -> Self {
 		let s = Self {
 			ctrl: false,
-			shift: false,
+			left_shift: false,
+			right_shift: false,
 			alt: false,
 			right_alt: false,
 			right_ctrl: false,
@@ -461,7 +464,8 @@ impl KeyboardManager {
 		// TODO Handle several keyboards at a time
 		match key {
 			KeyboardKey::KeyLeftControl => self.ctrl = action == KeyboardAction::Pressed,
-			KeyboardKey::KeyLeftShift => self.shift = action == KeyboardAction::Pressed,
+			KeyboardKey::KeyLeftShift => self.left_shift = action == KeyboardAction::Pressed,
+			KeyboardKey::KeyRightShift => self.right_shift = action == KeyboardAction::Pressed,
 			KeyboardKey::KeyLeftAlt => self.alt = action == KeyboardAction::Pressed,
 			KeyboardKey::KeyRightAlt => self.right_alt = action == KeyboardAction::Pressed,
 			KeyboardKey::KeyRightControl => self.right_ctrl = action == KeyboardAction::Pressed,
@@ -509,7 +513,7 @@ impl KeyboardManager {
 				tty_guard.get_mut().erase(1);
 			} else {
 				// Writing on TTY
-				let shift = self.shift != self.caps_lock.is_enabled();
+				let shift = (self.left_shift || self.right_shift) != self.caps_lock.is_enabled();
 
 				if let Some(tty_chars) = key.get_tty_chars(shift) {
 					tty_guard.get_mut().input(tty_chars);
@@ -526,8 +530,6 @@ impl KeyboardManager {
 		/*if let Some(ps2) = &mut self.ps2_keyboard {
 			ps2.set_led(led, enabled);
 		}*/
-
-		todo!();
 	}
 }
 

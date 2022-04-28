@@ -402,9 +402,4 @@ impl TTY {
 		self.update();
 		self.input_size -= count;
 	}
-
-	/// Handles keyboard erase input for keycode.
-	pub fn erase_hook(&mut self) {
-		self.erase(1);
-	}
 }
