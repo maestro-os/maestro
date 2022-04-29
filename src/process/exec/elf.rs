@@ -4,9 +4,11 @@ use core::cmp::max;
 use core::cmp::min;
 use core::ffi::c_void;
 use core::mem::size_of;
+use core::ptr::null;
 use core::ptr::null_mut;
 use core::slice;
 use core::str;
+use crate::cpu;
 use crate::elf::ELF32ProgramHeader;
 use crate::elf::parser::ELFParser;
 use crate::elf::relocation::Relocation;
@@ -79,6 +81,20 @@ const AT_HWCAP2: i32 = 26;
 /// A pointer to the filename of the executed program.
 const AT_EXECFN: i32 = 31;
 
+/// Informations returned after loading an ELF program used to finish initialization.
+struct ELFLoadInfo {
+	/// The load base address
+	load_base: *const c_void,
+	/// The pointer to the end of loaded segments
+	load_end: *const c_void,
+	/// The pointer to the program header if present
+	phdr: Option<*const c_void>,
+	/// The pointer to the entry point
+	entry_point: *const c_void,
+	/// The pointer to the entry point to be given to the interpreter
+	interp_entry: Option<*const c_void>,
+}
+
 /// An entry of System V's Auxilary Vectors.
 #[repr(C)]
 struct AuxEntry {
@@ -97,27 +113,39 @@ impl AuxEntry {
 		}
 	}
 
-	// TODO Add interpreter support
-	/// Fills an auxilary vector with execution informations `info`.
-	/// `phdr` is the pointer to the program headers array loaded in the process's memory.
+	/// Fills an auxilary vector with execution informations `exec_info` and load informations
+	/// `load_info`.
 	/// `parser` is a reference to the ELF parser.
-	fn fill_auxilary(info: &ExecInfo, phdr: Option<*const c_void>,
-		parser: &ELFParser) -> Result<Vec<Self>, Errno> {
+	fn fill_auxilary(exec_info: &ExecInfo, load_info: &ELFLoadInfo, parser: &ELFParser)
+		-> Result<Vec<Self>, Errno> {
 		let mut aux = Vec::new();
 
-		if let Some(phdr) = phdr {
+		if let Some(phdr) = load_info.phdr {
 			aux.push(AuxEntry::new(AT_PHDR, phdr as _))?;
 			aux.push(AuxEntry::new(AT_PHENT, parser.get_header().get_phentsize() as _))?;
 			aux.push(AuxEntry::new(AT_PHNUM, parser.get_header().get_phnum() as _))?;
 		}
 
 		aux.push(AuxEntry::new(AT_PAGESZ, memory::PAGE_SIZE as _))?;
+		aux.push(AuxEntry::new(AT_BASE, null::<c_void>() as _))?;
+
+		if let Some(entry) = load_info.interp_entry {
+			aux.push(AuxEntry::new(AT_ENTRY, entry as _))?;
+		}
+
 		aux.push(AuxEntry::new(AT_NOTELF, 0))?;
-		aux.push(AuxEntry::new(AT_UID, info.uid as _))?;
-		aux.push(AuxEntry::new(AT_EUID, info.euid as _))?;
-		aux.push(AuxEntry::new(AT_GID, info.gid as _))?;
-		aux.push(AuxEntry::new(AT_EGID, info.egid as _))?;
-		// TODO AT_SECURE
+		aux.push(AuxEntry::new(AT_UID, exec_info.uid as _))?;
+		aux.push(AuxEntry::new(AT_EUID, exec_info.euid as _))?;
+		aux.push(AuxEntry::new(AT_GID, exec_info.gid as _))?;
+		aux.push(AuxEntry::new(AT_EGID, exec_info.egid as _))?;
+		aux.push(AuxEntry::new(AT_PLATFORM, "maestro\0".as_ptr() as _))?; // TODO clean
+		aux.push(AuxEntry::new(AT_HWCAP, unsafe {
+			cpu::get_hwcap()
+		} as _))?;
+		aux.push(AuxEntry::new(AT_SECURE, 0))?; // TODO
+		aux.push(AuxEntry::new(AT_BASE_PLATFORM, "maestro\0".as_ptr() as _))?; // TODO clean
+		aux.push(AuxEntry::new(AT_RANDOM, [0 as u8; 16].as_ptr() as _))?; // TODO
+		aux.push(AuxEntry::new(AT_EXECFN, "TODO\0".as_ptr() as _))?; // TODO
 		aux.push(AuxEntry::new(AT_NULL, 0))?;
 
 		Ok(aux)
@@ -176,8 +204,7 @@ impl<'a> ELFExecutor<'a> {
 	/// included.
 	/// - The required size in bytes for the data to be written on the stack before the program
 	/// starts.
-	fn get_init_stack_size(argv: &[&[u8]], envp: &[&[u8]], aux: &[AuxEntry])
-		-> (usize, usize) {
+	fn get_init_stack_size(argv: &[&[u8]], envp: &[&[u8]], aux: &[AuxEntry]) -> (usize, usize) {
 		// The size of the block storing the arguments and environment
 		let mut info_block_size = 0;
 		for e in envp {
@@ -363,15 +390,12 @@ impl<'a> ELFExecutor<'a> {
 
 	/// Loads the ELF file parsed by `elf` into the memory space `mem_space`.
 	/// `interp` tells whether the function loads an interpreter.
-	/// The function returns:
-	/// - The pointer to the end of loaded segments
-	/// - The pointer to the program header if present.
-	/// - The pointer to the entry point.
 	fn load_elf(&self, elf: &ELFParser, mem_space: &mut MemSpace, interp: bool)
-		-> Result<(*const c_void, Option<*const c_void>, *const c_void), Errno> {
+		-> Result<ELFLoadInfo, Errno> {
 		let interp_path = elf.get_interpreter_path();
 		// The base at which the program is loaded
 		let mut load_base = null_mut::<u8>();
+		let mut interp_entry = None;
 		let mut entry_point = (load_base as usize + elf.get_header().e_entry as usize)
 			as *const c_void;
 
@@ -385,9 +409,12 @@ impl<'a> ELFExecutor<'a> {
 			let interp_path = Path::from_str(interp_path, true)?;
 			let interp_image = read_exec_file(&interp_path, self.info.euid, self.info.egid)?;
 			let interp_elf = ELFParser::new(interp_image.as_slice())?;
-			let (load_end, _, entry) = self.load_elf(&interp_elf, mem_space, true)?;
-			load_base = load_end as _; // TODO Support ASLR
-			entry_point = entry;
+			let load_info = self.load_elf(&interp_elf, mem_space, true)?;
+			load_base = load_info.load_end as _; // TODO Support ASLR
+
+			interp_entry = Some((load_base as usize + elf.get_header().e_entry as usize)
+				as *const c_void);
+			entry_point = load_info.entry_point;
 		}
 
 		// Allocating memory for segments
@@ -405,7 +432,7 @@ impl<'a> ELFExecutor<'a> {
 
 			// If PHDR, keep the pointer
 			if seg.p_type == elf::PT_PHDR {
-				phdr = Some(seg.p_vaddr as _);
+				phdr = Some((load_base as usize + seg.p_vaddr as usize) as _);
 			}
 
 			load_end.is_ok()
@@ -452,7 +479,13 @@ impl<'a> ELFExecutor<'a> {
 			}
 		});
 
-		Ok((load_end, phdr, entry_point))
+		Ok(ELFLoadInfo {
+			load_base: load_base as _,
+			load_end,
+			phdr,
+			entry_point,
+			interp_entry,
+		})
 	}
 }
 
@@ -470,15 +503,14 @@ impl<'a> Executor<'a> for ELFExecutor<'a> {
 		let mut mem_space = MemSpace::new()?;
 
 		// Loading the ELF
-		let (load_end, phdr, entry_point)
-			= self.load_elf(&parser, &mut mem_space, false)?;
+		let load_info = self.load_elf(&parser, &mut mem_space, false)?;
 
 		// The user stack
 		let user_stack = mem_space.map_stack(None, process::USER_STACK_SIZE,
 			process::USER_STACK_FLAGS)?;
 
 		// The auxilary vector
-		let aux = AuxEntry::fill_auxilary(&self.info, phdr, &parser)?;
+		let aux = AuxEntry::fill_auxilary(&self.info, &load_info, &parser)?;
 
 		// The size in bytes of the initial data on the stack
 		let total_size = Self::get_init_stack_size(self.info.argv, self.info.envp, &aux).1;
@@ -499,7 +531,7 @@ impl<'a> Executor<'a> for ELFExecutor<'a> {
 		}
 
 		// The initial pointer for `brk`
-		let brk_ptr = util::align(load_end, memory::PAGE_SIZE);
+		let brk_ptr = util::align(load_info.load_end, memory::PAGE_SIZE);
 		mem_space.set_brk_init(brk_ptr);
 
 		// Switching to the process's vmem to write onto the virtual memory
@@ -515,7 +547,7 @@ impl<'a> Executor<'a> for ELFExecutor<'a> {
 		Ok(ProgramImage {
 			mem_space,
 
-			entry_point,
+			entry_point: load_info.entry_point,
 
 			user_stack,
 			user_stack_begin: (user_stack as usize - total_size) as _,

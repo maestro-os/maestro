@@ -8,6 +8,9 @@ extern "C" {
 	/// Tells whether the CPU has SSE.
 	fn cpuid_has_sse() -> bool;
 
+	/// Returns HWCAP bitmask for ELF.
+	pub fn get_hwcap() -> u32;
+
 	/// Returns the content of the %cr0 register.
 	pub fn cr0_get() -> u32;
 	/// Sets the given flags in the %cr0 register.

@@ -89,6 +89,7 @@ pub fn exec(proc: &mut Process, path: &Path, argv: &[&[u8]], envp: &[&[u8]]) -> 
 	// Setting the process's stacks
 	proc.user_stack = Some(program_image.user_stack);
 	proc.kernel_stack = Some(program_image.kernel_stack);
+	proc.update_tss();
 
 	// TODO Duplicate file descriptors (but not open file descriptions)
 

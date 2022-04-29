@@ -727,6 +727,16 @@ impl Process {
 	/// Sets the new memory space for the process, dropping the previous if any.
 	#[inline(always)]
 	pub fn set_mem_space(&mut self, mem_space: Option<IntSharedPtr<MemSpace>>) {
+		// TODO Handle multicore
+		// If the process is currently running, switch the memory space
+		if self.state == State::Running {
+			if let Some(mem_space) = &mem_space {
+				mem_space.lock().get().bind();
+			} else {
+				kernel_panic!("Dropping the memory space of a running process!");
+			}
+		}
+
 		self.mem_space = mem_space;
 	}
 
@@ -761,6 +771,16 @@ impl Process {
 		self.regs = regs;
 	}
 
+	/// Updates the TSS on the current core for the process.
+	pub fn update_tss(&self) {
+		// Filling the TSS
+		let tss = tss::get();
+		tss.ss0 = gdt::KERNEL_DS as _;
+		tss.ss = gdt::USER_DS as _;
+		// Setting the kernel stack pointer
+		tss.esp0 = self.kernel_stack.unwrap() as _;
+	}
+
 	/// Prepares for context switching to the process.
 	/// A call to this function MUST be followed by a context switch to the process.
 	pub fn prepare_switch(&mut self) {
@@ -769,12 +789,8 @@ impl Process {
 		// Incrementing the number of ticks the process had
 		self.quantum_count += 1;
 
-		// Filling the TSS
-		let tss = tss::get();
-		tss.ss0 = gdt::KERNEL_DS as _;
-		tss.ss = gdt::USER_DS as _;
-		// Setting the kernel stack pointer
-		tss.esp0 = self.kernel_stack.unwrap() as _;
+		// Updates teh TSS for the process
+		self.update_tss();
 
 		// Binding the memory space
 		self.get_mem_space().unwrap().lock().get().bind();
