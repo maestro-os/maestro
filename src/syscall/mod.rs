@@ -24,14 +24,18 @@ mod fork;
 mod getcwd;
 mod getdents64;
 mod getdents;
+mod getegid32;
 mod getegid;
+mod geteuid32;
 mod geteuid;
+mod getgid32;
 mod getgid;
 mod getpgid;
 mod getpid;
 mod getppid;
 mod getrusage;
 mod gettid;
+mod getuid32;
 mod getuid;
 mod init_module;
 mod ioctl;
@@ -107,14 +111,18 @@ use fork::fork;
 use getcwd::getcwd;
 use getdents64::getdents64;
 use getdents::getdents;
+use getegid32::getegid32;
 use getegid::getegid;
+use geteuid32::geteuid32;
 use geteuid::geteuid;
+use getgid32::getgid32;
 use getgid::getgid;
 use getpgid::getpgid;
 use getpid::getpid;
 use getppid::getppid;
 use getrusage::getrusage;
 use gettid::gettid;
+use getuid32::getuid32;
 use getuid::getuid;
 use init_module::init_module;
 use ioctl::ioctl;
@@ -374,10 +382,10 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 		// TODO 0x0c4 => lstat64(regs),
 		// TODO 0x0c5 => fstat64(regs),
 		// TODO 0x0c6 => lchown32(regs),
-		// TODO 0x0c7 => getuid32(regs),
-		// TODO 0x0c8 => getgid32(regs),
-		// TODO 0x0c9 => geteuid32(regs),
-		// TODO 0x0ca => getegid32(regs),
+		0x0c7 => getuid32(regs),
+		0x0c8 => getgid32(regs),
+		0x0c9 => geteuid32(regs),
+		0x0ca => getegid32(regs),
 		// TODO 0x0cb => setreuid32(regs),
 		// TODO 0x0cc => setregid32(regs),
 		// TODO 0x0cd => getgroups32(regs),

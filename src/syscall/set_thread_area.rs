@@ -61,6 +61,7 @@ pub fn set_thread_area(regs: &Regs) -> Result<i32, Errno> {
 
 	// A reference to the user_desc structure
 	let info = u_info.get_mut(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
+	crate::println!("user desc: {}", info); // TODO rm
 
 	// Getting the entry with its id
 	let (id, entry) = get_entry(proc, info.get_entry_number())?;

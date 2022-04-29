@@ -428,7 +428,7 @@ impl<'a> ELFExecutor<'a> {
 
 			load_end.is_ok()
 		});
-		let load_end = load_end?;
+		let mut load_end = load_end?;
 
 		// Loading the interpreter, if present
 		if let Some(interp_path) = interp_path {
@@ -446,6 +446,7 @@ impl<'a> ELFExecutor<'a> {
 			interp_load_base = Some(i_load_base as _);
 			interp_entry = Some((load_base as usize + elf.get_header().e_entry as usize)
 				as *const c_void);
+			load_end = load_info.load_end;
 			entry_point = load_info.entry_point;
 		}
 
