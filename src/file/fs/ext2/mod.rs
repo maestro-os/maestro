@@ -603,7 +603,7 @@ impl Ext2Fs {
 
 		// Setting the last mount timestamp
 		if let Some(timestamp) = timestamp {
-			superblock.last_mount_timestamp = timestamp;
+			superblock.last_mount_timestamp = timestamp as _;
 		}
 
 		superblock.write(io)?;
@@ -733,9 +733,9 @@ impl Filesystem for Ext2Fs {
 		let file_location = FileLocation::new(self.mountpath.failable_clone()?, inode);
 		let mut file = File::new(name, inode_.uid, inode_.gid, inode_.get_permissions(),
 			file_location, file_content)?;
-		file.set_ctime(inode_.ctime);
-		file.set_mtime(inode_.mtime);
-		file.set_atime(inode_.atime);
+		file.set_ctime(inode_.ctime as _);
+		file.set_mtime(inode_.mtime as _);
+		file.set_atime(inode_.atime as _);
 		file.set_size(inode_.get_size(&self.superblock));
 
 		Ok(file)
@@ -769,9 +769,9 @@ impl Filesystem for Ext2Fs {
 			mode: Ext2INode::get_file_mode(file.get_file_type(), mode),
 			uid,
 			size_low: 0,
-			ctime: file.get_ctime(),
-			mtime: file.get_mtime(),
-			atime: file.get_atime(),
+			ctime: file.get_ctime() as _,
+			mtime: file.get_mtime() as _,
+			atime: file.get_atime() as _,
 			dtime: 0,
 			gid,
 			hard_links_count: 1,
@@ -858,9 +858,9 @@ impl Filesystem for Ext2Fs {
 		inode_.uid = file.get_uid();
 		inode_.gid = file.get_gid();
 		inode_.set_permissions(file.get_mode());
-		inode_.ctime = file.get_ctime();
-		inode_.mtime = file.get_mtime();
-		inode_.atime = file.get_atime();
+		inode_.ctime = file.get_ctime() as _;
+		inode_.mtime = file.get_mtime() as _;
+		inode_.atime = file.get_atime() as _;
 		inode_.write(inode as _, &self.superblock, io)
 	}
 
@@ -897,7 +897,7 @@ impl Filesystem for Ext2Fs {
 		// If this is the last link, remove the inode
 		if inode_.hard_links_count <= 1 {
 			let timestamp = time::get().unwrap_or(0);
-			inode_.dtime = timestamp;
+			inode_.dtime = timestamp as _;
 
 			inode_.free_content(&self.superblock, io)?;
 
@@ -973,15 +973,15 @@ impl FilesystemType for Ext2FsType {
 			blocks_per_group: DEFAULT_BLOCKS_PER_GROUP,
 			fragments_per_group: 0,
 			inodes_per_group: DEFAULT_INODES_PER_GROUP,
-			last_mount_timestamp: timestamp,
-			last_write_timestamp: timestamp,
+			last_mount_timestamp: timestamp as _,
+			last_write_timestamp: timestamp as _,
 			mount_count_since_fsck: 0,
 			mount_count_before_fsck: DEFAULT_MOUNT_COUNT_BEFORE_FSCK,
 			signature: EXT2_SIGNATURE,
 			fs_state: FS_STATE_CLEAN,
 			error_action: ERR_ACTION_READ_ONLY,
 			minor_version: DEFAULT_MINOR,
-			last_fsck_timestamp: timestamp,
+			last_fsck_timestamp: timestamp as _,
 			fsck_interval: DEFAULT_FSCK_INTERVAL,
 			os_id: 0xdeadbeef,
 			major_version: DEFAULT_MAJOR,
@@ -1081,9 +1081,9 @@ impl FilesystemType for Ext2FsType {
 			mode: inode::INODE_TYPE_DIRECTORY | inode::ROOT_DIRECTORY_DEFAULT_MODE,
 			uid: 0,
 			size_low: 0,
-			ctime: timestamp,
-			mtime: timestamp,
-			atime: timestamp,
+			ctime: timestamp as _,
+			mtime: timestamp as _,
+			atime: timestamp as _,
 			dtime: 0,
 			gid: 0,
 			hard_links_count: 1,

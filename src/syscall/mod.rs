@@ -9,6 +9,8 @@ mod _llseek;
 mod brk;
 mod chdir;
 mod chroot;
+mod clock_gettime64;
+mod clock_gettime;
 mod clone;
 mod close;
 mod creat;
@@ -96,6 +98,8 @@ use _llseek::_llseek;
 use brk::brk;
 use chdir::chdir;
 use chroot::chroot;
+use clock_gettime64::clock_gettime64;
+use clock_gettime::clock_gettime;
 use clone::clone;
 use close::close;
 use creat::creat;
@@ -445,7 +449,7 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 		// TODO 0x106 => timer_getoverrun(regs),
 		// TODO 0x107 => timer_delete(regs),
 		// TODO 0x108 => clock_settime(regs),
-		// TODO 0x109 => clock_gettime(regs),
+		0x109 => clock_gettime(regs),
 		// TODO 0x10a => clock_getres(regs),
 		// TODO 0x10b => clock_nanosleep(regs),
 		// TODO 0x10c => statfs64(regs),
@@ -576,7 +580,7 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 		// TODO 0x190 => msgsnd(regs),
 		// TODO 0x191 => msgrcv(regs),
 		// TODO 0x192 => msgctl(regs),
-		// TODO 0x193 => clock_gettime64(regs),
+		0x193 => clock_gettime64(regs),
 		// TODO 0x194 => clock_settime64(regs),
 		// TODO 0x195 => clock_adjtime64(regs),
 		// TODO 0x196 => clock_getres_time64(regs),

@@ -24,7 +24,7 @@ pub fn time(regs: &Regs) -> Result<i32, Errno> {
 
 	// Writing the timestamp to the given location, if not null
 	if let Some(tloc) = tloc.get_mut(&mem_space_guard)? {
-		*tloc = time;
+		*tloc = time as _;
 	}
 
 	Ok(time as _)

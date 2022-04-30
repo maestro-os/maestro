@@ -8,20 +8,38 @@ use crate::util::container::vec::Vec;
 use crate::util::lock::*;
 
 /// Type representing a timestamp in seconds. Equivalent to POSIX's `time_t`.
-pub type Timestamp = u32;
+pub type Timestamp = u64;
 /// Type representing a timestamp in microseconds. Equivalent to POSIX's `suseconds_t`.
 pub type UTimestamp = u64;
 /// Type representing an elapsed number of ticks. Equivalent to POSIX's `clock_t`.
 pub type Clock = u32;
+
+/// Trait to be implement on a structure describing a moment in time.
+pub trait TimeUnit {
+	/// Creates the structure from the given timestamp in nanoseconds.
+	fn from_nano(timestamp: u64) -> Self;
+}
 
 /// POSIX structure representing a timestamp.
 #[derive(Clone, Default)]
 #[repr(C)]
 pub struct Timeval {
 	/// Seconds
-	tv_sec: Timestamp,
+	pub tv_sec: Timestamp,
 	/// Microseconds
-	tv_usec: UTimestamp,
+	pub tv_usec: UTimestamp,
+}
+
+impl TimeUnit for Timeval {
+	fn from_nano(timestamp: u64) -> Self {
+		let sec = timestamp / 1000000000;
+		let usec = (timestamp % 1000000000) / 1000;
+
+		Self {
+			tv_sec: sec,
+			tv_usec: usec,
+		}
+	}
 }
 
 /// Same as `Timeval`, but with nanosecond precision.
@@ -29,9 +47,21 @@ pub struct Timeval {
 #[repr(C)]
 pub struct Timespec {
 	/// Seconds
-	tv_sec: Timestamp,
+	pub tv_sec: Timestamp,
 	/// Nanoseconds
-	tv_nsec: u32,
+	pub tv_nsec: u32,
+}
+
+impl TimeUnit for Timespec {
+	fn from_nano(timestamp: u64) -> Self {
+		let sec = timestamp / 1000000000;
+		let nsec = timestamp % 1000000000;
+
+		Self {
+			tv_sec: sec,
+			tv_nsec: nsec as _,
+		}
+	}
 }
 
 /// Trait representing a source able to provide the current timestamp.
@@ -86,4 +116,12 @@ pub fn get() -> Option<Timestamp> {
 	} else {
 		None
 	}
+}
+
+/// Returns the current timestamp from the given clock `clk`.
+/// If the clock doesn't exist, the function returns None.
+pub fn get_struct<T: TimeUnit>(_clk: &[u8]) -> Option<T> {
+	// TODO use the given clock
+	// TODO use the correct unit
+	Some(T::from_nano(get()?))
 }
