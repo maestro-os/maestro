@@ -517,7 +517,6 @@ impl<'a> Executor<'a> for ELFExecutor<'a> {
 
 		// Loading the ELF
 		let load_info = self.load_elf(&parser, &mut mem_space, null::<u8>(), false)?;
-		crate::println!("linfo: {:?}", load_info); // TODO rm
 
 		// The user stack
 		let user_stack = mem_space.map_stack(None, process::USER_STACK_SIZE,

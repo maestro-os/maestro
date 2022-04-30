@@ -56,6 +56,7 @@ mod open;
 mod pipe2;
 mod pipe;
 mod poll;
+mod prlimit64;
 mod r#break;
 mod read;
 mod reboot;
@@ -145,6 +146,7 @@ use open::open;
 use pipe2::pipe2;
 use pipe::pipe;
 use poll::poll;
+use prlimit64::prlimit64;
 use r#break::r#break;
 use read::read;
 use reboot::reboot;
@@ -178,13 +180,13 @@ use writev::writev;
 pub extern "C" fn syscall_handler(regs: &mut Regs) {
 	let id = regs.eax;
 
-	let pid = {
+	/*let pid = {
 		let mutex = Process::get_current().unwrap();
 		let mut guard = mutex.lock();
 		let proc = guard.get_mut();
 		proc.get_pid()
 	};
-	print!("syscall: {:x} (pid: {})", id, pid); // TODO rm
+	print!("syscall: {:x} (pid: {})", id, pid); // TODO rm*/
 
 	let result = match id {
 		0x000 => Ok(0), // restart_syscall
@@ -523,7 +525,7 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 		// TODO 0x151 => recvmmsg(regs),
 		// TODO 0x152 => fanotify_init(regs),
 		// TODO 0x153 => fanotify_mark(regs),
-		// TODO 0x154 => prlimit64(regs),
+		0x154 => prlimit64(regs),
 		// TODO 0x155 => name_to_handle_at(regs),
 		// TODO 0x156 => open_by_handle_at(regs),
 		// TODO 0x157 => clock_adjtime(regs),
@@ -651,6 +653,6 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 			(-result.unwrap_err().as_int()) as _
 		}
 	};
-	println!("; retval: {}", retval as i32); // TODO rm
+	//println!("; retval: {}", retval as i32); // TODO rm
 	regs.eax = retval;
 }
