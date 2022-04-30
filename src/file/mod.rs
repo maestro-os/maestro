@@ -20,12 +20,14 @@ use crate::errno;
 use crate::file::fcache::FCache;
 use crate::file::mountpoint::MountPoint;
 use crate::limits;
+use crate::process::mem_space::MemSpace;
 use crate::time::Timestamp;
 use crate::time;
 use crate::util::FailableClone;
 use crate::util::IO;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
+use crate::util::ptr::IntSharedPtr;
 use crate::util::ptr::SharedPtr;
 use path::Path;
 
@@ -519,7 +521,11 @@ impl File {
 	}
 
 	/// Performs an ioctl operation on the file.
-	pub fn ioctl(&mut self, request: u32, argp: *const c_void) -> Result<u32, Errno> {
+	/// `mem_space` is the memory space on which pointers are to be dereferenced.
+	/// `request` is the ID of the request to perform.
+	/// `argp` is a pointer to the argument.
+	pub fn ioctl(&mut self, mem_space: IntSharedPtr<MemSpace>, request: u32, argp: *const c_void)
+		-> Result<u32, Errno> {
 		if let FileContent::CharDevice {
 			major,
 			minor,
@@ -527,7 +533,7 @@ impl File {
 			let dev = device::get_device(DeviceType::Char, major, minor)
 				.ok_or_else(|| errno!(ENODEV))?;
 			let mut guard = dev.lock();
-			guard.get_mut().get_handle().ioctl(request, argp)
+			guard.get_mut().get_handle().ioctl(mem_space, request, argp)
 		} else {
 			Err(errno!(ENOTTY))
 		}

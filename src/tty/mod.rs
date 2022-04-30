@@ -35,6 +35,19 @@ const BELL_FREQUENCY: u32 = 2000;
 /// The duraction of the bell in ms.
 const BELL_DURATION: u32 = 500;
 
+/// Structure representing a window size for a terminal.
+#[repr(C)]
+pub struct WinSize {
+	/// The number of rows.
+	pub ws_row: u16,
+	/// The number of columns.
+	pub ws_col: u16,
+	/// The width of the window in pixels.
+	pub ws_xpixel: u16,
+	/// The height of the window in pixels.
+	pub ws_ypixel: u16,
+}
+
 /// Returns the position of the cursor in the history array from `x` and `y` position.
 fn get_history_offset(x: vga::Pos, y: vga::Pos) -> usize {
 	let off = (y * vga::WIDTH + x) as usize;
@@ -407,5 +420,15 @@ impl TTY {
 		}
 		self.update();
 		self.input_size -= count;
+	}
+
+	/// Returns the window size of the TTY.
+	pub fn get_winsize(&self) -> WinSize {
+		WinSize {
+			ws_row: vga::HEIGHT as _,
+			ws_col: vga::WIDTH as _,
+			ws_xpixel: vga::PIXEL_WIDTH as _,
+			ws_ypixel: vga::PIXEL_HEIGHT as _,
+		}
 	}
 }

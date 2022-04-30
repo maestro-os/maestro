@@ -23,12 +23,14 @@ use crate::errno;
 use crate::file::Mode;
 use crate::file::path::Path;
 use crate::memory::malloc;
+use crate::process::mem_space::MemSpace;
 use crate::process::oom;
 use crate::util::FailableClone;
 use crate::util::IO;
 use crate::util::boxed::Box;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
+use crate::util::ptr::IntSharedPtr;
 
 /// The major number for storage devices.
 const STORAGE_MAJOR: u32 = 8;
@@ -269,7 +271,8 @@ impl StorageDeviceHandle {
 
 // TODO Handle partition
 impl DeviceHandle for StorageDeviceHandle {
-	fn ioctl(&mut self, _request: u32, _argp: *const c_void) -> Result<u32, Errno> {
+	fn ioctl(&mut self, _mem_space: IntSharedPtr<MemSpace>, _request: u32, _argp: *const c_void)
+		-> Result<u32, Errno> {
 		// TODO
 		Err(errno!(EINVAL))
 	}

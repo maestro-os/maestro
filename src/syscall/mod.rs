@@ -40,7 +40,6 @@ mod gettid;
 mod getuid32;
 mod getuid;
 mod init_module;
-mod ioctl;
 mod kill;
 mod link;
 mod madvise;
@@ -85,6 +84,7 @@ mod wait;
 mod waitpid;
 mod write;
 mod writev;
+pub mod ioctl;
 
 use crate::process::Process;
 use crate::process::regs::Regs;

@@ -109,7 +109,6 @@ impl UserDesc {
 
 impl fmt::Display for UserDesc {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		writeln!(f, "UserDesc:")?;
 		writeln!(f, "entry_number: {}", self.get_entry_number())?;
 		writeln!(f, "base_addr: {:p}", self.get_base_addr() as *const c_void)?;
 		writeln!(f, "limit: {:x}", self.get_limit())?;
@@ -118,6 +117,6 @@ impl fmt::Display for UserDesc {
 		writeln!(f, "read_exec_only: {}", !self.is_read_exec_only())?;
 		writeln!(f, "limit_in_pages: {}", self.is_limit_in_pages())?;
 		writeln!(f, "seg_not_present: {}", !self.is_present())?;
-		writeln!(f, "useable: {}", self.is_usable())
+		write!(f, "useable: {}", self.is_usable())
 	}
 }

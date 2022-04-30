@@ -11,8 +11,13 @@ use crate::errno::Errno;
 use crate::errno;
 use crate::file::path::Path;
 use crate::logger;
+use crate::process::mem_space::MemSpace;
+use crate::process::mem_space::ptr::SyscallPtr;
+use crate::syscall::ioctl;
+use crate::tty::WinSize;
 use crate::tty;
 use crate::util::IO;
+use crate::util::ptr::IntSharedPtr;
 use super::DeviceType;
 use super::id;
 
@@ -20,7 +25,8 @@ use super::id;
 pub struct NullDeviceHandle {}
 
 impl DeviceHandle for NullDeviceHandle {
-	fn ioctl(&mut self, _request: u32, _argp: *const c_void) -> Result<u32, Errno> {
+	fn ioctl(&mut self, _mem_space: IntSharedPtr<MemSpace>, _request: u32, _argp: *const c_void)
+		-> Result<u32, Errno> {
 		// TODO
 		Err(errno!(EINVAL))
 	}
@@ -44,7 +50,8 @@ impl IO for NullDeviceHandle {
 pub struct ZeroDeviceHandle {}
 
 impl DeviceHandle for ZeroDeviceHandle {
-	fn ioctl(&mut self, _request: u32, _argp: *const c_void) -> Result<u32, Errno> {
+	fn ioctl(&mut self, _mem_space: IntSharedPtr<MemSpace>, _request: u32, _argp: *const c_void)
+		-> Result<u32, Errno> {
 		// TODO
 		Err(errno!(EINVAL))
 	}
@@ -72,7 +79,8 @@ impl IO for ZeroDeviceHandle {
 pub struct KMsgDeviceHandle {}
 
 impl DeviceHandle for KMsgDeviceHandle {
-	fn ioctl(&mut self, _request: u32, _argp: *const c_void) -> Result<u32, Errno> {
+	fn ioctl(&mut self, _mem_space: IntSharedPtr<MemSpace>, _request: u32, _argp: *const c_void)
+		-> Result<u32, Errno> {
 		// TODO
 		Err(errno!(EINVAL))
 	}
@@ -110,7 +118,8 @@ impl IO for KMsgDeviceHandle {
 pub struct RandomDeviceHandle {}
 
 impl DeviceHandle for RandomDeviceHandle {
-	fn ioctl(&mut self, _request: u32, _argp: *const c_void) -> Result<u32, Errno> {
+	fn ioctl(&mut self, _mem_space: IntSharedPtr<MemSpace>, _request: u32, _argp: *const c_void)
+		-> Result<u32, Errno> {
 		// TODO
 		Err(errno!(EINVAL))
 	}
@@ -140,7 +149,8 @@ impl IO for RandomDeviceHandle {
 pub struct URandomDeviceHandle {}
 
 impl DeviceHandle for URandomDeviceHandle {
-	fn ioctl(&mut self, _request: u32, _argp: *const c_void) -> Result<u32, Errno> {
+	fn ioctl(&mut self, _mem_space: IntSharedPtr<MemSpace>, _request: u32, _argp: *const c_void)
+		-> Result<u32, Errno> {
 		// TODO
 		Err(errno!(EINVAL))
 	}
@@ -166,9 +176,21 @@ impl IO for URandomDeviceHandle {
 pub struct CurrentTTYDeviceHandle {}
 
 impl DeviceHandle for CurrentTTYDeviceHandle {
-	fn ioctl(&mut self, _request: u32, _argp: *const c_void) -> Result<u32, Errno> {
-		// TODO
-		Err(errno!(EINVAL))
+	fn ioctl(&mut self, mem_space: IntSharedPtr<MemSpace>, request: u32, argp: *const c_void)
+		-> Result<u32, Errno> {
+		match request {
+			ioctl::TIOCGWINSZ => {
+				let mem_space_guard = mem_space.lock();
+				let winsize: SyscallPtr<WinSize> = (argp as usize).into();
+				let winsize_ref = winsize.get_mut(&mem_space_guard)?
+					.ok_or_else(|| errno!(EFAULT))?;
+				*winsize_ref = tty::current().lock().get().get_winsize();
+
+				Ok(0)
+			},
+
+			_ => Err(errno!(EINVAL)),
+		}
 	}
 }
 

@@ -7,7 +7,9 @@ use crate::errno;
 use crate::file::File;
 use crate::file::pipe::PipeBuffer;
 use crate::file::socket::SocketSide;
+use crate::process::mem_space::MemSpace;
 use crate::util::IO;
+use crate::util::ptr::IntSharedPtr;
 use crate::util::ptr::SharedPtr;
 
 /// Read only.
@@ -212,11 +214,12 @@ impl OpenFile {
 	}
 
 	/// Performs an ioctl operation on the file.
-	pub fn ioctl(&mut self, request: u32, argp: *const c_void) -> Result<u32, Errno> {
+	pub fn ioctl(&mut self, mem_space: IntSharedPtr<MemSpace>, request: u32, argp: *const c_void)
+		-> Result<u32, Errno> {
 		match &mut self.target {
 			FDTarget::File(f) => {
 				let mut guard = f.lock();
-				guard.get_mut().ioctl(request, argp)
+				guard.get_mut().ioctl(mem_space, request, argp)
 			},
 
 			FDTarget::Pipe(_pipe) => {

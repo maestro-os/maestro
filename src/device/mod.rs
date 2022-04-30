@@ -22,11 +22,13 @@ use crate::file::Mode;
 use crate::file::fcache::FCache;
 use crate::file::fcache;
 use crate::file::path::Path;
+use crate::process::mem_space::MemSpace;
 use crate::util::FailableClone;
 use crate::util::IO;
 use crate::util::boxed::Box;
 use crate::util::container::vec::Vec;
 use crate::util::lock::Mutex;
+use crate::util::ptr::IntSharedPtr;
 use crate::util::ptr::SharedPtr;
 use keyboard::KeyboardManager;
 use storage::StorageManager;
@@ -43,7 +45,11 @@ pub enum DeviceType {
 /// Trait providing a interface for device I/O.
 pub trait DeviceHandle: IO {
 	/// Performs an ioctl operation on the device.
-	fn ioctl(&mut self, request: u32, argp: *const c_void) -> Result<u32, Errno>;
+	/// `mem_space` is the memory space on which pointers are to be dereferenced.
+	/// `request` is the ID of the request to perform.
+	/// `argp` is a pointer to the argument.
+	fn ioctl(&mut self, mem_space: IntSharedPtr<MemSpace>, request: u32, argp: *const c_void)
+		-> Result<u32, Errno>;
 }
 
 /// Structure representing a device, either a block device or a char device. Each device has a
