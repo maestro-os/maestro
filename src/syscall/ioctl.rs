@@ -6,7 +6,13 @@ use crate::errno;
 use crate::process::Process;
 use crate::process::regs::Regs;
 
-/// ioctl request: Returns the size of the terminal.
+// ioctl requests: TTY
+
+/// ioctl request: Get the foreground process group ID on the terminal.
+pub const TIOCGPGRP: u32 = 0x0000540f;
+/// ioctl request: Set the foreground process group ID on the terminal.
+pub const TIOCSPGRP: u32 = 0x00005410;
+/// ioctl request: Returns the window size of the terminal.
 pub const TIOCGWINSZ: u32 = 0x00005413;
 
 /// The implementation of the `ioctl` syscall.
@@ -15,7 +21,7 @@ pub fn ioctl(regs: &Regs) -> Result<i32, Errno> {
 	let request = regs.ecx as u32;
 	let argp = regs.edx as *const c_void;
 
-	//crate::println!("ioctl: {} {:x} {:p}", fd, request, argp); // TODO rm
+	crate::println!("ioctl: {} {:x} {:p}", fd, request, argp); // TODO rm
 
 	// Getting the process
 	let mutex = Process::get_current().unwrap();

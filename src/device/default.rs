@@ -179,6 +179,16 @@ impl DeviceHandle for CurrentTTYDeviceHandle {
 	fn ioctl(&mut self, mem_space: IntSharedPtr<MemSpace>, request: u32, argp: *const c_void)
 		-> Result<u32, Errno> {
 		match request {
+			ioctl::TIOCGPGRP => {
+				// TODO
+				todo!();
+			},
+
+			ioctl::TIOCSPGRP => {
+				// TODO
+				todo!();
+			},
+
 			ioctl::TIOCGWINSZ => {
 				let mem_space_guard = mem_space.lock();
 				let winsize: SyscallPtr<WinSize> = (argp as usize).into();
