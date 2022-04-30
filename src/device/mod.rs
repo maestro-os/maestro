@@ -12,6 +12,7 @@ pub mod manager;
 pub mod network;
 pub mod serial;
 pub mod storage;
+pub mod tty;
 
 use core::ffi::c_void;
 use crate::device::manager::DeviceManager;

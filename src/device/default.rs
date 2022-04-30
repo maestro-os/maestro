@@ -6,16 +6,13 @@ use core::mem::ManuallyDrop;
 use crate::crypto::rand::rand;
 use crate::device::Device;
 use crate::device::DeviceHandle;
+use crate::device::tty::TTYDeviceHandle;
 use crate::device;
 use crate::errno::Errno;
 use crate::errno;
 use crate::file::path::Path;
 use crate::logger;
 use crate::process::mem_space::MemSpace;
-use crate::process::mem_space::ptr::SyscallPtr;
-use crate::syscall::ioctl;
-use crate::tty::WinSize;
-use crate::tty;
 use crate::util::IO;
 use crate::util::ptr::IntSharedPtr;
 use super::DeviceType;
@@ -172,54 +169,6 @@ impl IO for URandomDeviceHandle {
 	}
 }
 
-/// Structure representing the current TTY.
-pub struct CurrentTTYDeviceHandle {}
-
-impl DeviceHandle for CurrentTTYDeviceHandle {
-	fn ioctl(&mut self, mem_space: IntSharedPtr<MemSpace>, request: u32, argp: *const c_void)
-		-> Result<u32, Errno> {
-		match request {
-			ioctl::TIOCGPGRP => {
-				// TODO
-				todo!();
-			},
-
-			ioctl::TIOCSPGRP => {
-				// TODO
-				todo!();
-			},
-
-			ioctl::TIOCGWINSZ => {
-				let mem_space_guard = mem_space.lock();
-				let winsize: SyscallPtr<WinSize> = (argp as usize).into();
-				let winsize_ref = winsize.get_mut(&mem_space_guard)?
-					.ok_or_else(|| errno!(EFAULT))?;
-				*winsize_ref = tty::current().lock().get().get_winsize();
-
-				Ok(0)
-			},
-
-			_ => Err(errno!(EINVAL)),
-		}
-	}
-}
-
-impl IO for CurrentTTYDeviceHandle {
-	fn get_size(&self) -> u64 {
-		0
-	}
-
-	fn read(&mut self, _offset: u64, _buff: &mut [u8]) -> Result<u64, Errno> {
-		// TODO Read from TTY input
-		todo!();
-	}
-
-	fn write(&mut self, _offset: u64, buff: &[u8]) -> Result<u64, Errno> {
-		tty::current().lock().get_mut().write(buff);
-		Ok(buff.len() as _)
-	}
-}
-
 /// Creates the default devices.
 pub fn create() -> Result<(), Errno> {
 	let _first_major = ManuallyDrop::new(id::alloc_major(DeviceType::Char, Some(1))?);
@@ -258,7 +207,7 @@ pub fn create() -> Result<(), Errno> {
 
 	let current_tty_path = Path::from_str(b"/dev/tty", false)?;
 	let mut current_tty_device = Device::new(5, 0, current_tty_path, 0o666, DeviceType::Char,
-		CurrentTTYDeviceHandle {})?;
+		TTYDeviceHandle::new(None))?;
 	current_tty_device.create_file()?; // TODO remove?
 	device::register_device(current_tty_device)?;
 
