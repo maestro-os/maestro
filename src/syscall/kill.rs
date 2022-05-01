@@ -2,7 +2,6 @@
 
 use crate::errno::Errno;
 use crate::errno;
-use crate::file::Uid;
 use crate::process::Process;
 use crate::process::State;
 use crate::process::pid::Pid;
@@ -11,98 +10,124 @@ use crate::process::signal::Signal;
 use crate::process;
 
 /// Tries to kill the process with PID `pid` with the signal `sig`.
-/// `uid` is the real user ID of the sender process.
-/// `euid` is the effective user ID of the sender process.
 /// If `sig` is None, the function doesn't send a signal, but still checks if there is a process
 /// that could be killed.
-fn try_kill(pid: i32, sig: Option<Signal>, uid: Uid, euid: Uid) -> Result<i32, Errno> {
-	let proc = Process::get_by_pid(pid as Pid).ok_or_else(|| errno!(ESRCH))?;
-	let mut guard = proc.lock();
-	let proc = guard.get_mut();
+fn try_kill(pid: Pid, sig: Option<Signal>) -> Result<(), Errno> {
+	let curr_mutex = Process::get_current().unwrap();
+	let mut curr_guard = curr_mutex.lock();
+	let curr_proc = curr_guard.get_mut();
 
-	if proc.get_state() == State::Zombie {
-		return Err(errno!(ESRCH));
+	let uid = curr_proc.get_uid();
+	let euid = curr_proc.get_euid();
+
+	// Closure sending the signal
+	let f = | target: &mut Process | {
+		if target.get_state() == State::Zombie {
+			return Err(errno!(ESRCH));
+		}
+		if !target.can_kill(uid) && !target.can_kill(euid) {
+			return Err(errno!(EPERM));
+		}
+
+		if let Some(sig) = sig {
+			target.kill(sig, false);
+		}
+
+		Ok(())
+	};
+
+	if pid == curr_proc.get_pid() {
+		f(curr_proc)?;
+	} else {
+		let target_mutex = Process::get_by_pid(pid).ok_or_else(|| errno!(ESRCH))?;
+		let mut target_guard = target_mutex.lock();
+		let target_proc = target_guard.get_mut();
+
+		f(target_proc)?;
 	}
 
-	if proc.can_kill(uid) || proc.can_kill(euid) {
-		return Err(errno!(EPERM));
+	Ok(())
+}
+
+/// Tries to kill the process group with PGID `pgid`. If `pgid` is zero, the function takes the
+/// current process's group.
+/// `sig` is the signal to send.
+/// If `sig` is None, the function doesn't send a signal, but still checks if there is a process
+/// that could be killed.
+fn try_kill_group(pid: i32, sig: Option<Signal>) -> Result<(), Errno> {
+	let pgid = if pid == 0 {
+		let curr_mutex = Process::get_current().unwrap();
+		let mut curr_guard = curr_mutex.lock();
+		let curr_proc = curr_guard.get_mut();
+
+		curr_proc.get_pgid()
+	} else {
+		-pid as Pid
+	};
+
+	let mut success = false;
+
+	// Killing process group
+	{
+		let mutex = Process::get_by_pid(pgid).ok_or_else(|| errno!(ESRCH))?;
+		let mut guard = mutex.lock();
+		let proc = guard.get_mut();
+
+		let group = proc.get_group_processes();
+
+		for pid in group {
+			if *pid == pgid {
+				continue;
+			}
+
+			if try_kill(*pid as _, sig.clone()).is_ok() {
+				success = true;
+			}
+		}
 	}
 
-	if let Some(sig) = sig {
-		proc.kill(sig, false);
+	// Killing process group owner
+	if try_kill(pgid, sig.clone()).is_ok() {
+		success = true;
 	}
 
-	Ok(0)
+	if success {
+		Ok(())
+	} else {
+		Err(errno!(ESRCH))
+	}
 }
 
 /// Sends the signal `sig` to the processes according to the given value `pid`.
-/// `proc` is the current process.
 /// If `sig` is None, the function doesn't send a signal, but still checks if there is a process
 /// that could be killed.
-fn send_signal(pid: i32, sig: Option<Signal>, proc: &mut Process) -> Result<i32, Errno> {
-	if pid == proc.get_pid() as _ {
-		if let Some(sig) = sig {
-			proc.kill(sig, false);
-		}
-		Ok(0)
-	} else if pid > 0 {
-		try_kill(pid, sig, proc.get_uid(), proc.get_euid())
-	} else if pid == 0 || -pid as Pid == proc.get_pid() {
-		let group = proc.get_group_processes();
-
-		if let Some(sig) = sig {
-			for p in group {
-				try_kill(*p as _, Some(sig.clone()), proc.get_uid(), proc.get_euid()).unwrap();
-			}
-		}
-
-		if !group.is_empty() {
-			Ok(0)
-		} else {
-			Err(errno!(ESRCH))
-		}
-	} else if pid == -1 {
+fn send_signal(pid: i32, sig: Option<Signal>) -> Result<(), Errno> {
+	if pid > 0 { // Kill the process with the given PID
+		try_kill(pid as _, sig)
+	} else if pid == 0 { // Kill all processes in the current process group
+		try_kill_group(0, sig)
+	} else if pid == -1 { // Kill all processes for which the current process has the permission
 		let mut scheduler_guard = process::get_scheduler().lock();
 		let scheduler = scheduler_guard.get_mut();
 
 		// Variable telling whether at least one process is killed
-		let mut found = false;
+		let mut success = false;
 
-		scheduler.foreach_process(| pid, p | {
-			if *pid != process::pid::INIT_PID && *pid != proc.get_pid() {
-				if let Some(sig) = &sig {
-					let mut proc_guard = p.lock();
-					let p = proc_guard.get_mut();
-
-					if proc.get_euid() == p.get_uid() || proc.get_euid() == p.get_euid() {
-						p.kill(sig.clone(), false);
-						found = true;
-					}
+		scheduler.foreach_process(| pid, _ | {
+			if *pid != process::pid::INIT_PID {
+				if try_kill(*pid, sig.clone()).is_ok() {
+					success = true;
 				}
 			}
 		});
 
-		if found {
-			Ok(0)
+		if success {
+			Ok(())
 		} else {
 			Err(errno!(ESRCH))
 		}
-	} else if let Some(proc) = Process::get_by_pid(-pid as _) {
-		let mut guard = proc.lock();
-		let proc = guard.get_mut();
-		let group = proc.get_group_processes();
-
-		if let Some(sig) = sig {
-			for p in group {
-				try_kill(*p as _, Some(sig.clone()), proc.get_uid(), proc.get_euid()).unwrap();
-			}
-		}
-
-		if !group.is_empty() {
-			Ok(0)
-		} else {
-			Err(errno!(ESRCH))
-		}
+	} else if pid < -1 { // Kill the given process group
+		try_kill_group(-pid as _, sig)
 	} else {
 		Err(errno!(ESRCH))
 	}
@@ -154,6 +179,8 @@ pub fn kill(regs: &Regs) -> Result<i32, Errno> {
 	let pid = regs.ebx as i32;
 	let sig = regs.ecx as i32;
 
+	crate::println!("kill: {} {}", pid, sig); // TODO rm
+
 	cli!();
 
 	let sig = {
@@ -164,12 +191,12 @@ pub fn kill(regs: &Regs) -> Result<i32, Errno> {
 		}
 	};
 
+	send_signal(pid, sig)?;
+
 	{
 		let mutex = Process::get_current().unwrap();
 		let mut guard = mutex.lock();
 		let proc = guard.get_mut();
-
-		send_signal(pid, sig, proc)?;
 
 		// POSIX requires that at least one pending signal is executed before returning
 		if proc.has_signal_pending() {
