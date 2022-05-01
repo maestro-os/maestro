@@ -976,7 +976,7 @@ impl Process {
 
 	/// Returns the file descriptor with ID `id`.
 	/// If the file descriptor doesn't exist, the function returns None.
-	pub fn get_fd(&mut self, id: u32) -> Option<FileDescriptor> {
+	pub fn get_fd(&self, id: u32) -> Option<FileDescriptor> {
 		let file_descriptors_guard = self.file_descriptors.lock();
 		let file_descriptors = file_descriptors_guard.get();
 

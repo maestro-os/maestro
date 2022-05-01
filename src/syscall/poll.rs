@@ -4,7 +4,7 @@ use core::slice;
 use crate::errno::Errno;
 use crate::process::Process;
 use crate::process::regs::Regs;
-use crate::time::Timestamp;
+use crate::time::unit::Timestamp;
 use crate::time;
 
 /// There is data to read.

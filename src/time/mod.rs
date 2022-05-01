@@ -2,67 +2,14 @@
 //! The kernel stores a list of clock sources. A clock source is an object that allow to get the
 //! current timestamp.
 
+pub mod unit;
+
 use crate::errno::Errno;
 use crate::util::boxed::Box;
 use crate::util::container::vec::Vec;
 use crate::util::lock::*;
-
-/// Type representing a timestamp in seconds. Equivalent to POSIX's `time_t`.
-pub type Timestamp = u64;
-/// Type representing a timestamp in microseconds. Equivalent to POSIX's `suseconds_t`.
-pub type UTimestamp = u64;
-/// Type representing an elapsed number of ticks. Equivalent to POSIX's `clock_t`.
-pub type Clock = u32;
-
-/// Trait to be implement on a structure describing a moment in time.
-pub trait TimeUnit {
-	/// Creates the structure from the given timestamp in nanoseconds.
-	fn from_nano(timestamp: u64) -> Self;
-}
-
-/// POSIX structure representing a timestamp.
-#[derive(Clone, Default)]
-#[repr(C)]
-pub struct Timeval {
-	/// Seconds
-	pub tv_sec: Timestamp,
-	/// Microseconds
-	pub tv_usec: UTimestamp,
-}
-
-impl TimeUnit for Timeval {
-	fn from_nano(timestamp: u64) -> Self {
-		let sec = timestamp / 1000000000;
-		let usec = (timestamp % 1000000000) / 1000;
-
-		Self {
-			tv_sec: sec,
-			tv_usec: usec,
-		}
-	}
-}
-
-/// Same as `Timeval`, but with nanosecond precision.
-#[derive(Clone, Default)]
-#[repr(C)]
-pub struct Timespec {
-	/// Seconds
-	pub tv_sec: Timestamp,
-	/// Nanoseconds
-	pub tv_nsec: u32,
-}
-
-impl TimeUnit for Timespec {
-	fn from_nano(timestamp: u64) -> Self {
-		let sec = timestamp / 1000000000;
-		let nsec = timestamp % 1000000000;
-
-		Self {
-			tv_sec: sec,
-			tv_nsec: nsec as _,
-		}
-	}
-}
+use unit::TimeUnit;
+use unit::Timestamp;
 
 /// Trait representing a source able to provide the current timestamp.
 pub trait ClockSource {

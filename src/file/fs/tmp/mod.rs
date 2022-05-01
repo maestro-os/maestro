@@ -17,7 +17,7 @@ use crate::file::fs::FilesystemType;
 use crate::file::fs::kernfs::KernFS;
 use crate::file::fs::kernfs::node::KernFSNode;
 use crate::file::path::Path;
-use crate::time::Timestamp;
+use crate::time::unit::Timestamp;
 use crate::time;
 use crate::util::IO;
 use crate::util::boxed::Box;

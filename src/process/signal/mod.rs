@@ -11,7 +11,7 @@ use crate::errno;
 use crate::file::Uid;
 use crate::process::oom;
 use crate::process::pid::Pid;
-use crate::time::Clock;
+use crate::time::unit::Clock;
 use signal_trampoline::signal_trampoline;
 use super::Process;
 use super::State;

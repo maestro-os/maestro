@@ -27,7 +27,7 @@ pub fn ioctl(regs: &Regs) -> Result<i32, Errno> {
 	let request = regs.ecx as u32;
 	let argp = regs.edx as *const c_void;
 
-	crate::println!("ioctl: {} {:x} {:p}", fd, request, argp); // TODO rm
+	//crate::println!("ioctl: {} {:x} {:p}", fd, request, argp); // TODO rm
 
 	// Getting the memory space and file
 	let (mem_space, open_file_mutex) = {
@@ -35,7 +35,8 @@ pub fn ioctl(regs: &Regs) -> Result<i32, Errno> {
 		let mut guard = mutex.lock();
 		let proc = guard.get_mut();
 
-		(proc.get_mem_space().unwrap(), proc.get_fd(fd as _).ok_or_else(|| errno!(EBADF))?.get_open_file())
+		(proc.get_mem_space().unwrap(), proc.get_fd(fd as _).ok_or_else(|| errno!(EBADF))?
+			.get_open_file())
 	};
 
 	// Getting the device file

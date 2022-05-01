@@ -3,7 +3,7 @@
 use crate::errno::Errno;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::regs::Regs;
-use crate::time::Timespec;
+use crate::time::unit::Timespec;
 
 /// The implementation of the `nanosleep` syscall.
 pub fn nanosleep(regs: &Regs) -> Result<i32, Errno> {

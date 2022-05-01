@@ -21,7 +21,7 @@ use crate::file::fcache::FCache;
 use crate::file::mountpoint::MountPoint;
 use crate::limits;
 use crate::process::mem_space::MemSpace;
-use crate::time::Timestamp;
+use crate::time::unit::Timestamp;
 use crate::time;
 use crate::util::FailableClone;
 use crate::util::IO;

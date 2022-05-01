@@ -179,8 +179,6 @@ pub fn kill(regs: &Regs) -> Result<i32, Errno> {
 	let pid = regs.ebx as i32;
 	let sig = regs.ecx as i32;
 
-	crate::println!("kill: {} {}", pid, sig); // TODO rm
-
 	cli!();
 
 	let sig = {

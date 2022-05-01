@@ -4,7 +4,7 @@ use crate::errno::Errno;
 use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::regs::Regs;
-use crate::time::Timespec;
+use crate::time::unit::Timespec;
 use crate::time;
 
 /// The implementation of the `clock_gettime` syscall.

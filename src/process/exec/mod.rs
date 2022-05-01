@@ -92,6 +92,7 @@ pub fn exec(proc: &mut Process, path: &Path, argv: &[&[u8]], envp: &[&[u8]]) -> 
 	proc.update_tss();
 
 	// TODO Duplicate file descriptors (but not open file descriptions)
+	// TODO Close fds with CLOEXEC flag
 
 	// Resetting signals
 	proc.sigmask.clear_all();
