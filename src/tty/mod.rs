@@ -466,12 +466,12 @@ impl TTY {
 					_ => i += 1,
 				}
 			}
+
+			// Writing onto the TTY
+			self.write(input);
 		} else {
 			// TODO Make available to device file
 		}
-
-		// Writing onto the TTY
-		self.write(input);
 	}
 
 	/// Erases `count` characters in TTY.
