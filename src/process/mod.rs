@@ -38,7 +38,8 @@ use crate::file;
 use crate::gdt::ldt::LDT;
 use crate::gdt;
 use crate::limits;
-use crate::tty::TTY;
+use crate::tty::TTYHandle;
+use crate::tty;
 use crate::util::FailableClone;
 use crate::util::container::bitfield::Bitfield;
 use crate::util::container::vec::Vec;
@@ -152,7 +153,7 @@ pub struct Process {
 	tid: Pid,
 
 	/// The process's current TTY.
-	tty: Option<SharedPtr<TTY>>,
+	tty: TTYHandle,
 
 	/// The real ID of the process's user owner.
 	uid: Uid,
@@ -417,7 +418,7 @@ impl Process {
 			pgid: pid::INIT_PID,
 			tid: pid::INIT_PID,
 
-			tty: None,
+			tty: tty::get(None).unwrap(), // Initialization with the init TTY
 
 			uid: 0,
 			gid: 0,
@@ -570,7 +571,7 @@ impl Process {
 	}
 
 	/// Returns the TTY associated with the process.
-	pub fn get_tty(&self) -> Option<SharedPtr<TTY>> {
+	pub fn get_tty(&self) -> TTYHandle {
 		self.tty.clone()
 	}
 

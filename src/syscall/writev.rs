@@ -20,16 +20,18 @@ pub fn writev(regs: &Regs) -> Result<i32, Errno> {
 		return Err(errno!(EINVAL));
 	}
 
-	let mutex = Process::get_current().unwrap();
-	let mut guard = mutex.lock();
-	let proc = guard.get_mut();
+	let (mem_space, open_file_mutex) = {
+		let mutex = Process::get_current().unwrap();
+		let mut guard = mutex.lock();
+		let proc = guard.get_mut();
 
-	let mem_space = proc.get_mem_space().unwrap();
+		(proc.get_mem_space().unwrap(), proc.get_open_file(fd).ok_or(errno!(EBADF))?)
+	};
+
 	let mem_space_guard = mem_space.lock();
 
 	let iov_slice = iov.get(&mem_space_guard, iovcnt as _)?.ok_or(errno!(EFAULT))?;
 
-	let open_file_mutex = proc.get_open_file(fd).ok_or(errno!(EBADF))?;
 	let mut open_file_guard = open_file_mutex.lock();
 	let open_file = open_file_guard.get_mut();
 

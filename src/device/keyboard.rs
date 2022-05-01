@@ -485,38 +485,39 @@ impl KeyboardManager {
 
 		if action == KeyboardAction::Pressed {
 			if self.ctrl && self.alt {
+				// TODO TTYs must be allocated first
 				// Switching TTY
 				match key {
-					KeyboardKey::KeyF1 => tty::switch(0),
-					KeyboardKey::KeyF2 => tty::switch(1),
-					KeyboardKey::KeyF3 => tty::switch(2),
-					KeyboardKey::KeyF4 => tty::switch(3),
-					KeyboardKey::KeyF5 => tty::switch(4),
-					KeyboardKey::KeyF6 => tty::switch(5),
-					KeyboardKey::KeyF7 => tty::switch(6),
-					KeyboardKey::KeyF8 => tty::switch(7),
-					KeyboardKey::KeyF9 => tty::switch(8),
-					KeyboardKey::KeyF10 => tty::switch(9),
-					KeyboardKey::KeyF11 => tty::switch(10),
-					KeyboardKey::KeyF12 => tty::switch(11),
+					KeyboardKey::KeyF1 => tty::switch(Some(0)),
+					KeyboardKey::KeyF2 => tty::switch(Some(1)),
+					KeyboardKey::KeyF3 => tty::switch(Some(2)),
+					KeyboardKey::KeyF4 => tty::switch(Some(3)),
+					KeyboardKey::KeyF5 => tty::switch(Some(4)),
+					KeyboardKey::KeyF6 => tty::switch(Some(5)),
+					KeyboardKey::KeyF7 => tty::switch(Some(6)),
+					KeyboardKey::KeyF8 => tty::switch(Some(7)),
+					KeyboardKey::KeyF9 => tty::switch(Some(8)),
 
 					_ => {},
 				}
 			}
 
 			// Getting the tty
-			let mut tty_guard = tty::current().lock();
-			let tty = tty_guard.get_mut();
+			if let Some(tty_mutex) = tty::current() {
+				let mut tty_guard = tty_mutex.lock();
+				let tty = tty_guard.get_mut();
 
-			if key == KeyboardKey::KeyBackspace {
-				// Erasing from TTY
-				tty.erase(1);
-			} else if !self.ctrl && !self.alt && !self.right_alt && !self.right_ctrl {
-				// Writing on TTY
-				let shift = (self.left_shift || self.right_shift) != self.caps_lock.is_enabled();
+				if key == KeyboardKey::KeyBackspace {
+					// Erasing from TTY
+					tty.erase(1);
+				} else if !self.ctrl && !self.alt && !self.right_alt && !self.right_ctrl {
+					// Writing on TTY
+					let shift = (self.left_shift || self.right_shift)
+						!= self.caps_lock.is_enabled();
 
-				if let Some(tty_chars) = key.get_tty_chars(shift) {
-					tty.input(tty_chars);
+					if let Some(tty_chars) = key.get_tty_chars(shift) {
+						tty.input(tty_chars);
+					}
 				}
 			}
 		}
