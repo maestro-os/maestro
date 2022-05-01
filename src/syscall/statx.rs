@@ -99,7 +99,7 @@ fn get_file(proc: &mut Process, follow_links: bool, dirfd: i32, pathname: &[u8],
 				return Err(errno!(EBADF));
 			}
 
-			let open_file_mutex = proc.get_open_file(dirfd as _).ok_or(errno!(EBADF))?;
+			let open_file_mutex = proc.get_fd(dirfd as _).ok_or(errno!(EBADF))?.get_open_file();
 			let open_file_guard = open_file_mutex.lock();
 			let open_file = open_file_guard.get();
 
@@ -126,7 +126,7 @@ fn get_file(proc: &mut Process, follow_links: bool, dirfd: i32, pathname: &[u8],
 					return Err(errno!(EBADF));
 				}
 
-				let open_file_mutex = proc.get_open_file(dirfd as _).ok_or(errno!(EBADF))?;
+				let open_file_mutex = proc.get_fd(dirfd as _).ok_or(errno!(EBADF))?.get_open_file();
 				let open_file_guard = open_file_mutex.lock();
 				let open_file = open_file_guard.get();
 

@@ -25,7 +25,7 @@ pub fn writev(regs: &Regs) -> Result<i32, Errno> {
 		let mut guard = mutex.lock();
 		let proc = guard.get_mut();
 
-		(proc.get_mem_space().unwrap(), proc.get_open_file(fd).ok_or(errno!(EBADF))?)
+		(proc.get_mem_space().unwrap(), proc.get_fd(fd).ok_or(errno!(EBADF))?.get_open_file())
 	};
 
 	let mem_space_guard = mem_space.lock();

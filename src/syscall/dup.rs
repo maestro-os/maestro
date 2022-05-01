@@ -13,6 +13,6 @@ pub fn dup(regs: &Regs) -> Result<i32, Errno> {
 	let mut guard = mutex.lock();
 	let proc = guard.get_mut();
 
-	let (newfd_id, _) = proc.duplicate_fd(oldfd, NewFDConstraint::None, false)?;
-	Ok(newfd_id as _)
+	let newfd = proc.duplicate_fd(oldfd, NewFDConstraint::None, false)?;
+	Ok(newfd.get_id() as _)
 }

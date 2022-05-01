@@ -27,7 +27,7 @@ pub fn _llseek(regs: &Regs) -> Result<i32, Errno> {
 	let mem_space = proc.get_mem_space().unwrap();
 
 	// Getting the file descriptor
-	let open_file_mutex = proc.get_open_file(fd).ok_or_else(|| errno!(EBADF))?;
+	let open_file_mutex = proc.get_fd(fd).ok_or_else(|| errno!(EBADF))?.get_open_file();
 	let mut open_file_guard = open_file_mutex.lock();
 	let open_file = open_file_guard.get_mut();
 

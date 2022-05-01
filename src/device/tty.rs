@@ -11,6 +11,7 @@ use crate::process::pid::Pid;
 use crate::syscall::ioctl;
 use crate::tty::TTYHandle;
 use crate::tty::WinSize;
+use crate::tty::termios::Termios;
 use crate::util::IO;
 use crate::util::ptr::IntSharedPtr;
 
@@ -46,11 +47,32 @@ impl DeviceHandle for TTYDeviceHandle {
 		let tty = tty_guard.get_mut();
 
 		match request {
+			ioctl::TCGETS => {
+				let mem_space_guard = mem_space.lock();
+				let termios_ptr: SyscallPtr<Termios> = (argp as usize).into();
+				let termios_ref = termios_ptr.get_mut(&mem_space_guard)?
+					.ok_or_else(|| errno!(EFAULT))?;
+				*termios_ref = tty.get_termios().clone();
+
+				Ok(0)
+			},
+
+			ioctl::TCSETS => {
+				let mem_space_guard = mem_space.lock();
+				let termios_ptr: SyscallPtr<Termios> = (argp as usize).into();
+				let termios = termios_ptr.get(&mem_space_guard)?
+					.ok_or_else(|| errno!(EFAULT))?;
+				tty.set_termios(termios.clone());
+
+				Ok(0)
+			},
+
 			ioctl::TIOCGPGRP => {
 				let mem_space_guard = mem_space.lock();
 				let pgid_ptr: SyscallPtr<Pid> = (argp as usize).into();
-				let pgid = tty.get_pgrp();
-				*(pgid_ptr.get_mut(&mem_space_guard)?.ok_or_else(|| errno!(EFAULT))?) = pgid;
+				let pgid_ref = pgid_ptr.get_mut(&mem_space_guard)?
+					.ok_or_else(|| errno!(EFAULT))?;
+				*pgid_ref = tty.get_pgrp();
 
 				Ok(0)
 			},
@@ -58,7 +80,8 @@ impl DeviceHandle for TTYDeviceHandle {
 			ioctl::TIOCSPGRP => {
 				let mem_space_guard = mem_space.lock();
 				let pgid_ptr: SyscallPtr<Pid> = (argp as usize).into();
-				let pgid = pgid_ptr.get(&mem_space_guard)?.ok_or_else(|| errno!(EFAULT))?;
+				let pgid = pgid_ptr.get(&mem_space_guard)?
+					.ok_or_else(|| errno!(EFAULT))?;
 				tty.set_pgrp(*pgid);
 
 				Ok(0)
@@ -69,7 +92,17 @@ impl DeviceHandle for TTYDeviceHandle {
 				let winsize: SyscallPtr<WinSize> = (argp as usize).into();
 				let winsize_ref = winsize.get_mut(&mem_space_guard)?
 					.ok_or_else(|| errno!(EFAULT))?;
-				*winsize_ref = tty.get_winsize();
+				*winsize_ref = tty.get_winsize().clone();
+
+				Ok(0)
+			},
+
+			ioctl::TIOCSWINSZ => {
+				let mem_space_guard = mem_space.lock();
+				let winsize_ptr: SyscallPtr<WinSize> = (argp as usize).into();
+				let winsize = winsize_ptr.get(&mem_space_guard)?
+					.ok_or_else(|| errno!(EFAULT))?;
+				tty.set_winsize(winsize.clone());
 
 				Ok(0)
 			},

@@ -5,6 +5,7 @@
 //! time of creation, memory management isn't initialized yet.
 
 mod ansi;
+pub mod termios;
 
 use core::cmp::*;
 use core::mem::MaybeUninit;
@@ -12,7 +13,11 @@ use core::ptr;
 use crate::device::serial;
 use crate::memory::vmem;
 use crate::pit;
+use crate::process::Process;
 use crate::process::pid::Pid;
+use crate::process::signal::SIGWINCH;
+use crate::process::signal::Signal;
+use crate::tty::termios::Termios;
 use crate::util::container::vec::Vec;
 use crate::util::lock::*;
 use crate::util::ptr::SharedPtr;
@@ -40,6 +45,7 @@ const BELL_DURATION: u32 = 500;
 
 /// Structure representing a window size for a terminal.
 #[repr(C)]
+#[derive(Clone)]
 pub struct WinSize {
 	/// The number of rows.
 	pub ws_row: u16,
@@ -63,6 +69,7 @@ fn get_tab_size(cursor_x: vga::Pos) -> usize {
 	TAB_SIZE - ((cursor_x as usize) % TAB_SIZE)
 }
 
+// TODO Use the values in winsize
 /// Structure representing a TTY.
 pub struct TTY {
 	/// The id of the TTY. If None, the TTY is the init TTY.
@@ -87,14 +94,17 @@ pub struct TTY {
 	/// The current size of the input buffer.
 	input_size: usize,
 
-	/// Tells whether the canonical mode is enabled.
-	canonical_mode: bool,
-
 	/// The ANSI escape codes buffer.
 	ansi_buffer: ansi::ANSIBuffer,
 
+	/// Terminal IO settings.
+	termios: Termios,
+
 	/// The current foreground Program Group ID.
 	pgrp: Pid,
+
+	/// The size of the TTY.
+	winsize: WinSize,
 }
 
 /// The initialization TTY.
@@ -194,9 +204,16 @@ impl TTY {
 		self.history = [(vga::DEFAULT_COLOR as vga::Char) << 8; HISTORY_SIZE];
 		self.update = true;
 
-		self.canonical_mode = true;
-
 		self.ansi_buffer = ansi::ANSIBuffer::new();
+
+		self.termios = Termios::default();
+
+		self.winsize = WinSize {
+			ws_row: vga::HEIGHT as _,
+			ws_col: vga::WIDTH as _,
+			ws_xpixel: vga::PIXEL_WIDTH as _,
+			ws_ypixel: vga::PIXEL_HEIGHT as _,
+		};
 	}
 
 	/// Returns the id of the TTY.
@@ -414,12 +431,6 @@ impl TTY {
 		self.update();
 	}
 
-	/// Tells whether the canonical mode is enabled.
-	#[inline(always)]
-	pub fn is_canonical_mode(&self) -> bool {
-		self.canonical_mode
-	}
-
 	/// Takes the given string `buffer` as input.
 	pub fn input(&mut self, buffer: &[u8]) {
 		// The length to write to the input buffer
@@ -427,7 +438,7 @@ impl TTY {
 		// The slice containing the input
 		let input = &buffer[..len];
 
-		if self.is_canonical_mode() {
+		if self.termios.is_canonical_mode() {
 			// Writing to the input buffer
 			util::slice_copy(input, &mut self.input_buffer[self.input_size..]);
 			self.input_size += len;
@@ -473,14 +484,14 @@ impl TTY {
 		self.input_size -= count;
 	}
 
-	/// Returns the window size of the TTY.
-	pub fn get_winsize(&self) -> WinSize {
-		WinSize {
-			ws_row: vga::HEIGHT as _,
-			ws_col: vga::WIDTH as _,
-			ws_xpixel: vga::PIXEL_WIDTH as _,
-			ws_ypixel: vga::PIXEL_HEIGHT as _,
-		}
+	/// Returns the terminal IO settings.
+	pub fn get_termios(&self) -> &Termios {
+		&self.termios
+	}
+
+	/// Sets the terminal IO settings.
+	pub fn set_termios(&mut self, termios: Termios) {
+		self.termios = termios;
 	}
 
 	/// Returns the current foreground Program Group ID.
@@ -491,5 +502,38 @@ impl TTY {
 	/// Sets the current foreground Program Group ID.
 	pub fn set_pgrp(&mut self, pgrp: Pid) {
 		self.pgrp = pgrp;
+	}
+
+	/// Returns the window size of the TTY.
+	pub fn get_winsize(&self) -> &WinSize {
+		&self.winsize
+	}
+
+	/// Sets the window size of the TTY.
+	/// If a foreground process group is set on the TTY, the function shall send it a `SIGWINCH`
+	/// signal.
+	pub fn set_winsize(&mut self, mut winsize: WinSize) {
+		// Clamping values
+		if winsize.ws_col > vga::WIDTH as _ {
+			winsize.ws_col = vga::WIDTH as _;
+		}
+		if winsize.ws_row > vga::HEIGHT as _ {
+			winsize.ws_row = vga::HEIGHT as _;
+		}
+		// Changes to the size in pixels are ignored
+		winsize.ws_xpixel = vga::PIXEL_WIDTH as _;
+		winsize.ws_ypixel = vga::PIXEL_HEIGHT as _;
+
+		self.winsize = winsize;
+
+		// Sending a SIGWINCH if a process group is present
+		if self.pgrp != 0 {
+			if let Some(proc_mutex) = Process::get_by_tid(self.pgrp) {
+				let mut proc_guard = proc_mutex.lock();
+				let proc = proc_guard.get_mut();
+
+				proc.kill_group(Signal::new(SIGWINCH).unwrap(), false);
+			}
+		}
 	}
 }

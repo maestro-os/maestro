@@ -111,16 +111,15 @@ pub fn do_fcntl(fd: i32, cmd: i32, arg: *mut c_void, _fcntl64: bool) -> Result<i
 		},
 
 		F_DUPFD => {
-			Ok(proc.duplicate_fd(fd as _, NewFDConstraint::Min(arg as _), false)?.0 as _)
+			Ok(proc.duplicate_fd(fd as _, NewFDConstraint::Min(arg as _), false)?.get_id() as _)
 		},
 
 		F_DUPFD_CLOEXEC => {
-			Ok(proc.duplicate_fd(fd as _, NewFDConstraint::Min(arg as _), true)?.0 as _)
+			Ok(proc.duplicate_fd(fd as _, NewFDConstraint::Min(arg as _), true)?.get_id() as _)
 		},
 
 		F_GETFD => {
-			// TODO
-			Ok(0)
+			Ok(proc.get_fd(fd as _).ok_or_else(|| errno!(EBADF))?.get_flags())
 		},
 
 		F_GETFL => {

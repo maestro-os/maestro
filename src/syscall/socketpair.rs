@@ -28,12 +28,10 @@ pub fn socketpair(regs: &Regs) -> Result<i32, Errno> {
 
 	let sock = Socket::new(domain, type_, protocol)?;
 	let sock2 = sock.clone();
-	let (fd0_id, _) = proc.create_fd(open_file::O_RDWR,
-		FDTarget::Socket(SocketSide::new(sock, false)?))?;
-	let (fd1_id, _) = proc.create_fd(open_file::O_RDWR,
-		FDTarget::Socket(SocketSide::new(sock2, true)?))?;
+	let fd0 = proc.create_fd(open_file::O_RDWR, FDTarget::Socket(SocketSide::new(sock, false)?))?;
+	let fd1 = proc.create_fd(open_file::O_RDWR, FDTarget::Socket(SocketSide::new(sock2, true)?))?;
 
-	sv_slice[0] = fd0_id as _;
-	sv_slice[1] = fd1_id as _;
+	sv_slice[0] = fd0.get_id() as _;
+	sv_slice[1] = fd1.get_id() as _;
 	Ok(0)
 }

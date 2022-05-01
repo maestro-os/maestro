@@ -31,6 +31,8 @@ use crate::file::Gid;
 use crate::file::ROOT_UID;
 use crate::file::Uid;
 use crate::file::fcache;
+use crate::file::fd::FD_CLOEXEC;
+use crate::file::fd::FileDescriptor;
 use crate::file::fd::NewFDConstraint;
 use crate::file::open_file::FDTarget;
 use crate::file::open_file::OpenFile;
@@ -40,6 +42,7 @@ use crate::file;
 use crate::gdt::ldt::LDT;
 use crate::gdt;
 use crate::limits;
+use crate::process::open_file::O_CLOEXEC;
 use crate::tty::TTYHandle;
 use crate::tty;
 use crate::util::FailableClone;
@@ -209,7 +212,7 @@ pub struct Process {
 	/// The current working directory.
 	cwd: Path,
 	/// The list of open file descriptors with their respective ID.
-	file_descriptors: SharedPtr<Vec<(u32, SharedPtr<OpenFile>)>>,
+	file_descriptors: SharedPtr<Vec<FileDescriptor>>,
 
 	/// A bitfield storing the set of blocked signals.
 	sigmask: Bitfield,
@@ -481,8 +484,8 @@ impl Process {
 			let tty_path = Path::from_str(TTY_DEVICE_PATH.as_bytes(), false).unwrap();
 			let tty_file = files_cache.as_mut().unwrap()
 				.get_file_from_path(&tty_path, process.uid, process.gid, true)?;
-			let (stdin_fd_id, _) = process.create_fd(open_file::O_RDWR, FDTarget::File(tty_file))?;
-			assert_eq!(stdin_fd_id, STDIN_FILENO);
+			let stdin_fd = process.create_fd(open_file::O_RDWR, FDTarget::File(tty_file))?;
+			assert_eq!(stdin_fd.get_id(), STDIN_FILENO);
 
 			process.duplicate_fd(STDIN_FILENO, NewFDConstraint::Fixed(STDOUT_FILENO), true)?;
 			process.duplicate_fd(STDIN_FILENO, NewFDConstraint::Fixed(STDERR_FILENO), true)?;
@@ -863,7 +866,7 @@ impl Process {
 	/// function returns an error.
 	/// `file_descriptors` is the file descriptors table.
 	/// `min` is the minimum value for the file descriptor to be returned.
-	fn get_available_fd(file_descriptors: &Vec<(u32, SharedPtr<OpenFile>)>, min: Option<u32>)
+	fn get_available_fd(file_descriptors: &Vec<FileDescriptor>, min: Option<u32>)
 		-> Result<u32, Errno> {
 		if file_descriptors.len() >= limits::OPEN_MAX {
 			return Err(errno!(EMFILE));
@@ -874,14 +877,14 @@ impl Process {
 		}
 
 		// TODO Use binary search?
-		for (i, (fd_id, _)) in file_descriptors.iter().enumerate() {
+		for (i, fd) in file_descriptors.iter().enumerate() {
 			if let Some(min) = min {
-				if *fd_id < min {
+				if fd.get_id() < min {
 					continue;
 				}
 			}
 
-			if (i as u32) < *fd_id {
+			if (i as u32) < fd.get_id() {
 				return Ok(i as u32);
 			}
 		}
@@ -898,45 +901,64 @@ impl Process {
 	/// `flags` are the file descriptor's flags.
 	/// `target` is the target of the newly created file descriptor.
 	/// If the target is a file and cannot be open, the function returns an Err.
-	pub fn create_fd(&mut self, flags: i32, target: FDTarget)
-		-> Result<(u32, SharedPtr<OpenFile>), Errno> {
+	pub fn create_fd(&mut self, flags: i32, target: FDTarget) -> Result<FileDescriptor, Errno> {
 		let mut file_descriptors_guard = self.file_descriptors.lock();
 		let file_descriptors = file_descriptors_guard.get_mut();
 
 		let id = Self::get_available_fd(file_descriptors, None)?;
 		let open_file = OpenFile::new(flags, target)?;
-		let i = file_descriptors.binary_search_by(| (fd_id, _) | fd_id.cmp(&id)).unwrap_err();
+		let i = file_descriptors.binary_search_by(| fd | fd.get_id().cmp(&id)).unwrap_err();
 
-		file_descriptors.insert(i, (id, SharedPtr::new(open_file)?))?;
+		// Flags for the fd
+		let flags = if flags & O_CLOEXEC != 0 {
+			FD_CLOEXEC
+		} else {
+			0
+		};
+
+		file_descriptors.insert(i, FileDescriptor::new(id, flags, SharedPtr::new(open_file)?))?;
 		Ok(file_descriptors[i].clone())
 	}
 
-	// TODO Disable flag O_CLOEXEC for the duplicated fd (unless cloexec is set)
 	/// Duplicates the file descriptor with id `id`.
 	/// The new file descriptor ID follows the constraint given be `constraint`.
-	/// `cloexec` tells whether the file descriptor has the O_CLOEXEC flag enabled.
+	/// `cloexec` tells whether the new file descriptor has the O_CLOEXEC flag enabled.
 	/// The function returns a pointer to the file descriptor with its ID.
-	pub fn duplicate_fd(&mut self, id: u32, constraint: NewFDConstraint, _cloexec: bool)
-		-> Result<(u32, SharedPtr<OpenFile>), Errno> {
+	pub fn duplicate_fd(&mut self, id: u32, constraint: NewFDConstraint, cloexec: bool)
+		-> Result<FileDescriptor, Errno> {
 		let mut file_descriptors_guard = self.file_descriptors.lock();
 		let file_descriptors = file_descriptors_guard.get_mut();
 
+		// The ID of the new FD
 		let new_id = match constraint {
 			NewFDConstraint::None => Self::get_available_fd(file_descriptors, None)?,
 			NewFDConstraint::Fixed(id) => id,
 			NewFDConstraint::Min(min) => Self::get_available_fd(file_descriptors, Some(min))?,
 		};
 
-		let open_file = Self::get_open_file_(file_descriptors, id).ok_or_else(|| errno!(EBADF))?;
+		// The flags of the new FD
+		let flags = if cloexec {
+			FD_CLOEXEC
+		} else {
+			0
+		};
 
-		let index = file_descriptors.binary_search_by(| (fd_id, _) | fd_id.cmp(&new_id));
+		// The open file for the new FD
+		let open_file = Self::get_fd_(file_descriptors, id).ok_or_else(|| errno!(EBADF))?
+			.get_open_file();
+
+		// Creating the FD
+		let fd = FileDescriptor::new(new_id, flags, open_file);
+
+		// Inserting the FD
+		let index = file_descriptors.binary_search_by(| fd | fd.get_id().cmp(&new_id));
 		let index = {
 			if let Ok(i) = index {
-				file_descriptors[i] = (new_id, open_file);
+				file_descriptors[i] = fd;
 				i
 			} else {
 				let i = index.unwrap_err();
-				file_descriptors.insert(i, (new_id, open_file))?;
+				file_descriptors.insert(i, fd)?;
 				i
 			}
 		};
@@ -944,22 +966,21 @@ impl Process {
 		Ok(file_descriptors[index].clone())
 	}
 
-	/// Returns the open file description pointed to by the file descriptor with ID `id`. If the
-	/// file descriptor doesn't exist, the function returns None.
+	/// Returns the file descriptor with ID `id`.
 	/// `file_descriptors` is the file descriptors table.
-	fn get_open_file_(file_descriptors: &Vec<(u32, SharedPtr<OpenFile>)>, id: u32)
-		-> Option<SharedPtr<OpenFile>> {
-		let result = file_descriptors.binary_search_by(| (fd_id, _) | fd_id.cmp(&id));
-		result.ok().map(| index | file_descriptors[index].1.clone())
+	/// If the file descriptor doesn't exist, the function returns None.
+	fn get_fd_(file_descriptors: &Vec<FileDescriptor>, id: u32) -> Option<FileDescriptor> {
+		let result = file_descriptors.binary_search_by(| fd | fd.get_id().cmp(&id));
+		result.ok().map(| index | file_descriptors[index].clone())
 	}
 
-	/// Returns the open file description pointed to by the file descriptor with ID `id`. If the
-	/// file descriptor doesn't exist, the function returns None.
-	pub fn get_open_file(&mut self, id: u32) -> Option<SharedPtr<OpenFile>> {
+	/// Returns the file descriptor with ID `id`.
+	/// If the file descriptor doesn't exist, the function returns None.
+	pub fn get_fd(&mut self, id: u32) -> Option<FileDescriptor> {
 		let file_descriptors_guard = self.file_descriptors.lock();
 		let file_descriptors = file_descriptors_guard.get();
 
-		Self::get_open_file_(file_descriptors, id)
+		Self::get_fd_(file_descriptors, id)
 	}
 
 	/// Closes the file descriptor with the ID `id`. The function returns an Err if the file
@@ -968,7 +989,7 @@ impl Process {
 		let mut file_descriptors_guard = self.file_descriptors.lock();
 		let file_descriptors = file_descriptors_guard.get_mut();
 
-		let result = file_descriptors.binary_search_by(| (fd_id, _) | fd_id.cmp(&id));
+		let result = file_descriptors.binary_search_by(| fd | fd.get_id().cmp(&id));
 
 		if let Ok(index) = result {
 			file_descriptors.remove(index);
@@ -1162,6 +1183,23 @@ impl Process {
 		} else {
 			self.sigpending.set(sig.get_type() as _);
 		}
+	}
+
+	/// Kills every processes in the process group.
+	/// Arguments are the same as `kill`.
+	pub fn kill_group(&mut self, sig: Signal, no_handler: bool) {
+		for pid in self.process_group.iter() {
+			if *pid != self.pid {
+				if let Some(proc_mutex) = Process::get_by_tid(*pid) {
+					let mut proc_guard = proc_mutex.lock();
+					let proc = proc_guard.get_mut();
+
+					proc.kill(sig.clone(), no_handler);
+				}
+			}
+		}
+
+		self.kill(sig, no_handler);
 	}
 
 	/// Returns an immutable reference to the process's blocked signals mask.

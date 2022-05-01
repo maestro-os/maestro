@@ -97,8 +97,8 @@ pub fn open_(pathname: SyscallString, flags: i32, mode: file::Mode) -> Result<i3
 	}
 
 	// Create and return the file descriptor
-	let (fd_id, _) = proc.create_fd(flags & STATUS_FLAGS_MASK, FDTarget::File(file))?;
-	Ok(fd_id as _)
+	let fd = proc.create_fd(flags & STATUS_FLAGS_MASK, FDTarget::File(file))?;
+	Ok(fd.get_id() as _)
 }
 
 /// The implementation of the `open` syscall.

@@ -75,8 +75,8 @@ pub fn do_mmap(addr: *mut c_void, length: usize, prot: i32, flags: i32, fd: i32,
 
 	// The file the mapping points to
 	let file = if fd >= 0 {
-		if let Some(file) = proc.get_open_file(fd as _) {
-			Some(file.clone())
+		if let Some(fd) = proc.get_fd(fd as _) {
+			Some(fd.get_open_file())
 		} else {
 			None
 		}
