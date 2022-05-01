@@ -89,10 +89,10 @@ pub struct TTY {
 	/// Tells whether TTY updates are enabled or not
 	update: bool,
 
-	/// The buffer containing the input characters.
-	input_buffer: [u8; INPUT_MAX],
-	/// The current size of the input buffer.
-	input_size: usize,
+	/// The buffer containing characters from the prompt in canonical mode.
+	prompt_buffer: [u8; INPUT_MAX],
+	/// The current size of the prompt buffer.
+	prompt_size: usize,
 
 	/// The ANSI escape codes buffer.
 	ansi_buffer: ansi::ANSIBuffer,
@@ -431,27 +431,34 @@ impl TTY {
 		self.update();
 	}
 
+	/// Reads inputs from the TTY and places it into the buffer `buff`.
+	/// The function returns the number of bytes read.
+	pub fn read(&mut self, _buff: &mut [u8]) -> u64 {
+		// TODO
+		todo!();
+	}
+
 	/// Takes the given string `buffer` as input.
 	pub fn input(&mut self, buffer: &[u8]) {
 		// The length to write to the input buffer
-		let len = min(buffer.len(), self.input_buffer.len() - self.input_size);
+		let len = min(buffer.len(), self.prompt_buffer.len() - self.prompt_size);
 		// The slice containing the input
 		let input = &buffer[..len];
 
 		if self.termios.is_canonical_mode() {
 			// Writing to the input buffer
-			util::slice_copy(input, &mut self.input_buffer[self.input_size..]);
-			self.input_size += len;
+			util::slice_copy(input, &mut self.prompt_buffer[self.prompt_size..]);
+			self.prompt_size += len;
 
 			// Processing input
-			let mut i = self.input_size - len;
-			while i < self.input_size {
-				match self.input_buffer[i] {
+			let mut i = self.prompt_size - len;
+			while i < self.prompt_size {
+				match self.prompt_buffer[i] {
 					b'\n' => {
-						// TODO Make `self.input_buffer[..i]` available to device file
+						// TODO Make `self.prompt_buffer[..i]` available to device file
 
 						// Erase input buffer
-						self.input_size = 0;
+						self.prompt_size = 0;
 					},
 
 					// TODO Handle other special characters
@@ -469,8 +476,8 @@ impl TTY {
 
 	/// Erases `count` characters in TTY.
 	pub fn erase(&mut self, count: usize) {
-		let count = min(count, self.input_buffer.len());
-		if count > self.input_size {
+		let count = min(count, self.prompt_buffer.len());
+		if count > self.prompt_size {
 			return;
 		}
 
@@ -481,7 +488,7 @@ impl TTY {
 			self.history[i] = EMPTY_CHAR;
 		}
 		self.update();
-		self.input_size -= count;
+		self.prompt_size -= count;
 	}
 
 	/// Returns the terminal IO settings.

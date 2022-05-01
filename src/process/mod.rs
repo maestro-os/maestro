@@ -52,6 +52,7 @@ use crate::util::lock::*;
 use crate::util::ptr::IntSharedPtr;
 use crate::util::ptr::IntWeakPtr;
 use crate::util::ptr::SharedPtr;
+use crate::vec;
 use mem_space::MemSpace;
 use pid::PIDManager;
 use pid::Pid;
@@ -967,6 +968,28 @@ impl Process {
 		};
 
 		Ok(file_descriptors[index].clone())
+	}
+
+	/// Duplicates file descriptors to make the process have its own copy. This function doesn't
+	/// duplicate open file descriptions.
+	/// This function is meant to be executed on program execution, meaning that file descriptors
+	/// with the flag FD_CLOEXEC are discarded.
+	pub fn duplicate_fds(&mut self) -> Result<(), Errno> {
+		let mut new_fds = vec![];
+
+		{
+			let fds_guard = self.file_descriptors.lock();
+			let fds = fds_guard.get();
+
+			for fd in fds {
+				if fd.get_flags() & FD_CLOEXEC == 0 {
+					new_fds.push(fd.clone())?;
+				}
+			}
+		}
+
+		self.file_descriptors = SharedPtr::new(new_fds)?;
+		Ok(())
 	}
 
 	/// Returns the file descriptor with ID `id`.

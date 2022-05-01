@@ -71,7 +71,9 @@ pub fn build_image(path: &Path, info: ExecInfo)
 }
 
 // TODO Find a way to avoid locking the process while parsing the ELF
-/// TODO doc
+/// Executes the program at path `path` on process `proc`.
+/// `argv` is the list of arguments.
+/// `envp` is the environment.
 pub fn exec(proc: &mut Process, path: &Path, argv: &[&[u8]], envp: &[&[u8]]) -> Result<(), Errno> {
 	// Building the program's image
 	let program_image = build_image(&path, ExecInfo {
@@ -86,13 +88,13 @@ pub fn exec(proc: &mut Process, path: &Path, argv: &[&[u8]], envp: &[&[u8]]) -> 
 
 	// Setting the new memory space to the process
 	proc.set_mem_space(Some(IntSharedPtr::new(program_image.mem_space)?));
+	// Duplicate file descriptors
+	proc.duplicate_fds()?;
+
 	// Setting the process's stacks
 	proc.user_stack = Some(program_image.user_stack);
 	proc.kernel_stack = Some(program_image.kernel_stack);
 	proc.update_tss();
-
-	// TODO Duplicate file descriptors (but not open file descriptions)
-	// TODO Close fds with CLOEXEC flag
 
 	// Resetting signals
 	proc.sigmask.clear_all();

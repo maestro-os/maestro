@@ -117,9 +117,8 @@ impl IO for TTYDeviceHandle {
 		0
 	}
 
-	fn read(&mut self, _offset: u64, _buff: &mut [u8]) -> Result<u64, Errno> {
-		// TODO Read from TTY input
-		todo!();
+	fn read(&mut self, _offset: u64, buff: &mut [u8]) -> Result<u64, Errno> {
+		Ok(self.get_tty().ok_or_else(|| errno!(ENOTTY))?.lock().get_mut().read(buff))
 	}
 
 	fn write(&mut self, _offset: u64, buff: &[u8]) -> Result<u64, Errno> {
