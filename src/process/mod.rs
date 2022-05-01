@@ -529,33 +529,36 @@ impl Process {
 
 	/// Sets the process's group ID to the given value `pgid`.
 	pub fn set_pgid(&mut self, pgid: Pid) -> Result<(), Errno> {
+		// Removing the process from its old group
 		if self.is_in_group() {
 			let mutex = Process::get_by_pid(self.pgid).unwrap();
 			let mut guard = mutex.lock();
 			let old_group_process = guard.get_mut();
-			let i = old_group_process.process_group.binary_search(&self.pid).unwrap();
-			old_group_process.process_group.remove(i);
+
+			if let Ok(i) = old_group_process.process_group.binary_search(&self.pid) {
+				old_group_process.process_group.remove(i);
+			}
 		}
 
-		self.pgid = {
-			if pgid == 0 {
-				self.pid
-			} else {
-				pgid
-			}
+		self.pgid = if pgid == 0 {
+			self.pid
+		} else {
+			pgid
 		};
 
-		if pgid != self.pid {
-			if let Some(mutex) = Process::get_by_pid(pgid) {
-				let mut guard = mutex.lock();
-				let new_group_process = guard.get_mut();
-				let i = new_group_process.process_group.binary_search(&self.pid).unwrap_err();
-				new_group_process.process_group.insert(i, self.pid)
-			} else {
-				Err(errno!(ESRCH))
-			}
+		if pgid == self.pid {
+			return Ok(());
+		}
+
+		// Adding the process to the new group
+		if let Some(mutex) = Process::get_by_pid(pgid) {
+			let mut guard = mutex.lock();
+			let new_group_process = guard.get_mut();
+
+			let i = new_group_process.process_group.binary_search(&self.pid).unwrap_err();
+			new_group_process.process_group.insert(i, self.pid)
 		} else {
-			Ok(())
+			Err(errno!(ESRCH))
 		}
 	}
 
