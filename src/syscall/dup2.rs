@@ -2,6 +2,7 @@
 //! created file descriptor.
 
 use crate::errno::Errno;
+use crate::file::fd::NewFDConstraint;
 use crate::process::Process;
 use crate::process::regs::Regs;
 
@@ -14,6 +15,6 @@ pub fn dup2(regs: &Regs) -> Result<i32, Errno> {
 	let mut guard = mutex.lock();
 	let proc = guard.get_mut();
 
-	let (newfd_id, _) = proc.duplicate_fd(oldfd, Some(newfd))?;
+	let (newfd_id, _) = proc.duplicate_fd(oldfd, NewFDConstraint::Fixed(newfd), false)?;
 	Ok(newfd_id as _)
 }

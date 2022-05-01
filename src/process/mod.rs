@@ -16,6 +16,7 @@ pub mod signal;
 pub mod tss;
 pub mod user_desc;
 
+use core::cmp::max;
 use core::ffi::c_void;
 use core::mem::ManuallyDrop;
 use core::mem::MaybeUninit;
@@ -30,6 +31,7 @@ use crate::file::Gid;
 use crate::file::ROOT_UID;
 use crate::file::Uid;
 use crate::file::fcache;
+use crate::file::fd::NewFDConstraint;
 use crate::file::open_file::FDTarget;
 use crate::file::open_file::OpenFile;
 use crate::file::open_file;
@@ -413,6 +415,8 @@ impl Process {
 	/// state `Running` by default.
 	/// The created process has user root.
 	pub fn new() -> Result<IntSharedPtr<Self>, Errno> {
+		// TODO Prevent calling twice
+
 		let mut process = Self {
 			pid: pid::INIT_PID,
 			pgid: pid::INIT_PID,
@@ -476,13 +480,12 @@ impl Process {
 
 			let tty_path = Path::from_str(TTY_DEVICE_PATH.as_bytes(), false).unwrap();
 			let tty_file = files_cache.as_mut().unwrap()
-				.get_file_from_path(&tty_path, process.uid, process.gid, true).unwrap();
-			let (stdin_fd_id, _) = process.create_fd(open_file::O_RDWR,
-				FDTarget::File(tty_file)).unwrap();
+				.get_file_from_path(&tty_path, process.uid, process.gid, true)?;
+			let (stdin_fd_id, _) = process.create_fd(open_file::O_RDWR, FDTarget::File(tty_file))?;
 			assert_eq!(stdin_fd_id, STDIN_FILENO);
 
-			process.duplicate_fd(STDIN_FILENO, Some(STDOUT_FILENO)).unwrap();
-			process.duplicate_fd(STDIN_FILENO, Some(STDERR_FILENO)).unwrap();
+			process.duplicate_fd(STDIN_FILENO, NewFDConstraint::Fixed(STDOUT_FILENO), true)?;
+			process.duplicate_fd(STDIN_FILENO, NewFDConstraint::Fixed(STDERR_FILENO), true)?;
 		}
 
 		let mut guard = unsafe {
@@ -859,25 +862,36 @@ impl Process {
 	/// Returns the available file descriptor with the lowest ID. If no ID is available, the
 	/// function returns an error.
 	/// `file_descriptors` is the file descriptors table.
-	fn get_available_fd(file_descriptors: &Vec<(u32, SharedPtr<OpenFile>)>)
+	/// `min` is the minimum value for the file descriptor to be returned.
+	fn get_available_fd(file_descriptors: &Vec<(u32, SharedPtr<OpenFile>)>, min: Option<u32>)
 		-> Result<u32, Errno> {
+		if file_descriptors.len() >= limits::OPEN_MAX {
+			return Err(errno!(EMFILE));
+		}
+
 		if file_descriptors.is_empty() {
 			return Ok(0);
 		}
 
 		// TODO Use binary search?
 		for (i, (fd_id, _)) in file_descriptors.iter().enumerate() {
+			if let Some(min) = min {
+				if *fd_id < min {
+					continue;
+				}
+			}
+
 			if (i as u32) < *fd_id {
 				return Ok(i as u32);
 			}
 		}
 
-		let id = file_descriptors.len();
-		if id < limits::OPEN_MAX {
-			Ok(id as u32)
+		let id = if let Some(min) = min {
+			max(min, file_descriptors.len() as u32)
 		} else {
-			Err(errno!(EMFILE))
-		}
+			file_descriptors.len() as u32
+		};
+		Ok(id)
 	}
 
 	/// Creates a file descriptor and returns a pointer to it with its ID.
@@ -889,7 +903,7 @@ impl Process {
 		let mut file_descriptors_guard = self.file_descriptors.lock();
 		let file_descriptors = file_descriptors_guard.get_mut();
 
-		let id = Self::get_available_fd(file_descriptors)?;
+		let id = Self::get_available_fd(file_descriptors, None)?;
 		let open_file = OpenFile::new(flags, target)?;
 		let i = file_descriptors.binary_search_by(| (fd_id, _) | fd_id.cmp(&id)).unwrap_err();
 
@@ -897,22 +911,20 @@ impl Process {
 		Ok(file_descriptors[i].clone())
 	}
 
-	// TODO Disable flag O_CLOEXEC for the duplicated fd
+	// TODO Disable flag O_CLOEXEC for the duplicated fd (unless cloexec is set)
 	/// Duplicates the file descriptor with id `id`.
-	/// `new_id` if specified, the id of the new file descriptor. If already used, the previous
-	/// file descriptor shall be closed.
+	/// The new file descriptor ID follows the constraint given be `constraint`.
+	/// `cloexec` tells whether the file descriptor has the O_CLOEXEC flag enabled.
 	/// The function returns a pointer to the file descriptor with its ID.
-	pub fn duplicate_fd(&mut self, id: u32, new_id: Option<u32>)
+	pub fn duplicate_fd(&mut self, id: u32, constraint: NewFDConstraint, _cloexec: bool)
 		-> Result<(u32, SharedPtr<OpenFile>), Errno> {
 		let mut file_descriptors_guard = self.file_descriptors.lock();
 		let file_descriptors = file_descriptors_guard.get_mut();
 
-		let new_id = {
-			if let Some(new_id) = new_id {
-				new_id
-			} else {
-				Self::get_available_fd(file_descriptors)?
-			}
+		let new_id = match constraint {
+			NewFDConstraint::None => Self::get_available_fd(file_descriptors, None)?,
+			NewFDConstraint::Fixed(id) => id,
+			NewFDConstraint::Min(min) => Self::get_available_fd(file_descriptors, Some(min))?,
 		};
 
 		let open_file = Self::get_open_file_(file_descriptors, id).ok_or_else(|| errno!(EBADF))?;

@@ -30,3 +30,13 @@ fn decrement_total() {
 	let mut guard = TOTAL_FD.lock();
 	*guard.get_mut() -= 1;
 }
+
+/// Constraints to be respected when creating a new file descriptor.
+pub enum NewFDConstraint {
+	/// No constraint
+	None,
+	/// The new file descriptor must have given fixed value
+	Fixed(u32),
+	/// The new file descriptor must have at least the given value
+	Min(u32),
+}

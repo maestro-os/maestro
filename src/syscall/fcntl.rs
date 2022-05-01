@@ -2,6 +2,8 @@
 
 use core::ffi::c_void;
 use crate::errno::Errno;
+use crate::file::fd::NewFDConstraint;
+use crate::process::Process;
 use crate::process::regs::Regs;
 
 // TODO Put the correct ids for each commands
@@ -95,7 +97,13 @@ const F_WRLCK: i32 = 42;
 
 /// Performs the fcntl system call.
 /// `fcntl64` tells whether this is the fcntl64 system call.
-pub fn do_fcntl(_fd: i32, cmd: i32, _arg: *mut c_void, _fcntl64: bool) -> Result<i32, Errno> {
+pub fn do_fcntl(fd: i32, cmd: i32, arg: *mut c_void, _fcntl64: bool) -> Result<i32, Errno> {
+	let proc_mutex = Process::get_current().unwrap();
+	let mut proc_guard = proc_mutex.lock();
+	let proc = proc_guard.get_mut();
+
+	crate::println!("fcntl: {} {} {:p} {}", fd, cmd, arg, _fcntl64); // TODO rm
+
 	match cmd {
 		F_ADD_SEALS => {
 			// TODO
@@ -103,13 +111,11 @@ pub fn do_fcntl(_fd: i32, cmd: i32, _arg: *mut c_void, _fcntl64: bool) -> Result
 		},
 
 		F_DUPFD => {
-			// TODO
-			Ok(0)
+			Ok(proc.duplicate_fd(fd as _, NewFDConstraint::Min(arg as _), false)?.0 as _)
 		},
 
 		F_DUPFD_CLOEXEC => {
-			// TODO
-			Ok(0)
+			Ok(proc.duplicate_fd(fd as _, NewFDConstraint::Min(arg as _), true)?.0 as _)
 		},
 
 		F_GETFD => {
