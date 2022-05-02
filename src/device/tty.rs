@@ -114,15 +114,30 @@ impl DeviceHandle for TTYDeviceHandle {
 
 impl IO for TTYDeviceHandle {
 	fn get_size(&self) -> u64 {
-		0
+		if let Some(tty_mutex) = self.get_tty() {
+			let mut tty_guard = tty_mutex.lock();
+			let tty = tty_guard.get_mut();
+
+			tty.get_available_size() as _
+		} else {
+			0
+		}
 	}
 
 	fn read(&mut self, _offset: u64, buff: &mut [u8]) -> Result<u64, Errno> {
-		Ok(self.get_tty().ok_or_else(|| errno!(ENOTTY))?.lock().get_mut().read(buff))
+		let tty_mutex = self.get_tty().ok_or_else(|| errno!(ENOTTY))?;
+		let mut tty_guard = tty_mutex.lock();
+		let tty = tty_guard.get_mut();
+
+		Ok(tty.read(buff) as _)
 	}
 
 	fn write(&mut self, _offset: u64, buff: &[u8]) -> Result<u64, Errno> {
-		self.get_tty().ok_or_else(|| errno!(ENOTTY))?.lock().get_mut().write(buff);
+		let tty_mutex = self.get_tty().ok_or_else(|| errno!(ENOTTY))?;
+		let mut tty_guard = tty_mutex.lock();
+		let tty = tty_guard.get_mut();
+
+		tty.write(buff);
 		Ok(buff.len() as _)
 	}
 }

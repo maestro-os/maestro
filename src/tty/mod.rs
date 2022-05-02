@@ -19,8 +19,9 @@ use crate::process::signal::SIGWINCH;
 use crate::process::signal::Signal;
 use crate::tty::termios::Termios;
 use crate::util::container::vec::Vec;
-use crate::util::lock::*;
-use crate::util::ptr::SharedPtr;
+use crate::util::lock::IntMutex;
+use crate::util::lock::MutexGuard;
+use crate::util::ptr::IntSharedPtr;
 use crate::util;
 use crate::vga;
 
@@ -89,10 +90,12 @@ pub struct TTY {
 	/// Tells whether TTY updates are enabled or not
 	update: bool,
 
-	/// The buffer containing characters from the prompt in canonical mode.
-	prompt_buffer: [u8; INPUT_MAX],
-	/// The current size of the prompt buffer.
-	prompt_size: usize,
+	/// The buffer containing characters from TTY input.
+	input_buffer: [u8; INPUT_MAX],
+	/// The current size of the input buffer.
+	input_size: usize,
+	/// The size of the data available to be read from the TTY.
+	available_size: usize,
 
 	/// The ANSI escape codes buffer.
 	ansi_buffer: ansi::ANSIBuffer,
@@ -108,28 +111,28 @@ pub struct TTY {
 }
 
 /// The initialization TTY.
-static mut INIT_TTY: MaybeUninit<Mutex<TTY>> = MaybeUninit::uninit();
+static mut INIT_TTY: MaybeUninit<IntMutex<TTY>> = MaybeUninit::uninit();
 
 /// The list of every TTYs except the init TTY.
-static TTYS: Mutex<Vec<SharedPtr<TTY>>> = Mutex::new(Vec::new());
+static TTYS: IntMutex<Vec<IntSharedPtr<TTY>>> = IntMutex::new(Vec::new());
 
 /// The current TTY being displayed on screen. If None, the init TTY is being displayed.
-static CURRENT_TTY: Mutex<Option<usize>> = Mutex::new(None);
+static CURRENT_TTY: IntMutex<Option<usize>> = IntMutex::new(None);
 
 /// Enumeration of the different type of handles for a TTY.
 /// Because the initial TTY is created while memory allocation isn't available yet, the kernel
 /// cannot use shared pointer. So we need different ways to lock the TTY.
 #[derive(Clone)]
 pub enum TTYHandle {
-	/// TODO doc
-	Init(&'static Mutex<TTY>),
-	/// TODO doc
-	Normal(SharedPtr<TTY>),
+	/// Handle to the init TTY.
+	Init(&'static IntMutex<TTY>),
+	/// Handle to a normal TTY.
+	Normal(IntSharedPtr<TTY>),
 }
 
 impl<'a> TTYHandle {
 	/// Locks the handle's mutex and returns a guard to the TTY.
-	pub fn lock(&'a self) -> MutexGuard<'a, TTY, true> {
+	pub fn lock(&'a self) -> MutexGuard<'a, TTY, false> {
 		match self {
 			Self::Init(m) => m.lock(),
 			Self::Normal(m) => m.lock(),
@@ -431,34 +434,47 @@ impl TTY {
 		self.update();
 	}
 
+	/// Returns the number of bytes available to be read from the TTY.
+	pub fn get_available_size(&self) -> usize {
+		self.available_size
+	}
+
 	/// Reads inputs from the TTY and places it into the buffer `buff`.
 	/// The function returns the number of bytes read.
-	pub fn read(&mut self, _buff: &mut [u8]) -> u64 {
-		// TODO
-		todo!();
+	pub fn read(&mut self, buff: &mut [u8]) -> usize {
+		// The length of data to consume
+		let len = min(buff.len(), self.available_size);
+
+		// Copying data
+		buff[..len].copy_from_slice(&self.input_buffer[..len]);
+		// Shifting the remaining data of the buffer
+		self.input_buffer.rotate_right(len);
+
+		self.input_size -= len;
+		self.available_size -= len;
+
+		len
 	}
 
 	/// Takes the given string `buffer` as input.
 	pub fn input(&mut self, buffer: &[u8]) {
 		// The length to write to the input buffer
-		let len = min(buffer.len(), self.prompt_buffer.len() - self.prompt_size);
+		let len = min(buffer.len(), self.input_buffer.len() - self.input_size);
 		// The slice containing the input
 		let input = &buffer[..len];
 
+		// Writing to the input buffer
+		util::slice_copy(input, &mut self.input_buffer[self.input_size..]);
+		self.input_size += len;
+
 		if self.termios.is_canonical_mode() {
-			// Writing to the input buffer
-			util::slice_copy(input, &mut self.prompt_buffer[self.prompt_size..]);
-			self.prompt_size += len;
-
 			// Processing input
-			let mut i = self.prompt_size - len;
-			while i < self.prompt_size {
-				match self.prompt_buffer[i] {
+			let mut i = self.input_size - len;
+			while i < self.input_size {
+				match self.input_buffer[i] {
 					b'\n' => {
-						// TODO Make `self.prompt_buffer[..i]` available to device file
-
-						// Erase input buffer
-						self.prompt_size = 0;
+						// Making the input available for reading
+						self.available_size = i;
 					},
 
 					// TODO Handle other special characters
@@ -470,14 +486,15 @@ impl TTY {
 			// Writing onto the TTY
 			self.write(input);
 		} else {
-			// TODO Make available to device file
+			// Making the input available for reading
+			self.available_size = self.input_size;
 		}
 	}
 
 	/// Erases `count` characters in TTY.
 	pub fn erase(&mut self, count: usize) {
-		let count = min(count, self.prompt_buffer.len());
-		if count > self.prompt_size {
+		let count = min(count, self.input_buffer.len());
+		if count > self.input_size {
 			return;
 		}
 
@@ -488,7 +505,7 @@ impl TTY {
 			self.history[i] = EMPTY_CHAR;
 		}
 		self.update();
-		self.prompt_size -= count;
+		self.input_size -= count;
 	}
 
 	/// Returns the terminal IO settings.
