@@ -11,7 +11,7 @@ pub type UTimestamp = u64;
 pub type Clock = u32;
 
 /// Trait to be implement on a structure describing a moment in time.
-pub trait TimeUnit: Sized + Add<Self> + PartialOrd {
+pub trait TimeUnit: Sized + Clone + Default + Add<Self, Output = Self> + PartialOrd {
 	/// Creates the structure from the given timestamp in nanoseconds.
 	fn from_nano(timestamp: u64) -> Self;
 	/// Returns the equivalent timestamp in nanoseconds.

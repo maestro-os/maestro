@@ -6,6 +6,7 @@
 
 mod _exit;
 mod _llseek;
+mod _newselect;
 mod brk;
 mod chdir;
 mod chroot;
@@ -63,6 +64,7 @@ mod read;
 mod reboot;
 mod rt_sigaction;
 mod rt_sigprocmask;
+mod select;
 mod set_thread_area;
 mod set_tid_address;
 mod setgid;
@@ -97,6 +99,7 @@ use crate::process;
 //use wait::wait;
 use _exit::_exit;
 use _llseek::_llseek;
+use _newselect::_newselect;
 use brk::brk;
 use chdir::chdir;
 use chroot::chroot;
@@ -154,6 +157,7 @@ use read::read;
 use reboot::reboot;
 use rt_sigaction::rt_sigaction;
 use rt_sigprocmask::rt_sigprocmask;
+use select::select;
 use set_thread_area::set_thread_area;
 use set_tid_address::set_tid_address;
 use setgid::setgid;
@@ -273,7 +277,7 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 		// TODO 0x04f => settimeofday(regs),
 		// TODO 0x050 => getgroups(regs),
 		// TODO 0x051 => setgroups(regs),
-		// TODO 0x052 => select(regs),
+		0x052 => select(regs),
 		// TODO 0x053 => symlink(regs),
 		// TODO 0x054 => oldlstat(regs),
 		// TODO 0x055 => readlink(regs),
@@ -333,7 +337,7 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 		// TODO 0x08b => setfsgid(regs),
 		0x08c => _llseek(regs),
 		0x08d => getdents(regs),
-		// TODO 0x08e => _newselect(regs),
+		0x08e => _newselect(regs),
 		// TODO 0x08f => flock(regs),
 		0x090 => msync(regs),
 		// TODO 0x091 => readv(regs),
