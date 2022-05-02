@@ -474,20 +474,24 @@ impl TTY {
 				match self.input_buffer[i] {
 					b'\n' => {
 						// Making the input available for reading
-						self.available_size = i;
+						self.available_size = i + 1;
 					},
 
 					// TODO Handle other special characters
 
-					_ => i += 1,
+					_ => {},
 				}
-			}
 
-			// Writing onto the TTY
-			self.write(input);
+				i += 1;
+			}
 		} else {
 			// Making the input available for reading
 			self.available_size = self.input_size;
+		}
+
+		if self.termios.is_echo_enabled() {
+			// Writing onto the TTY
+			self.write(input);
 		}
 	}
 

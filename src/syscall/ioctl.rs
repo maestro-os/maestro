@@ -27,7 +27,7 @@ pub fn ioctl(regs: &Regs) -> Result<i32, Errno> {
 	let request = regs.ecx as u32;
 	let argp = regs.edx as *const c_void;
 
-	crate::println!("ioctl: {} {:x} {:p}", fd, request, argp); // TODO rm
+	//crate::println!("ioctl: {} {:x} {:p}", fd, request, argp); // TODO rm
 
 	// Getting the memory space and file
 	let (mem_space, open_file_mutex) = {

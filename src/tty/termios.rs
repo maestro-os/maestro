@@ -179,7 +179,7 @@ pub struct Termios {
 impl Default for Termios {
 	fn default() -> Self {
 		Self {
-			c_iflag: 0, // TODO
+			c_iflag: ICANON | ECHO, // TODO
 			c_oflag: 0, // TODO
 			c_cflag: 0, // TODO
 			c_lflag: 0, // TODO
@@ -192,5 +192,10 @@ impl Termios {
 	/// Tells whether the terminal is in canonical mode.
 	pub fn is_canonical_mode(&self) -> bool {
 		self.c_iflag & ICANON != 0
+	}
+
+	/// Tells whether the terminal echoes input characters.
+	pub fn is_echo_enabled(&self) -> bool {
+		self.c_iflag & ECHO != 0
 	}
 }
