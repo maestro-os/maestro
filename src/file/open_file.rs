@@ -142,9 +142,7 @@ impl OpenFile {
 	/// Tells whether the end of file has been reached.
 	pub fn eof(&self) -> bool {
 		match &self.target {
-			FDTarget::File(f) => {
-				self.curr_off >= f.lock().get().get_size()
-			},
+			FDTarget::File(file) => file.lock().get().eof(self.curr_off),
 
 			FDTarget::Pipe(pipe) => pipe.lock().get().eof(),
 

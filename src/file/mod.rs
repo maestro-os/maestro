@@ -520,6 +520,28 @@ impl File {
 		self.content = content;
 	}
 
+	/// Tells whether the end of the file has been reached with the offset `off`.
+	pub fn eof(&self, off: u64) -> bool {
+		match &self.content {
+			FileContent::Regular => off >= self.size,
+
+			FileContent::Directory(_) => true,
+			FileContent::Link(_) => true,
+
+			FileContent::Fifo => {
+				// TODO
+				todo!();
+			},
+
+			FileContent::Socket => {
+				// TODO
+				todo!();
+			},
+
+			FileContent::BlockDevice { .. } | FileContent::CharDevice { .. } => false,
+		}
+	}
+
 	/// Performs an ioctl operation on the file.
 	/// `mem_space` is the memory space on which pointers are to be dereferenced.
 	/// `request` is the ID of the request to perform.
