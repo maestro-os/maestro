@@ -179,7 +179,8 @@ pub struct Termios {
 impl Default for Termios {
 	fn default() -> Self {
 		Self {
-			c_iflag: ICANON | ECHO, // TODO
+			//c_iflag: ICANON | ECHO, // TODO
+			c_iflag: ECHO, // TODO
 			c_oflag: 0, // TODO
 			c_cflag: 0, // TODO
 			c_lflag: 0, // TODO

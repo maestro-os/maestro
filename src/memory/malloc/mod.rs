@@ -146,6 +146,7 @@ pub unsafe fn free(ptr: *mut c_void) {
 /// Structure representing a kernelside allocation.
 /// The structure holds one or more elements of the given type. Freeing the allocation doesn't call
 /// `drop` on its elements.
+#[derive(Debug)]
 pub struct Alloc<T> {
 	/// Slice representing the allocation.
 	slice: NonNull<[T]>,

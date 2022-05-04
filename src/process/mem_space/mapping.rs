@@ -40,7 +40,7 @@ fn get_default_page() -> *const c_void {
 }
 
 /// A mapping in the memory space.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct MemMapping {
 	/// Pointer on the virtual memory to the beginning of the mapping
 	begin: *const c_void,

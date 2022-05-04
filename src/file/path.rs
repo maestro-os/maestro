@@ -23,7 +23,7 @@ use crate::util::container::vec::Vec;
 pub const PATH_SEPARATOR: char = '/';
 
 /// A structure representing a path to a file.
-#[derive(Hash)]
+#[derive(Debug, Hash)]
 pub struct Path {
 	/// Tells whether the path is absolute or relative.
 	absolute: bool,

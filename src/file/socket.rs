@@ -11,6 +11,7 @@ const BUFFER_SIZE: usize = 65536;
 // TODO Figure out the behaviour when opening socket file more than twice at a time
 
 /// Structure representing a socket.
+#[derive(Debug)]
 pub struct Socket {
 	/// The socket's domain.
 	domain: i32,
@@ -68,6 +69,7 @@ impl Socket {
 
 /// A side of a socket is a structure which allows to read/write from the socket. It is required to
 /// prevent one side from reading the data it wrote itself.
+#[derive(Debug)]
 pub struct SocketSide {
 	/// The socket.
 	sock: SharedPtr<Socket>,

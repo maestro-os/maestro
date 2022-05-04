@@ -444,6 +444,9 @@ impl TTY {
 	pub fn read(&mut self, buff: &mut [u8]) -> usize {
 		// The length of data to consume
 		let len = min(buff.len(), self.available_size);
+		if len == 0 {
+			return 0;
+		}
 
 		// Copying data
 		buff[..len].copy_from_slice(&self.input_buffer[..len]);
@@ -475,14 +478,14 @@ impl TTY {
 					b'\n' => {
 						// Making the input available for reading
 						self.available_size = i + 1;
+
+						i += 1;
 					},
 
 					// TODO Handle other special characters
 
-					_ => {},
+					_ => i += 1,
 				}
-
-				i += 1;
 			}
 		} else {
 			// Making the input available for reading

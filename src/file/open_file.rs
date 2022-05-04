@@ -48,7 +48,7 @@ pub const O_SYNC: i32 =      0b00000000000100000001000000000000;
 pub const O_TRUNC: i32 =     0b00000000000000000000001000000000;
 
 /// Enumeration of every possible targets for an open file.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum FDTarget {
 	/// Points to a file.
 	File(SharedPtr<File>),
@@ -60,6 +60,7 @@ pub enum FDTarget {
 
 /// An open file description. This structure is pointed to by file descriptors and point to files.
 /// They exist to ensure several file descriptors can share the same open file.
+#[derive(Debug)]
 pub struct OpenFile {
 	/// The open file description's flags.
 	flags: i32,

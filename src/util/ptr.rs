@@ -80,6 +80,7 @@ impl<T: ?Sized, const INT: bool> SharedPtrInner<T, INT> {
 /// A shared pointer is a structure which allows to share ownership of an object between several
 /// objects. The object counts the number of references to it. When this count reaches zero, the
 /// object is freed.
+#[derive(Debug)]
 pub struct SharedPtr<T: ?Sized, const INT: bool = true> {
 	/// A pointer to the inner structure shared by every clones of this structure.
 	inner: NonNull<SharedPtrInner<T, INT>>,

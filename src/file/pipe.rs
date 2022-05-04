@@ -6,6 +6,7 @@ use crate::limits;
 use crate::util::container::ring_buffer::RingBuffer;
 
 /// Structure representing a buffer buffer.
+#[derive(Debug)]
 pub struct PipeBuffer {
 	/// The buffer's buffer.
 	buffer: RingBuffer<u8>,

@@ -173,6 +173,7 @@ impl FileType {
 }
 
 /// Structure representing the location of a file on a disk.
+#[derive(Debug)]
 pub struct FileLocation {
 	/// The path of the mountpoint.
 	mountpoint_path: Path, // TODO Replace by an allocated ID to save memory
@@ -211,6 +212,7 @@ impl FileLocation {
 }
 
 /// Structure representing a directory entry.
+#[derive(Debug)]
 pub struct DirEntry {
 	/// The entry's inode.
 	pub inode: INode,
@@ -221,6 +223,7 @@ pub struct DirEntry {
 }
 
 /// Enumeration of all possible file contents for each file types.
+#[derive(Debug)]
 pub enum FileContent {
 	/// The file is a regular file. No data.
 	Regular,
@@ -262,6 +265,7 @@ impl FileContent {
 }
 
 /// Structure representing a file.
+#[derive(Debug)]
 pub struct File {
 	/// The name of the file.
 	name: String,

@@ -58,6 +58,7 @@ macro_rules! vec {
 /// to elements inside a vector.
 /// The implementation of vectors for the kernel cannot follow the implementation of Rust's
 /// standard Vec because it must handle properly when a memory allocation fails.
+#[derive(Debug)]
 pub struct Vec<T> {
 	/// The number of elements present in the vector
 	len: usize,

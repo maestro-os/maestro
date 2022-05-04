@@ -7,6 +7,7 @@ use crate::util::FailableClone;
 use crate::util;
 
 /// A gap in the memory space that can use for new mappings.
+#[derive(Debug)]
 pub struct MemGap {
 	/// Pointer on the virtual memory to the beginning of the gap
 	begin: *const c_void,
