@@ -8,157 +8,157 @@ pub type CC = u8;
 /// Size of the array for control characters.
 const NCCS: usize = 19;
 
-const VINTR: TCFlag = 0;
-const VQUIT: TCFlag = 1;
-const VERASE: TCFlag = 2;
-const VKILL: TCFlag = 3;
-const VEOF: TCFlag = 4;
-const VTIME: TCFlag = 5;
-const VMIN: TCFlag = 6;
-const VSWTC: TCFlag = 7;
-const VSTART: TCFlag = 8;
-const VSTOP: TCFlag = 9;
-const VSUSP: TCFlag = 10;
-const VEOL: TCFlag = 11;
-const VREPRINT: TCFlag = 12;
-const VDISCARD: TCFlag = 13;
-const VWERASE: TCFlag = 14;
-const VLNEXT: TCFlag = 15;
-const VEOL2: TCFlag = 16;
+pub const VINTR: TCFlag = 0;
+pub const VQUIT: TCFlag = 1;
+pub const VERASE: TCFlag = 2;
+pub const VKILL: TCFlag = 3;
+pub const VEOF: TCFlag = 4;
+pub const VTIME: TCFlag = 5;
+pub const VMIN: TCFlag = 6;
+pub const VSWTC: TCFlag = 7;
+pub const VSTART: TCFlag = 8;
+pub const VSTOP: TCFlag = 9;
+pub const VSUSP: TCFlag = 10;
+pub const VEOL: TCFlag = 11;
+pub const VREPRINT: TCFlag = 12;
+pub const VDISCARD: TCFlag = 13;
+pub const VWERASE: TCFlag = 14;
+pub const VLNEXT: TCFlag = 15;
+pub const VEOL2: TCFlag = 16;
 
-const IGNBRK: TCFlag = 0o000001;
-const BRKINT: TCFlag = 0o000002;
-const IGNPAR: TCFlag = 0o000004;
-const PARMRK: TCFlag = 0o000010;
-const INPCK: TCFlag = 0o000020;
-const ISTRIP: TCFlag = 0o000040;
-const INLCR: TCFlag = 0o000100;
-const IGNCR: TCFlag = 0o000200;
-const ICRNL: TCFlag = 0o000400;
-const IUCLC: TCFlag = 0o001000;
-const IXON: TCFlag = 0o002000;
-const IXANY: TCFlag = 0o004000;
-const IXOFF: TCFlag = 0o010000;
-const IMAXBEL: TCFlag = 0o020000;
-const IUTF8: TCFlag = 0o040000;
+pub const IGNBRK: TCFlag = 0o000001;
+pub const BRKINT: TCFlag = 0o000002;
+pub const IGNPAR: TCFlag = 0o000004;
+pub const PARMRK: TCFlag = 0o000010;
+pub const INPCK: TCFlag = 0o000020;
+pub const ISTRIP: TCFlag = 0o000040;
+pub const INLCR: TCFlag = 0o000100;
+pub const IGNCR: TCFlag = 0o000200;
+pub const ICRNL: TCFlag = 0o000400;
+pub const IUCLC: TCFlag = 0o001000;
+pub const IXON: TCFlag = 0o002000;
+pub const IXANY: TCFlag = 0o004000;
+pub const IXOFF: TCFlag = 0o010000;
+pub const IMAXBEL: TCFlag = 0o020000;
+pub const IUTF8: TCFlag = 0o040000;
 
-const OPOST: TCFlag = 0o000001;
-const OLCUC: TCFlag = 0o000002;
-const ONLCR: TCFlag = 0o000004;
-const OCRNL: TCFlag = 0o000010;
-const ONOCR: TCFlag = 0o000020;
-const ONLRET: TCFlag = 0o000040;
-const OFILL: TCFlag = 0o000100;
-const OFDEL: TCFlag = 0o000200;
-const NLDLY: TCFlag = 0o000400;
-const NL0: TCFlag = 0o000000;
-const NL1: TCFlag = 0o000400;
-const CRDLY: TCFlag = 0o003000;
-const CR0: TCFlag = 0o000000;
-const CR1: TCFlag = 0o001000;
-const CR2: TCFlag = 0o002000;
-const CR3: TCFlag = 0o003000;
-const TABDLY: TCFlag = 0o014000;
-const TAB0: TCFlag = 0o000000;
-const TAB1: TCFlag = 0o004000;
-const TAB2: TCFlag = 0o010000;
-const TAB3: TCFlag = 0o014000;
-const BSDLY: TCFlag = 0o020000;
-const BS0: TCFlag = 0o000000;
-const BS1: TCFlag = 0o020000;
-const FFDLY: TCFlag = 0o100000;
-const FF0: TCFlag = 0o000000;
-const FF1: TCFlag = 0o100000;
+pub const OPOST: TCFlag = 0o000001;
+pub const OLCUC: TCFlag = 0o000002;
+pub const ONLCR: TCFlag = 0o000004;
+pub const OCRNL: TCFlag = 0o000010;
+pub const ONOCR: TCFlag = 0o000020;
+pub const ONLRET: TCFlag = 0o000040;
+pub const OFILL: TCFlag = 0o000100;
+pub const OFDEL: TCFlag = 0o000200;
+pub const NLDLY: TCFlag = 0o000400;
+pub const NL0: TCFlag = 0o000000;
+pub const NL1: TCFlag = 0o000400;
+pub const CRDLY: TCFlag = 0o003000;
+pub const CR0: TCFlag = 0o000000;
+pub const CR1: TCFlag = 0o001000;
+pub const CR2: TCFlag = 0o002000;
+pub const CR3: TCFlag = 0o003000;
+pub const TABDLY: TCFlag = 0o014000;
+pub const TAB0: TCFlag = 0o000000;
+pub const TAB1: TCFlag = 0o004000;
+pub const TAB2: TCFlag = 0o010000;
+pub const TAB3: TCFlag = 0o014000;
+pub const BSDLY: TCFlag = 0o020000;
+pub const BS0: TCFlag = 0o000000;
+pub const BS1: TCFlag = 0o020000;
+pub const FFDLY: TCFlag = 0o100000;
+pub const FF0: TCFlag = 0o000000;
+pub const FF1: TCFlag = 0o100000;
 
-const VTDLY: TCFlag = 0o040000;
-const VT0: TCFlag = 0o000000;
-const VT1: TCFlag = 0o040000;
+pub const VTDLY: TCFlag = 0o040000;
+pub const VT0: TCFlag = 0o000000;
+pub const VT1: TCFlag = 0o040000;
 
-const B0: TCFlag = 0o000000;
-const B50: TCFlag = 0o000001;
-const B75: TCFlag = 0o000002;
-const B110: TCFlag = 0o000003;
-const B134: TCFlag = 0o000004;
-const B150: TCFlag = 0o000005;
-const B200: TCFlag = 0o000006;
-const B300: TCFlag = 0o000007;
-const B600: TCFlag = 0o000010;
-const B1200: TCFlag = 0o000011;
-const B1800: TCFlag = 0o000012;
-const B2400: TCFlag = 0o000013;
-const B4800: TCFlag = 0o000014;
-const B9600: TCFlag = 0o000015;
-const B19200: TCFlag = 0o000016;
-const B38400: TCFlag = 0o000017;
+pub const B0: TCFlag = 0o000000;
+pub const B50: TCFlag = 0o000001;
+pub const B75: TCFlag = 0o000002;
+pub const B110: TCFlag = 0o000003;
+pub const B134: TCFlag = 0o000004;
+pub const B150: TCFlag = 0o000005;
+pub const B200: TCFlag = 0o000006;
+pub const B300: TCFlag = 0o000007;
+pub const B600: TCFlag = 0o000010;
+pub const B1200: TCFlag = 0o000011;
+pub const B1800: TCFlag = 0o000012;
+pub const B2400: TCFlag = 0o000013;
+pub const B4800: TCFlag = 0o000014;
+pub const B9600: TCFlag = 0o000015;
+pub const B19200: TCFlag = 0o000016;
+pub const B38400: TCFlag = 0o000017;
 
-const B57600: TCFlag = 0o010001;
-const B115200: TCFlag = 0o010002;
-const B230400: TCFlag = 0o010003;
-const B460800: TCFlag = 0o010004;
-const B500000: TCFlag = 0o010005;
-const B576000: TCFlag = 0o010006;
-const B921600: TCFlag = 0o010007;
-const B1000000: TCFlag = 0o010010;
-const B1152000: TCFlag = 0o010011;
-const B1500000: TCFlag = 0o010012;
-const B2000000: TCFlag = 0o010013;
-const B2500000: TCFlag = 0o010014;
-const B3000000: TCFlag = 0o010015;
-const B3500000: TCFlag = 0o010016;
-const B4000000: TCFlag = 0o010017;
+pub const B57600: TCFlag = 0o010001;
+pub const B115200: TCFlag = 0o010002;
+pub const B230400: TCFlag = 0o010003;
+pub const B460800: TCFlag = 0o010004;
+pub const B500000: TCFlag = 0o010005;
+pub const B576000: TCFlag = 0o010006;
+pub const B921600: TCFlag = 0o010007;
+pub const B1000000: TCFlag = 0o010010;
+pub const B1152000: TCFlag = 0o010011;
+pub const B1500000: TCFlag = 0o010012;
+pub const B2000000: TCFlag = 0o010013;
+pub const B2500000: TCFlag = 0o010014;
+pub const B3000000: TCFlag = 0o010015;
+pub const B3500000: TCFlag = 0o010016;
+pub const B4000000: TCFlag = 0o010017;
 
-const CSIZE: TCFlag = 0o000060;
-const CS5: TCFlag = 0o000000;
-const CS6: TCFlag = 0o000020;
-const CS7: TCFlag = 0o000040;
-const CS8: TCFlag = 0o000060;
-const CSTOPB: TCFlag = 0o000100;
-const CREAD: TCFlag = 0o000200;
-const PARENB: TCFlag = 0o000400;
-const PARODD: TCFlag = 0o001000;
-const HUPCL: TCFlag = 0o002000;
-const CLOCAL: TCFlag = 0o004000;
+pub const CSIZE: TCFlag = 0o000060;
+pub const CS5: TCFlag = 0o000000;
+pub const CS6: TCFlag = 0o000020;
+pub const CS7: TCFlag = 0o000040;
+pub const CS8: TCFlag = 0o000060;
+pub const CSTOPB: TCFlag = 0o000100;
+pub const CREAD: TCFlag = 0o000200;
+pub const PARENB: TCFlag = 0o000400;
+pub const PARODD: TCFlag = 0o001000;
+pub const HUPCL: TCFlag = 0o002000;
+pub const CLOCAL: TCFlag = 0o004000;
 
-const ISIG: TCFlag = 0o000001;
-const ICANON: TCFlag = 0o000002;
-const ECHO: TCFlag = 0o000010;
-const ECHOE: TCFlag = 0o000020;
-const ECHOK: TCFlag = 0o000040;
-const ECHONL: TCFlag = 0o000100;
-const NOFLSH: TCFlag = 0o000200;
-const TOSTOP: TCFlag = 0o000400;
-const IEXTEN: TCFlag = 0o100000;
+pub const ISIG: TCFlag = 0o000001;
+pub const ICANON: TCFlag = 0o000002;
+pub const ECHO: TCFlag = 0o000010;
+pub const ECHOE: TCFlag = 0o000020;
+pub const ECHOK: TCFlag = 0o000040;
+pub const ECHONL: TCFlag = 0o000100;
+pub const NOFLSH: TCFlag = 0o000200;
+pub const TOSTOP: TCFlag = 0o000400;
+pub const IEXTEN: TCFlag = 0o100000;
 
-const TCOOFF: TCFlag = 0;
-const TCOON: TCFlag = 1;
-const TCIOFF: TCFlag = 2;
-const TCION: TCFlag = 3;
+pub const TCOOFF: TCFlag = 0;
+pub const TCOON: TCFlag = 1;
+pub const TCIOFF: TCFlag = 2;
+pub const TCION: TCFlag = 3;
 
-const TCIFLUSH: TCFlag = 0;
-const TCOFLUSH: TCFlag = 1;
-const TCIOFLUSH: TCFlag = 2;
+pub const TCIFLUSH: TCFlag = 0;
+pub const TCOFLUSH: TCFlag = 1;
+pub const TCIOFLUSH: TCFlag = 2;
 
-const TCSANOW: TCFlag = 0;
-const TCSADRAIN: TCFlag = 1;
-const TCSAFLUSH: TCFlag = 2;
+pub const TCSANOW: TCFlag = 0;
+pub const TCSADRAIN: TCFlag = 1;
+pub const TCSAFLUSH: TCFlag = 2;
 
-const EXTA: TCFlag = 0o000016;
-const EXTB: TCFlag = 0o000017;
-const CBAUD: TCFlag = 0o010017;
-const CBAUDEX: TCFlag = 0o010000;
-const CIBAUD: TCFlag = 0o02003600000;
-const CMSPAR: TCFlag = 0o10000000000;
-const CRTSCTS: TCFlag = 0o20000000000;
+pub const EXTA: TCFlag = 0o000016;
+pub const EXTB: TCFlag = 0o000017;
+pub const CBAUD: TCFlag = 0o010017;
+pub const CBAUDEX: TCFlag = 0o010000;
+pub const CIBAUD: TCFlag = 0o02003600000;
+pub const CMSPAR: TCFlag = 0o10000000000;
+pub const CRTSCTS: TCFlag = 0o20000000000;
 
-const XCASE: TCFlag = 0o000004;
-const ECHOCTL: TCFlag = 0o001000;
-const ECHOPRT: TCFlag = 0o002000;
-const ECHOKE: TCFlag = 0o004000;
-const FLUSHO: TCFlag = 0o010000;
-const PENDIN: TCFlag = 0o040000;
-const EXTPROC: TCFlag = 0o200000;
+pub const XCASE: TCFlag = 0o000004;
+pub const ECHOCTL: TCFlag = 0o001000;
+pub const ECHOPRT: TCFlag = 0o002000;
+pub const ECHOKE: TCFlag = 0o004000;
+pub const FLUSHO: TCFlag = 0o010000;
+pub const PENDIN: TCFlag = 0o040000;
+pub const EXTPROC: TCFlag = 0o200000;
 
-const XTABS: TCFlag = 0o014000;
+pub const XTABS: TCFlag = 0o014000;
 
 /// Terminal IO settings.
 #[repr(C)]
@@ -186,17 +186,5 @@ impl Default for Termios {
 			c_lflag: 0, // TODO
 			c_cc: [0; NCCS], // TODO
 		}
-	}
-}
-
-impl Termios {
-	/// Tells whether the terminal is in canonical mode.
-	pub fn is_canonical_mode(&self) -> bool {
-		self.c_iflag & ICANON != 0
-	}
-
-	/// Tells whether the terminal echoes input characters.
-	pub fn is_echo_enabled(&self) -> bool {
-		self.c_iflag & ECHO != 0
 	}
 }

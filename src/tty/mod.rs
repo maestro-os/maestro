@@ -470,7 +470,7 @@ impl TTY {
 		util::slice_copy(input, &mut self.input_buffer[self.input_size..]);
 		self.input_size += len;
 
-		if self.termios.is_canonical_mode() {
+		if self.termios.c_iflag & termios::ICANON != 0 {
 			// Processing input
 			let mut i = self.input_size - len;
 			while i < self.input_size {
@@ -492,7 +492,7 @@ impl TTY {
 			self.available_size = self.input_size;
 		}
 
-		if self.termios.is_echo_enabled() {
+		if self.termios.c_iflag & termios::ECHO != 0 {
 			// Writing onto the TTY
 			self.write(input);
 		}
@@ -505,13 +505,16 @@ impl TTY {
 			return;
 		}
 
-		self.cursor_backward(count, 0);
+		if self.termios.c_iflag & termios::ECHOE != 0 {
+			self.cursor_backward(count, 0);
 
-		let begin = get_history_offset(self.cursor_x, self.cursor_y);
-		for i in begin..(begin + count) {
-			self.history[i] = EMPTY_CHAR;
+			let begin = get_history_offset(self.cursor_x, self.cursor_y);
+			for i in begin..(begin + count) {
+				self.history[i] = EMPTY_CHAR;
+			}
+			self.update();
 		}
-		self.update();
+
 		self.input_size -= count;
 	}
 
