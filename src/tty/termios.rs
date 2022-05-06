@@ -178,13 +178,29 @@ pub struct Termios {
 
 impl Default for Termios {
 	fn default() -> Self {
-		Self {
-			//c_iflag: ICANON | ECHO, // TODO
-			c_iflag: ECHO, // TODO
-			c_oflag: 0, // TODO
-			c_cflag: 0, // TODO
-			c_lflag: 0, // TODO
-			c_cc: [0; NCCS], // TODO
-		}
+		let mut t = Self {
+			c_iflag: BRKINT,
+			c_oflag: 0,
+			c_cflag: 0,
+			c_lflag: ISIG | ICANON | ECHO | ECHOE | ECHOK,
+			c_cc: [0; NCCS],
+		};
+
+		// Filling special characters
+		t.c_cc[VINTR as usize] = 0o03;
+		t.c_cc[VQUIT as usize] = 0o34;
+		t.c_cc[VERASE as usize] = 0o177;
+		t.c_cc[VKILL as usize] = 0o25;
+		t.c_cc[VEOF as usize] = 0o4;
+		t.c_cc[VMIN as usize] = 1;
+		t.c_cc[VSTART as usize] = 0o21;
+		t.c_cc[VSTOP as usize] = 0o23;
+		t.c_cc[VSUSP as usize] = 0o32;
+		t.c_cc[VREPRINT as usize] = 0o22;
+		t.c_cc[VDISCARD as usize] = 0o17;
+		t.c_cc[VWERASE as usize] = 0o27;
+		t.c_cc[VLNEXT as usize] = 0o26;
+
+		t
 	}
 }

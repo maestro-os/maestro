@@ -15,6 +15,9 @@ use crate::memory::vmem;
 use crate::pit;
 use crate::process::Process;
 use crate::process::pid::Pid;
+use crate::process::signal::SIGINT;
+use crate::process::signal::SIGQUIT;
+use crate::process::signal::SIGTSTP;
 use crate::process::signal::SIGWINCH;
 use crate::process::signal::Signal;
 use crate::tty::termios::Termios;
@@ -43,6 +46,9 @@ const INPUT_MAX: usize = 4096;
 const BELL_FREQUENCY: u32 = 2000;
 /// The duraction of the bell in ms.
 const BELL_DURATION: u32 = 500;
+
+// TODO Implement character size mask
+// TODO Full implement serial
 
 /// Structure representing a window size for a terminal.
 #[repr(C)]
@@ -380,24 +386,42 @@ impl TTY {
 		self.fix_pos();
 	}
 
+	/// Rings the TTY's bell.
+	fn ring_bell(&self) {
+		// TODO Select the prefered device
+		pit::beep();
+	}
+
 	/// Writes the character `c` to the TTY.
-	fn putchar(&mut self, c: u8) {
+	fn putchar(&mut self, mut c: u8) {
+		if self.termios.c_oflag & termios::OLCUC != 0 && (c as char).is_ascii_uppercase() {
+			c = (c as char).to_ascii_lowercase() as u8;
+		}
+		// TODO Implement ONLCR (Map NL to CR-NL)
+		// TODO Implement ONOCR
+		// TODO Implement ONLRET
+
 		match c {
 			0x07 => {
-				pit::beep();
+				self.ring_bell();
 			},
+
 			0x08 => {
 				// TODO Backspace
 			},
+
 			b'\t' => {
 				self.cursor_forward(get_tab_size(self.cursor_x), 0);
 			},
+
 			b'\n' => {
 				self.newline(1);
 			},
+
 			0x0c => {
 				// TODO Move printer to a top of page
 			},
+
 			b'\r' => {
 				self.cursor_x = 0;
 			},
@@ -439,6 +463,7 @@ impl TTY {
 		self.available_size
 	}
 
+	// TODO Implement IUTF8
 	/// Reads inputs from the TTY and places it into the buffer `buff`.
 	/// The function returns the number of bytes read.
 	pub fn read(&mut self, buff: &mut [u8]) -> usize {
@@ -456,21 +481,73 @@ impl TTY {
 		self.input_size -= len;
 		self.available_size -= len;
 
+		if self.termios.c_iflag & termios::IMAXBEL != 0 && self.input_size >= buff.len() {
+			self.ring_bell();
+		}
+
 		len
 	}
 
-	/// Takes the given string `buffer` as input.
+	// TODO Implement IUTF8
+	/// Takes the given string `buffer` as input, making it available from the terminal input.
 	pub fn input(&mut self, buffer: &[u8]) {
 		// The length to write to the input buffer
 		let len = min(buffer.len(), self.input_buffer.len() - self.input_size);
 		// The slice containing the input
 		let input = &buffer[..len];
 
-		// Writing to the input buffer
-		util::slice_copy(input, &mut self.input_buffer[self.input_size..]);
-		self.input_size += len;
+		if self.termios.c_lflag & termios::ECHO != 0 {
+			// Writing onto the TTY
+			self.write(input);
+		}
+		// TODO If ECHO is disabled but ICANON and ECHONL are set, print newlines
 
-		if self.termios.c_iflag & termios::ICANON != 0 {
+		// TODO Implement IGNBRK and BRKINT
+		// TODO Implement parity checking
+
+		// Writing to the input buffer
+		// TODO Put in a different function
+		{
+			util::slice_copy(input, &mut self.input_buffer[self.input_size..]);
+			let new_bytes = &mut self.input_buffer[self.input_size..(self.input_size + len)];
+			self.input_size += len;
+
+			for b in new_bytes {
+				if self.termios.c_iflag & termios::ISTRIP != 0 {
+					// Stripping eighth bit
+					*b &= 1 << 7;
+				}
+
+				// TODO Implement IGNCR (ignore carriage return)
+
+				if self.termios.c_iflag & termios::INLCR != 0 {
+					// Translating NL to CR
+					if *b == b'\n' {
+						*b = b'\r';
+					}
+				}
+
+				if self.termios.c_iflag & termios::ICRNL != 0 {
+					// Translating CR to NL
+					if *b == b'\r' {
+						*b = b'\n';
+					}
+				}
+
+				if self.termios.c_iflag & termios::IUCLC != 0 {
+					// Translating uppercase characters to lowercase
+					if (*b as char).is_ascii_uppercase() {
+						*b = (*b as char).to_ascii_uppercase() as u8;
+					}
+				}
+			}
+		}
+
+		// TODO IXON
+		// TODO IXANY
+		// TODO IXOFF
+
+		if self.termios.c_lflag & termios::ICANON != 0 {
 			// Processing input
 			let mut i = self.input_size - len;
 			while i < self.input_size {
@@ -492,9 +569,19 @@ impl TTY {
 			self.available_size = self.input_size;
 		}
 
-		if self.termios.c_iflag & termios::ECHO != 0 {
-			// Writing onto the TTY
-			self.write(input);
+		// Sending signals if enabled
+		if self.termios.c_lflag & termios::ISIG != 0 {
+			for b in input {
+				// TODO On match, the charactere must not be passed as input
+
+				if *b == self.termios.c_cc[termios::VINTR as usize] {
+					self.send_signal(Signal::new(SIGINT).unwrap());
+				} else if *b == self.termios.c_cc[termios::VQUIT as usize] {
+					self.send_signal(Signal::new(SIGQUIT).unwrap());
+				} else if *b == self.termios.c_cc[termios::VSUSP as usize] {
+					self.send_signal(Signal::new(SIGTSTP).unwrap());
+				}
+			}
 		}
 	}
 
@@ -505,7 +592,8 @@ impl TTY {
 			return;
 		}
 
-		if self.termios.c_iflag & termios::ECHOE != 0 {
+		if self.termios.c_lflag & termios::ECHOE != 0 {
+			// TODO Handle tab characters
 			self.cursor_backward(count, 0);
 
 			let begin = get_history_offset(self.cursor_x, self.cursor_y);
@@ -538,6 +626,20 @@ impl TTY {
 		self.pgrp = pgrp;
 	}
 
+	/// Sends a signal to the foreground process group if present.
+	pub fn send_signal(&self, sig: Signal) {
+		if self.pgrp == 0 {
+			return;
+		}
+
+		if let Some(proc_mutex) = Process::get_by_pid(self.pgrp) {
+			let mut proc_guard = proc_mutex.lock();
+			let proc = proc_guard.get_mut();
+
+			proc.kill_group(sig, false);
+		}
+	}
+
 	/// Returns the window size of the TTY.
 	pub fn get_winsize(&self) -> &WinSize {
 		&self.winsize
@@ -561,13 +663,6 @@ impl TTY {
 		self.winsize = winsize;
 
 		// Sending a SIGWINCH if a process group is present
-		if self.pgrp != 0 {
-			if let Some(proc_mutex) = Process::get_by_tid(self.pgrp) {
-				let mut proc_guard = proc_mutex.lock();
-				let proc = proc_guard.get_mut();
-
-				proc.kill_group(Signal::new(SIGWINCH).unwrap(), false);
-			}
-		}
+		self.send_signal(Signal::new(SIGWINCH).unwrap());
 	}
 }
