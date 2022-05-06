@@ -510,6 +510,14 @@ impl KeyboardManager {
 				if key == KeyboardKey::KeyBackspace {
 					// Erasing from TTY
 					tty.erase(1);
+				} else if (self.ctrl || self.right_ctrl) && !self.alt && !self.right_alt {
+					match key {
+						KeyboardKey::KeyC => tty.input(&[0o3]),
+						KeyboardKey::KeyZ => tty.input(&[0o32]),
+						KeyboardKey::KeyBackslash => tty.input(&[0o34]),
+
+						_ => {},
+					}
 				} else if !self.ctrl && !self.alt && !self.right_alt && !self.right_ctrl {
 					// Writing on TTY
 					let shift = (self.left_shift || self.right_shift)

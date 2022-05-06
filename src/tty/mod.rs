@@ -469,7 +469,7 @@ impl TTY {
 	pub fn read(&mut self, buff: &mut [u8]) -> usize {
 		// The length of data to consume
 		let len = min(buff.len(), self.available_size);
-		if len == 0 {
+		if len < self.termios.c_cc[termios::VMIN as usize] as usize {
 			return 0;
 		}
 
@@ -501,6 +501,7 @@ impl TTY {
 			self.write(input);
 		}
 		// TODO If ECHO is disabled but ICANON and ECHONL are set, print newlines
+		// TODO Handle printing Ctrl + key
 
 		// TODO Implement IGNBRK and BRKINT
 		// TODO Implement parity checking
