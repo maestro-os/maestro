@@ -476,7 +476,7 @@ impl TTY {
 		// Copying data
 		buff[..len].copy_from_slice(&self.input_buffer[..len]);
 		// Shifting the remaining data of the buffer
-		self.input_buffer.rotate_right(len);
+		self.input_buffer.rotate_left(len);
 
 		self.input_size -= len;
 		self.available_size -= len;
