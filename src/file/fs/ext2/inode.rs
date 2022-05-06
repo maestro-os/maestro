@@ -380,7 +380,7 @@ impl Ext2INode {
 	/// `superblock` is the filesystem's superblock.
 	/// `io` is the I/O interface.
 	/// The function returns the the allocated block.
-	fn indirections_alloc(&mut self, n: u8, begin: u32, off: u32, superblock: &Superblock,
+	fn indirections_alloc(&mut self, n: u8, begin: u32, off: u32, superblock: &mut Superblock,
 		io: &mut dyn IO) -> Result<u32, Errno> {
 		let blk_size = superblock.get_block_size();
 		let entries_per_blk = blk_size / size_of::<u32>() as u32;
@@ -419,7 +419,7 @@ impl Ext2INode {
 	/// `superblock` is the filesystem's superblock.
 	/// `io` is the I/O interface.
 	/// On success, the function returns the allocated final block offset.
-	fn alloc_content_block(&mut self, i: u32, superblock: &Superblock, io: &mut dyn IO)
+	fn alloc_content_block(&mut self, i: u32, superblock: &mut Superblock, io: &mut dyn IO)
 		-> Result<u32, Errno> {
 		let blk_size = superblock.get_block_size();
 		let entries_per_blk = blk_size / size_of::<u32>() as u32;
@@ -513,7 +513,7 @@ impl Ext2INode {
 	/// `superblock` is the filesystem's superblock.
 	/// `io` is the I/O interface.
 	/// The function returns a boolean telling whether the block at `begin` has been freed.
-	fn indirections_free(&mut self, n: u8, begin: u32, off: u32, superblock: &Superblock,
+	fn indirections_free(&mut self, n: u8, begin: u32, off: u32, superblock: &mut Superblock,
 		io: &mut dyn IO) -> Result<bool, Errno> {
 		let blk_size = superblock.get_block_size();
 		let entries_per_blk = blk_size / size_of::<u32>() as u32;
@@ -558,7 +558,7 @@ impl Ext2INode {
 	/// `i` is the id of the block.
 	/// `superblock` is the filesystem's superblock.
 	/// `io` is the I/O interface.
-	fn free_content_block(&mut self, i: u32, superblock: &Superblock, io: &mut dyn IO)
+	fn free_content_block(&mut self, i: u32, superblock: &mut Superblock, io: &mut dyn IO)
 		-> Result<(), Errno> {
 		let blk_size = superblock.get_block_size();
 		let entries_per_blk = blk_size / size_of::<u32>() as u32;
@@ -666,7 +666,7 @@ impl Ext2INode {
 	/// `superblock` is the filesystem's superblock.
 	/// `io` is the I/O interface.
 	/// The function returns the number of bytes that have been written.
-	pub fn write_content(&mut self, off: u64, buff: &[u8], superblock: &Superblock,
+	pub fn write_content(&mut self, off: u64, buff: &[u8], superblock: &mut Superblock,
 		io: &mut dyn IO) -> Result<(), Errno> {
 		let curr_size = self.get_size(superblock);
 		if off > curr_size {
@@ -717,7 +717,7 @@ impl Ext2INode {
 	/// `io` is the I/O interface.
 	/// `size` is the new size of the inode's content.
 	/// If `size` is greater than or equal to the previous size, the function does nothing.
-	pub fn truncate(&mut self, superblock: &Superblock, io: &mut dyn IO, size: u64)
+	pub fn truncate(&mut self, superblock: &mut Superblock, io: &mut dyn IO, size: u64)
 		-> Result<(), Errno> {
 		let old_size = self.get_size(superblock);
 		if size >= old_size {
@@ -747,7 +747,7 @@ impl Ext2INode {
 	/// `n` is the number of indicrections.
 	/// `superblock` is the filesystem's superblock.
 	/// `io` is the I/O interface.
-	fn indirect_free_all(begin: u32, n: usize, superblock: &Superblock, io: &mut dyn IO)
+	fn indirect_free_all(begin: u32, n: usize, superblock: &mut Superblock, io: &mut dyn IO)
 		-> Result<(), Errno> {
 		let blk_size = superblock.get_block_size();
 		let entries_per_blk = blk_size as usize / size_of::<u32>();
@@ -778,7 +778,7 @@ impl Ext2INode {
 	/// `range` is the range on which content blocks will be removed.
 	/// `superblock` is the filesystem's superblock.
 	/// `io` is the I/O interface.
-	pub fn free_content(&mut self, superblock: &Superblock, io: &mut dyn IO)
+	pub fn free_content(&mut self, superblock: &mut Superblock, io: &mut dyn IO)
 		-> Result<(), Errno> {
 		for i in 0..(DIRECT_BLOCKS_COUNT as usize) {
 			if self.direct_block_ptrs[i] != 0 {
@@ -838,8 +838,8 @@ impl Ext2INode {
 	/// `io` is the I/O interface.
 	/// `off` is the offset of the directory entry.
 	/// If the file is not a directory, the behaviour is undefined.
-	fn write_dirent(&mut self, superblock: &Superblock, io: &mut dyn IO, entry: &DirectoryEntry,
-		off: u64) -> Result<(), Errno> {
+	fn write_dirent(&mut self, superblock: &mut Superblock, io: &mut dyn IO,
+		entry: &DirectoryEntry, off: u64) -> Result<(), Errno> {
 		let buff = unsafe {
 			slice::from_raw_parts(entry as *const _ as *const u8, entry.get_total_size() as _)
 		};
@@ -976,7 +976,7 @@ impl Ext2INode {
 	/// If the block allocation fails or if the entry name is already used, the function returns an
 	/// error.
 	/// If the file is not a directory, the behaviour is undefined.
-	pub fn add_dirent(&mut self, superblock: &Superblock, io: &mut dyn IO, entry_inode: u32,
+	pub fn add_dirent(&mut self, superblock: &mut Superblock, io: &mut dyn IO, entry_inode: u32,
 		name: &String, file_type: FileType) -> Result<(), Errno> {
 		let blk_size = superblock.get_block_size();
 		let name_length = name.as_bytes().len() as u16;
@@ -1009,7 +1009,7 @@ impl Ext2INode {
 	/// `superblock` is the filesystem's superblock.
 	/// `io` is the I/O interface.
 	/// `name` is the name of the entry.
-	pub fn remove_dirent(&mut self, superblock: &Superblock, io: &mut dyn IO, name: &String)
+	pub fn remove_dirent(&mut self, superblock: &mut Superblock, io: &mut dyn IO, name: &String)
 		-> Result<(), Errno> {
 		debug_assert_eq!(self.get_type(), FileType::Directory);
 
@@ -1112,7 +1112,7 @@ impl Ext2INode {
 	/// `target` is the new target.
 	/// If the inode is not a symbolic link, the behaviour is undefined.
 	/// If the target is too long, it is truncated.
-	pub fn set_link(&mut self, superblock: &Superblock, io: &mut dyn IO, target: &[u8])
+	pub fn set_link(&mut self, superblock: &mut Superblock, io: &mut dyn IO, target: &[u8])
 		-> Result<(), Errno> {
 		debug_assert_eq!(self.get_type(), FileType::Link);
 
