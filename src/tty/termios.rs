@@ -181,7 +181,7 @@ impl Default for Termios {
 		let mut t = Self {
 			c_iflag: BRKINT,
 			c_oflag: 0,
-			c_cflag: 0,
+			c_cflag: CS8,
 			c_lflag: ISIG | ICANON | ECHO | ECHOE | ECHOK,
 			c_cc: [0; NCCS],
 		};
