@@ -26,7 +26,7 @@ use crate::memory;
 use crate::process::oom;
 use crate::util::FailableClone;
 use crate::util::boxed::Box;
-use crate::util::container::binary_tree::Map;
+use crate::util::container::map::Map;
 use crate::util::lock::Mutex;
 use crate::util::math;
 use crate::util::ptr::SharedPtr;

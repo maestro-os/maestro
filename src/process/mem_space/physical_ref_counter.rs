@@ -6,7 +6,7 @@
 use core::ffi::c_void;
 use crate::errno::Errno;
 use crate::memory;
-use crate::util::container::binary_tree::Map;
+use crate::util::container::map::Map;
 use crate::util;
 
 /// Structure representing a reference counter for a given page.
