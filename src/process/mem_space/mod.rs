@@ -59,9 +59,8 @@ pub struct MemSpace {
 	/// Binary tree storing the list of memory gaps, ready for new mappings. Sorted by pointer to
 	/// the beginning of the mapping on the virtual memory.
 	gaps: Map<*const c_void, MemGap>,
-	/// Binary tree storing the list of memory gaps, sorted by size. The key is the size of the gap
-	/// and the value is the pointer to its beginning.
-	gaps_size: Map<usize, *const c_void>,
+	/// Binary tree storing the list of memory gaps, sorted by size and then by beginning address.
+	gaps_size: Map<(usize, *const c_void), ()>,
 
 	/// Binary tree storing the list of memory mappings. Sorted by pointer to the beginning of the
 	/// mapping on the virtual memory.
@@ -81,17 +80,22 @@ impl MemSpace {
 	fn gap_insert(&mut self, gap: MemGap) -> Result<(), Errno> {
 		let gap_ptr = gap.get_begin();
 		let g = self.gaps.insert(gap_ptr, gap)?;
-		self.gaps_size.insert(g.get_size(), gap_ptr)?;
+
+		if let Err(e) = self.gaps_size.insert((g.get_size(), gap_ptr), ()) {
+			self.gaps.remove(gap_ptr);
+			return Err(e);
+		}
 
 		Ok(())
 	}
 
 	/// Removes the given gap from the memory space's structures.
-	fn gap_remove(&mut self, gap_begin: *const c_void) {
-		let g = self.gaps.remove(gap_begin).unwrap();
-		self.gaps_size.select_remove(g.get_size(), | val | {
-			*val == gap_begin
-		});
+	/// The function returns the removed gap. If the gap didn't exist, the function returns None.
+	fn gap_remove(&mut self, gap_begin: *const c_void) -> Option<MemGap> {
+		let g = self.gaps.remove(gap_begin)?;
+		self.gaps_size.remove((g.get_size(), gap_begin));
+
+		Some(g)
 	}
 
 	/// Returns a reference to a gap with at least size `size`.
@@ -99,9 +103,9 @@ impl MemSpace {
 	/// `gaps_size` is the binary tree storing pointers to gaps, sorted by gap sizes.
 	/// `size` is the minimum size of the gap.
 	/// If no gap large enough is available, the function returns None.
-	fn gap_get<'a>(gaps: &'a Map<*const c_void, MemGap>, gaps_size: &Map<usize, *const c_void>,
-		size: usize) -> Option<&'a MemGap> {
-		let ptr = gaps_size.get_min(size)?.1;
+	fn gap_get<'a>(gaps: &'a Map<*const c_void, MemGap>,
+		gaps_size: &Map<(usize, *const c_void), ()>, size: usize) -> Option<&'a MemGap> {
+		let (_, ptr) = gaps_size.get_min((size, 0 as _))?.0;
 		let gap = gaps.get(*ptr).unwrap();
 		debug_assert!(gap.get_size() >= size);
 
@@ -133,6 +137,16 @@ impl MemSpace {
 		let begin = memory::ALLOC_BEGIN;
 		let size = (memory::PROCESS_END as usize - begin as usize) / memory::PAGE_SIZE;
 		self.gap_insert(MemGap::new(begin, size))
+	}
+
+	/// Clones the `gaps_size` field.
+	fn gaps_size_clone(&self) -> Result<Map<(usize, *const c_void), ()>, Errno> {
+		let mut gaps_size = Map::new();
+		for (g, _) in &self.gaps_size {
+			gaps_size.insert(g.clone(), ())?;
+		}
+
+		Ok(gaps_size)
 	}
 
 	/// Creates a new virtual memory object.
@@ -430,13 +444,8 @@ impl MemSpace {
 			};
 
 			// If a gap is located at the pointer `begin`, remove it
-			if let Some(g) = self.gaps.remove(begin) {
-				let size = g.get_size();
-				self.gaps_size.select_remove(size, | val | {
-					*val == begin
-				});
-
-				i += size;
+			if let Some(g) = self.gap_remove(begin) {
+				i += g.get_size();
 			} else {
 				i += 1;
 			}
@@ -554,7 +563,7 @@ impl MemSpace {
 	fn do_fork(&mut self) -> Result<Self, Errno> {
 		let mut mem_space = Self {
 			gaps: self.gaps.failable_clone()?,
-			gaps_size: self.gaps_size.failable_clone()?,
+			gaps_size: self.gaps_size_clone()?,
 
 			mappings: Map::new(),
 

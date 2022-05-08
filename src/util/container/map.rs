@@ -45,30 +45,21 @@ struct Node<K, V> {
 
 /// Unwraps the given pointer option into a reference option.
 #[inline]
-fn unwrap_pointer<K, V>(ptr: &Option<NonNull<Node<K, V>>>)
-	-> Option<&'static Node<K, V>> {
-	if let Some(p) = ptr {
-		unsafe {
-			debug_assert!(p.as_ptr() as usize >= memory::PROCESS_END as usize);
-			Some(&*p.as_ptr())
-		}
-	} else {
-		None
-	}
+fn unwrap_pointer<K, V>(ptr: &Option<NonNull<Node<K, V>>>) -> Option<&'static Node<K, V>> {
+	ptr.map(| p | unsafe {
+		debug_assert!(p.as_ptr() as usize >= memory::PROCESS_END as usize);
+		&*p.as_ptr()
+	})
 }
 
 /// Same as `unwrap_pointer` but returns a mutable reference.
 #[inline]
 fn unwrap_pointer_mut<K, V>(ptr: &mut Option<NonNull<Node<K, V>>>)
 	-> Option<&'static mut Node<K, V>> {
-	if let Some(p) = ptr {
-		unsafe {
-			debug_assert!(p.as_ptr() as usize >= memory::PROCESS_END as usize);
-			Some(&mut *(p.as_ptr() as *mut _))
-		}
-	} else {
-		None
-	}
+	ptr.map(| mut p | unsafe {
+		debug_assert!(p.as_ptr() as usize >= memory::PROCESS_END as usize);
+		p.as_mut()
+	})
 }
 
 impl<K: 'static + Ord, V: 'static> Node<K, V> {
@@ -119,6 +110,18 @@ impl<K: 'static + Ord, V: 'static> Node<K, V> {
 		unwrap_pointer_mut(&mut self.parent)
 	}
 
+	/// Returns a reference to the grandparent node.
+	#[inline]
+	pub fn get_grandparent(&self) -> Option<&'static Self> {
+		self.get_parent()?.get_parent()
+	}
+
+	/// Returns a mutable reference to the grandparent node.
+	#[inline]
+	pub fn get_grandparent_mut(&mut self) -> Option<&'static mut Self> {
+		self.get_parent_mut()?.get_parent_mut()
+	}
+
 	/// Returns a mutable reference to the parent child node.
 	#[inline]
 	pub fn get_left(&self) -> Option<&'static Self> {
@@ -167,28 +170,6 @@ impl<K: 'static + Ord, V: 'static> Node<K, V> {
 		false
 	}
 
-	/// Tells whether the node and its parent and grandparent form a triangle.
-	#[inline]
-	pub fn is_triangle(&self) -> bool {
-		if let Some(parent) = self.get_parent() {
-			return self.is_left_child() != parent.is_left_child();
-		}
-
-		false
-	}
-
-	/// Returns a reference to the grandparent node.
-	#[inline]
-	pub fn get_grandparent(&self) -> Option<&'static Self> {
-		self.get_parent()?.get_parent()
-	}
-
-	/// Returns a mutable reference to the grandparent node.
-	#[inline]
-	pub fn get_grandparent_mut(&mut self) -> Option<&'static mut Self> {
-		self.get_parent_mut()?.get_parent_mut()
-	}
-
 	/// Returns a reference to the sibling node.
 	#[inline]
 	pub fn get_sibling(&self) -> Option<&'static Self> {
@@ -223,6 +204,16 @@ impl<K: 'static + Ord, V: 'static> Node<K, V> {
 	#[inline]
 	pub fn get_uncle_mut(&mut self) -> Option<&'static mut Self> {
 		self.get_parent_mut()?.get_sibling_mut()
+	}
+
+	/// Tells whether the node and its parent and grandparent form a triangle.
+	#[inline]
+	pub fn is_triangle(&self) -> bool {
+		if let Some(parent) = self.get_parent() {
+			return self.is_left_child() != parent.is_left_child();
+		}
+
+		false
 	}
 
 	/// Tells whether the node has at least one red child.
@@ -326,20 +317,8 @@ impl<K: 'static + Ord, V: 'static> Node<K, V> {
 	/// Returns the number of nodes in the subtree.
 	/// This function has `O(n)` complexity.
 	pub fn nodes_count(&self) -> usize {
-		let left_count = {
-			if let Some(l) = self.get_left() {
-				l.nodes_count()
-			} else {
-				0
-			}
-		};
-		let right_count = {
-			if let Some(r) = self.get_right() {
-				r.nodes_count()
-			} else {
-				0
-			}
-		};
+		let left_count = self.get_left().map(| n | n.nodes_count()).unwrap_or(0);
+		let right_count = self.get_right().map(| n | n.nodes_count()).unwrap_or(0);
 
 		1 + left_count + right_count
 	}
@@ -347,51 +326,26 @@ impl<K: 'static + Ord, V: 'static> Node<K, V> {
 	/// Returns the depth of the node in the tree.
 	/// This function has `O(log n)` complexity.
 	pub fn get_node_depth(&self) -> usize {
-		if let Some(p) = self.get_parent() {
-			p.get_node_depth() + 1
-		} else {
-			0
-		}
+		self.get_parent().map(| n | n.get_node_depth() + 1).unwrap_or(0)
 	}
 
 	/// Returns the black depth of the node in the tree.
 	/// This function has `O(log n)` complexity.
 	pub fn get_node_black_depth(&self) -> usize {
-		let parent = {
-			if let Some(p) = self.get_parent() {
-				p.get_node_black_depth()
-			} else {
-				0
-			}
-		};
-		let curr = {
-			if self.is_black() {
-				1
-			} else {
-				0
-			}
-		};
+		let parent = self.get_parent().map(| n | n.get_node_black_depth()).unwrap_or(0);
 
-		parent + curr
+		if self.is_black() {
+			1 + parent
+		} else {
+			parent
+		}
 	}
 
 	/// Returns the depth of the subtree.
 	/// This function has `O(log n)` complexity.
 	pub fn get_depth(&self) -> usize {
-		let left_count = {
-			if let Some(l) = self.get_left() {
-				l.get_depth()
-			} else {
-				0
-			}
-		};
-		let right_count = {
-			if let Some(r) = self.get_right() {
-				r.get_depth()
-			} else {
-				0
-			}
-		};
+		let left_count = self.get_left().map(| n | n.get_depth()).unwrap_or(0);
+		let right_count = self.get_right().map(| n | n.get_depth()).unwrap_or(0);
 
 		1 + max(left_count, right_count)
 	}
@@ -483,21 +437,13 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 	/// Returns the number of elements in the tree.
 	/// This function has `O(n)` complexity.
 	pub fn count(&self) -> usize {
-		if let Some(r) = self.get_root() {
-			r.nodes_count()
-		} else {
-			0
-		}
+		self.get_root().map(| n | n.nodes_count()).unwrap_or(0)
 	}
 
 	/// Returns the depth of the tree.
 	/// This function has `O(log n)` complexity.
 	pub fn get_depth(&self) -> usize {
-		if let Some(r) = self.get_root() {
-			r.get_depth()
-		} else {
-			0
-		}
+		self.get_root().map(| n | n.get_depth()).unwrap_or(0)
 	}
 
 	/// Searches for a node with the given key in the tree and returns a reference.
@@ -505,9 +451,8 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 	fn get_node(&self, key: &K) -> Option<&'static Node<K, V>> {
 		let mut node = self.get_root();
 
-		while node.is_some() {
-			let n = node.unwrap();
-			let ord = n.key.partial_cmp(key).unwrap().reverse();
+		while let Some(n) = node {
+			let ord = key.cmp(&n.key);
 
 			match ord {
 				Ordering::Less => node = n.get_left(),
@@ -524,9 +469,8 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 	fn get_mut_node(&mut self, key: &K) -> Option<&'static mut Node<K, V>> {
 		let mut node = self.get_root_mut();
 
-		while node.is_some() {
-			let n = node.unwrap();
-			let ord = n.key.partial_cmp(key).unwrap().reverse();
+		while let Some(n) = node {
+			let ord = key.cmp(&n.key);
 
 			match ord {
 				Ordering::Less => node = n.get_left_mut(),
@@ -559,8 +503,7 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 	pub fn cmp_get<'a, F: Fn(&K, &V) -> Ordering>(&'a self, cmp: F) -> Option<&'a V> {
 		let mut node = self.get_root();
 
-		while node.is_some() {
-			let n = node.unwrap();
+		while let Some(n) = node {
 			let ord = cmp(&n.key, &n.value);
 
 			match ord {
@@ -578,8 +521,7 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 	pub fn cmp_get_mut<'a, F: Fn(&K, &V) -> Ordering>(&'a mut self, cmp: F) -> Option<&'a mut V> {
 		let mut node = self.get_root_mut();
 
-		while node.is_some() {
-			let n = node.unwrap();
+		while let Some(n) = node {
 			let ord = cmp(&n.key, &n.value);
 
 			match ord {
@@ -597,11 +539,8 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 	pub fn get_min<'a>(&'a self, key: K) -> Option<(&'a K, &'a V)> {
 		let mut node = self.get_root();
 
-		while node.is_some() {
-			let n = node.unwrap();
-			let ord = n.key.partial_cmp(&key).unwrap().reverse();
-
-			if ord == Ordering::Greater {
+		while let Some(n) = node {
+			if key.cmp(&n.key) == Ordering::Greater {
 				node = n.get_right();
 			} else {
 				return Some((&n.key, &n.value));
@@ -636,14 +575,13 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 	fn get_insert_node(&mut self, key: &K) -> Option<&'static mut Node<K, V>> {
 		let mut node = self.get_root_mut();
 
-		while node.is_some() {
-			let n = node.unwrap();
+		while let Some(n) = node {
 			let ord = key.cmp(&n.key);
 
 			let next = match ord {
 				Ordering::Less => n.get_left_mut(),
 				Ordering::Greater => n.get_right_mut(),
-				_ => None,
+				Ordering::Equal => return Some(n),
 			};
 
 			if next.is_none() {
@@ -959,57 +897,6 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 		//self.check();
 		Some(value)
 	}
-
-	/// Removes a value from the tree. This function is useful when several values have the same
-	/// key since the given closure allows to select the node to remove.
-	/// `key` is the key to select the node to remove.
-	/// `f` the closure that selects the node to be removed. When returning `false`, the closure is
-	/// called with the next node. When returning `true`, the node is removed and the closure isn't
-	/// called anymore.
-	/// If a node is removed, the function returns the value of the removed node.
-	pub fn select_remove<F: FnMut(&V) -> bool>(&mut self, key: K, mut f: F) -> Option<V> {
-		let node = {
-			let mut n = self.get_mut_node(&key)?;
-
-			loop {
-				debug_assert_eq!(n.key.cmp(&key), Ordering::Equal);
-				if f(&n.value) {
-					break;
-				}
-
-				let left = n.get_left_mut();
-				if left.is_some() && left.as_ref().unwrap().key == key {
-					n = left.unwrap();
-				} else {
-					loop {
-						let right = n.get_right_mut();
-						if right.is_some() && right.as_ref().unwrap().key == key {
-							n = right.unwrap();
-							break;
-						}
-
-						n = n.get_parent_mut()?;
-						if n.key != key {
-							return None;
-						}
-					}
-
-					break;
-				}
-			}
-
-			n
-		};
-		let value = unsafe {
-			ptr::read(&node.value)
-		};
-
-		self.remove_node(node);
-
-		//#[cfg(config_debug_debug)]
-		//self.check();
-		Some(value)
-	}
 }
 
 impl<K: 'static + Ord, V: 'static> Map<K, V> {
@@ -1184,7 +1071,7 @@ impl<'a, K: 'static + Ord, V> Iterator for MapIterator<'a, K, V> {
 		let node = self.node;
 		self.node = if let Some(n) = unwrap_pointer(&node) {
 			if let Some(mut node) = n.get_right() {
-				while let Some(n) = n.get_left() {
+				while let Some(n) = node.get_left() {
 					node = n;
 				}
 
@@ -1253,7 +1140,7 @@ impl<'a, K: 'static + Ord, V> Iterator for MapMutIterator<'a, K, V> {
 		let mut node = self.node;
 		self.node = if let Some(n) = unwrap_pointer(&node) {
 			if let Some(mut node) = n.get_right() {
-				while let Some(n) = n.get_left() {
+				while let Some(n) = node.get_left() {
 					node = n;
 				}
 
