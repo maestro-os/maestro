@@ -26,7 +26,7 @@ use crate::memory;
 use crate::process::oom;
 use crate::util::FailableClone;
 use crate::util::boxed::Box;
-use crate::util::container::binary_tree::BinaryTree;
+use crate::util::container::binary_tree::Map;
 use crate::util::lock::Mutex;
 use crate::util::math;
 use crate::util::ptr::SharedPtr;
@@ -58,14 +58,14 @@ pub static mut PHYSICAL_REF_COUNTER: Mutex<PhysRefCounter> = Mutex::new(PhysRefC
 pub struct MemSpace {
 	/// Binary tree storing the list of memory gaps, ready for new mappings. Sorted by pointer to
 	/// the beginning of the mapping on the virtual memory.
-	gaps: BinaryTree<*const c_void, MemGap>,
+	gaps: Map<*const c_void, MemGap>,
 	/// Binary tree storing the list of memory gaps, sorted by size. The key is the size of the gap
 	/// and the value is the pointer to its beginning.
-	gaps_size: BinaryTree<usize, *const c_void>,
+	gaps_size: Map<usize, *const c_void>,
 
 	/// Binary tree storing the list of memory mappings. Sorted by pointer to the beginning of the
 	/// mapping on the virtual memory.
-	mappings: BinaryTree<*const c_void, MemMapping>,
+	mappings: Map<*const c_void, MemMapping>,
 
 	/// The initial pointer of the `brk` system call.
 	brk_init: *const c_void,
@@ -99,8 +99,8 @@ impl MemSpace {
 	/// `gaps_size` is the binary tree storing pointers to gaps, sorted by gap sizes.
 	/// `size` is the minimum size of the gap.
 	/// If no gap large enough is available, the function returns None.
-	fn gap_get<'a>(gaps: &'a BinaryTree<*const c_void, MemGap>, gaps_size: &BinaryTree<usize,
-		*const c_void>, size: usize) -> Option<&'a MemGap> {
+	fn gap_get<'a>(gaps: &'a Map<*const c_void, MemGap>, gaps_size: &Map<usize, *const c_void>,
+		size: usize) -> Option<&'a MemGap> {
 		let ptr = gaps_size.get_min(size)?.1;
 		let gap = gaps.get(*ptr).unwrap();
 		debug_assert!(gap.get_size() >= size);
@@ -112,7 +112,7 @@ impl MemSpace {
 	/// `gaps` is the binary tree storing gaps, sorted by pointer to their respective beginnings.
 	/// `ptr` is the pointer.
 	/// If no gap contain the pointer, the function returns None.
-	fn gap_by_ptr<'a>(gaps: &'a BinaryTree<*const c_void, MemGap>, ptr: *const c_void)
+	fn gap_by_ptr<'a>(gaps: &'a Map<*const c_void, MemGap>, ptr: *const c_void)
 		-> Option<&'a MemGap> {
 		gaps.cmp_get(| key, value | {
 			let begin = *key;
@@ -139,10 +139,10 @@ impl MemSpace {
 	/// `brk_ptr` is the initial pointer for the `brk` syscall.
 	pub fn new() -> Result::<Self, Errno> {
 		let mut s = Self {
-			gaps: BinaryTree::new(),
-			gaps_size: BinaryTree::new(),
+			gaps: Map::new(),
+			gaps_size: Map::new(),
 
-			mappings: BinaryTree::new(),
+			mappings: Map::new(),
 
 			brk_init: null::<_>(),
 			brk_ptr: null::<_>(),
@@ -262,7 +262,7 @@ impl MemSpace {
 	/// Returns a reference to the memory mapping containing the given virtual address `ptr` from
 	/// mappings container `mappings`. If no mapping contains the address, the function returns
 	/// None.
-	fn get_mapping_for_(mappings: &BinaryTree<*const c_void, MemMapping>, ptr: *const c_void)
+	fn get_mapping_for_(mappings: &Map<*const c_void, MemMapping>, ptr: *const c_void)
 		-> Option<&MemMapping> {
 		mappings.cmp_get(| key, value | {
 			let begin = *key;
@@ -281,8 +281,8 @@ impl MemSpace {
 	/// Returns a mutable reference to the memory mapping containing the given virtual address
 	/// `ptr` from mappings container `mappings`. If no mapping contains the address, the function
 	/// returns None.
-	fn get_mapping_mut_for_(mappings: &mut BinaryTree<*const c_void, MemMapping>,
-		ptr: *const c_void) -> Option<&mut MemMapping> {
+	fn get_mapping_mut_for_(mappings: &mut Map<*const c_void, MemMapping>, ptr: *const c_void)
+		-> Option<&mut MemMapping> {
 		mappings.cmp_get_mut(| key, value | {
 			let begin = *key;
 			let end = (begin as usize + value.get_size() * memory::PAGE_SIZE) as *const c_void;
@@ -556,7 +556,7 @@ impl MemSpace {
 			gaps: self.gaps.failable_clone()?,
 			gaps_size: self.gaps_size.failable_clone()?,
 
-			mappings: BinaryTree::new(),
+			mappings: Map::new(),
 
 			brk_init: self.brk_init,
 			brk_ptr: self.brk_ptr,

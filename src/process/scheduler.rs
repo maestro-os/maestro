@@ -21,8 +21,8 @@ use crate::process::Process;
 use crate::process::pid::Pid;
 use crate::process::regs::Regs;
 use crate::process;
-use crate::util::container::binary_tree::BinaryTree;
-use crate::util::container::binary_tree::BinaryTreeIterator;
+use crate::util::container::binary_tree::Map;
+use crate::util::container::binary_tree::MapIterator;
 use crate::util::container::binary_tree::TraversalType;
 use crate::util::container::vec::Vec;
 use crate::util::lock::*;
@@ -47,7 +47,7 @@ pub struct Scheduler {
 	total_ticks: u64,
 
 	/// A binary tree containing all processes registered to the current scheduler.
-	processes: BinaryTree<Pid, IntSharedPtr<Process>>,
+	processes: Map<Pid, IntSharedPtr<Process>>,
 	/// The currently running process with its PID.
 	curr_proc: Option<(Pid, IntSharedPtr<Process>)>,
 
@@ -76,7 +76,7 @@ impl Scheduler {
 			tick_callback_hook,
 			total_ticks: 0,
 
-			processes: BinaryTree::new(),
+			processes: Map::new(),
 			curr_proc: None,
 
 			priority_sum: 0,
@@ -215,7 +215,7 @@ impl Scheduler {
 		})?;
 
 		// Closure iterating the tree to find an available process
-		let next = | iter: BinaryTreeIterator<Pid, IntSharedPtr<Process>> | {
+		let next = | iter: MapIterator<Pid, IntSharedPtr<Process>> | {
 			let mut proc: Option<(Pid, IntSharedPtr<Process>)> = None;
 
 			// Iterating over processes

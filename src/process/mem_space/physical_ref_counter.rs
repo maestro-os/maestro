@@ -6,7 +6,7 @@
 use core::ffi::c_void;
 use crate::errno::Errno;
 use crate::memory;
-use crate::util::container::binary_tree::BinaryTree;
+use crate::util::container::binary_tree::Map;
 use crate::util;
 
 /// Structure representing a reference counter for a given page.
@@ -20,14 +20,14 @@ pub struct PageRefCounter {
 /// Structure representing the reference counter for all physical pages.
 pub struct PhysRefCounter {
 	/// The binary tree storing the number of references for each pages.
-	tree: BinaryTree<*const c_void, PageRefCounter>,
+	tree: Map<*const c_void, PageRefCounter>,
 }
 
 impl PhysRefCounter {
 	/// Creates a new instance.
 	pub const fn new() -> Self {
 		Self {
-			tree: BinaryTree::<*const c_void, PageRefCounter>::new(),
+			tree: Map::<*const c_void, PageRefCounter>::new(),
 		}
 	}
 
