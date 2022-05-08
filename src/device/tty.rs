@@ -57,7 +57,8 @@ impl DeviceHandle for TTYDeviceHandle {
 				Ok(0)
 			},
 
-			ioctl::TCSETS => {
+			// TODO Implement correct behaviours for each
+			ioctl::TCSETS | ioctl::TCSETSW | ioctl::TCSETSF => {
 				let mem_space_guard = mem_space.lock();
 				let termios_ptr: SyscallPtr<Termios> = (argp as usize).into();
 				let termios = termios_ptr.get(&mem_space_guard)?

@@ -426,6 +426,8 @@ impl TTY {
 				self.cursor_x = 0;
 			},
 
+			0x7f => {}, // Do not print DEL characters
+
 			_ => {
 				let tty_char = (c as vga::Char) | ((self.current_color as vga::Char) << 8);
 				let pos = get_history_offset(self.cursor_x, self.cursor_y);
@@ -588,23 +590,30 @@ impl TTY {
 
 	/// Erases `count` characters in TTY.
 	pub fn erase(&mut self, count: usize) {
-		let count = min(count, self.input_buffer.len());
-		if count > self.input_size {
-			return;
-		}
-
-		if self.termios.c_lflag & termios::ECHOE != 0 {
-			// TODO Handle tab characters
-			self.cursor_backward(count, 0);
-
-			let begin = get_history_offset(self.cursor_x, self.cursor_y);
-			for i in begin..(begin + count) {
-				self.history[i] = EMPTY_CHAR;
+		if self.termios.c_lflag & termios::ICANON != 0 {
+			let count = min(count, self.input_buffer.len());
+			if count > self.input_size {
+				return;
 			}
-			self.update();
-		}
 
-		self.input_size -= count;
+			if self.termios.c_lflag & termios::ECHOE != 0 {
+				// TODO Handle tab characters
+				self.cursor_backward(count, 0);
+
+				let begin = get_history_offset(self.cursor_x, self.cursor_y);
+				for i in begin..(begin + count) {
+					self.history[i] = EMPTY_CHAR;
+				}
+				self.update();
+			}
+
+			self.input_size -= count;
+		} else {
+			// Printing DEL characters
+			for _ in 0..count {
+				self.input(&[0x7f]);
+			}
+		}
 	}
 
 	/// Returns the terminal IO settings.
