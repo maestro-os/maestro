@@ -64,7 +64,11 @@ test_compilation
 
 echo "Running selftests..."
 exec_command make selftest
-exec_command grep 'No more tests to run' -- serial.log
+
+echo "Selftests output:"
+cat serial.log
+grep 'No more tests to run' -- serial.log >/dev/null 2>&1
+status=$?
 
 
 
