@@ -24,13 +24,6 @@ print_env () {
 	exec_command uname -a
 	exec_command pwd
 	exec_command env
-
-	echo "-------------"
-	echo "   Sources   "
-	echo "-------------"
-	echo
-
-	exec_command ls -R .
 }
 
 # Tests compilation with the current environement
@@ -59,22 +52,19 @@ test_compilation
 
 
 
+echo "Testing release compilation..."
+cp testing/configs/release .config
+test_compilation
+
+
+
 echo "Selftesting compilation..."
 cp testing/configs/selftest .config
 test_compilation
 
-
-
-#echo "Running selftests..."
-#make selftest
-#exec_command serial.log
-# TODO Check if the results are correct
-
-
-
-echo "Testing release compilation..."
-cp testing/configs/release .config
-test_compilation
+echo "Running selftests..."
+exec_command make selftest
+exec_command grep 'No more tests to run' -- serial.log
 
 
 
