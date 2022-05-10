@@ -8,7 +8,7 @@ use crate::process::Process;
 use crate::process::regs::Regs;
 
 /// The implementation of the `vfork` syscall.
-pub fn vfork(_regs: &Regs) -> Result<i32, Errno> {
+pub fn vfork(regs: &Regs) -> Result<i32, Errno> {
 	let new_pid = {
 		// The current process
 		let curr_mutex = Process::get_current().unwrap();
@@ -27,7 +27,7 @@ pub fn vfork(_regs: &Regs) -> Result<i32, Errno> {
 		let new_proc = new_guard.get_mut();
 
 		// Setting registers
-		let mut regs = curr_proc.get_regs().clone();
+		let mut regs = regs.clone();
 		// Setting return value to `0`
 		regs.eax = 0;
 		new_proc.set_regs(regs);
