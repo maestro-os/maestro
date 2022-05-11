@@ -24,7 +24,6 @@ Maestro documentation
    PS2/keyboard
    PS2/mouse
 
-   memory/a20
    memory/mem_map
    memory/buddy_alloc
    memory/kmalloc
@@ -38,7 +37,7 @@ Maestro documentation
 
    device/list
 
-   ELF
+   elf
    modules
 
    ACPI/AML

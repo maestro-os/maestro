@@ -3,6 +3,8 @@ Process
 
 A process is a task running a program. It can be paused and resume, and communicates with the kernel using system calls.
 
+For process API references, check the documentation of module `process`.
+
 
 
 Virtual memory
