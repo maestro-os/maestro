@@ -181,7 +181,8 @@ extern "C" {
 }
 
 /// Launches the init process.
-fn init() -> Result<(), Errno> {
+/// `init_path` is the path to the init program.
+fn init(init_path: &[u8]) -> Result<(), Errno> {
 	let mutex = Process::new()?;
 	let mut lock = mutex.lock();
 	let proc = lock.get_mut();
@@ -206,7 +207,7 @@ fn init() -> Result<(), Errno> {
 		}
 
 		exec(proc, &path, &vec![
-			INIT_PATH
+			init_path
 		]?, &env)
 	}
 }
@@ -292,7 +293,10 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 	println!("Initializing processes...");
 	process::init().unwrap_or_else(| e | kernel_panic!("Failed to init processes! ({})", e));
 
-	init().unwrap_or_else(| e | kernel_panic!("Cannot execute init process: {}", e));
+	let init_path = args_parser.get_init_path().as_ref()
+		.map(| s | s.as_bytes())
+		.unwrap_or(INIT_PATH);
+	init(init_path).unwrap_or_else(| e | kernel_panic!("Cannot execute init process: {}", e));
 	enter_loop();
 }
 

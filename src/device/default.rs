@@ -192,7 +192,7 @@ pub fn create() -> Result<(), Errno> {
 	device::register_device(random_device)?;
 
 	let urandom_path = Path::from_str(b"/dev/urandom", false)?;
-	let mut urandom_device = Device::new(1, 8, urandom_path, 0o666, DeviceType::Char,
+	let mut urandom_device = Device::new(1, 9, urandom_path, 0o666, DeviceType::Char,
 		URandomDeviceHandle {})?;
 	urandom_device.create_file()?; // TODO remove?
 	device::register_device(urandom_device)?;
