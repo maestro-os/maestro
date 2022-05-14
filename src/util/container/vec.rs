@@ -249,7 +249,10 @@ impl<T> Vec<T> {
 			}
 
 			self.len += other.len;
-			other.clear();
+
+			// Clearing other without dropping its elements
+			other.len = 0;
+			other.data = None;
 		}
 
 		Ok(())
@@ -358,30 +361,11 @@ impl<T: PartialEq> PartialEq for Vec<T> {
 
 impl<T> FailableClone for Vec<T> where T: FailableClone {
 	fn failable_clone(&self) -> Result<Self, Errno> {
-		let data = {
-			if self.len > 0 {
-				// Safe because initialization uses ManuallyDrop on invalid objects
-				let data_ptr = unsafe {
-					malloc::Alloc::new_zero(self.len)?
-				};
-				Some(data_ptr)
-			} else {
-				None
-			}
-		};
+		let mut v = Self::with_capacity(self.len)?;
 
-		let mut v = Self {
-			len: self.len,
-			data,
-		};
-
-		for i in 0..self.len() {
-			// Safe because the pointer is guaranteed to be correct thanks to the Alloc structure
-			unsafe {
-				ptr::write_volatile(&mut v[i] as _, self[i].failable_clone()?);
-			}
+		for i in 0..self.len {
+			v.push(self[i].failable_clone()?)?;
 		}
-
 		Ok(v)
 	}
 }
