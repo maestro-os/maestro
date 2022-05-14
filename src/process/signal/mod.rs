@@ -328,6 +328,11 @@ impl Signal {
 		match handler {
 			SignalHandler::Ignore => {},
 			SignalHandler::Default => {
+				// Signals on the init process can be executed only if the process has set a signal handler
+				if process.is_init() {
+					return;
+				}
+
 				let default_action = DEFAULT_ACTIONS[self.type_ as usize];
 				let exit_code = (128 + self.type_) as u32;
 
