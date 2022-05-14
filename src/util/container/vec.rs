@@ -300,8 +300,10 @@ impl<T> Vec<T> {
 
 	/// Clears the vector, removing all values.
 	pub fn clear(&mut self) {
-		for e in self.into_iter() {
-			drop(e);
+		for e in self.as_mut_slice() {
+			unsafe {
+				drop_in_place(e);
+			}
 		}
 
 		self.len = 0;

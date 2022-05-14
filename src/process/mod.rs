@@ -213,7 +213,7 @@ pub struct Process {
 	/// The current working directory.
 	cwd: Path,
 	/// The list of open file descriptors with their respective ID.
-	file_descriptors: SharedPtr<Vec<FileDescriptor>>,
+	file_descriptors: Option<SharedPtr<Vec<FileDescriptor>>>,
 
 	/// A bitfield storing the set of blocked signals.
 	sigmask: Bitfield,
@@ -458,7 +458,7 @@ impl Process {
 			kernel_stack: None,
 
 			cwd: Path::root(),
-			file_descriptors: SharedPtr::new(Vec::new())?,
+			file_descriptors: Some(SharedPtr::new(Vec::new())?),
 
 			sigmask: Bitfield::new(signal::SIGNALS_COUNT)?,
 			sigpending: Bitfield::new(signal::SIGNALS_COUNT)?,
@@ -906,7 +906,7 @@ impl Process {
 	/// `target` is the target of the newly created file descriptor.
 	/// If the target is a file and cannot be open, the function returns an Err.
 	pub fn create_fd(&mut self, flags: i32, target: FDTarget) -> Result<FileDescriptor, Errno> {
-		let mut file_descriptors_guard = self.file_descriptors.lock();
+		let mut file_descriptors_guard = self.file_descriptors.as_ref().unwrap().lock();
 		let file_descriptors = file_descriptors_guard.get_mut();
 
 		let id = Self::get_available_fd(file_descriptors, None)?;
@@ -930,7 +930,7 @@ impl Process {
 	/// The function returns a pointer to the file descriptor with its ID.
 	pub fn duplicate_fd(&mut self, id: u32, constraint: NewFDConstraint, cloexec: bool)
 		-> Result<FileDescriptor, Errno> {
-		let mut file_descriptors_guard = self.file_descriptors.lock();
+		let mut file_descriptors_guard = self.file_descriptors.as_ref().unwrap().lock();
 		let file_descriptors = file_descriptors_guard.get_mut();
 
 		// The ID of the new FD
@@ -978,7 +978,7 @@ impl Process {
 		let mut new_fds = vec![];
 
 		{
-			let fds_guard = self.file_descriptors.lock();
+			let fds_guard = self.file_descriptors.as_ref().unwrap().lock();
 			let fds = fds_guard.get();
 
 			for fd in fds {
@@ -988,7 +988,7 @@ impl Process {
 			}
 		}
 
-		self.file_descriptors = SharedPtr::new(new_fds)?;
+		self.file_descriptors = Some(SharedPtr::new(new_fds)?);
 		Ok(())
 	}
 
@@ -1003,7 +1003,7 @@ impl Process {
 	/// Returns the file descriptor with ID `id`.
 	/// If the file descriptor doesn't exist, the function returns None.
 	pub fn get_fd(&self, id: u32) -> Option<FileDescriptor> {
-		let file_descriptors_guard = self.file_descriptors.lock();
+		let file_descriptors_guard = self.file_descriptors.as_ref().unwrap().lock();
 		let file_descriptors = file_descriptors_guard.get();
 
 		Self::get_fd_(file_descriptors, id)
@@ -1012,7 +1012,7 @@ impl Process {
 	/// Closes the file descriptor with the ID `id`. The function returns an Err if the file
 	/// descriptor doesn't exist.
 	pub fn close_fd(&mut self, id: u32) -> Result<(), Errno> {
-		let mut file_descriptors_guard = self.file_descriptors.lock();
+		let mut file_descriptors_guard = self.file_descriptors.as_ref().unwrap().lock();
 		let file_descriptors = file_descriptors_guard.get_mut();
 
 		let result = file_descriptors.binary_search_by(| fd | fd.get_id().cmp(&id));
@@ -1087,14 +1087,15 @@ impl Process {
 		let file_descriptors = if fork_options.share_fd {
 			self.file_descriptors.clone()
 		} else {
-			let curr_fds_guard = self.file_descriptors.lock();
+			let curr_fds_guard = self.file_descriptors.as_ref().unwrap().lock();
 			let curr_fds = curr_fds_guard.get();
 
 			let mut fds = Vec::with_capacity(curr_fds.len())?;
 			for fd in curr_fds.iter() {
 				fds.push(fd.clone())?;
 			}
-			SharedPtr::new(fds)?
+
+			Some(SharedPtr::new(fds)?)
 		};
 
 		// Cloning signal handlers
@@ -1360,6 +1361,10 @@ impl Process {
 	pub fn exit(&mut self, status: u32) {
 		self.exit_status = (status & 0xff) as ExitStatus;
 		self.set_state(State::Zombie);
+
+		// TODO Remove memory space?
+		self.file_descriptors = None;
+		// TODO Remove signal handlers
 
 		self.reset_vfork();
 
