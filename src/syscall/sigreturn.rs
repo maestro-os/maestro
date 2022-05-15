@@ -1,11 +1,12 @@
 //! The `sigreturn` system call is used whenever the process finished executing a signal handler.
 //! The system call restores the previous state of the process to allow normal execution.
 
+use crate::errno::Errno;
 use crate::process::Process;
 use crate::process::regs::Regs;
 
 /// The implementation of the `sigreturn` syscall.
-pub fn sigreturn(_regs: &Regs) -> ! {
+pub fn sigreturn(_regs: &Regs) -> Result<i32, Errno> {
 	cli!();
 
 	let mutex = Process::get_current().unwrap();
