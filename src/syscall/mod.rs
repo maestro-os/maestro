@@ -196,6 +196,8 @@ struct Syscall {
 	pub args: &'static [&'static str],
 }
 
+// TODO Fill every arguments
+// TODO Allow string arguments to be printed
 /// The list of syscall names for each IDs.
 const SYSCALLS: &[Syscall] = &[
 	// TODO Syscall { id: 0x000, handler: restart_syscall, name: "restart_syscall", args: &[] },
@@ -288,7 +290,8 @@ const SYSCALLS: &[Syscall] = &[
 	// TODO Syscall { id: 0x057, handler: swapon, name: "swapon", args: &[] },
 	Syscall { id: 0x058, handler: &reboot, name: "reboot", args: &[] },
 	// TODO Syscall { id: 0x059, handler: readdir, name: "readdir", args: &[] },
-	Syscall { id: 0x05a, handler: &mmap, name: "mmap", args: &[] },
+	Syscall { id: 0x05a, handler: &mmap, name: "mmap", args: &["addr", "length", "prot", "flags",
+		"fd", "offset"] },
 	Syscall { id: 0x05b, handler: &munmap, name: "munmap", args: &[] },
 	Syscall { id: 0x05c, handler: &truncate, name: "truncate", args: &[] },
 	// TODO Syscall { id: 0x05d, handler: ftruncate, name: "ftruncate", args: &[] },
@@ -393,7 +396,8 @@ const SYSCALLS: &[Syscall] = &[
 	// TODO Syscall { id: 0x0bd, handler: putpmsg, name: "putpmsg", args: &[] },
 	Syscall { id: 0x0be, handler: &vfork, name: "vfork", args: &[] },
 	// TODO Syscall { id: 0x0bf, handler: ugetrlimit, name: "ugetrlimit", args: &[] },
-	Syscall { id: 0x0c0, handler: &mmap2, name: "mmap2", args: &[] },
+	Syscall { id: 0x0c0, handler: &mmap2, name: "mmap2", args: &["addr", "length", "prot", "flags",
+		"fd", "offset"] },
 	// TODO Syscall { id: 0x0c1, handler: truncate64, name: "truncate64", args: &[] },
 	// TODO Syscall { id: 0x0c2, handler: ftruncate64, name: "ftruncate64", args: &[] },
 	// TODO Syscall { id: 0x0c3, handler: stat64, name: "stat64", args: &[] },
@@ -681,18 +685,44 @@ fn print_strace(regs: &Regs, result: Option<Result<i32, Errno>>) {
 	let id = regs.eax;
 
 	// TODO Optimize (holes in the syscall table)
-	let sys_name = match &SYSCALLS.binary_search_by(| s | s.id.cmp(&id)) {
-		Ok(syscall) => SYSCALLS[*syscall].name,
-		Err(_) => "INVALID",
+	let syscall = match &SYSCALLS.binary_search_by(| s | s.id.cmp(&id)) {
+		Ok(syscall) => &SYSCALLS[*syscall],
+		Err(_) => {
+			println!("invalid syscall (pid: {})", pid);
+			return;
+		},
 	};
 
 	if let Some(result) = result {
 		match result {
-			Ok(val) => println!("strace end (pid: {}): {} -> Ok({})", pid, sys_name, val),
-			Err(errno) => println!("strace end (pid: {}): {} -> Errno({})", pid, sys_name, errno),
+			Ok(val) => println!(" -> Ok(0x{:x})", val as usize),
+			Err(errno) => println!(" -> Errno({})", errno),
 		}
 	} else {
-		println!("strace start: {} (pid: {})", sys_name, pid);
+		print!("strace start (pid: {}): {}(", pid, syscall.name);
+
+		// TODO Make everything print at once (becomes unreadable when several processes are
+		// running)
+		/*for i in 0..syscall.args.len() {
+			let val = match i {
+				0 => regs.ebx,
+				1 => regs.ecx,
+				2 => regs.edx,
+				3 => regs.esi,
+				4 => regs.edi,
+				5 => regs.ebp,
+
+				_ => 0,
+			};
+
+			if i + 1 < syscall.args.len() {
+				print!("{} = 0x{:x}, ", syscall.args[i], val);
+			} else {
+				print!("{} = 0x{:x}", syscall.args[i], val);
+			}
+		}
+
+		println!(")");*/
 	}
 }
 
@@ -703,7 +733,7 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 	let id = regs.eax;
 
 	// TODO Add switch to disable
-	//print_strace(regs, None);
+	print_strace(regs, None);
 
 	// TODO Optimize (holes in the syscall table)
 	let result = match &SYSCALLS.binary_search_by(| s | s.id.cmp(&id)) {
@@ -725,7 +755,7 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 	};
 
 	// TODO Add switch to disable
-	//print_strace(regs, Some(result));
+	print_strace(regs, Some(result));
 
 	// Setting the return value
 	let retval = {
