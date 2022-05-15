@@ -8,6 +8,7 @@ use crate::memory;
 use crate::process::Process;
 use crate::process::mem_space;
 use crate::process::regs::Regs;
+use crate::syscall::mmap::mem_space::MapConstraint;
 use crate::util;
 
 /// Data can be read.
@@ -62,9 +63,9 @@ pub fn do_mmap(addr: *mut c_void, length: usize, prot: i32, flags: i32, fd: i32,
 		if !addr.is_null()
 			&& (addr as usize) < (memory::PROCESS_END as usize)
 			&& end <= (memory::PROCESS_END as usize) {
-			Some(addr as *const c_void)
+			MapConstraint::Hint(addr as *const c_void)
 		} else {
-			None
+			MapConstraint::None
 		}
 	};
 
@@ -98,11 +99,18 @@ pub fn do_mmap(addr: *mut c_void, length: usize, prot: i32, flags: i32, fd: i32,
 	// The process's memory space
 	let mem_space = proc.get_mem_space().unwrap();
 	let mut mem_space_guard = mem_space.lock();
+	let mem_space = mem_space_guard.get_mut();
 
-	// FIXME Passing the hint as an exact location
 	// The pointer on the virtual memory to the beginning of the mapping
-	let ptr = mem_space_guard.get_mut().map(addr_hint, pages, get_flags(flags, prot), file,
-		offset)?;
+	let ptr = match mem_space.map(addr_hint, pages, get_flags(flags, prot), file.clone(), offset) {
+		Ok(ptr) => ptr,
+
+		Err(_) if addr_hint != MapConstraint::None => {
+			mem_space.map(MapConstraint::None, pages, get_flags(flags, prot), file, offset)?
+		},
+
+		Err(e) => return Err(e),
+	};
 	Ok(ptr as _)
 }
 

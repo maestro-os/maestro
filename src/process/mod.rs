@@ -836,8 +836,8 @@ impl Process {
 	pub fn init_dummy(&mut self, pc: *const c_void) -> Result<(), Errno> {
 		// Creating the memory space and the stacks
 		let mut mem_space = MemSpace::new()?;
-		let kernel_stack = mem_space.map_stack(None, KERNEL_STACK_SIZE, KERNEL_STACK_FLAGS)?;
-		let user_stack = mem_space.map_stack(None, USER_STACK_SIZE, USER_STACK_FLAGS)?;
+		let kernel_stack = mem_space.map_stack(KERNEL_STACK_SIZE, KERNEL_STACK_FLAGS)?;
+		let user_stack = mem_space.map_stack(USER_STACK_SIZE, USER_STACK_FLAGS)?;
 
 		self.mem_space = Some(IntSharedPtr::new(mem_space)?);
 		self.kernel_stack = Some(kernel_stack);
@@ -1075,7 +1075,7 @@ impl Process {
 			if fork_options.share_memory || fork_options.vfork {
 				// Allocating a kernel stack for the new process
 				let new_kernel_stack = curr_mem_space.lock().get_mut()
-					.map_stack(None, KERNEL_STACK_SIZE, KERNEL_STACK_FLAGS)?;
+					.map_stack(KERNEL_STACK_SIZE, KERNEL_STACK_FLAGS)?;
 
 				(curr_mem_space.clone(), Some(new_kernel_stack as _))
 			} else {

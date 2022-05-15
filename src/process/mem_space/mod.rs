@@ -54,6 +54,21 @@ const TMP_STACK_SIZE: usize = memory::PAGE_SIZE * 8;
 /// The physical pages reference counter.
 pub static mut PHYSICAL_REF_COUNTER: Mutex<PhysRefCounter> = Mutex::new(PhysRefCounter::new());
 
+/// Enumeration of constraints for memory mapping.
+#[derive(Clone, Copy, PartialEq)]
+pub enum MapConstraint {
+	/// The mapping is done at a fixed address. Previous allocations at the same place are
+	/// unmapped.
+	Fixed(*const c_void),
+
+	/// The mapping is done at a fixed address. If the address range is already in use, the
+	/// allocation fails.
+	Hint(*const c_void),
+
+	/// No constraint.
+	None,
+}
+
 /// Structure representing the virtual memory space of a context.
 pub struct MemSpace {
 	/// Binary tree storing the list of memory gaps, ready for new mappings. Sorted by pointer to
@@ -173,9 +188,7 @@ impl MemSpace {
 	}
 
 	/// Maps a chunk of memory.
-	/// `ptr` represents the address of the beginning of the mapping on the virtual memory.
-	/// If the address is None, the function shall find a gap in the memory space that is large
-	/// enough to contain the mapping.
+	/// `map_constraint` is the constraint to fullfill for the allocation.
 	/// `size` represents the size of the mapping in number of memory pages.
 	/// `flags` represents the flags for the mapping.
 	/// `file` is the open file to map to.
@@ -185,35 +198,54 @@ impl MemSpace {
 	/// The function returns a pointer to the newly mapped virtual memory.
 	/// The function has complexity `O(log n)`.
 	/// If the given pointer is not page-aligned, the function returns an error.
-	pub fn map(&mut self, ptr: Option<*const c_void>, size: usize, flags: u8,
+	pub fn map(&mut self, map_constraint: MapConstraint, size: usize, flags: u8,
 		file: Option<SharedPtr<OpenFile>>, file_off: u64) -> Result<*mut c_void, Errno> {
 		// Checking arguments are valid
-		if let Some(ptr) = ptr {
-			if !util::is_aligned(ptr, memory::PAGE_SIZE) {
-				return Err(errno!(EINVAL));
-			}
+		match map_constraint {
+			MapConstraint::Fixed(ptr) | MapConstraint::Hint(ptr) => {
+				if !util::is_aligned(ptr, memory::PAGE_SIZE) {
+					return Err(errno!(EINVAL));
+				}
+			},
+
+			_ => {},
 		}
 		if size == 0 {
 			return Err(errno!(EINVAL));
 		}
 
 		// The gap to use and the offset in said gap
-		let (gap, off) = {
-			if let Some(ptr) = ptr {
-				// Unmapping memory previously mapped at this location
-				self.unmap(ptr, size)?; // FIXME Must be undone on fail
+		let (gap, off) = match map_constraint {
+			MapConstraint::Fixed(ptr) => {
+				// Unmapping previous allocations
+				self.unmap(ptr, size)?; // TODO Must be undone on fail
 
 				// Getting the gap for the pointer
 				let gap = Self::gap_by_ptr(&self.gaps, ptr).ok_or_else(|| errno!(ENOMEM))?;
 
 				// The offset in the gap
-				let off = (gap.get_begin() as usize - ptr as usize) / memory::PAGE_SIZE;
-				if size > gap.get_size() - off {
+				let off = (ptr as usize - gap.get_begin() as usize) / memory::PAGE_SIZE;
+				if off + size > gap.get_size() {
 					return Err(errno!(ENOMEM));
 				}
 
 				(gap, off)
-			} else {
+			},
+
+			MapConstraint::Hint(ptr) => {
+				// Getting the gap for the pointer
+				let gap = Self::gap_by_ptr(&self.gaps, ptr).ok_or_else(|| errno!(ENOMEM))?;
+
+				// The offset in the gap
+				let off = (ptr as usize - gap.get_begin() as usize) / memory::PAGE_SIZE;
+				if off + size > gap.get_size() {
+					return Err(errno!(ENOMEM));
+				}
+
+				(gap, off)
+			},
+
+			MapConstraint::None => {
 				// Getting a gap large enough
 				let gap = Self::gap_get(&self.gaps, &self.gaps_size, size)
 					.ok_or_else(|| errno!(ENOMEM))?;
@@ -227,7 +259,6 @@ impl MemSpace {
 		// Creating the mapping
 		let mapping = MemMapping::new(addr, size, flags, file, file_off,
 			NonNull::new(self.vmem.as_mut_ptr()).unwrap());
-		debug_assert!(ptr.is_none() || addr == ptr.unwrap() as _);
 
 		let m = self.mappings.insert(addr, mapping)?;
 
@@ -256,9 +287,9 @@ impl MemSpace {
 	}
 
 	/// Same as `map`, except the function returns a pointer to the end of the memory mapping.
-	pub fn map_stack(&mut self, ptr: Option<*const c_void>, size: usize, flags: u8)
+	pub fn map_stack(&mut self, size: usize, flags: u8)
 		-> Result<*mut c_void, Errno> {
-		let mapping_ptr = self.map(ptr, size, flags, None, 0)?;
+		let mapping_ptr = self.map(MapConstraint::None, size, flags, None, 0)?;
 		Ok(unsafe { // Safe because the new pointer stays in the range of the allocated mapping
 			mapping_ptr.add(size * memory::PAGE_SIZE)
 		})
@@ -659,7 +690,7 @@ impl MemSpace {
 			let begin = util::align(self.brk_ptr, memory::PAGE_SIZE);
 			let pages = math::ceil_division(ptr as usize - begin as usize, memory::PAGE_SIZE);
 			let flags = MAPPING_FLAG_WRITE | MAPPING_FLAG_USER;
-			self.map(Some(begin), pages, flags, None, 0)?;
+			self.map(MapConstraint::Fixed(begin), pages, flags, None, 0)?;
 		} else {
 			// Free memory
 

@@ -24,6 +24,7 @@ use crate::memory;
 use crate::process::exec::ExecInfo;
 use crate::process::exec::Executor;
 use crate::process::exec::ProgramImage;
+use crate::process::mem_space::MapConstraint;
 use crate::process::mem_space::MemSpace;
 use crate::process;
 use crate::util::IO;
@@ -350,7 +351,8 @@ impl<'a> ELFExecutor<'a> {
 		let pages = math::ceil_division(pad + seg.p_memsz as usize, memory::PAGE_SIZE);
 
 		if pages > 0 {
-			mem_space.map(Some(mem_begin as _), pages, seg.get_mem_space_flags(), None, 0)?;
+			mem_space.map(MapConstraint::Fixed(mem_begin as _), pages, seg.get_mem_space_flags(),
+				None, 0)?;
 
 			// TODO Lazy allocation
 			// Pre-allocating the pages to make them writable
@@ -519,8 +521,7 @@ impl<'a> Executor<'a> for ELFExecutor<'a> {
 		let load_info = self.load_elf(&parser, &mut mem_space, null::<u8>(), false)?;
 
 		// The user stack
-		let user_stack = mem_space.map_stack(None, process::USER_STACK_SIZE,
-			process::USER_STACK_FLAGS)?;
+		let user_stack = mem_space.map_stack(process::USER_STACK_SIZE, process::USER_STACK_FLAGS)?;
 
 		// The auxilary vector
 		let aux = AuxEntry::fill_auxilary(&self.info, &load_info, &parser)?;
@@ -554,7 +555,7 @@ impl<'a> Executor<'a> for ELFExecutor<'a> {
 		});
 
 		// The kernel stack
-		let kernel_stack = mem_space.map_stack(None, process::KERNEL_STACK_SIZE,
+		let kernel_stack = mem_space.map_stack(process::KERNEL_STACK_SIZE,
 			process::KERNEL_STACK_FLAGS)?;
 
 		Ok(ProgramImage {
