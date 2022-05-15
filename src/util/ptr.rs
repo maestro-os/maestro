@@ -39,7 +39,7 @@ impl RefCounter {
 /// wrapped by the shared pointer is dropped at the moment the counter reaches `0`.
 struct SharedPtrInner<T: ?Sized, const INT: bool> {
 	/// The reference counter.
-	ref_counter: Mutex<RefCounter, true>,
+	ref_counter: Mutex<RefCounter, INT>,
 
 	/// The resource pointed to by the shared pointer.
 	obj: Mutex<T, INT>,
