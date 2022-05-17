@@ -11,8 +11,9 @@ mod physical_ref_counter;
 pub mod ptr;
 
 use core::cmp::Ordering;
-use core::cmp::{min, max};
+use core::cmp::min;
 use core::ffi::c_void;
+use core::fmt;
 use core::mem::size_of;
 use core::ptr::NonNull;
 use core::ptr::null;
@@ -214,25 +215,18 @@ impl MemSpace {
 			return Err(errno!(EINVAL));
 		}
 
-		// The gap to use and the offset in said gap
-		let (gap, off) = match map_constraint {
+		match map_constraint {
 			MapConstraint::Fixed(ptr) => {
 				// Unmapping previous allocations
-				self.unmap(ptr, size)?; // TODO Must be undone on fail
-
-				// Getting the gap for the pointer
-				let gap = Self::gap_by_ptr(&self.gaps, ptr).ok_or_else(|| errno!(ENOMEM))?;
-
-				// The offset in the gap
-				let off = (ptr as usize - gap.get_begin() as usize) / memory::PAGE_SIZE;
-				if off + size > gap.get_size() {
-					return Err(errno!(ENOMEM));
-				}
-
-				(gap, off)
+				self.unmap(ptr, size, false)?; // TODO Must be undone on fail
 			},
 
-			MapConstraint::Hint(ptr) => {
+			_ => {},
+		}
+
+		// The gap to use and the offset in said gap
+		let (gap, off) = match map_constraint {
+			MapConstraint::Fixed(ptr) | MapConstraint::Hint(ptr) => {
 				// Getting the gap for the pointer
 				let gap = Self::gap_by_ptr(&self.gaps, ptr).ok_or_else(|| errno!(ENOMEM))?;
 
@@ -263,9 +257,9 @@ impl MemSpace {
 		let m = self.mappings.insert(addr, mapping)?;
 
 		// Mapping the default page
-		if m.map_default().is_err() {
+		if let Err(e) = m.map_default() {
 			self.mappings.remove(addr);
-			return Err(errno!(ENOMEM));
+			return Err(e);
 		}
 
 		// Splitting the old gap to fit the mapping
@@ -283,6 +277,8 @@ impl MemSpace {
 			oom::wrap(|| self.gap_insert(new_gap.clone()));
 		}
 
+		//crate::println!("map: {} {:p} {}", self, addr, size); // TODO rm
+
 		Ok(addr)
 	}
 
@@ -290,6 +286,7 @@ impl MemSpace {
 	pub fn map_stack(&mut self, size: usize, flags: u8)
 		-> Result<*mut c_void, Errno> {
 		let mapping_ptr = self.map(MapConstraint::None, size, flags, None, 0)?;
+
 		Ok(unsafe { // Safe because the new pointer stays in the range of the allocated mapping
 			mapping_ptr.add(size * memory::PAGE_SIZE)
 		})
@@ -301,7 +298,8 @@ impl MemSpace {
 		let ptr = unsafe {
 			ptr.sub(size * memory::PAGE_SIZE)
 		};
-		self.unmap(ptr, size)
+
+		self.unmap(ptr, size, false)
 	}
 
 	/// Returns a reference to the memory mapping containing the given virtual address `ptr` from
@@ -348,71 +346,24 @@ impl MemSpace {
 		Self::get_mapping_mut_for_(&mut self.mappings, ptr)
 	}
 
-	/// Creates the gap to unmap a chunk of memory.
-	/// `ptr` represents the address of the beginning of the chunk to unmap.
-	/// `size` represents the size of the mapping in number of memory pages.
-	fn create_unmap_gap(&self, ptr: *const c_void, size: usize) -> MemGap {
-		// The pointer to the beginning of the chunk to be unmapped
-		let mut gap_begin = util::down_align(ptr, memory::PAGE_SIZE);
-		// The gap's size in bytes
-		let gap_size = size * memory::PAGE_SIZE;
-		// The size of the new gap
-		let mut gap_end = unsafe {
-			gap_begin.add(size * memory::PAGE_SIZE)
-		};
-
-		// The previous gap, located before the gap being created
-		let prev_gap = Self::gap_by_ptr(&self.gaps, unsafe {
-			gap_begin.sub(1)
-		});
-		// The next gap, located after the gap being created
-		let next_gap = Self::gap_by_ptr(&self.gaps, unsafe {
-			gap_begin.add(gap_size)
-		});
-
-		// Expanding to absorb the previous gap
-		if let Some(prev_gap) = prev_gap {
-			// The gap's size in bytes
-			let size = prev_gap.get_size() * memory::PAGE_SIZE;
-
-			gap_begin = min(gap_begin, prev_gap.get_begin());
-			gap_end = max(gap_end, unsafe {
-				prev_gap.get_begin().add(size)
-			});
-		}
-
-		// Expanding to absorb the next gap
-		if let Some(next_gap) = next_gap {
-			// The gap's size in bytes
-			let size = next_gap.get_size() * memory::PAGE_SIZE;
-
-			gap_begin = min(gap_begin, next_gap.get_begin());
-			gap_end = max(gap_end, unsafe {
-				next_gap.get_begin().add(size)
-			});
-		}
-
-		MemGap::new(gap_begin, (gap_end as usize - gap_begin as usize) / memory::PAGE_SIZE)
-	}
-
-	// TODO Optimize (currently O(n log n), can be reduced to O(log n) by avoiding to make a new
-	// binary tree search at each iterations)
+	// TODO Optimize (currently O(n log n))
 	/// Unmaps the given mapping of memory.
-	/// `ptr` represents the address of the beginning of the chunk to unmap.
+	/// `ptr` represents the aligned address of the beginning of the chunk to unmap.
 	/// `size` represents the size of the mapping in number of memory pages.
+	/// `brk` tells whether the function is called through the `brk` syscall.
 	/// The function frees the physical memory the mapping points to unless shared by one or
 	/// several other memory mappings.
 	/// After this function returns, the access to the mapping of memory shall be revoked and
 	/// further attempts to access it shall result in a page fault.
-	/// If `ptr` is not aligned, the behaviour is undefined.
-	pub fn unmap(&mut self, ptr: *const c_void, size: usize) -> Result<(), Errno> {
-		debug_assert!(util::is_aligned(ptr, memory::PAGE_SIZE));
-
+	pub fn unmap(&mut self, ptr: *const c_void, size: usize, brk: bool) -> Result<(), Errno> {
+		if !util::is_aligned(ptr, memory::PAGE_SIZE) {
+			return Err(errno!(EINVAL));
+		}
 		if size == 0 {
 			return Ok(());
 		}
 
-		// Removing every regions in the chunk to unmap
+		// Removing every mappings in the chunk to unmap
 		let mut i = 0;
 		while i < size {
 			// The pointer of the page
@@ -420,19 +371,21 @@ impl MemSpace {
 
 			// The mapping containing the page
 			if let Some(mapping) = Self::get_mapping_mut_for_(&mut self.mappings, page_ptr) {
+				// The pointer to the beginning of the mapping
+				let mapping_ptr = mapping.get_begin();
+
 				// The offset in the mapping of the beginning of pages to unmap
-				let begin = (page_ptr as usize - mapping.get_begin() as usize)
+				let begin = (page_ptr as usize - mapping_ptr as usize)
 					/ memory::PAGE_SIZE;
 				// The number of pages to unmap in the mapping
 				let pages = min(size - i, mapping.get_size() - begin);
 
-				// The pointer to the beginning of the mapping
-				let mapping_begin_ptr = mapping.get_begin();
-				// The mapping
-				let mapping = self.mappings.remove(mapping_begin_ptr).unwrap();
+				// Removing the mapping
+				let mapping = self.mappings.remove(mapping_ptr).unwrap();
 
-				// Newly created mappings after removing parts of the previous one
-				let (prev, next) = mapping.partial_unmap(begin, pages);
+				// Newly created mappings and gap after removing parts of the previous one
+				let (prev, gap, next) = mapping.partial_unmap(begin, pages);
+
 				if let Some(mut p) = prev {
 					// TODO Clean (the set_unmap_on_drop is used to avoid double unmapping because
 					// of the call to drop if the insertion fails)
@@ -446,6 +399,37 @@ impl MemSpace {
 						Ok(())
 					});
 				}
+
+				if !brk {
+					// Inserting gap
+					if let Some(mut gap) = gap {
+						// Merging previous gap
+						if !gap.get_begin().is_null() {
+							let prev_gap = Self::gap_by_ptr(&self.gaps, unsafe {
+								gap.get_begin().sub(1)
+							});
+
+							if let Some(p) = prev_gap {
+								let begin = p.get_begin();
+								let p = self.gap_remove(begin).unwrap();
+
+								gap.merge(p);
+							}
+						}
+
+						// Merging next gap
+						let next_gap = Self::gap_by_ptr(&self.gaps, gap.get_end());
+						if let Some(n) = next_gap {
+							let begin = n.get_begin();
+							let n = self.gap_remove(begin).unwrap();
+
+							gap.merge(n);
+						}
+
+						oom::wrap(|| self.gap_insert(gap.clone()));
+					}
+				}
+
 				if let Some(mut n) = next {
 					// TODO Clean (the set_unmap_on_drop is used to avoid double unmapping because
 					// of the call to drop if the insertion fails)
@@ -466,37 +450,16 @@ impl MemSpace {
 			}
 		}
 
-		// Removing gaps already present in the chunk to unmap
-		let mut i = 0;
-		while i < size {
-			// The current pointer
-			let begin = unsafe {
-				ptr.add(i * memory::PAGE_SIZE)
-			};
-
-			// If a gap is located at the pointer `begin`, remove it
-			if let Some(g) = self.gap_remove(begin) {
-				i += g.get_size();
-			} else {
-				i += 1;
-			}
-		}
-
-		// The new gap covering the unmapped chunk
-		oom::wrap(|| {
-			let gap = self.create_unmap_gap(ptr, size);
-			self.gap_insert(gap)
-		});
-
 		// Unmapping the chunk from virtual memory
 		let vmem = self.get_vmem();
-		oom::wrap(|| {
-			vmem.unmap_range(ptr, size)
-		});
+		oom::wrap(|| vmem.unmap_range(ptr, size));
+
+		//crate::println!("unmap: {:p} {} {}: {}", ptr, size, brk, self); // TODO rm
 
 		Ok(())
 	}
 
+	// TODO Optimize (use MMU)
 	/// Tells whether the given mapping of memory `ptr` of size `size` in bytes can be accessed.
 	/// `user` tells whether the memory must be accessible from userspace or just kernelspace.
 	/// `write` tells whether to check for write permission.
@@ -527,6 +490,7 @@ impl MemSpace {
 		true
 	}
 
+	// TODO Optimize (use MMU)
 	/// Tells whether the given zero-terminated string beginning at `ptr` can be accessed.
 	/// `user` tells whether the memory must be accessible from userspace or just kernelspace.
 	/// `write` tells whether to check for write permission.
@@ -690,6 +654,7 @@ impl MemSpace {
 			let begin = util::align(self.brk_ptr, memory::PAGE_SIZE);
 			let pages = math::ceil_division(ptr as usize - begin as usize, memory::PAGE_SIZE);
 			let flags = MAPPING_FLAG_WRITE | MAPPING_FLAG_USER;
+
 			self.map(MapConstraint::Fixed(begin), pages, flags, None, 0)?;
 		} else {
 			// Free memory
@@ -701,7 +666,8 @@ impl MemSpace {
 
 			let begin = util::align(ptr, memory::PAGE_SIZE);
 			let pages = math::ceil_division(begin as usize - ptr as usize, memory::PAGE_SIZE);
-			self.unmap(begin, pages)?;
+
+			self.unmap(begin, pages, true)?;
 		}
 
 		self.brk_ptr = ptr;
@@ -733,5 +699,21 @@ impl MemSpace {
 		} else {
 			false
 		}
+	}
+}
+
+impl fmt::Display for MemSpace {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		write!(f, "Mappings:\n")?;
+		for (_, m) in self.mappings.iter() {
+			write!(f, "- {}\n", m)?;
+		}
+
+		write!(f, "\nGaps:\n")?;
+		for (_, g) in self.gaps.iter() {
+			write!(f, "- {}\n", g)?;
+		}
+
+		Ok(())
 	}
 }

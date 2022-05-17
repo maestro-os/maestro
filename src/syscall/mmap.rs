@@ -102,7 +102,8 @@ pub fn do_mmap(addr: *mut c_void, length: usize, prot: i32, flags: i32, fd: i32,
 	let mem_space = mem_space_guard.get_mut();
 
 	// The pointer on the virtual memory to the beginning of the mapping
-	let ptr = match mem_space.map(addr_hint, pages, get_flags(flags, prot), file.clone(), offset) {
+	let result = mem_space.map(addr_hint, pages, get_flags(flags, prot), file.clone(), offset);
+	let ptr = match result {
 		Ok(ptr) => ptr,
 
 		Err(_) if addr_hint != MapConstraint::None => {

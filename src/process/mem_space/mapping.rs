@@ -2,6 +2,7 @@
 //! at the process's creation or by the process itself using system calls.
 
 use core::ffi::c_void;
+use core::fmt;
 use core::ptr::NonNull;
 use core::ptr;
 use crate::errno::Errno;
@@ -17,6 +18,7 @@ use crate::util::lock::*;
 use crate::util::ptr::SharedPtr;
 use crate::util;
 use super::MemSpace;
+use super::gap::MemGap;
 
 /// A pointer to the default physical page of memory. This page is meant to be mapped in read-only
 /// and is a placeholder for pages that are accessed without being allocated nor written.
@@ -318,19 +320,33 @@ impl MemMapping {
 		Ok(())
 	}
 
-	/// Partially unmaps the current mapping, creating up to two new mappings.
+	/// Partially unmaps the current mapping, creating up to two new mappings and one gap.
 	/// `begin` is the index of the first page to be unmapped.
 	/// `size` is the number of pages to unmap.
 	/// If the region to be unmapped is out of bounds, it is truncated to the end of the mapping.
 	/// The newly created mappings correspond to the remaining pages.
+	/// The newly created gap is in place of the unmapped portion.
 	/// If the mapping is totaly unmapped, the function returns no new mappings.
 	/// The function doesn't flush the virtual memory context.
-	pub fn partial_unmap(mut self, begin: usize, size: usize) -> (Option<Self>, Option<Self>) {
+	pub fn partial_unmap(mut self, begin: usize, size: usize)
+		-> (Option<Self>, Option<MemGap>, Option<Self>) {
 		// The mapping located before the gap to be created
 		let prev = {
 			if begin > 0 {
-				Some(Self::new(self.get_begin(), begin, self.flags, self.file.clone(), self.off,
+				Some(Self::new(self.begin, begin, self.flags, self.file.clone(), self.off,
 					self.vmem))
+			} else {
+				None
+			}
+		};
+
+		let gap = {
+			if size > 0 {
+				let gap_begin = unsafe {
+					self.begin.add(begin * memory::PAGE_SIZE)
+				};
+
+				Some(MemGap::new(gap_begin, size))
 			} else {
 				None
 			}
@@ -340,9 +356,9 @@ impl MemMapping {
 		let next = {
 			let end = begin + size;
 
-			if end < self.get_size() {
+			if end < self.size {
 				let gap_begin = unsafe {
-					self.get_begin().add(end * memory::PAGE_SIZE)
+					self.begin.add(end * memory::PAGE_SIZE)
 				};
 				let gap_size = self.size - end;
 
@@ -357,9 +373,8 @@ impl MemMapping {
 		for i in begin..(begin + size) {
 			self.free_phys_page(i);
 		}
-		self.size = 0;
 
-		(prev, next)
+		(prev, gap, next)
 	}
 
 	/// Updates the virtual memory context according to the mapping for the page at offset
@@ -449,12 +464,25 @@ impl MemMapping {
 	}
 }
 
+impl fmt::Display for MemMapping {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		let end = unsafe {
+			self.begin.add(self.size * memory::PAGE_SIZE)
+		};
+
+		write!(f, "begin: {:p}; end: {:p}; flags: {}; file: {}; off: {}",
+			self.begin,
+			end,
+			self.flags,
+			self.file.is_some(),
+			self.off)
+	}
+}
+
 impl Drop for MemMapping {
 	fn drop(&mut self) {
 		if self.unmap_on_drop {
-			oom::wrap(|| {
-				self.unmap()
-			});
+			oom::wrap(|| self.unmap());
 		}
 	}
 }

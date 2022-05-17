@@ -2,12 +2,13 @@
 
 use core::cmp::min;
 use core::ffi::c_void;
+use core::fmt;
 use crate::memory;
 use crate::util::FailableClone;
 use crate::util;
 
 /// A gap in the memory space that can use for new mappings.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct MemGap {
 	/// Pointer on the virtual memory to the beginning of the gap
 	begin: *const c_void,
@@ -33,6 +34,13 @@ impl MemGap {
 	/// Returns a pointer on the virtual memory to the beginning of the gap.
 	pub fn get_begin(&self) -> *const c_void {
 		self.begin
+	}
+
+	/// Returns a pointer on the virtual memory to the end of the gap.
+	pub fn get_end(&self) -> *const c_void {
+		unsafe {
+			self.begin.add(self.size * memory::PAGE_SIZE)
+		}
 	}
 
 	/// Returns the size of the gap in memory pages.
@@ -62,7 +70,7 @@ impl MemGap {
 		let mut right = None;
 		if off + size < self.size {
 			let addr = ((self.begin as usize) + ((off + size) * memory::PAGE_SIZE)) as _;
-			let size = self.size - min(off + size, self.size);
+			let size = self.size - (off + size);
 
 			if size > 0 {
 				right = Some(Self::new(addr, size));
@@ -71,15 +79,27 @@ impl MemGap {
 
 		(left, right)
 	}
-}
 
-impl Clone for MemGap {
-	fn clone(&self) -> Self {
-		Self {
-			begin: self.begin,
-			size: self.size,
+	/// Merges the given gap `gap` with the current gap. If the gaps are not adjacent, the function
+	/// does nothing.
+	pub fn merge(&mut self, gap: Self) {
+		// If `gap` is before
+		if self.get_begin() == gap.get_end() {
+			self.begin = gap.begin;
+			self.size += gap.size;
+		}
+
+		// If `gap` is after
+		if self.get_end() == gap.get_begin() {
+			self.size += gap.size;
 		}
 	}
 }
 
 crate::failable_clone_impl!(MemGap);
+
+impl fmt::Display for MemGap {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		write!(f, "begin: {:p}; end: {:p}", self.begin, self.get_end())
+	}
+}

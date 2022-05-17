@@ -688,7 +688,7 @@ fn print_strace(regs: &Regs, result: Option<Result<i32, Errno>>) {
 	let syscall = match &SYSCALLS.binary_search_by(| s | s.id.cmp(&id)) {
 		Ok(syscall) => &SYSCALLS[*syscall],
 		Err(_) => {
-			println!("invalid syscall (pid: {})", pid);
+			println!("invalid syscall (pid: {}): {:x}", pid, id);
 			return;
 		},
 	};
@@ -733,7 +733,7 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 	let id = regs.eax;
 
 	// TODO Add switch to disable
-	//print_strace(regs, None);
+	print_strace(regs, None);
 
 	// TODO Optimize (holes in the syscall table)
 	let result = match &SYSCALLS.binary_search_by(| s | s.id.cmp(&id)) {
@@ -755,7 +755,7 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 	};
 
 	// TODO Add switch to disable
-	//print_strace(regs, Some(result));
+	print_strace(regs, Some(result));
 
 	// Setting the return value
 	let retval = {
