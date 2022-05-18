@@ -7,10 +7,13 @@
 
 use core::intrinsics::wrapping_add;
 use data::ACPIData;
+use dsdt::Dsdt;
 use fadt::Fadt;
 use madt::Madt;
 
+mod aml;
 mod data;
+mod dsdt;
 mod fadt;
 mod madt;
 mod rsdt;
@@ -106,6 +109,13 @@ pub fn init() {
 		// Setting the century register value
 		unsafe { // Safe because the value is only set once
 			CENTURY_REGISTER = data.get_table::<Fadt>().map_or(false, | fadt | fadt.century != 0);
+		}
+
+		if let Some(dsdt) = data.get_table::<Dsdt>() {
+			let aml = dsdt.get_aml();
+			let _ast = aml::parse(aml);
+
+			// TODO
 		}
 	}
 }

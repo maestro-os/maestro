@@ -202,7 +202,7 @@ impl ACPIData {
 	}
 
 	/// Returns a reference to the ACPI table with type T.
-	pub fn get_table<T: ACPITable>(&self) -> Option<&T> {
+	pub fn get_table<T: ACPITable + ?Sized>(&self) -> Option<&T> {
 		let rsdt_ptr = unsafe {
 			self.data.add(self.rsdt as usize - self.off) as *const Rsdt
 		};
