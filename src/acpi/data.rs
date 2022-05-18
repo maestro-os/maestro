@@ -7,9 +7,9 @@
 use core::ffi::c_void;
 use core::intrinsics::wrapping_add;
 use core::mem::size_of;
-use core::mem::transmute;
+use core::ptr::Pointee;
 use core::ptr::copy_nonoverlapping;
-use core::slice;
+use core::ptr;
 use crate::acpi::ACPITable;
 use crate::acpi::ACPITableHeader;
 use crate::acpi::rsdt::Rsdt;
@@ -34,6 +34,7 @@ fn get_scan_range() -> (*const c_void, *const c_void) {
 /// The Root System Description Pointer (RSDP) is a structure storing a pointer to the other
 /// structures used by ACPI.
 #[repr(C)]
+#[derive(Debug)]
 struct Rsdp {
 	/// The signature of the structure.
 	signature: [u8; 8],
@@ -66,6 +67,7 @@ impl Rsdp {
 /// This structure is the version 2.0 of the RSDP. This structure contains the field from the
 /// previous version, plus some extra fields.
 #[repr(C)]
+#[derive(Debug)]
 struct Rsdp2 {
 	/// The version 1.0 on structure.
 	rsdp: Rsdp,
@@ -97,6 +99,7 @@ unsafe fn find_rsdp() -> Option<&'static mut Rsdp> {
 }
 
 /// Structure containing a copy of the ACPI data read from memory.
+#[derive(Debug)]
 pub struct ACPIData {
 	/// The offset of the data in the physical memory.
 	off: usize,
@@ -203,8 +206,52 @@ impl ACPIData {
 		}))
 	}
 
+	// TODO Minimize duplicate code between get_table_*
+
 	/// Returns a reference to the ACPI table with type T.
-	pub fn get_table<T: ACPITable + ?Sized>(&self) -> Option<&T> {
+	/// The table must be Sized.
+	/// If the table doesn't exist, the function returns None.
+	pub fn get_table_sized<T: ACPITable>(&self) -> Option<&T> {
+		let rsdt_ptr = unsafe {
+			self.data.add(self.rsdt as usize - self.off) as *const Rsdt
+		};
+		let rsdt = unsafe { // Safe because the pointer has been mapped before
+			&*rsdt_ptr
+		};
+
+		crate::println!("{:?}", rsdt);
+
+		let entries_len = rsdt.header.get_length() as usize - size_of::<Rsdt>();
+		let entries_count = entries_len / size_of::<u32>();
+		let entries_ptr = (rsdt_ptr as usize + size_of::<Rsdt>()) as *const u32;
+
+		for i in 0..entries_count {
+			let header_ptr = unsafe {
+				(self.data.add(*entries_ptr.add(i) as usize - self.off) as usize)
+					as *const ACPITableHeader
+			};
+			let header = unsafe {
+				&*header_ptr
+			};
+
+			if *header.get_signature() == T::get_expected_signature() {
+				let table = unsafe {
+					let table_ptr = header_ptr as *const T;
+					&*table_ptr
+				};
+
+				return Some(table);
+			}
+		}
+
+		None
+	}
+
+	/// Returns a reference to the ACPI table with type T.
+	/// The table must be Unsized.
+	/// If the table doesn't exist, the function returns None.
+	pub fn get_table_unsized<T: ACPITable + ?Sized + Pointee<Metadata = usize>>(&self)
+		-> Option<&T> {
 		let rsdt_ptr = unsafe {
 			self.data.add(self.rsdt as usize - self.off) as *const Rsdt
 		};
@@ -226,10 +273,9 @@ impl ACPIData {
 			};
 
 			if *header.get_signature() == T::get_expected_signature() {
+				let len = header.get_length();
 				let table = unsafe {
-					let table_slice = slice::from_raw_parts(header_ptr as *const u8,
-						header.get_length());
-					let table_ptr = transmute::<_, *const T>(table_slice);
+					let table_ptr = ptr::from_raw_parts::<T>(header_ptr as *const (), len);
 					&*table_ptr
 				};
 

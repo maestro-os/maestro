@@ -12,6 +12,7 @@ const PCAT_COMPAT: u32 = 0b1;
 
 /// The Multiple APIC Description Table.
 #[repr(C)]
+#[derive(Debug)]
 pub struct Madt {
 	/// The table's header.
 	pub header: ACPITableHeader,
@@ -48,6 +49,7 @@ impl ACPITable for Madt {
 
 /// Represents an MADT entry header.
 #[repr(C)]
+#[derive(Debug)]
 pub struct EntryHeader {
 	/// The entry type.
 	entry_type: u8,

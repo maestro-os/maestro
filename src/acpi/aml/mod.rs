@@ -7,249 +7,249 @@ use derive::AMLParseable;
 /// TODO doc
 const ZERO_OP: u8 = 0x00;
 /// TODO doc
-const OneOp: u8 = 0x01;
+const ONE_OP: u8 = 0x01;
 /// TODO doc
-const AliasOp: u8 = 0x06;
+const ALIAS_OP: u8 = 0x06;
 /// TODO doc
-const NameOp: u8 = 0x08;
+const NAME_OP: u8 = 0x08;
 /// TODO doc
-const BytePrefix: u8 = 0x0a;
+const BYTE_PREFIX: u8 = 0x0a;
 /// TODO doc
-const WordPrefix: u8 = 0x0b;
+const WORD_PREFIX: u8 = 0x0b;
 /// TODO doc
-const DWordPrefix: u8 = 0x0c;
+const DWORD_PREFIX: u8 = 0x0c;
 /// TODO doc
-const StringPrefix: u8 = 0x0d;
+const STRING_PREFIX: u8 = 0x0d;
 /// TODO doc
-const QWordPrefix: u8 = 0x0e;
+const QWORD_PREFIX: u8 = 0x0e;
 /// TODO doc
-const ScopeOp: u8 = 0x10;
+const SCOPE_OP: u8 = 0x10;
 /// TODO doc
-const BufferOp: u8 = 0x11;
+const BUFFER_OP: u8 = 0x11;
 /// TODO doc
-const PackageOp: u8 = 0x12;
+const PACKAGE_OP: u8 = 0x12;
 /// TODO doc
-const VarPackageOp: u8 = 0x13;
+const VAR_PACKAGE_OP: u8 = 0x13;
 /// TODO doc
-const MethodOp: u8 = 0x14;
+const METHOD_OP: u8 = 0x14;
 /// TODO doc
-const ExternalOp: u8 = 0x15;
+const EXTERNAL_OP: u8 = 0x15;
 /// TODO doc
-const DualNamePrefix: u8 = 0x2e;
+const DUAL_NAME_PREFIX: u8 = 0x2e;
 /// TODO doc
-const MultiNamePrefix: u8 = 0x2f;
+const MULTI_NAME_PREFIX: u8 = 0x2f;
 /// TODO doc
-const DigitChar: Range<u8> = 0x30..0x39;
+const DIGIT_CHAR: Range<u8> = 0x30..0x39;
 /// TODO doc
-const NameChar: Range<u8> = 0x41..0x5a;
+const NAME_CHAR: Range<u8> = 0x41..0x5a;
 /// TODO doc
-const ExtOpPrefix: u8 = 0x5b;
+const EXT_OP_PREFIX: u8 = 0x5b;
 /// TODO doc
-const MutexOp: &[u8] = &[0x5b, 0x01];
+const MUTEX_OP: &[u8] = &[0x5b, 0x01];
 /// TODO doc
-const EventOp: &[u8] = &[0x5b, 0x02];
+const EVENT_OP: &[u8] = &[0x5b, 0x02];
 /// TODO doc
-const CondRefOfOp: &[u8] = &[0x5b, 0x12];
+const COND_REF_OF_OP: &[u8] = &[0x5b, 0x12];
 /// TODO doc
-const CreateFieldOp: &[u8] = &[0x5b, 0x13];
+const CREATE_FIELD_OP: &[u8] = &[0x5b, 0x13];
 /// TODO doc
-const LoadTableOp: &[u8] = &[0x5b, 0x1f];
+const LOAD_TABLE_OP: &[u8] = &[0x5b, 0x1f];
 /// TODO doc
-const LoadOp: &[u8] = &[0x5b, 0x20];
+const LOAD_OP: &[u8] = &[0x5b, 0x20];
 /// TODO doc
-const StallOp: &[u8] = &[0x5b, 0x21];
+const STALL_OP: &[u8] = &[0x5b, 0x21];
 /// TODO doc
-const SleepOp: &[u8] = &[0x5b, 0x22];
+const SLEEP_OP: &[u8] = &[0x5b, 0x22];
 /// TODO doc
-const AcquireOp: &[u8] = &[0x5b, 0x23];
+const ACQUIRE_OP: &[u8] = &[0x5b, 0x23];
 /// TODO doc
-const SignalOp: &[u8] = &[0x5b, 0x24];
+const SIGNAL_OP: &[u8] = &[0x5b, 0x24];
 /// TODO doc
-const WaitOp: &[u8] = &[0x5b, 0x25];
+const WAIT_OP: &[u8] = &[0x5b, 0x25];
 /// TODO doc
-const ResetOp: &[u8] = &[0x5b, 0x26];
+const RESET_OP: &[u8] = &[0x5b, 0x26];
 /// TODO doc
-const ReleaseOp: &[u8] = &[0x5b, 0x27];
+const RELEASE_OP: &[u8] = &[0x5b, 0x27];
 /// TODO doc
-const FromBCDOp: &[u8] = &[0x5b, 0x28];
+const FROM_BCD_OP: &[u8] = &[0x5b, 0x28];
 /// TODO doc
-const ToBCD: &[u8] = &[0x5b, 0x29];
+const TO_BCD: &[u8] = &[0x5b, 0x29];
 /// TODO doc
-const RevisionOp: &[u8] = &[0x5b, 0x30];
+const REVISION_OP: &[u8] = &[0x5b, 0x30];
 /// TODO doc
-const DebugOp: &[u8] = &[0x5b, 0x31];
+const DEBUG_OP: &[u8] = &[0x5b, 0x31];
 /// TODO doc
-const FatalOp: &[u8] = &[0x5b, 0x32];
+const FATAL_OP: &[u8] = &[0x5b, 0x32];
 /// TODO doc
-const TimerOp: &[u8] = &[0x5b, 0x33];
+const TIMER_OP: &[u8] = &[0x5b, 0x33];
 /// TODO doc
-const OpRegionOp: &[u8] = &[0x5b, 0x80];
+const OP_REGION_OP: &[u8] = &[0x5b, 0x80];
 /// TODO doc
-const FieldOp: &[u8] = &[0x5b, 0x81];
+const FIELD_OP: &[u8] = &[0x5b, 0x81];
 /// TODO doc
-const DeviceOp: &[u8] = &[0x5b, 0x82];
+const DEVICE_OP: &[u8] = &[0x5b, 0x82];
 /// TODO doc
-const ProcessorOp: &[u8] = &[0x5b, 0x83];
+const PROCESSOR_OP: &[u8] = &[0x5b, 0x83];
 /// TODO doc
-const PowerResOp: &[u8] = &[0x5b, 0x84];
+const POWER_RES_OP: &[u8] = &[0x5b, 0x84];
 /// TODO doc
-const ThermalZoneOp: &[u8] = &[0x5b, 0x85];
+const THERMAL_ZONE_OP: &[u8] = &[0x5b, 0x85];
 /// TODO doc
-const IndexFieldOp: &[u8] = &[0x5b, 0x86];
+const INDEX_FIELD_OP: &[u8] = &[0x5b, 0x86];
 /// TODO doc
-const BankFieldOp: &[u8] = &[0x5b, 0x87];
+const BANK_FIELD_OP: &[u8] = &[0x5b, 0x87];
 /// TODO doc
-const DataRegionOp: &[u8] = &[0x5b, 0x88];
+const DATA_REGION_OP: &[u8] = &[0x5b, 0x88];
 /// TODO doc
-const RootChar: u8 = 0x5c;
+const ROOT_CHAR: u8 = 0x5c;
 /// TODO doc
-const ParentPrefixChar: u8 = 0x5e;
+const PARENT_PREFIX_CHAR: u8 = 0x5e;
 /// TODO doc
-const NameChar_: u8 = 0x5f;
+const NAME_CHAR_: u8 = 0x5f;
 /// TODO doc
-const Local0Op: u8 = 0x60;
+const LOCAL0_OP: u8 = 0x60;
 /// TODO doc
-const Local1Op: u8 = 0x61;
+const LOCAL1_OP: u8 = 0x61;
 /// TODO doc
-const Local2Op: u8 = 0x62;
+const LOCAL2_OP: u8 = 0x62;
 /// TODO doc
-const Local3Op: u8 = 0x63;
+const LOCAL3_OP: u8 = 0x63;
 /// TODO doc
-const Local4Op: u8 = 0x64;
+const LOCAL4_OP: u8 = 0x64;
 /// TODO doc
-const Local5Op: u8 = 0x65;
+const LOCAL5_OP: u8 = 0x65;
 /// TODO doc
-const Local6Op: u8 = 0x66;
+const LOCAL6_OP: u8 = 0x66;
 /// TODO doc
-const Local7Op: u8 = 0x67;
+const LOCAL7_OP: u8 = 0x67;
 /// TODO doc
-const Arg0Op: u8 = 0x68;
+const ARG0_OP: u8 = 0x68;
 /// TODO doc
-const Arg1Op: u8 = 0x69;
+const ARG1_OP: u8 = 0x69;
 /// TODO doc
-const Arg2Op: u8 = 0x6a;
+const ARG2_OP: u8 = 0x6a;
 /// TODO doc
-const Arg3Op: u8 = 0x6b;
+const ARG3_OP: u8 = 0x6b;
 /// TODO doc
-const Arg4Op: u8 = 0x6c;
+const ARG4_OP: u8 = 0x6c;
 /// TODO doc
-const Arg5Op: u8 = 0x6d;
+const ARG5_OP: u8 = 0x6d;
 /// TODO doc
-const Arg6Op: u8 = 0x6e;
+const ARG6_OP: u8 = 0x6e;
 /// TODO doc
-const StoreOp: u8 = 0x70;
+const STORE_OP: u8 = 0x70;
 /// TODO doc
-const RefOfOp: u8 = 0x71;
+const REF_OF_OP: u8 = 0x71;
 /// TODO doc
-const AddOp: u8 = 0x72;
+const ADD_OP: u8 = 0x72;
 /// TODO doc
-const ConcatOp: u8 = 0x73;
+const CONCAT_OP: u8 = 0x73;
 /// TODO doc
-const SubtractOp: u8 = 0x74;
+const SUBTRACT_OP: u8 = 0x74;
 /// TODO doc
-const IncrementOp: u8 = 0x75;
+const INCREMENT_OP: u8 = 0x75;
 /// TODO doc
-const DecrementOp: u8 = 0x76;
+const DECREMENT_OP: u8 = 0x76;
 /// TODO doc
-const MultiplyOp: u8 = 0x77;
+const MULTIPLY_OP: u8 = 0x77;
 /// TODO doc
-const DivideOp: u8 = 0x78;
+const DIVIDE_OP: u8 = 0x78;
 /// TODO doc
-const ShiftLeftOp: u8 = 0x79;
+const SHIFT_LEFT_OP: u8 = 0x79;
 /// TODO doc
-const ShiftRightOp: u8 = 0x7a;
+const SHIFT_RIGHT_OP: u8 = 0x7a;
 /// TODO doc
-const AndOp: u8 = 0x7b;
+const AND_OP: u8 = 0x7b;
 /// TODO doc
-const NandOp: u8 = 0x7c;
+const NAND_OP: u8 = 0x7c;
 /// TODO doc
-const OrOp: u8 = 0x7d;
+const OR_OP: u8 = 0x7d;
 /// TODO doc
-const NorOp: u8 = 0x7e;
+const NOR_OP: u8 = 0x7e;
 /// TODO doc
-const XorOp: u8 = 0x7f;
+const XOR_OP: u8 = 0x7f;
 /// TODO doc
-const NotOp: u8 = 0x80;
+const NOT_OP: u8 = 0x80;
 /// TODO doc
-const FindSetLeftBitOp: u8 = 0x81;
+const FIND_SET_LEFT_BIT_OP: u8 = 0x81;
 /// TODO doc
-const FindSetRightBitOp: u8 = 0x82;
+const FIND_SET_RIGHT_BIT_OP: u8 = 0x82;
 /// TODO doc
-const DerefOfOp: u8 = 0x83;
+const DEREF_OF_OP: u8 = 0x83;
 /// TODO doc
-const ConcatResOp: u8 = 0x84;
+const CONCAT_RES_OP: u8 = 0x84;
 /// TODO doc
-const ModOp: u8 = 0x85;
+const MOD_OP: u8 = 0x85;
 /// TODO doc
-const NotifyOp: u8 = 0x86;
+const NOTIFY_OP: u8 = 0x86;
 /// TODO doc
-const SizeOfOp: u8 = 0x87;
+const SIZE_OF_OP: u8 = 0x87;
 /// TODO doc
-const IndexOp: u8 = 0x88;
+const INDEX_OP: u8 = 0x88;
 /// TODO doc
-const MatchOp: u8 = 0x89;
+const MATCH_OP: u8 = 0x89;
 /// TODO doc
-const CreateDWordFieldOp: u8 = 0x8a;
+const CREATE_DWORD_FIELD_OP: u8 = 0x8a;
 /// TODO doc
-const CreateWordFieldOp: u8 = 0x8b;
+const CREATE_WORD_FIELD_OP: u8 = 0x8b;
 /// TODO doc
-const CreateByteFieldOp: u8 = 0x8c;
+const CREATE_BYTE_FIELD_OP: u8 = 0x8c;
 /// TODO doc
-const CreateBitFieldOp: u8 = 0x8d;
+const CREATE_BIT_FIELD_OP: u8 = 0x8d;
 /// TODO doc
-const ObjectTypeOp: u8 = 0x8e;
+const OBJECT_TYPE_OP: u8 = 0x8e;
 /// TODO doc
-const CreateQWordFieldOp: u8 = 0x8f;
+const CREATE_QWORD_FIELD_OP: u8 = 0x8f;
 /// TODO doc
-const LandOp: u8 = 0x90;
+const LAND_OP: u8 = 0x90;
 /// TODO doc
-const LorOp: u8 = 0x91;
+const LOR_OP: u8 = 0x91;
 /// TODO doc
-const LnotOp: u8 = 0x92;
+const LNOT_OP: u8 = 0x92;
 /// TODO doc
-const LNotEqualOp: &[u8] = &[0x92, 0x93];
+const LNOT_EQUAL_OP: &[u8] = &[0x92, 0x93];
 /// TODO doc
-const LLessEqualOp: &[u8] = &[0x92, 0x94];
+const LLESS_EQUAL_OP: &[u8] = &[0x92, 0x94];
 /// TODO doc
-const LGreaterEqualOp: &[u8] = &[0x92, 0x95];
+const LGREATER_EQUAL_OP: &[u8] = &[0x92, 0x95];
 /// TODO doc
-const LEqualOp: u8 = 0x93;
+const LEQUAL_OP: u8 = 0x93;
 /// TODO doc
-const LGreaterOp: u8 = 0x94;
+const LGREATER_OP: u8 = 0x94;
 /// TODO doc
-const LLessOp: u8 = 0x95;
+const LLESS_OP: u8 = 0x95;
 /// TODO doc
-const ToBufferOp: u8 = 0x96;
+const TO_BUFFER_OP: u8 = 0x96;
 /// TODO doc
-const ToDecimalStringOp: u8 = 0x97;
+const TO_DECIMAL_STRING_OP: u8 = 0x97;
 /// TODO doc
-const ToHexStringOp: u8 = 0x98;
+const TO_HEX_STRING_OP: u8 = 0x98;
 /// TODO doc
-const ToIntegerOp: u8 = 0x99;
+const TO_INTEGER_OP: u8 = 0x99;
 /// TODO doc
-const ToStringOp: u8 = 0x9c;
+const TO_STRING_OP: u8 = 0x9c;
 /// TODO doc
-const CopyObjectOp: u8 = 0x9d;
+const COPY_OBJECT_OP: u8 = 0x9d;
 /// TODO doc
-const MidOp: u8 = 0x9e;
+const MID_OP: u8 = 0x9e;
 /// TODO doc
-const ContinueOp: u8 = 0x9f;
+const CONTINUE_OP: u8 = 0x9f;
 /// TODO doc
-const IfOp: u8 = 0xa0;
+const IF_OP: u8 = 0xa0;
 /// TODO doc
-const ElseOp: u8 = 0xa1;
+const ELSE_OP: u8 = 0xa1;
 /// TODO doc
-const WhileOp: u8 = 0xa2;
+const WHILE_OP: u8 = 0xa2;
 /// TODO doc
-const NoopOp: u8 = 0xa3;
+const NOOP_OP: u8 = 0xa3;
 /// TODO doc
-const ReturnOp: u8 = 0xa4;
+const RETURN_OP: u8 = 0xa4;
 /// TODO doc
-const BreakOp: u8 = 0xa5;
+const BREAK_OP: u8 = 0xa5;
 /// TODO doc
-const BreakPointOp: u8 = 0xcc;
+const BREAK_POINT_OP: u8 = 0xcc;
 /// TODO doc
-const OnesOp: u8 = 0xff;
+const ONES_OP: u8 = 0xff;
 
 /// Trait representing a parseable object.
 pub trait AMLParseable: Sized {
@@ -259,12 +259,23 @@ pub trait AMLParseable: Sized {
 	fn parse(b: &[u8]) -> Result<(Self, usize), String>;
 }
 
+/// TODO doc
+#[derive(AMLParseable)]
+pub struct DefBlockHeader {
+	// TODO
+}
+
+/// TODO doc
+#[derive(AMLParseable)]
+pub struct TermList {
+	// TODO
+}
+
 /// Base of the AML Abstract Syntax Tree (AST).
 #[derive(AMLParseable)]
 pub struct AMLCode {
-	// TODO
-	/*def_block_header: DefBlockHeader,
-	term_list: TermList,*/
+	def_block_header: DefBlockHeader,
+	term_list: TermList,
 }
 
 /// Parses the given AML code.

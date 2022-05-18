@@ -17,6 +17,7 @@
 #![feature(fundamental)]
 #![feature(lang_items)]
 #![feature(panic_info_message)]
+#![feature(ptr_metadata)]
 #![feature(slice_ptr_get)]
 #![feature(slice_ptr_len)]
 #![feature(stmt_expr_attributes)]

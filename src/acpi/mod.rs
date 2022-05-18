@@ -26,6 +26,7 @@ pub trait ACPITable {
 
 /// An ACPI table header.
 #[repr(C)]
+#[derive(Debug)]
 pub struct ACPITableHeader {
 	/// The signature of the structure.
 	signature: [u8; 4],
@@ -95,7 +96,7 @@ pub fn init() {
 	});
 
 	if let Some(data) = data {
-		if let Some(madt) = data.get_table::<Madt>() {
+		if let Some(madt) = data.get_table_sized::<Madt>() {
 			// Registering CPU cores
 			madt.foreach_entry(| e: &madt::EntryHeader | match e.get_type() {
 				0 => {
@@ -108,10 +109,10 @@ pub fn init() {
 
 		// Setting the century register value
 		unsafe { // Safe because the value is only set once
-			CENTURY_REGISTER = data.get_table::<Fadt>().map_or(false, | fadt | fadt.century != 0);
+			CENTURY_REGISTER = data.get_table_sized::<Fadt>().map_or(false, | fadt | fadt.century != 0);
 		}
 
-		if let Some(dsdt) = data.get_table::<Dsdt>() {
+		if let Some(dsdt) = data.get_table_unsized::<Dsdt>() {
 			let aml = dsdt.get_aml();
 			let _ast = aml::parse(aml);
 

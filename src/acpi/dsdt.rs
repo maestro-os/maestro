@@ -7,6 +7,7 @@ use super::ACPITableHeader;
 
 /// The Differentiated System Description Table.
 #[repr(C)]
+#[derive(Debug)]
 pub struct Dsdt {
 	/// The table's header.
 	pub header: ACPITableHeader,

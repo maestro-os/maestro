@@ -7,6 +7,7 @@ use super::ACPITableHeader;
 
 /// The Root System Description Table.
 #[repr(C)]
+#[derive(Debug)]
 pub struct Rsdt {
 	/// The table's header.
 	pub header: ACPITableHeader,
