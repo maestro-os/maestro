@@ -20,7 +20,7 @@ use crate::memory;
 use crate::util;
 
 /// The signature of the RSDP structure.
-const RSDP_SIGNATURE: &str = "RSD PTR ";
+const RSDP_SIGNATURE: &[u8] = b"RSD PTR ";
 
 /// Returns the scan range in which is located the RSDP signature.
 #[inline(always)]
@@ -51,11 +51,15 @@ struct Rsdp {
 impl Rsdp {
 	/// Checks that the table is valid.
 	pub fn check(&self) -> bool {
+		if self.signature != RSDP_SIGNATURE {
+			return false;
+		}
+
 		let mut sum: u8 = 0;
 
 		for i in 0..size_of::<Self>() {
-			let byte = unsafe { // Safe since every bytes of `s` are readable.
-				*((self as *const Self as *const u8 as usize + i) as *const u8)
+			let byte = unsafe { // Safe since every bytes of `self` are readable.
+				*(self as *const Self as *const u8).add(i)
 			};
 			sum = wrapping_add(sum, byte);
 		}
@@ -84,15 +88,15 @@ struct Rsdp2 {
 
 /// Finds the RSDP and returns a reference to it.
 unsafe fn find_rsdp() -> Option<&'static mut Rsdp> {
-	let (scan_begin, scan_end) = get_scan_range();
-	let mut i = scan_begin;
+	let (begin, end) = get_scan_range();
+	let mut ptr = begin;
 
-	while i < scan_end {
-		if util::memcmp(i, RSDP_SIGNATURE.as_ptr() as _, RSDP_SIGNATURE.len()) == 0 {
-			return Some(&mut *(i as *mut Rsdp));
+	while ptr < end {
+		if util::memcmp(ptr, RSDP_SIGNATURE.as_ptr() as _, RSDP_SIGNATURE.len()) == 0 {
+			return Some(&mut *(ptr as *mut Rsdp));
 		}
 
-		i = i.add(16);
+		ptr = ptr.add(16);
 	}
 
 	None
@@ -107,10 +111,11 @@ pub struct ACPIData {
 	rsdt: *const Rsdt,
 
 	/// The buffer containing the ACPI data.
-	data: *const u8,
+	data: malloc::Alloc::<u8>,
 }
 
 impl ACPIData {
+	// TODO Clean
 	/// Reads the ACPI data from memory and returns a buffer containing it with its offset in
 	/// physical memory.
 	/// If no ACPI data is found, the function returns None.
@@ -127,7 +132,8 @@ impl ACPIData {
 			crate::kernel_panic!("Invalid ACPI pointer!");
 		}
 
-		// Temporary vmem used to read the data.
+		// Temporary vmem used to read the data, since it cannot be located anywhere on the
+		// physical memory.
 		let mut tmp_vmem = vmem::new()?;
 		let rsdt_phys_ptr = rsdp.rsdt_address as *const c_void;
 		let rsdt_map_begin = util::down_align(rsdt_phys_ptr, memory::PAGE_SIZE);
@@ -135,14 +141,14 @@ impl ACPIData {
 		tmp_vmem.map_range(rsdt_map_begin, memory::PAGE_SIZE as _, 2, 0)?;
 
 		tmp_vmem.bind();
-		let (off, ptr) = {
+		let (off, data) = {
 			let rsdt_ptr = (memory::PAGE_SIZE
 				+ (rsdt_phys_ptr as usize - rsdt_map_begin as usize)) as *const Rsdt;
 			let rsdt = unsafe { // Safe because the pointer has been mapped before
 				&*rsdt_ptr
 			};
 
-			if !rsdt.header.check() {
+			if !rsdt.header.check::<Rsdt>() {
 				crate::kernel_panic!("Invalid ACPI structure!");
 			}
 
@@ -186,12 +192,10 @@ impl ACPIData {
 			tmp_vmem.map_range(begin, memory::PAGE_SIZE as _, pages, 0)?;
 
 			let size = pages * memory::PAGE_SIZE;
-			let dest = unsafe {
-				malloc::alloc(size)? as *mut u8
-			};
+			let mut dest = malloc::Alloc::<u8>::new_default(size)?;
 			let src = memory::PAGE_SIZE as *const u8;
 			unsafe {
-				copy_nonoverlapping(src, dest, size);
+				copy_nonoverlapping(src, dest.as_ptr_mut(), size);
 			}
 
 			(begin as usize, dest)
@@ -202,7 +206,7 @@ impl ACPIData {
 			off,
 			rsdt: rsdt_phys_ptr as _,
 
-			data: ptr,
+			data,
 		}))
 	}
 
@@ -213,13 +217,11 @@ impl ACPIData {
 	/// If the table doesn't exist, the function returns None.
 	pub fn get_table_sized<T: ACPITable>(&self) -> Option<&T> {
 		let rsdt_ptr = unsafe {
-			self.data.add(self.rsdt as usize - self.off) as *const Rsdt
+			self.data.as_ptr().add(self.rsdt as usize - self.off) as *const Rsdt
 		};
 		let rsdt = unsafe { // Safe because the pointer has been mapped before
 			&*rsdt_ptr
 		};
-
-		crate::println!("{:?}", rsdt);
 
 		let entries_len = rsdt.header.get_length() as usize - size_of::<Rsdt>();
 		let entries_count = entries_len / size_of::<u32>();
@@ -227,7 +229,7 @@ impl ACPIData {
 
 		for i in 0..entries_count {
 			let header_ptr = unsafe {
-				(self.data.add(*entries_ptr.add(i) as usize - self.off) as usize)
+				(self.data.as_ptr().add(*entries_ptr.add(i) as usize - self.off) as usize)
 					as *const ACPITableHeader
 			};
 			let header = unsafe {
@@ -239,6 +241,9 @@ impl ACPIData {
 					let table_ptr = header_ptr as *const T;
 					&*table_ptr
 				};
+				if !table.get_header().check::<T>() {
+					crate::kernel_panic!("Invalid ACPI structure!");
+				}
 
 				return Some(table);
 			}
@@ -253,7 +258,7 @@ impl ACPIData {
 	pub fn get_table_unsized<T: ACPITable + ?Sized + Pointee<Metadata = usize>>(&self)
 		-> Option<&T> {
 		let rsdt_ptr = unsafe {
-			self.data.add(self.rsdt as usize - self.off) as *const Rsdt
+			self.data.as_ptr().add(self.rsdt as usize - self.off) as *const Rsdt
 		};
 		let rsdt = unsafe { // Safe because the pointer has been mapped before
 			&*rsdt_ptr
@@ -265,7 +270,7 @@ impl ACPIData {
 
 		for i in 0..entries_count {
 			let header_ptr = unsafe {
-				(self.data.add(*entries_ptr.add(i) as usize - self.off) as usize)
+				(self.data.as_ptr().add(*entries_ptr.add(i) as usize - self.off) as usize)
 					as *const ACPITableHeader
 			};
 			let header = unsafe {
@@ -279,18 +284,14 @@ impl ACPIData {
 					&*table_ptr
 				};
 
+				if !table.get_header().check::<T>() {
+					crate::kernel_panic!("Invalid ACPI structure!");
+				}
+
 				return Some(table);
 			}
 		}
 
 		None
-	}
-}
-
-impl Drop for ACPIData {
-	fn drop(&mut self) {
-		unsafe { // Safe because the pointer is valid
-			malloc::free(self.data as _);
-		}
 	}
 }

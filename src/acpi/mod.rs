@@ -6,6 +6,7 @@
 //! RSDT, referring to every other available tables.
 
 use core::intrinsics::wrapping_add;
+use core::mem::size_of;
 use data::ACPIData;
 use dsdt::Dsdt;
 use fadt::Fadt;
@@ -17,12 +18,6 @@ mod dsdt;
 mod fadt;
 mod madt;
 mod rsdt;
-
-/// Trait representing an ACPI table.
-pub trait ACPITable {
-	/// Returns the expected signature for the structure.
-	fn get_expected_signature() -> [u8; 4];
-}
 
 /// An ACPI table header.
 #[repr(C)]
@@ -62,13 +57,21 @@ impl ACPITableHeader {
 	}
 
 	/// Checks that the table is valid.
-	pub fn check(&self) -> bool {
+	pub fn check<T: ACPITable + ?Sized>(&self) -> bool {
+		if self.signature != T::get_expected_signature() {
+			return false;
+		}
+
 		let length = self.get_length();
+		if length < size_of::<Self>() {
+			return false;
+		}
+
 		let mut sum: u8 = 0;
 
 		for i in 0..length {
-			let byte = unsafe { // Safe since every bytes of `s` are readable.
-				*((self as *const Self as *const u8 as usize + i) as *const u8)
+			let byte = unsafe { // Safe since every bytes of `self` are readable.
+				*(self as *const Self as *const u8).add(i)
 			};
 			sum = wrapping_add(sum, byte);
 		}
@@ -77,12 +80,25 @@ impl ACPITableHeader {
 	}
 }
 
+/// Trait representing an ACPI table.
+pub trait ACPITable {
+	/// Returns the expected signature for the structure.
+	fn get_expected_signature() -> [u8; 4];
+
+	/// Returns a reference to the table's header.
+	fn get_header(&self) -> &ACPITableHeader {
+		unsafe {
+			&*(self as *const _ as *const ACPITableHeader)
+		}
+	}
+}
+
 /// Boolean value telling whether the century register of the CMOS exist.
 static mut CENTURY_REGISTER: bool = false;
 
 /// Tells whether the century register of the CMOS is present.
 pub fn is_century_register_present() -> bool {
-	unsafe { // Safe because the value is only set once
+	unsafe { // Safe because the value is only set once at boot
 		CENTURY_REGISTER
 	}
 }
@@ -112,7 +128,12 @@ pub fn init() {
 			CENTURY_REGISTER = data.get_table_sized::<Fadt>().map_or(false, | fadt | fadt.century != 0);
 		}
 
-		if let Some(dsdt) = data.get_table_unsized::<Dsdt>() {
+		// Getting the DSDT
+		let dsdt = data.get_table_unsized::<Dsdt>().or_else(|| {
+			data.get_table_sized::<Fadt>().and_then(| fadt | fadt.get_dsdt())
+		});
+		if let Some(dsdt) = dsdt {
+			// Parsing AML code
 			let aml = dsdt.get_aml();
 			let _ast = aml::parse(aml);
 
