@@ -5,10 +5,3 @@ version = 3
 [[package]]
 name = "derive"
 version = "0.1.0"
-
-[[package]]
-name = "maestro"
-version = "0.1.0"
-dependencies = [
- "derive",
-]

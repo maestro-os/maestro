@@ -9,3 +9,6 @@ edition = "2021"
 name = "kernel"
 path = "src/kernel.rs"
 crate-type = ["dylib", "staticlib"]
+
+[dependencies]
+derive = { path = "derive/" }

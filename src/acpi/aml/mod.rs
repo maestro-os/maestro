@@ -2,6 +2,7 @@
 
 use core::ops::Range;
 use crate::util::container::string::String;
+use derive::AMLParseable;
 
 /// TODO doc
 const ZERO_OP: u8 = 0x00;
@@ -259,6 +260,7 @@ pub trait AMLParseable: Sized {
 }
 
 /// Base of the AML Abstract Syntax Tree (AST).
+#[derive(AMLParseable)]
 pub struct AMLCode {
 	// TODO
 	/*def_block_header: DefBlockHeader,

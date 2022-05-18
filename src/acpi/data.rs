@@ -7,7 +7,9 @@
 use core::ffi::c_void;
 use core::intrinsics::wrapping_add;
 use core::mem::size_of;
+use core::mem::transmute;
 use core::ptr::copy_nonoverlapping;
+use core::slice;
 use crate::acpi::ACPITable;
 use crate::acpi::ACPITableHeader;
 use crate::acpi::rsdt::Rsdt;
@@ -224,8 +226,10 @@ impl ACPIData {
 			};
 
 			if *header.get_signature() == T::get_expected_signature() {
-				let table_ptr = header_ptr as *const T;
 				let table = unsafe {
+					let table_slice = slice::from_raw_parts(header_ptr as *const u8,
+						header.get_length());
+					let table_ptr = transmute::<_, *const T>(table_slice);
 					&*table_ptr
 				};
 

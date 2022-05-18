@@ -125,7 +125,7 @@ OBJ := $(ASM_OBJ) $(C_OBJ)
 # Cargo
 CARGO = cargo +nightly
 # Cargo flags
-CARGOFLAGS = --verbose --target $(TARGET)
+CARGOFLAGS = --verbose -Zbuild-std=core --target $(TARGET)
 ifeq ($(CONFIG_DEBUG), false)
 CARGOFLAGS += --release
 endif
@@ -134,7 +134,7 @@ CARGOFLAGS += --tests
 endif
 
 # The Rust language compiler flags
-RUSTFLAGS = -Zmacro-backtrace $(CONFIG_ARGS) #-Zsymbol-mangling-version=v0 
+RUSTFLAGS = -Zmacro-backtrace $(CONFIG_ARGS)
 ifeq ($(CONFIG_DEBUG), true)
 RUSTFLAGS += -Cforce-frame-pointers=y -Cdebuginfo=2
 endif
