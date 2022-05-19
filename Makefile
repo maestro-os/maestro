@@ -140,7 +140,7 @@ endif
 RUST_SRC := $(shell find $(SRC_DIR) -type f -name "*.rs")
 
 # The list of all sources to compile
-SRC := $(ASM_SRC) $(C_SRC) $(RUSTFLAGS)
+SRC := $(ASM_SRC) $(C_SRC) $(RUST_SRC)
 
 
 
