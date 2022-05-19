@@ -111,9 +111,6 @@ DIRS := $(shell find $(SRC_DIR) -type d)
 # The list of object directories
 OBJ_DIRS := $(patsubst $(SRC_DIR)%, $(OBJ_DIR)%, $(DIRS))
 
-# The list of all sources to compile
-SRC := $(ASM_SRC) $(C_SRC)
-
 # The list of assembly objects
 ASM_OBJ := $(patsubst $(SRC_DIR)%.s, $(OBJ_DIR)%.s.o, $(ASM_SRC))
 # The list of C language objects
@@ -142,6 +139,9 @@ endif
 # The list of Rust language source files
 RUST_SRC := $(shell find $(SRC_DIR) -type f -name "*.rs")
 
+# The list of all sources to compile
+SRC := $(ASM_SRC) $(C_SRC) $(RUSTFLAGS)
+
 
 
 # ------------------------------------------------------------------------------
@@ -162,10 +162,10 @@ DOC_DIR = doc/
 ifeq ($(CONFIG_EXISTS), 0)
  ifneq ($(CONFIG_DEBUG_TEST), true)
 # The rule to compile everything
-all: $(NAME) iso doc
+all: tags $(NAME) iso doc
  else
 # The rule to compile everything
-all: $(NAME) iso
+all: tags $(NAME) iso
  endif
 
 # Builds the documentation
@@ -239,6 +239,10 @@ $(NAME).iso: $(NAME) grub.cfg
 clippy:
 	$(CONFIG_ENV) RUSTFLAGS='$(RUSTFLAGS)' $(CARGO) clippy $(CARGOFLAGS)
 
+# Updates the tags file
+tags: $(SRC)
+	ctags --languages=+rust $(SRC)
+
 .PHONY: iso clippy
 
 
@@ -310,16 +314,10 @@ virtualbox: iso
 CONFIG_UTIL_PATH := config/target/release/config
 # The list of the sources for the configuration utility
 CONFIG_UTIL_SRC := $(shell find config/src/ -type f -name "*.rs")
-# The path where is the configuration utility is build
-CONFIG_UTIL_BUILD_PATH = /tmp/$(NAME)_config
 
 # Builds the configuration utility into a tmp directory.
 $(CONFIG_UTIL_PATH): $(CONFIG_UTIL_SRC)
-	rm -rf $(CONFIG_UTIL_BUILD_PATH)
-	cp -r config/ $(CONFIG_UTIL_BUILD_PATH)
-	cd $(CONFIG_UTIL_BUILD_PATH) && cargo build --release
-	cp -r $(CONFIG_UTIL_BUILD_PATH)/target/ config/target/
-	rm -r $(CONFIG_UTIL_BUILD_PATH)
+	cd config && cargo build --release
 
 # Runs the configuration utility to create the configuration file
 $(CONFIG_FILE): $(CONFIG_UTIL_PATH)
