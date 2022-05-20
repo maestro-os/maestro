@@ -2,7 +2,7 @@
 
 use core::ops::Range;
 use crate::util::container::string::String;
-use derive::AMLParseable;
+use derive::Parseable;
 
 /// TODO doc
 const ZERO_OP: u8 = 0x00;
@@ -251,28 +251,139 @@ const BREAK_POINT_OP: u8 = 0xcc;
 /// TODO doc
 const ONES_OP: u8 = 0xff;
 
+/// An enumeration representing error messages.
+/// An error message can either be allocated or static. This enumeration contains both these
+/// possibilities.
+pub enum ErrorMessage {
+	/// Allocated error message.
+	Allocated(String),
+	/// Static error message.
+	Static(&'static str),
+}
+
+/// Structure representing an AML parse error.
+pub struct Error {
+	/// The error message.
+	message: ErrorMessage,
+	/// The offset of the error in the bytecode.
+	off: usize,
+}
+
 /// Trait representing a parseable object.
-pub trait AMLParseable: Sized {
+pub trait Parseable: Sized {
 	/// Parses the object from the given bytes `b`.
+	/// `off` is the offset in the bytecode during parsing. This value is used only to located
+	/// errors.
 	/// The function returns an instance of the parsed object and the consumed length.
 	/// On parsing error, the function returns an error message.
-	fn parse(b: &[u8]) -> Result<(Self, usize), String>;
+	fn parse(off: usize, b: &[u8]) -> Result<(Self, usize), Error>;
+}
+
+/// Implements the Parseable trait for the given primitive type.
+macro_rules! impl_aml_parseable_primitive {
+	($type:ty) => {
+		impl Parseable for $type {
+			fn parse(off: usize, b: &[u8]) -> Result<(Self, usize), Error> {
+				let len = core::mem::size_of::<$type>();
+				if b.len() < len {
+					// TODO Error message
+					let err = String::from(b"TODO").map(| msg | {
+						Error {
+							message: ErrorMessage::Allocated(msg),
+							off,
+						}
+					}).unwrap_or_else(| _ | Error {
+						message: ErrorMessage::Static("Allocation error"),
+						off,
+					});
+
+					return Err(err);
+				}
+
+				let mut n: $type = Default::default();
+				unsafe {
+					core::ptr::copy_nonoverlapping(&b[0], (&mut n) as *mut _ as *mut u8, len);
+				}
+
+				Ok((n, len))
+			}
+		}
+	}
 }
 
 /// TODO doc
-#[derive(AMLParseable)]
+pub type ByteData = u8;
+/// TODO doc
+pub type WordData = u16;
+/// TODO doc
+pub type DWordData = u32;
+/// TODO doc
+pub type QWordData = u64;
+
+/// TODO doc
+pub type TableSignature = DWordData;
+/// TODO doc
+pub type TableLength = DWordData;
+/// TODO doc
+pub type SpecCompliance = ByteData;
+/// TODO doc
+pub type CheckSum = ByteData;
+/// TODO doc
+pub type OemId = [ByteData; 6];
+/// TODO doc
+pub type OemTableId = [ByteData; 8];
+/// TODO doc
+pub type OemRevision = DWordData;
+/// TODO doc
+pub type CreatorId = DWordData;
+/// TODO doc
+pub type CreatorRevision = DWordData;
+
+// Implementations for primitive types
+impl_aml_parseable_primitive!(u8);
+impl_aml_parseable_primitive!(i8);
+impl_aml_parseable_primitive!(u16);
+impl_aml_parseable_primitive!(i16);
+impl_aml_parseable_primitive!(u32);
+impl_aml_parseable_primitive!(i32);
+impl_aml_parseable_primitive!(u64);
+impl_aml_parseable_primitive!(i64);
+
+// Implementations for array types
+impl_aml_parseable_primitive!(OemId);
+impl_aml_parseable_primitive!(OemTableId);
+
+/// TODO doc
+#[derive(Parseable)]
 pub struct DefBlockHeader {
-	// TODO
+	/// TODO doc
+	signature: TableSignature,
+	/// TODO doc
+	length: TableLength,
+	/// TODO doc
+	compliance: SpecCompliance,
+	/// TODO doc
+	checksum: CheckSum,
+	/// TODO doc
+	oem_id: OemId,
+	/// TODO doc
+	oem_table_id: OemTableId,
+	/// TODO doc
+	oem_revision: OemRevision,
+	/// TODO doc
+	creator_id: CreatorId,
+	/// TODO doc
+	creator_revision: CreatorRevision,
 }
 
 /// TODO doc
-#[derive(AMLParseable)]
+#[derive(Parseable)]
 pub struct TermList {
 	// TODO
 }
 
 /// Base of the AML Abstract Syntax Tree (AST).
-#[derive(AMLParseable)]
+#[derive(Parseable)]
 pub struct AMLCode {
 	def_block_header: DefBlockHeader,
 	term_list: TermList,

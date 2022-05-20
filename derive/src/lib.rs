@@ -14,7 +14,7 @@ use syn::parse_macro_input;
 
 /// Definition of a derive macro used to turn a structure into a parsable object for the AML
 /// bytecode.
-#[proc_macro_derive(AMLParseable)]
+#[proc_macro_derive(Parseable)]
 pub fn derive_aml_parseable(input: TokenStream) -> TokenStream {
 	let input = parse_macro_input!(input as DeriveInput);
 	let struct_name = input.ident;
@@ -27,15 +27,15 @@ pub fn derive_aml_parseable(input: TokenStream) -> TokenStream {
 
 		// TODO Handle enums
 
-		_ => panic!("only structs with named fields can be derived with AMLParseable"),
+		_ => panic!("only structs with named fields can be derived with Parseable"),
 	};
 
 	let parse_lines = fields.iter().map(| field | {
 		let ident = field.ident.as_ref().unwrap();
 
 		quote! {
-			let (#ident, child_off) = AMLParseable::parse(&b[off..])?;
-			off += child_off;
+			let (#ident, child_off) = Parseable::parse(off + curr_off, &b[curr_off..])?;
+			curr_off += child_off;
 		}
 	});
 
@@ -48,9 +48,9 @@ pub fn derive_aml_parseable(input: TokenStream) -> TokenStream {
 	});
 
 	let output = quote! {
-        impl AMLParseable for #struct_name {
-			fn parse(b: &[u8]) -> Result<(Self, usize), String> {
-				let mut off: usize = 0;
+        impl Parseable for #struct_name {
+			fn parse(off: usize, b: &[u8]) -> Result<(Self, usize), Error> {
+				let mut curr_off: usize = 0;
 
 				#(#parse_lines)*
 
@@ -58,7 +58,7 @@ pub fn derive_aml_parseable(input: TokenStream) -> TokenStream {
 					#(#struct_lines)*
 				};
 
-				Ok((s, off))
+				Ok((s, curr_off))
             }
         }
     };
