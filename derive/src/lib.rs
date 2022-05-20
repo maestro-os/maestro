@@ -4,63 +4,183 @@
 
 extern crate proc_macro;
 
+use proc_macro2::Ident;
+use proc_macro2::Span;
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::Data;
+use syn::DataEnum;
 use syn::DataStruct;
 use syn::DeriveInput;
 use syn::Fields;
 use syn::parse_macro_input;
 
+/// Returns the parse code for the given set of fields.
+fn parse_expr(fields: &Fields) -> proc_macro2::TokenStream {
+	match fields {
+		Fields::Named(fields) => {
+			let parse_lines = fields.named.iter().map(| field | {
+				let ident = field.ident.as_ref().unwrap();
+
+				quote! {
+					let #ident = match Parseable::parse(off + curr_off, &b[curr_off..])? {
+						Some((child, child_off)) => {
+							curr_off += child_off;
+							child
+						},
+
+						None => return Ok(None),
+					};
+				}
+			});
+
+			quote! {
+				#(#parse_lines)*
+			}
+		},
+
+		Fields::Unnamed(fields) => {
+			let parse_lines = fields.unnamed.iter().enumerate().map(| (i, _) | {
+				let ident = Ident::new(format!("field{}", i).as_str(), Span::call_site());
+
+				quote! {
+					let #ident = match Parseable::parse(off + curr_off, &b[curr_off..])? {
+						Some((child, child_off)) => {
+							curr_off += child_off;
+							child
+						},
+
+						None => return Ok(None),
+					};
+				}
+			});
+
+			quote! {
+				#(#parse_lines)*
+			}
+		},
+
+		Fields::Unit => quote! {},
+	}
+}
+
+// TODO Clean
 /// Definition of a derive macro used to turn a structure into a parsable object for the AML
 /// bytecode.
 #[proc_macro_derive(Parseable)]
 pub fn derive_aml_parseable(input: TokenStream) -> TokenStream {
 	let input = parse_macro_input!(input as DeriveInput);
-	let struct_name = input.ident;
+	let ident = input.ident;
 
-	let fields = match input.data {
+	let output = match input.data {
 		Data::Struct(DataStruct {
 			fields: Fields::Named(fields),
 			..
-		}) => fields.named,
+		}) => {
+			let parse_lines = parse_expr(&Fields::Named(fields.clone()));
 
-		// TODO Handle enums
+			// TODO Streamline
+			let struct_lines = fields.named.iter().map(| field | {
+				let ident = field.ident.as_ref().unwrap();
+				quote! { #ident, }
+			});
 
-		_ => panic!("only structs with named fields can be derived with Parseable"),
-	};
+			quote! {
+				impl Parseable for #ident {
+					fn parse(off: usize, b: &[u8]) -> Result<Option<(Self, usize)>, Error> {
+						let mut curr_off: usize = 0;
 
-	let parse_lines = fields.iter().map(| field | {
-		let ident = field.ident.as_ref().unwrap();
+						#parse_lines
 
-		quote! {
-			let (#ident, child_off) = Parseable::parse(off + curr_off, &b[curr_off..])?;
-			curr_off += child_off;
-		}
-	});
+						Ok(Some((Self {
+							#(#struct_lines)*
+						}, curr_off)))
+					}
+				}
+			}
+		},
 
-	let struct_lines = fields.iter().map(| field | {
-		let ident = field.ident.as_ref().unwrap();
+		Data::Enum(DataEnum {
+			variants,
+			..
+		}) => {
+			let parse_lines = variants.iter().map(| v | {
+				let ident = v.ident.clone();
+				let parse_lines = parse_expr(&v.fields);
 
-		quote! {
-			#ident,
-		}
-	});
+				// TODO Streamline
+				let struct_lines = match &v.fields {
+					Fields::Named(fields) => {
+						let fields = fields.named.iter().map(| field | {
+							let ident = field.ident.as_ref().unwrap();
+							quote! { #ident, }
+						});
 
-	let output = quote! {
-        impl Parseable for #struct_name {
-			fn parse(off: usize, b: &[u8]) -> Result<(Self, usize), Error> {
-				let mut curr_off: usize = 0;
+						quote! { #(#fields)* }
+					},
 
-				#(#parse_lines)*
+					Fields::Unnamed(fields) => {
+						let fields = fields.unnamed.iter().enumerate().map(| (i, _) | {
+							let ident = Ident::new(format!("field{}", i).as_str(),
+								Span::call_site());
+							quote! { #ident, }
+						});
 
-				let s = Self {
-					#(#struct_lines)*
+						quote! { #(#fields)* }
+					},
+
+					Fields::Unit => quote! {},
 				};
 
-				Ok((s, curr_off))
-            }
-        }
-    };
-    TokenStream::from(output)
+				let s = match v.fields {
+					Fields::Named(_) => quote! {
+						Self::#ident {
+							#struct_lines
+						}
+					},
+
+					Fields::Unnamed(_) => quote! {
+						Self::#ident(
+							#struct_lines
+						)
+					},
+
+					Fields::Unit => quote! {
+						Self::#ident
+					},
+				};
+
+				quote! {
+					let s = (|| {
+						let mut curr_off: usize = 0;
+
+						#parse_lines
+
+						Ok(Some((#s, curr_off)))
+					})()?;
+
+					if let Some((child, child_off)) = s {
+						return Ok(Some((child, curr_off)));
+					}
+				}
+			});
+
+			quote! {
+				impl Parseable for #ident {
+					fn parse(off: usize, b: &[u8]) -> Result<Option<(Self, usize)>, Error> {
+						let mut curr_off: usize = 0;
+
+						#(#parse_lines)*
+
+						Ok(None)
+					}
+				}
+			}
+		},
+
+		_ => panic!("only structs and enums can be derived with Parseable"),
+	};
+	eprintln!("{}", output);
+
+	TokenStream::from(output)
 }
