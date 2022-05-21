@@ -23,7 +23,7 @@ fn parse_expr(fields: &Fields) -> proc_macro2::TokenStream {
 				let ident = field.ident.as_ref().unwrap();
 
 				quote! {
-					let #ident = match Parseable::parse(off + curr_off, &b[curr_off..])? {
+					let #ident = match AMLParseable::parse(off + curr_off, &b[curr_off..])? {
 						Some((child, child_off)) => {
 							curr_off += child_off;
 							child
@@ -41,10 +41,11 @@ fn parse_expr(fields: &Fields) -> proc_macro2::TokenStream {
 
 		Fields::Unnamed(fields) => {
 			let parse_lines = fields.unnamed.iter().enumerate().map(| (i, _) | {
+				// TODO Fix span
 				let ident = Ident::new(format!("field{}", i).as_str(), Span::call_site());
 
 				quote! {
-					let #ident = match Parseable::parse(off + curr_off, &b[curr_off..])? {
+					let #ident = match AMLParseable::parse(off + curr_off, &b[curr_off..])? {
 						Some((child, child_off)) => {
 							curr_off += child_off;
 							child
@@ -86,7 +87,7 @@ pub fn derive_aml_parseable(input: TokenStream) -> TokenStream {
 			});
 
 			quote! {
-				impl Parseable for #ident {
+				impl AMLParseable for #ident {
 					fn parse(off: usize, b: &[u8]) -> Result<Option<(Self, usize)>, Error> {
 						let mut curr_off: usize = 0;
 
@@ -121,6 +122,7 @@ pub fn derive_aml_parseable(input: TokenStream) -> TokenStream {
 
 					Fields::Unnamed(fields) => {
 						let fields = fields.unnamed.iter().enumerate().map(| (i, _) | {
+							// TODO Fix span
 							let ident = Ident::new(format!("field{}", i).as_str(),
 								Span::call_site());
 							quote! { #ident, }
@@ -166,7 +168,7 @@ pub fn derive_aml_parseable(input: TokenStream) -> TokenStream {
 			});
 
 			quote! {
-				impl Parseable for #ident {
+				impl AMLParseable for #ident {
 					fn parse(off: usize, b: &[u8]) -> Result<Option<(Self, usize)>, Error> {
 						let mut curr_off: usize = 0;
 

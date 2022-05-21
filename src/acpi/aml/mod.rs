@@ -1,10 +1,16 @@
 //! ACPI Machine Language (AML) is a bytecode language used by ACPI to describe programs that allow
 //! retrieving informations on the system in order to used ACPI features.
 
+mod named_obj;
+mod namespace_modifier;
+mod term_obj;
+mod type1_opcode;
+mod type2_opcode;
+
 use core::ops::Range;
 use crate::util::container::string::String;
-//use crate::util::container::vec::Vec;
 use derive::Parseable;
+use term_obj::TermList;
 
 const ZERO_OP: u8 = 0x00;
 const ONE_OP: u8 = 0x01;
@@ -149,7 +155,7 @@ pub struct Error {
 }
 
 /// Trait representing a parseable object.
-pub trait Parseable: Sized {
+pub trait AMLParseable: Sized {
 	/// Parses the object from the given bytes `b`.
 	/// `off` is the offset in the bytecode during parsing. This value is used only to located
 	/// errors.
@@ -158,10 +164,10 @@ pub trait Parseable: Sized {
 	fn parse(off: usize, b: &[u8]) -> Result<Option<(Self, usize)>, Error>;
 }
 
-/// Implements the Parseable trait for the given primitive type.
+/// Implements the AMLParseable trait for the given primitive type.
 macro_rules! impl_aml_parseable_primitive {
 	($type:ty) => {
-		impl Parseable for $type {
+		impl AMLParseable for $type {
 			fn parse(off: usize, b: &[u8]) -> Result<Option<(Self, usize)>, Error> {
 				let len = core::mem::size_of::<$type>();
 				if b.len() < len {
@@ -240,71 +246,6 @@ pub struct DefBlockHeader {
 	creator_id: CreatorId,
 	/// TODO doc
 	creator_revision: CreatorRevision,
-}
-
-/// TODO doc
-#[derive(Parseable)]
-pub struct DefAlias {
-	// TODO
-}
-
-/// TODO doc
-#[derive(Parseable)]
-pub struct DefName {
-	// TODO
-}
-
-/// TODO doc
-#[derive(Parseable)]
-pub struct DefScope {
-	// TODO
-}
-
-/// TODO doc
-#[derive(Parseable)]
-pub enum NameSpaceModifierObj {
-	DefAlias(DefAlias),
-	DefName(DefAlias),
-	DefScope(DefAlias),
-}
-
-/// TODO doc
-#[derive(Parseable)]
-pub enum NamedObj {
-	// TODO
-}
-
-/// TODO doc
-#[derive(Parseable)]
-pub enum Object {
-	NameSpaceModifierObj(NameSpaceModifierObj),
-	NamedObj(NamedObj),
-}
-
-/// TODO doc
-#[derive(Parseable)]
-pub enum Type1Opcode {
-	// TODO
-}
-
-/// TODO doc
-#[derive(Parseable)]
-pub enum Type2Opcode {
-	// TODO
-}
-
-/// TODO doc
-#[derive(Parseable)]
-pub enum TermObject {
-	Object(Object),
-	Type1Opcode(Type1Opcode),
-	Type2Opcode(Type2Opcode),
-}
-
-/// TODO doc
-#[derive(Parseable)]
-pub struct TermList {
-	// TODO objects: Vec<TermObject>,
 }
 
 /// Base of the AML Abstract Syntax Tree (AST).
