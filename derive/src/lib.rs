@@ -180,7 +180,6 @@ pub fn derive_aml_parseable(input: TokenStream) -> TokenStream {
 
 		_ => panic!("only structs and enums can be derived with Parseable"),
 	};
-	eprintln!("{}", output);
 
 	TokenStream::from(output)
 }

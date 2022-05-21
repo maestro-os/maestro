@@ -244,8 +244,41 @@ pub struct DefBlockHeader {
 
 /// TODO doc
 #[derive(Parseable)]
-pub enum Object {
+pub struct DefAlias {
 	// TODO
+}
+
+/// TODO doc
+#[derive(Parseable)]
+pub struct DefName {
+	// TODO
+}
+
+/// TODO doc
+#[derive(Parseable)]
+pub struct DefScope {
+	// TODO
+}
+
+/// TODO doc
+#[derive(Parseable)]
+pub enum NameSpaceModifierObj {
+	DefAlias(DefAlias),
+	DefName(DefAlias),
+	DefScope(DefAlias),
+}
+
+/// TODO doc
+#[derive(Parseable)]
+pub enum NamedObj {
+	// TODO
+}
+
+/// TODO doc
+#[derive(Parseable)]
+pub enum Object {
+	NameSpaceModifierObj(NameSpaceModifierObj),
+	NamedObj(NamedObj),
 }
 
 /// TODO doc
