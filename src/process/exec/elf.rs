@@ -3,6 +3,7 @@
 use core::cmp::max;
 use core::cmp::min;
 use core::ffi::c_void;
+use core::fmt;
 use core::mem::size_of;
 use core::ptr::null;
 use core::slice;
@@ -156,6 +157,12 @@ impl AuxEntry {
 		aux.push(AuxEntry::new(AT_NULL, 0))?;
 
 		Ok(aux)
+	}
+}
+
+impl fmt::Display for AuxEntry {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		write!(f, "AuxEntry: {} {:x}", self.a_type, self.a_val)
 	}
 }
 

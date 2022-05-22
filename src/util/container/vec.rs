@@ -3,6 +3,7 @@
 use core::cmp::Ordering;
 use core::cmp::max;
 use core::cmp::min;
+use core::fmt;
 use core::hash::Hash;
 use core::hash::Hasher;
 use core::ops::Deref;
@@ -557,6 +558,22 @@ impl<T: Hash> Hash for Vec<T> {
 		for i in 0..self.len() {
 			self[i].hash(state);
 		}
+	}
+}
+
+impl<T: fmt::Display> fmt::Display for Vec<T> {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		write!(f, "[")?;
+
+		for (i, e) in self.iter().enumerate() {
+			if i + 1 < self.len() {
+				write!(f, "{}, ", e)?;
+			} else {
+				write!(f, "{}", e)?;
+			}
+		}
+
+		write!(f, "]")
 	}
 }
 

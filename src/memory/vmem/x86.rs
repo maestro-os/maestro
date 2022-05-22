@@ -322,7 +322,7 @@ impl X86VMem {
 			page_dir: alloc_obj()?,
 		};
 
-		let flags = FLAG_PRESENT | FLAG_WRITE | FLAG_USER;
+		let flags = FLAG_PRESENT | FLAG_WRITE;
 		for i in 0..256 {
 			// Safe because only one thread is running when the first vmem is created
 			let ptr = unsafe {

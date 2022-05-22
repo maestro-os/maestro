@@ -328,8 +328,9 @@ impl Signal {
 		match handler {
 			SignalHandler::Ignore => {},
 			SignalHandler::Default => {
-				// Signals on the init process can be executed only if the process has set a signal handler
-				if process.is_init() {
+				// Signals on the init process can be executed only if the process has set a signal
+				// handler
+				if self.can_catch() && process.is_init() {
 					return;
 				}
 
