@@ -3,7 +3,6 @@
 use core::cmp::max;
 use core::cmp::min;
 use core::ffi::c_void;
-use core::fmt;
 use core::mem::size_of;
 use core::ptr::null;
 use core::slice;
@@ -109,61 +108,76 @@ struct AuxEntry {
 	a_val: isize,
 }
 
-impl AuxEntry {
+/// Enumeration of possible values for an auxilary vector entry.
+enum AuxEntryDescValue {
+	/// A single number.
+	Number(isize),
+	/// A string of bytes.
+	String(&'static [u8]),
+}
+
+/// Structure describing an auxilary vector entry.
+struct AuxEntryDesc {
+	/// The entry's type.
+	a_type: i32,
+	/// The entry's value.
+	a_val: AuxEntryDescValue,
+}
+
+impl AuxEntryDesc {
 	/// Creates a new instance with the given type `a_type` and value `a_val`.
-	pub fn new(a_type: i32, a_val: isize) -> Self {
+	pub fn new(a_type: i32, a_val: AuxEntryDescValue) -> Self {
 		Self {
 			a_type,
 			a_val,
 		}
 	}
-
-	/// Fills an auxilary vector with execution informations `exec_info` and load informations
-	/// `load_info`.
-	/// `parser` is a reference to the ELF parser.
-	fn fill_auxilary(exec_info: &ExecInfo, load_info: &ELFLoadInfo, parser: &ELFParser)
-		-> Result<Vec<Self>, Errno> {
-		let mut aux = Vec::new();
-
-		if let Some(phdr) = load_info.phdr {
-			aux.push(AuxEntry::new(AT_PHDR, phdr as _))?;
-			aux.push(AuxEntry::new(AT_PHENT, parser.get_header().get_phentsize() as _))?;
-			aux.push(AuxEntry::new(AT_PHNUM, parser.get_header().get_phnum() as _))?;
-		}
-
-		aux.push(AuxEntry::new(AT_PAGESZ, memory::PAGE_SIZE as _))?;
-
-		if let Some(base) = load_info.interp_load_base {
-			aux.push(AuxEntry::new(AT_BASE, base as _))?;
-		}
-
-		if let Some(entry) = load_info.interp_entry {
-			aux.push(AuxEntry::new(AT_ENTRY, entry as _))?;
-		}
-
-		aux.push(AuxEntry::new(AT_NOTELF, 0))?;
-		aux.push(AuxEntry::new(AT_UID, exec_info.uid as _))?;
-		aux.push(AuxEntry::new(AT_EUID, exec_info.euid as _))?;
-		aux.push(AuxEntry::new(AT_GID, exec_info.gid as _))?;
-		aux.push(AuxEntry::new(AT_EGID, exec_info.egid as _))?;
-		aux.push(AuxEntry::new(AT_PLATFORM, "maestro\0".as_ptr() as _))?; // TODO clean
-		aux.push(AuxEntry::new(AT_HWCAP, unsafe {
-			cpu::get_hwcap()
-		} as _))?;
-		aux.push(AuxEntry::new(AT_SECURE, 0))?; // TODO
-		aux.push(AuxEntry::new(AT_BASE_PLATFORM, "maestro\0".as_ptr() as _))?; // TODO clean
-		aux.push(AuxEntry::new(AT_RANDOM, [0 as u8; 16].as_ptr() as _))?; // TODO
-		aux.push(AuxEntry::new(AT_EXECFN, "TODO\0".as_ptr() as _))?; // TODO
-		aux.push(AuxEntry::new(AT_NULL, 0))?;
-
-		Ok(aux)
-	}
 }
 
-impl fmt::Display for AuxEntry {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		write!(f, "AuxEntry: {} {:x}", self.a_type, self.a_val)
+/// Builds an auxilary vector with execution informations `exec_info` and load informations
+/// `load_info`.
+/// `parser` is a reference to the ELF parser.
+fn build_auxilary(exec_info: &ExecInfo, load_info: &ELFLoadInfo, parser: &ELFParser)
+	-> Result<Vec<AuxEntryDesc>, Errno> {
+	let mut aux = Vec::new();
+
+	if let Some(phdr) = load_info.phdr {
+		aux.push(AuxEntryDesc::new(AT_PHDR, AuxEntryDescValue::Number(phdr as _)))?;
+		aux.push(AuxEntryDesc::new(AT_PHENT,
+			AuxEntryDescValue::Number(parser.get_header().get_phentsize() as _)))?;
+		aux.push(AuxEntryDesc::new(AT_PHNUM,
+			AuxEntryDescValue::Number(parser.get_header().get_phnum() as _)))?;
 	}
+
+	aux.push(AuxEntryDesc::new(AT_PAGESZ, AuxEntryDescValue::Number(memory::PAGE_SIZE as _)))?;
+
+	if let Some(base) = load_info.interp_load_base {
+		aux.push(AuxEntryDesc::new(AT_BASE, AuxEntryDescValue::Number(base as _)))?;
+	}
+
+	if let Some(entry) = load_info.interp_entry {
+		aux.push(AuxEntryDesc::new(AT_ENTRY, AuxEntryDescValue::Number(entry as _)))?;
+	}
+
+	aux.push(AuxEntryDesc::new(AT_NOTELF, AuxEntryDescValue::Number(0)))?;
+	aux.push(AuxEntryDesc::new(AT_UID, AuxEntryDescValue::Number(exec_info.uid as _)))?;
+	aux.push(AuxEntryDesc::new(AT_EUID, AuxEntryDescValue::Number(exec_info.euid as _)))?;
+	aux.push(AuxEntryDesc::new(AT_GID, AuxEntryDescValue::Number(exec_info.gid as _)))?;
+	aux.push(AuxEntryDesc::new(AT_EGID, AuxEntryDescValue::Number(exec_info.egid as _)))?;
+	aux.push(AuxEntryDesc::new(AT_PLATFORM, AuxEntryDescValue::String(crate::NAME.as_bytes())))?;
+
+	let hwcap = unsafe { cpu::get_hwcap() };
+	aux.push(AuxEntryDesc::new(AT_HWCAP, AuxEntryDescValue::Number(hwcap as _)))?;
+
+	aux.push(AuxEntryDesc::new(AT_SECURE, AuxEntryDescValue::Number(0)))?; // TODO
+	aux.push(AuxEntryDesc::new(AT_BASE_PLATFORM,
+		AuxEntryDescValue::String(crate::NAME.as_bytes())))?;
+	aux.push(AuxEntryDesc::new(AT_RANDOM, AuxEntryDescValue::String(&[0 as u8; 16])))?; // TODO
+	aux.push(AuxEntryDesc::new(AT_EXECFN,
+		AuxEntryDescValue::String("TODO\0".as_bytes())))?; // TODO
+	aux.push(AuxEntryDesc::new(AT_NULL, AuxEntryDescValue::Number(0)))?;
+
+	Ok(aux)
 }
 
 /// Reads the file at the given path `path`. If the file is not executable, the function returns an
@@ -218,9 +232,16 @@ impl<'a> ELFExecutor<'a> {
 	/// included.
 	/// - The required size in bytes for the data to be written on the stack before the program
 	/// starts.
-	fn get_init_stack_size(argv: &[&[u8]], envp: &[&[u8]], aux: &[AuxEntry]) -> (usize, usize) {
+	fn get_init_stack_size(argv: &[&[u8]], envp: &[&[u8]], aux: &[AuxEntryDesc])
+		-> (usize, usize) {
 		// The size of the block storing the arguments and environment
 		let mut info_block_size = 0;
+		for a in aux {
+			match a.a_val {
+				AuxEntryDescValue::String(slice) => info_block_size += slice.len() + 1,
+				_ => {},
+			}
+		}
 		for e in envp {
 			info_block_size += e.len() + 1;
 		}
@@ -253,7 +274,7 @@ impl<'a> ELFExecutor<'a> {
 	/// The function returns the distance between the top of the stack and the new bottom after the
 	/// data has been written.
 	fn init_stack(&self, user_stack: *const c_void, argv: &[&[u8]], envp: &[&[u8]],
-		aux: &[AuxEntry]) {
+		aux: &[AuxEntryDesc]) {
 		let (info_size, total_size) = Self::get_init_stack_size(argv, envp, aux);
 
 		// A slice on the stack representing the region which will containing the arguments and
@@ -321,10 +342,31 @@ impl<'a> ELFExecutor<'a> {
 		stack_slice[stack_off] = 0;
 		stack_off += 1;
 
-		// Setting the auxilary vector
-		for a in aux.iter() {
+		// Setting auxilary vector
+		for a in aux {
+			let val = match a.a_val {
+				AuxEntryDescValue::Number(n) => n as _,
+
+				AuxEntryDescValue::String(slice) => {
+					// The offset of the beginning of the variable in the information block
+					let begin = info_off;
+
+					// Copying the string into the information block
+					for b in slice {
+						info_slice[info_off] = *b;
+						info_off += 1;
+					}
+					// Setting the nullbyte to end the string
+					info_slice[info_off] = 0;
+					info_off += 1;
+
+					&mut info_slice[begin] as *mut _ as _
+				},
+			};
+
+			// Setting the entry
 			stack_slice[stack_off] = a.a_type as _;
-			stack_slice[stack_off + 1] = a.a_val as _;
+			stack_slice[stack_off + 1] = val;
 
 			stack_off += 2;
 		}
@@ -531,7 +573,7 @@ impl<'a> Executor<'a> for ELFExecutor<'a> {
 		let user_stack = mem_space.map_stack(process::USER_STACK_SIZE, process::USER_STACK_FLAGS)?;
 
 		// The auxilary vector
-		let aux = AuxEntry::fill_auxilary(&self.info, &load_info, &parser)?;
+		let aux = build_auxilary(&self.info, &load_info, &parser)?;
 
 		// The size in bytes of the initial data on the stack
 		let total_size = Self::get_init_stack_size(self.info.argv, self.info.envp, &aux).1;
