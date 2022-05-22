@@ -56,7 +56,7 @@ const TMP_STACK_SIZE: usize = memory::PAGE_SIZE * 8;
 pub static mut PHYSICAL_REF_COUNTER: Mutex<PhysRefCounter> = Mutex::new(PhysRefCounter::new());
 
 /// Enumeration of constraints for memory mapping.
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum MapConstraint {
 	/// The mapping is done at a fixed address. Previous allocations at the same place are
 	/// unmapped.
@@ -188,6 +188,7 @@ impl MemSpace {
 		&mut self.vmem
 	}
 
+	// TODO Fix potential invalid state on fail
 	/// Maps a chunk of memory.
 	/// `map_constraint` is the constraint to fullfill for the allocation.
 	/// `size` represents the size of the mapping in number of memory pages.
@@ -215,18 +216,20 @@ impl MemSpace {
 			return Err(errno!(EINVAL));
 		}
 
-		match map_constraint {
-			MapConstraint::Fixed(ptr) => {
-				// Unmapping previous allocations
-				self.unmap(ptr, size, false)?; // TODO Must be undone on fail
-			},
-
-			_ => {},
+		enum MappingInfo<'a> {
+			GapPosition(&'a MemGap, usize),
+			Addr(*mut c_void),
 		}
 
-		// The gap to use and the offset in said gap
-		let (gap, off) = match map_constraint {
-			MapConstraint::Fixed(ptr) | MapConstraint::Hint(ptr) => {
+		// Mapping informations matching mapping constraints
+		let mapping_infos = match map_constraint {
+			MapConstraint::Fixed(ptr) => {
+				self.unmap(ptr, size, false)?;
+
+				MappingInfo::Addr(ptr as _)
+			},
+
+			MapConstraint::Hint(ptr) => {
 				// Getting the gap for the pointer
 				let gap = Self::gap_by_ptr(&self.gaps, ptr).ok_or_else(|| errno!(ENOMEM))?;
 
@@ -236,7 +239,7 @@ impl MemSpace {
 					return Err(errno!(ENOMEM));
 				}
 
-				(gap, off)
+				MappingInfo::GapPosition(gap, off)
 			},
 
 			MapConstraint::None => {
@@ -244,16 +247,22 @@ impl MemSpace {
 				let gap = Self::gap_get(&self.gaps, &self.gaps_size, size)
 					.ok_or_else(|| errno!(ENOMEM))?;
 
-				(gap, 0)
+				MappingInfo::GapPosition(gap, 0)
 			}
 		};
 
 		// The address to the beginning of the mapping
-		let addr = (gap.get_begin() as usize + off * memory::PAGE_SIZE) as *mut c_void;
+		let addr = match mapping_infos {
+			MappingInfo::GapPosition(gap, off) => {
+				(gap.get_begin() as usize + off * memory::PAGE_SIZE) as *mut c_void
+			},
+
+			MappingInfo::Addr(addr) => addr,
+		};
+
 		// Creating the mapping
 		let mapping = MemMapping::new(addr, size, flags, file, file_off,
 			NonNull::new(self.vmem.as_mut_ptr()).unwrap());
-
 		let m = self.mappings.insert(addr, mapping)?;
 
 		// Mapping the default page
@@ -262,22 +271,26 @@ impl MemSpace {
 			return Err(e);
 		}
 
-		// Splitting the old gap to fit the mapping
-		let (left_gap, right_gap) = gap.consume(off, size);
+		// Splitting the old gap to fit the mapping if needed
+		match mapping_infos {
+			MappingInfo::GapPosition(gap, off) => {
+				let (left_gap, right_gap) = gap.consume(off, size);
 
-		// Removing the old gap
-		let gap_begin = gap.get_begin();
-		self.gap_remove(gap_begin);
+				// Removing the old gap
+				let gap_begin = gap.get_begin();
+				self.gap_remove(gap_begin);
 
-		// Inserting the new gaps
-		if let Some(new_gap) = left_gap {
-			oom::wrap(|| self.gap_insert(new_gap.clone()));
+				// Inserting the new gaps
+				if let Some(new_gap) = left_gap {
+					oom::wrap(|| self.gap_insert(new_gap.clone()));
+				}
+				if let Some(new_gap) = right_gap {
+					oom::wrap(|| self.gap_insert(new_gap.clone()));
+				}
+			},
+
+			_ => {},
 		}
-		if let Some(new_gap) = right_gap {
-			oom::wrap(|| self.gap_insert(new_gap.clone()));
-		}
-
-		//crate::println!("map: {} {:p} {}", self, addr, size); // TODO rm
 
 		Ok(addr)
 	}
@@ -453,8 +466,6 @@ impl MemSpace {
 		// Unmapping the chunk from virtual memory
 		let vmem = self.get_vmem();
 		oom::wrap(|| vmem.unmap_range(ptr, size));
-
-		//crate::println!("unmap: {:p} {} {}: {}", ptr, size, brk, self); // TODO rm
 
 		Ok(())
 	}
