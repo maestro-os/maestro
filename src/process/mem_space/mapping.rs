@@ -151,10 +151,8 @@ impl MemMapping {
 	/// Tells whether the page at offset `offset` in the mapping is shared or not.
 	pub fn is_shared(&self, offset: usize) -> bool {
 		if let Some(phys_ptr) = self.get_physical_page(offset) {
-			unsafe { // Safe because the global variable is wrapped into a Mutex
-				let ref_counter = super::PHYSICAL_REF_COUNTER.lock();
-				ref_counter.get().is_shared(phys_ptr)
-			}
+			let ref_counter = super::PHYSICAL_REF_COUNTER.lock();
+			ref_counter.get().is_shared(phys_ptr)
 		} else {
 			false
 		}
@@ -246,9 +244,7 @@ impl MemMapping {
 		let flags = self.get_vmem_flags(true, offset);
 
 		{
-			let mut ref_counter = unsafe {
-				super::PHYSICAL_REF_COUNTER.lock()
-			};
+			let mut ref_counter = super::PHYSICAL_REF_COUNTER.lock();
 			if let Err(errno) = ref_counter.get_mut().increment(new_phys_ptr) {
 				buddy::free(new_phys_ptr, 0);
 				return Err(errno);
@@ -288,9 +284,7 @@ impl MemMapping {
 
 		if let Some(phys_ptr) = vmem.translate(virt_ptr) {
 			{
-				let mut ref_counter = unsafe { // Safe because using Mutex
-					super::PHYSICAL_REF_COUNTER.lock()
-				};
+				let mut ref_counter = super::PHYSICAL_REF_COUNTER.lock();
 				ref_counter.get_mut().decrement(phys_ptr);
 			}
 
@@ -428,10 +422,7 @@ impl MemMapping {
 				new_mapping.map(i)?;
 			}
 		} else {
-			// Safe because the global variable is wrapped into a Mutex
-			let mut ref_counter_guard = unsafe {
-				super::PHYSICAL_REF_COUNTER.lock()
-			};
+			let mut ref_counter_guard = super::PHYSICAL_REF_COUNTER.lock();
 			let ref_counter = ref_counter_guard.get_mut();
 
 			for i in 0..self.size {

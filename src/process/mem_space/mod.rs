@@ -53,7 +53,7 @@ pub const MAPPING_FLAG_SHARED: u8 = 0b10000;
 const TMP_STACK_SIZE: usize = memory::PAGE_SIZE * 8;
 
 /// The physical pages reference counter.
-pub static mut PHYSICAL_REF_COUNTER: Mutex<PhysRefCounter> = Mutex::new(PhysRefCounter::new());
+pub static PHYSICAL_REF_COUNTER: Mutex<PhysRefCounter> = Mutex::new(PhysRefCounter::new());
 
 /// Enumeration of constraints for memory mapping.
 #[derive(Clone, Copy, Debug, PartialEq)]
