@@ -5,14 +5,22 @@ use crate::errno::Errno;
 use crate::process::Process;
 use crate::process::regs::Regs;
 
-/// The implementation of the `_exit` syscall.
-pub fn _exit(regs: &Regs) -> Result<i32, Errno> {
-	{
+/// TODO doc
+/// `status` is the exit status.
+/// `thread_group`: if true, the function exits the whole process group.
+pub fn do_exit(status: u32, thread_group: bool) -> ! {
+	let (_pid, _tid) = {
 		let mutex = Process::get_current().unwrap();
 		let mut guard = mutex.lock();
 		let proc = guard.get_mut();
 
-		proc.exit(regs.ebx);
+		proc.exit(status);
+
+		(proc.get_pid(), proc.get_tid())
+	};
+
+	if thread_group {
+		// TODO Iterate on every process of thread group `tid`, except the process with pid `pid`
 	}
 
 	unsafe {
@@ -22,4 +30,11 @@ pub fn _exit(regs: &Regs) -> Result<i32, Errno> {
 
 	// This loop is here only to avoid a compilation error
 	loop {}
+}
+
+/// The implementation of the `_exit` syscall.
+pub fn _exit(regs: &Regs) -> Result<i32, Errno> {
+	let status = regs.ebx as i32;
+
+	do_exit(status as _, false);
 }

@@ -5,6 +5,7 @@ use crate::errno;
 use crate::process::Process;
 use crate::process::State;
 use crate::process::mem_space::ptr::SyscallPtr;
+use crate::process::pid::INIT_PID;
 use crate::process::pid::Pid;
 use crate::process::regs::Regs;
 use crate::process::rusage::RUsage;
@@ -155,7 +156,7 @@ pub fn do_waitpid(pid: i32, wstatus: SyscallPtr<i32>, options: i32,
 			let proc = guard.get_mut();
 
 			// TODO Apply to every processes that cannot be waited on
-			if pid == proc.get_pid() as i32 {
+			if pid == INIT_PID as i32 || pid == proc.get_pid() as i32 {
 				return Err(errno!(ECANCELED));
 			}
 
@@ -172,20 +173,14 @@ pub fn do_waitpid(pid: i32, wstatus: SyscallPtr<i32>, options: i32,
 			if let Some(p) = check_waitable(proc, pid, wstatus, rusage)? {
 				return Ok(p as _);
 			}
-		}
 
-		// If the flag is set, do not wait
-		if options & WNOHANG != 0 {
-			return Ok(0);
-		}
+			// If the flag is set, do not wait
+			if options & WNOHANG != 0 {
+				return Ok(0);
+			}
 
-		// When a child process is paused or resumed by a signal or is terminated, it changes the
-		// state of the current process to wake it up
-		{
-			let mutex = Process::get_current().unwrap();
-			let mut guard = mutex.lock();
-			let proc = guard.get_mut();
-
+			// When a child process is paused or resumed by a signal or is terminated, it changes
+			// the state of the current process to wake it up
 			proc.set_state(process::State::Sleeping);
 		}
 

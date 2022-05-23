@@ -19,6 +19,7 @@ mod delete_module;
 mod dup2;
 mod dup;
 mod execve;
+mod exit_group;
 mod fchdir;
 mod fcntl64;
 mod fcntl;
@@ -113,6 +114,7 @@ use delete_module::delete_module;
 use dup2::dup2;
 use dup::dup;
 use execve::execve;
+use exit_group::exit_group;
 use fchdir::fchdir;
 use fcntl64::fcntl64;
 use fcntl::fcntl;
@@ -456,7 +458,7 @@ const SYSCALLS: &[Syscall] = &[
 	// TODO Syscall { id: 0x0f8, handler: io_submit, name: "io_submit", args: &[] },
 	// TODO Syscall { id: 0x0f9, handler: io_cancel, name: "io_cancel", args: &[] },
 	// TODO Syscall { id: 0x0fa, handler: fadvise64, name: "fadvise64", args: &[] },
-	// TODO Syscall { id: 0x0fc, handler: exit_group, name: "exit_group", args: &[] },
+	Syscall { id: 0x0fc, handler: &exit_group, name: "exit_group", args: &[] },
 	// TODO Syscall { id: 0x0fd, handler: lookup_dcookie, name: "lookup_dcookie", args: &[] },
 	// TODO Syscall { id: 0x0fe, handler: epoll_create, name: "epoll_create", args: &[] },
 	// TODO Syscall { id: 0x0ff, handler: epoll_ctl, name: "epoll_ctl", args: &[] },
