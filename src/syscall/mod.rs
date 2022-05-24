@@ -7,6 +7,7 @@
 mod _exit;
 mod _llseek;
 mod _newselect;
+mod access;
 mod brk;
 mod chdir;
 mod chroot;
@@ -20,6 +21,8 @@ mod dup2;
 mod dup;
 mod execve;
 mod exit_group;
+mod faccessat2;
+mod faccessat;
 mod fchdir;
 mod fcntl64;
 mod fcntl;
@@ -102,6 +105,7 @@ use crate::process;
 use _exit::_exit;
 use _llseek::_llseek;
 use _newselect::_newselect;
+use access::access;
 use brk::brk;
 use chdir::chdir;
 use chroot::chroot;
@@ -115,6 +119,8 @@ use dup2::dup2;
 use dup::dup;
 use execve::execve;
 use exit_group::exit_group;
+use faccessat2::faccessat2;
+use faccessat::faccessat;
 use fchdir::fchdir;
 use fcntl64::fcntl64;
 use fcntl::fcntl;
@@ -233,7 +239,7 @@ fn get_syscall(id: u32) -> Option<Syscall> {
 		// TODO 0x01e => Some(Syscall { handler: &utime, name: "utime", args: &[] }),
 		// TODO 0x01f => Some(Syscall { handler: &stty, name: "stty", args: &[] }),
 		// TODO 0x020 => Some(Syscall { handler: &gtty, name: "gtty", args: &[] }),
-		// TODO 0x021 => Some(Syscall { handler: &access, name: "access", args: &[] }),
+		0x021 => Some(Syscall { handler: &access, name: "access", args: &[] }),
 		// TODO 0x022 => Some(Syscall { handler: &nice, name: "nice", args: &[] }),
 		// TODO 0x023 => Some(Syscall { handler: &ftime, name: "ftime", args: &[] }),
 		// TODO 0x024 => Some(Syscall { handler: &sync, name: "sync", args: &[] }),
@@ -501,7 +507,7 @@ fn get_syscall(id: u32) -> Option<Syscall> {
 		// TODO 0x130 => Some(Syscall { handler: &symlinkat, name: "symlinkat", args: &[] }),
 		// TODO 0x131 => Some(Syscall { handler: &readlinkat, name: "readlinkat", args: &[] }),
 		// TODO 0x132 => Some(Syscall { handler: &fchmodat, name: "fchmodat", args: &[] }),
-		// TODO 0x133 => Some(Syscall { handler: &faccessat, name: "faccessat", args: &[] }),
+		0x133 => Some(Syscall { handler: &faccessat, name: "faccessat", args: &[] }),
 		0x134 => Some(Syscall { handler: &pselect6, name: "pselect6", args: &[] }),
 		// TODO 0x135 => Some(Syscall { handler: &ppoll, name: "ppoll", args: &[] }),
 		// TODO 0x136 => Some(Syscall { handler: &unshare, name: "unshare", args: &[] }),
@@ -626,7 +632,7 @@ fn get_syscall(id: u32) -> Option<Syscall> {
 		// TODO 0x1b4 => Some(Syscall { handler: &close_range, name: "close_range", args: &[] }),
 		// TODO 0x1b5 => Some(Syscall { handler: &openat2, name: "openat2", args: &[] }),
 		// TODO 0x1b6 => Some(Syscall { handler: &pidfd_getfd, name: "pidfd_getfd", args: &[] }),
-		// TODO 0x1b7 => Some(Syscall { handler: &faccessat2, name: "faccessat2", args: &[] }),
+		0x1b7 => Some(Syscall { handler: &faccessat2, name: "faccessat2", args: &[] }),
 		// TODO 0x1b8 => Some(Syscall { handler: &process_madvise, name: "process_madvise", args: &[] }),
 		// TODO 0x1b9 => Some(Syscall { handler: &epoll_pwait2, name: "epoll_pwait2", args: &[] }),
 		// TODO 0x1ba => Some(Syscall { handler: &mount_setattr, name: "mount_setattr", args: &[] }),

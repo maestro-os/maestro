@@ -15,21 +15,6 @@ use crate::process::regs::Regs;
 use crate::util::IO;
 use crate::util::ptr::SharedPtr;
 
-/// TODO doc
-const AT_FDCWD: i32 = -100;
-/// TODO doc
-const AT_SYMLINK_NOFOLLOW: i32 = 0x100;
-/// TODO doc
-const AT_NO_AUTOMOUNT: i32 = 0x800;
-/// TODO doc
-const AT_EMPTY_PATH: i32 = 0x1000;
-/// TODO doc
-const AT_STATX_SYNC_AS_STAT: i32 = 0x0000;
-/// TODO doc
-const AT_STATX_FORCE_SYNC: i32 = 0x2000;
-/// TODO doc
-const AT_STATX_DONT_SYNC: i32 = 0x4000;
-
 /// Structure representing a timestamp with the statx syscall.
 #[repr(C)]
 struct StatxTimestamp {
@@ -92,7 +77,7 @@ struct Statx {
 fn get_file(proc: &mut Process, follow_links: bool, dirfd: i32, pathname: &[u8], flags: i32)
 	-> Result<SharedPtr<File>, Errno> {
 	if pathname.is_empty() {
-		if flags & AT_EMPTY_PATH != 0 {
+		if flags & super::access::AT_EMPTY_PATH != 0 {
 			// Using `dirfd` as the file descriptor to the file
 
 			if dirfd < 0 {
@@ -116,7 +101,7 @@ fn get_file(proc: &mut Process, follow_links: bool, dirfd: i32, pathname: &[u8],
 			if path.is_absolute() {
 				// Using the given absolute path
 				path
-			} else if dirfd == AT_FDCWD {
+			} else if dirfd == super::access::AT_FDCWD {
 				// Using path relative to the current working directory
 				proc.get_cwd().concat(&path)?
 			} else {
@@ -177,7 +162,7 @@ pub fn statx(regs: &Regs) -> Result<i32, Errno> {
 	// TODO Implement all flags
 
 	// Whether symbolic links may be followed
-	let follow_links = flags & AT_SYMLINK_NOFOLLOW == 0;
+	let follow_links = flags & super::access::AT_SYMLINK_NOFOLLOW == 0;
 
 	// Getting the file
 	let file_mutex = get_file(proc, follow_links, dirfd, path_str, flags)?;
