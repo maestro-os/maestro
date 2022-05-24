@@ -26,7 +26,9 @@ GET_REGS
 
 	# Calling the system call handler
 	push %esp
+	sti
 	call syscall_handler
+	cli
 	add $4, %esp
 
 	# Restoring data segment
