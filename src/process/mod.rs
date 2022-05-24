@@ -22,6 +22,7 @@ use core::mem::ManuallyDrop;
 use core::mem::MaybeUninit;
 use core::mem::size_of;
 use core::ptr::NonNull;
+use core::ptr::null;
 use crate::cpu;
 use crate::errno::Errno;
 use crate::errno;
@@ -90,6 +91,9 @@ const STDERR_FILENO: u32 = 2;
 
 /// The number of TLS entries per process.
 pub const TLS_ENTRIES_COUNT: usize = 3;
+
+/// The size of the redzone in userspace, in bytes.
+const REDZONE_SIZE: usize = 128;
 
 /// An enumeration containing possible states for a process.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -208,6 +212,11 @@ pub struct Process {
 	user_stack: Option<*const c_void>,
 	/// A pointer to the kernelspace stack.
 	kernel_stack: Option<*const c_void>,
+
+	/// The bottom of the userstack. Updated before executing a system call.
+	/// This address is used as the location on the stack to execute signal handlers while a
+	/// syscall is on hold.
+	user_stack_bottom: *const c_void,
 
 	/// The current working directory.
 	cwd: Path,
@@ -455,6 +464,8 @@ impl Process {
 			mem_space: None,
 			user_stack: None,
 			kernel_stack: None,
+
+			user_stack_bottom: null::<c_void>(),
 
 			cwd: Path::root(),
 			file_descriptors: Some(SharedPtr::new(Vec::new())?),
@@ -826,8 +837,10 @@ impl Process {
 			ldt.load();
 		}
 
-		// If a signal is pending on the process, execute it
-		self.signal_next();
+		if !self.is_syscalling() {
+			// If a signal is pending on the process, execute it
+			self.signal_next();
+		}
 	}
 
 	/// Initializes the process to run without a program.
@@ -857,12 +870,6 @@ impl Process {
 	#[inline(always)]
 	pub fn is_syscalling(&self) -> bool {
 		self.syscalling && !self.is_handling_signal()
-	}
-
-	/// Sets the process's syscalling state.
-	#[inline(always)]
-	pub fn set_syscalling(&mut self, syscalling: bool) {
-		self.syscalling = syscalling;
 	}
 
 	/// Returns the available file descriptor with the lowest ID. If no ID is available, the
@@ -1137,9 +1144,10 @@ impl Process {
 			waitable: false,
 
 			mem_space: Some(mem_space),
-
 			user_stack: self.user_stack,
 			kernel_stack,
+
+			user_stack_bottom: self.user_stack_bottom,
 
 			cwd: self.cwd.failable_clone()?,
 			file_descriptors: file_descriptors,
@@ -1276,6 +1284,24 @@ impl Process {
 		if let Some(sig) = sig {
 			sig.execute_action(self, false);
 		}
+	}
+
+	/// Returns the pointer to use as a stack when executing a signal handler.
+	pub fn get_signal_stack(&self) -> *const c_void {
+		let stack_bottom = if self.is_syscalling() {
+			self.user_stack_bottom as usize
+		} else {
+			self.regs.esp as usize
+		};
+
+		(stack_bottom - REDZONE_SIZE) as _
+	}
+
+	/// Sets the user stack bottom. This function must to be called before executing a system call
+	/// in order to provide a stack for signal handlers.
+	/// `user_stack_bottom` is the value of the pointer to the bottom of the userspace stack.
+	pub fn set_user_stack_bottom(&mut self, user_stack_bottom: *const c_void) {
+		self.user_stack_bottom = user_stack_bottom;
 	}
 
 	/// Clear the signal from the list of pending signals.

@@ -673,11 +673,13 @@ fn print_strace(regs: &Regs, result: Option<Result<i32, Errno>>) {
 
 	if let Some(result) = result {
 		match result {
-			Ok(val) => println!(" -> Ok(0x{:x})", val as usize),
-			Err(errno) => println!(" -> Errno({})", errno),
+			Ok(val) => println!("strace end (pid: {}): {} -> Ok(0x{:x})", pid, syscall.name,
+				val as usize),
+			Err(errno) => println!("strace end (pid: {}): {} -> Errno({})", pid, syscall.name,
+				errno),
 		}
 	} else {
-		print!("strace start (pid: {}): {}(", pid, syscall.name);
+		println!("strace start (pid: {}): {}", pid, syscall.name);
 
 		// TODO Make everything print at once (becomes unreadable when several processes are
 		// running)
@@ -707,12 +709,25 @@ fn print_strace(regs: &Regs, result: Option<Result<i32, Errno>>) {
 /// This function is called whenever a system call is triggered.
 #[no_mangle]
 pub extern "C" fn syscall_handler(regs: &mut Regs) {
-	let id = regs.eax;
+	// TODO This is useless if signals cannot be handled during a system call. Remove?
+	// Setting the user stack bottom
+	// This has to be done before enabling interrupts to ensure a signal is not issued in between
+	{
+		let mutex = Process::get_current().unwrap();
+		let mut guard = mutex.lock();
+		let curr_proc = guard.get_mut();
+
+		if !curr_proc.is_handling_signal() {
+			curr_proc.set_user_stack_bottom(regs.esp as _);
+		}
+	}
+
+	sti!();
 
 	// TODO Add switch to disable
 	//print_strace(regs, None);
 
-	// TODO Optimize (holes in the syscall table)
+	let id = regs.eax;
 	let result = match get_syscall(id) {
 		Some(syscall) => (syscall.handler)(regs),
 
@@ -743,4 +758,6 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 		}
 	};
 	regs.eax = retval;
+
+	cli!();
 }

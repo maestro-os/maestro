@@ -28,9 +28,6 @@ pub const SIG_DFL: *const c_void = 0x1 as _;
 /// instead of 0).
 pub const SIGNALS_COUNT: usize = 30;
 
-/// The size of the redzone in userspace, in bytes.
-pub const REDZONE_SIZE: usize = 128;
-
 /// Enumeration representing the action to perform for a signal.
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum SignalAction {
@@ -414,11 +411,11 @@ impl Signal {
 				if !process.is_handling_signal() {
 					// TODO Handle the case where an alternate stack is specified (only if the
 					// action has the flag)
-					let mut regs = process.get_regs().clone();
-					let redzone_end = regs.esp - REDZONE_SIZE as u32;
+					// The signal handler stack
+					let stack = process.get_signal_stack();
 
-					let signal_data_size = size_of::<[u32; 2]>() as u32;
-					let signal_esp = redzone_end - signal_data_size;
+					let signal_data_size = size_of::<[u32; 2]>();
+					let signal_esp = (stack as usize) - signal_data_size;
 
 					// FIXME Don't write data out of the stack
 					oom::wrap(|| {
@@ -445,8 +442,9 @@ impl Signal {
 						>(signal_trampoline)
 					};
 
+					let mut regs = process.get_regs().clone();
 					// Setting the stack to point to the signal's data
-					regs.esp = signal_esp;
+					regs.esp = signal_esp as _;
 					// Setting the program counter to point to the signal trampoline
 					regs.eip = signal_trampoline as _;
 

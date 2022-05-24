@@ -17,9 +17,10 @@ pub fn sigreturn(_regs: &Regs) -> Result<i32, Errno> {
 	proc.signal_restore();
 
 	let regs = proc.get_regs().clone();
+	let syscalling = proc.is_syscalling();
 	drop(guard);
 
 	unsafe {
-		regs.switch(true);
+		regs.switch(!syscalling);
 	}
 }
