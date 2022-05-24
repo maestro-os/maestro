@@ -224,6 +224,7 @@ impl Scheduler {
 					let guard = process.lock();
 					Self::can_run(guard.get(), priority_sum, priority_max, processes_count)
 				};
+
 				// FIXME Potenial race condition? (checking if runnable, then unlocking and using
 				// the result of the check)
 				if runnable {
