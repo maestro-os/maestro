@@ -15,10 +15,6 @@ use crate::memory::vmem;
 use crate::pit;
 use crate::process::Process;
 use crate::process::pid::Pid;
-use crate::process::signal::SIGINT;
-use crate::process::signal::SIGQUIT;
-use crate::process::signal::SIGTSTP;
-use crate::process::signal::SIGWINCH;
 use crate::process::signal::Signal;
 use crate::tty::termios::Termios;
 use crate::util::container::vec::Vec;
@@ -578,11 +574,11 @@ impl TTY {
 				// TODO On match, the charactere must not be passed as input
 
 				if *b == self.termios.c_cc[termios::VINTR as usize] {
-					self.send_signal(Signal::new(SIGINT).unwrap());
+					self.send_signal(Signal::SIGINT);
 				} else if *b == self.termios.c_cc[termios::VQUIT as usize] {
-					self.send_signal(Signal::new(SIGQUIT).unwrap());
+					self.send_signal(Signal::SIGQUIT);
 				} else if *b == self.termios.c_cc[termios::VSUSP as usize] {
-					self.send_signal(Signal::new(SIGTSTP).unwrap());
+					self.send_signal(Signal::SIGTSTP);
 				}
 			}
 		}
@@ -673,6 +669,6 @@ impl TTY {
 		self.winsize = winsize;
 
 		// Sending a SIGWINCH if a process group is present
-		self.send_signal(Signal::new(SIGWINCH).unwrap());
+		self.send_signal(Signal::SIGWINCH);
 	}
 }

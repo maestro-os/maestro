@@ -30,7 +30,7 @@ fn try_kill(pid: Pid, sig: Option<Signal>) -> Result<(), Errno> {
 		}
 
 		if let Some(sig) = sig {
-			target.kill(sig, false);
+			target.kill(&sig, false);
 		}
 
 		Ok(())
@@ -179,15 +179,16 @@ pub fn kill(regs: &Regs) -> Result<i32, Errno> {
 	let pid = regs.ebx as i32;
 	let sig = regs.ecx as i32;
 
-	cli!();
-
-	let sig = {
-		if sig > 0 {
-			Some(Signal::new(sig)?)
-		} else {
-			None
-		}
+	if sig < 0 {
+		return Err(errno!(EINVAL));
+	}
+	let sig = if sig > 0 {
+		Some(Signal::from_id(sig as _)?)
+	} else {
+		None
 	};
+
+	cli!();
 
 	send_signal(pid, sig)?;
 

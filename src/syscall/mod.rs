@@ -98,7 +98,6 @@ use crate::errno::Errno;
 use crate::process::Process;
 use crate::process::regs::Regs;
 use crate::process::signal::Signal;
-use crate::process;
 
 //use modify_ldt::modify_ldt;
 //use wait::wait;
@@ -725,7 +724,7 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 				let curr_proc = guard.get_mut();
 
 				// SIGSYS cannot be caught, thus the process will be terminated
-				curr_proc.kill(Signal::new(process::signal::SIGSYS).unwrap(), true);
+				curr_proc.kill(&Signal::SIGSYS, true);
 			}
 
 			crate::enter_loop();

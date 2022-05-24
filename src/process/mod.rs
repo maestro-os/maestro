@@ -62,7 +62,6 @@ use scheduler::Scheduler;
 use signal::Signal;
 use signal::SignalAction;
 use signal::SignalHandler;
-use signal::SignalType;
 
 /// The opcode of the `hlt` instruction.
 const HLT_INSTRUCTION: u8 = 0xf4;
@@ -197,7 +196,7 @@ pub struct Process {
 	syscalling: bool,
 
 	/// Tells whether the process is handling a signal.
-	handled_signal: Option<SignalType>,
+	handled_signal: Option<Signal>,
 	/// The saved state of registers, used when handling a signal.
 	saved_regs: Regs,
 	/// Tells whether the process has information that can be retrieved by wait/waitpid.
@@ -276,19 +275,19 @@ pub fn init() -> Result<(), Errno> {
 				// x87 Floating-Point Exception
 				// SIMD Floating-Point Exception
 				0x00 | 0x10 | 0x13 => {
-					curr_proc.kill(Signal::new(signal::SIGFPE).unwrap(), true);
+					curr_proc.kill(&Signal::SIGFPE, true);
 					curr_proc.signal_next();
 				},
 
 				// Breakpoint
 				0x03 => {
-					curr_proc.kill(Signal::new(signal::SIGTRAP).unwrap(), true);
+					curr_proc.kill(&Signal::SIGTRAP, true);
 					curr_proc.signal_next();
 				},
 
 				// Invalid Opcode
 				0x06 => {
-					curr_proc.kill(Signal::new(signal::SIGILL).unwrap(), true);
+					curr_proc.kill(&Signal::SIGILL, true);
 					curr_proc.signal_next();
 				},
 
@@ -301,14 +300,14 @@ pub fn init() -> Result<(), Errno> {
 					if inst_prefix == HLT_INSTRUCTION {
 						curr_proc.exit(regs.eax);
 					} else {
-						curr_proc.kill(Signal::new(signal::SIGSEGV).unwrap(), true);
+						curr_proc.kill(&Signal::SIGSEGV, true);
 						curr_proc.signal_next();
 					}
 				},
 
 				// Alignment Check
 				0x11 => {
-					curr_proc.kill(Signal::new(signal::SIGBUS).unwrap(), true);
+					curr_proc.kill(&Signal::SIGBUS, true);
 					curr_proc.signal_next();
 				},
 
@@ -351,7 +350,7 @@ pub fn init() -> Result<(), Errno> {
 				if ring < 3 {
 					return InterruptResult::new(true, InterruptResultAction::Panic);
 				} else {
-					curr_proc.kill(Signal::new(signal::SIGSEGV).unwrap(), true);
+					curr_proc.kill(&Signal::SIGSEGV, true);
 					curr_proc.signal_next();
 				}
 			}
@@ -675,9 +674,9 @@ impl Process {
 
 	/// Sets the process waitable with the given signal type `type_`.
 	#[inline(always)]
-	pub fn set_waitable(&mut self, type_: u8) {
+	pub fn set_waitable(&mut self, sig_type: u8) {
 		self.waitable = true;
-		self.termsig = type_;
+		self.termsig = sig_type;
 	}
 
 	/// Clears the waitable flag.
@@ -689,7 +688,7 @@ impl Process {
 	/// Wakes up the process. The function sends a signal SIGCHLD to the process and, if it was in
 	/// Sleeping state, changes it to Running.
 	pub fn wakeup(&mut self) {
-		self.kill(signal::Signal::new(signal::SIGCHLD).unwrap(), false);
+		self.kill(&Signal::SIGCHLD, false);
 
 		if self.state == State::Sleeping {
 			self.state = State::Running;
@@ -1035,7 +1034,7 @@ impl Process {
 		}
 	}
 
-	/// Returns the signal that killed the process.
+	/// Returns the signal number that killed the process.
 	#[inline(always)]
 	pub fn get_termsig(&self) -> u8 {
 		self.termsig
@@ -1133,7 +1132,7 @@ impl Process {
 			regs: self.regs,
 			syscalling: false,
 
-			handled_signal: self.handled_signal,
+			handled_signal: self.handled_signal.clone(),
 			saved_regs: self.saved_regs,
 			waitable: false,
 
@@ -1174,18 +1173,16 @@ impl Process {
 		guard.get_mut().add_process(process)
 	}
 
-	/// Returns the signal handler for the signal type `type_`.
+	/// Returns the signal handler for the signal `sig`.
 	#[inline(always)]
-	pub fn get_signal_handler(&self, type_: SignalType) -> SignalHandler {
-		debug_assert!((type_ as usize) < signal::SIGNALS_COUNT);
-		self.signal_handlers.lock().get()[type_ as usize]
+	pub fn get_signal_handler(&self, sig: &Signal) -> SignalHandler {
+		self.signal_handlers.lock().get()[sig.get_id() as usize]
 	}
 
-	/// Sets the signal handler `handler` for the signal type `type_`.
+	/// Sets the signal handler `handler` for the signal `sig`.
 	#[inline(always)]
-	pub fn set_signal_handler(&mut self, type_: SignalType, handler: SignalHandler) {
-		debug_assert!((type_ as usize) < signal::SIGNALS_COUNT);
-		self.signal_handlers.lock().get_mut()[type_ as usize] = handler;
+	pub fn set_signal_handler(&mut self, sig: &Signal, handler: SignalHandler) {
+		self.signal_handlers.lock().get_mut()[sig.get_id() as usize] = handler;
 	}
 
 	/// Tells whether the process is handling a signal.
@@ -1198,7 +1195,7 @@ impl Process {
 	/// handler, the default action for the signal is executed.
 	/// If `no_handler` is true and if the process is already handling a signal, the function
 	/// executes the default action of the signal regardless the user-specified action.
-	pub fn kill(&mut self, sig: Signal, no_handler: bool) {
+	pub fn kill(&mut self, sig: &Signal, no_handler: bool) {
 		if self.get_state() == State::Stopped
 			&& sig.get_default_action() == SignalAction::Continue {
 			self.set_state(State::Running);
@@ -1208,7 +1205,7 @@ impl Process {
 		if !sig.can_catch() || no_handler {
 			sig.execute_action(self, no_handler);
 		} else {
-			self.sigpending.set(sig.get_type() as _);
+			self.sigpending.set(sig.get_id() as _);
 		}
 	}
 
@@ -1221,12 +1218,12 @@ impl Process {
 					let mut proc_guard = proc_mutex.lock();
 					let proc = proc_guard.get_mut();
 
-					proc.kill(sig.clone(), no_handler);
+					proc.kill(&sig, no_handler);
 				}
 			}
 		}
 
-		self.kill(sig, no_handler);
+		self.kill(&sig, no_handler);
 	}
 
 	/// Returns an immutable reference to the process's blocked signals mask.
@@ -1265,7 +1262,7 @@ impl Process {
 		// Looking for a pending signal with respect to the signal mask
 		let mut sig = None;
 		self.sigpending.for_each(| i, b | {
-			if let Ok(s) = Signal::new(i as _) {
+			if let Ok(s) = Signal::from_id(i as _) {
 				if b && !(s.can_catch() && self.sigmask.is_set(i)) {
 					sig = Some(s);
 					return false;
@@ -1283,14 +1280,14 @@ impl Process {
 
 	/// Clear the signal from the list of pending signals.
 	/// If the signal is already cleared, the function does nothing.
-	pub fn signal_clear(&mut self, sig: SignalType) {
-		self.sigpending.clear(sig as _);
+	pub fn signal_clear(&mut self, sig: Signal) {
+		self.sigpending.clear(sig.get_id() as _);
 	}
 
 	/// Saves the process's state to handle a signal.
-	/// `sig` is the signal number.
+	/// `sig` is the signal.
 	/// If the process is already handling a signal, the behaviour is undefined.
-	pub fn signal_save(&mut self, sig: SignalType) {
+	pub fn signal_save(&mut self, sig: Signal) {
 		debug_assert!(!self.is_handling_signal());
 
 		self.saved_regs = self.regs;

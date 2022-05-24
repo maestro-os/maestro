@@ -7,7 +7,6 @@ use crate::file::open_file::O_NONBLOCK;
 use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallSlice;
 use crate::process::regs::Regs;
-use crate::process::signal;
 use crate::syscall::Signal;
 
 // TODO O_ASYNC
@@ -51,7 +50,7 @@ pub fn write(regs: &Regs) -> Result<i32, Errno> {
 						let mut guard = mutex.lock();
 						let proc = guard.get_mut();
 
-						proc.kill(Signal::new(signal::SIGPIPE).unwrap(), false);
+						proc.kill(&Signal::SIGPIPE, false);
 					}
 
 					return Err(err);
