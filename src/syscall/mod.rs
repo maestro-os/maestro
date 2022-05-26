@@ -63,6 +63,8 @@ mod pipe;
 mod poll;
 mod prlimit64;
 mod pselect6;
+mod pwritev2;
+mod pwritev;
 mod r#break;
 mod read;
 mod reboot;
@@ -160,6 +162,8 @@ use pipe::pipe;
 use poll::poll;
 use prlimit64::prlimit64;
 use pselect6::pselect6;
+use pwritev2::pwritev2;
+use pwritev::pwritev;
 use r#break::r#break;
 use read::read;
 use reboot::reboot;
@@ -533,7 +537,7 @@ fn get_syscall(id: u32) -> Option<Syscall> {
 		0x14b => Some(Syscall { handler: &pipe2, name: "pipe2", args: &[] }),
 		// TODO 0x14c => Some(Syscall { handler: &inotify_init1, name: "inotify_init1", args: &[] }),
 		// TODO 0x14d => Some(Syscall { handler: &preadv, name: "preadv", args: &[] }),
-		// TODO 0x14e => Some(Syscall { handler: &pwritev, name: "pwritev", args: &[] }),
+		0x14e => Some(Syscall { handler: &pwritev, name: "pwritev", args: &[] }),
 		// TODO 0x14f => Some(Syscall { handler: &rt_tgsigqueueinfo, name: "rt_tgsigqueueinfo", args: &[] }),
 		// TODO 0x150 => Some(Syscall { handler: &perf_event_open, name: "perf_event_open", args: &[] }),
 		// TODO 0x151 => Some(Syscall { handler: &recvmmsg, name: "recvmmsg", args: &[] }),
@@ -578,7 +582,7 @@ fn get_syscall(id: u32) -> Option<Syscall> {
 		// TODO 0x178 => Some(Syscall { handler: &mlock2, name: "mlock2", args: &[] }),
 		// TODO 0x179 => Some(Syscall { handler: &copy_file_range, name: "copy_file_range", args: &[] }),
 		// TODO 0x17a => Some(Syscall { handler: &preadv2, name: "preadv2", args: &[] }),
-		// TODO 0x17b => Some(Syscall { handler: &pwritev2, name: "pwritev2", args: &[] }),
+		0x17b => Some(Syscall { handler: &pwritev2, name: "pwritev2", args: &[] }),
 		// TODO 0x17c => Some(Syscall { handler: &pkey_mprotect, name: "pkey_mprotect", args: &[] }),
 		// TODO 0x17d => Some(Syscall { handler: &pkey_alloc, name: "pkey_alloc", args: &[] }),
 		// TODO 0x17e => Some(Syscall { handler: &pkey_free, name: "pkey_free", args: &[] }),
