@@ -6,6 +6,7 @@ use crate::file::path::Path;
 use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::regs::Regs;
+use crate::util::FailableClone;
 
 /// Special value, telling to take the path relative to the current working directory.
 pub const AT_FDCWD: i32 = -100;
@@ -43,22 +44,27 @@ pub fn do_access(dirfd: Option<i32>, pathname: SyscallString, mode: i32, flags: 
 	-> Result<i32, Errno> {
 	let flags = flags.unwrap_or(0);
 
-	let proc_mutex = Process::get_current().unwrap();
-	let proc_guard = proc_mutex.lock();
-	let proc = proc_guard.get();
+	let (path, uid, gid, cwd) = {
+		let proc_mutex = Process::get_current().unwrap();
+		let proc_guard = proc_mutex.lock();
+		let proc = proc_guard.get();
 
-	let mem_space_mutex = proc.get_mem_space().unwrap();
-	let mem_space_guard = mem_space_mutex.lock();
+		let mem_space_mutex = proc.get_mem_space().unwrap();
+		let mem_space_guard = mem_space_mutex.lock();
 
-	let pathname = pathname.get(&mem_space_guard)?.ok_or_else(|| errno!(EINVAL))?;
-	let path = Path::from_str(pathname, true)?;
+		let pathname = pathname.get(&mem_space_guard)?.ok_or_else(|| errno!(EINVAL))?;
+		let path = Path::from_str(pathname, true)?;
 
-	let (uid, gid) = {
-		if flags & AT_EACCESS != 0 {
-			(proc.get_euid(), proc.get_egid())
-		} else {
-			(proc.get_uid(), proc.get_gid())
-		}
+		let (uid, gid) = {
+			if flags & AT_EACCESS != 0 {
+				(proc.get_euid(), proc.get_egid())
+			} else {
+				(proc.get_uid(), proc.get_gid())
+			}
+		};
+
+		let cwd = proc.get_cwd().failable_clone()?;
+		(path, uid, gid, cwd)
 	};
 
 	let follow_symlinks = flags & AT_SYMLINK_NOFOLLOW == 0;
@@ -70,7 +76,7 @@ pub fn do_access(dirfd: Option<i32>, pathname: SyscallString, mode: i32, flags: 
 		if path.is_absolute() {
 		} else if let Some(dirfd) = dirfd {
 			if dirfd == AT_FDCWD {
-				path = path.concat(proc.get_cwd())?;
+				path = path.concat(&cwd)?;
 			} else {
 				// TODO Get file from fd and get its path to concat
 				todo!();

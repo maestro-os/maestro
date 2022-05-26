@@ -725,12 +725,11 @@ impl Process {
 
 	/// Adds the process with the given PID `pid` as child to the process.
 	pub fn add_child(&mut self, pid: Pid) -> Result<(), Errno> {
-		let r = self.children.binary_search(&pid);
-		let i = if let Ok(i) = r {
-			i
-		} else {
-			r.unwrap_err()
+		let i = match self.children.binary_search(&pid) {
+			Ok(i) => i,
+			Err(i) => i,
 		};
+
 		self.children.insert(i, pid)
 	}
 

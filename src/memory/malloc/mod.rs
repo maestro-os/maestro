@@ -21,11 +21,11 @@ use crate::errno;
 use crate::memory::malloc::ptr::NonNull;
 use crate::memory;
 use crate::util::list::ListNode;
-use crate::util::lock::Mutex;
+use crate::util::lock::IntMutex;
 use crate::util;
 
 /// The allocator's mutex.
-static MUTEX: Mutex<()> = Mutex::new(());
+static MUTEX: IntMutex<()> = IntMutex::new(());
 
 /// Initializes the memory allocator.
 pub fn init() {
