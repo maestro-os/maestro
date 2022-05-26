@@ -13,15 +13,17 @@ pub fn finit_module(regs: &Regs) -> Result<i32, Errno> {
 	let fd = regs.ebx as u32;
 
 	let image = {
-		let proc_mutex = Process::get_current().unwrap();
-		let mut proc_guard = proc_mutex.lock();
-		let proc = proc_guard.get_mut();
+		let open_file_mutex = {
+			let proc_mutex = Process::get_current().unwrap();
+			let mut proc_guard = proc_mutex.lock();
+			let proc = proc_guard.get_mut();
 
-		if proc.get_uid() != 0 {
-			return Err(errno!(EPERM));
-		}
+			if proc.get_uid() != 0 {
+				return Err(errno!(EPERM));
+			}
 
-		let open_file_mutex = proc.get_fd(fd).ok_or_else(|| errno!(EBADF))?.get_open_file();
+			proc.get_fd(fd).ok_or_else(|| errno!(EBADF))?.get_open_file()
+		};
 		let mut open_file_guard = open_file_mutex.lock();
 		let open_file = open_file_guard.get_mut();
 

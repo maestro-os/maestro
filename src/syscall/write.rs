@@ -33,11 +33,11 @@ pub fn write(regs: &Regs) -> Result<i32, Errno> {
 				(proc.get_mem_space().unwrap(), proc.get_fd(fd).ok_or(errno!(EBADF))?.get_open_file())
 			};
 
-			let mem_space_guard = mem_space.lock();
-			let buf_slice = buf.get(&mem_space_guard, len)?.ok_or(errno!(EFAULT))?;
-
 			let mut open_file_guard = open_file_mutex.lock();
 			let open_file = open_file_guard.get_mut();
+
+			let mem_space_guard = mem_space.lock();
+			let buf_slice = buf.get(&mem_space_guard, len)?.ok_or(errno!(EFAULT))?;
 
 			let flags = open_file.get_flags();
 			let len = match open_file.write(buf_slice) {

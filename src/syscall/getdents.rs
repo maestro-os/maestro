@@ -31,18 +31,23 @@ pub fn getdents(regs: &Regs) -> Result<i32, Errno> {
 	let dirp: SyscallSlice<c_void> = (regs.ecx as usize).into();
 	let count = regs.edx as u32;
 
-	let mutex = Process::get_current().unwrap();
-	let mut guard = mutex.lock();
-	let proc = guard.get_mut();
+	let (mem_space, open_file_mutex) = {
+		let mutex = Process::get_current().unwrap();
+		let mut guard = mutex.lock();
+		let proc = guard.get_mut();
 
-	let mem_space = proc.get_mem_space().unwrap();
-	let mem_space_guard = mem_space.lock();
-	let dirp_slice = dirp.get_mut(&mem_space_guard, count as _)?.ok_or_else(|| errno!(EFAULT))?;
+		let mem_space = proc.get_mem_space().unwrap();
+		let open_file_mutex = proc.get_fd(fd as _).ok_or_else(|| errno!(EBADF))?.get_open_file();
 
-	// Getting file descriptor
-	let open_file_mutex = proc.get_fd(fd as _).ok_or_else(|| errno!(EBADF))?.get_open_file();
+		(mem_space, open_file_mutex)
+	};
+
+	// Getting file
 	let mut open_file_guard = open_file_mutex.lock();
 	let open_file = open_file_guard.get_mut();
+
+	let mem_space_guard = mem_space.lock();
+	let dirp_slice = dirp.get_mut(&mem_space_guard, count as _)?.ok_or_else(|| errno!(EFAULT))?;
 
 	let mut off = 0;
 	let mut entries_count = 0;

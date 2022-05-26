@@ -41,8 +41,10 @@ pub fn ioctl(regs: &Regs) -> Result<i32, Errno> {
 		let mut guard = mutex.lock();
 		let proc = guard.get_mut();
 
-		(proc.get_mem_space().unwrap(), proc.get_fd(fd as _).ok_or_else(|| errno!(EBADF))?
-			.get_open_file())
+		let mem_space = proc.get_mem_space().unwrap();
+		let open_file_mutex = proc.get_fd(fd as _).ok_or_else(|| errno!(EBADF))?.get_open_file();
+
+		(mem_space, open_file_mutex)
 	};
 
 	// Getting the device file
