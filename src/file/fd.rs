@@ -37,6 +37,7 @@ fn decrement_total() {
 }
 
 /// Constraints to be respected when creating a new file descriptor.
+#[derive(Debug)]
 pub enum NewFDConstraint {
 	/// No constraint
 	None,
