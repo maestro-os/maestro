@@ -28,9 +28,7 @@ pub fn finit_module(regs: &Regs) -> Result<i32, Errno> {
 		let open_file = open_file_guard.get_mut();
 
 		let len = open_file.get_file_size(); // TODO Error if file is too large for 32bit?
-		let mut image = unsafe {
-			malloc::Alloc::new_zero(len as usize)?
-		};
+		let mut image = malloc::Alloc::new_default(len as usize)?;
 		open_file.read(image.as_slice_mut())?;
 
 		image

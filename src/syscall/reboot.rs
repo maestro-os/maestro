@@ -44,8 +44,8 @@ pub fn reboot(regs: &Regs) -> Result<i32, Errno> {
 			crate::println!("Power down...");
 			// TODO Use ACPI to power off the system
 
-			// Loop to avoid compilation error
-			loop {}
+			// In case power down didn't work (very unlikely)
+			crate::halt();
 		},
 
 		CMD_REBOOT => {
