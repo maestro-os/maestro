@@ -277,9 +277,7 @@ impl Scheduler {
 			let curr_proc = guard.get_mut();
 
 			curr_proc.regs = *regs;
-			if !curr_proc.is_handling_signal() {
-				curr_proc.syscalling = ring < 3;
-			}
+			curr_proc.syscalling = ring < 3;
 		}
 
 		// The current core ID
