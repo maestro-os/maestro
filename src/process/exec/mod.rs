@@ -108,6 +108,7 @@ pub fn exec(proc: &mut Process, path: &Path, argv: &[&[u8]], envp: &[&[u8]]) -> 
 	}
 
 	proc.reset_vfork();
+	proc.clear_tls_entries();
 
 	// Setting the proc's registers
 	let regs = Regs {

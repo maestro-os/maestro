@@ -1314,6 +1314,13 @@ impl Process {
 		&mut self.tls_entries
 	}
 
+	/// Clears the process's TLS entries.
+	pub fn clear_tls_entries(&mut self) {
+		for e in &mut self.tls_entries {
+			*e = Default::default();
+		}
+	}
+
 	/// Returns a mutable reference to the process's LDT.
 	/// If the LDT doesn't exist, the function creates one.
 	pub fn get_ldt_mut(&mut self) -> Result<&mut LDT, Errno> {

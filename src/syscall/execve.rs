@@ -17,11 +17,11 @@ use crate::util::container::vec::Vec;
 /// The maximum length of the shebang.
 const SHEBANG_MAX: usize = 257;
 
-/// Tells whether the given file has a shebang.
+/// Peeks the shebang in the file.
 /// `file` is the file from which the shebang is to be read.
-/// `buff` is the buffer to write the shebang on.
+/// `buff` is the buffer to write the shebang into.
 /// If the file has a shebang, the function returns its size in bytes.
-pub fn read_shebang(file: &mut File, buff: &mut [u8; SHEBANG_MAX]) -> Result<Option<u64>, Errno> {
+pub fn peek_shebang(file: &mut File, buff: &mut [u8; SHEBANG_MAX]) -> Result<Option<u64>, Errno> {
 	let size = file.read(0, buff)?;
 
 	if size >= 2 && buff[0..1] == [b'#', b'!'] {
@@ -75,7 +75,7 @@ fn do_exec(pathname: SyscallString, argv: *const *const u8, envp: *const *const 
 		let mut shebang: [u8; SHEBANG_MAX] = [0; SHEBANG_MAX];
 
 		// If the file has a shebang, process it
-		if let Some(_shebang_len) = read_shebang(f, &mut shebang)? {
+		if let Some(_shebang_len) = peek_shebang(f, &mut shebang)? {
 			// TODO Split shebang
 			// TODO Get interpreters recursively (up to a limit)
 			// TODO Execute with optional arguments
