@@ -114,14 +114,14 @@ fn check_waitable(proc: &mut Process, pid: i32, wstatus: Option<&mut i32>,
 		} else if let Some(p) = scheduler.get_by_pid(pid) {
 			let mut proc_guard = p.lock();
 			let p = proc_guard.get_mut();
+			let pid = p.get_pid();
 
 			// If waitable, return
 			if p.is_waitable() {
-				wait_proc(proc, wstatus, rusage);
+				wait_proc(p, wstatus, rusage);
 
 				// If the process was a zombie, remove it
-				if proc.get_state() == process::State::Zombie {
-					let pid = proc.get_pid();
+				if p.get_state() == process::State::Zombie {
 					drop(proc_guard);
 					scheduler.remove_process(pid);
 				}
