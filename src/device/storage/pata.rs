@@ -16,7 +16,6 @@
 
 use crate::errno::Errno;
 use crate::io;
-use crate::util::math;
 use super::StorageInterface;
 
 /// The beginning of the port range for the primary ATA bus.
@@ -355,19 +354,21 @@ impl PATAInterface {
 
 	/// Reads `size` blocks from storage at block offset `offset`, writing the data to `buf`.
 	/// The function uses LBA28, thus the offset is assumed to be in range.
-	fn read28(&self, buf: &mut [u8], offset: u64, size: u64) -> Result<(), Errno> {
+	fn read28(&self, buf: &mut [u8], offset: u64, size: usize) -> Result<(), Errno> {
 		self.select();
-		self.wait(true);
+		self.wait(false);
 
-		let blocks_count = math::ceil_division(size, 256) as usize;
-		for i in 0..blocks_count {
+		let mut i = 0;
+		while i < size {
+			// The number of blocks for this iteration
+			let count = ((size - i) % 256) as u8;
+
 			unsafe {
 				let drive = if self.slave {
 					0xf0
 				} else {
 					0xe0
 				} | ((offset >> 24) & 0x0f) as u8;
-				let count = (size % 256) as u8;
 				let lo_lba = (offset & 0xff) as u8;
 				let mid_lba = ((offset >> 8) & 0xff) as u8;
 				let hi_lba = ((offset >> 16) & 0xff) as u8;
@@ -382,11 +383,11 @@ impl PATAInterface {
 			self.send_command(COMMAND_READ_SECTORS);
 
 			let data_port = self.get_register_port(DATA_REGISTER_OFFSET);
-			for j in 0..(size as usize) {
+			for j in 0..(count as usize) {
 				self.wait_io()?;
 
 				for k in 0..256 {
-					let index = ((i * 256 * 256) + (j * 256) + k) * 2;
+					let index = ((i + j) * 256 + k) * 2;
 					let word = unsafe {
 						io::inw(data_port)
 					};
@@ -395,6 +396,8 @@ impl PATAInterface {
 					buf[index + 1] = ((word >> 8) & 0xff) as _;
 				}
 			}
+
+			i += count as usize;
 		}
 
 		Ok(())
@@ -402,26 +405,28 @@ impl PATAInterface {
 
 	/// Reads `size` blocks from storage at block offset `offset`, writing the data to `buf`.
 	/// The function uses LBA48.
-	fn read48(&self, _buf: &mut [u8], _offset: u64, _size: u64) -> Result<(), Errno> {
+	fn read48(&self, _buf: &mut [u8], _offset: u64, _size: usize) -> Result<(), Errno> {
 		// TODO
 		todo!();
 	}
 
 	/// Writes `size` blocks to storage at block offset `offset`, reading the data from `buf`.
 	/// The function uses LBA28, thus the offset is assumed to be in range.
-	fn write28(&self, buf: &[u8], offset: u64, size: u64) -> Result<(), Errno> {
+	fn write28(&self, buf: &[u8], offset: u64, size: usize) -> Result<(), Errno> {
 		self.select();
-		self.wait(true);
+		self.wait(false);
 
-		let blocks_count = math::ceil_division(size, 256) as usize;
-		for i in 0..blocks_count {
+		let mut i = 0;
+		while i < size {
+			// The number of blocks for this iteration
+			let count = ((size - i) % 256) as u8;
+
 			unsafe {
 				let drive = if self.slave {
 					0xf0
 				} else {
 					0xe0
 				} | ((offset >> 24) & 0x0f) as u8;
-				let count = (size % 256) as u8;
 				let lo_lba = (offset & 0xff) as u8;
 				let mid_lba = ((offset >> 8) & 0xff) as u8;
 				let hi_lba = ((offset >> 16) & 0xff) as u8;
@@ -436,11 +441,11 @@ impl PATAInterface {
 			self.send_command(COMMAND_WRITE_SECTORS);
 
 			let data_port = self.get_register_port(DATA_REGISTER_OFFSET);
-			for j in 0..(size as usize) {
+			for j in 0..(count as usize) {
 				self.wait_io()?;
 
 				for k in 0..256 {
-					let index = ((i * 256 * 256) + (j * 256) + k) * 2;
+					let index = ((i + j) * 256 + k) * 2;
 					let word = ((buf[index + 1] as u16) << 8) | (buf[index] as u16);
 
 					unsafe {
@@ -450,6 +455,7 @@ impl PATAInterface {
 			}
 
 			self.cache_flush();
+			i += count as usize;
 		}
 
 		Ok(())
@@ -457,7 +463,7 @@ impl PATAInterface {
 
 	/// Writes `size` blocks to storage at block offset `offset`, reading the data from `buf`.
 	/// The function uses LBA48.
-	fn write48(&self, _buf: &[u8], _offset: u64, _size: u64) -> Result<(), Errno> {
+	fn write48(&self, _buf: &[u8], _offset: u64, _size: usize) -> Result<(), Errno> {
 		// TODO
 		todo!();
 	}
@@ -473,26 +479,30 @@ impl StorageInterface for PATAInterface {
 	}
 
 	fn read(&mut self, buf: &mut [u8], offset: u64, size: u64) -> Result<(), Errno> {
+		debug_assert!((buf.len() as u64) >= size * SECTOR_SIZE);
+
 		if offset >= self.sectors_count || offset + size >= self.sectors_count {
 			return Err(crate::errno!(EINVAL));
 		}
 
 		if offset < (1 << 29) - 1 {
-			self.read28(buf, offset, size)
+			self.read28(buf, offset, size as _)
 		} else {
-			self.read48(buf, offset, size)
+			self.read48(buf, offset, size as _)
 		}
 	}
 
 	fn write(&mut self, buf: &[u8], offset: u64, size: u64) -> Result<(), Errno> {
+		debug_assert!((buf.len() as u64) >= size * SECTOR_SIZE);
+
 		if offset >= self.sectors_count || offset + size >= self.sectors_count {
 			return Err(crate::errno!(EINVAL));
 		}
 
 		if offset < (1 << 29) - 1 {
-			self.write28(buf, offset, size)
+			self.write28(buf, offset, size as _)
 		} else {
-			self.write48(buf, offset, size)
+			self.write48(buf, offset, size as _)
 		}
 	}
 }

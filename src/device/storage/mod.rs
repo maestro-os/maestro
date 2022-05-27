@@ -30,6 +30,7 @@ use crate::util::IO;
 use crate::util::boxed::Box;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
+use crate::util::math;
 use crate::util::ptr::IntSharedPtr;
 
 /// The major number for storage devices.
@@ -56,111 +57,110 @@ pub trait StorageInterface {
 	/// If the offset and size are out of bounds, the function returns an error.
 	fn write(&mut self, buf: &[u8], offset: u64, size: u64) -> Result<(), Errno>;
 
-	// TODO Clean
 	// Unit testing is done through ramdisk testing
 	/// Reads bytes from storage at offset `offset`, writing the data to `buf`.
 	/// If the offset and size are out of bounds, the function returns an error.
 	fn read_bytes(&mut self, buf: &mut [u8], offset: u64) -> Result<u64, Errno> {
 		let block_size = self.get_block_size();
+		let blocks_count = self.get_blocks_count();
+
 		let blk_begin = offset / block_size;
-		let blk_end = (offset + buf.len() as u64) / block_size;
-		if blk_begin >= self.get_blocks_count() || blk_end >= self.get_blocks_count() {
+		let blk_end = math::ceil_division(offset + buf.len() as u64, block_size);
+		if blk_begin >= blocks_count || blk_end >= blocks_count {
 			return Err(errno!(EINVAL));
 		}
 
-		// TODO Alloc only if needed?
-		let mut tmp_buf = malloc::Alloc::<u8>::new_default(block_size as _)?;
-
 		let mut i = 0;
 		while i < buf.len() {
+			let remaining_bytes = buf.len() - i;
+
 			let storage_i = offset + i as u64;
 			let block_off = (storage_i as usize) / block_size as usize;
 			let block_inner_off = (storage_i as usize) % block_size as usize;
 			let block_aligned = block_inner_off == 0;
 
 			if !block_aligned {
+				let mut tmp_buf = malloc::Alloc::<u8>::new_default(block_size as _)?;
 				self.read(tmp_buf.as_slice_mut(), block_off as _, 1)?;
 
-				let diff = min(buf.len(), block_size as usize - block_inner_off);
+				let diff = min(remaining_bytes, block_size as usize - block_inner_off);
 				for j in 0..diff {
 					buf[i + j] = tmp_buf[block_inner_off + j];
 				}
 
 				i += diff;
-			} else {
-				let remaining_bytes = buf.len() - i;
-				let remaining_blocks = remaining_bytes / block_size as usize;
+			} else if (remaining_bytes as u64) < block_size {
+				let mut tmp_buf = malloc::Alloc::<u8>::new_default(block_size as _)?;
+				self.read(tmp_buf.as_slice_mut(), block_off as _, 1)?;
 
-				if remaining_bytes >= block_size as usize {
-					let slice_len = remaining_blocks * block_size as usize;
-					self.read(&mut buf[i..(i + slice_len)], block_off as _,
-						remaining_blocks as _)?;
-
-					i += slice_len;
-				} else {
-					self.read(tmp_buf.as_slice_mut(), block_off as _, 1)?;
-					for j in 0..remaining_bytes {
-						buf[i + j] = tmp_buf[j];
-					}
-
-					i += remaining_bytes;
+				for j in 0..remaining_bytes {
+					buf[i + j] = tmp_buf[j];
 				}
+
+				i += remaining_bytes;
+			} else {
+				let remaining_blocks = (remaining_bytes as u64) / block_size;
+				let len = (remaining_blocks * block_size) as usize;
+				self.read(&mut buf[i..(i + len)], block_off as _, remaining_blocks as _)?;
+
+				i += len;
 			}
 		}
 
 		Ok(buf.len() as _)
 	}
 
-	// TODO Clean
 	// Unit testing is done through ramdisk testing
 	/// Writes bytes to storage at offset `offset`, reading the data from `buf`.
 	/// If the offset and size are out of bounds, the function returns an error.
 	fn write_bytes(&mut self, buf: &[u8], offset: u64) -> Result<u64, Errno> {
 		let block_size = self.get_block_size();
+		let blocks_count = self.get_blocks_count();
+
 		let blk_begin = offset / block_size;
-		let blk_end = (offset + buf.len() as u64) / block_size;
-		if blk_begin >= self.get_blocks_count() || blk_end >= self.get_blocks_count() {
+		let blk_end = math::ceil_division(offset + buf.len() as u64, block_size);
+		if blk_begin >= blocks_count || blk_end >= blocks_count {
 			return Err(errno!(EINVAL));
 		}
 
-		// TODO Alloc only if needed?
-		let mut tmp_buf = malloc::Alloc::<u8>::new_default(block_size as _)?;
-
 		let mut i = 0;
 		while i < buf.len() {
+			let remaining_bytes = buf.len() - i;
+
 			let storage_i = offset + i as u64;
 			let block_off = (storage_i as usize) / block_size as usize;
 			let block_inner_off = (storage_i as usize) % block_size as usize;
 			let block_aligned = block_inner_off == 0;
 
 			if !block_aligned {
+				let mut tmp_buf = malloc::Alloc::<u8>::new_default(block_size as _)?;
 				self.read(tmp_buf.as_slice_mut(), block_off as _, 1)?;
 
-				let diff = min(buf.len(), block_size as usize - block_inner_off);
+				let diff = min(remaining_bytes, block_size as usize - block_inner_off);
 				for j in 0..diff {
 					tmp_buf[block_inner_off + j] = buf[i + j];
 				}
 
 				self.write(tmp_buf.as_slice(), block_off as _, 1)?;
+
 				i += diff;
-			} else {
-				let remaining_bytes = buf.len() - i;
-				let remaining_blocks = remaining_bytes / block_size as usize;
+			} else if (remaining_bytes as u64) < block_size {
+				let mut tmp_buf = malloc::Alloc::<u8>::new_default(block_size as _)?;
+				self.read(tmp_buf.as_slice_mut(), block_off as _, 1)?;
 
-				if remaining_bytes >= block_size as usize {
-					let slice_len = remaining_blocks * block_size as usize;
-					self.write(&buf[i..(i + slice_len)], block_off as _, remaining_blocks as _)?;
-
-					i += slice_len;
-				} else {
-					self.read(tmp_buf.as_slice_mut(), block_off as _, 1)?;
-					for j in 0..remaining_bytes {
-						tmp_buf[j] = buf[i + j];
-					}
-
-					self.write(tmp_buf.as_slice(), block_off as _, 1)?;
-					i += remaining_bytes;
+				for j in 0..remaining_bytes {
+					tmp_buf[j] = buf[i + j];
 				}
+
+				self.write(tmp_buf.as_slice(), block_off as _, 1)?;
+
+				i += remaining_bytes;
+			} else {
+				let remaining_blocks = (remaining_bytes as u64) / block_size;
+				let len = (remaining_blocks * block_size) as usize;
+				self.write(&buf[i..(i + len)], block_off as _, remaining_blocks as _)?;
+
+				i += len;
 			}
 		}
 
