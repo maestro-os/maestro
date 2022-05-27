@@ -109,8 +109,8 @@ impl Path {
 	}
 
 	/// Pops the filename on top of the path.
-	pub fn pop(&mut self) {
-		self.parts.pop();
+	pub fn pop(&mut self) -> Option<String> {
+		self.parts.pop()
 	}
 
 	/// Tells whether the current path begins with the path `other`.
