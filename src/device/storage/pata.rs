@@ -485,7 +485,7 @@ impl StorageInterface for PATAInterface {
 			return Err(crate::errno!(EINVAL));
 		}
 
-		if offset < (1 << 29) - 1 {
+		if (offset + size) < (1 << 29) - 1 {
 			self.read28(buf, offset, size as _)
 		} else {
 			self.read48(buf, offset, size as _)
@@ -499,7 +499,7 @@ impl StorageInterface for PATAInterface {
 			return Err(crate::errno!(EINVAL));
 		}
 
-		if offset < (1 << 29) - 1 {
+		if (offset + size) < (1 << 29) - 1 {
 			self.write28(buf, offset, size as _)
 		} else {
 			self.write48(buf, offset, size as _)
