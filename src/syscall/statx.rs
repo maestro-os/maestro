@@ -235,13 +235,13 @@ pub fn statx(regs: &Regs) -> Result<i32, Errno> {
 		stx_mask: !0, // TODO
 		stx_blksize: 512, // TODO
 		stx_attributes: 0, // TODO
-		stx_nlink: 0, // TODO
+		stx_nlink: file.get_hard_links_count() as _,
 		stx_uid: file.get_uid() as _,
 		stx_gid: file.get_gid() as _,
 		stx_mode: file.get_mode() as _,
 		stx_ino: file.get_location().get_inode(),
 		stx_size: file.get_size(),
-		stx_blocks: 0, // TODO
+		stx_blocks: file.get_blocks_count(),
 		stx_attributes_mask: 0, // TODO
 
 		stx_atime: StatxTimestamp {

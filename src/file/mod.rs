@@ -269,10 +269,14 @@ impl FileContent {
 pub struct File {
 	/// The name of the file.
 	name: String,
-
 	/// The path of the file's parent.
 	parent_path: Path,
 
+	/// The number of hard links associated with the file.
+	hard_links_count: u16,
+
+	/// The number of blocks allocated on the disk for the file.
+	blocks_count: u64,
 	/// The size of the file in bytes.
 	size: u64,
 
@@ -312,6 +316,9 @@ impl File {
 			name,
 			parent_path: Path::root(),
 
+			hard_links_count: 1,
+
+			blocks_count: 0,
 			size: 0,
 
 			uid,
@@ -351,24 +358,9 @@ impl File {
 		self.parent_path = parent_path;
 	}
 
-	/// Sets the file's size.
-	pub fn set_size(&mut self, size: u64) {
-		self.size = size;
-	}
-
 	/// Returns the type of the file.
 	pub fn get_file_type(&self) -> FileType {
 		self.content.get_file_type()
-	}
-
-	/// Returns the owner user ID.
-	pub fn get_uid(&self) -> Uid {
-		self.uid
-	}
-
-	/// Returns the owner group ID.
-	pub fn get_gid(&self) -> Gid {
-		self.gid
 	}
 
 	/// Returns the file's mode.
@@ -432,6 +424,41 @@ impl File {
 	/// Sets the location on which the file is stored.
 	pub fn set_location(&mut self, location: FileLocation) {
 		self.location = location;
+	}
+
+	/// Returns the number of hard links.
+	pub fn get_hard_links_count(&self) -> u16 {
+		self.hard_links_count
+	}
+
+	/// Sets the number of hard links.
+	pub fn set_hard_links_count(&mut self, count: u16) {
+		self.hard_links_count = count;
+	}
+
+	/// Returns the number of blocks allocated for the file.
+	pub fn get_blocks_count(&self) -> u64 {
+		self.blocks_count
+	}
+
+	/// Sets the number of blocks allocated for the file.
+	pub fn set_blocks_count(&mut self, blocks_count: u64) {
+		self.blocks_count = blocks_count;
+	}
+
+	/// Sets the file's size.
+	pub fn set_size(&mut self, size: u64) {
+		self.size = size;
+	}
+
+	/// Returns the owner user ID.
+	pub fn get_uid(&self) -> Uid {
+		self.uid
+	}
+
+	/// Returns the owner group ID.
+	pub fn get_gid(&self) -> Gid {
+		self.gid
 	}
 
 	/// Returns the timestamp of the last modification of the file's metadata.

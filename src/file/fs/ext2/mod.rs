@@ -738,10 +738,12 @@ impl Filesystem for Ext2Fs {
 		let file_location = FileLocation::new(self.mountpath.failable_clone()?, inode);
 		let mut file = File::new(name, inode_.uid, inode_.gid, inode_.get_permissions(),
 			file_location, file_content)?;
+		file.set_hard_links_count(inode_.hard_links_count as _);
+		file.set_blocks_count(inode_.used_sectors as _);
+		file.set_size(inode_.get_size(&self.superblock));
 		file.set_ctime(inode_.ctime as _);
 		file.set_mtime(inode_.mtime as _);
 		file.set_atime(inode_.atime as _);
-		file.set_size(inode_.get_size(&self.superblock));
 
 		Ok(file)
 	}
