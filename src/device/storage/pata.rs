@@ -388,6 +388,8 @@ impl PATAInterface {
 
 				for k in 0..256 {
 					let index = ((i + j) * 256 + k) * 2;
+					debug_assert!(index + 1 < buf.len());
+
 					let word = unsafe {
 						io::inw(data_port)
 					};
@@ -446,6 +448,7 @@ impl PATAInterface {
 
 				for k in 0..256 {
 					let index = ((i + j) * 256 + k) * 2;
+					debug_assert!(index + 1 < buf.len());
 					let word = ((buf[index + 1] as u16) << 8) | (buf[index] as u16);
 
 					unsafe {

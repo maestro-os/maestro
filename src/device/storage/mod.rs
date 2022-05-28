@@ -85,6 +85,7 @@ pub trait StorageInterface {
 
 				let diff = min(remaining_bytes, block_size as usize - block_inner_off);
 				for j in 0..diff {
+					debug_assert!(i + j < buf.len());
 					buf[i + j] = tmp_buf[block_inner_off + j];
 				}
 
@@ -94,6 +95,7 @@ pub trait StorageInterface {
 				self.read(tmp_buf.as_slice_mut(), block_off as _, 1)?;
 
 				for j in 0..remaining_bytes {
+					debug_assert!(i + j < buf.len());
 					buf[i + j] = tmp_buf[j];
 				}
 
@@ -101,6 +103,7 @@ pub trait StorageInterface {
 			} else {
 				let remaining_blocks = (remaining_bytes as u64) / block_size;
 				let len = (remaining_blocks * block_size) as usize;
+				debug_assert!(i + len < buf.len());
 				self.read(&mut buf[i..(i + len)], block_off as _, remaining_blocks as _)?;
 
 				i += len;
@@ -138,6 +141,7 @@ pub trait StorageInterface {
 
 				let diff = min(remaining_bytes, block_size as usize - block_inner_off);
 				for j in 0..diff {
+					debug_assert!(i + j < buf.len());
 					tmp_buf[block_inner_off + j] = buf[i + j];
 				}
 
@@ -149,6 +153,7 @@ pub trait StorageInterface {
 				self.read(tmp_buf.as_slice_mut(), block_off as _, 1)?;
 
 				for j in 0..remaining_bytes {
+					debug_assert!(i + j < buf.len());
 					tmp_buf[j] = buf[i + j];
 				}
 
@@ -158,6 +163,7 @@ pub trait StorageInterface {
 			} else {
 				let remaining_blocks = (remaining_bytes as u64) / block_size;
 				let len = (remaining_blocks * block_size) as usize;
+				debug_assert!(i + len < buf.len());
 				self.write(&buf[i..(i + len)], block_off as _, remaining_blocks as _)?;
 
 				i += len;
