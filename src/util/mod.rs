@@ -114,7 +114,8 @@ pub unsafe fn zero_object<T>(obj: &mut T) {
 
 /// Returns the length of the string `s`.
 /// If the pointer or the string is invalid, the behaviour is undefined.
-pub unsafe fn strlen(s: *const u8) -> usize {
+#[no_mangle]
+pub unsafe extern "C" fn strlen(s: *const u8) -> usize {
 	let mut i = 0;
 
 	while *s.add(i) != b'\0' {
