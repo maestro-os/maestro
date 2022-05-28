@@ -103,7 +103,7 @@ pub trait StorageInterface {
 			} else {
 				let remaining_blocks = (remaining_bytes as u64) / block_size;
 				let len = (remaining_blocks * block_size) as usize;
-				debug_assert!(i + len < buf.len());
+				debug_assert!(i + len <= buf.len());
 				self.read(&mut buf[i..(i + len)], block_off as _, remaining_blocks as _)?;
 
 				i += len;
@@ -163,7 +163,7 @@ pub trait StorageInterface {
 			} else {
 				let remaining_blocks = (remaining_bytes as u64) / block_size;
 				let len = (remaining_blocks * block_size) as usize;
-				debug_assert!(i + len < buf.len());
+				debug_assert!(i + len <= buf.len());
 				self.write(&buf[i..(i + len)], block_off as _, remaining_blocks as _)?;
 
 				i += len;
