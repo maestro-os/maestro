@@ -196,9 +196,12 @@ impl PATAInterface {
 	}
 
 	/// Selects the drive. This operation is necessary in order to send command to the drive.
-	/// NOTE: Before using the drive, the kernel has to wait at least 420 nanoseconds to ensure
-	/// that the drive is in a consistent state.
-	fn select(&self) {
+	/// If the drive is already selected, the function does nothing unless `init` is set.
+	fn select(&self, init: bool) {
+		if !init {
+			// TODO If not necessary, return
+		}
+
 		let value = if !self.slave {
 			SELECT_MASTER
 		} else {
@@ -207,6 +210,8 @@ impl PATAInterface {
 		unsafe {
 			io::outb(self.get_register_port(DRIVE_REGISTER_OFFSET), value);
 		}
+
+		self.wait(false);
 	}
 
 	/// Waits at least 420 nanoseconds if `long` is not set, or at least 5 milliseconds if set.
@@ -273,8 +278,7 @@ impl PATAInterface {
 	/// returns a string telling the cause.
 	fn identify(&mut self) -> Result<(), &'static str> {
 		self.reset();
-		self.select();
-		self.wait(false);
+		self.select(true);
 
 		self.set_sectors_count(0);
 		self.set_lba(0);
@@ -355,13 +359,14 @@ impl PATAInterface {
 	/// Reads `size` blocks from storage at block offset `offset`, writing the data to `buf`.
 	/// The function uses LBA28, thus the offset is assumed to be in range.
 	fn read28(&self, buf: &mut [u8], offset: u64, size: usize) -> Result<(), Errno> {
-		self.select();
-		self.wait(false);
+		self.select(false);
+
+		let data_port = self.get_register_port(DATA_REGISTER_OFFSET);
 
 		let mut i = 0;
 		while i < size {
 			// The number of blocks for this iteration
-			let count = ((size - i) % 256) as u8;
+			let count = (size - i) % 256;
 
 			unsafe {
 				let drive = if self.slave {
@@ -374,7 +379,7 @@ impl PATAInterface {
 				let hi_lba = ((offset >> 16) & 0xff) as u8;
 
 				io::outb(self.get_register_port(DRIVE_REGISTER_OFFSET), drive);
-				io::outb(self.get_register_port(SECTORS_COUNT_REGISTER_OFFSET), count);
+				io::outb(self.get_register_port(SECTORS_COUNT_REGISTER_OFFSET), count as _);
 				io::outb(self.get_register_port(LBA_LO_REGISTER_OFFSET), lo_lba);
 				io::outb(self.get_register_port(LBA_MID_REGISTER_OFFSET), mid_lba);
 				io::outb(self.get_register_port(LBA_HI_REGISTER_OFFSET), hi_lba);
@@ -382,8 +387,7 @@ impl PATAInterface {
 
 			self.send_command(COMMAND_READ_SECTORS);
 
-			let data_port = self.get_register_port(DATA_REGISTER_OFFSET);
-			for j in 0..(count as usize) {
+			for j in 0..count {
 				self.wait_io()?;
 
 				for k in 0..256 {
@@ -399,7 +403,7 @@ impl PATAInterface {
 				}
 			}
 
-			i += count as usize;
+			i += count;
 		}
 
 		Ok(())
@@ -415,13 +419,14 @@ impl PATAInterface {
 	/// Writes `size` blocks to storage at block offset `offset`, reading the data from `buf`.
 	/// The function uses LBA28, thus the offset is assumed to be in range.
 	fn write28(&self, buf: &[u8], offset: u64, size: usize) -> Result<(), Errno> {
-		self.select();
-		self.wait(false);
+		self.select(false);
+
+		let data_port = self.get_register_port(DATA_REGISTER_OFFSET);
 
 		let mut i = 0;
 		while i < size {
 			// The number of blocks for this iteration
-			let count = ((size - i) % 256) as u8;
+			let count = (size - i) % 256;
 
 			unsafe {
 				let drive = if self.slave {
@@ -434,7 +439,7 @@ impl PATAInterface {
 				let hi_lba = ((offset >> 16) & 0xff) as u8;
 
 				io::outb(self.get_register_port(DRIVE_REGISTER_OFFSET), drive);
-				io::outb(self.get_register_port(SECTORS_COUNT_REGISTER_OFFSET), count);
+				io::outb(self.get_register_port(SECTORS_COUNT_REGISTER_OFFSET), count as _);
 				io::outb(self.get_register_port(LBA_LO_REGISTER_OFFSET), lo_lba);
 				io::outb(self.get_register_port(LBA_MID_REGISTER_OFFSET), mid_lba);
 				io::outb(self.get_register_port(LBA_HI_REGISTER_OFFSET), hi_lba);
@@ -442,8 +447,7 @@ impl PATAInterface {
 
 			self.send_command(COMMAND_WRITE_SECTORS);
 
-			let data_port = self.get_register_port(DATA_REGISTER_OFFSET);
-			for j in 0..(count as usize) {
+			for j in 0..count {
 				self.wait_io()?;
 
 				for k in 0..256 {
@@ -458,7 +462,7 @@ impl PATAInterface {
 			}
 
 			self.cache_flush();
-			i += count as usize;
+			i += count;
 		}
 
 		Ok(())
