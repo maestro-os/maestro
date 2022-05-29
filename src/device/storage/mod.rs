@@ -86,6 +86,7 @@ pub trait StorageInterface {
 				let diff = min(remaining_bytes, block_size as usize - block_inner_off);
 				for j in 0..diff {
 					debug_assert!(i + j < buf.len());
+					debug_assert!(block_inner_off + j < tmp_buf.len());
 					buf[i + j] = tmp_buf[block_inner_off + j];
 				}
 
@@ -96,6 +97,7 @@ pub trait StorageInterface {
 
 				for j in 0..remaining_bytes {
 					debug_assert!(i + j < buf.len());
+					debug_assert!(j < tmp_buf.len());
 					buf[i + j] = tmp_buf[j];
 				}
 
@@ -142,6 +144,7 @@ pub trait StorageInterface {
 				let diff = min(remaining_bytes, block_size as usize - block_inner_off);
 				for j in 0..diff {
 					debug_assert!(i + j < buf.len());
+					debug_assert!(block_inner_off + j < tmp_buf.len());
 					tmp_buf[block_inner_off + j] = buf[i + j];
 				}
 
@@ -154,6 +157,7 @@ pub trait StorageInterface {
 
 				for j in 0..remaining_bytes {
 					debug_assert!(i + j < buf.len());
+					debug_assert!(j < tmp_buf.len());
 					tmp_buf[j] = buf[i + j];
 				}
 

@@ -10,11 +10,16 @@ use core::ffi::c_void;
 use crate::cpu;
 use crate::elf;
 use crate::errno::Errno;
+use crate::memory::malloc;
+use crate::memory::stack;
 use crate::memory;
 use crate::multiboot;
 use crate::util::FailableClone;
 use crate::util::boxed::Box;
 use crate::util::math;
+
+/// The size of a temporary stack in bytes.
+const TMP_STACK_SIZE: usize = memory::PAGE_SIZE * 8;
 
 /// Trait representing virtual memory context handler. This trait is the interface to manipulate
 /// virtual memory on any architecture. Each architecture has its own structure implementing this
@@ -144,7 +149,7 @@ pub unsafe fn write_lock_wrap<F: Fn() -> T, T>(f: F) -> T {
 /// Executes the given closure `f` while being bound to the given virtual memory context `vmem`.
 /// After execution, the function restores the previous context.
 /// If the closure changes the current memory context, the behaviour is undefined.
-pub fn switch<F: FnMut() -> T, T>(vmem: &dyn VMem, mut f: F) -> T {
+pub fn switch<F: FnOnce() -> T, T>(vmem: &dyn VMem, f: F) -> T {
 	if vmem.is_bound() {
 		f()
 	} else {
@@ -164,6 +169,26 @@ pub fn switch<F: FnMut() -> T, T>(vmem: &dyn VMem, mut f: F) -> T {
 
 		result
 	}
+}
+
+/// Works like `switch`, except the function also switches to a temporary stack.
+/// The temporary stack is allocated by the function and is freed afterwards.
+pub fn switch_with_stack<F: FnOnce()>(vmem: &dyn VMem, f: F) -> Result<(), Errno> {
+	let tmp_stack = malloc::Alloc::<u8>::new_default(TMP_STACK_SIZE)?;
+	let tmp_stack_top = unsafe {
+		(tmp_stack.as_ptr() as *mut c_void).add(TMP_STACK_SIZE)
+	};
+
+	// Safe because the stack is valid
+	unsafe {
+		stack::switch(tmp_stack_top, || {
+			switch(vmem, || {
+				f()
+			});
+		});
+	}
+
+	Ok(())
 }
 
 #[cfg(test)]

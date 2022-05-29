@@ -20,6 +20,7 @@ use core::ptr::null;
 use crate::errno::Errno;
 use crate::errno;
 use crate::file::open_file::OpenFile;
+use crate::memory::malloc;
 use crate::memory::stack;
 use crate::memory::vmem::VMem;
 use crate::memory::vmem;
@@ -593,7 +594,7 @@ impl MemSpace {
 
 	/// Clones the current memory space for process forking.
 	pub fn fork(&mut self) -> Result<MemSpace, Errno> {
-		let tmp_stack = Box::<[u8; TMP_STACK_SIZE]>::new([0; TMP_STACK_SIZE])?;
+		let tmp_stack = malloc::Alloc::<u8>::new_default(TMP_STACK_SIZE)?;
 		let tmp_stack_top = unsafe {
 			(tmp_stack.as_ptr() as *mut c_void).add(TMP_STACK_SIZE)
 		};

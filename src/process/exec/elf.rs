@@ -14,6 +14,7 @@ use crate::elf::relocation::Relocation;
 use crate::elf;
 use crate::errno::Errno;
 use crate::errno;
+use crate::file::File;
 use crate::file::Gid;
 use crate::file::Uid;
 use crate::file::fcache;
@@ -180,20 +181,11 @@ fn build_auxilary(exec_info: &ExecInfo, load_info: &ELFLoadInfo, parser: &ELFPar
 	Ok(aux)
 }
 
-/// Reads the file at the given path `path`. If the file is not executable, the function returns an
+/// Reads the file `file`. If the file is not executable, the function returns an
 /// error.
 /// `uid` is the User ID of the executing user.
 /// `gid` is the Group ID of the executing user.
-fn read_exec_file(path: &Path, uid: Uid, gid: Gid) -> Result<malloc::Alloc<u8>, Errno> {
-	let mutex = fcache::get();
-	let mut guard = mutex.lock();
-	let files_cache = guard.get_mut();
-
-	// Getting the file from path
-	let file_mutex = files_cache.as_mut().unwrap().get_file_from_path(path, uid, gid, true)?;
-	let mut file_lock = file_mutex.lock();
-	let file = file_lock.get_mut();
-
+fn read_exec_file(file: &mut File, uid: Uid, gid: Gid) -> Result<malloc::Alloc<u8>, Errno> {
 	// Check that the file can be executed by the user
 	if !file.can_execute(uid, gid) {
 		return Err(errno!(ENOEXEC));
@@ -489,7 +481,19 @@ impl<'a> ELFExecutor<'a> {
 			}
 
 			let interp_path = Path::from_str(interp_path, true)?;
-			let interp_image = read_exec_file(&interp_path, self.info.euid, self.info.egid)?;
+
+			// Getting file
+			let interp_file_mutex = {
+				let fcache_mutex = fcache::get();
+				let mut fcache_guard = fcache_mutex.lock();
+				let fcache = fcache_guard.get_mut().as_mut().unwrap();
+
+				fcache.get_file_from_path(&interp_path, self.info.euid, self.info.egid, true)?
+			};
+			let mut interp_file_guard = interp_file_mutex.lock();
+
+			let interp_image = read_exec_file(interp_file_guard.get_mut(), self.info.euid,
+				self.info.egid)?;
 			let interp_elf = ELFParser::new(interp_image.as_slice())?;
 			let i_load_base = load_end as _; // TODO ASLR
 			let load_info = self.load_elf(&interp_elf, mem_space, i_load_base, true)?;
@@ -502,7 +506,7 @@ impl<'a> ELFExecutor<'a> {
 		}
 
 		// Switching to the process's vmem to write onto the virtual memory
-		vmem::switch(mem_space.get_vmem().as_ref(), || {
+		vmem::switch_with_stack(mem_space.get_vmem().as_ref(), || {
 			// Copying segments' data
 			elf.foreach_segments(| seg | {
 				Self::copy_segment(load_base, seg, elf.get_image());
@@ -539,7 +543,7 @@ impl<'a> ELFExecutor<'a> {
 					true
 				});
 			}
-		});
+		})?;
 
 		Ok(ELFLoadInfo {
 			load_base: load_base as _,
@@ -557,9 +561,9 @@ impl<'a> Executor<'a> for ELFExecutor<'a> {
 	// TODO Ensure there is no way to write in kernel space (check segments position and
 	// relocations)
 	// TODO Handle suid and sgid
-	fn build_image(&'a self, path: &Path) -> Result<ProgramImage, Errno> {
+	fn build_image(&'a self, file: &mut File) -> Result<ProgramImage, Errno> {
 		// The ELF file image
-		let image = read_exec_file(&path, self.info.euid, self.info.egid)?;
+		let image = read_exec_file(file, self.info.euid, self.info.egid)?;
 		// Parsing the ELF file
 		let parser = ELFParser::new(image.as_slice())?;
 
@@ -598,10 +602,10 @@ impl<'a> Executor<'a> for ELFExecutor<'a> {
 		mem_space.set_brk_init(brk_ptr);
 
 		// Switching to the process's vmem to write onto the virtual memory
-		vmem::switch(mem_space.get_vmem().as_ref(), || {
+		vmem::switch_with_stack(mem_space.get_vmem().as_ref(), || {
 			// Initializing the userspace stack
 			self.init_stack(user_stack, self.info.argv, self.info.envp, &aux);
-		});
+		})?;
 
 		// The kernel stack
 		let kernel_stack = mem_space.map_stack(process::KERNEL_STACK_SIZE,

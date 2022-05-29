@@ -70,11 +70,13 @@ use core::ffi::c_void;
 use core::panic::PanicInfo;
 use core::ptr::null;
 use crate::errno::Errno;
+use crate::file::fcache;
 use crate::file::path::Path;
 use crate::memory::vmem::VMem;
 use crate::memory::vmem;
 use crate::process::Process;
-use crate::process::exec::exec;
+use crate::process::exec::ExecInfo;
+use crate::process::exec;
 use crate::util::boxed::Box;
 use crate::util::lock::Mutex;
 
@@ -205,9 +207,29 @@ fn init(init_path: &[u8]) -> Result<(), Errno> {
 			env.push(&b"RUST_BACKTRACE=full"[..])?;
 		}
 
-		exec(proc, &path, &vec![
-			init_path
-		]?, &env)
+		let file = {
+			let fcache_mutex = fcache::get();
+			let mut fcache_guard = fcache_mutex.lock();
+			let fcache = fcache_guard.get_mut().as_mut().unwrap();
+
+			fcache.get_file_from_path(&path, 0, 0, true)?
+		};
+		let mut file_guard = file.lock();
+
+		let exec_info = ExecInfo {
+			uid: proc.get_uid(),
+			euid: proc.get_euid(),
+			gid: proc.get_gid(),
+			egid: proc.get_egid(),
+
+			argv: &vec![
+				init_path
+			]?,
+			envp: &env,
+		};
+		let program_image = exec::build_image(file_guard.get_mut(), exec_info)?;
+
+		exec::exec(proc, program_image)
 	}
 }
 

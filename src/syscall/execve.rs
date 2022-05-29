@@ -7,7 +7,9 @@ use crate::file::fcache;
 use crate::file::path::Path;
 use crate::memory::stack;
 use crate::process::Process;
-use crate::process::exec::exec;
+use crate::process::exec::ExecInfo;
+use crate::process::exec::ProgramImage;
+use crate::process::exec;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::regs::Regs;
 use crate::process;
@@ -32,13 +34,13 @@ pub fn peek_shebang(file: &mut File, buff: &mut [u8; SHEBANG_MAX]) -> Result<Opt
 }
 
 /// Performs the execution on the current process.
-fn do_exec(path: &Path, argv: &[&[u8]], envp: &[&[u8]]) -> Result<Regs, Errno> {
+fn do_exec(program_image: ProgramImage) -> Result<Regs, Errno> {
 	let proc_mutex = Process::get_current().unwrap();
 	let mut proc_guard = proc_mutex.lock();
 	let proc = proc_guard.get_mut();
 
 	// Executing the program
-	exec(proc, path, &*argv, &*envp)?;
+	exec::exec(proc, program_image)?;
 	Ok(*proc.get_regs())
 }
 
@@ -48,7 +50,7 @@ pub fn execve(regs: &Regs) -> Result<i32, Errno> {
 	let argv = regs.ecx as *const () as *const *const u8;
 	let envp = regs.edx as *const () as *const *const u8;
 
-	let (path, argv, envp, uid, gid) = {
+	let (path, argv, envp, uid, gid, euid, egid) = {
 		let proc_mutex = Process::get_current().unwrap();
 		let mut proc_guard = proc_mutex.lock();
 		let proc = proc_guard.get_mut();
@@ -68,8 +70,10 @@ pub fn execve(regs: &Regs) -> Result<i32, Errno> {
 
 		let uid = proc.get_uid();
 		let gid = proc.get_gid();
+		let euid = proc.get_euid();
+		let egid = proc.get_egid();
 
-		(path, argv, envp, uid, gid)
+		(path, argv, envp, uid, gid, euid, egid)
 	};
 
 	// The file
@@ -107,15 +111,30 @@ pub fn execve(regs: &Regs) -> Result<i32, Errno> {
 		}
 	}
 
-	// TODO Find a better solution
-	let mut argv_ = Vec::new();
-	for a in &argv {
-		argv_.push(a.as_bytes())?;
-	}
-	let mut envp_ = Vec::new();
-	for e in &envp {
-		envp_.push(e.as_bytes())?;
-	}
+	let program_image = {
+		// TODO Find a better solution
+		let mut argv_ = Vec::new();
+		for a in &argv {
+			argv_.push(a.as_bytes())?;
+		}
+		let mut envp_ = Vec::new();
+		for e in &envp {
+			envp_.push(e.as_bytes())?;
+		}
+
+		// Building the program's image
+		let mut file_guard = file.lock();
+		let exec_info = ExecInfo {
+			uid,
+			euid,
+			gid,
+			egid,
+
+			argv: &argv_,
+			envp: &envp_,
+		};
+		exec::build_image(file_guard.get_mut(), exec_info)?
+	};
 
 	cli!();
 	// The tmp stack will not be used since the scheduler cannot be ticked when interrupts are
@@ -130,17 +149,12 @@ pub fn execve(regs: &Regs) -> Result<i32, Errno> {
 	let mut result = Err(errno!(EINVAL));
 	unsafe {
 		stack::switch(tmp_stack, || {
-			let r = do_exec(&path, &argv_, &envp_);
-
-			if let Ok(regs) = r {
-				regs.switch(true);
-			} else {
-				result = r;
-			}
+			result = do_exec(program_image);
 		});
 	}
-	result?;
 
-	// Cannot be reached since `do_exec` won't return on success
-	unreachable!();
+	let regs = result?;
+	unsafe {
+		regs.switch(true);
+	}
 }

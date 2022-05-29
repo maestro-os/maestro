@@ -59,7 +59,6 @@ pub fn get() -> Option<Timestamp> {
 
 	if !sources.is_empty() {
 		let cmos = &mut sources[0]; // TODO Select the preferred source
-		crate::println!("time: {}", cmos.get_time()); // TODO rm
 		Some(cmos.get_time())
 	} else {
 		None
