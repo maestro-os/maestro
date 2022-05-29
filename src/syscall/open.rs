@@ -84,24 +84,27 @@ fn get_file(path: Path, flags: i32, mode: Mode, uid: Uid, gid: Gid)
 
 /// Performs the open system call.
 pub fn open_(pathname: SyscallString, flags: i32, mode: file::Mode) -> Result<i32, Errno> {
-	let mutex = Process::get_current().unwrap();
-	let mut guard = mutex.lock();
-	let proc = guard.get_mut();
-
 	// Getting the path string
-	let path = {
+	let (path, mode, uid, gid) = {
+		let mutex = Process::get_current().unwrap();
+		let mut guard = mutex.lock();
+		let proc = guard.get_mut();
+
 		let mem_space = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space.lock();
-		Path::from_str(pathname.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?, true)?
+		let path = Path::from_str(pathname.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?, true)?;
+		let abs_path = super::util::get_absolute_path(&proc, path)?;
+
+		let mode = mode & !proc.get_umask();
+		let uid = proc.get_euid();
+		let gid = proc.get_egid();
+
+		(abs_path, mode, uid, gid)
 	};
 
-	let mode = mode & !proc.get_umask();
-	let uid = proc.get_euid();
-	let gid = proc.get_egid();
 
 	// Getting the file
-	let abs_path = super::util::get_absolute_path(&proc, path)?;
-	let file = get_file(abs_path, flags, mode, uid, gid)?;
+	let file = get_file(path, flags, mode, uid, gid)?;
 
 	// If O_DIRECTORY is set and the file is not a directory, return an error
 	if flags & open_file::O_DIRECTORY != 0
@@ -110,6 +113,9 @@ pub fn open_(pathname: SyscallString, flags: i32, mode: file::Mode) -> Result<i3
 	}
 
 	// Create and return the file descriptor
+	let mutex = Process::get_current().unwrap();
+	let mut guard = mutex.lock();
+	let proc = guard.get_mut();
 	let fd = proc.create_fd(flags & STATUS_FLAGS_MASK, FDTarget::File(file))?;
 	Ok(fd.get_id() as _)
 }

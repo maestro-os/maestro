@@ -643,20 +643,38 @@ impl Process {
 
 	/// Sets the process's state to `new_state`.
 	pub fn set_state(&mut self, new_state: State) {
-		if self.state != State::Zombie {
-			self.state = new_state;
+		if self.state == State::Zombie {
+			return;
 		}
+
+		self.state = new_state;
 
 		if self.state == State::Zombie {
 			if self.is_init() {
 				kernel_panic!("Terminated init process!");
 			}
 
-			// TODO Attach every child to the init process
-
-			// Removing the memory space to save memory
+			// Removing the memory space, file descriptors table and signals table to save memory
 			// TODO Handle the case where the memory space is bound
 			// TODO self.mem_space = None;
+			self.file_descriptors = None;
+			// TODO Remove signal handlers
+
+			// Attaching every child to the init process
+			let init_proc_mutex = Process::get_by_pid(pid::INIT_PID).unwrap();
+			let mut init_proc_guard = init_proc_mutex.lock();
+			let init_proc = init_proc_guard.get_mut();
+			for child_pid in self.children.iter() {
+				// Check just in case
+				if *child_pid == self.pid {
+					continue;
+				}
+
+				if let Some(child_mutex) = Process::get_by_pid(*child_pid) {
+					child_mutex.lock().get_mut().parent = Some(init_proc_mutex.new_weak());
+					oom::wrap(|| init_proc.add_child(*child_pid));
+				}
+			}
 
 			self.waitable = true;
 		}
@@ -1139,7 +1157,7 @@ impl Process {
 			kernel_stack,
 
 			cwd: self.cwd.failable_clone()?,
-			file_descriptors: file_descriptors,
+			file_descriptors,
 
 			sigmask: self.sigmask.failable_clone()?,
 			sigpending: Bitfield::new(signal::SIGNALS_COUNT)?,
@@ -1372,10 +1390,6 @@ impl Process {
 	pub fn exit(&mut self, status: u32) {
 		self.exit_status = (status & 0xff) as ExitStatus;
 		self.set_state(State::Zombie);
-
-		// TODO Remove memory space?
-		self.file_descriptors = None;
-		// TODO Remove signal handlers
 
 		self.reset_vfork();
 
