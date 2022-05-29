@@ -8,7 +8,6 @@ pub mod relocation;
 use core::cmp::max;
 use core::cmp::min;
 use core::ffi::c_void;
-use core::mem::size_of;
 use crate::memory;
 use crate::process::mem_space;
 use crate::util::math;
@@ -384,7 +383,7 @@ pub fn foreach_sections<F>(sections: *const c_void, sections_count: usize, shndx
 	};
 
 	for i in 0..sections_count {
-		let hdr_offset = i * size_of::<ELF32SectionHeader>();
+		let hdr_offset = i * entsize;
 		let hdr = unsafe {
 			&*(sections.add(hdr_offset) as *const ELF32SectionHeader)
 		};
@@ -490,8 +489,7 @@ pub fn get_function_name(sections: *const c_void, sections_count: usize, shndx: 
 /// `name` is the name of the symbol to get.
 pub fn get_kernel_symbol(sections: *const c_void, sections_count: usize, shndx: usize,
 	entsize: usize, name: &[u8]) -> Option<&'static ELF32Sym> {
-	let strtab_section = get_section(sections, sections_count, shndx, entsize,
-		".strtab".as_bytes())?;
+	let strtab_section = get_section(sections, sections_count, shndx, entsize, b".strtab")?;
 	let mut symbol: Option<&'static ELF32Sym> = None;
 
 	foreach_sections(sections, sections_count, shndx, entsize,

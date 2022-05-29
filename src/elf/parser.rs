@@ -1,5 +1,6 @@
 //! This module implements the ELF parser.
 
+use core::mem::size_of;
 use core::slice;
 use crate::elf::relocation::ELF32Rel;
 use crate::elf::relocation::ELF32Rela;
@@ -258,7 +259,7 @@ impl<'a> ELFParser<'a> {
 						return false;
 					}
 
-					i += size_of::<ELF32Sym>() as u32;
+					i += section.sh_entsize;
 				}
 			}
 
