@@ -296,7 +296,7 @@ impl Scheduler {
 			pic::end_of_interrupt(0x0);
 
 			unsafe {
-				stack::switch(tmp_stack, || {
+				stack::switch(Some(tmp_stack), || {
 					let (syscalling, regs) = {
 						let mut guard = next_proc.1.lock();
 						let proc = guard.get_mut();
@@ -307,7 +307,7 @@ impl Scheduler {
 
 					// Resuming execution
 					regs.switch(!syscalling);
-				});
+				}).unwrap();
 			}
 
 			unreachable!();

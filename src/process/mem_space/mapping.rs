@@ -8,12 +8,12 @@ use core::ptr;
 use crate::errno::Errno;
 use crate::file::open_file::OpenFile;
 use crate::memory::buddy;
+use crate::memory::malloc;
 use crate::memory::vmem::VMem;
 use crate::memory::vmem;
 use crate::memory;
 use crate::process::mem_space::physical_ref_counter::PhysRefCounter;
 use crate::process::oom;
-use crate::util::boxed::Box;
 use crate::util::lock::*;
 use crate::util::ptr::SharedPtr;
 use crate::util;
@@ -220,12 +220,11 @@ impl MemMapping {
 	pub fn map(&mut self, offset: usize) -> Result<(), Errno> {
 		let vmem = self.get_mut_vmem();
 		let virt_ptr = (self.begin as usize + offset * memory::PAGE_SIZE) as *mut c_void;
-		let cow = self.is_cow(offset);
 		let cow_buffer = {
-			if cow {
-				let mut cow_buffer = Box::<[u8; memory::PAGE_SIZE]>::new([0; memory::PAGE_SIZE])?;
+			if self.is_cow(offset) {
+				let mut cow_buffer = malloc::Alloc::<u8>::new_default(memory::PAGE_SIZE)?;
 				unsafe {
-					ptr::copy_nonoverlapping(virt_ptr, cow_buffer.as_mut_ptr() as _,
+					ptr::copy_nonoverlapping(virt_ptr, cow_buffer.as_ptr_mut() as _,
 						memory::PAGE_SIZE);
 				}
 
@@ -236,7 +235,7 @@ impl MemMapping {
 		};
 
 		let prev_phys_ptr = self.get_physical_page(offset);
-		if !cow && prev_phys_ptr.is_some() {
+		if cow_buffer.is_none() && prev_phys_ptr.is_some() {
 			return Ok(());
 		}
 
@@ -260,18 +259,19 @@ impl MemMapping {
 			}
 		}
 
-		vmem::switch(vmem, || {
-			unsafe {
+		// Copying data if necessary
+		unsafe {
+			vmem::switch(vmem, move || {
 				vmem::write_lock_wrap(|| {
-					if let Some(buffer) = &cow_buffer {
+					if let Some(buffer) = cow_buffer {
 						ptr::copy_nonoverlapping(buffer.as_ptr() as *const c_void,
 							virt_ptr as *mut c_void, memory::PAGE_SIZE);
 					} else {
-						util::bzero(virt_ptr as _, memory::PAGE_SIZE);
+						util::bzero(virt_ptr, memory::PAGE_SIZE);
 					}
 				});
-			}
-		});
+			});
+		}
 
 		Ok(())
 	}

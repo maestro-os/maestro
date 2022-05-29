@@ -10,16 +10,12 @@ use core::ffi::c_void;
 use crate::cpu;
 use crate::elf;
 use crate::errno::Errno;
-use crate::memory::malloc;
-use crate::memory::stack;
+use crate::idt;
 use crate::memory;
 use crate::multiboot;
 use crate::util::FailableClone;
 use crate::util::boxed::Box;
 use crate::util::math;
-
-/// The size of a temporary stack in bytes.
-const TMP_STACK_SIZE: usize = memory::PAGE_SIZE * 8;
 
 /// Trait representing virtual memory context handler. This trait is the interface to manipulate
 /// virtual memory on any architecture. Each architecture has its own structure implementing this
@@ -137,7 +133,7 @@ pub unsafe fn set_write_lock(lock: bool) {
 ///
 /// This function disables memory protection on the kernel side, which makes read-only data
 /// writable. Writing on read-only data is undefined.
-pub unsafe fn write_lock_wrap<F: Fn() -> T, T>(f: F) -> T {
+pub unsafe fn write_lock_wrap<F: FnOnce() -> T, T>(f: F) -> T {
 	let lock = is_write_lock();
 	set_write_lock(false);
 	let result = f();
@@ -149,46 +145,39 @@ pub unsafe fn write_lock_wrap<F: Fn() -> T, T>(f: F) -> T {
 /// Executes the given closure `f` while being bound to the given virtual memory context `vmem`.
 /// After execution, the function restores the previous context.
 /// If the closure changes the current memory context, the behaviour is undefined.
-pub fn switch<F: FnOnce() -> T, T>(vmem: &dyn VMem, f: F) -> T {
-	if vmem.is_bound() {
-		f()
-	} else {
-		// Getting the current vmem
-		let cr3 = unsafe {
-			cpu::cr3_get()
-		};
-		// Binding the temporary vmem
-		vmem.bind();
+///
+/// The function disables interruptions while executing the closure. This is due to the fact that
+/// if interruptions were enabled, the scheduler would be able to change the running process, and
+/// thus when resuming execution, the virtual memory context would be changed to the process's
+/// context, making the behaviour undefined.
+///
+/// # Safety
+///
+/// Special consideration should be taken when using this function since Rust is unable to ensure
+/// its safety.
+///
+/// For example, the caller must ensure the stack is accessible in both the current and given
+/// virtual memory contexts.
+///
+/// TODO
+pub unsafe fn switch<F: FnOnce() -> T, T>(vmem: &dyn VMem, f: F) -> T {
+	idt::wrap_disable_interrupts(|| {
+		if vmem.is_bound() {
+			f()
+		} else {
+			// Getting the current vmem
+			let cr3 = cpu::cr3_get();
+			// Binding the temporary vmem
+			vmem.bind();
 
-		let result = f();
+			let result = f();
 
-		// Restoring the previous vmem
-		unsafe {
+			// Restoring the previous vmem
 			x86::paging_enable(cr3 as _);
+
+			result
 		}
-
-		result
-	}
-}
-
-/// Works like `switch`, except the function also switches to a temporary stack.
-/// The temporary stack is allocated by the function and is freed afterwards.
-pub fn switch_with_stack<F: FnOnce()>(vmem: &dyn VMem, f: F) -> Result<(), Errno> {
-	let tmp_stack = malloc::Alloc::<u8>::new_default(TMP_STACK_SIZE)?;
-	let tmp_stack_top = unsafe {
-		(tmp_stack.as_ptr() as *mut c_void).add(TMP_STACK_SIZE)
-	};
-
-	// Safe because the stack is valid
-	unsafe {
-		stack::switch(tmp_stack_top, || {
-			switch(vmem, || {
-				f()
-			});
-		});
-	}
-
-	Ok(())
+	})
 }
 
 #[cfg(test)]

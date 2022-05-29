@@ -3,6 +3,8 @@
 use crate::errno::Errno;
 use crate::errno;
 use crate::file::File;
+use crate::file::Gid;
+use crate::file::Uid;
 use crate::file::fcache;
 use crate::file::path::Path;
 use crate::memory::stack;
@@ -14,7 +16,9 @@ use crate::process::mem_space::ptr::SyscallString;
 use crate::process::regs::Regs;
 use crate::process;
 use crate::util::IO;
+use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
+use crate::util::ptr::SharedPtr;
 
 /// The maximum length of the shebang.
 const SHEBANG_MAX: usize = 257;
@@ -42,6 +46,34 @@ fn do_exec(program_image: ProgramImage) -> Result<Regs, Errno> {
 	// Executing the program
 	exec::exec(proc, program_image)?;
 	Ok(*proc.get_regs())
+}
+
+// TODO clean
+/// TODO doc
+fn build_image(file: SharedPtr<File>, uid: Uid, euid: Uid, gid: Gid, egid: Gid, argv: &[String],
+	envp: &[String]) -> Result<ProgramImage, Errno> {
+	// TODO Find a better solution
+	let mut argv_ = Vec::new();
+	for a in argv {
+		argv_.push(a.as_bytes())?;
+	}
+	let mut envp_ = Vec::new();
+	for e in envp {
+		envp_.push(e.as_bytes())?;
+	}
+
+	let mut file_guard = file.lock();
+	let exec_info = ExecInfo {
+		uid,
+		euid,
+		gid,
+		egid,
+
+		argv: &argv_,
+		envp: &envp_,
+	};
+
+	exec::build_image(file_guard.get_mut(), exec_info)
 }
 
 /// The implementation of the `execve` syscall.
@@ -111,34 +143,17 @@ pub fn execve(regs: &Regs) -> Result<i32, Errno> {
 		}
 	}
 
-	let program_image = {
-		// TODO Find a better solution
-		let mut argv_ = Vec::new();
-		for a in &argv {
-			argv_.push(a.as_bytes())?;
-		}
-		let mut envp_ = Vec::new();
-		for e in &envp {
-			envp_.push(e.as_bytes())?;
-		}
-
-		// Building the program's image
-		let mut file_guard = file.lock();
-		let exec_info = ExecInfo {
-			uid,
-			euid,
-			gid,
-			egid,
-
-			argv: &argv_,
-			envp: &envp_,
-		};
-		exec::build_image(file_guard.get_mut(), exec_info)?
+	// Building the program's image
+	let program_image = unsafe {
+		stack::switch(None, move || {
+			build_image(file, uid, euid, gid, egid, &argv, &envp)
+		}).unwrap()?
 	};
 
 	cli!();
 	// The tmp stack will not be used since the scheduler cannot be ticked when interrupts are
 	// disabled
+	// A temporary stack cannot be allocated since it wouldn't be possible to free it on success
 	let tmp_stack = {
 		let core = 0; // TODO Get current core ID
 		process::get_scheduler().lock().get_mut().get_tmp_stack(core)
@@ -146,15 +161,13 @@ pub fn execve(regs: &Regs) -> Result<i32, Errno> {
 
 	// Switching to another stack in order to avoid crashing when switching to the new memory
 	// space
-	let mut result = Err(errno!(EINVAL));
 	unsafe {
-		stack::switch(tmp_stack, || {
-			result = do_exec(program_image);
-		});
+		stack::switch(Some(tmp_stack), move || -> Result<(), Errno> {
+			let regs = do_exec(program_image)?;
+			regs.switch(true);
+		}).unwrap()?;
 	}
 
-	let regs = result?;
-	unsafe {
-		regs.switch(true);
-	}
+	// Cannot be reached since `do_exec` won't return on success
+	unreachable!();
 }

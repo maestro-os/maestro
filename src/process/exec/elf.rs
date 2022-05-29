@@ -506,44 +506,42 @@ impl<'a> ELFExecutor<'a> {
 		}
 
 		// Switching to the process's vmem to write onto the virtual memory
-		vmem::switch_with_stack(mem_space.get_vmem().as_ref(), || {
-			// Copying segments' data
-			elf.foreach_segments(| seg | {
-				Self::copy_segment(load_base, seg, elf.get_image());
-				true
-			});
+		unsafe {
+			vmem::switch(mem_space.get_vmem().as_ref(), move || {
+				// Copying segments' data
+				elf.foreach_segments(| seg | {
+					Self::copy_segment(load_base, seg, elf.get_image());
+					true
+				});
 
-			// Performing relocations if no interpreter is present
-			if interp_path.is_none() {
-				// Closure returning a symbol from its name
-				let get_sym = | name: &str | elf.get_symbol_by_name(name);
+				// Performing relocations if no interpreter is present
+				if interp_path.is_none() {
+					// Closure returning a symbol from its name
+					let get_sym = | name: &str | elf.get_symbol_by_name(name);
 
-				// Closure returning the value for a given symbol
-				let get_sym_val = | sym_section: u32, sym: u32 | {
-					let section = elf.get_section_by_index(sym_section)?;
-					let sym = elf.get_symbol_by_index(section, sym)?;
+					// Closure returning the value for a given symbol
+					let get_sym_val = | sym_section: u32, sym: u32 | {
+						let section = elf.get_section_by_index(sym_section)?;
+						let sym = elf.get_symbol_by_index(section, sym)?;
 
-					if sym.is_defined() {
-						Some(load_base as u32 + sym.st_value)
-					} else {
-						None
-					}
-				};
+						if sym.is_defined() {
+							Some(load_base as u32 + sym.st_value)
+						} else {
+							None
+						}
+					};
 
-				elf.foreach_rel(| section, rel | {
-					unsafe {
+					elf.foreach_rel(| section, rel | {
 						rel.perform(load_base as _, section, get_sym, get_sym_val);
-					}
-					true
-				});
-				elf.foreach_rela(| section, rela | {
-					unsafe {
+						true
+					});
+					elf.foreach_rela(| section, rela | {
 						rela.perform(load_base as _, section, get_sym, get_sym_val);
-					}
-					true
-				});
-			}
-		})?;
+						true
+					});
+				}
+			});
+		}
 
 		Ok(ELFLoadInfo {
 			load_base: load_base as _,
@@ -602,10 +600,12 @@ impl<'a> Executor<'a> for ELFExecutor<'a> {
 		mem_space.set_brk_init(brk_ptr);
 
 		// Switching to the process's vmem to write onto the virtual memory
-		vmem::switch_with_stack(mem_space.get_vmem().as_ref(), || {
-			// Initializing the userspace stack
-			self.init_stack(user_stack, self.info.argv, self.info.envp, &aux);
-		})?;
+		unsafe {
+			vmem::switch(mem_space.get_vmem().as_ref(), move || {
+				// Initializing the userspace stack
+				self.init_stack(user_stack, self.info.argv, self.info.envp, &aux);
+			});
+		}
 
 		// The kernel stack
 		let kernel_stack = mem_space.map_stack(process::KERNEL_STACK_SIZE,

@@ -72,10 +72,10 @@ pub fn build_image(file: &mut File, info: ExecInfo)
 
 /// Executes the program image `image` on the process `proc`.
 pub fn exec(proc: &mut Process, image: ProgramImage) -> Result<(), Errno> {
+	// Duplicate file descriptors
+	proc.duplicate_fds()?; // TODO Undo on fail
 	// Setting the new memory space to the process
 	proc.set_mem_space(Some(IntSharedPtr::new(image.mem_space)?));
-	// Duplicate file descriptors
-	proc.duplicate_fds()?;
 
 	// Setting the process's stacks
 	proc.user_stack = Some(image.user_stack);

@@ -20,7 +20,6 @@ use core::ptr::null;
 use crate::errno::Errno;
 use crate::errno;
 use crate::file::open_file::OpenFile;
-use crate::memory::malloc;
 use crate::memory::stack;
 use crate::memory::vmem::VMem;
 use crate::memory::vmem;
@@ -49,9 +48,6 @@ pub const MAPPING_FLAG_NOLAZY: u8 = 0b01000;
 /// Flag telling that a memory mapping has its physical memory shared with one or more other
 /// mappings.
 pub const MAPPING_FLAG_SHARED: u8 = 0b10000;
-
-/// The size of the temporary stack used to fork a memory space.
-const TMP_STACK_SIZE: usize = memory::PAGE_SIZE * 8;
 
 /// The physical pages reference counter.
 pub static PHYSICAL_REF_COUNTER: Mutex<PhysRefCounter> = Mutex::new(PhysRefCounter::new());
@@ -511,49 +507,47 @@ impl MemSpace {
 	pub fn can_access_string(&self, ptr: *const u8, user: bool, write: bool) -> Option<usize> {
 		// TODO Allow reading kernelspace data that is available to userspace
 
-		vmem::switch(self.vmem.as_ref(), || {
-			let mut i = 0;
-			'outer: loop {
-				// Safe because not dereferenced before checking if accessible
-				let curr_ptr = unsafe {
-					ptr.add(i)
-				};
+		unsafe {
+			vmem::switch(self.vmem.as_ref(), move || {
+				let mut i = 0;
+				'outer: loop {
+					// Safe because not dereferenced before checking if accessible
+					let curr_ptr = ptr.add(i);
 
-				if let Some(mapping) = Self::get_mapping_for_(&self.mappings, curr_ptr as _) {
-					let flags = mapping.get_flags();
-					if write && (flags & MAPPING_FLAG_WRITE == 0) {
-						return None;
-					}
-					if user && (flags & MAPPING_FLAG_USER == 0) {
-						return None;
-					}
-
-					// The beginning of the current page
-					let page_begin = util::down_align(curr_ptr as _, memory::PAGE_SIZE);
-					// The offset of the current pointer in its page
-					let inner_off = curr_ptr as usize - page_begin as usize;
-					let check_size = memory::PAGE_SIZE - inner_off;
-
-					// Looking for the null byte
-					for j in 0..check_size {
-						let c = unsafe { // Safe because the pointer is checked before
-							*curr_ptr.add(j)
-						};
-
-						// TODO Optimize by checking several bytes at a time
-						if c == b'\0' {
-							break 'outer;
+					if let Some(mapping) = Self::get_mapping_for_(&self.mappings, curr_ptr as _) {
+						let flags = mapping.get_flags();
+						if write && (flags & MAPPING_FLAG_WRITE == 0) {
+							return None;
+						}
+						if user && (flags & MAPPING_FLAG_USER == 0) {
+							return None;
 						}
 
-						i += 1;
-					}
-				} else {
-					return None;
-				}
-			}
+						// The beginning of the current page
+						let page_begin = util::down_align(curr_ptr as _, memory::PAGE_SIZE);
+						// The offset of the current pointer in its page
+						let inner_off = curr_ptr as usize - page_begin as usize;
+						let check_size = memory::PAGE_SIZE - inner_off;
 
-			Some(i)
-		})
+						// Looking for the null byte
+						for j in 0..check_size {
+							let c = *curr_ptr.add(j);
+
+							// TODO Optimize by checking several bytes at a time
+							if c == b'\0' {
+								break 'outer;
+							}
+
+							i += 1;
+						}
+					} else {
+						return None;
+					}
+				}
+
+				Some(i)
+			})
+		}
 	}
 
 	/// Binds the CPU to this memory space.
@@ -594,16 +588,11 @@ impl MemSpace {
 
 	/// Clones the current memory space for process forking.
 	pub fn fork(&mut self) -> Result<MemSpace, Errno> {
-		let tmp_stack = malloc::Alloc::<u8>::new_default(TMP_STACK_SIZE)?;
-		let tmp_stack_top = unsafe {
-			(tmp_stack.as_ptr() as *mut c_void).add(TMP_STACK_SIZE)
-		};
-
 		let mut result = Err(errno!(EINVAL));
 		unsafe {
-			stack::switch(tmp_stack_top, || {
+			stack::switch(None, || {
 				result = self.do_fork();
-			})
+			})?;
 		}
 		result
 	}
