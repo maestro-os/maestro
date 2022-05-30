@@ -478,7 +478,6 @@ pub fn get_available_chunk(size: usize) -> Result<&'static mut FreeChunk, Errno>
 	#[cfg(config_debug_malloc_check)]
 	chunk.check();
 	debug_assert!(chunk.get_size() >= size);
-	debug_assert!(!chunk.is_used());
 
 	Ok(chunk)
 }
