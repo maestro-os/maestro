@@ -228,7 +228,9 @@ impl<T: Default> Alloc<T> {
 			Self::new_zero(size)?
 		};
 		for i in 0..size {
-			alloc[i] = T::default();
+			unsafe { // Safe because the index is in bounds
+				ptr::write(&mut alloc[i], T::default());
+			}
 		}
 
 		Ok(alloc)
@@ -263,7 +265,9 @@ impl<T: Clone> Alloc<T> {
 			Self::new_zero(size)?
 		};
 		for i in 0..size {
-			alloc[i] = val.clone();
+			unsafe { // Safe because the index is in bounds
+				ptr::write(&mut alloc[i], val.clone());
+			}
 		}
 
 		Ok(alloc)

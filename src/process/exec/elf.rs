@@ -193,9 +193,7 @@ fn read_exec_file(file: &mut File, uid: Uid, gid: Gid) -> Result<malloc::Alloc<u
 
 	// Allocating memory for the file's content
 	let len = file.get_size();
-	let mut image = unsafe {
-		malloc::Alloc::new_zero(len as usize)?
-	};
+	let mut image = malloc::Alloc::new_default(len as usize)?;
 
 	// Reading the file
 	file.read(0, image.as_slice_mut())?;
