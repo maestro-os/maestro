@@ -1211,7 +1211,7 @@ impl Process {
 	/// If `no_handler` is true and if the process is already handling a signal, the function
 	/// executes the default action of the signal regardless the user-specified action.
 	pub fn kill(&mut self, sig: &Signal, no_handler: bool) {
-		if !self.sigmask.is_set(sig.get_id() as _) {
+		if sig.can_catch() && !self.sigmask.is_set(sig.get_id() as _) {
 			return;
 		}
 
