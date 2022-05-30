@@ -14,6 +14,7 @@
 
 // TODO Add support for third and fourth bus
 
+use core::cmp::min;
 use crate::errno::Errno;
 use crate::io;
 use super::StorageInterface;
@@ -366,7 +367,7 @@ impl PATAInterface {
 		let mut i = 0;
 		while i < size {
 			// The number of blocks for this iteration
-			let count = (size - i) % 256;
+			let count = min(size - i, 256);
 
 			unsafe {
 				let drive = if self.slave {
@@ -426,7 +427,7 @@ impl PATAInterface {
 		let mut i = 0;
 		while i < size {
 			// The number of blocks for this iteration
-			let count = (size - i) % 256;
+			let count = min(size - i, 256);
 
 			unsafe {
 				let drive = if self.slave {

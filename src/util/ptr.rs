@@ -237,7 +237,7 @@ impl<T: ?Sized, const INT: bool> Clone for WeakPtr<T, INT> {
 		let inner = self.get_inner();
 		let mut guard = inner.ref_counter.lock();
 		let refs = guard.get_mut();
-		refs.shared_count += 1;
+		refs.weak_count += 1;
 
 		Self {
 			inner: self.inner,

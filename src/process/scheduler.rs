@@ -285,7 +285,7 @@ impl Scheduler {
 		// Getting the temporary stack
 		let tmp_stack = scheduler.get_tmp_stack(core_id);
 
-		if let Some(next_proc) = &mut scheduler.get_next_process() {
+		if let Some(next_proc) = scheduler.get_next_process() {
 			// Set the process as current
 			scheduler.curr_proc = Some(next_proc.clone());
 
@@ -296,7 +296,7 @@ impl Scheduler {
 			pic::end_of_interrupt(0x0);
 
 			unsafe {
-				stack::switch(Some(tmp_stack), || {
+				stack::switch(Some(tmp_stack), move || {
 					let (syscalling, regs) = {
 						let mut guard = next_proc.1.lock();
 						let proc = guard.get_mut();
@@ -304,6 +304,8 @@ impl Scheduler {
 						proc.prepare_switch();
 						(proc.is_syscalling(), proc.regs)
 					};
+
+					drop(next_proc);
 
 					// Resuming execution
 					regs.switch(!syscalling);
