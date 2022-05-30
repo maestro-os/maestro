@@ -138,11 +138,7 @@ impl<T> Vec<T> {
 	/// reallocate the memory.
 	#[inline(always)]
 	pub fn capacity(&self) -> usize {
-		if let Some(d) = &self.data {
-			d.len()
-		} else {
-			0
-		}
+		self.data.as_ref().map(| d | d.len()).unwrap_or(0)
 	}
 
 	/// Returns a slice containing the data.
@@ -292,9 +288,9 @@ impl<T> Vec<T> {
 	/// length, the function has no effect.
 	pub fn truncate(&mut self, len: usize) {
 		if len < self.len() {
-			for i in len..self.len {
+			for e in &mut self.as_mut_slice()[len..] {
 				unsafe {
-					drop_in_place(&mut self[i]);
+					drop_in_place(e);
 				}
 			}
 

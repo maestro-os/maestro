@@ -295,7 +295,7 @@ impl Chunk {
 	/// returns `false`. The function might alter the free list to relinquish the space.
 	pub fn shrink(&mut self, delta: usize) {
 		debug_assert!(self.is_used());
-		debug_assert!(delta != 0);
+		debug_assert_ne!(delta, 0);
 		debug_assert!(delta < self.get_size());
 
 		let new_size = max(self.get_size() - delta, get_min_chunk_size());
@@ -478,6 +478,7 @@ pub fn get_available_chunk(size: usize) -> Result<&'static mut FreeChunk, Errno>
 	#[cfg(config_debug_malloc_check)]
 	chunk.check();
 	debug_assert!(chunk.get_size() >= size);
+	debug_assert!(!chunk.is_used());
 
 	Ok(chunk)
 }
