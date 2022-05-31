@@ -639,7 +639,7 @@ impl Ext2INode {
 		while i < max {
 			let blk_off = (off + i as u64) / blk_size as u64;
 			let blk_inner_off = ((off + i as u64) % blk_size as u64) as usize;
-			let len = min(buff.len() as u64 - i, (blk_size - blk_inner_off as u32) as u64);
+			let len = min(max - i, (blk_size - blk_inner_off as u32) as u64);
 
 			if let Some(blk_off) = self.get_content_block_off(blk_off as _, superblock, io)? {
 				read_block(blk_off as _, superblock, io, blk_buff.as_slice_mut())?;
