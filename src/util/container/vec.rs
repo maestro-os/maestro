@@ -370,25 +370,21 @@ impl<T> FailableClone for Vec<T> where T: FailableClone {
 impl<T> Vec<T> where T: FailableClone {
 	/// Clones the vector, keeping the given range.
 	pub fn clone_range(&self, range: Range<usize>) -> Result<Self, Errno> {
-		let len = {
-			if range.start <= range.end {
-				min(range.end, self.len) - range.start
-			} else {
-				0
-			}
-		};
+		let end = min(range.end, self.len);
+		let start = min(range.start, range.end);
+		let len = end - start;
 
 		let mut v = Self::with_capacity(len)?;
 
 		for i in 0..len {
-			v.push(self[range.start + i].failable_clone()?)?;
+			v.push(self[start + i].failable_clone()?)?;
 		}
 		Ok(v)
 	}
 
 	/// Clones the vector, keeping the given range.
 	pub fn clone_range_from(&self, range: RangeFrom<usize>) -> Result<Self, Errno> {
-		let len = self.len - range.start;
+		let len = self.len - min(self.len, range.start);
 		let mut v = Self::with_capacity(len)?;
 
 		for i in 0..len {
@@ -399,7 +395,7 @@ impl<T> Vec<T> where T: FailableClone {
 
 	/// Clones the vector, keeping the given range.
 	pub fn clone_range_to(&self, range: RangeTo<usize>) -> Result<Self, Errno> {
-		let len = range.end;
+		let len = min(self.len, range.end);
 		let mut v = Self::with_capacity(len)?;
 
 		for i in 0..len {
