@@ -72,8 +72,8 @@ pub fn getdents64(regs: &Regs) -> Result<i32, Errno> {
 		};
 
 		// Iterating over entries and filling the buffer
-		for entry in &entries.as_slice()[(start as usize)..] {
-			let len = size_of::<LinuxDirent64>() + entry.name.len() + 1;
+		for (name, entry) in entries.iter().skip(start as _) {
+			let len = size_of::<LinuxDirent64>() + name.len() + 1;
 			// If the buffer is not large enough, return an error
 			if off == 0 && len > count {
 				return Err(errno!(EINVAL));
@@ -96,12 +96,12 @@ pub fn getdents64(regs: &Regs) -> Result<i32, Errno> {
 
 			// Copying file name
 			unsafe {
-				ptr::copy_nonoverlapping(entry.name.as_bytes().as_ptr(),
+				ptr::copy_nonoverlapping(name.as_bytes().as_ptr(),
 					ent.d_name.as_mut_ptr(),
-					entry.name.len());
+					name.len());
 
 				// Writing padding byte
-				*ent.d_name.as_mut_ptr().add(entry.name.len()) = 0;
+				*ent.d_name.as_mut_ptr().add(name.len()) = 0;
 			}
 
 			off += len;

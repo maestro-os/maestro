@@ -68,13 +68,13 @@ pub fn getdents(regs: &Regs) -> Result<i32, Errno> {
 		};
 
 		// Iterating over entries and filling the buffer
-		for entry in &entries.as_slice()[(start as usize)..] {
+		for (name, entry) in entries.iter().skip(start as _) {
 			// Skip entries if the inode cannot fit
 			if entry.inode > u32::MAX as _ {
 				continue;
 			}
 
-			let len = size_of::<LinuxDirent>() + entry.name.len() + 2;
+			let len = size_of::<LinuxDirent>() + name.len() + 2;
 			// If the buffer is not large enough, return an error
 			if off == 0 && len > count as usize {
 				return Err(errno!(EINVAL));
@@ -96,16 +96,16 @@ pub fn getdents(regs: &Regs) -> Result<i32, Errno> {
 
 			unsafe {
 				// Copying file name
-				ptr::copy_nonoverlapping(entry.name.as_bytes().as_ptr(),
+				ptr::copy_nonoverlapping(name.as_bytes().as_ptr(),
 					ent.d_name.as_mut_ptr(),
-					entry.name.len());
+					name.len());
 
 				// Writing padding byte
-				*ent.d_name.as_mut_ptr().add(entry.name.len()) = 0;
+				*ent.d_name.as_mut_ptr().add(name.len()) = 0;
 
 				// Writing entry type
 				let entry_type = entry.entry_type.to_dirent_type();
-				*ent.d_name.as_mut_ptr().add(entry.name.len() + 1) = entry_type;
+				*ent.d_name.as_mut_ptr().add(name.len() + 1) = entry_type;
 			}
 
 			off += len;
