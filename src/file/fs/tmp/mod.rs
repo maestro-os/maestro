@@ -11,7 +11,6 @@ use crate::file::INode;
 use crate::file::Mode;
 use crate::file::Uid;
 use crate::file::path::Path;
-use crate::time;
 use crate::util::IO;
 use crate::util::boxed::Box;
 use crate::util::container::hashmap::HashMap;
@@ -45,16 +44,14 @@ impl TmpFS {
 	/// Creates a new instance.
 	/// `max_size` is the maximum amount of memory the filesystem can use in bytes.
 	/// `readonly` tells whether the filesystem is readonly.
-	pub fn new(max_size: usize, readonly: bool) -> Result<Self, Errno> {
+	/// `mountpath` is the path at which the filesystem is mounted.
+	pub fn new(max_size: usize, readonly: bool, mountpath: Path) -> Result<Self, Errno> {
 		let mut fs = Self {
 			max_size,
 			size: 0,
 
-			fs: KernFS::new(String::from(b"tmpfs")?, readonly),
+			fs: KernFS::new(String::from(b"tmpfs")?, readonly, mountpath),
 		};
-
-		// The current timestamp
-		let ts = time::get().unwrap_or(0);
 
 		// Adding the root node
 		let root_node = KernFSNode::new(0o777, 0, 0, FileContent::Directory(HashMap::new()), None);
@@ -170,11 +167,11 @@ impl FilesystemType for TmpFsType {
 	}
 
 	fn create_filesystem(&self, _io: &mut dyn IO) -> Result<Box<dyn Filesystem>, Errno> {
-		Ok(Box::new(TmpFS::new(DEFAULT_MAX_SIZE, false)?)?)
+		Ok(Box::new(TmpFS::new(DEFAULT_MAX_SIZE, false, Path::root())?)?)
 	}
 
-	fn load_filesystem(&self, _io: &mut dyn IO, _mountpath: Path, readonly: bool)
+	fn load_filesystem(&self, _io: &mut dyn IO, mountpath: Path, readonly: bool)
 		-> Result<Box<dyn Filesystem>, Errno> {
-		Ok(Box::new(TmpFS::new(DEFAULT_MAX_SIZE, readonly)?)?)
+		Ok(Box::new(TmpFS::new(DEFAULT_MAX_SIZE, readonly, mountpath)?)?)
 	}
 }

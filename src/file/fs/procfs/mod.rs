@@ -32,20 +32,21 @@ pub struct ProcFS {
 impl ProcFS {
 	/// Creates a new instance.
 	/// `readonly` tells whether the filesystem is readonly.
-	pub fn new(readonly: bool) -> Result<Self, Errno> {
+	/// `mountpath` is the path at which the filesystem is mounted.
+	pub fn new(readonly: bool, mountpath: Path) -> Result<Self, Errno> {
 		let mut fs = Self {
-			fs: KernFS::new(String::from(b"procfs")?, readonly),
+			fs: KernFS::new(String::from(b"procfs")?, readonly, mountpath),
 		};
 
 		let mut root_entries = HashMap::new();
 
 		// Creating /proc/mounts
-		let mount_inode = fs.fs.add_node(Box::new(KernFSNode::new(0o666, 0, 0,
-			FileContent::Regular, Some(Box::new(ProcFSMountIO {})?)))?)?;
-		root_entries.insert(String::from(b"mount")?, DirEntry {
+		let mount_inode = fs.fs.add_node(KernFSNode::new(0o666, 0, 0,
+			FileContent::Regular, Some(Box::new(ProcFSMountIO {})?)))?;
+		root_entries.insert(String::from(b"mounts")?, DirEntry {
 			inode: mount_inode,
 			entry_type: FileType::Regular,
-		});
+		})?;
 
 		// Adding the root node
 		let root_node = KernFSNode::new(0o666, 0, 0, FileContent::Directory(root_entries), None);
@@ -125,11 +126,11 @@ impl FilesystemType for ProcFsType {
 	}
 
 	fn create_filesystem(&self, _io: &mut dyn IO) -> Result<Box<dyn Filesystem>, Errno> {
-		Ok(Box::new(ProcFS::new(false)?)?)
+		Ok(Box::new(ProcFS::new(false, Path::root())?)?)
 	}
 
-	fn load_filesystem(&self, _io: &mut dyn IO, _mountpath: Path, readonly: bool)
+	fn load_filesystem(&self, _io: &mut dyn IO, mountpath: Path, readonly: bool)
 		-> Result<Box<dyn Filesystem>, Errno> {
-		Ok(Box::new(ProcFS::new(readonly)?)?)
+		Ok(Box::new(ProcFS::new(readonly, mountpath)?)?)
 	}
 }

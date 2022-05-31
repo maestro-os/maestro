@@ -12,9 +12,9 @@ use crate::file::INode;
 use crate::file::Mode;
 use crate::file::Uid;
 use crate::file::fs::Filesystem;
+use crate::file::path::Path;
 use crate::util::FailableClone;
 use crate::util::IO;
-use crate::util::boxed::Box;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use node::KernFSNode;
@@ -29,6 +29,9 @@ pub struct KernFS {
 	/// Tells whether the filesystem is readonly.
 	readonly: bool,
 
+	/// The path at which the filesystem is mounted.
+	mountpath: Path,
+
 	/// The list of nodes of the filesystem. The index in this vector is the inode.
 	nodes: Vec<Option<KernFSNode>>,
 	/// A list of free inodes.
@@ -39,10 +42,13 @@ impl KernFS {
 	/// Creates a new instance.
 	/// `name` is the name of the filesystem.
 	/// `readonly` tells whether the filesystem is readonly.
-	pub fn new(name: String, readonly: bool) -> Self {
+	/// `mountpath` is the path at which the filesystem is mounted.
+	pub fn new(name: String, readonly: bool, mountpath: Path) -> Self {
 		Self {
 			name,
 			readonly,
+
+			mountpath,
 
 			nodes: Vec::new(),
 			free_nodes: Vec::new(),
@@ -62,9 +68,12 @@ impl KernFS {
 
 	/// Adds the given node `node` to the filesystem.
 	/// The function returns the allocated inode.
-	pub fn add_node(&mut self, _node: Box<KernFSNode>) -> Result<INode, Errno> {
-		// TODO
-		todo!();
+	pub fn add_node(&mut self, node: KernFSNode) -> Result<INode, Errno> {
+		// TODO Use the free nodes list
+		let inode = self.nodes.len();
+		self.nodes.push(Some(node))?;
+
+		Ok(inode as _)
 	}
 
 	/// Removes the node with inode `inode`.

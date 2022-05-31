@@ -148,27 +148,25 @@ impl KernFSNode {
 
 impl IO for KernFSNode {
 	fn get_size(&self) -> u64 {
-		match self.io_handle {
+		match &self.io_handle {
 			Some(io_handle) => io_handle.get_size(),
 			None => 0,
 		}
 	}
 
 	fn read(&mut self, offset: u64, buff: &mut [u8]) -> Result<u64, Errno> {
-		if let Some(io_handle) = self.io_handle {
+		if let Some(io_handle) = &mut self.io_handle {
 			return io_handle.read(offset, buff);
 		}
 
-		// TODO
-		todo!();
+		unreachable!();
 	}
 
 	fn write(&mut self, offset: u64, buff: &[u8]) -> Result<u64, Errno> {
-		if let Some(io_handle) = self.io_handle {
+		if let Some(io_handle) = &mut self.io_handle {
 			return io_handle.write(offset, buff);
 		}
 
-		// TODO
-		todo!();
+		unreachable!();
 	}
 }

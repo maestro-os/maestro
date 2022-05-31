@@ -108,9 +108,8 @@ impl<K: Eq + Hash, V> Bucket<K, V> {
 impl<K: Eq + Hash + FailableClone, V: FailableClone> FailableClone for Bucket<K, V> {
 	fn failable_clone(&self) -> Result<Self, Errno> {
 		let mut v = Vec::with_capacity(self.elements.len())?;
-		for i in 0..self.elements.len() {
-			let (key, value) = &self.elements[i];
-			v[i] = (key.failable_clone()?, value.failable_clone()?);
+		for (key, value) in self.elements.iter() {
+			v.push((key.failable_clone()?, value.failable_clone()?))?;
 		}
 
 		Ok(Self {
