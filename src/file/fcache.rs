@@ -263,7 +263,7 @@ impl FCache {
 
 		// Adding the file to the parent's entries
 		file.set_parent_path(parent.get_path()?);
-		parent.add_entry(file.to_dir_entry()?)?;
+		parent.add_entry(file.get_name().failable_clone()?, file.to_dir_entry())?;
 
 		SharedPtr::new(file)
 	}

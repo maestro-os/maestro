@@ -25,8 +25,8 @@ use crate::time::unit::Timestamp;
 use crate::time;
 use crate::util::FailableClone;
 use crate::util::IO;
+use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
-use crate::util::container::vec::Vec;
 use crate::util::ptr::IntSharedPtr;
 use crate::util::ptr::SharedPtr;
 use path::Path;
@@ -218,8 +218,15 @@ pub struct DirEntry {
 	pub inode: INode,
 	/// The entry's type.
 	pub entry_type: FileType,
-	/// The entry's name.
-	pub name: String,
+}
+
+impl FailableClone for DirEntry {
+	fn failable_clone(&self) -> Result<Self, Errno> {
+		Ok(Self {
+			inode: self.inode,
+			entry_type: self.entry_type,
+		})
+	}
 }
 
 /// Enumeration of all possible file contents for each file types.
@@ -227,8 +234,9 @@ pub struct DirEntry {
 pub enum FileContent {
 	/// The file is a regular file. No data.
 	Regular,
-	/// The file is a directory. The data is the list of entries.
-	Directory(Vec<DirEntry>),
+	/// The file is a directory. The hashmap contains the list of entries. The key is the name of
+	/// the entry and the value is the entry itself.
+	Directory(HashMap<String, DirEntry>),
 	/// The file is a link. The data is the link's target.
 	Link(String),
 	/// The file is a FIFO.
@@ -261,6 +269,30 @@ impl FileContent {
 			Self::BlockDevice { .. } => FileType::BlockDevice,
 			Self::CharDevice { .. } => FileType::CharDevice,
 		}
+	}
+}
+
+impl FailableClone for FileContent {
+	fn failable_clone(&self) -> Result<Self, Errno> {
+		let s = match self {
+			Self::Regular => Self::Regular,
+			Self::Directory(entries) => Self::Directory(entries.failable_clone()?),
+			Self::Link(path) => Self::Link(path.failable_clone()?),
+			Self::Fifo => Self::Fifo,
+			Self::Socket => Self::Socket,
+
+			Self::BlockDevice { major, minor } => Self::BlockDevice {
+				major: *major,
+				minor: *minor,
+			},
+
+			Self::CharDevice { major, minor } => Self::CharDevice {
+				major: *major,
+				minor: *minor,
+			},
+		};
+
+		Ok(s)
 	}
 }
 
@@ -502,10 +534,12 @@ impl File {
 	}
 
 	/// Adds the directory entry `entry` to the current directory's entries.
+	/// `name` is the name of the entry.
 	/// If the current file isn't a directory, the function returns an error.
-	pub fn add_entry(&mut self, entry: DirEntry) -> Result<(), Errno> {
+	pub fn add_entry(&mut self, name: String, entry: DirEntry) -> Result<(), Errno> {
 		if let FileContent::Directory(entries) = &mut self.content {
-			entries.push(entry)
+			entries.insert(name, entry)?;
+			Ok(())
 		} else {
 			Err(errno!(ENOTDIR))
 		}
@@ -515,17 +549,7 @@ impl File {
 	/// If the current file isn't a directory, the function returns an error.
 	pub fn remove_entry(&mut self, name: &String) -> Result<(), Errno> {
 		if let FileContent::Directory(entries) = &mut self.content {
-			let mut i = 0;
-
-			// TODO Optimize
-			while i < entries.len() {
-				if entries[i].name == *name {
-					entries.remove(i);
-				}
-
-				i += 1;
-			}
-
+			entries.remove(name);
 			Ok(())
 		} else {
 			Err(errno!(ENOTDIR))
@@ -533,12 +557,11 @@ impl File {
 	}
 
 	/// Creates a directory entry corresponding to the current file.
-	pub fn to_dir_entry(&self) -> Result<DirEntry, Errno> {
-		Ok(DirEntry {
+	pub fn to_dir_entry(&self) -> DirEntry {
+		DirEntry {
 			inode: self.location.get_inode(),
 			entry_type: self.get_file_type(),
-			name: self.name.failable_clone()?,
-		})
+		}
 	}
 
 	/// Returns the file's content.

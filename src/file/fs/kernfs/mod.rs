@@ -1,23 +1,22 @@
 //! Kernfs implements utilities allowing to create a virtual filesystem.
 
-pub mod directory;
 pub mod node;
 
 use crate::errno::Errno;
 use crate::errno;
 use crate::file::File;
 use crate::file::FileContent;
+use crate::file::FileLocation;
 use crate::file::Gid;
 use crate::file::INode;
 use crate::file::Mode;
 use crate::file::Uid;
 use crate::file::fs::Filesystem;
-use crate::file::path::Path;
 use crate::util::FailableClone;
 use crate::util::IO;
+use crate::util::boxed::Box;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
-use crate::util::ptr::SharedPtr;
 use node::KernFSNode;
 
 /// The index of the root inode.
@@ -31,7 +30,7 @@ pub struct KernFS {
 	readonly: bool,
 
 	/// The list of nodes of the filesystem. The index in this vector is the inode.
-	nodes: Vec<Option<SharedPtr<dyn KernFSNode>>>,
+	nodes: Vec<Option<KernFSNode>>,
 	/// A list of free inodes.
 	free_nodes: Vec<INode>,
 }
@@ -51,7 +50,7 @@ impl KernFS {
 	}
 
 	/// Sets the root node of the filesystem.
-	pub fn set_root(&mut self, root: Option<SharedPtr<dyn KernFSNode>>) -> Result<(), Errno> {
+	pub fn set_root(&mut self, root: Option<KernFSNode>) -> Result<(), Errno> {
 		if self.nodes.is_empty() {
 			self.nodes.push(root)?;
 		} else {
@@ -61,15 +60,10 @@ impl KernFS {
 		Ok(())
 	}
 
-	/// Adds the given node `node` at the given path `path`.
+	/// Adds the given node `node` to the filesystem.
 	/// The function returns the allocated inode.
-	pub fn add_node(&mut self, path: &Path, _node: SharedPtr<dyn KernFSNode>)
-		-> Result<INode, Errno> {
-		let mut parent_path = path.failable_clone()?;
-		parent_path.pop();
-
-		// TODO Get parent inode
-		// TODO Add file
+	pub fn add_node(&mut self, _node: Box<KernFSNode>) -> Result<INode, Errno> {
+		// TODO
 		todo!();
 	}
 
@@ -108,17 +102,37 @@ impl Filesystem for KernFS {
 		if parent_inode as usize >= self.nodes.len() {
 			return Err(errno!(ENOENT));
 		}
-		let parent_mutex = self.nodes[parent_inode as _].as_ref().ok_or_else(|| errno!(ENOENT))?;
-		let parent_guard = parent_mutex.lock();
-		let parent_node = parent_guard.get();
+		let parent_node = self.nodes[parent_inode as _].as_ref().ok_or_else(|| errno!(ENOENT))?;
 
-		parent_node.get_entry(name).map(| (inode, _) | inode)
+		match parent_node.get_content() {
+			FileContent::Directory(entries) => {
+				entries.get(name)
+					.map(| dirent | dirent.inode)
+					.ok_or_else(|| errno!(ENOENT))
+			},
+			_ => Err(errno!(ENOENT)),
+		}
 	}
 
-	fn load_file(&mut self, _: &mut dyn IO, _inode: INode, _name: String)
+	fn load_file(&mut self, _: &mut dyn IO, inode: INode, name: String)
 		-> Result<File, Errno> {
-		// TODO
-		todo!();
+		if inode as usize >= self.nodes.len() {
+			return Err(errno!(ENOENT));
+		}
+		let node = self.nodes[inode as _].as_ref().ok_or_else(|| errno!(ENOENT))?;
+
+		let file_location = FileLocation::new(self.mountpath.failable_clone()?, inode);
+		let file_content = node.get_content().failable_clone()?;
+
+		let mut file = File::new(name, node.get_uid(), node.get_gid(), node.get_mode(),
+			file_location, file_content)?;
+		file.set_hard_links_count(node.get_hard_links_count());
+		file.set_size(node.get_size());
+		file.set_ctime(node.get_ctime());
+		file.set_mtime(node.get_mtime());
+		file.set_atime(node.get_atime());
+
+		Ok(file)
 	}
 
 	fn add_file(&mut self, _io: &mut dyn IO, _parent_inode: INode, _name: String, _uid: Uid,

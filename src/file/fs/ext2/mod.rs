@@ -53,6 +53,7 @@ use crate::time;
 use crate::util::FailableClone;
 use crate::util::IO;
 use crate::util::boxed::Box;
+use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::math;
@@ -690,7 +691,7 @@ impl Filesystem for Ext2Fs {
 				err?;
 
 				// Creating entries with types
-				let mut final_entries = Vec::new();
+				let mut final_entries = HashMap::new();
 
 				for (inode, mut entry_type, name) in &entries {
 					// If None, retrieving the type from the node itself
@@ -700,10 +701,9 @@ impl Filesystem for Ext2Fs {
 					}
 
 					let entry_type = entry_type.unwrap();
-					final_entries.push(DirEntry {
+					final_entries.insert(name.failable_clone()?, DirEntry {
 						inode: *inode as _,
 						entry_type,
-						name: name.failable_clone()?,
 					})?;
 				}
 

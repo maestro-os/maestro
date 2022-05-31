@@ -27,6 +27,7 @@ use crate::process::mem_space::MemSpace;
 use crate::util::FailableClone;
 use crate::util::IO;
 use crate::util::boxed::Box;
+use crate::util::container::hashmap::HashMap;
 use crate::util::container::vec::Vec;
 use crate::util::lock::Mutex;
 use crate::util::ptr::IntSharedPtr;
@@ -153,7 +154,7 @@ impl Device {
 				let parent = parent_guard.get_mut();
 
 				match fcache.create_file(parent, name.failable_clone()?, 0, 0, 0o755,
-					FileContent::Directory(Vec::new())) {
+					FileContent::Directory(HashMap::new())) {
 					Err(e) if e.as_int() != errno::EEXIST => return Err(e),
 					_ => {},
 				}
