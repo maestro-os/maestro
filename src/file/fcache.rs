@@ -97,7 +97,7 @@ impl FCache {
 		let mountpoint = mountpoint_guard.get_mut();
 
 		// Getting the IO interface
-		let io_mutex = mountpoint.get_source().get_io();
+		let io_mutex = mountpoint.get_source().get_io()?;
 		let mut io_guard = io_mutex.lock();
 		let io = io_guard.get_mut();
 
@@ -195,7 +195,7 @@ impl FCache {
 		let mountpoint = mountpoint_guard.get_mut();
 
 		// Getting the IO interface
-		let io_mutex = mountpoint.get_source().get_io();
+		let io_mutex = mountpoint.get_source().get_io()?;
 		let mut io_guard = io_mutex.lock();
 		let io = io_guard.get_mut();
 
@@ -247,7 +247,7 @@ impl FCache {
 		let mountpoint = mountpoint_guard.get_mut();
 
 		// Getting the IO interface
-		let io_mutex = mountpoint.get_source().get_io();
+		let io_mutex = mountpoint.get_source().get_io()?;
 		let mut io_guard = io_mutex.lock();
 		let io = io_guard.get_mut();
 
@@ -292,7 +292,7 @@ impl FCache {
 		let mountpoint = mountpoint_guard.get_mut();
 
 		// Getting the IO interface
-		let io_mutex = mountpoint.get_source().get_io();
+		let io_mutex = mountpoint.get_source().get_io()?;
 		let mut io_guard = io_mutex.lock();
 		let io = io_guard.get_mut();
 

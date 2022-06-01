@@ -118,6 +118,9 @@ impl Path {
 		if self.absolute != other.absolute {
 			return false;
 		}
+		if self.parts.len() < other.parts.len() {
+			return false;
+		}
 
 		let len = min(self.parts.len(), other.parts.len());
 		for i in 0..len {

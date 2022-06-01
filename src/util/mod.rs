@@ -224,6 +224,24 @@ pub trait IO {
 	fn write(&mut self, offset: u64, buff: &[u8]) -> Result<u64, Errno>;
 }
 
+/// Structure representing a dummy I/O interface.
+pub struct DummyIO {}
+
+impl IO for DummyIO {
+	fn get_size(&self) -> u64 {
+		0
+	}
+
+	fn read(&mut self, _offset: u64, _buff: &mut [u8]) -> Result<u64, Errno> {
+		Ok(0)
+	}
+
+	fn write(&mut self, _offset: u64, _buff: &[u8]) -> Result<u64, Errno> {
+		Ok(0)
+	}
+
+}
+
 #[cfg(test)]
 mod test {
 	use super::*;

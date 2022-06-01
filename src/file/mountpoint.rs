@@ -7,10 +7,12 @@ use crate::file::fcache;
 use crate::file::fs::Filesystem;
 use crate::file::fs::FilesystemType;
 use crate::file::fs;
+use crate::util::DummyIO;
 use crate::util::FailableClone;
 use crate::util::IO;
 use crate::util::boxed::Box;
 use crate::util::container::hashmap::HashMap;
+use crate::util::container::string::String;
 use crate::util::lock::Mutex;
 use crate::util::ptr::SharedPtr;
 use super::path::Path;
@@ -49,30 +51,38 @@ pub enum MountSource {
 	Device(SharedPtr<Device>),
 	/// The mountpoint is mounted from a file.
 	File(SharedPtr<File>),
+	/// The mountpoint is mounted to a kernfs.
+	KernFS(String),
 }
 
 impl MountSource {
 	/// Creates a mount source from a dummy string.
-	pub fn from_str(string: &[u8]) -> Result<Self, Errno> {
-		// TODO Handle kernfs
-
+	/// The string `string` might be either a kernfs name, a relative path or an absolute path.
+	/// `cwd` is the current working directory.
+	pub fn from_str(string: &[u8], cwd: Path) -> Result<Self, Errno> {
 		let path = Path::from_str(string, true)?;
-		let file = {
+		let path = cwd.concat(&path)?;
+		let result = {
 			let mutex = fcache::get();
 			let mut guard = mutex.lock();
 			let fcache = guard.get_mut().as_mut().unwrap();
 
-			fcache.get_file_from_path(&path, 0, 0, true)?
+			fcache.get_file_from_path(&path, 0, 0, true)
 		};
 
-		Ok(Self::File(file))
+		match result {
+			Ok(file) => Ok(Self::File(file)),
+			Err(err) if err == errno!(ENOENT) => Ok(Self::KernFS(String::from(string)?)),
+			Err(err) => Err(err),
+		}
 	}
 
 	/// Returns the IO interface for the mount source.
-	pub fn get_io(&self) -> SharedPtr<dyn IO> {
+	pub fn get_io(&self) -> Result<SharedPtr<dyn IO>, Errno> {
 		match self {
-			Self::Device(dev) => dev.clone() as _,
-			Self::File(file) => file.clone() as _,
+			Self::Device(dev) => Ok(dev.clone() as _),
+			Self::File(file) => Ok(file.clone() as _),
+			Self::KernFS(_) => Ok(SharedPtr::new(DummyIO {})? as _),
 		}
 	}
 }
@@ -100,7 +110,7 @@ impl MountPoint {
 	pub fn new(source: MountSource, fs_type: Option<SharedPtr<dyn FilesystemType>>, flags: u32,
 		path: Path) -> Result<Self, Errno> {
 		// Getting the I/O interface
-		let io_mutex = source.get_io();
+		let io_mutex = source.get_io()?;
 		let mut io_guard = io_mutex.lock();
 		let io = io_guard.get_mut();
 

@@ -621,7 +621,7 @@ impl File {
 		let mut mountpoint_guard = mountpoint_mutex.lock();
 		let mountpoint = mountpoint_guard.get_mut();
 
-		let io_mutex = mountpoint.get_source().get_io().clone();
+		let io_mutex = mountpoint.get_source().get_io()?;
 		let mut io_guard = io_mutex.lock();
 		let io = io_guard.get_mut();
 
@@ -642,7 +642,7 @@ impl IO for File {
 				let mut mountpoint_guard = mountpoint_mutex.lock();
 				let mountpoint = mountpoint_guard.get_mut();
 
-				let io_mutex = mountpoint.get_source().get_io().clone();
+				let io_mutex = mountpoint.get_source().get_io()?;
 				let mut io_guard = io_mutex.lock();
 				let io = io_guard.get_mut();
 
@@ -690,7 +690,7 @@ impl IO for File {
 				let mut mountpoint_guard = mountpoint_mutex.lock();
 				let mountpoint = mountpoint_guard.get_mut();
 
-				let io_mutex = mountpoint.get_source().get_io();
+				let io_mutex = mountpoint.get_source().get_io()?;
 				let mut io_guard = io_mutex.lock();
 				let io = io_guard.get_mut();
 

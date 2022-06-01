@@ -224,9 +224,9 @@ pub fn statx(regs: &Regs) -> Result<i32, Errno> {
 
 			(dev.get_major(), dev.get_minor())
 		},
-		MountSource::File(_) => (0, 0),
-	};
 
+		MountSource::File(_) | MountSource::KernFS(_) => (0, 0),
+	};
 	let mem_space_guard = mem_space.lock();
 	let statx = statxbuff.get_mut(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
 
