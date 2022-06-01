@@ -67,6 +67,7 @@ mod pwritev2;
 mod pwritev;
 mod r#break;
 mod read;
+mod readlink;
 mod reboot;
 mod rt_sigaction;
 mod rt_sigprocmask;
@@ -166,6 +167,7 @@ use pwritev2::pwritev2;
 use pwritev::pwritev;
 use r#break::r#break;
 use read::read;
+use readlink::readlink;
 use reboot::reboot;
 use rt_sigaction::rt_sigaction;
 use rt_sigprocmask::rt_sigprocmask;
@@ -294,7 +296,7 @@ fn get_syscall(id: u32) -> Option<Syscall> {
 		0x052 => Some(Syscall { handler: &select, name: "select", args: &[] }),
 		// TODO 0x053 => Some(Syscall { handler: &symlink, name: "symlink", args: &[] }),
 		// TODO 0x054 => Some(Syscall { handler: &oldlstat, name: "oldlstat", args: &[] }),
-		// TODO 0x055 => Some(Syscall { handler: &readlink, name: "readlink", args: &[] }),
+		0x055 => Some(Syscall { handler: &readlink, name: "readlink", args: &[] }),
 		// TODO 0x056 => Some(Syscall { handler: &uselib, name: "uselib", args: &[] }),
 		// TODO 0x057 => Some(Syscall { handler: &swapon, name: "swapon", args: &[] }),
 		0x058 => Some(Syscall { handler: &reboot, name: "reboot", args: &[] }),
