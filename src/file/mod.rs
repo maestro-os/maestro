@@ -721,6 +721,7 @@ impl Drop for File {
 	}
 }
 
+// FIXME Unused: remove?
 /// Resolves symbolic links and returns the final path. If too many links are to be resolved, the
 /// function returns an error.
 /// `file` is the starting file. If not a link, the function returns the path to this file.
@@ -744,8 +745,7 @@ pub fn resolve_links(file: SharedPtr<File>, uid: Uid, gid: Gid) -> Result<Path, 
 		if let FileContent::Link(link_target) = f.get_file_content() {
 			// Resolving the link
 			let link_path = Path::from_str(link_target.as_bytes(), false)?;
-			let mut path = (parent_path.failable_clone()? + link_path)?;
-			path.reduce()?;
+			let path = (parent_path.failable_clone()? + link_path)?;
 			drop(file_guard);
 
 			// Getting the file from path
@@ -755,13 +755,8 @@ pub fn resolve_links(file: SharedPtr<File>, uid: Uid, gid: Gid) -> Result<Path, 
 
 			match files_cache.get_file_from_path(&path, uid, gid, false) {
 				Ok(next_file) => file = next_file,
-				Err(e) => return {
-					if e == errno!(ENOENT) {
-						Ok(path)
-					} else {
-						Err(e)
-					}
-				},
+				Err(e) if e == errno!(ENOENT) => return Ok(path),
+				Err(e) => return Err(e),
 			}
 		} else {
 			break;

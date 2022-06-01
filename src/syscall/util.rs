@@ -15,10 +15,7 @@ use crate::util::container::vec::Vec;
 pub fn get_absolute_path(process: &Process, path: Path) -> Result<Path, Errno> {
 	if !path.is_absolute() {
 		let cwd = process.get_cwd();
-		let mut absolute_path = cwd.concat(&path)?;
-		absolute_path.reduce()?;
-
-		Ok(absolute_path)
+		cwd.concat(&path)
 	} else {
 		Ok(path)
 	}

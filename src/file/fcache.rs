@@ -88,8 +88,7 @@ impl FCache {
 	/// path resolution.
 	fn get_file_from_path_(&mut self, path: &Path, uid: Uid, gid: Gid, follow_links: bool,
 		follows_count: usize) -> Result<SharedPtr<File>, Errno> {
-		let mut path = Path::root().concat(path)?;
-		path.reduce()?;
+		let path = Path::root().concat(path)?;
 
 		// Getting the path's deepest mountpoint
 		let mountpoint_mutex = mountpoint::get_deepest(&path).ok_or_else(|| errno!(ENOENT))?;
@@ -139,8 +138,7 @@ impl FCache {
 					parent_path.pop();
 
 					let link_path = Path::from_str(link_path.as_bytes(), false)?;
-					let mut new_path = parent_path.concat(&link_path)?;
-					new_path.reduce()?;
+					let new_path = parent_path.concat(&link_path)?;
 
 					drop(io_guard);
 					drop(mountpoint_guard);
@@ -208,8 +206,7 @@ impl FCache {
 		if follow_links {
 			if let FileContent::Link(link_path) = file.get_file_content() {
 				let link_path = Path::from_str(link_path.as_bytes(), false)?;
-				let mut new_path = parent.get_path()?.concat(&link_path)?;
-				new_path.reduce()?;
+				let new_path = parent.get_path()?.concat(&link_path)?;
 
 				drop(io_guard);
 				drop(mountpoint_guard);
