@@ -875,6 +875,10 @@ impl Filesystem for Ext2Fs {
 
 		debug_assert!(parent_inode >= 1);
 
+		if name.as_bytes() != b"." && name.as_bytes() != b".." {
+			return Err(errno!(EINVAL));
+		}
+
 		// The parent inode
 		let mut parent = Ext2INode::read(parent_inode as _, &self.superblock, io)?;
 
@@ -901,8 +905,6 @@ impl Filesystem for Ext2Fs {
 			}
 		}
 
-		// TODO Remove `.` and `..`
-
 		// Removing the directory entry
 		parent.remove_dirent(&mut self.superblock, io, name)?;
 
@@ -912,6 +914,10 @@ impl Filesystem for Ext2Fs {
 		if inode_.hard_links_count <= 0 {
 			let timestamp = time::get().unwrap_or(0);
 			inode_.dtime = timestamp as _;
+
+			// Removing hard link for entry `..`
+			parent.hard_links_count -= 1;
+			parent.write(parent_inode as _, &self.superblock, io)?;
 
 			inode_.free_content(&mut self.superblock, io)?;
 
