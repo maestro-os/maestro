@@ -1165,7 +1165,7 @@ impl<'n, 's, 'i> Iterator for DirentIterator<'n, 's, 'i> {
 			self.off += total_size as u64;
 
 			// If the block is over, read the next
-			if self.off % blk_size > prev_off % blk_size {
+			if self.off / blk_size > prev_off / blk_size {
 				if let Err(e) = self.node.read_content(self.off,
 					&mut self.buff.as_slice_mut()[..len], self.superblock, self.io) {
 					return Some(Err(e));
