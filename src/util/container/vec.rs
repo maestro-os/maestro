@@ -21,6 +21,8 @@ use crate::errno::Errno;
 use crate::memory::malloc;
 use crate::util::FailableClone;
 
+// TODO Optimize iterators
+
 /// Macro allowing to create a vector with the given set of values.
 #[macro_export]
 macro_rules! vec {
@@ -470,10 +472,35 @@ impl<T> Vec<T> {
 	}
 }
 
+/// A consuming iterator for the Vec structure.
+pub struct IntoIter<T> {
+	/// The vector to iterator into.
+	vec: Vec<T>,
+}
+
+impl<T> Iterator for IntoIter<T> {
+	type Item = T;
+
+	fn next(&mut self) -> Option<Self::Item> {
+		self.vec.pop()
+	}
+}
+
+impl<T> IntoIterator for Vec<T> {
+	type Item = T;
+	type IntoIter = IntoIter<T>;
+
+	fn into_iter(self) -> Self::IntoIter {
+		IntoIter {
+			vec: self,
+		}
+	}
+}
+
 /// An iterator for the Vec structure.
 pub struct VecIterator<'a, T> {
 	/// The vector to iterate into.
-	vec: &'a Vec::<T>,
+	vec: &'a Vec<T>,
 
 	/// The current index of the iterator starting from the beginning.
 	index_front: usize,

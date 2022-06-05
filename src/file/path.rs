@@ -16,9 +16,6 @@ use crate::util::FailableClone;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 
-// FIXME vuln: When reducing a path, must check if a components are a directory. If not:
-// If `foo` is a directory and `bar` is a file, then `foo/bar/..` would reduce to `foo`
-
 /// The character used as a path separator.
 pub const PATH_SEPARATOR: char = '/';
 
@@ -156,6 +153,7 @@ impl Path {
 		})
 	}
 
+	// FIXME Unused: remove?
 	/// Reduces the path, removing all useless `.` and `..`.
 	pub fn reduce(&mut self) -> Result<(), Errno> {
 		let mut i = 0;

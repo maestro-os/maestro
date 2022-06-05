@@ -791,13 +791,8 @@ impl Process {
 	/// If the given path is relative, it is made absolute by concatenated with `/`.
 	#[inline(always)]
 	pub fn set_cwd(&mut self, path: Path) -> Result<(), Errno> {
-		if !path.is_absolute() {
-			self.cwd = Path::root().concat(&path)?;
-			self.cwd.reduce()
-		} else {
-			self.cwd = path;
-			Ok(())
-		}
+		Path::root().concat(&path)?;
+		Ok(())
 	}
 
 	/// Returns the process's saved state registers.

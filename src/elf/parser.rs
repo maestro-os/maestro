@@ -62,28 +62,28 @@ impl<'a> ELFParser<'a> {
 
 	// TODO Support 64 bit
 	/// Tells whether the ELF image is valid.
-	fn check_image(&self) -> bool {
+	fn check_image(&self) -> Result<(), Errno> {
 		let signature = [0x7f, b'E', b'L', b'F'];
 
 		if self.image.len() < EI_NIDENT {
-			return false;
+			return Err(errno!(EINVAL));
 		}
 		if self.image[0..signature.len()] != signature {
-			return false;
+			return Err(errno!(EINVAL));
 		}
 
 		// TODO Check relative to current architecture
 		if self.image[EI_CLASS] != ELFCLASS32 {
-			return false;
+			return Err(errno!(EINVAL));
 		}
 
 		// TODO Check relative to current architecture
 		if self.image[EI_DATA] != ELFDATA2LSB {
-			return false;
+			return Err(errno!(EINVAL));
 		}
 
 		if self.image.len() < size_of::<ELF32ELFHeader>() {
-			return false;
+			return Err(errno!(EINVAL));
 		}
 		let ehdr = self.get_header();
 
@@ -91,38 +91,34 @@ impl<'a> ELFParser<'a> {
 		// TODO Check e_version
 
 		if ehdr.e_ehsize != size_of::<ELF32ELFHeader>() as u16 {
-			return false;
+			return Err(errno!(EINVAL));
 		}
 
 		if ehdr.e_phoff + ehdr.e_phentsize as u32 * ehdr.e_phnum as u32 > self.image.len() as u32 {
-			return false;
+			return Err(errno!(EINVAL));
 		}
 		if ehdr.e_shoff + ehdr.e_shentsize as u32 * ehdr.e_shnum as u32 > self.image.len() as u32 {
-			return false;
+			return Err(errno!(EINVAL));
 		}
 		if ehdr.e_shstrndx >= ehdr.e_shnum {
-			return false;
+			return Err(errno!(EINVAL));
 		}
 
 		for i in 0..ehdr.e_phnum {
 			let off = (ehdr.e_phoff + ehdr.e_phentsize as u32 * i as u32) as usize;
 			let phdr = self.get_struct::<ELF32ProgramHeader>(off);
 
-			if !phdr.is_valid(self.image.len()) {
-				return false;
-			}
+			phdr.is_valid(self.image.len())?;
 		}
 
 		for i in 0..ehdr.e_shnum {
 			let off = (ehdr.e_shoff + ehdr.e_shentsize as u32 * i as u32) as usize;
 			let shdr = self.get_struct::<ELF32SectionHeader>(off);
 
-			if !shdr.is_valid(self.image.len()) {
-				return false;
-			}
+			shdr.is_valid(self.image.len())?;
 		}
 
-		true
+		Ok(())
 	}
 
 	/// Creates a new instance for the given image.
@@ -132,11 +128,8 @@ impl<'a> ELFParser<'a> {
 			image,
 		};
 
-		if p.check_image() {
-			Ok(p)
-		} else {
-			Err(errno!(EINVAL))
-		}
+		p.check_image()?;
+		Ok(p)
 	}
 
 	/// Returns a reference to the ELF image.

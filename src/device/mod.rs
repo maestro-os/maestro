@@ -138,8 +138,7 @@ impl Device {
 	/// the number of created directories (without the directories that already existed).
 	/// If relative, the path is taken from the root.
 	fn create_dirs(fcache: &mut FCache, path: &Path) -> Result<usize, Errno> {
-		let mut path = Path::root().concat(path)?;
-		path.reduce()?;
+		let path = Path::root().concat(path)?;
 
 		// The path of the parent directory
 		let mut p = Path::root();
@@ -171,8 +170,7 @@ impl Device {
 	/// Removes the file at path `path` and its subfiles recursively if it's a directory.
 	/// If relative, the path is taken from the root.
 	fn remove_recursive(_fcache: &mut FCache, path: &Path) -> Result<(), Errno> {
-		let mut path = Path::root().concat(path)?;
-		path.reduce()?;
+		let _path = Path::root().concat(path)?;
 
 		// TODO
 		todo!();
