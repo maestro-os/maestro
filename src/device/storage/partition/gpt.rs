@@ -206,7 +206,11 @@ impl GPT {
 
 impl Table for GPT {
 	fn read(storage: &mut dyn StorageInterface) -> Result<Option<Self>, Errno> {
-		let main_hdr = Self::read_hdr_struct(storage, 1)?;
+		let main_hdr = match Self::read_hdr_struct(storage, 1) {
+			Ok(hdr) => hdr,
+			Err(e) if e == errno!(EINVAL) => return Ok(None),
+			Err(e) => return Err(e),
+		};
 		let alternate_hdr = Self::read_hdr_struct(storage, main_hdr.alternate_hdr_lba)?;
 
 		let main_entries = main_hdr.get_entries(storage)?;

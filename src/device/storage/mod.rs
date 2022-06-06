@@ -456,10 +456,15 @@ impl DeviceManager for StorageManager {
 			// IDE controller
 			0x01 => {
 				let ide = IDEController::new(dev);
+
 				oom::wrap(|| {
-					let mut interfaces = ide.detect_all()?;
-					for _ in 0..interfaces.len() {
-						self.add(interfaces.pop().unwrap())?;
+					for interface in ide.detect_all()? {
+						match self.add(interface) {
+							Err(e) if e == errno!(ENOMEM) => return Err(e),
+							// TODO Handle other kind of errors?
+
+							_ => {},
+						}
 					}
 
 					Ok(())
