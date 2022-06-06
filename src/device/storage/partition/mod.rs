@@ -5,7 +5,10 @@ mod gpt;
 mod mbr;
 
 use crate::errno::Errno;
+use crate::errno;
+use crate::util::boxed::Box;
 use crate::util::container::vec::Vec;
+use gpt::GPT;
 use mbr::MBRTable;
 use super::StorageInterface;
 
@@ -41,36 +44,32 @@ impl Partition {
 
 /// Trait representing a partition table.
 pub trait Table {
+	/// Reads the partition table from the given storage interface `storage`.
+	/// If the partition table isn't present on the storage interface, the function returns None.
+	fn read(storage: &mut dyn StorageInterface) -> Result<Option<Self>, Errno> where Self: Sized;
+
 	/// Returns the type of the partition table.
 	fn get_type(&self) -> &'static str;
 
-	/// Tells whether the parititon table is valid.
-	fn is_valid(&self) -> bool;
-
 	/// Reads the partitions list.
-	fn get_partitions(&self) -> Result<Vec<Partition>, Errno>;
+	/// `storage` is the storage interface on which the partitions are to be read.
+	fn get_partitions(&self, storage: &mut dyn StorageInterface) -> Result<Vec<Partition>, Errno>;
 }
 
 /// Reads the list of partitions from the given storage interface `storage`.
-pub fn read(storage: &mut dyn StorageInterface) -> Result<Vec<Partition>, Errno> {
-	// TODO Move reading MBR into the MBR module
-	if storage.get_block_size() != 512 {
-		return Ok(Vec::new());
+/// If no partitions table is present, the function returns None.
+pub fn read(storage: &mut dyn StorageInterface) -> Result<Option<Box<dyn Table>>, Errno> {
+	// Trying GPT
+	match GPT::read(storage)? {
+		Some(table) => return Ok(Some(Box::new(table)?)),
+		None => {},
 	}
 
-	let mut first_sector: [u8; 512] = [0; 512];
-	storage.read(&mut first_sector, 0, 1)?;
-
-	// Valid because taking the pointer to the buffer on the stack which has the same size as
-	// the structure
-	let mbr_table = unsafe {
-		&*(first_sector.as_ptr() as *const MBRTable)
-	};
-	if mbr_table.is_valid() {
-		return mbr_table.get_partitions();
+	// Trying MBR
+	match MBRTable::read(storage)? {
+		Some(table) => return Ok(Some(Box::new(table)?)),
+		None => {},
 	}
 
-	// TODO Try to detect GPT
-
-	Ok(Vec::new())
+	Err(errno!(EINVAL))
 }

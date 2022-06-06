@@ -3,8 +3,8 @@
 //! The partition table is located on the first sector of the boot disk, alongside with the boot
 //! code.
 
+use crate::device::storage::StorageInterface;
 use crate::errno::Errno;
-use crate::errno;
 use crate::util::container::vec::Vec;
 use super::Partition;
 use super::Table;
@@ -36,6 +36,19 @@ impl MBRPartition {
 	}
 }
 
+impl Clone for MBRPartition {
+	fn clone(&self) -> Self {
+		Self {
+			attrs: self.attrs,
+			chs_start: self.chs_start,
+			parition_type: self.parition_type,
+			chs_end: self.chs_end,
+			lba_start: self.lba_start,
+			sectors_count: self.sectors_count,
+		}
+	}
+}
+
 /// Structure representing the partition table.
 #[repr(C, packed)]
 pub struct MBRTable {
@@ -51,21 +64,46 @@ pub struct MBRTable {
 	signature: u16,
 }
 
+impl Clone for MBRTable {
+	fn clone(&self) -> Self {
+		Self {
+			boot: self.boot,
+			disk_signature: self.disk_signature,
+			zero: self.zero,
+			partitions: self.partitions.clone(),
+			signature: self.signature,
+		}
+	}
+}
+
 impl Table for MBRTable {
+	fn read(storage: &mut dyn StorageInterface) -> Result<Option<Self>, Errno> {
+		let mut first_sector: [u8; 512] = [0; 512];
+
+		if first_sector.len() as u64 > storage.get_size() {
+			return Ok(None);
+		}
+		storage.read_bytes(&mut first_sector, 0)?;
+
+		// Valid because taking the pointer to the buffer on the stack which has the same size as
+		// the structure
+		let mbr_table = unsafe {
+			&*(first_sector.as_ptr() as *const MBRTable)
+		};
+		if mbr_table.signature != MBR_SIGNATURE {
+			return Ok(None);
+		}
+
+		Ok(Some(mbr_table.clone()))
+	}
+
 	fn get_type(&self) -> &'static str {
 		"MBR"
 	}
 
-	fn is_valid(&self) -> bool {
-		self.signature == MBR_SIGNATURE
-	}
-
-	fn get_partitions(&self) -> Result<Vec<Partition>, Errno> {
-		if !self.is_valid() {
-			return Err(errno!(EINVAL));
-		}
-
+	fn get_partitions(&self, _: &mut dyn StorageInterface) -> Result<Vec<Partition>, Errno> {
 		let mut partitions = Vec::<Partition>::new();
+
 		for mbr_partition in self.partitions.iter() {
 			if mbr_partition.is_active() {
 				let partition = Partition::new(mbr_partition.lba_start as _,
@@ -73,6 +111,7 @@ impl Table for MBRTable {
 				partitions.push(partition)?;
 			}
 		}
+
 		Ok(partitions)
 	}
 }

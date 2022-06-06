@@ -38,17 +38,23 @@ const STORAGE_MAJOR: u32 = 8;
 /// The mode of the device file for a storage device.
 const STORAGE_MODE: Mode = 0o660;
 /// The maximum number of partitions in a disk.
-const MAX_PARTITIONS: u32 = 16;
+const MAX_PARTITIONS: usize = 16;
 
 /// Trait representing a storage interface. A storage block is the atomic unit for I/O access on
 /// the storage device.
 pub trait StorageInterface {
 	/// Returns the size of the storage blocks in bytes.
-	/// This value must always stay the same.
+	/// This value must be constant for a given instance.
 	fn get_block_size(&self) -> u64;
 	/// Returns the number of storage blocks.
-	/// This value must always stay the same.
+	/// This value must be constant for a given instance.
 	fn get_blocks_count(&self) -> u64;
+
+	/// Returns the size of the storage in bytes.
+	/// This value must be constant for a given instance.
+	fn get_size(&self) -> u64 {
+		self.get_block_size() * self.get_blocks_count()
+	}
 
 	/// Reads `size` blocks from storage at block offset `offset`, writing the data to `buf`.
 	/// If the offset and size are out of bounds, the function returns an error.
@@ -284,29 +290,29 @@ impl StorageManager {
 
 		// Creating the main device file
 		let main_handle = StorageDeviceHandle::new(storage.as_mut_ptr(), 0, total_size);
-		let main_device = Device::new(major, storage_id * MAX_PARTITIONS, main_path, STORAGE_MODE,
-			DeviceType::Block, main_handle)?;
+		let main_device = Device::new(major, storage_id * MAX_PARTITIONS as u32, main_path,
+			STORAGE_MODE, DeviceType::Block, main_handle)?;
 		device::register_device(main_device)?;
 
 		// Creating device files for every partitions (in the limit of MAX_PARTITIONS)
-		let partitions = partition::read(storage.as_mut())?;
-		let count = min(MAX_PARTITIONS as usize, partitions.len());
-		for i in 0..count {
-			let partition = &partitions[i];
+		if let Some(partitions_table) = partition::read(storage.as_mut())? {
+			let partitions = partitions_table.get_partitions(storage.as_mut())?;
 
-			// Adding the partition number to the path
-			let path_str = (prefix.failable_clone()? + String::from_number(i as _)?)?;
-			let path = Path::from_str(path_str.as_bytes(), false)?;
+			for (i, partition) in partitions.iter().take(MAX_PARTITIONS).enumerate() {
+				// Adding the partition number to the path
+				let path_str = (prefix.failable_clone()? + String::from_number(i as _)?)?;
+				let path = Path::from_str(path_str.as_bytes(), false)?;
 
-			// Computing the partition's offset and size
-			let off = partition.get_offset() * block_size;
-			let size = partition.get_size() * block_size;
+				// Computing the partition's offset and size
+				let off = partition.get_offset() * block_size;
+				let size = partition.get_size() * block_size;
 
-			// Creating the partition's device file
-			let handle = StorageDeviceHandle::new(storage.as_mut_ptr(), off, size);
-			let device = Device::new(major, storage_id * MAX_PARTITIONS + i as u32, path,
-				STORAGE_MODE, DeviceType::Block, handle)?;
-			device::register_device(device)?;
+				// Creating the partition's device file
+				let handle = StorageDeviceHandle::new(storage.as_mut_ptr(), off, size);
+				let device = Device::new(major, storage_id * MAX_PARTITIONS as u32 + i as u32,
+					path, STORAGE_MODE, DeviceType::Block, handle)?;
+				device::register_device(device)?;
+			}
 		}
 
 		self.interfaces.push(storage)

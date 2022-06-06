@@ -38,10 +38,43 @@ struct GPTEntry {
 	name: [u16],
 }
 
+impl GPTEntry {
+	/// Tells whether the given entry `other` equals the current entry.
+	/// `entry_size` is the size of an entry.
+	fn eq(&self, other: &Self, entry_size: usize) -> bool {
+		if self.partition_type != other.partition_type {
+			return false;
+		}
+
+		if self.guid != other.guid {
+			return false;
+		}
+
+		if self.start != other.start {
+			return false;
+		}
+
+		if self.end != other.end {
+			return false;
+		}
+
+		if self.attributes != other.attributes {
+			return false;
+		}
+
+		for i in 0..entry_size {
+			if self.name[i] != other.name[i] {
+				return false;
+			}
+		}
+
+		true
+	}
+}
+
 /// Structure representing the GPT header.
-#[derive(Clone, Copy)]
 #[repr(C, packed)]
-struct GPT {
+pub struct GPT {
 	/// The header's signature.
 	signature: [u8; 8],
 	/// The header's revision.
@@ -72,11 +105,32 @@ struct GPT {
 	entries_checksum: u32,
 }
 
+impl Clone for GPT {
+	fn clone(&self) -> Self {
+		Self {
+			signature: self.signature,
+			revision: self.revision,
+			hdr_size: self.hdr_size,
+			checksum: self.checksum,
+			reserved: self.reserved,
+			hdr_lba: self.hdr_lba,
+			alternate_hdr_lba: self.alternate_hdr_lba,
+			first_usable: self.first_usable,
+			last_usable: self.last_usable,
+			disk_guid: self.disk_guid,
+			entries_start: self.entries_start,
+			entries_number: self.entries_number,
+			entry_size: self.entry_size,
+			entries_checksum: self.entries_checksum,
+		}
+	}
+}
+
 impl GPT {
 	/// Reads the header structure from the given storage interface `storage` at the given LBA
 	/// `lba`.
 	/// If the header is invalid, the function returns an error.
-	pub fn read_hdr_struct(storage: &mut dyn StorageInterface, lba: u64) -> Result<Self, Errno> {
+	fn read_hdr_struct(storage: &mut dyn StorageInterface, lba: u64) -> Result<Self, Errno> {
 		let block_size = storage.get_block_size() as usize;
 		if block_size < size_of::<GPT>() {
 			return Err(errno!(EINVAL));
@@ -89,30 +143,17 @@ impl GPT {
 
 		// Valid because the header's size doesn't exceeds the size of the block
 		let gpt_hdr = unsafe {
-			*(buff.as_ptr() as *const GPT)
+			&*(buff.as_ptr() as *const GPT)
 		};
 		if !gpt_hdr.is_valid() {
 			return Err(errno!(EINVAL));
 		}
 
-		Ok(gpt_hdr)
-	}
-
-	/// Reads a GPT table from the given storage interface `storage`.
-	/// If the table doesn't exist or is invalid, the function returns an error.
-	pub fn read(storage: &mut dyn StorageInterface) -> Result<Self, Errno> {
-		let main_hdr = Self::read_hdr_struct(storage, 1)?;
-		let _alternate_hdr = Self::read_hdr_struct(storage, main_hdr.alternate_hdr_lba)?;
-
-		let _main_entries = main_hdr.get_entries(storage)?;
-		let _alternate_entries = main_hdr.get_entries(storage)?;
-		// TODO Check entries correctness
-
-		Ok(main_hdr)
+		Ok(gpt_hdr.clone())
 	}
 
 	/// Tells whether the header is valid.
-	pub fn is_valid(&self) -> bool {
+	fn is_valid(&self) -> bool {
 		// Checking signature
 		if self.signature != GPT_SIGNATURE {
 			return false;
@@ -130,7 +171,7 @@ impl GPT {
 
 	/// Returns the list of entries in the table.
 	/// `storage` is the storage device interface.
-	pub fn get_entries(&self, storage: &mut dyn StorageInterface)
+	fn get_entries(&self, storage: &mut dyn StorageInterface)
 		-> Result<Vec<Box<GPTEntry>>, Errno> {
 		let block_size = storage.get_block_size();
 		let mut entries = Vec::new();
@@ -143,14 +184,20 @@ impl GPT {
 			storage.read_bytes(buff.as_slice_mut(), off)?;
 
 			// Inserting entry
-			unsafe {
+			let entry = unsafe {
 				let ptr = malloc::alloc(buff.len())? as *mut u8;
 				let alloc_slice = slice::from_raw_parts_mut(ptr, buff.len());
 				alloc_slice.copy_from_slice(buff.as_slice());
 
-				let entry = Box::from_raw(alloc_slice as *mut [u8] as *mut [()] as *mut GPTEntry);
-				entries.push(entry)?;
+				Box::from_raw(alloc_slice as *mut [u8] as *mut [()] as *mut GPTEntry)
+			};
+
+			// Checking entry correctness
+			if entry.end < entry.start {
+				return Err(errno!(EINVAL))
 			}
+
+			entries.push(entry)?;
 		}
 
 		Ok(entries)
@@ -158,21 +205,34 @@ impl GPT {
 }
 
 impl Table for GPT {
+	fn read(storage: &mut dyn StorageInterface) -> Result<Option<Self>, Errno> {
+		let main_hdr = Self::read_hdr_struct(storage, 1)?;
+		let alternate_hdr = Self::read_hdr_struct(storage, main_hdr.alternate_hdr_lba)?;
+
+		let main_entries = main_hdr.get_entries(storage)?;
+		let alternate_entries = alternate_hdr.get_entries(storage)?;
+
+		// Checking entries correctness
+		for (main_entry, alternate_entry) in main_entries.iter().zip(alternate_entries.iter()) {
+			if !main_entry.eq(alternate_entry, main_hdr.entry_size as _) {
+				return Err(errno!(EINVAL));
+			}
+		}
+
+		Ok(Some(main_hdr))
+	}
+
 	fn get_type(&self) -> &'static str {
 		"GPT"
 	}
 
-	fn is_valid(&self) -> bool {
-		// TODO
-		todo!();
-	}
+	fn get_partitions(&self, storage: &mut dyn StorageInterface) -> Result<Vec<Partition>, Errno> {
+		let mut partitions = Vec::new();
 
-	fn get_partitions(&self) -> Result<Vec<Partition>, Errno> {
-		if !self.is_valid() {
-			return Err(errno!(EINVAL));
+		for e in self.get_entries(storage)? {
+			partitions.push(Partition::new(e.start, e.end - e.start))?;
 		}
 
-		// TODO
-		todo!();
+		Ok(partitions)
 	}
 }
