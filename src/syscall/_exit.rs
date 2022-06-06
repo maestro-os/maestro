@@ -11,7 +11,7 @@ use crate::process::regs::Regs;
 pub fn do_exit(status: u32, thread_group: bool) -> ! {
 	let (_pid, _tid) = {
 		let mutex = Process::get_current().unwrap();
-		let mut guard = mutex.lock();
+		let guard = mutex.lock();
 		let proc = guard.get_mut();
 
 		proc.exit(status);

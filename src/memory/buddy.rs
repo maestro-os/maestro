@@ -174,7 +174,7 @@ pub fn alloc(order: FrameOrder, flags: Flags) -> Result<*mut c_void, Errno> {
 		let z = get_suitable_zone(i);
 
 		if let Some(z) = z {
-			let mut guard = z.lock();
+			let guard = z.lock();
 			let zone = guard.get_mut();
 
 			let frame = zone.get_available_frame(order);
@@ -211,7 +211,7 @@ pub fn free(ptr: *const c_void, order: FrameOrder) {
 	debug_assert!(order <= MAX_ORDER);
 
 	let z = get_zone_for_pointer(ptr).unwrap();
-	let mut guard = z.lock();
+	let guard = z.lock();
 	let zone = guard.get_mut();
 
 	let frame_id = zone.get_frame_id_from_ptr(ptr);

@@ -599,12 +599,12 @@ impl MemSpace {
 
 	/// Allocates the physical pages to write on the given pointer.
 	/// `virt_addr` is the address to allocate.
-	/// `size` is the size of the mapping to allocate.
+	/// The size of the memory chunk to allocated equals `size_of::<T>() * len`.
 	/// If the mapping doesn't exist, the function returns an error.
-	pub fn alloc<T>(&mut self, virt_addr: *const T) -> Result<(), Errno> {
+	pub fn alloc<T>(&mut self, virt_addr: *const T, len: usize) -> Result<(), Errno> {
 		let mut off = 0;
 
-		while off < size_of::<T>() {
+		while off < size_of::<T>() * len {
 			let virt_addr = (virt_addr as usize + off) as *const c_void;
 
 			if let Some(mapping) = Self::get_mapping_mut_for_(&mut self.mappings, virt_addr) {

@@ -64,7 +64,7 @@ impl MountSource {
 		let path = cwd.concat(&path)?;
 		let result = {
 			let mutex = fcache::get();
-			let mut guard = mutex.lock();
+			let guard = mutex.lock();
 			let fcache = guard.get_mut().as_mut().unwrap();
 
 			fcache.get_file_from_path(&path, 0, 0, true)
@@ -111,7 +111,7 @@ impl MountPoint {
 		path: Path) -> Result<Self, Errno> {
 		// Getting the I/O interface
 		let io_mutex = source.get_io()?;
-		let mut io_guard = io_mutex.lock();
+		let io_guard = io_mutex.lock();
 		let io = io_guard.get_mut();
 
 		// Tells whether the filesystem will be mounted in read-only
@@ -181,7 +181,7 @@ static MOUNT_POINTS: Mutex<HashMap<Path, SharedPtr<MountPoint>>> = Mutex::new(Ha
 /// Registers a new mountpoint `mountpoint`. If a mountpoint is already present at the same path,
 /// the function fails.
 pub fn register(mountpoint: MountPoint) -> Result<SharedPtr<MountPoint>, Errno> {
-	let mut guard = MOUNT_POINTS.lock();
+	let guard = MOUNT_POINTS.lock();
 	let container = guard.get_mut();
 
 	let path = mountpoint.get_path().failable_clone()?;
@@ -194,7 +194,7 @@ pub fn register(mountpoint: MountPoint) -> Result<SharedPtr<MountPoint>, Errno> 
 /// Returns the deepest mountpoint in the path `path`. If no mountpoint is in the path, the
 /// function returns None.
 pub fn get_deepest(path: &Path) -> Option<SharedPtr<MountPoint>> {
-	let mut guard = MOUNT_POINTS.lock();
+	let guard = MOUNT_POINTS.lock();
 	let container = guard.get_mut();
 
 	let mut max: Option<SharedPtr<MountPoint>> = None;
@@ -218,7 +218,7 @@ pub fn get_deepest(path: &Path) -> Option<SharedPtr<MountPoint>> {
 
 /// Returns the mountpoint with path `path`. If it doesn't exist, the function returns None.
 pub fn from_path(path: &Path) -> Option<SharedPtr<MountPoint>> {
-	let mut guard = MOUNT_POINTS.lock();
+	let guard = MOUNT_POINTS.lock();
 	let container = guard.get_mut();
 
 	Some(container.get(path)?.clone())

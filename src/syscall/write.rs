@@ -27,13 +27,13 @@ pub fn write(regs: &Regs) -> Result<i32, Errno> {
 		let (len, flags) = {
 			let (mem_space, open_file_mutex) = {
 				let mutex = Process::get_current().unwrap();
-				let mut guard = mutex.lock();
+				let guard = mutex.lock();
 				let proc = guard.get_mut();
 
 				(proc.get_mem_space().unwrap(), proc.get_fd(fd).ok_or(errno!(EBADF))?.get_open_file())
 			};
 
-			let mut open_file_guard = open_file_mutex.lock();
+			let open_file_guard = open_file_mutex.lock();
 			let open_file = open_file_guard.get_mut();
 
 			let mem_space_guard = mem_space.lock();
@@ -47,7 +47,7 @@ pub fn write(regs: &Regs) -> Result<i32, Errno> {
 					// If the pipe is broken, kill with SIGPIPE
 					if err.as_int() == errno::EPIPE {
 						let mutex = Process::get_current().unwrap();
-						let mut guard = mutex.lock();
+						let guard = mutex.lock();
 						let proc = guard.get_mut();
 
 						proc.kill(&Signal::SIGPIPE, false);

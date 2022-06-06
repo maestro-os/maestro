@@ -85,7 +85,7 @@ pub fn exec(proc: &mut Process, image: ProgramImage) -> Result<(), Errno> {
 	// Resetting signals
 	proc.sigmask.clear_all();
 	{
-		let mut handlers_guard = proc.signal_handlers.lock();
+		let handlers_guard = proc.signal_handlers.lock();
 		let handlers = handlers_guard.get_mut();
 
 		for i in 0..handlers.len() {

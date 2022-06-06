@@ -18,7 +18,7 @@ pub fn tkill(regs: &Regs) -> Result<i32, Errno> {
 	let signal = Signal::from_id(sig as _)?;
 
 	let mutex = Process::get_current().unwrap();
-	let mut guard = mutex.lock();
+	let guard = mutex.lock();
 	let proc = guard.get_mut();
 
 	// Checking if the thread to kill is the current
@@ -27,7 +27,7 @@ pub fn tkill(regs: &Regs) -> Result<i32, Errno> {
 	} else {
 		// Getting the thread
 		let thread_mutex = Process::get_by_tid(tid).ok_or(errno!(ESRCH))?;
-		let mut thread_guard = thread_mutex.lock();
+		let thread_guard = thread_mutex.lock();
 		let thread = thread_guard.get_mut();
 
 		// Checking permissions

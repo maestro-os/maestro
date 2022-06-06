@@ -83,7 +83,7 @@ pub fn do_access(dirfd: Option<i32>, pathname: SyscallString, mode: i32, flags: 
 			}
 		}
 
-		let mut fcache_guard = fcache::get().lock();
+		let fcache_guard = fcache::get().lock();
 		let fcache = fcache_guard.get_mut().as_mut().unwrap();
 		fcache.get_file_from_path(&path, uid, gid, follow_symlinks)?
 	};

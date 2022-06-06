@@ -12,7 +12,7 @@ pub fn getpgid(regs: &Regs) -> Result<i32, Errno> {
 	let pid = regs.ebx as Pid;
 
 	let mutex = Process::get_current().unwrap();
-	let mut guard = mutex.lock();
+	let guard = mutex.lock();
 	let proc = guard.get_mut();
 
 	if pid == 0 {
@@ -25,7 +25,7 @@ pub fn getpgid(regs: &Regs) -> Result<i32, Errno> {
 				return Err(errno!(ESRCH));
 			}
 		};
-		let mut guard = mutex.lock();
+		let guard = mutex.lock();
 		let proc = guard.get_mut();
 
 		Ok(proc.get_pgid() as _)

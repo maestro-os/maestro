@@ -101,7 +101,7 @@ const F_SEAL_WRITE: i32 = 8;
 /// `fcntl64` tells whether this is the fcntl64 system call.
 pub fn do_fcntl(fd: i32, cmd: i32, arg: *mut c_void, _fcntl64: bool) -> Result<i32, Errno> {
 	let proc_mutex = Process::get_current().unwrap();
-	let mut proc_guard = proc_mutex.lock();
+	let proc_guard = proc_mutex.lock();
 	let proc = proc_guard.get_mut();
 
 	//crate::println!("fcntl: {} {} {:p} {}", fd, cmd, arg, _fcntl64); // TODO rm

@@ -17,7 +17,7 @@ pub fn fchdir(regs: &Regs) -> Result<i32, Errno> {
 
 	let (uid, gid, open_file_mutex) = {
 		let mutex = Process::get_current().unwrap();
-		let mut guard = mutex.lock();
+		let guard = mutex.lock();
 		let proc = guard.get_mut();
 
 		let uid = proc.get_euid();
@@ -27,12 +27,12 @@ pub fn fchdir(regs: &Regs) -> Result<i32, Errno> {
 		(uid, gid, open_file_mutex)
 	};
 
-	let mut open_file_guard = open_file_mutex.lock();
+	let open_file_guard = open_file_mutex.lock();
 	let open_file = open_file_guard.get_mut();
 
 	if let FDTarget::File(dir_mutex) = open_file.get_target_mut() {
 		let new_cwd = {
-			let mut dir_guard = dir_mutex.lock();
+			let dir_guard = dir_mutex.lock();
 			let dir = dir_guard.get_mut();
 
 			// Checking for errors
@@ -48,7 +48,7 @@ pub fn fchdir(regs: &Regs) -> Result<i32, Errno> {
 
 		{
 			let mutex = Process::get_current().unwrap();
-			let mut guard = mutex.lock();
+			let guard = mutex.lock();
 			let proc = guard.get_mut();
 
 			let new_cwd = super::util::get_absolute_path(proc, new_cwd)?;

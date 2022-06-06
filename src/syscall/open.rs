@@ -42,7 +42,7 @@ fn get_file(path: Path, flags: i32, mode: Mode, uid: Uid, gid: Gid)
 	let follow_links = flags & open_file::O_NOFOLLOW == 0;
 
 	let mutex = fcache::get();
-	let mut guard = mutex.lock();
+	let guard = mutex.lock();
 	let files_cache = guard.get_mut().as_mut().unwrap();
 
 	// Getting the path of the parent directory
@@ -52,7 +52,7 @@ fn get_file(path: Path, flags: i32, mode: Mode, uid: Uid, gid: Gid)
 
 	// The parent directory
 	let parent_mutex = files_cache.get_file_from_path(&parent_path, uid, gid, true)?;
-	let mut parent_guard = parent_mutex.lock();
+	let parent_guard = parent_mutex.lock();
 	let parent = parent_guard.get_mut();
 
 	let file_result = match &name {
@@ -87,7 +87,7 @@ pub fn open_(pathname: SyscallString, flags: i32, mode: file::Mode) -> Result<i3
 	// Getting the path string
 	let (path, mode, uid, gid) = {
 		let mutex = Process::get_current().unwrap();
-		let mut guard = mutex.lock();
+		let guard = mutex.lock();
 		let proc = guard.get_mut();
 
 		let mem_space = proc.get_mem_space().unwrap();
@@ -114,7 +114,7 @@ pub fn open_(pathname: SyscallString, flags: i32, mode: file::Mode) -> Result<i3
 
 	// Create and return the file descriptor
 	let mutex = Process::get_current().unwrap();
-	let mut guard = mutex.lock();
+	let guard = mutex.lock();
 	let proc = guard.get_mut();
 	let fd = proc.create_fd(flags & STATUS_FLAGS_MASK, FDTarget::File(file))?;
 	Ok(fd.get_id() as _)

@@ -266,14 +266,14 @@ impl Scheduler {
 		// Disabling interrupts to avoid getting one right after unlocking mutexes
 		cli!();
 
-		let mut guard = mutex.lock();
+		let guard = mutex.lock();
 		let scheduler = guard.get_mut();
 
 		scheduler.total_ticks += 1;
 
 		// If a process is running, save its registers
 		if let Some(curr_proc) = scheduler.get_current_process() {
-			let mut guard = curr_proc.lock();
+			let guard = curr_proc.lock();
 			let curr_proc = guard.get_mut();
 
 			curr_proc.regs = *regs;
@@ -298,7 +298,7 @@ impl Scheduler {
 			unsafe {
 				stack::switch(Some(tmp_stack), move || {
 					let (syscalling, regs) = {
-						let mut guard = next_proc.1.lock();
+						let guard = next_proc.1.lock();
 						let proc = guard.get_mut();
 
 						proc.prepare_switch();

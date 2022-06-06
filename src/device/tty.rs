@@ -43,7 +43,7 @@ impl DeviceHandle for TTYDeviceHandle {
 	fn ioctl(&mut self, mem_space: IntSharedPtr<MemSpace>, request: u32, argp: *const c_void)
 		-> Result<u32, Errno> {
 		let tty_mutex = self.get_tty().ok_or_else(|| errno!(ENOTTY))?;
-		let mut tty_guard = tty_mutex.lock();
+		let tty_guard = tty_mutex.lock();
 		let tty = tty_guard.get_mut();
 
 		match request {
@@ -116,7 +116,7 @@ impl DeviceHandle for TTYDeviceHandle {
 impl IO for TTYDeviceHandle {
 	fn get_size(&self) -> u64 {
 		if let Some(tty_mutex) = self.get_tty() {
-			let mut tty_guard = tty_mutex.lock();
+			let tty_guard = tty_mutex.lock();
 			let tty = tty_guard.get_mut();
 
 			tty.get_available_size() as _
@@ -127,7 +127,7 @@ impl IO for TTYDeviceHandle {
 
 	fn read(&mut self, _offset: u64, buff: &mut [u8]) -> Result<u64, Errno> {
 		let tty_mutex = self.get_tty().ok_or_else(|| errno!(ENOTTY))?;
-		let mut tty_guard = tty_mutex.lock();
+		let tty_guard = tty_mutex.lock();
 		let tty = tty_guard.get_mut();
 
 		Ok(tty.read(buff) as _)
@@ -135,7 +135,7 @@ impl IO for TTYDeviceHandle {
 
 	fn write(&mut self, _offset: u64, buff: &[u8]) -> Result<u64, Errno> {
 		let tty_mutex = self.get_tty().ok_or_else(|| errno!(ENOTTY))?;
-		let mut tty_guard = tty_mutex.lock();
+		let tty_guard = tty_mutex.lock();
 		let tty = tty_guard.get_mut();
 
 		tty.write(buff);

@@ -10,7 +10,7 @@ pub fn sigreturn(_regs: &Regs) -> Result<i32, Errno> {
 	cli!();
 
 	let mutex = Process::get_current().unwrap();
-	let mut guard = mutex.lock();
+	let guard = mutex.lock();
 	let proc = guard.get_mut();
 
 	// Restores the state of the process before the signal handler

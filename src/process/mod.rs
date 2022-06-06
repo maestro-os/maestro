@@ -264,13 +264,13 @@ pub fn init() -> Result<(), Errno> {
 			return InterruptResult::new(true, InterruptResultAction::Panic);
 		}
 
-		let mut guard = unsafe {
+		let guard = unsafe {
 			SCHEDULER.assume_init_mut()
 		}.lock();
 		let scheduler = guard.get_mut();
 
 		if let Some(curr_proc) = scheduler.get_current_process() {
-			let mut curr_proc_guard = curr_proc.lock();
+			let curr_proc_guard = curr_proc.lock();
 			let curr_proc = curr_proc_guard.get_mut();
 
 			match id {
@@ -327,13 +327,13 @@ pub fn init() -> Result<(), Errno> {
 		}
 	};
 	let page_fault_callback = | _id: u32, code: u32, _regs: &Regs, ring: u32 | {
-		let mut guard = unsafe {
+		let guard = unsafe {
 			SCHEDULER.assume_init_mut()
 		}.lock();
 		let scheduler = guard.get_mut();
 
 		if let Some(curr_proc) = scheduler.get_current_process() {
-			let mut curr_proc_guard = curr_proc.lock();
+			let curr_proc_guard = curr_proc.lock();
 			let curr_proc = curr_proc_guard.get_mut();
 
 			let accessed_ptr = unsafe {
@@ -343,7 +343,7 @@ pub fn init() -> Result<(), Errno> {
 			// Handling page fault
 			let success = {
 				let mem_space = curr_proc.get_mem_space().unwrap();
-				let mut mem_space_guard = mem_space.lock();
+				let mem_space_guard = mem_space.lock();
 				let mem_space = mem_space_guard.get_mut();
 
 				mem_space.handle_page_fault(accessed_ptr, code)
@@ -410,7 +410,7 @@ impl Process {
 
 	/// Returns the current running process. If no process is running, the function returns None.
 	pub fn get_current() -> Option<IntSharedPtr<Self>> {
-		let mut guard = unsafe {
+		let guard = unsafe {
 			SCHEDULER.assume_init_mut()
 		}.lock();
 
@@ -481,7 +481,7 @@ impl Process {
 		// Creating STDIN, STDOUT and STDERR
 		{
 			let mutex = fcache::get();
-			let mut guard = mutex.lock();
+			let guard = mutex.lock();
 			let files_cache = guard.get_mut();
 
 			let tty_path = Path::from_str(TTY_DEVICE_PATH.as_bytes(), false).unwrap();
@@ -494,7 +494,7 @@ impl Process {
 			process.duplicate_fd(STDIN_FILENO, NewFDConstraint::Fixed(STDERR_FILENO), false)?;
 		}
 
-		let mut guard = unsafe {
+		let guard = unsafe {
 			SCHEDULER.assume_init_mut()
 		}.lock();
 		guard.get_mut().add_process(process)
@@ -535,7 +535,7 @@ impl Process {
 		// Removing the process from its old group
 		if self.is_in_group() {
 			let mutex = Process::get_by_pid(self.pgid).unwrap();
-			let mut guard = mutex.lock();
+			let guard = mutex.lock();
 			let old_group_process = guard.get_mut();
 
 			if let Ok(i) = old_group_process.process_group.binary_search(&self.pid) {
@@ -555,7 +555,7 @@ impl Process {
 
 		// Adding the process to the new group
 		if let Some(mutex) = Process::get_by_pid(pgid) {
-			let mut guard = mutex.lock();
+			let guard = mutex.lock();
 			let new_group_process = guard.get_mut();
 
 			let i = new_group_process.process_group.binary_search(&self.pid).unwrap_err();
@@ -662,7 +662,7 @@ impl Process {
 
 			// Attaching every child to the init process
 			let init_proc_mutex = Process::get_by_pid(pid::INIT_PID).unwrap();
-			let mut init_proc_guard = init_proc_mutex.lock();
+			let init_proc_guard = init_proc_mutex.lock();
 			let init_proc = init_proc_guard.get_mut();
 			for child_pid in self.children.iter() {
 				// Check just in case
@@ -916,7 +916,7 @@ impl Process {
 	/// `target` is the target of the newly created file descriptor.
 	/// If the target is a file and cannot be open, the function returns an Err.
 	pub fn create_fd(&mut self, flags: i32, target: FDTarget) -> Result<FileDescriptor, Errno> {
-		let mut file_descriptors_guard = self.file_descriptors.as_ref().unwrap().lock();
+		let file_descriptors_guard = self.file_descriptors.as_ref().unwrap().lock();
 		let file_descriptors = file_descriptors_guard.get_mut();
 
 		let id = Self::get_available_fd(file_descriptors, None)?;
@@ -940,7 +940,7 @@ impl Process {
 	/// The function returns a pointer to the file descriptor with its ID.
 	pub fn duplicate_fd(&mut self, id: u32, constraint: NewFDConstraint, cloexec: bool)
 		-> Result<FileDescriptor, Errno> {
-		let mut file_descriptors_guard = self.file_descriptors.as_ref().unwrap().lock();
+		let file_descriptors_guard = self.file_descriptors.as_ref().unwrap().lock();
 		let file_descriptors = file_descriptors_guard.get_mut();
 
 		// The ID of the new FD
@@ -1022,7 +1022,7 @@ impl Process {
 	/// Closes the file descriptor with the ID `id`. The function returns an Err if the file
 	/// descriptor doesn't exist.
 	pub fn close_fd(&mut self, id: u32) -> Result<(), Errno> {
-		let mut file_descriptors_guard = self.file_descriptors.as_ref().unwrap().lock();
+		let file_descriptors_guard = self.file_descriptors.as_ref().unwrap().lock();
 		let file_descriptors = file_descriptors_guard.get_mut();
 
 		let result = file_descriptors.binary_search_by(| fd | fd.get_id().cmp(&id));
@@ -1066,7 +1066,7 @@ impl Process {
 			let mutex = unsafe {
 				PID_MANAGER.assume_init_mut()
 			};
-			let mut guard = mutex.lock();
+			let guard = mutex.lock();
 			guard.get_mut().get_unique_pid()
 		}?;
 
@@ -1177,7 +1177,7 @@ impl Process {
 		};
 		self.add_child(pid)?;
 
-		let mut guard = unsafe {
+		let guard = unsafe {
 			SCHEDULER.assume_init_mut()
 		}.lock();
 		guard.get_mut().add_process(process)
@@ -1229,7 +1229,7 @@ impl Process {
 		for pid in self.process_group.iter() {
 			if *pid != self.pid {
 				if let Some(proc_mutex) = Process::get_by_tid(*pid) {
-					let mut proc_guard = proc_mutex.lock();
+					let proc_guard = proc_mutex.lock();
 					let proc = proc_guard.get_mut();
 
 					proc.kill(&sig, no_handler);
@@ -1375,7 +1375,7 @@ impl Process {
 		// Resetting the parent's vfork state if needed
 		if let Some(parent) = self.get_parent() {
 			let parent = parent.get_mut().unwrap();
-			let mut guard = parent.lock();
+			let guard = parent.lock();
 			guard.get_mut().vfork_state = VForkState::None;
 		}
 	}
@@ -1391,7 +1391,7 @@ impl Process {
 		if let Some(parent) = self.get_parent() {
 			// Wake the parent
 			let parent = parent.get_mut().unwrap();
-			let mut guard = parent.lock();
+			let guard = parent.lock();
 			guard.get_mut().wakeup();
 		}
 	}
@@ -1447,7 +1447,7 @@ impl Drop for Process {
 		// Removing the child from the parent process
 		if let Some(parent) = self.get_parent() {
 			let parent = parent.get_mut().unwrap();
-			let mut guard = parent.lock();
+			let guard = parent.lock();
 			guard.get_mut().remove_child(self.pid);
 		}
 
@@ -1455,7 +1455,7 @@ impl Drop for Process {
 		let mutex = unsafe {
 			PID_MANAGER.assume_init_mut()
 		};
-		let mut guard = mutex.lock();
+		let guard = mutex.lock();
 		guard.get_mut().release_pid(self.pid);
 	}
 }

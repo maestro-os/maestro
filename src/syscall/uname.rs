@@ -27,7 +27,7 @@ pub fn uname(regs: &Regs) -> Result<i32, Errno> {
 	let buf: SyscallPtr<Utsname> = (regs.ebx as usize).into();
 
 	let mutex = Process::get_current().unwrap();
-	let mut guard = mutex.lock();
+	let guard = mutex.lock();
 	let proc = guard.get_mut();
 
 	let mem_space = proc.get_mem_space().unwrap();

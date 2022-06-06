@@ -49,7 +49,7 @@ impl<T> Semaphore<T> {
 		f(&mut self.data);
 
 		{
-			let mut guard = self.fifo.lock();
+			let guard = self.fifo.lock();
 			debug_assert!(!guard.get_mut().is_empty());
 			guard.get_mut().remove(0);
 		}

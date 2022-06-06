@@ -9,7 +9,7 @@ use crate::logger;
 /// `print!` and `println!` macros only.
 pub fn _print(args: core::fmt::Arguments) {
 	let mutex = logger::get();
-	let mut guard = mutex.lock();
+	let guard = mutex.lock();
 	fmt::write(guard.get_mut(), args).ok();
 }
 

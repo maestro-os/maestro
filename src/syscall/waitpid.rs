@@ -93,11 +93,11 @@ fn check_waitable(pid: i32, wstatus: &mut i32, rusage: &mut RUsage) -> Result<Op
 	// Iterating on every target processes, checking if they can be waited on
 	let mut i = 0;
 	while let Some(pid) = get_target(pid, i) {
-		let mut scheduler_guard = process::get_scheduler().lock();
+		let scheduler_guard = process::get_scheduler().lock();
 		let scheduler = scheduler_guard.get_mut();
 
 		if let Some(p) = scheduler.get_by_pid(pid) {
-			let mut p_guard = p.lock();
+			let p_guard = p.lock();
 			let p = p_guard.get_mut();
 			let pid = p.get_pid();
 
@@ -135,7 +135,7 @@ pub fn do_waitpid(pid: i32, wstatus: SyscallPtr<i32>, options: i32,
 	// Checking `pid`
 	{
 		let mutex = Process::get_current().unwrap();
-		let mut guard = mutex.lock();
+		let guard = mutex.lock();
 		let proc = guard.get_mut();
 
 		if pid == INIT_PID as i32 || pid == proc.get_pid() as i32 {
@@ -153,7 +153,7 @@ pub fn do_waitpid(pid: i32, wstatus: SyscallPtr<i32>, options: i32,
 
 		{
 			let mutex = Process::get_current().unwrap();
-			let mut guard = mutex.lock();
+			let guard = mutex.lock();
 			let proc = guard.get_mut();
 
 			let mem_space = proc.get_mem_space().unwrap();
@@ -182,7 +182,7 @@ pub fn do_waitpid(pid: i32, wstatus: SyscallPtr<i32>, options: i32,
 
 		{
 			let mutex = Process::get_current().unwrap();
-			let mut guard = mutex.lock();
+			let guard = mutex.lock();
 			let proc = guard.get_mut();
 
 			// When a child process is paused or resumed by a signal or is terminated, it changes

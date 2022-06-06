@@ -26,7 +26,7 @@ static DEFAULT_PAGE: Mutex<Option<*const c_void>> = Mutex::new(None);
 
 /// Returns a pointer to the default physical page.
 fn get_default_page() -> *const c_void {
-	let mut guard = DEFAULT_PAGE.lock();
+	let guard = DEFAULT_PAGE.lock();
 	let default_page = guard.get_mut();
 
 	if default_page.is_none() {
@@ -217,6 +217,7 @@ impl MemMapping {
 	/// function allocates the physical memory to be mapped.
 	/// If the mapping is in forking state, the function shall apply Copy-On-Write and allocate
 	/// a new physical page with the same data.
+	/// If a physical page is already mapped, the function does nothing.
 	pub fn map(&mut self, offset: usize) -> Result<(), Errno> {
 		let vmem = self.get_mut_vmem();
 		let virt_ptr = (self.begin as usize + offset * memory::PAGE_SIZE) as *mut c_void;
@@ -243,7 +244,7 @@ impl MemMapping {
 		let flags = self.get_vmem_flags(true, offset);
 
 		{
-			let mut ref_counter = super::PHYSICAL_REF_COUNTER.lock();
+			let ref_counter = super::PHYSICAL_REF_COUNTER.lock();
 			if let Err(errno) = ref_counter.get_mut().increment(new_phys_ptr) {
 				buddy::free(new_phys_ptr, 0);
 				return Err(errno);
@@ -284,7 +285,7 @@ impl MemMapping {
 
 		if let Some(phys_ptr) = vmem.translate(virt_ptr) {
 			{
-				let mut ref_counter = super::PHYSICAL_REF_COUNTER.lock();
+				let ref_counter = super::PHYSICAL_REF_COUNTER.lock();
 				ref_counter.get_mut().decrement(phys_ptr);
 			}
 
@@ -422,7 +423,7 @@ impl MemMapping {
 				new_mapping.map(i)?;
 			}
 		} else {
-			let mut ref_counter_guard = super::PHYSICAL_REF_COUNTER.lock();
+			let ref_counter_guard = super::PHYSICAL_REF_COUNTER.lock();
 			let ref_counter = ref_counter_guard.get_mut();
 
 			for i in 0..self.size {

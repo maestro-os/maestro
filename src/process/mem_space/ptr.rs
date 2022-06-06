@@ -62,6 +62,8 @@ impl<T: Sized> SyscallPtr<T> {
 	/// Returns a mutable reference to the value of the pointer.
 	/// If the pointer is null, the function returns None.
 	/// If the value is not accessible, the function returns an error.
+	///	If the value is located on lazily allocated pages, the function allocates physical pages in
+	/// order to allow writing.
 	pub fn get_mut<'a, const INT: bool>(&self, mem_space: &'a MutexGuard<MemSpace, INT>)
 		-> Result<Option<&'a mut T>, Errno> {
 		if self.is_null() {
@@ -69,6 +71,9 @@ impl<T: Sized> SyscallPtr<T> {
 		}
 
 		if mem_space.get().can_access(self.ptr as _, size_of::<T>(), true, true) {
+			// Allocating physical pages if necessary
+			mem_space.get_mut().alloc(self.ptr, 1)?;
+
 			Ok(Some(unsafe { // Safe because access is checked before
 				&mut *self.ptr
 			}))
@@ -131,6 +136,8 @@ impl<T: Sized> SyscallSlice<T> {
 	/// Returns a mutable reference to the slice.
 	/// `len` is the in number of elements in the slice.
 	/// If the slice is not accessible, the function returns an error.
+	///	If the slice is located on lazily allocated pages, the function allocates physical pages in
+	/// order to allow writing.
 	pub fn get_mut<'a, const INT: bool>(&self, mem_space: &'a MutexGuard<MemSpace, INT>,
 		len: usize) -> Result<Option<&'a mut [T]>, Errno> {
 		if self.is_null() {
@@ -139,6 +146,9 @@ impl<T: Sized> SyscallSlice<T> {
 
 		let size = size_of::<T>() * len;
 		if mem_space.get().can_access(self.ptr as _, size, true, true) {
+			// Allocating physical pages if necessary
+			mem_space.get_mut().alloc(self.ptr as *const u8, len)?;
+
 			Ok(Some(unsafe { // Safe because access is checked before
 				slice::from_raw_parts_mut(self.ptr, len)
 			}))
@@ -195,6 +205,8 @@ impl SyscallString {
 
 	/// Returns a mutable reference to the string.
 	/// If the string is not accessible, the function returns an error.
+	///	If the string is located on lazily allocated pages, the function allocates physical pages
+	/// in order to allow writing.
 	pub fn get_mut<'a, const INT: bool>(&self, mem_space: &'a MutexGuard<MemSpace, INT>)
 		-> Result<Option<&'a mut [u8]>, Errno> {
 		if self.is_null() {
@@ -203,6 +215,10 @@ impl SyscallString {
 
 		let len = mem_space.get().can_access_string(self.ptr, true, true)
 			.ok_or_else(|| errno!(EFAULT))?;
+
+		// Allocating physical pages if necessary
+		mem_space.get_mut().alloc(self.ptr as *const u8, len)?;
+
 		Ok(Some(unsafe { // Safe because access is checked before
 			slice::from_raw_parts_mut(self.ptr, len)
 		}))

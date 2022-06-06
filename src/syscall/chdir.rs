@@ -14,7 +14,7 @@ pub fn chdir(regs: &Regs) -> Result<i32, Errno> {
 	let path: SyscallString = (regs.ebx as usize).into();
 
 	let mutex = Process::get_current().unwrap();
-	let mut guard = mutex.lock();
+	let guard = mutex.lock();
 	let proc = guard.get_mut();
 
 	let new_cwd = {
@@ -27,7 +27,7 @@ pub fn chdir(regs: &Regs) -> Result<i32, Errno> {
 
 	{
 		let fcache_mutex = fcache::get();
-		let mut fcache_guard = fcache_mutex.lock();
+		let fcache_guard = fcache_mutex.lock();
 		let fcache = fcache_guard.get_mut();
 
 		let dir_mutex = fcache.as_mut().unwrap().get_file_from_path(&new_cwd, proc.get_euid(),

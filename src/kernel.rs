@@ -185,7 +185,7 @@ extern "C" {
 /// `init_path` is the path to the init program.
 fn init(init_path: &[u8]) -> Result<(), Errno> {
 	let mutex = Process::new()?;
-	let mut lock = mutex.lock();
+	let lock = mutex.lock();
 	let proc = lock.get_mut();
 
 	if cfg!(config_debug_testprocess) {
@@ -209,12 +209,12 @@ fn init(init_path: &[u8]) -> Result<(), Errno> {
 
 		let file = {
 			let fcache_mutex = fcache::get();
-			let mut fcache_guard = fcache_mutex.lock();
+			let fcache_guard = fcache_mutex.lock();
 			let fcache = fcache_guard.get_mut().as_mut().unwrap();
 
 			fcache.get_file_from_path(&path, 0, 0, true)?
 		};
-		let mut file_guard = file.lock();
+		let file_guard = file.lock();
 
 		let exec_info = ExecInfo {
 			uid: proc.get_uid(),

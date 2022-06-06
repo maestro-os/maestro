@@ -660,7 +660,7 @@ fn get_syscall(id: u32) -> Option<Syscall> {
 fn print_strace(regs: &Regs, result: Option<Result<i32, Errno>>) {
 	let pid = {
 		let mutex = Process::get_current().unwrap();
-		let mut guard = mutex.lock();
+		let guard = mutex.lock();
 		let proc = guard.get_mut();
 		proc.get_pid()
 	};
@@ -726,7 +726,7 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 		None => {
 			{
 				let mutex = Process::get_current().unwrap();
-				let mut guard = mutex.lock();
+				let guard = mutex.lock();
 				let curr_proc = guard.get_mut();
 
 				// SIGSYS cannot be caught, thus the process will be terminated

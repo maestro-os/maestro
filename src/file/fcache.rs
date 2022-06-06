@@ -92,12 +92,12 @@ impl FCache {
 
 		// Getting the path's deepest mountpoint
 		let mountpoint_mutex = mountpoint::get_deepest(&path).ok_or_else(|| errno!(ENOENT))?;
-		let mut mountpoint_guard = mountpoint_mutex.lock();
+		let mountpoint_guard = mountpoint_mutex.lock();
 		let mountpoint = mountpoint_guard.get_mut();
 
 		// Getting the IO interface
 		let io_mutex = mountpoint.get_source().get_io()?;
-		let mut io_guard = io_mutex.lock();
+		let io_guard = io_mutex.lock();
 		let io = io_guard.get_mut();
 
 		// Getting the path from the start of the filesystem to the file
@@ -189,12 +189,12 @@ impl FCache {
 		// Getting the path's deepest mountpoint
 		let mountpoint_mutex = parent.get_location().get_mountpoint()
 			.ok_or_else(|| errno!(ENOENT))?;
-		let mut mountpoint_guard = mountpoint_mutex.lock();
+		let mountpoint_guard = mountpoint_mutex.lock();
 		let mountpoint = mountpoint_guard.get_mut();
 
 		// Getting the IO interface
 		let io_mutex = mountpoint.get_source().get_io()?;
-		let mut io_guard = io_mutex.lock();
+		let io_guard = io_mutex.lock();
 		let io = io_guard.get_mut();
 
 		// The filesystem
@@ -240,12 +240,12 @@ impl FCache {
 		// Getting the mountpoint
 		let mountpoint_mutex = parent.get_location().get_mountpoint()
 			.ok_or_else(|| errno!(ENOENT))?;
-		let mut mountpoint_guard = mountpoint_mutex.lock();
+		let mountpoint_guard = mountpoint_mutex.lock();
 		let mountpoint = mountpoint_guard.get_mut();
 
 		// Getting the IO interface
 		let io_mutex = mountpoint.get_source().get_io()?;
-		let mut io_guard = io_mutex.lock();
+		let io_guard = io_mutex.lock();
 		let io = io_guard.get_mut();
 
 		let fs = mountpoint.get_filesystem();
@@ -285,12 +285,12 @@ impl FCache {
 
 		// Getting the mountpoint
 		let mountpoint_mutex = file.get_location().get_mountpoint().ok_or_else(|| errno!(ENOENT))?;
-		let mut mountpoint_guard = mountpoint_mutex.lock();
+		let mountpoint_guard = mountpoint_mutex.lock();
 		let mountpoint = mountpoint_guard.get_mut();
 
 		// Getting the IO interface
 		let io_mutex = mountpoint.get_source().get_io()?;
-		let mut io_guard = io_mutex.lock();
+		let io_guard = io_mutex.lock();
 		let io = io_guard.get_mut();
 
 		// Removing the file

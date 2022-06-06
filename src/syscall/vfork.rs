@@ -15,7 +15,7 @@ pub fn vfork(regs: &Regs) -> Result<i32, Errno> {
 		// A weak pointer to the new process's parent
 		let parent = curr_mutex.new_weak();
 
-		let mut curr_guard = curr_mutex.lock();
+		let curr_guard = curr_mutex.lock();
 		let curr_proc = curr_guard.get_mut();
 
 		let fork_options = ForkOptions {
@@ -23,7 +23,7 @@ pub fn vfork(regs: &Regs) -> Result<i32, Errno> {
 			..ForkOptions::default()
 		};
 		let new_mutex = curr_proc.fork(parent, fork_options)?;
-		let mut new_guard = new_mutex.lock();
+		let new_guard = new_mutex.lock();
 		let new_proc = new_guard.get_mut();
 
 		// Setting registers

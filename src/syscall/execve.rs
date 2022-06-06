@@ -40,7 +40,7 @@ pub fn peek_shebang(file: &mut File, buff: &mut [u8; SHEBANG_MAX]) -> Result<Opt
 /// Performs the execution on the current process.
 fn do_exec(program_image: ProgramImage) -> Result<Regs, Errno> {
 	let proc_mutex = Process::get_current().unwrap();
-	let mut proc_guard = proc_mutex.lock();
+	let proc_guard = proc_mutex.lock();
 	let proc = proc_guard.get_mut();
 
 	// Executing the program
@@ -62,7 +62,7 @@ fn build_image(file: SharedPtr<File>, uid: Uid, euid: Uid, gid: Gid, egid: Gid, 
 		envp_.push(e.as_bytes())?;
 	}
 
-	let mut file_guard = file.lock();
+	let file_guard = file.lock();
 	let exec_info = ExecInfo {
 		uid,
 		euid,
@@ -84,7 +84,7 @@ pub fn execve(regs: &Regs) -> Result<i32, Errno> {
 
 	let (path, argv, envp, uid, gid, euid, egid) = {
 		let proc_mutex = Process::get_current().unwrap();
-		let mut proc_guard = proc_mutex.lock();
+		let proc_guard = proc_mutex.lock();
 		let proc = proc_guard.get_mut();
 
 		let path = {
@@ -111,7 +111,7 @@ pub fn execve(regs: &Regs) -> Result<i32, Errno> {
 	// The file
 	let file = {
 		let files_mutex = fcache::get();
-		let mut files_guard = files_mutex.lock();
+		let files_guard = files_mutex.lock();
 		let files_cache = files_guard.get_mut();
 
 		files_cache.as_mut().unwrap().get_file_from_path(&path, uid, gid, true)?
@@ -121,7 +121,7 @@ pub fn execve(regs: &Regs) -> Result<i32, Errno> {
 	let mut i = 0;
 	while i < 4 {
 		// Locking file
-		let mut guard = file.lock();
+		let guard = file.lock();
 		let f = guard.get_mut();
 
 		// Checking execute permission

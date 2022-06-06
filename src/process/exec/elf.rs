@@ -395,9 +395,7 @@ impl<'a> ELFExecutor<'a> {
 
 			// TODO Lazy allocation
 			// Pre-allocating the pages to make them writable
-			for i in 0..pages {
-				mem_space.alloc((mem_begin as usize + i * memory::PAGE_SIZE) as *const u8)?;
-			}
+			mem_space.alloc(mem_begin as *const u8, pages * memory::PAGE_SIZE)?;
 		}
 
 		// The pointer to the end of the virtual memory chunk
@@ -483,12 +481,12 @@ impl<'a> ELFExecutor<'a> {
 			// Getting file
 			let interp_file_mutex = {
 				let fcache_mutex = fcache::get();
-				let mut fcache_guard = fcache_mutex.lock();
+				let fcache_guard = fcache_mutex.lock();
 				let fcache = fcache_guard.get_mut().as_mut().unwrap();
 
 				fcache.get_file_from_path(&interp_path, self.info.euid, self.info.egid, true)?
 			};
-			let mut interp_file_guard = interp_file_mutex.lock();
+			let interp_file_guard = interp_file_mutex.lock();
 
 			let interp_image = read_exec_file(interp_file_guard.get_mut(), self.info.euid,
 				self.info.egid)?;
@@ -587,10 +585,8 @@ impl<'a> Executor<'a> for ELFExecutor<'a> {
 			}
 
 			// Allocating the pages on the stack to write the initial data
-			for i in 0..pages_count {
-				let ptr = (user_stack as usize - (i + 1) * memory::PAGE_SIZE) as *const c_void;
-				mem_space.alloc(ptr)?;
-			}
+			let stack_len = pages_count * memory::PAGE_SIZE;
+			mem_space.alloc((user_stack as usize - stack_len) as *const u8, stack_len)?;
 		}
 
 		// The initial pointer for `brk`

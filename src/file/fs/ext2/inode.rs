@@ -641,17 +641,16 @@ impl Ext2INode {
 			let blk_inner_off = ((off + i as u64) % blk_size as u64) as usize;
 			let len = min(max - i, (blk_size - blk_inner_off as u32) as u64);
 
+			let dst = &mut buff[(i as usize)..((i + len) as usize)];
+
 			if let Some(blk_off) = self.get_content_block_off(blk_off as _, superblock, io)? {
 				read_block(blk_off as _, superblock, io, blk_buff.as_slice_mut())?;
 
-				unsafe { // Safe because staying in range
-					copy_nonoverlapping(&blk_buff.as_slice()[blk_inner_off] as *const u8,
-						&mut buff[i as usize] as *mut u8,
-						len as _);
-				}
+				let src = &blk_buff.as_slice()[blk_inner_off..(blk_inner_off + len as usize)];
+				dst.copy_from_slice(src);
 			} else {
 				// No content block, writing zeros
-				buff[(i as usize)..((i + len) as usize)].fill(0);
+				dst.fill(0);
 			}
 
 			i += len;

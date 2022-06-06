@@ -37,7 +37,7 @@ pub fn getdents64(regs: &Regs) -> Result<i32, Errno> {
 
 	let (mem_space, open_file_mutex) = {
 		let mutex = Process::get_current().unwrap();
-		let mut guard = mutex.lock();
+		let guard = mutex.lock();
 		let proc = guard.get_mut();
 
 		let mem_space = proc.get_mem_space().unwrap();
@@ -47,7 +47,7 @@ pub fn getdents64(regs: &Regs) -> Result<i32, Errno> {
 	};
 
 	// Getting file
-	let mut open_file_guard = open_file_mutex.lock();
+	let open_file_guard = open_file_mutex.lock();
 	let open_file = open_file_guard.get_mut();
 
 	let mem_space_guard = mem_space.lock();

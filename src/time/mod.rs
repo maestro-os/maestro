@@ -30,7 +30,7 @@ pub fn get_clock_sources() -> &'static Mutex<Vec<Box<dyn ClockSource>>> {
 
 /// Adds the new clock source to the clock sources list.
 pub fn add_clock_source<T: 'static + ClockSource>(source: T) -> Result<(), Errno> {
-	let mut guard = CLOCK_SOURCES.lock();
+	let guard = CLOCK_SOURCES.lock();
 	let sources = guard.get_mut();
 	sources.push(Box::new(source)?)?;
 	Ok(())
@@ -39,7 +39,7 @@ pub fn add_clock_source<T: 'static + ClockSource>(source: T) -> Result<(), Errno
 /// Removes the clock source with the given name.
 /// If the clock source doesn't exist, the function does nothing.
 pub fn remove_clock_source(name: &str) {
-	let mut guard = CLOCK_SOURCES.lock();
+	let guard = CLOCK_SOURCES.lock();
 	let sources = guard.get_mut();
 
 	for i in 0..sources.len() {
@@ -54,7 +54,7 @@ pub fn remove_clock_source(name: &str) {
 /// TODO specify the time unit
 /// If no clock source is available, the function returns None.
 pub fn get() -> Option<Timestamp> {
-	let mut guard = CLOCK_SOURCES.lock();
+	let guard = CLOCK_SOURCES.lock();
 	let sources = guard.get_mut();
 
 	if !sources.is_empty() {

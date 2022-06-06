@@ -171,7 +171,7 @@ pub fn current() -> Option<TTYHandle> {
 /// Initializes the init TTY.
 pub fn init() {
 	let init_tty_mutex = get(None).unwrap();
-	let mut init_tty_guard = init_tty_mutex.lock();
+	let init_tty_guard = init_tty_mutex.lock();
 	let init_tty = init_tty_guard.get_mut();
 
 	init_tty.init(None);
@@ -185,7 +185,7 @@ pub fn switch(id: Option<usize>) {
 	if let Some(tty) = get(id) {
 		*CURRENT_TTY.lock().get_mut() = id;
 
-		let mut guard = tty.lock();
+		let guard = tty.lock();
 		let t = guard.get_mut();
 		t.show();
 	}
@@ -639,7 +639,7 @@ impl TTY {
 		}
 
 		if let Some(proc_mutex) = Process::get_by_pid(self.pgrp) {
-			let mut proc_guard = proc_mutex.lock();
+			let proc_guard = proc_mutex.lock();
 			let proc = proc_guard.get_mut();
 
 			proc.kill_group(sig, false);

@@ -420,11 +420,11 @@ impl Signal {
 					// FIXME Don't write data out of the stack
 					oom::wrap(|| {
 						let mem_space = process.get_mem_space().unwrap();
-						let mut mem_space_guard = mem_space.lock();
+						let mem_space_guard = mem_space.lock();
 						let mem_space = mem_space_guard.get_mut();
 
 						debug_assert!(mem_space.is_bound());
-						mem_space.alloc(signal_esp as *mut [u32; 2])
+						mem_space.alloc(signal_esp as *mut u32, 2)
 					});
 					let signal_data = unsafe {
 						slice::from_raw_parts_mut(signal_esp as *mut u32, 2)

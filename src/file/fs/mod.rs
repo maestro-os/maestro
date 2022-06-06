@@ -120,7 +120,7 @@ static FILESYSTEMS: Mutex<Vec<SharedPtr<dyn FilesystemType>>> = Mutex::new(Vec::
 
 /// Registers a new filesystem type `fs`.
 pub fn register<T: 'static + FilesystemType>(fs_type: T) -> Result<(), Errno> {
-	let mut guard = FILESYSTEMS.lock();
+	let guard = FILESYSTEMS.lock();
 	let container = guard.get_mut();
 	container.push(SharedPtr::new(fs_type)?)
 }
@@ -130,7 +130,7 @@ pub fn register<T: 'static + FilesystemType>(fs_type: T) -> Result<(), Errno> {
 // TODO Optimize
 /// Returns the filesystem with name `name`.
 pub fn get_fs(name: &[u8]) -> Option<SharedPtr<dyn FilesystemType>> {
-	let mut guard = FILESYSTEMS.lock();
+	let guard = FILESYSTEMS.lock();
 	let container = guard.get_mut();
 
 	for i in 0..container.len() {
@@ -148,7 +148,7 @@ pub fn get_fs(name: &[u8]) -> Option<SharedPtr<dyn FilesystemType>> {
 
 /// Detects the filesystem type on the given IO interface `io`.
 pub fn detect(io: &mut dyn IO) -> Result<SharedPtr<dyn FilesystemType>, Errno> {
-	let mut guard = FILESYSTEMS.lock();
+	let guard = FILESYSTEMS.lock();
 	let container = guard.get_mut();
 
 	for i in 0..container.len() {

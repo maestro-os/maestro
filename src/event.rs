@@ -160,7 +160,7 @@ pub fn register_callback<T>(id: usize, priority: u32, callback: T) -> Result<Cal
 	debug_assert!(id < idt::ENTRIES_COUNT);
 
 	idt::wrap_disable_interrupts(|| {
-		let mut guard = unsafe {
+		let guard = unsafe {
 			CALLBACKS.assume_init_mut()
 		}[id].lock();
 		let vec = &mut guard.get_mut();
@@ -190,7 +190,7 @@ pub fn register_callback<T>(id: usize, priority: u32, callback: T) -> Result<Cal
 
 /// Removes the callback with id `id`, priority `priority` and pointer `ptr`.
 fn remove_callback(id: usize, priority: u32, ptr: *const c_void) {
-	let mut guard = unsafe {
+	let guard = unsafe {
 		CALLBACKS.assume_init_mut()
 	}[id].lock();
 	let vec = &mut guard.get_mut();
@@ -234,7 +234,7 @@ pub unsafe extern "C" fn unlock_callbacks(id: usize) {
 #[no_mangle]
 pub extern "C" fn event_handler(id: u32, code: u32, ring: u32, regs: &Regs) {
 	let action = {
-		let mut guard = unsafe {
+		let guard = unsafe {
 			&mut CALLBACKS.assume_init_mut()[id as usize]
 		}.lock();
 		let callbacks = guard.get_mut();

@@ -87,7 +87,7 @@ fn get_file(follow_links: bool, dirfd: i32, pathname: &[u8], flags: i32)
 
 			let open_file_mutex = {
 				let mutex = Process::get_current().unwrap();
-				let mut guard = mutex.lock();
+				let guard = mutex.lock();
 				let proc = guard.get_mut();
 
 				proc.get_fd(dirfd as _).ok_or(errno!(EBADF))?.get_open_file()
@@ -128,7 +128,7 @@ fn get_file(follow_links: bool, dirfd: i32, pathname: &[u8], flags: i32)
 
 				let open_file_mutex = {
 					let mutex = Process::get_current().unwrap();
-					let mut guard = mutex.lock();
+					let guard = mutex.lock();
 					let proc = guard.get_mut();
 
 					proc.get_fd(dirfd as _).ok_or(errno!(EBADF))?.get_open_file()
@@ -151,14 +151,14 @@ fn get_file(follow_links: bool, dirfd: i32, pathname: &[u8], flags: i32)
 
 		let (euid, egid) = {
 			let mutex = Process::get_current().unwrap();
-			let mut guard = mutex.lock();
+			let guard = mutex.lock();
 			let proc = guard.get_mut();
 
 			(proc.get_euid(), proc.get_egid())
 		};
 
 		let fcache = fcache::get();
-		let mut fcache_guard = fcache.lock();
+		let fcache_guard = fcache.lock();
 		fcache_guard.get_mut().as_mut().unwrap().get_file_from_path(&final_path,
 			euid, egid, follow_links)
 	}
@@ -178,7 +178,7 @@ pub fn statx(regs: &Regs) -> Result<i32, Errno> {
 
 	let mem_space = {
 		let mutex = Process::get_current().unwrap();
-		let mut guard = mutex.lock();
+		let guard = mutex.lock();
 		let proc = guard.get_mut();
 
 		proc.get_mem_space().unwrap()

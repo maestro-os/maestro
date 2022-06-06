@@ -54,7 +54,7 @@ pub fn do_writev(fd: i32, iov: SyscallSlice<IOVec>, iovcnt: i32, offset: Option<
 
 	let (mem_space, open_file_mutex) = {
 		let mutex = Process::get_current().unwrap();
-		let mut guard = mutex.lock();
+		let guard = mutex.lock();
 		let proc = guard.get_mut();
 
 		let mem_space = proc.get_mem_space().unwrap();
@@ -62,7 +62,7 @@ pub fn do_writev(fd: i32, iov: SyscallSlice<IOVec>, iovcnt: i32, offset: Option<
 		(mem_space, open_file_mutex)
 	};
 
-	let mut open_file_guard = open_file_mutex.lock();
+	let open_file_guard = open_file_mutex.lock();
 	let open_file = open_file_guard.get_mut();
 
 	// The offset to restore on the fd after the write operation

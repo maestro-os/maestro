@@ -15,7 +15,7 @@ pub fn finit_module(regs: &Regs) -> Result<i32, Errno> {
 	let image = {
 		let open_file_mutex = {
 			let proc_mutex = Process::get_current().unwrap();
-			let mut proc_guard = proc_mutex.lock();
+			let proc_guard = proc_mutex.lock();
 			let proc = proc_guard.get_mut();
 
 			if proc.get_uid() != 0 {
@@ -24,7 +24,7 @@ pub fn finit_module(regs: &Regs) -> Result<i32, Errno> {
 
 			proc.get_fd(fd).ok_or_else(|| errno!(EBADF))?.get_open_file()
 		};
-		let mut open_file_guard = open_file_mutex.lock();
+		let open_file_guard = open_file_mutex.lock();
 		let open_file = open_file_guard.get_mut();
 
 		let len = open_file.get_file_size(); // TODO Error if file is too large for 32bit?

@@ -504,7 +504,7 @@ impl KeyboardManager {
 
 			// Getting the tty
 			if let Some(tty_mutex) = tty::current() {
-				let mut tty_guard = tty_mutex.lock();
+				let tty_guard = tty_mutex.lock();
 				let tty = tty_guard.get_mut();
 
 				if key == KeyboardKey::KeyBackspace {

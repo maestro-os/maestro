@@ -7,7 +7,7 @@ use crate::process::regs::Regs;
 /// The implementation of the `gettid` syscall.
 pub fn gettid(_regs: &Regs) -> Result<i32, Errno> {
 	let mutex = Process::get_current().unwrap();
-	let mut guard = mutex.lock();
+	let guard = mutex.lock();
 	let proc = guard.get_mut();
 
 	Ok(proc.get_tid() as _)

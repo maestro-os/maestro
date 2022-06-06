@@ -90,7 +90,7 @@ static CHAR_MAJOR_ALLOCATOR: Mutex<Option<IDAllocator>> = Mutex::new(None);
 /// If `major` is not None, the function shall allocate the specific given major number.
 /// If the allocation fails, the function returns an Err.
 pub fn alloc_major(device_type: DeviceType, major: Option<u32>) -> Result<MajorBlock, Errno> {
-	let mut guard = match device_type {
+	let guard = match device_type {
 		DeviceType::Block => BLOCK_MAJOR_ALLOCATOR.lock(),
 		DeviceType::Char => CHAR_MAJOR_ALLOCATOR.lock(),
 	};
@@ -109,7 +109,7 @@ pub fn alloc_major(device_type: DeviceType, major: Option<u32>) -> Result<MajorB
 /// Frees the given major block `block`.
 /// **WARNING**: This function shouldn't be called directly, but only from the MajorBlock itself.
 fn free_major(block: &mut MajorBlock) {
-	let mut guard = match block.get_device_type() {
+	let guard = match block.get_device_type() {
 		DeviceType::Block => BLOCK_MAJOR_ALLOCATOR.lock(),
 		DeviceType::Char => CHAR_MAJOR_ALLOCATOR.lock(),
 	};

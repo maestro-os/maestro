@@ -89,7 +89,7 @@ pub fn set_value(count: u16) {
 /// Sets the current frequency of the PIT to `frequency` in hertz.
 /// This function disables interrupts.
 pub fn set_frequency(frequency: Frequency) {
-	let mut guard = CURRENT_FREQUENCY.lock();
+	let guard = CURRENT_FREQUENCY.lock();
 	*guard.get_mut() = frequency;
 
 	let mut c = if frequency != 0 {

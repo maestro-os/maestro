@@ -13,7 +13,7 @@ pub fn truncate(regs: &Regs) -> Result<i32, Errno> {
 	let length = regs.ecx as usize;
 
 	let mutex = Process::get_current().unwrap();
-	let mut guard = mutex.lock();
+	let guard = mutex.lock();
 	let proc = guard.get_mut();
 
 	let mem_space = proc.get_mem_space().unwrap();
@@ -21,12 +21,12 @@ pub fn truncate(regs: &Regs) -> Result<i32, Errno> {
 	let path = Path::from_str(path.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?, true)?;
 
 	let mutex = fcache::get();
-	let mut guard = mutex.lock();
+	let guard = mutex.lock();
 	let files_cache = guard.get_mut();
 
 	let file_mutex = files_cache.as_mut().unwrap()
 		.get_file_from_path(&path, proc.get_euid(), proc.get_egid(), true)?;
-	let mut file_guard = file_mutex.lock();
+	let file_guard = file_mutex.lock();
 	let file = file_guard.get_mut();
 	file.set_size(length as _);
 

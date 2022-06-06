@@ -608,7 +608,7 @@ impl File {
 		} = self.content {
 			let dev = device::get_device(DeviceType::Char, major, minor)
 				.ok_or_else(|| errno!(ENODEV))?;
-			let mut guard = dev.lock();
+			let guard = dev.lock();
 			guard.get_mut().get_handle().ioctl(mem_space, request, argp)
 		} else {
 			Err(errno!(ENOTTY))
@@ -618,11 +618,11 @@ impl File {
 	/// Synchronizes the file with the device.
 	pub fn sync(&self) -> Result<(), Errno> {
 		let mountpoint_mutex = self.location.get_mountpoint().ok_or_else(|| errno!(EIO))?;
-		let mut mountpoint_guard = mountpoint_mutex.lock();
+		let mountpoint_guard = mountpoint_mutex.lock();
 		let mountpoint = mountpoint_guard.get_mut();
 
 		let io_mutex = mountpoint.get_source().get_io()?;
-		let mut io_guard = io_mutex.lock();
+		let io_guard = io_mutex.lock();
 		let io = io_guard.get_mut();
 
 		let filesystem = mountpoint.get_filesystem();
@@ -639,11 +639,11 @@ impl IO for File {
 		match &self.content {
 			FileContent::Regular => {
 				let mountpoint_mutex = self.location.get_mountpoint().ok_or_else(|| errno!(EIO))?;
-				let mut mountpoint_guard = mountpoint_mutex.lock();
+				let mountpoint_guard = mountpoint_mutex.lock();
 				let mountpoint = mountpoint_guard.get_mut();
 
 				let io_mutex = mountpoint.get_source().get_io()?;
-				let mut io_guard = io_mutex.lock();
+				let io_guard = io_mutex.lock();
 				let io = io_guard.get_mut();
 
 				let filesystem = mountpoint.get_filesystem();
@@ -677,7 +677,7 @@ impl IO for File {
 					_ => unreachable!(),
 				}.ok_or_else(|| errno!(ENODEV))?;
 
-				let mut guard = dev.lock();
+				let guard = dev.lock();
 				guard.get_mut().get_handle().read(off as _, buff)
 			},
 		}
@@ -687,11 +687,11 @@ impl IO for File {
 		match &self.content {
 			FileContent::Regular => {
 				let mountpoint_mutex = self.location.get_mountpoint().ok_or_else(|| errno!(EIO))?;
-				let mut mountpoint_guard = mountpoint_mutex.lock();
+				let mountpoint_guard = mountpoint_mutex.lock();
 				let mountpoint = mountpoint_guard.get_mut();
 
 				let io_mutex = mountpoint.get_source().get_io()?;
-				let mut io_guard = io_mutex.lock();
+				let io_guard = io_mutex.lock();
 				let io = io_guard.get_mut();
 
 				let filesystem = mountpoint.get_filesystem();
@@ -728,7 +728,7 @@ impl IO for File {
 					_ => unreachable!(),
 				}.ok_or_else(|| errno!(ENODEV))?;
 
-				let mut guard = dev.lock();
+				let guard = dev.lock();
 				guard.get_mut().get_handle().write(off as _, buff)
 			},
 		}
@@ -773,7 +773,7 @@ pub fn resolve_links(file: SharedPtr<File>, uid: Uid, gid: Gid) -> Result<Path, 
 
 			// Getting the file from path
 			let mutex = fcache::get();
-			let mut guard = mutex.lock();
+			let guard = mutex.lock();
 			let files_cache = guard.get_mut().as_mut().unwrap();
 
 			match files_cache.get_file_from_path(&path, uid, gid, false) {
@@ -812,7 +812,7 @@ pub fn init(root_device_type: DeviceType, root_major: u32, root_minor: u32) -> R
 
 	// Creating the files cache
 	let cache = FCache::new(root_dev)?;
-	let mut guard = fcache::get().lock();
+	let guard = fcache::get().lock();
 	*guard.get_mut() = Some(cache);
 
 	Ok(())

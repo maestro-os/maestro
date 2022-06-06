@@ -47,7 +47,7 @@ impl<'a, T: ?Sized, const INT: bool> MutexGuard<'a, T, INT> {
 	}
 
 	/// Returns a mutable reference to the data owned by the associated Mutex.
-	pub fn get_mut(&mut self) -> &mut T {
+	pub fn get_mut(&self) -> &mut T {
 		unsafe {
 			self.mutex.get_mut_payload()
 		}
