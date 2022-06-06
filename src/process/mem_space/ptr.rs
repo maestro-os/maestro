@@ -186,7 +186,8 @@ impl SyscallString {
 			return Ok(None);
 		}
 
-		let len = mem_space.get().can_access_string(self.ptr, true, false).ok_or(errno!(EFAULT))?;
+		let len = mem_space.get().can_access_string(self.ptr, true, false)
+			.ok_or_else(|| errno!(EFAULT))?;
 		Ok(Some(unsafe { // Safe because access is checked before
 			slice::from_raw_parts(self.ptr, len)
 		}))
@@ -200,7 +201,8 @@ impl SyscallString {
 			return Ok(None);
 		}
 
-		let len = mem_space.get().can_access_string(self.ptr, true, true).ok_or(errno!(EFAULT))?;
+		let len = mem_space.get().can_access_string(self.ptr, true, true)
+			.ok_or_else(|| errno!(EFAULT))?;
 		Ok(Some(unsafe { // Safe because access is checked before
 			slice::from_raw_parts_mut(self.ptr, len)
 		}))

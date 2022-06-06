@@ -2,20 +2,23 @@
 //! at the process's creation or by the process itself using system calls.
 
 use core::ffi::c_void;
+use core::fmt;
 use core::ptr::NonNull;
 use core::ptr;
 use crate::errno::Errno;
-use crate::file::file_descriptor::FileDescriptor;
+use crate::file::open_file::OpenFile;
 use crate::memory::buddy;
+use crate::memory::malloc;
 use crate::memory::vmem::VMem;
 use crate::memory::vmem;
 use crate::memory;
 use crate::process::mem_space::physical_ref_counter::PhysRefCounter;
 use crate::process::oom;
-use crate::util::boxed::Box;
 use crate::util::lock::*;
+use crate::util::ptr::SharedPtr;
 use crate::util;
 use super::MemSpace;
+use super::gap::MemGap;
 
 /// A pointer to the default physical page of memory. This page is meant to be mapped in read-only
 /// and is a placeholder for pages that are accessed without being allocated nor written.
@@ -39,7 +42,7 @@ fn get_default_page() -> *const c_void {
 }
 
 /// A mapping in the memory space.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct MemMapping {
 	/// Pointer on the virtual memory to the beginning of the mapping
 	begin: *const c_void,
@@ -48,9 +51,8 @@ pub struct MemMapping {
 	/// The mapping's flags.
 	flags: u8,
 
-	/// The file descriptor of the file that mapping points to. If None, the mapping doesn't point
-	/// to any file.
-	fd: Option<FileDescriptor>,
+	/// The file the mapping points to. If None, the mapping doesn't point to any file.
+	file: Option<SharedPtr<OpenFile>>,
 	/// The offset inside of the file pointed to by the file descriptor. If there is no file
 	/// descriptor, the value is undefined.
 	off: u64,
@@ -68,11 +70,11 @@ impl MemMapping {
 	/// must be page-aligned.
 	/// `size` is the size of the mapping in pages. The size must be greater than 0.
 	/// `flags` the mapping's flags
-	/// `fd` is the file descriptor of the file the mapping points to. If None, the mapping doesn't
-	/// point to any file.
+	/// `file` is the open file the mapping points to. If None, the mapping doesn't point to any
+	/// file.
 	/// `off` is the offset inside of the file pointed to by the given file descriptor.
 	/// `vmem` is the virtual memory context handler.
-	pub fn new(begin: *const c_void, size: usize, flags: u8, fd: Option<FileDescriptor>,
+	pub fn new(begin: *const c_void, size: usize, flags: u8, file: Option<SharedPtr<OpenFile>>,
 		off: u64, vmem: NonNull<dyn VMem>) -> Self {
 		debug_assert!(util::is_aligned(begin, memory::PAGE_SIZE));
 		debug_assert!(size > 0);
@@ -82,7 +84,7 @@ impl MemMapping {
 			size,
 			flags,
 
-			fd,
+			file,
 			off,
 
 			unmap_on_drop: false,
@@ -149,10 +151,8 @@ impl MemMapping {
 	/// Tells whether the page at offset `offset` in the mapping is shared or not.
 	pub fn is_shared(&self, offset: usize) -> bool {
 		if let Some(phys_ptr) = self.get_physical_page(offset) {
-			unsafe { // Safe because the global variable is wrapped into a Mutex
-				let ref_counter = super::PHYSICAL_REF_COUNTER.lock();
-				ref_counter.get().is_shared(phys_ptr)
-			}
+			let ref_counter = super::PHYSICAL_REF_COUNTER.lock();
+			ref_counter.get().is_shared(phys_ptr)
 		} else {
 			false
 		}
@@ -220,12 +220,11 @@ impl MemMapping {
 	pub fn map(&mut self, offset: usize) -> Result<(), Errno> {
 		let vmem = self.get_mut_vmem();
 		let virt_ptr = (self.begin as usize + offset * memory::PAGE_SIZE) as *mut c_void;
-		let cow = self.is_cow(offset);
 		let cow_buffer = {
-			if cow {
-				let mut cow_buffer = Box::<[u8; memory::PAGE_SIZE]>::new([0; memory::PAGE_SIZE])?;
+			if self.is_cow(offset) {
+				let mut cow_buffer = malloc::Alloc::<u8>::new_default(memory::PAGE_SIZE)?;
 				unsafe {
-					ptr::copy_nonoverlapping(virt_ptr, cow_buffer.as_mut_ptr() as _,
+					ptr::copy_nonoverlapping(virt_ptr, cow_buffer.as_ptr_mut() as _,
 						memory::PAGE_SIZE);
 				}
 
@@ -236,7 +235,7 @@ impl MemMapping {
 		};
 
 		let prev_phys_ptr = self.get_physical_page(offset);
-		if !cow && prev_phys_ptr.is_some() {
+		if cow_buffer.is_none() && prev_phys_ptr.is_some() {
 			return Ok(());
 		}
 
@@ -244,9 +243,7 @@ impl MemMapping {
 		let flags = self.get_vmem_flags(true, offset);
 
 		{
-			let mut ref_counter = unsafe {
-				super::PHYSICAL_REF_COUNTER.lock()
-			};
+			let mut ref_counter = super::PHYSICAL_REF_COUNTER.lock();
 			if let Err(errno) = ref_counter.get_mut().increment(new_phys_ptr) {
 				buddy::free(new_phys_ptr, 0);
 				return Err(errno);
@@ -262,18 +259,19 @@ impl MemMapping {
 			}
 		}
 
-		vmem::switch(vmem, || {
-			unsafe {
+		// Copying data if necessary
+		unsafe {
+			vmem::switch(vmem, move || {
 				vmem::write_lock_wrap(|| {
-					if let Some(buffer) = &cow_buffer {
+					if let Some(buffer) = cow_buffer {
 						ptr::copy_nonoverlapping(buffer.as_ptr() as *const c_void,
 							virt_ptr as *mut c_void, memory::PAGE_SIZE);
 					} else {
-						util::bzero(virt_ptr as _, memory::PAGE_SIZE);
+						util::bzero(virt_ptr, memory::PAGE_SIZE);
 					}
 				});
-			}
-		});
+			});
+		}
 
 		Ok(())
 	}
@@ -286,9 +284,7 @@ impl MemMapping {
 
 		if let Some(phys_ptr) = vmem.translate(virt_ptr) {
 			{
-				let mut ref_counter = unsafe { // Safe because using Mutex
-					super::PHYSICAL_REF_COUNTER.lock()
-				};
+				let mut ref_counter = super::PHYSICAL_REF_COUNTER.lock();
 				ref_counter.get_mut().decrement(phys_ptr);
 			}
 
@@ -318,19 +314,33 @@ impl MemMapping {
 		Ok(())
 	}
 
-	/// Partially unmaps the current mapping, creating up to two new mappings.
+	/// Partially unmaps the current mapping, creating up to two new mappings and one gap.
 	/// `begin` is the index of the first page to be unmapped.
 	/// `size` is the number of pages to unmap.
 	/// If the region to be unmapped is out of bounds, it is truncated to the end of the mapping.
 	/// The newly created mappings correspond to the remaining pages.
+	/// The newly created gap is in place of the unmapped portion.
 	/// If the mapping is totaly unmapped, the function returns no new mappings.
 	/// The function doesn't flush the virtual memory context.
-	pub fn partial_unmap(mut self, begin: usize, size: usize) -> (Option<Self>, Option<Self>) {
+	pub fn partial_unmap(mut self, begin: usize, size: usize)
+		-> (Option<Self>, Option<MemGap>, Option<Self>) {
 		// The mapping located before the gap to be created
 		let prev = {
 			if begin > 0 {
-				Some(Self::new(self.get_begin(), begin, self.flags, self.fd.clone(), self.off,
+				Some(Self::new(self.begin, begin, self.flags, self.file.clone(), self.off,
 					self.vmem))
+			} else {
+				None
+			}
+		};
+
+		let gap = {
+			if size > 0 {
+				let gap_begin = unsafe {
+					self.begin.add(begin * memory::PAGE_SIZE)
+				};
+
+				Some(MemGap::new(gap_begin, size))
 			} else {
 				None
 			}
@@ -340,14 +350,14 @@ impl MemMapping {
 		let next = {
 			let end = begin + size;
 
-			if end < self.get_size() {
+			if end < self.size {
 				let gap_begin = unsafe {
-					self.get_begin().add(end * memory::PAGE_SIZE)
+					self.begin.add(end * memory::PAGE_SIZE)
 				};
 				let gap_size = self.size - end;
 
 				let off = self.off + (end * memory::PAGE_SIZE) as u64;
-				Some(Self::new(gap_begin, gap_size, self.flags, self.fd.clone(), off, self.vmem))
+				Some(Self::new(gap_begin, gap_size, self.flags, self.file.clone(), off, self.vmem))
 			} else {
 				None
 			}
@@ -357,9 +367,8 @@ impl MemMapping {
 		for i in begin..(begin + size) {
 			self.free_phys_page(i);
 		}
-		self.size = 0;
 
-		(prev, next)
+		(prev, gap, next)
 	}
 
 	/// Updates the virtual memory context according to the mapping for the page at offset
@@ -397,7 +406,7 @@ impl MemMapping {
 			size: self.size,
 			flags: self.flags,
 
-			fd: self.fd.clone(),
+			file: self.file.clone(),
 			off: self.off,
 
 			unmap_on_drop: self.unmap_on_drop,
@@ -413,10 +422,7 @@ impl MemMapping {
 				new_mapping.map(i)?;
 			}
 		} else {
-			// Safe because the global variable is wrapped into a Mutex
-			let mut ref_counter_guard = unsafe {
-				super::PHYSICAL_REF_COUNTER.lock()
-			};
+			let mut ref_counter_guard = super::PHYSICAL_REF_COUNTER.lock();
 			let ref_counter = ref_counter_guard.get_mut();
 
 			for i in 0..self.size {
@@ -435,7 +441,7 @@ impl MemMapping {
 	/// Synchronizes the data on the memory mapping back to the filesystem. If the mapping is not
 	/// associated with a file, the function does nothing.
 	pub fn fs_sync(&mut self) -> Result<(), Errno> {
-		if let Some(_fd) = &self.fd {
+		if let Some(_file) = &self.file {
 			// TODO
 			todo!();
 		}
@@ -449,12 +455,25 @@ impl MemMapping {
 	}
 }
 
+impl fmt::Display for MemMapping {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		let end = unsafe {
+			self.begin.add(self.size * memory::PAGE_SIZE)
+		};
+
+		write!(f, "begin: {:p}; end: {:p}; flags: {}; file: {}; off: {}",
+			self.begin,
+			end,
+			self.flags,
+			self.file.is_some(),
+			self.off)
+	}
+}
+
 impl Drop for MemMapping {
 	fn drop(&mut self) {
 		if self.unmap_on_drop {
-			oom::wrap(|| {
-				self.unmap()
-			});
+			oom::wrap(|| self.unmap());
 		}
 	}
 }

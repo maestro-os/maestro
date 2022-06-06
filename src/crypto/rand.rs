@@ -35,9 +35,7 @@ struct ChaCha20Rand {}
 
 impl PRNG for ChaCha20Rand {
 	fn rand(buf: &mut [u8]) -> Option<()> {
-		let mut b = unsafe { // Safe because the buffer is filled after
-			malloc::Alloc::<u8>::new_zero(buf.len()).ok()?
-		};
+		let mut b = malloc::Alloc::<u8>::new_default(buf.len()).ok()?;
 		consume_entropy(b.as_slice_mut())?;
 
 		let key: [u32; 8] = [0; 8]; // TODO Fill with entropy buffer

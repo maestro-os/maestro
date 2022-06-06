@@ -13,5 +13,9 @@ pub fn wait4(regs: &Regs) -> Result<i32, Errno> {
 	let options = regs.edx as i32;
 	let rusage: SyscallPtr<RUsage> = (regs.esi as usize).into();
 
-	waitpid::do_waitpid(pid, wstatus, options, Some(rusage))
+	if rusage.is_null() {
+		waitpid::do_waitpid(pid, wstatus, options, None)
+	} else {
+		waitpid::do_waitpid(pid, wstatus, options, Some(rusage))
+	}
 }

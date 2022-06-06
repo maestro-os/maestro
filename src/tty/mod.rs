@@ -1,21 +1,29 @@
 //! The TeleTypeWriter (TTY) is an electromechanical device that was used in the past to send and
 //! receive typed messages through a communication channel.
-//! Nowdays, computers have replaced TTYs, but Unix kernels still emulate them and provide
-//! backward compatibility.
+//!
+//! At startup, the kernel has one TTY: the init TTY, which is stored separately because at the
+//! time of creation, memory management isn't initialized yet.
 
 mod ansi;
+pub mod termios;
 
 use core::cmp::*;
 use core::mem::MaybeUninit;
+use core::ptr;
 use crate::device::serial;
 use crate::memory::vmem;
 use crate::pit;
-use crate::util::lock::*;
+use crate::process::Process;
+use crate::process::pid::Pid;
+use crate::process::signal::Signal;
+use crate::tty::termios::Termios;
+use crate::util::container::vec::Vec;
+use crate::util::lock::IntMutex;
+use crate::util::lock::MutexGuard;
+use crate::util::ptr::IntSharedPtr;
 use crate::util;
 use crate::vga;
 
-/// The number of TTYs.
-const TTYS_COUNT: usize = 8;
 /// The number of history lines for one TTY.
 const HISTORY_LINES: vga::Pos = 128;
 /// The number of characters a TTY can store.
@@ -35,6 +43,23 @@ const BELL_FREQUENCY: u32 = 2000;
 /// The duraction of the bell in ms.
 const BELL_DURATION: u32 = 500;
 
+// TODO Implement character size mask
+// TODO Full implement serial
+
+/// Structure representing a window size for a terminal.
+#[repr(C)]
+#[derive(Clone)]
+pub struct WinSize {
+	/// The number of rows.
+	pub ws_row: u16,
+	/// The number of columns.
+	pub ws_col: u16,
+	/// The width of the window in pixels.
+	pub ws_xpixel: u16,
+	/// The height of the window in pixels.
+	pub ws_ypixel: u16,
+}
+
 /// Returns the position of the cursor in the history array from `x` and `y` position.
 fn get_history_offset(x: vga::Pos, y: vga::Pos) -> usize {
 	let off = (y * vga::WIDTH + x) as usize;
@@ -47,10 +72,11 @@ fn get_tab_size(cursor_x: vga::Pos) -> usize {
 	TAB_SIZE - ((cursor_x as usize) % TAB_SIZE)
 }
 
+// TODO Use the values in winsize
 /// Structure representing a TTY.
 pub struct TTY {
-	/// The id of the TTY
-	id: usize,
+	/// The id of the TTY. If None, the TTY is the init TTY.
+	id: Option<usize>,
 	/// The X position of the cursor in the history
 	cursor_x: vga::Pos,
 	/// The Y position of the cursor in the history
@@ -66,69 +92,114 @@ pub struct TTY {
 	/// Tells whether TTY updates are enabled or not
 	update: bool,
 
-	/// The buffer containing the input characters.
+	/// The buffer containing characters from TTY input.
 	input_buffer: [u8; INPUT_MAX],
 	/// The current size of the input buffer.
 	input_size: usize,
-
-	/// Tells whether the canonical mode is enabled.
-	canonical_mode: bool,
+	/// The size of the data available to be read from the TTY.
+	available_size: usize,
 
 	/// The ANSI escape codes buffer.
 	ansi_buffer: ansi::ANSIBuffer,
+
+	/// Terminal IO settings.
+	termios: Termios,
+
+	/// The current foreground Program Group ID.
+	pgrp: Pid,
+
+	/// The size of the TTY.
+	winsize: WinSize,
 }
 
-/// The array of every TTYs.
-static mut TTYS: MaybeUninit<[Mutex<TTY>; TTYS_COUNT]> = MaybeUninit::uninit();
-/// The current TTY's id.
-static CURRENT_TTY: Mutex<usize> = Mutex::new(0);
+/// The initialization TTY.
+static mut INIT_TTY: MaybeUninit<IntMutex<TTY>> = MaybeUninit::uninit();
 
-/// Returns a mutable reference to the TTY with identifier `tty`.
-pub fn get(tty: usize) -> &'static Mutex<TTY> {
-	debug_assert!(tty < TTYS_COUNT);
-	unsafe {
-		&TTYS.assume_init_mut()[tty]
+/// The list of every TTYs except the init TTY.
+static TTYS: IntMutex<Vec<IntSharedPtr<TTY>>> = IntMutex::new(Vec::new());
+
+/// The current TTY being displayed on screen. If None, the init TTY is being displayed.
+static CURRENT_TTY: IntMutex<Option<usize>> = IntMutex::new(None);
+
+/// Enumeration of the different type of handles for a TTY.
+/// Because the initial TTY is created while memory allocation isn't available yet, the kernel
+/// cannot use shared pointer. So we need different ways to lock the TTY.
+#[derive(Clone)]
+pub enum TTYHandle {
+	/// Handle to the init TTY.
+	Init(&'static IntMutex<TTY>),
+	/// Handle to a normal TTY.
+	Normal(IntSharedPtr<TTY>),
+}
+
+impl<'a> TTYHandle {
+	/// Locks the handle's mutex and returns a guard to the TTY.
+	pub fn lock(&'a self) -> MutexGuard<'a, TTY, false> {
+		match self {
+			Self::Init(m) => m.lock(),
+			Self::Normal(m) => m.lock(),
+		}
+	}
+}
+
+/// Returns a mutable reference to the TTY with identifier `id`.
+/// If `id` is None, the function returns the init TTY.
+/// If the id doesn't exist, the function returns None.
+pub fn get(id: Option<usize>) -> Option<TTYHandle> {
+	if let Some(id) = id {
+		let ttys_guard = TTYS.lock();
+		let ttys = ttys_guard.get();
+
+		if id < ttys.len() {
+			Some(TTYHandle::Normal(ttys[id].clone()))
+		} else {
+			None
+		}
+	} else {
+		unsafe {
+			Some(TTYHandle::Init(INIT_TTY.assume_init_ref()))
+		}
 	}
 }
 
 /// Returns a reference to the current TTY.
-pub fn current() -> &'static Mutex<TTY> {
+/// If the function returns None, the current TTY doesn't exist.
+pub fn current() -> Option<TTYHandle> {
 	get(*CURRENT_TTY.lock().get())
 }
 
-/// Initializes every TTYs.
+/// Initializes the init TTY.
 pub fn init() {
-	unsafe {
-		util::zero_object(&mut TTYS);
-	}
+	let init_tty_mutex = get(None).unwrap();
+	let mut init_tty_guard = init_tty_mutex.lock();
+	let init_tty = init_tty_guard.get_mut();
 
-	for i in 0..TTYS_COUNT {
-		let mut guard = get(i).lock();
-		let t = guard.get_mut();
-		t.init();
-	}
-
-	switch(0);
+	init_tty.init(None);
+	init_tty.show();
 }
 
-/// Switches to TTY with id `tty`.
-pub fn switch(tty: usize) {
-	if tty >= TTYS_COUNT {
-		return;
-	}
-	*CURRENT_TTY.lock().get_mut() = tty;
+/// Switches to TTY with id `id`.
+/// If `id` is None, the init TTY is used.
+/// If the TTY doesn't exist, the function does nothing.
+pub fn switch(id: Option<usize>) {
+	if let Some(tty) = get(id) {
+		*CURRENT_TTY.lock().get_mut() = id;
 
-	let mut guard = get(tty).lock();
-	let t = guard.get_mut();
-	vga::move_cursor(t.cursor_x, t.cursor_y - t.screen_y);
-	vga::enable_cursor();
-	t.update();
+		let mut guard = tty.lock();
+		let t = guard.get_mut();
+		t.show();
+	}
 }
 
 impl TTY {
 	/// Creates a new TTY.
-	pub fn init(&mut self) {
-		self.id = 0;
+	/// `id` is the ID of the TTY.
+	pub fn init(&mut self, id: Option<usize>) {
+		unsafe {
+			util::zero_object(self)
+		}
+
+		self.id = id;
 		self.cursor_x = 0;
 		self.cursor_y = 0;
 		self.screen_y = 0;
@@ -139,10 +210,19 @@ impl TTY {
 		self.update = true;
 
 		self.ansi_buffer = ansi::ANSIBuffer::new();
+
+		self.termios = Termios::default();
+
+		self.winsize = WinSize {
+			ws_row: vga::HEIGHT as _,
+			ws_col: vga::WIDTH as _,
+			ws_xpixel: vga::PIXEL_WIDTH as _,
+			ws_ypixel: vga::PIXEL_HEIGHT as _,
+		};
 	}
 
 	/// Returns the id of the TTY.
-	pub fn get_id(&self) -> usize {
+	pub fn get_id(&self) -> Option<usize> {
 		self.id
 	}
 
@@ -156,7 +236,7 @@ impl TTY {
 		let buff = &self.history[get_history_offset(0, self.screen_y)];
 		unsafe {
 			vmem::write_lock_wrap(|| {
-				core::ptr::copy_nonoverlapping(buff as *const vga::Char,
+				ptr::copy_nonoverlapping(buff as *const vga::Char,
 					vga::get_buffer_virt() as *mut vga::Char,
 					(vga::WIDTH as usize) * (vga::HEIGHT as usize));
 			});
@@ -164,6 +244,16 @@ impl TTY {
 
 		let y = self.cursor_y - self.screen_y;
 		vga::move_cursor(self.cursor_x, y);
+	}
+
+	/// Shows the TTY on screen.
+	pub fn show(&mut self) {
+		// Updating cursor
+		vga::move_cursor(self.cursor_x, self.cursor_y - self.screen_y);
+		vga::enable_cursor();
+
+		// Updating text
+		self.update();
 	}
 
 	/// Reinitializes TTY's current attributes.
@@ -292,27 +382,47 @@ impl TTY {
 		self.fix_pos();
 	}
 
+	/// Rings the TTY's bell.
+	fn ring_bell(&self) {
+		// TODO Select the prefered device
+		pit::beep();
+	}
+
 	/// Writes the character `c` to the TTY.
-	fn putchar(&mut self, c: u8) {
+	fn putchar(&mut self, mut c: u8) {
+		if self.termios.c_oflag & termios::OLCUC != 0 && (c as char).is_ascii_uppercase() {
+			c = (c as char).to_ascii_lowercase() as u8;
+		}
+		// TODO Implement ONLCR (Map NL to CR-NL)
+		// TODO Implement ONOCR
+		// TODO Implement ONLRET
+
 		match c {
 			0x07 => {
-				pit::beep();
+				self.ring_bell();
 			},
+
 			0x08 => {
 				// TODO Backspace
 			},
+
 			b'\t' => {
 				self.cursor_forward(get_tab_size(self.cursor_x), 0);
 			},
+
 			b'\n' => {
 				self.newline(1);
 			},
+
 			0x0c => {
 				// TODO Move printer to a top of page
 			},
+
 			b'\r' => {
 				self.cursor_x = 0;
 			},
+
+			0x7f => {}, // Do not print DEL characters
 
 			_ => {
 				let tty_char = (c as vga::Char) | ((self.current_color as vga::Char) << 8);
@@ -346,31 +456,106 @@ impl TTY {
 		self.update();
 	}
 
-	/// Tells whether the canonical mode is enabled.
-	#[inline(always)]
-	pub fn is_canonical_mode(&self) -> bool {
-		self.canonical_mode
+	/// Returns the number of bytes available to be read from the TTY.
+	pub fn get_available_size(&self) -> usize {
+		self.available_size
 	}
 
-	/// Takes the given string `buffer` as input.
+	// TODO Implement IUTF8
+	/// Reads inputs from the TTY and places it into the buffer `buff`.
+	/// The function returns the number of bytes read.
+	pub fn read(&mut self, buff: &mut [u8]) -> usize {
+		// The length of data to consume
+		let len = min(buff.len(), self.available_size);
+		if len < self.termios.c_cc[termios::VMIN as usize] as usize {
+			return 0;
+		}
+
+		// Copying data
+		buff[..len].copy_from_slice(&self.input_buffer[..len]);
+		// Shifting the remaining data of the buffer
+		self.input_buffer.rotate_left(len);
+
+		self.input_size -= len;
+		self.available_size -= len;
+
+		if self.termios.c_iflag & termios::IMAXBEL != 0 && self.input_size >= buff.len() {
+			self.ring_bell();
+		}
+
+		len
+	}
+
+	// TODO Implement IUTF8
+	/// Takes the given string `buffer` as input, making it available from the terminal input.
 	pub fn input(&mut self, buffer: &[u8]) {
 		// The length to write to the input buffer
-		let len = min(self.input_size + buffer.len(), self.input_buffer.len());
+		let len = min(buffer.len(), self.input_buffer.len() - self.input_size);
 		// The slice containing the input
 		let input = &buffer[..len];
 
-		if self.is_canonical_mode() {
-			// Writing to the input buffer
-			self.input_buffer[self.input_size..].copy_from_slice(input);
+		if self.termios.c_lflag & termios::ECHO != 0 {
+			// Writing onto the TTY
+			self.write(input);
+		}
+		// TODO If ECHO is disabled but ICANON and ECHONL are set, print newlines
+		// TODO Handle printing Ctrl + key
+
+		// TODO Implement IGNBRK and BRKINT
+		// TODO Implement parity checking
+
+		// Writing to the input buffer
+		// TODO Put in a different function
+		{
+			util::slice_copy(input, &mut self.input_buffer[self.input_size..]);
+			let new_bytes = &mut self.input_buffer[self.input_size..(self.input_size + len)];
 			self.input_size += len;
 
+			for b in new_bytes {
+				if self.termios.c_iflag & termios::ISTRIP != 0 {
+					// Stripping eighth bit
+					*b &= 1 << 7;
+				}
+
+				// TODO Implement IGNCR (ignore carriage return)
+
+				if self.termios.c_iflag & termios::INLCR != 0 {
+					// Translating NL to CR
+					if *b == b'\n' {
+						*b = b'\r';
+					}
+				}
+
+				if self.termios.c_iflag & termios::ICRNL != 0 {
+					// Translating CR to NL
+					if *b == b'\r' {
+						*b = b'\n';
+					}
+				}
+
+				if self.termios.c_iflag & termios::IUCLC != 0 {
+					// Translating uppercase characters to lowercase
+					if (*b as char).is_ascii_uppercase() {
+						*b = (*b as char).to_ascii_uppercase() as u8;
+					}
+				}
+			}
+		}
+
+		// TODO IXON
+		// TODO IXANY
+		// TODO IXOFF
+
+		if self.termios.c_lflag & termios::ICANON != 0 {
 			// Processing input
 			let mut i = self.input_size - len;
 			while i < self.input_size {
 				match self.input_buffer[i] {
 					b'\n' => {
-						// TODO Make `self.input_buffer[..i]` available to device file
-						// TODO Erase from input buffer
+						// Making the input available for reading
+						self.available_size = i + 1;
+
+						i += 1;
 					},
 
 					// TODO Handle other special characters
@@ -379,32 +564,111 @@ impl TTY {
 				}
 			}
 		} else {
-			// TODO Make available to device file
+			// Making the input available for reading
+			self.available_size = self.input_size;
 		}
 
-		// Writing onto the TTY
-		self.write(input);
+		// Sending signals if enabled
+		if self.termios.c_lflag & termios::ISIG != 0 {
+			for b in input {
+				// TODO On match, the charactere must not be passed as input
+
+				if *b == self.termios.c_cc[termios::VINTR as usize] {
+					self.send_signal(Signal::SIGINT);
+				} else if *b == self.termios.c_cc[termios::VQUIT as usize] {
+					self.send_signal(Signal::SIGQUIT);
+				} else if *b == self.termios.c_cc[termios::VSUSP as usize] {
+					self.send_signal(Signal::SIGTSTP);
+				}
+			}
+		}
 	}
 
 	/// Erases `count` characters in TTY.
 	pub fn erase(&mut self, count: usize) {
-		let count = min(count, self.input_buffer.len());
-		if count > self.input_size {
+		if self.termios.c_lflag & termios::ICANON != 0 {
+			let count = min(count, self.input_buffer.len());
+			if count > self.input_size {
+				return;
+			}
+
+			if self.termios.c_lflag & termios::ECHOE != 0 {
+				// TODO Handle tab characters
+				self.cursor_backward(count, 0);
+
+				let begin = get_history_offset(self.cursor_x, self.cursor_y);
+				for i in begin..(begin + count) {
+					self.history[i] = EMPTY_CHAR;
+				}
+				self.update();
+			}
+
+			self.input_size -= count;
+		} else {
+			// Printing DEL characters
+			for _ in 0..count {
+				self.input(&[0x7f]);
+			}
+		}
+	}
+
+	/// Returns the terminal IO settings.
+	pub fn get_termios(&self) -> &Termios {
+		&self.termios
+	}
+
+	/// Sets the terminal IO settings.
+	pub fn set_termios(&mut self, termios: Termios) {
+		self.termios = termios;
+	}
+
+	/// Returns the current foreground Program Group ID.
+	pub fn get_pgrp(&self) -> Pid {
+		self.pgrp
+	}
+
+	/// Sets the current foreground Program Group ID.
+	pub fn set_pgrp(&mut self, pgrp: Pid) {
+		self.pgrp = pgrp;
+	}
+
+	/// Sends a signal to the foreground process group if present.
+	pub fn send_signal(&self, sig: Signal) {
+		if self.pgrp == 0 {
 			return;
 		}
 
-		self.cursor_backward(count, 0);
+		if let Some(proc_mutex) = Process::get_by_pid(self.pgrp) {
+			let mut proc_guard = proc_mutex.lock();
+			let proc = proc_guard.get_mut();
 
-		let begin = get_history_offset(self.cursor_x, self.cursor_y);
-		for i in begin..(begin + count) {
-			self.history[i] = EMPTY_CHAR;
+			proc.kill_group(sig, false);
 		}
-		self.update();
-		self.input_size -= count;
 	}
 
-	/// Handles keyboard erase input for keycode.
-	pub fn erase_hook(&mut self) {
-		self.erase(1);
+	/// Returns the window size of the TTY.
+	pub fn get_winsize(&self) -> &WinSize {
+		&self.winsize
+	}
+
+	/// Sets the window size of the TTY.
+	/// If a foreground process group is set on the TTY, the function shall send it a `SIGWINCH`
+	/// signal.
+	pub fn set_winsize(&mut self, mut winsize: WinSize) {
+		// Clamping values
+		if winsize.ws_col > vga::WIDTH as _ {
+			winsize.ws_col = vga::WIDTH as _;
+		}
+		if winsize.ws_row > vga::HEIGHT as _ {
+			winsize.ws_row = vga::HEIGHT as _;
+		}
+		// Changes to the size in pixels are ignored
+		winsize.ws_xpixel = vga::PIXEL_WIDTH as _;
+		winsize.ws_ypixel = vga::PIXEL_HEIGHT as _;
+
+		self.winsize = winsize;
+
+		// Sending a SIGWINCH if a process group is present
+		self.send_signal(Signal::SIGWINCH);
 	}
 }

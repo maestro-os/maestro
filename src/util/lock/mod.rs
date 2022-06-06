@@ -16,6 +16,8 @@
 pub mod spinlock;
 
 use core::cell::UnsafeCell;
+use core::ptr::read_volatile;
+use core::ptr::write_volatile;
 use crate::idt;
 use crate::util::lock::spinlock::Spinlock;
 
@@ -121,12 +123,16 @@ impl<T: ?Sized, const INT: bool> Mutex<T, INT> {
 		// condition
 
 		// Disabling interrupts before locking to ensure no interrupt will occure while locking
-		crate::cli!();
+		if !INT {
+			crate::cli!();
+		}
 		inner.spin.lock();
 
 		// Setting the values after locking to avoid writing on them whilst the mutex was
 		// locked
-		inner.int_enabled = state;
+		unsafe {
+			write_volatile(&mut inner.int_enabled, state);
+		}
 
 		MutexGuard::new(self)
 	}
@@ -150,15 +156,17 @@ impl<T: ?Sized, const INT: bool> Mutex<T, INT> {
 		let inner = &mut (*self.inner.get());
 
 		// The state to restore
-		let state = inner.int_enabled;
+		let state = read_volatile(&inner.int_enabled);
 
 		inner.spin.unlock();
 
-		// Restoring interrupts state after unlocking
-		if state {
-			crate::sti!();
-		} else {
-			crate::cli!();
+		if !INT {
+			// Restoring interrupts state after unlocking
+			if state {
+				crate::sti!();
+			} else {
+				crate::cli!();
+			}
 		}
 	}
 }

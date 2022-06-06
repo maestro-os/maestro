@@ -96,7 +96,7 @@ impl FailableClone for LDT {
 	fn failable_clone(&self) -> Result<Self, Errno> {
 		Ok(Self {
 			entries: self.entries.failable_clone()?,
-			desc: self.desc.clone(),
+			desc: self.desc,
 		})
 	}
 }

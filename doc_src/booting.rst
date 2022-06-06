@@ -77,7 +77,9 @@ Once the memory remapped, the kernel begins the initialization sequence:
 - Physical memory mapping reading
 - Memory allocators initialization
 - Kernel virtual memory initialization
-- TODO
+- ACPI initialization
+- Devices initialization
+- Files management initialization
 - Processes initialization
-- Creating the first process
+- Creating the first process with the init program
 - Running the scheduler

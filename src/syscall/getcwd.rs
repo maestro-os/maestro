@@ -30,7 +30,7 @@ pub fn getcwd(regs: &Regs) -> Result<i32, Errno> {
 	let mem_space_guard = mem_space.lock();
 
 	let cwd_slice = cwd.as_bytes();
-	let buf_slice = buf.get_mut(&mem_space_guard, size as _)?.ok_or(errno!(EINVAL))?;
+	let buf_slice = buf.get_mut(&mem_space_guard, size as _)?.ok_or_else(|| errno!(EINVAL))?;
 	for i in 0..cwd.len() {
 		buf_slice[i] = cwd_slice[i];
 	}

@@ -2,27 +2,14 @@
 //! The kernel stores a list of clock sources. A clock source is an object that allow to get the
 //! current timestamp.
 
+pub mod unit;
+
 use crate::errno::Errno;
 use crate::util::boxed::Box;
 use crate::util::container::vec::Vec;
 use crate::util::lock::*;
-
-/// Type representing a timestamp in seconds. Equivalent to POSIX's `time_t`.
-pub type Timestamp = u32;
-/// Type representing a timestamp in microseconds. Equivalent to POSIX's `suseconds_t`.
-pub type UTimestamp = u64;
-/// Type representing an elapsed number of ticks. Equivalent to POSIX's `clock_t`.
-pub type Clock = u32;
-
-/// POSIX structure representing a timestamp.
-#[derive(Clone, Default)]
-#[repr(C)]
-pub struct Timeval {
-	/// Seconds
-	tv_sec: Timestamp,
-	/// Microseconds
-	tv_usec: UTimestamp,
-}
+use unit::TimeUnit;
+use unit::Timestamp;
 
 /// Trait representing a source able to provide the current timestamp.
 pub trait ClockSource {
@@ -76,4 +63,12 @@ pub fn get() -> Option<Timestamp> {
 	} else {
 		None
 	}
+}
+
+/// Returns the current timestamp from the given clock `clk`.
+/// If the clock doesn't exist, the function returns None.
+pub fn get_struct<T: TimeUnit>(_clk: &[u8]) -> Option<T> {
+	// TODO use the given clock
+	// TODO use the correct unit
+	Some(T::from_nano(get()?))
 }

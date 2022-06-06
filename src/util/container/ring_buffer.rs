@@ -15,6 +15,7 @@ use crate::util::container::vec::Vec;
 
 /// Structure representing a ring buffer. The buffer has a limited size which must be given at
 /// initialization.
+#[derive(Debug)]
 pub struct RingBuffer<T: Default + Copy> {
 	/// The linear buffer.
 	buffer: Vec<T>,

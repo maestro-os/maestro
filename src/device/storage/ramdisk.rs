@@ -13,8 +13,10 @@ use crate::errno::Errno;
 use crate::errno;
 use crate::file::path::Path;
 use crate::memory::malloc;
+use crate::process::mem_space::MemSpace;
 use crate::util::IO;
 use crate::util::container::string::String;
+use crate::util::ptr::IntSharedPtr;
 use super::StorageInterface;
 
 /// The ramdisks' major number.
@@ -129,7 +131,8 @@ impl RAMDiskHandle {
 }
 
 impl DeviceHandle for RAMDiskHandle {
-	fn ioctl(&mut self, _request: u32, _argp: *const c_void) -> Result<u32, Errno> {
+	fn ioctl(&mut self, _mem_space: IntSharedPtr<MemSpace>, _request: u32, _argp: *const c_void)
+		-> Result<u32, Errno> {
 		// TODO
 		Err(errno!(EINVAL))
 	}

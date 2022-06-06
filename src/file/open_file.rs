@@ -1,15 +1,15 @@
-//! A file descriptor is a sort of pointer to a file, allowing a process to manipulate the
-//! filesystem through system calls.
+//! An open file description is a structure pointing to a file, allowing to perform operations on
+//! it. It is pointed to by file descriptors.
 
 use core::ffi::c_void;
 use crate::errno::Errno;
 use crate::errno;
 use crate::file::File;
-use crate::file::pipe::Pipe;
+use crate::file::pipe::PipeBuffer;
 use crate::file::socket::SocketSide;
-use crate::util::FailableClone;
+use crate::process::mem_space::MemSpace;
 use crate::util::IO;
-use crate::util::lock::Mutex;
+use crate::util::ptr::IntSharedPtr;
 use crate::util::ptr::SharedPtr;
 
 /// Read only.
@@ -18,10 +18,9 @@ pub const O_RDONLY: i32 =    0b00000000000000000000000000000000;
 pub const O_WRONLY: i32 =    0b00000000000000000000000000000001;
 /// Read and write.
 pub const O_RDWR: i32 =      0b00000000000000000000000000000010;
-/// At each write operations on the file descriptor, the cursor is placed at the end of the file so
-/// the data is appended.
+/// At each write operations, the cursor is placed at the end of the file so the data is appended.
 pub const O_APPEND: i32 =    0b00000000000000000000010000000000;
-/// Generates a SIGIO when input or output becomes possible on the file descriptor.
+/// Generates a SIGIO when input or output becomes possible on the file.
 pub const O_ASYNC: i32 =     0b00000000000000000010000000000000;
 /// Close-on-exec.
 pub const O_CLOEXEC: i32 =   0b00000000000010000000000000000000;
@@ -48,51 +47,24 @@ pub const O_SYNC: i32 =      0b00000000000100000001000000000000;
 /// If the file already exists, truncate it to length zero.
 pub const O_TRUNC: i32 =     0b00000000000000000000001000000000;
 
-/// The maximum number of file descriptors that can be open system-wide at once.
-const TOTAL_MAX_FD: usize = 4294967295;
-
-/// The total number of file descriptors open system-wide.
-static TOTAL_FD: Mutex<usize> = Mutex::new(0);
-
-/// Increments the total number of file descriptors open system-wide.
-/// If the maximum amount of file descriptors is reached, the function does nothing and returns an
-/// error with the appropriate errno.
-fn increment_total() -> Result<(), Errno> {
-	let mut guard = TOTAL_FD.lock();
-
-	if *guard.get() >= TOTAL_MAX_FD {
-		return Err(errno!(ENFILE));
-	}
-	*guard.get_mut() += 1;
-
-	Ok(())
-}
-
-/// Decrements the total number of file descriptors open system-wide.
-fn decrement_total() {
-	let mut guard = TOTAL_FD.lock();
-	*guard.get_mut() -= 1;
-}
-
-/// Enumeration of every possible targets for a file descriptor.
-#[derive(Clone)]
+/// Enumeration of every possible targets for an open file.
+#[derive(Clone, Debug)]
 pub enum FDTarget {
-	/// The file descriptor points to a file.
+	/// Points to a file.
 	File(SharedPtr<File>),
-	/// The file descriptor points to a pipe.
-	Pipe(SharedPtr<Pipe>),
-	/// The file descriptor points to a socket.
+	/// Points to a pipe.
+	Pipe(SharedPtr<PipeBuffer>),
+	/// Points to a socket.
 	Socket(SharedPtr<SocketSide>),
 }
 
-/// Structure representing a file descriptor.
-#[derive(Clone)]
-pub struct FileDescriptor {
-	/// The ID of the file descriptor.
-	id: u32,
-	/// The file descriptor's flags.
+/// An open file description. This structure is pointed to by file descriptors and point to files.
+/// They exist to ensure several file descriptors can share the same open file.
+#[derive(Debug)]
+pub struct OpenFile {
+	/// The open file description's flags.
 	flags: i32,
-	/// A pointer to the file the descriptor is linked to.
+	/// A pointer to the target file.
 	target: FDTarget,
 
 	/// The current offset in the file.
@@ -100,61 +72,51 @@ pub struct FileDescriptor {
 	curr_off: u64,
 }
 
-impl FileDescriptor {
-	/// Creates a new file descriptor.
-	pub fn new(id: u32, flags: i32, target: FDTarget) -> Result<Self, Errno> {
-		increment_total()?;
-
-		Ok(Self {
-			id,
+impl OpenFile {
+	/// Creates a new open file description.
+	pub fn new(flags: i32, target: FDTarget) -> Result<Self, Errno> {
+		let s = Self {
 			flags,
 			target,
 
 			curr_off: 0,
-		})
+		};
+		if let FDTarget::Pipe(pipe) = &s.target {
+			pipe.lock().get_mut().update_end_count(s.can_write(), false);
+		}
+
+		Ok(s)
 	}
 
-	/// Returns the id of the file descriptor.
-	pub fn get_id(&self) -> u32 {
-		self.id
-	}
-
-	/// Returns the file descriptor's flags.
+	/// Returns the file flags.
 	pub fn get_flags(&self) -> i32 {
 		self.flags
 	}
 
-	/// Sets the file descriptor's flags.
+	/// Sets the open file flags.
+	/// File access mode (O_RDONLY, O_WRONLY, O_RDWR) and file creation flags (O_CREAT, O_EXCL,
+	/// O_NOCTTY, O_TRUNC) are ignored.
 	pub fn set_flags(&mut self, flags: i32) {
-		self.flags = flags;
+		let ignored_flags = O_RDONLY | O_WRONLY | O_RDWR | O_CREAT | O_EXCL | O_NOCTTY | O_TRUNC;
+		self.flags = (self.flags & ignored_flags) | (flags & !ignored_flags);
 	}
 
-	/// Tells whether the file descriptor can be read from.
+	/// Tells whether the open file can be read from.
 	pub fn can_read(&self) -> bool {
-		match self.flags & 0b11 {
-			O_RDONLY => true,
-			O_RDWR => true,
-
-			_ => false,
-		}
+		matches!(self.flags & 0b11, O_RDONLY | O_RDWR)
 	}
 
-	/// Tells whether the file descriptor can be written to.
+	/// Tells whether the open file can be written to.
 	pub fn can_write(&self) -> bool {
-		match self.flags & 0b11 {
-			O_WRONLY => true,
-			O_RDWR => true,
-
-			_ => false,
-		}
+		matches!(self.flags & 0b11, O_WRONLY | O_RDWR)
 	}
 
-	/// Returns a mutable reference to the descriptor's target.
+	/// Returns a mutable reference to the target.
 	pub fn get_target(&self) -> &FDTarget {
 		&self.target
 	}
 
-	/// Returns an immutable reference to the descriptor's target.
+	/// Returns an immutable reference to the target.
 	pub fn get_target_mut(&mut self) -> &mut FDTarget {
 		&mut self.target
 	}
@@ -178,39 +140,14 @@ impl FileDescriptor {
 		self.curr_off = off;
 	}
 
-	/// Returns the length of the file the descriptor points to.
-	pub fn get_len(&mut self) -> u64 {
-		match &mut self.target {
-			FDTarget::File(f) => {
-				let guard = f.lock();
-				guard.get().get_size()
-			},
-
-			FDTarget::Pipe(_p) => {
-				// TODO Get the fd the pipe points to, then make a recursive call
-				todo!();
-			}
-
-			FDTarget::Socket(_s) => {
-				// TODO
-				todo!();
-			}
-		}
-	}
-
-	/// Tells whether the file descriptor reached the end of the file.
+	/// Tells whether the end of file has been reached.
 	pub fn eof(&self) -> bool {
 		match &self.target {
-			FDTarget::File(f) => {
-				self.curr_off >= f.lock().get().get_size()
-			},
+			FDTarget::File(file) => file.lock().get().eof(self.curr_off),
 
-			FDTarget::Pipe(_p) => {
-				// TODO If other side is closed, return `true`. Else, `false`
-				todo!();
-			},
+			FDTarget::Pipe(pipe) => pipe.lock().get().eof(),
 
-			FDTarget::Socket(_s) => {
+			FDTarget::Socket(_sock) => {
 				// TODO If other side is closed, return `true`. Else, `false`
 				todo!();
 			},
@@ -275,28 +212,32 @@ impl FileDescriptor {
 		Ok(len as _)
 	}
 
-	/// Performs an ioctl operation on the file descriptor.
-	pub fn ioctl(&mut self, request: u32, argp: *const c_void) -> Result<u32, Errno> {
+	/// Performs an ioctl operation on the file.
+	pub fn ioctl(&mut self, mem_space: IntSharedPtr<MemSpace>, request: u32, argp: *const c_void)
+		-> Result<u32, Errno> {
 		match &mut self.target {
 			FDTarget::File(f) => {
 				let mut guard = f.lock();
-				guard.get_mut().ioctl(request, argp)
+				guard.get_mut().ioctl(mem_space, request, argp)
 			},
 
-			FDTarget::Pipe(_) => {
-				// TODO Get corresponding fd
+			FDTarget::Pipe(_pipe) => {
+				// TODO
 				todo!();
 			}
 
-			FDTarget::Socket(_) => Err(errno!(EINVAL)),
+			FDTarget::Socket(_sock) => {
+				// TODO
+				todo!();
+			},
 		}
 	}
 }
 
-crate::failable_clone_impl!(FileDescriptor);
-
-impl Drop for FileDescriptor {
+impl Drop for OpenFile {
 	fn drop(&mut self) {
-		decrement_total();
+		if let FDTarget::Pipe(pipe) = &self.target {
+			pipe.lock().get_mut().update_end_count(self.can_write(), true);
+		}
 	}
 }

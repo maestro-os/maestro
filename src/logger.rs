@@ -3,6 +3,7 @@
 //! anyways.
 
 use core::cmp::min;
+use core::fmt::Write;
 use crate::tty;
 use crate::util::lock::IntMutex;
 
@@ -122,10 +123,10 @@ impl Logger {
 	}
 }
 
-impl core::fmt::Write for Logger {
+impl Write for Logger {
 	fn write_str(&mut self, s: &str) -> Result<(), core::fmt::Error> {
 		if !self.is_silent() {
-			tty::current().lock().get_mut().write(s.as_bytes());
+			tty::get(None).unwrap().lock().get_mut().write(s.as_bytes());
 		}
 		self.push(s.as_bytes());
 

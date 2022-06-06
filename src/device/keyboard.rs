@@ -147,7 +147,7 @@ impl KeyboardKey {
 	pub fn get_tty_chars(&self, shift: bool) -> Option<&[u8]> {
 		if !shift {
 			match self {
-				Self::KeyEsc => Some(b"^["),
+				Self::KeyEsc => Some(b"\x1b"),
 				Self::Key1 => Some(b"1"),
 				Self::Key2 => Some(b"2"),
 				Self::Key3 => Some(b"3"),
@@ -200,16 +200,16 @@ impl KeyboardKey {
 				Self::KeySlash => Some(b"/"),
 				Self::KeyKeypadStar => Some(b"*"),
 				Self::KeySpace => Some(b" "),
-				Self::KeyF1 => Some(b"^[[[A"),
-				Self::KeyF2 => Some(b"^[[[B"),
-				Self::KeyF3 => Some(b"^[[[C"),
-				Self::KeyF4 => Some(b"^[[[D"),
-				Self::KeyF5 => Some(b"^[[[E"),
-				Self::KeyF6 => Some(b"^[[17"),
-				Self::KeyF7 => Some(b"^[[18"),
-				Self::KeyF8 => Some(b"^[[19"),
-				Self::KeyF9 => Some(b"^[[20"),
-				Self::KeyF10 => Some(b"^[[21"),
+				Self::KeyF1 => Some(b"\x1b[[A"),
+				Self::KeyF2 => Some(b"\x1b[[B"),
+				Self::KeyF3 => Some(b"\x1b[[C"),
+				Self::KeyF4 => Some(b"\x1b[[D"),
+				Self::KeyF5 => Some(b"\x1b[[E"),
+				Self::KeyF6 => Some(b"\x1b[17"),
+				Self::KeyF7 => Some(b"\x1b[18"),
+				Self::KeyF8 => Some(b"\x1b[19"),
+				Self::KeyF9 => Some(b"\x1b[20"),
+				Self::KeyF10 => Some(b"\x1b[21"),
 				Self::KeyKeypad7 => Some(b"7"),
 				Self::KeyKeypad8 => Some(b"8"),
 				Self::KeyKeypad9 => Some(b"9"),
@@ -223,25 +223,25 @@ impl KeyboardKey {
 				Self::KeyKeypad3 => Some(b"3"),
 				Self::KeyKeypad0 => Some(b"0"),
 				Self::KeyKeypadDot => Some(b"."),
-				Self::KeyF11 => Some(b"^[[23~"),
-				Self::KeyF12 => Some(b"^[[24~"),
+				Self::KeyF11 => Some(b"\x1b[23~"),
+				Self::KeyF12 => Some(b"\x1b[24~"),
 
 				Self::KeyKeypadEnter => Some(b"\n"),
 				Self::KeyKeypadSlash => Some(b"/"),
-				Self::KeyHome => Some(b"^[[1~"),
-				Self::KeyCursorUp => Some(b"^[[A"),
-				Self::KeyPageUp => Some(b"^[[5~"),
-				Self::KeyCursorLeft => Some(b"^[[C"),
-				Self::KeyCursorRight => Some(b"^[[D"),
-				Self::KeyEnd => Some(b"^[[4~"),
-				Self::KeyCursorDown => Some(b"^[[B"),
-				Self::KeyPageDown => Some(b"^[[6~"),
+				Self::KeyHome => Some(b"\x1b[1~"),
+				Self::KeyCursorUp => Some(b"\x1b[A"),
+				Self::KeyPageUp => Some(b"\x1b[5~"),
+				Self::KeyCursorLeft => Some(b"\x1b[D"),
+				Self::KeyCursorRight => Some(b"\x1b[C"),
+				Self::KeyEnd => Some(b"\x1b[4~"),
+				Self::KeyCursorDown => Some(b"\x1b[B"),
+				Self::KeyPageDown => Some(b"\x1b[6~"),
 
 				_ => None,
 			}
 		} else {
 			match self {
-				Self::KeyEsc => Some(b"^["),
+				Self::KeyEsc => Some(b"\x1b"),
 				Self::Key1 => Some(b"!"),
 				Self::Key2 => Some(b"@"),
 				Self::Key3 => Some(b"#"),
@@ -313,14 +313,14 @@ impl KeyboardKey {
 				// TODO
 				// Self::KeyKeypadEnter => Some("\n"),
 				// Self::KeyKeypadSlash => Some("/"),
-				// Self::KeyHome => Some("^[[1~"),
-				// Self::KeyCursorUp => Some("^[[A"),
-				// Self::KeyPageUp => Some("^[[5~"),
-				// Self::KeyCursorLeft => Some("^[[C"),
-				// Self::KeyCursorRight => Some("^[[D"),
-				// Self::KeyEnd => Some("^[[4~"),
-				// Self::KeyCursorDown => Some("^[[B"),
-				// Self::KeyPageDown => Some("^[[6~"),
+				// Self::KeyHome => Some("\x1b[1~"),
+				// Self::KeyCursorUp => Some("\x1b[A"),
+				// Self::KeyPageUp => Some("\x1b[5~"),
+				// Self::KeyCursorLeft => Some("\x1b[C"),
+				// Self::KeyCursorRight => Some("\x1b[D"),
+				// Self::KeyEnd => Some("\x1b[4~"),
+				// Self::KeyCursorDown => Some("\x1b[B"),
+				// Self::KeyPageDown => Some("\x1b[6~"),
 
 				_ => None,
 			}
@@ -409,8 +409,10 @@ pub trait Keyboard {
 pub struct KeyboardManager {
 	/// The ctrl key state.
 	ctrl: bool,
-	/// The shift key state.
-	shift: bool,
+	/// The left shift key state.
+	left_shift: bool,
+	/// The right shift key state.
+	right_shift: bool,
 	/// The alt key state.
 	alt: bool,
 	/// The right alt key state.
@@ -431,7 +433,8 @@ impl KeyboardManager {
 	pub fn new() -> Self {
 		let s = Self {
 			ctrl: false,
-			shift: false,
+			left_shift: false,
+			right_shift: false,
 			alt: false,
 			right_alt: false,
 			right_ctrl: false,
@@ -461,7 +464,8 @@ impl KeyboardManager {
 		// TODO Handle several keyboards at a time
 		match key {
 			KeyboardKey::KeyLeftControl => self.ctrl = action == KeyboardAction::Pressed,
-			KeyboardKey::KeyLeftShift => self.shift = action == KeyboardAction::Pressed,
+			KeyboardKey::KeyLeftShift => self.left_shift = action == KeyboardAction::Pressed,
+			KeyboardKey::KeyRightShift => self.right_shift = action == KeyboardAction::Pressed,
 			KeyboardKey::KeyLeftAlt => self.alt = action == KeyboardAction::Pressed,
 			KeyboardKey::KeyRightAlt => self.right_alt = action == KeyboardAction::Pressed,
 			KeyboardKey::KeyRightControl => self.right_ctrl = action == KeyboardAction::Pressed,
@@ -481,38 +485,47 @@ impl KeyboardManager {
 
 		if action == KeyboardAction::Pressed {
 			if self.ctrl && self.alt {
+				// TODO TTYs must be allocated first
 				// Switching TTY
 				match key {
-					KeyboardKey::KeyF1 => tty::switch(0),
-					KeyboardKey::KeyF2 => tty::switch(1),
-					KeyboardKey::KeyF3 => tty::switch(2),
-					KeyboardKey::KeyF4 => tty::switch(3),
-					KeyboardKey::KeyF5 => tty::switch(4),
-					KeyboardKey::KeyF6 => tty::switch(5),
-					KeyboardKey::KeyF7 => tty::switch(6),
-					KeyboardKey::KeyF8 => tty::switch(7),
-					KeyboardKey::KeyF9 => tty::switch(8),
-					KeyboardKey::KeyF10 => tty::switch(9),
-					KeyboardKey::KeyF11 => tty::switch(10),
-					KeyboardKey::KeyF12 => tty::switch(11),
+					KeyboardKey::KeyF1 => tty::switch(Some(0)),
+					KeyboardKey::KeyF2 => tty::switch(Some(1)),
+					KeyboardKey::KeyF3 => tty::switch(Some(2)),
+					KeyboardKey::KeyF4 => tty::switch(Some(3)),
+					KeyboardKey::KeyF5 => tty::switch(Some(4)),
+					KeyboardKey::KeyF6 => tty::switch(Some(5)),
+					KeyboardKey::KeyF7 => tty::switch(Some(6)),
+					KeyboardKey::KeyF8 => tty::switch(Some(7)),
+					KeyboardKey::KeyF9 => tty::switch(Some(8)),
 
-					_ => {
-					},
+					_ => {},
 				}
 			}
 
 			// Getting the tty
-			let mut tty_guard = tty::current().lock();
+			if let Some(tty_mutex) = tty::current() {
+				let mut tty_guard = tty_mutex.lock();
+				let tty = tty_guard.get_mut();
 
-			if key == KeyboardKey::KeyBackspace {
-				// Erasing from TTY
-				tty_guard.get_mut().erase(1);
-			} else {
-				// Writing on TTY
-				let shift = self.shift != self.caps_lock.is_enabled();
+				if key == KeyboardKey::KeyBackspace {
+					// Erasing from TTY
+					tty.erase(1);
+				} else if (self.ctrl || self.right_ctrl) && !self.alt && !self.right_alt {
+					match key {
+						KeyboardKey::KeyC => tty.input(&[0o3]),
+						KeyboardKey::KeyZ => tty.input(&[0o32]),
+						KeyboardKey::KeyBackslash => tty.input(&[0o34]),
 
-				if let Some(tty_chars) = key.get_tty_chars(shift) {
-					tty_guard.get_mut().input(tty_chars);
+						_ => {},
+					}
+				} else if !self.ctrl && !self.alt && !self.right_alt && !self.right_ctrl {
+					// Writing on TTY
+					let shift = (self.left_shift || self.right_shift)
+						!= self.caps_lock.is_enabled();
+
+					if let Some(tty_chars) = key.get_tty_chars(shift) {
+						tty.input(tty_chars);
+					}
 				}
 			}
 		}
@@ -526,8 +539,6 @@ impl KeyboardManager {
 		/*if let Some(ps2) = &mut self.ps2_keyboard {
 			ps2.set_led(led, enabled);
 		}*/
-
-		todo!();
 	}
 }
 

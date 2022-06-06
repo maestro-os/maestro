@@ -21,11 +21,11 @@ use crate::errno;
 use crate::memory::malloc::ptr::NonNull;
 use crate::memory;
 use crate::util::list::ListNode;
-use crate::util::lock::Mutex;
+use crate::util::lock::IntMutex;
 use crate::util;
 
 /// The allocator's mutex.
-static MUTEX: Mutex<()> = Mutex::new(());
+static MUTEX: IntMutex<()> = IntMutex::new(());
 
 /// Initializes the memory allocator.
 pub fn init() {
@@ -34,6 +34,11 @@ pub fn init() {
 
 /// Allocates `n` bytes of kernel memory and returns a pointer to the beginning of the allocated
 /// chunk. If the allocation fails, the function shall return an error.
+///
+/// # Safety
+///
+/// Allocated pointer must always be freed. Failure to do so results in a memory leak.
+/// Writing outside of the allocated range (buffer overflow) results in an undefined behaviour.
 pub unsafe fn alloc(n: usize) -> Result<*mut c_void, Errno> {
 	let _ = MUTEX.lock();
 
@@ -44,7 +49,7 @@ pub unsafe fn alloc(n: usize) -> Result<*mut c_void, Errno> {
 	let chunk = chunk::get_available_chunk(n)?.get_chunk();
 	chunk.split(n);
 
-	#[cfg(config_debug_debug)]
+	#[cfg(config_debug_malloc_check)]
 	chunk.check();
 	debug_assert!(chunk.get_size() >= n);
 	assert!(!chunk.is_used());
@@ -58,12 +63,15 @@ pub unsafe fn alloc(n: usize) -> Result<*mut c_void, Errno> {
 }
 
 /// Returns the size of the given memory allocation in bytes.
+///
+/// # Safety
+///
 /// The pointer `ptr` **must** point to the beginning of a valid, used chunk of memory.
 pub unsafe fn get_size(ptr: *const c_void) -> usize {
 	let _ = MUTEX.lock();
 
 	let chunk = Chunk::from_ptr(ptr as *mut _);
-	#[cfg(config_debug_debug)]
+	#[cfg(config_debug_malloc_check)]
 	chunk.check();
 	assert!(chunk.is_used());
 	chunk.get_size()
@@ -81,7 +89,7 @@ pub unsafe fn realloc(ptr: *mut c_void, n: usize) -> Result<*mut c_void, Errno> 
 	}
 
 	let chunk = Chunk::from_ptr(ptr);
-	#[cfg(config_debug_debug)]
+	#[cfg(config_debug_malloc_check)]
 	chunk.check();
 	assert!(chunk.is_used());
 
@@ -109,13 +117,18 @@ pub unsafe fn realloc(ptr: *mut c_void, n: usize) -> Result<*mut c_void, Errno> 
 	}
 }
 
-/// Frees the memory at the pointer `ptr` previously allocated with `alloc`. Subsequent uses of the
-/// associated memory are undefined.
+/// Frees the memory at the pointer `ptr` previously allocated with `alloc`.
+///
+/// # Safety
+///
+/// If `ptr` doesn't point to a valid chunk of memory allocated with the `alloc` function, the
+/// behaviour is undefined.
+/// Using memory after it was freed causes an undefined behaviour.
 pub unsafe fn free(ptr: *mut c_void) {
 	let _ = MUTEX.lock();
 
 	let chunk = Chunk::from_ptr(ptr);
-	#[cfg(config_debug_debug)]
+	#[cfg(config_debug_malloc_check)]
 	chunk.check();
 	assert!(chunk.is_used());
 
@@ -133,6 +146,7 @@ pub unsafe fn free(ptr: *mut c_void) {
 /// Structure representing a kernelside allocation.
 /// The structure holds one or more elements of the given type. Freeing the allocation doesn't call
 /// `drop` on its elements.
+#[derive(Debug)]
 pub struct Alloc<T> {
 	/// Slice representing the allocation.
 	slice: NonNull<[T]>,
@@ -141,7 +155,11 @@ pub struct Alloc<T> {
 impl<T> Alloc<T> {
 	/// Allocates `size` element in the kernel memory and returns a structure wrapping a slice
 	/// allowing to access it. If the allocation fails, the function shall return an error.
-	/// The function is unsafe because zero memory might be an inconsistent state for the object T.
+	///
+	/// # Safety
+	///
+	/// To use this function, one must ensure that zero memory is not an inconsistent state for the
+	/// object `T`.
 	pub unsafe fn new_zero(size: usize) -> Result<Self, Errno> {
 		let slice = NonNull::new({
 			let ptr = alloc(size * size_of::<T>())?;
@@ -185,7 +203,11 @@ impl<T> Alloc<T> {
 	/// Changes the size of the memory allocation. All new elements are initialized to zero.
 	/// `n` is the new size of the chunk of memory (in number of elements).
 	/// If the reallocation fails, the chunk is left untouched and the function returns an error.
-	/// The function is unsafe because zero memory might be an inconsistent state for the object T.
+	///
+	/// # Safety
+	///
+	/// To use this function, one must ensure that zero memory is not an inconsistent state for the
+	/// object `T`.
 	pub unsafe fn realloc_zero(&mut self, n: usize) -> Result<(), Errno> {
 		let ptr = realloc(self.as_ptr_mut() as _, n * size_of::<T>())?;
 		self.slice = NonNull::new(slice::from_raw_parts_mut::<T>(ptr as _, n)).unwrap();
@@ -206,7 +228,9 @@ impl<T: Default> Alloc<T> {
 			Self::new_zero(size)?
 		};
 		for i in 0..size {
-			alloc[i] = T::default();
+			unsafe { // Safe because the index is in bounds
+				ptr::write(&mut alloc[i], T::default());
+			}
 		}
 
 		Ok(alloc)
@@ -215,7 +239,11 @@ impl<T: Default> Alloc<T> {
 	/// Resizes the current allocation. If new elements are added, the function initializes them
 	/// with the default value.
 	/// `n` is the new size of the chunk of memory (in number of elements).
-	/// If elements are removed, the function `drop` is **not** called on them.
+	///
+	/// # Safety
+	///
+	/// If elements are removed, the function `drop` is **not** called on them. Thus, the caller
+	/// must take care of dropping the elements first.
 	pub unsafe fn realloc_default(&mut self, n: usize) -> Result<(), Errno> {
 		let curr_size = self.len();
 		self.realloc_zero(n)?;
@@ -237,7 +265,9 @@ impl<T: Clone> Alloc<T> {
 			Self::new_zero(size)?
 		};
 		for i in 0..size {
-			alloc[i] = val.clone();
+			unsafe { // Safe because the index is in bounds
+				ptr::write(&mut alloc[i], val.clone());
+			}
 		}
 
 		Ok(alloc)
@@ -251,9 +281,11 @@ impl<T> Index<usize> for Alloc<T> {
 	fn index(&self, index: usize) -> &Self::Output {
 		let slice = self.as_slice();
 
+		#[cfg(config_debug_debug)]
 		if index >= slice.len() {
 			panic!("index out of bounds of memory allocation");
 		}
+
 		&slice[index]
 	}
 }
@@ -263,9 +295,11 @@ impl<T> IndexMut<usize> for Alloc<T> {
 	fn index_mut(&mut self, index: usize) -> &mut Self::Output {
 		let slice = self.as_slice_mut();
 
+		#[cfg(config_debug_debug)]
 		if index >= slice.len() {
 			panic!("index out of bounds of memory allocation");
 		}
+
 		&mut slice[index]
 	}
 }

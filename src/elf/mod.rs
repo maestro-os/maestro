@@ -8,7 +8,8 @@ pub mod relocation;
 use core::cmp::max;
 use core::cmp::min;
 use core::ffi::c_void;
-use core::mem::size_of;
+use crate::errno::Errno;
+use crate::errno;
 use crate::memory;
 use crate::process::mem_space;
 use crate::util::math;
@@ -238,18 +239,18 @@ pub struct ELF32ProgramHeader {
 impl ELF32ProgramHeader {
 	/// Tells whether the program header is valid.
 	/// `file_size` is the size of the file.
-	fn is_valid(&self, file_size: usize) -> bool {
+	fn is_valid(&self, file_size: usize) -> Result<(), Errno> {
 		// TODO Check p_type
 
 		if (self.p_offset + self.p_filesz) as usize > file_size {
-			return false;
+			return Err(errno!(EINVAL));
 		}
 
 		if self.p_align != 0 && !math::is_power_of_two(self.p_align) {
-			return false;
+			return Err(errno!(EINVAL));
 		}
 
-		true
+		Ok(())
 	}
 
 	/// Returns the flags to map the current segment into a process's memory space.
@@ -299,18 +300,19 @@ pub struct ELF32SectionHeader {
 impl ELF32SectionHeader {
 	/// Tells whether the section header is valid.
 	/// `file_size` is the size of the file.
-	fn is_valid(&self, file_size: usize) -> bool {
+	fn is_valid(&self, file_size: usize) -> Result<(), Errno> {
 		// TODO Check sh_name
 
-		if (self.sh_offset + self.sh_size) as usize > file_size {
-			return false;
+		if self.sh_type & SHT_NOBITS == 0
+			&& (self.sh_offset + self.sh_size) as usize > file_size {
+			return Err(errno!(EINVAL));
 		}
 
 		if self.sh_addralign != 0 && !math::is_power_of_two(self.sh_addralign) {
-			return false;
+			return Err(errno!(EINVAL));
 		}
 
-		true
+		Ok(())
 	}
 }
 
@@ -384,7 +386,7 @@ pub fn foreach_sections<F>(sections: *const c_void, sections_count: usize, shndx
 	};
 
 	for i in 0..sections_count {
-		let hdr_offset = i * size_of::<ELF32SectionHeader>();
+		let hdr_offset = i * entsize;
 		let hdr = unsafe {
 			&*(sections.add(hdr_offset) as *const ELF32SectionHeader)
 		};
@@ -490,8 +492,7 @@ pub fn get_function_name(sections: *const c_void, sections_count: usize, shndx: 
 /// `name` is the name of the symbol to get.
 pub fn get_kernel_symbol(sections: *const c_void, sections_count: usize, shndx: usize,
 	entsize: usize, name: &[u8]) -> Option<&'static ELF32Sym> {
-	let strtab_section = get_section(sections, sections_count, shndx, entsize,
-		".strtab".as_bytes())?;
+	let strtab_section = get_section(sections, sections_count, shndx, entsize, b".strtab")?;
 	let mut symbol: Option<&'static ELF32Sym> = None;
 
 	foreach_sections(sections, sections_count, shndx, entsize,

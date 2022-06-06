@@ -17,7 +17,7 @@ use crate::file::fs::FilesystemType;
 use crate::file::fs::kernfs::KernFS;
 use crate::file::fs::kernfs::node::KernFSNode;
 use crate::file::path::Path;
-use crate::time::Timestamp;
+use crate::time::unit::Timestamp;
 use crate::time;
 use crate::util::IO;
 use crate::util::boxed::Box;
@@ -221,7 +221,7 @@ impl IO for TmpFSFile {
 						}
 
 						self.regular_content.as_mut_slice()[(offset as usize)..]
-							.copy_from_slice(&buff);
+							.copy_from_slice(buff);
 						Ok(buff.len() as _)
 					} else {
 						Err(errno!(EFBIG))
@@ -318,15 +318,13 @@ impl TmpFS {
 			}
 
 			Ok(())
-		} else {
-			if self.size + (s as usize) < self.max_size {
-				f(self)?;
+		} else if self.size + (s as usize) < self.max_size {
+			f(self)?;
 
-				self.size += s as usize;
-				Ok(())
-			} else {
-				Err(errno!(ENOSPC))
-			}
+			self.size += s as usize;
+			Ok(())
+		} else {
+			Err(errno!(ENOSPC))
 		}
 	}
 }

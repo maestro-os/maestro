@@ -9,7 +9,7 @@ use crate::file::ROOT_GID;
 use crate::file::ROOT_UID;
 use crate::file::Uid;
 use crate::file::fs::kernfs::node::KernFSNode;
-use crate::time::Timestamp;
+use crate::time::unit::Timestamp;
 use crate::util::IO;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;

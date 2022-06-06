@@ -20,9 +20,9 @@ pub fn chdir(regs: &Regs) -> Result<i32, Errno> {
 	let new_cwd = {
 		let mem_space = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space.lock();
-		let path_str = path.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
+		let path_str = path.get(&mem_space_guard)?.ok_or_else(|| errno!(EFAULT))?;
 
-		super::util::get_absolute_path(&proc, Path::from_str(path_str, true)?)?
+		super::util::get_absolute_path(proc, Path::from_str(path_str, true)?)?
 	};
 
 	{

@@ -6,7 +6,7 @@ use crate::file::Gid;
 use crate::file::INode;
 use crate::file::Mode;
 use crate::file::Uid;
-use crate::time::Timestamp;
+use crate::time::unit::Timestamp;
 use crate::util::IO;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
@@ -55,6 +55,6 @@ pub trait KernFSNode: IO {
 	/// using get_entries, which can be fairly slow depending on the amount of elements in the
 	/// node.
 	fn get_entry(&self, name: &String) -> Result<(INode, SharedPtr<dyn KernFSNode>), Errno> {
-		Ok(self.get_entries().get(name).ok_or(errno!(ENOENT))?.clone())
+		Ok(self.get_entries().get(name).ok_or_else(|| errno!(ENOENT))?.clone())
 	}
 }

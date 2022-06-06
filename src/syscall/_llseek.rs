@@ -20,21 +20,27 @@ pub fn _llseek(regs: &Regs) -> Result<i32, Errno> {
 	let result: SyscallPtr::<u64> = (regs.esi as usize).into();
 	let whence = regs.edi as u32;
 
-	let mutex = Process::get_current().unwrap();
-	let mut guard = mutex.lock();
-	let proc = guard.get_mut();
+	let (mem_space, open_file_mutex) = {
+		let mutex = Process::get_current().unwrap();
+		let mut guard = mutex.lock();
+		let proc = guard.get_mut();
 
-	let mem_space = proc.get_mem_space().unwrap();
+		let mem_space = proc.get_mem_space().unwrap();
+		let open_file_mutex = proc.get_fd(fd).ok_or_else(|| errno!(EBADF))?.get_open_file();
 
-	// Getting the file descriptor
-	let file_desc = proc.get_fd(fd).ok_or(errno!(EBADF))?;
+		(mem_space, open_file_mutex)
+	};
+
+	// Getting file
+	let mut open_file_guard = open_file_mutex.lock();
+	let open_file = open_file_guard.get_mut();
 
 	// Computing the offset
 	let off = ((offset_high as u64) << 32) | (offset_low as u64);
 	let off = match whence {
 		SEEK_SET => off,
-		SEEK_CUR => file_desc.get_offset() + off,
-		SEEK_END => file_desc.get_file_size() + off,
+		SEEK_CUR => open_file.get_offset() + off,
+		SEEK_END => open_file.get_file_size() + off,
 
 		_ => return Err(errno!(EINVAL)),
 	};
@@ -48,7 +54,7 @@ pub fn _llseek(regs: &Regs) -> Result<i32, Errno> {
 	}
 
 	// Setting the offset
-	file_desc.set_offset(off);
+	open_file.set_offset(off);
 
 	Ok(0)
 }

@@ -494,6 +494,10 @@ fn handle_tag(boot_info: &mut BootInfo, tag: *const Tag) {
 }
 
 /// Reads the multiboot tags from the given `ptr` and fills the boot informations structure.
+///
+/// # Safety
+///
+/// If the pointer `ptr` doesn't point to valid Multiboot tags, the behaviour is undefined.
 pub fn read_tags(ptr: *const c_void) {
 	unsafe {
 		let mut tag = (ptr.offset(8)) as *const Tag;

@@ -38,6 +38,6 @@ pub fn munmap(regs: &Regs) -> Result<i32, Errno> {
 		return Err(errno!(EINVAL));
 	}
 
-	proc.get_mem_space().unwrap().lock().get_mut().unmap(addr, pages)?;
+	proc.get_mem_space().unwrap().lock().get_mut().unmap(addr, pages, false)?;
 	Ok(0)
 }

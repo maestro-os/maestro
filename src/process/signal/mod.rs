@@ -11,85 +11,22 @@ use crate::errno;
 use crate::file::Uid;
 use crate::process::oom;
 use crate::process::pid::Pid;
-use crate::time::Clock;
+use crate::time::unit::Clock;
 use signal_trampoline::signal_trampoline;
 use super::Process;
 use super::State;
 
-/// Type representing the type of a signal.
-pub type SignalType = i32;
 /// Type representing a signal handler.
 pub type SigHandler = extern "C" fn(i32);
-
-/// Process abort.
-pub const SIGABRT: SignalType = 1;
-/// Alarm clock.
-pub const SIGALRM: SignalType = 2;
-/// Access to an undefined portion of a memory object.
-pub const SIGBUS: SignalType = 3;
-/// Child process terminated.
-pub const SIGCHLD: SignalType = 4;
-/// Continue executing.
-pub const SIGCONT: SignalType = 5;
-/// Erroneous arithmetic operation.
-pub const SIGFPE: SignalType = 6;
-/// Hangup.
-pub const SIGHUP: SignalType = 7;
-/// Illigal instruction.
-pub const SIGILL: SignalType = 8;
-/// Terminal interrupt.
-pub const SIGINT: SignalType = 9;
-/// Kill.
-pub const SIGKILL: SignalType = 10;
-/// Write on a pipe with no one to read it.
-pub const SIGPIPE: SignalType = 11;
-/// Terminal quit.
-pub const SIGQUIT: SignalType = 12;
-/// Invalid memory reference.
-pub const SIGSEGV: SignalType = 13;
-/// Stop executing.
-pub const SIGSTOP: SignalType = 14;
-/// Termination.
-pub const SIGTERM: SignalType = 15;
-/// Terminal stop.
-pub const SIGTSTP: SignalType = 16;
-/// Background process attempting read.
-pub const SIGTTIN: SignalType = 17;
-/// Background process attempting write.
-pub const SIGTTOU: SignalType = 18;
-/// User-defined signal 1.
-pub const SIGUSR1: SignalType = 19;
-/// User-defined signal 2.
-pub const SIGUSR2: SignalType = 20;
-/// Pollable event.
-pub const SIGPOLL: SignalType = 21;
-/// Profiling timer expired.
-pub const SIGPROF: SignalType = 22;
-/// Bad system call.
-pub const SIGSYS: SignalType = 23;
-/// Trace/breakpoint trap.
-pub const SIGTRAP: SignalType = 24;
-/// High bandwidth data is available at a socket.
-pub const SIGURG: SignalType = 25;
-/// Virtual timer expired.
-pub const SIGVTALRM: SignalType = 26;
-/// CPU time limit exceeded.
-pub const SIGXCPU: SignalType = 27;
-/// File size limit exceeded.
-pub const SIGXFSZ: SignalType = 28;
-/// Window resize.
-pub const SIGWINCH: SignalType = 29;
 
 /// Ignoring the signal.
 pub const SIG_IGN: *const c_void = 0x0 as _;
 /// The default action for the signal.
 pub const SIG_DFL: *const c_void = 0x1 as _;
 
-/// The number of different signal types.
-pub const SIGNALS_COUNT: usize = 29;
-
-/// The size of the redzone in userspace, in bytes.
-pub const REDZONE_SIZE: usize = 128;
+/// The size of the signal handlers table (the number of signals + 1, since indexing begins at 1
+/// instead of 0).
+pub const SIGNALS_COUNT: usize = 30;
 
 /// Enumeration representing the action to perform for a signal.
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -223,83 +160,190 @@ impl SignalHandler {
 				sa_restorer: #[allow(invalid_value)] unsafe { core::mem::zeroed() },
 			},
 
-			Self::Handler(action) => action.clone(),
+			Self::Handler(action) => *action,
 		}
 	}
 }
 
 /// Array containing the default actions for each signal.
 static DEFAULT_ACTIONS: &[SignalAction] = &[
-	SignalAction::Ignore, // No signal
-	SignalAction::Abort, // SIGABRT
-	SignalAction::Terminate, // SIGALRM
-	SignalAction::Abort, // SIGBUS
-	SignalAction::Ignore, // SIGCHLD
-	SignalAction::Continue, // SIGCONT
-	SignalAction::Abort, // SIGFPE
-	SignalAction::Terminate, // SIGHUP
-	SignalAction::Abort, // SIGILL
-	SignalAction::Terminate, // SIGINT
-	SignalAction::Terminate, // SIGKILL
-	SignalAction::Terminate, // SIGPIPE
-	SignalAction::Abort, // SIGQUIT
-	SignalAction::Abort, // SIGSEGV
-	SignalAction::Stop, // SIGSTOP
-	SignalAction::Terminate, // SIGTERM
-	SignalAction::Stop, // SIGTSTP
-	SignalAction::Stop, // SIGTTIN
-	SignalAction::Stop, // SIGTTOU
-	SignalAction::Terminate, // SIGUSR1
-	SignalAction::Terminate, // SIGUSR2
-	SignalAction::Terminate, // SIGPOLL
-	SignalAction::Terminate, // SIGPROF
-	SignalAction::Abort, // SIGSYS
-	SignalAction::Abort, // SIGTRAP
-	SignalAction::Ignore, // SIGURG
-	SignalAction::Terminate, // SIGVTALRM
-	SignalAction::Abort, // SIGXCPU
-	SignalAction::Abort, // SIGXFSZ
-	SignalAction::Ignore, // SIGWINCH
 ];
 
-/// Structure representing a process signal.
-#[derive(Clone)]
-pub struct Signal {
-	/// The signal type.
-	type_: SignalType,
-
-	// TODO
+/// Enumeration of signal types.
+#[derive(Clone, Eq, PartialEq)]
+pub enum Signal {
+	/// Process abort.
+	SIGABRT,
+	/// Alarm clock.
+	SIGALRM,
+	/// Access to an undefined portion of a memory object.
+	SIGBUS,
+	/// Child process terminated.
+	SIGCHLD,
+	/// Continue executing.
+	SIGCONT,
+	/// Erroneous arithmetic operation.
+	SIGFPE,
+	/// Hangup.
+	SIGHUP,
+	/// Illigal instruction.
+	SIGILL,
+	/// Terminal interrupt.
+	SIGINT,
+	/// Kill.
+	SIGKILL,
+	/// Write on a pipe with no one to read it.
+	SIGPIPE,
+	/// Terminal quit.
+	SIGQUIT,
+	/// Invalid memory reference.
+	SIGSEGV,
+	/// Stop executing.
+	SIGSTOP,
+	/// Termination.
+	SIGTERM,
+	/// Terminal stop.
+	SIGTSTP,
+	/// Background process attempting read.
+	SIGTTIN,
+	/// Background process attempting write.
+	SIGTTOU,
+	/// User-defined signal 1.
+	SIGUSR1,
+	/// User-defined signal 2.
+	SIGUSR2,
+	/// Pollable event.
+	SIGPOLL,
+	/// Profiling timer expired.
+	SIGPROF,
+	/// Bad system call.
+	SIGSYS,
+	/// Trace/breakpoint trap.
+	SIGTRAP,
+	/// High bandwidth data is available at a socket.
+	SIGURG,
+	/// Virtual timer expired.
+	SIGVTALRM,
+	/// CPU time limit exceeded.
+	SIGXCPU,
+	/// File size limit exceeded.
+	SIGXFSZ,
+	/// Window resize.
+	SIGWINCH,
 }
 
 impl Signal {
 	/// Creates a new instance.
-	/// `type_` is the signal type.
-	pub fn new(type_: SignalType) -> Result<Self, Errno> {
-		if type_ >= 1 && (type_ - 1) < SIGNALS_COUNT as i32 {
-			Ok(Self {
-				type_,
-			})
-		} else {
-			Err(errno!(EINVAL))
+	/// `id` is the signal ID.
+	pub fn from_id(id: u32) -> Result<Self, Errno> {
+		match id {
+			1 => Ok(Self::SIGABRT),
+			2 => Ok(Self::SIGALRM),
+			3 => Ok(Self::SIGBUS),
+			4 => Ok(Self::SIGCHLD),
+			5 => Ok(Self::SIGCONT),
+			6 => Ok(Self::SIGFPE),
+			7 => Ok(Self::SIGHUP),
+			8 => Ok(Self::SIGILL),
+			9 => Ok(Self::SIGINT),
+			10 => Ok(Self::SIGKILL),
+			11 => Ok(Self::SIGPIPE),
+			12 => Ok(Self::SIGQUIT),
+			13 => Ok(Self::SIGSEGV),
+			14 => Ok(Self::SIGSTOP),
+			15 => Ok(Self::SIGTERM),
+			16 => Ok(Self::SIGTSTP),
+			17 => Ok(Self::SIGTTIN),
+			18 => Ok(Self::SIGTTOU),
+			19 => Ok(Self::SIGUSR1),
+			20 => Ok(Self::SIGUSR2),
+			21 => Ok(Self::SIGPOLL),
+			22 => Ok(Self::SIGPROF),
+			23 => Ok(Self::SIGSYS),
+			24 => Ok(Self::SIGTRAP),
+			25 => Ok(Self::SIGURG),
+			26 => Ok(Self::SIGVTALRM),
+			27 => Ok(Self::SIGXCPU),
+			28 => Ok(Self::SIGXFSZ),
+			29 => Ok(Self::SIGWINCH),
+
+			_ => Err(errno!(EINVAL)),
 		}
 	}
 
-	/// Returns the signal's type.
-	pub fn get_type(&self) -> SignalType {
-		self.type_
+	/// Returns the signal's ID.
+	pub fn get_id(&self) -> u8 {
+		match self {
+			Self::SIGABRT => 1,
+			Self::SIGALRM => 2,
+			Self::SIGBUS => 3,
+			Self::SIGCHLD => 4,
+			Self::SIGCONT => 5,
+			Self::SIGFPE => 6,
+			Self::SIGHUP => 7,
+			Self::SIGILL => 8,
+			Self::SIGINT => 9,
+			Self::SIGKILL => 10,
+			Self::SIGPIPE => 11,
+			Self::SIGQUIT => 12,
+			Self::SIGSEGV => 13,
+			Self::SIGSTOP => 14,
+			Self::SIGTERM => 15,
+			Self::SIGTSTP => 16,
+			Self::SIGTTIN => 17,
+			Self::SIGTTOU => 18,
+			Self::SIGUSR1 => 19,
+			Self::SIGUSR2 => 20,
+			Self::SIGPOLL => 21,
+			Self::SIGPROF => 22,
+			Self::SIGSYS => 23,
+			Self::SIGTRAP => 24,
+			Self::SIGURG => 25,
+			Self::SIGVTALRM => 26,
+			Self::SIGXCPU => 27,
+			Self::SIGXFSZ => 28,
+			Self::SIGWINCH => 29,
+		}
 	}
 
 	/// Returns the default action for the signal.
 	pub fn get_default_action(&self) -> SignalAction {
-		DEFAULT_ACTIONS[self.type_ as usize]
+		match self {
+			Self::SIGABRT => SignalAction::Abort,
+			Self::SIGALRM => SignalAction::Terminate,
+			Self::SIGBUS => SignalAction::Abort,
+			Self::SIGCHLD => SignalAction::Ignore,
+			Self::SIGCONT => SignalAction::Continue,
+			Self::SIGFPE => SignalAction::Abort,
+			Self::SIGHUP => SignalAction::Terminate,
+			Self::SIGILL => SignalAction::Abort,
+			Self::SIGINT => SignalAction::Terminate,
+			Self::SIGKILL => SignalAction::Terminate,
+			Self::SIGPIPE => SignalAction::Terminate,
+			Self::SIGQUIT => SignalAction::Abort,
+			Self::SIGSEGV => SignalAction::Abort,
+			Self::SIGSTOP => SignalAction::Stop,
+			Self::SIGTERM => SignalAction::Terminate,
+			Self::SIGTSTP => SignalAction::Stop,
+			Self::SIGTTIN => SignalAction::Stop,
+			Self::SIGTTOU => SignalAction::Stop,
+			Self::SIGUSR1 => SignalAction::Terminate,
+			Self::SIGUSR2 => SignalAction::Terminate,
+			Self::SIGPOLL => SignalAction::Terminate,
+			Self::SIGPROF => SignalAction::Terminate,
+			Self::SIGSYS => SignalAction::Abort,
+			Self::SIGTRAP => SignalAction::Abort,
+			Self::SIGURG => SignalAction::Ignore,
+			Self::SIGVTALRM => SignalAction::Terminate,
+			Self::SIGXCPU => SignalAction::Abort,
+			Self::SIGXFSZ => SignalAction::Abort,
+			Self::SIGWINCH => SignalAction::Ignore,
+		}
 	}
 
 	/// Tells whether the signal can be caught.
 	pub fn can_catch(&self) -> bool {
-		match self.type_ {
-			SIGKILL | SIGSEGV | SIGSTOP | SIGSYS => false,
-			_ => true,
-		}
+		!matches!(self, Self::SIGKILL | Self::SIGSEGV | Self::SIGSTOP | Self::SIGSYS)
 	}
 
 	/// Executes the action associated with the signal for process `process`.
@@ -307,7 +351,7 @@ impl Signal {
 	/// If `no_handler` is true, the function executes the default action of the signal regardless
 	/// the user-specified action.
 	pub fn execute_action(&self, process: &mut Process, no_handler: bool) {
-		process.signal_clear(self.type_);
+		process.signal_clear(self.clone());
 
 		let process_state = process.get_state();
 		if process_state == State::Zombie {
@@ -317,21 +361,27 @@ impl Signal {
 		let handler = if !self.can_catch() || no_handler {
 			SignalHandler::Default
 		} else {
-			process.get_signal_handler(self.type_)
+			process.get_signal_handler(self)
 		};
 
 		if handler != SignalHandler::Ignore {
 			let action = self.get_default_action();
 			if action == SignalAction::Stop || action == SignalAction::Continue {
-				process.set_waitable(self.type_ as _);
+				process.set_waitable(self.get_id());
 			}
 		}
 
 		match handler {
 			SignalHandler::Ignore => {},
 			SignalHandler::Default => {
-				let default_action = DEFAULT_ACTIONS[self.type_ as usize];
-				let exit_code = (128 + self.type_) as u32;
+				// Signals on the init process can be executed only if the process has set a signal
+				// handler
+				if self.can_catch() && process.is_init() {
+					return;
+				}
+
+				let default_action = self.get_default_action();
+				let exit_code = (128 + self.get_id()) as u32;
 
 				match default_action {
 					SignalAction::Terminate | SignalAction::Abort => {
@@ -361,11 +411,11 @@ impl Signal {
 				if !process.is_handling_signal() {
 					// TODO Handle the case where an alternate stack is specified (only if the
 					// action has the flag)
-					let mut regs = process.get_regs().clone();
-					let redzone_end = regs.esp - REDZONE_SIZE as u32;
+					// The signal handler stack
+					let stack = process.get_signal_stack();
 
-					let signal_data_size = size_of::<[u32; 2]>() as u32;
-					let signal_esp = redzone_end - signal_data_size;
+					let signal_data_size = size_of::<[u32; 2]>();
+					let signal_esp = (stack as usize) - signal_data_size;
 
 					// FIXME Don't write data out of the stack
 					oom::wrap(|| {
@@ -381,9 +431,9 @@ impl Signal {
 					};
 
 					// The pointer to the signal handler
-					signal_data[1] = action.sa_handler.map(| f | f as _).unwrap_or(0);
+					signal_data[1] = action.sa_handler.map(| f | f as usize).unwrap_or(0) as _;
 					// The signal number
-					signal_data[0] = self.type_ as _;
+					signal_data[0] = self.get_id() as _;
 
 					let signal_trampoline = unsafe {
 						transmute::<
@@ -392,16 +442,17 @@ impl Signal {
 						>(signal_trampoline)
 					};
 
+					let mut regs = process.get_regs().clone();
 					// Setting the stack to point to the signal's data
-					regs.esp = signal_esp;
+					regs.esp = signal_esp as _;
 					// Setting the program counter to point to the signal trampoline
 					regs.eip = signal_trampoline as _;
 
 					// Saves the current state of the process to be restored when the handler will
 					// return
-					process.signal_save(self.type_);
+					process.signal_save(self.clone());
 					// Setting the process's registers to call the signal handler
-					process.set_regs(&regs);
+					process.set_regs(regs);
 				}
 			},
 		}

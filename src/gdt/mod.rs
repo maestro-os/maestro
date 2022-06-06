@@ -28,7 +28,7 @@ pub const TLS_OFFSET: usize = 48;
 
 /// Structure representing a GDT entry.
 #[repr(transparent)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Default)]
 pub struct Entry {
 	/// The entry's value.
 	val: u64,
@@ -110,35 +110,30 @@ impl Entry {
 	}
 
 	/// Updates the entry at offset `off` of the GDT with the current entry.
-	/// An invalid offset shall result in an undefined behaviour.
+	///
+	/// # Safety
+	///
+	/// An invalid offset (out of bounds of the GDT) shall result in an undefined behaviour.
 	pub unsafe fn update_gdt(&self, off: usize) {
 		let ptr = get_segment_ptr(off);
 		*ptr = self.val;
 	}
 }
 
-impl Default for Entry {
-	fn default() -> Self {
-		Self {
-			val: 0,
-		}
-	}
-}
-
 impl FailableClone for Entry {
 	fn failable_clone(&self) -> Result<Self, Errno> {
-		Ok(self.clone())
+		Ok(*self)
 	}
 }
 
 impl fmt::Display for Entry {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		write!(f, "Descriptor Table Entry:\n")?;
-		write!(f, "base: {:x}\n", self.get_base())?;
-		write!(f, "limit: {:x}\n", self.get_limit())?;
-		write!(f, "access byte: {:x}\n", self.get_access_byte())?;
-		write!(f, "flags: {:x}\n", self.get_flags())?;
-		write!(f, "present: {}\n", self.is_present())
+		writeln!(f, "Descriptor Table Entry:")?;
+		writeln!(f, "base: {:x}", self.get_base())?;
+		writeln!(f, "limit: {:x}", self.get_limit())?;
+		writeln!(f, "access byte: {:x}", self.get_access_byte())?;
+		writeln!(f, "flags: {:x}", self.get_flags())?;
+		writeln!(f, "present: {}", self.is_present())
 	}
 }
 

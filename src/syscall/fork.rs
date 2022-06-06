@@ -3,25 +3,29 @@
 //! differentiation.
 
 use crate::errno::Errno;
+use crate::process::ForkOptions;
 use crate::process::Process;
 use crate::process::regs::Regs;
 
 /// The implementation of the `fork` syscall.
 pub fn fork(regs: &Regs) -> Result<i32, Errno> {
-	let new_mutex = {
-		// The current process
-		let curr_mutex = Process::get_current().unwrap();
-		// A weak pointer to the new process's parent
-		let parent = curr_mutex.new_weak();
+	// The current process
+	let curr_mutex = Process::get_current().unwrap();
+	// A weak pointer to the new process's parent
+	let parent = curr_mutex.new_weak();
 
-		let mut curr_guard = curr_mutex.lock();
-		let curr_proc = curr_guard.get_mut();
+	let mut curr_guard = curr_mutex.lock();
+	let curr_proc = curr_guard.get_mut();
 
-		curr_proc.set_regs(regs);
-		curr_proc.fork(parent, None)?
-	};
+	let new_mutex = curr_proc.fork(parent, ForkOptions::default())?;
 	let mut new_guard = new_mutex.lock();
 	let new_proc = new_guard.get_mut();
+
+	// Setting registers
+	let mut regs = regs.clone();
+	// Setting return value to `0`
+	regs.eax = 0;
+	new_proc.set_regs(regs);
 
 	Ok(new_proc.get_pid() as _)
 }

@@ -1,9 +1,9 @@
 //! The pipe system call allows to create a pipe.
 
 use crate::errno::Errno;
-use crate::file::file_descriptor::FDTarget;
-use crate::file::file_descriptor;
-use crate::file::pipe::Pipe;
+use crate::file::open_file::FDTarget;
+use crate::file::open_file;
+use crate::file::pipe::PipeBuffer;
 use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::regs::Regs;
@@ -21,12 +21,11 @@ pub fn pipe(regs: &Regs) -> Result<i32, Errno> {
 	let mem_space_guard = mem_space.lock();
 	let pipefd_slice = pipefd.get_mut(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
 
-	let pipe = SharedPtr::new(Pipe::new()?)?;
-	let pipe2 = pipe.clone();
-	let fd0 = proc.create_fd(file_descriptor::O_RDONLY, FDTarget::Pipe(pipe))?.get_id();
-	let fd1 = proc.create_fd(file_descriptor::O_WRONLY, FDTarget::Pipe(pipe2))?.get_id();
+	let pipe = SharedPtr::new(PipeBuffer::new()?)?;
+	let fd0 = proc.create_fd(open_file::O_RDONLY, FDTarget::Pipe(pipe.clone()))?;
+	let fd1 = proc.create_fd(open_file::O_WRONLY, FDTarget::Pipe(pipe.clone()))?;
 
-	pipefd_slice[0] = fd0 as _;
-	pipefd_slice[1] = fd1 as _;
+	pipefd_slice[0] = fd0.get_id() as _;
+	pipefd_slice[1] = fd1.get_id() as _;
 	Ok(0)
 }

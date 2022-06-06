@@ -6,13 +6,15 @@ use core::mem::ManuallyDrop;
 use crate::crypto::rand::rand;
 use crate::device::Device;
 use crate::device::DeviceHandle;
+use crate::device::tty::TTYDeviceHandle;
 use crate::device;
 use crate::errno::Errno;
 use crate::errno;
 use crate::file::path::Path;
 use crate::logger;
-use crate::tty;
+use crate::process::mem_space::MemSpace;
 use crate::util::IO;
+use crate::util::ptr::IntSharedPtr;
 use super::DeviceType;
 use super::id;
 
@@ -20,7 +22,8 @@ use super::id;
 pub struct NullDeviceHandle {}
 
 impl DeviceHandle for NullDeviceHandle {
-	fn ioctl(&mut self, _request: u32, _argp: *const c_void) -> Result<u32, Errno> {
+	fn ioctl(&mut self, _mem_space: IntSharedPtr<MemSpace>, _request: u32, _argp: *const c_void)
+		-> Result<u32, Errno> {
 		// TODO
 		Err(errno!(EINVAL))
 	}
@@ -44,7 +47,8 @@ impl IO for NullDeviceHandle {
 pub struct ZeroDeviceHandle {}
 
 impl DeviceHandle for ZeroDeviceHandle {
-	fn ioctl(&mut self, _request: u32, _argp: *const c_void) -> Result<u32, Errno> {
+	fn ioctl(&mut self, _mem_space: IntSharedPtr<MemSpace>, _request: u32, _argp: *const c_void)
+		-> Result<u32, Errno> {
 		// TODO
 		Err(errno!(EINVAL))
 	}
@@ -72,7 +76,8 @@ impl IO for ZeroDeviceHandle {
 pub struct KMsgDeviceHandle {}
 
 impl DeviceHandle for KMsgDeviceHandle {
-	fn ioctl(&mut self, _request: u32, _argp: *const c_void) -> Result<u32, Errno> {
+	fn ioctl(&mut self, _mem_space: IntSharedPtr<MemSpace>, _request: u32, _argp: *const c_void)
+		-> Result<u32, Errno> {
 		// TODO
 		Err(errno!(EINVAL))
 	}
@@ -110,7 +115,8 @@ impl IO for KMsgDeviceHandle {
 pub struct RandomDeviceHandle {}
 
 impl DeviceHandle for RandomDeviceHandle {
-	fn ioctl(&mut self, _request: u32, _argp: *const c_void) -> Result<u32, Errno> {
+	fn ioctl(&mut self, _mem_space: IntSharedPtr<MemSpace>, _request: u32, _argp: *const c_void)
+		-> Result<u32, Errno> {
 		// TODO
 		Err(errno!(EINVAL))
 	}
@@ -140,7 +146,8 @@ impl IO for RandomDeviceHandle {
 pub struct URandomDeviceHandle {}
 
 impl DeviceHandle for URandomDeviceHandle {
-	fn ioctl(&mut self, _request: u32, _argp: *const c_void) -> Result<u32, Errno> {
+	fn ioctl(&mut self, _mem_space: IntSharedPtr<MemSpace>, _request: u32, _argp: *const c_void)
+		-> Result<u32, Errno> {
 		// TODO
 		Err(errno!(EINVAL))
 	}
@@ -159,32 +166,6 @@ impl IO for URandomDeviceHandle {
 	fn write(&mut self, _offset: u64, _buff: &[u8]) -> Result<u64, Errno> {
 		// TODO Feed entropy?
 		todo!();
-	}
-}
-
-/// Structure representing the current TTY.
-pub struct CurrentTTYDeviceHandle {}
-
-impl DeviceHandle for CurrentTTYDeviceHandle {
-	fn ioctl(&mut self, _request: u32, _argp: *const c_void) -> Result<u32, Errno> {
-		// TODO
-		Err(errno!(EINVAL))
-	}
-}
-
-impl IO for CurrentTTYDeviceHandle {
-	fn get_size(&self) -> u64 {
-		0
-	}
-
-	fn read(&mut self, _offset: u64, _buff: &mut [u8]) -> Result<u64, Errno> {
-		// TODO Read from TTY input
-		todo!();
-	}
-
-	fn write(&mut self, _offset: u64, buff: &[u8]) -> Result<u64, Errno> {
-		tty::current().lock().get_mut().write(buff);
-		Ok(buff.len() as _)
 	}
 }
 
@@ -211,7 +192,7 @@ pub fn create() -> Result<(), Errno> {
 	device::register_device(random_device)?;
 
 	let urandom_path = Path::from_str(b"/dev/urandom", false)?;
-	let mut urandom_device = Device::new(1, 8, urandom_path, 0o666, DeviceType::Char,
+	let mut urandom_device = Device::new(1, 9, urandom_path, 0o666, DeviceType::Char,
 		URandomDeviceHandle {})?;
 	urandom_device.create_file()?; // TODO remove?
 	device::register_device(urandom_device)?;
@@ -226,7 +207,7 @@ pub fn create() -> Result<(), Errno> {
 
 	let current_tty_path = Path::from_str(b"/dev/tty", false)?;
 	let mut current_tty_device = Device::new(5, 0, current_tty_path, 0o666, DeviceType::Char,
-		CurrentTTYDeviceHandle {})?;
+		TTYDeviceHandle::new(None))?;
 	current_tty_device.create_file()?; // TODO remove?
 	device::register_device(current_tty_device)?;
 

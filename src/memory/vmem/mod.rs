@@ -10,6 +10,7 @@ use core::ffi::c_void;
 use crate::cpu;
 use crate::elf;
 use crate::errno::Errno;
+use crate::idt;
 use crate::memory;
 use crate::multiboot;
 use crate::util::FailableClone;
@@ -112,6 +113,11 @@ pub fn is_write_lock() -> bool {
 }
 
 /// Sets whether the kernel can write to read-only pages.
+///
+/// # Safety
+///
+/// This function disables memory protection on the kernel side, which makes read-only data
+/// writable. Writing on read-only data is undefined.
 pub unsafe fn set_write_lock(lock: bool) {
 	if lock {
 		cpu::cr0_set(1 << 16);
@@ -122,7 +128,12 @@ pub unsafe fn set_write_lock(lock: bool) {
 
 /// Executes the closure given as parameter. During execution, the kernel can write on read-only
 /// pages. The state of the write lock is restored after the closure's execution.
-pub unsafe fn write_lock_wrap<F: Fn() -> T, T>(f: F) -> T {
+///
+/// # Safety
+///
+/// This function disables memory protection on the kernel side, which makes read-only data
+/// writable. Writing on read-only data is undefined.
+pub unsafe fn write_lock_wrap<F: FnOnce() -> T, T>(f: F) -> T {
 	let lock = is_write_lock();
 	set_write_lock(false);
 	let result = f();
@@ -134,26 +145,39 @@ pub unsafe fn write_lock_wrap<F: Fn() -> T, T>(f: F) -> T {
 /// Executes the given closure `f` while being bound to the given virtual memory context `vmem`.
 /// After execution, the function restores the previous context.
 /// If the closure changes the current memory context, the behaviour is undefined.
-pub fn switch<F: FnMut() -> T, T>(vmem: &dyn VMem, mut f: F) -> T {
-	if vmem.is_bound() {
-		f()
-	} else {
-		// Getting the current vmem
-		let cr3 = unsafe {
-			cpu::cr3_get()
-		};
-		// Binding the temporary vmem
-		vmem.bind();
+///
+/// The function disables interruptions while executing the closure. This is due to the fact that
+/// if interruptions were enabled, the scheduler would be able to change the running process, and
+/// thus when resuming execution, the virtual memory context would be changed to the process's
+/// context, making the behaviour undefined.
+///
+/// # Safety
+///
+/// Special consideration should be taken when using this function since Rust is unable to ensure
+/// its safety.
+///
+/// For example, the caller must ensure the stack is accessible in both the current and given
+/// virtual memory contexts.
+///
+/// TODO
+pub unsafe fn switch<F: FnOnce() -> T, T>(vmem: &dyn VMem, f: F) -> T {
+	idt::wrap_disable_interrupts(|| {
+		if vmem.is_bound() {
+			f()
+		} else {
+			// Getting the current vmem
+			let cr3 = cpu::cr3_get();
+			// Binding the temporary vmem
+			vmem.bind();
 
-		let result = f();
+			let result = f();
 
-		// Restoring the previous vmem
-		unsafe {
+			// Restoring the previous vmem
 			x86::paging_enable(cr3 as _);
-		}
 
-		result
-	}
+			result
+		}
+	})
 }
 
 #[cfg(test)]

@@ -10,7 +10,6 @@
 #![feature(coerce_unsized)]
 #![feature(const_maybe_uninit_assume_init)]
 #![feature(const_mut_refs)]
-#![feature(const_ptr_offset)]
 #![feature(core_intrinsics)]
 #![feature(custom_test_frameworks)]
 #![feature(dispatch_from_dyn)]
@@ -61,6 +60,7 @@ pub mod selftest;
 pub mod syscall;
 pub mod time;
 pub mod tty;
+pub mod types;
 #[macro_use]
 pub mod util;
 #[macro_use]
@@ -70,11 +70,13 @@ use core::ffi::c_void;
 use core::panic::PanicInfo;
 use core::ptr::null;
 use crate::errno::Errno;
+use crate::file::fcache;
 use crate::file::path::Path;
 use crate::memory::vmem::VMem;
 use crate::memory::vmem;
 use crate::process::Process;
-use crate::process::exec::exec;
+use crate::process::exec::ExecInfo;
+use crate::process::exec;
 use crate::util::boxed::Box;
 use crate::util::lock::Mutex;
 
@@ -180,7 +182,8 @@ extern "C" {
 }
 
 /// Launches the init process.
-fn init() -> Result<(), Errno> {
+/// `init_path` is the path to the init program.
+fn init(init_path: &[u8]) -> Result<(), Errno> {
 	let mutex = Process::new()?;
 	let mut lock = mutex.lock();
 	let proc = lock.get_mut();
@@ -204,9 +207,29 @@ fn init() -> Result<(), Errno> {
 			env.push(&b"RUST_BACKTRACE=full"[..])?;
 		}
 
-		exec(proc, &path, &vec![
-			INIT_PATH
-		]?, &env)
+		let file = {
+			let fcache_mutex = fcache::get();
+			let mut fcache_guard = fcache_mutex.lock();
+			let fcache = fcache_guard.get_mut().as_mut().unwrap();
+
+			fcache.get_file_from_path(&path, 0, 0, true)?
+		};
+		let mut file_guard = file.lock();
+
+		let exec_info = ExecInfo {
+			uid: proc.get_uid(),
+			euid: proc.get_euid(),
+			gid: proc.get_gid(),
+			egid: proc.get_egid(),
+
+			argv: &vec![
+				init_path
+			]?,
+			envp: &env,
+		};
+		let program_image = exec::build_image(file_guard.get_mut(), exec_info)?;
+
+		exec::exec(proc, program_image)
 	}
 }
 
@@ -291,7 +314,10 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 	println!("Initializing processes...");
 	process::init().unwrap_or_else(| e | kernel_panic!("Failed to init processes! ({})", e));
 
-	init().unwrap_or_else(| e | kernel_panic!("Cannot execute init process: {}", e));
+	let init_path = args_parser.get_init_path().as_ref()
+		.map(| s | s.as_bytes())
+		.unwrap_or(INIT_PATH);
+	init(init_path).unwrap_or_else(| e | kernel_panic!("Cannot execute init process: {}", e));
 	enter_loop();
 }
 

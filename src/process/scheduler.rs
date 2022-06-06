@@ -21,33 +21,25 @@ use crate::process::Process;
 use crate::process::pid::Pid;
 use crate::process::regs::Regs;
 use crate::process;
-use crate::util::container::binary_tree::BinaryTree;
-use crate::util::container::binary_tree::BinaryTreeMutIterator;
-use crate::util::container::binary_tree::TraversalType;
+use crate::util::container::map::Map;
+use crate::util::container::map::MapIterator;
+use crate::util::container::map::TraversalType;
 use crate::util::container::vec::Vec;
 use crate::util::lock::*;
 use crate::util::math;
 use crate::util::ptr::IntSharedPtr;
 
 /// The size of the temporary stack for context switching.
-const TMP_STACK_SIZE: usize = memory::PAGE_SIZE;
+const TMP_STACK_SIZE: usize = 16 * memory::PAGE_SIZE;
 /// The number of quanta for the process with the average priority.
 const AVERAGE_PRIORITY_QUANTA: usize = 10;
 /// The number of quanta for the process with the maximum priority.
 const MAX_PRIORITY_QUANTA: usize = 30;
 
-/// The structure containing the context switching data.
-struct ContextSwitchData {
-	///  The process to switch to.
-	proc: IntSharedPtr<Process>,
-}
-
 /// The structure representing the process scheduler.
 pub struct Scheduler {
 	/// A vector containing the temporary stacks for each CPU cores.
 	tmp_stacks: Vec<malloc::Alloc<u8>>,
-	/// A vector containing context switch data for each CPU cores.
-	ctx_switch_data: Vec<Option<ContextSwitchData>>,
 
 	/// The ticking callback hook, called at a regular interval to make the scheduler work.
 	tick_callback_hook: CallbackHook,
@@ -55,7 +47,7 @@ pub struct Scheduler {
 	total_ticks: u64,
 
 	/// A binary tree containing all processes registered to the current scheduler.
-	processes: BinaryTree<Pid, IntSharedPtr<Process>>,
+	processes: Map<Pid, IntSharedPtr<Process>>,
 	/// The currently running process with its PID.
 	curr_proc: Option<(Pid, IntSharedPtr<Process>)>,
 
@@ -69,10 +61,8 @@ impl Scheduler {
 	/// Creates a new instance of scheduler.
 	pub fn new(cores_count: usize) -> Result<IntSharedPtr<Self>, Errno> {
 		let mut tmp_stacks = Vec::new();
-		let mut ctx_switch_data = Vec::new();
 		for _ in 0..cores_count {
 			tmp_stacks.push(malloc::Alloc::new_default(TMP_STACK_SIZE)?)?;
-			ctx_switch_data.push(None)?;
 		}
 
 		let callback = | _id: u32, _code: u32, regs: &Regs, ring: u32 | {
@@ -82,17 +72,23 @@ impl Scheduler {
 
 		IntSharedPtr::new(Self {
 			tmp_stacks,
-			ctx_switch_data,
 
 			tick_callback_hook,
 			total_ticks: 0,
 
-			processes: BinaryTree::new(),
+			processes: Map::new(),
 			curr_proc: None,
 
 			priority_sum: 0,
 			priority_max: 0,
 		})
+	}
+
+	/// Returns a pointer to the top of the tmp stack for the given core `core`.
+	pub fn get_tmp_stack(&mut self, core: u32) -> *mut c_void {
+		unsafe {
+			self.tmp_stacks[core as usize].as_ptr_mut().add(TMP_STACK_SIZE) as *mut _
+		}
 	}
 
 	/// Returns the number of processes registered on the scheduler.
@@ -189,7 +185,7 @@ impl Scheduler {
 	/// Tells whether the given process `process` can run.
 	fn can_run(process: &Process, _priority_sum: usize, _priority_max: usize,
 		_processes_count: usize) -> bool {
-		if process.get_state() == process::State::Running {
+		if process.can_run() {
 			// TODO fix
 			//process.quantum_count < Self::get_quantum_count(process.get_priority(), priority_sum,
 			//	priority_max, processes_count)
@@ -202,7 +198,7 @@ impl Scheduler {
 	// TODO Clean
 	/// Returns the next process to run with its PID. If the process is changed, the quantum count
 	/// of the previous process is reset.
-	fn get_next_process(&mut self) -> Option<(Pid, IntSharedPtr<Process>)> {
+	fn get_next_process(&self) -> Option<(Pid, IntSharedPtr<Process>)> {
 		let priority_sum = self.priority_sum;
 		let priority_max = self.priority_max;
 		let processes_count = self.processes.count();
@@ -219,23 +215,20 @@ impl Scheduler {
 		})?;
 
 		// Closure iterating the tree to find an available process
-		let next = | iter: &mut BinaryTreeMutIterator<Pid, IntSharedPtr<Process>>,
-			i: &mut usize | {
+		let next = | iter: MapIterator<Pid, IntSharedPtr<Process>> | {
 			let mut proc: Option<(Pid, IntSharedPtr<Process>)> = None;
 
 			// Iterating over processes
-			while let Some((pid, process)) = iter.next() {
+			for (pid, process) in iter {
 				let runnable = {
 					let guard = process.lock();
 					Self::can_run(guard.get(), priority_sum, priority_max, processes_count)
 				};
+
+				// FIXME Potenial race condition? (checking if runnable, then unlocking and using
+				// the result of the check)
 				if runnable {
 					proc = Some((*pid, process.clone()));
-					break;
-				}
-
-				*i += 1;
-				if *i >= processes_count {
 					break;
 				}
 			}
@@ -243,21 +236,17 @@ impl Scheduler {
 			proc
 		};
 
-		let mut iter = self.processes.iter_mut();
+		let mut iter = self.processes.iter();
 		// Setting the iterator next to the current running process
 		iter.jump(&curr_pid);
 		iter.next();
 
-		// The number of processes checked so far
-		let mut i = 0;
-
 		// Running the loop to reach the end of processes list
-		let mut next_proc = next(&mut iter, &mut i);
+		let mut next_proc = next(iter);
 		// If no suitable process is found, going back to the beginning to check the processes
 		// located before the previous process
-		if next_proc.is_none() && i < processes_count {
-			iter = self.processes.iter_mut();
-			next_proc = next(&mut iter, &mut i);
+		if next_proc.is_none() {
+			next_proc = next(self.processes.iter());
 		}
 
 		let (next_pid, next_proc) = next_proc?;
@@ -293,37 +282,12 @@ impl Scheduler {
 
 		// The current core ID
 		let core_id = 0; // TODO
-		// A pointer to the temporary stack for the current core
-		let tmp_stack = unsafe {
-			scheduler.tmp_stacks[core_id].as_ptr_mut() as *mut c_void
-		};
+		// Getting the temporary stack
+		let tmp_stack = scheduler.get_tmp_stack(core_id);
 
-		if let Some(next_proc) = &mut scheduler.get_next_process() {
+		if let Some(next_proc) = scheduler.get_next_process() {
 			// Set the process as current
 			scheduler.curr_proc = Some(next_proc.clone());
-
-			let f = | data | {
-				let (syscalling, regs) = {
-					let data = unsafe {
-						&mut *(data as *mut ContextSwitchData)
-					};
-					let mut guard = data.proc.lock();
-					let proc = guard.get_mut();
-
-					proc.prepare_switch();
-					(proc.is_syscalling(), proc.regs)
-				};
-
-				// Resuming execution
-				unsafe {
-					regs.switch(!syscalling);
-				}
-			};
-
-			scheduler.ctx_switch_data[core_id] = Some(ContextSwitchData {
-				proc: scheduler.curr_proc.as_mut().unwrap().1.clone(),
-			});
-			let ctx_switch_data_ptr = &mut scheduler.ctx_switch_data[core_id] as *mut _;
 
 			drop(guard);
 			unsafe {
@@ -332,7 +296,20 @@ impl Scheduler {
 			pic::end_of_interrupt(0x0);
 
 			unsafe {
-				stack::switch(tmp_stack, f, ctx_switch_data_ptr);
+				stack::switch(Some(tmp_stack), move || {
+					let (syscalling, regs) = {
+						let mut guard = next_proc.1.lock();
+						let proc = guard.get_mut();
+
+						proc.prepare_switch();
+						(proc.is_syscalling(), proc.regs)
+					};
+
+					drop(next_proc);
+
+					// Resuming execution
+					regs.switch(!syscalling);
+				}).unwrap();
 			}
 
 			unreachable!();

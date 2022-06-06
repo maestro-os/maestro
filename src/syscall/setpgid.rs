@@ -28,15 +28,12 @@ pub fn setpgid(regs: &Regs) -> Result<i32, Errno> {
 	if pid == proc.get_pid() {
 		proc.set_pgid(pgid)?;
 	} else {
-		let mutex = {
-			if let Some(proc) = Process::get_by_pid(pid) {
-				proc
-			} else {
-				return Err(errno!(ESRCH));
-			}
-		};
+		drop(guard);
+
+		let mutex = Process::get_by_pid(pid).ok_or_else(|| errno!(ESRCH))?;
 		let mut guard = mutex.lock();
 		let proc = guard.get_mut();
+
 		proc.set_pgid(pgid)?;
 	}
 

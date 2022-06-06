@@ -88,11 +88,10 @@ impl FCache {
 	/// path resolution.
 	fn get_file_from_path_(&mut self, path: &Path, uid: Uid, gid: Gid, follow_links: bool,
 		follows_count: usize) -> Result<SharedPtr<File>, Errno> {
-		let mut path = Path::root().concat(path)?;
-		path.reduce()?;
+		let path = Path::root().concat(path)?;
 
 		// Getting the path's deepest mountpoint
-		let mountpoint_mutex = mountpoint::get_deepest(&path).ok_or(errno!(ENOENT))?;
+		let mountpoint_mutex = mountpoint::get_deepest(&path).ok_or_else(|| errno!(ENOENT))?;
 		let mut mountpoint_guard = mountpoint_mutex.lock();
 		let mountpoint = mountpoint_guard.get_mut();
 
@@ -109,14 +108,21 @@ impl FCache {
 
 		// The root inode
 		let mut inode = fs.get_root_inode(io)?;
+		let mut file = fs.load_file(io, inode, String::new())?;
 		// If the path is empty, return the root
 		if inner_path.is_empty() {
-			return SharedPtr::new(fs.load_file(io, inode, String::new())?);
+			return SharedPtr::new(file);
+		}
+		// Checking permissions
+		if !file.can_read(uid, gid) {
+			return Err(errno!(EPERM));
 		}
 
 		for i in 0..inner_path.get_elements_count() {
+			inode = fs.get_inode(io, Some(inode), &inner_path[i])?;
+
 			// Checking permissions
-			let file = fs.load_file(io, inode, inner_path[i].failable_clone()?)?;
+			file = fs.load_file(io, inode, inner_path[i].failable_clone()?)?;
 			if i < inner_path.get_elements_count() - 1 && !file.can_read(uid, gid) {
 				return Err(errno!(EPERM));
 			}
@@ -132,23 +138,15 @@ impl FCache {
 					parent_path.pop();
 
 					let link_path = Path::from_str(link_path.as_bytes(), false)?;
-					let mut new_path = parent_path.concat(&link_path)?;
-					new_path.reduce()?;
+					let new_path = parent_path.concat(&link_path)?;
 
-					drop(io);
 					drop(io_guard);
-					drop(mountpoint);
 					drop(mountpoint_guard);
 					return self.get_file_from_path_(&new_path, uid, gid, follow_links,
 						follows_count + 1);
 				}
 			}
-
-			inode = fs.get_inode(io, Some(inode), &inner_path[i])?;
 		}
-
-		let name = &inner_path[inner_path.get_elements_count() - 1];
-		let mut file = fs.load_file(io, inode, name.failable_clone()?)?;
 
 		let mut parent_path = path.failable_clone()?;
 		parent_path.pop();
@@ -189,7 +187,8 @@ impl FCache {
 		}
 
 		// Getting the path's deepest mountpoint
-		let mountpoint_mutex = parent.get_location().get_mountpoint().ok_or(errno!(ENOENT))?;
+		let mountpoint_mutex = parent.get_location().get_mountpoint()
+			.ok_or_else(|| errno!(ENOENT))?;
 		let mut mountpoint_guard = mountpoint_mutex.lock();
 		let mountpoint = mountpoint_guard.get_mut();
 
@@ -207,12 +206,9 @@ impl FCache {
 		if follow_links {
 			if let FileContent::Link(link_path) = file.get_file_content() {
 				let link_path = Path::from_str(link_path.as_bytes(), false)?;
-				let mut new_path = parent.get_path()?.concat(&link_path)?;
-				new_path.reduce()?;
+				let new_path = parent.get_path()?.concat(&link_path)?;
 
-				drop(io);
 				drop(io_guard);
-				drop(mountpoint);
 				drop(mountpoint_guard);
 				return self.get_file_from_path_(&new_path, uid, gid, follow_links, 1);
 			}
@@ -242,7 +238,8 @@ impl FCache {
 		}
 
 		// Getting the mountpoint
-		let mountpoint_mutex = parent.get_location().get_mountpoint().ok_or(errno!(ENOENT))?;
+		let mountpoint_mutex = parent.get_location().get_mountpoint()
+			.ok_or_else(|| errno!(ENOENT))?;
 		let mut mountpoint_guard = mountpoint_mutex.lock();
 		let mountpoint = mountpoint_guard.get_mut();
 
@@ -287,7 +284,7 @@ impl FCache {
 		}
 
 		// Getting the mountpoint
-		let mountpoint_mutex = file.get_location().get_mountpoint().ok_or(errno!(ENOENT))?;
+		let mountpoint_mutex = file.get_location().get_mountpoint().ok_or_else(|| errno!(ENOENT))?;
 		let mut mountpoint_guard = mountpoint_mutex.lock();
 		let mountpoint = mountpoint_guard.get_mut();
 

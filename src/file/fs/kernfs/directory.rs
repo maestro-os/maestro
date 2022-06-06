@@ -6,7 +6,7 @@ use crate::file::Gid;
 use crate::file::INode;
 use crate::file::Mode;
 use crate::file::Uid;
-use crate::time::Timestamp;
+use crate::time::unit::Timestamp;
 use crate::util::IO;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;

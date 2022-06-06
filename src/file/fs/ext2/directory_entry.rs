@@ -7,7 +7,6 @@ use crate::errno::Errno;
 use crate::file::FileType;
 use crate::memory::malloc;
 use crate::util::boxed::Box;
-use crate::util::container::string::String;
 use super::Superblock;
 
 /// Directory entry type indicator: Unknown
@@ -66,9 +65,9 @@ impl DirectoryEntry {
 	/// `name` is the entry's name.
 	/// If the total size is not large enough to hold the entry, the behaviour is undefined.
 	pub fn new(superblock: &Superblock, inode: u32, total_size: u16, file_type: FileType,
-		name: &String) -> Result<Box<Self>, Errno> {
+		name: &[u8]) -> Result<Box<Self>, Errno> {
 		debug_assert!(inode >= 1);
-		debug_assert!(total_size as usize >= 8 + name.as_bytes().len());
+		debug_assert!(total_size as usize >= 8 + name.len());
 
 		let mut entry = Self::new_free(total_size)?;
 		entry.inode = inode;
@@ -82,7 +81,7 @@ impl DirectoryEntry {
 	pub unsafe fn from(slice: &[u8]) -> Result<Box<Self>, Errno> {
 		let ptr = malloc::alloc(slice.len())? as *mut u8;
 		let alloc_slice = slice::from_raw_parts_mut(ptr, slice.len());
-		alloc_slice.copy_from_slice(&slice);
+		alloc_slice.copy_from_slice(slice);
 
 		Ok(Box::from_raw(alloc_slice as *mut [u8] as *mut [()] as *mut Self))
 	}
@@ -122,10 +121,9 @@ impl DirectoryEntry {
 
 	/// Sets the name of the entry.
 	/// If the length of the entry is shorted than the required space, the name shall be truncated.
-	pub fn set_name(&mut self, superblock: &Superblock, name: &String) {
-		let slice = name.as_bytes();
-		let len = min(slice.len(), self.total_size as usize - 8);
-		self.name[..len].copy_from_slice(&slice[..len]);
+	pub fn set_name(&mut self, superblock: &Superblock, name: &[u8]) {
+		let len = min(name.len(), self.total_size as usize - 8);
+		self.name[..len].copy_from_slice(&name[..len]);
 
 		self.name_length_lo = (len & 0xff) as u8;
 		if superblock.required_features & super::REQUIRED_FEATURE_DIRECTORY_TYPE == 0 {

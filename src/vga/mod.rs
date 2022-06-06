@@ -25,6 +25,11 @@ pub const HEIGHT: Pos = 25;
 /// The size in bytes of the VGA text buffer.
 pub const BUFFER_SIZE: u32 = (WIDTH * HEIGHT * core::mem::size_of::<i16>() as Pos) as u32;
 
+/// Width of the screen in pixels under the VGA text mode.
+pub const PIXEL_WIDTH: u32 = 640;
+/// Height of the screen in pixels under the VGA text mode.
+pub const PIXEL_HEIGHT: u32 = 480;
+
 /// VGA text mode color: Black
 pub const COLOR_BLACK: Color			= 0x0;
 /// VGA text mode color: Blue

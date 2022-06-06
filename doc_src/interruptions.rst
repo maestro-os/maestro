@@ -9,6 +9,8 @@ The CPU usage is measured with the amount of time spent halting.
 
 The ``int`` instruction can be used to trigger a software interruption. This is mainly used to make system calls.
 
+
+
 Interrupt Vector
 ================
 
@@ -114,15 +116,18 @@ The effect is to reset the CPU and perform the boot process again, which must ne
 
 
 
-x86 IRQ
--------
+Mutex considerations
+--------------------
 
-TODO
+When an interruption is being handled, the currently running code is paused until the interrupt handler returns.
+However, if a mutex to a sensitive resource is locked, then an interrupt is received, if this interrupt also tries to use the same resource, the kernel will be deadlocked since the mutex cannot be unlocked until the interrupt returns.
+
+To counteract this problem, mutexes implement a feature allowing to disable interrupts for the time during which the sensitive resource is accessed. The interrupt state is then restored when the mutex is unlocked.
 
 
 
-System calls
-============
+x86 System calls
+================
 
 A system call allows processes to communicate with the kernel. It can be triggered by using the interrupt ``0x80`` under x86:
 

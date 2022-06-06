@@ -1,6 +1,6 @@
 //! This module monitors the resource usage of a process.
 
-use crate::time::Timeval;
+use crate::time::unit::Timeval;
 
 /// Structure storing the usage of each resources by a process.
 #[derive(Clone, Default)]

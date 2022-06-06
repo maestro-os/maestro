@@ -3,9 +3,10 @@
 //! mounted into subdirectories.
 
 pub mod fcache;
-pub mod file_descriptor;
+pub mod fd;
 pub mod fs;
 pub mod mountpoint;
+pub mod open_file;
 pub mod path;
 pub mod pipe;
 pub mod socket;
@@ -19,12 +20,14 @@ use crate::errno;
 use crate::file::fcache::FCache;
 use crate::file::mountpoint::MountPoint;
 use crate::limits;
-use crate::time::Timestamp;
+use crate::process::mem_space::MemSpace;
+use crate::time::unit::Timestamp;
 use crate::time;
 use crate::util::FailableClone;
 use crate::util::IO;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
+use crate::util::ptr::IntSharedPtr;
 use crate::util::ptr::SharedPtr;
 use path::Path;
 
@@ -170,6 +173,7 @@ impl FileType {
 }
 
 /// Structure representing the location of a file on a disk.
+#[derive(Debug)]
 pub struct FileLocation {
 	/// The path of the mountpoint.
 	mountpoint_path: Path, // TODO Replace by an allocated ID to save memory
@@ -208,6 +212,7 @@ impl FileLocation {
 }
 
 /// Structure representing a directory entry.
+#[derive(Debug)]
 pub struct DirEntry {
 	/// The entry's inode.
 	pub inode: INode,
@@ -218,6 +223,7 @@ pub struct DirEntry {
 }
 
 /// Enumeration of all possible file contents for each file types.
+#[derive(Debug)]
 pub enum FileContent {
 	/// The file is a regular file. No data.
 	Regular,
@@ -259,13 +265,18 @@ impl FileContent {
 }
 
 /// Structure representing a file.
+#[derive(Debug)]
 pub struct File {
 	/// The name of the file.
 	name: String,
-
 	/// The path of the file's parent.
 	parent_path: Path,
 
+	/// The number of hard links associated with the file.
+	hard_links_count: u16,
+
+	/// The number of blocks allocated on the disk for the file.
+	blocks_count: u64,
 	/// The size of the file in bytes.
 	size: u64,
 
@@ -305,6 +316,9 @@ impl File {
 			name,
 			parent_path: Path::root(),
 
+			hard_links_count: 1,
+
+			blocks_count: 0,
 			size: 0,
 
 			uid,
@@ -344,24 +358,9 @@ impl File {
 		self.parent_path = parent_path;
 	}
 
-	/// Sets the file's size.
-	pub fn set_size(&mut self, size: u64) {
-		self.size = size;
-	}
-
 	/// Returns the type of the file.
 	pub fn get_file_type(&self) -> FileType {
 		self.content.get_file_type()
-	}
-
-	/// Returns the owner user ID.
-	pub fn get_uid(&self) -> Uid {
-		self.uid
-	}
-
-	/// Returns the owner group ID.
-	pub fn get_gid(&self) -> Gid {
-		self.gid
 	}
 
 	/// Returns the file's mode.
@@ -425,6 +424,41 @@ impl File {
 	/// Sets the location on which the file is stored.
 	pub fn set_location(&mut self, location: FileLocation) {
 		self.location = location;
+	}
+
+	/// Returns the number of hard links.
+	pub fn get_hard_links_count(&self) -> u16 {
+		self.hard_links_count
+	}
+
+	/// Sets the number of hard links.
+	pub fn set_hard_links_count(&mut self, count: u16) {
+		self.hard_links_count = count;
+	}
+
+	/// Returns the number of blocks allocated for the file.
+	pub fn get_blocks_count(&self) -> u64 {
+		self.blocks_count
+	}
+
+	/// Sets the number of blocks allocated for the file.
+	pub fn set_blocks_count(&mut self, blocks_count: u64) {
+		self.blocks_count = blocks_count;
+	}
+
+	/// Sets the file's size.
+	pub fn set_size(&mut self, size: u64) {
+		self.size = size;
+	}
+
+	/// Returns the owner user ID.
+	pub fn get_uid(&self) -> Uid {
+		self.uid
+	}
+
+	/// Returns the owner group ID.
+	pub fn get_gid(&self) -> Gid {
+		self.gid
 	}
 
 	/// Returns the timestamp of the last modification of the file's metadata.
@@ -517,15 +551,42 @@ impl File {
 		self.content = content;
 	}
 
+	/// Tells whether the end of the file has been reached with the offset `off`.
+	pub fn eof(&self, off: u64) -> bool {
+		match &self.content {
+			FileContent::Regular => off >= self.size,
+
+			FileContent::Directory(_) => true,
+			FileContent::Link(_) => true,
+
+			FileContent::Fifo => {
+				// TODO
+				todo!();
+			},
+
+			FileContent::Socket => {
+				// TODO
+				todo!();
+			},
+
+			FileContent::BlockDevice { .. } | FileContent::CharDevice { .. } => false,
+		}
+	}
+
 	/// Performs an ioctl operation on the file.
-	pub fn ioctl(&mut self, request: u32, argp: *const c_void) -> Result<u32, Errno> {
+	/// `mem_space` is the memory space on which pointers are to be dereferenced.
+	/// `request` is the ID of the request to perform.
+	/// `argp` is a pointer to the argument.
+	pub fn ioctl(&mut self, mem_space: IntSharedPtr<MemSpace>, request: u32, argp: *const c_void)
+		-> Result<u32, Errno> {
 		if let FileContent::CharDevice {
 			major,
 			minor,
 		} = self.content {
-			let dev = device::get_device(DeviceType::Char, major, minor).ok_or(errno!(ENODEV))?;
+			let dev = device::get_device(DeviceType::Char, major, minor)
+				.ok_or_else(|| errno!(ENODEV))?;
 			let mut guard = dev.lock();
-			guard.get_mut().get_handle().ioctl(request, argp)
+			guard.get_mut().get_handle().ioctl(mem_space, request, argp)
 		} else {
 			Err(errno!(ENOTTY))
 		}
@@ -533,7 +594,7 @@ impl File {
 
 	/// Synchronizes the file with the device.
 	pub fn sync(&self) -> Result<(), Errno> {
-		let mountpoint_mutex = self.location.get_mountpoint().ok_or(errno!(EIO))?;
+		let mountpoint_mutex = self.location.get_mountpoint().ok_or_else(|| errno!(EIO))?;
 		let mut mountpoint_guard = mountpoint_mutex.lock();
 		let mountpoint = mountpoint_guard.get_mut();
 
@@ -554,7 +615,7 @@ impl IO for File {
 	fn read(&mut self, off: u64, buff: &mut [u8]) -> Result<u64, Errno> {
 		match &self.content {
 			FileContent::Regular => {
-				let mountpoint_mutex = self.location.get_mountpoint().ok_or(errno!(EIO))?;
+				let mountpoint_mutex = self.location.get_mountpoint().ok_or_else(|| errno!(EIO))?;
 				let mut mountpoint_guard = mountpoint_mutex.lock();
 				let mountpoint = mountpoint_guard.get_mut();
 
@@ -591,7 +652,7 @@ impl IO for File {
 					},
 
 					_ => unreachable!(),
-				}.ok_or(errno!(ENODEV))?;
+				}.ok_or_else(|| errno!(ENODEV))?;
 
 				let mut guard = dev.lock();
 				guard.get_mut().get_handle().read(off as _, buff)
@@ -602,7 +663,7 @@ impl IO for File {
 	fn write(&mut self, off: u64, buff: &[u8]) -> Result<u64, Errno> {
 		match &self.content {
 			FileContent::Regular => {
-				let mountpoint_mutex = self.location.get_mountpoint().ok_or(errno!(EIO))?;
+				let mountpoint_mutex = self.location.get_mountpoint().ok_or_else(|| errno!(EIO))?;
 				let mut mountpoint_guard = mountpoint_mutex.lock();
 				let mountpoint = mountpoint_guard.get_mut();
 
@@ -642,7 +703,7 @@ impl IO for File {
 					},
 
 					_ => unreachable!(),
-				}.ok_or(errno!(ENODEV))?;
+				}.ok_or_else(|| errno!(ENODEV))?;
 
 				let mut guard = dev.lock();
 				guard.get_mut().get_handle().write(off as _, buff)
@@ -660,6 +721,7 @@ impl Drop for File {
 	}
 }
 
+// FIXME Unused: remove?
 /// Resolves symbolic links and returns the final path. If too many links are to be resolved, the
 /// function returns an error.
 /// `file` is the starting file. If not a link, the function returns the path to this file.
@@ -683,8 +745,7 @@ pub fn resolve_links(file: SharedPtr<File>, uid: Uid, gid: Gid) -> Result<Path, 
 		if let FileContent::Link(link_target) = f.get_file_content() {
 			// Resolving the link
 			let link_path = Path::from_str(link_target.as_bytes(), false)?;
-			let mut path = (parent_path.failable_clone()? + link_path)?;
-			path.reduce()?;
+			let path = (parent_path.failable_clone()? + link_path)?;
 			drop(file_guard);
 
 			// Getting the file from path
@@ -694,13 +755,8 @@ pub fn resolve_links(file: SharedPtr<File>, uid: Uid, gid: Gid) -> Result<Path, 
 
 			match files_cache.get_file_from_path(&path, uid, gid, false) {
 				Ok(next_file) => file = next_file,
-				Err(e) => return {
-					if e == errno!(ENOENT) {
-						Ok(path)
-					} else {
-						Err(e)
-					}
-				},
+				Err(e) if e == errno!(ENOENT) => return Ok(path),
+				Err(e) => return Err(e),
 			}
 		} else {
 			break;
@@ -729,7 +785,7 @@ pub fn init(root_device_type: DeviceType, root_major: u32, root_minor: u32) -> R
 
 	// The root device
 	let root_dev = device::get_device(root_device_type, root_major, root_minor)
-		.ok_or(errno!(ENODEV))?;
+		.ok_or_else(|| errno!(ENODEV))?;
 
 	// Creating the files cache
 	let cache = FCache::new(root_dev)?;

@@ -1,6 +1,8 @@
 //! A process is a task running on the kernel. A multitasking system allows several processes to
 //! run at the same time by sharing the CPU resources using a scheduler.
 
+// TODO Maintain the open file descriptors count
+
 pub mod exec;
 pub mod iovec;
 pub mod mem_space;
@@ -14,6 +16,7 @@ pub mod signal;
 pub mod tss;
 pub mod user_desc;
 
+use core::cmp::max;
 use core::ffi::c_void;
 use core::mem::ManuallyDrop;
 use core::mem::MaybeUninit;
@@ -28,20 +31,28 @@ use crate::file::Gid;
 use crate::file::ROOT_UID;
 use crate::file::Uid;
 use crate::file::fcache;
-use crate::file::file_descriptor::FDTarget;
-use crate::file::file_descriptor::FileDescriptor;
-use crate::file::file_descriptor;
+use crate::file::fd::FD_CLOEXEC;
+use crate::file::fd::FileDescriptor;
+use crate::file::fd::NewFDConstraint;
+use crate::file::open_file::FDTarget;
+use crate::file::open_file::OpenFile;
+use crate::file::open_file;
 use crate::file::path::Path;
 use crate::file;
 use crate::gdt::ldt::LDT;
 use crate::gdt;
 use crate::limits;
+use crate::process::open_file::O_CLOEXEC;
+use crate::tty::TTYHandle;
+use crate::tty;
 use crate::util::FailableClone;
 use crate::util::container::bitfield::Bitfield;
 use crate::util::container::vec::Vec;
 use crate::util::lock::*;
 use crate::util::ptr::IntSharedPtr;
 use crate::util::ptr::IntWeakPtr;
+use crate::util::ptr::SharedPtr;
+use crate::vec;
 use mem_space::MemSpace;
 use pid::PIDManager;
 use pid::Pid;
@@ -51,7 +62,6 @@ use scheduler::Scheduler;
 use signal::Signal;
 use signal::SignalAction;
 use signal::SignalHandler;
-use signal::SignalType;
 
 /// The opcode of the `hlt` instruction.
 const HLT_INSTRUCTION: u8 = 0xf4;
@@ -81,8 +91,11 @@ const STDERR_FILENO: u32 = 2;
 /// The number of TLS entries per process.
 pub const TLS_ENTRIES_COUNT: usize = 3;
 
+/// The size of the redzone in userspace, in bytes.
+const REDZONE_SIZE: usize = 128;
+
 /// An enumeration containing possible states for a process.
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum State {
 	/// The process is running or waiting to run.
 	Running,
@@ -99,20 +112,43 @@ type ExitStatus = u8;
 
 /// Structure representing options to be passed to the fork function.
 pub struct ForkOptions {
-	/// If true, the parent and child process both share the same address space.
-	pub vm: bool,
+	/// If true, the parent and child processes both share the same address space.
+	pub share_memory: bool,
+	/// If true, the parent and child processes both share the same file descriptors table.
+	pub share_fd: bool,
+	/// If true, the parent and child processes both share the same signal handlers table.
+	pub share_sighand: bool,
 
-	// TODO
+	/// If true, the parent is stopped until the child process exits or executes a program.
+	pub vfork: bool,
 }
 
 impl Default for ForkOptions {
 	fn default() -> Self {
 		Self {
-			vm: false,
+			share_memory: false,
+			share_fd: false,
+			share_sighand: false,
 
-			// TODO
+			vfork: false,
 		}
 	}
+}
+
+/// The vfork operation is similar to the fork operation except the parent process isn't executed
+/// until the child process exits or executes a program.
+/// The reason for this is to prevent useless copies of memory pages when the child process is
+/// created only to execute a program.
+/// It implies that the child process shares the same memory space as the parent.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum VForkState {
+	/// The process is not in vfork state.
+	None,
+
+	/// The process is the parent waiting for the child to terminate.
+	Waiting,
+	/// The process is the child the parent waits for.
+	Executing,
 }
 
 /// The Process Control Block (PCB). This structure stores all the informations about a process.
@@ -123,6 +159,9 @@ pub struct Process {
 	pgid: Pid,
 	/// The thread ID of the process.
 	tid: Pid,
+
+	/// The process's current TTY.
+	tty: TTYHandle,
 
 	/// The real ID of the process's user owner.
 	uid: Uid,
@@ -139,6 +178,9 @@ pub struct Process {
 
 	/// The current state of the process.
 	state: State,
+	/// The current vfork state of the process (see documentation of `VForkState`).
+	vfork_state: VForkState,
+
 	/// The priority of the process.
 	priority: usize,
 	/// The number of quantum run during the cycle.
@@ -157,7 +199,7 @@ pub struct Process {
 	syscalling: bool,
 
 	/// Tells whether the process is handling a signal.
-	handled_signal: Option<SignalType>,
+	handled_signal: Option<Signal>,
 	/// The saved state of registers, used when handling a signal.
 	saved_regs: Regs,
 	/// Tells whether the process has information that can be retrieved by wait/waitpid.
@@ -172,15 +214,15 @@ pub struct Process {
 
 	/// The current working directory.
 	cwd: Path,
-	/// The list of open file descriptors.
-	file_descriptors: Vec<FileDescriptor>,
+	/// The list of open file descriptors with their respective ID.
+	file_descriptors: Option<SharedPtr<Vec<FileDescriptor>>>,
 
 	/// A bitfield storing the set of blocked signals.
 	sigmask: Bitfield,
 	/// A bitfield storing the set of pending signals.
 	sigpending: Bitfield,
 	/// The list of signal handlers.
-	signal_handlers: [SignalHandler; signal::SIGNALS_COUNT + 1],
+	signal_handlers: SharedPtr<[SignalHandler; signal::SIGNALS_COUNT]>,
 
 	/// TLS entries.
 	tls_entries: [gdt::Entry; TLS_ENTRIES_COUNT],
@@ -236,19 +278,19 @@ pub fn init() -> Result<(), Errno> {
 				// x87 Floating-Point Exception
 				// SIMD Floating-Point Exception
 				0x00 | 0x10 | 0x13 => {
-					curr_proc.kill(Signal::new(signal::SIGFPE).unwrap(), true);
+					curr_proc.kill(&Signal::SIGFPE, true);
 					curr_proc.signal_next();
 				},
 
 				// Breakpoint
 				0x03 => {
-					curr_proc.kill(Signal::new(signal::SIGTRAP).unwrap(), true);
+					curr_proc.kill(&Signal::SIGTRAP, true);
 					curr_proc.signal_next();
 				},
 
 				// Invalid Opcode
 				0x06 => {
-					curr_proc.kill(Signal::new(signal::SIGILL).unwrap(), true);
+					curr_proc.kill(&Signal::SIGILL, true);
 					curr_proc.signal_next();
 				},
 
@@ -261,14 +303,14 @@ pub fn init() -> Result<(), Errno> {
 					if inst_prefix == HLT_INSTRUCTION {
 						curr_proc.exit(regs.eax);
 					} else {
-						curr_proc.kill(Signal::new(signal::SIGSEGV).unwrap(), true);
+						curr_proc.kill(&Signal::SIGSEGV, true);
 						curr_proc.signal_next();
 					}
 				},
 
 				// Alignment Check
 				0x11 => {
-					curr_proc.kill(Signal::new(signal::SIGBUS).unwrap(), true);
+					curr_proc.kill(&Signal::SIGBUS, true);
 					curr_proc.signal_next();
 				},
 
@@ -311,7 +353,7 @@ pub fn init() -> Result<(), Errno> {
 				if ring < 3 {
 					return InterruptResult::new(true, InterruptResultAction::Panic);
 				} else {
-					curr_proc.kill(Signal::new(signal::SIGSEGV).unwrap(), true);
+					curr_proc.kill(&Signal::SIGSEGV, true);
 					curr_proc.signal_next();
 				}
 			}
@@ -379,10 +421,14 @@ impl Process {
 	/// state `Running` by default.
 	/// The created process has user root.
 	pub fn new() -> Result<IntSharedPtr<Self>, Errno> {
+		// TODO Prevent calling twice
+
 		let mut process = Self {
 			pid: pid::INIT_PID,
 			pgid: pid::INIT_PID,
 			tid: pid::INIT_PID,
+
+			tty: tty::get(None).unwrap(), // Initialization with the init TTY
 
 			uid: 0,
 			gid: 0,
@@ -393,6 +439,8 @@ impl Process {
 			umask: DEFAULT_UMASK,
 
 			state: State::Running,
+			vfork_state: VForkState::None,
+
 			priority: 0,
 			quantum_count: 0,
 
@@ -412,11 +460,11 @@ impl Process {
 			kernel_stack: None,
 
 			cwd: Path::root(),
-			file_descriptors: Vec::new(),
+			file_descriptors: Some(SharedPtr::new(Vec::new())?),
 
-			sigmask: Bitfield::new(signal::SIGNALS_COUNT + 1)?,
-			sigpending: Bitfield::new(signal::SIGNALS_COUNT + 1)?,
-			signal_handlers: [SignalHandler::Default; signal::SIGNALS_COUNT + 1],
+			sigmask: Bitfield::new(signal::SIGNALS_COUNT)?,
+			sigpending: Bitfield::new(signal::SIGNALS_COUNT)?,
+			signal_handlers: SharedPtr::new([SignalHandler::Default; signal::SIGNALS_COUNT])?,
 
 			tls_entries: [gdt::Entry::default(); TLS_ENTRIES_COUNT],
 			ldt: None,
@@ -438,13 +486,12 @@ impl Process {
 
 			let tty_path = Path::from_str(TTY_DEVICE_PATH.as_bytes(), false).unwrap();
 			let tty_file = files_cache.as_mut().unwrap()
-				.get_file_from_path(&tty_path, process.uid, process.gid, true).unwrap();
-			let stdin_fd = process.create_fd(file_descriptor::O_RDWR, FDTarget::File(tty_file))
-				.unwrap();
+				.get_file_from_path(&tty_path, process.uid, process.gid, true)?;
+			let stdin_fd = process.create_fd(open_file::O_RDWR, FDTarget::File(tty_file))?;
 			assert_eq!(stdin_fd.get_id(), STDIN_FILENO);
 
-			process.duplicate_fd(STDIN_FILENO, Some(STDOUT_FILENO)).unwrap();
-			process.duplicate_fd(STDIN_FILENO, Some(STDERR_FILENO)).unwrap();
+			process.duplicate_fd(STDIN_FILENO, NewFDConstraint::Fixed(STDOUT_FILENO), false)?;
+			process.duplicate_fd(STDIN_FILENO, NewFDConstraint::Fixed(STDERR_FILENO), false)?;
 		}
 
 		let mut guard = unsafe {
@@ -485,33 +532,36 @@ impl Process {
 
 	/// Sets the process's group ID to the given value `pgid`.
 	pub fn set_pgid(&mut self, pgid: Pid) -> Result<(), Errno> {
+		// Removing the process from its old group
 		if self.is_in_group() {
 			let mutex = Process::get_by_pid(self.pgid).unwrap();
 			let mut guard = mutex.lock();
 			let old_group_process = guard.get_mut();
-			let i = old_group_process.process_group.binary_search(&self.pid).unwrap();
-			old_group_process.process_group.remove(i);
+
+			if let Ok(i) = old_group_process.process_group.binary_search(&self.pid) {
+				old_group_process.process_group.remove(i);
+			}
 		}
 
-		self.pgid = {
-			if pgid == 0 {
-				self.pid
-			} else {
-				pgid
-			}
+		self.pgid = if pgid == 0 {
+			self.pid
+		} else {
+			pgid
 		};
 
-		if pgid != self.pid {
-			if let Some(mutex) = Process::get_by_pid(pgid) {
-				let mut guard = mutex.lock();
-				let new_group_process = guard.get_mut();
-				let i = new_group_process.process_group.binary_search(&self.pid).unwrap_err();
-				new_group_process.process_group.insert(i, self.pid)
-			} else {
-				Err(errno!(ESRCH))
-			}
+		if pgid == self.pid {
+			return Ok(());
+		}
+
+		// Adding the process to the new group
+		if let Some(mutex) = Process::get_by_pid(pgid) {
+			let mut guard = mutex.lock();
+			let new_group_process = guard.get_mut();
+
+			let i = new_group_process.process_group.binary_search(&self.pid).unwrap_err();
+			new_group_process.process_group.insert(i, self.pid)
 		} else {
-			Ok(())
+			Err(errno!(ESRCH))
 		}
 	}
 
@@ -530,6 +580,11 @@ impl Process {
 		} else {
 			self.get_pid()
 		}
+	}
+
+	/// Returns the TTY associated with the process.
+	pub fn get_tty(&self) -> TTYHandle {
+		self.tty.clone()
 	}
 
 	/// Returns the process's real user owner ID.
@@ -588,23 +643,47 @@ impl Process {
 
 	/// Sets the process's state to `new_state`.
 	pub fn set_state(&mut self, new_state: State) {
-		if self.state != State::Zombie {
-			self.state = new_state;
+		if self.state == State::Zombie {
+			return;
 		}
+
+		self.state = new_state;
 
 		if self.state == State::Zombie {
 			if self.is_init() {
 				kernel_panic!("Terminated init process!");
 			}
 
-			// TODO Attach every child to the init process
-
-			// Removing the memory space to save memory
+			// Removing the memory space, file descriptors table and signals table to save memory
 			// TODO Handle the case where the memory space is bound
 			// TODO self.mem_space = None;
+			self.file_descriptors = None;
+			// TODO Remove signal handlers
+
+			// Attaching every child to the init process
+			let init_proc_mutex = Process::get_by_pid(pid::INIT_PID).unwrap();
+			let mut init_proc_guard = init_proc_mutex.lock();
+			let init_proc = init_proc_guard.get_mut();
+			for child_pid in self.children.iter() {
+				// Check just in case
+				if *child_pid == self.pid {
+					continue;
+				}
+
+				if let Some(child_mutex) = Process::get_by_pid(*child_pid) {
+					child_mutex.lock().get_mut().parent = Some(init_proc_mutex.new_weak());
+					oom::wrap(|| init_proc.add_child(*child_pid));
+				}
+			}
 
 			self.waitable = true;
 		}
+	}
+
+	/// Tells whether the scheduler can run the process.
+	pub fn can_run(&self) -> bool {
+		self.get_state() == State::Running
+			&& self.vfork_state != VForkState::Waiting
 	}
 
 	/// Tells whether the current process has informations to be retrieved by the `waitpid` system
@@ -616,9 +695,9 @@ impl Process {
 
 	/// Sets the process waitable with the given signal type `type_`.
 	#[inline(always)]
-	pub fn set_waitable(&mut self, type_: u8) {
+	pub fn set_waitable(&mut self, sig_type: u8) {
 		self.waitable = true;
-		self.termsig = type_;
+		self.termsig = sig_type;
 	}
 
 	/// Clears the waitable flag.
@@ -630,7 +709,7 @@ impl Process {
 	/// Wakes up the process. The function sends a signal SIGCHLD to the process and, if it was in
 	/// Sleeping state, changes it to Running.
 	pub fn wakeup(&mut self) {
-		self.kill(signal::Signal::new(signal::SIGCHLD).unwrap(), false);
+		self.kill(&Signal::SIGCHLD, false);
 
 		if self.state == State::Sleeping {
 			self.state = State::Running;
@@ -664,12 +743,11 @@ impl Process {
 
 	/// Adds the process with the given PID `pid` as child to the process.
 	pub fn add_child(&mut self, pid: Pid) -> Result<(), Errno> {
-		let r = self.children.binary_search(&pid);
-		let i = if let Ok(i) = r {
-			i
-		} else {
-			r.unwrap_err()
+		let i = match self.children.binary_search(&pid) {
+			Ok(i) => i,
+			Err(i) => i,
 		};
+
 		self.children.insert(i, pid)
 	}
 
@@ -690,6 +768,16 @@ impl Process {
 	/// Sets the new memory space for the process, dropping the previous if any.
 	#[inline(always)]
 	pub fn set_mem_space(&mut self, mem_space: Option<IntSharedPtr<MemSpace>>) {
+		// TODO Handle multicore
+		// If the process is currently running, switch the memory space
+		if self.state == State::Running {
+			if let Some(mem_space) = &mem_space {
+				mem_space.lock().get().bind();
+			} else {
+				kernel_panic!("Dropping the memory space of a running process!");
+			}
+		}
+
 		self.mem_space = mem_space;
 	}
 
@@ -703,13 +791,8 @@ impl Process {
 	/// If the given path is relative, it is made absolute by concatenated with `/`.
 	#[inline(always)]
 	pub fn set_cwd(&mut self, path: Path) -> Result<(), Errno> {
-		if !path.is_absolute() {
-			self.cwd = Path::root().concat(&path)?;
-			self.cwd.reduce()
-		} else {
-			self.cwd = path;
-			Ok(())
-		}
+		Path::root().concat(&path)?;
+		Ok(())
 	}
 
 	/// Returns the process's saved state registers.
@@ -720,8 +803,18 @@ impl Process {
 
 	/// Sets the process's saved state registers.
 	#[inline(always)]
-	pub fn set_regs(&mut self, regs: &Regs) {
-		self.regs = *regs;
+	pub fn set_regs(&mut self, regs: Regs) {
+		self.regs = regs;
+	}
+
+	/// Updates the TSS on the current core for the process.
+	pub fn update_tss(&self) {
+		// Filling the TSS
+		let tss = tss::get();
+		tss.ss0 = gdt::KERNEL_DS as _;
+		tss.ss = gdt::USER_DS as _;
+		// Setting the kernel stack pointer
+		tss.esp0 = self.kernel_stack.unwrap() as _;
 	}
 
 	/// Prepares for context switching to the process.
@@ -732,12 +825,8 @@ impl Process {
 		// Incrementing the number of ticks the process had
 		self.quantum_count += 1;
 
-		// Filling the TSS
-		let tss = tss::get();
-		tss.ss0 = gdt::KERNEL_DS as _;
-		tss.ss = gdt::USER_DS as _;
-		// Setting the kernel stack pointer
-		tss.esp0 = self.kernel_stack.unwrap() as _;
+		// Updates teh TSS for the process
+		self.update_tss();
 
 		// Binding the memory space
 		self.get_mem_space().unwrap().lock().get().bind();
@@ -752,8 +841,10 @@ impl Process {
 			ldt.load();
 		}
 
-		// If a signal is pending on the process, execute it
-		self.signal_next();
+		if !self.is_syscalling() {
+			// If a signal is pending on the process, execute it
+			self.signal_next();
+		}
 	}
 
 	/// Initializes the process to run without a program.
@@ -761,17 +852,19 @@ impl Process {
 	pub fn init_dummy(&mut self, pc: *const c_void) -> Result<(), Errno> {
 		// Creating the memory space and the stacks
 		let mut mem_space = MemSpace::new()?;
-		let kernel_stack = mem_space.map_stack(None, KERNEL_STACK_SIZE, KERNEL_STACK_FLAGS)?;
-		let user_stack = mem_space.map_stack(None, USER_STACK_SIZE, USER_STACK_FLAGS)?;
+		let kernel_stack = mem_space.map_stack(KERNEL_STACK_SIZE, KERNEL_STACK_FLAGS)?;
+		let user_stack = mem_space.map_stack(USER_STACK_SIZE, USER_STACK_FLAGS)?;
 
 		self.mem_space = Some(IntSharedPtr::new(mem_space)?);
 		self.kernel_stack = Some(kernel_stack);
 		self.user_stack = Some(user_stack);
 
 		// Setting the registers' initial state
-		let mut regs = Regs::default();
-		regs.esp = user_stack as _;
-		regs.eip = pc as _;
+		let regs = Regs {
+			esp: user_stack as _,
+			eip: pc as _,
+			..Default::default()
+		};
 		self.regs = regs;
 
 		Ok(())
@@ -783,106 +876,159 @@ impl Process {
 		self.syscalling && !self.is_handling_signal()
 	}
 
-	/// Sets the process's syscalling state.
-	#[inline(always)]
-	pub fn set_syscalling(&mut self, syscalling: bool) {
-		self.syscalling = syscalling;
-	}
-
 	/// Returns the available file descriptor with the lowest ID. If no ID is available, the
 	/// function returns an error.
-	fn get_available_fd(&mut self) -> Result<u32, Errno> {
-		if self.file_descriptors.is_empty() {
+	/// `file_descriptors` is the file descriptors table.
+	/// `min` is the minimum value for the file descriptor to be returned.
+	fn get_available_fd(file_descriptors: &Vec<FileDescriptor>, min: Option<u32>)
+		-> Result<u32, Errno> {
+		if file_descriptors.len() >= limits::OPEN_MAX {
+			return Err(errno!(EMFILE));
+		}
+
+		if file_descriptors.is_empty() {
 			return Ok(0);
 		}
 
-		for (i, fd) in self.file_descriptors.iter().enumerate() {
+		// TODO Use binary search?
+		for (i, fd) in file_descriptors.iter().enumerate() {
+			if let Some(min) = min {
+				if fd.get_id() < min {
+					continue;
+				}
+			}
+
 			if (i as u32) < fd.get_id() {
 				return Ok(i as u32);
 			}
 		}
 
-		let id = self.file_descriptors.len();
-		if id < limits::OPEN_MAX {
-			Ok(id as u32)
+		let id = if let Some(min) = min {
+			max(min, file_descriptors.len() as u32)
 		} else {
-			Err(errno!(EMFILE))
-		}
+			file_descriptors.len() as u32
+		};
+		Ok(id)
 	}
 
-	/// Creates a file descriptor and returns a mutable reference to it.
+	/// Creates a file descriptor and returns a pointer to it with its ID.
 	/// `flags` are the file descriptor's flags.
 	/// `target` is the target of the newly created file descriptor.
 	/// If the target is a file and cannot be open, the function returns an Err.
-	pub fn create_fd(&mut self, flags: i32, target: FDTarget)
-		-> Result<&mut FileDescriptor, Errno> {
-		let id = self.get_available_fd()?;
-		let fd = FileDescriptor::new(id, flags, target)?;
-		let index = self.file_descriptors.binary_search_by(| fd | {
-			fd.get_id().cmp(&id)
-		}).unwrap_err();
+	pub fn create_fd(&mut self, flags: i32, target: FDTarget) -> Result<FileDescriptor, Errno> {
+		let mut file_descriptors_guard = self.file_descriptors.as_ref().unwrap().lock();
+		let file_descriptors = file_descriptors_guard.get_mut();
 
-		self.file_descriptors.insert(index, fd)?;
-		Ok(&mut self.file_descriptors[index])
+		let id = Self::get_available_fd(file_descriptors, None)?;
+		let open_file = OpenFile::new(flags, target)?;
+		let i = file_descriptors.binary_search_by(| fd | fd.get_id().cmp(&id)).unwrap_err();
+
+		// Flags for the fd
+		let flags = if flags & O_CLOEXEC != 0 {
+			FD_CLOEXEC
+		} else {
+			0
+		};
+
+		file_descriptors.insert(i, FileDescriptor::new(id, flags, SharedPtr::new(open_file)?))?;
+		Ok(file_descriptors[i].clone())
 	}
 
 	/// Duplicates the file descriptor with id `id`.
-	/// `new_id` if specified, the id of the new file descriptor. If already used, the previous
-	/// file descriptor shall be closed.
-	pub fn duplicate_fd(&mut self, id: u32, new_id: Option<u32>)
-		-> Result<&mut FileDescriptor, Errno> {
-		let new_id = {
-			if let Some(new_id) = new_id {
-				new_id
-			} else {
-				self.get_available_fd()?
-			}
+	/// The new file descriptor ID follows the constraint given be `constraint`.
+	/// `cloexec` tells whether the new file descriptor has the O_CLOEXEC flag enabled.
+	/// The function returns a pointer to the file descriptor with its ID.
+	pub fn duplicate_fd(&mut self, id: u32, constraint: NewFDConstraint, cloexec: bool)
+		-> Result<FileDescriptor, Errno> {
+		let mut file_descriptors_guard = self.file_descriptors.as_ref().unwrap().lock();
+		let file_descriptors = file_descriptors_guard.get_mut();
+
+		// The ID of the new FD
+		let new_id = match constraint {
+			NewFDConstraint::None => Self::get_available_fd(file_descriptors, None)?,
+			NewFDConstraint::Fixed(id) => id,
+			NewFDConstraint::Min(min) => Self::get_available_fd(file_descriptors, Some(min))?,
 		};
 
-		let curr_fd = self.get_fd(id).ok_or(errno!(EBADF))?;
-		let new_fd = FileDescriptor::new(new_id, curr_fd.get_flags(),
-			curr_fd.get_target().clone())?;
+		// The flags of the new FD
+		let flags = if cloexec {
+			FD_CLOEXEC
+		} else {
+			0
+		};
 
-		let index = self.file_descriptors.binary_search_by(| fd | {
-			fd.get_id().cmp(&new_id)
-		});
+		// The open file for the new FD
+		let open_file = Self::get_fd_(file_descriptors, id).ok_or_else(|| errno!(EBADF))?
+			.get_open_file();
+
+		// Creating the FD
+		let fd = FileDescriptor::new(new_id, flags, open_file);
+
+		// Inserting the FD
+		let index = file_descriptors.binary_search_by(| fd | fd.get_id().cmp(&new_id));
 		let index = {
 			if let Ok(i) = index {
-				self.file_descriptors[i] = new_fd;
+				file_descriptors[i] = fd;
 				i
 			} else {
 				let i = index.unwrap_err();
-				self.file_descriptors.insert(i, new_fd)?;
+				file_descriptors.insert(i, fd)?;
 				i
 			}
 		};
 
-		Ok(&mut self.file_descriptors[index])
+		Ok(file_descriptors[index].clone())
 	}
 
-	/// Returns the file descriptor with ID `id`. If the file descriptor doesn't exist, the
-	/// function returns None.
-	pub fn get_fd(&mut self, id: u32) -> Option<&mut FileDescriptor> {
-		let result = self.file_descriptors.binary_search_by(| fd | {
-			fd.get_id().cmp(&id)
-		});
+	/// Duplicates file descriptors to make the process have its own copy. This function doesn't
+	/// duplicate open file descriptions.
+	/// This function is meant to be executed on program execution, meaning that file descriptors
+	/// with the flag FD_CLOEXEC are discarded.
+	pub fn duplicate_fds(&mut self) -> Result<(), Errno> {
+		let mut new_fds = vec![];
 
-		if let Ok(index) = result {
-			Some(&mut self.file_descriptors[index])
-		} else {
-			None
+		{
+			let fds_guard = self.file_descriptors.as_ref().unwrap().lock();
+			let fds = fds_guard.get();
+
+			for fd in fds {
+				if fd.get_flags() & FD_CLOEXEC == 0 {
+					new_fds.push(fd.clone())?;
+				}
+			}
 		}
+
+		self.file_descriptors = Some(SharedPtr::new(new_fds)?);
+		Ok(())
+	}
+
+	/// Returns the file descriptor with ID `id`.
+	/// `file_descriptors` is the file descriptors table.
+	/// If the file descriptor doesn't exist, the function returns None.
+	fn get_fd_(file_descriptors: &Vec<FileDescriptor>, id: u32) -> Option<FileDescriptor> {
+		let result = file_descriptors.binary_search_by(| fd | fd.get_id().cmp(&id));
+		result.ok().map(| index | file_descriptors[index].clone())
+	}
+
+	/// Returns the file descriptor with ID `id`.
+	/// If the file descriptor doesn't exist, the function returns None.
+	pub fn get_fd(&self, id: u32) -> Option<FileDescriptor> {
+		let file_descriptors_guard = self.file_descriptors.as_ref().unwrap().lock();
+		let file_descriptors = file_descriptors_guard.get();
+
+		Self::get_fd_(file_descriptors, id)
 	}
 
 	/// Closes the file descriptor with the ID `id`. The function returns an Err if the file
 	/// descriptor doesn't exist.
 	pub fn close_fd(&mut self, id: u32) -> Result<(), Errno> {
-		let result = self.file_descriptors.binary_search_by(| fd | {
-			fd.get_id().cmp(&id)
-		});
+		let mut file_descriptors_guard = self.file_descriptors.as_ref().unwrap().lock();
+		let file_descriptors = file_descriptors_guard.get_mut();
+
+		let result = file_descriptors.binary_search_by(| fd | fd.get_id().cmp(&id));
 
 		if let Ok(index) = result {
-			self.file_descriptors.remove(index);
+			file_descriptors.remove(index);
 			Ok(())
 		} else {
 			Err(errno!(EBADF))
@@ -899,7 +1045,7 @@ impl Process {
 		}
 	}
 
-	/// Returns the signal that killed the process.
+	/// Returns the signal number that killed the process.
 	#[inline(always)]
 	pub fn get_termsig(&self) -> u8 {
 		self.termsig
@@ -908,16 +1054,14 @@ impl Process {
 	/// Forks the current process. The internal state of the process (registers and memory) are
 	/// copied.
 	/// `parent` is the parent of the new process.
-	/// `fork_options` are the options for the fork operation. If None, the function uses the
-	/// default values.
+	/// `fork_options` are the options for the fork operation.
 	/// On fail, the function returns an Err with the appropriate Errno.
 	/// If the process is not running, the behaviour is undefined.
-	pub fn fork(&mut self, parent: IntWeakPtr<Self>, fork_options: Option<ForkOptions>)
+	pub fn fork(&mut self, parent: IntWeakPtr<Self>, fork_options: ForkOptions)
 		-> Result<IntSharedPtr<Self>, Errno> {
 		debug_assert_eq!(self.get_state(), State::Running);
 
-		let fork_options = fork_options.unwrap_or(ForkOptions::default());
-
+		// FIXME PID is leaked if the following code fails
 		let pid = {
 			let mutex = unsafe {
 				PID_MANAGER.assume_init_mut()
@@ -926,23 +1070,57 @@ impl Process {
 			guard.get_mut().get_unique_pid()
 		}?;
 
-		let mut regs = self.regs;
-		regs.eax = 0;
+		// Handling vfork
+		let vfork_state = if fork_options.vfork {
+			self.vfork_state = VForkState::Waiting; // TODO Cancel if the following code fails
+			VForkState::Executing
+		} else {
+			VForkState::None
+		};
 
-		let mem_space = {
+		// Cloning memory space
+		let (mem_space, kernel_stack) = {
 			let curr_mem_space = self.get_mem_space().unwrap();
 
-			if fork_options.vm {
-				curr_mem_space.clone()
+			if fork_options.share_memory || fork_options.vfork {
+				// Allocating a kernel stack for the new process
+				let new_kernel_stack = curr_mem_space.lock().get_mut()
+					.map_stack(KERNEL_STACK_SIZE, KERNEL_STACK_FLAGS)?;
+
+				(curr_mem_space.clone(), Some(new_kernel_stack as _))
 			} else {
-				IntSharedPtr::new(curr_mem_space.lock().get_mut().fork()?)?
+				(IntSharedPtr::new(curr_mem_space.lock().get_mut().fork()?)?, self.kernel_stack)
 			}
+		};
+
+		// Cloning file descriptors table
+		let file_descriptors = if fork_options.share_fd {
+			self.file_descriptors.clone()
+		} else {
+			let curr_fds_guard = self.file_descriptors.as_ref().unwrap().lock();
+			let curr_fds = curr_fds_guard.get();
+
+			let mut fds = Vec::with_capacity(curr_fds.len())?;
+			for fd in curr_fds.iter() {
+				fds.push(fd.clone())?;
+			}
+
+			Some(SharedPtr::new(fds)?)
+		};
+
+		// Cloning signal handlers
+		let signal_handlers = if fork_options.share_sighand {
+			self.signal_handlers.clone()
+		} else {
+			SharedPtr::new(self.signal_handlers.lock().get().clone())?
 		};
 
 		let process = Self {
 			pid,
 			pgid: self.pgid,
 			tid: self.pid,
+
+			tty: self.tty.clone(),
 
 			uid: self.uid,
 			gid: self.gid,
@@ -953,6 +1131,8 @@ impl Process {
 			umask: self.umask,
 
 			state: State::Running,
+			vfork_state,
+
 			priority: self.priority,
 			quantum_count: 0,
 
@@ -960,24 +1140,23 @@ impl Process {
 			children: Vec::new(),
 			process_group: Vec::new(),
 
-			regs,
+			regs: self.regs,
 			syscalling: false,
 
-			handled_signal: self.handled_signal,
+			handled_signal: self.handled_signal.clone(),
 			saved_regs: self.saved_regs,
 			waitable: false,
 
 			mem_space: Some(mem_space),
-
 			user_stack: self.user_stack,
-			kernel_stack: self.kernel_stack,
+			kernel_stack,
 
 			cwd: self.cwd.failable_clone()?,
-			file_descriptors: self.file_descriptors.failable_clone()?,
+			file_descriptors,
 
 			sigmask: self.sigmask.failable_clone()?,
-			sigpending: Bitfield::new(signal::SIGNALS_COUNT + 1)?,
-			signal_handlers: self.signal_handlers,
+			sigpending: Bitfield::new(signal::SIGNALS_COUNT)?,
+			signal_handlers: signal_handlers,
 
 			tls_entries: self.tls_entries,
 			ldt: {
@@ -1004,18 +1183,16 @@ impl Process {
 		guard.get_mut().add_process(process)
 	}
 
-	/// Returns the signal handler for the signal type `type_`.
+	/// Returns the signal handler for the signal `sig`.
 	#[inline(always)]
-	pub fn get_signal_handler(&self, type_: SignalType) -> SignalHandler {
-		debug_assert!((type_ as usize) < self.signal_handlers.len());
-		self.signal_handlers[type_ as usize]
+	pub fn get_signal_handler(&self, sig: &Signal) -> SignalHandler {
+		self.signal_handlers.lock().get()[sig.get_id() as usize]
 	}
 
-	/// Sets the signal handler `handler` for the signal type `type_`.
+	/// Sets the signal handler `handler` for the signal `sig`.
 	#[inline(always)]
-	pub fn set_signal_handler(&mut self, type_: SignalType, handler: SignalHandler) {
-		debug_assert!((type_ as usize) < self.signal_handlers.len());
-		self.signal_handlers[type_ as usize] = handler;
+	pub fn set_signal_handler(&mut self, sig: &Signal, handler: SignalHandler) {
+		self.signal_handlers.lock().get_mut()[sig.get_id() as usize] = handler;
 	}
 
 	/// Tells whether the process is handling a signal.
@@ -1028,7 +1205,11 @@ impl Process {
 	/// handler, the default action for the signal is executed.
 	/// If `no_handler` is true and if the process is already handling a signal, the function
 	/// executes the default action of the signal regardless the user-specified action.
-	pub fn kill(&mut self, sig: Signal, no_handler: bool) {
+	pub fn kill(&mut self, sig: &Signal, no_handler: bool) {
+		if sig.can_catch() && !self.sigmask.is_set(sig.get_id() as _) {
+			return;
+		}
+
 		if self.get_state() == State::Stopped
 			&& sig.get_default_action() == SignalAction::Continue {
 			self.set_state(State::Running);
@@ -1038,8 +1219,25 @@ impl Process {
 		if !sig.can_catch() || no_handler {
 			sig.execute_action(self, no_handler);
 		} else {
-			self.sigpending.set(sig.get_type() as _);
+			self.sigpending.set(sig.get_id() as _);
 		}
+	}
+
+	/// Kills every processes in the process group.
+	/// Arguments are the same as `kill`.
+	pub fn kill_group(&mut self, sig: Signal, no_handler: bool) {
+		for pid in self.process_group.iter() {
+			if *pid != self.pid {
+				if let Some(proc_mutex) = Process::get_by_tid(*pid) {
+					let mut proc_guard = proc_mutex.lock();
+					let proc = proc_guard.get_mut();
+
+					proc.kill(&sig, no_handler);
+				}
+			}
+		}
+
+		self.kill(&sig, no_handler);
 	}
 
 	/// Returns an immutable reference to the process's blocked signals mask.
@@ -1078,7 +1276,7 @@ impl Process {
 		// Looking for a pending signal with respect to the signal mask
 		let mut sig = None;
 		self.sigpending.for_each(| i, b | {
-			if let Ok(s) = Signal::new(i as _) {
+			if let Ok(s) = Signal::from_id(i as _) {
 				if b && !(s.can_catch() && self.sigmask.is_set(i)) {
 					sig = Some(s);
 					return false;
@@ -1094,16 +1292,22 @@ impl Process {
 		}
 	}
 
+	/// Returns the pointer to use as a stack when executing a signal handler.
+	pub fn get_signal_stack(&self) -> *const c_void {
+		// TODO Handle alternate stacks
+		(self.regs.esp as usize - REDZONE_SIZE) as _
+	}
+
 	/// Clear the signal from the list of pending signals.
 	/// If the signal is already cleared, the function does nothing.
-	pub fn signal_clear(&mut self, sig: SignalType) {
-		self.sigpending.clear(sig as _);
+	pub fn signal_clear(&mut self, sig: Signal) {
+		self.sigpending.clear(sig.get_id() as _);
 	}
 
 	/// Saves the process's state to handle a signal.
-	/// `sig` is the signal number.
+	/// `sig` is the signal.
 	/// If the process is already handling a signal, the behaviour is undefined.
-	pub fn signal_save(&mut self, sig: SignalType) {
+	pub fn signal_save(&mut self, sig: Signal) {
 		debug_assert!(!self.is_handling_signal());
 
 		self.saved_regs = self.regs;
@@ -1121,6 +1325,13 @@ impl Process {
 	/// Returns the list of TLS entries for the process.
 	pub fn get_tls_entries(&mut self) -> &mut [gdt::Entry] {
 		&mut self.tls_entries
+	}
+
+	/// Clears the process's TLS entries.
+	pub fn clear_tls_entries(&mut self) {
+		for e in &mut self.tls_entries {
+			*e = Default::default();
+		}
 	}
 
 	/// Returns a mutable reference to the process's LDT.
@@ -1153,13 +1364,32 @@ impl Process {
 		&self.rusage
 	}
 
+	/// If the process is a vfork child, resets its state and its parent's state.
+	pub fn reset_vfork(&mut self) {
+		if self.vfork_state != VForkState::Executing {
+			return;
+		}
+
+		self.vfork_state = VForkState::None;
+
+		// Resetting the parent's vfork state if needed
+		if let Some(parent) = self.get_parent() {
+			let parent = parent.get_mut().unwrap();
+			let mut guard = parent.lock();
+			guard.get_mut().vfork_state = VForkState::None;
+		}
+	}
+
 	/// Exits the process with the given `status`. This function changes the process's status to
 	/// `Zombie`.
 	pub fn exit(&mut self, status: u32) {
 		self.exit_status = (status & 0xff) as ExitStatus;
 		self.set_state(State::Zombie);
 
+		self.reset_vfork();
+
 		if let Some(parent) = self.get_parent() {
+			// Wake the parent
 			let parent = parent.get_mut().unwrap();
 			let mut guard = parent.lock();
 			guard.get_mut().wakeup();
@@ -1201,12 +1431,27 @@ impl Drop for Process {
 			kernel_panic!("Terminated init process!");
 		}
 
+		// Freeing the kernel stack. This is required because the process might share the same
+		// memory space with several other processes. And since, each process has its own kernel
+		// stack, not freeing it could result in a memory leak
+		oom::wrap(|| {
+			if let Some(kernel_stack) = self.kernel_stack {
+				if let Some(mutex) = &self.mem_space {
+					mutex.lock().get_mut().unmap_stack(kernel_stack, KERNEL_STACK_SIZE)?;
+				}
+			}
+
+			Ok(())
+		});
+
+		// Removing the child from the parent process
 		if let Some(parent) = self.get_parent() {
 			let parent = parent.get_mut().unwrap();
 			let mut guard = parent.lock();
 			guard.get_mut().remove_child(self.pid);
 		}
 
+		// Freeing the PID
 		let mutex = unsafe {
 			PID_MANAGER.assume_init_mut()
 		};
