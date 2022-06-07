@@ -45,10 +45,10 @@ pub trait DeviceManager {
 	fn legacy_detect(&mut self) -> Result<(), Errno>;
 
 	/// Function called when a new device is plugged in.
-	fn on_plug(&mut self, dev: &dyn PhysicalDevice);
+	fn on_plug(&mut self, dev: &dyn PhysicalDevice) -> Result<(), Errno>;
 
 	/// Function called when a device is plugged out.
-	fn on_unplug(&mut self, dev: &dyn PhysicalDevice);
+	fn on_unplug(&mut self, dev: &dyn PhysicalDevice) -> Result<(), Errno>;
 }
 
 // TODO Order by name
@@ -83,26 +83,30 @@ pub fn get_by_name(name: &str) -> Option<WeakPtr<dyn DeviceManager>> {
 
 /// Function that is called when a new device is plugged in.
 /// `dev` is the device that has been plugged in.
-pub fn on_plug(dev: &dyn PhysicalDevice) {
+pub fn on_plug(dev: &dyn PhysicalDevice) -> Result<(), Errno> {
 	let mut guard = DEVICE_MANAGERS.lock();
 	let device_managers = guard.get_mut();
 
 	for i in 0..device_managers.len() {
 		let mut guard = device_managers[i].lock();
 		let manager = guard.get_mut();
-		manager.on_plug(dev);
+		manager.on_plug(dev)?;
 	}
+
+	Ok(())
 }
 
 /// Function that is called when a device is plugged out.
 /// `dev` is the device that has been plugged out.
-pub fn on_unplug(dev: &dyn PhysicalDevice) {
+pub fn on_unplug(dev: &dyn PhysicalDevice) -> Result<(), Errno> {
 	let mut guard = DEVICE_MANAGERS.lock();
 	let device_managers = guard.get_mut();
 
 	for i in 0..device_managers.len() {
 		let mut guard = device_managers[i].lock();
 		let manager = guard.get_mut();
-		manager.on_unplug(dev);
+		manager.on_unplug(dev)?;
 	}
+
+	Ok(())
 }

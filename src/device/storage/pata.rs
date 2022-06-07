@@ -105,6 +105,7 @@ const SECTOR_SIZE: u64 = 512;
 // while operating on a drive
 
 /// Structure representing a PATA interface. An instance is associated with a unique disk.
+#[derive(Debug)]
 pub struct PATAInterface {
 	/// Tells whether the disk is on the secondary or primary bus.
 	secondary: bool,
@@ -340,7 +341,6 @@ impl PATAInterface {
 		};
 
 		self.wait(false);
-
 		Ok(())
 	}
 
@@ -348,9 +348,11 @@ impl PATAInterface {
 	fn wait_io(&self) -> Result<(), Errno> {
 		loop {
 			let status = self.get_status();
+
 			if (status & STATUS_BSY == 0) && (status & STATUS_DRQ != 0) {
 				return Ok(());
 			}
+
 			if (status & STATUS_ERR != 0) || (status & STATUS_DF != 0) {
 				return Err(crate::errno!(EIO));
 			}

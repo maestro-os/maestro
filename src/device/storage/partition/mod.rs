@@ -5,7 +5,6 @@ mod gpt;
 mod mbr;
 
 use crate::errno::Errno;
-use crate::errno;
 use crate::util::boxed::Box;
 use crate::util::container::vec::Vec;
 use gpt::GPT;
@@ -71,5 +70,5 @@ pub fn read(storage: &mut dyn StorageInterface) -> Result<Option<Box<dyn Table>>
 		None => {},
 	}
 
-	Err(errno!(EINVAL))
+	Ok(None)
 }

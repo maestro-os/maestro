@@ -7,8 +7,8 @@ use crate::device::storage::StorageInterface;
 use crate::device::storage::pata::PATAInterface;
 use crate::errno::Errno;
 use crate::io;
-use crate::util::boxed::Box;
 use crate::util::container::vec::Vec;
+use crate::util::ptr::SharedPtr;
 
 /// The beginning of the port range for the primary ATA bus.
 const PRIMARY_ATA_BUS_PORT_BEGIN: u16 = 0x1f0;
@@ -108,11 +108,11 @@ impl IDEController {
 	/// `secondary` tells whether the disk is on the secondary bus.
 	/// `slave` tells whether the disk is the slave disk.
 	pub fn detect(&self, secondary: bool, slave: bool)
-		-> Result<Option<Box<dyn StorageInterface>>, Errno> {
+		-> Result<Option<SharedPtr<dyn StorageInterface>>, Errno> {
 		// TODO Add support for DMA and SATA
 
 		if let Ok(interface) = PATAInterface::new(secondary, slave) {
-			let interface = Box::new(interface)?;
+			let interface = SharedPtr::new(interface)?;
 
 			// Wrapping the interface into a cached interface
 			// TODO Use a constant for the sectors count
@@ -128,7 +128,7 @@ impl IDEController {
 	/// `f`.
 	/// If an error is returned from a call to the closure, the function returns with the same
 	/// error.
-	pub fn detect_all(&self) -> Result<Vec<Box<dyn StorageInterface>>, Errno> {
+	pub fn detect_all(&self) -> Result<Vec<SharedPtr<dyn StorageInterface>>, Errno> {
 		let mut interfaces = Vec::new();
 
 		for i in 0..4 {
