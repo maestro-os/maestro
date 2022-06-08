@@ -340,7 +340,7 @@ impl PCIManager {
 					// Registering the device
 					let dev = PCIDevice::new(bus, device, func, &data);
 					driver::on_plug(&dev);
-					manager::on_plug(&dev);
+					manager::on_plug(&dev)?;
 					self.devices.push(dev)?;
 				}
 			}
@@ -366,7 +366,11 @@ impl DeviceManager for PCIManager {
 		Ok(())
 	}
 
-	fn on_plug(&mut self, _dev: &dyn PhysicalDevice) {}
+	fn on_plug(&mut self, _dev: &dyn PhysicalDevice) -> Result<(), Errno> {
+		Ok(())
+	}
 
-	fn on_unplug(&mut self, _dev: &dyn PhysicalDevice) {}
+	fn on_unplug(&mut self, _dev: &dyn PhysicalDevice) -> Result<(), Errno> {
+		Ok(())
+	}
 }

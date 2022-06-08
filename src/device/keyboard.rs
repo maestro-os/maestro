@@ -551,12 +551,14 @@ impl DeviceManager for KeyboardManager {
 		Ok(())
 	}
 
-	fn on_plug(&mut self, _dev: &dyn PhysicalDevice) {
+	fn on_plug(&mut self, _dev: &dyn PhysicalDevice) -> Result<(), Errno> {
 		// TODO (When plugging a keyboard, don't forget to set the LEDs state)
+		Ok(())
 	}
 
-	fn on_unplug(&mut self, _dev: &dyn PhysicalDevice) {
+	fn on_unplug(&mut self, _dev: &dyn PhysicalDevice) -> Result<(), Errno> {
 		// TODO
+		Ok(())
 	}
 }
 
