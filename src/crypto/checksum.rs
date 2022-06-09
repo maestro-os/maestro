@@ -65,10 +65,12 @@ pub fn compute_crc32(data: &[u8], polynom: u32) -> u32 {
 
 #[cfg(test)]
 mod test {
-	#[test_suite]
+	use super::*;
+
+	#[test_case]
 	fn rfc1071_0() {
 		for i in 0..=u8::MAX {
-			assert_eq!(compute_rfc1071(&[i]), !i);
+			assert_eq!(compute_rfc1071(&[i]), !i as u32);
 		}
 	}
 
