@@ -32,7 +32,7 @@ fn compute_crc32_lookuptable(table: &mut [u32; 256], polynom: u32) {
 	let mut i = table.len() / 2;
 	let mut crc = 1;
 
-	loop {
+	while i > 0 {
 		if crc & 1 != 0 {
 			crc = (crc >> 1) ^ polynom;
 		} else {
@@ -43,11 +43,7 @@ fn compute_crc32_lookuptable(table: &mut [u32; 256], polynom: u32) {
 			table[i + j] = crc ^ table[j];
 		}
 
-		if i == 0 {
-			break;
-		}
-
-		i >>= 1;
+		i /= 2;
 	}
 }
 

@@ -2,14 +2,14 @@
 
 use core::mem::size_of;
 use core::slice;
-use crate::crypto::checksum::compute_crc32;
+//use crate::crypto::checksum::compute_crc32;
 use crate::device::storage::StorageInterface;
 use crate::errno::Errno;
 use crate::errno;
 use crate::memory::malloc;
 use crate::util::boxed::Box;
 use crate::util::container::vec::Vec;
-use crate::util;
+//use crate::util;
 use super::Partition;
 use super::Table;
 
@@ -17,6 +17,10 @@ use super::Table;
 const GPT_SIGNATURE: &[u8] = b"EFI PART";
 /// The polynom used in the computation of the CRC32 checksum.
 const CHECKSUM_POLYNOM: u32 = 0x4c11db7;
+
+// TODO Fix checksum check
+// TODO Support negative LBA
+// TODO Fix alternate table check
 
 /// Type representing a Globally Unique IDentifier.
 type GUID = [u8; 16];
@@ -160,11 +164,11 @@ impl GPT {
 		}
 
 		// Checking checksum
-		let mut tmp = self.clone();
+		/*let mut tmp = self.clone();
 		tmp.checksum = 0;
 		if compute_crc32(util::as_slice(&tmp), CHECKSUM_POLYNOM) != self.checksum {
 			return false;
-		}
+		}*/
 
 		true
 	}

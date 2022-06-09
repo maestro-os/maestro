@@ -491,7 +491,7 @@ impl StorageInterface for PATAInterface {
 	fn read(&mut self, buf: &mut [u8], offset: u64, size: u64) -> Result<(), Errno> {
 		debug_assert!((buf.len() as u64) >= size * SECTOR_SIZE);
 
-		if offset >= self.sectors_count || offset + size >= self.sectors_count {
+		if offset > self.sectors_count || offset + size > self.sectors_count {
 			return Err(crate::errno!(EINVAL));
 		}
 
@@ -505,7 +505,7 @@ impl StorageInterface for PATAInterface {
 	fn write(&mut self, buf: &[u8], offset: u64, size: u64) -> Result<(), Errno> {
 		debug_assert!((buf.len() as u64) >= size * SECTOR_SIZE);
 
-		if offset >= self.sectors_count || offset + size >= self.sectors_count {
+		if offset > self.sectors_count || offset + size > self.sectors_count {
 			return Err(crate::errno!(EINVAL));
 		}
 

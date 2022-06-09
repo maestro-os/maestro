@@ -308,6 +308,7 @@ impl StorageManager {
 		let main_device = Device::new(major, storage_id * MAX_PARTITIONS as u32, main_path,
 			STORAGE_MODE, DeviceType::Block, main_handle)?;
 		device::register_device(main_device)?;
+		crate::println!("disk"); // TODO rm
 
 		// Creating device files for every partitions (within the limit of MAX_PARTITIONS)
 		{
@@ -315,6 +316,7 @@ impl StorageManager {
 			let s = storage_guard.get_mut();
 
 			if let Some(partitions_table) = partition::read(s)? {
+				crate::println!("partitions found"); // TODO rm
 				let partitions = partitions_table.get_partitions(s)?;
 
 				for (i, partition) in partitions.into_iter().take(MAX_PARTITIONS).enumerate() {
@@ -325,8 +327,9 @@ impl StorageManager {
 					// Creating the partition's device file
 					let handle = StorageDeviceHandle::new(storage.new_weak(), Some(partition));
 					let device = Device::new(major, storage_id * MAX_PARTITIONS as u32 + i as u32,
-						path, STORAGE_MODE, DeviceType::Block, handle)?;
+						path.failable_clone()?, STORAGE_MODE, DeviceType::Block, handle)?;
 					device::register_device(device)?;
+					crate::println!("partition: {}", path); // TODO rm
 				}
 			}
 		}
