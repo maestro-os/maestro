@@ -2,14 +2,15 @@
 
 use core::mem::size_of;
 use core::slice;
-//use crate::crypto::checksum::compute_crc32;
+use crate::crypto::checksum::compute_crc32;
+use crate::crypto::checksum::compute_crc32_lookuptable;
 use crate::device::storage::StorageInterface;
 use crate::errno::Errno;
 use crate::errno;
 use crate::memory::malloc;
 use crate::util::boxed::Box;
 use crate::util::container::vec::Vec;
-//use crate::util;
+use crate::util;
 use super::Partition;
 use super::Table;
 
@@ -164,11 +165,13 @@ impl GPT {
 		}
 
 		// Checking checksum
-		/*let mut tmp = self.clone();
+		let mut tmp = self.clone();
 		tmp.checksum = 0;
-		if compute_crc32(util::as_slice(&tmp), CHECKSUM_POLYNOM) != self.checksum {
+		let mut lookup_table = [0; 256];
+		compute_crc32_lookuptable(&mut lookup_table, CHECKSUM_POLYNOM);
+		if compute_crc32(util::as_slice(&tmp), &lookup_table) != self.checksum {
 			return false;
-		}*/
+		}
 
 		true
 	}
