@@ -234,15 +234,23 @@ impl IO for StorageDeviceHandle {
 			let interface = interface_guard.get_mut();
 
 			// Check offset
-			let end = match &self.partition {
-				Some(p) => (p.get_offset() + p.get_size()) * interface.get_block_size(),
-				None => interface.get_size(),
+			let (start, size) = match &self.partition {
+				Some(p) => {
+					let start = p.get_offset() * interface.get_block_size();
+					let size = p.get_size() * interface.get_block_size();
+
+					(start, size)
+				},
+
+				None => {
+					(0, interface.get_size())
+				},
 			};
-			if (offset + buff.len() as u64) > end {
+			if (offset + buff.len() as u64) > size {
 				return Err(errno!(EINVAL));
 			}
 
-			interface.read_bytes(buff, offset)
+			interface.read_bytes(buff, start + offset)
 		} else {
 			Err(errno!(ENODEV))
 		}
@@ -254,15 +262,23 @@ impl IO for StorageDeviceHandle {
 			let interface = interface_guard.get_mut();
 
 			// Check offset
-			let end = match &self.partition {
-				Some(p) => (p.get_offset() + p.get_size()) * interface.get_block_size(),
-				None => interface.get_size(),
+			let (start, size) = match &self.partition {
+				Some(p) => {
+					let start = p.get_offset() * interface.get_block_size();
+					let size = p.get_size() * interface.get_block_size();
+
+					(start, size)
+				},
+
+				None => {
+					(0, interface.get_size())
+				},
 			};
-			if (offset + buff.len() as u64) > end {
+			if (offset + buff.len() as u64) > size {
 				return Err(errno!(EINVAL));
 			}
 
-			interface.write_bytes(buff, offset)
+			interface.write_bytes(buff, start + offset)
 		} else {
 			Err(errno!(ENODEV))
 		}
@@ -308,7 +324,6 @@ impl StorageManager {
 		let main_device = Device::new(major, storage_id * MAX_PARTITIONS as u32, main_path,
 			STORAGE_MODE, DeviceType::Block, main_handle)?;
 		device::register_device(main_device)?;
-		crate::println!("disk"); // TODO rm
 
 		// Creating device files for every partitions (within the limit of MAX_PARTITIONS)
 		{
@@ -316,10 +331,11 @@ impl StorageManager {
 			let s = storage_guard.get_mut();
 
 			if let Some(partitions_table) = partition::read(s)? {
-				crate::println!("partitions found"); // TODO rm
 				let partitions = partitions_table.get_partitions(s)?;
 
 				for (i, partition) in partitions.into_iter().take(MAX_PARTITIONS).enumerate() {
+					let i = i + 1;
+
 					// Adding the partition number to the path
 					let path_str = (prefix.failable_clone()? + String::from_number(i as _)?)?;
 					let path = Path::from_str(path_str.as_bytes(), false)?;
@@ -329,7 +345,6 @@ impl StorageManager {
 					let device = Device::new(major, storage_id * MAX_PARTITIONS as u32 + i as u32,
 						path.failable_clone()?, STORAGE_MODE, DeviceType::Block, handle)?;
 					device::register_device(device)?;
-					crate::println!("partition: {}", path); // TODO rm
 				}
 			}
 		}

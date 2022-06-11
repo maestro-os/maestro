@@ -73,8 +73,8 @@ pub fn compute_crc32(data: &[u8], table: &[u32; 256]) -> u32 {
 	//let mut crc = !(0 as u32);
 	let mut crc = 0 as u32;
 
-	for b in data.iter().rev() {
-		let i = ((crc ^ (*b as u32)) & 0xff) as usize;
+	for b in data {
+		let i = ((crc & 0xff) ^ (*b as u32)) as usize;
 		crc = table[i] ^ (crc >> 8);
 		/*let i = ((crc ^ ((*b as u32) << 24)) >> 24) as usize;
 		crc = table[i] ^ (crc << 8);*/
