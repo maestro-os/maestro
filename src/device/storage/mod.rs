@@ -32,7 +32,6 @@ use crate::util::math;
 use crate::util::ptr::IntSharedPtr;
 use crate::util::ptr::SharedPtr;
 use crate::util::ptr::WeakPtr;
-use ide::IDEController;
 use partition::Partition;
 
 /// The major number for storage devices.
@@ -456,7 +455,7 @@ impl StorageManager {
 }
 
 impl DeviceManager for StorageManager {
-	fn get_name(&self) -> &str {
+	fn get_name(&self) -> &'static str {
 		"storage"
 	}
 
@@ -489,7 +488,7 @@ impl DeviceManager for StorageManager {
 		match dev.get_subclass() {
 			// IDE controller
 			0x01 => {
-				let ide = IDEController::new(dev);
+				let ide = ide::Controller::new(dev);
 
 				oom::wrap(|| {
 					for interface in ide.detect_all()? {

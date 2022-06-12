@@ -38,7 +38,7 @@ pub trait PhysicalDevice {
 /// Trait representing a structure managing the link between physical devices and device files.
 pub trait DeviceManager {
 	/// Returns the manager's name. This name must not change.
-	fn get_name(&self) -> &str;
+	fn get_name(&self) -> &'static str;
 
 	/// Detects devices the legacy way.
 	/// **WARNING**: This function must be called only once.

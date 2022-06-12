@@ -543,7 +543,7 @@ impl KeyboardManager {
 }
 
 impl DeviceManager for KeyboardManager {
-	fn get_name(&self) -> &str {
+	fn get_name(&self) -> &'static str {
 		"kbd"
 	}
 

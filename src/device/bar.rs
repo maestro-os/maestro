@@ -1,87 +1,68 @@
 //! The Base Address Register (BAR) is a way to communicate with a device using Direct Access
 //! Memory (DMA).
 
-use crate::device::bus::pci::PCIDevice;
+/// Enumeration of Memory Space BAR types.
+#[derive(Clone, Debug)]
+pub enum BARType {
+	/// The register is 32 bits wide.
+	Size32,
+	/// The register is 64 bits wide.
+	Size64,
+}
 
 /// Structure representing a Base Address Register.
-#[derive(Debug)]
-pub struct BAR {
-	/// The base address.
-	address: u64,
-	/// The amount of space required by the device.
-	size: usize,
+#[derive(Clone, Debug)]
+pub enum BAR {
+	MemorySpaceBAR {
+		/// The type of the BAR, specifying the size of the register.
+		type_: BARType,
+		/// If true, read accesses don't have any side effects.
+		prefetchable: bool,
 
-	/// The BAR type.
-	type_: u8,
-	/// Tells whether the memory is prefetchable.
-	prefetchable: bool,
+		/// Physical address to the register.
+		address: u64,
+
+		/// The size of the address space in bytes.
+		size: usize,
+	},
+
+	IOSpaceBAR {
+		/// Physical address to the register.
+		address: u64,
+
+		/// The size of the address space in bytes.
+		size: usize,
+	},
 }
 
 impl BAR {
-	/// Creates a new instance from a PCI device.
-	/// `dev` is the PCI device.
-	/// `n` is the BAR id.
-	/// If the BAR doesn't exist, the function returns None.
-	pub fn from_pci(dev: &PCIDevice, n: u8) -> Option<Self> {
-		// The BAR's value
-		let value = dev.get_bar_value(n)?;
+	/// Returns the base address.
+	pub fn get_physical_address(&self) -> Option<*mut ()> {
+		let (addr, size) = match self {
+			Self::MemorySpaceBAR { address, size, .. } => (*address, *size),
+			Self::IOSpaceBAR { address, size, .. } => (*address, *size),
+		};
 
-		// TODO Get size
-		let size = 0;
-
-		if (value & 0b1) == 0 {
-			let type_ = ((value >> 1) & 0b11) as u8;
-			let address = match type_ {
-				0x0 => (value & 0xfffffff0) as u64,
-				0x1 => (value & 0xfff0) as u64,
-				0x2 => {
-					// The next BAR's value
-					let next_value = dev.get_bar_value(n + 1)?;
-					(value & 0xfffffff0) as u64 | ((next_value as u64) << 32)
-				},
-
-				_ => 0,
-			};
-
-			Some(Self {
-				address,
-				size,
-
-				type_,
-				prefetchable: value & 0b1000 != 0,
-			})
+		if (addr + size as u64) > usize::MAX as u64 {
+			Some(addr as _)
 		} else {
-			Some(Self {
-				address: (value & 0xfffffffc) as u64,
-				size,
-
-				type_: 0,
-				prefetchable: false,
-			})
+			None
 		}
 	}
 
-	/// Returns the base address.
-	#[inline(always)]
-	pub fn get_physical_address(&self) -> u64 {
-		self.address
-	}
-
 	/// Returns the amount of memory.
-	#[inline(always)]
 	pub fn get_size(&self) -> usize {
-		self.size
-	}
-
-	/// Returns the type of the BAR.
-	#[inline(always)]
-	pub fn get_type(&self) -> u8 {
-		self.type_
+		match self {
+			Self::MemorySpaceBAR { size, .. } => *size,
+			Self::IOSpaceBAR { size, .. } => *size,
+		}
 	}
 
 	/// Tells whether the memory is prefetchable.
-	#[inline(always)]
 	pub fn is_prefetchable(&self) -> bool {
-		self.prefetchable
+		match self {
+			Self::MemorySpaceBAR { prefetchable, .. } => *prefetchable,
+			Self::IOSpaceBAR { .. } => false,
+		}
 	}
 }

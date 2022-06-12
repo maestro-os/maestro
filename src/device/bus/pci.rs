@@ -9,9 +9,11 @@
 //! of the device's registers in memory, allowing communications through DMA (Direct Memory
 //! Access).
 
+use core::cmp::min;
 use core::mem::size_of;
 use crate::device::DeviceManager;
 use crate::device::bar::BAR;
+use crate::device::bar::BARType;
 use crate::device::driver;
 use crate::device::manager::PhysicalDevice;
 use crate::device::manager;
@@ -69,6 +71,69 @@ pub const CLASS_CO_PROCESSOR: u16 = 0x40;
 /// Device class: Unassigned
 pub const CLASS_UNASSIGNED: u16 = 0xff;
 
+/// Reads 32 bits from the PCI register specified by `bus`, `device`, `func` and `reg_off`.
+fn read_long(bus: u8, device: u8, func: u8, reg_off: u8) -> u32 {
+	// The PCI address
+	let addr = ((bus as u32) << 16)
+		| ((device as u32) << 11)
+		| ((func as u32) << 8)
+		| ((reg_off as u32 * size_of::<u32>() as u32) & 0xff)
+		| 0x80000000;
+
+	unsafe {
+		// Setting the address
+		io::outl(CONFIG_ADDRESS_PORT, addr);
+		// Reading the value
+		io::inl(CONFIG_DATA_PORT)
+	}
+}
+
+/// Writes 32 bits from `value` into the PCI register specified by `bus`, `device`, `func` and
+/// `reg_off`.
+fn write_long(bus: u8, device: u8, func: u8, reg_off: u8, value: u32) {
+	// The PCI address
+	let addr = ((bus as u32) << 16)
+		| ((device as u32) << 11)
+		| ((func as u32) << 8)
+		| ((reg_off as u32 * size_of::<u32>() as u32) & 0xff)
+		| 0x80000000;
+
+	unsafe {
+		// Setting the address
+		io::outl(CONFIG_ADDRESS_PORT, addr);
+		// Writing the value
+		io::outl(CONFIG_DATA_PORT, value);
+	}
+}
+
+/// Reads PCI configuration and writes it into `buf`.
+/// `bus` is the bus number.
+/// `device` is the device number.
+/// `func` is the function number.
+/// `off` is the register offset.
+/// `buf` is the data buffer to write to.
+fn read_data(bus: u8, device: u8, func: u8, off: usize, buf: &mut [u32]) {
+	let end = min(off + buf.len(), 0x12);
+
+	for (buf_off, reg_off) in (off..end).enumerate() {
+		buf[buf_off] = read_long(bus, device, func, reg_off as _);
+	}
+}
+
+/// Writes PCI configuration from `buf`.
+/// `bus` is the bus number.
+/// `device` is the device number.
+/// `func` is the function number.
+/// `off` is the register offset.
+/// `buf` is the data buffer to read from.
+fn write_data(bus: u8, device: u8, func: u8, off: usize, buf: &[u32]) {
+	let end = min(off + buf.len(), 16);
+
+	for (buf_off, reg_off) in (off..end).enumerate() {
+		write_long(bus, device, func, reg_off as _, buf[buf_off]);
+	}
+}
+
 /// Structure representing a device attached to the PCI bus.
 pub struct PCIDevice {
 	/// The PCI bus of the device.
@@ -101,7 +166,6 @@ pub struct PCIDevice {
 	bist: u8,
 	/// Defines the header type of the device, to determine what informations follow.
 	header_type: u8,
-
 	/// Specifies the latency timer in units of PCI bus clocks.
 	latency_timer: u8,
 	/// Specifies the system cache line size in 32-bit units.
@@ -136,7 +200,6 @@ impl PCIDevice {
 
 			bist: ((data[3] >> 24) & 0xff) as _,
 			header_type: ((data[3] >> 16) & 0xff) as _,
-
 			latency_timer: ((data[3] >> 8) & 0xff) as _,
 			cache_line_size: (data[3] & 0xff) as _,
 
@@ -172,7 +235,7 @@ impl PCIDevice {
 	/// Returns the PCI function ID.
 	#[inline(always)]
 	pub fn get_function(&self) -> u8 {
-		self.device
+		self.function
 	}
 
 	/// Returns the header type of the device.
@@ -182,27 +245,40 @@ impl PCIDevice {
 		self.header_type & 0b01111111
 	}
 
-	/// Returns the value for the `n`th BAR.
-	pub fn get_bar_value(&self, n: u8) -> Option<u32> {
+	/// Returns the offset of the register for the `n`th BAR.
+	fn get_bar_reg_off(&self, n: u8) -> Option<u32> {
 		match self.get_header_type() {
-			0x00 => {
-				if n < 6 {
-					Some(self.info[n as usize])
-				} else {
-					None
-				}
+			0x00 => if n < 6 {
+				Some(self.info[n as usize])
+			} else {
+				None
 			},
 
-			0x01 => {
-				if n < 2 {
-					Some(self.info[n as usize])
-				} else {
-					None
-				}
+			0x01 => if n < 2 {
+				Some(self.info[n as usize])
+			} else {
+				None
 			},
 
 			_ => None,
 		}
+	}
+
+	/// Returns the size of the address space of the `n`th BAR.
+	pub fn get_bar_size(&self, n: u8) -> Option<usize> {
+		let reg_off = self.get_bar_reg_off(n)?;
+		// Saving the register
+		let save = read_long(self.bus, self.device, self.function, reg_off as _);
+
+		// Writing all 1s on register
+		write_long(self.bus, self.device, self.function, reg_off as _, !0u32);
+
+		let size = !read_long(self.bus, self.device, self.function, reg_off as _) + 1;
+
+		// Restoring the register's value
+		write_long(self.bus, self.device, self.function, reg_off as _, save);
+
+		Some(size as _)
 	}
 
 	/// Returns the interrupt PIN used by the device.
@@ -251,32 +327,47 @@ impl PhysicalDevice for PCIDevice {
 	}
 
 	fn get_bar(&self, n: u8) -> Option<BAR> {
-		BAR::from_pci(self, n)
-	}
-}
+		let bar_off = self.get_bar_reg_off(n)?;
+		// The BAR's value
+		let value = read_long(self.bus, self.device, self.function, bar_off as _);
+		// The address space's size
+		let size = self.get_bar_size(n).unwrap();
 
-/// Reads 16 bits from the PCI register specified by `bus`, `device`, `func` and `off`.
-fn read_word(bus: u8, device: u8, func: u8, off: u8) -> u16 {
-	// The PCI address
-	let addr = ((bus as u32) << 16) | ((device as u32) << 11) | ((func as u32) << 8)
-		| ((off as u32) & 0xfc) | 0x80000000;
+		if (value & 0b1) == 0 {
+			let type_ = match ((value >> 1) & 0b11) as u8 {
+				0x0 => BARType::Size32,
+				0x2 => BARType::Size64,
 
-	let val = unsafe {
-		// Setting the address
-		io::outl(CONFIG_ADDRESS_PORT, addr);
-		// Reading the value
-		io::inl(CONFIG_DATA_PORT)
-	};
-	((val >> ((off & 2) * 8)) & 0xffff) as _
-}
+				_ => return None,
+			};
+			let address = match type_ {
+				BARType::Size32 => (value & 0xfffffff0) as u64,
 
-/// Reads a device's data and writes it into `data`.
-fn read_data(bus: u8, device: u8, func: u8, data: &mut [u32; 16]) {
-	for (i, d) in data.iter_mut().enumerate() {
-		let v0 = read_word(bus, device, func, ((2 * i) * size_of::<u16>()) as _);
-		let v1 = read_word(bus, device, func, ((2 * i + 1) * size_of::<u16>()) as _);
+				BARType::Size64 => {
+					// The next BAR's value
+					let next_bar_off = self.get_bar_reg_off(n + 1)?;
+					let next_value = read_long(self.bus, self.device, self.function,
+						next_bar_off as _);
 
-		*d = ((v1 as u32) << 16) | v0 as u32;
+					(value & 0xfffffff0) as u64 | ((next_value as u64) << 32)
+				},
+			};
+
+			Some(BAR::MemorySpaceBAR {
+				type_,
+				prefetchable: value & 0b1000 != 0,
+
+				address,
+
+				size,
+			})
+		} else {
+			Some(BAR::IOSpaceBAR {
+				address: (value & 0xfffffffc) as u64,
+
+				size,
+			})
+		}
 	}
 }
 
@@ -305,7 +396,7 @@ impl PCIManager {
 
 		for bus in 0..=255 {
 			for device in 0..32 {
-				let vendor_id = read_word(bus, device, 0, 0);
+				let vendor_id = read_long(bus, device, 0, 0) & 0xffff;
 				// If the device doesn't exist, ignore
 				if vendor_id == 0xffff {
 					continue;
@@ -313,7 +404,7 @@ impl PCIManager {
 
 				// Reading device's PCI data
 				let mut data: [u32; 16] = [0; 16];
-				read_data(bus, device, 0, &mut data);
+				read_data(bus, device, 0, 0, &mut data);
 
 				let header_type = ((data[3] >> 16) & 0xff) as u8;
 				let max_functions_count = {
@@ -328,14 +419,14 @@ impl PCIManager {
 
 				// Iterating on every functions of the device
 				for func in 0..max_functions_count {
-					let vendor_id = read_word(bus, device, func, 0);
+					let vendor_id = read_long(bus, device, func, 0) & 0xffff;
 					// If the function doesn't exist, ignore
 					if vendor_id == 0xffff {
 						continue;
 					}
 
 					// Reading function's PCI data
-					read_data(bus, device, func, &mut data);
+					read_data(bus, device, func, 0, &mut data);
 
 					// Registering the device
 					let dev = PCIDevice::new(bus, device, func, &data);
@@ -358,7 +449,7 @@ impl PCIManager {
 }
 
 impl DeviceManager for PCIManager {
-	fn get_name(&self) -> &str {
+	fn get_name(&self) -> &'static str {
 		"PCI"
 	}
 
