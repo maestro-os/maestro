@@ -4,6 +4,7 @@
 use crate::device::bus::pci::PCIDevice;
 
 /// Structure representing a Base Address Register.
+#[derive(Debug)]
 pub struct BAR {
 	/// The base address.
 	address: u64,

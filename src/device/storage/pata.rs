@@ -181,9 +181,19 @@ impl PATAInterface {
 		self.get_status() & STATUS_RDY != 0
 	}
 
+	/// Tells whether the disk's buses are floating.
+	/// TODO describe floating
+	fn is_floating(&self) -> bool {
+		self.get_status() == 0xff
+	}
+
 	/// Waits until the drive is not busy anymore. If the drive wasn't busy, the function doesn't
 	/// do anything.
 	fn wait_busy(&self) {
+		if self.is_floating() {
+			return;
+		}
+
 		while self.get_status() & STATUS_BSY != 0 {}
 	}
 
@@ -281,6 +291,10 @@ impl PATAInterface {
 	fn identify(&mut self) -> Result<(), &'static str> {
 		self.reset();
 		self.select(true);
+
+		if self.is_floating() {
+			return Err("Drive doesn't exist");
+		}
 
 		self.set_sectors_count(0);
 		self.set_lba(0);
