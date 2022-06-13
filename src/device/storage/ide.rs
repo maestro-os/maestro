@@ -9,39 +9,66 @@ use crate::errno::Errno;
 use crate::util::container::vec::Vec;
 use crate::util::ptr::SharedPtr;
 
-/// The beginning of the port range for the primary ATA bus.
+/// The beginning of the port range for the primary ATA bus (compatibility mode).
 pub const PRIMARY_ATA_BUS_PORT_BEGIN: u16 = 0x1f0;
-/// The port for the primary disk's device control register.
+/// The port for the primary disk's device control register (compatibility mode).
 pub const PRIMARY_DEVICE_CONTROL_PORT: u16 = 0x3f6;
-/// The port for the primary disk's alternate status register.
+/// The port for the primary disk's alternate status register (compatibility mode).
 pub const PRIMARY_ALTERNATE_STATUS_PORT: u16 = 0x3f6;
 
-/// The beginning of the port range for the secondary ATA bus.
+/// The beginning of the port range for the secondary ATA bus (compatibility mode).
 pub const SECONDARY_ATA_BUS_PORT_BEGIN: u16 = 0x170;
-/// The port for the secondary disk's device control register.
+/// The port for the secondary disk's device control register (compatibility mode).
 pub const SECONDARY_DEVICE_CONTROL_PORT: u16 = 0x376;
-/// The port for the secondary disk's alternate status register.
+/// The port for the secondary disk's alternate status register (compatibility mode).
 pub const SECONDARY_ALTERNATE_STATUS_PORT: u16 = 0x376;
 
-/// Enumeration representing ways to access the IDE channel.
+/// Structure representing a channel on an IDE controller. It contains the BARs used to access a
+/// drive.
 #[derive(Debug)]
-pub enum Channel {
-	/// The disk has to be accessed through MMIO.
-	MMIO {
-		/// The BAR for ATA ports.
-		ata_bar: BAR,
-		/// The BAR for control port.
-		control_bar: BAR,
-	},
+pub struct Channel {
+	/// The BAR for ATA ports.
+	pub ata_bar: BAR,
+	/// The BAR for control port.
+	pub control_bar: BAR,
+}
 
-	/// The disk has to be accessed through port IO.
-	IO {
-		/// Tells whether the disk is on the secondary or primary bus.
-		secondary: bool,
-	},
+impl Channel {
+	/// Returns a new instance representing the channel in compatibility mode.
+	/// `secondary` tells whether the primary or secondary channel is picked.
+	pub fn new_compatibility(secondary: bool) -> Self {
+		if secondary {
+			Self {
+				ata_bar: BAR::IOSpace {
+					address: SECONDARY_ATA_BUS_PORT_BEGIN as _,
+
+					size: 4,
+				},
+				control_bar: BAR::IOSpace {
+					address: SECONDARY_DEVICE_CONTROL_PORT as _,
+
+					size: 4,
+				},
+			}
+		} else {
+			Self {
+				ata_bar: BAR::IOSpace {
+					address: PRIMARY_ATA_BUS_PORT_BEGIN as _,
+
+					size: 4,
+				},
+				control_bar: BAR::IOSpace {
+					address: PRIMARY_DEVICE_CONTROL_PORT as _,
+
+					size: 4,
+				},
+			}
+		}
+	}
 }
 
 /// Structure representing an IDE controller.
+#[derive(Debug)]
 pub struct Controller {
 	/// TODO doc
 	prog_if: u8,
@@ -125,22 +152,20 @@ impl Controller {
 			let channel = if pci_mode {
 				if !secondary {
 					// Primary channel
-					Channel::MMIO {
+					Channel {
 						ata_bar: self.bars[0].clone().unwrap(),
 						control_bar: self.bars[1].clone().unwrap(),
 					}
 				} else {
 					// Secondary channel
-					Channel::MMIO {
+					Channel {
 						ata_bar: self.bars[2].clone().unwrap(),
 						control_bar: self.bars[3].clone().unwrap(),
 					}
 				}
 			} else {
 				// Compatibility mode
-				Channel::IO {
-					secondary,
-				}
+				Channel::new_compatibility(secondary)
 			};
 
 

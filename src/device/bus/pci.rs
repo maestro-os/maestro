@@ -353,7 +353,7 @@ impl PhysicalDevice for PCIDevice {
 				},
 			};
 
-			Some(BAR::MemorySpaceBAR {
+			Some(BAR::MemorySpace {
 				type_,
 				prefetchable: value & 0b1000 != 0,
 
@@ -362,7 +362,7 @@ impl PhysicalDevice for PCIDevice {
 				size,
 			})
 		} else {
-			Some(BAR::IOSpaceBAR {
+			Some(BAR::IOSpace {
 				address: (value & 0xfffffffc) as u64,
 
 				size,

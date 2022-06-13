@@ -132,67 +132,36 @@ impl PATAInterface {
 		Ok(s)
 	}
 
-	/// TODO doc
+	/// Reads a byte from the register at offset `port_off`.
 	fn inb(&self, port_off: PortOffset) -> u8 {
-		match &self.channel {
-			ide::Channel::MMIO {
-				ata_bar,
-				control_bar,
-			} => {
-				let (bar, off) = match port_off {
-					PortOffset::ATA(off) => (ata_bar, off),
-					PortOffset::Control(off) => (control_bar, off),
-				};
-
-				// TODO Check padding
-				// TODO Use virtual address instead
-				let addr = unsafe {
-					(bar.get_physical_address().unwrap() as *mut u32).add(off as usize)
-				};
-
-				unsafe {
-					*addr as _
-				}
-			},
-
-			ide::Channel::IO { secondary } => {
-				let port = match port_off {
-					PortOffset::ATA(off) => if !secondary {
-						ide::PRIMARY_ATA_BUS_PORT_BEGIN + off
-					} else {
-						ide::SECONDARY_ATA_BUS_PORT_BEGIN + off
-					},
-
-					PortOffset::Control(off) => if !secondary {
-						ide::PRIMARY_DEVICE_CONTROL_PORT + off
-					} else {
-						ide::SECONDARY_DEVICE_CONTROL_PORT + off
-					},
-				};
-
-				unsafe {
-					io::inb(port)
-				}
-			},
+		match port_off {
+			PortOffset::ATA(off) => self.channel.ata_bar.read(off as _),
+			PortOffset::Control(off) => self.channel.control_bar.read(off as _),
 		}
 	}
 
-	/// TODO doc
-	fn inw(&self, _port_off: PortOffset) -> u16 {
-		// TODO
-		todo!();
+	/// Reads a word from the register at offset `port_off`.
+	fn inw(&self, port_off: PortOffset) -> u16 {
+		match port_off {
+			PortOffset::ATA(off) => self.channel.ata_bar.read(off as _),
+			PortOffset::Control(off) => self.channel.control_bar.read(off as _),
+		}
 	}
 
-	/// TODO doc
-	fn outb(&self, _port_off: PortOffset, _value: u8) {
-		// TODO
-		todo!();
+	/// Writes a byte into the register at offset `port_off`.
+	fn outb(&self, port_off: PortOffset, value: u8) {
+		match port_off {
+			PortOffset::ATA(off) => self.channel.ata_bar.write(off as _, value),
+			PortOffset::Control(off) => self.channel.control_bar.write(off as _, value),
+		}
 	}
 
-	/// TODO doc
-	fn outw(&self, _port_off: PortOffset, _value: u16) {
-		// TODO
-		todo!();
+	/// Writes a word into the register at offset `port_off`.
+	fn outw(&self, port_off: PortOffset, value: u16) {
+		match port_off {
+			PortOffset::ATA(off) => self.channel.ata_bar.write(off as _, value),
+			PortOffset::Control(off) => self.channel.control_bar.write(off as _, value),
+		}
 	}
 
 	/// Returns the content of the error register.
