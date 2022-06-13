@@ -71,7 +71,7 @@ impl BAR {
 
 	// TODO Use virtual addresses instead
 	/// Reads a value from the register at offset `off`.
-	pub fn read<T: From<u8> + From<u16> + From<u32> + From<u64>>(&self, off: usize) -> T {
+	pub fn read<T>(&self, off: usize) -> u64 {
 		match self {
 			Self::MemorySpace { type_, address, .. } => match type_ {
 				BARType::Size32 => unsafe {
@@ -109,12 +109,12 @@ impl BAR {
 
 	// TODO Use virtual addresses instead
 	/// Writes a value to the register at offset `off`.
-	pub fn write<T: Into<u8> + Into<u16> + Into<u32> + Into<u64>>(&self, off: usize, val: T) {
+	pub fn write<T>(&self, off: usize, val: u64) {
 		match self {
 			Self::MemorySpace { type_, address, .. } => match type_ {
 				BARType::Size32 => unsafe {
 					let addr = (*address as *mut u32).add(off);
-					*addr = val.into();
+					*addr = val as _;
 				},
 
 				BARType::Size64 => unsafe {
@@ -128,15 +128,15 @@ impl BAR {
 
 				match size_of::<T>() {
 					1 => unsafe {
-						io::outb(off, val.into())
+						io::outb(off, val as _)
 					},
 
 					2 => unsafe {
-						io::outw(off, val.into())
+						io::outw(off, val as _)
 					},
 
 					4 => unsafe {
-						io::outl(off, val.into())
+						io::outl(off, val as _)
 					},
 
 					_ => {},

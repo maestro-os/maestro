@@ -134,34 +134,42 @@ impl PATAInterface {
 
 	/// Reads a byte from the register at offset `port_off`.
 	fn inb(&self, port_off: PortOffset) -> u8 {
-		match port_off {
-			PortOffset::ATA(off) => self.channel.ata_bar.read(off as _),
-			PortOffset::Control(off) => self.channel.control_bar.read(off as _),
-		}
+		let (bar, off) = match &port_off {
+			PortOffset::ATA(off) => (&self.channel.ata_bar, *off),
+			PortOffset::Control(off) => (&self.channel.control_bar, *off),
+		};
+
+		bar.read::<u8>(off as _) as _
 	}
 
 	/// Reads a word from the register at offset `port_off`.
 	fn inw(&self, port_off: PortOffset) -> u16 {
-		match port_off {
-			PortOffset::ATA(off) => self.channel.ata_bar.read(off as _),
-			PortOffset::Control(off) => self.channel.control_bar.read(off as _),
-		}
+		let (bar, off) = match &port_off {
+			PortOffset::ATA(off) => (&self.channel.ata_bar, *off),
+			PortOffset::Control(off) => (&self.channel.control_bar, *off),
+		};
+
+		bar.read::<u16>(off as _) as _
 	}
 
 	/// Writes a byte into the register at offset `port_off`.
 	fn outb(&self, port_off: PortOffset, value: u8) {
-		match port_off {
-			PortOffset::ATA(off) => self.channel.ata_bar.write(off as _, value),
-			PortOffset::Control(off) => self.channel.control_bar.write(off as _, value),
-		}
+		let (bar, off) = match &port_off {
+			PortOffset::ATA(off) => (&self.channel.ata_bar, *off),
+			PortOffset::Control(off) => (&self.channel.control_bar, *off),
+		};
+
+		bar.write::<u8>(off as _, value as _) as _
 	}
 
 	/// Writes a word into the register at offset `port_off`.
 	fn outw(&self, port_off: PortOffset, value: u16) {
-		match port_off {
-			PortOffset::ATA(off) => self.channel.ata_bar.write(off as _, value),
-			PortOffset::Control(off) => self.channel.control_bar.write(off as _, value),
-		}
+		let (bar, off) = match &port_off {
+			PortOffset::ATA(off) => (&self.channel.ata_bar, *off),
+			PortOffset::Control(off) => (&self.channel.control_bar, *off),
+		};
+
+		bar.write::<u16>(off as _, value as _) as _
 	}
 
 	/// Returns the content of the error register.
