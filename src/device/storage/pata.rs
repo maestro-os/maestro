@@ -47,10 +47,14 @@ const SELECT_MASTER: u8 = 0xa0;
 /// Selects the slave drive.
 const SELECT_SLAVE: u8 = 0xb0;
 
-/// Reads sectors from the disk.
+/// Reads sectors from the disk with LBA28.
 const COMMAND_READ_SECTORS: u8 = 0x20;
-/// Writes sectors on the disk.
+/// Reads sectors from the disk with LBA48.
+const COMMAND_READ_SECTORS_EXT: u8 = 0x24;
+/// Writes sectors on the disk with LBA28.
 const COMMAND_WRITE_SECTORS: u8 = 0x30;
+/// Writes sectors on the disk with LBA48.
+const COMMAND_WRITE_SECTORS_EXT: u8 = 0x34;
 /// Flush cache command.
 const COMMAND_CACHE_FLUSH: u8 = 0xe7;
 /// Identifies the selected drive.
@@ -352,112 +356,6 @@ impl PATAInterface {
 			}
 		}
 	}
-
-	/// Reads `size` blocks from storage at block offset `offset`, writing the data to `buf`.
-	/// The function uses LBA28, thus the offset is assumed to be in range.
-	fn read28(&self, buf: &mut [u8], offset: u64, size: usize) -> Result<(), Errno> {
-		self.select(false);
-
-		let mut i = 0;
-		while i < size {
-			// The number of blocks for this iteration
-			let count = min(size - i, 256);
-
-			let drive = if self.slave {
-				0xf0
-			} else {
-				0xe0
-			} | ((offset >> 24) & 0x0f) as u8;
-			let lo_lba = (offset & 0xff) as u8;
-			let mid_lba = ((offset >> 8) & 0xff) as u8;
-			let hi_lba = ((offset >> 16) & 0xff) as u8;
-
-			self.outb(PortOffset::ATA(DRIVE_REGISTER_OFFSET), drive);
-			self.outb(PortOffset::ATA(SECTORS_COUNT_REGISTER_OFFSET), count as _);
-			self.outb(PortOffset::ATA(LBA_LO_REGISTER_OFFSET), lo_lba);
-			self.outb(PortOffset::ATA(LBA_MID_REGISTER_OFFSET), mid_lba);
-			self.outb(PortOffset::ATA(LBA_HI_REGISTER_OFFSET), hi_lba);
-
-			self.send_command(COMMAND_READ_SECTORS);
-
-			for j in 0..count {
-				self.wait_io()?;
-
-				for k in 0..256 {
-					let index = ((i + j) * 256 + k) * 2;
-					debug_assert!(index + 1 < buf.len());
-
-					let word = self.inw(PortOffset::ATA(DATA_REGISTER_OFFSET));
-					buf[index] = (word & 0xff) as _;
-					buf[index + 1] = ((word >> 8) & 0xff) as _;
-				}
-			}
-
-			i += count;
-		}
-
-		Ok(())
-	}
-
-	/// Reads `size` blocks from storage at block offset `offset`, writing the data to `buf`.
-	/// The function uses LBA48.
-	fn read48(&self, _buf: &mut [u8], _offset: u64, _size: usize) -> Result<(), Errno> {
-		// TODO
-		todo!();
-	}
-
-	/// Writes `size` blocks to storage at block offset `offset`, reading the data from `buf`.
-	/// The function uses LBA28, thus the offset is assumed to be in range.
-	fn write28(&self, buf: &[u8], offset: u64, size: usize) -> Result<(), Errno> {
-		self.select(false);
-
-		let mut i = 0;
-		while i < size {
-			// The number of blocks for this iteration
-			let count = min(size - i, 256);
-
-			let drive = if self.slave {
-				0xf0
-			} else {
-				0xe0
-			} | ((offset >> 24) & 0x0f) as u8;
-			let lo_lba = (offset & 0xff) as u8;
-			let mid_lba = ((offset >> 8) & 0xff) as u8;
-			let hi_lba = ((offset >> 16) & 0xff) as u8;
-
-			self.outb(PortOffset::ATA(DRIVE_REGISTER_OFFSET), drive);
-			self.outb(PortOffset::ATA(SECTORS_COUNT_REGISTER_OFFSET), count as _);
-			self.outb(PortOffset::ATA(LBA_LO_REGISTER_OFFSET), lo_lba);
-			self.outb(PortOffset::ATA(LBA_MID_REGISTER_OFFSET), mid_lba);
-			self.outb(PortOffset::ATA(LBA_HI_REGISTER_OFFSET), hi_lba);
-
-			self.send_command(COMMAND_WRITE_SECTORS);
-
-			for j in 0..count {
-				self.wait_io()?;
-
-				for k in 0..256 {
-					let index = ((i + j) * 256 + k) * 2;
-					debug_assert!(index + 1 < buf.len());
-
-					let word = ((buf[index + 1] as u16) << 8) | (buf[index] as u16);
-					self.outw(PortOffset::ATA(DATA_REGISTER_OFFSET), word)
-				}
-			}
-
-			self.cache_flush();
-			i += count;
-		}
-
-		Ok(())
-	}
-
-	/// Writes `size` blocks to storage at block offset `offset`, reading the data from `buf`.
-	/// The function uses LBA48.
-	fn write48(&self, _buf: &[u8], _offset: u64, _size: usize) -> Result<(), Errno> {
-		// TODO
-		todo!();
-	}
 }
 
 impl StorageInterface for PATAInterface {
@@ -472,32 +370,198 @@ impl StorageInterface for PATAInterface {
 	fn read(&mut self, buf: &mut [u8], offset: u64, size: u64) -> Result<(), Errno> {
 		debug_assert!((buf.len() as u64) >= size * SECTOR_SIZE);
 
+		// If the offset and size are out of bounds of the disk, return an error
 		if offset > self.sectors_count || offset + size > self.sectors_count {
 			return Err(crate::errno!(EINVAL));
 		}
 
-		if (offset + size) < (1 << 29) - 1 {
-			self.read28(buf, offset, size as _)
-		} else if self.lba48 {
-			self.read48(buf, offset, size as _)
-		} else {
-			Err(errno!(EIO))
+		// Tells whether to use LBA48
+		let lba48 = (offset + size) >= ((1 << 29) - 1);
+
+		// If LBA48 is required but not supported, return an error
+		if lba48 && !self.lba48 {
+			return Err(errno!(EIO));
 		}
+
+		// The maximum number of sectors that can be handled at each iterations
+		let iter_max = if lba48 {
+			(u16::MAX as u64) + 1
+		} else {
+			(u8::MAX as u64) + 1
+		};
+
+		self.select(false);
+
+		let mut i = 0;
+		while i < size {
+			// The number of blocks for this iteration
+			let mut count = min(size - i, iter_max);
+			if count == iter_max {
+				count = 0;
+			}
+
+			let mut drive = if lba48 {
+				// LBA48
+				0x40
+			} else {
+				// LBA28
+				0xe0
+			};
+			if self.slave {
+				// Setting slave bit
+				drive |= 1 << 4;
+			}
+
+			// If LBA28, add the end of the sector offset
+			if !lba48 {
+				drive |= ((offset >> 24) & 0x0f) as u8;
+			}
+
+			self.outb(PortOffset::ATA(DRIVE_REGISTER_OFFSET), drive);
+
+			// If LBA48, write high bytes first
+			if lba48 {
+				let count = ((count >> 8) & 0xff) as u8;
+				let lo_lba = ((offset >> 24) & 0xff) as u8;
+				let mid_lba = ((offset >> 32) & 0xff) as u8;
+				let hi_lba = ((offset >> 40) & 0xff) as u8;
+
+				self.outb(PortOffset::ATA(SECTORS_COUNT_REGISTER_OFFSET), count);
+				self.outb(PortOffset::ATA(LBA_LO_REGISTER_OFFSET), lo_lba);
+				self.outb(PortOffset::ATA(LBA_MID_REGISTER_OFFSET), mid_lba);
+				self.outb(PortOffset::ATA(LBA_HI_REGISTER_OFFSET), hi_lba);
+			}
+
+			let lo_lba = (offset & 0xff) as u8;
+			let mid_lba = ((offset >> 8) & 0xff) as u8;
+			let hi_lba = ((offset >> 16) & 0xff) as u8;
+
+			self.outb(PortOffset::ATA(SECTORS_COUNT_REGISTER_OFFSET), (count & 0xff) as u8);
+			self.outb(PortOffset::ATA(LBA_LO_REGISTER_OFFSET), lo_lba);
+			self.outb(PortOffset::ATA(LBA_MID_REGISTER_OFFSET), mid_lba);
+			self.outb(PortOffset::ATA(LBA_HI_REGISTER_OFFSET), hi_lba);
+
+			if lba48 {
+				self.send_command(COMMAND_READ_SECTORS_EXT);
+			} else {
+				self.send_command(COMMAND_READ_SECTORS);
+			}
+
+			for j in 0..count {
+				self.wait_io()?;
+
+				for k in 0..256 {
+					let index = (((i + j) * 256 + k) * 2) as usize;
+					debug_assert!(index + 1 < buf.len());
+
+					let word = self.inw(PortOffset::ATA(DATA_REGISTER_OFFSET));
+					buf[index] = (word & 0xff) as _;
+					buf[index + 1] = ((word >> 8) & 0xff) as _;
+				}
+			}
+
+			i += count;
+		}
+
+		Ok(())
 	}
 
 	fn write(&mut self, buf: &[u8], offset: u64, size: u64) -> Result<(), Errno> {
 		debug_assert!((buf.len() as u64) >= size * SECTOR_SIZE);
 
+		// If the offset and size are out of bounds of the disk, return an error
 		if offset > self.sectors_count || offset + size > self.sectors_count {
 			return Err(crate::errno!(EINVAL));
 		}
 
-		if (offset + size) < (1 << 29) - 1 {
-			self.write28(buf, offset, size as _)
-		} else if self.lba48 {
-			self.write48(buf, offset, size as _)
-		} else {
-			Err(errno!(EIO))
+		// Tells whether to use LBA48
+		let lba48 = (offset + size) >= ((1 << 29) - 1);
+
+		// If LBA48 is required but not supported, return an error
+		if lba48 && !self.lba48 {
+			return Err(errno!(EIO));
 		}
+
+		// The maximum number of sectors that can be handled at each iterations
+		let iter_max = if lba48 {
+			(u16::MAX as u64) + 1
+		} else {
+			(u8::MAX as u64) + 1
+		};
+
+		self.select(false);
+
+		let mut i = 0;
+		while i < size {
+			// The number of blocks for this iteration
+			let mut count = min(size - i, iter_max);
+			if count == iter_max {
+				count = 0;
+			}
+
+			let mut drive = if lba48 {
+				// LBA48
+				0x40
+			} else {
+				// LBA28
+				0xe0
+			};
+			if self.slave {
+				// Setting slave bit
+				drive |= 1 << 4;
+			}
+
+			// If LBA28, add the end of the sector offset
+			if !lba48 {
+				drive |= ((offset >> 24) & 0x0f) as u8;
+			}
+
+			self.outb(PortOffset::ATA(DRIVE_REGISTER_OFFSET), drive);
+
+			// If LBA48, write high bytes first
+			if lba48 {
+				let count = ((count >> 8) & 0xff) as u8;
+				let lo_lba = ((offset >> 24) & 0xff) as u8;
+				let mid_lba = ((offset >> 32) & 0xff) as u8;
+				let hi_lba = ((offset >> 40) & 0xff) as u8;
+
+				self.outb(PortOffset::ATA(SECTORS_COUNT_REGISTER_OFFSET), count);
+				self.outb(PortOffset::ATA(LBA_LO_REGISTER_OFFSET), lo_lba);
+				self.outb(PortOffset::ATA(LBA_MID_REGISTER_OFFSET), mid_lba);
+				self.outb(PortOffset::ATA(LBA_HI_REGISTER_OFFSET), hi_lba);
+			}
+
+			let lo_lba = (offset & 0xff) as u8;
+			let mid_lba = ((offset >> 8) & 0xff) as u8;
+			let hi_lba = ((offset >> 16) & 0xff) as u8;
+
+			self.outb(PortOffset::ATA(SECTORS_COUNT_REGISTER_OFFSET), (count & 0xff) as u8);
+			self.outb(PortOffset::ATA(LBA_LO_REGISTER_OFFSET), lo_lba);
+			self.outb(PortOffset::ATA(LBA_MID_REGISTER_OFFSET), mid_lba);
+			self.outb(PortOffset::ATA(LBA_HI_REGISTER_OFFSET), hi_lba);
+
+			if lba48 {
+				self.send_command(COMMAND_WRITE_SECTORS_EXT);
+			} else {
+				self.send_command(COMMAND_WRITE_SECTORS);
+			}
+
+			for j in 0..count {
+				self.wait_io()?;
+
+				for k in 0..256 {
+					let index = (((i + j) * 256 + k) * 2) as usize;
+					debug_assert!(index + 1 < buf.len());
+
+					let word = ((buf[index + 1] as u16) << 8) | (buf[index] as u16);
+					self.outw(PortOffset::ATA(DATA_REGISTER_OFFSET), word)
+				}
+			}
+
+			self.cache_flush();
+			i += count;
+		}
+
+		Ok(())
 	}
 }
