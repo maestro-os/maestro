@@ -46,6 +46,7 @@ impl Hasher for XORHasher {
 
 /// A bucket is a list storing elements that match a given hash range.
 /// Since hashing function have collisions, several elements can have the same hash.
+#[derive(Debug)]
 struct Bucket<K: Eq + Hash, V> {
 	/// The vector storing the key/value pairs.
 	elements: Vec<(K, V)>,
@@ -107,9 +108,8 @@ impl<K: Eq + Hash, V> Bucket<K, V> {
 impl<K: Eq + Hash + FailableClone, V: FailableClone> FailableClone for Bucket<K, V> {
 	fn failable_clone(&self) -> Result<Self, Errno> {
 		let mut v = Vec::with_capacity(self.elements.len())?;
-		for i in 0..self.elements.len() {
-			let (key, value) = &self.elements[i];
-			v[i] = (key.failable_clone()?, value.failable_clone()?);
+		for (key, value) in self.elements.iter() {
+			v.push((key.failable_clone()?, value.failable_clone()?))?;
 		}
 
 		Ok(Self {
@@ -119,6 +119,7 @@ impl<K: Eq + Hash + FailableClone, V: FailableClone> FailableClone for Bucket<K,
 }
 
 /// Structure representing a hashmap.
+#[derive(Debug)]
 pub struct HashMap<K: Eq + Hash, V> {
 	/// The number of buckets in the hashmap.
 	buckets_count: usize,

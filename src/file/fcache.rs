@@ -88,17 +88,16 @@ impl FCache {
 	/// path resolution.
 	fn get_file_from_path_(&mut self, path: &Path, uid: Uid, gid: Gid, follow_links: bool,
 		follows_count: usize) -> Result<SharedPtr<File>, Errno> {
-		let mut path = Path::root().concat(path)?;
-		path.reduce()?;
+		let path = Path::root().concat(path)?;
 
 		// Getting the path's deepest mountpoint
 		let mountpoint_mutex = mountpoint::get_deepest(&path).ok_or_else(|| errno!(ENOENT))?;
-		let mut mountpoint_guard = mountpoint_mutex.lock();
+		let mountpoint_guard = mountpoint_mutex.lock();
 		let mountpoint = mountpoint_guard.get_mut();
 
 		// Getting the IO interface
-		let io_mutex = mountpoint.get_source().get_io();
-		let mut io_guard = io_mutex.lock();
+		let io_mutex = mountpoint.get_source().get_io()?;
+		let io_guard = io_mutex.lock();
 		let io = io_guard.get_mut();
 
 		// Getting the path from the start of the filesystem to the file
@@ -139,8 +138,7 @@ impl FCache {
 					parent_path.pop();
 
 					let link_path = Path::from_str(link_path.as_bytes(), false)?;
-					let mut new_path = parent_path.concat(&link_path)?;
-					new_path.reduce()?;
+					let new_path = parent_path.concat(&link_path)?;
 
 					drop(io_guard);
 					drop(mountpoint_guard);
@@ -191,12 +189,12 @@ impl FCache {
 		// Getting the path's deepest mountpoint
 		let mountpoint_mutex = parent.get_location().get_mountpoint()
 			.ok_or_else(|| errno!(ENOENT))?;
-		let mut mountpoint_guard = mountpoint_mutex.lock();
+		let mountpoint_guard = mountpoint_mutex.lock();
 		let mountpoint = mountpoint_guard.get_mut();
 
 		// Getting the IO interface
-		let io_mutex = mountpoint.get_source().get_io();
-		let mut io_guard = io_mutex.lock();
+		let io_mutex = mountpoint.get_source().get_io()?;
+		let io_guard = io_mutex.lock();
 		let io = io_guard.get_mut();
 
 		// The filesystem
@@ -208,8 +206,7 @@ impl FCache {
 		if follow_links {
 			if let FileContent::Link(link_path) = file.get_file_content() {
 				let link_path = Path::from_str(link_path.as_bytes(), false)?;
-				let mut new_path = parent.get_path()?.concat(&link_path)?;
-				new_path.reduce()?;
+				let new_path = parent.get_path()?.concat(&link_path)?;
 
 				drop(io_guard);
 				drop(mountpoint_guard);
@@ -243,12 +240,12 @@ impl FCache {
 		// Getting the mountpoint
 		let mountpoint_mutex = parent.get_location().get_mountpoint()
 			.ok_or_else(|| errno!(ENOENT))?;
-		let mut mountpoint_guard = mountpoint_mutex.lock();
+		let mountpoint_guard = mountpoint_mutex.lock();
 		let mountpoint = mountpoint_guard.get_mut();
 
 		// Getting the IO interface
-		let io_mutex = mountpoint.get_source().get_io();
-		let mut io_guard = io_mutex.lock();
+		let io_mutex = mountpoint.get_source().get_io()?;
+		let io_guard = io_mutex.lock();
 		let io = io_guard.get_mut();
 
 		let fs = mountpoint.get_filesystem();
@@ -263,7 +260,7 @@ impl FCache {
 
 		// Adding the file to the parent's entries
 		file.set_parent_path(parent.get_path()?);
-		parent.add_entry(file.to_dir_entry()?)?;
+		parent.add_entry(file.get_name().failable_clone()?, file.to_dir_entry())?;
 
 		SharedPtr::new(file)
 	}
@@ -288,12 +285,12 @@ impl FCache {
 
 		// Getting the mountpoint
 		let mountpoint_mutex = file.get_location().get_mountpoint().ok_or_else(|| errno!(ENOENT))?;
-		let mut mountpoint_guard = mountpoint_mutex.lock();
+		let mountpoint_guard = mountpoint_mutex.lock();
 		let mountpoint = mountpoint_guard.get_mut();
 
 		// Getting the IO interface
-		let io_mutex = mountpoint.get_source().get_io();
-		let mut io_guard = io_mutex.lock();
+		let io_mutex = mountpoint.get_source().get_io()?;
+		let io_guard = io_mutex.lock();
 		let io = io_guard.get_mut();
 
 		// Removing the file

@@ -114,7 +114,8 @@ pub unsafe fn zero_object<T>(obj: &mut T) {
 
 /// Returns the length of the string `s`.
 /// If the pointer or the string is invalid, the behaviour is undefined.
-pub unsafe fn strlen(s: *const u8) -> usize {
+#[no_mangle]
+pub unsafe extern "C" fn strlen(s: *const u8) -> usize {
 	let mut i = 0;
 
 	while *s.add(i) != b'\0' {
@@ -139,6 +140,13 @@ pub unsafe fn strnlen(s: *const u8, n: usize) -> usize {
 /// Returns a slice representing a C string beginning at the given pointer.
 pub unsafe fn str_from_ptr(ptr: *const u8) -> &'static [u8] {
 	slice::from_raw_parts(ptr, strlen(ptr))
+}
+
+/// Returns an immutable slice to the given value.
+pub fn as_slice<'a, T>(val: &'a T) -> &'a [u8] {
+	unsafe {
+		slice::from_raw_parts(&val as *const _ as *const u8, size_of::<T>())
+	}
 }
 
 /// Turns the error into an empty error for the given result.
@@ -221,6 +229,24 @@ pub trait IO {
 	/// `offset` is the offset in the I/O to the beginning of the data to write.
 	/// The function returns the number of bytes written.
 	fn write(&mut self, offset: u64, buff: &[u8]) -> Result<u64, Errno>;
+}
+
+/// Structure representing a dummy I/O interface.
+pub struct DummyIO {}
+
+impl IO for DummyIO {
+	fn get_size(&self) -> u64 {
+		0
+	}
+
+	fn read(&mut self, _offset: u64, _buff: &mut [u8]) -> Result<u64, Errno> {
+		Ok(0)
+	}
+
+	fn write(&mut self, _offset: u64, _buff: &[u8]) -> Result<u64, Errno> {
+		Ok(0)
+	}
+
 }
 
 #[cfg(test)]

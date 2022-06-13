@@ -108,7 +108,7 @@ impl<T: ?Sized, const INT: bool> SharedPtr<T, INT> {
 	/// Creates a weak pointer for the current shared pointer.
 	pub fn new_weak(&self) -> WeakPtr<T, INT> {
 		let inner = self.get_inner();
-		let mut guard = inner.ref_counter.lock();
+		let guard = inner.ref_counter.lock();
 		let refs = guard.get_mut();
 		refs.weak_count += 1;
 
@@ -121,7 +121,7 @@ impl<T: ?Sized, const INT: bool> SharedPtr<T, INT> {
 impl<T: ?Sized, const INT: bool> Clone for SharedPtr<T, INT> {
 	fn clone(&self) -> Self {
 		let inner = self.get_inner();
-		let mut guard = inner.ref_counter.lock();
+		let guard = inner.ref_counter.lock();
 		let refs = guard.get_mut();
 		refs.shared_count += 1;
 
@@ -168,7 +168,7 @@ impl<T: ?Sized, const INT: bool> Drop for SharedPtr<T, INT> {
 		let inner = self.get_inner();
 
 		{
-			let mut guard = inner.ref_counter.lock();
+			let guard = inner.ref_counter.lock();
 			let refs = guard.get_mut();
 			refs.shared_count -= 1;
 
@@ -235,9 +235,9 @@ impl<T: ?Sized, const INT: bool> WeakPtr<T, INT> {
 impl<T: ?Sized, const INT: bool> Clone for WeakPtr<T, INT> {
 	fn clone(&self) -> Self {
 		let inner = self.get_inner();
-		let mut guard = inner.ref_counter.lock();
+		let guard = inner.ref_counter.lock();
 		let refs = guard.get_mut();
-		refs.shared_count += 1;
+		refs.weak_count += 1;
 
 		Self {
 			inner: self.inner,
@@ -256,7 +256,7 @@ impl<T: ?Sized, const INT: bool> Drop for WeakPtr<T, INT> {
 		let inner = self.get_inner();
 
 		{
-			let mut guard = inner.ref_counter.lock();
+			let guard = inner.ref_counter.lock();
 			let refs = guard.get_mut();
 			refs.weak_count -= 1;
 

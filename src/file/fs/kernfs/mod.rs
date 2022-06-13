@@ -1,12 +1,12 @@
 //! Kernfs implements utilities allowing to create a virtual filesystem.
 
-pub mod directory;
 pub mod node;
 
 use crate::errno::Errno;
 use crate::errno;
 use crate::file::File;
 use crate::file::FileContent;
+use crate::file::FileLocation;
 use crate::file::Gid;
 use crate::file::INode;
 use crate::file::Mode;
@@ -17,7 +17,6 @@ use crate::util::FailableClone;
 use crate::util::IO;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
-use crate::util::ptr::SharedPtr;
 use node::KernFSNode;
 
 /// The index of the root inode.
@@ -30,8 +29,11 @@ pub struct KernFS {
 	/// Tells whether the filesystem is readonly.
 	readonly: bool,
 
+	/// The path at which the filesystem is mounted.
+	mountpath: Path,
+
 	/// The list of nodes of the filesystem. The index in this vector is the inode.
-	nodes: Vec<Option<SharedPtr<dyn KernFSNode>>>,
+	nodes: Vec<Option<KernFSNode>>,
 	/// A list of free inodes.
 	free_nodes: Vec<INode>,
 }
@@ -40,10 +42,13 @@ impl KernFS {
 	/// Creates a new instance.
 	/// `name` is the name of the filesystem.
 	/// `readonly` tells whether the filesystem is readonly.
-	pub fn new(name: String, readonly: bool) -> Self {
+	/// `mountpath` is the path at which the filesystem is mounted.
+	pub fn new(name: String, readonly: bool, mountpath: Path) -> Self {
 		Self {
 			name,
 			readonly,
+
+			mountpath,
 
 			nodes: Vec::new(),
 			free_nodes: Vec::new(),
@@ -51,7 +56,7 @@ impl KernFS {
 	}
 
 	/// Sets the root node of the filesystem.
-	pub fn set_root(&mut self, root: Option<SharedPtr<dyn KernFSNode>>) -> Result<(), Errno> {
+	pub fn set_root(&mut self, root: Option<KernFSNode>) -> Result<(), Errno> {
 		if self.nodes.is_empty() {
 			self.nodes.push(root)?;
 		} else {
@@ -61,16 +66,14 @@ impl KernFS {
 		Ok(())
 	}
 
-	/// Adds the given node `node` at the given path `path`.
+	/// Adds the given node `node` to the filesystem.
 	/// The function returns the allocated inode.
-	pub fn add_node(&mut self, path: &Path, _node: SharedPtr<dyn KernFSNode>)
-		-> Result<INode, Errno> {
-		let mut parent_path = path.failable_clone()?;
-		parent_path.pop();
+	pub fn add_node(&mut self, node: KernFSNode) -> Result<INode, Errno> {
+		// TODO Use the free nodes list
+		let inode = self.nodes.len();
+		self.nodes.push(Some(node))?;
 
-		// TODO Get parent inode
-		// TODO Add file
-		todo!();
+		Ok(inode as _)
 	}
 
 	/// Removes the node with inode `inode`.
@@ -108,17 +111,37 @@ impl Filesystem for KernFS {
 		if parent_inode as usize >= self.nodes.len() {
 			return Err(errno!(ENOENT));
 		}
-		let parent_mutex = self.nodes[parent_inode as _].as_ref().ok_or_else(|| errno!(ENOENT))?;
-		let parent_guard = parent_mutex.lock();
-		let parent_node = parent_guard.get();
+		let parent_node = self.nodes[parent_inode as _].as_ref().ok_or_else(|| errno!(ENOENT))?;
 
-		parent_node.get_entry(name).map(| (inode, _) | inode)
+		match parent_node.get_content() {
+			FileContent::Directory(entries) => {
+				entries.get(name)
+					.map(| dirent | dirent.inode)
+					.ok_or_else(|| errno!(ENOENT))
+			},
+			_ => Err(errno!(ENOENT)),
+		}
 	}
 
-	fn load_file(&mut self, _: &mut dyn IO, _inode: INode, _name: String)
+	fn load_file(&mut self, _: &mut dyn IO, inode: INode, name: String)
 		-> Result<File, Errno> {
-		// TODO
-		todo!();
+		if inode as usize >= self.nodes.len() {
+			return Err(errno!(ENOENT));
+		}
+		let node = self.nodes[inode as _].as_ref().ok_or_else(|| errno!(ENOENT))?;
+
+		let file_location = FileLocation::new(self.mountpath.failable_clone()?, inode);
+		let file_content = node.get_content().failable_clone()?;
+
+		let mut file = File::new(name, node.get_uid(), node.get_gid(), node.get_mode(),
+			file_location, file_content)?;
+		file.set_hard_links_count(node.get_hard_links_count());
+		file.set_size(node.get_size());
+		file.set_ctime(node.get_ctime());
+		file.set_mtime(node.get_mtime());
+		file.set_atime(node.get_atime());
+
+		Ok(file)
 	}
 
 	fn add_file(&mut self, _io: &mut dyn IO, _parent_inode: INode, _name: String, _uid: Uid,

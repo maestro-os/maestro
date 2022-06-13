@@ -10,16 +10,17 @@ pub fn sigreturn(_regs: &Regs) -> Result<i32, Errno> {
 	cli!();
 
 	let mutex = Process::get_current().unwrap();
-	let mut guard = mutex.lock();
+	let guard = mutex.lock();
 	let proc = guard.get_mut();
 
 	// Restores the state of the process before the signal handler
 	proc.signal_restore();
 
 	let regs = proc.get_regs().clone();
+	let syscalling = proc.is_syscalling();
 	drop(guard);
 
 	unsafe {
-		regs.switch(true);
+		regs.switch(!syscalling);
 	}
 }

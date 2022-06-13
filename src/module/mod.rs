@@ -264,7 +264,7 @@ pub fn is_loaded(name: &String) -> bool {
 
 /// Adds the given module to the modules list.
 pub fn add(module: Module) -> Result<(), Errno> {
-	let mut modules_guard = MODULES.lock();
+	let modules_guard = MODULES.lock();
 	let modules = modules_guard.get_mut();
 	modules.push(module)
 }

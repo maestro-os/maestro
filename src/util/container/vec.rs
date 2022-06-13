@@ -3,6 +3,7 @@
 use core::cmp::Ordering;
 use core::cmp::max;
 use core::cmp::min;
+use core::fmt;
 use core::hash::Hash;
 use core::hash::Hasher;
 use core::ops::Deref;
@@ -19,6 +20,8 @@ use core::slice;
 use crate::errno::Errno;
 use crate::memory::malloc;
 use crate::util::FailableClone;
+
+// TODO Optimize iterators
 
 /// Macro allowing to create a vector with the given set of values.
 #[macro_export]
@@ -137,11 +140,7 @@ impl<T> Vec<T> {
 	/// reallocate the memory.
 	#[inline(always)]
 	pub fn capacity(&self) -> usize {
-		if let Some(d) = &self.data {
-			d.len()
-		} else {
-			0
-		}
+		self.data.as_ref().map(| d | d.len()).unwrap_or(0)
 	}
 
 	/// Returns a slice containing the data.
@@ -291,9 +290,9 @@ impl<T> Vec<T> {
 	/// length, the function has no effect.
 	pub fn truncate(&mut self, len: usize) {
 		if len < self.len() {
-			for i in len..self.len {
+			for e in &mut self.as_mut_slice()[len..] {
 				unsafe {
-					drop_in_place(&mut self[i]);
+					drop_in_place(e);
 				}
 			}
 
@@ -373,25 +372,21 @@ impl<T> FailableClone for Vec<T> where T: FailableClone {
 impl<T> Vec<T> where T: FailableClone {
 	/// Clones the vector, keeping the given range.
 	pub fn clone_range(&self, range: Range<usize>) -> Result<Self, Errno> {
-		let len = {
-			if range.start <= range.end {
-				min(range.end, self.len) - range.start
-			} else {
-				0
-			}
-		};
+		let end = min(range.end, self.len);
+		let start = min(range.start, range.end);
+		let len = end - start;
 
 		let mut v = Self::with_capacity(len)?;
 
 		for i in 0..len {
-			v.push(self[range.start + i].failable_clone()?)?;
+			v.push(self[start + i].failable_clone()?)?;
 		}
 		Ok(v)
 	}
 
 	/// Clones the vector, keeping the given range.
 	pub fn clone_range_from(&self, range: RangeFrom<usize>) -> Result<Self, Errno> {
-		let len = self.len - range.start;
+		let len = self.len - min(self.len, range.start);
 		let mut v = Self::with_capacity(len)?;
 
 		for i in 0..len {
@@ -402,7 +397,7 @@ impl<T> Vec<T> where T: FailableClone {
 
 	/// Clones the vector, keeping the given range.
 	pub fn clone_range_to(&self, range: RangeTo<usize>) -> Result<Self, Errno> {
-		let len = range.end;
+		let len = min(self.len, range.end);
 		let mut v = Self::with_capacity(len)?;
 
 		for i in 0..len {
@@ -477,10 +472,35 @@ impl<T> Vec<T> {
 	}
 }
 
+/// A consuming iterator for the Vec structure.
+pub struct IntoIter<T> {
+	/// The vector to iterator into.
+	vec: Vec<T>,
+}
+
+impl<T> Iterator for IntoIter<T> {
+	type Item = T;
+
+	fn next(&mut self) -> Option<Self::Item> {
+		self.vec.pop()
+	}
+}
+
+impl<T> IntoIterator for Vec<T> {
+	type Item = T;
+	type IntoIter = IntoIter<T>;
+
+	fn into_iter(self) -> Self::IntoIter {
+		IntoIter {
+			vec: self,
+		}
+	}
+}
+
 /// An iterator for the Vec structure.
 pub struct VecIterator<'a, T> {
 	/// The vector to iterate into.
-	vec: &'a Vec::<T>,
+	vec: &'a Vec<T>,
 
 	/// The current index of the iterator starting from the beginning.
 	index_front: usize,
@@ -557,6 +577,22 @@ impl<T: Hash> Hash for Vec<T> {
 		for i in 0..self.len() {
 			self[i].hash(state);
 		}
+	}
+}
+
+impl<T: fmt::Display> fmt::Display for Vec<T> {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		write!(f, "[")?;
+
+		for (i, e) in self.iter().enumerate() {
+			if i + 1 < self.len() {
+				write!(f, "{}, ", e)?;
+			} else {
+				write!(f, "{}", e)?;
+			}
+		}
+
+		write!(f, "]")
 	}
 }
 

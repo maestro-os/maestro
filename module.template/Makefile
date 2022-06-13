@@ -17,9 +17,12 @@ CONFIG_DEBUG := $(shell cd $(KERN_SRC) && scripts/config_attr.sh debug_debug)
 TARGET_PATH := $(shell realpath "$(KERN_SRC)/arch/$(CONFIG_ARCH)/target.json")
 
 # The flags for the Rust compiler
-RUSTFLAGS = -Zmacro-backtrace --crate-type dylib -C prefer-dynamic -L $(KERN_SRC)/target/target/debug -L $(KERN_SRC)/target/target/debug/deps --target $(TARGET_PATH)
+RUSTFLAGS = -Zmacro-backtrace --crate-type dylib -C prefer-dynamic --target $(TARGET_PATH)
 ifeq ($(CONFIG_DEBUG), false)
 RUSTFLAGS += -C opt-level=3
+RUSTFLAGS += -L $(KERN_SRC)/target/target/release -L $(KERN_SRC)/target/target/release/deps
+else
+RUSTFLAGS += -L $(KERN_SRC)/target/target/debug -L $(KERN_SRC)/target/target/debug/deps
 endif
 
 ifeq ($(KERN_SRC), )

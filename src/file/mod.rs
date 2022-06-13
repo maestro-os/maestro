@@ -25,8 +25,8 @@ use crate::time::unit::Timestamp;
 use crate::time;
 use crate::util::FailableClone;
 use crate::util::IO;
+use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
-use crate::util::container::vec::Vec;
 use crate::util::ptr::IntSharedPtr;
 use crate::util::ptr::SharedPtr;
 use path::Path;
@@ -218,8 +218,15 @@ pub struct DirEntry {
 	pub inode: INode,
 	/// The entry's type.
 	pub entry_type: FileType,
-	/// The entry's name.
-	pub name: String,
+}
+
+impl FailableClone for DirEntry {
+	fn failable_clone(&self) -> Result<Self, Errno> {
+		Ok(Self {
+			inode: self.inode,
+			entry_type: self.entry_type,
+		})
+	}
 }
 
 /// Enumeration of all possible file contents for each file types.
@@ -227,8 +234,9 @@ pub struct DirEntry {
 pub enum FileContent {
 	/// The file is a regular file. No data.
 	Regular,
-	/// The file is a directory. The data is the list of entries.
-	Directory(Vec<DirEntry>),
+	/// The file is a directory. The hashmap contains the list of entries. The key is the name of
+	/// the entry and the value is the entry itself.
+	Directory(HashMap<String, DirEntry>),
 	/// The file is a link. The data is the link's target.
 	Link(String),
 	/// The file is a FIFO.
@@ -264,15 +272,43 @@ impl FileContent {
 	}
 }
 
+impl FailableClone for FileContent {
+	fn failable_clone(&self) -> Result<Self, Errno> {
+		let s = match self {
+			Self::Regular => Self::Regular,
+			Self::Directory(entries) => Self::Directory(entries.failable_clone()?),
+			Self::Link(path) => Self::Link(path.failable_clone()?),
+			Self::Fifo => Self::Fifo,
+			Self::Socket => Self::Socket,
+
+			Self::BlockDevice { major, minor } => Self::BlockDevice {
+				major: *major,
+				minor: *minor,
+			},
+
+			Self::CharDevice { major, minor } => Self::CharDevice {
+				major: *major,
+				minor: *minor,
+			},
+		};
+
+		Ok(s)
+	}
+}
+
 /// Structure representing a file.
 #[derive(Debug)]
 pub struct File {
 	/// The name of the file.
 	name: String,
-
 	/// The path of the file's parent.
 	parent_path: Path,
 
+	/// The number of hard links associated with the file.
+	hard_links_count: u16,
+
+	/// The number of blocks allocated on the disk for the file.
+	blocks_count: u64,
 	/// The size of the file in bytes.
 	size: u64,
 
@@ -312,6 +348,9 @@ impl File {
 			name,
 			parent_path: Path::root(),
 
+			hard_links_count: 1,
+
+			blocks_count: 0,
 			size: 0,
 
 			uid,
@@ -351,24 +390,9 @@ impl File {
 		self.parent_path = parent_path;
 	}
 
-	/// Sets the file's size.
-	pub fn set_size(&mut self, size: u64) {
-		self.size = size;
-	}
-
 	/// Returns the type of the file.
 	pub fn get_file_type(&self) -> FileType {
 		self.content.get_file_type()
-	}
-
-	/// Returns the owner user ID.
-	pub fn get_uid(&self) -> Uid {
-		self.uid
-	}
-
-	/// Returns the owner group ID.
-	pub fn get_gid(&self) -> Gid {
-		self.gid
 	}
 
 	/// Returns the file's mode.
@@ -434,6 +458,41 @@ impl File {
 		self.location = location;
 	}
 
+	/// Returns the number of hard links.
+	pub fn get_hard_links_count(&self) -> u16 {
+		self.hard_links_count
+	}
+
+	/// Sets the number of hard links.
+	pub fn set_hard_links_count(&mut self, count: u16) {
+		self.hard_links_count = count;
+	}
+
+	/// Returns the number of blocks allocated for the file.
+	pub fn get_blocks_count(&self) -> u64 {
+		self.blocks_count
+	}
+
+	/// Sets the number of blocks allocated for the file.
+	pub fn set_blocks_count(&mut self, blocks_count: u64) {
+		self.blocks_count = blocks_count;
+	}
+
+	/// Sets the file's size.
+	pub fn set_size(&mut self, size: u64) {
+		self.size = size;
+	}
+
+	/// Returns the owner user ID.
+	pub fn get_uid(&self) -> Uid {
+		self.uid
+	}
+
+	/// Returns the owner group ID.
+	pub fn get_gid(&self) -> Gid {
+		self.gid
+	}
+
 	/// Returns the timestamp of the last modification of the file's metadata.
 	pub fn get_ctime(&self) -> Timestamp {
 		self.ctime
@@ -475,10 +534,12 @@ impl File {
 	}
 
 	/// Adds the directory entry `entry` to the current directory's entries.
+	/// `name` is the name of the entry.
 	/// If the current file isn't a directory, the function returns an error.
-	pub fn add_entry(&mut self, entry: DirEntry) -> Result<(), Errno> {
+	pub fn add_entry(&mut self, name: String, entry: DirEntry) -> Result<(), Errno> {
 		if let FileContent::Directory(entries) = &mut self.content {
-			entries.push(entry)
+			entries.insert(name, entry)?;
+			Ok(())
 		} else {
 			Err(errno!(ENOTDIR))
 		}
@@ -488,17 +549,7 @@ impl File {
 	/// If the current file isn't a directory, the function returns an error.
 	pub fn remove_entry(&mut self, name: &String) -> Result<(), Errno> {
 		if let FileContent::Directory(entries) = &mut self.content {
-			let mut i = 0;
-
-			// TODO Optimize
-			while i < entries.len() {
-				if entries[i].name == *name {
-					entries.remove(i);
-				}
-
-				i += 1;
-			}
-
+			entries.remove(name);
 			Ok(())
 		} else {
 			Err(errno!(ENOTDIR))
@@ -506,12 +557,11 @@ impl File {
 	}
 
 	/// Creates a directory entry corresponding to the current file.
-	pub fn to_dir_entry(&self) -> Result<DirEntry, Errno> {
-		Ok(DirEntry {
+	pub fn to_dir_entry(&self) -> DirEntry {
+		DirEntry {
 			inode: self.location.get_inode(),
 			entry_type: self.get_file_type(),
-			name: self.name.failable_clone()?,
-		})
+		}
 	}
 
 	/// Returns the file's content.
@@ -558,7 +608,7 @@ impl File {
 		} = self.content {
 			let dev = device::get_device(DeviceType::Char, major, minor)
 				.ok_or_else(|| errno!(ENODEV))?;
-			let mut guard = dev.lock();
+			let guard = dev.lock();
 			guard.get_mut().get_handle().ioctl(mem_space, request, argp)
 		} else {
 			Err(errno!(ENOTTY))
@@ -568,11 +618,11 @@ impl File {
 	/// Synchronizes the file with the device.
 	pub fn sync(&self) -> Result<(), Errno> {
 		let mountpoint_mutex = self.location.get_mountpoint().ok_or_else(|| errno!(EIO))?;
-		let mut mountpoint_guard = mountpoint_mutex.lock();
+		let mountpoint_guard = mountpoint_mutex.lock();
 		let mountpoint = mountpoint_guard.get_mut();
 
-		let io_mutex = mountpoint.get_source().get_io().clone();
-		let mut io_guard = io_mutex.lock();
+		let io_mutex = mountpoint.get_source().get_io()?;
+		let io_guard = io_mutex.lock();
 		let io = io_guard.get_mut();
 
 		let filesystem = mountpoint.get_filesystem();
@@ -589,11 +639,11 @@ impl IO for File {
 		match &self.content {
 			FileContent::Regular => {
 				let mountpoint_mutex = self.location.get_mountpoint().ok_or_else(|| errno!(EIO))?;
-				let mut mountpoint_guard = mountpoint_mutex.lock();
+				let mountpoint_guard = mountpoint_mutex.lock();
 				let mountpoint = mountpoint_guard.get_mut();
 
-				let io_mutex = mountpoint.get_source().get_io().clone();
-				let mut io_guard = io_mutex.lock();
+				let io_mutex = mountpoint.get_source().get_io()?;
+				let io_guard = io_mutex.lock();
 				let io = io_guard.get_mut();
 
 				let filesystem = mountpoint.get_filesystem();
@@ -627,7 +677,7 @@ impl IO for File {
 					_ => unreachable!(),
 				}.ok_or_else(|| errno!(ENODEV))?;
 
-				let mut guard = dev.lock();
+				let guard = dev.lock();
 				guard.get_mut().get_handle().read(off as _, buff)
 			},
 		}
@@ -637,11 +687,11 @@ impl IO for File {
 		match &self.content {
 			FileContent::Regular => {
 				let mountpoint_mutex = self.location.get_mountpoint().ok_or_else(|| errno!(EIO))?;
-				let mut mountpoint_guard = mountpoint_mutex.lock();
+				let mountpoint_guard = mountpoint_mutex.lock();
 				let mountpoint = mountpoint_guard.get_mut();
 
-				let io_mutex = mountpoint.get_source().get_io();
-				let mut io_guard = io_mutex.lock();
+				let io_mutex = mountpoint.get_source().get_io()?;
+				let io_guard = io_mutex.lock();
 				let io = io_guard.get_mut();
 
 				let filesystem = mountpoint.get_filesystem();
@@ -678,7 +728,7 @@ impl IO for File {
 					_ => unreachable!(),
 				}.ok_or_else(|| errno!(ENODEV))?;
 
-				let mut guard = dev.lock();
+				let guard = dev.lock();
 				guard.get_mut().get_handle().write(off as _, buff)
 			},
 		}
@@ -694,6 +744,7 @@ impl Drop for File {
 	}
 }
 
+// FIXME Unused: remove?
 /// Resolves symbolic links and returns the final path. If too many links are to be resolved, the
 /// function returns an error.
 /// `file` is the starting file. If not a link, the function returns the path to this file.
@@ -717,24 +768,18 @@ pub fn resolve_links(file: SharedPtr<File>, uid: Uid, gid: Gid) -> Result<Path, 
 		if let FileContent::Link(link_target) = f.get_file_content() {
 			// Resolving the link
 			let link_path = Path::from_str(link_target.as_bytes(), false)?;
-			let mut path = (parent_path.failable_clone()? + link_path)?;
-			path.reduce()?;
+			let path = (parent_path.failable_clone()? + link_path)?;
 			drop(file_guard);
 
 			// Getting the file from path
 			let mutex = fcache::get();
-			let mut guard = mutex.lock();
+			let guard = mutex.lock();
 			let files_cache = guard.get_mut().as_mut().unwrap();
 
 			match files_cache.get_file_from_path(&path, uid, gid, false) {
 				Ok(next_file) => file = next_file,
-				Err(e) => return {
-					if e == errno!(ENOENT) {
-						Ok(path)
-					} else {
-						Err(e)
-					}
-				},
+				Err(e) if e == errno!(ENOENT) => return Ok(path),
+				Err(e) => return Err(e),
 			}
 		} else {
 			break;
@@ -767,7 +812,7 @@ pub fn init(root_device_type: DeviceType, root_major: u32, root_minor: u32) -> R
 
 	// Creating the files cache
 	let cache = FCache::new(root_dev)?;
-	let mut guard = fcache::get().lock();
+	let guard = fcache::get().lock();
 	*guard.get_mut() = Some(cache);
 
 	Ok(())

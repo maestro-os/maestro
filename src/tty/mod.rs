@@ -15,10 +15,6 @@ use crate::memory::vmem;
 use crate::pit;
 use crate::process::Process;
 use crate::process::pid::Pid;
-use crate::process::signal::SIGINT;
-use crate::process::signal::SIGQUIT;
-use crate::process::signal::SIGTSTP;
-use crate::process::signal::SIGWINCH;
 use crate::process::signal::Signal;
 use crate::tty::termios::Termios;
 use crate::util::container::vec::Vec;
@@ -175,7 +171,7 @@ pub fn current() -> Option<TTYHandle> {
 /// Initializes the init TTY.
 pub fn init() {
 	let init_tty_mutex = get(None).unwrap();
-	let mut init_tty_guard = init_tty_mutex.lock();
+	let init_tty_guard = init_tty_mutex.lock();
 	let init_tty = init_tty_guard.get_mut();
 
 	init_tty.init(None);
@@ -189,7 +185,7 @@ pub fn switch(id: Option<usize>) {
 	if let Some(tty) = get(id) {
 		*CURRENT_TTY.lock().get_mut() = id;
 
-		let mut guard = tty.lock();
+		let guard = tty.lock();
 		let t = guard.get_mut();
 		t.show();
 	}
@@ -578,11 +574,11 @@ impl TTY {
 				// TODO On match, the charactere must not be passed as input
 
 				if *b == self.termios.c_cc[termios::VINTR as usize] {
-					self.send_signal(Signal::new(SIGINT).unwrap());
+					self.send_signal(Signal::SIGINT);
 				} else if *b == self.termios.c_cc[termios::VQUIT as usize] {
-					self.send_signal(Signal::new(SIGQUIT).unwrap());
+					self.send_signal(Signal::SIGQUIT);
 				} else if *b == self.termios.c_cc[termios::VSUSP as usize] {
-					self.send_signal(Signal::new(SIGTSTP).unwrap());
+					self.send_signal(Signal::SIGTSTP);
 				}
 			}
 		}
@@ -643,7 +639,7 @@ impl TTY {
 		}
 
 		if let Some(proc_mutex) = Process::get_by_pid(self.pgrp) {
-			let mut proc_guard = proc_mutex.lock();
+			let proc_guard = proc_mutex.lock();
 			let proc = proc_guard.get_mut();
 
 			proc.kill_group(sig, false);
@@ -673,6 +669,6 @@ impl TTY {
 		self.winsize = winsize;
 
 		// Sending a SIGWINCH if a process group is present
-		self.send_signal(Signal::new(SIGWINCH).unwrap());
+		self.send_signal(Signal::SIGWINCH);
 	}
 }

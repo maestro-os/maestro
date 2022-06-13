@@ -12,7 +12,7 @@ pub fn dup2(regs: &Regs) -> Result<i32, Errno> {
 	let newfd = regs.ecx;
 
 	let mutex = Process::get_current().unwrap();
-	let mut guard = mutex.lock();
+	let guard = mutex.lock();
 	let proc = guard.get_mut();
 
 	let newfd = proc.duplicate_fd(oldfd, NewFDConstraint::Fixed(newfd), false)?;

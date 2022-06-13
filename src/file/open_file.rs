@@ -164,17 +164,17 @@ impl OpenFile {
 
 		let len = match &mut self.target {
 			FDTarget::File(f) => {
-				let mut guard = f.lock();
+				let guard = f.lock();
 				guard.get_mut().read(self.curr_off, buf)?
 			},
 
 			FDTarget::Pipe(p) => {
-				let mut guard = p.lock();
+				let guard = p.lock();
 				guard.get_mut().read(buf) as _
 			}
 
 			FDTarget::Socket(s) => {
-				let mut guard = s.lock();
+				let guard = s.lock();
 				guard.get_mut().read(buf) as _
 			},
 		};
@@ -193,17 +193,17 @@ impl OpenFile {
 
 		let len = match &mut self.target {
 			FDTarget::File(f) => {
-				let mut guard = f.lock();
+				let guard = f.lock();
 				guard.get_mut().write(self.curr_off, buf)?
 			},
 
 			FDTarget::Pipe(p) => {
-				let mut guard = p.lock();
+				let guard = p.lock();
 				guard.get_mut().write(buf)? as _
 			}
 
 			FDTarget::Socket(s) => {
-				let mut guard = s.lock();
+				let guard = s.lock();
 				guard.get_mut().write(buf) as _
 			},
 		};
@@ -217,7 +217,7 @@ impl OpenFile {
 		-> Result<u32, Errno> {
 		match &mut self.target {
 			FDTarget::File(f) => {
-				let mut guard = f.lock();
+				let guard = f.lock();
 				guard.get_mut().ioctl(mem_space, request, argp)
 			},
 

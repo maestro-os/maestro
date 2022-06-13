@@ -5,10 +5,10 @@ use crate::errno;
 use crate::process::Process;
 use crate::process::State;
 use crate::process::mem_space::ptr::SyscallPtr;
+use crate::process::pid::INIT_PID;
 use crate::process::pid::Pid;
 use crate::process::regs::Regs;
 use crate::process::rusage::RUsage;
-use crate::process::scheduler::Scheduler;
 use crate::process;
 
 /// Wait flag. Returns immediately if no child has exited.
@@ -19,42 +19,40 @@ const WUNTRACED: i32 =  0b010;
 const WCONTINUED: i32 = 0b100;
 
 /// Returns the `i`th target process for the given constraint `pid`.
-/// `scheduler` is a reference to the process scheduler.
-/// `proc` is the current process.
 /// `pid` is the constraint given to the system call.
 /// `i` is the index of the target process.
 /// The function is built such as iterating on `i` until the function returns None gives every
 /// targets for the system call.
-fn get_target(scheduler: &mut Scheduler, proc: &Process, pid: i32, i: usize) -> Option<Pid> {
-	if pid < -1 {
-		let _group_leader = scheduler.get_by_pid(-pid as _)?;
-		let group_processes = proc.get_group_processes();
-		if i < group_processes.len() {
-			let p = group_processes[i];
+fn get_target(pid: i32, i: usize) -> Option<Pid> {
+	let curr_proc_mutex = Process::get_current().unwrap();
+	let curr_proc_guard = curr_proc_mutex.lock();
+	let curr_proc = curr_proc_guard.get();
 
-			scheduler.get_by_pid(p)?;
-			Some(p)
+	if pid < -1 {
+		let group_processes = curr_proc.get_group_processes();
+
+		if i < group_processes.len() {
+			Some(group_processes[i])
 		} else {
 			None
 		}
 	} else if pid == -1 {
-		let children = proc.get_children();
-		if i < children.len() {
-			let p = children[i];
+		let children = curr_proc.get_children();
 
-			scheduler.get_by_pid(p)?;
-			Some(p)
+		if i < children.len() {
+			Some(children[i])
 		} else {
 			None
 		}
 	} else if pid == 0 {
-		let group = proc.get_group_processes();
+		let group = curr_proc.get_group_processes();
+
 		if i < group.len() {
 			Some(group[i])
 		} else {
 			None
 		}
-	} else if i == 0 && scheduler.get_by_pid(pid as _).is_some() {
+	} else if i == 0 {
 		Some(pid as _)
 	} else {
 		None
@@ -77,51 +75,39 @@ fn get_wstatus(proc: &Process) -> i32 {
 
 /// Waits on the given process.
 /// `proc` is the current process.
-/// `wstatus` is a reference to the wait status. If None, the wstatus is not written.
-/// `rusage` is the pointer to the resource usage structure. If None, the rusage is not written.
-fn wait_proc(proc: &mut Process, wstatus: Option<&mut i32>, rusage: Option<&mut RUsage>) {
-	if let Some(wstatus) = wstatus {
-		*wstatus = get_wstatus(&proc);
-	}
-	if let Some(rusage) = rusage {
-		*rusage = proc.get_rusage().clone();
-	}
+/// `wstatus` is a reference to the wait status.
+/// `rusage` is the pointer to the resource usage structure.
+fn wait_proc(proc: &mut Process, wstatus: &mut i32, rusage: &mut RUsage) {
+	*wstatus = get_wstatus(&proc);
+	*rusage = proc.get_rusage().clone();
 
 	proc.clear_waitable();
 }
 
 /// Checks if at least one process corresponding to the given constraint is waitable. If yes, the
 /// function clears its waitable state, sets the wstatus and returns the process's PID.
-/// `proc` is the current process.
 /// `pid` is the constraint given to the system call.
-/// `wstatus` is a reference to the wait status. If None, the wstatus is not written.
+/// `wstatus` is a reference to the wait status.
 /// `rusage` is the pointer to the resource usage structure.
-fn check_waitable(proc: &mut Process, pid: i32, wstatus: Option<&mut i32>,
-	rusage: Option<&mut RUsage>) -> Result<Option<Pid>, Errno> {
-	let mut scheduler_guard = process::get_scheduler().lock();
-	let scheduler = scheduler_guard.get_mut();
-
+fn check_waitable(pid: i32, wstatus: &mut i32, rusage: &mut RUsage) -> Result<Option<Pid>, Errno> {
 	// Iterating on every target processes, checking if they can be waited on
 	let mut i = 0;
-	while let Some(pid) = get_target(scheduler, proc, pid, i) {
-		if pid == proc.get_pid() {
-			// If waitable, return
-			if proc.is_waitable() {
-				wait_proc(proc, wstatus, rusage);
-				return Ok(Some(pid));
-			}
-		} else if let Some(p) = scheduler.get_by_pid(pid) {
-			let mut proc_guard = p.lock();
-			let p = proc_guard.get_mut();
+	while let Some(pid) = get_target(pid, i) {
+		let scheduler_guard = process::get_scheduler().lock();
+		let scheduler = scheduler_guard.get_mut();
+
+		if let Some(p) = scheduler.get_by_pid(pid) {
+			let p_guard = p.lock();
+			let p = p_guard.get_mut();
+			let pid = p.get_pid();
 
 			// If waitable, return
 			if p.is_waitable() {
-				wait_proc(proc, wstatus, rusage);
+				wait_proc(p, wstatus, rusage);
 
 				// If the process was a zombie, remove it
-				if proc.get_state() == process::State::Zombie {
-					let pid = proc.get_pid();
-					drop(proc_guard);
+				if p.get_state() == process::State::Zombie {
+					drop(p_guard);
 					scheduler.remove_process(pid);
 				}
 
@@ -146,32 +132,47 @@ fn check_waitable(proc: &mut Process, pid: i32, wstatus: Option<&mut i32>,
 /// `rusage` is the pointer to the resource usage structure.
 pub fn do_waitpid(pid: i32, wstatus: SyscallPtr<i32>, options: i32,
 	rusage: Option<SyscallPtr<RUsage>>) -> Result<i32, Errno> {
+	// Checking `pid`
+	{
+		let mutex = Process::get_current().unwrap();
+		let guard = mutex.lock();
+		let proc = guard.get_mut();
+
+		if pid == INIT_PID as i32 || pid == proc.get_pid() as i32 {
+			return Err(errno!(ECANCELED));
+		}
+	}
+
 	// Sleeping until a target process is waitable
 	loop {
+		let mut wstatus_val = Default::default();
+		let mut rusage_val = Default::default();
+
 		// Check if at least one target process is waitable
+		let result = check_waitable(pid, &mut wstatus_val, &mut rusage_val)?;
+
 		{
 			let mutex = Process::get_current().unwrap();
-			let mut guard = mutex.lock();
+			let guard = mutex.lock();
 			let proc = guard.get_mut();
-
-			// TODO Apply to every processes that cannot be waited on
-			if pid == proc.get_pid() as i32 {
-				return Err(errno!(ECANCELED));
-			}
 
 			let mem_space = proc.get_mem_space().unwrap();
 			let mem_space_guard = mem_space.lock();
 
-			let wstatus = wstatus.get_mut(&mem_space_guard)?;
-			let rusage = match rusage {
-				Some(ref rusage) => rusage.get_mut(&mem_space_guard)?,
-				None => None,
-			};
-
-			// If waitable, return
-			if let Some(p) = check_waitable(proc, pid, wstatus, rusage)? {
-				return Ok(p as _);
+			if let Some(wstatus) = wstatus.get_mut(&mem_space_guard)? {
+				*wstatus = wstatus_val;
 			}
+
+			if let Some(ref rusage) = rusage {
+				if let Some(rusage) = rusage.get_mut(&mem_space_guard)? {
+					*rusage = rusage_val;
+				}
+			}
+		}
+
+		// On success, return
+		if let Some(p) = result {
+			return Ok(p as _);
 		}
 
 		// If the flag is set, do not wait
@@ -179,13 +180,13 @@ pub fn do_waitpid(pid: i32, wstatus: SyscallPtr<i32>, options: i32,
 			return Ok(0);
 		}
 
-		// When a child process is paused or resumed by a signal or is terminated, it changes the
-		// state of the current process to wake it up
 		{
 			let mutex = Process::get_current().unwrap();
-			let mut guard = mutex.lock();
+			let guard = mutex.lock();
 			let proc = guard.get_mut();
 
+			// When a child process is paused or resumed by a signal or is terminated, it changes
+			// the state of the current process to wake it up
 			proc.set_state(process::State::Sleeping);
 		}
 

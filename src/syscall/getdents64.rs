@@ -35,18 +35,23 @@ pub fn getdents64(regs: &Regs) -> Result<i32, Errno> {
 		return Err(errno!(EBADF));
 	}
 
-	let mutex = Process::get_current().unwrap();
-	let mut guard = mutex.lock();
-	let proc = guard.get_mut();
+	let (mem_space, open_file_mutex) = {
+		let mutex = Process::get_current().unwrap();
+		let guard = mutex.lock();
+		let proc = guard.get_mut();
 
-	let mem_space = proc.get_mem_space().unwrap();
+		let mem_space = proc.get_mem_space().unwrap();
+		let open_file_mutex = proc.get_fd(fd as _).ok_or_else(|| errno!(EBADF))?.get_open_file();
+
+		(mem_space, open_file_mutex)
+	};
+
+	// Getting file
+	let open_file_guard = open_file_mutex.lock();
+	let open_file = open_file_guard.get_mut();
+
 	let mem_space_guard = mem_space.lock();
 	let dirp_slice = dirp.get_mut(&mem_space_guard, count)?.ok_or_else(|| errno!(EFAULT))?;
-
-	// Getting file descriptor
-	let open_file_mutex = proc.get_fd(fd as _).ok_or_else(|| errno!(EBADF))?.get_open_file();
-	let mut open_file_guard = open_file_mutex.lock();
-	let open_file = open_file_guard.get_mut();
 
 	let mut off = 0;
 	let mut entries_count = 0;
@@ -67,8 +72,8 @@ pub fn getdents64(regs: &Regs) -> Result<i32, Errno> {
 		};
 
 		// Iterating over entries and filling the buffer
-		for entry in &entries.as_slice()[(start as usize)..] {
-			let len = size_of::<LinuxDirent64>() + entry.name.len() + 1;
+		for (name, entry) in entries.iter().skip(start as _) {
+			let len = size_of::<LinuxDirent64>() + name.len() + 1;
 			// If the buffer is not large enough, return an error
 			if off == 0 && len > count {
 				return Err(errno!(EINVAL));
@@ -91,12 +96,12 @@ pub fn getdents64(regs: &Regs) -> Result<i32, Errno> {
 
 			// Copying file name
 			unsafe {
-				ptr::copy_nonoverlapping(entry.name.as_bytes().as_ptr(),
+				ptr::copy_nonoverlapping(name.as_bytes().as_ptr(),
 					ent.d_name.as_mut_ptr(),
-					entry.name.len());
+					name.len());
 
 				// Writing padding byte
-				*ent.d_name.as_mut_ptr().add(entry.name.len()) = 0;
+				*ent.d_name.as_mut_ptr().add(name.len()) = 0;
 			}
 
 			off += len;

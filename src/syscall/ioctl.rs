@@ -38,15 +38,17 @@ pub fn ioctl(regs: &Regs) -> Result<i32, Errno> {
 	// Getting the memory space and file
 	let (mem_space, open_file_mutex) = {
 		let mutex = Process::get_current().unwrap();
-		let mut guard = mutex.lock();
+		let guard = mutex.lock();
 		let proc = guard.get_mut();
 
-		(proc.get_mem_space().unwrap(), proc.get_fd(fd as _).ok_or_else(|| errno!(EBADF))?
-			.get_open_file())
+		let mem_space = proc.get_mem_space().unwrap();
+		let open_file_mutex = proc.get_fd(fd as _).ok_or_else(|| errno!(EBADF))?.get_open_file();
+
+		(mem_space, open_file_mutex)
 	};
 
 	// Getting the device file
-	let mut open_file_guard = open_file_mutex.lock();
+	let open_file_guard = open_file_mutex.lock();
 	let open_file = open_file_guard.get_mut();
 
 	// Executing ioctl with the current memory space

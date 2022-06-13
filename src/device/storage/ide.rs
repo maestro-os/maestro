@@ -6,34 +6,78 @@ use crate::device::storage::PhysicalDevice;
 use crate::device::storage::StorageInterface;
 use crate::device::storage::pata::PATAInterface;
 use crate::errno::Errno;
-use crate::io;
-use crate::util::boxed::Box;
 use crate::util::container::vec::Vec;
+use crate::util::ptr::SharedPtr;
 
-/// The beginning of the port range for the primary ATA bus.
-const PRIMARY_ATA_BUS_PORT_BEGIN: u16 = 0x1f0;
-/// The port for the primary disk's device control register.
-const PRIMARY_DEVICE_CONTROL_PORT: u16 = 0x3f6;
-/// The port for the primary disk's alternate status register.
-const PRIMARY_ALTERNATE_STATUS_PORT: u16 = 0x3f6;
+/// The beginning of the port range for the primary ATA bus (compatibility mode).
+pub const PRIMARY_ATA_BUS_PORT_BEGIN: u16 = 0x1f0;
+/// The port for the primary disk's device control register (compatibility mode).
+pub const PRIMARY_DEVICE_CONTROL_PORT: u16 = 0x3f6;
+/// The port for the primary disk's alternate status register (compatibility mode).
+pub const PRIMARY_ALTERNATE_STATUS_PORT: u16 = 0x3f6;
 
-/// The beginning of the port range for the secondary ATA bus.
-const SECONDARY_ATA_BUS_PORT_BEGIN: u16 = 0x170;
-/// The port for the secondary disk's device control register.
-const SECONDARY_DEVICE_CONTROL_PORT: u16 = 0x376;
-/// The port for the secondary disk's alternate status register.
-const SECONDARY_ALTERNATE_STATUS_PORT: u16 = 0x376;
+/// The beginning of the port range for the secondary ATA bus (compatibility mode).
+pub const SECONDARY_ATA_BUS_PORT_BEGIN: u16 = 0x170;
+/// The port for the secondary disk's device control register (compatibility mode).
+pub const SECONDARY_DEVICE_CONTROL_PORT: u16 = 0x376;
+/// The port for the secondary disk's alternate status register (compatibility mode).
+pub const SECONDARY_ALTERNATE_STATUS_PORT: u16 = 0x376;
+
+/// Structure representing a channel on an IDE controller. It contains the BARs used to access a
+/// drive.
+#[derive(Debug)]
+pub struct Channel {
+	/// The BAR for ATA ports.
+	pub ata_bar: BAR,
+	/// The BAR for control port.
+	pub control_bar: BAR,
+}
+
+impl Channel {
+	/// Returns a new instance representing the channel in compatibility mode.
+	/// `secondary` tells whether the primary or secondary channel is picked.
+	pub fn new_compatibility(secondary: bool) -> Self {
+		if secondary {
+			Self {
+				ata_bar: BAR::IOSpace {
+					address: SECONDARY_ATA_BUS_PORT_BEGIN as _,
+
+					size: 4,
+				},
+				control_bar: BAR::IOSpace {
+					address: SECONDARY_DEVICE_CONTROL_PORT as _,
+
+					size: 4,
+				},
+			}
+		} else {
+			Self {
+				ata_bar: BAR::IOSpace {
+					address: PRIMARY_ATA_BUS_PORT_BEGIN as _,
+
+					size: 4,
+				},
+				control_bar: BAR::IOSpace {
+					address: PRIMARY_DEVICE_CONTROL_PORT as _,
+
+					size: 4,
+				},
+			}
+		}
+	}
+}
 
 /// Structure representing an IDE controller.
-pub struct IDEController {
+#[derive(Debug)]
+pub struct Controller {
 	/// TODO doc
 	prog_if: u8,
 
-	/// Addresses to access the IDE controller.
-	io_addresses: [BAR; 4],
+	/// IDE controller's BARs.
+	bars: [Option<BAR>; 5],
 }
 
-impl IDEController {
+impl Controller {
 	/// Creates a new instance from the given PhysicalDevice.
 	/// If the given device is not an IDE controller, the behaviour is undefined.
 	pub fn new(dev: &dyn PhysicalDevice) -> Self {
@@ -43,11 +87,12 @@ impl IDEController {
 		Self {
 			prog_if: dev.get_prog_if(),
 
-			io_addresses: [
-				dev.get_bar(0).unwrap(),
-				dev.get_bar(1).unwrap(),
-				dev.get_bar(2).unwrap(),
-				dev.get_bar(3).unwrap(),
+			bars: [
+				dev.get_bar(0),
+				dev.get_bar(1),
+				dev.get_bar(2),
+				dev.get_bar(3),
+				dev.get_bar(4),
 			],
 		}
 	}
@@ -70,49 +115,15 @@ impl IDEController {
 		self.prog_if & 0b10000000 != 0
 	}
 
-	/// Reads the value of the register at offset `off`.
-	pub fn reg_read(&self, _off: usize) -> u32 {
-		// TODO
-		0
-	}
-
-	/// Writes the value `val` to the register at offset `off`.
-	pub fn reg_write(&self, _off: usize, _val: u32) {
-		// TODO
-	}
-
-	/// Resets the given bus. The current drive may not be selected anymore.
-	/// `secondary` tells which bus to reset. If set, the secondary is selected. If clear, the
-	/// primary is selected.
-	pub fn reset(&self, secondary: bool) {
-		let port = if !secondary {
-			PRIMARY_DEVICE_CONTROL_PORT
-		} else {
-			SECONDARY_DEVICE_CONTROL_PORT
-		};
-
-		unsafe {
-			io::outb(port, 1 << 2);
-		}
-
-		// TODO self.wait(true);
-
-		unsafe {
-			io::outb(port, 0);
-		}
-
-		// TODO self.wait(true);
-	}
-
 	/// Detects a disk on the controller.
-	/// `secondary` tells whether the disk is on the secondary bus.
+	/// `channel` is the channel to check.
 	/// `slave` tells whether the disk is the slave disk.
-	pub fn detect(&self, secondary: bool, slave: bool)
-		-> Result<Option<Box<dyn StorageInterface>>, Errno> {
-		// TODO Add support for DMA and SATA
+	pub fn detect(&self, channel: Channel, slave: bool)
+		-> Result<Option<SharedPtr<dyn StorageInterface>>, Errno> {
+		// TODO Add support for SATA
 
-		if let Ok(interface) = PATAInterface::new(secondary, slave) {
-			let interface = Box::new(interface)?;
+		if let Ok(interface) = PATAInterface::new(channel, slave) {
+			let interface = SharedPtr::new(interface)?;
 
 			// Wrapping the interface into a cached interface
 			// TODO Use a constant for the sectors count
@@ -128,14 +139,37 @@ impl IDEController {
 	/// `f`.
 	/// If an error is returned from a call to the closure, the function returns with the same
 	/// error.
-	pub fn detect_all(&self) -> Result<Vec<Box<dyn StorageInterface>>, Errno> {
+	pub fn detect_all(&self) -> Result<Vec<SharedPtr<dyn StorageInterface>>, Errno> {
 		let mut interfaces = Vec::new();
 
 		for i in 0..4 {
 			let secondary = (i & 0b10) != 0;
 			let slave = (i & 0b01) != 0;
 
-			if let Some(disk) = self.detect(secondary, slave)? {
+			let pci_mode = (!secondary && self.is_primary_pci_mode())
+				|| (secondary && self.is_secondary_pci_mode());
+
+			let channel = if pci_mode {
+				if !secondary {
+					// Primary channel
+					Channel {
+						ata_bar: self.bars[0].clone().unwrap(),
+						control_bar: self.bars[1].clone().unwrap(),
+					}
+				} else {
+					// Secondary channel
+					Channel {
+						ata_bar: self.bars[2].clone().unwrap(),
+						control_bar: self.bars[3].clone().unwrap(),
+					}
+				}
+			} else {
+				// Compatibility mode
+				Channel::new_compatibility(secondary)
+			};
+
+
+			if let Some(disk) = self.detect(channel, slave)? {
 				interfaces.push(disk)?;
 			}
 		}

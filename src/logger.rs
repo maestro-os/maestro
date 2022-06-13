@@ -16,7 +16,7 @@ static LOGGER: IntMutex<Logger> = IntMutex::new(Logger::new());
 /// Initializes logging.
 /// `silent` tells whether the logger is silent.
 pub fn init(silent: bool) {
-	let mut guard = LOGGER.lock();
+	let guard = LOGGER.lock();
 	guard.get_mut().set_silent(silent);
 }
 

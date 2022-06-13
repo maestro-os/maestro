@@ -27,6 +27,7 @@ use crate::process::mem_space::MemSpace;
 use crate::util::FailableClone;
 use crate::util::IO;
 use crate::util::boxed::Box;
+use crate::util::container::hashmap::HashMap;
 use crate::util::container::vec::Vec;
 use crate::util::lock::Mutex;
 use crate::util::ptr::IntSharedPtr;
@@ -137,8 +138,7 @@ impl Device {
 	/// the number of created directories (without the directories that already existed).
 	/// If relative, the path is taken from the root.
 	fn create_dirs(fcache: &mut FCache, path: &Path) -> Result<usize, Errno> {
-		let mut path = Path::root().concat(path)?;
-		path.reduce()?;
+		let path = Path::root().concat(path)?;
 
 		// The path of the parent directory
 		let mut p = Path::root();
@@ -149,11 +149,11 @@ impl Device {
 			let name = path[i].failable_clone()?;
 
 			if let Ok(parent_mutex) = fcache.get_file_from_path(&p, 0, 0, true) {
-				let mut parent_guard = parent_mutex.lock();
+				let parent_guard = parent_mutex.lock();
 				let parent = parent_guard.get_mut();
 
 				match fcache.create_file(parent, name.failable_clone()?, 0, 0, 0o755,
-					FileContent::Directory(Vec::new())) {
+					FileContent::Directory(HashMap::new())) {
 					Err(e) if e.as_int() != errno::EEXIST => return Err(e),
 					_ => {},
 				}
@@ -170,8 +170,7 @@ impl Device {
 	/// Removes the file at path `path` and its subfiles recursively if it's a directory.
 	/// If relative, the path is taken from the root.
 	fn remove_recursive(_fcache: &mut FCache, path: &Path) -> Result<(), Errno> {
-		let mut path = Path::root().concat(path)?;
-		path.reduce()?;
+		let _path = Path::root().concat(path)?;
 
 		// TODO
 		todo!();
@@ -198,7 +197,7 @@ impl Device {
 
 		// Locking the files' cache
 		let mutex = fcache::get();
-		let mut guard = mutex.lock();
+		let guard = mutex.lock();
 		let files_cache = guard.get_mut().as_mut().unwrap();
 
 		// Tells whether the file already exists
@@ -212,7 +211,7 @@ impl Device {
 
 			// Getting the parent directory
 			let parent_mutex = files_cache.get_file_from_path(&dir_path, 0, 0, true)?;
-			let mut parent_guard = parent_mutex.lock();
+			let parent_guard = parent_mutex.lock();
 			let parent = parent_guard.get_mut();
 
 			// TODO Cancel directories creation on fail
@@ -226,7 +225,7 @@ impl Device {
 	/// If exists, removes the device file. iF the file doesn't exist, the function does nothing.
 	pub fn remove_file(&mut self) -> Result<(), Errno> {
 		let mutex = fcache::get();
-		let mut guard = mutex.lock();
+		let guard = mutex.lock();
 		let files_cache = guard.get_mut().as_mut().unwrap();
 
 		if let Ok(file_mutex) = files_cache.get_file_from_path(&self.path, 0, 0, true) {
@@ -268,7 +267,7 @@ static CHAR_DEVICES: Mutex<Vec<SharedPtr<Device>>> = Mutex::new(Vec::new());
 /// Registers the given device. If the minor/major number is already used, the function fails.
 /// The function *doesn't* create the device file.
 pub fn register_device(device: Device) -> Result<(), Errno> {
-	let mut guard = match device.get_type() {
+	let guard = match device.get_type() {
 		DeviceType::Block => BLOCK_DEVICES.lock(),
 		DeviceType::Char => CHAR_DEVICES.lock(),
 	};
@@ -295,7 +294,7 @@ pub fn register_device(device: Device) -> Result<(), Errno> {
 /// Returns a mutable reference to the device with the given major number, minor number and type.
 /// If the device doesn't exist, the function returns None.
 pub fn get_device(type_: DeviceType, major: u32, minor: u32) -> Option<SharedPtr<Device>> {
-	let mut guard = match type_ {
+	let guard = match type_ {
 		DeviceType::Block => BLOCK_DEVICES.lock(),
 		DeviceType::Char => CHAR_DEVICES.lock(),
 	};
@@ -322,7 +321,7 @@ pub fn get_device(type_: DeviceType, major: u32, minor: u32) -> Option<SharedPtr
 /// If no device with the given path is found, the function returns None.
 pub fn get_by_path(path: &Path) -> Option<SharedPtr<Device>> {
 	{
-		let mut block_guard = BLOCK_DEVICES.lock();
+		let block_guard = BLOCK_DEVICES.lock();
 		let block_container = block_guard.get_mut();
 
 		for i in 0..block_container.len() {
@@ -337,7 +336,7 @@ pub fn get_by_path(path: &Path) -> Option<SharedPtr<Device>> {
 	}
 
 	{
-		let mut char_guard = CHAR_DEVICES.lock();
+		let char_guard = CHAR_DEVICES.lock();
 		let char_container = char_guard.get_mut();
 
 		for i in 0..char_container.len() {

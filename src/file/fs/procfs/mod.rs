@@ -1,24 +1,26 @@
 //! The procfs is a virtual filesystem which provides informations about processes.
 
 pub mod mount;
-pub mod root;
 
 use crate::errno::Errno;
+use crate::file::DirEntry;
 use crate::file::File;
 use crate::file::FileContent;
+use crate::file::FileType;
 use crate::file::Gid;
 use crate::file::INode;
 use crate::file::Mode;
 use crate::file::Uid;
-use crate::file::fs::Filesystem;
-use crate::file::fs::FilesystemType;
-use crate::file::fs::kernfs::KernFS;
 use crate::file::path::Path;
 use crate::util::IO;
 use crate::util::boxed::Box;
+use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
-use crate::util::ptr::SharedPtr;
-use root::ProcFSRoot;
+use mount::ProcFSMountIO;
+use super::Filesystem;
+use super::FilesystemType;
+use super::kernfs::KernFS;
+use super::kernfs::node::KernFSNode;
 
 /// Structure representing the procfs.
 /// On the inside, the procfs works using a kernfs.
@@ -30,14 +32,25 @@ pub struct ProcFS {
 impl ProcFS {
 	/// Creates a new instance.
 	/// `readonly` tells whether the filesystem is readonly.
-	pub fn new(readonly: bool) -> Result<Self, Errno> {
+	/// `mountpath` is the path at which the filesystem is mounted.
+	pub fn new(readonly: bool, mountpath: Path) -> Result<Self, Errno> {
 		let mut fs = Self {
-			fs: KernFS::new(String::from(b"procfs")?, readonly),
+			fs: KernFS::new(String::from(b"procfs")?, readonly, mountpath),
 		};
 
+		let mut root_entries = HashMap::new();
+
+		// Creating /proc/mounts
+		let mount_inode = fs.fs.add_node(KernFSNode::new(0o666, 0, 0,
+			FileContent::Regular, Some(Box::new(ProcFSMountIO {})?)))?;
+		root_entries.insert(String::from(b"mounts")?, DirEntry {
+			inode: mount_inode,
+			entry_type: FileType::Regular,
+		})?;
+
 		// Adding the root node
-		let root_node = ProcFSRoot::new()?;
-		fs.fs.set_root(Some(SharedPtr::new(root_node)?))?;
+		let root_node = KernFSNode::new(0o666, 0, 0, FileContent::Directory(root_entries), None);
+		fs.fs.set_root(Some(root_node))?;
 
 		Ok(fs)
 	}
@@ -56,9 +69,8 @@ impl Filesystem for ProcFS {
 		self.fs.must_cache()
 	}
 
-	fn get_root_inode(&self, _io: &mut dyn IO) -> Result<INode, Errno> {
-		// TODO
-		todo!();
+	fn get_root_inode(&self, io: &mut dyn IO) -> Result<INode, Errno> {
+		self.fs.get_root_inode(io)
 	}
 
 	fn get_inode(&mut self, io: &mut dyn IO, parent: Option<INode>, name: &String)
@@ -114,11 +126,11 @@ impl FilesystemType for ProcFsType {
 	}
 
 	fn create_filesystem(&self, _io: &mut dyn IO) -> Result<Box<dyn Filesystem>, Errno> {
-		Ok(Box::new(ProcFS::new(false)?)?)
+		Ok(Box::new(ProcFS::new(false, Path::root())?)?)
 	}
 
-	fn load_filesystem(&self, _io: &mut dyn IO, _mountpath: Path, readonly: bool)
+	fn load_filesystem(&self, _io: &mut dyn IO, mountpath: Path, readonly: bool)
 		-> Result<Box<dyn Filesystem>, Errno> {
-		Ok(Box::new(ProcFS::new(readonly)?)?)
+		Ok(Box::new(ProcFS::new(readonly, mountpath)?)?)
 	}
 }

@@ -21,11 +21,11 @@ use crate::errno;
 use crate::memory::malloc::ptr::NonNull;
 use crate::memory;
 use crate::util::list::ListNode;
-use crate::util::lock::Mutex;
+use crate::util::lock::IntMutex;
 use crate::util;
 
 /// The allocator's mutex.
-static MUTEX: Mutex<()> = Mutex::new(());
+static MUTEX: IntMutex<()> = IntMutex::new(());
 
 /// Initializes the memory allocator.
 pub fn init() {
@@ -49,7 +49,7 @@ pub unsafe fn alloc(n: usize) -> Result<*mut c_void, Errno> {
 	let chunk = chunk::get_available_chunk(n)?.get_chunk();
 	chunk.split(n);
 
-	#[cfg(config_debug_debug)]
+	#[cfg(config_debug_malloc_check)]
 	chunk.check();
 	debug_assert!(chunk.get_size() >= n);
 	assert!(!chunk.is_used());
@@ -71,7 +71,7 @@ pub unsafe fn get_size(ptr: *const c_void) -> usize {
 	let _ = MUTEX.lock();
 
 	let chunk = Chunk::from_ptr(ptr as *mut _);
-	#[cfg(config_debug_debug)]
+	#[cfg(config_debug_malloc_check)]
 	chunk.check();
 	assert!(chunk.is_used());
 	chunk.get_size()
@@ -89,7 +89,7 @@ pub unsafe fn realloc(ptr: *mut c_void, n: usize) -> Result<*mut c_void, Errno> 
 	}
 
 	let chunk = Chunk::from_ptr(ptr);
-	#[cfg(config_debug_debug)]
+	#[cfg(config_debug_malloc_check)]
 	chunk.check();
 	assert!(chunk.is_used());
 
@@ -128,7 +128,7 @@ pub unsafe fn free(ptr: *mut c_void) {
 	let _ = MUTEX.lock();
 
 	let chunk = Chunk::from_ptr(ptr);
-	#[cfg(config_debug_debug)]
+	#[cfg(config_debug_malloc_check)]
 	chunk.check();
 	assert!(chunk.is_used());
 
@@ -228,7 +228,9 @@ impl<T: Default> Alloc<T> {
 			Self::new_zero(size)?
 		};
 		for i in 0..size {
-			alloc[i] = T::default();
+			unsafe { // Safe because the index is in bounds
+				ptr::write(&mut alloc[i], T::default());
+			}
 		}
 
 		Ok(alloc)
@@ -263,7 +265,9 @@ impl<T: Clone> Alloc<T> {
 			Self::new_zero(size)?
 		};
 		for i in 0..size {
-			alloc[i] = val.clone();
+			unsafe { // Safe because the index is in bounds
+				ptr::write(&mut alloc[i], val.clone());
+			}
 		}
 
 		Ok(alloc)
@@ -277,9 +281,11 @@ impl<T> Index<usize> for Alloc<T> {
 	fn index(&self, index: usize) -> &Self::Output {
 		let slice = self.as_slice();
 
+		#[cfg(config_debug_debug)]
 		if index >= slice.len() {
 			panic!("index out of bounds of memory allocation");
 		}
+
 		&slice[index]
 	}
 }
@@ -289,9 +295,11 @@ impl<T> IndexMut<usize> for Alloc<T> {
 	fn index_mut(&mut self, index: usize) -> &mut Self::Output {
 		let slice = self.as_slice_mut();
 
+		#[cfg(config_debug_debug)]
 		if index >= slice.len() {
 			panic!("index out of bounds of memory allocation");
 		}
+
 		&mut slice[index]
 	}
 }

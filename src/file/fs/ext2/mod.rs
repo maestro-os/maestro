@@ -53,6 +53,7 @@ use crate::time;
 use crate::util::FailableClone;
 use crate::util::IO;
 use crate::util::boxed::Box;
+use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::math;
@@ -666,44 +667,31 @@ impl Filesystem for Ext2Fs {
 		let file_content = match file_type {
 			FileType::Regular => FileContent::Regular,
 
-			// TODO Clean
 			FileType::Directory => {
 				let mut entries = Vec::new();
-				let mut err = Ok(());
 
-				inode_.foreach_directory_entry(| _, entry | {
-					match String::from(entry.get_name(&self.superblock)) {
-						Ok(name) => {
-							let entry_type = entry.get_type(&self.superblock);
-							err = entries.push((entry.get_inode(), entry_type, name));
+				for res in inode_.iter_dirent(&self.superblock, io)?.unwrap() {
+					let (_, entry) = res?;
 
-							Ok(err.is_ok())
-						},
-
-						Err(e) => {
-							err = Err(e);
-							Ok(false)
-						},
-					}
-				}, &self.superblock, io)?;
-
-				err?;
+					entries.push((
+						entry.get_inode(),
+						entry.get_type(&self.superblock),
+						String::from(entry.get_name(&self.superblock))?,
+					))?;
+				}
 
 				// Creating entries with types
-				let mut final_entries = Vec::new();
+				let mut final_entries = HashMap::new();
 
-				for (inode, mut entry_type, name) in &entries {
-					// If None, retrieving the type from the node itself
-					if entry_type.is_none() {
-						let i = Ext2INode::read(*inode, &self.superblock, io)?;
-						entry_type = Some(i.get_type());
-					}
+				for (inode, entry_type, name) in entries {
+					let entry_type = match entry_type {
+						Some(entry_type) => entry_type,
+						None => Ext2INode::read(inode, &self.superblock, io)?.get_type(),
+					};
 
-					let entry_type = entry_type.unwrap();
-					final_entries.push(DirEntry {
-						inode: *inode as _,
+					final_entries.insert(name.failable_clone()?, DirEntry {
+						inode: inode as _,
 						entry_type,
-						name: name.failable_clone()?,
 					})?;
 				}
 
@@ -738,10 +726,12 @@ impl Filesystem for Ext2Fs {
 		let file_location = FileLocation::new(self.mountpath.failable_clone()?, inode);
 		let mut file = File::new(name, inode_.uid, inode_.gid, inode_.get_permissions(),
 			file_location, file_content)?;
+		file.set_hard_links_count(inode_.hard_links_count as _);
+		file.set_blocks_count(inode_.used_sectors as _);
+		file.set_size(inode_.get_size(&self.superblock));
 		file.set_ctime(inode_.ctime as _);
 		file.set_mtime(inode_.mtime as _);
 		file.set_atime(inode_.atime as _);
-		file.set_size(inode_.get_size(&self.superblock));
 
 		Ok(file)
 	}
@@ -811,6 +801,14 @@ impl Filesystem for Ext2Fs {
 			_ => {},
 		}
 
+		// Adding `.` and `..` entries
+		inode.add_dirent(&mut self.superblock, io, inode_index, &String::from(b".")?,
+			FileType::Directory)?;
+		inode.add_dirent(&mut self.superblock, io, parent_inode as _, &String::from(b"..")?,
+			FileType::Directory)?;
+		inode.hard_links_count += 1;
+		parent.hard_links_count += 1;
+
 		inode.write(inode_index, &self.superblock, io)?;
 		let dir = file.get_file_type() == FileType::Directory;
 		self.superblock.mark_inode_used(io, inode_index, dir)?;
@@ -878,6 +876,10 @@ impl Filesystem for Ext2Fs {
 
 		debug_assert!(parent_inode >= 1);
 
+		if name.as_bytes() != b"." && name.as_bytes() != b".." {
+			return Err(errno!(EINVAL));
+		}
+
 		// The parent inode
 		let mut parent = Ext2INode::read(parent_inode as _, &self.superblock, io)?;
 
@@ -893,8 +895,15 @@ impl Filesystem for Ext2Fs {
 		let mut inode_ = Ext2INode::read(inode, &self.superblock, io)?;
 
 		// If the inode is a directory, ensure it is empty
-		if inode_.get_dir_entries_count(&self.superblock, io)? == 0 {
-			return Err(errno!(ENOTEMPTY));
+		if let Some(iter) = inode_.iter_dirent(&self.superblock, io)? {
+			for res in iter {
+				let (_, entry) = res?;
+				let name = entry.get_name(&self.superblock);
+
+				if name != b"." && name != b".." {
+					return Err(errno!(ENOTEMPTY));
+				}
+			}
 		}
 
 		// Removing the directory entry
@@ -906,6 +915,10 @@ impl Filesystem for Ext2Fs {
 		if inode_.hard_links_count <= 0 {
 			let timestamp = time::get().unwrap_or(0);
 			inode_.dtime = timestamp as _;
+
+			// Removing hard link for entry `..`
+			parent.hard_links_count -= 1;
+			parent.write(parent_inode as _, &self.superblock, io)?;
 
 			inode_.free_content(&mut self.superblock, io)?;
 

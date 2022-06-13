@@ -1,267 +1,31 @@
 //! Tmpfs (Temporary file system) is, as its name states a temporary filesystem. The files are
 //! stored on the kernel's memory and thus are removed when the filesystem is unmounted.
 
-use core::cmp::min;
 use core::mem::size_of;
 use crate::errno;
 use crate::file::Errno;
 use crate::file::File;
 use crate::file::FileContent;
-use crate::file::FileType;
 use crate::file::Gid;
 use crate::file::INode;
 use crate::file::Mode;
 use crate::file::Uid;
-use crate::file::fs::Filesystem;
-use crate::file::fs::FilesystemType;
-use crate::file::fs::kernfs::KernFS;
-use crate::file::fs::kernfs::node::KernFSNode;
 use crate::file::path::Path;
-use crate::time::unit::Timestamp;
-use crate::time;
 use crate::util::IO;
 use crate::util::boxed::Box;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
-use crate::util::container::vec::Vec;
-use crate::util::ptr::SharedPtr;
+use super::Filesystem;
+use super::FilesystemType;
+use super::kernfs::KernFS;
+use super::kernfs::node::KernFSNode;
 
 /// The default maximum amount of memory the filesystem can use in bytes.
 const DEFAULT_MAX_SIZE: usize = 512 * 1024 * 1024;
 
-/// Structure representing a file in a tmpfs.
-pub struct TmpFSFile {
-	/// The file's content.
-	content: FileContent,
-
-	// TODO Only if the file is regular
-	/// The content of the file, if it is a regular file.
-	regular_content: Vec<u8>,
-	// TODO Only if the file is a directory
-	/// The content of the file, if it is a directory.
-	entries: HashMap<String, (INode, SharedPtr<dyn KernFSNode>)>,
-
-	/// The file's permissions.
-	mode: Mode,
-	/// The file's user ID.
-	uid: Uid,
-	/// The file's group ID.
-	gid: Gid,
-
-	/// TODO doc
-	atime: Timestamp,
-	/// TODO doc
-	ctime: Timestamp,
-	/// TODO doc
-	mtime: Timestamp,
-}
-
-impl TmpFSFile {
-	/// Creates a new instance.
-	/// `content` is the file's content.
-	/// `mode` is the file's permissions.
-	/// `uid` is the file owner's uid.
-	/// `gid` is the file owner's gid.
-	/// `ts` is the current timestamp.
-	/// If the file is a directory, the given list of entries is ignored since they cannot be
-	/// associated to any inode immediately.
-	pub fn new(content: FileContent, mode: Mode, uid: Uid, gid: Gid, ts: Timestamp) -> Self {
-		Self {
-			content,
-
-			regular_content: Vec::new(),
-			entries: HashMap::new(),
-
-			mode,
-			uid,
-			gid,
-
-			atime: ts,
-			ctime: ts,
-			mtime: ts,
-		}
-	}
-
-	/// Returns the size used by the file in bytes.
-	pub fn get_used_size(&self) -> usize {
-		size_of::<Self>() + self.get_size() as usize
-	}
-}
-
-impl KernFSNode for TmpFSFile {
-	fn get_type(&self) -> FileType {
-		self.content.get_file_type()
-	}
-
-	fn get_mode(&self) -> Mode {
-		self.mode
-	}
-
-	fn set_mode(&mut self, mode: Mode) {
-		self.mode = mode;
-	}
-
-	fn get_uid(&self) -> Uid {
-		self.uid
-	}
-
-	fn set_uid(&mut self, uid: Uid) {
-		self.uid = uid;
-	}
-
-	fn get_gid(&self) -> Gid {
-		self.gid
-	}
-
-	fn set_gid(&mut self, gid: Gid) {
-		self.gid = gid;
-	}
-
-	fn get_atime(&self) -> Timestamp {
-		self.atime
-	}
-
-	fn set_atime(&mut self, ts: Timestamp) {
-		self.atime = ts;
-	}
-
-	fn get_ctime(&self) -> Timestamp {
-		self.ctime
-	}
-
-	fn set_ctime(&mut self, ts: Timestamp) {
-		self.ctime = ts;
-	}
-
-	fn get_mtime(&self) -> Timestamp {
-		self.mtime
-	}
-
-	fn set_mtime(&mut self, ts: Timestamp) {
-		self.mtime = ts;
-	}
-
-	fn get_entries(&self) -> &HashMap<String, (INode, SharedPtr<dyn KernFSNode>)> {
-		&self.entries
-	}
-}
-
-impl IO for TmpFSFile {
-	fn get_size(&self) -> u64 {
-		match &self.content {
-			FileContent::Regular => self.regular_content.len() as _,
-			FileContent::Directory(_) => {
-				let names_len = self.entries.iter()
-					.map(| (name, _) | name.len() as u64)
-					.sum::<u64>();
-
-				// Adding the length of inodes
-				names_len + (self.entries.len() as u64 * size_of::<TmpFSFile>() as u64)
-			},
-			FileContent::Link(path) => path.len() as _,
-			FileContent::Fifo => 0, // TODO Add the size of the id?
-			FileContent::Socket => 0, // TODO Add the size of the id?
-			FileContent::BlockDevice { .. } | FileContent::CharDevice { .. } => 0,
-		}
-	}
-
-	fn read(&mut self, offset: u64, buff: &mut [u8]) -> Result<u64, Errno> {
-		// TODO Avoid redundant code with casual files
-		match &self.content {
-			FileContent::Regular => {
-				if offset <= self.regular_content.len() as _ {
-					buff.copy_from_slice(&self.regular_content.as_slice()[(offset as usize)..]);
-					Ok(min(buff.len() as u64, self.regular_content.len() as u64 - offset))
-				} else {
-					Ok(0)
-				}
-			},
-
-			FileContent::Directory(_) => Err(errno!(EINVAL)),
-
-			FileContent::Link(_) => Err(errno!(EINVAL)),
-
-			FileContent::Fifo => {
-				// TODO
-				todo!();
-			},
-
-			FileContent::Socket => {
-				// TODO
-				todo!();
-			},
-
-			FileContent::BlockDevice {
-				major: _,
-				minor: _
-			} => {
-				// TODO
-				todo!();
-			},
-
-			FileContent::CharDevice {
-				major: _,
-				minor: _
-			} => {
-				// TODO
-				todo!();
-			},
-		}
-	}
-
-	fn write(&mut self, offset: u64, buff: &[u8]) -> Result<u64, Errno> {
-		// TODO Avoid redundant code with casual files
-		match &self.content {
-			FileContent::Regular => {
-				if offset <= self.regular_content.len() as u64 {
-					if offset + buff.len() as u64 <= usize::MAX as u64 {
-						// Increase the size of storage if necessary
-						if offset + buff.len() as u64 > self.regular_content.len() as u64 {
-							self.regular_content.resize(offset as usize + buff.len())?;
-						}
-
-						self.regular_content.as_mut_slice()[(offset as usize)..]
-							.copy_from_slice(buff);
-						Ok(buff.len() as _)
-					} else {
-						Err(errno!(EFBIG))
-					}
-				} else {
-					Err(errno!(EINVAL))
-				}
-			},
-
-			FileContent::Directory(_) => Err(errno!(EINVAL)),
-
-			FileContent::Link(_) => Err(errno!(EINVAL)),
-
-			FileContent::Fifo => {
-				// TODO
-				todo!();
-			},
-
-			FileContent::Socket => {
-				// TODO
-				todo!();
-			},
-
-			FileContent::BlockDevice {
-				major: _,
-				minor: _
-			} => {
-				// TODO
-				todo!();
-			},
-
-			FileContent::CharDevice {
-				major: _,
-				minor: _
-			} => {
-				// TODO
-				todo!();
-			},
-		}
-	}
+/// Returns the size in bytes used by the given node `node`.
+fn get_used_size(node: &KernFSNode) -> usize {
+	size_of::<KernFSNode>() + node.get_size() as usize
 }
 
 /// Structure representing the temporary file system.
@@ -280,21 +44,19 @@ impl TmpFS {
 	/// Creates a new instance.
 	/// `max_size` is the maximum amount of memory the filesystem can use in bytes.
 	/// `readonly` tells whether the filesystem is readonly.
-	pub fn new(max_size: usize, readonly: bool) -> Result<Self, Errno> {
+	/// `mountpath` is the path at which the filesystem is mounted.
+	pub fn new(max_size: usize, readonly: bool, mountpath: Path) -> Result<Self, Errno> {
 		let mut fs = Self {
 			max_size,
 			size: 0,
 
-			fs: KernFS::new(String::from(b"tmpfs")?, readonly),
+			fs: KernFS::new(String::from(b"tmpfs")?, readonly, mountpath),
 		};
 
-		// The current timestamp
-		let ts = time::get().unwrap_or(0);
-
 		// Adding the root node
-		let root_node = TmpFSFile::new(FileContent::Directory(crate::vec![]), 0o777, 0, 0, ts);
-		fs.update_size(root_node.get_used_size() as _, | fs | {
-			fs.fs.set_root(Some(SharedPtr::new(root_node)?))?;
+		let root_node = KernFSNode::new(0o777, 0, 0, FileContent::Directory(HashMap::new()), None);
+		fs.update_size(get_used_size(&root_node) as _, | fs | {
+			fs.fs.set_root(Some(root_node))?;
 			Ok(())
 		})?;
 
@@ -405,11 +167,11 @@ impl FilesystemType for TmpFsType {
 	}
 
 	fn create_filesystem(&self, _io: &mut dyn IO) -> Result<Box<dyn Filesystem>, Errno> {
-		Ok(Box::new(TmpFS::new(DEFAULT_MAX_SIZE, false)?)?)
+		Ok(Box::new(TmpFS::new(DEFAULT_MAX_SIZE, false, Path::root())?)?)
 	}
 
-	fn load_filesystem(&self, _io: &mut dyn IO, _mountpath: Path, readonly: bool)
+	fn load_filesystem(&self, _io: &mut dyn IO, mountpath: Path, readonly: bool)
 		-> Result<Box<dyn Filesystem>, Errno> {
-		Ok(Box::new(TmpFS::new(DEFAULT_MAX_SIZE, readonly)?)?)
+		Ok(Box::new(TmpFS::new(DEFAULT_MAX_SIZE, readonly, mountpath)?)?)
 	}
 }

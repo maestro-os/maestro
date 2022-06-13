@@ -32,7 +32,7 @@ pub fn reboot(regs: &Regs) -> Result<i32, Errno> {
 
 	{
 		let mutex = Process::get_current().unwrap();
-		let mut guard = mutex.lock();
+		let guard = mutex.lock();
 		let proc = guard.get_mut();
 		if proc.get_uid() != 0 {
 			return Err(errno!(EPERM));
@@ -44,8 +44,8 @@ pub fn reboot(regs: &Regs) -> Result<i32, Errno> {
 			crate::println!("Power down...");
 			// TODO Use ACPI to power off the system
 
-			// Loop to avoid compilation error
-			loop {}
+			// In case power down didn't work (very unlikely)
+			crate::halt();
 		},
 
 		CMD_REBOOT => {

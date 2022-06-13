@@ -16,9 +16,6 @@ use crate::util::FailableClone;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 
-// FIXME vuln: When reducing a path, must check if a components are a directory. If not:
-// If `foo` is a directory and `bar` is a file, then `foo/bar/..` would reduce to `foo`
-
 /// The character used as a path separator.
 pub const PATH_SEPARATOR: char = '/';
 
@@ -109,13 +106,16 @@ impl Path {
 	}
 
 	/// Pops the filename on top of the path.
-	pub fn pop(&mut self) {
-		self.parts.pop();
+	pub fn pop(&mut self) -> Option<String> {
+		self.parts.pop()
 	}
 
 	/// Tells whether the current path begins with the path `other`.
 	pub fn begins_with(&self, other: &Self) -> bool {
 		if self.absolute != other.absolute {
+			return false;
+		}
+		if self.parts.len() < other.parts.len() {
 			return false;
 		}
 
@@ -153,6 +153,7 @@ impl Path {
 		})
 	}
 
+	// FIXME Unused: remove?
 	/// Reduces the path, removing all useless `.` and `..`.
 	pub fn reduce(&mut self) -> Result<(), Errno> {
 		let mut i = 0;

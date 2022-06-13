@@ -32,12 +32,12 @@ pub fn msync(regs: &Regs) -> Result<i32, Errno> {
 
 	// Getting the current process
 	let mutex = Process::get_current().unwrap();
-	let mut guard = mutex.lock();
+	let guard = mutex.lock();
 	let proc = guard.get_mut();
 
 	// The process's memory space
 	let mem_space = proc.get_mem_space().unwrap();
-	let mut mem_space_guard = mem_space.lock();
+	let mem_space_guard = mem_space.lock();
 	let mem_space = mem_space_guard.get_mut();
 
 	let mut i = 0;

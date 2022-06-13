@@ -49,14 +49,11 @@ pub const MAPPING_FLAG_NOLAZY: u8 = 0b01000;
 /// mappings.
 pub const MAPPING_FLAG_SHARED: u8 = 0b10000;
 
-/// The size of the temporary stack used to fork a memory space.
-const TMP_STACK_SIZE: usize = memory::PAGE_SIZE * 8;
-
 /// The physical pages reference counter.
-pub static mut PHYSICAL_REF_COUNTER: Mutex<PhysRefCounter> = Mutex::new(PhysRefCounter::new());
+pub static PHYSICAL_REF_COUNTER: Mutex<PhysRefCounter> = Mutex::new(PhysRefCounter::new());
 
 /// Enumeration of constraints for memory mapping.
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum MapConstraint {
 	/// The mapping is done at a fixed address. Previous allocations at the same place are
 	/// unmapped.
@@ -188,6 +185,7 @@ impl MemSpace {
 		&mut self.vmem
 	}
 
+	// TODO Fix potential invalid state on fail
 	/// Maps a chunk of memory.
 	/// `map_constraint` is the constraint to fullfill for the allocation.
 	/// `size` represents the size of the mapping in number of memory pages.
@@ -215,18 +213,20 @@ impl MemSpace {
 			return Err(errno!(EINVAL));
 		}
 
-		match map_constraint {
-			MapConstraint::Fixed(ptr) => {
-				// Unmapping previous allocations
-				self.unmap(ptr, size, false)?; // TODO Must be undone on fail
-			},
-
-			_ => {},
+		enum MappingInfo<'a> {
+			GapPosition(&'a MemGap, usize),
+			Addr(*mut c_void),
 		}
 
-		// The gap to use and the offset in said gap
-		let (gap, off) = match map_constraint {
-			MapConstraint::Fixed(ptr) | MapConstraint::Hint(ptr) => {
+		// Mapping informations matching mapping constraints
+		let mapping_infos = match map_constraint {
+			MapConstraint::Fixed(ptr) => {
+				self.unmap(ptr, size, false)?;
+
+				MappingInfo::Addr(ptr as _)
+			},
+
+			MapConstraint::Hint(ptr) => {
 				// Getting the gap for the pointer
 				let gap = Self::gap_by_ptr(&self.gaps, ptr).ok_or_else(|| errno!(ENOMEM))?;
 
@@ -236,7 +236,7 @@ impl MemSpace {
 					return Err(errno!(ENOMEM));
 				}
 
-				(gap, off)
+				MappingInfo::GapPosition(gap, off)
 			},
 
 			MapConstraint::None => {
@@ -244,16 +244,22 @@ impl MemSpace {
 				let gap = Self::gap_get(&self.gaps, &self.gaps_size, size)
 					.ok_or_else(|| errno!(ENOMEM))?;
 
-				(gap, 0)
+				MappingInfo::GapPosition(gap, 0)
 			}
 		};
 
 		// The address to the beginning of the mapping
-		let addr = (gap.get_begin() as usize + off * memory::PAGE_SIZE) as *mut c_void;
+		let addr = match mapping_infos {
+			MappingInfo::GapPosition(gap, off) => {
+				(gap.get_begin() as usize + off * memory::PAGE_SIZE) as *mut c_void
+			},
+
+			MappingInfo::Addr(addr) => addr,
+		};
+
 		// Creating the mapping
 		let mapping = MemMapping::new(addr, size, flags, file, file_off,
 			NonNull::new(self.vmem.as_mut_ptr()).unwrap());
-
 		let m = self.mappings.insert(addr, mapping)?;
 
 		// Mapping the default page
@@ -262,22 +268,26 @@ impl MemSpace {
 			return Err(e);
 		}
 
-		// Splitting the old gap to fit the mapping
-		let (left_gap, right_gap) = gap.consume(off, size);
+		// Splitting the old gap to fit the mapping if needed
+		match mapping_infos {
+			MappingInfo::GapPosition(gap, off) => {
+				let (left_gap, right_gap) = gap.consume(off, size);
 
-		// Removing the old gap
-		let gap_begin = gap.get_begin();
-		self.gap_remove(gap_begin);
+				// Removing the old gap
+				let gap_begin = gap.get_begin();
+				self.gap_remove(gap_begin);
 
-		// Inserting the new gaps
-		if let Some(new_gap) = left_gap {
-			oom::wrap(|| self.gap_insert(new_gap.clone()));
+				// Inserting the new gaps
+				if let Some(new_gap) = left_gap {
+					oom::wrap(|| self.gap_insert(new_gap.clone()));
+				}
+				if let Some(new_gap) = right_gap {
+					oom::wrap(|| self.gap_insert(new_gap.clone()));
+				}
+			},
+
+			_ => {},
 		}
-		if let Some(new_gap) = right_gap {
-			oom::wrap(|| self.gap_insert(new_gap.clone()));
-		}
-
-		//crate::println!("map: {} {:p} {}", self, addr, size); // TODO rm
 
 		Ok(addr)
 	}
@@ -454,8 +464,6 @@ impl MemSpace {
 		let vmem = self.get_vmem();
 		oom::wrap(|| vmem.unmap_range(ptr, size));
 
-		//crate::println!("unmap: {:p} {} {}: {}", ptr, size, brk, self); // TODO rm
-
 		Ok(())
 	}
 
@@ -499,49 +507,47 @@ impl MemSpace {
 	pub fn can_access_string(&self, ptr: *const u8, user: bool, write: bool) -> Option<usize> {
 		// TODO Allow reading kernelspace data that is available to userspace
 
-		vmem::switch(self.vmem.as_ref(), || {
-			let mut i = 0;
-			'outer: loop {
-				// Safe because not dereferenced before checking if accessible
-				let curr_ptr = unsafe {
-					ptr.add(i)
-				};
+		unsafe {
+			vmem::switch(self.vmem.as_ref(), move || {
+				let mut i = 0;
+				'outer: loop {
+					// Safe because not dereferenced before checking if accessible
+					let curr_ptr = ptr.add(i);
 
-				if let Some(mapping) = Self::get_mapping_for_(&self.mappings, curr_ptr as _) {
-					let flags = mapping.get_flags();
-					if write && (flags & MAPPING_FLAG_WRITE == 0) {
-						return None;
-					}
-					if user && (flags & MAPPING_FLAG_USER == 0) {
-						return None;
-					}
-
-					// The beginning of the current page
-					let page_begin = util::down_align(curr_ptr as _, memory::PAGE_SIZE);
-					// The offset of the current pointer in its page
-					let inner_off = curr_ptr as usize - page_begin as usize;
-					let check_size = memory::PAGE_SIZE - inner_off;
-
-					// Looking for the null byte
-					for j in 0..check_size {
-						let c = unsafe { // Safe because the pointer is checked before
-							*curr_ptr.add(j)
-						};
-
-						// TODO Optimize by checking several bytes at a time
-						if c == b'\0' {
-							break 'outer;
+					if let Some(mapping) = Self::get_mapping_for_(&self.mappings, curr_ptr as _) {
+						let flags = mapping.get_flags();
+						if write && (flags & MAPPING_FLAG_WRITE == 0) {
+							return None;
+						}
+						if user && (flags & MAPPING_FLAG_USER == 0) {
+							return None;
 						}
 
-						i += 1;
-					}
-				} else {
-					return None;
-				}
-			}
+						// The beginning of the current page
+						let page_begin = util::down_align(curr_ptr as _, memory::PAGE_SIZE);
+						// The offset of the current pointer in its page
+						let inner_off = curr_ptr as usize - page_begin as usize;
+						let check_size = memory::PAGE_SIZE - inner_off;
 
-			Some(i)
-		})
+						// Looking for the null byte
+						for j in 0..check_size {
+							let c = *curr_ptr.add(j);
+
+							// TODO Optimize by checking several bytes at a time
+							if c == b'\0' {
+								break 'outer;
+							}
+
+							i += 1;
+						}
+					} else {
+						return None;
+					}
+				}
+
+				Some(i)
+			})
+		}
 	}
 
 	/// Binds the CPU to this memory space.
@@ -582,28 +588,23 @@ impl MemSpace {
 
 	/// Clones the current memory space for process forking.
 	pub fn fork(&mut self) -> Result<MemSpace, Errno> {
-		let tmp_stack = Box::<[u8; TMP_STACK_SIZE]>::new([0; TMP_STACK_SIZE])?;
-		let tmp_stack_top = unsafe {
-			(tmp_stack.as_ptr() as *mut c_void).add(TMP_STACK_SIZE)
-		};
-
 		let mut result = Err(errno!(EINVAL));
 		unsafe {
-			stack::switch(tmp_stack_top, || {
+			stack::switch(None, || {
 				result = self.do_fork();
-			})
+			})?;
 		}
 		result
 	}
 
 	/// Allocates the physical pages to write on the given pointer.
 	/// `virt_addr` is the address to allocate.
-	/// `size` is the size of the mapping to allocate.
+	/// The size of the memory chunk to allocated equals `size_of::<T>() * len`.
 	/// If the mapping doesn't exist, the function returns an error.
-	pub fn alloc<T>(&mut self, virt_addr: *const T) -> Result<(), Errno> {
+	pub fn alloc<T>(&mut self, virt_addr: *const T, len: usize) -> Result<(), Errno> {
 		let mut off = 0;
 
-		while off < size_of::<T>() {
+		while off < size_of::<T>() * len {
 			let virt_addr = (virt_addr as usize + off) as *const c_void;
 
 			if let Some(mapping) = Self::get_mapping_mut_for_(&mut self.mappings, virt_addr) {

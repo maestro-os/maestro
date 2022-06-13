@@ -12,7 +12,7 @@ pub fn link(regs: &Regs) -> Result<i32, Errno> {
 	let newpath: SyscallString = (regs.ecx as usize).into();
 
 	let mutex = Process::get_current().unwrap();
-	let mut guard = mutex.lock();
+	let guard = mutex.lock();
 	let proc = guard.get_mut();
 
 	let mem_space = proc.get_mem_space().unwrap();

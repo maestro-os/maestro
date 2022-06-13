@@ -9,7 +9,7 @@ use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::regs::Regs;
 use crate::util::FailableClone;
-use crate::util::container::vec::Vec;
+use crate::util::container::hashmap::HashMap;
 
 /// The implementation of the `mkdir` syscall.
 pub fn mkdir(regs: &Regs) -> Result<i32, Errno> {
@@ -17,7 +17,7 @@ pub fn mkdir(regs: &Regs) -> Result<i32, Errno> {
 	let mode = regs.ecx as file::Mode;
 
 	let mutex = Process::get_current().unwrap();
-	let mut guard = mutex.lock();
+	let guard = mutex.lock();
 	let proc = guard.get_mut();
 
 	let mem_space = proc.get_mem_space().unwrap();
@@ -41,16 +41,16 @@ pub fn mkdir(regs: &Regs) -> Result<i32, Errno> {
 		// Creating the directory
 		{
 			let mutex = fcache::get();
-			let mut guard = mutex.lock();
+			let guard = mutex.lock();
 			let files_cache = guard.get_mut().as_mut().unwrap();
 
 			// Getting parent directory
 			let parent_mutex = files_cache.get_file_from_path(&parent_path, uid, gid, true)?;
-			let mut parent_guard = parent_mutex.lock();
+			let parent_guard = parent_mutex.lock();
 			let parent = parent_guard.get_mut();
 
 			files_cache.create_file(parent, name, uid, gid, mode,
-				FileContent::Directory(Vec::new()))?;
+				FileContent::Directory(HashMap::new()))?;
 		}
 	}
 

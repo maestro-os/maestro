@@ -79,18 +79,23 @@ pub fn do_select<T: TimeUnit>(nfds: u32,
 		let mut events_count = 0;
 
 		{
-			let proc_mutex = Process::get_current().unwrap();
-			let proc_guard = proc_mutex.lock();
-			let proc = proc_guard.get();
-
-			let mem_space = proc.get_mem_space().unwrap();
-			let mem_space_guard = mem_space.lock();
-
 			for fd_id in 0..min(nfds as u32, FD_SETSIZE as u32) {
-				if let Some(fd) = proc.get_fd(fd_id) {
+				let (mem_space, fd) = {
+					let proc_mutex = Process::get_current().unwrap();
+					let proc_guard = proc_mutex.lock();
+					let proc = proc_guard.get();
+
+					let mem_space = proc.get_mem_space().unwrap();
+					let fd = proc.get_fd(fd_id);
+					(mem_space, fd)
+				};
+
+				if let Some(fd) = fd {
 					let open_file_mutex = fd.get_open_file();
 					let open_file_guard = open_file_mutex.lock();
 					let open_file = open_file_guard.get();
+
+					let mem_space_guard = mem_space.lock();
 
 					if let Some(readfds) = readfds.get_mut(&mem_space_guard)? {
 						if readfds.is_set(fd_id) {
@@ -128,6 +133,8 @@ pub fn do_select<T: TimeUnit>(nfds: u32,
 						}
 					}
 				} else {
+					let mem_space_guard = mem_space.lock();
+
 					let read = readfds.get_mut(&mem_space_guard)?
 						.map(| fds | fds.is_set(fd_id)).unwrap_or(false);
 					let write = writefds.get_mut(&mem_space_guard)?

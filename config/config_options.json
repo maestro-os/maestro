@@ -101,7 +101,17 @@
 				"desc": "Tells whether the kernel should place a magic number on the memory chunks to check for corruption",
 				"option_type": "bool",
 				"values": [],
-				"value": "true",
+				"value": "false",
+				"deps": [],
+				"suboptions": []
+			},
+			{
+				"name": "malloc_check",
+				"display_name": "Malloc integrity check",
+				"desc": "At each operations on the malloc allocator, the kernel checks the integrity of its structures",
+				"option_type": "bool",
+				"values": [],
+				"value": "false",
 				"deps": [],
 				"suboptions": []
 			},

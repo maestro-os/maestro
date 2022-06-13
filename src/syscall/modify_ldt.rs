@@ -22,7 +22,7 @@ pub fn modify_ldt(regs: &Regs) -> Result<i32, Errno> {
 
 	// Getting the current process
 	let mutex = Process::get_current().unwrap();
-	let mut guard = mutex.lock();
+	let guard = mutex.lock();
 	let proc = guard.get_mut();
 
 	let mem_space = proc.get_mem_space().unwrap();

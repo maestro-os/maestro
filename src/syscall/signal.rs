@@ -9,6 +9,7 @@ use crate::process::Process;
 use crate::process::regs::Regs;
 use crate::process::signal::SigAction;
 use crate::process::signal::SigHandler;
+use crate::process::signal::Signal;
 use crate::process::signal::SignalHandler;
 use crate::process::signal;
 
@@ -17,9 +18,10 @@ pub fn signal(regs: &Regs) -> Result<i32, Errno> {
 	let signum = regs.ebx as i32;
 	let handler = regs.ecx as *const c_void;
 
-	if signum as usize >= signal::SIGNALS_COUNT {
+	if signum < 0 {
 		return Err(errno!(EINVAL));
 	}
+	let signal = Signal::from_id(signum as _)?;
 
 	let h = match handler {
 		signal::SIG_IGN => SignalHandler::Ignore,
@@ -41,11 +43,11 @@ pub fn signal(regs: &Regs) -> Result<i32, Errno> {
 
 	let old_handler = {
 		let mutex = Process::get_current().unwrap();
-		let mut guard = mutex.lock();
+		let guard = mutex.lock();
 		let proc = guard.get_mut();
 
-		let old_handler = proc.get_signal_handler(signum as _);
-		proc.set_signal_handler(signum as _, h);
+		let old_handler = proc.get_signal_handler(&signal);
+		proc.set_signal_handler(&signal, h);
 		old_handler
 	};
 

@@ -224,6 +224,7 @@ impl Scheduler {
 					let guard = process.lock();
 					Self::can_run(guard.get(), priority_sum, priority_max, processes_count)
 				};
+
 				// FIXME Potenial race condition? (checking if runnable, then unlocking and using
 				// the result of the check)
 				if runnable {
@@ -265,14 +266,14 @@ impl Scheduler {
 		// Disabling interrupts to avoid getting one right after unlocking mutexes
 		cli!();
 
-		let mut guard = mutex.lock();
+		let guard = mutex.lock();
 		let scheduler = guard.get_mut();
 
 		scheduler.total_ticks += 1;
 
 		// If a process is running, save its registers
 		if let Some(curr_proc) = scheduler.get_current_process() {
-			let mut guard = curr_proc.lock();
+			let guard = curr_proc.lock();
 			let curr_proc = guard.get_mut();
 
 			curr_proc.regs = *regs;
@@ -284,7 +285,7 @@ impl Scheduler {
 		// Getting the temporary stack
 		let tmp_stack = scheduler.get_tmp_stack(core_id);
 
-		if let Some(next_proc) = &mut scheduler.get_next_process() {
+		if let Some(next_proc) = scheduler.get_next_process() {
 			// Set the process as current
 			scheduler.curr_proc = Some(next_proc.clone());
 
@@ -295,18 +296,20 @@ impl Scheduler {
 			pic::end_of_interrupt(0x0);
 
 			unsafe {
-				stack::switch(tmp_stack, || {
+				stack::switch(Some(tmp_stack), move || {
 					let (syscalling, regs) = {
-						let mut guard = next_proc.1.lock();
+						let guard = next_proc.1.lock();
 						let proc = guard.get_mut();
 
 						proc.prepare_switch();
 						(proc.is_syscalling(), proc.regs)
 					};
 
+					drop(next_proc);
+
 					// Resuming execution
 					regs.switch(!syscalling);
-				});
+				}).unwrap();
 			}
 
 			unreachable!();

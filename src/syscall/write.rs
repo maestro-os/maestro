@@ -7,7 +7,6 @@ use crate::file::open_file::O_NONBLOCK;
 use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallSlice;
 use crate::process::regs::Regs;
-use crate::process::signal;
 use crate::syscall::Signal;
 
 // TODO O_ASYNC
@@ -28,17 +27,17 @@ pub fn write(regs: &Regs) -> Result<i32, Errno> {
 		let (len, flags) = {
 			let (mem_space, open_file_mutex) = {
 				let mutex = Process::get_current().unwrap();
-				let mut guard = mutex.lock();
+				let guard = mutex.lock();
 				let proc = guard.get_mut();
 
 				(proc.get_mem_space().unwrap(), proc.get_fd(fd).ok_or(errno!(EBADF))?.get_open_file())
 			};
 
+			let open_file_guard = open_file_mutex.lock();
+			let open_file = open_file_guard.get_mut();
+
 			let mem_space_guard = mem_space.lock();
 			let buf_slice = buf.get(&mem_space_guard, len)?.ok_or(errno!(EFAULT))?;
-
-			let mut open_file_guard = open_file_mutex.lock();
-			let open_file = open_file_guard.get_mut();
 
 			let flags = open_file.get_flags();
 			let len = match open_file.write(buf_slice) {
@@ -48,10 +47,10 @@ pub fn write(regs: &Regs) -> Result<i32, Errno> {
 					// If the pipe is broken, kill with SIGPIPE
 					if err.as_int() == errno::EPIPE {
 						let mutex = Process::get_current().unwrap();
-						let mut guard = mutex.lock();
+						let guard = mutex.lock();
 						let proc = guard.get_mut();
 
-						proc.kill(Signal::new(signal::SIGPIPE).unwrap(), false);
+						proc.kill(&Signal::SIGPIPE, false);
 					}
 
 					return Err(err);

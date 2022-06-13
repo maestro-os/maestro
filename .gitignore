@@ -26,5 +26,8 @@ doc/
 
 # Debug files
 *_out
-qemu_disk
 serial.log
+
+# Disk files
+qemu_disk
+mnt/

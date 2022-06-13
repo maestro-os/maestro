@@ -20,7 +20,7 @@ static TOTAL_FD: Mutex<usize> = Mutex::new(0);
 /// If the maximum amount of file descriptors is reached, the function does nothing and returns an
 /// error with the appropriate errno.
 fn increment_total() -> Result<(), Errno> {
-	let mut guard = TOTAL_FD.lock();
+	let guard = TOTAL_FD.lock();
 
 	if *guard.get() >= TOTAL_MAX_FD {
 		return Err(errno!(ENFILE));
@@ -32,11 +32,12 @@ fn increment_total() -> Result<(), Errno> {
 
 /// Decrements the total number of file descriptors open system-wide.
 fn decrement_total() {
-	let mut guard = TOTAL_FD.lock();
+	let guard = TOTAL_FD.lock();
 	*guard.get_mut() -= 1;
 }
 
 /// Constraints to be respected when creating a new file descriptor.
+#[derive(Debug)]
 pub enum NewFDConstraint {
 	/// No constraint
 	None,

@@ -1,86 +1,147 @@
 //! The Base Address Register (BAR) is a way to communicate with a device using Direct Access
 //! Memory (DMA).
 
-use crate::device::bus::pci::PCIDevice;
+use core::mem::size_of;
+use crate::io;
+
+/// Enumeration of Memory Space BAR types.
+#[derive(Clone, Debug)]
+pub enum BARType {
+	/// The base register is 32 bits wide.
+	Size32,
+	/// The base register is 64 bits wide.
+	Size64,
+}
 
 /// Structure representing a Base Address Register.
-pub struct BAR {
-	/// The base address.
-	address: u64,
-	/// The amount of space required by the device.
-	size: usize,
+#[derive(Clone, Debug)]
+pub enum BAR {
+	MemorySpace {
+		/// The type of the BAR, specifying the size of the register.
+		type_: BARType,
+		/// If true, read accesses don't have any side effects.
+		prefetchable: bool,
 
-	/// The BAR type.
-	type_: u8,
-	/// Tells whether the memory is prefetchable.
-	prefetchable: bool,
+		/// Physical address to the register.
+		address: u64,
+
+		/// The size of the address space in bytes.
+		size: usize,
+	},
+
+	IOSpace {
+		/// Address to the register in I/O space.
+		address: u64,
+
+		/// The size of the address space in bytes.
+		size: usize,
+	},
 }
 
 impl BAR {
-	/// Creates a new instance from a PCI device.
-	/// `dev` is the PCI device.
-	/// `n` is the BAR id.
-	/// If the BAR doesn't exist, the function returns None.
-	pub fn from_pci(dev: &PCIDevice, n: u8) -> Option<Self> {
-		// The BAR's value
-		let value = dev.get_bar_value(n)?;
+	/// Returns the base address.
+	pub fn get_physical_address(&self) -> Option<*mut ()> {
+		let (addr, size) = match self {
+			Self::MemorySpace { address, size, .. } => (*address, *size),
+			Self::IOSpace { address, size, .. } => (*address, *size),
+		};
 
-		// TODO Get size
-		let size = 0;
-
-		if (value & 0b1) == 0 {
-			let type_ = ((value >> 1) & 0b11) as u8;
-			let address = match type_ {
-				0x0 => (value & 0xfffffff0) as u64,
-				0x1 => (value & 0xfff0) as u64,
-				0x2 => {
-					// The next BAR's value
-					let next_value = dev.get_bar_value(n + 1)?;
-					(value & 0xfffffff0) as u64 | ((next_value as u64) << 32)
-				},
-
-				_ => 0,
-			};
-
-			Some(Self {
-				address,
-				size,
-
-				type_,
-				prefetchable: value & 0b1000 != 0,
-			})
+		if (addr + size as u64) > usize::MAX as u64 {
+			Some(addr as _)
 		} else {
-			Some(Self {
-				address: (value & 0xfffffffc) as u64,
-				size,
-
-				type_: 0,
-				prefetchable: false,
-			})
+			None
 		}
 	}
 
-	/// Returns the base address.
-	#[inline(always)]
-	pub fn get_physical_address(&self) -> u64 {
-		self.address
-	}
-
 	/// Returns the amount of memory.
-	#[inline(always)]
 	pub fn get_size(&self) -> usize {
-		self.size
-	}
-
-	/// Returns the type of the BAR.
-	#[inline(always)]
-	pub fn get_type(&self) -> u8 {
-		self.type_
+		match self {
+			Self::MemorySpace { size, .. } => *size,
+			Self::IOSpace { size, .. } => *size,
+		}
 	}
 
 	/// Tells whether the memory is prefetchable.
-	#[inline(always)]
 	pub fn is_prefetchable(&self) -> bool {
-		self.prefetchable
+		match self {
+			Self::MemorySpace { prefetchable, .. } => *prefetchable,
+			Self::IOSpace { .. } => false,
+		}
+	}
+
+	// TODO Use virtual addresses instead
+	/// Reads a value from the register at offset `off`.
+	pub fn read<T>(&self, off: usize) -> u64 {
+		match self {
+			Self::MemorySpace { type_, address, .. } => match type_ {
+				BARType::Size32 => unsafe {
+					let addr = (*address as *const u32).add(off);
+					(*addr).into()
+				},
+
+				BARType::Size64 => unsafe {
+					let addr = (*address as *const u64).add(off);
+					(*addr).into()
+				},
+			},
+
+			Self::IOSpace { address, .. } => {
+				let off = (*address + off as u64) as u16;
+
+				match size_of::<T>() {
+					1 => unsafe {
+						io::inb(off).into()
+					},
+
+					2 => unsafe {
+						io::inw(off).into()
+					},
+
+					4 => unsafe {
+						io::inl(off).into()
+					},
+
+					_ => 0u32.into(),
+				}
+			},
+		}
+	}
+
+	// TODO Use virtual addresses instead
+	/// Writes a value to the register at offset `off`.
+	pub fn write<T>(&self, off: usize, val: u64) {
+		match self {
+			Self::MemorySpace { type_, address, .. } => match type_ {
+				BARType::Size32 => unsafe {
+					let addr = (*address as *mut u32).add(off);
+					*addr = val as _;
+				},
+
+				BARType::Size64 => unsafe {
+					let addr = (*address as *mut u64).add(off);
+					*addr = val.into();
+				},
+			},
+
+			Self::IOSpace { address, .. } => {
+				let off = (*address + off as u64) as u16;
+
+				match size_of::<T>() {
+					1 => unsafe {
+						io::outb(off, val as _)
+					},
+
+					2 => unsafe {
+						io::outw(off, val as _)
+					},
+
+					4 => unsafe {
+						io::outl(off, val as _)
+					},
+
+					_ => {},
+				}
+			},
+		}
 	}
 }

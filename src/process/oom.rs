@@ -18,7 +18,7 @@ pub fn is_killer_enabled() -> bool {
 
 /// Enables or disables the OOM killer.
 pub fn set_killer_enabled(enable: bool) {
-	let mut guard = KILLER_ENABLE.lock();
+	let guard = KILLER_ENABLE.lock();
 	*guard.get_mut() = enable;
 }
 

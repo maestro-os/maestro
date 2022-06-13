@@ -14,6 +14,7 @@ use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::regs::Regs;
+use crate::util::FailableClone;
 
 /// The implementation of the `mount` syscall.
 pub fn mount(regs: &Regs) -> Result<i32, Errno> {
@@ -31,18 +32,20 @@ pub fn mount(regs: &Regs) -> Result<i32, Errno> {
 	let mem_space = proc.get_mem_space().unwrap();
 	let mem_space_guard = mem_space.lock();
 
+	let cwd = proc.get_cwd().failable_clone()?;
+
 	// Getting strings
 	let source_slice = source.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
 	let target_slice = target.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
 	let filesystemtype_slice = filesystemtype.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
 
 	// Getting the mount source
-	let mount_source = MountSource::from_str(source_slice)?;
+	let mount_source = MountSource::from_str(source_slice, cwd)?;
 
 	// Getting the target file
 	let target_path = Path::from_str(target_slice, true)?;
 	let target_mutex = {
-		let mut guard = fcache::get().lock();
+		let guard = fcache::get().lock();
 		let fcache = guard.get_mut().as_mut().unwrap();
 
 		fcache.get_file_from_path(&target_path, proc.get_euid(), proc.get_egid(), true)?

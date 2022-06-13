@@ -504,7 +504,7 @@ impl KeyboardManager {
 
 			// Getting the tty
 			if let Some(tty_mutex) = tty::current() {
-				let mut tty_guard = tty_mutex.lock();
+				let tty_guard = tty_mutex.lock();
 				let tty = tty_guard.get_mut();
 
 				if key == KeyboardKey::KeyBackspace {
@@ -543,7 +543,7 @@ impl KeyboardManager {
 }
 
 impl DeviceManager for KeyboardManager {
-	fn get_name(&self) -> &str {
+	fn get_name(&self) -> &'static str {
 		"kbd"
 	}
 
@@ -551,12 +551,14 @@ impl DeviceManager for KeyboardManager {
 		Ok(())
 	}
 
-	fn on_plug(&mut self, _dev: &dyn PhysicalDevice) {
+	fn on_plug(&mut self, _dev: &dyn PhysicalDevice) -> Result<(), Errno> {
 		// TODO (When plugging a keyboard, don't forget to set the LEDs state)
+		Ok(())
 	}
 
-	fn on_unplug(&mut self, _dev: &dyn PhysicalDevice) {
+	fn on_unplug(&mut self, _dev: &dyn PhysicalDevice) -> Result<(), Errno> {
 		// TODO
+		Ok(())
 	}
 }
 
