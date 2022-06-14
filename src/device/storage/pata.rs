@@ -18,7 +18,6 @@ use core::cmp::min;
 use crate::device::storage::ide;
 use crate::errno::Errno;
 use crate::errno;
-use crate::io;
 use super::StorageInterface;
 
 /// Offset to the data register.
@@ -252,22 +251,6 @@ impl PATAInterface {
 		self.wait_busy();
 	}
 
-	/// Sets the number `count` of sectors to read/write. The device is assumed to be selected.
-	fn set_sectors_count(&self, count: u16) {
-		unsafe {
-			io::outw(SECTORS_COUNT_REGISTER_OFFSET, count);
-		}
-	}
-
-	/// Sets the LBA offset `offset`. The device is assumed to be selected.
-	fn set_lba(&self, offset: u64) {
-		unsafe {
-			io::outw(LBA_LO_REGISTER_OFFSET, ((offset >> 32) & 0xffff) as _);
-			io::outw(LBA_MID_REGISTER_OFFSET, ((offset >> 16) & 0xffff) as _);
-			io::outw(LBA_HI_REGISTER_OFFSET, (offset & 0xffff) as _);
-		}
-	}
-
 	/// Resets both master and slave devices. The current drive may not be selected anymore.
 	fn reset(&self) {
 		self.outb(PortOffset::Control(0), 1 << 2);
@@ -287,8 +270,10 @@ impl PATAInterface {
 			return Err("Drive doesn't exist");
 		}
 
-		self.set_sectors_count(0);
-		self.set_lba(0);
+		self.outb(PortOffset::ATA(SECTORS_COUNT_REGISTER_OFFSET), 0);
+		self.outb(PortOffset::ATA(LBA_LO_REGISTER_OFFSET), 0);
+		self.outb(PortOffset::ATA(LBA_MID_REGISTER_OFFSET), 0);
+		self.outb(PortOffset::ATA(LBA_HI_REGISTER_OFFSET), 0);
 		self.wait(false);
 
 		self.send_command(COMMAND_IDENTIFY);
@@ -367,6 +352,7 @@ impl StorageInterface for PATAInterface {
 		self.sectors_count
 	}
 
+	// TODO clean
 	fn read(&mut self, buf: &mut [u8], offset: u64, size: u64) -> Result<(), Errno> {
 		debug_assert!((buf.len() as u64) >= size * SECTOR_SIZE);
 
@@ -394,6 +380,8 @@ impl StorageInterface for PATAInterface {
 
 		let mut i = 0;
 		while i < size {
+			let off = offset + i;
+
 			// The number of blocks for this iteration
 			let mut count = min(size - i, iter_max);
 			if count == iter_max {
@@ -414,7 +402,7 @@ impl StorageInterface for PATAInterface {
 
 			// If LBA28, add the end of the sector offset
 			if !lba48 {
-				drive |= ((offset >> 24) & 0x0f) as u8;
+				drive |= ((off >> 24) & 0x0f) as u8;
 			}
 
 			self.outb(PortOffset::ATA(DRIVE_REGISTER_OFFSET), drive);
@@ -422,9 +410,9 @@ impl StorageInterface for PATAInterface {
 			// If LBA48, write high bytes first
 			if lba48 {
 				let count = ((count >> 8) & 0xff) as u8;
-				let lo_lba = ((offset >> 24) & 0xff) as u8;
-				let mid_lba = ((offset >> 32) & 0xff) as u8;
-				let hi_lba = ((offset >> 40) & 0xff) as u8;
+				let lo_lba = ((off >> 24) & 0xff) as u8;
+				let mid_lba = ((off >> 32) & 0xff) as u8;
+				let hi_lba = ((off >> 40) & 0xff) as u8;
 
 				self.outb(PortOffset::ATA(SECTORS_COUNT_REGISTER_OFFSET), count);
 				self.outb(PortOffset::ATA(LBA_LO_REGISTER_OFFSET), lo_lba);
@@ -432,9 +420,9 @@ impl StorageInterface for PATAInterface {
 				self.outb(PortOffset::ATA(LBA_HI_REGISTER_OFFSET), hi_lba);
 			}
 
-			let lo_lba = (offset & 0xff) as u8;
-			let mid_lba = ((offset >> 8) & 0xff) as u8;
-			let hi_lba = ((offset >> 16) & 0xff) as u8;
+			let lo_lba = (off & 0xff) as u8;
+			let mid_lba = ((off >> 8) & 0xff) as u8;
+			let hi_lba = ((off >> 16) & 0xff) as u8;
 
 			self.outb(PortOffset::ATA(SECTORS_COUNT_REGISTER_OFFSET), (count & 0xff) as u8);
 			self.outb(PortOffset::ATA(LBA_LO_REGISTER_OFFSET), lo_lba);
@@ -445,6 +433,10 @@ impl StorageInterface for PATAInterface {
 				self.send_command(COMMAND_READ_SECTORS_EXT);
 			} else {
 				self.send_command(COMMAND_READ_SECTORS);
+			}
+
+			if count == 0 {
+				count = iter_max;
 			}
 
 			for j in 0..count {
@@ -466,6 +458,7 @@ impl StorageInterface for PATAInterface {
 		Ok(())
 	}
 
+	// TODO clean
 	fn write(&mut self, buf: &[u8], offset: u64, size: u64) -> Result<(), Errno> {
 		debug_assert!((buf.len() as u64) >= size * SECTOR_SIZE);
 
@@ -493,6 +486,8 @@ impl StorageInterface for PATAInterface {
 
 		let mut i = 0;
 		while i < size {
+			let off = offset + i;
+
 			// The number of blocks for this iteration
 			let mut count = min(size - i, iter_max);
 			if count == iter_max {
@@ -513,7 +508,7 @@ impl StorageInterface for PATAInterface {
 
 			// If LBA28, add the end of the sector offset
 			if !lba48 {
-				drive |= ((offset >> 24) & 0x0f) as u8;
+				drive |= ((off >> 24) & 0x0f) as u8;
 			}
 
 			self.outb(PortOffset::ATA(DRIVE_REGISTER_OFFSET), drive);
@@ -521,9 +516,9 @@ impl StorageInterface for PATAInterface {
 			// If LBA48, write high bytes first
 			if lba48 {
 				let count = ((count >> 8) & 0xff) as u8;
-				let lo_lba = ((offset >> 24) & 0xff) as u8;
-				let mid_lba = ((offset >> 32) & 0xff) as u8;
-				let hi_lba = ((offset >> 40) & 0xff) as u8;
+				let lo_lba = ((off >> 24) & 0xff) as u8;
+				let mid_lba = ((off >> 32) & 0xff) as u8;
+				let hi_lba = ((off >> 40) & 0xff) as u8;
 
 				self.outb(PortOffset::ATA(SECTORS_COUNT_REGISTER_OFFSET), count);
 				self.outb(PortOffset::ATA(LBA_LO_REGISTER_OFFSET), lo_lba);
@@ -531,9 +526,9 @@ impl StorageInterface for PATAInterface {
 				self.outb(PortOffset::ATA(LBA_HI_REGISTER_OFFSET), hi_lba);
 			}
 
-			let lo_lba = (offset & 0xff) as u8;
-			let mid_lba = ((offset >> 8) & 0xff) as u8;
-			let hi_lba = ((offset >> 16) & 0xff) as u8;
+			let lo_lba = (off & 0xff) as u8;
+			let mid_lba = ((off >> 8) & 0xff) as u8;
+			let hi_lba = ((off >> 16) & 0xff) as u8;
 
 			self.outb(PortOffset::ATA(SECTORS_COUNT_REGISTER_OFFSET), (count & 0xff) as u8);
 			self.outb(PortOffset::ATA(LBA_LO_REGISTER_OFFSET), lo_lba);
@@ -544,6 +539,10 @@ impl StorageInterface for PATAInterface {
 				self.send_command(COMMAND_WRITE_SECTORS_EXT);
 			} else {
 				self.send_command(COMMAND_WRITE_SECTORS);
+			}
+
+			if count == 0 {
+				count = iter_max;
 			}
 
 			for j in 0..count {

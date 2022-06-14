@@ -10,18 +10,18 @@ use crate::util::container::vec::Vec;
 use crate::util::ptr::SharedPtr;
 
 /// The beginning of the port range for the primary ATA bus (compatibility mode).
-pub const PRIMARY_ATA_BUS_PORT_BEGIN: u16 = 0x1f0;
+const PRIMARY_ATA_BUS_PORT_BEGIN: u16 = 0x1f0;
 /// The port for the primary disk's device control register (compatibility mode).
-pub const PRIMARY_DEVICE_CONTROL_PORT: u16 = 0x3f6;
+const PRIMARY_DEVICE_CONTROL_PORT: u16 = 0x3f6;
 /// The port for the primary disk's alternate status register (compatibility mode).
-pub const PRIMARY_ALTERNATE_STATUS_PORT: u16 = 0x3f6;
+const PRIMARY_ALTERNATE_STATUS_PORT: u16 = 0x3f6;
 
 /// The beginning of the port range for the secondary ATA bus (compatibility mode).
-pub const SECONDARY_ATA_BUS_PORT_BEGIN: u16 = 0x170;
+const SECONDARY_ATA_BUS_PORT_BEGIN: u16 = 0x170;
 /// The port for the secondary disk's device control register (compatibility mode).
-pub const SECONDARY_DEVICE_CONTROL_PORT: u16 = 0x376;
+const SECONDARY_DEVICE_CONTROL_PORT: u16 = 0x376;
 /// The port for the secondary disk's alternate status register (compatibility mode).
-pub const SECONDARY_ALTERNATE_STATUS_PORT: u16 = 0x376;
+const SECONDARY_ALTERNATE_STATUS_PORT: u16 = 0x376;
 
 /// Structure representing a channel on an IDE controller. It contains the BARs used to access a
 /// drive.
@@ -42,7 +42,7 @@ impl Channel {
 				ata_bar: BAR::IOSpace {
 					address: SECONDARY_ATA_BUS_PORT_BEGIN as _,
 
-					size: 4,
+					size: 8,
 				},
 				control_bar: BAR::IOSpace {
 					address: SECONDARY_DEVICE_CONTROL_PORT as _,
@@ -55,7 +55,7 @@ impl Channel {
 				ata_bar: BAR::IOSpace {
 					address: PRIMARY_ATA_BUS_PORT_BEGIN as _,
 
-					size: 4,
+					size: 8,
 				},
 				control_bar: BAR::IOSpace {
 					address: PRIMARY_DEVICE_CONTROL_PORT as _,

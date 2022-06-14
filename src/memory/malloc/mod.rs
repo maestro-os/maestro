@@ -227,10 +227,8 @@ impl<T: Default> Alloc<T> {
 		let mut alloc = unsafe { // Safe because the memory is set right after
 			Self::new_zero(size)?
 		};
-		for i in 0..size {
-			unsafe { // Safe because the index is in bounds
-				ptr::write(&mut alloc[i], T::default());
-			}
+		for i in alloc.as_slice_mut().iter_mut() {
+			*i = T::default();
 		}
 
 		Ok(alloc)
@@ -264,10 +262,8 @@ impl<T: Clone> Alloc<T> {
 		let mut alloc = unsafe { // Safe because the memory is set right after
 			Self::new_zero(size)?
 		};
-		for i in 0..size {
-			unsafe { // Safe because the index is in bounds
-				ptr::write(&mut alloc[i], val.clone());
-			}
+		for i in alloc.as_slice_mut().iter_mut() {
+			*i = val.clone();
 		}
 
 		Ok(alloc)
@@ -279,28 +275,14 @@ impl<T> Index<usize> for Alloc<T> {
 
 	#[inline]
 	fn index(&self, index: usize) -> &Self::Output {
-		let slice = self.as_slice();
-
-		#[cfg(config_debug_debug)]
-		if index >= slice.len() {
-			panic!("index out of bounds of memory allocation");
-		}
-
-		&slice[index]
+		&self.as_slice()[index]
 	}
 }
 
 impl<T> IndexMut<usize> for Alloc<T> {
 	#[inline]
 	fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-		let slice = self.as_slice_mut();
-
-		#[cfg(config_debug_debug)]
-		if index >= slice.len() {
-			panic!("index out of bounds of memory allocation");
-		}
-
-		&mut slice[index]
+		&mut self.as_slice_mut()[index]
 	}
 }
 
