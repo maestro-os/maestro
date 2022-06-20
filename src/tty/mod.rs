@@ -1,6 +1,8 @@
 //! The TeleTypeWriter (TTY) is an electromechanical device that was used in the past to send and
 //! receive typed messages through a communication channel.
 //!
+//! This module implements line discipline for TTYs.
+//!
 //! At startup, the kernel has one TTY: the init TTY, which is stored separately because at the
 //! time of creation, memory management isn't initialized yet.
 
@@ -571,8 +573,9 @@ impl TTY {
 		// Sending signals if enabled
 		if self.termios.c_lflag & termios::ISIG != 0 {
 			for b in input {
-				// TODO On match, the charactere must not be passed as input
+				// TODO On match, the character must not be passed as input
 
+				// TODO Handle every special characters
 				if *b == self.termios.c_cc[termios::VINTR as usize] {
 					self.send_signal(Signal::SIGINT);
 				} else if *b == self.termios.c_cc[termios::VQUIT as usize] {
