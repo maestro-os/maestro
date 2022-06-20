@@ -9,6 +9,7 @@ use crate::process::Process;
 use crate::process::mem_space;
 use crate::process::regs::Regs;
 use crate::syscall::mmap::mem_space::MapConstraint;
+use crate::util::math;
 use crate::util;
 
 /// Data can be read.
@@ -46,15 +47,15 @@ fn get_flags(flags: i32, prot: i32) -> u8 {
 pub fn do_mmap(addr: *mut c_void, length: usize, prot: i32, flags: i32, fd: i32, offset: u64)
 	-> Result<i32, Errno> {
 	// Checking alignment of `addr` and `length`
-	if !util::is_aligned(addr, memory::PAGE_SIZE) || length % memory::PAGE_SIZE != 0 {
+	if !util::is_aligned(addr, memory::PAGE_SIZE) || length == 0 {
 		return Err(errno!(EINVAL));
 	}
 
 	// The length in number of pages
-	let pages = length / memory::PAGE_SIZE;
+	let pages = math::ceil_division(length, memory::PAGE_SIZE);
 
 	// Checking for overflow
-	let end = wrapping_add(addr as usize, length);
+	let end = wrapping_add(addr as usize, pages * memory::PAGE_SIZE);
 	if end < addr as usize {
 		return Err(errno!(EINVAL));
 	}

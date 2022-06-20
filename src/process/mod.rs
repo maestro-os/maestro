@@ -327,12 +327,16 @@ pub fn init() -> Result<(), Errno> {
 		}
 	};
 	let page_fault_callback = | _id: u32, code: u32, _regs: &Regs, ring: u32 | {
-		let guard = unsafe {
-			SCHEDULER.assume_init_mut()
-		}.lock();
-		let scheduler = guard.get_mut();
+		let curr_proc = {
+			let guard = unsafe {
+				SCHEDULER.assume_init_mut()
+			}.lock();
+			let scheduler = guard.get_mut();
 
-		if let Some(curr_proc) = scheduler.get_current_process() {
+			scheduler.get_current_process()
+		};
+
+		if let Some(curr_proc) = curr_proc {
 			let curr_proc_guard = curr_proc.lock();
 			let curr_proc = curr_proc_guard.get_mut();
 
