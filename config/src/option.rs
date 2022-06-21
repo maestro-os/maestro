@@ -54,7 +54,7 @@ impl MenuOption {
 	/// Serializes the current menu and submenus and writes into the buffer `data`.
 	pub fn serialize(&self, data: &mut String) {
 		if self.option_type != "menu" {
-			*data = data.clone() + &self.name + "=\"" + &self.value + "\"\n";
+			*data = data.clone() + &self.name.to_uppercase() + "=\"" + &self.value + "\"\n";
 		}
 
 		for o in &self.suboptions {

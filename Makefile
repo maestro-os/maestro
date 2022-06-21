@@ -49,11 +49,11 @@ CONFIG_ARGS := $(shell $(CONFIG_ARGS_SCRIPT))
 CONFIG_ENV := $(shell $(CONFIG_ENV_SCRIPT))
 
 # The target architecture
-CONFIG_ARCH := $(shell $(CONFIG_ATTR_SCRIPT) general_arch)
+CONFIG_ARCH := $(shell $(CONFIG_ATTR_SCRIPT) GENERAL_ARCH)
 # Tells whether to compile in debug mode
-CONFIG_DEBUG := $(shell $(CONFIG_ATTR_SCRIPT) debug_debug)
+CONFIG_DEBUG := $(shell $(CONFIG_ATTR_SCRIPT) DEBUG_DEBUG)
 # Tells whether to compile for unit testing
-CONFIG_DEBUG_TEST := $(shell $(CONFIG_ATTR_SCRIPT) debug_test)
+CONFIG_DEBUG_TEST := $(shell $(CONFIG_ATTR_SCRIPT) DEBUG_TEST)
 
 
 
