@@ -95,7 +95,7 @@ CFLAGS += -g3
 endif
 
 # The archive creator program
-AR = ar
+AR = i686-elf-ar
 # The archive creator program flags
 ARFLAGS = rc
 
