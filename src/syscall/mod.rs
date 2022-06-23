@@ -40,6 +40,7 @@ mod getgid;
 mod getpgid;
 mod getpid;
 mod getppid;
+mod getrandom;
 mod getrusage;
 mod gettid;
 mod getuid32;
@@ -74,8 +75,10 @@ mod rt_sigprocmask;
 mod select;
 mod set_thread_area;
 mod set_tid_address;
+mod setgid32;
 mod setgid;
 mod setpgid;
+mod setuid32;
 mod setuid;
 mod signal;
 mod sigreturn;
@@ -140,6 +143,7 @@ use getgid::getgid;
 use getpgid::getpgid;
 use getpid::getpid;
 use getppid::getppid;
+use getrandom::getrandom;
 use getrusage::getrusage;
 use gettid::gettid;
 use getuid32::getuid32;
@@ -174,8 +178,10 @@ use rt_sigprocmask::rt_sigprocmask;
 use select::select;
 use set_thread_area::set_thread_area;
 use set_tid_address::set_tid_address;
+use setgid32::setgid32;
 use setgid::setgid;
 use setpgid::setpgid;
+use setuid32::setuid32;
 use setuid::setuid;
 use signal::signal;
 use sigreturn::sigreturn;
@@ -435,8 +441,8 @@ fn get_syscall(id: u32) -> Option<Syscall> {
 		// TODO 0x0d2 => Some(Syscall { handler: &setresgid32, name: "setresgid32", args: &[] }),
 		// TODO 0x0d3 => Some(Syscall { handler: &getresgid32, name: "getresgid32", args: &[] }),
 		// TODO 0x0d4 => Some(Syscall { handler: &chown32, name: "chown32", args: &[] }),
-		// TODO 0x0d5 => Some(Syscall { handler: &setuid32, name: "setuid32", args: &[] }),
-		// TODO 0x0d6 => Some(Syscall { handler: &setgid32, name: "setgid32", args: &[] }),
+		0x0d5 => Some(Syscall { handler: &setuid32, name: "setuid32", args: &[] }),
+		0x0d6 => Some(Syscall { handler: &setgid32, name: "setgid32", args: &[] }),
 		// TODO 0x0d7 => Some(Syscall { handler: &setfsuid32, name: "setfsuid32", args: &[] }),
 		// TODO 0x0d8 => Some(Syscall { handler: &setfsgid32, name: "setfsgid32", args: &[] }),
 		// TODO 0x0d9 => Some(Syscall { handler: &pivot_root, name: "pivot_root", args: &[] }),
@@ -609,7 +615,7 @@ fn get_syscall(id: u32) -> Option<Syscall> {
 		//	args: &[] }),
 		// TODO 0x161 => Some(Syscall { handler: &renameat2, name: "renameat2", args: &[] }),
 		// TODO 0x162 => Some(Syscall { handler: &seccomp, name: "seccomp", args: &[] }),
-		// TODO 0x163 => Some(Syscall { handler: &getrandom, name: "getrandom", args: &[] }),
+		0x163 => Some(Syscall { handler: &getrandom, name: "getrandom", args: &[] }),
 		// TODO 0x164 => Some(Syscall { handler: &memfd_create, name: "memfd_create",
 		//	args: &[] }),
 		// TODO 0x165 => Some(Syscall { handler: &bpf, name: "bpf", args: &[] }),
@@ -800,7 +806,7 @@ fn print_strace(regs: &Regs, result: Option<Result<i32, Errno>>) {
 #[no_mangle]
 pub extern "C" fn syscall_handler(regs: &mut Regs) {
 	// TODO Add switch to disable
-	//print_strace(regs, None);
+	print_strace(regs, None);
 
 	let id = regs.eax;
 	let result = match get_syscall(id) {
@@ -822,7 +828,7 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 	};
 
 	// TODO Add switch to disable
-	//print_strace(regs, Some(result));
+	print_strace(regs, Some(result));
 
 	// Setting the return value
 	let retval = {

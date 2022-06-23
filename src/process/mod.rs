@@ -173,6 +173,11 @@ pub struct Process {
 	/// The effective ID of the process's group owner.
 	egid: Gid,
 
+	/// The saved user ID of the process's owner.
+	suid: Uid,
+	/// The saved group ID of the process's owner.
+	sgid: Gid,
+
 	/// The process's current umask.
 	umask: file::Mode,
 
@@ -440,6 +445,9 @@ impl Process {
 			euid: 0,
 			egid: 0,
 
+			suid: 0,
+			sgid: 0,
+
 			umask: DEFAULT_UMASK,
 
 			state: State::Running,
@@ -621,10 +629,46 @@ impl Process {
 		self.euid
 	}
 
+	/// Sets the process's effective user owner ID.
+	#[inline(always)]
+	pub fn set_euid(&mut self, uid: Uid) {
+		self.euid = uid;
+	}
+
 	/// Returns the process's effective group owner ID.
 	#[inline(always)]
 	pub fn get_egid(&self) -> Gid {
 		self.egid
+	}
+
+	/// Sets the process's effective group owner ID.
+	#[inline(always)]
+	pub fn set_egid(&mut self, gid: Gid) {
+		self.egid = gid;
+	}
+
+	/// Returns the process's saved user owner ID.
+	#[inline(always)]
+	pub fn get_suid(&self) -> Uid {
+		self.suid
+	}
+
+	/// Sets the process's saved user owner ID.
+	#[inline(always)]
+	pub fn set_suid(&mut self, uid: Uid) {
+		self.suid = uid;
+	}
+
+	/// Returns the process's saved group owner ID.
+	#[inline(always)]
+	pub fn get_sgid(&self) -> Gid {
+		self.sgid
+	}
+
+	/// Sets the process's saved group owner ID.
+	#[inline(always)]
+	pub fn set_sgid(&mut self, gid: Gid) {
+		self.sgid = gid;
 	}
 
 	/// Returns the file creation mask.
@@ -1132,6 +1176,9 @@ impl Process {
 			euid: self.euid,
 			egid: self.egid,
 
+			suid: self.suid,
+			sgid: self.sgid,
+
 			umask: self.umask,
 
 			state: State::Running,
@@ -1417,7 +1464,7 @@ impl Process {
 		let mut score = 0;
 
 		// If the process is owned by the superuser, give it a bonus
-		if self.uid == 0 {
+		if self.uid == ROOT_UID {
 			score -= 100;
 		}
 
