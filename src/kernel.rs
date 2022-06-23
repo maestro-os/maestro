@@ -302,6 +302,8 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 	println!("Initializing devices management...");
 	device::init()
 		.unwrap_or_else(| e | kernel_panic!("Failed to initialize devices management! ({})", e));
+	crypto::init()
+		.unwrap_or_else(| e | kernel_panic!("Failed to initialize cryptography! ({})", e));
 
 	let (root_major, root_minor) = args_parser.get_root_dev();
 	println!("Root device is {} {}", root_major, root_minor);

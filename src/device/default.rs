@@ -3,7 +3,7 @@
 use core::cmp::min;
 use core::ffi::c_void;
 use core::mem::ManuallyDrop;
-use crate::crypto::rand::rand;
+use crate::crypto::rand;
 use crate::device::Device;
 use crate::device::DeviceHandle;
 use crate::device::tty::TTYDeviceHandle;
@@ -127,8 +127,16 @@ impl IO for RandomDeviceHandle {
 		0
 	}
 
-	fn read(&mut self, _offset: u64, buff: &mut [u8]) -> Result<u64, Errno> {
-		if rand(buff).is_some() {
+	fn read(&mut self, _: u64, buff: &mut [u8]) -> Result<u64, Errno> {
+		if let Some(source_mutex) = rand::get_source("random") {
+			let source_guard = source_mutex.lock();
+			let source = source_guard.get_mut();
+
+			let mut i = 0;
+			while i < buff.len() {
+				i += source.consume_entropy(&mut buff[i..]);
+			}
+
 			Ok(buff.len() as _)
 		} else {
 			Ok(0)
@@ -158,9 +166,20 @@ impl IO for URandomDeviceHandle {
 		0
 	}
 
-	fn read(&mut self, _offset: u64, _buff: &mut [u8]) -> Result<u64, Errno> {
-		// TODO
-		todo!();
+	fn read(&mut self, _: u64, buff: &mut [u8]) -> Result<u64, Errno> {
+		if let Some(source_mutex) = rand::get_source("urandom") {
+			let source_guard = source_mutex.lock();
+			let source = source_guard.get_mut();
+
+			let mut i = 0;
+			while i < buff.len() {
+				i += source.consume_entropy(&mut buff[i..]);
+			}
+
+			Ok(buff.len() as _)
+		} else {
+			Ok(0)
+		}
 	}
 
 	fn write(&mut self, _offset: u64, _buff: &[u8]) -> Result<u64, Errno> {
