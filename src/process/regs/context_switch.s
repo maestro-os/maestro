@@ -23,7 +23,7 @@ context_switch:
 
 	# Restoring the fx state
 	mov 4(%ebp), %eax
-	add $0x28, %eax
+	add $0x30, %eax
 	push %eax
 	call restore_fxstate
 	add $4, %esp
@@ -60,7 +60,7 @@ context_switch_kernel:
 
 	# Restoring the fx state
 	mov 4(%ebp), %eax
-	add $0x28, %eax
+	add $0x30, %eax
 	push %eax
 	call restore_fxstate
 	add $4, %esp
