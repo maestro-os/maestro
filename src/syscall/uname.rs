@@ -43,7 +43,11 @@ pub fn uname(regs: &Regs) -> Result<i32, Errno> {
 	};
 
 	util::slice_copy(&crate::NAME.as_bytes(), &mut utsname.sysname);
-	util::slice_copy(&[], &mut utsname.nodename);
+
+	let hostname_guard = crate::HOSTNAME.lock();
+	let hostname = hostname_guard.get().as_slice();
+	util::slice_copy(&hostname, &mut utsname.nodename);
+
 	util::slice_copy(&crate::VERSION.as_bytes(), &mut utsname.release);
 	util::slice_copy(&[], &mut utsname.version);
 	util::slice_copy(&"x86".as_bytes(), &mut utsname.machine); // TODO Adapt to current architecture

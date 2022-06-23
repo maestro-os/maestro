@@ -78,6 +78,7 @@ use crate::process::Process;
 use crate::process::exec::ExecInfo;
 use crate::process::exec;
 use crate::util::boxed::Box;
+use crate::util::container::vec::Vec;
 use crate::util::lock::Mutex;
 
 /// The kernel's name.
@@ -87,6 +88,9 @@ pub const VERSION: &str = "1.0";
 
 /// The path to the init process binary.
 const INIT_PATH: &[u8] = b"/sbin/init";
+
+/// The current hostname of the system.
+pub static HOSTNAME: Mutex<Vec<u8>> = Mutex::new(Vec::new());
 
 extern "C" {
 	fn kernel_wait();

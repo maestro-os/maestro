@@ -233,7 +233,7 @@ impl KeyboardKey {
 				Self::Key0 => Some(b"0"),
 				Self::KeyMinus => Some(b"-"),
 				Self::KeyEqual => Some(b"="),
-				Self::KeyBackspace => Some(b"\x08"),
+				Self::KeyBackspace => Some(b"\x7f"),
 				Self::KeyTab => Some(b"\t"),
 				Self::KeyQ => Some(b"q"),
 				Self::KeyW => Some(b"w"),
@@ -311,7 +311,7 @@ impl KeyboardKey {
 				Self::Key0 => Some(b")"),
 				Self::KeyMinus => Some(b"_"),
 				Self::KeyEqual => Some(b"+"),
-				Self::KeyBackspace => Some(b"\x08"),
+				Self::KeyBackspace => Some(b"\x7f"),
 				Self::KeyTab => Some(b"\t"),
 				Self::KeyQ => Some(b"Q"),
 				Self::KeyW => Some(b"W"),
@@ -557,20 +557,14 @@ impl KeyboardManager {
 				let tty_guard = tty_mutex.lock();
 				let tty = tty_guard.get_mut();
 
-				if key == KeyboardKey::KeyBackspace {
-					// Erasing from TTY
-					tty.erase(1);
-				} else if !self.ctrl && !self.alt && !self.right_alt && !self.right_ctrl {
-					let ctrl = self.ctrl || self.right_ctrl;
-					let alt = self.alt || self.right_alt;
-					let shift = (self.left_shift || self.right_shift)
-						!= self.caps_lock.is_enabled();
+				let ctrl = self.ctrl || self.right_ctrl;
+				let alt = self.alt || self.right_alt;
+				let shift = (self.left_shift || self.right_shift) != self.caps_lock.is_enabled();
 
-					// Writing on TTY
-					// TODO Meta
-					if let Some(tty_chars) = key.get_tty_chars(shift, alt, ctrl, false) {
-						tty.input(tty_chars);
-					}
+				// Writing on TTY
+				// TODO Meta
+				if let Some(tty_chars) = key.get_tty_chars(shift, alt, ctrl, false) {
+					tty.input(tty_chars);
 				}
 			}
 		}

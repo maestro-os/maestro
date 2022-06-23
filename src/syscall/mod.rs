@@ -23,6 +23,7 @@ mod execve;
 mod exit_group;
 mod faccessat2;
 mod faccessat;
+mod fadvise64_64;
 mod fchdir;
 mod fcntl64;
 mod fcntl;
@@ -77,6 +78,7 @@ mod set_thread_area;
 mod set_tid_address;
 mod setgid32;
 mod setgid;
+mod sethostname;
 mod setpgid;
 mod setuid32;
 mod setuid;
@@ -126,6 +128,7 @@ use execve::execve;
 use exit_group::exit_group;
 use faccessat2::faccessat2;
 use faccessat::faccessat;
+use fadvise64_64::fadvise64_64;
 use fchdir::fchdir;
 use fcntl64::fcntl64;
 use fcntl::fcntl;
@@ -180,6 +183,7 @@ use set_thread_area::set_thread_area;
 use set_tid_address::set_tid_address;
 use setgid32::setgid32;
 use setgid::setgid;
+use sethostname::sethostname;
 use setpgid::setpgid;
 use setuid32::setuid32;
 use setuid::setuid;
@@ -291,7 +295,7 @@ fn get_syscall(id: u32) -> Option<Syscall> {
 		// TODO 0x047 => Some(Syscall { handler: &setregid, name: "setregid", args: &[] }),
 		// TODO 0x048 => Some(Syscall { handler: &sigsuspend, name: "sigsuspend", args: &[] }),
 		// TODO 0x049 => Some(Syscall { handler: &sigpending, name: "sigpending", args: &[] }),
-		// TODO 0x04a => Some(Syscall { handler: &sethostname, name: "sethostname", args: &[] }),
+		0x04a => Some(Syscall { handler: &sethostname, name: "sethostname", args: &[] }),
 		// TODO 0x04b => Some(Syscall { handler: &setrlimit, name: "setrlimit", args: &[] }),
 		// TODO 0x04c => Some(Syscall { handler: &getrlimit, name: "getrlimit", args: &[] }),
 		0x04d => Some(Syscall { handler: &getrusage, name: "getrusage", args: &[] }),
@@ -507,7 +511,7 @@ fn get_syscall(id: u32) -> Option<Syscall> {
 		// TODO 0x10d => Some(Syscall { handler: &fstatfs64, name: "fstatfs64", args: &[] }),
 		// TODO 0x10e => Some(Syscall { handler: &tgkill, name: "tgkill", args: &[] }),
 		// TODO 0x10f => Some(Syscall { handler: &utimes, name: "utimes", args: &[] }),
-		// TODO 0x110 => Some(Syscall { handler: &fadvise64_64, name: "fadvise64_64", args: &[] }),
+		0x110 => Some(Syscall { handler: &fadvise64_64, name: "fadvise64_64", args: &[] }),
 		// TODO 0x111 => Some(Syscall { handler: &vserver, name: "vserver", args: &[] }),
 		// TODO 0x112 => Some(Syscall { handler: &mbind, name: "mbind", args: &[] }),
 		// TODO 0x113 => Some(Syscall { handler: &get_mempolicy, name: "get_mempolicy",
@@ -806,7 +810,7 @@ fn print_strace(regs: &Regs, result: Option<Result<i32, Errno>>) {
 #[no_mangle]
 pub extern "C" fn syscall_handler(regs: &mut Regs) {
 	// TODO Add switch to disable
-	print_strace(regs, None);
+	//print_strace(regs, None);
 
 	let id = regs.eax;
 	let result = match get_syscall(id) {
@@ -828,7 +832,7 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 	};
 
 	// TODO Add switch to disable
-	print_strace(regs, Some(result));
+	//print_strace(regs, Some(result));
 
 	// Setting the return value
 	let retval = {

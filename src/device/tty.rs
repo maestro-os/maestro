@@ -43,13 +43,13 @@ impl DeviceHandle for TTYDeviceHandle {
 	fn ioctl(&mut self, mem_space: IntSharedPtr<MemSpace>, request: u32, argp: *const c_void)
 		-> Result<u32, Errno> {
 		// TODO rm
-		if matches!(request, ioctl::TCSETS | ioctl::TCSETSW | ioctl::TCSETSF) {
+		/*if matches!(request, ioctl::TCSETS | ioctl::TCSETSW | ioctl::TCSETSF) {
 			let mem_space_guard = mem_space.lock();
 			let termios_ptr: SyscallPtr<Termios> = (argp as usize).into();
 			let termios = termios_ptr.get(&mem_space_guard)?
 				.ok_or_else(|| errno!(EFAULT))?;
 			crate::println!("termios: {:?}", termios);
-		}
+		}*/
 
 		let tty_mutex = self.get_tty().ok_or_else(|| errno!(ENOTTY))?;
 		let tty_guard = tty_mutex.lock();

@@ -11,12 +11,10 @@ use core::cmp::min;
 use crate::errno::Errno;
 use crate::util::container::vec::Vec;
 
-// TODO Refactor to avoid requiring Default and Copy
-
 /// Structure representing a ring buffer. The buffer has a limited size which must be given at
 /// initialization.
 #[derive(Debug)]
-pub struct RingBuffer<T: Default + Copy> {
+pub struct RingBuffer<T> {
 	/// The linear buffer.
 	buffer: Vec<T>,
 

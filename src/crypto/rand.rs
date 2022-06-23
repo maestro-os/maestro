@@ -17,23 +17,14 @@ static RANDOM_SOURCES: Mutex<HashMap<&'static str, SharedPtr<dyn RandomSource>>>
 pub trait RandomSource {
 	/// Feeds data `data` to the random number generators.
 	/// If the entropy buffer is already full, the data is ignored.
-	fn feed_entropy(&mut self, _data: &[u8]) {
-		// TODO
-		todo!();
-	}
+	fn feed_entropy(&mut self, data: &[u8]);
 
 	/// Returns the number of available random bytes.
-	fn available_bytes(&self) -> usize {
-		// TODO
-		todo!();
-	}
+	fn available_bytes(&self) -> usize;
 
 	/// Consumes entropy from the buffer to fill the given `buf`.
 	/// The function returns the number of bytes written.
-	fn consume_entropy(&mut self, _buf: &mut [u8]) -> usize {
-		// TODO
-		todo!();
-	}
+	fn consume_entropy(&mut self, buf: &mut [u8]) -> usize;
 }
 
 /// Structure representing a source of random bytes.
@@ -52,19 +43,19 @@ impl Random {
 }
 
 impl RandomSource for Random {
-	fn feed_entropy(&mut self, _data: &[u8]) {
-		// TODO
-		todo!();
+	fn feed_entropy(&mut self, data: &[u8]) {
+		self.buff.write(data);
 	}
 
 	fn available_bytes(&self) -> usize {
 		// TODO
-		todo!();
+		usize::MAX
 	}
 
-	fn consume_entropy(&mut self, _buf: &mut [u8]) -> usize {
+	fn consume_entropy(&mut self, buf: &mut [u8]) -> usize {
 		// TODO
-		todo!();
+		buf.fill(0);
+		buf.len()
 	}
 }
 
@@ -84,19 +75,19 @@ impl URandom {
 }
 
 impl RandomSource for URandom {
-	fn feed_entropy(&mut self, _data: &[u8]) {
-		// TODO
-		todo!();
+	fn feed_entropy(&mut self, data: &[u8]) {
+		self.buff.write(data);
 	}
 
 	fn available_bytes(&self) -> usize {
 		// TODO
-		todo!();
+		usize::MAX
 	}
 
-	fn consume_entropy(&mut self, _buf: &mut [u8]) -> usize {
+	fn consume_entropy(&mut self, buf: &mut [u8]) -> usize {
 		// TODO
-		todo!();
+		buf.fill(0);
+		buf.len()
 	}
 }
 

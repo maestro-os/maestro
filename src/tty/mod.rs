@@ -560,6 +560,10 @@ impl TTY {
 						i += 1;
 					},
 
+					0xf7 => {
+						self.erase(1);
+					},
+
 					// TODO Handle other special characters
 
 					_ => i += 1,
