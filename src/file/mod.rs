@@ -448,6 +448,11 @@ impl File {
 		self.mode & S_IXOTH != 0
 	}
 
+	/// Sets the permissions of the file.
+	pub fn set_permissions(&mut self, mode: Mode) {
+		self.mode = mode & 0o7777;
+	}
+
 	/// Returns the location on which the file is stored.
 	pub fn get_location(&self) -> &FileLocation {
 		&self.location

@@ -10,6 +10,7 @@ mod _newselect;
 mod access;
 mod brk;
 mod chdir;
+mod chmod;
 mod chroot;
 mod clock_gettime64;
 mod clock_gettime;
@@ -118,6 +119,7 @@ use _newselect::_newselect;
 use access::access;
 use brk::brk;
 use chdir::chdir;
+use chmod::chmod;
 use chroot::chroot;
 use clock_gettime64::clock_gettime64;
 use clock_gettime::clock_gettime;
@@ -242,7 +244,7 @@ fn get_syscall(id: u32) -> Option<Syscall> {
 		0x00c => Some(Syscall { handler: &chdir, name: "chdir", args: &[] }),
 		0x00d => Some(Syscall { handler: &time, name: "time", args: &[] }),
 		0x00e => Some(Syscall { handler: &mknod, name: "mknod", args: &[] }),
-		// TODO 0x00f => Some(Syscall { handler: &chmod, name: "chmod", args: &[] }),
+		0x00f => Some(Syscall { handler: &chmod, name: "chmod", args: &[] }),
 		// TODO 0x010 => Some(Syscall { handler: &lchown, name: "lchown", args: &[] }),
 		0x011 => Some(Syscall { handler: &r#break, name: "break", args: &[] }),
 		// TODO 0x012 => Some(Syscall { handler: &oldstat, name: "oldstat", args: &[] }),
