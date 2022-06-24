@@ -876,7 +876,7 @@ impl Filesystem for Ext2Fs {
 
 		debug_assert!(parent_inode >= 1);
 
-		if name.as_bytes() != b"." && name.as_bytes() != b".." {
+		if name.as_bytes() == b"." || name.as_bytes() == b".." {
 			return Err(errno!(EINVAL));
 		}
 

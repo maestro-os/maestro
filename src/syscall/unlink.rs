@@ -7,7 +7,6 @@ use crate::file::path::Path;
 use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::regs::Regs;
-use crate::util::FailableClone;
 
 /// The implementation of the `unlink` syscall.
 pub fn unlink(regs: &Regs) -> Result<i32, Errno> {
@@ -24,10 +23,6 @@ pub fn unlink(regs: &Regs) -> Result<i32, Errno> {
 		let path = Path::from_str(pathname.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?, true)?;
 		(path, proc.get_euid(), proc.get_egid())
 	};
-
-	// Getting the path of the parent directory
-	let mut parent_path = path.failable_clone()?;
-	parent_path.pop();
 
 	// TODO If the file is busy, remove only when the last fd to it is closed
 

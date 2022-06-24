@@ -93,6 +93,7 @@ mod umask;
 mod umount;
 mod uname;
 mod unlink;
+mod unlinkat;
 mod util;
 mod vfork;
 mod wait4;
@@ -198,6 +199,7 @@ use umask::umask;
 use umount::umount;
 use uname::uname;
 use unlink::unlink;
+use unlinkat::unlinkat;
 use vfork::vfork;
 use wait4::wait4;
 use waitpid::waitpid;
@@ -546,7 +548,7 @@ fn get_syscall(id: u32) -> Option<Syscall> {
 		// TODO 0x12a => Some(Syscall { handler: &fchownat, name: "fchownat", args: &[] }),
 		// TODO 0x12b => Some(Syscall { handler: &futimesat, name: "futimesat", args: &[] }),
 		// TODO 0x12c => Some(Syscall { handler: &fstatat64, name: "fstatat64", args: &[] }),
-		// TODO 0x12d => Some(Syscall { handler: &unlinkat, name: "unlinkat", args: &[] }),
+		0x12d => Some(Syscall { handler: &unlinkat, name: "unlinkat", args: &[] }),
 		// TODO 0x12e => Some(Syscall { handler: &renameat, name: "renameat", args: &[] }),
 		// TODO 0x12f => Some(Syscall { handler: &linkat, name: "linkat", args: &[] }),
 		// TODO 0x130 => Some(Syscall { handler: &symlinkat, name: "symlinkat", args: &[] }),
@@ -810,7 +812,7 @@ fn print_strace(regs: &Regs, result: Option<Result<i32, Errno>>) {
 #[no_mangle]
 pub extern "C" fn syscall_handler(regs: &mut Regs) {
 	// TODO Add switch to disable
-	//print_strace(regs, None);
+	print_strace(regs, None);
 
 	let id = regs.eax;
 	let result = match get_syscall(id) {
@@ -832,7 +834,7 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 	};
 
 	// TODO Add switch to disable
-	//print_strace(regs, Some(result));
+	print_strace(regs, Some(result));
 
 	// Setting the return value
 	let retval = {

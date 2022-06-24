@@ -1,21 +1,15 @@
 //! The statx system call returns the extended status of a file.
 
 use crate::errno::Errno;
-use crate::file::File;
 use crate::file::FileContent;
-use crate::file::fcache;
 use crate::file::mountpoint::MountSource;
 use crate::file::mountpoint;
-use crate::file::open_file::FDTarget;
-use crate::file::path::Path;
 use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::regs::Regs;
-use crate::util::FailableClone;
 use crate::util::IO;
-use crate::util::container::string::String;
-use crate::util::ptr::SharedPtr;
+use super::util;
 
 /// Structure representing a timestamp with the statx syscall.
 #[repr(C)]
@@ -72,98 +66,6 @@ struct Statx {
 	stx_dev_minor: u32,
 }
 
-/// Returns the file for the given path `pathname`.
-/// `follow_links` tells whether symbolic links may be followed.
-/// The other arguments are the one given by the system call.
-fn get_file(follow_links: bool, dirfd: i32, pathname: &[u8], flags: i32)
-	-> Result<SharedPtr<File>, Errno> {
-	if pathname.is_empty() {
-		if flags & super::access::AT_EMPTY_PATH != 0 {
-			// Using `dirfd` as the file descriptor to the file
-
-			if dirfd < 0 {
-				return Err(errno!(EBADF));
-			}
-
-			let open_file_mutex = {
-				let mutex = Process::get_current().unwrap();
-				let guard = mutex.lock();
-				let proc = guard.get_mut();
-
-				proc.get_fd(dirfd as _).ok_or(errno!(EBADF))?.get_open_file()
-			};
-			let open_file_guard = open_file_mutex.lock();
-			let open_file = open_file_guard.get();
-
-			match open_file.get_target() {
-				FDTarget::File(f) => Ok(f.clone()),
-				_ => Err(errno!(EBADF)), // TODO Check if correct
-			}
-		} else {
-			Err(errno!(ENOENT))
-		}
-	} else {
-		let path = Path::from_str(pathname, true)?;
-		let final_path = {
-			if path.is_absolute() {
-				// Using the given absolute path
-				path
-			} else if dirfd == super::access::AT_FDCWD {
-				let cwd = {
-					let mutex = Process::get_current().unwrap();
-					let guard = mutex.lock();
-					let proc = guard.get();
-
-					proc.get_cwd().failable_clone()?
-				};
-
-				// Using path relative to the current working directory
-				cwd.concat(&path)?
-			} else {
-				// Using path relative to the directory given by `dirfd`
-
-				if dirfd < 0 {
-					return Err(errno!(EBADF));
-				}
-
-				let open_file_mutex = {
-					let mutex = Process::get_current().unwrap();
-					let guard = mutex.lock();
-					let proc = guard.get_mut();
-
-					proc.get_fd(dirfd as _).ok_or(errno!(EBADF))?.get_open_file()
-				};
-				let open_file_guard = open_file_mutex.lock();
-				let open_file = open_file_guard.get();
-
-				match open_file.get_target() {
-					FDTarget::File(file_mutex) => {
-						let file_guard = file_mutex.lock();
-						let file = file_guard.get();
-
-						file.get_path()?.concat(&path)?
-					},
-
-					_ => return Err(errno!(ENOTDIR)),
-				}
-			}
-		};
-
-		let (euid, egid) = {
-			let mutex = Process::get_current().unwrap();
-			let guard = mutex.lock();
-			let proc = guard.get_mut();
-
-			(proc.get_euid(), proc.get_egid())
-		};
-
-		let fcache = fcache::get();
-		let fcache_guard = fcache.lock();
-		fcache_guard.get_mut().as_mut().unwrap().get_file_from_path(&final_path,
-			euid, egid, follow_links)
-	}
-}
-
 /// The implementation of the `statx` syscall.
 pub fn statx(regs: &Regs) -> Result<i32, Errno> {
 	let dirfd = regs.ebx as i32;
@@ -176,28 +78,18 @@ pub fn statx(regs: &Regs) -> Result<i32, Errno> {
 		return Err(errno!(EINVAL));
 	}
 
-	let mem_space = {
-		let mutex = Process::get_current().unwrap();
-		let guard = mutex.lock();
-		let proc = guard.get_mut();
-
-		proc.get_mem_space().unwrap()
-	};
-
-	let path_str = {
-		let mem_space_guard = mem_space.lock();
-		let slice = pathname.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
-
-		String::from(slice)?
-	};
-
 	// TODO Implement all flags
 
 	// Whether symbolic links may be followed
 	let follow_links = flags & super::access::AT_SYMLINK_NOFOLLOW == 0;
 
+	// Getting current process
+	let mutex = Process::get_current().unwrap();
+	let guard = mutex.lock();
+	let proc = guard.get_mut();
+
 	// Getting the file
-	let file_mutex = get_file(follow_links, dirfd, &path_str, flags)?;
+	let file_mutex = util::get_file_at(proc, follow_links, dirfd, pathname, flags)?;
 	let file_guard = file_mutex.lock();
 	let file = file_guard.get();
 
@@ -227,6 +119,8 @@ pub fn statx(regs: &Regs) -> Result<i32, Errno> {
 
 		MountSource::File(_) | MountSource::KernFS(_) => (0, 0),
 	};
+
+	let mem_space = proc.get_mem_space().unwrap();
 	let mem_space_guard = mem_space.lock();
 	let statx = statxbuff.get_mut(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
 
