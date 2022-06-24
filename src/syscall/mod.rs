@@ -60,6 +60,7 @@ mod msync;
 mod munmap;
 mod nanosleep;
 mod open;
+mod openat;
 mod pipe2;
 mod pipe;
 mod poll;
@@ -71,6 +72,7 @@ mod r#break;
 mod read;
 mod readlink;
 mod reboot;
+mod rmdir;
 mod rt_sigaction;
 mod rt_sigprocmask;
 mod select;
@@ -166,6 +168,7 @@ use msync::msync;
 use munmap::munmap;
 use nanosleep::nanosleep;
 use open::open;
+use openat::openat;
 use pipe2::pipe2;
 use pipe::pipe;
 use poll::poll;
@@ -177,6 +180,7 @@ use r#break::r#break;
 use read::read;
 use readlink::readlink;
 use reboot::reboot;
+use rmdir::rmdir;
 use rt_sigaction::rt_sigaction;
 use rt_sigprocmask::rt_sigprocmask;
 use select::select;
@@ -263,7 +267,7 @@ fn get_syscall(id: u32) -> Option<Syscall> {
 		0x025 => Some(Syscall { handler: &kill, name: "kill", args: &[] }),
 		// TODO 0x026 => Some(Syscall { handler: &rename, name: "rename", args: &[] }),
 		0x027 => Some(Syscall { handler: &mkdir, name: "mkdir", args: &[] }),
-		// TODO 0x028 => Some(Syscall { handler: &rmdir, name: "rmdir", args: &[] }),
+		0x028 => Some(Syscall { handler: &rmdir, name: "rmdir", args: &[] }),
 		0x029 => Some(Syscall { handler: &dup, name: "dup", args: &[] }),
 		0x02a => Some(Syscall { handler: &pipe, name: "pipe", args: &[] }),
 		// TODO 0x02b => Some(Syscall { handler: &times, name: "times", args: &[] }),
@@ -542,7 +546,7 @@ fn get_syscall(id: u32) -> Option<Syscall> {
 		//	args: &[] }),
 		// TODO 0x126 => Some(Syscall { handler: &migrate_pages, name: "migrate_pages",
 		//	args: &[] }),
-		// TODO 0x127 => Some(Syscall { handler: &openat, name: "openat", args: &[] }),
+		0x127 => Some(Syscall { handler: &openat, name: "openat", args: &[] }),
 		// TODO 0x128 => Some(Syscall { handler: &mkdirat, name: "mkdirat", args: &[] }),
 		// TODO 0x129 => Some(Syscall { handler: &mknodat, name: "mknodat", args: &[] }),
 		// TODO 0x12a => Some(Syscall { handler: &fchownat, name: "fchownat", args: &[] }),
@@ -812,7 +816,7 @@ fn print_strace(regs: &Regs, result: Option<Result<i32, Errno>>) {
 #[no_mangle]
 pub extern "C" fn syscall_handler(regs: &mut Regs) {
 	// TODO Add switch to disable
-	//print_strace(regs, None);
+	print_strace(regs, None);
 
 	let id = regs.eax;
 	let result = match get_syscall(id) {
@@ -834,7 +838,7 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 	};
 
 	// TODO Add switch to disable
-	//print_strace(regs, Some(result));
+	print_strace(regs, Some(result));
 
 	// Setting the return value
 	let retval = {
