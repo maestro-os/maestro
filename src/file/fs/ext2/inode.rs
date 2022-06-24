@@ -991,21 +991,20 @@ impl Ext2INode {
 						// The entry has name `name`, free it
 						entry.set_inode(0);
 						self.write_dirent(superblock, io, &entry, off)?;
+
+						if let Some((prev_free_off, prev_free)) = &mut prev_free {
+							// Merging previous entry with the current if they are on the same page
+							if *prev_free_off >= i {
+								prev_free.merge(entry);
+								self.write_dirent(superblock, io, prev_free, *prev_free_off)?;
+							}
+						} else {
+							prev_free = Some((off, entry));
+						}
 					} else {
 						// The entry is not free, skip it
 						prev_free = None;
-						continue;
 					}
-				}
-
-				if let Some((prev_free_off, prev_free)) = &mut prev_free {
-					// Merging previous entry with the current if they are on the same page
-					if *prev_free_off >= i {
-						prev_free.merge(entry);
-						self.write_dirent(superblock, io, prev_free, *prev_free_off)?;
-					}
-				} else {
-					prev_free = Some((off, entry));
 				}
 
 				j += total_size;

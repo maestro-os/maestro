@@ -516,8 +516,6 @@ impl Superblock {
 	/// If `blk` is zero, the function does nothing.
 	pub fn free_block(&mut self, io: &mut dyn IO, blk: u32) -> Result<(), Errno> {
 		if blk > 0 {
-			debug_assert!((blk as u64) > SUPERBLOCK_OFFSET);
-
 			let group = blk / self.blocks_per_group;
 			let mut bgd = BlockGroupDescriptor::read(group, self, io)?;
 			bgd.unallocated_blocks_number += 1;

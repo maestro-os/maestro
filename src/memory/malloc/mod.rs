@@ -62,21 +62,6 @@ pub unsafe fn alloc(n: usize) -> Result<*mut c_void, Errno> {
 	Ok(ptr)
 }
 
-/// Returns the size of the given memory allocation in bytes.
-///
-/// # Safety
-///
-/// The pointer `ptr` **must** point to the beginning of a valid, used chunk of memory.
-pub unsafe fn get_size(ptr: *const c_void) -> usize {
-	let _ = MUTEX.lock();
-
-	let chunk = Chunk::from_ptr(ptr as *mut _);
-	#[cfg(config_debug_malloc_check)]
-	chunk.check();
-	assert!(chunk.is_used());
-	chunk.get_size()
-}
-
 /// Changes the size of the memory previously allocated with `alloc`. `ptr` is the pointer to the
 /// chunk of memory.
 /// `n` is the new size of the chunk of memory.
