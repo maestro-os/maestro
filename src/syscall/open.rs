@@ -102,7 +102,6 @@ pub fn open_(pathname: SyscallString, flags: i32, mode: file::Mode) -> Result<i3
 		(abs_path, mode, uid, gid)
 	};
 
-
 	// Getting the file
 	let file = get_file(path, flags, mode, uid, gid)?;
 

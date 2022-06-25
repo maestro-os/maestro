@@ -77,12 +77,21 @@ impl KernFS {
 	}
 
 	/// Removes the node with inode `inode`.
-	pub fn remove_node(&mut self, _inode: INode) -> Result<(), Errno> {
-		// If the previous node has entries, free everything recursively
-		// TODO (Handles cases where multiple links are present)
+	pub fn remove_node(&mut self, inode: INode) -> Result<(), Errno> {
+		if let Some(node) = &self.nodes[inode as _] {
+			// If the node is a non-empty directory, return an error
+			match node.get_content() {
+				FileContent::Directory(entries) if !entries.is_empty() => {
+					return Err(errno!(ENOTEMPTY));
+				},
+				_ => {},
+			}
 
-		// TODO
-		todo!();
+			self.nodes[inode as _] = None;
+			// TODO Add to free list
+		}
+
+		Ok(())
 	}
 }
 
