@@ -89,6 +89,8 @@ extern "C" {
 	/// Copies the given memory area `src` to `dest` with size `n`.
 	/// If the given memory areas are overlapping, the behaviour is undefined.
 	pub fn memcpy(dest: *mut c_void, src: *const c_void, n: usize) -> *mut c_void;
+	/// Same as memcpy, except the function can handle overlapping memory areas.
+	pub fn memmove(dest: *mut c_void, src: *const c_void, n: usize) -> *mut c_void;
 	/// Compares strings of byte `s1` and `s2` with length `n` and returns the
 	/// diffence between the first bytes that differ.
 	pub fn memcmp(s1: *const c_void, s2: *const c_void, n: usize) -> i32;
@@ -290,6 +292,39 @@ mod test {
 	}
 
 	#[test_case]
+	fn memmove0() {
+		let mut dest: [usize; 100] = [0; 100];
+		let mut src: [usize; 100] = [0; 100];
+
+		for i in 0..100 {
+			src[i] = i;
+		}
+		unsafe {
+			memmove(dest.as_mut_ptr() as _, src.as_ptr() as _, 100 * size_of::<usize>());
+		}
+		for i in 0..100 {
+			debug_assert_eq!(dest[i], i);
+		}
+	}
+
+	#[test_case]
+	fn memmove1() {
+		let mut buff: [usize; 100] = [0; 100];
+
+		for i in 0..100 {
+			buff[i] = i;
+		}
+		unsafe {
+			memmove(buff.as_mut_ptr() as _, buff.as_ptr() as _, 100 * size_of::<usize>());
+		}
+		for i in 0..100 {
+			debug_assert_eq!(buff[i], i);
+		}
+	}
+
+	// TODO More tests on memmove
+
+	#[test_case]
 	fn memcmp0() {
 		let mut b0: [u8; 100] = [0; 100];
 		let mut b1: [u8; 100] = [0; 100];
@@ -324,7 +359,7 @@ mod test {
 	// TODO Test `memset`
 
 	#[test_case]
-	fn bzero0() {
+	fn memmove0() {
 		let mut buff: [u8; 100] = [0; 100];
 
 		for i in 0..100 {
@@ -338,5 +373,5 @@ mod test {
 		}
 	}
 
-	// TODO More tests on bzero
+	// TODO More tests on memmove
 }
