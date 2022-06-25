@@ -783,6 +783,17 @@ impl Filesystem for Ext2Fs {
 		};
 
 		match file.get_file_content() {
+			FileContent::Directory(_) => {
+				// Adding `.` and `..` entries
+				inode.add_dirent(&mut self.superblock, io, inode_index,
+					&String::from(b".")?, FileType::Directory)?;
+				inode.add_dirent(&mut self.superblock, io, parent_inode as _,
+					&String::from(b"..")?, FileType::Directory)?;
+
+				inode.hard_links_count += 1;
+				parent.hard_links_count += 1;
+			},
+
 			FileContent::Link(target) => {
 				inode.set_link(&mut self.superblock, io, target.as_bytes())?
 			},
@@ -798,14 +809,6 @@ impl Filesystem for Ext2Fs {
 
 			_ => {},
 		}
-
-		// Adding `.` and `..` entries
-		inode.add_dirent(&mut self.superblock, io, inode_index, &String::from(b".")?,
-			FileType::Directory)?;
-		inode.add_dirent(&mut self.superblock, io, parent_inode as _, &String::from(b"..")?,
-			FileType::Directory)?;
-		inode.hard_links_count += 1;
-		parent.hard_links_count += 1;
 
 		inode.write(inode_index, &self.superblock, io)?;
 		let dir = file.get_file_type() == FileType::Directory;
