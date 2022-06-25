@@ -27,6 +27,7 @@ mod faccessat;
 mod fadvise64_64;
 mod fchdir;
 mod fchmod;
+mod fchmodat;
 mod fcntl64;
 mod fcntl;
 mod finit_module;
@@ -137,6 +138,7 @@ use faccessat::faccessat;
 use fadvise64_64::fadvise64_64;
 use fchdir::fchdir;
 use fchmod::fchmod;
+use fchmodat::fchmodat;
 use fcntl64::fcntl64;
 use fcntl::fcntl;
 use finit_module::finit_module;
@@ -561,7 +563,7 @@ fn get_syscall(id: u32) -> Option<Syscall> {
 		// TODO 0x12f => Some(Syscall { handler: &linkat, name: "linkat", args: &[] }),
 		// TODO 0x130 => Some(Syscall { handler: &symlinkat, name: "symlinkat", args: &[] }),
 		// TODO 0x131 => Some(Syscall { handler: &readlinkat, name: "readlinkat", args: &[] }),
-		// TODO 0x132 => Some(Syscall { handler: &fchmodat, name: "fchmodat", args: &[] }),
+		0x132 => Some(Syscall { handler: &fchmodat, name: "fchmodat", args: &[] }),
 		0x133 => Some(Syscall { handler: &faccessat, name: "faccessat", args: &[] }),
 		0x134 => Some(Syscall { handler: &pselect6, name: "pselect6", args: &[] }),
 		// TODO 0x135 => Some(Syscall { handler: &ppoll, name: "ppoll", args: &[] }),
