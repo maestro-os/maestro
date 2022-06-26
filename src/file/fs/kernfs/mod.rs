@@ -208,23 +208,50 @@ impl Filesystem for KernFS {
 		File::new(name, uid, gid, mode, location, content)
 	}
 
-	fn add_link(&mut self, _: &mut dyn IO, _parent_inode: INode, _name: &String, _inode: INode)
+	fn add_link(&mut self, _: &mut dyn IO, parent_inode: INode, name: &String, inode: INode)
 		-> Result<(), Errno> {
 		if self.readonly {
 			return Err(errno!(EROFS));
 		}
 
-		// TODO
-		todo!();
+		let entry_type = self.get_node(parent_inode)?.get_content().get_file_type();
+		let parent = self.get_node_mut(parent_inode)?;
+
+		match parent.get_content_mut() {
+			FileContent::Directory(entries) => {
+				entries.insert(name.failable_clone()?, DirEntry {
+					inode,
+					entry_type,
+				})?;
+
+				Ok(())
+			},
+
+			_ => Err(errno!(ENOTDIR)),
+		}
 	}
 
-	fn update_inode(&mut self, _: &mut dyn IO, _file: &File) -> Result<(), Errno> {
+	fn update_inode(&mut self, _: &mut dyn IO, file: &File) -> Result<(), Errno> {
 		if self.readonly {
 			return Err(errno!(EROFS));
 		}
 
-		// TODO
-		todo!();
+		// Getting node
+		let inode = file.get_location().get_inode();
+		let node = self.get_node_mut(inode)?;
+
+		// Changing file size if it has been truncated
+		// TODO node.truncate(file.get_size())?;
+
+		// Updating file attributes
+		node.set_uid(file.get_uid());
+		node.set_gid(file.get_gid());
+		node.set_mode(file.get_mode());
+		node.set_ctime(file.get_ctime());
+		node.set_mtime(file.get_mtime());
+		node.set_atime(file.get_atime());
+
+		Ok(())
 	}
 
 	fn remove_file(&mut self, _: &mut dyn IO, parent_inode: INode, name: &String)
