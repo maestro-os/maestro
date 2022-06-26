@@ -27,7 +27,7 @@ const FILES_POOL_SIZE: usize = 1024;
 /// synchronized with the disk when necessary.
 pub struct FCache {
 	/// The pool of cached files.
-	pool: [Option<SharedPtr<File>>; FILES_POOL_SIZE],
+	pool: Vec<SharedPtr<File>>,
 	/// The list of free slots in the pool.
 	pool_free: Vec<usize>,
 
@@ -40,10 +40,8 @@ pub struct FCache {
 impl FCache {
 	/// Creates a new instance.
 	pub fn new() -> Result<Self, Errno> {
-		const INIT: Option<SharedPtr<File>> = None;
-
 		Ok(Self {
-			pool: [INIT; FILES_POOL_SIZE],
+			pool: Vec::with_capacity(FILES_POOL_SIZE)?,
 			pool_free: Vec::new(),
 
 			pool_paths: HashMap::new(),
