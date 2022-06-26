@@ -4,6 +4,7 @@ pub mod node;
 
 use crate::errno::Errno;
 use crate::errno;
+use crate::file::DirEntry;
 use crate::file::File;
 use crate::file::FileContent;
 use crate::file::FileLocation;
@@ -13,6 +14,7 @@ use crate::file::Mode;
 use crate::file::Uid;
 use crate::file::fs::Filesystem;
 use crate::file::path::Path;
+use crate::process::oom;
 use crate::util::FailableClone;
 use crate::util::IO;
 use crate::util::container::string::String;
@@ -88,7 +90,7 @@ impl KernFS {
 			}
 
 			self.nodes[inode as _] = None;
-			// TODO Add to free list
+			self.free_nodes.push(inode)?;
 		}
 
 		Ok(())
@@ -153,17 +155,43 @@ impl Filesystem for KernFS {
 		Ok(file)
 	}
 
-	fn add_file(&mut self, _io: &mut dyn IO, _parent_inode: INode, _name: String, _uid: Uid,
-		_gid: Gid, _mode: Mode, _content: FileContent) -> Result<File, Errno> {
+	fn add_file(&mut self, _: &mut dyn IO, parent_inode: INode, name: String, uid: Uid,
+		gid: Gid, mode: Mode, content: FileContent) -> Result<File, Errno> {
 		if self.readonly {
 			return Err(errno!(EROFS));
 		}
 
-		// TODO
-		todo!();
+		if parent_inode as usize >= self.nodes.len() {
+			return Err(errno!(ENOENT));
+		}
+
+		let file_type = content.get_file_type();
+		let mountpath = self.mountpath.failable_clone()?;
+
+		let node = KernFSNode::new(mode, uid, gid, content.failable_clone()?, None);
+		let inode = self.add_node(node)?;
+
+		if let Some(parent) = &mut self.nodes[parent_inode as usize] {
+			let entries = match parent.get_content_mut() {
+				FileContent::Directory(entries) => entries,
+				_ => return Err(errno!(ENOENT)),
+			};
+
+			oom::wrap(|| {
+				entries.insert(name.failable_clone()?, DirEntry {
+					inode,
+					entry_type: file_type,
+				})
+			});
+
+			let location = FileLocation::new(mountpath, inode);
+			File::new(name, uid, gid, mode, location, content)
+		} else {
+			Err(errno!(ENOENT))
+		}
 	}
 
-	fn add_link(&mut self, _io: &mut dyn IO, _parent_inode: INode, _name: &String, _inode: INode)
+	fn add_link(&mut self, _: &mut dyn IO, _parent_inode: INode, _name: &String, _inode: INode)
 		-> Result<(), Errno> {
 		if self.readonly {
 			return Err(errno!(EROFS));
@@ -173,7 +201,7 @@ impl Filesystem for KernFS {
 		todo!();
 	}
 
-	fn update_inode(&mut self, _io: &mut dyn IO, _file: &File) -> Result<(), Errno> {
+	fn update_inode(&mut self, _: &mut dyn IO, _file: &File) -> Result<(), Errno> {
 		if self.readonly {
 			return Err(errno!(EROFS));
 		}
@@ -192,19 +220,34 @@ impl Filesystem for KernFS {
 		todo!();
 	}
 
-	fn read_node(&mut self, _: &mut dyn IO, _inode: INode, _off: u64, _buf: &mut [u8])
+	fn read_node(&mut self, _: &mut dyn IO, inode: INode, off: u64, buf: &mut [u8])
 		-> Result<u64, Errno> {
-		// TODO
-		todo!();
+		if inode as usize >= self.nodes.len() {
+			return Err(errno!(ENOENT));
+		}
+
+		if let Some(node) = &mut self.nodes[inode as _] {
+			node.read(off, buf)
+		} else {
+			Err(errno!(ENOENT))
+		}
 	}
 
-	fn write_node(&mut self, _: &mut dyn IO, _inode: INode, _off: u64, _buf: &[u8])
+	fn write_node(&mut self, _: &mut dyn IO, inode: INode, off: u64, buf: &[u8])
 		-> Result<(), Errno> {
 		if self.readonly {
 			return Err(errno!(EROFS));
 		}
 
-		// TODO
-		todo!();
+		if inode as usize >= self.nodes.len() {
+			return Err(errno!(ENOENT));
+		}
+
+		if let Some(node) = &mut self.nodes[inode as _] {
+			node.write(off, buf)?;
+			Ok(())
+		} else {
+			Err(errno!(ENOENT))
+		}
 	}
 }
