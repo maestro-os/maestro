@@ -13,12 +13,14 @@ pub mod socket;
 
 use core::cmp::max;
 use core::ffi::c_void;
+use core::fmt;
 use crate::device::DeviceType;
 use crate::device;
 use crate::errno::Errno;
 use crate::errno;
 use crate::file::fcache::FCache;
 use crate::file::mountpoint::MountPoint;
+use crate::file::mountpoint::MountSource;
 use crate::limits;
 use crate::process::mem_space::MemSpace;
 use crate::time::unit::Timestamp;
@@ -211,6 +213,12 @@ impl FileLocation {
 	}
 }
 
+impl fmt::Display for FileLocation {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		write!(f, "{}:{}", self.mountpoint_path, self.inode)
+	}
+}
+
 /// Structure representing a directory entry.
 #[derive(Debug)]
 pub struct DirEntry {
@@ -330,6 +338,10 @@ pub struct File {
 	location: FileLocation,
 	/// The content of the file.
 	content: FileContent,
+
+	/// The number of locations where this file being is used. If non-zero, the file is considered
+	/// busy.
+	ref_count: usize,
 }
 
 impl File {
@@ -363,6 +375,8 @@ impl File {
 
 			location,
 			content,
+
+			ref_count: 0,
 		})
 	}
 
@@ -620,6 +634,21 @@ impl File {
 		}
 	}
 
+	/// Increments the number of times the file is open.
+	pub fn increment_open(&mut self) {
+		self.ref_count += 1;
+	}
+
+	/// Decrements the number of times the file is open.
+	pub fn decrement_open(&mut self) {
+		self.ref_count -= 1;
+	}
+
+	/// Tells whether the file is busy.
+	pub fn is_busy(&self) -> bool {
+		self.ref_count > 0
+	}
+
 	/// Synchronizes the file with the device.
 	pub fn sync(&self) -> Result<(), Errno> {
 		let mountpoint_mutex = self.location.get_mountpoint().ok_or_else(|| errno!(EIO))?;
@@ -740,15 +769,6 @@ impl IO for File {
 	}
 }
 
-impl Drop for File {
-	fn drop(&mut self) {
-		// TODO Fix deadlock
-		/*if let Err(_e) = self.sync() {
-			// TODO Log the error
-		}*/
-	}
-}
-
 // FIXME Unused: remove?
 /// Resolves symbolic links and returns the final path. If too many links are to be resolved, the
 /// function returns an error.
@@ -815,8 +835,13 @@ pub fn init(root_device_type: DeviceType, root_major: u32, root_minor: u32) -> R
 	let root_dev = device::get_device(root_device_type, root_major, root_minor)
 		.ok_or_else(|| errno!(ENODEV))?;
 
+	// Creating the root mountpoint
+	let mount_source = MountSource::Device(root_dev);
+	let root_mount = MountPoint::new(mount_source, None, 0, Path::root())?;
+	mountpoint::register(root_mount)?;
+
 	// Creating the files cache
-	let cache = FCache::new(root_dev)?;
+	let cache = FCache::new()?;
 	let guard = fcache::get().lock();
 	*guard.get_mut() = Some(cache);
 

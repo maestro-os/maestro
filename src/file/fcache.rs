@@ -1,6 +1,5 @@
 //! The files cache stores files in memory to avoid accessing the disk each times.
 
-use crate::device::Device;
 use crate::errno::Errno;
 use crate::errno;
 use crate::file::File;
@@ -9,12 +8,11 @@ use crate::file::FileType;
 use crate::file::Gid;
 use crate::file::Mode;
 use crate::file::Uid;
-use crate::file::mountpoint::MountPoint;
-use crate::file::mountpoint::MountSource;
 use crate::file::mountpoint;
 use crate::file::path::Path;
 use crate::limits;
 use crate::util::FailableClone;
+use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::lock::Mutex;
@@ -22,59 +20,53 @@ use crate::util::ptr::SharedPtr;
 
 /// The size of the files pool.
 const FILES_POOL_SIZE: usize = 1024;
-/// The upper bount for the file accesses counter.
-const ACCESSES_UPPER_BOUND: usize = 128;
 
-// TODO Prevent removing a busy file
 // TODO If a filesystem doesn't return entries `.` and `..`, add them
-
-/// The access counter allows to count the relative number of accesses count on a file.
-struct AccessCounter {
-	/// The number of accesses to the file relative to the previous file in the pool.
-	/// This number is limited by `ACCESSES_UPPER_BOUND`.
-	accesses_count: usize,
-}
 
 /// Cache storing files in memory. This cache allows to speedup accesses to the disk. It is
 /// synchronized with the disk when necessary.
 pub struct FCache {
-	/// A pointer to the root mount point.
-	root_mount: SharedPtr<MountPoint>,
+	/// The pool of cached files.
+	pool: [Option<SharedPtr<File>>; FILES_POOL_SIZE],
+	/// The list of free slots in the pool.
+	pool_free: Vec<usize>,
 
-	/// A fixed-size pool storing files, sorted by path.
-	files_pool: Vec<File>,
-	/// A pool of the same size as the files pool, storing approximate relative accesses count for
-	/// each files.
-	/// The element at an index is associated to the element in the files pool at the same index.
-	accesses_pool: Vec<AccessCounter>,
+	/// Collection mapping file paths to their slot index.
+	pool_paths: HashMap<Path, usize>,
+	/// Collection mapping a number of accesses to a slot index.
+	access_count: Vec<(usize, usize)>,
 }
 
 impl FCache {
 	/// Creates a new instance.
-	/// `root_device` is the device for the root of the VFS.
-	pub fn new(root_device: SharedPtr<Device>) -> Result<Self, Errno> {
-		let mount_source = MountSource::Device(root_device);
-		let root_mount = MountPoint::new(mount_source, None, 0, Path::root())?;
-		let shared_ptr = mountpoint::register(root_mount)?;
+	pub fn new() -> Result<Self, Errno> {
+		const INIT: Option<SharedPtr<File>> = None;
 
 		Ok(Self {
-			root_mount: shared_ptr,
+			pool: [INIT; FILES_POOL_SIZE],
+			pool_free: Vec::new(),
 
-			files_pool: Vec::<File>::with_capacity(FILES_POOL_SIZE)?,
-			accesses_pool: Vec::<AccessCounter>::with_capacity(FILES_POOL_SIZE)?,
+			pool_paths: HashMap::new(),
+			access_count: Vec::new(),
 		})
 	}
 
 	/// Loads the file with the given path `path`. If the file is already loaded, the behaviour is
 	/// undefined.
 	fn load_file(&mut self, _path: &Path) {
-		let len = self.files_pool.len();
+		/*let len = self.pool.len();
 		if len >= FILES_POOL_SIZE {
 			self.files_pool.pop();
 			self.accesses_pool.pop();
-		}
+		}*/
 
 		// TODO Push file
+	}
+
+	/// Synchonizes the cache to the disks, then empties it.
+	pub fn flush_all(&mut self) -> Result<(), Errno> {
+		// TODO
+		todo!();
 	}
 
 	// TODO Use the cache
@@ -273,6 +265,10 @@ impl FCache {
 	/// `uid` is the User ID of the user removing the file.
 	/// `gid` is the Group ID of the user removing the file.
 	pub fn remove_file(&mut self, file: &File, uid: Uid, gid: Gid) -> Result<(), Errno> {
+		if file.is_busy() {
+			return Err(errno!(EBUSY));
+		}
+
 		// The parent directory.
 		let parent_mutex = self.get_file_from_path(file.get_parent_path(), uid, gid, true)?;
 		let parent_guard = parent_mutex.lock();
@@ -285,7 +281,9 @@ impl FCache {
 		}
 
 		// Getting the mountpoint
-		let mountpoint_mutex = file.get_location().get_mountpoint().ok_or_else(|| errno!(ENOENT))?;
+		let mountpoint_mutex = file.get_location()
+			.get_mountpoint()
+			.ok_or_else(|| errno!(ENOENT))?;
 		let mountpoint_guard = mountpoint_mutex.lock();
 		let mountpoint = mountpoint_guard.get_mut();
 

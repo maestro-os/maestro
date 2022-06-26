@@ -42,6 +42,7 @@ pub fn reboot(regs: &Regs) -> Result<i32, Errno> {
 	match cmd {
 		CMD_POWEROFF => {
 			crate::println!("Power down...");
+
 			// TODO Use ACPI to power off the system
 
 			// In case power down didn't work (very unlikely)
