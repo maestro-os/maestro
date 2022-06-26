@@ -68,14 +68,41 @@ impl KernFS {
 		Ok(())
 	}
 
+	/// Returns an immutable reference to the node with inode `inode`. If the node doesn't exist,
+	/// the function returns an error.
+	pub fn get_node(&self, inode: INode) -> Result<&KernFSNode, Errno> {
+		if inode as usize >= self.nodes.len() {
+			return Err(errno!(ENOENT));
+		}
+
+		self.nodes[inode as usize].as_ref().ok_or_else(|| errno!(ENOENT))
+	}
+
+	/// Returns a mutable reference to the node with inode `inode`. If the node doesn't exist, the
+	/// function returns an error.
+	pub fn get_node_mut(&mut self, inode: INode) -> Result<&mut KernFSNode, Errno> {
+		if inode as usize >= self.nodes.len() {
+			return Err(errno!(ENOENT));
+		}
+
+		self.nodes[inode as usize].as_mut().ok_or_else(|| errno!(ENOENT))
+	}
+
 	/// Adds the given node `node` to the filesystem.
 	/// The function returns the allocated inode.
 	pub fn add_node(&mut self, node: KernFSNode) -> Result<INode, Errno> {
-		// TODO Use the free nodes list
-		let inode = self.nodes.len();
-		self.nodes.push(Some(node))?;
+		if let Some(free_node) = self.free_nodes.pop() {
+			// Using an existing slot
+			self.nodes[free_node as _] = Some(node);
 
-		Ok(inode as _)
+			Ok(free_node)
+		} else {
+			// Allocating a new node slot
+			let inode = self.nodes.len();
+			self.nodes.push(Some(node))?;
+
+			Ok(inode as _)
+		}
 	}
 
 	/// Removes the node with inode `inode`.
@@ -116,30 +143,23 @@ impl Filesystem for KernFS {
 
 	fn get_inode(&mut self, _io: &mut dyn IO, parent: Option<INode>, name: &String)
 		-> Result<INode, Errno> {
-		let parent_inode = parent.unwrap_or(ROOT_INODE);
+		let parent = parent.unwrap_or(ROOT_INODE);
 
 		// Getting the parent node
-		if parent_inode as usize >= self.nodes.len() {
-			return Err(errno!(ENOENT));
-		}
-		let parent_node = self.nodes[parent_inode as _].as_ref().ok_or_else(|| errno!(ENOENT))?;
+		let parent = self.get_node(parent)?;
 
-		match parent_node.get_content() {
-			FileContent::Directory(entries) => {
-				entries.get(name)
-					.map(| dirent | dirent.inode)
-					.ok_or_else(|| errno!(ENOENT))
-			},
+		match parent.get_content() {
+			FileContent::Directory(entries) => entries.get(name)
+				.map(| dirent | dirent.inode)
+				.ok_or_else(|| errno!(ENOENT)),
+
 			_ => Err(errno!(ENOENT)),
 		}
 	}
 
 	fn load_file(&mut self, _: &mut dyn IO, inode: INode, name: String)
 		-> Result<File, Errno> {
-		if inode as usize >= self.nodes.len() {
-			return Err(errno!(ENOENT));
-		}
-		let node = self.nodes[inode as _].as_ref().ok_or_else(|| errno!(ENOENT))?;
+		let node = self.get_node(inode)?;
 
 		let file_location = FileLocation::new(self.mountpath.failable_clone()?, inode);
 		let file_content = node.get_content().failable_clone()?;
@@ -161,34 +181,31 @@ impl Filesystem for KernFS {
 			return Err(errno!(EROFS));
 		}
 
-		if parent_inode as usize >= self.nodes.len() {
-			return Err(errno!(ENOENT));
-		}
-
 		let file_type = content.get_file_type();
 		let mountpath = self.mountpath.failable_clone()?;
+
+		// Checking the parent exists
+		self.get_node_mut(parent_inode)?;
 
 		let node = KernFSNode::new(mode, uid, gid, content.failable_clone()?, None);
 		let inode = self.add_node(node)?;
 
-		if let Some(parent) = &mut self.nodes[parent_inode as usize] {
-			let entries = match parent.get_content_mut() {
-				FileContent::Directory(entries) => entries,
-				_ => return Err(errno!(ENOENT)),
-			};
+		// Getting entries from parent
+		let parent = self.get_node_mut(parent_inode).unwrap();
+		let entries = match parent.get_content_mut() {
+			FileContent::Directory(entries) => entries,
+			_ => return Err(errno!(ENOENT)),
+		};
 
-			oom::wrap(|| {
-				entries.insert(name.failable_clone()?, DirEntry {
-					inode,
-					entry_type: file_type,
-				})
-			});
+		oom::wrap(|| {
+			entries.insert(name.failable_clone()?, DirEntry {
+				inode,
+				entry_type: file_type,
+			})
+		});
 
-			let location = FileLocation::new(mountpath, inode);
-			File::new(name, uid, gid, mode, location, content)
-		} else {
-			Err(errno!(ENOENT))
-		}
+		let location = FileLocation::new(mountpath, inode);
+		File::new(name, uid, gid, mode, location, content)
 	}
 
 	fn add_link(&mut self, _: &mut dyn IO, _parent_inode: INode, _name: &String, _inode: INode)
@@ -210,27 +227,49 @@ impl Filesystem for KernFS {
 		todo!();
 	}
 
-	fn remove_file(&mut self, _: &mut dyn IO, _parent_inode: INode, _name: &String)
+	fn remove_file(&mut self, _: &mut dyn IO, parent_inode: INode, name: &String)
 		-> Result<(), Errno> {
 		if self.readonly {
 			return Err(errno!(EROFS));
 		}
 
-		// TODO
-		todo!();
+		// Getting directory entry
+		let parent = self.get_node_mut(parent_inode)?;
+		let entry = match parent.get_content() {
+			FileContent::Directory(entries) => if let Some(entry) = entries.get(name) {
+				entry
+			} else {
+				return Err(errno!(ENOENT));
+			},
+
+			_ => return Err(errno!(ENOTDIR)),
+		};
+		let inode = entry.inode;
+
+		let node = self.get_node(inode)?;
+		match node.get_content() {
+			FileContent::Directory(entries) if !entries.is_empty()
+				=> return Err(errno!(ENOTEMPTY)),
+
+			_ => {},
+		}
+
+		oom::wrap(|| self.remove_node(inode));
+
+		// Removing directory entry
+		let parent = self.get_node_mut(parent_inode).unwrap();
+		match parent.get_content_mut() {
+			FileContent::Directory(entries) => entries.remove(name),
+			_ => unreachable!(),
+		};
+
+		Ok(())
 	}
 
 	fn read_node(&mut self, _: &mut dyn IO, inode: INode, off: u64, buf: &mut [u8])
 		-> Result<u64, Errno> {
-		if inode as usize >= self.nodes.len() {
-			return Err(errno!(ENOENT));
-		}
-
-		if let Some(node) = &mut self.nodes[inode as _] {
-			node.read(off, buf)
-		} else {
-			Err(errno!(ENOENT))
-		}
+		let node = self.get_node_mut(inode)?;
+		node.read(off, buf)
 	}
 
 	fn write_node(&mut self, _: &mut dyn IO, inode: INode, off: u64, buf: &[u8])
@@ -239,15 +278,8 @@ impl Filesystem for KernFS {
 			return Err(errno!(EROFS));
 		}
 
-		if inode as usize >= self.nodes.len() {
-			return Err(errno!(ENOENT));
-		}
-
-		if let Some(node) = &mut self.nodes[inode as _] {
-			node.write(off, buf)?;
-			Ok(())
-		} else {
-			Err(errno!(ENOENT))
-		}
+		let node = self.get_node_mut(inode)?;
+		node.write(off, buf)?;
+		Ok(())
 	}
 }
