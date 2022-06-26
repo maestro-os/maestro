@@ -34,7 +34,6 @@ pub const TAG_TYPE_EFI64_IH: u32 = 20;
 pub const TAG_TYPE_LOAD_BASE_ADDR: u32 = 21;
 
 pub const MEMORY_AVAILABLE: u32 = 1;
-pub const MEMORY_RESERVED: u32 = 2;
 pub const MEMORY_ACPI_RECLAIMABLE: u32 = 3;
 pub const MEMORY_NVS: u32 = 4;
 pub const MEMORY_BADRAM: u32 = 5;
@@ -352,11 +351,11 @@ impl MmapEntry {
 	pub fn get_type_string(&self) -> &'static str {
 		match self.type_ {
 			MEMORY_AVAILABLE => "Available",
-			MEMORY_RESERVED => "Reserved",
 			MEMORY_ACPI_RECLAIMABLE => "ACPI",
 			MEMORY_NVS => "Hibernate",
 			MEMORY_BADRAM => "Bad RAM",
-			_ => "Unknown",
+
+			_ => "Reserved",
 		}
 	}
 }

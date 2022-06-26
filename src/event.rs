@@ -6,6 +6,7 @@ use core::mem::MaybeUninit;
 use crate::errno::Errno;
 use crate::idt::pic;
 use crate::idt;
+use crate::panic;
 use crate::process::regs::Regs;
 use crate::process::tss;
 use crate::util::boxed::Box;
@@ -271,7 +272,8 @@ pub extern "C" fn event_handler(id: u32, code: u32, ring: u32, regs: &Regs) {
 		},
 
 		InterruptResultAction::Panic => {
-			crate::kernel_panic!("{} (code: {})", get_error_message(id), code);
+			panic::kernel_panic_(format_args!("{} (code: {})", get_error_message(id), code),
+				Some(regs), "", 0, 0);
 		},
 	}
 }

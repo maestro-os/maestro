@@ -23,6 +23,7 @@ pub trait ACPITable {
 
 /// An ACPI table header.
 #[repr(C)]
+#[derive(Debug)]
 pub struct ACPITableHeader {
 	/// The signature of the structure.
 	signature: [u8; 4],

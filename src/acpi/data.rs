@@ -32,6 +32,7 @@ fn get_scan_range() -> (*const c_void, *const c_void) {
 /// The Root System Description Pointer (RSDP) is a structure storing a pointer to the other
 /// structures used by ACPI.
 #[repr(C)]
+#[derive(Debug)]
 struct Rsdp {
 	/// The signature of the structure.
 	signature: [u8; 8],
@@ -64,6 +65,7 @@ impl Rsdp {
 /// This structure is the version 2.0 of the RSDP. This structure contains the field from the
 /// previous version, plus some extra fields.
 #[repr(C)]
+#[derive(Debug)]
 struct Rsdp2 {
 	/// The version 1.0 on structure.
 	rsdp: Rsdp,
@@ -136,7 +138,6 @@ impl ACPIData {
 			let rsdt = unsafe { // Safe because the pointer has been mapped before
 				&*rsdt_ptr
 			};
-
 			if !rsdt.header.check() {
 				crate::kernel_panic!("Invalid ACPI structure!");
 			}

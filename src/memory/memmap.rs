@@ -11,6 +11,7 @@ use crate::multiboot;
 use crate::util;
 
 /// Structure storing informations relative to the main memory.
+#[derive(Debug)]
 pub struct MemoryInfo {
 	/// Size of the Multiboot2 memory map
 	pub memory_maps_size: usize,
