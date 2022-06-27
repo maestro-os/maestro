@@ -273,7 +273,7 @@ pub extern "C" fn event_handler(id: u32, code: u32, ring: u32, regs: &Regs) {
 
 		InterruptResultAction::Panic => {
 			panic::kernel_panic_(format_args!("{} (code: {})", get_error_message(id), code),
-				Some(regs), "", 0, 0);
+				Some(regs), file!(), line!(), column!());
 		},
 	}
 }

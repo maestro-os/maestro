@@ -41,8 +41,8 @@ impl Madt {
 }
 
 impl ACPITable for Madt {
-	fn get_expected_signature() -> [u8; 4] {
-		[b'A', b'P', b'I', b'C']
+	fn get_expected_signature() -> &'static [u8; 4] {
+		&[b'A', b'P', b'I', b'C']
 	}
 }
 

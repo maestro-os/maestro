@@ -47,7 +47,7 @@ impl Rsdt {
 				&*header_ptr
 			};
 
-			if *header.get_signature() == T::get_expected_signature() {
+			if header.get_signature() == T::get_expected_signature() {
 				let table_ptr = header_ptr as *const T;
 				let table = unsafe {
 					&*table_ptr
@@ -62,7 +62,7 @@ impl Rsdt {
 }
 
 impl ACPITable for Rsdt {
-	fn get_expected_signature() -> [u8; 4] {
-		[b'R', b'S', b'D', b'T']
+	fn get_expected_signature() -> &'static [u8; 4] {
+		&[b'R', b'S', b'D', b'T']
 	}
 }
