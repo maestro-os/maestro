@@ -288,6 +288,7 @@ impl PATAInterface {
 		let lba_mid = self.inb(PortOffset::ATA(LBA_MID_REGISTER_OFFSET));
 		let lba_hi = self.inb(PortOffset::ATA(LBA_HI_REGISTER_OFFSET));
 
+		crate::println!("-> {} {}", lba_mid, lba_hi); // TODO rm
 		if lba_mid != 0 || lba_hi != 0 {
 			return Err("Unknown device");
 		}

@@ -10,6 +10,7 @@
 //! Access).
 
 use core::cmp::min;
+use core::intrinsics::wrapping_add;
 use core::mem::size_of;
 use crate::device::DeviceManager;
 use crate::device::bar::BAR;
@@ -246,26 +247,23 @@ impl PCIDevice {
 	}
 
 	/// Returns the offset of the register for the `n`th BAR.
-	fn get_bar_reg_off(&self, n: u8) -> Option<u32> {
-		match self.get_header_type() {
-			0x00 => if n < 6 {
-				Some(self.info[n as usize])
-			} else {
-				None
-			},
+	fn get_bar_reg_off(&self, n: u8) -> Option<u16> {
+		let limit = match self.get_header_type() {
+			0x00 => 6,
+			0x01 => 2,
+			_ => 0,
+		};
 
-			0x01 => if n < 2 {
-				Some(self.info[n as usize])
-			} else {
-				None
-			},
-
-			_ => None,
+		if n < limit {
+			Some(0x4 + n as u16)
+		} else {
+			None
 		}
 	}
 
 	/// Returns the size of the address space of the `n`th BAR.
-	pub fn get_bar_size(&self, n: u8) -> Option<usize> {
+	/// `io` tells whether the BAR is in IO space.
+	pub fn get_bar_size(&self, n: u8, io: bool) -> Option<usize> {
 		let reg_off = self.get_bar_reg_off(n)?;
 		// Saving the register
 		let save = read_long(self.bus, self.device, self.function, reg_off as _);
@@ -273,7 +271,15 @@ impl PCIDevice {
 		// Writing all 1s on register
 		write_long(self.bus, self.device, self.function, reg_off as _, !0u32);
 
-		let size = !read_long(self.bus, self.device, self.function, reg_off as _) + 1;
+		let mut size = wrapping_add(!read_long(
+			self.bus,
+			self.device,
+			self.function,
+			reg_off as _
+		), 1);
+		if io {
+			size &= 0xffff;
+		}
 
 		// Restoring the register's value
 		write_long(self.bus, self.device, self.function, reg_off as _, save);
@@ -330,10 +336,12 @@ impl PhysicalDevice for PCIDevice {
 		let bar_off = self.get_bar_reg_off(n)?;
 		// The BAR's value
 		let value = read_long(self.bus, self.device, self.function, bar_off as _);
+		// Tells whether the BAR is in IO space.
+		let io = (value & 0b1) != 0;
 		// The address space's size
-		let size = self.get_bar_size(n).unwrap();
+		let size = self.get_bar_size(n, io).unwrap();
 
-		if (value & 0b1) == 0 {
+		let bar = if !io {
 			let type_ = match ((value >> 1) & 0b11) as u8 {
 				0x0 => BARType::Size32,
 				0x2 => BARType::Size64,
@@ -353,21 +361,23 @@ impl PhysicalDevice for PCIDevice {
 				},
 			};
 
-			Some(BAR::MemorySpace {
+			BAR::MemorySpace {
 				type_,
 				prefetchable: value & 0b1000 != 0,
 
 				address,
 
 				size,
-			})
+			}
 		} else {
-			Some(BAR::IOSpace {
+			BAR::IOSpace {
 				address: (value & 0xfffffffc) as u64,
 
 				size,
-			})
-		}
+			}
+		};
+
+		Some(bar)
 	}
 }
 
@@ -427,6 +437,9 @@ impl PCIManager {
 
 					// Reading function's PCI data
 					read_data(bus, device, func, 0, &mut data);
+
+					// Enabling Memory space and I/O space for BARs
+					write_long(bus, device, func, 0x4, data[1] | 0b11);
 
 					// Registering the device
 					let dev = PCIDevice::new(bus, device, func, &data);

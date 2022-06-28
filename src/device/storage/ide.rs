@@ -122,16 +122,21 @@ impl Controller {
 		-> Result<Option<SharedPtr<dyn StorageInterface>>, Errno> {
 		// TODO Add support for SATA
 
-		if let Ok(interface) = PATAInterface::new(channel, slave) {
-			let interface = SharedPtr::new(interface)?;
+		match PATAInterface::new(channel, slave) {
+			Ok(interface) => {
+				let interface = SharedPtr::new(interface)?;
 
-			// Wrapping the interface into a cached interface
-			// TODO Use a constant for the sectors count
-			//let interface = Box::new(CachedStorageInterface::new(interface, 1024)?)?;
+				// Wrapping the interface into a cached interface
+				// TODO Use a constant for the sectors count
+				//let interface = Box::new(CachedStorageInterface::new(interface, 1024)?)?;
 
-			Ok(Some(interface))
-		} else {
-			Ok(None)
+				Ok(Some(interface))
+			},
+
+			Err(e) => {
+				crate::println!("err: {}", e); // TODO rm
+				Ok(None)
+			},
 		}
 	}
 
@@ -168,6 +173,7 @@ impl Controller {
 				Channel::new_compatibility(secondary)
 			};
 
+			crate::println!("{:?}", channel); // TODO rm
 
 			if let Some(disk) = self.detect(channel, slave)? {
 				interfaces.push(disk)?;
