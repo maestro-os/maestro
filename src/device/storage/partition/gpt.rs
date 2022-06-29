@@ -29,7 +29,7 @@ type GUID = [u8; 16];
 /// `storage_size` is the number of blocks on the storage device.
 fn translate_lba(lba: i64, storage_size: u64) -> u64 {
 	if lba < 0 {
-		storage_size - (-lba as u64) - 1
+		storage_size - (-lba as u64)
 	} else {
 		lba as _
 	}
@@ -210,6 +210,7 @@ impl GPT {
 		let mut buff = malloc::Alloc::<u8>::new_default(self.entry_size as _)?;
 
 		let entries_start = translate_lba(self.entries_start, blocks_count);
+		let a = self.entries_start;crate::println!("----> {} {}", a, entries_start); // TODO rm
 		let mut entries = Vec::new();
 
 		for i in 0..self.entries_number {
@@ -231,7 +232,10 @@ impl GPT {
 			}
 
 			// Checking entry correctness
-			if translate_lba(entry.end, blocks_count) < translate_lba(entry.start, blocks_count) {
+			let start = translate_lba(entry.start, blocks_count);
+			let end = translate_lba(entry.end, blocks_count);
+			let a = entry.start; let b = entry.end; crate::println!("--> {} {} {} {}", a, b, start, end); // TODO rm
+			if end < start {
 				return Err(errno!(EINVAL))
 			}
 

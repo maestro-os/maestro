@@ -288,19 +288,20 @@ impl PATAInterface {
 		let lba_mid = self.inb(PortOffset::ATA(LBA_MID_REGISTER_OFFSET));
 		let lba_hi = self.inb(PortOffset::ATA(LBA_HI_REGISTER_OFFSET));
 
-		crate::println!("-> {} {}", lba_mid, lba_hi); // TODO rm
 		if lba_mid != 0 || lba_hi != 0 {
 			return Err("Unknown device");
 		}
 
 		loop {
 			let status = self.get_status();
-			if status & STATUS_DRQ != 0 || status & STATUS_ERR != 0 {
+
+			if status & STATUS_ERR != 0 {
+				return Err("Error while identifying the device");
+			}
+
+			if status & STATUS_SRV != 0 || status & STATUS_DRQ != 0 {
 				break;
 			}
-		}
-		if self.get_status() & STATUS_ERR != 0 {
-			return Err("Error while identifying the device");
 		}
 
 		let mut data: [u16; 256] = [0; 256];
@@ -363,7 +364,7 @@ impl StorageInterface for PATAInterface {
 		}
 
 		// Tells whether to use LBA48
-		let lba48 = (offset + size) >= ((1 << 29) - 1);
+		let lba48 = (offset + size) >= ((1 << 28) - 1);
 
 		// If LBA48 is required but not supported, return an error
 		if lba48 && !self.lba48 {
@@ -469,7 +470,7 @@ impl StorageInterface for PATAInterface {
 		}
 
 		// Tells whether to use LBA48
-		let lba48 = (offset + size) >= ((1 << 29) - 1);
+		let lba48 = (offset + size) >= ((1 << 28) - 1);
 
 		// If LBA48 is required but not supported, return an error
 		if lba48 && !self.lba48 {

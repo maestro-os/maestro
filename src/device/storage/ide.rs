@@ -173,8 +173,6 @@ impl Controller {
 				Channel::new_compatibility(secondary)
 			};
 
-			crate::println!("{:?}", channel); // TODO rm
-
 			if let Some(disk) = self.detect(channel, slave)? {
 				interfaces.push(disk)?;
 			}
