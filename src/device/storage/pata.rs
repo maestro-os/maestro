@@ -233,10 +233,16 @@ impl PATAInterface {
 
 	/// Waits at least 420 nanoseconds if `long` is not set, or at least 5 milliseconds if set.
 	fn wait(&self, long: bool) {
-		let count = if long {
+		// TODO Use correct timings
+		/*let count = if long {
 			167
 		} else {
 			14
+		};*/
+		let count = if long {
+			167000
+		} else {
+			14000
 		};
 
 		// Individual status read take at least 30ns. 30 * 14 = 420
@@ -299,7 +305,7 @@ impl PATAInterface {
 				return Err("Error while identifying the device");
 			}
 
-			if status & STATUS_SRV != 0 || status & STATUS_DRQ != 0 {
+			if status & STATUS_DRQ != 0 {
 				break;
 			}
 		}
@@ -359,7 +365,7 @@ impl StorageInterface for PATAInterface {
 		debug_assert!((buf.len() as u64) >= size * SECTOR_SIZE);
 
 		// If the offset and size are out of bounds of the disk, return an error
-		if offset > self.sectors_count || offset + size > self.sectors_count {
+		if offset >= self.sectors_count || offset + size > self.sectors_count {
 			return Err(crate::errno!(EINVAL));
 		}
 
@@ -465,7 +471,7 @@ impl StorageInterface for PATAInterface {
 		debug_assert!((buf.len() as u64) >= size * SECTOR_SIZE);
 
 		// If the offset and size are out of bounds of the disk, return an error
-		if offset > self.sectors_count || offset + size > self.sectors_count {
+		if offset >= self.sectors_count || offset + size > self.sectors_count {
 			return Err(crate::errno!(EINVAL));
 		}
 

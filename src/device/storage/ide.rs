@@ -133,10 +133,7 @@ impl Controller {
 				Ok(Some(interface))
 			},
 
-			Err(e) => {
-				crate::println!("err: {}", e); // TODO rm
-				Ok(None)
-			},
+			Err(_) => Ok(None),
 		}
 	}
 

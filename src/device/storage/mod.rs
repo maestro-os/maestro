@@ -73,7 +73,7 @@ pub trait StorageInterface {
 
 		let blk_begin = offset / block_size;
 		let blk_end = math::ceil_division(offset + buf.len() as u64, block_size);
-		if blk_begin >= blocks_count || blk_end >= blocks_count {
+		if blk_begin > blocks_count || blk_end > blocks_count {
 			return Err(errno!(EINVAL));
 		}
 
@@ -82,13 +82,13 @@ pub trait StorageInterface {
 			let remaining_bytes = buf.len() - i;
 
 			let storage_i = offset + i as u64;
-			let block_off = (storage_i as usize) / block_size as usize;
+			let block_off = storage_i / block_size;
 			let block_inner_off = (storage_i as usize) % block_size as usize;
 			let block_aligned = block_inner_off == 0;
 
 			if !block_aligned {
 				let mut tmp_buf = malloc::Alloc::<u8>::new_default(block_size as _)?;
-				self.read(tmp_buf.as_slice_mut(), block_off as _, 1)?;
+				self.read(tmp_buf.as_slice_mut(), block_off, 1)?;
 
 				let diff = min(remaining_bytes, block_size as usize - block_inner_off);
 				for j in 0..diff {
@@ -100,7 +100,7 @@ pub trait StorageInterface {
 				i += diff;
 			} else if (remaining_bytes as u64) < block_size {
 				let mut tmp_buf = malloc::Alloc::<u8>::new_default(block_size as _)?;
-				self.read(tmp_buf.as_slice_mut(), block_off as _, 1)?;
+				self.read(tmp_buf.as_slice_mut(), block_off, 1)?;
 
 				for j in 0..remaining_bytes {
 					debug_assert!(i + j < buf.len());
@@ -113,7 +113,7 @@ pub trait StorageInterface {
 				let remaining_blocks = (remaining_bytes as u64) / block_size;
 				let len = (remaining_blocks * block_size) as usize;
 				debug_assert!(i + len <= buf.len());
-				self.read(&mut buf[i..(i + len)], block_off as _, remaining_blocks as _)?;
+				self.read(&mut buf[i..(i + len)], block_off, remaining_blocks as _)?;
 
 				i += len;
 			}
@@ -131,7 +131,7 @@ pub trait StorageInterface {
 
 		let blk_begin = offset / block_size;
 		let blk_end = math::ceil_division(offset + buf.len() as u64, block_size);
-		if blk_begin >= blocks_count || blk_end >= blocks_count {
+		if blk_begin > blocks_count || blk_end > blocks_count {
 			return Err(errno!(EINVAL));
 		}
 
@@ -140,13 +140,13 @@ pub trait StorageInterface {
 			let remaining_bytes = buf.len() - i;
 
 			let storage_i = offset + i as u64;
-			let block_off = (storage_i as usize) / block_size as usize;
+			let block_off = storage_i / block_size;
 			let block_inner_off = (storage_i as usize) % block_size as usize;
 			let block_aligned = block_inner_off == 0;
 
 			if !block_aligned {
 				let mut tmp_buf = malloc::Alloc::<u8>::new_default(block_size as _)?;
-				self.read(tmp_buf.as_slice_mut(), block_off as _, 1)?;
+				self.read(tmp_buf.as_slice_mut(), block_off, 1)?;
 
 				let diff = min(remaining_bytes, block_size as usize - block_inner_off);
 				for j in 0..diff {
@@ -155,12 +155,12 @@ pub trait StorageInterface {
 					tmp_buf[block_inner_off + j] = buf[i + j];
 				}
 
-				self.write(tmp_buf.as_slice(), block_off as _, 1)?;
+				self.write(tmp_buf.as_slice(), block_off, 1)?;
 
 				i += diff;
 			} else if (remaining_bytes as u64) < block_size {
 				let mut tmp_buf = malloc::Alloc::<u8>::new_default(block_size as _)?;
-				self.read(tmp_buf.as_slice_mut(), block_off as _, 1)?;
+				self.read(tmp_buf.as_slice_mut(), block_off, 1)?;
 
 				for j in 0..remaining_bytes {
 					debug_assert!(i + j < buf.len());
@@ -168,14 +168,14 @@ pub trait StorageInterface {
 					tmp_buf[j] = buf[i + j];
 				}
 
-				self.write(tmp_buf.as_slice(), block_off as _, 1)?;
+				self.write(tmp_buf.as_slice(), block_off, 1)?;
 
 				i += remaining_bytes;
 			} else {
 				let remaining_blocks = (remaining_bytes as u64) / block_size;
 				let len = (remaining_blocks * block_size) as usize;
 				debug_assert!(i + len <= buf.len());
-				self.write(&buf[i..(i + len)], block_off as _, remaining_blocks as _)?;
+				self.write(&buf[i..(i + len)], block_off, remaining_blocks as _)?;
 
 				i += len;
 			}
