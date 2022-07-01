@@ -18,6 +18,7 @@ use core::cmp::min;
 use crate::device::storage::ide;
 use crate::errno::Errno;
 use crate::errno;
+use crate::time;
 use super::StorageInterface;
 
 /// Offset to the data register.
@@ -228,27 +229,7 @@ impl PATAInterface {
 		};
 		self.outb(PortOffset::ATA(DRIVE_REGISTER_OFFSET), value);
 
-		self.wait(false);
-	}
-
-	/// Waits at least 420 nanoseconds if `long` is not set, or at least 5 milliseconds if set.
-	fn wait(&self, long: bool) {
-		// TODO Use correct timings
-		/*let count = if long {
-			167
-		} else {
-			14
-		};*/
-		let count = if long {
-			167000
-		} else {
-			14000
-		};
-
-		// Individual status read take at least 30ns. 30 * 14 = 420
-		for _ in 0..count {
-			self.inb(PortOffset::ATA(STATUS_REGISTER_OFFSET));
-		}
+		time::ndelay(420);
 	}
 
 	/// Flushes the drive's cache. The device is assumed to be selected.
@@ -260,10 +241,10 @@ impl PATAInterface {
 	/// Resets both master and slave devices. The current drive may not be selected anymore.
 	fn reset(&self) {
 		self.outb(PortOffset::Control(0), 1 << 2);
-		self.wait(true);
+		time::udelay(5);
 
 		self.outb(PortOffset::Control(0), 0);
-		self.wait(true);
+		time::udelay(5);
 	}
 
 	/// Identifies the drive, retrieving informations about the drive. On error, the function
@@ -280,10 +261,10 @@ impl PATAInterface {
 		self.outb(PortOffset::ATA(LBA_LO_REGISTER_OFFSET), 0);
 		self.outb(PortOffset::ATA(LBA_MID_REGISTER_OFFSET), 0);
 		self.outb(PortOffset::ATA(LBA_HI_REGISTER_OFFSET), 0);
-		self.wait(false);
+		time::ndelay(420);
 
 		self.send_command(COMMAND_IDENTIFY);
-		self.wait(false);
+		time::ndelay(420);
 
 		let status = self.get_status();
 		if status == 0 {
@@ -331,7 +312,7 @@ impl PATAInterface {
 			lba28_size as _
 		};
 
-		self.wait(false);
+		time::ndelay(420);
 		Ok(())
 	}
 

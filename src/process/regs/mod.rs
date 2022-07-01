@@ -23,7 +23,6 @@ extern "C" {
 	pub fn context_switch_kernel(regs: &Regs) -> !;
 }
 
-// TODO Ensure the buffer is on a 32 bits address (required by fxsave and fxrstor)
 /// Wrapper allowing to align the fxstate buffer.
 #[repr(align(16))]
 struct FXStateWrapper([u8; 512]);

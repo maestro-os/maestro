@@ -72,3 +72,25 @@ pub fn get_struct<T: TimeUnit>(_clk: &[u8]) -> Option<T> {
 	// TODO use the correct unit
 	Some(T::from_nano(get()?))
 }
+
+/// Makes the CPU wait for at least `n` milliseconds.
+pub fn mdelay(n: u32) {
+	// TODO
+	udelay(n * 1000);
+}
+
+/// Makes the CPU wait for at least `n` microseconds.
+pub fn udelay(n: u32) {
+	// TODO
+	for _ in 0..(n * 100) {
+		unsafe {
+			core::arch::asm!("nop");
+		}
+	}
+}
+
+/// Makes the CPU wait for at least `n` nanoseconds.
+pub fn ndelay(n: u32) {
+	// TODO
+	udelay(n);
+}
