@@ -5,6 +5,8 @@ use core::intrinsics::wrapping_add;
 use core::intrinsics::wrapping_mul;
 use crate::util;
 
+pub mod rational;
+
 /// Clamps the given value `n` between `min` and `max`.
 pub fn clamp<T: PartialOrd>(n: T, min: T, max: T) -> T {
 	if n < min {
@@ -100,6 +102,21 @@ pub fn pseudo_rand(x: u32, a: u32, c: u32, m: u32) -> u32 {
 	(wrapping_add(wrapping_mul(a, x), c)) % m
 }
 
+/// Returns the Greatest Common Divider of the two given numbers.
+pub fn gcd<T>(mut a: T, mut b: T) -> T
+	where T: Clone
+		+ From<u8>
+		+ core::cmp::PartialEq
+		+ core::ops::Rem<Output = T> {
+	while b != T::from(0) {
+		let r = a % b.clone();
+		a = b;
+		b = r;
+	}
+
+	return a;
+}
+
 #[cfg(test)]
 mod test {
 	use super::*;
@@ -139,6 +156,15 @@ mod test {
 		assert_eq!(pow::<u32>(10, 3), 1000);
 		assert_eq!(pow::<u32>(10, 4), 10000);
 		assert_eq!(pow::<u32>(10, 5), 100000);
+	}
+
+	#[test_case]
+	fn gcd() {
+		assert_eq!(gcd(2, 2), 2);
+		assert_eq!(gcd(4, 2), 2);
+		assert_eq!(gcd(4, 4), 4);
+		assert_eq!(gcd(8, 12), 4);
+		assert_eq!(gcd(48, 18), 6);
 	}
 
 	#[test_case]

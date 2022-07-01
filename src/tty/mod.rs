@@ -14,7 +14,6 @@ use core::mem::MaybeUninit;
 use core::ptr;
 use crate::device::serial;
 use crate::memory::vmem;
-use crate::pit;
 use crate::process::Process;
 use crate::process::pid::Pid;
 use crate::process::signal::Signal;
@@ -386,8 +385,7 @@ impl TTY {
 
 	/// Rings the TTY's bell.
 	fn ring_bell(&self) {
-		// TODO Select the prefered device
-		pit::beep();
+		// TODO
 	}
 
 	/// Writes the character `c` to the TTY.
