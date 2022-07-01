@@ -18,7 +18,8 @@ use core::cmp::min;
 use crate::device::storage::ide;
 use crate::errno::Errno;
 use crate::errno;
-use crate::time;
+use crate::io;
+use crate::util::math;
 use super::StorageInterface;
 
 /// Offset to the data register.
@@ -95,6 +96,19 @@ const SECTOR_SIZE: u64 = 512;
 
 // TODO Synchronize both master and slave disks so that another thread cannot trigger a select
 // while operating on a drive
+
+/// Applies a delay. `n` determines the amount to wait.
+/// This function is a dirty hack and the actual delay is approximative but **should** be
+/// sufficient.
+fn delay(n: u32) {
+	let n = math::ceil_division(n, 30) * 1000;
+
+	for _ in 0..n {
+		unsafe {
+			io::inb(STATUS_REGISTER_OFFSET);
+		}
+	}
+}
 
 /// TODO doc
 enum PortOffset {
@@ -229,7 +243,7 @@ impl PATAInterface {
 		};
 		self.outb(PortOffset::ATA(DRIVE_REGISTER_OFFSET), value);
 
-		time::ndelay(420);
+		delay(420);
 	}
 
 	/// Flushes the drive's cache. The device is assumed to be selected.
@@ -241,10 +255,10 @@ impl PATAInterface {
 	/// Resets both master and slave devices. The current drive may not be selected anymore.
 	fn reset(&self) {
 		self.outb(PortOffset::Control(0), 1 << 2);
-		time::udelay(5);
+		delay(5000);
 
 		self.outb(PortOffset::Control(0), 0);
-		time::udelay(5);
+		delay(5000);
 	}
 
 	/// Identifies the drive, retrieving informations about the drive. On error, the function
@@ -261,10 +275,10 @@ impl PATAInterface {
 		self.outb(PortOffset::ATA(LBA_LO_REGISTER_OFFSET), 0);
 		self.outb(PortOffset::ATA(LBA_MID_REGISTER_OFFSET), 0);
 		self.outb(PortOffset::ATA(LBA_HI_REGISTER_OFFSET), 0);
-		time::ndelay(420);
+		delay(420);
 
 		self.send_command(COMMAND_IDENTIFY);
-		time::ndelay(420);
+		delay(420);
 
 		let status = self.get_status();
 		if status == 0 {
@@ -312,7 +326,7 @@ impl PATAInterface {
 			lba28_size as _
 		};
 
-		time::ndelay(420);
+		delay(420);
 		Ok(())
 	}
 
