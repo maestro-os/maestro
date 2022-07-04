@@ -18,6 +18,7 @@
 //! The Page Size Extension (PSE) allows to map 4MB large blocks without using a page table.
 
 use core::ffi::c_void;
+use core::intrinsics::wrapping_add;
 use core::ptr;
 use core::result::Result;
 use crate::cpu;
@@ -131,7 +132,7 @@ fn obj_get(obj: *const u32, index: usize) -> u32 {
 	debug_assert!(index < 1024);
 
 	unsafe {
-		*obj_get_ptr(obj, index)
+		ptr::read_volatile(obj_get_ptr(obj, index))
 	}
 }
 
@@ -140,7 +141,7 @@ fn obj_set(obj: *mut u32, index: usize, value: u32) {
 	debug_assert!(index < 1024);
 
 	unsafe {
-		*obj_get_mut_ptr(obj, index) = value;
+		ptr::write_volatile(obj_get_mut_ptr(obj, index), value);
 	}
 }
 
@@ -249,8 +250,8 @@ mod table {
 	pub fn delete(vmem: *mut u32, index: usize) {
 		debug_assert!(index < 1024);
 		let dir_entry_value = obj_get(vmem, index);
-		let dir_entry_addr = (dir_entry_value & ADDR_MASK) as _;
-		buddy::free(dir_entry_addr, 0);
+		let dir_entry_addr = (dir_entry_value & ADDR_MASK) as *const u32;
+		free_obj(memory::kern_to_virt(dir_entry_addr as _) as _);
 		obj_set(vmem, index, 0);
 	}
 }
@@ -322,7 +323,7 @@ impl X86VMem {
 			page_dir: alloc_obj()?,
 		};
 
-		let flags = FLAG_PRESENT | FLAG_WRITE | FLAG_USER;
+		let flags = FLAG_PRESENT | FLAG_WRITE | FLAG_USER | FLAG_GLOBAL;
 		for i in 0..256 {
 			// Safe because only one thread is running when the first vmem is created
 			let ptr = unsafe {
@@ -380,14 +381,12 @@ impl X86VMem {
 	/// `pages`.
 	fn use_pse(addr: *const c_void, pages: usize) -> bool {
 		// The end address of the hypothetical PSE block
-		let pse_end = unsafe {
-			addr.add(1024 * memory::PAGE_SIZE)
-		};
+		let pse_end = wrapping_add(addr as usize, 1024 * memory::PAGE_SIZE);
 
 		// Ensuring no PSE block is created in kernel space
-		pse_end < memory::PROCESS_END
+		(pse_end as usize) < (memory::PROCESS_END as usize)
 		// Ensuring the virtual address doesn't overflow
-			&& pse_end >= addr
+			&& (pse_end as usize) >= (addr as usize)
 		// Checking the address is aligned on the PSE boundary
 			&& util::is_aligned(addr, 1024 * memory::PAGE_SIZE)
 		// Checking that there remain enough pages to make a PSE block
@@ -405,7 +404,9 @@ impl X86VMem {
 
 		let dir_entry_index = Self::get_addr_element_index(virtaddr, 1);
 		let dir_entry_value = obj_get(self.page_dir, dir_entry_index);
-		if dir_entry_value & FLAG_PRESENT != 0 && dir_entry_value & FLAG_PAGE_SIZE == 0 {
+		if dir_entry_index < 768
+			&& dir_entry_value & FLAG_PRESENT != 0
+			&& dir_entry_value & FLAG_PAGE_SIZE == 0 {
 			table::delete(self.page_dir, dir_entry_index);
 		}
 
@@ -430,7 +431,7 @@ impl VMem for X86VMem {
 			let entry_value = unsafe {
 				*e
 			};
-			let remain_mask = if entry_value & FLAG_GLOBAL == 0 {
+			let remain_mask = if entry_value & FLAG_PAGE_SIZE == 0 {
 				memory::PAGE_SIZE - 1
 			} else {
 				1024 * memory::PAGE_SIZE - 1
@@ -465,10 +466,10 @@ impl VMem for X86VMem {
 		} else if dir_entry_value & FLAG_PAGE_SIZE != 0 {
 			table::expand(self.page_dir, dir_entry_index)?;
 		}
+		dir_entry_value = obj_get(self.page_dir, dir_entry_index);
 
 		if dir_entry_index < 768 {
 			// Setting the table's flags
-			dir_entry_value = obj_get(self.page_dir, dir_entry_index);
 			dir_entry_value |= flags;
 			obj_set(self.page_dir, dir_entry_index, dir_entry_value);
 		}
@@ -488,7 +489,8 @@ impl VMem for X86VMem {
 		flags: u32) -> Result<(), Errno> {
 		debug_assert!(util::is_aligned(physaddr, memory::PAGE_SIZE));
 		debug_assert!(util::is_aligned(virtaddr, memory::PAGE_SIZE));
-		debug_assert!(pages <= (1024 * 1024) - (virtaddr as usize / memory::PAGE_SIZE));
+		debug_assert!(pages <= (usize::MAX / memory::PAGE_SIZE)
+			- (virtaddr as usize / memory::PAGE_SIZE));
 		debug_assert_eq!(flags & ADDR_MASK, 0);
 
 		let mut i = 0;
