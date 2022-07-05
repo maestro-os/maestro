@@ -489,8 +489,8 @@ impl VMem for X86VMem {
 		flags: u32) -> Result<(), Errno> {
 		debug_assert!(util::is_aligned(physaddr, memory::PAGE_SIZE));
 		debug_assert!(util::is_aligned(virtaddr, memory::PAGE_SIZE));
-		debug_assert!(pages <= (usize::MAX / memory::PAGE_SIZE)
-			- (virtaddr as usize / memory::PAGE_SIZE));
+		debug_assert!((virtaddr as usize / memory::PAGE_SIZE) + pages
+			<= (usize::MAX / memory::PAGE_SIZE) + 1);
 		debug_assert_eq!(flags & ADDR_MASK, 0);
 
 		let mut i = 0;

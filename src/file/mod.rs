@@ -359,7 +359,7 @@ impl File {
 
 		// If the file is a symbolic link, permissions don't matter
 		if matches!(content, FileContent::Link(_)) {
-			mode = !0;
+			mode = 0o777;
 		}
 
 		Ok(Self {

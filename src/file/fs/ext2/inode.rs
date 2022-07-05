@@ -1170,9 +1170,13 @@ impl<'n, 's, 'i> Iterator for DirentIterator<'n, 's, 'i> {
 				}
 			}
 
-			// Calling the closure
 			if entry.get_inode() > 0 {
 				return Some(Ok((prev_off, entry)));
+			}
+
+			// Prevent infinite loop on filesystem error
+			if total_size == 0 {
+				break;
 			}
 		}
 
