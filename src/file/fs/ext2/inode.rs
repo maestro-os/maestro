@@ -1063,18 +1063,22 @@ impl Ext2INode {
 		-> Result<(), Errno> {
 		debug_assert_eq!(self.get_type(), FileType::Link);
 
+		let len = target.len();
+
 		// If small enough, write to inode. Else, write to content
-		if (target.len() as u64) <= SYMLINK_INODE_STORE_LIMIT {
+		if (len as u64) <= SYMLINK_INODE_STORE_LIMIT {
 			self.truncate(superblock, io, 0)?;
 
 			unsafe { // Safe because in range
 				let ptr = addr_of!(self.direct_block_ptrs) as *mut u8;
-				ptr::copy_nonoverlapping(target.as_ptr(), ptr, target.len());
-			};
+				ptr::copy_nonoverlapping(target.as_ptr(), ptr, len);
+			}
 		} else {
-			self.truncate(superblock, io, target.len() as _)?;
+			self.truncate(superblock, io, len as _)?;
 			self.write_content(0, target, superblock, io)?;
 		}
+
+		self.set_size(superblock, len as _);
 
 		Ok(())
 	}
