@@ -19,6 +19,10 @@ pub fn fchmodat(regs: &Regs) -> Result<i32, Errno> {
 		let guard = mutex.lock();
 		let proc = guard.get_mut();
 
+		let mem_space = proc.get_mem_space().unwrap();
+		let mem_space_guard = mem_space.lock();
+
+		let pathname = pathname.get(&mem_space_guard)?.ok_or_else(|| errno!(EFAULT))?;
 		let file_mutex = util::get_file_at(proc, true, dirfd, pathname, 0)?;
 		(file_mutex, proc.get_euid())
 	};

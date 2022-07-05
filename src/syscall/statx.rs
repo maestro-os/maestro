@@ -88,7 +88,11 @@ pub fn statx(regs: &Regs) -> Result<i32, Errno> {
 	let guard = mutex.lock();
 	let proc = guard.get_mut();
 
+	let mem_space = proc.get_mem_space().unwrap();
+	let mem_space_guard = mem_space.lock();
+
 	// Getting the file
+	let pathname = pathname.get(&mem_space_guard)?.ok_or_else(|| errno!(EFAULT))?;
 	let file_mutex = util::get_file_at(proc, follow_links, dirfd, pathname, flags)?;
 	let file_guard = file_mutex.lock();
 	let file = file_guard.get();
@@ -120,11 +124,8 @@ pub fn statx(regs: &Regs) -> Result<i32, Errno> {
 		MountSource::File(_) | MountSource::KernFS(_) => (0, 0),
 	};
 
-	let mem_space = proc.get_mem_space().unwrap();
-	let mem_space_guard = mem_space.lock();
-	let statx = statxbuff.get_mut(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
-
 	// Filling the structure
+	let statx = statxbuff.get_mut(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
 	*statx = Statx {
 		stx_mask: !0, // TODO
 		stx_blksize: 512, // TODO

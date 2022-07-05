@@ -13,19 +13,27 @@ pub fn unlinkat(regs: &Regs) -> Result<i32, Errno> {
 	let pathname: SyscallString = (regs.ecx as usize).into();
 	let flags = regs.edx as i32;
 
-	// Getting the process
-	let mutex = Process::get_current().unwrap();
-	let guard = mutex.lock();
-	let proc = guard.get_mut();
+	let (file_mutex, uid, gid) = {
+		let mutex = Process::get_current().unwrap();
+		let guard = mutex.lock();
+		let proc = guard.get_mut();
 
-	let file_mutex = util::get_file_at(proc, false, dirfd, pathname, flags)?;
+		let mem_space = proc.get_mem_space().unwrap();
+		let mem_space_guard = mem_space.lock();
+		let pathname = pathname.get(&mem_space_guard)?.ok_or_else(|| errno!(EFAULT))?;
+
+		let file = util::get_file_at(proc, false, dirfd, pathname, flags)?;
+
+		(file, proc.get_euid(), proc.get_egid())
+	};
 	let file_guard = file_mutex.lock();
 	let file = file_guard.get_mut();
 
-	let mutex = fcache::get();
-	let guard = mutex.lock();
-	let files_cache = guard.get_mut().as_mut().unwrap();
-	files_cache.remove_file(file, proc.get_euid(), proc.get_egid())?;
+	let fcache_mutex = fcache::get();
+	let fcache_guard = fcache_mutex.lock();
+	let files_cache = fcache_guard.get_mut().as_mut().unwrap();
+
+	files_cache.remove_file(file, uid, gid)?;
 
 	Ok(0)
 }

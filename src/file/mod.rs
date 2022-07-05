@@ -353,9 +353,14 @@ impl File {
 	/// `mode` is the permission of the file.
 	/// `location` is the location of the file.
 	/// `content` is the content of the file. This value also determines the file type.
-	fn new(name: String, uid: Uid, gid: Gid, mode: Mode, location: FileLocation,
+	fn new(name: String, uid: Uid, gid: Gid, mut mode: Mode, location: FileLocation,
 		content: FileContent) -> Result<Self, Errno> {
 		let timestamp = time::get(TimestampScale::Second).unwrap_or(0);
+
+		// If the file is a symbolic link, permissions don't matter
+		if matches!(content, FileContent::Link(_)) {
+			mode = !0;
+		}
 
 		Ok(Self {
 			name,
