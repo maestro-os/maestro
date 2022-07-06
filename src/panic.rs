@@ -57,7 +57,8 @@ pub fn kernel_panic_(reason: Arguments, regs: Option<&Regs>, _file: &str, _line:
 /// `line` is the line at which the kernel panic was triggerd.
 /// `column` is the column at which the kernel panic was triggerd.
 #[cfg(config_debug_debug)]
-pub fn kernel_panic_(reason: Arguments, regs: Option<&Regs>, file: &str, line: u32, col: u32) -> ! {
+pub fn kernel_panic_(reason: Arguments, regs: Option<&Regs>, file: &str, line: u32, col: u32)
+	-> ! {
 	crate::cli!();
 	print_panic(reason, regs);
 

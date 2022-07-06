@@ -22,7 +22,7 @@
 #![feature(trait_upcasting)]
 #![feature(unsize)]
 
-#![deny(warnings)]
+//#![deny(warnings)]
 #![allow(dead_code)]
 #![allow(unused_macros)]
 #![allow(incomplete_features)]
@@ -52,7 +52,6 @@ pub mod module;
 pub mod multiboot;
 #[macro_use]
 pub mod panic;
-pub mod pit;
 #[macro_use]
 pub mod print;
 pub mod process;
@@ -254,7 +253,7 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 
 	// Initializing IDT, PIT and events handler
 	idt::init();
-	pit::init();
+	time::timer::pit::init();
 	event::init();
 
 	// Ensuring the CPU has SSE

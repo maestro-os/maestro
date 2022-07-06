@@ -6,6 +6,7 @@ use crate::file::Gid;
 use crate::file::Mode;
 use crate::file::Uid;
 use crate::time::unit::Timestamp;
+use crate::time::unit::TimestampScale;
 use crate::time;
 use crate::util::IO;
 use crate::util::boxed::Box;
@@ -46,7 +47,7 @@ impl KernFSNode {
 	pub fn new(mode: Mode, uid: Uid, gid: Gid, content: FileContent,
 		io_handle: Option<Box<dyn IO>>) -> Self {
 		// The current timestamp
-		let ts = time::get().unwrap_or(0);
+		let ts = time::get(TimestampScale::Second).unwrap_or(0);
 
 		Self {
 			hard_links_count: 1,

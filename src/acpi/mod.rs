@@ -18,7 +18,7 @@ mod rsdt;
 /// Trait representing an ACPI table.
 pub trait ACPITable {
 	/// Returns the expected signature for the structure.
-	fn get_expected_signature() -> [u8; 4];
+	fn get_expected_signature() -> &'static [u8; 4] where Self: Sized;
 }
 
 /// An ACPI table header.

@@ -2,6 +2,7 @@
 //! The kernel stores a list of clock sources. A clock source is an object that allow to get the
 //! current timestamp.
 
+pub mod timer;
 pub mod unit;
 
 use crate::errno::Errno;
@@ -10,13 +11,15 @@ use crate::util::container::vec::Vec;
 use crate::util::lock::*;
 use unit::TimeUnit;
 use unit::Timestamp;
+use unit::TimestampScale;
 
 /// Trait representing a source able to provide the current timestamp.
 pub trait ClockSource {
 	/// The name of the source.
 	fn get_name(&self) -> &str;
 	/// Returns the current timestamp in seconds.
-	fn get_time(&mut self) -> Timestamp;
+	/// `scale` specifies the scale of the returned timestamp.
+	fn get_time(&mut self, scale: TimestampScale) -> Timestamp;
 }
 
 // TODO Order by name to allow binary search
@@ -51,24 +54,47 @@ pub fn remove_clock_source(name: &str) {
 }
 
 /// Returns the current timestamp from the preferred clock source.
-/// TODO specify the time unit
+/// `scale` specifies the scale of the returned timestamp.
 /// If no clock source is available, the function returns None.
-pub fn get() -> Option<Timestamp> {
+pub fn get(scale: TimestampScale) -> Option<Timestamp> {
 	let guard = CLOCK_SOURCES.lock();
 	let sources = guard.get_mut();
 
 	if !sources.is_empty() {
-		let cmos = &mut sources[0]; // TODO Select the preferred source
-		Some(cmos.get_time())
+		let src = &mut sources[0]; // TODO Select the preferred source
+		Some(src.get_time(scale))
 	} else {
 		None
 	}
 }
 
 /// Returns the current timestamp from the given clock `clk`.
+/// `scale` specifies the scale of the returned timestamp.
 /// If the clock doesn't exist, the function returns None.
 pub fn get_struct<T: TimeUnit>(_clk: &[u8]) -> Option<T> {
 	// TODO use the given clock
-	// TODO use the correct unit
-	Some(T::from_nano(get()?))
+	let ts = get(TimestampScale::Nanosecond)?;
+	Some(T::from_nano(ts))
+}
+
+/// Makes the CPU wait for at least `n` milliseconds.
+pub fn mdelay(n: u32) {
+	// TODO
+	udelay(n * 1000);
+}
+
+/// Makes the CPU wait for at least `n` microseconds.
+pub fn udelay(n: u32) {
+	// TODO
+	for _ in 0..(n * 100) {
+		unsafe {
+			core::arch::asm!("nop");
+		}
+	}
+}
+
+/// Makes the CPU wait for at least `n` nanoseconds.
+pub fn ndelay(n: u32) {
+	// TODO
+	udelay(n);
 }

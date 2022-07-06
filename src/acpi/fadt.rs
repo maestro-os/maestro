@@ -81,7 +81,7 @@ pub struct Fadt {
 }
 
 impl ACPITable for Fadt {
-	fn get_expected_signature() -> [u8; 4] {
-		[b'F', b'A', b'D', b'T']
+	fn get_expected_signature() -> &'static [u8; 4] {
+		&[b'F', b'A', b'D', b'T']
 	}
 }

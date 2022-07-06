@@ -4,6 +4,8 @@ use core::mem::size_of;
 use crate::errno::Errno;
 use crate::errno;
 use crate::file::File;
+use crate::file::FileContent;
+use crate::file::Mode;
 use crate::file::fcache;
 use crate::file::open_file::FDTarget;
 use crate::file::path::Path;
@@ -67,19 +69,52 @@ pub unsafe fn get_str_array(process: &Process, ptr: *const *const u8)
 	Ok(arr)
 }
 
+/// TODO doc
+fn build_path_from_fd(process: &Process, dirfd: i32, pathname: &[u8]) -> Result<Path, Errno> {
+	let path = Path::from_str(pathname, true)?;
+
+	if path.is_absolute() {
+		// Using the given absolute path
+		Ok(path)
+	} else if dirfd == super::access::AT_FDCWD {
+		let cwd = process.get_cwd().failable_clone()?;
+
+		// Using path relative to the current working directory
+		cwd.concat(&path)
+	} else {
+		// Using path relative to the directory given by `dirfd`
+
+		if dirfd < 0 {
+			return Err(errno!(EBADF));
+		}
+
+		let open_file_mutex = process.get_fd(dirfd as _)
+			.ok_or(errno!(EBADF))?
+			.get_open_file();
+		let open_file_guard = open_file_mutex.lock();
+		let open_file = open_file_guard.get();
+
+		match open_file.get_target() {
+			FDTarget::File(file_mutex) => {
+				let file_guard = file_mutex.lock();
+				let file = file_guard.get();
+
+				file.get_path()?.concat(&path)
+			},
+
+			_ => Err(errno!(ENOTDIR)),
+		}
+	}
+}
+
 /// Returns the file for the given path `pathname`.
 /// `process` is the current process.
 /// `follow_links` tells whether symbolic links may be followed.
 /// `dirfd` is the file descriptor of the parent directory.
 /// `pathname` is the path relative to the parent directory.
 /// `flags` is an integer containing AT_* flags.
-/// The other arguments are the one given by the system call.
-pub fn get_file_at(process: &Process, follow_links: bool, dirfd: i32, pathname: SyscallString,
+pub fn get_file_at(process: &Process, follow_links: bool, dirfd: i32, pathname: &[u8],
 	flags: i32) -> Result<SharedPtr<File>, Errno> {
-	let mem_space = process.get_mem_space().unwrap();
-	let mem_space_guard = mem_space.lock();
-	let pathname = pathname.get(&mem_space_guard)?.ok_or_else(|| errno!(EFAULT))?;
-
 	if pathname.is_empty() {
 		if flags & super::access::AT_EMPTY_PATH != 0 {
 			// Using `dirfd` as the file descriptor to the file
@@ -102,45 +137,47 @@ pub fn get_file_at(process: &Process, follow_links: bool, dirfd: i32, pathname: 
 			Err(errno!(ENOENT))
 		}
 	} else {
-		let path = Path::from_str(pathname, true)?;
-		let final_path = {
-			if path.is_absolute() {
-				// Using the given absolute path
-				path
-			} else if dirfd == super::access::AT_FDCWD {
-				let cwd = process.get_cwd().failable_clone()?;
+		let path = build_path_from_fd(process, dirfd, pathname)?;
 
-				// Using path relative to the current working directory
-				cwd.concat(&path)?
-			} else {
-				// Using path relative to the directory given by `dirfd`
-
-				if dirfd < 0 {
-					return Err(errno!(EBADF));
-				}
-
-				let open_file_mutex = process.get_fd(dirfd as _)
-					.ok_or(errno!(EBADF))?
-					.get_open_file();
-				let open_file_guard = open_file_mutex.lock();
-				let open_file = open_file_guard.get();
-
-				match open_file.get_target() {
-					FDTarget::File(file_mutex) => {
-						let file_guard = file_mutex.lock();
-						let file = file_guard.get();
-
-						file.get_path()?.concat(&path)?
-					},
-
-					_ => return Err(errno!(ENOTDIR)),
-				}
-			}
-		};
+		let uid = process.get_euid();
+		let gid = process.get_egid();
 
 		let fcache = fcache::get();
 		let fcache_guard = fcache.lock();
-		fcache_guard.get_mut().as_mut().unwrap().get_file_from_path(&final_path,
-			process.get_euid(), process.get_gid(), follow_links)
+		fcache_guard.get_mut().as_mut().unwrap().get_file_from_path(&path, uid, gid, follow_links)
 	}
+}
+
+/// Creates the given file `file` at the given pathname `pathname`.
+/// `process` is the current process.
+/// `follow_links` tells whether symbolic links may be followed.
+/// `dirfd` is the file descriptor of the parent directory.
+/// `pathname` is the path relative to the parent directory.
+/// `mode` is the permissions of the newly created file.
+/// `content` is the content of the newly created file.
+pub fn create_file_at(process: &Process, follow_links: bool, dirfd: i32, pathname: &[u8],
+	mode: Mode, content: FileContent) -> Result<SharedPtr<File>, Errno> {
+	if pathname.is_empty() {
+		return Err(errno!(ENOENT));
+	}
+
+	let uid = process.get_euid();
+	let gid = process.get_egid();
+
+	let umask = process.get_umask();
+	let mode = mode & !umask;
+
+	let fcache = fcache::get();
+	let fcache_guard = fcache.lock();
+	let fcache = fcache_guard.get_mut().as_mut().unwrap();
+
+	let mut path = build_path_from_fd(process, dirfd, pathname)?;
+	let name = path.pop().unwrap();
+	let parent_path = path;
+
+	let parent_mutex = fcache.get_file_from_path(&parent_path, uid, gid, follow_links)?;
+	let parent_guard = parent_mutex.lock();
+	let parent = parent_guard.get_mut();
+
+	fcache.create_file(parent, name, uid, gid, mode, content)
 }

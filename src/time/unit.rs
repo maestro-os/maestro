@@ -10,6 +10,18 @@ pub type UTimestamp = u64;
 /// Type representing an elapsed number of ticks. Equivalent to POSIX's `clock_t`.
 pub type Clock = u32;
 
+/// Enumeration of available timestamp scales.
+pub enum TimestampScale {
+	/// The unit is one second.
+	Second,
+	/// The unit is one millisecond.
+	Millisecond,
+	/// The unit is one microsecond.
+	Microsecond,
+	/// The unit is one nanosecond.
+	Nanosecond,
+}
+
 /// Trait to be implement on a structure describing a moment in time.
 pub trait TimeUnit: Sized + Clone + Default + Add<Self, Output = Self> + PartialOrd {
 	/// Creates the structure from the given timestamp in nanoseconds.

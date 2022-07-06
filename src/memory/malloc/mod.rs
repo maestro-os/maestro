@@ -368,33 +368,15 @@ mod test {
 		lifo_test(100);
 	}
 
-	#[test_case]
-	fn get_size0() {
-		unsafe {
-			for i in 1..memory::PAGE_SIZE {
-				let ptr = alloc(i).unwrap();
-				assert!(get_size(ptr) >= i);
-				util::memset(ptr, -1, i);
-				assert!(get_size(ptr) >= i);
-				free(ptr);
-			}
-		}
-	}
-
-	// TODO More tests on get_size
-
 	// TODO Check the integrity of the data after reallocation
 	#[test_case]
 	fn realloc0() {
 		unsafe {
 			let mut ptr = alloc(1).unwrap();
-			assert!(get_size(ptr) >= 1);
 
 			for i in 1..memory::PAGE_SIZE {
 				ptr = realloc(ptr, i).unwrap();
-				assert!(get_size(ptr) >= i);
 				util::memset(ptr, -1, i);
-				assert!(get_size(ptr) >= i);
 			}
 
 			free(ptr);
@@ -406,13 +388,10 @@ mod test {
 	fn realloc1() {
 		unsafe {
 			let mut ptr = alloc(memory::PAGE_SIZE).unwrap();
-			assert!(get_size(ptr) >= 1);
 
 			for i in (1..memory::PAGE_SIZE).rev() {
 				ptr = realloc(ptr, i).unwrap();
-				assert!(get_size(ptr) >= i);
 				util::memset(ptr, -1, i);
-				assert!(get_size(ptr) >= i);
 			}
 
 			free(ptr);
@@ -430,9 +409,7 @@ mod test {
 
 			for i in 0..8 {
 				ptr0 = realloc(ptr0, math::pow2(i)).unwrap();
-				assert!(get_size(ptr0) >= math::pow2(i));
 				ptr1 = realloc(ptr1, math::pow2(i) + 1).unwrap();
-				assert!(get_size(ptr1) >= math::pow2(i) + 1);
 			}
 
 			free(ptr1);
@@ -451,9 +428,7 @@ mod test {
 
 			for i in (0..8).rev() {
 				ptr0 = realloc(ptr0, math::pow2(i)).unwrap();
-				assert!(get_size(ptr0) >= math::pow2(i));
 				ptr1 = realloc(ptr1, math::pow2(i) + 1).unwrap();
-				assert!(get_size(ptr1) >= math::pow2(i) + 1);
 			}
 
 			free(ptr1);

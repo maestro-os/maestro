@@ -24,6 +24,7 @@ use crate::file::mountpoint::MountSource;
 use crate::limits;
 use crate::process::mem_space::MemSpace;
 use crate::time::unit::Timestamp;
+use crate::time::unit::TimestampScale;
 use crate::time;
 use crate::util::FailableClone;
 use crate::util::IO;
@@ -352,9 +353,14 @@ impl File {
 	/// `mode` is the permission of the file.
 	/// `location` is the location of the file.
 	/// `content` is the content of the file. This value also determines the file type.
-	fn new(name: String, uid: Uid, gid: Gid, mode: Mode, location: FileLocation,
+	fn new(name: String, uid: Uid, gid: Gid, mut mode: Mode, location: FileLocation,
 		content: FileContent) -> Result<Self, Errno> {
-		let timestamp = time::get().unwrap_or(0);
+		let timestamp = time::get(TimestampScale::Second).unwrap_or(0);
+
+		// If the file is a symbolic link, permissions don't matter
+		if matches!(content, FileContent::Link(_)) {
+			mode = 0o777;
+		}
 
 		Ok(Self {
 			name,

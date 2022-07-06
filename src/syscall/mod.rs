@@ -91,6 +91,8 @@ mod signal;
 mod sigreturn;
 mod socketpair;
 mod statx;
+mod symlinkat;
+mod syncfs;
 mod time;
 mod tkill;
 mod truncate;
@@ -202,6 +204,8 @@ use signal::signal;
 use sigreturn::sigreturn;
 use socketpair::socketpair;
 use statx::statx;
+use symlinkat::symlinkat;
+use syncfs::syncfs;
 use time::time;
 use tkill::tkill;
 use truncate::truncate;
@@ -561,7 +565,7 @@ fn get_syscall(id: u32) -> Option<Syscall> {
 		0x12d => Some(Syscall { handler: &unlinkat, name: "unlinkat", args: &[] }),
 		// TODO 0x12e => Some(Syscall { handler: &renameat, name: "renameat", args: &[] }),
 		// TODO 0x12f => Some(Syscall { handler: &linkat, name: "linkat", args: &[] }),
-		// TODO 0x130 => Some(Syscall { handler: &symlinkat, name: "symlinkat", args: &[] }),
+		0x130 => Some(Syscall { handler: &symlinkat, name: "symlinkat", args: &[] }),
 		// TODO 0x131 => Some(Syscall { handler: &readlinkat, name: "readlinkat", args: &[] }),
 		0x132 => Some(Syscall { handler: &fchmodat, name: "fchmodat", args: &[] }),
 		0x133 => Some(Syscall { handler: &faccessat, name: "faccessat", args: &[] }),
@@ -616,7 +620,7 @@ fn get_syscall(id: u32) -> Option<Syscall> {
 		//	args: &[] }),
 		// TODO 0x157 => Some(Syscall { handler: &clock_adjtime, name: "clock_adjtime",
 		//	args: &[] }),
-		// TODO 0x158 => Some(Syscall { handler: &syncfs, name: "syncfs", args: &[] }),
+		0x158 => Some(Syscall { handler: &syncfs, name: "syncfs", args: &[] }),
 		// TODO 0x159 => Some(Syscall { handler: &sendmmsg, name: "sendmmsg", args: &[] }),
 		// TODO 0x15a => Some(Syscall { handler: &setns, name: "setns", args: &[] }),
 		// TODO 0x15b => Some(Syscall { handler: &process_vm_readv, name: "process_vm_readv",
