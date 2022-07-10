@@ -45,16 +45,19 @@ impl KernFS {
 	/// `name` is the name of the filesystem.
 	/// `readonly` tells whether the filesystem is readonly.
 	/// `mountpath` is the path at which the filesystem is mounted.
-	pub fn new(name: String, readonly: bool, mountpath: Path) -> Self {
-		Self {
+	pub fn new(name: String, readonly: bool, mountpath: Path) -> Result<Self, Errno> {
+		let mut nodes = Vec::new();
+		nodes.push(None)?;
+
+		Ok(Self {
 			name,
 			readonly,
 
 			mountpath,
 
-			nodes: Vec::new(),
+			nodes,
 			free_nodes: Vec::new(),
-		}
+		})
 	}
 
 	/// Sets the root node of the filesystem.

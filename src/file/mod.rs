@@ -238,6 +238,12 @@ impl FailableClone for DirEntry {
 	}
 }
 
+impl fmt::Display for DirEntry {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		write!(f, "(inode: {}; entry_type: {:?})", self.inode, self.entry_type)
+	}
+}
+
 /// Enumeration of all possible file contents for each file types.
 #[derive(Debug)]
 pub enum FileContent {
@@ -354,12 +360,30 @@ impl File {
 	/// `location` is the location of the file.
 	/// `content` is the content of the file. This value also determines the file type.
 	fn new(name: String, uid: Uid, gid: Gid, mut mode: Mode, location: FileLocation,
-		content: FileContent) -> Result<Self, Errno> {
+		mut content: FileContent) -> Result<Self, Errno> {
 		let timestamp = time::get(TimestampScale::Second).unwrap_or(0);
 
-		// If the file is a symbolic link, permissions don't matter
-		if matches!(content, FileContent::Link(_)) {
-			mode = 0o777;
+		match &mut content {
+			// If the file is a directory that doesn't contain `.` and `..` entries, add them
+			FileContent::Directory(entries) => {
+				// Add `.`
+				let name = String::from(b".")?;
+				if entries.get(&name).is_none() {
+					entries.insert(name, DirEntry {
+						inode: location.get_inode(),
+						entry_type: FileType::Directory,
+					})?;
+				}
+
+				// TODO Add `..`
+			},
+
+			// If the file is a symbolic link, permissions don't matter
+			FileContent::Link(_) => {
+				mode = 0o777;
+			},
+
+			_ => {},
 		}
 
 		Ok(Self {

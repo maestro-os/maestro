@@ -1,6 +1,7 @@
 //! A hashmap is a data structure that stores key/value pairs into buckets and uses the hash of the
 //! key to quickly get the bucket storing the value.
 
+use core::fmt;
 use core::hash::Hash;
 use core::hash::Hasher;
 use core::mem::size_of_val;
@@ -334,6 +335,23 @@ impl<'a, K: Hash + Eq, V> Iterator for HashMapIterator<'a, K, V> {
 
 	fn count(self) -> usize {
 		self.hm.len()
+	}
+}
+
+impl<K: Eq + Hash + fmt::Display, V: fmt::Display> fmt::Display for HashMap<K, V> {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		write!(f, "[")?;
+
+		let mut iter = self.iter().enumerate();
+		while let Some((i, (key, value))) = iter.next() {
+			write!(f, "{}: {}", key, value)?;
+
+			if i + 1 < self.len() {
+				write!(f, ", ")?;
+			}
+		}
+
+		write!(f, "]")
 	}
 }
 

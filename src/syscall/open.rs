@@ -17,7 +17,6 @@ use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::regs::Regs;
 use crate::util::FailableClone;
-use crate::util::container::string::String;
 use crate::util::ptr::SharedPtr;
 
 /// Mask of status flags to be kept by an open file description.
@@ -45,40 +44,33 @@ fn get_file(path: Path, flags: i32, mode: Mode, uid: Uid, gid: Gid)
 	let guard = mutex.lock();
 	let files_cache = guard.get_mut().as_mut().unwrap();
 
-	// Getting the path of the parent directory
-	let mut parent_path = path.failable_clone()?;
-	// The file's basename
-	let name = parent_path.pop();
+	if flags & open_file::O_CREAT != 0 {
+		// Getting the path of the parent directory
+		let mut parent_path = path.failable_clone()?;
+		// The file's basename
+		let name = parent_path.pop().ok_or_else(|| errno!(ENOENT))?;
 
-	// The parent directory
-	let parent_mutex = files_cache.get_file_from_path(&parent_path, uid, gid, true)?;
-	let parent_guard = parent_mutex.lock();
-	let parent = parent_guard.get_mut();
+		// The parent directory
+		let parent_mutex = files_cache.get_file_from_path(&parent_path, uid, gid, true)?;
+		let parent_guard = parent_mutex.lock();
+		let parent = parent_guard.get_mut();
 
-	let file_result = match &name {
-		Some(name) => {
-			// The file is not the root directory
-			files_cache.get_file_from_parent(parent, name.failable_clone()?, uid, gid,
-				follow_links)
-		},
+		let file_result = files_cache.get_file_from_parent(parent, name.failable_clone()?, uid,
+			gid, follow_links);
+		match file_result {
+			// If the file is found, return it
+			Ok(file) => Ok(file),
 
-		None => {
-			// The file is the root directory
-			files_cache.get_file_from_path(&path, uid, gid, follow_links)
+			Err(e) if e.as_int() == errno::ENOENT => {
+				// Creating the file
+				files_cache.create_file(parent, name, uid, gid, mode, FileContent::Regular)
+			},
+
+			Err(e) => Err(e),
 		}
-	};
-
-	match file_result {
-		// If the file is found, return it
-		Ok(file) => Ok(file),
-
-		Err(e) if e.as_int() == errno::ENOENT && flags & open_file::O_CREAT != 0 => {
-			// Creating the file
-			let name = name.unwrap_or_else(|| String::new());
-			files_cache.create_file(parent, name, uid, gid, mode, FileContent::Regular)
-		},
-
-		Err(e) => Err(e),
+	} else {
+		// The file is the root directory
+		files_cache.get_file_from_path(&path, uid, gid, follow_links)
 	}
 }
 

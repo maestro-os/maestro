@@ -50,7 +50,7 @@ impl TmpFS {
 			max_size,
 			size: 0,
 
-			fs: KernFS::new(String::from(b"tmpfs")?, readonly, mountpath),
+			fs: KernFS::new(String::from(b"tmpfs")?, readonly, mountpath)?,
 		};
 
 		// Adding the root node

@@ -21,8 +21,6 @@ use crate::util::ptr::SharedPtr;
 /// The size of the files pool.
 const FILES_POOL_SIZE: usize = 1024;
 
-// TODO If a filesystem doesn't return entries `.` and `..`, add them
-
 /// Cache storing files in memory. This cache allows to speedup accesses to the disk. It is
 /// synchronized with the disk when necessary.
 pub struct FCache {
@@ -110,7 +108,15 @@ impl FCache {
 		}
 
 		for i in 0..inner_path.get_elements_count() {
-			inode = fs.get_inode(io, Some(inode), &inner_path[i])?;
+			match inner_path[i].as_bytes() {
+				b"." => {},
+				b".." => {
+					let p = inner_path.range_from((i + 1)..)?;
+					return self.get_file_from_path_(&p, uid, gid, follow_links, follows_count);
+				},
+
+				_ => inode = fs.get_inode(io, Some(inode), &inner_path[i])?,
+			}
 
 			// Checking permissions
 			file = fs.load_file(io, inode, inner_path[i].failable_clone()?)?;

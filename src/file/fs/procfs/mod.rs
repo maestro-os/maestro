@@ -35,14 +35,14 @@ impl ProcFS {
 	/// `mountpath` is the path at which the filesystem is mounted.
 	pub fn new(readonly: bool, mountpath: Path) -> Result<Self, Errno> {
 		let mut fs = Self {
-			fs: KernFS::new(String::from(b"procfs")?, readonly, mountpath),
+			fs: KernFS::new(String::from(b"procfs")?, readonly, mountpath)?,
 		};
 
 		let mut root_entries = HashMap::new();
 
 		// Creating /proc/mounts
-		let mount_inode = fs.fs.add_node(KernFSNode::new(0o666, 0, 0,
-			FileContent::Regular, Some(Box::new(ProcFSMountIO {})?)))?;
+		let mount_inode = fs.fs.add_node(KernFSNode::new(0o666, 0, 0, FileContent::Regular,
+			Some(Box::new(ProcFSMountIO {})?)))?;
 		root_entries.insert(String::from(b"mounts")?, DirEntry {
 			inode: mount_inode,
 			entry_type: FileType::Regular,
@@ -78,8 +78,7 @@ impl Filesystem for ProcFS {
 		self.fs.get_inode(io, parent, name)
 	}
 
-	fn load_file(&mut self, io: &mut dyn IO, inode: INode, name: String)
-		-> Result<File, Errno> {
+	fn load_file(&mut self, io: &mut dyn IO, inode: INode, name: String) -> Result<File, Errno> {
 		self.fs.load_file(io, inode, name)
 	}
 
