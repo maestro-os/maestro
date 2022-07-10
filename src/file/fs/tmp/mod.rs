@@ -104,9 +104,8 @@ impl Filesystem for TmpFS {
 		self.fs.must_cache()
 	}
 
-	fn get_root_inode(&self, _io: &mut dyn IO) -> Result<INode, Errno> {
-		// TODO
-		todo!();
+	fn get_root_inode(&self, io: &mut dyn IO) -> Result<INode, Errno> {
+		self.fs.get_root_inode(io)
 	}
 
 	fn get_inode(&mut self, io: &mut dyn IO, parent: Option<INode>, name: &String)
@@ -119,27 +118,27 @@ impl Filesystem for TmpFS {
 		self.fs.load_file(io, inode, name)
 	}
 
-	fn add_file(&mut self, _io: &mut dyn IO, _parent_inode: INode, _name: String,
-		_uid: Uid, _gid: Gid, _mode: Mode, _content: FileContent) -> Result<File, Errno> {
-		// TODO
-		todo!();
+	fn add_file(&mut self, io: &mut dyn IO, parent_inode: INode, name: String,
+		uid: Uid, gid: Gid, mode: Mode, content: FileContent) -> Result<File, Errno> {
+		// TODO Update fs's size
+		self.fs.add_file(io, parent_inode, name, uid, gid, mode, content)
 	}
 
-	fn add_link(&mut self, _io: &mut dyn IO, _parent_inode: INode, _name: &String,
-		_inode: INode) -> Result<(), Errno> {
-		// TODO
-		todo!();
+	fn add_link(&mut self, io: &mut dyn IO, parent_inode: INode, name: &String,
+		inode: INode) -> Result<(), Errno> {
+		// TODO Update fs's size
+		self.fs.add_link(io, parent_inode, name, inode)
 	}
 
-	fn update_inode(&mut self, _io: &mut dyn IO, _file: &File) -> Result<(), Errno> {
-		// TODO
-		todo!();
+	fn update_inode(&mut self, io: &mut dyn IO, file: &File) -> Result<(), Errno> {
+		// TODO Update fs's size
+		self.fs.update_inode(io, file)
 	}
 
-	fn remove_file(&mut self, _io: &mut dyn IO, _parent_inode: INode, _name: &String)
+	fn remove_file(&mut self, io: &mut dyn IO, parent_inode: INode, name: &String)
 		-> Result<(), Errno> {
-		// TODO
-		todo!();
+		// TODO Update fs's size
+		self.fs.remove_file(io, parent_inode, name)
 	}
 
 	fn read_node(&mut self, io: &mut dyn IO, inode: INode, off: u64, buf: &mut [u8])
@@ -147,10 +146,10 @@ impl Filesystem for TmpFS {
 		self.fs.read_node(io, inode, off, buf)
 	}
 
-	fn write_node(&mut self, _io: &mut dyn IO, _inode: INode, _off: u64, _buf: &[u8])
+	fn write_node(&mut self, io: &mut dyn IO, inode: INode, off: u64, buf: &[u8])
 		-> Result<(), Errno> {
-		// TODO
-		todo!();
+		// TODO Update fs's size
+		self.fs.write_node(io, inode, off, buf)
 	}
 }
 

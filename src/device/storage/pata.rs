@@ -233,7 +233,8 @@ impl PATAInterface {
 	/// If the drive is already selected, the function does nothing unless `init` is set.
 	fn select(&self, init: bool) {
 		if !init {
-			// TODO If not necessary, return
+			// TODO Select if necessary
+			return;
 		}
 
 		let value = if !self.slave {

@@ -5,7 +5,6 @@ use crate::errno;
 use crate::process::Process;
 use crate::process::State;
 use crate::process::mem_space::ptr::SyscallPtr;
-use crate::process::pid::INIT_PID;
 use crate::process::pid::Pid;
 use crate::process::regs::Regs;
 use crate::process::rusage::RUsage;
@@ -132,17 +131,6 @@ fn check_waitable(pid: i32, wstatus: &mut i32, rusage: &mut RUsage) -> Result<Op
 /// `rusage` is the pointer to the resource usage structure.
 pub fn do_waitpid(pid: i32, wstatus: SyscallPtr<i32>, options: i32,
 	rusage: Option<SyscallPtr<RUsage>>) -> Result<i32, Errno> {
-	// Checking `pid`
-	{
-		let mutex = Process::get_current().unwrap();
-		let guard = mutex.lock();
-		let proc = guard.get_mut();
-
-		if pid == INIT_PID as i32 || pid == proc.get_pid() as i32 {
-			return Err(errno!(ECANCELED));
-		}
-	}
-
 	// Sleeping until a target process is waitable
 	loop {
 		let mut wstatus_val = Default::default();

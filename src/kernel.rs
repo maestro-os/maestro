@@ -22,7 +22,7 @@
 #![feature(trait_upcasting)]
 #![feature(unsize)]
 
-//#![deny(warnings)]
+#![deny(warnings)]
 #![allow(dead_code)]
 #![allow(unused_macros)]
 #![allow(incomplete_features)]
