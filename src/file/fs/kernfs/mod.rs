@@ -13,7 +13,9 @@ use crate::file::INode;
 use crate::file::Mode;
 use crate::file::Uid;
 use crate::file::fs::Filesystem;
+use crate::file::fs::Statfs;
 use crate::file::path::Path;
+use crate::memory;
 use crate::process::oom;
 use crate::util::FailableClone;
 use crate::util::IO;
@@ -23,6 +25,9 @@ use node::KernFSNode;
 
 /// The index of the root inode.
 const ROOT_INODE: INode = 0;
+
+/// The maximum length of a name in the filesystem.
+const MAX_NAME_LEN: usize = 255;
 
 /// Structure representing a kernel file system.
 pub struct KernFS {
@@ -61,11 +66,11 @@ impl KernFS {
 	}
 
 	/// Sets the root node of the filesystem.
-	pub fn set_root(&mut self, root: Option<KernFSNode>) -> Result<(), Errno> {
+	pub fn set_root(&mut self, root: KernFSNode) -> Result<(), Errno> {
 		if self.nodes.is_empty() {
-			self.nodes.push(root)?;
+			self.nodes.push(Some(root))?;
 		} else {
-			self.nodes[ROOT_INODE as _] = root;
+			self.nodes[ROOT_INODE as _] = Some(root);
 		}
 
 		Ok(())
@@ -138,6 +143,22 @@ impl Filesystem for KernFS {
 
 	fn must_cache(&self) -> bool {
 		false
+	}
+
+	fn get_stat(&self, _io: &mut dyn IO) -> Result<Statfs, Errno> {
+		Ok(Statfs {
+			f_type: 0, // TODO
+			f_bsize: memory::PAGE_SIZE as _,
+			f_blocks: 0,
+			f_bfree: 0,
+			f_bavail: 0,
+			f_files: self.nodes.len() as _,
+			f_ffree: 0,
+			f_fsid: 0, // TODO
+			f_namelen: MAX_NAME_LEN as _,
+			f_frsize: 0,
+			f_flags: 0,
+		})
 	}
 
 	fn get_root_inode(&self, _io: &mut dyn IO) -> Result<INode, Errno> {

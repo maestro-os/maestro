@@ -21,6 +21,33 @@ use crate::util::ptr::SharedPtr;
 use super::File;
 use super::path::Path;
 
+/// Structure storing statistics about a filesystem.
+#[repr(C)]
+pub struct Statfs {
+	/// Type of filesystem.
+	f_type: u32,
+	/// Optimal transfer block size.
+	f_bsize: u32,
+	/// Total data blocks in filesystem.
+	f_blocks: u32,
+	/// Free blocks in filesystem.
+	f_bfree: u32,
+	/// Free blocks available to unprivileged user.
+	f_bavail: u32,
+	/// Total inodes in filesystem.
+	f_files: u32,
+	/// Free inodes in filesystem.
+	f_ffree: u32,
+	/// Filesystem ID.
+	f_fsid: u64,
+	/// Maximum length of filenames.
+	f_namelen: u32,
+	/// Fragment size.
+	f_frsize: u32,
+	/// Mount flags of filesystem.
+	f_flags: u32,
+}
+
 /// Trait representing a filesystem.
 pub trait Filesystem {
 	/// Returns the name of the filesystem.
@@ -30,6 +57,9 @@ pub trait Filesystem {
 	fn is_readonly(&self) -> bool;
 	/// Tells the kernel whether it must cache files.
 	fn must_cache(&self) -> bool;
+
+	/// Returns statistics about the filesystem.
+	fn get_stat(&self, io: &mut dyn IO) -> Result<Statfs, Errno>;
 
 	/// Returns the root inode of the filesystem.
 	fn get_root_inode(&self, io: &mut dyn IO) -> Result<INode, Errno>;

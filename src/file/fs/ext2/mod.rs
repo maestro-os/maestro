@@ -47,6 +47,7 @@ use crate::file::Mode;
 use crate::file::Uid;
 use crate::file::fs::Filesystem;
 use crate::file::fs::FilesystemType;
+use crate::file::fs::Statfs;
 use crate::file::path::Path;
 use crate::memory::malloc;
 use crate::time::unit::TimestampScale;
@@ -126,6 +127,9 @@ const WRITE_REQUIRED_SPARSE_SUPERBLOCKS: u32 = 0x1;
 const WRITE_REQUIRED_64_BITS: u32 = 0x2;
 /// Directory contents are stored in the form of a Binary Tree.
 const WRITE_REQUIRED_DIRECTORY_BINARY_TREE: u32 = 0x4;
+
+/// The maximum length of a name in the filesystem.
+const MAX_NAME_LEN: usize = 255;
 
 /// Reads an object of the given type on the given device.
 /// `offset` is the offset in bytes on the device.
@@ -635,6 +639,25 @@ impl Filesystem for Ext2Fs {
 
 	fn must_cache(&self) -> bool {
 		true
+	}
+
+	fn get_stat(&self, _io: &mut dyn IO) -> Result<Statfs, Errno> {
+		let fragment_size = math::pow2(self.superblock.fragment_size_log + 10);
+
+		Ok(Statfs {
+			f_type: 0, // TODO
+			f_bsize: self.superblock.get_block_size(),
+			f_blocks: self.superblock.total_blocks,
+			f_bfree: self.superblock.total_unallocated_blocks,
+			// TODO Subtract blocks for superuser
+			f_bavail: self.superblock.total_unallocated_blocks,
+			f_files: self.superblock.total_inodes,
+			f_ffree: self.superblock.total_unallocated_inodes,
+			f_fsid: 0, // TODO
+			f_namelen: MAX_NAME_LEN as _,
+			f_frsize: fragment_size,
+			f_flags: 0, // TODO
+		})
 	}
 
 	fn get_root_inode(&self, _io: &mut dyn IO) -> Result<INode, Errno> {

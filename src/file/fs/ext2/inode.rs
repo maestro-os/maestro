@@ -925,9 +925,12 @@ impl Ext2INode {
 	/// If the file is not a directory, the behaviour is undefined.
 	pub fn add_dirent(&mut self, superblock: &mut Superblock, io: &mut dyn IO, entry_inode: u32,
 		name: &[u8], file_type: FileType) -> Result<(), Errno> {
+		if name.len() > super::MAX_NAME_LEN {
+			return Err(errno!(ENAMETOOLONG));
+		}
+
+		let entry_size = 8 + name.len() as u16;
 		let blk_size = superblock.get_block_size();
-		let name_length = name.len() as u16;
-		let entry_size = 8 + name_length;
 		if entry_size as u32 > blk_size {
 			return Err(errno!(ENAMETOOLONG));
 		}

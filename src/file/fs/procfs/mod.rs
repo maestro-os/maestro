@@ -11,6 +11,7 @@ use crate::file::Gid;
 use crate::file::INode;
 use crate::file::Mode;
 use crate::file::Uid;
+use crate::file::fs::Statfs;
 use crate::file::path::Path;
 use crate::util::IO;
 use crate::util::boxed::Box;
@@ -50,7 +51,7 @@ impl ProcFS {
 
 		// Adding the root node
 		let root_node = KernFSNode::new(0o666, 0, 0, FileContent::Directory(root_entries), None);
-		fs.fs.set_root(Some(root_node))?;
+		fs.fs.set_root(root_node)?;
 
 		Ok(fs)
 	}
@@ -67,6 +68,10 @@ impl Filesystem for ProcFS {
 
 	fn must_cache(&self) -> bool {
 		self.fs.must_cache()
+	}
+
+	fn get_stat(&self, io: &mut dyn IO) -> Result<Statfs, Errno> {
+		self.fs.get_stat(io)
 	}
 
 	fn get_root_inode(&self, io: &mut dyn IO) -> Result<INode, Errno> {

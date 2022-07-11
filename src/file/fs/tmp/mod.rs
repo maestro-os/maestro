@@ -10,6 +10,7 @@ use crate::file::Gid;
 use crate::file::INode;
 use crate::file::Mode;
 use crate::file::Uid;
+use crate::file::fs::Statfs;
 use crate::file::path::Path;
 use crate::util::IO;
 use crate::util::boxed::Box;
@@ -56,7 +57,7 @@ impl TmpFS {
 		// Adding the root node
 		let root_node = KernFSNode::new(0o777, 0, 0, FileContent::Directory(HashMap::new()), None);
 		fs.update_size(get_used_size(&root_node) as _, | fs | {
-			fs.fs.set_root(Some(root_node))?;
+			fs.fs.set_root(root_node)?;
 			Ok(())
 		})?;
 
@@ -102,6 +103,10 @@ impl Filesystem for TmpFS {
 
 	fn must_cache(&self) -> bool {
 		self.fs.must_cache()
+	}
+
+	fn get_stat(&self, io: &mut dyn IO) -> Result<Statfs, Errno> {
+		self.fs.get_stat(io)
 	}
 
 	fn get_root_inode(&self, io: &mut dyn IO) -> Result<INode, Errno> {

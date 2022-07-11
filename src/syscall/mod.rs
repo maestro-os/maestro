@@ -90,6 +90,7 @@ mod setuid;
 mod signal;
 mod sigreturn;
 mod socketpair;
+mod statfs;
 mod statx;
 mod symlinkat;
 mod syncfs;
@@ -203,6 +204,7 @@ use setuid::setuid;
 use signal::signal;
 use sigreturn::sigreturn;
 use socketpair::socketpair;
+use statfs::statfs;
 use statx::statx;
 use symlinkat::symlinkat;
 use syncfs::syncfs;
@@ -337,7 +339,7 @@ fn get_syscall(id: u32) -> Option<Syscall> {
 		// TODO 0x060 => Some(Syscall { handler: &getpriority, name: "getpriority", args: &[] }),
 		// TODO 0x061 => Some(Syscall { handler: &setpriority, name: "setpriority", args: &[] }),
 		// TODO 0x062 => Some(Syscall { handler: &profil, name: "profil", args: &[] }),
-		// TODO 0x063 => Some(Syscall { handler: &statfs, name: "statfs", args: &[] }),
+		0x063 => Some(Syscall { handler: &statfs, name: "statfs", args: &[] }),
 		// TODO 0x064 => Some(Syscall { handler: &fstatfs, name: "fstatfs", args: &[] }),
 		// TODO 0x065 => Some(Syscall { handler: &ioperm, name: "ioperm", args: &[] }),
 		// TODO 0x066 => Some(Syscall { handler: &socketcall, name: "socketcall", args: &[] }),
@@ -826,7 +828,7 @@ fn print_strace(regs: &Regs, result: Option<Result<i32, Errno>>) {
 #[no_mangle]
 pub extern "C" fn syscall_handler(regs: &mut Regs) {
 	// TODO Add switch to disable
-	//print_strace(regs, None);
+	print_strace(regs, None);
 
 	let id = regs.eax;
 	let result = match get_syscall(id) {
@@ -848,7 +850,7 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 	};
 
 	// TODO Add switch to disable
-	//print_strace(regs, Some(result));
+	print_strace(regs, Some(result));
 
 	// Setting the return value
 	let retval = {
