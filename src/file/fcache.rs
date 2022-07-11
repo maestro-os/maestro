@@ -112,6 +112,9 @@ impl FCache {
 				b"." => {},
 				b".." => {
 					let p = inner_path.range_from((i + 1)..)?;
+
+					drop(io_guard);
+					drop(mountpoint_guard);
 					return self.get_file_from_path_(&p, uid, gid, follow_links, follows_count);
 				},
 

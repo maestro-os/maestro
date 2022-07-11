@@ -17,7 +17,6 @@ use crate::util::IO;
 use crate::util::boxed::Box;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
-use mount::ProcFSMountIO;
 use super::Filesystem;
 use super::FilesystemType;
 use super::kernfs::KernFS;
@@ -42,15 +41,15 @@ impl ProcFS {
 		let mut root_entries = HashMap::new();
 
 		// Creating /proc/mounts
-		let mount_inode = fs.fs.add_node(KernFSNode::new(0o666, 0, 0, FileContent::Regular,
-			Some(Box::new(ProcFSMountIO {})?)))?;
+		let mount_inode = fs.fs.add_node(KernFSNode::new(0o444, 0, 0,
+			FileContent::Link(String::from(b"self/mounts")?), None))?;
 		root_entries.insert(String::from(b"mounts")?, DirEntry {
 			inode: mount_inode,
-			entry_type: FileType::Regular,
+			entry_type: FileType::Link,
 		})?;
 
 		// Adding the root node
-		let root_node = KernFSNode::new(0o666, 0, 0, FileContent::Directory(root_entries), None);
+		let root_node = KernFSNode::new(0o555, 0, 0, FileContent::Directory(root_entries), None);
 		fs.fs.set_root(root_node)?;
 
 		Ok(fs)
