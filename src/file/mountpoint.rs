@@ -89,9 +89,12 @@ impl MountSource {
 impl Eq for MountSource {}
 
 impl PartialEq for MountSource {
-	fn eq(other: &Self) -> Option<bool> {
-		// TODO
-		todo!();
+	fn eq(&self, other: &Self) -> bool {
+		match (self, other) {
+			(Self::Device(dev0), Self::Device(dev1)) => todo!(), // TODO
+			(Self::File(file0), Self::File(file1)) => todo!(), // TODO
+			(Self::KernFS(fs0), Self::KernFS(fs1)) => fs0 == fs1,
+		}
 	}
 }
 
