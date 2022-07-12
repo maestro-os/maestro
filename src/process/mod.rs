@@ -426,6 +426,18 @@ impl Process {
 		guard.get_mut().get_current_process()
 	}
 
+	/// Registers the current process to the procfs.
+	fn register_procfs(&self) -> Result<(), Errno> {
+		// TODO
+		todo!();
+	}
+
+	/// Unregisters the current process from the procfs.
+	fn unregister_procfs(&self) -> Result<(), Errno> {
+		// TODO
+		todo!();
+	}
+
 	/// Creates the init process and places it into the scheduler's queue. The process is set to
 	/// state `Running` by default.
 	/// The created process has user root.
@@ -504,6 +516,8 @@ impl Process {
 
 			process.duplicate_fd(STDIN_FILENO, NewFDConstraint::Fixed(STDOUT_FILENO), false)?;
 			process.duplicate_fd(STDIN_FILENO, NewFDConstraint::Fixed(STDERR_FILENO), false)?;
+
+			process.register_procfs()?;
 		}
 
 		let guard = unsafe {
@@ -1226,6 +1240,8 @@ impl Process {
 			exit_status: self.exit_status,
 			termsig: 0,
 		};
+		process.register_procfs()?;
+
 		self.add_child(pid)?;
 
 		let guard = unsafe {
@@ -1481,6 +1497,9 @@ impl Drop for Process {
 		if self.is_init() {
 			kernel_panic!("Terminated init process!");
 		}
+
+		// Unregister the process from the procfs
+		oom::wrap(|| self.unregister_procfs());
 
 		// Freeing the kernel stack. This is required because the process might share the same
 		// memory space with several other processes. And since, each process has its own kernel

@@ -13,10 +13,11 @@ use crate::file::Mode;
 use crate::file::Uid;
 use crate::file::fs::Statfs;
 use crate::file::path::Path;
+use crate::process::pid::Pid;
 use crate::util::IO;
-use crate::util::boxed::Box;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
+use crate::util::ptr::SharedPtr;
 use super::Filesystem;
 use super::FilesystemType;
 use super::kernfs::KernFS;
@@ -32,10 +33,11 @@ pub struct ProcFS {
 impl ProcFS {
 	/// Creates a new instance.
 	/// `readonly` tells whether the filesystem is readonly.
+	/// `fs_id` is the ID of the mounted filesystem.
 	/// `mountpath` is the path at which the filesystem is mounted.
-	pub fn new(readonly: bool, mountpath: Path) -> Result<Self, Errno> {
+	pub fn new(readonly: bool, fs_id: u32, mountpath: Path) -> Result<Self, Errno> {
 		let mut fs = Self {
-			fs: KernFS::new(String::from(b"procfs")?, readonly, mountpath)?,
+			fs: KernFS::new(String::from(b"procfs")?, fs_id, readonly, mountpath)?,
 		};
 
 		let mut root_entries = HashMap::new();
@@ -48,17 +50,36 @@ impl ProcFS {
 			entry_type: FileType::Link,
 		})?;
 
+		// TODO Create the `self` link (value depends on the current process)
+
 		// Adding the root node
 		let root_node = KernFSNode::new(0o555, 0, 0, FileContent::Directory(root_entries), None);
 		fs.fs.set_root(root_node)?;
 
 		Ok(fs)
 	}
+
+	/// Adds a process with the given PID `pid` to the filesystem.
+	pub fn add_process(&mut self, _pid: Pid) -> Result<(), Errno> {
+		// TODO
+		todo!();
+	}
+
+	/// Removes the process with pid `pid` from the filesystem.
+	/// If the process doesn't exist, the function does nothing.
+	pub fn remove_process(&mut self, _pid: Pid) -> Result<(), Errno> {
+		// TODO
+		todo!();
+	}
 }
 
 impl Filesystem for ProcFS {
 	fn get_name(&self) -> &[u8] {
 		self.fs.get_name()
+	}
+
+	fn get_id(&self) -> u32 {
+		self.fs.get_id()
 	}
 
 	fn is_readonly(&self) -> bool {
@@ -128,12 +149,13 @@ impl FilesystemType for ProcFsType {
 		Ok(false)
 	}
 
-	fn create_filesystem(&self, _io: &mut dyn IO) -> Result<Box<dyn Filesystem>, Errno> {
-		Ok(Box::new(ProcFS::new(false, Path::root())?)?)
+	fn create_filesystem(&self, _io: &mut dyn IO, fs_id: u32)
+		-> Result<SharedPtr<dyn Filesystem>, Errno> {
+		Ok(SharedPtr::new(ProcFS::new(false, fs_id, Path::root())?)?)
 	}
 
-	fn load_filesystem(&self, _io: &mut dyn IO, mountpath: Path, readonly: bool)
-		-> Result<Box<dyn Filesystem>, Errno> {
-		Ok(Box::new(ProcFS::new(readonly, mountpath)?)?)
+	fn load_filesystem(&self, _io: &mut dyn IO, fs_id: u32, mountpath: Path, readonly: bool)
+		-> Result<SharedPtr<dyn Filesystem>, Errno> {
+		Ok(SharedPtr::new(ProcFS::new(readonly, fs_id, mountpath)?)?)
 	}
 }

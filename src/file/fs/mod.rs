@@ -13,7 +13,6 @@ use crate::file::INode;
 use crate::file::Mode;
 use crate::file::Uid;
 use crate::util::IO;
-use crate::util::boxed::Box;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::lock::Mutex;
@@ -51,7 +50,9 @@ pub struct Statfs {
 /// Trait representing a filesystem.
 pub trait Filesystem {
 	/// Returns the name of the filesystem.
-	fn get_name(&self) -> &[u8];
+	fn get_name(&self) -> &[u8]; // TODO Remove?
+	/// Returns the ID of the filesystem.
+	fn get_id(&self) -> u32;
 
 	/// Tells whether the filesystem is mounted in read-only.
 	fn is_readonly(&self) -> bool;
@@ -135,17 +136,22 @@ pub trait FilesystemType {
 
 	/// Creates a new filesystem on the IO interface and returns its instance.
 	/// `io` is the IO interface.
-	fn create_filesystem(&self, io: &mut dyn IO) -> Result<Box<dyn Filesystem>, Errno>;
+	/// `fs_id` is the ID of the loaded filesystem. This ID is only used by the kernel and not
+	/// saved on the storage device.
+	fn create_filesystem(&self, io: &mut dyn IO, fs_id: u32)
+		-> Result<SharedPtr<dyn Filesystem>, Errno>;
 
 	/// Creates a new instance of the filesystem to mount it.
 	/// `io` is the IO interface.
+	/// `fs_id` is the ID of the loaded filesystem. This ID is only used by the kernel and not
+	/// saved on the storage device.
 	/// `mountpath` is the path on which the filesystem is mounted.
 	/// `readonly` tells whether the filesystem is mounted in read-only.
-	fn load_filesystem(&self, io: &mut dyn IO, mountpath: Path, readonly: bool)
-		-> Result<Box<dyn Filesystem>, Errno>;
+	fn load_filesystem(&self, io: &mut dyn IO, fs_id: u32, mountpath: Path, readonly: bool)
+		-> Result<SharedPtr<dyn Filesystem>, Errno>;
 }
 
-/// The list of mountpoints.
+/// The list of filesystem types.
 static FILESYSTEMS: Mutex<Vec<SharedPtr<dyn FilesystemType>>> = Mutex::new(Vec::new());
 
 /// Registers a new filesystem type `fs`.

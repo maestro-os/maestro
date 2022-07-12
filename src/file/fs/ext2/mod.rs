@@ -54,11 +54,11 @@ use crate::time::unit::TimestampScale;
 use crate::time;
 use crate::util::FailableClone;
 use crate::util::IO;
-use crate::util::boxed::Box;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::math;
+use crate::util::ptr::SharedPtr;
 use inode::Ext2INode;
 
 // TODO Take into account user's UID/GID when allocating block/inode to handle reserved
@@ -543,6 +543,8 @@ impl Superblock {
 
 /// Structure representing a instance of the ext2 filesystem.
 struct Ext2Fs {
+	/// The ID of the filesystem.
+	fs_id: u32,
 	/// The path at which the filesystem is mounted.
 	mountpath: Path,
 
@@ -556,10 +558,11 @@ struct Ext2Fs {
 impl Ext2Fs {
 	/// Creates a new instance.
 	/// If the filesystem cannot be mounted, the function returns an Err.
+	/// `fs_id` is the ID of the filesystem.
 	/// `mountpath` is the path on which the filesystem is mounted.
 	/// `readonly` tells whether the filesystem is mounted in read-only.
-	fn new(mut superblock: Superblock, io: &mut dyn IO, mountpath: Path, readonly: bool)
-		-> Result<Self, Errno> {
+	fn new(mut superblock: Superblock, io: &mut dyn IO, fs_id: u32, mountpath: Path,
+		readonly: bool) -> Result<Self, Errno> {
 		debug_assert!(superblock.is_valid());
 
 		// Checking the filesystem doesn't require features that are not implemented by the driver
@@ -618,6 +621,7 @@ impl Ext2Fs {
 		superblock.write(io)?;
 
 		Ok(Self {
+			fs_id,
 			mountpath,
 
 			superblock,
@@ -631,6 +635,10 @@ impl Ext2Fs {
 impl Filesystem for Ext2Fs {
 	fn get_name(&self) -> &[u8] {
 		b"ext2"
+	}
+
+	fn get_id(&self) -> u32 {
+		self.fs_id
 	}
 
 	fn is_readonly(&self) -> bool {
@@ -745,7 +753,10 @@ impl Filesystem for Ext2Fs {
 			},
 		};
 
-		let file_location = FileLocation::new(self.mountpath.failable_clone()?, inode);
+		let file_location = FileLocation {
+			fs_id: self.fs_id,
+			inode,
+		};
 		let mut file = File::new(name, inode_.uid, inode_.gid, inode_.get_permissions(),
 			file_location, file_content)?;
 		file.set_hard_links_count(inode_.hard_links_count as _);
@@ -777,7 +788,10 @@ impl Filesystem for Ext2Fs {
 		}
 
 		let inode_index = self.superblock.get_free_inode(io)?;
-		let location = FileLocation::new(self.mountpath.failable_clone()?, inode_index as _);
+		let location = FileLocation {
+			fs_id: self.fs_id,
+			inode: inode_index as _,
+		};
 
 		// The file
 		let file = File::new(name, uid, gid, mode, location, content)?;
@@ -876,7 +890,7 @@ impl Filesystem for Ext2Fs {
 		}
 
 		// The inode number
-		let inode = file.get_location().get_inode();
+		let inode = file.get_location().inode;
 		// The inode
 		let mut inode_ = Ext2INode::read(inode as _, &self.superblock, io)?;
 
@@ -992,7 +1006,8 @@ impl FilesystemType for Ext2FsType {
 		Ok(Superblock::read(io)?.is_valid())
 	}
 
-	fn create_filesystem(&self, io: &mut dyn IO) -> Result<Box<dyn Filesystem>, Errno> {
+	fn create_filesystem(&self, io: &mut dyn IO, fs_id: u32)
+		-> Result<SharedPtr<dyn Filesystem>, Errno> {
 		let timestamp = time::get(TimestampScale::Second).unwrap_or(0);
 
 		let blocks_count = (io.get_size() / DEFAULT_BLOCK_SIZE) as u32;
@@ -1149,15 +1164,15 @@ impl FilesystemType for Ext2FsType {
 		};
 		root_dir.write(inode::ROOT_DIRECTORY_INODE, &superblock, io)?;
 
-		let fs = Ext2Fs::new(superblock, io, Path::root(), true)?;
-		Ok(Box::new(fs)?)
+		let fs = Ext2Fs::new(superblock, io, fs_id, Path::root(), true)?;
+		Ok(SharedPtr::new(fs)?)
 	}
 
-	fn load_filesystem(&self, io: &mut dyn IO, mountpath: Path, readonly: bool)
-		-> Result<Box<dyn Filesystem>, Errno> {
+	fn load_filesystem(&self, io: &mut dyn IO, fs_id: u32, mountpath: Path, readonly: bool)
+		-> Result<SharedPtr<dyn Filesystem>, Errno> {
 		let superblock = Superblock::read(io)?;
-		let fs = Ext2Fs::new(superblock, io, mountpath, readonly)?;
+		let fs = Ext2Fs::new(superblock, io, fs_id, mountpath, readonly)?;
 
-		Ok(Box::new(fs)? as _)
+		Ok(SharedPtr::new(fs)? as _)
 	}
 }

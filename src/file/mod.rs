@@ -178,39 +178,17 @@ impl FileType {
 /// Structure representing the location of a file on a disk.
 #[derive(Debug)]
 pub struct FileLocation {
-	/// The path of the mountpoint.
-	mountpoint_path: Path, // TODO Replace by an allocated ID to save memory
+	/// The ID of the filesystem containing the file.
+	pub fs_id: u32,
 
 	/// The file's inode.
-	inode: INode,
+	pub inode: INode,
 }
 
 impl FileLocation {
-	/// Creates a new instance.
-	#[inline]
-	pub fn new(mountpoint_path: Path, inode: INode) -> Self {
-		Self {
-			mountpoint_path,
-
-			inode,
-		}
-	}
-
-	/// Returns the path of the mountpoint.
-	#[inline]
-	pub fn get_mountpoint_path(&self) -> &Path {
-		&self.mountpoint_path
-	}
-
 	/// Returns the mountpoint associated with the file's location.
 	pub fn get_mountpoint(&self) -> Option<SharedPtr<MountPoint>> {
-		mountpoint::from_path(&self.mountpoint_path)
-	}
-
-	/// Returns the inode number.
-	#[inline]
-	pub fn get_inode(&self) -> INode {
-		self.inode
+		mountpoint::from_id(self.mountpoint_id)
 	}
 }
 

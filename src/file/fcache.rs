@@ -93,7 +93,9 @@ impl FCache {
 		let inner_path = path.range_from(mountpoint.get_path().get_elements_count()..)?;
 
 		// The filesystem
-		let fs = mountpoint.get_filesystem();
+		let fs_mutex = mountpoint.get_filesystem();
+		let fs_guard = fs_mutex.lock();
+		let fs = fs_guard.get();
 
 		// The root inode
 		let mut inode = fs.get_root_inode(io)?;
@@ -113,6 +115,7 @@ impl FCache {
 				b".." => {
 					let p = inner_path.range_from((i + 1)..)?;
 
+					drop(fs_guard);
 					drop(io_guard);
 					drop(mountpoint_guard);
 					return self.get_file_from_path_(&p, uid, gid, follow_links, follows_count);
@@ -140,6 +143,7 @@ impl FCache {
 					let link_path = Path::from_str(link_path.as_bytes(), false)?;
 					let new_path = parent_path.concat(&link_path)?;
 
+					drop(fs_guard);
 					drop(io_guard);
 					drop(mountpoint_guard);
 					return self.get_file_from_path_(&new_path, uid, gid, follow_links,
@@ -198,9 +202,11 @@ impl FCache {
 		let io = io_guard.get_mut();
 
 		// The filesystem
-		let fs = mountpoint.get_filesystem();
+		let fs_mutex = mountpoint.get_filesystem();
+		let fs_guard = fs_mutex.lock();
+		let fs = fs_guard.get();
 
-		let inode = fs.get_inode(io, Some(parent.get_location().get_inode()), &name)?;
+		let inode = fs.get_inode(io, Some(parent.get_location().inode), &name)?;
 		let mut file = fs.load_file(io, inode, name)?;
 
 		if follow_links {
@@ -208,6 +214,7 @@ impl FCache {
 				let link_path = Path::from_str(link_path.as_bytes(), false)?;
 				let new_path = parent.get_path()?.concat(&link_path)?;
 
+				drop(fs_guard);
 				drop(io_guard);
 				drop(mountpoint_guard);
 				return self.get_file_from_path_(&new_path, uid, gid, follow_links, 1);
@@ -248,13 +255,16 @@ impl FCache {
 		let io_guard = io_mutex.lock();
 		let io = io_guard.get_mut();
 
-		let fs = mountpoint.get_filesystem();
-		if fs.is_readonly() {
+		// Getting the filesystem
+		let fs_mutex = mountpoint.get_filesystem();
+		let fs_guard = fs_mutex.lock();
+		let fs = fs_guard.get();
+		if mountpoint.is_readonly() || fs.is_readonly() {
 			return Err(errno!(EROFS));
 		}
 
 		// The parent directory's inode
-		let parent_inode = parent.get_location().get_inode();
+		let parent_inode = parent.get_location().inode;
 		// Adding the file to the filesystem
 		let mut file = fs.add_file(io, parent_inode, name, uid, gid, mode, content)?;
 
@@ -280,7 +290,7 @@ impl FCache {
 		let parent_mutex = self.get_file_from_path(file.get_parent_path(), uid, gid, true)?;
 		let parent_guard = parent_mutex.lock();
 		let parent = parent_guard.get();
-		let parent_inode = parent.get_location().get_inode();
+		let parent_inode = parent.get_location().inode;
 
 		// Checking permissions
 		if !file.can_write(uid, gid) || !parent.can_write(uid, gid) {
@@ -299,8 +309,15 @@ impl FCache {
 		let io_guard = io_mutex.lock();
 		let io = io_guard.get_mut();
 
+		// Getting the filesystem
+		let fs_mutex = mountpoint.get_filesystem();
+		let fs_guard = fs_mutex.lock();
+		let fs = fs_guard.get();
+		if mountpoint.is_readonly() || fs.is_readonly() {
+			return Err(errno!(EROFS));
+		}
+
 		// Removing the file
-		let fs = mountpoint.get_filesystem();
 		fs.remove_file(io, parent_inode, file.get_name())?;
 
 		Ok(())

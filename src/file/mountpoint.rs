@@ -10,9 +10,8 @@ use crate::file::fs;
 use crate::util::DummyIO;
 use crate::util::FailableClone;
 use crate::util::IO;
-use crate::util::boxed::Box;
-use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
+use crate::util::container::vec::Vec;
 use crate::util::lock::Mutex;
 use crate::util::ptr::SharedPtr;
 use super::path::Path;
@@ -46,6 +45,7 @@ const FLAG_SYNCHRONOUS: u32 = 0b100000000000;
 // TODO When removing a mountpoint, return an error if another mountpoint is present in a subdir
 
 /// Enumeration of mount sources.
+#[derive(Eq, PartialEq)]
 pub enum MountSource {
 	/// The mountpoint is mounted from a device.
 	Device(SharedPtr<Device>),
@@ -87,18 +87,52 @@ impl MountSource {
 	}
 }
 
+/// The list of loaded filesystems associated with their respective ID.
+static FILESYSTEMS: Mutex<Vec<(u32, SharedPtr<dyn Filesystem>)>>
+	= Mutex::new(Vec::new());
+
+/// Loads a filesystem.
+/// `io` is the I/O interface to the storage device.
+/// `path` is the path to the directory on which the filesystem is mounted.
+/// `fs_type` is the type of the filesystem to be loaded.
+/// `readonly` tells whether the filesystem is mount in readonly.
+/// On success, the function returns the ID of the loaded filesystem.
+fn load_fs(io: &mut dyn IO, path: Path, fs_type: &dyn FilesystemType, readonly: bool)
+	-> Result<u32, Errno> {
+	// TODO Alloc id
+	let fs = fs_type.load_filesystem(io, fs_id, path, readonly)?;
+
+	let guard = FILESYSTEMS.lock();
+	let container = guard.get_mut();
+
+	let index = match container.binary_search_by(| (i, _) | i.cmp(&fs_id)) {
+		Ok(i) | Err(i) => i,
+	};
+
+	container.insert(index, fs)?;
+	Ok(id)
+}
+
+/// Returns the filesystem with the given ID `id`.
+fn get_fs(id: u32) -> Option<SharedPtr<dyn Filesystem>> {
+	let guard = FILESYSTEMS.lock();
+	let container = guard.get_mut();
+
+	let index = container.binary_search_by(| (i, _) | i.cmp(&id)).ok()?;
+	Some(container[index].1.clone())
+}
+
 /// Structure representing a mount point.
 pub struct MountPoint {
 	/// The source of the mountpoint.
 	source: MountSource,
+	/// The ID of the filesystem associated with the mountpoint.
+	fs_id: u32,
 
 	/// Mount flags.
 	flags: u32,
 	/// The path to the mount directory.
 	path: Path,
-
-	/// An instance of the filesystem associated with the mountpoint.
-	filesystem: Box<dyn Filesystem>,
 }
 
 impl MountPoint {
@@ -118,23 +152,22 @@ impl MountPoint {
 		let readonly = flags & FLAG_RDONLY != 0;
 
 		// Getting the filesystem type
-		let fs_type_ptr = match fs_type {
+		let fs_type_mutex = match fs_type {
 			Some(fs_type) => fs_type,
 			None => fs::detect(io)?,
 		};
-		let fs_type_guard = fs_type_ptr.lock();
+		let fs_type_guard = fs_type_mutex.lock();
 		let fs_type = fs_type_guard.get();
 
 		// Loading the filesystem
-		let filesystem = fs_type.load_filesystem(io, path.failable_clone()?, readonly)?;
+		let fs_id = load_fs(io, path.failable_clone()?, fs_type, readonly)?;
 
 		Ok(Self {
 			source,
+			fs_id,
 
 			flags,
 			path,
-
-			filesystem,
 		})
 	}
 
@@ -158,33 +191,25 @@ impl MountPoint {
 
 	/// Returns a mutable reference to the filesystem associated with the device.
 	#[inline(always)]
-	pub fn get_filesystem(&mut self) -> &mut dyn Filesystem {
-		self.filesystem.as_mut()
+	pub fn get_filesystem(&mut self) -> SharedPtr<dyn Filesystem> {
+		get_fs(self.fs_id).unwrap()
 	}
 
-	/// Tells whether the mountpoint's filesystem is mounted in read-only.
+	/// Tells whether the mountpoint's is mounted in read-only.
 	#[inline(always)]
 	pub fn is_readonly(&self) -> bool {
-		self.flags & FLAG_RDONLY != 0 || self.filesystem.is_readonly()
-	}
-
-	/// Tells the kernel whether it must cache files.
-	#[inline(always)]
-	pub fn must_cache(&self) -> bool {
-		self.filesystem.must_cache()
+		self.flags & FLAG_RDONLY != 0
 	}
 }
 
-/// The list of mountpoints.
-static MOUNT_POINTS: Mutex<HashMap<Path, SharedPtr<MountPoint>>> = Mutex::new(HashMap::new());
+/// The list of mountpoints with their respective ID.
+static MOUNT_POINTS: Mutex<Vec<(u32, SharedPtr<MountPoint>)>> = Mutex::new(Vec::new());
 
 /// Registers a new mountpoint `mountpoint`. If a mountpoint is already present at the same path,
 /// the function fails.
 pub fn register(mountpoint: MountPoint) -> Result<SharedPtr<MountPoint>, Errno> {
 	let guard = MOUNT_POINTS.lock();
 	let container = guard.get_mut();
-
-	let path = mountpoint.get_path().failable_clone()?;
 
 	let shared_ptr = SharedPtr::new(mountpoint)?;
 	container.insert(path, shared_ptr.clone())?;
@@ -214,6 +239,14 @@ pub fn get_deepest(path: &Path) -> Option<SharedPtr<MountPoint>> {
 	}
 
 	max
+}
+
+/// Returns the mountpoint with id `id`. If it doesn't exist, the function returns None.
+pub fn from_id(id: u32) -> Option<SharedPtr<MountPoint>> {
+	let guard = MOUNT_POINTS.lock();
+	let container = guard.get_mut();
+
+	container.binary_search_by(| (i0, _), (i1, _) | i0.cmp(i1)).ok()
 }
 
 /// Returns the mountpoint with path `path`. If it doesn't exist, the function returns None.
