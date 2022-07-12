@@ -108,8 +108,7 @@ pub fn statx(regs: &Regs) -> Result<i32, Errno> {
 	};
 
 	// Getting the file's mountpoint
-	let mountpath = file.get_location().get_mountpoint_path();
-	let mountpoint_mutex = mountpoint::from_path(mountpath).unwrap();
+	let mountpoint_mutex = mountpoint::from_id(file.get_location().fs_id).unwrap();
 	let mountpoint_guard = mountpoint_mutex.lock();
 	let mountpoint = mountpoint_guard.get();
 
@@ -134,7 +133,7 @@ pub fn statx(regs: &Regs) -> Result<i32, Errno> {
 		stx_uid: file.get_uid() as _,
 		stx_gid: file.get_gid() as _,
 		stx_mode: file.get_mode() as _,
-		stx_ino: file.get_location().get_inode(),
+		stx_ino: file.get_location().inode,
 		stx_size: file.get_size(),
 		stx_blocks: file.get_blocks_count(),
 		stx_attributes_mask: 0, // TODO

@@ -175,6 +175,7 @@ impl FileType {
 	}
 }
 
+// TODO Determine whether mountpoint ID or fs ID should be used
 /// Structure representing the location of a file on a disk.
 #[derive(Debug)]
 pub struct FileLocation {
@@ -194,7 +195,7 @@ impl FileLocation {
 
 impl fmt::Display for FileLocation {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		write!(f, "{}:{}", self.mountpoint_path, self.inode)
+		write!(f, "{}:{}", self.fs_id, self.inode)
 	}
 }
 
@@ -348,7 +349,7 @@ impl File {
 				let name = String::from(b".")?;
 				if entries.get(&name).is_none() {
 					entries.insert(name, DirEntry {
-						inode: location.get_inode(),
+						inode: location.inode,
 						entry_type: FileType::Directory,
 					})?;
 				}
@@ -586,7 +587,7 @@ impl File {
 	/// Creates a directory entry corresponding to the current file.
 	pub fn to_dir_entry(&self) -> DirEntry {
 		DirEntry {
-			inode: self.location.get_inode(),
+			inode: self.location.inode,
 			entry_type: self.get_file_type(),
 		}
 	}
@@ -667,8 +668,11 @@ impl File {
 		let io_guard = io_mutex.lock();
 		let io = io_guard.get_mut();
 
-		let filesystem = mountpoint.get_filesystem();
-		filesystem.update_inode(io, self)
+		let fs_mutex = mountpoint.get_filesystem();
+		let fs_guard = fs_mutex.lock();
+		let fs = fs_guard.get();
+
+		fs.update_inode(io, self)
 	}
 }
 
@@ -688,8 +692,11 @@ impl IO for File {
 				let io_guard = io_mutex.lock();
 				let io = io_guard.get_mut();
 
-				let filesystem = mountpoint.get_filesystem();
-				filesystem.read_node(io, self.location.get_inode(), off, buff)
+				let fs_mutex = mountpoint.get_filesystem();
+				let fs_guard = fs_mutex.lock();
+				let fs = fs_guard.get_mut();
+
+				fs.read_node(io, self.location.inode, off, buff)
 			},
 
 			FileContent::Directory(_) => Err(errno!(EISDIR)),
@@ -736,8 +743,11 @@ impl IO for File {
 				let io_guard = io_mutex.lock();
 				let io = io_guard.get_mut();
 
-				let filesystem = mountpoint.get_filesystem();
-				filesystem.write_node(io, self.location.get_inode(), off, buff)?;
+				let fs_mutex = mountpoint.get_filesystem();
+				let fs_guard = fs_mutex.lock();
+				let fs = fs_guard.get_mut();
+
+				fs.write_node(io, self.location.inode, off, buff)?;
 
 				self.size = max(off + buff.len() as u64, self.size);
 				Ok(buff.len() as _)

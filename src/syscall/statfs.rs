@@ -41,12 +41,14 @@ pub fn statfs(regs: &Regs) -> Result<i32, Errno> {
 	let mountpoint_guard = mountpoint_mutex.lock();
 	let mountpoint = mountpoint_guard.get_mut();
 
-
 	let io_mutex = mountpoint.get_source().get_io()?;
 	let io_guard = io_mutex.lock();
 	let io = io_guard.get_mut();
 
-	let filesystem = mountpoint.get_filesystem();
+	let fs_mutex = mountpoint.get_filesystem();
+	let fs_guard = fs_mutex.lock();
+	let fs = fs_guard.get();
+
 	let stat = filesystem.get_stat(io)?;
 
 	// Writing the statfs structure to userspace

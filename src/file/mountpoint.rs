@@ -45,7 +45,6 @@ const FLAG_SYNCHRONOUS: u32 = 0b100000000000;
 // TODO When removing a mountpoint, return an error if another mountpoint is present in a subdir
 
 /// Enumeration of mount sources.
-#[derive(Eq, PartialEq)]
 pub enum MountSource {
 	/// The mountpoint is mounted from a device.
 	Device(SharedPtr<Device>),
@@ -84,6 +83,15 @@ impl MountSource {
 			Self::File(file) => Ok(file.clone() as _),
 			Self::KernFS(_) => Ok(SharedPtr::new(DummyIO {})? as _),
 		}
+	}
+}
+
+impl Eq for MountSource {}
+
+impl PartialEq for MountSource {
+	fn eq(other: &Self) -> Option<bool> {
+		// TODO
+		todo!();
 	}
 }
 
@@ -160,6 +168,7 @@ impl MountPoint {
 		let fs_type = fs_type_guard.get();
 
 		// Loading the filesystem
+		// TODO If the filesystem is already loaded, use the same instance instead
 		let fs_id = load_fs(io, path.failable_clone()?, fs_type, readonly)?;
 
 		Ok(Self {
@@ -203,7 +212,7 @@ impl MountPoint {
 }
 
 /// The list of mountpoints with their respective ID.
-static MOUNT_POINTS: Mutex<Vec<(u32, SharedPtr<MountPoint>)>> = Mutex::new(Vec::new());
+static MOUNT_POINTS: Mutex<Vec<(u32, Path, SharedPtr<MountPoint>)>> = Mutex::new(Vec::new());
 
 /// Registers a new mountpoint `mountpoint`. If a mountpoint is already present at the same path,
 /// the function fails.
@@ -223,7 +232,7 @@ pub fn get_deepest(path: &Path) -> Option<SharedPtr<MountPoint>> {
 	let container = guard.get_mut();
 
 	let mut max: Option<SharedPtr<MountPoint>> = None;
-	for (mount_path, m) in container.iter() {
+	for (_, mount_path, m) in container.iter() {
 		if let Some(max) = max.as_mut() {
 			let max_guard = max.lock();
 			let max_path = max_guard.get().get_path();
@@ -246,7 +255,8 @@ pub fn from_id(id: u32) -> Option<SharedPtr<MountPoint>> {
 	let guard = MOUNT_POINTS.lock();
 	let container = guard.get_mut();
 
-	container.binary_search_by(| (i0, _), (i1, _) | i0.cmp(i1)).ok()
+	let index = container.binary_search_by(| (i, _, _) | i.cmp(&id)).ok()?;
+	Some(container[index].2.clone())
 }
 
 /// Returns the mountpoint with path `path`. If it doesn't exist, the function returns None.
@@ -254,5 +264,8 @@ pub fn from_path(path: &Path) -> Option<SharedPtr<MountPoint>> {
 	let guard = MOUNT_POINTS.lock();
 	let container = guard.get_mut();
 
-	Some(container.get(path)?.clone())
+	Some(container.iter()
+		.filter(| (_, p, _ )| p == path)
+		.next()?
+		.clone())
 }
