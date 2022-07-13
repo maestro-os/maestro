@@ -1,8 +1,8 @@
 //! A mount point is a directory in which a filesystem is mounted.
 
-use crate::device::Device;
+use crate::device::DeviceType;
+use crate::device;
 use crate::errno::Errno;
-use crate::file::File;
 use crate::file::fcache;
 use crate::file::fs::Filesystem;
 use crate::file::fs::FilesystemType;
@@ -45,13 +45,25 @@ const FLAG_SYNCHRONOUS: u32 = 0b100000000000;
 // TODO When removing a mountpoint, return an error if another mountpoint is present in a subdir
 
 /// Enumeration of mount sources.
+#[derive(Eq, PartialEq)]
 pub enum MountSource {
 	/// The mountpoint is mounted from a device.
-	Device(SharedPtr<Device>),
+	Device {
+		/// The device type.
+		dev_type: DeviceType,
+
+		/// The major number.
+		major: u32,
+		/// The minor number.
+		minor: u32,
+	},
+
 	/// The mountpoint is mounted from a file.
-	File(SharedPtr<File>),
-	/// The mountpoint is mounted to a kernfs.
-	KernFS(String),
+	File(Path),
+
+	/// The mountpoint is bound to a virtual filesystem and thus isn't associated with any device.
+	/// The string value is the name of the source.
+	NoDev(String),
 }
 
 impl MountSource {
@@ -70,8 +82,8 @@ impl MountSource {
 		};
 
 		match result {
-			Ok(file) => Ok(Self::File(file)),
-			Err(err) if err == errno!(ENOENT) => Ok(Self::KernFS(String::from(string)?)),
+			Ok(_) => Ok(Self::File(path)),
+			Err(err) if err == errno!(ENOENT) => Ok(Self::NoDev(String::from(string)?)),
 			Err(err) => Err(err),
 		}
 	}
@@ -79,28 +91,45 @@ impl MountSource {
 	/// Returns the IO interface for the mount source.
 	pub fn get_io(&self) -> Result<SharedPtr<dyn IO>, Errno> {
 		match self {
-			Self::Device(dev) => Ok(dev.clone() as _),
-			Self::File(file) => Ok(file.clone() as _),
-			Self::KernFS(_) => Ok(SharedPtr::new(DummyIO {})? as _),
+			Self::Device {
+				dev_type,
+
+				major,
+				minor,
+			} => {
+				let dev = device::get_device(*dev_type, *major, *minor)
+					.ok_or_else(|| errno!(ENODEV))?;
+				Ok(dev as _)
+			},
+
+			Self::File(path) => {
+				let fcache_mutex = fcache::get();
+				let fcache_guard = fcache_mutex.lock();
+				let fcache = fcache_guard.get().unwrap();
+
+				let file = fcache.get_file_from_path(path, 0, 0, true)?;
+				Ok(file as _)
+			},
+
+			Self::NoDev(_) => Ok(SharedPtr::new(DummyIO {})? as _),
 		}
 	}
 }
 
-impl Eq for MountSource {}
+/// Structure representing a loaded filesystem.
+struct LoadedFS {
+	/// The ID of the filesystem.
+	id: u32,
 
-impl PartialEq for MountSource {
-	fn eq(&self, other: &Self) -> bool {
-		match (self, other) {
-			(Self::Device(dev0), Self::Device(dev1)) => todo!(), // TODO
-			(Self::File(file0), Self::File(file1)) => todo!(), // TODO
-			(Self::KernFS(fs0), Self::KernFS(fs1)) => fs0 == fs1,
-		}
-	}
+	/// The source from which the filesystem is loaded.
+	mount_source: MountSource,
+
+	/// The filesystem.
+	fs: SharedPtr<dyn Filesystem>,
 }
 
 /// The list of loaded filesystems associated with their respective ID.
-static FILESYSTEMS: Mutex<Vec<(u32, SharedPtr<dyn Filesystem>)>>
-	= Mutex::new(Vec::new());
+static FILESYSTEMS: Mutex<Vec<LoadedFS>> = Mutex::new(Vec::new());
 
 /// Loads a filesystem.
 /// `io` is the I/O interface to the storage device.
@@ -110,12 +139,11 @@ static FILESYSTEMS: Mutex<Vec<(u32, SharedPtr<dyn Filesystem>)>>
 /// On success, the function returns the ID of the loaded filesystem.
 fn load_fs(io: &mut dyn IO, path: Path, fs_type: &dyn FilesystemType, readonly: bool)
 	-> Result<u32, Errno> {
-	// TODO Alloc id
-	let fs = fs_type.load_filesystem(io, fs_id, path, readonly)?;
-
 	let guard = FILESYSTEMS.lock();
 	let container = guard.get_mut();
 
+	// TODO Alloc id
+	let fs = fs_type.load_filesystem(io, fs_id, path, readonly)?;
 	let index = match container.binary_search_by(| (i, _) | i.cmp(&fs_id)) {
 		Ok(i) | Err(i) => i,
 	};
@@ -124,13 +152,21 @@ fn load_fs(io: &mut dyn IO, path: Path, fs_type: &dyn FilesystemType, readonly: 
 	Ok(id)
 }
 
-/// Returns the filesystem with the given ID `id`.
-fn get_fs(id: u32) -> Option<SharedPtr<dyn Filesystem>> {
+/// Returns the loaded filesystem with the given ID `id`.
+/// If the filesystem doesn't exist, the function returns None.
+pub fn get_fs_by_id(id: u32) -> Option<SharedPtr<dyn Filesystem>> {
 	let guard = FILESYSTEMS.lock();
 	let container = guard.get_mut();
 
-	let index = container.binary_search_by(| (i, _) | i.cmp(&id)).ok()?;
-	Some(container[index].1.clone())
+	let index = container.binary_search_by(| fs | fs.id.cmp(&id)).ok()?;
+	Some(container[index].fs.clone())
+}
+
+/// Returns the loaded filesystem with the given source `source`.
+/// If the filesystem doesn't exist, the function returns None.
+pub fn get_fs_by_source(_source: MountSource) -> Option<SharedPtr<dyn Filesystem>> {
+	// TODO
+	todo!();
 }
 
 /// Structure representing a mount point.
@@ -170,9 +206,11 @@ impl MountPoint {
 		let fs_type_guard = fs_type_mutex.lock();
 		let fs_type = fs_type_guard.get();
 
-		// Loading the filesystem
-		// TODO If the filesystem is already loaded, use the same instance instead
-		let fs_id = load_fs(io, path.failable_clone()?, fs_type, readonly)?;
+		// Get the filesystem ID (load it if necessary)
+		let fs_id = match get_fs_by_source() {
+			Some(fs) => fs.get_id(),
+			None => load_fs(io, path.failable_clone()?, fs_type, readonly)?,
+		};
 
 		Ok(Self {
 			source,
@@ -204,7 +242,7 @@ impl MountPoint {
 	/// Returns a mutable reference to the filesystem associated with the device.
 	#[inline(always)]
 	pub fn get_filesystem(&mut self) -> SharedPtr<dyn Filesystem> {
-		get_fs(self.fs_id).unwrap()
+		get_fs_by_id(self.fs_id).unwrap()
 	}
 
 	/// Tells whether the mountpoint's is mounted in read-only.
@@ -270,5 +308,5 @@ pub fn from_path(path: &Path) -> Option<SharedPtr<MountPoint>> {
 	Some(container.iter()
 		.filter(| (_, p, _ )| p == path)
 		.next()?
-		.clone())
+		.2.clone())
 }

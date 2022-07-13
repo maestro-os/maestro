@@ -175,7 +175,6 @@ impl FileType {
 	}
 }
 
-// TODO Determine whether mountpoint ID or fs ID should be used
 /// Structure representing the location of a file on a disk.
 #[derive(Debug)]
 pub struct FileLocation {
@@ -849,12 +848,13 @@ pub fn resolve_links(file: SharedPtr<File>, uid: Uid, gid: Gid) -> Result<Path, 
 pub fn init(root_device_type: DeviceType, root_major: u32, root_minor: u32) -> Result<(), Errno> {
 	fs::register_defaults()?;
 
-	// The root device
-	let root_dev = device::get_device(root_device_type, root_major, root_minor)
-		.ok_or_else(|| errno!(ENODEV))?;
-
 	// Creating the root mountpoint
-	let mount_source = MountSource::Device(root_dev);
+	let mount_source = MountSource::Device {
+		dev_type: root_device_type,
+
+		major: root_major,
+		minor: root_minor,
+	};
 	let root_mount = MountPoint::new(mount_source, None, 0, Path::root())?;
 	mountpoint::register(root_mount)?;
 

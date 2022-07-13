@@ -49,7 +49,7 @@ pub fn statfs(regs: &Regs) -> Result<i32, Errno> {
 	let fs_guard = fs_mutex.lock();
 	let fs = fs_guard.get();
 
-	let stat = filesystem.get_stat(io)?;
+	let stat = fs.get_stat(io)?;
 
 	// Writing the statfs structure to userspace
 	{

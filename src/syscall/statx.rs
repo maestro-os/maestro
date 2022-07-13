@@ -114,14 +114,8 @@ pub fn statx(regs: &Regs) -> Result<i32, Errno> {
 
 	// Getting the major and minor numbers of the device of the file's filesystem
 	let (stx_dev_major, stx_dev_minor) = match mountpoint.get_source() {
-		MountSource::Device(dev_mutex) => {
-			let dev_guard = dev_mutex.lock();
-			let dev = dev_guard.get();
-
-			(dev.get_major(), dev.get_minor())
-		},
-
-		MountSource::File(_) | MountSource::KernFS(_) => (0, 0),
+		MountSource::Device { major, minor, .. } => (*major, *minor),
+		MountSource::File(_) | MountSource::NoDev(_) => (0, 0),
 	};
 
 	// Filling the structure

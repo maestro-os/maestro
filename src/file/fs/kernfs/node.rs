@@ -11,6 +11,9 @@ use crate::time;
 use crate::util::IO;
 use crate::util::boxed::Box;
 
+// TODO Turn the node into a trait and add a structure deriving it which represents a dummy node
+// (the current struct)
+
 /// Trait representing a node in a kernfs.
 pub struct KernFSNode {
 	/// The number of hard links to the node.

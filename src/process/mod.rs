@@ -34,6 +34,7 @@ use crate::file::fcache;
 use crate::file::fd::FD_CLOEXEC;
 use crate::file::fd::FileDescriptor;
 use crate::file::fd::NewFDConstraint;
+use crate::file::mountpoint;
 use crate::file::open_file::FDTarget;
 use crate::file::open_file::OpenFile;
 use crate::file::open_file;
@@ -42,11 +43,13 @@ use crate::file;
 use crate::gdt::ldt::LDT;
 use crate::gdt;
 use crate::limits;
+use crate::process::mountpoint::MountSource;
 use crate::process::open_file::O_CLOEXEC;
 use crate::tty::TTYHandle;
 use crate::tty;
 use crate::util::FailableClone;
 use crate::util::container::bitfield::Bitfield;
+use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::lock::*;
 use crate::util::ptr::IntSharedPtr;
@@ -428,14 +431,22 @@ impl Process {
 
 	/// Registers the current process to the procfs.
 	fn register_procfs(&self) -> Result<(), Errno> {
-		// TODO
-		todo!();
+		let procfs_source = MountSource::NoDev(String::new(b"procfs")?);
+
+		if let Some(procfs) = mountpoint::get_fs_by_source(procfs_source) {
+			// TODO Insert process's directory
+			todo!();
+		}
 	}
 
 	/// Unregisters the current process from the procfs.
 	fn unregister_procfs(&self) -> Result<(), Errno> {
-		// TODO
-		todo!();
+		let procfs_source = MountSource::NoDev(String::new(b"procfs")?);
+
+		if let Some(procfs) = mountpoint::get_fs_by_source(procfs_source) {
+			// TODO Remove process's directory
+			todo!();
+		}
 	}
 
 	/// Creates the init process and places it into the scheduler's queue. The process is set to
