@@ -7,6 +7,7 @@ use crate::file::FileContent;
 use crate::file::FileType;
 use crate::file::Gid;
 use crate::file::Mode;
+use crate::file::MountPoint;
 use crate::file::Uid;
 use crate::file::mountpoint;
 use crate::file::path::Path;
@@ -20,6 +21,11 @@ use crate::util::ptr::SharedPtr;
 
 /// The size of the files pool.
 const FILES_POOL_SIZE: usize = 1024;
+
+/// Updates the location of the file `file` according to the given mountpoint `mountpoint`.
+fn update_location(file: &mut File, mountpoint: &MountPoint) {
+	file.get_location_mut().mountpoint_id = Some(mountpoint.get_id());
+}
 
 /// Cache storing files in memory. This cache allows to speedup accesses to the disk. It is
 /// synchronized with the disk when necessary.
@@ -101,6 +107,8 @@ impl FCache {
 		let mut file = fs.load_file(io, inode, String::new())?;
 		// If the path is empty, return the root
 		if inner_path.is_empty() {
+			drop(fs_guard);
+			update_location(&mut file, &mountpoint);
 			return SharedPtr::new(file);
 		}
 		// Checking permissions
@@ -155,6 +163,8 @@ impl FCache {
 		parent_path.pop();
 		file.set_parent_path(parent_path);
 
+		drop(fs_guard);
+		update_location(&mut file, &mountpoint);
 		SharedPtr::new(file)
 	}
 
@@ -273,6 +283,8 @@ impl FCache {
 		file.set_parent_path(parent.get_path()?);
 		parent.add_entry(file.get_name().failable_clone()?, file.to_dir_entry())?;
 
+		drop(fs_guard);
+		update_location(&mut file, &mountpoint);
 		SharedPtr::new(file)
 	}
 

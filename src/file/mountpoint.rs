@@ -46,8 +46,6 @@ const FLAG_SYNCHRONOUS: u32 = 0b100000000000;
 
 // TODO When removing a mountpoint, return an error if another mountpoint is present in a subdir
 
-// TODO Optimize container accesses
-
 /// Enumeration of mount sources.
 #[derive(Eq, Hash, PartialEq)]
 pub enum MountSource {
@@ -136,16 +134,25 @@ impl FailableClone for MountSource {
 	}
 }
 
-/// The list of loaded filesystems associated with their respective ID.
-static FILESYSTEMS: Mutex<HashMap<MountSource, SharedPtr<dyn Filesystem>>>
-	= Mutex::new(HashMap::new());
+/// Structure wrapping a loaded filesystem.
+struct LoadedFS {
+	/// The number of mountpoints using the filesystem.
+	ref_count: usize,
+
+	/// The filesystem.
+	fs: SharedPtr<dyn Filesystem>,
+}
+
+/// The list of loaded filesystems associated with their respective sources.
+static FILESYSTEMS: Mutex<HashMap<MountSource, LoadedFS>> = Mutex::new(HashMap::new());
 
 /// Loads a filesystem.
 /// `source` is the source of the mountpoint.
 /// `fs_type` is the filesystem type. If None, the function tries to detect it automaticaly.
 /// `path` is the path to the directory on which the filesystem is mounted.
 /// `readonly` tells whether the filesystem is mount in readonly.
-/// On success, the function returns the ID of the loaded filesystem.
+/// On success, the function returns the loaded filesystem.
+/// A newly loaded filesystem is initialized with a single reference.
 fn load_fs(source: MountSource, fs_type: Option<SharedPtr<dyn FilesystemType>>, path: Path,
 	readonly: bool) -> Result<SharedPtr<dyn Filesystem>, Errno> {
 	// Getting the I/O interface
@@ -167,59 +174,106 @@ fn load_fs(source: MountSource, fs_type: Option<SharedPtr<dyn FilesystemType>>, 
 	// Inserting new filesystem into filesystems list
 	let guard = FILESYSTEMS.lock();
 	let container = guard.get_mut();
-	container.insert(source, fs.clone())?;
+	container.insert(source, LoadedFS {
+		ref_count: 1,
+
+		fs: fs.clone(),
+	})?;
 
 	Ok(fs)
 }
 
 /// Returns the loaded filesystem with the given source `source`.
-/// If the filesystem doesn't exist, the function returns None.
-pub fn get_fs(source: &MountSource) -> Option<SharedPtr<dyn Filesystem>> {
+/// `take` tells whether the function increments the references count.
+/// If the filesystem isn't loaded, the function returns None.
+fn get_fs_(source: &MountSource, take: bool) -> Option<SharedPtr<dyn Filesystem>> {
 	let guard = FILESYSTEMS.lock();
 	let container = guard.get_mut();
 
-	container.get(source).map(| fs | fs.clone())
+	let fs = container.get_mut(source)?;
+	if take {
+		fs.ref_count += 1;
+	}
+
+	Some(fs.fs.clone())
+}
+
+/// Returns the loaded filesystem with the given source `source`.
+/// If the filesystem isn't loaded, the function returns None.
+pub fn get_fs(source: &MountSource) -> Option<SharedPtr<dyn Filesystem>> {
+	get_fs_(source, false)
+}
+
+/// Drops a reference to the filesystem with the given source `source`.
+/// If no reference on the filesystem is left, the function unloads it.
+/// If the filesystem doesn't exist, the function does nothing.
+fn drop_fs(source: &MountSource) {
+	let guard = FILESYSTEMS.lock();
+	let container = guard.get_mut();
+
+	if let Some(fs) = container.get_mut(source) {
+		fs.ref_count -= 1;
+
+		// If no reference left, drop
+		if fs.ref_count <= 0 {
+			container.remove(source);
+		}
+	}
 }
 
 /// Structure representing a mount point.
 pub struct MountPoint {
-	/// The source of the mountpoint.
-	source: MountSource,
-	/// The filesystem associated with the mountpoint.
-	fs: SharedPtr<dyn Filesystem>,
+	/// The ID of the mountpoint.
+	id: u32,
 
 	/// Mount flags.
 	flags: u32,
 	/// The path to the mount directory.
 	path: Path,
+
+	/// The source of the mountpoint.
+	source: MountSource,
+	/// The filesystem associated with the mountpoint.
+	fs: SharedPtr<dyn Filesystem>,
 }
 
 impl MountPoint {
 	/// Creates a new instance.
+	/// `id` is the ID of the mountpoint.
 	/// `source` is the source of the mountpoint.
 	/// `fs_type` is the filesystem type. If None, the function tries to detect it automaticaly.
 	/// `flags` are the mount flags.
 	/// `path` is the path on which the filesystem is to be mounted.
-	pub fn new(source: MountSource, fs_type: Option<SharedPtr<dyn FilesystemType>>, flags: u32,
-		path: Path) -> Result<Self, Errno> {
+	fn new(id: u32, source: MountSource, fs_type: Option<SharedPtr<dyn FilesystemType>>,
+		flags: u32, path: Path) -> Result<Self, Errno> {
 		// Tells whether the filesystem will be mounted in read-only
 		let readonly = flags & FLAG_RDONLY != 0;
 
-		let fs = match get_fs(&source) {
-			// Filesystem exists
+		// TODO Check if a mountpoint at the same path is already present
+		let fs = match get_fs_(&source, true) {
+			// Filesystem exists, do nothing
 			Some(fs) => fs,
 
 			// Filesystem doesn't exist, load it
 			None => load_fs(source.failable_clone()?, fs_type, path.failable_clone()?, readonly)?,
 		};
 
+		// TODO Increment number of references
+
 		Ok(Self {
+			id,
+
 			source,
 			fs,
 
 			flags,
 			path,
 		})
+	}
+
+	/// Returns the ID of the mountpoint.
+	pub fn get_id(&self) -> u32 {
+		self.id
 	}
 
 	/// Returns the source of the mountpoint.
@@ -255,16 +309,24 @@ impl Drop for MountPoint {
 	}
 }
 
+// TODO Optimize container accesses
 /// The list of mountpoints with their respective ID.
 pub static MOUNT_POINTS: Mutex<Vec<(u32, SharedPtr<MountPoint>)>> = Mutex::new(Vec::new());
 
-/// Registers a new mountpoint `mountpoint`. If a mountpoint is already present at the same path,
+/// Creates a new mountpoint. If a mountpoint is already present at the same path,
 /// the function fails.
-pub fn register(mountpoint: MountPoint) -> Result<SharedPtr<MountPoint>, Errno> {
+/// `source` is the source of the mountpoint.
+/// `fs_type` is the filesystem type. If None, the function tries to detect it automaticaly.
+/// `flags` are the mount flags.
+/// `path` is the path on which the filesystem is to be mounted.
+pub fn create(source: MountSource, fs_type: Option<SharedPtr<dyn FilesystemType>>, flags: u32,
+	path: Path) -> Result<SharedPtr<MountPoint>, Errno> {
 	let guard = MOUNT_POINTS.lock();
 	let container = guard.get_mut();
 
 	let id = 0; // TODO Allocate
+
+	let mountpoint = MountPoint::new(id, source, fs_type, flags, path)?;
 
 	let shared_ptr = SharedPtr::new(mountpoint)?;
 	container.push((id, shared_ptr.clone()))?;

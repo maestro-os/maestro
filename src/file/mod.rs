@@ -462,14 +462,14 @@ impl File {
 		self.mode = mode & 0o7777;
 	}
 
-	/// Returns the location on which the file is stored.
+	/// Returns an immutable reference to the location at which the file is stored.
 	pub fn get_location(&self) -> &FileLocation {
 		&self.location
 	}
 
-	/// Sets the location on which the file is stored.
-	pub fn set_location(&mut self, location: FileLocation) {
-		self.location = location;
+	/// Returns a mutable reference to the location at which the file is stored.
+	pub fn get_location_mut(&mut self) -> &mut FileLocation {
+		&mut self.location
 	}
 
 	/// Returns the number of hard links.
@@ -839,8 +839,7 @@ pub fn init(root_device_type: DeviceType, root_major: u32, root_minor: u32) -> R
 		major: root_major,
 		minor: root_minor,
 	};
-	let root_mount = MountPoint::new(mount_source, None, 0, Path::root())?;
-	mountpoint::register(root_mount)?;
+	mountpoint::create(mount_source, None, 0, Path::root())?;
 
 	// Creating the files cache
 	let cache = FCache::new()?;

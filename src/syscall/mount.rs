@@ -6,7 +6,6 @@ use crate::errno;
 use crate::file::FileType;
 use crate::file::fcache;
 use crate::file::fs;
-use crate::file::mountpoint::MountPoint;
 use crate::file::mountpoint::MountSource;
 use crate::file::mountpoint;
 use crate::file::path::Path;
@@ -64,8 +63,7 @@ pub fn mount(regs: &Regs) -> Result<i32, Errno> {
 
 	// TODO Use `data`
 	// Creating mountpoint
-	let mount = MountPoint::new(mount_source, Some(fs_type), mountflags, target_path)?;
-	mountpoint::register(mount)?;
+	mountpoint::create(mount_source, Some(fs_type), mountflags, target_path)?;
 
 	Ok(0)
 }

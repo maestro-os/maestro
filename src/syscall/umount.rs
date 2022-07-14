@@ -26,7 +26,7 @@ pub fn umount(regs: &Regs) -> Result<i32, Errno> {
 	let _mountpoint = mountpoint::from_path(&target_path).ok_or(errno!(EINVAL))?;
 
 	// TODO Check if busy (EBUSY)
-	// TODO If not, unmount
+	// TODO If not, sync and unmount
 
 	Ok(0)
 }
