@@ -219,19 +219,18 @@ impl Filesystem for KernFS {
 		let node = DummyKernFSNode::new(mode, uid, gid, content.failable_clone()?, None);
 		let inode = self.add_node(Box::new(node)?)?;
 
-		oom::wrap(|| {
-			// Getting entries from parent
-			let parent = self.get_node_mut(parent_inode).unwrap();
-			let entries = match parent.get_content().to_mut()? {
-				FileContent::Directory(entries) => entries,
-				_ => return Err(errno!(ENOENT)),
-			};
-
-			entries.insert(name.failable_clone()?, DirEntry {
-				inode,
-				entry_type: file_type,
-			})
-		});
+		// Adding entry to parent
+		let parent = self.get_node_mut(parent_inode).unwrap();
+		let mut parent_content = parent.get_content().into_owned()?;
+		let entries = match &mut parent_content {
+			FileContent::Directory(entries) => entries,
+			_ => return Err(errno!(ENOENT)),
+		};
+		oom::wrap(|| entries.insert(name.failable_clone()?, DirEntry {
+			inode,
+			entry_type: file_type,
+		}));
+		parent.set_content(parent_content);
 
 		let location = FileLocation {
 			mountpoint_id: None,
@@ -247,21 +246,31 @@ impl Filesystem for KernFS {
 			return Err(errno!(EROFS));
 		}
 
-		let entry_type = self.get_node(parent_inode)?.get_content().as_ref().get_file_type();
-		let parent = self.get_node_mut(parent_inode)?;
+		// Checking the node exists
+		self.get_node(inode)?;
 
-		match parent.get_content().as_ref() {
+		// Insert the new entry
+		let parent = self.get_node_mut(parent_inode)?;
+		let entry_type = parent.get_content().as_ref().get_file_type();
+		let mut parent_content = parent.get_content().into_owned()?;
+		match &mut parent_content {
 			FileContent::Directory(entries) => {
 				entries.insert(name.failable_clone()?, DirEntry {
 					inode,
 					entry_type,
 				})?;
-
-				Ok(())
 			},
 
-			_ => Err(errno!(ENOTDIR)),
+			_ => return Err(errno!(ENOTDIR)),
 		}
+		parent.set_content(parent_content);
+
+		// Incrementing the number of links
+		let node = self.get_node_mut(inode)?;
+		let links = node.get_hard_links_count() + 1;
+		node.set_hard_links_count(links);
+
+		Ok(())
 	}
 
 	fn update_inode(&mut self, _: &mut dyn IO, file: &File) -> Result<(), Errno> {
@@ -294,18 +303,16 @@ impl Filesystem for KernFS {
 
 		// Getting directory entry
 		let parent = self.get_node_mut(parent_inode)?;
-		let entry = match parent.get_content().as_ref() {
-			FileContent::Directory(entries) => if let Some(entry) = entries.get(name) {
-				entry
-			} else {
-				return Err(errno!(ENOENT));
+		let inode = match parent.get_content().as_ref() {
+			FileContent::Directory(entries) => match entries.get(name) {
+				Some(entry) => entry.inode,
+				None => return Err(errno!(ENOENT)),
 			},
 
 			_ => return Err(errno!(ENOTDIR)),
 		};
-		let inode = entry.inode;
 
-		let node = self.get_node(inode)?;
+		let node = self.get_node_mut(inode)?;
 		match node.get_content().as_ref() {
 			FileContent::Directory(entries) if !entries.is_empty()
 				=> return Err(errno!(ENOTEMPTY)),
@@ -313,14 +320,21 @@ impl Filesystem for KernFS {
 			_ => {},
 		}
 
-		oom::wrap(|| self.remove_node(inode));
+		// If no link is left, remove the node
+		let links = node.get_hard_links_count() - 1;
+		node.set_hard_links_count(links);
+		if node.get_hard_links_count() <= 0 {
+			oom::wrap(|| self.remove_node(inode));
+		}
 
 		// Removing directory entry
 		let parent = self.get_node_mut(parent_inode).unwrap();
-		match parent.get_content().as_ref() {
+		let mut content = parent.get_content().into_owned()?;
+		match &mut content {
 			FileContent::Directory(entries) => entries.remove(name),
 			_ => unreachable!(),
 		};
+		parent.set_content(content);
 
 		Ok(())
 	}
