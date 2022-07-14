@@ -1,5 +1,7 @@
 //! This module contains pointer-like structures.
 
+pub mod cow;
+
 use core::marker::Unsize;
 use core::mem::size_of;
 use core::ops::CoerceUnsized;

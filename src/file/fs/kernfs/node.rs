@@ -10,6 +10,7 @@ use crate::time::unit::TimestampScale;
 use crate::time;
 use crate::util::IO;
 use crate::util::boxed::Box;
+use crate::util::ptr::cow::Cow;
 
 /// Trait representing a node in a kernfs.
 pub trait KernFSNode: IO {
@@ -49,7 +50,7 @@ pub trait KernFSNode: IO {
 	fn set_mtime(&mut self, ts: Timestamp);
 
 	/// Returns the node's content.
-	fn get_content(&self) -> FileContent;
+	fn get_content<'a>(&'a self) -> Cow<'a, FileContent>;
 	/// Sets the node's content.
 	fn set_content(&mut self, content: FileContent);
 }
@@ -167,8 +168,8 @@ impl KernFSNode for DummyKernFSNode {
 		self.mtime = ts;
 	}
 
-	fn get_content(&self) -> FileContent {
-		self.content
+	fn get_content<'a>(&'a self) -> Cow<'a, FileContent> {
+		Cow::from(&self.content)
 	}
 
 	fn set_content(&mut self, content: FileContent) {

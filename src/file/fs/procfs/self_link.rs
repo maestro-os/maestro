@@ -12,6 +12,7 @@ use crate::process::oom;
 use crate::time::unit::Timestamp;
 use crate::util::IO;
 use crate::util::container::string::String;
+use crate::util::ptr::cow::Cow;
 
 /// The `self` symlink.
 pub struct SelfNode {}
@@ -59,7 +60,7 @@ impl KernFSNode for SelfNode {
 
 	fn set_mtime(&mut self, _: Timestamp) {}
 
-	fn get_content(&self) -> FileContent {
+	fn get_content<'a>(&'a self) -> Cow<'a, FileContent> {
 		let pid = if let Some(proc_mutex) = Process::get_current() {
 			let proc_guard = proc_mutex.lock();
 			let proc = proc_guard.get();
@@ -70,7 +71,7 @@ impl KernFSNode for SelfNode {
 		};
 
 		let pid_string = oom::wrap(|| String::from_number(pid as _));
-		FileContent::Link(pid_string)
+		Cow::from(FileContent::Link(pid_string))
 	}
 
 	fn set_content(&mut self, _: FileContent) {}
