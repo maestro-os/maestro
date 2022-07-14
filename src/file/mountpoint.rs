@@ -304,8 +304,7 @@ impl MountPoint {
 
 impl Drop for MountPoint {
 	fn drop(&mut self) {
-		// TODO Remove the filesystem if no other mountpoint is using it
-		todo!();
+		drop_fs(&self.source);
 	}
 }
 

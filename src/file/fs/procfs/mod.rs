@@ -1,6 +1,7 @@
 //! The procfs is a virtual filesystem which provides informations about processes.
 
 pub mod mount;
+pub mod proc_dir;
 pub mod self_link;
 
 use crate::errno::Errno;
@@ -20,6 +21,7 @@ use crate::util::boxed::Box;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
 use crate::util::ptr::SharedPtr;
+use proc_dir::ProcDir;
 use self_link::SelfNode;
 use super::Filesystem;
 use super::FilesystemType;
@@ -31,6 +33,9 @@ use super::kernfs::node::DummyKernFSNode;
 pub struct ProcFS {
 	/// The kernfs.
 	fs: KernFS,
+
+	/// The list of registered processes with their directory's inode.
+	procs: HashMap<Pid, INode>,
 }
 
 impl ProcFS {
@@ -40,6 +45,8 @@ impl ProcFS {
 	pub fn new(readonly: bool, mountpath: Path) -> Result<Self, Errno> {
 		let mut fs = Self {
 			fs: KernFS::new(String::from(b"procfs")?, readonly, mountpath)?,
+
+			procs: HashMap::new(),
 		};
 
 		let mut root_entries = HashMap::new();
@@ -72,9 +79,15 @@ impl ProcFS {
 	}
 
 	/// Adds a process with the given PID `pid` to the filesystem.
-	pub fn add_process(&mut self, _pid: Pid) -> Result<(), Errno> {
+	pub fn add_process(&mut self, pid: Pid) -> Result<(), Errno> {
+		// Creating the process's node
+		let proc_node = ProcDir::new(pid, &mut self.fs)?;
+		self.fs.add_node(Box::new(proc_node)?)?;
+
+		// Inserting the process's node at the root of the filesystem
 		// TODO
-		todo!();
+
+		Ok(())
 	}
 
 	/// Removes the process with pid `pid` from the filesystem.

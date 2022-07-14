@@ -440,9 +440,8 @@ impl Process {
 			let fs_guard = fs.lock();
 			let fs = fs_guard.get_mut() as &mut dyn Any;
 
-			if let Some(_procfs) = fs.downcast_mut::<ProcFS>() {
-				// TODO Insert process's directory
-				todo!();
+			if let Some(procfs) = fs.downcast_mut::<ProcFS>() {
+				procfs.add_process(self.pid)?;
 			}
 		}
 
@@ -458,9 +457,8 @@ impl Process {
 			let fs_guard = fs.lock();
 			let fs = fs_guard.get_mut() as &mut dyn Any;
 
-			if let Some(_procfs) = fs.downcast_mut::<ProcFS>() {
-				// TODO Remove process's directory
-				todo!();
+			if let Some(procfs) = fs.downcast_mut::<ProcFS>() {
+				procfs.remove_process(self.pid)?;
 			}
 		}
 
