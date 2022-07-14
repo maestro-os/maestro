@@ -44,15 +44,14 @@ pub struct TmpFS {
 impl TmpFS {
 	/// Creates a new instance.
 	/// `max_size` is the maximum amount of memory the filesystem can use in bytes.
-	/// `fs_id` is the ID of the mounted filesystem.
 	/// `readonly` tells whether the filesystem is readonly.
 	/// `mountpath` is the path at which the filesystem is mounted.
-	pub fn new(max_size: usize, fs_id: u32, readonly: bool, mountpath: Path) -> Result<Self, Errno> {
+	pub fn new(max_size: usize, readonly: bool, mountpath: Path) -> Result<Self, Errno> {
 		let mut fs = Self {
 			max_size,
 			size: 0,
 
-			fs: KernFS::new(String::from(b"tmpfs")?, fs_id, readonly, mountpath)?,
+			fs: KernFS::new(String::from(b"tmpfs")?, readonly, mountpath)?,
 		};
 
 		// Adding the root node
@@ -96,10 +95,6 @@ impl TmpFS {
 impl Filesystem for TmpFS {
 	fn get_name(&self) -> &[u8] {
 		self.fs.get_name()
-	}
-
-	fn get_id(&self) -> u32 {
-		self.fs.get_id()
 	}
 
 	fn is_readonly(&self) -> bool {
@@ -175,13 +170,12 @@ impl FilesystemType for TmpFsType {
 		Ok(false)
 	}
 
-	fn create_filesystem(&self, _io: &mut dyn IO, fs_id: u32)
-		-> Result<SharedPtr<dyn Filesystem>, Errno> {
-		Ok(SharedPtr::new(TmpFS::new(DEFAULT_MAX_SIZE, fs_id, false, Path::root())?)?)
+	fn create_filesystem(&self, _io: &mut dyn IO) -> Result<SharedPtr<dyn Filesystem>, Errno> {
+		Ok(SharedPtr::new(TmpFS::new(DEFAULT_MAX_SIZE, false, Path::root())?)?)
 	}
 
-	fn load_filesystem(&self, _io: &mut dyn IO, fs_id: u32, mountpath: Path, readonly: bool)
+	fn load_filesystem(&self, _io: &mut dyn IO, mountpath: Path, readonly: bool)
 		-> Result<SharedPtr<dyn Filesystem>, Errno> {
-		Ok(SharedPtr::new(TmpFS::new(DEFAULT_MAX_SIZE, fs_id, readonly, mountpath)?)?)
+		Ok(SharedPtr::new(TmpFS::new(DEFAULT_MAX_SIZE, readonly, mountpath)?)?)
 	}
 }

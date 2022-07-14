@@ -33,9 +33,6 @@ const MAX_NAME_LEN: usize = 255;
 pub struct KernFS {
 	/// The name of the filesystem.
 	name: String,
-	/// The ID of the filesystem.
-	fs_id: u32,
-
 	/// Tells whether the filesystem is readonly.
 	readonly: bool,
 
@@ -51,17 +48,14 @@ pub struct KernFS {
 impl KernFS {
 	/// Creates a new instance.
 	/// `name` is the name of the filesystem.
-	/// `fs_id` is the ID of the mounted filesystem.
 	/// `readonly` tells whether the filesystem is readonly.
 	/// `mountpath` is the path at which the filesystem is mounted.
-	pub fn new(name: String, fs_id: u32, readonly: bool, mountpath: Path) -> Result<Self, Errno> {
+	pub fn new(name: String, readonly: bool, mountpath: Path) -> Result<Self, Errno> {
 		let mut nodes = Vec::new();
 		nodes.push(None)?;
 
 		Ok(Self {
 			name,
-			fs_id,
-
 			readonly,
 
 			mountpath,
@@ -143,10 +137,6 @@ impl Filesystem for KernFS {
 		self.name.as_bytes()
 	}
 
-	fn get_id(&self) -> u32 {
-		self.fs_id
-	}
-
 	fn is_readonly(&self) -> bool {
 		self.readonly
 	}
@@ -196,7 +186,7 @@ impl Filesystem for KernFS {
 		let node = self.get_node(inode)?;
 
 		let file_location = FileLocation {
-			fs_id: self.fs_id,
+			mountpoint_id: None,
 
 			inode,
 		};
@@ -220,7 +210,6 @@ impl Filesystem for KernFS {
 		}
 
 		let file_type = content.get_file_type();
-		let mountpath = self.mountpath.failable_clone()?;
 
 		// Checking the parent exists
 		self.get_node_mut(parent_inode)?;
@@ -243,7 +232,7 @@ impl Filesystem for KernFS {
 		});
 
 		let location = FileLocation {
-			fs_id: self.fs_id,
+			mountpoint_id: None,
 
 			inode,
 		};

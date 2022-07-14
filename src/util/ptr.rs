@@ -3,8 +3,8 @@
 use core::marker::Unsize;
 use core::mem::size_of;
 use core::ops::CoerceUnsized;
+use core::ops::Deref;
 use core::ops::DispatchFromDyn;
-use core::ops::{Deref, DerefMut};
 use core::ptr::NonNull;
 use core::ptr::drop_in_place;
 use core::ptr;
@@ -99,12 +99,6 @@ impl<T: ?Sized, const INT: bool> SharedPtr<T, INT> {
 		&inner.obj
 	}
 
-	/// Returns a mutable reference to the object.
-	pub fn get_mut(&self) -> &mut Mutex<T, INT> {
-		let inner = self.get_inner();
-		&mut inner.obj
-	}
-
 	/// Creates a weak pointer for the current shared pointer.
 	pub fn new_weak(&self) -> WeakPtr<T, INT> {
 		let inner = self.get_inner();
@@ -137,23 +131,11 @@ impl<T: ?Sized, const INT: bool> AsRef<Mutex<T, INT>> for SharedPtr<T, INT> {
 	}
 }
 
-impl<T: ?Sized, const INT: bool> AsMut<Mutex<T, INT>> for SharedPtr<T, INT> {
-	fn as_mut(&mut self) -> &mut Mutex<T, INT> {
-		self.get_mut()
-	}
-}
-
 impl<T: ?Sized, const INT: bool> Deref for SharedPtr<T, INT> {
 	type Target = Mutex<T, INT>;
 
 	fn deref(&self) -> &Self::Target {
 		self.as_ref()
-	}
-}
-
-impl<T: ?Sized, const INT: bool> DerefMut for SharedPtr<T, INT> {
-	fn deref_mut(&mut self) -> &mut Self::Target {
-		self.as_mut()
 	}
 }
 
@@ -213,19 +195,6 @@ impl<T: ?Sized, const INT: bool> WeakPtr<T, INT> {
 
 		if refs.is_weak_available() {
 			Some(&inner.obj)
-		} else {
-			None
-		}
-	}
-
-	/// Returns a mutable reference to the object.
-	pub fn get_mut(&self) -> Option<&mut Mutex<T, INT>> {
-		let inner = self.get_inner();
-		let guard = inner.ref_counter.lock();
-		let refs = guard.get();
-
-		if refs.is_weak_available() {
-			Some(&mut inner.obj)
 		} else {
 			None
 		}

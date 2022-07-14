@@ -393,9 +393,9 @@ pub fn init() -> Result<(), Errno> {
 }
 
 /// Returns a mutable reference to the scheduler's Mutex.
-pub fn get_scheduler() -> &'static mut IntMutex<Scheduler> {
+pub fn get_scheduler() -> &'static IntMutex<Scheduler> {
 	unsafe { // Safe because using Mutex
-		SCHEDULER.assume_init_mut()
+		SCHEDULER.assume_init_ref()
 	}
 }
 
@@ -431,22 +431,28 @@ impl Process {
 
 	/// Registers the current process to the procfs.
 	fn register_procfs(&self) -> Result<(), Errno> {
-		let procfs_source = MountSource::NoDev(String::new(b"procfs")?);
+		// TODO Avoid allocation
+		let procfs_source = MountSource::NoDev(String::from(b"procfs")?);
 
-		if let Some(procfs) = mountpoint::get_fs_by_source(procfs_source) {
+		if let Some(_procfs) = mountpoint::get_fs(&procfs_source) {
 			// TODO Insert process's directory
 			todo!();
 		}
+
+		Ok(())
 	}
 
 	/// Unregisters the current process from the procfs.
 	fn unregister_procfs(&self) -> Result<(), Errno> {
-		let procfs_source = MountSource::NoDev(String::new(b"procfs")?);
+		// TODO Avoid allocation
+		let procfs_source = MountSource::NoDev(String::from(b"procfs")?);
 
-		if let Some(procfs) = mountpoint::get_fs_by_source(procfs_source) {
+		if let Some(_procfs) = mountpoint::get_fs(&procfs_source) {
 			// TODO Remove process's directory
 			todo!();
 		}
+
+		Ok(())
 	}
 
 	/// Creates the init process and places it into the scheduler's queue. The process is set to
@@ -611,7 +617,7 @@ impl Process {
 	/// Returns the parent process's PID.
 	pub fn get_parent_pid(&self) -> Pid {
 		if let Some(parent) = &self.parent {
-			let parent = parent.get_mut().unwrap();
+			let parent = parent.get().unwrap();
 			let guard = parent.lock();
 			guard.get().get_pid()
 		} else {
@@ -1452,7 +1458,7 @@ impl Process {
 
 		// Resetting the parent's vfork state if needed
 		if let Some(parent) = self.get_parent() {
-			let parent = parent.get_mut().unwrap();
+			let parent = parent.get().unwrap();
 			let guard = parent.lock();
 			guard.get_mut().vfork_state = VForkState::None;
 		}
@@ -1468,7 +1474,7 @@ impl Process {
 
 		if let Some(parent) = self.get_parent() {
 			// Wake the parent
-			let parent = parent.get_mut().unwrap();
+			let parent = parent.get().unwrap();
 			let guard = parent.lock();
 			guard.get_mut().wakeup();
 		}
@@ -1527,7 +1533,7 @@ impl Drop for Process {
 
 		// Removing the child from the parent process
 		if let Some(parent) = self.get_parent() {
-			let parent = parent.get_mut().unwrap();
+			let parent = parent.get().unwrap();
 			let guard = parent.lock();
 			guard.get_mut().remove_child(self.pid);
 		}

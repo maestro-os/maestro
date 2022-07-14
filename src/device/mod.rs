@@ -36,7 +36,7 @@ use keyboard::KeyboardManager;
 use storage::StorageManager;
 
 /// Enumeration representing the type of the device.
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
 pub enum DeviceType {
 	/// A block device.
 	Block,
@@ -276,7 +276,7 @@ pub fn register_device(device: Device) -> Result<(), Errno> {
 	let device_number = device.get_device_number();
 	let index = container.binary_search_by(| d | {
 		let dn = unsafe {
-			d.get_mut().get_mut_payload()
+			d.get().get_mut_payload()
 		}.get_device_number();
 
 		device_number.cmp(&dn)
@@ -303,7 +303,7 @@ pub fn get_device(type_: DeviceType, major: u32, minor: u32) -> Option<SharedPtr
 	let device_number = id::makedev(major, minor);
 	let index = container.binary_search_by(| d | {
 		let dn = unsafe {
-			d.get_mut().get_mut_payload()
+			d.get().get_mut_payload()
 		}.get_device_number();
 
 		device_number.cmp(&dn)

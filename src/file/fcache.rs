@@ -93,9 +93,8 @@ impl FCache {
 		let inner_path = path.range_from(mountpoint.get_path().get_elements_count()..)?;
 
 		// The filesystem
-		let fs_mutex = mountpoint.get_filesystem();
-		let fs_guard = fs_mutex.lock();
-		let fs = fs_guard.get();
+		let fs_guard = mountpoint.get_filesystem();
+		let fs = fs_guard.get_mut();
 
 		// The root inode
 		let mut inode = fs.get_root_inode(io)?;
@@ -202,9 +201,8 @@ impl FCache {
 		let io = io_guard.get_mut();
 
 		// The filesystem
-		let fs_mutex = mountpoint.get_filesystem();
-		let fs_guard = fs_mutex.lock();
-		let fs = fs_guard.get();
+		let fs_guard = mountpoint.get_filesystem();
+		let fs = fs_guard.get_mut();
 
 		let inode = fs.get_inode(io, Some(parent.get_location().inode), &name)?;
 		let mut file = fs.load_file(io, inode, name)?;
@@ -249,6 +247,9 @@ impl FCache {
 			.ok_or_else(|| errno!(ENOENT))?;
 		let mountpoint_guard = mountpoint_mutex.lock();
 		let mountpoint = mountpoint_guard.get_mut();
+		if mountpoint.is_readonly() {
+			return Err(errno!(EROFS));
+		}
 
 		// Getting the IO interface
 		let io_mutex = mountpoint.get_source().get_io()?;
@@ -256,15 +257,15 @@ impl FCache {
 		let io = io_guard.get_mut();
 
 		// Getting the filesystem
-		let fs_mutex = mountpoint.get_filesystem();
-		let fs_guard = fs_mutex.lock();
-		let fs = fs_guard.get();
-		if mountpoint.is_readonly() || fs.is_readonly() {
+		let fs_guard = mountpoint.get_filesystem();
+		let fs = fs_guard.get_mut();
+		if fs.is_readonly() {
 			return Err(errno!(EROFS));
 		}
 
 		// The parent directory's inode
 		let parent_inode = parent.get_location().inode;
+
 		// Adding the file to the filesystem
 		let mut file = fs.add_file(io, parent_inode, name, uid, gid, mode, content)?;
 
@@ -303,6 +304,9 @@ impl FCache {
 			.ok_or_else(|| errno!(ENOENT))?;
 		let mountpoint_guard = mountpoint_mutex.lock();
 		let mountpoint = mountpoint_guard.get_mut();
+		if mountpoint.is_readonly() {
+			return Err(errno!(EROFS));
+		}
 
 		// Getting the IO interface
 		let io_mutex = mountpoint.get_source().get_io()?;
@@ -310,10 +314,9 @@ impl FCache {
 		let io = io_guard.get_mut();
 
 		// Getting the filesystem
-		let fs_mutex = mountpoint.get_filesystem();
-		let fs_guard = fs_mutex.lock();
-		let fs = fs_guard.get();
-		if mountpoint.is_readonly() || fs.is_readonly() {
+		let fs_guard = mountpoint.get_filesystem();
+		let fs = fs_guard.get_mut();
+		if fs.is_readonly() {
 			return Err(errno!(EROFS));
 		}
 

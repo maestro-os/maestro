@@ -543,8 +543,6 @@ impl Superblock {
 
 /// Structure representing a instance of the ext2 filesystem.
 struct Ext2Fs {
-	/// The ID of the filesystem.
-	fs_id: u32,
 	/// The path at which the filesystem is mounted.
 	mountpath: Path,
 
@@ -558,10 +556,9 @@ struct Ext2Fs {
 impl Ext2Fs {
 	/// Creates a new instance.
 	/// If the filesystem cannot be mounted, the function returns an Err.
-	/// `fs_id` is the ID of the filesystem.
 	/// `mountpath` is the path on which the filesystem is mounted.
 	/// `readonly` tells whether the filesystem is mounted in read-only.
-	fn new(mut superblock: Superblock, io: &mut dyn IO, fs_id: u32, mountpath: Path,
+	fn new(mut superblock: Superblock, io: &mut dyn IO, mountpath: Path,
 		readonly: bool) -> Result<Self, Errno> {
 		debug_assert!(superblock.is_valid());
 
@@ -621,7 +618,6 @@ impl Ext2Fs {
 		superblock.write(io)?;
 
 		Ok(Self {
-			fs_id,
 			mountpath,
 
 			superblock,
@@ -635,10 +631,6 @@ impl Ext2Fs {
 impl Filesystem for Ext2Fs {
 	fn get_name(&self) -> &[u8] {
 		b"ext2"
-	}
-
-	fn get_id(&self) -> u32 {
-		self.fs_id
 	}
 
 	fn is_readonly(&self) -> bool {
@@ -754,7 +746,8 @@ impl Filesystem for Ext2Fs {
 		};
 
 		let file_location = FileLocation {
-			fs_id: self.fs_id,
+			mountpoint_id: None,
+
 			inode,
 		};
 		let mut file = File::new(name, inode_.uid, inode_.gid, inode_.get_permissions(),
@@ -789,7 +782,8 @@ impl Filesystem for Ext2Fs {
 
 		let inode_index = self.superblock.get_free_inode(io)?;
 		let location = FileLocation {
-			fs_id: self.fs_id,
+			mountpoint_id: None,
+
 			inode: inode_index as _,
 		};
 
@@ -1006,7 +1000,7 @@ impl FilesystemType for Ext2FsType {
 		Ok(Superblock::read(io)?.is_valid())
 	}
 
-	fn create_filesystem(&self, io: &mut dyn IO, fs_id: u32)
+	fn create_filesystem(&self, io: &mut dyn IO)
 		-> Result<SharedPtr<dyn Filesystem>, Errno> {
 		let timestamp = time::get(TimestampScale::Second).unwrap_or(0);
 
@@ -1164,14 +1158,14 @@ impl FilesystemType for Ext2FsType {
 		};
 		root_dir.write(inode::ROOT_DIRECTORY_INODE, &superblock, io)?;
 
-		let fs = Ext2Fs::new(superblock, io, fs_id, Path::root(), true)?;
+		let fs = Ext2Fs::new(superblock, io, Path::root(), true)?;
 		Ok(SharedPtr::new(fs)?)
 	}
 
-	fn load_filesystem(&self, io: &mut dyn IO, fs_id: u32, mountpath: Path, readonly: bool)
+	fn load_filesystem(&self, io: &mut dyn IO, mountpath: Path, readonly: bool)
 		-> Result<SharedPtr<dyn Filesystem>, Errno> {
 		let superblock = Superblock::read(io)?;
-		let fs = Ext2Fs::new(superblock, io, fs_id, mountpath, readonly)?;
+		let fs = Ext2Fs::new(superblock, io, mountpath, readonly)?;
 
 		Ok(SharedPtr::new(fs)? as _)
 	}

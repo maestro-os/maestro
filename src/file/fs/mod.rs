@@ -51,8 +51,6 @@ pub struct Statfs {
 pub trait Filesystem {
 	/// Returns the name of the filesystem.
 	fn get_name(&self) -> &[u8]; // TODO Remove?
-	/// Returns the ID of the filesystem.
-	fn get_id(&self) -> u32;
 
 	/// Tells whether the filesystem is mounted in read-only.
 	fn is_readonly(&self) -> bool;
@@ -138,16 +136,13 @@ pub trait FilesystemType {
 	/// `io` is the IO interface.
 	/// `fs_id` is the ID of the loaded filesystem. This ID is only used by the kernel and not
 	/// saved on the storage device.
-	fn create_filesystem(&self, io: &mut dyn IO, fs_id: u32)
-		-> Result<SharedPtr<dyn Filesystem>, Errno>;
+	fn create_filesystem(&self, io: &mut dyn IO) -> Result<SharedPtr<dyn Filesystem>, Errno>;
 
 	/// Creates a new instance of the filesystem to mount it.
 	/// `io` is the IO interface.
-	/// `fs_id` is the ID of the loaded filesystem. This ID is only used by the kernel and not
-	/// saved on the storage device.
 	/// `mountpath` is the path on which the filesystem is mounted.
 	/// `readonly` tells whether the filesystem is mounted in read-only.
-	fn load_filesystem(&self, io: &mut dyn IO, fs_id: u32, mountpath: Path, readonly: bool)
+	fn load_filesystem(&self, io: &mut dyn IO, mountpath: Path, readonly: bool)
 		-> Result<SharedPtr<dyn Filesystem>, Errno>;
 }
 

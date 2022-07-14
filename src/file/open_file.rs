@@ -129,7 +129,7 @@ impl OpenFile {
 	/// Returns the size of the file's content in bytes.
 	pub fn get_file_size(&self) -> u64 {
 		if let FDTarget::File(f) = &self.target {
-			f.get_mut().lock().get().get_size()
+			f.get().lock().get().get_size()
 		} else {
 			0
 		}

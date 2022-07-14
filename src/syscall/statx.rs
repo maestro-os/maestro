@@ -3,7 +3,6 @@
 use crate::errno::Errno;
 use crate::file::FileContent;
 use crate::file::mountpoint::MountSource;
-use crate::file::mountpoint;
 use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::mem_space::ptr::SyscallString;
@@ -108,7 +107,7 @@ pub fn statx(regs: &Regs) -> Result<i32, Errno> {
 	};
 
 	// Getting the file's mountpoint
-	let mountpoint_mutex = mountpoint::from_id(file.get_location().fs_id).unwrap();
+	let mountpoint_mutex = file.get_location().get_mountpoint().unwrap();
 	let mountpoint_guard = mountpoint_mutex.lock();
 	let mountpoint = mountpoint_guard.get();
 

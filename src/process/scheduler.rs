@@ -262,7 +262,7 @@ impl Scheduler {
 	/// `mutex` is the scheduler's mutex.
 	/// `regs` is the state of the registers from the paused context.
 	/// `ring` is the ring of the paused context.
-	fn tick(mutex: &mut IntMutex<Self>, regs: &Regs, ring: u32) -> ! {
+	fn tick(mutex: &IntMutex<Self>, regs: &Regs, ring: u32) -> ! {
 		// Disabling interrupts to avoid getting one right after unlocking mutexes
 		cli!();
 

@@ -33,11 +33,10 @@ pub struct ProcFS {
 impl ProcFS {
 	/// Creates a new instance.
 	/// `readonly` tells whether the filesystem is readonly.
-	/// `fs_id` is the ID of the mounted filesystem.
 	/// `mountpath` is the path at which the filesystem is mounted.
-	pub fn new(readonly: bool, fs_id: u32, mountpath: Path) -> Result<Self, Errno> {
+	pub fn new(readonly: bool, mountpath: Path) -> Result<Self, Errno> {
 		let mut fs = Self {
-			fs: KernFS::new(String::from(b"procfs")?, fs_id, readonly, mountpath)?,
+			fs: KernFS::new(String::from(b"procfs")?, readonly, mountpath)?,
 		};
 
 		let mut root_entries = HashMap::new();
@@ -51,6 +50,8 @@ impl ProcFS {
 		})?;
 
 		// TODO Create the `self` link (value depends on the current process)
+
+		// TODO Iterate on processes to register them
 
 		// Adding the root node
 		let root_node = KernFSNode::new(0o555, 0, 0, FileContent::Directory(root_entries), None);
@@ -76,10 +77,6 @@ impl ProcFS {
 impl Filesystem for ProcFS {
 	fn get_name(&self) -> &[u8] {
 		self.fs.get_name()
-	}
-
-	fn get_id(&self) -> u32 {
-		self.fs.get_id()
 	}
 
 	fn is_readonly(&self) -> bool {
@@ -149,13 +146,12 @@ impl FilesystemType for ProcFsType {
 		Ok(false)
 	}
 
-	fn create_filesystem(&self, _io: &mut dyn IO, fs_id: u32)
-		-> Result<SharedPtr<dyn Filesystem>, Errno> {
-		Ok(SharedPtr::new(ProcFS::new(false, fs_id, Path::root())?)?)
+	fn create_filesystem(&self, _io: &mut dyn IO) -> Result<SharedPtr<dyn Filesystem>, Errno> {
+		Ok(SharedPtr::new(ProcFS::new(false, Path::root())?)?)
 	}
 
-	fn load_filesystem(&self, _io: &mut dyn IO, fs_id: u32, mountpath: Path, readonly: bool)
+	fn load_filesystem(&self, _io: &mut dyn IO, mountpath: Path, readonly: bool)
 		-> Result<SharedPtr<dyn Filesystem>, Errno> {
-		Ok(SharedPtr::new(ProcFS::new(readonly, fs_id, mountpath)?)?)
+		Ok(SharedPtr::new(ProcFS::new(readonly, mountpath)?)?)
 	}
 }

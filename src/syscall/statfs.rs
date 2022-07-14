@@ -45,8 +45,7 @@ pub fn statfs(regs: &Regs) -> Result<i32, Errno> {
 	let io_guard = io_mutex.lock();
 	let io = io_guard.get_mut();
 
-	let fs_mutex = mountpoint.get_filesystem();
-	let fs_guard = fs_mutex.lock();
+	let fs_guard = mountpoint.get_filesystem();
 	let fs = fs_guard.get();
 
 	let stat = fs.get_stat(io)?;
