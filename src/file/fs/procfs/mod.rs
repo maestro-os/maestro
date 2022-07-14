@@ -1,6 +1,7 @@
 //! The procfs is a virtual filesystem which provides informations about processes.
 
 pub mod mount;
+pub mod self_link;
 
 use crate::errno::Errno;
 use crate::file::DirEntry;
@@ -15,13 +16,15 @@ use crate::file::fs::Statfs;
 use crate::file::path::Path;
 use crate::process::pid::Pid;
 use crate::util::IO;
+use crate::util::boxed::Box;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
 use crate::util::ptr::SharedPtr;
+use self_link::SelfNode;
 use super::Filesystem;
 use super::FilesystemType;
 use super::kernfs::KernFS;
-use super::kernfs::node::KernFSNode;
+use super::kernfs::node::DummyKernFSNode;
 
 /// Structure representing the procfs.
 /// On the inside, the procfs works using a kernfs.
@@ -41,21 +44,29 @@ impl ProcFS {
 
 		let mut root_entries = HashMap::new();
 
+		// Creating /proc/self
+		let self_node = SelfNode {};
+		let self_inode = fs.fs.add_node(Box::new(self_node)?)?;
+		root_entries.insert(String::from(b"self")?, DirEntry {
+			inode: self_inode,
+			entry_type: FileType::Link,
+		})?;
+
 		// Creating /proc/mounts
-		let mount_inode = fs.fs.add_node(KernFSNode::new(0o444, 0, 0,
-			FileContent::Link(String::from(b"self/mounts")?), None))?;
+		let mount_node = DummyKernFSNode::new(0o444, 0, 0,
+			FileContent::Link(String::from(b"self/mounts")?), None);
+		let mount_inode = fs.fs.add_node(Box::new(mount_node)?)?;
 		root_entries.insert(String::from(b"mounts")?, DirEntry {
 			inode: mount_inode,
 			entry_type: FileType::Link,
 		})?;
 
-		// TODO Create the `self` link (value depends on the current process)
-
 		// TODO Iterate on processes to register them
 
 		// Adding the root node
-		let root_node = KernFSNode::new(0o555, 0, 0, FileContent::Directory(root_entries), None);
-		fs.fs.set_root(root_node)?;
+		let root_node = DummyKernFSNode::new(0o555, 0, 0, FileContent::Directory(root_entries),
+			None);
+		fs.fs.set_root(Box::new(root_node)?)?;
 
 		Ok(fs)
 	}

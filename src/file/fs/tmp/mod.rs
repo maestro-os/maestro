@@ -11,8 +11,10 @@ use crate::file::INode;
 use crate::file::Mode;
 use crate::file::Uid;
 use crate::file::fs::Statfs;
+use crate::file::fs::kernfs::node::DummyKernFSNode;
 use crate::file::path::Path;
 use crate::util::IO;
+use crate::util::boxed::Box;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
 use crate::util::ptr::SharedPtr;
@@ -25,8 +27,8 @@ use super::kernfs::node::KernFSNode;
 const DEFAULT_MAX_SIZE: usize = 512 * 1024 * 1024;
 
 /// Returns the size in bytes used by the given node `node`.
-fn get_used_size(node: &KernFSNode) -> usize {
-	size_of::<KernFSNode>() + node.get_size() as usize
+fn get_used_size<N: KernFSNode>(node: &N) -> usize {
+	size_of::<N>() + node.get_size() as usize
 }
 
 /// Structure representing the temporary file system.
@@ -55,9 +57,10 @@ impl TmpFS {
 		};
 
 		// Adding the root node
-		let root_node = KernFSNode::new(0o777, 0, 0, FileContent::Directory(HashMap::new()), None);
+		let root_node = DummyKernFSNode::new(0o777, 0, 0, FileContent::Directory(HashMap::new()),
+			None);
 		fs.update_size(get_used_size(&root_node) as _, | fs | {
-			fs.fs.set_root(root_node)?;
+			fs.fs.set_root(Box::new(root_node)?)?;
 			Ok(())
 		})?;
 

@@ -14,11 +14,13 @@ use crate::file::Mode;
 use crate::file::Uid;
 use crate::file::fs::Filesystem;
 use crate::file::fs::Statfs;
+use crate::file::fs::kernfs::node::DummyKernFSNode;
 use crate::file::path::Path;
 use crate::memory;
 use crate::process::oom;
 use crate::util::FailableClone;
 use crate::util::IO;
+use crate::util::boxed::Box;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use node::KernFSNode;
@@ -40,7 +42,7 @@ pub struct KernFS {
 	mountpath: Path,
 
 	/// The list of nodes of the filesystem. The index in this vector is the inode.
-	nodes: Vec<Option<KernFSNode>>,
+	nodes: Vec<Option<Box<dyn KernFSNode>>>,
 	/// A list of free inodes.
 	free_nodes: Vec<INode>,
 }
@@ -66,7 +68,7 @@ impl KernFS {
 	}
 
 	/// Sets the root node of the filesystem.
-	pub fn set_root(&mut self, root: KernFSNode) -> Result<(), Errno> {
+	pub fn set_root(&mut self, root: Box<dyn KernFSNode>) -> Result<(), Errno> {
 		if self.nodes.is_empty() {
 			self.nodes.push(Some(root))?;
 		} else {
@@ -78,7 +80,7 @@ impl KernFS {
 
 	/// Returns an immutable reference to the node with inode `inode`. If the node doesn't exist,
 	/// the function returns an error.
-	pub fn get_node(&self, inode: INode) -> Result<&KernFSNode, Errno> {
+	pub fn get_node(&self, inode: INode) -> Result<&Box<dyn KernFSNode>, Errno> {
 		if inode as usize >= self.nodes.len() {
 			return Err(errno!(ENOENT));
 		}
@@ -88,7 +90,7 @@ impl KernFS {
 
 	/// Returns a mutable reference to the node with inode `inode`. If the node doesn't exist, the
 	/// function returns an error.
-	pub fn get_node_mut(&mut self, inode: INode) -> Result<&mut KernFSNode, Errno> {
+	pub fn get_node_mut(&mut self, inode: INode) -> Result<&mut Box<dyn KernFSNode>, Errno> {
 		if inode as usize >= self.nodes.len() {
 			return Err(errno!(ENOENT));
 		}
@@ -98,7 +100,7 @@ impl KernFS {
 
 	/// Adds the given node `node` to the filesystem.
 	/// The function returns the allocated inode.
-	pub fn add_node(&mut self, node: KernFSNode) -> Result<INode, Errno> {
+	pub fn add_node(&mut self, node: Box<dyn KernFSNode>) -> Result<INode, Errno> {
 		if let Some(free_node) = self.free_nodes.pop() {
 			// Using an existing slot
 			self.nodes[free_node as _] = Some(node);
@@ -214,12 +216,12 @@ impl Filesystem for KernFS {
 		// Checking the parent exists
 		self.get_node_mut(parent_inode)?;
 
-		let node = KernFSNode::new(mode, uid, gid, content.failable_clone()?, None);
-		let inode = self.add_node(node)?;
+		let node = DummyKernFSNode::new(mode, uid, gid, content.failable_clone()?, None);
+		let inode = self.add_node(Box::new(node)?)?;
 
 		// Getting entries from parent
 		let parent = self.get_node_mut(parent_inode).unwrap();
-		let entries = match parent.get_content_mut() {
+		let entries = match parent.get_content() {
 			FileContent::Directory(entries) => entries,
 			_ => return Err(errno!(ENOENT)),
 		};
@@ -248,7 +250,7 @@ impl Filesystem for KernFS {
 		let entry_type = self.get_node(parent_inode)?.get_content().get_file_type();
 		let parent = self.get_node_mut(parent_inode)?;
 
-		match parent.get_content_mut() {
+		match parent.get_content() {
 			FileContent::Directory(entries) => {
 				entries.insert(name.failable_clone()?, DirEntry {
 					inode,
@@ -315,7 +317,7 @@ impl Filesystem for KernFS {
 
 		// Removing directory entry
 		let parent = self.get_node_mut(parent_inode).unwrap();
-		match parent.get_content_mut() {
+		match parent.get_content() {
 			FileContent::Directory(entries) => entries.remove(name),
 			_ => unreachable!(),
 		};

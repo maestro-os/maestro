@@ -11,11 +11,51 @@ use crate::time;
 use crate::util::IO;
 use crate::util::boxed::Box;
 
-// TODO Turn the node into a trait and add a structure deriving it which represents a dummy node
-// (the current struct)
-
 /// Trait representing a node in a kernfs.
-pub struct KernFSNode {
+pub trait KernFSNode: IO {
+	/// Returns the number of hard links to the node.
+	fn get_hard_links_count(&self) -> u16;
+	/// Sets the number of hard links to the node.
+	fn set_hard_links_count(&mut self, hard_links_count: u16);
+
+	/// Returns the permissions of the file.
+	fn get_mode(&self) -> Mode;
+	/// Sets the permissions of the file.
+	fn set_mode(&mut self, mode: Mode);
+
+	/// Returns the UID of the file's owner.
+	fn get_uid(&self) -> Uid;
+	/// Sets the UID of the file's owner.
+	fn set_uid(&mut self, uid: Uid);
+
+	/// Returns the GID of the file's owner.
+	fn get_gid(&self) -> Gid;
+	/// Sets the GID of the file's owner.
+	fn set_gid(&mut self, gid: Gid);
+
+	/// Returns the timestamp of the last access to the file.
+	fn get_atime(&self) -> Timestamp;
+	/// Sets the timestamp of the last access to the file.
+	fn set_atime(&mut self, ts: Timestamp);
+
+	/// Returns the timestamp of the last modification of the file's metadata.
+	fn get_ctime(&self) -> Timestamp;
+	/// Sets the timestamp of the last modification of the file's metadata.
+	fn set_ctime(&mut self, ts: Timestamp);
+
+	/// Returns the timestamp of the last modification of the file's content.
+	fn get_mtime(&self) -> Timestamp;
+	/// Sets the timestamp of the last modification of the file's content.
+	fn set_mtime(&mut self, ts: Timestamp);
+
+	/// Returns the node's content.
+	fn get_content(&self) -> FileContent;
+	/// Sets the node's content.
+	fn set_content(&mut self, content: FileContent);
+}
+
+/// Structure representing a dummy kernfs node (with the default behaviour).
+pub struct DummyKernFSNode {
 	/// The number of hard links to the node.
 	hard_links_count: u16,
 
@@ -40,7 +80,7 @@ pub struct KernFSNode {
 	io_handle: Option<Box<dyn IO>>,
 }
 
-impl KernFSNode {
+impl DummyKernFSNode {
 	/// Creates a new node.
 	/// `mode` is the node's mode.
 	/// `uid` is the node owner's user ID.
@@ -68,89 +108,75 @@ impl KernFSNode {
 			io_handle,
 		}
 	}
+}
 
-	/// Returns the number of hard links to the node.
-	pub fn get_hard_links_count(&self) -> u16 {
+impl KernFSNode for DummyKernFSNode {
+	fn get_hard_links_count(&self) -> u16 {
 		self.hard_links_count
 	}
 
-	/// Sets the number of hard links to the node.
-	pub fn set_hard_links_count(&mut self, hard_links_count: u16) {
+	fn set_hard_links_count(&mut self, hard_links_count: u16) {
 		self.hard_links_count = hard_links_count;
 	}
 
-	/// Returns the permissions of the file.
-	pub fn get_mode(&self) -> Mode {
+	fn get_mode(&self) -> Mode {
 		self.mode
 	}
 
-	/// Sets the permissions of the file.
-	pub fn set_mode(&mut self, mode: Mode) {
+	fn set_mode(&mut self, mode: Mode) {
 		self.mode = mode;
 	}
 
-	/// Returns the UID of the file's owner.
-	pub fn get_uid(&self) -> Uid {
+	fn get_uid(&self) -> Uid {
 		self.uid
 	}
 
-	/// Sets the UID of the file's owner.
-	pub fn set_uid(&mut self, uid: Uid) {
+	fn set_uid(&mut self, uid: Uid) {
 		self.uid = uid;
 	}
 
-	/// Returns the GID of the file's owner.
-	pub fn get_gid(&self) -> Gid {
+	fn get_gid(&self) -> Gid {
 		self.gid
 	}
 
-	/// Sets the GID of the file's owner.
-	pub fn set_gid(&mut self, gid: Gid) {
+	fn set_gid(&mut self, gid: Gid) {
 		self.gid = gid;
 	}
 
-	/// Returns the timestamp of the last access to the file.
-	pub fn get_atime(&self) -> Timestamp {
+	fn get_atime(&self) -> Timestamp {
 		self.atime
 	}
 
-	/// Sets the timestamp of the last access to the file.
-	pub fn set_atime(&mut self, ts: Timestamp) {
+	fn set_atime(&mut self, ts: Timestamp) {
 		self.atime = ts;
 	}
 
-	/// Returns the timestamp of the last modification of the file's metadata.
-	pub fn get_ctime(&self) -> Timestamp {
+	fn get_ctime(&self) -> Timestamp {
 		self.ctime
 	}
 
-	/// Sets the timestamp of the last modification of the file's metadata.
-	pub fn set_ctime(&mut self, ts: Timestamp) {
+	fn set_ctime(&mut self, ts: Timestamp) {
 		self.ctime = ts;
 	}
 
-	/// Returns the timestamp of the last modification of the file's content.
-	pub fn get_mtime(&self) -> Timestamp {
+	fn get_mtime(&self) -> Timestamp {
 		self.mtime
 	}
 
-	/// Sets the timestamp of the last modification of the file's content.
-	pub fn set_mtime(&mut self, ts: Timestamp) {
+	fn set_mtime(&mut self, ts: Timestamp) {
 		self.mtime = ts;
 	}
 
-	/// Returns an immutable reference the node's content.
-	pub fn get_content(&self) -> &FileContent {
-		&self.content
+	fn get_content(&self) -> FileContent {
+		self.content
 	}
 
-	/// Returns a mutable reference to the node's content.
-	pub fn get_content_mut(&mut self) -> &mut FileContent {
-		&mut self.content
+	fn set_content(&mut self, content: FileContent) {
+		self.content = content;
 	}
 }
 
-impl IO for KernFSNode {
+impl IO for DummyKernFSNode {
 	fn get_size(&self) -> u64 {
 		match &self.io_handle {
 			Some(io_handle) => io_handle.get_size(),
