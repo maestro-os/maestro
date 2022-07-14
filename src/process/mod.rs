@@ -16,6 +16,7 @@ pub mod signal;
 pub mod tss;
 pub mod user_desc;
 
+use core::any::Any;
 use core::cmp::max;
 use core::ffi::c_void;
 use core::mem::ManuallyDrop;
@@ -34,6 +35,7 @@ use crate::file::fcache;
 use crate::file::fd::FD_CLOEXEC;
 use crate::file::fd::FileDescriptor;
 use crate::file::fd::NewFDConstraint;
+use crate::file::fs::procfs::ProcFS;
 use crate::file::mountpoint;
 use crate::file::open_file::FDTarget;
 use crate::file::open_file::OpenFile;
@@ -434,9 +436,14 @@ impl Process {
 		// TODO Avoid allocation
 		let procfs_source = MountSource::NoDev(String::from(b"procfs")?);
 
-		if let Some(_procfs) = mountpoint::get_fs(&procfs_source) {
-			// TODO Insert process's directory
-			todo!();
+		if let Some(fs) = mountpoint::get_fs(&procfs_source) {
+			let fs_guard = fs.lock();
+			let fs = fs_guard.get_mut() as &mut dyn Any;
+
+			if let Some(_procfs) = fs.downcast_mut::<ProcFS>() {
+				// TODO Insert process's directory
+				todo!();
+			}
 		}
 
 		Ok(())
@@ -447,9 +454,14 @@ impl Process {
 		// TODO Avoid allocation
 		let procfs_source = MountSource::NoDev(String::from(b"procfs")?);
 
-		if let Some(_procfs) = mountpoint::get_fs(&procfs_source) {
-			// TODO Remove process's directory
-			todo!();
+		if let Some(fs) = mountpoint::get_fs(&procfs_source) {
+			let fs_guard = fs.lock();
+			let fs = fs_guard.get_mut() as &mut dyn Any;
+
+			if let Some(_procfs) = fs.downcast_mut::<ProcFS>() {
+				// TODO Remove process's directory
+				todo!();
+			}
 		}
 
 		Ok(())

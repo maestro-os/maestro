@@ -5,6 +5,7 @@ pub mod kernfs;
 pub mod procfs;
 pub mod tmp;
 
+use core::any::Any;
 use crate::errno::Errno;
 use crate::errno;
 use crate::file::FileContent;
@@ -48,7 +49,7 @@ pub struct Statfs {
 }
 
 /// Trait representing a filesystem.
-pub trait Filesystem {
+pub trait Filesystem: Any {
 	/// Returns the name of the filesystem.
 	fn get_name(&self) -> &[u8]; // TODO Remove?
 
