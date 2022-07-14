@@ -1,6 +1,7 @@
 //! This module implements the String structure which wraps the `str` type.
 
 use core::fmt::Debug;
+use core::fmt::Write;
 use core::fmt;
 use core::hash::Hash;
 use core::hash::Hasher;
@@ -236,6 +237,32 @@ impl fmt::Display for String {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		f.write_str(self.as_str().unwrap_or("<Invalid UTF-8>")) // TODO Find another way
 	}
+}
+
+/// TODO doc
+pub struct StringWriter {
+	/// TODO doc
+	pub s: Option<Result<String, Errno>>,
+}
+
+impl Write for StringWriter {
+	fn write_str(&mut self, s: &str) -> Result<(), fmt::Error> {
+		self.s = Some(String::from(s.as_bytes()));
+		Ok(())
+	}
+}
+
+/// Builds an owned string from the given format string.
+#[macro_export]
+macro_rules! format {
+	($($arg:tt)*) => {{
+		let mut w = crate::util::container::string::StringWriter {
+			s: None,
+		};
+		core::fmt::write(&mut w, format_args!($($arg)*)).unwrap();
+
+		w.s.unwrap()
+	}};
 }
 
 #[cfg(test)]
