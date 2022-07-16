@@ -18,13 +18,16 @@ pub fn unlinkat(regs: &Regs) -> Result<i32, Errno> {
 		let guard = mutex.lock();
 		let proc = guard.get_mut();
 
+		let uid = proc.get_euid();
+		let gid = proc.get_egid();
+
 		let mem_space = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space.lock();
 		let pathname = pathname.get(&mem_space_guard)?.ok_or_else(|| errno!(EFAULT))?;
 
-		let file = util::get_file_at(proc, false, dirfd, pathname, flags)?;
+		let file = util::get_file_at(guard, false, dirfd, pathname, flags)?;
 
-		(file, proc.get_euid(), proc.get_egid())
+		(file, uid, gid)
 	};
 	let file_guard = file_mutex.lock();
 	let file = file_guard.get_mut();

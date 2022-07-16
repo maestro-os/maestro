@@ -17,6 +17,7 @@ use crate::file::fs::Statfs;
 use crate::file::path::Path;
 use crate::process::oom;
 use crate::process::pid::Pid;
+use crate::process;
 use crate::util::IO;
 use crate::util::boxed::Box;
 use crate::util::container::hashmap::HashMap;
@@ -62,7 +63,7 @@ impl ProcFS {
 		})?;
 
 		// Creating /proc/mounts
-		let mount_node = DummyKernFSNode::new(0o444, 0, 0,
+		let mount_node = DummyKernFSNode::new(0o777, 0, 0,
 			FileContent::Link(String::from(b"self/mounts")?), None);
 		let mount_inode = fs.fs.add_node(Box::new(mount_node)?)?;
 		root_entries.insert(String::from(b"mounts")?, DirEntry {
@@ -70,12 +71,20 @@ impl ProcFS {
 			entry_type: FileType::Link,
 		})?;
 
-		// TODO Iterate on processes to register them
-
 		// Adding the root node
 		let root_node = DummyKernFSNode::new(0o555, 0, 0, FileContent::Directory(root_entries),
 			None);
 		fs.fs.set_root(Box::new(root_node)?)?;
+
+		// Adding existing processes
+		{
+			let scheduler_guard = process::get_scheduler().lock();
+			let scheduler = scheduler_guard.get_mut();
+
+			for (pid, _) in scheduler.iter_process() {
+				fs.add_process(*pid)?;
+			}
+		}
 
 		Ok(fs)
 	}

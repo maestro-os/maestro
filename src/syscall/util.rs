@@ -14,6 +14,7 @@ use crate::process::mem_space::ptr::SyscallString;
 use crate::util::FailableClone;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
+use crate::util::lock::MutexGuard;
 use crate::util::ptr::SharedPtr;
 
 /// Returns the absolute path according to the process's current working directory.
@@ -70,7 +71,9 @@ pub unsafe fn get_str_array(process: &Process, ptr: *const *const u8)
 }
 
 /// TODO doc
-fn build_path_from_fd(process: &Process, dirfd: i32, pathname: &[u8]) -> Result<Path, Errno> {
+fn build_path_from_fd(process_guard: MutexGuard<Process, false>, dirfd: i32,
+	pathname: &[u8]) -> Result<Path, Errno> {
+	let process = process_guard.get();
 	let path = Path::from_str(pathname, true)?;
 
 	if path.is_absolute() {
@@ -108,13 +111,15 @@ fn build_path_from_fd(process: &Process, dirfd: i32, pathname: &[u8]) -> Result<
 }
 
 /// Returns the file for the given path `pathname`.
-/// `process` is the current process.
+/// `process_guard` is the mutex guard of the current process.
 /// `follow_links` tells whether symbolic links may be followed.
 /// `dirfd` is the file descriptor of the parent directory.
 /// `pathname` is the path relative to the parent directory.
 /// `flags` is an integer containing AT_* flags.
-pub fn get_file_at(process: &Process, follow_links: bool, dirfd: i32, pathname: &[u8],
-	flags: i32) -> Result<SharedPtr<File>, Errno> {
+pub fn get_file_at(process_guard: MutexGuard<Process, false>, follow_links: bool, dirfd: i32,
+	pathname: &[u8], flags: i32) -> Result<SharedPtr<File>, Errno> {
+	let process = process_guard.get();
+
 	if pathname.is_empty() {
 		if flags & super::access::AT_EMPTY_PATH != 0 {
 			// Using `dirfd` as the file descriptor to the file
@@ -137,10 +142,10 @@ pub fn get_file_at(process: &Process, follow_links: bool, dirfd: i32, pathname: 
 			Err(errno!(ENOENT))
 		}
 	} else {
-		let path = build_path_from_fd(process, dirfd, pathname)?;
-
 		let uid = process.get_euid();
 		let gid = process.get_egid();
+
+		let path = build_path_from_fd(process_guard, dirfd, pathname)?;
 
 		let fcache = fcache::get();
 		let fcache_guard = fcache.lock();
@@ -149,17 +154,19 @@ pub fn get_file_at(process: &Process, follow_links: bool, dirfd: i32, pathname: 
 }
 
 /// Creates the given file `file` at the given pathname `pathname`.
-/// `process` is the current process.
+/// `process_guard` is the mutex guard of the current process.
 /// `follow_links` tells whether symbolic links may be followed.
 /// `dirfd` is the file descriptor of the parent directory.
 /// `pathname` is the path relative to the parent directory.
 /// `mode` is the permissions of the newly created file.
 /// `content` is the content of the newly created file.
-pub fn create_file_at(process: &Process, follow_links: bool, dirfd: i32, pathname: &[u8],
-	mode: Mode, content: FileContent) -> Result<SharedPtr<File>, Errno> {
+pub fn create_file_at(process_guard: MutexGuard<Process, false>, follow_links: bool, dirfd: i32,
+	pathname: &[u8], mode: Mode, content: FileContent) -> Result<SharedPtr<File>, Errno> {
 	if pathname.is_empty() {
 		return Err(errno!(ENOENT));
 	}
+
+	let process = process_guard.get();
 
 	let uid = process.get_euid();
 	let gid = process.get_egid();
@@ -171,7 +178,7 @@ pub fn create_file_at(process: &Process, follow_links: bool, dirfd: i32, pathnam
 	let fcache_guard = fcache.lock();
 	let fcache = fcache_guard.get_mut().as_mut().unwrap();
 
-	let mut path = build_path_from_fd(process, dirfd, pathname)?;
+	let mut path = build_path_from_fd(process_guard, dirfd, pathname)?;
 	let name = path.pop().unwrap();
 	let parent_path = path;
 

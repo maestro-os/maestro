@@ -7,7 +7,7 @@ use crate::file::Mode;
 use crate::file::Uid;
 use crate::file::fs::kernfs::KernFS;
 use crate::file::fs::kernfs::node::KernFSNode;
-use crate::file;
+use crate::process::Process;
 use crate::process::pid::Pid;
 use crate::time::unit::Timestamp;
 use crate::util::IO;
@@ -46,19 +46,27 @@ impl KernFSNode for ProcDir {
 	fn set_hard_links_count(&mut self, _: u16) {}
 
 	fn get_mode(&self) -> Mode {
-		0o777
+		0o555
 	}
 
 	fn set_mode(&mut self, _: Mode) {}
 
 	fn get_uid(&self) -> Uid {
-		file::ROOT_UID
+		let proc_mutex = Process::get_by_pid(self.pid).unwrap();
+		let proc_guard = proc_mutex.lock();
+		let proc = proc_guard.get();
+
+		proc.get_euid()
 	}
 
 	fn set_uid(&mut self, _: Uid) {}
 
 	fn get_gid(&self) -> Gid {
-		file::ROOT_GID
+		let proc_mutex = Process::get_by_pid(self.pid).unwrap();
+		let proc_guard = proc_mutex.lock();
+		let proc = proc_guard.get();
+
+		proc.get_egid()
 	}
 
 	fn set_gid(&mut self, _: Gid) {}

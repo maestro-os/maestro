@@ -65,8 +65,6 @@ fn try_kill_group(pid: i32, sig: Option<Signal>) -> Result<(), Errno> {
 		-pid as Pid
 	};
 
-	let mut success = false;
-
 	// Killing process group
 	{
 		let mutex = Process::get_by_pid(pgid).ok_or_else(|| errno!(ESRCH))?;
@@ -80,22 +78,14 @@ fn try_kill_group(pid: i32, sig: Option<Signal>) -> Result<(), Errno> {
 				continue;
 			}
 
-			if try_kill(*pid as _, sig.clone()).is_ok() {
-				success = true;
-			}
+			try_kill(*pid as _, sig.clone())?;
 		}
 	}
 
 	// Killing process group owner
-	if try_kill(pgid, sig.clone()).is_ok() {
-		success = true;
-	}
+	try_kill(pgid, sig.clone())?;
 
-	if success {
-		Ok(())
-	} else {
-		Err(errno!(ESRCH))
-	}
+	Ok(())
 }
 
 /// Sends the signal `sig` to the processes according to the given value `pid`.
@@ -110,22 +100,16 @@ fn send_signal(pid: i32, sig: Option<Signal>) -> Result<(), Errno> {
 		let scheduler_guard = process::get_scheduler().lock();
 		let scheduler = scheduler_guard.get_mut();
 
-		// Variable telling whether at least one process is killed
-		let mut success = false;
-
-		scheduler.foreach_process(| pid, _ | {
-			if *pid != process::pid::INIT_PID {
-				if try_kill(*pid, sig.clone()).is_ok() {
-					success = true;
-				}
+		for (pid, _) in scheduler.iter_process() {
+			if *pid == process::pid::INIT_PID {
+				continue;
 			}
-		});
 
-		if success {
-			Ok(())
-		} else {
-			Err(errno!(ESRCH))
+			// TODO Check permission
+			try_kill(*pid, sig.clone())?;
 		}
+
+		Ok(())
 	} else if pid < -1 { // Kill the given process group
 		try_kill_group(-pid as _, sig)
 	} else {

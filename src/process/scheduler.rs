@@ -23,7 +23,6 @@ use crate::process::regs::Regs;
 use crate::process;
 use crate::util::container::map::Map;
 use crate::util::container::map::MapIterator;
-use crate::util::container::map::TraversalType;
 use crate::util::container::vec::Vec;
 use crate::util::lock::*;
 use crate::util::math;
@@ -91,14 +90,9 @@ impl Scheduler {
 		}
 	}
 
-	/// Returns the number of processes registered on the scheduler.
-	pub fn get_processes_count(&self) -> usize {
-		self.processes.count()
-	}
-
-	/// Calls the given function `f` for each processes.
-	pub fn foreach_process<F: FnMut(&Pid, &mut IntSharedPtr<Process>)>(&mut self, f: F) {
-		self.processes.foreach_mut(f, TraversalType::InOrder);
+	/// Returns an iterator on the scheduler's processes.
+	pub fn iter_process<'a>(&'a mut self) -> MapIterator<'a, Pid, IntSharedPtr<Process>> {
+		self.processes.iter()
 	}
 
 	/// Returns the process with PID `pid`. If the process doesn't exist, the function returns
