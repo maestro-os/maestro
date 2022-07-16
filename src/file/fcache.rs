@@ -89,6 +89,7 @@ impl FCache {
 		let mountpoint_mutex = mountpoint::get_deepest(&path).ok_or_else(|| errno!(ENOENT))?;
 		let mountpoint_guard = mountpoint_mutex.lock();
 		let mountpoint = mountpoint_guard.get_mut();
+		let mountpath = mountpoint.get_path().failable_clone()?;
 
 		// Getting the IO interface
 		let io_mutex = mountpoint.get_source().get_io()?;
@@ -137,18 +138,25 @@ impl FCache {
 				return Err(errno!(EPERM));
 			}
 
-			if follow_links {
+			// If this is not the last element, or if links are followed
+			if i < inner_path.get_elements_count() - 1 || follow_links {
 				// If symbolic link, resolve it
 				if let FileContent::Link(link_path) = file.get_file_content() {
 					if follows_count > limits::SYMLOOP_MAX {
 						return Err(errno!(ELOOP));
 					}
 
-					let mut parent_path = path.failable_clone()?;
-					parent_path.pop();
+					let mut prefix = inner_path.range_to(..i)?;
+					prefix.set_absolute(false);
 
 					let link_path = Path::from_str(link_path.as_bytes(), false)?;
+
+					let mut suffix = inner_path.range_from((i + 1)..)?;
+					suffix.set_absolute(false);
+
+					let parent_path = mountpath.concat(&prefix)?;
 					let new_path = parent_path.concat(&link_path)?;
+					let new_path = new_path.concat(&suffix)?;
 
 					drop(fs_guard);
 					drop(io_guard);

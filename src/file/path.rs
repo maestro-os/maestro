@@ -68,6 +68,11 @@ impl Path {
 		self.absolute
 	}
 
+	/// Sets whether the path is absolute.
+	pub fn set_absolute(&mut self, absolute: bool) {
+		self.absolute = absolute;
+	}
+
 	/// Tells whether the path is empty.
 	pub fn is_empty(&self) -> bool {
 		self.parts.is_empty()
@@ -254,6 +259,7 @@ impl fmt::Display for Path {
 
 		for i in 0..self.get_elements_count() {
 			write!(f, "{}", self[i])?;
+
 			if i + 1 < self.get_elements_count() {
 				write!(f, "/")?;
 			}
