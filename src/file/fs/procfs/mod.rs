@@ -1,6 +1,5 @@
 //! The procfs is a virtual filesystem which provides informations about processes.
 
-pub mod mount;
 pub mod proc_dir;
 pub mod self_link;
 

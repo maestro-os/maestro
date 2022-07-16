@@ -1,5 +1,6 @@
 //! A mount point is a directory in which a filesystem is mounted.
 
+use core::cmp::max;
 use crate::device::DeviceType;
 use crate::device;
 use crate::errno::Errno;
@@ -323,7 +324,16 @@ pub fn create(source: MountSource, fs_type: Option<SharedPtr<dyn FilesystemType>
 	let guard = MOUNT_POINTS.lock();
 	let container = guard.get_mut();
 
-	let id = 0; // TODO Allocate
+	// TODO Allocate cleanly
+	let id = {
+		let mut id = 0;
+
+		for (i, _) in container.iter() {
+			id = max(*i, id);
+		}
+
+		id + 1
+	};
 
 	let mountpoint = MountPoint::new(id, source, fs_type, flags, path)?;
 

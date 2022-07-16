@@ -116,16 +116,10 @@ impl KernFS {
 	}
 
 	/// Removes the node with inode `inode`.
+	/// If the node is a non-empty directory, its content is **NOT** removed.
+	/// If the node doesn't exist, the function does nothing.
 	pub fn remove_node(&mut self, inode: INode) -> Result<(), Errno> {
-		if let Some(node) = &self.nodes[inode as _] {
-			// If the node is a non-empty directory, return an error
-			match node.get_content().as_ref() {
-				FileContent::Directory(entries) if !entries.is_empty() => {
-					return Err(errno!(ENOTEMPTY));
-				},
-				_ => {},
-			}
-
+		if (inode as usize) < self.nodes.len() {
 			self.nodes[inode as _] = None;
 			self.free_nodes.push(inode)?;
 		}

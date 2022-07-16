@@ -1,6 +1,7 @@
 //! The OOM killer is a procedure which is invoked when the kernel runs out of memory. It kills one
 //! or more processes according to a score computed for each of them.
 
+use crate::errno;
 use crate::process::Errno;
 use crate::util::lock::Mutex;
 
@@ -35,8 +36,13 @@ pub fn kill() {
 /// then tries again. If the OOM killer is unable to free enough memory, the kernel may panic.
 pub fn wrap<T, F: FnMut() -> Result<T, Errno>>(mut f: F) -> T {
 	for _ in 0..MAX_TRIES {
-		if let Ok(r) = f() {
-			return r;
+		match f() {
+			Ok(r) => return r,
+			Err(e) if e.as_int() != errno::ENOMEM => {
+				panic!("OOM killer received error: {}", e);
+			},
+
+			_ => {},
 		}
 
 		kill();

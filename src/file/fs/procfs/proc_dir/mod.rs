@@ -1,7 +1,12 @@
 //! This module implements the directory of a process in the procfs.
 
+mod cwd;
+mod mounts;
+
 use crate::errno::Errno;
+use crate::file::DirEntry;
 use crate::file::FileContent;
+use crate::file::FileType;
 use crate::file::Gid;
 use crate::file::Mode;
 use crate::file::Uid;
@@ -9,10 +14,13 @@ use crate::file::fs::kernfs::KernFS;
 use crate::file::fs::kernfs::node::KernFSNode;
 use crate::process::Process;
 use crate::process::pid::Pid;
-use crate::time::unit::Timestamp;
 use crate::util::IO;
+use crate::util::boxed::Box;
 use crate::util::container::hashmap::HashMap;
+use crate::util::container::string::String;
 use crate::util::ptr::cow::Cow;
+use cwd::Cwd;
+use mounts::Mounts;
 
 /// Structure representing the directory of a process.
 pub struct ProcDir {
@@ -26,9 +34,31 @@ pub struct ProcDir {
 impl ProcDir {
 	/// Creates a new instance for the process with the given PID `pid`.
 	/// The function adds every nodes to the given kernfs `fs`.
-	pub fn new(pid: Pid, _fs: &mut KernFS) -> Result<Self, Errno> {
-		let entries = HashMap::new();
-		// TODO Add every nodes to the fs
+	pub fn new(pid: Pid, fs: &mut KernFS) -> Result<Self, Errno> {
+		let mut entries = HashMap::new();
+
+		// TODO Add every nodes
+		// TODO On fail, remove previously inserted nodes
+
+		// Creating /proc/<pid>/cwd
+		let node = Cwd {
+			pid
+		};
+		let inode = fs.add_node(Box::new(node)?)?;
+		entries.insert(String::from(b"cwd")?, DirEntry {
+			inode,
+			entry_type: FileType::Link,
+		})?;
+
+		// Creating /proc/<pid>/mounts
+		let node = Mounts {
+			pid
+		};
+		let inode = fs.add_node(Box::new(node)?)?;
+		entries.insert(String::from(b"mounts")?, DirEntry {
+			inode,
+			entry_type: FileType::Regular,
+		})?;
 
 		Ok(Self {
 			pid,
@@ -39,17 +69,9 @@ impl ProcDir {
 }
 
 impl KernFSNode for ProcDir {
-	fn get_hard_links_count(&self) -> u16 {
-		1
-	}
-
-	fn set_hard_links_count(&mut self, _: u16) {}
-
 	fn get_mode(&self) -> Mode {
 		0o555
 	}
-
-	fn set_mode(&mut self, _: Mode) {}
 
 	fn get_uid(&self) -> Uid {
 		let proc_mutex = Process::get_by_pid(self.pid).unwrap();
@@ -59,8 +81,6 @@ impl KernFSNode for ProcDir {
 		proc.get_euid()
 	}
 
-	fn set_uid(&mut self, _: Uid) {}
-
 	fn get_gid(&self) -> Gid {
 		let proc_mutex = Process::get_by_pid(self.pid).unwrap();
 		let proc_guard = proc_mutex.lock();
@@ -69,31 +89,9 @@ impl KernFSNode for ProcDir {
 		proc.get_egid()
 	}
 
-	fn set_gid(&mut self, _: Gid) {}
-
-	fn get_atime(&self) -> Timestamp {
-		0
-	}
-
-	fn set_atime(&mut self, _: Timestamp) {}
-
-	fn get_ctime(&self) -> Timestamp {
-		0
-	}
-
-	fn set_ctime(&mut self, _: Timestamp) {}
-
-	fn get_mtime(&self) -> Timestamp {
-		0
-	}
-
-	fn set_mtime(&mut self, _: Timestamp) {}
-
 	fn get_content<'a>(&'a self) -> Cow<'a, FileContent> {
 		Cow::from(&self.content)
 	}
-
-	fn set_content(&mut self, _: FileContent) {}
 }
 
 impl IO for ProcDir {
