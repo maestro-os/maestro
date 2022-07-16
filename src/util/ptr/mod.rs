@@ -116,6 +116,7 @@ impl<T: ?Sized, const INT: bool> SharedPtr<T, INT> {
 
 impl<T: ?Sized, const INT: bool> Clone for SharedPtr<T, INT> {
 	fn clone(&self) -> Self {
+		// Incrementing the number of shared references
 		let inner = self.get_inner();
 		let guard = inner.ref_counter.lock();
 		let refs = guard.get_mut();
@@ -151,6 +152,7 @@ impl<T: ?Sized, const INT: bool> Drop for SharedPtr<T, INT> {
 	fn drop(&mut self) {
 		let inner = self.get_inner();
 
+		// Decrementing the number of shared references
 		{
 			let guard = inner.ref_counter.lock();
 			let refs = guard.get_mut();
@@ -160,6 +162,10 @@ impl<T: ?Sized, const INT: bool> Drop for SharedPtr<T, INT> {
 				return;
 			}
 		}
+
+		// At this point, the object is guaranteed to not be in use because the number of
+		// references is 0 and the callee can only get a reference to the mutex, ensuring it is
+		// unlocked before dropping the current pointer
 
 		// Dropping inner structure
 		unsafe {
@@ -205,6 +211,7 @@ impl<T: ?Sized, const INT: bool> WeakPtr<T, INT> {
 
 impl<T: ?Sized, const INT: bool> Clone for WeakPtr<T, INT> {
 	fn clone(&self) -> Self {
+		// Incrementing the number of weak references
 		let inner = self.get_inner();
 		let guard = inner.ref_counter.lock();
 		let refs = guard.get_mut();
@@ -226,6 +233,7 @@ impl<T: ?Sized, const INT: bool> Drop for WeakPtr<T, INT> {
 	fn drop(&mut self) {
 		let inner = self.get_inner();
 
+		// Decrementing the number of shared references
 		{
 			let guard = inner.ref_counter.lock();
 			let refs = guard.get_mut();
@@ -236,12 +244,15 @@ impl<T: ?Sized, const INT: bool> Drop for WeakPtr<T, INT> {
 			}
 		}
 
+		// At this point, the object is guaranteed to not be in use because the number of
+		// references is 0 and the callee can only get a reference to the mutex, ensuring it is
+		// unlocked before dropping the current pointer
+
 		// Dropping inner structure
 		unsafe {
 			drop_in_place(inner);
 			malloc::free(inner as *mut _ as *mut _);
 		}
-
 	}
 }
 

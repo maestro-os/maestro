@@ -16,12 +16,27 @@
 pub mod spinlock;
 
 use core::cell::UnsafeCell;
-use core::ptr::read_volatile;
-use core::ptr::write_volatile;
 use crate::idt;
 use crate::util::lock::spinlock::Spinlock;
 
-// TODO Add a deadlock detection mechanism (and mention it into the documentation)
+/// Structure representing the saved state of interruptions for the current thread.
+struct State {
+	/// The number of currently locked mutexes that disable interruptions.
+	ref_count: usize,
+
+	/// Tells whether interruptions were enabled before locking mutexes.
+	enabled: bool,
+}
+
+// TODO When implementing multicore, use an array. One element per core
+/// Saved state of interruptions for the current thread.
+/// This variable doesn't require synchonization since interruptions are always disabled when it is
+/// accessed.
+static mut INT_DISABLE_REFS: State = State {
+	ref_count: 0,
+
+	enabled: false,
+};
 
 /// Type used to declare a guard meant to unlock the associated Mutex at the moment the execution
 /// gets out of the scope of its declaration. This structure is useful to ensure that the mutex
@@ -69,9 +84,6 @@ impl<'a, T: ?Sized, const INT: bool> Drop for MutexGuard<'a, T, INT> {
 struct MutexIn<T: ?Sized, const INT: bool> {
 	/// The spinlock for the underlying data.
 	spin: Spinlock,
-	/// Tells whether interruptions were enabled before locking.
-	int_enabled: bool,
-
 	/// The data associated to the mutex.
 	data: T,
 }
@@ -91,8 +103,6 @@ impl<T, const INT: bool> Mutex<T, INT> {
 		Self {
 			inner: UnsafeCell::new(MutexIn {
 				spin: Spinlock::new(),
-				int_enabled: false,
-
 				data,
 			})
 		}
@@ -122,16 +132,23 @@ impl<T: ?Sized, const INT: bool> Mutex<T, INT> {
 		// Here is assumed that no interruption will change eflags' INT. Which could cause a race
 		// condition
 
-		// Disabling interrupts before locking to ensure no interrupt will occure while locking
 		if !INT {
+			// Disabling interrupts before locking to ensure no interrupt will occure while locking
 			crate::cli!();
 		}
+
 		inner.spin.lock();
 
-		// Setting the values after locking to avoid writing on them whilst the mutex was
-		// locked
-		unsafe {
-			write_volatile(&mut inner.int_enabled, state);
+		if !INT {
+			// Updating the current thread's state
+			// Safe because interrupts are disabled and the value can be accessed only by the
+			// current core
+			unsafe {
+				if INT_DISABLE_REFS.ref_count == 0 {
+					INT_DISABLE_REFS.enabled = state;
+				}
+				INT_DISABLE_REFS.ref_count += 1;
+			}
 		}
 
 		MutexGuard::new(self)
@@ -155,18 +172,26 @@ impl<T: ?Sized, const INT: bool> Mutex<T, INT> {
 	pub unsafe fn unlock(&self) {
 		let inner = &mut (*self.inner.get());
 
-		// The state to restore
-		let state = read_volatile(&inner.int_enabled);
-
-		inner.spin.unlock();
-
 		if !INT {
+			// Updating references count
+			INT_DISABLE_REFS.ref_count -= 1;
+			let state = if INT_DISABLE_REFS.ref_count == 0 {
+				INT_DISABLE_REFS.enabled
+			} else {
+				false
+			};
+
+			// The state to restore
+			inner.spin.unlock();
+
 			// Restoring interrupts state after unlocking
 			if state {
 				crate::sti!();
 			} else {
 				crate::cli!();
 			}
+		} else {
+			inner.spin.unlock();
 		}
 	}
 }
@@ -175,6 +200,8 @@ unsafe impl<T, const INT: bool> Sync for Mutex<T, INT> {}
 
 impl<T: ?Sized, const INT: bool> Drop for Mutex<T, INT> {
 	fn drop(&mut self) {
+		// This condition should never be fulfilled without using `unsafe` since lifetimes ensure
+		// the lock guard has to be dropped before the mutex
 		if self.is_locked() {
 			panic!("Dropping a locked mutex");
 		}
