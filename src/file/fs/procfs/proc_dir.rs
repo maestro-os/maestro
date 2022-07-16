@@ -101,3 +101,9 @@ impl IO for ProcDir {
 		Err(errno!(EINVAL))
 	}
 }
+
+impl Drop for ProcDir {
+	fn drop(&mut self) {
+		// TODO Remove every nodes
+	}
+}

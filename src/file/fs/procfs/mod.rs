@@ -15,6 +15,7 @@ use crate::file::Mode;
 use crate::file::Uid;
 use crate::file::fs::Statfs;
 use crate::file::path::Path;
+use crate::process::oom;
 use crate::process::pid::Pid;
 use crate::util::IO;
 use crate::util::boxed::Box;
@@ -27,6 +28,7 @@ use super::Filesystem;
 use super::FilesystemType;
 use super::kernfs::KernFS;
 use super::kernfs::node::DummyKernFSNode;
+use super::kernfs;
 
 /// Structure representing the procfs.
 /// On the inside, the procfs works using a kernfs.
@@ -82,19 +84,48 @@ impl ProcFS {
 	pub fn add_process(&mut self, pid: Pid) -> Result<(), Errno> {
 		// Creating the process's node
 		let proc_node = ProcDir::new(pid, &mut self.fs)?;
-		self.fs.add_node(Box::new(proc_node)?)?;
+		let inode = self.fs.add_node(Box::new(proc_node)?)?;
+		oom::wrap(|| self.procs.insert(pid, inode));
 
-		// Inserting the process's node at the root of the filesystem
-		// TODO
+		// Inserting the process's entry at the root of the filesystem
+		let root = self.fs.get_node_mut(kernfs::ROOT_INODE).unwrap();
+		let mut content = oom::wrap(|| root.get_content().into_owned());
+		match &mut content {
+			FileContent::Directory(entries) => oom::wrap(|| {
+				entries.insert(String::from_number(pid as _)?, DirEntry {
+					entry_type: FileType::Directory,
+					inode: inode,
+				})?;
+				Ok(())
+			}),
+			_ => unreachable!(),
+		}
+		root.set_content(content);
 
 		Ok(())
 	}
 
 	/// Removes the process with pid `pid` from the filesystem.
 	/// If the process doesn't exist, the function does nothing.
-	pub fn remove_process(&mut self, _pid: Pid) -> Result<(), Errno> {
-		// TODO
-		todo!();
+	pub fn remove_process(&mut self, pid: Pid) -> Result<(), Errno> {
+		if let Some(inode) = self.procs.remove(&pid) {
+			// Removing the process's entry from the root of the filesystem
+			let root = self.fs.get_node_mut(kernfs::ROOT_INODE).unwrap();
+			let mut content = oom::wrap(|| root.get_content().into_owned());
+			match &mut content {
+				FileContent::Directory(entries) => oom::wrap(|| {
+					entries.remove(&String::from_number(pid as _)?);
+					Ok(())
+				}),
+				_ => unreachable!(),
+			}
+			root.set_content(content);
+
+			// Removing the node
+			oom::wrap(|| self.fs.remove_node(inode));
+		}
+
+		Ok(())
 	}
 }
 

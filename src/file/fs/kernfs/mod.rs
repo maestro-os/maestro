@@ -26,7 +26,7 @@ use crate::util::container::vec::Vec;
 use node::KernFSNode;
 
 /// The index of the root inode.
-const ROOT_INODE: INode = 0;
+pub const ROOT_INODE: INode = 0;
 
 /// The maximum length of a name in the filesystem.
 const MAX_NAME_LEN: usize = 255;
