@@ -97,7 +97,8 @@ mod test {
 
 	// TODO More tests on RFC1071
 
-	#[test_case]
+	// TODO
+	/*#[test_case]
 	fn crc32_0() {
 		for polynom in 0..u8::MAX {
 			let mut lookup_table = [0; 256];
@@ -126,7 +127,7 @@ mod test {
 				assert_eq!(compute_crc32(&check, &lookup_table), 0);
 			}
 		}
-	}
+	}*/
 
 	// TODO More tests on CRC32
 }
