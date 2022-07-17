@@ -7,6 +7,7 @@ use crate::file::open_file::O_NONBLOCK;
 use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallSlice;
 use crate::process::regs::Regs;
+use crate::util::IO;
 
 // TODO O_ASYNC
 
@@ -39,12 +40,13 @@ pub fn read(regs: &Regs) -> Result<i32, Errno> {
 			let mem_space_guard = mem_space.lock();
 			let buf_slice = buf.get_mut(&mem_space_guard, len)?.ok_or(errno!(EFAULT))?;
 
-			if open_file.eof() {
+			let (len, eof) = open_file.read(0, buf_slice)?;
+			if eof {
 				return Ok(0);
 			}
 
 			let flags = open_file.get_flags();
-			(open_file.read(buf_slice)?, flags)
+			(len, flags)
 		};
 
 		if len > 0 || flags & O_NONBLOCK != 0 {

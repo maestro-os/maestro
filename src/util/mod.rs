@@ -222,8 +222,11 @@ pub trait IO {
 
 	/// Reads data from the I/O and writes it into `buff`.
 	/// `offset` is the offset in the I/O to the beginning of the data to be read.
-	/// The function returns the number of bytes read.
-	fn read(&mut self, offset: u64, buff: &mut [u8]) -> Result<u64, Errno>;
+	/// The function returns a tuple containing:
+	/// - The number of bytes read.
+	/// - Whether the function reached the end of the input stream. In the context of a file, a
+	/// value of `true` is equivalent to the End Of File (EOF).
+	fn read(&mut self, offset: u64, buff: &mut [u8]) -> Result<(u64, bool), Errno>;
 
 	/// Reads data from `buff` and writes it into the I/O.
 	/// `offset` is the offset in the I/O to the beginning of the data to write.
@@ -239,8 +242,8 @@ impl IO for DummyIO {
 		0
 	}
 
-	fn read(&mut self, _offset: u64, _buff: &mut [u8]) -> Result<u64, Errno> {
-		Ok(0)
+	fn read(&mut self, _offset: u64, _buff: &mut [u8]) -> Result<(u64, bool), Errno> {
+		Ok((0, true))
 	}
 
 	fn write(&mut self, _offset: u64, _buff: &[u8]) -> Result<u64, Errno> {

@@ -150,7 +150,7 @@ impl Filesystem for TmpFS {
 	}
 
 	fn read_node(&mut self, io: &mut dyn IO, inode: INode, off: u64, buf: &mut [u8])
-		-> Result<u64, Errno> {
+		-> Result<(u64, bool), Errno> {
 		self.fs.read_node(io, inode, off, buf)
 	}
 

@@ -134,12 +134,12 @@ impl IO for TTYDeviceHandle {
 		}
 	}
 
-	fn read(&mut self, _offset: u64, buff: &mut [u8]) -> Result<u64, Errno> {
+	fn read(&mut self, _offset: u64, buff: &mut [u8]) -> Result<(u64, bool), Errno> {
 		let tty_mutex = self.get_tty().ok_or_else(|| errno!(ENOTTY))?;
 		let tty_guard = tty_mutex.lock();
 		let tty = tty_guard.get_mut();
 
-		Ok(tty.read(buff) as _)
+		Ok((tty.read(buff) as _, false))
 	}
 
 	fn write(&mut self, _offset: u64, buff: &[u8]) -> Result<u64, Errno> {

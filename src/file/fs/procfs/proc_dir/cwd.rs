@@ -55,7 +55,7 @@ impl IO for Cwd {
 		0
 	}
 
-	fn read(&mut self, _offset: u64, _buff: &mut [u8]) -> Result<u64, Errno> {
+	fn read(&mut self, _offset: u64, _buff: &mut [u8]) -> Result<(u64, bool), Errno> {
 		Err(errno!(EINVAL))
 	}
 

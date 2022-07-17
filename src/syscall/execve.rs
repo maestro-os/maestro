@@ -28,7 +28,7 @@ const SHEBANG_MAX: usize = 257;
 /// `buff` is the buffer to write the shebang into.
 /// If the file has a shebang, the function returns its size in bytes.
 pub fn peek_shebang(file: &mut File, buff: &mut [u8; SHEBANG_MAX]) -> Result<Option<u64>, Errno> {
-	let size = file.read(0, buff)?;
+	let (size, _) = file.read(0, buff)?;
 
 	if size >= 2 && buff[0..1] == [b'#', b'!'] {
 		Ok(Some(size))

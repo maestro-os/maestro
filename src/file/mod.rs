@@ -588,29 +588,6 @@ impl File {
 		self.content = content;
 	}
 
-	/// Tells whether the end of the file has been reached with the offset `off`.
-	pub fn eof(&self, off: u64) -> bool {
-		match &self.content {
-			FileContent::Regular => off >= self.size,
-
-			FileContent::Directory(_) => true,
-			FileContent::Link(_) => true,
-
-			FileContent::Fifo => {
-				// TODO
-				todo!();
-			},
-
-			FileContent::Socket => {
-				// TODO
-				todo!();
-			},
-
-			// TODO Check correctness
-			FileContent::BlockDevice { .. } | FileContent::CharDevice { .. } => false,
-		}
-	}
-
 	/// Performs an ioctl operation on the file.
 	/// `mem_space` is the memory space on which pointers are to be dereferenced.
 	/// `request` is the ID of the request to perform.
@@ -667,7 +644,7 @@ impl IO for File {
 		self.size
 	}
 
-	fn read(&mut self, off: u64, buff: &mut [u8]) -> Result<u64, Errno> {
+	fn read(&mut self, off: u64, buff: &mut [u8]) -> Result<(u64, bool), Errno> {
 		match &self.content {
 			FileContent::Regular => {
 				let mountpoint_mutex = self.location.get_mountpoint().ok_or_else(|| errno!(EIO))?;

@@ -10,6 +10,7 @@ use crate::process::iovec::IOVec;
 use crate::process::mem_space::MemSpace;
 use crate::process::mem_space::ptr::SyscallSlice;
 use crate::process::regs::Regs;
+use crate::util::IO;
 use crate::util::ptr::IntSharedPtr;
 
 // TODO Check the operation is atomic on the file
@@ -34,7 +35,7 @@ fn write(mem_space: IntSharedPtr<MemSpace>, iov: SyscallSlice<IOVec>,
 
 		if let Some(slice) = ptr.get(&mem_space_guard, l)? {
 			// TODO Handle in a loop like `write`?
-			total_len += open_file.write(slice)?;
+			total_len += open_file.write(0, slice)? as usize;
 		}
 	}
 

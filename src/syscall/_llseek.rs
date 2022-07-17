@@ -4,6 +4,7 @@ use crate::errno::Errno;
 use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::regs::Regs;
+use crate::util::IO;
 
 /// Sets the offset from the given value.
 const SEEK_SET: u32 = 0;
@@ -40,7 +41,7 @@ pub fn _llseek(regs: &Regs) -> Result<i32, Errno> {
 	let off = match whence {
 		SEEK_SET => off,
 		SEEK_CUR => open_file.get_offset() + off,
-		SEEK_END => open_file.get_file_size() + off,
+		SEEK_END => open_file.get_size() + off,
 
 		_ => return Err(errno!(EINVAL)),
 	};

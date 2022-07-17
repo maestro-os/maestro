@@ -1,6 +1,5 @@
 //! Kernfs implements utilities allowing to create a virtual filesystem.
 
-pub mod accumulator;
 pub mod node;
 
 use crate::errno::Errno;
@@ -335,7 +334,7 @@ impl Filesystem for KernFS {
 	}
 
 	fn read_node(&mut self, _: &mut dyn IO, inode: INode, off: u64, buf: &mut [u8])
-		-> Result<u64, Errno> {
+		-> Result<(u64, bool), Errno> {
 		let node = self.get_node_mut(inode)?;
 		node.read(off, buf)
 	}

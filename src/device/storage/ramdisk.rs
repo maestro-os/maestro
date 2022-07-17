@@ -143,7 +143,7 @@ impl IO for RAMDiskHandle {
 		RAM_DISK_SIZE as _
 	}
 
-	fn read(&mut self, offset: u64, buff: &mut [u8]) -> Result<u64, Errno> {
+	fn read(&mut self, offset: u64, buff: &mut [u8]) -> Result<(u64, bool), Errno> {
 		self.disk.read_bytes(buff, offset)
 	}
 
@@ -159,7 +159,7 @@ pub fn create() -> Result<(), Errno> {
 
 	for i in 0..RAM_DISK_COUNT {
 		let mut name = String::from(b"ram")?;
-		name.push_str(&String::from_number(i as _)?)?;
+		name.append(String::from_number(i as _)?)?;
 
 		let mut path = Path::root();
 		path.push(String::from(b"dev")?)?;

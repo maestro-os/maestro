@@ -8,6 +8,7 @@ use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallSlice;
 use crate::process::regs::Regs;
 use crate::syscall::Signal;
+use crate::util::IO;
 
 // TODO O_ASYNC
 
@@ -40,7 +41,7 @@ pub fn write(regs: &Regs) -> Result<i32, Errno> {
 			let buf_slice = buf.get(&mem_space_guard, len)?.ok_or(errno!(EFAULT))?;
 
 			let flags = open_file.get_flags();
-			let len = match open_file.write(buf_slice) {
+			let len = match open_file.write(0, buf_slice) {
 				Ok(len) => len,
 
 				Err(err) => {

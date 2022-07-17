@@ -208,7 +208,7 @@ impl IO for DummyKernFSNode {
 		}
 	}
 
-	fn read(&mut self, offset: u64, buff: &mut [u8]) -> Result<u64, Errno> {
+	fn read(&mut self, offset: u64, buff: &mut [u8]) -> Result<(u64, bool), Errno> {
 		if let Some(io_handle) = &mut self.io_handle {
 			return io_handle.read(offset, buff);
 		}

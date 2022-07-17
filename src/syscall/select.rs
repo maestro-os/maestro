@@ -93,15 +93,14 @@ pub fn do_select<T: TimeUnit>(nfds: u32,
 				if let Some(fd) = fd {
 					let open_file_mutex = fd.get_open_file();
 					let open_file_guard = open_file_mutex.lock();
-					let open_file = open_file_guard.get();
+					let _open_file = open_file_guard.get();
 
 					let mem_space_guard = mem_space.lock();
 
 					if let Some(readfds) = readfds.get_mut(&mem_space_guard)? {
 						if readfds.is_set(fd_id) {
 							// TODO
-							if true || open_file.eof() {
-								readfds.set(fd_id);
+							if true/* || open_file.eof()*/ {
 								events_count += 1;
 							} else {
 								readfds.clear(fd_id);
@@ -113,7 +112,6 @@ pub fn do_select<T: TimeUnit>(nfds: u32,
 						if writefds.is_set(fd_id) {
 							// TODO
 							if true {
-								writefds.set(fd_id);
 								events_count += 1;
 							} else {
 								writefds.clear(fd_id);
@@ -125,7 +123,6 @@ pub fn do_select<T: TimeUnit>(nfds: u32,
 						if exceptfds.is_set(fd_id) {
 							// TODO
 							if false {
-								//exceptfds.set(fd_id);
 								//events_count += 1;
 							} else {
 								exceptfds.clear(fd_id);

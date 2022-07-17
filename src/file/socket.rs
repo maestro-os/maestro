@@ -1,6 +1,7 @@
 //! This file implements sockets.
 
 use crate::errno::Errno;
+use crate::util::IO;
 use crate::util::container::ring_buffer::RingBuffer;
 use crate::util::container::vec::Vec;
 use crate::util::ptr::SharedPtr;
@@ -95,32 +96,35 @@ impl SocketSide {
 
 		s
 	}
+}
 
-	/// Reads data from the socket.
-	/// `buf` is the slice to write to.
-	/// The functions returns the number of bytes that have been read.
-	pub fn read(&mut self, buf: &mut [u8]) -> usize {
+impl IO for SocketSide {
+	fn get_size(&self) -> u64 {
+		// TODO
+		0
+	}
+
+	/// Note: This implemention ignores the offset.
+	fn read(&mut self, _: u64, buf: &mut [u8]) -> Result<(u64, bool), Errno> {
 		let guard = self.sock.lock();
 		let sock = guard.get_mut();
 
 		if self.other {
-			sock.send_buffer.read(buf)
+			Ok((sock.send_buffer.read(buf) as _, false)) // TODO Handle EOF
 		} else {
-			sock.receive_buffer.read(buf)
+			Ok((sock.receive_buffer.read(buf) as _, false)) // TODO Handle EOF
 		}
 	}
 
-	/// Writes data to the socket.
-	/// `buf` is the slice to read from.
-	/// The functions returns the number of bytes that have been written.
-	pub fn write(&mut self, buf: &[u8]) -> usize {
+	/// Note: This implemention ignores the offset.
+	fn write(&mut self, _: u64, buf: &[u8]) -> Result<u64, Errno> {
 		let guard = self.sock.lock();
 		let sock = guard.get_mut();
 
 		if self.other {
-			sock.receive_buffer.write(buf)
+			Ok(sock.receive_buffer.write(buf) as _)
 		} else {
-			sock.send_buffer.write(buf)
+			Ok(sock.send_buffer.write(buf) as _)
 		}
 	}
 }

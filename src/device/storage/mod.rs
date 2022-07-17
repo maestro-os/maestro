@@ -67,7 +67,7 @@ pub trait StorageInterface {
 	// Unit testing is done through ramdisk testing
 	/// Reads bytes from storage at offset `offset`, writing the data to `buf`.
 	/// If the offset and size are out of bounds, the function returns an error.
-	fn read_bytes(&mut self, buf: &mut [u8], offset: u64) -> Result<u64, Errno> {
+	fn read_bytes(&mut self, buf: &mut [u8], offset: u64) -> Result<(u64, bool), Errno> {
 		let block_size = self.get_block_size();
 		let blocks_count = self.get_blocks_count();
 
@@ -119,7 +119,8 @@ pub trait StorageInterface {
 			}
 		}
 
-		Ok(buf.len() as _)
+		let eof = (offset + buf.len() as u64) >= block_size * blocks_count;
+		Ok((buf.len() as _, eof))
 	}
 
 	// Unit testing is done through ramdisk testing
@@ -227,7 +228,7 @@ impl IO for StorageDeviceHandle {
 		}
 	}
 
-	fn read(&mut self, offset: u64, buff: &mut [u8]) -> Result<u64, Errno> {
+	fn read(&mut self, offset: u64, buff: &mut [u8]) -> Result<(u64, bool), Errno> {
 		if let Some(interface) = self.interface.get() {
 			let interface_guard = interface.lock();
 			let interface = interface_guard.get_mut();

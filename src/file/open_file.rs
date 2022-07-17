@@ -126,15 +126,6 @@ impl OpenFile {
 		&mut self.target
 	}
 
-	/// Returns the size of the file's content in bytes.
-	pub fn get_file_size(&self) -> u64 {
-		if let FDTarget::File(f) = &self.target {
-			f.get().lock().get().get_size()
-		} else {
-			0
-		}
-	}
-
 	/// Returns the current offset in the file.
 	pub fn get_offset(&self) -> u64 {
 		self.curr_off
@@ -143,78 +134,6 @@ impl OpenFile {
 	/// Sets the current offset in the file.
 	pub fn set_offset(&mut self, off: u64) {
 		self.curr_off = off;
-	}
-
-	/// Tells whether the end of file has been reached.
-	pub fn eof(&self) -> bool {
-		match &self.target {
-			FDTarget::File(file) => file.lock().get().eof(self.curr_off),
-
-			FDTarget::Pipe(pipe) => pipe.lock().get().eof(),
-
-			FDTarget::Socket(_sock) => {
-				// TODO If other side is closed, return `true`. Else, `false`
-				todo!();
-			},
-		}
-	}
-
-	/// Reads data from the file.
-	/// `buf` is the slice to write to.
-	/// The functions returns the number of bytes that have been read.
-	pub fn read(&mut self, buf: &mut [u8]) -> Result<usize, Errno> {
-		if !self.can_read() {
-			return Err(errno!(EINVAL));
-		}
-
-		let len = match &mut self.target {
-			FDTarget::File(f) => {
-				let guard = f.lock();
-				guard.get_mut().read(self.curr_off, buf)?
-			},
-
-			FDTarget::Pipe(p) => {
-				let guard = p.lock();
-				guard.get_mut().read(buf) as _
-			}
-
-			FDTarget::Socket(s) => {
-				let guard = s.lock();
-				guard.get_mut().read(buf) as _
-			},
-		};
-
-		self.curr_off += len as u64;
-		Ok(len as _)
-	}
-
-	/// Writes data to the file.
-	/// `buf` is the slice to read from.
-	/// The functions returns the number of bytes that have been written.
-	pub fn write(&mut self, buf: &[u8]) -> Result<usize, Errno> {
-		if !self.can_write() {
-			return Err(errno!(EINVAL));
-		}
-
-		let len = match &mut self.target {
-			FDTarget::File(f) => {
-				let guard = f.lock();
-				guard.get_mut().write(self.curr_off, buf)?
-			},
-
-			FDTarget::Pipe(p) => {
-				let guard = p.lock();
-				guard.get_mut().write(buf)? as _
-			}
-
-			FDTarget::Socket(s) => {
-				let guard = s.lock();
-				guard.get_mut().write(buf) as _
-			},
-		};
-
-		self.curr_off += len as u64;
-		Ok(len as _)
 	}
 
 	/// Performs an ioctl operation on the file.
@@ -236,6 +155,72 @@ impl OpenFile {
 				todo!();
 			},
 		}
+	}
+}
+
+impl IO for OpenFile {
+	fn get_size(&self) -> u64 {
+		if let FDTarget::File(f) = &self.target {
+			f.get().lock().get().get_size()
+		} else {
+			0
+		}
+	}
+
+	/// Note: on this specific implementation, the offset is ignored since `set_offset` has to be
+	/// used to define it.
+	fn read(&mut self, _: u64, buf: &mut [u8]) -> Result<(u64, bool), Errno> {
+		if !self.can_read() {
+			return Err(errno!(EINVAL));
+		}
+
+		let (len, eof) = match &mut self.target {
+			FDTarget::File(f) => {
+				let guard = f.lock();
+				guard.get_mut().read(self.curr_off, buf)
+			},
+
+			FDTarget::Pipe(p) => {
+				let guard = p.lock();
+				guard.get_mut().read(self.curr_off, buf)
+			}
+
+			FDTarget::Socket(s) => {
+				let guard = s.lock();
+				guard.get_mut().read(self.curr_off, buf)
+			},
+		}?;
+
+		self.curr_off += len as u64;
+		Ok((len as _, eof))
+	}
+
+	/// Note: on this specific implementation, the offset is ignored since `set_offset` has to be
+	/// used to define it.
+	fn write(&mut self, _: u64, buf: &[u8]) -> Result<u64, Errno> {
+		if !self.can_write() {
+			return Err(errno!(EINVAL));
+		}
+
+		let len = match &mut self.target {
+			FDTarget::File(f) => {
+				let guard = f.lock();
+				guard.get_mut().write(self.curr_off, buf)
+			},
+
+			FDTarget::Pipe(p) => {
+				let guard = p.lock();
+				guard.get_mut().write(self.curr_off, buf)
+			}
+
+			FDTarget::Socket(s) => {
+				let guard = s.lock();
+				guard.get_mut().write(self.curr_off, buf)
+			},
+		}?;
+
+		self.curr_off += len as u64;
+		Ok(len as _)
 	}
 }
 

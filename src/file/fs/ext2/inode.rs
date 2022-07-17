@@ -623,9 +623,10 @@ impl Ext2INode {
 	/// `buff` is the buffer in which the data is to be written.
 	/// `superblock` is the filesystem's superblock.
 	/// `io` is the I/O interface.
-	/// The function returns the number of bytes that have been read.
+	/// The function returns the number of bytes that have been read and boolean telling whether
+	/// EOF is reached.
 	pub fn read_content(&self, off: u64, buff: &mut [u8], superblock: &Superblock,
-		io: &mut dyn IO) -> Result<u64, Errno> {
+		io: &mut dyn IO) -> Result<(u64, bool), Errno> {
 		let size = self.get_size(superblock);
 		if off > size {
 			return Err(errno!(EINVAL));
@@ -656,7 +657,8 @@ impl Ext2INode {
 			i += len;
 		}
 
-		Ok(min(i, max))
+		let eof = off + i >= size;
+		Ok((min(i, max), eof))
 	}
 
 	/// Writes the content of the inode.

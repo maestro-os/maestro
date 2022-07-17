@@ -115,8 +115,11 @@ pub trait Filesystem: Any {
 
 	/// Reads from the given inode `inode` into the buffer `buf`.
 	/// `off` is the offset from which the data will be read from the node.
+	/// The function returns a tuple containing:
+	/// - The number of bytes read.
+	/// - Whether the End Of File (EOF) has been reached.
 	fn read_node(&mut self, io: &mut dyn IO, inode: INode, off: u64, buf: &mut [u8])
-		-> Result<u64, Errno>;
+		-> Result<(u64, bool), Errno>;
 
 	/// Writes to the given inode `inode` from the buffer `buf`.
 	/// `off` is the offset at which the data will be written in the node.

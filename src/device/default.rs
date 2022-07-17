@@ -34,8 +34,8 @@ impl IO for NullDeviceHandle {
 		0
 	}
 
-	fn read(&mut self, _offset: u64, _buff: &mut [u8]) -> Result<u64, Errno> {
-		Ok(0)
+	fn read(&mut self, _offset: u64, _buff: &mut [u8]) -> Result<(u64, bool), Errno> {
+		Ok((0, true))
 	}
 
 	fn write(&mut self, _offset: u64, buff: &[u8]) -> Result<u64, Errno> {
@@ -59,12 +59,12 @@ impl IO for ZeroDeviceHandle {
 		0
 	}
 
-	fn read(&mut self, _offset: u64, buff: &mut [u8]) -> Result<u64, Errno> {
+	fn read(&mut self, _offset: u64, buff: &mut [u8]) -> Result<(u64, bool), Errno> {
 		for b in buff.iter_mut() {
 			*b = 0;
 		}
 
-		Ok(buff.len() as _)
+		Ok((buff.len() as _, false))
 	}
 
 	fn write(&mut self, _offset: u64, buff: &[u8]) -> Result<u64, Errno> {
@@ -91,16 +91,19 @@ impl IO for KMsgDeviceHandle {
 		guard.get().get_size() as _
 	}
 
-	fn read(&mut self, offset: u64, buff: &mut [u8]) -> Result<u64, Errno> {
+	fn read(&mut self, offset: u64, buff: &mut [u8]) -> Result<(u64, bool), Errno> {
 		let mutex = logger::get();
 		let guard = mutex.lock();
+		let logger = guard.get();
 
-		let size = guard.get().get_size();
-		let content = guard.get().get_content();
+		let size = logger.get_size();
+		let content = logger.get_content();
 
 		let len = min(size, buff.len()) - offset as usize;
 		buff.copy_from_slice(&content[(offset as usize)..(offset as usize + len)]);
-		Ok(len as _)
+
+		let eof = offset as usize + len >= size;
+		Ok((len as _, eof))
 	}
 
 	fn write(&mut self, _offset: u64, _buff: &[u8]) -> Result<u64, Errno> {
@@ -127,7 +130,7 @@ impl IO for RandomDeviceHandle {
 		0
 	}
 
-	fn read(&mut self, _: u64, buff: &mut [u8]) -> Result<u64, Errno> {
+	fn read(&mut self, _: u64, buff: &mut [u8]) -> Result<(u64, bool), Errno> {
 		if let Some(source_mutex) = rand::get_source("random") {
 			let source_guard = source_mutex.lock();
 			let source = source_guard.get_mut();
@@ -137,9 +140,9 @@ impl IO for RandomDeviceHandle {
 				i += source.consume_entropy(&mut buff[i..]);
 			}
 
-			Ok(buff.len() as _)
+			Ok((buff.len() as _, false))
 		} else {
-			Ok(0)
+			Ok((0, true))
 		}
 	}
 
@@ -166,7 +169,7 @@ impl IO for URandomDeviceHandle {
 		0
 	}
 
-	fn read(&mut self, _: u64, buff: &mut [u8]) -> Result<u64, Errno> {
+	fn read(&mut self, _: u64, buff: &mut [u8]) -> Result<(u64, bool), Errno> {
 		if let Some(source_mutex) = rand::get_source("urandom") {
 			let source_guard = source_mutex.lock();
 			let source = source_guard.get_mut();
@@ -176,9 +179,9 @@ impl IO for URandomDeviceHandle {
 				i += source.consume_entropy(&mut buff[i..]);
 			}
 
-			Ok(buff.len() as _)
+			Ok((buff.len() as _, false))
 		} else {
-			Ok(0)
+			Ok((0, true))
 		}
 	}
 

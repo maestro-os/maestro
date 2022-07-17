@@ -152,8 +152,8 @@ impl String {
 	}
 
 	/// Appends the string `other` to the current one.
-	pub fn push_str(&mut self, other: &Self) -> Result<(), Errno> {
-		let mut v = other.data.failable_clone()?;
+	pub fn append(&mut self, other: Self) -> Result<(), Errno> {
+		let mut v = other.data;
 		self.data.append(&mut v)
 	}
 
@@ -175,7 +175,7 @@ impl Add for String {
 	type Output = Result<Self, Errno>;
 
 	fn add(mut self, other: Self) -> Self::Output {
-		self.push_str(&other)?;
+		self.append(other)?;
 		Ok(self)
 	}
 }
