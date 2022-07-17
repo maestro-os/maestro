@@ -1,5 +1,6 @@
 //! Kernfs implements utilities allowing to create a virtual filesystem.
 
+pub mod accumulator;
 pub mod node;
 
 use crate::errno::Errno;

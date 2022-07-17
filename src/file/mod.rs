@@ -606,6 +606,7 @@ impl File {
 				todo!();
 			},
 
+			// TODO Check correctness
 			FileContent::BlockDevice { .. } | FileContent::CharDevice { .. } => false,
 		}
 	}
