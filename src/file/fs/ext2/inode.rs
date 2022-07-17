@@ -657,8 +657,9 @@ impl Ext2INode {
 			i += len;
 		}
 
-		let eof = off + i >= size;
-		Ok((min(i, max), eof))
+		let len = min(i, max);
+		let eof = off + len >= size;
+		Ok((len, eof))
 	}
 
 	/// Writes the content of the inode.
