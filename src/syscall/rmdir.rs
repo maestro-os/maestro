@@ -37,7 +37,7 @@ pub fn rmdir(regs: &Regs) -> Result<i32, Errno> {
 		let file = file_guard.get_mut();
 
 		match file.get_file_content() {
-			FileContent::Directory(entries) if !entries.is_empty() => return Err(errno!(ENOTDIR)),
+			FileContent::Directory(entries) if entries.len() > 2 => return Err(errno!(ENOTEMPTY)),
 			FileContent::Directory(_) => {},
 
 			_ => return Err(errno!(ENOTDIR)),
