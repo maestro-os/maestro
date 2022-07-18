@@ -20,7 +20,7 @@ use crate::util::FailableClone;
 use crate::util::ptr::SharedPtr;
 
 /// Mask of status flags to be kept by an open file description.
-const STATUS_FLAGS_MASK: i32 = !(open_file::O_CLOEXEC
+pub const STATUS_FLAGS_MASK: i32 = !(open_file::O_CLOEXEC
 	| open_file::O_CREAT
 	| open_file::O_DIRECTORY
 	| open_file::O_EXCL
