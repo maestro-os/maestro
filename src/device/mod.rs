@@ -15,6 +15,7 @@ pub mod storage;
 pub mod tty;
 
 use core::ffi::c_void;
+use core::fmt;
 use crate::device::manager::DeviceManager;
 use crate::errno::Errno;
 use crate::errno;
@@ -42,6 +43,15 @@ pub enum DeviceType {
 	Block,
 	/// A char device.
 	Char,
+}
+
+impl fmt::Display for DeviceType {
+	fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+		match self {
+			Self::Block => write!(fmt, "Block"),
+			Self::Char => write!(fmt, "Char"),
+		}
+	}
 }
 
 /// Trait providing a interface for device I/O.

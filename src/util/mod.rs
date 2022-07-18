@@ -13,6 +13,7 @@ pub mod ptr;
 
 use core::cmp::min;
 use core::ffi::c_void;
+use core::fmt;
 use core::mem::size_of;
 use core::slice;
 use crate::errno::Errno;
@@ -250,6 +251,23 @@ impl IO for DummyIO {
 		Ok(0)
 	}
 
+}
+
+/// Wrapper structure allowing to implement the Display trait on the [u8] type to display it as a
+/// string.
+pub struct DisplayableStr<'a> {
+	/// The string to be displayed.
+	pub s: &'a [u8],
+}
+
+impl<'a> fmt::Display for DisplayableStr<'a> {
+	fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+		for b in self.s {
+			write!(fmt, "{}", *b as char)?;
+		}
+
+		Ok(())
+	}
 }
 
 #[cfg(test)]

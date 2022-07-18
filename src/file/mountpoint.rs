@@ -1,6 +1,7 @@
 //! A mount point is a directory in which a filesystem is mounted.
 
 use core::cmp::max;
+use core::fmt;
 use crate::device::DeviceType;
 use crate::device;
 use crate::errno::Errno;
@@ -132,6 +133,23 @@ impl FailableClone for MountSource {
 
 			Self::NoDev(name) => Self::NoDev(name.failable_clone()?),
 		})
+	}
+}
+
+impl fmt::Display for MountSource {
+	fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+		match self {
+			Self::Device {
+				dev_type,
+
+				major,
+				minor,
+			} => write!(fmt, "dev:{}:{}:{}", dev_type, major, minor),
+
+			Self::File(path) => write!(fmt, "{}", path),
+
+			Self::NoDev(name) => write!(fmt, "{}", name),
+		}
 	}
 }
 
@@ -282,8 +300,8 @@ impl MountPoint {
 		&self.source
 	}
 
-	/// Returns a mutable reference to the filesystem associated with the device.
-	pub fn get_filesystem<'a>(&'a mut self) -> MutexGuard<'a, dyn Filesystem, true> {
+	/// Returns a mutable reference to the filesystem associated with the mountpoint.
+	pub fn get_filesystem<'a>(&'a self) -> MutexGuard<'a, dyn Filesystem, true> {
 		self.fs.lock()
 	}
 

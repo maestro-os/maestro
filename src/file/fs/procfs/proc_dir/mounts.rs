@@ -10,6 +10,7 @@ use crate::file::fs::kernfs::node::KernFSNode;
 use crate::file::mountpoint;
 use crate::process::Process;
 use crate::process::pid::Pid;
+use crate::util::DisplayableStr;
 use crate::util::IO;
 use crate::util::container::string::String;
 use crate::util::ptr::cow::Cow;
@@ -64,11 +65,21 @@ impl IO for Mounts {
 			let mp_guard = mp_mutex.lock();
 			let mp = mp_guard.get();
 
-			let source = "TODO"; // TODO
-			let fs_type = "TODO"; // TODO
+			let fs_guard = mp.get_filesystem();
+			let fs = fs_guard.get();
+
+			let fs_type = DisplayableStr {
+				s: fs.get_name(),
+			};
 			let flags = "TODO"; // TODO
 
-			let s = crate::format!("{} {} {} {} 0 0\n", source, mp.get_path(), fs_type, flags)?;
+			let s = crate::format!(
+				"{} {} {} {} 0 0\n",
+				mp.get_source(),
+				mp.get_path(),
+				fs_type,
+				flags
+			)?;
 			content.append(s)?;
 		}
 

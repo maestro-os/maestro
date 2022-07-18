@@ -51,7 +51,7 @@ pub struct Statfs {
 /// Trait representing a filesystem.
 pub trait Filesystem: Any {
 	/// Returns the name of the filesystem.
-	fn get_name(&self) -> &[u8]; // TODO Remove?
+	fn get_name(&self) -> &[u8];
 
 	/// Tells whether the filesystem is mounted in read-only.
 	fn is_readonly(&self) -> bool;
