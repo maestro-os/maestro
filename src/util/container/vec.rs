@@ -238,21 +238,22 @@ impl<T> Vec<T> {
 
 	/// Moves all the elements of `other` into `Self`, leaving `other` empty.
 	pub fn append(&mut self, other: &mut Vec::<T>) -> Result<(), Errno> {
-		if other.len() > 0 {
-			self.increase_capacity(other.len)?;
-
-			unsafe {
-				let self_ptr = self.data.as_mut().unwrap().as_ptr_mut();
-				let other_ptr = other.data.as_mut().unwrap().as_ptr();
-				ptr::copy(other_ptr, self_ptr.offset(self.len as _), other.len);
-			}
-
-			self.len += other.len;
-
-			// Clearing other without dropping its elements
-			other.len = 0;
-			other.data = None;
+		if other.is_empty() {
+			return Ok(());
 		}
+
+		self.increase_capacity(other.len())?;
+
+		unsafe {
+			let self_ptr = self.data.as_mut().unwrap().as_ptr_mut();
+			ptr::copy(other.as_ptr(), self_ptr.offset(self.len as _), other.len());
+		}
+
+		self.len += other.len();
+
+		// Clearing other without dropping its elements
+		other.len = 0;
+		other.data = None;
 
 		Ok(())
 	}
@@ -355,6 +356,22 @@ impl<T: PartialEq> PartialEq for Vec<T> {
 		}
 
 		true
+	}
+}
+
+impl<T: Clone> Vec<T> {
+	/// Extends the vector by cloning the elements from the given slice `slice`.
+	pub fn extend_from_slice(&mut self, slice: &[T]) -> Result<(), Errno> {
+		if slice.is_empty() {
+			return Ok(());
+		}
+
+		self.increase_capacity(slice.len())?;
+		for e in slice {
+			self.push(e.clone())?;
+		}
+
+		Ok(())
 	}
 }
 

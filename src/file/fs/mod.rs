@@ -23,6 +23,7 @@ use super::path::Path;
 
 /// Structure storing statistics about a filesystem.
 #[repr(C)]
+#[derive(Debug)]
 pub struct Statfs {
 	/// Type of filesystem.
 	f_type: u32,

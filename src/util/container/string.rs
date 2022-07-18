@@ -151,9 +151,8 @@ impl String {
 	}
 
 	/// Appends the string `other` to the current one.
-	pub fn append(&mut self, other: Self) -> Result<(), Errno> {
-		let mut v = other.data;
-		self.data.append(&mut v)
+	pub fn append<S: AsRef<[u8]>>(&mut self, other: S) -> Result<(), Errno> {
+		self.data.extend_from_slice(other.as_ref())
 	}
 
 	/// Turns the string into an empty string.
@@ -166,6 +165,12 @@ impl Deref for String {
 	type Target = [u8];
 
 	fn deref(&self) -> &Self::Target {
+		self.as_bytes()
+	}
+}
+
+impl AsRef<[u8]> for String {
+	fn as_ref(&self) -> &[u8] {
 		self.as_bytes()
 	}
 }
@@ -241,26 +246,40 @@ impl fmt::Display for String {
 /// TODO doc
 pub struct StringWriter {
 	/// TODO doc
-	pub s: Option<Result<String, Errno>>,
+	pub final_str: Option<Result<String, Errno>>,
 }
 
 impl Write for StringWriter {
 	fn write_str(&mut self, s: &str) -> Result<(), fmt::Error> {
-		self.s = Some(String::from(s.as_bytes()));
+		match &mut self.final_str {
+			Some(Ok(final_str)) => match final_str.append(s.as_bytes()) {
+				Err(e) => self.final_str = Some(Err(e)),
+				_ => {},
+			},
+
+			None => self.final_str = Some(String::from(s.as_bytes())),
+			_ => {},
+		}
+
 		Ok(())
 	}
+}
+
+/// TODO doc
+pub fn _format(args: fmt::Arguments) -> Result<String, Errno> {
+	let mut w = StringWriter {
+		final_str: None,
+	};
+	fmt::write(&mut w, args).unwrap();
+
+	w.final_str.unwrap()
 }
 
 /// Builds an owned string from the given format string.
 #[macro_export]
 macro_rules! format {
 	($($arg:tt)*) => {{
-		let mut w = crate::util::container::string::StringWriter {
-			s: None,
-		};
-		core::fmt::write(&mut w, format_args!($($arg)*)).unwrap();
-
-		w.s.unwrap()
+		$crate::util::container::string::_format(format_args!($($arg)*))
 	}};
 }
 

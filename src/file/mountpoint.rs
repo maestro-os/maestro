@@ -16,7 +16,6 @@ use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::lock::Mutex;
-use crate::util::lock::MutexGuard;
 use crate::util::ptr::SharedPtr;
 use super::path::Path;
 
@@ -252,6 +251,8 @@ pub struct MountPoint {
 
 	/// The source of the mountpoint.
 	source: MountSource,
+	/// The filesystem type.
+	fs_type: String,
 	/// The filesystem associated with the mountpoint.
 	fs: SharedPtr<dyn Filesystem>,
 }
@@ -268,6 +269,7 @@ impl MountPoint {
 		// Tells whether the filesystem will be mounted in read-only
 		let readonly = flags & FLAG_RDONLY != 0;
 
+		let fs_type_name = String::from(b"TODO")?; // TODO
 		// TODO Check if a mountpoint at the same path is already present
 		let fs = match get_fs_(&source, true) {
 			// Filesystem exists, do nothing
@@ -282,11 +284,12 @@ impl MountPoint {
 		Ok(Self {
 			id,
 
-			source,
-			fs,
-
 			flags,
 			path,
+
+			source,
+			fs_type: fs_type_name,
+			fs,
 		})
 	}
 
@@ -300,9 +303,14 @@ impl MountPoint {
 		&self.source
 	}
 
+	/// Returns the type of the filesystem associated with the mountpoint.
+	pub fn get_filesystem_type(&self) -> &String {
+		&self.fs_type
+	}
+
 	/// Returns a mutable reference to the filesystem associated with the mountpoint.
-	pub fn get_filesystem<'a>(&'a self) -> MutexGuard<'a, dyn Filesystem, true> {
-		self.fs.lock()
+	pub fn get_filesystem(&self) -> SharedPtr<dyn Filesystem> {
+		self.fs.clone()
 	}
 
 	/// Returns the mountpoint's flags.

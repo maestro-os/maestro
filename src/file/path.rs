@@ -92,7 +92,7 @@ impl Path {
 		}
 
 		for (i, p) in self.parts.iter().enumerate() {
-			s.append(p.failable_clone()?)?;
+			s.append(p)?;
 
 			if i + 1 < self.parts.len() {
 				s.push(b'/')?;

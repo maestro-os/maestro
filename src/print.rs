@@ -7,7 +7,7 @@ use crate::logger;
 
 /// Prints the specified message on the current TTY. This function is meant to be used through
 /// `print!` and `println!` macros only.
-pub fn _print(args: core::fmt::Arguments) {
+pub fn _print(args: fmt::Arguments) {
 	let mutex = logger::get();
 	let guard = mutex.lock();
 	fmt::write(guard.get_mut(), args).ok();

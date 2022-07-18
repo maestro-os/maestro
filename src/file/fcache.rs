@@ -100,7 +100,8 @@ impl FCache {
 		let inner_path = path.range_from(mountpoint.get_path().get_elements_count()..)?;
 
 		// The filesystem
-		let fs_guard = mountpoint.get_filesystem();
+		let fs_mutex = mountpoint.get_filesystem();
+		let fs_guard = fs_mutex.lock();
 		let fs = fs_guard.get_mut();
 
 		// The root inode
@@ -219,7 +220,8 @@ impl FCache {
 		let io = io_guard.get_mut();
 
 		// The filesystem
-		let fs_guard = mountpoint.get_filesystem();
+		let fs_mutex = mountpoint.get_filesystem();
+		let fs_guard = fs_mutex.lock();
 		let fs = fs_guard.get_mut();
 
 		let inode = fs.get_inode(io, Some(parent.get_location().inode), &name)?;
@@ -275,7 +277,8 @@ impl FCache {
 		let io = io_guard.get_mut();
 
 		// Getting the filesystem
-		let fs_guard = mountpoint.get_filesystem();
+		let fs_mutex = mountpoint.get_filesystem();
+		let fs_guard = fs_mutex.lock();
 		let fs = fs_guard.get_mut();
 		if fs.is_readonly() {
 			return Err(errno!(EROFS));
@@ -334,7 +337,8 @@ impl FCache {
 		let io = io_guard.get_mut();
 
 		// Getting the filesystem
-		let fs_guard = mountpoint.get_filesystem();
+		let fs_mutex = mountpoint.get_filesystem();
+		let fs_guard = fs_mutex.lock();
 		let fs = fs_guard.get_mut();
 		if fs.is_readonly() {
 			return Err(errno!(EROFS));

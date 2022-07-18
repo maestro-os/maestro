@@ -10,7 +10,6 @@ use crate::file::fs::kernfs::node::KernFSNode;
 use crate::file::mountpoint;
 use crate::process::Process;
 use crate::process::pid::Pid;
-use crate::util::DisplayableStr;
 use crate::util::IO;
 use crate::util::container::string::String;
 use crate::util::ptr::cow::Cow;
@@ -65,12 +64,7 @@ impl IO for Mounts {
 			let mp_guard = mp_mutex.lock();
 			let mp = mp_guard.get();
 
-			let fs_guard = mp.get_filesystem();
-			let fs = fs_guard.get();
-
-			let fs_type = DisplayableStr {
-				s: fs.get_name(),
-			};
+			let fs_type = mp.get_filesystem_type();
 			let flags = "TODO"; // TODO
 
 			let s = crate::format!(
@@ -83,9 +77,10 @@ impl IO for Mounts {
 			content.append(s)?;
 		}
 
+		// Copying content to userspace buffer
 		let content_bytes = content.as_bytes();
 		let len = min((content_bytes.len() as u64 - offset) as usize, buff.len());
-		buff.copy_from_slice(&content_bytes[(offset as usize)..(offset as usize + len)]);
+		buff[..len].copy_from_slice(&content_bytes[(offset as usize)..(offset as usize + len)]);
 
 		let eof = (offset + len as u64) >= content_bytes.len() as u64;
 		Ok((len as _, eof))

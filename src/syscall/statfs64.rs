@@ -1,4 +1,4 @@
-//! The `statfs` system call returns information about a mounted file system.
+//! The `statfs64` system call returns information about a mounted file system.
 
 use crate::errno::Errno;
 use crate::errno;
@@ -10,10 +10,13 @@ use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::regs::Regs;
 
-/// The implementation of the `statfs` syscall.
-pub fn statfs(regs: &Regs) -> Result<i32, Errno> {
+// TODO Streamline with `statfs`
+
+/// The implementation of the `statfs64` syscall.
+pub fn statfs64(regs: &Regs) -> Result<i32, Errno> {
 	let path: SyscallString = (regs.ebx as usize).into();
-	let buf: SyscallPtr<Statfs> = (regs.ecx as usize).into();
+	let _sz = regs.ecx as usize; // TODO
+	let buf: SyscallPtr<Statfs> = (regs.edx as usize).into();
 
 	let (path, uid, gid) = {
 		let mutex = Process::get_current().unwrap();

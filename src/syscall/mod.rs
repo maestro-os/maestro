@@ -90,6 +90,7 @@ mod setuid;
 mod signal;
 mod sigreturn;
 mod socketpair;
+mod statfs64;
 mod statfs;
 mod statx;
 mod symlinkat;
@@ -204,6 +205,7 @@ use setuid::setuid;
 use signal::signal;
 use sigreturn::sigreturn;
 use socketpair::socketpair;
+use statfs64::statfs64;
 use statfs::statfs;
 use statx::statx;
 use symlinkat::symlinkat;
@@ -525,7 +527,7 @@ fn get_syscall(id: u32) -> Option<Syscall> {
 		// TODO 0x10a => Some(Syscall { handler: &clock_getres, name: "clock_getres", args: &[] }),
 		// TODO 0x10b => Some(Syscall { handler: &clock_nanosleep, name: "clock_nanosleep",
 		//	args: &[] }),
-		// TODO 0x10c => Some(Syscall { handler: &statfs64, name: "statfs64", args: &[] }),
+		0x10c => Some(Syscall { handler: &statfs64, name: "statfs64", args: &[] }),
 		// TODO 0x10d => Some(Syscall { handler: &fstatfs64, name: "fstatfs64", args: &[] }),
 		// TODO 0x10e => Some(Syscall { handler: &tgkill, name: "tgkill", args: &[] }),
 		// TODO 0x10f => Some(Syscall { handler: &utimes, name: "utimes", args: &[] }),

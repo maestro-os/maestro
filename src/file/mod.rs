@@ -632,7 +632,8 @@ impl File {
 		let io_guard = io_mutex.lock();
 		let io = io_guard.get_mut();
 
-		let fs_guard = mountpoint.get_filesystem();
+		let fs_mutex = mountpoint.get_filesystem();
+		let fs_guard = fs_mutex.lock();
 		let fs = fs_guard.get_mut();
 
 		fs.update_inode(io, self)
@@ -647,15 +648,21 @@ impl IO for File {
 	fn read(&mut self, off: u64, buff: &mut [u8]) -> Result<(u64, bool), Errno> {
 		match &self.content {
 			FileContent::Regular => {
-				let mountpoint_mutex = self.location.get_mountpoint().ok_or_else(|| errno!(EIO))?;
-				let mountpoint_guard = mountpoint_mutex.lock();
-				let mountpoint = mountpoint_guard.get_mut();
+				let (io_mutex, fs_mutex) = {
+					let mountpoint_mutex = self.location.get_mountpoint()
+						.ok_or_else(|| errno!(EIO))?;
+					let mountpoint_guard = mountpoint_mutex.lock();
+					let mountpoint = mountpoint_guard.get_mut();
 
-				let io_mutex = mountpoint.get_source().get_io()?;
+					let io_mutex = mountpoint.get_source().get_io()?;
+					let fs_mutex = mountpoint.get_filesystem();
+					(io_mutex, fs_mutex)
+				};
+
 				let io_guard = io_mutex.lock();
 				let io = io_guard.get_mut();
 
-				let fs_guard = mountpoint.get_filesystem();
+				let fs_guard = fs_mutex.lock();
 				let fs = fs_guard.get_mut();
 
 				fs.read_node(io, self.location.inode, off, buff)
@@ -705,7 +712,8 @@ impl IO for File {
 				let io_guard = io_mutex.lock();
 				let io = io_guard.get_mut();
 
-				let fs_guard = mountpoint.get_filesystem();
+				let fs_mutex = mountpoint.get_filesystem();
+				let fs_guard = fs_mutex.lock();
 				let fs = fs_guard.get_mut();
 
 				fs.write_node(io, self.location.inode, off, buff)?;
