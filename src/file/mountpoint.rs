@@ -143,7 +143,7 @@ impl fmt::Display for MountSource {
 
 				major,
 				minor,
-			} => write!(fmt, "dev:{}:{}:{}", dev_type, major, minor),
+			} => write!(fmt, "{}.{}.{}", dev_type, major, minor),
 
 			Self::File(path) => write!(fmt, "{}", path),
 
