@@ -398,6 +398,7 @@ impl Ext2INode {
 			if b == 0 {
 				let blk = superblock.get_free_block(io)?;
 				superblock.mark_block_used(io, blk)?;
+				superblock.write(io)?;
 
 				// Incrementing the number of used sectors
 				self.used_sectors += math::ceil_division(blk_size, SECTOR_SIZE);
@@ -432,6 +433,7 @@ impl Ext2INode {
 			let blk = superblock.get_free_block(io)?;
 			self.direct_block_ptrs[i as usize] = blk;
 			superblock.mark_block_used(io, blk)?;
+			superblock.write(io)?;
 
 			// Incrementing the number of used sectors
 			self.used_sectors += math::ceil_division(blk_size, SECTOR_SIZE);
@@ -470,6 +472,7 @@ impl Ext2INode {
 				_ => unreachable!(),
 			}
 			superblock.mark_block_used(io, begin)?;
+			superblock.write(io)?;
 
 			// Incrementing the number of used sectors
 			self.used_sectors += math::ceil_division(blk_size, SECTOR_SIZE);
@@ -963,8 +966,8 @@ impl Ext2INode {
 	/// `superblock` is the filesystem's superblock.
 	/// `io` is the I/O interface.
 	/// `name` is the name of the entry.
-	pub fn remove_dirent(&mut self, superblock: &mut Superblock, io: &mut dyn IO, name: &String)
-		-> Result<(), Errno> {
+	pub fn remove_dirent<S: AsRef<[u8]>>(&mut self, superblock: &mut Superblock, io: &mut dyn IO,
+		name: S) -> Result<(), Errno> {
 		debug_assert_eq!(self.get_type(), FileType::Directory);
 
 		// Allocating a buffer
@@ -993,7 +996,7 @@ impl Ext2INode {
 				let off = i + j as u64;
 
 				if !entry.is_free() {
-					if entry.get_name(superblock) == name.as_bytes() {
+					if entry.get_name(superblock) == name.as_ref() {
 						// The entry has name `name`, free it
 						entry.set_inode(0);
 						self.write_dirent(superblock, io, &entry, off)?;

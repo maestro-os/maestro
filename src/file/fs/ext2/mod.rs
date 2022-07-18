@@ -939,6 +939,10 @@ impl Filesystem for Ext2Fs {
 			}
 		}
 
+		// Removing `.` and `..` entries
+		inode_.remove_dirent(&mut self.superblock, io, b".")?;
+		inode_.remove_dirent(&mut self.superblock, io, b"..")?;
+
 		// Removing the directory entry
 		parent.remove_dirent(&mut self.superblock, io, name)?;
 
@@ -1065,7 +1069,6 @@ impl FilesystemType for Ext2FsType {
 
 			_padding: [0; 788],
 		};
-		superblock.write(io)?;
 
 		let blk_size = superblock.get_block_size() as u32;
 		let bgdt_offset = superblock.get_bgdt_offset();
@@ -1157,6 +1160,7 @@ impl FilesystemType for Ext2FsType {
 			os_specific_1: [0; 12],
 		};
 		root_dir.write(inode::ROOT_DIRECTORY_INODE, &superblock, io)?;
+		superblock.write(io)?;
 
 		let fs = Ext2Fs::new(superblock, io, Path::root(), true)?;
 		Ok(SharedPtr::new(fs)?)
