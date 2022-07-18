@@ -144,7 +144,6 @@ impl String {
 		Ok(())
 	}
 
-	// TODO Unit tests
 	/// Removes the last byte from the string and returns it.
 	/// If the string is empty, the function returns None.
 	pub fn pop(&mut self) -> Option<u8> {

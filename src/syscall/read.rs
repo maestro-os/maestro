@@ -40,12 +40,12 @@ pub fn read(regs: &Regs) -> Result<i32, Errno> {
 			let mem_space_guard = mem_space.lock();
 			let buf_slice = buf.get_mut(&mem_space_guard, len)?.ok_or(errno!(EFAULT))?;
 
+			let flags = open_file.get_flags();
 			let (len, eof) = open_file.read(0, buf_slice)?;
-			if eof {
+			if len == 0 && eof {
 				return Ok(0);
 			}
 
-			let flags = open_file.get_flags();
 			(len, flags)
 		};
 
