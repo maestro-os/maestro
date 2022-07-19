@@ -23,6 +23,8 @@ use crate::util::ptr::SharedPtr;
 /// The maximum length of the shebang.
 const SHEBANG_MAX: usize = 257;
 
+// TODO Use ARG_MAX
+
 /// Peeks the shebang in the file.
 /// `file` is the file from which the shebang is to be read.
 /// `buff` is the buffer to write the shebang into.
