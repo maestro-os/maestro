@@ -170,6 +170,7 @@ impl DirectoryEntry {
 		self.inode == 0
 	}
 
+	// TODO Preserve alignments of entries at 4 bytes
 	/// Splits the current entry into two entries and return the newly created entry.
 	/// `new_size` is the size of the current entry.
 	/// If the entry is not free, the behaviour is undefined.

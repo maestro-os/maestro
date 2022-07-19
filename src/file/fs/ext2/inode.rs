@@ -1125,7 +1125,7 @@ impl Ext2INode {
 	}
 }
 
-/// An itertor on the directory entries of a node.
+/// An itertor on the directory entries of a node (including free entries).
 /// The iterator gives the offset of the directory entry and the directory entry itself.
 pub struct DirentIterator<'n, 's, 'i> {
 	/// The node.
@@ -1150,54 +1150,52 @@ impl<'n, 's, 'i> Iterator for DirentIterator<'n, 's, 'i> {
 	fn next(&mut self) -> Option<Result<(u64, Box<DirectoryEntry>), Errno>> {
 		let blk_size = self.superblock.get_block_size() as u64;
 
-		while self.off < self.size {
-			// The length of the buffer
-			let len = min((self.size - self.off) as usize, blk_size as usize);
+		// If the list is exhausted, stop
+		if self.off >= self.size {
+			return None;
+		}
 
-			// At beginning, read the first block
-			if self.off == 0 {
-				if let Err(e) = self.node.read_content(self.off,
-					&mut self.buff.as_slice_mut()[..len], self.superblock, self.io) {
-					return Some(Err(e));
-				}
-			}
+		// The length of the buffer
+		let len = min((self.size - self.off) as usize, blk_size as usize);
 
-			// The offset of the entry in the current block
-			let inner_off = (self.off % blk_size) as usize;
-			// Safe because the data is block-aligned and an entry cannot be larger than the
-			// size of a block
-			let entry_result = unsafe {
-				DirectoryEntry::from(&self.buff.as_slice()[inner_off..len])
-			};
-			let entry = match entry_result {
-				Ok(entry) => entry,
-				Err(e) => return Some(Err(e)),
-			};
-
-			// The total size of the entry
-			let total_size = entry.get_total_size() as usize;
-
-			let prev_off = self.off;
-			self.off += total_size as u64;
-
-			// If the block is over, read the next
-			if self.off / blk_size > prev_off / blk_size {
-				if let Err(e) = self.node.read_content(self.off,
-					&mut self.buff.as_slice_mut()[..len], self.superblock, self.io) {
-					return Some(Err(e));
-				}
-			}
-
-			if entry.get_inode() > 0 {
-				return Some(Ok((prev_off, entry)));
-			}
-
-			// Prevent infinite loop on filesystem error
-			if total_size == 0 {
-				break;
+		// At beginning, read the first block
+		if self.off == 0 {
+			if let Err(e) = self.node.read_content(self.off,
+				&mut self.buff.as_slice_mut()[..len], self.superblock, self.io) {
+				return Some(Err(e));
 			}
 		}
 
-		None
+		// The offset of the entry in the current block
+		let inner_off = (self.off % blk_size) as usize;
+		// Safe because the data is block-aligned and an entry cannot be larger than the
+		// size of a block
+		let entry_result = unsafe {
+			DirectoryEntry::from(&self.buff.as_slice()[inner_off..len])
+		};
+		let entry = match entry_result {
+			Ok(entry) => entry,
+			Err(e) => return Some(Err(e)),
+		};
+
+		// The total size of the entry
+		let total_size = entry.get_total_size() as usize;
+		// Prevent infinite loop on filesystem error
+		if total_size == 0 {
+			return None;
+		}
+
+		let prev_off = self.off;
+		self.off += total_size as u64;
+
+		// If the block is over, read the next
+		if self.off / blk_size > prev_off / blk_size {
+			if let Err(e) = self.node.read_content(self.off,
+				&mut self.buff.as_slice_mut()[..len], self.superblock, self.io) {
+				return Some(Err(e));
+			}
+		}
+
+		Some(Ok((prev_off, entry)))
 	}
 }

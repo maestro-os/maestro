@@ -647,13 +647,13 @@ impl Filesystem for Ext2Fs {
 		Ok(Statfs {
 			f_type: 0, // TODO
 			f_bsize: self.superblock.get_block_size(),
-			f_blocks: self.superblock.total_blocks,
-			f_bfree: self.superblock.total_unallocated_blocks,
+			f_blocks: self.superblock.total_blocks as _,
+			f_bfree: self.superblock.total_unallocated_blocks as _,
 			// TODO Subtract blocks for superuser
-			f_bavail: self.superblock.total_unallocated_blocks,
-			f_files: self.superblock.total_inodes,
-			f_ffree: self.superblock.total_unallocated_inodes,
-			f_fsid: 0, // TODO
+			f_bavail: self.superblock.total_unallocated_blocks as _,
+			f_files: self.superblock.total_inodes as _,
+			f_ffree: self.superblock.total_unallocated_inodes as _,
+			f_fsid: Default::default(), // TODO
 			f_namelen: MAX_NAME_LEN as _,
 			f_frsize: fragment_size,
 			f_flags: 0, // TODO
@@ -694,6 +694,9 @@ impl Filesystem for Ext2Fs {
 
 				for res in inode_.iter_dirent(&self.superblock, io)?.unwrap() {
 					let (_, entry) = res?;
+					if entry.is_free() {
+						continue;
+					}
 
 					entries.push((
 						entry.get_inode(),
@@ -822,7 +825,7 @@ impl Filesystem for Ext2Fs {
 				inode.add_dirent(&mut self.superblock, io, parent_inode as _,
 					&String::from(b"..")?, FileType::Directory)?;
 
-				inode.hard_links_count += 1;
+				inode.hard_links_count += 2;
 				parent.hard_links_count += 1;
 			},
 
@@ -931,6 +934,10 @@ impl Filesystem for Ext2Fs {
 		if let Some(iter) = inode_.iter_dirent(&self.superblock, io)? {
 			for res in iter {
 				let (_, entry) = res?;
+				if entry.is_free() {
+					continue;
+				}
+
 				let name = entry.get_name(&self.superblock);
 
 				if name != b"." && name != b".." {

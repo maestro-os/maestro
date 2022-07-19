@@ -21,6 +21,14 @@ use crate::util::ptr::SharedPtr;
 use super::File;
 use super::path::Path;
 
+/// TODO doc
+#[repr(C)]
+#[derive(Debug, Default)]
+struct FSID {
+	/// TODO doc
+	_val: [i32; 2],
+}
+
 /// Structure storing statistics about a filesystem.
 #[repr(C)]
 #[derive(Debug)]
@@ -30,17 +38,17 @@ pub struct Statfs {
 	/// Optimal transfer block size.
 	f_bsize: u32,
 	/// Total data blocks in filesystem.
-	f_blocks: u32,
+	f_blocks: i64,
 	/// Free blocks in filesystem.
-	f_bfree: u32,
+	f_bfree: i64,
 	/// Free blocks available to unprivileged user.
-	f_bavail: u32,
+	f_bavail: i64,
 	/// Total inodes in filesystem.
-	f_files: u32,
+	f_files: i64,
 	/// Free inodes in filesystem.
-	f_ffree: u32,
+	f_ffree: i64,
 	/// Filesystem ID.
-	f_fsid: u64,
+	f_fsid: FSID,
 	/// Maximum length of filenames.
 	f_namelen: u32,
 	/// Fragment size.

@@ -150,7 +150,7 @@ impl Filesystem for KernFS {
 			f_bavail: 0,
 			f_files: self.nodes.len() as _,
 			f_ffree: 0,
-			f_fsid: 0, // TODO
+			f_fsid: Default::default(),
 			f_namelen: MAX_NAME_LEN as _,
 			f_frsize: 0,
 			f_flags: 0,

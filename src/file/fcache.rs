@@ -254,6 +254,13 @@ impl FCache {
 	/// `content` is the content of the file. This value also determines the file type.
 	pub fn create_file(&mut self, parent: &mut File, name: String, uid: Uid, gid: Gid, mode: Mode,
 		content: FileContent) -> Result<SharedPtr<File>, Errno> {
+		match self.get_file_from_parent(parent, name.failable_clone()?, uid, gid, false) {
+			// If file already exist, error
+			Ok(_) => return Err(errno!(EEXIST)),
+			// If file doesn't exist, do nothing
+			Err(_) => {},
+		}
+
 		// Checking for errors
 		if parent.get_file_type() != FileType::Directory {
 			return Err(errno!(ENOTDIR));
