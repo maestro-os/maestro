@@ -1,5 +1,6 @@
 //! The `execve` system call allows to execute a program from a file.
 
+use core::ops::Range;
 use crate::errno::Errno;
 use crate::errno;
 use crate::file::File;
@@ -22,18 +23,70 @@ use crate::util::ptr::SharedPtr;
 
 /// The maximum length of the shebang.
 const SHEBANG_MAX: usize = 257;
+/// The maximum number of interpreter that can be used recursively for an execution.
+const INTERP_MAX: usize = 4;
 
 // TODO Use ARG_MAX
+
+/// Structure representing a shebang.
+struct Shebang {
+	/// The shebang's string.
+	buff: [u8; SHEBANG_MAX],
+
+	/// The range on the shebang's string which represents the location of the interpreter.
+	interp: Range<usize>,
+	/// The range on the shebang's string which represents the location of the optional argument.
+	arg: Option<Range<usize>>,
+}
 
 /// Peeks the shebang in the file.
 /// `file` is the file from which the shebang is to be read.
 /// `buff` is the buffer to write the shebang into.
-/// If the file has a shebang, the function returns its size in bytes.
-pub fn peek_shebang(file: &mut File, buff: &mut [u8; SHEBANG_MAX]) -> Result<Option<u64>, Errno> {
-	let (size, _) = file.read(0, buff)?;
+/// If the file has a shebang, the function returns its size in bytes + the offset to the end of
+/// the interpreter. If the string is longer than the interpreter's name, the remaining characters
+/// shall be used as an argument.
+fn peek_shebang(file: &mut File) -> Result<Option<Shebang>, Errno> {
+	let mut buff: [u8; SHEBANG_MAX] = [0; SHEBANG_MAX];
 
-	if size >= 2 && buff[0..1] == [b'#', b'!'] {
-		Ok(Some(size))
+	let (size, _) = file.read(0, &mut buff)?;
+	let size = size as usize;
+
+	if size >= 2 && buff[0..2] == [b'#', b'!'] {
+		// Getting the end of the shebang
+		let shebang_end = buff[..size].iter()
+			.enumerate()
+			.filter(| (_, c) | **c == b'\n')
+			.map(| (off, _) | off)
+			.next();
+		let shebang_end = match shebang_end {
+			Some(shebang_end) => shebang_end,
+			None => return Ok(None),
+		};
+
+		// Getting the range of the interpreter
+		let interp_end = buff[..size].iter()
+			.enumerate()
+			.filter(| (_, c) | **c == b' ' || **c == b'\t' || **c == b'\n')
+			.map(| (off, _) | off)
+			.next()
+			.unwrap_or(shebang_end);
+		let interp = 2..interp_end;
+
+		// Getting the range of the optional argument
+		let arg = buff[..size].iter()
+			.enumerate()
+			.skip(interp_end)
+			.filter(| (_, c) | **c != b' ' && **c != b'\t')
+			.map(| (off, _) | off..shebang_end)
+			.filter(| arg | !arg.is_empty())
+			.next();
+
+		Ok(Some(Shebang {
+			buff,
+
+			interp,
+			arg,
+		}))
 	} else {
 		Ok(None)
 	}
@@ -65,6 +118,11 @@ fn build_image(file: SharedPtr<File>, uid: Uid, euid: Uid, gid: Gid, egid: Gid, 
 	}
 
 	let file_guard = file.lock();
+	let file = file_guard.get_mut();
+	if !file.can_execute(euid, egid) {
+		return Err(errno!(EACCES));
+	}
+
 	let exec_info = ExecInfo {
 		uid,
 		euid,
@@ -75,7 +133,7 @@ fn build_image(file: SharedPtr<File>, uid: Uid, euid: Uid, gid: Gid, egid: Gid, 
 		envp: &envp_,
 	};
 
-	exec::build_image(file_guard.get_mut(), exec_info)
+	exec::build_image(file, exec_info)
 }
 
 /// The implementation of the `execve` syscall.
@@ -84,7 +142,7 @@ pub fn execve(regs: &Regs) -> Result<i32, Errno> {
 	let argv = regs.ecx as *const () as *const *const u8;
 	let envp = regs.edx as *const () as *const *const u8;
 
-	let (path, argv, envp, uid, gid, euid, egid) = {
+	let (mut path, mut argv, envp, uid, gid, euid, egid) = {
 		let proc_mutex = Process::get_current().unwrap();
 		let proc_guard = proc_mutex.lock();
 		let proc = proc_guard.get_mut();
@@ -110,6 +168,53 @@ pub fn execve(regs: &Regs) -> Result<i32, Errno> {
 		(path, argv, envp, uid, gid, euid, egid)
 	};
 
+	// Handling shebang
+	let mut i = 0;
+	while i < INTERP_MAX + 1 {
+		// The file
+		let file = {
+			let files_mutex = fcache::get();
+			let files_guard = files_mutex.lock();
+			let files_cache = files_guard.get_mut();
+
+			files_cache.as_mut().unwrap().get_file_from_path(&path, uid, gid, true)?
+		};
+		let guard = file.lock();
+		let f = guard.get_mut();
+
+		// If the file has a shebang, process it
+		if let Some(shebang) = peek_shebang(f)? {
+			// If too many interpreter recursions, abort
+			if i == INTERP_MAX {
+				return Err(errno!(ELOOP));
+			}
+
+			// Adding the script to arguments
+			if argv.is_empty() {
+				argv.push(path.as_string()?)?;
+			} else {
+				argv[0] = path.as_string()?;
+			}
+
+			// Setting interpreter to arguments
+			let interp = String::from(&shebang.buff[shebang.interp.clone()])?;
+			argv.insert(0, interp)?;
+
+			// Setting optional argument if it exists
+			if let Some(arg) = shebang.arg {
+				let arg = String::from(&shebang.buff[arg])?;
+				argv.insert(1, arg)?;
+			}
+
+			// Setting interpreter's path
+			path = Path::from_str(&shebang.buff[shebang.interp], true)?;
+
+			i += 1;
+		} else {
+			break;
+		}
+	}
+
 	// The file
 	let file = {
 		let files_mutex = fcache::get();
@@ -118,32 +223,6 @@ pub fn execve(regs: &Regs) -> Result<i32, Errno> {
 
 		files_cache.as_mut().unwrap().get_file_from_path(&path, uid, gid, true)?
 	};
-
-	// Handling shebang
-	let mut i = 0;
-	while i < 4 {
-		// Locking file
-		let guard = file.lock();
-		let f = guard.get_mut();
-
-		// Checking execute permission
-		if !f.can_execute(uid, gid) {
-			return Err(errno!(EACCES));
-		}
-
-		let mut shebang: [u8; SHEBANG_MAX] = [0; SHEBANG_MAX];
-
-		// If the file has a shebang, process it
-		if let Some(_shebang_len) = peek_shebang(f, &mut shebang)? {
-			// TODO Split shebang
-			// TODO Get interpreters recursively (up to a limit)
-			// TODO Execute with optional arguments
-
-			i += 1;
-		} else {
-			break;
-		}
-	}
 
 	// Building the program's image
 	let program_image = unsafe {
