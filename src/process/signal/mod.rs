@@ -26,7 +26,7 @@ pub const SIG_DFL: *const c_void = 0x1 as _;
 
 /// The size of the signal handlers table (the number of signals + 1, since indexing begins at 1
 /// instead of 0).
-pub const SIGNALS_COUNT: usize = 30;
+pub const SIGNALS_COUNT: usize = 32;
 
 /// Enumeration representing the action to perform for a signal.
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -165,10 +165,7 @@ impl SignalHandler {
 	}
 }
 
-/// Array containing the default actions for each signal.
-static DEFAULT_ACTIONS: &[SignalAction] = &[
-];
-
+// TODO reorder
 /// Enumeration of signal types.
 #[derive(Clone, Eq, PartialEq)]
 pub enum Signal {
@@ -237,35 +234,35 @@ impl Signal {
 	/// `id` is the signal ID.
 	pub fn from_id(id: u32) -> Result<Self, Errno> {
 		match id {
-			1 => Ok(Self::SIGABRT),
-			2 => Ok(Self::SIGALRM),
-			3 => Ok(Self::SIGBUS),
-			4 => Ok(Self::SIGCHLD),
-			5 => Ok(Self::SIGCONT),
-			6 => Ok(Self::SIGFPE),
-			7 => Ok(Self::SIGHUP),
-			8 => Ok(Self::SIGILL),
-			9 => Ok(Self::SIGINT),
-			10 => Ok(Self::SIGKILL),
-			11 => Ok(Self::SIGPIPE),
-			12 => Ok(Self::SIGQUIT),
-			13 => Ok(Self::SIGSEGV),
-			14 => Ok(Self::SIGSTOP),
+			1 => Ok(Self::SIGHUP),
+			2 => Ok(Self::SIGINT),
+			3 => Ok(Self::SIGQUIT),
+			4 => Ok(Self::SIGILL),
+			5 => Ok(Self::SIGTRAP),
+			6 => Ok(Self::SIGABRT),
+			7 => Ok(Self::SIGBUS),
+			8 => Ok(Self::SIGFPE),
+			9 => Ok(Self::SIGKILL),
+			10 => Ok(Self::SIGUSR1),
+			11 => Ok(Self::SIGSEGV),
+			12 => Ok(Self::SIGUSR2),
+			13 => Ok(Self::SIGPIPE),
+			14 => Ok(Self::SIGALRM),
 			15 => Ok(Self::SIGTERM),
-			16 => Ok(Self::SIGTSTP),
-			17 => Ok(Self::SIGTTIN),
-			18 => Ok(Self::SIGTTOU),
-			19 => Ok(Self::SIGUSR1),
-			20 => Ok(Self::SIGUSR2),
-			21 => Ok(Self::SIGPOLL),
-			22 => Ok(Self::SIGPROF),
-			23 => Ok(Self::SIGSYS),
-			24 => Ok(Self::SIGTRAP),
-			25 => Ok(Self::SIGURG),
+			17 => Ok(Self::SIGCHLD),
+			18 => Ok(Self::SIGCONT),
+			19 => Ok(Self::SIGSTOP),
+			20 => Ok(Self::SIGTSTP),
+			21 => Ok(Self::SIGTTIN),
+			22 => Ok(Self::SIGTTOU),
+			23 => Ok(Self::SIGURG),
+			24 => Ok(Self::SIGXCPU),
+			25 => Ok(Self::SIGXFSZ),
 			26 => Ok(Self::SIGVTALRM),
-			27 => Ok(Self::SIGXCPU),
-			28 => Ok(Self::SIGXFSZ),
-			29 => Ok(Self::SIGWINCH),
+			27 => Ok(Self::SIGPROF),
+			28 => Ok(Self::SIGWINCH),
+			29 => Ok(Self::SIGPOLL),
+			31 => Ok(Self::SIGSYS),
 
 			_ => Err(errno!(EINVAL)),
 		}
@@ -274,38 +271,39 @@ impl Signal {
 	/// Returns the signal's ID.
 	pub fn get_id(&self) -> u8 {
 		match self {
-			Self::SIGABRT => 1,
-			Self::SIGALRM => 2,
-			Self::SIGBUS => 3,
-			Self::SIGCHLD => 4,
-			Self::SIGCONT => 5,
-			Self::SIGFPE => 6,
-			Self::SIGHUP => 7,
-			Self::SIGILL => 8,
-			Self::SIGINT => 9,
-			Self::SIGKILL => 10,
-			Self::SIGPIPE => 11,
-			Self::SIGQUIT => 12,
-			Self::SIGSEGV => 13,
-			Self::SIGSTOP => 14,
+			Self::SIGHUP => 1,
+			Self::SIGINT => 2,
+			Self::SIGQUIT => 3,
+			Self::SIGILL => 4,
+			Self::SIGTRAP => 5,
+			Self::SIGABRT => 6,
+			Self::SIGBUS => 7,
+			Self::SIGFPE => 8,
+			Self::SIGKILL => 9,
+			Self::SIGUSR1 => 10,
+			Self::SIGSEGV => 11,
+			Self::SIGUSR2 => 12,
+			Self::SIGPIPE => 13,
+			Self::SIGALRM => 14,
 			Self::SIGTERM => 15,
-			Self::SIGTSTP => 16,
-			Self::SIGTTIN => 17,
-			Self::SIGTTOU => 18,
-			Self::SIGUSR1 => 19,
-			Self::SIGUSR2 => 20,
-			Self::SIGPOLL => 21,
-			Self::SIGPROF => 22,
-			Self::SIGSYS => 23,
-			Self::SIGTRAP => 24,
-			Self::SIGURG => 25,
+			Self::SIGCHLD => 17,
+			Self::SIGCONT => 18,
+			Self::SIGSTOP => 19,
+			Self::SIGTSTP => 20,
+			Self::SIGTTIN => 21,
+			Self::SIGTTOU => 22,
+			Self::SIGURG => 23,
+			Self::SIGXCPU => 24,
+			Self::SIGXFSZ => 25,
 			Self::SIGVTALRM => 26,
-			Self::SIGXCPU => 27,
-			Self::SIGXFSZ => 28,
-			Self::SIGWINCH => 29,
+			Self::SIGPROF => 27,
+			Self::SIGWINCH => 28,
+			Self::SIGPOLL => 29,
+			Self::SIGSYS => 31,
 		}
 	}
 
+	// TODO reorder
 	/// Returns the default action for the signal.
 	pub fn get_default_action(&self) -> SignalAction {
 		match self {
