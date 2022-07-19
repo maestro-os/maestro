@@ -939,9 +939,11 @@ impl Filesystem for Ext2Fs {
 			}
 		}
 
-		// Removing `.` and `..` entries
-		inode_.remove_dirent(&mut self.superblock, io, b".")?;
-		inode_.remove_dirent(&mut self.superblock, io, b"..")?;
+		// If directory, removing `.` and `..` entries
+		if inode_.get_type() == FileType::Directory {
+			inode_.remove_dirent(&mut self.superblock, io, b".")?;
+			inode_.remove_dirent(&mut self.superblock, io, b"..")?;
+		}
 
 		// Removing the directory entry
 		parent.remove_dirent(&mut self.superblock, io, name)?;

@@ -992,6 +992,11 @@ impl Ext2INode {
 				};
 				// The total size of the entry
 				let total_size = entry.get_total_size() as usize;
+				// Preventing infinite loop from corrupted filesystem
+				if total_size == 0 {
+					break;
+				}
+
 				// The offset of the entry
 				let off = i + j as u64;
 
