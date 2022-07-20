@@ -63,7 +63,7 @@ impl ProcFS {
 
 		// Creating /proc/mounts
 		let mount_node = DummyKernFSNode::new(0o777, 0, 0,
-			FileContent::Link(String::from(b"self/mounts")?), None);
+			FileContent::Link(String::from(b"self/mounts")?));
 		let mount_inode = fs.fs.add_node(Box::new(mount_node)?)?;
 		root_entries.insert(String::from(b"mounts")?, DirEntry {
 			inode: mount_inode,
@@ -71,8 +71,7 @@ impl ProcFS {
 		})?;
 
 		// Adding the root node
-		let root_node = DummyKernFSNode::new(0o555, 0, 0, FileContent::Directory(root_entries),
-			None);
+		let root_node = DummyKernFSNode::new(0o555, 0, 0, FileContent::Directory(root_entries));
 		fs.fs.set_root(Box::new(root_node)?)?;
 
 		// Adding existing processes

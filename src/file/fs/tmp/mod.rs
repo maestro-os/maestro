@@ -1,6 +1,8 @@
 //! Tmpfs (Temporary file system) is, as its name states a temporary filesystem. The files are
 //! stored on the kernel's memory and thus are removed when the filesystem is unmounted.
 
+mod node;
+
 use core::mem::size_of;
 use crate::errno;
 use crate::file::Errno;
@@ -18,6 +20,7 @@ use crate::util::boxed::Box;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
 use crate::util::ptr::SharedPtr;
+use node::TmpFSRegular;
 use super::Filesystem;
 use super::FilesystemType;
 use super::kernfs::KernFS;
@@ -57,8 +60,7 @@ impl TmpFS {
 		};
 
 		// Adding the root node
-		let root_node = DummyKernFSNode::new(0o777, 0, 0, FileContent::Directory(HashMap::new()),
-			None);
+		let root_node = DummyKernFSNode::new(0o777, 0, 0, FileContent::Directory(HashMap::new()));
 		fs.update_size(get_used_size(&root_node) as _, | fs | {
 			fs.fs.set_root(Box::new(root_node)?)?;
 			Ok(())
@@ -121,19 +123,26 @@ impl Filesystem for TmpFS {
 		self.fs.get_inode(io, parent, name)
 	}
 
-	fn load_file(&mut self, io: &mut dyn IO, inode: INode, name: String)
-		-> Result<File, Errno> {
+	fn load_file(&mut self, io: &mut dyn IO, inode: INode, name: String) -> Result<File, Errno> {
 		self.fs.load_file(io, inode, name)
 	}
 
-	fn add_file(&mut self, io: &mut dyn IO, parent_inode: INode, name: String,
-		uid: Uid, gid: Gid, mode: Mode, content: FileContent) -> Result<File, Errno> {
+	fn add_file(&mut self, io: &mut dyn IO, parent_inode: INode, name: String, uid: Uid, gid: Gid,
+		mode: Mode, content: FileContent) -> Result<File, Errno> {
 		// TODO Update fs's size
-		self.fs.add_file(io, parent_inode, name, uid, gid, mode, content)
+
+		match content {
+			FileContent::Regular => {
+				let node = TmpFSRegular::new(mode, uid, gid);
+				self.fs.add_file_inner(parent_inode, node, name)
+			},
+
+			_ => self.fs.add_file(io, parent_inode, name, uid, gid, mode, content),
+		}
 	}
 
-	fn add_link(&mut self, io: &mut dyn IO, parent_inode: INode, name: &String,
-		inode: INode) -> Result<(), Errno> {
+	fn add_link(&mut self, io: &mut dyn IO, parent_inode: INode, name: &String, inode: INode)
+		-> Result<(), Errno> {
 		// TODO Update fs's size
 		self.fs.add_link(io, parent_inode, name, inode)
 	}

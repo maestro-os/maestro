@@ -126,6 +126,46 @@ impl KernFS {
 
 		Ok(())
 	}
+
+	/// TODO doc
+	pub fn add_file_inner<N: 'static + KernFSNode>(&mut self, parent_inode: INode, node: N, name: String)
+		-> Result<File, Errno> {
+		if self.readonly {
+			return Err(errno!(EROFS));
+		}
+
+		let mode = node.get_mode();
+		let uid = node.get_uid();
+		let gid = node.get_gid();
+		let file_content = node.get_content().into_owned()?;
+
+		let file_type = file_content.get_file_type();
+
+		// Checking the parent exists
+		self.get_node_mut(parent_inode)?;
+
+		let inode = self.add_node(Box::new(node)?)?;
+
+		// Adding entry to parent
+		let parent = self.get_node_mut(parent_inode).unwrap();
+		let mut parent_content = parent.get_content().into_owned()?;
+		let entries = match &mut parent_content {
+			FileContent::Directory(entries) => entries,
+			_ => return Err(errno!(ENOENT)),
+		};
+		oom::wrap(|| entries.insert(name.failable_clone()?, DirEntry {
+			inode,
+			entry_type: file_type,
+		}));
+		parent.set_content(parent_content);
+
+		let location = FileLocation {
+			mountpoint_id: None,
+
+			inode,
+		};
+		File::new(name, uid, gid, mode, location, file_content)
+	}
 }
 
 impl Filesystem for KernFS {
@@ -201,37 +241,8 @@ impl Filesystem for KernFS {
 
 	fn add_file(&mut self, _: &mut dyn IO, parent_inode: INode, name: String, uid: Uid,
 		gid: Gid, mode: Mode, content: FileContent) -> Result<File, Errno> {
-		if self.readonly {
-			return Err(errno!(EROFS));
-		}
-
-		let file_type = content.get_file_type();
-
-		// Checking the parent exists
-		self.get_node_mut(parent_inode)?;
-
-		let node = DummyKernFSNode::new(mode, uid, gid, content.failable_clone()?, None);
-		let inode = self.add_node(Box::new(node)?)?;
-
-		// Adding entry to parent
-		let parent = self.get_node_mut(parent_inode).unwrap();
-		let mut parent_content = parent.get_content().into_owned()?;
-		let entries = match &mut parent_content {
-			FileContent::Directory(entries) => entries,
-			_ => return Err(errno!(ENOENT)),
-		};
-		oom::wrap(|| entries.insert(name.failable_clone()?, DirEntry {
-			inode,
-			entry_type: file_type,
-		}));
-		parent.set_content(parent_content);
-
-		let location = FileLocation {
-			mountpoint_id: None,
-
-			inode,
-		};
-		File::new(name, uid, gid, mode, location, content)
+		let node = DummyKernFSNode::new(mode, uid, gid, content);
+		self.add_file_inner(parent_inode, node, name)
 	}
 
 	fn add_link(&mut self, _: &mut dyn IO, parent_inode: INode, name: &String, inode: INode)

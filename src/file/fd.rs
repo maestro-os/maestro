@@ -80,6 +80,11 @@ impl FileDescriptor {
 		self.flags
 	}
 
+	/// Sets the file descriptor's flags.
+	pub fn set_flags(&mut self, flags: i32) {
+		self.flags = flags;
+	}
+
 	/// Returns a pointer to the open file description.
 	pub fn get_open_file(&self) -> SharedPtr<OpenFile> {
 		self.open_file.clone()

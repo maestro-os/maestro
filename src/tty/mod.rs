@@ -398,30 +398,20 @@ impl TTY {
 		// TODO Implement ONLRET
 
 		match c {
-			0x07 => {
-				self.ring_bell();
-			},
+			0x07 => self.ring_bell(),
 
 			0x08 => {
 				// TODO Backspace
 			},
 
-			b'\t' => {
-				self.cursor_forward(get_tab_size(self.cursor_x), 0);
-			},
-
-			b'\n' => {
-				self.newline(1);
-			},
+			b'\t' => self.cursor_forward(get_tab_size(self.cursor_x), 0),
+			b'\n' => self.newline(1),
 
 			0x0c => {
 				// TODO Move printer to a top of page
 			},
 
-			b'\r' => {
-				self.cursor_x = 0;
-			},
-
+			b'\r' => self.cursor_x = 0,
 			0x7f => {}, // Do not print DEL characters
 
 			_ => {

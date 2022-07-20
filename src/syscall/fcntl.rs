@@ -1,5 +1,7 @@
 //! The `fcntl` syscall call allows to manipulate a file descriptor.
 
+use crate::file::FileContent;
+use crate::file::open_file::FDTarget;
 use core::ffi::c_void;
 use crate::errno::Errno;
 use crate::file::fd::NewFDConstraint;
@@ -104,7 +106,7 @@ pub fn do_fcntl(fd: i32, cmd: i32, arg: *mut c_void, _fcntl64: bool) -> Result<i
 	let proc_guard = proc_mutex.lock();
 	let proc = proc_guard.get_mut();
 
-	//crate::println!("fcntl: {} {} {:p} {}", fd, cmd, arg, _fcntl64); // TODO rm
+	crate::println!("fcntl: {} {} {:p} {}", fd, cmd, arg, _fcntl64); // TODO rm
 
 	match cmd {
 		F_DUPFD => {
@@ -112,7 +114,8 @@ pub fn do_fcntl(fd: i32, cmd: i32, arg: *mut c_void, _fcntl64: bool) -> Result<i
 		},
 
 		F_GETFD => {
-			Ok(proc.get_fd(fd as _).ok_or_else(|| errno!(EBADF))?.get_flags())
+			let fd = proc.get_fd(fd as _).ok_or_else(|| errno!(EBADF))?;
+			Ok(fd.get_flags())
 		},
 
 		F_SETFD => {
@@ -121,12 +124,21 @@ pub fn do_fcntl(fd: i32, cmd: i32, arg: *mut c_void, _fcntl64: bool) -> Result<i
 		},
 
 		F_GETFL => {
-			// TODO
-			Ok(0)
+			let fd = proc.get_fd(fd as _).ok_or_else(|| errno!(EBADF))?;
+			let open_file_mutex = fd.get_open_file();
+			let open_file_guard = open_file_mutex.lock();
+			let open_file = open_file_guard.get();
+
+			Ok(open_file.get_flags())
 		},
 
 		F_SETFL => {
-			// TODO
+			let fd = proc.get_fd(fd as _).ok_or_else(|| errno!(EBADF))?;
+			let open_file_mutex = fd.get_open_file();
+			let open_file_guard = open_file_mutex.lock();
+			let open_file = open_file_guard.get_mut();
+
+			open_file.set_flags(arg as _);
 			Ok(0)
 		},
 
@@ -230,8 +242,35 @@ pub fn do_fcntl(fd: i32, cmd: i32, arg: *mut c_void, _fcntl64: bool) -> Result<i
 		},
 
 		F_GETPIPE_SZ => {
-			// TODO
-			Ok(0)
+			let fd = proc.get_fd(fd as _).ok_or_else(|| errno!(EBADF))?;
+			let open_file_mutex = fd.get_open_file();
+			let open_file_guard = open_file_mutex.lock();
+			let open_file = open_file_guard.get();
+
+			match open_file.get_target() {
+				FDTarget::File(mutex) => {
+					let guard = mutex.lock();
+					let file = guard.get();
+
+					match file.get_file_content() {
+						FileContent::Fifo => {
+							// TODO
+							todo!();
+						},
+
+						_ => Ok(0),
+					}
+				},
+
+				FDTarget::Pipe(mutex) => {
+					let guard = mutex.lock();
+					let pipe = guard.get();
+
+					Ok(pipe.get_available_len() as _)
+				},
+
+				_ => Ok(0),
+			}
 		},
 
 		F_ADD_SEALS => {

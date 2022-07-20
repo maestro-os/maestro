@@ -10,7 +10,6 @@ use crate::time::unit::Timestamp;
 use crate::time::unit::TimestampScale;
 use crate::time;
 use crate::util::IO;
-use crate::util::boxed::Box;
 use crate::util::ptr::cow::Cow;
 
 /// Trait representing a node in a kernfs.
@@ -79,6 +78,8 @@ pub trait KernFSNode: IO {
 }
 
 /// Structure representing a dummy kernfs node (with the default behaviour).
+/// This node doesn't implement regular files' content handling. This calling `read` or `write`
+/// does nothing.
 pub struct DummyKernFSNode {
 	/// The number of hard links to the node.
 	hard_links_count: u16,
@@ -99,9 +100,6 @@ pub struct DummyKernFSNode {
 
 	/// The node's content.
 	content: FileContent,
-
-	/// The I/O handle for the node.
-	io_handle: Option<Box<dyn IO>>,
 }
 
 impl DummyKernFSNode {
@@ -110,9 +108,7 @@ impl DummyKernFSNode {
 	/// `uid` is the node owner's user ID.
 	/// `gid` is the node owner's group ID.
 	/// `content` is the node's content.
-	/// `io_handle` is the handle for the node's I/O operations.
-	pub fn new(mode: Mode, uid: Uid, gid: Gid, content: FileContent,
-		io_handle: Option<Box<dyn IO>>) -> Self {
+	pub fn new(mode: Mode, uid: Uid, gid: Gid, content: FileContent) -> Self {
 		// The current timestamp
 		let ts = time::get(TimestampScale::Second).unwrap_or(0);
 
@@ -128,8 +124,6 @@ impl DummyKernFSNode {
 			atime: ts,
 
 			content,
-
-			io_handle,
 		}
 	}
 }
@@ -202,25 +196,14 @@ impl KernFSNode for DummyKernFSNode {
 
 impl IO for DummyKernFSNode {
 	fn get_size(&self) -> u64 {
-		match &self.io_handle {
-			Some(io_handle) => io_handle.get_size(),
-			None => 0,
-		}
+		0
 	}
 
-	fn read(&mut self, offset: u64, buff: &mut [u8]) -> Result<(u64, bool), Errno> {
-		if let Some(io_handle) = &mut self.io_handle {
-			return io_handle.read(offset, buff);
-		}
-
-		unreachable!();
+	fn read(&mut self, _offset: u64, _buff: &mut [u8]) -> Result<(u64, bool), Errno> {
+		Ok((0, true))
 	}
 
-	fn write(&mut self, offset: u64, buff: &[u8]) -> Result<u64, Errno> {
-		if let Some(io_handle) = &mut self.io_handle {
-			return io_handle.write(offset, buff);
-		}
-
-		unreachable!();
+	fn write(&mut self, _offset: u64, _buff: &[u8]) -> Result<u64, Errno> {
+		Ok(0)
 	}
 }
