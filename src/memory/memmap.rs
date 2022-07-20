@@ -9,6 +9,7 @@ use crate::memory::*;
 use crate::memory;
 use crate::multiboot;
 use crate::util;
+use super::stats;
 
 /// Structure storing informations relative to the main memory.
 #[derive(Debug)]
@@ -108,4 +109,10 @@ pub fn init(multiboot_ptr: *const c_void) {
 	let (main_begin, main_pages) = get_phys_main(multiboot_ptr);
 	mem_info.phys_main_begin = main_begin;
 	mem_info.phys_main_pages = main_pages;
+
+	// Setting memory stats
+	let mem_info_guard = stats::MEM_INFO.lock();
+	let mem_info = mem_info_guard.get_mut();
+	mem_info.mem_total = min(boot_info.mem_upper, 4194304) as _; // TODO Handle 64-bits systems
+	mem_info.mem_free = main_pages * 4;
 }

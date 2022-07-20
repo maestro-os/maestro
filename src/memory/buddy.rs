@@ -17,6 +17,7 @@ use crate::memory;
 use crate::util::lock::*;
 use crate::util::math;
 use crate::util;
+use super::stats;
 
 /// Type representing the order of a memory frame.
 pub type FrameOrder = u8;
@@ -187,10 +188,13 @@ pub fn alloc(order: FrameOrder, flags: Flags) -> Result<*mut c_void, Errno> {
 				debug_assert!(util::is_aligned(ptr, memory::PAGE_SIZE));
 				debug_assert!(ptr >= zone.begin
 					&& ptr < (zone.begin as usize + zone.get_size()) as _);
+
+				update_stats(4 * math::pow2(order as usize) as isize);
 				return Ok(ptr);
 			}
 		}
 	}
+
 	Err(errno!(ENOMEM))
 }
 
@@ -222,12 +226,25 @@ pub fn free(ptr: *const c_void, order: FrameOrder) {
 		(*frame).coalesce(zone);
 	}
 	zone.allocated_pages -= math::pow2(order as usize);
+	update_stats(-4 * math::pow2(order as usize) as isize);
 }
 
 /// Frees the given memory frame. `ptr` is the *virtual* address to the beginning of the frame and
 /// and `order` is the order of the frame.
 pub fn free_kernel(ptr: *const c_void, order: FrameOrder) {
 	free(memory::kern_to_phys(ptr), order);
+}
+
+/// TODO doc
+pub fn update_stats(n: isize) {
+	let mem_info_guard = stats::MEM_INFO.lock();
+	let mem_info = mem_info_guard.get_mut();
+
+	if n >= 0 {
+		mem_info.mem_free -= n as usize;
+	} else {
+		mem_info.mem_free += -n as usize;
+	}
 }
 
 /// Returns the total number of pages allocated by the buddy allocator.

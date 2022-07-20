@@ -1,5 +1,6 @@
 //! The procfs is a virtual filesystem which provides informations about processes.
 
+pub mod mem_info;
 pub mod proc_dir;
 pub mod self_link;
 
@@ -22,6 +23,7 @@ use crate::util::boxed::Box;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
 use crate::util::ptr::SharedPtr;
+use mem_info::MemInfo;
 use proc_dir::ProcDir;
 use self_link::SelfNode;
 use super::Filesystem;
@@ -59,6 +61,14 @@ impl ProcFS {
 		root_entries.insert(String::from(b"self")?, DirEntry {
 			inode: self_inode,
 			entry_type: FileType::Link,
+		})?;
+
+		// Creating /proc/meminfo
+		let meminfo_node = MemInfo {};
+		let meminfo_inode = fs.fs.add_node(Box::new(meminfo_node)?)?;
+		root_entries.insert(String::from(b"meminfo")?, DirEntry {
+			inode: meminfo_inode,
+			entry_type: FileType::Regular,
 		})?;
 
 		// Creating /proc/mounts
