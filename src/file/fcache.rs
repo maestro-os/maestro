@@ -240,6 +240,7 @@ impl FCache {
 		}
 
 		file.set_parent_path(parent.get_path()?);
+		update_location(&mut file, &mountpoint);
 		SharedPtr::new(file)
 	}
 
