@@ -76,7 +76,8 @@ pub fn do_select<T: TimeUnit>(nfds: u32,
 	let end = start + timeout;
 
 	loop {
-		let mut events_count = 0;
+		//let mut events_count = 0;
+		let events_count = 0;
 
 		{
 			for fd_id in 0..min(nfds as u32, FD_SETSIZE as u32) {
@@ -100,33 +101,33 @@ pub fn do_select<T: TimeUnit>(nfds: u32,
 					if let Some(readfds) = readfds.get_mut(&mem_space_guard)? {
 						if readfds.is_set(fd_id) {
 							// TODO
-							if true/* || open_file.eof()*/ {
+							/*if true/* || open_file.eof()*/ {
 								events_count += 1;
-							} else {
+							} else {*/
 								readfds.clear(fd_id);
-							}
+							//}
 						}
 					}
 
 					if let Some(writefds) = writefds.get_mut(&mem_space_guard)? {
 						if writefds.is_set(fd_id) {
 							// TODO
-							if true {
+							/*if true {
 								events_count += 1;
-							} else {
+							} else {*/
 								writefds.clear(fd_id);
-							}
+							//}
 						}
 					}
 
 					if let Some(exceptfds) = exceptfds.get_mut(&mem_space_guard)? {
 						if exceptfds.is_set(fd_id) {
 							// TODO
-							if false {
+							/*if false {
 								//events_count += 1;
-							} else {
+							} else {*/
 								exceptfds.clear(fd_id);
-							}
+							//}
 						}
 					}
 				} else {

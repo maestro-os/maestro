@@ -565,7 +565,13 @@ impl TTY {
 		// Sending signals if enabled
 		if self.termios.c_lflag & termios::ISIG != 0 {
 			for b in input {
-				// TODO On match, the character must not be passed as input
+				// Printing special control characters if enabled
+				if self.termios.c_lflag & termios::ECHO != 0
+					&& self.termios.c_lflag & termios::ECHOCTL != 0 {
+					if *b >= 1 && *b < 32 {
+						self.write(&[b'^', b + b'A']);
+					}
+				}
 
 				// TODO Handle every special characters
 				if *b == self.termios.c_cc[termios::VINTR as usize] {

@@ -172,8 +172,14 @@ pub struct Termios {
 	pub c_cflag: TCFlag,
 	/// Local modes
 	pub c_lflag: TCFlag,
+	/// TODO doc
+	pub c_line: CC,
 	/// Special characters
 	pub c_cc: [CC; NCCS],
+	/// TODO doc
+	pub __c_ispeed: u32,
+	/// TODO doc
+	pub __c_ospeed: u32,
 }
 
 impl Default for Termios {
@@ -183,7 +189,10 @@ impl Default for Termios {
 			c_oflag: OPOST | ONLCR,
 			c_cflag: CS8, // TODO
 			c_lflag: ISIG | ICANON | ECHO | ECHOE | ECHOK,
+			c_line: 0,
 			c_cc: [0; NCCS],
+			__c_ispeed: 0,
+			__c_ospeed: 0,
 		};
 
 		// Filling special characters
