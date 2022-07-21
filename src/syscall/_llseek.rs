@@ -4,7 +4,7 @@ use crate::errno::Errno;
 use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::regs::Regs;
-use crate::util::IO;
+use crate::util::io::IO;
 
 /// Sets the offset from the given value.
 const SEEK_SET: u32 = 0;

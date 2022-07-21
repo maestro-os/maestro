@@ -10,7 +10,7 @@ use crate::process::iovec::IOVec;
 use crate::process::mem_space::MemSpace;
 use crate::process::mem_space::ptr::SyscallSlice;
 use crate::process::regs::Regs;
-use crate::util::IO;
+use crate::util::io::IO;
 use crate::util::ptr::IntSharedPtr;
 
 // TODO Check the operation is atomic on the file

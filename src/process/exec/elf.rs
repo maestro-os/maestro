@@ -28,8 +28,8 @@ use crate::process::exec::ProgramImage;
 use crate::process::mem_space::MapConstraint;
 use crate::process::mem_space::MemSpace;
 use crate::process;
-use crate::util::IO;
 use crate::util::container::vec::Vec;
+use crate::util::io::IO;
 use crate::util::math;
 use crate::util;
 

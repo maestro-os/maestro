@@ -11,8 +11,8 @@ use crate::file::fs::tmp::KernFSNode;
 use crate::time::unit::Timestamp;
 use crate::time::unit::TimestampScale;
 use crate::time;
-use crate::util::IO;
 use crate::util::container::vec::Vec;
+use crate::util::io::IO;
 use crate::util::ptr::cow::Cow;
 
 /// Structure representing a regular file node in the tmpfs.
@@ -152,5 +152,10 @@ impl IO for TmpFSRegular {
 		self.content.as_mut_slice()[off..(off + buff.len())].copy_from_slice(&buff);
 
 		Ok(buff.len() as _)
+	}
+
+	fn poll(&mut self, _mask: u32) -> Result<u32, Errno> {
+		// TODO
+		todo!();
 	}
 }

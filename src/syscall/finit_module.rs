@@ -7,7 +7,7 @@ use crate::module::Module;
 use crate::module;
 use crate::process::Process;
 use crate::process::regs::Regs;
-use crate::util::IO;
+use crate::util::io::IO;
 
 /// The implementation of the `finit_module` syscall.
 pub fn finit_module(regs: &Regs) -> Result<i32, Errno> {

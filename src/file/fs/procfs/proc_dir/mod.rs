@@ -14,10 +14,10 @@ use crate::file::fs::kernfs::KernFS;
 use crate::file::fs::kernfs::node::KernFSNode;
 use crate::process::Process;
 use crate::process::pid::Pid;
-use crate::util::IO;
 use crate::util::boxed::Box;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
+use crate::util::io::IO;
 use crate::util::ptr::cow::Cow;
 use cwd::Cwd;
 use mounts::Mounts;
@@ -105,6 +105,11 @@ impl IO for ProcDir {
 
 	fn write(&mut self, _offset: u64, _buff: &[u8]) -> Result<u64, Errno> {
 		Err(errno!(EINVAL))
+	}
+
+	fn poll(&mut self, _mask: u32) -> Result<u32, Errno> {
+		// TODO
+		todo!();
 	}
 }
 

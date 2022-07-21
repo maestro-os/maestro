@@ -6,6 +6,7 @@
 
 pub mod boxed;
 pub mod container;
+pub mod io;
 pub mod list;
 pub mod lock;
 pub mod math;
@@ -215,43 +216,6 @@ failable_clone_impl!(usize);
 
 failable_clone_impl!(*mut c_void);
 failable_clone_impl!(*const c_void);
-
-/// Trait representing a data I/O.
-pub trait IO {
-	/// Returns the size of the underlying data.
-	fn get_size(&self) -> u64;
-
-	/// Reads data from the I/O and writes it into `buff`.
-	/// `offset` is the offset in the I/O to the beginning of the data to be read.
-	/// The function returns a tuple containing:
-	/// - The number of bytes read.
-	/// - Whether the function reached the end of the input stream. In the context of a file, a
-	/// value of `true` is equivalent to the End Of File (EOF).
-	fn read(&mut self, offset: u64, buff: &mut [u8]) -> Result<(u64, bool), Errno>;
-
-	/// Reads data from `buff` and writes it into the I/O.
-	/// `offset` is the offset in the I/O to the beginning of the data to write.
-	/// The function returns the number of bytes written.
-	fn write(&mut self, offset: u64, buff: &[u8]) -> Result<u64, Errno>;
-}
-
-/// Structure representing a dummy I/O interface.
-pub struct DummyIO {}
-
-impl IO for DummyIO {
-	fn get_size(&self) -> u64 {
-		0
-	}
-
-	fn read(&mut self, _offset: u64, _buff: &mut [u8]) -> Result<(u64, bool), Errno> {
-		Ok((0, true))
-	}
-
-	fn write(&mut self, _offset: u64, _buff: &[u8]) -> Result<u64, Errno> {
-		Ok(0)
-	}
-
-}
 
 /// Wrapper structure allowing to implement the Display trait on the [u8] type to display it as a
 /// string.

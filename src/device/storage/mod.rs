@@ -25,9 +25,9 @@ use crate::memory::malloc;
 use crate::process::mem_space::MemSpace;
 use crate::process::oom;
 use crate::util::FailableClone;
-use crate::util::IO;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
+use crate::util::io::IO;
 use crate::util::math;
 use crate::util::ptr::IntSharedPtr;
 use crate::util::ptr::SharedPtr;
@@ -282,6 +282,10 @@ impl IO for StorageDeviceHandle {
 		} else {
 			Err(errno!(ENODEV))
 		}
+	}
+
+	fn poll(&mut self, _mask: u32) -> Result<u32, Errno> {
+		Ok(0)
 	}
 }
 

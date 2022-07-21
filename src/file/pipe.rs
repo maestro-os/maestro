@@ -3,8 +3,8 @@
 
 use crate::file::Errno;
 use crate::limits;
-use crate::util::IO;
 use crate::util::container::ring_buffer::RingBuffer;
+use crate::util::io::IO;
 
 /// Structure representing a buffer buffer.
 #[derive(Debug)]
@@ -80,5 +80,10 @@ impl IO for PipeBuffer {
 		} else {
 			Err(errno!(EPIPE))
 		}
+	}
+
+	fn poll(&mut self, _mask: u32) -> Result<u32, Errno> {
+		// TODO
+		todo!();
 	}
 }

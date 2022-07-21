@@ -8,7 +8,7 @@ use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallSlice;
 use crate::process::regs::Regs;
 use crate::syscall::Signal;
-use crate::util::IO;
+use crate::util::io::IO;
 
 // TODO O_ASYNC
 

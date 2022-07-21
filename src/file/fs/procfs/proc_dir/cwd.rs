@@ -10,7 +10,7 @@ use crate::file::fs::kernfs::node::KernFSNode;
 use crate::process::Process;
 use crate::process::oom;
 use crate::process::pid::Pid;
-use crate::util::IO;
+use crate::util::io::IO;
 use crate::util::ptr::cow::Cow;
 
 /// Struture representing the `cwd` node.
@@ -60,6 +60,10 @@ impl IO for Cwd {
 	}
 
 	fn write(&mut self, _offset: u64, _buff: &[u8]) -> Result<u64, Errno> {
+		Err(errno!(EINVAL))
+	}
+
+	fn poll(&mut self, _mask: u32) -> Result<u32, Errno> {
 		Err(errno!(EINVAL))
 	}
 }

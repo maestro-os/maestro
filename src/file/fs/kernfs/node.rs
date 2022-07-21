@@ -9,7 +9,7 @@ use crate::file;
 use crate::time::unit::Timestamp;
 use crate::time::unit::TimestampScale;
 use crate::time;
-use crate::util::IO;
+use crate::util::io::IO;
 use crate::util::ptr::cow::Cow;
 
 /// Trait representing a node in a kernfs.
@@ -204,6 +204,10 @@ impl IO for DummyKernFSNode {
 	}
 
 	fn write(&mut self, _offset: u64, _buff: &[u8]) -> Result<u64, Errno> {
+		Ok(0)
+	}
+
+	fn poll(&mut self, _mask: u32) -> Result<u32, Errno> {
 		Ok(0)
 	}
 }

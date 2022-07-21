@@ -12,7 +12,7 @@ use crate::syscall::ioctl;
 use crate::tty::TTYHandle;
 use crate::tty::WinSize;
 use crate::tty::termios::Termios;
-use crate::util::IO;
+use crate::util::io::IO;
 use crate::util::ptr::IntSharedPtr;
 
 /// Structure representing a TTY device's handle.
@@ -149,5 +149,10 @@ impl IO for TTYDeviceHandle {
 
 		tty.write(buff);
 		Ok(buff.len() as _)
+	}
+
+	fn poll(&mut self, _mask: u32) -> Result<u32, Errno> {
+		// TODO
+		todo!();
 	}
 }

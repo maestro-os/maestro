@@ -16,9 +16,9 @@ use crate::process::exec;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::regs::Regs;
 use crate::process;
-use crate::util::IO;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
+use crate::util::io::IO;
 use crate::util::ptr::SharedPtr;
 
 /// The maximum length of the shebang.

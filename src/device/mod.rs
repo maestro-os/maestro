@@ -26,10 +26,10 @@ use crate::file::fcache;
 use crate::file::path::Path;
 use crate::process::mem_space::MemSpace;
 use crate::util::FailableClone;
-use crate::util::IO;
 use crate::util::boxed::Box;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::vec::Vec;
+use crate::util::io::IO;
 use crate::util::lock::Mutex;
 use crate::util::ptr::IntSharedPtr;
 use crate::util::ptr::SharedPtr;
@@ -258,6 +258,10 @@ impl IO for Device {
 
 	fn write(&mut self, offset: u64, buff: &[u8]) -> Result<u64, Errno> {
 		self.handle.write(offset, buff)
+	}
+
+	fn poll(&mut self, mask: u32) -> Result<u32, Errno> {
+		self.handle.poll(mask)
 	}
 }
 

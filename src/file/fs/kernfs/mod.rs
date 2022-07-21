@@ -19,10 +19,10 @@ use crate::file::path::Path;
 use crate::memory;
 use crate::process::oom;
 use crate::util::FailableClone;
-use crate::util::IO;
 use crate::util::boxed::Box;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
+use crate::util::io::IO;
 use node::KernFSNode;
 
 /// The index of the root inode.

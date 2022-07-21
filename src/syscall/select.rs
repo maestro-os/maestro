@@ -12,6 +12,8 @@ use crate::time::unit::TimeUnit;
 use crate::time::unit::Timeval;
 use crate::time;
 use crate::types::*;
+use crate::util::io::IO;
+use crate::util::io;
 
 /// The number of file descriptors in FDSet.
 pub const FD_SETSIZE: usize = 1024;
@@ -76,74 +78,85 @@ pub fn do_select<T: TimeUnit>(nfds: u32,
 	let end = start + timeout;
 
 	loop {
-		//let mut events_count = 0;
-		let events_count = 0;
+		let mut events_count = 0;
 
-		{
-			for fd_id in 0..min(nfds as u32, FD_SETSIZE as u32) {
-				let (mem_space, fd) = {
-					let proc_mutex = Process::get_current().unwrap();
-					let proc_guard = proc_mutex.lock();
-					let proc = proc_guard.get();
+		for fd_id in 0..min(nfds as u32, FD_SETSIZE as u32) {
+			let (mem_space, fd) = {
+				let proc_mutex = Process::get_current().unwrap();
+				let proc_guard = proc_mutex.lock();
+				let proc = proc_guard.get();
 
-					let mem_space = proc.get_mem_space().unwrap();
-					let fd = proc.get_fd(fd_id);
-					(mem_space, fd)
-				};
+				let mem_space = proc.get_mem_space().unwrap();
+				let fd = proc.get_fd(fd_id);
+				(mem_space, fd)
+			};
 
-				if let Some(fd) = fd {
-					let open_file_mutex = fd.get_open_file();
-					let open_file_guard = open_file_mutex.lock();
-					let _open_file = open_file_guard.get();
+			let (read, write, except) = {
+				let mem_space_guard = mem_space.lock();
 
-					let mem_space_guard = mem_space.lock();
+				let read = readfds.get(&mem_space_guard)?
+					.map(| fds | fds.is_set(fd_id))
+					.unwrap_or(false);
+				let write = writefds.get(&mem_space_guard)?
+					.map(| fds | fds.is_set(fd_id))
+					.unwrap_or(false);
+				let except = exceptfds.get(&mem_space_guard)?
+					.map(| fds | fds.is_set(fd_id))
+					.unwrap_or(false);
 
-					if let Some(readfds) = readfds.get_mut(&mem_space_guard)? {
-						if readfds.is_set(fd_id) {
-							// TODO
-							/*if true/* || open_file.eof()*/ {
-								events_count += 1;
-							} else {*/
-								readfds.clear(fd_id);
-							//}
-						}
-					}
+				(read, write, except)
+			};
 
-					if let Some(writefds) = writefds.get_mut(&mem_space_guard)? {
-						if writefds.is_set(fd_id) {
-							// TODO
-							/*if true {
-								events_count += 1;
-							} else {*/
-								writefds.clear(fd_id);
-							//}
-						}
-					}
+			// Checking the file descriptor exists
+			let fd = match fd {
+				Some(fd) => fd,
 
-					if let Some(exceptfds) = exceptfds.get_mut(&mem_space_guard)? {
-						if exceptfds.is_set(fd_id) {
-							// TODO
-							/*if false {
-								//events_count += 1;
-							} else {*/
-								exceptfds.clear(fd_id);
-							//}
-						}
-					}
-				} else {
-					let mem_space_guard = mem_space.lock();
-
-					let read = readfds.get_mut(&mem_space_guard)?
-						.map(| fds | fds.is_set(fd_id)).unwrap_or(false);
-					let write = writefds.get_mut(&mem_space_guard)?
-						.map(| fds | fds.is_set(fd_id)).unwrap_or(false);
-					let except = exceptfds.get_mut(&mem_space_guard)?
-						.map(| fds | fds.is_set(fd_id)).unwrap_or(false);
-
+				None => {
 					if read || write || except {
 						return Err(errno!(EBADF));
 					}
-				}
+
+					continue;
+				},
+			};
+
+			// Building event mask
+			let mut mask = 0;
+			if read {
+				mask |= io::POLLIN;
+			}
+			if write {
+				mask |= io::POLLOUT;
+			}
+			if except {
+				mask |= io::POLLPRI;
+			}
+
+			let open_file_mutex = fd.get_open_file();
+			let open_file_guard = open_file_mutex.lock();
+			let open_file = open_file_guard.get_mut();
+
+			let result = open_file.poll(mask)?;
+
+			// Setting results
+			let mem_space_guard = mem_space.lock();
+			if result & io::POLLIN != 0 {
+				readfds.get_mut(&mem_space_guard)?.map(| fds | fds.set(fd_id));
+				events_count += 1;
+			} else {
+				readfds.get_mut(&mem_space_guard)?.map(| fds | fds.clear(fd_id));
+			}
+			if result & io::POLLOUT != 0 {
+				writefds.get_mut(&mem_space_guard)?.map(| fds | fds.set(fd_id));
+				events_count += 1;
+			} else {
+				writefds.get_mut(&mem_space_guard)?.map(| fds | fds.clear(fd_id));
+			}
+			if result & io::POLLPRI != 0 {
+				exceptfds.get_mut(&mem_space_guard)?.map(| fds | fds.set(fd_id));
+				events_count += 1;
+			} else {
+				exceptfds.get_mut(&mem_space_guard)?.map(| fds | fds.clear(fd_id));
 			}
 		}
 

@@ -7,7 +7,7 @@ use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::regs::Regs;
-use crate::util::IO;
+use crate::util::io::IO;
 use super::util;
 
 /// Structure representing a timestamp with the statx syscall.

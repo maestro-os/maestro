@@ -10,8 +10,8 @@ use crate::file;
 use crate::process::Process;
 use crate::process::oom;
 use crate::time::unit::Timestamp;
-use crate::util::IO;
 use crate::util::container::string::String;
+use crate::util::io::IO;
 use crate::util::ptr::cow::Cow;
 
 /// The `self` symlink.
@@ -88,6 +88,10 @@ impl IO for SelfNode {
 	}
 
 	fn write(&mut self, _offset: u64, _buff: &[u8]) -> Result<u64, Errno> {
+		Err(errno!(EINVAL))
+	}
+
+	fn poll(&mut self, _mask: u32) -> Result<u32, Errno> {
 		Err(errno!(EINVAL))
 	}
 }

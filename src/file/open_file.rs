@@ -8,7 +8,7 @@ use crate::file::File;
 use crate::file::pipe::PipeBuffer;
 use crate::file::socket::SocketSide;
 use crate::process::mem_space::MemSpace;
-use crate::util::IO;
+use crate::util::io::IO;
 use crate::util::ptr::IntSharedPtr;
 use crate::util::ptr::SharedPtr;
 
@@ -221,6 +221,11 @@ impl IO for OpenFile {
 
 		self.curr_off += len as u64;
 		Ok(len as _)
+	}
+
+	fn poll(&mut self, _mask: u32) -> Result<u32, Errno> {
+		// TODO
+		todo!();
 	}
 }
 

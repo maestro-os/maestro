@@ -14,8 +14,8 @@ use crate::errno;
 use crate::file::path::Path;
 use crate::memory::malloc;
 use crate::process::mem_space::MemSpace;
-use crate::util::IO;
 use crate::util::container::string::String;
+use crate::util::io::IO;
 use crate::util::ptr::IntSharedPtr;
 use super::StorageInterface;
 
@@ -149,6 +149,10 @@ impl IO for RAMDiskHandle {
 
 	fn write(&mut self, offset: u64, buff: &[u8]) -> Result<u64, Errno> {
 		self.disk.write_bytes(buff, offset)
+	}
+
+	fn poll(&mut self, _mask: u32) -> Result<u32, Errno> {
+		Ok(0)
 	}
 }
 

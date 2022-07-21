@@ -26,9 +26,9 @@ use crate::time::unit::Timestamp;
 use crate::time::unit::TimestampScale;
 use crate::time;
 use crate::util::FailableClone;
-use crate::util::IO;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
+use crate::util::io::IO;
 use crate::util::ptr::IntSharedPtr;
 use crate::util::ptr::SharedPtr;
 use path::Path;
@@ -753,6 +753,11 @@ impl IO for File {
 				guard.get_mut().get_handle().write(off as _, buff)
 			},
 		}
+	}
+
+	fn poll(&mut self, _mask: u32) -> Result<u32, Errno> {
+		// TODO
+		todo!();
 	}
 }
 

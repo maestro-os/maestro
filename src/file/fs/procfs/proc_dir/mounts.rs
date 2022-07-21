@@ -10,8 +10,8 @@ use crate::file::fs::kernfs::node::KernFSNode;
 use crate::file::mountpoint;
 use crate::process::Process;
 use crate::process::pid::Pid;
-use crate::util::IO;
 use crate::util::container::string::String;
+use crate::util::io::IO;
 use crate::util::ptr::cow::Cow;
 
 /// Structure representing the mount node of the procfs.
@@ -88,5 +88,10 @@ impl IO for Mounts {
 
 	fn write(&mut self, _offset: u64, _buff: &[u8]) -> Result<u64, Errno> {
 		Err(errno!(EINVAL))
+	}
+
+	fn poll(&mut self, _mask: u32) -> Result<u32, Errno> {
+		// TODO
+		todo!();
 	}
 }

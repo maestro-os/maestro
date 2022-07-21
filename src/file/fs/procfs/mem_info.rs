@@ -7,7 +7,7 @@ use crate::file::FileContent;
 use crate::file::Mode;
 use crate::file::fs::kernfs::node::KernFSNode;
 use crate::memory;
-use crate::util::IO;
+use crate::util::io::IO;
 use crate::util::ptr::cow::Cow;
 
 /// Structure representing the meminfo node.
@@ -49,5 +49,10 @@ impl IO for MemInfo {
 
 	fn write(&mut self, _offset: u64, _buff: &[u8]) -> Result<u64, Errno> {
 		Err(errno!(EINVAL))
+	}
+
+	fn poll(&mut self, _mask: u32) -> Result<u32, Errno> {
+		// TODO
+		todo!();
 	}
 }

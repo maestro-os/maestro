@@ -1,9 +1,9 @@
 //! This file implements sockets.
 
 use crate::errno::Errno;
-use crate::util::IO;
 use crate::util::container::ring_buffer::RingBuffer;
 use crate::util::container::vec::Vec;
+use crate::util::io::IO;
 use crate::util::ptr::SharedPtr;
 
 /// The maximum size of a socket's buffers.
@@ -126,5 +126,10 @@ impl IO for SocketSide {
 		} else {
 			Ok(sock.send_buffer.write(buf) as _)
 		}
+	}
+
+	fn poll(&mut self, _mask: u32) -> Result<u32, Errno> {
+		// TODO
+		todo!();
 	}
 }

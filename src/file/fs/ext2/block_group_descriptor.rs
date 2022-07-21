@@ -3,7 +3,7 @@
 
 use core::mem::size_of;
 use crate::errno::Errno;
-use crate::util::IO;
+use crate::util::io::IO;
 use super::Superblock;
 use super::read;
 use super::write;
