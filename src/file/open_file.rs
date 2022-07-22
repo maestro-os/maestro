@@ -223,9 +223,23 @@ impl IO for OpenFile {
 		Ok(len as _)
 	}
 
-	fn poll(&mut self, _mask: u32) -> Result<u32, Errno> {
-		// TODO
-		todo!();
+	fn poll(&mut self, mask: u32) -> Result<u32, Errno> {
+		match &mut self.target {
+			FDTarget::File(f) => {
+				let guard = f.lock();
+				guard.get_mut().poll(mask)
+			},
+
+			FDTarget::Pipe(p) => {
+				let guard = p.lock();
+				guard.get_mut().poll(mask)
+			}
+
+			FDTarget::Socket(s) => {
+				let guard = s.lock();
+				guard.get_mut().poll(mask)
+			},
+		}
 	}
 }
 

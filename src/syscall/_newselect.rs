@@ -8,9 +8,7 @@ use crate::types::*;
 use super::select::FDSet;
 use super::select::do_select;
 
-// TODO Figure out the difference between _newselect and select
-
-/// TODO doc
+/// The implementation of the `_newselect` system call.
 pub fn _newselect(regs: &Regs) -> Result<i32, Errno> {
 	let nfds = regs.ebx as c_int;
 	let readfds: SyscallPtr<FDSet> = (regs.ecx as usize).into();

@@ -13,6 +13,7 @@ use crate::tty::TTYHandle;
 use crate::tty::WinSize;
 use crate::tty::termios::Termios;
 use crate::util::io::IO;
+use crate::util::io;
 use crate::util::ptr::IntSharedPtr;
 
 /// Structure representing a TTY device's handle.
@@ -151,8 +152,20 @@ impl IO for TTYDeviceHandle {
 		Ok(buff.len() as _)
 	}
 
-	fn poll(&mut self, _mask: u32) -> Result<u32, Errno> {
-		// TODO
-		todo!();
+	fn poll(&mut self, mask: u32) -> Result<u32, Errno> {
+		let tty_mutex = self.get_tty().ok_or_else(|| errno!(ENOTTY))?;
+		let tty_guard = tty_mutex.lock();
+		let tty = tty_guard.get_mut();
+
+		let mut result = 0;
+		if mask & io::POLLIN != 0 && tty.get_available_size() > 0 {
+			result |= io::POLLIN;
+		}
+		if mask & io::POLLOUT != 0 {
+			result |= io::POLLOUT;
+		}
+		// TODO Implement every events
+
+		Ok(result)
 	}
 }

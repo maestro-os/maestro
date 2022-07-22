@@ -704,15 +704,20 @@ impl IO for File {
 	fn write(&mut self, off: u64, buff: &[u8]) -> Result<u64, Errno> {
 		match &self.content {
 			FileContent::Regular => {
-				let mountpoint_mutex = self.location.get_mountpoint().ok_or_else(|| errno!(EIO))?;
-				let mountpoint_guard = mountpoint_mutex.lock();
-				let mountpoint = mountpoint_guard.get_mut();
+				let (io_mutex, fs_mutex) = {
+					let mountpoint_mutex = self.location.get_mountpoint()
+						.ok_or_else(|| errno!(EIO))?;
+					let mountpoint_guard = mountpoint_mutex.lock();
+					let mountpoint = mountpoint_guard.get_mut();
 
-				let io_mutex = mountpoint.get_source().get_io()?;
+					let io_mutex = mountpoint.get_source().get_io()?;
+					let fs_mutex = mountpoint.get_filesystem();
+					(io_mutex, fs_mutex)
+				};
+
 				let io_guard = io_mutex.lock();
 				let io = io_guard.get_mut();
 
-				let fs_mutex = mountpoint.get_filesystem();
 				let fs_guard = fs_mutex.lock();
 				let fs = fs_guard.get_mut();
 
@@ -755,9 +760,61 @@ impl IO for File {
 		}
 	}
 
-	fn poll(&mut self, _mask: u32) -> Result<u32, Errno> {
-		// TODO
-		todo!();
+	fn poll(&mut self, mask: u32) -> Result<u32, Errno> {
+		match &self.content {
+			FileContent::Regular => {
+				let (io_mutex, fs_mutex) = {
+					let mountpoint_mutex = self.location.get_mountpoint()
+						.ok_or_else(|| errno!(EIO))?;
+					let mountpoint_guard = mountpoint_mutex.lock();
+					let mountpoint = mountpoint_guard.get_mut();
+
+					let io_mutex = mountpoint.get_source().get_io()?;
+					let fs_mutex = mountpoint.get_filesystem();
+					(io_mutex, fs_mutex)
+				};
+
+				let io_guard = io_mutex.lock();
+				let _io = io_guard.get_mut();
+
+				let fs_guard = fs_mutex.lock();
+				let _fs = fs_guard.get_mut();
+
+				// TODO
+				todo!();
+			},
+
+			FileContent::Directory(_) => Err(errno!(EISDIR)),
+
+			FileContent::Link(_) => Err(errno!(EINVAL)),
+
+			FileContent::Fifo => {
+				// TODO
+				todo!();
+			},
+
+			FileContent::Socket => {
+				// TODO
+				todo!();
+			},
+
+			FileContent::BlockDevice { .. } | FileContent::CharDevice { .. } => {
+				let dev = match self.content {
+					FileContent::BlockDevice { major, minor } => {
+						device::get_device(DeviceType::Block, major, minor)
+					},
+
+					FileContent::CharDevice { major, minor } => {
+						device::get_device(DeviceType::Char, major, minor)
+					},
+
+					_ => unreachable!(),
+				}.ok_or_else(|| errno!(ENODEV))?;
+
+				let guard = dev.lock();
+				guard.get_mut().get_handle().poll(mask)
+			},
+		}
 	}
 }
 

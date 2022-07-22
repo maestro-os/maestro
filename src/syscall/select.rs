@@ -52,8 +52,15 @@ impl FDSet {
 	}
 }
 
-/// TODO doc
-pub fn do_select<T: TimeUnit>(nfds: u32,
+/// Performs the select operation.
+/// `nfds` is the number of the highest checked fd + 1.
+/// `readfds` is the bitfield of fds to check for read operations.
+/// `writefds` is the bitfield of fds to check for write operations.
+/// `exceptfds` is the bitfield of fds to check for exceptional conditions.
+/// `timeout` is the timeout after which the syscall returns.
+/// `sigmask` TODO
+pub fn do_select<T: TimeUnit>(
+	nfds: u32,
 	readfds: SyscallPtr<FDSet>,
 	writefds: SyscallPtr<FDSet>,
 	exceptfds: SyscallPtr<FDSet>,
@@ -74,11 +81,15 @@ pub fn do_select<T: TimeUnit>(nfds: u32,
 		timeout.get(&mem_space_guard)?.map(| t | t.clone()).unwrap_or_default()
 	};
 
+	// Tells whether the syscall immediately returns
+	let polling = timeout.is_zero();
 	// The end timestamp
 	let end = start + timeout;
 
 	loop {
 		let mut events_count = 0;
+		// Set if every bitfields are set to zero
+		let mut all_zeros = true;
 
 		for fd_id in 0..min(nfds as u32, FD_SETSIZE as u32) {
 			let (mem_space, fd) = {
@@ -106,6 +117,10 @@ pub fn do_select<T: TimeUnit>(nfds: u32,
 
 				(read, write, except)
 			};
+
+			if read || write || except {
+				all_zeros = false;
+			}
 
 			// Checking the file descriptor exists
 			let fd = match fd {
@@ -161,7 +176,7 @@ pub fn do_select<T: TimeUnit>(nfds: u32,
 		}
 
 		// If one or more events occured, return
-		if events_count > 0 {
+		if all_zeros || polling || events_count > 0 {
 			return Ok(events_count);
 		}
 
@@ -177,7 +192,7 @@ pub fn do_select<T: TimeUnit>(nfds: u32,
 	}
 }
 
-/// TODO doc
+/// The implementation of the `select` system call.
 pub fn select(regs: &Regs) -> Result<i32, Errno> {
 	let nfds = regs.ebx as c_int;
 	let readfds: SyscallPtr<FDSet> = (regs.ecx as usize).into();
