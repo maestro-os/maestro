@@ -400,19 +400,15 @@ impl TTY {
 		match c {
 			0x07 => self.ring_bell(),
 
-			0x08 => {
-				// TODO Backspace
-			},
-
 			b'\t' => self.cursor_forward(get_tab_size(self.cursor_x), 0),
 			b'\n' => self.newline(1),
 
 			0x0c => {
-				// TODO Move printer to a top of page
+				// TODO Move printer to a top of page?
 			},
 
 			b'\r' => self.cursor_x = 0,
-			0x7f => self.erase(1),
+			0x08 | 0x7f => self.cursor_backward(1, 0),
 
 			_ => {
 				let tty_char = (c as vga::Char) | ((self.current_color as vga::Char) << 8);
@@ -548,6 +544,7 @@ impl TTY {
 					},
 
 					0xf7 => {
+						// TODO Check
 						self.erase(1);
 					},
 
