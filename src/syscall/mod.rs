@@ -52,6 +52,7 @@ mod getuid;
 mod init_module;
 mod kill;
 mod link;
+mod linkat;
 mod madvise;
 mod mkdir;
 mod mknod;
@@ -168,6 +169,7 @@ use init_module::init_module;
 use ioctl::ioctl;
 use kill::kill;
 use link::link;
+use linkat::linkat;
 use madvise::madvise;
 use mkdir::mkdir;
 use mknod::mknod;
@@ -568,7 +570,7 @@ fn get_syscall(id: u32) -> Option<Syscall> {
 		// TODO 0x12c => Some(Syscall { handler: &fstatat64, name: "fstatat64", args: &[] }),
 		0x12d => Some(Syscall { handler: &unlinkat, name: "unlinkat", args: &[] }),
 		// TODO 0x12e => Some(Syscall { handler: &renameat, name: "renameat", args: &[] }),
-		// TODO 0x12f => Some(Syscall { handler: &linkat, name: "linkat", args: &[] }),
+		0x12f => Some(Syscall { handler: &linkat, name: "linkat", args: &[] }),
 		0x130 => Some(Syscall { handler: &symlinkat, name: "symlinkat", args: &[] }),
 		// TODO 0x131 => Some(Syscall { handler: &readlinkat, name: "readlinkat", args: &[] }),
 		0x132 => Some(Syscall { handler: &fchmodat, name: "fchmodat", args: &[] }),
@@ -830,7 +832,7 @@ fn print_strace(regs: &Regs, result: Option<Result<i32, Errno>>) {
 #[no_mangle]
 pub extern "C" fn syscall_handler(regs: &mut Regs) {
 	// TODO Add switch to disable
-	//print_strace(regs, None);
+	print_strace(regs, None);
 
 	let id = regs.eax;
 	let result = match get_syscall(id) {
@@ -852,7 +854,7 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 	};
 
 	// TODO Add switch to disable
-	//print_strace(regs, Some(result));
+	print_strace(regs, Some(result));
 
 	// Setting the return value
 	let retval = {

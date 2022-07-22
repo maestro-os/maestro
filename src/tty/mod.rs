@@ -412,7 +412,7 @@ impl TTY {
 			},
 
 			b'\r' => self.cursor_x = 0,
-			0x7f => {}, // Do not print DEL characters
+			0x7f => self.erase(1),
 
 			_ => {
 				let tty_char = (c as vga::Char) | ((self.current_color as vga::Char) << 8);
@@ -489,7 +489,6 @@ impl TTY {
 			self.write(input);
 		}
 		// TODO If ECHO is disabled but ICANON and ECHONL are set, print newlines
-		// TODO Handle printing Ctrl + key
 
 		// TODO Implement IGNBRK and BRKINT
 		// TODO Implement parity checking
