@@ -76,6 +76,7 @@ mod r#break;
 mod read;
 mod readlink;
 mod reboot;
+mod renameat2;
 mod rmdir;
 mod rt_sigaction;
 mod rt_sigprocmask;
@@ -192,6 +193,7 @@ use r#break::r#break;
 use read::read;
 use readlink::readlink;
 use reboot::reboot;
+use renameat2::renameat2;
 use rmdir::rmdir;
 use rt_sigaction::rt_sigaction;
 use rt_sigprocmask::rt_sigprocmask;
@@ -639,7 +641,7 @@ fn get_syscall(id: u32) -> Option<Syscall> {
 		//	args: &[] }),
 		// TODO 0x160 => Some(Syscall { handler: &sched_getattr, name: "sched_getattr",
 		//	args: &[] }),
-		// TODO 0x161 => Some(Syscall { handler: &renameat2, name: "renameat2", args: &[] }),
+		0x161 => Some(Syscall { handler: &renameat2, name: "renameat2", args: &[] }),
 		// TODO 0x162 => Some(Syscall { handler: &seccomp, name: "seccomp", args: &[] }),
 		0x163 => Some(Syscall { handler: &getrandom, name: "getrandom", args: &[] }),
 		// TODO 0x164 => Some(Syscall { handler: &memfd_create, name: "memfd_create",

@@ -872,6 +872,11 @@ impl Filesystem for Ext2Fs {
 			return Err(errno!(ENOTDIR));
 		}
 
+		// Checking the entry doesn't exist
+		if parent.get_directory_entry(name, &mut self.superblock, io)?.is_some() {
+			return Err(errno!(EEXIST));
+		}
+
 		// The inode
 		let mut inode_ = Ext2INode::read(inode as _, &self.superblock, io)?;
 		// Checking the maximum number of links is not exceeded
@@ -879,13 +884,14 @@ impl Filesystem for Ext2Fs {
 			return Err(errno!(EMFILE));
 		}
 
-		// Updating links count
-		inode_.hard_links_count += 1;
-		inode_.write(inode as _, &self.superblock, io)?;
-
 		// Writing directory entry
 		parent.add_dirent(&mut self.superblock, io, inode as _, name, inode_.get_type())?;
-		parent.write(parent_inode as _, &self.superblock, io)
+		// Updating links count
+		inode_.hard_links_count += 1;
+
+		parent.write(parent_inode as _, &self.superblock, io)?;
+		inode_.write(inode as _, &self.superblock, io)?;
+		Ok(())
 	}
 
 	fn update_inode(&mut self, io: &mut dyn IO, file: &File) -> Result<(), Errno> {
