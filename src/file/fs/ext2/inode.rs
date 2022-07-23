@@ -242,7 +242,7 @@ impl Ext2INode {
 
 	/// Sets the permissions of the file.
 	pub fn set_permissions(&mut self, perm: file::Mode) {
-		self.mode |= (perm & 0x0fff) as u16;
+		self.mode = (self.mode & !0o7777) | (perm & 0o7777) as u16;
 	}
 
 	/// Returns the size of the file.

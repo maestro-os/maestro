@@ -11,8 +11,8 @@ use super::util;
 pub fn fchmodat(regs: &Regs) -> Result<i32, Errno> {
 	let dirfd = regs.ebx as i32;
 	let pathname: SyscallString = (regs.ecx as usize).into();
-	let mode = regs.ecx as file::Mode;
-	let _flags = regs.edx as i32;
+	let mode = regs.edx as file::Mode;
+	let _flags = regs.esi as i32;
 
 	let (file_mutex, uid) = {
 		let mutex = Process::get_current().unwrap();
@@ -38,6 +38,7 @@ pub fn fchmodat(regs: &Regs) -> Result<i32, Errno> {
 	}
 
 	file.set_permissions(mode);
+	file.sync()?;
 
 	Ok(0)
 }

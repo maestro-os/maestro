@@ -897,7 +897,7 @@ impl Filesystem for Ext2Fs {
 		// Updating file attributes
 		inode_.uid = file.get_uid();
 		inode_.gid = file.get_gid();
-		inode_.set_permissions(file.get_mode());
+		inode_.set_permissions(file.get_permissions());
 		inode_.ctime = file.get_ctime() as _;
 		inode_.mtime = file.get_mtime() as _;
 		inode_.atime = file.get_atime() as _;

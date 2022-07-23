@@ -2,6 +2,7 @@
 
 use core::cmp::Ordering;
 use core::ops::Add;
+use crate::util::math;
 
 /// Type representing a timestamp in seconds. Equivalent to POSIX's `time_t`.
 pub type Timestamp = u64;
@@ -11,6 +12,7 @@ pub type UTimestamp = u64;
 pub type Clock = u32;
 
 /// Enumeration of available timestamp scales.
+#[derive(Debug)]
 pub enum TimestampScale {
 	/// The unit is one second.
 	Second,
@@ -20,6 +22,29 @@ pub enum TimestampScale {
 	Microsecond,
 	/// The unit is one nanosecond.
 	Nanosecond,
+}
+
+impl TimestampScale {
+	/// Returns the order of the scale as a power of 10.
+	pub fn as_power(&self) -> i64 {
+		match self {
+			Self::Second => 0,
+			Self::Millisecond => -3,
+			Self::Microsecond => -6,
+			Self::Nanosecond => -9,
+		}
+	}
+
+	/// Converts the given value `val` from scale `from` to scale `to`.
+	pub fn convert(val: Timestamp, from: Self, to: Self) -> Timestamp {
+		let delta = -to.as_power() - -from.as_power();
+
+		if delta >= 0 {
+			val * math::pow(10, delta as _)
+		} else {
+			val / math::pow(10, -delta as _)
+		}
+	}
 }
 
 /// Trait to be implement on a structure describing a moment in time.

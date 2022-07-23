@@ -457,6 +457,11 @@ impl File {
 		self.mode & S_IXOTH != 0
 	}
 
+	/// Returns the permissions of the file.
+	pub fn get_permissions(&self) -> Mode {
+		self.mode & 0o7777
+	}
+
 	/// Sets the permissions of the file.
 	pub fn set_permissions(&mut self, mode: Mode) {
 		self.mode = mode & 0o7777;

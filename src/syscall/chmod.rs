@@ -41,6 +41,7 @@ pub fn chmod(regs: &Regs) -> Result<i32, Errno> {
 	}
 
 	file.set_permissions(mode);
+	file.sync()?;
 
 	Ok(0)
 }
