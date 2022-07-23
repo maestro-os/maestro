@@ -30,7 +30,7 @@ pub fn symlinkat(regs: &Regs) -> Result<i32, Errno> {
 
 	let linkpath = linkpath.get(&mem_space_guard)?.ok_or_else(|| errno!(EFAULT))?;
 	let file_content = FileContent::Link(target);
-	util::create_file_at(guard, true, newdirfd, linkpath, 0, file_content)?;
+	util::create_file_at(&guard, true, newdirfd, linkpath, 0, file_content)?;
 
 	Ok(0)
 }

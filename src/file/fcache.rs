@@ -307,6 +307,48 @@ impl FCache {
 		SharedPtr::new(file)
 	}
 
+	/// Creates a new hard link.
+	/// `target` is the target file.
+	/// `parent` is the parent directory of the new link.
+	/// `name` is the name of the link.
+	/// `uid` is the id of the owner user.
+	/// `gid` is the id of the owner group.
+	pub fn create_link(&mut self, target: &mut File, parent: &File, name: String)
+		-> Result<(), Errno> {
+		// Checking the parent file is a directory
+		if parent.get_file_type() != FileType::Directory {
+			return Err(errno!(ENOTDIR));
+		}
+		// Checking the target and source are both on the same mountpoint
+		if target.get_location().mountpoint_id != parent.get_location().mountpoint_id {
+			return Err(errno!(EXDEV));
+		}
+
+		// Getting the mountpoint
+		let mountpoint_mutex = target.get_location().get_mountpoint()
+			.ok_or_else(|| errno!(ENOENT))?;
+		let mountpoint_guard = mountpoint_mutex.lock();
+		let mountpoint = mountpoint_guard.get_mut();
+		if mountpoint.is_readonly() {
+			return Err(errno!(EROFS));
+		}
+
+		// Getting the IO interface
+		let io_mutex = mountpoint.get_source().get_io()?;
+		let io_guard = io_mutex.lock();
+		let io = io_guard.get_mut();
+
+		// Getting the filesystem
+		let fs_mutex = mountpoint.get_filesystem();
+		let fs_guard = fs_mutex.lock();
+		let fs = fs_guard.get_mut();
+		if fs.is_readonly() {
+			return Err(errno!(EROFS));
+		}
+
+		fs.add_link(io, parent.get_location().inode, &name, target.get_location().inode)
+	}
+
 	// TODO Use the cache
 	/// Removes the file `file` from the VFS.
 	/// If the file doesn't exist, the function returns an error.

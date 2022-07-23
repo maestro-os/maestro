@@ -36,9 +36,10 @@ fn get_file(dirfd: i32, pathname: SyscallString, flags: i32, mode: Mode)
 	let pathname = pathname.get(&mem_space_guard)?.ok_or_else(|| errno!(EFAULT))?;
 
 	if flags & open_file::O_CREAT != 0 {
-		util::create_file_at(proc_guard, follow_links, dirfd, pathname, mode, FileContent::Regular)
+		util::create_file_at(&proc_guard, follow_links, dirfd, pathname, mode,
+			FileContent::Regular)
 	} else {
-		util::get_file_at(proc_guard, true, dirfd, pathname, 0)
+		util::get_file_at(&proc_guard, true, dirfd, pathname, 0)
 	}
 }
 

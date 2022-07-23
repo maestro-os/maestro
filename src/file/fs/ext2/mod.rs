@@ -49,6 +49,7 @@ use crate::file::fs::Filesystem;
 use crate::file::fs::FilesystemType;
 use crate::file::fs::Statfs;
 use crate::file::path::Path;
+use crate::limits;
 use crate::memory::malloc;
 use crate::time::unit::TimestampScale;
 use crate::time;
@@ -873,6 +874,12 @@ impl Filesystem for Ext2Fs {
 
 		// The inode
 		let mut inode_ = Ext2INode::read(inode as _, &self.superblock, io)?;
+		// Checking the maximum number of links is not exceeded
+		if (inode_.hard_links_count as usize) >= limits::LINK_MAX {
+			return Err(errno!(EMFILE));
+		}
+
+		// Updating links count
 		inode_.hard_links_count += 1;
 		inode_.write(inode as _, &self.superblock, io)?;
 
