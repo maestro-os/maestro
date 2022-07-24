@@ -4,6 +4,7 @@ pub mod mem_info;
 pub mod proc_dir;
 pub mod self_link;
 
+use core::any::Any;
 use crate::errno::Errno;
 use crate::file::DirEntry;
 use crate::file::File;
@@ -139,7 +140,13 @@ impl ProcFS {
 			root.set_content(content);
 
 			// Removing the node
-			oom::wrap(|| self.fs.remove_node(inode));
+			if let Some(mut node) = oom::wrap(|| self.fs.remove_node(inode)) {
+				let node = node.as_mut() as &mut dyn Any;
+
+				if let Some(node) = node.downcast_mut::<ProcDir>() {
+					node.drop_inner(&mut self.fs);
+				}
+			}
 		}
 
 		Ok(())

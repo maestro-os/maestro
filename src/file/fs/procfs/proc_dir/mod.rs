@@ -13,6 +13,7 @@ use crate::file::Uid;
 use crate::file::fs::kernfs::KernFS;
 use crate::file::fs::kernfs::node::KernFSNode;
 use crate::process::Process;
+use crate::process::oom;
 use crate::process::pid::Pid;
 use crate::util::boxed::Box;
 use crate::util::container::hashmap::HashMap;
@@ -66,6 +67,23 @@ impl ProcDir {
 			content: FileContent::Directory(entries),
 		})
 	}
+
+	/// Removes inner nodes in order to drop the current node.
+	/// If this function isn't called, the the kernel will be leaking the nodes (which is bad).
+	/// `fs` is the procfs.
+	pub fn drop_inner(&mut self, fs: &mut KernFS) {
+		match &mut self.content {
+			FileContent::Directory(entries) => {
+				for (_, entry) in entries.iter() {
+					oom::wrap(|| fs.remove_node(entry.inode));
+				}
+
+				entries.clear();
+			},
+
+			_ => unreachable!(),
+		}
+	}
 }
 
 impl KernFSNode for ProcDir {
@@ -114,13 +132,10 @@ impl IO for ProcDir {
 
 impl Drop for ProcDir {
 	fn drop(&mut self) {
-		if let FileContent::Directory(entries) = &self.content {
-			for _e in entries.iter() {
-				// TODO Remove every nodes
-				todo!();
-			}
-		} else {
-			unreachable!();
+		// Making sure inner nodes have been dropped
+		match &self.content {
+			FileContent::Directory(entries) => debug_assert!(entries.is_empty()),
+			_ => unreachable!(),
 		}
 	}
 }

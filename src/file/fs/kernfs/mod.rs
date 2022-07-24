@@ -118,18 +118,21 @@ impl KernFS {
 	/// Removes the node with inode `inode`.
 	/// If the node is a non-empty directory, its content is **NOT** removed.
 	/// If the node doesn't exist, the function does nothing.
-	pub fn remove_node(&mut self, inode: INode) -> Result<(), Errno> {
+	pub fn remove_node(&mut self, inode: INode) -> Result<Option<Box<dyn KernFSNode>>, Errno> {
 		if (inode as usize) < self.nodes.len() {
-			self.nodes[inode as _] = None;
+			let node = self.nodes.remove(inode as _);
+			self.nodes.insert(inode as _, None)?;
 			self.free_nodes.push(inode)?;
+
+			return Ok(node);
 		}
 
-		Ok(())
+		Ok(None)
 	}
 
 	/// TODO doc
-	pub fn add_file_inner<N: 'static + KernFSNode>(&mut self, parent_inode: INode, node: N, name: String)
-		-> Result<File, Errno> {
+	pub fn add_file_inner<N: 'static + KernFSNode>(&mut self, parent_inode: INode, node: N,
+		name: String) -> Result<File, Errno> {
 		if self.readonly {
 			return Err(errno!(EROFS));
 		}

@@ -1,5 +1,6 @@
 //! This module implements kernfs nodes.
 
+use core::any::Any;
 use crate::errno::Errno;
 use crate::file::FileContent;
 use crate::file::Gid;
@@ -13,7 +14,7 @@ use crate::util::io::IO;
 use crate::util::ptr::cow::Cow;
 
 /// Trait representing a node in a kernfs.
-pub trait KernFSNode: IO {
+pub trait KernFSNode: Any + IO {
 	/// Returns the number of hard links to the node.
 	fn get_hard_links_count(&self) -> u16 {
 		1
