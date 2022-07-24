@@ -1188,6 +1188,11 @@ impl<'n, 's, 'i> Iterator for DirentIterator<'n, 's, 'i> {
 		let prev_off = self.off;
 		self.off += total_size as u64;
 
+		// If the list is exhausted, stop
+		if self.off >= self.size {
+			return None;
+		}
+
 		// If the block is over, read the next
 		if self.off / blk_size > prev_off / blk_size {
 			if let Err(e) = self.node.read_content(self.off,
