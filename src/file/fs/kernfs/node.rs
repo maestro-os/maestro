@@ -110,7 +110,7 @@ impl DummyKernFSNode {
 	/// `content` is the node's content.
 	pub fn new(mode: Mode, uid: Uid, gid: Gid, content: FileContent) -> Self {
 		// The current timestamp
-		let ts = time::get(TimestampScale::Second).unwrap_or(0);
+		let ts = time::get(TimestampScale::Second, true).unwrap_or(0);
 
 		Self {
 			hard_links_count: 1,

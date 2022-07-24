@@ -54,12 +54,12 @@ pub fn poll(regs: &Regs) -> Result<i32, Errno> {
 	};
 
 	// The start timestamp
-	let start_ts = time::get(TimestampScale::Millisecond).unwrap_or(0);
+	let start_ts = time::get(TimestampScale::Millisecond, true).unwrap_or(0);
 
 	loop {
 		// Checking whether the system call timed out
 		if let Some(timeout) = to {
-			if time::get(TimestampScale::Millisecond).unwrap_or(0) >= start_ts + timeout {
+			if time::get(TimestampScale::Millisecond, true).unwrap_or(0) >= start_ts + timeout {
 				return Ok(0);
 			}
 		}

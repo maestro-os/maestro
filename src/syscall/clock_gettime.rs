@@ -14,7 +14,7 @@ pub fn clock_gettime(regs: &Regs) -> Result<i32, Errno> {
 
 	// TODO Get clock according to param
 	let clk = b"TODO";
-	let curr_time = time::get_struct::<Timespec>(clk).ok_or(errno!(EINVAL))?;
+	let curr_time = time::get_struct::<Timespec>(clk, true).ok_or(errno!(EINVAL))?;
 
 	{
 		let proc_mutex = Process::get_current().unwrap();

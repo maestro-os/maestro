@@ -21,7 +21,7 @@ pub fn time(regs: &Regs) -> Result<i32, Errno> {
 	let mem_space_guard = mem_space.lock();
 
 	// Getting the current timestamp
-	let time = time::get(TimestampScale::Second).unwrap_or(0);
+	let time = time::get(TimestampScale::Second, false).unwrap_or(0);
 
 	// Writing the timestamp to the given location, if not null
 	if let Some(tloc) = tloc.get_mut(&mem_space_guard)? {

@@ -68,7 +68,7 @@ pub fn do_select<T: TimeUnit>(
 	_sigmask: Option<SyscallSlice<u8>>
 ) -> Result<i32, Errno> {
 	// Getting start timestamp
-	let start = time::get_struct::<T>(b"TODO").unwrap(); // TODO Select a clock
+	let start = time::get_struct::<T>(b"TODO", true).unwrap(); // TODO Select a clock
 
 	// Getting timeout
 	let timeout = {
@@ -181,7 +181,7 @@ pub fn do_select<T: TimeUnit>(
 		}
 
 		// TODO Select a clock
-		let curr = time::get_struct::<T>(b"TODO").unwrap();
+		let curr = time::get_struct::<T>(b"TODO", true).unwrap();
 		// On timeout, return 0
 		if curr >= end {
 			return Ok(0);

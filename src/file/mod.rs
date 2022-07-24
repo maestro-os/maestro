@@ -326,7 +326,7 @@ impl File {
 	/// `content` is the content of the file. This value also determines the file type.
 	fn new(name: String, uid: Uid, gid: Gid, mut mode: Mode, location: FileLocation,
 		mut content: FileContent) -> Result<Self, Errno> {
-		let timestamp = time::get(TimestampScale::Second).unwrap_or(0);
+		let timestamp = time::get(TimestampScale::Second, true).unwrap_or(0);
 
 		match &mut content {
 			// If the file is a directory that doesn't contain `.` and `..` entries, add them

@@ -1,5 +1,7 @@
 //! This module implements the String structure which wraps the `str` type.
 
+use core::borrow::Borrow;
+use core::borrow::BorrowMut;
 use core::fmt::Debug;
 use core::fmt::Write;
 use core::fmt;
@@ -92,6 +94,11 @@ impl String {
 		self.data.as_slice()
 	}
 
+	/// Returns a mutable slice containing the bytes representation of the string.
+	pub fn as_mut_bytes(&mut self) -> &mut [u8] {
+		self.data.as_mut_slice()
+	}
+
 	/// Returns a reference to the wrapped string.
 	/// If the string isn't a valid UTF-8 string, the function returns None.
 	pub fn as_str(&self) -> Option<&str> {
@@ -172,6 +179,18 @@ impl Deref for String {
 impl AsRef<[u8]> for String {
 	fn as_ref(&self) -> &[u8] {
 		self.as_bytes()
+	}
+}
+
+impl Borrow<[u8]> for String {
+	fn borrow(&self) -> &[u8] {
+		self.as_bytes()
+	}
+}
+
+impl BorrowMut<[u8]> for String {
+	fn borrow_mut(&mut self) -> &mut [u8] {
+		self.as_mut_bytes()
 	}
 }
 

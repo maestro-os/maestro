@@ -583,7 +583,7 @@ impl Ext2Fs {
 			}
 		}
 
-		let timestamp = time::get(TimestampScale::Second);
+		let timestamp = time::get(TimestampScale::Second, true);
 		if superblock.mount_count_since_fsck >= superblock.mount_count_before_fsck {
 			return Err(errno!(EINVAL));
 		}
@@ -971,7 +971,7 @@ impl Filesystem for Ext2Fs {
 		inode_.hard_links_count -= 1;
 		// If this is the last link, remove the inode
 		if inode_.hard_links_count <= 0 {
-			let timestamp = time::get(TimestampScale::Second).unwrap_or(0);
+			let timestamp = time::get(TimestampScale::Second, true).unwrap_or(0);
 			inode_.dtime = timestamp as _;
 
 			// Removing hard link for entry `..`
@@ -1027,7 +1027,7 @@ impl FilesystemType for Ext2FsType {
 
 	fn create_filesystem(&self, io: &mut dyn IO)
 		-> Result<SharedPtr<dyn Filesystem>, Errno> {
-		let timestamp = time::get(TimestampScale::Second).unwrap_or(0);
+		let timestamp = time::get(TimestampScale::Second, true).unwrap_or(0);
 
 		let blocks_count = (io.get_size() / DEFAULT_BLOCK_SIZE) as u32;
 		let groups_count = blocks_count / DEFAULT_BLOCKS_PER_GROUP;

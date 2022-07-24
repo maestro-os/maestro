@@ -7,7 +7,8 @@ pub mod unit;
 
 use crate::errno::Errno;
 use crate::util::boxed::Box;
-use crate::util::container::vec::Vec;
+use crate::util::container::hashmap::HashMap;
+use crate::util::container::string::String;
 use crate::util::lock::*;
 use unit::TimeUnit;
 use unit::Timestamp;
@@ -16,26 +17,36 @@ use unit::TimestampScale;
 /// Trait representing a source able to provide the current timestamp.
 pub trait ClockSource {
 	/// The name of the source.
-	fn get_name(&self) -> &str;
+	fn get_name(&self) -> &'static str;
 	/// Returns the current timestamp in seconds.
 	/// `scale` specifies the scale of the returned timestamp.
 	fn get_time(&mut self, scale: TimestampScale) -> Timestamp;
 }
 
-// TODO Order by name to allow binary search
-/// Vector containing all the clock sources.
-static CLOCK_SOURCES: Mutex<Vec<Box<dyn ClockSource>>> = Mutex::new(Vec::new());
+/// Structure wrapping a clock source.
+struct ClockSourceWrapper {
+	/// The clock source.
+	src: Box<dyn ClockSource>,
 
-/// Returns a reference to the list of clock sources.
-pub fn get_clock_sources() -> &'static Mutex<Vec<Box<dyn ClockSource>>> {
-	&CLOCK_SOURCES
+	/// The last timestamp returned by the clock.
+	last: Timestamp,
 }
+
+/// Map containing all the clock sources.
+static CLOCK_SOURCES: Mutex<HashMap<String, ClockSourceWrapper>> = Mutex::new(HashMap::new());
 
 /// Adds the new clock source to the clock sources list.
 pub fn add_clock_source<T: 'static + ClockSource>(source: T) -> Result<(), Errno> {
 	let guard = CLOCK_SOURCES.lock();
 	let sources = guard.get_mut();
-	sources.push(Box::new(source)?)?;
+
+	let name = String::from(source.get_name().as_bytes())?;
+	sources.insert(name, ClockSourceWrapper {
+		src: Box::new(source)?,
+
+		last: 0,
+	})?;
+
 	Ok(())
 }
 
@@ -45,35 +56,46 @@ pub fn remove_clock_source(name: &str) {
 	let guard = CLOCK_SOURCES.lock();
 	let sources = guard.get_mut();
 
-	for i in 0..sources.len() {
-		if sources[i].get_name() == name {
-			sources.remove(i);
-			return;
-		}
-	}
+	sources.remove(name.as_bytes());
 }
 
 /// Returns the current timestamp from the preferred clock source.
 /// `scale` specifies the scale of the returned timestamp.
+/// `monotonic` tells whether the returned time should be monotonic.
 /// If no clock source is available, the function returns None.
-pub fn get(scale: TimestampScale) -> Option<Timestamp> {
+pub fn get(scale: TimestampScale, monotonic: bool) -> Option<Timestamp> {
 	let guard = CLOCK_SOURCES.lock();
 	let sources = guard.get_mut();
 
-	if !sources.is_empty() {
-		let src = &mut sources[0]; // TODO Select the preferred source
-		Some(src.get_time(scale))
-	} else {
-		None
+	if sources.is_empty() {
+		return None;
 	}
+
+	// Getting clock source
+	let clock_src = sources.get_mut("cmos".as_bytes())?; // TODO Select the preferred source
+	// Getting time
+	let time = clock_src.src.get_time(scale);
+
+	// Making the clock monotonic if needed
+	let ts = if monotonic && clock_src.last > time {
+		clock_src.last
+	} else {
+		time
+	};
+	if ts > clock_src.last {
+		clock_src.last = ts;
+	}
+
+	Some(ts)
 }
 
 /// Returns the current timestamp from the given clock `clk`.
 /// `scale` specifies the scale of the returned timestamp.
+/// `monotonic` tells whether the returned time should be monotonic.
 /// If the clock doesn't exist, the function returns None.
-pub fn get_struct<T: TimeUnit>(_clk: &[u8]) -> Option<T> {
+pub fn get_struct<T: TimeUnit>(_clk: &[u8], monotonic: bool) -> Option<T> {
 	// TODO use the given clock
-	let ts = get(TimestampScale::Nanosecond)?;
+	let ts = get(TimestampScale::Nanosecond, monotonic)?;
 	Some(T::from_nano(ts))
 }
 
