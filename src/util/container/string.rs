@@ -236,7 +236,7 @@ impl PartialEq<&str> for String {
 
 impl Hash for String {
 	fn hash<H: Hasher>(&self, state: &mut H) {
-		self.as_str().hash(state);
+		self.as_bytes().hash(state);
 	}
 }
 
