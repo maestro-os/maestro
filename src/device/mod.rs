@@ -18,16 +18,14 @@ use core::ffi::c_void;
 use core::fmt;
 use crate::device::manager::DeviceManager;
 use crate::errno::Errno;
-use crate::errno;
 use crate::file::FileContent;
 use crate::file::Mode;
-use crate::file::fcache::FCache;
 use crate::file::fcache;
 use crate::file::path::Path;
+use crate::file;
 use crate::process::mem_space::MemSpace;
 use crate::util::FailableClone;
 use crate::util::boxed::Box;
-use crate::util::container::hashmap::HashMap;
 use crate::util::container::vec::Vec;
 use crate::util::io::IO;
 use crate::util::lock::Mutex;
@@ -144,48 +142,6 @@ impl Device {
 		self.handle.as_mut()
 	}
 
-	/// Creates the directories necessary to reach path `path`. On success, the function returns
-	/// the number of created directories (without the directories that already existed).
-	/// If relative, the path is taken from the root.
-	fn create_dirs(fcache: &mut FCache, path: &Path) -> Result<usize, Errno> {
-		let path = Path::root().concat(path)?;
-
-		// The path of the parent directory
-		let mut p = Path::root();
-		// The number of created directories
-		let mut created_count = 0;
-
-		for i in 0..path.get_elements_count() {
-			let name = path[i].failable_clone()?;
-
-			if let Ok(parent_mutex) = fcache.get_file_from_path(&p, 0, 0, true) {
-				let parent_guard = parent_mutex.lock();
-				let parent = parent_guard.get_mut();
-
-				match fcache.create_file(parent, name.failable_clone()?, 0, 0, 0o755,
-					FileContent::Directory(HashMap::new())) {
-					Err(e) if e.as_int() != errno::EEXIST => return Err(e),
-					_ => {},
-				}
-
-				created_count += 1;
-			}
-
-			p.push(name)?;
-		}
-
-		Ok(created_count)
-	}
-
-	/// Removes the file at path `path` and its subfiles recursively if it's a directory.
-	/// If relative, the path is taken from the root.
-	fn remove_recursive(_fcache: &mut FCache, path: &Path) -> Result<(), Errno> {
-		let _path = Path::root().concat(path)?;
-
-		// TODO
-		todo!();
-	}
-
 	// TODO Put file creation on the userspace side?
 	/// Creates the device file associated with the structure. If the file already exist, the
 	/// function does nothing.
@@ -205,28 +161,27 @@ impl Device {
 		let path_len = self.path.get_elements_count();
 		let filename = self.path[path_len - 1].failable_clone()?;
 
-		// Locking the files' cache
 		let mutex = fcache::get();
 		let guard = mutex.lock();
-		let files_cache = guard.get_mut().as_mut().unwrap();
+		let fcache = guard.get_mut().as_mut().unwrap();
 
 		// Tells whether the file already exists
-		let file_exists = files_cache.get_file_from_path(&self.path, 0, 0, true).is_ok();
+		let file_exists = fcache.get_file_from_path(&self.path, 0, 0, true).is_ok();
 
 		if !file_exists {
 			// Creating the directories in which the device file is located
 			let mut dir_path = self.path.failable_clone()?;
 			dir_path.pop();
-			Self::create_dirs(files_cache, &dir_path)?;
+			file::util::create_dirs(fcache, &dir_path)?;
 
 			// Getting the parent directory
-			let parent_mutex = files_cache.get_file_from_path(&dir_path, 0, 0, true)?;
+			let parent_mutex = fcache.get_file_from_path(&dir_path, 0, 0, true)?;
 			let parent_guard = parent_mutex.lock();
 			let parent = parent_guard.get_mut();
 
 			// TODO Cancel directories creation on fail
 			// Creating the device file
-			files_cache.create_file(parent, filename, 0, 0, self.mode, file_content)?;
+			fcache.create_file(parent, filename, 0, 0, self.mode, file_content)?;
 		}
 
 		Ok(())
@@ -236,11 +191,11 @@ impl Device {
 	pub fn remove_file(&mut self) -> Result<(), Errno> {
 		let mutex = fcache::get();
 		let guard = mutex.lock();
-		let files_cache = guard.get_mut().as_mut().unwrap();
+		let fcache = guard.get_mut().as_mut().unwrap();
 
-		if let Ok(file_mutex) = files_cache.get_file_from_path(&self.path, 0, 0, true) {
+		if let Ok(file_mutex) = fcache.get_file_from_path(&self.path, 0, 0, true) {
 			let file_guard = file_mutex.lock();
-			files_cache.remove_file(file_guard.get(), 0, 0)?;
+			fcache.remove_file(file_guard.get(), 0, 0)?;
 		}
 
 		Ok(())

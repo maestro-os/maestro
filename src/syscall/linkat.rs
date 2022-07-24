@@ -1,6 +1,7 @@
 //! This `linkat` syscall creates a new hard link to a file.
 
 use crate::errno::Errno;
+use crate::file::FileType;
 use crate::file::fcache;
 use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallString;
@@ -39,8 +40,12 @@ pub fn linkat(regs: &Regs) -> Result<i32, Errno> {
 	let old_guard = old_mutex.lock();
 	let old = old_guard.get_mut();
 
+	if old.get_file_type() == FileType::Directory {
+		return Err(errno!(EISDIR));
+	}
+
 	let new_parent_guard = new_parent_mutex.lock();
-	let new_parent = new_parent_guard.get();
+	let new_parent = new_parent_guard.get_mut();
 
 	let fcache_mutex = fcache::get();
 	let fcache_guard = fcache_mutex.lock();

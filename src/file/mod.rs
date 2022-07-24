@@ -10,6 +10,7 @@ pub mod open_file;
 pub mod path;
 pub mod pipe;
 pub mod socket;
+pub mod util;
 
 use core::cmp::max;
 use core::ffi::c_void;
@@ -20,7 +21,6 @@ use crate::errno;
 use crate::file::fcache::FCache;
 use crate::file::mountpoint::MountPoint;
 use crate::file::mountpoint::MountSource;
-use crate::limits;
 use crate::process::mem_space::MemSpace;
 use crate::time::unit::Timestamp;
 use crate::time::unit::TimestampScale;
@@ -820,60 +820,6 @@ impl IO for File {
 				guard.get_mut().get_handle().poll(mask)
 			},
 		}
-	}
-}
-
-// FIXME Unused: remove?
-/// Resolves symbolic links and returns the final path. If too many links are to be resolved, the
-/// function returns an error.
-/// `file` is the starting file. If not a link, the function returns the path to this file.
-/// If the file pointed by the link(s) doesn't exist, the function returns the path where the file
-/// should be located.
-/// `uid` is the User ID of the user.
-/// `gid` is the Group ID of the user.
-pub fn resolve_links(file: SharedPtr<File>, uid: Uid, gid: Gid) -> Result<Path, Errno> {
-	let mut resolve_count = 0;
-	let mut file = file;
-
-	// Resolve links until the current file is not a link
-	while resolve_count <= limits::SYMLOOP_MAX {
-		let file_guard = file.lock();
-		let f = file_guard.get();
-
-		// Get the path of the parent directory of the current file
-		let parent_path = f.get_parent_path();
-
-		// If the file is a link, resolve it. Else, break the loop
-		if let FileContent::Link(link_target) = f.get_file_content() {
-			// Resolving the link
-			let link_path = Path::from_str(link_target.as_bytes(), false)?;
-			let path = (parent_path.failable_clone()? + link_path)?;
-			drop(file_guard);
-
-			// Getting the file from path
-			let mutex = fcache::get();
-			let guard = mutex.lock();
-			let files_cache = guard.get_mut().as_mut().unwrap();
-
-			match files_cache.get_file_from_path(&path, uid, gid, false) {
-				Ok(next_file) => file = next_file,
-				Err(e) if e == errno!(ENOENT) => return Ok(path),
-				Err(e) => return Err(e),
-			}
-		} else {
-			break;
-		}
-
-		resolve_count += 1;
-	}
-
-	if resolve_count <= limits::SYMLOOP_MAX {
-		let file_guard = file.lock();
-		let f = file_guard.get();
-
-		f.get_path()
-	} else {
-		Err(errno!(ELOOP))
 	}
 }
 

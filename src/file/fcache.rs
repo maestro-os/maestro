@@ -313,7 +313,7 @@ impl FCache {
 	/// `name` is the name of the link.
 	/// `uid` is the id of the owner user.
 	/// `gid` is the id of the owner group.
-	pub fn create_link(&mut self, target: &mut File, parent: &File, name: String)
+	pub fn create_link(&mut self, target: &mut File, parent: &mut File, name: String)
 		-> Result<(), Errno> {
 		// Checking the parent file is a directory
 		if parent.get_file_type() != FileType::Directory {
@@ -347,6 +347,7 @@ impl FCache {
 		}
 
 		fs.add_link(io, parent.get_location().inode, &name, target.get_location().inode)
+		// TODO Update file
 	}
 
 	// TODO Use the cache

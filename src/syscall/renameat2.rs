@@ -1,7 +1,9 @@
 //! The `renameat2` allows to rename a file.
 
 use crate::errno::Errno;
+use crate::file::FileContent;
 use crate::file::fcache;
+use crate::file;
 use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::regs::Regs;
@@ -43,7 +45,7 @@ pub fn renameat2(regs: &Regs) -> Result<i32, Errno> {
 	let old = old_guard.get_mut();
 
 	let new_parent_guard = new_parent_mutex.lock();
-	let new_parent = new_parent_guard.get();
+	let new_parent = new_parent_guard.get_mut();
 
 	let fcache_mutex = fcache::get();
 	let fcache_guard = fcache_mutex.lock();
@@ -51,16 +53,29 @@ pub fn renameat2(regs: &Regs) -> Result<i32, Errno> {
 
 	if new_parent.get_location().mountpoint_id == old.get_location().mountpoint_id {
 		// Old and new are both on the same filesystem
+		// TODO On fail, undo
+		// TODO Check permissions
 
+		// Create link at new location
 		fcache.create_link(old, new_parent, new_name)?;
 
-		// TODO If directory, remove recursively
+		// If directory, update the `..` entry
+		match old.get_file_content() {
+			FileContent::Directory(_entries) => {
+				// TODO
+			},
+
+			_ => {},
+		}
+
 		fcache.remove_file(old, uid, gid)?;
 	} else {
 		// Old and new are on different filesystems.
+		// TODO On fail, undo
+		// TODO Check permissions
 
-		// TODO Copy file and remove on old's fs
-		todo!();
+		file::util::copy_file(fcache, old, new_parent, new_name)?;
+		file::util::remove_recursive(fcache, old, uid, gid)?;
 	}
 
 	Ok(0)

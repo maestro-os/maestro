@@ -49,7 +49,6 @@ use crate::file::fs::Filesystem;
 use crate::file::fs::FilesystemType;
 use crate::file::fs::Statfs;
 use crate::file::path::Path;
-use crate::limits;
 use crate::memory::malloc;
 use crate::time::unit::TimestampScale;
 use crate::time;
@@ -826,7 +825,7 @@ impl Filesystem for Ext2Fs {
 				inode.add_dirent(&mut self.superblock, io, parent_inode as _,
 					&String::from(b"..")?, FileType::Directory)?;
 
-				inode.hard_links_count += 2;
+				inode.hard_links_count += 1;
 				parent.hard_links_count += 1;
 			},
 
@@ -880,7 +879,7 @@ impl Filesystem for Ext2Fs {
 		// The inode
 		let mut inode_ = Ext2INode::read(inode as _, &self.superblock, io)?;
 		// Checking the maximum number of links is not exceeded
-		if (inode_.hard_links_count as usize) >= limits::LINK_MAX {
+		if inode_.hard_links_count >= u16::MAX {
 			return Err(errno!(EMFILE));
 		}
 
