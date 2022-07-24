@@ -5,6 +5,7 @@ use crate::file::Errno;
 use crate::limits;
 use crate::util::container::ring_buffer::RingBuffer;
 use crate::util::io::IO;
+use crate::util::io;
 
 /// Structure representing a buffer buffer.
 #[derive(Debug)]
@@ -82,8 +83,19 @@ impl IO for PipeBuffer {
 		}
 	}
 
-	fn poll(&mut self, _mask: u32) -> Result<u32, Errno> {
-		// TODO
-		todo!();
+	fn poll(&mut self, mask: u32) -> Result<u32, Errno> {
+		let mut result = 0;
+
+		if mask & io::POLLIN != 0 && self.get_data_len() > 0 {
+			result |= io::POLLIN;
+		}
+		if mask & io::POLLOUT != 0 && self.get_available_len() > 0 {
+			result |= io::POLLOUT;
+		}
+		if mask & io::POLLPRI != 0 && self.read_ends <= 0 {
+			result |= io::POLLPRI;
+		}
+
+		Ok(result)
 	}
 }

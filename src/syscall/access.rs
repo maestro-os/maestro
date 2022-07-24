@@ -38,11 +38,13 @@ const X_OK: i32 = 1;
 /// Performs the access operation.
 /// `dirfd` is the file descriptor of the directory relative to which the check is done.
 /// `pathname` is the path to the file.
-/// `mode` TODO doc
+/// `mode` is a bitfield of access permissions to check.
 /// `flags` is a set of flags.
 pub fn do_access(dirfd: Option<i32>, pathname: SyscallString, mode: i32, flags: Option<i32>)
 	-> Result<i32, Errno> {
 	let flags = flags.unwrap_or(0);
+
+	let follow_symlinks = flags & AT_SYMLINK_NOFOLLOW == 0;
 
 	let (path, uid, gid, cwd) = {
 		let proc_mutex = Process::get_current().unwrap();
@@ -66,8 +68,6 @@ pub fn do_access(dirfd: Option<i32>, pathname: SyscallString, mode: i32, flags: 
 		let cwd = proc.get_cwd().failable_clone()?;
 		(path, uid, gid, cwd)
 	};
-
-	let follow_symlinks = flags & AT_SYMLINK_NOFOLLOW == 0;
 
 	// Getting file
 	let file = {

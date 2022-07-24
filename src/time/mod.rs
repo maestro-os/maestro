@@ -28,7 +28,8 @@ struct ClockSourceWrapper {
 	/// The clock source.
 	src: Box<dyn ClockSource>,
 
-	/// The last timestamp returned by the clock.
+	/// The last timestamp returned by the clock. This timestamp is used in case the caller
+	/// requires monotonic time and the clock came back in the past.
 	last: Timestamp,
 }
 

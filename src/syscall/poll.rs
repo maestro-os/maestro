@@ -7,27 +7,7 @@ use crate::process::regs::Regs;
 use crate::time::unit::Timestamp;
 use crate::time::unit::TimestampScale;
 use crate::time;
-
-/// There is data to read.
-const POLLIN: i16     = 0b0000000001;
-/// There is some exceptional condition on the file descriptor.
-const POLLPRI: i16    = 0b0000000010;
-/// Writing is now possible.
-const POLLOUT: i16    = 0b0000000100;
-/// Error condition.
-const POLLERR: i16    = 0b0000001000;
-/// Hang up.
-const POLLHUP: i16    = 0b0000010000;
-/// Invalid request: fd not open.
-const POLLNVAL: i16   = 0b0000100000;
-/// Equivalent to POLLIN.
-const POLLRDNORM: i16 = 0b0001000000;
-/// Priority band data can be read.
-const POLLRDBAND: i16 = 0b0010000000;
-/// Equivalent to POLLOUT.
-const POLLWRNORM: i16 = 0b0100000000;
-/// Priority data may be written.
-const POLLWRBAND: i16 = 0b1000000000;
+use crate::util::io;
 
 /// Structure representing a file descriptor passed to the `poll` system call.
 #[repr(C)]
@@ -76,39 +56,37 @@ pub fn poll(regs: &Regs) -> Result<i32, Errno> {
 
 			// Checking the file descriptors list
 			for fd in fds {
-				// TODO Handle POLLERR, POLLHUP and POLLNVAL
-
-				if fd.events & POLLIN != 0 {
+				if fd.events as u32 & io::POLLIN != 0 {
 					// TODO
 					todo!();
 				}
 
-				if fd.events & POLLPRI != 0 {
+				if fd.events as u32 & io::POLLPRI != 0 {
 					// TODO
 					todo!();
 				}
 
-				if fd.events & POLLOUT != 0 {
+				if fd.events as u32 & io::POLLOUT != 0 {
 					// TODO
 					todo!();
 				}
 
-				if fd.events & POLLRDNORM != 0 {
+				if fd.events as u32 & io::POLLRDNORM != 0 {
 					// TODO
 					todo!();
 				}
 
-				if fd.events & POLLRDBAND != 0 {
+				if fd.events as u32 & io::POLLRDBAND != 0 {
 					// TODO
 					todo!();
 				}
 
-				if fd.events & POLLWRNORM != 0 {
+				if fd.events as u32 & io::POLLWRNORM != 0 {
 					// TODO
 					todo!();
 				}
 
-				if fd.events & POLLWRBAND != 0 {
+				if fd.events as u32 & io::POLLWRBAND != 0 {
 					// TODO
 					todo!();
 				}

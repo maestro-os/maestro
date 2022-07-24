@@ -14,6 +14,7 @@ use crate::file::path::Path;
 use crate::logger;
 use crate::process::mem_space::MemSpace;
 use crate::util::io::IO;
+use crate::util::io;
 use crate::util::ptr::IntSharedPtr;
 use super::DeviceType;
 use super::id;
@@ -43,8 +44,7 @@ impl IO for NullDeviceHandle {
 	}
 
 	fn poll(&mut self, _mask: u32) -> Result<u32, Errno> {
-		// TODO
-		todo!();
+		Ok(io::POLLIN | io::POLLOUT)
 	}
 }
 
@@ -77,8 +77,7 @@ impl IO for ZeroDeviceHandle {
 	}
 
 	fn poll(&mut self, _mask: u32) -> Result<u32, Errno> {
-		// TODO
-		todo!();
+		Ok(io::POLLIN | io::POLLOUT)
 	}
 }
 
@@ -116,10 +115,9 @@ impl IO for KMsgDeviceHandle {
 		Ok((len as _, eof))
 	}
 
-	fn write(&mut self, _offset: u64, _buff: &[u8]) -> Result<u64, Errno> {
+	fn write(&mut self, _offset: u64, buff: &[u8]) -> Result<u64, Errno> {
 		// TODO Write to logger
-		//Ok(buff.len() as _)
-		todo!();
+		Ok(buff.len() as _)
 	}
 
 	fn poll(&mut self, _mask: u32) -> Result<u32, Errno> {
@@ -167,8 +165,7 @@ impl IO for RandomDeviceHandle {
 	}
 
 	fn poll(&mut self, _mask: u32) -> Result<u32, Errno> {
-		// TODO
-		todo!();
+		Ok(io::POLLIN | io::POLLOUT)
 	}
 }
 
@@ -211,8 +208,7 @@ impl IO for URandomDeviceHandle {
 	}
 
 	fn poll(&mut self, _mask: u32) -> Result<u32, Errno> {
-		// TODO
-		todo!();
+		Ok(io::POLLIN | io::POLLOUT)
 	}
 }
 

@@ -11,7 +11,6 @@ pub mod pid;
 pub mod regs;
 pub mod rusage;
 pub mod scheduler;
-pub mod semaphore;
 pub mod signal;
 pub mod tss;
 pub mod user_desc;

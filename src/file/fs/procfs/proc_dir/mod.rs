@@ -108,13 +108,19 @@ impl IO for ProcDir {
 	}
 
 	fn poll(&mut self, _mask: u32) -> Result<u32, Errno> {
-		// TODO
-		todo!();
+		Err(errno!(EINVAL))
 	}
 }
 
 impl Drop for ProcDir {
 	fn drop(&mut self) {
-		// TODO Remove every nodes
+		if let FileContent::Directory(entries) = &self.content {
+			for _e in entries.iter() {
+				// TODO Remove every nodes
+				todo!();
+			}
+		} else {
+			unreachable!();
+		}
 	}
 }

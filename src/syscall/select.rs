@@ -155,19 +155,19 @@ pub fn do_select<T: TimeUnit>(
 
 			// Setting results
 			let mem_space_guard = mem_space.lock();
-			if result & io::POLLIN != 0 {
+			if read && result & io::POLLIN != 0 {
 				readfds.get_mut(&mem_space_guard)?.map(| fds | fds.set(fd_id));
 				events_count += 1;
 			} else {
 				readfds.get_mut(&mem_space_guard)?.map(| fds | fds.clear(fd_id));
 			}
-			if result & io::POLLOUT != 0 {
+			if write && result & io::POLLOUT != 0 {
 				writefds.get_mut(&mem_space_guard)?.map(| fds | fds.set(fd_id));
 				events_count += 1;
 			} else {
 				writefds.get_mut(&mem_space_guard)?.map(| fds | fds.clear(fd_id));
 			}
-			if result & io::POLLPRI != 0 {
+			if except && result & io::POLLPRI != 0 {
 				exceptfds.get_mut(&mem_space_guard)?.map(| fds | fds.set(fd_id));
 				events_count += 1;
 			} else {
