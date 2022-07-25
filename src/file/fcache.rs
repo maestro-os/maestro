@@ -4,6 +4,7 @@ use crate::errno::Errno;
 use crate::errno;
 use crate::file::File;
 use crate::file::FileContent;
+use crate::file::FileLocation;
 use crate::file::FileType;
 use crate::file::Gid;
 use crate::file::Mode;
@@ -18,6 +19,8 @@ use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::lock::Mutex;
 use crate::util::ptr::SharedPtr;
+use super::pipe::PipeBuffer;
+use super::socket::Socket;
 
 /// The size of the files pool.
 const FILES_POOL_SIZE: usize = 1024;
@@ -39,6 +42,11 @@ pub struct FCache {
 	pool_paths: HashMap<Path, usize>,
 	/// Collection mapping a number of accesses to a slot index.
 	access_count: Vec<(usize, usize)>,
+
+	/// Collection of named pipes, by location.
+	named_pipes: HashMap<FileLocation, SharedPtr<PipeBuffer>>,
+	/// Collection of named sockets, by location.
+	named_sockets: HashMap<FileLocation, SharedPtr<Socket>>,
 }
 
 impl FCache {
@@ -50,6 +58,9 @@ impl FCache {
 
 			pool_paths: HashMap::new(),
 			access_count: Vec::new(),
+
+			named_pipes: HashMap::new(),
+			named_sockets: HashMap::new(),
 		})
 	}
 
@@ -373,9 +384,8 @@ impl FCache {
 		}
 
 		// Getting the mountpoint
-		let mountpoint_mutex = file.get_location()
-			.get_mountpoint()
-			.ok_or_else(|| errno!(ENOENT))?;
+		let location = file.get_location();
+		let mountpoint_mutex = location.get_mountpoint().ok_or_else(|| errno!(ENOENT))?;
 		let mountpoint_guard = mountpoint_mutex.lock();
 		let mountpoint = mountpoint_guard.get_mut();
 		if mountpoint.is_readonly() {
@@ -398,7 +408,57 @@ impl FCache {
 		// Removing the file
 		fs.remove_file(io, parent_inode, file.get_name())?;
 
+		if file.get_hard_links_count() > 1 {
+			// If the file is a named pipe or socket, remove its now unused buffer
+			match file.get_file_content() {
+				FileContent::Fifo => {
+					self.named_pipes.remove(location);
+				},
+
+				FileContent::Socket => {
+					// TODO
+					todo!();
+				},
+
+				_ => {},
+			}
+		}
+
 		Ok(())
+	}
+
+	/// Returns the pipe associated with the file at location `loc`. If the pipe doesn't exist, the
+	/// function lazily creates it.
+	/// When the file is removed, the pipe is also removed.
+	pub fn get_named_fifo(&mut self, loc: &FileLocation) -> Result<SharedPtr<PipeBuffer>, Errno> {
+		if let Some(p) = self.named_pipes.get(loc) {
+			Ok(p.clone())
+		} else {
+			// The pipe buffer doesn't exist, create it
+
+			let buff = SharedPtr::new(PipeBuffer::new()?)?;
+			self.named_pipes.insert(loc.clone(), buff.clone())?;
+
+			Ok(buff)
+		}
+	}
+
+	/// Returns the socket associated with the file at location `loc`. If the pipe doesn't exist,
+	/// the function lazily creates it.
+	/// When the file is removed, the socket is also removed.
+	pub fn get_named_socket(&mut self, loc: &FileLocation) -> Result<SharedPtr<Socket>, Errno> {
+		if let Some(s) = self.named_sockets.get(loc) {
+			Ok(s.clone())
+		} else {
+			// The socket doesn't exist, create it
+
+			/*let sock = SharedPtr::new(Socket::new()?)?;
+			self.named_sockets.insert(loc.clone(), sock.clone())?;
+
+			Ok(sock)*/
+			// TODO
+			todo!();
+		}
 	}
 }
 

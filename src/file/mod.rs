@@ -175,7 +175,7 @@ impl FileType {
 }
 
 /// Structure representing the location of a file on a disk.
-#[derive(Debug)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct FileLocation {
 	/// The ID of the mountpoint of the file.
 	pub mountpoint_id: Option<u32>,
@@ -678,11 +678,25 @@ impl IO for File {
 			FileContent::Link(_) => Err(errno!(EINVAL)),
 
 			FileContent::Fifo => {
-				// TODO
-				todo!();
+				let fcache_mutex = fcache::get();
+				let fcache_guard = fcache_mutex.lock();
+				let fcache = fcache_guard.get_mut().as_mut().unwrap();
+
+				let pipe_mutex = fcache.get_named_fifo(self.get_location())?;
+				let pipe_guard = pipe_mutex.lock();
+				let pipe = pipe_guard.get_mut();
+				pipe.read(off as _, buff)
 			},
 
 			FileContent::Socket => {
+				let fcache_mutex = fcache::get();
+				let fcache_guard = fcache_mutex.lock();
+				let fcache = fcache_guard.get_mut().as_mut().unwrap();
+
+				let sock_mutex = fcache.get_named_socket(self.get_location())?;
+				let sock_guard = sock_mutex.lock();
+				let _sock = sock_guard.get_mut();
+
 				// TODO
 				todo!();
 			},
@@ -737,11 +751,25 @@ impl IO for File {
 			FileContent::Link(_) => Err(errno!(EINVAL)),
 
 			FileContent::Fifo => {
-				// TODO
-				todo!();
+				let fcache_mutex = fcache::get();
+				let fcache_guard = fcache_mutex.lock();
+				let fcache = fcache_guard.get_mut().as_mut().unwrap();
+
+				let pipe_mutex = fcache.get_named_fifo(self.get_location())?;
+				let pipe_guard = pipe_mutex.lock();
+				let pipe = pipe_guard.get_mut();
+				pipe.write(off as _, buff)
 			},
 
 			FileContent::Socket => {
+				let fcache_mutex = fcache::get();
+				let fcache_guard = fcache_mutex.lock();
+				let fcache = fcache_guard.get_mut().as_mut().unwrap();
+
+				let sock_mutex = fcache.get_named_socket(self.get_location())?;
+				let sock_guard = sock_mutex.lock();
+				let _sock = sock_guard.get_mut();
+
 				// TODO
 				todo!();
 			},
@@ -794,11 +822,25 @@ impl IO for File {
 			FileContent::Link(_) => Err(errno!(EINVAL)),
 
 			FileContent::Fifo => {
-				// TODO
-				todo!();
+				let fcache_mutex = fcache::get();
+				let fcache_guard = fcache_mutex.lock();
+				let fcache = fcache_guard.get_mut().as_mut().unwrap();
+
+				let pipe_mutex = fcache.get_named_fifo(self.get_location())?;
+				let pipe_guard = pipe_mutex.lock();
+				let pipe = pipe_guard.get_mut();
+				pipe.poll(mask)
 			},
 
 			FileContent::Socket => {
+				let fcache_mutex = fcache::get();
+				let fcache_guard = fcache_mutex.lock();
+				let fcache = fcache_guard.get_mut().as_mut().unwrap();
+
+				let sock_mutex = fcache.get_named_socket(self.get_location())?;
+				let sock_guard = sock_mutex.lock();
+				let _sock = sock_guard.get_mut();
+
 				// TODO
 				todo!();
 			},
