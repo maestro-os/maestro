@@ -40,23 +40,23 @@ impl PipeBuffer {
 		self.buffer.get_available_len()
 	}
 
-	/// Updates the number of ends of the pipe.
+	/// Increments the number open of ends.
 	/// `write` tells whether the end is a writing end.
-	/// `decrement` tells whether the decrement or increment the count.
-	pub fn update_end_count(&mut self, write: bool, decrement: bool) {
-		if decrement {
-			if write {
-				self.write_ends -= 1;
-			} else {
-				self.read_ends -= 1;
-			}
+	pub fn increment_open(&mut self, write: bool) {
+		if write {
+			self.write_ends += 1;
 		} else {
+			self.read_ends += 1;
+		}
+	}
 
-			if write {
-				self.write_ends += 1;
-			} else {
-				self.read_ends += 1;
-			}
+	/// Decrements the number open of ends.
+	/// `write` tells whether the end is a writing end.
+	pub fn decrement_open(&mut self, write: bool) {
+		if write {
+			self.write_ends -= 1;
+		} else {
+			self.read_ends -= 1;
 		}
 	}
 }

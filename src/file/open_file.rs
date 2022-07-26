@@ -84,8 +84,8 @@ impl OpenFile {
 
 		// Update references count
 		match &s.target {
-			FDTarget::File(file) => file.lock().get_mut().increment_open(),
-			FDTarget::Pipe(pipe) => pipe.lock().get_mut().update_end_count(s.can_write(), false),
+			FDTarget::File(file) => file.lock().get_mut().increment_open(s.can_write())?,
+			FDTarget::Pipe(pipe) => pipe.lock().get_mut().increment_open(s.can_write()),
 
 			_ => {},
 		}
@@ -247,8 +247,8 @@ impl Drop for OpenFile {
 	fn drop(&mut self) {
 		// Update references count
 		match &self.target {
-			FDTarget::File(file) => file.lock().get_mut().decrement_open(),
-			FDTarget::Pipe(pipe) => pipe.lock().get_mut().update_end_count(self.can_write(), true),
+			FDTarget::File(file) => file.lock().get_mut().decrement_open(self.can_write()),
+			FDTarget::Pipe(pipe) => pipe.lock().get_mut().decrement_open(self.can_write()),
 
 			_ => {},
 		}

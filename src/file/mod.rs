@@ -613,13 +613,52 @@ impl File {
 	}
 
 	/// Increments the number of times the file is open.
-	pub fn increment_open(&mut self) {
+	/// `write` tells whether the file is open with write permission.
+	pub fn increment_open(&mut self, write: bool) -> Result<(), Errno> {
 		self.ref_count += 1;
+
+		// If the file is a pipe, update the number of ends
+		match self.content {
+			FileContent::Fifo => {
+				let fcache_mutex = fcache::get();
+				let fcache_guard = fcache_mutex.lock();
+				let fcache = fcache_guard.get_mut().as_mut().unwrap();
+
+				let pipe_mutex = fcache.get_named_fifo(self.get_location())?;
+				let pipe_guard = pipe_mutex.lock();
+				let pipe = pipe_guard.get_mut();
+
+				pipe.increment_open(write);
+			},
+
+			_ => {},
+		}
+
+		Ok(())
 	}
 
 	/// Decrements the number of times the file is open.
-	pub fn decrement_open(&mut self) {
+	/// `write` tells whether the file is open with write permission.
+	pub fn decrement_open(&mut self, write: bool) {
 		self.ref_count -= 1;
+
+		// If the file is a pipe, update the number of ends
+		match self.content {
+			FileContent::Fifo => {
+				let fcache_mutex = fcache::get();
+				let fcache_guard = fcache_mutex.lock();
+				let fcache = fcache_guard.get_mut().as_mut().unwrap();
+
+				// `unwrap` shouldn't fail since the pipe is supposed to already be allocated
+				let pipe_mutex = fcache.get_named_fifo(self.get_location()).unwrap();
+				let pipe_guard = pipe_mutex.lock();
+				let pipe = pipe_guard.get_mut();
+
+				pipe.decrement_open(write);
+			},
+
+			_ => {},
+		}
 	}
 
 	/// Tells whether the file is busy.
