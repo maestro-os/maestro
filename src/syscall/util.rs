@@ -134,10 +134,7 @@ pub fn get_file_at(process_guard: &MutexGuard<Process, false>, follow_links: boo
 			let open_file_guard = open_file_mutex.lock();
 			let open_file = open_file_guard.get();
 
-			match open_file.get_target() {
-				FDTarget::File(f) => Ok(f.clone()),
-				_ => Err(errno!(EBADF)), // TODO Check if correct
-			}
+			open_file.get_target().get_file()
 		} else {
 			Err(errno!(ENOENT))
 		}

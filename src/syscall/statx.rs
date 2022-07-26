@@ -106,15 +106,19 @@ pub fn statx(regs: &Regs) -> Result<i32, Errno> {
 		_ => (0, 0),
 	};
 
-	// Getting the file's mountpoint
-	let mountpoint_mutex = file.get_location().get_mountpoint().unwrap();
-	let mountpoint_guard = mountpoint_mutex.lock();
-	let mountpoint = mountpoint_guard.get();
-
 	// Getting the major and minor numbers of the device of the file's filesystem
-	let (stx_dev_major, stx_dev_minor) = match mountpoint.get_source() {
-		MountSource::Device { major, minor, .. } => (*major, *minor),
-		MountSource::File(_) | MountSource::NoDev(_) => (0, 0),
+	let (stx_dev_major, stx_dev_minor) = {
+		if let Some(mountpoint_mutex) = file.get_location().get_mountpoint() {
+			let mountpoint_guard = mountpoint_mutex.lock();
+			let mountpoint = mountpoint_guard.get();
+
+			match mountpoint.get_source() {
+				MountSource::Device { major, minor, .. } => (*major, *minor),
+				MountSource::File(_) | MountSource::NoDev(_) => (0, 0),
+			}
+		} else {
+			(0, 0)
+		}
 	};
 
 	// Filling the structure

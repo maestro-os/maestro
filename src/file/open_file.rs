@@ -5,9 +5,12 @@ use core::ffi::c_void;
 use crate::errno::Errno;
 use crate::errno;
 use crate::file::File;
+use crate::file::FileContent;
+use crate::file::FileLocation;
 use crate::file::pipe::PipeBuffer;
 use crate::file::socket::SocketSide;
 use crate::process::mem_space::MemSpace;
+use crate::util::container::string::String;
 use crate::util::io::IO;
 use crate::util::ptr::IntSharedPtr;
 use crate::util::ptr::SharedPtr;
@@ -56,6 +59,31 @@ pub enum FDTarget {
 	Pipe(SharedPtr<PipeBuffer>),
 	/// Points to a socket.
 	Socket(SharedPtr<SocketSide>),
+}
+
+impl FDTarget {
+	/// Returns the file associated with the target.
+	pub fn get_file(&self) -> Result<SharedPtr<File>, Errno> {
+		match self {
+			Self::File(f) => Ok(f.clone()),
+
+			Self::Pipe(_p) => {
+				// TODO
+				let file = File::new(String::from(b"TODO")?, 0, 0, 0o777, FileLocation {
+					mountpoint_id: None,
+
+					inode: 0,
+				}, FileContent::Fifo)?;
+
+				SharedPtr::new(file)
+			},
+
+			Self::Socket(_s) => {
+				// TODO
+				todo!();
+			},
+		}
+	}
 }
 
 /// An open file description. This structure is pointed to by file descriptors and point to files.
