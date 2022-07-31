@@ -18,7 +18,7 @@ use crate::limits;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
-use crate::util::lock::Mutex;
+use crate::util::lock::IntMutex;
 use crate::util::ptr::SharedPtr;
 use crate::util::FailableClone;
 
@@ -507,10 +507,10 @@ impl FCache {
 }
 
 /// The instance of the file cache.
-static FILES_CACHE: Mutex<Option<FCache>> = Mutex::new(None);
+static FILES_CACHE: IntMutex<Option<FCache>> = IntMutex::new(None);
 
 /// Returns a mutable reference to the file cache.
 /// If the cache is not initialized, the Option is None.
-pub fn get() -> &'static Mutex<Option<FCache>> {
+pub fn get() -> &'static IntMutex<Option<FCache>> {
 	&FILES_CACHE
 }
