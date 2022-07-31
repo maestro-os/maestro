@@ -2,17 +2,17 @@
 
 pub mod cow;
 
+use crate::errno::Errno;
+use crate::memory::malloc;
+use crate::util::lock::Mutex;
 use core::marker::Unsize;
 use core::mem::size_of;
 use core::ops::CoerceUnsized;
 use core::ops::Deref;
 use core::ops::DispatchFromDyn;
-use core::ptr::NonNull;
-use core::ptr::drop_in_place;
 use core::ptr;
-use crate::errno::Errno;
-use crate::memory::malloc;
-use crate::util::lock::Mutex;
+use core::ptr::drop_in_place;
+use core::ptr::NonNull;
 
 /// Structure holding the number of pointers to a resource.
 struct RefCounter {
@@ -77,7 +77,8 @@ impl<T, const INT: bool> SharedPtr<T, INT> {
 		let inner = unsafe {
 			malloc::alloc(size_of::<SharedPtrInner<T, INT>>())? as *mut SharedPtrInner<T, INT>
 		};
-		unsafe { // Safe because the pointer is valid
+		unsafe {
+			// Safe because the pointer is valid
 			ptr::write_volatile(inner, SharedPtrInner::<T, INT>::new(obj));
 		}
 
@@ -90,9 +91,7 @@ impl<T, const INT: bool> SharedPtr<T, INT> {
 impl<T: ?Sized, const INT: bool> SharedPtr<T, INT> {
 	/// Returns a mutable reference to the inner structure.
 	fn get_inner(&self) -> &mut SharedPtrInner<T, INT> {
-		unsafe {
-			&mut *(self.inner.as_ptr() as *mut SharedPtrInner<T, INT>)
-		}
+		unsafe { &mut *(self.inner.as_ptr() as *mut SharedPtrInner<T, INT>) }
 	}
 
 	/// Returns an immutable reference to the object.
@@ -108,9 +107,7 @@ impl<T: ?Sized, const INT: bool> SharedPtr<T, INT> {
 		let refs = guard.get_mut();
 		refs.weak_count += 1;
 
-		WeakPtr {
-			inner: self.inner,
-		}
+		WeakPtr { inner: self.inner }
 	}
 }
 
@@ -122,9 +119,7 @@ impl<T: ?Sized, const INT: bool> Clone for SharedPtr<T, INT> {
 		let refs = guard.get_mut();
 		refs.shared_count += 1;
 
-		Self {
-			inner: self.inner,
-		}
+		Self { inner: self.inner }
 	}
 }
 
@@ -143,10 +138,14 @@ impl<T: ?Sized, const INT: bool> Deref for SharedPtr<T, INT> {
 }
 
 impl<T: ?Sized + Unsize<U>, U: ?Sized, const INT: bool> CoerceUnsized<SharedPtr<U, INT>>
-	for SharedPtr<T, INT> {}
+	for SharedPtr<T, INT>
+{
+}
 
 impl<T: ?Sized + Unsize<U>, U: ?Sized, const INT: bool> DispatchFromDyn<SharedPtr<U, INT>>
-	for SharedPtr<T, INT> {}
+	for SharedPtr<T, INT>
+{
+}
 
 impl<T: ?Sized, const INT: bool> Drop for SharedPtr<T, INT> {
 	fn drop(&mut self) {
@@ -190,9 +189,7 @@ pub struct WeakPtr<T: ?Sized, const INT: bool = true> {
 impl<T: ?Sized, const INT: bool> WeakPtr<T, INT> {
 	/// Returns a mutable reference to the inner structure.
 	fn get_inner(&self) -> &mut SharedPtrInner<T, INT> {
-		unsafe {
-			&mut *(self.inner.as_ptr() as *mut SharedPtrInner<T, INT>)
-		}
+		unsafe { &mut *(self.inner.as_ptr() as *mut SharedPtrInner<T, INT>) }
 	}
 
 	/// Returns an immutable reference to the object.
@@ -217,17 +214,19 @@ impl<T: ?Sized, const INT: bool> Clone for WeakPtr<T, INT> {
 		let refs = guard.get_mut();
 		refs.weak_count += 1;
 
-		Self {
-			inner: self.inner,
-		}
+		Self { inner: self.inner }
 	}
 }
 
 impl<T: ?Sized + Unsize<U>, U: ?Sized, const INT: bool> CoerceUnsized<WeakPtr<U, INT>>
-	for WeakPtr<T, INT> {}
+	for WeakPtr<T, INT>
+{
+}
 
 impl<T: ?Sized + Unsize<U>, U: ?Sized, const INT: bool> DispatchFromDyn<WeakPtr<U, INT>>
-	for WeakPtr<T, INT> {}
+	for WeakPtr<T, INT>
+{
+}
 
 impl<T: ?Sized, const INT: bool> Drop for WeakPtr<T, INT> {
 	fn drop(&mut self) {

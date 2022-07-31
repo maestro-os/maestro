@@ -4,11 +4,11 @@
 
 pub mod ldt;
 
-use core::ffi::c_void;
-use core::fmt;
 use crate::errno::Errno;
 use crate::memory;
 use crate::util::FailableClone;
+use core::ffi::c_void;
+use core::fmt;
 
 /// The address in physical memory to the beginning of the GDT.
 const PHYS_PTR: *mut c_void = 0x800 as _;
@@ -146,7 +146,5 @@ pub fn make_segment_selector(offset: u32, ring: u32) -> u16 {
 
 /// x86. Returns the pointer to the segment at offset `offset`.
 pub fn get_segment_ptr(offset: usize) -> *mut u64 {
-	unsafe {
-		memory::kern_to_virt(PHYS_PTR.add(offset as _)) as _
-	}
+	unsafe { memory::kern_to_virt(PHYS_PTR.add(offset as _)) as _ }
 }

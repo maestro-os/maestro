@@ -1,12 +1,12 @@
 //! The `clone` system call creates a child process.
 
-use core::ffi::c_void;
 use crate::errno::Errno;
-use crate::process::ForkOptions;
-use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::regs::Regs;
 use crate::process::user_desc::UserDesc;
+use crate::process::ForkOptions;
+use crate::process::Process;
+use core::ffi::c_void;
 
 /// TODO doc
 const CLONE_IO: i32 = -0x80000000;

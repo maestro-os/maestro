@@ -1,12 +1,12 @@
 //! The `chmod` system call allows change the permissions on a file.
 
 use crate::errno::Errno;
+use crate::file;
 use crate::file::fcache;
 use crate::file::path::Path;
-use crate::file;
-use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::regs::Regs;
+use crate::process::Process;
 
 /// The implementation of the `chmod` syscall.
 pub fn chmod(regs: &Regs) -> Result<i32, Errno> {
@@ -21,8 +21,14 @@ pub fn chmod(regs: &Regs) -> Result<i32, Errno> {
 		let mem_space = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space.lock();
 
-		let path = pathname.get(&mem_space_guard)?.ok_or_else(|| errno!(EFAULT))?;
-		(Path::from_str(path, true)?, proc.get_euid(), proc.get_egid())
+		let path = pathname
+			.get(&mem_space_guard)?
+			.ok_or_else(|| errno!(EFAULT))?;
+		(
+			Path::from_str(path, true)?,
+			proc.get_euid(),
+			proc.get_egid(),
+		)
 	};
 
 	let file_mutex = {

@@ -1,19 +1,19 @@
 //! This module implements regular file node for the tmpfs.
 
-use core::cmp::max;
-use core::cmp::min;
 use crate::errno::Errno;
+use crate::file::fs::tmp::KernFSNode;
 use crate::file::FileContent;
 use crate::file::Gid;
 use crate::file::Mode;
 use crate::file::Uid;
-use crate::file::fs::tmp::KernFSNode;
+use crate::time;
 use crate::time::unit::Timestamp;
 use crate::time::unit::TimestampScale;
-use crate::time;
 use crate::util::container::vec::Vec;
 use crate::util::io::IO;
 use crate::util::ptr::cow::Cow;
+use core::cmp::max;
+use core::cmp::min;
 
 /// Structure representing a regular file node in the tmpfs.
 pub struct TmpFSRegular {

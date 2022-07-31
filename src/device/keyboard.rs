@@ -146,8 +146,7 @@ impl KeyboardKey {
 	/// `alt` tells whether alt is pressed.
 	/// `ctrl` tells whether control is pressed.
 	/// `meta` tells whether meta is pressed.
-	pub fn get_tty_chars(&self, shift: bool, _alt: bool, ctrl: bool,
-		_meta: bool) -> Option<&[u8]> {
+	pub fn get_tty_chars(&self, shift: bool, _alt: bool, ctrl: bool, _meta: bool) -> Option<&[u8]> {
 		match self {
 			Self::KeyHome => return Some(b"\x1b[1~"),
 			Self::KeyInsert => return Some(b"\x1b[2~"),
@@ -168,7 +167,7 @@ impl KeyboardKey {
 			Self::KeyF11 => return Some(b"\x1b[23~"),
 			Self::KeyF12 => return Some(b"\x1b[24~"),
 
-			_ => {},
+			_ => {}
 		}
 
 		if ctrl {
@@ -200,7 +199,7 @@ impl KeyboardKey {
 				Self::KeyY => return Some(&[b'y' - b'a' + 1]),
 				Self::KeyZ => return Some(&[b'z' - b'a' + 1]),
 
-				_ => {},
+				_ => {}
 			}
 		}
 
@@ -371,7 +370,6 @@ impl KeyboardKey {
 				// Self::KeyCursorLeft => Some("\x1b[C"),
 				// Self::KeyCursorRight => Some("\x1b[D"),
 				// Self::KeyCursorDown => Some("\x1b[B"),
-
 				_ => None,
 			}
 		}
@@ -396,7 +394,6 @@ pub enum KeyboardLED {
 	CapsLock,
 	/// The scroll lock LED.
 	ScrollLock,
-
 	// TODO Add the japanese keyboard Kana mode
 }
 
@@ -430,11 +427,11 @@ impl EnableKey {
 
 					return true;
 				}
-			},
+			}
 
 			KeyboardAction::Released => {
 				self.ignore = false;
-			},
+			}
 		}
 
 		false
@@ -520,7 +517,7 @@ impl KeyboardManager {
 			KeyboardKey::KeyRightAlt => self.right_alt = action == KeyboardAction::Pressed,
 			KeyboardKey::KeyRightControl => self.right_ctrl = action == KeyboardAction::Pressed,
 
-			_ => {},
+			_ => {}
 		}
 
 		if key == KeyboardKey::KeyNumberLock && self.number_lock.input(action) {
@@ -548,7 +545,7 @@ impl KeyboardManager {
 					KeyboardKey::KeyF8 => tty::switch(Some(7)),
 					KeyboardKey::KeyF9 => tty::switch(Some(8)),
 
-					_ => {},
+					_ => {}
 				}
 			}
 

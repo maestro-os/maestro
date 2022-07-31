@@ -15,9 +15,9 @@
 
 pub mod spinlock;
 
-use core::cell::UnsafeCell;
 use crate::idt;
 use crate::util::lock::spinlock::Spinlock;
+use core::cell::UnsafeCell;
 
 /// Structure representing the saved state of interruptions for the current thread.
 struct State {
@@ -49,23 +49,17 @@ pub struct MutexGuard<'a, T: ?Sized, const INT: bool> {
 impl<'a, T: ?Sized, const INT: bool> MutexGuard<'a, T, INT> {
 	/// Creates an instance of MutexGuard for the given mutex `mutex`.
 	fn new(mutex: &'a Mutex<T, INT>) -> Self {
-		Self {
-			mutex,
-		}
+		Self { mutex }
 	}
 
 	/// Returns an immutable reference to the data owned by the associated Mutex.
 	pub fn get(&self) -> &T {
-		unsafe {
-			self.mutex.get_payload()
-		}
+		unsafe { self.mutex.get_payload() }
 	}
 
 	/// Returns a mutable reference to the data owned by the associated Mutex.
 	pub fn get_mut(&self) -> &mut T {
-		unsafe {
-			self.mutex.get_mut_payload()
-		}
+		unsafe { self.mutex.get_mut_payload() }
 	}
 
 	/// Unlocks the Mutex.
@@ -104,7 +98,7 @@ impl<T, const INT: bool> Mutex<T, INT> {
 			inner: UnsafeCell::new(MutexIn {
 				spin: Spinlock::new(),
 				data,
-			})
+			}),
 		}
 	}
 }
@@ -114,7 +108,8 @@ impl<T: ?Sized, const INT: bool> Mutex<T, INT> {
 	/// the mutex is ready to be locked before locking it, since it may cause race conditions. In
 	/// this case, prefer using `lock` directly.
 	pub fn is_locked(&self) -> bool {
-		unsafe { // Safe because using the spinlock
+		unsafe {
+			// Safe because using the spinlock
 			(*self.inner.get()).spin.is_locked()
 		}
 	}
@@ -123,7 +118,8 @@ impl<T: ?Sized, const INT: bool> Mutex<T, INT> {
 	/// available.
 	/// The function returns a MutexGuard associated with the Mutex.
 	pub fn lock(&self) -> MutexGuard<T, INT> {
-		let inner = unsafe { // Safe because using the spinlock later
+		let inner = unsafe {
+			// Safe because using the spinlock later
 			&mut *self.inner.get()
 		};
 

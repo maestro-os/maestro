@@ -2,19 +2,19 @@
 
 mod signal_trampoline;
 
-use core::ffi::c_void;
-use core::mem::size_of;
-use core::mem::transmute;
-use core::slice;
-use crate::errno::Errno;
+use super::Process;
+use super::State;
 use crate::errno;
+use crate::errno::Errno;
 use crate::file::Uid;
 use crate::process::oom;
 use crate::process::pid::Pid;
 use crate::time::unit::Clock;
+use core::ffi::c_void;
+use core::mem::size_of;
+use core::mem::transmute;
+use core::slice;
 use signal_trampoline::signal_trampoline;
-use super::Process;
-use super::State;
 
 /// Type representing a signal handler.
 pub type SigHandler = extern "C" fn(i32);
@@ -141,23 +141,31 @@ impl SignalHandler {
 	pub fn get_action(&self) -> SigAction {
 		match self {
 			Self::Ignore => SigAction {
-				sa_handler: unsafe {
-					transmute::<_, _>(SIG_IGN)
+				sa_handler: unsafe { transmute::<_, _>(SIG_IGN) },
+				sa_sigaction: #[allow(invalid_value)]
+				unsafe {
+					core::mem::zeroed()
 				},
-				sa_sigaction: #[allow(invalid_value)] unsafe { core::mem::zeroed() },
 				sa_mask: 0,
 				sa_flags: 0,
-				sa_restorer: #[allow(invalid_value)] unsafe { core::mem::zeroed() },
+				sa_restorer: #[allow(invalid_value)]
+				unsafe {
+					core::mem::zeroed()
+				},
 			},
 
 			Self::Default => SigAction {
-				sa_handler: unsafe {
-					transmute::<_, _>(SIG_DFL)
+				sa_handler: unsafe { transmute::<_, _>(SIG_DFL) },
+				sa_sigaction: #[allow(invalid_value)]
+				unsafe {
+					core::mem::zeroed()
 				},
-				sa_sigaction: #[allow(invalid_value)] unsafe { core::mem::zeroed() },
 				sa_mask: 0,
 				sa_flags: 0,
-				sa_restorer: #[allow(invalid_value)] unsafe { core::mem::zeroed() },
+				sa_restorer: #[allow(invalid_value)]
+				unsafe {
+					core::mem::zeroed()
+				},
 			},
 
 			Self::Handler(action) => *action,
@@ -341,7 +349,10 @@ impl Signal {
 
 	/// Tells whether the signal can be caught.
 	pub fn can_catch(&self) -> bool {
-		!matches!(self, Self::SIGKILL | Self::SIGSEGV | Self::SIGSTOP | Self::SIGSYS)
+		!matches!(
+			self,
+			Self::SIGKILL | Self::SIGSEGV | Self::SIGSTOP | Self::SIGSYS
+		)
 	}
 
 	/// Executes the action associated with the signal for process `process`.
@@ -370,7 +381,7 @@ impl Signal {
 		}
 
 		match handler {
-			SignalHandler::Ignore => {},
+			SignalHandler::Ignore => {}
 			SignalHandler::Default => {
 				// Signals on the init process can be executed only if the process has set a signal
 				// handler
@@ -384,25 +395,25 @@ impl Signal {
 				match default_action {
 					SignalAction::Terminate | SignalAction::Abort => {
 						process.exit(exit_code);
-					},
+					}
 
-					SignalAction::Ignore => {},
+					SignalAction::Ignore => {}
 
 					SignalAction::Stop => {
 						// TODO Handle semaphores
 						if process_state == State::Running {
 							process.set_state(State::Stopped);
 						}
-					},
+					}
 
 					SignalAction::Continue => {
 						// TODO Handle semaphores
 						if process_state == State::Stopped {
 							process.set_state(State::Running);
 						}
-					},
+					}
 				}
-			},
+			}
 
 			// TODO Handle sa_sigaction, sa_flags and sa_mask
 			SignalHandler::Handler(action) => {
@@ -424,20 +435,18 @@ impl Signal {
 						debug_assert!(mem_space.is_bound());
 						mem_space.alloc(signal_esp as *mut u32, 2)
 					});
-					let signal_data = unsafe {
-						slice::from_raw_parts_mut(signal_esp as *mut u32, 2)
-					};
+					let signal_data =
+						unsafe { slice::from_raw_parts_mut(signal_esp as *mut u32, 2) };
 
 					// The pointer to the signal handler
-					signal_data[1] = action.sa_handler.map(| f | f as usize).unwrap_or(0) as _;
+					signal_data[1] = action.sa_handler.map(|f| f as usize).unwrap_or(0) as _;
 					// The signal number
 					signal_data[0] = self.get_id() as _;
 
 					let signal_trampoline = unsafe {
-						transmute::<
-							extern "C" fn(*const c_void, i32) -> !,
-							*const c_void
-						>(signal_trampoline)
+						transmute::<extern "C" fn(*const c_void, i32) -> !, *const c_void>(
+							signal_trampoline,
+						)
 					};
 
 					let mut regs = process.get_regs().clone();
@@ -452,7 +461,7 @@ impl Signal {
 					// Setting the process's registers to call the signal handler
 					process.set_regs(regs);
 				}
-			},
+			}
 		}
 	}
 }

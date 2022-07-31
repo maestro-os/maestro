@@ -2,8 +2,8 @@
 //! used to log kernel informations. They can be silenced at boot using the `-silent` command line
 //! argument but they will be kept in the logger anyways.
 
-use core::fmt;
 use crate::logger;
+use core::fmt;
 
 /// Prints the specified message on the current TTY. This function is meant to be used through
 /// `print!` and `println!` macros only.

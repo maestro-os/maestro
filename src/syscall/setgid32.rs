@@ -1,10 +1,10 @@
 //! The `setgid32` syscall sets the GID of the process's owner.
 
-use crate::file::ROOT_GID;
 use crate::errno::Errno;
 use crate::file::Gid;
-use crate::process::Process;
+use crate::file::ROOT_GID;
 use crate::process::regs::Regs;
+use crate::process::Process;
 
 /// The implementation of the `setgid32` syscall.
 pub fn setgid32(regs: &Regs) -> Result<i32, Errno> {

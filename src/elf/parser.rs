@@ -1,12 +1,12 @@
 //! This module implements the ELF parser.
 
-use core::mem::size_of;
-use core::slice;
+use super::*;
 use crate::elf::relocation::ELF32Rel;
 use crate::elf::relocation::ELF32Rela;
-use crate::errno::Errno;
 use crate::errno;
-use super::*;
+use crate::errno::Errno;
+use core::mem::size_of;
+use core::slice;
 
 /// The ELF parser allows to parse an ELF image and retrieve informations on it.
 /// It is especially useful to load a kernel module or a userspace program.
@@ -23,7 +23,8 @@ impl<'a> ELFParser<'a> {
 	pub fn get_struct<T>(&self, off: usize) -> &T {
 		debug_assert!(off < self.image.len());
 
-		unsafe { // Safe because the slice is large enough
+		unsafe {
+			// Safe because the slice is large enough
 			&*(&self.image[off] as *const u8 as *const T)
 		}
 	}
@@ -40,9 +41,12 @@ impl<'a> ELFParser<'a> {
 		let phoff = self.get_header().e_phoff;
 		let phnum = self.get_header().e_phnum;
 
-		unsafe { // Safe because the slice is large enough
-			slice::from_raw_parts(&self.image[phoff as usize] as *const u8 as *const _,
-				phnum as usize)
+		unsafe {
+			// Safe because the slice is large enough
+			slice::from_raw_parts(
+				&self.image[phoff as usize] as *const u8 as *const _,
+				phnum as usize,
+			)
 		}
 	}
 
@@ -124,9 +128,7 @@ impl<'a> ELFParser<'a> {
 	/// Creates a new instance for the given image.
 	/// The function checks if the image is valid. If not, the function retuns an error.
 	pub fn new(image: &'a [u8]) -> Result<Self, Errno> {
-		let p = Self {
-			image,
-		};
+		let p = Self { image };
 
 		p.check_image()?;
 		Ok(p)
@@ -181,7 +183,7 @@ impl<'a> ELFParser<'a> {
 	/// and the second argument is the relocation.
 	/// If the function returns `false`, the loop breaks.
 	pub fn foreach_rel<F: FnMut(&ELF32SectionHeader, &ELF32Rel) -> bool>(&self, mut f: F) {
-		self.foreach_sections(| _, section | {
+		self.foreach_sections(|_, section| {
 			if section.sh_type != SHT_REL {
 				return true;
 			}
@@ -208,7 +210,7 @@ impl<'a> ELFParser<'a> {
 	/// and the second argument is the relocation.
 	/// If the function returns `false`, the loop breaks.
 	pub fn foreach_rela<F: FnMut(&ELF32SectionHeader, &ELF32Rela) -> bool>(&self, mut f: F) {
-		self.foreach_sections(| _, section | {
+		self.foreach_sections(|_, section| {
 			if section.sh_type != SHT_RELA {
 				return true;
 			}
@@ -235,7 +237,7 @@ impl<'a> ELFParser<'a> {
 	/// The second argument is a reference to the symbol.
 	/// If the function returns `false`, the loop breaks.
 	pub fn foreach_symbol<F: FnMut(usize, &ELF32Sym) -> bool>(&self, mut f: F) {
-		self.foreach_sections(| _, section | {
+		self.foreach_sections(|_, section| {
 			if section.sh_type == SHT_SYMTAB {
 				let begin = section.sh_offset;
 				let mut i = 0;
@@ -244,7 +246,8 @@ impl<'a> ELFParser<'a> {
 				// size of a symbol
 				while i < section.sh_size {
 					let off = begin as usize + i as usize;
-					let sym = unsafe { // Safe because the slice is large enough
+					let sym = unsafe {
+						// Safe because the slice is large enough
 						&*(&self.image[off] as *const u8 as *const ELF32Sym)
 					};
 
@@ -278,7 +281,7 @@ impl<'a> ELFParser<'a> {
 		let shstr_off = self.get_shstr_offset();
 		let mut r = None;
 
-		self.foreach_sections(| off, section | {
+		self.foreach_sections(|off, section| {
 			let section_name = &self.image[(shstr_off + section.sh_name as usize)..];
 
 			if &section_name[..min(section_name.len(), name.len())] == name.as_bytes() {
@@ -296,8 +299,11 @@ impl<'a> ELFParser<'a> {
 	/// the function returns None.
 	/// `section` is the symbol's section.
 	/// `symbol_index` is the symbol index.
-	pub fn get_symbol_by_index(&self, section: &ELF32SectionHeader, symbol_index: u32)
-		-> Option<&ELF32Sym> {
+	pub fn get_symbol_by_index(
+		&self,
+		section: &ELF32SectionHeader,
+		symbol_index: u32,
+	) -> Option<&ELF32Sym> {
 		if section.sh_type != SHT_SYMTAB && section.sh_type != SHT_DYNSYM {
 			return None;
 		}
@@ -315,7 +321,7 @@ impl<'a> ELFParser<'a> {
 		let strtab_section = self.get_section_by_name(".strtab")?; // TODO Use sh_link
 		let mut r = None;
 
-		self.foreach_symbol(| off, sym | {
+		self.foreach_symbol(|off, sym| {
 			let sym_name = &self.image[(strtab_section.sh_offset + sym.st_name) as usize..];
 
 			if &sym_name[..min(sym_name.len(), name.len())] == name.as_bytes() {
@@ -335,7 +341,8 @@ impl<'a> ELFParser<'a> {
 		if sym.st_name != 0 {
 			let begin_off = (strtab.sh_offset + sym.st_name) as usize;
 			let ptr = &self.image[begin_off];
-			let len = unsafe { // Safe because limited to the size of the section
+			let len = unsafe {
+				// Safe because limited to the size of the section
 				util::strnlen(ptr, (strtab.sh_size - sym.st_name) as _)
 			};
 
@@ -350,7 +357,7 @@ impl<'a> ELFParser<'a> {
 	pub fn get_interpreter_path(&self) -> Option<&[u8]> {
 		let mut path: Option<&[u8]> = None;
 
-		self.foreach_segments(| segment | {
+		self.foreach_segments(|segment| {
 			if segment.p_type == PT_INTERP {
 				let begin = segment.p_offset as usize;
 				let end = (segment.p_offset + segment.p_filesz) as usize;

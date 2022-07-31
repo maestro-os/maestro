@@ -1,12 +1,12 @@
 //! When booting, the kernel can take command line arguments. This module implements a parse for
 //! these arguments.
 
-use core::cmp::min;
-use core::str;
-use crate::util::FailableClone;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
+use crate::util::FailableClone;
 use crate::vga;
+use core::cmp::min;
+use core::str;
 
 /// Command line argument parser.
 /// Every bytes in the command line are interpreted as ASCII characters.
@@ -121,10 +121,7 @@ impl ArgsParser {
 
 		if j > *i {
 			if let Ok(s) = String::from(&cmdline[*i..j]) {
-				let tok = Token {
-					s,
-					begin: *i,
-				};
+				let tok = Token { s, begin: *i };
 				*i = j;
 
 				Ok(Some(tok))
@@ -177,39 +174,53 @@ impl ArgsParser {
 					if tokens.len() < i + 3 {
 						let begin = tokens[i].begin;
 						let size = tokens[i].len();
-						return Err(ParseError::new(cmdline, "Not enough arguments for `-root`",
-							Some((begin, size))));
+						return Err(ParseError::new(
+							cmdline,
+							"Not enough arguments for `-root`",
+							Some((begin, size)),
+						));
 					}
 
-					match tokens[i + 1].s.as_str().unwrap().parse::<u32>() { // TODO Handle properly
+					match tokens[i + 1].s.as_str().unwrap().parse::<u32>() {
+						// TODO Handle properly
 						Ok(n) => {
 							s.root_major = n;
-						},
+						}
 						Err(_) => {
-							return Err(ParseError::new(cmdline, "Invalid major number",
-								Some((i + 1, 1))));
-						},
+							return Err(ParseError::new(
+								cmdline,
+								"Invalid major number",
+								Some((i + 1, 1)),
+							));
+						}
 					};
-					match tokens[i + 2].s.as_str().unwrap().parse::<u32>() { // TODO Handle properly
+					match tokens[i + 2].s.as_str().unwrap().parse::<u32>() {
+						// TODO Handle properly
 						Ok(n) => {
 							s.root_minor = n;
-						},
+						}
 						Err(_) => {
-							return Err(ParseError::new(cmdline, "Invalid minor number",
-								Some((i + 2, 1))));
-						},
+							return Err(ParseError::new(
+								cmdline,
+								"Invalid minor number",
+								Some((i + 2, 1)),
+							));
+						}
 					};
 
 					i += 3;
 					root_specified = true;
-				},
+				}
 
 				b"-init" => {
 					if tokens.len() < i + 2 {
 						let begin = tokens[i].begin;
 						let size = tokens[i].len();
-						return Err(ParseError::new(cmdline, "Not enough arguments for `-init`",
-							Some((begin, size))));
+						return Err(ParseError::new(
+							cmdline,
+							"Not enough arguments for `-init`",
+							Some((begin, size)),
+						));
 					}
 
 					if let Ok(init) = tokens[i + 1].s.failable_clone() {
@@ -219,18 +230,22 @@ impl ArgsParser {
 					}
 
 					i += 2;
-				},
+				}
 
 				b"-silent" => {
 					s.silent = true;
 
 					i += 1;
-				},
+				}
 
 				_ => {
 					let begin = tokens[i].begin;
 					let size = tokens[i].len();
-					return Err(ParseError::new(cmdline, "Invalid argument", Some((begin, size))));
+					return Err(ParseError::new(
+						cmdline,
+						"Invalid argument",
+						Some((begin, size)),
+					));
 				}
 			}
 		}

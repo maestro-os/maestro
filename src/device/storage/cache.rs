@@ -80,7 +80,9 @@ impl StorageCache {
 	/// `sector` is the index of the sector.
 	/// `buff` is a buffer containing the sector's data.
 	pub fn insert<F>(&mut self, sector: u64, buff: &[u8], mut flush_hook: F) -> Result<(), Errno>
-		where F: FnMut(u64, &[u8]) -> Result<(), Errno> {
+	where
+		F: FnMut(u64, &[u8]) -> Result<(), Errno>,
+	{
 		// Freeing some slots if needed
 		if self.is_full() {
 			let mut sector_indexes: [u64; 16] = Default::default();
@@ -97,11 +99,14 @@ impl StorageCache {
 		let mut alloc = malloc::Alloc::<u8>::new_default(self.sector_size)?;
 		alloc.as_slice_mut().copy_from_slice(buff);
 
-		self.sectors.insert(sector, CachedSector {
-			written: false,
+		self.sectors.insert(
+			sector,
+			CachedSector {
+				written: false,
 
-			data: alloc,
-		})?;
+				data: alloc,
+			},
+		)?;
 		self.fifo.write(&[sector]);
 
 		Ok(())
@@ -111,7 +116,9 @@ impl StorageCache {
 	/// Sectors that have been updated are written to the disk using `flush_hook`.
 	/// On error, flushing is not completed.
 	pub fn flush<F>(&mut self, mut flush_hook: F) -> Result<(), Errno>
-		where F: FnMut(u64, &[u8]) -> Result<(), Errno> {
+	where
+		F: FnMut(u64, &[u8]) -> Result<(), Errno>,
+	{
 		// Writing updated sectors
 		for (index, sector) in self.sectors.iter() {
 			if sector.written {
@@ -139,8 +146,10 @@ impl CachedStorageInterface {
 	/// Creates a new instance.
 	/// `storage_interface` is the interface to wrap.
 	/// `sectors_count` is the maximum number of sectors in the cache.
-	pub fn new(storage_interface: Box<dyn StorageInterface>, sectors_count: usize)
-		-> Result<Self, Errno> {
+	pub fn new(
+		storage_interface: Box<dyn StorageInterface>,
+		sectors_count: usize,
+	) -> Result<Self, Errno> {
 		let sector_size = storage_interface.get_block_size() as _;
 
 		Ok(Self {
@@ -171,7 +180,7 @@ impl StorageInterface for CachedStorageInterface {
 			if self.cache.read(offset + i, buf)?.is_none() {
 				self.storage_interface.read(buf, offset + i, 1)?;
 
-				self.cache.insert(offset + i, buf, | off, buf | {
+				self.cache.insert(offset + i, buf, |off, buf| {
 					self.storage_interface.write(buf, off, 1)
 				})?;
 			}
@@ -189,7 +198,7 @@ impl StorageInterface for CachedStorageInterface {
 			let buf = &buf[buf_begin..buf_end];
 
 			if self.cache.write(offset + i, buf)?.is_none() {
-				self.cache.insert(offset + i, buf, | off, buf | {
+				self.cache.insert(offset + i, buf, |off, buf| {
 					self.storage_interface.write(buf, off, 1)
 				})?;
 			}
@@ -201,7 +210,7 @@ impl StorageInterface for CachedStorageInterface {
 
 impl Drop for CachedStorageInterface {
 	fn drop(&mut self) {
-		let _ = self.cache.flush(| off, buf | {
+		let _ = self.cache.flush(|off, buf| {
 			let _ = self.storage_interface.write(buf, off, 1);
 			Ok(())
 		});

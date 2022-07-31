@@ -1,11 +1,11 @@
 //! A gap is a region of the virtual memory which is available for allocation.
 
+use crate::memory;
+use crate::util;
+use crate::util::FailableClone;
 use core::cmp::min;
 use core::ffi::c_void;
 use core::fmt;
-use crate::memory;
-use crate::util::FailableClone;
-use crate::util;
 
 /// A gap in the memory space that can use for new mappings.
 #[derive(Clone, Debug)]
@@ -25,10 +25,7 @@ impl MemGap {
 		debug_assert!(util::is_aligned(begin, memory::PAGE_SIZE));
 		debug_assert!(size > 0);
 
-		Self {
-			begin,
-			size,
-		}
+		Self { begin, size }
 	}
 
 	/// Returns a pointer on the virtual memory to the beginning of the gap.
@@ -38,9 +35,7 @@ impl MemGap {
 
 	/// Returns a pointer on the virtual memory to the end of the gap.
 	pub fn get_end(&self) -> *const c_void {
-		unsafe {
-			self.begin.add(self.size * memory::PAGE_SIZE)
-		}
+		unsafe { self.begin.add(self.size * memory::PAGE_SIZE) }
 	}
 
 	/// Returns the size of the gap in memory pages.

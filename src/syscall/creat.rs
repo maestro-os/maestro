@@ -1,11 +1,11 @@
 //! The `creat` system call allows to create and open a file.
 
+use super::open;
 use crate::errno::Errno;
-use crate::file::open_file;
 use crate::file;
+use crate::file::open_file;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::regs::Regs;
-use super::open;
 
 /// The implementation of the `creat` syscall.
 pub fn creat(regs: &Regs) -> Result<i32, Errno> {

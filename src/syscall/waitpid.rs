@@ -1,19 +1,19 @@
 //! The `waitpid` system call allows to wait for an event from a child process.
 
-use crate::errno::Errno;
 use crate::errno;
-use crate::process::Process;
-use crate::process::State;
+use crate::errno::Errno;
+use crate::process;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::pid::Pid;
 use crate::process::regs::Regs;
 use crate::process::rusage::RUsage;
-use crate::process;
+use crate::process::Process;
+use crate::process::State;
 
 /// Wait flag. Returns immediately if no child has exited.
-const WNOHANG: i32 =    0b001;
+const WNOHANG: i32 = 0b001;
 /// Wait flag. Returns if a child has stopped.
-const WUNTRACED: i32 =  0b010;
+const WUNTRACED: i32 = 0b010;
 /// Wait flag. Returns if a stopped child has been resumed by delivery of SIGCONT.
 const WCONTINUED: i32 = 0b100;
 
@@ -129,8 +129,12 @@ fn check_waitable(pid: i32, wstatus: &mut i32, rusage: &mut RUsage) -> Result<Op
 /// `wstatus` is the pointer on which to write the status.
 /// `options` are flags passed with the syscall.
 /// `rusage` is the pointer to the resource usage structure.
-pub fn do_waitpid(pid: i32, wstatus: SyscallPtr<i32>, options: i32,
-	rusage: Option<SyscallPtr<RUsage>>) -> Result<i32, Errno> {
+pub fn do_waitpid(
+	pid: i32,
+	wstatus: SyscallPtr<i32>,
+	options: i32,
+	rusage: Option<SyscallPtr<RUsage>>,
+) -> Result<i32, Errno> {
 	// Sleeping until a target process is waitable
 	loop {
 		let mut wstatus_val = Default::default();

@@ -1,7 +1,11 @@
 //! The files cache stores files in memory to avoid accessing the disk each times.
 
-use crate::errno::Errno;
+use super::pipe::PipeBuffer;
+use super::socket::Socket;
 use crate::errno;
+use crate::errno::Errno;
+use crate::file::mountpoint;
+use crate::file::path::Path;
 use crate::file::File;
 use crate::file::FileContent;
 use crate::file::FileLocation;
@@ -10,17 +14,13 @@ use crate::file::Gid;
 use crate::file::Mode;
 use crate::file::MountPoint;
 use crate::file::Uid;
-use crate::file::mountpoint;
-use crate::file::path::Path;
 use crate::limits;
-use crate::util::FailableClone;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::lock::Mutex;
 use crate::util::ptr::SharedPtr;
-use super::pipe::PipeBuffer;
-use super::socket::Socket;
+use crate::util::FailableClone;
 
 /// The size of the files pool.
 const FILES_POOL_SIZE: usize = 1024;
@@ -92,8 +92,14 @@ impl FCache {
 	/// `follow_links` is true, the function follows symbolic links.
 	/// `follows_count` is the number of links that have been followed since the beginning of the
 	/// path resolution.
-	fn get_file_from_path_(&mut self, path: &Path, uid: Uid, gid: Gid, follow_links: bool,
-		follows_count: usize) -> Result<SharedPtr<File>, Errno> {
+	fn get_file_from_path_(
+		&mut self,
+		path: &Path,
+		uid: Uid,
+		gid: Gid,
+		follow_links: bool,
+		follows_count: usize,
+	) -> Result<SharedPtr<File>, Errno> {
 		let path = Path::root().concat(path)?;
 
 		// Getting the path's deepest mountpoint
@@ -131,7 +137,7 @@ impl FCache {
 
 		for i in 0..inner_path.get_elements_count() {
 			match inner_path[i].as_bytes() {
-				b"." => {},
+				b"." => {}
 				b".." => {
 					let p = inner_path.range_from((i + 1)..)?;
 
@@ -139,7 +145,7 @@ impl FCache {
 					drop(io_guard);
 					drop(mountpoint_guard);
 					return self.get_file_from_path_(&p, uid, gid, follow_links, follows_count);
-				},
+				}
 
 				_ => inode = fs.get_inode(io, Some(inode), &inner_path[i])?,
 			}
@@ -173,8 +179,13 @@ impl FCache {
 					drop(fs_guard);
 					drop(io_guard);
 					drop(mountpoint_guard);
-					return self.get_file_from_path_(&new_path, uid, gid, follow_links,
-						follows_count + 1);
+					return self.get_file_from_path_(
+						&new_path,
+						uid,
+						gid,
+						follow_links,
+						follows_count + 1,
+					);
 				}
 			}
 		}
@@ -196,8 +207,13 @@ impl FCache {
 	/// `uid` is the User ID of the user creating the file.
 	/// `gid` is the Group ID of the user creating the file.
 	/// `follow_links` is true, the function follows symbolic links.
-	pub fn get_file_from_path(&mut self, path: &Path, uid: Uid, gid: Gid, follow_links: bool)
-		-> Result<SharedPtr<File>, Errno> {
+	pub fn get_file_from_path(
+		&mut self,
+		path: &Path,
+		uid: Uid,
+		gid: Gid,
+		follow_links: bool,
+	) -> Result<SharedPtr<File>, Errno> {
 		self.get_file_from_path_(path, uid, gid, follow_links, 0)
 	}
 
@@ -209,8 +225,14 @@ impl FCache {
 	/// `uid` is the User ID of the user creating the file.
 	/// `gid` is the Group ID of the user creating the file.
 	/// `follow_links` is true, the function follows symbolic links.
-	pub fn get_file_from_parent(&mut self, parent: &mut File, name: String, uid: Uid, gid: Gid,
-		follow_links: bool) -> Result<SharedPtr<File>, Errno> {
+	pub fn get_file_from_parent(
+		&mut self,
+		parent: &mut File,
+		name: String,
+		uid: Uid,
+		gid: Gid,
+		follow_links: bool,
+	) -> Result<SharedPtr<File>, Errno> {
 		// Checking for errors
 		if parent.get_file_type() != FileType::Directory {
 			return Err(errno!(ENOTDIR));
@@ -220,7 +242,9 @@ impl FCache {
 		}
 
 		// Getting the path's deepest mountpoint
-		let mountpoint_mutex = parent.get_location().get_mountpoint()
+		let mountpoint_mutex = parent
+			.get_location()
+			.get_mountpoint()
 			.ok_or_else(|| errno!(ENOENT))?;
 		let mountpoint_guard = mountpoint_mutex.lock();
 		let mountpoint = mountpoint_guard.get_mut();
@@ -264,13 +288,20 @@ impl FCache {
 	/// `gid` is the id of the owner group.
 	/// `mode` is the permission of the file.
 	/// `content` is the content of the file. This value also determines the file type.
-	pub fn create_file(&mut self, parent: &mut File, name: String, uid: Uid, gid: Gid, mode: Mode,
-		content: FileContent) -> Result<SharedPtr<File>, Errno> {
+	pub fn create_file(
+		&mut self,
+		parent: &mut File,
+		name: String,
+		uid: Uid,
+		gid: Gid,
+		mode: Mode,
+		content: FileContent,
+	) -> Result<SharedPtr<File>, Errno> {
 		match self.get_file_from_parent(parent, name.failable_clone()?, uid, gid, false) {
 			// If file already exist, error
 			Ok(_) => return Err(errno!(EEXIST)),
 			// If file doesn't exist, do nothing
-			Err(_) => {},
+			Err(_) => {}
 		}
 
 		// Checking for errors
@@ -282,7 +313,9 @@ impl FCache {
 		}
 
 		// Getting the mountpoint
-		let mountpoint_mutex = parent.get_location().get_mountpoint()
+		let mountpoint_mutex = parent
+			.get_location()
+			.get_mountpoint()
 			.ok_or_else(|| errno!(ENOENT))?;
 		let mountpoint_guard = mountpoint_mutex.lock();
 		let mountpoint = mountpoint_guard.get_mut();
@@ -324,8 +357,12 @@ impl FCache {
 	/// `name` is the name of the link.
 	/// `uid` is the id of the owner user.
 	/// `gid` is the id of the owner group.
-	pub fn create_link(&mut self, target: &mut File, parent: &mut File, name: String)
-		-> Result<(), Errno> {
+	pub fn create_link(
+		&mut self,
+		target: &mut File,
+		parent: &mut File,
+		name: String,
+	) -> Result<(), Errno> {
 		// Checking the parent file is a directory
 		if parent.get_file_type() != FileType::Directory {
 			return Err(errno!(ENOTDIR));
@@ -336,7 +373,9 @@ impl FCache {
 		}
 
 		// Getting the mountpoint
-		let mountpoint_mutex = target.get_location().get_mountpoint()
+		let mountpoint_mutex = target
+			.get_location()
+			.get_mountpoint()
 			.ok_or_else(|| errno!(ENOENT))?;
 		let mountpoint_guard = mountpoint_mutex.lock();
 		let mountpoint = mountpoint_guard.get_mut();
@@ -357,7 +396,12 @@ impl FCache {
 			return Err(errno!(EROFS));
 		}
 
-		fs.add_link(io, parent.get_location().inode, &name, target.get_location().inode)
+		fs.add_link(
+			io,
+			parent.get_location().inode,
+			&name,
+			target.get_location().inode,
+		)
 		// TODO Update file
 	}
 
@@ -413,14 +457,14 @@ impl FCache {
 			match file.get_file_content() {
 				FileContent::Fifo => {
 					self.named_pipes.remove(location);
-				},
+				}
 
 				FileContent::Socket => {
 					// TODO
 					todo!();
-				},
+				}
 
-				_ => {},
+				_ => {}
 			}
 		}
 

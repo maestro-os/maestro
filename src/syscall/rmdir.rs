@@ -2,12 +2,12 @@
 //! the inode, the function also removes the inode.
 
 use crate::errno::Errno;
-use crate::file::FileContent;
 use crate::file::fcache;
 use crate::file::path::Path;
-use crate::process::Process;
+use crate::file::FileContent;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::regs::Regs;
+use crate::process::Process;
 
 /// The implementation of the `rmdir` syscall.
 pub fn rmdir(regs: &Regs) -> Result<i32, Errno> {
@@ -38,7 +38,7 @@ pub fn rmdir(regs: &Regs) -> Result<i32, Errno> {
 
 		match file.get_file_content() {
 			FileContent::Directory(entries) if entries.len() > 2 => return Err(errno!(ENOTEMPTY)),
-			FileContent::Directory(_) => {},
+			FileContent::Directory(_) => {}
 
 			_ => return Err(errno!(ENOTDIR)),
 		}

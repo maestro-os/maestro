@@ -1,12 +1,12 @@
 //! The `poll` system call allows to wait for events on a given set of file descriptors.
 
 use crate::errno::Errno;
-use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallSlice;
 use crate::process::regs::Regs;
+use crate::process::Process;
+use crate::time;
 use crate::time::unit::Timestamp;
 use crate::time::unit::TimestampScale;
-use crate::time;
 use crate::util::io;
 
 /// Structure representing a file descriptor passed to the `poll` system call.
@@ -52,7 +52,9 @@ pub fn poll(regs: &Regs) -> Result<i32, Errno> {
 			let mem_space = proc.get_mem_space().unwrap();
 			let mem_space_guard = mem_space.lock();
 
-			let fds = fds.get(&mem_space_guard, nfds)?.ok_or_else(|| errno!(EFAULT))?;
+			let fds = fds
+				.get(&mem_space_guard, nfds)?
+				.ok_or_else(|| errno!(EFAULT))?;
 
 			// Checking the file descriptors list
 			for fd in fds {
@@ -93,7 +95,7 @@ pub fn poll(regs: &Regs) -> Result<i32, Errno> {
 			}
 
 			// The number of file descriptor with at least one event
-			let fd_event_count = fds.iter().filter(| fd | fd.revents != 0).count();
+			let fd_event_count = fds.iter().filter(|fd| fd.revents != 0).count();
 			// If at least on event happened, return the number of file descriptors concerned
 			if fd_event_count > 0 {
 				return Ok(fd_event_count as _);

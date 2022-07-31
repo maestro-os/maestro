@@ -1,9 +1,9 @@
 //! The `delete_module` system call allows to unload a module from the kernel.
 
-use crate::errno::Errno;
 use crate::errno;
-use crate::process::Process;
+use crate::errno::Errno;
 use crate::process::regs::Regs;
+use crate::process::Process;
 
 /// The implementation of the `delete_module` syscall.
 pub fn delete_module(regs: &Regs) -> Result<i32, Errno> {

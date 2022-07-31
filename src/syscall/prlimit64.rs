@@ -1,10 +1,10 @@
 //! The `prlimit64` syscall returns the limit for a given resource.
 
 use crate::errno::Errno;
-use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::pid::Pid;
 use crate::process::regs::Regs;
+use crate::process::Process;
 
 /// The amount of seconds of CPU time the process can consume.
 const RLIMIT_CPU: i32 = 0;
@@ -80,23 +80,23 @@ pub fn prlimit64(regs: &Regs) -> Result<i32, Errno> {
 
 	// TODO Implement all
 	match resource {
-		RLIMIT_CPU => {},
-		RLIMIT_FSIZE => {},
-		RLIMIT_DATA => {},
-		RLIMIT_STACK => {},
-		RLIMIT_CORE => {},
-		RLIMIT_RSS => {},
-		RLIMIT_NPROC => {},
-		RLIMIT_NOFILE => {},
-		RLIMIT_MEMLOCK => {},
-		RLIMIT_AS => {},
-		RLIMIT_LOCKS => {},
-		RLIMIT_SIGPENDING => {},
-		RLIMIT_MSGQUEUE => {},
-		RLIMIT_NICE => {},
-		RLIMIT_RTPRIO => {},
-		RLIMIT_RTTIME => {},
-		RLIMIT_NLIMITS => {},
+		RLIMIT_CPU => {}
+		RLIMIT_FSIZE => {}
+		RLIMIT_DATA => {}
+		RLIMIT_STACK => {}
+		RLIMIT_CORE => {}
+		RLIMIT_RSS => {}
+		RLIMIT_NPROC => {}
+		RLIMIT_NOFILE => {}
+		RLIMIT_MEMLOCK => {}
+		RLIMIT_AS => {}
+		RLIMIT_LOCKS => {}
+		RLIMIT_SIGPENDING => {}
+		RLIMIT_MSGQUEUE => {}
+		RLIMIT_NICE => {}
+		RLIMIT_RTPRIO => {}
+		RLIMIT_RTTIME => {}
+		RLIMIT_NLIMITS => {}
 
 		_ => return Err(errno!(EINVAL)),
 	}

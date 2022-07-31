@@ -12,12 +12,12 @@ pub mod lock;
 pub mod math;
 pub mod ptr;
 
+use crate::errno::Errno;
 use core::cmp::min;
 use core::ffi::c_void;
 use core::fmt;
 use core::mem::size_of;
 use core::slice;
-use crate::errno::Errno;
 
 /// Tells if pointer `ptr` is aligned on boundary `n`.
 #[inline(always)]
@@ -64,7 +64,7 @@ macro_rules! offset_of {
 			let ptr = core::ptr::NonNull::<core::ffi::c_void>::dangling().as_ptr();
 			(&(*(ptr as *const $type)).$field) as *const _ as usize - ptr as usize
 		}
-	}
+	};
 }
 
 /// Returns the structure of type `type` that contains the structure in field `field` at pointer
@@ -73,7 +73,7 @@ macro_rules! offset_of {
 macro_rules! container_of {
 	($ptr:expr, $type:ty, $field:ident) => {
 		(($ptr as *const _ as usize) - crate::offset_of!($type, $field)) as $type
-	}
+	};
 }
 
 /// Returns the value stored into the specified register.
@@ -146,9 +146,7 @@ pub unsafe fn str_from_ptr(ptr: *const u8) -> &'static [u8] {
 
 /// Returns an immutable slice to the given value.
 pub fn as_slice<'a, T>(val: &'a T) -> &'a [u8] {
-	unsafe {
-		slice::from_raw_parts(&val as *const _ as *const u8, size_of::<T>())
-	}
+	unsafe { slice::from_raw_parts(&val as *const _ as *const u8, size_of::<T>()) }
 }
 
 /// Turns the error into an empty error for the given result.
@@ -187,7 +185,9 @@ pub fn slice_copy(src: &[u8], dst: &mut [u8]) {
 /// failure, for example).
 pub trait FailableClone {
 	/// Clones the object. If the clone fails, the function returns Err.
-	fn failable_clone(&self) -> Result<Self, Errno> where Self: Sized;
+	fn failable_clone(&self) -> Result<Self, Errno>
+	where
+		Self: Sized;
 }
 
 /// Implements FailableClone with the default implemention for the given type. The type must
@@ -200,7 +200,7 @@ macro_rules! failable_clone_impl {
 				Ok(self.clone())
 			}
 		}
-	}
+	};
 }
 
 failable_clone_impl!(i8);
@@ -247,7 +247,11 @@ mod test {
 			src[i] = i;
 		}
 		unsafe {
-			memcpy(dest.as_mut_ptr() as _, src.as_ptr() as _, 100 * size_of::<usize>());
+			memcpy(
+				dest.as_mut_ptr() as _,
+				src.as_ptr() as _,
+				100 * size_of::<usize>(),
+			);
 		}
 		for i in 0..100 {
 			debug_assert_eq!(dest[i], i);
@@ -263,7 +267,11 @@ mod test {
 			src[i] = i;
 		}
 		unsafe {
-			memcpy(dest.as_mut_ptr() as _, src.as_ptr() as _, 100 * size_of::<usize>());
+			memcpy(
+				dest.as_mut_ptr() as _,
+				src.as_ptr() as _,
+				100 * size_of::<usize>(),
+			);
 		}
 		for i in 0..10 {
 			debug_assert_eq!(dest[i], 0);
@@ -285,7 +293,11 @@ mod test {
 			src[i] = i;
 		}
 		unsafe {
-			memmove(dest.as_mut_ptr() as _, src.as_ptr() as _, 100 * size_of::<usize>());
+			memmove(
+				dest.as_mut_ptr() as _,
+				src.as_ptr() as _,
+				100 * size_of::<usize>(),
+			);
 		}
 		for i in 0..100 {
 			debug_assert_eq!(dest[i], i);
@@ -300,7 +312,11 @@ mod test {
 			buff[i] = i;
 		}
 		unsafe {
-			memmove(buff.as_mut_ptr() as _, buff.as_ptr() as _, 100 * size_of::<usize>());
+			memmove(
+				buff.as_mut_ptr() as _,
+				buff.as_ptr() as _,
+				100 * size_of::<usize>(),
+			);
 		}
 		for i in 0..100 {
 			debug_assert_eq!(buff[i], i);
@@ -318,9 +334,7 @@ mod test {
 			b0[i] = i as _;
 			b1[i] = i as _;
 		}
-		let val = unsafe {
-			memcmp(b0.as_mut_ptr() as _, b1.as_ptr() as _, 100)
-		};
+		let val = unsafe { memcmp(b0.as_mut_ptr() as _, b1.as_ptr() as _, 100) };
 		assert_eq!(val, 0);
 	}
 
@@ -333,9 +347,7 @@ mod test {
 			b0[i] = i as _;
 			b1[i] = 0;
 		}
-		let val = unsafe {
-			memcmp(b0.as_mut_ptr() as _, b1.as_ptr() as _, 100)
-		};
+		let val = unsafe { memcmp(b0.as_mut_ptr() as _, b1.as_ptr() as _, 100) };
 		assert_eq!(val, 1);
 	}
 

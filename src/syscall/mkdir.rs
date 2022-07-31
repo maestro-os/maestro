@@ -1,15 +1,15 @@
 //! The mkdir system call allows to create a directory.
 
 use crate::errno::Errno;
-use crate::file::FileContent;
+use crate::file;
 use crate::file::fcache;
 use crate::file::path::Path;
-use crate::file;
-use crate::process::Process;
+use crate::file::FileContent;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::regs::Regs;
-use crate::util::FailableClone;
+use crate::process::Process;
 use crate::util::container::hashmap::HashMap;
+use crate::util::FailableClone;
 
 /// The implementation of the `mkdir` syscall.
 pub fn mkdir(regs: &Regs) -> Result<i32, Errno> {
@@ -29,8 +29,8 @@ pub fn mkdir(regs: &Regs) -> Result<i32, Errno> {
 		let mem_space_guard = mem_space.lock();
 
 		// The path to the directory to create
-		let mut path = Path::from_str(pathname.get(&mem_space_guard)?
-			.ok_or(errno!(EFAULT))?, true)?;
+		let mut path =
+			Path::from_str(pathname.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?, true)?;
 		path = super::util::get_absolute_path(proc, path)?;
 
 		(path, mode, uid, gid)
@@ -52,8 +52,14 @@ pub fn mkdir(regs: &Regs) -> Result<i32, Errno> {
 			let parent_guard = parent_mutex.lock();
 			let parent = parent_guard.get_mut();
 
-			files_cache.create_file(parent, name, uid, gid, mode,
-				FileContent::Directory(HashMap::new()))?;
+			files_cache.create_file(
+				parent,
+				name,
+				uid,
+				gid,
+				mode,
+				FileContent::Directory(HashMap::new()),
+			)?;
 		}
 	}
 

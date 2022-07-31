@@ -8,22 +8,22 @@
 
 pub mod version;
 
-use core::cmp::max;
-use core::cmp::min;
-use core::mem::transmute;
-use core::ptr;
-use crate::elf::ELF32Sym;
+use crate::elf;
 use crate::elf::parser::ELFParser;
 use crate::elf::relocation::Relocation;
-use crate::elf;
-use crate::errno::Errno;
+use crate::elf::ELF32Sym;
 use crate::errno;
-use crate::memory::malloc;
+use crate::errno::Errno;
 use crate::memory;
+use crate::memory::malloc;
 use crate::multiboot;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::lock::Mutex;
+use core::cmp::max;
+use core::cmp::min;
+use core::mem::transmute;
+use core::ptr;
 use version::Version;
 
 /// The magic number that must be present inside of a module.
@@ -46,7 +46,7 @@ macro_rules! module {
 		pub extern "C" fn mod_version() -> kernel::module::version::Version {
 			$version
 		}
-	}
+	};
 }
 
 /// Structure representing a kernel module.
@@ -57,9 +57,8 @@ pub struct Module {
 	version: Version,
 
 	// TODO Add dependencies handling
-
 	/// The module's memory.
-	mem: malloc::Alloc::<u8>,
+	mem: malloc::Alloc<u8>,
 	/// The size of the module's memory.
 	mem_size: usize,
 
@@ -71,7 +70,7 @@ impl Module {
 	/// Returns the size required to load the module image.
 	fn get_load_size(parser: &ELFParser) -> usize {
 		let mut size = 0;
-		parser.foreach_segments(| seg | {
+		parser.foreach_segments(|seg| {
 			size = max(seg.p_vaddr as usize + seg.p_memsz as usize, size);
 			true
 		});
@@ -85,9 +84,13 @@ impl Module {
 	fn resolve_symbol(name: &[u8]) -> Option<&ELF32Sym> {
 		let boot_info = multiboot::get_boot_info();
 		// The symbol on the kernel side
-		let kernel_sym = elf::get_kernel_symbol(memory::kern_to_virt(boot_info.elf_sections),
-			boot_info.elf_num as usize, boot_info.elf_shndx as usize,
-			boot_info.elf_entsize as usize, name)?;
+		let kernel_sym = elf::get_kernel_symbol(
+			memory::kern_to_virt(boot_info.elf_sections),
+			boot_info.elf_num as usize,
+			boot_info.elf_shndx as usize,
+			boot_info.elf_entsize as usize,
+			name,
+		)?;
 
 		// TODO Check other modules
 		Some(kernel_sym)
@@ -96,7 +99,7 @@ impl Module {
 	// TODO Print a warning when a symbol cannot be resolved
 	/// Loads a kernel module from the given image.
 	pub fn load(image: &[u8]) -> Result<Self, Errno> {
-		let parser = ELFParser::new(image).map_err(| e | {
+		let parser = ELFParser::new(image).map_err(|e| {
 			crate::println!("Failed to parse module file");
 			e
 		})?;
@@ -108,18 +111,19 @@ impl Module {
 		let mut mem = malloc::Alloc::<u8>::new_default(mem_size)?;
 
 		// The base virtual address at which the module is loaded
-		let load_base = unsafe {
-			mem.as_ptr() as u32
-		};
+		let load_base = unsafe { mem.as_ptr() as u32 };
 
 		// Copying the module's image
-		parser.foreach_segments(| seg | {
+		parser.foreach_segments(|seg| {
 			if seg.p_type != elf::PT_NULL {
 				let len = min(seg.p_memsz, seg.p_filesz) as usize;
-				unsafe { // Safe because the module ELF image is valid
-					ptr::copy_nonoverlapping(&image[seg.p_offset as usize],
+				unsafe {
+					// Safe because the module ELF image is valid
+					ptr::copy_nonoverlapping(
+						&image[seg.p_offset as usize],
 						&mut mem.as_slice_mut()[seg.p_vaddr as usize],
-						len);
+						len,
+					);
 				}
 			}
 
@@ -127,10 +131,10 @@ impl Module {
 		});
 
 		// Closure returning a symbol from its name
-		let get_sym = | name: &str | parser.get_symbol_by_name(name);
+		let get_sym = |name: &str| parser.get_symbol_by_name(name);
 
 		// Closure returning the value of the given symbol
-		let get_sym_val = | sym_section: u32, sym: u32 | {
+		let get_sym_val = |sym_section: u32, sym: u32| {
 			let section = parser.get_section_by_index(sym_section)?;
 			let sym = parser.get_symbol_by_index(section, sym)?;
 
@@ -146,13 +150,13 @@ impl Module {
 			}
 		};
 
-		parser.foreach_rel(| section, rel | {
+		parser.foreach_rel(|section, rel| {
 			unsafe {
 				rel.perform(load_base as _, section, get_sym, get_sym_val);
 			}
 			true
 		});
-		parser.foreach_rela(| section, rela | {
+		parser.foreach_rela(|section, rela| {
 			unsafe {
 				rela.perform(load_base as _, section, get_sym, get_sym_val);
 			}
@@ -160,10 +164,13 @@ impl Module {
 		});
 
 		// Getting the module's name
-		let mod_name = parser.get_symbol_by_name("mod_name").or_else(|| {
-			crate::println!("Missing `mod_name` symbol in module image");
-			None
-		}).ok_or_else(|| errno!(EINVAL))?;
+		let mod_name = parser
+			.get_symbol_by_name("mod_name")
+			.or_else(|| {
+				crate::println!("Missing `mod_name` symbol in module image");
+				None
+			})
+			.ok_or_else(|| errno!(EINVAL))?;
 		let name_str = unsafe {
 			let ptr = mem.as_ptr().add(mod_name.st_value as usize);
 			let func: extern "C" fn() -> &'static str = transmute(ptr);
@@ -172,10 +179,13 @@ impl Module {
 		let name = String::from(name_str.as_bytes())?;
 
 		// Getting the module's version
-		let mod_version = parser.get_symbol_by_name("mod_version").or_else(|| {
-			crate::println!("Missing `mod_version` symbol in module image");
-			None
-		}).ok_or_else(|| errno!(EINVAL))?;
+		let mod_version = parser
+			.get_symbol_by_name("mod_version")
+			.or_else(|| {
+				crate::println!("Missing `mod_version` symbol in module image");
+				None
+			})
+			.ok_or_else(|| errno!(EINVAL))?;
 		let version = unsafe {
 			let ptr = mem.as_ptr().add(mod_version.st_value as usize);
 			let func: extern "C" fn() -> Version = transmute(ptr);
@@ -185,10 +195,13 @@ impl Module {
 		crate::println!("Loading module `{}` version {}", name, version);
 
 		// Initializing module
-		let init = parser.get_symbol_by_name("init").or_else(|| {
-			crate::println!("Missing `init` symbol in module image");
-			None
-		}).ok_or_else(|| errno!(EINVAL))?;
+		let init = parser
+			.get_symbol_by_name("init")
+			.or_else(|| {
+				crate::println!("Missing `init` symbol in module image");
+				None
+			})
+			.ok_or_else(|| errno!(EINVAL))?;
 		let ok = unsafe {
 			let ptr = mem.as_ptr().add(init.st_value as usize);
 			let func: extern "C" fn() -> bool = transmute(ptr);

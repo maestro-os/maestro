@@ -1,13 +1,13 @@
 //! The read system call allows to read the content of an open file.
 
-use core::cmp::min;
-use crate::errno::Errno;
 use crate::errno;
+use crate::errno::Errno;
 use crate::file::open_file::O_NONBLOCK;
-use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallSlice;
 use crate::process::regs::Regs;
+use crate::process::Process;
 use crate::util::io::IO;
+use core::cmp::min;
 
 // TODO O_ASYNC
 

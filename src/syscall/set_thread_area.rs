@@ -1,14 +1,14 @@
 //! This module implements the `set_thread_area` system call, which allows to set a TLS area.
 
-use core::mem::size_of;
-use crate::errno::Errno;
 use crate::errno;
+use crate::errno::Errno;
 use crate::gdt;
-use crate::process::Process;
+use crate::process;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::regs::Regs;
 use crate::process::user_desc::UserDesc;
-use crate::process;
+use crate::process::Process;
+use core::mem::size_of;
 
 /// The index of the first entry for TLS segments in the GDT.
 const TLS_BEGIN_INDEX: usize = gdt::TLS_OFFSET / size_of::<gdt::Entry>();
@@ -26,8 +26,10 @@ pub fn get_free_entry(process: &mut Process) -> Result<usize, Errno> {
 
 /// Returns an entry ID for the given process and entry number.
 /// If the id is `-1`, the function shall find a free entry.
-pub fn get_entry<'a>(proc: &'a mut Process, entry_number: i32)
-	-> Result<(usize, &'a mut gdt::Entry), Errno> {
+pub fn get_entry<'a>(
+	proc: &'a mut Process,
+	entry_number: i32,
+) -> Result<(usize, &'a mut gdt::Entry), Errno> {
 	let end_entry = (TLS_BEGIN_INDEX + process::TLS_ENTRIES_COUNT) as i32;
 
 	// Checking the entry number is in bound

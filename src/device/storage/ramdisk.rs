@@ -2,22 +2,22 @@
 //! userspace, it works exactly the same.
 //! Ramdisks are lazily allocated so they do not use much memory as long as they are not used.
 
-use core::ffi::c_void;
-use core::mem::ManuallyDrop;
+use super::StorageInterface;
+use crate::device;
+use crate::device::id;
 use crate::device::Device;
 use crate::device::DeviceHandle;
 use crate::device::DeviceType;
-use crate::device::id;
-use crate::device;
-use crate::errno::Errno;
 use crate::errno;
+use crate::errno::Errno;
 use crate::file::path::Path;
 use crate::memory::malloc;
 use crate::process::mem_space::MemSpace;
 use crate::util::container::string::String;
 use crate::util::io::IO;
 use crate::util::ptr::IntSharedPtr;
-use super::StorageInterface;
+use core::ffi::c_void;
+use core::mem::ManuallyDrop;
 
 /// The ramdisks' major number.
 const RAM_DISK_MAJOR: u32 = 1;
@@ -37,9 +37,7 @@ struct RAMDisk {
 impl RAMDisk {
 	/// Creates a new ramdisk.
 	pub fn new() -> Self {
-		Self {
-			data: None,
-		}
+		Self { data: None }
 	}
 
 	/// Tells whether the disk is allocated.
@@ -131,8 +129,12 @@ impl RAMDiskHandle {
 }
 
 impl DeviceHandle for RAMDiskHandle {
-	fn ioctl(&mut self, _mem_space: IntSharedPtr<MemSpace>, _request: u32, _argp: *const c_void)
-		-> Result<u32, Errno> {
+	fn ioctl(
+		&mut self,
+		_mem_space: IntSharedPtr<MemSpace>,
+		_request: u32,
+		_argp: *const c_void,
+	) -> Result<u32, Errno> {
 		// TODO
 		Err(errno!(EINVAL))
 	}
@@ -169,8 +171,14 @@ pub fn create() -> Result<(), Errno> {
 		path.push(String::from(b"dev")?)?;
 		path.push(name)?;
 
-		let dev = Device::new(RAM_DISK_MAJOR, i as _, path, 0o666, DeviceType::Block,
-			RAMDiskHandle::new())?;
+		let dev = Device::new(
+			RAM_DISK_MAJOR,
+			i as _,
+			path,
+			0o666,
+			DeviceType::Block,
+			RAMDiskHandle::new(),
+		)?;
 		device::register_device(dev)?;
 	}
 

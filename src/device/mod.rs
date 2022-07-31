@@ -14,23 +14,23 @@ pub mod serial;
 pub mod storage;
 pub mod tty;
 
-use core::ffi::c_void;
-use core::fmt;
 use crate::device::manager::DeviceManager;
 use crate::errno::Errno;
-use crate::file::FileContent;
-use crate::file::Mode;
+use crate::file;
 use crate::file::fcache;
 use crate::file::path::Path;
-use crate::file;
+use crate::file::FileContent;
+use crate::file::Mode;
 use crate::process::mem_space::MemSpace;
-use crate::util::FailableClone;
 use crate::util::boxed::Box;
 use crate::util::container::vec::Vec;
 use crate::util::io::IO;
 use crate::util::lock::Mutex;
 use crate::util::ptr::IntSharedPtr;
 use crate::util::ptr::SharedPtr;
+use crate::util::FailableClone;
+use core::ffi::c_void;
+use core::fmt;
 use keyboard::KeyboardManager;
 use storage::StorageManager;
 
@@ -58,8 +58,12 @@ pub trait DeviceHandle: IO {
 	/// `mem_space` is the memory space on which pointers are to be dereferenced.
 	/// `request` is the ID of the request to perform.
 	/// `argp` is a pointer to the argument.
-	fn ioctl(&mut self, mem_space: IntSharedPtr<MemSpace>, request: u32, argp: *const c_void)
-		-> Result<u32, Errno>;
+	fn ioctl(
+		&mut self,
+		mem_space: IntSharedPtr<MemSpace>,
+		request: u32,
+		argp: *const c_void,
+	) -> Result<u32, Errno>;
 }
 
 /// Structure representing a device, either a block device or a char device. Each device has a
@@ -86,8 +90,14 @@ impl Device {
 	/// `major` and `minor` are the major and minor numbers of the device.
 	/// `type_` is the type of the device.
 	/// `handle` is the handle for I/O operations.
-	pub fn new<H: 'static + DeviceHandle>(major: u32, minor: u32, path: Path, mode: Mode,
-		type_: DeviceType, handle: H) -> Result<Self, Errno> {
+	pub fn new<H: 'static + DeviceHandle>(
+		major: u32,
+		minor: u32,
+		path: Path,
+		mode: Mode,
+		type_: DeviceType,
+		handle: H,
+	) -> Result<Self, Errno> {
 		Ok(Self {
 			major,
 			minor,
@@ -243,10 +253,8 @@ pub fn register_device(device: Device) -> Result<(), Errno> {
 	let container = guard.get_mut();
 
 	let device_number = device.get_device_number();
-	let index = container.binary_search_by(| d | {
-		let dn = unsafe {
-			d.get().get_mut_payload()
-		}.get_device_number();
+	let index = container.binary_search_by(|d| {
+		let dn = unsafe { d.get().get_mut_payload() }.get_device_number();
 
 		device_number.cmp(&dn)
 	});
@@ -270,10 +278,8 @@ pub fn get_device(type_: DeviceType, major: u32, minor: u32) -> Option<SharedPtr
 	let container = guard.get_mut();
 
 	let device_number = id::makedev(major, minor);
-	let index = container.binary_search_by(| d | {
-		let dn = unsafe {
-			d.get().get_mut_payload()
-		}.get_device_number();
+	let index = container.binary_search_by(|d| {
+		let dn = unsafe { d.get().get_mut_payload() }.get_device_number();
 
 		device_number.cmp(&dn)
 	});
@@ -339,12 +345,8 @@ pub fn init() -> Result<(), Errno> {
 	{
 		// Getting back the storage manager since it has been moved
 		let storage_manager = manager::get_by_name("storage").unwrap();
-		let storage_manager = unsafe {
-			storage_manager.get_mut().unwrap().get_mut_payload()
-		};
-		let storage_manager = unsafe {
-			&mut *(storage_manager as *mut _ as *mut StorageManager)
-		};
+		let storage_manager = unsafe { storage_manager.get_mut().unwrap().get_mut_payload() };
+		let storage_manager = unsafe { &mut *(storage_manager as *mut _ as *mut StorageManager) };
 
 		storage_manager.test();
 	}

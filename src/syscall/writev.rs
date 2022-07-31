@@ -1,22 +1,26 @@
 //! The writev system call allows to write sparse data on a file descriptor in on call.
 
-use core::cmp::min;
-use crate::errno::Errno;
 use crate::errno;
+use crate::errno::Errno;
 use crate::file::open_file::OpenFile;
 use crate::limits;
-use crate::process::Process;
 use crate::process::iovec::IOVec;
-use crate::process::mem_space::MemSpace;
 use crate::process::mem_space::ptr::SyscallSlice;
+use crate::process::mem_space::MemSpace;
 use crate::process::regs::Regs;
+use crate::process::Process;
 use crate::util::io::IO;
 use crate::util::ptr::IntSharedPtr;
+use core::cmp::min;
 
 // TODO Check the operation is atomic on the file
 /// TODO doc
-fn write(mem_space: IntSharedPtr<MemSpace>, iov: SyscallSlice<IOVec>,
-	iovcnt: usize, open_file: &mut OpenFile) -> Result<i32, Errno> {
+fn write(
+	mem_space: IntSharedPtr<MemSpace>,
+	iov: SyscallSlice<IOVec>,
+	iovcnt: usize,
+	open_file: &mut OpenFile,
+) -> Result<i32, Errno> {
 	let mem_space_guard = mem_space.lock();
 	let iov_slice = iov.get(&mem_space_guard, iovcnt)?.ok_or(errno!(EFAULT))?;
 
@@ -44,8 +48,13 @@ fn write(mem_space: IntSharedPtr<MemSpace>, iov: SyscallSlice<IOVec>,
 
 /// Peforms the writev operation.
 /// TODO doc params
-pub fn do_writev(fd: i32, iov: SyscallSlice<IOVec>, iovcnt: i32, offset: Option<isize>,
-	_flags: Option<i32>) -> Result<i32, Errno> {
+pub fn do_writev(
+	fd: i32,
+	iov: SyscallSlice<IOVec>,
+	iovcnt: i32,
+	offset: Option<isize>,
+	_flags: Option<i32>,
+) -> Result<i32, Errno> {
 	// TODO Handle flags
 
 	// Checking the size of the vector is in bounds

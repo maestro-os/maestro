@@ -3,9 +3,9 @@
 use crate::errno::Errno;
 use crate::file;
 use crate::limits;
-use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallSlice;
 use crate::process::regs::Regs;
+use crate::process::Process;
 
 /// The implementation of the `sethostname` syscall.
 pub fn sethostname(regs: &Regs) -> Result<i32, Errno> {

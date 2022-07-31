@@ -3,11 +3,11 @@
 //! The partition table is located on the first sector of the boot disk, alongside with the boot
 //! code.
 
+use super::Partition;
+use super::Table;
 use crate::device::storage::StorageInterface;
 use crate::errno::Errno;
 use crate::util::container::vec::Vec;
-use super::Partition;
-use super::Table;
 
 /// The signature of the MBR partition table.
 const MBR_SIGNATURE: u16 = 0x55aa;
@@ -87,9 +87,7 @@ impl Table for MBRTable {
 
 		// Valid because taking the pointer to the buffer on the stack which has the same size as
 		// the structure
-		let mbr_table = unsafe {
-			&*(first_sector.as_ptr() as *const MBRTable)
-		};
+		let mbr_table = unsafe { &*(first_sector.as_ptr() as *const MBRTable) };
 		if mbr_table.signature != MBR_SIGNATURE {
 			return Ok(None);
 		}
@@ -106,8 +104,10 @@ impl Table for MBRTable {
 
 		for mbr_partition in self.partitions.iter() {
 			if mbr_partition.is_active() {
-				let partition = Partition::new(mbr_partition.lba_start as _,
-					mbr_partition.sectors_count as _);
+				let partition = Partition::new(
+					mbr_partition.lba_start as _,
+					mbr_partition.sectors_count as _,
+				);
 				partitions.push(partition)?;
 			}
 		}

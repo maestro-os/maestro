@@ -1,9 +1,9 @@
 //! This module implements Copy-On-Write (COW) pointers.
 
-use core::borrow::Borrow;
-use core::fmt;
 use crate::errno::Errno;
 use crate::util::FailableClone;
+use core::borrow::Borrow;
+use core::fmt;
 
 /// Structure implementing a copy-on-write smart pointer.
 pub enum Cow<'a, T: 'a + FailableClone> {
@@ -40,7 +40,7 @@ impl<'a, T: 'a + FailableClone> Cow<'a, T> {
 	pub fn to_mut(&mut self) -> Result<&mut T, Errno> {
 		match self {
 			Self::Borrowed(r) => *self = Self::Owned(r.failable_clone()?),
-			_ => {},
+			_ => {}
 		}
 
 		match self {

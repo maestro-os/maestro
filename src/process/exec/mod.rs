@@ -2,16 +2,16 @@
 
 pub mod elf;
 
-use core::ffi::c_void;
 use crate::errno::Errno;
 use crate::file::File;
-use crate::process::Gid;
-use crate::process::Process;
-use crate::process::Uid;
 use crate::process::mem_space::MemSpace;
 use crate::process::regs::Regs;
 use crate::process::signal::SignalHandler;
+use crate::process::Gid;
+use crate::process::Process;
+use crate::process::Uid;
 use crate::util::ptr::IntSharedPtr;
+use core::ffi::c_void;
 
 /// Structure storing informations to prepare a program image to be executed.
 pub struct ExecInfo<'a> {
@@ -61,9 +61,7 @@ pub trait Executor<'a> {
 /// `envp` is the environment.
 /// The function returns a memory space containing the program image and the pointer to the entry
 /// point.
-pub fn build_image(file: &mut File, info: ExecInfo)
-	-> Result<ProgramImage, Errno> {
-
+pub fn build_image(file: &mut File, info: ExecInfo) -> Result<ProgramImage, Errno> {
 	// TODO Support other formats than ELF (wasm?)
 
 	let exec = elf::ELFExecutor::new(info)?;

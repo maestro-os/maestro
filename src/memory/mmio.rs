@@ -1,10 +1,10 @@
 //! This module implements utility allowing to control Memory Mapped I/O (MMIO).
 
+use crate::errno::Errno;
+use crate::memory;
+use crate::memory::vmem;
 use core::ffi::c_void;
 use core::slice;
-use crate::errno::Errno;
-use crate::memory::vmem;
-use crate::memory;
 
 /// Structure representing a MMIO region.
 pub struct MMIO {
@@ -24,8 +24,10 @@ impl MMIO {
 		let paging = paging_lock.get_mut().as_mut().unwrap();
 
 		// Mapping the memory
-		let flags = vmem::x86::FLAG_GLOBAL | vmem::x86::FLAG_CACHE_DISABLE
-			| vmem::x86::FLAG_WRITE_THROUGH | vmem::x86::FLAG_WRITE;
+		let flags = vmem::x86::FLAG_GLOBAL
+			| vmem::x86::FLAG_CACHE_DISABLE
+			| vmem::x86::FLAG_WRITE_THROUGH
+			| vmem::x86::FLAG_WRITE;
 		paging.map_range(self.phys_begin, self.virt_begin, self.pages, flags)?;
 
 		Ok(())
@@ -68,7 +70,8 @@ impl MMIO {
 	pub fn get_slice(&self) -> &[u8] {
 		let len = self.pages * memory::PAGE_SIZE;
 
-		unsafe { // Safe because the memory is mapped
+		unsafe {
+			// Safe because the memory is mapped
 			slice::from_raw_parts(self.virt_begin as _, len)
 		}
 	}
@@ -77,7 +80,8 @@ impl MMIO {
 	pub fn get_slice_mut(&mut self) -> &mut [u8] {
 		let len = self.pages * memory::PAGE_SIZE;
 
-		unsafe { // Safe because the memory is mapped
+		unsafe {
+			// Safe because the memory is mapped
 			slice::from_raw_parts_mut(self.virt_begin as _, len)
 		}
 	}

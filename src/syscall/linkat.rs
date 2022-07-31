@@ -1,13 +1,13 @@
 //! This `linkat` syscall creates a new hard link to a file.
 
+use super::access;
 use crate::errno::Errno;
-use crate::file::FileType;
 use crate::file::fcache;
-use crate::process::Process;
+use crate::file::FileType;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::regs::Regs;
+use crate::process::Process;
 use crate::types::c_int;
-use super::access;
 
 /// The implementation of the `linkat` system call.
 pub fn linkat(regs: &Regs) -> Result<i32, Errno> {
@@ -27,12 +27,16 @@ pub fn linkat(regs: &Regs) -> Result<i32, Errno> {
 		let mem_space = proc.get_mem_space().clone().unwrap();
 		let mem_space_guard = mem_space.lock();
 
-		let oldpath = oldpath.get(&mem_space_guard)?.ok_or_else(|| errno!(EFAULT))?;
+		let oldpath = oldpath
+			.get(&mem_space_guard)?
+			.ok_or_else(|| errno!(EFAULT))?;
 		let old = super::util::get_file_at(&proc_guard, follow_links, olddirfd, oldpath, flags)?;
 
-		let newpath = newpath.get(&mem_space_guard)?.ok_or_else(|| errno!(EFAULT))?;
-		let (new_parent, new_name) = super::util::get_parent_at_with_name(&proc_guard,
-			follow_links, newdirfd, newpath)?;
+		let newpath = newpath
+			.get(&mem_space_guard)?
+			.ok_or_else(|| errno!(EFAULT))?;
+		let (new_parent, new_name) =
+			super::util::get_parent_at_with_name(&proc_guard, follow_links, newdirfd, newpath)?;
 
 		(old, new_parent, new_name)
 	};

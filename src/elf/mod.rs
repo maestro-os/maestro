@@ -5,15 +5,15 @@
 pub mod parser;
 pub mod relocation;
 
+use crate::errno;
+use crate::errno::Errno;
+use crate::memory;
+use crate::process::mem_space;
+use crate::util;
+use crate::util::math;
 use core::cmp::max;
 use core::cmp::min;
 use core::ffi::c_void;
-use crate::errno::Errno;
-use crate::errno;
-use crate::memory;
-use crate::process::mem_space;
-use crate::util::math;
-use crate::util;
 
 /// The number of identification bytes in the ELF header.
 pub const EI_NIDENT: usize = 16;
@@ -303,8 +303,7 @@ impl ELF32SectionHeader {
 	fn is_valid(&self, file_size: usize) -> Result<(), Errno> {
 		// TODO Check sh_name
 
-		if self.sh_type & SHT_NOBITS == 0
-			&& (self.sh_offset + self.sh_size) as usize > file_size {
+		if self.sh_type & SHT_NOBITS == 0 && (self.sh_offset + self.sh_size) as usize > file_size {
 			return Err(errno!(EINVAL));
 		}
 
@@ -348,21 +347,20 @@ impl ELF32Sym {
 /// `shndx` is the index of the section containing section names.
 /// `entsize` is the size of section entries.
 /// `name` is the name of the required section.
-pub fn get_section(sections: *const c_void, sections_count: usize, shndx: usize, entsize: usize,
-	name: &[u8]) -> Option<&ELF32SectionHeader> {
+pub fn get_section(
+	sections: *const c_void,
+	sections_count: usize,
+	shndx: usize,
+	entsize: usize,
+	name: &[u8],
+) -> Option<&ELF32SectionHeader> {
 	debug_assert!(!sections.is_null());
-	let names_section = unsafe {
-		&*(sections.add(shndx * entsize) as *const ELF32SectionHeader)
-	};
+	let names_section = unsafe { &*(sections.add(shndx * entsize) as *const ELF32SectionHeader) };
 
 	for i in 0..sections_count {
-		let hdr = unsafe {
-			&*(sections.add(i * entsize) as *const ELF32SectionHeader)
-		};
+		let hdr = unsafe { &*(sections.add(i * entsize) as *const ELF32SectionHeader) };
 		let ptr = memory::kern_to_virt((names_section.sh_addr + hdr.sh_name) as _) as _;
-		let n = unsafe {
-			util::str_from_ptr(ptr)
-		};
+		let n = unsafe { util::str_from_ptr(ptr) };
 
 		if n == name {
 			return Some(hdr);
@@ -379,21 +377,22 @@ pub fn get_section(sections: *const c_void, sections_count: usize, shndx: usize,
 /// `shndx` is the index of the section containing section names.
 /// `entsize` is the size of section entries.
 /// `f` is the closure to be called for each sections.
-pub fn foreach_sections<F>(sections: *const c_void, sections_count: usize, shndx: usize,
-	entsize: usize, mut f: F) where F: FnMut(&ELF32SectionHeader, &[u8]) -> bool {
-	let names_section = unsafe {
-		&*(sections.add(shndx * entsize) as *const ELF32SectionHeader)
-	};
+pub fn foreach_sections<F>(
+	sections: *const c_void,
+	sections_count: usize,
+	shndx: usize,
+	entsize: usize,
+	mut f: F,
+) where
+	F: FnMut(&ELF32SectionHeader, &[u8]) -> bool,
+{
+	let names_section = unsafe { &*(sections.add(shndx * entsize) as *const ELF32SectionHeader) };
 
 	for i in 0..sections_count {
 		let hdr_offset = i * entsize;
-		let hdr = unsafe {
-			&*(sections.add(hdr_offset) as *const ELF32SectionHeader)
-		};
+		let hdr = unsafe { &*(sections.add(hdr_offset) as *const ELF32SectionHeader) };
 		let ptr = memory::kern_to_virt((names_section.sh_addr + hdr.sh_name) as _) as _;
-		let n = unsafe {
-			util::str_from_ptr(ptr)
-		};
+		let n = unsafe { util::str_from_ptr(ptr) };
 
 		if !f(hdr, n) {
 			break;
@@ -405,19 +404,18 @@ pub fn foreach_sections<F>(sections: *const c_void, sections_count: usize, shndx
 /// `sections` is a pointer to the ELF sections of the kernel in the virtual memory.
 /// `sections_count` is the number of sections in the kernel.
 /// `entsize` is the size of section entries.
-pub fn get_sections_end(sections: *const c_void, sections_count: usize,
-	entsize: usize) -> *const c_void {
+pub fn get_sections_end(
+	sections: *const c_void,
+	sections_count: usize,
+	entsize: usize,
+) -> *const c_void {
 	let mut end = 0;
 
 	for i in 0..sections_count {
 		let hdr_offset = i * entsize;
-		let hdr = unsafe {
-			&*(sections.add(hdr_offset) as *const ELF32SectionHeader)
-		};
+		let hdr = unsafe { &*(sections.add(hdr_offset) as *const ELF32SectionHeader) };
 
-		let addr = unsafe {
-			memory::kern_to_phys(hdr.sh_addr as _).add(hdr.sh_size as _)
-		};
+		let addr = unsafe { memory::kern_to_phys(hdr.sh_addr as _).add(hdr.sh_size as _) };
 		end = max(end, addr as usize);
 	}
 
@@ -431,9 +429,7 @@ pub fn get_sections_end(sections: *const c_void, sections_count: usize,
 pub fn get_symbol_name(strtab_section: &ELF32SectionHeader, offset: u32) -> &'static [u8] {
 	debug_assert!(offset < strtab_section.sh_size);
 
-	unsafe {
-		util::str_from_ptr(memory::kern_to_virt((strtab_section.sh_addr + offset) as _) as _)
-	}
+	unsafe { util::str_from_ptr(memory::kern_to_virt((strtab_section.sh_addr + offset) as _) as _) }
 }
 
 /// Returns the name of the kernel function for the given instruction pointer. If the name cannot
@@ -443,14 +439,28 @@ pub fn get_symbol_name(strtab_section: &ELF32SectionHeader, offset: u32) -> &'st
 /// `shndx` is the index of the section containing section names.
 /// `entsize` is the size of section entries.
 /// `inst` is the pointer to the instruction on the virtual memory.
-pub fn get_function_name(sections: *const c_void, sections_count: usize, shndx: usize,
-	entsize: usize, inst: *const c_void) -> Option<&'static [u8]> {
-	let strtab_section = get_section(sections, sections_count, shndx, entsize,
-		".strtab".as_bytes())?;
+pub fn get_function_name(
+	sections: *const c_void,
+	sections_count: usize,
+	shndx: usize,
+	entsize: usize,
+	inst: *const c_void,
+) -> Option<&'static [u8]> {
+	let strtab_section = get_section(
+		sections,
+		sections_count,
+		shndx,
+		entsize,
+		".strtab".as_bytes(),
+	)?;
 	let mut func_name: Option<&'static [u8]> = None;
 
-	foreach_sections(sections, sections_count, shndx, entsize,
-		| hdr: &ELF32SectionHeader, _name: &[u8] | {
+	foreach_sections(
+		sections,
+		sections_count,
+		shndx,
+		entsize,
+		|hdr: &ELF32SectionHeader, _name: &[u8]| {
 			if hdr.sh_type != SHT_SYMTAB {
 				return true;
 			}
@@ -460,9 +470,7 @@ pub fn get_function_name(sections: *const c_void, sections_count: usize, shndx: 
 
 			let mut i: usize = 0;
 			while i < hdr.sh_size as usize {
-				let sym = unsafe {
-					&*(ptr.add(i) as *const ELF32Sym)
-				};
+				let sym = unsafe { &*(ptr.add(i) as *const ELF32Sym) };
 
 				let value = sym.st_value as usize;
 				let size = sym.st_size as usize;
@@ -478,7 +486,8 @@ pub fn get_function_name(sections: *const c_void, sections_count: usize, shndx: 
 			}
 
 			true
-		});
+		},
+	);
 
 	func_name
 }
@@ -490,13 +499,22 @@ pub fn get_function_name(sections: *const c_void, sections_count: usize, shndx: 
 /// `shndx` is the index of the section containing section names.
 /// `entsize` is the size of section entries.
 /// `name` is the name of the symbol to get.
-pub fn get_kernel_symbol(sections: *const c_void, sections_count: usize, shndx: usize,
-	entsize: usize, name: &[u8]) -> Option<&'static ELF32Sym> {
+pub fn get_kernel_symbol(
+	sections: *const c_void,
+	sections_count: usize,
+	shndx: usize,
+	entsize: usize,
+	name: &[u8],
+) -> Option<&'static ELF32Sym> {
 	let strtab_section = get_section(sections, sections_count, shndx, entsize, b".strtab")?;
 	let mut symbol: Option<&'static ELF32Sym> = None;
 
-	foreach_sections(sections, sections_count, shndx, entsize,
-		| hdr: &ELF32SectionHeader, _name: &[u8] | {
+	foreach_sections(
+		sections,
+		sections_count,
+		shndx,
+		entsize,
+		|hdr: &ELF32SectionHeader, _name: &[u8]| {
 			if hdr.sh_type != SHT_SYMTAB {
 				return true;
 			}
@@ -506,9 +524,7 @@ pub fn get_kernel_symbol(sections: *const c_void, sections_count: usize, shndx: 
 
 			let mut i: usize = 0;
 			while i < hdr.sh_size as usize {
-				let sym = unsafe {
-					&*(ptr.add(i) as *const ELF32Sym)
-				};
+				let sym = unsafe { &*(ptr.add(i) as *const ELF32Sym) };
 
 				if sym.st_name != 0 {
 					let sym_name = get_symbol_name(strtab_section, sym.st_name);
@@ -522,7 +538,8 @@ pub fn get_kernel_symbol(sections: *const c_void, sections_count: usize, shndx: 
 			}
 
 			true
-		});
+		},
+	);
 
 	symbol
 }

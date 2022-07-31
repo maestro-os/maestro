@@ -10,38 +10,38 @@ mod mapping;
 mod physical_ref_counter;
 pub mod ptr;
 
-use core::cmp::Ordering;
-use core::cmp::min;
-use core::ffi::c_void;
-use core::fmt;
-use core::mem::size_of;
-use core::ptr::NonNull;
-use core::ptr::null;
-use crate::errno::Errno;
 use crate::errno;
+use crate::errno::Errno;
 use crate::file::open_file::OpenFile;
-use crate::memory::stack;
-use crate::memory::vmem::VMem;
-use crate::memory::vmem;
 use crate::memory;
+use crate::memory::stack;
+use crate::memory::vmem;
+use crate::memory::vmem::VMem;
 use crate::process::oom;
-use crate::util::FailableClone;
+use crate::util;
 use crate::util::boxed::Box;
 use crate::util::container::map::Map;
 use crate::util::lock::Mutex;
 use crate::util::math;
 use crate::util::ptr::SharedPtr;
-use crate::util;
+use crate::util::FailableClone;
+use core::cmp::min;
+use core::cmp::Ordering;
+use core::ffi::c_void;
+use core::fmt;
+use core::mem::size_of;
+use core::ptr::null;
+use core::ptr::NonNull;
 use gap::MemGap;
 use mapping::MemMapping;
 use physical_ref_counter::PhysRefCounter;
 
 /// Flag telling that a memory mapping can be written to.
-pub const MAPPING_FLAG_WRITE: u8  = 0b00001;
+pub const MAPPING_FLAG_WRITE: u8 = 0b00001;
 /// Flag telling that a memory mapping can contain executable instructions.
-pub const MAPPING_FLAG_EXEC: u8   = 0b00010;
+pub const MAPPING_FLAG_EXEC: u8 = 0b00010;
 /// Flag telling that a memory mapping is accessible from userspace.
-pub const MAPPING_FLAG_USER: u8   = 0b00100;
+pub const MAPPING_FLAG_USER: u8 = 0b00100;
 /// Flag telling that a memory mapping must allocate its physical memory right away and not when
 /// the process tries to write to it.
 pub const MAPPING_FLAG_NOLAZY: u8 = 0b01000;
@@ -116,8 +116,11 @@ impl MemSpace {
 	/// `gaps_size` is the binary tree storing pointers to gaps, sorted by gap sizes.
 	/// `size` is the minimum size of the gap.
 	/// If no gap large enough is available, the function returns None.
-	fn gap_get<'a>(gaps: &'a Map<*const c_void, MemGap>,
-		gaps_size: &Map<(usize, *const c_void), ()>, size: usize) -> Option<&'a MemGap> {
+	fn gap_get<'a>(
+		gaps: &'a Map<*const c_void, MemGap>,
+		gaps_size: &Map<(usize, *const c_void), ()>,
+		size: usize,
+	) -> Option<&'a MemGap> {
 		let (_, ptr) = gaps_size.get_min((size, 0 as _))?.0;
 		let gap = gaps.get(*ptr).unwrap();
 		debug_assert!(gap.get_size() >= size);
@@ -129,9 +132,11 @@ impl MemSpace {
 	/// `gaps` is the binary tree storing gaps, sorted by pointer to their respective beginnings.
 	/// `ptr` is the pointer.
 	/// If no gap contain the pointer, the function returns None.
-	fn gap_by_ptr<'a>(gaps: &'a Map<*const c_void, MemGap>, ptr: *const c_void)
-		-> Option<&'a MemGap> {
-		gaps.cmp_get(| key, value | {
+	fn gap_by_ptr<'a>(
+		gaps: &'a Map<*const c_void, MemGap>,
+		ptr: *const c_void,
+	) -> Option<&'a MemGap> {
+		gaps.cmp_get(|key, value| {
 			let begin = *key;
 			let end = (begin as usize + value.get_size() * memory::PAGE_SIZE) as *const c_void;
 
@@ -164,7 +169,7 @@ impl MemSpace {
 
 	/// Creates a new virtual memory object.
 	/// `brk_ptr` is the initial pointer for the `brk` syscall.
-	pub fn new() -> Result::<Self, Errno> {
+	pub fn new() -> Result<Self, Errno> {
 		let mut s = Self {
 			gaps: Map::new(),
 			gaps_size: Map::new(),
@@ -197,17 +202,23 @@ impl MemSpace {
 	/// The function returns a pointer to the newly mapped virtual memory.
 	/// The function has complexity `O(log n)`.
 	/// If the given pointer is not page-aligned, the function returns an error.
-	pub fn map(&mut self, map_constraint: MapConstraint, size: usize, flags: u8,
-		file: Option<SharedPtr<OpenFile>>, file_off: u64) -> Result<*mut c_void, Errno> {
+	pub fn map(
+		&mut self,
+		map_constraint: MapConstraint,
+		size: usize,
+		flags: u8,
+		file: Option<SharedPtr<OpenFile>>,
+		file_off: u64,
+	) -> Result<*mut c_void, Errno> {
 		// Checking arguments are valid
 		match map_constraint {
 			MapConstraint::Fixed(ptr) | MapConstraint::Hint(ptr) => {
 				if !util::is_aligned(ptr, memory::PAGE_SIZE) {
 					return Err(errno!(EINVAL));
 				}
-			},
+			}
 
-			_ => {},
+			_ => {}
 		}
 		if size == 0 {
 			return Err(errno!(EINVAL));
@@ -224,7 +235,7 @@ impl MemSpace {
 				self.unmap(ptr, size, false)?;
 
 				MappingInfo::Addr(ptr as _)
-			},
+			}
 
 			MapConstraint::Hint(ptr) => {
 				// Getting the gap for the pointer
@@ -237,7 +248,7 @@ impl MemSpace {
 				}
 
 				MappingInfo::GapPosition(gap, off)
-			},
+			}
 
 			MapConstraint::None => {
 				// Getting a gap large enough
@@ -252,14 +263,20 @@ impl MemSpace {
 		let addr = match mapping_infos {
 			MappingInfo::GapPosition(gap, off) => {
 				(gap.get_begin() as usize + off * memory::PAGE_SIZE) as *mut c_void
-			},
+			}
 
 			MappingInfo::Addr(addr) => addr,
 		};
 
 		// Creating the mapping
-		let mapping = MemMapping::new(addr, size, flags, file, file_off,
-			NonNull::new(self.vmem.as_mut_ptr()).unwrap());
+		let mapping = MemMapping::new(
+			addr,
+			size,
+			flags,
+			file,
+			file_off,
+			NonNull::new(self.vmem.as_mut_ptr()).unwrap(),
+		);
 		let m = self.mappings.insert(addr, mapping)?;
 
 		// Mapping the default page
@@ -284,20 +301,20 @@ impl MemSpace {
 				if let Some(new_gap) = right_gap {
 					oom::wrap(|| self.gap_insert(new_gap.clone()));
 				}
-			},
+			}
 
-			_ => {},
+			_ => {}
 		}
 
 		Ok(addr)
 	}
 
 	/// Same as `map`, except the function returns a pointer to the end of the memory mapping.
-	pub fn map_stack(&mut self, size: usize, flags: u8)
-		-> Result<*mut c_void, Errno> {
+	pub fn map_stack(&mut self, size: usize, flags: u8) -> Result<*mut c_void, Errno> {
 		let mapping_ptr = self.map(MapConstraint::None, size, flags, None, 0)?;
 
-		Ok(unsafe { // Safe because the new pointer stays in the range of the allocated mapping
+		Ok(unsafe {
+			// Safe because the new pointer stays in the range of the allocated mapping
 			mapping_ptr.add(size * memory::PAGE_SIZE)
 		})
 	}
@@ -305,9 +322,7 @@ impl MemSpace {
 	/// Same as `unmap`, except the function takes a pointer to the end of the memory mapping.
 	pub fn unmap_stack(&mut self, ptr: *const c_void, size: usize) -> Result<(), Errno> {
 		// Safe because the new pointer stays in the range of the allocated mapping
-		let ptr = unsafe {
-			ptr.sub(size * memory::PAGE_SIZE)
-		};
+		let ptr = unsafe { ptr.sub(size * memory::PAGE_SIZE) };
 
 		self.unmap(ptr, size, false)
 	}
@@ -315,9 +330,11 @@ impl MemSpace {
 	/// Returns a reference to the memory mapping containing the given virtual address `ptr` from
 	/// mappings container `mappings`. If no mapping contains the address, the function returns
 	/// None.
-	fn get_mapping_for_(mappings: &Map<*const c_void, MemMapping>, ptr: *const c_void)
-		-> Option<&MemMapping> {
-		mappings.cmp_get(| key, value | {
+	fn get_mapping_for_(
+		mappings: &Map<*const c_void, MemMapping>,
+		ptr: *const c_void,
+	) -> Option<&MemMapping> {
+		mappings.cmp_get(|key, value| {
 			let begin = *key;
 			let end = (begin as usize + value.get_size() * memory::PAGE_SIZE) as *const c_void;
 
@@ -334,9 +351,11 @@ impl MemSpace {
 	/// Returns a mutable reference to the memory mapping containing the given virtual address
 	/// `ptr` from mappings container `mappings`. If no mapping contains the address, the function
 	/// returns None.
-	fn get_mapping_mut_for_(mappings: &mut Map<*const c_void, MemMapping>, ptr: *const c_void)
-		-> Option<&mut MemMapping> {
-		mappings.cmp_get_mut(| key, value | {
+	fn get_mapping_mut_for_(
+		mappings: &mut Map<*const c_void, MemMapping>,
+		ptr: *const c_void,
+	) -> Option<&mut MemMapping> {
+		mappings.cmp_get_mut(|key, value| {
 			let begin = *key;
 			let end = (begin as usize + value.get_size() * memory::PAGE_SIZE) as *const c_void;
 
@@ -385,8 +404,7 @@ impl MemSpace {
 				let mapping_ptr = mapping.get_begin();
 
 				// The offset in the mapping of the beginning of pages to unmap
-				let begin = (page_ptr as usize - mapping_ptr as usize)
-					/ memory::PAGE_SIZE;
+				let begin = (page_ptr as usize - mapping_ptr as usize) / memory::PAGE_SIZE;
 				// The number of pages to unmap in the mapping
 				let pages = min(size - i, mapping.get_size() - begin);
 
@@ -415,9 +433,8 @@ impl MemSpace {
 					if let Some(mut gap) = gap {
 						// Merging previous gap
 						if !gap.get_begin().is_null() {
-							let prev_gap = Self::gap_by_ptr(&self.gaps, unsafe {
-								gap.get_begin().sub(1)
-							});
+							let prev_gap =
+								Self::gap_by_ptr(&self.gaps, unsafe { gap.get_begin().sub(1) });
 
 							if let Some(p) = prev_gap {
 								let begin = p.get_begin();
@@ -608,11 +625,9 @@ impl MemSpace {
 			let virt_addr = (virt_addr as usize + off) as *const c_void;
 
 			if let Some(mapping) = Self::get_mapping_mut_for_(&mut self.mappings, virt_addr) {
-				let page_offset = (virt_addr as usize - mapping.get_begin() as usize)
-					/ memory::PAGE_SIZE;
-				oom::wrap(|| {
-					mapping.map(page_offset)
-				});
+				let page_offset =
+					(virt_addr as usize - mapping.get_begin() as usize) / memory::PAGE_SIZE;
+				oom::wrap(|| mapping.map(page_offset));
 
 				mapping.update_vmem(page_offset);
 			} else {
@@ -689,11 +704,9 @@ impl MemSpace {
 		}
 
 		if let Some(mapping) = Self::get_mapping_mut_for_(&mut self.mappings, virt_addr) {
-			let page_offset = (virt_addr as usize - mapping.get_begin() as usize)
-				/ memory::PAGE_SIZE;
-			oom::wrap(|| {
-				mapping.map(page_offset)
-			});
+			let page_offset =
+				(virt_addr as usize - mapping.get_begin() as usize) / memory::PAGE_SIZE;
+			oom::wrap(|| mapping.map(page_offset));
 
 			mapping.update_vmem(page_offset);
 			true

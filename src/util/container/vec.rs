@@ -1,8 +1,11 @@
 //! This module implements the Vec container.
 
-use core::cmp::Ordering;
+use crate::errno::Errno;
+use crate::memory::malloc;
+use crate::util::FailableClone;
 use core::cmp::max;
 use core::cmp::min;
+use core::cmp::Ordering;
 use core::fmt;
 use core::hash::Hash;
 use core::hash::Hasher;
@@ -13,13 +16,10 @@ use core::ops::IndexMut;
 use core::ops::Range;
 use core::ops::RangeFrom;
 use core::ops::RangeTo;
-use core::ptr::NonNull;
-use core::ptr::drop_in_place;
 use core::ptr;
+use core::ptr::drop_in_place;
+use core::ptr::NonNull;
 use core::slice;
-use crate::errno::Errno;
-use crate::memory::malloc;
-use crate::util::FailableClone;
 
 // TODO Optimize iterators
 
@@ -72,10 +72,7 @@ pub struct Vec<T> {
 impl<T> Vec<T> {
 	/// Creates a new empty vector.
 	pub const fn new() -> Self {
-		Self {
-			len: 0,
-			data: None,
-		}
+		Self { len: 0, data: None }
 	}
 
 	/// Reallocates the vector's data with the vector's capacity.
@@ -95,9 +92,7 @@ impl<T> Vec<T> {
 			}
 		} else {
 			// Safe because the memory is rewritten when the object is placed into the vector
-			let data_ptr = unsafe {
-				malloc::Alloc::new_zero(capacity)?
-			};
+			let data_ptr = unsafe { malloc::Alloc::new_zero(capacity)? };
 
 			self.data = Some(data_ptr);
 		};
@@ -140,38 +135,33 @@ impl<T> Vec<T> {
 	/// reallocate the memory.
 	#[inline(always)]
 	pub fn capacity(&self) -> usize {
-		self.data.as_ref().map(| d | d.len()).unwrap_or(0)
+		self.data.as_ref().map(|d| d.len()).unwrap_or(0)
 	}
 
 	/// Returns a slice containing the data.
 	pub fn as_slice(&self) -> &[T] {
 		if let Some(p) = &self.data {
-			unsafe {
-				slice::from_raw_parts(p.as_ptr(), self.len)
-			}
+			unsafe { slice::from_raw_parts(p.as_ptr(), self.len) }
 		} else {
-			unsafe {
-				slice::from_raw_parts(NonNull::dangling().as_ptr(), 0)
-			}
+			unsafe { slice::from_raw_parts(NonNull::dangling().as_ptr(), 0) }
 		}
 	}
 
 	/// Returns a mutable slice containing the data.
 	pub fn as_mut_slice(&mut self) -> &mut [T] {
 		if let Some(p) = &mut self.data {
-			unsafe {
-				slice::from_raw_parts_mut(p.as_ptr_mut(), self.len)
-			}
+			unsafe { slice::from_raw_parts_mut(p.as_ptr_mut(), self.len) }
 		} else {
-			unsafe {
-				slice::from_raw_parts_mut(NonNull::dangling().as_ptr(), 0)
-			}
+			unsafe { slice::from_raw_parts_mut(NonNull::dangling().as_ptr(), 0) }
 		}
 	}
 
 	/// Triggers a panic after an invalid access to the vector.
 	fn vector_panic(&self, index: usize) -> ! {
-		panic!("index out of bounds: the len is {} but the index is {}", self.len, index);
+		panic!(
+			"index out of bounds: the len is {} but the index is {}",
+			self.len, index
+		);
 	}
 
 	/// Returns the first element of the vector.
@@ -180,9 +170,7 @@ impl<T> Vec<T> {
 			self.vector_panic(0);
 		}
 
-		unsafe {
-			ptr::read(&self.data.as_ref().unwrap()[0] as _)
-		}
+		unsafe { ptr::read(&self.data.as_ref().unwrap()[0] as _) }
 	}
 
 	/// Returns the first element of the vector.
@@ -191,9 +179,7 @@ impl<T> Vec<T> {
 			self.vector_panic(0);
 		}
 
-		unsafe {
-			ptr::read(&self.data.as_ref().unwrap()[self.len - 1] as _)
-		}
+		unsafe { ptr::read(&self.data.as_ref().unwrap()[self.len - 1] as _) }
 	}
 
 	/// Inserts an element at position index within the vector, shifting all elements after it to
@@ -208,7 +194,11 @@ impl<T> Vec<T> {
 
 		unsafe {
 			let ptr = self.data.as_mut().unwrap().as_ptr_mut();
-			ptr::copy(ptr.offset(index as _), ptr.offset((index + 1) as _), self.len - index);
+			ptr::copy(
+				ptr.offset(index as _),
+				ptr.offset((index + 1) as _),
+				self.len - index,
+			);
 			ptr::write_volatile(&mut self.data.as_mut().unwrap()[index] as _, element);
 		}
 		self.len += 1;
@@ -223,12 +213,14 @@ impl<T> Vec<T> {
 		}
 
 		let data = self.data.as_mut().unwrap();
-		let v = unsafe {
-			ptr::read(&data[index])
-		};
+		let v = unsafe { ptr::read(&data[index]) };
 		unsafe {
 			let ptr = data.as_ptr_mut();
-			ptr::copy(ptr.offset((index + 1) as _), ptr.offset(index as _), self.len - index - 1);
+			ptr::copy(
+				ptr.offset((index + 1) as _),
+				ptr.offset(index as _),
+				self.len - index - 1,
+			);
 		}
 
 		self.len -= 1;
@@ -237,7 +229,7 @@ impl<T> Vec<T> {
 	}
 
 	/// Moves all the elements of `other` into `Self`, leaving `other` empty.
-	pub fn append(&mut self, other: &mut Vec::<T>) -> Result<(), Errno> {
+	pub fn append(&mut self, other: &mut Vec<T>) -> Result<(), Errno> {
 		if other.is_empty() {
 			return Ok(());
 		}
@@ -274,9 +266,7 @@ impl<T> Vec<T> {
 	pub fn pop(&mut self) -> Option<T> {
 		if !self.is_empty() {
 			self.len -= 1;
-			unsafe {
-				Some(ptr::read(&self.data.as_ref().unwrap()[self.len] as _))
-			}
+			unsafe { Some(ptr::read(&self.data.as_ref().unwrap()[self.len] as _)) }
 		} else {
 			None
 		}
@@ -344,7 +334,7 @@ impl<T> DerefMut for Vec<T> {
 }
 
 impl<T: PartialEq> PartialEq for Vec<T> {
-	fn eq(&self, other: &Vec::<T>) -> bool {
+	fn eq(&self, other: &Vec<T>) -> bool {
 		if self.len() != other.len() {
 			return false;
 		}
@@ -375,7 +365,10 @@ impl<T: Clone> Vec<T> {
 	}
 }
 
-impl<T> FailableClone for Vec<T> where T: FailableClone {
+impl<T> FailableClone for Vec<T>
+where
+	T: FailableClone,
+{
 	fn failable_clone(&self) -> Result<Self, Errno> {
 		let mut v = Self::with_capacity(self.len)?;
 
@@ -386,7 +379,10 @@ impl<T> FailableClone for Vec<T> where T: FailableClone {
 	}
 }
 
-impl<T> Vec<T> where T: FailableClone {
+impl<T> Vec<T>
+where
+	T: FailableClone,
+{
 	/// Clones the vector, keeping the given range.
 	pub fn clone_range(&self, range: Range<usize>) -> Result<Self, Errno> {
 		let end = min(range.end, self.len);
@@ -450,13 +446,15 @@ impl<T> IndexMut<usize> for Vec<T> {
 
 impl<T: Ord> Vec<T> {
 	pub fn binary_search(&self, x: &T) -> Result<usize, usize> {
-		self.binary_search_by(move | y | y.cmp(x))
+		self.binary_search_by(move |y| y.cmp(x))
 	}
 }
 
 impl<T> Vec<T> {
 	pub fn binary_search_by<'a, F>(&'a self, mut f: F) -> Result<usize, usize>
-		where F: FnMut(&'a T) -> Ordering {
+	where
+		F: FnMut(&'a T) -> Ordering,
+	{
 		let mut l = 0;
 		let mut r = self.len();
 
@@ -470,13 +468,13 @@ impl<T> Vec<T> {
 			match ord {
 				Ordering::Less => {
 					l = i + 1;
-				},
+				}
 				Ordering::Greater => {
 					r = i;
-				},
+				}
 				_ => {
 					break;
-				},
+				}
 			}
 		}
 
@@ -508,9 +506,7 @@ impl<T> IntoIterator for Vec<T> {
 	type IntoIter = IntoIter<T>;
 
 	fn into_iter(self) -> Self::IntoIter {
-		IntoIter {
-			vec: self,
-		}
+		IntoIter { vec: self }
 	}
 }
 
@@ -528,7 +524,7 @@ pub struct VecIterator<'a, T> {
 
 impl<'a, T> VecIterator<'a, T> {
 	/// Creates a vector iterator for the given reference.
-	fn new(vec: &'a Vec::<T>) -> Self {
+	fn new(vec: &'a Vec<T>) -> Self {
 		VecIterator {
 			vec,
 

@@ -1,19 +1,19 @@
 //! `select` waits for a file descriptor in the given sets to be readable, writable or for an
 //! exception to occur.
 
-use core::cmp::min;
-use core::mem::size_of;
 use crate::errno::Errno;
-use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::mem_space::ptr::SyscallSlice;
+use crate::process::Process;
 use crate::syscall::Regs;
+use crate::time;
 use crate::time::unit::TimeUnit;
 use crate::time::unit::Timeval;
-use crate::time;
 use crate::types::*;
-use crate::util::io::IO;
 use crate::util::io;
+use crate::util::io::IO;
+use core::cmp::min;
+use core::mem::size_of;
 
 /// The number of file descriptors in FDSet.
 pub const FD_SETSIZE: usize = 1024;
@@ -34,21 +34,22 @@ impl FDSet {
 
 		// TODO Check correctness
 		self.fds_bits[(fd as usize) / (8 * size_of::<c_long>())]
-			>> (fd % ((8 * size_of::<c_long>()) as u32)) != 0
+			>> (fd % ((8 * size_of::<c_long>()) as u32))
+			!= 0
 	}
 
 	/// Sets the bit for file descriptor `fd`.
 	pub fn set(&mut self, fd: u32) {
 		// TODO Check correctness
-		self.fds_bits[(fd as usize) / (8 * size_of::<c_long>())]
-			|= 1 << (fd % ((8 * size_of::<c_long>()) as u32));
+		self.fds_bits[(fd as usize) / (8 * size_of::<c_long>())] |=
+			1 << (fd % ((8 * size_of::<c_long>()) as u32));
 	}
 
 	/// Clears the bit for file descriptor `fd`.
 	pub fn clear(&mut self, fd: u32) {
 		// TODO Check correctness
-		self.fds_bits[(fd as usize) / (8 * size_of::<c_long>())]
-			&= !(1 << (fd % ((8 * size_of::<c_long>()) as u32)));
+		self.fds_bits[(fd as usize) / (8 * size_of::<c_long>())] &=
+			!(1 << (fd % ((8 * size_of::<c_long>()) as u32)));
 	}
 }
 
@@ -65,7 +66,7 @@ pub fn do_select<T: TimeUnit>(
 	writefds: SyscallPtr<FDSet>,
 	exceptfds: SyscallPtr<FDSet>,
 	timeout: SyscallPtr<T>,
-	_sigmask: Option<SyscallSlice<u8>>
+	_sigmask: Option<SyscallSlice<u8>>,
 ) -> Result<i32, Errno> {
 	// Getting start timestamp
 	let start = time::get_struct::<T>(b"TODO", true).unwrap(); // TODO Select a clock
@@ -78,7 +79,10 @@ pub fn do_select<T: TimeUnit>(
 
 		let mem_space = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space.lock();
-		timeout.get(&mem_space_guard)?.map(| t | t.clone()).unwrap_or_default()
+		timeout
+			.get(&mem_space_guard)?
+			.map(|t| t.clone())
+			.unwrap_or_default()
 	};
 
 	// Tells whether the syscall immediately returns
@@ -105,14 +109,17 @@ pub fn do_select<T: TimeUnit>(
 			let (read, write, except) = {
 				let mem_space_guard = mem_space.lock();
 
-				let read = readfds.get(&mem_space_guard)?
-					.map(| fds | fds.is_set(fd_id))
+				let read = readfds
+					.get(&mem_space_guard)?
+					.map(|fds| fds.is_set(fd_id))
 					.unwrap_or(false);
-				let write = writefds.get(&mem_space_guard)?
-					.map(| fds | fds.is_set(fd_id))
+				let write = writefds
+					.get(&mem_space_guard)?
+					.map(|fds| fds.is_set(fd_id))
 					.unwrap_or(false);
-				let except = exceptfds.get(&mem_space_guard)?
-					.map(| fds | fds.is_set(fd_id))
+				let except = exceptfds
+					.get(&mem_space_guard)?
+					.map(|fds| fds.is_set(fd_id))
 					.unwrap_or(false);
 
 				(read, write, except)
@@ -132,7 +139,7 @@ pub fn do_select<T: TimeUnit>(
 					}
 
 					continue;
-				},
+				}
 			};
 
 			// Building event mask
@@ -156,22 +163,32 @@ pub fn do_select<T: TimeUnit>(
 			// Setting results
 			let mem_space_guard = mem_space.lock();
 			if read && result & io::POLLIN != 0 {
-				readfds.get_mut(&mem_space_guard)?.map(| fds | fds.set(fd_id));
+				readfds.get_mut(&mem_space_guard)?.map(|fds| fds.set(fd_id));
 				events_count += 1;
 			} else {
-				readfds.get_mut(&mem_space_guard)?.map(| fds | fds.clear(fd_id));
+				readfds
+					.get_mut(&mem_space_guard)?
+					.map(|fds| fds.clear(fd_id));
 			}
 			if write && result & io::POLLOUT != 0 {
-				writefds.get_mut(&mem_space_guard)?.map(| fds | fds.set(fd_id));
+				writefds
+					.get_mut(&mem_space_guard)?
+					.map(|fds| fds.set(fd_id));
 				events_count += 1;
 			} else {
-				writefds.get_mut(&mem_space_guard)?.map(| fds | fds.clear(fd_id));
+				writefds
+					.get_mut(&mem_space_guard)?
+					.map(|fds| fds.clear(fd_id));
 			}
 			if except && result & io::POLLPRI != 0 {
-				exceptfds.get_mut(&mem_space_guard)?.map(| fds | fds.set(fd_id));
+				exceptfds
+					.get_mut(&mem_space_guard)?
+					.map(|fds| fds.set(fd_id));
 				events_count += 1;
 			} else {
-				exceptfds.get_mut(&mem_space_guard)?.map(| fds | fds.clear(fd_id));
+				exceptfds
+					.get_mut(&mem_space_guard)?
+					.map(|fds| fds.clear(fd_id));
 			}
 		}
 

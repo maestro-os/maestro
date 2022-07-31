@@ -1,18 +1,18 @@
 //! This module implements utility functions for files manipulations.
 
-use crate::errno::Errno;
+use super::fcache::FCache;
+use super::path::Path;
+use super::File;
+use super::FileContent;
 use crate::errno;
+use crate::errno::Errno;
 use crate::file::Gid;
 use crate::file::Uid;
 use crate::memory;
-use crate::util::FailableClone;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
 use crate::util::io::IO;
-use super::File;
-use super::FileContent;
-use super::fcache::FCache;
-use super::path::Path;
+use crate::util::FailableClone;
 
 /// Creates the directories necessary to reach path `path`. On success, the function returns
 /// the number of created directories (without the directories that already existed).
@@ -33,10 +33,16 @@ pub fn create_dirs(fcache: &mut FCache, path: &Path) -> Result<usize, Errno> {
 			let parent_guard = parent_mutex.lock();
 			let parent = parent_guard.get_mut();
 
-			match fcache.create_file(parent, name.failable_clone()?, 0, 0, 0o755,
-				FileContent::Directory(HashMap::new())) {
+			match fcache.create_file(
+				parent,
+				name.failable_clone()?,
+				0,
+				0,
+				0o755,
+				FileContent::Directory(HashMap::new()),
+			) {
 				Err(e) if e.as_int() != errno::EEXIST => return Err(e),
-				_ => {},
+				_ => {}
 			}
 
 			created_count += 1;
@@ -50,8 +56,12 @@ pub fn create_dirs(fcache: &mut FCache, path: &Path) -> Result<usize, Errno> {
 
 /// Copies the file `old` into the directory `new_parent` with name `new_name`.
 /// `fcache` is a reference to the files cache.
-pub fn copy_file(fcache: &mut FCache, old: &mut File, new_parent: &mut File, new_name: String)
-	-> Result<(), Errno> {
+pub fn copy_file(
+	fcache: &mut FCache,
+	old: &mut File,
+	new_parent: &mut File,
+	new_name: String,
+) -> Result<(), Errno> {
 	let uid = old.get_uid();
 	let gid = old.get_gid();
 	let mode = old.get_mode();
@@ -60,8 +70,8 @@ pub fn copy_file(fcache: &mut FCache, old: &mut File, new_parent: &mut File, new
 	match content {
 		// Copy the file and its content
 		FileContent::Regular => {
-			let new_mutex = fcache.create_file(new_parent, new_name, uid, gid, mode,
-				FileContent::Regular)?;
+			let new_mutex =
+				fcache.create_file(new_parent, new_name, uid, gid, mode, FileContent::Regular)?;
 			let new_guard = new_mutex.lock();
 			let new = new_guard.get_mut();
 
@@ -78,23 +88,36 @@ pub fn copy_file(fcache: &mut FCache, old: &mut File, new_parent: &mut File, new
 				new.write(off, &buff)?;
 				off += len;
 			}
-		},
+		}
 
 		// Copy the directory recursively
 		FileContent::Directory(entries) => {
-			let _new_mutex = fcache.create_file(new_parent, new_name, uid, gid, mode,
-				FileContent::Directory(HashMap::new()))?;
+			let _new_mutex = fcache.create_file(
+				new_parent,
+				new_name,
+				uid,
+				gid,
+				mode,
+				FileContent::Directory(HashMap::new()),
+			)?;
 
 			for (_name, _) in entries.iter() {
 				// TODO
 				todo!();
 			}
-		},
+		}
 
 		// Copy the file
 		_ => {
-			fcache.create_file(new_parent, new_name, uid, gid, mode, content.failable_clone()?)?;
-		},
+			fcache.create_file(
+				new_parent,
+				new_name,
+				uid,
+				gid,
+				mode,
+				content.failable_clone()?,
+			)?;
+		}
 	}
 
 	Ok(())
@@ -104,8 +127,12 @@ pub fn copy_file(fcache: &mut FCache, old: &mut File, new_parent: &mut File, new
 /// `fcache` is a reference to the files cache.
 /// `uid` is the user ID used to check permissions.
 /// `gid` is the group ID used to check permissions.
-pub fn remove_recursive(fcache: &mut FCache, file: &mut File, uid: Uid, gid: Gid)
-	-> Result<(), Errno> {
+pub fn remove_recursive(
+	fcache: &mut FCache,
+	file: &mut File,
+	uid: Uid,
+	gid: Gid,
+) -> Result<(), Errno> {
 	let content = file.get_file_content().failable_clone()?;
 
 	match content {
@@ -118,7 +145,7 @@ pub fn remove_recursive(fcache: &mut FCache, file: &mut File, uid: Uid, gid: Gid
 
 				remove_recursive(fcache, subfile, uid, gid)?;
 			}
-		},
+		}
 
 		_ => fcache.remove_file(file, uid, gid)?,
 	}

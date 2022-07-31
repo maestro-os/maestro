@@ -14,13 +14,13 @@
 
 // TODO Add support for third and fourth bus
 
-use core::cmp::min;
+use super::StorageInterface;
 use crate::device::storage::ide;
-use crate::errno::Errno;
 use crate::errno;
+use crate::errno::Errno;
 use crate::io;
 use crate::util::math;
-use super::StorageInterface;
+use core::cmp::min;
 
 /// Offset to the data register.
 const DATA_REGISTER_OFFSET: u16 = 0;
@@ -62,21 +62,21 @@ const COMMAND_CACHE_FLUSH: u8 = 0xe7;
 const COMMAND_IDENTIFY: u8 = 0xec;
 
 /// Address mark not found.
-const ERROR_AMNF: u8  = 0b00000001;
+const ERROR_AMNF: u8 = 0b00000001;
 /// Track zero not found.
 const ERROR_TKZNF: u8 = 0b00000010;
 /// Aborted command.
-const ERROR_ABRT: u8  = 0b00000100;
+const ERROR_ABRT: u8 = 0b00000100;
 /// Media change request.
-const ERROR_MCR: u8   = 0b00001000;
+const ERROR_MCR: u8 = 0b00001000;
 /// ID not found.
-const ERROR_IDNF: u8  = 0b00010000;
+const ERROR_IDNF: u8 = 0b00010000;
 /// Media changed.
-const ERROR_MC: u8    = 0b00100000;
+const ERROR_MC: u8 = 0b00100000;
 /// Uncorrectable data error.
-const ERROR_UNC: u8   = 0b01000000;
+const ERROR_UNC: u8 = 0b01000000;
 /// Bad block detected.
-const ERROR_BBK: u8   = 0b10000000;
+const ERROR_BBK: u8 = 0b10000000;
 
 /// Indicates an error occurred.
 const STATUS_ERR: u8 = 0b00000001;
@@ -85,7 +85,7 @@ const STATUS_DRQ: u8 = 0b00001000;
 /// Overlapped Mode Service Request.
 const STATUS_SRV: u8 = 0b00010000;
 /// Drive Fault Error.
-const STATUS_DF: u8  = 0b00100000;
+const STATUS_DF: u8 = 0b00100000;
 /// Clear after an error. Set otherwise.
 const STATUS_RDY: u8 = 0b01000000;
 /// Indicates the drive is preparing to send/receive data.
@@ -313,8 +313,10 @@ impl PATAInterface {
 
 		let lba48_support = data[83] & (1 << 10) != 0;
 		let lba28_size = (data[60] as u32) | ((data[61] as u32) << 16);
-		let lba48_size = (data[100] as u64) | ((data[101] as u64) << 16)
-			| ((data[102] as u64) << 32) | ((data[103] as u64) << 48);
+		let lba48_size = (data[100] as u64)
+			| ((data[101] as u64) << 16)
+			| ((data[102] as u64) << 32)
+			| ((data[103] as u64) << 48);
 
 		if lba28_size == 0 {
 			return Err("Unsupported disk (too old)");
@@ -428,7 +430,10 @@ impl StorageInterface for PATAInterface {
 			let mid_lba = ((off >> 8) & 0xff) as u8;
 			let hi_lba = ((off >> 16) & 0xff) as u8;
 
-			self.outb(PortOffset::ATA(SECTORS_COUNT_REGISTER_OFFSET), (count & 0xff) as u8);
+			self.outb(
+				PortOffset::ATA(SECTORS_COUNT_REGISTER_OFFSET),
+				(count & 0xff) as u8,
+			);
 			self.outb(PortOffset::ATA(LBA_LO_REGISTER_OFFSET), lo_lba);
 			self.outb(PortOffset::ATA(LBA_MID_REGISTER_OFFSET), mid_lba);
 			self.outb(PortOffset::ATA(LBA_HI_REGISTER_OFFSET), hi_lba);
@@ -534,7 +539,10 @@ impl StorageInterface for PATAInterface {
 			let mid_lba = ((off >> 8) & 0xff) as u8;
 			let hi_lba = ((off >> 16) & 0xff) as u8;
 
-			self.outb(PortOffset::ATA(SECTORS_COUNT_REGISTER_OFFSET), (count & 0xff) as u8);
+			self.outb(
+				PortOffset::ATA(SECTORS_COUNT_REGISTER_OFFSET),
+				(count & 0xff) as u8,
+			);
 			self.outb(PortOffset::ATA(LBA_LO_REGISTER_OFFSET), lo_lba);
 			self.outb(PortOffset::ATA(LBA_MID_REGISTER_OFFSET), mid_lba);
 			self.outb(PortOffset::ATA(LBA_HI_REGISTER_OFFSET), hi_lba);

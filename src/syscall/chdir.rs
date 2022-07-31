@@ -1,13 +1,13 @@
 //! The chdir system call allows to change the current working directory of the current process.
 
-use crate::errno::Errno;
 use crate::errno;
-use crate::file::FileType;
+use crate::errno::Errno;
 use crate::file::fcache;
 use crate::file::path::Path;
-use crate::process::Process;
+use crate::file::FileType;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::regs::Regs;
+use crate::process::Process;
 
 /// The implementation of the `chdir` syscall.
 pub fn chdir(regs: &Regs) -> Result<i32, Errno> {
@@ -34,7 +34,10 @@ pub fn chdir(regs: &Regs) -> Result<i32, Errno> {
 		let fcache_guard = fcache_mutex.lock();
 		let fcache = fcache_guard.get_mut();
 
-		let dir_mutex = fcache.as_mut().unwrap().get_file_from_path(&new_cwd, uid, gid, true)?;
+		let dir_mutex = fcache
+			.as_mut()
+			.unwrap()
+			.get_file_from_path(&new_cwd, uid, gid, true)?;
 		let dir_guard = dir_mutex.lock();
 		let dir = dir_guard.get();
 

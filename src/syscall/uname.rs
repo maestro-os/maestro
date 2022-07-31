@@ -1,9 +1,9 @@
 //! The uname syscall is used to retrieve informations about the system.
 
 use crate::errno::Errno;
-use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::regs::Regs;
+use crate::process::Process;
 use crate::util;
 
 /// The length of a field of the utsname structure.

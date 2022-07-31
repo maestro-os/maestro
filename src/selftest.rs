@@ -38,7 +38,10 @@ pub trait Testable {
 	fn run(&self);
 }
 
-impl<T> Testable for T where T: Fn() {
+impl<T> Testable for T
+where
+	T: Fn(),
+{
 	// TODO Use a special format on serial to be parsed by host?
 	fn run(&self) {
 		//let serial_guard = serial::get(serial::COM1).lock();
@@ -67,7 +70,8 @@ impl<T> Testable for T where T: Fn() {
 pub fn runner(tests: &[&dyn Testable]) {
 	crate::println!("Running {} tests", tests.len());
 
-	unsafe { // Safe because the function is called by only one thread
+	unsafe {
+		// Safe because the function is called by only one thread
 		RUNNING = true;
 	}
 
@@ -75,7 +79,8 @@ pub fn runner(tests: &[&dyn Testable]) {
 		test.run();
 	}
 
-	unsafe { // Safe because the function is called by only one thread
+	unsafe {
+		// Safe because the function is called by only one thread
 		RUNNING = false;
 	}
 
@@ -89,7 +94,8 @@ pub fn runner(tests: &[&dyn Testable]) {
 
 /// Tells whether selftesting is running.
 pub fn is_running() -> bool {
-	unsafe { // Safe because the function is called by only one thread
+	unsafe {
+		// Safe because the function is called by only one thread
 		RUNNING
 	}
 }

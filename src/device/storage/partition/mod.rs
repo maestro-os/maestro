@@ -4,12 +4,12 @@
 mod gpt;
 mod mbr;
 
+use super::StorageInterface;
 use crate::errno::Errno;
 use crate::util::boxed::Box;
 use crate::util::container::vec::Vec;
 use gpt::GPT;
 use mbr::MBRTable;
-use super::StorageInterface;
 
 /// Structure representing a disk partition.
 pub struct Partition {
@@ -22,10 +22,7 @@ pub struct Partition {
 impl Partition {
 	/// Creates a new instance with the given partition offset `offset` and size `size`.
 	pub fn new(offset: u64, size: u64) -> Self {
-		Self {
-			offset,
-			size,
-		}
+		Self { offset, size }
 	}
 
 	/// Returns the offset of the first sector of the partition.
@@ -45,7 +42,9 @@ impl Partition {
 pub trait Table {
 	/// Reads the partition table from the given storage interface `storage`.
 	/// If the partition table isn't present on the storage interface, the function returns None.
-	fn read(storage: &mut dyn StorageInterface) -> Result<Option<Self>, Errno> where Self: Sized;
+	fn read(storage: &mut dyn StorageInterface) -> Result<Option<Self>, Errno>
+	where
+		Self: Sized;
 
 	/// Returns the type of the partition table.
 	fn get_type(&self) -> &'static str;
@@ -61,13 +60,13 @@ pub fn read(storage: &mut dyn StorageInterface) -> Result<Option<Box<dyn Table>>
 	// Trying GPT
 	match GPT::read(storage)? {
 		Some(table) => return Ok(Some(Box::new(table)?)),
-		None => {},
+		None => {}
 	}
 
 	// Trying MBR
 	match MBRTable::read(storage)? {
 		Some(table) => return Ok(Some(Box::new(table)?)),
-		None => {},
+		None => {}
 	}
 
 	Ok(None)

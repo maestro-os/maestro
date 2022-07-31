@@ -2,9 +2,9 @@
 
 use crate::crypto::rand;
 use crate::errno::Errno;
-use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallSlice;
 use crate::process::regs::Regs;
+use crate::process::Process;
 
 /// If set, bytes are draw from the random source instead of urandom.
 const GRND_RANDOM: u32 = 2;
@@ -25,7 +25,10 @@ pub fn getrandom(regs: &Regs) -> Result<i32, Errno> {
 		// Using urandom
 		false => rand::get_source("urandom"),
 	};
-	let random_source_guard = random_source_mutex.as_ref().ok_or_else(|| errno!(EAGAIN))?.lock();
+	let random_source_guard = random_source_mutex
+		.as_ref()
+		.ok_or_else(|| errno!(EAGAIN))?
+		.lock();
 	let random_source = random_source_guard.get_mut();
 
 	let nonblock = flags & GRND_NONBLOCK != 0;

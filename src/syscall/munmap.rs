@@ -1,14 +1,14 @@
 //! The `munmap` system call allows the process to free memory that was allocated with `mmap`.
 
+use crate::errno;
+use crate::errno::Errno;
+use crate::memory;
+use crate::process::regs::Regs;
+use crate::process::Process;
+use crate::util;
+use crate::util::math;
 use core::ffi::c_void;
 use core::intrinsics::wrapping_add;
-use crate::errno::Errno;
-use crate::errno;
-use crate::memory;
-use crate::process::Process;
-use crate::process::regs::Regs;
-use crate::util::math;
-use crate::util;
 
 /// The implementation of the `munmap` syscall.
 pub fn munmap(regs: &Regs) -> Result<i32, Errno> {
@@ -33,11 +33,14 @@ pub fn munmap(regs: &Regs) -> Result<i32, Errno> {
 	}
 
 	// Prevent from unmapping kernel memory
-	if (addr as usize) >= (memory::PROCESS_END as usize)
-		|| end > (memory::PROCESS_END as usize) {
+	if (addr as usize) >= (memory::PROCESS_END as usize) || end > (memory::PROCESS_END as usize) {
 		return Err(errno!(EINVAL));
 	}
 
-	proc.get_mem_space().unwrap().lock().get_mut().unmap(addr, pages, false)?;
+	proc.get_mem_space()
+		.unwrap()
+		.lock()
+		.get_mut()
+		.unmap(addr, pages, false)?;
 	Ok(0)
 }

@@ -99,9 +99,7 @@ impl Serial {
 	/// Creates a new instance for the specified port. If the port doesn't exist, the function
 	/// returns None.
 	fn from_port(port: u16) -> Option<Serial> {
-		let mut s = Self {
-			regs_off: port,
-		};
+		let mut s = Self { regs_off: port };
 
 		if s.probe() {
 			Some(s)
@@ -128,9 +126,7 @@ impl Serial {
 
 	/// Tells whether the transmission buffer is empty.
 	fn is_transmit_empty(&self) -> bool {
-		(unsafe {
-			io::inb(self.regs_off + LINE_STATUS_REG_OFF)
-		} & LINE_STATUS_THRE) != 0
+		(unsafe { io::inb(self.regs_off + LINE_STATUS_REG_OFF) } & LINE_STATUS_THRE) != 0
 	}
 
 	// TODO read
@@ -148,12 +144,7 @@ impl Serial {
 }
 
 /// The list of serial ports.
-static mut PORTS: [Option<Mutex<Serial>>; 4] = [
-	None,
-	None,
-	None,
-	None,
-];
+static mut PORTS: [Option<Mutex<Serial>>; 4] = [None, None, None, None];
 
 /// Returns an instance to an object allowing to use the given serial communication port. If the
 /// port is not initialized, the function tries to do it. If the port doesn't exist, the function
@@ -168,7 +159,8 @@ pub fn get(port: u16) -> Option<&'static mut Mutex<Serial>> {
 		_ => return None,
 	};
 
-	let ports = unsafe { // Safe because using Mutex
+	let ports = unsafe {
+		// Safe because using Mutex
 		&mut PORTS
 	};
 	if ports[i].is_none() {

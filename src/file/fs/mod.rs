@@ -5,9 +5,10 @@ pub mod kernfs;
 pub mod procfs;
 pub mod tmp;
 
-use core::any::Any;
-use crate::errno::Errno;
+use super::path::Path;
+use super::File;
 use crate::errno;
+use crate::errno::Errno;
 use crate::file::FileContent;
 use crate::file::Gid;
 use crate::file::INode;
@@ -18,8 +19,7 @@ use crate::util::container::vec::Vec;
 use crate::util::io::IO;
 use crate::util::lock::Mutex;
 use crate::util::ptr::SharedPtr;
-use super::File;
-use super::path::Path;
+use core::any::Any;
 
 /// TODO doc
 #[repr(C)]
@@ -79,8 +79,12 @@ pub trait Filesystem: Any {
 	/// `parent` is the inode's parent. If none, the function uses the root of the filesystem.
 	/// `name` is the name of the file.
 	/// If the parent is not a directory, the function returns an error.
-	fn get_inode(&mut self, io: &mut dyn IO, parent: Option<INode>, name: &String)
-		-> Result<INode, Errno>;
+	fn get_inode(
+		&mut self,
+		io: &mut dyn IO,
+		parent: Option<INode>,
+		name: &String,
+	) -> Result<INode, Errno>;
 
 	/// Loads the file at inode `inode`.
 	/// `io` is the IO interface.
@@ -97,8 +101,16 @@ pub trait Filesystem: Any {
 	/// `mode` is the permission of the file.
 	/// `content` is the content of the file. This value also determines the file type.
 	/// On success, the function returns the newly created file.
-	fn add_file(&mut self, io: &mut dyn IO, parent_inode: INode, name: String, uid: Uid,
-		gid: Gid, mode: Mode, content: FileContent) -> Result<File, Errno>;
+	fn add_file(
+		&mut self,
+		io: &mut dyn IO,
+		parent_inode: INode,
+		name: String,
+		uid: Uid,
+		gid: Gid,
+		mode: Mode,
+		content: FileContent,
+	) -> Result<File, Errno>;
 
 	/// Adds a hard link to the filesystem.
 	/// If this feature is not supported by the filesystem, the function returns an error.
@@ -106,8 +118,13 @@ pub trait Filesystem: Any {
 	/// `parent_inode` is the parent file's inode.
 	/// `name` is the name of the link.
 	/// `inode` is the inode the link points to.
-	fn add_link(&mut self, io: &mut dyn IO, parent_inode: INode, name: &String, inode: INode)
-		-> Result<(), Errno>;
+	fn add_link(
+		&mut self,
+		io: &mut dyn IO,
+		parent_inode: INode,
+		name: &String,
+		inode: INode,
+	) -> Result<(), Errno>;
 
 	/// Updates the given inode.
 	/// `io` is the IO interface.
@@ -119,21 +136,35 @@ pub trait Filesystem: Any {
 	/// `io` is the IO interface.
 	/// `parent_inode` is the parent file's inode.
 	/// `name` is the file's name.
-	fn remove_file(&mut self, io: &mut dyn IO, parent_inode: INode, name: &String)
-		-> Result<(), Errno>;
+	fn remove_file(
+		&mut self,
+		io: &mut dyn IO,
+		parent_inode: INode,
+		name: &String,
+	) -> Result<(), Errno>;
 
 	/// Reads from the given inode `inode` into the buffer `buf`.
 	/// `off` is the offset from which the data will be read from the node.
 	/// The function returns a tuple containing:
 	/// - The number of bytes read.
 	/// - Whether the End Of File (EOF) has been reached.
-	fn read_node(&mut self, io: &mut dyn IO, inode: INode, off: u64, buf: &mut [u8])
-		-> Result<(u64, bool), Errno>;
+	fn read_node(
+		&mut self,
+		io: &mut dyn IO,
+		inode: INode,
+		off: u64,
+		buf: &mut [u8],
+	) -> Result<(u64, bool), Errno>;
 
 	/// Writes to the given inode `inode` from the buffer `buf`.
 	/// `off` is the offset at which the data will be written in the node.
-	fn write_node(&mut self, io: &mut dyn IO, inode: INode, off: u64, buf: &[u8])
-		-> Result<(), Errno>;
+	fn write_node(
+		&mut self,
+		io: &mut dyn IO,
+		inode: INode,
+		off: u64,
+		buf: &[u8],
+	) -> Result<(), Errno>;
 }
 
 /// Trait representing a filesystem type.
@@ -155,8 +186,12 @@ pub trait FilesystemType {
 	/// `io` is the IO interface.
 	/// `mountpath` is the path on which the filesystem is mounted.
 	/// `readonly` tells whether the filesystem is mounted in read-only.
-	fn load_filesystem(&self, io: &mut dyn IO, mountpath: Path, readonly: bool)
-		-> Result<SharedPtr<dyn Filesystem>, Errno>;
+	fn load_filesystem(
+		&self,
+		io: &mut dyn IO,
+		mountpath: Path,
+		readonly: bool,
+	) -> Result<SharedPtr<dyn Filesystem>, Errno>;
 }
 
 /// The list of filesystem types.

@@ -1,5 +1,11 @@
 //! This module handles files path.
 
+use crate::errno;
+use crate::errno::Errno;
+use crate::limits;
+use crate::util::container::string::String;
+use crate::util::container::vec::Vec;
+use crate::util::FailableClone;
 use core::cmp::min;
 use core::fmt;
 use core::hash::Hash;
@@ -9,12 +15,6 @@ use core::ops::IndexMut;
 use core::ops::Range;
 use core::ops::RangeFrom;
 use core::ops::RangeTo;
-use crate::errno::Errno;
-use crate::errno;
-use crate::limits;
-use crate::util::FailableClone;
-use crate::util::container::string::String;
-use crate::util::container::vec::Vec;
 
 /// The character used as a path separator.
 pub const PATH_SEPARATOR: char = '/';
@@ -47,7 +47,7 @@ impl Path {
 		}
 
 		let mut parts = Vec::new();
-		for p in path.split(| c | *c == PATH_SEPARATOR as u8) {
+		for p in path.split(|c| *c == PATH_SEPARATOR as u8) {
 			if p.len() + 1 >= limits::NAME_MAX {
 				return Err(errno!(ENAMETOOLONG));
 			}

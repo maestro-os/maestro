@@ -40,9 +40,9 @@ pub fn wrap<T, F: FnMut() -> Result<T, Errno>>(mut f: F) -> T {
 			Ok(r) => return r,
 			Err(e) if e.as_int() != errno::ENOMEM => {
 				panic!("OOM killer received error: {}", e);
-			},
+			}
 
-			_ => {},
+			_ => {}
 		}
 
 		kill();

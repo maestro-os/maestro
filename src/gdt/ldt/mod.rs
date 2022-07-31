@@ -1,10 +1,10 @@
 //! This module handles the local descriptor table.
 
-use crate::errno::Errno;
-use crate::errno;
-use crate::util::FailableClone;
-use crate::util::container::vec::Vec;
 use super::Entry;
+use crate::errno;
+use crate::errno::Errno;
+use crate::util::container::vec::Vec;
+use crate::util::FailableClone;
 
 extern "C" {
 	/// Loads the LDT at the given pointer.
@@ -35,10 +35,7 @@ impl LDT {
 		let mut s = Self {
 			entries: Vec::new(),
 
-			desc: LDTDescriptor {
-				size: 0,
-				offset: 0,
-			}
+			desc: LDTDescriptor { size: 0, offset: 0 },
 		};
 
 		// Adding the null entry

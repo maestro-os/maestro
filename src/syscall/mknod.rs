@@ -1,16 +1,16 @@
 //! The `mknod` system call allows to create a new node on a filesystem.
 
 use crate::device::id;
-use crate::errno::Errno;
 use crate::errno;
-use crate::file::FileContent;
-use crate::file::FileType;
+use crate::errno::Errno;
+use crate::file;
 use crate::file::fcache;
 use crate::file::path::Path;
-use crate::file;
-use crate::process::Process;
+use crate::file::FileContent;
+use crate::file::FileType;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::regs::Regs;
+use crate::process::Process;
 use crate::util::FailableClone;
 
 /// The implementation of the `getuid` syscall.
@@ -28,7 +28,7 @@ pub fn mknod(regs: &Regs) -> Result<i32, Errno> {
 		let mem_space = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space.lock();
 
-		let path =Path::from_str(pathname.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?, true)?;
+		let path = Path::from_str(pathname.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?, true)?;
 		let umask = proc.get_umask();
 		let uid = proc.get_uid();
 		let gid = proc.get_gid();
@@ -58,14 +58,8 @@ pub fn mknod(regs: &Regs) -> Result<i32, Errno> {
 		FileType::Regular => FileContent::Regular,
 		FileType::Fifo => FileContent::Fifo,
 		FileType::Socket => FileContent::Socket,
-		FileType::BlockDevice => FileContent::BlockDevice {
-			major,
-			minor,
-		},
-		FileType::CharDevice => FileContent::CharDevice {
-			major,
-			minor,
-		},
+		FileType::BlockDevice => FileContent::BlockDevice { major, minor },
+		FileType::CharDevice => FileContent::CharDevice { major, minor },
 
 		_ => return Err(errno!(EPERM)),
 	};

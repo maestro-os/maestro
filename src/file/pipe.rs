@@ -4,8 +4,8 @@
 use crate::file::Errno;
 use crate::limits;
 use crate::util::container::ring_buffer::RingBuffer;
-use crate::util::io::IO;
 use crate::util::io;
+use crate::util::io::IO;
 
 /// Structure representing a buffer buffer.
 #[derive(Debug)]
@@ -62,7 +62,7 @@ impl PipeBuffer {
 }
 
 impl IO for PipeBuffer {
-	fn get_size(&self) -> u64{
+	fn get_size(&self) -> u64 {
 		self.get_data_len() as _
 	}
 

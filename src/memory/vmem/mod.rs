@@ -6,16 +6,16 @@
 #[cfg(config_general_arch = "x86")]
 pub mod x86;
 
-use core::ffi::c_void;
 use crate::cpu;
 use crate::elf;
 use crate::errno::Errno;
 use crate::idt;
 use crate::memory;
 use crate::multiboot;
-use crate::util::FailableClone;
 use crate::util::boxed::Box;
 use crate::util::math;
+use crate::util::FailableClone;
+use core::ffi::c_void;
 
 /// Trait representing virtual memory context handler. This trait is the interface to manipulate
 /// virtual memory on any architecture. Each architecture has its own structure implementing this
@@ -33,14 +33,23 @@ pub trait VMem: FailableClone {
 	/// Maps the the given physical address `physaddr` to the given virtual address `virtaddr` with
 	/// the given flags.
 	/// This function automaticaly invalidates the page in the cache.
-	fn map(&mut self, physaddr: *const c_void, virtaddr: *const c_void, flags: u32)
-		-> Result<(), Errno>;
+	fn map(
+		&mut self,
+		physaddr: *const c_void,
+		virtaddr: *const c_void,
+		flags: u32,
+	) -> Result<(), Errno>;
 	/// Maps the given range of physical address `physaddr` to the given range of virtual address
 	/// `virtaddr`. The range is `pages` pages large.
 	/// If the operation fails, the virtual memory is left altered midway.
 	/// This function automaticaly invalidates the page(s) in the cache.
-	fn map_range(&mut self, physaddr: *const c_void, virtaddr: *const c_void, pages: usize,
-		flags: u32) -> Result<(), Errno>;
+	fn map_range(
+		&mut self,
+		physaddr: *const c_void,
+		virtaddr: *const c_void,
+		pages: usize,
+		flags: u32,
+	) -> Result<(), Errno>;
 
 	/// Unmaps the page at virtual address `virtaddr`.
 	/// This function automaticaly invalidates the page in the cache.
@@ -66,9 +75,10 @@ pub trait VMem: FailableClone {
 		let boot_info = multiboot::get_boot_info();
 
 		let mut res = Ok(());
-		let f = | section: &elf::ELF32SectionHeader, _name: &[u8] | {
+		let f = |section: &elf::ELF32SectionHeader, _name: &[u8]| {
 			if section.sh_flags & elf::SHF_WRITE != 0
-				|| section.sh_addralign as usize != memory::PAGE_SIZE {
+				|| section.sh_addralign as usize != memory::PAGE_SIZE
+			{
 				return true;
 			}
 
@@ -84,32 +94,32 @@ pub trait VMem: FailableClone {
 		};
 
 		// Protecting kernel code from writing
-		elf::foreach_sections(memory::kern_to_virt(boot_info.elf_sections),
-			boot_info.elf_num as usize, boot_info.elf_shndx as usize,
-			boot_info.elf_entsize as usize, f);
+		elf::foreach_sections(
+			memory::kern_to_virt(boot_info.elf_sections),
+			boot_info.elf_num as usize,
+			boot_info.elf_shndx as usize,
+			boot_info.elf_entsize as usize,
+			f,
+		);
 
 		res
 	}
 }
 
 /// Creates a new virtual memory context handler for the current architecture.
-pub fn new() -> Result::<Box::<dyn VMem>, Errno> {
-	Ok(Box::new(x86::X86VMem::new()?)? as Box::<dyn VMem>)
+pub fn new() -> Result<Box<dyn VMem>, Errno> {
+	Ok(Box::new(x86::X86VMem::new()?)? as Box<dyn VMem>)
 }
 
 /// Clones the virtual memory context handler `vmem`.
-pub fn clone(vmem: &Box::<dyn VMem>) -> Result::<Box::<dyn VMem>, Errno> {
-	let vmem = unsafe {
-		&*(vmem.as_ptr() as *const x86::X86VMem)
-	};
-	Ok(Box::new(vmem.failable_clone()?)? as Box::<dyn VMem>)
+pub fn clone(vmem: &Box<dyn VMem>) -> Result<Box<dyn VMem>, Errno> {
+	let vmem = unsafe { &*(vmem.as_ptr() as *const x86::X86VMem) };
+	Ok(Box::new(vmem.failable_clone()?)? as Box<dyn VMem>)
 }
 
 /// Tells whether the read-only pages protection is enabled.
 pub fn is_write_lock() -> bool {
-	unsafe {
-		(cpu::cr0_get() & (1 << 16)) != 0
-	}
+	unsafe { (cpu::cr0_get() & (1 << 16)) != 0 }
 }
 
 /// Sets whether the kernel can write to read-only pages.

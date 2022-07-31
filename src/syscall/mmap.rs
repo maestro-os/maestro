@@ -1,16 +1,16 @@
 //! The `mmap` system call allows the process to allocate memory.
 
-use core::ffi::c_void;
-use core::intrinsics::wrapping_add;
-use crate::errno::Errno;
 use crate::errno;
+use crate::errno::Errno;
 use crate::memory;
-use crate::process::Process;
 use crate::process::mem_space;
 use crate::process::regs::Regs;
+use crate::process::Process;
 use crate::syscall::mmap::mem_space::MapConstraint;
-use crate::util::math;
 use crate::util;
+use crate::util::math;
+use core::ffi::c_void;
+use core::intrinsics::wrapping_add;
 
 /// Data can be read.
 const PROT_READ: i32 = 0b001;
@@ -44,8 +44,14 @@ fn get_flags(flags: i32, prot: i32) -> u8 {
 
 /// Performs the `mmap` system call.
 /// This function takes a `u64` for `offset` to allow implementing the `mmap2` syscall.
-pub fn do_mmap(addr: *mut c_void, length: usize, prot: i32, flags: i32, fd: i32, offset: u64)
-	-> Result<i32, Errno> {
+pub fn do_mmap(
+	addr: *mut c_void,
+	length: usize,
+	prot: i32,
+	flags: i32,
+	fd: i32,
+	offset: u64,
+) -> Result<i32, Errno> {
 	// Checking alignment of `addr` and `length`
 	if !util::is_aligned(addr, memory::PAGE_SIZE) || length == 0 {
 		return Err(errno!(EINVAL));
@@ -63,7 +69,8 @@ pub fn do_mmap(addr: *mut c_void, length: usize, prot: i32, flags: i32, fd: i32,
 	let addr_hint = {
 		if !addr.is_null()
 			&& (addr as usize) < (memory::PROCESS_END as usize)
-			&& end <= (memory::PROCESS_END as usize) {
+			&& end <= (memory::PROCESS_END as usize)
+		{
 			MapConstraint::Hint(addr as *const c_void)
 		} else {
 			MapConstraint::None
@@ -92,7 +99,7 @@ pub fn do_mmap(addr: *mut c_void, length: usize, prot: i32, flags: i32, fd: i32,
 			return Err(errno!(EINVAL));
 		}
 
-		// TODO Check the read/write state of the open file matches the mapping
+	// TODO Check the read/write state of the open file matches the mapping
 	} else {
 		// TODO If the mapping requires a fd, return an error
 	}
@@ -103,13 +110,23 @@ pub fn do_mmap(addr: *mut c_void, length: usize, prot: i32, flags: i32, fd: i32,
 	let mem_space = mem_space_guard.get_mut();
 
 	// The pointer on the virtual memory to the beginning of the mapping
-	let result = mem_space.map(addr_hint, pages, get_flags(flags, prot), file.clone(), offset);
+	let result = mem_space.map(
+		addr_hint,
+		pages,
+		get_flags(flags, prot),
+		file.clone(),
+		offset,
+	);
 	let ptr = match result {
 		Ok(ptr) => ptr,
 
-		Err(_) if addr_hint != MapConstraint::None => {
-			mem_space.map(MapConstraint::None, pages, get_flags(flags, prot), file, offset)?
-		},
+		Err(_) if addr_hint != MapConstraint::None => mem_space.map(
+			MapConstraint::None,
+			pages,
+			get_flags(flags, prot),
+			file,
+			offset,
+		)?,
 
 		Err(e) => return Err(e),
 	};

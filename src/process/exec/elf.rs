@@ -1,5 +1,30 @@
 //! This module implements ELF program execution with respects the System V ABI.
 
+use crate::cpu;
+use crate::elf;
+use crate::elf::parser::ELFParser;
+use crate::elf::relocation::Relocation;
+use crate::elf::ELF32ProgramHeader;
+use crate::errno;
+use crate::errno::Errno;
+use crate::file::fcache;
+use crate::file::path::Path;
+use crate::file::File;
+use crate::file::Gid;
+use crate::file::Uid;
+use crate::memory;
+use crate::memory::malloc;
+use crate::memory::vmem;
+use crate::process;
+use crate::process::exec::ExecInfo;
+use crate::process::exec::Executor;
+use crate::process::exec::ProgramImage;
+use crate::process::mem_space::MapConstraint;
+use crate::process::mem_space::MemSpace;
+use crate::util;
+use crate::util::container::vec::Vec;
+use crate::util::io::IO;
+use crate::util::math;
 use core::cmp::max;
 use core::cmp::min;
 use core::ffi::c_void;
@@ -7,31 +32,6 @@ use core::mem::size_of;
 use core::ptr::null;
 use core::slice;
 use core::str;
-use crate::cpu;
-use crate::elf::ELF32ProgramHeader;
-use crate::elf::parser::ELFParser;
-use crate::elf::relocation::Relocation;
-use crate::elf;
-use crate::errno::Errno;
-use crate::errno;
-use crate::file::File;
-use crate::file::Gid;
-use crate::file::Uid;
-use crate::file::fcache;
-use crate::file::path::Path;
-use crate::memory::malloc;
-use crate::memory::vmem;
-use crate::memory;
-use crate::process::exec::ExecInfo;
-use crate::process::exec::Executor;
-use crate::process::exec::ProgramImage;
-use crate::process::mem_space::MapConstraint;
-use crate::process::mem_space::MemSpace;
-use crate::process;
-use crate::util::container::vec::Vec;
-use crate::util::io::IO;
-use crate::util::math;
-use crate::util;
 
 /// Used to define the end of the entries list.
 const AT_NULL: i32 = 0;
@@ -128,54 +128,95 @@ struct AuxEntryDesc {
 impl AuxEntryDesc {
 	/// Creates a new instance with the given type `a_type` and value `a_val`.
 	pub fn new(a_type: i32, a_val: AuxEntryDescValue) -> Self {
-		Self {
-			a_type,
-			a_val,
-		}
+		Self { a_type, a_val }
 	}
 }
 
 /// Builds an auxilary vector with execution informations `exec_info` and load informations
 /// `load_info`.
 /// `parser` is a reference to the ELF parser.
-fn build_auxilary(exec_info: &ExecInfo, load_info: &ELFLoadInfo, parser: &ELFParser)
-	-> Result<Vec<AuxEntryDesc>, Errno> {
+fn build_auxilary(
+	exec_info: &ExecInfo,
+	load_info: &ELFLoadInfo,
+	parser: &ELFParser,
+) -> Result<Vec<AuxEntryDesc>, Errno> {
 	let mut aux = Vec::new();
 
 	if let Some(phdr) = load_info.phdr {
-		aux.push(AuxEntryDesc::new(AT_PHDR, AuxEntryDescValue::Number(phdr as _)))?;
-		aux.push(AuxEntryDesc::new(AT_PHENT,
-			AuxEntryDescValue::Number(parser.get_header().get_phentsize() as _)))?;
-		aux.push(AuxEntryDesc::new(AT_PHNUM,
-			AuxEntryDescValue::Number(parser.get_header().get_phnum() as _)))?;
+		aux.push(AuxEntryDesc::new(
+			AT_PHDR,
+			AuxEntryDescValue::Number(phdr as _),
+		))?;
+		aux.push(AuxEntryDesc::new(
+			AT_PHENT,
+			AuxEntryDescValue::Number(parser.get_header().get_phentsize() as _),
+		))?;
+		aux.push(AuxEntryDesc::new(
+			AT_PHNUM,
+			AuxEntryDescValue::Number(parser.get_header().get_phnum() as _),
+		))?;
 	}
 
-	aux.push(AuxEntryDesc::new(AT_PAGESZ, AuxEntryDescValue::Number(memory::PAGE_SIZE as _)))?;
+	aux.push(AuxEntryDesc::new(
+		AT_PAGESZ,
+		AuxEntryDescValue::Number(memory::PAGE_SIZE as _),
+	))?;
 
 	if let Some(base) = load_info.interp_load_base {
-		aux.push(AuxEntryDesc::new(AT_BASE, AuxEntryDescValue::Number(base as _)))?;
+		aux.push(AuxEntryDesc::new(
+			AT_BASE,
+			AuxEntryDescValue::Number(base as _),
+		))?;
 	}
 
 	if let Some(entry) = load_info.interp_entry {
-		aux.push(AuxEntryDesc::new(AT_ENTRY, AuxEntryDescValue::Number(entry as _)))?;
+		aux.push(AuxEntryDesc::new(
+			AT_ENTRY,
+			AuxEntryDescValue::Number(entry as _),
+		))?;
 	}
 
 	aux.push(AuxEntryDesc::new(AT_NOTELF, AuxEntryDescValue::Number(0)))?;
-	aux.push(AuxEntryDesc::new(AT_UID, AuxEntryDescValue::Number(exec_info.uid as _)))?;
-	aux.push(AuxEntryDesc::new(AT_EUID, AuxEntryDescValue::Number(exec_info.euid as _)))?;
-	aux.push(AuxEntryDesc::new(AT_GID, AuxEntryDescValue::Number(exec_info.gid as _)))?;
-	aux.push(AuxEntryDesc::new(AT_EGID, AuxEntryDescValue::Number(exec_info.egid as _)))?;
-	aux.push(AuxEntryDesc::new(AT_PLATFORM, AuxEntryDescValue::String(crate::NAME.as_bytes())))?;
+	aux.push(AuxEntryDesc::new(
+		AT_UID,
+		AuxEntryDescValue::Number(exec_info.uid as _),
+	))?;
+	aux.push(AuxEntryDesc::new(
+		AT_EUID,
+		AuxEntryDescValue::Number(exec_info.euid as _),
+	))?;
+	aux.push(AuxEntryDesc::new(
+		AT_GID,
+		AuxEntryDescValue::Number(exec_info.gid as _),
+	))?;
+	aux.push(AuxEntryDesc::new(
+		AT_EGID,
+		AuxEntryDescValue::Number(exec_info.egid as _),
+	))?;
+	aux.push(AuxEntryDesc::new(
+		AT_PLATFORM,
+		AuxEntryDescValue::String(crate::NAME.as_bytes()),
+	))?;
 
 	let hwcap = unsafe { cpu::get_hwcap() };
-	aux.push(AuxEntryDesc::new(AT_HWCAP, AuxEntryDescValue::Number(hwcap as _)))?;
+	aux.push(AuxEntryDesc::new(
+		AT_HWCAP,
+		AuxEntryDescValue::Number(hwcap as _),
+	))?;
 
 	aux.push(AuxEntryDesc::new(AT_SECURE, AuxEntryDescValue::Number(0)))?; // TODO
-	aux.push(AuxEntryDesc::new(AT_BASE_PLATFORM,
-		AuxEntryDescValue::String(crate::NAME.as_bytes())))?;
-	aux.push(AuxEntryDesc::new(AT_RANDOM, AuxEntryDescValue::String(&[0 as u8; 16])))?; // TODO
-	aux.push(AuxEntryDesc::new(AT_EXECFN,
-		AuxEntryDescValue::String("TODO\0".as_bytes())))?; // TODO
+	aux.push(AuxEntryDesc::new(
+		AT_BASE_PLATFORM,
+		AuxEntryDescValue::String(crate::NAME.as_bytes()),
+	))?;
+	aux.push(AuxEntryDesc::new(
+		AT_RANDOM,
+		AuxEntryDescValue::String(&[0 as u8; 16]),
+	))?; // TODO
+	aux.push(AuxEntryDesc::new(
+		AT_EXECFN,
+		AuxEntryDescValue::String("TODO\0".as_bytes()),
+	))?; // TODO
 	aux.push(AuxEntryDesc::new(AT_NULL, AuxEntryDescValue::Number(0)))?;
 
 	Ok(aux)
@@ -212,9 +253,7 @@ impl<'a> ELFExecutor<'a> {
 	/// `uid` is the User ID of the executing user.
 	/// `gid` is the Group ID of the executing user.
 	pub fn new(info: ExecInfo<'a>) -> Result<Self, Errno> {
-		Ok(Self {
-			info,
-		})
+		Ok(Self { info })
 	}
 
 	/// Returns two values:
@@ -222,14 +261,13 @@ impl<'a> ELFExecutor<'a> {
 	/// included.
 	/// - The required size in bytes for the data to be written on the stack before the program
 	/// starts.
-	fn get_init_stack_size(argv: &[&[u8]], envp: &[&[u8]], aux: &[AuxEntryDesc])
-		-> (usize, usize) {
+	fn get_init_stack_size(argv: &[&[u8]], envp: &[&[u8]], aux: &[AuxEntryDesc]) -> (usize, usize) {
 		// The size of the block storing the arguments and environment
 		let mut info_block_size = 0;
 		for a in aux {
 			match a.a_val {
 				AuxEntryDescValue::String(slice) => info_block_size += slice.len() + 1,
-				_ => {},
+				_ => {}
 			}
 		}
 		for e in envp {
@@ -263,8 +301,13 @@ impl<'a> ELFExecutor<'a> {
 	/// `aux` is the auxilary vector.
 	/// The function returns the distance between the top of the stack and the new bottom after the
 	/// data has been written.
-	fn init_stack(&self, user_stack: *const c_void, argv: &[&[u8]], envp: &[&[u8]],
-		aux: &[AuxEntryDesc]) {
+	fn init_stack(
+		&self,
+		user_stack: *const c_void,
+		argv: &[&[u8]],
+		envp: &[&[u8]],
+		aux: &[AuxEntryDesc],
+	) {
 		let (info_size, total_size) = Self::get_init_stack_size(argv, envp, aux);
 
 		// A slice on the stack representing the region which will containing the arguments and
@@ -275,8 +318,10 @@ impl<'a> ELFExecutor<'a> {
 
 		// A slice on the stack representing the region to fill
 		let stack_slice = unsafe {
-			slice::from_raw_parts_mut((user_stack as usize - total_size) as *mut u32,
-				total_size / size_of::<u32>())
+			slice::from_raw_parts_mut(
+				(user_stack as usize - total_size) as *mut u32,
+				total_size / size_of::<u32>(),
+			)
 		};
 
 		// The offset in the information block
@@ -351,7 +396,7 @@ impl<'a> ELFExecutor<'a> {
 					info_off += 1;
 
 					&mut info_slice[begin] as *mut _ as _
-				},
+				}
 			};
 
 			// Setting the entry
@@ -368,8 +413,11 @@ impl<'a> ELFExecutor<'a> {
 	/// `mem_space` is the memory space to allocate into.
 	/// `seg` is the segment for which the memory is allocated.
 	/// If loaded, the function return the pointer to the end of the segment in virtual memory.
-	fn alloc_segment(load_base: *const u8, mem_space: &mut MemSpace, seg: &ELF32ProgramHeader)
-		-> Result<Option<*const c_void>, Errno> {
+	fn alloc_segment(
+		load_base: *const u8,
+		mem_space: &mut MemSpace,
+		seg: &ELF32ProgramHeader,
+	) -> Result<Option<*const c_void>, Errno> {
 		// Loading only loadable segments
 		if seg.p_type != elf::PT_LOAD {
 			return Ok(None);
@@ -383,15 +431,18 @@ impl<'a> ELFExecutor<'a> {
 		// The size of the padding before the segment
 		let pad = seg.p_vaddr as usize % max(seg.p_align as usize, memory::PAGE_SIZE);
 		// The pointer to the beginning of the segment in memory
-		let mem_begin = unsafe {
-			load_base.add(seg.p_vaddr as usize - pad)
-		};
+		let mem_begin = unsafe { load_base.add(seg.p_vaddr as usize - pad) };
 		// The length of the memory to allocate in pages
 		let pages = math::ceil_division(pad + seg.p_memsz as usize, memory::PAGE_SIZE);
 
 		if pages > 0 {
-			mem_space.map(MapConstraint::Fixed(mem_begin as _), pages, seg.get_mem_space_flags(),
-				None, 0)?;
+			mem_space.map(
+				MapConstraint::Fixed(mem_begin as _),
+				pages,
+				seg.get_mem_space_flags(),
+				None,
+				0,
+			)?;
 
 			// TODO Lazy allocation
 			// Pre-allocating the pages to make them writable
@@ -399,9 +450,7 @@ impl<'a> ELFExecutor<'a> {
 		}
 
 		// The pointer to the end of the virtual memory chunk
-		let mem_end = unsafe {
-			mem_begin.add(pages * memory::PAGE_SIZE)
-		};
+		let mem_end = unsafe { mem_begin.add(pages * memory::PAGE_SIZE) };
 		Ok(Some(mem_end as _))
 	}
 
@@ -417,16 +466,15 @@ impl<'a> ELFExecutor<'a> {
 		}
 
 		// The pointer to the beginning of the segment in the virtual memory
-		let begin = unsafe {
-			load_base.add(seg.p_vaddr as usize) as *mut _
-		};
+		let begin = unsafe { load_base.add(seg.p_vaddr as usize) as *mut _ };
 		// The length of the segment in bytes
 		let len = min(seg.p_memsz, seg.p_filesz) as usize;
 		// A slice to the beginning of the segment's data in the file
 		let file_begin = &image[seg.p_offset as usize];
 
 		// Copying the segment's data
-		unsafe { // Safe because the module ELF image is valid at this point
+		unsafe {
+			// Safe because the module ELF image is valid at this point
 			vmem::write_lock_wrap(|| {
 				util::memcpy(begin, file_begin as *const _ as _, len);
 			});
@@ -436,13 +484,17 @@ impl<'a> ELFExecutor<'a> {
 	/// Loads the ELF file parsed by `elf` into the memory space `mem_space`.
 	/// `load_base` is the base address at which the ELF is loaded.
 	/// `interp` tells whether the function loads an interpreter.
-	fn load_elf(&self, elf: &ELFParser, mem_space: &mut MemSpace, load_base: *const u8,
-		interp: bool)
-		-> Result<ELFLoadInfo, Errno> {
+	fn load_elf(
+		&self,
+		elf: &ELFParser,
+		mem_space: &mut MemSpace,
+		load_base: *const u8,
+		interp: bool,
+	) -> Result<ELFLoadInfo, Errno> {
 		let interp_path = elf.get_interpreter_path();
 
-		let mut entry_point = (load_base as usize + elf.get_header().e_entry as usize)
-			as *const c_void;
+		let mut entry_point =
+			(load_base as usize + elf.get_header().e_entry as usize) as *const c_void;
 
 		let mut interp_load_base = None;
 		let mut interp_entry = None;
@@ -451,8 +503,8 @@ impl<'a> ELFExecutor<'a> {
 		let mut load_end: Result<*const c_void, Errno> = Ok(load_base as _);
 		// The pointer to the program header table in memory
 		let mut phdr: Option<*const c_void> = None;
-		elf.foreach_segments(| seg | {
-			load_end = Self::alloc_segment(load_base, mem_space, seg).map(| end | {
+		elf.foreach_segments(|seg| {
+			load_end = Self::alloc_segment(load_base, mem_space, seg).map(|end| {
 				if let Some(end) = end {
 					max(end, load_end.unwrap())
 				} else {
@@ -488,15 +540,15 @@ impl<'a> ELFExecutor<'a> {
 			};
 			let interp_file_guard = interp_file_mutex.lock();
 
-			let interp_image = read_exec_file(interp_file_guard.get_mut(), self.info.euid,
-				self.info.egid)?;
+			let interp_image =
+				read_exec_file(interp_file_guard.get_mut(), self.info.euid, self.info.egid)?;
 			let interp_elf = ELFParser::new(interp_image.as_slice())?;
 			let i_load_base = load_end as _; // TODO ASLR
 			let load_info = self.load_elf(&interp_elf, mem_space, i_load_base, true)?;
 
 			interp_load_base = Some(i_load_base as _);
-			interp_entry = Some((load_base as usize + elf.get_header().e_entry as usize)
-				as *const c_void);
+			interp_entry =
+				Some((load_base as usize + elf.get_header().e_entry as usize) as *const c_void);
 			load_end = load_info.load_end;
 			entry_point = load_info.entry_point;
 		}
@@ -505,7 +557,7 @@ impl<'a> ELFExecutor<'a> {
 		unsafe {
 			vmem::switch(mem_space.get_vmem().as_ref(), move || {
 				// Copying segments' data
-				elf.foreach_segments(| seg | {
+				elf.foreach_segments(|seg| {
 					Self::copy_segment(load_base, seg, elf.get_image());
 					true
 				});
@@ -513,10 +565,10 @@ impl<'a> ELFExecutor<'a> {
 				// Performing relocations if no interpreter is present
 				if interp_path.is_none() {
 					// Closure returning a symbol from its name
-					let get_sym = | name: &str | elf.get_symbol_by_name(name);
+					let get_sym = |name: &str| elf.get_symbol_by_name(name);
 
 					// Closure returning the value for a given symbol
-					let get_sym_val = | sym_section: u32, sym: u32 | {
+					let get_sym_val = |sym_section: u32, sym: u32| {
 						let section = elf.get_section_by_index(sym_section)?;
 						let sym = elf.get_symbol_by_index(section, sym)?;
 
@@ -527,11 +579,11 @@ impl<'a> ELFExecutor<'a> {
 						}
 					};
 
-					elf.foreach_rel(| section, rel | {
+					elf.foreach_rel(|section, rel| {
 						rel.perform(load_base as _, section, get_sym, get_sym_val);
 						true
 					});
-					elf.foreach_rela(| section, rela | {
+					elf.foreach_rela(|section, rela| {
 						rela.perform(load_base as _, section, get_sym, get_sym_val);
 						true
 					});
@@ -568,7 +620,8 @@ impl<'a> Executor<'a> for ELFExecutor<'a> {
 		let load_info = self.load_elf(&parser, &mut mem_space, null::<u8>(), false)?;
 
 		// The user stack
-		let user_stack = mem_space.map_stack(process::USER_STACK_SIZE, process::USER_STACK_FLAGS)?;
+		let user_stack =
+			mem_space.map_stack(process::USER_STACK_SIZE, process::USER_STACK_FLAGS)?;
 
 		// The auxilary vector
 		let aux = build_auxilary(&self.info, &load_info, &parser)?;
@@ -602,8 +655,8 @@ impl<'a> Executor<'a> for ELFExecutor<'a> {
 		}
 
 		// The kernel stack
-		let kernel_stack = mem_space.map_stack(process::KERNEL_STACK_SIZE,
-			process::KERNEL_STACK_FLAGS)?;
+		let kernel_stack =
+			mem_space.map_stack(process::KERNEL_STACK_SIZE, process::KERNEL_STACK_FLAGS)?;
 
 		Ok(ProgramImage {
 			mem_space,

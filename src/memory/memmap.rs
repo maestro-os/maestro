@@ -2,14 +2,14 @@
 //! memory by retrieving them from the boot informations. These data are meant to be used by the
 //! memory allocators.
 
-use core::cmp::*;
-use core::mem::MaybeUninit;
+use super::stats;
 use crate::elf;
-use crate::memory::*;
 use crate::memory;
+use crate::memory::*;
 use crate::multiboot;
 use crate::util;
-use super::stats;
+use core::cmp::*;
+use core::mem::MaybeUninit;
 
 /// Structure storing informations relative to the main memory.
 #[derive(Debug)]
@@ -32,9 +32,7 @@ static mut MEM_INFO: MaybeUninit<MemoryInfo> = MaybeUninit::uninit();
 
 /// Returns the structure storing memory mapping informations.
 pub fn get_info() -> &'static MemoryInfo {
-	unsafe {
-		MEM_INFO.assume_init_mut()
-	}
+	unsafe { MEM_INFO.assume_init_mut() }
 }
 
 /// Prints the physical memory mapping.
@@ -47,9 +45,7 @@ pub fn print_entries() {
 
 	let mut ptr = mem_info.memory_maps;
 	while (ptr as usize) < (mem_info.memory_maps as usize) + (mem_info.memory_maps_size as usize) {
-		let entry = unsafe {
-			&*ptr
-		};
+		let entry = unsafe { &*ptr };
 
 		if entry.is_valid() {
 			let begin = entry.addr;
@@ -77,30 +73,32 @@ fn get_phys_main(multiboot_ptr: *const c_void) -> (*const c_void, usize) {
 	begin = max(begin, multiboot_tags_end);
 
 	// The end of ELF sections list
-	let elf_sections_end = (boot_info.elf_sections as usize + boot_info.elf_num as usize
-		* boot_info.elf_entsize as usize) as *const c_void;
+	let elf_sections_end = (boot_info.elf_sections as usize
+		+ boot_info.elf_num as usize * boot_info.elf_entsize as usize)
+		as *const c_void;
 	begin = max(begin, elf_sections_end);
 
 	// The end of the ELF sections' content
-	let elf_end = elf::get_sections_end(boot_info.elf_sections, boot_info.elf_num as _,
-		boot_info.elf_entsize as _);
+	let elf_end = elf::get_sections_end(
+		boot_info.elf_sections,
+		boot_info.elf_num as _,
+		boot_info.elf_entsize as _,
+	);
 	begin = max(begin, elf_end);
 
 	// Page-align
 	begin = util::align(begin, memory::PAGE_SIZE);
 
 	// TODO Handle 64-bits systems
-	let pages = min(boot_info.mem_upper / 4, 1048576) as usize
-		- ((begin as usize) / memory::PAGE_SIZE);
+	let pages =
+		min(boot_info.mem_upper / 4, 1048576) as usize - ((begin as usize) / memory::PAGE_SIZE);
 	(begin, pages)
 }
 
 /// Fills the memory mapping structure according to Multiboot's informations.
 pub fn init(multiboot_ptr: *const c_void) {
 	let boot_info = multiboot::get_boot_info();
-	let mem_info = unsafe {
-		MEM_INFO.assume_init_mut()
-	};
+	let mem_info = unsafe { MEM_INFO.assume_init_mut() };
 
 	mem_info.memory_maps_size = boot_info.memory_maps_size;
 	mem_info.memory_maps_entry_size = boot_info.memory_maps_entry_size;

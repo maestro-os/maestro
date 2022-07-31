@@ -1,13 +1,13 @@
 //! `pselect6` is similar to `select`.
 
+use super::select::do_select;
+use super::select::FDSet;
 use crate::errno::Errno;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::mem_space::ptr::SyscallSlice;
 use crate::syscall::Regs;
 use crate::time::unit::Timespec;
 use crate::types::*;
-use super::select::FDSet;
-use super::select::do_select;
 
 /// The implementation of the `pselect6` syscall.
 pub fn pselect6(regs: &Regs) -> Result<i32, Errno> {
@@ -18,5 +18,12 @@ pub fn pselect6(regs: &Regs) -> Result<i32, Errno> {
 	let timeout: SyscallPtr<Timespec> = (regs.edi as usize).into();
 	let sigmask: SyscallSlice<u8> = (regs.ebp as usize).into();
 
-	do_select(nfds as _, readfds, writefds, exceptfds, timeout, Some(sigmask))
+	do_select(
+		nfds as _,
+		readfds,
+		writefds,
+		exceptfds,
+		timeout,
+		Some(sigmask),
+	)
 }

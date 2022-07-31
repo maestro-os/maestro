@@ -1,10 +1,10 @@
 //! The `fchmod` system call allows change the permissions on a file.
 
-use crate::file::open_file::FDTarget;
 use crate::errno::Errno;
 use crate::file;
-use crate::process::Process;
+use crate::file::open_file::FDTarget;
 use crate::process::regs::Regs;
+use crate::process::Process;
 
 /// The implementation of the `fchmod` syscall.
 pub fn fchmod(regs: &Regs) -> Result<i32, Errno> {

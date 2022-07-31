@@ -1,30 +1,34 @@
 //! This module implements default devices.
 
-use core::cmp::min;
-use core::ffi::c_void;
-use core::mem::ManuallyDrop;
+use super::id;
+use super::DeviceType;
 use crate::crypto::rand;
+use crate::device;
+use crate::device::tty::TTYDeviceHandle;
 use crate::device::Device;
 use crate::device::DeviceHandle;
-use crate::device::tty::TTYDeviceHandle;
-use crate::device;
-use crate::errno::Errno;
 use crate::errno;
+use crate::errno::Errno;
 use crate::file::path::Path;
 use crate::logger;
 use crate::process::mem_space::MemSpace;
-use crate::util::io::IO;
 use crate::util::io;
+use crate::util::io::IO;
 use crate::util::ptr::IntSharedPtr;
-use super::DeviceType;
-use super::id;
+use core::cmp::min;
+use core::ffi::c_void;
+use core::mem::ManuallyDrop;
 
 /// Structure representing a device which does nothing.
 pub struct NullDeviceHandle {}
 
 impl DeviceHandle for NullDeviceHandle {
-	fn ioctl(&mut self, _mem_space: IntSharedPtr<MemSpace>, _request: u32, _argp: *const c_void)
-		-> Result<u32, Errno> {
+	fn ioctl(
+		&mut self,
+		_mem_space: IntSharedPtr<MemSpace>,
+		_request: u32,
+		_argp: *const c_void,
+	) -> Result<u32, Errno> {
 		// TODO
 		Err(errno!(EINVAL))
 	}
@@ -52,8 +56,12 @@ impl IO for NullDeviceHandle {
 pub struct ZeroDeviceHandle {}
 
 impl DeviceHandle for ZeroDeviceHandle {
-	fn ioctl(&mut self, _mem_space: IntSharedPtr<MemSpace>, _request: u32, _argp: *const c_void)
-		-> Result<u32, Errno> {
+	fn ioctl(
+		&mut self,
+		_mem_space: IntSharedPtr<MemSpace>,
+		_request: u32,
+		_argp: *const c_void,
+	) -> Result<u32, Errno> {
 		// TODO
 		Err(errno!(EINVAL))
 	}
@@ -85,8 +93,12 @@ impl IO for ZeroDeviceHandle {
 pub struct KMsgDeviceHandle {}
 
 impl DeviceHandle for KMsgDeviceHandle {
-	fn ioctl(&mut self, _mem_space: IntSharedPtr<MemSpace>, _request: u32, _argp: *const c_void)
-		-> Result<u32, Errno> {
+	fn ioctl(
+		&mut self,
+		_mem_space: IntSharedPtr<MemSpace>,
+		_request: u32,
+		_argp: *const c_void,
+	) -> Result<u32, Errno> {
 		// TODO
 		Err(errno!(EINVAL))
 	}
@@ -131,8 +143,12 @@ impl IO for KMsgDeviceHandle {
 pub struct RandomDeviceHandle {}
 
 impl DeviceHandle for RandomDeviceHandle {
-	fn ioctl(&mut self, _mem_space: IntSharedPtr<MemSpace>, _request: u32, _argp: *const c_void)
-		-> Result<u32, Errno> {
+	fn ioctl(
+		&mut self,
+		_mem_space: IntSharedPtr<MemSpace>,
+		_request: u32,
+		_argp: *const c_void,
+	) -> Result<u32, Errno> {
 		// TODO
 		Err(errno!(EINVAL))
 	}
@@ -174,8 +190,12 @@ impl IO for RandomDeviceHandle {
 pub struct URandomDeviceHandle {}
 
 impl DeviceHandle for URandomDeviceHandle {
-	fn ioctl(&mut self, _mem_space: IntSharedPtr<MemSpace>, _request: u32, _argp: *const c_void)
-		-> Result<u32, Errno> {
+	fn ioctl(
+		&mut self,
+		_mem_space: IntSharedPtr<MemSpace>,
+		_request: u32,
+		_argp: *const c_void,
+	) -> Result<u32, Errno> {
 		// TODO
 		Err(errno!(EINVAL))
 	}
@@ -217,40 +237,76 @@ pub fn create() -> Result<(), Errno> {
 	let _first_major = ManuallyDrop::new(id::alloc_major(DeviceType::Char, Some(1))?);
 
 	let null_path = Path::from_str(b"/dev/null", false)?;
-	let mut null_device = Device::new(1, 3, null_path, 0o666, DeviceType::Char,
-		NullDeviceHandle {})?;
+	let mut null_device = Device::new(
+		1,
+		3,
+		null_path,
+		0o666,
+		DeviceType::Char,
+		NullDeviceHandle {},
+	)?;
 	null_device.create_file()?; // TODO remove?
 	device::register_device(null_device)?;
 
 	let zero_path = Path::from_str(b"/dev/zero", false)?;
-	let mut zero_device = Device::new(1, 5, zero_path, 0o666, DeviceType::Char,
-		ZeroDeviceHandle {})?;
+	let mut zero_device = Device::new(
+		1,
+		5,
+		zero_path,
+		0o666,
+		DeviceType::Char,
+		ZeroDeviceHandle {},
+	)?;
 	zero_device.create_file()?; // TODO remove?
 	device::register_device(zero_device)?;
 
 	let random_path = Path::from_str(b"/dev/random", false)?;
-	let mut random_device = Device::new(1, 8, random_path, 0o666, DeviceType::Char,
-		RandomDeviceHandle {})?;
+	let mut random_device = Device::new(
+		1,
+		8,
+		random_path,
+		0o666,
+		DeviceType::Char,
+		RandomDeviceHandle {},
+	)?;
 	random_device.create_file()?; // TODO remove?
 	device::register_device(random_device)?;
 
 	let urandom_path = Path::from_str(b"/dev/urandom", false)?;
-	let mut urandom_device = Device::new(1, 9, urandom_path, 0o666, DeviceType::Char,
-		URandomDeviceHandle {})?;
+	let mut urandom_device = Device::new(
+		1,
+		9,
+		urandom_path,
+		0o666,
+		DeviceType::Char,
+		URandomDeviceHandle {},
+	)?;
 	urandom_device.create_file()?; // TODO remove?
 	device::register_device(urandom_device)?;
 
 	let kmsg_path = Path::from_str(b"/dev/kmsg", false)?;
-	let mut kmsg_device = Device::new(1, 11, kmsg_path, 0o600, DeviceType::Char,
-		KMsgDeviceHandle {})?;
+	let mut kmsg_device = Device::new(
+		1,
+		11,
+		kmsg_path,
+		0o600,
+		DeviceType::Char,
+		KMsgDeviceHandle {},
+	)?;
 	kmsg_device.create_file()?; // TODO remove?
 	device::register_device(kmsg_device)?;
 
 	let _fifth_major = ManuallyDrop::new(id::alloc_major(DeviceType::Char, Some(5))?);
 
 	let current_tty_path = Path::from_str(b"/dev/tty", false)?;
-	let mut current_tty_device = Device::new(5, 0, current_tty_path, 0o666, DeviceType::Char,
-		TTYDeviceHandle::new(None))?;
+	let mut current_tty_device = Device::new(
+		5,
+		0,
+		current_tty_path,
+		0o666,
+		DeviceType::Char,
+		TTYDeviceHandle::new(None),
+	)?;
 	current_tty_device.create_file()?; // TODO remove?
 	device::register_device(current_tty_device)?;
 

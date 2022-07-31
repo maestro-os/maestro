@@ -17,18 +17,18 @@
 //!
 //! The Page Size Extension (PSE) allows to map 4MB large blocks without using a page table.
 
+use crate::cpu;
+use crate::errno::Errno;
+use crate::memory;
+use crate::memory::buddy;
+use crate::memory::vmem::VMem;
+use crate::util;
+use crate::util::lock::Mutex;
+use crate::util::FailableClone;
 use core::ffi::c_void;
 use core::intrinsics::wrapping_add;
 use core::ptr;
 use core::result::Result;
-use crate::cpu;
-use crate::errno::Errno;
-use crate::memory::buddy;
-use crate::memory::vmem::VMem;
-use crate::memory;
-use crate::util::FailableClone;
-use crate::util::lock::Mutex;
-use crate::util;
 
 /// x86 paging flag. If set, prevents the CPU from updating the associated addresses when the TLB
 /// is flushed.
@@ -131,9 +131,7 @@ fn alloc_obj() -> Result<*mut u32, Errno> {
 fn obj_get(obj: *const u32, index: usize) -> u32 {
 	debug_assert!(index < 1024);
 
-	unsafe {
-		ptr::read_volatile(obj_get_ptr(obj, index))
-	}
+	unsafe { ptr::read_volatile(obj_get_ptr(obj, index)) }
 }
 
 /// Sets the object at index `index` of given object `obj` with value `value`.
@@ -153,9 +151,7 @@ fn obj_get_ptr(obj: *const u32, index: usize) -> *const u32 {
 		obj_ptr = ((obj as usize) + (memory::PROCESS_END as usize)) as _;
 	}
 
-	unsafe {
-		obj_ptr.add(index)
-	}
+	unsafe { obj_ptr.add(index) }
 }
 
 /// Returns a mutable pointer to the object at index `index` of given object `obj`.
@@ -166,9 +162,7 @@ fn obj_get_mut_ptr(obj: *mut u32, index: usize) -> *mut u32 {
 		obj_ptr = ((obj as usize) + (memory::PROCESS_END as usize)) as _;
 	}
 
-	unsafe {
-		obj_ptr.add(index)
-	}
+	unsafe { obj_ptr.add(index) }
 }
 
 /// Frees paging object `obj`. The pointer to the object must be a virtual address.
@@ -198,13 +192,15 @@ mod table {
 				alloc_obj()?
 			} else {
 				// Safe because only one thread is running the first time this function is called
-				unsafe {
-					get_kernel_table(index - 768)?
-				}
+				unsafe { get_kernel_table(index - 768)? }
 			}
 		};
 
-		obj_set(vmem, index, (memory::kern_to_phys(v as _) as u32) | (flags | FLAG_PRESENT));
+		obj_set(
+			vmem,
+			index,
+			(memory::kern_to_phys(v as _) as u32) | (flags | FLAG_PRESENT),
+		);
 		Ok(())
 	}
 
@@ -264,9 +260,7 @@ impl X86VMem {
 			return;
 		}
 
-		let esp = unsafe {
-			crate::register_get!("esp") as *const c_void
-		};
+		let esp = unsafe { crate::register_get!("esp") as *const c_void };
 		let aligned_stack_page = util::down_align(esp, memory::PAGE_SIZE);
 		let size = {
 			if pse {
@@ -276,9 +270,7 @@ impl X86VMem {
 			}
 		};
 		for i in 0..size {
-			let virt_ptr = unsafe {
-				virt_ptr.add(i * memory::PAGE_SIZE)
-			};
+			let virt_ptr = unsafe { virt_ptr.add(i * memory::PAGE_SIZE) };
 			if virt_ptr != aligned_stack_page {
 				return;
 			}
@@ -293,9 +285,7 @@ impl X86VMem {
 			return;
 		}
 
-		let esp = unsafe {
-			crate::register_get!("esp") as *const c_void
-		};
+		let esp = unsafe { crate::register_get!("esp") as *const c_void };
 		let aligned_stack_page = util::down_align(esp, memory::PAGE_SIZE);
 		let size = {
 			if pse {
@@ -306,9 +296,7 @@ impl X86VMem {
 		};
 
 		for i in 0..size {
-			let virt_ptr = unsafe {
-				virt_ptr.add(i * memory::PAGE_SIZE)
-			};
+			let virt_ptr = unsafe { virt_ptr.add(i * memory::PAGE_SIZE) };
 			if virt_ptr != aligned_stack_page {
 				return;
 			}
@@ -326,9 +314,7 @@ impl X86VMem {
 		let flags = FLAG_PRESENT | FLAG_WRITE | FLAG_USER | FLAG_GLOBAL;
 		for i in 0..256 {
 			// Safe because only one thread is running when the first vmem is created
-			let ptr = unsafe {
-				get_kernel_table(i)?
-			};
+			let ptr = unsafe { get_kernel_table(i)? };
 
 			obj_set(vmem.page_dir, 768 + i, ptr as u32 | flags);
 		}
@@ -370,11 +356,7 @@ impl X86VMem {
 	/// might return a page directory entry if a large block is present at the corresponding
 	/// location. If no entry is found, the function returns None.
 	pub fn get_flags(&self, ptr: *const c_void) -> Option<u32> {
-		self.resolve(ptr).map(| e | {
-			unsafe {
-				*e & FLAGS_MASK
-			}
-		})
+		self.resolve(ptr).map(|e| unsafe { *e & FLAGS_MASK })
 	}
 
 	/// Tells whether to use PSE mapping for the given virtual address `addr` and remaining pages
@@ -406,7 +388,8 @@ impl X86VMem {
 		let dir_entry_value = obj_get(self.page_dir, dir_entry_index);
 		if dir_entry_index < 768
 			&& dir_entry_value & FLAG_PRESENT != 0
-			&& dir_entry_value & FLAG_PAGE_SIZE == 0 {
+			&& dir_entry_value & FLAG_PAGE_SIZE == 0
+		{
 			table::delete(self.page_dir, dir_entry_index);
 		}
 
@@ -428,9 +411,7 @@ impl X86VMem {
 impl VMem for X86VMem {
 	fn translate(&self, ptr: *const c_void) -> Option<*const c_void> {
 		if let Some(e) = self.resolve(ptr) {
-			let entry_value = unsafe {
-				*e
-			};
+			let entry_value = unsafe { *e };
 			let remain_mask = if entry_value & FLAG_PAGE_SIZE == 0 {
 				memory::PAGE_SIZE - 1
 			} else {
@@ -445,8 +426,12 @@ impl VMem for X86VMem {
 		}
 	}
 
-	fn map(&mut self, physaddr: *const c_void, virtaddr: *const c_void, mut flags: u32)
-		-> Result<(), Errno> {
+	fn map(
+		&mut self,
+		physaddr: *const c_void,
+		virtaddr: *const c_void,
+		mut flags: u32,
+	) -> Result<(), Errno> {
 		#[cfg(config_debug_debug)]
 		self.check_map(virtaddr, physaddr, false);
 
@@ -485,12 +470,18 @@ impl VMem for X86VMem {
 		Ok(())
 	}
 
-	fn map_range(&mut self, physaddr: *const c_void, virtaddr: *const c_void, pages: usize,
-		flags: u32) -> Result<(), Errno> {
+	fn map_range(
+		&mut self,
+		physaddr: *const c_void,
+		virtaddr: *const c_void,
+		pages: usize,
+		flags: u32,
+	) -> Result<(), Errno> {
 		debug_assert!(util::is_aligned(physaddr, memory::PAGE_SIZE));
 		debug_assert!(util::is_aligned(virtaddr, memory::PAGE_SIZE));
-		debug_assert!((virtaddr as usize / memory::PAGE_SIZE) + pages
-			<= (usize::MAX / memory::PAGE_SIZE) + 1);
+		debug_assert!(
+			(virtaddr as usize / memory::PAGE_SIZE) + pages <= (usize::MAX / memory::PAGE_SIZE) + 1
+		);
 		debug_assert_eq!(flags & ADDR_MASK, 0);
 
 		let mut i = 0;
@@ -561,8 +552,8 @@ impl VMem for X86VMem {
 			// Checking whether the page is mapped in PSE
 			let dir_entry_index = Self::get_addr_element_index(virtaddr, 1);
 			let dir_entry_value = obj_get(self.page_dir, dir_entry_index);
-			let is_pse = (dir_entry_value & FLAG_PAGE_SIZE != 0)
-				&& Self::use_pse(next_virtaddr, pages - i);
+			let is_pse =
+				(dir_entry_value & FLAG_PAGE_SIZE != 0) && Self::use_pse(next_virtaddr, pages - i);
 
 			if is_pse {
 				self.unmap_pse(next_virtaddr);
@@ -588,9 +579,7 @@ impl VMem for X86VMem {
 	}
 
 	fn is_bound(&self) -> bool {
-		unsafe {
-			cpu::cr3_get() == memory::kern_to_phys(self.page_dir as _) as _
-		}
+		unsafe { cpu::cr3_get() == memory::kern_to_phys(self.page_dir as _) as _ }
 	}
 
 	fn invalidate_page(&self, addr: *const c_void) {
@@ -632,21 +621,24 @@ impl FailableClone for X86VMem {
 					if i < 768 {
 						let dest_table = alloc_obj()?;
 
-						unsafe { // Safe because pointers are valid
+						unsafe {
+							// Safe because pointers are valid
 							ptr::copy_nonoverlapping::<u32>(src_table, dest_table, 1024);
 						}
 						dest_table
 					} else {
 						// Safe because only one thread is running the first time this function is
 						// called
-						unsafe {
-							get_kernel_table(i - 768)?
-						}
+						unsafe { get_kernel_table(i - 768)? }
 					}
 				};
 
-				obj_set(s.page_dir, i, (memory::kern_to_phys(dest_table as _) as u32)
-					| (src_dir_entry_value & FLAGS_MASK));
+				obj_set(
+					s.page_dir,
+					i,
+					(memory::kern_to_phys(dest_table as _) as u32)
+						| (src_dir_entry_value & FLAGS_MASK),
+				);
 			} else {
 				obj_set(s.page_dir, i, src_dir_entry_value);
 			}
@@ -679,8 +671,8 @@ impl Drop for X86VMem {
 
 #[cfg(test)]
 mod test {
-	use crate::vga;
 	use super::*;
+	use crate::vga;
 
 	#[test_case]
 	fn vmem_x86_vga_text_access() {

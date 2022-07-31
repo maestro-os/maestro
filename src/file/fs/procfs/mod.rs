@@ -4,8 +4,14 @@ pub mod mem_info;
 pub mod proc_dir;
 pub mod self_link;
 
-use core::any::Any;
+use super::kernfs;
+use super::kernfs::node::DummyKernFSNode;
+use super::kernfs::KernFS;
+use super::Filesystem;
+use super::FilesystemType;
 use crate::errno::Errno;
+use crate::file::fs::Statfs;
+use crate::file::path::Path;
 use crate::file::DirEntry;
 use crate::file::File;
 use crate::file::FileContent;
@@ -14,24 +20,18 @@ use crate::file::Gid;
 use crate::file::INode;
 use crate::file::Mode;
 use crate::file::Uid;
-use crate::file::fs::Statfs;
-use crate::file::path::Path;
+use crate::process;
 use crate::process::oom;
 use crate::process::pid::Pid;
-use crate::process;
 use crate::util::boxed::Box;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
 use crate::util::io::IO;
 use crate::util::ptr::SharedPtr;
+use core::any::Any;
 use mem_info::MemInfo;
 use proc_dir::ProcDir;
 use self_link::SelfNode;
-use super::Filesystem;
-use super::FilesystemType;
-use super::kernfs::KernFS;
-use super::kernfs::node::DummyKernFSNode;
-use super::kernfs;
 
 /// Structure representing the procfs.
 /// On the inside, the procfs works using a kernfs.
@@ -59,27 +59,40 @@ impl ProcFS {
 		// Creating /proc/self
 		let self_node = SelfNode {};
 		let self_inode = fs.fs.add_node(Box::new(self_node)?)?;
-		root_entries.insert(String::from(b"self")?, DirEntry {
-			inode: self_inode,
-			entry_type: FileType::Link,
-		})?;
+		root_entries.insert(
+			String::from(b"self")?,
+			DirEntry {
+				inode: self_inode,
+				entry_type: FileType::Link,
+			},
+		)?;
 
 		// Creating /proc/meminfo
 		let meminfo_node = MemInfo {};
 		let meminfo_inode = fs.fs.add_node(Box::new(meminfo_node)?)?;
-		root_entries.insert(String::from(b"meminfo")?, DirEntry {
-			inode: meminfo_inode,
-			entry_type: FileType::Regular,
-		})?;
+		root_entries.insert(
+			String::from(b"meminfo")?,
+			DirEntry {
+				inode: meminfo_inode,
+				entry_type: FileType::Regular,
+			},
+		)?;
 
 		// Creating /proc/mounts
-		let mount_node = DummyKernFSNode::new(0o777, 0, 0,
-			FileContent::Link(String::from(b"self/mounts")?));
+		let mount_node = DummyKernFSNode::new(
+			0o777,
+			0,
+			0,
+			FileContent::Link(String::from(b"self/mounts")?),
+		);
 		let mount_inode = fs.fs.add_node(Box::new(mount_node)?)?;
-		root_entries.insert(String::from(b"mounts")?, DirEntry {
-			inode: mount_inode,
-			entry_type: FileType::Link,
-		})?;
+		root_entries.insert(
+			String::from(b"mounts")?,
+			DirEntry {
+				inode: mount_inode,
+				entry_type: FileType::Link,
+			},
+		)?;
 
 		// Adding the root node
 		let root_node = DummyKernFSNode::new(0o555, 0, 0, FileContent::Directory(root_entries));
@@ -110,10 +123,13 @@ impl ProcFS {
 		let mut content = oom::wrap(|| root.get_content().into_owned());
 		match &mut content {
 			FileContent::Directory(entries) => oom::wrap(|| {
-				entries.insert(String::from_number(pid as _)?, DirEntry {
-					entry_type: FileType::Directory,
-					inode: inode,
-				})?;
+				entries.insert(
+					String::from_number(pid as _)?,
+					DirEntry {
+						entry_type: FileType::Directory,
+						inode: inode,
+					},
+				)?;
 				Ok(())
 			}),
 			_ => unreachable!(),
@@ -174,8 +190,12 @@ impl Filesystem for ProcFS {
 		self.fs.get_root_inode(io)
 	}
 
-	fn get_inode(&mut self, io: &mut dyn IO, parent: Option<INode>, name: &String)
-		-> Result<INode, Errno> {
+	fn get_inode(
+		&mut self,
+		io: &mut dyn IO,
+		parent: Option<INode>,
+		name: &String,
+	) -> Result<INode, Errno> {
 		self.fs.get_inode(io, parent, name)
 	}
 
@@ -183,13 +203,26 @@ impl Filesystem for ProcFS {
 		self.fs.load_file(io, inode, name)
 	}
 
-	fn add_file(&mut self, _io: &mut dyn IO, _parent_inode: INode, _name: String, _uid: Uid,
-		_gid: Gid, _mode: Mode, _content: FileContent) -> Result<File, Errno> {
+	fn add_file(
+		&mut self,
+		_io: &mut dyn IO,
+		_parent_inode: INode,
+		_name: String,
+		_uid: Uid,
+		_gid: Gid,
+		_mode: Mode,
+		_content: FileContent,
+	) -> Result<File, Errno> {
 		Err(errno!(EPERM))
 	}
 
-	fn add_link(&mut self, _io: &mut dyn IO, _parent_inode: INode, _name: &String,
-		_inode: INode) -> Result<(), Errno> {
+	fn add_link(
+		&mut self,
+		_io: &mut dyn IO,
+		_parent_inode: INode,
+		_name: &String,
+		_inode: INode,
+	) -> Result<(), Errno> {
 		Err(errno!(EPERM))
 	}
 
@@ -197,18 +230,32 @@ impl Filesystem for ProcFS {
 		Err(errno!(EPERM))
 	}
 
-	fn remove_file(&mut self, _io: &mut dyn IO, _parent_inode: INode, _name: &String)
-		-> Result<(), Errno> {
+	fn remove_file(
+		&mut self,
+		_io: &mut dyn IO,
+		_parent_inode: INode,
+		_name: &String,
+	) -> Result<(), Errno> {
 		Err(errno!(EPERM))
 	}
 
-	fn read_node(&mut self, io: &mut dyn IO, inode: INode, off: u64, buf: &mut [u8])
-		-> Result<(u64, bool), Errno> {
+	fn read_node(
+		&mut self,
+		io: &mut dyn IO,
+		inode: INode,
+		off: u64,
+		buf: &mut [u8],
+	) -> Result<(u64, bool), Errno> {
 		self.fs.read_node(io, inode, off, buf)
 	}
 
-	fn write_node(&mut self, io: &mut dyn IO, inode: INode, off: u64, buf: &[u8])
-		-> Result<(), Errno> {
+	fn write_node(
+		&mut self,
+		io: &mut dyn IO,
+		inode: INode,
+		off: u64,
+		buf: &[u8],
+	) -> Result<(), Errno> {
 		self.fs.write_node(io, inode, off, buf)
 	}
 }
@@ -229,8 +276,12 @@ impl FilesystemType for ProcFsType {
 		Ok(SharedPtr::new(ProcFS::new(false, Path::root())?)?)
 	}
 
-	fn load_filesystem(&self, _io: &mut dyn IO, mountpath: Path, readonly: bool)
-		-> Result<SharedPtr<dyn Filesystem>, Errno> {
+	fn load_filesystem(
+		&self,
+		_io: &mut dyn IO,
+		mountpath: Path,
+		readonly: bool,
+	) -> Result<SharedPtr<dyn Filesystem>, Errno> {
 		Ok(SharedPtr::new(ProcFS::new(readonly, mountpath)?)?)
 	}
 }

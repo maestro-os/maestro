@@ -3,8 +3,14 @@
 
 mod node;
 
-use core::mem::size_of;
+use super::kernfs::node::KernFSNode;
+use super::kernfs::KernFS;
+use super::Filesystem;
+use super::FilesystemType;
 use crate::errno;
+use crate::file::fs::kernfs::node::DummyKernFSNode;
+use crate::file::fs::Statfs;
+use crate::file::path::Path;
 use crate::file::Errno;
 use crate::file::File;
 use crate::file::FileContent;
@@ -12,19 +18,13 @@ use crate::file::Gid;
 use crate::file::INode;
 use crate::file::Mode;
 use crate::file::Uid;
-use crate::file::fs::Statfs;
-use crate::file::fs::kernfs::node::DummyKernFSNode;
-use crate::file::path::Path;
 use crate::util::boxed::Box;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
 use crate::util::io::IO;
 use crate::util::ptr::SharedPtr;
+use core::mem::size_of;
 use node::TmpFSRegular;
-use super::Filesystem;
-use super::FilesystemType;
-use super::kernfs::KernFS;
-use super::kernfs::node::KernFSNode;
 
 /// The default maximum amount of memory the filesystem can use in bytes.
 const DEFAULT_MAX_SIZE: usize = 512 * 1024 * 1024;
@@ -61,7 +61,7 @@ impl TmpFS {
 
 		// Adding the root node
 		let root_node = DummyKernFSNode::new(0o777, 0, 0, FileContent::Directory(HashMap::new()));
-		fs.update_size(get_used_size(&root_node) as _, | fs | {
+		fs.update_size(get_used_size(&root_node) as _, |fs| {
 			fs.fs.set_root(Box::new(root_node)?)?;
 			Ok(())
 		})?;
@@ -73,8 +73,11 @@ impl TmpFS {
 	/// filesystem.
 	/// If `f` fails, the function doesn't change the total size and returns the error.
 	/// If the new total size is too large, `f` is not executed and the function returns an error.
-	fn update_size<F: FnOnce(&mut Self) -> Result<(), Errno>>(&mut self, s: isize, f: F)
-		-> Result<(), Errno> {
+	fn update_size<F: FnOnce(&mut Self) -> Result<(), Errno>>(
+		&mut self,
+		s: isize,
+		f: F,
+	) -> Result<(), Errno> {
 		if s < 0 {
 			f(self)?;
 
@@ -118,8 +121,12 @@ impl Filesystem for TmpFS {
 		self.fs.get_root_inode(io)
 	}
 
-	fn get_inode(&mut self, io: &mut dyn IO, parent: Option<INode>, name: &String)
-		-> Result<INode, Errno> {
+	fn get_inode(
+		&mut self,
+		io: &mut dyn IO,
+		parent: Option<INode>,
+		name: &String,
+	) -> Result<INode, Errno> {
 		self.fs.get_inode(io, parent, name)
 	}
 
@@ -127,22 +134,37 @@ impl Filesystem for TmpFS {
 		self.fs.load_file(io, inode, name)
 	}
 
-	fn add_file(&mut self, io: &mut dyn IO, parent_inode: INode, name: String, uid: Uid, gid: Gid,
-		mode: Mode, content: FileContent) -> Result<File, Errno> {
+	fn add_file(
+		&mut self,
+		io: &mut dyn IO,
+		parent_inode: INode,
+		name: String,
+		uid: Uid,
+		gid: Gid,
+		mode: Mode,
+		content: FileContent,
+	) -> Result<File, Errno> {
 		// TODO Update fs's size
 
 		match content {
 			FileContent::Regular => {
 				let node = TmpFSRegular::new(mode, uid, gid);
 				self.fs.add_file_inner(parent_inode, node, name)
-			},
+			}
 
-			_ => self.fs.add_file(io, parent_inode, name, uid, gid, mode, content),
+			_ => self
+				.fs
+				.add_file(io, parent_inode, name, uid, gid, mode, content),
 		}
 	}
 
-	fn add_link(&mut self, io: &mut dyn IO, parent_inode: INode, name: &String, inode: INode)
-		-> Result<(), Errno> {
+	fn add_link(
+		&mut self,
+		io: &mut dyn IO,
+		parent_inode: INode,
+		name: &String,
+		inode: INode,
+	) -> Result<(), Errno> {
 		// TODO Update fs's size
 		self.fs.add_link(io, parent_inode, name, inode)
 	}
@@ -152,19 +174,33 @@ impl Filesystem for TmpFS {
 		self.fs.update_inode(io, file)
 	}
 
-	fn remove_file(&mut self, io: &mut dyn IO, parent_inode: INode, name: &String)
-		-> Result<(), Errno> {
+	fn remove_file(
+		&mut self,
+		io: &mut dyn IO,
+		parent_inode: INode,
+		name: &String,
+	) -> Result<(), Errno> {
 		// TODO Update fs's size
 		self.fs.remove_file(io, parent_inode, name)
 	}
 
-	fn read_node(&mut self, io: &mut dyn IO, inode: INode, off: u64, buf: &mut [u8])
-		-> Result<(u64, bool), Errno> {
+	fn read_node(
+		&mut self,
+		io: &mut dyn IO,
+		inode: INode,
+		off: u64,
+		buf: &mut [u8],
+	) -> Result<(u64, bool), Errno> {
 		self.fs.read_node(io, inode, off, buf)
 	}
 
-	fn write_node(&mut self, io: &mut dyn IO, inode: INode, off: u64, buf: &[u8])
-		-> Result<(), Errno> {
+	fn write_node(
+		&mut self,
+		io: &mut dyn IO,
+		inode: INode,
+		off: u64,
+		buf: &[u8],
+	) -> Result<(), Errno> {
 		// TODO Update fs's size
 		self.fs.write_node(io, inode, off, buf)
 	}
@@ -183,11 +219,23 @@ impl FilesystemType for TmpFsType {
 	}
 
 	fn create_filesystem(&self, _io: &mut dyn IO) -> Result<SharedPtr<dyn Filesystem>, Errno> {
-		Ok(SharedPtr::new(TmpFS::new(DEFAULT_MAX_SIZE, false, Path::root())?)?)
+		Ok(SharedPtr::new(TmpFS::new(
+			DEFAULT_MAX_SIZE,
+			false,
+			Path::root(),
+		)?)?)
 	}
 
-	fn load_filesystem(&self, _io: &mut dyn IO, mountpath: Path, readonly: bool)
-		-> Result<SharedPtr<dyn Filesystem>, Errno> {
-		Ok(SharedPtr::new(TmpFS::new(DEFAULT_MAX_SIZE, readonly, mountpath)?)?)
+	fn load_filesystem(
+		&self,
+		_io: &mut dyn IO,
+		mountpath: Path,
+		readonly: bool,
+	) -> Result<SharedPtr<dyn Filesystem>, Errno> {
+		Ok(SharedPtr::new(TmpFS::new(
+			DEFAULT_MAX_SIZE,
+			readonly,
+			mountpath,
+		)?)?)
 	}
 }

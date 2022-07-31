@@ -29,9 +29,8 @@ impl Madt {
 
 		let mut i = 0;
 		while i < entries_len {
-			let entry = unsafe {
-				&*((self as *const _ as usize + ENTRIES_OFF + i) as *const EntryHeader)
-			};
+			let entry =
+				unsafe { &*((self as *const _ as usize + ENTRIES_OFF + i) as *const EntryHeader) };
 
 			f(entry);
 

@@ -1,11 +1,11 @@
 //! The rt_sigprocmask system call allows to change the blocked signal mask.
 
-use core::cmp::min;
-use crate::errno::Errno;
 use crate::errno;
-use crate::process::Process;
+use crate::errno::Errno;
 use crate::process::mem_space::ptr::SyscallSlice;
 use crate::process::regs::Regs;
+use crate::process::Process;
+use core::cmp::min;
 
 /// Performs the union of the given mask with the current mask.
 const SIG_BLOCK: i32 = 0;
@@ -50,19 +50,19 @@ pub fn rt_sigprocmask(regs: &Regs) -> Result<i32, Errno> {
 				for i in 0..min(set.len(), curr.len()) {
 					curr[i] |= set[i];
 				}
-			},
+			}
 
 			SIG_UNBLOCK => {
 				for i in 0..min(set.len(), curr.len()) {
 					curr[i] &= !set[i];
 				}
-			},
+			}
 
 			SIG_SETMASK => {
 				for i in 0..min(set.len(), curr.len()) {
 					curr[i] = set[i];
 				}
-			},
+			}
 
 			_ => return Err(errno!(EINVAL)),
 		}

@@ -3,8 +3,8 @@
 
 use crate::errno::Errno;
 use crate::file::open_file::FDTarget;
-use crate::process::Process;
 use crate::process::regs::Regs;
+use crate::process::Process;
 
 /// The implementation of the `syncfs` syscall.
 pub fn syncfs(regs: &Regs) -> Result<i32, Errno> {
@@ -37,7 +37,7 @@ pub fn syncfs(regs: &Regs) -> Result<i32, Errno> {
 			// TODO Sync all files on mountpoint
 
 			Ok(0)
-		},
+		}
 
 		_ => Ok(0),
 	}

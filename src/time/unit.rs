@@ -1,8 +1,8 @@
 //! This module implements types representing timestamps.
 
+use crate::util::math;
 use core::cmp::Ordering;
 use core::ops::Add;
-use crate::util::math;
 
 /// Type representing a timestamp in seconds. Equivalent to POSIX's `time_t`.
 pub type Timestamp = u64;
@@ -109,7 +109,11 @@ impl PartialEq for Timeval {
 
 impl PartialOrd for Timeval {
 	fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-		Some(self.tv_sec.cmp(&other.tv_sec).then_with(|| self.tv_usec.cmp(&other.tv_usec)))
+		Some(
+			self.tv_sec
+				.cmp(&other.tv_sec)
+				.then_with(|| self.tv_usec.cmp(&other.tv_usec)),
+		)
 	}
 }
 
@@ -162,6 +166,10 @@ impl PartialEq for Timespec {
 
 impl PartialOrd for Timespec {
 	fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-		Some(self.tv_sec.cmp(&other.tv_sec).then_with(|| self.tv_nsec.cmp(&other.tv_nsec)))
+		Some(
+			self.tv_sec
+				.cmp(&other.tv_sec)
+				.then_with(|| self.tv_nsec.cmp(&other.tv_nsec)),
+		)
 	}
 }

@@ -1,10 +1,10 @@
 //! The ioctl syscall allows to control a device represented by a file descriptor.
 
-use core::ffi::c_void;
-use crate::errno::Errno;
 use crate::errno;
-use crate::process::Process;
+use crate::errno::Errno;
 use crate::process::regs::Regs;
+use crate::process::Process;
+use core::ffi::c_void;
 
 // ioctl requests: TTY
 
@@ -42,7 +42,10 @@ pub fn ioctl(regs: &Regs) -> Result<i32, Errno> {
 		let proc = guard.get_mut();
 
 		let mem_space = proc.get_mem_space().unwrap();
-		let open_file_mutex = proc.get_fd(fd as _).ok_or_else(|| errno!(EBADF))?.get_open_file();
+		let open_file_mutex = proc
+			.get_fd(fd as _)
+			.ok_or_else(|| errno!(EBADF))?
+			.get_open_file();
 
 		(mem_space, open_file_mutex)
 	};

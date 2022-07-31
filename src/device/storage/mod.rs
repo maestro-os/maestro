@@ -1,30 +1,27 @@
 //! This module implements storage drivers.
 
-pub mod partition;
 pub mod cache;
 pub mod ide;
+pub mod partition;
 pub mod pata;
 pub mod ramdisk;
 
-use core::cmp::min;
-use core::ffi::c_void;
+use crate::device;
+use crate::device::bus::pci;
+use crate::device::id;
+use crate::device::id::MajorBlock;
+use crate::device::manager::DeviceManager;
+use crate::device::manager::PhysicalDevice;
 use crate::device::Device;
 use crate::device::DeviceHandle;
 use crate::device::DeviceType;
-use crate::device::bus::pci;
-use crate::device::id::MajorBlock;
-use crate::device::id;
-use crate::device::manager::DeviceManager;
-use crate::device::manager::PhysicalDevice;
-use crate::device;
-use crate::errno::Errno;
 use crate::errno;
-use crate::file::Mode;
+use crate::errno::Errno;
 use crate::file::path::Path;
+use crate::file::Mode;
 use crate::memory::malloc;
 use crate::process::mem_space::MemSpace;
 use crate::process::oom;
-use crate::util::FailableClone;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::io::IO;
@@ -32,6 +29,9 @@ use crate::util::math;
 use crate::util::ptr::IntSharedPtr;
 use crate::util::ptr::SharedPtr;
 use crate::util::ptr::WeakPtr;
+use crate::util::FailableClone;
+use core::cmp::min;
+use core::ffi::c_void;
 use partition::Partition;
 
 /// The major number for storage devices.
@@ -209,8 +209,12 @@ impl StorageDeviceHandle {
 }
 
 impl DeviceHandle for StorageDeviceHandle {
-	fn ioctl(&mut self, _mem_space: IntSharedPtr<MemSpace>, _request: u32, _argp: *const c_void)
-		-> Result<u32, Errno> {
+	fn ioctl(
+		&mut self,
+		_mem_space: IntSharedPtr<MemSpace>,
+		_request: u32,
+		_argp: *const c_void,
+	) -> Result<u32, Errno> {
 		// TODO
 		Err(errno!(EINVAL))
 	}
@@ -240,11 +244,9 @@ impl IO for StorageDeviceHandle {
 					let size = p.get_size() * interface.get_block_size();
 
 					(start, size)
-				},
+				}
 
-				None => {
-					(0, interface.get_size())
-				},
+				None => (0, interface.get_size()),
 			};
 			if (offset + buff.len() as u64) > size {
 				return Err(errno!(EINVAL));
@@ -268,11 +270,9 @@ impl IO for StorageDeviceHandle {
 					let size = p.get_size() * interface.get_block_size();
 
 					(start, size)
-				},
+				}
 
-				None => {
-					(0, interface.get_size())
-				},
+				None => (0, interface.get_size()),
 			};
 			if (offset + buff.len() as u64) > size {
 				return Err(errno!(EINVAL));
@@ -325,8 +325,14 @@ impl StorageManager {
 
 		// Creating the main device file
 		let main_handle = StorageDeviceHandle::new(storage.new_weak(), None);
-		let main_device = Device::new(major, storage_id * MAX_PARTITIONS as u32, main_path,
-			STORAGE_MODE, DeviceType::Block, main_handle)?;
+		let main_device = Device::new(
+			major,
+			storage_id * MAX_PARTITIONS as u32,
+			main_path,
+			STORAGE_MODE,
+			DeviceType::Block,
+			main_handle,
+		)?;
 		device::register_device(main_device)?;
 
 		// Creating device files for every partitions (within the limit of MAX_PARTITIONS)
@@ -346,8 +352,14 @@ impl StorageManager {
 
 					// Creating the partition's device file
 					let handle = StorageDeviceHandle::new(storage.new_weak(), Some(partition));
-					let device = Device::new(major, storage_id * MAX_PARTITIONS as u32 + i as u32,
-						path.failable_clone()?, STORAGE_MODE, DeviceType::Block, handle)?;
+					let device = Device::new(
+						major,
+						storage_id * MAX_PARTITIONS as u32 + i as u32,
+						path.failable_clone()?,
+						STORAGE_MODE,
+						DeviceType::Block,
+						handle,
+					)?;
 					device::register_device(device)?;
 				}
 			}
@@ -422,9 +434,13 @@ impl StorageManager {
 			for j in 0..interfaces_count {
 				let interface = &mut self.interfaces[j];
 
-				crate::print!("Processing iteration: {}/{}; device: {}/{}...",
-					i + 1, iterations_count,
-					j + 1, interfaces_count);
+				crate::print!(
+					"Processing iteration: {}/{}; device: {}/{}...",
+					i + 1,
+					iterations_count,
+					j + 1,
+					interfaces_count
+				);
 
 				if !Self::test_interface(interface.as_mut(), seed) {
 					return false;
@@ -501,7 +517,7 @@ impl DeviceManager for StorageManager {
 							Err(e) if e == errno!(ENOMEM) => return Err(e),
 							Err(e) => return Ok(Err(e)),
 
-							_ => {},
+							_ => {}
 						}
 					}
 
@@ -510,8 +526,7 @@ impl DeviceManager for StorageManager {
 			}
 
 			// TODO Handle other controller types
-
-			_ => {},
+			_ => {}
 		}
 
 		Ok(())

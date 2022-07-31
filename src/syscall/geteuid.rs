@@ -1,8 +1,8 @@
 //! The `geteuid` syscall returns the effective UID of the process's owner.
 
 use crate::errno::Errno;
-use crate::process::Process;
 use crate::process::regs::Regs;
+use crate::process::Process;
 
 /// The implementation of the `geteuid` syscall.
 pub fn geteuid(_: &Regs) -> Result<i32, Errno> {

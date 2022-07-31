@@ -1,6 +1,9 @@
 //! A hashmap is a data structure that stores key/value pairs into buckets and uses the hash of the
 //! key to quickly get the bucket storing the value.
 
+use super::vec::Vec;
+use crate::errno::Errno;
+use crate::util::FailableClone;
 use core::borrow::Borrow;
 use core::fmt;
 use core::hash::Hash;
@@ -8,9 +11,6 @@ use core::hash::Hasher;
 use core::mem::size_of_val;
 use core::ops::Index;
 use core::ops::IndexMut;
-use crate::errno::Errno;
-use crate::util::FailableClone;
-use super::vec::Vec;
 
 /// The default number of buckets in a hashmap.
 const DEFAULT_BUCKETS_COUNT: usize = 64;
@@ -26,10 +26,7 @@ struct XORHasher {
 impl XORHasher {
 	/// Creates a new instance.
 	pub fn new() -> Self {
-		Self {
-			value: 0,
-			off: 0,
-		}
+		Self { value: 0, off: 0 }
 	}
 }
 
@@ -64,7 +61,11 @@ impl<K: Eq + Hash, V> Bucket<K, V> {
 
 	/// Returns an immutable reference to the value with the given key `k`. If the key isn't
 	/// present, the function return None.
-	pub fn get<Q: ?Sized>(&self, k: &Q) -> Option<&V> where K: Borrow<Q>, Q: Hash + Eq {
+	pub fn get<Q: ?Sized>(&self, k: &Q) -> Option<&V>
+	where
+		K: Borrow<Q>,
+		Q: Hash + Eq,
+	{
 		for i in 0..self.elements.len() {
 			if self.elements[i].0.borrow() == k {
 				return Some(&self.elements[i].1);
@@ -77,7 +78,10 @@ impl<K: Eq + Hash, V> Bucket<K, V> {
 	/// Returns a mutable reference to the value with the given key `k`. If the key isn't present,
 	/// the function return None.
 	pub fn get_mut<Q: ?Sized>(&mut self, k: &Q) -> Option<&mut V>
-		where K: Borrow<Q>, Q: Hash + Eq {
+	where
+		K: Borrow<Q>,
+		Q: Hash + Eq,
+	{
 		for i in 0..self.elements.len() {
 			if self.elements[i].0.borrow() == k {
 				return Some(&mut self.elements[i].1);
@@ -97,7 +101,11 @@ impl<K: Eq + Hash, V> Bucket<K, V> {
 
 	/// Removes an element from the bucket. If the key was present, the function returns the
 	/// value.
-	pub fn remove<Q: ?Sized>(&mut self, k: &Q) -> Option<V> where K: Borrow<Q>, Q: Hash + Eq {
+	pub fn remove<Q: ?Sized>(&mut self, k: &Q) -> Option<V>
+	where
+		K: Borrow<Q>,
+		Q: Hash + Eq,
+	{
 		for i in 0..self.elements.len() {
 			if self.elements[i].0.borrow() == k {
 				return Some(self.elements.remove(i).1);
@@ -115,9 +123,7 @@ impl<K: Eq + Hash + FailableClone, V: FailableClone> FailableClone for Bucket<K,
 			v.push((key.failable_clone()?, value.failable_clone()?))?;
 		}
 
-		Ok(Self {
-			elements: v,
-		})
+		Ok(Self { elements: v })
 	}
 }
 
@@ -170,7 +176,11 @@ impl<K: Eq + Hash, V> HashMap<K, V> {
 	}
 
 	/// Returns the bucket index for the key `k`.
-	fn get_bucket_index<Q: ?Sized>(&self, k: &Q) -> usize where K: Borrow<Q>, Q: Hash {
+	fn get_bucket_index<Q: ?Sized>(&self, k: &Q) -> usize
+	where
+		K: Borrow<Q>,
+		Q: Hash,
+	{
 		let mut hasher = XORHasher::new();
 		k.hash(&mut hasher);
 		(hasher.finish() % (self.buckets_count as u64)) as usize
@@ -178,7 +188,11 @@ impl<K: Eq + Hash, V> HashMap<K, V> {
 
 	/// Returns an immutable reference to the value with the given key `k`. If the key isn't
 	/// present, the function return None.
-	pub fn get<Q: ?Sized>(&self, k: &Q) -> Option<&V> where K: Borrow<Q>, Q: Hash + Eq {
+	pub fn get<Q: ?Sized>(&self, k: &Q) -> Option<&V>
+	where
+		K: Borrow<Q>,
+		Q: Hash + Eq,
+	{
 		let index = self.get_bucket_index(&k);
 
 		if index < self.buckets.len() {
@@ -191,7 +205,10 @@ impl<K: Eq + Hash, V> HashMap<K, V> {
 	/// Returns a mutable reference to the value with the given key `k`. If the key isn't present,
 	/// the function return None.
 	pub fn get_mut<Q: ?Sized>(&mut self, k: &Q) -> Option<&mut V>
-		where K: Borrow<Q>, Q: Hash + Eq {
+	where
+		K: Borrow<Q>,
+		Q: Hash + Eq,
+	{
 		let index = self.get_bucket_index(&k);
 
 		if index < self.buckets.len() {
@@ -229,7 +246,11 @@ impl<K: Eq + Hash, V> HashMap<K, V> {
 
 	/// Removes an element from the hash map. If the key was present, the function returns the
 	/// value.
-	pub fn remove<Q: ?Sized>(&mut self, k: &Q) -> Option<V> where K: Borrow<Q>, Q: Hash + Eq {
+	pub fn remove<Q: ?Sized>(&mut self, k: &Q) -> Option<V>
+	where
+		K: Borrow<Q>,
+		Q: Hash + Eq,
+	{
 		let index = self.get_bucket_index(k);
 
 		if index < self.buckets.len() {
@@ -327,7 +348,7 @@ impl<'a, K: Hash + Eq, V> Iterator for HashMapIterator<'a, K, V> {
 			}
 
 			if self.curr_bucket >= self.hm.buckets.len() {
-				return None
+				return None;
 			}
 		}
 

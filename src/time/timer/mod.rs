@@ -114,8 +114,12 @@ impl TimerManager {
 	/// `frequency` is the object's ticking frequency.
 	/// `once` tells whether the object has to be ticked only once. If true, the object will be
 	/// removed right after being ticked.
-	pub fn register_tickable<T: 'static + Tickable>(&mut self, tickable: T, frequency: Rational,
-		once: bool) -> Result<(), Errno> {
+	pub fn register_tickable<T: 'static + Tickable>(
+		&mut self,
+		tickable: T,
+		frequency: Rational,
+		once: bool,
+	) -> Result<(), Errno> {
 		let wrapper = TickableWrapper {
 			tickable: Box::new(tickable)?,
 

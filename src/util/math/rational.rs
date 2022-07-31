@@ -1,5 +1,6 @@
 //! A rational number is a number which can be represented as the fraction of two integers: `a / b`
 
+use crate::util::math;
 use core::cmp::Ordering;
 use core::cmp::PartialEq;
 use core::ops::Add;
@@ -11,7 +12,6 @@ use core::ops::MulAssign;
 use core::ops::Neg;
 use core::ops::Sub;
 use core::ops::SubAssign;
-use crate::util::math;
 
 // FIXME: Operations can overflow
 
@@ -27,10 +27,7 @@ pub struct Rational {
 impl Rational {
 	/// Creates an instance from a given integer `n`.
 	pub const fn from_integer(n: i64) -> Self {
-		Self {
-			a: n,
-			b: 1,
-		}
+		Self { a: n, b: 1 }
 	}
 
 	/// Returns the numerator of the number.
@@ -233,9 +230,18 @@ mod test {
 		assert_eq!(Rational::from(1) + Rational::from(2), Rational::from(3));
 		assert_eq!(Rational::from(1) + Rational::from(-1), Rational::from(0));
 
-		assert_eq!(Rational::from(1) / 2 + Rational::from(1) / 2, Rational::from(1));
-		assert_eq!(Rational::from(1) / 3 + Rational::from(2) / 3, Rational::from(1));
-		assert_eq!(Rational::from(1) / 2 + Rational::from(1) / 3, Rational::from(5) / 6);
+		assert_eq!(
+			Rational::from(1) / 2 + Rational::from(1) / 2,
+			Rational::from(1)
+		);
+		assert_eq!(
+			Rational::from(1) / 3 + Rational::from(2) / 3,
+			Rational::from(1)
+		);
+		assert_eq!(
+			Rational::from(1) / 2 + Rational::from(1) / 3,
+			Rational::from(5) / 6
+		);
 	}
 
 	#[test_case]
@@ -245,9 +251,18 @@ mod test {
 		assert_eq!(Rational::from(1) - Rational::from(2), Rational::from(-1));
 		assert_eq!(Rational::from(1) - Rational::from(-1), Rational::from(2));
 
-		assert_eq!(Rational::from(1) / 2 - Rational::from(1) / 2, Rational::from(0));
-		assert_eq!(Rational::from(1) / 3 - Rational::from(2) / 3, Rational::from(-1) / 3);
-		assert_eq!(Rational::from(1) / 2 - Rational::from(1) / 3, Rational::from(1) / 6);
+		assert_eq!(
+			Rational::from(1) / 2 - Rational::from(1) / 2,
+			Rational::from(0)
+		);
+		assert_eq!(
+			Rational::from(1) / 3 - Rational::from(2) / 3,
+			Rational::from(-1) / 3
+		);
+		assert_eq!(
+			Rational::from(1) / 2 - Rational::from(1) / 3,
+			Rational::from(1) / 6
+		);
 	}
 
 	#[test_case]
@@ -257,19 +272,40 @@ mod test {
 		assert_eq!(Rational::from(1) * Rational::from(2), Rational::from(2));
 		assert_eq!(Rational::from(1) * Rational::from(-1), Rational::from(-1));
 
-		assert_eq!(Rational::from(1) / 2 * Rational::from(1) / 2, Rational::from(1) / 4);
-		assert_eq!(Rational::from(1) / 3 * Rational::from(2) / 3, Rational::from(2) / 9);
-		assert_eq!(Rational::from(1) / 2 * Rational::from(1) / 3, Rational::from(1) / 6);
+		assert_eq!(
+			Rational::from(1) / 2 * Rational::from(1) / 2,
+			Rational::from(1) / 4
+		);
+		assert_eq!(
+			Rational::from(1) / 3 * Rational::from(2) / 3,
+			Rational::from(2) / 9
+		);
+		assert_eq!(
+			Rational::from(1) / 2 * Rational::from(1) / 3,
+			Rational::from(1) / 6
+		);
 	}
 
 	#[test_case]
 	fn rational_div() {
 		assert_eq!(Rational::from(1) / Rational::from(1), Rational::from(1));
 		assert_eq!(Rational::from(1) / Rational::from(2), Rational::from(1) / 2);
-		assert_eq!(Rational::from(1) / Rational::from(-1), Rational::from(1) / -1);
+		assert_eq!(
+			Rational::from(1) / Rational::from(-1),
+			Rational::from(1) / -1
+		);
 
-		assert_eq!((Rational::from(1) / 2) / (Rational::from(1) / 2), Rational::from(1));
-		assert_eq!((Rational::from(1) / 3) / (Rational::from(2) / 3), Rational::from(1) / 2);
-		assert_eq!((Rational::from(1) / 2) / (Rational::from(1) / 3), Rational::from(3) / 2);
+		assert_eq!(
+			(Rational::from(1) / 2) / (Rational::from(1) / 2),
+			Rational::from(1)
+		);
+		assert_eq!(
+			(Rational::from(1) / 3) / (Rational::from(2) / 3),
+			Rational::from(1) / 2
+		);
+		assert_eq!(
+			(Rational::from(1) / 2) / (Rational::from(1) / 3),
+			Rational::from(3) / 2
+		);
 	}
 }

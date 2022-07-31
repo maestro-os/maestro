@@ -1,9 +1,9 @@
 //! This module implements the `user_desc` structure, which is used in userspace to specify the
 //! value for a descriptor, either a local or global descriptor.
 
+use crate::gdt;
 use core::ffi::c_void;
 use core::fmt;
-use crate::gdt;
 
 /// The size of the user_desc structure in bytes.
 pub const USER_DESC_SIZE: usize = 16;
@@ -18,14 +18,16 @@ impl UserDesc {
 	/// Returns the entry number.
 	#[inline(always)]
 	pub fn get_entry_number(&self) -> i32 {
-		unsafe { // Safe because the structure is large enough
+		unsafe {
+			// Safe because the structure is large enough
 			*(&self.val[0] as *const _ as *const i32)
 		}
 	}
 
 	/// Sets the entry number.
 	pub fn set_entry_number(&mut self, number: i32) {
-		unsafe { // Safe because the structure is large enough
+		unsafe {
+			// Safe because the structure is large enough
 			*(&mut self.val[0] as *mut _ as *mut i32) = number;
 		}
 	}
@@ -33,7 +35,8 @@ impl UserDesc {
 	/// Returns the base address.
 	#[inline(always)]
 	pub fn get_base_addr(&self) -> i32 {
-		unsafe { // Safe because the structure is large enough
+		unsafe {
+			// Safe because the structure is large enough
 			*(&self.val[4] as *const _ as *const i32)
 		}
 	}
@@ -41,7 +44,8 @@ impl UserDesc {
 	/// Returns the limit.
 	#[inline(always)]
 	pub fn get_limit(&self) -> i32 {
-		unsafe { // Safe because the structure is large enough
+		unsafe {
+			// Safe because the structure is large enough
 			*(&self.val[8] as *const _ as *const i32)
 		}
 	}

@@ -2,9 +2,9 @@
 
 use crate::device::bar::BAR;
 use crate::device::bus::pci;
+use crate::device::storage::pata::PATAInterface;
 use crate::device::storage::PhysicalDevice;
 use crate::device::storage::StorageInterface;
-use crate::device::storage::pata::PATAInterface;
 use crate::errno::Errno;
 use crate::util::container::vec::Vec;
 use crate::util::ptr::SharedPtr;
@@ -118,8 +118,11 @@ impl Controller {
 	/// Detects a disk on the controller.
 	/// `channel` is the channel to check.
 	/// `slave` tells whether the disk is the slave disk.
-	pub fn detect(&self, channel: Channel, slave: bool)
-		-> Result<Option<SharedPtr<dyn StorageInterface>>, Errno> {
+	pub fn detect(
+		&self,
+		channel: Channel,
+		slave: bool,
+	) -> Result<Option<SharedPtr<dyn StorageInterface>>, Errno> {
 		// TODO Add support for SATA
 
 		match PATAInterface::new(channel, slave) {
@@ -131,7 +134,7 @@ impl Controller {
 				//let interface = Box::new(CachedStorageInterface::new(interface, 1024)?)?;
 
 				Ok(Some(interface))
-			},
+			}
 
 			Err(_) => Ok(None),
 		}

@@ -8,25 +8,25 @@
 //! This number represents the number of ticks during which the process keeps running until
 //! switching to the next process.
 
-use core::cmp::max;
-use core::ffi::c_void;
 use crate::errno::Errno;
-use crate::event::CallbackHook;
 use crate::event;
+use crate::event::CallbackHook;
 use crate::idt::pic;
+use crate::memory;
 use crate::memory::malloc;
 use crate::memory::stack;
-use crate::memory;
-use crate::process::Process;
+use crate::process;
 use crate::process::pid::Pid;
 use crate::process::regs::Regs;
-use crate::process;
+use crate::process::Process;
 use crate::util::container::map::Map;
 use crate::util::container::map::MapIterator;
 use crate::util::container::vec::Vec;
 use crate::util::lock::*;
 use crate::util::math;
 use crate::util::ptr::IntSharedPtr;
+use core::cmp::max;
+use core::ffi::c_void;
 
 /// The size of the temporary stack for context switching.
 const TMP_STACK_SIZE: usize = 16 * memory::PAGE_SIZE;
@@ -64,7 +64,7 @@ impl Scheduler {
 			tmp_stacks.push(malloc::Alloc::new_default(TMP_STACK_SIZE)?)?;
 		}
 
-		let callback = | _id: u32, _code: u32, regs: &Regs, ring: u32 | {
+		let callback = |_id: u32, _code: u32, regs: &Regs, ring: u32| {
 			Scheduler::tick(process::get_scheduler(), regs, ring);
 		};
 		let tick_callback_hook = event::register_callback(0x20, 0, callback)?;
@@ -86,7 +86,9 @@ impl Scheduler {
 	/// Returns a pointer to the top of the tmp stack for the given core `core`.
 	pub fn get_tmp_stack(&mut self, core: u32) -> *mut c_void {
 		unsafe {
-			self.tmp_stacks[core as usize].as_ptr_mut().add(TMP_STACK_SIZE) as *mut _
+			self.tmp_stacks[core as usize]
+				.as_ptr_mut()
+				.add(TMP_STACK_SIZE) as *mut _
 		}
 	}
 
@@ -165,20 +167,30 @@ impl Scheduler {
 	/// `priority_sum` is the sum of all processes' priorities.
 	/// `priority_max` is the highest priority a process currently has.
 	/// `processes_count` is the number of processes.
-	fn get_quantum_count(priority: usize, priority_sum: usize, priority_max: usize,
-		processes_count: usize) -> usize {
-		let n = math::integer_linear_interpolation::<isize>(priority as _,
+	fn get_quantum_count(
+		priority: usize,
+		priority_sum: usize,
+		priority_max: usize,
+		processes_count: usize,
+	) -> usize {
+		let n = math::integer_linear_interpolation::<isize>(
+			priority as _,
 			Self::get_average_priority(priority_sum, processes_count) as _,
 			priority_max as _,
 			AVERAGE_PRIORITY_QUANTA as _,
-			MAX_PRIORITY_QUANTA as _);
+			MAX_PRIORITY_QUANTA as _,
+		);
 		max(1, n) as _
 	}
 
 	// TODO Clean
 	/// Tells whether the given process `process` can run.
-	fn can_run(process: &Process, _priority_sum: usize, _priority_max: usize,
-		_processes_count: usize) -> bool {
+	fn can_run(
+		process: &Process,
+		_priority_sum: usize,
+		_priority_max: usize,
+		_processes_count: usize,
+	) -> bool {
 		if process.can_run() {
 			// TODO fix
 			//process.quantum_count < Self::get_quantum_count(process.get_priority(), priority_sum,
@@ -209,7 +221,7 @@ impl Scheduler {
 		})?;
 
 		// Closure iterating the tree to find an available process
-		let next = | iter: MapIterator<Pid, IntSharedPtr<Process>> | {
+		let next = |iter: MapIterator<Pid, IntSharedPtr<Process>>| {
 			let mut proc: Option<(Pid, IntSharedPtr<Process>)> = None;
 
 			// Iterating over processes
@@ -303,7 +315,8 @@ impl Scheduler {
 
 					// Resuming execution
 					regs.switch(!syscalling);
-				}).unwrap();
+				})
+				.unwrap();
 			}
 
 			unreachable!();

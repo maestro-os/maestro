@@ -39,9 +39,9 @@ if grep '.\{121,\}' -rn Makefile; then
 fi
 echo
 
-# Checks for lines in Rust code longer than 99 characters
-echo "Checking for lines of Rust code longer than 99 characters..."
-if grep '.\{100,\}' -rn $(find src/ -name "*.rs"); then
+# Checks for lines in Rust code longer than 100 characters
+echo "Checking for lines of Rust code longer than 100 characters..."
+if grep '.\{101,\}' -rn $(find src/ -name "*.rs"); then
 	status=1
 fi
 echo

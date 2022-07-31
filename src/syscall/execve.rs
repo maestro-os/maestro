@@ -1,25 +1,25 @@
 //! The `execve` system call allows to execute a program from a file.
 
-use core::ops::Range;
-use crate::errno::Errno;
 use crate::errno;
+use crate::errno::Errno;
+use crate::file::fcache;
+use crate::file::path::Path;
 use crate::file::File;
 use crate::file::Gid;
 use crate::file::Uid;
-use crate::file::fcache;
-use crate::file::path::Path;
 use crate::memory::stack;
-use crate::process::Process;
+use crate::process;
+use crate::process::exec;
 use crate::process::exec::ExecInfo;
 use crate::process::exec::ProgramImage;
-use crate::process::exec;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::regs::Regs;
-use crate::process;
+use crate::process::Process;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::io::IO;
 use crate::util::ptr::SharedPtr;
+use core::ops::Range;
 
 /// The maximum length of the shebang.
 const SHEBANG_MAX: usize = 257;
@@ -53,10 +53,11 @@ fn peek_shebang(file: &mut File) -> Result<Option<Shebang>, Errno> {
 
 	if size >= 2 && buff[0..2] == [b'#', b'!'] {
 		// Getting the end of the shebang
-		let shebang_end = buff[..size].iter()
+		let shebang_end = buff[..size]
+			.iter()
 			.enumerate()
-			.filter(| (_, c) | **c == b'\n')
-			.map(| (off, _) | off)
+			.filter(|(_, c)| **c == b'\n')
+			.map(|(off, _)| off)
 			.next();
 		let shebang_end = match shebang_end {
 			Some(shebang_end) => shebang_end,
@@ -64,29 +65,26 @@ fn peek_shebang(file: &mut File) -> Result<Option<Shebang>, Errno> {
 		};
 
 		// Getting the range of the interpreter
-		let interp_end = buff[..size].iter()
+		let interp_end = buff[..size]
+			.iter()
 			.enumerate()
-			.filter(| (_, c) | **c == b' ' || **c == b'\t' || **c == b'\n')
-			.map(| (off, _) | off)
+			.filter(|(_, c)| **c == b' ' || **c == b'\t' || **c == b'\n')
+			.map(|(off, _)| off)
 			.next()
 			.unwrap_or(shebang_end);
 		let interp = 2..interp_end;
 
 		// Getting the range of the optional argument
-		let arg = buff[..size].iter()
+		let arg = buff[..size]
+			.iter()
 			.enumerate()
 			.skip(interp_end)
-			.filter(| (_, c) | **c != b' ' && **c != b'\t')
-			.map(| (off, _) | off..shebang_end)
-			.filter(| arg | !arg.is_empty())
+			.filter(|(_, c)| **c != b' ' && **c != b'\t')
+			.map(|(off, _)| off..shebang_end)
+			.filter(|arg| !arg.is_empty())
 			.next();
 
-		Ok(Some(Shebang {
-			buff,
-
-			interp,
-			arg,
-		}))
+		Ok(Some(Shebang { buff, interp, arg }))
 	} else {
 		Ok(None)
 	}
@@ -105,8 +103,15 @@ fn do_exec(program_image: ProgramImage) -> Result<Regs, Errno> {
 
 // TODO clean
 /// TODO doc
-fn build_image(file: SharedPtr<File>, uid: Uid, euid: Uid, gid: Gid, egid: Gid, argv: &[String],
-	envp: &[String]) -> Result<ProgramImage, Errno> {
+fn build_image(
+	file: SharedPtr<File>,
+	uid: Uid,
+	euid: Uid,
+	gid: Gid,
+	egid: Gid,
+	argv: &[String],
+	envp: &[String],
+) -> Result<ProgramImage, Errno> {
 	// TODO Find a better solution
 	let mut argv_ = Vec::new();
 	for a in argv {
@@ -151,14 +156,15 @@ pub fn execve(regs: &Regs) -> Result<i32, Errno> {
 			let mem_space = proc.get_mem_space().unwrap();
 			let mem_space_guard = mem_space.lock();
 
-			Path::from_str(pathname.get(&mem_space_guard)?.ok_or_else(|| errno!(EFAULT))?, true)?
+			Path::from_str(
+				pathname
+					.get(&mem_space_guard)?
+					.ok_or_else(|| errno!(EFAULT))?,
+				true,
+			)?
 		};
-		let argv = unsafe {
-			super::util::get_str_array(proc, argv)?
-		};
-		let envp = unsafe {
-			super::util::get_str_array(proc, envp)?
-		};
+		let argv = unsafe { super::util::get_str_array(proc, argv)? };
+		let envp = unsafe { super::util::get_str_array(proc, envp)? };
 
 		let uid = proc.get_uid();
 		let gid = proc.get_gid();
@@ -177,7 +183,10 @@ pub fn execve(regs: &Regs) -> Result<i32, Errno> {
 			let files_guard = files_mutex.lock();
 			let files_cache = files_guard.get_mut();
 
-			files_cache.as_mut().unwrap().get_file_from_path(&path, uid, gid, true)?
+			files_cache
+				.as_mut()
+				.unwrap()
+				.get_file_from_path(&path, uid, gid, true)?
 		};
 		let guard = file.lock();
 		let f = guard.get_mut();
@@ -221,14 +230,18 @@ pub fn execve(regs: &Regs) -> Result<i32, Errno> {
 		let files_guard = files_mutex.lock();
 		let files_cache = files_guard.get_mut();
 
-		files_cache.as_mut().unwrap().get_file_from_path(&path, uid, gid, true)?
+		files_cache
+			.as_mut()
+			.unwrap()
+			.get_file_from_path(&path, uid, gid, true)?
 	};
 
 	// Building the program's image
 	let program_image = unsafe {
 		stack::switch(None, move || {
 			build_image(file, uid, euid, gid, egid, &argv, &envp)
-		}).unwrap()?
+		})
+		.unwrap()?
 	};
 
 	cli!();
@@ -237,7 +250,10 @@ pub fn execve(regs: &Regs) -> Result<i32, Errno> {
 	// A temporary stack cannot be allocated since it wouldn't be possible to free it on success
 	let tmp_stack = {
 		let core = 0; // TODO Get current core ID
-		process::get_scheduler().lock().get_mut().get_tmp_stack(core)
+		process::get_scheduler()
+			.lock()
+			.get_mut()
+			.get_tmp_stack(core)
 	};
 
 	// Switching to another stack in order to avoid crashing when switching to the new memory
@@ -246,7 +262,8 @@ pub fn execve(regs: &Regs) -> Result<i32, Errno> {
 		stack::switch(Some(tmp_stack), move || -> Result<(), Errno> {
 			let regs = do_exec(program_image)?;
 			regs.switch(true);
-		}).unwrap()?;
+		})
+		.unwrap()?;
 	}
 
 	// Cannot be reached since `do_exec` won't return on success

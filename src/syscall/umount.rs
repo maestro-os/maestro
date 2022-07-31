@@ -1,12 +1,12 @@
 //! The `umount` system call allows to unmount a filesystem previously mounted with `mount`.
 
-use crate::errno::Errno;
 use crate::errno;
+use crate::errno::Errno;
 use crate::file::mountpoint;
 use crate::file::path::Path;
-use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::regs::Regs;
+use crate::process::Process;
 
 /// The implementation of the `umount` syscall.
 pub fn umount(regs: &Regs) -> Result<i32, Errno> {

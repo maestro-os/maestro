@@ -1,13 +1,13 @@
 //! The pipe2 system call allows to create a pipe with given flags.
 
-use crate::errno::Errno;
 use crate::errno;
-use crate::file::open_file::FDTarget;
+use crate::errno::Errno;
 use crate::file::open_file;
+use crate::file::open_file::FDTarget;
 use crate::file::pipe::PipeBuffer;
-use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::regs::Regs;
+use crate::process::Process;
 use crate::util::ptr::SharedPtr;
 
 /// The implementation of the `pipe2` syscall.

@@ -1,10 +1,10 @@
 //! The `wait4` system call waits for a process to change state.
 
+use super::waitpid;
 use crate::errno::Errno;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::regs::Regs;
 use crate::process::rusage::RUsage;
-use super::waitpid;
 
 /// The implementation of the `wait4` syscall.
 pub fn wait4(regs: &Regs) -> Result<i32, Errno> {

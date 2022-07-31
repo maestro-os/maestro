@@ -41,9 +41,7 @@ extern "C" {
 /// Returns a pointer to the beginning of the kernel in the virtual address space.
 #[inline(always)]
 pub fn get_kernel_virtual_begin() -> *const c_void {
-	unsafe {
-		&kernel_begin as *const _
-	}
+	unsafe { &kernel_begin as *const _ }
 }
 
 /// The size of the kernelspace memory in bytes.
@@ -55,25 +53,19 @@ pub fn get_kernelspace_size() -> usize {
 /// Returns the size of the kernel image in bytes.
 #[inline(always)]
 pub fn get_kernel_size() -> usize {
-	unsafe {
-		(&kernel_end as *const _ as usize) - (&kernel_begin as *const _ as usize)
-	}
+	unsafe { (&kernel_end as *const _ as usize) - (&kernel_begin as *const _ as usize) }
 }
 
 /// Returns the end of the kernel image in the physical memory.
 #[inline(always)]
 pub fn get_kernel_end() -> *const c_void {
-	unsafe {
-		((&kernel_end as *const c_void as usize) - (PROCESS_END as usize)) as _
-	}
+	unsafe { ((&kernel_end as *const c_void as usize) - (PROCESS_END as usize)) as _ }
 }
 
 /// Returns the end of the kernel image in the virtual memory.
 #[inline(always)]
 pub fn get_kernel_virtual_end() -> *const c_void {
-	unsafe {
-		(&kernel_end as *const _ as usize) as _
-	}
+	unsafe { (&kernel_end as *const _ as usize) as _ }
 }
 
 /// Converts a kernel physical address to a virtual address.

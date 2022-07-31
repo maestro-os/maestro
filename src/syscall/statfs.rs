@@ -1,14 +1,14 @@
 //! The `statfs` system call returns information about a mounted file system.
 
-use crate::errno::Errno;
 use crate::errno;
+use crate::errno::Errno;
 use crate::file::fcache;
 use crate::file::fs::Statfs;
 use crate::file::path::Path;
-use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::regs::Regs;
+use crate::process::Process;
 
 /// The implementation of the `statfs` syscall.
 pub fn statfs(regs: &Regs) -> Result<i32, Errno> {
@@ -24,7 +24,11 @@ pub fn statfs(regs: &Regs) -> Result<i32, Errno> {
 		let mem_space_guard = mem_space.lock();
 
 		let path = path.get(&mem_space_guard)?.ok_or_else(|| errno!(EFAULT))?;
-		(Path::from_str(path, true)?, proc.get_euid(), proc.get_egid())
+		(
+			Path::from_str(path, true)?,
+			proc.get_euid(),
+			proc.get_egid(),
+		)
 	};
 
 	let file_mutex = {
@@ -60,7 +64,9 @@ pub fn statfs(regs: &Regs) -> Result<i32, Errno> {
 		let mem_space = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space.lock();
 
-		let buf = buf.get_mut(&mem_space_guard)?.ok_or_else(|| errno!(EFAULT))?;
+		let buf = buf
+			.get_mut(&mem_space_guard)?
+			.ok_or_else(|| errno!(EFAULT))?;
 		*buf = stat;
 	}
 

@@ -1,24 +1,24 @@
 //! A memory mapping is a region of virtual memory that a process can access. It may be mapped
 //! at the process's creation or by the process itself using system calls.
 
-use core::ffi::c_void;
-use core::fmt;
-use core::ptr::NonNull;
-use core::ptr;
+use super::gap::MemGap;
+use super::MemSpace;
 use crate::errno::Errno;
 use crate::file::open_file::OpenFile;
+use crate::memory;
 use crate::memory::buddy;
 use crate::memory::malloc;
-use crate::memory::vmem::VMem;
 use crate::memory::vmem;
-use crate::memory;
+use crate::memory::vmem::VMem;
 use crate::process::mem_space::physical_ref_counter::PhysRefCounter;
 use crate::process::oom;
+use crate::util;
 use crate::util::lock::*;
 use crate::util::ptr::SharedPtr;
-use crate::util;
-use super::MemSpace;
-use super::gap::MemGap;
+use core::ffi::c_void;
+use core::fmt;
+use core::ptr;
+use core::ptr::NonNull;
 
 /// A pointer to the default physical page of memory. This page is meant to be mapped in read-only
 /// and is a placeholder for pages that are accessed without being allocated nor written.
@@ -74,8 +74,14 @@ impl MemMapping {
 	/// file.
 	/// `off` is the offset inside of the file pointed to by the given file descriptor.
 	/// `vmem` is the virtual memory context handler.
-	pub fn new(begin: *const c_void, size: usize, flags: u8, file: Option<SharedPtr<OpenFile>>,
-		off: u64, vmem: NonNull<dyn VMem>) -> Self {
+	pub fn new(
+		begin: *const c_void,
+		size: usize,
+		flags: u8,
+		file: Option<SharedPtr<OpenFile>>,
+		off: u64,
+		vmem: NonNull<dyn VMem>,
+	) -> Self {
 		debug_assert!(util::is_aligned(begin, memory::PAGE_SIZE));
 		debug_assert!(size > 0);
 
@@ -114,18 +120,14 @@ impl MemMapping {
 	/// Returns a reference to the virtual memory context handler associated with the mapping.
 	#[inline(always)]
 	pub fn get_vmem(&self) -> &'static dyn VMem {
-		unsafe {
-			&*self.vmem.as_ptr()
-		}
+		unsafe { &*self.vmem.as_ptr() }
 	}
 
 	/// Returns a mutable reference to the virtual memory context handler associated with the
 	/// mapping.
 	#[inline(always)]
 	pub fn get_mut_vmem(&mut self) -> &'static mut dyn VMem {
-		unsafe {
-			&mut *self.vmem.as_ptr()
-		}
+		unsafe { &mut *self.vmem.as_ptr() }
 	}
 
 	/// Tells whether the mapping contains the given virtual address `ptr`.
@@ -136,7 +138,7 @@ impl MemMapping {
 
 	/// Returns a pointer to the physical page of memory associated with the mapping at page offset
 	/// `offset`. If no page is associated, the function returns None.
-	pub fn get_physical_page(&self, offset: usize) -> Option::<*const c_void> {
+	pub fn get_physical_page(&self, offset: usize) -> Option<*const c_void> {
 		let vmem = self.get_vmem();
 		let virt_ptr = (self.begin as usize + offset * memory::PAGE_SIZE) as *const c_void;
 		let phys_ptr = vmem.translate(virt_ptr)?;
@@ -225,8 +227,11 @@ impl MemMapping {
 			if self.is_cow(offset) {
 				let mut cow_buffer = malloc::Alloc::<u8>::new_default(memory::PAGE_SIZE)?;
 				unsafe {
-					ptr::copy_nonoverlapping(virt_ptr, cow_buffer.as_ptr_mut() as _,
-						memory::PAGE_SIZE);
+					ptr::copy_nonoverlapping(
+						virt_ptr,
+						cow_buffer.as_ptr_mut() as _,
+						memory::PAGE_SIZE,
+					);
 				}
 
 				Some(cow_buffer)
@@ -265,8 +270,11 @@ impl MemMapping {
 			vmem::switch(vmem, move || {
 				vmem::write_lock_wrap(|| {
 					if let Some(buffer) = cow_buffer {
-						ptr::copy_nonoverlapping(buffer.as_ptr() as *const c_void,
-							virt_ptr as *mut c_void, memory::PAGE_SIZE);
+						ptr::copy_nonoverlapping(
+							buffer.as_ptr() as *const c_void,
+							virt_ptr as *mut c_void,
+							memory::PAGE_SIZE,
+						);
 					} else {
 						util::bzero(virt_ptr, memory::PAGE_SIZE);
 					}
@@ -308,9 +316,7 @@ impl MemMapping {
 
 		// Unmapping physical pages
 		let vmem = self.get_mut_vmem();
-		oom::wrap(|| {
-			vmem.unmap_range(self.begin, self.size)
-		});
+		oom::wrap(|| vmem.unmap_range(self.begin, self.size));
 
 		Ok(())
 	}
@@ -323,13 +329,22 @@ impl MemMapping {
 	/// The newly created gap is in place of the unmapped portion.
 	/// If the mapping is totaly unmapped, the function returns no new mappings.
 	/// The function doesn't flush the virtual memory context.
-	pub fn partial_unmap(mut self, begin: usize, size: usize)
-		-> (Option<Self>, Option<MemGap>, Option<Self>) {
+	pub fn partial_unmap(
+		mut self,
+		begin: usize,
+		size: usize,
+	) -> (Option<Self>, Option<MemGap>, Option<Self>) {
 		// The mapping located before the gap to be created
 		let prev = {
 			if begin > 0 {
-				Some(Self::new(self.begin, begin, self.flags, self.file.clone(), self.off,
-					self.vmem))
+				Some(Self::new(
+					self.begin,
+					begin,
+					self.flags,
+					self.file.clone(),
+					self.off,
+					self.vmem,
+				))
 			} else {
 				None
 			}
@@ -337,9 +352,7 @@ impl MemMapping {
 
 		let gap = {
 			if size > 0 {
-				let gap_begin = unsafe {
-					self.begin.add(begin * memory::PAGE_SIZE)
-				};
+				let gap_begin = unsafe { self.begin.add(begin * memory::PAGE_SIZE) };
 
 				Some(MemGap::new(gap_begin, size))
 			} else {
@@ -352,13 +365,18 @@ impl MemMapping {
 			let end = begin + size;
 
 			if end < self.size {
-				let gap_begin = unsafe {
-					self.begin.add(end * memory::PAGE_SIZE)
-				};
+				let gap_begin = unsafe { self.begin.add(end * memory::PAGE_SIZE) };
 				let gap_size = self.size - end;
 
 				let off = self.off + (end * memory::PAGE_SIZE) as u64;
-				Some(Self::new(gap_begin, gap_size, self.flags, self.file.clone(), off, self.vmem))
+				Some(Self::new(
+					gap_begin,
+					gap_size,
+					self.flags,
+					self.file.clone(),
+					off,
+					self.vmem,
+				))
 			} else {
 				None
 			}
@@ -436,7 +454,9 @@ impl MemMapping {
 			}
 		}
 
-		mem_space.mappings.insert(new_mapping.get_begin(), new_mapping)
+		mem_space
+			.mappings
+			.insert(new_mapping.get_begin(), new_mapping)
 	}
 
 	/// Synchronizes the data on the memory mapping back to the filesystem. If the mapping is not
@@ -458,16 +478,17 @@ impl MemMapping {
 
 impl fmt::Display for MemMapping {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		let end = unsafe {
-			self.begin.add(self.size * memory::PAGE_SIZE)
-		};
+		let end = unsafe { self.begin.add(self.size * memory::PAGE_SIZE) };
 
-		write!(f, "begin: {:p}; end: {:p}; flags: {}; file: {}; off: {}",
+		write!(
+			f,
+			"begin: {:p}; end: {:p}; flags: {}; file: {}; off: {}",
 			self.begin,
 			end,
 			self.flags,
 			self.file.is_some(),
-			self.off)
+			self.off
+		)
 	}
 }
 

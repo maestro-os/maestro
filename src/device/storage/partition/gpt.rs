@@ -5,8 +5,8 @@ use core::slice;
 //use crate::crypto::checksum::compute_crc32;
 //use crate::crypto::checksum::compute_crc32_lookuptable;
 use crate::device::storage::StorageInterface;
-use crate::errno::Errno;
 use crate::errno;
+use crate::errno::Errno;
 use crate::memory::malloc;
 use crate::util::boxed::Box;
 use crate::util::container::vec::Vec;
@@ -103,9 +103,7 @@ impl GPTEntry {
 
 	/// Tells whether the entry is used.
 	fn is_used(&self) -> bool {
-		!self.partition_type
-			.iter()
-			.all(| b | *b == 0)
+		!self.partition_type.iter().all(|b| *b == 0)
 	}
 }
 
@@ -181,9 +179,7 @@ impl GPT {
 		storage.read(buff.as_slice_mut(), lba, 1)?;
 
 		// Valid because the header's size doesn't exceeds the size of the block
-		let gpt_hdr = unsafe {
-			&*(buff.as_ptr() as *const GPT)
-		};
+		let gpt_hdr = unsafe { &*(buff.as_ptr() as *const GPT) };
 		if !gpt_hdr.is_valid() {
 			return Err(errno!(EINVAL));
 		}
@@ -215,15 +211,14 @@ impl GPT {
 
 	/// Returns the list of entries in the table.
 	/// `storage` is the storage device interface.
-	fn get_entries(&self, storage: &mut dyn StorageInterface)
-		-> Result<Vec<Box<GPTEntry>>, Errno> {
+	fn get_entries(&self, storage: &mut dyn StorageInterface) -> Result<Vec<Box<GPTEntry>>, Errno> {
 		let block_size = storage.get_block_size();
 		let blocks_count = storage.get_blocks_count();
 
 		let mut buff = malloc::Alloc::<u8>::new_default(self.entry_size as _)?;
 
-		let entries_start = translate_lba(self.entries_start, blocks_count)
-			.ok_or_else(|| errno!(EINVAL))?;
+		let entries_start =
+			translate_lba(self.entries_start, blocks_count).ok_or_else(|| errno!(EINVAL))?;
 		let mut entries = Vec::new();
 
 		for i in 0..self.entries_number {
@@ -248,7 +243,7 @@ impl GPT {
 			let start = translate_lba(entry.start, blocks_count).ok_or_else(|| errno!(EINVAL))?;
 			let end = translate_lba(entry.end, blocks_count).ok_or_else(|| errno!(EINVAL))?;
 			if end < start {
-				return Err(errno!(EINVAL))
+				return Err(errno!(EINVAL));
 			}
 
 			entries.push(entry)?;

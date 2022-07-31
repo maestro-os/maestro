@@ -10,7 +10,6 @@ pub struct MemInfo {
 	pub mem_total: usize,
 	/// The total amount of free physical memory.
 	pub mem_free: usize,
-
 	// TODO
 }
 
@@ -31,6 +30,5 @@ MemFree: {} kB
 pub static MEM_INFO: Mutex<MemInfo> = Mutex::new(MemInfo {
 	mem_total: 0,
 	mem_free: 0,
-
 	// TODO
 });

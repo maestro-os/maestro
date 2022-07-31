@@ -1,13 +1,13 @@
 //! A directory entry is an entry stored into an inode's content which represents a subfile in a
 //! directory.
 
-use core::cmp::min;
-use core::slice;
+use super::Superblock;
 use crate::errno::Errno;
 use crate::file::FileType;
 use crate::memory::malloc;
 use crate::util::boxed::Box;
-use super::Superblock;
+use core::cmp::min;
+use core::slice;
 
 /// Directory entry type indicator: Unknown
 const TYPE_INDICATOR_UNKNOWN: u8 = 0;
@@ -50,9 +50,7 @@ impl DirectoryEntry {
 			slice::from_raw_parts_mut(malloc::alloc(total_size as _)? as *mut u8, total_size as _)
 		};
 
-		let mut entry = unsafe {
-			Box::from_raw(slice as *mut [u8] as *mut [()] as *mut Self)
-		};
+		let mut entry = unsafe { Box::from_raw(slice as *mut [u8] as *mut [()] as *mut Self) };
 		entry.total_size = total_size;
 		Ok(entry)
 	}
@@ -64,8 +62,13 @@ impl DirectoryEntry {
 	/// `file_type` is the entry's type.
 	/// `name` is the entry's name.
 	/// If the total size is not large enough to hold the entry, the behaviour is undefined.
-	pub fn new(superblock: &Superblock, inode: u32, total_size: u16, file_type: FileType,
-		name: &[u8]) -> Result<Box<Self>, Errno> {
+	pub fn new(
+		superblock: &Superblock,
+		inode: u32,
+		total_size: u16,
+		file_type: FileType,
+		name: &[u8],
+	) -> Result<Box<Self>, Errno> {
 		debug_assert!(inode >= 1);
 		debug_assert!(total_size as usize >= 8 + name.len());
 
@@ -83,7 +86,9 @@ impl DirectoryEntry {
 		let alloc_slice = slice::from_raw_parts_mut(ptr, slice.len());
 		alloc_slice.copy_from_slice(slice);
 
-		Ok(Box::from_raw(alloc_slice as *mut [u8] as *mut [()] as *mut Self))
+		Ok(Box::from_raw(
+			alloc_slice as *mut [u8] as *mut [()] as *mut Self,
+		))
 	}
 
 	/// Returns the entry's inode.

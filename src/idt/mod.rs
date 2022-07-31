@@ -3,9 +3,9 @@
 
 pub mod pic;
 
+use crate::util;
 use core::ffi::c_void;
 use core::mem::MaybeUninit;
-use crate::util;
 
 /// Makes the interrupt switch to ring 0.
 const ID_PRIVILEGE_RING_0: u8 = 0b00000000;
@@ -26,34 +26,34 @@ pub const ENTRIES_COUNT: usize = 0x81;
 /// Disables interruptions.
 #[macro_export]
 macro_rules! cli {
-	() => (
+	() => {
 		#[allow(unused_unsafe)]
 		unsafe {
 			core::arch::asm!("cli");
 		}
-	);
+	};
 }
 
 /// Enables interruptions.
 #[macro_export]
 macro_rules! sti {
-	() => (
+	() => {
 		#[allow(unused_unsafe)]
 		unsafe {
 			core::arch::asm!("sti");
 		}
-	);
+	};
 }
 
 /// Waits for an interruption.
 #[macro_export]
 macro_rules! hlt {
-	() => (
+	() => {
 		#[allow(unused_unsafe)]
 		unsafe {
 			core::arch::asm!("hlt");
 		}
-	);
+	};
 }
 
 /// Structure representing the IDT.
@@ -155,9 +155,7 @@ fn create_id(address: *const c_void, selector: u16, type_attr: u8) -> InterruptD
 
 /// Takes a C extern function and returns its pointer.
 fn get_c_fn_ptr(f: unsafe extern "C" fn()) -> *const c_void {
-	unsafe {
-		core::mem::transmute::<_, _>(f as *const c_void)
-	}
+	unsafe { core::mem::transmute::<_, _>(f as *const c_void) }
 }
 
 /// Initializes the IDT. This function must be called only once at kernel initialization.
@@ -225,9 +223,7 @@ pub fn init() {
 
 	let idt = InterruptDescriptorTable {
 		size: (core::mem::size_of::<InterruptDescriptor>() * ENTRIES_COUNT - 1) as u16,
-		offset: unsafe {
-			&ID
-		} as *const _ as u32,
+		offset: unsafe { &ID } as *const _ as u32,
 	};
 	unsafe {
 		idt_load(&idt as *const _ as *const _);
@@ -236,9 +232,7 @@ pub fn init() {
 
 /// Tells whether interruptions are enabled.
 pub fn is_interrupt_enabled() -> bool {
-	unsafe {
-		interrupt_is_enabled() != 0
-	}
+	unsafe { interrupt_is_enabled() != 0 }
 }
 
 /// Executes the given function `f` with maskable interruptions disabled.

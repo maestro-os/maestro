@@ -1,14 +1,14 @@
 //! The `renameat2` allows to rename a file.
 
+use super::access;
 use crate::errno::Errno;
-use crate::file::FileContent;
-use crate::file::fcache;
 use crate::file;
-use crate::process::Process;
+use crate::file::fcache;
+use crate::file::FileContent;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::regs::Regs;
+use crate::process::Process;
 use crate::types::c_int;
-use super::access;
 
 /// The implementation of the `renameat2` system call.
 pub fn renameat2(regs: &Regs) -> Result<i32, Errno> {
@@ -31,12 +31,16 @@ pub fn renameat2(regs: &Regs) -> Result<i32, Errno> {
 		let mem_space = proc.get_mem_space().clone().unwrap();
 		let mem_space_guard = mem_space.lock();
 
-		let oldpath = oldpath.get(&mem_space_guard)?.ok_or_else(|| errno!(EFAULT))?;
+		let oldpath = oldpath
+			.get(&mem_space_guard)?
+			.ok_or_else(|| errno!(EFAULT))?;
 		let old = super::util::get_file_at(&proc_guard, follow_links, olddirfd, oldpath, flags)?;
 
-		let newpath = newpath.get(&mem_space_guard)?.ok_or_else(|| errno!(EFAULT))?;
-		let (new_parent, new_name) = super::util::get_parent_at_with_name(&proc_guard,
-			follow_links, newdirfd, newpath)?;
+		let newpath = newpath
+			.get(&mem_space_guard)?
+			.ok_or_else(|| errno!(EFAULT))?;
+		let (new_parent, new_name) =
+			super::util::get_parent_at_with_name(&proc_guard, follow_links, newdirfd, newpath)?;
 
 		(uid, gid, old, new_parent, new_name)
 	};
@@ -63,9 +67,9 @@ pub fn renameat2(regs: &Regs) -> Result<i32, Errno> {
 		match old.get_file_content() {
 			FileContent::Directory(_entries) => {
 				// TODO
-			},
+			}
 
-			_ => {},
+			_ => {}
 		}
 
 		fcache.remove_file(old, uid, gid)?;

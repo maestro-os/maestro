@@ -15,40 +15,32 @@ pub mod signal;
 pub mod tss;
 pub mod user_desc;
 
-use core::any::Any;
-use core::cmp::max;
-use core::ffi::c_void;
-use core::mem::ManuallyDrop;
-use core::mem::MaybeUninit;
-use core::mem::size_of;
-use core::ptr::NonNull;
 use crate::cpu;
-use crate::errno::Errno;
 use crate::errno;
-use crate::event::{InterruptResult, InterruptResultAction};
+use crate::errno::Errno;
 use crate::event;
-use crate::file::Gid;
-use crate::file::ROOT_UID;
-use crate::file::Uid;
+use crate::event::{InterruptResult, InterruptResultAction};
+use crate::file;
 use crate::file::fcache;
-use crate::file::fd::FD_CLOEXEC;
 use crate::file::fd::FileDescriptor;
 use crate::file::fd::NewFDConstraint;
+use crate::file::fd::FD_CLOEXEC;
 use crate::file::fs::procfs::ProcFS;
 use crate::file::mountpoint;
+use crate::file::open_file;
 use crate::file::open_file::FDTarget;
 use crate::file::open_file::OpenFile;
-use crate::file::open_file;
 use crate::file::path::Path;
-use crate::file;
-use crate::gdt::ldt::LDT;
+use crate::file::Gid;
+use crate::file::Uid;
+use crate::file::ROOT_UID;
 use crate::gdt;
+use crate::gdt::ldt::LDT;
 use crate::limits;
 use crate::process::mountpoint::MountSource;
 use crate::process::open_file::O_CLOEXEC;
-use crate::tty::TTYHandle;
 use crate::tty;
-use crate::util::FailableClone;
+use crate::tty::TTYHandle;
 use crate::util::container::bitfield::Bitfield;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
@@ -56,7 +48,15 @@ use crate::util::lock::*;
 use crate::util::ptr::IntSharedPtr;
 use crate::util::ptr::IntWeakPtr;
 use crate::util::ptr::SharedPtr;
+use crate::util::FailableClone;
 use crate::vec;
+use core::any::Any;
+use core::cmp::max;
+use core::ffi::c_void;
+use core::mem::size_of;
+use core::mem::ManuallyDrop;
+use core::mem::MaybeUninit;
+use core::ptr::NonNull;
 use mem_space::MemSpace;
 use pid::PIDManager;
 use pid::Pid;
@@ -268,14 +268,12 @@ pub fn init() -> Result<(), Errno> {
 		SCHEDULER.write(Scheduler::new(cores_count)?);
 	}
 
-	let callback = | id: u32, _code: u32, regs: &Regs, ring: u32 | {
+	let callback = |id: u32, _code: u32, regs: &Regs, ring: u32| {
 		if ring < 3 {
 			return InterruptResult::new(true, InterruptResultAction::Panic);
 		}
 
-		let guard = unsafe {
-			SCHEDULER.assume_init_mut()
-		}.lock();
+		let guard = unsafe { SCHEDULER.assume_init_mut() }.lock();
 		let scheduler = guard.get_mut();
 
 		if let Some(curr_proc) = scheduler.get_current_process() {
@@ -289,25 +287,23 @@ pub fn init() -> Result<(), Errno> {
 				0x00 | 0x10 | 0x13 => {
 					curr_proc.kill(&Signal::SIGFPE, true);
 					curr_proc.signal_next();
-				},
+				}
 
 				// Breakpoint
 				0x03 => {
 					curr_proc.kill(&Signal::SIGTRAP, true);
 					curr_proc.signal_next();
-				},
+				}
 
 				// Invalid Opcode
 				0x06 => {
 					curr_proc.kill(&Signal::SIGILL, true);
 					curr_proc.signal_next();
-				},
+				}
 
 				// General Protection Fault
 				0x0d => {
-					let inst_prefix = unsafe {
-						*(regs.eip as *const u8)
-					};
+					let inst_prefix = unsafe { *(regs.eip as *const u8) };
 
 					if inst_prefix == HLT_INSTRUCTION {
 						curr_proc.exit(regs.eax);
@@ -315,15 +311,15 @@ pub fn init() -> Result<(), Errno> {
 						curr_proc.kill(&Signal::SIGSEGV, true);
 						curr_proc.signal_next();
 					}
-				},
+				}
 
 				// Alignment Check
 				0x11 => {
 					curr_proc.kill(&Signal::SIGBUS, true);
 					curr_proc.signal_next();
-				},
+				}
 
-				_ => {},
+				_ => {}
 			}
 
 			if curr_proc.get_state() == State::Running {
@@ -335,11 +331,9 @@ pub fn init() -> Result<(), Errno> {
 			InterruptResult::new(true, InterruptResultAction::Panic)
 		}
 	};
-	let page_fault_callback = | _id: u32, code: u32, _regs: &Regs, ring: u32 | {
+	let page_fault_callback = |_id: u32, code: u32, _regs: &Regs, ring: u32| {
 		let curr_proc = {
-			let guard = unsafe {
-				SCHEDULER.assume_init_mut()
-			}.lock();
+			let guard = unsafe { SCHEDULER.assume_init_mut() }.lock();
 			let scheduler = guard.get_mut();
 
 			scheduler.get_current_process()
@@ -349,9 +343,7 @@ pub fn init() -> Result<(), Errno> {
 			let curr_proc_guard = curr_proc.lock();
 			let curr_proc = curr_proc_guard.get_mut();
 
-			let accessed_ptr = unsafe {
-				cpu::cr2_get()
-			};
+			let accessed_ptr = unsafe { cpu::cr2_get() };
 
 			// Handling page fault
 			let success = {
@@ -385,7 +377,11 @@ pub fn init() -> Result<(), Errno> {
 	let _ = ManuallyDrop::new(event::register_callback(0x03, u32::MAX, callback)?);
 	let _ = ManuallyDrop::new(event::register_callback(0x06, u32::MAX, callback)?);
 	let _ = ManuallyDrop::new(event::register_callback(0x0d, u32::MAX, callback)?);
-	let _ = ManuallyDrop::new(event::register_callback(0x0e, u32::MAX, page_fault_callback)?);
+	let _ = ManuallyDrop::new(event::register_callback(
+		0x0e,
+		u32::MAX,
+		page_fault_callback,
+	)?);
 	let _ = ManuallyDrop::new(event::register_callback(0x10, u32::MAX, callback)?);
 	let _ = ManuallyDrop::new(event::register_callback(0x11, u32::MAX, callback)?);
 	let _ = ManuallyDrop::new(event::register_callback(0x13, u32::MAX, callback)?);
@@ -395,7 +391,8 @@ pub fn init() -> Result<(), Errno> {
 
 /// Returns a mutable reference to the scheduler's Mutex.
 pub fn get_scheduler() -> &'static IntMutex<Scheduler> {
-	unsafe { // Safe because using Mutex
+	unsafe {
+		// Safe because using Mutex
 		SCHEDULER.assume_init_ref()
 	}
 }
@@ -404,9 +401,7 @@ impl Process {
 	/// Returns the process with PID `pid`. If the process doesn't exist, the function returns
 	/// None.
 	pub fn get_by_pid(pid: Pid) -> Option<IntSharedPtr<Self>> {
-		let guard = unsafe {
-			SCHEDULER.assume_init_mut()
-		}.lock();
+		let guard = unsafe { SCHEDULER.assume_init_mut() }.lock();
 
 		guard.get().get_by_pid(pid)
 	}
@@ -414,18 +409,14 @@ impl Process {
 	/// Returns the process with TID `tid`. If the process doesn't exist, the function returns
 	/// None.
 	pub fn get_by_tid(tid: Pid) -> Option<IntSharedPtr<Self>> {
-		let guard = unsafe {
-			SCHEDULER.assume_init_mut()
-		}.lock();
+		let guard = unsafe { SCHEDULER.assume_init_mut() }.lock();
 
 		guard.get().get_by_tid(tid)
 	}
 
 	/// Returns the current running process. If no process is running, the function returns None.
 	pub fn get_current() -> Option<IntSharedPtr<Self>> {
-		let guard = unsafe {
-			SCHEDULER.assume_init_mut()
-		}.lock();
+		let guard = unsafe { SCHEDULER.assume_init_mut() }.lock();
 
 		guard.get_mut().get_current_process()
 	}
@@ -535,8 +526,12 @@ impl Process {
 			let files_cache = guard.get_mut();
 
 			let tty_path = Path::from_str(TTY_DEVICE_PATH.as_bytes(), false).unwrap();
-			let tty_file = files_cache.as_mut().unwrap()
-				.get_file_from_path(&tty_path, process.uid, process.gid, true)?;
+			let tty_file = files_cache.as_mut().unwrap().get_file_from_path(
+				&tty_path,
+				process.uid,
+				process.gid,
+				true,
+			)?;
 			let stdin_fd = process.create_fd(open_file::O_RDWR, FDTarget::File(tty_file))?;
 			assert_eq!(stdin_fd.get_id(), STDIN_FILENO);
 
@@ -546,9 +541,7 @@ impl Process {
 			process.register_procfs()?;
 		}
 
-		let guard = unsafe {
-			SCHEDULER.assume_init_mut()
-		}.lock();
+		let guard = unsafe { SCHEDULER.assume_init_mut() }.lock();
 		guard.get_mut().add_process(process)
 	}
 
@@ -595,11 +588,7 @@ impl Process {
 			}
 		}
 
-		self.pgid = if pgid == 0 {
-			self.pid
-		} else {
-			pgid
-		};
+		self.pgid = if pgid == 0 { self.pid } else { pgid };
 
 		if pgid == self.pid {
 			return Ok(());
@@ -610,7 +599,10 @@ impl Process {
 			let guard = mutex.lock();
 			let new_group_process = guard.get_mut();
 
-			let i = new_group_process.process_group.binary_search(&self.pid).unwrap_err();
+			let i = new_group_process
+				.process_group
+				.binary_search(&self.pid)
+				.unwrap_err();
 			new_group_process.process_group.insert(i, self.pid)
 		} else {
 			Err(errno!(ESRCH))
@@ -770,8 +762,7 @@ impl Process {
 
 	/// Tells whether the scheduler can run the process.
 	pub fn can_run(&self) -> bool {
-		self.get_state() == State::Running
-			&& self.vfork_state != VForkState::Waiting
+		self.get_state() == State::Running && self.vfork_state != VForkState::Waiting
 	}
 
 	/// Tells whether the current process has informations to be retrieved by the `waitpid` system
@@ -968,8 +959,10 @@ impl Process {
 	/// function returns an error.
 	/// `file_descriptors` is the file descriptors table.
 	/// `min` is the minimum value for the file descriptor to be returned.
-	fn get_available_fd(file_descriptors: &Vec<FileDescriptor>, min: Option<u32>)
-		-> Result<u32, Errno> {
+	fn get_available_fd(
+		file_descriptors: &Vec<FileDescriptor>,
+		min: Option<u32>,
+	) -> Result<u32, Errno> {
 		if file_descriptors.len() >= limits::OPEN_MAX {
 			return Err(errno!(EMFILE));
 		}
@@ -1009,7 +1002,9 @@ impl Process {
 
 		let id = Self::get_available_fd(file_descriptors, None)?;
 		let open_file = OpenFile::new(flags, target)?;
-		let i = file_descriptors.binary_search_by(| fd | fd.get_id().cmp(&id)).unwrap_err();
+		let i = file_descriptors
+			.binary_search_by(|fd| fd.get_id().cmp(&id))
+			.unwrap_err();
 
 		// Flags for the fd
 		let flags = if flags & O_CLOEXEC != 0 {
@@ -1018,7 +1013,10 @@ impl Process {
 			0
 		};
 
-		file_descriptors.insert(i, FileDescriptor::new(id, flags, SharedPtr::new(open_file)?))?;
+		file_descriptors.insert(
+			i,
+			FileDescriptor::new(id, flags, SharedPtr::new(open_file)?),
+		)?;
 		Ok(file_descriptors[i].clone())
 	}
 
@@ -1026,8 +1024,12 @@ impl Process {
 	/// The new file descriptor ID follows the constraint given be `constraint`.
 	/// `cloexec` tells whether the new file descriptor has the O_CLOEXEC flag enabled.
 	/// The function returns a pointer to the file descriptor with its ID.
-	pub fn duplicate_fd(&mut self, id: u32, constraint: NewFDConstraint, cloexec: bool)
-		-> Result<FileDescriptor, Errno> {
+	pub fn duplicate_fd(
+		&mut self,
+		id: u32,
+		constraint: NewFDConstraint,
+		cloexec: bool,
+	) -> Result<FileDescriptor, Errno> {
 		let file_descriptors_guard = self.file_descriptors.as_ref().unwrap().lock();
 		let file_descriptors = file_descriptors_guard.get_mut();
 
@@ -1039,21 +1041,18 @@ impl Process {
 		};
 
 		// The flags of the new FD
-		let flags = if cloexec {
-			FD_CLOEXEC
-		} else {
-			0
-		};
+		let flags = if cloexec { FD_CLOEXEC } else { 0 };
 
 		// The open file for the new FD
-		let open_file = Self::get_fd_(file_descriptors, id).ok_or_else(|| errno!(EBADF))?
+		let open_file = Self::get_fd_(file_descriptors, id)
+			.ok_or_else(|| errno!(EBADF))?
 			.get_open_file();
 
 		// Creating the FD
 		let fd = FileDescriptor::new(new_id, flags, open_file);
 
 		// Inserting the FD
-		let index = file_descriptors.binary_search_by(| fd | fd.get_id().cmp(&new_id));
+		let index = file_descriptors.binary_search_by(|fd| fd.get_id().cmp(&new_id));
 		let index = {
 			if let Ok(i) = index {
 				file_descriptors[i] = fd;
@@ -1094,8 +1093,8 @@ impl Process {
 	/// `file_descriptors` is the file descriptors table.
 	/// If the file descriptor doesn't exist, the function returns None.
 	fn get_fd_(file_descriptors: &Vec<FileDescriptor>, id: u32) -> Option<FileDescriptor> {
-		let result = file_descriptors.binary_search_by(| fd | fd.get_id().cmp(&id));
-		result.ok().map(| index | file_descriptors[index].clone())
+		let result = file_descriptors.binary_search_by(|fd| fd.get_id().cmp(&id));
+		result.ok().map(|index| file_descriptors[index].clone())
 	}
 
 	/// Returns the file descriptor with ID `id`.
@@ -1113,7 +1112,7 @@ impl Process {
 		let file_descriptors_guard = self.file_descriptors.as_ref().unwrap().lock();
 		let file_descriptors = file_descriptors_guard.get_mut();
 
-		let result = file_descriptors.binary_search_by(| fd | fd.get_id().cmp(&id));
+		let result = file_descriptors.binary_search_by(|fd| fd.get_id().cmp(&id));
 
 		if let Ok(index) = result {
 			file_descriptors.remove(index);
@@ -1145,15 +1144,16 @@ impl Process {
 	/// `fork_options` are the options for the fork operation.
 	/// On fail, the function returns an Err with the appropriate Errno.
 	/// If the process is not running, the behaviour is undefined.
-	pub fn fork(&mut self, parent: IntWeakPtr<Self>, fork_options: ForkOptions)
-		-> Result<IntSharedPtr<Self>, Errno> {
+	pub fn fork(
+		&mut self,
+		parent: IntWeakPtr<Self>,
+		fork_options: ForkOptions,
+	) -> Result<IntSharedPtr<Self>, Errno> {
 		debug_assert_eq!(self.get_state(), State::Running);
 
 		// FIXME PID is leaked if the following code fails
 		let pid = {
-			let mutex = unsafe {
-				PID_MANAGER.assume_init_mut()
-			};
+			let mutex = unsafe { PID_MANAGER.assume_init_mut() };
 			let guard = mutex.lock();
 			guard.get_mut().get_unique_pid()
 		}?;
@@ -1172,12 +1172,17 @@ impl Process {
 
 			if fork_options.share_memory || fork_options.vfork {
 				// Allocating a kernel stack for the new process
-				let new_kernel_stack = curr_mem_space.lock().get_mut()
+				let new_kernel_stack = curr_mem_space
+					.lock()
+					.get_mut()
 					.map_stack(KERNEL_STACK_SIZE, KERNEL_STACK_FLAGS)?;
 
 				(curr_mem_space.clone(), Some(new_kernel_stack as _))
 			} else {
-				(IntSharedPtr::new(curr_mem_space.lock().get_mut().fork()?)?, self.kernel_stack)
+				(
+					IntSharedPtr::new(curr_mem_space.lock().get_mut().fork()?)?,
+					self.kernel_stack,
+				)
 			}
 		};
 
@@ -1270,9 +1275,7 @@ impl Process {
 
 		self.add_child(pid)?;
 
-		let guard = unsafe {
-			SCHEDULER.assume_init_mut()
-		}.lock();
+		let guard = unsafe { SCHEDULER.assume_init_mut() }.lock();
 		guard.get_mut().add_process(process)
 	}
 
@@ -1303,8 +1306,8 @@ impl Process {
 			return;
 		}
 
-		if self.get_state() == State::Stopped
-			&& sig.get_default_action() == SignalAction::Continue {
+		if self.get_state() == State::Stopped && sig.get_default_action() == SignalAction::Continue
+		{
 			self.set_state(State::Running);
 		}
 
@@ -1368,7 +1371,7 @@ impl Process {
 	pub fn signal_next(&mut self) {
 		// Looking for a pending signal with respect to the signal mask
 		let mut sig = None;
-		self.sigpending.for_each(| i, b | {
+		self.sigpending.for_each(|i, b| {
 			if let Ok(s) = Signal::from_id(i as _) {
 				if b && !(s.can_catch() && self.sigmask.is_set(i)) {
 					sig = Some(s);
@@ -1441,7 +1444,8 @@ impl Process {
 	/// If `n` is out of bounds, the function does nothing.
 	pub fn update_tls(&self, n: usize) {
 		if n < TLS_ENTRIES_COUNT {
-			unsafe { // Safe because the offset is checked by the condition
+			unsafe {
+				// Safe because the offset is checked by the condition
 				self.tls_entries[n].update_gdt(gdt::TLS_OFFSET + n * size_of::<gdt::Entry>());
 			}
 		}
@@ -1533,7 +1537,10 @@ impl Drop for Process {
 		oom::wrap(|| {
 			if let Some(kernel_stack) = self.kernel_stack {
 				if let Some(mutex) = &self.mem_space {
-					mutex.lock().get_mut().unmap_stack(kernel_stack, KERNEL_STACK_SIZE)?;
+					mutex
+						.lock()
+						.get_mut()
+						.unmap_stack(kernel_stack, KERNEL_STACK_SIZE)?;
 				}
 			}
 
@@ -1548,9 +1555,7 @@ impl Drop for Process {
 		}
 
 		// Freeing the PID
-		let mutex = unsafe {
-			PID_MANAGER.assume_init_mut()
-		};
+		let mutex = unsafe { PID_MANAGER.assume_init_mut() };
 		let guard = mutex.lock();
 		guard.get_mut().release_pid(self.pid);
 	}

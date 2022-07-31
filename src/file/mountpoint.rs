@@ -1,15 +1,13 @@
 //! A mount point is a directory in which a filesystem is mounted.
 
-use core::cmp::max;
-use core::fmt;
-use crate::device::DeviceType;
+use super::path::Path;
 use crate::device;
+use crate::device::DeviceType;
 use crate::errno::Errno;
 use crate::file::fcache;
+use crate::file::fs;
 use crate::file::fs::Filesystem;
 use crate::file::fs::FilesystemType;
-use crate::file::fs;
-use crate::util::FailableClone;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
@@ -17,28 +15,30 @@ use crate::util::io::DummyIO;
 use crate::util::io::IO;
 use crate::util::lock::Mutex;
 use crate::util::ptr::SharedPtr;
-use super::path::Path;
+use crate::util::FailableClone;
+use core::cmp::max;
+use core::fmt;
 
 /// Permits mandatory locking on files.
-const FLAG_MANDLOCK: u32    = 0b000000000001;
+const FLAG_MANDLOCK: u32 = 0b000000000001;
 /// Do not update file (all kinds) access timestamps on the filesystem.
-const FLAG_NOATIME: u32     = 0b000000000010;
+const FLAG_NOATIME: u32 = 0b000000000010;
 /// Do not allows access to device files on the filesystem.
-const FLAG_NODEV: u32       = 0b000000000100;
+const FLAG_NODEV: u32 = 0b000000000100;
 /// Do not update directory access timestamps on the filesystem.
-const FLAG_NODIRATIME: u32  = 0b000000001000;
+const FLAG_NODIRATIME: u32 = 0b000000001000;
 /// Do not allow files on the filesystem to be executed.
-const FLAG_NOEXEC: u32      = 0b000000010000;
+const FLAG_NOEXEC: u32 = 0b000000010000;
 /// Ignore setuid and setgid flags on the filesystem.
-const FLAG_NOSUID: u32      = 0b000000100000;
+const FLAG_NOSUID: u32 = 0b000000100000;
 /// Mounts the filesystem in read-only.
-const FLAG_RDONLY: u32      = 0b000001000000;
+const FLAG_RDONLY: u32 = 0b000001000000;
 /// TODO doc
-const FLAG_REC: u32         = 0b000010000000;
+const FLAG_REC: u32 = 0b000010000000;
 /// Update atime only if less than or equal to mtime or ctime.
-const FLAG_RELATIME: u32    = 0b000100000000;
+const FLAG_RELATIME: u32 = 0b000100000000;
 /// Suppresses certain warning messages in the kernel logs.
-const FLAG_SILENT: u32      = 0b001000000000;
+const FLAG_SILENT: u32 = 0b001000000000;
 /// Always update the last access time when files on this filesystem are accessed. Overrides
 /// NOATIME and RELATIME.
 const FLAG_STRICTATIME: u32 = 0b010000000000;
@@ -100,10 +100,10 @@ impl MountSource {
 				major,
 				minor,
 			} => {
-				let dev = device::get_device(*dev_type, *major, *minor)
-					.ok_or_else(|| errno!(ENODEV))?;
+				let dev =
+					device::get_device(*dev_type, *major, *minor).ok_or_else(|| errno!(ENODEV))?;
 				Ok(dev as _)
-			},
+			}
 
 			Self::File(path) => {
 				let fcache_mutex = fcache::get();
@@ -112,7 +112,7 @@ impl MountSource {
 
 				let file = fcache.get_file_from_path(path, 0, 0, true)?;
 				Ok(file as _)
-			},
+			}
 
 			Self::NoDev(_) => Ok(SharedPtr::new(DummyIO {})? as _),
 		}
@@ -122,10 +122,14 @@ impl MountSource {
 impl FailableClone for MountSource {
 	fn failable_clone(&self) -> Result<Self, Errno> {
 		Ok(match self {
-			Self::Device { dev_type, major, minor } => Self::Device {
+			Self::Device {
+				dev_type,
+				major,
+				minor,
+			} => Self::Device {
 				dev_type: *dev_type,
 				major: *major,
-				minor: *minor
+				minor: *minor,
 			},
 
 			Self::File(path) => Self::File(path.failable_clone()?),
@@ -171,8 +175,12 @@ static FILESYSTEMS: Mutex<HashMap<MountSource, LoadedFS>> = Mutex::new(HashMap::
 /// `readonly` tells whether the filesystem is mount in readonly.
 /// On success, the function returns the loaded filesystem.
 /// A newly loaded filesystem is initialized with a single reference.
-fn load_fs(source: MountSource, fs_type: Option<SharedPtr<dyn FilesystemType>>, path: Path,
-	readonly: bool) -> Result<SharedPtr<dyn Filesystem>, Errno> {
+fn load_fs(
+	source: MountSource,
+	fs_type: Option<SharedPtr<dyn FilesystemType>>,
+	path: Path,
+	readonly: bool,
+) -> Result<SharedPtr<dyn Filesystem>, Errno> {
 	// Getting the I/O interface
 	let io_mutex = source.get_io()?;
 	let io_guard = io_mutex.lock();
@@ -192,11 +200,14 @@ fn load_fs(source: MountSource, fs_type: Option<SharedPtr<dyn FilesystemType>>, 
 	// Inserting new filesystem into filesystems list
 	let guard = FILESYSTEMS.lock();
 	let container = guard.get_mut();
-	container.insert(source, LoadedFS {
-		ref_count: 1,
+	container.insert(
+		source,
+		LoadedFS {
+			ref_count: 1,
 
-		fs: fs.clone(),
-	})?;
+			fs: fs.clone(),
+		},
+	)?;
 
 	Ok(fs)
 }
@@ -264,8 +275,13 @@ impl MountPoint {
 	/// `fs_type` is the filesystem type. If None, the function tries to detect it automaticaly.
 	/// `flags` are the mount flags.
 	/// `path` is the path on which the filesystem is to be mounted.
-	fn new(id: u32, source: MountSource, fs_type: Option<SharedPtr<dyn FilesystemType>>,
-		flags: u32, path: Path) -> Result<Self, Errno> {
+	fn new(
+		id: u32,
+		source: MountSource,
+		fs_type: Option<SharedPtr<dyn FilesystemType>>,
+		flags: u32,
+		path: Path,
+	) -> Result<Self, Errno> {
 		// Tells whether the filesystem will be mounted in read-only
 		let readonly = flags & FLAG_RDONLY != 0;
 
@@ -276,7 +292,12 @@ impl MountPoint {
 			Some(fs) => fs,
 
 			// Filesystem doesn't exist, load it
-			None => load_fs(source.failable_clone()?, fs_type, path.failable_clone()?, readonly)?,
+			None => load_fs(
+				source.failable_clone()?,
+				fs_type,
+				path.failable_clone()?,
+				readonly,
+			)?,
 		};
 
 		// TODO Increment number of references
@@ -345,8 +366,12 @@ pub static MOUNT_POINTS: Mutex<Vec<(u32, SharedPtr<MountPoint>)>> = Mutex::new(V
 /// `fs_type` is the filesystem type. If None, the function tries to detect it automaticaly.
 /// `flags` are the mount flags.
 /// `path` is the path on which the filesystem is to be mounted.
-pub fn create(source: MountSource, fs_type: Option<SharedPtr<dyn FilesystemType>>, flags: u32,
-	path: Path) -> Result<SharedPtr<MountPoint>, Errno> {
+pub fn create(
+	source: MountSource,
+	fs_type: Option<SharedPtr<dyn FilesystemType>>,
+	flags: u32,
+	path: Path,
+) -> Result<SharedPtr<MountPoint>, Errno> {
 	let guard = MOUNT_POINTS.lock();
 	let container = guard.get_mut();
 

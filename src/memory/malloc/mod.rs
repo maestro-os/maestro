@@ -5,24 +5,24 @@
 mod block;
 mod chunk;
 
+use crate::errno;
+use crate::errno::Errno;
+use crate::memory;
+use crate::memory::malloc::ptr::NonNull;
+use crate::util;
+use crate::util::list::ListNode;
+use crate::util::lock::IntMutex;
 use block::Block;
 use chunk::Chunk;
-use core::cmp::Ordering;
 use core::cmp::min;
+use core::cmp::Ordering;
 use core::ffi::c_void;
 use core::mem::size_of;
 use core::ops::Index;
 use core::ops::IndexMut;
-use core::ptr::drop_in_place;
 use core::ptr;
+use core::ptr::drop_in_place;
 use core::slice;
-use crate::errno::Errno;
-use crate::errno;
-use crate::memory::malloc::ptr::NonNull;
-use crate::memory;
-use crate::util::list::ListNode;
-use crate::util::lock::IntMutex;
-use crate::util;
 
 /// The allocator's mutex.
 static MUTEX: IntMutex<()> = IntMutex::new(());
@@ -83,7 +83,7 @@ pub unsafe fn realloc(ptr: *mut c_void, n: usize) -> Result<*mut c_void, Errno> 
 		Ordering::Less => {
 			chunk.shrink(chunk_size - n);
 			Ok(ptr)
-		},
+		}
 
 		Ordering::Greater => {
 			if !chunk.grow(n - chunk_size) {
@@ -94,11 +94,9 @@ pub unsafe fn realloc(ptr: *mut c_void, n: usize) -> Result<*mut c_void, Errno> 
 			} else {
 				Ok(ptr)
 			}
-		},
+		}
 
-		Ordering::Equal => {
-			Ok(ptr)
-		},
+		Ordering::Equal => Ok(ptr),
 	}
 }
 
@@ -149,25 +147,20 @@ impl<T> Alloc<T> {
 		let slice = NonNull::new({
 			let ptr = alloc(size * size_of::<T>())?;
 			slice::from_raw_parts_mut::<T>(ptr as _, size)
-		}).unwrap();
-
-		Ok(Self {
-			slice,
 		})
+		.unwrap();
+
+		Ok(Self { slice })
 	}
 
 	/// Returns an immutable reference to the underlying slice.
 	pub fn as_slice(&self) -> &[T] {
-		unsafe {
-			&*self.slice.as_ref()
-		}
+		unsafe { &*self.slice.as_ref() }
 	}
 
 	/// Returns a mutable reference to the underlying slice.
 	pub fn as_slice_mut(&mut self) -> &mut [T] {
-		unsafe {
-			self.slice.as_mut()
-		}
+		unsafe { self.slice.as_mut() }
 	}
 
 	/// Returns the allocation as pointer.
@@ -209,7 +202,8 @@ impl<T: Default> Alloc<T> {
 	/// allowing to access it. If the allocation fails, the function shall return an error.
 	/// The function will fill the memory with the default value for the object T.
 	pub fn new_default(size: usize) -> Result<Self, Errno> {
-		let mut alloc = unsafe { // Safe because the memory is set right after
+		let mut alloc = unsafe {
+			// Safe because the memory is set right after
 			Self::new_zero(size)?
 		};
 		for i in alloc.as_slice_mut().iter_mut() {
@@ -244,7 +238,8 @@ impl<T: Clone> Alloc<T> {
 	/// allowing to access it. If the allocation fails, the function shall return an error.
 	/// `val` is a value that will be cloned to fill the memory.
 	pub fn new_clonable(size: usize, val: T) -> Result<Self, Errno> {
-		let mut alloc = unsafe { // Safe because the memory is set right after
+		let mut alloc = unsafe {
+			// Safe because the memory is set right after
 			Self::new_zero(size)?
 		};
 		for i in alloc.as_slice_mut().iter_mut() {
@@ -281,9 +276,9 @@ impl<T> Drop for Alloc<T> {
 
 #[cfg(test)]
 mod test {
+	use super::*;
 	use crate::memory;
 	use crate::util::math;
-	use super::*;
 
 	#[test_case]
 	fn alloc_free0() {

@@ -1,12 +1,12 @@
 //! The `init_module` system call allows to load a module on the kernel.
 
-use crate::errno::Errno;
 use crate::errno;
-use crate::module::Module;
+use crate::errno::Errno;
 use crate::module;
-use crate::process::Process;
+use crate::module::Module;
 use crate::process::mem_space::ptr::SyscallSlice;
 use crate::process::regs::Regs;
+use crate::process::Process;
 
 /// The implementation of the `init_module` syscall.
 pub fn init_module(regs: &Regs) -> Result<i32, Errno> {
@@ -24,7 +24,8 @@ pub fn init_module(regs: &Regs) -> Result<i32, Errno> {
 
 		let mem_space = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space.lock();
-		let image = module_image.get(&mem_space_guard, len as usize)?
+		let image = module_image
+			.get(&mem_space_guard, len as usize)?
 			.ok_or_else(|| errno!(EFAULT))?;
 
 		Module::load(image)?

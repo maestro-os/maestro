@@ -1,14 +1,14 @@
 //! This module implements the `write` system call, which allows to write data to a file.
 
-use core::cmp::min;
-use crate::errno::Errno;
 use crate::errno;
+use crate::errno::Errno;
 use crate::file::open_file::O_NONBLOCK;
-use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallSlice;
 use crate::process::regs::Regs;
+use crate::process::Process;
 use crate::syscall::Signal;
 use crate::util::io::IO;
+use core::cmp::min;
 
 // TODO O_ASYNC
 
@@ -31,7 +31,10 @@ pub fn write(regs: &Regs) -> Result<i32, Errno> {
 				let guard = mutex.lock();
 				let proc = guard.get_mut();
 
-				(proc.get_mem_space().unwrap(), proc.get_fd(fd).ok_or(errno!(EBADF))?.get_open_file())
+				(
+					proc.get_mem_space().unwrap(),
+					proc.get_fd(fd).ok_or(errno!(EBADF))?.get_open_file(),
+				)
 			};
 
 			let open_file_guard = open_file_mutex.lock();
@@ -55,7 +58,7 @@ pub fn write(regs: &Regs) -> Result<i32, Errno> {
 					}
 
 					return Err(err);
-				},
+				}
 			};
 
 			(len, flags)

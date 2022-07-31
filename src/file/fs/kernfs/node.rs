@@ -1,17 +1,17 @@
 //! This module implements kernfs nodes.
 
-use core::any::Any;
 use crate::errno::Errno;
+use crate::file;
 use crate::file::FileContent;
 use crate::file::Gid;
 use crate::file::Mode;
 use crate::file::Uid;
-use crate::file;
+use crate::time;
 use crate::time::unit::Timestamp;
 use crate::time::unit::TimestampScale;
-use crate::time;
 use crate::util::io::IO;
 use crate::util::ptr::cow::Cow;
+use core::any::Any;
 
 /// Trait representing a node in a kernfs.
 pub trait KernFSNode: Any + IO {

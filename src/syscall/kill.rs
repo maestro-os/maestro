@@ -1,13 +1,13 @@
 //! This module implements the `kill` system call, which allows to send a signal to a process.
 
-use crate::errno::Errno;
 use crate::errno;
-use crate::process::Process;
-use crate::process::State;
+use crate::errno::Errno;
+use crate::process;
 use crate::process::pid::Pid;
 use crate::process::regs::Regs;
 use crate::process::signal::Signal;
-use crate::process;
+use crate::process::Process;
+use crate::process::State;
 
 /// Tries to kill the process with PID `pid` with the signal `sig`.
 /// If `sig` is None, the function doesn't send a signal, but still checks if there is a process
@@ -21,7 +21,7 @@ fn try_kill(pid: Pid, sig: Option<Signal>) -> Result<(), Errno> {
 	let euid = curr_proc.get_euid();
 
 	// Closure sending the signal
-	let f = | target: &mut Process | {
+	let f = |target: &mut Process| {
 		if target.get_state() == State::Zombie {
 			return Err(errno!(ESRCH));
 		}
@@ -92,11 +92,14 @@ fn try_kill_group(pid: i32, sig: Option<Signal>) -> Result<(), Errno> {
 /// If `sig` is None, the function doesn't send a signal, but still checks if there is a process
 /// that could be killed.
 fn send_signal(pid: i32, sig: Option<Signal>) -> Result<(), Errno> {
-	if pid > 0 { // Kill the process with the given PID
+	if pid > 0 {
+		// Kill the process with the given PID
 		try_kill(pid as _, sig)
-	} else if pid == 0 { // Kill all processes in the current process group
+	} else if pid == 0 {
+		// Kill all processes in the current process group
 		try_kill_group(0, sig)
-	} else if pid == -1 { // Kill all processes for which the current process has the permission
+	} else if pid == -1 {
+		// Kill all processes for which the current process has the permission
 		let scheduler_guard = process::get_scheduler().lock();
 		let scheduler = scheduler_guard.get_mut();
 
@@ -110,7 +113,8 @@ fn send_signal(pid: i32, sig: Option<Signal>) -> Result<(), Errno> {
 		}
 
 		Ok(())
-	} else if pid < -1 { // Kill the given process group
+	} else if pid < -1 {
+		// Kill the given process group
 		try_kill_group(-pid as _, sig)
 	} else {
 		Err(errno!(ESRCH))
@@ -139,21 +143,21 @@ fn handle_state() {
 				} else {
 					return;
 				}
-			},
+			}
 
 			// The process has been stopped. Waiting until wakeup
 			process::State::Stopped => {
 				drop(guard);
 				crate::wait();
-			},
+			}
 
 			// The process has been killed. Stopping execution and waiting for the next tick
 			process::State::Zombie => {
 				drop(guard);
 				crate::enter_loop();
-			},
+			}
 
-			_ => {},
+			_ => {}
 		}
 	}
 }

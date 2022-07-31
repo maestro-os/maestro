@@ -1,19 +1,19 @@
 //! The mount system call allows to mount a filesystem on the system.
 
-use core::ffi::c_void;
-use crate::errno::Errno;
 use crate::errno;
-use crate::file::FileType;
+use crate::errno::Errno;
 use crate::file::fcache;
 use crate::file::fs;
-use crate::file::mountpoint::MountSource;
 use crate::file::mountpoint;
+use crate::file::mountpoint::MountSource;
 use crate::file::path::Path;
-use crate::process::Process;
+use crate::file::FileType;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::regs::Regs;
+use crate::process::Process;
 use crate::util::FailableClone;
+use core::ffi::c_void;
 
 /// The implementation of the `mount` syscall.
 pub fn mount(regs: &Regs) -> Result<i32, Errno> {
@@ -37,7 +37,9 @@ pub fn mount(regs: &Regs) -> Result<i32, Errno> {
 		// Getting strings
 		let source_slice = source.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
 		let target_slice = target.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
-		let filesystemtype_slice = filesystemtype.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
+		let filesystemtype_slice = filesystemtype
+			.get(&mem_space_guard)?
+			.ok_or(errno!(EFAULT))?;
 
 		// Getting the mount source
 		let mount_source = MountSource::from_str(source_slice, cwd)?;

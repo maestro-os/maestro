@@ -1,21 +1,20 @@
-/// This module implements utility functions for system calls.
-
-use core::mem::size_of;
-use crate::errno::Errno;
 use crate::errno;
-use crate::file::File;
-use crate::file::FileContent;
-use crate::file::Mode;
+use crate::errno::Errno;
 use crate::file::fcache;
 use crate::file::open_file::FDTarget;
 use crate::file::path::Path;
-use crate::process::Process;
+use crate::file::File;
+use crate::file::FileContent;
+use crate::file::Mode;
 use crate::process::mem_space::ptr::SyscallString;
-use crate::util::FailableClone;
+use crate::process::Process;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::lock::MutexGuard;
 use crate::util::ptr::SharedPtr;
+use crate::util::FailableClone;
+/// This module implements utility functions for system calls.
+use core::mem::size_of;
 
 /// Returns the absolute path according to the process's current working directory.
 /// `process` is the process.
@@ -34,8 +33,10 @@ pub fn get_absolute_path(process: &Process, path: Path) -> Result<Path, Errno> {
 /// returns its content.
 /// If the array or its content strings are not accessible by the process, the function returns an
 /// error.
-pub unsafe fn get_str_array(process: &Process, ptr: *const *const u8)
-	-> Result<Vec<String>, Errno> {
+pub unsafe fn get_str_array(
+	process: &Process,
+	ptr: *const *const u8,
+) -> Result<Vec<String>, Errno> {
 	let mem_space = process.get_mem_space().unwrap();
 	let mem_space_guard = mem_space.lock();
 
@@ -45,7 +46,10 @@ pub unsafe fn get_str_array(process: &Process, ptr: *const *const u8)
 		let elem_ptr = ptr.add(len);
 
 		// Checking access on elem_ptr
-		if !mem_space_guard.get().can_access(elem_ptr as _, size_of::<*const u8>(), true, false) {
+		if !mem_space_guard
+			.get()
+			.can_access(elem_ptr as _, size_of::<*const u8>(), true, false)
+		{
 			return Err(errno!(EFAULT));
 		}
 
@@ -71,8 +75,11 @@ pub unsafe fn get_str_array(process: &Process, ptr: *const *const u8)
 }
 
 /// TODO doc
-fn build_path_from_fd(process_guard: &MutexGuard<Process, false>, dirfd: i32, pathname: &[u8])
-	-> Result<Path, Errno> {
+fn build_path_from_fd(
+	process_guard: &MutexGuard<Process, false>,
+	dirfd: i32,
+	pathname: &[u8],
+) -> Result<Path, Errno> {
 	let process = process_guard.get();
 	let path = Path::from_str(pathname, true)?;
 
@@ -91,7 +98,8 @@ fn build_path_from_fd(process_guard: &MutexGuard<Process, false>, dirfd: i32, pa
 			return Err(errno!(EBADF));
 		}
 
-		let open_file_mutex = process.get_fd(dirfd as _)
+		let open_file_mutex = process
+			.get_fd(dirfd as _)
 			.ok_or(errno!(EBADF))?
 			.get_open_file();
 		let open_file_guard = open_file_mutex.lock();
@@ -103,7 +111,7 @@ fn build_path_from_fd(process_guard: &MutexGuard<Process, false>, dirfd: i32, pa
 				let file = file_guard.get();
 
 				file.get_path()?.concat(&path)
-			},
+			}
 
 			_ => Err(errno!(ENOTDIR)),
 		}
@@ -116,8 +124,13 @@ fn build_path_from_fd(process_guard: &MutexGuard<Process, false>, dirfd: i32, pa
 /// `dirfd` is the file descriptor of the parent directory.
 /// `pathname` is the path relative to the parent directory.
 /// `flags` is an integer containing AT_* flags.
-pub fn get_file_at(process_guard: &MutexGuard<Process, false>, follow_links: bool, dirfd: i32,
-	pathname: &[u8], flags: i32) -> Result<SharedPtr<File>, Errno> {
+pub fn get_file_at(
+	process_guard: &MutexGuard<Process, false>,
+	follow_links: bool,
+	dirfd: i32,
+	pathname: &[u8],
+	flags: i32,
+) -> Result<SharedPtr<File>, Errno> {
 	let process = process_guard.get();
 
 	if pathname.is_empty() {
@@ -128,7 +141,8 @@ pub fn get_file_at(process_guard: &MutexGuard<Process, false>, follow_links: boo
 				return Err(errno!(EBADF));
 			}
 
-			let open_file_mutex = process.get_fd(dirfd as _)
+			let open_file_mutex = process
+				.get_fd(dirfd as _)
 				.ok_or(errno!(EBADF))?
 				.get_open_file();
 			let open_file_guard = open_file_mutex.lock();
@@ -146,13 +160,21 @@ pub fn get_file_at(process_guard: &MutexGuard<Process, false>, follow_links: boo
 
 		let fcache = fcache::get();
 		let fcache_guard = fcache.lock();
-		fcache_guard.get_mut().as_mut().unwrap().get_file_from_path(&path, uid, gid, follow_links)
+		fcache_guard
+			.get_mut()
+			.as_mut()
+			.unwrap()
+			.get_file_from_path(&path, uid, gid, follow_links)
 	}
 }
 
 /// TODO doc
-pub fn get_parent_at_with_name(process_guard: &MutexGuard<Process, false>, follow_links: bool,
-	dirfd: i32, pathname: &[u8]) -> Result<(SharedPtr<File>, String), Errno> {
+pub fn get_parent_at_with_name(
+	process_guard: &MutexGuard<Process, false>,
+	follow_links: bool,
+	dirfd: i32,
+	pathname: &[u8],
+) -> Result<(SharedPtr<File>, String), Errno> {
 	if pathname.is_empty() {
 		return Err(errno!(ENOENT));
 	}
@@ -179,10 +201,16 @@ pub fn get_parent_at_with_name(process_guard: &MutexGuard<Process, false>, follo
 /// `pathname` is the path relative to the parent directory.
 /// `mode` is the permissions of the newly created file.
 /// `content` is the content of the newly created file.
-pub fn create_file_at(process_guard: &MutexGuard<Process, false>, follow_links: bool, dirfd: i32,
-	pathname: &[u8], mode: Mode, content: FileContent) -> Result<SharedPtr<File>, Errno> {
-	let (parent_mutex, name) = get_parent_at_with_name(process_guard, follow_links, dirfd,
-		pathname)?;
+pub fn create_file_at(
+	process_guard: &MutexGuard<Process, false>,
+	follow_links: bool,
+	dirfd: i32,
+	pathname: &[u8],
+	mode: Mode,
+	content: FileContent,
+) -> Result<SharedPtr<File>, Errno> {
+	let (parent_mutex, name) =
+		get_parent_at_with_name(process_guard, follow_links, dirfd, pathname)?;
 
 	let process = process_guard.get();
 	let uid = process.get_euid();

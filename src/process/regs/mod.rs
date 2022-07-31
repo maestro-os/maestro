@@ -1,9 +1,9 @@
 //! This module implements the Regs structure, allowing to save an execution state and to restore
 //! it.
 
+use crate::gdt;
 use core::ffi::c_void;
 use core::fmt;
-use crate::gdt;
 
 /// The default value of the eflags register.
 const DEFAULT_EFLAGS: u32 = 0x1202;
@@ -135,7 +135,9 @@ impl fmt::Display for Regs {
 		let fs = self.fs;
 		let gs = self.gs;
 
-		write!(f, "ebp: {:p} esp: {:p} eip: {:p} eflags: {:p} eax: {:p}
+		write!(
+			f,
+			"ebp: {:p} esp: {:p} eip: {:p} eflags: {:p} eax: {:p}
 ebx: {:p} ecx: {:p} edx: {:p} esi: {:p} edi: {:p}
 gs: 0x{:x} fs: 0x{:x}",
 			self.ebp as *const c_void,
@@ -149,6 +151,7 @@ gs: 0x{:x} fs: 0x{:x}",
 			self.esi as *const c_void,
 			self.edi as *const c_void,
 			gs,
-			fs)
+			fs
+		)
 	}
 }

@@ -1,11 +1,11 @@
 //! The `clock_gettime` syscall returns the current time of the given clock.
 
 use crate::errno::Errno;
-use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::regs::Regs;
-use crate::time::unit::Timespec;
+use crate::process::Process;
 use crate::time;
+use crate::time::unit::Timespec;
 
 /// The implementation of the `clock_gettime` syscall.
 pub fn clock_gettime(regs: &Regs) -> Result<i32, Errno> {

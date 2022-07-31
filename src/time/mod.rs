@@ -42,11 +42,14 @@ pub fn add_clock_source<T: 'static + ClockSource>(source: T) -> Result<(), Errno
 	let sources = guard.get_mut();
 
 	let name = String::from(source.get_name().as_bytes())?;
-	sources.insert(name, ClockSourceWrapper {
-		src: Box::new(source)?,
+	sources.insert(
+		name,
+		ClockSourceWrapper {
+			src: Box::new(source)?,
 
-		last: 0,
-	})?;
+			last: 0,
+		},
+	)?;
 
 	Ok(())
 }

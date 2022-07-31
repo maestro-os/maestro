@@ -10,8 +10,8 @@ use crate::util::ptr::SharedPtr;
 const ENTROPY_BUFFER_SIZE: usize = 32768;
 
 /// The list of random sources.
-static RANDOM_SOURCES: Mutex<HashMap<&'static str, SharedPtr<dyn RandomSource>>>
-	= Mutex::new(HashMap::new());
+static RANDOM_SOURCES: Mutex<HashMap<&'static str, SharedPtr<dyn RandomSource>>> =
+	Mutex::new(HashMap::new());
 
 /// Trait representing a source of random bytes.
 pub trait RandomSource {

@@ -9,21 +9,21 @@
 mod ansi;
 pub mod termios;
 
-use core::cmp::*;
-use core::mem::MaybeUninit;
-use core::ptr;
 use crate::device::serial;
 use crate::memory::vmem;
-use crate::process::Process;
 use crate::process::pid::Pid;
 use crate::process::signal::Signal;
+use crate::process::Process;
 use crate::tty::termios::Termios;
+use crate::util;
 use crate::util::container::vec::Vec;
 use crate::util::lock::IntMutex;
 use crate::util::lock::MutexGuard;
 use crate::util::ptr::IntSharedPtr;
-use crate::util;
 use crate::vga;
+use core::cmp::*;
+use core::mem::MaybeUninit;
+use core::ptr;
 
 /// The number of history lines for one TTY.
 const HISTORY_LINES: vga::Pos = 128;
@@ -157,9 +157,7 @@ pub fn get(id: Option<usize>) -> Option<TTYHandle> {
 			None
 		}
 	} else {
-		unsafe {
-			Some(TTYHandle::Init(INIT_TTY.assume_init_ref()))
-		}
+		unsafe { Some(TTYHandle::Init(INIT_TTY.assume_init_ref())) }
 	}
 }
 
@@ -196,9 +194,7 @@ impl TTY {
 	/// Creates a new TTY.
 	/// `id` is the ID of the TTY.
 	pub fn init(&mut self, id: Option<usize>) {
-		unsafe {
-			util::zero_object(self)
-		}
+		unsafe { util::zero_object(self) }
 
 		self.id = id;
 		self.cursor_x = 0;
@@ -237,9 +233,11 @@ impl TTY {
 		let buff = &self.history[get_history_offset(0, self.screen_y)];
 		unsafe {
 			vmem::write_lock_wrap(|| {
-				ptr::copy_nonoverlapping(buff as *const vga::Char,
+				ptr::copy_nonoverlapping(
+					buff as *const vga::Char,
 					vga::get_buffer_virt() as *mut vga::Char,
-					(vga::WIDTH as usize) * (vga::HEIGHT as usize));
+					(vga::WIDTH as usize) * (vga::HEIGHT as usize),
+				);
 			});
 		}
 
@@ -405,7 +403,7 @@ impl TTY {
 
 			0x0c => {
 				// TODO Move printer to a top of page?
-			},
+			}
 
 			b'\r' => self.cursor_x = 0,
 			0x08 | 0x7f => self.cursor_backward(1, 0),
@@ -541,15 +539,14 @@ impl TTY {
 						self.available_size = i + 1;
 
 						i += 1;
-					},
+					}
 
 					0xf7 => {
 						// TODO Check
 						self.erase(1);
-					},
+					}
 
 					// TODO Handle other special characters
-
 					_ => i += 1,
 				}
 			}
@@ -563,7 +560,8 @@ impl TTY {
 			for b in input {
 				// Printing special control characters if enabled
 				if self.termios.c_lflag & termios::ECHO != 0
-					&& self.termios.c_lflag & termios::ECHOCTL != 0 {
+					&& self.termios.c_lflag & termios::ECHOCTL != 0
+				{
 					if *b >= 1 && *b < 32 {
 						self.write(&[b'^', b + b'A']);
 					}

@@ -1,11 +1,11 @@
 //! The `fchmodat` system call allows change the permissions on a file.
 
+use super::util;
 use crate::errno::Errno;
 use crate::file;
-use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::regs::Regs;
-use super::util;
+use crate::process::Process;
 
 /// The implementation of the `fchmodat` syscall.
 pub fn fchmodat(regs: &Regs) -> Result<i32, Errno> {
@@ -24,7 +24,9 @@ pub fn fchmodat(regs: &Regs) -> Result<i32, Errno> {
 
 		let uid = proc.get_euid();
 
-		let pathname = pathname.get(&mem_space_guard)?.ok_or_else(|| errno!(EFAULT))?;
+		let pathname = pathname
+			.get(&mem_space_guard)?
+			.ok_or_else(|| errno!(EFAULT))?;
 		let file_mutex = util::get_file_at(&guard, true, dirfd, pathname, 0)?;
 
 		(file_mutex, uid)

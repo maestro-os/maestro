@@ -1,11 +1,11 @@
 //! This module implements debugging tools.
 
-use core::ffi::c_void;
-use core::mem::size_of;
-use core::str;
 use crate::elf;
 use crate::memory;
 use crate::multiboot;
+use core::ffi::c_void;
+use core::mem::size_of;
+use core::str;
 
 /// Prints, in hexadecimal, the content of the memory at the given location `ptr`, with the given
 /// size `n` in bytes.
@@ -66,17 +66,18 @@ pub fn print_callstack(ebp: *const u32, max_depth: usize) {
 	let mut i: usize = 0;
 	let mut ebp_ = ebp;
 	while !ebp_.is_null() && i < max_depth {
-		let eip = unsafe {
-			*((ebp_ as usize + size_of::<usize>()) as *const u32) as *const c_void
-		};
+		let eip = unsafe { *((ebp_ as usize + size_of::<usize>()) as *const u32) as *const c_void };
 		if eip < memory::PROCESS_END {
 			break;
 		}
 
-		if let Some(name) = elf::get_function_name(memory::kern_to_virt(boot_info.elf_sections),
-			boot_info.elf_num as usize, boot_info.elf_shndx as usize,
-			boot_info.elf_entsize as usize, eip) {
-
+		if let Some(name) = elf::get_function_name(
+			memory::kern_to_virt(boot_info.elf_sections),
+			boot_info.elf_num as usize,
+			boot_info.elf_shndx as usize,
+			boot_info.elf_entsize as usize,
+			eip,
+		) {
 			let name = str::from_utf8(name).unwrap_or("<Invalid UTF8>");
 			crate::println!("{}: {:p} -> {}", i, eip, name);
 		} else {

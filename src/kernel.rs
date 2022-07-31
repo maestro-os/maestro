@@ -2,10 +2,8 @@
 //! the kernel's internals.
 
 #![no_std]
-
 #![allow(unused_attributes)]
 #![no_main]
-
 #![feature(allow_internal_unstable)]
 #![feature(coerce_unsized)]
 #![feature(const_maybe_uninit_assume_init)]
@@ -21,12 +19,10 @@
 #![feature(stmt_expr_attributes)]
 #![feature(trait_upcasting)]
 #![feature(unsize)]
-
 #![deny(warnings)]
 #![allow(dead_code)]
 #![allow(unused_macros)]
 #![allow(incomplete_features)]
-
 #![test_runner(crate::selftest::runner)]
 #![reexport_test_harness_main = "kernel_selftest"]
 
@@ -65,20 +61,20 @@ pub mod util;
 #[macro_use]
 pub mod vga;
 
-use core::ffi::c_void;
-use core::panic::PanicInfo;
-use core::ptr::null;
 use crate::errno::Errno;
 use crate::file::fcache;
 use crate::file::path::Path;
-use crate::memory::vmem::VMem;
 use crate::memory::vmem;
-use crate::process::Process;
-use crate::process::exec::ExecInfo;
+use crate::memory::vmem::VMem;
 use crate::process::exec;
+use crate::process::exec::ExecInfo;
+use crate::process::Process;
 use crate::util::boxed::Box;
 use crate::util::container::vec::Vec;
 use crate::util::lock::Mutex;
+use core::ffi::c_void;
+use core::panic::PanicInfo;
+use core::ptr::null;
 
 /// The kernel's name.
 pub const NAME: &str = "maestro";
@@ -139,15 +135,22 @@ fn init_vmem() -> Result<(), Errno> {
 	// TODO Enable GLOBAL in cr4
 
 	// Mapping the kernelspace
-	kernel_vmem.map_range(null::<c_void>(),
+	kernel_vmem.map_range(
+		null::<c_void>(),
 		memory::PROCESS_END,
 		memory::get_kernelspace_size() / memory::PAGE_SIZE,
-		vmem::x86::FLAG_WRITE | vmem::x86::FLAG_GLOBAL)?;
+		vmem::x86::FLAG_WRITE | vmem::x86::FLAG_GLOBAL,
+	)?;
 
 	// Mapping VGA's buffer
-	let vga_flags = vmem::x86::FLAG_CACHE_DISABLE | vmem::x86::FLAG_WRITE_THROUGH
-		| vmem::x86::FLAG_WRITE;
-	kernel_vmem.map_range(vga::BUFFER_PHYS as _, vga::get_buffer_virt() as _, 1, vga_flags)?;
+	let vga_flags =
+		vmem::x86::FLAG_CACHE_DISABLE | vmem::x86::FLAG_WRITE_THROUGH | vmem::x86::FLAG_WRITE;
+	kernel_vmem.map_range(
+		vga::BUFFER_PHYS as _,
+		vga::get_buffer_virt() as _,
+		1,
+		vga_flags,
+	)?;
 
 	// Making the kernel image read-only
 	kernel_vmem.protect_kernel()?;
@@ -193,9 +196,8 @@ fn init(init_path: &[u8]) -> Result<(), Errno> {
 
 	if cfg!(config_debug_testprocess) {
 		// The pointer to the beginning of the test process
-		let test_begin = unsafe {
-			core::mem::transmute::<unsafe extern "C" fn(), *const c_void>(test_process)
-		};
+		let test_begin =
+			unsafe { core::mem::transmute::<unsafe extern "C" fn(), *const c_void>(test_process) };
 
 		proc.init_dummy(test_begin)
 	} else {
@@ -225,9 +227,7 @@ fn init(init_path: &[u8]) -> Result<(), Errno> {
 			gid: proc.get_gid(),
 			egid: proc.get_egid(),
 
-			argv: &vec![
-				init_path
-			]?,
+			argv: &vec![init_path]?,
 			envp: &env,
 		};
 		let program_image = exec::build_image(file_guard.get_mut(), exec_info)?;
@@ -301,29 +301,30 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 
 	println!("Initializing ramdisks...");
 	device::storage::ramdisk::create()
-		.unwrap_or_else(| e | kernel_panic!("Failed to create ramdisks! ({})", e));
+		.unwrap_or_else(|e| kernel_panic!("Failed to create ramdisks! ({})", e));
 	println!("Initializing devices management...");
 	device::init()
-		.unwrap_or_else(| e | kernel_panic!("Failed to initialize devices management! ({})", e));
-	crypto::init()
-		.unwrap_or_else(| e | kernel_panic!("Failed to initialize cryptography! ({})", e));
+		.unwrap_or_else(|e| kernel_panic!("Failed to initialize devices management! ({})", e));
+	crypto::init().unwrap_or_else(|e| kernel_panic!("Failed to initialize cryptography! ({})", e));
 
 	let (root_major, root_minor) = args_parser.get_root_dev();
 	println!("Root device is {} {}", root_major, root_minor);
 	println!("Initializing files management...");
 	file::init(device::DeviceType::Block, root_major, root_minor)
-		.unwrap_or_else(| e | kernel_panic!("Failed to initialize files management! ({})", e));
+		.unwrap_or_else(|e| kernel_panic!("Failed to initialize files management! ({})", e));
 	device::default::create()
-		.unwrap_or_else(| e | kernel_panic!("Failed to create default devices! ({})", e));
+		.unwrap_or_else(|e| kernel_panic!("Failed to create default devices! ({})", e));
 	// TODO Create every devices' files
 
 	println!("Initializing processes...");
-	process::init().unwrap_or_else(| e | kernel_panic!("Failed to init processes! ({})", e));
+	process::init().unwrap_or_else(|e| kernel_panic!("Failed to init processes! ({})", e));
 
-	let init_path = args_parser.get_init_path().as_ref()
-		.map(| s | s.as_bytes())
+	let init_path = args_parser
+		.get_init_path()
+		.as_ref()
+		.map(|s| s.as_bytes())
 		.unwrap_or(INIT_PATH);
-	init(init_path).unwrap_or_else(| e | kernel_panic!("Cannot execute init process: {}", e));
+	init(init_path).unwrap_or_else(|e| kernel_panic!("Cannot execute init process: {}", e));
 	enter_loop();
 }
 

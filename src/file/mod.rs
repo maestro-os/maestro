@@ -12,25 +12,25 @@ pub mod pipe;
 pub mod socket;
 pub mod util;
 
-use core::cmp::max;
-use core::ffi::c_void;
-use crate::device::DeviceType;
 use crate::device;
-use crate::errno::Errno;
+use crate::device::DeviceType;
 use crate::errno;
+use crate::errno::Errno;
 use crate::file::fcache::FCache;
 use crate::file::mountpoint::MountPoint;
 use crate::file::mountpoint::MountSource;
 use crate::process::mem_space::MemSpace;
+use crate::time;
 use crate::time::unit::Timestamp;
 use crate::time::unit::TimestampScale;
-use crate::time;
-use crate::util::FailableClone;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
 use crate::util::io::IO;
 use crate::util::ptr::IntSharedPtr;
 use crate::util::ptr::SharedPtr;
+use crate::util::FailableClone;
+use core::cmp::max;
+use core::ffi::c_void;
 use path::Path;
 
 /// Type representing a user ID.
@@ -225,16 +225,10 @@ pub enum FileContent {
 	Socket,
 
 	/// The file is a block device.
-	BlockDevice {
-		major: u32,
-		minor: u32,
-	},
+	BlockDevice { major: u32, minor: u32 },
 
 	/// The file is a char device.
-	CharDevice {
-		major: u32,
-		minor: u32,
-	},
+	CharDevice { major: u32, minor: u32 },
 }
 
 impl FileContent {
@@ -324,8 +318,14 @@ impl File {
 	/// `mode` is the permission of the file.
 	/// `location` is the location of the file.
 	/// `content` is the content of the file. This value also determines the file type.
-	fn new(name: String, uid: Uid, gid: Gid, mut mode: Mode, location: FileLocation,
-		mut content: FileContent) -> Result<Self, Errno> {
+	fn new(
+		name: String,
+		uid: Uid,
+		gid: Gid,
+		mut mode: Mode,
+		location: FileLocation,
+		mut content: FileContent,
+	) -> Result<Self, Errno> {
 		let timestamp = time::get(TimestampScale::Second, true).unwrap_or(0);
 
 		match &mut content {
@@ -334,21 +334,24 @@ impl File {
 				// Add `.`
 				let name = String::from(b".")?;
 				if entries.get(&name).is_none() {
-					entries.insert(name, DirEntry {
-						inode: location.inode,
-						entry_type: FileType::Directory,
-					})?;
+					entries.insert(
+						name,
+						DirEntry {
+							inode: location.inode,
+							entry_type: FileType::Directory,
+						},
+					)?;
 				}
 
 				// TODO Add `..`
-			},
+			}
 
 			// If the file is a symbolic link, permissions don't matter
 			FileContent::Link(_) => {
 				mode = 0o777;
-			},
+			}
 
-			_ => {},
+			_ => {}
 		}
 
 		Ok(Self {
@@ -597,14 +600,15 @@ impl File {
 	/// `mem_space` is the memory space on which pointers are to be dereferenced.
 	/// `request` is the ID of the request to perform.
 	/// `argp` is a pointer to the argument.
-	pub fn ioctl(&mut self, mem_space: IntSharedPtr<MemSpace>, request: u32, argp: *const c_void)
-		-> Result<u32, Errno> {
-		if let FileContent::CharDevice {
-			major,
-			minor,
-		} = self.content {
-			let dev = device::get_device(DeviceType::Char, major, minor)
-				.ok_or_else(|| errno!(ENODEV))?;
+	pub fn ioctl(
+		&mut self,
+		mem_space: IntSharedPtr<MemSpace>,
+		request: u32,
+		argp: *const c_void,
+	) -> Result<u32, Errno> {
+		if let FileContent::CharDevice { major, minor } = self.content {
+			let dev =
+				device::get_device(DeviceType::Char, major, minor).ok_or_else(|| errno!(ENODEV))?;
 			let guard = dev.lock();
 			guard.get_mut().get_handle().ioctl(mem_space, request, argp)
 		} else {
@@ -629,9 +633,9 @@ impl File {
 				let pipe = pipe_guard.get_mut();
 
 				pipe.increment_open(write);
-			},
+			}
 
-			_ => {},
+			_ => {}
 		}
 
 		Ok(())
@@ -655,9 +659,9 @@ impl File {
 				let pipe = pipe_guard.get_mut();
 
 				pipe.decrement_open(write);
-			},
+			}
 
-			_ => {},
+			_ => {}
 		}
 	}
 
@@ -693,8 +697,8 @@ impl IO for File {
 		match &self.content {
 			FileContent::Regular => {
 				let (io_mutex, fs_mutex) = {
-					let mountpoint_mutex = self.location.get_mountpoint()
-						.ok_or_else(|| errno!(EIO))?;
+					let mountpoint_mutex =
+						self.location.get_mountpoint().ok_or_else(|| errno!(EIO))?;
 					let mountpoint_guard = mountpoint_mutex.lock();
 					let mountpoint = mountpoint_guard.get_mut();
 
@@ -710,7 +714,7 @@ impl IO for File {
 				let fs = fs_guard.get_mut();
 
 				fs.read_node(io, self.location.inode, off, buff)
-			},
+			}
 
 			FileContent::Directory(_) => Err(errno!(EISDIR)),
 
@@ -725,7 +729,7 @@ impl IO for File {
 				let pipe_guard = pipe_mutex.lock();
 				let pipe = pipe_guard.get_mut();
 				pipe.read(off as _, buff)
-			},
+			}
 
 			FileContent::Socket => {
 				let fcache_mutex = fcache::get();
@@ -738,24 +742,25 @@ impl IO for File {
 
 				// TODO
 				todo!();
-			},
+			}
 
 			FileContent::BlockDevice { .. } | FileContent::CharDevice { .. } => {
 				let dev = match self.content {
 					FileContent::BlockDevice { major, minor } => {
 						device::get_device(DeviceType::Block, major, minor)
-					},
+					}
 
 					FileContent::CharDevice { major, minor } => {
 						device::get_device(DeviceType::Char, major, minor)
-					},
+					}
 
 					_ => unreachable!(),
-				}.ok_or_else(|| errno!(ENODEV))?;
+				}
+				.ok_or_else(|| errno!(ENODEV))?;
 
 				let guard = dev.lock();
 				guard.get_mut().get_handle().read(off as _, buff)
-			},
+			}
 		}
 	}
 
@@ -763,8 +768,8 @@ impl IO for File {
 		match &self.content {
 			FileContent::Regular => {
 				let (io_mutex, fs_mutex) = {
-					let mountpoint_mutex = self.location.get_mountpoint()
-						.ok_or_else(|| errno!(EIO))?;
+					let mountpoint_mutex =
+						self.location.get_mountpoint().ok_or_else(|| errno!(EIO))?;
 					let mountpoint_guard = mountpoint_mutex.lock();
 					let mountpoint = mountpoint_guard.get_mut();
 
@@ -783,7 +788,7 @@ impl IO for File {
 
 				self.size = max(off + buff.len() as u64, self.size);
 				Ok(buff.len() as _)
-			},
+			}
 
 			FileContent::Directory(_) => Err(errno!(EISDIR)),
 
@@ -798,7 +803,7 @@ impl IO for File {
 				let pipe_guard = pipe_mutex.lock();
 				let pipe = pipe_guard.get_mut();
 				pipe.write(off as _, buff)
-			},
+			}
 
 			FileContent::Socket => {
 				let fcache_mutex = fcache::get();
@@ -811,24 +816,25 @@ impl IO for File {
 
 				// TODO
 				todo!();
-			},
+			}
 
 			FileContent::BlockDevice { .. } | FileContent::CharDevice { .. } => {
 				let dev = match self.content {
 					FileContent::BlockDevice { major, minor } => {
 						device::get_device(DeviceType::Block, major, minor)
-					},
+					}
 
 					FileContent::CharDevice { major, minor } => {
 						device::get_device(DeviceType::Char, major, minor)
-					},
+					}
 
 					_ => unreachable!(),
-				}.ok_or_else(|| errno!(ENODEV))?;
+				}
+				.ok_or_else(|| errno!(ENODEV))?;
 
 				let guard = dev.lock();
 				guard.get_mut().get_handle().write(off as _, buff)
-			},
+			}
 		}
 	}
 
@@ -836,8 +842,8 @@ impl IO for File {
 		match &self.content {
 			FileContent::Regular => {
 				let (io_mutex, fs_mutex) = {
-					let mountpoint_mutex = self.location.get_mountpoint()
-						.ok_or_else(|| errno!(EIO))?;
+					let mountpoint_mutex =
+						self.location.get_mountpoint().ok_or_else(|| errno!(EIO))?;
 					let mountpoint_guard = mountpoint_mutex.lock();
 					let mountpoint = mountpoint_guard.get_mut();
 
@@ -854,7 +860,7 @@ impl IO for File {
 
 				// TODO
 				todo!();
-			},
+			}
 
 			FileContent::Directory(_) => Err(errno!(EISDIR)),
 
@@ -869,7 +875,7 @@ impl IO for File {
 				let pipe_guard = pipe_mutex.lock();
 				let pipe = pipe_guard.get_mut();
 				pipe.poll(mask)
-			},
+			}
 
 			FileContent::Socket => {
 				let fcache_mutex = fcache::get();
@@ -882,24 +888,25 @@ impl IO for File {
 
 				// TODO
 				todo!();
-			},
+			}
 
 			FileContent::BlockDevice { .. } | FileContent::CharDevice { .. } => {
 				let dev = match self.content {
 					FileContent::BlockDevice { major, minor } => {
 						device::get_device(DeviceType::Block, major, minor)
-					},
+					}
 
 					FileContent::CharDevice { major, minor } => {
 						device::get_device(DeviceType::Char, major, minor)
-					},
+					}
 
 					_ => unreachable!(),
-				}.ok_or_else(|| errno!(ENODEV))?;
+				}
+				.ok_or_else(|| errno!(ENODEV))?;
 
 				let guard = dev.lock();
 				guard.get_mut().get_handle().poll(mask)
-			},
+			}
 		}
 	}
 }

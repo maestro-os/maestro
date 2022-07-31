@@ -4,17 +4,17 @@ mod cwd;
 mod mounts;
 
 use crate::errno::Errno;
+use crate::file::fs::kernfs::node::KernFSNode;
+use crate::file::fs::kernfs::KernFS;
 use crate::file::DirEntry;
 use crate::file::FileContent;
 use crate::file::FileType;
 use crate::file::Gid;
 use crate::file::Mode;
 use crate::file::Uid;
-use crate::file::fs::kernfs::KernFS;
-use crate::file::fs::kernfs::node::KernFSNode;
-use crate::process::Process;
 use crate::process::oom;
 use crate::process::pid::Pid;
+use crate::process::Process;
 use crate::util::boxed::Box;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
@@ -42,24 +42,26 @@ impl ProcDir {
 		// TODO On fail, remove previously inserted nodes
 
 		// Creating /proc/<pid>/cwd
-		let node = Cwd {
-			pid
-		};
+		let node = Cwd { pid };
 		let inode = fs.add_node(Box::new(node)?)?;
-		entries.insert(String::from(b"cwd")?, DirEntry {
-			inode,
-			entry_type: FileType::Link,
-		})?;
+		entries.insert(
+			String::from(b"cwd")?,
+			DirEntry {
+				inode,
+				entry_type: FileType::Link,
+			},
+		)?;
 
 		// Creating /proc/<pid>/mounts
-		let node = Mounts {
-			pid
-		};
+		let node = Mounts { pid };
 		let inode = fs.add_node(Box::new(node)?)?;
-		entries.insert(String::from(b"mounts")?, DirEntry {
-			inode,
-			entry_type: FileType::Regular,
-		})?;
+		entries.insert(
+			String::from(b"mounts")?,
+			DirEntry {
+				inode,
+				entry_type: FileType::Regular,
+			},
+		)?;
 
 		Ok(Self {
 			pid,
@@ -79,7 +81,7 @@ impl ProcDir {
 				}
 
 				entries.clear();
-			},
+			}
 
 			_ => unreachable!(),
 		}

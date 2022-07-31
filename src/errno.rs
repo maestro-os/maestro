@@ -1,8 +1,8 @@
 //! This module stores the errno utilities.
 
+use core::fmt;
 use core::fmt::Error;
 use core::fmt::Formatter;
-use core::fmt;
 
 /// Structure representing a location at which an errno was raised.
 #[cfg(config_debug_debug)]
@@ -19,7 +19,11 @@ pub struct ErrnoLocation {
 #[cfg(config_debug_debug)]
 impl fmt::Display for ErrnoLocation {
 	fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-		write!(f, "file: {} line: {} col: {}", self.file, self.line, self.column)
+		write!(
+			f,
+			"file: {} line: {} col: {}",
+			self.file, self.line, self.column
+		)
 	}
 }
 
@@ -39,20 +43,14 @@ impl Errno {
 	/// This function should not be used directly but only through the `errno` macro.
 	#[cfg(not(config_debug_debug))]
 	pub fn new(errno: i32) -> Self {
-		Self {
-			errno,
-		}
+		Self { errno }
 	}
 
 	/// Creates a new instance.
 	/// This function should not be used directly but only through the `errno` macro.
 	#[cfg(config_debug_debug)]
 	pub fn new(errno: i32, location: ErrnoLocation) -> Self {
-		Self {
-			errno,
-
-			location,
-		}
+		Self { errno, location }
 	}
 
 	/// Returns the integer representation of the errno.
@@ -216,7 +214,13 @@ impl fmt::Display for Errno {
 #[cfg(config_debug_debug)]
 impl fmt::Display for Errno {
 	fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-		write!(f, "errno: {}: {} (at: {})", self.errno, self.strerror(), self.location)
+		write!(
+			f,
+			"errno: {}: {} (at: {})",
+			self.errno,
+			self.strerror(),
+			self.location
+		)
 	}
 }
 
@@ -227,7 +231,7 @@ impl fmt::Display for Errno {
 macro_rules! errno {
 	($errno:ident) => {
 		crate::errno::Errno::new(crate::errno::$errno)
-	}
+	};
 }
 
 /// Raises an errno.
@@ -236,12 +240,15 @@ macro_rules! errno {
 #[macro_export]
 macro_rules! errno {
 	($errno:ident) => {
-		crate::errno::Errno::new(crate::errno::$errno, crate::errno::ErrnoLocation {
-			file: file!(),
-			line: line!(),
-			column: column!()
-		})
-	}
+		crate::errno::Errno::new(
+			crate::errno::$errno,
+			crate::errno::ErrnoLocation {
+				file: file!(),
+				line: line!(),
+				column: column!(),
+			},
+		)
+	};
 }
 
 /// Operation not permitted.

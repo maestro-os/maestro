@@ -1,11 +1,11 @@
 //! The fchdir system call allows to change the current working directory of the current process.
 
-use crate::errno::Errno;
 use crate::errno;
-use crate::file::FileType;
+use crate::errno::Errno;
 use crate::file::open_file::FDTarget;
-use crate::process::Process;
+use crate::file::FileType;
 use crate::process::regs::Regs;
+use crate::process::Process;
 
 /// The implementation of the `fchdir` syscall.
 pub fn fchdir(regs: &Regs) -> Result<i32, Errno> {
@@ -22,7 +22,10 @@ pub fn fchdir(regs: &Regs) -> Result<i32, Errno> {
 
 		let uid = proc.get_euid();
 		let gid = proc.get_egid();
-		let open_file_mutex = proc.get_fd(fd as _).ok_or_else(|| errno!(EBADF))?.get_open_file();
+		let open_file_mutex = proc
+			.get_fd(fd as _)
+			.ok_or_else(|| errno!(EBADF))?
+			.get_open_file();
 
 		(uid, gid, open_file_mutex)
 	};

@@ -1,12 +1,12 @@
 //! The msync system call synchronizes a memory mapping with its file on the disk.
 
-use core::ffi::c_void;
-use crate::errno::Errno;
 use crate::errno;
+use crate::errno::Errno;
 use crate::memory;
-use crate::process::Process;
 use crate::process::regs::Regs;
+use crate::process::Process;
 use crate::util;
+use core::ffi::c_void;
 
 /// Schedules a synchronization and returns directly.
 const MS_ASYNC: i32 = 0b001;

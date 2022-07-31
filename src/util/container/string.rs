@@ -1,18 +1,18 @@
 //! This module implements the String structure which wraps the `str` type.
 
+use crate::errno::Errno;
+use crate::util::container::vec::Vec;
+use crate::util::FailableClone;
 use core::borrow::Borrow;
 use core::borrow::BorrowMut;
+use core::fmt;
 use core::fmt::Debug;
 use core::fmt::Write;
-use core::fmt;
 use core::hash::Hash;
 use core::hash::Hasher;
 use core::ops::Add;
 use core::ops::Deref;
 use core::str;
-use crate::errno::Errno;
-use crate::util::FailableClone;
-use crate::util::container::vec::Vec;
 
 /// Returns the number of characters required to represent the given number `n` as a String.
 fn get_number_len(mut n: i64, base: u8) -> usize {
@@ -43,9 +43,7 @@ pub struct String {
 impl String {
 	/// Creates a new instance of empty string.
 	pub fn new() -> Self {
-		Self {
-			data: Vec::new(),
-		}
+		Self { data: Vec::new() }
 	}
 
 	/// Creates a new instance from the given byte slice.
@@ -55,9 +53,7 @@ impl String {
 			v.push(*b)?;
 		}
 
-		Ok(Self {
-			data: v,
-		})
+		Ok(Self { data: v })
 	}
 
 	// TODO Support other bases than only 10?
@@ -84,9 +80,7 @@ impl String {
 			shift *= 10;
 		}
 
-		Ok(Self {
-			data: v,
-		})
+		Ok(Self { data: v })
 	}
 
 	/// Returns a slice containing the bytes representation of the string.
@@ -145,7 +139,7 @@ impl String {
 						return Err(e);
 					}
 				}
-			},
+			}
 		}
 
 		Ok(())
@@ -273,11 +267,11 @@ impl Write for StringWriter {
 		match &mut self.final_str {
 			Some(Ok(final_str)) => match final_str.append(s.as_bytes()) {
 				Err(e) => self.final_str = Some(Err(e)),
-				_ => {},
+				_ => {}
 			},
 
 			None => self.final_str = Some(String::from(s.as_bytes())),
-			_ => {},
+			_ => {}
 		}
 
 		Ok(())
@@ -286,9 +280,7 @@ impl Write for StringWriter {
 
 /// TODO doc
 pub fn _format(args: fmt::Arguments) -> Result<String, Errno> {
-	let mut w = StringWriter {
-		final_str: None,
-	};
+	let mut w = StringWriter { final_str: None };
 	fmt::write(&mut w, args).unwrap();
 
 	w.final_str.unwrap()

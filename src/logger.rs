@@ -2,10 +2,10 @@
 //! If the logger is silent, it will not print the logs on the screen but it will keep it in memory
 //! anyways.
 
-use core::cmp::min;
-use core::fmt::Write;
 use crate::tty;
 use crate::util::lock::IntMutex;
+use core::cmp::min;
+use core::fmt::Write;
 
 /// The size of the kernel logs buffer in bytes.
 const LOGS_SIZE: usize = 1048576;

@@ -24,9 +24,7 @@ pub struct Spinlock {
 impl Spinlock {
 	/// Creates a new spinlock.
 	pub const fn new() -> Self {
-		Self {
-			locked: 0,
-		}
+		Self { locked: 0 }
 	}
 
 	/// Tells whether the spinlock is already locked. This function should not be called to check

@@ -3,11 +3,11 @@
 //! For each page that is referenced more than once, the counter stores the number of references to
 //! that page. A binary tree is used to find the page from its pointer.
 
-use core::ffi::c_void;
 use crate::errno::Errno;
 use crate::memory;
-use crate::util::container::map::Map;
 use crate::util;
+use crate::util::container::map::Map;
+use core::ffi::c_void;
 
 /// Structure representing a reference counter for a given page.
 pub struct PageRefCounter {
@@ -57,10 +57,13 @@ impl PhysRefCounter {
 		if let Some(counter) = self.tree.get_mut(ptr) {
 			counter.references += 1;
 		} else {
-			self.tree.insert(ptr, PageRefCounter {
-				page_addr: ptr,
-				references: 1,
-			})?;
+			self.tree.insert(
+				ptr,
+				PageRefCounter {
+					page_addr: ptr,
+					references: 1,
+				},
+			)?;
 		}
 
 		Ok(())

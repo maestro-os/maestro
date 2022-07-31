@@ -1,12 +1,12 @@
 //! A Block Group Descriptor is a structure stored in the Block Group Descriptor Table which
 //! represents a block group, which is a subdivision of the filesystem.
 
-use core::mem::size_of;
-use crate::errno::Errno;
-use crate::util::io::IO;
-use super::Superblock;
 use super::read;
 use super::write;
+use super::Superblock;
+use crate::errno::Errno;
+use crate::util::io::IO;
+use core::mem::size_of;
 
 /// Structure representing a block group descriptor to be stored into the Block Group Descriptor
 /// Table (BGDT).
@@ -34,21 +34,17 @@ impl BlockGroupDescriptor {
 	/// `i` the id of the group descriptor to write.
 	/// `superblock` is the filesystem's superblock.
 	/// `io` is the I/O interface.
-	pub fn read(i: u32, superblock: &Superblock, io: &mut dyn IO)
-		-> Result<Self, Errno> {
+	pub fn read(i: u32, superblock: &Superblock, io: &mut dyn IO) -> Result<Self, Errno> {
 		let off = (superblock.get_bgdt_offset() * superblock.get_block_size() as u64)
 			+ (i as u64 * size_of::<Self>() as u64);
-		unsafe {
-			read::<Self>(off, io)
-		}
+		unsafe { read::<Self>(off, io) }
 	}
 
 	/// Writes the current block group descriptor.
 	/// `i` the id of the group descriptor to write.
 	/// `superblock` is the filesystem's superblock.
 	/// `io` is the I/O interface.
-	pub fn write(&self, i: u32, superblock: &Superblock, io: &mut dyn IO)
-		-> Result<(), Errno> {
+	pub fn write(&self, i: u32, superblock: &Superblock, io: &mut dyn IO) -> Result<(), Errno> {
 		let off = (superblock.get_bgdt_offset() * superblock.get_block_size() as u64)
 			+ (i as u64 * size_of::<Self>() as u64);
 		write(self, off, io)

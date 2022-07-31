@@ -37,10 +37,8 @@ impl PIDManager {
 				debug_assert!(i <= MAX_PID as _);
 
 				Ok((i + 1) as _)
-			},
-			Err(e) => {
-				Err(e)
 			}
+			Err(e) => Err(e),
 		}
 	}
 

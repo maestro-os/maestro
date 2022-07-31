@@ -1,23 +1,23 @@
 //! This module implements a binary tree container.
 
-use core::cmp::Ordering;
-use core::cmp::max;
-use core::fmt;
-use core::mem::ManuallyDrop;
-use core::mem::size_of;
-use core::mem;
-use core::ptr::NonNull;
-use core::ptr::drop_in_place;
-use core::ptr;
 use crate::errno::Errno;
-use crate::memory::malloc;
 use crate::memory;
+use crate::memory::malloc;
 use crate::util::FailableClone;
+use core::cmp::max;
+use core::cmp::Ordering;
+use core::fmt;
+use core::mem;
+use core::mem::size_of;
+use core::mem::ManuallyDrop;
+use core::ptr;
+use core::ptr::drop_in_place;
+use core::ptr::NonNull;
 
 #[cfg(config_debug_debug)]
-use core::ffi::c_void;
-#[cfg(config_debug_debug)]
 use crate::util::container::vec::Vec;
+#[cfg(config_debug_debug)]
+use core::ffi::c_void;
 
 /// The color of a binary tree node.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -46,7 +46,7 @@ struct Node<K, V> {
 /// Unwraps the given pointer option into a reference option.
 #[inline]
 fn unwrap_pointer<K, V>(ptr: &Option<NonNull<Node<K, V>>>) -> Option<&'static Node<K, V>> {
-	ptr.map(| p | unsafe {
+	ptr.map(|p| unsafe {
 		debug_assert!(p.as_ptr() as usize >= memory::PROCESS_END as usize);
 		&*p.as_ptr()
 	})
@@ -54,9 +54,10 @@ fn unwrap_pointer<K, V>(ptr: &Option<NonNull<Node<K, V>>>) -> Option<&'static No
 
 /// Same as `unwrap_pointer` but returns a mutable reference.
 #[inline]
-fn unwrap_pointer_mut<K, V>(ptr: &mut Option<NonNull<Node<K, V>>>)
-	-> Option<&'static mut Node<K, V>> {
-	ptr.map(| mut p | unsafe {
+fn unwrap_pointer_mut<K, V>(
+	ptr: &mut Option<NonNull<Node<K, V>>>,
+) -> Option<&'static mut Node<K, V>> {
+	ptr.map(|mut p| unsafe {
 		debug_assert!(p.as_ptr() as usize >= memory::PROCESS_END as usize);
 		p.as_mut()
 	})
@@ -65,9 +66,7 @@ fn unwrap_pointer_mut<K, V>(ptr: &mut Option<NonNull<Node<K, V>>>)
 impl<K: 'static + Ord, V: 'static> Node<K, V> {
 	/// Creates a new node with the given `value`. The node is colored Red by default.
 	pub fn new(key: K, value: V) -> Result<NonNull<Self>, Errno> {
-		let ptr = unsafe {
-			malloc::alloc(size_of::<Self>())? as *mut Self
-		};
+		let ptr = unsafe { malloc::alloc(size_of::<Self>())? as *mut Self };
 		let s = Self {
 			parent: None,
 			left: None,
@@ -79,7 +78,8 @@ impl<K: 'static + Ord, V: 'static> Node<K, V> {
 		};
 
 		debug_assert!(ptr as usize >= memory::PROCESS_END as usize);
-		unsafe { // Safe because the pointer is valid
+		unsafe {
+			// Safe because the pointer is valid
 			ptr::write_volatile(ptr, s);
 		}
 
@@ -317,8 +317,8 @@ impl<K: 'static + Ord, V: 'static> Node<K, V> {
 	/// Returns the number of nodes in the subtree.
 	/// This function has `O(n)` complexity.
 	pub fn nodes_count(&self) -> usize {
-		let left_count = self.get_left().map(| n | n.nodes_count()).unwrap_or(0);
-		let right_count = self.get_right().map(| n | n.nodes_count()).unwrap_or(0);
+		let left_count = self.get_left().map(|n| n.nodes_count()).unwrap_or(0);
+		let right_count = self.get_right().map(|n| n.nodes_count()).unwrap_or(0);
 
 		1 + left_count + right_count
 	}
@@ -326,13 +326,18 @@ impl<K: 'static + Ord, V: 'static> Node<K, V> {
 	/// Returns the depth of the node in the tree.
 	/// This function has `O(log n)` complexity.
 	pub fn get_node_depth(&self) -> usize {
-		self.get_parent().map(| n | n.get_node_depth() + 1).unwrap_or(0)
+		self.get_parent()
+			.map(|n| n.get_node_depth() + 1)
+			.unwrap_or(0)
 	}
 
 	/// Returns the black depth of the node in the tree.
 	/// This function has `O(log n)` complexity.
 	pub fn get_node_black_depth(&self) -> usize {
-		let parent = self.get_parent().map(| n | n.get_node_black_depth()).unwrap_or(0);
+		let parent = self
+			.get_parent()
+			.map(|n| n.get_node_black_depth())
+			.unwrap_or(0);
 
 		if self.is_black() {
 			1 + parent
@@ -344,8 +349,8 @@ impl<K: 'static + Ord, V: 'static> Node<K, V> {
 	/// Returns the depth of the subtree.
 	/// This function has `O(log n)` complexity.
 	pub fn get_depth(&self) -> usize {
-		let left_count = self.get_left().map(| n | n.get_depth()).unwrap_or(0);
-		let right_count = self.get_right().map(| n | n.get_depth()).unwrap_or(0);
+		let left_count = self.get_left().map(|n| n.get_depth()).unwrap_or(0);
+		let right_count = self.get_right().map(|n| n.get_depth()).unwrap_or(0);
 
 		1 + max(left_count, right_count)
 	}
@@ -407,9 +412,7 @@ pub struct Map<K: 'static + Ord, V: 'static> {
 impl<K: 'static + Ord, V: 'static> Map<K, V> {
 	/// Creates a new binary tree.
 	pub const fn new() -> Self {
-		Self {
-			root: None,
-		}
+		Self { root: None }
 	}
 
 	/// Tells whether the tree is empty.
@@ -421,29 +424,25 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 	/// Returns a reference to the root node.
 	#[inline]
 	fn get_root(&self) -> Option<&'static Node<K, V>> {
-		unsafe {
-			Some(self.root.as_ref()?.as_ref())
-		}
+		unsafe { Some(self.root.as_ref()?.as_ref()) }
 	}
 
 	/// Returns a mutable reference to the root node.
 	#[inline]
 	fn get_root_mut(&mut self) -> Option<&'static mut Node<K, V>> {
-		unsafe {
-			Some(self.root.as_mut()?.as_mut())
-		}
+		unsafe { Some(self.root.as_mut()?.as_mut()) }
 	}
 
 	/// Returns the number of elements in the tree.
 	/// This function has `O(n)` complexity.
 	pub fn count(&self) -> usize {
-		self.get_root().map(| n | n.nodes_count()).unwrap_or(0)
+		self.get_root().map(|n| n.nodes_count()).unwrap_or(0)
 	}
 
 	/// Returns the depth of the tree.
 	/// This function has `O(log n)` complexity.
 	pub fn get_depth(&self) -> usize {
-		self.get_root().map(| n | n.get_depth()).unwrap_or(0)
+		self.get_root().map(|n| n.get_depth()).unwrap_or(0)
 	}
 
 	/// Searches for a node with the given key in the tree and returns a reference.
@@ -558,9 +557,7 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 		let mut root = NonNull::new(node as *mut Node<K, V>);
 
 		loop {
-			let parent = unsafe {
-				root.unwrap().as_mut()
-			}.parent;
+			let parent = unsafe { root.unwrap().as_mut() }.parent;
 
 			if parent.is_none() {
 				break;
@@ -660,9 +657,7 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 				}
 
 				let mut node = Node::new(key, val)?;
-				let n = unsafe {
-					node.as_mut()
-				};
+				let n = unsafe { node.as_mut() };
 
 				match order {
 					Ordering::Less => p.insert_left(n),
@@ -676,9 +671,7 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 				debug_assert!(self.root.is_none());
 
 				let mut node = Node::new(key, val)?;
-				let n = unsafe {
-					node.as_mut()
-				};
+				let n = unsafe { node.as_mut() };
 				self.root = Some(node);
 
 				n
@@ -707,8 +700,7 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 	}
 
 	/// Returns the leftmost node in the tree.
-	fn get_leftmost_node(node: &'static mut Node<K, V>)
-		-> &'static mut Node<K, V> {
+	fn get_leftmost_node(node: &'static mut Node<K, V>) -> &'static mut Node<K, V> {
 		let mut n = node;
 
 		while let Some(left) = n.get_left_mut() {
@@ -807,15 +799,17 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 			}
 		};
 
-		let both_black = node.is_black()
-			&& (replacement.is_none() || replacement.as_ref().unwrap().is_black());
+		let both_black =
+			node.is_black() && (replacement.is_none() || replacement.as_ref().unwrap().is_black());
 
 		if replacement.is_none() {
 			if node.get_parent_mut().is_none() {
 				// The node is root and has no children
 				unsafe {
-					debug_assert_eq!(self.root.unwrap().as_mut() as *mut Node<K, V>,
-						node as *mut _);
+					debug_assert_eq!(
+						self.root.unwrap().as_mut() as *mut Node<K, V>,
+						node as *mut _
+					);
 				}
 				self.root = None;
 			} else {
@@ -858,12 +852,8 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 				}
 			} else {
 				// The node is the root
-				node.key = unsafe {
-					ptr::read(&replacement.key as _)
-				};
-				node.value = unsafe {
-					ptr::read(&replacement.value as _)
-				};
+				node.key = unsafe { ptr::read(&replacement.key as _) };
+				node.value = unsafe { ptr::read(&replacement.value as _) };
 
 				node.left = None;
 				node.right = None;
@@ -887,9 +877,7 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 	/// If the key exists, the function returns the value of the removed node.
 	pub fn remove(&mut self, key: K) -> Option<V> {
 		let node = self.get_mut_node(&key)?;
-		let value = unsafe {
-			ptr::read(&node.value)
-		};
+		let value = unsafe { ptr::read(&node.value) };
 
 		self.remove_node(node);
 
@@ -902,8 +890,11 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 impl<K: 'static + Ord, V: 'static> Map<K, V> {
 	/// Calls the given closure for every nodes in the subtree with root `root`.
 	/// `traversal_type` defines the order in which the tree is traversed.
-	fn foreach_nodes<F: FnMut(&Node<K, V>)>(root: &Node<K, V>, f: &mut F,
-		traversal_type: TraversalType) {
+	fn foreach_nodes<F: FnMut(&Node<K, V>)>(
+		root: &Node<K, V>,
+		f: &mut F,
+		traversal_type: TraversalType,
+	) {
 		let (first, second) = if traversal_type == TraversalType::ReverseInOrder {
 			(root.right, root.left)
 		} else {
@@ -915,20 +906,17 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 		}
 
 		if let Some(mut n) = first {
-			Self::foreach_nodes(unsafe {
-				n.as_mut()
-			}, f, traversal_type);
+			Self::foreach_nodes(unsafe { n.as_mut() }, f, traversal_type);
 		}
 
 		if traversal_type == TraversalType::InOrder
-			|| traversal_type == TraversalType::ReverseInOrder {
+			|| traversal_type == TraversalType::ReverseInOrder
+		{
 			f(root);
 		}
 
 		if let Some(mut n) = second {
-			Self::foreach_nodes(unsafe {
-				n.as_mut()
-			}, f, traversal_type);
+			Self::foreach_nodes(unsafe { n.as_mut() }, f, traversal_type);
 		}
 
 		if traversal_type == TraversalType::PostOrder {
@@ -938,8 +926,11 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 
 	/// Calls the given closure for every nodes in the subtree with root `root`.
 	/// `traversal_type` defines the order in which the tree is traversed.
-	fn foreach_nodes_mut<F: FnMut(&mut Node<K, V>)>(root: &mut Node<K, V>,
-		f: &mut F, traversal_type: TraversalType) {
+	fn foreach_nodes_mut<F: FnMut(&mut Node<K, V>)>(
+		root: &mut Node<K, V>,
+		f: &mut F,
+		traversal_type: TraversalType,
+	) {
 		let (first, second) = if traversal_type == TraversalType::ReverseInOrder {
 			(root.right, root.left)
 		} else {
@@ -951,20 +942,17 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 		}
 
 		if let Some(mut n) = first {
-			Self::foreach_nodes_mut(unsafe {
-				n.as_mut()
-			}, f, traversal_type);
+			Self::foreach_nodes_mut(unsafe { n.as_mut() }, f, traversal_type);
 		}
 
 		if traversal_type == TraversalType::InOrder
-			|| traversal_type == TraversalType::ReverseInOrder {
+			|| traversal_type == TraversalType::ReverseInOrder
+		{
 			f(root);
 		}
 
 		if let Some(mut n) = second {
-			Self::foreach_nodes_mut(unsafe {
-				n.as_mut()
-			}, f, traversal_type);
+			Self::foreach_nodes_mut(unsafe { n.as_mut() }, f, traversal_type);
 		}
 
 		if traversal_type == TraversalType::PostOrder {
@@ -975,22 +963,26 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 	/// Calls the given closure for every values.
 	pub fn foreach<F: FnMut(&K, &V)>(&self, mut f: F, traversal_type: TraversalType) {
 		if let Some(n) = self.root {
-			Self::foreach_nodes(unsafe {
-				n.as_ref()
-			}, &mut | n: &Node<K, V> | {
-				f(&n.key, &n.value);
-			}, traversal_type);
+			Self::foreach_nodes(
+				unsafe { n.as_ref() },
+				&mut |n: &Node<K, V>| {
+					f(&n.key, &n.value);
+				},
+				traversal_type,
+			);
 		}
 	}
 
 	/// Calls the given closure for every values.
 	pub fn foreach_mut<F: FnMut(&K, &mut V)>(&mut self, mut f: F, traversal_type: TraversalType) {
 		if let Some(mut n) = self.root {
-			Self::foreach_nodes_mut(unsafe {
-				n.as_mut()
-			}, &mut | n: &mut Node<K, V> | {
-				f(&n.key, &mut n.value);
-			}, traversal_type);
+			Self::foreach_nodes_mut(
+				unsafe { n.as_mut() },
+				&mut |n: &mut Node<K, V>| {
+					f(&n.key, &mut n.value);
+				},
+				traversal_type,
+			);
 		}
 	}
 
@@ -1001,38 +993,46 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 		if let Some(root) = self.root {
 			let mut explored_nodes = Vec::<*const c_void>::new();
 
-			Self::foreach_nodes(unsafe {
-				root.as_ref()
-			}, &mut | n: &Node<K, V> | {
-				assert!(n as *const _ as usize >= memory::PROCESS_END as usize);
+			Self::foreach_nodes(
+				unsafe { root.as_ref() },
+				&mut |n: &Node<K, V>| {
+					assert!(n as *const _ as usize >= memory::PROCESS_END as usize);
 
-				for e in explored_nodes.iter() {
-					assert_ne!(*e, n as *const _ as *const c_void);
-				}
-				explored_nodes.push(n as *const _ as *const c_void).unwrap();
+					for e in explored_nodes.iter() {
+						assert_ne!(*e, n as *const _ as *const c_void);
+					}
+					explored_nodes.push(n as *const _ as *const c_void).unwrap();
 
-				if let Some(left) = n.get_left() {
-					assert!(left as *const _ as usize >= memory::PROCESS_END as usize);
-					assert!(ptr::eq(left.get_parent().unwrap() as *const _, n as *const _));
-					assert!(left.key <= n.key);
-				}
+					if let Some(left) = n.get_left() {
+						assert!(left as *const _ as usize >= memory::PROCESS_END as usize);
+						assert!(ptr::eq(
+							left.get_parent().unwrap() as *const _,
+							n as *const _
+						));
+						assert!(left.key <= n.key);
+					}
 
-				if let Some(right) = n.get_right() {
-					assert!(right as *const _ as usize >= memory::PROCESS_END as usize);
-					assert!(ptr::eq(right.get_parent().unwrap() as *const _, n as *const _));
-					assert!(right.key >= n.key);
-				}
-			}, TraversalType::PreOrder);
+					if let Some(right) = n.get_right() {
+						assert!(right as *const _ as usize >= memory::PROCESS_END as usize);
+						assert!(ptr::eq(
+							right.get_parent().unwrap() as *const _,
+							n as *const _
+						));
+						assert!(right.key >= n.key);
+					}
+				},
+				TraversalType::PreOrder,
+			);
 		}
 	}
 
 	/// Returns an iterator for the current binary tree.
-	pub fn iter(&self) -> MapIterator::<K, V> {
+	pub fn iter(&self) -> MapIterator<K, V> {
 		MapIterator::new(self)
 	}
 
 	/// Returns a mutable iterator for the current binary tree.
-	pub fn iter_mut(&mut self) -> MapMutIterator::<K, V> {
+	pub fn iter_mut(&mut self) -> MapMutIterator<K, V> {
 		MapMutIterator::new(self)
 	}
 }
@@ -1047,20 +1047,21 @@ pub struct MapIterator<'a, K: 'static + Ord, V: 'static> {
 
 impl<'a, K: Ord, V> MapIterator<'a, K, V> {
 	/// Creates a binary tree iterator for the given reference.
-	fn new(tree: &'a Map::<K, V>) -> Self {
+	fn new(tree: &'a Map<K, V>) -> Self {
 		MapIterator {
 			tree,
-			node: tree.root.map(| mut n | unsafe {
-				NonNull::new(Map::get_leftmost_node(n.as_mut())).unwrap()
-			}),
+			node: tree
+				.root
+				.map(|mut n| unsafe { NonNull::new(Map::get_leftmost_node(n.as_mut())).unwrap() }),
 		}
 	}
 
 	/// Makes the iterator jump to the given key. If the key doesn't exist, the iterator ends.
 	pub fn jump(&mut self, key: &K) {
-		self.node = self.tree.get_node(key).and_then(| v | {
-			NonNull::new(v as *const _ as *mut _)
-		});
+		self.node = self
+			.tree
+			.get_node(key)
+			.and_then(|v| NonNull::new(v as *const _ as *mut _));
 	}
 }
 
@@ -1110,27 +1111,24 @@ impl<'a, K: 'static + Ord, V> IntoIterator for &'a Map<K, V> {
 /// An iterator for the Map structure. This iterator traverses the tree in pre order.
 pub struct MapMutIterator<'a, K: 'static + Ord, V: 'static> {
 	/// The binary tree to iterate into.
-	tree: &'a mut Map::<K, V>,
+	tree: &'a mut Map<K, V>,
 	/// The current node of the iterator.
 	node: Option<NonNull<Node<K, V>>>,
 }
 
 impl<'a, K: Ord, V> MapMutIterator<'a, K, V> {
 	/// Creates a binary tree iterator for the given reference.
-	fn new(tree: &'a mut Map::<K, V>) -> Self {
-		let node = tree.root.map(| mut n | unsafe {
-			NonNull::new(Map::get_leftmost_node(n.as_mut())).unwrap()
-		});
+	fn new(tree: &'a mut Map<K, V>) -> Self {
+		let node = tree
+			.root
+			.map(|mut n| unsafe { NonNull::new(Map::get_leftmost_node(n.as_mut())).unwrap() });
 
-		MapMutIterator {
-			tree,
-			node,
-		}
+		MapMutIterator { tree, node }
 	}
 
 	/// Makes the iterator jump to the given key. If the key doesn't exist, the iterator ends.
 	pub fn jump(&mut self, key: &K) {
-		self.node = self.tree.get_mut_node(key).and_then(| v | NonNull::new(v));
+		self.node = self.tree.get_mut_node(key).and_then(|v| NonNull::new(v));
 	}
 }
 
@@ -1181,21 +1179,23 @@ impl<K: 'static + FailableClone + Ord, V: FailableClone> FailableClone for Map<K
 impl<K: 'static + Ord + fmt::Display, V> fmt::Display for Map<K, V> {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		if let Some(mut n) = self.root {
-			Self::foreach_nodes(unsafe {
-				n.as_mut()
-			}, &mut | n | {
-				// TODO Optimize
-				for _ in 0..n.get_node_depth() {
-					let _ = write!(f, "\t");
-				}
+			Self::foreach_nodes(
+				unsafe { n.as_mut() },
+				&mut |n| {
+					// TODO Optimize
+					for _ in 0..n.get_node_depth() {
+						let _ = write!(f, "\t");
+					}
 
-				let color = if n.color == NodeColor::Red {
-					"red"
-				} else {
-					"black"
-				};
-				let _ = writeln!(f, "{} ({})", n.key, color);
-			}, TraversalType::ReverseInOrder);
+					let color = if n.color == NodeColor::Red {
+						"red"
+					} else {
+						"black"
+					};
+					let _ = writeln!(f, "{} ({})", n.key, color);
+				},
+				TraversalType::ReverseInOrder,
+			);
 			Ok(())
 		} else {
 			write!(f, "<Empty tree>")
@@ -1206,14 +1206,14 @@ impl<K: 'static + Ord + fmt::Display, V> fmt::Display for Map<K, V> {
 impl<K: 'static + Ord, V> Drop for Map<K, V> {
 	fn drop(&mut self) {
 		if let Some(mut n) = self.root {
-			Self::foreach_nodes_mut(unsafe {
-				n.as_mut()
-			}, &mut | n | {
-				unsafe {
+			Self::foreach_nodes_mut(
+				unsafe { n.as_mut() },
+				&mut |n| unsafe {
 					drop_in_place(&mut n.value);
 					malloc::free(n as *mut _ as *mut _);
-				}
-			}, TraversalType::PostOrder);
+				},
+				TraversalType::PostOrder,
+			);
 		}
 	}
 }
@@ -1450,9 +1450,12 @@ mod test {
 	#[test_case]
 	fn binary_tree_foreach0() {
 		let b = Map::<i32, i32>::new();
-		b.foreach(| _, _ | {
-			assert!(false);
-		}, TraversalType::PreOrder);
+		b.foreach(
+			|_, _| {
+				assert!(false);
+			},
+			TraversalType::PreOrder,
+		);
 	}
 
 	#[test_case]
@@ -1461,11 +1464,14 @@ mod test {
 		b.insert(0, 0).unwrap();
 
 		let mut passed = false;
-		b.foreach(| key, _ | {
-			assert!(!passed);
-			assert_eq!(*key, 0);
-			passed = true;
-		}, TraversalType::PreOrder);
+		b.foreach(
+			|key, _| {
+				assert!(!passed);
+				assert_eq!(*key, 0);
+				passed = true;
+			},
+			TraversalType::PreOrder,
+		);
 		assert!(passed);
 	}
 

@@ -4,20 +4,20 @@
 //! data may be too high in memory to recover directly. The structure implemented in this module
 //! uses a temporary virtual memory context to get a copy of the data.
 
+use crate::acpi::rsdt::Rsdt;
+use crate::acpi::ACPITable;
+use crate::acpi::ACPITableHeader;
+use crate::errno::Errno;
+use crate::memory;
+use crate::memory::malloc;
+use crate::memory::vmem;
+use crate::util;
+use crate::util::boxed::Box;
+use crate::util::container::hashmap::HashMap;
 use core::ffi::c_void;
 use core::intrinsics::wrapping_add;
 use core::mem::size_of;
 use core::ptr;
-use crate::acpi::ACPITable;
-use crate::acpi::ACPITableHeader;
-use crate::acpi::rsdt::Rsdt;
-use crate::errno::Errno;
-use crate::memory::malloc;
-use crate::memory::vmem;
-use crate::memory;
-use crate::util::boxed::Box;
-use crate::util::container::hashmap::HashMap;
-use crate::util;
 
 /// The signature of the RSDP structure.
 const RSDP_SIGNATURE: &str = "RSD PTR ";
@@ -54,7 +54,8 @@ impl Rsdp {
 		let mut sum: u8 = 0;
 
 		for i in 0..size_of::<Self>() {
-			let byte = unsafe { // Safe since every bytes of `s` are readable.
+			let byte = unsafe {
+				// Safe since every bytes of `s` are readable.
 				*((self as *const Self as *const u8 as usize + i) as *const u8)
 			};
 			sum = wrapping_add(sum, byte);
@@ -110,9 +111,7 @@ impl ACPIData {
 	/// If no ACPI data is found, the function returns None.
 	/// If the data is invalid, the function makes the kernel panic.
 	pub fn read() -> Result<Option<Self>, Errno> {
-		let rsdp = unsafe {
-			find_rsdp()
-		};
+		let rsdp = unsafe { find_rsdp() };
 		if rsdp.is_none() {
 			return Ok(None);
 		}
@@ -130,9 +129,10 @@ impl ACPIData {
 
 		tmp_vmem.bind();
 		let tables = {
-			let rsdt_ptr = (memory::PAGE_SIZE
-				+ (rsdt_phys_ptr as usize - rsdt_map_begin as usize)) as *const Rsdt;
-			let rsdt = unsafe { // Safe because the pointer has been mapped before
+			let rsdt_ptr = (memory::PAGE_SIZE + (rsdt_phys_ptr as usize - rsdt_map_begin as usize))
+				as *const Rsdt;
+			let rsdt = unsafe {
+				// Safe because the pointer has been mapped before
 				&*rsdt_ptr
 			};
 			if !rsdt.header.check() {
@@ -141,23 +141,29 @@ impl ACPIData {
 
 			// Getting every ACPI tables
 			let mut tables = HashMap::new();
-			rsdt.foreach_table(| table_ptr | {
+			rsdt.foreach_table(|table_ptr| {
 				// Mapping the table to read its length
 				let table_map_begin = util::down_align(table_ptr, memory::PAGE_SIZE);
-				if tmp_vmem.map_range(table_map_begin as _,
-					(memory::PAGE_SIZE * 3) as _, 2, 0).is_err() {
+				if tmp_vmem
+					.map_range(table_map_begin as _, (memory::PAGE_SIZE * 3) as _, 2, 0)
+					.is_err()
+				{
 					crate::kernel_panic!("Unexpected error when reading ACPI data");
 				}
 
 				let table_offset = table_ptr as usize - table_map_begin as usize;
-				let table = unsafe { // Safe because the pointer has been mapped before
+				let table = unsafe {
+					// Safe because the pointer has been mapped before
 					&*(((memory::PAGE_SIZE * 3) + table_offset) as *const ACPITableHeader)
 				};
 
 				let b = unsafe {
 					let ptr = malloc::alloc(table.get_length()).unwrap();
-					ptr::copy_nonoverlapping(table as *const _ as *const _,
-						ptr, table.get_length());
+					ptr::copy_nonoverlapping(
+						table as *const _ as *const _,
+						ptr,
+						table.get_length(),
+					);
 
 					Box::from_raw(ptr as *mut ())
 				};
@@ -168,15 +174,13 @@ impl ACPIData {
 		};
 		crate::bind_vmem();
 
-		Ok(Some(Self {
-			tables,
-		}))
+		Ok(Some(Self { tables }))
 	}
 
 	/// Returns a reference to the ACPI table with type T.
 	pub fn get_table<T: ACPITable>(&self) -> Option<&T> {
-		self.tables.get(T::get_expected_signature()).map(| table | unsafe {
-			&*(table.as_ptr() as *const T)
-		})
+		self.tables
+			.get(T::get_expected_signature())
+			.map(|table| unsafe { &*(table.as_ptr() as *const T) })
 	}
 }

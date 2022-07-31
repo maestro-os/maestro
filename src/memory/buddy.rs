@@ -7,17 +7,17 @@
 //! The order of a frame is the `n` in the expression `2^^n` that represents the size of a frame in
 //! pages.
 
-use core::cmp::min;
-use core::ffi::c_void;
-use core::mem::MaybeUninit;
-use core::mem::size_of;
-use crate::errno::Errno;
+use super::stats;
 use crate::errno;
+use crate::errno::Errno;
 use crate::memory;
+use crate::util;
 use crate::util::lock::*;
 use crate::util::math;
-use crate::util;
-use super::stats;
+use core::cmp::min;
+use core::ffi::c_void;
+use core::mem::size_of;
+use core::mem::MaybeUninit;
 
 /// Type representing the order of a memory frame.
 pub type FrameOrder = u8;
@@ -93,9 +93,7 @@ pub unsafe fn prepare() {
 /// Setting each zone slot is required before using the allocator. If one or more slot isn't set,
 /// the behaviour of the allocator is undefined.
 pub fn set_zone_slot(slot: usize, zone: Zone) {
-	let z = unsafe {
-		ZONES.assume_init_mut()
-	};
+	let z = unsafe { ZONES.assume_init_mut() };
 
 	debug_assert!(slot < z.len());
 	z[slot] = IntMutex::new(zone);
@@ -126,9 +124,7 @@ pub fn get_order(pages: usize) -> FrameOrder {
 
 /// Returns a mutable reference to a zone suitable for an allocation with the given type `type_`.
 fn get_suitable_zone(type_: usize) -> Option<&'static mut IntMutex<Zone>> {
-	let zones = unsafe {
-		ZONES.assume_init_mut()
-	};
+	let zones = unsafe { ZONES.assume_init_mut() };
 
 	#[allow(clippy::needless_range_loop)]
 	for i in 0..zones.len() {
@@ -146,9 +142,7 @@ fn get_suitable_zone(type_: usize) -> Option<&'static mut IntMutex<Zone>> {
 
 /// Returns a mutable reference to the zone that contains the given pointer.
 fn get_zone_for_pointer(ptr: *const c_void) -> Option<&'static mut IntMutex<Zone>> {
-	let zones = unsafe {
-		ZONES.assume_init_mut()
-	};
+	let zones = unsafe { ZONES.assume_init_mut() };
 
 	#[allow(clippy::needless_range_loop)]
 	for i in 0..zones.len() {
@@ -186,8 +180,9 @@ pub fn alloc(order: FrameOrder, flags: Flags) -> Result<*mut c_void, Errno> {
 
 				let ptr = f.get_ptr(zone);
 				debug_assert!(util::is_aligned(ptr, memory::PAGE_SIZE));
-				debug_assert!(ptr >= zone.begin
-					&& ptr < (zone.begin as usize + zone.get_size()) as _);
+				debug_assert!(
+					ptr >= zone.begin && ptr < (zone.begin as usize + zone.get_size()) as _
+				);
 
 				update_stats(4 * math::pow2(order as usize) as isize);
 				return Ok(ptr);
@@ -251,9 +246,7 @@ pub fn update_stats(n: isize) {
 pub fn allocated_pages_count() -> usize {
 	let mut n = 0;
 
-	let z = unsafe {
-		ZONES.assume_init_mut()
-	};
+	let z = unsafe { ZONES.assume_init_mut() };
 	#[allow(clippy::needless_range_loop)]
 	for i in 0..z.len() {
 		let guard = z[i].lock();
@@ -279,9 +272,7 @@ impl Zone {
 				continue;
 			}
 
-			let f = unsafe {
-				&mut *self.get_frame(frame)
-			};
+			let f = unsafe { &mut *self.get_frame(frame) };
 			f.mark_free(self);
 			f.order = order;
 			f.link(self);
@@ -297,8 +288,12 @@ impl Zone {
 	/// Creates a zone with type `type_`. The zone covers the memory from pointer `begin` to
 	/// `begin + size` where `size` is the size in bytes.
 	/// `metadata_begin` must be a virtual address and `begin` must be a physical address.
-	pub fn new(type_: Flags, metadata_begin: *mut c_void, pages_count: FrameID, begin: *mut c_void)
-		-> Zone {
+	pub fn new(
+		type_: Flags,
+		metadata_begin: *mut c_void,
+		pages_count: FrameID,
+		begin: *mut c_void,
+	) -> Zone {
 		let mut z = Zone {
 			type_,
 			allocated_pages: 0,
@@ -334,8 +329,9 @@ impl Zone {
 				unsafe {
 					debug_assert!(!(*f_).is_used());
 					debug_assert!(((*f_).get_ptr(self) as usize) >= (self.begin as usize));
-					debug_assert!(((*f_).get_ptr(self) as usize)
-						< (self.begin as usize) + self.get_size());
+					debug_assert!(
+						((*f_).get_ptr(self) as usize) < (self.begin as usize) + self.get_size()
+					);
 				}
 				return Some(unsafe { &mut *f_ });
 			}
@@ -372,9 +368,7 @@ impl Zone {
 				let mut is_first = true;
 
 				loop {
-					let f = unsafe {
-						&*frame
-					};
+					let f = unsafe { &*frame };
 					let id = f.get_id(self);
 
 					#[cfg(config_debug_debug)]
@@ -555,9 +549,7 @@ impl Frame {
 				break;
 			}
 
-			let buddy_frame = unsafe {
-				&mut *zone.get_frame(buddy)
-			};
+			let buddy_frame = unsafe { &mut *zone.get_frame(buddy) };
 			buddy_frame.mark_free(zone);
 			buddy_frame.order = self.order;
 			buddy_frame.link(zone);
@@ -590,9 +582,7 @@ impl Frame {
 				break;
 			}
 
-			let buddy_frame = unsafe {
-				&mut *zone.get_frame(buddy)
-			};
+			let buddy_frame = unsafe { &mut *zone.get_frame(buddy) };
 			#[cfg(config_debug_debug)]
 			buddy_frame.check_broken(zone);
 			if buddy_frame.order != self.order || buddy_frame.is_used() {
@@ -736,7 +726,8 @@ mod test {
 		let mut hoare = unsafe { (*begin).next };
 		while (tortoise != null::<TestDupNode>() as _)
 			&& (hoare != null::<TestDupNode>() as _)
-			&& (tortoise != hoare) {
+			&& (tortoise != hoare)
+		{
 			tortoise = unsafe { (*tortoise).next };
 
 			if unsafe { (*hoare).next } != null::<TestDupNode>() as _ {

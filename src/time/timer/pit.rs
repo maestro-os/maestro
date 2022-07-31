@@ -57,20 +57,19 @@ const BASE_FREQUENCY: Rational = Rational::from_integer(1193182);
 
 /// Initializes the PIT.
 pub fn init() {
-	idt::wrap_disable_interrupts(|| {
-		unsafe {
-			io::outb(PIT_COMMAND, SELECT_CHANNEL_0 | ACCESS_LOBYTE_HIBYTE | MODE_3);
-		}
+	idt::wrap_disable_interrupts(|| unsafe {
+		io::outb(
+			PIT_COMMAND,
+			SELECT_CHANNEL_0 | ACCESS_LOBYTE_HIBYTE | MODE_3,
+		);
 	});
 }
 
 /// Sets the PIT divider value to `count`.
 fn set_value(count: u16) {
-	idt::wrap_disable_interrupts(|| {
-		unsafe {
-			io::outb(CHANNEL_0, (count & 0xff) as u8);
-			io::outb(CHANNEL_0, ((count >> 8) & 0xff) as u8);
-		}
+	idt::wrap_disable_interrupts(|| unsafe {
+		io::outb(CHANNEL_0, (count & 0xff) as u8);
+		io::outb(CHANNEL_0, ((count >> 8) & 0xff) as u8);
 	});
 }
 

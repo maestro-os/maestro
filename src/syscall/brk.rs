@@ -1,10 +1,10 @@
 //! The `brk` system call allows to displace the end of the data segment of the process, thus
 //! allowing memory allocations.
 
-use core::ffi::c_void;
 use crate::errno::Errno;
-use crate::process::Process;
 use crate::process::regs::Regs;
+use crate::process::Process;
+use core::ffi::c_void;
 
 /// The implementation of the `brk` syscall.
 pub fn brk(regs: &Regs) -> Result<i32, Errno> {

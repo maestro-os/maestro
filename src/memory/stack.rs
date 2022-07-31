@@ -1,11 +1,11 @@
 //! This module implements stack utility functions.
 
+use crate::errno::Errno;
+use crate::memory;
+use crate::memory::malloc;
 use core::ffi::c_void;
 use core::mem;
 use core::ptr;
-use crate::errno::Errno;
-use crate::memory::malloc;
-use crate::memory;
 
 /// The size of a temporary stack in bytes.
 const TMP_STACK_SIZE: usize = memory::PAGE_SIZE * 8;
@@ -28,9 +28,7 @@ struct StackLambda<F: FnOnce() -> T, T> {
 impl<F: FnOnce() -> T, T> StackLambda<F, T> {
 	/// Performs the execution of the lambda on the alternate stack.
 	extern "C" fn exec(&mut self) {
-		let f = unsafe {
-			ptr::read_volatile(&self.f)
-		};
+		let f = unsafe { ptr::read_volatile(&self.f) };
 
 		self.ret_val = Some(f());
 	}
@@ -48,11 +46,7 @@ impl<F: FnOnce() -> T, T> StackLambda<F, T> {
 /// the case the previous stack becomes unreachable. This keyword ensures that variables are
 /// captured by value and not by reference, thus avoiding to create dangling references.
 pub unsafe fn switch<F: FnOnce() -> T, T>(stack: Option<*mut c_void>, f: F) -> Result<T, Errno> {
-	let mut f = StackLambda {
-		f,
-
-		ret_val: None,
-	};
+	let mut f = StackLambda { f, ret_val: None };
 	let func = StackLambda::<F, T>::exec;
 
 	if let Some(stack) = stack {

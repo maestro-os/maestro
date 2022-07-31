@@ -7,9 +7,9 @@
 //! When a cursor reaches the end of the linear buffer, it goes back to the beginning. This is why
 //! it's called a "ring".
 
-use core::cmp::min;
 use crate::errno::Errno;
 use crate::util::container::vec::Vec;
+use core::cmp::min;
 
 /// Structure representing a ring buffer. The buffer has a limited size which must be given at
 /// initialization.

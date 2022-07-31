@@ -1,11 +1,11 @@
 //! The `unlinkat` syscall allows to unlink a file.
 
+use super::util;
 use crate::errno::Errno;
 use crate::file::fcache;
-use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::regs::Regs;
-use super::util;
+use crate::process::Process;
 
 /// The implementation of the `unlinkat` syscall.
 pub fn unlinkat(regs: &Regs) -> Result<i32, Errno> {
@@ -23,7 +23,9 @@ pub fn unlinkat(regs: &Regs) -> Result<i32, Errno> {
 
 		let mem_space = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space.lock();
-		let pathname = pathname.get(&mem_space_guard)?.ok_or_else(|| errno!(EFAULT))?;
+		let pathname = pathname
+			.get(&mem_space_guard)?
+			.ok_or_else(|| errno!(EFAULT))?;
 
 		let file = util::get_file_at(&guard, false, dirfd, pathname, flags)?;
 

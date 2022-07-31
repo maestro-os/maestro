@@ -22,7 +22,6 @@ pub struct Socket {
 	protocol: i32,
 
 	// TODO Handle network sockets
-
 	/// The buffer containing received data.
 	receive_buffer: RingBuffer<u8>,
 	/// The buffer containing sent data.

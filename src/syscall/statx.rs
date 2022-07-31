@@ -1,14 +1,14 @@
 //! The statx system call returns the extended status of a file.
 
+use super::util;
 use crate::errno::Errno;
-use crate::file::FileContent;
 use crate::file::mountpoint::MountSource;
-use crate::process::Process;
+use crate::file::FileContent;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::regs::Regs;
+use crate::process::Process;
 use crate::util::io::IO;
-use super::util;
 
 /// Structure representing a timestamp with the statx syscall.
 #[repr(C)]
@@ -91,7 +91,9 @@ pub fn statx(regs: &Regs) -> Result<i32, Errno> {
 		let mem_space = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space.lock();
 
-		let pathname = pathname.get(&mem_space_guard)?.ok_or_else(|| errno!(EFAULT))?;
+		let pathname = pathname
+			.get(&mem_space_guard)?
+			.ok_or_else(|| errno!(EFAULT))?;
 		util::get_file_at(&proc_guard, follow_links, dirfd, pathname, flags)?
 	};
 	let file_guard = file_mutex.lock();
@@ -101,8 +103,9 @@ pub fn statx(regs: &Regs) -> Result<i32, Errno> {
 
 	// If the file is a device, get the major and minor numbers
 	let (stx_rdev_major, stx_rdev_minor) = match file.get_file_content() {
-		FileContent::BlockDevice { major, minor, }
-			| FileContent::CharDevice { major, minor, } => (*major, *minor),
+		FileContent::BlockDevice { major, minor } | FileContent::CharDevice { major, minor } => {
+			(*major, *minor)
+		}
 		_ => (0, 0),
 	};
 
@@ -123,8 +126,8 @@ pub fn statx(regs: &Regs) -> Result<i32, Errno> {
 
 	// Filling the structure
 	let statx_val = Statx {
-		stx_mask: !0, // TODO
-		stx_blksize: 512, // TODO
+		stx_mask: !0,      // TODO
+		stx_blksize: 512,  // TODO
 		stx_attributes: 0, // TODO
 		stx_nlink: file.get_hard_links_count() as _,
 		stx_uid: file.get_uid() as _,
@@ -140,7 +143,7 @@ pub fn statx(regs: &Regs) -> Result<i32, Errno> {
 			tv_nsec: 0, // TODO
 		},
 		stx_btime: StatxTimestamp {
-			tv_sec: 0, // TODO
+			tv_sec: 0,  // TODO
 			tv_nsec: 0, // TODO
 		},
 		stx_ctime: StatxTimestamp {

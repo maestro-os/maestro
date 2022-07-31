@@ -3,9 +3,9 @@
 use crate::errno::Errno;
 use crate::file::fcache;
 use crate::file::path::Path;
-use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::regs::Regs;
+use crate::process::Process;
 use crate::util::FailableClone;
 
 /// Special value, telling to take the path relative to the current working directory.
@@ -40,8 +40,12 @@ const X_OK: i32 = 1;
 /// `pathname` is the path to the file.
 /// `mode` is a bitfield of access permissions to check.
 /// `flags` is a set of flags.
-pub fn do_access(dirfd: Option<i32>, pathname: SyscallString, mode: i32, flags: Option<i32>)
-	-> Result<i32, Errno> {
+pub fn do_access(
+	dirfd: Option<i32>,
+	pathname: SyscallString,
+	mode: i32,
+	flags: Option<i32>,
+) -> Result<i32, Errno> {
 	let flags = flags.unwrap_or(0);
 
 	let follow_symlinks = flags & AT_SYMLINK_NOFOLLOW == 0;
@@ -54,7 +58,9 @@ pub fn do_access(dirfd: Option<i32>, pathname: SyscallString, mode: i32, flags: 
 		let mem_space_mutex = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space_mutex.lock();
 
-		let pathname = pathname.get(&mem_space_guard)?.ok_or_else(|| errno!(EINVAL))?;
+		let pathname = pathname
+			.get(&mem_space_guard)?
+			.ok_or_else(|| errno!(EINVAL))?;
 		let path = Path::from_str(pathname, true)?;
 
 		let (uid, gid) = {

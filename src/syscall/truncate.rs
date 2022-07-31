@@ -3,9 +3,9 @@
 use crate::errno::Errno;
 use crate::file::fcache;
 use crate::file::path::Path;
-use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::regs::Regs;
+use crate::process::Process;
 
 /// The implementation of the `truncate` syscall.
 pub fn truncate(regs: &Regs) -> Result<i32, Errno> {
@@ -24,8 +24,12 @@ pub fn truncate(regs: &Regs) -> Result<i32, Errno> {
 	let guard = mutex.lock();
 	let files_cache = guard.get_mut();
 
-	let file_mutex = files_cache.as_mut().unwrap()
-		.get_file_from_path(&path, proc.get_euid(), proc.get_egid(), true)?;
+	let file_mutex = files_cache.as_mut().unwrap().get_file_from_path(
+		&path,
+		proc.get_euid(),
+		proc.get_egid(),
+		true,
+	)?;
 	let file_guard = file_mutex.lock();
 	let file = file_guard.get_mut();
 	file.set_size(length as _);

@@ -18,7 +18,9 @@ mod rsdt;
 /// Trait representing an ACPI table.
 pub trait ACPITable {
 	/// Returns the expected signature for the structure.
-	fn get_expected_signature() -> &'static [u8; 4] where Self: Sized;
+	fn get_expected_signature() -> &'static [u8; 4]
+	where
+		Self: Sized;
 }
 
 /// An ACPI table header.
@@ -64,7 +66,8 @@ impl ACPITableHeader {
 		let mut sum: u8 = 0;
 
 		for i in 0..length {
-			let byte = unsafe { // Safe since every bytes of `s` are readable.
+			let byte = unsafe {
+				// Safe since every bytes of `s` are readable.
 				*((self as *const Self as *const u8 as usize + i) as *const u8)
 			};
 			sum = wrapping_add(sum, byte);
@@ -79,7 +82,8 @@ static mut CENTURY_REGISTER: bool = false;
 
 /// Tells whether the century register of the CMOS is present.
 pub fn is_century_register_present() -> bool {
-	unsafe { // Safe because the value is only set once
+	unsafe {
+		// Safe because the value is only set once
 		CENTURY_REGISTER
 	}
 }
@@ -88,25 +92,28 @@ pub fn is_century_register_present() -> bool {
 /// This function must be called only once, at boot.
 pub fn init() {
 	// Reading ACPI data
-	let data = ACPIData::read().unwrap_or_else(| _ | {
+	let data = ACPIData::read().unwrap_or_else(|_| {
 		crate::kernel_panic!("Invalid ACPI data!");
 	});
 
 	if let Some(data) = data {
 		if let Some(madt) = data.get_table::<Madt>() {
 			// Registering CPU cores
-			madt.foreach_entry(| e: &madt::EntryHeader | match e.get_type() {
+			madt.foreach_entry(|e: &madt::EntryHeader| match e.get_type() {
 				0 => {
 					// TODO Register a new CPU
-				},
+				}
 
-				_ => {},
+				_ => {}
 			});
 		}
 
 		// Setting the century register value
-		unsafe { // Safe because the value is only set once
-			CENTURY_REGISTER = data.get_table::<Fadt>().map_or(false, | fadt | fadt.century != 0);
+		unsafe {
+			// Safe because the value is only set once
+			CENTURY_REGISTER = data
+				.get_table::<Fadt>()
+				.map_or(false, |fadt| fadt.century != 0);
 		}
 	}
 }

@@ -1,10 +1,10 @@
 //! The `setuid32` syscall sets the UID of the process's owner.
 
-use crate::file::ROOT_UID;
 use crate::errno::Errno;
 use crate::file::Uid;
-use crate::process::Process;
+use crate::file::ROOT_UID;
 use crate::process::regs::Regs;
+use crate::process::Process;
 
 /// The implementation of the `setuid32` syscall.
 pub fn setuid32(regs: &Regs) -> Result<i32, Errno> {

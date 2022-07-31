@@ -1,11 +1,11 @@
 //! The Multiboot standard specifies an interface to load and boot the kernel image. It provides
 //! critical informations such as the memory mapping and the ELF structure of the kernel.
 
+use crate::memory;
+use crate::util;
 use core::ffi::c_void;
 use core::mem::ManuallyDrop;
 use core::ptr::null;
-use crate::memory;
-use crate::util;
 
 pub const BOOTLOADER_MAGIC: u32 = 0x36d76289;
 pub const TAG_ALIGN: usize = 8;
@@ -414,9 +414,7 @@ static mut BOOT_INFO: BootInfo = BootInfo {
 
 /// Returns the boot informations provided by Multiboot.
 pub fn get_boot_info() -> &'static BootInfo {
-	unsafe {
-		&BOOT_INFO
-	}
+	unsafe { &BOOT_INFO }
 }
 
 /// Returns the size in bytes of Multiboot tags pointed by `ptr`.
@@ -435,9 +433,7 @@ pub fn get_tags_size(ptr: *const c_void) -> usize {
 
 /// Reads the given `tag` and fills the boot informations structure accordingly.
 fn handle_tag(boot_info: &mut BootInfo, tag: *const Tag) {
-	let type_ = unsafe {
-		(*tag).type_
-	};
+	let type_ = unsafe { (*tag).type_ };
 
 	match type_ {
 		TAG_TYPE_CMDLINE => {
@@ -447,7 +443,7 @@ fn handle_tag(boot_info: &mut BootInfo, tag: *const Tag) {
 				let ptr = memory::kern_to_virt(&(*t).string as *const _ as *const _) as *const u8;
 				boot_info.cmdline = Some(util::str_from_ptr(ptr));
 			}
-		},
+		}
 
 		TAG_TYPE_BOOT_LOADER_NAME => {
 			let t = tag as *const TagString;
@@ -456,16 +452,14 @@ fn handle_tag(boot_info: &mut BootInfo, tag: *const Tag) {
 				let ptr = memory::kern_to_virt(&(*t).string as *const _ as *const _) as *const u8;
 				boot_info.loader_name = Some(util::str_from_ptr(ptr));
 			}
-		},
+		}
 
 		TAG_TYPE_BASIC_MEMINFO => {
-			let t = unsafe {
-				&*(tag as *const TagBasicMeminfo)
-			};
+			let t = unsafe { &*(tag as *const TagBasicMeminfo) };
 
 			boot_info.mem_lower = t.mem_lower;
 			boot_info.mem_upper = t.mem_upper;
-		},
+		}
 
 		TAG_TYPE_MMAP => {
 			let t = tag as *const TagMmap;
@@ -475,7 +469,7 @@ fn handle_tag(boot_info: &mut BootInfo, tag: *const Tag) {
 				boot_info.memory_maps_entry_size = (*t).entry_size as usize;
 				boot_info.memory_maps = &(*t).entries as *const _;
 			}
-		},
+		}
 
 		TAG_TYPE_ELF_SECTIONS => {
 			let t = tag as *const TagELFSections;
@@ -486,7 +480,7 @@ fn handle_tag(boot_info: &mut BootInfo, tag: *const Tag) {
 				boot_info.elf_shndx = (*t).shndx;
 				boot_info.elf_sections = (*t).sections.as_ptr() as _;
 			}
-		},
+		}
 
 		_ => {}
 	}

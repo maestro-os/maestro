@@ -1,12 +1,12 @@
 //! The `fcntl` syscall call allows to manipulate a file descriptor.
 
-use crate::file::FileContent;
-use crate::file::open_file::FDTarget;
-use core::ffi::c_void;
 use crate::errno::Errno;
 use crate::file::fd::NewFDConstraint;
-use crate::process::Process;
+use crate::file::open_file::FDTarget;
+use crate::file::FileContent;
 use crate::process::regs::Regs;
+use crate::process::Process;
+use core::ffi::c_void;
 
 /// TODO doc
 const F_DUPFD: i32 = 0;
@@ -109,19 +109,19 @@ pub fn do_fcntl(fd: i32, cmd: i32, arg: *mut c_void, _fcntl64: bool) -> Result<i
 	//crate::println!("fcntl: {} {} {:p} {}", fd, cmd, arg, _fcntl64); // TODO rm
 
 	match cmd {
-		F_DUPFD => {
-			Ok(proc.duplicate_fd(fd as _, NewFDConstraint::Min(arg as _), false)?.get_id() as _)
-		},
+		F_DUPFD => Ok(proc
+			.duplicate_fd(fd as _, NewFDConstraint::Min(arg as _), false)?
+			.get_id() as _),
 
 		F_GETFD => {
 			let fd = proc.get_fd(fd as _).ok_or_else(|| errno!(EBADF))?;
 			Ok(fd.get_flags())
-		},
+		}
 
 		F_SETFD => {
 			// TODO
 			Ok(0)
-		},
+		}
 
 		F_GETFL => {
 			let fd = proc.get_fd(fd as _).ok_or_else(|| errno!(EBADF))?;
@@ -130,7 +130,7 @@ pub fn do_fcntl(fd: i32, cmd: i32, arg: *mut c_void, _fcntl64: bool) -> Result<i
 			let open_file = open_file_guard.get();
 
 			Ok(open_file.get_flags())
-		},
+		}
 
 		F_SETFL => {
 			let fd = proc.get_fd(fd as _).ok_or_else(|| errno!(EBADF))?;
@@ -140,106 +140,106 @@ pub fn do_fcntl(fd: i32, cmd: i32, arg: *mut c_void, _fcntl64: bool) -> Result<i
 
 			open_file.set_flags(arg as _);
 			Ok(0)
-		},
+		}
 
 		F_GETLK => {
 			// TODO
 			Ok(0)
-		},
+		}
 
 		F_SETLK => {
 			// TODO
 			Ok(0)
-		},
+		}
 
 		F_SETLKW => {
 			// TODO
 			Ok(0)
-		},
+		}
 
 		F_SETOWN => {
 			// TODO
 			Ok(0)
-		},
+		}
 
 		F_GETOWN => {
 			// TODO
 			Ok(0)
-		},
+		}
 
 		F_SETSIG => {
 			// TODO
 			Ok(0)
-		},
+		}
 
 		F_GETSIG => {
 			// TODO
 			Ok(0)
-		},
+		}
 
 		F_GETLK64 => {
 			// TODO
 			Ok(0)
-		},
+		}
 
 		F_SETLK64 => {
 			// TODO
 			Ok(0)
-		},
+		}
 
 		F_SETLKW64 => {
 			// TODO
 			Ok(0)
-		},
+		}
 
 		F_SETOWN_EX => {
 			// TODO
 			Ok(0)
-		},
+		}
 
 		F_GETOWN_EX => {
 			// TODO
 			Ok(0)
-		},
+		}
 
 		F_OFD_GETLK => {
 			// TODO
 			Ok(0)
-		},
+		}
 
 		F_OFD_SETLK => {
 			// TODO
 			Ok(0)
-		},
+		}
 
 		F_OFD_SETLKW => {
 			// TODO
 			Ok(0)
-		},
+		}
 
 		F_SETLEASE => {
 			// TODO
 			Ok(0)
-		},
+		}
 
 		F_GETLEASE => {
 			// TODO
 			Ok(0)
-		},
+		}
 
 		F_NOTIFY => {
 			// TODO
 			Ok(0)
-		},
+		}
 
-		F_DUPFD_CLOEXEC => {
-			Ok(proc.duplicate_fd(fd as _, NewFDConstraint::Min(arg as _), true)?.get_id() as _)
-		},
+		F_DUPFD_CLOEXEC => Ok(proc
+			.duplicate_fd(fd as _, NewFDConstraint::Min(arg as _), true)?
+			.get_id() as _),
 
 		F_SETPIPE_SZ => {
 			// TODO
 			Ok(0)
-		},
+		}
 
 		F_GETPIPE_SZ => {
 			let fd = proc.get_fd(fd as _).ok_or_else(|| errno!(EBADF))?;
@@ -256,52 +256,52 @@ pub fn do_fcntl(fd: i32, cmd: i32, arg: *mut c_void, _fcntl64: bool) -> Result<i
 						FileContent::Fifo => {
 							// TODO
 							todo!();
-						},
+						}
 
 						_ => Ok(0),
 					}
-				},
+				}
 
 				FDTarget::Pipe(mutex) => {
 					let guard = mutex.lock();
 					let pipe = guard.get();
 
 					Ok(pipe.get_available_len() as _)
-				},
+				}
 
 				_ => Ok(0),
 			}
-		},
+		}
 
 		F_ADD_SEALS => {
 			// TODO
 			Ok(0)
-		},
+		}
 
 		F_GET_SEALS => {
 			// TODO
 			Ok(0)
-		},
+		}
 
 		F_GET_RW_HINT => {
 			// TODO
 			Ok(0)
-		},
+		}
 
 		F_SET_RW_HINT => {
 			// TODO
 			Ok(0)
-		},
+		}
 
 		F_GET_FILE_RW_HINT => {
 			// TODO
 			Ok(0)
-		},
+		}
 
 		F_SET_FILE_RW_HINT => {
 			// TODO
 			Ok(0)
-		},
+		}
 
 		_ => Err(errno!(EINVAL)),
 	}

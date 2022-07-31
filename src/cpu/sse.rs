@@ -2,9 +2,7 @@
 
 /// Tells whether the CPU has SSE.
 pub fn is_present() -> bool {
-	unsafe {
-		super::cpuid_has_sse()
-	}
+	unsafe { super::cpuid_has_sse() }
 }
 
 /// Enables SSE.

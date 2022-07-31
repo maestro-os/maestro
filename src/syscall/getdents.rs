@@ -1,14 +1,14 @@
 //! The `getdents` system call allows to get the list of entries in a given directory.
 
+use crate::errno::Errno;
+use crate::file::open_file::FDTarget;
+use crate::file::FileContent;
+use crate::process::mem_space::ptr::SyscallSlice;
+use crate::process::regs::Regs;
+use crate::process::Process;
 use core::ffi::c_void;
 use core::mem::size_of;
 use core::ptr;
-use crate::errno::Errno;
-use crate::file::FileContent;
-use crate::file::open_file::FDTarget;
-use crate::process::Process;
-use crate::process::mem_space::ptr::SyscallSlice;
-use crate::process::regs::Regs;
 
 /// Structure representing a Linux directory entry.
 #[repr(C)]
@@ -37,7 +37,10 @@ pub fn getdents(regs: &Regs) -> Result<i32, Errno> {
 		let proc = guard.get_mut();
 
 		let mem_space = proc.get_mem_space().unwrap();
-		let open_file_mutex = proc.get_fd(fd as _).ok_or_else(|| errno!(EBADF))?.get_open_file();
+		let open_file_mutex = proc
+			.get_fd(fd as _)
+			.ok_or_else(|| errno!(EBADF))?
+			.get_open_file();
 
 		(mem_space, open_file_mutex)
 	};
@@ -47,7 +50,9 @@ pub fn getdents(regs: &Regs) -> Result<i32, Errno> {
 	let open_file = open_file_guard.get_mut();
 
 	let mem_space_guard = mem_space.lock();
-	let dirp_slice = dirp.get_mut(&mem_space_guard, count as _)?.ok_or_else(|| errno!(EFAULT))?;
+	let dirp_slice = dirp
+		.get_mut(&mem_space_guard, count as _)?
+		.ok_or_else(|| errno!(EFAULT))?;
 
 	let mut off = 0;
 	let mut entries_count = 0;
@@ -84,7 +89,8 @@ pub fn getdents(regs: &Regs) -> Result<i32, Errno> {
 				break;
 			}
 
-			let ent = unsafe { // Safe because access has been checked before
+			let ent = unsafe {
+				// Safe because access has been checked before
 				&mut *(&mut dirp_slice[off] as *mut _ as *mut LinuxDirent)
 			};
 			*ent = LinuxDirent {
@@ -96,9 +102,11 @@ pub fn getdents(regs: &Regs) -> Result<i32, Errno> {
 
 			unsafe {
 				// Copying file name
-				ptr::copy_nonoverlapping(name.as_bytes().as_ptr(),
+				ptr::copy_nonoverlapping(
+					name.as_bytes().as_ptr(),
 					ent.d_name.as_mut_ptr(),
-					name.len());
+					name.len(),
+				);
 
 				// Writing padding byte
 				*ent.d_name.as_mut_ptr().add(name.len()) = 0;

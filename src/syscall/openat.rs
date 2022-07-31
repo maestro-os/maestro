@@ -1,18 +1,18 @@
 //! The `openat` syscall allows to open a file.
 
+use super::util;
 use crate::errno::Errno;
+use crate::file;
+use crate::file::open_file;
 use crate::file::File;
 use crate::file::FileContent;
 use crate::file::FileType;
 use crate::file::Mode;
-use crate::file::open_file;
-use crate::file;
-use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::regs::Regs;
+use crate::process::Process;
 use crate::syscall::openat::open_file::FDTarget;
 use crate::util::ptr::SharedPtr;
-use super::util;
 
 // TODO Implement all flags
 
@@ -21,8 +21,12 @@ use super::util;
 /// If the file doesn't exist and the O_CREAT flag is set, the file is created, then the function
 /// returns it. If the flag is not set, the function returns an error with the appropriate errno.
 /// If the file is to be created, the function uses `mode` to set its permissions.
-fn get_file(dirfd: i32, pathname: SyscallString, flags: i32, mode: Mode)
-	-> Result<SharedPtr<File>, Errno> {
+fn get_file(
+	dirfd: i32,
+	pathname: SyscallString,
+	flags: i32,
+	mode: Mode,
+) -> Result<SharedPtr<File>, Errno> {
 	// Tells whether to follow symbolic links on the last component of the path.
 	let follow_links = flags & open_file::O_NOFOLLOW == 0;
 
@@ -33,11 +37,19 @@ fn get_file(dirfd: i32, pathname: SyscallString, flags: i32, mode: Mode)
 	let mem_space = proc.get_mem_space().unwrap();
 	let mem_space_guard = mem_space.lock();
 
-	let pathname = pathname.get(&mem_space_guard)?.ok_or_else(|| errno!(EFAULT))?;
+	let pathname = pathname
+		.get(&mem_space_guard)?
+		.ok_or_else(|| errno!(EFAULT))?;
 
 	if flags & open_file::O_CREAT != 0 {
-		util::create_file_at(&proc_guard, follow_links, dirfd, pathname, mode,
-			FileContent::Regular)
+		util::create_file_at(
+			&proc_guard,
+			follow_links,
+			dirfd,
+			pathname,
+			mode,
+			FileContent::Regular,
+		)
 	} else {
 		util::get_file_at(&proc_guard, true, dirfd, pathname, 0)
 	}
@@ -55,7 +67,8 @@ pub fn openat(regs: &Regs) -> Result<i32, Errno> {
 
 	// If O_DIRECTORY is set and the file is not a directory, return an error
 	if flags & open_file::O_DIRECTORY != 0
-		&& file.lock().get().get_file_type() != FileType::Directory {
+		&& file.lock().get().get_file_type() != FileType::Directory
+	{
 		return Err(errno!(ENOTDIR));
 	}
 
