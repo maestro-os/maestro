@@ -265,71 +265,78 @@ impl Scheduler {
 
 	/// Ticking the scheduler. This function saves the data of the currently running process, then
 	/// switches to the next process to run.
-	/// `mutex` is the scheduler's mutex.
+	/// `sched_mutex` is the scheduler's mutex.
 	/// `regs` is the state of the registers from the paused context.
 	/// `ring` is the ring of the paused context.
-	fn tick(mutex: &IntMutex<Self>, regs: &Regs, ring: u32) -> ! {
+	fn tick(sched_mutex: &IntMutex<Self>, regs: &Regs, ring: u32) -> ! {
 		// Disabling interrupts to avoid getting one right after unlocking mutexes
 		cli!();
 
-		let guard = mutex.lock();
-		let scheduler = guard.get_mut();
+		let tmp_stack = {
+			let sched_guard = sched_mutex.lock();
+			let scheduler = sched_guard.get_mut();
+			scheduler.total_ticks += 1;
 
-		scheduler.total_ticks += 1;
+			// If a process is running, save its registers
+			if let Some(curr_proc) = scheduler.get_current_process() {
+				let guard = curr_proc.lock();
+				let curr_proc = guard.get_mut();
 
-		// If a process is running, save its registers
-		if let Some(curr_proc) = scheduler.get_current_process() {
-			let guard = curr_proc.lock();
-			let curr_proc = guard.get_mut();
+				curr_proc.regs = *regs;
+				curr_proc.syscalling = ring < 3;
+			}
 
-			curr_proc.regs = *regs;
-			curr_proc.syscalling = ring < 3;
+			// The current core ID
+			let core_id = 0; // TODO
+			// Getting the temporary stack
+			let tmp_stack = scheduler.get_tmp_stack(core_id);
+
+			tmp_stack
+		};
+
+		loop {
+			let sched_guard = sched_mutex.lock();
+			let scheduler = sched_guard.get_mut();
+
+			if let Some(next_proc) = scheduler.get_next_process() {
+				// Set the process as current
+				scheduler.curr_proc = Some(next_proc.clone());
+
+				drop(sched_guard);
+
+				unsafe {
+					stack::switch(Some(tmp_stack), move || {
+						let (resume, syscalling, regs) = {
+							let next_proc_guard = next_proc.1.lock();
+							let next_proc = next_proc_guard.get_mut();
+
+							let resume = next_proc.prepare_switch(); // FIXME Must be done on tmp stack
+
+							(resume, next_proc.is_syscalling(), next_proc.regs)
+						};
+
+						if !resume {
+							return;
+						}
+
+						// Resuming execution
+						event::unlock_callbacks(0x20);
+						pic::end_of_interrupt(0x0);
+
+						regs.switch(!syscalling);
+					})
+					.unwrap();
+				}
+			} else {
+				break;
+			}
 		}
 
-		// The current core ID
-		let core_id = 0; // TODO
-		// Getting the temporary stack
-		let tmp_stack = scheduler.get_tmp_stack(core_id);
-
-		if let Some(next_proc) = scheduler.get_next_process() {
-			// Set the process as current
-			scheduler.curr_proc = Some(next_proc.clone());
-
-			drop(guard);
-			unsafe {
-				event::unlock_callbacks(0x20);
-			}
+		// No process to run. Just wait
+		unsafe {
+			event::unlock_callbacks(0x20);
 			pic::end_of_interrupt(0x0);
-
-			unsafe {
-				stack::switch(Some(tmp_stack), move || {
-					let (syscalling, regs) = {
-						let guard = next_proc.1.lock();
-						let proc = guard.get_mut();
-
-						proc.prepare_switch();
-						(proc.is_syscalling(), proc.regs)
-					};
-
-					drop(next_proc);
-
-					// Resuming execution
-					regs.switch(!syscalling);
-				})
-				.unwrap();
-			}
-
-			unreachable!();
-		} else {
-			drop(guard);
-			unsafe {
-				event::unlock_callbacks(0x20);
-			}
-			pic::end_of_interrupt(0x0);
-
-			unsafe {
-				crate::loop_reset(tmp_stack);
-			}
+			crate::loop_reset(tmp_stack);
 		}
 	}
 

@@ -15,32 +15,41 @@ pub mod signal;
 pub mod tss;
 pub mod user_desc;
 
+use core::any::Any;
+use core::cmp::max;
+use core::ffi::c_void;
+use core::mem::ManuallyDrop;
+use core::mem::MaybeUninit;
+use core::mem::size_of;
+use core::ptr::NonNull;
 use crate::cpu;
-use crate::errno;
 use crate::errno::Errno;
-use crate::event;
+use crate::errno;
 use crate::event::{InterruptResult, InterruptResultAction};
-use crate::file;
+use crate::event;
+use crate::file::Gid;
+use crate::file::ROOT_UID;
+use crate::file::Uid;
 use crate::file::fcache;
+use crate::file::fd::FD_CLOEXEC;
 use crate::file::fd::FileDescriptor;
 use crate::file::fd::NewFDConstraint;
-use crate::file::fd::FD_CLOEXEC;
 use crate::file::fs::procfs::ProcFS;
 use crate::file::mountpoint;
-use crate::file::open_file;
 use crate::file::open_file::FDTarget;
 use crate::file::open_file::OpenFile;
+use crate::file::open_file;
 use crate::file::path::Path;
-use crate::file::Gid;
-use crate::file::Uid;
-use crate::file::ROOT_UID;
-use crate::gdt;
+use crate::file;
 use crate::gdt::ldt::LDT;
+use crate::gdt;
 use crate::limits;
+use crate::memory;
 use crate::process::mountpoint::MountSource;
 use crate::process::open_file::O_CLOEXEC;
-use crate::tty;
 use crate::tty::TTYHandle;
+use crate::tty;
+use crate::util::FailableClone;
 use crate::util::container::bitfield::Bitfield;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
@@ -48,15 +57,7 @@ use crate::util::lock::*;
 use crate::util::ptr::IntSharedPtr;
 use crate::util::ptr::IntWeakPtr;
 use crate::util::ptr::SharedPtr;
-use crate::util::FailableClone;
 use crate::vec;
-use core::any::Any;
-use core::cmp::max;
-use core::ffi::c_void;
-use core::mem::size_of;
-use core::mem::ManuallyDrop;
-use core::mem::MaybeUninit;
-use core::ptr::NonNull;
 use mem_space::MemSpace;
 use pid::PIDManager;
 use pid::Pid;
@@ -892,19 +893,32 @@ impl Process {
 		let tss = tss::get();
 		tss.ss0 = gdt::KERNEL_DS as _;
 		tss.ss = gdt::USER_DS as _;
+
 		// Setting the kernel stack pointer
-		tss.esp0 = self.kernel_stack.unwrap() as _;
+		let mut kernel_stack_ptr = self.kernel_stack.unwrap() as usize;
+		if self.is_handling_signal() {
+			// Preventing overlapping of stacks
+			kernel_stack_ptr -= (KERNEL_STACK_SIZE / 2) * memory::PAGE_SIZE;
+		}
+		tss.esp0 = kernel_stack_ptr as _;
 	}
 
 	/// Prepares for context switching to the process.
 	/// A call to this function MUST be followed by a context switch to the process.
-	pub fn prepare_switch(&mut self) {
+	/// If the function returns `false`, the process is a zombie and MUST NOT be resumed.
+	pub fn prepare_switch(&mut self) -> bool {
 		debug_assert_eq!(self.get_state(), State::Running);
 
 		// Incrementing the number of ticks the process had
 		self.quantum_count += 1;
 
-		// Updates teh TSS for the process
+		// If a signal is pending on the process, execute it
+		self.signal_next();
+		if self.state == State::Zombie {
+			return false;
+		}
+
+		// Updates the TSS for the process
 		self.update_tss();
 
 		// Binding the memory space
@@ -920,10 +934,7 @@ impl Process {
 			ldt.load();
 		}
 
-		if !self.is_syscalling() {
-			// If a signal is pending on the process, execute it
-			self.signal_next();
-		}
+		true
 	}
 
 	/// Initializes the process to run without a program.
@@ -952,7 +963,7 @@ impl Process {
 	/// Tells whether the process was syscalling before being interrupted.
 	#[inline(always)]
 	pub fn is_syscalling(&self) -> bool {
-		self.syscalling && !self.is_handling_signal()
+		self.syscalling
 	}
 
 	/// Returns the available file descriptor with the lowest ID. If no ID is available, the
@@ -1177,7 +1188,10 @@ impl Process {
 					.get_mut()
 					.map_stack(KERNEL_STACK_SIZE, KERNEL_STACK_FLAGS)?;
 
-				(curr_mem_space.clone(), Some(new_kernel_stack as _))
+				(
+					curr_mem_space.clone(),
+					Some(new_kernel_stack as _),
+				)
 			} else {
 				(
 					IntSharedPtr::new(curr_mem_space.lock().get_mut().fork()?)?,
@@ -1302,7 +1316,7 @@ impl Process {
 	/// If `no_handler` is true and if the process is already handling a signal, the function
 	/// executes the default action of the signal regardless the user-specified action.
 	pub fn kill(&mut self, sig: &Signal, no_handler: bool) {
-		if sig.can_catch() && !self.sigmask.is_set(sig.get_id() as _) {
+		if sig.can_catch() && self.sigmask.is_set(sig.get_id() as _) {
 			return;
 		}
 
@@ -1338,26 +1352,20 @@ impl Process {
 
 	/// Returns an immutable reference to the process's blocked signals mask.
 	#[inline(always)]
-	pub fn get_sigmask(&self) -> &[u8] {
-		self.sigmask.as_slice()
+	pub fn get_sigmask(&self) -> &Bitfield {
+		&self.sigmask
 	}
 
 	/// Returns a mutable reference to the process's blocked signals mask.
 	#[inline(always)]
-	pub fn get_sigmask_mut(&mut self) -> &mut [u8] {
-		self.sigmask.as_mut_slice()
+	pub fn get_sigmask_mut(&mut self) -> &mut Bitfield {
+		&mut self.sigmask
 	}
 
 	/// Returns an immutable reference to the process's pending signals mask.
 	#[inline(always)]
 	pub fn get_pending_signals(&self) -> &[u8] {
 		self.sigpending.as_slice()
-	}
-
-	/// Returns a mutable reference to the process's pending signals mask.
-	#[inline(always)]
-	pub fn get_pending_signals_mut(&mut self) -> &mut [u8] {
-		self.sigpending.as_mut_slice()
 	}
 
 	/// Tells whether the process has a signal pending.
@@ -1369,6 +1377,10 @@ impl Process {
 	/// Makes the process handle the next signal. If the process is already handling a signal or if
 	/// no signal is queued, the function does nothing.
 	pub fn signal_next(&mut self) {
+		if self.is_handling_signal() {
+			return;
+		}
+
 		// Looking for a pending signal with respect to the signal mask
 		let mut sig = None;
 		self.sigpending.for_each(|i, b| {

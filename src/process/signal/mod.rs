@@ -416,52 +416,52 @@ impl Signal {
 			}
 
 			// TODO Handle sa_sigaction, sa_flags and sa_mask
-			SignalHandler::Handler(action) => {
-				if !process.is_handling_signal() {
-					// TODO Handle the case where an alternate stack is specified (only if the
-					// action has the flag)
-					// The signal handler stack
-					let stack = process.get_signal_stack();
+			SignalHandler::Handler(action) if process.is_handling_signal() => {
+				// TODO Handle the case where an alternate stack is specified (only if the
+				// action has the flag)
+				// The signal handler stack
+				let stack = process.get_signal_stack();
 
-					let signal_data_size = size_of::<[u32; 2]>();
-					let signal_esp = (stack as usize) - signal_data_size;
+				let signal_data_size = size_of::<[u32; 2]>();
+				let signal_esp = (stack as usize) - signal_data_size;
 
-					// FIXME Don't write data out of the stack
-					oom::wrap(|| {
-						let mem_space = process.get_mem_space().unwrap();
-						let mem_space_guard = mem_space.lock();
-						let mem_space = mem_space_guard.get_mut();
+				// FIXME Don't write data out of the stack
+				oom::wrap(|| {
+					let mem_space = process.get_mem_space().unwrap();
+					let mem_space_guard = mem_space.lock();
+					let mem_space = mem_space_guard.get_mut();
 
-						debug_assert!(mem_space.is_bound());
-						mem_space.alloc(signal_esp as *mut u32, 2)
-					});
-					let signal_data =
-						unsafe { slice::from_raw_parts_mut(signal_esp as *mut u32, 2) };
+					debug_assert!(mem_space.is_bound());
+					mem_space.alloc(signal_esp as *mut u32, 2)
+				});
+				let signal_data =
+					unsafe { slice::from_raw_parts_mut(signal_esp as *mut u32, 2) };
 
-					// The pointer to the signal handler
-					signal_data[1] = action.sa_handler.map(|f| f as usize).unwrap_or(0) as _;
-					// The signal number
-					signal_data[0] = self.get_id() as _;
+				// The pointer to the signal handler
+				signal_data[1] = action.sa_handler.map(|f| f as usize).unwrap_or(0) as _;
+				// The signal number
+				signal_data[0] = self.get_id() as _;
 
-					let signal_trampoline = unsafe {
-						transmute::<extern "C" fn(*const c_void, i32) -> !, *const c_void>(
-							signal_trampoline,
-						)
-					};
+				let signal_trampoline = unsafe {
+					transmute::<extern "C" fn(*const c_void, i32) -> !, *const c_void>(
+						signal_trampoline,
+					)
+				};
 
-					let mut regs = process.get_regs().clone();
-					// Setting the stack to point to the signal's data
-					regs.esp = signal_esp as _;
-					// Setting the program counter to point to the signal trampoline
-					regs.eip = signal_trampoline as _;
+				let mut regs = process.get_regs().clone();
+				// Setting the stack to point to the signal's data
+				regs.esp = signal_esp as _;
+				// Setting the program counter to point to the signal trampoline
+				regs.eip = signal_trampoline as _;
 
-					// Saves the current state of the process to be restored when the handler will
-					// return
-					process.signal_save(self.clone());
-					// Setting the process's registers to call the signal handler
-					process.set_regs(regs);
-				}
-			}
+				// Saves the current state of the process to be restored when the handler will
+				// return
+				process.signal_save(self.clone());
+				// Setting the process's registers to call the signal handler
+				process.set_regs(regs);
+			},
+
+			_ => {},
 		}
 	}
 }
