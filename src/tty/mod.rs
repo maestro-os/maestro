@@ -447,19 +447,36 @@ impl TTY {
 
 	// TODO Implement IUTF8
 	/// Reads inputs from the TTY and places it into the buffer `buff`.
-	/// The function returns the number of bytes read.
-	pub fn read(&mut self, buff: &mut [u8]) -> usize {
+	/// The function returns the number of bytes read and whether the EOF is reached.
+	/// Note that reaching the EOF doesn't necessary mean the TTY is closed. Subsequent calls to
+	/// this function might still successfully read data.
+	pub fn read(&mut self, buff: &mut [u8]) -> (usize, bool) {
 		// The length of data to consume
-		let len = min(buff.len(), self.available_size);
-		if len < self.termios.c_cc[termios::VMIN as usize] as usize {
-			return 0;
+		let mut len = min(buff.len(), self.available_size);
+
+		if self.termios.c_lflag & termios::ICANON != 0 {
+			let eof = self.termios.c_cc[termios::VEOF as usize];
+
+			if buff[0] == eof {
+				// Shifting data
+				self.input_buffer.rotate_left(len);
+				self.input_size -= len;
+				self.available_size -= len;
+
+				return (0, true);
+			} else if let Some(eof_off) = buff[..len].iter().position(|v| *v == eof) {
+				// Making the next call EOF
+				len = eof_off;
+			}
+		} else if len < self.termios.c_cc[termios::VMIN as usize] as usize {
+			return (0, false);
 		}
 
 		// Copying data
 		buff[..len].copy_from_slice(&self.input_buffer[..len]);
-		// Shifting the remaining data of the buffer
-		self.input_buffer.rotate_left(len);
 
+		// Shifting data
+		self.input_buffer.rotate_left(len);
 		self.input_size -= len;
 		self.available_size -= len;
 
@@ -467,7 +484,7 @@ impl TTY {
 			self.ring_bell();
 		}
 
-		len
+		(len, false)
 	}
 
 	// TODO Implement IUTF8
@@ -533,21 +550,18 @@ impl TTY {
 			// Processing input
 			let mut i = self.input_size - len;
 			while i < self.input_size {
-				match self.input_buffer[i] {
-					b'\n' => {
-						// Making the input available for reading
-						self.available_size = i + 1;
+				let b = self.input_buffer[i];
 
-						i += 1;
-					}
+				if b == self.termios.c_cc[termios::VEOF as usize] || b == b'\n' {
+					// Making the input available for reading
+					self.available_size = i + 1;
 
-					0xf7 => {
-						// TODO Check
-						self.erase(1);
-					}
-
-					// TODO Handle other special characters
-					_ => i += 1,
+					i += 1;
+				} else if b == 0xf7 {
+					// TODO Check
+					self.erase(1);
+				} else {
+					i += 1;
 				}
 			}
 		} else {

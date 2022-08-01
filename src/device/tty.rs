@@ -147,7 +147,8 @@ impl IO for TTYDeviceHandle {
 		let tty_guard = tty_mutex.lock();
 		let tty = tty_guard.get_mut();
 
-		Ok((tty.read(buff) as _, false))
+		let (len, eof) = tty.read(buff);
+		Ok((len as _, eof))
 	}
 
 	fn write(&mut self, _offset: u64, buff: &[u8]) -> Result<u64, Errno> {
