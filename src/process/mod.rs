@@ -768,20 +768,30 @@ impl Process {
 
 	/// Tells whether the current process has informations to be retrieved by the `waitpid` system
 	/// call.
-	#[inline(always)]
 	pub fn is_waitable(&self) -> bool {
 		self.waitable
 	}
 
 	/// Sets the process waitable with the given signal type `type_`.
-	#[inline(always)]
 	pub fn set_waitable(&mut self, sig_type: u8) {
 		self.waitable = true;
 		self.termsig = sig_type;
+
+		// Wake the parent
+		if let Some(parent) = self.get_parent() {
+			let parent = parent.get().unwrap();
+			let guard = parent.lock();
+			let parent = guard.get_mut();
+
+			parent.kill(&Signal::SIGCHLD, false);
+
+			if parent.get_state() == State::Sleeping {
+				parent.set_state(State::Running);
+			}
+		}
 	}
 
 	/// Clears the waitable flag.
-	#[inline(always)]
 	pub fn clear_waitable(&mut self) {
 		self.waitable = false;
 	}
@@ -789,11 +799,6 @@ impl Process {
 	/// Wakes up the process. The function sends a signal SIGCHLD to the process and, if it was in
 	/// Sleeping state, changes it to Running.
 	pub fn wakeup(&mut self) {
-		self.kill(&Signal::SIGCHLD, false);
-
-		if self.state == State::Sleeping {
-			self.state = State::Running;
-		}
 	}
 
 	/// Returns the priority of the process. A greater number means a higher priority relative to
@@ -914,7 +919,7 @@ impl Process {
 
 		// If a signal is pending on the process, execute it
 		self.signal_next();
-		if self.state == State::Zombie {
+		if self.state != State::Running {
 			return false;
 		}
 
@@ -1494,15 +1499,8 @@ impl Process {
 	pub fn exit(&mut self, status: u32) {
 		self.exit_status = (status & 0xff) as ExitStatus;
 		self.set_state(State::Zombie);
-
 		self.reset_vfork();
-
-		if let Some(parent) = self.get_parent() {
-			// Wake the parent
-			let parent = parent.get().unwrap();
-			let guard = parent.lock();
-			guard.get_mut().wakeup();
-		}
+		self.set_waitable(0); // TODO Check parameter
 	}
 
 	/// Returns the number of physical memory pages used by the process.

@@ -373,8 +373,9 @@ impl Signal {
 			process.get_signal_handler(self)
 		};
 
-		if handler != SignalHandler::Ignore {
+		if handler == SignalHandler::Default {
 			let action = self.get_default_action();
+
 			if action == SignalAction::Stop || action == SignalAction::Continue {
 				process.set_waitable(self.get_id());
 			}
