@@ -1,9 +1,12 @@
 //! This file implements sockets.
 
+use core::ffi::c_void;
 use crate::errno::Errno;
+use crate::process::mem_space::MemSpace;
 use crate::util::container::ring_buffer::RingBuffer;
 use crate::util::container::vec::Vec;
 use crate::util::io::IO;
+use crate::util::ptr::IntSharedPtr;
 use crate::util::ptr::SharedPtr;
 
 /// The maximum size of a socket's buffers.
@@ -94,6 +97,17 @@ impl SocketSide {
 		}
 
 		s
+	}
+
+	/// Performs an ioctl operation on the socket.
+	pub fn ioctl(
+		&mut self,
+		_mem_space: IntSharedPtr<MemSpace>,
+		_request: u32,
+		_argp: *const c_void,
+	) -> Result<u32, Errno> {
+		// TODO
+		todo!();
 	}
 }
 

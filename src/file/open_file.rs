@@ -1,19 +1,23 @@
 //! An open file description is a structure pointing to a file, allowing to perform operations on
 //! it. It is pointed to by file descriptors.
 
-use crate::errno;
+use core::cmp::min;
+use core::ffi::c_void;
 use crate::errno::Errno;
-use crate::file::pipe::PipeBuffer;
-use crate::file::socket::SocketSide;
+use crate::errno;
 use crate::file::File;
 use crate::file::FileContent;
 use crate::file::FileLocation;
+use crate::file::pipe::PipeBuffer;
+use crate::file::socket::SocketSide;
 use crate::process::mem_space::MemSpace;
+use crate::process::mem_space::ptr::SyscallPtr;
+use crate::syscall::ioctl;
+use crate::types::c_int;
 use crate::util::container::string::String;
 use crate::util::io::IO;
 use crate::util::ptr::IntSharedPtr;
 use crate::util::ptr::SharedPtr;
-use core::ffi::c_void;
 
 /// Read only.
 pub const O_RDONLY: i32 = 0b00000000000000000000000000000000;
@@ -178,20 +182,41 @@ impl OpenFile {
 		request: u32,
 		argp: *const c_void,
 	) -> Result<u32, Errno> {
+		let size = self.get_size();
+
 		match &mut self.target {
-			FDTarget::File(f) => {
-				let guard = f.lock();
+			FDTarget::File(file) => {
+				let guard = file.lock();
+				let f = guard.get_mut();
+
+				match f.get_file_content() {
+					FileContent::Regular => match request {
+						ioctl::FIONREAD => {
+							let mem_space_guard = mem_space.lock();
+							let count_ptr: SyscallPtr<c_int> = (argp as usize).into();
+							let count_ref = count_ptr
+								.get_mut(&mem_space_guard)?
+								.ok_or_else(|| errno!(EFAULT))?;
+							*count_ref = (size - min(size, self.curr_off)) as _;
+
+							Ok(0)
+						},
+
+						_ => Err(errno!(EINVAL)),
+					},
+
+					_ => f.ioctl(mem_space, request, argp),
+				}
+			}
+
+			FDTarget::Pipe(pipe) => {
+				let guard = pipe.lock();
 				guard.get_mut().ioctl(mem_space, request, argp)
 			}
 
-			FDTarget::Pipe(_pipe) => {
-				// TODO
-				todo!();
-			}
-
-			FDTarget::Socket(_sock) => {
-				// TODO
-				todo!();
+			FDTarget::Socket(sock) => {
+				let guard = sock.lock();
+				guard.get_mut().ioctl(mem_space, request, argp)
 			}
 		}
 	}

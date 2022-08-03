@@ -12,25 +12,25 @@ pub mod pipe;
 pub mod socket;
 pub mod util;
 
-use crate::device;
+use core::cmp::max;
+use core::ffi::c_void;
 use crate::device::DeviceType;
-use crate::errno;
+use crate::device;
 use crate::errno::Errno;
+use crate::errno;
 use crate::file::fcache::FCache;
 use crate::file::mountpoint::MountPoint;
 use crate::file::mountpoint::MountSource;
 use crate::process::mem_space::MemSpace;
-use crate::time;
 use crate::time::unit::Timestamp;
 use crate::time::unit::TimestampScale;
+use crate::time;
+use crate::util::FailableClone;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
 use crate::util::io::IO;
 use crate::util::ptr::IntSharedPtr;
 use crate::util::ptr::SharedPtr;
-use crate::util::FailableClone;
-use core::cmp::max;
-use core::ffi::c_void;
 use path::Path;
 
 /// Type representing a user ID.
@@ -606,13 +606,44 @@ impl File {
 		request: u32,
 		argp: *const c_void,
 	) -> Result<u32, Errno> {
-		if let FileContent::CharDevice { major, minor } = self.content {
-			let dev =
-				device::get_device(DeviceType::Char, major, minor).ok_or_else(|| errno!(ENODEV))?;
-			let guard = dev.lock();
-			guard.get_mut().get_handle().ioctl(mem_space, request, argp)
-		} else {
-			Err(errno!(ENOTTY))
+		match &self.content {
+			FileContent::Regular => Err(errno!(EINVAL)),
+			FileContent::Directory(_entries) => Err(errno!(EINVAL)),
+			FileContent::Link(_target) => Err(errno!(EINVAL)),
+
+			FileContent::Fifo => {
+				let fcache_mutex = fcache::get();
+				let fcache_guard = fcache_mutex.lock();
+				let fcache = fcache_guard.get_mut().as_mut().unwrap();
+
+				let pipe_mutex = fcache.get_named_fifo(self.get_location())?;
+				let pipe_guard = pipe_mutex.lock();
+				let pipe = pipe_guard.get_mut();
+				pipe.ioctl(mem_space, request, argp)
+			}
+
+			FileContent::Socket => {
+				let fcache_mutex = fcache::get();
+				let fcache_guard = fcache_mutex.lock();
+				let fcache = fcache_guard.get_mut().as_mut().unwrap();
+
+				let sock_mutex = fcache.get_named_socket(self.get_location())?;
+				let sock_guard = sock_mutex.lock();
+				let _sock = sock_guard.get_mut();
+
+				// TODO
+				todo!();
+			}
+
+			// TODO Check if correct
+			FileContent::BlockDevice { .. } => Err(errno!(ENOTTY)),
+
+			FileContent::CharDevice { major, minor } => {
+				let dev = device::get_device(DeviceType::Char, *major, *minor)
+					.ok_or_else(|| errno!(ENODEV))?;
+				let guard = dev.lock();
+				guard.get_mut().get_handle().ioctl(mem_space, request, argp)
+			},
 		}
 	}
 

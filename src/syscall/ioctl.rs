@@ -26,6 +26,8 @@ pub const TIOCSPGRP: u32 = 0x00005410;
 pub const TIOCGWINSZ: u32 = 0x00005413;
 /// ioctl request: Sets the window size of the terminal.
 pub const TIOCSWINSZ: u32 = 0x00005414;
+/// ioctl request: Returns the number of bytes available on the file descriptor.
+pub const FIONREAD: u32 = 0x0000541b;
 
 /// The implementation of the `ioctl` syscall.
 pub fn ioctl(regs: &Regs) -> Result<i32, Errno> {

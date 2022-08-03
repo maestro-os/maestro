@@ -1,11 +1,17 @@
 //! A pipe is an object that links two file descriptors together. One reading and another writing,
 //! with a buffer in between.
 
+use core::ffi::c_void;
 use crate::file::Errno;
 use crate::limits;
+use crate::process::mem_space::MemSpace;
+use crate::process::mem_space::ptr::SyscallPtr;
+use crate::syscall::ioctl;
+use crate::types::c_int;
 use crate::util::container::ring_buffer::RingBuffer;
-use crate::util::io;
 use crate::util::io::IO;
+use crate::util::io;
+use crate::util::ptr::IntSharedPtr;
 
 /// Structure representing a buffer buffer.
 #[derive(Debug)]
@@ -58,6 +64,29 @@ impl PipeBuffer {
 		} else {
 			self.read_ends -= 1;
 		}
+	}
+
+	/// Performs an ioctl operation on the pipe.
+	pub fn ioctl(
+		&mut self,
+		mem_space: IntSharedPtr<MemSpace>,
+		request: u32,
+		argp: *const c_void,
+	) -> Result<u32, Errno> {
+		match request {
+			ioctl::FIONREAD => {
+				let mem_space_guard = mem_space.lock();
+				let count_ptr: SyscallPtr<c_int> = (argp as usize).into();
+				let count_ref = count_ptr
+					.get_mut(&mem_space_guard)?
+					.ok_or_else(|| errno!(EFAULT))?;
+				*count_ref = self.get_available_len() as _;
+			},
+
+			_ => return Err(errno!(EINVAL)),
+		}
+
+		Ok(0)
 	}
 }
 
