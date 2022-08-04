@@ -1,6 +1,7 @@
 //! A process is a task running on the kernel. A multitasking system allows several processes to
 //! run at the same time by sharing the CPU resources using a scheduler.
 
+// TODO Do not reallocate a PID of used as a pgid
 // TODO Maintain the open file descriptors count
 
 pub mod exec;
@@ -578,42 +579,54 @@ impl Process {
 
 	/// Sets the process's group ID to the given value `pgid`.
 	pub fn set_pgid(&mut self, pgid: Pid) -> Result<(), Errno> {
-		// Removing the process from its old group
-		if self.is_in_group() {
-			let mutex = Process::get_by_pid(self.pgid).unwrap();
-			let guard = mutex.lock();
-			let old_group_process = guard.get_mut();
+		let old_pgid = self.pgid;
+		let new_pgid = if pgid == 0 { self.pid } else { pgid };
 
-			if let Ok(i) = old_group_process.process_group.binary_search(&self.pid) {
-				old_group_process.process_group.remove(i);
+		if new_pgid != self.pid {
+			// Adding the process to the new group
+			if let Some(mutex) = Process::get_by_pid(new_pgid) {
+				let guard = mutex.lock();
+				let new_group_process = guard.get_mut();
+
+				let i = new_group_process
+					.process_group
+					.binary_search(&self.pid)
+					.unwrap_err();
+				new_group_process.process_group.insert(i, self.pid)?;
+			} else {
+				return Err(errno!(ESRCH));
 			}
 		}
 
-		self.pgid = if pgid == 0 { self.pid } else { pgid };
+		// Removing the process from its old group
+		if self.is_in_group() {
+			if let Some(mutex) = Process::get_by_pid(old_pgid) {
+				let guard = mutex.lock();
+				let old_group_process = guard.get_mut();
 
-		if pgid == self.pid {
-			return Ok(());
+				if let Ok(i) = old_group_process.process_group.binary_search(&self.pid) {
+					old_group_process.process_group.remove(i);
+				}
+			}
 		}
 
-		// Adding the process to the new group
-		if let Some(mutex) = Process::get_by_pid(pgid) {
-			let guard = mutex.lock();
-			let new_group_process = guard.get_mut();
-
-			let i = new_group_process
-				.process_group
-				.binary_search(&self.pid)
-				.unwrap_err();
-			new_group_process.process_group.insert(i, self.pid)
-		} else {
-			Err(errno!(ESRCH))
-		}
+		self.pgid = new_pgid;
+		Ok(())
 	}
 
 	/// Returns a reference to the list of PIDs of processes in the current process's group.
 	#[inline(always)]
 	pub fn get_group_processes(&self) -> &Vec<Pid> {
 		&self.process_group
+	}
+
+	/// The function tells whether the process is in an orphaned process group.
+	pub fn is_in_orphan_process_group(&self) -> bool {
+		if !self.is_in_group() {
+			return false;
+		}
+
+		Process::get_by_pid(self.pgid).is_none()
 	}
 
 	/// Returns the parent process's PID.
@@ -1365,6 +1378,11 @@ impl Process {
 	#[inline(always)]
 	pub fn get_sigmask_mut(&mut self) -> &mut Bitfield {
 		&mut self.sigmask
+	}
+
+	/// Tells whether the given signal is blocked by the process.
+	pub fn is_signal_blocked(&self, sig: &Signal) -> bool {
+		self.sigmask.is_set(sig.get_id() as _)
 	}
 
 	/// Returns an immutable reference to the process's pending signals mask.
