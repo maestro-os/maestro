@@ -82,7 +82,7 @@ pub fn do_access(
 		if path.is_absolute() {
 		} else if let Some(dirfd) = dirfd {
 			if dirfd == AT_FDCWD {
-				path = path.concat(&cwd)?;
+				path = cwd.concat(&path)?;
 			} else {
 				// TODO Get file from fd and get its path to concat
 				todo!();

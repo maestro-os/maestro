@@ -46,6 +46,7 @@ pub fn mount(regs: &Regs) -> Result<i32, Errno> {
 
 		// Getting the target file
 		let target_path = Path::from_str(target_slice, true)?;
+		let target_path = super::util::get_absolute_path(proc, target_path)?;
 		let target_mutex = {
 			let guard = fcache::get().lock();
 			let fcache = guard.get_mut().as_mut().unwrap();

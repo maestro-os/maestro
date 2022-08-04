@@ -163,6 +163,8 @@ pub fn execve(regs: &Regs) -> Result<i32, Errno> {
 				true,
 			)?
 		};
+		let path = super::util::get_absolute_path(proc, path)?;
+
 		let argv = unsafe { super::util::get_str_array(proc, argv)? };
 		let envp = unsafe { super::util::get_str_array(proc, envp)? };
 

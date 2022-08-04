@@ -21,11 +21,14 @@ pub fn link(regs: &Regs) -> Result<i32, Errno> {
 	let oldpath_str = oldpath
 		.get(&mem_space_guard)?
 		.ok_or_else(|| errno!(EFAULT))?;
-	let _old_path = Path::from_str(oldpath_str, true)?;
+	let old_path = Path::from_str(oldpath_str, true)?;
+	let _old_path = super::util::get_absolute_path(proc, old_path)?;
+
 	let newpath_str = newpath
 		.get(&mem_space_guard)?
 		.ok_or_else(|| errno!(EFAULT))?;
-	let _new_path = Path::from_str(newpath_str, true)?;
+	let new_path = Path::from_str(newpath_str, true)?;
+	let _new_path = super::util::get_absolute_path(proc, new_path)?;
 
 	// TODO Get file at `old_path`
 	// TODO Create the link to the file

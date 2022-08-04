@@ -24,11 +24,9 @@ pub fn chmod(regs: &Regs) -> Result<i32, Errno> {
 		let path = pathname
 			.get(&mem_space_guard)?
 			.ok_or_else(|| errno!(EFAULT))?;
-		(
-			Path::from_str(path, true)?,
-			proc.get_euid(),
-			proc.get_egid(),
-		)
+		let path = Path::from_str(path, true)?;
+		let path = super::util::get_absolute_path(proc, path)?;
+		(path, proc.get_euid(), proc.get_egid())
 	};
 
 	let file_mutex = {

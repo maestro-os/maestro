@@ -34,8 +34,7 @@ fn print_panic(reason: Arguments, regs: Option<&Regs>) {
 	}
 
 	crate::println!(
-		"If you believe this is a bug on the kernel side, please feel free to report \
-it."
+		"If you believe this is a bug on the kernel side, please feel free to report it."
 	);
 }
 
@@ -88,8 +87,7 @@ fn print_rust_panic<'a>(args: &'a fmt::Arguments<'a>) {
 	crate::println!("CR2: {:p}\n", unsafe { cpu::cr2_get() } as *const c_void);
 
 	crate::println!(
-		"If you believe this is a bug on the kernel side, please feel free to report
-it."
+		"If you believe this is a bug on the kernel side, please feel free to report it."
 	);
 }
 

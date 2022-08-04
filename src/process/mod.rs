@@ -582,6 +582,10 @@ impl Process {
 		let old_pgid = self.pgid;
 		let new_pgid = if pgid == 0 { self.pid } else { pgid };
 
+		if old_pgid == new_pgid {
+			return Ok(());
+		}
+
 		if new_pgid != self.pid {
 			// Adding the process to the new group
 			if let Some(mutex) = Process::get_by_pid(new_pgid) {
