@@ -107,18 +107,37 @@ pub fn open_(pathname: SyscallString, flags: i32, mode: file::Mode) -> Result<i3
 	// Getting the file
 	let file = get_file(path, flags, mode, uid, gid)?;
 
-	// If O_DIRECTORY is set and the file is not a directory, return an error
-	if flags & open_file::O_DIRECTORY != 0
-		&& file.lock().get().get_file_type() != FileType::Directory
 	{
-		return Err(errno!(ENOTDIR));
+		let guard = file.lock();
+		let f = guard.get_mut();
+
+		// If O_DIRECTORY is set and the file is not a directory, return an error
+		if flags & open_file::O_DIRECTORY != 0 && f.get_file_type() != FileType::Directory {
+			return Err(errno!(ENOTDIR));
+		}
+
+		// Truncate the file if necessary
+		if flags & open_file::O_TRUNC != 0 {
+			f.set_size(0);
+		}
 	}
 
-	// Create and return the file descriptor
+	// Create the file descriptor
 	let mutex = Process::get_current().unwrap();
 	let guard = mutex.lock();
 	let proc = guard.get_mut();
-	let fd = proc.create_fd(flags & STATUS_FLAGS_MASK, FDTarget::File(file))?;
+	let fd = proc.create_fd(flags & STATUS_FLAGS_MASK, FDTarget::File(file.clone()))?;
+
+	// Flushing file
+	match file.lock().get_mut().sync() {
+		Err(e) => {
+			proc.close_fd(fd.get_id())?;
+			return Err(e);
+		},
+
+		_ => {},
+	}
+
 	Ok(fd.get_id() as _)
 }
 
