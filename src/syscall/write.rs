@@ -47,9 +47,9 @@ pub fn write(regs: &Regs) -> Result<i32, Errno> {
 			let len = match open_file.write(0, buf_slice) {
 				Ok(len) => len,
 
-				Err(err) => {
-					// If the pipe is broken, kill with SIGPIPE
-					if err.as_int() == errno::EPIPE {
+				Err(e) => {
+					// If writing to a broken pipe, kill with SIGPIPE
+					if e.as_int() == errno::EPIPE {
 						let mutex = Process::get_current().unwrap();
 						let guard = mutex.lock();
 						let proc = guard.get_mut();
@@ -57,8 +57,8 @@ pub fn write(regs: &Regs) -> Result<i32, Errno> {
 						proc.kill(&Signal::SIGPIPE, false);
 					}
 
-					return Err(err);
-				}
+					return Err(e);
+				},
 			};
 
 			(len, flags)

@@ -1,17 +1,18 @@
 //! The writev system call allows to write sparse data on a file descriptor in on call.
 
-use crate::errno;
+use core::cmp::min;
 use crate::errno::Errno;
+use crate::errno;
 use crate::file::open_file::OpenFile;
 use crate::limits;
-use crate::process::iovec::IOVec;
-use crate::process::mem_space::ptr::SyscallSlice;
-use crate::process::mem_space::MemSpace;
-use crate::process::regs::Regs;
 use crate::process::Process;
+use crate::process::iovec::IOVec;
+use crate::process::mem_space::MemSpace;
+use crate::process::mem_space::ptr::SyscallSlice;
+use crate::process::regs::Regs;
+use crate::process::signal::Signal;
 use crate::util::io::IO;
 use crate::util::ptr::IntSharedPtr;
-use core::cmp::min;
 
 // TODO Check the operation is atomic on the file
 /// TODO doc
@@ -90,6 +91,18 @@ pub fn do_writev(
 	}
 
 	let result = write(mem_space, iov, iovcnt as _, open_file);
+	match &result {
+		// If writing to a broken pipe, kill with SIGPIPE
+		Err(e) if e.as_int() == errno::EPIPE => {
+			let mutex = Process::get_current().unwrap();
+			let guard = mutex.lock();
+			let proc = guard.get_mut();
+
+			proc.kill(&Signal::SIGPIPE, false);
+		},
+
+		_ => {},
+	}
 
 	// Restoring previous offset
 	if let Some(prev_off) = prev_off {
