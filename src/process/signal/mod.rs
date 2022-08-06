@@ -373,14 +373,6 @@ impl Signal {
 			process.get_signal_handler(self)
 		};
 
-		if handler == SignalHandler::Default {
-			let action = self.get_default_action();
-
-			if action == SignalAction::Stop || action == SignalAction::Continue {
-				process.set_waitable(self.get_id());
-			}
-		}
-
 		match handler {
 			SignalHandler::Ignore => {}
 			SignalHandler::Default => {
@@ -390,13 +382,11 @@ impl Signal {
 					return;
 				}
 
-				let default_action = self.get_default_action();
-				let exit_code = (128 + self.get_id()) as u32;
-
-				match default_action {
+				let action = self.get_default_action();
+				match action {
 					SignalAction::Terminate | SignalAction::Abort => {
-						process.exit(exit_code);
-					}
+						process.exit(self.get_id() as _, true);
+					},
 
 					SignalAction::Ignore => {}
 
@@ -405,6 +395,8 @@ impl Signal {
 						if process_state == State::Running {
 							process.set_state(State::Stopped);
 						}
+
+						process.set_waitable(self.get_id());
 					}
 
 					SignalAction::Continue => {
@@ -412,6 +404,8 @@ impl Signal {
 						if process_state == State::Stopped {
 							process.set_state(State::Running);
 						}
+
+						process.set_waitable(self.get_id());
 					}
 				}
 			}

@@ -11,11 +11,15 @@ use crate::process::Process;
 use crate::process::State;
 
 /// Wait flag. Returns immediately if no child has exited.
-const WNOHANG: i32 = 0b001;
+pub const WNOHANG: i32 = 1;
 /// Wait flag. Returns if a child has stopped.
-const WUNTRACED: i32 = 0b010;
+pub const WUNTRACED: i32 = 2;
+/// Wait flag. Returns if a child has terminated.
+pub const WEXITED: i32 = 4;
 /// Wait flag. Returns if a stopped child has been resumed by delivery of SIGCONT.
-const WCONTINUED: i32 = 0b100;
+pub const WCONTINUED: i32 = 8;
+/// Wait flag. If set, the system call doesn't clear the waitable status of the child.
+pub const WNOWAIT: i32 = 0x1000000;
 
 /// Returns the `i`th target process for the given constraint `pid`.
 /// `pid` is the constraint given to the system call.
@@ -62,12 +66,17 @@ fn get_target(pid: i32, i: usize) -> Option<Pid> {
 fn get_wstatus(proc: &Process) -> i32 {
 	let status = proc.get_exit_status().unwrap_or(0);
 	let termsig = proc.get_termsig();
-	let stopped = proc.get_state() == State::Stopped;
 
-	let mut wstatus = ((status as i32 & 0xff) << 8) | (termsig as i32 & 0x7f);
-	if !stopped {
-		wstatus |= 1 << 7;
-	}
+	let wstatus = match proc.get_state() {
+		State::Running | State::Sleeping => 0xffff,
+		State::Stopped => ((termsig as i32 & 0xff) << 8) | 0x7f,
+		State::Zombie => ((status as i32 & 0xff) << 8) | (termsig as i32 & 0x7f),
+	};
+
+	// TODO
+	/*if coredump {
+		wstatus |= 0x80;
+	}*/
 
 	wstatus
 }
@@ -76,19 +85,24 @@ fn get_wstatus(proc: &Process) -> i32 {
 /// `proc` is the current process.
 /// `wstatus` is a reference to the wait status.
 /// `rusage` is the pointer to the resource usage structure.
-fn wait_proc(proc: &mut Process, wstatus: &mut i32, rusage: &mut RUsage) {
+/// `clear` tells whether the waitable status of the process should be cleared.
+fn wait_proc(proc: &mut Process, wstatus: &mut i32, rusage: &mut RUsage, clear: bool) {
 	*wstatus = get_wstatus(&proc);
 	*rusage = proc.get_rusage().clone();
 
-	proc.clear_waitable();
+	if clear {
+		proc.clear_waitable();
+	}
 }
 
 /// Checks if at least one process corresponding to the given constraint is waitable. If yes, the
 /// function clears its waitable state, sets the wstatus and returns the process's PID.
 /// `pid` is the constraint given to the system call.
 /// `wstatus` is a reference to the wait status.
+/// `options` is a set of flags.
 /// `rusage` is the pointer to the resource usage structure.
-fn check_waitable(pid: i32, wstatus: &mut i32, rusage: &mut RUsage) -> Result<Option<Pid>, Errno> {
+fn check_waitable(pid: i32, wstatus: &mut i32, options: i32, rusage: &mut RUsage)
+	-> Result<Option<Pid>, Errno> {
 	// Iterating on every target processes, checking if they can be waited on
 	let mut i = 0;
 	while let Some(pid) = get_target(pid, i) {
@@ -100,9 +114,20 @@ fn check_waitable(pid: i32, wstatus: &mut i32, rusage: &mut RUsage) -> Result<Op
 			let p = p_guard.get_mut();
 			let pid = p.get_pid();
 
+			// Stopped implies WUNTRACED (ignoring stopped processes if not enabled)
+			let stop_check = p.get_state() != State::Stopped
+				|| options & WUNTRACED != 0;
+			// Zombie implies WEXITED (ignoring terminated processes if not enabled)
+			let exit_check = p.get_state() != State::Zombie
+				|| options & WEXITED != 0;
+			// Running implies WCONTINUED (ignoring continued processes if not enabled)
+			let continue_check = !matches!(p.get_state(), State::Running | State::Sleeping)
+				|| options & WCONTINUED != 0;
+
 			// If waitable, return
-			if p.is_waitable() {
-				wait_proc(p, wstatus, rusage);
+			if p.is_waitable() && (stop_check || exit_check || continue_check) {
+				let clear_waitable = options & WNOWAIT == 0;
+				wait_proc(p, wstatus, rusage, clear_waitable);
 
 				// If the process was a zombie, remove it
 				if p.get_state() == process::State::Zombie {
@@ -141,7 +166,7 @@ pub fn do_waitpid(
 		let mut rusage_val = Default::default();
 
 		// Check if at least one target process is waitable
-		let result = check_waitable(pid, &mut wstatus_val, &mut rusage_val)?;
+		let result = check_waitable(pid, &mut wstatus_val, options, &mut rusage_val)?;
 
 		{
 			let mutex = Process::get_current().unwrap();
@@ -192,5 +217,5 @@ pub fn waitpid(regs: &Regs) -> Result<i32, Errno> {
 	let wstatus: SyscallPtr<i32> = (regs.ecx as usize).into();
 	let options = regs.edx as i32;
 
-	do_waitpid(pid, wstatus, options, None)
+	do_waitpid(pid, wstatus, options | WEXITED, None)
 }

@@ -834,7 +834,7 @@ impl Filesystem for Ext2Fs {
 		};
 
 		// The file
-		let file = File::new(name, uid, gid, mode, location, content)?;
+		let mut file = File::new(name, uid, gid, mode, location, content)?;
 
 		let mut inode = Ext2INode {
 			mode: Ext2INode::get_file_mode(file.get_file_type(), mode),
@@ -870,6 +870,9 @@ impl Filesystem for Ext2Fs {
 					&String::from(b".")?,
 					FileType::Directory,
 				)?;
+				inode.hard_links_count += 1;
+				file.set_hard_links_count(inode.hard_links_count);
+
 				inode.add_dirent(
 					&mut self.superblock,
 					io,
@@ -877,8 +880,6 @@ impl Filesystem for Ext2Fs {
 					&String::from(b"..")?,
 					FileType::Directory,
 				)?;
-
-				inode.hard_links_count += 1;
 				parent.hard_links_count += 1;
 			}
 

@@ -14,7 +14,7 @@ pub fn do_exit(status: u32, thread_group: bool) -> ! {
 		let guard = mutex.lock();
 		let proc = guard.get_mut();
 
-		proc.exit(status);
+		proc.exit(status, false);
 
 		(proc.get_pid(), proc.get_tid())
 	};

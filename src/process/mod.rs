@@ -308,7 +308,7 @@ pub fn init() -> Result<(), Errno> {
 					let inst_prefix = unsafe { *(regs.eip as *const u8) };
 
 					if inst_prefix == HLT_INSTRUCTION {
-						curr_proc.exit(regs.eax);
+						curr_proc.exit(regs.eax, false);
 					} else {
 						curr_proc.kill(&Signal::SIGSEGV, true);
 						curr_proc.signal_next();
@@ -811,11 +811,6 @@ impl Process {
 	/// Clears the waitable flag.
 	pub fn clear_waitable(&mut self) {
 		self.waitable = false;
-	}
-
-	/// Wakes up the process. The function sends a signal SIGCHLD to the process and, if it was in
-	/// Sleeping state, changes it to Running.
-	pub fn wakeup(&mut self) {
 	}
 
 	/// Returns the priority of the process. A greater number means a higher priority relative to
@@ -1518,8 +1513,17 @@ impl Process {
 
 	/// Exits the process with the given `status`. This function changes the process's status to
 	/// `Zombie`.
-	pub fn exit(&mut self, status: u32) {
-		self.exit_status = (status & 0xff) as ExitStatus;
+	/// `signaled` tells whether the process has been terminated by a signal. If true, `status` is
+	/// interpreted as the signal number.
+	pub fn exit(&mut self, status: u32, signaled: bool) {
+		if signaled {
+			self.exit_status = 0;
+			self.termsig = (status & 0xff) as ExitStatus;
+		} else {
+			self.exit_status = (status & 0xff) as ExitStatus;
+			self.termsig = 0;
+		}
+
 		self.set_state(State::Zombie);
 		self.reset_vfork();
 		self.set_waitable(0); // TODO Check parameter
