@@ -1,6 +1,7 @@
 //! This module implements the directory of a process in the procfs.
 
 mod cwd;
+mod exe;
 mod mounts;
 mod status;
 
@@ -22,6 +23,7 @@ use crate::util::container::string::String;
 use crate::util::io::IO;
 use crate::util::ptr::cow::Cow;
 use cwd::Cwd;
+use exe::Exe;
 use mounts::Mounts;
 use status::Status;
 
@@ -48,6 +50,17 @@ impl ProcDir {
 		let inode = fs.add_node(Box::new(node)?)?;
 		entries.insert(
 			String::from(b"cwd")?,
+			DirEntry {
+				inode,
+				entry_type: FileType::Link,
+			},
+		)?;
+
+		// Creating /proc/<pid>/exe
+		let node = Exe { pid };
+		let inode = fs.add_node(Box::new(node)?)?;
+		entries.insert(
+			String::from(b"exe")?,
 			DirEntry {
 				inode,
 				entry_type: FileType::Link,

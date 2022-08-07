@@ -13,7 +13,7 @@ use crate::util::io::IO;
 use crate::util::ptr::cow::Cow;
 use core::cmp::min;
 
-/// Structure representing the mount node of the procfs.
+/// Structure representing the status node of the procfs.
 pub struct Status {
 	/// The PID of the process.
 	pub pid: Pid,
