@@ -2,19 +2,20 @@
 
 mod cwd;
 mod mounts;
+mod status;
 
 use crate::errno::Errno;
-use crate::file::fs::kernfs::node::KernFSNode;
-use crate::file::fs::kernfs::KernFS;
 use crate::file::DirEntry;
 use crate::file::FileContent;
 use crate::file::FileType;
 use crate::file::Gid;
 use crate::file::Mode;
 use crate::file::Uid;
+use crate::file::fs::kernfs::KernFS;
+use crate::file::fs::kernfs::node::KernFSNode;
+use crate::process::Process;
 use crate::process::oom;
 use crate::process::pid::Pid;
-use crate::process::Process;
 use crate::util::boxed::Box;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
@@ -22,6 +23,7 @@ use crate::util::io::IO;
 use crate::util::ptr::cow::Cow;
 use cwd::Cwd;
 use mounts::Mounts;
+use status::Status;
 
 /// Structure representing the directory of a process.
 pub struct ProcDir {

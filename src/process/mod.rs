@@ -113,6 +113,28 @@ pub enum State {
 	Zombie,
 }
 
+impl State {
+	/// Returns the character associated with the state.
+	pub fn get_char(&self) -> char {
+		match self {
+			Self::Running => 'R',
+			Self::Sleeping => 'S',
+			Self::Stopped => 'T',
+			Self::Zombie => 'Z',
+		}
+	}
+
+	/// Returns the name of the state as string.
+	pub fn as_str(&self) -> &'static str {
+		match self {
+			Self::Running => "running",
+			Self::Sleeping => "sleeping",
+			Self::Stopped => "stopped",
+			Self::Zombie => "zombie",
+		}
+	}
+}
+
 /// Type representing an exit status.
 type ExitStatus = u8;
 

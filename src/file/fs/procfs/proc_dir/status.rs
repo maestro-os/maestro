@@ -3,14 +3,12 @@
 
 use crate::errno::Errno;
 use crate::file::fs::kernfs::node::KernFSNode;
-use crate::file::mountpoint;
 use crate::file::FileContent;
 use crate::file::Gid;
 use crate::file::Mode;
 use crate::file::Uid;
 use crate::process::pid::Pid;
 use crate::process::Process;
-use crate::util::container::string::String;
 use crate::util::io::IO;
 use crate::util::ptr::cow::Cow;
 use core::cmp::min;
@@ -57,66 +55,87 @@ impl IO for Status {
 			return Ok((0, false));
 		}
 
+		let proc_mutex = Process::get_current().unwrap();
+		let proc_guard = proc_mutex.lock();
+		let proc = proc_guard.get();
+
+		let umask = proc.get_umask();
+
+		let state = proc.get_state();
+		let state_char = state.get_char();
+		let state_name = state.as_str();
+
+		let pid = proc.get_pid();
+		let ppid = proc.get_parent_pid();
+
+		let uid = proc.get_uid();
+		let euid = proc.get_euid();
+		let suid = proc.get_suid();
+
+		let gid = proc.get_gid();
+		let egid = proc.get_egid();
+		let sgid = proc.get_sgid();
+
+		// TODO Fill every fields with process's data
 		// Generating content
-		let mut content = String::new();
-		// TODO example:
-		/*Name:   cat
-		Umask:  0022
-		State:  R (running)
-		Tgid:   2175
-		Ngid:   0
-		Pid:    2175
-		PPid:   2172
-		TracerPid:      0
-		Uid:    1000    1000    1000    1000
-		Gid:    1000    1000    1000    1000
-		FDSize: 256
-		Groups: 1000 
-		NStgid: 2175
-		NSpid:  2175
-		NSpgid: 2175
-		NSsid:  2172
-		VmPeak:     5796 kB
-		VmSize:     5796 kB
-		VmLck:         0 kB
-		VmPin:         0 kB
-		VmHWM:       900 kB
-		VmRSS:       900 kB
-		RssAnon:              88 kB
-		RssFile:             812 kB
-		RssShmem:              0 kB
-		VmData:      360 kB
-		VmStk:       132 kB
-		VmExe:        20 kB
-		VmLib:      1668 kB
-		VmPTE:        48 kB
-		VmSwap:        0 kB
-		HugetlbPages:          0 kB
-		CoreDumping:    0
-		THP_enabled:    1
-		Threads:        1
-		SigQ:   1/31244
-		SigPnd: 0000000000000000
-		ShdPnd: 0000000000000000
-		SigBlk: 0000000000000000
-		SigIgn: 0000000000000000
-		SigCgt: 0000000000000000
-		CapInh: 0000000000000000
-		CapPrm: 0000000000000000
-		CapEff: 0000000000000000
-		CapBnd: 000001ffffffffff
-		CapAmb: 0000000000000000
-		NoNewPrivs:     0
-		Seccomp:        0
-		Seccomp_filters:        0
-		Speculation_Store_Bypass:       thread vulnerable
-		SpeculationIndirectBranch:      conditional enabled
-		Cpus_allowed:   ff
-		Cpus_allowed_list:      0-7
-		Mems_allowed:   00000001
-		Mems_allowed_list:      0
-		voluntary_ctxt_switches:        0
-		nonvoluntary_ctxt_switches:     0*/
+		let content = crate::format!("Name: TODO
+Umask: {umask:4o}
+State: {state_char} ({state_name})
+Tgid: 0
+Ngid: 0
+Pid: {pid}
+PPid: {ppid}
+TracerPid: 0
+Uid: {uid} {euid} {suid} TODO
+Gid: {gid} {egid} {sgid} TODO
+FDSize: TODO
+Groups: TODO
+NStgid: TODO
+NSpid: TODO
+NSpgid: TODO
+NSsid: TODO
+VmPeak: TODO kB
+VmSize: TODO kB
+VmLck: TODO kB
+VmPin: TODO kB
+VmHWM: TODO kB
+VmRSS: TODO kB
+RssAnon: TODO kB
+RssFile: TODO kB
+RssShmem: TODO kB
+VmData: TODO kB
+VmStk: TODO kB
+VmExe: TODO kB
+VmLib: TODO kB
+VmPTE: TODO kB
+VmSwap: TODO kB
+HugetlbPages: TODO kB
+CoreDumping: TODO
+THP_enabled: TODO
+Threads: TODO
+SigQ: TODO/TODO
+SigPnd: 0000000000000000
+ShdPnd: 0000000000000000
+SigBlk: 0000000000000000
+SigIgn: 0000000000000000
+SigCgt: 0000000000000000
+CapInh: 0000000000000000
+CapPrm: 0000000000000000
+CapEff: 0000000000000000
+CapBnd: 000001ffffffffff
+CapAmb: 0000000000000000
+NoNewPrivs: 0
+Seccomp: 0
+Seccomp_filters: 0
+Speculation_Store_Bypass: thread vulnerable
+SpeculationIndirectBranch: conditional enabled
+Cpus_allowed: ff
+Cpus_allowed_list: 0-7
+Mems_allowed: 00000001
+Mems_allowed_list: 0
+voluntary_ctxt_switches: 0
+nonvoluntary_ctxt_switches: 0
+")?;
 
 		// Copying content to userspace buffer
 		let content_bytes = content.as_bytes();
