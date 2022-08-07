@@ -7,6 +7,41 @@ For process API references, check the documentation of module `process`.
 
 
 
+Process state diagram
+=====================
+
+A process always has a state. Either:
+- **Running**: The process is running. When in this state, the process may be in fact paused, waiting to be resumed by the scheduler.
+- **Sleeping**: The process is waiting for a resource. In this state, the process is not being executed and needs to be waked up by the kernel.
+- **Stopped**: The process is stopped and needs to be resumed by a signal.
+- **Zombie**: The process has been killed. Most of its resources have been freed and is waiting for the parent process to retrieve its exit code.
+
+Diagram of state transitions for a process:
+
+TODO
+..
+	.. math::
+		
+		\begin{tikzpicture} [node distance = 2cm, on grid]
+
+		\node (q0) [state] {$Running$};
+		\node (q1) [state, above = of q0] {$Sleeping$};
+		\node (q2) [state, right = of q0] {$Stopped$};
+		\node (q3) [state, left = of q0] {$Zombie$};
+
+		\path [-stealth, thick]
+			(q0) edge node {} (q1)
+			(q1) edge node {} (q0)
+			(q0) edge node {} (q2)
+			(q1) edge node {} (q2)
+			(q2) edge node {} (q0)
+			(q0) edge node {} (q3)
+			(q1) edge node {} (q3);
+
+		\end{tikzpicture}
+
+
+
 Virtual memory
 ==============
 
