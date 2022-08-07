@@ -12,7 +12,7 @@ use crate::process::State;
 /// Tries to kill the process with PID `pid` with the signal `sig`.
 /// If `sig` is None, the function doesn't send a signal, but still checks if there is a process
 /// that could be killed.
-fn try_kill(pid: Pid, sig: Option<Signal>) -> Result<(), Errno> {
+fn try_kill(pid: Pid, sig: &Option<Signal>) -> Result<(), Errno> {
 	let curr_mutex = Process::get_current().unwrap();
 	let curr_guard = curr_mutex.lock();
 	let curr_proc = curr_guard.get_mut();
@@ -30,7 +30,7 @@ fn try_kill(pid: Pid, sig: Option<Signal>) -> Result<(), Errno> {
 		}
 
 		if let Some(sig) = sig {
-			target.kill(&sig, false);
+			target.kill(sig, false);
 		}
 
 		Ok(())
@@ -49,20 +49,23 @@ fn try_kill(pid: Pid, sig: Option<Signal>) -> Result<(), Errno> {
 	Ok(())
 }
 
-/// Tries to kill the process group with PGID `pgid`. If `pgid` is zero, the function takes the
-/// current process's group.
+/// Tries to kill a process group.
+/// `pid` TODO doc
 /// `sig` is the signal to send.
 /// If `sig` is None, the function doesn't send a signal, but still checks if there is a process
 /// that could be killed.
-fn try_kill_group(pid: i32, sig: Option<Signal>) -> Result<(), Errno> {
-	let pgid = if pid == 0 {
-		let curr_mutex = Process::get_current().unwrap();
-		let curr_guard = curr_mutex.lock();
-		let curr_proc = curr_guard.get_mut();
+fn try_kill_group(pid: i32, sig: &Option<Signal>) -> Result<(), Errno> {
+	let pgid = match pid {
+		0 => {
+			let curr_mutex = Process::get_current().unwrap();
+			let curr_guard = curr_mutex.lock();
+			let curr_proc = curr_guard.get_mut();
 
-		curr_proc.get_pgid()
-	} else {
-		-pid as Pid
+			curr_proc.get_pgid()
+		},
+
+		i if i < 0 => -pid as Pid,
+		_ => pid as Pid,
 	};
 
 	// Killing process group
@@ -78,12 +81,12 @@ fn try_kill_group(pid: i32, sig: Option<Signal>) -> Result<(), Errno> {
 				continue;
 			}
 
-			try_kill(*pid as _, sig.clone())?;
+			try_kill(*pid as _, sig)?;
 		}
 	}
 
 	// Killing process group owner
-	try_kill(pgid, sig.clone())?;
+	try_kill(pgid, sig)?;
 
 	Ok(())
 }
@@ -94,10 +97,10 @@ fn try_kill_group(pid: i32, sig: Option<Signal>) -> Result<(), Errno> {
 fn send_signal(pid: i32, sig: Option<Signal>) -> Result<(), Errno> {
 	if pid > 0 {
 		// Kill the process with the given PID
-		try_kill(pid as _, sig)
+		try_kill(pid as _, &sig)
 	} else if pid == 0 {
 		// Kill all processes in the current process group
-		try_kill_group(0, sig)
+		try_kill_group(0, &sig)
 	} else if pid == -1 {
 		// Kill all processes for which the current process has the permission
 		let scheduler_guard = process::get_scheduler().lock();
@@ -109,13 +112,13 @@ fn send_signal(pid: i32, sig: Option<Signal>) -> Result<(), Errno> {
 			}
 
 			// TODO Check permission
-			try_kill(*pid, sig.clone())?;
+			try_kill(*pid, &sig)?;
 		}
 
 		Ok(())
 	} else if pid < -1 {
 		// Kill the given process group
-		try_kill_group(-pid as _, sig)
+		try_kill_group(-pid as _, &sig)
 	} else {
 		Err(errno!(ESRCH))
 	}

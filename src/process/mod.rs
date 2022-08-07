@@ -1355,7 +1355,7 @@ impl Process {
 	pub fn kill_group(&mut self, sig: Signal, no_handler: bool) {
 		for pid in self.process_group.iter() {
 			if *pid != self.pid {
-				if let Some(proc_mutex) = Process::get_by_tid(*pid) {
+				if let Some(proc_mutex) = Process::get_by_pid(*pid) {
 					let proc_guard = proc_mutex.lock();
 					let proc = proc_guard.get_mut();
 
