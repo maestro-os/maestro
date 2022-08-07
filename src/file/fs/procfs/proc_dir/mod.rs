@@ -63,6 +63,17 @@ impl ProcDir {
 			},
 		)?;
 
+		// Creating /proc/<pid>/status
+		let node = Status { pid };
+		let inode = fs.add_node(Box::new(node)?)?;
+		entries.insert(
+			String::from(b"status")?,
+			DirEntry {
+				inode,
+				entry_type: FileType::Regular,
+			},
+		)?;
+
 		Ok(Self {
 			pid,
 
