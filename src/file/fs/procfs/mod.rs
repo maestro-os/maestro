@@ -227,7 +227,7 @@ impl Filesystem for ProcFS {
 	}
 
 	fn update_inode(&mut self, _io: &mut dyn IO, _file: &File) -> Result<(), Errno> {
-		Err(errno!(EPERM))
+		Ok(())
 	}
 
 	fn remove_file(

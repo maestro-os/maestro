@@ -43,7 +43,7 @@ fn get_file(
 
 	if flags & open_file::O_CREAT != 0 {
 		util::create_file_at(
-			&proc_guard,
+			proc_guard,
 			follow_links,
 			dirfd,
 			pathname,
@@ -51,7 +51,7 @@ fn get_file(
 			FileContent::Regular,
 		)
 	} else {
-		util::get_file_at(&proc_guard, true, dirfd, pathname, 0)
+		util::get_file_at(proc_guard, true, dirfd, pathname, 0)
 	}
 }
 

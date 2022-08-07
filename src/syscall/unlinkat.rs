@@ -27,7 +27,7 @@ pub fn unlinkat(regs: &Regs) -> Result<i32, Errno> {
 			.get(&mem_space_guard)?
 			.ok_or_else(|| errno!(EFAULT))?;
 
-		let file = util::get_file_at(&guard, false, dirfd, pathname, flags)?;
+		let file = util::get_file_at(guard, false, dirfd, pathname, flags)?;
 
 		(file, uid, gid)
 	};

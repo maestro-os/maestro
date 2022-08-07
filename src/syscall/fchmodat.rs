@@ -27,7 +27,7 @@ pub fn fchmodat(regs: &Regs) -> Result<i32, Errno> {
 		let pathname = pathname
 			.get(&mem_space_guard)?
 			.ok_or_else(|| errno!(EFAULT))?;
-		let file_mutex = util::get_file_at(&guard, true, dirfd, pathname, 0)?;
+		let file_mutex = util::get_file_at(guard, true, dirfd, pathname, 0)?;
 
 		(file_mutex, uid)
 	};

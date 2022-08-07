@@ -94,7 +94,7 @@ pub fn statx(regs: &Regs) -> Result<i32, Errno> {
 		let pathname = pathname
 			.get(&mem_space_guard)?
 			.ok_or_else(|| errno!(EFAULT))?;
-		util::get_file_at(&proc_guard, follow_links, dirfd, pathname, flags)?
+		util::get_file_at(proc_guard, follow_links, dirfd, pathname, flags)?
 	};
 	let file_guard = file_mutex.lock();
 	let file = file_guard.get();

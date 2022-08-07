@@ -125,7 +125,7 @@ fn build_path_from_fd(
 /// `pathname` is the path relative to the parent directory.
 /// `flags` is an integer containing AT_* flags.
 pub fn get_file_at(
-	process_guard: &MutexGuard<Process, false>,
+	process_guard: MutexGuard<Process, false>,
 	follow_links: bool,
 	dirfd: i32,
 	pathname: &[u8],
@@ -156,7 +156,10 @@ pub fn get_file_at(
 		let uid = process.get_euid();
 		let gid = process.get_egid();
 
-		let path = build_path_from_fd(process_guard, dirfd, pathname)?;
+		let path = build_path_from_fd(&process_guard, dirfd, pathname)?;
+
+		// Unlocking to avoid deadlock with procfs
+		drop(process_guard);
 
 		let fcache = fcache::get();
 		let fcache_guard = fcache.lock();
@@ -170,7 +173,7 @@ pub fn get_file_at(
 
 /// TODO doc
 pub fn get_parent_at_with_name(
-	process_guard: &MutexGuard<Process, false>,
+	process_guard: MutexGuard<Process, false>,
 	follow_links: bool,
 	dirfd: i32,
 	pathname: &[u8],
@@ -182,13 +185,16 @@ pub fn get_parent_at_with_name(
 	let mut path = build_path_from_fd(&process_guard, dirfd, pathname)?;
 	let name = path.pop().unwrap();
 
-	let fcache_mutex = fcache::get();
-	let fcache_guard = fcache_mutex.lock();
-	let fcache = fcache_guard.get_mut().as_mut().unwrap();
-
 	let process = process_guard.get();
 	let uid = process.get_euid();
 	let gid = process.get_egid();
+
+	// Unlocking to avoid deadlock with procfs
+	drop(process_guard);
+
+	let fcache_mutex = fcache::get();
+	let fcache_guard = fcache_mutex.lock();
+	let fcache = fcache_guard.get_mut().as_mut().unwrap();
 
 	let parent_mutex = fcache.get_file_from_path(&path, uid, gid, follow_links)?;
 	Ok((parent_mutex, name))
@@ -202,21 +208,21 @@ pub fn get_parent_at_with_name(
 /// `mode` is the permissions of the newly created file.
 /// `content` is the content of the newly created file.
 pub fn create_file_at(
-	process_guard: &MutexGuard<Process, false>,
+	process_guard: MutexGuard<Process, false>,
 	follow_links: bool,
 	dirfd: i32,
 	pathname: &[u8],
 	mode: Mode,
 	content: FileContent,
 ) -> Result<SharedPtr<File>, Errno> {
-	let (parent_mutex, name) =
-		get_parent_at_with_name(process_guard, follow_links, dirfd, pathname)?;
-
 	let process = process_guard.get();
 	let uid = process.get_euid();
 	let gid = process.get_egid();
 	let umask = process.get_umask();
 	let mode = mode & !umask;
+
+	let (parent_mutex, name) =
+		get_parent_at_with_name(process_guard, follow_links, dirfd, pathname)?;
 
 	let fcache_mutex = fcache::get();
 	let fcache_guard = fcache_mutex.lock();
