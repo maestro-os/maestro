@@ -1,4 +1,4 @@
-//! The writev system call allows to write sparse data on a file descriptor in on call.
+//! The `writev` system call allows to write sparse data on a file descriptor.
 
 use core::cmp::min;
 use crate::errno::Errno;
@@ -14,8 +14,12 @@ use crate::process::signal::Signal;
 use crate::util::io::IO;
 use crate::util::ptr::IntSharedPtr;
 
-// TODO Check the operation is atomic on the file
-/// TODO doc
+// TODO Check the operation is atomic on the file?
+/// Writes the given chunks of files to the file.
+/// `mem_space` is the memory space of the current process.
+/// `iov` is the set of chunks.
+/// `iovcnt` is the number of chunks in `iov`.
+/// `open_file` is the file to write to.
 fn write(
 	mem_space: IntSharedPtr<MemSpace>,
 	iov: SyscallSlice<IOVec>,

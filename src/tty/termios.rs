@@ -2,7 +2,7 @@
 
 /// Termcap flags.
 pub type TCFlag = u32;
-/// TODO doc
+/// Type representing a character.
 pub type CC = u8;
 
 /// Size of the array for control characters.

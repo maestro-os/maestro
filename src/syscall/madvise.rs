@@ -1,4 +1,4 @@
-//! TODO doc
+//! The `madvise` system call gives advices to the kernel about the usage of memory in order to allow optimizations.
 
 use crate::errno::Errno;
 use crate::process::regs::Regs;

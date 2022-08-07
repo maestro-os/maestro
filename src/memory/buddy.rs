@@ -230,7 +230,10 @@ pub fn free_kernel(ptr: *const c_void, order: FrameOrder) {
 	free(memory::kern_to_phys(ptr), order);
 }
 
-/// TODO doc
+/// Updates stats on memory usage.
+/// `n` is the delta of allocated chunks:
+/// - Positive value: The number of newly allocated chunks
+/// - Negative value: The absolute value is a the number of newly freed chunks
 pub fn update_stats(n: isize) {
 	let mem_info_guard = stats::MEM_INFO.lock();
 	let mem_info = mem_info_guard.get_mut();

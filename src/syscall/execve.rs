@@ -102,7 +102,14 @@ fn do_exec(program_image: ProgramImage) -> Result<Regs, Errno> {
 }
 
 // TODO clean
-/// TODO doc
+/// Builds a program image.
+/// `file` is the executable file.
+/// `uid` is the real user ID.
+/// `euid` is the effective user ID.
+/// `gid` is the real group ID.
+/// `egid` is the effective group ID.
+/// `argv` is the arguments list.
+/// `envp` is the environment variables list.
 fn build_image(
 	file: SharedPtr<File>,
 	uid: Uid,

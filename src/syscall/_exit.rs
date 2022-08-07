@@ -5,7 +5,7 @@ use crate::process::regs::Regs;
 use crate::process::Process;
 use core::arch::asm;
 
-/// TODO doc
+/// Exits the current process.
 /// `status` is the exit status.
 /// `thread_group`: if true, the function exits the whole process group.
 pub fn do_exit(status: u32, thread_group: bool) -> ! {

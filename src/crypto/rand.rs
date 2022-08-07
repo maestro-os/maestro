@@ -28,6 +28,7 @@ pub trait RandomSource {
 }
 
 /// Structure representing a source of random bytes.
+/// This source is used by the `/dev/random` device file.
 pub struct Random {
 	/// The buffer containing entropy.
 	buff: RingBuffer<u8>,
@@ -59,7 +60,9 @@ impl RandomSource for Random {
 	}
 }
 
-/// TODO doc
+/// Structure representing a source of random bytes.
+/// Contrary to `random`, this source doesn't block when entropy is exhausted.
+/// This source is used by the `/dev/urandom` device file.
 pub struct URandom {
 	/// The buffer containing entropy.
 	buff: RingBuffer<u8>,

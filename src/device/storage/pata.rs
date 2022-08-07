@@ -110,11 +110,11 @@ fn delay(n: u32) {
 	}
 }
 
-/// TODO doc
+/// An enumeration representing port offset types for ATA.
 enum PortOffset {
-	/// TODO doc
+	/// Port offset on general register ports.
 	ATA(u16),
-	/// TODO doc
+	/// Port offset on control register ports.
 	Control(u16),
 }
 

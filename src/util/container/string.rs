@@ -256,9 +256,9 @@ impl fmt::Display for String {
 	}
 }
 
-/// TODO doc
+/// Writer used to turned a format into an allocated string.
 pub struct StringWriter {
-	/// TODO doc
+	/// The final string resulting from the formatting.
 	pub final_str: Option<Result<String, Errno>>,
 }
 
@@ -278,7 +278,7 @@ impl Write for StringWriter {
 	}
 }
 
-/// TODO doc
+/// This function must be used only through the `format` macro.
 pub fn _format(args: fmt::Arguments) -> Result<String, Errno> {
 	let mut w = StringWriter { final_str: None };
 	fmt::write(&mut w, args).unwrap();

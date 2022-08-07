@@ -21,11 +21,11 @@ use crate::util::lock::Mutex;
 use crate::util::ptr::SharedPtr;
 use core::any::Any;
 
-/// TODO doc
+/// This structure is used in the f_fsid field of statfs. It is currently unused.
 #[repr(C)]
 #[derive(Debug, Default)]
 struct FSID {
-	/// TODO doc
+	/// Unused.
 	_val: [i32; 2],
 }
 
