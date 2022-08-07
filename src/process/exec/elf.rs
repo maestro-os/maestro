@@ -1,30 +1,5 @@
 //! This module implements ELF program execution with respects the System V ABI.
 
-use crate::cpu;
-use crate::elf;
-use crate::elf::parser::ELFParser;
-use crate::elf::relocation::Relocation;
-use crate::elf::ELF32ProgramHeader;
-use crate::errno;
-use crate::errno::Errno;
-use crate::file::fcache;
-use crate::file::path::Path;
-use crate::file::File;
-use crate::file::Gid;
-use crate::file::Uid;
-use crate::memory;
-use crate::memory::malloc;
-use crate::memory::vmem;
-use crate::process;
-use crate::process::exec::ExecInfo;
-use crate::process::exec::Executor;
-use crate::process::exec::ProgramImage;
-use crate::process::mem_space::MapConstraint;
-use crate::process::mem_space::MemSpace;
-use crate::util;
-use crate::util::container::vec::Vec;
-use crate::util::io::IO;
-use crate::util::math;
 use core::cmp::max;
 use core::cmp::min;
 use core::ffi::c_void;
@@ -32,6 +7,32 @@ use core::mem::size_of;
 use core::ptr::null;
 use core::slice;
 use core::str;
+use crate::cpu;
+use crate::elf::ELF32ProgramHeader;
+use crate::elf::parser::ELFParser;
+use crate::elf::relocation::Relocation;
+use crate::elf;
+use crate::errno::Errno;
+use crate::errno;
+use crate::file::File;
+use crate::file::Gid;
+use crate::file::Uid;
+use crate::file::fcache;
+use crate::file::path::Path;
+use crate::memory::malloc;
+use crate::memory::vmem;
+use crate::memory;
+use crate::process::exec::ExecInfo;
+use crate::process::exec::Executor;
+use crate::process::exec::ProgramImage;
+use crate::process::mem_space::MapConstraint;
+use crate::process::mem_space::MemSpace;
+use crate::process;
+use crate::util::container::string::String;
+use crate::util::container::vec::Vec;
+use crate::util::io::IO;
+use crate::util::math;
+use crate::util;
 
 /// Used to define the end of the entries list.
 const AT_NULL: i32 = 0;
@@ -659,6 +660,8 @@ impl<'a> Executor<'a> for ELFExecutor<'a> {
 			mem_space.map_stack(process::KERNEL_STACK_SIZE, process::KERNEL_STACK_FLAGS)?;
 
 		Ok(ProgramImage {
+			name: String::from(self.info.argv[0])?,
+
 			mem_space,
 
 			entry_point: load_info.entry_point,

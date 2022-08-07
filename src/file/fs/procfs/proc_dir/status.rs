@@ -59,6 +59,8 @@ impl IO for Status {
 		let proc_guard = proc_mutex.lock();
 		let proc = proc_guard.get();
 
+		let name = proc.get_name();
+
 		let umask = proc.get_umask();
 
 		let state = proc.get_state();
@@ -78,7 +80,7 @@ impl IO for Status {
 
 		// TODO Fill every fields with process's data
 		// Generating content
-		let content = crate::format!("Name: TODO
+		let content = crate::format!("Name: {name}
 Umask: {umask:4o}
 State: {state_char} ({state_name})
 Tgid: 0

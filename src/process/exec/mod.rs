@@ -2,16 +2,17 @@
 
 pub mod elf;
 
+use core::ffi::c_void;
 use crate::errno::Errno;
 use crate::file::File;
-use crate::process::mem_space::MemSpace;
-use crate::process::regs::Regs;
-use crate::process::signal::SignalHandler;
 use crate::process::Gid;
 use crate::process::Process;
 use crate::process::Uid;
+use crate::process::mem_space::MemSpace;
+use crate::process::regs::Regs;
+use crate::process::signal::SignalHandler;
+use crate::util::container::string::String;
 use crate::util::ptr::IntSharedPtr;
-use core::ffi::c_void;
 
 /// Structure storing informations to prepare a program image to be executed.
 pub struct ExecInfo<'a> {
@@ -32,6 +33,9 @@ pub struct ExecInfo<'a> {
 
 /// Structure representing the loaded image of a program.
 pub struct ProgramImage {
+	/// The name of the program.
+	name: String,
+
 	/// The image's memory space.
 	mem_space: MemSpace,
 
@@ -70,6 +74,9 @@ pub fn build_image(file: &mut File, info: ExecInfo) -> Result<ProgramImage, Errn
 
 /// Executes the program image `image` on the process `proc`.
 pub fn exec(proc: &mut Process, image: ProgramImage) -> Result<(), Errno> {
+	proc.set_name(image.name);
+	// TODO Set exec path
+
 	// Duplicate file descriptors
 	proc.duplicate_fds()?; // TODO Undo on fail
 	// Setting the new memory space to the process
