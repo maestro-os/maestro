@@ -314,7 +314,8 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 		.unwrap_or_else(|e| kernel_panic!("Failed to initialize files management! ({})", e));
 	device::default::create()
 		.unwrap_or_else(|e| kernel_panic!("Failed to create default devices! ({})", e));
-	// TODO Create every devices' files
+	device::create_files()
+		.unwrap_or_else(|e| kernel_panic!("Failed to device files! ({})", e));
 
 	println!("Initializing processes...");
 	process::init().unwrap_or_else(|e| kernel_panic!("Failed to init processes! ({})", e));

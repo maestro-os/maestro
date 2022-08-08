@@ -14,23 +14,24 @@ pub mod serial;
 pub mod storage;
 pub mod tty;
 
+use core::ffi::c_void;
+use core::fmt;
 use crate::device::manager::DeviceManager;
 use crate::errno::Errno;
-use crate::file;
-use crate::file::fcache;
-use crate::file::path::Path;
 use crate::file::FileContent;
 use crate::file::Mode;
+use crate::file::fcache;
+use crate::file::path::Path;
+use crate::file;
 use crate::process::mem_space::MemSpace;
+use crate::util::FailableClone;
 use crate::util::boxed::Box;
 use crate::util::container::vec::Vec;
 use crate::util::io::IO;
 use crate::util::lock::Mutex;
+use crate::util::lock::MutexGuard;
 use crate::util::ptr::IntSharedPtr;
 use crate::util::ptr::SharedPtr;
-use crate::util::FailableClone;
-use core::ffi::c_void;
-use core::fmt;
 use keyboard::KeyboardManager;
 use storage::StorageManager;
 
@@ -155,33 +156,38 @@ impl Device {
 	// TODO Put file creation on the userspace side?
 	/// Creates the device file associated with the structure. If the file already exist, the
 	/// function does nothing.
-	pub fn create_file(&mut self) -> Result<(), Errno> {
-		let file_content = match self.type_ {
+	/// The function takes a mutex guard because it needs to unlock the device in order to create the
+	/// file without a deadlock.
+	pub fn create_file(guard: MutexGuard<Device, true>) -> Result<(), Errno> {
+		let dev = guard.get_mut();
+
+		let file_content = match dev.type_ {
 			DeviceType::Block => FileContent::BlockDevice {
-				major: self.major,
-				minor: self.minor,
+				major: dev.major,
+				minor: dev.minor,
 			},
 
 			DeviceType::Char => FileContent::CharDevice {
-				major: self.major,
-				minor: self.minor,
+				major: dev.major,
+				minor: dev.minor,
 			},
 		};
 
-		let path_len = self.path.get_elements_count();
-		let filename = self.path[path_len - 1].failable_clone()?;
+		let path = dev.path.failable_clone()?;
+		let mode = dev.mode;
+		drop(guard);
 
 		let mutex = fcache::get();
 		let guard = mutex.lock();
 		let fcache = guard.get_mut().as_mut().unwrap();
 
 		// Tells whether the file already exists
-		let file_exists = fcache.get_file_from_path(&self.path, 0, 0, true).is_ok();
+		let file_exists = fcache.get_file_from_path(&path, 0, 0, true).is_ok();
 
 		if !file_exists {
 			// Creating the directories in which the device file is located
-			let mut dir_path = self.path.failable_clone()?;
-			dir_path.pop();
+			let mut dir_path = path;
+			let filename = dir_path.pop().unwrap();
 			file::util::create_dirs(fcache, &dir_path)?;
 
 			// Getting the parent directory
@@ -191,7 +197,7 @@ impl Device {
 
 			// TODO Cancel directories creation on fail
 			// Creating the device file
-			fcache.create_file(parent, filename, 0, 0, self.mode, file_content)?;
+			fcache.create_file(parent, filename, 0, 0, mode, file_content)?;
 		}
 
 		Ok(())
@@ -349,6 +355,25 @@ pub fn init() -> Result<(), Errno> {
 		let storage_manager = unsafe { &mut *(storage_manager as *mut _ as *mut StorageManager) };
 
 		storage_manager.test();
+	}
+
+	Ok(())
+}
+
+/// Creates the files of every devices if they don't exist.
+pub fn create_files() -> Result<(), Errno> {
+	// Creating block devices files
+	let block_guard = BLOCK_DEVICES.lock();
+	let block_devs = block_guard.get_mut();
+	for dev_mutex in block_devs.iter() {
+		Device::create_file(dev_mutex.lock())?;
+	}
+
+	// Creating char devices files
+	let char_guard = CHAR_DEVICES.lock();
+	let char_devs = char_guard.get_mut();
+	for dev_mutex in char_devs.iter() {
+		Device::create_file(dev_mutex.lock())?;
 	}
 
 	Ok(())

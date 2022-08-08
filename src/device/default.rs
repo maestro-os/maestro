@@ -1,23 +1,23 @@
 //! This module implements default devices.
 
-use super::id;
-use super::DeviceType;
-use crate::crypto::rand;
-use crate::device;
-use crate::device::tty::TTYDeviceHandle;
-use crate::device::Device;
-use crate::device::DeviceHandle;
-use crate::errno;
-use crate::errno::Errno;
-use crate::file::path::Path;
-use crate::logger;
-use crate::process::mem_space::MemSpace;
-use crate::util::io;
-use crate::util::io::IO;
-use crate::util::ptr::IntSharedPtr;
 use core::cmp::min;
 use core::ffi::c_void;
 use core::mem::ManuallyDrop;
+use crate::crypto::rand;
+use crate::device::Device;
+use crate::device::DeviceHandle;
+use crate::device::tty::TTYDeviceHandle;
+use crate::device;
+use crate::errno::Errno;
+use crate::errno;
+use crate::file::path::Path;
+use crate::logger;
+use crate::process::mem_space::MemSpace;
+use crate::util::io::IO;
+use crate::util::io;
+use crate::util::ptr::IntSharedPtr;
+use super::DeviceType;
+use super::id;
 
 /// Structure representing a device which does nothing.
 pub struct NullDeviceHandle {}
@@ -237,7 +237,7 @@ pub fn create() -> Result<(), Errno> {
 	let _first_major = ManuallyDrop::new(id::alloc_major(DeviceType::Char, Some(1))?);
 
 	let null_path = Path::from_str(b"/dev/null", false)?;
-	let mut null_device = Device::new(
+	let null_device = Device::new(
 		1,
 		3,
 		null_path,
@@ -245,11 +245,10 @@ pub fn create() -> Result<(), Errno> {
 		DeviceType::Char,
 		NullDeviceHandle {},
 	)?;
-	null_device.create_file()?; // TODO remove?
 	device::register_device(null_device)?;
 
 	let zero_path = Path::from_str(b"/dev/zero", false)?;
-	let mut zero_device = Device::new(
+	let zero_device = Device::new(
 		1,
 		5,
 		zero_path,
@@ -257,11 +256,10 @@ pub fn create() -> Result<(), Errno> {
 		DeviceType::Char,
 		ZeroDeviceHandle {},
 	)?;
-	zero_device.create_file()?; // TODO remove?
 	device::register_device(zero_device)?;
 
 	let random_path = Path::from_str(b"/dev/random", false)?;
-	let mut random_device = Device::new(
+	let random_device = Device::new(
 		1,
 		8,
 		random_path,
@@ -269,11 +267,10 @@ pub fn create() -> Result<(), Errno> {
 		DeviceType::Char,
 		RandomDeviceHandle {},
 	)?;
-	random_device.create_file()?; // TODO remove?
 	device::register_device(random_device)?;
 
 	let urandom_path = Path::from_str(b"/dev/urandom", false)?;
-	let mut urandom_device = Device::new(
+	let urandom_device = Device::new(
 		1,
 		9,
 		urandom_path,
@@ -281,11 +278,10 @@ pub fn create() -> Result<(), Errno> {
 		DeviceType::Char,
 		URandomDeviceHandle {},
 	)?;
-	urandom_device.create_file()?; // TODO remove?
 	device::register_device(urandom_device)?;
 
 	let kmsg_path = Path::from_str(b"/dev/kmsg", false)?;
-	let mut kmsg_device = Device::new(
+	let kmsg_device = Device::new(
 		1,
 		11,
 		kmsg_path,
@@ -293,13 +289,12 @@ pub fn create() -> Result<(), Errno> {
 		DeviceType::Char,
 		KMsgDeviceHandle {},
 	)?;
-	kmsg_device.create_file()?; // TODO remove?
 	device::register_device(kmsg_device)?;
 
 	let _fifth_major = ManuallyDrop::new(id::alloc_major(DeviceType::Char, Some(5))?);
 
 	let current_tty_path = Path::from_str(b"/dev/tty", false)?;
-	let mut current_tty_device = Device::new(
+	let current_tty_device = Device::new(
 		5,
 		0,
 		current_tty_path,
@@ -307,7 +302,6 @@ pub fn create() -> Result<(), Errno> {
 		DeviceType::Char,
 		TTYDeviceHandle::new(None),
 	)?;
-	current_tty_device.create_file()?; // TODO remove?
 	device::register_device(current_tty_device)?;
 
 	Ok(())

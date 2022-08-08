@@ -42,24 +42,11 @@ impl<T> Testable for T
 where
 	T: Fn(),
 {
-	// TODO Use a special format on serial to be parsed by host?
 	fn run(&self) {
-		//let serial_guard = serial::get(serial::COM1).lock();
-
 		let name = type_name::<T>();
 		crate::print!("test {} ... ", name);
 
 		self();
-
-		//let status = "ok"; // TODO On panic, retrieve message and print on serial
-		//if let Some(s) = serial {
-		//	// TODO Add an additional message on fail
-		//	s.write(b"{\"name\": \"");
-		//	s.write(name.as_bytes());
-		//	s.write(b"\", \"status\": \"");
-		//	s.write(status.as_bytes());
-		//	s.write(b"\"}\n");
-		//}
 
 		crate::println!("ok");
 	}
