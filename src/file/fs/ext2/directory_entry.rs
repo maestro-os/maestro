@@ -109,7 +109,7 @@ impl DirectoryEntry {
 
 	/// Returns the length the entry's name.
 	/// `superblock` is the filesystem's superblock.
-	fn get_name_length(&self, superblock: &Superblock) -> usize {
+	pub fn get_name_length(&self, superblock: &Superblock) -> usize {
 		if superblock.required_features & super::REQUIRED_FEATURE_DIRECTORY_TYPE == 0 {
 			((self.name_length_hi as usize) << 8) | (self.name_length_lo as usize)
 		} else {
@@ -175,27 +175,30 @@ impl DirectoryEntry {
 		self.inode == 0
 	}
 
-	// TODO Preserve alignments of entries at 4 bytes
-	/// Splits the current entry into two entries and return the newly created entry.
-	/// `new_size` is the size of the current entry.
-	/// If the entry is not free, the behaviour is undefined.
-	pub fn split(&mut self, new_size: u16) -> Result<Box<Self>, Errno> {
-		debug_assert!(self.is_free());
+	/// Tells whether the entry may be split to create a second entry with the given size
+	/// `new_size`.
+	pub fn may_split(&self, superblock: &Superblock, new_size: u16) -> bool {
+		if self.is_free() {
+			self.total_size > 8 + new_size
+		} else {
+			self.total_size - self.get_name_length(superblock) as u16 > 8 + new_size
+		}
+	}
 
-		let new_entry_size = self.total_size - new_size;
-		let new_entry = DirectoryEntry::new_free(new_entry_size)?;
-		self.total_size = new_size;
+	/// Splits the current entry into two entries and return the newly created entry.
+	/// `new_size` is the size of the new entry.
+	pub fn split(&mut self, new_size: u16) -> Result<Box<Self>, Errno> {
+		let curr_entry_new_size = self.total_size - new_size;
+		let new_entry = DirectoryEntry::new_free(new_size)?;
+		self.total_size = curr_entry_new_size;
+
 		Ok(new_entry)
 	}
 
 	/// Merges the current entry with the given entry `entry`.
 	/// If both entries are not on the same page or if `entry` is not located right after the
 	/// current entry, the behaviour is undefined.
-	/// If one the entry is not free, the behaviour is undefined.
 	pub fn merge(&mut self, entry: Box<Self>) {
-		debug_assert!(self.is_free());
-		debug_assert!(entry.is_free());
-
 		self.total_size += entry.total_size;
 	}
 }

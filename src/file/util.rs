@@ -41,11 +41,11 @@ pub fn create_dirs(fcache: &mut FCache, path: &Path) -> Result<usize, Errno> {
 				0o755,
 				FileContent::Directory(HashMap::new()),
 			) {
+				Ok(_) => created_count += 1,
 				Err(e) if e.as_int() != errno::EEXIST => return Err(e),
-				_ => {}
-			}
 
-			created_count += 1;
+				_ => {},
+			}
 		}
 
 		p.push(name)?;

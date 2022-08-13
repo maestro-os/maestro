@@ -961,13 +961,14 @@ impl Ext2INode {
 		Ok(None)
 	}
 
-	/// Looks for a free entry in the inode.
+	/// Looks for a splittable entry in the inode which is large enough to fit another entry with
+	/// the given size.
 	/// `superblock` is the filesystem's superblock.
 	/// `io` is the I/O interface.
-	/// `min_size` is the minimum size of the entry in bytes.
+	/// `min_size` is the minimum size of the new entry in bytes.
 	/// If the function finds an entry, it returns its offset. Else, the function returns None.
 	/// If the file is not a directory, the function returns None.
-	fn get_free_entry(
+	fn get_splittable_entry(
 		&self,
 		superblock: &Superblock,
 		io: &mut dyn IO,
@@ -977,7 +978,7 @@ impl Ext2INode {
 			for res in iter {
 				let (off, e) = res?;
 
-				if e.is_free() && e.get_total_size() >= min_size {
+				if e.may_split(superblock, min_size) {
 					return Ok(Some(off));
 				}
 			}
@@ -1003,34 +1004,43 @@ impl Ext2INode {
 		name: &[u8],
 		file_type: FileType,
 	) -> Result<(), Errno> {
+		// If the name is too long, error
 		if name.len() > super::MAX_NAME_LEN {
 			return Err(errno!(ENAMETOOLONG));
 		}
 
-		let entry_size = 8 + name.len() as u16;
+		let mut entry_size = 8 + name.len() as u16;
+		// Ensuring alignment of entries
+		if entry_size % 4 != 0 {
+			entry_size += entry_size % 4;
+		}
+
+		// If the entry is too large, error
 		let blk_size = superblock.get_block_size();
 		if entry_size as u32 > blk_size {
 			return Err(errno!(ENAMETOOLONG));
 		}
 
-		if let Some(free_entry_off) = self.get_free_entry(superblock, io, entry_size)? {
-			let mut free_entry = self.read_dirent(superblock, io, free_entry_off)?;
-			let split = free_entry.get_total_size() > entry_size + 8;
+		if let Some(entry_off) = self.get_splittable_entry(superblock, io, entry_size)? {
+			let mut entry = self.read_dirent(superblock, io, entry_off)?;
 
-			if split {
-				let new_entry = free_entry.split(entry_size)?;
-				self.write_dirent(
-					superblock,
-					io,
-					&new_entry,
-					free_entry_off + entry_size as u64,
-				)?;
-			}
+			let mut new_entry = entry.split(entry_size)?;
+			self.write_dirent(
+				superblock,
+				io,
+				&entry,
+				entry_off,
+			)?;
 
-			free_entry.set_inode(entry_inode);
-			free_entry.set_name(superblock, name);
-			free_entry.set_type(superblock, file_type);
-			self.write_dirent(superblock, io, &free_entry, free_entry_off)
+			new_entry.set_inode(entry_inode);
+			new_entry.set_name(superblock, name);
+			new_entry.set_type(superblock, file_type);
+			self.write_dirent(
+				superblock,
+				io,
+				&new_entry,
+				entry_off + entry.get_total_size() as u64,
+			)
 		} else {
 			let entry =
 				DirectoryEntry::new(superblock, entry_inode, blk_size as _, file_type, name)?;
@@ -1259,9 +1269,11 @@ impl<'n, 's, 'i> Iterator for DirentIterator<'n, 's, 'i> {
 
 		// The offset of the entry in the current block
 		let inner_off = (self.off % blk_size) as usize;
-		// Safe because the data is block-aligned and an entry cannot be larger than the
-		// size of a block
-		let entry_result = unsafe { DirectoryEntry::from(&self.buff.as_slice()[inner_off..len]) };
+		// Safe because the data is block-aligned and an entry cannot be larger than the size of a
+		// block
+		let entry_result = unsafe {
+			DirectoryEntry::from(&self.buff.as_slice()[inner_off..(inner_off + len)])
+		};
 		let entry = match entry_result {
 			Ok(entry) => entry,
 			Err(e) => return Some(Err(e)),
