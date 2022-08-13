@@ -551,6 +551,7 @@ impl Process {
 			termsig: 0,
 		};
 
+		// FIXME On fail, the kernel will panic since the function is dropping the init process
 		// Creating STDIN, STDOUT and STDERR
 		{
 			let mutex = fcache::get();

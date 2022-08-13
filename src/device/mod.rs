@@ -362,18 +362,40 @@ pub fn init() -> Result<(), Errno> {
 
 /// Creates the files of every devices if they don't exist.
 pub fn create_files() -> Result<(), Errno> {
+	// Containers are locked and unlock at each iterations to avoid a deadlock
+
 	// Creating block devices files
-	let block_guard = BLOCK_DEVICES.lock();
-	let block_devs = block_guard.get_mut();
-	for dev_mutex in block_devs.iter() {
-		Device::create_file(dev_mutex.lock())?;
+	let mut i = 0;
+	loop {
+		let devs_guard = BLOCK_DEVICES.lock();
+		let devs = devs_guard.get_mut();
+		if i >= devs.len() {
+			break;
+		}
+
+		let dev_mutex = devs[i].clone();
+		let dev_guard = dev_mutex.lock();
+		drop(devs_guard);
+
+		Device::create_file(dev_guard)?;
+		i += 1;
 	}
 
 	// Creating char devices files
-	let char_guard = CHAR_DEVICES.lock();
-	let char_devs = char_guard.get_mut();
-	for dev_mutex in char_devs.iter() {
-		Device::create_file(dev_mutex.lock())?;
+	let mut i = 0;
+	loop {
+		let devs_guard = CHAR_DEVICES.lock();
+		let devs = devs_guard.get_mut();
+		if i >= devs.len() {
+			break;
+		}
+
+		let dev_mutex = devs[i].clone();
+		let dev_guard = dev_mutex.lock();
+		drop(devs_guard);
+
+		Device::create_file(dev_guard)?;
+		i += 1;
 	}
 
 	Ok(())
