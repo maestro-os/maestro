@@ -1272,7 +1272,7 @@ impl<'n, 's, 'i> Iterator for DirentIterator<'n, 's, 'i> {
 		// Safe because the data is block-aligned and an entry cannot be larger than the size of a
 		// block
 		let entry_result = unsafe {
-			DirectoryEntry::from(&self.buff.as_slice()[inner_off..(inner_off + len)])
+			DirectoryEntry::from(&self.buff.as_slice()[inner_off..])
 		};
 		let entry = match entry_result {
 			Ok(entry) => entry,
