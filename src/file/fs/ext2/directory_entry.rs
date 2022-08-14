@@ -179,9 +179,9 @@ impl DirectoryEntry {
 	/// `new_size`.
 	pub fn may_split(&self, superblock: &Superblock, new_size: u16) -> bool {
 		if self.is_free() {
-			self.total_size > 8 + new_size
+			self.total_size > 16 + new_size
 		} else {
-			self.total_size - self.get_name_length(superblock) as u16 > 8 + new_size
+			self.total_size - self.get_name_length(superblock) as u16 > 16 + new_size
 		}
 	}
 

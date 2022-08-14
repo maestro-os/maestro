@@ -1012,7 +1012,7 @@ impl Ext2INode {
 		let mut entry_size = 8 + name.len() as u16;
 		// Ensuring alignment of entries
 		if entry_size % 4 != 0 {
-			entry_size += entry_size % 4;
+			entry_size += 4 - (entry_size % 4);
 		}
 
 		// If the entry is too large, error
