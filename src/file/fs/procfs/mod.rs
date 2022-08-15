@@ -1,17 +1,12 @@
 //! The procfs is a virtual filesystem which provides informations about processes.
 
-pub mod mem_info;
-pub mod proc_dir;
-pub mod self_link;
+mod mem_info;
+mod proc_dir;
+mod self_link;
+mod sys_dir;
 
-use super::kernfs;
-use super::kernfs::node::DummyKernFSNode;
-use super::kernfs::KernFS;
-use super::Filesystem;
-use super::FilesystemType;
+use core::any::Any;
 use crate::errno::Errno;
-use crate::file::fs::Statfs;
-use crate::file::path::Path;
 use crate::file::DirEntry;
 use crate::file::File;
 use crate::file::FileContent;
@@ -20,18 +15,25 @@ use crate::file::Gid;
 use crate::file::INode;
 use crate::file::Mode;
 use crate::file::Uid;
-use crate::process;
+use crate::file::fs::Statfs;
+use crate::file::path::Path;
 use crate::process::oom;
 use crate::process::pid::Pid;
+use crate::process;
 use crate::util::boxed::Box;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
 use crate::util::io::IO;
 use crate::util::ptr::SharedPtr;
-use core::any::Any;
 use mem_info::MemInfo;
 use proc_dir::ProcDir;
 use self_link::SelfNode;
+use super::Filesystem;
+use super::FilesystemType;
+use super::kernfs::KernFS;
+use super::kernfs::node::DummyKernFSNode;
+use super::kernfs;
+use sys_dir::SysDir;
 
 /// Structure representing the procfs.
 /// On the inside, the procfs works using a kernfs.
@@ -54,48 +56,59 @@ impl ProcFS {
 			procs: HashMap::new(),
 		};
 
-		let mut root_entries = HashMap::new();
-
-		// Creating /proc/self
-		let self_node = SelfNode {};
-		let self_inode = fs.fs.add_node(Box::new(self_node)?)?;
-		root_entries.insert(
-			String::from(b"self")?,
-			DirEntry {
-				inode: self_inode,
-				entry_type: FileType::Link,
-			},
-		)?;
+		let mut entries = HashMap::new();
 
 		// Creating /proc/meminfo
-		let meminfo_node = MemInfo {};
-		let meminfo_inode = fs.fs.add_node(Box::new(meminfo_node)?)?;
-		root_entries.insert(
+		let node = MemInfo {};
+		let inode = fs.fs.add_node(Box::new(node)?)?;
+		entries.insert(
 			String::from(b"meminfo")?,
 			DirEntry {
-				inode: meminfo_inode,
+				inode: inode,
 				entry_type: FileType::Regular,
 			},
 		)?;
 
 		// Creating /proc/mounts
-		let mount_node = DummyKernFSNode::new(
+		let node = DummyKernFSNode::new(
 			0o777,
 			0,
 			0,
 			FileContent::Link(String::from(b"self/mounts")?),
 		);
-		let mount_inode = fs.fs.add_node(Box::new(mount_node)?)?;
-		root_entries.insert(
+		let inode = fs.fs.add_node(Box::new(node)?)?;
+		entries.insert(
 			String::from(b"mounts")?,
 			DirEntry {
-				inode: mount_inode,
+				inode: inode,
 				entry_type: FileType::Link,
 			},
 		)?;
 
+		// Creating /proc/self
+		let node = SelfNode {};
+		let inode = fs.fs.add_node(Box::new(node)?)?;
+		entries.insert(
+			String::from(b"self")?,
+			DirEntry {
+				inode: inode,
+				entry_type: FileType::Link,
+			},
+		)?;
+
+		// Creating /proc/sys
+		let node = SysDir::new(&mut fs.fs)?;
+		let inode = fs.fs.add_node(Box::new(node)?)?;
+		entries.insert(
+			String::from(b"sys")?,
+			DirEntry {
+				inode: inode,
+				entry_type: FileType::Directory,
+			},
+		)?;
+
 		// Adding the root node
-		let root_node = DummyKernFSNode::new(0o555, 0, 0, FileContent::Directory(root_entries));
+		let root_node = DummyKernFSNode::new(0o555, 0, 0, FileContent::Directory(entries));
 		fs.fs.set_root(Box::new(root_node)?)?;
 
 		// Adding existing processes
