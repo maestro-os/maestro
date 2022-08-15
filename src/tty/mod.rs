@@ -401,8 +401,10 @@ impl TTY {
 			b'\t' => self.cursor_forward(get_tab_size(self.cursor_x), 0),
 			b'\n' => self.newline(1),
 
+			// Form Feed (^L)
 			0x0c => {
 				// TODO Move printer to a top of page?
+				self.clear();
 			}
 
 			b'\r' => self.cursor_x = 0,

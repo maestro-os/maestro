@@ -92,7 +92,7 @@ pub fn copy_file(
 
 		// Copy the directory recursively
 		FileContent::Directory(entries) => {
-			let _new_mutex = fcache.create_file(
+			let new_mutex = fcache.create_file(
 				new_parent,
 				new_name,
 				uid,
@@ -100,10 +100,22 @@ pub fn copy_file(
 				mode,
 				FileContent::Directory(HashMap::new()),
 			)?;
+			let new_guard = new_mutex.lock();
+			let new = new_guard.get_mut();
 
-			for (_name, _) in entries.iter() {
-				// TODO
-				todo!();
+			// TODO On fail, undo
+			for (name, _) in entries.iter() {
+				let old_mutex = fcache.get_file_from_parent(
+					new,
+					name.failable_clone()?,
+					uid,
+					gid,
+					false
+				)?;
+				let old_guard = old_mutex.lock();
+				let old = old_guard.get_mut();
+
+				copy_file(fcache, old, new, name.failable_clone()?)?;
 			}
 		}
 
@@ -117,7 +129,7 @@ pub fn copy_file(
 				mode,
 				content.failable_clone()?,
 			)?;
-		}
+		},
 	}
 
 	Ok(())

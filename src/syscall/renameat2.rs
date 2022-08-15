@@ -65,12 +65,8 @@ pub fn renameat2(regs: &Regs) -> Result<i32, Errno> {
 		fcache.create_link(old, new_parent, new_name)?;
 
 		// If directory, update the `..` entry
-		match old.get_file_content() {
-			FileContent::Directory(_entries) => {
-				// TODO
-			}
-
-			_ => {}
+		if let FileContent::Directory(_entries) = old.get_file_content() {
+			// TODO
 		}
 
 		fcache.remove_file(old, uid, gid)?;
