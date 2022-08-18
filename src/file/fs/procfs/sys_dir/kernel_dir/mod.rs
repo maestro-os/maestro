@@ -1,14 +1,21 @@
 //! TODO doc
 
+mod osrelease;
+
 use crate::errno::Errno;
+use crate::file::DirEntry;
 use crate::file::FileContent;
+use crate::file::FileType;
 use crate::file::Gid;
 use crate::file::Mode;
 use crate::file::Uid;
 use crate::file::fs::kernfs::node::KernFSNode;
+use crate::util::boxed::Box;
 use crate::util::container::hashmap::HashMap;
+use crate::util::container::string::String;
 use crate::util::io::IO;
 use crate::util::ptr::cow::Cow;
+use osrelease::OsRelease;
 use super::kernfs::KernFS;
 
 // TODO Handle dropping
@@ -21,23 +28,22 @@ pub struct KernelDir {
 impl KernelDir {
 	/// Creates a new instance.
 	/// The function adds every nodes to the given kernfs `fs`.
-	pub fn new(_fs: &mut KernFS) -> Result<Self, Errno> {
-		let entries = HashMap::new();
+	pub fn new(fs: &mut KernFS) -> Result<Self, Errno> {
+		let mut entries = HashMap::new();
 
 		// TODO Add every nodes
 		// TODO On fail, remove previously inserted nodes
 
-		// TODO
-		//// Creating /proc/sys/kernel
-		//let node = KernelDir { pid };
-		//let inode = fs.add_node(Box::new(node)?)?;
-		//entries.insert(
-		//	String::from(b"kernel")?,
-		//	DirEntry {
-		//		inode,
-		//		entry_type: FileType::Directory,
-		//	},
-		//)?;
+		// Creating /proc/sys/kernel
+		let node = OsRelease {};
+		let inode = fs.add_node(Box::new(node)?)?;
+		entries.insert(
+			String::from(b"osrelease")?,
+			DirEntry {
+				inode,
+				entry_type: FileType::Regular,
+			},
+		)?;
 
 		Ok(Self {
 			content: FileContent::Directory(entries),
