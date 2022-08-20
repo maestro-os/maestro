@@ -224,7 +224,6 @@ pub unsafe extern "C" fn unlock_callbacks(id: usize) {
 /// `ring` tells the ring at which the code was running.
 #[no_mangle]
 pub extern "C" fn event_handler(id: u32, code: u32, ring: u32, regs: &Regs) {
-	//crate::println!("int: {} {} {} {}", id, code, ring, regs); // TODO rm
 	let action = {
 		let guard = unsafe { &mut CALLBACKS.assume_init_mut()[id as usize] }.lock();
 		let callbacks = guard.get_mut();
@@ -247,8 +246,6 @@ pub extern "C" fn event_handler(id: u32, code: u32, ring: u32, regs: &Regs) {
 
 		last_action
 	};
-
-	//crate::println!("int end"); // TODO rm
 
 	match action {
 		InterruptResultAction::Resume => {}

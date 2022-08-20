@@ -38,6 +38,8 @@ kernel_loop:
  */
 kernel_loop_reset:
 	mov 4(%esp), %esp
+	mov $0, %ebp
+
 	jmp kernel_loop
 
 /*
