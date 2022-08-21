@@ -42,19 +42,19 @@ struct Node<K, V> {
 	value: V,
 }
 
-/// Deletes the node at the given pointer, except the value field which is returned.
-unsafe fn drop_node<K, V>(node: *mut Node<K, V>) -> V {
+/// Deletes the node at the given pointer, except the key and value fields which are returned.
+unsafe fn drop_node<K, V>(node: *mut Node<K, V>) -> (K, V) {
 	let n = &mut *node;
 	drop_in_place(&mut n.parent);
 	drop_in_place(&mut n.left);
 	drop_in_place(&mut n.right);
 	drop_in_place(&mut n.color);
-	drop_in_place(&mut n.key);
+	let key = ptr::read(&n.key);
 	let val = ptr::read(&n.value);
 
 	malloc::free(node as _);
 
-	val
+	(key, val)
 }
 
 /// Unwraps the given pointer option into a reference option.
@@ -825,9 +825,10 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 				node.unlink();
 			}
 
-			unsafe {
+			let (_, val) = unsafe {
 				drop_node(node)
-			}
+			};
+			val
 		} else if node.get_left().is_none() || node.get_right().is_none() {
 			let replacement = replacement.unwrap();
 
@@ -842,7 +843,7 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 				}
 
 				node.unlink();
-				let val = unsafe {
+				let (_, val) = unsafe {
 					drop_node(node)
 				};
 
@@ -855,17 +856,20 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 
 				val
 			} else {
-				// The node is the root
-				node.key = unsafe { ptr::read(&replacement.key as _) };
-				node.value = unsafe { ptr::read(&replacement.value as _) };
+				replacement.unlink();
+				let (key, value) = unsafe {
+					drop_node(replacement)
+				};
 
+				// The node is the root
 				node.left = None;
 				node.right = None;
 
-				replacement.unlink();
-				unsafe {
-					drop_node(replacement)
-				}
+				node.key = key;
+				let mut val = value;
+				mem::swap(&mut val, &mut node.value);
+
+				val
 			}
 		} else {
 			let replacement = replacement.unwrap();
