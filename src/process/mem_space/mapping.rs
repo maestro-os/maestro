@@ -93,7 +93,7 @@ impl MemMapping {
 			file,
 			off,
 
-			unmap_on_drop: false,
+			unmap_on_drop: true,
 
 			vmem,
 		}
