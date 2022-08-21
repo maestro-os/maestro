@@ -269,6 +269,13 @@ impl IO for OpenFile {
 		let len = match &mut self.target {
 			FDTarget::File(f) => {
 				let guard = f.lock();
+				let file = guard.get_mut();
+
+				// Appending if enabled
+				if self.flags & O_APPEND != 0 {
+					self.curr_off = file.get_size();
+				}
+
 				guard.get_mut().write(self.curr_off, buf)
 			}
 
