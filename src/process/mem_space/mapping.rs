@@ -197,6 +197,7 @@ impl MemMapping {
 						self.unmap()?;
 						return Err(errno);
 					}
+
 					ptr.unwrap()
 				} else {
 					default_page
@@ -206,7 +207,9 @@ impl MemMapping {
 			let flags = self.get_vmem_flags(nolazy, i);
 
 			if let Err(errno) = vmem.map(phys_ptr, virt_ptr, flags) {
+				buddy::free(phys_ptr, 0);
 				self.unmap()?;
+
 				return Err(errno);
 			}
 		}
