@@ -9,7 +9,6 @@ use core::cmp::Ordering;
 use core::fmt;
 use core::mem;
 use core::mem::size_of;
-use core::mem::ManuallyDrop;
 use core::ptr;
 use core::ptr::drop_in_place;
 use core::ptr::NonNull;
@@ -41,6 +40,21 @@ struct Node<K, V> {
 	key: K,
 	/// The node's value.
 	value: V,
+}
+
+/// Deletes the node at the given pointer, except the value field which is returned.
+unsafe fn drop_node<K, V>(node: *mut Node<K, V>) -> V {
+	let n = &mut *node;
+	drop_in_place(&mut n.parent);
+	drop_in_place(&mut n.left);
+	drop_in_place(&mut n.right);
+	drop_in_place(&mut n.color);
+	drop_in_place(&mut n.key);
+	let val = ptr::read(&n.value);
+
+	malloc::free(node as _);
+
+	val
 }
 
 /// Unwraps the given pointer option into a reference option.
@@ -686,19 +700,6 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 		Ok(&mut n.value)
 	}
 
-	/// Deletes the node at the given pointer.
-	unsafe fn drop_node(node: &mut Node<K, V>) {
-		let ptr = node as *mut _ as *mut _;
-		let mut n = ManuallyDrop::new(node);
-		drop_in_place(&mut n.parent);
-		drop_in_place(&mut n.left);
-		drop_in_place(&mut n.right);
-		drop_in_place(&mut n.color);
-		drop_in_place(&mut n.key);
-
-		malloc::free(ptr);
-	}
-
 	/// Returns the leftmost node in the tree.
 	fn get_leftmost_node(node: &'static mut Node<K, V>) -> &'static mut Node<K, V> {
 		let mut n = node;
@@ -778,8 +779,9 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 	}
 
 	/// Removes the given node `node` from the tree.
-	fn remove_node(&mut self, node: &mut Node<K, V>) {
-		let mut replacement = {
+	/// The function returns the value of the removed node.
+	fn remove_node(&mut self, node: &mut Node<K, V>) -> V {
+		let replacement = {
 			let left = node.get_left_mut();
 			let right = node.get_right_mut();
 
@@ -824,10 +826,10 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 			}
 
 			unsafe {
-				Self::drop_node(node);
+				drop_node(node)
 			}
 		} else if node.get_left().is_none() || node.get_right().is_none() {
-			let replacement = replacement.as_mut().unwrap();
+			let replacement = replacement.unwrap();
 
 			if let Some(parent) = node.get_parent_mut() {
 				replacement.parent = None;
@@ -840,9 +842,9 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 				}
 
 				node.unlink();
-				unsafe {
-					Self::drop_node(node);
-				}
+				let val = unsafe {
+					drop_node(node)
+				};
 
 				if both_black {
 					self.remove_fix_double_black(replacement);
@@ -850,6 +852,8 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 				} else {
 					replacement.color = NodeColor::Black;
 				}
+
+				val
 			} else {
 				// The node is the root
 				node.key = unsafe { ptr::read(&replacement.key as _) };
@@ -860,14 +864,15 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 
 				replacement.unlink();
 				unsafe {
-					Self::drop_node(replacement);
+					drop_node(replacement)
 				}
 			}
 		} else {
-			let replacement = replacement.as_mut().unwrap();
+			let replacement = replacement.unwrap();
 			mem::swap(&mut node.key, &mut replacement.key);
 			mem::swap(&mut node.value, &mut replacement.value);
-			self.remove_node(replacement);
+
+			self.remove_node(replacement)
 		}
 	}
 
@@ -877,9 +882,7 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 	/// If the key exists, the function returns the value of the removed node.
 	pub fn remove(&mut self, key: K) -> Option<V> {
 		let node = self.get_mut_node(&key)?;
-		let value = unsafe { ptr::read(&node.value) };
-
-		self.remove_node(node);
+		let value = self.remove_node(node);
 
 		//#[cfg(config_debug_debug)]
 		//self.check();
@@ -1209,8 +1212,7 @@ impl<K: 'static + Ord, V> Drop for Map<K, V> {
 			Self::foreach_nodes_mut(
 				unsafe { n.as_mut() },
 				&mut |n| unsafe {
-					drop_in_place(&mut n.value);
-					malloc::free(n as *mut _ as *mut _);
+					drop_node(n);
 				},
 				TraversalType::PostOrder,
 			);

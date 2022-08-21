@@ -308,12 +308,13 @@ impl Scheduler {
 					stack::switch(Some(tmp_stack), move || {
 						let (resume, syscalling, regs) = {
 							let next_proc_guard = next_proc.1.lock();
-							let next_proc = next_proc_guard.get_mut();
+							let proc = next_proc_guard.get_mut();
 
-							let resume = next_proc.prepare_switch(); // FIXME Must be done on tmp stack
+							let resume = proc.prepare_switch(); // FIXME Must be done on tmp stack
 
-							(resume, next_proc.is_syscalling(), next_proc.regs)
+							(resume, proc.is_syscalling(), proc.regs)
 						};
+						drop(next_proc);
 
 						if !resume {
 							return;
