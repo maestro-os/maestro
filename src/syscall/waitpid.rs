@@ -1,14 +1,16 @@
 //! The `waitpid` system call allows to wait for an event from a child process.
 
-use crate::errno;
 use crate::errno::Errno;
-use crate::process;
+use crate::errno;
+use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::pid::Pid;
 use crate::process::regs::Regs;
 use crate::process::rusage::RUsage;
-use crate::process::Process;
-use crate::process::State;
+use crate::process::state::State;
+use crate::process::state;
+use crate::process;
+use crate::util::boxed::Box;
 
 /// Wait flag. Returns immediately if no child has exited.
 pub const WNOHANG: i32 = 1;
@@ -68,7 +70,7 @@ fn get_wstatus(proc: &Process) -> i32 {
 	let termsig = proc.get_termsig();
 
 	let wstatus = match proc.get_state() {
-		State::Running | State::Sleeping => 0xffff,
+		State::Running | State::Sleeping(..) => 0xffff,
 		State::Stopped => ((termsig as i32 & 0xff) << 8) | 0x7f,
 		State::Zombie => ((status as i32 & 0xff) << 8) | (termsig as i32 & 0x7f),
 	};
@@ -115,13 +117,13 @@ fn check_waitable(pid: i32, wstatus: &mut i32, options: i32, rusage: &mut RUsage
 			let pid = p.get_pid();
 
 			// Stopped implies WUNTRACED (ignoring stopped processes if not enabled)
-			let stop_check = p.get_state() != State::Stopped
+			let stop_check = !matches!(p.get_state(), State::Stopped)
 				|| options & WUNTRACED != 0;
 			// Zombie implies WEXITED (ignoring terminated processes if not enabled)
-			let exit_check = p.get_state() != State::Zombie
+			let exit_check = !matches!(p.get_state(), State::Zombie)
 				|| options & WEXITED != 0;
 			// Running implies WCONTINUED (ignoring continued processes if not enabled)
-			let continue_check = !matches!(p.get_state(), State::Running | State::Sleeping)
+			let continue_check = !matches!(p.get_state(), State::Running | State::Sleeping(..))
 				|| options & WCONTINUED != 0;
 
 			// If waitable, return
@@ -130,7 +132,7 @@ fn check_waitable(pid: i32, wstatus: &mut i32, options: i32, rusage: &mut RUsage
 				wait_proc(p, wstatus, rusage, clear_waitable);
 
 				// If the process was a zombie, remove it
-				if p.get_state() == process::State::Zombie {
+				if matches!(p.get_state(), State::Zombie) {
 					drop(p_guard);
 					scheduler.remove_process(pid);
 				}
@@ -162,10 +164,11 @@ pub fn do_waitpid(
 ) -> Result<i32, Errno> {
 	// Sleeping until a target process is waitable
 	loop {
-		let mut wstatus_val = Default::default();
-		let mut rusage_val = Default::default();
+		cli!();
 
 		// Check if at least one target process is waitable
+		let mut wstatus_val = Default::default();
+		let mut rusage_val = Default::default();
 		let result = check_waitable(pid, &mut wstatus_val, options, &mut rusage_val)?;
 
 		{
@@ -173,38 +176,35 @@ pub fn do_waitpid(
 			let guard = mutex.lock();
 			let proc = guard.get_mut();
 
-			let mem_space = proc.get_mem_space().unwrap();
-			let mem_space_guard = mem_space.lock();
+			// Setting values to userspace
+			{
+				let mem_space = proc.get_mem_space().unwrap();
+				let mem_space_guard = mem_space.lock();
 
-			if let Some(wstatus) = wstatus.get_mut(&mem_space_guard)? {
-				*wstatus = wstatus_val;
-			}
+				if let Some(wstatus) = wstatus.get_mut(&mem_space_guard)? {
+					*wstatus = wstatus_val;
+				}
 
-			if let Some(ref rusage) = rusage {
-				if let Some(rusage) = rusage.get_mut(&mem_space_guard)? {
-					*rusage = rusage_val;
+				if let Some(ref rusage) = rusage {
+					if let Some(rusage) = rusage.get_mut(&mem_space_guard)? {
+						*rusage = rusage_val;
+					}
 				}
 			}
-		}
 
-		// On success, return
-		if let Some(p) = result {
-			return Ok(p as _);
-		}
+			// On success, return
+			if let Some(p) = result {
+				return Ok(p as _);
+			}
 
-		// If the flag is set, do not wait
-		if options & WNOHANG != 0 {
-			return Ok(0);
-		}
-
-		{
-			let mutex = Process::get_current().unwrap();
-			let guard = mutex.lock();
-			let proc = guard.get_mut();
+			// If the flag is set, do not wait
+			if options & WNOHANG != 0 {
+				return Ok(0);
+			}
 
 			// When a child process is paused or resumed by a signal or is terminated, it changes
 			// the state of the current process to wake it up
-			proc.set_state(process::State::Sleeping);
+			proc.set_state(State::Sleeping(Box::new(state::WakePoll {})?));
 		}
 
 		crate::wait();

@@ -1,13 +1,13 @@
 //! This module implements the `kill` system call, which allows to send a signal to a process.
 
-use crate::errno;
 use crate::errno::Errno;
-use crate::process;
+use crate::errno;
+use crate::process::Process;
 use crate::process::pid::Pid;
 use crate::process::regs::Regs;
 use crate::process::signal::Signal;
-use crate::process::Process;
-use crate::process::State;
+use crate::process::state::State;
+use crate::process;
 
 /// Tries to kill the process with PID `pid` with the signal `sig`.
 /// If `sig` is None, the function doesn't send a signal, but still checks if there is a process
@@ -22,7 +22,7 @@ fn try_kill(pid: Pid, sig: &Option<Signal>) -> Result<(), Errno> {
 
 	// Closure sending the signal
 	let f = |target: &mut Process| {
-		if target.get_state() == State::Zombie {
+		if matches!(target.get_state(), State::Zombie) {
 			return Err(errno!(ESRCH));
 		}
 		if !target.can_kill(uid) && !target.can_kill(euid) {
@@ -135,7 +135,7 @@ fn handle_state() {
 
 		match proc.get_state() {
 			// The process is executing a signal handler. Make the scheduler jump to it
-			process::State::Running => {
+			State::Running => {
 				if proc.is_handling_signal() {
 					let regs = proc.get_regs().clone();
 					drop(guard);
@@ -149,13 +149,13 @@ fn handle_state() {
 			}
 
 			// The process has been stopped. Waiting until wakeup
-			process::State::Stopped => {
+			State::Stopped => {
 				drop(guard);
 				crate::wait();
 			}
 
 			// The process has been killed. Stopping execution and waiting for the next tick
-			process::State::Zombie => {
+			State::Zombie => {
 				drop(guard);
 				crate::enter_loop();
 			}

@@ -2,19 +2,19 @@
 
 mod signal_trampoline;
 
-use super::Process;
-use super::State;
-use crate::errno;
-use crate::errno::Errno;
-use crate::file::Uid;
-use crate::process::oom;
-use crate::process::pid::Pid;
-use crate::time::unit::Clock;
 use core::ffi::c_void;
 use core::mem::size_of;
 use core::mem::transmute;
 use core::slice;
+use crate::errno::Errno;
+use crate::errno;
+use crate::file::Uid;
+use crate::process::oom;
+use crate::process::pid::Pid;
+use crate::time::unit::Clock;
 use signal_trampoline::signal_trampoline;
+use super::Process;
+use super::state::State;
 
 /// Type representing a signal handler.
 pub type SigHandler = extern "C" fn(i32);
@@ -363,7 +363,7 @@ impl Signal {
 		process.signal_clear(self.clone());
 
 		let process_state = process.get_state();
-		if process_state == State::Zombie {
+		if matches!(process_state, State::Zombie) {
 			return;
 		}
 
@@ -392,7 +392,7 @@ impl Signal {
 
 					SignalAction::Stop => {
 						// TODO Handle semaphores
-						if process_state == State::Running {
+						if matches!(process_state, State::Running) {
 							process.set_state(State::Stopped);
 						}
 
@@ -401,7 +401,7 @@ impl Signal {
 
 					SignalAction::Continue => {
 						// TODO Handle semaphores
-						if process_state == State::Stopped {
+						if matches!(process_state, State::Stopped) {
 							process.set_state(State::Running);
 						}
 

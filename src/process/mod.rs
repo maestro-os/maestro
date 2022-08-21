@@ -13,6 +13,7 @@ pub mod regs;
 pub mod rusage;
 pub mod scheduler;
 pub mod signal;
+pub mod state;
 pub mod tss;
 pub mod user_desc;
 
@@ -68,6 +69,7 @@ use scheduler::Scheduler;
 use signal::Signal;
 use signal::SignalAction;
 use signal::SignalHandler;
+use state::State;
 
 /// The opcode of the `hlt` instruction.
 const HLT_INSTRUCTION: u8 = 0xf4;
@@ -99,41 +101,6 @@ pub const TLS_ENTRIES_COUNT: usize = 3;
 
 /// The size of the redzone in userspace, in bytes.
 const REDZONE_SIZE: usize = 128;
-
-/// An enumeration containing possible states for a process.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum State {
-	/// The process is running or waiting to run.
-	Running,
-	/// The process is waiting for an event.
-	Sleeping,
-	/// The process has been stopped by a signal or by tracing.
-	Stopped,
-	/// The process has been killed.
-	Zombie,
-}
-
-impl State {
-	/// Returns the character associated with the state.
-	pub fn get_char(&self) -> char {
-		match self {
-			Self::Running => 'R',
-			Self::Sleeping => 'S',
-			Self::Stopped => 'T',
-			Self::Zombie => 'Z',
-		}
-	}
-
-	/// Returns the name of the state as string.
-	pub fn as_str(&self) -> &'static str {
-		match self {
-			Self::Running => "running",
-			Self::Sleeping => "sleeping",
-			Self::Stopped => "stopped",
-			Self::Zombie => "zombie",
-		}
-	}
-}
 
 /// Type representing an exit status.
 type ExitStatus = u8;
@@ -351,7 +318,7 @@ pub fn init() -> Result<(), Errno> {
 				_ => {}
 			}
 
-			if curr_proc.get_state() == State::Running {
+			if matches!(curr_proc.get_state(), State::Running) {
 				InterruptResult::new(false, InterruptResultAction::Resume)
 			} else {
 				InterruptResult::new(true, InterruptResultAction::Loop)
@@ -392,7 +359,7 @@ pub fn init() -> Result<(), Errno> {
 				}
 			}
 
-			if curr_proc.get_state() == State::Running {
+			if matches!(curr_proc.get_state(), State::Running) {
 				InterruptResult::new(false, InterruptResultAction::Resume)
 			} else {
 				InterruptResult::new(true, InterruptResultAction::Loop)
@@ -781,19 +748,19 @@ impl Process {
 
 	/// Returns the process's current state.
 	#[inline(always)]
-	pub fn get_state(&self) -> State {
-		self.state
+	pub fn get_state(&self) -> &State {
+		&self.state
 	}
 
 	/// Sets the process's state to `new_state`.
 	pub fn set_state(&mut self, new_state: State) {
-		if self.state == State::Zombie {
+		if matches!(self.state, State::Zombie) {
 			return;
 		}
 
 		self.state = new_state;
 
-		if self.state == State::Zombie {
+		if matches!(self.state, State::Zombie) {
 			if self.is_init() {
 				kernel_panic!("Terminated init process!");
 			}
@@ -826,7 +793,15 @@ impl Process {
 
 	/// Tells whether the scheduler can run the process.
 	pub fn can_run(&self) -> bool {
-		self.get_state() == State::Running && self.vfork_state != VForkState::Waiting
+		matches!(self.get_state(), State::Running) && self.vfork_state != VForkState::Waiting
+	}
+
+	/// Wakes the process if sleeping.
+	pub fn wake(&mut self) {
+		match self.state {
+			State::Sleeping(..) => self.set_state(State::Running),
+			_ => {},
+		}
 	}
 
 	/// Tells whether the current process has informations to be retrieved by the `waitpid` system
@@ -847,10 +822,7 @@ impl Process {
 			let parent = guard.get_mut();
 
 			parent.kill(&Signal::SIGCHLD, false);
-
-			if parent.get_state() == State::Sleeping {
-				parent.set_state(State::Running);
-			}
+			parent.wake();
 		}
 	}
 
@@ -913,7 +885,7 @@ impl Process {
 	pub fn set_mem_space(&mut self, mem_space: Option<IntSharedPtr<MemSpace>>) {
 		// TODO Handle multicore
 		// If the process is currently running, switch the memory space
-		if self.state == State::Running {
+		if matches!(self.state, State::Running) {
 			if let Some(mem_space) = &mem_space {
 				mem_space.lock().get().bind();
 			} else {
@@ -970,14 +942,14 @@ impl Process {
 	/// A call to this function MUST be followed by a context switch to the process.
 	/// If the function returns `false`, the process is a zombie and MUST NOT be resumed.
 	pub fn prepare_switch(&mut self) -> bool {
-		debug_assert_eq!(self.get_state(), State::Running);
+		debug_assert!(matches!(self.get_state(), State::Running));
 
 		// Incrementing the number of ticks the process had
 		self.quantum_count += 1;
 
 		// If a signal is pending on the process, execute it
 		self.signal_next();
-		if self.state != State::Running {
+		if !matches!(self.state, State::Running) {
 			return false;
 		}
 
@@ -1199,7 +1171,7 @@ impl Process {
 	/// Returns the exit status if the process has ended.
 	#[inline(always)]
 	pub fn get_exit_status(&self) -> Option<ExitStatus> {
-		if self.state == State::Zombie {
+		if matches!(self.state, State::Zombie) {
 			Some(self.exit_status)
 		} else {
 			None
@@ -1223,7 +1195,7 @@ impl Process {
 		parent: IntWeakPtr<Self>,
 		fork_options: ForkOptions,
 	) -> Result<IntSharedPtr<Self>, Errno> {
-		debug_assert_eq!(self.get_state(), State::Running);
+		debug_assert!(matches!(self.get_state(), State::Running));
 
 		// FIXME PID is leaked if the following code fails
 		let pid = {
@@ -1386,8 +1358,8 @@ impl Process {
 			return;
 		}
 
-		if self.get_state() == State::Stopped && sig.get_default_action() == SignalAction::Continue
-		{
+		if matches!(self.get_state(), State::Stopped)
+			&& sig.get_default_action() == SignalAction::Continue {
 			self.set_state(State::Running);
 		}
 
