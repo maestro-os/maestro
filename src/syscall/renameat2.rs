@@ -62,7 +62,7 @@ pub fn renameat2(regs: &Regs) -> Result<i32, Errno> {
 		// TODO Check permissions
 
 		// Create link at new location
-		fcache.create_link(old, new_parent, new_name)?;
+		fcache.create_link(old, new_parent, new_name, uid, gid)?;
 
 		// If directory, update the `..` entry
 		if let FileContent::Directory(_entries) = old.get_file_content() {

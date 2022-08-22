@@ -1,11 +1,7 @@
 //! The files cache stores files in memory to avoid accessing the disk each times.
 
-use super::pipe::PipeBuffer;
-use super::socket::Socket;
-use crate::errno;
 use crate::errno::Errno;
-use crate::file::mountpoint;
-use crate::file::path::Path;
+use crate::errno;
 use crate::file::File;
 use crate::file::FileContent;
 use crate::file::FileLocation;
@@ -14,13 +10,18 @@ use crate::file::Gid;
 use crate::file::Mode;
 use crate::file::MountPoint;
 use crate::file::Uid;
+use crate::file::mountpoint;
+use crate::file::path::Path;
+use crate::file;
 use crate::limits;
+use crate::util::FailableClone;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::lock::IntMutex;
 use crate::util::ptr::SharedPtr;
-use crate::util::FailableClone;
+use super::pipe::PipeBuffer;
+use super::socket::Socket;
 
 /// The size of the files pool.
 const FILES_POOL_SIZE: usize = 1024;
@@ -131,7 +132,7 @@ impl FCache {
 			return SharedPtr::new(file);
 		}
 		// Checking permissions
-		if !file.can_read(uid, gid) {
+		if !file.can_execute(uid, gid) {
 			return Err(errno!(EPERM));
 		}
 
@@ -152,7 +153,7 @@ impl FCache {
 
 			// Checking permissions
 			file = fs.load_file(io, inode, inner_path[i].failable_clone()?)?;
-			if i < inner_path.get_elements_count() - 1 && !file.can_read(uid, gid) {
+			if i < inner_path.get_elements_count() - 1 && !file.can_execute(uid, gid) {
 				return Err(errno!(EPERM));
 			}
 
@@ -237,7 +238,7 @@ impl FCache {
 		if parent.get_file_type() != FileType::Directory {
 			return Err(errno!(ENOTDIR));
 		}
-		if !parent.can_read(uid, gid) {
+		if !parent.can_execute(uid, gid) {
 			return Err(errno!(EPERM));
 		}
 
@@ -293,7 +294,7 @@ impl FCache {
 		parent: &mut File,
 		name: String,
 		uid: Uid,
-		gid: Gid,
+		mut gid: Gid,
 		mode: Mode,
 		content: FileContent,
 	) -> Result<SharedPtr<File>, Errno> {
@@ -310,6 +311,12 @@ impl FCache {
 		}
 		if !parent.can_write(uid, gid) {
 			return Err(errno!(EPERM));
+		}
+
+		// If SGID is set, the newly created file shall inherit the group ID of the parent
+		// directory
+		if parent.get_mode() & file::S_ISGID != 0 {
+			gid = parent.get_gid();
 		}
 
 		// Getting the mountpoint
@@ -362,10 +369,15 @@ impl FCache {
 		target: &mut File,
 		parent: &mut File,
 		name: String,
+		uid: Uid,
+		gid: Gid,
 	) -> Result<(), Errno> {
 		// Checking the parent file is a directory
 		if parent.get_file_type() != FileType::Directory {
 			return Err(errno!(ENOTDIR));
+		}
+		if !parent.can_write(uid, gid) {
+			return Err(errno!(EPERM));
 		}
 		// Checking the target and source are both on the same mountpoint
 		if target.get_location().mountpoint_id != parent.get_location().mountpoint_id {
