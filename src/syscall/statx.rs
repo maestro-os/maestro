@@ -14,9 +14,11 @@ use crate::util::io::IO;
 #[repr(C)]
 struct StatxTimestamp {
 	/// Seconds since the Epoch (UNIX time)
-	tv_sec: u64,
+	tv_sec: i64,
 	/// Nanoseconds since tv_sec
 	tv_nsec: u32,
+	/// Reserved field.
+	__reserved: i32,
 }
 
 /// Structure containing the extended attributes for a file.
@@ -36,6 +38,10 @@ struct Statx {
 	stx_gid: u32,
 	/// File type and mode
 	stx_mode: u16,
+
+	/// Padding.
+	__padding0: u16,
+
 	/// Inode number
 	stx_ino: u64,
 	/// Total size in bytes
@@ -58,11 +64,16 @@ struct Statx {
 	stx_rdev_major: u32,
 	/// Minor ID (if the file is a device)
 	stx_rdev_minor: u32,
-
 	/// Major ID of the device containing the filesystem where the file resides
 	stx_dev_major: u32,
 	/// Minor ID of the device containing the filesystem where the file resides
 	stx_dev_minor: u32,
+
+	/// Mount ID.
+	stx_mnt_id: u64,
+
+	/// Padding.
+	__padding1: [u64; 13],
 }
 
 /// The implementation of the `statx` syscall.
@@ -124,6 +135,7 @@ pub fn statx(regs: &Regs) -> Result<i32, Errno> {
 		}
 	};
 
+	crate::println!("time: {}", file.get_atime()); // TODO rm
 	// Filling the structure
 	let statx_val = Statx {
 		stx_mask: !0,      // TODO
@@ -133,6 +145,9 @@ pub fn statx(regs: &Regs) -> Result<i32, Errno> {
 		stx_uid: file.get_uid() as _,
 		stx_gid: file.get_gid() as _,
 		stx_mode: file.get_mode() as _,
+
+		__padding0: 0,
+
 		stx_ino: file.get_location().inode,
 		stx_size: file.get_size(),
 		stx_blocks: file.get_blocks_count(),
@@ -141,25 +156,32 @@ pub fn statx(regs: &Regs) -> Result<i32, Errno> {
 		stx_atime: StatxTimestamp {
 			tv_sec: file.get_atime() as _,
 			tv_nsec: 0, // TODO
+			__reserved: 0,
 		},
 		stx_btime: StatxTimestamp {
-			tv_sec: 0,  // TODO
+			tv_sec: 0, // TODO
 			tv_nsec: 0, // TODO
+			__reserved: 0,
 		},
 		stx_ctime: StatxTimestamp {
 			tv_sec: file.get_ctime() as _,
 			tv_nsec: 0, // TODO
+			__reserved: 0,
 		},
 		stx_mtime: StatxTimestamp {
 			tv_sec: file.get_mtime() as _,
 			tv_nsec: 0, // TODO
+			__reserved: 0,
 		},
 
 		stx_rdev_major,
 		stx_rdev_minor,
-
 		stx_dev_major,
 		stx_dev_minor,
+
+		stx_mnt_id: 0, // TODO
+
+		__padding1: [0; 13],
 	};
 
 	{
