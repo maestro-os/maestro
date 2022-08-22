@@ -30,7 +30,7 @@ struct ClockSourceWrapper {
 
 	/// The last timestamp returned by the clock. This timestamp is used in case the caller
 	/// requires monotonic time and the clock came back in the past.
-	last: Timestamp,
+	last: [Timestamp; 4],
 }
 
 /// Map containing all the clock sources.
@@ -47,7 +47,7 @@ pub fn add_clock_source<T: 'static + ClockSource>(source: T) -> Result<(), Errno
 		ClockSourceWrapper {
 			src: Box::new(source)?,
 
-			last: 0,
+			last: [0; 4],
 		},
 	)?;
 
@@ -74,20 +74,28 @@ pub fn get(scale: TimestampScale, monotonic: bool) -> Option<Timestamp> {
 	if sources.is_empty() {
 		return None;
 	}
-
 	// Getting clock source
 	let clock_src = sources.get_mut("cmos".as_bytes())?; // TODO Select the preferred source
+
+	// Getting reference to last timestamp
+	let last = match scale {
+		TimestampScale::Second => &mut clock_src.last[0],
+		TimestampScale::Millisecond => &mut clock_src.last[1],
+		TimestampScale::Microsecond => &mut clock_src.last[2],
+		TimestampScale::Nanosecond => &mut clock_src.last[3],
+	};
+
 	// Getting time
 	let time = clock_src.src.get_time(scale);
 
 	// Making the clock monotonic if needed
-	let ts = if monotonic && clock_src.last > time {
-		clock_src.last
+	let ts = if monotonic && *last > time {
+		*last
 	} else {
 		time
 	};
-	if ts > clock_src.last {
-		clock_src.last = ts;
+	if ts > *last {
+		*last = ts;
 	}
 
 	Some(ts)

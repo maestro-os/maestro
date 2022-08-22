@@ -135,7 +135,6 @@ pub fn statx(regs: &Regs) -> Result<i32, Errno> {
 		}
 	};
 
-	crate::println!("time: {}", file.get_atime()); // TODO rm
 	// Filling the structure
 	let statx_val = Statx {
 		stx_mask: !0,      // TODO

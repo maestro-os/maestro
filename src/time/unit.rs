@@ -37,7 +37,7 @@ impl TimestampScale {
 
 	/// Converts the given value `val` from scale `from` to scale `to`.
 	pub fn convert(val: Timestamp, from: Self, to: Self) -> Timestamp {
-		let delta = -to.as_power() - -from.as_power();
+		let delta = -(to.as_power() - from.as_power());
 
 		if delta >= 0 {
 			val * math::pow(10, delta as _)
