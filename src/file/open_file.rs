@@ -13,6 +13,8 @@ use crate::file::socket::SocketSide;
 use crate::process::mem_space::MemSpace;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::syscall::ioctl;
+use crate::time::unit::TimestampScale;
+use crate::time;
 use crate::types::c_int;
 use crate::util::container::string::String;
 use crate::util::io::IO;
@@ -241,7 +243,14 @@ impl IO for OpenFile {
 		let (len, eof) = match &mut self.target {
 			FDTarget::File(f) => {
 				let guard = f.lock();
-				guard.get_mut().read(self.curr_off, buf)
+				let file = guard.get_mut();
+
+				// Updating access timestamp
+				let timestamp = time::get(TimestampScale::Second, true).unwrap_or(0);
+				file.set_atime(timestamp); // TODO Only if the mountpoint has the option enabled
+				file.sync()?; // TODO Lazy
+
+				file.read(self.curr_off, buf)
 			}
 
 			FDTarget::Pipe(p) => {
@@ -276,7 +285,13 @@ impl IO for OpenFile {
 					self.curr_off = file.get_size();
 				}
 
-				guard.get_mut().write(self.curr_off, buf)
+				// Updating access timestamps
+				let timestamp = time::get(TimestampScale::Second, true).unwrap_or(0);
+				file.set_atime(timestamp); // TODO Only if the mountpoint has the option enabled
+				file.set_mtime(timestamp);
+				file.sync()?; // TODO Lazy
+
+				file.write(self.curr_off, buf)
 			}
 
 			FDTarget::Pipe(p) => {
@@ -298,7 +313,9 @@ impl IO for OpenFile {
 		match &mut self.target {
 			FDTarget::File(f) => {
 				let guard = f.lock();
-				guard.get_mut().poll(mask)
+				let file = guard.get_mut();
+
+				file.poll(mask)
 			}
 
 			FDTarget::Pipe(p) => {

@@ -468,6 +468,9 @@ impl File {
 	/// Sets the permissions of the file.
 	pub fn set_permissions(&mut self, mode: Mode) {
 		self.mode = mode & 0o7777;
+
+		let timestamp = time::get(TimestampScale::Second, true).unwrap_or(0);
+		self.ctime = timestamp;
 	}
 
 	/// Returns an immutable reference to the location at which the file is stored.
@@ -488,6 +491,9 @@ impl File {
 	/// Sets the number of hard links.
 	pub fn set_hard_links_count(&mut self, count: u16) {
 		self.hard_links_count = count;
+
+		let timestamp = time::get(TimestampScale::Second, true).unwrap_or(0);
+		self.ctime = timestamp;
 	}
 
 	/// Returns the number of blocks allocated for the file.
@@ -510,9 +516,25 @@ impl File {
 		self.uid
 	}
 
+	/// Sets the owner user ID.
+	pub fn set_uid(&mut self, uid: Uid) {
+		self.uid = uid;
+
+		let timestamp = time::get(TimestampScale::Second, true).unwrap_or(0);
+		self.ctime = timestamp;
+	}
+
 	/// Returns the owner group ID.
 	pub fn get_gid(&self) -> Gid {
 		self.gid
+	}
+
+	/// Sets the owner group ID.
+	pub fn set_gid(&mut self, gid: Gid) {
+		self.gid = gid;
+
+		let timestamp = time::get(TimestampScale::Second, true).unwrap_or(0);
+		self.ctime = timestamp;
 	}
 
 	/// Returns the timestamp of the last modification of the file's metadata.

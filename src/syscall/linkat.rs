@@ -19,10 +19,13 @@ pub fn linkat(regs: &Regs) -> Result<i32, Errno> {
 
 	let follow_links = flags & access::AT_SYMLINK_NOFOLLOW == 0;
 
-	let (old_mutex, new_parent_mutex, new_name) = {
+	let (old_mutex, new_parent_mutex, new_name, uid, gid) = {
 		let proc_mutex = Process::get_current().unwrap();
 		let proc_guard = proc_mutex.lock();
 		let proc = proc_guard.get();
+
+		let euid = proc.get_euid();
+		let egid = proc.get_egid();
 
 		let mem_space = proc.get_mem_space().clone().unwrap();
 		let mem_space_guard = mem_space.lock();
@@ -39,7 +42,7 @@ pub fn linkat(regs: &Regs) -> Result<i32, Errno> {
 		let (new_parent, new_name) =
 			super::util::get_parent_at_with_name(proc_guard, follow_links, newdirfd, newpath)?;
 
-		(old, new_parent, new_name)
+		(old, new_parent, new_name, euid, egid)
 	};
 
 	let old_guard = old_mutex.lock();
@@ -56,6 +59,6 @@ pub fn linkat(regs: &Regs) -> Result<i32, Errno> {
 	let fcache_guard = fcache_mutex.lock();
 	let fcache = fcache_guard.get_mut().as_mut().unwrap();
 
-	fcache.create_link(old, new_parent, new_name)?;
+	fcache.create_link(old, new_parent, new_name, uid, gid)?;
 	Ok(0)
 }
