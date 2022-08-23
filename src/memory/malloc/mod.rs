@@ -51,6 +51,7 @@ pub unsafe fn alloc(n: usize) -> Result<*mut c_void, Errno> {
 
 	#[cfg(config_debug_malloc_check)]
 	chunk.check();
+
 	debug_assert!(chunk.get_size() >= n);
 	assert!(!chunk.is_used());
 	chunk.set_used(true);
@@ -74,9 +75,10 @@ pub unsafe fn realloc(ptr: *mut c_void, n: usize) -> Result<*mut c_void, Errno> 
 	}
 
 	let chunk = Chunk::from_ptr(ptr);
+	assert!(chunk.is_used());
+
 	#[cfg(config_debug_malloc_check)]
 	chunk.check();
-	assert!(chunk.is_used());
 
 	let chunk_size = chunk.get_size();
 	match n.cmp(&chunk_size) {
@@ -111,9 +113,10 @@ pub unsafe fn free(ptr: *mut c_void) {
 	let _ = MUTEX.lock();
 
 	let chunk = Chunk::from_ptr(ptr);
+	assert!(chunk.is_used());
+
 	#[cfg(config_debug_malloc_check)]
 	chunk.check();
-	assert!(chunk.is_used());
 
 	chunk.set_used(false);
 	ptr::write_volatile(&mut chunk.as_free_chunk().free_list, ListNode::new_single());

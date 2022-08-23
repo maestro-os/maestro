@@ -192,6 +192,7 @@ impl Chunk {
 	pub fn split(&mut self, size: usize) {
 		#[cfg(config_debug_malloc_check)]
 		self.check();
+
 		debug_assert!(self.get_size() >= size);
 
 		if !self.is_used() {
@@ -206,8 +207,10 @@ impl Chunk {
 				ptr::write_volatile(next_ptr, FreeChunk::new(next_size));
 				&mut *next_ptr
 			};
+
 			#[cfg(config_debug_malloc_check)]
 			next.check();
+
 			next.free_list_insert();
 			next.chunk.list.insert_after(&mut self.list);
 			debug_assert!(!next.chunk.list.is_single());
@@ -231,10 +234,12 @@ impl Chunk {
 
 			if !n.is_used() {
 				self.size += size_of::<Chunk>() + n.size;
+
 				unsafe {
 					next.unlink_floating();
 				}
 				n.as_free_chunk().free_list_remove();
+
 				#[cfg(config_debug_malloc_check)]
 				n.check();
 			}
@@ -251,6 +256,7 @@ impl Chunk {
 
 		#[cfg(config_debug_malloc_check)]
 		self.check();
+
 		self
 	}
 
@@ -283,6 +289,7 @@ impl Chunk {
 		n.as_free_chunk().free_list_remove();
 
 		self.split(new_size);
+
 		#[cfg(config_debug_malloc_check)]
 		self.check();
 
@@ -365,7 +372,7 @@ impl FreeChunk {
 	/// debug mode.
 	#[cfg(config_debug_malloc_check)]
 	pub fn check(&self) {
-		debug_assert!(!self.chunk.is_used());
+		assert!(!self.chunk.is_used());
 		self.chunk.check();
 	}
 
@@ -471,6 +478,7 @@ pub fn get_available_chunk(size: usize) -> Result<&'static mut FreeChunk, Errno>
 
 	#[cfg(config_debug_malloc_check)]
 	chunk.check();
+
 	debug_assert!(chunk.get_size() >= size);
 
 	Ok(chunk)

@@ -192,13 +192,13 @@ impl MemMapping {
 		for i in 0..self.size {
 			let phys_ptr = {
 				if nolazy {
-					let ptr = buddy::alloc(0, buddy::FLAG_ZONE_TYPE_USER);
-					if let Err(errno) = ptr {
-						self.unmap()?;
-						return Err(errno);
+					match buddy::alloc(0, buddy::FLAG_ZONE_TYPE_USER) {
+						Ok(ptr) => ptr,
+						Err(e) => {
+							self.unmap()?;
+							return Err(e);
+						},
 					}
-
-					ptr.unwrap()
 				} else {
 					default_page
 				}
@@ -207,7 +207,9 @@ impl MemMapping {
 			let flags = self.get_vmem_flags(nolazy, i);
 
 			if let Err(errno) = vmem.map(phys_ptr, virt_ptr, flags) {
-				buddy::free(phys_ptr, 0);
+				if nolazy {
+					buddy::free(phys_ptr, 0);
+				}
 				self.unmap()?;
 
 				return Err(errno);
@@ -311,6 +313,7 @@ impl MemMapping {
 
 	/// Unmaps the mapping from the given virtual memory context.
 	/// If the physical pages the mapping points to are not shared, the function frees them.
+	/// The function doesn't flush the virtual memory context.
 	pub fn unmap(&mut self) -> Result<(), Errno> {
 		// Removing physical pages
 		for i in 0..self.size {
@@ -331,7 +334,8 @@ impl MemMapping {
 	/// The newly created mappings correspond to the remaining pages.
 	/// The newly created gap is in place of the unmapped portion.
 	/// If the mapping is totaly unmapped, the function returns no new mappings.
-	/// The function doesn't flush the virtual memory context.
+	/// **Warning**: The function doesn't modify virtual memory. It's on the caller's
+	/// responsibility to update it.
 	pub fn partial_unmap(
 		mut self,
 		begin: usize,
@@ -389,6 +393,7 @@ impl MemMapping {
 		for i in begin..(begin + size) {
 			self.free_phys_page(i);
 		}
+		self.unmap_on_drop = false;
 
 		(prev, gap, next)
 	}

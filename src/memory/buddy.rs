@@ -174,15 +174,17 @@ pub fn alloc(order: FrameOrder, flags: Flags) -> Result<*mut c_void, Errno> {
 
 			let frame = zone.get_available_frame(order);
 			if let Some(f) = frame {
+				debug_assert!(!f.is_used());
 				f.split(zone, order);
-				f.mark_used();
-				zone.allocated_pages += math::pow2(order as usize);
 
 				let ptr = f.get_ptr(zone);
 				debug_assert!(util::is_aligned(ptr, memory::PAGE_SIZE));
 				debug_assert!(
 					ptr >= zone.begin && ptr < (zone.begin as usize + zone.get_size()) as _
 				);
+
+				f.mark_used();
+				zone.allocated_pages += math::pow2(order as usize);
 
 				update_stats(4 * math::pow2(order as usize) as isize);
 				return Ok(ptr);
@@ -215,11 +217,14 @@ pub fn free(ptr: *const c_void, order: FrameOrder) {
 
 	let frame_id = zone.get_frame_id_from_ptr(ptr);
 	debug_assert!(frame_id < zone.get_pages_count());
+
 	let frame = zone.get_frame(frame_id);
 	unsafe {
+		debug_assert!((*frame).is_used());
 		(*frame).mark_free(zone);
 		(*frame).coalesce(zone);
 	}
+
 	zone.allocated_pages -= math::pow2(order as usize);
 	update_stats(-4 * math::pow2(order as usize) as isize);
 }
