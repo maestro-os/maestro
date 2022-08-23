@@ -414,15 +414,11 @@ impl MemSpace {
 				// Newly created mappings and gap after removing parts of the previous one
 				let (prev, gap, next) = mapping.partial_unmap(begin, pages);
 
-				if let Some(mut p) = prev {
-					// TODO Clean (the set_unmap_on_drop is used to avoid double unmapping because
-					// of the call to drop if the insertion fails)
+				if let Some(p) = prev {
+					// TODO Merge with previous?
 					oom::wrap(|| {
-						let mut val = p.clone();
-						val.set_unmap_on_drop(false);
-						let val = self.mappings.insert(val.get_begin(), val)?;
-						val.set_unmap_on_drop(true);
-						p.set_unmap_on_drop(false);
+						let map = p.clone();
+						self.mappings.insert(map.get_begin(), map)?;
 
 						Ok(())
 					});
@@ -457,15 +453,11 @@ impl MemSpace {
 					}
 				}
 
-				if let Some(mut n) = next {
-					// TODO Clean (the set_unmap_on_drop is used to avoid double unmapping because
-					// of the call to drop if the insertion fails)
+				if let Some(n) = next {
+					// TODO Merge with next?
 					oom::wrap(|| {
-						let mut val = n.clone();
-						val.set_unmap_on_drop(false);
-						let val = self.mappings.insert(val.get_begin(), val)?;
-						val.set_unmap_on_drop(true);
-						n.set_unmap_on_drop(false);
+						let map = n.clone();
+						self.mappings.insert(map.get_begin(), map)?;
 
 						Ok(())
 					});
@@ -476,10 +468,6 @@ impl MemSpace {
 				i += 1;
 			}
 		}
-
-		// Unmapping the chunk from virtual memory
-		let vmem = self.get_vmem();
-		oom::wrap(|| vmem.unmap_range(ptr, size));
 
 		Ok(())
 	}
@@ -590,7 +578,6 @@ impl MemSpace {
 
 			vmem: vmem::clone(&self.vmem)?,
 		};
-
 		for (_, m) in self.mappings.iter_mut() {
 			let new_mapping = m.fork(&mut mem_space)?;
 
@@ -729,5 +716,18 @@ impl fmt::Display for MemSpace {
 		}
 
 		Ok(())
+	}
+}
+
+impl Drop for MemSpace {
+	fn drop(&mut self) {
+		if self.is_bound() {
+			kernel_panic!("Dropping a memory space while bound to it");
+		}
+
+		// Unmapping everything to free up physical memory
+		for (_, m) in self.mappings.iter_mut() {
+			oom::wrap(|| m.unmap());
+		}
 	}
 }

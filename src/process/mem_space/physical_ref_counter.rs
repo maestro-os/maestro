@@ -49,6 +49,12 @@ impl PhysRefCounter {
 		self.get_ref_count(ptr) > 1
 	}
 
+	/// Tells whether the given page can be freed.
+	/// `ptr` is the physical address of the page.
+	pub fn can_free(&self, ptr: *const c_void) -> bool {
+		self.get_ref_count(ptr) <= 0
+	}
+
 	/// Increments the references count for the given page. If the page isn't stored into the
 	/// structure, the function adds it.
 	/// `ptr` is the physical address of the page.

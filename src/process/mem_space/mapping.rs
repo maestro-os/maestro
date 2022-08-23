@@ -42,6 +42,8 @@ fn get_default_page() -> *const c_void {
 }
 
 /// A mapping in the memory space.
+/// **Warning**: When dropped, mappings do not unmap themselves. It is the caller's responsibility
+/// to call `unmap` or `partial_unmap` before dropping a mapping.
 #[derive(Clone, Debug)]
 pub struct MemMapping {
 	/// Pointer on the virtual memory to the beginning of the mapping
@@ -56,9 +58,6 @@ pub struct MemMapping {
 	/// The offset inside of the file pointed to by the file descriptor. If there is no file
 	/// descriptor, the value is undefined.
 	off: u64,
-
-	/// Tells whether the mapping must be unmapped when the structure is dropped.
-	unmap_on_drop: bool,
 
 	/// Pointer to the virtual memory context handler.
 	vmem: NonNull<dyn VMem>,
@@ -92,8 +91,6 @@ impl MemMapping {
 
 			file,
 			off,
-
-			unmap_on_drop: true,
 
 			vmem,
 		}
@@ -154,7 +151,7 @@ impl MemMapping {
 	pub fn is_shared(&self, offset: usize) -> bool {
 		if let Some(phys_ptr) = self.get_physical_page(offset) {
 			let ref_counter = super::PHYSICAL_REF_COUNTER.lock();
-			ref_counter.get().is_shared(phys_ptr)
+			ref_counter.get_mut().is_shared(phys_ptr)
 		} else {
 			false
 		}
@@ -297,16 +294,19 @@ impl MemMapping {
 		let virt_ptr = (self.begin as usize + offset * memory::PAGE_SIZE) as *const c_void;
 
 		if let Some(phys_ptr) = vmem.translate(virt_ptr) {
-			{
-				let ref_counter = super::PHYSICAL_REF_COUNTER.lock();
-				ref_counter.get_mut().decrement(phys_ptr);
+			if phys_ptr == get_default_page() {
+				return;
 			}
 
-			if !self.is_shared(offset) {
-				let allocated = phys_ptr != get_default_page();
-				if allocated {
-					buddy::free(phys_ptr, 0);
-				}
+			let can_free = {
+				let ref_counter = super::PHYSICAL_REF_COUNTER.lock();
+
+				ref_counter.get_mut().decrement(phys_ptr);
+				ref_counter.get().can_free(phys_ptr)
+			};
+
+			if can_free {
+				buddy::free(phys_ptr, 0);
 			}
 		}
 	}
@@ -334,13 +334,14 @@ impl MemMapping {
 	/// The newly created mappings correspond to the remaining pages.
 	/// The newly created gap is in place of the unmapped portion.
 	/// If the mapping is totaly unmapped, the function returns no new mappings.
-	/// **Warning**: The function doesn't modify virtual memory. It's on the caller's
-	/// responsibility to update it.
+	/// The function doesn't flush the virtual memory context.
 	pub fn partial_unmap(
 		mut self,
 		begin: usize,
 		size: usize,
 	) -> (Option<Self>, Option<MemGap>, Option<Self>) {
+		let begin_ptr = unsafe { self.begin.add(begin * memory::PAGE_SIZE) };
+
 		// The mapping located before the gap to be created
 		let prev = {
 			if begin > 0 {
@@ -359,9 +360,7 @@ impl MemMapping {
 
 		let gap = {
 			if size > 0 {
-				let gap_begin = unsafe { self.begin.add(begin * memory::PAGE_SIZE) };
-
-				Some(MemGap::new(gap_begin, size))
+				Some(MemGap::new(begin_ptr, size))
 			} else {
 				None
 			}
@@ -372,13 +371,13 @@ impl MemMapping {
 			let end = begin + size;
 
 			if end < self.size {
-				let gap_begin = unsafe { self.begin.add(end * memory::PAGE_SIZE) };
-				let gap_size = self.size - end;
+				let map_begin = unsafe { self.begin.add(end * memory::PAGE_SIZE) };
+				let map_size = self.size - end;
 
 				let off = self.off + (end * memory::PAGE_SIZE) as u64;
 				Some(Self::new(
-					gap_begin,
-					gap_size,
+					map_begin,
+					map_size,
 					self.flags,
 					self.file.clone(),
 					off,
@@ -393,7 +392,10 @@ impl MemMapping {
 		for i in begin..(begin + size) {
 			self.free_phys_page(i);
 		}
-		self.unmap_on_drop = false;
+
+		// Unmapping physical pages
+		let vmem = self.get_mut_vmem();
+		oom::wrap(|| vmem.unmap_range(begin_ptr, size));
 
 		(prev, gap, next)
 	}
@@ -436,8 +438,6 @@ impl MemMapping {
 			file: self.file.clone(),
 			off: self.off,
 
-			unmap_on_drop: self.unmap_on_drop,
-
 			vmem: NonNull::new(mem_space.get_vmem().as_mut()).unwrap(),
 		};
 		let nolazy = (new_mapping.get_flags() & super::MAPPING_FLAG_NOLAZY) != 0;
@@ -477,11 +477,6 @@ impl MemMapping {
 
 		Ok(())
 	}
-
-	/// Sets whether the mapping will be unmapped when the structure is dropped.
-	pub fn set_unmap_on_drop(&mut self, unmap: bool) {
-		self.unmap_on_drop = unmap;
-	}
 }
 
 impl fmt::Display for MemMapping {
@@ -497,13 +492,5 @@ impl fmt::Display for MemMapping {
 			self.file.is_some(),
 			self.off
 		)
-	}
-}
-
-impl Drop for MemMapping {
-	fn drop(&mut self) {
-		if self.unmap_on_drop {
-			oom::wrap(|| self.unmap());
-		}
 	}
 }
