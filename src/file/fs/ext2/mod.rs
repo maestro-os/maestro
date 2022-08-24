@@ -698,7 +698,7 @@ impl Filesystem for Ext2Fs {
 		}
 
 		// Getting the entry with the given name
-		if let Some(entry) = parent.get_directory_entry(name.as_bytes(), &self.superblock, io)? {
+		if let Some((_, entry)) = parent.get_dirent(name.as_bytes(), &self.superblock, io)? {
 			Ok(entry.get_inode() as _)
 		} else {
 			Err(errno!(ENOENT))
@@ -820,7 +820,7 @@ impl Filesystem for Ext2Fs {
 
 		// Checking if the file already exists
 		if parent
-			.get_directory_entry(name.as_bytes(), &self.superblock, io)?
+			.get_dirent(name.as_bytes(), &self.superblock, io)?
 			.is_some()
 		{
 			return Err(errno!(EEXIST));
@@ -936,10 +936,7 @@ impl Filesystem for Ext2Fs {
 		}
 
 		// Checking the entry doesn't exist
-		if parent
-			.get_directory_entry(name, &mut self.superblock, io)?
-			.is_some()
-		{
+		if parent.get_dirent(name, &mut self.superblock, io)?.is_some() {
 			return Err(errno!(EEXIST));
 		}
 
@@ -958,8 +955,45 @@ impl Filesystem for Ext2Fs {
 			name,
 			inode_.get_type(),
 		)?;
-		// Updating links count
-		inode_.hard_links_count += 1;
+
+		match inode_.get_type() {
+			FileType::Directory => {
+				// Removing previous dirent
+				let old_parent_entry = inode_.get_dirent(b"..", &mut self.superblock, io)?;
+				if let Some((_, old_parent_entry)) = old_parent_entry {
+					let old_parent_inode = old_parent_entry.get_inode();
+					let mut old_parent = Ext2INode::read(
+						old_parent_inode as _,
+						&self.superblock,
+						io
+					)?;
+					// TODO Write a function to remove by inode instead of name
+					if let Some(iter) = old_parent.iter_dirent(&self.superblock, io)? {
+						for res in iter {
+							let (_, e) = res?;
+
+							if e.get_inode() == inode as _ {
+								let ent_name = e.get_name(&self.superblock);
+								old_parent.remove_dirent(&mut self.superblock, io, ent_name)?;
+
+								break;
+							}
+						}
+					}
+				}
+
+				// Updating the `..` entry
+				if let Some((off, mut entry)) = inode_.get_dirent(b"..", &self.superblock, io)? {
+					entry.set_inode(inode as _);
+					inode_.write_dirent(&mut self.superblock, io, &entry, off)?;
+				}
+			},
+
+			_ => {
+				// Updating links count
+				inode_.hard_links_count += 1;
+			},
+		}
 
 		parent.write(parent_inode as _, &self.superblock, io)?;
 		inode_.write(inode as _, &self.superblock, io)?;
@@ -1015,27 +1049,12 @@ impl Filesystem for Ext2Fs {
 
 		// The inode number
 		let inode = parent
-			.get_directory_entry(name.as_bytes(), &self.superblock, io)?
+			.get_dirent(name.as_bytes(), &self.superblock, io)?
+			.map(| (_, ent) | ent)
 			.ok_or_else(|| errno!(ENOENT))?
 			.get_inode();
 		// The inode
 		let mut inode_ = Ext2INode::read(inode, &self.superblock, io)?;
-
-		// If the inode is a directory, ensure it is empty
-		if let Some(iter) = inode_.iter_dirent(&self.superblock, io)? {
-			for res in iter {
-				let (_, entry) = res?;
-				if entry.is_free() {
-					continue;
-				}
-
-				let name = entry.get_name(&self.superblock);
-
-				if name != b"." && name != b".." {
-					return Err(errno!(ENOTEMPTY));
-				}
-			}
-		}
 
 		// If directory, removing `.` and `..` entries
 		if inode_.get_type() == FileType::Directory {

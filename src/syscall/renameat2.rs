@@ -1,14 +1,20 @@
 //! The `renameat2` allows to rename a file.
 
-use super::access;
 use crate::errno::Errno;
-use crate::file;
+use crate::file::FileType;
 use crate::file::fcache;
-use crate::file::FileContent;
+use crate::file;
+use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::regs::Regs;
-use crate::process::Process;
 use crate::types::c_int;
+
+/// Flag: Don't replace new path if it exists. Return an error instead.
+const RENAME_NOREPLACE: c_int = 1;
+/// Flag: Exchanges old and new paths atomically.
+const RENAME_EXCHANGE: c_int = 2;
+/// TODO doc
+const RENAME_WHITEOUT: c_int = 4;
 
 /// The implementation of the `renameat2` system call.
 pub fn renameat2(regs: &Regs) -> Result<i32, Errno> {
@@ -16,9 +22,7 @@ pub fn renameat2(regs: &Regs) -> Result<i32, Errno> {
 	let oldpath: SyscallString = (regs.ecx as usize).into();
 	let newdirfd = regs.edx as c_int;
 	let newpath: SyscallString = (regs.esi as usize).into();
-	let flags = regs.edi as c_int;
-
-	let follow_links = flags & access::AT_SYMLINK_NOFOLLOW == 0;
+	let _flags = regs.edi as c_int;
 
 	let (uid, gid, old_mutex, new_parent_mutex, new_name) = {
 		let proc_mutex = Process::get_current().unwrap();
@@ -34,14 +38,14 @@ pub fn renameat2(regs: &Regs) -> Result<i32, Errno> {
 		let oldpath = oldpath
 			.get(&mem_space_guard)?
 			.ok_or_else(|| errno!(EFAULT))?;
-		let old = super::util::get_file_at(proc_guard, follow_links, olddirfd, oldpath, flags)?;
+		let old = super::util::get_file_at(proc_guard, false, olddirfd, oldpath, 0)?;
 
 		let proc_guard = proc_mutex.lock();
 		let newpath = newpath
 			.get(&mem_space_guard)?
 			.ok_or_else(|| errno!(EFAULT))?;
 		let (new_parent, new_name) =
-			super::util::get_parent_at_with_name(proc_guard, follow_links, newdirfd, newpath)?;
+			super::util::get_parent_at_with_name(proc_guard, false, newdirfd, newpath)?;
 
 		(uid, gid, old, new_parent, new_name)
 	};
@@ -52,28 +56,29 @@ pub fn renameat2(regs: &Regs) -> Result<i32, Errno> {
 	let new_parent_guard = new_parent_mutex.lock();
 	let new_parent = new_parent_guard.get_mut();
 
+	// TODO Check permissions if sticky bit is set
+
 	let fcache_mutex = fcache::get();
 	let fcache_guard = fcache_mutex.lock();
 	let fcache = fcache_guard.get_mut().as_mut().unwrap();
 
 	if new_parent.get_location().mountpoint_id == old.get_location().mountpoint_id {
 		// Old and new are both on the same filesystem
+
 		// TODO On fail, undo
-		// TODO Check permissions
 
 		// Create link at new location
+		// The `..` entry is already updated by the file system since having the same directory in
+		// several locations is not allowed
 		fcache.create_link(old, new_parent, new_name, uid, gid)?;
 
-		// If directory, update the `..` entry
-		if let FileContent::Directory(_entries) = old.get_file_content() {
-			// TODO
+		if old.get_file_type() != FileType::Directory {
+			fcache.remove_file(old, uid, gid)?;
 		}
-
-		fcache.remove_file(old, uid, gid)?;
 	} else {
 		// Old and new are on different filesystems.
+
 		// TODO On fail, undo
-		// TODO Check permissions
 
 		file::util::copy_file(fcache, old, new_parent, new_name)?;
 		file::util::remove_recursive(fcache, old, uid, gid)?;

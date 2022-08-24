@@ -893,7 +893,7 @@ impl Ext2INode {
 	/// `io` is the I/O interface.
 	/// `off` is the offset of the directory entry.
 	/// If the file is not a directory, the behaviour is undefined.
-	fn write_dirent(
+	pub fn write_dirent(
 		&mut self,
 		superblock: &mut Superblock,
 		io: &mut dyn IO,
@@ -941,19 +941,19 @@ impl Ext2INode {
 	/// `io` is the I/O interface.
 	/// If the entry doesn't exist, the function returns None.
 	/// If the file is not a directory, the function returns None.
-	pub fn get_directory_entry(
+	pub fn get_dirent(
 		&self,
 		name: &[u8],
 		superblock: &Superblock,
 		io: &mut dyn IO,
-	) -> Result<Option<Box<DirectoryEntry>>, Errno> {
+	) -> Result<Option<(u64, Box<DirectoryEntry>)>, Errno> {
 		// TODO If the binary tree feature is enabled, use it
 		if let Some(iter) = self.iter_dirent(superblock, io)? {
 			for res in iter {
-				let (_, e) = res?;
+				let (off, ent) = res?;
 
-				if !e.is_free() && e.get_name(superblock) == name {
-					return Ok(Some(e));
+				if !ent.is_free() && ent.get_name(superblock) == name {
+					return Ok(Some((off, ent)));
 				}
 			}
 		}
