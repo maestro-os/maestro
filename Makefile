@@ -279,7 +279,7 @@ test: iso $(QEMU_DISK)
 	qemu-system-i386 $(QEMU_FLAGS) -d int
 
 # Rule used to debug the kernel using GDB
-ebug: $(NAME).iso $(QEMU_DISK)
+debug: $(NAME).iso $(QEMU_DISK)
 	qemu-system-i386 $(QEMU_FLAGS) -s -S >debug_out 2>&1
 
 # The rule to run the kernel's selftests using QEMU
