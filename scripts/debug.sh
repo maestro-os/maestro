@@ -8,7 +8,7 @@
 make maestro.iso || exit 1
 make qemu_disk || exit 1
 
-setsid qemu-system-i386 -cdrom maestro.iso -drive file=qemu_disk,format=raw -d int -s -S -serial file:serial.log >debug_out 2>&1 &
+setsid make debug &
 QEMU_PID=$!
 
 if [ "$AUX_ELF" != "" ]; then
@@ -17,4 +17,4 @@ else
 	gdb maestro -ex 'target remote :1234'
 fi
 
-kill $QEMU_PID
+kill -- -$QEMU_PID

@@ -255,7 +255,7 @@ QEMU_DISK = qemu_disk
 QEMU_DISK_SIZE = 1024
 # Flags for the QEMU emulator
 QEMU_FLAGS = -smp cpus=2 -cdrom $(NAME).iso -drive file=$(QEMU_DISK),format=raw \
-	-device isa-debug-exit,iobase=0xf4,iosize=0x04
+	-device isa-debug-exit,iobase=0xf4,iosize=0x04 -m 512M
 
 # If `1`, QEMU is run into the terminal
 QEMU_TERM ?= 0
@@ -272,20 +272,24 @@ $(QEMU_DISK):
 
 # Runs the kernel with QEMU
 run: iso $(QEMU_DISK)
-	qemu-system-x86_64 $(QEMU_FLAGS)
+	qemu-system-i386 $(QEMU_FLAGS)
 
 # The rule to test the kernel using QEMU
 test: iso $(QEMU_DISK)
-	qemu-system-x86_64 $(QEMU_FLAGS) -d int
+	qemu-system-i386 $(QEMU_FLAGS) -d int
+
+# Rule used to debug the kernel using GDB
+ebug: $(NAME).iso $(QEMU_DISK)
+	qemu-system-i386 $(QEMU_FLAGS) -s -S >debug_out 2>&1
 
 # The rule to run the kernel's selftests using QEMU
 selftest: iso $(QEMU_DISK)
-	qemu-system-x86_64 $(QEMU_FLAGS) -nographic >/dev/null
+	qemu-system-i386 $(QEMU_FLAGS) -nographic >/dev/null
 
 # The rule to run a CPU test of the kernel using QEMU (aka running the kernel and storing a lot of
 # logs into the `cpu_out` file)
 cputest: iso
-	qemu-system-x86_64 $(QEMU_FLAGS) -d int,cpu >cpu_out 2>&1
+	qemu-system-i386 $(QEMU_FLAGS) -d int,cpu >cpu_out 2>&1
 
 # The rule to test the kernel using Bochs. The configuration for Bochs can be found in the file
 # `.bochsrc`
