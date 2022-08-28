@@ -173,24 +173,24 @@ impl Ext2INode {
 			return Err(errno!(EINVAL));
 		}
 
-		let blk_size = superblock.get_block_size();
-		let inode_size = superblock.get_inode_size();
+		let blk_size = superblock.get_block_size() as u64;
+		let inode_size = superblock.get_inode_size() as u64;
 
 		// The block group the inode is located in
 		let blk_grp = (i - 1) / superblock.inodes_per_group;
 		// The offset of the inode in the block group's bitfield
 		let inode_grp_off = (i - 1) % superblock.inodes_per_group;
 		// The offset of the inode's block
-		let inode_table_blk_off = (inode_grp_off * inode_size as u32) / (blk_size as u32);
+		let inode_table_blk_off = (inode_grp_off as u64 * inode_size) / blk_size;
 		// The offset of the inode in the block
-		let inode_blk_off = ((i - 1) * inode_size as u32) % blk_size;
+		let inode_blk_off = ((i - 1) as u64 * inode_size) % blk_size;
 
 		let bgd = BlockGroupDescriptor::read(blk_grp, superblock, io)?;
 		// The block containing the inode
-		let blk = bgd.inode_table_start_addr + inode_table_blk_off;
+		let blk = bgd.inode_table_start_addr as u64 + inode_table_blk_off;
 
 		// The offset of the inode on the disk
-		let inode_offset = (blk as u64 * blk_size as u64) + inode_blk_off as u64;
+		let inode_offset = (blk * blk_size) + inode_blk_off;
 		Ok(inode_offset)
 	}
 
@@ -270,6 +270,20 @@ impl Ext2INode {
 			self.size_low = (size & 0xffff) as u32;
 		} else {
 			self.size_low = size as u32;
+		}
+	}
+
+	/// Increments the number of used sectors of one block.
+	/// `blk_size` is the size of a block.
+	fn increment_used_sectors(&mut self, blk_size: u32) {
+		self.used_sectors += math::ceil_division(blk_size, SECTOR_SIZE);
+	}
+
+	/// Decrements the number of used sectors of one block.
+	/// `blk_size` is the size of a block.
+	fn decrement_used_sectors(&mut self, blk_size: u32) {
+		if self.used_sectors > 0 {
+			self.used_sectors -= math::ceil_division(blk_size, SECTOR_SIZE);
 		}
 	}
 
@@ -413,8 +427,7 @@ impl Ext2INode {
 				superblock.mark_block_used(io, blk)?;
 				superblock.write(io)?;
 
-				// Incrementing the number of used sectors
-				self.used_sectors += math::ceil_division(blk_size, SECTOR_SIZE);
+				self.increment_used_sectors(blk_size);
 
 				write::<u32>(&blk, byte_off, io)?;
 				b = blk;
@@ -451,9 +464,7 @@ impl Ext2INode {
 			self.direct_block_ptrs[i as usize] = blk;
 			superblock.mark_block_used(io, blk)?;
 			superblock.write(io)?;
-
-			// Incrementing the number of used sectors
-			self.used_sectors += math::ceil_division(blk_size, SECTOR_SIZE);
+			self.increment_used_sectors(blk_size);
 
 			return Ok(blk);
 		}
@@ -490,9 +501,7 @@ impl Ext2INode {
 			}
 			superblock.mark_block_used(io, begin)?;
 			superblock.write(io)?;
-
-			// Incrementing the number of used sectors
-			self.used_sectors += math::ceil_division(blk_size, SECTOR_SIZE);
+			self.increment_used_sectors(blk_size);
 
 			self.indirections_alloc(level, begin, target, superblock, io)
 		}
@@ -563,9 +572,7 @@ impl Ext2INode {
 				// If the current block is empty, free it
 				if Self::is_blk_empty(buff.as_slice()) {
 					superblock.free_block(io, begin)?;
-
-					// Decrementing the number of used sectors
-					self.used_sectors -= math::ceil_division(blk_size, SECTOR_SIZE);
+					self.decrement_used_sectors(blk_size);
 
 					return Ok(true);
 				}
@@ -599,9 +606,7 @@ impl Ext2INode {
 		if level == 0 {
 			superblock.free_block(io, self.direct_block_ptrs[i as usize])?;
 			self.direct_block_ptrs[i as usize] = 0;
-
-			// Decrementing the number of used sectors
-			self.used_sectors -= math::ceil_division(blk_size, SECTOR_SIZE);
+			self.decrement_used_sectors(blk_size);
 
 			return Ok(());
 		}
@@ -639,8 +644,7 @@ impl Ext2INode {
 					_ => unreachable!(),
 				}
 
-				// Incrementing the number of used sectors
-				self.used_sectors -= math::ceil_division(blk_size, SECTOR_SIZE);
+				self.decrement_used_sectors(blk_size);
 			}
 		}
 
