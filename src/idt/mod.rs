@@ -3,9 +3,10 @@
 
 pub mod pic;
 
-use crate::util;
 use core::ffi::c_void;
 use core::mem::MaybeUninit;
+use core::mem::size_of;
+use crate::util;
 
 /// Makes the interrupt switch to ring 0.
 const ID_PRIVILEGE_RING_0: u8 = 0b00000000;
@@ -222,8 +223,10 @@ pub fn init() {
 	}
 
 	let idt = InterruptDescriptorTable {
-		size: (core::mem::size_of::<InterruptDescriptor>() * ENTRIES_COUNT - 1) as u16,
-		offset: unsafe { &ID } as *const _ as u32,
+		size: (size_of::<InterruptDescriptor>() * ENTRIES_COUNT - 1) as u16,
+		offset: unsafe {
+			ID.assume_init_ref().as_ptr() as u32
+		},
 	};
 	unsafe {
 		idt_load(&idt as *const _ as *const _);
