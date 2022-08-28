@@ -155,8 +155,8 @@ pub struct Process {
 	/// The thread ID of the process.
 	tid: Pid,
 
-	/// The name of the process.
-	name: String,
+	/// The argv of the process.
+	argv: Vec<String>,
 	/// The path to the process's executable.
 	exec_path: Path,
 
@@ -464,7 +464,7 @@ impl Process {
 			pgid: pid::INIT_PID,
 			tid: pid::INIT_PID,
 
-			name: String::new(),
+			argv: Vec::new(),
 			exec_path: Path::root(),
 
 			tty: tty::get(None).unwrap(), // Initialization with the init TTY
@@ -645,14 +645,14 @@ impl Process {
 		}
 	}
 
-	/// Returns the name of the process.
-	pub fn get_name(&self) -> &String {
-		&self.name
+	/// Returns the argv of the process.
+	pub fn get_argv(&self) -> &Vec<String> {
+		&self.argv
 	}
 
-	/// Sets the name of the process.
-	pub fn set_name(&mut self, name: String) {
-		self.name = name;
+	/// Sets the argv of the process.
+	pub fn set_argv(&mut self, argv: Vec<String>) {
+		self.argv = argv;
 	}
 
 	/// Returns the path to the executable file of the process.
@@ -1270,7 +1270,7 @@ impl Process {
 			pgid: self.pgid,
 			tid: self.pid,
 
-			name: self.name.failable_clone()?,
+			argv: self.argv.failable_clone()?,
 			exec_path: self.exec_path.failable_clone()?,
 
 			tty: self.tty.clone(),

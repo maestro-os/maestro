@@ -99,6 +99,12 @@ impl String {
 		str::from_utf8(self.as_bytes()).ok()
 	}
 
+	/// Same as `as_str` except the function doesn't check the string is a correct UTF-8 sequence.
+	/// If the string is invalid, the behaviour is undefined.
+	pub unsafe fn as_str_unchecked(&self) -> &str {
+		str::from_utf8_unchecked(self.as_bytes())
+	}
+
 	/// Returns the length of the String in bytes.
 	pub fn len(&self) -> usize {
 		self.data.len()

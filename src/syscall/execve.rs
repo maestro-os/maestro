@@ -116,19 +116,9 @@ fn build_image(
 	euid: Uid,
 	gid: Gid,
 	egid: Gid,
-	argv: &[String],
-	envp: &[String],
+	argv: Vec<String>,
+	envp: Vec<String>,
 ) -> Result<ProgramImage, Errno> {
-	// TODO Find a better solution
-	let mut argv_ = Vec::new();
-	for a in argv {
-		argv_.push(a.as_bytes())?;
-	}
-	let mut envp_ = Vec::new();
-	for e in envp {
-		envp_.push(e.as_bytes())?;
-	}
-
 	let file_guard = file.lock();
 	let file = file_guard.get_mut();
 	if !file.can_execute(euid, egid) {
@@ -141,8 +131,8 @@ fn build_image(
 		gid,
 		egid,
 
-		argv: &argv_,
-		envp: &envp_,
+		argv,
+		envp,
 	};
 
 	exec::build_image(file, exec_info)
@@ -248,7 +238,7 @@ pub fn execve(regs: &Regs) -> Result<i32, Errno> {
 	// Building the program's image
 	let program_image = unsafe {
 		stack::switch(None, move || {
-			build_image(file, uid, euid, gid, egid, &argv, &envp)
+			build_image(file, uid, euid, gid, egid, argv, envp)
 		})
 		.unwrap()?
 	};

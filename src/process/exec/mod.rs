@@ -12,10 +12,11 @@ use crate::process::mem_space::MemSpace;
 use crate::process::regs::Regs;
 use crate::process::signal::SignalHandler;
 use crate::util::container::string::String;
+use crate::util::container::vec::Vec;
 use crate::util::ptr::IntSharedPtr;
 
 /// Structure storing informations to prepare a program image to be executed.
-pub struct ExecInfo<'a> {
+pub struct ExecInfo {
 	/// The process's uid.
 	pub uid: Uid,
 	/// The process's euid.
@@ -26,15 +27,15 @@ pub struct ExecInfo<'a> {
 	pub egid: Gid,
 
 	/// The list of arguments.
-	pub argv: &'a [&'a [u8]],
+	pub argv: Vec<String>,
 	/// The list of environment variables.
-	pub envp: &'a [&'a [u8]],
+	pub envp: Vec<String>,
 }
 
 /// Structure representing the loaded image of a program.
 pub struct ProgramImage {
-	/// The name of the program.
-	name: String,
+	/// The argv of the program.
+	argv: Vec<String>,
 
 	/// The image's memory space.
 	mem_space: MemSpace,
@@ -53,16 +54,15 @@ pub struct ProgramImage {
 
 /// Trait representing a program executor, whose role is to load a program and to preprare it for
 /// execution.
-pub trait Executor<'a> {
+pub trait Executor {
 	/// Builds a program image.
 	/// `file` is the program's file.
-	fn build_image(&'a self, file: &mut File) -> Result<ProgramImage, Errno>;
+	fn build_image(&self, file: &mut File) -> Result<ProgramImage, Errno>;
 }
 
 /// Builds a program image from the given executable file.
 /// `file` is the program's file.
-/// `argv` is the list of arguments.
-/// `envp` is the environment.
+/// `info` is the set execution informations for the program.
 /// The function returns a memory space containing the program image and the pointer to the entry
 /// point.
 pub fn build_image(file: &mut File, info: ExecInfo) -> Result<ProgramImage, Errno> {
@@ -74,7 +74,7 @@ pub fn build_image(file: &mut File, info: ExecInfo) -> Result<ProgramImage, Errn
 
 /// Executes the program image `image` on the process `proc`.
 pub fn exec(proc: &mut Process, image: ProgramImage) -> Result<(), Errno> {
-	proc.set_name(image.name);
+	proc.set_argv(image.argv);
 	// TODO Set exec path
 
 	// Duplicate file descriptors

@@ -47,8 +47,8 @@ macro_rules! vec {
 
 		(|| {
 			let mut v = crate::util::container::vec::Vec::with_capacity(slice.len())?;
-			for i in slice.iter() {
-				v.push(*i)?;
+			for i in slice {
+				v.push(i)?;
 			}
 
 			Ok(v)

@@ -61,20 +61,21 @@ pub mod util;
 #[macro_use]
 pub mod vga;
 
-use crate::errno::Errno;
-use crate::file::fcache;
-use crate::file::path::Path;
-use crate::memory::vmem;
-use crate::memory::vmem::VMem;
-use crate::process::exec;
-use crate::process::exec::ExecInfo;
-use crate::process::Process;
-use crate::util::boxed::Box;
-use crate::util::container::vec::Vec;
-use crate::util::lock::Mutex;
 use core::ffi::c_void;
 use core::panic::PanicInfo;
 use core::ptr::null;
+use crate::errno::Errno;
+use crate::file::fcache;
+use crate::file::path::Path;
+use crate::memory::vmem::VMem;
+use crate::memory::vmem;
+use crate::process::Process;
+use crate::process::exec::ExecInfo;
+use crate::process::exec;
+use crate::util::boxed::Box;
+use crate::util::container::string::String;
+use crate::util::container::vec::Vec;
+use crate::util::lock::Mutex;
 
 /// The kernel's name.
 pub const NAME: &str = "maestro";
@@ -189,7 +190,7 @@ extern "C" {
 
 /// Launches the init process.
 /// `init_path` is the path to the init program.
-fn init(init_path: &[u8]) -> Result<(), Errno> {
+fn init(init_path: String) -> Result<(), Errno> {
 	let mutex = Process::new()?;
 	let lock = mutex.lock();
 	let proc = lock.get_mut();
@@ -205,11 +206,11 @@ fn init(init_path: &[u8]) -> Result<(), Errno> {
 
 		// The initial environment
 		let mut env = vec![
-			&b"PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin"[..],
-			&b"TERM=maestro"[..],
+			String::from(b"PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin")?,
+			String::from(b"TERM=maestro")?,
 		]?;
 		if cfg!(config_debug_rust_backtrace) {
-			env.push(&b"RUST_BACKTRACE=full"[..])?;
+			env.push(String::from(b"RUST_BACKTRACE=full")?)?;
 		}
 
 		let file = {
@@ -227,8 +228,8 @@ fn init(init_path: &[u8]) -> Result<(), Errno> {
 			gid: proc.get_gid(),
 			egid: proc.get_egid(),
 
-			argv: &vec![init_path]?,
-			envp: &env,
+			argv: vec![init_path]?,
+			envp: env,
 		};
 		let program_image = exec::build_image(file_guard.get_mut(), exec_info)?;
 
@@ -326,6 +327,7 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 		.as_ref()
 		.map(|s| s.as_bytes())
 		.unwrap_or(INIT_PATH);
+	let init_path = String::from(init_path).unwrap();
 	init(init_path).unwrap_or_else(|e| kernel_panic!("Cannot execute init process: {}", e));
 	enter_loop();
 }

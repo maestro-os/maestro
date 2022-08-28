@@ -28,6 +28,7 @@ use crate::process::exec::ProgramImage;
 use crate::process::mem_space::MapConstraint;
 use crate::process::mem_space::MemSpace;
 use crate::process;
+use crate::util::FailableClone;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::io::IO;
@@ -244,17 +245,19 @@ fn read_exec_file(file: &mut File, uid: Uid, gid: Gid) -> Result<malloc::Alloc<u
 }
 
 /// The program executor for ELF files.
-pub struct ELFExecutor<'a> {
+pub struct ELFExecutor {
 	/// Execution informations.
-	info: ExecInfo<'a>,
+	info: ExecInfo,
 }
 
-impl<'a> ELFExecutor<'a> {
+impl ELFExecutor {
 	/// Creates a new instance to execute the given program.
 	/// `uid` is the User ID of the executing user.
 	/// `gid` is the Group ID of the executing user.
-	pub fn new(info: ExecInfo<'a>) -> Result<Self, Errno> {
-		Ok(Self { info })
+	pub fn new(info: ExecInfo) -> Result<Self, Errno> {
+		Ok(Self {
+			info
+		})
 	}
 
 	/// Returns two values:
@@ -262,7 +265,8 @@ impl<'a> ELFExecutor<'a> {
 	/// included.
 	/// - The required size in bytes for the data to be written on the stack before the program
 	/// starts.
-	fn get_init_stack_size(argv: &[&[u8]], envp: &[&[u8]], aux: &[AuxEntryDesc]) -> (usize, usize) {
+	fn get_init_stack_size(argv: &[String], envp: &[String], aux: &[AuxEntryDesc])
+		-> (usize, usize) {
 		// The size of the block storing the arguments and environment
 		let mut info_block_size = 0;
 		for a in aux {
@@ -305,8 +309,8 @@ impl<'a> ELFExecutor<'a> {
 	fn init_stack(
 		&self,
 		user_stack: *const c_void,
-		argv: &[&[u8]],
-		envp: &[&[u8]],
+		argv: &[String],
+		envp: &[String],
 		aux: &[AuxEntryDesc],
 	) {
 		let (info_size, total_size) = Self::get_init_stack_size(argv, envp, aux);
@@ -604,11 +608,11 @@ impl<'a> ELFExecutor<'a> {
 	}
 }
 
-impl<'a> Executor<'a> for ELFExecutor<'a> {
+impl Executor for ELFExecutor {
 	// TODO Ensure there is no way to write in kernel space (check segments position and
 	// relocations)
 	// TODO Handle suid and sgid
-	fn build_image(&'a self, file: &mut File) -> Result<ProgramImage, Errno> {
+	fn build_image(&self, file: &mut File) -> Result<ProgramImage, Errno> {
 		// The ELF file image
 		let image = read_exec_file(file, self.info.euid, self.info.egid)?;
 		// Parsing the ELF file
@@ -628,7 +632,7 @@ impl<'a> Executor<'a> for ELFExecutor<'a> {
 		let aux = build_auxilary(&self.info, &load_info, &parser)?;
 
 		// The size in bytes of the initial data on the stack
-		let total_size = Self::get_init_stack_size(self.info.argv, self.info.envp, &aux).1;
+		let total_size = Self::get_init_stack_size(&self.info.argv, &self.info.envp, &aux).1;
 		// Pre-allocating pages on the user stack to write the initial data
 		{
 			// The number of pages to allocate on the user stack to write the initial data
@@ -651,7 +655,7 @@ impl<'a> Executor<'a> for ELFExecutor<'a> {
 		unsafe {
 			vmem::switch(mem_space.get_vmem().as_ref(), move || {
 				// Initializing the userspace stack
-				self.init_stack(user_stack, self.info.argv, self.info.envp, &aux);
+				self.init_stack(user_stack, &self.info.argv, &self.info.envp, &aux);
 			});
 		}
 
@@ -660,7 +664,7 @@ impl<'a> Executor<'a> for ELFExecutor<'a> {
 			mem_space.map_stack(process::KERNEL_STACK_SIZE, process::KERNEL_STACK_FLAGS)?;
 
 		Ok(ProgramImage {
-			name: String::from(self.info.argv[0])?,
+			argv: self.info.argv.failable_clone()?,
 
 			mem_space,
 

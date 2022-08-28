@@ -59,7 +59,11 @@ impl IO for Status {
 		let proc_guard = proc_mutex.lock();
 		let proc = proc_guard.get();
 
-		let name = proc.get_name();
+		let name = proc.get_argv()
+			.iter()
+			.map(| name | unsafe { name.as_str_unchecked() })
+			.next()
+			.unwrap_or("?");
 
 		let umask = proc.get_umask();
 

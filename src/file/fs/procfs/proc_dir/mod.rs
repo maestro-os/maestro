@@ -1,11 +1,13 @@
 //! This module implements the directory of a process in the procfs.
 
+mod cmdline;
 mod cwd;
 mod exe;
 mod mounts;
 mod stat;
 mod status;
 
+use cmdline::Cmdline;
 use crate::errno::Errno;
 use crate::file::DirEntry;
 use crate::file::FileContent;
@@ -46,6 +48,17 @@ impl ProcDir {
 
 		// TODO Add every nodes
 		// TODO On fail, remove previously inserted nodes
+
+		// Creating /proc/<pid>/cmdline
+		let node = Cmdline { pid };
+		let inode = fs.add_node(Box::new(node)?)?;
+		entries.insert(
+			String::from(b"cmdline")?,
+			DirEntry {
+				inode,
+				entry_type: FileType::Regular,
+			},
+		)?;
 
 		// Creating /proc/<pid>/cwd
 		let node = Cwd { pid };

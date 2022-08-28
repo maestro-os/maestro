@@ -1,25 +1,25 @@
-//! This module implements the stat file, which allows to retrieve the current status of the
-//! process.
+//! The cmdline node allows to retrieve the list of command line arguments of the process.
 
+use core::cmp::min;
 use crate::errno::Errno;
-use crate::file::fs::kernfs::node::KernFSNode;
 use crate::file::FileContent;
 use crate::file::Gid;
 use crate::file::Mode;
 use crate::file::Uid;
-use crate::process::pid::Pid;
+use crate::file::fs::kernfs::node::KernFSNode;
 use crate::process::Process;
+use crate::process::pid::Pid;
+use crate::util::container::string::String;
 use crate::util::io::IO;
 use crate::util::ptr::cow::Cow;
-use core::cmp::min;
 
-/// Structure representing the stat node of the procfs.
-pub struct Stat {
+/// Structure representing the cmdline node of the procfs.
+pub struct Cmdline {
 	/// The PID of the process.
 	pub pid: Pid,
 }
 
-impl KernFSNode for Stat {
+impl KernFSNode for Cmdline {
 	fn get_mode(&self) -> Mode {
 		0o444
 	}
@@ -45,7 +45,7 @@ impl KernFSNode for Stat {
 	}
 }
 
-impl IO for Stat {
+impl IO for Cmdline {
 	fn get_size(&self) -> u64 {
 		0
 	}
@@ -59,41 +59,12 @@ impl IO for Stat {
 		let proc_guard = proc_mutex.lock();
 		let proc = proc_guard.get();
 
-		let name = proc.get_argv()
-			.iter()
-			.map(| name | unsafe { name.as_str_unchecked() })
-			.next()
-			.unwrap_or("?");
-
-		let state = proc.get_state();
-		let state_char = state.get_char();
-
-		let pid = proc.get_pid();
-		let ppid = proc.get_parent_pid();
-		let pgid = proc.get_pgid();
-		let sid = 0; // TODO
-
-		let user_jiffies = 0; // TODO
-		let kernel_jiffies = 0; // TODO
-
-		let priority = proc.get_priority();
-		let nice = proc.get_nice();
-
-		let num_threads = 1; // TODO
-
-		// TODO Fix deadlock
-		//let vmem_usage = proc.get_vmem_usage();
-		let vmem_usage = 0;
-
-		let esp = proc.get_regs().esp;
-		let eip = proc.get_regs().eip;
-
-		// TODO Fill every fields with process's data
 		// Generating content
-		let content = crate::format!("{pid} ({name}) {state_char} {ppid} {pgid} {sid} TODO TODO 0 \
-0 0 0 0 {user_jiffies} {kernel_jiffies} TODO TODO {priority} {nice} {num_threads} 0 {vmem_usage} \
-TODO TODO TODO TODO {esp} {eip} TODO TODO TODO TODO 0 0 0 TODO TODO TODO TODO TODO TODO TODO TODO \
-TODO TODO TODO TODO TODO TODO TODO TODO TODO")?;
+		let mut content = String::new();
+		for a in proc.get_argv() {
+			content.append(a)?;
+			content.push(b'\0')?;
+		}
 
 		// Copying content to userspace buffer
 		let content_bytes = content.as_bytes();
