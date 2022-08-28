@@ -255,7 +255,7 @@ QEMU_DISK = qemu_disk
 QEMU_DISK_SIZE = 1024
 # Flags for the QEMU emulator
 QEMU_FLAGS = -smp cpus=2 -cdrom $(NAME).iso -drive file=$(QEMU_DISK),format=raw \
-	-device isa-debug-exit,iobase=0xf4,iosize=0x04 -m 512M
+	-device isa-debug-exit,iobase=0xf4,iosize=0x04 -m 4G
 
 # If `1`, QEMU is run into the terminal
 QEMU_TERM ?= 0
@@ -280,7 +280,7 @@ test: iso $(QEMU_DISK)
 
 # Rule used to debug the kernel using GDB
 debug: $(NAME).iso $(QEMU_DISK)
-	qemu-system-i386 $(QEMU_FLAGS) -s -S >debug_out 2>&1
+	qemu-system-i386 $(QEMU_FLAGS) -s -S -d int >debug_out 2>&1
 
 # The rule to run the kernel's selftests using QEMU
 selftest: iso $(QEMU_DISK)

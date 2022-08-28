@@ -124,6 +124,7 @@ impl ACPIData {
 		let mut tmp_vmem = vmem::new()?;
 		let rsdt_phys_ptr = rsdp.rsdt_address as *const c_void;
 		let rsdt_map_begin = util::down_align(rsdt_phys_ptr, memory::PAGE_SIZE);
+		crate::println!("being: {:p}", rsdt_map_begin); // TODO rm
 		// Mapping the RSDT to make it readable
 		tmp_vmem.map_range(rsdt_map_begin, memory::PAGE_SIZE as _, 2, 0)?;
 
@@ -131,6 +132,7 @@ impl ACPIData {
 		let tables = {
 			let rsdt_ptr = (memory::PAGE_SIZE + (rsdt_phys_ptr as usize - rsdt_map_begin as usize))
 				as *const Rsdt;
+			crate::println!("-> {:p}", rsdt_ptr); // TODO rm
 			let rsdt = unsafe {
 				// Safe because the pointer has been mapped before
 				&*rsdt_ptr

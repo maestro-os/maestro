@@ -296,8 +296,9 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 
 	println!("Booting Maestro kernel version {}", VERSION);
 
-	println!("Initializing ACPI...");
-	acpi::init();
+	// FIXME
+	//println!("Initializing ACPI...");
+	//acpi::init();
 
 	println!("Initializing ramdisks...");
 	device::storage::ramdisk::create()
