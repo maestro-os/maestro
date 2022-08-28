@@ -188,6 +188,8 @@ pub struct Process {
 
 	/// The priority of the process.
 	priority: usize,
+	/// The nice value of the process.
+	nice: usize,
 	/// The number of quantum run during the cycle.
 	quantum_count: usize,
 
@@ -482,6 +484,7 @@ impl Process {
 			vfork_state: VForkState::None,
 
 			priority: 0,
+			nice: 0,
 			quantum_count: 0,
 
 			parent: None,
@@ -836,6 +839,11 @@ impl Process {
 	#[inline(always)]
 	pub fn get_priority(&self) -> usize {
 		self.priority
+	}
+
+	/// Returns the nice value of the process.
+	pub fn get_nice(&self) -> usize {
+		self.nice
 	}
 
 	/// Returns the process's parent if exists.
@@ -1282,6 +1290,7 @@ impl Process {
 			vfork_state,
 
 			priority: self.priority,
+			nice: self.nice,
 			quantum_count: 0,
 
 			parent: Some(parent),
@@ -1357,6 +1366,8 @@ impl Process {
 		if sig.can_catch() && self.sigmask.is_set(sig.get_id() as _) {
 			return;
 		}
+
+		self.rusage.ru_nsignals += 1;
 
 		if matches!(self.get_state(), State::Stopped)
 			&& sig.get_default_action() == SignalAction::Continue {
@@ -1550,10 +1561,16 @@ impl Process {
 		self.set_waitable(0); // TODO Check parameter
 	}
 
-	/// Returns the number of physical memory pages used by the process.
-	pub fn get_memory_usage(&self) -> u32 {
-		// TODO
-		todo!();
+	/// Returns the number of virtual memory pages used by the process.
+	pub fn get_vmem_usage(&self) -> usize {
+		if let Some(mem_space) = &self.mem_space {
+			let guard = mem_space.lock();
+			let mem_space = guard.get();
+
+			mem_space.get_vmem_usage()
+		} else {
+			0
+		}
 	}
 
 	/// Tells whether the given user ID has the permission to kill the current process.

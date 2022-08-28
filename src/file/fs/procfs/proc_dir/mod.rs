@@ -3,6 +3,7 @@
 mod cwd;
 mod exe;
 mod mounts;
+mod stat;
 mod status;
 
 use crate::errno::Errno;
@@ -25,6 +26,7 @@ use crate::util::ptr::cow::Cow;
 use cwd::Cwd;
 use exe::Exe;
 use mounts::Mounts;
+use stat::Stat;
 use status::Status;
 
 /// Structure representing the directory of a process.
@@ -72,6 +74,17 @@ impl ProcDir {
 		let inode = fs.add_node(Box::new(node)?)?;
 		entries.insert(
 			String::from(b"mounts")?,
+			DirEntry {
+				inode,
+				entry_type: FileType::Regular,
+			},
+		)?;
+
+		// Creating /proc/<pid>/stat
+		let node = Stat { pid };
+		let inode = fs.add_node(Box::new(node)?)?;
+		entries.insert(
+			String::from(b"stat")?,
 			DirEntry {
 				inode,
 				entry_type: FileType::Regular,

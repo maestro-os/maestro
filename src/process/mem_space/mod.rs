@@ -79,6 +79,9 @@ pub struct MemSpace {
 	/// mapping on the virtual memory.
 	mappings: Map<*const c_void, MemMapping>,
 
+	/// The number of used virtual memory pages.
+	vmem_usage: usize,
+
 	/// The initial pointer of the `brk` system call.
 	brk_init: *const c_void,
 	/// The current pointer of the `brk` system call.
@@ -176,6 +179,8 @@ impl MemSpace {
 
 			mappings: Map::new(),
 
+			vmem_usage: 0,
+
 			brk_init: null::<_>(),
 			brk_ptr: null::<_>(),
 
@@ -188,6 +193,11 @@ impl MemSpace {
 	/// Returns a mutable reference to the vvirtual memory context.
 	pub fn get_vmem(&mut self) -> &mut Box<dyn VMem> {
 		&mut self.vmem
+	}
+
+	/// Returns the number of virtual memory pages in the memory space.
+	pub fn get_vmem_usage(&self) -> usize {
+		self.vmem_usage
 	}
 
 	// TODO Fix potential invalid state on fail
@@ -306,6 +316,7 @@ impl MemSpace {
 			_ => {}
 		}
 
+		self.vmem_usage += size;
 		Ok(addr)
 	}
 
@@ -427,6 +438,8 @@ impl MemSpace {
 				if !brk {
 					// Inserting gap
 					if let Some(mut gap) = gap {
+						self.vmem_usage -= gap.get_size();
+
 						// Merging previous gap
 						if !gap.get_begin().is_null() {
 							let prev_gap =
@@ -572,6 +585,8 @@ impl MemSpace {
 			gaps_size: self.gaps_size_clone()?,
 
 			mappings: Map::new(),
+
+			vmem_usage: self.vmem_usage,
 
 			brk_init: self.brk_init,
 			brk_ptr: self.brk_ptr,
