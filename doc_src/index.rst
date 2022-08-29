@@ -50,11 +50,10 @@ Maestro documentation
 Overview
 ========
 
-Maestro is a Unix-like kernel written in Rust. It follows the POSIX specifications.
 
 
 
-Intented audience
+Intended audience
 =================
 
 This documentation describes the way the Maestro kernel and its interfaces work. The targeted audience for these documents are kernel and module developers.
