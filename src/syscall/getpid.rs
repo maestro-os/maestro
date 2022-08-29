@@ -1,10 +1,14 @@
-//! TODO doc
+//! The `getpid` system call returns the PID of the current process.
 
 use crate::errno::Errno;
+use crate::process::regs::Regs;
 use crate::process::Process;
-use crate::util;
 
 /// The implementation of the `getpid` syscall.
-pub fn getpid(proc: &mut Process, _regs: &util::Regs) -> Result<i32, Errno> {
+pub fn getpid(_regs: &Regs) -> Result<i32, Errno> {
+	let mutex = Process::get_current().unwrap();
+	let guard = mutex.lock();
+	let proc = guard.get_mut();
+
 	Ok(proc.get_pid() as _)
 }

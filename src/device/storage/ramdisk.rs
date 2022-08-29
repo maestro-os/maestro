@@ -2,16 +2,22 @@
 //! userspace, it works exactly the same.
 //! Ramdisks are lazily allocated so they do not use much memory as long as they are not used.
 
+use super::StorageInterface;
+use crate::device;
+use crate::device::id;
 use crate::device::Device;
 use crate::device::DeviceHandle;
 use crate::device::DeviceType;
-use crate::device;
-use crate::errno::Errno;
 use crate::errno;
+use crate::errno::Errno;
 use crate::file::path::Path;
 use crate::memory::malloc;
+use crate::process::mem_space::MemSpace;
 use crate::util::container::string::String;
-use super::StorageInterface;
+use crate::util::io::IO;
+use crate::util::ptr::IntSharedPtr;
+use core::ffi::c_void;
+use core::mem::ManuallyDrop;
 
 /// The ramdisks' major number.
 const RAM_DISK_MAJOR: u32 = 1;
@@ -31,9 +37,7 @@ struct RAMDisk {
 impl RAMDisk {
 	/// Creates a new ramdisk.
 	pub fn new() -> Self {
-		Self {
-			data: None,
-		}
+		Self { data: None }
 	}
 
 	/// Tells whether the disk is allocated.
@@ -62,12 +66,12 @@ impl StorageInterface for RAMDisk {
 
 	fn read(&mut self, buf: &mut [u8], offset: u64, size: u64) -> Result<(), Errno> {
 		if offset > self.get_blocks_count() || offset + size > self.get_blocks_count() {
-			return Err(errno::EINVAL);
+			return Err(errno!(EINVAL));
 		}
 
 		if !self.is_allocated() {
-			for i in 0..buf.len() {
-				buf[i] = 0;
+			for b in buf {
+				*b = 0;
 			}
 		} else {
 			let block_size = self.get_block_size();
@@ -88,7 +92,7 @@ impl StorageInterface for RAMDisk {
 
 	fn write(&mut self, buf: &[u8], offset: u64, size: u64) -> Result<(), Errno> {
 		if offset > self.get_blocks_count() || offset + size > self.get_blocks_count() {
-			return Err(errno::EINVAL);
+			return Err(errno!(EINVAL));
 		}
 
 		self.allocate()?;
@@ -125,40 +129,63 @@ impl RAMDiskHandle {
 }
 
 impl DeviceHandle for RAMDiskHandle {
+	fn ioctl(
+		&mut self,
+		_mem_space: IntSharedPtr<MemSpace>,
+		_request: u32,
+		_argp: *const c_void,
+	) -> Result<u32, Errno> {
+		// TODO
+		Err(errno!(EINVAL))
+	}
+}
+
+impl IO for RAMDiskHandle {
 	fn get_size(&self) -> u64 {
 		RAM_DISK_SIZE as _
 	}
 
-	fn read(&mut self, offset: u64, buff: &mut [u8]) -> Result<usize, Errno> {
+	fn read(&mut self, offset: u64, buff: &mut [u8]) -> Result<(u64, bool), Errno> {
 		self.disk.read_bytes(buff, offset)
 	}
 
-	fn write(&mut self, offset: u64, buff: &[u8]) -> Result<usize, Errno> {
+	fn write(&mut self, offset: u64, buff: &[u8]) -> Result<u64, Errno> {
 		self.disk.write_bytes(buff, offset)
+	}
+
+	fn poll(&mut self, _mask: u32) -> Result<u32, Errno> {
+		Ok(0)
 	}
 }
 
 /// Creates every ramdisk instances.
 pub fn create() -> Result<(), Errno> {
 	// TODO Undo all on fail?
-	// TODO Alloc major number block
+	let _major = ManuallyDrop::new(id::alloc_major(DeviceType::Block, Some(RAM_DISK_MAJOR))?);
 
 	for i in 0..RAM_DISK_COUNT {
-		let mut name = String::from("name")?;
-		name.push_str(&String::from_number(i as _)?)?;
+		let mut name = String::from(b"ram")?;
+		name.append(String::from_number(i as _)?)?;
 
 		let mut path = Path::root();
-		path.push(String::from("/dev")?)?;
+		path.push(String::from(b"dev")?)?;
 		path.push(name)?;
 
-		device::register_device(Device::new(RAM_DISK_MAJOR, i as _, path, 0666, DeviceType::Block,
-			RAMDiskHandle::new())?)?;
+		let dev = Device::new(
+			RAM_DISK_MAJOR,
+			i as _,
+			path,
+			0o666,
+			DeviceType::Block,
+			RAMDiskHandle::new(),
+		)?;
+		device::register_device(dev)?;
 	}
 
 	Ok(())
 }
 
-#[cfg(test)]
+/*#[cfg(test)]
 mod test {
 	use super::*;
 	use core::cmp::min;
@@ -268,6 +295,4 @@ mod test {
 			}
 		}
 	}
-
-	// TODO
-}
+}*/

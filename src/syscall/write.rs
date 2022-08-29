@@ -1,30 +1,81 @@
 //! This module implements the `write` system call, which allows to write data to a file.
 
-use core::slice;
-use core::str;
-use crate::errno::Errno;
 use crate::errno;
+use crate::errno::Errno;
+use crate::file::open_file::O_NONBLOCK;
+use crate::process::mem_space::ptr::SyscallSlice;
+use crate::process::regs::Regs;
 use crate::process::Process;
-use crate::util;
+use crate::syscall::Signal;
+use crate::util::io::IO;
+use core::cmp::min;
+
+// TODO O_ASYNC
 
 /// The implementation of the `write` syscall.
-pub fn write(proc: &mut Process, regs: &util::Regs) -> Result<i32, Errno> {
-	let _fd = regs.ebx;
-	let buf = regs.ecx as *const u8;
+pub fn write(regs: &Regs) -> Result<i32, Errno> {
+	let fd = regs.ebx;
+	let buf: SyscallSlice<u8> = (regs.ecx as usize).into();
 	let count = regs.edx as usize;
 
-	if proc.get_mem_space().can_access(buf, count, true, true) {
-		// Safe because the permission to access the memory has been checked by the previous
-		// condition
-		let data = str::from_utf8(unsafe {
-			slice::from_raw_parts(buf, count)
-		}).unwrap();
+	let len = min(count, i32::MAX as usize);
+	if len == 0 {
+		return Ok(0);
+	}
 
-		// TODO Write into the file
-		crate::print!("{}", data);
+	loop {
+		// Trying to write and getting the length of written data
+		let (len, flags) = {
+			let (mem_space, open_file_mutex) = {
+				let mutex = Process::get_current().unwrap();
+				let guard = mutex.lock();
+				let proc = guard.get_mut();
 
-		Ok(0)
-	} else {
-		Err(errno::EFAULT)
+				(
+					proc.get_mem_space().unwrap(),
+					proc.get_fd(fd).ok_or(errno!(EBADF))?.get_open_file(),
+				)
+			};
+
+			let open_file_guard = open_file_mutex.lock();
+			let open_file = open_file_guard.get_mut();
+
+			let mem_space_guard = mem_space.lock();
+			let buf_slice = buf.get(&mem_space_guard, len)?.ok_or(errno!(EFAULT))?;
+
+			let flags = open_file.get_flags();
+			let len = match open_file.write(0, buf_slice) {
+				Ok(len) => len,
+
+				Err(e) => {
+					// If writing to a broken pipe, kill with SIGPIPE
+					if e.as_int() == errno::EPIPE {
+						let mutex = Process::get_current().unwrap();
+						let guard = mutex.lock();
+						let proc = guard.get_mut();
+
+						proc.kill(&Signal::SIGPIPE, false);
+					}
+
+					return Err(e);
+				},
+			};
+
+			(len, flags)
+		};
+
+		// TODO Continue until everything was written?
+		// If the length is greater than zero, success
+		if len > 0 {
+			return Ok(len as _);
+		}
+
+		if flags & O_NONBLOCK != 0 {
+			// The file descriptor is non blocking
+			return Err(errno!(EAGAIN));
+		}
+
+		// TODO Mark the process as Sleeping and wake it up when data can be written?
+		crate::wait();
 	}
 }

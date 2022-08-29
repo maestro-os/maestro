@@ -1,21 +1,32 @@
 //! This module implements debugging tools.
 
-use core::ffi::c_void;
-use core::mem::size_of;
 use crate::elf;
 use crate::memory;
 use crate::multiboot;
+use core::ffi::c_void;
+use core::mem::size_of;
+use core::str;
 
 /// Prints, in hexadecimal, the content of the memory at the given location `ptr`, with the given
 /// size `n` in bytes.
+///
+/// # Safety
+/// The range of memory of size `n` starting at pointer `ptr` must be readable. If not, the
+/// behaviour is undefined.
 pub unsafe fn print_memory(ptr: *const c_void, n: usize) {
 	let mut i = 0;
+
 	while i < n {
 		crate::print!("{:#08x}  ", ptr as usize + i);
 
 		let mut j = 0;
-		while j < 16 && i + j < n {
-			crate::print!("{:02x} ", *(((ptr as usize) + (i + j)) as *const u8));
+		while j < 16 {
+			if i + j < n {
+				crate::print!("{:02x} ", *(((ptr as usize) + (i + j)) as *const u8));
+			} else {
+				crate::print!("   ");
+			}
+
 			j += 1;
 		}
 
@@ -23,12 +34,15 @@ pub unsafe fn print_memory(ptr: *const c_void, n: usize) {
 
 		j = 0;
 		while j < 16 && i + j < n {
-			let v = *(((ptr as usize) + (i + j)) as *const u8);
-			let c = if v < 32 || v > 127 {
-				'.'
-			} else {
-				v as char
+			let val = *(((ptr as usize) + (i + j)) as *const u8);
+			let c = {
+				if (32..127).contains(&val) {
+					val as char
+				} else {
+					'.'
+				}
 			};
+
 			crate::print!("{}", c);
 			j += 1;
 		}
@@ -51,22 +65,20 @@ pub fn print_callstack(ebp: *const u32, max_depth: usize) {
 
 	let mut i: usize = 0;
 	let mut ebp_ = ebp;
-	while ebp_ != 0 as *const u32 && i < max_depth {
-		// TODO
-		/*if !vmem.is_mapped(ebp_) {
-			break;
-		}*/
-
-		let eip = unsafe {
-			*((ebp_ as usize + size_of::<usize>()) as *const u32) as *const c_void
-		};
-		if eip == (0 as *const _) {
+	while !ebp_.is_null() && i < max_depth {
+		let eip = unsafe { *((ebp_ as usize + size_of::<usize>()) as *const u32) as *const c_void };
+		if eip < memory::PROCESS_END {
 			break;
 		}
 
-		if let Some(name) = elf::get_function_name(memory::kern_to_virt(boot_info.elf_sections),
-			boot_info.elf_num as usize, boot_info.elf_shndx as usize,
-			boot_info.elf_entsize as usize, eip) {
+		if let Some(name) = elf::get_function_name(
+			memory::kern_to_virt(boot_info.elf_sections),
+			boot_info.elf_num as usize,
+			boot_info.elf_shndx as usize,
+			boot_info.elf_entsize as usize,
+			eip,
+		) {
+			let name = str::from_utf8(name).unwrap_or("<Invalid UTF8>");
 			crate::println!("{}: {:p} -> {}", i, eip, name);
 		} else {
 			crate::println!("{}: {:p} -> ???", i, eip);
@@ -80,7 +92,7 @@ pub fn print_callstack(ebp: *const u32, max_depth: usize) {
 
 	if i == 0 {
 		crate::println!("Empty");
-	} else if ebp_ != (0 as *const _) {
+	} else if !ebp_.is_null() {
 		crate::println!("...");
 	}
 }

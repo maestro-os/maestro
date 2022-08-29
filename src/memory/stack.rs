@@ -1,30 +1,67 @@
 //! This module implements stack utility functions.
 
-use core::ffi::c_void;
-use core::mem::transmute;
 use crate::errno::Errno;
-use crate::util::boxed::Box;
+use crate::memory;
+use crate::memory::malloc;
+use core::ffi::c_void;
+use core::mem;
+use core::ptr;
+
+/// The size of a temporary stack in bytes.
+const TMP_STACK_SIZE: usize = memory::PAGE_SIZE * 8;
 
 extern "C" {
 	/// Performs the stack switching for the given stack and closure to execute.
-	fn stack_switch_(stack: *mut c_void, func_ptr: *const c_void, data: *mut c_void);
+	/// `s` is the StackLambda structure.
+	fn stack_switch_(stack: *mut c_void, s: *mut c_void, f: *const c_void);
 }
 
-/// Performs the execution of the given function `f`.
-#[no_mangle]
-extern "C" fn stack_switch_in(func_ptr: *const c_void, data: *mut c_void) {
-	let f = unsafe {
-		transmute::<*const c_void, fn(*const c_void)>(func_ptr)
-	};
-	f(data);
+/// Structure storing a lambda to be executed on an alternate stack.
+struct StackLambda<F: FnOnce() -> T, T> {
+	/// The lambda to be called on the alternate stack.
+	f: F,
+
+	/// The return value.
+	ret_val: Option<T>,
+}
+
+impl<F: FnOnce() -> T, T> StackLambda<F, T> {
+	/// Performs the execution of the lambda on the alternate stack.
+	extern "C" fn exec(&mut self) {
+		let f = unsafe { ptr::read_volatile(&self.f) };
+
+		self.ret_val = Some(f());
+	}
 }
 
 /// Executes the given closure `f` while being on the given stack. `stack` is the pointer to the
-/// beginning of the new stack. After execution, the function restores the previous stack.
-/// `data` is the data to pass on the temporary stack.
-pub unsafe fn switch<T>(stack: *mut c_void, f: fn(*mut c_void), data: T) -> Result<T, Errno> {
-	let mut data_box = Box::new(data)?;
-	let data_ptr = data_box.as_mut_ptr();
-	stack_switch_(stack, f as _, data_ptr as _);
-	Ok(data_box.take())
+/// beginning of the alternate stack.
+/// If the given stack is None, the function allocates a temporary stack.
+///
+/// # Safety
+///
+/// If the stack `stack` is invalid, the behaviour is undefined.
+///
+/// When passing a closure to this function, the usage of the `move` keyword is should be used in
+/// the case the previous stack becomes unreachable. This keyword ensures that variables are
+/// captured by value and not by reference, thus avoiding to create dangling references.
+pub unsafe fn switch<F: FnOnce() -> T, T>(stack: Option<*mut c_void>, f: F) -> Result<T, Errno> {
+	let mut f = StackLambda { f, ret_val: None };
+	let func = StackLambda::<F, T>::exec;
+
+	if let Some(stack) = stack {
+		stack_switch_(stack, &mut f as *mut _ as _, func as *const _);
+	} else {
+		let stack = malloc::Alloc::<u8>::new_default(TMP_STACK_SIZE)?;
+		let stack_top = (stack.as_ptr() as *mut c_void).add(TMP_STACK_SIZE);
+
+		stack_switch_(stack_top, &mut f as *mut _ as _, func as *const _);
+	}
+
+	let ret_val = ptr::read_volatile(&f.ret_val).unwrap();
+
+	// Avoid double free
+	mem::forget(f);
+
+	Ok(ret_val)
 }

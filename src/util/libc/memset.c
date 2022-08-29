@@ -2,7 +2,7 @@
 #include <stdint.h>
 
 /*
- * TODO doc
+ * Fills a field with the given value to write several bytes at a time.
  */
 static long make_field(const int c)
 {
@@ -14,18 +14,15 @@ static long make_field(const int c)
 	return field;
 }
 
-/*
- * TODO doc
- */
 void *memset(void *s, int c, size_t n)
 {
 	void *begin = s;
 	void *end = begin + n;
 	long field;
 
-	field = make_field(c);
 	while(s < end && (((intptr_t) s & (sizeof(long) - 1)) != 0))
 		*((char *) s++) = c;
+	field = make_field(c);
 	while(s < (void *) ((intptr_t) end & ~((intptr_t) 7))
 		&& (((intptr_t) s & (sizeof(long) - 1)) == 0))
 		*((long *) s++) = field;

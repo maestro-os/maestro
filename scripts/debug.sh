@@ -2,10 +2,16 @@
 
 # This script allows to run gdb to debug the kernel using QEMU.
 
-make maestro.iso || exit 1
+# The AUX_ELF environment variable allows to specify the path to an auxilary ELF file whoses symbols will be added to gdb.
+# This allows to debug the kernel with a given running program.
 
-setsid qemu-system-i386 -cdrom maestro.iso -drive file=qemu_disk,format=raw -d int -s -S >debug_out 2>&1 &
+setsid make debug &
 QEMU_PID=$!
 
-gdb maestro -ex 'target remote :1234'
-kill $QEMU_PID
+if [ "$AUX_ELF" != "" ]; then
+	gdb maestro -ex 'target remote :1234' -ex 'set confirm off' -ex "add-symbol-file $AUX_ELF" -ex 'set confirm on'
+else
+	gdb maestro -ex 'target remote :1234'
+fi
+
+kill -- -$QEMU_PID

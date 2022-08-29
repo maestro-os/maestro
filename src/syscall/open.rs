@@ -1,91 +1,151 @@
-//! TODO doc
+//! The open system call allows a process to open a file and get a file descriptor.
 
-use core::ffi::c_void;
-use crate::errno::Errno;
 use crate::errno;
-use crate::file::File;
-use crate::file::path::Path;
+use crate::errno::Errno;
 use crate::file;
+use crate::file::fcache;
+use crate::file::open_file;
+use crate::file::open_file::FDTarget;
+use crate::file::path::Path;
+use crate::file::File;
+use crate::file::FileContent;
+use crate::file::FileType;
+use crate::file::Gid;
+use crate::file::Mode;
+use crate::file::Uid;
+use crate::process::mem_space::ptr::SyscallString;
+use crate::process::regs::Regs;
 use crate::process::Process;
-use crate::util::lock::mutex::MutexGuard;
 use crate::util::ptr::SharedPtr;
-use crate::util;
+use crate::util::FailableClone;
 
-/// TODO doc
-pub const O_APPEND: u32 =    0b00000000000001;
-/// TODO doc
-pub const O_ASYNC: u32 =     0b00000000000010;
-/// TODO doc
-pub const O_CLOEXEC: u32 =   0b00000000000100;
-/// TODO doc
-pub const O_CREAT: u32 =     0b00000000001000;
-/// TODO doc
-pub const O_DIRECT: u32 =    0b00000000010000;
-/// TODO doc
-pub const O_DIRECTORY: u32 = 0b00000000100000;
-/// TODO doc
-pub const O_EXCL: u32 =      0b00000001000000;
-/// TODO doc
-pub const O_LARGEFILE: u32 = 0b00000010000000;
-/// TODO doc
-pub const O_NOATIME: u32 =   0b00000100000000;
-/// TODO doc
-pub const O_NOCTTY: u32 =    0b00001000000000;
-/// TODO doc
-pub const O_NOFOLLOW: u32 =  0b00010000000000;
-/// TODO doc
-pub const O_NONBLOCK: u32 =  0b00100000000000;
-/// TODO doc
-pub const O_SYNC: u32 =      0b01000000000000;
-/// TODO doc
-pub const O_TRUNC: u32 =     0b10000000000000;
+/// Mask of status flags to be kept by an open file description.
+pub const STATUS_FLAGS_MASK: i32 = !(open_file::O_CLOEXEC
+	| open_file::O_CREAT
+	| open_file::O_DIRECTORY
+	| open_file::O_EXCL
+	| open_file::O_NOCTTY
+	| open_file::O_NOFOLLOW
+	| open_file::O_TRUNC);
 
-/// Returns the absolute path to the file.
-fn get_file_absolute_path(process: &Process, path_str: &str) -> Result<Path, Errno> {
-	let path = Path::from_string(path_str)?;
-	if !path.is_absolute() {
-		let cwd = process.get_cwd();
-		let mut absolute_path = cwd.concat(&path)?;
-		absolute_path.reduce()?;
-		Ok(absolute_path)
+// TODO Implement all flags
+
+/// Returns the file at the given path `path`.
+/// If the file doesn't exist and the O_CREAT flag is set, the file is created, then the function
+/// returns it. If the flag is not set, the function returns an error with the appropriate errno.
+/// If the file is to be created, the function uses `mode` to set its permissions and `uid and
+/// `gid` to set the user ID and group ID.
+fn get_file(
+	path: Path,
+	flags: i32,
+	mode: Mode,
+	uid: Uid,
+	gid: Gid,
+) -> Result<SharedPtr<File>, Errno> {
+	// Tells whether to follow symbolic links on the last component of the path.
+	let follow_links = flags & open_file::O_NOFOLLOW == 0;
+
+	let mutex = fcache::get();
+	let guard = mutex.lock();
+	let files_cache = guard.get_mut().as_mut().unwrap();
+
+	if flags & open_file::O_CREAT != 0 {
+		// Getting the path of the parent directory
+		let mut parent_path = path.failable_clone()?;
+		// The file's basename
+		let name = parent_path.pop().ok_or_else(|| errno!(ENOENT))?;
+
+		// The parent directory
+		let parent_mutex = files_cache.get_file_from_path(&parent_path, uid, gid, true)?;
+		let parent_guard = parent_mutex.lock();
+		let parent = parent_guard.get_mut();
+
+		let file_result = files_cache.get_file_from_parent(
+			parent,
+			name.failable_clone()?,
+			uid,
+			gid,
+			follow_links,
+		);
+		match file_result {
+			// If the file is found, return it
+			Ok(file) => Ok(file),
+
+			Err(e) if e.as_int() == errno::ENOENT => {
+				// Creating the file
+				files_cache.create_file(parent, name, uid, gid, mode, FileContent::Regular)
+			}
+
+			Err(e) => Err(e),
+		}
 	} else {
-		Ok(path)
+		// The file is the root directory
+		files_cache.get_file_from_path(&path, uid, gid, follow_links)
 	}
 }
 
-fn get_file(path: Path, flags: u32) -> Result<SharedPtr<File>, Errno> {
-	let mutex = file::get_files_cache();
-	let mut guard = MutexGuard::new(mutex);
-	let files_cache = guard.get_mut();
+/// Performs the open system call.
+pub fn open_(pathname: SyscallString, flags: i32, mode: file::Mode) -> Result<i32, Errno> {
+	// Getting the path string
+	let (path, mode, uid, gid) = {
+		let mutex = Process::get_current().unwrap();
+		let guard = mutex.lock();
+		let proc = guard.get_mut();
 
-	if let Ok(file) = files_cache.get_file_from_path(&path) {
-		Ok(file)
-	} else {
-		if flags & O_CREAT != 0 {
-			// TODO Create file, return errno on fail
-			Err(-errno::ENOENT as _)
-		} else {
-			Err(-errno::ENOENT as _)
+		let mem_space = proc.get_mem_space().unwrap();
+		let mem_space_guard = mem_space.lock();
+		let path = Path::from_str(pathname.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?, true)?;
+		let abs_path = super::util::get_absolute_path(&proc, path)?;
+
+		let mode = mode & !proc.get_umask();
+		let uid = proc.get_euid();
+		let gid = proc.get_egid();
+
+		(abs_path, mode, uid, gid)
+	};
+
+	// Getting the file
+	let file = get_file(path, flags, mode, uid, gid)?;
+
+	{
+		let guard = file.lock();
+		let f = guard.get_mut();
+
+		// If O_DIRECTORY is set and the file is not a directory, return an error
+		if flags & open_file::O_DIRECTORY != 0 && f.get_file_type() != FileType::Directory {
+			return Err(errno!(ENOTDIR));
+		}
+
+		// Truncate the file if necessary
+		if flags & open_file::O_TRUNC != 0 {
+			f.set_size(0);
 		}
 	}
+
+	// Create the file descriptor
+	let mutex = Process::get_current().unwrap();
+	let guard = mutex.lock();
+	let proc = guard.get_mut();
+	let fd = proc.create_fd(flags & STATUS_FLAGS_MASK, FDTarget::File(file.clone()))?;
+
+	// Flushing file
+	match file.lock().get_mut().sync() {
+		Err(e) => {
+			proc.close_fd(fd.get_id())?;
+			return Err(e);
+		},
+
+		_ => {},
+	}
+
+	Ok(fd.get_id() as _)
 }
 
 /// The implementation of the `open` syscall.
-pub fn open(proc: &mut Process, regs: &util::Regs) -> Result<i32, Errno> {
-	let pathname = regs.ebx as *const c_void;
-	let flags = regs.ecx;
-	let _mode = regs.edx as u16;
+pub fn open(regs: &Regs) -> Result<i32, Errno> {
+	let pathname: SyscallString = (regs.ebx as usize).into();
+	let flags = regs.ecx as i32;
+	let mode = regs.edx as file::Mode;
 
-	// TODO Check that path is in process's memory
-	// TODO Check path length (ENAMETOOLONG)
-	let path_str = unsafe {
-		util::ptr_to_str(pathname)
-	};
-
-	// TODO Resolve symbolic links up to limit (if too many, ELOOP)
-
-	let file_path = get_file_absolute_path(&proc, path_str)?;
-	let file = get_file(file_path, flags)?;
-	let fd = proc.open_file(file)?;
-	Ok(fd.get_id() as _)
+	open_(pathname, flags, mode)
 }

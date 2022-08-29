@@ -2,67 +2,12 @@
  * This file contains macros and functions created by these macros to handle interruptions.
  */
 
-.section .text
+.include "src/process/regs/regs.s"
 
-.global error_handler
 .global idt_load
 .extern end_of_interrupt
 
-/*
- * This macro stores the values of every registers after an interruption was triggered.
- * It is required that the caller allocate some memory (the size of the registers storing structure) before calling.
- * The stack frame is used as a reference to place the register values.
- */
-.macro GET_REGS n
-	mov %edi, -0x4(%ebp)
-	mov %esi, -0x8(%ebp)
-	mov %edx, -0xc(%ebp)
-	mov %ecx, -0x10(%ebp)
-	mov %ebx, -0x14(%ebp)
-	mov %eax, -0x18(%ebp)
-
-	mov 12(%ebp), %eax
-	mov %eax, -0x1c(%ebp) # eflags
-	mov 4(%ebp), %eax
-	mov %eax, -0x20(%ebp) # eip
-
-	cmpl $0x8, 8(%ebp)
-	je ring0_\n
-	jmp ring3_\n
-
-ring0_\n:
-	mov %ebp, %eax
-	add $16, %eax
-	mov %eax, -0x24(%ebp) # esp
-	jmp esp_end_\n
-
-ring3_\n:
-	mov 16(%ebp), %eax
-	mov %eax, -0x24(%ebp) # esp
-
-esp_end_\n:
-	mov (%ebp), %eax
-	mov %eax, -0x28(%ebp) # ebp
-.endm
-
-
-
-/*
- * This macro is meant to be called before the `iret` instruction.
- * It restores the values of the registers that are not updated by the `iret` instruction.
- * The values are taken from the structure that was previously allocated on the stack for the macro `GET_REGS`.
- * The function is not relinquishing the space taken by the structure on the stack.
- */
-.macro RESTORE_REGS
-	mov -0x4(%ebp), %edi
-	mov -0x8(%ebp), %esi
-	mov -0xc(%ebp), %edx
-	mov -0x10(%ebp), %ecx
-	mov -0x14(%ebp), %ebx
-	mov -0x18(%ebp), %eax
-.endm
-
-
+.section .text
 
 /*
  * This macro creates a function to handle an error interrupt that does **not** pass an additional error code.
@@ -76,7 +21,6 @@ error\n:
 	mov %esp, %ebp
 
 	# Allocating space for registers and retrieving them
-	sub $40, %esp
 GET_REGS \n
 
 	# Getting the ring
@@ -84,17 +28,16 @@ GET_REGS \n
 	and $0b11, %eax
 
 	# Pushing arguments to call event_handler
-	push %esp
-	push %eax
-	push $0
-	push $\n
+	push %esp # regs
+	push %eax # ring
+	push $0 # code
+	push $\n # id
 	call event_handler
 	add $16, %esp
 
-	# Restoring registers and freeing the allocated stack space
 RESTORE_REGS
-	add $40, %esp
 
+	# Restoring the context
 	mov %ebp, %esp
 	pop %ebp
 	iret
@@ -110,46 +53,41 @@ RESTORE_REGS
 .global error\n
 
 error\n:
-	# Copying the error code after the stack frame and popping it
-	sub $4, %esp
+	# Retrieving the error code and writing it after the stack pointer so that it can be retrieved
+	# after the stack frame
 	push %eax
-	mov 8(%esp), %eax
-	mov %eax, -36(%esp)
+	mov 4(%esp), %eax
+	mov %eax, -4(%esp)
 	pop %eax
-	add $8, %esp
+
+	# Removing the code from its previous location on the stack
+	add $4, %esp
 
 	push %ebp
 	mov %esp, %ebp
 
+	# Allocating space for the error code
+	push -8(%esp)
+
 	# Allocating space for registers and retrieving them
-	sub $40, %esp
 GET_REGS \n
 
-	# Retrieving the error code on the stack
-	sub $4, %esp
-
-	# Getting pointer to structure containing register values
-	mov %esp, %eax
-	add $40, %eax
-
 	# Getting the ring
-	mov 8(%ebp), %ebx
-	and $0b11, %ebx
+	mov 8(%ebp), %eax
+	and $0b11, %eax
 
 	# Pushing arguments to call event_handler
-	push %eax
-	push %ebx
-	push 8(%esp)
-	push $\n
+	push %esp # regs
+	push %eax # ring
+	push (REGS_SIZE + 8)(%esp) # code
+	push $\n # id
 	call event_handler
 	add $16, %esp
 
+RESTORE_REGS
+
 	# Freeing the space allocated for the error code
 	add $4, %esp
-
-	# Restoring registers and freeing the allocated stack space
-RESTORE_REGS
-	add $40, %esp
 
 	mov %ebp, %esp
 	pop %ebp
@@ -170,7 +108,6 @@ irq\n:
 	mov %esp, %ebp
 
 	# Allocating space for registers and retrieving them
-	sub $40, %esp
 GET_REGS irq_\n
 
 	# Getting the ring
@@ -178,21 +115,20 @@ GET_REGS irq_\n
 	and $0b11, %eax
 
 	# Pushing arguments to call event_handler
-	push %esp
-	push %eax
-	push $0
-	push $(\n + 0x20)
+	push %esp # regs
+	push %eax # ring
+	push $0 # code
+	push $(\n + 0x20) # id
 	call event_handler
 	add $16, %esp
 
-	push $(\n + 0x20)
+	push $\n
 	call end_of_interrupt
 	add $4, %esp
 
-	# Restoring registers and freeing the allocated stack space
 RESTORE_REGS
-	add $40, %esp
 
+	# Restoring the context
 	mov %ebp, %esp
 	pop %ebp
 	iret

@@ -6,5 +6,5 @@
 interrupt_is_enabled:
 	pushf
 	pop %eax
-	or $0x200, %eax
+	and $0x200, %eax
 	ret

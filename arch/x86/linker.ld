@@ -26,14 +26,14 @@ SECTIONS
 		*(.boot.text)
 	}
 
-	.boot.data BLOCK(4K) : ALIGN(4K)
-	{
-		*(.boot.data)
-	}
-
 	.boot.stack BLOCK(4K) : ALIGN(4K)
 	{
 		*(.boot.stack)
+	}
+
+	.boot.data BLOCK(4K) : ALIGN(4K)
+	{
+		*(.boot.data)
 	}
 
 /*

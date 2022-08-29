@@ -28,7 +28,7 @@ impl<T> List<T> {
 	pub const fn new(inner_offset: usize) -> Self {
 		List::<T> {
 			front: None,
-			inner_offset: inner_offset,
+			inner_offset,
 			_phantom: core::marker::PhantomData::<T>,
 		}
 	}
@@ -40,12 +40,10 @@ impl<T> List<T> {
 
 	/// Returns the number of elements in the list.
 	pub fn size(&self) -> usize {
-		if let Some(front) = self.front {
-			unsafe {
-				front.as_ref()
-			}.right_size()
-		} else {
-			0
+		match self.front {
+			Some(front) => unsafe { front.as_ref() }.right_size(),
+
+			None => 0,
 		}
 	}
 
@@ -55,14 +53,8 @@ impl<T> List<T> {
 	}
 
 	/// Returns a mutable reference to the front node if the list is not empty.
-	pub fn get_front(&mut self) -> Option::<&'static mut ListNode> {
-		if let Some(front) = self.front {
-			Some(unsafe {
-				&mut *front.as_ptr()
-			})
-		} else {
-			None
-		}
+	pub fn get_front(&mut self) -> Option<&'static mut ListNode> {
+		Some(unsafe { &mut *(self.front?.as_ptr()) })
 	}
 
 	/// Inserts the given element at the front of list.
@@ -78,9 +70,7 @@ impl<T> List<T> {
 	/// Unlinks the first element at the front of the list.
 	pub fn unlink_front(&mut self) {
 		if let Some(mut front) = self.front {
-			let f = unsafe {
-				front.as_mut()
-			};
+			let f = unsafe { front.as_mut() };
 
 			unsafe {
 				f.unlink_floating();
@@ -90,20 +80,22 @@ impl<T> List<T> {
 	}
 
 	/// Executes the given closure `f` for each nodes in the list.
-	pub fn foreach<F>(&self, f: F) where F: Fn(&ListNode) {
+	pub fn foreach<F>(&self, f: F)
+	where
+		F: Fn(&ListNode),
+	{
 		if let Some(front) = self.front {
-			unsafe {
-				front.as_ref()
-			}.foreach(f);
+			unsafe { front.as_ref() }.foreach(f);
 		}
 	}
 
 	/// Same as `foreach` except the nodes are mutable.
-	pub fn foreach_mut<F>(&mut self, f: F) where F: Fn(&mut ListNode) {
+	pub fn foreach_mut<F>(&mut self, f: F)
+	where
+		F: Fn(&mut ListNode),
+	{
 		if let Some(mut front) = self.front {
-			unsafe {
-				front.as_mut()
-			}.foreach_mut(f);
+			unsafe { front.as_mut() }.foreach_mut(f);
 		}
 	}
 }
@@ -118,19 +110,16 @@ impl<T> Clone for List<T> {
 	}
 }
 
-impl<T> Copy for List<T> {}
-
 /// Creates a new List object for the given type and field.
 /// If the parameter `field` is not the name of a field of type ListNode, the behaviour is
 /// undefined.
 #[macro_export]
 macro_rules! list_new {
 	($type:ty, $field:ident) => {
-		List::<$type>::new(crate::offset_of!($type, $field))
-	}
+		crate::util::list::List::<$type>::new(crate::offset_of!($type, $field))
+	};
 }
 
-// TODO Make immovable
 /// A node of a List. This structure is meant to be used inside of the structure to be stored in
 /// the list.
 #[derive(Debug)]
@@ -139,24 +128,6 @@ pub struct ListNode {
 	prev: Option<NonNull<ListNode>>,
 	/// Pointer to the next element in the list
 	next: Option<NonNull<ListNode>>,
-}
-
-/// Converts the given option to a const pointer option for iterations.
-fn option_to_const(from: Option<NonNull<ListNode>>) -> Option<*const ListNode> {
-	if let Some(inner) = from {
-		Some(inner.as_ptr() as _)
-	} else {
-		None
-	}
-}
-
-/// Converts the given option to a mut pointer option for iterations.
-fn option_to_mut(from: Option<NonNull<ListNode>>) -> Option<*mut ListNode> {
-	if let Some(inner) = from {
-		Some(inner.as_ptr() as _)
-	} else {
-		None
-	}
 }
 
 impl ListNode {
@@ -171,17 +142,13 @@ impl ListNode {
 	/// Returns a reference to the structure storing the node.
 	/// `offset` is the offset of the field of the node in the structure.
 	pub fn get<T>(&self, offset: usize) -> &'static T {
-		unsafe {
-			&*(((self as *const _ as usize) - offset) as *const T)
-		}
+		unsafe { &*(((self as *const _ as usize) - offset) as *const T) }
 	}
 
 	/// Returns a mutable reference to the structure storing the node.
 	/// `offset` is the offset of the field of the node in the structure.
 	pub fn get_mut<T>(&mut self, offset: usize) -> &'static mut T {
-		unsafe {
-			&mut *(((self as *mut _ as usize) - offset) as *mut T)
-		}
+		unsafe { &mut *(((self as *mut _ as usize) - offset) as *mut T) }
 	}
 
 	/// Tells whether the node is single in the list.
@@ -191,24 +158,12 @@ impl ListNode {
 
 	/// Returns the previous element if it exsits, or None.
 	pub fn get_prev(&self) -> Option<&'static mut ListNode> {
-		if let Some(ptr) = self.prev {
-			Some(unsafe {
-				&mut *ptr.as_ptr()
-			})
-		} else {
-			None
-		}
+		Some(unsafe { &mut *(self.prev?.as_ptr()) })
 	}
 
 	/// Returns the next element if it exsits, or None.
 	pub fn get_next(&self) -> Option<&'static mut ListNode> {
-		if let Some(ptr) = self.next {
-			Some(unsafe {
-				&mut *ptr.as_ptr()
-			})
-		} else {
-			None
-		}
+		Some(unsafe { &mut *(self.next?.as_ptr()) })
 	}
 
 	/// Returns the size of the linked list, counting previous elements.
@@ -216,12 +171,12 @@ impl ListNode {
 		let mut i = 0;
 		let mut curr: Option<*const Self> = Some(self);
 
-		while curr.is_some() {
+		while let Some(c) = curr {
+			curr = unsafe { (*c).prev.map(|n| n.as_ptr() as *const _) };
+
 			i += 1;
-			curr = option_to_const(unsafe {
-				(*curr.unwrap()).prev
-			});
 		}
+
 		i
 	}
 
@@ -230,38 +185,42 @@ impl ListNode {
 		let mut i = 0;
 		let mut curr: Option<*const Self> = Some(self);
 
-		while curr.is_some() {
+		while let Some(c) = curr {
+			curr = unsafe { (*c).next.map(|n| n.as_ptr() as *const _) };
+
 			i += 1;
-			curr = option_to_const(unsafe {
-				(*curr.unwrap()).next
-			});
 		}
+
 		i
 	}
 
 	/// Executes the given closure `f` for each nodes after the current one, included. The nodes
 	/// are not mutable.
-	pub fn foreach<F>(&self, f: F) where F: Fn(&ListNode) {
+	pub fn foreach<F>(&self, f: F)
+	where
+		F: Fn(&ListNode),
+	{
 		let mut curr: Option<*const Self> = Some(self);
 
-		while curr.is_some() {
-			let c = curr.unwrap();
+		while let Some(c) = curr {
 			unsafe {
 				f(&*c);
-				curr = option_to_const((*c).next);
+				curr = (*c).next.map(|n| n.as_ptr() as *const _);
 			}
 		}
 	}
 
 	/// Same as `foreach` except the nodes are mutable.
-	pub fn foreach_mut<F>(&mut self, f: F) where F: Fn(&mut ListNode) {
+	pub fn foreach_mut<F>(&mut self, f: F)
+	where
+		F: Fn(&mut ListNode),
+	{
 		let mut curr: Option<*mut Self> = Some(self);
 
-		while curr.is_some() {
-			let c = curr.unwrap();
+		while let Some(c) = curr {
 			unsafe {
 				f(&mut *c);
-				curr = option_to_mut((*c).next);
+				curr = (*c).next.map(|n| n.as_ptr());
 			}
 		}
 	}
@@ -270,26 +229,28 @@ impl ListNode {
 	unsafe fn link_back(&mut self) {
 		let curr_node = NonNull::new(self);
 
-		if self.next.is_some() {
-			self.next.unwrap().as_mut().prev = curr_node;
+		if let Some(prev) = &mut self.prev {
+			prev.as_mut().next = curr_node;
 		}
-		if self.prev.is_some() {
-			self.prev.unwrap().as_mut().next = curr_node;
+		if let Some(next) = &mut self.next {
+			next.as_mut().prev = curr_node;
 		}
 	}
 
 	/// Inserts the node before node `node` in the given linked list `front`.
-	/// If the node is not single, the behaviour is undefined.
+	/// If the current node is not single, the behaviour is undefined.
 	pub fn insert_before(&mut self, front: &mut Option<*mut ListNode>, node: &mut ListNode) {
-		if front.is_some() && front.unwrap() == node {
-			*front = Some(self);
+		if let Some(front) = front {
+			if *front == node {
+				*front = self;
+			}
 		}
 
 		self.insert_before_floating(node);
 	}
 
 	/// Inserts the node before node `node` in a floating linked list.
-	/// If the node is not single, the behaviour is undefined.
+	/// If the current node is not single, the behaviour is undefined.
 	pub fn insert_before_floating(&mut self, node: &mut ListNode) {
 		debug_assert!(self.is_single());
 
@@ -301,7 +262,7 @@ impl ListNode {
 	}
 
 	/// Inserts the node after node `node` in the given linked list `front`.
-	/// If the node is not single, the behaviour is undefined.
+	/// If the current node is not single, the behaviour is undefined.
 	pub fn insert_after(&mut self, node: &mut ListNode) {
 		debug_assert!(self.is_single());
 
@@ -316,18 +277,19 @@ impl ListNode {
 	/// The function is unsafe because if it is called to unlink a node that is owned by a List as
 	/// if it was in a floating-list, the operation might create a dangling pointer on that List.
 	pub unsafe fn unlink_floating(&mut self) {
-		if self.prev.is_some() {
-			self.prev.unwrap().as_mut().next = self.next;
+		if let Some(prev) = &mut self.prev {
+			prev.as_mut().next = self.next;
 		}
-		if self.next.is_some() {
-			self.next.unwrap().as_mut().prev = self.prev;
+		if let Some(next) = &mut self.next {
+			next.as_mut().prev = self.prev;
 		}
+
 		self.prev = None;
 		self.next = None;
 	}
 
 	/// Unlinks the current node from the given list.
-	pub fn unlink_from<T>(&mut self, list: &mut List::<T>) {
+	pub fn unlink_from<T>(&mut self, list: &mut List<T>) {
 		if let Some(front) = list.front {
 			if front.as_ptr() == self {
 				list.unlink_front();
@@ -363,10 +325,10 @@ mod test {
 		assert!(front.is_none());
 		assert!(l0.prev.is_none());
 		assert!(l0.next.is_some());
-		assert!(l0.next.unwrap() == NonNull::new(&mut l1 as _).unwrap());
+		assert_eq!(l0.next.unwrap(), NonNull::new(&mut l1 as _).unwrap());
 
 		assert!(l1.prev.is_some());
-		assert!(l1.prev.unwrap() == NonNull::new(&mut l0 as _).unwrap());
+		assert_eq!(l1.prev.unwrap(), NonNull::new(&mut l0 as _).unwrap());
 		assert!(l1.next.is_none());
 	}
 
@@ -378,13 +340,13 @@ mod test {
 
 		l0.insert_before(&mut front, &mut l1);
 
-		assert!(front.is_some() && front.unwrap() == &mut l0 as _);
+		assert_eq!(front, Some(&mut l0 as _));
 		assert!(l0.prev.is_none());
 		assert!(l0.next.is_some());
-		assert!(l0.next.unwrap() == NonNull::new(&mut l1 as _).unwrap());
+		assert_eq!(l0.next.unwrap(), NonNull::new(&mut l1 as _).unwrap());
 
 		assert!(l1.prev.is_some());
-		assert!(l1.prev.unwrap() == NonNull::new(&mut l0 as _).unwrap());
+		assert_eq!(l1.prev.unwrap(), NonNull::new(&mut l0 as _).unwrap());
 		assert!(l1.next.is_none());
 	}
 
@@ -396,13 +358,13 @@ mod test {
 
 		l0.insert_before(&mut front, &mut l1);
 
-		assert!(front.is_some() && front.unwrap() == &mut l0 as _);
+		assert_eq!(front, Some(&mut l0 as _));
 		assert!(l0.prev.is_none());
 		assert!(l0.next.is_some());
-		assert!(l0.next.unwrap() == NonNull::new(&mut l1 as _).unwrap());
+		assert_eq!(l0.next.unwrap(), NonNull::new(&mut l1 as _).unwrap());
 
 		assert!(l1.prev.is_some());
-		assert!(l1.prev.unwrap() == NonNull::new(&mut l0 as _).unwrap());
+		assert_eq!(l1.prev.unwrap(), NonNull::new(&mut l0 as _).unwrap());
 		assert!(l1.next.is_none());
 	}
 
@@ -415,10 +377,10 @@ mod test {
 
 		assert!(l0.prev.is_none());
 		assert!(l0.next.is_some());
-		assert!(l0.next.unwrap() == NonNull::new(&mut l1 as _).unwrap());
+		assert_eq!(l0.next.unwrap(), NonNull::new(&mut l1 as _).unwrap());
 
 		assert!(l1.prev.is_some());
-		assert!(l1.prev.unwrap() == NonNull::new(&mut l0 as _).unwrap());
+		assert_eq!(l1.prev.unwrap(), NonNull::new(&mut l0 as _).unwrap());
 		assert!(l1.next.is_none());
 	}
 
@@ -433,15 +395,15 @@ mod test {
 
 		assert!(l0.prev.is_none());
 		assert!(l0.next.is_some());
-		assert!(l0.next.unwrap() == NonNull::new(&mut l1 as _).unwrap());
+		assert_eq!(l0.next.unwrap(), NonNull::new(&mut l1 as _).unwrap());
 
 		assert!(l1.prev.is_some());
-		assert!(l1.prev.unwrap() == NonNull::new(&mut l0 as _).unwrap());
+		assert_eq!(l1.prev.unwrap(), NonNull::new(&mut l0 as _).unwrap());
 		assert!(l1.next.is_some());
-		assert!(l1.next.unwrap() == NonNull::new(&mut l2 as _).unwrap());
+		assert_eq!(l1.next.unwrap(), NonNull::new(&mut l2 as _).unwrap());
 
 		assert!(l2.prev.is_some());
-		assert!(l2.prev.unwrap() == NonNull::new(&mut l1 as _).unwrap());
+		assert_eq!(l2.prev.unwrap(), NonNull::new(&mut l1 as _).unwrap());
 		assert!(l2.next.is_none());
 	}
 
@@ -454,10 +416,10 @@ mod test {
 
 		assert!(l0.prev.is_none());
 		assert!(l0.next.is_some());
-		assert!(l0.next.unwrap() == NonNull::new(&mut l1 as _).unwrap());
+		assert_eq!(l0.next.unwrap(), NonNull::new(&mut l1 as _).unwrap());
 
 		assert!(l1.prev.is_some());
-		assert!(l1.prev.unwrap() == NonNull::new(&mut l0 as _).unwrap());
+		assert_eq!(l1.prev.unwrap(), NonNull::new(&mut l0 as _).unwrap());
 		assert!(l1.next.is_none());
 	}
 
@@ -472,17 +434,15 @@ mod test {
 
 		assert!(l0.prev.is_none());
 		assert!(l0.next.is_some());
-		assert!(l0.next.unwrap() == NonNull::new(&mut l1 as _).unwrap());
+		assert_eq!(l0.next.unwrap(), NonNull::new(&mut l1 as _).unwrap());
 
 		assert!(l1.prev.is_some());
-		assert!(l1.prev.unwrap() == NonNull::new(&mut l0 as _).unwrap());
+		assert_eq!(l1.prev.unwrap(), NonNull::new(&mut l0 as _).unwrap());
 		assert!(l1.next.is_some());
-		assert!(l1.next.unwrap() == NonNull::new(&mut l2 as _).unwrap());
+		assert_eq!(l1.next.unwrap(), NonNull::new(&mut l2 as _).unwrap());
 
 		assert!(l2.prev.is_some());
-		assert!(l2.prev.unwrap() == NonNull::new(&mut l1 as _).unwrap());
+		assert_eq!(l2.prev.unwrap(), NonNull::new(&mut l1 as _).unwrap());
 		assert!(l2.next.is_none());
 	}
-
-	// TODO More tests
 }

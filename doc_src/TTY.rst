@@ -3,6 +3,8 @@ TTY
 
 The TTY (text terminal) is commonly used in UNIX-like environments. By default, it is rendered using the `VGA` text mode.
 
+For process API references, check the documentation of module `tty`.
+
 
 
 About VGA text mode
@@ -10,7 +12,7 @@ About VGA text mode
 
 The TTY is currently using `VGA` text mode for TTY rendering, however this solution comes with a few downsides as described in the related section.
 
-In the future, the TTY shall be re-implemented with a more modern technology to avoid these problems.
+In the future, the TTY shall be re-implemented with modern technology to avoid these problems.
 
 
 

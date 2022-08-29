@@ -1,7 +1,3 @@
-/*
- * This file implements the stack switching function.
- */
-
 .global stack_switch_
 
 .extern stack_switch_in
@@ -13,10 +9,9 @@ stack_switch_:
 	push %ebp
 	mov %esp, %ebp
 
-	mov 8(%ebp), %esp
-	push 16(%ebp)
-	push 12(%ebp)
-	call stack_switch_in
+	mov 8(%ebp), %esp # `stack` argument
+	push 12(%ebp) # `s` argument
+	call *16(%ebp)
 
 	mov %ebp, %esp
 	pop %ebp

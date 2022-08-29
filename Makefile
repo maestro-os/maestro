@@ -1,7 +1,7 @@
 # This is the main makefile for the kernel's compilation
 #
 # The kernel is divided into two parts:
-# - Rust code, which represents most the kernel
+# - Rust code, which represents most of the kernel
 # - Assembly and C code
 #
 # The compilation occurs in the following order:
@@ -25,70 +25,40 @@ TOUCH_UPDATE_FILES = Makefile
 
 
 
+# ------------------------------------------------------------------------------
+#    Configuration variables
+# ------------------------------------------------------------------------------
+
+
+
 # The path to the configuration file created by the configuration utility
 CONFIG_FILE = .config
 # Tells whether the configuration file exists
 CONFIG_EXISTS = $(shell stat $(CONFIG_FILE) >/dev/null 2>&1; echo $$?)
 
 # The path to the script that generates configuration as compiler arguments
-CONFIG_ARGUMENTS_SCRIPT = scripts/config_args.sh
+CONFIG_ARGS_SCRIPT = scripts/config_args.sh
+# The path to the script that generates configuration as environment variables
+CONFIG_ENV_SCRIPT = scripts/config_env.sh
 # The path to the script that extracts specific configuration attributes
 CONFIG_ATTR_SCRIPT = scripts/config_attr.sh
 
-ifeq ($(CONFIG_EXISTS), 0)
 # Configuration as arguments for the compiler
-CONFIG_ARGS := $(shell $(CONFIG_ARGUMENTS_SCRIPT))
+CONFIG_ARGS := $(shell $(CONFIG_ARGS_SCRIPT))
+# Configuration as environment variables
+CONFIG_ENV := $(shell $(CONFIG_ENV_SCRIPT))
 
 # The target architecture
-CONFIG_ARCH := $(shell $(CONFIG_ATTR_SCRIPT) general_arch)
+CONFIG_ARCH := $(shell $(CONFIG_ATTR_SCRIPT) GENERAL_ARCH)
 # Tells whether to compile in debug mode
-CONFIG_DEBUG := $(shell $(CONFIG_ATTR_SCRIPT) debug_debug)
+CONFIG_DEBUG := $(shell $(CONFIG_ATTR_SCRIPT) DEBUG_DEBUG)
 # Tells whether to compile for unit testing
-CONFIG_DEBUG_TEST := $(shell $(CONFIG_ATTR_SCRIPT) debug_test)
-endif
+CONFIG_DEBUG_TEST := $(shell $(CONFIG_ATTR_SCRIPT) DEBUG_TEST)
 
 
 
 # ------------------------------------------------------------------------------
-#    Checking for configuration file & documentation compilation
-# ------------------------------------------------------------------------------
-
-
-
-# The path to the documentation sources
-DOC_SRC_DIR = doc_src/
-# The path to the documentation build directory
-DOC_DIR = doc/
-
-
-
-ifeq ($(CONFIG_EXISTS), 0)
-# The rule to compile everything
-all: $(NAME) iso tags doc
-
-# Builds the documentation
-doc: $(DOC_SRC_DIR)
-	RUSTFLAGS='$(RUSTFLAGS)' $(CARGO) doc $(CARGOFLAGS)
-	sphinx-build $(DOC_SRC_DIR) $(DOC_DIR)
-	rm -rf $(DOC_DIR)/references/
-	cp -r target/target/doc/ $(DOC_DIR)/references/
-else
-noconfig:
-	echo "File $(CONFIG_FILE) doesn't exist. Use \`make config\` to create it"
-	false
-
-all: noconfig
-doc: noconfig
-
-.SILENT: noconfig
-endif
-
-.PHONY: all doc
-
-
-
-# ------------------------------------------------------------------------------
-#    Kernel compilation
+#    Kernel compilation variables
 # ------------------------------------------------------------------------------
 
 
@@ -110,11 +80,14 @@ OBJ_DIR = $(PWD)/obj/
 LIB_NAME = lib$(NAME).a
 
 # The C language compiler
-CC = i686-elf-gcc # TODO Set according to architecture
+ifeq ($(CONFIG_ARCH),x86)
+CC = i686-elf-gcc
+else
+CC = $(CONFIG_ARCH)-elf-gcc
+endif
 
 # The C language compiler flags
-CFLAGS = -nostdlib -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -Wall -Wextra\
--Werror -lgcc
+CFLAGS = -nostdlib -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -Wall -Wextra -Werror -lgcc
 ifeq ($(CONFIG_DEBUG), false)
 CFLAGS += -O3
 else
@@ -122,7 +95,7 @@ CFLAGS += -g3
 endif
 
 # The archive creator program
-AR = ar
+AR = i686-elf-ar
 # The archive creator program flags
 ARFLAGS = rc
 
@@ -141,49 +114,86 @@ OBJ_DIRS := $(patsubst $(SRC_DIR)%, $(OBJ_DIR)%, $(DIRS))
 # The list of all sources to compile
 SRC := $(ASM_SRC) $(C_SRC)
 
-# TODO
-#CRTI_OBJ = $(OBJ_DIR)crti.s.o
-# TODO
-#CRTBEGIN_OBJ := $(shell $(CC) $(CFLAGS) -print-file-name=crtbegin.o)
-
 # The list of assembly objects
 ASM_OBJ := $(patsubst $(SRC_DIR)%.s, $(OBJ_DIR)%.s.o, $(ASM_SRC))
 # The list of C language objects
 C_OBJ := $(patsubst $(SRC_DIR)%.c, $(OBJ_DIR)%.c.o, $(C_SRC))
 
-# TODO
-#CRTEND_OBJ := $(shell $(CC) $(CFLAGS) -print-file-name=crtend.o)
-# TODO
-#CRTN_OBJ = $(OBJ_DIR)crtn.s.o
-
 # The list of objects
 OBJ := $(ASM_OBJ) $(C_OBJ)
-# Object files that are result of code which is part of the sources
-#INTERNAL_OBJ := $(CRTI_OBJ) $(OBJ) $(CRTN_OBJ)
-# TODO
-#OBJ_LINK_LIST := $(CRTI_OBJ) $(CRTBEGIN_OBJ) $(OBJ) $(CRTEND_OBJ) $(CRTN_OBJ)
 
 # Cargo
 CARGO = cargo +nightly
 # Cargo flags
-CARGOFLAGS = --verbose
+CARGOFLAGS = --verbose --target $(TARGET)
 ifeq ($(CONFIG_DEBUG), false)
 CARGOFLAGS += --release
 endif
 ifeq ($(CONFIG_DEBUG_TEST), true)
-CARGOFLAGS = --tests
+CARGOFLAGS += --tests
 endif
 
-CARGOFLAGS += --target $(TARGET)
-
 # The Rust language compiler flags
-RUSTFLAGS = -Zmacro-backtrace -C link-arg=-T$(LINKER) $(CONFIG_ARGS)
-
-# The strip program
-STRIP = strip
+RUSTFLAGS = -Zmacro-backtrace $(CONFIG_ARGS) #-Zsymbol-mangling-version=v0 
+ifeq ($(CONFIG_DEBUG), true)
+RUSTFLAGS += -Cforce-frame-pointers=y -Cdebuginfo=2
+endif
 
 # The list of Rust language source files
 RUST_SRC := $(shell find $(SRC_DIR) -type f -name "*.rs")
+
+
+
+# ------------------------------------------------------------------------------
+#    Checking for configuration file & documentation compilation
+# ------------------------------------------------------------------------------
+
+
+
+# The path to the documentation sources
+DOC_SRC_DIR = doc_src/
+# The list of documentation sources
+DOC_SRC = $(shell find $(DOC_SRC_DIR) -type f)
+# The path to the documentation build directory
+DOC_DIR = doc/
+
+
+
+ifeq ($(CONFIG_EXISTS), 0)
+ ifneq ($(CONFIG_DEBUG_TEST), true)
+# The rule to compile everything
+all: $(NAME) iso doc
+ else
+# The rule to compile everything
+all: $(NAME) iso
+ endif
+
+# Builds the documentation
+doc: $(SRC) $(DOC_SRC)
+	$(CONFIG_ENV) RUSTFLAGS='$(RUSTFLAGS)' $(CARGO) doc $(CARGOFLAGS)
+	sphinx-build $(DOC_SRC_DIR) $(DOC_DIR)
+	rm -rf $(DOC_DIR)/references/
+	cp -r target/target/doc/ $(DOC_DIR)/references/
+else
+noconfig:
+	echo "File $(CONFIG_FILE) doesn't exist. Use \`make config\` to create it"
+	false
+
+all: noconfig
+doc: noconfig
+
+.PHONY: noconfig
+.SILENT: noconfig
+endif
+
+.PHONY: all doc
+
+
+
+# ------------------------------------------------------------------------------
+#    Kernel compilation
+# ------------------------------------------------------------------------------
+
 
 
 # The rule to create object directories
@@ -202,13 +212,17 @@ $(OBJ_DIR)%.s.o: $(SRC_DIR)%.s $(HDR) $(TOUCH_UPDATE_FILES)
 $(OBJ_DIR)%.c.o: $(SRC_DIR)%.c $(HDR) $(TOUCH_UPDATE_FILES)
 	$(CC) $(CFLAGS) -I $(SRC_DIR) -c $< -o $@
 
+# The rule to compile the kernel image
 $(NAME): $(LIB_NAME) $(RUST_SRC) $(LINKER) $(TOUCH_UPDATE_FILES)
-	RUSTFLAGS='$(RUSTFLAGS)' $(CARGO) build $(CARGOFLAGS)
-ifeq ($(CONFIG_DEBUG), false)
-	cp target/target/release/maestro .
-	$(STRIP) $(NAME)
+	$(CONFIG_ENV) RUSTFLAGS='$(RUSTFLAGS)' $(CARGO) build $(CARGOFLAGS)
+ifeq ($(CONFIG_DEBUG_TEST), false)
+ ifeq ($(CONFIG_DEBUG), false)
+	$(CC) $(CFLAGS) -o $(NAME) target/target/release/libkernel.a -T$(LINKER)
+ else
+	$(CC) $(CFLAGS) -o $(NAME) target/target/debug/libkernel.a -T$(LINKER)
+ endif
 else
-	cp `ls -1 target/target/debug/deps/maestro-* | head -n 1` $@
+	cp `find target/target/debug/deps/ -name 'kernel-*' -executable` maestro
 endif
 
 # Alias for $(NAME).iso
@@ -221,13 +235,9 @@ $(NAME).iso: $(NAME) grub.cfg
 	cp grub.cfg iso/boot/grub
 	grub-mkrescue -o $(NAME).iso iso
 
-# The rule to create the `tags` file
-tags: $(SRC) $(HDR) $(RUST_SRC)
-	ctags $(SRC) $(HDR) $(RUST_SRC)
-
 # Runs clippy on the Rust code
 clippy:
-	RUSTFLAGS='$(RUSTFLAGS)' $(CARGO) clippy $(CARGOFLAGS)
+	$(CONFIG_ENV) RUSTFLAGS='$(RUSTFLAGS)' $(CARGO) clippy $(CARGOFLAGS)
 
 .PHONY: iso clippy
 
@@ -244,15 +254,37 @@ QEMU_DISK = qemu_disk
 # The size of the QEMU disk in megabytes
 QEMU_DISK_SIZE = 1024
 # Flags for the QEMU emulator
-QEMU_FLAGS = -cdrom $(NAME).iso -drive file=$(QEMU_DISK),format=raw -device isa-debug-exit,iobase=0xf4,iosize=0x04
+QEMU_FLAGS = -smp cpus=2 -cdrom $(NAME).iso -drive file=$(QEMU_DISK),format=raw \
+	-device isa-debug-exit,iobase=0xf4,iosize=0x04
+
+# If `1`, QEMU is run into the terminal
+QEMU_TERM ?= 0
+
+ifeq ($(QEMU_TERM), 1)
+QEMU_FLAGS += -serial mon:stdio -nographic
+else
+QEMU_FLAGS += -serial file:serial.log
+endif
 
 # Creates the disk for the QEMU emulator
 $(QEMU_DISK):
 	dd if=/dev/zero of=$(QEMU_DISK) bs=1M count=$(QEMU_DISK_SIZE) status=progress
 
+# Runs the kernel with QEMU
+run: iso $(QEMU_DISK)
+	qemu-system-i386 $(QEMU_FLAGS)
+
 # The rule to test the kernel using QEMU
 test: iso $(QEMU_DISK)
 	qemu-system-i386 $(QEMU_FLAGS) -d int
+
+# Rule used to debug the kernel using GDB
+debug: $(NAME).iso $(QEMU_DISK)
+	qemu-system-i386 $(QEMU_FLAGS) -s -S -d int >debug_out 2>&1
+
+# The rule to run the kernel's selftests using QEMU
+selftest: iso $(QEMU_DISK)
+	qemu-system-i386 $(QEMU_FLAGS) -nographic >/dev/null
 
 # The rule to run a CPU test of the kernel using QEMU (aka running the kernel and storing a lot of
 # logs into the `cpu_out` file)
@@ -268,7 +300,7 @@ bochs: iso
 virtualbox: iso
 	virtualbox
 
-.PHONY: test cputest bochs virtualbox
+.PHONY: test selftest cputest bochs virtualbox
 
 
 
@@ -290,13 +322,14 @@ $(CONFIG_UTIL_PATH): $(CONFIG_UTIL_SRC)
 	rm -rf $(CONFIG_UTIL_BUILD_PATH)
 	cp -r config/ $(CONFIG_UTIL_BUILD_PATH)
 	cd $(CONFIG_UTIL_BUILD_PATH) && cargo build --release
-	cp -Tr $(CONFIG_UTIL_BUILD_PATH) config/
+	cp -r $(CONFIG_UTIL_BUILD_PATH)/target/ config/target/
 	rm -r $(CONFIG_UTIL_BUILD_PATH)
 
 # Runs the configuration utility to create the configuration file
 $(CONFIG_FILE): $(CONFIG_UTIL_PATH)
 	$(CONFIG_UTIL_PATH)
-	@stat $(CONFIG_FILE) >/dev/null 2>&1 && echo "The configuration file is now ready. You may want to type \`make clean\` before compiling with \`make\`" || true
+	@stat $(CONFIG_FILE) >/dev/null 2>&1 && echo "The configuration file is now ready. You may want to type \
+\`make clean\` before compiling with \`make\`" || true
 
 # Runs the configuration utility to create the configuration file
 config: $(CONFIG_FILE)
@@ -315,7 +348,6 @@ config: $(CONFIG_FILE)
 clean:
 	rm -rf $(OBJ_DIR)
 	rm -rf $(LIB_NAME)
-	rm -f tags
 	rm -rf iso/
 
 # The rule to clean the workspace, including target binaries
@@ -325,7 +357,6 @@ fclean: clean
 	rm -f $(NAME).iso
 	rm -rf $(DOC_DIR)
 	rm -rf config/target/
-	rm -f $(QEMU_DISK)
 
 # The rule to recompile everything
 re: fclean all

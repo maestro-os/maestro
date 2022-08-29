@@ -1,4 +1,13 @@
-//! This module handles selftesting of the kernel.
+//! This module handles selftesting of the kernel. A selftest can be either a unit test or an
+//! integration test.
+//! The kernel uses the serial communication interface to transmit the results of the selftests to
+//! another machine.
+
+//use crate::device::serial;
+use core::any::type_name;
+
+/// Boolean value telling whether selftesting is running.
+static mut RUNNING: bool = false;
 
 /// This module contains utilities to manipulate QEMU for testing.
 #[cfg(config_debug_qemu)]
@@ -29,10 +38,16 @@ pub trait Testable {
 	fn run(&self);
 }
 
-impl<T> Testable for T where T: Fn() {
+impl<T> Testable for T
+where
+	T: Fn(),
+{
 	fn run(&self) {
-		crate::print!("test {} ... ", core::any::type_name::<T>());
+		let name = type_name::<T>();
+		crate::print!("test {} ... ", name);
+
 		self();
+
 		crate::println!("ok");
 	}
 }
@@ -42,13 +57,32 @@ impl<T> Testable for T where T: Fn() {
 pub fn runner(tests: &[&dyn Testable]) {
 	crate::println!("Running {} tests", tests.len());
 
+	unsafe {
+		// Safe because the function is called by only one thread
+		RUNNING = true;
+	}
+
 	for test in tests {
 		test.run();
+	}
+
+	unsafe {
+		// Safe because the function is called by only one thread
+		RUNNING = false;
 	}
 
 	crate::println!("No more tests to run");
 
 	#[cfg(config_debug_qemu)]
-	qemu::exit(qemu::SUCCESS); // TODO Handle assertion fail (exit with FAILURE)
+	qemu::exit(qemu::SUCCESS);
+	#[cfg(not(config_debug_qemu))]
 	crate::halt();
+}
+
+/// Tells whether selftesting is running.
+pub fn is_running() -> bool {
+	unsafe {
+		// Safe because the function is called by only one thread
+		RUNNING
+	}
 }

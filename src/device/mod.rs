@@ -2,33 +2,41 @@
 //! A device file is an interface with a device of the system, which can be internal or external,
 //! or even virtual such as a TTY.
 
+pub mod bar;
 pub mod bus;
 pub mod default;
+pub mod driver;
 pub mod id;
 pub mod keyboard;
 pub mod manager;
-pub mod ps2;
+pub mod network;
+pub mod serial;
 pub mod storage;
+pub mod tty;
 
-use core::cmp::Ordering;
+use core::ffi::c_void;
+use core::fmt;
 use crate::device::manager::DeviceManager;
 use crate::errno::Errno;
-use crate::file::File;
-use crate::file::FileType;
+use crate::file::FileContent;
 use crate::file::Mode;
+use crate::file::fcache;
 use crate::file::path::Path;
 use crate::file;
+use crate::process::mem_space::MemSpace;
 use crate::util::FailableClone;
 use crate::util::boxed::Box;
 use crate::util::container::vec::Vec;
-use crate::util::lock::mutex::Mutex;
-use crate::util::lock::mutex::MutexGuard;
+use crate::util::io::IO;
+use crate::util::lock::Mutex;
+use crate::util::lock::MutexGuard;
+use crate::util::ptr::IntSharedPtr;
 use crate::util::ptr::SharedPtr;
 use keyboard::KeyboardManager;
 use storage::StorageManager;
 
 /// Enumeration representing the type of the device.
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
 pub enum DeviceType {
 	/// A block device.
 	Block,
@@ -36,19 +44,27 @@ pub enum DeviceType {
 	Char,
 }
 
-/// Trait providing a interface for device I/O.
-pub trait DeviceHandle {
-	/// Returns the size of the device in bytes.
-	fn get_size(&self) -> u64;
+impl fmt::Display for DeviceType {
+	fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+		match self {
+			Self::Block => write!(fmt, "Block"),
+			Self::Char => write!(fmt, "Char"),
+		}
+	}
+}
 
-	/// Reads data from the device and writes it to the buffer `buff`.
-	/// `offset` is the offset in the file.
-	/// The function returns the number of bytes read.
-	fn read(&mut self, offset: u64, buff: &mut [u8]) -> Result<usize, Errno>;
-	/// Writes data to the device, reading it from the buffer `buff`.
-	/// `offset` is the offset in the file.
-	/// The function returns the number of bytes written.
-	fn write(&mut self, offset: u64, buff: &[u8]) -> Result<usize, Errno>;
+/// Trait providing a interface for device I/O.
+pub trait DeviceHandle: IO {
+	/// Performs an ioctl operation on the device.
+	/// `mem_space` is the memory space on which pointers are to be dereferenced.
+	/// `request` is the ID of the request to perform.
+	/// `argp` is a pointer to the argument.
+	fn ioctl(
+		&mut self,
+		mem_space: IntSharedPtr<MemSpace>,
+		request: u32,
+		argp: *const c_void,
+	) -> Result<u32, Errno>;
 }
 
 /// Structure representing a device, either a block device or a char device. Each device has a
@@ -67,7 +83,7 @@ pub struct Device {
 	type_: DeviceType,
 
 	/// The object handling the device I/O.
-	handle: Box::<dyn DeviceHandle>,
+	handle: Box<dyn DeviceHandle>,
 }
 
 impl Device {
@@ -75,52 +91,64 @@ impl Device {
 	/// `major` and `minor` are the major and minor numbers of the device.
 	/// `type_` is the type of the device.
 	/// `handle` is the handle for I/O operations.
-	pub fn new<H: 'static + DeviceHandle>(major: u32, minor: u32, path: Path, mode: Mode,
-		type_: DeviceType, handle: H)
-		-> Result<Self, Errno> {
+	pub fn new<H: 'static + DeviceHandle>(
+		major: u32,
+		minor: u32,
+		path: Path,
+		mode: Mode,
+		type_: DeviceType,
+		handle: H,
+	) -> Result<Self, Errno> {
 		Ok(Self {
-			major: major,
-			minor: minor,
+			major,
+			minor,
 
-			path: path,
-			mode: mode,
-			type_: type_,
+			path,
+			mode,
+			type_,
 
 			handle: Box::new(handle)?,
 		})
 	}
 
 	/// Returns the major number.
+	#[inline]
 	pub fn get_major(&self) -> u32 {
 		self.major
 	}
 
 	/// Returns the minor number.
+	#[inline]
 	pub fn get_minor(&self) -> u32 {
 		self.minor
 	}
 
 	/// Returns the path to the device file.
+	#[inline]
 	pub fn get_path(&self) -> &Path {
 		&self.path
 	}
 
 	/// Returns the device file's mode.
+	#[inline]
 	pub fn get_mode(&self) -> Mode {
 		self.mode
 	}
 
 	/// Returns the type of the device.
+	#[inline]
 	pub fn get_type(&self) -> DeviceType {
 		self.type_
 	}
 
 	/// Returns the device number.
+	#[inline]
 	pub fn get_device_number(&self) -> u64 {
 		id::makedev(self.major, self.minor)
 	}
 
 	/// Returns the handle of the device for I/O operations.
+	#[inline]
 	pub fn get_handle(&mut self) -> &mut dyn DeviceHandle {
 		self.handle.as_mut()
 	}
@@ -128,81 +156,113 @@ impl Device {
 	// TODO Put file creation on the userspace side?
 	/// Creates the device file associated with the structure. If the file already exist, the
 	/// function does nothing.
-	pub fn create_file(&mut self) -> Result<(), Errno> {
-		let file_type = match self.type_ {
-			DeviceType::Block => FileType::BlockDevice,
-			DeviceType::Char => FileType::CharDevice,
+	/// The function takes a mutex guard because it needs to unlock the device in order to create the
+	/// file without a deadlock.
+	pub fn create_file(guard: MutexGuard<Device, true>) -> Result<(), Errno> {
+		let dev = guard.get_mut();
+
+		let file_content = match dev.type_ {
+			DeviceType::Block => FileContent::BlockDevice {
+				major: dev.major,
+				minor: dev.minor,
+			},
+
+			DeviceType::Char => FileContent::CharDevice {
+				major: dev.major,
+				minor: dev.minor,
+			},
 		};
 
-		let path_len = self.path.get_elements_count();
-		let filename = self.path[path_len - 1].failable_clone()?;
+		let path = dev.path.failable_clone()?;
+		let mode = dev.mode;
+		drop(guard);
 
-		let mut dir_path = self.path.failable_clone()?;
-		dir_path.pop();
-		file::create_dirs(&dir_path)?;
+		let mutex = fcache::get();
+		let guard = mutex.lock();
+		let fcache = guard.get_mut().as_mut().unwrap();
 
-		let file = File::new(filename, file_type, 0, 0, self.mode)?;
+		// Tells whether the file already exists
+		let file_exists = fcache.get_file_from_path(&path, 0, 0, true).is_ok();
 
-		let mutex = file::get_files_cache();
-		let mut guard = MutexGuard::new(mutex);
-		let files_cache = guard.get_mut();
-		// TODO Cancel directories creation on fail
-		files_cache.create_file(&dir_path, file)?;
+		if !file_exists {
+			// Creating the directories in which the device file is located
+			let mut dir_path = path;
+			let filename = dir_path.pop().unwrap();
+			file::util::create_dirs(fcache, &dir_path)?;
+
+			// Getting the parent directory
+			let parent_mutex = fcache.get_file_from_path(&dir_path, 0, 0, true)?;
+			let parent_guard = parent_mutex.lock();
+			let parent = parent_guard.get_mut();
+
+			// TODO Cancel directories creation on fail
+			// Creating the device file
+			fcache.create_file(parent, filename, 0, 0, mode, file_content)?;
+		}
 
 		Ok(())
 	}
 
 	/// If exists, removes the device file. iF the file doesn't exist, the function does nothing.
-	pub fn remove_file(&mut self) {
-		let mutex = file::get_files_cache();
-		let mut guard = MutexGuard::new(mutex);
-		let files_cache = guard.get_mut();
+	pub fn remove_file(&mut self) -> Result<(), Errno> {
+		let mutex = fcache::get();
+		let guard = mutex.lock();
+		let fcache = guard.get_mut().as_mut().unwrap();
 
-		if let Ok(mut file) = files_cache.get_file_from_path(&self.path) {
-			file.unlink();
+		if let Ok(file_mutex) = fcache.get_file_from_path(&self.path, 0, 0, true) {
+			let file_guard = file_mutex.lock();
+			fcache.remove_file(file_guard.get(), 0, 0)?;
 		}
+
+		Ok(())
+	}
+}
+
+impl IO for Device {
+	fn get_size(&self) -> u64 {
+		self.handle.get_size()
+	}
+
+	fn read(&mut self, offset: u64, buff: &mut [u8]) -> Result<(u64, bool), Errno> {
+		self.handle.read(offset, buff)
+	}
+
+	fn write(&mut self, offset: u64, buff: &[u8]) -> Result<u64, Errno> {
+		self.handle.write(offset, buff)
+	}
+
+	fn poll(&mut self, mask: u32) -> Result<u32, Errno> {
+		self.handle.poll(mask)
 	}
 }
 
 impl Drop for Device {
 	fn drop(&mut self) {
-		self.remove_file();
+		if let Err(_e) = self.remove_file() {
+			// TODO Log the error
+		}
 	}
 }
 
 /// The list of registered block devices.
-static mut BLOCK_DEVICES: Mutex<Vec<SharedPtr<Device>>> = Mutex::new(Vec::new());
+static BLOCK_DEVICES: Mutex<Vec<SharedPtr<Device>>> = Mutex::new(Vec::new());
 /// The list of registered block devices.
-static mut CHAR_DEVICES: Mutex<Vec<SharedPtr<Device>>> = Mutex::new(Vec::new());
+static CHAR_DEVICES: Mutex<Vec<SharedPtr<Device>>> = Mutex::new(Vec::new());
 
 /// Registers the given device. If the minor/major number is already used, the function fails.
 /// The function *doesn't* create the device file.
 pub fn register_device(device: Device) -> Result<(), Errno> {
-	let mut guard = match device.get_type() {
-		DeviceType::Block => {
-			unsafe { // Safe because using mutex
-				MutexGuard::new(&mut BLOCK_DEVICES)
-			}
-		},
-		DeviceType::Char => {
-			unsafe { // Safe because using mutex
-				MutexGuard::new(&mut CHAR_DEVICES)
-			}
-		}
+	let guard = match device.get_type() {
+		DeviceType::Block => BLOCK_DEVICES.lock(),
+		DeviceType::Char => CHAR_DEVICES.lock(),
 	};
 	let container = guard.get_mut();
 
 	let device_number = device.get_device_number();
-	let index = container.binary_search_by(| d | {
-		let dn = d.get_device_number();
+	let index = container.binary_search_by(|d| {
+		let dn = unsafe { d.get().get_mut_payload() }.get_device_number();
 
-		if device_number < dn {
-			Ordering::Less
-		} else if device_number > dn {
-			Ordering::Greater
-		} else {
-			Ordering::Equal
-		}
+		device_number.cmp(&dn)
 	});
 	let index = match index {
 		Ok(i) => i,
@@ -217,31 +277,17 @@ pub fn register_device(device: Device) -> Result<(), Errno> {
 /// Returns a mutable reference to the device with the given major number, minor number and type.
 /// If the device doesn't exist, the function returns None.
 pub fn get_device(type_: DeviceType, major: u32, minor: u32) -> Option<SharedPtr<Device>> {
-	let mut guard = match type_ {
-		DeviceType::Block => {
-			unsafe { // Safe because using mutex
-				MutexGuard::new(&mut BLOCK_DEVICES)
-			}
-		},
-		DeviceType::Char => {
-			unsafe { // Safe because using mutex
-				MutexGuard::new(&mut CHAR_DEVICES)
-			}
-		}
+	let guard = match type_ {
+		DeviceType::Block => BLOCK_DEVICES.lock(),
+		DeviceType::Char => CHAR_DEVICES.lock(),
 	};
 	let container = guard.get_mut();
 
 	let device_number = id::makedev(major, minor);
-	let index = container.binary_search_by(| d | {
-		let dn = d.get_device_number();
+	let index = container.binary_search_by(|d| {
+		let dn = unsafe { d.get().get_mut_payload() }.get_device_number();
 
-		if device_number < dn {
-			Ordering::Less
-		} else if device_number > dn {
-			Ordering::Greater
-		} else {
-			Ordering::Equal
-		}
+		device_number.cmp(&dn)
 	});
 
 	if let Ok(i) = index {
@@ -251,19 +297,106 @@ pub fn get_device(type_: DeviceType, major: u32, minor: u32) -> Option<SharedPtr
 	}
 }
 
+/// Returns the device with the given path `path`.
+/// This function is `O(n)` in time.
+/// If no device with the given path is found, the function returns None.
+pub fn get_by_path(path: &Path) -> Option<SharedPtr<Device>> {
+	{
+		let block_guard = BLOCK_DEVICES.lock();
+		let block_container = block_guard.get_mut();
+
+		for i in 0..block_container.len() {
+			let dev_guard = block_container[i].lock();
+			let dev = dev_guard.get();
+
+			if dev.get_path() == path {
+				drop(dev_guard);
+				return Some(block_container[i].clone());
+			}
+		}
+	}
+
+	{
+		let char_guard = CHAR_DEVICES.lock();
+		let char_container = char_guard.get_mut();
+
+		for i in 0..char_container.len() {
+			let dev_guard = char_container[i].lock();
+			let dev = dev_guard.get();
+
+			if dev.get_path() == path {
+				drop(dev_guard);
+				return Some(char_container[i].clone());
+			}
+		}
+	}
+
+	None
+}
+
 /// Initializes devices management.
 pub fn init() -> Result<(), Errno> {
 	let mut keyboard_manager = KeyboardManager::new();
 	keyboard_manager.legacy_detect()?;
 	manager::register_manager(keyboard_manager)?;
 
-	let mut storage_manager = StorageManager::new()?;
-	storage_manager.legacy_detect()?;
-	#[cfg(config_debug_storagetest)]
-	storage_manager.test(); // TODO Move after bus detection
+	let storage_manager = StorageManager::new()?;
+	//storage_manager.legacy_detect()?;
 	manager::register_manager(storage_manager)?;
 
 	bus::detect()?;
+
+	// Testing disk I/O (if enabled)
+	#[cfg(config_debug_storagetest)]
+	{
+		// Getting back the storage manager since it has been moved
+		let storage_manager = manager::get_by_name("storage").unwrap();
+		let storage_manager = unsafe { storage_manager.get_mut().unwrap().get_mut_payload() };
+		let storage_manager = unsafe { &mut *(storage_manager as *mut _ as *mut StorageManager) };
+
+		storage_manager.test();
+	}
+
+	Ok(())
+}
+
+/// Creates the files of every devices if they don't exist.
+pub fn create_files() -> Result<(), Errno> {
+	// Containers are locked and unlock at each iterations to avoid a deadlock
+
+	// Creating block devices files
+	let mut i = 0;
+	loop {
+		let devs_guard = BLOCK_DEVICES.lock();
+		let devs = devs_guard.get_mut();
+		if i >= devs.len() {
+			break;
+		}
+
+		let dev_mutex = devs[i].clone();
+		let dev_guard = dev_mutex.lock();
+		drop(devs_guard);
+
+		Device::create_file(dev_guard)?;
+		i += 1;
+	}
+
+	// Creating char devices files
+	let mut i = 0;
+	loop {
+		let devs_guard = CHAR_DEVICES.lock();
+		let devs = devs_guard.get_mut();
+		if i >= devs.len() {
+			break;
+		}
+
+		let dev_mutex = devs[i].clone();
+		let dev_guard = dev_mutex.lock();
+		drop(devs_guard);
+
+		Device::create_file(dev_guard)?;
+		i += 1;
+	}
 
 	Ok(())
 }

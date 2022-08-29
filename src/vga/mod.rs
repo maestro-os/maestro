@@ -1,25 +1,22 @@
 //! This file handles the VGA text mode, allowing to easily write text on the
 //! screen.
+//! This module doesn't support concurrency. It is the callers' reponsibility to handle it.
 //!
 //! Note: The VGA text mode runs only when booting with a Legacy BIOS.
 
 use crate::io;
-use crate::memory::vmem;
 use crate::memory;
+use crate::memory::vmem;
 
-// TODO Save enable/disable cursor state
-// TODO Spinlock?
-
+/// Type representing a VGA text mode character.
 pub type Char = u16;
+/// Type representing a VGA text mode color.
 pub type Color = u8;
+/// Type representing a VGA text mode position.
 pub type Pos = i16;
 
 /// Physical address of the VGA text buffer.
 pub const BUFFER_PHYS: *mut Char = 0xb8000 as _;
-/// Virtual address of the VGA text buffer.
-pub const BUFFER_VIRT: *mut Char = unsafe {
-	(memory::PROCESS_END as usize + BUFFER_PHYS as usize) as _
-};
 
 /// Width of the screen in characters under the VGA text mode.
 pub const WIDTH: Pos = 80;
@@ -28,46 +25,60 @@ pub const HEIGHT: Pos = 25;
 /// The size in bytes of the VGA text buffer.
 pub const BUFFER_SIZE: u32 = (WIDTH * HEIGHT * core::mem::size_of::<i16>() as Pos) as u32;
 
+/// Width of the screen in pixels under the VGA text mode.
+pub const PIXEL_WIDTH: u32 = 640;
+/// Height of the screen in pixels under the VGA text mode.
+pub const PIXEL_HEIGHT: u32 = 480;
+
 /// VGA text mode color: Black
-pub const COLOR_BLACK: Color			= 0x0;
+pub const COLOR_BLACK: Color = 0x0;
 /// VGA text mode color: Blue
-pub const COLOR_BLUE: Color			    = 0x1;
+pub const COLOR_BLUE: Color = 0x1;
 /// VGA text mode color: Green
-pub const COLOR_GREEN: Color			= 0x2;
+pub const COLOR_GREEN: Color = 0x2;
 /// VGA text mode color: Cyan
-pub const COLOR_CYAN: Color			    = 0x3;
+pub const COLOR_CYAN: Color = 0x3;
 /// VGA text mode color: Red
-pub const COLOR_RED: Color			    = 0x4;
+pub const COLOR_RED: Color = 0x4;
 /// VGA text mode color: Magenta
-pub const COLOR_MAGENTA: Color		    = 0x5;
+pub const COLOR_MAGENTA: Color = 0x5;
 /// VGA text mode color: Brown
-pub const COLOR_BROWN: Color			= 0x6;
+pub const COLOR_BROWN: Color = 0x6;
 /// VGA text mode color: Light Grey
-pub const COLOR_LIGHT_GREY: Color	    = 0x7;
+pub const COLOR_LIGHT_GREY: Color = 0x7;
 /// VGA text mode color: Dark Grey
-pub const COLOR_DARK_GREY: Color		= 0x8;
+pub const COLOR_DARK_GREY: Color = 0x8;
 /// VGA text mode color: Light Blue
-pub const COLOR_LIGHT_BLUE: Color	    = 0x9;
+pub const COLOR_LIGHT_BLUE: Color = 0x9;
 /// VGA text mode color: Light Green
-pub const COLOR_LIGHT_GREEN: Color	    = 0xa;
+pub const COLOR_LIGHT_GREEN: Color = 0xa;
 /// VGA text mode color: Light Cyan
-pub const COLOR_LIGHT_CYAN: Color	    = 0xb;
+pub const COLOR_LIGHT_CYAN: Color = 0xb;
 /// VGA text mode color: Light Red
-pub const COLOR_LIGHT_RED: Color		= 0xc;
+pub const COLOR_LIGHT_RED: Color = 0xc;
 /// VGA text mode color: Light Magenta
-pub const COLOR_LIGHT_MAGENTA: Color	= 0xd;
+pub const COLOR_LIGHT_MAGENTA: Color = 0xd;
 /// VGA text mode color: Yellow
-pub const COLOR_YELLOW: Color		    = 0xe;
+pub const COLOR_YELLOW: Color = 0xe;
 /// VGA text mode color: White
-pub const COLOR_WHITE: Color			= 0xf;
+pub const COLOR_WHITE: Color = 0xf;
 
 /// VGA text mode default color.
 pub const DEFAULT_COLOR: Color = COLOR_WHITE | (COLOR_BLACK << 4);
 
+/// The beginning scanline for the cursor.
 pub const CURSOR_START: u8 = 0;
+/// The ending scanline for the cursor.
 pub const CURSOR_END: u8 = 15;
 
+/// Returns the virtual address of the VGA text buffer.
+#[inline]
+pub fn get_buffer_virt() -> *mut Char {
+	(memory::PROCESS_END as usize + BUFFER_PHYS as usize) as _
+}
+
 /// Returns the value for the given foreground color `fg` and background color `bg`.
+#[inline]
 pub fn entry_color(fg: Color, bg: Color) -> Color {
 	fg | (bg << 4)
 }
@@ -77,7 +88,7 @@ pub fn clear() {
 	for i in 0..(WIDTH * HEIGHT) {
 		unsafe {
 			vmem::write_lock_wrap(|| {
-				*BUFFER_VIRT.offset(i as isize) = (DEFAULT_COLOR as Char) << 8;
+				*get_buffer_virt().offset(i as isize) = (DEFAULT_COLOR as Char) << 8;
 			});
 		}
 	}
@@ -99,6 +110,20 @@ pub fn disable_cursor() {
 		io::outb(0x3d4, 0x0a);
 		io::outb(0x3d5, 0x20);
 	}
+}
+
+/// Returns the current position of the cursor.
+pub fn get_cursor_position() -> (Pos, Pos) {
+	let mut pos: u16 = 0;
+
+	unsafe {
+		io::outb(0x3d4, 0x0f);
+		pos |= io::inb(0x3d5) as u16;
+		io::outb(0x3d4, 0x0e);
+		pos |= (io::inb(0x3d5) as u16) << 8;
+	}
+
+	(pos as i16 % WIDTH, pos as i16 / WIDTH)
 }
 
 /// Moves the VGA text mode cursor to the given position.
@@ -133,7 +158,7 @@ pub fn putchar_color(c: char, color: Color, x: Pos, y: Pos) {
 	debug_assert!(pos < BUFFER_SIZE as usize);
 	unsafe {
 		vmem::write_lock_wrap(|| {
-			*BUFFER_VIRT.offset(pos as isize) = c;
+			*get_buffer_virt().offset(pos as isize) = c;
 		});
 	}
 }

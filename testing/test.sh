@@ -2,10 +2,6 @@
 
 # This script tests the compilation of the kernel. It must be run from the root of the project
 
-unset KERNEL_ARCH
-unset KERNEL_MODE
-unset KERNEL_TEST
-unset KERNEL_QEMU_TEST
 status=0
 
 # Executes the given command
@@ -28,13 +24,6 @@ print_env () {
 	exec_command uname -a
 	exec_command pwd
 	exec_command env
-
-	echo "-------------"
-	echo "   Sources   "
-	echo "-------------"
-	echo
-
-	exec_command ls -R .
 }
 
 # Tests compilation with the current environement
@@ -57,31 +46,29 @@ exec_command testing/codecheck.sh
 
 
 
-echo "Testing default compilation..."
-test_compilation
-
-
-
 echo "Testing debug compilation..."
-export KERNEL_MODE=debug
+cp testing/configs/debug .config
 test_compilation
-unset KERNEL_MODE
-
-
-
-echo "Testing test compilation..."
-export KERNEL_MODE=debug
-export KERNEL_TEST=true
-test_compilation
-unset KERNEL_MODE
-unset KERNEL_TEST
 
 
 
 echo "Testing release compilation..."
-export KERNEL_MODE=release
+cp testing/configs/release .config
 test_compilation
-unset KERNEL_MODE
+
+
+
+echo "Selftesting compilation..."
+cp testing/configs/selftest .config
+test_compilation
+
+echo "Running selftests..."
+exec_command make selftest
+
+echo "Selftests output:"
+cat serial.log
+grep 'No more tests to run' -- serial.log >/dev/null 2>&1
+status=$?
 
 
 

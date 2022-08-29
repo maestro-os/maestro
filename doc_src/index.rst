@@ -24,7 +24,6 @@ Maestro documentation
    PS2/keyboard
    PS2/mouse
 
-   memory/a20
    memory/mem_map
    memory/buddy_alloc
    memory/kmalloc
@@ -38,7 +37,7 @@ Maestro documentation
 
    device/list
 
-   ELF
+   elf
    modules
 
    ACPI/AML
@@ -65,7 +64,7 @@ This documentation describes the way the Maestro kernel and its interfaces work.
 Interface references
 ====================
 
-The references to the kernel's internals and module interfaces can be found `here <references/maestro/index.html>`_.
+The references to the kernel's internals and module interfaces can be found `here <references/kernel/index.html>`_.
 
 
 

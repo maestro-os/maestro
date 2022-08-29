@@ -1,16 +1,16 @@
 //! This modules implements the ANSI escape codes for the TTY interface.
 
+use super::TTY;
+use crate::util;
+use crate::util::math;
+use crate::vga;
 use core::cmp::min;
 use core::str;
-use crate::util::math;
-use crate::util;
-use crate::vga;
-use super::TTY;
 
 /// The character used to initialize ANSI escape sequences.
-pub const ESCAPE_CHAR: char = '\x1b';
+pub const ESCAPE_CHAR: u8 = 0x1b;
 /// The Control Sequence Introducer character.
-const CSI_CHAR: char = '[';
+const CSI_CHAR: u8 = b'[';
 
 /// The size of the buffer used to parse ANSI escape codes.
 pub const BUFFER_SIZE: usize = 16;
@@ -64,6 +64,7 @@ impl ANSIBuffer {
 	/// The function returns the number of characters that have been pushed.
 	pub fn push(&mut self, buffer: &[u8]) -> usize {
 		let len = min(buffer.len(), BUFFER_SIZE - self.cursor);
+		#[allow(clippy::needless_range_loop)]
 		for i in 0..len {
 			self.buffer[self.cursor + i] = buffer[i];
 		}
@@ -116,19 +117,19 @@ fn move_cursor(tty: &mut TTY, d: char, n: Option<i16>) -> ANSIState {
 			}
 
 			ANSIState::Valid
-		},
+		}
 
 		'B' => {
 			tty.cursor_y = min(tty.cursor_y + n, vga::HEIGHT);
 
 			ANSIState::Valid
-		},
+		}
 
 		'C' => {
 			tty.cursor_x = min(tty.cursor_x + n, vga::WIDTH);
 
 			ANSIState::Valid
-		},
+		}
 
 		'D' => {
 			if tty.cursor_x > n {
@@ -136,7 +137,7 @@ fn move_cursor(tty: &mut TTY, d: char, n: Option<i16>) -> ANSIState {
 			}
 
 			ANSIState::Valid
-		},
+		}
 
 		_ => ANSIState::Invalid,
 	}
@@ -152,7 +153,7 @@ fn parse_sgr(tty: &mut TTY, command: Option<i16>) -> ANSIState {
 			tty.reset_attrs();
 
 			ANSIState::Valid
-		},
+		}
 
 		1 => ANSIState::Valid, // TODO Bold
 		2 => ANSIState::Valid, // TODO Faint
@@ -162,15 +163,15 @@ fn parse_sgr(tty: &mut TTY, command: Option<i16>) -> ANSIState {
 		5 | 6 => {
 			tty.set_blinking(true);
 			ANSIState::Valid
-		},
+		}
 
 		7 => {
 			tty.swap_colors();
 			ANSIState::Valid
-		},
+		}
 
 		8 => ANSIState::Valid,
-		9 => ANSIState::Valid, // TODO Crossed-out
+		9 => ANSIState::Valid,  // TODO Crossed-out
 		10 => ANSIState::Valid, // TODO Primary font
 		11 => ANSIState::Valid, // TODO Alternative font
 		12 => ANSIState::Valid, // TODO Alternative font
@@ -189,7 +190,7 @@ fn parse_sgr(tty: &mut TTY, command: Option<i16>) -> ANSIState {
 		25 => {
 			tty.set_blinking(false);
 			ANSIState::Valid
-		},
+		}
 
 		26 => ANSIState::Valid,
 		27 => ANSIState::Valid, // TODO Not reversed
@@ -199,32 +200,32 @@ fn parse_sgr(tty: &mut TTY, command: Option<i16>) -> ANSIState {
 		30..=37 | 90..=97 => {
 			tty.set_fgcolor(get_vga_color(command as _));
 			ANSIState::Valid
-		},
+		}
 
 		38 => {
 			// TODO Set fg color
 			ANSIState::Valid
-		},
+		}
 
 		39 => {
 			tty.reset_fgcolor();
 			ANSIState::Valid
-		},
+		}
 
 		40..=47 | 100..=107 => {
 			tty.set_bgcolor(get_vga_color(command as _));
 			ANSIState::Valid
-		},
+		}
 
 		48 => {
 			// TODO Set bg color
 			ANSIState::Valid
-		},
+		}
 
 		49 => {
 			tty.reset_bgcolor();
 			ANSIState::Valid
-		},
+		}
 
 		50..=107 => ANSIState::Valid,
 
@@ -255,42 +256,42 @@ fn parse_csi(tty: &mut TTY) -> (ANSIState, usize) {
 		'E' => {
 			tty.newline(nbr.unwrap_or(1) as _);
 			ANSIState::Valid
-		},
+		}
 
 		'F' => {
 			// TODO Previous line
 			ANSIState::Valid
-		},
+		}
 
 		'G' => {
 			tty.cursor_y = math::clamp(nbr.unwrap_or(1), 0, vga::WIDTH);
 			ANSIState::Valid
-		},
+		}
 
 		'H' => {
 			// TODO Set cursor position
 			ANSIState::Valid
-		},
+		}
 
 		'J' => {
 			// TODO Erase in display
 			ANSIState::Valid
-		},
+		}
 
 		'K' => {
 			// TODO Erase in line
 			ANSIState::Valid
-		},
+		}
 
 		'S' => {
 			// TODO Scroll up
 			ANSIState::Valid
-		},
+		}
 
 		'T' => {
 			// TODO Scroll down
 			ANSIState::Valid
-		},
+		}
 
 		'm' => parse_sgr(tty, nbr),
 
@@ -311,10 +312,9 @@ fn parse(tty: &mut TTY) -> (ANSIState, usize) {
 		// TODO Check: let first = buffer.buffer[0];
 		let second = tty.ansi_buffer.buffer[1];
 
-		match second as char {
+		match second {
 			CSI_CHAR => parse_csi(tty),
 			// TODO
-
 			_ => (ANSIState::Invalid, 0),
 		}
 	}
@@ -331,22 +331,22 @@ pub fn handle(tty: &mut TTY, buffer: &[u8]) -> (ANSIState, usize) {
 	let (state, len) = parse(tty);
 	match state {
 		ANSIState::Valid => {
-			for i in len..buffer.len() {
-				tty.putchar(buffer[i] as char);
+			for b in buffer.iter().skip(len) {
+				tty.putchar(*b);
 			}
 			tty.update();
 			tty.ansi_buffer.clear();
-		},
+		}
 
 		ANSIState::Invalid => {
-			for i in 0..buffer.len() {
-				tty.putchar(buffer[i] as char);
+			for b in buffer.iter() {
+				tty.putchar(*b);
 			}
 			tty.update();
 			tty.ansi_buffer.clear();
-		},
+		}
 
-		ANSIState::Incomplete => {},
+		ANSIState::Incomplete => {}
 	}
 
 	(state, n)

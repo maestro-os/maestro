@@ -1,8 +1,8 @@
-.global GDT_KERNEL_CODE_OFFSET
-.global GDT_KERNEL_DATA_OFFSET
-.global GDT_USER_CODE_OFFSET
-.global GDT_USER_DATA_OFFSET
-.global GDT_TSS_OFFSET
+.global GDT_KERNEL_CS
+.global GDT_KERNEL_DS
+.global GDT_USER_CS
+.global GDT_USER_DS
+.global GDT_TSS
 
 .global GDT_PHYS_PTR
 .global GDT_DESC_PHYS_PTR
@@ -25,11 +25,11 @@
 /*
  * Offsets into the GDT for each segment.
  */
-.set GDT_KERNEL_CODE_OFFSET, (gdt_kernel_code - gdt_start)
-.set GDT_KERNEL_DATA_OFFSET, (gdt_kernel_data - gdt_start)
-.set GDT_USER_CODE_OFFSET, (gdt_user_code - gdt_start)
-.set GDT_USER_DATA_OFFSET, (gdt_user_data - gdt_start)
-.set GDT_TSS_OFFSET, (gdt_tss - gdt_start)
+.set GDT_KERNEL_CS, (gdt_kernel_code - gdt_start)
+.set GDT_KERNEL_DS, (gdt_kernel_data - gdt_start)
+.set GDT_USER_CS, (gdt_user_code - gdt_start)
+.set GDT_USER_DS, (gdt_user_data - gdt_start)
+.set GDT_TSS, (gdt_tss - gdt_start)
 
 /*
  * Physical address to the GDT.
@@ -66,14 +66,17 @@ switch_protected:
 	or $1, %al
 	mov %eax, %cr0
 
-	jmp $0x8, $complete_flush
+	jmp $GDT_KERNEL_CS, $complete_flush
 complete_flush:
-	mov $0x10, %ax
+	mov $GDT_KERNEL_DS, %ax
 	mov %ax, %ds
 	mov %ax, %es
+	mov %ax, %ss
+
+	mov $0, %ax
 	mov %ax, %fs
 	mov %ax, %gs
-	mov %ax, %ss
+
 	ret
 
 /*
@@ -93,14 +96,11 @@ gdt_move:
 
 .align 8
 
-// TODO Stack segments
-
 /*
  * The beginning of the GDT.
  * Every segment covers the whole memory space.
  */
 gdt_start:
-gdt_null:
 	.quad 0
 
 /*
@@ -151,6 +151,14 @@ gdt_user_data:
  * Reserved space for the Task State Segment.
  */
 gdt_tss:
+	.quad 0
+
+/*
+ * TLS GDT entries.
+ */
+gdt_tls:
+	.quad 0
+	.quad 0
 	.quad 0
 
 /*

@@ -10,12 +10,6 @@ To boot, the kernel requires a bootloader that supports Multiboot2, such as GRUB
 
 The list of devices major/minor numbers can be found `here <device/list.html>`_.
 
-Then, the kernel tries to start the first process, by running the init binary. this binary can be located at:
+Then, the kernel tries to start the first process, by running the init binary. this binary is located at `/sbin/init`.
 
-* `/init`
-* `/sbin/init`
-* `/bin/init`
-
-The kernel will check all these paths in the same order. A command line argument can be used to specify the init binary path, overriding the previous list.
-
-The init process has PID `1` and is running as the superuser. This process has the role to initialize the rest of the system. If it ever exits, the kernel shall panic.
+The init process has PID `1` and is running as the superuser. This process has the role of initializing the rest of the system. If it ever exits, the kernel shall panic.

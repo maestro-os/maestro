@@ -16,6 +16,7 @@ spin:
 	mov $1, %eax
 	xchg %eax, (%ebx)
 	test %eax, %eax
+	pause
 	jnz spin
 
 	pop %ebx

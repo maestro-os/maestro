@@ -1,25 +1,38 @@
 #include <stdint.h>
 #include <stddef.h>
 
-/*
- * Copy the given memory area `src` to `dest` with size `n`.
- * If the given memory areas are overlapping, the behaviour is undefined.
- */
+#include "libc.h"
+
 void *memcpy(void *dest, const void *src, size_t n)
 {
-	void *begin = dest;
-	void *end = begin + n;
+	// The beginning of the destination memory
+	void *begin;
+	// The end of the destination memory
+	void *end;
+	// The end of the aligned portion of memory to be written
+	void *align_end;
 
-	/*while(dest < end && (((intptr_t) dest & (sizeof(long) - 1)) != 0))
-		*((char *) dest++) = *((char *) src++);
-	while(dest < (void *) ((intptr_t) end & ~((intptr_t) 7))
-		&& (((intptr_t) dest & (sizeof(long) - 1)) == 0))
+	begin = dest;
+	end = begin + n;
+	align_end = DOWN_ALIGN(end, sizeof(long));
+	while (dest < end
+		&& !(IS_ALIGNED(dest, sizeof(long)) && IS_ALIGNED(src, sizeof(long))))
 	{
-		*(long *) dest = *(long *) src;
+		*((volatile char *) dest) = *((volatile char *) src);
+		dest += sizeof(char);
+		src += sizeof(char);
+	}
+	while (dest < align_end)
+	{
+		*((volatile long *) dest) = *((volatile long *) src);
 		dest += sizeof(long);
 		src += sizeof(long);
-	}*/
-	while(dest < end)
-		*((char *) dest++) = *((char *) src++);
+	}
+	while (dest < end)
+	{
+		*((volatile char *) dest) = *((volatile char *) src);
+		dest += sizeof(char);
+		src += sizeof(char);
+	}
 	return begin;
 }

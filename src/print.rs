@@ -1,23 +1,16 @@
-//! This file handles macros `print` and `println`.
+//! This file handles macros `print` and `println`. Unlink the standard print operations, these are
+//! used to log kernel informations. They can be silenced at boot using the `-silent` command line
+//! argument but they will be kept in the logger anyways.
 
-use crate::tty;
-use crate::util::lock::mutex::MutexGuard;
-
-/// Custom writer used to redirect print/println macros to the desired text output.
-struct TTYWrite {}
-
-impl core::fmt::Write for TTYWrite {
-	fn write_str(&mut self, s: &str) -> Result<(), core::fmt::Error> {
-		MutexGuard::new(tty::current()).get_mut().write(s);
-		Ok(())
-	}
-}
+use crate::logger;
+use core::fmt;
 
 /// Prints the specified message on the current TTY. This function is meant to be used through
 /// `print!` and `println!` macros only.
-pub fn _print(args: core::fmt::Arguments) {
-	let mut w: TTYWrite = TTYWrite {};
-	core::fmt::write(&mut w, args).ok();
+pub fn _print(args: fmt::Arguments) {
+	let mutex = logger::get();
+	let guard = mutex.lock();
+	fmt::write(guard.get_mut(), args).ok();
 }
 
 /// Prints the given formatted string with the given values.
@@ -25,7 +18,7 @@ pub fn _print(args: core::fmt::Arguments) {
 #[macro_export]
 macro_rules! print {
 	($($arg:tt)*) => {{
-		crate::print::_print(format_args!($($arg)*));
+		$crate::print::_print(format_args!($($arg)*));
 	}};
 }
 
@@ -33,8 +26,8 @@ macro_rules! print {
 #[allow_internal_unstable(print_internals, format_args_nl)]
 #[macro_export]
 macro_rules! println {
-	() => (crate::print!("\n"));
+	() => ($crate::print!("\n"));
 	($($arg:tt)*) => {{
-		crate::print::_print(format_args_nl!($($arg)*));
+		$crate::print::_print(format_args_nl!($($arg)*));
 	}};
 }

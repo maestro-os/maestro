@@ -1,8 +1,8 @@
 //! This module implements an identifier allocator, allowing to allocate and free indexes in a
 //! range between [0; max], where `max` is given.
 
-use crate::errno::Errno;
 use crate::errno;
+use crate::errno::Errno;
 use crate::util::container::bitfield::Bitfield;
 
 /// Structure representing an identifier allocator.
@@ -20,33 +20,37 @@ impl IDAllocator {
 		})
 	}
 
+	/// Sets the id `id` as used.
+	pub fn set_used(&mut self, id: u32) {
+		if id <= self.used.len() as _ {
+			self.used.set(id as _);
+		}
+	}
+
 	/// Allocates an identifier.
 	/// If `id` is not None, the function shall allocate the given id.
 	/// If the allocation fails, the function returns an Err.
+	#[must_use = "not freeing a PID shall cause a leak"]
 	pub fn alloc(&mut self, id: Option<u32>) -> Result<u32, Errno> {
 		if let Some(i) = id {
 			if !self.used.is_set(i as _) {
 				self.used.set(i as _);
 				Ok(i)
 			} else {
-				Err(errno::ENOMEM)
+				Err(errno!(ENOMEM))
 			}
+		} else if let Some(i) = self.used.find_clear() {
+			self.used.set(i);
+			Ok(i as _)
 		} else {
-			if let Some(i) = self.used.find_clear() {
-				self.used.set(i);
-				Ok(i as _)
-			} else {
-				Err(errno::ENOMEM)
-			}
+			Err(errno!(ENOMEM))
 		}
 	}
 
 	/// Frees the given identifier `id`.
 	pub fn free(&mut self, id: u32) {
-		if id > self.used.len() as _ || !self.used.is_set(id as _) {
-			crate::kernel_panic!("Freeing identifier that isn't allocated!", 0);
+		if id <= self.used.len() as _ {
+			self.used.clear(id as _);
 		}
-
-		self.used.clear(id as _);
 	}
 }

@@ -24,9 +24,7 @@ pub struct Spinlock {
 impl Spinlock {
 	/// Creates a new spinlock.
 	pub const fn new() -> Self {
-		Self {
-			locked: 0,
-		}
+		Self { locked: 0 }
 	}
 
 	/// Tells whether the spinlock is already locked. This function should not be called to check
@@ -44,9 +42,7 @@ impl Spinlock {
 	}
 
 	/// Wrapper for `spin_unlock`. Unlocks the spinlock.
-	pub fn unlock(&mut self) {
-		unsafe {
-			spin_unlock(&mut self.locked);
-		}
+	pub unsafe fn unlock(&mut self) {
+		spin_unlock(&mut self.locked);
 	}
 }

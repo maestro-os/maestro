@@ -1,19 +1,30 @@
 #include <stddef.h>
 #include <stdint.h>
 
-/*
- * Zeros the given chunk of memory `s` with the given size `n`.
- */
+#include "libc.h"
+
 void bzero(void *s, size_t n)
 {
+	// The end of the memory to be written
 	void *end;
+	// The end of the aligned portion of memory to be written
+	void *align_end;
 
 	end = s + n;
-	while(s < end && (((intptr_t) s & (sizeof(long) - 1)) != 0))
-		*((char *) s++) = 0;
-	while(s < (void *) ((intptr_t) end & ~((intptr_t) 7))
-		&& (((intptr_t) s & (sizeof(long) - 1)) == 0))
-		*((long *) s++) = 0;
-	while(s < end)
-		*((char *) s++) = 0;
+	align_end = DOWN_ALIGN(end, sizeof(long));
+	while (s < end && !IS_ALIGNED(s, sizeof(long)))
+	{
+		*((volatile char *) s) = 0;
+		s += sizeof(char);
+	}
+	while (s < align_end)
+	{
+		*((volatile long *) s) = 0;
+		s += sizeof(long);
+	}
+	while (s < end)
+	{
+		*((volatile char *) s) = 0;
+		s += sizeof(char);
+	}
 }

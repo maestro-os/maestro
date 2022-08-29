@@ -5,20 +5,9 @@ pub mod pic;
 
 use core::ffi::c_void;
 use core::mem::MaybeUninit;
+use core::mem::size_of;
 use crate::util;
 
-/// TODO Doc
-const ID_TYPE_GATE_TASK: u8 = 0b01010000;
-/// TODO Doc
-const ID_TYPE_GATE_INTERRUPT16: u8 = 0b01100000;
-/// TODO Doc
-const ID_TYPE_GATE_TRAP16: u8 = 0b01110000;
-/// TODO Doc
-const ID_TYPE_GATE_INTERRUPT32: u8 = 0b11100000;
-/// TODO Doc
-const ID_TYPE_GATE_TRAP32: u8 = 0b11110000;
-/// TODO Doc
-const ID_TYPE_S: u8 = 0b00001000;
 /// Makes the interrupt switch to ring 0.
 const ID_PRIVILEGE_RING_0: u8 = 0b00000000;
 /// Makes the interrupt switch to ring 1.
@@ -38,25 +27,34 @@ pub const ENTRIES_COUNT: usize = 0x81;
 /// Disables interruptions.
 #[macro_export]
 macro_rules! cli {
-	() => (unsafe {
-		asm!("cli")
-	});
+	() => {
+		#[allow(unused_unsafe)]
+		unsafe {
+			core::arch::asm!("cli");
+		}
+	};
 }
 
 /// Enables interruptions.
 #[macro_export]
 macro_rules! sti {
-	() => (unsafe {
-		asm!("sti")
-	});
+	() => {
+		#[allow(unused_unsafe)]
+		unsafe {
+			core::arch::asm!("sti");
+		}
+	};
 }
 
 /// Waits for an interruption.
 #[macro_export]
 macro_rules! hlt {
-	() => (unsafe {
-		asm!("hlt")
-	});
+	() => {
+		#[allow(unused_unsafe)]
+		unsafe {
+			core::arch::asm!("hlt");
+		}
+	};
 }
 
 /// Structure representing the IDT.
@@ -85,7 +83,7 @@ struct InterruptDescriptor {
 
 extern "C" {
 	fn idt_load(idt: *const c_void);
-	fn interrupt_is_enabled() -> bool;
+	fn interrupt_is_enabled() -> i32;
 }
 
 extern "C" {
@@ -143,28 +141,26 @@ extern "C" {
 }
 
 /// The list of IDT entries.
-static mut ID: MaybeUninit::<[InterruptDescriptor; ENTRIES_COUNT]>
-	= MaybeUninit::uninit();
+static mut ID: MaybeUninit<[InterruptDescriptor; ENTRIES_COUNT]> = MaybeUninit::uninit();
 
 /// Creates an IDT entry.
 fn create_id(address: *const c_void, selector: u16, type_attr: u8) -> InterruptDescriptor {
 	InterruptDescriptor {
 		offset: ((address as u32) & 0xffff) as u16,
-		selector: selector,
+		selector,
 		zero: 0,
-		type_attr: type_attr,
+		type_attr,
 		offset_2: (((address as u32) & 0xffff0000) >> util::bit_size_of::<u16>()) as u16,
 	}
 }
 
 /// Takes a C extern function and returns its pointer.
 fn get_c_fn_ptr(f: unsafe extern "C" fn()) -> *const c_void {
-	unsafe {
-		core::mem::transmute::<_, _>(f as *const c_void)
-	}
+	unsafe { core::mem::transmute::<_, _>(f as *const c_void) }
 }
 
 /// Initializes the IDT. This function must be called only once at kernel initialization.
+/// When returning, maskable interrupts are disabled by default.
 pub fn init() {
 	cli!();
 	pic::init(0x20, 0x28);
@@ -227,29 +223,37 @@ pub fn init() {
 	}
 
 	let idt = InterruptDescriptorTable {
-		size: (core::mem::size_of::<InterruptDescriptor>() * ENTRIES_COUNT - 1) as u16,
+		size: (size_of::<InterruptDescriptor>() * ENTRIES_COUNT - 1) as u16,
 		offset: unsafe {
-			&ID
-		} as *const _ as u32,
+			ID.assume_init_ref().as_ptr() as u32
+		},
 	};
 	unsafe {
 		idt_load(&idt as *const _ as *const _);
 	}
 }
 
-/// Executes the given function `f` with maskable interruptions disabled.
-/// If interruptions were enabled before calling this function, they are enabled back before
-/// returning.
-pub fn wrap_disable_interrupts<F: FnMut()>(mut f: F) {
-	let enabled = unsafe {
-		interrupt_is_enabled()
-	};
+/// Tells whether interruptions are enabled.
+pub fn is_interrupt_enabled() -> bool {
+	unsafe { interrupt_is_enabled() != 0 }
+}
 
-	if enabled {
-		crate::cli!();
-		f();
+/// Executes the given function `f` with maskable interruptions disabled.
+/// This function saves the state of the interrupt flag and restores it before returning.
+pub fn wrap_disable_interrupts<T, F: FnOnce() -> T>(f: F) -> T {
+	let int = is_interrupt_enabled();
+
+	// Here is assumed that no interruption will change eflags. Which could cause a race condition
+
+	crate::cli!();
+
+	let result = f();
+
+	if int {
 		crate::sti!();
 	} else {
-		f();
+		crate::cli!();
 	}
+
+	result
 }

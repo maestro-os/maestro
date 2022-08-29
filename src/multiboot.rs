@@ -1,6 +1,8 @@
 //! The Multiboot standard specifies an interface to load and boot the kernel image. It provides
 //! critical informations such as the memory mapping and the ELF structure of the kernel.
 
+use crate::memory;
+use crate::util;
 use core::ffi::c_void;
 use core::mem::ManuallyDrop;
 use core::ptr::null;
@@ -31,14 +33,11 @@ pub const TAG_TYPE_EFI32_IH: u32 = 19;
 pub const TAG_TYPE_EFI64_IH: u32 = 20;
 pub const TAG_TYPE_LOAD_BASE_ADDR: u32 = 21;
 
-// TODO Check type
 pub const MEMORY_AVAILABLE: u32 = 1;
-pub const MEMORY_RESERVED: u32 = 2;
 pub const MEMORY_ACPI_RECLAIMABLE: u32 = 3;
 pub const MEMORY_NVS: u32 = 4;
 pub const MEMORY_BADRAM: u32 = 5;
 
-// TODO Check type
 pub const FRAMEBUFFER_TYPE_INDEXED: u32 = 0;
 pub const FRAMEBUFFER_TYPE_RGB: u32 = 1;
 pub const FRAMEBUFFER_TYPE_EGA_TEXT: u32 = 2;
@@ -345,18 +344,18 @@ struct TagLoadBaseAddr {
 impl MmapEntry {
 	/// Tells if a Multiboot mmap entry is valid.
 	pub fn is_valid(&self) -> bool {
-		(self.addr + self.len) < ((1 as u64) << (4 * 8))
+		(self.addr + self.len) < (1_u64 << (4 * 8))
 	}
 
 	/// Returns the string describing the memory region according to its type.
 	pub fn get_type_string(&self) -> &'static str {
 		match self.type_ {
 			MEMORY_AVAILABLE => "Available",
-			MEMORY_RESERVED => "Reserved",
 			MEMORY_ACPI_RECLAIMABLE => "ACPI",
 			MEMORY_NVS => "Hibernate",
 			MEMORY_BADRAM => "Bad RAM",
-			_ => "Unknown",
+
+			_ => "Reserved",
 		}
 	}
 }
@@ -370,59 +369,57 @@ impl Tag {
 
 /// Structure representing the informations given to the kernel at boot time.
 pub struct BootInfo {
-	/// TODO
-	pub cmdline: &'static str,
-	/// TODO
-	pub loader_name: &'static str,
+	/// The command line used to boot the kernel.
+	pub cmdline: Option<&'static [u8]>,
+	/// The bootloader's name.
+	pub loader_name: Option<&'static [u8]>,
 
-	/// TODO
+	/// The lower memory size.
 	pub mem_lower: u32,
-	/// TODO
+	/// The upper memory size.
 	pub mem_upper: u32,
-	/// TODO
+	/// The size of physical memory mappings.
 	pub memory_maps_size: usize,
-	/// TODO
+	/// The size of a physical memory mapping entry.
 	pub memory_maps_entry_size: usize,
-	/// TODO
+	/// The list of physical memory mappings.
 	pub memory_maps: *const MmapEntry,
 
-	/// TODO
+	/// The number of ELF entries.
 	pub elf_num: u32,
-	/// TODO
+	/// The size of ELF entries.
 	pub elf_entsize: u32,
-	/// TODO
+	/// The index of the kernel's ELF section containing the kernel's symbols.
 	pub elf_shndx: u32,
-	/// TODO
+	/// A pointer to the kernel's ELF sections.
 	pub elf_sections: *const c_void,
-
-	// TODO
 }
 
 /// The field storing the informations given to the kernel at boot time.
 static mut BOOT_INFO: BootInfo = BootInfo {
-	cmdline: "",
-	loader_name: "",
+	cmdline: None,
+	loader_name: None,
+
 	mem_lower: 0,
 	mem_upper: 0,
 	memory_maps_size: 0,
 	memory_maps_entry_size: 0,
-	memory_maps: 0 as *const _,
+	memory_maps: null(),
+
 	elf_num: 0,
 	elf_entsize: 0,
 	elf_shndx: 0,
-	elf_sections: 0 as *const _,
+	elf_sections: null(),
 };
 
 /// Returns the boot informations provided by Multiboot.
 pub fn get_boot_info() -> &'static BootInfo {
-	unsafe {
-		&BOOT_INFO
-	}
+	unsafe { &BOOT_INFO }
 }
 
 /// Returns the size in bytes of Multiboot tags pointed by `ptr`.
 pub fn get_tags_size(ptr: *const c_void) -> usize {
-	debug_assert!(ptr != null::<c_void>());
+	debug_assert!(!ptr.is_null());
 
 	unsafe {
 		let mut tag = ptr.offset(8) as *const Tag;
@@ -437,60 +434,63 @@ pub fn get_tags_size(ptr: *const c_void) -> usize {
 /// Reads the given `tag` and fills the boot informations structure accordingly.
 fn handle_tag(boot_info: &mut BootInfo, tag: *const Tag) {
 	let type_ = unsafe { (*tag).type_ };
+
 	match type_ {
 		TAG_TYPE_CMDLINE => {
-			/*let t = tag as *const _ as *const TagString;
-			let ptr = &(*t).string;
-			boot_info.cmdline = &*(ptr as *const _ as *const [u8] as *const str);*/
-			// TODO
-		},
+			let t = tag as *const TagString;
+
+			unsafe {
+				let ptr = memory::kern_to_virt(&(*t).string as *const _ as *const _) as *const u8;
+				boot_info.cmdline = Some(util::str_from_ptr(ptr));
+			}
+		}
 
 		TAG_TYPE_BOOT_LOADER_NAME => {
-			// TODO
-		},
+			let t = tag as *const TagString;
 
-		TAG_TYPE_MODULE => {
-			// TODO
-		},
+			unsafe {
+				let ptr = memory::kern_to_virt(&(*t).string as *const _ as *const _) as *const u8;
+				boot_info.loader_name = Some(util::str_from_ptr(ptr));
+			}
+		}
 
 		TAG_TYPE_BASIC_MEMINFO => {
-			unsafe {
-				let t = tag as *const _ as *const TagBasicMeminfo;
-				boot_info.mem_lower = (*t).mem_lower;
-				boot_info.mem_upper = (*t).mem_upper;
-			}
-		},
+			let t = unsafe { &*(tag as *const TagBasicMeminfo) };
 
-		TAG_TYPE_BOOTDEV => {
-			// TODO
-		},
+			boot_info.mem_lower = t.mem_lower;
+			boot_info.mem_upper = t.mem_upper;
+		}
 
 		TAG_TYPE_MMAP => {
+			let t = tag as *const TagMmap;
+
 			unsafe {
-				let t = tag as *const _ as *const TagMmap;
 				boot_info.memory_maps_size = (*t).size as usize;
 				boot_info.memory_maps_entry_size = (*t).entry_size as usize;
 				boot_info.memory_maps = &(*t).entries as *const _;
 			}
-		},
+		}
 
 		TAG_TYPE_ELF_SECTIONS => {
+			let t = tag as *const TagELFSections;
+
 			unsafe {
-				let t = tag as *const _ as *const TagELFSections;
 				boot_info.elf_num = (*t).num;
 				boot_info.elf_entsize = (*t).entsize;
 				boot_info.elf_shndx = (*t).shndx;
 				boot_info.elf_sections = (*t).sections.as_ptr() as _;
 			}
-		},
-
-		// TODO
+		}
 
 		_ => {}
 	}
 }
 
 /// Reads the multiboot tags from the given `ptr` and fills the boot informations structure.
+///
+/// # Safety
+///
+/// If the pointer `ptr` doesn't point to valid Multiboot tags, the behaviour is undefined.
 pub fn read_tags(ptr: *const c_void) {
 	unsafe {
 		let mut tag = (ptr.offset(8)) as *const Tag;

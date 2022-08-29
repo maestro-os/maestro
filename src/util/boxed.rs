@@ -1,20 +1,22 @@
 //! The Box structure allows to hold an object on the heap and handles its memory properly.
 
+use crate::errno::Errno;
+use crate::memory;
+use crate::memory::malloc;
+use crate::util::FailableClone;
 use core::ffi::c_void;
 use core::marker::Unsize;
-use core::mem::ManuallyDrop;
-use core::mem::MaybeUninit;
+use core::mem;
 use core::mem::size_of_val;
 use core::mem::transmute;
-use core::mem;
+use core::mem::ManuallyDrop;
+use core::mem::MaybeUninit;
 use core::ops::CoerceUnsized;
 use core::ops::DispatchFromDyn;
 use core::ops::{Deref, DerefMut};
-use core::ptr::NonNull;
 use core::ptr::copy_nonoverlapping;
 use core::ptr::drop_in_place;
-use crate::errno::Errno;
-use crate::memory::malloc;
+use core::ptr::NonNull;
 
 /// This structure allows to store an object in an allocated region of memory.
 /// The object is owned by the Box and will be freed whenever the Box is dropped.
@@ -27,15 +29,14 @@ pub struct Box<T: ?Sized> {
 impl<T> Box<T> {
 	/// Creates a new instance and places the given value `value` into it.
 	/// If the allocation fails, the function shall return an error.
-	pub fn new(value: T) -> Result<Box::<T>, Errno> {
+	pub fn new(value: T) -> Result<Box<T>, Errno> {
 		let value_ref = &ManuallyDrop::new(value);
 
 		let ptr = {
 			let size = size_of_val(value_ref);
+
 			if size > 0 {
-				let ptr = unsafe {
-					transmute::<*mut c_void, *mut T>(malloc::alloc(size)?)
-				};
+				let ptr = unsafe { transmute::<*mut c_void, *mut T>(malloc::alloc(size)?) };
 				unsafe {
 					copy_nonoverlapping(value_ref as *const _ as *const u8, ptr as *mut u8, size);
 				}
@@ -46,9 +47,7 @@ impl<T> Box<T> {
 			}
 		};
 
-		Ok(Self {
-			ptr: ptr,
-		})
+		Ok(Self { ptr })
 	}
 
 	/// Returns the value owned by the Box, taking its ownership.
@@ -66,6 +65,8 @@ impl<T> Box<T> {
 impl<T: ?Sized> Box<T> {
 	/// Creates a new instance from a raw pointer. The newly created Box takes the ownership of the
 	/// pointer.
+	/// The given pointer must be an address to a region of memory allocated with the memory
+	/// allocator since its the allocator that the Box will use to free it.
 	pub unsafe fn from_raw(ptr: *mut T) -> Self {
 		Self {
 			ptr: NonNull::new(ptr).unwrap(),
@@ -85,17 +86,13 @@ impl<T: ?Sized> Box<T> {
 
 impl<T: ?Sized> AsRef<T> for Box<T> {
 	fn as_ref(&self) -> &T {
-		unsafe {
-			&*self.ptr.as_ptr()
-		}
+		unsafe { &*self.ptr.as_ptr() }
 	}
 }
 
 impl<T: ?Sized> AsMut<T> for Box<T> {
 	fn as_mut(&mut self) -> &mut T {
-		unsafe {
-			&mut *self.ptr.as_ptr()
-		}
+		unsafe { &mut *self.ptr.as_ptr() }
 	}
 }
 
@@ -113,13 +110,10 @@ impl<T: ?Sized> DerefMut for Box<T> {
 	}
 }
 
-impl<T: ?Sized + Clone> Box<T> {
-	/// Clones the Box and its content. The type of the wrapped data must implement the Clone trait.
-	/// If the allocation fails, the function shall return an error.
+impl<T: ?Sized + Clone> FailableClone for Box<T> {
 	fn failable_clone(&self) -> Result<Self, Errno> {
-		let obj = unsafe {
-			&*self.ptr.as_ptr()
-		};
+		let obj = unsafe { &*self.ptr.as_ptr() };
+
 		Box::new(obj.clone())
 	}
 }
@@ -130,11 +124,12 @@ impl<T: ?Sized + Unsize<U>, U: ?Sized> DispatchFromDyn<Box<U>> for Box<T> {}
 
 impl<T: ?Sized> Drop for Box<T> {
 	fn drop(&mut self) {
-		// TODO Clean (condition to check if dangling pointer)
-		if self.ptr.as_ptr() as *const c_void as usize > 8 {
+		let ptr = self.ptr.as_ptr();
+
+		if (ptr as *const c_void as usize) >= memory::PAGE_SIZE {
 			unsafe {
-				drop_in_place(self.ptr.as_ptr());
-				malloc::free(self.ptr.as_ptr() as _);
+				drop_in_place(ptr);
+				malloc::free(ptr as _);
 			}
 		}
 	}
@@ -149,6 +144,4 @@ mod test {
 		let b = Box::new(42 as usize);
 		debug_assert_eq!(*b.unwrap(), 42);
 	}
-
-	// TODO More tests
 }

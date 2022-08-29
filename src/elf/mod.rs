@@ -1,12 +1,99 @@
 //! The Executable and Linkable Format (ELF) is a format of executable files commonly used in UNIX
-//! systems. This module implements an interface to manipulate this format, including the kernel's
-//! executable itself.
+//! systems. This module implements a parser allowing to handle this format, including the kernel
+//! image itself.
 
-use core::ffi::c_void;
-use core::mem::size_of;
-use core::ptr::null;
+pub mod parser;
+pub mod relocation;
+
+use crate::errno;
+use crate::errno::Errno;
 use crate::memory;
+use crate::process::mem_space;
 use crate::util;
+use crate::util::math;
+use core::cmp::max;
+use core::cmp::min;
+use core::ffi::c_void;
+
+/// The number of identification bytes in the ELF header.
+pub const EI_NIDENT: usize = 16;
+
+/// Identification bytes offset: File class.
+pub const EI_CLASS: usize = 4;
+/// Identification bytes offset: Data encoding.
+pub const EI_DATA: usize = 5;
+/// Identification bytes offset: Version.
+pub const EI_VERSION: usize = 6;
+
+/// File's class: Invalid class.
+pub const ELFCLASSNONE: u8 = 0;
+/// File's class: 32-bit objects.
+pub const ELFCLASS32: u8 = 1;
+/// File's class: 64-bit objects.
+pub const ELFCLASS64: u8 = 2;
+
+/// Data encoding: Invalid data encoding.
+pub const ELFDATANONE: u8 = 0;
+/// Data encoding: Little endian.
+pub const ELFDATA2LSB: u8 = 1;
+/// Data encoding: Big endian.
+pub const ELFDATA2MSB: u8 = 2;
+
+/// Object file type: No file type.
+pub const ET_NONE: u16 = 0;
+/// Object file type: Relocatable file.
+pub const ET_REL: u16 = 1;
+/// Object file type: Executable file.
+pub const ET_EXEC: u16 = 2;
+/// Object file type: Shared object file.
+pub const ET_DYN: u16 = 3;
+/// Object file type: Core file.
+pub const ET_CORE: u16 = 4;
+/// Object file type: Processor-specific.
+pub const ET_LOPROC: u16 = 0xff00;
+/// Object file type: Processor-specific.
+pub const ET_HIPROC: u16 = 0xffff;
+
+/// Required architecture: AT&T WE 32100.
+pub const EM_M32: u16 = 1;
+/// Required architecture: SPARC.
+pub const EM_SPARC: u16 = 2;
+/// Required architecture: Intel Architecture.
+pub const EM_386: u16 = 3;
+/// Required architecture: Motorola 68000.
+pub const EM_68K: u16 = 4;
+/// Required architecture: Motorola 88000.
+pub const EM_88K: u16 = 5;
+/// Required architecture: Intel 80860.
+pub const EM_860: u16 = 7;
+/// Required architecture: MIPS RS3000 Big-Endian.
+pub const EM_MIPS: u16 = 8;
+/// Required architecture: MIPS RS4000 Big-Endian.
+pub const EM_MIPS_RS4_BE: u16 = 10;
+
+/// Program header type: Ignored.
+pub const PT_NULL: u32 = 0;
+/// Program header type: Loadable segment.
+pub const PT_LOAD: u32 = 1;
+/// Program header type: Dynamic linking information.
+pub const PT_DYNAMIC: u32 = 2;
+/// Program header type: Interpreter path.
+pub const PT_INTERP: u32 = 3;
+/// Program header type: Auxiliary information.
+pub const PT_NOTE: u32 = 4;
+/// Program header type: Unspecified.
+pub const PT_SHLIB: u32 = 5;
+/// Program header type: The program header table itself.
+pub const PT_PHDR: u32 = 6;
+/// Program header type: Thread-Local Storage (TLS).
+pub const PT_TLS: u32 = 7;
+
+/// Segment flag: Execute.
+pub const PF_X: u32 = 0x1;
+/// Segment flag: Write.
+pub const PF_W: u32 = 0x2;
+/// Segment flag: Read.
+pub const PF_R: u32 = 0x4;
 
 /// The section header is inactive.
 pub const SHT_NULL: u32 = 0x00000000;
@@ -32,20 +119,6 @@ pub const SHT_REL: u32 = 0x00000009;
 pub const SHT_SHLIB: u32 = 0x0000000a;
 /// The section holds a symbol table.
 pub const SHT_DYNSYM: u32 = 0x0000000b;
-/// TODO doc
-pub const SHT_INIT_ARRAY: u32 = 0x0000000e;
-/// TODO doc
-pub const SHT_FINI_ARRAY: u32 = 0x0000000f;
-/// TODO doc
-pub const SHT_PREINIT_ARRAY: u32 = 0x00000010;
-/// TODO doc
-pub const SHT_GROUP: u32 = 0x00000011;
-/// TODO doc
-pub const SHT_SYMTAB_SHNDX: u32 = 0x00000012;
-/// TODO doc
-pub const SHT_NUM: u32 = 0x00000013;
-/// TODO doc
-pub const SHT_LOOS: u32 = 0x60000000;
 
 /// The section contains writable data.
 pub const SHF_WRITE: u32 = 0x00000001;
@@ -53,28 +126,10 @@ pub const SHF_WRITE: u32 = 0x00000001;
 pub const SHF_ALLOC: u32 = 0x00000002;
 /// The section contains executable machine instructions.
 pub const SHF_EXECINSTR: u32 = 0x00000004;
-/// TODO doc
-pub const SHF_MERGE: u32 = 0x00000010;
-/// TODO doc
-pub const SHF_STRINGS: u32 = 0x00000020;
-/// TODO doc
-pub const SHF_INFO_LINK: u32 = 0x00000040;
-/// TODO doc
-pub const SHF_LINK_ORDER: u32 = 0x00000080;
-/// TODO doc
-pub const SHF_OS_NONCONFORMING: u32 = 0x00000100;
-/// TODO doc
-pub const SHF_GROUP: u32 = 0x00000200;
-/// TODO doc
-pub const SHF_TLS: u32 = 0x00000400;
-/// TODO doc
-pub const SHF_MASKOS: u32 = 0x0ff00000;
+/// Thread-Local Storage (TLS) section.
+pub const SHF_TLS: u32 = 0x400;
 /// All bits included in this mask are reserved for processor-specific semantics.
 pub const SHF_MASKPROC: u32 = 0xf0000000;
-/// TODO doc
-pub const SHF_ORDERED: u32 = 0x04000000;
-/// TODO doc
-pub const SHF_EXCLUDE: u32 = 0x08000000;
 
 /// The symbol's type is not specified.
 pub const STT_NOTYPE: u8 = 0;
@@ -84,19 +139,137 @@ pub const STT_OBJECT: u8 = 1;
 pub const STT_FUNC: u8 = 2;
 /// The symbol is associated with a section.
 pub const STT_SECTION: u8 = 3;
-/// TODO doc
+/// A file symbol has STB_LOCAL binding, its section index is SHN_ABS, and it precedes the other
+/// STB_LOCAL symbols for the file, if it is present.
 pub const STT_FILE: u8 = 4;
-/// TODO doc
-pub const STT_LOPROC: u8 = 13;
-/// TODO doc
-pub const STT_HIPROC: u8 = 15;
+/// Thread-Local Storage (TLS) symbol.
+pub const STT_TLS: u8 = 6;
 
-/// TODO doc
-type ELF32Addr = u32;
+/// No relocation.
+pub const R_386_NONE: u8 = 0;
+/// Relocation type.
+pub const R_386_32: u8 = 1;
+/// Relocation type.
+pub const R_386_PC32: u8 = 2;
+/// Relocation type.
+pub const R_386_GOT32: u8 = 3;
+/// Relocation type.
+pub const R_386_PLT32: u8 = 4;
+/// Relocation type.
+pub const R_386_COPY: u8 = 5;
+/// Relocation type.
+pub const R_386_GLOB_DAT: u8 = 6;
+/// Relocation type.
+pub const R_386_JMP_SLOT: u8 = 7;
+/// Relocation type.
+pub const R_386_RELATIVE: u8 = 8;
+/// Relocation type.
+pub const R_386_GOTOFF: u8 = 9;
+/// Relocation type.
+pub const R_386_GOTPC: u8 = 10;
 
-// TODO Fix function name getting
+/// Structure representing an ELF header.
+#[derive(Clone, Debug)]
+#[repr(C)]
+pub struct ELF32ELFHeader {
+	/// Identification bytes.
+	pub e_ident: [u8; EI_NIDENT],
+	/// Identifies the object file type.
+	pub e_type: u16,
+	/// Specifies the required machine type.
+	pub e_machine: u16,
+	/// The file's version.
+	pub e_version: u32,
+	/// The virtual address of the file's entry point.
+	pub e_entry: u32,
+	/// The program header table's file offset in bytes.
+	pub e_phoff: u32,
+	/// The section header table's file offset in bytes.
+	pub e_shoff: u32,
+	/// Processor-specific flags.
+	pub e_flags: u32,
+	/// ELF header's size in bytes.
+	pub e_ehsize: u16,
+	/// The size of one entry in the program header table.
+	pub e_phentsize: u16,
+	/// The number of entries in the program header table.
+	pub e_phnum: u16,
+	/// The size of one entry in the section header table.
+	pub e_shentsize: u16,
+	/// The number of entries in the section header table.
+	pub e_shnum: u16,
+	/// The section header table index holding the header of the section name string table.
+	pub e_shstrndx: u16,
+}
 
-/// Structure representing an ELF section header in memory.
+impl ELF32ELFHeader {
+	/// Returns the size of one entry in the program header table.
+	pub fn get_phentsize(&self) -> u16 {
+		self.e_phentsize
+	}
+
+	/// Returns the number of entries in the program header table.
+	pub fn get_phnum(&self) -> u16 {
+		self.e_phnum
+	}
+}
+
+/// Structure representing an ELF program header.
+#[derive(Clone, Debug)]
+#[repr(C)]
+pub struct ELF32ProgramHeader {
+	/// Tells what kind of segment this header describes.
+	pub p_type: u32,
+	/// The offset of the segment's content in the file.
+	pub p_offset: u32,
+	/// The virtual address of the segment's content.
+	pub p_vaddr: u32,
+	/// The physical address of the segment's content (if relevant).
+	pub p_paddr: u32,
+	/// The size of the segment's content in the file.
+	pub p_filesz: u32,
+	/// The size of the segment's content in memory.
+	pub p_memsz: u32,
+	/// Segment's flags.
+	pub p_flags: u32,
+	/// Segment's alignment.
+	pub p_align: u32,
+}
+
+impl ELF32ProgramHeader {
+	/// Tells whether the program header is valid.
+	/// `file_size` is the size of the file.
+	fn is_valid(&self, file_size: usize) -> Result<(), Errno> {
+		// TODO Check p_type
+
+		if (self.p_offset + self.p_filesz) as usize > file_size {
+			return Err(errno!(EINVAL));
+		}
+
+		if self.p_align != 0 && !math::is_power_of_two(self.p_align) {
+			return Err(errno!(EINVAL));
+		}
+
+		Ok(())
+	}
+
+	/// Returns the flags to map the current segment into a process's memory space.
+	/// This function should be used only for userspace programs.
+	pub fn get_mem_space_flags(&self) -> u8 {
+		let mut flags = mem_space::MAPPING_FLAG_USER;
+
+		if self.p_flags & PF_X != 0 {
+			flags |= mem_space::MAPPING_FLAG_EXEC;
+		}
+		if self.p_flags & PF_W != 0 {
+			flags |= mem_space::MAPPING_FLAG_WRITE;
+		}
+
+		flags
+	}
+}
+
+/// Structure representing an ELF section header.
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
 pub struct ELF32SectionHeader {
@@ -124,6 +297,24 @@ pub struct ELF32SectionHeader {
 	pub sh_entsize: u32,
 }
 
+impl ELF32SectionHeader {
+	/// Tells whether the section header is valid.
+	/// `file_size` is the size of the file.
+	fn is_valid(&self, file_size: usize) -> Result<(), Errno> {
+		// TODO Check sh_name
+
+		if self.sh_type & SHT_NOBITS == 0 && (self.sh_offset + self.sh_size) as usize > file_size {
+			return Err(errno!(EINVAL));
+		}
+
+		if self.sh_addralign != 0 && !math::is_power_of_two(self.sh_addralign) {
+			return Err(errno!(EINVAL));
+		}
+
+		Ok(())
+	}
+}
+
 /// Structure representing an ELF symbol in memory.
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
@@ -131,7 +322,7 @@ pub struct ELF32Sym {
 	/// Index in the string table section specifying the name of the symbol.
 	pub st_name: u32,
 	/// The value of the symbol.
-	pub st_value: ELF32Addr,
+	pub st_value: u32,
 	/// The size of the symbol.
 	pub st_size: u32,
 	/// The symbol's type and binding attributes.
@@ -142,26 +333,34 @@ pub struct ELF32Sym {
 	pub st_shndx: u16,
 }
 
-/// Returns a reference to the section with name `name`. If the section is not found, returns None.
+impl ELF32Sym {
+	/// Tells whether the symbol is defined.
+	pub fn is_defined(&self) -> bool {
+		self.st_shndx != 0
+	}
+}
+
+/// Returns a reference to the kernel section with name `name`. If the section is not found,
+/// returns None.
 /// `sections` is a pointer to the ELF sections of the kernel in the virtual memory.
 /// `sections_count` is the number of sections in the kernel.
 /// `shndx` is the index of the section containing section names.
 /// `entsize` is the size of section entries.
 /// `name` is the name of the required section.
-pub fn get_section(sections: *const c_void, sections_count: usize, shndx: usize, entsize: usize,
-	name: &str) -> Option<&ELF32SectionHeader> {
-	debug_assert!(sections != null::<c_void>());
-	let names_section = unsafe {
-		&*(sections.offset((shndx * entsize) as isize) as *const ELF32SectionHeader)
-	};
+pub fn get_section(
+	sections: *const c_void,
+	sections_count: usize,
+	shndx: usize,
+	entsize: usize,
+	name: &[u8],
+) -> Option<&ELF32SectionHeader> {
+	debug_assert!(!sections.is_null());
+	let names_section = unsafe { &*(sections.add(shndx * entsize) as *const ELF32SectionHeader) };
 
 	for i in 0..sections_count {
-		let hdr = unsafe {
-			&*(sections.offset((i * entsize) as isize) as *const ELF32SectionHeader)
-		};
-		let n = unsafe {
-			util::ptr_to_str(memory::kern_to_virt((names_section.sh_addr + hdr.sh_name) as _))
-		};
+		let hdr = unsafe { &*(sections.add(i * entsize) as *const ELF32SectionHeader) };
+		let ptr = memory::kern_to_virt((names_section.sh_addr + hdr.sh_name) as _) as _;
+		let n = unsafe { util::str_from_ptr(ptr) };
 
 		if n == name {
 			return Some(hdr);
@@ -171,58 +370,99 @@ pub fn get_section(sections: *const c_void, sections_count: usize, shndx: usize,
 	None
 }
 
-/// Iterates over the given section headers list `sections`, calling the given closure `f` for
-/// every elements with a reference and the name of the section.
+/// Iterates over the given kernel section headers list `sections`, calling the given closure `f`
+/// for every elements with a reference and the name of the section.
 /// `sections` is a pointer to the ELF sections of the kernel in the virtual memory.
 /// `sections_count` is the number of sections in the kernel.
 /// `shndx` is the index of the section containing section names.
 /// `entsize` is the size of section entries.
 /// `f` is the closure to be called for each sections.
-pub fn foreach_sections<F>(sections: *const c_void, sections_count: usize, shndx: usize,
-	entsize: usize, mut f: F) where F: FnMut(&ELF32SectionHeader, &str) {
-	let names_section = unsafe {
-		&*(sections.offset((shndx * entsize) as isize) as *const ELF32SectionHeader)
-	};
+pub fn foreach_sections<F>(
+	sections: *const c_void,
+	sections_count: usize,
+	shndx: usize,
+	entsize: usize,
+	mut f: F,
+) where
+	F: FnMut(&ELF32SectionHeader, &[u8]) -> bool,
+{
+	let names_section = unsafe { &*(sections.add(shndx * entsize) as *const ELF32SectionHeader) };
 
 	for i in 0..sections_count {
-		let hdr_offset = i * size_of::<ELF32SectionHeader>();
-		let hdr = unsafe {
-			&*(sections.offset(hdr_offset as isize) as *const ELF32SectionHeader)
-		};
-		let n = unsafe {
-			util::ptr_to_str(memory::kern_to_virt((names_section.sh_addr + hdr.sh_name) as _))
-		};
-		f(hdr, n);
+		let hdr_offset = i * entsize;
+		let hdr = unsafe { &*(sections.add(hdr_offset) as *const ELF32SectionHeader) };
+		let ptr = memory::kern_to_virt((names_section.sh_addr + hdr.sh_name) as _) as _;
+		let n = unsafe { util::str_from_ptr(ptr) };
+
+		if !f(hdr, n) {
+			break;
+		}
 	}
 }
 
-/// Returns the name of the symbol at the given offset.
-/// `strtab_section` is a reference to the .strtab section, containing symbol names.
-/// `offset` is the offset of the symbol in the section.
-/// If the offset is outside of the section, the behaviour is undefined.
-pub fn get_symbol_name(strtab_section: &ELF32SectionHeader, offset: u32) -> Option<&'static str> {
-	debug_assert!(offset < strtab_section.sh_size);
-	Some(unsafe {
-		util::ptr_to_str(memory::kern_to_virt((strtab_section.sh_addr + offset) as _))
-	})
+/// Returns the size of the kernel ELF sections' content.
+/// `sections` is a pointer to the ELF sections of the kernel in the virtual memory.
+/// `sections_count` is the number of sections in the kernel.
+/// `entsize` is the size of section entries.
+pub fn get_sections_end(
+	sections: *const c_void,
+	sections_count: usize,
+	entsize: usize,
+) -> *const c_void {
+	let mut end = 0;
+
+	for i in 0..sections_count {
+		let hdr_offset = i * entsize;
+		let hdr = unsafe { &*(sections.add(hdr_offset) as *const ELF32SectionHeader) };
+
+		let addr = unsafe { memory::kern_to_phys(hdr.sh_addr as _).add(hdr.sh_size as _) };
+		end = max(end, addr as usize);
+	}
+
+	end as _
 }
 
-/// Returns an Option containing the name of the function for the given instruction pointer. If the
-/// name cannot be retrieved, the function returns None.
+/// Returns the name of the kernel symbol at the given offset.
+/// `strtab_section` is a reference to the .strtab section, containing symbol names.
+/// `offset` is the offset of the symbol in the section.
+/// If the offset is invalid or outside of the section, the behaviour is undefined.
+pub fn get_symbol_name(strtab_section: &ELF32SectionHeader, offset: u32) -> &'static [u8] {
+	debug_assert!(offset < strtab_section.sh_size);
+
+	unsafe { util::str_from_ptr(memory::kern_to_virt((strtab_section.sh_addr + offset) as _) as _) }
+}
+
+/// Returns the name of the kernel function for the given instruction pointer. If the name cannot
+/// be retrieved, the function returns None.
 /// `sections` is a pointer to the ELF sections of the kernel in the virtual memory.
 /// `sections_count` is the number of sections in the kernel.
 /// `shndx` is the index of the section containing section names.
 /// `entsize` is the size of section entries.
 /// `inst` is the pointer to the instruction on the virtual memory.
-/// If the section `.strtab` doesn't exist, the behaviour is undefined.
-pub fn get_function_name(sections: *const c_void, sections_count: usize, shndx: usize,
-	entsize: usize, inst: *const c_void) -> Option<&'static str> {
-	let strtab_section = get_section(sections, sections_count, shndx, entsize, ".strtab").unwrap();
-	let mut func_name: Option<&'static str> = None;
-	foreach_sections(sections, sections_count, shndx, entsize,
-		|hdr: &ELF32SectionHeader, _name: &str| {
+pub fn get_function_name(
+	sections: *const c_void,
+	sections_count: usize,
+	shndx: usize,
+	entsize: usize,
+	inst: *const c_void,
+) -> Option<&'static [u8]> {
+	let strtab_section = get_section(
+		sections,
+		sections_count,
+		shndx,
+		entsize,
+		".strtab".as_bytes(),
+	)?;
+	let mut func_name: Option<&'static [u8]> = None;
+
+	foreach_sections(
+		sections,
+		sections_count,
+		shndx,
+		entsize,
+		|hdr: &ELF32SectionHeader, _name: &[u8]| {
 			if hdr.sh_type != SHT_SYMTAB {
-				return;
+				return true;
 			}
 
 			let ptr = memory::kern_to_virt(hdr.sh_addr as _) as *const u8;
@@ -230,22 +470,76 @@ pub fn get_function_name(sections: *const c_void, sections_count: usize, shndx: 
 
 			let mut i: usize = 0;
 			while i < hdr.sh_size as usize {
-				let sym = unsafe {
-					&*(ptr.add(i) as *const ELF32Sym)
-				};
+				let sym = unsafe { &*(ptr.add(i) as *const ELF32Sym) };
 
 				let value = sym.st_value as usize;
 				let size = sym.st_size as usize;
 				if (inst as usize) >= value && (inst as usize) < (value + size) {
 					if sym.st_name != 0 {
-						func_name = get_symbol_name(strtab_section, sym.st_name);
+						func_name = Some(get_symbol_name(strtab_section, sym.st_name));
 					}
 
-					break;
+					return false;
 				}
 
 				i += hdr.sh_entsize as usize;
 			}
-		});
+
+			true
+		},
+	);
+
 	func_name
+}
+
+/// Returns the kernel symbol with the name `name`. If the symbol doesn't exist, the function
+/// returns None.
+/// `sections` is a pointer to the ELF sections of the kernel in the virtual memory.
+/// `sections_count` is the number of sections in the kernel.
+/// `shndx` is the index of the section containing section names.
+/// `entsize` is the size of section entries.
+/// `name` is the name of the symbol to get.
+pub fn get_kernel_symbol(
+	sections: *const c_void,
+	sections_count: usize,
+	shndx: usize,
+	entsize: usize,
+	name: &[u8],
+) -> Option<&'static ELF32Sym> {
+	let strtab_section = get_section(sections, sections_count, shndx, entsize, b".strtab")?;
+	let mut symbol: Option<&'static ELF32Sym> = None;
+
+	foreach_sections(
+		sections,
+		sections_count,
+		shndx,
+		entsize,
+		|hdr: &ELF32SectionHeader, _name: &[u8]| {
+			if hdr.sh_type != SHT_SYMTAB {
+				return true;
+			}
+
+			let ptr = memory::kern_to_virt(hdr.sh_addr as _) as *const u8;
+			debug_assert!(hdr.sh_entsize > 0);
+
+			let mut i: usize = 0;
+			while i < hdr.sh_size as usize {
+				let sym = unsafe { &*(ptr.add(i) as *const ELF32Sym) };
+
+				if sym.st_name != 0 {
+					let sym_name = get_symbol_name(strtab_section, sym.st_name);
+					if sym_name == name {
+						symbol = Some(sym);
+						return false;
+					}
+				}
+
+				i += hdr.sh_entsize as usize;
+			}
+
+			true
+		},
+	);
+
+	symbol
 }

@@ -1,46 +1,63 @@
 //! This module implements storage drivers.
 
-pub mod mbr;
+pub mod cache;
+pub mod ide;
+pub mod partition;
 pub mod pata;
 pub mod ramdisk;
 
-use core::cmp::min;
+use crate::device;
+use crate::device::bus::pci;
+use crate::device::id;
+use crate::device::id::MajorBlock;
+use crate::device::manager::DeviceManager;
+use crate::device::manager::PhysicalDevice;
 use crate::device::Device;
 use crate::device::DeviceHandle;
 use crate::device::DeviceType;
-use crate::device::id::MajorBlock;
-use crate::device::id;
-use crate::device::manager::DeviceManager;
-use crate::device::manager::PhysicalDevice;
-use crate::device::storage::pata::PATAInterface;
-use crate::device;
-use crate::errno::Errno;
 use crate::errno;
-use crate::file::Mode;
+use crate::errno::Errno;
 use crate::file::path::Path;
+use crate::file::Mode;
 use crate::memory::malloc;
-use crate::util::boxed::Box;
+use crate::process::mem_space::MemSpace;
+use crate::process::oom;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
+use crate::util::io::IO;
+use crate::util::math;
+use crate::util::ptr::IntSharedPtr;
+use crate::util::ptr::SharedPtr;
+use crate::util::ptr::WeakPtr;
+use crate::util::FailableClone;
+use core::cmp::min;
+use core::ffi::c_void;
+use partition::Partition;
 
 /// The major number for storage devices.
 const STORAGE_MAJOR: u32 = 8;
 /// The mode of the device file for a storage device.
-const STORAGE_MODE: Mode = 0660;
+const STORAGE_MODE: Mode = 0o660;
 /// The maximum number of partitions in a disk.
-const MAX_PARTITIONS: u32 = 16;
+const MAX_PARTITIONS: usize = 16;
 
 /// Trait representing a storage interface. A storage block is the atomic unit for I/O access on
 /// the storage device.
 pub trait StorageInterface {
 	/// Returns the size of the storage blocks in bytes.
-	/// This value must always stay the same.
+	/// This value must not change.
 	fn get_block_size(&self) -> u64;
 	/// Returns the number of storage blocks.
-	/// This value must always stay the same.
+	/// This value must not change.
 	fn get_blocks_count(&self) -> u64;
 
-	/// Reads `size` blocks from storage at block offset `offset`, writting the data to `buf`.
+	/// Returns the size of the storage in bytes.
+	/// This value must not change.
+	fn get_size(&self) -> u64 {
+		self.get_block_size() * self.get_blocks_count()
+	}
+
+	/// Reads `size` blocks from storage at block offset `offset`, writing the data to `buf`.
 	/// If the offset and size are out of bounds, the function returns an error.
 	fn read(&mut self, buf: &mut [u8], offset: u64, size: u64) -> Result<(), Errno>;
 	/// Writes `size` blocks to storage at block offset `offset`, reading the data from `buf`.
@@ -48,235 +65,237 @@ pub trait StorageInterface {
 	fn write(&mut self, buf: &[u8], offset: u64, size: u64) -> Result<(), Errno>;
 
 	// Unit testing is done through ramdisk testing
-	/// Reads bytes from storage at offset `offset`, writting the data to `buf`.
+	/// Reads bytes from storage at offset `offset`, writing the data to `buf`.
 	/// If the offset and size are out of bounds, the function returns an error.
-	fn read_bytes(&mut self, buf: &mut [u8], offset: u64) -> Result<usize, Errno> {
-		let storage_size = self.get_block_size() * self.get_blocks_count();
-		if offset > storage_size || (offset + buf.len() as u64) > storage_size {
-			return Err(errno::EINVAL);
+	fn read_bytes(&mut self, buf: &mut [u8], offset: u64) -> Result<(u64, bool), Errno> {
+		let block_size = self.get_block_size();
+		let blocks_count = self.get_blocks_count();
+
+		let blk_begin = offset / block_size;
+		let blk_end = math::ceil_division(offset + buf.len() as u64, block_size);
+		if blk_begin > blocks_count || blk_end > blocks_count {
+			return Err(errno!(EINVAL));
 		}
-
-		let block_size = self.get_block_size() as usize;
-
-		// TODO Alloc only if needed?
-		let mut tmp_buf = malloc::Alloc::<u8>::new_default(block_size as _)?;
 
 		let mut i = 0;
 		while i < buf.len() {
+			let remaining_bytes = buf.len() - i;
+
 			let storage_i = offset + i as u64;
-			let block_off = (storage_i as usize) / block_size;
-			let block_inner_off = (storage_i as usize) % block_size;
+			let block_off = storage_i / block_size;
+			let block_inner_off = (storage_i as usize) % block_size as usize;
 			let block_aligned = block_inner_off == 0;
 
 			if !block_aligned {
-				self.read(tmp_buf.get_slice_mut(), block_off as _, 1)?;
+				let mut tmp_buf = malloc::Alloc::<u8>::new_default(block_size as _)?;
+				self.read(tmp_buf.as_slice_mut(), block_off, 1)?;
 
-				let diff = min(buf.len(), block_size - block_inner_off);
+				let diff = min(remaining_bytes, block_size as usize - block_inner_off);
 				for j in 0..diff {
+					debug_assert!(i + j < buf.len());
+					debug_assert!(block_inner_off + j < tmp_buf.len());
 					buf[i + j] = tmp_buf[block_inner_off + j];
 				}
 
 				i += diff;
-			} else {
-				let remaining_bytes = buf.len() - i;
-				let remaining_blocks = remaining_bytes / block_size;
+			} else if (remaining_bytes as u64) < block_size {
+				let mut tmp_buf = malloc::Alloc::<u8>::new_default(block_size as _)?;
+				self.read(tmp_buf.as_slice_mut(), block_off, 1)?;
 
-				if remaining_bytes >= block_size {
-					let slice_len = remaining_blocks * block_size;
-					self.read(&mut buf[i..(i + slice_len)], block_off as _,
-						remaining_blocks as _)?;
-
-					i += slice_len;
-				} else {
-					self.read(tmp_buf.get_slice_mut(), block_off as _, 1)?;
-					for j in 0..remaining_bytes {
-						buf[i + j] = tmp_buf[j];
-					}
-
-					i += remaining_bytes;
+				for j in 0..remaining_bytes {
+					debug_assert!(i + j < buf.len());
+					debug_assert!(j < tmp_buf.len());
+					buf[i + j] = tmp_buf[j];
 				}
+
+				i += remaining_bytes;
+			} else {
+				let remaining_blocks = (remaining_bytes as u64) / block_size;
+				let len = (remaining_blocks * block_size) as usize;
+				debug_assert!(i + len <= buf.len());
+				self.read(&mut buf[i..(i + len)], block_off, remaining_blocks as _)?;
+
+				i += len;
 			}
 		}
 
-		Ok(buf.len())
+		let eof = (offset + buf.len() as u64) >= block_size * blocks_count;
+		Ok((buf.len() as _, eof))
 	}
 
 	// Unit testing is done through ramdisk testing
 	/// Writes bytes to storage at offset `offset`, reading the data from `buf`.
 	/// If the offset and size are out of bounds, the function returns an error.
-	fn write_bytes(&mut self, buf: &[u8], offset: u64) -> Result<usize, Errno> {
-		let storage_size = self.get_block_size() * self.get_blocks_count();
-		if offset > storage_size || (offset + buf.len() as u64) > storage_size {
-			return Err(errno::EINVAL);
+	fn write_bytes(&mut self, buf: &[u8], offset: u64) -> Result<u64, Errno> {
+		let block_size = self.get_block_size();
+		let blocks_count = self.get_blocks_count();
+
+		let blk_begin = offset / block_size;
+		let blk_end = math::ceil_division(offset + buf.len() as u64, block_size);
+		if blk_begin > blocks_count || blk_end > blocks_count {
+			return Err(errno!(EINVAL));
 		}
-
-		let block_size = self.get_block_size() as usize;
-
-		// TODO Alloc only if needed?
-		let mut tmp_buf = malloc::Alloc::<u8>::new_default(block_size as _)?;
 
 		let mut i = 0;
 		while i < buf.len() {
+			let remaining_bytes = buf.len() - i;
+
 			let storage_i = offset + i as u64;
-			let block_off = (storage_i as usize) / block_size;
-			let block_inner_off = (storage_i as usize) % block_size;
+			let block_off = storage_i / block_size;
+			let block_inner_off = (storage_i as usize) % block_size as usize;
 			let block_aligned = block_inner_off == 0;
 
 			if !block_aligned {
-				self.read(tmp_buf.get_slice_mut(), block_off as _, 1)?;
+				let mut tmp_buf = malloc::Alloc::<u8>::new_default(block_size as _)?;
+				self.read(tmp_buf.as_slice_mut(), block_off, 1)?;
 
-				let diff = min(buf.len(), block_size - block_inner_off);
+				let diff = min(remaining_bytes, block_size as usize - block_inner_off);
 				for j in 0..diff {
+					debug_assert!(i + j < buf.len());
+					debug_assert!(block_inner_off + j < tmp_buf.len());
 					tmp_buf[block_inner_off + j] = buf[i + j];
 				}
 
-				self.write(tmp_buf.get_slice(), block_off as _, 1)?;
+				self.write(tmp_buf.as_slice(), block_off, 1)?;
+
 				i += diff;
-			} else {
-				let remaining_bytes = buf.len() - i;
-				let remaining_blocks = remaining_bytes / block_size;
+			} else if (remaining_bytes as u64) < block_size {
+				let mut tmp_buf = malloc::Alloc::<u8>::new_default(block_size as _)?;
+				self.read(tmp_buf.as_slice_mut(), block_off, 1)?;
 
-				if remaining_bytes >= block_size {
-					let slice_len = remaining_blocks * block_size;
-					self.write(&buf[i..(i + slice_len)], block_off as _, remaining_blocks as _)?;
-
-					i += slice_len;
-				} else {
-					self.read(tmp_buf.get_slice_mut(), block_off as _, 1)?;
-					for j in 0..remaining_bytes {
-						tmp_buf[j] = buf[i + j];
-					}
-
-					self.write(tmp_buf.get_slice(), block_off as _, 1)?;
-					i += remaining_bytes;
+				for j in 0..remaining_bytes {
+					debug_assert!(i + j < buf.len());
+					debug_assert!(j < tmp_buf.len());
+					tmp_buf[j] = buf[i + j];
 				}
+
+				self.write(tmp_buf.as_slice(), block_off, 1)?;
+
+				i += remaining_bytes;
+			} else {
+				let remaining_blocks = (remaining_bytes as u64) / block_size;
+				let len = (remaining_blocks * block_size) as usize;
+				debug_assert!(i + len <= buf.len());
+				self.write(&buf[i..(i + len)], block_off, remaining_blocks as _)?;
+
+				i += len;
 			}
 		}
 
-		Ok(buf.len())
-
+		Ok(buf.len() as _)
 	}
 }
 
-pub mod partition {
-	use crate::errno::Errno;
-	use crate::errno;
-	use crate::util::container::vec::Vec;
-	use super::StorageInterface;
-	use super::mbr::MBRTable;
-
-	/// Structure representing a disk partition.
-	pub struct Partition {
-		/// The offset to the first sector of the partition.
-		start: u64,
-		/// The number of sectors in the partition.
-		size: u64,
-	}
-
-	impl Partition {
-		/// Creates a new instance with the given start partition `start` and size `size`.
-		pub fn new(start: u64, size: u64) -> Self {
-			Self {
-				start: start,
-				size: size,
-			}
-		}
-
-		/// Returns the offset of the first sector of the partition.
-		pub fn get_start(&self) -> u64 {
-			self.start
-		}
-
-		/// Returns the number fo sectors in the partition.
-		pub fn get_size(&self) -> u64 {
-			self.size
-		}
-	}
-
-	/// Trait representing a partition table.
-	pub trait Table {
-		/// Returns the type of the partition table.
-		fn get_type(&self) -> &'static str;
-
-		/// Reads the partitions list.
-		fn read(&self) -> Result<Vec<Partition>, Errno>;
-	}
-
-	/// Reads the list of partitions from the given storage interface `storage`.
-	pub fn read(storage: &mut dyn StorageInterface) -> Result<Vec<Partition>, Errno> {
-		if storage.get_block_size() != 512 {
-			return Ok(Vec::new());
-		}
-
-		let mut first_sector: [u8; 512] = [0; 512];
-		if storage.read(&mut first_sector, 0, 1).is_err() {
-			return Err(errno::EIO);
-		}
-
-		// Valid because taking the pointer to the buffer on the stack which has the same size as
-		// the structure
-		let mbr_table = unsafe {
-			&*(first_sector.as_ptr() as *const MBRTable)
-		};
-		if mbr_table.is_valid() {
-			return mbr_table.read();
-		}
-
-		// TODO Try to detect GPT
-
-		Ok(Vec::new())
-	}
-}
-
-/// Handle for the device file of a storage device or a storage device partition.
+/// Handle for the device file of a whole storage device or a partition.
 pub struct StorageDeviceHandle {
-	/// The id of the device in the storage manager's list.
-	id: u32,
-	/// The if of the partition to be handled. If 0, the device handles the whole device.
-	partition: u32,
+	/// A reference to the storage interface.
+	interface: WeakPtr<dyn StorageInterface>,
 
-	/// The reference to the storage manager.
-	storage_manager: *mut StorageManager, // TODO Use a weak ptr?
+	/// The partition associated with the handle.
+	partition: Option<Partition>,
 }
 
 impl StorageDeviceHandle {
-	/// Creates a new instance for the given storage device with identifier `id` and the given
-	/// partition number `partition. If the partition number is `0`, the device file is linked to
-	/// the entire device instead of a partition.
-	/// `storage_manager` is the storage manager associated with the device.
-	pub fn new(id: u32, partition: u32, storage_manager: *mut StorageManager) -> Self {
+	/// Creates a new instance for the given storage interface and the given partition number.
+	/// `interface` is the storage interface.
+	/// `partition` is the partition. If None, the handle works on the whole storage device.
+	pub fn new(interface: WeakPtr<dyn StorageInterface>, partition: Option<Partition>) -> Self {
 		Self {
-			id: id,
-			partition: partition,
+			interface,
 
-			storage_manager: storage_manager,
+			partition,
 		}
 	}
 }
 
 impl DeviceHandle for StorageDeviceHandle {
+	fn ioctl(
+		&mut self,
+		_mem_space: IntSharedPtr<MemSpace>,
+		_request: u32,
+		_argp: *const c_void,
+	) -> Result<u32, Errno> {
+		// TODO
+		Err(errno!(EINVAL))
+	}
+}
+
+impl IO for StorageDeviceHandle {
 	fn get_size(&self) -> u64 {
-		// TODO
-		0
+		if let Some(interface) = self.interface.get() {
+			let interface_guard = interface.lock();
+			let interface = interface_guard.get();
+
+			interface.get_block_size() * interface.get_blocks_count()
+		} else {
+			0
+		}
 	}
 
-	fn read(&mut self, _offset: u64, _buff: &mut [u8]) -> Result<usize, Errno> {
-		// TODO
-		Ok(0)
+	fn read(&mut self, offset: u64, buff: &mut [u8]) -> Result<(u64, bool), Errno> {
+		if let Some(interface) = self.interface.get() {
+			let interface_guard = interface.lock();
+			let interface = interface_guard.get_mut();
+
+			// Check offset
+			let (start, size) = match &self.partition {
+				Some(p) => {
+					let start = p.get_offset() * interface.get_block_size();
+					let size = p.get_size() * interface.get_block_size();
+
+					(start, size)
+				}
+
+				None => (0, interface.get_size()),
+			};
+			if (offset + buff.len() as u64) > size {
+				return Err(errno!(EINVAL));
+			}
+
+			interface.read_bytes(buff, start + offset)
+		} else {
+			Err(errno!(ENODEV))
+		}
 	}
 
-	fn write(&mut self, _offset: u64, _buff: &[u8]) -> Result<usize, Errno> {
-		// TODO
+	fn write(&mut self, offset: u64, buff: &[u8]) -> Result<u64, Errno> {
+		if let Some(interface) = self.interface.get() {
+			let interface_guard = interface.lock();
+			let interface = interface_guard.get_mut();
+
+			// Check offset
+			let (start, size) = match &self.partition {
+				Some(p) => {
+					let start = p.get_offset() * interface.get_block_size();
+					let size = p.get_size() * interface.get_block_size();
+
+					(start, size)
+				}
+
+				None => (0, interface.get_size()),
+			};
+			if (offset + buff.len() as u64) > size {
+				return Err(errno!(EINVAL));
+			}
+
+			interface.write_bytes(buff, start + offset)
+		} else {
+			Err(errno!(ENODEV))
+		}
+	}
+
+	fn poll(&mut self, _mask: u32) -> Result<u32, Errno> {
 		Ok(0)
 	}
 }
 
-/// Structure managing storage devices.
+/// An instance of StorageManager manages devices on a whole major number.
+/// The manager has name `storage`.
 pub struct StorageManager {
 	/// The allocated device major number for storage devices.
 	major_block: MajorBlock,
 	/// The list of detected interfaces.
-	interfaces: Vec<Box<dyn StorageInterface>>,
+	interfaces: Vec<SharedPtr<dyn StorageInterface>>,
 }
 
 impl StorageManager {
@@ -292,34 +311,58 @@ impl StorageManager {
 	// handled in the range of minor numbers
 	// TODO When failing, remove previously registered devices
 	/// Adds a storage device.
-	fn add(&mut self, mut storage: Box<dyn StorageInterface>) -> Result<(), Errno> {
+	fn add(&mut self, storage: SharedPtr<dyn StorageInterface>) -> Result<(), Errno> {
+		// The device files' major number
 		let major = self.major_block.get_major();
+		// The id of the storage interface in the manager's list
 		let storage_id = self.interfaces.len() as u32;
 
-		let mut prefix = String::from("/dev/sd")?;
-		prefix.push(unsafe { // Safe because the id stays in range of the alphabet
-			char::from_u32_unchecked((('a' as u8) + (storage_id as u8)) as _)
-		})?;
+		// The prefix is the path of the main device file
+		let mut prefix = String::from(b"/dev/sd")?;
+		prefix.push(b'a' + (storage_id as u8))?; // TODO Handle if out of the alphabet
+		// The path of the main device file
+		let main_path = Path::from_str(prefix.as_bytes(), false)?;
 
-		let device_type = if storage.get_block_size() == 1 {
-			DeviceType::Char
-		} else {
-			DeviceType::Block
-		};
-
-		let main_path = Path::from_string(prefix.as_str())?;
-		let main_handle = StorageDeviceHandle::new(storage_id, 0, self);
-		let main_device = Device::new(major, storage_id * MAX_PARTITIONS, main_path, STORAGE_MODE,
-			device_type, main_handle)?;
+		// Creating the main device file
+		let main_handle = StorageDeviceHandle::new(storage.new_weak(), None);
+		let main_device = Device::new(
+			major,
+			storage_id * MAX_PARTITIONS as u32,
+			main_path,
+			STORAGE_MODE,
+			DeviceType::Block,
+			main_handle,
+		)?;
 		device::register_device(main_device)?;
 
-		let partitions = partition::read(storage.as_mut())?;
-		for i in 0..min(MAX_PARTITIONS, partitions.len() as u32) {
-			let path = Path::from_string(prefix.as_str())?; // TODO Add i + 1 as char at the end
-			let handle = StorageDeviceHandle::new(storage_id, i, self);
-			let device = Device::new(major, storage_id * MAX_PARTITIONS + i, path, STORAGE_MODE,
-				device_type, handle)?;
-			device::register_device(device)?;
+		// Creating device files for every partitions (within the limit of MAX_PARTITIONS)
+		{
+			let storage_guard = storage.lock();
+			let s = storage_guard.get_mut();
+
+			if let Some(partitions_table) = partition::read(s)? {
+				let partitions = partitions_table.get_partitions(s)?;
+
+				for (i, partition) in partitions.into_iter().take(MAX_PARTITIONS).enumerate() {
+					let i = i + 1;
+
+					// Adding the partition number to the path
+					let path_str = (prefix.failable_clone()? + String::from_number(i as _)?)?;
+					let path = Path::from_str(path_str.as_bytes(), false)?;
+
+					// Creating the partition's device file
+					let handle = StorageDeviceHandle::new(storage.new_weak(), Some(partition));
+					let device = Device::new(
+						major,
+						storage_id * MAX_PARTITIONS as u32 + i as u32,
+						path.failable_clone()?,
+						STORAGE_MODE,
+						DeviceType::Block,
+						handle,
+					)?;
+					device::register_device(device)?;
+				}
+			}
 		}
 
 		self.interfaces.push(storage)
@@ -330,12 +373,12 @@ impl StorageManager {
 	/// Fills a random buffer `buff` of size `size` with seed `seed`.
 	/// The function returns the seed for the next block.
 	#[cfg(config_debug_storagetest)]
-	fn random_block(size: usize, buff: &mut [u8], seed: u32) -> u32 {
+	fn random_block(size: u64, buff: &mut [u8], seed: u32) -> u32 {
 		let mut s = seed;
 
 		for i in 0..size {
 			s = crate::util::math::pseudo_rand(s, 1664525, 1013904223, 0x100);
-			buff[i] = (s & 0xff) as u8;
+			buff[i as usize] = (s & 0xff) as u8;
 		}
 
 		s
@@ -386,10 +429,18 @@ impl StorageManager {
 		let mut seed = 42;
 		let iterations_count = 10;
 		for i in 0..iterations_count {
-			for (j, interface) in self.interfaces.iter_mut().enumerate() {
-				crate::print!("Processing iteration: {}/{}; device: {}/{}...",
-					i + 1, iterations_count,
-					j + 1, self.interfaces.len());
+			let interfaces_count = self.interfaces.len();
+
+			for j in 0..interfaces_count {
+				let interface = &mut self.interfaces[j];
+
+				crate::print!(
+					"Processing iteration: {}/{}; device: {}/{}...",
+					i + 1,
+					iterations_count,
+					j + 1,
+					interfaces_count
+				);
 
 				if !Self::test_interface(interface.as_mut(), seed) {
 					return false;
@@ -425,26 +476,64 @@ impl StorageManager {
 }
 
 impl DeviceManager for StorageManager {
+	fn get_name(&self) -> &'static str {
+		"storage"
+	}
+
 	fn legacy_detect(&mut self) -> Result<(), Errno> {
 		// TODO Detect floppy disks
 
-		for i in 0..4 {
+		// TODO rm?
+		/*for i in 0..4 {
 			let secondary = (i & 0b10) != 0;
 			let slave = (i & 0b01) != 0;
 
 			if let Ok(dev) = PATAInterface::new(secondary, slave) {
-				self.add(Box::new(dev)?)?;
+				let interface = Box::new(dev)?;
+				// TODO Use a constant for the sectors count
+				let cached_interface = CachedStorageInterface::new(interface, 128)?;
+
+				self.add(Box::new(cached_interface)?)?;
 			}
+		}*/
+
+		Ok(())
+	}
+
+	fn on_plug(&mut self, dev: &dyn PhysicalDevice) -> Result<(), Errno> {
+		// Ignoring non-storage devices
+		if dev.get_class() != pci::CLASS_MASS_STORAGE_CONTROLLER {
+			return Ok(());
+		}
+
+		match dev.get_subclass() {
+			// IDE controller
+			0x01 => {
+				let ide = ide::Controller::new(dev);
+
+				oom::wrap(|| {
+					for interface in ide.detect_all()? {
+						match self.add(interface) {
+							Err(e) if e == errno!(ENOMEM) => return Err(e),
+							Err(e) => return Ok(Err(e)),
+
+							_ => {}
+						}
+					}
+
+					Ok(Ok(()))
+				})?;
+			}
+
+			// TODO Handle other controller types
+			_ => {}
 		}
 
 		Ok(())
 	}
 
-	fn on_plug(&mut self, _dev: &dyn PhysicalDevice) {
+	fn on_unplug(&mut self, _dev: &dyn PhysicalDevice) -> Result<(), Errno> {
 		// TODO
-	}
-
-	fn on_unplug(&mut self, _dev: &dyn PhysicalDevice) {
-		// TODO
+		Ok(())
 	}
 }

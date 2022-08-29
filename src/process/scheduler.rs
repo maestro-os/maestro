@@ -8,301 +8,341 @@
 //! This number represents the number of ticks during which the process keeps running until
 //! switching to the next process.
 
-use core::cmp::max;
-use core::ffi::c_void;
 use crate::errno::Errno;
-use crate::event::{InterruptCallback, InterruptResult};
 use crate::event;
-use crate::gdt;
+use crate::event::CallbackHook;
+use crate::idt::pic;
+use crate::memory;
 use crate::memory::malloc;
 use crate::memory::stack;
-use crate::memory;
-use crate::process::Process;
-use crate::process::pid::Pid;
-use crate::process::tss;
 use crate::process;
-use crate::util::Regs;
+use crate::process::pid::Pid;
+use crate::process::regs::Regs;
+use crate::process::Process;
+use crate::util::container::map::Map;
+use crate::util::container::map::MapIterator;
 use crate::util::container::vec::Vec;
-use crate::util::lock::mutex::*;
+use crate::util::lock::*;
 use crate::util::math;
-use crate::util::ptr::SharedPtr;
-use crate::util;
+use crate::util::ptr::IntSharedPtr;
+use core::cmp::max;
+use core::ffi::c_void;
 
 /// The size of the temporary stack for context switching.
-const TMP_STACK_SIZE: usize = memory::PAGE_SIZE;
+const TMP_STACK_SIZE: usize = 16 * memory::PAGE_SIZE;
 /// The number of quanta for the process with the average priority.
 const AVERAGE_PRIORITY_QUANTA: usize = 10;
 /// The number of quanta for the process with the maximum priority.
 const MAX_PRIORITY_QUANTA: usize = 30;
-
-extern "C" {
-	/// This function switches to a userspace context.
-	/// `regs` is the structure of registers to restore to resume the context.
-	/// `data_selector` is the user data segment selector.
-	/// `code_selector` is the user code segment selector.
-	fn context_switch(regs: &Regs, data_selector: u16, code_selector: u16) -> !;
-	/// This function switches to a kernelspace context.
-	/// `regs` is the structure of registers to restore to resume the context.
-	fn context_switch_kernel(regs: &Regs) -> !;
-}
-
-/// The structure containing the context switching data.
-struct ContextSwitchData {
-	///  The process to switch to.
-	proc: SharedPtr::<Mutex::<Process>>,
-}
-
-/// Scheduler ticking callback.
-pub struct TickCallback {
-	/// A reference to the scheduler.
-	scheduler: SharedPtr<Mutex<Scheduler>>,
-}
-
-impl InterruptCallback for TickCallback {
-	fn is_enabled(&self) -> bool {
-		true
-	}
-
-	fn call(&mut self, _id: u32, _code: u32, regs: &util::Regs, ring: u32) -> InterruptResult {
-		let mut guard = MutexGuard::new(&mut self.scheduler);
-		guard.get_mut().tick(regs, ring);
-	}
-}
 
 /// The structure representing the process scheduler.
 pub struct Scheduler {
 	/// A vector containing the temporary stacks for each CPU cores.
 	tmp_stacks: Vec<malloc::Alloc<u8>>,
 
-	/// The ticking callback, called at a regular interval to make the scheduler work.
-	tick_callback: Option<SharedPtr<TickCallback>>,
+	/// The ticking callback hook, called at a regular interval to make the scheduler work.
+	tick_callback_hook: CallbackHook,
+	/// The total number of ticks since the instanciation of the scheduler.
+	total_ticks: u64,
 
-	/// The list of all processes.
-	processes: Vec<SharedPtr<Mutex<Process>>>,
-	/// The currently running process.
-	curr_proc: Option<SharedPtr<Mutex<Process>>>,
+	/// A binary tree containing all processes registered to the current scheduler.
+	processes: Map<Pid, IntSharedPtr<Process>>,
+	/// The currently running process with its PID.
+	curr_proc: Option<(Pid, IntSharedPtr<Process>)>,
 
 	/// The sum of all priorities, used to compute the average priority.
 	priority_sum: usize,
 	/// The priority of the processs which has the current highest priority.
 	priority_max: usize,
-
-	/// The current process cursor on the `processes` list.
-	cursor: usize,
 }
 
 impl Scheduler {
 	/// Creates a new instance of scheduler.
-	pub fn new(cores_count: usize) -> Result<SharedPtr::<Mutex::<Self>>, Errno> {
+	pub fn new(cores_count: usize) -> Result<IntSharedPtr<Self>, Errno> {
 		let mut tmp_stacks = Vec::new();
 		for _ in 0..cores_count {
 			tmp_stacks.push(malloc::Alloc::new_default(TMP_STACK_SIZE)?)?;
 		}
 
-		let mut s = SharedPtr::new(Mutex::new(Self {
-			tmp_stacks: tmp_stacks,
+		let callback = |_id: u32, _code: u32, regs: &Regs, ring: u32| {
+			Scheduler::tick(process::get_scheduler(), regs, ring);
+		};
+		let tick_callback_hook = event::register_callback(0x20, 0, callback)?;
 
-			tick_callback: None,
+		IntSharedPtr::new(Self {
+			tmp_stacks,
 
-			processes: Vec::<SharedPtr::<Mutex::<Process>>>::new(),
+			tick_callback_hook,
+			total_ticks: 0,
+
+			processes: Map::new(),
 			curr_proc: None,
 
 			priority_sum: 0,
 			priority_max: 0,
-
-			cursor: 0,
-		}))?;
-		{
-			let callback = TickCallback {
-				scheduler: s.clone(),
-			};
-			let mut guard = MutexGuard::new(&mut s);
-			let scheduler = guard.get_mut();
-			scheduler.tick_callback = Some(event::register_callback(32, 0, callback)?);
-		}
-		Ok(s)
+		})
 	}
 
-	/// Returns the process with PID `pid`. If the process doesn't exist, the function returns None.
-	pub fn get_by_pid(&mut self, pid: Pid) -> Option::<SharedPtr::<Mutex::<Process>>> {
-		// TODO Optimize
-		for i in 0..self.processes.len() {
-			let proc = &mut self.processes[i];
-
-			if proc.lock().get().get_pid() == pid {
-				return Some(proc.clone());
-			}
+	/// Returns a pointer to the top of the tmp stack for the given core `core`.
+	pub fn get_tmp_stack(&mut self, core: u32) -> *mut c_void {
+		unsafe {
+			self.tmp_stacks[core as usize]
+				.as_ptr_mut()
+				.add(TMP_STACK_SIZE) as *mut _
 		}
+	}
 
-		None
+	/// Returns an iterator on the scheduler's processes.
+	pub fn iter_process<'a>(&'a mut self) -> MapIterator<'a, Pid, IntSharedPtr<Process>> {
+		self.processes.iter()
+	}
+
+	/// Returns the process with PID `pid`. If the process doesn't exist, the function returns
+	/// None.
+	pub fn get_by_pid(&self, pid: Pid) -> Option<IntSharedPtr<Process>> {
+		Some(self.processes.get(pid)?.clone())
+	}
+
+	/// Returns the process with TID `tid`. If the process doesn't exist, the function returns
+	/// None.
+	pub fn get_by_tid(&self, _tid: Pid) -> Option<IntSharedPtr<Process>> {
+		// TODO
+		todo!();
 	}
 
 	/// Returns the current running process. If no process is running, the function returns None.
-	pub fn get_current_process(&mut self) -> Option::<SharedPtr::<Mutex::<Process>>> {
-		if let Some(c) = &mut self.curr_proc {
-			Some(c.clone())
-		} else {
-			None
-		}
+	pub fn get_current_process(&mut self) -> Option<IntSharedPtr<Process>> {
+		Some(self.curr_proc.as_ref().cloned()?.1)
 	}
 
 	/// Updates the scheduler's heuristic with the new priority of a process.
 	/// `old` is the old priority of the process.
-	/// `new` is the newe priority of the process.
+	/// `new` is the new priority of the process.
 	/// The function doesn't need to know the process which has been updated since it updates
 	/// global informations.
 	pub fn update_priority(&mut self, old: usize, new: usize) {
 		self.priority_sum = self.priority_sum - old + new;
-		if old >= self.priority_max {
+
+		if new >= self.priority_max {
 			self.priority_max = new;
 		}
+
+		// FIXME: Unable to determine priority_max when new < old
 	}
 
 	/// Adds a process to the scheduler.
-	pub fn add_process(&mut self, process: Process)
-		-> Result<SharedPtr::<Mutex::<Process>>, Errno> {
+	pub fn add_process(&mut self, process: Process) -> Result<IntSharedPtr<Process>, Errno> {
+		let pid = process.get_pid();
 		let priority = process.get_priority();
-		let ptr = SharedPtr::new(Mutex::new(process))?;
-		self.processes.push(ptr.clone())?;
+		let ptr = IntSharedPtr::new(process)?;
+		self.processes.insert(pid, ptr.clone())?;
 		self.update_priority(0, priority);
 
 		Ok(ptr)
 	}
 
-	// TODO Remove process (don't forget to update the priority)
+	/// Removes the process with the given pid `pid`.
+	pub fn remove_process(&mut self, pid: Pid) {
+		if let Some(proc_mutex) = self.get_by_pid(pid) {
+			let guard = proc_mutex.lock();
+			let process = guard.get();
 
-	/// Returns the average priority of a process.
-	fn get_average_priority(&self) -> usize {
-		self.priority_sum / self.processes.len()
+			let priority = process.get_priority();
+			self.processes.remove(pid);
+			self.update_priority(priority, 0);
+		}
 	}
 
+	// TODO Clean
+	/// Returns the average priority of a process.
+	/// `priority_sum` is the sum of all processes' priorities.
+	/// `processes_count` is the number of processes.
+	fn get_average_priority(priority_sum: usize, processes_count: usize) -> usize {
+		priority_sum / processes_count
+	}
+
+	// TODO Clean
 	/// Returns the number of quantum for the given priority.
-	fn get_quantum_count(&self, priority: usize) -> usize {
-		let n = math::integer_linear_interpolation::<isize>(priority as _,
-			self.get_average_priority() as _,
-			self.priority_max as _,
+	/// `priority` is the process's priority.
+	/// `priority_sum` is the sum of all processes' priorities.
+	/// `priority_max` is the highest priority a process currently has.
+	/// `processes_count` is the number of processes.
+	fn get_quantum_count(
+		priority: usize,
+		priority_sum: usize,
+		priority_max: usize,
+		processes_count: usize,
+	) -> usize {
+		let n = math::integer_linear_interpolation::<isize>(
+			priority as _,
+			Self::get_average_priority(priority_sum, processes_count) as _,
+			priority_max as _,
 			AVERAGE_PRIORITY_QUANTA as _,
-			MAX_PRIORITY_QUANTA as _);
+			MAX_PRIORITY_QUANTA as _,
+		);
 		max(1, n) as _
 	}
 
-	/// Tells whether the given process can be run.
-	/// `i` is the index of the process in the processes list.
-	fn can_run(&self, i: usize) -> bool {
-		let mut mutex = self.processes[i].clone();
-		let guard = MutexGuard::new(&mut mutex);
-		let process = guard.get();
-
-		if process.get_state() == process::State::Running {
-			let cursor_priority = process.priority;
-			process.quantum_count < self.get_quantum_count(cursor_priority)
+	// TODO Clean
+	/// Tells whether the given process `process` can run.
+	fn can_run(
+		process: &Process,
+		_priority_sum: usize,
+		_priority_max: usize,
+		_processes_count: usize,
+	) -> bool {
+		if process.can_run() {
+			// TODO fix
+			//process.quantum_count < Self::get_quantum_count(process.get_priority(), priority_sum,
+			//	priority_max, processes_count)
+			true
 		} else {
 			false
 		}
 	}
 
-	/// Returns the next process to run.
-	fn get_next_process(&mut self) -> Option::<&mut SharedPtr::<Mutex::<Process>>> {
-		if self.processes.is_empty() {
-			None
-		} else {
-			let processes_count = self.processes.len();
-			let mut i = self.cursor;
-			let mut j = 0;
-			while j < self.processes.len() && !self.can_run(i) {
-				i = (i + 1) % processes_count;
-				j += 1;
-			}
-
-			let process = if j == self.processes.len() {
-				&mut self.processes[self.cursor]
-			} else {
-				self.cursor = i;
-				self.processes[i].lock().get_mut().quantum_count += 1;
-				&mut self.processes[i]
-			};
-
-			if process.lock().get().get_state() == process::State::Running {
-				Some(process)
-			} else {
-				None
-			}
+	// TODO Clean
+	/// Returns the next process to run with its PID. If the process is changed, the quantum count
+	/// of the previous process is reset.
+	fn get_next_process(&self) -> Option<(Pid, IntSharedPtr<Process>)> {
+		let priority_sum = self.priority_sum;
+		let priority_max = self.priority_max;
+		let processes_count = self.processes.count();
+		// If no process exist, nothing to run
+		if processes_count == 0 {
+			return None;
 		}
+
+		// Getting the current process, or take the first process in the list if no process is
+		// running
+		let (curr_pid, curr_proc) = self.curr_proc.clone().or_else(|| {
+			let (pid, proc) = self.processes.get_min(0)?;
+			Some((*pid, proc.clone()))
+		})?;
+
+		// Closure iterating the tree to find an available process
+		let next = |iter: MapIterator<Pid, IntSharedPtr<Process>>| {
+			let mut proc: Option<(Pid, IntSharedPtr<Process>)> = None;
+
+			// Iterating over processes
+			for (pid, process) in iter {
+				let runnable = {
+					let guard = process.lock();
+					Self::can_run(guard.get(), priority_sum, priority_max, processes_count)
+				};
+
+				// FIXME Potenial race condition? (checking if runnable, then unlocking and using
+				// the result of the check)
+				if runnable {
+					proc = Some((*pid, process.clone()));
+					break;
+				}
+			}
+
+			proc
+		};
+
+		let mut iter = self.processes.iter();
+		// Setting the iterator next to the current running process
+		iter.jump(&curr_pid);
+		iter.next();
+
+		// Running the loop to reach the end of processes list
+		let mut next_proc = next(iter);
+		// If no suitable process is found, going back to the beginning to check the processes
+		// located before the previous process
+		if next_proc.is_none() {
+			next_proc = next(self.processes.iter());
+		}
+
+		let (next_pid, next_proc) = next_proc?;
+
+		if next_pid != curr_pid || processes_count == 1 {
+			curr_proc.lock().get_mut().quantum_count = 0;
+		}
+		Some((next_pid, next_proc))
 	}
 
 	/// Ticking the scheduler. This function saves the data of the currently running process, then
 	/// switches to the next process to run.
+	/// `sched_mutex` is the scheduler's mutex.
 	/// `regs` is the state of the registers from the paused context.
 	/// `ring` is the ring of the paused context.
-	fn tick(&mut self, regs: &util::Regs, ring: u32) -> ! {
-		if let Some(mut curr_proc) = self.get_current_process() {
-			let mut guard = MutexGuard::new(&mut curr_proc);
-			let curr_proc = guard.get_mut();
-			curr_proc.regs = *regs;
-			curr_proc.syscalling = ring < 3;
+	fn tick(sched_mutex: &IntMutex<Self>, regs: &Regs, ring: u32) -> ! {
+		// Disabling interrupts to avoid getting one right after unlocking mutexes
+		cli!();
+
+		let tmp_stack = {
+			let sched_guard = sched_mutex.lock();
+			let scheduler = sched_guard.get_mut();
+			scheduler.total_ticks += 1;
+
+			// If a process is running, save its registers
+			if let Some(curr_proc) = scheduler.get_current_process() {
+				let guard = curr_proc.lock();
+				let curr_proc = guard.get_mut();
+
+				curr_proc.regs = *regs;
+				curr_proc.syscalling = ring < 3;
+			}
+
+			// The current core ID
+			let core_id = 0; // TODO
+			// Getting the temporary stack
+			let tmp_stack = scheduler.get_tmp_stack(core_id);
+
+			tmp_stack
+		};
+
+		loop {
+			let sched_guard = sched_mutex.lock();
+			let scheduler = sched_guard.get_mut();
+
+			if let Some(next_proc) = scheduler.get_next_process() {
+				// Set the process as current
+				scheduler.curr_proc = Some(next_proc.clone());
+
+				drop(sched_guard);
+
+				unsafe {
+					stack::switch(Some(tmp_stack), move || {
+						let (resume, syscalling, regs) = {
+							let next_proc_guard = next_proc.1.lock();
+							let proc = next_proc_guard.get_mut();
+
+							let resume = proc.prepare_switch(); // FIXME Must be done on tmp stack
+
+							(resume, proc.is_syscalling(), proc.regs)
+						};
+						drop(next_proc);
+
+						if !resume {
+							return;
+						}
+
+						// Resuming execution
+						event::unlock_callbacks(0x20);
+						pic::end_of_interrupt(0x0);
+
+						regs.switch(!syscalling);
+					})
+					.unwrap();
+				}
+			} else {
+				break;
+			}
 		}
 
-		if let Some(next_proc) = self.get_next_process() {
-			self.curr_proc = Some(next_proc.clone());
-
-			let core_id = 0; // TODO
-			let f = | data | {
-				let (syscalling, regs) = {
-					let data = unsafe {
-						&mut *(data as *mut ContextSwitchData)
-					};
-					let mut guard = MutexGuard::new(&mut data.proc);
-					let proc = guard.get_mut();
-
-					let tss = tss::get();
-					tss.ss0 = gdt::KERNEL_DATA_OFFSET as _;
-					tss.ss = gdt::USER_DATA_OFFSET as _;
-					tss.esp0 = proc.kernel_stack as _;
-					proc.mem_space.bind();
-
-					let eip = proc.regs.eip;
-					let vmem = proc.mem_space.get_vmem();
-					debug_assert!(vmem.translate(eip as _).is_some());
-
-					(proc.is_syscalling(), proc.regs)
-				};
-
-				if syscalling {
-					unsafe {
-						context_switch_kernel(&regs);
-					}
-				} else {
-					unsafe {
-						context_switch(&regs,
-							(gdt::USER_DATA_OFFSET | 3) as _,
-							(gdt::USER_CODE_OFFSET | 3) as _);
-					}
-				}
-			};
-
-			let tmp_stack = unsafe {
-				self.tmp_stacks[core_id].as_ptr_mut() as *mut c_void
-			};
-			let ctx_switch_data = ContextSwitchData {
-				proc: self.curr_proc.as_mut().unwrap().clone(),
-			};
-			unsafe {
-				stack::switch(tmp_stack, f, ctx_switch_data).unwrap();
-			}
-
-			crate::enter_loop();
-		} else {
-			if cfg!(config_general_scheduler_end_panic) {
-				kernel_panic!("No process remaining to run!");
-			} else {
-				crate::halt();
-			}
+		// No process to run. Just wait
+		unsafe {
+			event::unlock_callbacks(0x20);
+			pic::end_of_interrupt(0x0);
+			crate::loop_reset(tmp_stack);
 		}
 	}
-}
 
-impl Drop for Scheduler {
-	fn drop(&mut self) {
-		// TODO Unregister `tick_callback`
+	/// Returns the total number of ticks since the instanciation of the scheduler.
+	pub fn get_total_ticks(&self) -> u64 {
+		self.total_ticks
 	}
 }
