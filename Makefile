@@ -171,9 +171,9 @@ all: $(NAME) iso
 # Builds the documentation
 doc: $(SRC) $(DOC_SRC)
 	$(CONFIG_ENV) RUSTFLAGS='$(RUSTFLAGS)' $(CARGO) doc $(CARGOFLAGS)
-	sphinx-build $(DOC_SRC_DIR) $(DOC_DIR)
-	rm -rf $(DOC_DIR)/references/
-	cp -r target/target/doc/ $(DOC_DIR)/references/
+	cd doc/; mdbook build
+	rm -rf $(DOC_DIR)/book/references/
+	cp -r target/target/doc/ $(DOC_DIR)/book/references/
 else
 noconfig:
 	echo "File $(CONFIG_FILE) doesn't exist. Use \`make config\` to create it"

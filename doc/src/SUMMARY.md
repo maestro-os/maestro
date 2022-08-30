@@ -2,6 +2,8 @@
 
 - [Introduction](./intro.md)
 
+
+
 # Getting started
 
 - [External Documentation](./external_doc.md)
@@ -38,24 +40,36 @@
 
 
 
-# Processes
+# Process
 
 - [Process](./process/main.md)
 	- [Scheduler](./process/scheduler.md)
 
 
 
-# Devicees
+# Device
 
 - [Devices](./device/main.md)
 - [Devices list](./device/list.md)
 
 
 
+# File
+
+- [Virtual FileSystem](./file/vfs.md)
+	- [Mountpoint](./file/mountpoint.md)
+	- [Filesystem](./file/fs.md)
+	- [tmpfs](./file/tmpfs.md)
+	- [procfs](./file/procfs.md)
+	- [sysfs](./file/sysfs.md)
+
+
+
 # Userspace
 
-- [Executable](./userspace/exec.md)
+- [Userspace](./userspace/exec.md)
 	- [ELF](./userspace/elf.md)
+	- [Script](./userspace/script.md)
 
 
 
