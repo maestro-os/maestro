@@ -947,15 +947,6 @@ impl Filesystem for Ext2Fs {
 			return Err(errno!(EMFILE));
 		}
 
-		// Writing directory entry
-		parent.add_dirent(
-			&mut self.superblock,
-			io,
-			inode as _,
-			name,
-			inode_.get_type(),
-		)?;
-
 		match inode_.get_type() {
 			FileType::Directory => {
 				// Removing previous dirent
@@ -984,7 +975,7 @@ impl Filesystem for Ext2Fs {
 
 				// Updating the `..` entry
 				if let Some((off, mut entry)) = inode_.get_dirent(b"..", &self.superblock, io)? {
-					entry.set_inode(inode as _);
+					entry.set_inode(parent_inode as _);
 					inode_.write_dirent(&mut self.superblock, io, &entry, off)?;
 				}
 			},
@@ -994,6 +985,15 @@ impl Filesystem for Ext2Fs {
 				inode_.hard_links_count += 1;
 			},
 		}
+
+		// Writing directory entry
+		parent.add_dirent(
+			&mut self.superblock,
+			io,
+			inode as _,
+			name,
+			inode_.get_type(),
+		)?;
 
 		parent.write(parent_inode as _, &self.superblock, io)?;
 		inode_.write(inode as _, &self.superblock, io)?;

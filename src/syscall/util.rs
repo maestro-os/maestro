@@ -74,7 +74,9 @@ pub unsafe fn get_str_array(
 	Ok(arr)
 }
 
-/// TODO doc
+/// Builds a path with the given directory file descriptor `dirfd` as a base, concatenated with the
+/// given pathname `pathname`.
+/// `process_guard` is the guard of the current process.
 fn build_path_from_fd(
 	process_guard: &MutexGuard<Process, false>,
 	dirfd: i32,
