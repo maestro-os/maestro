@@ -137,19 +137,7 @@ impl FCache {
 		}
 
 		for i in 0..inner_path.get_elements_count() {
-			match inner_path[i].as_bytes() {
-				b"." => {}
-				b".." => {
-					let p = inner_path.range_from((i + 1)..)?;
-
-					drop(fs_guard);
-					drop(io_guard);
-					drop(mountpoint_guard);
-					return self.get_file_from_path_(&p, uid, gid, follow_links, follows_count);
-				}
-
-				_ => inode = fs.get_inode(io, Some(inode), &inner_path[i])?,
-			}
+			inode = fs.get_inode(io, Some(inode), &inner_path[i])?;
 
 			// Checking permissions
 			file = fs.load_file(io, inode, inner_path[i].failable_clone()?)?;

@@ -322,37 +322,11 @@ impl File {
 		name: String,
 		uid: Uid,
 		gid: Gid,
-		mut mode: Mode,
+		mode: Mode,
 		location: FileLocation,
-		mut content: FileContent,
+		content: FileContent,
 	) -> Result<Self, Errno> {
 		let timestamp = time::get(TimestampScale::Second, true).unwrap_or(0);
-
-		match &mut content {
-			// If the file is a directory that doesn't contain `.` and `..` entries, add them
-			FileContent::Directory(entries) => {
-				// Add `.`
-				let name = String::from(b".")?;
-				if entries.get(&name).is_none() {
-					entries.insert(
-						name,
-						DirEntry {
-							inode: location.inode,
-							entry_type: FileType::Directory,
-						},
-					)?;
-				}
-
-				// TODO Add `..`
-			}
-
-			// If the file is a symbolic link, permissions don't matter
-			FileContent::Link(_) => {
-				mode = 0o777;
-			}
-
-			_ => {}
-		}
 
 		Ok(Self {
 			name,
