@@ -151,11 +151,11 @@ RUST_SRC := $(shell find $(SRC_DIR) -type f -name "*.rs")
 
 
 # The path to the documentation sources
-DOC_SRC_DIR = doc_src/
+DOC_SRC_DIR = doc/src/
 # The list of documentation sources
 DOC_SRC = $(shell find $(DOC_SRC_DIR) -type f)
 # The path to the documentation build directory
-DOC_DIR = doc/
+DOC_DIR = doc/book/
 
 
 
@@ -172,8 +172,8 @@ all: $(NAME) iso
 doc: $(SRC) $(DOC_SRC)
 	$(CONFIG_ENV) RUSTFLAGS='$(RUSTFLAGS)' $(CARGO) doc $(CARGOFLAGS)
 	mdbook build doc/
-	rm -rf $(DOC_DIR)/book/references/
-	cp -r target/target/doc/ $(DOC_DIR)/book/references/
+	rm -rf $(DOC_DIR)/references/
+	cp -r target/target/doc/ $(DOC_DIR)/references/
 else
 noconfig:
 	echo "File $(CONFIG_FILE) doesn't exist. Use \`make config\` to create it"
