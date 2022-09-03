@@ -411,7 +411,7 @@ impl Signal {
 			}
 
 			// TODO Handle sa_sigaction, sa_flags and sa_mask
-			SignalHandler::Handler(action) if process.is_handling_signal() => {
+			SignalHandler::Handler(action) if !process.is_handling_signal() => {
 				// TODO Handle the case where an alternate stack is specified (only if the
 				// action has the flag)
 				// The signal handler stack
@@ -426,7 +426,7 @@ impl Signal {
 					let mem_space_guard = mem_space.lock();
 					let mem_space = mem_space_guard.get_mut();
 
-					debug_assert!(mem_space.is_bound());
+					mem_space.bind();
 					mem_space.alloc(signal_esp as *mut u32, 2)
 				});
 				let signal_data =

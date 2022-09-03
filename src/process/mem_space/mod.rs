@@ -10,28 +10,29 @@ mod mapping;
 mod physical_ref_counter;
 pub mod ptr;
 
-use crate::errno;
+use core::cmp::Ordering;
+use core::cmp::min;
+use core::ffi::c_void;
+use core::fmt;
+use core::mem::size_of;
+use core::ptr::NonNull;
+use core::ptr::null;
 use crate::errno::Errno;
+use crate::errno;
 use crate::file::open_file::OpenFile;
-use crate::memory;
+use crate::idt;
 use crate::memory::stack;
-use crate::memory::vmem;
 use crate::memory::vmem::VMem;
+use crate::memory::vmem;
+use crate::memory;
 use crate::process::oom;
-use crate::util;
+use crate::util::FailableClone;
 use crate::util::boxed::Box;
 use crate::util::container::map::Map;
 use crate::util::lock::Mutex;
 use crate::util::math;
 use crate::util::ptr::SharedPtr;
-use crate::util::FailableClone;
-use core::cmp::min;
-use core::cmp::Ordering;
-use core::ffi::c_void;
-use core::fmt;
-use core::mem::size_of;
-use core::ptr::null;
-use core::ptr::NonNull;
+use crate::util;
 use gap::MemGap;
 use mapping::MemMapping;
 use physical_ref_counter::PhysRefCounter;
@@ -608,11 +609,13 @@ impl MemSpace {
 	/// Clones the current memory space for process forking.
 	pub fn fork(&mut self) -> Result<MemSpace, Errno> {
 		let mut result = Err(errno!(EINVAL));
-		unsafe {
+
+		idt::wrap_disable_interrupts(|| unsafe {
 			stack::switch(None, || {
 				result = self.do_fork();
-			})?;
-		}
+			})
+		})?;
+
 		result
 	}
 

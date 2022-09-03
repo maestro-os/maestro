@@ -245,7 +245,6 @@ struct Syscall {
 /// If the syscall doesn't exist, the function returns None.
 fn get_syscall(id: u32) -> Option<Syscall> {
 	match id {
-		// TODO 0x000 => Some(Syscall { handler: &restart_syscall, name: "restart_syscall" }),
 		0x001 => Some(Syscall {
 			handler: &_exit,
 			name: "_exit",
@@ -1156,13 +1155,5 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 	// TODO Add switch to disable
 	//print_strace(regs, Some(result));
 
-	// Setting the return value
-	let retval = {
-		if let Ok(val) = result {
-			val as _
-		} else {
-			(-result.unwrap_err().as_int()) as _
-		}
-	};
-	regs.eax = retval;
+	regs.set_syscall_return(result);
 }

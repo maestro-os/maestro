@@ -1,9 +1,10 @@
 //! This module implements the Regs structure, allowing to save an execution state and to restore
 //! it.
 
-use crate::gdt;
 use core::ffi::c_void;
 use core::fmt;
+use crate::errno::Errno;
+use crate::gdt;
 
 /// The default value of the eflags register.
 const DEFAULT_EFLAGS: u32 = 0x1202;
@@ -74,6 +75,16 @@ pub struct Regs {
 }
 
 impl Regs {
+	/// Sets the return value of a system call.
+	pub fn set_syscall_return(&mut self, value: Result<i32, Errno>) {
+		let retval = match value {
+			Ok(val) => val as _,
+			Err(e) => (-e.as_int()) as _,
+		};
+
+		self.eax = retval;
+	}
+
 	/// Switches to the associated register context.
 	/// `user` tells whether the function switchs to userspace.
 	///

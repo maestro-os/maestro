@@ -238,6 +238,10 @@ pub fn execve(regs: &Regs) -> Result<i32, Errno> {
 	// Dropping path to avoid memory leak
 	drop(path);
 
+	// Disabling interrupt to prevent stack switching while using a temporary stack, preventing
+	// this temporary stack from being used as a signal handling stack
+	cli!();
+
 	// Building the program's image
 	let program_image = unsafe {
 		stack::switch(None, move || {
@@ -246,7 +250,6 @@ pub fn execve(regs: &Regs) -> Result<i32, Errno> {
 		.unwrap()?
 	};
 
-	cli!();
 	// The tmp stack will not be used since the scheduler cannot be ticked when interrupts are
 	// disabled
 	// A temporary stack cannot be allocated since it wouldn't be possible to free it on success

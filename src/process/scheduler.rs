@@ -282,7 +282,7 @@ impl Scheduler {
 				let guard = curr_proc.lock();
 				let curr_proc = guard.get_mut();
 
-				curr_proc.regs = *regs;
+				curr_proc.set_regs(*regs);
 				curr_proc.syscalling = ring < 3;
 			}
 
@@ -310,7 +310,7 @@ impl Scheduler {
 							let next_proc_guard = next_proc.1.lock();
 							let proc = next_proc_guard.get_mut();
 
-							let resume = proc.prepare_switch(); // FIXME Must be done on tmp stack
+							let resume = proc.prepare_switch();
 
 							(resume, proc.is_syscalling(), proc.regs)
 						};

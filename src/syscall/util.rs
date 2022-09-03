@@ -1,20 +1,22 @@
-use crate::errno;
+/// This module implements utility functions for system calls.
+
+use core::mem::size_of;
 use crate::errno::Errno;
-use crate::file::fcache;
-use crate::file::open_file::FDTarget;
-use crate::file::path::Path;
+use crate::errno;
 use crate::file::File;
 use crate::file::FileContent;
 use crate::file::Mode;
-use crate::process::mem_space::ptr::SyscallString;
+use crate::file::fcache;
+use crate::file::open_file::FDTarget;
+use crate::file::path::Path;
 use crate::process::Process;
+use crate::process::mem_space::ptr::SyscallString;
+use crate::process::regs::Regs;
+use crate::util::FailableClone;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::lock::MutexGuard;
 use crate::util::ptr::SharedPtr;
-use crate::util::FailableClone;
-/// This module implements utility functions for system calls.
-use core::mem::size_of;
 
 /// Returns the absolute path according to the process's current working directory.
 /// `process` is the process.
@@ -234,4 +236,40 @@ pub fn create_file_at(
 	let parent = parent_guard.get_mut();
 
 	fcache.create_file(parent, name, uid, gid, mode, content)
+}
+
+/// Checks whether the current syscall must be interrupted to execute a signal.
+/// If interrupted, the function doesn't return and the control flow jumps directly to handling the
+/// signal.
+/// `proc_guard` is the mutex guard of the current process.
+/// `regs` is the registers state passed to the current syscall.
+pub fn signal_check<'a>(
+	proc_guard: MutexGuard<'a, Process, false>,
+	regs: &Regs,
+) -> MutexGuard<'a, Process, false> {
+	let proc = proc_guard.get_mut();
+
+	if proc.get_next_signal().is_some() {
+		// Returning the system call early with EINTR
+		let mut user_regs = regs.clone();
+		user_regs.set_syscall_return(Err(errno!(EINTR)));
+		proc.set_regs(user_regs);
+		proc.set_syscalling(false);
+
+		// Switching to handle the signal
+		let resume = proc.prepare_switch();
+		let regs = proc.get_regs().clone();
+		drop(proc_guard);
+
+		unsafe {
+			if resume {
+				regs.switch(true);
+			} else {
+				// The process cannot resume. Waiting for the scheduler to run the next process
+				crate::kernel_loop();
+			}
+		}
+	}
+
+	proc_guard
 }

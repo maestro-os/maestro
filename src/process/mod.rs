@@ -955,10 +955,12 @@ impl Process {
 		// Incrementing the number of ticks the process had
 		self.quantum_count += 1;
 
-		// If a signal is pending on the process, execute it
-		self.signal_next();
-		if !matches!(self.state, State::Running) {
-			return false;
+		// If the process is not in a syscall and a signal is pending on the process, execute it
+		if !self.is_syscalling() {
+			self.signal_next();
+			if !matches!(self.state, State::Running) {
+				return false;
+			}
 		}
 
 		// Updates the TSS for the process
@@ -1007,6 +1009,12 @@ impl Process {
 	#[inline(always)]
 	pub fn is_syscalling(&self) -> bool {
 		self.syscalling
+	}
+
+	/// Sets the process's syscalling state.
+	#[inline(always)]
+	pub fn set_syscalling(&mut self, syscalling: bool) {
+		self.syscalling = syscalling;
 	}
 
 	/// Returns the available file descriptor with the lowest ID. If no ID is available, the
@@ -1428,15 +1436,16 @@ impl Process {
 		self.sigpending.find_set().is_some()
 	}
 
-	/// Makes the process handle the next signal. If the process is already handling a signal or if
-	/// no signal is queued, the function does nothing.
-	pub fn signal_next(&mut self) {
+	/// Returns the ID of the next signal to be executed.
+	/// If no signal is pending or is the process is already handling a signal, the function
+	/// returns None.
+	pub fn get_next_signal(&self) -> Option<Signal> {
 		if self.is_handling_signal() {
-			return;
+			return None;
 		}
 
-		// Looking for a pending signal with respect to the signal mask
 		let mut sig = None;
+
 		self.sigpending.for_each(|i, b| {
 			if let Ok(s) = Signal::from_id(i as _) {
 				if b && !(s.can_catch() && self.sigmask.is_set(i)) {
@@ -1448,8 +1457,14 @@ impl Process {
 			true
 		});
 
-		// If a signal is to be executed, execute it
-		if let Some(sig) = sig {
+		sig
+	}
+
+	/// Makes the process handle the next signal.
+	/// If no signal is pending or is the process is already handling a signal, the function does
+	/// nothing.
+	pub fn signal_next(&mut self) {
+		if let Some(sig) = self.get_next_signal() {
 			sig.execute_action(self, false);
 		}
 	}
