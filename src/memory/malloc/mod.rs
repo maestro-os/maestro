@@ -279,9 +279,10 @@ impl<T> Drop for Alloc<T> {
 
 #[cfg(test)]
 mod test {
-	use super::*;
+	use crate::memory::buddy;
 	use crate::memory;
 	use crate::util::math;
+	use super::*;
 
 	#[test_case]
 	fn alloc_free0() {
@@ -292,42 +293,60 @@ mod test {
 
 	#[test_case]
 	fn alloc_free1() {
+		let usage = buddy::allocated_pages_count();
+
 		unsafe {
 			let ptr = alloc(1).unwrap();
 			util::memset(ptr, -1, 1);
 			free(ptr);
 		}
+
+		assert_eq!(usage, buddy::allocated_pages_count());
 	}
 
 	#[test_case]
 	fn alloc_free1() {
+		let usage = buddy::allocated_pages_count();
+
 		unsafe {
 			let ptr = alloc(8).unwrap();
 			util::memset(ptr, -1, 8);
 			free(ptr);
 		}
+
+		assert_eq!(usage, buddy::allocated_pages_count());
 	}
 
 	#[test_case]
 	fn alloc_free2() {
+		let usage = buddy::allocated_pages_count();
+
 		unsafe {
 			let ptr = alloc(memory::PAGE_SIZE).unwrap();
 			util::memset(ptr, -1, memory::PAGE_SIZE);
 			free(ptr);
 		}
+
+		assert_eq!(usage, buddy::allocated_pages_count());
 	}
 
 	#[test_case]
 	fn alloc_free3() {
+		let usage = buddy::allocated_pages_count();
+
 		unsafe {
 			let ptr = alloc(memory::PAGE_SIZE * 10).unwrap();
 			util::memset(ptr, -1, memory::PAGE_SIZE * 10);
 			free(ptr);
 		}
+
+		assert_eq!(usage, buddy::allocated_pages_count());
 	}
 
 	#[test_case]
 	fn alloc_free_fifo() {
+		let usage = buddy::allocated_pages_count();
+
 		unsafe {
 			let mut ptrs: [*mut c_void; 1024] = [0 as _; 1024];
 
@@ -348,6 +367,8 @@ mod test {
 				free(*p);
 			}
 		}
+
+		assert_eq!(usage, buddy::allocated_pages_count());
 	}
 
 	fn lifo_test(i: usize) {
@@ -363,12 +384,18 @@ mod test {
 
 	#[test_case]
 	fn alloc_free_lifo() {
+		let usage = buddy::allocated_pages_count();
+
 		lifo_test(100);
+
+		assert_eq!(usage, buddy::allocated_pages_count());
 	}
 
 	// TODO Check the integrity of the data after reallocation
 	#[test_case]
 	fn realloc0() {
+		let usage = buddy::allocated_pages_count();
+
 		unsafe {
 			let mut ptr = alloc(1).unwrap();
 
@@ -379,11 +406,15 @@ mod test {
 
 			free(ptr);
 		}
+
+		assert_eq!(usage, buddy::allocated_pages_count());
 	}
 
 	// TODO Check the integrity of the data after reallocation
 	#[test_case]
 	fn realloc1() {
+		let usage = buddy::allocated_pages_count();
+
 		unsafe {
 			let mut ptr = alloc(memory::PAGE_SIZE).unwrap();
 
@@ -394,11 +425,15 @@ mod test {
 
 			free(ptr);
 		}
+
+		assert_eq!(usage, buddy::allocated_pages_count());
 	}
 
 	// TODO Check the integrity of the data after reallocation
 	#[test_case]
 	fn realloc2() {
+		let usage = buddy::allocated_pages_count();
+
 		unsafe {
 			let mut ptr0 = alloc(8).unwrap();
 			let mut ptr1 = alloc(8).unwrap();
@@ -413,11 +448,15 @@ mod test {
 			free(ptr1);
 			free(ptr0);
 		}
+
+		assert_eq!(usage, buddy::allocated_pages_count());
 	}
 
 	// TODO Check the integrity of the data after reallocation
 	#[test_case]
 	fn realloc3() {
+		let usage = buddy::allocated_pages_count();
+
 		unsafe {
 			let mut ptr0 = alloc(8).unwrap();
 			let mut ptr1 = alloc(8).unwrap();
@@ -432,5 +471,7 @@ mod test {
 			free(ptr1);
 			free(ptr0);
 		}
+
+		assert_eq!(usage, buddy::allocated_pages_count());
 	}
 }
