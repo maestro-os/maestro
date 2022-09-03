@@ -235,6 +235,9 @@ pub fn execve(regs: &Regs) -> Result<i32, Errno> {
 			.get_file_from_path(&path, uid, gid, true)?
 	};
 
+	// Dropping path to avoid memory leak
+	drop(path);
+
 	// Building the program's image
 	let program_image = unsafe {
 		stack::switch(None, move || {
