@@ -171,7 +171,7 @@ all: $(NAME) iso
 # Builds the documentation
 doc: $(SRC) $(DOC_SRC)
 	$(CONFIG_ENV) RUSTFLAGS='$(RUSTFLAGS)' $(CARGO) doc $(CARGOFLAGS)
-	cd doc/; mdbook build
+	mdbook build doc/
 	rm -rf $(DOC_DIR)/book/references/
 	cp -r target/target/doc/ $(DOC_DIR)/book/references/
 else
