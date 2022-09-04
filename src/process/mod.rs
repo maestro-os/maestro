@@ -1636,13 +1636,6 @@ impl Drop for Process {
 			Ok(())
 		});
 
-		// Removing the child from the parent process
-		if let Some(parent) = self.get_parent() {
-			let parent = parent.get().unwrap();
-			let guard = parent.lock();
-			guard.get_mut().remove_child(self.pid);
-		}
-
 		// Freeing the PID
 		let mutex = unsafe { PID_MANAGER.assume_init_mut() };
 		let guard = mutex.lock();

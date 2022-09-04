@@ -102,7 +102,7 @@ fn wait_proc(proc: &mut Process, wstatus: &mut i32, rusage: &mut RUsage, clear: 
 /// `options` is a set of flags.
 /// `rusage` is the pointer to the resource usage structure.
 fn check_waitable(
-	curr_proc: &Process,
+	curr_proc: &mut Process,
 	pid: i32,
 	wstatus: &mut i32,
 	options: i32,
@@ -117,7 +117,6 @@ fn check_waitable(
 		if let Some(p) = scheduler.get_by_pid(pid) {
 			let p_guard = p.lock();
 			let p = p_guard.get_mut();
-			let pid = p.get_pid();
 
 			// Stopped implies WUNTRACED (ignoring stopped processes if not enabled)
 			let stop_check = !matches!(p.get_state(), State::Stopped)
@@ -137,6 +136,8 @@ fn check_waitable(
 				// If the process was a zombie, remove it
 				if matches!(p.get_state(), State::Zombie) {
 					drop(p_guard);
+
+					curr_proc.remove_child(pid);
 					scheduler.remove_process(pid);
 				}
 
