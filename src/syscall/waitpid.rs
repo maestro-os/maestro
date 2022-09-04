@@ -24,15 +24,12 @@ pub const WCONTINUED: i32 = 8;
 pub const WNOWAIT: i32 = 0x1000000;
 
 /// Returns the `i`th target process for the given constraint `pid`.
+/// `curr_proc` is the current process.
 /// `pid` is the constraint given to the system call.
 /// `i` is the index of the target process.
 /// The function is built such as iterating on `i` until the function returns None gives every
 /// targets for the system call.
-fn get_target(pid: i32, i: usize) -> Option<Pid> {
-	let curr_proc_mutex = Process::get_current().unwrap();
-	let curr_proc_guard = curr_proc_mutex.lock();
-	let curr_proc = curr_proc_guard.get();
-
+fn get_target(curr_proc: &Process, pid: i32, i: usize) -> Option<Pid> {
 	if pid < -1 {
 		let group_processes = curr_proc.get_group_processes();
 
@@ -99,15 +96,21 @@ fn wait_proc(proc: &mut Process, wstatus: &mut i32, rusage: &mut RUsage, clear: 
 
 /// Checks if at least one process corresponding to the given constraint is waitable. If yes, the
 /// function clears its waitable state, sets the wstatus and returns the process's PID.
+/// `curr_proc` is the current process.
 /// `pid` is the constraint given to the system call.
 /// `wstatus` is a reference to the wait status.
 /// `options` is a set of flags.
 /// `rusage` is the pointer to the resource usage structure.
-fn check_waitable(pid: i32, wstatus: &mut i32, options: i32, rusage: &mut RUsage)
-	-> Result<Option<Pid>, Errno> {
+fn check_waitable(
+	curr_proc: &Process,
+	pid: i32,
+	wstatus: &mut i32,
+	options: i32,
+	rusage: &mut RUsage
+) -> Result<Option<Pid>, Errno> {
 	// Iterating on every target processes, checking if they can be waited on
 	let mut i = 0;
-	while let Some(pid) = get_target(pid, i) {
+	while let Some(pid) = get_target(curr_proc, pid, i) {
 		let scheduler_guard = process::get_scheduler().lock();
 		let scheduler = scheduler_guard.get_mut();
 
@@ -152,11 +155,13 @@ fn check_waitable(pid: i32, wstatus: &mut i32, options: i32, rusage: &mut RUsage
 }
 
 /// Executes the `waitpid` system call.
+/// `regs` is the registers state.
 /// `pid` is the PID to wait for.
 /// `wstatus` is the pointer on which to write the status.
 /// `options` are flags passed with the syscall.
 /// `rusage` is the pointer to the resource usage structure.
 pub fn do_waitpid(
+	regs: &Regs,
 	pid: i32,
 	wstatus: SyscallPtr<i32>,
 	options: i32,
@@ -166,15 +171,16 @@ pub fn do_waitpid(
 	loop {
 		cli!();
 
-		// Check if at least one target process is waitable
-		let mut wstatus_val = Default::default();
-		let mut rusage_val = Default::default();
-		let result = check_waitable(pid, &mut wstatus_val, options, &mut rusage_val)?;
-
 		{
 			let mutex = Process::get_current().unwrap();
 			let guard = mutex.lock();
+			let guard = super::util::signal_check(guard, regs);
 			let proc = guard.get_mut();
+
+			// Check if at least one target process is waitable
+			let mut wstatus_val = Default::default();
+			let mut rusage_val = Default::default();
+			let result = check_waitable(proc, pid, &mut wstatus_val, options, &mut rusage_val)?;
 
 			// Setting values to userspace
 			{
@@ -217,5 +223,5 @@ pub fn waitpid(regs: &Regs) -> Result<i32, Errno> {
 	let wstatus: SyscallPtr<i32> = (regs.ecx as usize).into();
 	let options = regs.edx as i32;
 
-	do_waitpid(pid, wstatus, options | WEXITED, None)
+	do_waitpid(regs, pid, wstatus, options | WEXITED, None)
 }

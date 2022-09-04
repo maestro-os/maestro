@@ -250,10 +250,11 @@ pub fn signal_check<'a>(
 	let proc = proc_guard.get_mut();
 
 	if proc.get_next_signal().is_some() {
-		// Returning the system call early with EINTR
-		let mut user_regs = regs.clone();
-		user_regs.set_syscall_return(Err(errno!(EINTR)));
-		proc.set_regs(user_regs);
+		// Returning the system call early to resume it later
+		let mut r = regs.clone();
+		// TODO Clean
+		r.eip -= 2;
+		proc.set_regs(r);
 		proc.set_syscalling(false);
 
 		// Switching to handle the signal

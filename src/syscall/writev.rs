@@ -14,6 +14,8 @@ use crate::process::signal::Signal;
 use crate::util::io::IO;
 use crate::util::ptr::IntSharedPtr;
 
+// TODO Handle blocking writes (and thus, EINTR)
+
 // TODO Check the operation is atomic on the file?
 /// Writes the given chunks of files to the file.
 /// `mem_space` is the memory space of the current process.
