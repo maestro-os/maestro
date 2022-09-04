@@ -253,7 +253,7 @@ pub fn signal_check<'a>(
 		// Returning the system call early to resume it later
 		let mut r = regs.clone();
 		// TODO Clean
-		r.eip -= 2;
+		r.eip -= 2; // TODO Handle the case where the instruction insn't two bytes long (sysenter)
 		proc.set_regs(r);
 		proc.set_syscalling(false);
 

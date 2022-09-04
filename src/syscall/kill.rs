@@ -138,7 +138,9 @@ fn handle_state() {
 			State::Running => {
 				if proc.is_handling_signal() {
 					let regs = proc.get_regs().clone();
+
 					drop(guard);
+					drop(mutex);
 
 					unsafe {
 						regs.switch(true);
@@ -151,12 +153,16 @@ fn handle_state() {
 			// The process has been stopped. Waiting until wakeup
 			State::Stopped => {
 				drop(guard);
+				drop(mutex);
+
 				crate::wait();
 			}
 
 			// The process has been killed. Stopping execution and waiting for the next tick
 			State::Zombie => {
 				drop(guard);
+				drop(mutex);
+
 				crate::enter_loop();
 			}
 

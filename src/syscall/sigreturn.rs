@@ -9,15 +9,16 @@ use crate::process::Process;
 pub fn sigreturn(_regs: &Regs) -> Result<i32, Errno> {
 	cli!();
 
-	let mutex = Process::get_current().unwrap();
-	let guard = mutex.lock();
-	let proc = guard.get_mut();
+	let regs = {
+		let mutex = Process::get_current().unwrap();
+		let guard = mutex.lock();
+		let proc = guard.get_mut();
 
-	// Restores the state of the process before the signal handler
-	proc.signal_restore();
+		// Restores the state of the process before the signal handler
+		proc.signal_restore();
 
-	let regs = proc.get_regs().clone();
-	drop(guard);
+		proc.get_regs().clone()
+	};
 
 	unsafe {
 		regs.switch(true);
