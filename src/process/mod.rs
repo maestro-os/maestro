@@ -1276,7 +1276,7 @@ impl Process {
 		let process = Self {
 			pid,
 			pgid: self.pgid,
-			tid: self.pid,
+			tid: pid,
 
 			argv: self.argv.failable_clone()?,
 			exec_path: self.exec_path.failable_clone()?,
