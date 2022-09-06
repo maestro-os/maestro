@@ -226,7 +226,7 @@ impl Filesystem for ProcFS {
 		_mode: Mode,
 		_content: FileContent,
 	) -> Result<File, Errno> {
-		Err(errno!(EPERM))
+		Err(errno!(EACCES))
 	}
 
 	fn add_link(
@@ -236,7 +236,7 @@ impl Filesystem for ProcFS {
 		_name: &String,
 		_inode: INode,
 	) -> Result<(), Errno> {
-		Err(errno!(EPERM))
+		Err(errno!(EACCES))
 	}
 
 	fn update_inode(&mut self, _io: &mut dyn IO, _file: &File) -> Result<(), Errno> {
@@ -249,7 +249,7 @@ impl Filesystem for ProcFS {
 		_parent_inode: INode,
 		_name: &String,
 	) -> Result<(), Errno> {
-		Err(errno!(EPERM))
+		Err(errno!(EACCES))
 	}
 
 	fn read_node(

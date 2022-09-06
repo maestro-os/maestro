@@ -65,11 +65,34 @@ pub fn openat(regs: &Regs) -> Result<i32, Errno> {
 	// Getting the file
 	let file = get_file(dirfd, pathname, flags, mode)?;
 
-	// If O_DIRECTORY is set and the file is not a directory, return an error
-	if flags & open_file::O_DIRECTORY != 0
-		&& file.lock().get().get_file_type() != FileType::Directory
+	let (uid, gid) = {
+		let mutex = Process::get_current().unwrap();
+		let guard = mutex.lock();
+		let proc = guard.get_mut();
+
+		(proc.get_euid(), proc.get_egid())
+	};
+
 	{
-		return Err(errno!(ENOTDIR));
+		let guard = file.lock();
+		let f = guard.get();
+
+		// Checking file permissions
+		let access = match flags & 0b11 {
+			open_file::O_RDONLY => f.can_read(uid, gid),
+			open_file::O_WRONLY => f.can_write(uid, gid),
+			open_file::O_RDWR => f.can_read(uid, gid) && f.can_write(uid, gid),
+
+			_ => true,
+		};
+		if !access {
+			return Err(errno!(EACCES));
+		}
+
+		// If O_DIRECTORY is set and the file is not a directory, return an error
+		if flags & open_file::O_DIRECTORY != 0 && f.get_file_type() != FileType::Directory {
+			return Err(errno!(ENOTDIR));
+		}
 	}
 
 	// Create and return the file descriptor

@@ -133,7 +133,7 @@ impl FCache {
 		}
 		// Checking permissions
 		if !file.can_execute(uid, gid) {
-			return Err(errno!(EPERM));
+			return Err(errno!(EACCES));
 		}
 
 		for i in 0..inner_path.get_elements_count() {
@@ -142,7 +142,7 @@ impl FCache {
 			// Checking permissions
 			file = fs.load_file(io, inode, inner_path[i].failable_clone()?)?;
 			if i < inner_path.get_elements_count() - 1 && !file.can_execute(uid, gid) {
-				return Err(errno!(EPERM));
+				return Err(errno!(EACCES));
 			}
 
 			// If this is not the last element, or if links are followed
@@ -227,7 +227,7 @@ impl FCache {
 			return Err(errno!(ENOTDIR));
 		}
 		if !parent.can_execute(uid, gid) {
-			return Err(errno!(EPERM));
+			return Err(errno!(EACCES));
 		}
 
 		// Getting the path's deepest mountpoint
@@ -298,7 +298,7 @@ impl FCache {
 			return Err(errno!(ENOTDIR));
 		}
 		if !parent.can_write(uid, gid) {
-			return Err(errno!(EPERM));
+			return Err(errno!(EACCES));
 		}
 
 		// If SGID is set, the newly created file shall inherit the group ID of the parent
@@ -365,7 +365,7 @@ impl FCache {
 			return Err(errno!(ENOTDIR));
 		}
 		if !parent.can_write(uid, gid) {
-			return Err(errno!(EPERM));
+			return Err(errno!(EACCES));
 		}
 		// Checking the target and source are both on the same mountpoint
 		if target.get_location().mountpoint_id != parent.get_location().mountpoint_id {
@@ -424,7 +424,7 @@ impl FCache {
 
 		// Checking permissions
 		if !file.can_write(uid, gid) || !parent.can_write(uid, gid) {
-			return Err(errno!(EPERM));
+			return Err(errno!(EACCES));
 		}
 
 		// Getting the mountpoint
