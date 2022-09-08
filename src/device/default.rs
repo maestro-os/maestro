@@ -113,6 +113,10 @@ impl IO for KMsgDeviceHandle {
 	}
 
 	fn read(&mut self, offset: u64, buff: &mut [u8]) -> Result<(u64, bool), Errno> {
+		if offset > (usize::MAX as u64) {
+			return Err(errno!(EINVAL));
+		}
+
 		let mutex = logger::get();
 		let guard = mutex.lock();
 		let logger = guard.get();
@@ -120,8 +124,8 @@ impl IO for KMsgDeviceHandle {
 		let size = logger.get_size();
 		let content = logger.get_content();
 
-		let len = min(size, buff.len()) - offset as usize;
-		buff.copy_from_slice(&content[(offset as usize)..(offset as usize + len)]);
+		let len = min(size - offset as usize, buff.len());
+		buff[..len].copy_from_slice(&content[(offset as usize)..(offset as usize + len)]);
 
 		let eof = offset as usize + len >= size;
 		Ok((len as _, eof))
