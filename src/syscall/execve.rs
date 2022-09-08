@@ -190,6 +190,10 @@ pub fn execve(regs: &Regs) -> Result<i32, Errno> {
 		let guard = file.lock();
 		let f = guard.get_mut();
 
+		if !f.can_execute(euid, egid) {
+			return Err(errno!(EACCES));
+		}
+
 		// If the file has a shebang, process it
 		if let Some(shebang) = peek_shebang(f)? {
 			// If too many interpreter recursions, abort

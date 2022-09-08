@@ -420,8 +420,8 @@ impl File {
 
 	/// Tells if the file can be executed by the given UID and GID.
 	pub fn can_execute(&self, uid: Uid, gid: Gid) -> bool {
-		// If root, bypass checks
-		if uid == ROOT_UID || gid == ROOT_GID {
+		// If root, bypass checks (unless the file is a regular file)
+		if !matches!(self.content, FileContent::Regular) && (uid == ROOT_UID || gid == ROOT_GID) {
 			return true;
 		}
 
