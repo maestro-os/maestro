@@ -245,6 +245,10 @@ impl IO for OpenFile {
 				let guard = f.lock();
 				let file = guard.get_mut();
 
+				if matches!(file.get_file_content(), FileContent::Directory(_)) {
+					return Err(errno!(EISDIR));
+				}
+
 				// Updating access timestamp
 				let timestamp = time::get(TimestampScale::Second, true).unwrap_or(0);
 				file.set_atime(timestamp); // TODO Only if the mountpoint has the option enabled
@@ -279,6 +283,10 @@ impl IO for OpenFile {
 			FDTarget::File(f) => {
 				let guard = f.lock();
 				let file = guard.get_mut();
+
+				if matches!(file.get_file_content(), FileContent::Directory(_)) {
+					return Err(errno!(EISDIR));
+				}
 
 				// Appending if enabled
 				if self.flags & O_APPEND != 0 {
