@@ -55,7 +55,7 @@ impl IO for Status {
 			return Ok((0, false));
 		}
 
-		let proc_mutex = Process::get_current().unwrap();
+		let proc_mutex = Process::get_by_pid(self.pid).unwrap();
 		let proc_guard = proc_mutex.lock();
 		let proc = proc_guard.get();
 
@@ -77,10 +77,12 @@ impl IO for Status {
 		let uid = proc.get_uid();
 		let euid = proc.get_euid();
 		let suid = proc.get_suid();
+		let ruid = 0; // TODO
 
 		let gid = proc.get_gid();
 		let egid = proc.get_egid();
 		let sgid = proc.get_sgid();
+		let rgid = 0; // TODO
 
 		// TODO Fill every fields with process's data
 		// Generating content
@@ -92,8 +94,8 @@ Ngid: 0
 Pid: {pid}
 PPid: {ppid}
 TracerPid: 0
-Uid: {uid} {euid} {suid} TODO
-Gid: {gid} {egid} {sgid} TODO
+Uid: {uid} {euid} {suid} {ruid}
+Gid: {gid} {egid} {sgid} {rgid}
 FDSize: TODO
 Groups: TODO
 NStgid: TODO

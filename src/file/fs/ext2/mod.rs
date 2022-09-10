@@ -1066,14 +1066,19 @@ impl Filesystem for Ext2Fs {
 		parent.remove_dirent(&mut self.superblock, io, name)?;
 
 		// Decrementing the hard links count
-		inode_.hard_links_count -= 1;
+		if inode_.hard_links_count > 0 {
+			inode_.hard_links_count -= 1;
+		}
+
 		// If this is the last link, remove the inode
 		if inode_.hard_links_count <= 0 {
 			let timestamp = time::get(TimestampScale::Second, true).unwrap_or(0);
 			inode_.dtime = timestamp as _;
 
 			// Removing hard link for entry `..`
-			parent.hard_links_count -= 1;
+			if parent.hard_links_count > 0 {
+				parent.hard_links_count -= 1;
+			}
 			parent.write(parent_inode as _, &self.superblock, io)?;
 
 			inode_.free_content(&mut self.superblock, io)?;
