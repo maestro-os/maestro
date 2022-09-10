@@ -173,3 +173,60 @@ impl PartialOrd for Timespec {
 		)
 	}
 }
+
+/// Same as `Timespec`, but with 32 bits values.
+#[derive(Clone, Copy, Debug, Default)]
+#[repr(C)]
+pub struct Timespec32 {
+	/// Seconds
+	pub tv_sec: u32,
+	/// Nanoseconds
+	pub tv_nsec: u32,
+}
+
+impl TimeUnit for Timespec32 {
+	fn from_nano(timestamp: u64) -> Self {
+		let sec = timestamp / 1000000000;
+		let nsec = timestamp % 1000000000;
+
+		Self {
+			tv_sec: sec as _,
+			tv_nsec: nsec as _,
+		}
+	}
+
+	fn to_nano(&self) -> u64 {
+		self.tv_sec as u64 * 1000000000 + self.tv_nsec as u64
+	}
+
+	fn is_zero(&self) -> bool {
+		self.tv_sec == 0 && self.tv_nsec == 0
+	}
+}
+
+impl Add<Timespec32> for Timespec32 {
+	type Output = Self;
+
+	fn add(self, rhs: Self) -> Self {
+		Self {
+			tv_sec: self.tv_sec + rhs.tv_sec,
+			tv_nsec: self.tv_nsec + rhs.tv_nsec,
+		}
+	}
+}
+
+impl PartialEq for Timespec32 {
+	fn eq(&self, other: &Self) -> bool {
+		self.tv_sec == other.tv_sec && self.tv_nsec == other.tv_nsec
+	}
+}
+
+impl PartialOrd for Timespec32 {
+	fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+		Some(
+			self.tv_sec
+				.cmp(&other.tv_sec)
+				.then_with(|| self.tv_nsec.cmp(&other.tv_nsec)),
+		)
+	}
+}

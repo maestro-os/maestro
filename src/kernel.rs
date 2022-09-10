@@ -329,6 +329,8 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 		.unwrap_or(INIT_PATH);
 	let init_path = String::from(init_path).unwrap();
 	init(init_path).unwrap_or_else(|e| kernel_panic!("Cannot execute init process: {}", e));
+
+	drop(args_parser);
 	enter_loop();
 }
 

@@ -18,10 +18,10 @@ extern "C" {
 	/// `regs` is the structure of registers to restore to resume the context.
 	/// `data_selector` is the user data segment selector.
 	/// `code_selector` is the user code segment selector.
-	pub fn context_switch(regs: &Regs, data_selector: u16, code_selector: u16) -> !;
+	fn context_switch(regs: &Regs, data_selector: u16, code_selector: u16) -> !;
 	/// This function switches to a kernelspace context.
 	/// `regs` is the structure of registers to restore to resume the context.
-	pub fn context_switch_kernel(regs: &Regs) -> !;
+	fn context_switch_kernel(regs: &Regs) -> !;
 }
 
 /// Wrapper allowing to align the fxstate buffer.
