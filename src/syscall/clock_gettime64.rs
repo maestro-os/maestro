@@ -25,6 +25,7 @@ pub fn clock_gettime64(regs: &Regs) -> Result<i32, Errno> {
 		let mem_space_guard = mem_space.lock();
 		let timespec = tp.get_mut(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
 
+		crate::println!("time64: {:?}", curr_time); // TODO rm
 		*timespec = curr_time;
 	}
 

@@ -12,7 +12,7 @@ use crate::time;
 /// The implementation of the `nanosleep` syscall.
 pub fn nanosleep(regs: &Regs) -> Result<i32, Errno> {
 	let req: SyscallPtr<Timespec> = (regs.ebx as usize).into();
-	let _rem: SyscallPtr<Timespec> = (regs.ecx as usize).into();
+	let rem: SyscallPtr<Timespec> = (regs.ecx as usize).into();
 
 	let clk = b"TODO"; // TODO
 	let start_time = time::get_struct::<Timespec>(clk, true).ok_or(errno!(EINVAL))?;
@@ -25,8 +25,9 @@ pub fn nanosleep(regs: &Regs) -> Result<i32, Errno> {
 		let mem_space = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space.lock();
 
-		req.get_mut(&mem_space_guard)?.ok_or_else(|| errno!(EFAULT))?.clone()
+		req.get(&mem_space_guard)?.ok_or_else(|| errno!(EFAULT))?.clone()
 	};
+	crate::println!("delay: {:?}", delay); // TODO rm
 
 	// Looping until time is elapsed or the process is interrupted by a signal
 	loop {
@@ -36,7 +37,21 @@ pub fn nanosleep(regs: &Regs) -> Result<i32, Errno> {
 			break;
 		}
 
+		// TODO Allow interruption by signal
 		// TODO Make the current process sleep
+	}
+
+	// Setting remaining time to zero
+	{
+		let proc_mutex = Process::get_current().unwrap();
+		let proc_guard = proc_mutex.lock();
+		let proc = proc_guard.get();
+
+		let mem_space = proc.get_mem_space().unwrap();
+		let mem_space_guard = mem_space.lock();
+
+		let remaining = rem.get_mut(&mem_space_guard)?.ok_or_else(|| errno!(EFAULT))?;
+		*remaining = Timespec::default();
 	}
 
 	Ok(0)

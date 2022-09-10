@@ -61,7 +61,7 @@ pub trait TimeUnit: Sized + Clone + Default + Add<Self, Output = Self> + Partial
 }
 
 /// POSIX structure representing a timestamp.
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy, Debug, Default)]
 #[repr(C)]
 pub struct Timeval {
 	/// Seconds
@@ -118,7 +118,7 @@ impl PartialOrd for Timeval {
 }
 
 /// Same as `Timeval`, but with nanosecond precision.
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy, Debug, Default)]
 #[repr(C)]
 pub struct Timespec {
 	/// Seconds
