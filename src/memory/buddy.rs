@@ -44,6 +44,7 @@ pub const FLAG_ZONE_TYPE_KERNEL: Flags = 0b10;
 pub const FRAME_STATE_USED: FrameID = !0_u32;
 
 /// Structure representing an allocatable zone of memory.
+#[derive(Debug)]
 pub struct Zone {
 	/// The type of the zone, defining the priority
 	type_: Flags,

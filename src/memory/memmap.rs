@@ -90,8 +90,8 @@ fn get_phys_main(multiboot_ptr: *const c_void) -> (*const c_void, usize) {
 	begin = util::align(begin, memory::PAGE_SIZE);
 
 	// TODO Handle 64-bits systems
-	let pages =
-		min(boot_info.mem_upper / 4, 1048576) as usize - ((begin as usize) / memory::PAGE_SIZE);
+	let pages = min((1000 + boot_info.mem_upper) / 4, 1024 * 1024) as usize
+		- ((begin as usize) / memory::PAGE_SIZE);
 	(begin, pages)
 }
 
