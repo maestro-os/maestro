@@ -24,19 +24,25 @@ impl KernFSNode for Exe {
 	}
 
 	fn get_uid(&self) -> Uid {
-		let proc_mutex = Process::get_by_pid(self.pid).unwrap();
-		let proc_guard = proc_mutex.lock();
-		let proc = proc_guard.get();
+		if let Some(proc_mutex) = Process::get_by_pid(self.pid) {
+			let proc_guard = proc_mutex.lock();
+			let proc = proc_guard.get();
 
-		proc.get_euid()
+			proc.get_euid()
+		} else {
+			0
+		}
 	}
 
 	fn get_gid(&self) -> Gid {
-		let proc_mutex = Process::get_by_pid(self.pid).unwrap();
-		let proc_guard = proc_mutex.lock();
-		let proc = proc_guard.get();
+		if let Some(proc_mutex) = Process::get_by_pid(self.pid) {
+			let proc_guard = proc_mutex.lock();
+			let proc = proc_guard.get();
 
-		proc.get_egid()
+			proc.get_egid()
+		} else {
+			0
+		}
 	}
 
 	fn get_content<'a>(&'a self) -> Cow<'a, FileContent> {

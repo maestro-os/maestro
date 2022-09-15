@@ -417,7 +417,7 @@ impl Signal {
 				// The signal handler stack
 				let stack = process.get_signal_stack();
 
-				let signal_data_size = size_of::<[u32; 2]>();
+				let signal_data_size = size_of::<[u32; 3]>();
 				let signal_esp = (stack as usize) - signal_data_size;
 
 				// FIXME Don't write data out of the stack
@@ -427,15 +427,17 @@ impl Signal {
 					let mem_space = mem_space_guard.get_mut();
 
 					mem_space.bind();
-					mem_space.alloc(signal_esp as *mut u32, 2)
+					mem_space.alloc(signal_esp as *mut u32, 3)
 				});
 				let signal_data =
-					unsafe { slice::from_raw_parts_mut(signal_esp as *mut u32, 2) };
+					unsafe { slice::from_raw_parts_mut(signal_esp as *mut u32, 3) };
 
+				// The signal number
+				signal_data[2] = self.get_id() as _;
 				// The pointer to the signal handler
 				signal_data[1] = action.sa_handler.map(|f| f as usize).unwrap_or(0) as _;
-				// The signal number
-				signal_data[0] = self.get_id() as _;
+				// Padding (return pointer)
+				signal_data[0] = 0;
 
 				let signal_trampoline = unsafe {
 					transmute::<extern "C" fn(*const c_void, i32) -> !, *const c_void>(
