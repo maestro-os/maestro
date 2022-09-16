@@ -65,7 +65,7 @@ pub unsafe fn print_memory(ptr: *const c_void, n: usize) {
 /// function uses the `print` macro instead.
 ///
 /// If the callstack is empty, the function just prints `Empty`.
-pub fn print_callstack<F: Fn(fmt::Arguments)>(ebp: *const u32, max_depth: usize, f: F) {
+pub fn print_callstack<F: FnMut(fmt::Arguments)>(ebp: *const u32, max_depth: usize, mut f: F) {
 	let boot_info = multiboot::get_boot_info();
 
 	let mut i: usize = 0;

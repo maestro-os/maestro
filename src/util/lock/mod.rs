@@ -83,12 +83,13 @@ impl<'a, T: ?Sized, const INT: bool> Drop for MutexGuard<'a, T, INT> {
 struct MutexIn<T: ?Sized, const INT: bool> {
 	/// The spinlock for the underlying data.
 	spin: Spinlock,
-	/// The data associated to the mutex.
-	data: T,
 
 	/// Saved callstack, used to debug deadlocks.
 	#[cfg(config_debug_deadlock_stack)]
 	saved_stack_buff: [u8; 1024],
+
+	/// The data associated to the mutex.
+	data: T,
 }
 
 /// Structure representing a Mutex.
@@ -162,10 +163,10 @@ impl<T: ?Sized, const INT: bool> Mutex<T, INT> {
 		// If enabled, save the stack to debug deadlocks
 		#[cfg(config_debug_deadlock_stack)]
 		{
-			self.inner.saved_stack_buff.fill(0);
+			inner.saved_stack_buff.fill(0);
 
 			let mut w = CallstackWriter {
-				buff: &mut self.inner.saved_stack_buff,
+				buff: &mut inner.saved_stack_buff,
 				off: 0,
 			};
 
