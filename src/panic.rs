@@ -9,6 +9,7 @@ use crate::process::regs::Regs;
 use core::ffi::c_void;
 use core::fmt::Arguments;
 use core::fmt;
+#[cfg(config_debug_debug)]
 use core::ptr::null_mut;
 
 /// Macro triggering a kernel panic.

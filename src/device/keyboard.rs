@@ -140,6 +140,7 @@ pub enum KeyboardKey {
 }
 
 impl KeyboardKey {
+	// TODO Implement correctly with modifiers
 	/// Returns the TTY characters for the given current.
 	/// `shift` tells whether shift is pressed. This value has to be inverted if caps lock is
 	/// enabled.
@@ -201,7 +202,13 @@ impl KeyboardKey {
 				Self::KeyOpenBrace => return Some(&[b'[' - b'A' + 1]),
 				Self::KeyBackslash => return Some(&[b'\\' - b'A' + 1]),
 				Self::KeyCloseBrace => return Some(&[b']' - b'A' + 1]),
-				// TODO ^ and _ (in that order)
+
+				Self::KeyCursorUp => return Some(b"\x1b[[1;5A"),
+				Self::KeyCursorLeft => return Some(b"\x1b[[1;5D"),
+				Self::KeyCursorRight => return Some(b"\x1b[[1;5C"),
+				Self::KeyCursorDown => return Some(b"\x1b[[1;5B"),
+
+				// TODO ^ and _
 
 				_ => {}
 			}
