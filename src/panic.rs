@@ -73,8 +73,9 @@ pub fn kernel_panic_(reason: Arguments, regs: Option<&Regs>, file: &str, line: u
 	);
 	crate::println!();
 
+	crate::println!("--- Callstack ---");
 	let ebp = unsafe { crate::register_get!("ebp") as *const _ };
-	debug::print_callstack(ebp, 8);
+	debug::print_callstack(ebp, 8, | args | crate::print!("{}", args));
 
 	crate::halt();
 }
@@ -107,8 +108,9 @@ pub fn rust_panic<'a>(args: &'a fmt::Arguments<'a>) -> ! {
 	print_rust_panic(args);
 	crate::println!();
 
+	crate::println!("--- Callstack ---");
 	let ebp = unsafe { crate::register_get!("ebp") as *const _ };
-	debug::print_callstack(ebp, 8);
+	debug::print_callstack(ebp, 8, | args | crate::print!("{}", args));
 
 	crate::halt();
 }

@@ -85,6 +85,10 @@ struct MutexIn<T: ?Sized, const INT: bool> {
 	spin: Spinlock,
 	/// The data associated to the mutex.
 	data: T,
+
+	/// Saved callstack, used to debug deadlocks.
+	#[cfg(config_debug_deadlock_stack)]
+	saved_stack_buff: [u8; 1024],
 }
 
 /// Structure representing a Mutex.
@@ -103,6 +107,9 @@ impl<T, const INT: bool> Mutex<T, INT> {
 			inner: UnsafeCell::new(MutexIn {
 				spin: Spinlock::new(),
 				data,
+
+				#[cfg(config_debug_deadlock_stack)]
+				saved_stack_buff: [0; 1024],
 			}),
 		}
 	}
@@ -150,6 +157,22 @@ impl<T: ?Sized, const INT: bool> Mutex<T, INT> {
 				}
 				INT_DISABLE_REFS.ref_count += 1;
 			}
+		}
+
+		// If enabled, save the stack to debug deadlocks
+		#[cfg(config_debug_deadlock_stack)]
+		{
+			self.inner.saved_stack_buff.fill(0);
+
+			let mut w = CallstackWriter {
+				buff: &mut self.inner.saved_stack_buff,
+				off: 0,
+			};
+
+			let ebp = unsafe { crate::register_get!("ebp") as *const _ };
+			crate::debug::print_callstack(ebp, 8, | args | {
+				core::fmt::write(&mut w, args).unwrap();
+			});
 		}
 
 		MutexGuard::new(self)
@@ -211,3 +234,25 @@ impl<T: ?Sized, const INT: bool> Drop for Mutex<T, INT> {
 
 /// Type alias on Mutex representing a mutex which blocks interrupts.
 pub type IntMutex<T> = Mutex<T, false>;
+
+/// TODO doc
+#[cfg(config_debug_deadlock_stack)]
+pub struct CallstackWriter<'a> {
+	/// The buffer on which the stack is written.
+	buff: &'a mut [u8],
+	/// The current offset.
+	off: usize,
+}
+
+#[cfg(config_debug_deadlock_stack)]
+impl<'a> core::fmt::Write for CallstackWriter<'a> {
+	fn write_str(&mut self, s: &str) -> Result<(), core::fmt::Error> {
+		let b = s.as_bytes();
+		let len = core::cmp::min(b.len(), self.buff.len() - self.off);
+
+		self.buff[self.off..(self.off + len)].copy_from_slice(b);
+		self.off += len;
+
+		Ok(())
+	}
+}

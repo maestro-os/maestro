@@ -124,6 +124,16 @@
 				"value": "false",
 				"deps": [],
 				"suboptions": []
+			},
+			{
+				"name": "deadlock_stack",
+				"display_name": "DEADLOCK_STACK",
+				"desc": "When locking a mutex, saves the callstack on the mutex in order to debug deadlocks",
+				"option_type": "bool",
+				"values": [],
+				"value": "false",
+				"deps": [],
+				"suboptions": []
 			}
 		]
 	}

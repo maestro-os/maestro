@@ -1,5 +1,6 @@
 //! This module implements debugging tools.
 
+use core::fmt;
 use crate::elf;
 use crate::memory;
 use crate::multiboot;
@@ -53,15 +54,19 @@ pub unsafe fn print_memory(ptr: *const c_void, n: usize) {
 	}
 }
 
-/// Prints the callstack in the current context, including symbol's name and address. `ebp` is
-/// value of the `%ebp` register that is used as a starting point for printing. `max_depth` is the
-/// maximum depth of the stack to print. If the stack is larger than the maximum depth, the
-/// function shall print `...` at the end. If the callstack is empty, the function just prints
-/// `Empty`.
-pub fn print_callstack(ebp: *const u32, max_depth: usize) {
+/// Prints a callstack, including symbols' names and addresses.
+///
+/// `ebp` is the value of the `%ebp` register that is used as a starting point for printing.
+///
+/// `max_depth` is the maximum depth of the stack to print. If the stack is larger than the maximum
+/// depth, the function shall print `...` at the end.
+///
+/// `f`: The given closure is called for each print to be performed. If None, the
+/// function uses the `print` macro instead.
+///
+/// If the callstack is empty, the function just prints `Empty`.
+pub fn print_callstack<F: Fn(fmt::Arguments)>(ebp: *const u32, max_depth: usize, f: F) {
 	let boot_info = multiboot::get_boot_info();
-
-	crate::println!("--- Callstack ---");
 
 	let mut i: usize = 0;
 	let mut ebp_ = ebp;
@@ -79,9 +84,9 @@ pub fn print_callstack(ebp: *const u32, max_depth: usize) {
 			eip,
 		) {
 			let name = str::from_utf8(name).unwrap_or("<Invalid UTF8>");
-			crate::println!("{}: {:p} -> {}", i, eip, name);
+			f(format_args!("{}: {:p} -> {}\n", i, eip, name))
 		} else {
-			crate::println!("{}: {:p} -> ???", i, eip);
+			f(format_args!("{}: {:p} -> ???\n", i, eip))
 		}
 
 		unsafe {
@@ -91,8 +96,8 @@ pub fn print_callstack(ebp: *const u32, max_depth: usize) {
 	}
 
 	if i == 0 {
-		crate::println!("Empty");
+		f(format_args!("Empty\n"));
 	} else if !ebp_.is_null() {
-		crate::println!("...");
+		f(format_args!("...\n"));
 	}
 }
