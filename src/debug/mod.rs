@@ -1,12 +1,12 @@
 //! This module implements debugging tools.
 
-use core::fmt;
+use core::ffi::c_void;
+use core::mem::size_of;
+use core::ptr::null_mut;
+use core::str;
 use crate::elf;
 use crate::memory;
 use crate::multiboot;
-use core::ffi::c_void;
-use core::mem::size_of;
-use core::str;
 
 /// Prints, in hexadecimal, the content of the memory at the given location `ptr`, with the given
 /// size `n` in bytes.
@@ -54,50 +54,64 @@ pub unsafe fn print_memory(ptr: *const c_void, n: usize) {
 	}
 }
 
-/// Prints a callstack, including symbols' names and addresses.
-///
-/// `ebp` is the value of the `%ebp` register that is used as a starting point for printing.
-///
-/// `max_depth` is the maximum depth of the stack to print. If the stack is larger than the maximum
-/// depth, the function shall print `...` at the end.
-///
-/// `f`: The given closure is called for each print to be performed. If None, the
-/// function uses the `print` macro instead.
-///
-/// If the callstack is empty, the function just prints `Empty`.
-pub fn print_callstack<F: FnMut(fmt::Arguments)>(ebp: *const u32, max_depth: usize, mut f: F) {
-	let boot_info = multiboot::get_boot_info();
+/// Fills the slice `stack` with the callstack starting at `ebp`. The first element is the last
+/// called function and the last element is the first called function.
+/// When the stack ends, the function fills the rest of the slice with None.
+pub fn get_callstack(ebp: *mut u32, stack: &mut [*mut c_void]) {
+	stack.fill(null_mut::<c_void>());
 
-	let mut i: usize = 0;
-	let mut ebp_ = ebp;
-	while !ebp_.is_null() && i < max_depth {
-		let eip = unsafe { *((ebp_ as usize + size_of::<usize>()) as *const u32) as *const c_void };
-		if eip < memory::PROCESS_END {
+	let mut i = 0;
+	let mut frame = ebp;
+
+	while !frame.is_null() && i < stack.len() {
+		let pc = unsafe {
+			*((frame as usize + size_of::<usize>()) as *mut u32) as *mut c_void
+		};
+		if pc < memory::PROCESS_END as *mut c_void {
 			break;
 		}
 
-		if let Some(name) = elf::get_function_name(
+		stack[i] = pc;
+
+		unsafe {
+			frame = *(frame as *mut u32) as *mut u32;
+		}
+		i += 1;
+	}
+}
+
+/// Prints a callstack, including symbols' names and addresses.
+///
+/// `stack` is the callstack to print.
+///
+/// If the callstack is empty, the function just prints `Empty`.
+pub fn print_callstack(stack: &[*mut c_void]) {
+	if stack.is_empty() || stack[0].is_null() {
+		crate::println!("Empty");
+		return;
+	}
+
+	let boot_info = multiboot::get_boot_info();
+	for (i, pc) in stack.iter().enumerate() {
+		if pc.is_null() {
+			break;
+		}
+
+		let name_result = elf::get_function_name(
 			memory::kern_to_virt(boot_info.elf_sections),
 			boot_info.elf_num as usize,
 			boot_info.elf_shndx as usize,
 			boot_info.elf_entsize as usize,
-			eip,
-		) {
-			let name = str::from_utf8(name).unwrap_or("<Invalid UTF8>");
-			f(format_args!("{}: {:p} -> {}\n", i, eip, name))
-		} else {
-			f(format_args!("{}: {:p} -> ???\n", i, eip))
-		}
+			*pc,
+		);
 
-		unsafe {
-			ebp_ = *(ebp_ as *const u32) as *const u32;
-		}
-		i += 1;
-	}
+		match name_result {
+			Some(name) => {
+				let name = str::from_utf8(name).unwrap_or("<Invalid UTF8>");
+				crate::println!("{}: {:p} -> {}", i, pc, name);
+			},
 
-	if i == 0 {
-		f(format_args!("Empty\n"));
-	} else if !ebp_.is_null() {
-		f(format_args!("...\n"));
+			None => crate::println!("{}: {:p} -> ???", i, pc),
+		}
 	}
 }

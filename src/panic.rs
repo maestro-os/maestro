@@ -7,8 +7,9 @@ use crate::cpu;
 use crate::debug;
 use crate::process::regs::Regs;
 use core::ffi::c_void;
-use core::fmt;
 use core::fmt::Arguments;
+use core::fmt;
+use core::ptr::null_mut;
 
 /// Macro triggering a kernel panic.
 /// `reason` is the reason of the kernel panic.
@@ -74,8 +75,10 @@ pub fn kernel_panic_(reason: Arguments, regs: Option<&Regs>, file: &str, line: u
 	crate::println!();
 
 	crate::println!("--- Callstack ---");
-	let ebp = unsafe { crate::register_get!("ebp") as *const _ };
-	debug::print_callstack(ebp, 8, | args | crate::print!("{}", args));
+	let ebp = unsafe { crate::register_get!("ebp") as *mut _ };
+	let mut callstack: [*mut c_void; 8] = [null_mut::<c_void>(); 8];
+	debug::get_callstack(ebp, &mut callstack);
+	debug::print_callstack(&callstack);
 
 	crate::halt();
 }
@@ -109,8 +112,10 @@ pub fn rust_panic<'a>(args: &'a fmt::Arguments<'a>) -> ! {
 	crate::println!();
 
 	crate::println!("--- Callstack ---");
-	let ebp = unsafe { crate::register_get!("ebp") as *const _ };
-	debug::print_callstack(ebp, 8, | args | crate::print!("{}", args));
+	let ebp = unsafe { crate::register_get!("ebp") as *mut _ };
+	let mut callstack: [*mut c_void; 8] = [null_mut::<c_void>(); 8];
+	debug::get_callstack(ebp, &mut callstack);
+	debug::print_callstack(&callstack);
 
 	crate::halt();
 }

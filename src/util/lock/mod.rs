@@ -15,9 +15,12 @@
 
 pub mod spinlock;
 
+use core::cell::UnsafeCell;
+use core::ffi::c_void;
+use core::ptr::null_mut;
+use crate::debug;
 use crate::idt;
 use crate::util::lock::spinlock::Spinlock;
-use core::cell::UnsafeCell;
 
 /// Structure representing the saved state of interruptions for the current thread.
 struct State {
@@ -86,7 +89,7 @@ struct MutexIn<T: ?Sized, const INT: bool> {
 
 	/// Saved callstack, used to debug deadlocks.
 	#[cfg(config_debug_deadlock_stack)]
-	saved_stack_buff: [u8; 1024],
+	saved_stack: [*mut c_void; 32],
 
 	/// The data associated to the mutex.
 	data: T,
@@ -110,7 +113,7 @@ impl<T, const INT: bool> Mutex<T, INT> {
 				data,
 
 				#[cfg(config_debug_deadlock_stack)]
-				saved_stack_buff: [0; 1024],
+				saved_stack: [null_mut::<c_void>(); 32],
 			}),
 		}
 	}
@@ -163,17 +166,8 @@ impl<T: ?Sized, const INT: bool> Mutex<T, INT> {
 		// If enabled, save the stack to debug deadlocks
 		#[cfg(config_debug_deadlock_stack)]
 		{
-			inner.saved_stack_buff.fill(0);
-
-			let mut w = CallstackWriter {
-				buff: &mut inner.saved_stack_buff,
-				off: 0,
-			};
-
-			let ebp = unsafe { crate::register_get!("ebp") as *const _ };
-			crate::debug::print_callstack(ebp, 8, | args | {
-				core::fmt::write(&mut w, args).unwrap();
-			});
+			let ebp = unsafe { crate::register_get!("ebp") as *mut _ };
+			debug::get_callstack(ebp, &mut inner.saved_stack);
 		}
 
 		MutexGuard::new(self)
@@ -235,25 +229,3 @@ impl<T: ?Sized, const INT: bool> Drop for Mutex<T, INT> {
 
 /// Type alias on Mutex representing a mutex which blocks interrupts.
 pub type IntMutex<T> = Mutex<T, false>;
-
-/// TODO doc
-#[cfg(config_debug_deadlock_stack)]
-pub struct CallstackWriter<'a> {
-	/// The buffer on which the stack is written.
-	buff: &'a mut [u8],
-	/// The current offset.
-	off: usize,
-}
-
-#[cfg(config_debug_deadlock_stack)]
-impl<'a> core::fmt::Write for CallstackWriter<'a> {
-	fn write_str(&mut self, s: &str) -> Result<(), core::fmt::Error> {
-		let b = s.as_bytes();
-		let len = core::cmp::min(b.len(), self.buff.len() - self.off);
-
-		self.buff[self.off..(self.off + len)].copy_from_slice(b);
-		self.off += len;
-
-		Ok(())
-	}
-}
