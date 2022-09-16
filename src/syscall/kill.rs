@@ -8,6 +8,7 @@ use crate::process::regs::Regs;
 use crate::process::signal::Signal;
 use crate::process::state::State;
 use crate::process;
+use super::util;
 
 /// Tries to kill the process with PID `pid` with the signal `sig`.
 /// If `sig` is None, the function doesn't send a signal, but still checks if there is a process
@@ -124,53 +125,6 @@ fn send_signal(pid: i32, sig: Option<Signal>) -> Result<(), Errno> {
 	}
 }
 
-/// Updates the execution flow of the current process according to its state.
-fn handle_state() {
-	loop {
-		cli!();
-
-		let mutex = Process::get_current().unwrap();
-		let guard = mutex.lock();
-		let proc = guard.get_mut();
-
-		match proc.get_state() {
-			// The process is executing a signal handler. Make the scheduler jump to it
-			State::Running => {
-				if proc.is_handling_signal() {
-					let regs = proc.get_regs().clone();
-
-					drop(guard);
-					drop(mutex);
-
-					unsafe {
-						regs.switch(true);
-					}
-				} else {
-					return;
-				}
-			}
-
-			// The process has been stopped. Waiting until wakeup
-			State::Stopped => {
-				drop(guard);
-				drop(mutex);
-
-				crate::wait();
-			}
-
-			// The process has been killed. Stopping execution and waiting for the next tick
-			State::Zombie => {
-				drop(guard);
-				drop(mutex);
-
-				crate::enter_loop();
-			}
-
-			_ => {}
-		}
-	}
-}
-
 /// The implementation of the `kill` syscall.
 pub fn kill(regs: &Regs) -> Result<i32, Errno> {
 	let pid = regs.ebx as i32;
@@ -204,9 +158,9 @@ pub fn kill(regs: &Regs) -> Result<i32, Errno> {
 			// Set the process to execute the signal action
 			proc.signal_next();
 		}
-	}
 
-	handle_state();
+		util::handle_proc_state(guard);
+	}
 
 	Ok(0)
 }

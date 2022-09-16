@@ -8,25 +8,26 @@
 //! This number represents the number of ticks during which the process keeps running until
 //! switching to the next process.
 
+use core::cmp::max;
+use core::ffi::c_void;
 use crate::errno::Errno;
-use crate::event;
 use crate::event::CallbackHook;
+use crate::event;
 use crate::idt::pic;
-use crate::memory;
 use crate::memory::malloc;
 use crate::memory::stack;
-use crate::process;
+use crate::memory;
+use crate::process::Process;
 use crate::process::pid::Pid;
 use crate::process::regs::Regs;
-use crate::process::Process;
+use crate::process::state::State;
+use crate::process;
 use crate::util::container::map::Map;
 use crate::util::container::map::MapIterator;
 use crate::util::container::vec::Vec;
 use crate::util::lock::*;
 use crate::util::math;
 use crate::util::ptr::IntSharedPtr;
-use core::cmp::max;
-use core::ffi::c_void;
 
 /// The size of the temporary stack for context switching.
 const TMP_STACK_SIZE: usize = 16 * memory::PAGE_SIZE;
@@ -310,8 +311,9 @@ impl Scheduler {
 							let next_proc_guard = next_proc.1.lock();
 							let proc = next_proc_guard.get_mut();
 
-							let resume = proc.prepare_switch();
+							proc.prepare_switch();
 
+							let resume = matches!(proc.get_state(), State::Running);
 							(resume, proc.is_syscalling(), proc.regs)
 						};
 						drop(next_proc);

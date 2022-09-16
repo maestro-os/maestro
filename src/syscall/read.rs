@@ -1,13 +1,14 @@
 //! The read system call allows to read the content of an open file.
 
-use crate::errno;
+use core::cmp::min;
 use crate::errno::Errno;
+use crate::errno;
 use crate::file::open_file::O_NONBLOCK;
+use crate::idt;
+use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallSlice;
 use crate::process::regs::Regs;
-use crate::process::Process;
 use crate::util::io::IO;
-use core::cmp::min;
 
 // TODO O_ASYNC
 
@@ -35,14 +36,18 @@ pub fn read(regs: &Regs) -> Result<i32, Errno> {
 				(mem_space, open_file_mutex)
 			};
 
-			let open_file_guard = open_file_mutex.lock();
-			let open_file = open_file_guard.get_mut();
+			let (len, eof, flags) = idt::wrap_disable_interrupts(|| {
+				let open_file_guard = open_file_mutex.lock();
+				let open_file = open_file_guard.get_mut();
 
-			let mem_space_guard = mem_space.lock();
-			let buf_slice = buf.get_mut(&mem_space_guard, len)?.ok_or(errno!(EFAULT))?;
+				let mem_space_guard = mem_space.lock();
+				let buf_slice = buf.get_mut(&mem_space_guard, len)?.ok_or(errno!(EFAULT))?;
 
-			let flags = open_file.get_flags();
-			let (len, eof) = open_file.read(0, buf_slice)?;
+				let flags = open_file.get_flags();
+				let (len, eof) = open_file.read(0, buf_slice)?;
+				Ok((len, eof, flags))
+			})?;
+
 			if len == 0 && eof {
 				return Ok(0);
 			}

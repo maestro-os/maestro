@@ -12,6 +12,7 @@ use crate::file::path::Path;
 use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::regs::Regs;
+use crate::process::state::State;
 use crate::util::FailableClone;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
@@ -238,6 +239,52 @@ pub fn create_file_at(
 	fcache.create_file(parent, name, uid, gid, mode, content)
 }
 
+/// Updates the execution flow of the current process according to its state.
+/// When the state of the current process has been changed, execution may not resume. In which
+/// case, the current function handles the execcution flow accordingly.
+/// This function locks the mutex of the current process.
+///
+/// `proc_guard` is the mutex guard of the current process.
+///
+/// If returning, the function returns the mutex lock of the current process.
+pub fn handle_proc_state(
+	proc_guard: MutexGuard<'_, Process, false>
+) -> MutexGuard<'_, Process, false> {
+	let proc = proc_guard.get_mut();
+
+	match proc.get_state() {
+		// The process is executing a signal handler. Make the scheduler jump to it
+		State::Running => {
+			if proc.is_handling_signal() {
+				let regs = proc.get_regs().clone();
+				drop(proc_guard);
+
+				unsafe {
+					regs.switch(true);
+				}
+			} else {
+				proc_guard
+			}
+		}
+
+		// The process is sleeping or has been stopped. Waiting until wakeup
+		State::Sleeping(_) | State::Stopped => {
+			let mutex = proc_guard.get_mutex();
+
+			drop(proc_guard);
+			crate::wait();
+
+			mutex.lock()
+		}
+
+		// The process has been killed. Stopping execution and waiting for the next tick
+		State::Zombie => {
+			drop(proc_guard);
+			crate::enter_loop();
+		}
+	}
+}
+
 /// Checks whether the current syscall must be interrupted to execute a signal.
 /// If interrupted, the function doesn't return and the control flow jumps directly to handling the
 /// signal.
@@ -258,18 +305,8 @@ pub fn signal_check<'a>(
 		proc.set_syscalling(false);
 
 		// Switching to handle the signal
-		let resume = proc.prepare_switch();
-		let regs = proc.get_regs().clone();
-		drop(proc_guard);
-
-		unsafe {
-			if resume {
-				regs.switch(true);
-			} else {
-				// The process cannot resume. Waiting for the scheduler to run the next process
-				crate::kernel_loop();
-			}
-		}
+		proc.prepare_switch();
+		return handle_proc_state(proc_guard);
 	}
 
 	proc_guard

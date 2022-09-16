@@ -947,19 +947,19 @@ impl Process {
 	}
 
 	/// Prepares for context switching to the process.
-	/// A call to this function MUST be followed by a context switch to the process.
-	/// If the function returns `false`, the process is a zombie and MUST NOT be resumed.
-	pub fn prepare_switch(&mut self) -> bool {
-		debug_assert!(matches!(self.get_state(), State::Running));
-
-		// Incrementing the number of ticks the process had
-		self.quantum_count += 1;
+	/// The function may update the state of the process. Thus, the caller must check the state to
+	/// ensure the process can actually be run.
+	pub fn prepare_switch(&mut self) {
+		if !matches!(self.state, State::Running) {
+			return;
+		}
 
 		// If the process is not in a syscall and a signal is pending on the process, execute it
 		if !self.is_syscalling() {
 			self.signal_next();
+
 			if !matches!(self.state, State::Running) {
-				return false;
+				return;
 			}
 		}
 
@@ -979,7 +979,8 @@ impl Process {
 			ldt.load();
 		}
 
-		true
+		// Incrementing the number of ticks the process had
+		self.quantum_count += 1;
 	}
 
 	/// Initializes the process to run without a program.

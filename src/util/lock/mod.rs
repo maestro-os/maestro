@@ -52,6 +52,11 @@ impl<'a, T: ?Sized, const INT: bool> MutexGuard<'a, T, INT> {
 		Self { mutex }
 	}
 
+	/// Returns the mutex associated with the current guard.
+	pub fn get_mutex(&self) -> &'a Mutex<T, INT> {
+		self.mutex
+	}
+
 	/// Returns an immutable reference to the data owned by the associated Mutex.
 	pub fn get(&self) -> &T {
 		unsafe { self.mutex.get_payload() }
