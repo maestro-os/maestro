@@ -1,14 +1,15 @@
 //! This module implements the `write` system call, which allows to write data to a file.
 
-use crate::errno;
+use core::cmp::min;
 use crate::errno::Errno;
+use crate::errno;
 use crate::file::open_file::O_NONBLOCK;
+use crate::idt;
+use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallSlice;
 use crate::process::regs::Regs;
-use crate::process::Process;
 use crate::syscall::Signal;
 use crate::util::io::IO;
-use core::cmp::min;
 
 // TODO O_ASYNC
 
@@ -24,20 +25,19 @@ pub fn write(regs: &Regs) -> Result<i32, Errno> {
 	}
 
 	loop {
+		let (mem_space, open_file_mutex) = {
+			let mutex = Process::get_current().unwrap();
+			let guard = mutex.lock();
+			let guard = super::util::signal_check(guard, regs);
+			let proc = guard.get_mut();
+
+			let mem_space = proc.get_mem_space().unwrap();
+			let open_file_mutex = proc.get_fd(fd).ok_or(errno!(EBADF))?.get_open_file();
+			(mem_space, open_file_mutex)
+		};
+
 		// Trying to write and getting the length of written data
-		let (len, flags) = {
-			let (mem_space, open_file_mutex) = {
-				let mutex = Process::get_current().unwrap();
-				let guard = mutex.lock();
-				let guard = super::util::signal_check(guard, regs);
-				let proc = guard.get_mut();
-
-				(
-					proc.get_mem_space().unwrap(),
-					proc.get_fd(fd).ok_or(errno!(EBADF))?.get_open_file(),
-				)
-			};
-
+		let (len, flags) = idt::wrap_disable_interrupts(|| {
 			let open_file_guard = open_file_mutex.lock();
 			let open_file = open_file_guard.get_mut();
 
@@ -62,8 +62,8 @@ pub fn write(regs: &Regs) -> Result<i32, Errno> {
 				},
 			};
 
-			(len, flags)
-		};
+			Ok((len, flags))
+		})?;
 
 		// TODO Continue until everything was written?
 		// If the length is greater than zero, success

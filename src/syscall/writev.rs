@@ -4,6 +4,7 @@ use core::cmp::min;
 use crate::errno::Errno;
 use crate::errno;
 use crate::file::open_file::OpenFile;
+use crate::idt;
 use crate::limits;
 use crate::process::Process;
 use crate::process::iovec::IOVec;
@@ -79,43 +80,45 @@ pub fn do_writev(
 		(mem_space, open_file_mutex)
 	};
 
-	let open_file_guard = open_file_mutex.lock();
-	let open_file = open_file_guard.get_mut();
+	idt::wrap_disable_interrupts(|| {
+		let open_file_guard = open_file_mutex.lock();
+		let open_file = open_file_guard.get_mut();
 
-	// The offset to restore on the fd after the write operation
-	let mut prev_off = None;
-	// Setting the offset temporarily
-	if let Some(offset) = offset {
-		if offset < -1 {
-			return Err(errno!(EINVAL));
+		// The offset to restore on the fd after the write operation
+		let mut prev_off = None;
+		// Setting the offset temporarily
+		if let Some(offset) = offset {
+			if offset < -1 {
+				return Err(errno!(EINVAL));
+			}
+
+			if offset != -1 {
+				prev_off = Some(open_file.get_offset());
+				open_file.set_offset(offset as _);
+			}
 		}
 
-		if offset != -1 {
-			prev_off = Some(open_file.get_offset());
-			open_file.set_offset(offset as _);
+		let result = write(mem_space, iov, iovcnt as _, open_file);
+		match &result {
+			// If writing to a broken pipe, kill with SIGPIPE
+			Err(e) if e.as_int() == errno::EPIPE => {
+				let mutex = Process::get_current().unwrap();
+				let guard = mutex.lock();
+				let proc = guard.get_mut();
+
+				proc.kill(&Signal::SIGPIPE, false);
+			},
+
+			_ => {},
 		}
-	}
 
-	let result = write(mem_space, iov, iovcnt as _, open_file);
-	match &result {
-		// If writing to a broken pipe, kill with SIGPIPE
-		Err(e) if e.as_int() == errno::EPIPE => {
-			let mutex = Process::get_current().unwrap();
-			let guard = mutex.lock();
-			let proc = guard.get_mut();
+		// Restoring previous offset
+		if let Some(prev_off) = prev_off {
+			open_file.set_offset(prev_off);
+		}
 
-			proc.kill(&Signal::SIGPIPE, false);
-		},
-
-		_ => {},
-	}
-
-	// Restoring previous offset
-	if let Some(prev_off) = prev_off {
-		open_file.set_offset(prev_off);
-	}
-
-	result
+		result
+	})
 }
 
 /// The implementation of the `writev` syscall.
