@@ -203,10 +203,10 @@ impl KeyboardKey {
 				Self::KeyBackslash => return Some(&[b'\\' - b'A' + 1]),
 				Self::KeyCloseBrace => return Some(&[b']' - b'A' + 1]),
 
-				Self::KeyCursorUp => return Some(b"\x1b[[1;5A"),
-				Self::KeyCursorLeft => return Some(b"\x1b[[1;5D"),
-				Self::KeyCursorRight => return Some(b"\x1b[[1;5C"),
-				Self::KeyCursorDown => return Some(b"\x1b[[1;5B"),
+				Self::KeyCursorUp => return Some(b"\x1b[1;5A"),
+				Self::KeyCursorLeft => return Some(b"\x1b[1;5D"),
+				Self::KeyCursorRight => return Some(b"\x1b[1;5C"),
+				Self::KeyCursorDown => return Some(b"\x1b[1;5B"),
 
 				// TODO ^ and _
 
