@@ -15,18 +15,19 @@ const CSI_CHAR: u8 = b'[';
 /// The size of the buffer used to parse ANSI escape codes.
 pub const BUFFER_SIZE: usize = 16;
 
-/// Enumeration desribing the state of the ANSI parser.
+/// Enumeration of possible states of the ANSI parser.
 pub enum ANSIState {
 	/// The sequence is valid, has been executed and the buffer has been cleared.
 	Valid,
+	/// The buffer is waiting for more characters.
+	Incomplete,
 	/// The sequence is invalid, the content of the buffer has been printed has normal characters
 	/// and the buffer has been cleared.
 	Invalid,
-	/// The buffer is waiting for more characters.
-	Incomplete,
 }
 
 /// Buffer storing the current ANSI escape code being handled.
+/// The buffer acts as a FIFO.
 pub struct ANSIBuffer {
 	/// The buffer.
 	buffer: [u8; BUFFER_SIZE],
@@ -53,16 +54,11 @@ impl ANSIBuffer {
 		self.len() == 0
 	}
 
-	/// Tells whether the buffer is full.
-	pub fn is_full(&self) -> bool {
-		self.len() == BUFFER_SIZE
-	}
-
 	/// Pushes the data from the given buffer `buffer` into the current buffer.
 	/// If more characters are pushed than the remaining capacity, the function truncates the data
 	/// to be pushed.
 	/// The function returns the number of characters that have been pushed.
-	pub fn push(&mut self, buffer: &[u8]) -> usize {
+	pub fn push_back(&mut self, buffer: &[u8]) -> usize {
 		let len = min(buffer.len(), BUFFER_SIZE - self.cursor);
 		#[allow(clippy::needless_range_loop)]
 		for i in 0..len {
@@ -70,13 +66,13 @@ impl ANSIBuffer {
 		}
 
 		self.cursor += len;
-		debug_assert!(self.cursor <= BUFFER_SIZE);
 		len
 	}
 
-	/// Clears the buffer.
-	pub fn clear(&mut self) {
-		self.cursor = 0;
+	/// Removes the first `n` characters from the buffer.
+	pub fn pop_front(&mut self, n: usize) {
+		self.buffer.rotate_left(n);
+		self.cursor -= n;
 	}
 }
 
@@ -307,47 +303,59 @@ fn parse_csi(tty: &mut TTY) -> (ANSIState, usize) {
 /// returned.
 fn parse(tty: &mut TTY) -> (ANSIState, usize) {
 	if tty.ansi_buffer.len() < 2 {
-		(ANSIState::Incomplete, 0)
-	} else {
-		// TODO Check: let first = buffer.buffer[0];
-		let second = tty.ansi_buffer.buffer[1];
+		return (ANSIState::Incomplete, 0);
+	}
 
-		match second {
-			CSI_CHAR => parse_csi(tty),
-			// TODO
-			_ => (ANSIState::Invalid, 0),
-		}
+	if tty.ansi_buffer.buffer[0] != ESCAPE_CHAR {
+		return (ANSIState::Invalid, 0);
+	}
+
+	match tty.ansi_buffer.buffer[1] {
+		CSI_CHAR => parse_csi(tty),
+		// TODO
+
+		_ => (ANSIState::Invalid, 0),
 	}
 }
 
 /// Handles an ANSI escape code stored into buffer `buffer` on the TTY `tty`.
 /// If the buffer doesn't begin with the ANSI escape character, the behaviour is undefined.
-/// The function returns the new state of the ANSI buffer and the number of bytes consumed by the
-/// function.
-pub fn handle(tty: &mut TTY, buffer: &[u8]) -> (ANSIState, usize) {
-	debug_assert!(!tty.ansi_buffer.is_empty() || buffer[0] == ESCAPE_CHAR as _);
-	let n = tty.ansi_buffer.push(buffer);
-
-	let (state, len) = parse(tty);
-	match state {
-		ANSIState::Valid => {
-			for b in buffer.iter().skip(len) {
-				tty.putchar(*b);
-			}
-			tty.update();
-			tty.ansi_buffer.clear();
-		}
-
-		ANSIState::Invalid => {
-			for b in buffer.iter() {
-				tty.putchar(*b);
-			}
-			tty.update();
-			tty.ansi_buffer.clear();
-		}
-
-		ANSIState::Incomplete => {}
+/// The function returns the number of bytes consumed by the function.
+pub fn handle(tty: &mut TTY, buffer: &[u8]) -> usize {
+	if tty.ansi_buffer.is_empty() || buffer[0] != ESCAPE_CHAR as _ {
+		return 0;
 	}
 
-	(state, n)
+	let n = tty.ansi_buffer.push_back(buffer);
+
+	while !tty.ansi_buffer.is_empty() {
+		let (state, len) = parse(tty);
+
+		match state {
+			ANSIState::Valid => {
+				tty.ansi_buffer.pop_front(len);
+				tty.update();
+			}
+
+			ANSIState::Incomplete => break,
+
+			ANSIState::Invalid => {
+				let mut i = 0;
+				while i < tty.ansi_buffer.buffer.len() {
+					let c = tty.ansi_buffer.buffer[i];
+					if c == ESCAPE_CHAR {
+						break;
+					}
+
+					tty.putchar(c);
+					i += 1;
+				}
+
+				tty.ansi_buffer.pop_front(i);
+				tty.update();
+			}
+		}
+	}
+
+	n
 }

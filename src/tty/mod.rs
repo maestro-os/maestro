@@ -314,15 +314,15 @@ impl TTY {
 	/// Fixes the position of the cursor after executing an action.
 	fn fix_pos(&mut self) {
 		if self.cursor_x < 0 {
-			let p = -self.cursor_x;
-			self.cursor_x = vga::WIDTH - (p % vga::WIDTH);
-			self.cursor_y -= p / vga::WIDTH + 1;
+			let off = -self.cursor_x;
+			self.cursor_x = vga::WIDTH - (off % vga::WIDTH);
+			self.cursor_y -= off / vga::WIDTH + 1;
 		}
 
 		if self.cursor_x >= vga::WIDTH {
-			let p = self.cursor_x;
-			self.cursor_x = p % vga::WIDTH;
-			self.cursor_y += p / vga::WIDTH;
+			let off = self.cursor_x;
+			self.cursor_x = off % vga::WIDTH;
+			self.cursor_y += off / vga::WIDTH;
 		}
 
 		if self.cursor_y < self.screen_y {
@@ -335,6 +335,10 @@ impl TTY {
 
 		if self.cursor_y >= HISTORY_LINES {
 			self.cursor_y = HISTORY_LINES - 1;
+		}
+
+		if self.cursor_y < 0 {
+			self.cursor_y = 0;
 		}
 
 		if self.screen_y < 0 {
@@ -391,6 +395,7 @@ impl TTY {
 		if self.termios.c_oflag & termios::OLCUC != 0 && (c as char).is_ascii_uppercase() {
 			c = (c as char).to_ascii_lowercase() as u8;
 		}
+
 		// TODO Implement ONLCR (Map NL to CR-NL)
 		// TODO Implement ONOCR
 		// TODO Implement ONLRET
@@ -404,7 +409,7 @@ impl TTY {
 			// Form Feed (^L)
 			0x0c => {
 				// TODO Move printer to a top of page?
-				self.clear();
+				//self.clear();
 			}
 
 			b'\r' => self.cursor_x = 0,
@@ -421,22 +426,26 @@ impl TTY {
 
 	/// Writes string `buffer` to TTY.
 	pub fn write(&mut self, buffer: &[u8]) {
-		let mut i = 0;
-
-		while i < buffer.len() {
-			let c = buffer[i];
-			if c == ansi::ESCAPE_CHAR {
-				let (_, j) = ansi::handle(self, &buffer[i..buffer.len()]);
-				i += j;
-			} else {
-				self.putchar(c);
-				i += 1;
-			}
-		}
-
 		// TODO Add a compilation and/or runtime option for this
 		if let Some(serial) = serial::get(serial::COM1) {
 			serial.lock().get_mut().write(buffer);
+		}
+
+		let mut i = 0;
+		while i < buffer.len() {
+			let c = buffer[i];
+
+			if c == ansi::ESCAPE_CHAR {
+				let j = ansi::handle(self, &buffer[i..buffer.len()]);
+
+				if j > 0 {
+					i += j;
+					continue;
+				}
+			}
+
+			self.putchar(c);
+			i += 1;
 		}
 
 		self.update();
