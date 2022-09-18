@@ -60,7 +60,6 @@ mod mkdir;
 mod mknod;
 mod mmap2;
 mod mmap;
-mod modify_ldt;
 mod mount;
 mod msync;
 mod munmap;
@@ -121,7 +120,6 @@ use crate::process::regs::Regs;
 use crate::process::signal::Signal;
 use crate::process::Process;
 
-//use modify_ldt::modify_ldt;
 //use wait::wait;
 use _exit::_exit;
 use _llseek::_llseek;

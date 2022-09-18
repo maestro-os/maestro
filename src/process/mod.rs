@@ -43,7 +43,6 @@ use crate::file::open_file::OpenFile;
 use crate::file::open_file;
 use crate::file::path::Path;
 use crate::file;
-use crate::gdt::ldt::LDT;
 use crate::gdt;
 use crate::limits;
 use crate::memory;
@@ -233,8 +232,6 @@ pub struct Process {
 
 	/// TLS entries.
 	tls_entries: [gdt::Entry; TLS_ENTRIES_COUNT],
-	/// The process's local descriptor table.
-	ldt: Option<LDT>,
 
 	/// TODO doc
 	set_child_tid: Option<NonNull<i32>>,
@@ -510,7 +507,6 @@ impl Process {
 			signal_handlers: SharedPtr::new([SignalHandler::Default; signal::SIGNALS_COUNT])?,
 
 			tls_entries: [gdt::Entry::default(); TLS_ENTRIES_COUNT],
-			ldt: None,
 
 			set_child_tid: None,
 			clear_child_tid: None,
@@ -974,11 +970,6 @@ impl Process {
 			self.update_tls(i);
 		}
 
-		// Updating LDT if present
-		if let Some(ldt) = &self.ldt {
-			ldt.load();
-		}
-
 		// Incrementing the number of ticks the process had
 		self.quantum_count += 1;
 	}
@@ -1325,13 +1316,6 @@ impl Process {
 			signal_handlers: signal_handlers,
 
 			tls_entries: self.tls_entries,
-			ldt: {
-				if let Some(ldt) = &self.ldt {
-					Some(ldt.failable_clone()?)
-				} else {
-					None
-				}
-			},
 
 			set_child_tid: self.set_child_tid,
 			clear_child_tid: self.clear_child_tid,
@@ -1510,16 +1494,6 @@ impl Process {
 		for e in &mut self.tls_entries {
 			*e = Default::default();
 		}
-	}
-
-	/// Returns a mutable reference to the process's LDT.
-	/// If the LDT doesn't exist, the function creates one.
-	pub fn get_ldt_mut(&mut self) -> Result<&mut LDT, Errno> {
-		if self.ldt.is_none() {
-			self.ldt = Some(LDT::new()?);
-		}
-
-		Ok(self.ldt.as_mut().unwrap())
 	}
 
 	/// Updates the `n`th TLS entry in the GDT.

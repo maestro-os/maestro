@@ -2,8 +2,6 @@
 //! describes the segments of memory. It is a deprecated structure that still must be used in order
 //! to switch to protected mode, handle protection rings and load the Task State Segment (TSS).
 
-pub mod ldt;
-
 use crate::errno::Errno;
 use crate::memory;
 use crate::util::FailableClone;
