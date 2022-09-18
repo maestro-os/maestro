@@ -54,6 +54,12 @@ The following properties have to be taken into account when writing a module:
 
 
 
+## Interface references
+
+The references to the kernel's internals and module interfaces can be found [here](references/kernel/index.html).
+
+
+
 ## Building
 
 The kernel must be built in its directory in order to be able to build the module.
