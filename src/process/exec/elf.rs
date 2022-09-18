@@ -17,7 +17,7 @@ use crate::errno;
 use crate::file::File;
 use crate::file::Gid;
 use crate::file::Uid;
-use crate::file::fcache;
+use crate::file::vfs;
 use crate::file::path::Path;
 use crate::memory::malloc;
 use crate::memory::vmem;
@@ -537,11 +537,11 @@ impl ELFExecutor {
 
 			// Getting file
 			let interp_file_mutex = {
-				let fcache_mutex = fcache::get();
-				let fcache_guard = fcache_mutex.lock();
-				let fcache = fcache_guard.get_mut().as_mut().unwrap();
+				let vfs_mutex = vfs::get();
+				let vfs_guard = vfs_mutex.lock();
+				let vfs = vfs_guard.get_mut().as_mut().unwrap();
 
-				fcache.get_file_from_path(&interp_path, self.info.euid, self.info.egid, true)?
+				vfs.get_file_from_path(&interp_path, self.info.euid, self.info.egid, true)?
 			};
 			let interp_file_guard = interp_file_mutex.lock();
 

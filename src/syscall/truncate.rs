@@ -1,11 +1,11 @@
 //! The truncate syscall allows to truncate a file.
 
 use crate::errno::Errno;
-use crate::file::fcache;
 use crate::file::path::Path;
+use crate::file::vfs;
+use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::regs::Regs;
-use crate::process::Process;
 
 /// The implementation of the `truncate` syscall.
 pub fn truncate(regs: &Regs) -> Result<i32, Errno> {
@@ -21,11 +21,11 @@ pub fn truncate(regs: &Regs) -> Result<i32, Errno> {
 	let path = Path::from_str(path.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?, true)?;
 	let path = super::util::get_absolute_path(proc, path)?;
 
-	let mutex = fcache::get();
+	let mutex = vfs::get();
 	let guard = mutex.lock();
-	let files_cache = guard.get_mut();
+	let vfs = guard.get_mut();
 
-	let file_mutex = files_cache.as_mut().unwrap().get_file_from_path(
+	let file_mutex = vfs.as_mut().unwrap().get_file_from_path(
 		&path,
 		proc.get_euid(),
 		proc.get_egid(),

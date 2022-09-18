@@ -20,7 +20,7 @@ use crate::device::manager::DeviceManager;
 use crate::errno::Errno;
 use crate::file::FileContent;
 use crate::file::Mode;
-use crate::file::fcache;
+use crate::file::vfs;
 use crate::file::path::Path;
 use crate::file;
 use crate::process::mem_space::MemSpace;
@@ -177,27 +177,27 @@ impl Device {
 		let mode = dev.mode;
 		drop(guard);
 
-		let mutex = fcache::get();
+		let mutex = vfs::get();
 		let guard = mutex.lock();
-		let fcache = guard.get_mut().as_mut().unwrap();
+		let vfs = guard.get_mut().as_mut().unwrap();
 
 		// Tells whether the file already exists
-		let file_exists = fcache.get_file_from_path(&path, 0, 0, true).is_ok();
+		let file_exists = vfs.get_file_from_path(&path, 0, 0, true).is_ok();
 
 		if !file_exists {
 			// Creating the directories in which the device file is located
 			let mut dir_path = path;
 			let filename = dir_path.pop().unwrap();
-			file::util::create_dirs(fcache, &dir_path)?;
+			file::util::create_dirs(vfs, &dir_path)?;
 
 			// Getting the parent directory
-			let parent_mutex = fcache.get_file_from_path(&dir_path, 0, 0, true)?;
+			let parent_mutex = vfs.get_file_from_path(&dir_path, 0, 0, true)?;
 			let parent_guard = parent_mutex.lock();
 			let parent = parent_guard.get_mut();
 
 			// TODO Cancel directories creation on fail
 			// Creating the device file
-			fcache.create_file(parent, filename, 0, 0, mode, file_content)?;
+			vfs.create_file(parent, filename, 0, 0, mode, file_content)?;
 		}
 
 		Ok(())
@@ -205,13 +205,13 @@ impl Device {
 
 	/// If exists, removes the device file. iF the file doesn't exist, the function does nothing.
 	pub fn remove_file(&mut self) -> Result<(), Errno> {
-		let mutex = fcache::get();
+		let mutex = vfs::get();
 		let guard = mutex.lock();
-		let fcache = guard.get_mut().as_mut().unwrap();
+		let vfs = guard.get_mut().as_mut().unwrap();
 
-		if let Ok(file_mutex) = fcache.get_file_from_path(&self.path, 0, 0, true) {
+		if let Ok(file_mutex) = vfs.get_file_from_path(&self.path, 0, 0, true) {
 			let file_guard = file_mutex.lock();
-			fcache.remove_file(file_guard.get(), 0, 0)?;
+			vfs.remove_file(file_guard.get(), 0, 0)?;
 		}
 
 		Ok(())

@@ -1,6 +1,6 @@
 //! This module implements utility functions for files manipulations.
 
-use super::fcache::FCache;
+use super::vfs::VFS;
 use super::path::Path;
 use super::File;
 use super::FileContent;
@@ -17,8 +17,8 @@ use crate::util::FailableClone;
 /// Creates the directories necessary to reach path `path`. On success, the function returns
 /// the number of created directories (without the directories that already existed).
 /// If relative, the path is taken from the root.
-/// `fcache` is a reference to the files cache.
-pub fn create_dirs(fcache: &mut FCache, path: &Path) -> Result<usize, Errno> {
+/// `vfs` is a reference to the VFS.
+pub fn create_dirs(vfs: &mut VFS, path: &Path) -> Result<usize, Errno> {
 	let path = Path::root().concat(path)?;
 
 	// The path of the parent directory
@@ -29,11 +29,11 @@ pub fn create_dirs(fcache: &mut FCache, path: &Path) -> Result<usize, Errno> {
 	for i in 0..path.get_elements_count() {
 		let name = path[i].failable_clone()?;
 
-		if let Ok(parent_mutex) = fcache.get_file_from_path(&p, 0, 0, true) {
+		if let Ok(parent_mutex) = vfs.get_file_from_path(&p, 0, 0, true) {
 			let parent_guard = parent_mutex.lock();
 			let parent = parent_guard.get_mut();
 
-			match fcache.create_file(
+			match vfs.create_file(
 				parent,
 				name.failable_clone()?,
 				0,
@@ -55,9 +55,9 @@ pub fn create_dirs(fcache: &mut FCache, path: &Path) -> Result<usize, Errno> {
 }
 
 /// Copies the file `old` into the directory `new_parent` with name `new_name`.
-/// `fcache` is a reference to the files cache.
+/// `vfs` is a reference to the VFS.
 pub fn copy_file(
-	fcache: &mut FCache,
+	vfs: &mut VFS,
 	old: &mut File,
 	new_parent: &mut File,
 	new_name: String,
@@ -71,7 +71,7 @@ pub fn copy_file(
 		// Copy the file and its content
 		FileContent::Regular => {
 			let new_mutex =
-				fcache.create_file(new_parent, new_name, uid, gid, mode, FileContent::Regular)?;
+				vfs.create_file(new_parent, new_name, uid, gid, mode, FileContent::Regular)?;
 			let new_guard = new_mutex.lock();
 			let new = new_guard.get_mut();
 
@@ -92,7 +92,7 @@ pub fn copy_file(
 
 		// Copy the directory recursively
 		FileContent::Directory(entries) => {
-			let new_mutex = fcache.create_file(
+			let new_mutex = vfs.create_file(
 				new_parent,
 				new_name,
 				uid,
@@ -105,7 +105,7 @@ pub fn copy_file(
 
 			// TODO On fail, undo
 			for (name, _) in entries.iter() {
-				let old_mutex = fcache.get_file_from_parent(
+				let old_mutex = vfs.get_file_from_parent(
 					new,
 					name.failable_clone()?,
 					uid,
@@ -115,13 +115,13 @@ pub fn copy_file(
 				let old_guard = old_mutex.lock();
 				let old = old_guard.get_mut();
 
-				copy_file(fcache, old, new, name.failable_clone()?)?;
+				copy_file(vfs, old, new, name.failable_clone()?)?;
 			}
 		}
 
 		// Copy the file
 		_ => {
-			fcache.create_file(
+			vfs.create_file(
 				new_parent,
 				new_name,
 				uid,
@@ -136,11 +136,11 @@ pub fn copy_file(
 }
 
 /// Removes the file `file` and its subfiles recursively if it's a directory.
-/// `fcache` is a reference to the files cache.
+/// `vfs` is a reference to the VFS.
 /// `uid` is the user ID used to check permissions.
 /// `gid` is the group ID used to check permissions.
 pub fn remove_recursive(
-	fcache: &mut FCache,
+	vfs: &mut VFS,
 	file: &mut File,
 	uid: Uid,
 	gid: Gid,
@@ -151,15 +151,15 @@ pub fn remove_recursive(
 		FileContent::Directory(entries) => {
 			for (name, _) in entries.iter() {
 				let name = name.failable_clone()?;
-				let subfile_mutex = fcache.get_file_from_parent(file, name, uid, gid, false)?;
+				let subfile_mutex = vfs.get_file_from_parent(file, name, uid, gid, false)?;
 				let subfile_guard = subfile_mutex.lock();
 				let subfile = subfile_guard.get_mut();
 
-				remove_recursive(fcache, subfile, uid, gid)?;
+				remove_recursive(vfs, subfile, uid, gid)?;
 			}
 		}
 
-		_ => fcache.remove_file(file, uid, gid)?,
+		_ => vfs.remove_file(file, uid, gid)?,
 	}
 
 	Ok(())

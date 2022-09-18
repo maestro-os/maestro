@@ -32,7 +32,7 @@ use crate::event;
 use crate::file::Gid;
 use crate::file::ROOT_UID;
 use crate::file::Uid;
-use crate::file::fcache;
+use crate::file::vfs;
 use crate::file::fd::FD_CLOEXEC;
 use crate::file::fd::FileDescriptor;
 use crate::file::fd::NewFDConstraint;
@@ -524,12 +524,12 @@ impl Process {
 		// FIXME On fail, the kernel will panic since the function is dropping the init process
 		// Creating STDIN, STDOUT and STDERR
 		{
-			let mutex = fcache::get();
+			let mutex = vfs::get();
 			let guard = mutex.lock();
-			let files_cache = guard.get_mut();
+			let vfs = guard.get_mut();
 
 			let tty_path = Path::from_str(TTY_DEVICE_PATH.as_bytes(), false).unwrap();
-			let tty_file = files_cache.as_mut().unwrap().get_file_from_path(
+			let tty_file = vfs.as_mut().unwrap().get_file_from_path(
 				&tty_path,
 				process.uid,
 				process.gid,

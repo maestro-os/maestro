@@ -1,25 +1,25 @@
 //! The `execve` system call allows to execute a program from a file.
 
-use crate::errno;
+use core::ops::Range;
 use crate::errno::Errno;
-use crate::file::fcache;
-use crate::file::path::Path;
+use crate::errno;
 use crate::file::File;
 use crate::file::Gid;
 use crate::file::Uid;
+use crate::file::path::Path;
+use crate::file::vfs;
 use crate::memory::stack;
-use crate::process;
-use crate::process::exec;
+use crate::process::Process;
 use crate::process::exec::ExecInfo;
 use crate::process::exec::ProgramImage;
+use crate::process::exec;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::regs::Regs;
-use crate::process::Process;
+use crate::process;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::io::IO;
 use crate::util::ptr::SharedPtr;
-use core::ops::Range;
 
 /// The maximum length of the shebang.
 const SHEBANG_MAX: usize = 257;
@@ -178,11 +178,11 @@ pub fn execve(regs: &Regs) -> Result<i32, Errno> {
 	while i < INTERP_MAX + 1 {
 		// The file
 		let file = {
-			let files_mutex = fcache::get();
+			let files_mutex = vfs::get();
 			let files_guard = files_mutex.lock();
-			let files_cache = files_guard.get_mut();
+			let vfs = files_guard.get_mut();
 
-			files_cache
+			vfs
 				.as_mut()
 				.unwrap()
 				.get_file_from_path(&path, uid, gid, true)?
@@ -229,11 +229,11 @@ pub fn execve(regs: &Regs) -> Result<i32, Errno> {
 
 	// The file
 	let file = {
-		let files_mutex = fcache::get();
+		let files_mutex = vfs::get();
 		let files_guard = files_mutex.lock();
-		let files_cache = files_guard.get_mut();
+		let vfs = files_guard.get_mut();
 
-		files_cache
+		vfs
 			.as_mut()
 			.unwrap()
 			.get_file_from_path(&path, uid, gid, true)?

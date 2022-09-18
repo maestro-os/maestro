@@ -6,9 +6,9 @@ use crate::errno;
 use crate::file::File;
 use crate::file::FileContent;
 use crate::file::Mode;
-use crate::file::fcache;
 use crate::file::open_file::FDTarget;
 use crate::file::path::Path;
+use crate::file::vfs;
 use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::regs::Regs;
@@ -166,9 +166,9 @@ pub fn get_file_at(
 		// Unlocking to avoid deadlock with procfs
 		drop(process_guard);
 
-		let fcache = fcache::get();
-		let fcache_guard = fcache.lock();
-		fcache_guard
+		let vfs = vfs::get();
+		let vfs_guard = vfs.lock();
+		vfs_guard
 			.get_mut()
 			.as_mut()
 			.unwrap()
@@ -197,11 +197,11 @@ pub fn get_parent_at_with_name(
 	// Unlocking to avoid deadlock with procfs
 	drop(process_guard);
 
-	let fcache_mutex = fcache::get();
-	let fcache_guard = fcache_mutex.lock();
-	let fcache = fcache_guard.get_mut().as_mut().unwrap();
+	let vfs_mutex = vfs::get();
+	let vfs_guard = vfs_mutex.lock();
+	let vfs = vfs_guard.get_mut().as_mut().unwrap();
 
-	let parent_mutex = fcache.get_file_from_path(&path, uid, gid, follow_links)?;
+	let parent_mutex = vfs.get_file_from_path(&path, uid, gid, follow_links)?;
 	Ok((parent_mutex, name))
 }
 
@@ -229,14 +229,14 @@ pub fn create_file_at(
 	let (parent_mutex, name) =
 		get_parent_at_with_name(process_guard, follow_links, dirfd, pathname)?;
 
-	let fcache_mutex = fcache::get();
-	let fcache_guard = fcache_mutex.lock();
-	let fcache = fcache_guard.get_mut().as_mut().unwrap();
+	let vfs_mutex = vfs::get();
+	let vfs_guard = vfs_mutex.lock();
+	let vfs = vfs_guard.get_mut().as_mut().unwrap();
 
 	let parent_guard = parent_mutex.lock();
 	let parent = parent_guard.get_mut();
 
-	fcache.create_file(parent, name, uid, gid, mode, content)
+	vfs.create_file(parent, name, uid, gid, mode, content)
 }
 
 /// Updates the execution flow of the current process according to its state.

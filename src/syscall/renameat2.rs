@@ -2,7 +2,7 @@
 
 use crate::errno::Errno;
 use crate::file::FileType;
-use crate::file::fcache;
+use crate::file::vfs;
 use crate::file;
 use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallString;
@@ -58,9 +58,9 @@ pub fn renameat2(regs: &Regs) -> Result<i32, Errno> {
 
 	// TODO Check permissions if sticky bit is set
 
-	let fcache_mutex = fcache::get();
-	let fcache_guard = fcache_mutex.lock();
-	let fcache = fcache_guard.get_mut().as_mut().unwrap();
+	let vfs = vfs::get();
+	let vfs = vfs.lock();
+	let vfs = vfs.get_mut().as_mut().unwrap();
 
 	if new_parent.get_location().mountpoint_id == old.get_location().mountpoint_id {
 		// Old and new are both on the same filesystem
@@ -70,18 +70,18 @@ pub fn renameat2(regs: &Regs) -> Result<i32, Errno> {
 		// Create link at new location
 		// The `..` entry is already updated by the file system since having the same directory in
 		// several locations is not allowed
-		fcache.create_link(old, new_parent, new_name, uid, gid)?;
+		vfs.create_link(old, new_parent, new_name, uid, gid)?;
 
 		if old.get_file_type() != FileType::Directory {
-			fcache.remove_file(old, uid, gid)?;
+			vfs.remove_file(old, uid, gid)?;
 		}
 	} else {
 		// Old and new are on different filesystems.
 
 		// TODO On fail, undo
 
-		file::util::copy_file(fcache, old, new_parent, new_name)?;
-		file::util::remove_recursive(fcache, old, uid, gid)?;
+		file::util::copy_file(vfs, old, new_parent, new_name)?;
+		file::util::remove_recursive(vfs, old, uid, gid)?;
 	}
 
 	Ok(0)

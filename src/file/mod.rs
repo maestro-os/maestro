@@ -2,7 +2,6 @@
 //! The root filesystem is passed to the kernel as an argument when booting. Other filesystems are
 //! mounted into subdirectories.
 
-pub mod fcache;
 pub mod fd;
 pub mod fs;
 pub mod mountpoint;
@@ -11,6 +10,7 @@ pub mod path;
 pub mod pipe;
 pub mod socket;
 pub mod util;
+pub mod vfs;
 
 use core::cmp::max;
 use core::ffi::c_void;
@@ -18,9 +18,9 @@ use crate::device::DeviceType;
 use crate::device;
 use crate::errno::Errno;
 use crate::errno;
-use crate::file::fcache::FCache;
 use crate::file::mountpoint::MountPoint;
 use crate::file::mountpoint::MountSource;
+use crate::file::vfs::VFS;
 use crate::process::mem_space::MemSpace;
 use crate::time::unit::Timestamp;
 use crate::time::unit::TimestampScale;
@@ -608,22 +608,22 @@ impl File {
 			FileContent::Link(_target) => Err(errno!(EINVAL)),
 
 			FileContent::Fifo => {
-				let fcache_mutex = fcache::get();
-				let fcache_guard = fcache_mutex.lock();
-				let fcache = fcache_guard.get_mut().as_mut().unwrap();
+				let vfs_mutex = vfs::get();
+				let vfs_guard = vfs_mutex.lock();
+				let vfs = vfs_guard.get_mut().as_mut().unwrap();
 
-				let pipe_mutex = fcache.get_named_fifo(self.get_location())?;
+				let pipe_mutex = vfs.get_named_fifo(self.get_location())?;
 				let pipe_guard = pipe_mutex.lock();
 				let pipe = pipe_guard.get_mut();
 				pipe.ioctl(mem_space, request, argp)
 			}
 
 			FileContent::Socket => {
-				let fcache_mutex = fcache::get();
-				let fcache_guard = fcache_mutex.lock();
-				let fcache = fcache_guard.get_mut().as_mut().unwrap();
+				let vfs_mutex = vfs::get();
+				let vfs_guard = vfs_mutex.lock();
+				let vfs = vfs_guard.get_mut().as_mut().unwrap();
 
-				let sock_mutex = fcache.get_named_socket(self.get_location())?;
+				let sock_mutex = vfs.get_named_socket(self.get_location())?;
 				let sock_guard = sock_mutex.lock();
 				let _sock = sock_guard.get_mut();
 
@@ -651,11 +651,11 @@ impl File {
 		// If the file is a pipe, update the number of ends
 		match self.content {
 			FileContent::Fifo => {
-				let fcache_mutex = fcache::get();
-				let fcache_guard = fcache_mutex.lock();
-				let fcache = fcache_guard.get_mut().as_mut().unwrap();
+				let vfs_mutex = vfs::get();
+				let vfs_guard = vfs_mutex.lock();
+				let vfs = vfs_guard.get_mut().as_mut().unwrap();
 
-				let pipe_mutex = fcache.get_named_fifo(self.get_location())?;
+				let pipe_mutex = vfs.get_named_fifo(self.get_location())?;
 				let pipe_guard = pipe_mutex.lock();
 				let pipe = pipe_guard.get_mut();
 
@@ -676,12 +676,12 @@ impl File {
 		// If the file is a pipe, update the number of ends
 		match self.content {
 			FileContent::Fifo => {
-				let fcache_mutex = fcache::get();
-				let fcache_guard = fcache_mutex.lock();
-				let fcache = fcache_guard.get_mut().as_mut().unwrap();
+				let vfs_mutex = vfs::get();
+				let vfs_guard = vfs_mutex.lock();
+				let vfs = vfs_guard.get_mut().as_mut().unwrap();
 
 				// `unwrap` shouldn't fail since the pipe is supposed to already be allocated
-				let pipe_mutex = fcache.get_named_fifo(self.get_location()).unwrap();
+				let pipe_mutex = vfs.get_named_fifo(self.get_location()).unwrap();
 				let pipe_guard = pipe_mutex.lock();
 				let pipe = pipe_guard.get_mut();
 
@@ -748,22 +748,22 @@ impl IO for File {
 			FileContent::Link(_) => Err(errno!(EINVAL)),
 
 			FileContent::Fifo => {
-				let fcache_mutex = fcache::get();
-				let fcache_guard = fcache_mutex.lock();
-				let fcache = fcache_guard.get_mut().as_mut().unwrap();
+				let vfs_mutex = vfs::get();
+				let vfs_guard = vfs_mutex.lock();
+				let vfs = vfs_guard.get_mut().as_mut().unwrap();
 
-				let pipe_mutex = fcache.get_named_fifo(self.get_location())?;
+				let pipe_mutex = vfs.get_named_fifo(self.get_location())?;
 				let pipe_guard = pipe_mutex.lock();
 				let pipe = pipe_guard.get_mut();
 				pipe.read(off as _, buff)
 			}
 
 			FileContent::Socket => {
-				let fcache_mutex = fcache::get();
-				let fcache_guard = fcache_mutex.lock();
-				let fcache = fcache_guard.get_mut().as_mut().unwrap();
+				let vfs_mutex = vfs::get();
+				let vfs_guard = vfs_mutex.lock();
+				let vfs = vfs_guard.get_mut().as_mut().unwrap();
 
-				let sock_mutex = fcache.get_named_socket(self.get_location())?;
+				let sock_mutex = vfs.get_named_socket(self.get_location())?;
 				let sock_guard = sock_mutex.lock();
 				let _sock = sock_guard.get_mut();
 
@@ -822,22 +822,22 @@ impl IO for File {
 			FileContent::Link(_) => Err(errno!(EINVAL)),
 
 			FileContent::Fifo => {
-				let fcache_mutex = fcache::get();
-				let fcache_guard = fcache_mutex.lock();
-				let fcache = fcache_guard.get_mut().as_mut().unwrap();
+				let vfs_mutex = vfs::get();
+				let vfs_guard = vfs_mutex.lock();
+				let vfs = vfs_guard.get_mut().as_mut().unwrap();
 
-				let pipe_mutex = fcache.get_named_fifo(self.get_location())?;
+				let pipe_mutex = vfs.get_named_fifo(self.get_location())?;
 				let pipe_guard = pipe_mutex.lock();
 				let pipe = pipe_guard.get_mut();
 				pipe.write(off as _, buff)
 			}
 
 			FileContent::Socket => {
-				let fcache_mutex = fcache::get();
-				let fcache_guard = fcache_mutex.lock();
-				let fcache = fcache_guard.get_mut().as_mut().unwrap();
+				let vfs_mutex = vfs::get();
+				let vfs_guard = vfs_mutex.lock();
+				let vfs = vfs_guard.get_mut().as_mut().unwrap();
 
-				let sock_mutex = fcache.get_named_socket(self.get_location())?;
+				let sock_mutex = vfs.get_named_socket(self.get_location())?;
 				let sock_guard = sock_mutex.lock();
 				let _sock = sock_guard.get_mut();
 
@@ -894,22 +894,22 @@ impl IO for File {
 			FileContent::Link(_) => Err(errno!(EINVAL)),
 
 			FileContent::Fifo => {
-				let fcache_mutex = fcache::get();
-				let fcache_guard = fcache_mutex.lock();
-				let fcache = fcache_guard.get_mut().as_mut().unwrap();
+				let vfs_mutex = vfs::get();
+				let vfs_guard = vfs_mutex.lock();
+				let vfs = vfs_guard.get_mut().as_mut().unwrap();
 
-				let pipe_mutex = fcache.get_named_fifo(self.get_location())?;
+				let pipe_mutex = vfs.get_named_fifo(self.get_location())?;
 				let pipe_guard = pipe_mutex.lock();
 				let pipe = pipe_guard.get_mut();
 				pipe.poll(mask)
 			}
 
 			FileContent::Socket => {
-				let fcache_mutex = fcache::get();
-				let fcache_guard = fcache_mutex.lock();
-				let fcache = fcache_guard.get_mut().as_mut().unwrap();
+				let vfs_mutex = vfs::get();
+				let vfs_guard = vfs_mutex.lock();
+				let vfs = vfs_guard.get_mut().as_mut().unwrap();
 
-				let sock_mutex = fcache.get_named_socket(self.get_location())?;
+				let sock_mutex = vfs.get_named_socket(self.get_location())?;
 				let sock_guard = sock_mutex.lock();
 				let _sock = sock_guard.get_mut();
 
@@ -955,10 +955,10 @@ pub fn init(root_device_type: DeviceType, root_major: u32, root_minor: u32) -> R
 	};
 	mountpoint::create(mount_source, None, 0, Path::root())?;
 
-	// Creating the files cache
-	let cache = FCache::new()?;
-	let guard = fcache::get().lock();
-	*guard.get_mut() = Some(cache);
+	// Initializing the VFS
+	let vfs = VFS::new()?;
+	let guard = vfs::get().lock();
+	*guard.get_mut() = Some(vfs);
 
 	Ok(())
 }

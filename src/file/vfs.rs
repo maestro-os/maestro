@@ -1,4 +1,6 @@
-//! The files cache stores files in memory to avoid accessing the disk each times.
+//! The VFS (Virtual FileSystem) is a entity which aggregates every mounted filesystems into one.
+//! To manipulate files, the VFS should be used instead of calling the filesystems' functions
+//! directly.
 
 use crate::errno::Errno;
 use crate::errno;
@@ -31,9 +33,10 @@ fn update_location(file: &mut File, mountpoint: &MountPoint) {
 	file.get_location_mut().mountpoint_id = Some(mountpoint.get_id());
 }
 
-/// Cache storing files in memory. This cache allows to speedup accesses to the disk. It is
-/// synchronized with the disk when necessary.
-pub struct FCache {
+/// The Virtual FileSystem.
+/// This structure acts as an aggregator of every mounted filesystems, but also as a cache to
+/// speedup file accesses.
+pub struct VFS {
 	/// The pool of cached files.
 	pool: Vec<SharedPtr<File>>,
 	/// The list of free slots in the pool.
@@ -50,7 +53,7 @@ pub struct FCache {
 	named_sockets: HashMap<FileLocation, SharedPtr<Socket>>,
 }
 
-impl FCache {
+impl VFS {
 	/// Creates a new instance.
 	pub fn new() -> Result<Self, Errno> {
 		Ok(Self {
@@ -506,11 +509,12 @@ impl FCache {
 	}
 }
 
-/// The instance of the file cache.
-static FILES_CACHE: IntMutex<Option<FCache>> = IntMutex::new(None);
+/// The instance of the VFS.
+static VFS: IntMutex<Option<VFS>> = IntMutex::new(None);
 
-/// Returns a mutable reference to the file cache.
-/// If the cache is not initialized, the Option is None.
-pub fn get() -> &'static IntMutex<Option<FCache>> {
-	&FILES_CACHE
+/// Returns a mutable reference to the VFS.
+/// If the cache is not initialized, the Option is None. If the function is called from a module,
+/// the VFS can be assumed to be initialized.
+pub fn get() -> &'static IntMutex<Option<VFS>> {
+	&VFS
 }

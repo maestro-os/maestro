@@ -1,23 +1,23 @@
 //! The open system call allows a process to open a file and get a file descriptor.
 
-use crate::errno;
 use crate::errno::Errno;
-use crate::file;
-use crate::file::fcache;
-use crate::file::open_file;
-use crate::file::open_file::FDTarget;
-use crate::file::path::Path;
+use crate::errno;
 use crate::file::File;
 use crate::file::FileContent;
 use crate::file::FileType;
 use crate::file::Gid;
 use crate::file::Mode;
 use crate::file::Uid;
+use crate::file::open_file::FDTarget;
+use crate::file::open_file;
+use crate::file::path::Path;
+use crate::file::vfs;
+use crate::file;
+use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::regs::Regs;
-use crate::process::Process;
-use crate::util::ptr::SharedPtr;
 use crate::util::FailableClone;
+use crate::util::ptr::SharedPtr;
 
 /// Mask of status flags to be kept by an open file description.
 pub const STATUS_FLAGS_MASK: i32 = !(open_file::O_CLOEXEC
@@ -45,9 +45,9 @@ fn get_file(
 	// Tells whether to follow symbolic links on the last component of the path.
 	let follow_links = flags & open_file::O_NOFOLLOW == 0;
 
-	let mutex = fcache::get();
+	let mutex = vfs::get();
 	let guard = mutex.lock();
-	let files_cache = guard.get_mut().as_mut().unwrap();
+	let vfs = guard.get_mut().as_mut().unwrap();
 
 	if flags & open_file::O_CREAT != 0 {
 		// Getting the path of the parent directory
@@ -56,11 +56,11 @@ fn get_file(
 		let name = parent_path.pop().ok_or_else(|| errno!(ENOENT))?;
 
 		// The parent directory
-		let parent_mutex = files_cache.get_file_from_path(&parent_path, uid, gid, true)?;
+		let parent_mutex = vfs.get_file_from_path(&parent_path, uid, gid, true)?;
 		let parent_guard = parent_mutex.lock();
 		let parent = parent_guard.get_mut();
 
-		let file_result = files_cache.get_file_from_parent(
+		let file_result = vfs.get_file_from_parent(
 			parent,
 			name.failable_clone()?,
 			uid,
@@ -73,14 +73,14 @@ fn get_file(
 
 			Err(e) if e.as_int() == errno::ENOENT => {
 				// Creating the file
-				files_cache.create_file(parent, name, uid, gid, mode, FileContent::Regular)
+				vfs.create_file(parent, name, uid, gid, mode, FileContent::Regular)
 			}
 
 			Err(e) => Err(e),
 		}
 	} else {
 		// The file is the root directory
-		files_cache.get_file_from_path(&path, uid, gid, follow_links)
+		vfs.get_file_from_path(&path, uid, gid, follow_links)
 	}
 }
 

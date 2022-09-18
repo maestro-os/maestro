@@ -1,14 +1,14 @@
 //! The `statfs64` system call returns information about a mounted file system.
 
-use crate::errno;
 use crate::errno::Errno;
-use crate::file::fcache;
+use crate::errno;
 use crate::file::fs::Statfs;
 use crate::file::path::Path;
+use crate::file::vfs;
+use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::regs::Regs;
-use crate::process::Process;
 
 // TODO Streamline with `[f]statfs`
 
@@ -34,11 +34,11 @@ pub fn statfs64(regs: &Regs) -> Result<i32, Errno> {
 	};
 
 	let file_mutex = {
-		let mutex = fcache::get();
+		let mutex = vfs::get();
 		let guard = mutex.lock();
-		let files_cache = guard.get_mut().as_mut().unwrap();
+		let vfs = guard.get_mut().as_mut().unwrap();
 
-		files_cache.get_file_from_path(&path, uid, gid, true)?
+		vfs.get_file_from_path(&path, uid, gid, true)?
 	};
 	let file_guard = file_mutex.lock();
 	let file = file_guard.get_mut();

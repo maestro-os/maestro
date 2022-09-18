@@ -1,16 +1,16 @@
 //! The `readlink` syscall allows to read the target of a symbolic link.
 
+use core::cmp::min;
 use crate::errno::Errno;
-use crate::file::fcache;
-use crate::file::path::Path;
 use crate::file::FileContent;
+use crate::file::path::Path;
+use crate::file::vfs;
+use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallSlice;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::regs::Regs;
-use crate::process::Process;
-use crate::util;
 use crate::util::FailableClone;
-use core::cmp::min;
+use crate::util;
 
 /// The implementation of the `readlink` syscall.
 pub fn readlink(regs: &Regs) -> Result<i32, Errno> {
@@ -34,12 +34,12 @@ pub fn readlink(regs: &Regs) -> Result<i32, Errno> {
 
 	// Getting link's target
 	let target = {
-		let mutex = fcache::get();
+		let mutex = vfs::get();
 		let guard = mutex.lock();
-		let files_cache = guard.get_mut().as_mut().unwrap();
+		let vfs = guard.get_mut().as_mut().unwrap();
 
 		// Getting file
-		let file_mutex = files_cache.get_file_from_path(&path, uid, gid, false)?;
+		let file_mutex = vfs.get_file_from_path(&path, uid, gid, false)?;
 		let file_guard = file_mutex.lock();
 		let file = file_guard.get_mut();
 

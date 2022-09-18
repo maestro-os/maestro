@@ -4,7 +4,7 @@ use super::path::Path;
 use crate::device;
 use crate::device::DeviceType;
 use crate::errno::Errno;
-use crate::file::fcache;
+use crate::file::vfs;
 use crate::file::fs;
 use crate::file::fs::Filesystem;
 use crate::file::fs::FilesystemType;
@@ -77,11 +77,11 @@ impl MountSource {
 		let path = Path::from_str(string, true)?;
 		let path = cwd.concat(&path)?;
 		let result = {
-			let mutex = fcache::get();
+			let mutex = vfs::get();
 			let guard = mutex.lock();
-			let fcache = guard.get_mut().as_mut().unwrap();
+			let vfs = guard.get_mut().as_mut().unwrap();
 
-			fcache.get_file_from_path(&path, 0, 0, true)
+			vfs.get_file_from_path(&path, 0, 0, true)
 		};
 
 		match result {
@@ -106,11 +106,11 @@ impl MountSource {
 			}
 
 			Self::File(path) => {
-				let fcache_mutex = fcache::get();
-				let fcache_guard = fcache_mutex.lock();
-				let fcache = fcache_guard.get_mut().as_mut().unwrap();
+				let vfs_mutex = vfs::get();
+				let vfs_guard = vfs_mutex.lock();
+				let vfs = vfs_guard.get_mut().as_mut().unwrap();
 
-				let file = fcache.get_file_from_path(path, 0, 0, true)?;
+				let file = vfs.get_file_from_path(path, 0, 0, true)?;
 				Ok(file as _)
 			}
 

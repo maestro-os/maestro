@@ -1,15 +1,15 @@
 //! The mkdir system call allows to create a directory.
 
 use crate::errno::Errno;
-use crate::file;
-use crate::file::fcache;
-use crate::file::path::Path;
 use crate::file::FileContent;
+use crate::file::path::Path;
+use crate::file::vfs;
+use crate::file;
+use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::regs::Regs;
-use crate::process::Process;
-use crate::util::container::hashmap::HashMap;
 use crate::util::FailableClone;
+use crate::util::container::hashmap::HashMap;
 
 /// The implementation of the `mkdir` syscall.
 pub fn mkdir(regs: &Regs) -> Result<i32, Errno> {
@@ -43,16 +43,16 @@ pub fn mkdir(regs: &Regs) -> Result<i32, Errno> {
 	if let Some(name) = parent_path.pop() {
 		// Creating the directory
 		{
-			let mutex = fcache::get();
+			let mutex = vfs::get();
 			let guard = mutex.lock();
-			let files_cache = guard.get_mut().as_mut().unwrap();
+			let vfs = guard.get_mut().as_mut().unwrap();
 
 			// Getting parent directory
-			let parent_mutex = files_cache.get_file_from_path(&parent_path, uid, gid, true)?;
+			let parent_mutex = vfs.get_file_from_path(&parent_path, uid, gid, true)?;
 			let parent_guard = parent_mutex.lock();
 			let parent = parent_guard.get_mut();
 
-			files_cache.create_file(
+			vfs.create_file(
 				parent,
 				name,
 				uid,

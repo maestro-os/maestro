@@ -1,19 +1,19 @@
 //! The mount system call allows to mount a filesystem on the system.
 
-use crate::errno;
+use core::ffi::c_void;
 use crate::errno::Errno;
-use crate::file::fcache;
-use crate::file::fs;
-use crate::file::mountpoint;
-use crate::file::mountpoint::MountSource;
-use crate::file::path::Path;
+use crate::errno;
 use crate::file::FileType;
+use crate::file::fs;
+use crate::file::mountpoint::MountSource;
+use crate::file::mountpoint;
+use crate::file::path::Path;
+use crate::file::vfs;
+use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::regs::Regs;
-use crate::process::Process;
 use crate::util::FailableClone;
-use core::ffi::c_void;
 
 /// The implementation of the `mount` syscall.
 pub fn mount(regs: &Regs) -> Result<i32, Errno> {
@@ -48,10 +48,10 @@ pub fn mount(regs: &Regs) -> Result<i32, Errno> {
 		let target_path = Path::from_str(target_slice, true)?;
 		let target_path = super::util::get_absolute_path(proc, target_path)?;
 		let target_mutex = {
-			let guard = fcache::get().lock();
-			let fcache = guard.get_mut().as_mut().unwrap();
+			let guard = vfs::get().lock();
+			let vfs = guard.get_mut().as_mut().unwrap();
 
-			fcache.get_file_from_path(&target_path, proc.get_euid(), proc.get_egid(), true)?
+			vfs.get_file_from_path(&target_path, proc.get_euid(), proc.get_egid(), true)?
 		};
 		let target_guard = target_mutex.lock();
 		let target_file = target_guard.get();

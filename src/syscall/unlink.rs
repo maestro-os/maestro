@@ -2,11 +2,11 @@
 //! inode, the function also removes the inode.
 
 use crate::errno::Errno;
-use crate::file::fcache;
 use crate::file::path::Path;
+use crate::file::vfs;
+use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::regs::Regs;
-use crate::process::Process;
 
 /// The implementation of the `unlink` syscall.
 pub fn unlink(regs: &Regs) -> Result<i32, Errno> {
@@ -28,16 +28,16 @@ pub fn unlink(regs: &Regs) -> Result<i32, Errno> {
 
 	// Removing the file
 	{
-		let mutex = fcache::get();
+		let mutex = vfs::get();
 		let guard = mutex.lock();
-		let files_cache = guard.get_mut().as_mut().unwrap();
+		let vfs = guard.get_mut().as_mut().unwrap();
 
 		// Getting file
-		let file_mutex = files_cache.get_file_from_path(&path, uid, gid, true)?;
+		let file_mutex = vfs.get_file_from_path(&path, uid, gid, true)?;
 		let file_guard = file_mutex.lock();
 		let file = file_guard.get_mut();
 
-		files_cache.remove_file(file, uid, gid)?;
+		vfs.remove_file(file, uid, gid)?;
 	}
 
 	Ok(0)

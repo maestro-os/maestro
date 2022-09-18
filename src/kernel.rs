@@ -65,7 +65,7 @@ use core::ffi::c_void;
 use core::panic::PanicInfo;
 use core::ptr::null;
 use crate::errno::Errno;
-use crate::file::fcache;
+use crate::file::vfs;
 use crate::file::path::Path;
 use crate::memory::vmem::VMem;
 use crate::memory::vmem;
@@ -214,11 +214,11 @@ fn init(init_path: String) -> Result<(), Errno> {
 		}
 
 		let file = {
-			let fcache_mutex = fcache::get();
-			let fcache_guard = fcache_mutex.lock();
-			let fcache = fcache_guard.get_mut().as_mut().unwrap();
+			let vfs_mutex = vfs::get();
+			let vfs_guard = vfs_mutex.lock();
+			let vfs = vfs_guard.get_mut().as_mut().unwrap();
 
-			fcache.get_file_from_path(&path, 0, 0, true)?
+			vfs.get_file_from_path(&path, 0, 0, true)?
 		};
 		let file_guard = file.lock();
 

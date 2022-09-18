@@ -1,13 +1,13 @@
 //! This `linkat` syscall creates a new hard link to a file.
 
-use super::access;
 use crate::errno::Errno;
-use crate::file::fcache;
 use crate::file::FileType;
+use crate::file::vfs;
+use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::regs::Regs;
-use crate::process::Process;
 use crate::types::c_int;
+use super::access;
 
 /// The implementation of the `linkat` system call.
 pub fn linkat(regs: &Regs) -> Result<i32, Errno> {
@@ -55,10 +55,10 @@ pub fn linkat(regs: &Regs) -> Result<i32, Errno> {
 	let new_parent_guard = new_parent_mutex.lock();
 	let new_parent = new_parent_guard.get_mut();
 
-	let fcache_mutex = fcache::get();
-	let fcache_guard = fcache_mutex.lock();
-	let fcache = fcache_guard.get_mut().as_mut().unwrap();
+	let vfs_mutex = vfs::get();
+	let vfs_guard = vfs_mutex.lock();
+	let vfs = vfs_guard.get_mut().as_mut().unwrap();
 
-	fcache.create_link(old, new_parent, new_name, uid, gid)?;
+	vfs.create_link(old, new_parent, new_name, uid, gid)?;
 	Ok(0)
 }

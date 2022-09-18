@@ -2,7 +2,7 @@
 
 use crate::errno;
 use crate::errno::Errno;
-use crate::file::fcache;
+use crate::file::vfs;
 use crate::file::path::Path;
 use crate::file::FileType;
 use crate::process::mem_space::ptr::SyscallString;
@@ -30,11 +30,11 @@ pub fn chdir(regs: &Regs) -> Result<i32, Errno> {
 	};
 
 	{
-		let fcache_mutex = fcache::get();
-		let fcache_guard = fcache_mutex.lock();
-		let fcache = fcache_guard.get_mut();
+		let vfs_mutex = vfs::get();
+		let vfs_guard = vfs_mutex.lock();
+		let vfs = vfs_guard.get_mut();
 
-		let dir_mutex = fcache
+		let dir_mutex = vfs
 			.as_mut()
 			.unwrap()
 			.get_file_from_path(&new_cwd, uid, gid, true)?;

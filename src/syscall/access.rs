@@ -1,11 +1,11 @@
 //! The `access` system call allows to check access to a given file.
 
 use crate::errno::Errno;
-use crate::file::fcache;
 use crate::file::path::Path;
+use crate::file::vfs;
+use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::regs::Regs;
-use crate::process::Process;
 use crate::util::FailableClone;
 
 /// Special value, telling to take the path relative to the current working directory.
@@ -89,9 +89,9 @@ pub fn do_access(
 			}
 		}
 
-		let fcache_guard = fcache::get().lock();
-		let fcache = fcache_guard.get_mut().as_mut().unwrap();
-		fcache.get_file_from_path(&path, uid, gid, follow_symlinks)?
+		let vfs_guard = vfs::get().lock();
+		let vfs = vfs_guard.get_mut().as_mut().unwrap();
+		vfs.get_file_from_path(&path, uid, gid, follow_symlinks)?
 	};
 
 	{

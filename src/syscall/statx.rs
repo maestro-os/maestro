@@ -123,8 +123,8 @@ pub fn statx(regs: &Regs) -> Result<i32, Errno> {
 	// Getting the major and minor numbers of the device of the file's filesystem
 	let (stx_dev_major, stx_dev_minor) = {
 		if let Some(mountpoint_mutex) = file.get_location().get_mountpoint() {
-			// TODO Clean: This is a quick fix to avoid a deadlock because fcache is also using the
-			// mountpoint and locking fcache requires disabling interrupts
+			// TODO Clean: This is a quick fix to avoid a deadlock because vfs is also using the
+			// mountpoint and locking vfs requires disabling interrupts
 			crate::idt::wrap_disable_interrupts(|| {
 				let mountpoint_guard = mountpoint_mutex.lock();
 				let mountpoint = mountpoint_guard.get();
