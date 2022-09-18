@@ -2,29 +2,31 @@
 
 pub mod node;
 
-use crate::errno;
 use crate::errno::Errno;
-use crate::file::fs::kernfs::node::DummyKernFSNode;
-use crate::file::fs::Filesystem;
-use crate::file::fs::Statfs;
-use crate::file::path::Path;
+use crate::errno;
 use crate::file::DirEntry;
 use crate::file::File;
 use crate::file::FileContent;
 use crate::file::FileLocation;
+use crate::file::FileType;
 use crate::file::Gid;
 use crate::file::INode;
 use crate::file::Mode;
 use crate::file::Uid;
+use crate::file::fs::Filesystem;
+use crate::file::fs::Statfs;
+use crate::file::fs::kernfs::node::DummyKernFSNode;
+use crate::file::path::Path;
 use crate::memory;
 use crate::process::oom;
+use crate::util::FailableClone;
 use crate::util::boxed::Box;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::io::IO;
-use crate::util::FailableClone;
 use node::KernFSNode;
 
+// TODO Change to `1`
 /// The index of the root inode.
 pub const ROOT_INODE: INode = 0;
 
@@ -68,7 +70,38 @@ impl KernFS {
 	}
 
 	/// Sets the root node of the filesystem.
-	pub fn set_root(&mut self, root: Box<dyn KernFSNode>) -> Result<(), Errno> {
+	pub fn set_root(&mut self, mut root: Box<dyn KernFSNode>) -> Result<(), Errno> {
+		// Adding `.` and `..` entries if the new file is a directory
+		let mut content = root.get_content().into_owned()?;
+		match content {
+			FileContent::Directory(ref mut entries) => {
+				let name = String::from(b".")?;
+				if entries.get(&name).is_none() {
+					entries.insert(name, DirEntry {
+						inode: ROOT_INODE,
+						entry_type: FileType::Directory,
+					})?;
+
+					let new_cnt = root.get_hard_links_count() + 1;
+					root.set_hard_links_count(new_cnt);
+				}
+
+				let name = String::from(b"..")?;
+				if entries.get(&name).is_none() {
+					entries.insert(name, DirEntry {
+						inode: ROOT_INODE,
+						entry_type: FileType::Directory,
+					})?;
+
+					let new_cnt = root.get_hard_links_count() + 1;
+					root.set_hard_links_count(new_cnt);
+				}
+			},
+
+			_ => {}
+		}
+		root.set_content(content);
+
 		if self.nodes.is_empty() {
 			self.nodes.push(Some(root))?;
 		} else {
@@ -134,6 +167,7 @@ impl KernFS {
 		Ok(None)
 	}
 
+	// TODO Clean
 	/// TODO doc
 	pub fn add_file_inner<N: 'static + KernFSNode>(
 		&mut self,
@@ -148,24 +182,57 @@ impl KernFS {
 		let mode = node.get_mode();
 		let uid = node.get_uid();
 		let gid = node.get_gid();
-		let file_content = node.get_content().into_owned()?;
-
+		let mut file_content = node.get_content().into_owned()?;
 		let file_type = file_content.get_file_type();
 
 		// Checking the parent exists
 		self.get_node_mut(parent_inode)?;
 
 		let inode = self.add_node(Box::new(node)?)?;
+		let node = self.get_node_mut(parent_inode)?;
+
+		// Adding `.` and `..` entries if the new file is a directory
+		match file_content {
+			FileContent::Directory(ref mut entries) => {
+				let name = String::from(b".")?;
+				if entries.get(&name).is_none() {
+					entries.insert(name, DirEntry {
+						inode,
+						entry_type: FileType::Directory,
+					})?;
+
+					let new_cnt = node.get_hard_links_count() + 1;
+					node.set_hard_links_count(new_cnt);
+				}
+
+				let name = String::from(b"..")?;
+				if entries.get(&name).is_none() {
+					entries.insert(name, DirEntry {
+						inode: parent_inode,
+						entry_type: FileType::Directory,
+					})?;
+
+					let parent = self.get_node_mut(parent_inode).unwrap();
+					let new_cnt = parent.get_hard_links_count() + 1;
+					parent.set_hard_links_count(new_cnt);
+				}
+			},
+
+			_ => {}
+		}
+		let node = self.get_node_mut(parent_inode)?;
+		node.set_content(file_content);
+		file_content = node.get_content().into_owned()?;
 
 		// Adding entry to parent
 		let parent = self.get_node_mut(parent_inode).unwrap();
 		let mut parent_content = parent.get_content().into_owned()?;
-		let entries = match &mut parent_content {
-			FileContent::Directory(entries) => entries,
+		let parent_entries = match &mut parent_content {
+			FileContent::Directory(parent_entries) => parent_entries,
 			_ => return Err(errno!(ENOENT)),
 		};
 		oom::wrap(|| {
-			entries.insert(
+			parent_entries.insert(
 				name.failable_clone()?,
 				DirEntry {
 					inode,
