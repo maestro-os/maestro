@@ -61,7 +61,7 @@ impl IO for Stat {
 			return Ok((0, false));
 		}
 
-		let proc_mutex = Process::get_by_pid(self.pid).unwrap();
+		let proc_mutex = Process::get_by_pid(self.pid).ok_or_else(|| errno!(ENOENT))?;
 		let proc_guard = proc_mutex.lock();
 		let proc = proc_guard.get();
 

@@ -1,14 +1,15 @@
 //! This module implements the `exe` node, which is a link to the executable file of the process.
 
 use crate::errno::Errno;
-use crate::file::fs::kernfs::node::KernFSNode;
 use crate::file::FileContent;
 use crate::file::Gid;
 use crate::file::Mode;
 use crate::file::Uid;
+use crate::file::fs::kernfs::node::KernFSNode;
+use crate::process::Process;
 use crate::process::oom;
 use crate::process::pid::Pid;
-use crate::process::Process;
+use crate::util::container::string::String;
 use crate::util::io::IO;
 use crate::util::ptr::cow::Cow;
 
@@ -46,12 +47,15 @@ impl KernFSNode for Exe {
 	}
 
 	fn get_content<'a>(&'a self) -> Cow<'a, FileContent> {
-		let proc_mutex = Process::get_by_pid(self.pid).unwrap();
-		let proc_guard = proc_mutex.lock();
-		let proc = proc_guard.get();
+		if let Some(proc_mutex) = Process::get_by_pid(self.pid) {
+			let proc_guard = proc_mutex.lock();
+			let proc = proc_guard.get();
 
-		let s = oom::wrap(|| proc.get_exec_path().as_string());
-		Cow::from(FileContent::Link(s))
+			let s = oom::wrap(|| proc.get_exec_path().as_string());
+			Cow::from(FileContent::Link(s))
+		} else {
+			Cow::from(FileContent::Link(String::new()))
+		}
 	}
 }
 
