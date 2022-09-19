@@ -80,20 +80,6 @@ fn get_wstatus(proc: &Process) -> i32 {
 	wstatus
 }
 
-/// Waits on the given process.
-/// `proc` is the current process.
-/// `wstatus` is a reference to the wait status.
-/// `rusage` is the pointer to the resource usage structure.
-/// `clear` tells whether the waitable status of the process should be cleared.
-fn wait_proc(proc: &mut Process, wstatus: &mut i32, rusage: &mut RUsage, clear: bool) {
-	*wstatus = get_wstatus(&proc);
-	*rusage = proc.get_rusage().clone();
-
-	if clear {
-		proc.clear_waitable();
-	}
-}
-
 /// Checks if at least one process corresponding to the given constraint is waitable. If yes, the
 /// function clears its waitable state, sets the wstatus and returns the process's PID.
 /// `curr_proc` is the current process.
@@ -118,27 +104,30 @@ fn check_waitable(
 			let p_guard = p.lock();
 			let p = p_guard.get_mut();
 
-			// Stopped implies WUNTRACED (ignoring stopped processes if not enabled)
-			let stop_check = !matches!(p.get_state(), State::Stopped)
-				|| options & WUNTRACED != 0;
-			// Zombie implies WEXITED (ignoring terminated processes if not enabled)
-			let exit_check = !matches!(p.get_state(), State::Zombie)
-				|| options & WEXITED != 0;
-			// Running implies WCONTINUED (ignoring continued processes if not enabled)
-			let continue_check = !matches!(p.get_state(), State::Running | State::Sleeping(..))
-				|| options & WCONTINUED != 0;
+			let stopped = matches!(p.get_state(), State::Stopped);
+			let zombie = matches!(p.get_state(), State::Zombie);
+			let running = matches!(p.get_state(), State::Running | State::Sleeping(..));
+
+			let stop_check = stopped && options & WUNTRACED != 0;
+			let exit_check = zombie && options & WEXITED != 0;
+			let continue_check = running && options & WCONTINUED != 0;
 
 			// If waitable, return
 			if p.is_waitable() && (stop_check || exit_check || continue_check) {
+				*wstatus = get_wstatus(&p);
+				*rusage = p.get_rusage().clone();
+
 				let clear_waitable = options & WNOWAIT == 0;
-				wait_proc(p, wstatus, rusage, clear_waitable);
+				if clear_waitable {
+					p.clear_waitable();
 
-				// If the process was a zombie, remove it
-				if matches!(p.get_state(), State::Zombie) {
-					drop(p_guard);
+					// If the process was a zombie, remove it
+					if exit_check {
+						drop(p_guard);
 
-					curr_proc.remove_child(pid);
-					scheduler.remove_process(pid);
+						curr_proc.remove_child(pid);
+						scheduler.remove_process(pid);
+					}
 				}
 
 				return Ok(Some(pid));
@@ -147,12 +136,13 @@ fn check_waitable(
 
 		i += 1;
 	}
+
 	if i == 0 {
 		// No target
 		return Err(errno!(ECHILD));
+	} else {
+		Ok(None)
 	}
-
-	Ok(None)
 }
 
 /// Executes the `waitpid` system call.
