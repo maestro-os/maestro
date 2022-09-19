@@ -365,7 +365,9 @@ impl File {
 	/// Returns the absolute path of the file.
 	pub fn get_path(&self) -> Result<Path, Errno> {
 		let mut parent_path = self.parent_path.failable_clone()?;
-		parent_path.push(self.name.failable_clone()?)?;
+		if !self.name.is_empty() {
+			parent_path.push(self.name.failable_clone()?)?;
+		}
 
 		Ok(parent_path)
 	}
