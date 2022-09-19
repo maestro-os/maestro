@@ -196,10 +196,13 @@ impl KernFS {
 			FileContent::Directory(ref mut entries) => {
 				let name = String::from(b".")?;
 				if entries.get(&name).is_none() {
-					entries.insert(name, DirEntry {
-						inode,
-						entry_type: FileType::Directory,
-					})?;
+					entries.insert(
+						name,
+						DirEntry {
+							inode,
+							entry_type: FileType::Directory,
+						}
+					)?;
 
 					let new_cnt = node.get_hard_links_count() + 1;
 					node.set_hard_links_count(new_cnt);
@@ -207,10 +210,13 @@ impl KernFS {
 
 				let name = String::from(b"..")?;
 				if entries.get(&name).is_none() {
-					entries.insert(name, DirEntry {
-						inode: parent_inode,
-						entry_type: FileType::Directory,
-					})?;
+					entries.insert(
+						name,
+						DirEntry {
+							inode: parent_inode,
+							entry_type: FileType::Directory,
+						}
+					)?;
 
 					let parent = self.get_node_mut(parent_inode).unwrap();
 					let new_cnt = parent.get_hard_links_count() + 1;
@@ -220,7 +226,7 @@ impl KernFS {
 
 			_ => {}
 		}
-		let node = self.get_node_mut(parent_inode)?;
+		let node = self.get_node_mut(inode)?;
 		node.set_content(file_content);
 		file_content = node.get_content().into_owned()?;
 
