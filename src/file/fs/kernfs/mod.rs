@@ -189,7 +189,6 @@ impl KernFS {
 		self.get_node_mut(parent_inode)?;
 
 		let inode = self.add_node(Box::new(node)?)?;
-		let node = self.get_node_mut(parent_inode)?;
 
 		// Adding `.` and `..` entries if the new file is a directory
 		match file_content {
@@ -204,6 +203,7 @@ impl KernFS {
 						}
 					)?;
 
+					let node = self.get_node_mut(inode)?;
 					let new_cnt = node.get_hard_links_count() + 1;
 					node.set_hard_links_count(new_cnt);
 				}
@@ -430,20 +430,21 @@ impl Filesystem for KernFS {
 			_ => return Err(errno!(ENOTDIR)),
 		};
 
-		let node = self.get_node_mut(inode)?;
+		let node = self.get_node(inode)?;
 		match node.get_content().as_ref() {
-			FileContent::Directory(entries) if !entries.is_empty() => {
-				return Err(errno!(ENOTEMPTY))
+			FileContent::Directory(entries) => {
+				if entries.len() > 2 {
+					return Err(errno!(ENOTEMPTY));
+				}
+
+				for (e, _) in entries.iter() {
+					if e != "." && e != ".." {
+						return Err(errno!(ENOTEMPTY));
+					}
+				}
 			}
 
 			_ => {}
-		}
-
-		// If no link is left, remove the node
-		let links = node.get_hard_links_count() - 1;
-		node.set_hard_links_count(links);
-		if node.get_hard_links_count() <= 0 {
-			oom::wrap(|| self.remove_node(inode));
 		}
 
 		// Removing directory entry
@@ -454,6 +455,25 @@ impl Filesystem for KernFS {
 			_ => unreachable!(),
 		};
 		parent.set_content(content);
+
+		let node = self.get_node(inode)?;
+		let is_dir = matches!(node.get_content().as_ref(), FileContent::Directory(_));
+
+		// If the node is a directory, decrement the number of hard links in the parent
+		// (entry `..`)
+		if is_dir {
+			let parent = self.get_node_mut(parent_inode).unwrap();
+			let links = parent.get_hard_links_count() - 1;
+			parent.set_hard_links_count(links);
+		}
+
+		// If no link is left, remove the node
+		let node = self.get_node_mut(inode)?;
+		let links = node.get_hard_links_count() - 1;
+		node.set_hard_links_count(links);
+		if node.get_hard_links_count() <= 0 {
+			oom::wrap(|| self.remove_node(inode));
+		}
 
 		Ok(())
 	}
