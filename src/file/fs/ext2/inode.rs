@@ -266,8 +266,8 @@ impl Ext2INode {
 		let has_feature = superblock.write_required_features & super::WRITE_REQUIRED_64_BITS != 0;
 
 		if has_version && has_feature {
-			self.size_high = ((size >> 32) & 0xffff) as u32;
-			self.size_low = (size & 0xffff) as u32;
+			self.size_high = ((size >> 32) & 0xffffffff) as u32;
+			self.size_low = (size & 0xffffffff) as u32;
 		} else {
 			self.size_low = size as u32;
 		}
@@ -429,6 +429,10 @@ impl Ext2INode {
 
 				self.increment_used_sectors(blk_size);
 
+				// Zero-ing the newly allocated block
+				let blk_buff = malloc::Alloc::<u8>::new_default(blk_size as usize)?;
+				write_block(blk as _, superblock, io, blk_buff.as_slice())?;
+
 				write::<u32>(&blk, byte_off, io)?;
 				b = blk;
 			}
@@ -502,6 +506,10 @@ impl Ext2INode {
 			superblock.mark_block_used(io, begin)?;
 			superblock.write(io)?;
 			self.increment_used_sectors(blk_size);
+
+			// Zero-ing the newly allocated block
+			let blk_buff = malloc::Alloc::<u8>::new_default(blk_size as usize)?;
+			write_block(begin as _, superblock, io, blk_buff.as_slice())?;
 
 			self.indirections_alloc(level, begin, target, superblock, io)
 		}
