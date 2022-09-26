@@ -524,7 +524,6 @@ impl Superblock {
 				{
 					let blk = i * self.blocks_per_group + j;
 					if blk > 2 && blk < self.total_blocks {
-						crate::println!("free block: {}", blk); // TODO rm
 						return Ok(blk);
 					} else {
 						return Err(errno!(EUCLEAN));
@@ -542,7 +541,6 @@ impl Superblock {
 	/// `blk` is the block number.
 	/// If `blk` is zero, the function does nothing.
 	pub fn mark_block_used(&mut self, io: &mut dyn IO, blk: u32) -> Result<(), Errno> {
-		crate::println!("mark used: {}", blk); // TODO rm
 		if blk == 0 {
 			return Ok(());
 		}
@@ -568,7 +566,6 @@ impl Superblock {
 	/// `blk` is the block number.
 	/// If `blk` is zero, the function does nothing.
 	pub fn free_block(&mut self, io: &mut dyn IO, blk: u32) -> Result<(), Errno> {
-		crate::println!("mark free: {}", blk); // TODO rm
 		if blk == 0 {
 			return Ok(());
 		}
