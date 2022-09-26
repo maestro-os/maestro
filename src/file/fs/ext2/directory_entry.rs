@@ -61,7 +61,8 @@ impl DirectoryEntry {
 	/// `total_size` is the size of the entry, including the name.
 	/// `file_type` is the entry's type.
 	/// `name` is the entry's name.
-	/// If the total size is not large enough to hold the entry, the behaviour is undefined.
+	/// If the given `inode` is zero, the entry is free.
+	/// If the total size is not large enough to hold the entry, the function returns an error.
 	pub fn new(
 		superblock: &Superblock,
 		inode: u32,
@@ -69,8 +70,9 @@ impl DirectoryEntry {
 		file_type: FileType,
 		name: &[u8],
 	) -> Result<Box<Self>, Errno> {
-		debug_assert!(inode >= 1);
-		debug_assert!(total_size as usize >= 8 + name.len());
+		if (total_size as usize) < (8 + name.len()) {
+			return Err(errno!(EINVAL));
+		}
 
 		let mut entry = Self::new_free(total_size)?;
 		entry.inode = inode;
