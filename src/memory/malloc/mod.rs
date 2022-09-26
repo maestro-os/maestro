@@ -210,7 +210,9 @@ impl<T: Default> Alloc<T> {
 			Self::new_zero(size)?
 		};
 		for i in alloc.as_slice_mut().iter_mut() {
-			*i = T::default();
+			unsafe { // Safe because the pointer is in the range of the slice
+				ptr::write(i, T::default());
+			}
 		}
 
 		Ok(alloc)
@@ -246,7 +248,9 @@ impl<T: Clone> Alloc<T> {
 			Self::new_zero(size)?
 		};
 		for i in alloc.as_slice_mut().iter_mut() {
-			*i = val.clone();
+			unsafe { // Safe because the pointer is in the range of the slice
+				ptr::write(i, val.clone());
+			}
 		}
 
 		Ok(alloc)

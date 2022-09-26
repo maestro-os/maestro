@@ -160,14 +160,14 @@ fn write<T>(obj: &T, offset: u64, io: &mut dyn IO) -> Result<(), Errno> {
 	Ok(())
 }
 
-/// Reads the `i`th block on the given device and writes the data onto the given buffer.
-/// `i` is the offset of the block on the device.
+/// Reads the `off`th block on the given device and writes the data onto the given buffer.
+/// `off` is the offset of the block on the device.
 /// `superblock` is the filesystem's superblock.
 /// `io` is the I/O interface of the device.
 /// `buff` is the buffer to write the data on.
 /// If the block is outside of the storage's bounds, the function returns a error.
 fn read_block<T>(
-	i: u64,
+	off: u64,
 	superblock: &Superblock,
 	io: &mut dyn IO,
 	buff: &mut [T],
@@ -176,19 +176,19 @@ fn read_block<T>(
 	let buffer = unsafe {
 		slice::from_raw_parts_mut(buff.as_mut_ptr() as *mut u8, size_of::<T>() * buff.len())
 	};
-	io.read(i * blk_size, buffer)?;
+	io.read(off * blk_size, buffer)?;
 
 	Ok(())
 }
 
-/// Writes the `i`th block on the given device, reading the data onto the given buffer.
-/// `i` is the offset of the block on the device.
+/// Writes the `off`th block on the given device, reading the data onto the given buffer.
+/// `off` is the offset of the block on the device.
 /// `superblock` is the filesystem's superblock.
 /// `io` is the I/O interface of the device.
 /// `buff` is the buffer to read from.
 /// If the block is outside of the storage's bounds, the function returns a error.
 fn write_block<T>(
-	i: u64,
+	off: u64,
 	superblock: &Superblock,
 	io: &mut dyn IO,
 	buff: &[T],
@@ -196,7 +196,28 @@ fn write_block<T>(
 	let blk_size = superblock.get_block_size() as u64;
 	let buffer =
 		unsafe { slice::from_raw_parts(buff.as_ptr() as *const u8, size_of::<T>() * buff.len()) };
-	io.write(i * blk_size, buffer)?;
+	io.write(off * blk_size, buffer)?;
+
+	Ok(())
+}
+
+/// Zeros the given set of `count` blocks, starting at offset `off`.
+/// `off` is the offset of the block on the device.
+/// `count` is the number of blocks to zero.
+/// `superblock` is the filesystem's superblock.
+/// `io` is the I/O interface of the device.
+/// If a block is outside of the storage's bounds, the function returns a error.
+fn zero_blocks(
+	off: u64,
+	count: u64,
+	superblock: &Superblock,
+	io: &mut dyn IO
+) -> Result<(), Errno> {
+	let blk_size = superblock.get_block_size() as u64;
+	let blk_buff = malloc::Alloc::<u8>::new_default(blk_size as usize)?;
+	for i in off..(off + count) {
+		io.write(i * blk_size, blk_buff.as_slice())?;
+	}
 
 	Ok(())
 }
@@ -440,20 +461,22 @@ impl Superblock {
 		inode: u32,
 		directory: bool,
 	) -> Result<(), Errno> {
-		if inode > 0 {
-			let group = (inode - 1) / self.inodes_per_group;
-			let mut bgd = BlockGroupDescriptor::read(group, self, io)?;
-			bgd.unallocated_inodes_number -= 1;
-			if directory {
-				bgd.directories_number += 1;
-			}
-			self.total_unallocated_inodes -= 1;
-
-			let bitfield_index = (inode - 1) % self.inodes_per_group;
-			self.set_bitmap(io, bgd.inode_usage_bitmap_addr, bitfield_index, true)?;
-
-			bgd.write(group, self, io)?;
+		if inode == 0 {
+			return Ok(());
 		}
+
+		let group = (inode - 1) / self.inodes_per_group;
+		let mut bgd = BlockGroupDescriptor::read(group, self, io)?;
+		bgd.unallocated_inodes_number -= 1;
+		if directory {
+			bgd.directories_number += 1;
+		}
+		self.total_unallocated_inodes -= 1;
+
+		let bitfield_index = (inode - 1) % self.inodes_per_group;
+		self.set_bitmap(io, bgd.inode_usage_bitmap_addr, bitfield_index, true)?;
+
+		bgd.write(group, self, io)?;
 
 		Ok(())
 	}
@@ -470,20 +493,22 @@ impl Superblock {
 		inode: u32,
 		directory: bool,
 	) -> Result<(), Errno> {
-		if inode > 0 {
-			let group = (inode - 1) / self.inodes_per_group;
-			let mut bgd = BlockGroupDescriptor::read(group, self, io)?;
-			bgd.unallocated_inodes_number += 1;
-			if directory {
-				bgd.directories_number -= 1;
-			}
-			self.total_unallocated_inodes += 1;
-
-			let bitfield_index = (inode - 1) % self.inodes_per_group;
-			self.set_bitmap(io, bgd.inode_usage_bitmap_addr, bitfield_index, false)?;
-
-			bgd.write(group, self, io)?;
+		if inode == 0 {
+			return Ok(());
 		}
+
+		let group = (inode - 1) / self.inodes_per_group;
+		let mut bgd = BlockGroupDescriptor::read(group, self, io)?;
+		bgd.unallocated_inodes_number += 1;
+		if directory {
+			bgd.directories_number -= 1;
+		}
+		self.total_unallocated_inodes += 1;
+
+		let bitfield_index = (inode - 1) % self.inodes_per_group;
+		self.set_bitmap(io, bgd.inode_usage_bitmap_addr, bitfield_index, false)?;
+
+		bgd.write(group, self, io)?;
 
 		Ok(())
 	}
@@ -498,9 +523,12 @@ impl Superblock {
 					self.search_bitmap(io, bgd.block_usage_bitmap_addr, self.blocks_per_group)?
 				{
 					let blk = i * self.blocks_per_group + j;
-					debug_assert!((blk as u64) > 2);
+					if blk > 2 && blk < self.total_blocks {
+						return Ok(blk);
+					} else {
+						return Err(errno!(EUCLEAN));
+					}
 
-					return Ok(blk);
 				}
 			}
 		}
@@ -513,19 +541,22 @@ impl Superblock {
 	/// `blk` is the block number.
 	/// If `blk` is zero, the function does nothing.
 	pub fn mark_block_used(&mut self, io: &mut dyn IO, blk: u32) -> Result<(), Errno> {
-		if blk > 0 {
-			debug_assert!((blk as u64) > 2);
-
-			let group = blk / self.blocks_per_group;
-			let mut bgd = BlockGroupDescriptor::read(group, self, io)?;
-			bgd.unallocated_blocks_number -= 1;
-			self.total_unallocated_blocks -= 1;
-
-			let bitfield_index = blk % self.blocks_per_group;
-			self.set_bitmap(io, bgd.block_usage_bitmap_addr, bitfield_index, true)?;
-
-			bgd.write(group, self, io)?;
+		if blk == 0 {
+			return Ok(());
 		}
+		if blk <= 2 || blk >= self.total_blocks {
+			return Err(errno!(EUCLEAN));
+		}
+
+		let group = blk / self.blocks_per_group;
+		let mut bgd = BlockGroupDescriptor::read(group, self, io)?;
+		bgd.unallocated_blocks_number -= 1;
+		self.total_unallocated_blocks -= 1;
+
+		let bitfield_index = blk % self.blocks_per_group;
+		self.set_bitmap(io, bgd.block_usage_bitmap_addr, bitfield_index, true)?;
+
+		bgd.write(group, self, io)?;
 
 		Ok(())
 	}
@@ -535,17 +566,22 @@ impl Superblock {
 	/// `blk` is the block number.
 	/// If `blk` is zero, the function does nothing.
 	pub fn free_block(&mut self, io: &mut dyn IO, blk: u32) -> Result<(), Errno> {
-		if blk > 0 {
-			let group = blk / self.blocks_per_group;
-			let mut bgd = BlockGroupDescriptor::read(group, self, io)?;
-			bgd.unallocated_blocks_number += 1;
-			self.total_unallocated_blocks += 1;
-
-			let bitfield_index = blk % self.blocks_per_group;
-			self.set_bitmap(io, bgd.block_usage_bitmap_addr, bitfield_index, false)?;
-
-			bgd.write(group, self, io)?;
+		if blk == 0 {
+			return Ok(());
 		}
+		if blk <= 2 || blk >= self.total_blocks {
+			return Err(errno!(EUCLEAN));
+		}
+
+		let group = blk / self.blocks_per_group;
+		let mut bgd = BlockGroupDescriptor::read(group, self, io)?;
+		bgd.unallocated_blocks_number += 1;
+		self.total_unallocated_blocks += 1;
+
+		let bitfield_index = blk % self.blocks_per_group;
+		self.set_bitmap(io, bgd.block_usage_bitmap_addr, bitfield_index, false)?;
+
+		bgd.write(group, self, io)?;
 
 		Ok(())
 	}
@@ -579,7 +615,9 @@ impl Ext2Fs {
 		mountpath: Path,
 		readonly: bool,
 	) -> Result<Self, Errno> {
-		debug_assert!(superblock.is_valid());
+		if !superblock.is_valid() {
+			return Err(errno!(EINVAL));
+		}
 
 		// Checking the filesystem doesn't require features that are not implemented by the driver
 		if superblock.major_version >= 1 {
@@ -1032,8 +1070,9 @@ impl Filesystem for Ext2Fs {
 		if self.readonly {
 			return Err(errno!(EROFS));
 		}
-
-		debug_assert!(parent_inode >= 1);
+		if parent_inode < 1 {
+			return Err(errno!(EINVAL));
+		}
 
 		if name.as_bytes() == b"." || name.as_bytes() == b".." {
 			return Err(errno!(EINVAL));
@@ -1100,7 +1139,9 @@ impl Filesystem for Ext2Fs {
 		off: u64,
 		buf: &mut [u8],
 	) -> Result<(u64, bool), Errno> {
-		debug_assert!(inode >= 1);
+		if inode < 1 {
+			return Err(errno!(EINVAL));
+		}
 
 		let inode_ = Ext2INode::read(inode as _, &self.superblock, io)?;
 		inode_.read_content(off, buf, &self.superblock, io)
@@ -1116,8 +1157,9 @@ impl Filesystem for Ext2Fs {
 		if self.readonly {
 			return Err(errno!(EROFS));
 		}
-
-		debug_assert!(inode >= 1);
+		if inode < 1 {
+			return Err(errno!(EINVAL));
+		}
 
 		let mut inode_ = Ext2INode::read(inode as _, &self.superblock, io)?;
 		inode_.write_content(off, buf, &mut self.superblock, io)?;
