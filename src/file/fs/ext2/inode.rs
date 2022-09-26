@@ -838,21 +838,14 @@ impl Ext2INode {
 		read_block(begin as _, superblock, io, blk_buff.as_slice_mut())?;
 
 		// Free every entries recursively
-		for i in 0..entries_per_blk {
-			let b = blk_buff[i];
+		if n > 0 {
+			for i in 0..entries_per_blk {
+				let b = blk_buff[i];
 
-			// If the entry is not empty, free it
-			if b != 0 {
-				if b >= superblock.total_blocks {
-					return Err(errno!(EUCLEAN));
-				}
-
-				// If indirections remain, free entries recursively
-				if n > 0 {
+				// If the entry is not empty, free it
+				if b != 0 {
 					Self::indirect_free_all(b, n - 1, superblock, io)?;
 				}
-
-				superblock.free_block(io, b)?;
 			}
 		}
 
