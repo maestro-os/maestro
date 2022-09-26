@@ -1,0 +1,54 @@
+//! This module implements the network stack.
+
+pub mod ip;
+pub mod lo;
+
+use crate::errno::Errno;
+use crate::util::boxed::Box;
+use crate::util::container::vec::Vec;
+use crate::util::lock::Mutex;
+
+/// Type representing a Media Access Control (MAC) address.
+pub type MAC = [u8; 6];
+
+/// An enumeration of network address types.
+pub enum Address {
+	/// Internet Protocol version 4.
+	IPv4([u8; 4]),
+	/// Internet Protocol version 6.
+	IPv6([u8; 16]),
+}
+
+/// An address/subnet mask pair to be bound to an interface.
+pub struct BindAddress {
+	/// The bound address.
+	pub addr: Address,
+	/// Subnet mask/prefix length.
+	pub subnet_mask: u8,
+}
+
+/// Trait representing a network interface.
+pub trait Interface {
+	/// Returns the name of the interface.
+	fn get_name(&self) -> &[u8];
+
+	/// Tells whether the interface is UP.
+	fn is_up(&self) -> bool;
+
+	/// Returns the mac address of the interface.
+	fn get_mac(&self) -> &MAC;
+
+	/// Returns the list of addresses bound to the interface.
+	fn get_addresses(&self) -> &[BindAddress];
+
+	/// Reads data from the network interface and writes it into `buff`.
+	/// The function returns the number of bytes read.
+	fn read(&mut self, buff: &mut [u8]) -> Result<(u64, bool), Errno>;
+
+	/// Reads data from `buff` and writes it into the network interface.
+	/// The function returns the number of bytes written.
+	fn write(&mut self, buff: &[u8]) -> Result<u64, Errno>;
+}
+
+/// The current list of interfaces.
+static INTERFACES: Mutex<Vec<Box<dyn Interface>>> = Mutex::new(Vec::new());

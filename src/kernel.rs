@@ -46,6 +46,7 @@ pub mod logger;
 pub mod memory;
 pub mod module;
 pub mod multiboot;
+pub mod net;
 #[macro_use]
 pub mod panic;
 #[macro_use]
