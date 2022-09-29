@@ -19,6 +19,7 @@ const RX_BUFF_SIZE: usize = 4096;
 pub type MAC = [u8; 6];
 
 /// An enumeration of network address types.
+#[derive(Debug)]
 pub enum Address {
 	/// Internet Protocol version 4.
 	IPv4([u8; 4]),
@@ -27,6 +28,7 @@ pub enum Address {
 }
 
 /// An address/subnet mask pair to be bound to an interface.
+#[derive(Debug)]
 pub struct BindAddress {
 	/// The bound address.
 	pub addr: Address,

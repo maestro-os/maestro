@@ -196,7 +196,7 @@ impl Socket {
 			return Err(errno!(EINVAL));
 		}
 
-		let _sockaddr: SockAddr = match domain {
+		let sockaddr: SockAddr = match domain {
 			SockDomain::AfInet => unsafe {
 				util::reinterpret::<SockAddrIn>(sockaddr)
 			}.clone().into(),

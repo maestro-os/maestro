@@ -44,6 +44,7 @@ pub struct SockAddrIn6 {
 }
 
 /// A unified structure which contains data passed from userspace.
+#[derive(Debug)]
 pub struct SockAddr {
 	/// The port used by the socket.
 	pub port: u16,
