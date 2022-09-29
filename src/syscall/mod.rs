@@ -16,6 +16,7 @@ mod clock_gettime64;
 mod clock_gettime;
 mod clone;
 mod close;
+mod connect;
 mod creat;
 mod delete_module;
 mod dup2;
@@ -134,6 +135,7 @@ use clock_gettime64::clock_gettime64;
 use clock_gettime::clock_gettime;
 use clone::clone;
 use close::close;
+use connect::connect;
 use creat::creat;
 use delete_module::delete_module;
 use dup2::dup2;
@@ -954,7 +956,7 @@ fn get_syscall(id: u32) -> Option<Syscall> {
 			name: "socketpair",
 		}),
 		// TODO 0x169 => Some(Syscall { handler: &bind, name: "bind" }),
-		// TODO 0x16a => Some(Syscall { handler: &connect, name: "connect" }),
+		0x16a => Some(Syscall { handler: &connect, name: "connect" }),
 		// TODO 0x16b => Some(Syscall { handler: &listen, name: "listen" }),
 		// TODO 0x16c => Some(Syscall { handler: &accept4, name: "accept4" }),
 		// TODO 0x16d => Some(Syscall { handler: &getsockopt, name: "getsockopt" }),
