@@ -874,20 +874,14 @@ impl Ext2INode {
 
 		if self.singly_indirect_block_ptr != 0 {
 			Self::indirect_free_all(self.singly_indirect_block_ptr, 1, superblock, io)?;
-
-			superblock.free_block(io, self.singly_indirect_block_ptr)?;
 			self.singly_indirect_block_ptr = 0;
 		}
 		if self.doubly_indirect_block_ptr != 0 {
 			Self::indirect_free_all(self.doubly_indirect_block_ptr, 2, superblock, io)?;
-
-			superblock.free_block(io, self.doubly_indirect_block_ptr)?;
 			self.doubly_indirect_block_ptr = 0;
 		}
 		if self.triply_indirect_block_ptr != 0 {
 			Self::indirect_free_all(self.triply_indirect_block_ptr, 3, superblock, io)?;
-
-			superblock.free_block(io, self.triply_indirect_block_ptr)?;
 			self.triply_indirect_block_ptr = 0;
 		}
 
@@ -1313,7 +1307,7 @@ impl<'n, 's, 'i> Iterator for DirentIterator<'n, 's, 'i> {
 
 		// The total size of the entry
 		let total_size = entry.get_total_size() as usize;
-		if total_size == 0 {
+		if total_size < 8 {
 			return Some(Err(errno!(EUCLEAN)));
 		}
 

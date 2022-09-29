@@ -92,6 +92,7 @@ mod setuid32;
 mod setuid;
 mod signal;
 mod sigreturn;
+mod socket;
 mod socketpair;
 mod statfs64;
 mod statfs;
@@ -210,6 +211,7 @@ use setuid32::setuid32;
 use setuid::setuid;
 use signal::signal;
 use sigreturn::sigreturn;
+use socket::socket;
 use socketpair::socketpair;
 use statfs64::statfs64;
 use statfs::statfs;
@@ -946,7 +948,7 @@ fn get_syscall(id: u32) -> Option<Syscall> {
 		//	args: &[] }),
 		// TODO 0x165 => Some(Syscall { handler: &bpf, name: "bpf" }),
 		// TODO 0x166 => Some(Syscall { handler: &execveat, name: "execveat" }),
-		// TODO 0x167 => Some(Syscall { handler: &socket, name: "socket" }),
+		0x167 => Some(Syscall { handler: &socket, name: "socket" }),
 		0x168 => Some(Syscall {
 			handler: &socketpair,
 			name: "socketpair",
@@ -1129,7 +1131,7 @@ fn print_strace(regs: &Regs, result: Option<Result<i32, Errno>>) {
 #[no_mangle]
 pub extern "C" fn syscall_handler(regs: &mut Regs) {
 	// TODO Add switch to disable
-	//print_strace(regs, None);
+	print_strace(regs, None);
 
 	let id = regs.eax;
 	let result = match get_syscall(id) {
@@ -1151,7 +1153,7 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 	};
 
 	// TODO Add switch to disable
-	//print_strace(regs, Some(result));
+	print_strace(regs, Some(result));
 
 	regs.set_syscall_return(result);
 }

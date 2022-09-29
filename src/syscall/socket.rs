@@ -1,5 +1,4 @@
-//! The `socketpair` system call creates a pair of file descriptor to an unnamed socket which can
-//! be used for IPC (Inter-Process Communication).
+//! The `socket` system call allows to create a socket.
 
 use crate::errno::Errno;
 use crate::errno;
@@ -10,15 +9,13 @@ use crate::file::socket::SockType;
 use crate::file::socket::Socket;
 use crate::file::socket::SocketSide;
 use crate::process::Process;
-use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::regs::Regs;
 
-/// The implementation of the `socketpair` syscall.
-pub fn socketpair(regs: &Regs) -> Result<i32, Errno> {
+/// The implementation of the `socket` syscall.
+pub fn socket(regs: &Regs) -> Result<i32, Errno> {
 	let domain = regs.ebx as i32;
 	let type_ = regs.ecx as i32;
 	let protocol = regs.edx as i32;
-	let sv: SyscallPtr<[i32; 2]> = (regs.esi as usize).into();
 
 	let mutex = Process::get_current().unwrap();
 	let guard = mutex.lock();
@@ -27,10 +24,6 @@ pub fn socketpair(regs: &Regs) -> Result<i32, Errno> {
 	let uid = proc.get_euid();
 	let gid = proc.get_egid();
 
-	let mem_space = proc.get_mem_space().unwrap();
-	let mem_space_guard = mem_space.lock();
-	let sv_slice = sv.get_mut(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
-
 	let sock_domain = SockDomain::from(domain).ok_or_else(|| errno!(EAFNOSUPPORT))?;
 	let sock_type = SockType::from(type_).ok_or_else(|| errno!(EPROTONOSUPPORT))?;
 	if !sock_domain.can_use(uid, gid) || !sock_type.can_use(uid, gid) {
@@ -38,17 +31,10 @@ pub fn socketpair(regs: &Regs) -> Result<i32, Errno> {
 	}
 
 	let sock = Socket::new(sock_domain, sock_type, protocol)?;
-	let sock2 = sock.clone();
-	let fd0 = proc.create_fd(
+	let sock_fd = proc.create_fd(
 		open_file::O_RDWR,
 		FDTarget::Socket(SocketSide::new(sock, false)?),
 	)?;
-	let fd1 = proc.create_fd(
-		open_file::O_RDWR,
-		FDTarget::Socket(SocketSide::new(sock2, true)?),
-	)?;
 
-	sv_slice[0] = fd0.get_id() as _;
-	sv_slice[1] = fd1.get_id() as _;
-	Ok(0)
+	Ok(sock_fd.get_id() as _)
 }
