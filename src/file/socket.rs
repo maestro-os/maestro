@@ -1,17 +1,24 @@
 //! This file implements sockets.
 
 use core::ffi::c_void;
+use core::mem::size_of;
+use core::ptr;
 use crate::errno::Errno;
 use crate::file::Gid;
 use crate::file::ROOT_GID;
 use crate::file::ROOT_UID;
 use crate::file::Uid;
+use crate::net::sockaddr::SockAddr;
+use crate::net::sockaddr::SockAddrIn6;
+use crate::net::sockaddr::SockAddrIn;
 use crate::process::mem_space::MemSpace;
+use crate::types::c_short;
 use crate::util::container::ring_buffer::RingBuffer;
 use crate::util::container::vec::Vec;
 use crate::util::io::IO;
 use crate::util::ptr::IntSharedPtr;
 use crate::util::ptr::SharedPtr;
+use crate::util;
 
 // TODO Figure out the behaviour when opening socket file more than twice at a time
 
@@ -53,6 +60,16 @@ impl SockDomain {
 		match self {
 			Self::AfPacket => uid == ROOT_UID || gid == ROOT_GID,
 			_ => true,
+		}
+	}
+
+	/// Returns the size of the sockaddr structure for the domain.
+	pub fn get_sockaddr_len(&self) -> usize {
+		match self {
+			Self::AfInet => size_of::<SockAddrIn>(),
+			Self::AfInet6 => size_of::<SockAddrIn6>(),
+
+			_ => 0,
 		}
 	}
 }
@@ -104,6 +121,9 @@ pub struct Socket {
 	/// The socket's protocol.
 	protocol: i32,
 
+	/// Informations about the socket's destination.
+	sockaddr: Option<SockAddr>,
+
 	// TODO Handle network sockets
 	/// The buffer containing received data.
 	receive_buffer: RingBuffer<u8>,
@@ -124,6 +144,8 @@ impl Socket {
 			domain,
 			type_,
 			protocol,
+
+			sockaddr: None,
 
 			receive_buffer: RingBuffer::new(BUFFER_SIZE)?,
 			send_buffer: RingBuffer::new(BUFFER_SIZE)?,
@@ -148,6 +170,49 @@ impl Socket {
 	#[inline(always)]
 	pub fn get_protocol(&self) -> i32 {
 		self.protocol
+	}
+
+	/// Connects the socket with the address specified in the structure represented by `sockaddr`.
+	/// If the structure is invalid or if the connection cannot succeed, the function returns an
+	/// error.
+	pub fn connect(&mut self, sockaddr: &[u8]) -> Result<(), Errno> {
+		// Check whether the slice is large enough to hold the structure type
+		if sockaddr.len() < size_of::<c_short>() {
+			return Err(errno!(EINVAL));
+		}
+
+		// Getting the family
+		let mut sin_family: c_short = 0;
+		unsafe {
+			ptr::copy_nonoverlapping::<c_short>(
+				&sockaddr[0] as *const _ as *const _,
+				&mut sin_family,
+				1
+			);
+		}
+
+		let domain = SockDomain::from(sin_family as _).ok_or_else(|| errno!(EAFNOSUPPORT))?;
+		if sockaddr.len() < domain.get_sockaddr_len() {
+			return Err(errno!(EINVAL));
+		}
+
+		let _sockaddr: SockAddr = match domain {
+			SockDomain::AfInet => unsafe {
+				util::reinterpret::<SockAddrIn>(sockaddr)
+			}.clone().into(),
+
+			SockDomain::AfInet6 => unsafe {
+				util::reinterpret::<SockAddrIn6>(sockaddr)
+			}.clone().into(),
+
+			_ => return Err(errno!(EPROTOTYPE)),
+		};
+
+		self.sockaddr = Some(sockaddr);
+
+		// TODO Build network layers
+		// TODO Begin connection if necessary
+		todo!();
 	}
 }
 
@@ -178,6 +243,12 @@ impl SocketSide {
 		}
 
 		s
+	}
+
+	/// Returns the socket associated with the current side.
+	#[inline(always)]
+	pub fn get_socket(&self) -> SharedPtr<Socket> {
+		self.sock.clone()
 	}
 
 	/// Performs an ioctl operation on the socket.
