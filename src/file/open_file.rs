@@ -191,7 +191,7 @@ impl OpenFile {
 				let guard = file.lock();
 				let f = guard.get_mut();
 
-				match f.get_file_content() {
+				match f.get_content() {
 					FileContent::Regular => match request {
 						ioctl::FIONREAD => {
 							let mem_space_guard = mem_space.lock();
@@ -245,7 +245,7 @@ impl IO for OpenFile {
 				let guard = f.lock();
 				let file = guard.get_mut();
 
-				if matches!(file.get_file_content(), FileContent::Directory(_)) {
+				if matches!(file.get_content(), FileContent::Directory(_)) {
 					return Err(errno!(EISDIR));
 				}
 
@@ -284,7 +284,7 @@ impl IO for OpenFile {
 				let guard = f.lock();
 				let file = guard.get_mut();
 
-				if matches!(file.get_file_content(), FileContent::Directory(_)) {
+				if matches!(file.get_content(), FileContent::Directory(_)) {
 					return Err(errno!(EISDIR));
 				}
 

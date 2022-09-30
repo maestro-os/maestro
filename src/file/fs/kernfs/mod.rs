@@ -183,7 +183,7 @@ impl KernFS {
 		let uid = node.get_uid();
 		let gid = node.get_gid();
 		let mut file_content = node.get_content().into_owned()?;
-		let file_type = file_content.get_file_type();
+		let file_type = file_content.get_type();
 
 		// Checking the parent exists
 		self.get_node_mut(parent_inode)?;
@@ -368,7 +368,7 @@ impl Filesystem for KernFS {
 
 		// Insert the new entry
 		let parent = self.get_node_mut(parent_inode)?;
-		let entry_type = parent.get_content().as_ref().get_file_type();
+		let entry_type = parent.get_content().as_ref().get_type();
 		let mut parent_content = parent.get_content().into_owned()?;
 		match &mut parent_content {
 			FileContent::Directory(entries) => {

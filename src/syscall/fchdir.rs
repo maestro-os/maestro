@@ -42,7 +42,7 @@ pub fn fchdir(regs: &Regs) -> Result<i32, Errno> {
 			if !dir.can_read(uid, gid) {
 				return Err(errno!(EACCES));
 			}
-			if dir.get_file_type() != FileType::Directory {
+			if dir.get_type() != FileType::Directory {
 				return Err(errno!(ENOTDIR));
 			}
 

@@ -72,7 +72,7 @@ pub fn renameat2(regs: &Regs) -> Result<i32, Errno> {
 		// several locations is not allowed
 		vfs.create_link(old, new_parent, new_name, uid, gid)?;
 
-		if old.get_file_type() != FileType::Directory {
+		if old.get_type() != FileType::Directory {
 			vfs.remove_file(old, uid, gid)?;
 		}
 	} else {

@@ -67,7 +67,7 @@ pub fn getdents(regs: &Regs) -> Result<i32, Errno> {
 		};
 		let file_guard = file_mutex.lock();
 		let file = file_guard.get();
-		let entries = match file.get_file_content() {
+		let entries = match file.get_content() {
 			FileContent::Directory(entries) => entries,
 			_ => return Err(errno!(ENOTDIR)),
 		};

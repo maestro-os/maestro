@@ -875,7 +875,7 @@ impl Filesystem for Ext2Fs {
 		let mut file = File::new(name, uid, gid, mode, location, content)?;
 
 		let mut inode = Ext2INode {
-			mode: Ext2INode::get_file_mode(file.get_file_type(), mode),
+			mode: Ext2INode::get_file_mode(file.get_type(), mode),
 			uid,
 			size_low: 0,
 			ctime: file.get_ctime() as _,
@@ -898,7 +898,7 @@ impl Filesystem for Ext2Fs {
 			os_specific_1: [0; 12],
 		};
 
-		match file.get_file_content() {
+		match file.get_content() {
 			FileContent::Directory(_) => {
 				// Adding `.` and `..` entries
 				inode.add_dirent(
@@ -938,7 +938,7 @@ impl Filesystem for Ext2Fs {
 		}
 
 		inode.write(inode_index, &self.superblock, io)?;
-		let dir = file.get_file_type() == FileType::Directory;
+		let dir = file.get_type() == FileType::Directory;
 		self.superblock.mark_inode_used(io, inode_index, dir)?;
 		self.superblock.write(io)?;
 
@@ -947,7 +947,7 @@ impl Filesystem for Ext2Fs {
 			io,
 			inode_index,
 			file.get_name(),
-			file.get_file_type(),
+			file.get_type(),
 		)?;
 		parent.write(parent_inode as _, &self.superblock, io)?;
 

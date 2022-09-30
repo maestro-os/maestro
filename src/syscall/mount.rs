@@ -57,7 +57,7 @@ pub fn mount(regs: &Regs) -> Result<i32, Errno> {
 		let target_file = target_guard.get();
 
 		// Checking the target is a directory
-		if target_file.get_file_type() != FileType::Directory {
+		if target_file.get_type() != FileType::Directory {
 			return Err(errno!(ENOTDIR));
 		}
 

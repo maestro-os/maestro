@@ -252,7 +252,7 @@ pub fn do_fcntl(fd: i32, cmd: i32, arg: *mut c_void, _fcntl64: bool) -> Result<i
 					let guard = mutex.lock();
 					let file = guard.get();
 
-					match file.get_file_content() {
+					match file.get_content() {
 						FileContent::Fifo => {
 							// TODO
 							todo!();

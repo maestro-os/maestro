@@ -123,7 +123,7 @@ pub fn open_(pathname: SyscallString, flags: i32, mode: file::Mode) -> Result<i3
 		}
 
 		// If O_DIRECTORY is set and the file is not a directory, return an error
-		if flags & open_file::O_DIRECTORY != 0 && f.get_file_type() != FileType::Directory {
+		if flags & open_file::O_DIRECTORY != 0 && f.get_type() != FileType::Directory {
 			return Err(errno!(ENOTDIR));
 		}
 
