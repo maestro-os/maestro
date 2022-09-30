@@ -240,16 +240,17 @@ pub fn create_file_at(
 }
 
 /// Updates the execution flow of the current process according to its state.
+///
 /// When the state of the current process has been changed, execution may not resume. In which
 /// case, the current function handles the execcution flow accordingly.
-/// This function locks the mutex of the current process.
 ///
-/// `proc_guard` is the mutex guard of the current process.
+/// The functions locks the mutex of the current process. Thus, the caller must ensure the mutex
+/// isn't already locked to prevent a deadlock.
 ///
 /// If returning, the function returns the mutex lock of the current process.
-pub fn handle_proc_state(
-	proc_guard: MutexGuard<'_, Process, false>
-) -> MutexGuard<'_, Process, false> {
+pub fn handle_proc_state() {
+	let proc_mutex = Process::get_current().unwrap();
+	let proc_guard = proc_mutex.lock();
 	let proc = proc_guard.get_mut();
 
 	match proc.get_state() {
@@ -258,42 +259,44 @@ pub fn handle_proc_state(
 			if proc.is_handling_signal() {
 				let regs = proc.get_regs().clone();
 				drop(proc_guard);
+				drop(proc_mutex);
 
 				unsafe {
 					regs.switch(true);
 				}
-			} else {
-				proc_guard
 			}
 		}
 
 		// The process is sleeping or has been stopped. Waiting until wakeup
 		State::Sleeping(_) | State::Stopped => {
-			let mutex = proc_guard.get_mutex();
-
 			drop(proc_guard);
-			crate::wait();
+			drop(proc_mutex);
 
-			mutex.lock()
+			crate::wait();
 		}
 
 		// The process has been killed. Stopping execution and waiting for the next tick
 		State::Zombie => {
 			drop(proc_guard);
+			drop(proc_mutex);
+
 			crate::enter_loop();
 		}
 	}
 }
 
 /// Checks whether the current syscall must be interrupted to execute a signal.
+///
 /// If interrupted, the function doesn't return and the control flow jumps directly to handling the
 /// signal.
-/// `proc_guard` is the mutex guard of the current process.
+///
+/// The functions locks the mutex of the current process. Thus, the caller must ensure the mutex
+/// isn't already locked to prevent a deadlock.
+///
 /// `regs` is the registers state passed to the current syscall.
-pub fn signal_check<'a>(
-	proc_guard: MutexGuard<'a, Process, false>,
-	regs: &Regs,
-) -> MutexGuard<'a, Process, false> {
+pub fn signal_check(regs: &Regs) {
+	let proc_mutex = Process::get_current().unwrap();
+	let proc_guard = proc_mutex.lock();
 	let proc = proc_guard.get_mut();
 
 	if proc.get_next_signal().is_some() {
@@ -306,8 +309,10 @@ pub fn signal_check<'a>(
 
 		// Switching to handle the signal
 		proc.prepare_switch();
-		return handle_proc_state(proc_guard);
-	}
 
-	proc_guard
+		drop(proc_guard);
+		drop(proc_mutex);
+
+		handle_proc_state();
+	}
 }
