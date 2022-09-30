@@ -25,10 +25,11 @@ pub fn write(regs: &Regs) -> Result<i32, Errno> {
 	}
 
 	loop {
+		super::util::signal_check(regs);
+
 		let (mem_space, open_file_mutex) = {
 			let mutex = Process::get_current().unwrap();
 			let guard = mutex.lock();
-			let guard = super::util::signal_check(guard, regs);
 			let proc = guard.get_mut();
 
 			let mem_space = proc.get_mem_space().unwrap();

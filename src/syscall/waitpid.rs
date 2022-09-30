@@ -160,12 +160,13 @@ pub fn do_waitpid(
 ) -> Result<i32, Errno> {
 	// Sleeping until a target process is waitable
 	loop {
+		super::util::signal_check(regs);
+
 		cli!();
 
 		{
 			let mutex = Process::get_current().unwrap();
 			let guard = mutex.lock();
-			let guard = super::util::signal_check(guard, regs);
 			let proc = guard.get_mut();
 
 			// Check if at least one target process is waitable
