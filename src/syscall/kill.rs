@@ -159,8 +159,9 @@ pub fn kill(regs: &Regs) -> Result<i32, Errno> {
 			proc.signal_next();
 		}
 
-		util::handle_proc_state();
 	}
+
+	util::handle_proc_state();
 
 	Ok(0)
 }
