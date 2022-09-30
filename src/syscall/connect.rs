@@ -40,7 +40,7 @@ pub fn connect(regs: &Regs) -> Result<i32, Errno> {
 			let file_guard = file_mutex.lock();
 			let file = file_guard.get_mut();
 
-			match file.get_file_content() {
+			match file.get_content() {
 				FileContent::Socket => {
 					if !file.can_write(uid, gid) {
 						return Err(errno!(EACCES));
