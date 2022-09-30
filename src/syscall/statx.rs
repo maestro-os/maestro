@@ -113,7 +113,7 @@ pub fn statx(regs: &Regs) -> Result<i32, Errno> {
 	// TODO Use mask?
 
 	// If the file is a device, get the major and minor numbers
-	let (stx_rdev_major, stx_rdev_minor) = match file.get_file_content() {
+	let (stx_rdev_major, stx_rdev_minor) = match file.get_content() {
 		FileContent::BlockDevice { major, minor } | FileContent::CharDevice { major, minor } => {
 			(*major, *minor)
 		}

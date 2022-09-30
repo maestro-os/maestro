@@ -151,7 +151,7 @@ impl VFS {
 			// If this is not the last element, or if links are followed
 			if i < inner_path.get_elements_count() - 1 || follow_links {
 				// If symbolic link, resolve it
-				if let FileContent::Link(link_path) = file.get_file_content() {
+				if let FileContent::Link(link_path) = file.get_content() {
 					if follows_count > limits::SYMLOOP_MAX {
 						return Err(errno!(ELOOP));
 					}
@@ -226,7 +226,7 @@ impl VFS {
 		follow_links: bool,
 	) -> Result<SharedPtr<File>, Errno> {
 		// Checking for errors
-		if parent.get_file_type() != FileType::Directory {
+		if parent.get_type() != FileType::Directory {
 			return Err(errno!(ENOTDIR));
 		}
 		if !parent.can_execute(uid, gid) {
@@ -255,7 +255,7 @@ impl VFS {
 		let mut file = fs.load_file(io, inode, name)?;
 
 		if follow_links {
-			if let FileContent::Link(link_path) = file.get_file_content() {
+			if let FileContent::Link(link_path) = file.get_content() {
 				let link_path = Path::from_str(link_path.as_bytes(), false)?;
 				let new_path = parent.get_path()?.concat(&link_path)?;
 
@@ -297,7 +297,7 @@ impl VFS {
 		}
 
 		// Checking for errors
-		if parent.get_file_type() != FileType::Directory {
+		if parent.get_type() != FileType::Directory {
 			return Err(errno!(ENOTDIR));
 		}
 		if !parent.can_write(uid, gid) {
@@ -364,7 +364,7 @@ impl VFS {
 		gid: Gid,
 	) -> Result<(), Errno> {
 		// Checking the parent file is a directory
-		if parent.get_file_type() != FileType::Directory {
+		if parent.get_type() != FileType::Directory {
 			return Err(errno!(ENOTDIR));
 		}
 		if !parent.can_write(uid, gid) {
@@ -457,7 +457,7 @@ impl VFS {
 
 		if file.get_hard_links_count() > 1 {
 			// If the file is a named pipe or socket, remove its now unused buffer
-			match file.get_file_content() {
+			match file.get_content() {
 				FileContent::Fifo => {
 					self.named_pipes.remove(location);
 				}

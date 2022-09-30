@@ -233,7 +233,7 @@ pub enum FileContent {
 
 impl FileContent {
 	/// Returns the file type associated with the content type.
-	pub fn get_file_type(&self) -> FileType {
+	pub fn get_type(&self) -> FileType {
 		match self {
 			Self::Regular => FileType::Regular,
 			Self::Directory(_) => FileType::Directory,
@@ -379,13 +379,13 @@ impl File {
 	}
 
 	/// Returns the type of the file.
-	pub fn get_file_type(&self) -> FileType {
-		self.content.get_file_type()
+	pub fn get_type(&self) -> FileType {
+		self.content.get_type()
 	}
 
 	/// Returns the file's mode.
 	pub fn get_mode(&self) -> Mode {
-		self.mode | self.content.get_file_type().to_mode()
+		self.mode | self.content.get_type().to_mode()
 	}
 
 	/// Tells if the file can be read from by the given UID and GID.
@@ -580,17 +580,17 @@ impl File {
 	pub fn to_dir_entry(&self) -> DirEntry {
 		DirEntry {
 			inode: self.location.inode,
-			entry_type: self.get_file_type(),
+			entry_type: self.get_type(),
 		}
 	}
 
 	/// Returns the file's content.
-	pub fn get_file_content(&self) -> &FileContent {
+	pub fn get_content(&self) -> &FileContent {
 		&self.content
 	}
 
 	/// Sets the file's content, changing the file's type accordingly.
-	pub fn set_file_content(&mut self, content: FileContent) {
+	pub fn set_content(&mut self, content: FileContent) {
 		self.content = content;
 	}
 

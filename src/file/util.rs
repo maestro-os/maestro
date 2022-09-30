@@ -65,7 +65,7 @@ pub fn copy_file(
 	let uid = old.get_uid();
 	let gid = old.get_gid();
 	let mode = old.get_mode();
-	let content = old.get_file_content();
+	let content = old.get_content();
 
 	match content {
 		// Copy the file and its content
@@ -145,7 +145,7 @@ pub fn remove_recursive(
 	uid: Uid,
 	gid: Gid,
 ) -> Result<(), Errno> {
-	let content = file.get_file_content().failable_clone()?;
+	let content = file.get_content().failable_clone()?;
 
 	match content {
 		FileContent::Directory(entries) => {

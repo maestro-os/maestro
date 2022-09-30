@@ -43,7 +43,7 @@ pub fn readlink(regs: &Regs) -> Result<i32, Errno> {
 		let file_guard = file_mutex.lock();
 		let file = file_guard.get_mut();
 
-		match file.get_file_content() {
+		match file.get_content() {
 			FileContent::Link(target) => target.failable_clone()?,
 			_ => return Err(errno!(EINVAL)),
 		}

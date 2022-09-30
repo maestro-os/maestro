@@ -48,7 +48,7 @@ pub fn linkat(regs: &Regs) -> Result<i32, Errno> {
 	let old_guard = old_mutex.lock();
 	let old = old_guard.get_mut();
 
-	if old.get_file_type() == FileType::Directory {
+	if old.get_type() == FileType::Directory {
 		return Err(errno!(EISDIR));
 	}
 
