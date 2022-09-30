@@ -75,13 +75,8 @@ pub fn connect(regs: &Regs) -> Result<i32, Errno> {
 	// Waiting until the socket turns into Ready state
 	while !matches!(sock.get_state(), SockState::Ready) {
 		// Checking for pending signal
-		{
-			let mutex = Process::get_current().unwrap();
-			let guard = mutex.lock();
-			super::util::signal_check(guard, regs);
-
-			// NOTE: If the syscall resumes, it must not re-call the `connect` function
-		}
+		super::util::signal_check(regs);
+		// NOTE: If the syscall resumes, it must not re-call the `connect` function
 
 		// TODO Make the process sleep
 	}
