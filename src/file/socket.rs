@@ -238,7 +238,7 @@ impl Socket {
 		// Opening connection if necessary
 		match self.type_ {
 			SockType::SockStream => {
-				tcp::open_connection(self)?;
+				tcp::init_connection(self)?;
 				self.state = SockState::WaitingAck;
 			},
 
