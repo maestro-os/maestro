@@ -11,6 +11,7 @@ use crate::file::Uid;
 use crate::net::sockaddr::SockAddr;
 use crate::net::sockaddr::SockAddrIn6;
 use crate::net::sockaddr::SockAddrIn;
+use crate::net::tcp;
 use crate::process::mem_space::MemSpace;
 use crate::types::c_short;
 use crate::util::container::ring_buffer::RingBuffer;
@@ -111,6 +112,19 @@ impl SockType {
 	}
 }
 
+/// Enumeration of socket states.
+#[derive(Clone, Copy, Debug)]
+pub enum SockState {
+	/// The socket has just been created.
+	Created,
+	/// The socket is waiting for acknowledgement after issuing a connection.
+	WaitingAck,
+	/// The socket is ready for I/O.
+	Ready,
+
+	// TODO Closed state?
+}
+
 /// Structure representing a socket.
 #[derive(Debug)]
 pub struct Socket {
@@ -121,6 +135,8 @@ pub struct Socket {
 	/// The socket's protocol.
 	protocol: i32,
 
+	/// The state of the socket.
+	state: SockState,
 	/// Informations about the socket's destination.
 	sockaddr: Option<SockAddr>,
 
@@ -145,6 +161,7 @@ impl Socket {
 			type_,
 			protocol,
 
+			state: SockState::Created,
 			sockaddr: None,
 
 			receive_buffer: RingBuffer::new(BUFFER_SIZE)?,
@@ -172,9 +189,17 @@ impl Socket {
 		self.protocol
 	}
 
+	/// Returns the current state of the socket.
+	#[inline(always)]
+	pub fn get_state(&self) -> SockState {
+		self.state
+	}
+
 	/// Connects the socket with the address specified in the structure represented by `sockaddr`.
 	/// If the structure is invalid or if the connection cannot succeed, the function returns an
 	/// error.
+	/// If the function succeeds, the caller must wait until the state of the socket turns to
+	/// Ready.
 	pub fn connect(&mut self, sockaddr: &[u8]) -> Result<(), Errno> {
 		// Check whether the slice is large enough to hold the structure type
 		if sockaddr.len() < size_of::<c_short>() {
@@ -210,9 +235,22 @@ impl Socket {
 
 		self.sockaddr = Some(sockaddr);
 
-		// TODO Build network layers
-		// TODO Begin connection if necessary
-		todo!();
+		// Opening connection if necessary
+		match self.type_ {
+			SockType::SockStream => {
+				tcp::open_connection(self)?;
+				self.state = SockState::WaitingAck;
+			},
+
+			SockType::SockSeqpacket => {
+				// TODO
+				todo!();
+			},
+
+			_ => self.state = SockState::Ready,
+		}
+
+		Ok(())
 	}
 }
 

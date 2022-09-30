@@ -5,6 +5,7 @@ pub mod ip;
 pub mod lo;
 pub mod osi;
 pub mod sockaddr;
+pub mod tcp;
 
 use crate::errno::Errno;
 use crate::util::boxed::Box;
