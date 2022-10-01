@@ -65,8 +65,9 @@ use core::ffi::c_void;
 use core::panic::PanicInfo;
 use core::ptr::null;
 use crate::errno::Errno;
-use crate::file::vfs;
+use crate::file::fs::initramfs;
 use crate::file::path::Path;
+use crate::file::vfs;
 use crate::memory::vmem::VMem;
 use crate::memory::vmem;
 use crate::process::Process;
@@ -285,8 +286,10 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 	#[cfg(config_debug_test)]
 	kernel_selftest();
 
+	let boot_info = multiboot::get_boot_info();
+
 	// Parsing bootloader command line arguments
-	let cmdline = multiboot::get_boot_info().cmdline.unwrap_or(b"");
+	let cmdline = boot_info.cmdline.unwrap_or(b"");
 	let args_parser = cmdline::ArgsParser::parse(&cmdline);
 	if let Err(e) = args_parser {
 		e.print();
@@ -314,6 +317,11 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 	println!("Initializing files management...");
 	file::init(device::DeviceType::Block, root_major, root_minor)
 		.unwrap_or_else(|e| kernel_panic!("Failed to initialize files management! ({})", e));
+	if let Some(initramfs) = &boot_info.initramfs {
+		println!("Initializing initramfs...");
+		initramfs::init(initramfs.0, initramfs.1)
+			.unwrap_or_else(|e| kernel_panic!("Failed to initialize initramfs! ({})", e));
+	}
 	device::default::create()
 		.unwrap_or_else(|e| kernel_panic!("Failed to create default devices! ({})", e));
 	device::create_files()

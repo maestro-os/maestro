@@ -463,10 +463,14 @@ fn handle_tag(boot_info: &mut BootInfo, tag: *const Tag) {
 		TAG_TYPE_MODULE => {
 			let t = tag as *const TagModule;
 
-			let (begin, size) = unsafe {
-				((*t).mod_start as *const c_void, (*t).size as usize)
+			let (begin, end) = unsafe {
+				((*t).mod_start as *const c_void, (*t).mod_end as *const c_void)
 			};
-			boot_info.initramfs = Some((begin, size));
+			let size = end as usize - begin as usize;
+
+			if size > 0 {
+				boot_info.initramfs = Some((begin, size));
+			}
 		}
 
 		TAG_TYPE_BASIC_MEMINFO => {

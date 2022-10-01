@@ -1,6 +1,7 @@
 //! A filesystem is the representation of the file hierarchy on a storage device.
 
 pub mod ext2;
+pub mod initramfs;
 pub mod kernfs;
 pub mod procfs;
 pub mod tmp;
