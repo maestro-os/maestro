@@ -181,6 +181,11 @@ pub fn slice_copy(src: &[u8], dst: &mut [u8]) {
 	dst[..len].copy_from_slice(&src[..len]);
 }
 
+/// Reinterprets the given slice of bytes as another type.
+pub unsafe fn reinterpret<'a, T>(slice: &'a [u8]) -> &'a T {
+	&*(slice.as_ptr() as *const _)
+}
+
 /// Trait allowing to perform a clone of a structure that can possibly fail (on memory allocation
 /// failure, for example).
 pub trait FailableClone {
