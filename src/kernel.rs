@@ -319,7 +319,7 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 		.unwrap_or_else(|e| kernel_panic!("Failed to initialize files management! ({})", e));
 	if let Some(initramfs) = &boot_info.initramfs {
 		println!("Initializing initramfs...");
-		initramfs::init(initramfs.0, initramfs.1)
+		initramfs::load(initramfs)
 			.unwrap_or_else(|e| kernel_panic!("Failed to initialize initramfs! ({})", e));
 	}
 	device::default::create()

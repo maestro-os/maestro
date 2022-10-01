@@ -1,11 +1,12 @@
 //! The Multiboot standard specifies an interface to load and boot the kernel image. It provides
 //! critical informations such as the memory mapping and the ELF structure of the kernel.
 
-use crate::memory;
-use crate::util;
 use core::ffi::c_void;
 use core::mem::ManuallyDrop;
 use core::ptr::null;
+use core::slice;
+use crate::memory;
+use crate::util;
 
 pub const BOOTLOADER_MAGIC: u32 = 0x36d76289;
 pub const TAG_ALIGN: usize = 8;
@@ -394,9 +395,9 @@ pub struct BootInfo {
 	/// A pointer to the kernel's ELF sections.
 	pub elf_sections: *const c_void,
 
-	/// A tuple containing the pointer to the beginning of the initramfs and its size in bytes.
+	/// Slice of data representing an initramfs image.
 	/// If None, no initramfs is loaded.
-	pub initramfs: Option<(*const c_void, usize)>,
+	pub initramfs: Option<&'static [u8]>,
 }
 
 /// The field storing the informations given to the kernel at boot time.
@@ -464,12 +465,18 @@ fn handle_tag(boot_info: &mut BootInfo, tag: *const Tag) {
 			let t = tag as *const TagModule;
 
 			let (begin, end) = unsafe {
-				((*t).mod_start as *const c_void, (*t).mod_end as *const c_void)
+				let begin = memory::kern_to_virt((*t).mod_start as *const _);
+				let end = memory::kern_to_virt((*t).mod_end as *const _);
+
+				(begin, end)
 			};
 			let size = end as usize - begin as usize;
+			let data = unsafe {
+				slice::from_raw_parts::<u8>(begin as *const _, size)
+			};
 
 			if size > 0 {
-				boot_info.initramfs = Some((begin, size));
+				boot_info.initramfs = Some(data);
 			}
 		}
 
