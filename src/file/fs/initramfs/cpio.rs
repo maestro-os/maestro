@@ -3,7 +3,24 @@
 use core::mem::size_of;
 use core::ops::Add;
 use core::ops::Mul;
+use crate::file::FileType;
+use crate::file;
 use crate::util;
+
+/// Entry type: FIFO
+pub const TYPE_FIFO: u16 = 0x1000;
+/// Entry type: Char device
+pub const TYPE_CHAR_DEVICE: u16 = 0x2000;
+/// Entry type: Directory
+pub const TYPE_DIRECTORY: u16 = 0x4000;
+/// Entry type: Block device
+pub const TYPE_BLOCK_DEVICE: u16 = 0x6000;
+/// Entry type: Regular file
+pub const TYPE_REGULAR: u16 = 0x8000;
+/// Entry type: Symbolic link
+pub const TYPE_SYMLINK: u16 = 0xa000;
+/// Entry type: Socket
+pub const TYPE_SOCKET: u16 = 0xc000;
 
 /// Converts the octal value stored in the given slice into an integer value.
 /// If the value is invalid, the function returns None.
@@ -58,6 +75,32 @@ pub struct CPIOHeader {
 	pub c_filesize: [u8; 11],
 }
 
+impl CPIOHeader {
+	/// Returns the file type associated with the entry.
+	pub fn get_type(&self) -> FileType {
+		// TODO Avoid unwrap
+		let file_type = octal_to_integer::<u16>(&self.c_mode).unwrap() & 0xf000;
+
+		match file_type {
+			TYPE_FIFO => FileType::Fifo,
+			TYPE_CHAR_DEVICE => FileType::CharDevice,
+			TYPE_DIRECTORY => FileType::Directory,
+			TYPE_BLOCK_DEVICE => FileType::BlockDevice,
+			TYPE_REGULAR => FileType::Regular,
+			TYPE_SYMLINK => FileType::Link,
+			TYPE_SOCKET => FileType::Socket,
+
+			_ => FileType::Regular,
+		}
+	}
+
+	/// Returns the permissions of the entry.
+	pub fn get_perms(&self) -> file::Mode {
+		// TODO Avoid unwrap
+		octal_to_integer::<file::Mode>(&self.c_mode).unwrap() & 0x0fff
+	}
+}
+
 /// A CPIO entry, consisting of a CPIO header, the filename and the content of the file.
 pub struct CPIOEntry<'a> {
 	/// The entry's data.
@@ -101,6 +144,17 @@ pub struct CPIOParser<'a> {
 
 	/// The current offset in data.
 	curr_off: usize,
+}
+
+impl<'a> CPIOParser<'a> {
+	/// Creates a new instance for the given data slice.
+	pub fn new(data: &'a [u8]) -> Self {
+		Self {
+			data,
+
+			curr_off: 0,
+		}
+	}
 }
 
 impl<'a> Iterator for CPIOParser<'a> {
