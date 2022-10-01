@@ -393,6 +393,10 @@ pub struct BootInfo {
 	pub elf_shndx: u32,
 	/// A pointer to the kernel's ELF sections.
 	pub elf_sections: *const c_void,
+
+	/// A tuple containing the pointer to the beginning of the initramfs and its size in bytes.
+	/// If None, no initramfs is loaded.
+	pub initramfs: Option<(*const c_void, usize)>,
 }
 
 /// The field storing the informations given to the kernel at boot time.
@@ -410,6 +414,8 @@ static mut BOOT_INFO: BootInfo = BootInfo {
 	elf_entsize: 0,
 	elf_shndx: 0,
 	elf_sections: null(),
+
+	initramfs: None,
 };
 
 /// Returns the boot informations provided by Multiboot.
@@ -452,6 +458,15 @@ fn handle_tag(boot_info: &mut BootInfo, tag: *const Tag) {
 				let ptr = memory::kern_to_virt(&(*t).string as *const _ as *const _) as *const u8;
 				boot_info.loader_name = Some(util::str_from_ptr(ptr));
 			}
+		}
+
+		TAG_TYPE_MODULE => {
+			let t = tag as *const TagModule;
+
+			let (begin, size) = unsafe {
+				((*t).mod_start as *const c_void, (*t).size as usize)
+			};
+			boot_info.initramfs = Some((begin, size));
 		}
 
 		TAG_TYPE_BASIC_MEMINFO => {
