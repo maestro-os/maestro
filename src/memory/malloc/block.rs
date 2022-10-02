@@ -39,7 +39,7 @@ impl Block {
 		let ptr = buddy::alloc_kernel(order)?;
 		let block = unsafe {
 			// Safe since `ptr` is valid
-			ptr::write_volatile(
+			ptr::write(
 				ptr as *mut Block,
 				Self {
 					list: ListNode::new_single(),

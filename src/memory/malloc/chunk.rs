@@ -204,7 +204,7 @@ impl Chunk {
 			let next_size = self.size - curr_new_size - size_of::<Chunk>();
 			let next = unsafe {
 				// Safe since `next_ptr` is valid
-				ptr::write_volatile(next_ptr, FreeChunk::new(next_size));
+				ptr::write(next_ptr, FreeChunk::new(next_size));
 				&mut *next_ptr
 			};
 
@@ -323,7 +323,7 @@ impl FreeChunk {
 	/// block. The chunk is **not** inserted into the free list.
 	pub fn new_first(ptr: *mut c_void, size: usize) {
 		unsafe {
-			ptr::write_volatile(
+			ptr::write(
 				ptr as *mut FreeChunk,
 				Self {
 					chunk: Chunk {

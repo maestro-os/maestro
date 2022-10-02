@@ -199,7 +199,7 @@ impl<T> Vec<T> {
 				ptr.offset((index + 1) as _),
 				self.len - index,
 			);
-			ptr::write_volatile(&mut self.data.as_mut().unwrap()[index] as _, element);
+			ptr::write(&mut self.data.as_mut().unwrap()[index] as _, element);
 		}
 		self.len += 1;
 		Ok(())

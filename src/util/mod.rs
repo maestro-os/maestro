@@ -116,7 +116,6 @@ pub unsafe fn zero_object<T>(obj: &mut T) {
 
 /// Returns the length of the string `s`.
 /// If the pointer or the string is invalid, the behaviour is undefined.
-#[no_mangle]
 pub unsafe extern "C" fn strlen(s: *const u8) -> usize {
 	let mut i = 0;
 
@@ -147,15 +146,6 @@ pub unsafe fn str_from_ptr(ptr: *const u8) -> &'static [u8] {
 /// Returns an immutable slice to the given value.
 pub fn as_slice<'a, T>(val: &'a T) -> &'a [u8] {
 	unsafe { slice::from_raw_parts(&val as *const _ as *const u8, size_of::<T>()) }
-}
-
-/// Turns the error into an empty error for the given result.
-pub fn to_empty_error<T, E>(r: Result<T, E>) -> Result<T, ()> {
-	if let Ok(t) = r {
-		Ok(t)
-	} else {
-		Err(())
-	}
 }
 
 /// Returns the length of the string representation of the number at the beginning of the given

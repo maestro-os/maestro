@@ -333,8 +333,7 @@ impl Zone {
 	/// Returns an available frame owned by this zone, with an order of at least `order`.
 	fn get_available_frame(&self, order: FrameOrder) -> Option<&'static mut Frame> {
 		for i in (order as usize)..self.free_list.len() {
-			let f = self.free_list[i];
-			if let Some(f_) = f {
+			if let Some(f_) = self.free_list[i] {
 				unsafe {
 					debug_assert!(!(*f_).is_used());
 					debug_assert!(((*f_).get_ptr(self) as usize) >= (self.begin as usize));
@@ -342,9 +341,11 @@ impl Zone {
 						((*f_).get_ptr(self) as usize) < (self.begin as usize) + self.get_size()
 					);
 				}
+
 				return Some(unsafe { &mut *f_ });
 			}
 		}
+
 		None
 	}
 
@@ -383,7 +384,7 @@ impl Zone {
 					#[cfg(config_debug_debug)]
 					f.check_broken(self);
 					debug_assert!(!f.is_used());
-					debug_assert!(f.order == (order as _));
+					debug_assert_eq!(f.order, order as _);
 					debug_assert!(!is_first || f.prev == id);
 
 					let frame_ptr = f.get_ptr(self);
@@ -411,6 +412,7 @@ impl Frame {
 		let self_off = self as *const _ as usize;
 		let zone_off = zone.metadata_begin as *const _ as usize;
 		debug_assert!(self_off >= zone_off);
+
 		((self_off - zone_off) / size_of::<Self>()) as u32
 	}
 

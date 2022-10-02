@@ -131,7 +131,7 @@ fn alloc_obj() -> Result<*mut u32, Errno> {
 fn obj_get(obj: *const u32, index: usize) -> u32 {
 	debug_assert!(index < 1024);
 
-	unsafe { ptr::read_volatile(obj_get_ptr(obj, index)) }
+	unsafe { ptr::read(obj_get_ptr(obj, index)) }
 }
 
 /// Sets the object at index `index` of given object `obj` with value `value`.
@@ -139,7 +139,7 @@ fn obj_set(obj: *mut u32, index: usize, value: u32) {
 	debug_assert!(index < 1024);
 
 	unsafe {
-		ptr::write_volatile(obj_get_mut_ptr(obj, index), value);
+		ptr::write(obj_get_mut_ptr(obj, index), value);
 	}
 }
 
