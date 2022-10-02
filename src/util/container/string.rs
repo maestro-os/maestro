@@ -252,13 +252,21 @@ impl FailableClone for String {
 
 impl Debug for String {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		f.write_str(self.as_str().unwrap_or("<Invalid UTF-8>")) // TODO Find another way
+		for b in self.as_bytes() {
+			f.write_char(*b as char)?;
+		}
+
+		Ok(())
 	}
 }
 
 impl fmt::Display for String {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		f.write_str(self.as_str().unwrap_or("<Invalid UTF-8>")) // TODO Find another way
+		for b in self.as_bytes() {
+			f.write_char(*b as char)?;
+		}
+
+		Ok(())
 	}
 }
 

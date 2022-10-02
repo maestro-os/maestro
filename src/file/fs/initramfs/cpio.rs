@@ -1,8 +1,8 @@
 //! This module implements a CPIO format parser
+//!
+//! The kernel only support binary CPIO, not ASCII.
 
 use core::mem::size_of;
-use core::ops::Add;
-use core::ops::Mul;
 use crate::file::FileType;
 use crate::file;
 use crate::util;
@@ -22,64 +22,45 @@ pub const TYPE_SYMLINK: u16 = 0xa000;
 /// Entry type: Socket
 pub const TYPE_SOCKET: u16 = 0xc000;
 
-/// Converts the octal value stored in the given slice into an integer value.
-/// If the value is invalid, the function returns None.
-pub fn octal_to_integer<
-	T: Add<Output = T>
-		+ Clone
-		+ Copy
-		+ From<u8>
-		+ Mul<Output = T>
->(val: &[u8]) -> Option<T> {
-	let mut res = T::from(0u8);
-	let mut pow = T::from(1u8);
-
-	for c in val.iter().rev() {
-		if *c < b'0' || *c > b'9' {
-			return None;
-		}
-
-		let v = T::from((*c as u8) - b'0');
-		res = res + (pow * v);
-
-		pow = pow * T::from(8u8);
-	}
-
-	Some(res)
+/// Rotates the given 4 bytes value from PDP-endian.
+/// On PDP computers, long values (4 bytes) were stored as big endian, which means these values
+/// need to be rotated to be read correctly.
+pub fn rot_u32(v: u32) -> u32 {
+	(v >> 16) | (v << 16)
 }
 
 /// Structure representing a CPIO header.
+#[derive(Clone, Copy, Debug)]
 #[repr(C, packed)]
 pub struct CPIOHeader {
 	/// Magic value.
-	pub c_magic: [u8; 6],
+	pub c_magic: u16,
 	/// Value uniquely identifying the entry.
-	pub c_dev: [u8; 6],
+	pub c_dev: u16,
 	/// Value uniquely identifying the entry.
-	pub c_ino: [u8; 6],
+	pub c_ino: u16,
 	/// The file's mode.
-	pub c_mode: [u8; 6],
+	pub c_mode: u16,
 	/// The file owner's UID.
-	pub c_uid: [u8; 6],
+	pub c_uid: u16,
 	/// The file owner's GID.
-	pub c_gid: [u8; 6],
+	pub c_gid: u16,
 	/// The number of links referencing the file.
-	pub c_nlink: [u8; 6],
+	pub c_nlink: u16,
 	/// The implementation-defined details for character and block devices.
-	pub c_rdev: [u8; 6],
+	pub c_rdev: u16,
 	/// The timestamp of the latest time of modification of the file.
-	pub c_mtime: [u8; 11],
+	pub c_mtime: u32,
 	/// The length in bytes of the file's name.
-	pub c_namesize: [u8; 6],
+	pub c_namesize: u16,
 	/// The length in bytes of the file's content.
-	pub c_filesize: [u8; 11],
+	pub c_filesize: u32,
 }
 
 impl CPIOHeader {
 	/// Returns the file type associated with the entry.
 	pub fn get_type(&self) -> FileType {
-		// TODO Avoid unwrap
-		let file_type = octal_to_integer::<u16>(&self.c_mode).unwrap() & 0xf000;
+		let file_type = self.c_mode & 0xf000;
 
 		match file_type {
 			TYPE_FIFO => FileType::Fifo,
@@ -96,8 +77,7 @@ impl CPIOHeader {
 
 	/// Returns the permissions of the entry.
 	pub fn get_perms(&self) -> file::Mode {
-		// TODO Avoid unwrap
-		octal_to_integer::<file::Mode>(&self.c_mode).unwrap() & 0x0fff
+		self.c_mode as file::Mode & 0x0fff
 	}
 }
 
@@ -118,22 +98,25 @@ impl<'a> CPIOEntry<'a> {
 	/// Returns a reference storing the filename.
 	pub fn get_filename(&self) -> &'a [u8] {
 		let hdr = self.get_hdr();
-		// TODO Avoid unwrap
-		let namesize = octal_to_integer::<usize>(&hdr.c_namesize).unwrap();
 
 		let start = size_of::<CPIOHeader>();
-		&self.data[start..(start + namesize)]
+		let mut end = start + hdr.c_namesize as usize;
+
+		// Removing trailing NUL byte
+		if end - start > 0 && self.data[end - 1] == b'\0' {
+			end -= 1;
+		}
+
+		&self.data[start..end]
 	}
 
 	/// Returns a reference storing the content.
 	pub fn get_content(&self) -> &'a [u8] {
 		let hdr = self.get_hdr();
-		// TODO Avoid unwrap
-		let namesize = octal_to_integer::<usize>(&hdr.c_namesize).unwrap();
-		let filesize = octal_to_integer::<usize>(&hdr.c_filesize).unwrap();
 
-		let start = size_of::<CPIOHeader>() + namesize;
-		&self.data[start..(start + filesize)]
+		let start = size_of::<CPIOHeader>() + hdr.c_namesize as usize;
+		let filesize = rot_u32(hdr.c_filesize);
+		&self.data[start..(start + filesize as usize)]
 	}
 }
 
@@ -174,80 +157,33 @@ impl<'a> Iterator for CPIOParser<'a> {
 		let hdr = unsafe { // Safe because the structure is in range of the slice
 			util::reinterpret::<CPIOHeader>(&self.data[off..])
 		};
-		// TODO Avoid unwrap (check how to jump to the next record)
-		crate::println!("magic: {:?}", hdr.c_magic); // TODO rm
-		crate::println!("namesize: {:?} filesize: {:?}", hdr.c_namesize, hdr.c_filesize); // TODO rm
-		let size = size_of::<CPIOHeader>()
-			+ octal_to_integer::<usize>(&hdr.c_namesize).unwrap()
-			+ octal_to_integer::<usize>(&hdr.c_filesize).unwrap();
+		// TODO Check magic (if invalid, check how to move to the next entry)
+
+		let mut namesize = hdr.c_namesize as usize;
+		if namesize % 2 != 0 {
+			namesize += 1;
+		}
+
+		let mut filesize = rot_u32(hdr.c_filesize) as usize;
+		if filesize % 2 != 0 {
+			filesize += 1;
+		}
+
+		let size = size_of::<CPIOHeader>() + namesize + filesize;
+		if off + size > self.data.len() {
+			return None;
+		}
 
 		self.curr_off += size;
 
-		Some(CPIOEntry {
+		let entry = CPIOEntry {
 			data: &self.data[off..(off + size)],
-		})
-	}
-}
-
-#[cfg(test)]
-mod test {
-	use super::*;
-
-	#[test_case]
-	fn octal_to_integer0() {
-		assert_eq!(octal_to_integer::<usize>(b"0").unwrap(), 0);
-		assert_eq!(octal_to_integer::<usize>(b"00").unwrap(), 0);
-		assert_eq!(octal_to_integer::<usize>(b"000").unwrap(), 0);
-	}
-
-	#[test_case]
-	fn octal_to_integer1() {
-		for i in b'0'..=b'9' {
-			assert_eq!(octal_to_integer::<usize>(&[i]).unwrap(), (i - b'0') as usize);
+		};
+		// Ignoring the entry if it is the last
+		if entry.get_filename() == b"TRAILER!!!" {
+			return None;
 		}
-		for i in b'0'..=b'9' {
-			assert_eq!(octal_to_integer::<usize>(&[b'0', i]).unwrap(), (i - b'0') as usize);
-		}
-		for i in b'0'..=b'9' {
-			assert_eq!(octal_to_integer::<usize>(&[b'0', b'0', i]).unwrap(), (i - b'0') as usize);
-		}
-	}
 
-	#[test_case]
-	fn octal_to_integer2() {
-		assert_eq!(octal_to_integer::<usize>(b"000000").unwrap(), 0);
-		assert_eq!(octal_to_integer::<usize>(b"000001").unwrap(), 1);
-		assert_eq!(octal_to_integer::<usize>(b"000002").unwrap(), 2);
-		assert_eq!(octal_to_integer::<usize>(b"000003").unwrap(), 3);
-		assert_eq!(octal_to_integer::<usize>(b"000004").unwrap(), 4);
-		assert_eq!(octal_to_integer::<usize>(b"000005").unwrap(), 5);
-		assert_eq!(octal_to_integer::<usize>(b"000006").unwrap(), 6);
-		assert_eq!(octal_to_integer::<usize>(b"000007").unwrap(), 7);
-		assert_eq!(octal_to_integer::<usize>(b"000010").unwrap(), 8);
-		assert_eq!(octal_to_integer::<usize>(b"000011").unwrap(), 9);
-		assert_eq!(octal_to_integer::<usize>(b"000012").unwrap(), 10);
-		assert_eq!(octal_to_integer::<usize>(b"000013").unwrap(), 11);
-		assert_eq!(octal_to_integer::<usize>(b"000014").unwrap(), 12);
-		assert_eq!(octal_to_integer::<usize>(b"000015").unwrap(), 13);
-		assert_eq!(octal_to_integer::<usize>(b"000016").unwrap(), 14);
-		assert_eq!(octal_to_integer::<usize>(b"000017").unwrap(), 15);
-		assert_eq!(octal_to_integer::<usize>(b"000020").unwrap(), 16);
-		assert_eq!(octal_to_integer::<usize>(b"000021").unwrap(), 17);
-		assert_eq!(octal_to_integer::<usize>(b"000022").unwrap(), 18);
-		assert_eq!(octal_to_integer::<usize>(b"000023").unwrap(), 19);
-		assert_eq!(octal_to_integer::<usize>(b"000024").unwrap(), 20);
-		assert_eq!(octal_to_integer::<usize>(b"000025").unwrap(), 21);
-		assert_eq!(octal_to_integer::<usize>(b"000026").unwrap(), 22);
-		assert_eq!(octal_to_integer::<usize>(b"000027").unwrap(), 23);
-		assert_eq!(octal_to_integer::<usize>(b"000030").unwrap(), 24);
-	}
-
-	#[test_case]
-	fn octal_to_integer3() {
-		assert!(octal_to_integer::<usize>(b"aaaaaa").is_none());
-		assert!(octal_to_integer::<usize>(b"a01234").is_none());
-		assert!(octal_to_integer::<usize>(b"00000a").is_none());
-		assert!(octal_to_integer::<usize>(b"00a000").is_none());
-		assert!(octal_to_integer::<usize>(b"a00000").is_none());
+		Some(entry)
 	}
 }

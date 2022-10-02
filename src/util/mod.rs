@@ -12,12 +12,13 @@ pub mod lock;
 pub mod math;
 pub mod ptr;
 
-use crate::errno::Errno;
 use core::cmp::min;
 use core::ffi::c_void;
+use core::fmt::Write;
 use core::fmt;
 use core::mem::size_of;
 use core::slice;
+use crate::errno::Errno;
 
 /// Tells if pointer `ptr` is aligned on boundary `n`.
 #[inline(always)]
@@ -232,7 +233,7 @@ pub struct DisplayableStr<'a> {
 impl<'a> fmt::Display for DisplayableStr<'a> {
 	fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
 		for b in self.s {
-			write!(fmt, "{}", *b as char)?;
+			fmt.write_char(*b as char)?;
 		}
 
 		Ok(())

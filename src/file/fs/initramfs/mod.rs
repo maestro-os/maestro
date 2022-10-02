@@ -28,9 +28,6 @@ pub fn load(data: &[u8]) -> Result<(), Errno> {
 
 		// TODO If path, reorder to avoid creating a file before its parent
 		let name = String::from(entry.get_filename())?;
-		crate::println!("-> {}", name); // TODO rm
-		let uid = cpio::octal_to_integer(&hdr.c_uid).unwrap(); // TODO Avoid unwrap
-		let gid = cpio::octal_to_integer(&hdr.c_gid).unwrap(); // TODO Avoid unwrap
 		let file_type = hdr.get_type();
 		let perm = hdr.get_perms();
 		let content = String::from(entry.get_content())?;
@@ -52,9 +49,9 @@ pub fn load(data: &[u8]) -> Result<(), Errno> {
 		};
 
 		let parent_inode = 0; // TODO
-		fs.add_file(&mut io, parent_inode, name, uid, gid, perm, content)?;
+		fs.add_file(&mut io, parent_inode, name, hdr.c_uid, hdr.c_gid, perm, content)?;
 	}
 
-	// TODO
+	// TODO Register the fs so that it can be used
 	todo!();
 }
