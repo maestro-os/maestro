@@ -71,6 +71,7 @@ impl BAR {
 
 	// TODO Use virtual addresses instead
 	/// Reads a value from the register at offset `off`.
+	#[inline(always)]
 	pub fn read<T>(&self, off: usize) -> u64 {
 		match self {
 			Self::MemorySpace { type_, address, .. } => match type_ {
@@ -103,6 +104,7 @@ impl BAR {
 
 	// TODO Use virtual addresses instead
 	/// Writes a value to the register at offset `off`.
+	#[inline(always)]
 	pub fn write<T>(&self, off: usize, val: u64) {
 		match self {
 			Self::MemorySpace { type_, address, .. } => match type_ {
