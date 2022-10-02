@@ -86,6 +86,14 @@ fn get_phys_main(multiboot_ptr: *const c_void) -> (*const c_void, usize) {
 	);
 	begin = max(begin, elf_end);
 
+	// The end of the loaded initramfs, if any
+	if let Some(initramfs) = boot_info.initramfs {
+		let initramfs_begin = memory::kern_to_phys(initramfs.as_ptr() as _);
+		let initramfs_end = ((initramfs_begin as usize) + initramfs.len()) as *const c_void;
+
+		begin = max(begin, initramfs_end);
+	}
+
 	// Page-align
 	begin = util::align(begin, memory::PAGE_SIZE);
 

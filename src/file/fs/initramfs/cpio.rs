@@ -161,25 +161,30 @@ impl<'a> Iterator for CPIOParser<'a> {
 	type Item = CPIOEntry<'a>;
 
 	fn next(&mut self) -> Option<Self::Item> {
-		if self.curr_off >= self.data.len() {
+		let off = self.curr_off;
+		if off >= self.data.len() {
 			return None;
 		}
 
-		let remaining_len = self.data.len() - self.curr_off;
+		let remaining_len = self.data.len() - off;
 		if remaining_len < size_of::<CPIOHeader>() {
 			return None;
 		}
 
 		let hdr = unsafe { // Safe because the structure is in range of the slice
-			util::reinterpret::<CPIOHeader>(&self.data[self.curr_off..])
+			util::reinterpret::<CPIOHeader>(&self.data[off..])
 		};
 		// TODO Avoid unwrap (check how to jump to the next record)
+		crate::println!("magic: {:?}", hdr.c_magic); // TODO rm
+		crate::println!("namesize: {:?} filesize: {:?}", hdr.c_namesize, hdr.c_filesize); // TODO rm
 		let size = size_of::<CPIOHeader>()
 			+ octal_to_integer::<usize>(&hdr.c_namesize).unwrap()
 			+ octal_to_integer::<usize>(&hdr.c_filesize).unwrap();
 
+		self.curr_off += size;
+
 		Some(CPIOEntry {
-			data: &self.data[self.curr_off..(self.curr_off + size)],
+			data: &self.data[off..(off + size)],
 		})
 	}
 }

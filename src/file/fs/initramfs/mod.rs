@@ -28,6 +28,7 @@ pub fn load(data: &[u8]) -> Result<(), Errno> {
 
 		// TODO If path, reorder to avoid creating a file before its parent
 		let name = String::from(entry.get_filename())?;
+		crate::println!("-> {}", name); // TODO rm
 		let uid = cpio::octal_to_integer(&hdr.c_uid).unwrap(); // TODO Avoid unwrap
 		let gid = cpio::octal_to_integer(&hdr.c_gid).unwrap(); // TODO Avoid unwrap
 		let file_type = hdr.get_type();
