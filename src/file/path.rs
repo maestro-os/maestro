@@ -116,6 +116,12 @@ impl Path {
 		self.parts.pop()
 	}
 
+	/// Returns a reference to the last element.
+	/// If the path is empty, the function returns None.
+	pub fn last(&self) -> Option<&String> {
+		self.parts.as_slice().last()
+	}
+
 	/// Tells whether the current path begins with the path `other`.
 	pub fn begins_with(&self, other: &Self) -> bool {
 		if self.absolute != other.absolute {
