@@ -1163,6 +1163,7 @@ impl Ext2INode {
 			for i in first_free_blk..blk_count {
 				self.free_content_block(i, superblock, io)?;
 			}
+			self.set_size(superblock, first_free_blk as u64 * blk_size as u64);
 		}
 
 		Ok(())
