@@ -1110,11 +1110,15 @@ impl Filesystem for Ext2Fs {
 
 		// If directory, removing `.` and `..` entries
 		if inode_.get_type() == FileType::Directory {
-			inode_.remove_dirent(&mut self.superblock, io, b".")?;
-			inode_.remove_dirent(&mut self.superblock, io, b"..")?;
+			// Removing `.`
+			if inode_.hard_links_count > 0
+				&& inode_.get_dirent(b".", &self.superblock, io)?.is_some() {
+				inode_.hard_links_count -= 1;
+			}
 
-			// Removing hard link for entry `..`
-			if parent.hard_links_count > 0 {
+			// Removing `..`
+			if parent.hard_links_count > 0
+				&& inode_.get_dirent(b"..", &self.superblock, io)?.is_some() {
 				parent.hard_links_count -= 1;
 			}
 		}
