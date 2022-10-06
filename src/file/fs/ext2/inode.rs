@@ -861,6 +861,13 @@ impl Ext2INode {
 		superblock: &mut Superblock,
 		io: &mut dyn IO,
 	) -> Result<(), Errno> {
+		if matches!(self.get_type(), FileType::Link) {
+			let len = self.get_size(superblock);
+			if len <= SYMLINK_INODE_STORE_LIMIT {
+				return Ok(());
+			}
+		}
+
 		for i in 0..(DIRECT_BLOCKS_COUNT as usize) {
 			if self.direct_block_ptrs[i] != 0 {
 				if self.direct_block_ptrs[i] >= superblock.total_blocks {
