@@ -262,7 +262,8 @@ pub fn create() -> Result<(), Errno> {
 	)?;
 	device::register_device(zero_device)?;
 
-	let random_path = Path::from_str(b"/dev/random", false)?;
+	// TODO
+	/*let random_path = Path::from_str(b"/dev/random", false)?;
 	let random_device = Device::new(
 		1,
 		8,
@@ -282,7 +283,7 @@ pub fn create() -> Result<(), Errno> {
 		DeviceType::Char,
 		URandomDeviceHandle {},
 	)?;
-	device::register_device(urandom_device)?;
+	device::register_device(urandom_device)?;*/
 
 	let kmsg_path = Path::from_str(b"/dev/kmsg", false)?;
 	let kmsg_device = Device::new(
