@@ -285,10 +285,6 @@ impl FilesystemType for ProcFsType {
 		Ok(false)
 	}
 
-	fn create_filesystem(&self, _io: &mut dyn IO) -> Result<SharedPtr<dyn Filesystem>, Errno> {
-		Ok(SharedPtr::new(ProcFS::new(false, Path::root())?)?)
-	}
-
 	fn load_filesystem(
 		&self,
 		_io: &mut dyn IO,
