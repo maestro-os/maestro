@@ -9,6 +9,7 @@ use crate::process::mem_space::ptr::SyscallPtr;
 use crate::syscall::ioctl;
 use crate::types::c_int;
 use crate::util::container::ring_buffer::RingBuffer;
+use crate::util::container::vec::Vec;
 use crate::util::io::IO;
 use crate::util::io;
 use crate::util::ptr::IntSharedPtr;
@@ -17,7 +18,7 @@ use crate::util::ptr::IntSharedPtr;
 #[derive(Debug)]
 pub struct PipeBuffer {
 	/// The buffer's buffer.
-	buffer: RingBuffer<u8>,
+	buffer: RingBuffer<u8, Vec<u8>>,
 
 	/// The number of reading ends attached to the pipe.
 	read_ends: u32,
@@ -29,7 +30,7 @@ impl PipeBuffer {
 	/// Creates a new instance.
 	pub fn new() -> Result<Self, Errno> {
 		Ok(Self {
-			buffer: RingBuffer::new(limits::PIPE_BUF)?,
+			buffer: RingBuffer::new(crate::vec![0; limits::PIPE_BUF]?),
 
 			read_ends: 0,
 			write_ends: 0,

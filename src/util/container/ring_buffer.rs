@@ -7,42 +7,45 @@
 //! When a cursor reaches the end of the linear buffer, it goes back to the beginning. This is why
 //! it's called a "ring".
 
-use crate::errno::Errno;
-use crate::util::container::vec::Vec;
 use core::cmp::min;
+use core::marker::PhantomData;
 
 /// Structure representing a ring buffer. The buffer has a limited size which must be given at
 /// initialization.
+/// The buffer used to store the data is specified by the generic argument `B`. By default, a Vec
+/// is used.
 #[derive(Debug)]
-pub struct RingBuffer<T> {
+pub struct RingBuffer<T, B: AsRef<[T]> + AsMut<[T]>> {
 	/// The linear buffer.
-	buffer: Vec<T>,
+	buffer: B,
 
 	/// The offset of the read cursor in the buffer.
 	read_cursor: usize,
 	/// The offset of the write cursor in the buffer.
 	write_cursor: usize,
+
+	/// Allowing the argument T.
+	_phantom: PhantomData<T>,
 }
 
-impl<T: Default + Copy> RingBuffer<T> {
+impl<T: Default + Copy, B: AsRef<[T]> + AsMut<[T]>> RingBuffer<T, B> {
 	/// Creates a new instance.
-	/// `size` is the size of the buffer.
-	pub fn new(size: usize) -> Result<Self, Errno> {
-		let mut buffer = Vec::<T>::new();
-		buffer.resize(size + 1)?;
-
-		Ok(Self {
+	/// `buffer` is the buffer to be used.
+	pub fn new(buffer: B) -> Self {
+		Self {
 			buffer,
 
 			read_cursor: 0,
 			write_cursor: 0,
-		})
+
+			_phantom: PhantomData,
+		}
 	}
 
 	/// Returns the size of the buffer in bytes.
 	#[inline(always)]
 	pub fn get_size(&self) -> usize {
-		self.buffer.len()
+		self.buffer.as_ref().len()
 	}
 
 	/// Tells whether the ring is empty.
@@ -70,7 +73,7 @@ impl<T: Default + Copy> RingBuffer<T> {
 	/// Returns a slice representing the ring buffer's linear buffer.
 	#[inline(always)]
 	fn get_buffer(&mut self) -> &mut [T] {
-		self.buffer.as_mut_slice()
+		self.buffer.as_mut()
 	}
 
 	/// Reads data from the buffer and writes it in `buf`. The function returns the number of bytes

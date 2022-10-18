@@ -3,6 +3,7 @@
 use crate::errno::Errno;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::ring_buffer::RingBuffer;
+use crate::util::container::vec::Vec;
 use crate::util::lock::Mutex;
 use crate::util::ptr::SharedPtr;
 
@@ -31,14 +32,14 @@ pub trait RandomSource {
 /// This source is used by the `/dev/random` device file.
 pub struct Random {
 	/// The buffer containing entropy.
-	buff: RingBuffer<u8>,
+	buff: RingBuffer<u8, Vec<u8>>,
 }
 
 impl Random {
 	/// Creates a new instance.
 	pub fn new() -> Result<Self, Errno> {
 		Ok(Self {
-			buff: RingBuffer::new(ENTROPY_BUFFER_SIZE)?,
+			buff: RingBuffer::new(crate::vec![0; ENTROPY_BUFFER_SIZE]?),
 		})
 	}
 }
@@ -65,14 +66,14 @@ impl RandomSource for Random {
 /// This source is used by the `/dev/urandom` device file.
 pub struct URandom {
 	/// The buffer containing entropy.
-	buff: RingBuffer<u8>,
+	buff: RingBuffer<u8, Vec<u8>>,
 }
 
 impl URandom {
 	/// Creates a new instance.
 	pub fn new() -> Result<Self, Errno> {
 		Ok(Self {
-			buff: RingBuffer::new(ENTROPY_BUFFER_SIZE)?,
+			buff: RingBuffer::new(crate::vec![0; ENTROPY_BUFFER_SIZE]?),
 		})
 	}
 }

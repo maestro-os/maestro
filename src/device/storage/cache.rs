@@ -7,6 +7,7 @@ use crate::memory::malloc;
 use crate::util::boxed::Box;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::ring_buffer::RingBuffer;
+use crate::util::container::vec::Vec;
 
 /// Structure representing a cached sector.
 struct CachedSector {
@@ -29,7 +30,7 @@ pub struct StorageCache {
 
 	/// Fifo storing sector indexes. When the fifo is full, the oldest sector shall be discarded
 	/// from the cache.
-	fifo: RingBuffer<u64>,
+	fifo: RingBuffer<u64, Vec<u64>>,
 }
 
 impl StorageCache {
@@ -42,7 +43,7 @@ impl StorageCache {
 
 			sectors: HashMap::new(),
 
-			fifo: RingBuffer::new(count)?,
+			fifo: RingBuffer::new(crate::vec![0; count]?),
 		})
 	}
 

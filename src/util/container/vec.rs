@@ -28,25 +28,20 @@ use core::slice;
 macro_rules! vec {
 	// Creating an empty vec
 	() => {
-		crate::util::container::vec::Vec::new()
+		$crate::util::container::vec::Vec::new()
 	};
 
 	// Creating a vec filled with `n` times `elem`
-	($elem:expr ; $n:expr) => {
-		(|| {
-			let mut v = crate::util::container::vec::Vec::with_capacity(n)?;
-			v.resize(n, elem)?;
-
-			Ok(v)
-		})()
-	};
+	($elem:expr; $n:expr) => (
+		$crate::util::container::vec::Vec::from_elem($elem, $n)
+	);
 
 	// Creating a vec from the given slice
 	($($x:expr), + $(,) ?) => {{
 		let slice = [$($x),+];
 
 		(|| {
-			let mut v = crate::util::container::vec::Vec::with_capacity(slice.len())?;
+			let mut v = $crate::util::container::vec::Vec::with_capacity(slice.len())?;
 			for i in slice {
 				v.push(i)?;
 			}
@@ -319,6 +314,18 @@ impl<T: Default> Vec<T> {
 	}
 }
 
+impl<T> AsRef<[T]> for Vec<T> {
+	fn as_ref(&self) -> &[T] {
+		self.as_slice()
+	}
+}
+
+impl<T> AsMut<[T]> for Vec<T> {
+	fn as_mut(&mut self) -> &mut [T] {
+		self.as_mut_slice()
+	}
+}
+
 impl<T> Deref for Vec<T> {
 	type Target = [T];
 
@@ -350,6 +357,20 @@ impl<T: PartialEq> PartialEq for Vec<T> {
 }
 
 impl<T: Clone> Vec<T> {
+	/// Creates a new vector with `n` times `elem`.
+	pub fn from_elem(elem: T, n: usize) -> Result<Self, Errno> {
+		let mut v = Self::with_capacity(n)?;
+		v.len = n;
+
+		for i in 0..n {
+			unsafe { // Safe because in range
+				ptr::write(&mut v[i], elem.clone());
+			}
+		}
+
+		Ok(v)
+	}
+
 	/// Extends the vector by cloning the elements from the given slice `slice`.
 	pub fn extend_from_slice(&mut self, slice: &[T]) -> Result<(), Errno> {
 		if slice.is_empty() {

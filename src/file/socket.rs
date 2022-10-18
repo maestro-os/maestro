@@ -26,9 +26,9 @@ pub struct Socket {
 
 	// TODO Handle network sockets
 	/// The buffer containing received data.
-	receive_buffer: RingBuffer<u8>,
+	receive_buffer: RingBuffer<u8, Vec<u8>>,
 	/// The buffer containing sent data.
-	send_buffer: RingBuffer<u8>,
+	send_buffer: RingBuffer<u8, Vec<u8>>,
 
 	/// The list of sides of the socket.
 	sides: Vec<SharedPtr<SocketSide>>,
@@ -44,8 +44,8 @@ impl Socket {
 			type_,
 			protocol,
 
-			receive_buffer: RingBuffer::new(BUFFER_SIZE)?,
-			send_buffer: RingBuffer::new(BUFFER_SIZE)?,
+			receive_buffer: RingBuffer::new(crate::vec![0; BUFFER_SIZE]?),
+			send_buffer: RingBuffer::new(crate::vec![0; BUFFER_SIZE]?),
 
 			sides: Vec::new(),
 		})
