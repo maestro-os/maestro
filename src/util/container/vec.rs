@@ -369,6 +369,21 @@ impl<T: Clone> Vec<T> {
 		Ok(v)
 	}
 
+	/// Creates a new vector from the given slice.
+	pub fn from_slice(slice: &[T]) -> Result<Self, Errno> {
+		let mut v = Vec::new();
+		v.increase_capacity(slice.len())?;
+		v.len = slice.len();
+
+		for (i, elem) in slice.iter().enumerate() {
+			unsafe { // Safe because in range
+				ptr::write(&mut v[i], elem.clone());
+			}
+		}
+
+		Ok(v)
+	}
+
 	/// Extends the vector by cloning the elements from the given slice `slice`.
 	pub fn extend_from_slice(&mut self, slice: &[T]) -> Result<(), Errno> {
 		if slice.is_empty() {
