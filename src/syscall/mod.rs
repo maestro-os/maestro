@@ -1077,7 +1077,6 @@ fn print_strace(regs: &Regs, result: Option<Result<i32, Errno>>) {
 	// Getting syscall name
 	let id = regs.eax;
 
-	// TODO Optimize (holes in the syscall table)
 	let syscall = match get_syscall(id) {
 		Some(syscall) => syscall,
 		None => {

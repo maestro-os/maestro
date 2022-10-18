@@ -137,7 +137,7 @@ impl ProcFS {
 		match &mut content {
 			FileContent::Directory(entries) => oom::wrap(|| {
 				entries.insert(
-					String::from_number(pid as _)?,
+					crate::format!("{}", pid)?,
 					DirEntry {
 						entry_type: FileType::Directory,
 						inode: inode,
@@ -161,7 +161,7 @@ impl ProcFS {
 			let mut content = oom::wrap(|| root.get_content().into_owned());
 			match &mut content {
 				FileContent::Directory(entries) => oom::wrap(|| {
-					entries.remove(&String::from_number(pid as _)?);
+					entries.remove(&crate::format!("{}", pid)?);
 					Ok(())
 				}),
 				_ => unreachable!(),

@@ -165,7 +165,7 @@ pub fn create() -> Result<(), Errno> {
 
 	for i in 0..RAM_DISK_COUNT {
 		let mut name = String::from(b"ram")?;
-		name.append(String::from_number(i as _)?)?;
+		name.append(crate::format!("{}", i)?)?;
 
 		let mut path = Path::root();
 		path.push(String::from(b"dev")?)?;

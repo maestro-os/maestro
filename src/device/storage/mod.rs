@@ -347,7 +347,7 @@ impl StorageManager {
 					let i = i + 1;
 
 					// Adding the partition number to the path
-					let path_str = (prefix.failable_clone()? + String::from_number(i as _)?)?;
+					let path_str = (prefix.failable_clone()? + crate::format!("{}", i)?)?;
 					let path = Path::from_str(path_str.as_bytes(), false)?;
 
 					// Creating the partition's device file

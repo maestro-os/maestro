@@ -10,7 +10,6 @@ use crate::file::Uid;
 use crate::process::oom;
 use crate::process::Process;
 use crate::time::unit::Timestamp;
-use crate::util::container::string::String;
 use crate::util::io::IO;
 use crate::util::ptr::cow::Cow;
 
@@ -70,7 +69,7 @@ impl KernFSNode for SelfNode {
 			0
 		};
 
-		let pid_string = oom::wrap(|| String::from_number(pid as _));
+		let pid_string = oom::wrap(|| crate::format!("{}", pid));
 		Cow::from(FileContent::Link(pid_string))
 	}
 
