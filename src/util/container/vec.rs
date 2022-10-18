@@ -21,32 +21,25 @@ use core::ptr::drop_in_place;
 use core::ptr::NonNull;
 use core::slice;
 
-// TODO Optimize iterators
-
 /// Macro allowing to create a vector with the given set of values.
 #[macro_export]
 macro_rules! vec {
 	// Creating an empty vec
 	() => {
-		crate::util::container::vec::Vec::new()
+		$crate::util::container::vec::Vec::new()
 	};
 
 	// Creating a vec filled with `n` times `elem`
-	($elem:expr ; $n:expr) => {
-		(|| {
-			let mut v = crate::util::container::vec::Vec::with_capacity(n)?;
-			v.resize(n, elem)?;
-
-			Ok(v)
-		})()
-	};
+	($elem:expr; $n:expr) => (
+		$crate::util::container::vec::Vec::from_elem($elem, $n)
+	);
 
 	// Creating a vec from the given slice
 	($($x:expr), + $(,) ?) => {{
 		let slice = [$($x),+];
 
 		(|| {
-			let mut v = crate::util::container::vec::Vec::with_capacity(slice.len())?;
+			let mut v = $crate::util::container::vec::Vec::with_capacity(slice.len())?;
 			for i in slice {
 				v.push(i)?;
 			}
@@ -319,6 +312,18 @@ impl<T: Default> Vec<T> {
 	}
 }
 
+impl<T> AsRef<[T]> for Vec<T> {
+	fn as_ref(&self) -> &[T] {
+		self.as_slice()
+	}
+}
+
+impl<T> AsMut<[T]> for Vec<T> {
+	fn as_mut(&mut self) -> &mut [T] {
+		self.as_mut_slice()
+	}
+}
+
 impl<T> Deref for Vec<T> {
 	type Target = [T];
 
@@ -350,6 +355,35 @@ impl<T: PartialEq> PartialEq for Vec<T> {
 }
 
 impl<T: Clone> Vec<T> {
+	/// Creates a new vector with `n` times `elem`.
+	pub fn from_elem(elem: T, n: usize) -> Result<Self, Errno> {
+		let mut v = Self::with_capacity(n)?;
+		v.len = n;
+
+		for i in 0..n {
+			unsafe { // Safe because in range
+				ptr::write(&mut v[i], elem.clone());
+			}
+		}
+
+		Ok(v)
+	}
+
+	/// Creates a new vector from the given slice.
+	pub fn from_slice(slice: &[T]) -> Result<Self, Errno> {
+		let mut v = Vec::new();
+		v.increase_capacity(slice.len())?;
+		v.len = slice.len();
+
+		for (i, elem) in slice.iter().enumerate() {
+			unsafe { // Safe because in range
+				ptr::write(&mut v[i], elem.clone());
+			}
+		}
+
+		Ok(v)
+	}
+
 	/// Extends the vector by cloning the elements from the given slice `slice`.
 	pub fn extend_from_slice(&mut self, slice: &[T]) -> Result<(), Errno> {
 		if slice.is_empty() {
@@ -539,7 +573,7 @@ impl<'a, T> Iterator for VecIterator<'a, T> {
 
 	fn next(&mut self) -> Option<Self::Item> {
 		// If both ends of the iterator are meeting, stop
-		if self.index_front >= self.vec.len() - self.index_back {
+		if self.index_front + self.index_back >= self.vec.len() {
 			return None;
 		}
 
@@ -556,12 +590,17 @@ impl<'a, T> Iterator for VecIterator<'a, T> {
 	fn count(self) -> usize {
 		self.vec.len()
 	}
+
+	fn size_hint(&self) -> (usize, Option<usize>) {
+		let remaining = self.vec.len() - self.index_front - self.index_back;
+		(remaining, Some(remaining))
+	}
 }
 
 impl<'a, T> DoubleEndedIterator for VecIterator<'a, T> {
 	fn next_back(&mut self) -> Option<Self::Item> {
 		// If both ends of the iterator are meeting, stop
-		if self.index_front >= self.vec.len() - self.index_back {
+		if self.index_front + self.index_back >= self.vec.len() {
 			return None;
 		}
 

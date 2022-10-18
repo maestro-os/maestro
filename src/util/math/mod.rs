@@ -1,10 +1,19 @@
 //! Since floating point numbers are slow, unprecise and may even disabled by default, the kernel
-use crate::util;
 /// uses! only integers. The functions in this module implement utilities for integer mathematics.
-use core::intrinsics::wrapping_add;
-use core::intrinsics::wrapping_mul;
 
 pub mod rational;
+
+use core::intrinsics::wrapping_add;
+use core::intrinsics::wrapping_mul;
+use core::ops::Add;
+use core::ops::BitAnd;
+use core::ops::Div;
+use core::ops::Mul;
+use core::ops::Neg;
+use core::ops::Rem;
+use core::ops::Shl;
+use core::ops::Sub;
+use crate::util;
 
 /// Clamps the given value `n` between `min` and `max`.
 pub fn clamp<T: PartialOrd>(n: T, min: T, max: T) -> T {
@@ -21,12 +30,7 @@ pub fn clamp<T: PartialOrd>(n: T, min: T, max: T) -> T {
 #[inline(always)]
 pub fn ceil_division<T>(n0: T, n1: T) -> T
 where
-	T: From<u8>
-		+ Copy
-		+ core::ops::Add<Output = T>
-		+ core::ops::Div<Output = T>
-		+ core::ops::Rem<Output = T>
-		+ core::cmp::PartialEq,
+	T: From<u8> + Copy + Add<Output = T> + Div<Output = T> + Rem<Output = T> + PartialEq
 {
 	if (n0 % n1) != T::from(0) {
 		(n0 / n1) + T::from(1)
@@ -38,19 +42,13 @@ where
 /// Computes 2^^n on unsigned integers (where `^^` is an exponent).
 /// The behaviour is undefined for n < 0.
 #[inline(always)]
-pub fn pow2<T>(n: T) -> T
-where
-	T: From<u8> + core::ops::Shl<Output = T>,
-{
+pub fn pow2<T>(n: T) -> T where T: From<u8> + Shl<Output = T> {
 	T::from(1) << n
 }
 
 /// Computes a^^b on integers (where `^^` is an exponent).
 #[inline(always)]
-pub fn pow<T>(a: T, b: usize) -> T
-where
-	T: From<u8> + core::ops::Mul<Output = T> + Copy,
-{
+pub fn pow<T>(a: T, b: usize) -> T where T: From<u8> + Mul<Output = T> + Copy {
 	if b == 0 {
 		T::from(1)
 	} else if b == 1 {
@@ -67,7 +65,7 @@ where
 #[inline(always)]
 pub fn log2<T>(n: T) -> T
 where
-	T: From<usize> + Into<usize> + core::cmp::PartialOrd + core::ops::Sub<Output = T>,
+	T: From<usize> + Into<usize> + PartialOrd + Sub<Output = T>,
 {
 	if n > T::from(0) {
 		T::from(util::bit_size_of::<T>()) - T::from(n.into().leading_zeros() as _) - T::from(1)
@@ -80,11 +78,7 @@ where
 /// If `n` is zero, the behaviour is undefined.
 pub fn is_power_of_two<T>(n: T) -> bool
 where
-	T: Copy
-		+ From<u8>
-		+ core::ops::BitAnd<Output = T>
-		+ core::ops::Sub<Output = T>
-		+ core::cmp::PartialEq,
+	T: Copy + From<u8> + BitAnd<Output = T> + Sub<Output = T> + PartialEq
 {
 	n == T::from(0) || n & (n - T::from(1)) == T::from(0)
 }
@@ -96,11 +90,11 @@ where
 pub fn integer_linear_interpolation<T>(x: T, a_x: T, a_y: T, b_x: T, b_y: T) -> T
 where
 	T: Copy
-		+ core::ops::Add<Output = T>
-		+ core::ops::Sub<Output = T>
-		+ core::ops::Mul<Output = T>
-		+ core::ops::Div<Output = T>
-		+ core::ops::Neg<Output = T>,
+		+ Add<Output = T>
+		+ Sub<Output = T>
+		+ Mul<Output = T>
+		+ Div<Output = T>
+		+ Neg<Output = T>,
 {
 	a_y + ((x - a_x) * (-a_y + b_y)) / (b_x - a_x)
 }
@@ -116,7 +110,7 @@ pub fn pseudo_rand(x: u32, a: u32, c: u32, m: u32) -> u32 {
 /// Returns the Greatest Common Divider of the two given numbers.
 pub fn gcd<T>(mut a: T, mut b: T) -> T
 where
-	T: Clone + From<u8> + core::cmp::PartialEq + core::ops::Rem<Output = T>,
+	T: Clone + From<u8> + PartialEq + Rem<Output = T>,
 {
 	while b != T::from(0) {
 		let r = a % b.clone();
