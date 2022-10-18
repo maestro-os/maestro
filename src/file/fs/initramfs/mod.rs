@@ -9,6 +9,7 @@ use crate::errno;
 use crate::file::File;
 use crate::file::FileContent;
 use crate::file::FileType;
+use crate::file::VFS;
 use crate::file::path::Path;
 use crate::file::vfs;
 use crate::file;
@@ -17,6 +18,63 @@ use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
 use crate::util::io::IO;
 use crate::util::ptr::SharedPtr;
+
+/// Updates the current parent.
+///
+/// Arguments:
+/// TODO
+fn update_parent(
+	vfs: &mut VFS,
+	curr: &Path,
+	stored: &mut Option<(Path, SharedPtr<File>)>,
+	retry: bool,
+) -> Result<(), Errno> {
+	// Getting the parent
+	let result = match stored {
+		Some((path, file)) if curr.begins_with(path) => {
+			let name = match curr.failable_clone()?.pop() {
+				Some(name) => name,
+				None => return Ok(()),
+			};
+
+			let file_guard = file.lock();
+			let f = file_guard.get_mut();
+
+			vfs.get_file_from_parent(
+				f,
+				name,
+				file::ROOT_UID,
+				file::ROOT_GID,
+				false
+			)
+		}
+
+		Some(_) | None => {
+			vfs.get_file_from_path(
+				curr,
+				file::ROOT_UID,
+				file::ROOT_GID,
+				false
+			)
+		}
+	};
+
+	match result {
+		Ok(file) => {
+			*stored = Some((curr.failable_clone()?, file));
+		}
+
+		// If the directory doesn't exist, create recursively
+		Err(e) if !retry && e.as_int() == errno::ENOENT => {
+			file::util::create_dirs(vfs, curr)?;
+			return update_parent(vfs, curr, stored, true);
+		}
+
+		Err(e) => return Err(e),
+	}
+
+	Ok(())
+}
 
 // TODO Implement gzip decompression?
 // FIXME The function doesn't work if files are not in the right order in the archive
@@ -37,7 +95,6 @@ pub fn load(data: &[u8]) -> Result<(), Errno> {
 		let hdr = entry.get_hdr();
 
 		let mut parent_path = Path::from_str(entry.get_filename(), false)?;
-		crate::println!("-> {}", parent_path); // TODO rm
 		let name = match parent_path.pop() {
 			Some(name) => name,
 			None => continue,
@@ -63,22 +120,13 @@ pub fn load(data: &[u8]) -> Result<(), Errno> {
 		};
 
 		// Telling whether the parent directory must be changed
-		let update_parent = match &stored_parent {
+		let update = match &stored_parent {
 			Some((path, _)) => path != &parent_path,
 			None => true,
 		};
-
 		// Change the parent directory if necessary
-		if update_parent {
-			stored_parent = Some((
-				parent_path.failable_clone()?,
-				vfs.get_file_from_path(
-					&parent_path,
-					file::ROOT_UID,
-					file::ROOT_GID,
-					false
-				)?
-			));
+		if update {
+			update_parent(vfs, &parent_path, &mut stored_parent, false)?;
 		}
 
 		let parent_mutex = &stored_parent.as_ref().unwrap().1;

@@ -246,6 +246,10 @@ impl Eq for Path {}
 
 impl PartialEq for Path {
 	fn eq(&self, other: &Self) -> bool {
+		if self.parts.len() != other.parts.len() {
+			return false;
+		}
+
 		for i in 0..self.parts.len() {
 			if self.parts[i] != other.parts[i] {
 				return false;
