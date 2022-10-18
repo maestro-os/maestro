@@ -22,6 +22,8 @@ use crate::errno;
 use crate::memory::malloc;
 use crate::memory;
 use crate::multiboot;
+use crate::util::FailableClone;
+use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::lock::Mutex;
@@ -312,29 +314,30 @@ impl Drop for Module {
 	}
 }
 
-/// The list of modules.
-static MODULES: Mutex<Vec<Module>> = Mutex::new(Vec::new());
+/// The list of modules. The key is the name of the module and the value is the module itself.
+static MODULES: Mutex<HashMap<String, Module>> = Mutex::new(HashMap::new());
 
-// TODO Optimize
 /// Tells whether a module with the given name is loaded.
-pub fn is_loaded(name: &String) -> bool {
+pub fn is_loaded(name: &[u8]) -> bool {
 	let modules_guard = MODULES.lock();
 	let modules = modules_guard.get();
 
-	for m in modules {
-		if m.get_name() == name {
-			return true;
-		}
-	}
-
-	false
+	modules.get(name).is_some()
 }
 
 /// Adds the given module to the modules list.
 pub fn add(module: Module) -> Result<(), Errno> {
 	let modules_guard = MODULES.lock();
 	let modules = modules_guard.get_mut();
-	modules.push(module)
+
+	modules.insert(module.name.failable_clone()?, module)?;
+	Ok(())
 }
 
-// TODO Function to remove a module
+/// Removes the module with name `name`.
+pub fn remove(name: &[u8]) {
+	let modules_guard = MODULES.lock();
+	let modules = modules_guard.get_mut();
+
+	modules.remove(name);
+}
