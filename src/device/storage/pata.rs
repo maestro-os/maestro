@@ -151,6 +151,7 @@ impl PATAInterface {
 	}
 
 	/// Reads a byte from the register at offset `port_off`.
+	#[inline(always)]
 	fn inb(&self, port_off: PortOffset) -> u8 {
 		let (bar, off) = match &port_off {
 			PortOffset::ATA(off) => (&self.channel.ata_bar, *off),
@@ -161,6 +162,7 @@ impl PATAInterface {
 	}
 
 	/// Reads a word from the register at offset `port_off`.
+	#[inline(always)]
 	fn inw(&self, port_off: PortOffset) -> u16 {
 		let (bar, off) = match &port_off {
 			PortOffset::ATA(off) => (&self.channel.ata_bar, *off),
@@ -171,6 +173,7 @@ impl PATAInterface {
 	}
 
 	/// Writes a byte into the register at offset `port_off`.
+	#[inline(always)]
 	fn outb(&self, port_off: PortOffset, value: u8) {
 		let (bar, off) = match &port_off {
 			PortOffset::ATA(off) => (&self.channel.ata_bar, *off),
@@ -181,6 +184,7 @@ impl PATAInterface {
 	}
 
 	/// Writes a word into the register at offset `port_off`.
+	#[inline(always)]
 	fn outw(&self, port_off: PortOffset, value: u16) {
 		let (bar, off) = match &port_off {
 			PortOffset::ATA(off) => (&self.channel.ata_bar, *off),

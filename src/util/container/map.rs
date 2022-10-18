@@ -94,7 +94,7 @@ impl<K: 'static + Ord, V: 'static> Node<K, V> {
 		debug_assert!(ptr as usize >= memory::PROCESS_END as usize);
 		unsafe {
 			// Safe because the pointer is valid
-			ptr::write_volatile(ptr, s);
+			ptr::write(ptr, s);
 		}
 
 		Ok(NonNull::new(ptr).unwrap())

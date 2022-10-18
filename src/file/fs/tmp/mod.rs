@@ -218,14 +218,6 @@ impl FilesystemType for TmpFsType {
 		Ok(false)
 	}
 
-	fn create_filesystem(&self, _io: &mut dyn IO) -> Result<SharedPtr<dyn Filesystem>, Errno> {
-		Ok(SharedPtr::new(TmpFS::new(
-			DEFAULT_MAX_SIZE,
-			false,
-			Path::root(),
-		)?)?)
-	}
-
 	fn load_filesystem(
 		&self,
 		_io: &mut dyn IO,

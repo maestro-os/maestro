@@ -415,7 +415,8 @@ impl Superblock {
 	/// `start` is the starting block.
 	/// `i` is the index of the entry to modify.
 	/// `val` is the value to set the entry to.
-	fn set_bitmap(&self, io: &mut dyn IO, start: u32, i: u32, val: bool) -> Result<(), Errno> {
+	/// The function returns the previous value of the entry.
+	fn set_bitmap(&self, io: &mut dyn IO, start: u32, i: u32, val: bool) -> Result<bool, Errno> {
 		let blk_size = self.get_block_size();
 		let mut buff = malloc::Alloc::<u8>::new_default(blk_size as _)?;
 
@@ -424,13 +425,17 @@ impl Superblock {
 
 		let bitmap_byte_index = i / 8;
 		let bitmap_bit_index = i % 8;
+
+		let prev = buff[bitmap_byte_index as usize] & (1 << bitmap_bit_index) != 0;
 		if val {
 			buff[bitmap_byte_index as usize] |= 1 << bitmap_bit_index;
 		} else {
 			buff[bitmap_byte_index as usize] &= !(1 << bitmap_bit_index);
 		}
 
-		write_block(bitmap_blk_index as _, self, io, buff.as_slice())
+		write_block(bitmap_blk_index as _, self, io, buff.as_slice())?;
+
+		Ok(prev)
 	}
 
 	/// Returns the id of a free inode in the filesystem.
@@ -467,16 +472,18 @@ impl Superblock {
 
 		let group = (inode - 1) / self.inodes_per_group;
 		let mut bgd = BlockGroupDescriptor::read(group, self, io)?;
-		bgd.unallocated_inodes_number -= 1;
-		if directory {
-			bgd.directories_number += 1;
-		}
-		self.total_unallocated_inodes -= 1;
 
 		let bitfield_index = (inode - 1) % self.inodes_per_group;
-		self.set_bitmap(io, bgd.inode_usage_bitmap_addr, bitfield_index, true)?;
+		let prev = self.set_bitmap(io, bgd.inode_usage_bitmap_addr, bitfield_index, true)?;
+		if !prev {
+			bgd.unallocated_inodes_number -= 1;
+			if directory {
+				bgd.directories_number += 1;
+			}
+			bgd.write(group, self, io)?;
 
-		bgd.write(group, self, io)?;
+			self.total_unallocated_inodes -= 1;
+		}
 
 		Ok(())
 	}
@@ -499,16 +506,18 @@ impl Superblock {
 
 		let group = (inode - 1) / self.inodes_per_group;
 		let mut bgd = BlockGroupDescriptor::read(group, self, io)?;
-		bgd.unallocated_inodes_number += 1;
-		if directory {
-			bgd.directories_number -= 1;
-		}
-		self.total_unallocated_inodes += 1;
 
 		let bitfield_index = (inode - 1) % self.inodes_per_group;
-		self.set_bitmap(io, bgd.inode_usage_bitmap_addr, bitfield_index, false)?;
+		let prev = self.set_bitmap(io, bgd.inode_usage_bitmap_addr, bitfield_index, false)?;
+		if prev {
+			bgd.unallocated_inodes_number += 1;
+			if directory {
+				bgd.directories_number -= 1;
+			}
+			bgd.write(group, self, io)?;
 
-		bgd.write(group, self, io)?;
+			self.total_unallocated_inodes += 1;
+		}
 
 		Ok(())
 	}
@@ -550,13 +559,15 @@ impl Superblock {
 
 		let group = blk / self.blocks_per_group;
 		let mut bgd = BlockGroupDescriptor::read(group, self, io)?;
-		bgd.unallocated_blocks_number -= 1;
-		self.total_unallocated_blocks -= 1;
 
 		let bitfield_index = blk % self.blocks_per_group;
-		self.set_bitmap(io, bgd.block_usage_bitmap_addr, bitfield_index, true)?;
+		let prev = self.set_bitmap(io, bgd.block_usage_bitmap_addr, bitfield_index, true)?;
+		if !prev {
+			bgd.unallocated_blocks_number -= 1;
+			bgd.write(group, self, io)?;
 
-		bgd.write(group, self, io)?;
+			self.total_unallocated_blocks -= 1;
+		}
 
 		Ok(())
 	}
@@ -575,13 +586,15 @@ impl Superblock {
 
 		let group = blk / self.blocks_per_group;
 		let mut bgd = BlockGroupDescriptor::read(group, self, io)?;
-		bgd.unallocated_blocks_number += 1;
-		self.total_unallocated_blocks += 1;
 
 		let bitfield_index = blk % self.blocks_per_group;
-		self.set_bitmap(io, bgd.block_usage_bitmap_addr, bitfield_index, false)?;
+		let prev = self.set_bitmap(io, bgd.block_usage_bitmap_addr, bitfield_index, false)?;
+		if prev {
+			bgd.unallocated_blocks_number += 1;
+			bgd.write(group, self, io)?;
 
-		bgd.write(group, self, io)?;
+			self.total_unallocated_blocks += 1;
+		}
 
 		Ok(())
 	}
@@ -1097,12 +1110,22 @@ impl Filesystem for Ext2Fs {
 
 		// If directory, removing `.` and `..` entries
 		if inode_.get_type() == FileType::Directory {
-			inode_.remove_dirent(&mut self.superblock, io, b".")?;
-			inode_.remove_dirent(&mut self.superblock, io, b"..")?;
+			// Removing `.`
+			if inode_.hard_links_count > 0
+				&& inode_.get_dirent(b".", &self.superblock, io)?.is_some() {
+				inode_.hard_links_count -= 1;
+			}
+
+			// Removing `..`
+			if parent.hard_links_count > 0
+				&& inode_.get_dirent(b"..", &self.superblock, io)?.is_some() {
+				parent.hard_links_count -= 1;
+			}
 		}
 
 		// Removing the directory entry
 		parent.remove_dirent(&mut self.superblock, io, name)?;
+		parent.write(parent_inode as _, &self.superblock, io)?;
 
 		// Decrementing the hard links count
 		if inode_.hard_links_count > 0 {
@@ -1113,12 +1136,6 @@ impl Filesystem for Ext2Fs {
 		if inode_.hard_links_count <= 0 {
 			let timestamp = time::get(TimestampScale::Second, true).unwrap_or(0);
 			inode_.dtime = timestamp as _;
-
-			// Removing hard link for entry `..`
-			if parent.hard_links_count > 0 {
-				parent.hard_links_count -= 1;
-			}
-			parent.write(parent_inode as _, &self.superblock, io)?;
 
 			inode_.free_content(&mut self.superblock, io)?;
 
@@ -1179,170 +1196,6 @@ impl FilesystemType for Ext2FsType {
 
 	fn detect(&self, io: &mut dyn IO) -> Result<bool, Errno> {
 		Ok(Superblock::read(io)?.is_valid())
-	}
-
-	fn create_filesystem(&self, io: &mut dyn IO) -> Result<SharedPtr<dyn Filesystem>, Errno> {
-		let timestamp = time::get(TimestampScale::Second, true).unwrap_or(0);
-
-		let blocks_count = (io.get_size() / DEFAULT_BLOCK_SIZE) as u32;
-		let groups_count = blocks_count / DEFAULT_BLOCKS_PER_GROUP;
-
-		let inodes_count = groups_count * DEFAULT_INODES_PER_GROUP;
-
-		let block_usage_bitmap_size =
-			math::ceil_division(DEFAULT_BLOCKS_PER_GROUP, (DEFAULT_BLOCK_SIZE * 8) as _);
-		let inode_usage_bitmap_size =
-			math::ceil_division(DEFAULT_INODES_PER_GROUP, (DEFAULT_BLOCK_SIZE * 8) as _);
-		let inodes_table_size = math::ceil_division(
-			DEFAULT_INODES_PER_GROUP * DEFAULT_INODE_SIZE as u32,
-			(DEFAULT_BLOCK_SIZE * 8) as _,
-		);
-
-		let mut superblock = Superblock {
-			total_inodes: inodes_count,
-			total_blocks: blocks_count,
-			superuser_blocks: 0,
-			total_unallocated_blocks: blocks_count,
-			total_unallocated_inodes: inodes_count,
-			superblock_block_number: (SUPERBLOCK_OFFSET / DEFAULT_BLOCK_SIZE) as _,
-			block_size_log: (math::log2(DEFAULT_BLOCK_SIZE as usize) - 10) as _,
-			fragment_size_log: 0,
-			blocks_per_group: DEFAULT_BLOCKS_PER_GROUP,
-			fragments_per_group: 0,
-			inodes_per_group: DEFAULT_INODES_PER_GROUP,
-			last_mount_timestamp: timestamp as _,
-			last_write_timestamp: timestamp as _,
-			mount_count_since_fsck: 0,
-			mount_count_before_fsck: DEFAULT_MOUNT_COUNT_BEFORE_FSCK,
-			signature: EXT2_SIGNATURE,
-			fs_state: FS_STATE_CLEAN,
-			error_action: ERR_ACTION_READ_ONLY,
-			minor_version: DEFAULT_MINOR,
-			last_fsck_timestamp: timestamp as _,
-			fsck_interval: DEFAULT_FSCK_INTERVAL,
-			os_id: 0xdeadbeef,
-			major_version: DEFAULT_MAJOR,
-			uid_reserved: 0,
-			gid_reserved: 0,
-
-			first_non_reserved_inode: 11,
-			inode_size: DEFAULT_INODE_SIZE,
-			superblock_group: ((SUPERBLOCK_OFFSET / DEFAULT_BLOCK_SIZE) as u32
-				/ DEFAULT_BLOCKS_PER_GROUP) as _,
-			optional_features: 0,
-			required_features: 0,
-			write_required_features: WRITE_REQUIRED_64_BITS,
-			filesystem_id: [0; 16],   // TODO
-			volume_name: [0; 16],     // TODO
-			last_mount_path: [0; 64], // TODO
-			compression_algorithms: 0,
-			files_preallocate_count: 0,
-			direactories_preallocate_count: 0,
-			_unused: 0,
-			journal_id: [0; 16],  // TODO
-			journal_inode: 0,     // TODO
-			journal_device: 0,    // TODO
-			orphan_inode_head: 0, // TODO
-
-			_padding: [0; 788],
-		};
-
-		let blk_size = superblock.get_block_size() as u32;
-		let bgdt_offset = superblock.get_bgdt_offset();
-		let bgdt_size = math::ceil_division(
-			groups_count * size_of::<BlockGroupDescriptor>() as u32,
-			blk_size,
-		);
-		let bgdt_end = bgdt_offset + bgdt_size as u64;
-
-		for i in 0..groups_count {
-			let metadata_off = max(i * DEFAULT_BLOCKS_PER_GROUP, bgdt_end as u32);
-			let metadata_size =
-				block_usage_bitmap_size + inode_usage_bitmap_size + inodes_table_size;
-			debug_assert!(bgdt_end + metadata_size as u64 <= DEFAULT_BLOCKS_PER_GROUP as u64);
-
-			let block_usage_bitmap_addr = metadata_off;
-			let inode_usage_bitmap_addr = metadata_off + block_usage_bitmap_size;
-			let inode_table_start_addr =
-				metadata_off + block_usage_bitmap_size + inode_usage_bitmap_size;
-
-			let bgd = BlockGroupDescriptor {
-				block_usage_bitmap_addr,
-				inode_usage_bitmap_addr,
-				inode_table_start_addr,
-				unallocated_blocks_number: DEFAULT_BLOCKS_PER_GROUP as _,
-				unallocated_inodes_number: DEFAULT_INODES_PER_GROUP as _,
-				directories_number: 0,
-
-				_padding: [0; 14],
-			};
-			bgd.write(i, &superblock, io)?;
-		}
-
-		superblock.mark_block_used(io, 0)?;
-
-		let superblock_blk_offset = SUPERBLOCK_OFFSET as u32 / blk_size;
-		superblock.mark_block_used(io, superblock_blk_offset)?;
-
-		let bgdt_size = size_of::<BlockGroupDescriptor>() as u32 * groups_count;
-		let bgdt_blk_count = math::ceil_division(bgdt_size, blk_size);
-		for j in 0..bgdt_blk_count {
-			let blk = bgdt_offset + j as u64;
-			superblock.mark_block_used(io, blk as _)?;
-		}
-
-		for i in 0..groups_count {
-			let bgd = BlockGroupDescriptor::read(i, &superblock, io)?;
-
-			for j in 0..block_usage_bitmap_size {
-				let blk = bgd.block_usage_bitmap_addr + j;
-				superblock.mark_block_used(io, blk)?;
-			}
-
-			for j in 0..inode_usage_bitmap_size {
-				let inode = bgd.inode_usage_bitmap_addr + j;
-				superblock.mark_block_used(io, inode)?;
-			}
-
-			for j in 0..inodes_table_size {
-				let blk = bgd.inode_table_start_addr + j;
-				superblock.mark_block_used(io, blk)?;
-			}
-		}
-
-		for i in 1..superblock.get_first_available_inode() {
-			let is_dir = i == inode::ROOT_DIRECTORY_INODE;
-			superblock.mark_inode_used(io, i, is_dir)?;
-		}
-
-		let root_dir = Ext2INode {
-			mode: inode::INODE_TYPE_DIRECTORY | inode::ROOT_DIRECTORY_DEFAULT_MODE,
-			uid: 0,
-			size_low: 0,
-			ctime: timestamp as _,
-			mtime: timestamp as _,
-			atime: timestamp as _,
-			dtime: 0,
-			gid: 0,
-			hard_links_count: 1,
-			used_sectors: 0,
-			flags: 0,
-			os_specific_0: 0,
-			direct_block_ptrs: [0; inode::DIRECT_BLOCKS_COUNT as usize],
-			singly_indirect_block_ptr: 0,
-			doubly_indirect_block_ptr: 0,
-			triply_indirect_block_ptr: 0,
-			generation: 0,
-			extended_attributes_block: 0,
-			size_high: 0,
-			fragment_addr: 0,
-			os_specific_1: [0; 12],
-		};
-		root_dir.write(inode::ROOT_DIRECTORY_INODE, &superblock, io)?;
-		superblock.write(io)?;
-
-		let fs = Ext2Fs::new(superblock, io, Path::root(), true)?;
-		Ok(SharedPtr::new(fs)?)
 	}
 
 	fn load_filesystem(

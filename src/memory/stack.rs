@@ -28,7 +28,7 @@ struct StackLambda<F: FnOnce() -> T, T> {
 impl<F: FnOnce() -> T, T> StackLambda<F, T> {
 	/// Performs the execution of the lambda on the alternate stack.
 	extern "C" fn exec(&mut self) {
-		let f = unsafe { ptr::read_volatile(&self.f) };
+		let f = unsafe { ptr::read(&self.f) };
 
 		self.ret_val = Some(f());
 	}
@@ -58,7 +58,7 @@ pub unsafe fn switch<F: FnOnce() -> T, T>(stack: Option<*mut c_void>, f: F) -> R
 		stack_switch_(stack_top, &mut f as *mut _ as _, func as *const _);
 	}
 
-	let ret_val = ptr::read_volatile(&f.ret_val).unwrap();
+	let ret_val = ptr::read(&f.ret_val).unwrap();
 
 	// Avoid double free
 	mem::forget(f);
