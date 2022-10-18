@@ -220,6 +220,8 @@ pub struct Process {
 
 	/// The current working directory.
 	cwd: Path,
+	/// The current chroot path.
+	chroot: Path,
 	/// The list of open file descriptors with their respective ID.
 	file_descriptors: Option<SharedPtr<Vec<FileDescriptor>>>,
 
@@ -500,6 +502,7 @@ impl Process {
 			kernel_stack: None,
 
 			cwd: Path::root(),
+			chroot: Path::root(),
 			file_descriptors: Some(SharedPtr::new(Vec::new())?),
 
 			sigmask: Bitfield::new(signal::SIGNALS_COUNT)?,
@@ -914,6 +917,18 @@ impl Process {
 		Ok(())
 	}
 
+	/// Returns the path to the root directory of the current process (chroot path).
+	#[inline(always)]
+	pub fn get_chroot(&self) -> &Path {
+		&self.chroot
+	}
+
+	/// Sets the path to the root directory of the current process (chroot path).
+	#[inline(always)]
+	pub fn set_chroot(&mut self, path: Path) {
+		self.chroot = path;
+	}
+
 	/// Returns the process's saved state registers.
 	#[inline(always)]
 	pub fn get_regs(&self) -> &Regs {
@@ -1309,6 +1324,7 @@ impl Process {
 			kernel_stack,
 
 			cwd: self.cwd.failable_clone()?,
+			chroot: self.chroot.failable_clone()?,
 			file_descriptors,
 
 			sigmask: self.sigmask.failable_clone()?,

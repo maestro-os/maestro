@@ -23,12 +23,15 @@ use crate::util::ptr::SharedPtr;
 /// `process` is the process.
 /// `path` is the path.
 pub fn get_absolute_path(process: &Process, path: Path) -> Result<Path, Errno> {
-	if !path.is_absolute() {
+	let path = if !path.is_absolute() {
 		let cwd = process.get_cwd();
-		cwd.concat(&path)
+		cwd.concat(&path)?
 	} else {
-		Ok(path)
-	}
+		path
+	};
+
+	let chroot = process.get_chroot();
+	chroot.concat(&path)
 }
 
 // TODO Find a safer and cleaner solution
