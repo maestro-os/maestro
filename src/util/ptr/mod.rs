@@ -79,7 +79,7 @@ impl<T, const INT: bool> SharedPtr<T, INT> {
 		};
 		unsafe {
 			// Safe because the pointer is valid
-			ptr::write_volatile(inner, SharedPtrInner::<T, INT>::new(obj));
+			ptr::write(inner, SharedPtrInner::<T, INT>::new(obj));
 		}
 
 		Ok(Self {

@@ -35,6 +35,8 @@ pub fn init() {
 /// Allocates `n` bytes of kernel memory and returns a pointer to the beginning of the allocated
 /// chunk. If the allocation fails, the function shall return an error.
 ///
+/// The allocated memory is **not** initialized.
+///
 /// # Safety
 ///
 /// Allocated pointer must always be freed. Failure to do so results in a memory leak.
@@ -65,7 +67,11 @@ pub unsafe fn alloc(n: usize) -> Result<*mut c_void, Errno> {
 
 /// Changes the size of the memory previously allocated with `alloc`. `ptr` is the pointer to the
 /// chunk of memory.
+///
+/// The allocated memory is **not** initialized.
+///
 /// `n` is the new size of the chunk of memory.
+///
 /// If the reallocation fails, the chunk is left untouched and the function returns an error.
 pub unsafe fn realloc(ptr: *mut c_void, n: usize) -> Result<*mut c_void, Errno> {
 	let _ = MUTEX.lock();
@@ -89,9 +95,13 @@ pub unsafe fn realloc(ptr: *mut c_void, n: usize) -> Result<*mut c_void, Errno> 
 
 		Ordering::Greater => {
 			if !chunk.grow(n - chunk_size) {
+				let old_len = min(chunk.get_size(), n);
 				let new_ptr = alloc(n)?;
-				util::memcpy(new_ptr, ptr, min(chunk.get_size(), n));
+
+				ptr::copy_nonoverlapping(ptr, new_ptr, old_len);
+
 				free(ptr);
+
 				Ok(new_ptr)
 			} else {
 				Ok(ptr)
@@ -119,7 +129,7 @@ pub unsafe fn free(ptr: *mut c_void) {
 	chunk.check();
 
 	chunk.set_used(false);
-	ptr::write_volatile(&mut chunk.as_free_chunk().free_list, ListNode::new_single());
+	ptr::write(&mut chunk.as_free_chunk().free_list, ListNode::new_single());
 
 	let c = chunk.coalesce();
 	if c.list.is_single() {
@@ -142,11 +152,13 @@ impl<T> Alloc<T> {
 	/// Allocates `size` element in the kernel memory and returns a structure wrapping a slice
 	/// allowing to access it. If the allocation fails, the function shall return an error.
 	///
+	/// The allocated memory is **not** initialized.
+	///
 	/// # Safety
 	///
-	/// To use this function, one must ensure that zero memory is not an inconsistent state for the
-	/// object `T`.
-	pub unsafe fn new_zero(size: usize) -> Result<Self, Errno> {
+	/// Since the memory is not initialized, objects in the allocation might be in an inconsistent
+	/// state.
+	pub unsafe fn new(size: usize) -> Result<Self, Errno> {
 		let slice = NonNull::new({
 			let ptr = alloc(size * size_of::<T>())?;
 			slice::from_raw_parts_mut::<T>(ptr as _, size)
@@ -154,6 +166,18 @@ impl<T> Alloc<T> {
 		.unwrap();
 
 		Ok(Self { slice })
+	}
+
+	/// Same as `new`, except the memory chunk is zero-ed.
+	/// 
+	/// # Safety
+	///
+	/// Since the memory is zero-ed, objects in the allocation might be in an inconsistent state.
+	pub unsafe fn new_zero(size: usize) -> Result<Self, Errno> {
+		let mut alloc = Self::new(size)?;
+		util::bzero(alloc.as_ptr_mut() as *mut _, size * size_of::<T>());
+
+		Ok(alloc)
 	}
 
 	/// Returns an immutable reference to the underlying slice.
@@ -207,7 +231,7 @@ impl<T: Default> Alloc<T> {
 	pub fn new_default(size: usize) -> Result<Self, Errno> {
 		let mut alloc = unsafe {
 			// Safe because the memory is set right after
-			Self::new_zero(size)?
+			Self::new(size)?
 		};
 		for i in alloc.as_slice_mut().iter_mut() {
 			unsafe { // Safe because the pointer is in the range of the slice
@@ -231,7 +255,9 @@ impl<T: Default> Alloc<T> {
 		self.realloc_zero(n)?;
 
 		for i in curr_size..n {
-			self.as_slice_mut()[i] = T::default();
+			unsafe { // Safe because the pointer is in the range of the slice
+				ptr::write(&mut self.as_slice_mut()[i], T::default());
+			}
 		}
 
 		Ok(())
@@ -245,7 +271,7 @@ impl<T: Clone> Alloc<T> {
 	pub fn new_clonable(size: usize, val: T) -> Result<Self, Errno> {
 		let mut alloc = unsafe {
 			// Safe because the memory is set right after
-			Self::new_zero(size)?
+			Self::new(size)?
 		};
 		for i in alloc.as_slice_mut().iter_mut() {
 			unsafe { // Safe because the pointer is in the range of the slice

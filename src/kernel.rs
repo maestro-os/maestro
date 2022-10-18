@@ -304,9 +304,10 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 	//println!("Initializing ACPI...");
 	//acpi::init();
 
-	println!("Initializing ramdisks...");
+	// FIXME
+	/*println!("Initializing ramdisks...");
 	device::storage::ramdisk::create()
-		.unwrap_or_else(|e| kernel_panic!("Failed to create ramdisks! ({})", e));
+		.unwrap_or_else(|e| kernel_panic!("Failed to create ramdisks! ({})", e));*/
 	println!("Initializing devices management...");
 	device::init()
 		.unwrap_or_else(|e| kernel_panic!("Failed to initialize devices management! ({})", e));

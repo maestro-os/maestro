@@ -177,12 +177,6 @@ pub trait FilesystemType {
 	/// `io` is the IO interface.
 	fn detect(&self, io: &mut dyn IO) -> Result<bool, Errno>;
 
-	/// Creates a new filesystem on the IO interface and returns its instance.
-	/// `io` is the IO interface.
-	/// `fs_id` is the ID of the loaded filesystem. This ID is only used by the kernel and not
-	/// saved on the storage device.
-	fn create_filesystem(&self, io: &mut dyn IO) -> Result<SharedPtr<dyn Filesystem>, Errno>;
-
 	/// Creates a new instance of the filesystem to mount it.
 	/// `io` is the IO interface.
 	/// `mountpath` is the path on which the filesystem is mounted.

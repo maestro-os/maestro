@@ -110,7 +110,7 @@ impl<T, const INT: bool> Mutex<T, INT> {
 				data,
 
 				#[cfg(config_debug_deadlock_stack)]
-				saved_stack: [core::ptr::null_mut::<c_void>(); 32],
+				saved_stack: [core::ptr::null_mut::<core::ffi::c_void>(); 32],
 			}),
 		}
 	}
