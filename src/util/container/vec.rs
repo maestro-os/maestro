@@ -21,8 +21,6 @@ use core::ptr::drop_in_place;
 use core::ptr::NonNull;
 use core::slice;
 
-// TODO Optimize iterators
-
 /// Macro allowing to create a vector with the given set of values.
 #[macro_export]
 macro_rules! vec {
@@ -560,7 +558,7 @@ impl<'a, T> Iterator for VecIterator<'a, T> {
 
 	fn next(&mut self) -> Option<Self::Item> {
 		// If both ends of the iterator are meeting, stop
-		if self.index_front >= self.vec.len() - self.index_back {
+		if self.index_front + self.index_back >= self.vec.len() {
 			return None;
 		}
 
@@ -577,12 +575,17 @@ impl<'a, T> Iterator for VecIterator<'a, T> {
 	fn count(self) -> usize {
 		self.vec.len()
 	}
+
+	fn size_hint(&self) -> (usize, Option<usize>) {
+		let remaining = self.vec.len() - self.index_front - self.index_back;
+		(remaining, Some(remaining))
+	}
 }
 
 impl<'a, T> DoubleEndedIterator for VecIterator<'a, T> {
 	fn next_back(&mut self) -> Option<Self::Item> {
 		// If both ends of the iterator are meeting, stop
-		if self.index_front >= self.vec.len() - self.index_back {
+		if self.index_front + self.index_back >= self.vec.len() {
 			return None;
 		}
 

@@ -29,7 +29,7 @@
 .global boot_stack
 .global boot_stack_begin
 
-.extern switch_protected
+.extern setup_gdt
 .extern _init
 .extern _fini
 
@@ -75,7 +75,7 @@ multiboot_entry:
 	push %eax
 	push %ebx
 	call a20_handle
-	call switch_protected
+	call setup_gdt
 	call kernel_remap
 	pop %ebx
 	pop %eax

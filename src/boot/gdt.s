@@ -17,7 +17,7 @@
 .global gdt_tss
 .global gdt
 
-.global switch_protected
+.global setup_gdt
 .global gdt_move
 
 .extern gdt_copy
@@ -53,7 +53,7 @@
 /*
  * Switches the CPU to protected mode.
  */
-switch_protected:
+setup_gdt:
 	cli
 
 	call gdt_copy
