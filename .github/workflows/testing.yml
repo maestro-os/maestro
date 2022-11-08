@@ -6,8 +6,8 @@ jobs:
         steps:
             - uses: actions/checkout@v2
             - name: Debug mode compilation
-			  run: "testing/debug.sh"
+              run: "testing/debug.sh"
             - name: Release mode compilation
-			  run: "testing/release.sh"
+              run: "testing/release.sh"
             - name: Running selftests
-			  run: "testing/selftest.sh"
+              run: "testing/selftest.sh"
