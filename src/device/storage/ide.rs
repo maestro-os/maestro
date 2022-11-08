@@ -1,4 +1,5 @@
-//! The Integrated Drive Electronics (IDE) is a controller allowing to access storage drives.
+//! The Integrated Drive Electronics (IDE) is a controller allowing to access
+//! storage drives.
 
 use crate::device::bar::BAR;
 use crate::device::bus::pci;
@@ -9,22 +10,28 @@ use crate::errno::Errno;
 use crate::util::container::vec::Vec;
 use crate::util::ptr::SharedPtr;
 
-/// The beginning of the port range for the primary ATA bus (compatibility mode).
+/// The beginning of the port range for the primary ATA bus (compatibility
+/// mode).
 const PRIMARY_ATA_BUS_PORT_BEGIN: u16 = 0x1f0;
-/// The port for the primary disk's device control register (compatibility mode).
+/// The port for the primary disk's device control register (compatibility
+/// mode).
 const PRIMARY_DEVICE_CONTROL_PORT: u16 = 0x3f6;
-/// The port for the primary disk's alternate status register (compatibility mode).
+/// The port for the primary disk's alternate status register (compatibility
+/// mode).
 const PRIMARY_ALTERNATE_STATUS_PORT: u16 = 0x3f6;
 
-/// The beginning of the port range for the secondary ATA bus (compatibility mode).
+/// The beginning of the port range for the secondary ATA bus (compatibility
+/// mode).
 const SECONDARY_ATA_BUS_PORT_BEGIN: u16 = 0x170;
-/// The port for the secondary disk's device control register (compatibility mode).
+/// The port for the secondary disk's device control register (compatibility
+/// mode).
 const SECONDARY_DEVICE_CONTROL_PORT: u16 = 0x376;
-/// The port for the secondary disk's alternate status register (compatibility mode).
+/// The port for the secondary disk's alternate status register (compatibility
+/// mode).
 const SECONDARY_ALTERNATE_STATUS_PORT: u16 = 0x376;
 
-/// Structure representing a channel on an IDE controller. It contains the BARs used to access a
-/// drive.
+/// Structure representing a channel on an IDE controller. It contains the BARs
+/// used to access a drive.
 #[derive(Debug)]
 pub struct Channel {
 	/// The BAR for ATA ports.
@@ -79,7 +86,8 @@ pub struct Controller {
 
 impl Controller {
 	/// Creates a new instance from the given PhysicalDevice.
-	/// If the given device is not an IDE controller, the behaviour is undefined.
+	/// If the given device is not an IDE controller, the behaviour is
+	/// undefined.
 	pub fn new(dev: &dyn PhysicalDevice) -> Self {
 		debug_assert_eq!(dev.get_class(), pci::CLASS_MASS_STORAGE_CONTROLLER);
 		debug_assert_eq!(dev.get_subclass(), 0x01);
@@ -140,10 +148,10 @@ impl Controller {
 		}
 	}
 
-	/// Detects all disks on the controller. For each disks, the function calls the given closure
-	/// `f`.
-	/// If an error is returned from a call to the closure, the function returns with the same
-	/// error.
+	/// Detects all disks on the controller. For each disks, the function calls
+	/// the given closure `f`.
+	/// If an error is returned from a call to the closure, the function returns
+	/// with the same error.
 	pub fn detect_all(&self) -> Result<Vec<SharedPtr<dyn StorageInterface>>, Errno> {
 		let mut interfaces = Vec::new();
 

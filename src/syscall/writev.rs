@@ -1,19 +1,19 @@
 //! The `writev` system call allows to write sparse data on a file descriptor.
 
-use core::cmp::min;
-use crate::errno::Errno;
 use crate::errno;
+use crate::errno::Errno;
 use crate::file::open_file::OpenFile;
 use crate::idt;
 use crate::limits;
-use crate::process::Process;
 use crate::process::iovec::IOVec;
-use crate::process::mem_space::MemSpace;
 use crate::process::mem_space::ptr::SyscallSlice;
+use crate::process::mem_space::MemSpace;
 use crate::process::regs::Regs;
 use crate::process::signal::Signal;
+use crate::process::Process;
 use crate::util::io::IO;
 use crate::util::ptr::IntSharedPtr;
+use core::cmp::min;
 
 // TODO Handle blocking writes (and thus, EINTR)
 
@@ -107,9 +107,9 @@ pub fn do_writev(
 				let proc = guard.get_mut();
 
 				proc.kill(&Signal::SIGPIPE, false);
-			},
+			}
 
-			_ => {},
+			_ => {}
 		}
 
 		// Restoring previous offset

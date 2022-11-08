@@ -1,14 +1,14 @@
 //! The `statfs` system call returns information about a mounted file system.
 
-use crate::errno::Errno;
 use crate::errno;
+use crate::errno::Errno;
 use crate::file::fs::Statfs;
 use crate::file::path::Path;
 use crate::file::vfs;
-use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::regs::Regs;
+use crate::process::Process;
 
 /// The implementation of the `statfs` syscall.
 pub fn statfs(regs: &Regs) -> Result<i32, Errno> {

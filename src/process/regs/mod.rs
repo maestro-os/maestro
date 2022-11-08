@@ -1,10 +1,10 @@
-//! This module implements the Regs structure, allowing to save an execution state and to restore
-//! it.
+//! This module implements the Regs structure, allowing to save an execution
+//! state and to restore it.
 
-use core::ffi::c_void;
-use core::fmt;
 use crate::errno::Errno;
 use crate::gdt;
+use core::ffi::c_void;
+use core::fmt;
 
 /// The default value of the eflags register.
 const DEFAULT_EFLAGS: u32 = 0x1202;
@@ -50,8 +50,8 @@ pub extern "C" fn restore_fxstate(fxstate: &[u8; 512]) {
 	}
 }
 
-/// Structure representing the list of registers for a context. The content of this structure
-/// depends on the architecture for which the kernel is compiled.
+/// Structure representing the list of registers for a context. The content of
+/// this structure depends on the architecture for which the kernel is compiled.
 #[derive(Clone, Copy, Debug)]
 #[repr(C, packed)]
 //#[cfg(config_general_arch = "x86")]

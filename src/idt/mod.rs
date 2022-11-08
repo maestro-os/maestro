@@ -1,12 +1,13 @@
-//! The Interrupt Descriptor Table (IDT) is a table under the x86 architecture storing the list of
-//! interrupt handlers, allowing to catch and handle interruptions.
+//! The Interrupt Descriptor Table (IDT) is a table under the x86 architecture
+//! storing the list of interrupt handlers, allowing to catch and handle
+//! interruptions.
 
 pub mod pic;
 
-use core::ffi::c_void;
-use core::mem::MaybeUninit;
-use core::mem::size_of;
 use crate::util;
+use core::ffi::c_void;
+use core::mem::size_of;
+use core::mem::MaybeUninit;
 
 /// Makes the interrupt switch to ring 0.
 const ID_PRIVILEGE_RING_0: u8 = 0b00000000;
@@ -159,13 +160,14 @@ fn get_c_fn_ptr(f: unsafe extern "C" fn()) -> *const c_void {
 	unsafe { core::mem::transmute::<_, _>(f as *const c_void) }
 }
 
-/// Initializes the IDT. This function must be called only once at kernel initialization.
-/// When returning, maskable interrupts are disabled by default.
+/// Initializes the IDT. This function must be called only once at kernel
+/// initialization. When returning, maskable interrupts are disabled by default.
 pub fn init() {
 	cli!();
 	pic::init(0x20, 0x28);
 
-	// Access to global variable. Safe because the function is supposed to be called only once
+	// Access to global variable. Safe because the function is supposed to be called
+	// only once
 	unsafe {
 		let id = ID.assume_init_mut();
 
@@ -224,9 +226,7 @@ pub fn init() {
 
 	let idt = InterruptDescriptorTable {
 		size: (size_of::<InterruptDescriptor>() * ENTRIES_COUNT - 1) as u16,
-		offset: unsafe {
-			ID.assume_init_ref().as_ptr() as u32
-		},
+		offset: unsafe { ID.assume_init_ref().as_ptr() as u32 },
 	};
 	unsafe {
 		idt_load(&idt as *const _ as *const _);
@@ -239,11 +239,13 @@ pub fn is_interrupt_enabled() -> bool {
 }
 
 /// Executes the given function `f` with maskable interruptions disabled.
-/// This function saves the state of the interrupt flag and restores it before returning.
+/// This function saves the state of the interrupt flag and restores it before
+/// returning.
 pub fn wrap_disable_interrupts<T, F: FnOnce() -> T>(f: F) -> T {
 	let int = is_interrupt_enabled();
 
-	// Here is assumed that no interruption will change eflags. Which could cause a race condition
+	// Here is assumed that no interruption will change eflags. Which could cause a
+	// race condition
 
 	crate::cli!();
 

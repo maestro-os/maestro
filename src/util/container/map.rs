@@ -42,7 +42,8 @@ struct Node<K, V> {
 	value: V,
 }
 
-/// Deletes the node at the given pointer, except the key and value fields which are returned.
+/// Deletes the node at the given pointer, except the key and value fields which
+/// are returned.
 unsafe fn drop_node<K, V>(node: *mut Node<K, V>) -> (K, V) {
 	let n = &mut *node;
 	drop_in_place(&mut n.parent);
@@ -78,7 +79,8 @@ fn unwrap_pointer_mut<K, V>(
 }
 
 impl<K: 'static + Ord, V: 'static> Node<K, V> {
-	/// Creates a new node with the given `value`. The node is colored Red by default.
+	/// Creates a new node with the given `value`. The node is colored Red by
+	/// default.
 	pub fn new(key: K, value: V) -> Result<NonNull<Self>, Errno> {
 		let ptr = unsafe { malloc::alloc(size_of::<Self>())? as *mut Self };
 		let s = Self {
@@ -249,7 +251,8 @@ impl<K: 'static + Ord, V: 'static> Node<K, V> {
 	}
 
 	/// Applies a left tree rotation with the current node as root.
-	/// If the current node doesn't have a right child, the function does nothing.
+	/// If the current node doesn't have a right child, the function does
+	/// nothing.
 	pub fn left_rotate(&mut self) {
 		if let Some(pivot) = self.get_right_mut() {
 			if let Some(parent) = self.get_parent_mut() {
@@ -278,7 +281,8 @@ impl<K: 'static + Ord, V: 'static> Node<K, V> {
 	}
 
 	/// Applies a right tree rotation with the current node as root.
-	/// If the current node doesn't have a left child, the function does nothing.
+	/// If the current node doesn't have a left child, the function does
+	/// nothing.
 	pub fn right_rotate(&mut self) {
 		if let Some(pivot) = self.get_left_mut() {
 			if let Some(parent) = self.get_parent_mut() {
@@ -306,8 +310,8 @@ impl<K: 'static + Ord, V: 'static> Node<K, V> {
 		}
 	}
 
-	/// Inserts the given node `node` to left of the current node. If the node already has a left
-	/// child, the behaviour is undefined.
+	/// Inserts the given node `node` to left of the current node. If the node
+	/// already has a left child, the behaviour is undefined.
 	#[inline]
 	pub fn insert_left(&mut self, node: &mut Node<K, V>) {
 		debug_assert!(self.left.is_none());
@@ -317,8 +321,8 @@ impl<K: 'static + Ord, V: 'static> Node<K, V> {
 		node.parent = NonNull::new(self);
 	}
 
-	/// Inserts the given node `node` to right of the current node. If the node already has a right
-	/// child, the behaviour is undefined.
+	/// Inserts the given node `node` to right of the current node. If the node
+	/// already has a right child, the behaviour is undefined.
 	#[inline]
 	pub fn insert_right(&mut self, node: &mut Node<K, V>) {
 		debug_assert!(self.right.is_none());
@@ -416,8 +420,8 @@ pub enum TraversalType {
 	PostOrder,
 }
 
-/// A binary tree is a structure which allows, when properly balanced, to performs actions
-/// (insertion, removal, searching) in O(log n) complexity.
+/// A binary tree is a structure which allows, when properly balanced, to
+/// performs actions (insertion, removal, searching) in O(log n) complexity.
 pub struct Map<K: 'static + Ord, V: 'static> {
 	/// The root node of the binary tree.
 	root: Option<NonNull<Node<K, V>>>,
@@ -426,7 +430,9 @@ pub struct Map<K: 'static + Ord, V: 'static> {
 impl<K: 'static + Ord, V: 'static> Map<K, V> {
 	/// Creates a new binary tree.
 	pub const fn new() -> Self {
-		Self { root: None }
+		Self {
+			root: None,
+		}
 	}
 
 	/// Tells whether the tree is empty.
@@ -459,8 +465,8 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 		self.get_root().map(|n| n.get_depth()).unwrap_or(0)
 	}
 
-	/// Searches for a node with the given key in the tree and returns a reference.
-	/// `key` is the key to find.
+	/// Searches for a node with the given key in the tree and returns a
+	/// reference. `key` is the key to find.
 	fn get_node(&self, key: &K) -> Option<&'static Node<K, V>> {
 		let mut node = self.get_root();
 
@@ -477,8 +483,8 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 		None
 	}
 
-	/// Searches for a node with the given key in the tree and returns a mutable reference.
-	/// `key` is the key to find.
+	/// Searches for a node with the given key in the tree and returns a mutable
+	/// reference. `key` is the key to find.
 	fn get_mut_node(&mut self, key: &K) -> Option<&'static mut Node<K, V>> {
 		let mut node = self.get_root_mut();
 
@@ -511,8 +517,8 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 		Some(&mut node.value)
 	}
 
-	/// Searches for a node in the tree using the given comparison function `cmp` instead of the
-	/// Ord trait.
+	/// Searches for a node in the tree using the given comparison function
+	/// `cmp` instead of the Ord trait.
 	pub fn cmp_get<'a, F: Fn(&K, &V) -> Ordering>(&'a self, cmp: F) -> Option<&'a V> {
 		let mut node = self.get_root();
 
@@ -529,8 +535,8 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 		None
 	}
 
-	/// Searches for a node in the tree using the given comparison function `cmp` instead of the
-	/// Ord trait and returns a mutable reference.
+	/// Searches for a node in the tree using the given comparison function
+	/// `cmp` instead of the Ord trait and returns a mutable reference.
 	pub fn cmp_get_mut<'a, F: Fn(&K, &V) -> Ordering>(&'a mut self, cmp: F) -> Option<&'a mut V> {
 		let mut node = self.get_root_mut();
 
@@ -582,7 +588,8 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 		self.root = root;
 	}
 
-	/// For node insertion, returns the parent node on which it will be inserted.
+	/// For node insertion, returns the parent node on which it will be
+	/// inserted.
 	fn get_insert_node(&mut self, key: &K) -> Option<&'static mut Node<K, V>> {
 		let mut node = self.get_root_mut();
 
@@ -652,8 +659,8 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 		}
 	}
 
-	/// Inserts a key/value pair in the tree and returns a mutable reference to the value.
-	/// `key` is the key to insert.
+	/// Inserts a key/value pair in the tree and returns a mutable reference to
+	/// the value. `key` is the key to insert.
 	/// `val` is the value to insert.
 	/// `cmp` is the comparison function.
 	/// If the key is already used, the previous key/value pair is dropped.
@@ -711,8 +718,8 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 		n
 	}
 
-	/// Fixes the tree after deletion in the case where the deleted node and its replacement are
-	/// both black.
+	/// Fixes the tree after deletion in the case where the deleted node and its
+	/// replacement are both black.
 	/// `node` is the node to fix.
 	fn remove_fix_double_black(&mut self, node: &mut Node<K, V>) {
 		if let Some(parent) = node.get_parent_mut() {
@@ -825,9 +832,7 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 				node.unlink();
 			}
 
-			let (_, val) = unsafe {
-				drop_node(node)
-			};
+			let (_, val) = unsafe { drop_node(node) };
 			val
 		} else if node.get_left().is_none() || node.get_right().is_none() {
 			let replacement = replacement.unwrap();
@@ -843,9 +848,7 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 				}
 
 				node.unlink();
-				let (_, val) = unsafe {
-					drop_node(node)
-				};
+				let (_, val) = unsafe { drop_node(node) };
 
 				if both_black {
 					self.remove_fix_double_black(replacement);
@@ -857,9 +860,7 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 				val
 			} else {
 				replacement.unlink();
-				let (key, value) = unsafe {
-					drop_node(replacement)
-				};
+				let (key, value) = unsafe { drop_node(replacement) };
 
 				// The node is the root
 				node.left = None;
@@ -880,8 +881,8 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 		}
 	}
 
-	/// Removes a value from the tree. If the value is present several times in the tree, only one
-	/// node is removed.
+	/// Removes a value from the tree. If the value is present several times in
+	/// the tree, only one node is removed.
 	/// `key` is the key to select the node to remove.
 	/// If the key exists, the function returns the value of the removed node.
 	pub fn remove(&mut self, key: K) -> Option<V> {
@@ -993,8 +994,8 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 		}
 	}
 
-	/// Checks the integrity of the tree. If the tree is invalid, the function makes the kernel
-	/// panic. This function is available only in debug mode.
+	/// Checks the integrity of the tree. If the tree is invalid, the function
+	/// makes the kernel panic. This function is available only in debug mode.
 	#[cfg(config_debug_debug)]
 	pub fn check(&self) {
 		if let Some(root) = self.root {
@@ -1044,7 +1045,8 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 	}
 }
 
-/// An iterator for the Map structure. This iterator traverses the tree in pre order.
+/// An iterator for the Map structure. This iterator traverses the tree in pre
+/// order.
 pub struct MapIterator<'a, K: 'static + Ord, V: 'static> {
 	/// The binary tree to iterate into.
 	tree: &'a Map<K, V>,
@@ -1063,7 +1065,8 @@ impl<'a, K: Ord, V> MapIterator<'a, K, V> {
 		}
 	}
 
-	/// Makes the iterator jump to the given key. If the key doesn't exist, the iterator ends.
+	/// Makes the iterator jump to the given key. If the key doesn't exist, the
+	/// iterator ends.
 	pub fn jump(&mut self, key: &K) {
 		self.node = self
 			.tree
@@ -1107,15 +1110,16 @@ impl<'a, K: 'static + Ord, V> Iterator for MapIterator<'a, K, V> {
 }
 
 impl<'a, K: 'static + Ord, V> IntoIterator for &'a Map<K, V> {
-	type Item = (&'a K, &'a V);
 	type IntoIter = MapIterator<'a, K, V>;
+	type Item = (&'a K, &'a V);
 
 	fn into_iter(self) -> Self::IntoIter {
 		MapIterator::new(&self)
 	}
 }
 
-/// An iterator for the Map structure. This iterator traverses the tree in pre order.
+/// An iterator for the Map structure. This iterator traverses the tree in pre
+/// order.
 pub struct MapMutIterator<'a, K: 'static + Ord, V: 'static> {
 	/// The binary tree to iterate into.
 	tree: &'a mut Map<K, V>,
@@ -1130,10 +1134,14 @@ impl<'a, K: Ord, V> MapMutIterator<'a, K, V> {
 			.root
 			.map(|mut n| unsafe { NonNull::new(Map::get_leftmost_node(n.as_mut())).unwrap() });
 
-		MapMutIterator { tree, node }
+		MapMutIterator {
+			tree,
+			node,
+		}
 	}
 
-	/// Makes the iterator jump to the given key. If the key doesn't exist, the iterator ends.
+	/// Makes the iterator jump to the given key. If the key doesn't exist, the
+	/// iterator ends.
 	pub fn jump(&mut self, key: &K) {
 		self.node = self.tree.get_mut_node(key).and_then(|v| NonNull::new(v));
 	}

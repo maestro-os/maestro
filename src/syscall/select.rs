@@ -1,5 +1,5 @@
-//! `select` waits for a file descriptor in the given sets to be readable, writable or for an
-//! exception to occur.
+//! `select` waits for a file descriptor in the given sets to be readable,
+//! writable or for an exception to occur.
 
 use crate::errno::Errno;
 use crate::process::mem_space::ptr::SyscallPtr;

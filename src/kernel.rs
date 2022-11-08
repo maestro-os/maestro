@@ -1,5 +1,5 @@
-//! Maestro is a Unix kernel written in Rust. This reference documents interfaces for modules and
-//! the kernel's internals.
+//! Maestro is a Unix kernel written in Rust. This reference documents
+//! interfaces for modules and the kernel's internals.
 
 #![no_std]
 #![allow(unused_attributes)]
@@ -61,21 +61,21 @@ pub mod util;
 #[macro_use]
 pub mod vga;
 
-use core::ffi::c_void;
-use core::panic::PanicInfo;
-use core::ptr::null;
 use crate::errno::Errno;
-use crate::file::vfs;
 use crate::file::path::Path;
-use crate::memory::vmem::VMem;
+use crate::file::vfs;
 use crate::memory::vmem;
-use crate::process::Process;
-use crate::process::exec::ExecInfo;
+use crate::memory::vmem::VMem;
 use crate::process::exec;
+use crate::process::exec::ExecInfo;
+use crate::process::Process;
 use crate::util::boxed::Box;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::lock::Mutex;
+use core::ffi::c_void;
+use core::panic::PanicInfo;
+use core::ptr::null;
 
 /// The kernel's name.
 pub const NAME: &str = "maestro";
@@ -111,7 +111,8 @@ pub fn enter_loop() -> ! {
 }
 
 /// Resets the stack to the given value, then calls `enter_loop`.
-/// The function is unsafe because the pointer passed in parameter might be invalid.
+/// The function is unsafe because the pointer passed in parameter might be
+/// invalid.
 pub unsafe fn loop_reset(stack: *mut c_void) -> ! {
 	kernel_loop_reset(stack);
 }
@@ -130,8 +131,8 @@ static KERNEL_VMEM: Mutex<Option<Box<dyn VMem>>> = Mutex::new(None);
 fn init_vmem() -> Result<(), Errno> {
 	let mut kernel_vmem = vmem::new()?;
 
-	// TODO If Meltdown mitigation is enabled, only allow read access to a stub of the
-	// kernel for interrupts
+	// TODO If Meltdown mitigation is enabled, only allow read access to a stub of
+	// the kernel for interrupts
 
 	// TODO Enable GLOBAL in cr4
 
@@ -237,11 +238,12 @@ fn init(init_path: String) -> Result<(), Errno> {
 	}
 }
 
-/// This is the main function of the Rust source code, responsible for the initialization of the
-/// kernel. When calling this function, the CPU must be in Protected Mode with the GDT loaded with
-/// space for the Task State Segment.
+/// This is the main function of the Rust source code, responsible for the
+/// initialization of the kernel. When calling this function, the CPU must be in
+/// Protected Mode with the GDT loaded with space for the Task State Segment.
 /// `magic` is the magic number passed by Multiboot.
-/// `multiboot_ptr` is the pointer to the Multiboot booting informations structure.
+/// `multiboot_ptr` is the pointer to the Multiboot booting informations
+/// structure.
 #[no_mangle]
 pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 	// Initializing TTY
@@ -277,7 +279,8 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 		kernel_panic!("Cannot initialize kernel virtual memory!");
 	}
 
-	// From here, the kernel considers that memory management has been fully initialized
+	// From here, the kernel considers that memory management has been fully
+	// initialized
 
 	// Performing kernel self-tests
 	#[cfg(test)]
@@ -316,8 +319,7 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 		.unwrap_or_else(|e| kernel_panic!("Failed to initialize files management! ({})", e));
 	device::default::create()
 		.unwrap_or_else(|e| kernel_panic!("Failed to create default devices! ({})", e));
-	device::create_files()
-		.unwrap_or_else(|e| kernel_panic!("Failed to device files! ({})", e));
+	device::create_files().unwrap_or_else(|e| kernel_panic!("Failed to device files! ({})", e));
 
 	println!("Initializing processes...");
 	process::init().unwrap_or_else(|e| kernel_panic!("Failed to init processes! ({})", e));
@@ -355,7 +357,7 @@ fn panic(panic_info: &PanicInfo) -> ! {
 	}
 }
 
-/// Function that is required to be implemented by the Rust compiler and is used only when
-/// panicking.
+/// Function that is required to be implemented by the Rust compiler and is used
+/// only when panicking.
 #[lang = "eh_personality"]
 fn eh_personality() {}

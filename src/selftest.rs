@@ -1,7 +1,7 @@
-//! This module handles selftesting of the kernel. A selftest can be either a unit test or an
-//! integration test.
-//! The kernel uses the serial communication interface to transmit the results of the selftests to
-//! another machine.
+//! This module handles selftesting of the kernel. A selftest can be either a
+//! unit test or an integration test.
+//! The kernel uses the serial communication interface to transmit the results
+//! of the selftests to another machine.
 
 //use crate::device::serial;
 use core::any::type_name;
@@ -52,8 +52,8 @@ where
 	}
 }
 
-/// The test runner for the kernel. This function runs every tests for the kernel and halts the
-/// kernel or exits the emulator if possible.
+/// The test runner for the kernel. This function runs every tests for the
+/// kernel and halts the kernel or exits the emulator if possible.
 pub fn runner(tests: &[&dyn Testable]) {
 	crate::println!("Running {} tests", tests.len());
 

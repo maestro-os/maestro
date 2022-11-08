@@ -1,4 +1,5 @@
-//! The `munmap` system call allows the process to free memory that was allocated with `mmap`.
+//! The `munmap` system call allows the process to free memory that was
+//! allocated with `mmap`.
 
 use crate::errno;
 use crate::errno::Errno;

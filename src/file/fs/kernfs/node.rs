@@ -79,8 +79,8 @@ pub trait KernFSNode: Any + IO {
 }
 
 /// Structure representing a dummy kernfs node (with the default behaviour).
-/// This node doesn't implement regular files' content handling. This calling `read` or `write`
-/// does nothing.
+/// This node doesn't implement regular files' content handling. This calling
+/// `read` or `write` does nothing.
 pub struct DummyKernFSNode {
 	/// The number of hard links to the node.
 	hard_links_count: u16,

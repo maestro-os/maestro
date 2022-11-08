@@ -1,5 +1,32 @@
 //! This module implements ELF program execution with respects the System V ABI.
 
+use crate::cpu;
+use crate::elf;
+use crate::elf::parser::ELFParser;
+use crate::elf::relocation::Relocation;
+use crate::elf::ELF32ProgramHeader;
+use crate::errno;
+use crate::errno::Errno;
+use crate::file::path::Path;
+use crate::file::vfs;
+use crate::file::File;
+use crate::file::Gid;
+use crate::file::Uid;
+use crate::memory;
+use crate::memory::malloc;
+use crate::memory::vmem;
+use crate::process;
+use crate::process::exec::ExecInfo;
+use crate::process::exec::Executor;
+use crate::process::exec::ProgramImage;
+use crate::process::mem_space::MapConstraint;
+use crate::process::mem_space::MemSpace;
+use crate::util;
+use crate::util::container::string::String;
+use crate::util::container::vec::Vec;
+use crate::util::io::IO;
+use crate::util::math;
+use crate::util::FailableClone;
 use core::cmp::max;
 use core::cmp::min;
 use core::ffi::c_void;
@@ -7,44 +34,18 @@ use core::mem::size_of;
 use core::ptr::null;
 use core::slice;
 use core::str;
-use crate::cpu;
-use crate::elf::ELF32ProgramHeader;
-use crate::elf::parser::ELFParser;
-use crate::elf::relocation::Relocation;
-use crate::elf;
-use crate::errno::Errno;
-use crate::errno;
-use crate::file::File;
-use crate::file::Gid;
-use crate::file::Uid;
-use crate::file::vfs;
-use crate::file::path::Path;
-use crate::memory::malloc;
-use crate::memory::vmem;
-use crate::memory;
-use crate::process::exec::ExecInfo;
-use crate::process::exec::Executor;
-use crate::process::exec::ProgramImage;
-use crate::process::mem_space::MapConstraint;
-use crate::process::mem_space::MemSpace;
-use crate::process;
-use crate::util::FailableClone;
-use crate::util::container::string::String;
-use crate::util::container::vec::Vec;
-use crate::util::io::IO;
-use crate::util::math;
-use crate::util;
 
 /// Used to define the end of the entries list.
 const AT_NULL: i32 = 0;
 /// Entry with no meaning, to be ignored.
 const AT_IGNORE: i32 = 1;
-/// Entry containing a file descriptor to the application object file in case the program is run
-/// using an interpreter.
+/// Entry containing a file descriptor to the application object file in case
+/// the program is run using an interpreter.
 const AT_EXECFD: i32 = 2;
 /// Entry containing a pointer to the program header table for the interpreter.
 const AT_PHDR: i32 = 3;
-/// The size in bytes of one entry in the program header table to which AT_PHDR points.
+/// The size in bytes of one entry in the program header table to which AT_PHDR
+/// points.
 const AT_PHENT: i32 = 4;
 /// The number of entries in the program header table to which AT_PHDR points.
 const AT_PHNUM: i32 = 5;
@@ -54,8 +55,8 @@ const AT_PAGESZ: i32 = 6;
 const AT_BASE: i32 = 7;
 /// Contains flags.
 const AT_FLAGS: i32 = 8;
-/// Entry with the pointer to the entry point of the program to which the interpreter should
-/// transfer control.
+/// Entry with the pointer to the entry point of the program to which the
+/// interpreter should transfer control.
 const AT_ENTRY: i32 = 9;
 /// A boolean value. If non-zero, the program is non-ELF.
 const AT_NOTELF: i32 = 10;
@@ -84,7 +85,8 @@ const AT_HWCAP2: i32 = 26;
 /// A pointer to the filename of the executed program.
 const AT_EXECFN: i32 = 31;
 
-/// Informations returned after loading an ELF program used to finish initialization.
+/// Informations returned after loading an ELF program used to finish
+/// initialization.
 #[derive(Debug)]
 struct ELFLoadInfo {
 	/// The load base address
@@ -130,12 +132,15 @@ struct AuxEntryDesc {
 impl AuxEntryDesc {
 	/// Creates a new instance with the given type `a_type` and value `a_val`.
 	pub fn new(a_type: i32, a_val: AuxEntryDescValue) -> Self {
-		Self { a_type, a_val }
+		Self {
+			a_type,
+			a_val,
+		}
 	}
 }
 
-/// Builds an auxilary vector with execution informations `exec_info` and load informations
-/// `load_info`.
+/// Builds an auxilary vector with execution informations `exec_info` and load
+/// informations `load_info`.
 /// `parser` is a reference to the ELF parser.
 fn build_auxilary(
 	exec_info: &ExecInfo,
@@ -224,8 +229,8 @@ fn build_auxilary(
 	Ok(aux)
 }
 
-/// Reads the file `file`. If the file is not executable, the function returns an
-/// error.
+/// Reads the file `file`. If the file is not executable, the function returns
+/// an error.
 /// `uid` is the User ID of the executing user.
 /// `gid` is the Group ID of the executing user.
 fn read_exec_file(file: &mut File, uid: Uid, gid: Gid) -> Result<malloc::Alloc<u8>, Errno> {
@@ -256,7 +261,7 @@ impl ELFExecutor {
 	/// `gid` is the Group ID of the executing user.
 	pub fn new(info: ExecInfo) -> Result<Self, Errno> {
 		Ok(Self {
-			info
+			info,
 		})
 	}
 
@@ -265,8 +270,11 @@ impl ELFExecutor {
 	/// included.
 	/// - The required size in bytes for the data to be written on the stack before the program
 	/// starts.
-	fn get_init_stack_size(argv: &[String], envp: &[String], aux: &[AuxEntryDesc])
-		-> (usize, usize) {
+	fn get_init_stack_size(
+		argv: &[String],
+		envp: &[String],
+		aux: &[AuxEntryDesc],
+	) -> (usize, usize) {
 		// The size of the block storing the arguments and environment
 		let mut info_block_size = 0;
 		for a in aux {
@@ -304,8 +312,8 @@ impl ELFExecutor {
 	/// `argv` is the list of arguments.
 	/// `envp` is the environment.
 	/// `aux` is the auxilary vector.
-	/// The function returns the distance between the top of the stack and the new bottom after the
-	/// data has been written.
+	/// The function returns the distance between the top of the stack and the
+	/// new bottom after the data has been written.
 	fn init_stack(
 		&self,
 		user_stack: *const c_void,
@@ -315,8 +323,8 @@ impl ELFExecutor {
 	) {
 		let (info_size, total_size) = Self::get_init_stack_size(argv, envp, aux);
 
-		// A slice on the stack representing the region which will containing the arguments and
-		// environment variables
+		// A slice on the stack representing the region which will containing the
+		// arguments and environment variables
 		let info_slice = unsafe {
 			slice::from_raw_parts_mut((user_stack as usize - info_size) as *mut u8, info_size)
 		};
@@ -417,7 +425,8 @@ impl ELFExecutor {
 	/// `load_base` is the address at which the executable is loaded.
 	/// `mem_space` is the memory space to allocate into.
 	/// `seg` is the segment for which the memory is allocated.
-	/// If loaded, the function return the pointer to the end of the segment in virtual memory.
+	/// If loaded, the function return the pointer to the end of the segment in
+	/// virtual memory.
 	fn alloc_segment(
 		load_base: *const u8,
 		mem_space: &mut MemSpace,
@@ -609,8 +618,8 @@ impl ELFExecutor {
 }
 
 impl Executor for ELFExecutor {
-	// TODO Ensure there is no way to write in kernel space (check segments position and
-	// relocations)
+	// TODO Ensure there is no way to write in kernel space (check segments position
+	// and relocations)
 	// TODO Handle suid and sgid
 	fn build_image(&self, file: &mut File) -> Result<ProgramImage, Errno> {
 		// The ELF file image

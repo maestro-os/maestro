@@ -1,6 +1,7 @@
 //! This file handles the VGA text mode, allowing to easily write text on the
 //! screen.
-//! This module doesn't support concurrency. It is the callers' reponsibility to handle it.
+//! This module doesn't support concurrency. It is the callers' reponsibility to
+//! handle it.
 //!
 //! Note: The VGA text mode runs only when booting with a Legacy BIOS.
 
@@ -77,7 +78,8 @@ pub fn get_buffer_virt() -> *mut Char {
 	(memory::PROCESS_END as usize + BUFFER_PHYS as usize) as _
 }
 
-/// Returns the value for the given foreground color `fg` and background color `bg`.
+/// Returns the value for the given foreground color `fg` and background color
+/// `bg`.
 #[inline]
 pub fn entry_color(fg: Color, bg: Color) -> Color {
 	fg | (bg << 4)
@@ -138,8 +140,8 @@ pub fn move_cursor(x: Pos, y: Pos) {
 	}
 }
 
-/// Writes the given character `c` at the given position `x`/`y` on the screen with the default
-/// color.
+/// Writes the given character `c` at the given position `x`/`y` on the screen
+/// with the default color.
 pub fn putchar(c: char, x: Pos, y: Pos) {
 	putchar_color(c, DEFAULT_COLOR, x, y);
 }

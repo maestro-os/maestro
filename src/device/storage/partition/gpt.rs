@@ -1,4 +1,5 @@
-//! The GUID Partition Table (GPT) is a standard partitions table format. It is a successor of MBR.
+//! The GUID Partition Table (GPT) is a standard partitions table format. It is
+//! a successor of MBR.
 
 use core::mem::size_of;
 use core::slice;
@@ -27,7 +28,8 @@ type GUID = [u8; 16];
 
 /// Translates the given LBA value `lba` into a positive LBA value.
 /// `storage_size` is the number of blocks on the storage device.
-/// If the LBA is out of bounds of the storage device, the function returns None.
+/// If the LBA is out of bounds of the storage device, the function returns
+/// None.
 fn translate_lba(lba: i64, storage_size: u64) -> Option<u64> {
 	if lba < 0 {
 		if (-lba as u64) <= storage_size {
@@ -162,8 +164,8 @@ impl Clone for GPT {
 }
 
 impl GPT {
-	/// Reads the header structure from the given storage interface `storage` at the given LBA
-	/// `lba`.
+	/// Reads the header structure from the given storage interface `storage` at
+	/// the given LBA `lba`.
 	/// If the header is invalid, the function returns an error.
 	fn read_hdr_struct(storage: &mut dyn StorageInterface, lba: i64) -> Result<Self, Errno> {
 		let block_size = storage.get_block_size() as usize;
@@ -288,8 +290,8 @@ impl Table for GPT {
 		for e in self.get_entries(storage)? {
 			let start = translate_lba(e.start, blocks_count).ok_or_else(|| errno!(EINVAL))?;
 			let end = translate_lba(e.end, blocks_count).ok_or_else(|| errno!(EINVAL))?;
-			// Doesn't overflow because the condition `end >= start` has already been checked
-			// + 1 is required because the ending LBA is included
+			// Doesn't overflow because the condition `end >= start` has already been
+			// checked + 1 is required because the ending LBA is included
 			let size = (end - start) + 1;
 
 			partitions.push(Partition::new(start, size))?;

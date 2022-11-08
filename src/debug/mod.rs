@@ -1,19 +1,19 @@
 //! This module implements debugging tools.
 
+use crate::elf;
+use crate::memory;
+use crate::multiboot;
 use core::ffi::c_void;
 use core::mem::size_of;
 use core::ptr::null_mut;
 use core::str;
-use crate::elf;
-use crate::memory;
-use crate::multiboot;
 
-/// Prints, in hexadecimal, the content of the memory at the given location `ptr`, with the given
-/// size `n` in bytes.
+/// Prints, in hexadecimal, the content of the memory at the given location
+/// `ptr`, with the given size `n` in bytes.
 ///
 /// # Safety
-/// The range of memory of size `n` starting at pointer `ptr` must be readable. If not, the
-/// behaviour is undefined.
+/// The range of memory of size `n` starting at pointer `ptr` must be readable.
+/// If not, the behaviour is undefined.
 pub unsafe fn print_memory(ptr: *const c_void, n: usize) {
 	let mut i = 0;
 
@@ -54,9 +54,10 @@ pub unsafe fn print_memory(ptr: *const c_void, n: usize) {
 	}
 }
 
-/// Fills the slice `stack` with the callstack starting at `ebp`. The first element is the last
-/// called function and the last element is the first called function.
-/// When the stack ends, the function fills the rest of the slice with None.
+/// Fills the slice `stack` with the callstack starting at `ebp`. The first
+/// element is the last called function and the last element is the first called
+/// function. When the stack ends, the function fills the rest of the slice with
+/// None.
 pub fn get_callstack(ebp: *mut u32, stack: &mut [*mut c_void]) {
 	stack.fill(null_mut::<c_void>());
 
@@ -64,9 +65,7 @@ pub fn get_callstack(ebp: *mut u32, stack: &mut [*mut c_void]) {
 	let mut frame = ebp;
 
 	while !frame.is_null() && i < stack.len() {
-		let pc = unsafe {
-			*((frame as usize + size_of::<usize>()) as *mut u32) as *mut c_void
-		};
+		let pc = unsafe { *((frame as usize + size_of::<usize>()) as *mut u32) as *mut c_void };
 		if pc < memory::PROCESS_END as *mut c_void {
 			break;
 		}
@@ -109,7 +108,7 @@ pub fn print_callstack(stack: &[*mut c_void]) {
 			Some(name) => {
 				let name = str::from_utf8(name).unwrap_or("<Invalid UTF8>");
 				crate::println!("{}: {:p} -> {}", i, pc, name);
-			},
+			}
 
 			None => crate::println!("{}: {:p} -> ???", i, pc),
 		}

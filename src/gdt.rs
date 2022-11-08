@@ -1,6 +1,7 @@
-//! Under the x86 architecture, the GDT (Global Descriptior Table) is a table of structure that
-//! describes the segments of memory. It is a deprecated structure that still must be used in order
-//! to switch to protected mode, handle protection rings and load the Task State Segment (TSS).
+//! Under the x86 architecture, the GDT (Global Descriptior Table) is a table of
+//! structure that describes the segments of memory. It is a deprecated
+//! structure that still must be used in order to switch to protected mode,
+//! handle protection rings and load the Task State Segment (TSS).
 
 use crate::errno::Errno;
 use crate::memory;
@@ -55,7 +56,8 @@ impl Entry {
 		((self.val & 0xffff) | (((self.val >> 48) & 0xf) << 16)) as _
 	}
 
-	/// Sets the entry's limit. If the given limit is more than (2^20 - 1), the value is truncated.
+	/// Sets the entry's limit. If the given limit is more than (2^20 - 1), the
+	/// value is truncated.
 	#[inline(always)]
 	pub fn set_limit(&mut self, limit: u32) {
 		self.val &= !0xffff;
@@ -111,7 +113,8 @@ impl Entry {
 	///
 	/// # Safety
 	///
-	/// An invalid offset (out of bounds of the GDT) shall result in an undefined behaviour.
+	/// An invalid offset (out of bounds of the GDT) shall result in an
+	/// undefined behaviour.
 	pub unsafe fn update_gdt(&self, off: usize) {
 		let ptr = get_segment_ptr(off);
 		*ptr = self.val;

@@ -1,12 +1,13 @@
-//! This file handles macros `print` and `println`. Unlink the standard print operations, these are
-//! used to log kernel informations. They can be silenced at boot using the `-silent` command line
-//! argument but they will be kept in the logger anyways.
+//! This file handles macros `print` and `println`. Unlink the standard print
+//! operations, these are used to log kernel informations. They can be silenced
+//! at boot using the `-silent` command line argument but they will be kept in
+//! the logger anyways.
 
 use crate::logger;
 use core::fmt;
 
-/// Prints the specified message on the current TTY. This function is meant to be used through
-/// `print!` and `println!` macros only.
+/// Prints the specified message on the current TTY. This function is meant to
+/// be used through `print!` and `println!` macros only.
 pub fn _print(args: fmt::Arguments) {
 	let mutex = logger::get();
 	let guard = mutex.lock();

@@ -1,5 +1,6 @@
-//! Tmpfs (Temporary file system) is, as its name states a temporary filesystem. The files are
-//! stored on the kernel's memory and thus are removed when the filesystem is unmounted.
+//! Tmpfs (Temporary file system) is, as its name states a temporary filesystem.
+//! The files are stored on the kernel's memory and thus are removed when the
+//! filesystem is unmounted.
 
 mod node;
 
@@ -48,8 +49,8 @@ pub struct TmpFS {
 
 impl TmpFS {
 	/// Creates a new instance.
-	/// `max_size` is the maximum amount of memory the filesystem can use in bytes.
-	/// `readonly` tells whether the filesystem is readonly.
+	/// `max_size` is the maximum amount of memory the filesystem can use in
+	/// bytes. `readonly` tells whether the filesystem is readonly.
 	/// `mountpath` is the path at which the filesystem is mounted.
 	pub fn new(max_size: usize, readonly: bool, mountpath: Path) -> Result<Self, Errno> {
 		let mut fs = Self {
@@ -69,10 +70,11 @@ impl TmpFS {
 		Ok(fs)
 	}
 
-	/// Executes the given function `f`. On success, the function adds `s` to the total size of the
-	/// filesystem.
-	/// If `f` fails, the function doesn't change the total size and returns the error.
-	/// If the new total size is too large, `f` is not executed and the function returns an error.
+	/// Executes the given function `f`. On success, the function adds `s` to
+	/// the total size of the filesystem.
+	/// If `f` fails, the function doesn't change the total size and returns the
+	/// error. If the new total size is too large, `f` is not executed and the
+	/// function returns an error.
 	fn update_size<F: FnOnce(&mut Self) -> Result<(), Errno>>(
 		&mut self,
 		s: isize,

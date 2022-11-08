@@ -1,6 +1,7 @@
-//! A kernel module is an executable that is loaded in kernelspace in order to handle a specific
-//! feature. The some advantages of that system is a lighter kernel with clearer code and it
-//! allows to load only the parts that are required by the current system.
+//! A kernel module is an executable that is loaded in kernelspace in order to
+//! handle a specific feature. The some advantages of that system is a lighter
+//! kernel with clearer code and it allows to load only the parts that are
+//! required by the current system.
 //!
 //! There's a distinction between a Module and a Kernel module:
 //! - Module: A Rust module, part of the structure of the code.
@@ -8,33 +9,33 @@
 
 pub mod version;
 
+use crate::elf;
+use crate::elf::parser::ELFParser;
+use crate::elf::relocation::Relocation;
+use crate::elf::ELF32Sym;
+use crate::errno;
+use crate::errno::Errno;
+use crate::memory;
+use crate::memory::malloc;
+use crate::multiboot;
+use crate::util::container::hashmap::HashMap;
+use crate::util::container::string::String;
+use crate::util::container::vec::Vec;
+use crate::util::lock::Mutex;
+use crate::util::FailableClone;
 use core::cmp::max;
 use core::cmp::min;
 use core::mem::size_of;
 use core::mem::transmute;
 use core::ptr;
-use crate::elf::ELF32Sym;
-use crate::elf::parser::ELFParser;
-use crate::elf::relocation::Relocation;
-use crate::elf;
-use crate::errno::Errno;
-use crate::errno;
-use crate::memory::malloc;
-use crate::memory;
-use crate::multiboot;
-use crate::util::FailableClone;
-use crate::util::container::hashmap::HashMap;
-use crate::util::container::string::String;
-use crate::util::container::vec::Vec;
-use crate::util::lock::Mutex;
 use version::Dependency;
 use version::Version;
 
 /// The magic number that must be present inside of a module.
 pub const MOD_MAGIC: u64 = 0x9792df56efb7c93f;
 
-/// Macro used to declare a kernel module. This macro must be used only inside of a kernel module.
-/// `name` (str) is the module's name.
+/// Macro used to declare a kernel module. This macro must be used only inside
+/// of a kernel module. `name` (str) is the module's name.
 /// `version` (Version) is the module's version.
 /// `deps` ([&str]) is the list of the module's dependencies.
 #[macro_export]
@@ -85,8 +86,8 @@ impl Module {
 		size
 	}
 
-	/// Resolves an external symbol from the kernel or another module. If the symbol doesn't exist,
-	/// the function returns None.
+	/// Resolves an external symbol from the kernel or another module. If the
+	/// symbol doesn't exist, the function returns None.
 	/// `name` is the name of the symbol to look for.
 	fn resolve_symbol(name: &[u8]) -> Option<&ELF32Sym> {
 		let boot_info = multiboot::get_boot_info();
@@ -193,11 +194,7 @@ impl Module {
 		});
 
 		// Checking the magic number
-		let magic = Self::get_module_attibute::<u64>(
-				mem.as_slice(),
-				&parser,
-				"MOD_MAGIC"
-			)
+		let magic = Self::get_module_attibute::<u64>(mem.as_slice(), &parser, "MOD_MAGIC")
 			.ok_or_else(|| {
 				crate::println!("Missing `MOD_MAGIC` symbol in module image");
 				errno!(EINVAL)
@@ -208,38 +205,27 @@ impl Module {
 		}
 
 		// Getting the module's name
-		let name = Self::get_module_attibute::<&'static str>(
-				mem.as_slice(),
-				&parser,
-				"MOD_NAME"
-			)
+		let name = Self::get_module_attibute::<&'static str>(mem.as_slice(), &parser, "MOD_NAME")
 			.ok_or_else(|| {
-				crate::println!("Missing `MOD_NAME` symbol in module image");
-				errno!(EINVAL)
-			})?;
+			crate::println!("Missing `MOD_NAME` symbol in module image");
+			errno!(EINVAL)
+		})?;
 		let name = String::from(name.as_bytes())?;
 
 		// Getting the module's version
-		let version = Self::get_module_attibute::<Version>(
-				mem.as_slice(),
-				&parser,
-				"MOD_VERSION"
-			)
+		let version = Self::get_module_attibute::<Version>(mem.as_slice(), &parser, "MOD_VERSION")
 			.ok_or_else(|| {
 				crate::println!("Missing `MOD_VERSION` symbol in module image");
 				errno!(EINVAL)
 			})?;
 
 		// Getting the module's dependencies
-		let deps = Self::get_module_attibute::<&'static [Dependency]>(
-				mem.as_slice(),
-				&parser,
-				"MOD_DEPS"
-			)
-			.ok_or_else(|| {
-				crate::println!("Missing `MOD_DEPS` symbol in module image");
-				errno!(EINVAL)
-			})?;
+		let deps =
+			Self::get_module_attibute::<&'static [Dependency]>(mem.as_slice(), &parser, "MOD_DEPS")
+				.ok_or_else(|| {
+					crate::println!("Missing `MOD_DEPS` symbol in module image");
+					errno!(EINVAL)
+				})?;
 		let deps = Vec::from_slice(deps)?;
 
 		crate::println!("Loading module `{}` version {}", name, version);
@@ -247,12 +233,10 @@ impl Module {
 		// TODO Check that all dependencies are loaded
 
 		// Initializing module
-		let init = parser
-			.get_symbol_by_name("init")
-			.ok_or_else(|| {
-				crate::println!("Missing `init` symbol in module image");
-				errno!(EINVAL)
-			})?;
+		let init = parser.get_symbol_by_name("init").ok_or_else(|| {
+			crate::println!("Missing `init` symbol in module image");
+			errno!(EINVAL)
+		})?;
 		let ok = unsafe {
 			let ptr = mem.as_ptr().add(init.st_value as usize);
 			let func: extern "C" fn() -> bool = transmute(ptr);
@@ -314,7 +298,8 @@ impl Drop for Module {
 	}
 }
 
-/// The list of modules. The key is the name of the module and the value is the module itself.
+/// The list of modules. The key is the name of the module and the value is the
+/// module itself.
 static MODULES: Mutex<HashMap<String, Module>> = Mutex::new(HashMap::new());
 
 /// Tells whether a module with the given name is loaded.

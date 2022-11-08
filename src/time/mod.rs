@@ -1,6 +1,6 @@
 //! This module handles time-releated features.
-//! The kernel stores a list of clock sources. A clock source is an object that allow to get the
-//! current timestamp.
+//! The kernel stores a list of clock sources. A clock source is an object that
+//! allow to get the current timestamp.
 
 pub mod timer;
 pub mod unit;
@@ -28,8 +28,8 @@ struct ClockSourceWrapper {
 	/// The clock source.
 	src: Box<dyn ClockSource>,
 
-	/// The last timestamp returned by the clock. This timestamp is used in case the caller
-	/// requires monotonic time and the clock came back in the past.
+	/// The last timestamp returned by the clock. This timestamp is used in case
+	/// the caller requires monotonic time and the clock came back in the past.
 	last: [Timestamp; 4],
 }
 

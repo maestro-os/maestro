@@ -24,7 +24,8 @@ pub const PATH_SEPARATOR: char = '/';
 pub struct Path {
 	/// Tells whether the path is absolute or relative.
 	absolute: bool,
-	/// An array containing the different parts of the path which are separated with `/`.
+	/// An array containing the different parts of the path which are separated
+	/// with `/`.
 	parts: Vec<String>,
 }
 
@@ -39,8 +40,8 @@ impl Path {
 
 	/// Creates a new instance from string.
 	/// `path` is the path.
-	/// `user` tells whether the path was supplied by the user (to check the length and return an
-	/// error if too long).
+	/// `user` tells whether the path was supplied by the user (to check the
+	/// length and return an error if too long).
 	pub fn from_str(path: &[u8], user: bool) -> Result<Self, Errno> {
 		if user && path.len() + 1 >= limits::PATH_MAX {
 			return Err(errno!(ENAMETOOLONG));
@@ -78,8 +79,8 @@ impl Path {
 		self.parts.is_empty()
 	}
 
-	/// Returns the number of elements in the path, namely, the number of elements separated by
-	/// `/`.
+	/// Returns the number of elements in the path, namely, the number of
+	/// elements separated by `/`.
 	pub fn get_elements_count(&self) -> usize {
 		self.parts.len()
 	}
@@ -184,9 +185,10 @@ impl Path {
 		Ok(())
 	}
 
-	/// Concats the current path with another path `other` to create a new path. The path is not
-	/// automaticaly reduced.
-	/// If the `other` path is absolute, the resulting path exactly equals `other`.
+	/// Concats the current path with another path `other` to create a new path.
+	/// The path is not automaticaly reduced.
+	/// If the `other` path is absolute, the resulting path exactly equals
+	/// `other`.
 	pub fn concat(&self, other: &Self) -> Result<Self, Errno> {
 		if other.is_absolute() {
 			other.failable_clone()

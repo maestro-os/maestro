@@ -1,8 +1,10 @@
-//! This module implements a structure which allows to retrieve the ACPI data from physical memory.
+//! This module implements a structure which allows to retrieve the ACPI data
+//! from physical memory.
 //!
-//! The issue when retrieving such information is that if the system has too much memory, the ACPI
-//! data may be too high in memory to recover directly. The structure implemented in this module
-//! uses a temporary virtual memory context to get a copy of the data.
+//! The issue when retrieving such information is that if the system has too
+//! much memory, the ACPI data may be too high in memory to recover directly.
+//! The structure implemented in this module uses a temporary virtual memory
+//! context to get a copy of the data.
 
 use crate::acpi::rsdt::Rsdt;
 use crate::acpi::ACPITable;
@@ -31,8 +33,8 @@ fn get_scan_range() -> (*const c_void, *const c_void) {
 	(begin, end)
 }
 
-/// The Root System Description Pointer (RSDP) is a structure storing a pointer to the other
-/// structures used by ACPI.
+/// The Root System Description Pointer (RSDP) is a structure storing a pointer
+/// to the other structures used by ACPI.
 #[repr(C)]
 #[derive(Debug)]
 struct Rsdp {
@@ -65,8 +67,8 @@ impl Rsdp {
 	}
 }
 
-/// This structure is the version 2.0 of the RSDP. This structure contains the field from the
-/// previous version, plus some extra fields.
+/// This structure is the version 2.0 of the RSDP. This structure contains the
+/// field from the previous version, plus some extra fields.
 #[repr(C)]
 #[derive(Debug)]
 struct Rsdp2 {
@@ -106,8 +108,8 @@ pub struct ACPIData {
 }
 
 impl ACPIData {
-	/// Reads the ACPI data from memory and returns a buffer containing it with its offset in
-	/// physical memory.
+	/// Reads the ACPI data from memory and returns a buffer containing it with
+	/// its offset in physical memory.
 	/// If no ACPI data is found, the function returns None.
 	/// If the data is invalid, the function makes the kernel panic.
 	pub fn read() -> Result<Option<Self>, Errno> {
@@ -125,7 +127,7 @@ impl ACPIData {
 		let rsdt_phys_ptr = rsdp.rsdt_address as *const c_void;
 		let rsdt_map_begin = util::down_align(rsdt_phys_ptr, memory::PAGE_SIZE);
 		crate::println!("being: {:p}", rsdt_map_begin); // TODO rm
-		// Mapping the RSDT to make it readable
+												// Mapping the RSDT to make it readable
 		tmp_vmem.map_range(rsdt_map_begin, memory::PAGE_SIZE as _, 2, 0)?;
 
 		tmp_vmem.bind();
@@ -176,7 +178,9 @@ impl ACPIData {
 		};
 		crate::bind_vmem();
 
-		Ok(Some(Self { tables }))
+		Ok(Some(Self {
+			tables,
+		}))
 	}
 
 	/// Returns a reference to the ACPI table with type T.

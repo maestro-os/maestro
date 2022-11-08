@@ -14,9 +14,11 @@ const CLONE_IO: i32 = -0x80000000;
 const CLONE_VM: i32 = 0x100;
 /// TODO doc
 const CLONE_FS: i32 = 0x200;
-/// If specified, the parent and child processes share the same file descriptors table.
+/// If specified, the parent and child processes share the same file descriptors
+/// table.
 const CLONE_FILES: i32 = 0x400;
-/// If specified, the parent and child processes share the same signal handlers table.
+/// If specified, the parent and child processes share the same signal handlers
+/// table.
 const CLONE_SIGHAND: i32 = 0x800;
 /// TODO doc
 const CLONE_PIDFD: i32 = 0x1000;
@@ -122,8 +124,8 @@ pub fn clone(regs: &Regs) -> Result<i32, Errno> {
 	};
 
 	if flags & CLONE_VFORK != 0 {
-		// Letting another process run instead of the current. Because the current process must now
-		// wait for the child process to terminate or execute a program
+		// Letting another process run instead of the current. Because the current
+		// process must now wait for the child process to terminate or execute a program
 		crate::wait();
 	}
 

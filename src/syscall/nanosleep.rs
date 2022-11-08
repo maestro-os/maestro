@@ -1,11 +1,12 @@
-//! The `nanosleep` system call allows to make the current process sleep for a given delay.
+//! The `nanosleep` system call allows to make the current process sleep for a
+//! given delay.
 
 use crate::errno::Errno;
-use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::regs::Regs;
-use crate::time::unit::Timespec32;
+use crate::process::Process;
 use crate::time;
+use crate::time::unit::Timespec32;
 
 // TODO Handle signal interruption (EINTR)
 
@@ -25,7 +26,9 @@ pub fn nanosleep(regs: &Regs) -> Result<i32, Errno> {
 		let mem_space = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space.lock();
 
-		req.get(&mem_space_guard)?.ok_or_else(|| errno!(EFAULT))?.clone()
+		req.get(&mem_space_guard)?
+			.ok_or_else(|| errno!(EFAULT))?
+			.clone()
 	};
 
 	// Looping until time is elapsed or the process is interrupted by a signal
@@ -49,7 +52,9 @@ pub fn nanosleep(regs: &Regs) -> Result<i32, Errno> {
 		let mem_space = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space.lock();
 
-		let remaining = rem.get_mut(&mem_space_guard)?.ok_or_else(|| errno!(EFAULT))?;
+		let remaining = rem
+			.get_mut(&mem_space_guard)?
+			.ok_or_else(|| errno!(EFAULT))?;
 		*remaining = Timespec32::default();
 	}
 

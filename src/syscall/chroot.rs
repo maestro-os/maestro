@@ -1,12 +1,12 @@
-//! The `chroot` system call allows to virtually redefine the system's root for the current
-//! process.
+//! The `chroot` system call allows to virtually redefine the system's root for
+//! the current process.
 
 use crate::errno::Errno;
-use crate::file::path::Path;
 use crate::file;
-use crate::process::Process;
+use crate::file::path::Path;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::regs::Regs;
+use crate::process::Process;
 use crate::vfs;
 
 /// The implementation of the `chroot` syscall.

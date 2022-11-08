@@ -1,6 +1,6 @@
-//! This module handles the memory informations, which stores global informations on the system
-//! memory by retrieving them from the boot informations. These data are meant to be used by the
-//! memory allocators.
+//! This module handles the memory informations, which stores global
+//! informations on the system memory by retrieving them from the boot
+//! informations. These data are meant to be used by the memory allocators.
 
 use super::stats;
 use crate::elf;
@@ -21,7 +21,8 @@ pub struct MemoryInfo {
 	/// Pointer to the Multiboot2 memory map
 	pub memory_maps: *const multiboot::MmapEntry,
 
-	/// Pointer to the beginning of the main block of physical allocatable memory, page aligned.
+	/// Pointer to the beginning of the main block of physical allocatable
+	/// memory, page aligned.
 	pub phys_main_begin: *const c_void,
 	/// The size of the main block of physical allocatable memory, in pages.
 	pub phys_main_pages: usize,
@@ -59,8 +60,8 @@ pub fn print_entries() {
 	}
 }
 
-/// Returns the pointer to the beginning of the main physical allocatable memory and its size in
-/// number of pages.
+/// Returns the pointer to the beginning of the main physical allocatable memory
+/// and its size in number of pages.
 fn get_phys_main(multiboot_ptr: *const c_void) -> (*const c_void, usize) {
 	let boot_info = multiboot::get_boot_info();
 

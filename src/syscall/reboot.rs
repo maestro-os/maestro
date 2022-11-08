@@ -1,4 +1,5 @@
-//! The `reboot` system call allows the superuser to power off, reboot, halt or suspend the system.
+//! The `reboot` system call allows the superuser to power off, reboot, halt or
+//! suspend the system.
 
 use crate::errno;
 use crate::errno::Errno;

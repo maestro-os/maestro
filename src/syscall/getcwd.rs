@@ -1,4 +1,5 @@
-//! The getcwd system call allows to retrieve the current working directory of the current process.
+//! The getcwd system call allows to retrieve the current working directory of
+//! the current process.
 
 use crate::errno;
 use crate::errno::Errno;

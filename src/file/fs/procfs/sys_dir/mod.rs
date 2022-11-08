@@ -2,22 +2,22 @@
 
 mod kernel_dir;
 
+use super::kernfs;
+use super::kernfs::KernFS;
 use crate::errno::Errno;
+use crate::file::fs::kernfs::node::KernFSNode;
 use crate::file::DirEntry;
 use crate::file::FileContent;
 use crate::file::FileType;
 use crate::file::Gid;
 use crate::file::Mode;
 use crate::file::Uid;
-use crate::file::fs::kernfs::node::KernFSNode;
 use crate::util::boxed::Box;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
 use crate::util::io::IO;
 use crate::util::ptr::cow::Cow;
 use kernel_dir::KernelDir;
-use super::kernfs::KernFS;
-use super::kernfs;
 
 // TODO Handle dropping
 /// Structure representing the `sys` directory.

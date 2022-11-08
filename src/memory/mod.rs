@@ -1,6 +1,6 @@
 //! The memory is one of the main component of the system.
-//! This module handles almost every memory-related features, including physical memory map
-//! retrieving, memory allocation, virtual memory management, ...
+//! This module handles almost every memory-related features, including physical
+//! memory map retrieving, memory allocation, virtual memory management, ...
 //!
 //! The system's memory is divided in two chunks:
 //! - Userspace: Virtual memory below `PROCESS_END`, used by the currently running process
@@ -30,15 +30,18 @@ pub const ALLOC_BEGIN: *const c_void = 0x40000000 as *const _;
 pub const PROCESS_END: *const c_void = 0xc0000000 as *const _;
 
 extern "C" {
-	/// The kernel begin symbol, giving the pointer to the begin of the kernel image in the virtual
-	/// memory. This memory location should never be accessed using this symbol.
+	/// The kernel begin symbol, giving the pointer to the begin of the kernel
+	/// image in the virtual memory. This memory location should never be
+	/// accessed using this symbol.
 	static kernel_begin: c_void;
-	/// The kernel end symbol, giving the pointer to the end of the kernel image in the virtual
-	/// memory. This memory location should never be accessed using this symbol.
+	/// The kernel end symbol, giving the pointer to the end of the kernel image
+	/// in the virtual memory. This memory location should never be accessed
+	/// using this symbol.
 	static kernel_end: c_void;
 }
 
-/// Returns a pointer to the beginning of the kernel in the virtual address space.
+/// Returns a pointer to the beginning of the kernel in the virtual address
+/// space.
 #[inline(always)]
 pub fn get_kernel_virtual_begin() -> *const c_void {
 	unsafe { &kernel_begin as *const _ }

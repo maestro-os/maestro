@@ -7,24 +7,24 @@ mod mounts;
 mod stat;
 mod status;
 
-use cmdline::Cmdline;
 use crate::errno::Errno;
+use crate::file::fs::kernfs::node::KernFSNode;
+use crate::file::fs::kernfs::KernFS;
 use crate::file::DirEntry;
 use crate::file::FileContent;
 use crate::file::FileType;
 use crate::file::Gid;
 use crate::file::Mode;
 use crate::file::Uid;
-use crate::file::fs::kernfs::KernFS;
-use crate::file::fs::kernfs::node::KernFSNode;
-use crate::process::Process;
 use crate::process::oom;
 use crate::process::pid::Pid;
+use crate::process::Process;
 use crate::util::boxed::Box;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
 use crate::util::io::IO;
 use crate::util::ptr::cow::Cow;
+use cmdline::Cmdline;
 use cwd::Cwd;
 use exe::Exe;
 use mounts::Mounts;
@@ -50,7 +50,9 @@ impl ProcDir {
 		// TODO On fail, remove previously inserted nodes
 
 		// Creating /proc/<pid>/cmdline
-		let node = Cmdline { pid };
+		let node = Cmdline {
+			pid,
+		};
 		let inode = fs.add_node(Box::new(node)?)?;
 		entries.insert(
 			String::from(b"cmdline")?,
@@ -61,7 +63,9 @@ impl ProcDir {
 		)?;
 
 		// Creating /proc/<pid>/cwd
-		let node = Cwd { pid };
+		let node = Cwd {
+			pid,
+		};
 		let inode = fs.add_node(Box::new(node)?)?;
 		entries.insert(
 			String::from(b"cwd")?,
@@ -72,7 +76,9 @@ impl ProcDir {
 		)?;
 
 		// Creating /proc/<pid>/exe
-		let node = Exe { pid };
+		let node = Exe {
+			pid,
+		};
 		let inode = fs.add_node(Box::new(node)?)?;
 		entries.insert(
 			String::from(b"exe")?,
@@ -83,7 +89,9 @@ impl ProcDir {
 		)?;
 
 		// Creating /proc/<pid>/mounts
-		let node = Mounts { pid };
+		let node = Mounts {
+			pid,
+		};
 		let inode = fs.add_node(Box::new(node)?)?;
 		entries.insert(
 			String::from(b"mounts")?,
@@ -94,7 +102,9 @@ impl ProcDir {
 		)?;
 
 		// Creating /proc/<pid>/stat
-		let node = Stat { pid };
+		let node = Stat {
+			pid,
+		};
 		let inode = fs.add_node(Box::new(node)?)?;
 		entries.insert(
 			String::from(b"stat")?,
@@ -105,7 +115,9 @@ impl ProcDir {
 		)?;
 
 		// Creating /proc/<pid>/status
-		let node = Status { pid };
+		let node = Status {
+			pid,
+		};
 		let inode = fs.add_node(Box::new(node)?)?;
 		entries.insert(
 			String::from(b"status")?,
@@ -123,8 +135,8 @@ impl ProcDir {
 	}
 
 	/// Removes inner nodes in order to drop the current node.
-	/// If this function isn't called, the the kernel will be leaking the nodes (which is bad).
-	/// `fs` is the procfs.
+	/// If this function isn't called, the the kernel will be leaking the nodes
+	/// (which is bad). `fs` is the procfs.
 	pub fn drop_inner(&mut self, fs: &mut KernFS) {
 		match &mut self.content {
 			FileContent::Directory(entries) => {

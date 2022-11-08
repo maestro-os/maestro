@@ -1,13 +1,13 @@
 //! The `fstatfs64` system call returns information about a mounted file system.
 
-use core::ffi::c_int;
-use crate::errno::Errno;
 use crate::errno;
+use crate::errno::Errno;
 use crate::file::fs::Statfs;
 use crate::file::open_file::FDTarget;
-use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::regs::Regs;
+use crate::process::Process;
+use core::ffi::c_int;
 
 /// The implementation of the `fstatfs64` syscall.
 pub fn fstatfs64(regs: &Regs) -> Result<i32, Errno> {

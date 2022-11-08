@@ -1,8 +1,10 @@
-//! Since floating point numbers are slow, unprecise and may even disabled by default, the kernel
-/// uses! only integers. The functions in this module implement utilities for integer mathematics.
-
+//! Since floating point numbers are slow, unprecise and may even disabled by
+//! default, the kernel
+/// uses! only integers. The functions in this module implement utilities for
+/// integer mathematics.
 pub mod rational;
 
+use crate::util;
 use core::intrinsics::wrapping_add;
 use core::intrinsics::wrapping_mul;
 use core::ops::Add;
@@ -13,7 +15,6 @@ use core::ops::Neg;
 use core::ops::Rem;
 use core::ops::Shl;
 use core::ops::Sub;
-use crate::util;
 
 /// Clamps the given value `n` between `min` and `max`.
 pub fn clamp<T: PartialOrd>(n: T, min: T, max: T) -> T {
@@ -30,7 +31,7 @@ pub fn clamp<T: PartialOrd>(n: T, min: T, max: T) -> T {
 #[inline(always)]
 pub fn ceil_division<T>(n0: T, n1: T) -> T
 where
-	T: From<u8> + Copy + Add<Output = T> + Div<Output = T> + Rem<Output = T> + PartialEq
+	T: From<u8> + Copy + Add<Output = T> + Div<Output = T> + Rem<Output = T> + PartialEq,
 {
 	if (n0 % n1) != T::from(0) {
 		(n0 / n1) + T::from(1)
@@ -42,13 +43,19 @@ where
 /// Computes 2^^n on unsigned integers (where `^^` is an exponent).
 /// The behaviour is undefined for n < 0.
 #[inline(always)]
-pub fn pow2<T>(n: T) -> T where T: From<u8> + Shl<Output = T> {
+pub fn pow2<T>(n: T) -> T
+where
+	T: From<u8> + Shl<Output = T>,
+{
 	T::from(1) << n
 }
 
 /// Computes a^^b on integers (where `^^` is an exponent).
 #[inline(always)]
-pub fn pow<T>(a: T, b: usize) -> T where T: From<u8> + Mul<Output = T> + Copy {
+pub fn pow<T>(a: T, b: usize) -> T
+where
+	T: From<u8> + Mul<Output = T> + Copy,
+{
 	if b == 0 {
 		T::from(1)
 	} else if b == 1 {
@@ -60,8 +67,9 @@ pub fn pow<T>(a: T, b: usize) -> T where T: From<u8> + Mul<Output = T> + Copy {
 	}
 }
 
-/// Computes floor(log2(n)) on unsigned integers without using floating-point numbers.
-/// Because the logarithm is undefined for n <= 0, the function returns `0` in this case.
+/// Computes floor(log2(n)) on unsigned integers without using floating-point
+/// numbers. Because the logarithm is undefined for n <= 0, the function returns
+/// `0` in this case.
 #[inline(always)]
 pub fn log2<T>(n: T) -> T
 where
@@ -78,14 +86,14 @@ where
 /// If `n` is zero, the behaviour is undefined.
 pub fn is_power_of_two<T>(n: T) -> bool
 where
-	T: Copy + From<u8> + BitAnd<Output = T> + Sub<Output = T> + PartialEq
+	T: Copy + From<u8> + BitAnd<Output = T> + Sub<Output = T> + PartialEq,
 {
 	n == T::from(0) || n & (n - T::from(1)) == T::from(0)
 }
 
 /// Computes a linear interpolation over integers.
-/// The function computes the interpolation coefficient relative to the parameters `x`, `a_x` and
-/// `b_x`.
+/// The function computes the interpolation coefficient relative to the
+/// parameters `x`, `a_x` and `b_x`.
 #[inline(always)]
 pub fn integer_linear_interpolation<T>(x: T, a_x: T, a_y: T, b_x: T, b_y: T) -> T
 where
@@ -100,8 +108,8 @@ where
 }
 
 /// Pseudo random number generation based on linear congruential generator.
-/// `x` is the value to compute the next number from. It should either be a seed, or the previous
-/// value returned from this function.
+/// `x` is the value to compute the next number from. It should either be a
+/// seed, or the previous value returned from this function.
 /// `a`, `c` and `m` are hyperparameters use as follows: (a * x + c) % m.
 pub fn pseudo_rand(x: u32, a: u32, c: u32, m: u32) -> u32 {
 	(wrapping_add(wrapping_mul(a, x), c)) % m

@@ -1,5 +1,5 @@
-//! The `brk` system call allows to displace the end of the data segment of the process, thus
-//! allowing memory allocations.
+//! The `brk` system call allows to displace the end of the data segment of the
+//! process, thus allowing memory allocations.
 
 use crate::errno::Errno;
 use crate::process::regs::Regs;

@@ -8,7 +8,8 @@ use crate::process::Process;
 
 /// If set, bytes are draw from the random source instead of urandom.
 const GRND_RANDOM: u32 = 2;
-/// If set, the function doesn't block. If no entropy is available, the function returns EAGAIN.
+/// If set, the function doesn't block. If no entropy is available, the function
+/// returns EAGAIN.
 const GRND_NONBLOCK: u32 = 1;
 
 /// Implementation of the `getrandom` syscall.

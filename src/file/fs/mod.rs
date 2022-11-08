@@ -1,4 +1,5 @@
-//! A filesystem is the representation of the file hierarchy on a storage device.
+//! A filesystem is the representation of the file hierarchy on a storage
+//! device.
 
 pub mod ext2;
 pub mod kernfs;
@@ -21,7 +22,8 @@ use crate::util::lock::Mutex;
 use crate::util::ptr::SharedPtr;
 use core::any::Any;
 
-/// This structure is used in the f_fsid field of statfs. It is currently unused.
+/// This structure is used in the f_fsid field of statfs. It is currently
+/// unused.
 #[repr(C)]
 #[derive(Debug, Default)]
 struct FSID {
@@ -73,11 +75,11 @@ pub trait Filesystem: Any {
 	/// Returns the root inode of the filesystem.
 	fn get_root_inode(&self, io: &mut dyn IO) -> Result<INode, Errno>;
 
-	/// Returns the inode of the file with name `name`, located in the directory with inode
-	/// `parent`.
+	/// Returns the inode of the file with name `name`, located in the directory
+	/// with inode `parent`.
 	/// `io` is the IO interface.
-	/// `parent` is the inode's parent. If none, the function uses the root of the filesystem.
-	/// `name` is the name of the file.
+	/// `parent` is the inode's parent. If none, the function uses the root of
+	/// the filesystem. `name` is the name of the file.
 	/// If the parent is not a directory, the function returns an error.
 	fn get_inode(
 		&mut self,
@@ -99,8 +101,8 @@ pub trait Filesystem: Any {
 	/// `uid` is the id of the owner user.
 	/// `gid` is the id of the owner group.
 	/// `mode` is the permission of the file.
-	/// `content` is the content of the file. This value also determines the file type.
-	/// On success, the function returns the newly created file.
+	/// `content` is the content of the file. This value also determines the
+	/// file type. On success, the function returns the newly created file.
 	fn add_file(
 		&mut self,
 		io: &mut dyn IO,
@@ -113,8 +115,8 @@ pub trait Filesystem: Any {
 	) -> Result<File, Errno>;
 
 	/// Adds a hard link to the filesystem.
-	/// If this feature is not supported by the filesystem, the function returns an error.
-	/// `io` is the IO interface.
+	/// If this feature is not supported by the filesystem, the function returns
+	/// an error. `io` is the IO interface.
 	/// `parent_inode` is the parent file's inode.
 	/// `name` is the name of the link.
 	/// `inode` is the inode the link points to.
@@ -131,8 +133,8 @@ pub trait Filesystem: Any {
 	/// `file` the file structure containing the new values for the inode.
 	fn update_inode(&mut self, io: &mut dyn IO, file: &File) -> Result<(), Errno>;
 
-	/// Removes a file from the filesystem. If the links count of the inode reaches zero, the inode
-	/// is also removed.
+	/// Removes a file from the filesystem. If the links count of the inode
+	/// reaches zero, the inode is also removed.
 	/// `io` is the IO interface.
 	/// `parent_inode` is the parent file's inode.
 	/// `name` is the file's name.

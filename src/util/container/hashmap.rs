@@ -1,5 +1,5 @@
-//! A hashmap is a data structure that stores key/value pairs into buckets and uses the hash of the
-//! key to quickly get the bucket storing the value.
+//! A hashmap is a data structure that stores key/value pairs into buckets and
+//! uses the hash of the key to quickly get the bucket storing the value.
 
 use super::vec::Vec;
 use crate::errno::Errno;
@@ -26,7 +26,10 @@ struct XORHasher {
 impl XORHasher {
 	/// Creates a new instance.
 	pub fn new() -> Self {
-		Self { value: 0, off: 0 }
+		Self {
+			value: 0,
+			off: 0,
+		}
 	}
 }
 
@@ -44,7 +47,8 @@ impl Hasher for XORHasher {
 }
 
 /// A bucket is a list storing elements that match a given hash range.
-/// Since hashing function have collisions, several elements can have the same hash.
+/// Since hashing function have collisions, several elements can have the same
+/// hash.
 #[derive(Debug)]
 struct Bucket<K: Eq + Hash, V> {
 	/// The vector storing the key/value pairs.
@@ -59,8 +63,8 @@ impl<K: Eq + Hash, V> Bucket<K, V> {
 		}
 	}
 
-	/// Returns an immutable reference to the value with the given key `k`. If the key isn't
-	/// present, the function return None.
+	/// Returns an immutable reference to the value with the given key `k`. If
+	/// the key isn't present, the function return None.
 	pub fn get<Q: ?Sized>(&self, k: &Q) -> Option<&V>
 	where
 		K: Borrow<Q>,
@@ -75,8 +79,8 @@ impl<K: Eq + Hash, V> Bucket<K, V> {
 		None
 	}
 
-	/// Returns a mutable reference to the value with the given key `k`. If the key isn't present,
-	/// the function return None.
+	/// Returns a mutable reference to the value with the given key `k`. If the
+	/// key isn't present, the function return None.
 	pub fn get_mut<Q: ?Sized>(&mut self, k: &Q) -> Option<&mut V>
 	where
 		K: Borrow<Q>,
@@ -91,16 +95,16 @@ impl<K: Eq + Hash, V> Bucket<K, V> {
 		None
 	}
 
-	/// Inserts a new element into the bucket. If the key was already present, the function
-	/// returns the previous value.
+	/// Inserts a new element into the bucket. If the key was already present,
+	/// the function returns the previous value.
 	pub fn insert(&mut self, k: K, v: V) -> Result<Option<V>, Errno> {
 		let old = self.remove(&k);
 		self.elements.push((k, v))?;
 		Ok(old)
 	}
 
-	/// Removes an element from the bucket. If the key was present, the function returns the
-	/// value.
+	/// Removes an element from the bucket. If the key was present, the function
+	/// returns the value.
 	pub fn remove<Q: ?Sized>(&mut self, k: &Q) -> Option<V>
 	where
 		K: Borrow<Q>,
@@ -123,7 +127,9 @@ impl<K: Eq + Hash + FailableClone, V: FailableClone> FailableClone for Bucket<K,
 			v.push((key.failable_clone()?, value.failable_clone()?))?;
 		}
 
-		Ok(Self { elements: v })
+		Ok(Self {
+			elements: v,
+		})
 	}
 }
 
@@ -186,8 +192,8 @@ impl<K: Eq + Hash, V> HashMap<K, V> {
 		(hasher.finish() % (self.buckets_count as u64)) as usize
 	}
 
-	/// Returns an immutable reference to the value with the given key `k`. If the key isn't
-	/// present, the function return None.
+	/// Returns an immutable reference to the value with the given key `k`. If
+	/// the key isn't present, the function return None.
 	pub fn get<Q: ?Sized>(&self, k: &Q) -> Option<&V>
 	where
 		K: Borrow<Q>,
@@ -202,8 +208,8 @@ impl<K: Eq + Hash, V> HashMap<K, V> {
 		}
 	}
 
-	/// Returns a mutable reference to the value with the given key `k`. If the key isn't present,
-	/// the function return None.
+	/// Returns a mutable reference to the value with the given key `k`. If the
+	/// key isn't present, the function return None.
 	pub fn get_mut<Q: ?Sized>(&mut self, k: &Q) -> Option<&mut V>
 	where
 		K: Borrow<Q>,
@@ -223,8 +229,8 @@ impl<K: Eq + Hash, V> HashMap<K, V> {
 		HashMapIterator::new(self)
 	}
 
-	/// Inserts a new element into the hash map. If the key was already present, the function
-	/// returns the previous value.
+	/// Inserts a new element into the hash map. If the key was already present,
+	/// the function returns the previous value.
 	pub fn insert(&mut self, k: K, v: V) -> Result<Option<V>, Errno> {
 		let index = self.get_bucket_index(&k);
 		if index >= self.buckets.len() {
@@ -244,8 +250,8 @@ impl<K: Eq + Hash, V> HashMap<K, V> {
 		Ok(result)
 	}
 
-	/// Removes an element from the hash map. If the key was present, the function returns the
-	/// value.
+	/// Removes an element from the hash map. If the key was present, the
+	/// function returns the value.
 	pub fn remove<Q: ?Sized>(&mut self, k: &Q) -> Option<V>
 	where
 		K: Borrow<Q>,

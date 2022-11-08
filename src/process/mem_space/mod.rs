@@ -1,5 +1,5 @@
-//! This module implements the MemSpace structure which is responsible for handling the memory
-//! mapping of execution contexts.
+//! This module implements the MemSpace structure which is responsible for
+//! handling the memory mapping of execution contexts.
 //!
 //! The memory space contains two types of structures:
 //! - Mapping: A chunk of virtual memory that is allocated
@@ -10,29 +10,29 @@ mod mapping;
 mod physical_ref_counter;
 pub mod ptr;
 
-use core::cmp::Ordering;
-use core::cmp::min;
-use core::ffi::c_void;
-use core::fmt;
-use core::mem::size_of;
-use core::ptr::NonNull;
-use core::ptr::null;
-use crate::errno::Errno;
 use crate::errno;
+use crate::errno::Errno;
 use crate::file::open_file::OpenFile;
 use crate::idt;
-use crate::memory::stack;
-use crate::memory::vmem::VMem;
-use crate::memory::vmem;
 use crate::memory;
+use crate::memory::stack;
+use crate::memory::vmem;
+use crate::memory::vmem::VMem;
 use crate::process::oom;
-use crate::util::FailableClone;
+use crate::util;
 use crate::util::boxed::Box;
 use crate::util::container::map::Map;
 use crate::util::lock::Mutex;
 use crate::util::math;
 use crate::util::ptr::SharedPtr;
-use crate::util;
+use crate::util::FailableClone;
+use core::cmp::min;
+use core::cmp::Ordering;
+use core::ffi::c_void;
+use core::fmt;
+use core::mem::size_of;
+use core::ptr::null;
+use core::ptr::NonNull;
 use gap::MemGap;
 use mapping::MemMapping;
 use physical_ref_counter::PhysRefCounter;
@@ -43,11 +43,11 @@ pub const MAPPING_FLAG_WRITE: u8 = 0b00001;
 pub const MAPPING_FLAG_EXEC: u8 = 0b00010;
 /// Flag telling that a memory mapping is accessible from userspace.
 pub const MAPPING_FLAG_USER: u8 = 0b00100;
-/// Flag telling that a memory mapping must allocate its physical memory right away and not when
-/// the process tries to write to it.
+/// Flag telling that a memory mapping must allocate its physical memory right
+/// away and not when the process tries to write to it.
 pub const MAPPING_FLAG_NOLAZY: u8 = 0b01000;
-/// Flag telling that a memory mapping has its physical memory shared with one or more other
-/// mappings.
+/// Flag telling that a memory mapping has its physical memory shared with one
+/// or more other mappings.
 pub const MAPPING_FLAG_SHARED: u8 = 0b10000;
 
 /// The physical pages reference counter.
@@ -56,12 +56,12 @@ pub static PHYSICAL_REF_COUNTER: Mutex<PhysRefCounter> = Mutex::new(PhysRefCount
 /// Enumeration of constraints for memory mapping.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum MapConstraint {
-	/// The mapping is done at a fixed address. Previous allocations at the same place are
-	/// unmapped.
+	/// The mapping is done at a fixed address. Previous allocations at the same
+	/// place are unmapped.
 	Fixed(*const c_void),
 
-	/// The mapping is done at a fixed address. If the address range is already in use, the
-	/// allocation fails.
+	/// The mapping is done at a fixed address. If the address range is already
+	/// in use, the allocation fails.
 	Hint(*const c_void),
 
 	/// No constraint.
@@ -70,14 +70,15 @@ pub enum MapConstraint {
 
 /// Structure representing the virtual memory space of a context.
 pub struct MemSpace {
-	/// Binary tree storing the list of memory gaps, ready for new mappings. Sorted by pointer to
-	/// the beginning of the mapping on the virtual memory.
+	/// Binary tree storing the list of memory gaps, ready for new mappings.
+	/// Sorted by pointer to the beginning of the mapping on the virtual memory.
 	gaps: Map<*const c_void, MemGap>,
-	/// Binary tree storing the list of memory gaps, sorted by size and then by beginning address.
+	/// Binary tree storing the list of memory gaps, sorted by size and then by
+	/// beginning address.
 	gaps_size: Map<(usize, *const c_void), ()>,
 
-	/// Binary tree storing the list of memory mappings. Sorted by pointer to the beginning of the
-	/// mapping on the virtual memory.
+	/// Binary tree storing the list of memory mappings. Sorted by pointer to
+	/// the beginning of the mapping on the virtual memory.
 	mappings: Map<*const c_void, MemMapping>,
 
 	/// The number of used virtual memory pages.
@@ -107,7 +108,8 @@ impl MemSpace {
 	}
 
 	/// Removes the given gap from the memory space's structures.
-	/// The function returns the removed gap. If the gap didn't exist, the function returns None.
+	/// The function returns the removed gap. If the gap didn't exist, the
+	/// function returns None.
 	fn gap_remove(&mut self, gap_begin: *const c_void) -> Option<MemGap> {
 		let g = self.gaps.remove(gap_begin)?;
 		self.gaps_size.remove((g.get_size(), gap_begin));
@@ -116,9 +118,9 @@ impl MemSpace {
 	}
 
 	/// Returns a reference to a gap with at least size `size`.
-	/// `gaps` is the binary tree storing gaps, sorted by pointer to their respective beginnings.
-	/// `gaps_size` is the binary tree storing pointers to gaps, sorted by gap sizes.
-	/// `size` is the minimum size of the gap.
+	/// `gaps` is the binary tree storing gaps, sorted by pointer to their
+	/// respective beginnings. `gaps_size` is the binary tree storing pointers
+	/// to gaps, sorted by gap sizes. `size` is the minimum size of the gap.
 	/// If no gap large enough is available, the function returns None.
 	fn gap_get<'a>(
 		gaps: &'a Map<*const c_void, MemGap>,
@@ -133,8 +135,8 @@ impl MemSpace {
 	}
 
 	/// Returns a reference to the gap containing the pointer `ptr`.
-	/// `gaps` is the binary tree storing gaps, sorted by pointer to their respective beginnings.
-	/// `ptr` is the pointer.
+	/// `gaps` is the binary tree storing gaps, sorted by pointer to their
+	/// respective beginnings. `ptr` is the pointer.
 	/// If no gap contain the pointer, the function returns None.
 	fn gap_by_ptr<'a>(
 		gaps: &'a Map<*const c_void, MemGap>,
@@ -154,7 +156,8 @@ impl MemSpace {
 		})
 	}
 
-	/// Returns a new binary tree containing the default gaps for a memory space.
+	/// Returns a new binary tree containing the default gaps for a memory
+	/// space.
 	fn create_default_gaps(&mut self) -> Result<(), Errno> {
 		let begin = memory::ALLOC_BEGIN;
 		let size = (memory::PROCESS_END as usize - begin as usize) / memory::PAGE_SIZE;
@@ -208,8 +211,8 @@ impl MemSpace {
 	/// `flags` represents the flags for the mapping.
 	/// `file` is the open file to map to.
 	/// `file_off` is the offset in bytes into the file.
-	/// The underlying physical memory is not allocated directly but only when an attempt to write
-	/// the memory is detected.
+	/// The underlying physical memory is not allocated directly but only when
+	/// an attempt to write the memory is detected.
 	/// The function returns a pointer to the newly mapped virtual memory.
 	/// The function has complexity `O(log n)`.
 	/// If the given pointer is not page-aligned, the function returns an error.
@@ -321,7 +324,8 @@ impl MemSpace {
 		Ok(addr)
 	}
 
-	/// Same as `map`, except the function returns a pointer to the end of the memory mapping.
+	/// Same as `map`, except the function returns a pointer to the end of the
+	/// memory mapping.
 	pub fn map_stack(&mut self, size: usize, flags: u8) -> Result<*mut c_void, Errno> {
 		let mapping_ptr = self.map(MapConstraint::None, size, flags, None, 0)?;
 
@@ -331,7 +335,8 @@ impl MemSpace {
 		})
 	}
 
-	/// Same as `unmap`, except the function takes a pointer to the end of the memory mapping.
+	/// Same as `unmap`, except the function takes a pointer to the end of the
+	/// memory mapping.
 	pub fn unmap_stack(&mut self, ptr: *const c_void, size: usize) -> Result<(), Errno> {
 		// Safe because the new pointer stays in the range of the allocated mapping
 		let ptr = unsafe { ptr.sub(size * memory::PAGE_SIZE) };
@@ -339,9 +344,9 @@ impl MemSpace {
 		self.unmap(ptr, size, false)
 	}
 
-	/// Returns a reference to the memory mapping containing the given virtual address `ptr` from
-	/// mappings container `mappings`. If no mapping contains the address, the function returns
-	/// None.
+	/// Returns a reference to the memory mapping containing the given virtual
+	/// address `ptr` from mappings container `mappings`. If no mapping contains
+	/// the address, the function returns None.
 	fn get_mapping_for_(
 		mappings: &Map<*const c_void, MemMapping>,
 		ptr: *const c_void,
@@ -360,9 +365,9 @@ impl MemSpace {
 		})
 	}
 
-	/// Returns a mutable reference to the memory mapping containing the given virtual address
-	/// `ptr` from mappings container `mappings`. If no mapping contains the address, the function
-	/// returns None.
+	/// Returns a mutable reference to the memory mapping containing the given
+	/// virtual address `ptr` from mappings container `mappings`. If no mapping
+	/// contains the address, the function returns None.
 	fn get_mapping_mut_for_(
 		mappings: &mut Map<*const c_void, MemMapping>,
 		ptr: *const c_void,
@@ -381,21 +386,23 @@ impl MemSpace {
 		})
 	}
 
-	/// Returns a mutable reference to the memory mapping containing the given virtual address
-	/// `ptr`. If no mapping contains the address, the function returns None.
+	/// Returns a mutable reference to the memory mapping containing the given
+	/// virtual address `ptr`. If no mapping contains the address, the function
+	/// returns None.
 	pub fn get_mapping_mut_for(&mut self, ptr: *const c_void) -> Option<&mut MemMapping> {
 		Self::get_mapping_mut_for_(&mut self.mappings, ptr)
 	}
 
 	// TODO Optimize (currently O(n log n))
 	/// Unmaps the given mapping of memory.
-	/// `ptr` represents the aligned address of the beginning of the chunk to unmap.
-	/// `size` represents the size of the mapping in number of memory pages.
-	/// `brk` tells whether the function is called through the `brk` syscall.
-	/// The function frees the physical memory the mapping points to unless shared by one or
-	/// several other memory mappings.
-	/// After this function returns, the access to the mapping of memory shall be revoked and
-	/// further attempts to access it shall result in a page fault.
+	/// `ptr` represents the aligned address of the beginning of the chunk to
+	/// unmap. `size` represents the size of the mapping in number of memory
+	/// pages. `brk` tells whether the function is called through the `brk`
+	/// syscall. The function frees the physical memory the mapping points to
+	/// unless shared by one or several other memory mappings.
+	/// After this function returns, the access to the mapping of memory shall
+	/// be revoked and further attempts to access it shall result in a page
+	/// fault.
 	pub fn unmap(&mut self, ptr: *const c_void, size: usize, brk: bool) -> Result<(), Errno> {
 		if !util::is_aligned(ptr, memory::PAGE_SIZE) {
 			return Err(errno!(EINVAL));
@@ -487,9 +494,10 @@ impl MemSpace {
 	}
 
 	// TODO Optimize (use MMU)
-	/// Tells whether the given mapping of memory `ptr` of size `size` in bytes can be accessed.
-	/// `user` tells whether the memory must be accessible from userspace or just kernelspace.
-	/// `write` tells whether to check for write permission.
+	/// Tells whether the given mapping of memory `ptr` of size `size` in bytes
+	/// can be accessed. `user` tells whether the memory must be accessible from
+	/// userspace or just kernelspace. `write` tells whether to check for write
+	/// permission.
 	pub fn can_access(&self, ptr: *const u8, size: usize, user: bool, write: bool) -> bool {
 		// TODO Allow reading kernelspace data that is available to userspace
 
@@ -518,11 +526,12 @@ impl MemSpace {
 	}
 
 	// TODO Optimize (use MMU)
-	/// Tells whether the given zero-terminated string beginning at `ptr` can be accessed.
-	/// `user` tells whether the memory must be accessible from userspace or just kernelspace.
-	/// `write` tells whether to check for write permission.
-	/// If the memory cannot be accessed, the function returns None. If it can be accessed, it
-	/// returns the length of the string located at the pointer `ptr`.
+	/// Tells whether the given zero-terminated string beginning at `ptr` can be
+	/// accessed. `user` tells whether the memory must be accessible from
+	/// userspace or just kernelspace. `write` tells whether to check for write
+	/// permission. If the memory cannot be accessed, the function returns None.
+	/// If it can be accessed, it returns the length of the string located at
+	/// the pointer `ptr`.
 	pub fn can_access_string(&self, ptr: *const u8, user: bool, write: bool) -> Option<usize> {
 		// TODO Allow reading kernelspace data that is available to userspace
 
@@ -660,9 +669,9 @@ impl MemSpace {
 		self.brk_ptr = ptr;
 	}
 
-	/// Sets the pointer for the `brk` syscall. If `alloc` is true, this function will allocate or
-	/// free virtual memory if needed. If the memory cannot be allocated, the function returns an
-	/// error.
+	/// Sets the pointer for the `brk` syscall. If `alloc` is true, this
+	/// function will allocate or free virtual memory if needed. If the memory
+	/// cannot be allocated, the function returns an error.
 	pub fn set_brk_ptr(&mut self, ptr: *const c_void) -> Result<(), Errno> {
 		if ptr >= self.brk_ptr {
 			// Allocate memory
@@ -695,14 +704,16 @@ impl MemSpace {
 		Ok(())
 	}
 
-	/// Function called whenever the CPU triggered a page fault for the context. This function
-	/// determines whether the process should continue or not. If continuing, the function must
-	/// resolve the issue before returning.
-	/// A typical situation where is function is usefull is for Copy-On-Write allocations.
+	/// Function called whenever the CPU triggered a page fault for the context.
+	/// This function determines whether the process should continue or not. If
+	/// continuing, the function must resolve the issue before returning.
+	/// A typical situation where is function is usefull is for Copy-On-Write
+	/// allocations.
 	///
-	/// `virt_addr` is the virtual address of the wrong memory access that caused the fault.
-	/// `code` is the error code given along with the error.
-	/// If the process should continue, the function returns `true`, else `false`.
+	/// `virt_addr` is the virtual address of the wrong memory access that
+	/// caused the fault. `code` is the error code given along with the error.
+	/// If the process should continue, the function returns `true`, else
+	/// `false`.
 	pub fn handle_page_fault(&mut self, virt_addr: *const c_void, code: u32) -> bool {
 		if code & vmem::x86::PAGE_FAULT_PRESENT == 0 {
 			return false;

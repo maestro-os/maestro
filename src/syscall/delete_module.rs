@@ -24,6 +24,7 @@ pub fn delete_module(regs: &Regs) -> Result<i32, Errno> {
 	// TODO Turn the name into a string
 	// TODO Get the module with the given name
 	// TODO If the module doesn't exist, return an error
-	// TODO If the module exists, call its `fini` function if it exists, then unload the module
+	// TODO If the module exists, call its `fini` function if it exists, then unload
+	// the module
 	Ok(0)
 }

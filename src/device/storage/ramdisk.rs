@@ -1,6 +1,7 @@
-//! A ramdisk is a virtual storage device stored on the RAM. From the point of view of the
-//! userspace, it works exactly the same.
-//! Ramdisks are lazily allocated so they do not use much memory as long as they are not used.
+//! A ramdisk is a virtual storage device stored on the RAM. From the point of
+//! view of the userspace, it works exactly the same.
+//! Ramdisks are lazily allocated so they do not use much memory as long as they
+//! are not used.
 
 use super::StorageInterface;
 use crate::device;
@@ -37,7 +38,9 @@ struct RAMDisk {
 impl RAMDisk {
 	/// Creates a new ramdisk.
 	pub fn new() -> Self {
-		Self { data: None }
+		Self {
+			data: None,
+		}
 	}
 
 	/// Tells whether the disk is allocated.

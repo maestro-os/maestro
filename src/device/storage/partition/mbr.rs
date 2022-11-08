@@ -1,7 +1,7 @@
-//! The Master Boot Record (MBR) is a standard partitions table format used on the x86
-//! architecture.
-//! The partition table is located on the first sector of the boot disk, alongside with the boot
-//! code.
+//! The Master Boot Record (MBR) is a standard partitions table format used on
+//! the x86 architecture.
+//! The partition table is located on the first sector of the boot disk,
+//! alongside with the boot code.
 
 use super::Partition;
 use super::Table;
@@ -85,8 +85,8 @@ impl Table for MBRTable {
 		}
 		storage.read_bytes(&mut first_sector, 0)?;
 
-		// Valid because taking the pointer to the buffer on the stack which has the same size as
-		// the structure
+		// Valid because taking the pointer to the buffer on the stack which has the
+		// same size as the structure
 		let mbr_table = unsafe { &*(first_sector.as_ptr() as *const MBRTable) };
 		if mbr_table.signature != MBR_SIGNATURE {
 			return Ok(None);

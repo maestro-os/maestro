@@ -1,4 +1,5 @@
-//! The msync system call synchronizes a memory mapping with its file on the disk.
+//! The msync system call synchronizes a memory mapping with its file on the
+//! disk.
 
 use crate::errno;
 use crate::errno::Errno;

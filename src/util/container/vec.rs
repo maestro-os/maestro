@@ -50,10 +50,11 @@ macro_rules! vec {
 }
 
 /// A vector container is a dynamically-resizable array of elements.
-/// When resizing a vector, the elements can be moved, thus the callee should not rely on pointers
-/// to elements inside a vector.
-/// The implementation of vectors for the kernel cannot follow the implementation of Rust's
-/// standard Vec because it must handle properly when a memory allocation fails.
+/// When resizing a vector, the elements can be moved, thus the callee should
+/// not rely on pointers to elements inside a vector.
+/// The implementation of vectors for the kernel cannot follow the
+/// implementation of Rust's standard Vec because it must handle properly when a
+/// memory allocation fails.
 #[derive(Debug)]
 pub struct Vec<T> {
 	/// The number of elements present in the vector
@@ -65,7 +66,10 @@ pub struct Vec<T> {
 impl<T> Vec<T> {
 	/// Creates a new empty vector.
 	pub const fn new() -> Self {
-		Self { len: 0, data: None }
+		Self {
+			len: 0,
+			data: None,
+		}
 	}
 
 	/// Reallocates the vector's data with the vector's capacity.
@@ -79,12 +83,14 @@ impl<T> Vec<T> {
 		if let Some(data) = &mut self.data {
 			debug_assert!(data.len() >= self.len);
 
-			// Safe because the memory is rewritten when the object is placed into the vector
+			// Safe because the memory is rewritten when the object is placed into the
+			// vector
 			unsafe {
 				data.realloc_zero(capacity)?;
 			}
 		} else {
-			// Safe because the memory is rewritten when the object is placed into the vector
+			// Safe because the memory is rewritten when the object is placed into the
+			// vector
 			let data_ptr = unsafe { malloc::Alloc::new_zero(capacity)? };
 
 			self.data = Some(data_ptr);
@@ -124,8 +130,8 @@ impl<T> Vec<T> {
 		self.len == 0
 	}
 
-	/// Returns the number of elements that can be stored inside of the vector without needing to
-	/// reallocate the memory.
+	/// Returns the number of elements that can be stored inside of the vector
+	/// without needing to reallocate the memory.
 	#[inline(always)]
 	pub fn capacity(&self) -> usize {
 		self.data.as_ref().map(|d| d.len()).unwrap_or(0)
@@ -175,8 +181,8 @@ impl<T> Vec<T> {
 		unsafe { ptr::read(&self.data.as_ref().unwrap()[self.len - 1] as _) }
 	}
 
-	/// Inserts an element at position index within the vector, shifting all elements after it to
-	/// the right.
+	/// Inserts an element at position index within the vector, shifting all
+	/// elements after it to the right.
 	pub fn insert(&mut self, index: usize, element: T) -> Result<(), Errno> {
 		if index > self.len() {
 			self.vector_panic(index);
@@ -198,8 +204,8 @@ impl<T> Vec<T> {
 		Ok(())
 	}
 
-	/// Removes and returns the element at position index within the vector, shifting all elements
-	/// after it to the left.
+	/// Removes and returns the element at position index within the vector,
+	/// shifting all elements after it to the left.
 	pub fn remove(&mut self, index: usize) -> T {
 		if index >= self.len() {
 			self.vector_panic(index);
@@ -255,7 +261,8 @@ impl<T> Vec<T> {
 		Ok(())
 	}
 
-	/// Removes the last element from a vector and returns it, or None if it is empty.
+	/// Removes the last element from a vector and returns it, or None if it is
+	/// empty.
 	pub fn pop(&mut self) -> Option<T> {
 		if !self.is_empty() {
 			self.len -= 1;
@@ -270,8 +277,8 @@ impl<T> Vec<T> {
 		VecIterator::new(self)
 	}
 
-	/// Truncates the vector to the given new len `len`. If `len` is greater than the current
-	/// length, the function has no effect.
+	/// Truncates the vector to the given new len `len`. If `len` is greater
+	/// than the current length, the function has no effect.
 	pub fn truncate(&mut self, len: usize) {
 		if len < self.len() {
 			for e in &mut self.as_mut_slice()[len..] {
@@ -298,8 +305,8 @@ impl<T> Vec<T> {
 }
 
 impl<T: Default> Vec<T> {
-	/// Resizes the vector to the given length `new_len`. If new elements have to be created, the
-	/// default value is used.
+	/// Resizes the vector to the given length `new_len`. If new elements have
+	/// to be created, the default value is used.
 	pub fn resize(&mut self, new_len: usize) -> Result<(), Errno> {
 		if new_len < self.len() {
 			self.truncate(new_len);
@@ -361,7 +368,8 @@ impl<T: Clone> Vec<T> {
 		v.len = n;
 
 		for i in 0..n {
-			unsafe { // Safe because in range
+			unsafe {
+				// Safe because in range
 				ptr::write(&mut v[i], elem.clone());
 			}
 		}
@@ -376,7 +384,8 @@ impl<T: Clone> Vec<T> {
 		v.len = slice.len();
 
 		for (i, elem) in slice.iter().enumerate() {
-			unsafe { // Safe because in range
+			unsafe {
+				// Safe because in range
 				ptr::write(&mut v[i], elem.clone());
 			}
 		}
@@ -536,11 +545,13 @@ impl<T> Iterator for IntoIter<T> {
 }
 
 impl<T> IntoIterator for Vec<T> {
-	type Item = T;
 	type IntoIter = IntoIter<T>;
+	type Item = T;
 
 	fn into_iter(self) -> Self::IntoIter {
-		IntoIter { vec: self }
+		IntoIter {
+			vec: self,
+		}
 	}
 }
 
@@ -616,8 +627,8 @@ impl<'a, T> DoubleEndedIterator for VecIterator<'a, T> {
 }
 
 impl<'a, T> IntoIterator for &'a Vec<T> {
-	type Item = &'a T;
 	type IntoIter = VecIterator<'a, T>;
+	type Item = &'a T;
 
 	fn into_iter(self) -> Self::IntoIter {
 		VecIterator::new(&self)

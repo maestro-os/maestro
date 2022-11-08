@@ -1,5 +1,5 @@
-//! The `dup2` syscall allows to duplicate a file descriptor, specifying the id of the newly
-//! created file descriptor.
+//! The `dup2` syscall allows to duplicate a file descriptor, specifying the id
+//! of the newly created file descriptor.
 
 use crate::errno::Errno;
 use crate::file::fd::NewFDConstraint;

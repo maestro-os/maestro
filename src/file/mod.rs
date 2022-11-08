@@ -1,6 +1,6 @@
-//! This module handles filesystems. Every filesystems are unified by the Virtual FileSystem (VFS).
-//! The root filesystem is passed to the kernel as an argument when booting. Other filesystems are
-//! mounted into subdirectories.
+//! This module handles filesystems. Every filesystems are unified by the
+//! Virtual FileSystem (VFS). The root filesystem is passed to the kernel as an
+//! argument when booting. Other filesystems are mounted into subdirectories.
 
 pub mod fd;
 pub mod fs;
@@ -12,25 +12,25 @@ pub mod socket;
 pub mod util;
 pub mod vfs;
 
-use core::cmp::max;
-use core::ffi::c_void;
-use crate::device::DeviceType;
 use crate::device;
-use crate::errno::Errno;
+use crate::device::DeviceType;
 use crate::errno;
+use crate::errno::Errno;
 use crate::file::mountpoint::MountPoint;
 use crate::file::mountpoint::MountSource;
 use crate::file::vfs::VFS;
 use crate::process::mem_space::MemSpace;
+use crate::time;
 use crate::time::unit::Timestamp;
 use crate::time::unit::TimestampScale;
-use crate::time;
-use crate::util::FailableClone;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
 use crate::util::io::IO;
 use crate::util::ptr::IntSharedPtr;
 use crate::util::ptr::SharedPtr;
+use crate::util::FailableClone;
+use core::cmp::max;
+use core::ffi::c_void;
 use path::Path;
 
 /// Type representing a user ID.
@@ -214,8 +214,8 @@ impl FailableClone for DirEntry {
 pub enum FileContent {
 	/// The file is a regular file. No data.
 	Regular,
-	/// The file is a directory. The hashmap contains the list of entries. The key is the name of
-	/// the entry and the value is the entry itself.
+	/// The file is a directory. The hashmap contains the list of entries. The
+	/// key is the name of the entry and the value is the entry itself.
 	Directory(HashMap<String, DirEntry>),
 	/// The file is a link. The data is the link's target.
 	Link(String),
@@ -240,8 +240,12 @@ impl FileContent {
 			Self::Link(_) => FileType::Link,
 			Self::Fifo => FileType::Fifo,
 			Self::Socket => FileType::Socket,
-			Self::BlockDevice { .. } => FileType::BlockDevice,
-			Self::CharDevice { .. } => FileType::CharDevice,
+			Self::BlockDevice {
+				..
+			} => FileType::BlockDevice,
+			Self::CharDevice {
+				..
+			} => FileType::CharDevice,
 		}
 	}
 }
@@ -255,12 +259,18 @@ impl FailableClone for FileContent {
 			Self::Fifo => Self::Fifo,
 			Self::Socket => Self::Socket,
 
-			Self::BlockDevice { major, minor } => Self::BlockDevice {
+			Self::BlockDevice {
+				major,
+				minor,
+			} => Self::BlockDevice {
 				major: *major,
 				minor: *minor,
 			},
 
-			Self::CharDevice { major, minor } => Self::CharDevice {
+			Self::CharDevice {
+				major,
+				minor,
+			} => Self::CharDevice {
 				major: *major,
 				minor: *minor,
 			},
@@ -305,8 +315,8 @@ pub struct File {
 	/// The content of the file.
 	content: FileContent,
 
-	/// The number of locations where this file being is used. If non-zero, the file is considered
-	/// busy.
+	/// The number of locations where this file being is used. If non-zero, the
+	/// file is considered busy.
 	ref_count: usize,
 }
 
@@ -317,7 +327,8 @@ impl File {
 	/// `gid` is the id of the owner group.
 	/// `mode` is the permission of the file.
 	/// `location` is the location of the file.
-	/// `content` is the content of the file. This value also determines the file type.
+	/// `content` is the content of the file. This value also determines the
+	/// file type.
 	fn new(
 		name: String,
 		uid: Uid,
@@ -449,7 +460,8 @@ impl File {
 		self.ctime = timestamp;
 	}
 
-	/// Returns an immutable reference to the location at which the file is stored.
+	/// Returns an immutable reference to the location at which the file is
+	/// stored.
 	pub fn get_location(&self) -> &FileLocation {
 		&self.location
 	}
@@ -595,8 +607,8 @@ impl File {
 	}
 
 	/// Performs an ioctl operation on the file.
-	/// `mem_space` is the memory space on which pointers are to be dereferenced.
-	/// `request` is the ID of the request to perform.
+	/// `mem_space` is the memory space on which pointers are to be
+	/// dereferenced. `request` is the ID of the request to perform.
 	/// `argp` is a pointer to the argument.
 	pub fn ioctl(
 		&mut self,
@@ -634,14 +646,19 @@ impl File {
 			}
 
 			// TODO Check if correct
-			FileContent::BlockDevice { .. } => Err(errno!(ENOTTY)),
+			FileContent::BlockDevice {
+				..
+			} => Err(errno!(ENOTTY)),
 
-			FileContent::CharDevice { major, minor } => {
+			FileContent::CharDevice {
+				major,
+				minor,
+			} => {
 				let dev = device::get_device(DeviceType::Char, *major, *minor)
 					.ok_or_else(|| errno!(ENODEV))?;
 				let guard = dev.lock();
 				guard.get_mut().get_handle().ioctl(mem_space, request, argp)
-			},
+			}
 		}
 	}
 
@@ -773,15 +790,22 @@ impl IO for File {
 				todo!();
 			}
 
-			FileContent::BlockDevice { .. } | FileContent::CharDevice { .. } => {
+			FileContent::BlockDevice {
+				..
+			}
+			| FileContent::CharDevice {
+				..
+			} => {
 				let dev = match self.content {
-					FileContent::BlockDevice { major, minor } => {
-						device::get_device(DeviceType::Block, major, minor)
-					}
+					FileContent::BlockDevice {
+						major,
+						minor,
+					} => device::get_device(DeviceType::Block, major, minor),
 
-					FileContent::CharDevice { major, minor } => {
-						device::get_device(DeviceType::Char, major, minor)
-					}
+					FileContent::CharDevice {
+						major,
+						minor,
+					} => device::get_device(DeviceType::Char, major, minor),
 
 					_ => unreachable!(),
 				}
@@ -847,15 +871,22 @@ impl IO for File {
 				todo!();
 			}
 
-			FileContent::BlockDevice { .. } | FileContent::CharDevice { .. } => {
+			FileContent::BlockDevice {
+				..
+			}
+			| FileContent::CharDevice {
+				..
+			} => {
 				let dev = match self.content {
-					FileContent::BlockDevice { major, minor } => {
-						device::get_device(DeviceType::Block, major, minor)
-					}
+					FileContent::BlockDevice {
+						major,
+						minor,
+					} => device::get_device(DeviceType::Block, major, minor),
 
-					FileContent::CharDevice { major, minor } => {
-						device::get_device(DeviceType::Char, major, minor)
-					}
+					FileContent::CharDevice {
+						major,
+						minor,
+					} => device::get_device(DeviceType::Char, major, minor),
 
 					_ => unreachable!(),
 				}
@@ -919,15 +950,22 @@ impl IO for File {
 				todo!();
 			}
 
-			FileContent::BlockDevice { .. } | FileContent::CharDevice { .. } => {
+			FileContent::BlockDevice {
+				..
+			}
+			| FileContent::CharDevice {
+				..
+			} => {
 				let dev = match self.content {
-					FileContent::BlockDevice { major, minor } => {
-						device::get_device(DeviceType::Block, major, minor)
-					}
+					FileContent::BlockDevice {
+						major,
+						minor,
+					} => device::get_device(DeviceType::Block, major, minor),
 
-					FileContent::CharDevice { major, minor } => {
-						device::get_device(DeviceType::Char, major, minor)
-					}
+					FileContent::CharDevice {
+						major,
+						minor,
+					} => device::get_device(DeviceType::Char, major, minor),
 
 					_ => unreachable!(),
 				}
@@ -941,8 +979,8 @@ impl IO for File {
 }
 
 /// Initializes files management.
-/// `root_device_type` is the type of the root device file. If not a device, the behaviour is
-/// undefined.
+/// `root_device_type` is the type of the root device file. If not a device, the
+/// behaviour is undefined.
 /// `root_major` is the major number of the device at the root of the VFS.
 /// `root_minor` is the minor number of the device at the root of the VFS.
 pub fn init(root_device_type: DeviceType, root_major: u32, root_minor: u32) -> Result<(), Errno> {

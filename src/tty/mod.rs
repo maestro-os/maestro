@@ -1,10 +1,10 @@
-//! The TeleTypeWriter (TTY) is an electromechanical device that was used in the past to send and
-//! receive typed messages through a communication channel.
+//! The TeleTypeWriter (TTY) is an electromechanical device that was used in the
+//! past to send and receive typed messages through a communication channel.
 //!
 //! This module implements line discipline for TTYs.
 //!
-//! At startup, the kernel has one TTY: the init TTY, which is stored separately because at the
-//! time of creation, memory management isn't initialized yet.
+//! At startup, the kernel has one TTY: the init TTY, which is stored separately
+//! because at the time of creation, memory management isn't initialized yet.
 
 mod ansi;
 pub mod termios;
@@ -61,7 +61,8 @@ pub struct WinSize {
 	pub ws_ypixel: u16,
 }
 
-/// Returns the position of the cursor in the history array from `x` and `y` position.
+/// Returns the position of the cursor in the history array from `x` and `y`
+/// position.
 fn get_history_offset(x: vga::Pos, y: vga::Pos) -> usize {
 	let off = (y * vga::WIDTH + x) as usize;
 	debug_assert!(off < HISTORY_SIZE);
@@ -119,12 +120,14 @@ static mut INIT_TTY: MaybeUninit<IntMutex<TTY>> = MaybeUninit::uninit();
 /// The list of every TTYs except the init TTY.
 static TTYS: IntMutex<Vec<IntSharedPtr<TTY>>> = IntMutex::new(Vec::new());
 
-/// The current TTY being displayed on screen. If None, the init TTY is being displayed.
+/// The current TTY being displayed on screen. If None, the init TTY is being
+/// displayed.
 static CURRENT_TTY: IntMutex<Option<usize>> = IntMutex::new(None);
 
 /// Enumeration of the different type of handles for a TTY.
-/// Because the initial TTY is created while memory allocation isn't available yet, the kernel
-/// cannot use shared pointer. So we need different ways to lock the TTY.
+/// Because the initial TTY is created while memory allocation isn't available
+/// yet, the kernel cannot use shared pointer. So we need different ways to lock
+/// the TTY.
 #[derive(Clone)]
 pub enum TTYHandle {
 	/// Handle to the init TTY.
@@ -290,8 +293,8 @@ impl TTY {
 		self.set_bgcolor(bg);
 	}
 
-	/// Sets the blinking state of the text for TTY. `true` means blinking text, `false` means not
-	/// blinking.
+	/// Sets the blinking state of the text for TTY. `true` means blinking text,
+	/// `false` means not blinking.
 	pub fn set_blinking(&mut self, blinking: bool) {
 		if blinking {
 			self.current_color |= 0x80;
@@ -364,14 +367,16 @@ impl TTY {
 		debug_assert!(self.cursor_y - self.screen_y < vga::HEIGHT);
 	}
 
-	/// Moves the cursor forward `x` characters horizontally and `y` characters vertically.
+	/// Moves the cursor forward `x` characters horizontally and `y` characters
+	/// vertically.
 	fn cursor_forward(&mut self, x: usize, y: usize) {
 		self.cursor_x += x as vga::Pos;
 		self.cursor_y += y as vga::Pos;
 		self.fix_pos();
 	}
 
-	/// Moves the cursor backwards `x` characters horizontally and `y` characters vertically.
+	/// Moves the cursor backwards `x` characters horizontally and `y`
+	/// characters vertically.
 	fn cursor_backward(&mut self, x: usize, y: usize) {
 		self.cursor_x -= x as vga::Pos;
 		self.cursor_y -= y as vga::Pos;
@@ -458,9 +463,10 @@ impl TTY {
 
 	// TODO Implement IUTF8
 	/// Reads inputs from the TTY and places it into the buffer `buff`.
-	/// The function returns the number of bytes read and whether the EOF is reached.
-	/// Note that reaching the EOF doesn't necessary mean the TTY is closed. Subsequent calls to
-	/// this function might still successfully read data.
+	/// The function returns the number of bytes read and whether the EOF is
+	/// reached. Note that reaching the EOF doesn't necessary mean the TTY is
+	/// closed. Subsequent calls to this function might still successfully read
+	/// data.
 	pub fn read(&mut self, buff: &mut [u8]) -> (usize, bool) {
 		// The length of data to consume
 		let mut len = min(buff.len(), self.available_size);
@@ -499,7 +505,8 @@ impl TTY {
 	}
 
 	// TODO Implement IUTF8
-	/// Takes the given string `buffer` as input, making it available from the terminal input.
+	/// Takes the given string `buffer` as input, making it available from the
+	/// terminal input.
 	pub fn input(&mut self, buffer: &[u8]) {
 		// The length to write to the input buffer
 		let len = min(buffer.len(), self.input_buffer.len() - self.input_size);
@@ -672,8 +679,8 @@ impl TTY {
 	}
 
 	/// Sets the window size of the TTY.
-	/// If a foreground process group is set on the TTY, the function shall send it a `SIGWINCH`
-	/// signal.
+	/// If a foreground process group is set on the TTY, the function shall send
+	/// it a `SIGWINCH` signal.
 	pub fn set_winsize(&mut self, mut winsize: WinSize) {
 		// Clamping values
 		if winsize.ws_col > vga::WIDTH as _ {

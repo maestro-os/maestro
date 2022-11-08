@@ -1,5 +1,6 @@
-//! A process is a task running on the kernel. A multitasking system allows several processes to
-//! run at the same time by sharing the CPU resources using a scheduler.
+//! A process is a task running on the kernel. A multitasking system allows
+//! several processes to run at the same time by sharing the CPU resources using
+//! a scheduler.
 
 // TODO Do not reallocate a PID of used as a pgid
 // TODO Maintain the open file descriptors count
@@ -17,40 +18,32 @@ pub mod state;
 pub mod tss;
 pub mod user_desc;
 
-use core::any::Any;
-use core::cmp::max;
-use core::ffi::c_void;
-use core::mem::ManuallyDrop;
-use core::mem::MaybeUninit;
-use core::mem::size_of;
-use core::ptr::NonNull;
 use crate::cpu;
-use crate::errno::Errno;
 use crate::errno;
-use crate::event::{InterruptResult, InterruptResultAction};
+use crate::errno::Errno;
 use crate::event;
-use crate::file::Gid;
-use crate::file::ROOT_UID;
-use crate::file::Uid;
-use crate::file::vfs;
-use crate::file::fd::FD_CLOEXEC;
+use crate::event::{InterruptResult, InterruptResultAction};
+use crate::file;
 use crate::file::fd::FileDescriptor;
 use crate::file::fd::NewFDConstraint;
+use crate::file::fd::FD_CLOEXEC;
 use crate::file::fs::procfs::ProcFS;
 use crate::file::mountpoint;
+use crate::file::open_file;
 use crate::file::open_file::FDTarget;
 use crate::file::open_file::OpenFile;
-use crate::file::open_file;
 use crate::file::path::Path;
-use crate::file;
+use crate::file::vfs;
+use crate::file::Gid;
+use crate::file::Uid;
+use crate::file::ROOT_UID;
 use crate::gdt;
 use crate::limits;
 use crate::memory;
 use crate::process::mountpoint::MountSource;
 use crate::process::open_file::O_CLOEXEC;
-use crate::tty::TTYHandle;
 use crate::tty;
-use crate::util::FailableClone;
+use crate::tty::TTYHandle;
 use crate::util::container::bitfield::Bitfield;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
@@ -58,7 +51,15 @@ use crate::util::lock::*;
 use crate::util::ptr::IntSharedPtr;
 use crate::util::ptr::IntWeakPtr;
 use crate::util::ptr::SharedPtr;
+use crate::util::FailableClone;
 use crate::vec;
+use core::any::Any;
+use core::cmp::max;
+use core::ffi::c_void;
+use core::mem::size_of;
+use core::mem::ManuallyDrop;
+use core::mem::MaybeUninit;
+use core::ptr::NonNull;
 use mem_space::MemSpace;
 use pid::PIDManager;
 use pid::Pid;
@@ -106,14 +107,18 @@ type ExitStatus = u8;
 
 /// Structure representing options to be passed to the fork function.
 pub struct ForkOptions {
-	/// If true, the parent and child processes both share the same address space.
+	/// If true, the parent and child processes both share the same address
+	/// space.
 	pub share_memory: bool,
-	/// If true, the parent and child processes both share the same file descriptors table.
+	/// If true, the parent and child processes both share the same file
+	/// descriptors table.
 	pub share_fd: bool,
-	/// If true, the parent and child processes both share the same signal handlers table.
+	/// If true, the parent and child processes both share the same signal
+	/// handlers table.
 	pub share_sighand: bool,
 
-	/// If true, the parent is stopped until the child process exits or executes a program.
+	/// If true, the parent is stopped until the child process exits or executes
+	/// a program.
 	pub vfork: bool,
 }
 
@@ -129,11 +134,12 @@ impl Default for ForkOptions {
 	}
 }
 
-/// The vfork operation is similar to the fork operation except the parent process isn't executed
-/// until the child process exits or executes a program.
-/// The reason for this is to prevent useless copies of memory pages when the child process is
-/// created only to execute a program.
-/// It implies that the child process shares the same memory space as the parent.
+/// The vfork operation is similar to the fork operation except the parent
+/// process isn't executed until the child process exits or executes a program.
+/// The reason for this is to prevent useless copies of memory pages when the
+/// child process is created only to execute a program.
+/// It implies that the child process shares the same memory space as the
+/// parent.
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum VForkState {
 	/// The process is not in vfork state.
@@ -145,7 +151,8 @@ enum VForkState {
 	Executing,
 }
 
-/// The Process Control Block (PCB). This structure stores all the informations about a process.
+/// The Process Control Block (PCB). This structure stores all the informations
+/// about a process.
 pub struct Process {
 	/// The ID of the process.
 	pid: Pid,
@@ -182,7 +189,8 @@ pub struct Process {
 
 	/// The current state of the process.
 	state: State,
-	/// The current vfork state of the process (see documentation of `VForkState`).
+	/// The current vfork state of the process (see documentation of
+	/// `VForkState`).
 	vfork_state: VForkState,
 
 	/// The priority of the process.
@@ -208,7 +216,8 @@ pub struct Process {
 	handled_signal: Option<Signal>,
 	/// The saved state of registers, used when handling a signal.
 	saved_regs: Regs,
-	/// Tells whether the process has information that can be retrieved by wait/waitpid.
+	/// Tells whether the process has information that can be retrieved by
+	/// wait/waitpid.
 	waitable: bool,
 
 	/// The virtual memory of the process containing every mappings.
@@ -254,7 +263,8 @@ static mut PID_MANAGER: MaybeUninit<Mutex<PIDManager>> = MaybeUninit::uninit();
 /// The processes scheduler.
 static mut SCHEDULER: MaybeUninit<IntSharedPtr<Scheduler>> = MaybeUninit::uninit();
 
-/// Initializes processes system. This function must be called only once, at kernel initialization.
+/// Initializes processes system. This function must be called only once, at
+/// kernel initialization.
 pub fn init() -> Result<(), Errno> {
 	tss::init();
 	tss::flush();
@@ -395,23 +405,24 @@ pub fn get_scheduler() -> &'static IntMutex<Scheduler> {
 }
 
 impl Process {
-	/// Returns the process with PID `pid`. If the process doesn't exist, the function returns
-	/// None.
+	/// Returns the process with PID `pid`. If the process doesn't exist, the
+	/// function returns None.
 	pub fn get_by_pid(pid: Pid) -> Option<IntSharedPtr<Self>> {
 		let guard = unsafe { SCHEDULER.assume_init_mut() }.lock();
 
 		guard.get().get_by_pid(pid)
 	}
 
-	/// Returns the process with TID `tid`. If the process doesn't exist, the function returns
-	/// None.
+	/// Returns the process with TID `tid`. If the process doesn't exist, the
+	/// function returns None.
 	pub fn get_by_tid(tid: Pid) -> Option<IntSharedPtr<Self>> {
 		let guard = unsafe { SCHEDULER.assume_init_mut() }.lock();
 
 		guard.get().get_by_tid(tid)
 	}
 
-	/// Returns the current running process. If no process is running, the function returns None.
+	/// Returns the current running process. If no process is running, the
+	/// function returns None.
 	pub fn get_current() -> Option<IntSharedPtr<Self>> {
 		let guard = unsafe { SCHEDULER.assume_init_mut() }.lock();
 
@@ -452,8 +463,8 @@ impl Process {
 		Ok(())
 	}
 
-	/// Creates the init process and places it into the scheduler's queue. The process is set to
-	/// state `Running` by default.
+	/// Creates the init process and places it into the scheduler's queue. The
+	/// process is set to state `Running` by default.
 	/// The created process has user root.
 	pub fn new() -> Result<IntSharedPtr<Self>, Errno> {
 		// TODO Prevent calling twice
@@ -520,8 +531,8 @@ impl Process {
 			termsig: 0,
 		};
 
-		// FIXME On fail, the kernel will panic since the function is dropping the init process
-		// Creating STDIN, STDOUT and STDERR
+		// FIXME On fail, the kernel will panic since the function is dropping the init
+		// process Creating STDIN, STDOUT and STDERR
 		{
 			let mutex = vfs::get();
 			let guard = mutex.lock();
@@ -618,7 +629,8 @@ impl Process {
 		Ok(())
 	}
 
-	/// Returns a reference to the list of PIDs of processes in the current process's group.
+	/// Returns a reference to the list of PIDs of processes in the current
+	/// process's group.
 	#[inline(always)]
 	pub fn get_group_processes(&self) -> &Vec<Pid> {
 		&self.process_group
@@ -767,8 +779,8 @@ impl Process {
 				kernel_panic!("Terminated init process!");
 			}
 
-			// Removing the memory space, file descriptors table and signals table to save memory
-			// TODO Handle the case where the memory space is bound
+			// Removing the memory space, file descriptors table and signals table to save
+			// memory TODO Handle the case where the memory space is bound
 			// TODO self.mem_space = None;
 			self.file_descriptors = None;
 			// TODO Remove signal handlers
@@ -802,12 +814,12 @@ impl Process {
 	pub fn wake(&mut self) {
 		match self.state {
 			State::Sleeping(..) => self.set_state(State::Running),
-			_ => {},
+			_ => {}
 		}
 	}
 
-	/// Tells whether the current process has informations to be retrieved by the `waitpid` system
-	/// call.
+	/// Tells whether the current process has informations to be retrieved by
+	/// the `waitpid` system call.
 	pub fn is_waitable(&self) -> bool {
 		self.waitable
 	}
@@ -833,8 +845,8 @@ impl Process {
 		self.waitable = false;
 	}
 
-	/// Returns the priority of the process. A greater number means a higher priority relative to
-	/// other processes.
+	/// Returns the priority of the process. A greater number means a higher
+	/// priority relative to other processes.
 	#[inline(always)]
 	pub fn get_priority(&self) -> usize {
 		self.priority
@@ -910,20 +922,23 @@ impl Process {
 	}
 
 	/// Sets the process's current working directory.
-	/// If the given path is relative, it is made absolute by concatenated with `/`.
+	/// If the given path is relative, it is made absolute by concatenated with
+	/// `/`.
 	#[inline(always)]
 	pub fn set_cwd(&mut self, path: Path) -> Result<(), Errno> {
 		self.cwd = Path::root().concat(&path)?;
 		Ok(())
 	}
 
-	/// Returns the path to the root directory of the current process (chroot path).
+	/// Returns the path to the root directory of the current process (chroot
+	/// path).
 	#[inline(always)]
 	pub fn get_chroot(&self) -> &Path {
 		&self.chroot
 	}
 
-	/// Sets the path to the root directory of the current process (chroot path).
+	/// Sets the path to the root directory of the current process (chroot
+	/// path).
 	#[inline(always)]
 	pub fn set_chroot(&mut self, path: Path) {
 		self.chroot = path;
@@ -958,14 +973,15 @@ impl Process {
 	}
 
 	/// Prepares for context switching to the process.
-	/// The function may update the state of the process. Thus, the caller must check the state to
-	/// ensure the process can actually be run.
+	/// The function may update the state of the process. Thus, the caller must
+	/// check the state to ensure the process can actually be run.
 	pub fn prepare_switch(&mut self) {
 		if !matches!(self.state, State::Running) {
 			return;
 		}
 
-		// If the process is not in a syscall and a signal is pending on the process, execute it
+		// If the process is not in a syscall and a signal is pending on the process,
+		// execute it
 		if !self.is_syscalling() {
 			self.signal_next();
 
@@ -1024,8 +1040,8 @@ impl Process {
 		self.syscalling = syscalling;
 	}
 
-	/// Returns the available file descriptor with the lowest ID. If no ID is available, the
-	/// function returns an error.
+	/// Returns the available file descriptor with the lowest ID. If no ID is
+	/// available, the function returns an error.
 	/// `file_descriptors` is the file descriptors table.
 	/// `min` is the minimum value for the file descriptor to be returned.
 	fn get_available_fd(
@@ -1091,8 +1107,9 @@ impl Process {
 
 	/// Duplicates the file descriptor with id `id`.
 	/// The new file descriptor ID follows the constraint given be `constraint`.
-	/// `cloexec` tells whether the new file descriptor has the O_CLOEXEC flag enabled.
-	/// The function returns a pointer to the file descriptor with its ID.
+	/// `cloexec` tells whether the new file descriptor has the O_CLOEXEC flag
+	/// enabled. The function returns a pointer to the file descriptor with its
+	/// ID.
 	pub fn duplicate_fd(
 		&mut self,
 		id: u32,
@@ -1136,10 +1153,10 @@ impl Process {
 		Ok(file_descriptors[index].clone())
 	}
 
-	/// Duplicates file descriptors to make the process have its own copy. This function doesn't
-	/// duplicate open file descriptions.
-	/// This function is meant to be executed on program execution, meaning that file descriptors
-	/// with the flag FD_CLOEXEC are discarded.
+	/// Duplicates file descriptors to make the process have its own copy. This
+	/// function doesn't duplicate open file descriptions.
+	/// This function is meant to be executed on program execution, meaning that
+	/// file descriptors with the flag FD_CLOEXEC are discarded.
 	pub fn duplicate_fds(&mut self) -> Result<(), Errno> {
 		let mut new_fds = vec![];
 
@@ -1175,8 +1192,8 @@ impl Process {
 		Self::get_fd_(file_descriptors, id)
 	}
 
-	/// Closes the file descriptor with the ID `id`. The function returns an Err if the file
-	/// descriptor doesn't exist.
+	/// Closes the file descriptor with the ID `id`. The function returns an Err
+	/// if the file descriptor doesn't exist.
 	pub fn close_fd(&mut self, id: u32) -> Result<(), Errno> {
 		let file_descriptors_guard = self.file_descriptors.as_ref().unwrap().lock();
 		let file_descriptors = file_descriptors_guard.get_mut();
@@ -1207,8 +1224,8 @@ impl Process {
 		self.termsig
 	}
 
-	/// Forks the current process. The internal state of the process (registers and memory) are
-	/// copied.
+	/// Forks the current process. The internal state of the process (registers
+	/// and memory) are copied.
 	/// `parent` is the parent of the new process.
 	/// `fork_options` are the options for the fork operation.
 	/// On fail, the function returns an Err with the appropriate Errno.
@@ -1246,10 +1263,7 @@ impl Process {
 					.get_mut()
 					.map_stack(KERNEL_STACK_SIZE, KERNEL_STACK_FLAGS)?;
 
-				(
-					curr_mem_space.clone(),
-					Some(new_kernel_stack as _),
-				)
+				(curr_mem_space.clone(), Some(new_kernel_stack as _))
 			} else {
 				(
 					IntSharedPtr::new(curr_mem_space.lock().get_mut().fork()?)?,
@@ -1329,7 +1343,7 @@ impl Process {
 
 			sigmask: self.sigmask.failable_clone()?,
 			sigpending: Bitfield::new(signal::SIGNALS_COUNT)?,
-			signal_handlers: signal_handlers,
+			signal_handlers,
 
 			tls_entries: self.tls_entries,
 
@@ -1367,10 +1381,11 @@ impl Process {
 		self.handled_signal.is_some()
 	}
 
-	/// Kills the process with the given signal `sig`. If the process doesn't have a signal
-	/// handler, the default action for the signal is executed.
-	/// If `no_handler` is true and if the process is already handling a signal, the function
-	/// executes the default action of the signal regardless the user-specified action.
+	/// Kills the process with the given signal `sig`. If the process doesn't
+	/// have a signal handler, the default action for the signal is executed.
+	/// If `no_handler` is true and if the process is already handling a signal,
+	/// the function executes the default action of the signal regardless the
+	/// user-specified action.
 	pub fn kill(&mut self, sig: &Signal, no_handler: bool) {
 		if sig.can_catch() && self.sigmask.is_set(sig.get_id() as _) {
 			return;
@@ -1379,7 +1394,8 @@ impl Process {
 		self.rusage.ru_nsignals += 1;
 
 		if matches!(self.get_state(), State::Stopped)
-			&& sig.get_default_action() == SignalAction::Continue {
+			&& sig.get_default_action() == SignalAction::Continue
+		{
 			self.set_state(State::Running);
 		}
 
@@ -1438,8 +1454,8 @@ impl Process {
 	}
 
 	/// Returns the ID of the next signal to be executed.
-	/// If no signal is pending or is the process is already handling a signal, the function
-	/// returns None.
+	/// If no signal is pending or is the process is already handling a signal,
+	/// the function returns None.
 	pub fn get_next_signal(&self) -> Option<Signal> {
 		if self.is_handling_signal() {
 			return None;
@@ -1462,8 +1478,8 @@ impl Process {
 	}
 
 	/// Makes the process handle the next signal.
-	/// If no signal is pending or is the process is already handling a signal, the function does
-	/// nothing.
+	/// If no signal is pending or is the process is already handling a signal,
+	/// the function does nothing.
 	pub fn signal_next(&mut self) {
 		if let Some(sig) = self.get_next_signal() {
 			sig.execute_action(self, false);
@@ -1528,12 +1544,14 @@ impl Process {
 		self.clear_child_tid = ptr;
 	}
 
-	/// Returns an immutable reference to the process's resource usage structure.
+	/// Returns an immutable reference to the process's resource usage
+	/// structure.
 	pub fn get_rusage(&self) -> &RUsage {
 		&self.rusage
 	}
 
-	/// If the process is a vfork child, resets its state and its parent's state.
+	/// If the process is a vfork child, resets its state and its parent's
+	/// state.
 	pub fn reset_vfork(&mut self) {
 		if self.vfork_state != VForkState::Executing {
 			return;
@@ -1549,10 +1567,10 @@ impl Process {
 		}
 	}
 
-	/// Exits the process with the given `status`. This function changes the process's status to
-	/// `Zombie`.
-	/// `signaled` tells whether the process has been terminated by a signal. If true, `status` is
-	/// interpreted as the signal number.
+	/// Exits the process with the given `status`. This function changes the
+	/// process's status to `Zombie`.
+	/// `signaled` tells whether the process has been terminated by a signal. If
+	/// true, `status` is interpreted as the signal number.
 	pub fn exit(&mut self, status: u32, signaled: bool) {
 		if signaled {
 			self.exit_status = 0;
@@ -1579,13 +1597,15 @@ impl Process {
 		}
 	}
 
-	/// Tells whether the given user ID has the permission to kill the current process.
+	/// Tells whether the given user ID has the permission to kill the current
+	/// process.
 	pub fn can_kill(&self, uid: Uid) -> bool {
 		uid == ROOT_UID || uid == self.uid // TODO Also check saved user ID
 	}
 
-	/// Returns the OOM score, used by the OOM killer to determine the process to kill in case the
-	/// system runs out of memory. A higher score means a higher probability of getting killed.
+	/// Returns the OOM score, used by the OOM killer to determine the process
+	/// to kill in case the system runs out of memory. A higher score means a
+	/// higher probability of getting killed.
 	pub fn get_oom_score(&self) -> u16 {
 		let mut score = 0;
 
@@ -1595,8 +1615,8 @@ impl Process {
 		}
 
 		// TODO Compute the score using physical memory usage
-		// TODO Take into account userspace-set values (oom may be disabled for this process,
-		// an absolute score or a bonus might be given, etc...)
+		// TODO Take into account userspace-set values (oom may be disabled for this
+		// process, an absolute score or a bonus might be given, etc...)
 
 		score
 	}
@@ -1611,9 +1631,9 @@ impl Drop for Process {
 		// Unregister the process from the procfs
 		oom::wrap(|| self.unregister_procfs());
 
-		// Freeing the kernel stack. This is required because the process might share the same
-		// memory space with several other processes. And since, each process has its own kernel
-		// stack, not freeing it could result in a memory leak
+		// Freeing the kernel stack. This is required because the process might share
+		// the same memory space with several other processes. And since, each process
+		// has its own kernel stack, not freeing it could result in a memory leak
 		oom::wrap(|| {
 			if let Some(kernel_stack) = self.kernel_stack {
 				if let Some(mutex) = &self.mem_space {

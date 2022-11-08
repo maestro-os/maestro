@@ -1,5 +1,6 @@
-//! A Block Group Descriptor is a structure stored in the Block Group Descriptor Table which
-//! represents a block group, which is a subdivision of the filesystem.
+//! A Block Group Descriptor is a structure stored in the Block Group Descriptor
+//! Table which represents a block group, which is a subdivision of the
+//! filesystem.
 
 use super::read;
 use super::write;
@@ -8,8 +9,8 @@ use crate::errno::Errno;
 use crate::util::io::IO;
 use core::mem::size_of;
 
-/// Structure representing a block group descriptor to be stored into the Block Group Descriptor
-/// Table (BGDT).
+/// Structure representing a block group descriptor to be stored into the Block
+/// Group Descriptor Table (BGDT).
 #[repr(C, packed)]
 pub struct BlockGroupDescriptor {
 	/// The block address of the block usage bitmap.

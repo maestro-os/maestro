@@ -1,13 +1,13 @@
-//! The `rmdir` system call deletes the given directory from its filesystem. If no link remain to
-//! the inode, the function also removes the inode.
+//! The `rmdir` system call deletes the given directory from its filesystem. If
+//! no link remain to the inode, the function also removes the inode.
 
 use crate::errno::Errno;
-use crate::file::FileContent;
 use crate::file::path::Path;
 use crate::file::vfs;
-use crate::process::Process;
+use crate::file::FileContent;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::regs::Regs;
+use crate::process::Process;
 
 /// The implementation of the `rmdir` syscall.
 pub fn rmdir(regs: &Regs) -> Result<i32, Errno> {

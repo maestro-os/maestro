@@ -1,4 +1,5 @@
-//! The fchdir system call allows to change the current working directory of the current process.
+//! The fchdir system call allows to change the current working directory of the
+//! current process.
 
 use crate::errno;
 use crate::errno::Errno;

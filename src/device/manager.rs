@@ -1,4 +1,5 @@
-//! The device manager is the structure which links the physical devices to device files.
+//! The device manager is the structure which links the physical devices to
+//! device files.
 
 use crate::device::bar::BAR;
 use crate::errno::Errno;
@@ -23,8 +24,9 @@ pub trait PhysicalDevice {
 	fn get_class(&self) -> u16;
 	/// Returns the subclass of the device.
 	fn get_subclass(&self) -> u16;
-	/// The id of a read-only register that specifies a register-level programming interface of the
-	/// device. If not applicable, the function returns zero.
+	/// The id of a read-only register that specifies a register-level
+	/// programming interface of the device. If not applicable, the function
+	/// returns zero.
 	fn get_prog_if(&self) -> u8;
 
 	/// Tells whether the device is a hotplug device or not.
@@ -35,7 +37,8 @@ pub trait PhysicalDevice {
 	fn get_bar(&self, n: u8) -> Option<BAR>;
 }
 
-/// Trait representing a structure managing the link between physical devices and device files.
+/// Trait representing a structure managing the link between physical devices
+/// and device files.
 pub trait DeviceManager {
 	/// Returns the manager's name. This name must not change.
 	fn get_name(&self) -> &'static str;

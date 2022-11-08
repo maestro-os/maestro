@@ -1,26 +1,25 @@
-/// This module implements utility functions for system calls.
-
-use core::mem::size_of;
-use crate::errno::Errno;
 use crate::errno;
-use crate::file::File;
-use crate::file::FileContent;
-use crate::file::Mode;
+use crate::errno::Errno;
 use crate::file::open_file::FDTarget;
 use crate::file::path::Path;
 use crate::file::vfs;
-use crate::process::Process;
+use crate::file::File;
+use crate::file::FileContent;
+use crate::file::Mode;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::regs::Regs;
 use crate::process::state::State;
-use crate::util::FailableClone;
+use crate::process::Process;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::lock::MutexGuard;
 use crate::util::ptr::SharedPtr;
+use crate::util::FailableClone;
+/// This module implements utility functions for system calls.
+use core::mem::size_of;
 
-/// Returns the absolute path according to the process's current working directory.
-/// `process` is the process.
+/// Returns the absolute path according to the process's current working
+/// directory. `process` is the process.
 /// `path` is the path.
 pub fn get_absolute_path(process: &Process, path: Path) -> Result<Path, Errno> {
 	let path = if !path.is_absolute() {
@@ -35,10 +34,10 @@ pub fn get_absolute_path(process: &Process, path: Path) -> Result<Path, Errno> {
 }
 
 // TODO Find a safer and cleaner solution
-/// Checks that the given array of strings at pointer `ptr` is accessible to process `proc`, then
-/// returns its content.
-/// If the array or its content strings are not accessible by the process, the function returns an
-/// error.
+/// Checks that the given array of strings at pointer `ptr` is accessible to
+/// process `proc`, then returns its content.
+/// If the array or its content strings are not accessible by the process, the
+/// function returns an error.
 pub unsafe fn get_str_array(
 	process: &Process,
 	ptr: *const *const u8,
@@ -80,8 +79,8 @@ pub unsafe fn get_str_array(
 	Ok(arr)
 }
 
-/// Builds a path with the given directory file descriptor `dirfd` as a base, concatenated with the
-/// given pathname `pathname`.
+/// Builds a path with the given directory file descriptor `dirfd` as a base,
+/// concatenated with the given pathname `pathname`.
 /// `process_guard` is the guard of the current process.
 fn build_path_from_fd(
 	process_guard: &MutexGuard<Process, false>,
@@ -244,11 +243,12 @@ pub fn create_file_at(
 
 /// Updates the execution flow of the current process according to its state.
 ///
-/// When the state of the current process has been changed, execution may not resume. In which
-/// case, the current function handles the execcution flow accordingly.
+/// When the state of the current process has been changed, execution may not
+/// resume. In which case, the current function handles the execcution flow
+/// accordingly.
 ///
-/// The functions locks the mutex of the current process. Thus, the caller must ensure the mutex
-/// isn't already locked to prevent a deadlock.
+/// The functions locks the mutex of the current process. Thus, the caller must
+/// ensure the mutex isn't already locked to prevent a deadlock.
 ///
 /// If returning, the function returns the mutex lock of the current process.
 pub fn handle_proc_state() {
@@ -290,11 +290,11 @@ pub fn handle_proc_state() {
 
 /// Checks whether the current syscall must be interrupted to execute a signal.
 ///
-/// If interrupted, the function doesn't return and the control flow jumps directly to handling the
-/// signal.
+/// If interrupted, the function doesn't return and the control flow jumps
+/// directly to handling the signal.
 ///
-/// The functions locks the mutex of the current process. Thus, the caller must ensure the mutex
-/// isn't already locked to prevent a deadlock.
+/// The functions locks the mutex of the current process. Thus, the caller must
+/// ensure the mutex isn't already locked to prevent a deadlock.
 ///
 /// `regs` is the registers state passed to the current syscall.
 pub fn signal_check(regs: &Regs) {

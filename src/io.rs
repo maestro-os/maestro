@@ -1,4 +1,5 @@
-//! The I/O functions allow to communicate with the other components on the system.
+//! The I/O functions allow to communicate with the other components on the
+//! system.
 
 use core::arch::asm;
 

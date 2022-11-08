@@ -1,33 +1,33 @@
-//! The role of the process scheduler is to interrupt the currently running process periodicaly
-//! to switch to another process that is in running state. The interruption is fired by the PIT
-//! on IDT0.
+//! The role of the process scheduler is to interrupt the currently running
+//! process periodicaly to switch to another process that is in running state.
+//! The interruption is fired by the PIT on IDT0.
 //!
-//! A scheduler cycle is a period during which the scheduler iterates through every processes.
-//! The scheduler works by assigning a number of quantum for each process, based on the number of
-//! running processes and their priority.
-//! This number represents the number of ticks during which the process keeps running until
-//! switching to the next process.
+//! A scheduler cycle is a period during which the scheduler iterates through
+//! every processes. The scheduler works by assigning a number of quantum for
+//! each process, based on the number of running processes and their priority.
+//! This number represents the number of ticks during which the process keeps
+//! running until switching to the next process.
 
-use core::cmp::max;
-use core::ffi::c_void;
 use crate::errno::Errno;
-use crate::event::CallbackHook;
 use crate::event;
+use crate::event::CallbackHook;
 use crate::idt::pic;
+use crate::memory;
 use crate::memory::malloc;
 use crate::memory::stack;
-use crate::memory;
-use crate::process::Process;
+use crate::process;
 use crate::process::pid::Pid;
 use crate::process::regs::Regs;
 use crate::process::state::State;
-use crate::process;
+use crate::process::Process;
 use crate::util::container::map::Map;
 use crate::util::container::map::MapIterator;
 use crate::util::container::vec::Vec;
 use crate::util::lock::*;
 use crate::util::math;
 use crate::util::ptr::IntSharedPtr;
+use core::cmp::max;
+use core::ffi::c_void;
 
 /// The size of the temporary stack for context switching.
 const TMP_STACK_SIZE: usize = 16 * memory::PAGE_SIZE;
@@ -41,12 +41,14 @@ pub struct Scheduler {
 	/// A vector containing the temporary stacks for each CPU cores.
 	tmp_stacks: Vec<malloc::Alloc<u8>>,
 
-	/// The ticking callback hook, called at a regular interval to make the scheduler work.
+	/// The ticking callback hook, called at a regular interval to make the
+	/// scheduler work.
 	tick_callback_hook: CallbackHook,
 	/// The total number of ticks since the instanciation of the scheduler.
 	total_ticks: u64,
 
-	/// A binary tree containing all processes registered to the current scheduler.
+	/// A binary tree containing all processes registered to the current
+	/// scheduler.
 	processes: Map<Pid, IntSharedPtr<Process>>,
 	/// The currently running process with its PID.
 	curr_proc: Option<(Pid, IntSharedPtr<Process>)>,
@@ -98,20 +100,21 @@ impl Scheduler {
 		self.processes.iter()
 	}
 
-	/// Returns the process with PID `pid`. If the process doesn't exist, the function returns
-	/// None.
+	/// Returns the process with PID `pid`. If the process doesn't exist, the
+	/// function returns None.
 	pub fn get_by_pid(&self, pid: Pid) -> Option<IntSharedPtr<Process>> {
 		Some(self.processes.get(pid)?.clone())
 	}
 
-	/// Returns the process with TID `tid`. If the process doesn't exist, the function returns
-	/// None.
+	/// Returns the process with TID `tid`. If the process doesn't exist, the
+	/// function returns None.
 	pub fn get_by_tid(&self, _tid: Pid) -> Option<IntSharedPtr<Process>> {
 		// TODO
 		todo!();
 	}
 
-	/// Returns the current running process. If no process is running, the function returns None.
+	/// Returns the current running process. If no process is running, the
+	/// function returns None.
 	pub fn get_current_process(&mut self) -> Option<IntSharedPtr<Process>> {
 		Some(self.curr_proc.as_ref().cloned()?.1)
 	}
@@ -119,8 +122,8 @@ impl Scheduler {
 	/// Updates the scheduler's heuristic with the new priority of a process.
 	/// `old` is the old priority of the process.
 	/// `new` is the new priority of the process.
-	/// The function doesn't need to know the process which has been updated since it updates
-	/// global informations.
+	/// The function doesn't need to know the process which has been updated
+	/// since it updates global informations.
 	pub fn update_priority(&mut self, old: usize, new: usize) {
 		self.priority_sum = self.priority_sum - old + new;
 
@@ -194,8 +197,8 @@ impl Scheduler {
 	) -> bool {
 		if process.can_run() {
 			// TODO fix
-			//process.quantum_count < Self::get_quantum_count(process.get_priority(), priority_sum,
-			//	priority_max, processes_count)
+			//process.quantum_count < Self::get_quantum_count(process.get_priority(),
+			// priority_sum, 	priority_max, processes_count)
 			true
 		} else {
 			false
@@ -203,8 +206,8 @@ impl Scheduler {
 	}
 
 	// TODO Clean
-	/// Returns the next process to run with its PID. If the process is changed, the quantum count
-	/// of the previous process is reset.
+	/// Returns the next process to run with its PID. If the process is changed,
+	/// the quantum count of the previous process is reset.
 	fn get_next_process(&self) -> Option<(Pid, IntSharedPtr<Process>)> {
 		let priority_sum = self.priority_sum;
 		let priority_max = self.priority_max;
@@ -214,8 +217,8 @@ impl Scheduler {
 			return None;
 		}
 
-		// Getting the current process, or take the first process in the list if no process is
-		// running
+		// Getting the current process, or take the first process in the list if no
+		// process is running
 		let (curr_pid, curr_proc) = self.curr_proc.clone().or_else(|| {
 			let (pid, proc) = self.processes.get_min(0)?;
 			Some((*pid, proc.clone()))
@@ -232,8 +235,8 @@ impl Scheduler {
 					Self::can_run(guard.get(), priority_sum, priority_max, processes_count)
 				};
 
-				// FIXME Potenial race condition? (checking if runnable, then unlocking and using
-				// the result of the check)
+				// FIXME Potenial race condition? (checking if runnable, then unlocking and
+				// using the result of the check)
 				if runnable {
 					proc = Some((*pid, process.clone()));
 					break;
@@ -250,8 +253,8 @@ impl Scheduler {
 
 		// Running the loop to reach the end of processes list
 		let mut next_proc = next(iter);
-		// If no suitable process is found, going back to the beginning to check the processes
-		// located before the previous process
+		// If no suitable process is found, going back to the beginning to check the
+		// processes located before the previous process
 		if next_proc.is_none() {
 			next_proc = next(self.processes.iter());
 		}
@@ -264,8 +267,8 @@ impl Scheduler {
 		Some((next_pid, next_proc))
 	}
 
-	/// Ticking the scheduler. This function saves the data of the currently running process, then
-	/// switches to the next process to run.
+	/// Ticking the scheduler. This function saves the data of the currently
+	/// running process, then switches to the next process to run.
 	/// `sched_mutex` is the scheduler's mutex.
 	/// `regs` is the state of the registers from the paused context.
 	/// `ring` is the ring of the paused context.
@@ -289,7 +292,7 @@ impl Scheduler {
 
 			// The current core ID
 			let core_id = 0; // TODO
-			// Getting the temporary stack
+				 // Getting the temporary stack
 			let tmp_stack = scheduler.get_tmp_stack(core_id);
 
 			tmp_stack
@@ -343,7 +346,8 @@ impl Scheduler {
 		}
 	}
 
-	/// Returns the total number of ticks since the instanciation of the scheduler.
+	/// Returns the total number of ticks since the instanciation of the
+	/// scheduler.
 	pub fn get_total_ticks(&self) -> u64 {
 		self.total_ticks
 	}

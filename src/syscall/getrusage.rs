@@ -1,4 +1,5 @@
-//! The `getrusage` system call returns the system usage for the current process.
+//! The `getrusage` system call returns the system usage for the current
+//! process.
 
 use crate::errno;
 use crate::errno::Errno;

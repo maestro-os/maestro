@@ -1,4 +1,5 @@
-//! The `umount` system call allows to unmount a filesystem previously mounted with `mount`.
+//! The `umount` system call allows to unmount a filesystem previously mounted
+//! with `mount`.
 
 use crate::errno;
 use crate::errno::Errno;

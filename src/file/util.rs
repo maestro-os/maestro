@@ -1,7 +1,7 @@
 //! This module implements utility functions for files manipulations.
 
-use super::vfs::VFS;
 use super::path::Path;
+use super::vfs::VFS;
 use super::File;
 use super::FileContent;
 use crate::errno;
@@ -14,9 +14,9 @@ use crate::util::container::string::String;
 use crate::util::io::IO;
 use crate::util::FailableClone;
 
-/// Creates the directories necessary to reach path `path`. On success, the function returns
-/// the number of created directories (without the directories that already existed).
-/// If relative, the path is taken from the root.
+/// Creates the directories necessary to reach path `path`. On success, the
+/// function returns the number of created directories (without the directories
+/// that already existed). If relative, the path is taken from the root.
 /// `vfs` is a reference to the VFS.
 pub fn create_dirs(vfs: &mut VFS, path: &Path) -> Result<usize, Errno> {
 	let path = Path::root().concat(path)?;
@@ -44,7 +44,7 @@ pub fn create_dirs(vfs: &mut VFS, path: &Path) -> Result<usize, Errno> {
 				Ok(_) => created_count += 1,
 				Err(e) if e.as_int() != errno::EEXIST => return Err(e),
 
-				_ => {},
+				_ => {}
 			}
 		}
 
@@ -105,13 +105,8 @@ pub fn copy_file(
 
 			// TODO On fail, undo
 			for (name, _) in entries.iter() {
-				let old_mutex = vfs.get_file_from_parent(
-					new,
-					name.failable_clone()?,
-					uid,
-					gid,
-					false
-				)?;
+				let old_mutex =
+					vfs.get_file_from_parent(new, name.failable_clone()?, uid, gid, false)?;
 				let old_guard = old_mutex.lock();
 				let old = old_guard.get_mut();
 
@@ -129,7 +124,7 @@ pub fn copy_file(
 				mode,
 				content.failable_clone()?,
 			)?;
-		},
+		}
 	}
 
 	Ok(())
@@ -139,12 +134,7 @@ pub fn copy_file(
 /// `vfs` is a reference to the VFS.
 /// `uid` is the user ID used to check permissions.
 /// `gid` is the group ID used to check permissions.
-pub fn remove_recursive(
-	vfs: &mut VFS,
-	file: &mut File,
-	uid: Uid,
-	gid: Gid,
-) -> Result<(), Errno> {
+pub fn remove_recursive(vfs: &mut VFS, file: &mut File, uid: Uid, gid: Gid) -> Result<(), Errno> {
 	let content = file.get_content().failable_clone()?;
 
 	match content {

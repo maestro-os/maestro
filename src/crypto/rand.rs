@@ -95,8 +95,8 @@ impl RandomSource for URandom {
 	}
 }
 
-/// Returns the randomness source with the given name `name`. If the source doesn't exist, the
-/// function returns None.
+/// Returns the randomness source with the given name `name`. If the source
+/// doesn't exist, the function returns None.
 pub fn get_source(name: &'static str) -> Option<SharedPtr<dyn RandomSource>> {
 	Some(RANDOM_SOURCES.lock().get().get(&name)?.clone())
 }

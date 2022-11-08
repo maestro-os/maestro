@@ -1,4 +1,5 @@
-//! This module implements a procfs node which allows to get the list of mountpoint.
+//! This module implements a procfs node which allows to get the list of
+//! mountpoint.
 
 use crate::errno::Errno;
 use crate::file::fs::kernfs::node::KernFSNode;

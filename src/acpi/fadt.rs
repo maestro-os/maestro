@@ -12,8 +12,8 @@ pub struct GenericAddr {
 	address: u8,
 }
 
-/// The Fixed ACPI Description Table. The documentation of every fields can be found in the ACPI
-/// documentation.
+/// The Fixed ACPI Description Table. The documentation of every fields can be
+/// found in the ACPI documentation.
 #[repr(C)]
 pub struct Fadt {
 	/// The table's header.

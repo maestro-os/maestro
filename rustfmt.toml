@@ -1,1 +1,10 @@
+blank_lines_upper_bound = 1
+comment_width = 99
+condense_wildcard_suffixes = true
 hard_tabs = true
+hex_literal_case = "Lower"
+newline_style = "Unix"
+reorder_impl_items = true
+struct_lit_single_line = false
+use_field_init_shorthand = true
+wrap_comments = true

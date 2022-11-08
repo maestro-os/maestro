@@ -4,10 +4,10 @@ use super::path::Path;
 use crate::device;
 use crate::device::DeviceType;
 use crate::errno::Errno;
-use crate::file::vfs;
 use crate::file::fs;
 use crate::file::fs::Filesystem;
 use crate::file::fs::FilesystemType;
+use crate::file::vfs;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
@@ -39,13 +39,14 @@ const FLAG_REC: u32 = 0b000010000000;
 const FLAG_RELATIME: u32 = 0b000100000000;
 /// Suppresses certain warning messages in the kernel logs.
 const FLAG_SILENT: u32 = 0b001000000000;
-/// Always update the last access time when files on this filesystem are accessed. Overrides
-/// NOATIME and RELATIME.
+/// Always update the last access time when files on this filesystem are
+/// accessed. Overrides NOATIME and RELATIME.
 const FLAG_STRICTATIME: u32 = 0b010000000000;
 /// Makes writes on this filesystem synchronous.
 const FLAG_SYNCHRONOUS: u32 = 0b100000000000;
 
-// TODO When removing a mountpoint, return an error if another mountpoint is present in a subdir
+// TODO When removing a mountpoint, return an error if another mountpoint is
+// present in a subdir
 
 /// Enumeration of mount sources.
 #[derive(Eq, Hash, PartialEq)]
@@ -64,15 +65,15 @@ pub enum MountSource {
 	/// The mountpoint is mounted from a file.
 	File(Path),
 
-	/// The mountpoint is bound to a virtual filesystem and thus isn't associated with any device.
-	/// The string value is the name of the source.
+	/// The mountpoint is bound to a virtual filesystem and thus isn't
+	/// associated with any device. The string value is the name of the source.
 	NoDev(String),
 }
 
 impl MountSource {
 	/// Creates a mount source from a dummy string.
-	/// The string `string` might be either a kernfs name, a relative path or an absolute path.
-	/// `cwd` is the current working directory.
+	/// The string `string` might be either a kernfs name, a relative path or an
+	/// absolute path. `cwd` is the current working directory.
 	pub fn from_str(string: &[u8], cwd: Path) -> Result<Self, Errno> {
 		let path = Path::from_str(string, true)?;
 		let path = cwd.concat(&path)?;
@@ -170,9 +171,9 @@ static FILESYSTEMS: Mutex<HashMap<MountSource, LoadedFS>> = Mutex::new(HashMap::
 
 /// Loads a filesystem.
 /// `source` is the source of the mountpoint.
-/// `fs_type` is the filesystem type. If None, the function tries to detect it automaticaly.
-/// `path` is the path to the directory on which the filesystem is mounted.
-/// `readonly` tells whether the filesystem is mount in readonly.
+/// `fs_type` is the filesystem type. If None, the function tries to detect it
+/// automaticaly. `path` is the path to the directory on which the filesystem is
+/// mounted. `readonly` tells whether the filesystem is mount in readonly.
 /// On success, the function returns the loaded filesystem.
 /// A newly loaded filesystem is initialized with a single reference.
 fn load_fs(
@@ -272,8 +273,8 @@ impl MountPoint {
 	/// Creates a new instance.
 	/// `id` is the ID of the mountpoint.
 	/// `source` is the source of the mountpoint.
-	/// `fs_type` is the filesystem type. If None, the function tries to detect it automaticaly.
-	/// `flags` are the mount flags.
+	/// `fs_type` is the filesystem type. If None, the function tries to detect
+	/// it automaticaly. `flags` are the mount flags.
 	/// `path` is the path on which the filesystem is to be mounted.
 	fn new(
 		id: u32,
@@ -286,7 +287,7 @@ impl MountPoint {
 		let readonly = flags & FLAG_RDONLY != 0;
 
 		let fs_type_name = String::from(b"TODO")?; // TODO
-		// TODO Check if a mountpoint at the same path is already present
+										   // TODO Check if a mountpoint at the same path is already present
 		let fs = match get_fs_(&source, true) {
 			// Filesystem exists, do nothing
 			Some(fs) => fs,
@@ -329,7 +330,8 @@ impl MountPoint {
 		&self.fs_type
 	}
 
-	/// Returns a mutable reference to the filesystem associated with the mountpoint.
+	/// Returns a mutable reference to the filesystem associated with the
+	/// mountpoint.
 	pub fn get_filesystem(&self) -> SharedPtr<dyn Filesystem> {
 		self.fs.clone()
 	}
@@ -360,11 +362,11 @@ impl Drop for MountPoint {
 /// The list of mountpoints with their respective ID.
 pub static MOUNT_POINTS: Mutex<Vec<(u32, SharedPtr<MountPoint>)>> = Mutex::new(Vec::new());
 
-/// Creates a new mountpoint. If a mountpoint is already present at the same path,
-/// the function fails.
+/// Creates a new mountpoint. If a mountpoint is already present at the same
+/// path, the function fails.
 /// `source` is the source of the mountpoint.
-/// `fs_type` is the filesystem type. If None, the function tries to detect it automaticaly.
-/// `flags` are the mount flags.
+/// `fs_type` is the filesystem type. If None, the function tries to detect it
+/// automaticaly. `flags` are the mount flags.
 /// `path` is the path on which the filesystem is to be mounted.
 pub fn create(
 	source: MountSource,
@@ -393,8 +395,8 @@ pub fn create(
 	Ok(shared_ptr)
 }
 
-/// Returns the deepest mountpoint in the path `path`. If no mountpoint is in the path, the
-/// function returns None.
+/// Returns the deepest mountpoint in the path `path`. If no mountpoint is in
+/// the path, the function returns None.
 pub fn get_deepest(path: &Path) -> Option<SharedPtr<MountPoint>> {
 	let guard = MOUNT_POINTS.lock();
 	let container = guard.get_mut();
@@ -421,7 +423,8 @@ pub fn get_deepest(path: &Path) -> Option<SharedPtr<MountPoint>> {
 	max
 }
 
-/// Returns the mountpoint with id `id`. If it doesn't exist, the function returns None.
+/// Returns the mountpoint with id `id`. If it doesn't exist, the function
+/// returns None.
 pub fn from_id(id: u32) -> Option<SharedPtr<MountPoint>> {
 	let guard = MOUNT_POINTS.lock();
 	let container = guard.get_mut();
@@ -435,7 +438,8 @@ pub fn from_id(id: u32) -> Option<SharedPtr<MountPoint>> {
 	None
 }
 
-/// Returns the mountpoint with path `path`. If it doesn't exist, the function returns None.
+/// Returns the mountpoint with path `path`. If it doesn't exist, the function
+/// returns None.
 pub fn from_path(path: &Path) -> Option<SharedPtr<MountPoint>> {
 	let guard = MOUNT_POINTS.lock();
 	let container = guard.get_mut();

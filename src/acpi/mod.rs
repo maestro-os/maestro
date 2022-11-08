@@ -1,9 +1,9 @@
 //! This module implements ACPI related features.
-//! The ACPI interface provides informations about the system, allowing to control components such
-//! as cooling and powering.
+//! The ACPI interface provides informations about the system, allowing to
+//! control components such as cooling and powering.
 //!
-//! The first step in initialization is to read the RSDP table in order to get a pointer to the
-//! RSDT, referring to every other available tables.
+//! The first step in initialization is to read the RSDP table in order to get a
+//! pointer to the RSDT, referring to every other available tables.
 
 use core::intrinsics::wrapping_add;
 use data::ACPIData;

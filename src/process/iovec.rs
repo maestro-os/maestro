@@ -2,7 +2,8 @@
 
 use core::ffi::c_void;
 
-/// Structure used to represent an entry of an IO vector used for sparse buffers IO.
+/// Structure used to represent an entry of an IO vector used for sparse buffers
+/// IO.
 #[repr(C)]
 pub struct IOVec {
 	/// Starting address.

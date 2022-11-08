@@ -142,8 +142,8 @@ pub enum KeyboardKey {
 impl KeyboardKey {
 	// TODO Implement correctly with modifiers
 	/// Returns the TTY characters for the given current.
-	/// `shift` tells whether shift is pressed. This value has to be inverted if caps lock is
-	/// enabled.
+	/// `shift` tells whether shift is pressed. This value has to be inverted if
+	/// caps lock is enabled.
 	/// `alt` tells whether alt is pressed.
 	/// `ctrl` tells whether control is pressed.
 	/// `meta` tells whether meta is pressed.
@@ -209,7 +209,6 @@ impl KeyboardKey {
 				Self::KeyCursorDown => return Some(b"\x1b[1;5B"),
 
 				// TODO ^ and _
-
 				_ => {}
 			}
 		}
@@ -408,12 +407,13 @@ pub enum KeyboardLED {
 	// TODO Add the japanese keyboard Kana mode
 }
 
-/// Structure representing a key that can enabled, such as caps lock. Such a key is usually
-/// associated with an LED on the keyboard.
+/// Structure representing a key that can enabled, such as caps lock. Such a key
+/// is usually associated with an LED on the keyboard.
 pub struct EnableKey {
 	/// The key's state.
 	state: bool,
-	/// Tells whether to ignore the next pressed actions until a release action is received.
+	/// Tells whether to ignore the next pressed actions until a release action
+	/// is received.
 	ignore: bool,
 }
 

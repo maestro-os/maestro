@@ -1,11 +1,12 @@
 //! This module handles process PIDs.
-//! Each process must have an unique PID, thus they have to be allocated. The kernel uses a
-//! bitfield to store the used PIDs.
+//! Each process must have an unique PID, thus they have to be allocated. The
+//! kernel uses a bitfield to store the used PIDs.
 
 use crate::errno::Errno;
 use crate::util::container::id_allocator::IDAllocator;
 
-/// Type representing a Process ID. This ID is unique for every running processes.
+/// Type representing a Process ID. This ID is unique for every running
+/// processes.
 pub type Pid = u16;
 
 /// The maximum possible PID.

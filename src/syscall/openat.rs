@@ -18,9 +18,10 @@ use crate::util::ptr::SharedPtr;
 
 /// Returns the file at the given path `path`.
 /// TODO doc all args
-/// If the file doesn't exist and the O_CREAT flag is set, the file is created, then the function
-/// returns it. If the flag is not set, the function returns an error with the appropriate errno.
-/// If the file is to be created, the function uses `mode` to set its permissions.
+/// If the file doesn't exist and the O_CREAT flag is set, the file is created,
+/// then the function returns it. If the flag is not set, the function returns
+/// an error with the appropriate errno. If the file is to be created, the
+/// function uses `mode` to set its permissions.
 fn get_file(
 	dirfd: i32,
 	pathname: SyscallString,

@@ -1,5 +1,5 @@
-//! This module implements the status file, which allows to retrieve the current status of the
-//! process.
+//! This module implements the status file, which allows to retrieve the current
+//! status of the process.
 
 use crate::errno::Errno;
 use crate::file::fs::kernfs::node::KernFSNode;
@@ -65,9 +65,10 @@ impl IO for Status {
 		let proc_guard = proc_mutex.lock();
 		let proc = proc_guard.get();
 
-		let name = proc.get_argv()
+		let name = proc
+			.get_argv()
 			.iter()
-			.map(| name | unsafe { name.as_str_unchecked() })
+			.map(|name| unsafe { name.as_str_unchecked() })
 			.next()
 			.unwrap_or("?");
 
@@ -92,7 +93,8 @@ impl IO for Status {
 
 		// TODO Fill every fields with process's data
 		// Generating content
-		let content = crate::format!("Name: {name}
+		let content = crate::format!(
+			"Name: {name}
 Umask: {umask:4o}
 State: {state_char} ({state_name})
 Tgid: 0
@@ -149,7 +151,8 @@ Mems_allowed: 00000001
 Mems_allowed_list: 0
 voluntary_ctxt_switches: 0
 nonvoluntary_ctxt_switches: 0
-")?;
+"
+		)?;
 
 		// Copying content to userspace buffer
 		let content_bytes = content.as_bytes();

@@ -6,9 +6,11 @@ use core::ops::Add;
 
 /// Type representing a timestamp in seconds. Equivalent to POSIX's `time_t`.
 pub type Timestamp = u64;
-/// Type representing a timestamp in microseconds. Equivalent to POSIX's `suseconds_t`.
+/// Type representing a timestamp in microseconds. Equivalent to POSIX's
+/// `suseconds_t`.
 pub type UTimestamp = u64;
-/// Type representing an elapsed number of ticks. Equivalent to POSIX's `clock_t`.
+/// Type representing an elapsed number of ticks. Equivalent to POSIX's
+/// `clock_t`.
 pub type Clock = u32;
 
 /// Enumeration of available timestamp scales.

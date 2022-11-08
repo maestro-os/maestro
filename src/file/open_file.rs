@@ -1,25 +1,25 @@
-//! An open file description is a structure pointing to a file, allowing to perform operations on
-//! it. It is pointed to by file descriptors.
+//! An open file description is a structure pointing to a file, allowing to
+//! perform operations on it. It is pointed to by file descriptors.
 
-use core::cmp::min;
-use core::ffi::c_void;
-use crate::errno::Errno;
 use crate::errno;
+use crate::errno::Errno;
+use crate::file::pipe::PipeBuffer;
+use crate::file::socket::SocketSide;
 use crate::file::File;
 use crate::file::FileContent;
 use crate::file::FileLocation;
-use crate::file::pipe::PipeBuffer;
-use crate::file::socket::SocketSide;
-use crate::process::mem_space::MemSpace;
 use crate::process::mem_space::ptr::SyscallPtr;
+use crate::process::mem_space::MemSpace;
 use crate::syscall::ioctl;
-use crate::time::unit::TimestampScale;
 use crate::time;
+use crate::time::unit::TimestampScale;
 use crate::types::c_int;
 use crate::util::container::string::String;
 use crate::util::io::IO;
 use crate::util::ptr::IntSharedPtr;
 use crate::util::ptr::SharedPtr;
+use core::cmp::min;
+use core::ffi::c_void;
 
 /// Read only.
 pub const O_RDONLY: i32 = 0b00000000000000000000000000000000;
@@ -27,7 +27,8 @@ pub const O_RDONLY: i32 = 0b00000000000000000000000000000000;
 pub const O_WRONLY: i32 = 0b00000000000000000000000000000001;
 /// Read and write.
 pub const O_RDWR: i32 = 0b00000000000000000000000000000010;
-/// At each write operations, the cursor is placed at the end of the file so the data is appended.
+/// At each write operations, the cursor is placed at the end of the file so the
+/// data is appended.
 pub const O_APPEND: i32 = 0b00000000000000000000010000000000;
 /// Generates a SIGIO when input or output becomes possible on the file.
 pub const O_ASYNC: i32 = 0b00000000000000000010000000000000;
@@ -51,7 +52,8 @@ pub const O_NOCTTY: i32 = 0b00000000000000000000000100000000;
 pub const O_NOFOLLOW: i32 = 0b00000000000000100000000000000000;
 /// I/O is non blocking.
 pub const O_NONBLOCK: i32 = 0b00000000000000000000100000000000;
-/// When using `write`, the data has been transfered to the hardware before returning.
+/// When using `write`, the data has been transfered to the hardware before
+/// returning.
 pub const O_SYNC: i32 = 0b00000000000100000001000000000000;
 /// If the file already exists, truncate it to length zero.
 pub const O_TRUNC: i32 = 0b00000000000000000000001000000000;
@@ -99,8 +101,9 @@ impl FDTarget {
 	}
 }
 
-/// An open file description. This structure is pointed to by file descriptors and point to files.
-/// They exist to ensure several file descriptors can share the same open file.
+/// An open file description. This structure is pointed to by file descriptors
+/// and point to files. They exist to ensure several file descriptors can share
+/// the same open file.
 #[derive(Debug)]
 pub struct OpenFile {
 	/// The open file description's flags.
@@ -140,8 +143,8 @@ impl OpenFile {
 	}
 
 	/// Sets the open file flags.
-	/// File access mode (O_RDONLY, O_WRONLY, O_RDWR) and file creation flags (O_CREAT, O_EXCL,
-	/// O_NOCTTY, O_TRUNC) are ignored.
+	/// File access mode (O_RDONLY, O_WRONLY, O_RDWR) and file creation flags
+	/// (O_CREAT, O_EXCL, O_NOCTTY, O_TRUNC) are ignored.
 	pub fn set_flags(&mut self, flags: i32) {
 		let ignored_flags = O_RDONLY | O_WRONLY | O_RDWR | O_CREAT | O_EXCL | O_NOCTTY | O_TRUNC;
 		self.flags = (self.flags & ignored_flags) | (flags & !ignored_flags);
@@ -202,7 +205,7 @@ impl OpenFile {
 							*count_ref = (size - min(size, self.curr_off)) as _;
 
 							Ok(0)
-						},
+						}
 
 						_ => Err(errno!(EINVAL)),
 					},
@@ -233,8 +236,8 @@ impl IO for OpenFile {
 		}
 	}
 
-	/// Note: on this specific implementation, the offset is ignored since `set_offset` has to be
-	/// used to define it.
+	/// Note: on this specific implementation, the offset is ignored since
+	/// `set_offset` has to be used to define it.
 	fn read(&mut self, _: u64, buf: &mut [u8]) -> Result<(u64, bool), Errno> {
 		if !self.can_read() {
 			return Err(errno!(EINVAL));
@@ -272,8 +275,8 @@ impl IO for OpenFile {
 		Ok((len as _, eof))
 	}
 
-	/// Note: on this specific implementation, the offset is ignored since `set_offset` has to be
-	/// used to define it.
+	/// Note: on this specific implementation, the offset is ignored since
+	/// `set_offset` has to be used to define it.
 	fn write(&mut self, _: u64, buf: &[u8]) -> Result<u64, Errno> {
 		if !self.can_write() {
 			return Err(errno!(EINVAL));
