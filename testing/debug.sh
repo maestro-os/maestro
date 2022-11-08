@@ -7,3 +7,4 @@ cp testing/configs/debug .config
 make maestro
 stat maestro
 testing/multiboot_test.sh
+make fclean
