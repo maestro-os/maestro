@@ -1,79 +1,80 @@
-//! This module handles system calls. A system call is "function" that allows to communcate between
-//! userspace and kernelspace.
+//! This module handles system calls. A system call is "function" that allows to
+//! communcate between userspace and kernelspace.
 //!
-//! Documentation for each system call can be retrieved from the man. Type the command:
-//! `man 2 <syscall>`
+//! Documentation for each system call can be retrieved from the man. Type the
+//! command: `man 2 <syscall>`
 
 mod _exit;
 mod _llseek;
 mod _newselect;
 mod access;
+mod r#break;
 mod brk;
 mod chdir;
 mod chmod;
 mod chroot;
-mod clock_gettime64;
 mod clock_gettime;
+mod clock_gettime64;
 mod clone;
 mod close;
 mod creat;
 mod delete_module;
-mod dup2;
 mod dup;
+mod dup2;
 mod execve;
 mod exit_group;
-mod faccessat2;
 mod faccessat;
+mod faccessat2;
 mod fadvise64_64;
 mod fchdir;
 mod fchmod;
 mod fchmodat;
-mod fcntl64;
 mod fcntl;
+mod fcntl64;
 mod finit_module;
 mod fork;
-mod fstatfs64;
 mod fstatfs;
+mod fstatfs64;
 mod getcwd;
-mod getdents64;
 mod getdents;
-mod getegid32;
+mod getdents64;
 mod getegid;
-mod geteuid32;
+mod getegid32;
 mod geteuid;
-mod getgid32;
+mod geteuid32;
 mod getgid;
+mod getgid32;
 mod getpgid;
 mod getpid;
 mod getppid;
 mod getrandom;
 mod getrusage;
 mod gettid;
-mod getuid32;
 mod getuid;
+mod getuid32;
 mod init_module;
+pub mod ioctl;
 mod kill;
 mod link;
 mod linkat;
 mod madvise;
 mod mkdir;
 mod mknod;
-mod mmap2;
 mod mmap;
+mod mmap2;
 mod mount;
 mod msync;
 mod munmap;
 mod nanosleep;
 mod open;
 mod openat;
-mod pipe2;
 mod pipe;
+mod pipe2;
 mod poll;
 mod prlimit64;
 mod pselect6;
-mod pwritev2;
 mod pwritev;
-mod r#break;
+mod pwritev2;
 mod read;
 mod readlink;
 mod reboot;
@@ -84,17 +85,17 @@ mod rt_sigprocmask;
 mod select;
 mod set_thread_area;
 mod set_tid_address;
-mod setgid32;
 mod setgid;
+mod setgid32;
 mod sethostname;
 mod setpgid;
-mod setuid32;
 mod setuid;
+mod setuid32;
 mod signal;
 mod sigreturn;
 mod socketpair;
-mod statfs64;
 mod statfs;
+mod statfs64;
 mod statx;
 mod symlinkat;
 mod syncfs;
@@ -108,12 +109,11 @@ mod unlink;
 mod unlinkat;
 mod util;
 mod vfork;
-mod wait4;
 mod wait;
+mod wait4;
 mod waitpid;
 mod write;
 mod writev;
-pub mod ioctl;
 
 use crate::errno::Errno;
 use crate::process::regs::Regs;
@@ -129,45 +129,45 @@ use brk::brk;
 use chdir::chdir;
 use chmod::chmod;
 use chroot::chroot;
-use clock_gettime64::clock_gettime64;
 use clock_gettime::clock_gettime;
+use clock_gettime64::clock_gettime64;
 use clone::clone;
 use close::close;
 use creat::creat;
 use delete_module::delete_module;
-use dup2::dup2;
 use dup::dup;
+use dup2::dup2;
 use execve::execve;
 use exit_group::exit_group;
-use faccessat2::faccessat2;
 use faccessat::faccessat;
+use faccessat2::faccessat2;
 use fadvise64_64::fadvise64_64;
 use fchdir::fchdir;
 use fchmod::fchmod;
 use fchmodat::fchmodat;
-use fcntl64::fcntl64;
 use fcntl::fcntl;
+use fcntl64::fcntl64;
 use finit_module::finit_module;
 use fork::fork;
-use fstatfs64::fstatfs64;
 use fstatfs::fstatfs;
+use fstatfs64::fstatfs64;
 use getcwd::getcwd;
-use getdents64::getdents64;
 use getdents::getdents;
-use getegid32::getegid32;
+use getdents64::getdents64;
 use getegid::getegid;
-use geteuid32::geteuid32;
+use getegid32::getegid32;
 use geteuid::geteuid;
-use getgid32::getgid32;
+use geteuid32::geteuid32;
 use getgid::getgid;
+use getgid32::getgid32;
 use getpgid::getpgid;
 use getpid::getpid;
 use getppid::getppid;
 use getrandom::getrandom;
 use getrusage::getrusage;
 use gettid::gettid;
-use getuid32::getuid32;
 use getuid::getuid;
+use getuid32::getuid32;
 use init_module::init_module;
 use ioctl::ioctl;
 use kill::kill;
@@ -176,21 +176,21 @@ use linkat::linkat;
 use madvise::madvise;
 use mkdir::mkdir;
 use mknod::mknod;
-use mmap2::mmap2;
 use mmap::mmap;
+use mmap2::mmap2;
 use mount::mount;
 use msync::msync;
 use munmap::munmap;
 use nanosleep::nanosleep;
 use open::open;
 use openat::openat;
-use pipe2::pipe2;
 use pipe::pipe;
+use pipe2::pipe2;
 use poll::poll;
 use prlimit64::prlimit64;
 use pselect6::pselect6;
-use pwritev2::pwritev2;
 use pwritev::pwritev;
+use pwritev2::pwritev2;
 use r#break::r#break;
 use read::read;
 use readlink::readlink;
@@ -202,17 +202,17 @@ use rt_sigprocmask::rt_sigprocmask;
 use select::select;
 use set_thread_area::set_thread_area;
 use set_tid_address::set_tid_address;
-use setgid32::setgid32;
 use setgid::setgid;
+use setgid32::setgid32;
 use sethostname::sethostname;
 use setpgid::setpgid;
-use setuid32::setuid32;
 use setuid::setuid;
+use setuid32::setuid32;
 use signal::signal;
 use sigreturn::sigreturn;
 use socketpair::socketpair;
-use statfs64::statfs64;
 use statfs::statfs;
+use statfs64::statfs64;
 use statx::statx;
 use symlinkat::symlinkat;
 use syncfs::syncfs;
@@ -492,7 +492,10 @@ fn get_syscall(id: u32) -> Option<Syscall> {
 			handler: &statfs,
 			name: "statfs",
 		}),
-		0x064 => Some(Syscall { handler: &fstatfs, name: "fstatfs" }),
+		0x064 => Some(Syscall {
+			handler: &fstatfs,
+			name: "fstatfs",
+		}),
 		// TODO 0x065 => Some(Syscall { handler: &ioperm, name: "ioperm" }),
 		// TODO 0x066 => Some(Syscall { handler: &socketcall, name: "socketcall" }),
 		// TODO 0x067 => Some(Syscall { handler: &syslog, name: "syslog" }),
@@ -785,7 +788,10 @@ fn get_syscall(id: u32) -> Option<Syscall> {
 			handler: &statfs64,
 			name: "statfs64",
 		}),
-		0x10d => Some(Syscall { handler: &fstatfs64, name: "fstatfs64" }),
+		0x10d => Some(Syscall {
+			handler: &fstatfs64,
+			name: "fstatfs64",
+		}),
 		// TODO 0x10e => Some(Syscall { handler: &tgkill, name: "tgkill" }),
 		// TODO 0x10f => Some(Syscall { handler: &utimes, name: "utimes" }),
 		0x110 => Some(Syscall {
@@ -1099,8 +1105,8 @@ fn print_strace(regs: &Regs, result: Option<Result<i32, Errno>>) {
 	} else {
 		println!("strace start (pid: {}): {}", pid, syscall.name);
 
-		// TODO Make everything print at once (becomes unreadable when several processes are
-		// running)
+		// TODO Make everything print at once (becomes unreadable when several
+		// processes are running)
 		/*for i in 0..syscall.args.len() {
 			let val = match i {
 				0 => regs.ebx,

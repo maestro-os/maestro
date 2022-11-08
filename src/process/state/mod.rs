@@ -6,17 +6,18 @@
 //! - Stopped: The execution of the process is stopped until resumed by reception of a signal
 //! - Zombie: The process has been halted and is waiting for its status to be retrieved
 //!
-//! While a process is sleeping, the scheduler shall poll for the event on which the process is
-//! waiting. To do so, an instance of a structure implementing `SleepPoll` is passed with the
-//! Sleeping state.
+//! While a process is sleeping, the scheduler shall poll for the event on which
+//! the process is waiting. To do so, an instance of a structure implementing
+//! `SleepPoll` is passed with the Sleeping state.
 
-use crate::util::boxed::Box;
 use super::Process;
+use crate::util::boxed::Box;
 
 /// Trait used to poll for events on which a process is waiting.
 /// If polling succeeds, the process is woke up in order to continue execution.
 pub trait SleepPoll {
-	/// Polls for events. If the process msut wake up, the function returns `true`.
+	/// Polls for events. If the process msut wake up, the function returns
+	/// `true`.
 	fn poll(&self, proc: &mut Process) -> bool;
 }
 
@@ -54,8 +55,8 @@ impl State {
 	}
 }
 
-/// A structure that represent a state where a process shouldn't be polled but instead waked up by
-/// another process.
+/// A structure that represent a state where a process shouldn't be polled but
+/// instead waked up by another process.
 pub struct WakePoll {}
 
 impl SleepPoll for WakePoll {

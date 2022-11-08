@@ -43,8 +43,14 @@ pub fn _llseek(regs: &Regs) -> Result<i32, Errno> {
 	let off = ((offset_high as u64) << 32) | (offset_low as u64);
 	let off = match whence {
 		SEEK_SET => off,
-		SEEK_CUR => open_file.get_offset().checked_add(off).ok_or_else(|| errno!(EOVERFLOW))?,
-		SEEK_END => open_file.get_size().checked_add(off).ok_or_else(|| errno!(EOVERFLOW))?,
+		SEEK_CUR => open_file
+			.get_offset()
+			.checked_add(off)
+			.ok_or_else(|| errno!(EOVERFLOW))?,
+		SEEK_END => open_file
+			.get_size()
+			.checked_add(off)
+			.ok_or_else(|| errno!(EOVERFLOW))?,
 
 		_ => return Err(errno!(EINVAL)),
 	};

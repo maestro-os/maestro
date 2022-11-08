@@ -1,19 +1,19 @@
 //! The mount system call allows to mount a filesystem on the system.
 
-use core::ffi::c_void;
-use crate::errno::Errno;
 use crate::errno;
-use crate::file::FileType;
+use crate::errno::Errno;
 use crate::file::fs;
-use crate::file::mountpoint::MountSource;
 use crate::file::mountpoint;
+use crate::file::mountpoint::MountSource;
 use crate::file::path::Path;
 use crate::file::vfs;
-use crate::process::Process;
+use crate::file::FileType;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::regs::Regs;
+use crate::process::Process;
 use crate::util::FailableClone;
+use core::ffi::c_void;
 
 /// The implementation of the `mount` syscall.
 pub fn mount(regs: &Regs) -> Result<i32, Errno> {
@@ -32,7 +32,7 @@ pub fn mount(regs: &Regs) -> Result<i32, Errno> {
 		let mem_space = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space.lock();
 
-		let cwd = proc.get_cwd().failable_clone()?;
+		let cwd = proc.get_chroot().failable_clone()?.concat(proc.get_cwd())?;
 
 		// Getting strings
 		let source_slice = source.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?;

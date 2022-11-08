@@ -1,23 +1,23 @@
 //! This module implements default devices.
 
-use core::cmp::min;
-use core::ffi::c_void;
-use core::mem::ManuallyDrop;
+use super::id;
+use super::DeviceType;
 use crate::crypto::rand;
+use crate::device;
+use crate::device::tty::TTYDeviceHandle;
 use crate::device::Device;
 use crate::device::DeviceHandle;
-use crate::device::tty::TTYDeviceHandle;
-use crate::device;
-use crate::errno::Errno;
 use crate::errno;
+use crate::errno::Errno;
 use crate::file::path::Path;
 use crate::logger;
 use crate::process::mem_space::MemSpace;
-use crate::util::io::IO;
 use crate::util::io;
+use crate::util::io::IO;
 use crate::util::ptr::IntSharedPtr;
-use super::DeviceType;
-use super::id;
+use core::cmp::min;
+use core::ffi::c_void;
+use core::mem::ManuallyDrop;
 
 /// Structure representing a device which does nothing.
 pub struct NullDeviceHandle {}
@@ -142,8 +142,8 @@ impl IO for KMsgDeviceHandle {
 	}
 }
 
-/// The random device allows to get random bytes. This device will block reading until enough
-/// entropy is available.
+/// The random device allows to get random bytes. This device will block reading
+/// until enough entropy is available.
 pub struct RandomDeviceHandle {}
 
 impl DeviceHandle for RandomDeviceHandle {
@@ -189,8 +189,9 @@ impl IO for RandomDeviceHandle {
 	}
 }
 
-/// This device works exactly like the random device, except it doesn't block. If not enough
-/// entropy is available, the output might not have a sufficient quality.
+/// This device works exactly like the random device, except it doesn't block.
+/// If not enough entropy is available, the output might not have a sufficient
+/// quality.
 pub struct URandomDeviceHandle {}
 
 impl DeviceHandle for URandomDeviceHandle {

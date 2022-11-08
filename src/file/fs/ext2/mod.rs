@@ -7,17 +7,17 @@
 //! - INode: represents a file in the filesystem
 //! - Directory entry: an entry stored into the inode's content
 //!
-//! The access to an INode's data is divided into several parts, each overflowing on the next when
-//! full:
+//! The access to an INode's data is divided into several parts, each
+//! overflowing on the next when full:
 //! - Direct Block Pointers: each inode has 12 of them
 //! - Singly Indirect Block Pointer: a pointer to a block dedicated to storing a list of more
-//! blocks to store the inode's data. The number of blocks it can store depends on the size of a
-//! block.
+//! blocks to store the inode's data. The number of blocks it can store depends
+//! on the size of a block.
 //! - Doubly Indirect Block Pointer: a pointer to a block storing pointers to Singly Indirect Block
 //! Pointers, each storing pointers to more blocks.
 //! - Triply Indirect Block Pointer: a pointer to a block storing pointers to Doubly Indirect Block
-//! Pointers, each storing pointers to Singly Indirect Block Pointers, each storing pointers to
-//! more blocks.
+//! Pointers, each storing pointers to Singly Indirect Block Pointers, each
+//! storing pointers to more blocks.
 //!
 //! Since the size of a block pointer is 4 bytes, the maximum size of a file is:
 //! `(12 * n) + ((n/4) * n) + ((n/4)^^2 * n) + ((n/4)^^3 * n)`
@@ -61,8 +61,8 @@ use core::mem::MaybeUninit;
 use core::slice;
 use inode::Ext2INode;
 
-// TODO Take into account user's UID/GID when allocating block/inode to handle reserved
-// blocks/inodes
+// TODO Take into account user's UID/GID when allocating block/inode to handle
+// reserved blocks/inodes
 // TODO Document when a function writes on the storage device
 
 /// The offset of the superblock from the beginning of the device.
@@ -99,7 +99,8 @@ const ERR_ACTION_READ_ONLY: u16 = 2;
 /// Error handle action telling to trigger a kernel panic.
 const ERR_ACTION_KERNEL_PANIC: u16 = 3;
 
-/// Optional feature: Preallocation of a specified number of blocks for each new directories.
+/// Optional feature: Preallocation of a specified number of blocks for each new
+/// directories.
 const OPTIONAL_FEATURE_DIRECTORY_PREALLOCATION: u32 = 0x1;
 /// Optional feature: AFS server
 const OPTIONAL_FEATURE_AFS: u32 = 0x2;
@@ -134,8 +135,8 @@ const MAX_NAME_LEN: usize = 255;
 /// Reads an object of the given type on the given device.
 /// `offset` is the offset in bytes on the device.
 /// `io` is the I/O interface of the device.
-/// The function is marked unsafe because if the read object is invalid, the behaviour is
-/// undefined.
+/// The function is marked unsafe because if the read object is invalid, the
+/// behaviour is undefined.
 unsafe fn read<T>(offset: u64, io: &mut dyn IO) -> Result<T, Errno> {
 	let size = size_of::<T>();
 	let mut obj = MaybeUninit::<T>::uninit();
@@ -160,12 +161,13 @@ fn write<T>(obj: &T, offset: u64, io: &mut dyn IO) -> Result<(), Errno> {
 	Ok(())
 }
 
-/// Reads the `off`th block on the given device and writes the data onto the given buffer.
-/// `off` is the offset of the block on the device.
+/// Reads the `off`th block on the given device and writes the data onto the
+/// given buffer. `off` is the offset of the block on the device.
 /// `superblock` is the filesystem's superblock.
 /// `io` is the I/O interface of the device.
 /// `buff` is the buffer to write the data on.
-/// If the block is outside of the storage's bounds, the function returns a error.
+/// If the block is outside of the storage's bounds, the function returns a
+/// error.
 fn read_block<T>(
 	off: u64,
 	superblock: &Superblock,
@@ -181,12 +183,13 @@ fn read_block<T>(
 	Ok(())
 }
 
-/// Writes the `off`th block on the given device, reading the data onto the given buffer.
-/// `off` is the offset of the block on the device.
+/// Writes the `off`th block on the given device, reading the data onto the
+/// given buffer. `off` is the offset of the block on the device.
 /// `superblock` is the filesystem's superblock.
 /// `io` is the I/O interface of the device.
 /// `buff` is the buffer to read from.
-/// If the block is outside of the storage's bounds, the function returns a error.
+/// If the block is outside of the storage's bounds, the function returns a
+/// error.
 fn write_block<T>(
 	off: u64,
 	superblock: &Superblock,
@@ -211,7 +214,7 @@ fn zero_blocks(
 	off: u64,
 	count: u64,
 	superblock: &Superblock,
-	io: &mut dyn IO
+	io: &mut dyn IO,
 ) -> Result<(), Errno> {
 	let blk_size = superblock.get_block_size() as u64;
 	let blk_buff = malloc::Alloc::<u8>::new_default(blk_size as usize)?;
@@ -368,9 +371,9 @@ impl Superblock {
 		}
 	}
 
-	/// Searches in the given bitmap block `bitmap` for the first element that is not set.
-	/// The function returns the index to the element. If every elements are set, the function
-	/// returns None.
+	/// Searches in the given bitmap block `bitmap` for the first element that
+	/// is not set. The function returns the index to the element. If every
+	/// elements are set, the function returns None.
 	fn search_bitmap_blk(bitmap: &[u8]) -> Option<u32> {
 		for (i, b) in bitmap.iter().enumerate() {
 			if *b == 0xff {
@@ -537,7 +540,6 @@ impl Superblock {
 					} else {
 						return Err(errno!(EUCLEAN));
 					}
-
 				}
 			}
 		}
@@ -632,7 +634,8 @@ impl Ext2Fs {
 			return Err(errno!(EINVAL));
 		}
 
-		// Checking the filesystem doesn't require features that are not implemented by the driver
+		// Checking the filesystem doesn't require features that are not implemented by
+		// the driver
 		if superblock.major_version >= 1 {
 			// TODO Implement journal
 			let unsupported_required_features = REQUIRED_FEATURE_COMPRESSION
@@ -697,7 +700,8 @@ impl Ext2Fs {
 	}
 }
 
-// TODO Update the write timestamp when the fs is written (take mount flags into account)
+// TODO Update the write timestamp when the fs is written (take mount flags into
+// account)
 impl Filesystem for Ext2Fs {
 	fn get_name(&self) -> &[u8] {
 		b"ext2"
@@ -938,8 +942,14 @@ impl Filesystem for Ext2Fs {
 				inode.set_link(&mut self.superblock, io, target.as_bytes())?
 			}
 
-			FileContent::BlockDevice { major, minor }
-			| FileContent::CharDevice { major, minor } => {
+			FileContent::BlockDevice {
+				major,
+				minor,
+			}
+			| FileContent::CharDevice {
+				major,
+				minor,
+			} => {
 				if *major > (u8::MAX as u32) || *minor > (u8::MAX as u32) {
 					return Err(errno!(ENODEV));
 				}
@@ -1004,11 +1014,8 @@ impl Filesystem for Ext2Fs {
 				let old_parent_entry = inode_.get_dirent(b"..", &mut self.superblock, io)?;
 				if let Some((_, old_parent_entry)) = old_parent_entry {
 					let old_parent_inode = old_parent_entry.get_inode();
-					let mut old_parent = Ext2INode::read(
-						old_parent_inode as _,
-						&self.superblock,
-						io
-					)?;
+					let mut old_parent =
+						Ext2INode::read(old_parent_inode as _, &self.superblock, io)?;
 					// TODO Write a function to remove by inode instead of name
 					if let Some(iter) = old_parent.iter_dirent(&self.superblock, io)? {
 						for res in iter {
@@ -1029,12 +1036,12 @@ impl Filesystem for Ext2Fs {
 					entry.set_inode(parent_inode as _);
 					inode_.write_dirent(&mut self.superblock, io, &entry, off)?;
 				}
-			},
+			}
 
 			_ => {
 				// Updating links count
 				inode_.hard_links_count += 1;
-			},
+			}
 		}
 
 		// Writing directory entry
@@ -1102,7 +1109,7 @@ impl Filesystem for Ext2Fs {
 		// The inode number
 		let inode = parent
 			.get_dirent(name.as_bytes(), &self.superblock, io)?
-			.map(| (_, ent) | ent)
+			.map(|(_, ent)| ent)
 			.ok_or_else(|| errno!(ENOENT))?
 			.get_inode();
 		// The inode
@@ -1112,13 +1119,15 @@ impl Filesystem for Ext2Fs {
 		if inode_.get_type() == FileType::Directory {
 			// Removing `.`
 			if inode_.hard_links_count > 0
-				&& inode_.get_dirent(b".", &self.superblock, io)?.is_some() {
+				&& inode_.get_dirent(b".", &self.superblock, io)?.is_some()
+			{
 				inode_.hard_links_count -= 1;
 			}
 
 			// Removing `..`
 			if parent.hard_links_count > 0
-				&& inode_.get_dirent(b"..", &self.superblock, io)?.is_some() {
+				&& inode_.get_dirent(b"..", &self.superblock, io)?.is_some()
+			{
 				parent.hard_links_count -= 1;
 			}
 		}

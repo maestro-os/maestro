@@ -1,5 +1,6 @@
-//! In the malloc allocator, a block is a memory allocation performed from another allocator, which
-//! is too big to be used directly for allocation, so it has to be divided into chunks.
+//! In the malloc allocator, a block is a memory allocation performed from
+//! another allocator, which is too big to be used directly for allocation, so
+//! it has to be divided into chunks.
 
 use super::chunk::Chunk;
 use super::chunk::FreeChunk;
@@ -14,8 +15,8 @@ use core::ffi::c_void;
 use core::mem::size_of;
 use core::ptr;
 
-/// Structure representing a frame of memory allocated using the buddy allocator, storing memory
-/// chunks.
+/// Structure representing a frame of memory allocated using the buddy
+/// allocator, storing memory chunks.
 #[repr(C, align(8))]
 pub struct Block {
 	/// The linked list storing the blocks
@@ -27,9 +28,10 @@ pub struct Block {
 }
 
 impl Block {
-	/// Allocates a new block of memory with the minimum available size `min_size` in bytes.
-	/// The buddy allocator must be initialized before using this function.
-	/// The underlying chunk created by this function is **not** inserted into the free list.
+	/// Allocates a new block of memory with the minimum available size
+	/// `min_size` in bytes. The buddy allocator must be initialized before
+	/// using this function. The underlying chunk created by this function is
+	/// **not** inserted into the free list.
 	pub fn new(min_size: usize) -> Result<&'static mut Self, Errno> {
 		let total_min_size = size_of::<Block>() + min_size;
 		let order = buddy::get_order(math::ceil_division(total_min_size, memory::PAGE_SIZE));
@@ -56,7 +58,8 @@ impl Block {
 		Ok(block)
 	}
 
-	/// Returns a mutable reference to the block whose first chunk's reference is passed as argument.
+	/// Returns a mutable reference to the block whose first chunk's reference
+	/// is passed as argument.
 	pub unsafe fn from_first_chunk(chunk: *mut Chunk) -> &'static mut Block {
 		let first_chunk_off = offset_of!(Block, first_chunk);
 		let ptr = ((chunk as usize) - first_chunk_off) as *mut Self;

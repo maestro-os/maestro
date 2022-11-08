@@ -1,5 +1,5 @@
-//! This module implements storage caches, allowing to cache disk sectors to avoid unnecessary
-//! accesses to the storage device.
+//! This module implements storage caches, allowing to cache disk sectors to
+//! avoid unnecessary accesses to the storage device.
 
 use crate::device::storage::StorageInterface;
 use crate::errno::Errno;
@@ -18,9 +18,10 @@ struct CachedSector {
 	data: malloc::Alloc<u8>,
 }
 
-/// Structure representing a storage cache. The number of sectors and their size is fixed at
-/// initialization.
-/// The cache needs to be flushed before being dropped. Otherwise, the updated data shall be lost.
+/// Structure representing a storage cache. The number of sectors and their size
+/// is fixed at initialization.
+/// The cache needs to be flushed before being dropped. Otherwise, the updated
+/// data shall be lost.
 pub struct StorageCache {
 	/// The size of a sector in bytes.
 	sector_size: usize,
@@ -28,8 +29,8 @@ pub struct StorageCache {
 	/// Cached sectors.
 	sectors: HashMap<u64, CachedSector>,
 
-	/// Fifo storing sector indexes. When the fifo is full, the oldest sector shall be discarded
-	/// from the cache.
+	/// Fifo storing sector indexes. When the fifo is full, the oldest sector
+	/// shall be discarded from the cache.
 	fifo: RingBuffer<u64, Vec<u64>>,
 }
 
@@ -52,9 +53,13 @@ impl StorageCache {
 		self.sectors.len() >= self.fifo.get_size()
 	}
 
-	/// Reads the sector with index `sector` and writes its content into the buffer `buff`.
+	/// Reads the sector with index `sector` and writes its content into the
+	/// buffer `buff`.
 	pub fn read(&mut self, sector: u64, buff: &mut [u8]) -> Result<Option<()>, Errno> {
-		if let Some(CachedSector { data, .. }) = self.sectors.get(&sector) {
+		if let Some(CachedSector {
+			data, ..
+		}) = self.sectors.get(&sector)
+		{
 			buff.copy_from_slice(data.as_slice());
 			Ok(Some(()))
 		} else {
@@ -62,11 +67,16 @@ impl StorageCache {
 		}
 	}
 
-	/// Writes the sector with index `sector` with the content of the buffer `buff`.
-	/// `flush_hook` is a function used to write a sector to the disk. It is called in case the
-	/// cache needs to free up a slot for a sector.
+	/// Writes the sector with index `sector` with the content of the buffer
+	/// `buff`. `flush_hook` is a function used to write a sector to the disk.
+	/// It is called in case the cache needs to free up a slot for a sector.
 	pub fn write(&mut self, sector: u64, buff: &[u8]) -> Result<Option<()>, Errno> {
-		if let Some(CachedSector { written, data, .. }) = self.sectors.get_mut(&sector) {
+		if let Some(CachedSector {
+			written,
+			data,
+			..
+		}) = self.sectors.get_mut(&sector)
+		{
 			data.as_slice_mut().copy_from_slice(buff);
 			*written = true;
 			Ok(Some(()))
@@ -75,10 +85,10 @@ impl StorageCache {
 		}
 	}
 
-	/// Inserts a new sector in the cache. If no space is left, the cache frees up slots of other
-	/// sectors to retrieve space.
-	/// Sectors that have been freed up are written to the disk using `flush_hook`.
-	/// `sector` is the index of the sector.
+	/// Inserts a new sector in the cache. If no space is left, the cache frees
+	/// up slots of other sectors to retrieve space.
+	/// Sectors that have been freed up are written to the disk using
+	/// `flush_hook`. `sector` is the index of the sector.
 	/// `buff` is a buffer containing the sector's data.
 	pub fn insert<F>(&mut self, sector: u64, buff: &[u8], mut flush_hook: F) -> Result<(), Errno>
 	where
@@ -114,8 +124,8 @@ impl StorageCache {
 	}
 
 	/// Flushes the cache, writing every updated sectors to the disk.
-	/// Sectors that have been updated are written to the disk using `flush_hook`.
-	/// On error, flushing is not completed.
+	/// Sectors that have been updated are written to the disk using
+	/// `flush_hook`. On error, flushing is not completed.
 	pub fn flush<F>(&mut self, mut flush_hook: F) -> Result<(), Errno>
 	where
 		F: FnMut(u64, &[u8]) -> Result<(), Errno>,
@@ -134,7 +144,8 @@ impl StorageCache {
 }
 
 /// Structure representing a storage interface wrapped into a cache.
-/// On drop, the cache is flushed to the storage device. When flushing fails, data is lost.
+/// On drop, the cache is flushed to the storage device. When flushing fails,
+/// data is lost.
 pub struct CachedStorageInterface {
 	/// The wrapped interface.
 	storage_interface: Box<dyn StorageInterface>,

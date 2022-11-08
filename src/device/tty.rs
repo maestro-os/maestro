@@ -1,24 +1,25 @@
-//! Each TTY or pseudo-TTY has to be associated with a device file in order to communicate with it.
+//! Each TTY or pseudo-TTY has to be associated with a device file in order to
+//! communicate with it.
 
-use core::ffi::c_void;
 use crate::device::DeviceHandle;
-use crate::errno::Errno;
 use crate::errno;
-use crate::process::Process;
-use crate::process::mem_space::MemSpace;
+use crate::errno::Errno;
 use crate::process::mem_space::ptr::SyscallPtr;
+use crate::process::mem_space::MemSpace;
 use crate::process::pid::Pid;
 use crate::process::signal::Signal;
 use crate::process::signal::SignalHandler;
+use crate::process::Process;
 use crate::syscall::ioctl;
-use crate::tty::TTY;
+use crate::tty::termios;
+use crate::tty::termios::Termios;
 use crate::tty::TTYHandle;
 use crate::tty::WinSize;
-use crate::tty::termios::Termios;
-use crate::tty::termios;
-use crate::util::io::IO;
+use crate::tty::TTY;
 use crate::util::io;
+use crate::util::io::IO;
 use crate::util::ptr::IntSharedPtr;
+use core::ffi::c_void;
 
 /// Structure representing a TTY device's handle.
 pub struct TTYDeviceHandle {
@@ -30,7 +31,9 @@ impl TTYDeviceHandle {
 	/// Creates a new instance for the given TTY `tty`.
 	/// If `tty` is None, the device works with the current process's TTY.
 	pub fn new(tty: Option<TTYHandle>) -> Self {
-		Self { tty }
+		Self {
+			tty,
+		}
 	}
 
 	/// Returns the current process and its associated TTY.
@@ -45,8 +48,8 @@ impl TTYDeviceHandle {
 		Ok((proc_mutex, tty_mutex))
 	}
 
-	/// Checks whether the process is allowed to read from the TTY. If not, it is killed with a
-	/// SIGTTIN signal.
+	/// Checks whether the process is allowed to read from the TTY. If not, it
+	/// is killed with a SIGTTIN signal.
 	/// `process` is the process.
 	/// `tty` is the TTY.
 	/// This function must be called before performing the read operation.
@@ -54,7 +57,8 @@ impl TTYDeviceHandle {
 		if proc.get_pgid() != tty.get_pgrp() {
 			if proc.is_signal_blocked(&Signal::SIGTTIN)
 				|| proc.get_signal_handler(&Signal::SIGTTIN) == SignalHandler::Ignore
-				|| proc.is_in_orphan_process_group() {
+				|| proc.is_in_orphan_process_group()
+			{
 				return Err(errno!(EIO));
 			}
 
@@ -64,15 +68,16 @@ impl TTYDeviceHandle {
 		Ok(())
 	}
 
-	/// Checks whether the process is allowed to write to the TTY. If not, it is killed with a
-	/// SIGTTOU signal.
+	/// Checks whether the process is allowed to write to the TTY. If not, it is
+	/// killed with a SIGTTOU signal.
 	/// `process` is the process.
 	/// `tty` is the TTY.
 	/// This function must be called before performing the write operation.
 	fn check_sigttou(&self, proc: &mut Process, tty: &TTY) -> Result<(), Errno> {
 		if tty.get_termios().c_lflag & termios::TOSTOP != 0 {
 			if proc.is_signal_blocked(&Signal::SIGTTIN)
-				|| proc.get_signal_handler(&Signal::SIGTTIN) == SignalHandler::Ignore {
+				|| proc.get_signal_handler(&Signal::SIGTTIN) == SignalHandler::Ignore
+			{
 				return Ok(());
 			}
 			if proc.is_in_orphan_process_group() {

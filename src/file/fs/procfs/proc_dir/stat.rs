@@ -1,5 +1,5 @@
-//! This module implements the stat file, which allows to retrieve the current status of the
-//! process.
+//! This module implements the stat file, which allows to retrieve the current
+//! status of the process.
 
 use crate::errno::Errno;
 use crate::file::fs::kernfs::node::KernFSNode;
@@ -65,9 +65,10 @@ impl IO for Stat {
 		let proc_guard = proc_mutex.lock();
 		let proc = proc_guard.get();
 
-		let name = proc.get_argv()
+		let name = proc
+			.get_argv()
 			.iter()
-			.map(| name | unsafe { name.as_str_unchecked() })
+			.map(|name| unsafe { name.as_str_unchecked() })
 			.next()
 			.unwrap_or("?");
 
@@ -96,10 +97,12 @@ impl IO for Stat {
 
 		// TODO Fill every fields with process's data
 		// Generating content
-		let content = crate::format!("{pid} ({name}) {state_char} {ppid} {pgid} {sid} TODO TODO 0 \
+		let content = crate::format!(
+			"{pid} ({name}) {state_char} {ppid} {pgid} {sid} TODO TODO 0 \
 0 0 0 0 {user_jiffies} {kernel_jiffies} TODO TODO {priority} {nice} {num_threads} 0 {vmem_usage} \
 TODO TODO TODO TODO {esp} {eip} TODO TODO TODO TODO 0 0 0 TODO TODO TODO TODO TODO TODO TODO TODO \
-TODO TODO TODO TODO TODO TODO TODO TODO TODO")?;
+TODO TODO TODO TODO TODO TODO TODO TODO TODO"
+		)?;
 
 		// Copying content to userspace buffer
 		let content_bytes = content.as_bytes();

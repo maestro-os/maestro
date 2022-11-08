@@ -23,7 +23,9 @@ pub struct String {
 impl String {
 	/// Creates a new instance of empty string.
 	pub fn new() -> Self {
-		Self { data: Vec::new() }
+		Self {
+			data: Vec::new(),
+		}
 	}
 
 	/// Creates a new instance from the given byte slice.
@@ -33,7 +35,9 @@ impl String {
 			v.push(*b)?;
 		}
 
-		Ok(Self { data: v })
+		Ok(Self {
+			data: v,
+		})
 	}
 
 	/// Returns a slice containing the bytes representation of the string.
@@ -41,7 +45,8 @@ impl String {
 		self.data.as_slice()
 	}
 
-	/// Returns a mutable slice containing the bytes representation of the string.
+	/// Returns a mutable slice containing the bytes representation of the
+	/// string.
 	pub fn as_mut_bytes(&mut self) -> &mut [u8] {
 		self.data.as_mut_slice()
 	}
@@ -52,8 +57,9 @@ impl String {
 		str::from_utf8(self.as_bytes()).ok()
 	}
 
-	/// Same as `as_str` except the function doesn't check the string is a correct UTF-8 sequence.
-	/// If the string is invalid, the behaviour is undefined.
+	/// Same as `as_str` except the function doesn't check the string is a
+	/// correct UTF-8 sequence. If the string is invalid, the behaviour is
+	/// undefined.
 	pub unsafe fn as_str_unchecked(&self) -> &str {
 		str::from_utf8_unchecked(self.as_bytes())
 	}
@@ -247,7 +253,9 @@ impl Write for StringWriter {
 
 /// This function must be used only through the `format` macro.
 pub fn _format(args: fmt::Arguments) -> Result<String, Errno> {
-	let mut w = StringWriter { final_str: None };
+	let mut w = StringWriter {
+		final_str: None,
+	};
 	fmt::write(&mut w, args).unwrap();
 
 	w.final_str.unwrap()

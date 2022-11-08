@@ -1,15 +1,15 @@
 //! The `waitpid` system call allows to wait for an event from a child process.
 
-use crate::errno::Errno;
 use crate::errno;
-use crate::process::Process;
+use crate::errno::Errno;
+use crate::process;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::pid::Pid;
 use crate::process::regs::Regs;
 use crate::process::rusage::RUsage;
-use crate::process::state::State;
 use crate::process::state;
-use crate::process;
+use crate::process::state::State;
+use crate::process::Process;
 use crate::util::boxed::Box;
 
 /// Wait flag. Returns immediately if no child has exited.
@@ -18,17 +18,19 @@ pub const WNOHANG: i32 = 1;
 pub const WUNTRACED: i32 = 2;
 /// Wait flag. Returns if a child has terminated.
 pub const WEXITED: i32 = 4;
-/// Wait flag. Returns if a stopped child has been resumed by delivery of SIGCONT.
+/// Wait flag. Returns if a stopped child has been resumed by delivery of
+/// SIGCONT.
 pub const WCONTINUED: i32 = 8;
-/// Wait flag. If set, the system call doesn't clear the waitable status of the child.
+/// Wait flag. If set, the system call doesn't clear the waitable status of the
+/// child.
 pub const WNOWAIT: i32 = 0x1000000;
 
 /// Returns the `i`th target process for the given constraint `pid`.
 /// `curr_proc` is the current process.
 /// `pid` is the constraint given to the system call.
 /// `i` is the index of the target process.
-/// The function is built such as iterating on `i` until the function returns None gives every
-/// targets for the system call.
+/// The function is built such as iterating on `i` until the function returns
+/// None gives every targets for the system call.
 fn get_target(curr_proc: &Process, pid: i32, i: usize) -> Option<Pid> {
 	if pid < -1 {
 		let group_processes = curr_proc.get_group_processes();
@@ -80,9 +82,9 @@ fn get_wstatus(proc: &Process) -> i32 {
 	wstatus
 }
 
-/// Checks if at least one process corresponding to the given constraint is waitable. If yes, the
-/// function clears its waitable state, sets the wstatus and returns the process's PID.
-/// `curr_proc` is the current process.
+/// Checks if at least one process corresponding to the given constraint is
+/// waitable. If yes, the function clears its waitable state, sets the wstatus
+/// and returns the process's PID. `curr_proc` is the current process.
 /// `pid` is the constraint given to the system call.
 /// `wstatus` is a reference to the wait status.
 /// `options` is a set of flags.
@@ -92,7 +94,7 @@ fn check_waitable(
 	pid: i32,
 	wstatus: &mut i32,
 	options: i32,
-	rusage: &mut RUsage
+	rusage: &mut RUsage,
 ) -> Result<Option<Pid>, Errno> {
 	// Iterating on every target processes, checking if they can be waited on
 	let mut i = 0;
@@ -200,8 +202,8 @@ pub fn do_waitpid(
 				return Ok(0);
 			}
 
-			// When a child process is paused or resumed by a signal or is terminated, it changes
-			// the state of the current process to wake it up
+			// When a child process is paused or resumed by a signal or is terminated, it
+			// changes the state of the current process to wake it up
 			proc.set_state(State::Sleeping(Box::new(state::WakePoll {})?));
 		}
 

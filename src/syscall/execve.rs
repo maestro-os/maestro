@@ -1,29 +1,30 @@
 //! The `execve` system call allows to execute a program from a file.
 
-use core::ops::Range;
-use crate::errno::Errno;
 use crate::errno;
+use crate::errno::Errno;
+use crate::file::path::Path;
+use crate::file::vfs;
 use crate::file::File;
 use crate::file::Gid;
 use crate::file::Uid;
-use crate::file::path::Path;
-use crate::file::vfs;
 use crate::memory::stack;
-use crate::process::Process;
+use crate::process;
+use crate::process::exec;
 use crate::process::exec::ExecInfo;
 use crate::process::exec::ProgramImage;
-use crate::process::exec;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::regs::Regs;
-use crate::process;
+use crate::process::Process;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::io::IO;
 use crate::util::ptr::SharedPtr;
+use core::ops::Range;
 
 /// The maximum length of the shebang.
 const SHEBANG_MAX: usize = 257;
-/// The maximum number of interpreter that can be used recursively for an execution.
+/// The maximum number of interpreter that can be used recursively for an
+/// execution.
 const INTERP_MAX: usize = 4;
 
 // TODO Use ARG_MAX
@@ -33,18 +34,20 @@ struct Shebang {
 	/// The shebang's string.
 	buff: [u8; SHEBANG_MAX],
 
-	/// The range on the shebang's string which represents the location of the interpreter.
+	/// The range on the shebang's string which represents the location of the
+	/// interpreter.
 	interp: Range<usize>,
-	/// The range on the shebang's string which represents the location of the optional argument.
+	/// The range on the shebang's string which represents the location of the
+	/// optional argument.
 	arg: Option<Range<usize>>,
 }
 
 /// Peeks the shebang in the file.
 /// `file` is the file from which the shebang is to be read.
 /// `buff` is the buffer to write the shebang into.
-/// If the file has a shebang, the function returns its size in bytes + the offset to the end of
-/// the interpreter. If the string is longer than the interpreter's name, the remaining characters
-/// shall be used as an argument.
+/// If the file has a shebang, the function returns its size in bytes + the
+/// offset to the end of the interpreter. If the string is longer than the
+/// interpreter's name, the remaining characters shall be used as an argument.
 fn peek_shebang(file: &mut File) -> Result<Option<Shebang>, Errno> {
 	let mut buff: [u8; SHEBANG_MAX] = [0; SHEBANG_MAX];
 
@@ -84,7 +87,11 @@ fn peek_shebang(file: &mut File) -> Result<Option<Shebang>, Errno> {
 			.filter(|arg| !arg.is_empty())
 			.next();
 
-		Ok(Some(Shebang { buff, interp, arg }))
+		Ok(Some(Shebang {
+			buff,
+			interp,
+			arg,
+		}))
 	} else {
 		Ok(None)
 	}
@@ -182,8 +189,7 @@ pub fn execve(regs: &Regs) -> Result<i32, Errno> {
 			let files_guard = files_mutex.lock();
 			let vfs = files_guard.get_mut();
 
-			vfs
-				.as_mut()
+			vfs.as_mut()
 				.unwrap()
 				.get_file_from_path(&path, uid, gid, true)?
 		};
@@ -233,8 +239,7 @@ pub fn execve(regs: &Regs) -> Result<i32, Errno> {
 		let files_guard = files_mutex.lock();
 		let vfs = files_guard.get_mut();
 
-		vfs
-			.as_mut()
+		vfs.as_mut()
 			.unwrap()
 			.get_file_from_path(&path, uid, gid, true)?
 	};
@@ -242,8 +247,8 @@ pub fn execve(regs: &Regs) -> Result<i32, Errno> {
 	// Dropping path to avoid memory leak
 	drop(path);
 
-	// Disabling interrupt to prevent stack switching while using a temporary stack, preventing
-	// this temporary stack from being used as a signal handling stack
+	// Disabling interrupt to prevent stack switching while using a temporary stack,
+	// preventing this temporary stack from being used as a signal handling stack
 	cli!();
 
 	// Building the program's image
@@ -254,9 +259,10 @@ pub fn execve(regs: &Regs) -> Result<i32, Errno> {
 		.unwrap()?
 	};
 
-	// The tmp stack will not be used since the scheduler cannot be ticked when interrupts are
-	// disabled
-	// A temporary stack cannot be allocated since it wouldn't be possible to free it on success
+	// The tmp stack will not be used since the scheduler cannot be ticked when
+	// interrupts are disabled
+	// A temporary stack cannot be allocated since it wouldn't be possible to free
+	// it on success
 	let tmp_stack = {
 		let core = 0; // TODO Get current core ID
 		process::get_scheduler()
@@ -265,8 +271,8 @@ pub fn execve(regs: &Regs) -> Result<i32, Errno> {
 			.get_tmp_stack(core)
 	};
 
-	// Switching to another stack in order to avoid crashing when switching to the new memory
-	// space
+	// Switching to another stack in order to avoid crashing when switching to the
+	// new memory space
 	unsafe {
 		stack::switch(Some(tmp_stack), move || -> Result<(), Errno> {
 			let regs = do_exec(program_image)?;

@@ -1,4 +1,5 @@
-//! This module implements the `set_thread_area` system call, which allows to set a TLS area.
+//! This module implements the `set_thread_area` system call, which allows to
+//! set a TLS area.
 
 use crate::errno;
 use crate::errno::Errno;

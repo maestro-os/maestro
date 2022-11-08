@@ -1,13 +1,13 @@
-//! The PCI (Peripheral Component Interconnect) is a bus which allows to attach hardware devices on
-//! the motherboard. There here-module allows to retrieve informations on the devices attached to
-//! the computer's PCI.
+//! The PCI (Peripheral Component Interconnect) is a bus which allows to attach
+//! hardware devices on the motherboard. There here-module allows to retrieve
+//! informations on the devices attached to the computer's PCI.
 //!
-//! The device ID, vendor ID, class and subclass of a device allows to determine which driver is
-//! required for the device.
+//! The device ID, vendor ID, class and subclass of a device allows to determine
+//! which driver is required for the device.
 //!
-//! A PCI device can specify one or several BARs (Base Address Registers). They specify the address
-//! of the device's registers in memory, allowing communications through DMA (Direct Memory
-//! Access).
+//! A PCI device can specify one or several BARs (Base Address Registers). They
+//! specify the address of the device's registers in memory, allowing
+//! communications through DMA (Direct Memory Access).
 
 use crate::device::bar::BARType;
 use crate::device::bar::BAR;
@@ -19,7 +19,6 @@ use crate::errno::Errno;
 use crate::io;
 use crate::util::container::vec::Vec;
 use core::cmp::min;
-use core::intrinsics::wrapping_add;
 use core::mem::size_of;
 
 /// The port used to specify the configuration address.
@@ -72,7 +71,8 @@ pub const CLASS_CO_PROCESSOR: u16 = 0x40;
 /// Device class: Unassigned
 pub const CLASS_UNASSIGNED: u16 = 0xff;
 
-/// Reads 32 bits from the PCI register specified by `bus`, `device`, `func` and `reg_off`.
+/// Reads 32 bits from the PCI register specified by `bus`, `device`, `func` and
+/// `reg_off`.
 fn read_long(bus: u8, device: u8, func: u8, reg_off: u8) -> u32 {
 	// The PCI address
 	let addr = ((bus as u32) << 16)
@@ -89,8 +89,8 @@ fn read_long(bus: u8, device: u8, func: u8, reg_off: u8) -> u32 {
 	}
 }
 
-/// Writes 32 bits from `value` into the PCI register specified by `bus`, `device`, `func` and
-/// `reg_off`.
+/// Writes 32 bits from `value` into the PCI register specified by `bus`,
+/// `device`, `func` and `reg_off`.
 fn write_long(bus: u8, device: u8, func: u8, reg_off: u8, value: u32) {
 	// The PCI address
 	let addr = ((bus as u32) << 16)
@@ -165,7 +165,8 @@ pub struct PCIDevice {
 
 	/// Built-In Self Test status.
 	bist: u8,
-	/// Defines the header type of the device, to determine what informations follow.
+	/// Defines the header type of the device, to determine what informations
+	/// follow.
 	header_type: u8,
 	/// Specifies the latency timer in units of PCI bus clocks.
 	latency_timer: u8,
@@ -261,10 +262,8 @@ impl PCIDevice {
 		// Writing all 1s on register
 		write_long(self.bus, self.device, self.function, reg_off as _, !0u32);
 
-		let mut size = wrapping_add(
-			!read_long(self.bus, self.device, self.function, reg_off as _),
-			1,
-		);
+		let mut size =
+			(!read_long(self.bus, self.device, self.function, reg_off as _)).wrapping_add(1);
 		if io {
 			size &= 0xffff;
 		}
@@ -369,8 +368,8 @@ impl PhysicalDevice for PCIDevice {
 	}
 }
 
-/// This manager handles every devices connected to the PCI bus. Since the PCI bus is not a hotplug
-/// bus, calling on_unplug on this structure has no effect.
+/// This manager handles every devices connected to the PCI bus. Since the PCI
+/// bus is not a hotplug bus, calling on_unplug on this structure has no effect.
 pub struct PCIManager {
 	/// The list of PCI devices.
 	devices: Vec<PCIDevice>,

@@ -1,5 +1,6 @@
-//! This file handles interruptions, it provides an interface allowing to register callbacks for
-//! each interrupts. Each callback has a priority number and is called in descreasing order.
+//! This file handles interruptions, it provides an interface allowing to
+//! register callbacks for each interrupts. Each callback has a priority number
+//! and is called in descreasing order.
 
 use crate::errno::Errno;
 use crate::idt;
@@ -13,7 +14,8 @@ use crate::util::lock::*;
 use core::ffi::c_void;
 use core::mem::MaybeUninit;
 
-/// The list of interrupt error messages ordered by index of the corresponding interrupt vector.
+/// The list of interrupt error messages ordered by index of the corresponding
+/// interrupt vector.
 #[cfg(config_general_arch = "x86")]
 static ERROR_MESSAGES: &[&str] = &[
 	"Divide-by-zero Error",
@@ -50,7 +52,8 @@ static ERROR_MESSAGES: &[&str] = &[
 	"Unknown",
 ];
 
-/// Returns the error message corresponding to the given interrupt vector index `i`.
+/// Returns the error message corresponding to the given interrupt vector index
+/// `i`.
 fn get_error_message(i: u32) -> &'static str {
 	if (i as usize) < ERROR_MESSAGES.len() {
 		ERROR_MESSAGES[i as usize]
@@ -69,39 +72,45 @@ pub enum InterruptResultAction {
 	Panic,
 }
 
-/// Enumeration telling which action will be executed after an interrupt handler.
+/// Enumeration telling which action will be executed after an interrupt
+/// handler.
 pub struct InterruptResult {
-	/// Tells whether to skip execution of the next interrupt handlers (with lower priority).
+	/// Tells whether to skip execution of the next interrupt handlers (with
+	/// lower priority).
 	skip_next: bool,
-	/// The action to execute after the handler. The last handler decides which action to execute
-	/// unless the `skip_next` variable is set to `true`.
+	/// The action to execute after the handler. The last handler decides which
+	/// action to execute unless the `skip_next` variable is set to `true`.
 	action: InterruptResultAction,
 }
 
 impl InterruptResult {
 	/// Creates a new instance.
 	pub fn new(skip_next: bool, action: InterruptResultAction) -> Self {
-		Self { skip_next, action }
+		Self {
+			skip_next,
+			action,
+		}
 	}
 }
 
 /// Structure wrapping a callback to insert it into a linked list.
 struct CallbackWrapper {
-	/// The priority associated with the callback. Higher value means higher priority
+	/// The priority associated with the callback. Higher value means higher
+	/// priority
 	priority: u32,
 
 	/// The callback
 	/// First argument: `id` is the id of the interrupt.
-	/// Second argument: `code` is an optional code associated with the interrupt. If no code
-	/// is given, the value is `0`.
-	/// Third argument: `regs` the values of the registers when the interruption was triggered.
-	/// Fourth argument: `ring` tells the ring at which the code was running.
-	/// The return value tells which action to perform next.
+	/// Second argument: `code` is an optional code associated with the
+	/// interrupt. If no code is given, the value is `0`.
+	/// Third argument: `regs` the values of the registers when the interruption
+	/// was triggered. Fourth argument: `ring` tells the ring at which the code
+	/// was running. The return value tells which action to perform next.
 	callback: Box<dyn FnMut(u32, u32, &Regs, u32) -> InterruptResult>,
 }
 
-/// Structure used to detect whenever the object owning the callback is destroyed, allowing to
-/// unregister it automatically.
+/// Structure used to detect whenever the object owning the callback is
+/// destroyed, allowing to unregister it automatically.
 #[must_use]
 pub struct CallbackHook {
 	/// The id of the interrupt the callback is bound to.
@@ -116,7 +125,11 @@ pub struct CallbackHook {
 impl CallbackHook {
 	/// Creates a new instance.
 	fn new(id: usize, priority: u32, ptr: *const c_void) -> Self {
-		Self { id, priority, ptr }
+		Self {
+			id,
+			priority,
+			ptr,
+		}
 	}
 }
 
@@ -145,10 +158,11 @@ pub fn init() {
 
 /// Registers the given callback and returns a reference to it.
 /// `id` is the id of the interrupt to watch.
-/// `priority` is the priority for the callback. Higher value means higher priority.
-/// `callback` is the callback to register.
+/// `priority` is the priority for the callback. Higher value means higher
+/// priority. `callback` is the callback to register.
 ///
-/// If the `id` is invalid or if an allocation fails, the function shall return an error.
+/// If the `id` is invalid or if an allocation fails, the function shall return
+/// an error.
 pub fn register_callback<T>(id: usize, priority: u32, callback: T) -> Result<CallbackHook, Errno>
 where
 	T: 'static + FnMut(u32, u32, &Regs, u32) -> InterruptResult,
@@ -203,23 +217,23 @@ fn remove_callback(id: usize, priority: u32, ptr: *const c_void) {
 	}
 }
 
-/// Unlocks the callback vector with id `id`. This function is to be used in case of an event
-/// callback that never returns.
+/// Unlocks the callback vector with id `id`. This function is to be used in
+/// case of an event callback that never returns.
 ///
 /// # Safety
 ///
-/// This function is marked as unsafe since it may lead to concurrency issues if not used properly.
-/// It must be called from the same CPU core as the one that locked the mutex since unlocking
-/// changes the interrupt flag.
+/// This function is marked as unsafe since it may lead to concurrency issues if
+/// not used properly. It must be called from the same CPU core as the one that
+/// locked the mutex since unlocking changes the interrupt flag.
 #[no_mangle]
 pub unsafe extern "C" fn unlock_callbacks(id: usize) {
 	CALLBACKS.assume_init_mut()[id as usize].unlock();
 }
 
 /// This function is called whenever an interruption is triggered.
-/// `id` is the identifier of the interrupt type. This value is architecture-dependent.
-/// `code` is an optional code associated with the interrupt. If the interrupt type doesn't have a
-/// code, the value is `0`.
+/// `id` is the identifier of the interrupt type. This value is
+/// architecture-dependent. `code` is an optional code associated with the
+/// interrupt. If the interrupt type doesn't have a code, the value is `0`.
 /// `regs` is the state of the registers at the moment of the interrupt.
 /// `ring` tells the ring at which the code was running.
 #[no_mangle]

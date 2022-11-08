@@ -1,4 +1,5 @@
-//! The `mmap2` system call is similar to `mmap`, except it takes a file offset in pages.
+//! The `mmap2` system call is similar to `mmap`, except it takes a file offset
+//! in pages.
 
 use super::mmap;
 use crate::errno::Errno;

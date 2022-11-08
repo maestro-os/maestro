@@ -68,8 +68,8 @@ macro_rules! offset_of {
 	};
 }
 
-/// Returns the structure of type `type` that contains the structure in field `field` at pointer
-/// `ptr`. The type must be a pointer type.
+/// Returns the structure of type `type` that contains the structure in field
+/// `field` at pointer `ptr`. The type must be a pointer type.
 #[macro_export]
 macro_rules! container_of {
 	($ptr:expr, $type:ty, $field:ident) => {
@@ -106,8 +106,8 @@ extern "C" {
 }
 
 /// Zeroes the given object.
-/// The function is marked unsafe since there exist some objects for which a representation full of
-/// zeros is invalid.
+/// The function is marked unsafe since there exist some objects for which a
+/// representation full of zeros is invalid.
 pub unsafe fn zero_object<T>(obj: &mut T) {
 	let ptr = obj as *mut T as *mut c_void;
 	let size = size_of::<T>();
@@ -150,8 +150,8 @@ pub fn as_slice<'a, T>(val: &'a T) -> &'a [u8] {
 	unsafe { slice::from_raw_parts(&val as *const _ as *const u8, size_of::<T>()) }
 }
 
-/// Returns the length of the string representation of the number at the beginning of the given
-/// string `s`.
+/// Returns the length of the string representation of the number at the
+/// beginning of the given string `s`.
 pub fn nbr_len(s: &[u8]) -> usize {
 	let mut i = 0;
 
@@ -166,8 +166,8 @@ pub fn nbr_len(s: &[u8]) -> usize {
 	i
 }
 
-/// Copies from slice `src` to `dst`. If one slice is smaller than the other, the function stops
-/// when the end of the smallest is reached.
+/// Copies from slice `src` to `dst`. If one slice is smaller than the other,
+/// the function stops when the end of the smallest is reached.
 pub fn slice_copy(src: &[u8], dst: &mut [u8]) {
 	let len = min(src.len(), dst.len());
 	dst[..len].copy_from_slice(&src[..len]);
@@ -178,8 +178,8 @@ pub unsafe fn reinterpret<'a, T>(slice: &'a [u8]) -> &'a T {
 	&*(slice.as_ptr() as *const _)
 }
 
-/// Trait allowing to perform a clone of a structure that can possibly fail (on memory allocation
-/// failure, for example).
+/// Trait allowing to perform a clone of a structure that can possibly fail (on
+/// memory allocation failure, for example).
 pub trait FailableClone {
 	/// Clones the object. If the clone fails, the function returns Err.
 	fn failable_clone(&self) -> Result<Self, Errno>
@@ -187,8 +187,8 @@ pub trait FailableClone {
 		Self: Sized;
 }
 
-/// Implements FailableClone with the default implemention for the given type. The type must
-/// implement Clone.
+/// Implements FailableClone with the default implemention for the given type.
+/// The type must implement Clone.
 #[macro_export]
 macro_rules! failable_clone_impl {
 	($type:ty) => {
@@ -214,8 +214,8 @@ failable_clone_impl!(usize);
 failable_clone_impl!(*mut c_void);
 failable_clone_impl!(*const c_void);
 
-/// Wrapper structure allowing to implement the Display trait on the [u8] type to display it as a
-/// string.
+/// Wrapper structure allowing to implement the Display trait on the [u8] type
+/// to display it as a string.
 pub struct DisplayableStr<'a> {
 	/// The string to be displayed.
 	pub s: &'a [u8],

@@ -50,19 +50,19 @@ pub fn rt_sigprocmask(regs: &Regs) -> Result<i32, Errno> {
 				for i in 0..min(set.len(), curr.len()) {
 					curr[i] |= set[i];
 				}
-			},
+			}
 
 			SIG_UNBLOCK => {
 				for i in 0..min(set.len(), curr.len()) {
 					curr[i] &= !set[i];
 				}
-			},
+			}
 
 			SIG_SETMASK => {
 				for i in 0..min(set.len(), curr.len()) {
 					curr[i] = set[i];
 				}
-			},
+			}
 
 			_ => return Err(errno!(EINVAL)),
 		}

@@ -1,5 +1,5 @@
-//! The `syncfs` system call allows to synchronize the filesystem containing the file pointed by
-//! the given file descriptor.
+//! The `syncfs` system call allows to synchronize the filesystem containing the
+//! file pointed by the given file descriptor.
 
 use crate::errno::Errno;
 use crate::file::open_file::FDTarget;

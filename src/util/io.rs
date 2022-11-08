@@ -24,7 +24,8 @@ pub const POLLWRNORM: u32 = 0x100;
 pub const POLLWRBAND: u32 = 0x200;
 /// TODO doc
 pub const POLLMSG: u32 = 0x400;
-/// Poll event: Stream socket peer closed connection, or shut down writing half of connection.
+/// Poll event: Stream socket peer closed connection, or shut down writing half
+/// of connection.
 pub const POLLRDHUP: u32 = 0x2000;
 
 /// Trait representing a data I/O interface.
@@ -33,8 +34,8 @@ pub trait IO {
 	fn get_size(&self) -> u64;
 
 	/// Reads data from the I/O and writes it into `buff`.
-	/// `offset` is the offset in the I/O to the beginning of the data to be read.
-	/// The function returns a tuple containing:
+	/// `offset` is the offset in the I/O to the beginning of the data to be
+	/// read. The function returns a tuple containing:
 	/// - The number of bytes read.
 	/// - Whether the function reached the end of the input stream. In the context of a file, a
 	/// value of `true` is equivalent to the End Of File (EOF).

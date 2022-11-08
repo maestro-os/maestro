@@ -1,6 +1,6 @@
-//! The Executable and Linkable Format (ELF) is a format of executable files commonly used in UNIX
-//! systems. This module implements a parser allowing to handle this format, including the kernel
-//! image itself.
+//! The Executable and Linkable Format (ELF) is a format of executable files
+//! commonly used in UNIX systems. This module implements a parser allowing to
+//! handle this format, including the kernel image itself.
 
 pub mod parser;
 pub mod relocation;
@@ -128,19 +128,21 @@ pub const SHF_ALLOC: u32 = 0x00000002;
 pub const SHF_EXECINSTR: u32 = 0x00000004;
 /// Thread-Local Storage (TLS) section.
 pub const SHF_TLS: u32 = 0x400;
-/// All bits included in this mask are reserved for processor-specific semantics.
+/// All bits included in this mask are reserved for processor-specific
+/// semantics.
 pub const SHF_MASKPROC: u32 = 0xf0000000;
 
 /// The symbol's type is not specified.
 pub const STT_NOTYPE: u8 = 0;
-/// The symbol is associated with a data object, such as a variable, an array, and so on.
+/// The symbol is associated with a data object, such as a variable, an array,
+/// and so on.
 pub const STT_OBJECT: u8 = 1;
 /// The symbol is associated with a function or other executable code.
 pub const STT_FUNC: u8 = 2;
 /// The symbol is associated with a section.
 pub const STT_SECTION: u8 = 3;
-/// A file symbol has STB_LOCAL binding, its section index is SHN_ABS, and it precedes the other
-/// STB_LOCAL symbols for the file, if it is present.
+/// A file symbol has STB_LOCAL binding, its section index is SHN_ABS, and it
+/// precedes the other STB_LOCAL symbols for the file, if it is present.
 pub const STT_FILE: u8 = 4;
 /// Thread-Local Storage (TLS) symbol.
 pub const STT_TLS: u8 = 6;
@@ -198,7 +200,8 @@ pub struct ELF32ELFHeader {
 	pub e_shentsize: u16,
 	/// The number of entries in the section header table.
 	pub e_shnum: u16,
-	/// The section header table index holding the header of the section name string table.
+	/// The section header table index holding the header of the section name
+	/// string table.
 	pub e_shstrndx: u16,
 }
 
@@ -253,8 +256,8 @@ impl ELF32ProgramHeader {
 		Ok(())
 	}
 
-	/// Returns the flags to map the current segment into a process's memory space.
-	/// This function should be used only for userspace programs.
+	/// Returns the flags to map the current segment into a process's memory
+	/// space. This function should be used only for userspace programs.
 	pub fn get_mem_space_flags(&self) -> u8 {
 		let mut flags = mem_space::MAPPING_FLAG_USER;
 
@@ -289,11 +292,11 @@ pub struct ELF32SectionHeader {
 	pub sh_link: u32,
 	/// Extra-informations whose interpretation depends on the section type.
 	pub sh_info: u32,
-	/// Alignment constraints of the section in memory. `0` or `1` means that the section doesn't
-	/// require specific alignment.
+	/// Alignment constraints of the section in memory. `0` or `1` means that
+	/// the section doesn't require specific alignment.
 	pub sh_addralign: u32,
-	/// If the section is a table of entry, this field holds the size of one entry. Else, holds
-	/// `0`.
+	/// If the section is a table of entry, this field holds the size of one
+	/// entry. Else, holds `0`.
 	pub sh_entsize: u32,
 }
 
@@ -340,10 +343,10 @@ impl ELF32Sym {
 	}
 }
 
-/// Returns a reference to the kernel section with name `name`. If the section is not found,
-/// returns None.
-/// `sections` is a pointer to the ELF sections of the kernel in the virtual memory.
-/// `sections_count` is the number of sections in the kernel.
+/// Returns a reference to the kernel section with name `name`. If the section
+/// is not found, returns None.
+/// `sections` is a pointer to the ELF sections of the kernel in the virtual
+/// memory. `sections_count` is the number of sections in the kernel.
 /// `shndx` is the index of the section containing section names.
 /// `entsize` is the size of section entries.
 /// `name` is the name of the required section.
@@ -370,10 +373,10 @@ pub fn get_section(
 	None
 }
 
-/// Iterates over the given kernel section headers list `sections`, calling the given closure `f`
-/// for every elements with a reference and the name of the section.
-/// `sections` is a pointer to the ELF sections of the kernel in the virtual memory.
-/// `sections_count` is the number of sections in the kernel.
+/// Iterates over the given kernel section headers list `sections`, calling the
+/// given closure `f` for every elements with a reference and the name of the
+/// section. `sections` is a pointer to the ELF sections of the kernel in the
+/// virtual memory. `sections_count` is the number of sections in the kernel.
 /// `shndx` is the index of the section containing section names.
 /// `entsize` is the size of section entries.
 /// `f` is the closure to be called for each sections.
@@ -401,8 +404,8 @@ pub fn foreach_sections<F>(
 }
 
 /// Returns the size of the kernel ELF sections' content.
-/// `sections` is a pointer to the ELF sections of the kernel in the virtual memory.
-/// `sections_count` is the number of sections in the kernel.
+/// `sections` is a pointer to the ELF sections of the kernel in the virtual
+/// memory. `sections_count` is the number of sections in the kernel.
 /// `entsize` is the size of section entries.
 pub fn get_sections_end(
 	sections: *const c_void,
@@ -423,19 +426,20 @@ pub fn get_sections_end(
 }
 
 /// Returns the name of the kernel symbol at the given offset.
-/// `strtab_section` is a reference to the .strtab section, containing symbol names.
-/// `offset` is the offset of the symbol in the section.
-/// If the offset is invalid or outside of the section, the behaviour is undefined.
+/// `strtab_section` is a reference to the .strtab section, containing symbol
+/// names. `offset` is the offset of the symbol in the section.
+/// If the offset is invalid or outside of the section, the behaviour is
+/// undefined.
 pub fn get_symbol_name(strtab_section: &ELF32SectionHeader, offset: u32) -> &'static [u8] {
 	debug_assert!(offset < strtab_section.sh_size);
 
 	unsafe { util::str_from_ptr(memory::kern_to_virt((strtab_section.sh_addr + offset) as _) as _) }
 }
 
-/// Returns the name of the kernel function for the given instruction pointer. If the name cannot
-/// be retrieved, the function returns None.
-/// `sections` is a pointer to the ELF sections of the kernel in the virtual memory.
-/// `sections_count` is the number of sections in the kernel.
+/// Returns the name of the kernel function for the given instruction pointer.
+/// If the name cannot be retrieved, the function returns None.
+/// `sections` is a pointer to the ELF sections of the kernel in the virtual
+/// memory. `sections_count` is the number of sections in the kernel.
 /// `shndx` is the index of the section containing section names.
 /// `entsize` is the size of section entries.
 /// `inst` is the pointer to the instruction on the virtual memory.
@@ -492,10 +496,10 @@ pub fn get_function_name(
 	func_name
 }
 
-/// Returns the kernel symbol with the name `name`. If the symbol doesn't exist, the function
-/// returns None.
-/// `sections` is a pointer to the ELF sections of the kernel in the virtual memory.
-/// `sections_count` is the number of sections in the kernel.
+/// Returns the kernel symbol with the name `name`. If the symbol doesn't exist,
+/// the function returns None.
+/// `sections` is a pointer to the ELF sections of the kernel in the virtual
+/// memory. `sections_count` is the number of sections in the kernel.
 /// `shndx` is the index of the section containing section names.
 /// `entsize` is the size of section entries.
 /// `name` is the name of the symbol to get.

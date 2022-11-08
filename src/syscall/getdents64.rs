@@ -1,4 +1,5 @@
-//! The `getdents64` system call allows to get the list of entries in a given directory.
+//! The `getdents64` system call allows to get the list of entries in a given
+//! directory.
 
 use crate::errno::Errno;
 use crate::file::open_file::FDTarget;

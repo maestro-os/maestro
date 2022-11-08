@@ -1,11 +1,11 @@
 //! The `unlinkat` syscall allows to unlink a file.
 
+use super::util;
 use crate::errno::Errno;
 use crate::file::vfs;
-use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::regs::Regs;
-use super::util;
+use crate::process::Process;
 
 /// The implementation of the `unlinkat` syscall.
 pub fn unlinkat(regs: &Regs) -> Result<i32, Errno> {

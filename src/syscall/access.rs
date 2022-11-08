@@ -3,15 +3,16 @@
 use crate::errno::Errno;
 use crate::file::path::Path;
 use crate::file::vfs;
-use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::regs::Regs;
+use crate::process::Process;
 use crate::util::FailableClone;
 
-/// Special value, telling to take the path relative to the current working directory.
+/// Special value, telling to take the path relative to the current working
+/// directory.
 pub const AT_FDCWD: i32 = -100;
-/// If pathname is a symbolic link, do not dereference it: instead return information about the
-/// link itself.
+/// If pathname is a symbolic link, do not dereference it: instead return
+/// information about the link itself.
 pub const AT_SYMLINK_NOFOLLOW: i32 = 0x100;
 /// Perform access checks using the effective user and group IDs.
 pub const AT_EACCESS: i32 = 0x200;
@@ -36,8 +37,8 @@ const W_OK: i32 = 2;
 const X_OK: i32 = 1;
 
 /// Performs the access operation.
-/// `dirfd` is the file descriptor of the directory relative to which the check is done.
-/// `pathname` is the path to the file.
+/// `dirfd` is the file descriptor of the directory relative to which the check
+/// is done. `pathname` is the path to the file.
 /// `mode` is a bitfield of access permissions to check.
 /// `flags` is a set of flags.
 pub fn do_access(

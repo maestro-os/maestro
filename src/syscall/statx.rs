@@ -114,23 +114,32 @@ pub fn statx(regs: &Regs) -> Result<i32, Errno> {
 
 	// If the file is a device, get the major and minor numbers
 	let (stx_rdev_major, stx_rdev_minor) = match file.get_content() {
-		FileContent::BlockDevice { major, minor } | FileContent::CharDevice { major, minor } => {
-			(*major, *minor)
+		FileContent::BlockDevice {
+			major,
+			minor,
 		}
+		| FileContent::CharDevice {
+			major,
+			minor,
+		} => (*major, *minor),
 		_ => (0, 0),
 	};
 
 	// Getting the major and minor numbers of the device of the file's filesystem
 	let (stx_dev_major, stx_dev_minor) = {
 		if let Some(mountpoint_mutex) = file.get_location().get_mountpoint() {
-			// TODO Clean: This is a quick fix to avoid a deadlock because vfs is also using the
-			// mountpoint and locking vfs requires disabling interrupts
+			// TODO Clean: This is a quick fix to avoid a deadlock because vfs is also using
+			// the mountpoint and locking vfs requires disabling interrupts
 			crate::idt::wrap_disable_interrupts(|| {
 				let mountpoint_guard = mountpoint_mutex.lock();
 				let mountpoint = mountpoint_guard.get();
 
 				match mountpoint.get_source() {
-					MountSource::Device { major, minor, .. } => (*major, *minor),
+					MountSource::Device {
+						major,
+						minor,
+						..
+					} => (*major, *minor),
 					MountSource::File(_) | MountSource::NoDev(_) => (0, 0),
 				}
 			})
@@ -162,7 +171,7 @@ pub fn statx(regs: &Regs) -> Result<i32, Errno> {
 			__reserved: 0,
 		},
 		stx_btime: StatxTimestamp {
-			tv_sec: 0, // TODO
+			tv_sec: 0,  // TODO
 			tv_nsec: 0, // TODO
 			__reserved: 0,
 		},

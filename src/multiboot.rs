@@ -1,5 +1,6 @@
-//! The Multiboot standard specifies an interface to load and boot the kernel image. It provides
-//! critical informations such as the memory mapping and the ELF structure of the kernel.
+//! The Multiboot standard specifies an interface to load and boot the kernel
+//! image. It provides critical informations such as the memory mapping and the
+//! ELF structure of the kernel.
 
 use core::ffi::c_void;
 use core::mem::ManuallyDrop;
@@ -512,11 +513,13 @@ fn handle_tag(boot_info: &mut BootInfo, tag: *const Tag) {
 	}
 }
 
-/// Reads the multiboot tags from the given `ptr` and fills the boot informations structure.
+/// Reads the multiboot tags from the given `ptr` and fills the boot
+/// informations structure.
 ///
 /// # Safety
 ///
-/// If the pointer `ptr` doesn't point to valid Multiboot tags, the behaviour is undefined.
+/// If the pointer `ptr` doesn't point to valid Multiboot tags, the behaviour is
+/// undefined.
 pub fn read_tags(ptr: *const c_void) {
 	unsafe {
 		let mut tag = (ptr.offset(8)) as *const Tag;

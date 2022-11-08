@@ -1,9 +1,14 @@
-//! The VFS (Virtual FileSystem) is a entity which aggregates every mounted filesystems into one.
-//! To manipulate files, the VFS should be used instead of calling the filesystems' functions
-//! directly.
+//! The VFS (Virtual FileSystem) is a entity which aggregates every mounted
+//! filesystems into one. To manipulate files, the VFS should be used instead of
+//! calling the filesystems' functions directly.
 
-use crate::errno::Errno;
+use super::pipe::PipeBuffer;
+use super::socket::Socket;
 use crate::errno;
+use crate::errno::Errno;
+use crate::file;
+use crate::file::mountpoint;
+use crate::file::path::Path;
 use crate::file::File;
 use crate::file::FileContent;
 use crate::file::FileLocation;
@@ -12,30 +17,26 @@ use crate::file::Gid;
 use crate::file::Mode;
 use crate::file::MountPoint;
 use crate::file::Uid;
-use crate::file::mountpoint;
-use crate::file::path::Path;
-use crate::file;
 use crate::limits;
-use crate::util::FailableClone;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::lock::IntMutex;
 use crate::util::ptr::SharedPtr;
-use super::pipe::PipeBuffer;
-use super::socket::Socket;
+use crate::util::FailableClone;
 
 /// The size of the files pool.
 const FILES_POOL_SIZE: usize = 1024;
 
-/// Updates the location of the file `file` according to the given mountpoint `mountpoint`.
+/// Updates the location of the file `file` according to the given mountpoint
+/// `mountpoint`.
 fn update_location(file: &mut File, mountpoint: &MountPoint) {
 	file.get_location_mut().mountpoint_id = Some(mountpoint.get_id());
 }
 
 /// The Virtual FileSystem.
-/// This structure acts as an aggregator of every mounted filesystems, but also as a cache to
-/// speedup file accesses.
+/// This structure acts as an aggregator of every mounted filesystems, but also
+/// as a cache to speedup file accesses.
 pub struct VFS {
 	/// The pool of cached files.
 	pool: Vec<SharedPtr<File>>,
@@ -68,8 +69,8 @@ impl VFS {
 		})
 	}
 
-	/// Loads the file with the given path `path`. If the file is already loaded, the behaviour is
-	/// undefined.
+	/// Loads the file with the given path `path`. If the file is already
+	/// loaded, the behaviour is undefined.
 	fn load_file(&mut self, _path: &Path) {
 		/*let len = self.pool.len();
 		if len >= FILES_POOL_SIZE {
@@ -87,15 +88,15 @@ impl VFS {
 	}
 
 	// TODO Use the cache
-	/// Returns a reference to the file at path `path`. If the file doesn't exist, the function
-	/// returns None.
+	/// Returns a reference to the file at path `path`. If the file doesn't
+	/// exist, the function returns None.
 	/// If the path is relative, the function starts from the root.
 	/// If the file isn't present in the pool, the function shall load it.
 	/// `uid` is the User ID of the user creating the file.
 	/// `gid` is the Group ID of the user creating the file.
 	/// `follow_links` is true, the function follows symbolic links.
-	/// `follows_count` is the number of links that have been followed since the beginning of the
-	/// path resolution.
+	/// `follows_count` is the number of links that have been followed since the
+	/// beginning of the path resolution.
 	fn get_file_from_path_(
 		&mut self,
 		path: &Path,
@@ -192,8 +193,8 @@ impl VFS {
 	}
 
 	// TODO Add a param to choose between the mountpoint and the fs root?
-	/// Returns a reference to the file at path `path`. If the file doesn't exist, the function
-	/// returns an error.
+	/// Returns a reference to the file at path `path`. If the file doesn't
+	/// exist, the function returns an error.
 	/// If the path is relative, the function starts from the root.
 	/// If the file isn't present in the pool, the function shall load it.
 	/// `uid` is the User ID of the user creating the file.
@@ -210,8 +211,8 @@ impl VFS {
 	}
 
 	// TODO Use the cache
-	/// Returns a reference to the file `name` located in the directory `parent`. If the file
-	/// doesn't exist, the function returns an error.
+	/// Returns a reference to the file `name` located in the directory
+	/// `parent`. If the file doesn't exist, the function returns an error.
 	/// `parent` is the parent directory.
 	/// `name` is the name of the file.
 	/// `uid` is the User ID of the user creating the file.
@@ -272,14 +273,15 @@ impl VFS {
 	}
 
 	// TODO Use the cache
-	/// Creates a file, adds it to the VFS, then returns it. The file will be located into the
-	/// directory `parent`.
+	/// Creates a file, adds it to the VFS, then returns it. The file will be
+	/// located into the directory `parent`.
 	/// If `parent` is not a directory, the function returns an error.
 	/// `name` is the name of the file.
 	/// `uid` is the id of the owner user.
 	/// `gid` is the id of the owner group.
 	/// `mode` is the permission of the file.
-	/// `content` is the content of the file. This value also determines the file type.
+	/// `content` is the content of the file. This value also determines the
+	/// file type.
 	pub fn create_file(
 		&mut self,
 		parent: &mut File,
@@ -304,8 +306,8 @@ impl VFS {
 			return Err(errno!(EACCES));
 		}
 
-		// If SGID is set, the newly created file shall inherit the group ID of the parent
-		// directory
+		// If SGID is set, the newly created file shall inherit the group ID of the
+		// parent directory
 		if parent.get_mode() & file::S_ISGID != 0 {
 			gid = parent.get_gid();
 		}
@@ -474,8 +476,8 @@ impl VFS {
 		Ok(())
 	}
 
-	/// Returns the pipe associated with the file at location `loc`. If the pipe doesn't exist, the
-	/// function lazily creates it.
+	/// Returns the pipe associated with the file at location `loc`. If the pipe
+	/// doesn't exist, the function lazily creates it.
 	/// When the file is removed, the pipe is also removed.
 	pub fn get_named_fifo(&mut self, loc: &FileLocation) -> Result<SharedPtr<PipeBuffer>, Errno> {
 		if let Some(p) = self.named_pipes.get(loc) {
@@ -490,8 +492,8 @@ impl VFS {
 		}
 	}
 
-	/// Returns the socket associated with the file at location `loc`. If the pipe doesn't exist,
-	/// the function lazily creates it.
+	/// Returns the socket associated with the file at location `loc`. If the
+	/// pipe doesn't exist, the function lazily creates it.
 	/// When the file is removed, the socket is also removed.
 	pub fn get_named_socket(&mut self, loc: &FileLocation) -> Result<SharedPtr<Socket>, Errno> {
 		if let Some(s) = self.named_sockets.get(loc) {
@@ -513,8 +515,8 @@ impl VFS {
 static VFS: IntMutex<Option<VFS>> = IntMutex::new(None);
 
 /// Returns a mutable reference to the VFS.
-/// If the cache is not initialized, the Option is None. If the function is called from a module,
-/// the VFS can be assumed to be initialized.
+/// If the cache is not initialized, the Option is None. If the function is
+/// called from a module, the VFS can be assumed to be initialized.
 pub fn get() -> &'static IntMutex<Option<VFS>> {
 	&VFS
 }

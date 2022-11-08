@@ -1,18 +1,19 @@
-//! This module implements the `kill` system call, which allows to send a signal to a process.
+//! This module implements the `kill` system call, which allows to send a signal
+//! to a process.
 
-use crate::errno::Errno;
+use super::util;
 use crate::errno;
-use crate::process::Process;
+use crate::errno::Errno;
+use crate::process;
 use crate::process::pid::Pid;
 use crate::process::regs::Regs;
 use crate::process::signal::Signal;
 use crate::process::state::State;
-use crate::process;
-use super::util;
+use crate::process::Process;
 
 /// Tries to kill the process with PID `pid` with the signal `sig`.
-/// If `sig` is None, the function doesn't send a signal, but still checks if there is a process
-/// that could be killed.
+/// If `sig` is None, the function doesn't send a signal, but still checks if
+/// there is a process that could be killed.
 fn try_kill(pid: Pid, sig: &Option<Signal>) -> Result<(), Errno> {
 	let curr_mutex = Process::get_current().unwrap();
 	let curr_guard = curr_mutex.lock();
@@ -53,8 +54,8 @@ fn try_kill(pid: Pid, sig: &Option<Signal>) -> Result<(), Errno> {
 /// Tries to kill a process group.
 /// `pid` TODO doc
 /// `sig` is the signal to send.
-/// If `sig` is None, the function doesn't send a signal, but still checks if there is a process
-/// that could be killed.
+/// If `sig` is None, the function doesn't send a signal, but still checks if
+/// there is a process that could be killed.
 fn try_kill_group(pid: i32, sig: &Option<Signal>) -> Result<(), Errno> {
 	let pgid = match pid {
 		0 => {
@@ -63,7 +64,7 @@ fn try_kill_group(pid: i32, sig: &Option<Signal>) -> Result<(), Errno> {
 			let curr_proc = curr_guard.get_mut();
 
 			curr_proc.get_pgid()
-		},
+		}
 
 		i if i < 0 => -pid as Pid,
 		_ => pid as Pid,
@@ -93,8 +94,8 @@ fn try_kill_group(pid: i32, sig: &Option<Signal>) -> Result<(), Errno> {
 }
 
 /// Sends the signal `sig` to the processes according to the given value `pid`.
-/// If `sig` is None, the function doesn't send a signal, but still checks if there is a process
-/// that could be killed.
+/// If `sig` is None, the function doesn't send a signal, but still checks if
+/// there is a process that could be killed.
 fn send_signal(pid: i32, sig: Option<Signal>) -> Result<(), Errno> {
 	if pid > 0 {
 		// Kill the process with the given PID
@@ -158,7 +159,6 @@ pub fn kill(regs: &Regs) -> Result<i32, Errno> {
 			// Set the process to execute the signal action
 			proc.signal_next();
 		}
-
 	}
 
 	util::handle_proc_state();

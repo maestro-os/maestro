@@ -1,5 +1,5 @@
-//! When booting, the kernel can take command line arguments. This module implements a parse for
-//! these arguments.
+//! When booting, the kernel can take command line arguments. This module
+//! implements a parse for these arguments.
 
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
@@ -111,7 +111,8 @@ impl ArgsParser {
 		*i = j;
 	}
 
-	/// Creates a new token starting a the given offset `i` in the given command line `cmdline`.
+	/// Creates a new token starting a the given offset `i` in the given command
+	/// line `cmdline`.
 	fn new_token<'a>(cmdline: &'a [u8], i: &mut usize) -> Result<Option<Token>, ParseError<'a>> {
 		Self::skip_spaces(cmdline, i);
 		let mut j = *i;
@@ -121,7 +122,10 @@ impl ArgsParser {
 
 		if j > *i {
 			if let Ok(s) = String::from(&cmdline[*i..j]) {
-				let tok = Token { s, begin: *i };
+				let tok = Token {
+					s,
+					begin: *i,
+				};
 				*i = j;
 
 				Ok(Some(tok))
@@ -133,9 +137,9 @@ impl ArgsParser {
 		}
 	}
 
-	/// Tokenizes the command line arguments and returns an array containing all the tokens.
-	/// Every characters are interpreted as ASCII characters. If a non-ASCII character is passed,
-	/// the function returns an error.
+	/// Tokenizes the command line arguments and returns an array containing all
+	/// the tokens. Every characters are interpreted as ASCII characters. If a
+	/// non-ASCII character is passed, the function returns an error.
 	fn tokenize(cmdline: &[u8]) -> Result<Vec<Token>, ParseError> {
 		let mut tokens = Vec::new();
 		let mut i = 0;

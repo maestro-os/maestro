@@ -1,9 +1,11 @@
-//! When a pointer is passed to the kernel through a system call, the kernel is required to check
-//! the process is allowed to access it to ensure safety. This module implements objets that wrap
-//! pointers in order to check they are accessible.
+//! When a pointer is passed to the kernel through a system call, the kernel is
+//! required to check the process is allowed to access it to ensure safety. This
+//! module implements objets that wrap pointers in order to check they are
+//! accessible.
 //!
-//! Those structure are especially useful in the cases where several processes share the same
-//! memory space, making it possible to revoke the access to the pointer while it is being used.
+//! Those structure are especially useful in the cases where several processes
+//! share the same memory space, making it possible to revoke the access to the
+//! pointer while it is being used.
 
 use super::MemSpace;
 use crate::errno::Errno;
@@ -19,7 +21,9 @@ pub struct SyscallPtr<T: Sized> {
 
 impl<T: Sized> From<usize> for SyscallPtr<T> {
 	fn from(val: usize) -> Self {
-		Self { ptr: val as _ }
+		Self {
+			ptr: val as _,
+		}
 	}
 }
 
@@ -66,8 +70,8 @@ impl<T: Sized> SyscallPtr<T> {
 	/// Returns a mutable reference to the value of the pointer.
 	/// If the pointer is null, the function returns None.
 	/// If the value is not accessible, the function returns an error.
-	///	If the value is located on lazily allocated pages, the function allocates physical pages in
-	/// order to allow writing.
+	///	If the value is located on lazily allocated pages, the function
+	/// allocates physical pages in order to allow writing.
 	pub fn get_mut<'a, const INT: bool>(
 		&self,
 		mem_space: &'a MutexGuard<MemSpace, INT>,
@@ -93,8 +97,8 @@ impl<T: Sized> SyscallPtr<T> {
 	}
 }
 
-/// Wrapper for a slice. Internally, the structure contains only a pointer. The size of the slice
-/// is given when trying to access it.
+/// Wrapper for a slice. Internally, the structure contains only a pointer. The
+/// size of the slice is given when trying to access it.
 pub struct SyscallSlice<T: Sized> {
 	/// The pointer.
 	ptr: *mut T,
@@ -102,7 +106,9 @@ pub struct SyscallSlice<T: Sized> {
 
 impl<T: Sized> From<usize> for SyscallSlice<T> {
 	fn from(val: usize) -> Self {
-		Self { ptr: val as _ }
+		Self {
+			ptr: val as _,
+		}
 	}
 }
 
@@ -148,8 +154,8 @@ impl<T: Sized> SyscallSlice<T> {
 	/// Returns a mutable reference to the slice.
 	/// `len` is the in number of elements in the slice.
 	/// If the slice is not accessible, the function returns an error.
-	///	If the slice is located on lazily allocated pages, the function allocates physical pages in
-	/// order to allow writing.
+	///	If the slice is located on lazily allocated pages, the function
+	/// allocates physical pages in order to allow writing.
 	pub fn get_mut<'a, const INT: bool>(
 		&self,
 		mem_space: &'a MutexGuard<MemSpace, INT>,
@@ -182,7 +188,9 @@ pub struct SyscallString {
 
 impl From<usize> for SyscallString {
 	fn from(val: usize) -> Self {
-		Self { ptr: val as _ }
+		Self {
+			ptr: val as _,
+		}
 	}
 }
 
@@ -224,8 +232,8 @@ impl SyscallString {
 
 	/// Returns a mutable reference to the string.
 	/// If the string is not accessible, the function returns an error.
-	///	If the string is located on lazily allocated pages, the function allocates physical pages
-	/// in order to allow writing.
+	///	If the string is located on lazily allocated pages, the function
+	/// allocates physical pages in order to allow writing.
 	pub fn get_mut<'a, const INT: bool>(
 		&self,
 		mem_space: &'a MutexGuard<MemSpace, INT>,

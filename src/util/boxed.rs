@@ -1,4 +1,5 @@
-//! The Box structure allows to hold an object on the heap and handles its memory properly.
+//! The Box structure allows to hold an object on the heap and handles its
+//! memory properly.
 
 use crate::errno::Errno;
 use crate::memory;
@@ -19,8 +20,8 @@ use core::ptr::drop_in_place;
 use core::ptr::NonNull;
 
 /// This structure allows to store an object in an allocated region of memory.
-/// The object is owned by the Box and will be freed whenever the Box is dropped.
-/// The Box uses the `malloc` allocator.
+/// The object is owned by the Box and will be freed whenever the Box is
+/// dropped. The Box uses the `malloc` allocator.
 pub struct Box<T: ?Sized> {
 	/// Pointer to the allocated memory
 	ptr: NonNull<T>,
@@ -47,7 +48,9 @@ impl<T> Box<T> {
 			}
 		};
 
-		Ok(Self { ptr })
+		Ok(Self {
+			ptr,
+		})
 	}
 
 	/// Returns the value owned by the Box, taking its ownership.
@@ -63,10 +66,11 @@ impl<T> Box<T> {
 }
 
 impl<T: ?Sized> Box<T> {
-	/// Creates a new instance from a raw pointer. The newly created Box takes the ownership of the
-	/// pointer.
-	/// The given pointer must be an address to a region of memory allocated with the memory
-	/// allocator since its the allocator that the Box will use to free it.
+	/// Creates a new instance from a raw pointer. The newly created Box takes
+	/// the ownership of the pointer.
+	/// The given pointer must be an address to a region of memory allocated
+	/// with the memory allocator since its the allocator that the Box will use
+	/// to free it.
 	pub unsafe fn from_raw(ptr: *mut T) -> Self {
 		Self {
 			ptr: NonNull::new(ptr).unwrap(),

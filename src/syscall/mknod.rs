@@ -1,16 +1,16 @@
 //! The `mknod` system call allows to create a new node on a filesystem.
 
 use crate::device::id;
-use crate::errno::Errno;
 use crate::errno;
-use crate::file::FileContent;
-use crate::file::FileType;
+use crate::errno::Errno;
+use crate::file;
 use crate::file::path::Path;
 use crate::file::vfs;
-use crate::file;
-use crate::process::Process;
+use crate::file::FileContent;
+use crate::file::FileType;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::regs::Regs;
+use crate::process::Process;
 use crate::util::FailableClone;
 
 /// The implementation of the `getuid` syscall.
@@ -60,8 +60,14 @@ pub fn mknod(regs: &Regs) -> Result<i32, Errno> {
 		FileType::Regular => FileContent::Regular,
 		FileType::Fifo => FileContent::Fifo,
 		FileType::Socket => FileContent::Socket,
-		FileType::BlockDevice => FileContent::BlockDevice { major, minor },
-		FileType::CharDevice => FileContent::CharDevice { major, minor },
+		FileType::BlockDevice => FileContent::BlockDevice {
+			major,
+			minor,
+		},
+		FileType::CharDevice => FileContent::CharDevice {
+			major,
+			minor,
+		},
 
 		_ => return Err(errno!(EPERM)),
 	};

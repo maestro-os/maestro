@@ -1,4 +1,5 @@
-//! The `getdents` system call allows to get the list of entries in a given directory.
+//! The `getdents` system call allows to get the list of entries in a given
+//! directory.
 
 use crate::errno::Errno;
 use crate::file::open_file::FDTarget;
@@ -20,8 +21,8 @@ struct LinuxDirent {
 	/// Length of this entry.
 	d_reclen: u16,
 	/// Filename (null-terminated).
-	/// The filename is immediately followed by a zero padding byte, then a byte indicating the
-	/// type of the entry.
+	/// The filename is immediately followed by a zero padding byte, then a byte
+	/// indicating the type of the entry.
 	d_name: [u8; 0],
 }
 

@@ -1,6 +1,6 @@
 //! This module handles device and buses.
-//! A device file is an interface with a device of the system, which can be internal or external,
-//! or even virtual such as a TTY.
+//! A device file is an interface with a device of the system, which can be
+//! internal or external, or even virtual such as a TTY.
 
 pub mod bar;
 pub mod bus;
@@ -14,17 +14,14 @@ pub mod serial;
 pub mod storage;
 pub mod tty;
 
-use core::ffi::c_void;
-use core::fmt;
 use crate::device::manager::DeviceManager;
 use crate::errno::Errno;
+use crate::file;
+use crate::file::path::Path;
+use crate::file::vfs;
 use crate::file::FileContent;
 use crate::file::Mode;
-use crate::file::vfs;
-use crate::file::path::Path;
-use crate::file;
 use crate::process::mem_space::MemSpace;
-use crate::util::FailableClone;
 use crate::util::boxed::Box;
 use crate::util::container::vec::Vec;
 use crate::util::io::IO;
@@ -32,6 +29,9 @@ use crate::util::lock::Mutex;
 use crate::util::lock::MutexGuard;
 use crate::util::ptr::IntSharedPtr;
 use crate::util::ptr::SharedPtr;
+use crate::util::FailableClone;
+use core::ffi::c_void;
+use core::fmt;
 use keyboard::KeyboardManager;
 use storage::StorageManager;
 
@@ -56,8 +56,8 @@ impl fmt::Display for DeviceType {
 /// Trait providing a interface for device I/O.
 pub trait DeviceHandle: IO {
 	/// Performs an ioctl operation on the device.
-	/// `mem_space` is the memory space on which pointers are to be dereferenced.
-	/// `request` is the ID of the request to perform.
+	/// `mem_space` is the memory space on which pointers are to be
+	/// dereferenced. `request` is the ID of the request to perform.
 	/// `argp` is a pointer to the argument.
 	fn ioctl(
 		&mut self,
@@ -67,8 +67,8 @@ pub trait DeviceHandle: IO {
 	) -> Result<u32, Errno>;
 }
 
-/// Structure representing a device, either a block device or a char device. Each device has a
-/// major and a minor number.
+/// Structure representing a device, either a block device or a char device.
+/// Each device has a major and a minor number.
 pub struct Device {
 	/// The major number.
 	major: u32,
@@ -154,10 +154,10 @@ impl Device {
 	}
 
 	// TODO Put file creation on the userspace side?
-	/// Creates the device file associated with the structure. If the file already exist, the
-	/// function does nothing.
-	/// The function takes a mutex guard because it needs to unlock the device in order to create the
-	/// file without a deadlock.
+	/// Creates the device file associated with the structure. If the file
+	/// already exist, the function does nothing.
+	/// The function takes a mutex guard because it needs to unlock the device
+	/// in order to create the file without a deadlock.
 	pub fn create_file(guard: MutexGuard<Device, true>) -> Result<(), Errno> {
 		let dev = guard.get_mut();
 
@@ -203,7 +203,8 @@ impl Device {
 		Ok(())
 	}
 
-	/// If exists, removes the device file. iF the file doesn't exist, the function does nothing.
+	/// If exists, removes the device file. iF the file doesn't exist, the
+	/// function does nothing.
 	pub fn remove_file(&mut self) -> Result<(), Errno> {
 		let mutex = vfs::get();
 		let guard = mutex.lock();
@@ -249,8 +250,8 @@ static BLOCK_DEVICES: Mutex<Vec<SharedPtr<Device>>> = Mutex::new(Vec::new());
 /// The list of registered block devices.
 static CHAR_DEVICES: Mutex<Vec<SharedPtr<Device>>> = Mutex::new(Vec::new());
 
-/// Registers the given device. If the minor/major number is already used, the function fails.
-/// The function *doesn't* create the device file.
+/// Registers the given device. If the minor/major number is already used, the
+/// function fails. The function *doesn't* create the device file.
 pub fn register_device(device: Device) -> Result<(), Errno> {
 	let guard = match device.get_type() {
 		DeviceType::Block => BLOCK_DEVICES.lock(),
@@ -274,8 +275,8 @@ pub fn register_device(device: Device) -> Result<(), Errno> {
 
 // TODO Function to remove a device
 
-/// Returns a mutable reference to the device with the given major number, minor number and type.
-/// If the device doesn't exist, the function returns None.
+/// Returns a mutable reference to the device with the given major number, minor
+/// number and type. If the device doesn't exist, the function returns None.
 pub fn get_device(type_: DeviceType, major: u32, minor: u32) -> Option<SharedPtr<Device>> {
 	let guard = match type_ {
 		DeviceType::Block => BLOCK_DEVICES.lock(),

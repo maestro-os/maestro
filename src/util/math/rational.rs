@@ -1,4 +1,5 @@
-//! A rational number is a number which can be represented as the fraction of two integers: `a / b`
+//! A rational number is a number which can be represented as the fraction of
+//! two integers: `a / b`
 
 use crate::util::math;
 use core::cmp::Ordering;
@@ -27,7 +28,10 @@ pub struct Rational {
 impl Rational {
 	/// Creates an instance from a given integer `n`.
 	pub const fn from_integer(n: i64) -> Self {
-		Self { a: n, b: 1 }
+		Self {
+			a: n,
+			b: 1,
+		}
 	}
 
 	/// Returns the numerator of the number.

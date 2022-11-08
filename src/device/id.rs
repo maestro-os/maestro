@@ -28,8 +28,8 @@ pub fn makedev(major: u32, minor: u32) -> u64 {
 		| (((major & !0xfff) as u64) << 32)) as _
 }
 
-/// Structure representing a block of minor numbers. The structure is associated with a unique
-/// major number, and it can allocate every minor numbers with it.
+/// Structure representing a block of minor numbers. The structure is associated
+/// with a unique major number, and it can allocate every minor numbers with it.
 pub struct MajorBlock {
 	/// The device type.
 	device_type: DeviceType,
@@ -62,8 +62,8 @@ impl MajorBlock {
 	}
 
 	/// Allocates a minor number on the current major number block.
-	/// If `minor` is not None, the function shall allocate the given minor number.
-	/// If the allocation fails, the function returns an Err.
+	/// If `minor` is not None, the function shall allocate the given minor
+	/// number. If the allocation fails, the function returns an Err.
 	pub fn alloc_minor(&mut self, minor: Option<u32>) -> Result<u32, Errno> {
 		self.allocator.alloc(minor)
 	}
@@ -87,8 +87,8 @@ static CHAR_MAJOR_ALLOCATOR: Mutex<Option<IDAllocator>> = Mutex::new(None);
 
 /// Allocates a major number.
 /// `device_type` is the type of device for the major block to be allocated.
-/// If `major` is not None, the function shall allocate the specific given major number.
-/// If the allocation fails, the function returns an Err.
+/// If `major` is not None, the function shall allocate the specific given major
+/// number. If the allocation fails, the function returns an Err.
 pub fn alloc_major(device_type: DeviceType, major: Option<u32>) -> Result<MajorBlock, Errno> {
 	let guard = match device_type {
 		DeviceType::Block => BLOCK_MAJOR_ALLOCATOR.lock(),
@@ -107,7 +107,8 @@ pub fn alloc_major(device_type: DeviceType, major: Option<u32>) -> Result<MajorB
 }
 
 /// Frees the given major block `block`.
-/// **WARNING**: This function shouldn't be called directly, but only from the MajorBlock itself.
+/// **WARNING**: This function shouldn't be called directly, but only from the
+/// MajorBlock itself.
 fn free_major(block: &mut MajorBlock) {
 	let guard = match block.get_device_type() {
 		DeviceType::Block => BLOCK_MAJOR_ALLOCATOR.lock(),

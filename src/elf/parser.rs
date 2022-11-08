@@ -16,10 +16,10 @@ pub struct ELFParser<'a> {
 }
 
 impl<'a> ELFParser<'a> {
-	/// Returns the structure at offset `off`. The generic argument `T` tells which structure to
-	/// return.
-	/// If the image is invalid or if the offset is outside of the image, the behaviour is
-	/// undefined.
+	/// Returns the structure at offset `off`. The generic argument `T` tells
+	/// which structure to return.
+	/// If the image is invalid or if the offset is outside of the image, the
+	/// behaviour is undefined.
 	pub fn get_struct<T>(&self, off: usize) -> &T {
 		debug_assert!(off < self.image.len());
 
@@ -126,9 +126,12 @@ impl<'a> ELFParser<'a> {
 	}
 
 	/// Creates a new instance for the given image.
-	/// The function checks if the image is valid. If not, the function retuns an error.
+	/// The function checks if the image is valid. If not, the function retuns
+	/// an error.
 	pub fn new(image: &'a [u8]) -> Result<Self, Errno> {
-		let p = Self { image };
+		let p = Self {
+			image,
+		};
 
 		p.check_image()?;
 		Ok(p)
@@ -158,8 +161,8 @@ impl<'a> ELFParser<'a> {
 	}
 
 	/// Calls the given function `f` for each section in the image.
-	/// The first argument of the function is the offset of the section header in the image.
-	/// The second argument is a reference to the section header.
+	/// The first argument of the function is the offset of the section header
+	/// in the image. The second argument is a reference to the section header.
 	/// If the function returns `false`, the loop breaks.
 	pub fn foreach_sections<F: FnMut(usize, &ELF32SectionHeader) -> bool>(&self, mut f: F) {
 		let ehdr = self.get_header();
@@ -177,10 +180,10 @@ impl<'a> ELFParser<'a> {
 		}
 	}
 
-	/// Iterates on every relocations that don't have an addend and calls the function `f` for
-	/// each.
-	/// The first argument of the closure is the header of the section containing the relocation
-	/// and the second argument is the relocation.
+	/// Iterates on every relocations that don't have an addend and calls the
+	/// function `f` for each.
+	/// The first argument of the closure is the header of the section
+	/// containing the relocation and the second argument is the relocation.
 	/// If the function returns `false`, the loop breaks.
 	pub fn foreach_rel<F: FnMut(&ELF32SectionHeader, &ELF32Rel) -> bool>(&self, mut f: F) {
 		self.foreach_sections(|_, section| {
@@ -205,10 +208,10 @@ impl<'a> ELFParser<'a> {
 		});
 	}
 
-	/// Iterates on every relocations that have an addend and calls the function `f` for each.
-	/// The first argument of the closure is the header of the section containing the relocation
-	/// and the second argument is the relocation.
-	/// If the function returns `false`, the loop breaks.
+	/// Iterates on every relocations that have an addend and calls the function
+	/// `f` for each. The first argument of the closure is the header of the
+	/// section containing the relocation and the second argument is the
+	/// relocation. If the function returns `false`, the loop breaks.
 	pub fn foreach_rela<F: FnMut(&ELF32SectionHeader, &ELF32Rela) -> bool>(&self, mut f: F) {
 		self.foreach_sections(|_, section| {
 			if section.sh_type != SHT_RELA {
@@ -233,8 +236,8 @@ impl<'a> ELFParser<'a> {
 	}
 
 	/// Calls the given function `f` for each symbol in the image.
-	/// The first argument of the function is the offset of the symbol in the image.
-	/// The second argument is a reference to the symbol.
+	/// The first argument of the function is the offset of the symbol in the
+	/// image. The second argument is a reference to the symbol.
 	/// If the function returns `false`, the loop breaks.
 	pub fn foreach_symbol<F: FnMut(usize, &ELF32Sym) -> bool>(&self, mut f: F) {
 		self.foreach_sections(|_, section| {
@@ -242,8 +245,8 @@ impl<'a> ELFParser<'a> {
 				let begin = section.sh_offset;
 				let mut i = 0;
 
-				// TODO When checking the image, check the size of the section is a multiple of the
-				// size of a symbol
+				// TODO When checking the image, check the size of the section is a multiple of
+				// the size of a symbol
 				while i < section.sh_size {
 					let off = begin as usize + i as usize;
 					let sym = unsafe {
@@ -263,8 +266,8 @@ impl<'a> ELFParser<'a> {
 		});
 	}
 
-	/// Returns the section with index `section_index`. If the section doesn't exist, the function
-	/// return None.
+	/// Returns the section with index `section_index`. If the section doesn't
+	/// exist, the function return None.
 	pub fn get_section_by_index(&self, section_index: u32) -> Option<&ELF32SectionHeader> {
 		let ehdr = self.get_header();
 		if section_index >= ehdr.e_shnum as u32 {
@@ -275,8 +278,8 @@ impl<'a> ELFParser<'a> {
 		Some(self.get_struct::<ELF32SectionHeader>(section_off))
 	}
 
-	/// Returns the section with name `name`. If the section doesn't exist, the function returns
-	/// None.
+	/// Returns the section with name `name`. If the section doesn't exist, the
+	/// function returns None.
 	pub fn get_section_by_name(&self, name: &str) -> Option<&ELF32SectionHeader> {
 		let shstr_off = self.get_shstr_offset();
 		let mut r = None;
@@ -295,8 +298,8 @@ impl<'a> ELFParser<'a> {
 		Some(self.get_struct::<ELF32SectionHeader>(r?))
 	}
 
-	/// Returns the symbol with the given section and symbol index. If the symbol doesn't exist,
-	/// the function returns None.
+	/// Returns the symbol with the given section and symbol index. If the
+	/// symbol doesn't exist, the function returns None.
 	/// `section` is the symbol's section.
 	/// `symbol_index` is the symbol index.
 	pub fn get_symbol_by_index(
@@ -315,8 +318,8 @@ impl<'a> ELFParser<'a> {
 		Some(self.get_struct::<ELF32Sym>(sym_off))
 	}
 
-	/// Returns the symbol with name `name`. If the symbol doesn't exist, the function returns
-	/// None.
+	/// Returns the symbol with name `name`. If the symbol doesn't exist, the
+	/// function returns None.
 	pub fn get_symbol_by_name(&self, name: &str) -> Option<&ELF32Sym> {
 		let strtab_section = self.get_section_by_name(".strtab")?; // TODO Use sh_link
 		let mut r = None;
@@ -335,8 +338,8 @@ impl<'a> ELFParser<'a> {
 		Some(self.get_struct::<ELF32Sym>(r?))
 	}
 
-	/// Returns the name of the symbol `sym` using the string table section `strtab`. If the symbol
-	/// name doesn't exist, the function returns None.
+	/// Returns the name of the symbol `sym` using the string table section
+	/// `strtab`. If the symbol name doesn't exist, the function returns None.
 	pub fn get_symbol_name(&self, strtab: &ELF32SectionHeader, sym: &ELF32Sym) -> Option<&[u8]> {
 		if sym.st_name != 0 {
 			let begin_off = (strtab.sh_offset + sym.st_name) as usize;

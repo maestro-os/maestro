@@ -1,6 +1,6 @@
 //! This modules handles kernel logging.
-//! If the logger is silent, it will not print the logs on the screen but it will keep it in memory
-//! anyways.
+//! If the logger is silent, it will not print the logs on the screen but it
+//! will keep it in memory anyways.
 
 use crate::tty;
 use crate::util::lock::IntMutex;
@@ -78,7 +78,8 @@ impl Logger {
 		}
 	}
 
-	/// Returns a reference to a slice containing the logs stored into the loggers's buffer.
+	/// Returns a reference to a slice containing the logs stored into the
+	/// loggers's buffer.
 	pub fn get_content(&self) -> &[u8] {
 		&self.buff
 	}
@@ -100,8 +101,9 @@ impl Logger {
 		self.write_head = end;
 	}
 
-	/// Pops at least `n` characters from the buffer. If the popping `n` characters result in
-	/// cutting a line, the function shall pop the full line.
+	/// Pops at least `n` characters from the buffer. If the popping `n`
+	/// characters result in cutting a line, the function shall pop the full
+	/// line.
 	fn pop(&mut self, n: usize) {
 		let read_new = (self.read_head + n) % self.buff.len();
 		if read_new >= self.write_head && read_new < self.read_head {

@@ -1,5 +1,5 @@
-//! The `socketpair` system call creates a pair of file descriptor to an unnamed socket which can
-//! be used for IPC (Inter-Process Communication).
+//! The `socketpair` system call creates a pair of file descriptor to an unnamed
+//! socket which can be used for IPC (Inter-Process Communication).
 
 use crate::errno;
 use crate::errno::Errno;

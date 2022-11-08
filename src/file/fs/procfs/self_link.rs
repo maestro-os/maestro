@@ -1,4 +1,5 @@
-//! This module implements the `self` symlink, which points to the current process's directory.
+//! This module implements the `self` symlink, which points to the current
+//! process's directory.
 
 use crate::errno::Errno;
 use crate::file;

@@ -1,4 +1,5 @@
-//! The `time` syscall allows to retrieve the number of seconds elapsed since the UNIX Epoch.
+//! The `time` syscall allows to retrieve the number of seconds elapsed since
+//! the UNIX Epoch.
 
 use crate::errno::Errno;
 use crate::process::mem_space::ptr::SyscallPtr;

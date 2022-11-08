@@ -41,8 +41,8 @@ const STORAGE_MODE: Mode = 0o660;
 /// The maximum number of partitions in a disk.
 const MAX_PARTITIONS: usize = 16;
 
-/// Trait representing a storage interface. A storage block is the atomic unit for I/O access on
-/// the storage device.
+/// Trait representing a storage interface. A storage block is the atomic unit
+/// for I/O access on the storage device.
 pub trait StorageInterface {
 	/// Returns the size of the storage blocks in bytes.
 	/// This value must not change.
@@ -57,11 +57,13 @@ pub trait StorageInterface {
 		self.get_block_size() * self.get_blocks_count()
 	}
 
-	/// Reads `size` blocks from storage at block offset `offset`, writing the data to `buf`.
-	/// If the offset and size are out of bounds, the function returns an error.
+	/// Reads `size` blocks from storage at block offset `offset`, writing the
+	/// data to `buf`. If the offset and size are out of bounds, the function
+	/// returns an error.
 	fn read(&mut self, buf: &mut [u8], offset: u64, size: u64) -> Result<(), Errno>;
-	/// Writes `size` blocks to storage at block offset `offset`, reading the data from `buf`.
-	/// If the offset and size are out of bounds, the function returns an error.
+	/// Writes `size` blocks to storage at block offset `offset`, reading the
+	/// data from `buf`. If the offset and size are out of bounds, the function
+	/// returns an error.
 	fn write(&mut self, buf: &[u8], offset: u64, size: u64) -> Result<(), Errno>;
 
 	// Unit testing is done through ramdisk testing
@@ -196,9 +198,10 @@ pub struct StorageDeviceHandle {
 }
 
 impl StorageDeviceHandle {
-	/// Creates a new instance for the given storage interface and the given partition number.
-	/// `interface` is the storage interface.
-	/// `partition` is the partition. If None, the handle works on the whole storage device.
+	/// Creates a new instance for the given storage interface and the given
+	/// partition number. `interface` is the storage interface.
+	/// `partition` is the partition. If None, the handle works on the whole
+	/// storage device.
 	pub fn new(interface: WeakPtr<dyn StorageInterface>, partition: Option<Partition>) -> Self {
 		Self {
 			interface,
@@ -307,8 +310,8 @@ impl StorageManager {
 		})
 	}
 
-	// TODO Handle the case where there is more devices that the number of devices that can be
-	// handled in the range of minor numbers
+	// TODO Handle the case where there is more devices that the number of devices
+	// that can be handled in the range of minor numbers
 	// TODO When failing, remove previously registered devices
 	/// Adds a storage device.
 	fn add(&mut self, storage: SharedPtr<dyn StorageInterface>) -> Result<(), Errno> {
@@ -320,7 +323,7 @@ impl StorageManager {
 		// The prefix is the path of the main device file
 		let mut prefix = String::from(b"/dev/sd")?;
 		prefix.push(b'a' + (storage_id as u8))?; // TODO Handle if out of the alphabet
-		// The path of the main device file
+										 // The path of the main device file
 		let main_path = Path::from_str(prefix.as_bytes(), false)?;
 
 		// Creating the main device file
@@ -335,7 +338,8 @@ impl StorageManager {
 		)?;
 		device::register_device(main_device)?;
 
-		// Creating device files for every partitions (within the limit of MAX_PARTITIONS)
+		// Creating device files for every partitions (within the limit of
+		// MAX_PARTITIONS)
 		{
 			let storage_guard = storage.lock();
 			let s = storage_guard.get_mut();
@@ -386,8 +390,8 @@ impl StorageManager {
 
 	// TODO Test with several blocks at a time
 	/// Tests the given interface with the given interface `interface`.
-	/// `seed` is the seed for pseudo random generation. The function will set this variable to
-	/// another value for the next iteration.
+	/// `seed` is the seed for pseudo random generation. The function will set
+	/// this variable to another value for the next iteration.
 	#[cfg(config_debug_storagetest)]
 	fn test_interface(interface: &mut dyn StorageInterface, seed: u32) -> bool {
 		let block_size = interface.get_block_size();
@@ -423,7 +427,8 @@ impl StorageManager {
 	}
 
 	/// Performs testing of storage devices and drivers.
-	/// If every tests pass, the function returns `true`. Else, it returns `false`.
+	/// If every tests pass, the function returns `true`. Else, it returns
+	/// `false`.
 	#[cfg(config_debug_storagetest)]
 	fn perform_test(&mut self) -> bool {
 		let mut seed = 42;
@@ -460,8 +465,8 @@ impl StorageManager {
 	}
 
 	/// Tests every storage drivers on every storage devices.
-	/// The execution of this function removes all the data on every connected writable disks, so
-	/// it must be used carefully.
+	/// The execution of this function removes all the data on every connected
+	/// writable disks, so it must be used carefully.
 	#[cfg(config_debug_storagetest)]
 	pub fn test(&mut self) {
 		crate::println!("Running disks tests... ({} devices)", self.interfaces.len());

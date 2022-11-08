@@ -1,5 +1,5 @@
-//! This module implements the `user_desc` structure, which is used in userspace to specify the
-//! value for a descriptor, either a local or global descriptor.
+//! This module implements the `user_desc` structure, which is used in userspace
+//! to specify the value for a descriptor, either a local or global descriptor.
 
 use crate::gdt;
 use core::ffi::c_void;

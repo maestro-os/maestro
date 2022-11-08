@@ -1,14 +1,15 @@
 //! This file handles kernel panics.
-//! A kernel panic occurs when an error is raised that the kernel cannot recover from. This is an
-//! undesirable state which requires to reboot the host machine.
+//! A kernel panic occurs when an error is raised that the kernel cannot recover
+//! from. This is an undesirable state which requires to reboot the host
+//! machine.
 
 use crate::cpu;
 #[cfg(config_debug_debug)]
 use crate::debug;
 use crate::process::regs::Regs;
 use core::ffi::c_void;
-use core::fmt::Arguments;
 use core::fmt;
+use core::fmt::Arguments;
 #[cfg(config_debug_debug)]
 use core::ptr::null_mut;
 
@@ -56,8 +57,8 @@ pub fn kernel_panic_(
 	crate::halt();
 }
 
-/// Same as the release version, except the function also prints the kernel's callstack.
-/// `reason` is the reason of the kernel panic.
+/// Same as the release version, except the function also prints the kernel's
+/// callstack. `reason` is the reason of the kernel panic.
 /// `regs` is the registers state.
 /// `file` is the file in which the kernel panic was triggerd.
 /// `line` is the line at which the kernel panic was triggerd.
@@ -105,7 +106,8 @@ pub fn rust_panic<'a>(args: &'a fmt::Arguments<'a>) -> ! {
 	crate::halt();
 }
 
-/// Same as the release version, except the function also prints the kernel's callstack.
+/// Same as the release version, except the function also prints the kernel's
+/// callstack.
 #[cfg(config_debug_debug)]
 pub fn rust_panic<'a>(args: &'a fmt::Arguments<'a>) -> ! {
 	crate::cli!();

@@ -1,12 +1,12 @@
 //! The `renameat2` allows to rename a file.
 
 use crate::errno::Errno;
-use crate::file::FileType;
-use crate::file::vfs;
 use crate::file;
-use crate::process::Process;
+use crate::file::vfs;
+use crate::file::FileType;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::regs::Regs;
+use crate::process::Process;
 use crate::types::c_int;
 
 /// Flag: Don't replace new path if it exists. Return an error instead.
@@ -68,8 +68,8 @@ pub fn renameat2(regs: &Regs) -> Result<i32, Errno> {
 		// TODO On fail, undo
 
 		// Create link at new location
-		// The `..` entry is already updated by the file system since having the same directory in
-		// several locations is not allowed
+		// The `..` entry is already updated by the file system since having the same
+		// directory in several locations is not allowed
 		vfs.create_link(old, new_parent, new_name, uid, gid)?;
 
 		if old.get_type() != FileType::Directory {

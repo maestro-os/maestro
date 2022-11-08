@@ -1,5 +1,6 @@
-//! The `sigreturn` system call is used whenever the process finished executing a signal handler.
-//! The system call restores the previous state of the process to allow normal execution.
+//! The `sigreturn` system call is used whenever the process finished executing
+//! a signal handler. The system call restores the previous state of the process
+//! to allow normal execution.
 
 use crate::errno::Errno;
 use crate::process::regs::Regs;

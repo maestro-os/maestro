@@ -1,12 +1,12 @@
-//! The `unlink` system call deletes the given file from its filesystem. If no link remain to the
-//! inode, the function also removes the inode.
+//! The `unlink` system call deletes the given file from its filesystem. If no
+//! link remain to the inode, the function also removes the inode.
 
 use crate::errno::Errno;
 use crate::file::path::Path;
 use crate::file::vfs;
-use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::regs::Regs;
+use crate::process::Process;
 
 /// The implementation of the `unlink` syscall.
 pub fn unlink(regs: &Regs) -> Result<i32, Errno> {

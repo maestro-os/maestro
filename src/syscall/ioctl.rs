@@ -1,4 +1,5 @@
-//! The ioctl syscall allows to control a device represented by a file descriptor.
+//! The ioctl syscall allows to control a device represented by a file
+//! descriptor.
 
 use crate::errno;
 use crate::errno::Errno;
@@ -12,11 +13,12 @@ use core::ffi::c_void;
 pub const TCGETS: u32 = 0x00005401;
 /// ioctl request: Sets the serial port settings. Making the change immediately.
 pub const TCSETS: u32 = 0x00005402;
-/// ioctl request: Sets the serial port settings. Making the change only when all currently written
-/// data has been transmitted. At this points, any received data is discarded.
+/// ioctl request: Sets the serial port settings. Making the change only when
+/// all currently written data has been transmitted. At this points, any
+/// received data is discarded.
 pub const TCSETSW: u32 = 0x00005403;
-/// ioctl request: Sets the serial port settings. Making the change only when all currently written
-/// data has been transmitted.
+/// ioctl request: Sets the serial port settings. Making the change only when
+/// all currently written data has been transmitted.
 pub const TCSETSF: u32 = 0x00005404;
 /// ioctl request: Get the foreground process group ID on the terminal.
 pub const TIOCGPGRP: u32 = 0x0000540f;

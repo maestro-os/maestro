@@ -1,5 +1,5 @@
-//! A storage device can be divided into several blocks called partitions, allowing for instance to
-//! install several systems on the same machine.
+//! A storage device can be divided into several blocks called partitions,
+//! allowing for instance to install several systems on the same machine.
 
 mod gpt;
 mod mbr;
@@ -20,9 +20,13 @@ pub struct Partition {
 }
 
 impl Partition {
-	/// Creates a new instance with the given partition offset `offset` and size `size`.
+	/// Creates a new instance with the given partition offset `offset` and size
+	/// `size`.
 	pub fn new(offset: u64, size: u64) -> Self {
-		Self { offset, size }
+		Self {
+			offset,
+			size,
+		}
 	}
 
 	/// Returns the offset of the first sector of the partition.
@@ -41,7 +45,8 @@ impl Partition {
 /// Trait representing a partition table.
 pub trait Table {
 	/// Reads the partition table from the given storage interface `storage`.
-	/// If the partition table isn't present on the storage interface, the function returns None.
+	/// If the partition table isn't present on the storage interface, the
+	/// function returns None.
 	fn read(storage: &mut dyn StorageInterface) -> Result<Option<Self>, Errno>
 	where
 		Self: Sized;
@@ -50,7 +55,8 @@ pub trait Table {
 	fn get_type(&self) -> &'static str;
 
 	/// Reads the partitions list.
-	/// `storage` is the storage interface on which the partitions are to be read.
+	/// `storage` is the storage interface on which the partitions are to be
+	/// read.
 	fn get_partitions(&self, storage: &mut dyn StorageInterface) -> Result<Vec<Partition>, Errno>;
 }
 

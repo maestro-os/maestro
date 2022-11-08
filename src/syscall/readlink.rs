@@ -1,16 +1,16 @@
 //! The `readlink` syscall allows to read the target of a symbolic link.
 
-use core::cmp::min;
 use crate::errno::Errno;
-use crate::file::FileContent;
 use crate::file::path::Path;
 use crate::file::vfs;
-use crate::process::Process;
+use crate::file::FileContent;
 use crate::process::mem_space::ptr::SyscallSlice;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::regs::Regs;
-use crate::util::FailableClone;
+use crate::process::Process;
 use crate::util;
+use crate::util::FailableClone;
+use core::cmp::min;
 
 /// The implementation of the `readlink` syscall.
 pub fn readlink(regs: &Regs) -> Result<i32, Errno> {

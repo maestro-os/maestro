@@ -1,17 +1,18 @@
-//! The cmdline node allows to retrieve the list of command line arguments of the process.
+//! The cmdline node allows to retrieve the list of command line arguments of
+//! the process.
 
-use core::cmp::min;
 use crate::errno::Errno;
+use crate::file::fs::kernfs::node::KernFSNode;
 use crate::file::FileContent;
 use crate::file::Gid;
 use crate::file::Mode;
 use crate::file::Uid;
-use crate::file::fs::kernfs::node::KernFSNode;
-use crate::process::Process;
 use crate::process::pid::Pid;
+use crate::process::Process;
 use crate::util::container::string::String;
 use crate::util::io::IO;
 use crate::util::ptr::cow::Cow;
+use core::cmp::min;
 
 /// Structure representing the cmdline node of the procfs.
 pub struct Cmdline {

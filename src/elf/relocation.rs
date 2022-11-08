@@ -21,11 +21,12 @@ pub trait Relocation {
 	/// `base_addr` is the base address at which the ELF is loaded.
 	/// `rel_section` is the section containing the relocation.
 	/// `get_sym` is a closure returning a symbol from its name.
-	/// `get_sym_val` is a closure returning the value of a symbol. The arguments are:
+	/// `get_sym_val` is a closure returning the value of a symbol. The
+	/// arguments are:
 	///     - The index of the section containing the symbol.
 	///     - The index of the symbol in the section.
-	///     If the symbol is undefined, the function may resolve a symbol from another ELF.
-	/// If the relocation is invalid, the behaviour is undefined.
+	///     If the symbol is undefined, the function may resolve a symbol from
+	/// another ELF. If the relocation is invalid, the behaviour is undefined.
 	unsafe fn perform<'a, F0, F1>(
 		&self,
 		base_addr: *const c_void,

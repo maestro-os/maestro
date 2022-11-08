@@ -1,23 +1,24 @@
-//! The open system call allows a process to open a file and get a file descriptor.
+//! The open system call allows a process to open a file and get a file
+//! descriptor.
 
-use crate::errno::Errno;
 use crate::errno;
+use crate::errno::Errno;
+use crate::file;
+use crate::file::open_file;
+use crate::file::open_file::FDTarget;
+use crate::file::path::Path;
+use crate::file::vfs;
 use crate::file::File;
 use crate::file::FileContent;
 use crate::file::FileType;
 use crate::file::Gid;
 use crate::file::Mode;
 use crate::file::Uid;
-use crate::file::open_file::FDTarget;
-use crate::file::open_file;
-use crate::file::path::Path;
-use crate::file::vfs;
-use crate::file;
-use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::regs::Regs;
-use crate::util::FailableClone;
+use crate::process::Process;
 use crate::util::ptr::SharedPtr;
+use crate::util::FailableClone;
 
 /// Mask of status flags to be kept by an open file description.
 pub const STATUS_FLAGS_MASK: i32 = !(open_file::O_CLOEXEC
@@ -31,10 +32,11 @@ pub const STATUS_FLAGS_MASK: i32 = !(open_file::O_CLOEXEC
 // TODO Implement all flags
 
 /// Returns the file at the given path `path`.
-/// If the file doesn't exist and the O_CREAT flag is set, the file is created, then the function
-/// returns it. If the flag is not set, the function returns an error with the appropriate errno.
-/// If the file is to be created, the function uses `mode` to set its permissions and `uid and
-/// `gid` to set the user ID and group ID.
+/// If the file doesn't exist and the O_CREAT flag is set, the file is created,
+/// then the function returns it. If the flag is not set, the function returns
+/// an error with the appropriate errno. If the file is to be created, the
+/// function uses `mode` to set its permissions and `uid and `gid` to set the
+/// user ID and group ID.
 fn get_file(
 	path: Path,
 	flags: i32,
@@ -60,13 +62,8 @@ fn get_file(
 		let parent_guard = parent_mutex.lock();
 		let parent = parent_guard.get_mut();
 
-		let file_result = vfs.get_file_from_parent(
-			parent,
-			name.failable_clone()?,
-			uid,
-			gid,
-			follow_links,
-		);
+		let file_result =
+			vfs.get_file_from_parent(parent, name.failable_clone()?, uid, gid, follow_links);
 		match file_result {
 			// If the file is found, return it
 			Ok(file) => Ok(file),
@@ -144,9 +141,9 @@ pub fn open_(pathname: SyscallString, flags: i32, mode: file::Mode) -> Result<i3
 		Err(e) => {
 			proc.close_fd(fd.get_id())?;
 			return Err(e);
-		},
+		}
 
-		_ => {},
+		_ => {}
 	}
 
 	Ok(fd.get_id() as _)

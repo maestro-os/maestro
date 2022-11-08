@@ -1,5 +1,5 @@
-//! The `signal` syscall allows to specify a pointer to a function to be called when a specific
-//! signal is received by the current process.
+//! The `signal` syscall allows to specify a pointer to a function to be called
+//! when a specific signal is received by the current process.
 
 use crate::errno;
 use crate::errno::Errno;

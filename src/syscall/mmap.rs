@@ -10,7 +10,6 @@ use crate::syscall::mmap::mem_space::MapConstraint;
 use crate::util;
 use crate::util::math;
 use core::ffi::c_void;
-use core::intrinsics::wrapping_add;
 
 /// Data can be read.
 const PROT_READ: i32 = 0b001;
@@ -43,7 +42,8 @@ fn get_flags(flags: i32, prot: i32) -> u8 {
 }
 
 /// Performs the `mmap` system call.
-/// This function takes a `u64` for `offset` to allow implementing the `mmap2` syscall.
+/// This function takes a `u64` for `offset` to allow implementing the `mmap2`
+/// syscall.
 pub fn do_mmap(
 	addr: *mut c_void,
 	length: usize,
@@ -61,7 +61,7 @@ pub fn do_mmap(
 	let pages = math::ceil_division(length, memory::PAGE_SIZE);
 
 	// Checking for overflow
-	let end = wrapping_add(addr as usize, pages * memory::PAGE_SIZE);
+	let end = (addr as usize).wrapping_add(pages * memory::PAGE_SIZE);
 	if end < addr as usize {
 		return Err(errno!(EINVAL));
 	}

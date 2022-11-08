@@ -1,21 +1,24 @@
-//! x86 virtual memory works with a tree structure. Each element is an array of subelements. The
-//! position of the elements in the arrays allows to tell the virtual address for the mapping.
-//! Under 32 bits, elements are array of 32 bits long words that can contain 1024 entries. The
-//! following elements are available:
+//! x86 virtual memory works with a tree structure. Each element is an array of
+//! subelements. The position of the elements in the arrays allows to tell the
+//! virtual address for the mapping. Under 32 bits, elements are array of 32
+//! bits long words that can contain 1024 entries. The following elements are
+//! available:
 //! - Page directory: The main element, contains page tables
 //! - Page table: Represents a block of 4MB, each entry is a page
 //!
-//! Under 32 bits, pages are 4096 bytes large. Each entries of elements contains the physical
-//! address to the element/page and some flags. The flags can be stored with the address in only
-//! 4 bytes large entries because addresses have to be page-aligned, freeing 12 bits in the entry
-//! for the flags.
+//! Under 32 bits, pages are 4096 bytes large. Each entries of elements contains
+//! the physical address to the element/page and some flags. The flags can be
+//! stored with the address in only 4 bytes large entries because addresses have
+//! to be page-aligned, freeing 12 bits in the entry for the flags.
 //!
-//! For each entries of each elements, the kernel must keep track of how many elements are being
-//! used. This can be done with a simple counter: when an entry is allocated, the counter is
-//! incremented and when an entry is freed, the counter is decremented. When the counter reaches 0,
-//! the element can be freed.
+//! For each entries of each elements, the kernel must keep track of how many
+//! elements are being used. This can be done with a simple counter: when an
+//! entry is allocated, the counter is incremented and when an entry is freed,
+//! the counter is decremented. When the counter reaches 0, the element can be
+//! freed.
 //!
-//! The Page Size Extension (PSE) allows to map 4MB large blocks without using a page table.
+//! The Page Size Extension (PSE) allows to map 4MB large blocks without using a
+//! page table.
 
 use crate::cpu;
 use crate::errno::Errno;
@@ -26,12 +29,11 @@ use crate::util;
 use crate::util::lock::Mutex;
 use crate::util::FailableClone;
 use core::ffi::c_void;
-use core::intrinsics::wrapping_add;
 use core::ptr;
 use core::result::Result;
 
-/// x86 paging flag. If set, prevents the CPU from updating the associated addresses when the TLB
-/// is flushed.
+/// x86 paging flag. If set, prevents the CPU from updating the associated
+/// addresses when the TLB is flushed.
 pub const FLAG_GLOBAL: u32 = 0b100000000;
 /// x86 paging flag. If set, pages are 4 MB long.
 pub const FLAG_PAGE_SIZE: u32 = 0b010000000;
@@ -53,21 +55,23 @@ pub const FLAG_PRESENT: u32 = 0b000000001;
 
 /// Flags mask in a page directory entry.
 pub const FLAGS_MASK: u32 = 0xfff;
-/// Address mask in a page directory entry. The address doesn't need every bytes since it must be
-/// page-aligned.
+/// Address mask in a page directory entry. The address doesn't need every bytes
+/// since it must be page-aligned.
 pub const ADDR_MASK: u32 = !FLAGS_MASK;
 
 /// x86 page fault flag. If set, the page was present.
 pub const PAGE_FAULT_PRESENT: u32 = 0b00001;
-/// x86 page fault flag. If set, the error was caused by a write operation, else the error was
-/// caused by a read operation.
+/// x86 page fault flag. If set, the error was caused by a write operation, else
+/// the error was caused by a read operation.
 pub const PAGE_FAULT_WRITE: u32 = 0b00010;
-/// x86 page fault flag. If set, the page fault was caused by a userspace operation.
+/// x86 page fault flag. If set, the page fault was caused by a userspace
+/// operation.
 pub const PAGE_FAULT_USER: u32 = 0b00100;
-/// x86 page fault flag. If set, one or more page directory entries contain reserved bits which are
-/// set.
+/// x86 page fault flag. If set, one or more page directory entries contain
+/// reserved bits which are set.
 pub const PAGE_FAULT_RESERVED: u32 = 0b01000;
-/// x86 page fault flag. If set, the page fault was caused by an instruction fetch.
+/// x86 page fault flag. If set, the page fault was caused by an instruction
+/// fetch.
 pub const PAGE_FAULT_INSTRUCTION: u32 = 0b10000;
 
 extern "C" {
@@ -82,10 +86,11 @@ extern "C" {
 	pub fn tlb_reload();
 }
 
-/// When editing a virtual memory context, the kernel might edit pages in kernel space. These pages
-/// being shared with every contexts, another context might be modifying the space pages at the
-/// same time.
-/// To prevent this issue, this mutex has to be locked whenever modifying kernel space mappings.
+/// When editing a virtual memory context, the kernel might edit pages in kernel
+/// space. These pages being shared with every contexts, another context might
+/// be modifying the space pages at the same time.
+/// To prevent this issue, this mutex has to be locked whenever modifying kernel
+/// space mappings.
 static GLOBAL_MUTEX: Mutex<()> = Mutex::new(());
 
 /// Tells whether the kernel tables are initialized.
@@ -93,8 +98,8 @@ static mut KERNEL_TABLES_INIT: bool = false;
 /// Array storing kernel space paging tables.
 static mut KERNEL_TABLES: [*mut u32; 256] = [0 as _; 256];
 
-/// Returns the array of kernel space paging tables. If the table is not initialized, the function
-/// initializes it.
+/// Returns the array of kernel space paging tables. If the table is not
+/// initialized, the function initializes it.
 /// The first time this function is called, it is **not** thread safe.
 unsafe fn get_kernel_tables() -> Result<&'static [*mut u32; 256], Errno> {
 	if !KERNEL_TABLES_INIT {
@@ -154,7 +159,8 @@ fn obj_get_ptr(obj: *const u32, index: usize) -> *const u32 {
 	unsafe { obj_ptr.add(index) }
 }
 
-/// Returns a mutable pointer to the object at index `index` of given object `obj`.
+/// Returns a mutable pointer to the object at index `index` of given object
+/// `obj`.
 fn obj_get_mut_ptr(obj: *mut u32, index: usize) -> *mut u32 {
 	debug_assert!(index < 1024);
 	let mut obj_ptr = obj;
@@ -165,12 +171,14 @@ fn obj_get_mut_ptr(obj: *mut u32, index: usize) -> *mut u32 {
 	unsafe { obj_ptr.add(index) }
 }
 
-/// Frees paging object `obj`. The pointer to the object must be a virtual address.
+/// Frees paging object `obj`. The pointer to the object must be a virtual
+/// address.
 fn free_obj(obj: *mut u32) {
 	buddy::free_kernel(obj as _, 0)
 }
 
-/// The structure representing virtual memory context handler for the x86 architecture.
+/// The structure representing virtual memory context handler for the x86
+/// architecture.
 #[derive(Debug)]
 pub struct X86VMem {
 	/// The virtual address to the page directory.
@@ -191,7 +199,8 @@ mod table {
 			if index < 768 {
 				alloc_obj()?
 			} else {
-				// Safe because only one thread is running the first time this function is called
+				// Safe because only one thread is running the first time this function is
+				// called
 				unsafe { get_kernel_table(index - 768)? }
 			}
 		};
@@ -204,8 +213,9 @@ mod table {
 		Ok(())
 	}
 
-	/// Expands a large block into a page table. This function allocates a new page table and fills
-	/// it so that the memory mapping keeps the same behavior.
+	/// Expands a large block into a page table. This function allocates a new
+	/// page table and fills it so that the memory mapping keeps the same
+	/// behavior.
 	pub fn expand(vmem: *mut u32, index: usize) -> Result<(), Errno> {
 		let mut dir_entry_value = obj_get(vmem, index);
 		debug_assert!(dir_entry_value & FLAG_PRESENT != 0);
@@ -224,8 +234,9 @@ mod table {
 		Ok(())
 	}
 
-	// TODO Use a counter instead. Increment it when mapping a page in the table and decrement it
-	// when unmapping. Then return `true` if the counter has the value `0`
+	// TODO Use a counter instead. Increment it when mapping a page in the table and
+	// decrement it when unmapping. Then return `true` if the counter has the value
+	// `0`
 	/// Tells whether the table at index `index` in the page directory is empty.
 	pub fn is_empty(vmem: *mut u32, index: usize) -> bool {
 		debug_assert!(index < 1024);
@@ -305,7 +316,8 @@ impl X86VMem {
 		}
 	}
 
-	/// Initializes a new page directory. The kernel memory is mapped into the context by default.
+	/// Initializes a new page directory. The kernel memory is mapped into the
+	/// context by default.
 	pub fn new() -> Result<Self, Errno> {
 		let vmem = Self {
 			page_dir: alloc_obj()?,
@@ -322,17 +334,18 @@ impl X86VMem {
 		Ok(vmem)
 	}
 
-	/// Returns the index of the element corresponding to the given virtual address `ptr` for
-	/// element at level `level` in the tree. The level represents the depth in the tree. `0` is
-	/// the deepest.
+	/// Returns the index of the element corresponding to the given virtual
+	/// address `ptr` for element at level `level` in the tree. The level
+	/// represents the depth in the tree. `0` is the deepest.
 	fn get_addr_element_index(ptr: *const c_void, level: usize) -> usize {
 		((ptr as usize) >> (12 + level * 10)) & 0x3ff
 	}
 
 	// TODO Adapt to 5 level paging
-	/// Resolves the paging entry for the given pointer. If no entry is found, None is returned.
-	/// The entry must be marked as present to be found. If Page Size Extension (PSE) is used, an
-	/// entry of the page directory might be returned.
+	/// Resolves the paging entry for the given pointer. If no entry is found,
+	/// None is returned. The entry must be marked as present to be found. If
+	/// Page Size Extension (PSE) is used, an entry of the page directory might
+	/// be returned.
 	pub fn resolve(&self, ptr: *const c_void) -> Option<*const u32> {
 		let dir_entry_index = Self::get_addr_element_index(ptr, 1);
 		let dir_entry_value = obj_get(self.page_dir, dir_entry_index);
@@ -352,18 +365,19 @@ impl X86VMem {
 		Some(obj_get_ptr(table, table_entry_index))
 	}
 
-	/// Resolves the entry for the given virtual address `ptr` and returns its flags. This function
-	/// might return a page directory entry if a large block is present at the corresponding
-	/// location. If no entry is found, the function returns None.
+	/// Resolves the entry for the given virtual address `ptr` and returns its
+	/// flags. This function might return a page directory entry if a large
+	/// block is present at the corresponding location. If no entry is found,
+	/// the function returns None.
 	pub fn get_flags(&self, ptr: *const c_void) -> Option<u32> {
 		self.resolve(ptr).map(|e| unsafe { *e & FLAGS_MASK })
 	}
 
-	/// Tells whether to use PSE mapping for the given virtual address `addr` and remaining pages
-	/// `pages`.
+	/// Tells whether to use PSE mapping for the given virtual address `addr`
+	/// and remaining pages `pages`.
 	fn use_pse(addr: *const c_void, pages: usize) -> bool {
 		// The end address of the hypothetical PSE block
-		let pse_end = wrapping_add(addr as usize, 1024 * memory::PAGE_SIZE);
+		let pse_end = (addr as usize).wrapping_add(1024 * memory::PAGE_SIZE);
 
 		// Ensuring no PSE block is created in kernel space
 		(pse_end as usize) < (memory::PROCESS_END as usize)
@@ -375,8 +389,8 @@ impl X86VMem {
 			&& pages >= 1024
 	}
 
-	/// Maps the given physical address `physaddr` to the given virtual address `virtaddr` with the
-	/// given flags using blocks of 1024 pages (PSE).
+	/// Maps the given physical address `physaddr` to the given virtual address
+	/// `virtaddr` with the given flags using blocks of 1024 pages (PSE).
 	fn map_pse(&mut self, physaddr: *const c_void, virtaddr: *const c_void, mut flags: u32) {
 		debug_assert!(util::is_aligned(physaddr, memory::PAGE_SIZE));
 		debug_assert!(util::is_aligned(virtaddr, memory::PAGE_SIZE));
@@ -441,7 +455,8 @@ impl VMem for X86VMem {
 
 		flags |= FLAG_PRESENT;
 
-		// Locking the global mutex to avoid data races while modifying kernel space tables
+		// Locking the global mutex to avoid data races while modifying kernel space
+		// tables
 		let _ = GLOBAL_MUTEX.lock();
 
 		let dir_entry_index = Self::get_addr_element_index(virtaddr, 1);
@@ -498,7 +513,8 @@ impl VMem for X86VMem {
 				i += 1024;
 
 				// Invalidating the pages
-				self.invalidate_page(next_virtaddr); // TODO Check if invalidating the whole table
+				self.invalidate_page(next_virtaddr); // TODO Check if invalidating the whole
+				                     // table
 			} else {
 				self.map(next_physaddr, next_virtaddr, flags)?;
 				i += 1;
@@ -514,7 +530,8 @@ impl VMem for X86VMem {
 
 		debug_assert!(util::is_aligned(virtaddr, memory::PAGE_SIZE));
 
-		// Locking the global mutex to avoid data races while modifying kernel space tables
+		// Locking the global mutex to avoid data races while modifying kernel space
+		// tables
 		let _ = GLOBAL_MUTEX.lock();
 
 		let dir_entry_index = Self::get_addr_element_index(virtaddr, 1);
@@ -560,7 +577,8 @@ impl VMem for X86VMem {
 				i += 1024;
 
 				// Invalidating the pages
-				self.invalidate_page(next_virtaddr); // TODO Check if invalidating the whole table
+				self.invalidate_page(next_virtaddr); // TODO Check if invalidating the whole
+				                     // table
 			} else {
 				self.unmap(next_virtaddr)?;
 				i += 1;

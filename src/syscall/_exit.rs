@@ -1,4 +1,5 @@
-//! The _exit syscall allows to terminate the current process with the given status code.
+//! The _exit syscall allows to terminate the current process with the given
+//! status code.
 
 use crate::errno::Errno;
 use crate::process::regs::Regs;
@@ -20,7 +21,8 @@ pub fn do_exit(status: u32, thread_group: bool) -> ! {
 	};
 
 	if thread_group {
-		// TODO Iterate on every process of thread group `tid`, except the process with pid `pid`
+		// TODO Iterate on every process of thread group `tid`, except the
+		// process with pid `pid`
 	}
 
 	unsafe {

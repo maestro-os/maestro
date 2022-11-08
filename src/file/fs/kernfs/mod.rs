@@ -2,8 +2,12 @@
 
 pub mod node;
 
-use crate::errno::Errno;
 use crate::errno;
+use crate::errno::Errno;
+use crate::file::fs::kernfs::node::DummyKernFSNode;
+use crate::file::fs::Filesystem;
+use crate::file::fs::Statfs;
+use crate::file::path::Path;
 use crate::file::DirEntry;
 use crate::file::File;
 use crate::file::FileContent;
@@ -13,17 +17,13 @@ use crate::file::Gid;
 use crate::file::INode;
 use crate::file::Mode;
 use crate::file::Uid;
-use crate::file::fs::Filesystem;
-use crate::file::fs::Statfs;
-use crate::file::fs::kernfs::node::DummyKernFSNode;
-use crate::file::path::Path;
 use crate::memory;
 use crate::process::oom;
-use crate::util::FailableClone;
 use crate::util::boxed::Box;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::io::IO;
+use crate::util::FailableClone;
 use node::KernFSNode;
 
 // TODO Change to `1`
@@ -43,7 +43,8 @@ pub struct KernFS {
 	/// The path at which the filesystem is mounted.
 	mountpath: Path,
 
-	/// The list of nodes of the filesystem. The index in this vector is the inode.
+	/// The list of nodes of the filesystem. The index in this vector is the
+	/// inode.
 	nodes: Vec<Option<Box<dyn KernFSNode>>>,
 	/// A list of free inodes.
 	free_nodes: Vec<INode>,
@@ -77,10 +78,13 @@ impl KernFS {
 			FileContent::Directory(ref mut entries) => {
 				let name = String::from(b".")?;
 				if entries.get(&name).is_none() {
-					entries.insert(name, DirEntry {
-						inode: ROOT_INODE,
-						entry_type: FileType::Directory,
-					})?;
+					entries.insert(
+						name,
+						DirEntry {
+							inode: ROOT_INODE,
+							entry_type: FileType::Directory,
+						},
+					)?;
 
 					let new_cnt = root.get_hard_links_count() + 1;
 					root.set_hard_links_count(new_cnt);
@@ -88,15 +92,18 @@ impl KernFS {
 
 				let name = String::from(b"..")?;
 				if entries.get(&name).is_none() {
-					entries.insert(name, DirEntry {
-						inode: ROOT_INODE,
-						entry_type: FileType::Directory,
-					})?;
+					entries.insert(
+						name,
+						DirEntry {
+							inode: ROOT_INODE,
+							entry_type: FileType::Directory,
+						},
+					)?;
 
 					let new_cnt = root.get_hard_links_count() + 1;
 					root.set_hard_links_count(new_cnt);
 				}
-			},
+			}
 
 			_ => {}
 		}
@@ -111,8 +118,8 @@ impl KernFS {
 		Ok(())
 	}
 
-	/// Returns an immutable reference to the node with inode `inode`. If the node doesn't exist,
-	/// the function returns an error.
+	/// Returns an immutable reference to the node with inode `inode`. If the
+	/// node doesn't exist, the function returns an error.
 	pub fn get_node(&self, inode: INode) -> Result<&Box<dyn KernFSNode>, Errno> {
 		if inode as usize >= self.nodes.len() {
 			return Err(errno!(ENOENT));
@@ -123,8 +130,8 @@ impl KernFS {
 			.ok_or_else(|| errno!(ENOENT))
 	}
 
-	/// Returns a mutable reference to the node with inode `inode`. If the node doesn't exist, the
-	/// function returns an error.
+	/// Returns a mutable reference to the node with inode `inode`. If the node
+	/// doesn't exist, the function returns an error.
 	pub fn get_node_mut(&mut self, inode: INode) -> Result<&mut Box<dyn KernFSNode>, Errno> {
 		if inode as usize >= self.nodes.len() {
 			return Err(errno!(ENOENT));
@@ -200,7 +207,7 @@ impl KernFS {
 						DirEntry {
 							inode,
 							entry_type: FileType::Directory,
-						}
+						},
 					)?;
 
 					let node = self.get_node_mut(inode)?;
@@ -215,14 +222,14 @@ impl KernFS {
 						DirEntry {
 							inode: parent_inode,
 							entry_type: FileType::Directory,
-						}
+						},
 					)?;
 
 					let parent = self.get_node_mut(parent_inode).unwrap();
 					let new_cnt = parent.get_hard_links_count() + 1;
 					parent.set_hard_links_count(new_cnt);
 				}
-			},
+			}
 
 			_ => {}
 		}
@@ -372,7 +379,13 @@ impl Filesystem for KernFS {
 		let mut parent_content = parent.get_content().into_owned()?;
 		match &mut parent_content {
 			FileContent::Directory(entries) => {
-				entries.insert(name.failable_clone()?, DirEntry { inode, entry_type })?;
+				entries.insert(
+					name.failable_clone()?,
+					DirEntry {
+						inode,
+						entry_type,
+					},
+				)?;
 			}
 
 			_ => return Err(errno!(ENOTDIR)),

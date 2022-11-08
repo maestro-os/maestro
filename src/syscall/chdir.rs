@@ -1,9 +1,10 @@
-//! The chdir system call allows to change the current working directory of the current process.
+//! The chdir system call allows to change the current working directory of the
+//! current process.
 
 use crate::errno;
 use crate::errno::Errno;
-use crate::file::vfs;
 use crate::file::path::Path;
+use crate::file::vfs;
 use crate::file::FileType;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::regs::Regs;

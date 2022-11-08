@@ -1,12 +1,19 @@
-//! The procfs is a virtual filesystem which provides informations about processes.
+//! The procfs is a virtual filesystem which provides informations about
+//! processes.
 
 mod mem_info;
 mod proc_dir;
 mod self_link;
 mod sys_dir;
 
-use core::any::Any;
+use super::kernfs;
+use super::kernfs::node::DummyKernFSNode;
+use super::kernfs::KernFS;
+use super::Filesystem;
+use super::FilesystemType;
 use crate::errno::Errno;
+use crate::file::fs::Statfs;
+use crate::file::path::Path;
 use crate::file::DirEntry;
 use crate::file::File;
 use crate::file::FileContent;
@@ -15,24 +22,18 @@ use crate::file::Gid;
 use crate::file::INode;
 use crate::file::Mode;
 use crate::file::Uid;
-use crate::file::fs::Statfs;
-use crate::file::path::Path;
+use crate::process;
 use crate::process::oom;
 use crate::process::pid::Pid;
-use crate::process;
 use crate::util::boxed::Box;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
 use crate::util::io::IO;
 use crate::util::ptr::SharedPtr;
+use core::any::Any;
 use mem_info::MemInfo;
 use proc_dir::ProcDir;
 use self_link::SelfNode;
-use super::Filesystem;
-use super::FilesystemType;
-use super::kernfs::KernFS;
-use super::kernfs::node::DummyKernFSNode;
-use super::kernfs;
 use sys_dir::SysDir;
 
 /// Structure representing the procfs.
@@ -64,7 +65,7 @@ impl ProcFS {
 		entries.insert(
 			String::from(b"meminfo")?,
 			DirEntry {
-				inode: inode,
+				inode,
 				entry_type: FileType::Regular,
 			},
 		)?;
@@ -80,7 +81,7 @@ impl ProcFS {
 		entries.insert(
 			String::from(b"mounts")?,
 			DirEntry {
-				inode: inode,
+				inode,
 				entry_type: FileType::Link,
 			},
 		)?;
@@ -91,7 +92,7 @@ impl ProcFS {
 		entries.insert(
 			String::from(b"self")?,
 			DirEntry {
-				inode: inode,
+				inode,
 				entry_type: FileType::Link,
 			},
 		)?;
@@ -102,7 +103,7 @@ impl ProcFS {
 		entries.insert(
 			String::from(b"sys")?,
 			DirEntry {
-				inode: inode,
+				inode,
 				entry_type: FileType::Directory,
 			},
 		)?;
@@ -140,7 +141,7 @@ impl ProcFS {
 					crate::format!("{}", pid)?,
 					DirEntry {
 						entry_type: FileType::Directory,
-						inode: inode,
+						inode,
 					},
 				)?;
 				Ok(())
