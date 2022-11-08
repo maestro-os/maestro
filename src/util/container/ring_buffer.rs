@@ -143,21 +143,21 @@ mod test {
 
 	#[test_case]
 	fn ring_buffer0() {
-		let mut rb = RingBuffer::new(10).unwrap();
+		let mut rb = RingBuffer::new([0u8; 10]);
 		let mut buf: [u8; 0] = [0; 0];
 		assert_eq!(rb.read(&mut buf), 0);
 	}
 
 	#[test_case]
 	fn ring_buffer1() {
-		let mut rb = RingBuffer::new(10).unwrap();
+		let mut rb = RingBuffer::new([0u8; 10]);
 		let mut buf: [u8; 10] = [0; 10];
 		assert_eq!(rb.read(&mut buf), 0);
 	}
 
 	#[test_case]
 	fn ring_buffer2() {
-		let mut rb = RingBuffer::new(10).unwrap();
+		let mut rb = RingBuffer::new([0u8; 10]);
 		let mut buf: [u8; 10] = [0; 10];
 		for i in 0..buf.len() {
 			buf[i] = 42;

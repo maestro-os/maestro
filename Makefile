@@ -161,7 +161,11 @@ DOC_DIR = doc/book/
 
 ifeq ($(CONFIG_EXISTS), 0)
 # The rule to compile everything
+ ifeq ($(CONFIG_DEBUG_TEST), false)
 all: $(NAME) iso doc
+ else
+all: $(NAME) iso
+ endif
 
 # Builds the documentation
 doc: $(SRC) $(DOC_SRC)
