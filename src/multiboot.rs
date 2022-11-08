@@ -2,12 +2,12 @@
 //! image. It provides critical informations such as the memory mapping and the
 //! ELF structure of the kernel.
 
+use crate::memory;
+use crate::util;
 use core::ffi::c_void;
 use core::mem::ManuallyDrop;
 use core::ptr::null;
 use core::slice;
-use crate::memory;
-use crate::util;
 
 pub const BOOTLOADER_MAGIC: u32 = 0x36d76289;
 pub const TAG_ALIGN: usize = 8;
@@ -472,9 +472,7 @@ fn handle_tag(boot_info: &mut BootInfo, tag: *const Tag) {
 				(begin, end)
 			};
 			let size = end as usize - begin as usize;
-			let data = unsafe {
-				slice::from_raw_parts::<u8>(begin as *const _, size)
-			};
+			let data = unsafe { slice::from_raw_parts::<u8>(begin as *const _, size) };
 
 			if size > 0 {
 				boot_info.initramfs = Some(data);

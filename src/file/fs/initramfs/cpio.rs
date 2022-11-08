@@ -2,10 +2,10 @@
 //!
 //! The kernel only support binary CPIO, not ASCII.
 
-use core::mem::size_of;
-use crate::file::FileType;
 use crate::file;
+use crate::file::FileType;
 use crate::util;
+use core::mem::size_of;
 
 /// Entry type: FIFO
 pub const TYPE_FIFO: u16 = 0x1000;
@@ -90,7 +90,8 @@ pub struct CPIOEntry<'a> {
 impl<'a> CPIOEntry<'a> {
 	/// Returns a reference to the header of the entry.
 	pub fn get_hdr(&self) -> &'a CPIOHeader {
-		unsafe { // Safe because the structure is in range of the slice
+		unsafe {
+			// Safe because the structure is in range of the slice
 			util::reinterpret::<CPIOHeader>(self.data)
 		}
 	}
@@ -154,7 +155,8 @@ impl<'a> Iterator for CPIOParser<'a> {
 			return None;
 		}
 
-		let hdr = unsafe { // Safe because the structure is in range of the slice
+		let hdr = unsafe {
+			// Safe because the structure is in range of the slice
 			util::reinterpret::<CPIOHeader>(&self.data[off..])
 		};
 		// TODO Check magic (if invalid, check how to move to the next entry)

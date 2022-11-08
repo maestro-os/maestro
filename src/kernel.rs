@@ -55,22 +55,22 @@ pub mod util;
 #[macro_use]
 pub mod vga;
 
-use core::ffi::c_void;
-use core::panic::PanicInfo;
-use core::ptr::null;
 use crate::errno::Errno;
 use crate::file::fs::initramfs;
 use crate::file::path::Path;
 use crate::file::vfs;
-use crate::memory::vmem::VMem;
 use crate::memory::vmem;
-use crate::process::Process;
-use crate::process::exec::ExecInfo;
+use crate::memory::vmem::VMem;
 use crate::process::exec;
+use crate::process::exec::ExecInfo;
+use crate::process::Process;
 use crate::util::boxed::Box;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::lock::Mutex;
+use core::ffi::c_void;
+use core::panic::PanicInfo;
+use core::ptr::null;
 
 /// The kernel's name.
 pub const NAME: &str = "maestro";

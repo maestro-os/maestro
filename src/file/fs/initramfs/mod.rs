@@ -3,21 +3,21 @@
 
 mod cpio;
 
-use cpio::CPIOParser;
-use crate::errno::Errno;
 use crate::errno;
+use crate::errno::Errno;
+use crate::file;
+use crate::file::path::Path;
+use crate::file::vfs;
 use crate::file::File;
 use crate::file::FileContent;
 use crate::file::FileType;
 use crate::file::VFS;
-use crate::file::path::Path;
-use crate::file::vfs;
-use crate::file;
-use crate::util::FailableClone;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
 use crate::util::io::IO;
 use crate::util::ptr::SharedPtr;
+use crate::util::FailableClone;
+use cpio::CPIOParser;
 
 /// Updates the current parent.
 ///
@@ -40,23 +40,10 @@ fn update_parent(
 			let file_guard = file.lock();
 			let f = file_guard.get_mut();
 
-			vfs.get_file_from_parent(
-				f,
-				name,
-				file::ROOT_UID,
-				file::ROOT_GID,
-				false
-			)
+			vfs.get_file_from_parent(f, name, file::ROOT_UID, file::ROOT_GID, false)
 		}
 
-		Some(_) | None => {
-			vfs.get_file_from_path(
-				curr,
-				file::ROOT_UID,
-				file::ROOT_GID,
-				false
-			)
-		}
+		Some(_) | None => vfs.get_file_from_path(curr, file::ROOT_UID, file::ROOT_GID, false),
 	};
 
 	match result {
@@ -140,7 +127,7 @@ pub fn load(data: &[u8]) -> Result<(), Errno> {
 			file::ROOT_UID, // TODO Put the entry's id instead
 			file::ROOT_GID, // TODO Put the entry's id instead
 			perm,
-			content
+			content,
 		);
 		let file_mutex = match create_result {
 			Ok(file_mutex) => file_mutex,
