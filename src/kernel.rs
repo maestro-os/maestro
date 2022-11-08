@@ -8,7 +8,6 @@
 #![feature(coerce_unsized)]
 #![feature(const_maybe_uninit_assume_init)]
 #![feature(const_mut_refs)]
-#![feature(core_intrinsics)]
 #![feature(custom_test_frameworks)]
 #![feature(dispatch_from_dyn)]
 #![feature(fundamental)]

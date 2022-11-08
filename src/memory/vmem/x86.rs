@@ -29,7 +29,6 @@ use crate::util;
 use crate::util::lock::Mutex;
 use crate::util::FailableClone;
 use core::ffi::c_void;
-use core::intrinsics::wrapping_add;
 use core::ptr;
 use core::result::Result;
 
@@ -378,7 +377,7 @@ impl X86VMem {
 	/// and remaining pages `pages`.
 	fn use_pse(addr: *const c_void, pages: usize) -> bool {
 		// The end address of the hypothetical PSE block
-		let pse_end = wrapping_add(addr as usize, 1024 * memory::PAGE_SIZE);
+		let pse_end = (addr as usize).wrapping_add(1024 * memory::PAGE_SIZE);
 
 		// Ensuring no PSE block is created in kernel space
 		(pse_end as usize) < (memory::PROCESS_END as usize)

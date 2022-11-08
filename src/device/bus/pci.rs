@@ -19,7 +19,6 @@ use crate::errno::Errno;
 use crate::io;
 use crate::util::container::vec::Vec;
 use core::cmp::min;
-use core::intrinsics::wrapping_add;
 use core::mem::size_of;
 
 /// The port used to specify the configuration address.
@@ -263,10 +262,8 @@ impl PCIDevice {
 		// Writing all 1s on register
 		write_long(self.bus, self.device, self.function, reg_off as _, !0u32);
 
-		let mut size = wrapping_add(
-			!read_long(self.bus, self.device, self.function, reg_off as _),
-			1,
-		);
+		let mut size =
+			(!read_long(self.bus, self.device, self.function, reg_off as _)).wrapping_add(1);
 		if io {
 			size &= 0xffff;
 		}

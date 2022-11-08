@@ -5,7 +5,6 @@
 //! The first step in initialization is to read the RSDP table in order to get a
 //! pointer to the RSDT, referring to every other available tables.
 
-use core::intrinsics::wrapping_add;
 use data::ACPIData;
 use fadt::Fadt;
 use madt::Madt;
@@ -70,7 +69,7 @@ impl ACPITableHeader {
 				// Safe since every bytes of `s` are readable.
 				*((self as *const Self as *const u8 as usize + i) as *const u8)
 			};
-			sum = wrapping_add(sum, byte);
+			sum = sum.wrapping_add(byte);
 		}
 
 		sum == 0

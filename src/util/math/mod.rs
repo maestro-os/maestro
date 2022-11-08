@@ -5,8 +5,6 @@
 pub mod rational;
 
 use crate::util;
-use core::intrinsics::wrapping_add;
-use core::intrinsics::wrapping_mul;
 use core::ops::Add;
 use core::ops::BitAnd;
 use core::ops::Div;
@@ -112,7 +110,7 @@ where
 /// seed, or the previous value returned from this function.
 /// `a`, `c` and `m` are hyperparameters use as follows: (a * x + c) % m.
 pub fn pseudo_rand(x: u32, a: u32, c: u32, m: u32) -> u32 {
-	(wrapping_add(wrapping_mul(a, x), c)) % m
+	a.wrapping_mul(x).wrapping_add(c) % m
 }
 
 /// Returns the Greatest Common Divider of the two given numbers.

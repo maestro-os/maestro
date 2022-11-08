@@ -17,7 +17,6 @@ use crate::util;
 use crate::util::boxed::Box;
 use crate::util::container::hashmap::HashMap;
 use core::ffi::c_void;
-use core::intrinsics::wrapping_add;
 use core::mem::size_of;
 use core::ptr;
 
@@ -60,7 +59,7 @@ impl Rsdp {
 				// Safe since every bytes of `s` are readable.
 				*((self as *const Self as *const u8 as usize + i) as *const u8)
 			};
-			sum = wrapping_add(sum, byte);
+			sum = sum.wrapping_add(byte);
 		}
 
 		sum == 0
