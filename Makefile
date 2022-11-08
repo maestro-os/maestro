@@ -160,13 +160,8 @@ DOC_DIR = doc/book/
 
 
 ifeq ($(CONFIG_EXISTS), 0)
- ifneq ($(CONFIG_DEBUG_TEST), true)
 # The rule to compile everything
 all: $(NAME) iso doc
- else
-# The rule to compile everything
-all: $(NAME) iso
- endif
 
 # Builds the documentation
 doc: $(SRC) $(DOC_SRC)
@@ -175,15 +170,13 @@ doc: $(SRC) $(DOC_SRC)
 	rm -rf $(DOC_DIR)/references/
 	cp -r target/target/doc/ $(DOC_DIR)/references/
 else
-noconfig:
-	echo "File $(CONFIG_FILE) doesn't exist. Use \`make config\` to create it"
+all:
+	echo "File $(CONFIG_FILE) doesn't exist. Create it from file `default.config`"
 	false
 
-all: noconfig
-doc: noconfig
+doc: all
 
-.PHONY: noconfig
-.SILENT: noconfig
+.SILENT: all doc
 endif
 
 .PHONY: all doc
@@ -291,50 +284,7 @@ selftest: iso $(QEMU_DISK)
 cputest: iso
 	qemu-system-i386 $(QEMU_FLAGS) -d int,cpu >cpu_out 2>&1
 
-# The rule to test the kernel using Bochs. The configuration for Bochs can be found in the file
-# `.bochsrc`
-bochs: iso
-	bochs
-
-# The rule to run virtualbox
-virtualbox: iso
-	virtualbox
-
-.PHONY: test selftest cputest bochs virtualbox
-
-
-
-# ------------------------------------------------------------------------------
-#    Configuration
-# ------------------------------------------------------------------------------
-
-
-
-# The path of the configuration utility
-CONFIG_UTIL_PATH := config/target/release/config
-# The list of the sources for the configuration utility
-CONFIG_UTIL_SRC := $(shell find config/src/ -type f -name "*.rs")
-# The path where is the configuration utility is build
-CONFIG_UTIL_BUILD_PATH = /tmp/$(NAME)_config
-
-# Builds the configuration utility into a tmp directory.
-$(CONFIG_UTIL_PATH): $(CONFIG_UTIL_SRC)
-	rm -rf $(CONFIG_UTIL_BUILD_PATH)
-	cp -r config/ $(CONFIG_UTIL_BUILD_PATH)
-	cd $(CONFIG_UTIL_BUILD_PATH) && cargo build --release
-	cp -r $(CONFIG_UTIL_BUILD_PATH)/target/ config/target/
-	rm -r $(CONFIG_UTIL_BUILD_PATH)
-
-# Runs the configuration utility to create the configuration file
-$(CONFIG_FILE): $(CONFIG_UTIL_PATH)
-	$(CONFIG_UTIL_PATH)
-	@stat $(CONFIG_FILE) >/dev/null 2>&1 && echo "The configuration file is now ready. You may want to type \
-\`make clean\` before compiling with \`make\`" || true
-
-# Runs the configuration utility to create the configuration file
-config: $(CONFIG_FILE)
-
-.PHONY: config $(CONFIG_FILE)
+.PHONY: test selftest cputest
 
 
 
@@ -356,7 +306,6 @@ fclean: clean
 	rm -f $(NAME)
 	rm -f $(NAME).iso
 	rm -rf $(DOC_DIR)
-	rm -rf config/target/
 
 # The rule to recompile everything
 re: fclean all

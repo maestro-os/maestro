@@ -5,4 +5,6 @@ jobs:
         runs-on: [self-hosted, linux]
         steps:
             - uses: actions/checkout@v2
-            - run: "testing/test.sh"
+            - run: "testing/debug.sh"
+            - run: "testing/release.sh"
+            - run: "testing/selftest.sh"
