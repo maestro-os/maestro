@@ -265,46 +265,41 @@ mod test {
 
 	#[test_case]
 	fn cmdline0() {
-		assert!(ArgsParser::parse(b"").is_err());
-	}
-
-	#[test_case]
-	fn cmdline1() {
 		assert!(ArgsParser::parse(b"-bleh").is_err());
 	}
 
 	#[test_case]
-	fn cmdline2() {
+	fn cmdline1() {
 		assert!(ArgsParser::parse(b"-root -bleh").is_err());
 	}
 
 	#[test_case]
-	fn cmdline3() {
+	fn cmdline2() {
 		assert!(ArgsParser::parse(b"-root 1 0 -bleh").is_err());
 	}
 
 	#[test_case]
-	fn cmdline4() {
+	fn cmdline3() {
 		assert!(ArgsParser::parse(b"-root 1 0").is_ok());
 	}
 
 	#[test_case]
-	fn cmdline5() {
+	fn cmdline4() {
 		assert!(ArgsParser::parse(b"-root 1 0 -silent").is_ok());
 	}
 
 	#[test_case]
-	fn cmdline6() {
+	fn cmdline5() {
 		assert!(ArgsParser::parse(b"-root 1 0 -init").is_err());
 	}
 
 	#[test_case]
-	fn cmdline7() {
+	fn cmdline6() {
 		assert!(ArgsParser::parse(b"-root 1 0 -init bleh").is_ok());
 	}
 
 	#[test_case]
-	fn cmdline8() {
+	fn cmdline7() {
 		assert!(ArgsParser::parse(b"-root 1 0 -init bleh -silent").is_ok());
 	}
 }
