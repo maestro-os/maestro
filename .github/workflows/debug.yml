@@ -1,0 +1,9 @@
+name: Debug mode
+on: push
+jobs:
+    Test:
+        runs-on: [self-hosted, linux]
+        steps:
+            - uses: actions/checkout@v2
+            - name: Compilation
+              run: "testing/debug.sh"
