@@ -190,7 +190,11 @@ fn load_fs(
 	// Getting the filesystem type
 	let fs_type_mutex = match fs_type {
 		Some(fs_type) => fs_type,
-		None => fs::detect(io)?,
+
+		None => match source {
+			MountSource::NoDev(ref name) => fs::get_fs(name).ok_or_else(|| errno!(ENODEV))?,
+			_ => fs::detect(io)?,
+		},
 	};
 	let fs_type_guard = fs_type_mutex.lock();
 	let fs_type = fs_type_guard.get();

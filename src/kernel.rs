@@ -309,10 +309,9 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 		.unwrap_or_else(|e| kernel_panic!("Failed to initialize devices management! ({})", e));
 	crypto::init().unwrap_or_else(|e| kernel_panic!("Failed to initialize cryptography! ({})", e));
 
-	let (root_major, root_minor) = args_parser.get_root_dev();
-	println!("Root device is {} {}", root_major, root_minor);
+	let root = args_parser.get_root_dev();
 	println!("Initializing files management...");
-	file::init(device::DeviceType::Block, root_major, root_minor)
+	file::init(root)
 		.unwrap_or_else(|e| kernel_panic!("Failed to initialize files management! ({})", e));
 	if let Some(initramfs) = &boot_info.initramfs {
 		println!("Initializing initramfs...");

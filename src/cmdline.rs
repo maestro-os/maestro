@@ -11,10 +11,8 @@ use core::str;
 /// Command line argument parser.
 /// Every bytes in the command line are interpreted as ASCII characters.
 pub struct ArgsParser {
-	/// The root device major number.
-	root_major: u32,
-	/// The root device minor number.
-	root_minor: u32,
+	/// The root device major and minor numbers.
+	root: Option<(u32, u32)>,
 
 	/// The path to the init binary, if specified.
 	init: Option<String>,
@@ -158,15 +156,12 @@ impl ArgsParser {
 	/// Parses the given command line and returns a new instance.
 	pub fn parse(cmdline: &[u8]) -> Result<Self, ParseError<'_>> {
 		let mut s = Self {
-			root_major: 0,
-			root_minor: 0,
+			root: None,
 
 			init: None,
 
 			silent: false,
 		};
-
-		let mut root_specified = false;
 
 		let tokens = Self::tokenize(cmdline)?;
 		let mut i = 0;
@@ -185,35 +180,26 @@ impl ArgsParser {
 						));
 					}
 
-					match tokens[i + 1].s.as_str().unwrap().parse::<u32>() {
-						// TODO Handle properly
-						Ok(n) => {
-							s.root_major = n;
-						}
-						Err(_) => {
-							return Err(ParseError::new(
-								cmdline,
-								"Invalid major number",
-								Some((i + 1, 1)),
-							));
-						}
-					};
-					match tokens[i + 2].s.as_str().unwrap().parse::<u32>() {
-						// TODO Handle properly
-						Ok(n) => {
-							s.root_minor = n;
-						}
-						Err(_) => {
-							return Err(ParseError::new(
-								cmdline,
-								"Invalid minor number",
-								Some((i + 2, 1)),
-							));
-						}
-					};
+					let major_result = tokens[i + 1].s.as_str().unwrap().parse::<u32>();
+					let minor_result = tokens[i + 2].s.as_str().unwrap().parse::<u32>();
 
+					let Ok(major) = major_result else {
+						return Err(ParseError::new(
+							cmdline,
+							"Invalid major number",
+							Some((i + 1, 1)),
+						));
+					};
+					let Ok(minor) = minor_result else {
+						return Err(ParseError::new(
+							cmdline,
+							"Invalid minor number",
+							Some((i + 2, 1)),
+						));
+					};
 					i += 3;
-					root_specified = true;
+
+					s.root = Some((major, minor));
 				}
 
 				b"-init" => {
@@ -254,16 +240,12 @@ impl ArgsParser {
 			}
 		}
 
-		if !root_specified {
-			return Err(ParseError::new(cmdline, "`-root` not specified", None));
-		}
-
 		Ok(s)
 	}
 
 	/// Returns the major and minor numbers of the root device.
-	pub fn get_root_dev(&self) -> (u32, u32) {
-		(self.root_major, self.root_minor)
+	pub fn get_root_dev(&self) -> Option<(u32, u32)> {
+		self.root
 	}
 
 	/// Returns the init binary path if specified.

@@ -204,7 +204,7 @@ pub fn register<T: 'static + FilesystemType>(fs_type: T) -> Result<(), Errno> {
 // TODO Function to unregister a filesystem type
 
 // TODO Optimize
-/// Returns the filesystem with name `name`.
+/// Returns the filesystem type with name `name`.
 pub fn get_fs(name: &[u8]) -> Option<SharedPtr<dyn FilesystemType>> {
 	let guard = FILESYSTEMS.lock();
 	let container = guard.get_mut();

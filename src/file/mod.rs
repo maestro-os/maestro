@@ -979,19 +979,21 @@ impl IO for File {
 }
 
 /// Initializes files management.
-/// `root_device_type` is the type of the root device file. If not a device, the
-/// behaviour is undefined.
-/// `root_major` is the major number of the device at the root of the VFS.
-/// `root_minor` is the minor number of the device at the root of the VFS.
-pub fn init(root_device_type: DeviceType, root_major: u32, root_minor: u32) -> Result<(), Errno> {
+///
+/// `root` is the set of major and minor numbers of the root device. If None, a tmpfs is used.
+pub fn init(root: Option<(u32, u32)>) -> Result<(), Errno> {
 	fs::register_defaults()?;
 
 	// Creating the root mountpoint
-	let mount_source = MountSource::Device {
-		dev_type: root_device_type,
+	let mount_source = match root {
+		Some((major, minor)) => MountSource::Device {
+			dev_type: DeviceType::Block,
 
-		major: root_major,
-		minor: root_minor,
+			major,
+			minor,
+		},
+
+		None => MountSource::NoDev(String::from(b"tmpfs")?),
 	};
 	mountpoint::create(mount_source, None, 0, Path::root())?;
 
