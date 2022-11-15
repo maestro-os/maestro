@@ -163,19 +163,19 @@ mod test {
 			buf[i] = 42;
 		}
 
-		assert_eq!(rb.write(&buf), 10);
-		assert_eq!(rb.get_data_len(), 10);
+		assert_eq!(rb.write(&buf), 9);
+		assert_eq!(rb.get_data_len(), 9);
 		assert_eq!(rb.get_available_len(), 0);
 
 		for i in 0..buf.len() {
 			buf[i] = 0;
 		}
 
-		assert_eq!(rb.read(&mut buf), 10);
+		assert_eq!(rb.read(&mut buf), 9);
 		assert_eq!(rb.get_data_len(), 0);
-		assert_eq!(rb.get_available_len(), 10);
+		assert_eq!(rb.get_available_len(), 9);
 
-		for i in 0..buf.len() {
+		for i in 0..9 {
 			assert_eq!(buf[i], 42);
 		}
 	}
