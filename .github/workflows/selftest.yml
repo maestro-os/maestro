@@ -1,9 +1,0 @@
-name: Selftest
-on: push
-jobs:
-    Test:
-        runs-on: [self-hosted, linux]
-        steps:
-            - uses: actions/checkout@v2
-            - name: Running selftests
-              run: "testing/selftest.sh"
