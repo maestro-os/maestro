@@ -9,7 +9,7 @@ stat maestro
 testing/multiboot_test.sh
 
 echo "Running selftests..."
-make selftest
+make selftest || true
 
 echo "Selftests output:"
 cat serial.log
