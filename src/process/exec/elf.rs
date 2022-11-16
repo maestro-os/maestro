@@ -479,19 +479,31 @@ impl ELFExecutor {
 			return;
 		}
 
-		// The pointer to the beginning of the segment in the virtual memory
-		let begin = unsafe { load_base.add(seg.p_vaddr as usize) as *mut _ };
-		// The length of the segment in bytes
-		let len = min(seg.p_memsz, seg.p_filesz) as usize;
 		// A slice to the beginning of the segment's data in the file
 		let file_begin = &image[seg.p_offset as usize];
 
+		// The pointer to the beginning of the segment in the virtual memory
+		let copy_begin = unsafe { load_base.add(seg.p_vaddr as usize) as *mut _ };
+		// The length of data to be copied from file
+		let copy_len = min(seg.p_memsz, seg.p_filesz) as usize;
+
 		// Copying the segment's data
 		unsafe {
-			// Safe because the module ELF image is valid at this point
 			vmem::write_lock_wrap(|| {
-				util::memcpy(begin, file_begin as *const _ as _, len);
+				util::memcpy(copy_begin, file_begin as *const _ as _, copy_len);
 			});
+		}
+
+		if seg.p_memsz > seg.p_filesz {
+			// The pointer to the beginning of the memory to zero
+			let zero_begin = unsafe { copy_begin.add(copy_len) as *mut _ };
+			// The length of data to be zeroed
+			let zero_len = (seg.p_memsz - seg.p_filesz) as usize;
+
+			// Zeroing remaining bytes in the segment
+			unsafe {
+				util::memset(zero_begin, 0, zero_len);
+			}
 		}
 	}
 
