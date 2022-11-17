@@ -1,10 +1,11 @@
-//! The `reboot` system call allows the superuser to power off, reboot, halt or suspend the system.
+//! The `reboot` system call allows the superuser to power off, reboot, halt or
+//! suspend the system.
 
-use core::arch::asm;
-use crate::errno::Errno;
 use crate::errno;
-use crate::process::Process;
+use crate::errno::Errno;
 use crate::process::regs::Regs;
+use crate::process::Process;
+use core::arch::asm;
 
 /// First magic number.
 const MAGIC: u32 = 0xde145e83;
@@ -42,11 +43,12 @@ pub fn reboot(regs: &Regs) -> Result<i32, Errno> {
 	match cmd {
 		CMD_POWEROFF => {
 			crate::println!("Power down...");
+
 			// TODO Use ACPI to power off the system
 
 			// In case power down didn't work (very unlikely)
 			crate::halt();
-		},
+		}
 
 		CMD_REBOOT => {
 			crate::println!("Rebooting...");
@@ -62,20 +64,20 @@ pub fn reboot(regs: &Regs) -> Result<i32, Errno> {
 
 			// In case rebooting didn't work (very unlikely)
 			crate::halt();
-		},
+		}
 
 		CMD_HALT => {
 			crate::println!("Halting...");
 
 			// TODO Send a signal to all other cores to stop them
 			crate::halt();
-		},
+		}
 
 		CMD_SUSPEND => {
 			// TODO Use ACPI to suspend the system
 
 			Ok(0)
-		},
+		}
 
 		_ => Err(errno!(EINVAL)),
 	}

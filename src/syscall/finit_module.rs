@@ -1,12 +1,13 @@
 //! The `finit_module` system call allows to load a module on the kernel.
 
-use crate::errno::Errno;
 use crate::errno;
+use crate::errno::Errno;
 use crate::memory::malloc;
-use crate::module::Module;
 use crate::module;
-use crate::process::Process;
+use crate::module::Module;
 use crate::process::regs::Regs;
+use crate::process::Process;
+use crate::util::io::IO;
 
 /// The implementation of the `finit_module` syscall.
 pub fn finit_module(regs: &Regs) -> Result<i32, Errno> {
@@ -22,14 +23,16 @@ pub fn finit_module(regs: &Regs) -> Result<i32, Errno> {
 				return Err(errno!(EPERM));
 			}
 
-			proc.get_fd(fd).ok_or_else(|| errno!(EBADF))?.get_open_file()
+			proc.get_fd(fd)
+				.ok_or_else(|| errno!(EBADF))?
+				.get_open_file()
 		};
 		let open_file_guard = open_file_mutex.lock();
 		let open_file = open_file_guard.get_mut();
 
-		let len = open_file.get_file_size(); // TODO Error if file is too large for 32bit?
+		let len = open_file.get_size(); // TODO Error if file is too large for 32bit?
 		let mut image = malloc::Alloc::new_default(len as usize)?;
-		open_file.read(image.as_slice_mut())?;
+		open_file.read(0, image.as_slice_mut())?;
 
 		image
 	};

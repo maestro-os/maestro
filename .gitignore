@@ -21,9 +21,6 @@ maestro
 # Tags file
 tags
 
-# Compiled documentation
-doc/
-
 # Debug files
 *_out
 serial.log

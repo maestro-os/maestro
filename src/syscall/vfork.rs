@@ -1,11 +1,12 @@
-//! The `vfork` system call works the same as the `fork` system call, except the parnet process is
-//! blocked until the child process exits or executes a program. During that time, the child
-//! process also shares the same memory space as the parent.
+//! The `vfork` system call works the same as the `fork` system call, except the
+//! parnet process is blocked until the child process exits or executes a
+//! program. During that time, the child process also shares the same memory
+//! space as the parent.
 
 use crate::errno::Errno;
+use crate::process::regs::Regs;
 use crate::process::ForkOptions;
 use crate::process::Process;
-use crate::process::regs::Regs;
 
 /// The implementation of the `vfork` syscall.
 pub fn vfork(regs: &Regs) -> Result<i32, Errno> {
@@ -35,8 +36,8 @@ pub fn vfork(regs: &Regs) -> Result<i32, Errno> {
 		new_proc.get_pid()
 	};
 
-	// Letting another process run instead of the current. Because the current process must now
-	// wait for the child process to terminate or execute a program
+	// Letting another process run instead of the current. Because the current
+	// process must now wait for the child process to terminate or execute a program
 	crate::wait();
 
 	Ok(new_pid as _)

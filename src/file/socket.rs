@@ -1,14 +1,19 @@
 //! This file implements sockets.
 
 use crate::errno::Errno;
+use crate::process::mem_space::MemSpace;
 use crate::util::container::ring_buffer::RingBuffer;
 use crate::util::container::vec::Vec;
+use crate::util::io::IO;
+use crate::util::ptr::IntSharedPtr;
 use crate::util::ptr::SharedPtr;
+use core::ffi::c_void;
 
 /// The maximum size of a socket's buffers.
 const BUFFER_SIZE: usize = 65536;
 
-// TODO Figure out the behaviour when opening socket file more than twice at a time
+// TODO Figure out the behaviour when opening socket file more than twice at a
+// time
 
 /// Structure representing a socket.
 #[derive(Debug)]
@@ -21,11 +26,10 @@ pub struct Socket {
 	protocol: i32,
 
 	// TODO Handle network sockets
-
 	/// The buffer containing received data.
-	receive_buffer: RingBuffer<u8>,
+	receive_buffer: RingBuffer<u8, Vec<u8>>,
 	/// The buffer containing sent data.
-	send_buffer: RingBuffer<u8>,
+	send_buffer: RingBuffer<u8, Vec<u8>>,
 
 	/// The list of sides of the socket.
 	sides: Vec<SharedPtr<SocketSide>>,
@@ -34,15 +38,16 @@ pub struct Socket {
 impl Socket {
 	/// Creates a new instance.
 	pub fn new(domain: i32, type_: i32, protocol: i32) -> Result<SharedPtr<Self>, Errno> {
-		// TODO Check domain, type and protocol. Use EINVAL, EPROTOTYPE and EPROTONOSUPPORT
+		// TODO Check domain, type and protocol. Use EINVAL, EPROTOTYPE and
+		// EPROTONOSUPPORT
 
 		SharedPtr::new(Self {
 			domain,
 			type_,
 			protocol,
 
-			receive_buffer: RingBuffer::new(BUFFER_SIZE)?,
-			send_buffer: RingBuffer::new(BUFFER_SIZE)?,
+			receive_buffer: RingBuffer::new(crate::vec![0; BUFFER_SIZE]?),
+			send_buffer: RingBuffer::new(crate::vec![0; BUFFER_SIZE]?),
 
 			sides: Vec::new(),
 		})
@@ -67,8 +72,9 @@ impl Socket {
 	}
 }
 
-/// A side of a socket is a structure which allows to read/write from the socket. It is required to
-/// prevent one side from reading the data it wrote itself.
+/// A side of a socket is a structure which allows to read/write from the
+/// socket. It is required to prevent one side from reading the data it wrote
+/// itself.
 #[derive(Debug)]
 pub struct SocketSide {
 	/// The socket.
@@ -96,31 +102,50 @@ impl SocketSide {
 		s
 	}
 
-	/// Reads data from the socket.
-	/// `buf` is the slice to write to.
-	/// The functions returns the number of bytes that have been read.
-	pub fn read(&mut self, buf: &mut [u8]) -> usize {
+	/// Performs an ioctl operation on the socket.
+	pub fn ioctl(
+		&mut self,
+		_mem_space: IntSharedPtr<MemSpace>,
+		_request: u32,
+		_argp: *const c_void,
+	) -> Result<u32, Errno> {
+		// TODO
+		todo!();
+	}
+}
+
+impl IO for SocketSide {
+	fn get_size(&self) -> u64 {
+		// TODO
+		0
+	}
+
+	/// Note: This implemention ignores the offset.
+	fn read(&mut self, _: u64, buf: &mut [u8]) -> Result<(u64, bool), Errno> {
 		let guard = self.sock.lock();
 		let sock = guard.get_mut();
 
 		if self.other {
-			sock.send_buffer.read(buf)
+			Ok((sock.send_buffer.read(buf) as _, false)) // TODO Handle EOF
 		} else {
-			sock.receive_buffer.read(buf)
+			Ok((sock.receive_buffer.read(buf) as _, false)) // TODO Handle EOF
 		}
 	}
 
-	/// Writes data to the socket.
-	/// `buf` is the slice to read from.
-	/// The functions returns the number of bytes that have been written.
-	pub fn write(&mut self, buf: &[u8]) -> usize {
+	/// Note: This implemention ignores the offset.
+	fn write(&mut self, _: u64, buf: &[u8]) -> Result<u64, Errno> {
 		let guard = self.sock.lock();
 		let sock = guard.get_mut();
 
 		if self.other {
-			sock.receive_buffer.write(buf)
+			Ok(sock.receive_buffer.write(buf) as _)
 		} else {
-			sock.send_buffer.write(buf)
+			Ok(sock.send_buffer.write(buf) as _)
 		}
+	}
+
+	fn poll(&mut self, _mask: u32) -> Result<u32, Errno> {
+		// TODO
+		todo!();
 	}
 }

@@ -1,17 +1,18 @@
 //! The `access` system call allows to check access to a given file.
 
 use crate::errno::Errno;
-use crate::file::fcache;
 use crate::file::path::Path;
-use crate::process::Process;
+use crate::file::vfs;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::regs::Regs;
+use crate::process::Process;
 use crate::util::FailableClone;
 
-/// Special value, telling to take the path relative to the current working directory.
+/// Special value, telling to take the path relative to the current working
+/// directory.
 pub const AT_FDCWD: i32 = -100;
-/// If pathname is a symbolic link, do not dereference it: instead return information about the
-/// link itself.
+/// If pathname is a symbolic link, do not dereference it: instead return
+/// information about the link itself.
 pub const AT_SYMLINK_NOFOLLOW: i32 = 0x100;
 /// Perform access checks using the effective user and group IDs.
 pub const AT_EACCESS: i32 = 0x200;
@@ -36,13 +37,19 @@ const W_OK: i32 = 2;
 const X_OK: i32 = 1;
 
 /// Performs the access operation.
-/// `dirfd` is the file descriptor of the directory relative to which the check is done.
-/// `pathname` is the path to the file.
-/// `mode` TODO doc
+/// `dirfd` is the file descriptor of the directory relative to which the check
+/// is done. `pathname` is the path to the file.
+/// `mode` is a bitfield of access permissions to check.
 /// `flags` is a set of flags.
-pub fn do_access(dirfd: Option<i32>, pathname: SyscallString, mode: i32, flags: Option<i32>)
-	-> Result<i32, Errno> {
+pub fn do_access(
+	dirfd: Option<i32>,
+	pathname: SyscallString,
+	mode: i32,
+	flags: Option<i32>,
+) -> Result<i32, Errno> {
 	let flags = flags.unwrap_or(0);
+
+	let follow_symlinks = flags & AT_SYMLINK_NOFOLLOW == 0;
 
 	let (path, uid, gid, cwd) = {
 		let proc_mutex = Process::get_current().unwrap();
@@ -52,7 +59,9 @@ pub fn do_access(dirfd: Option<i32>, pathname: SyscallString, mode: i32, flags: 
 		let mem_space_mutex = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space_mutex.lock();
 
-		let pathname = pathname.get(&mem_space_guard)?.ok_or_else(|| errno!(EINVAL))?;
+		let pathname = pathname
+			.get(&mem_space_guard)?
+			.ok_or_else(|| errno!(EINVAL))?;
 		let path = Path::from_str(pathname, true)?;
 
 		let (uid, gid) = {
@@ -67,8 +76,6 @@ pub fn do_access(dirfd: Option<i32>, pathname: SyscallString, mode: i32, flags: 
 		(path, uid, gid, cwd)
 	};
 
-	let follow_symlinks = flags & AT_SYMLINK_NOFOLLOW == 0;
-
 	// Getting file
 	let file = {
 		let mut path = path;
@@ -76,16 +83,16 @@ pub fn do_access(dirfd: Option<i32>, pathname: SyscallString, mode: i32, flags: 
 		if path.is_absolute() {
 		} else if let Some(dirfd) = dirfd {
 			if dirfd == AT_FDCWD {
-				path = path.concat(&cwd)?;
+				path = cwd.concat(&path)?;
 			} else {
 				// TODO Get file from fd and get its path to concat
 				todo!();
 			}
 		}
 
-		let fcache_guard = fcache::get().lock();
-		let fcache = fcache_guard.get_mut().as_mut().unwrap();
-		fcache.get_file_from_path(&path, uid, gid, follow_symlinks)?
+		let vfs_guard = vfs::get().lock();
+		let vfs = vfs_guard.get_mut().as_mut().unwrap();
+		vfs.get_file_from_path(&path, uid, gid, follow_symlinks)?
 	};
 
 	{

@@ -1,11 +1,12 @@
-//! The `getrusage` system call returns the system usage for the current process.
+//! The `getrusage` system call returns the system usage for the current
+//! process.
 
-use crate::errno::Errno;
 use crate::errno;
-use crate::process::Process;
+use crate::errno::Errno;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::regs::Regs;
 use crate::process::rusage::RUsage;
+use crate::process::Process;
 
 /// Returns the resource usage of the current process.
 const RUSAGE_SELF: i32 = 0;
@@ -24,9 +25,7 @@ pub fn getrusage(regs: &Regs) -> Result<i32, Errno> {
 	// TODO Check access to `usage`
 
 	let rusage = match who {
-		RUSAGE_SELF => {
-			proc.get_rusage().clone()
-		},
+		RUSAGE_SELF => proc.get_rusage().clone(),
 
 		RUSAGE_CHILDREN => {
 			// TODO Return resources of terminates children
@@ -39,7 +38,9 @@ pub fn getrusage(regs: &Regs) -> Result<i32, Errno> {
 	let mem_space = proc.get_mem_space().unwrap();
 	let mem_space_guard = mem_space.lock();
 
-	let usage_val = usage.get_mut(&mem_space_guard)?.ok_or_else(|| errno!(EFAULT))?;
+	let usage_val = usage
+		.get_mut(&mem_space_guard)?
+		.ok_or_else(|| errno!(EFAULT))?;
 	*usage_val = rusage;
 
 	Ok(0)

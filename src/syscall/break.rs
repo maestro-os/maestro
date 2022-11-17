@@ -1,7 +1,7 @@
 //! The `break` system call is not implemented.
 
-use crate::errno::Errno;
 use crate::errno;
+use crate::errno::Errno;
 use crate::process::regs::Regs;
 
 /// The implementation of the `break` syscall.

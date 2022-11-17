@@ -122,7 +122,7 @@ GET_REGS irq_\n
 	call event_handler
 	add $16, %esp
 
-	push $(\n + 0x20)
+	push $\n
 	call end_of_interrupt
 	add $4, %esp
 

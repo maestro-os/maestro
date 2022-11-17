@@ -49,11 +49,11 @@ CONFIG_ARGS := $(shell $(CONFIG_ARGS_SCRIPT))
 CONFIG_ENV := $(shell $(CONFIG_ENV_SCRIPT))
 
 # The target architecture
-CONFIG_ARCH := $(shell $(CONFIG_ATTR_SCRIPT) general_arch)
+CONFIG_ARCH := $(shell $(CONFIG_ATTR_SCRIPT) GENERAL_ARCH)
 # Tells whether to compile in debug mode
-CONFIG_DEBUG := $(shell $(CONFIG_ATTR_SCRIPT) debug_debug)
+CONFIG_DEBUG := $(shell $(CONFIG_ATTR_SCRIPT) DEBUG_DEBUG)
 # Tells whether to compile for unit testing
-CONFIG_DEBUG_TEST := $(shell $(CONFIG_ATTR_SCRIPT) debug_test)
+CONFIG_DEBUG_TEST := $(shell $(CONFIG_ATTR_SCRIPT) DEBUG_TEST)
 
 
 
@@ -95,7 +95,7 @@ CFLAGS += -g3
 endif
 
 # The archive creator program
-AR = ar
+AR = i686-elf-ar
 # The archive creator program flags
 ARFLAGS = rc
 
@@ -151,39 +151,36 @@ SRC := $(ASM_SRC) $(C_SRC) $(RUST_SRC)
 
 
 # The path to the documentation sources
-DOC_SRC_DIR = doc_src/
+DOC_SRC_DIR = doc/src/
 # The list of documentation sources
 DOC_SRC = $(shell find $(DOC_SRC_DIR) -type f)
 # The path to the documentation build directory
-DOC_DIR = doc/
+DOC_DIR = doc/book/
 
 
 
 ifeq ($(CONFIG_EXISTS), 0)
- ifneq ($(CONFIG_DEBUG_TEST), true)
 # The rule to compile everything
-all: tags $(NAME) iso doc
+ ifeq ($(CONFIG_DEBUG_TEST), false)
+all: $(NAME) iso doc
  else
-# The rule to compile everything
-all: tags $(NAME) iso
+all: $(NAME) iso
  endif
 
 # Builds the documentation
 doc: $(SRC) $(DOC_SRC)
-	$(CONFIG_ENV) RUSTFLAGS='$(RUSTFLAGS)' $(CARGO) doc $(CARGOFLAGS)
-	sphinx-build $(DOC_SRC_DIR) $(DOC_DIR)
+	$(CONFIG_ENV) RUSTFLAGS='$(RUSTFLAGS)' $(CARGO) doc $(CARGOFLAGS) --document-private-items
+	mdbook build doc/
 	rm -rf $(DOC_DIR)/references/
 	cp -r target/target/doc/ $(DOC_DIR)/references/
 else
-noconfig:
-	echo "File $(CONFIG_FILE) doesn't exist. Use \`make config\` to create it"
+all:
+	echo "File $(CONFIG_FILE) doesn't exist. Create it from file `default.config`"
 	false
 
-all: noconfig
-doc: noconfig
+doc: all
 
-.PHONY: noconfig
-.SILENT: noconfig
+.SILENT: all doc
 endif
 
 .PHONY: all doc
@@ -258,7 +255,7 @@ QEMU_DISK = qemu_disk
 # The size of the QEMU disk in megabytes
 QEMU_DISK_SIZE = 1024
 # Flags for the QEMU emulator
-QEMU_FLAGS = -smp cpus=2 -m 4G -cdrom $(NAME).iso -drive file=$(QEMU_DISK),format=raw \
+QEMU_FLAGS = -smp cpus=2 -cdrom $(NAME).iso -drive file=$(QEMU_DISK),format=raw \
 	-device isa-debug-exit,iobase=0xf4,iosize=0x04
 
 # If `1`, QEMU is run into the terminal
@@ -276,59 +273,26 @@ $(QEMU_DISK):
 
 # Runs the kernel with QEMU
 run: iso $(QEMU_DISK)
-	qemu-system-x86_64 $(QEMU_FLAGS)
+	qemu-system-i386 $(QEMU_FLAGS)
 
 # The rule to test the kernel using QEMU
 test: iso $(QEMU_DISK)
-	qemu-system-x86_64 $(QEMU_FLAGS) -d int
+	qemu-system-i386 $(QEMU_FLAGS) -d int
+
+# Rule used to debug the kernel using GDB
+debug: $(NAME).iso $(QEMU_DISK)
+	qemu-system-i386 $(QEMU_FLAGS) -s -S -d int >debug_out 2>&1
 
 # The rule to run the kernel's selftests using QEMU
 selftest: iso $(QEMU_DISK)
-	qemu-system-x86_64 $(QEMU_FLAGS) -nographic >/dev/null
+	qemu-system-i386 $(QEMU_FLAGS) -nographic >/dev/null
 
 # The rule to run a CPU test of the kernel using QEMU (aka running the kernel and storing a lot of
 # logs into the `cpu_out` file)
 cputest: iso
-	qemu-system-x86_64 $(QEMU_FLAGS) -d int,cpu >cpu_out 2>&1
+	qemu-system-i386 $(QEMU_FLAGS) -d int,cpu >cpu_out 2>&1
 
-# The rule to test the kernel using Bochs. The configuration for Bochs can be found in the file
-# `.bochsrc`
-bochs: iso
-	bochs
-
-# The rule to run virtualbox
-virtualbox: iso
-	virtualbox
-
-.PHONY: test selftest cputest bochs virtualbox
-
-
-
-# ------------------------------------------------------------------------------
-#    Configuration
-# ------------------------------------------------------------------------------
-
-
-
-# The path of the configuration utility
-CONFIG_UTIL_PATH := config/target/release/config
-# The list of the sources for the configuration utility
-CONFIG_UTIL_SRC := $(shell find config/src/ -type f -name "*.rs")
-
-# Builds the configuration utility into a tmp directory.
-$(CONFIG_UTIL_PATH): $(CONFIG_UTIL_SRC)
-	cd config && cargo build --release
-
-# Runs the configuration utility to create the configuration file
-$(CONFIG_FILE): $(CONFIG_UTIL_PATH)
-	$(CONFIG_UTIL_PATH)
-	@stat $(CONFIG_FILE) >/dev/null 2>&1 && echo "The configuration file is now ready. You may want to type \
-\`make clean\` before compiling with \`make\`" || true
-
-# Runs the configuration utility to create the configuration file
-config: $(CONFIG_FILE)
-
-.PHONY: config $(CONFIG_FILE)
+.PHONY: test selftest cputest
 
 
 
@@ -350,7 +314,6 @@ fclean: clean
 	rm -f $(NAME)
 	rm -f $(NAME).iso
 	rm -rf $(DOC_DIR)
-	rm -rf config/target/
 
 # The rule to recompile everything
 re: fclean all

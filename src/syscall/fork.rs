@@ -1,11 +1,11 @@
-//! The `fork` system call duplicates the whole current process into a new child process. Execution
-//! resumes at the same location for both processes but the return value is different to allow
-//! differentiation.
+//! The `fork` system call duplicates the whole current process into a new child
+//! process. Execution resumes at the same location for both processes but the
+//! return value is different to allow differentiation.
 
 use crate::errno::Errno;
+use crate::process::regs::Regs;
 use crate::process::ForkOptions;
 use crate::process::Process;
-use crate::process::regs::Regs;
 
 /// The implementation of the `fork` syscall.
 pub fn fork(regs: &Regs) -> Result<i32, Errno> {

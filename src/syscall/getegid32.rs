@@ -1,8 +1,8 @@
 //! The `getegid32` syscall returns the effective GID of the process's owner.
 
 use crate::errno::Errno;
-use crate::process::Process;
 use crate::process::regs::Regs;
+use crate::process::Process;
 
 /// The implementation of the `getegid32` syscall.
 pub fn getegid32(_: &Regs) -> Result<i32, Errno> {

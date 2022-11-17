@@ -1,8 +1,8 @@
 //! The `gettid` system call returns the thread ID of the current process.
 
 use crate::errno::Errno;
-use crate::process::Process;
 use crate::process::regs::Regs;
+use crate::process::Process;
 
 /// The implementation of the `gettid` syscall.
 pub fn gettid(_regs: &Regs) -> Result<i32, Errno> {

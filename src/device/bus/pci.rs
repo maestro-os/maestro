@@ -1,25 +1,25 @@
-//! The PCI (Peripheral Component Interconnect) is a bus which allows to attach hardware devices on
-//! the motherboard. There here-module allows to retrieve informations on the devices attached to
-//! the computer's PCI.
+//! The PCI (Peripheral Component Interconnect) is a bus which allows to attach
+//! hardware devices on the motherboard. There here-module allows to retrieve
+//! informations on the devices attached to the computer's PCI.
 //!
-//! The device ID, vendor ID, class and subclass of a device allows to determine which driver is
-//! required for the device.
+//! The device ID, vendor ID, class and subclass of a device allows to determine
+//! which driver is required for the device.
 //!
-//! A PCI device can specify one or several BARs (Base Address Registers). They specify the address
-//! of the device's registers in memory, allowing communications through DMA (Direct Memory
-//! Access).
+//! A PCI device can specify one or several BARs (Base Address Registers). They
+//! specify the address of the device's registers in memory, allowing
+//! communications through DMA (Direct Memory Access).
 
-use core::cmp::min;
-use core::mem::size_of;
-use crate::device::DeviceManager;
-use crate::device::bar::BAR;
 use crate::device::bar::BARType;
+use crate::device::bar::BAR;
 use crate::device::driver;
-use crate::device::manager::PhysicalDevice;
 use crate::device::manager;
+use crate::device::manager::PhysicalDevice;
+use crate::device::DeviceManager;
 use crate::errno::Errno;
 use crate::io;
 use crate::util::container::vec::Vec;
+use core::cmp::min;
+use core::mem::size_of;
 
 /// The port used to specify the configuration address.
 const CONFIG_ADDRESS_PORT: u16 = 0xcf8;
@@ -71,7 +71,8 @@ pub const CLASS_CO_PROCESSOR: u16 = 0x40;
 /// Device class: Unassigned
 pub const CLASS_UNASSIGNED: u16 = 0xff;
 
-/// Reads 32 bits from the PCI register specified by `bus`, `device`, `func` and `reg_off`.
+/// Reads 32 bits from the PCI register specified by `bus`, `device`, `func` and
+/// `reg_off`.
 fn read_long(bus: u8, device: u8, func: u8, reg_off: u8) -> u32 {
 	// The PCI address
 	let addr = ((bus as u32) << 16)
@@ -88,8 +89,8 @@ fn read_long(bus: u8, device: u8, func: u8, reg_off: u8) -> u32 {
 	}
 }
 
-/// Writes 32 bits from `value` into the PCI register specified by `bus`, `device`, `func` and
-/// `reg_off`.
+/// Writes 32 bits from `value` into the PCI register specified by `bus`,
+/// `device`, `func` and `reg_off`.
 fn write_long(bus: u8, device: u8, func: u8, reg_off: u8, value: u32) {
 	// The PCI address
 	let addr = ((bus as u32) << 16)
@@ -164,7 +165,8 @@ pub struct PCIDevice {
 
 	/// Built-In Self Test status.
 	bist: u8,
-	/// Defines the header type of the device, to determine what informations follow.
+	/// Defines the header type of the device, to determine what informations
+	/// follow.
 	header_type: u8,
 	/// Specifies the latency timer in units of PCI bus clocks.
 	latency_timer: u8,
@@ -204,18 +206,8 @@ impl PCIDevice {
 			cache_line_size: (data[3] & 0xff) as _,
 
 			info: [
-				data[4],
-				data[5],
-				data[6],
-				data[7],
-				data[8],
-				data[9],
-				data[10],
-				data[11],
-				data[12],
-				data[13],
-				data[14],
-				data[15],
+				data[4], data[5], data[6], data[7], data[8], data[9], data[10], data[11], data[12],
+				data[13], data[14], data[15],
 			],
 		}
 	}
@@ -246,26 +238,23 @@ impl PCIDevice {
 	}
 
 	/// Returns the offset of the register for the `n`th BAR.
-	fn get_bar_reg_off(&self, n: u8) -> Option<u32> {
-		match self.get_header_type() {
-			0x00 => if n < 6 {
-				Some(self.info[n as usize])
-			} else {
-				None
-			},
+	fn get_bar_reg_off(&self, n: u8) -> Option<u16> {
+		let limit = match self.get_header_type() {
+			0x00 => 6,
+			0x01 => 2,
+			_ => 0,
+		};
 
-			0x01 => if n < 2 {
-				Some(self.info[n as usize])
-			} else {
-				None
-			},
-
-			_ => None,
+		if n < limit {
+			Some(0x4 + n as u16)
+		} else {
+			None
 		}
 	}
 
 	/// Returns the size of the address space of the `n`th BAR.
-	pub fn get_bar_size(&self, n: u8) -> Option<usize> {
+	/// `io` tells whether the BAR is in IO space.
+	pub fn get_bar_size(&self, n: u8, io: bool) -> Option<usize> {
 		let reg_off = self.get_bar_reg_off(n)?;
 		// Saving the register
 		let save = read_long(self.bus, self.device, self.function, reg_off as _);
@@ -273,7 +262,11 @@ impl PCIDevice {
 		// Writing all 1s on register
 		write_long(self.bus, self.device, self.function, reg_off as _, !0u32);
 
-		let size = !read_long(self.bus, self.device, self.function, reg_off as _) + 1;
+		let mut size =
+			(!read_long(self.bus, self.device, self.function, reg_off as _)).wrapping_add(1);
+		if io {
+			size &= 0xffff;
+		}
 
 		// Restoring the register's value
 		write_long(self.bus, self.device, self.function, reg_off as _, save);
@@ -330,10 +323,12 @@ impl PhysicalDevice for PCIDevice {
 		let bar_off = self.get_bar_reg_off(n)?;
 		// The BAR's value
 		let value = read_long(self.bus, self.device, self.function, bar_off as _);
+		// Tells whether the BAR is in IO space.
+		let io = (value & 0b1) != 0;
 		// The address space's size
-		let size = self.get_bar_size(n).unwrap();
+		let size = self.get_bar_size(n, io).unwrap();
 
-		if (value & 0b1) == 0 {
+		let bar = if !io {
 			let type_ = match ((value >> 1) & 0b11) as u8 {
 				0x0 => BARType::Size32,
 				0x2 => BARType::Size64,
@@ -346,33 +341,35 @@ impl PhysicalDevice for PCIDevice {
 				BARType::Size64 => {
 					// The next BAR's value
 					let next_bar_off = self.get_bar_reg_off(n + 1)?;
-					let next_value = read_long(self.bus, self.device, self.function,
-						next_bar_off as _);
+					let next_value =
+						read_long(self.bus, self.device, self.function, next_bar_off as _);
 
 					(value & 0xfffffff0) as u64 | ((next_value as u64) << 32)
-				},
+				}
 			};
 
-			Some(BAR::MemorySpace {
+			BAR::MemorySpace {
 				type_,
 				prefetchable: value & 0b1000 != 0,
 
 				address,
 
 				size,
-			})
+			}
 		} else {
-			Some(BAR::IOSpace {
+			BAR::IOSpace {
 				address: (value & 0xfffffffc) as u64,
 
 				size,
-			})
-		}
+			}
+		};
+
+		Some(bar)
 	}
 }
 
-/// This manager handles every devices connected to the PCI bus. Since the PCI bus is not a hotplug
-/// bus, calling on_unplug on this structure has no effect.
+/// This manager handles every devices connected to the PCI bus. Since the PCI
+/// bus is not a hotplug bus, calling on_unplug on this structure has no effect.
 pub struct PCIManager {
 	/// The list of PCI devices.
 	devices: Vec<PCIDevice>,
@@ -427,6 +424,9 @@ impl PCIManager {
 
 					// Reading function's PCI data
 					read_data(bus, device, func, 0, &mut data);
+
+					// Enabling Memory space and I/O space for BARs
+					write_long(bus, device, func, 0x4, data[1] | 0b11);
 
 					// Registering the device
 					let dev = PCIDevice::new(bus, device, func, &data);

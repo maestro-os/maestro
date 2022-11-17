@@ -2,29 +2,29 @@
 
 /// Termcap flags.
 pub type TCFlag = u32;
-/// TODO doc
+/// Type representing a character.
 pub type CC = u8;
 
 /// Size of the array for control characters.
 const NCCS: usize = 19;
 
-pub const VINTR: TCFlag = 0;
-pub const VQUIT: TCFlag = 1;
-pub const VERASE: TCFlag = 2;
-pub const VKILL: TCFlag = 3;
-pub const VEOF: TCFlag = 4;
-pub const VTIME: TCFlag = 5;
-pub const VMIN: TCFlag = 6;
-pub const VSWTC: TCFlag = 7;
-pub const VSTART: TCFlag = 8;
-pub const VSTOP: TCFlag = 9;
-pub const VSUSP: TCFlag = 10;
-pub const VEOL: TCFlag = 11;
-pub const VREPRINT: TCFlag = 12;
-pub const VDISCARD: TCFlag = 13;
-pub const VWERASE: TCFlag = 14;
-pub const VLNEXT: TCFlag = 15;
-pub const VEOL2: TCFlag = 16;
+pub const VINTR: usize = 0;
+pub const VQUIT: usize = 1;
+pub const VERASE: usize = 2;
+pub const VKILL: usize = 3;
+pub const VEOF: usize = 4;
+pub const VTIME: usize = 5;
+pub const VMIN: usize = 6;
+pub const VSWTC: usize = 7;
+pub const VSTART: usize = 8;
+pub const VSTOP: usize = 9;
+pub const VSUSP: usize = 10;
+pub const VEOL: usize = 11;
+pub const VREPRINT: usize = 12;
+pub const VDISCARD: usize = 13;
+pub const VWERASE: usize = 14;
+pub const VLNEXT: usize = 15;
+pub const VEOL2: usize = 16;
 
 pub const IGNBRK: TCFlag = 0o000001;
 pub const BRKINT: TCFlag = 0o000002;
@@ -162,7 +162,7 @@ pub const XTABS: TCFlag = 0o014000;
 
 /// Terminal IO settings.
 #[repr(C)]
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Termios {
 	/// Input modes
 	pub c_iflag: TCFlag,
@@ -172,34 +172,43 @@ pub struct Termios {
 	pub c_cflag: TCFlag,
 	/// Local modes
 	pub c_lflag: TCFlag,
+	/// TODO doc
+	pub c_line: CC,
 	/// Special characters
 	pub c_cc: [CC; NCCS],
+	/// TODO doc
+	pub __c_ispeed: u32,
+	/// TODO doc
+	pub __c_ospeed: u32,
 }
 
 impl Default for Termios {
 	fn default() -> Self {
 		let mut t = Self {
-			c_iflag: BRKINT,
-			c_oflag: 0,
-			c_cflag: CS8,
+			c_iflag: ICRNL | IUCLC | IXANY | IMAXBEL,
+			c_oflag: OPOST | ONLCR,
+			c_cflag: CS8, // TODO
 			c_lflag: ISIG | ICANON | ECHO | ECHOE | ECHOK,
+			c_line: 0,
 			c_cc: [0; NCCS],
+			__c_ispeed: 0,
+			__c_ospeed: 0,
 		};
 
 		// Filling special characters
-		t.c_cc[VINTR as usize] = 0o03;
-		t.c_cc[VQUIT as usize] = 0o34;
-		t.c_cc[VERASE as usize] = 0o177;
-		t.c_cc[VKILL as usize] = 0o25;
-		t.c_cc[VEOF as usize] = 0o4;
-		t.c_cc[VMIN as usize] = 1;
-		t.c_cc[VSTART as usize] = 0o21;
-		t.c_cc[VSTOP as usize] = 0o23;
-		t.c_cc[VSUSP as usize] = 0o32;
-		t.c_cc[VREPRINT as usize] = 0o22;
-		t.c_cc[VDISCARD as usize] = 0o17;
-		t.c_cc[VWERASE as usize] = 0o27;
-		t.c_cc[VLNEXT as usize] = 0o26;
+		t.c_cc[VINTR] = 0o03;
+		t.c_cc[VQUIT] = 0o34;
+		t.c_cc[VERASE] = 0o177;
+		t.c_cc[VKILL] = 0o25;
+		t.c_cc[VEOF] = 0o4;
+		t.c_cc[VMIN] = 1;
+		t.c_cc[VSTART] = 0o21;
+		t.c_cc[VSTOP] = 0o23;
+		t.c_cc[VSUSP] = 0o32;
+		t.c_cc[VREPRINT] = 0o22;
+		t.c_cc[VDISCARD] = 0o17;
+		t.c_cc[VWERASE] = 0o27;
+		t.c_cc[VLNEXT] = 0o26;
 
 		t
 	}

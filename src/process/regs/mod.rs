@@ -1,9 +1,10 @@
-//! This module implements the Regs structure, allowing to save an execution state and to restore
-//! it.
+//! This module implements the Regs structure, allowing to save an execution
+//! state and to restore it.
 
+use crate::errno::Errno;
+use crate::gdt;
 use core::ffi::c_void;
 use core::fmt;
-use crate::gdt;
 
 /// The default value of the eflags register.
 const DEFAULT_EFLAGS: u32 = 0x1202;
@@ -17,13 +18,12 @@ extern "C" {
 	/// `regs` is the structure of registers to restore to resume the context.
 	/// `data_selector` is the user data segment selector.
 	/// `code_selector` is the user code segment selector.
-	pub fn context_switch(regs: &Regs, data_selector: u16, code_selector: u16) -> !;
+	fn context_switch(regs: &Regs, data_selector: u16, code_selector: u16) -> !;
 	/// This function switches to a kernelspace context.
 	/// `regs` is the structure of registers to restore to resume the context.
-	pub fn context_switch_kernel(regs: &Regs) -> !;
+	fn context_switch_kernel(regs: &Regs) -> !;
 }
 
-// TODO Ensure the buffer is on a 32 bits address (required by fxsave and fxrstor)
 /// Wrapper allowing to align the fxstate buffer.
 #[repr(align(16))]
 struct FXStateWrapper([u8; 512]);
@@ -50,8 +50,8 @@ pub extern "C" fn restore_fxstate(fxstate: &[u8; 512]) {
 	}
 }
 
-/// Structure representing the list of registers for a context. The content of this structure
-/// depends on the architecture for which the kernel is compiled.
+/// Structure representing the list of registers for a context. The content of
+/// this structure depends on the architecture for which the kernel is compiled.
 #[derive(Clone, Copy, Debug)]
 #[repr(C, packed)]
 //#[cfg(config_general_arch = "x86")]
@@ -75,6 +75,16 @@ pub struct Regs {
 }
 
 impl Regs {
+	/// Sets the return value of a system call.
+	pub fn set_syscall_return(&mut self, value: Result<i32, Errno>) {
+		let retval = match value {
+			Ok(val) => val as _,
+			Err(e) => (-e.as_int()) as _,
+		};
+
+		self.eax = retval;
+	}
+
 	/// Switches to the associated register context.
 	/// `user` tells whether the function switchs to userspace.
 	///
@@ -136,7 +146,9 @@ impl fmt::Display for Regs {
 		let fs = self.fs;
 		let gs = self.gs;
 
-		write!(f, "ebp: {:p} esp: {:p} eip: {:p} eflags: {:p} eax: {:p}
+		write!(
+			f,
+			"ebp: {:p} esp: {:p} eip: {:p} eflags: {:p} eax: {:p}
 ebx: {:p} ecx: {:p} edx: {:p} esi: {:p} edi: {:p}
 gs: 0x{:x} fs: 0x{:x}",
 			self.ebp as *const c_void,
@@ -150,6 +162,7 @@ gs: 0x{:x} fs: 0x{:x}",
 			self.esi as *const c_void,
 			self.edi as *const c_void,
 			gs,
-			fs)
+			fs
+		)
 	}
 }

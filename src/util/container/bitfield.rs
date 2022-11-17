@@ -1,10 +1,10 @@
 //! This module stores the Bitfield structure.
 
 use crate::errno::Errno;
-use crate::util::FailableClone;
 use crate::util::bit_size_of;
 use crate::util::container::vec::Vec;
 use crate::util::math::ceil_division;
+use crate::util::FailableClone;
 
 /// A bitfield is a data structure meant to contain only boolean values.
 /// The size of the bitfield is specified at initialization.
@@ -13,8 +13,6 @@ pub struct Bitfield {
 	data: Vec<u8>,
 	/// The number of bits in the bitfield.
 	len: usize,
-	/// The number of set bits.
-	set_count: usize,
 }
 
 impl Bitfield {
@@ -25,7 +23,6 @@ impl Bitfield {
 		let mut bitfield = Self {
 			data: Vec::with_capacity(size)?,
 			len,
-			set_count: 0,
 		};
 		for _ in 0..size {
 			bitfield.data.push(0)?;
@@ -46,18 +43,13 @@ impl Bitfield {
 
 	/// Returns a mutable reference to a slice containing the bitfield.
 	#[inline(always)]
-	pub fn as_mut_slice(&mut self) -> &mut [u8] {
+	pub fn as_slice_mut(&mut self) -> &mut [u8] {
 		self.data.as_mut_slice()
 	}
 
 	/// Returns the size of the memory region of the bitfield in bytes.
 	pub fn mem_size(&self) -> usize {
 		ceil_division(self.len, bit_size_of::<u8>())
-	}
-
-	/// Returns the number of set bits.
-	pub fn get_set_count(&self) -> usize {
-		self.set_count
 	}
 
 	/// Tells whether bit `index` is set.
@@ -73,8 +65,6 @@ impl Bitfield {
 		if !self.is_set(index) {
 			let unit = &mut self.data[(index / bit_size_of::<u8>()) as _];
 			*unit |= 1 << (index % bit_size_of::<u8>());
-
-			self.set_count += 1;
 		}
 	}
 
@@ -85,13 +75,11 @@ impl Bitfield {
 		if self.is_set(index) {
 			let unit = &mut self.data[(index / bit_size_of::<u8>()) as _];
 			*unit &= !(1 << (index % bit_size_of::<u8>()));
-
-			self.set_count -= 1;
 		}
 	}
 
-	/// Finds a clear bit. The function returns the offset to the bit. If none is found, the
-	/// function returns None.
+	/// Finds a clear bit. The function returns the offset to the bit. If none
+	/// is found, the function returns None.
 	pub fn find_clear(&self) -> Option<usize> {
 		for i in 0..self.len {
 			if !self.is_set(i) {
@@ -102,8 +90,8 @@ impl Bitfield {
 		None
 	}
 
-	/// Finds a set bit. The function returns the offset to the bit. If none is found, the function
-	/// returns None.
+	/// Finds a set bit. The function returns the offset to the bit. If none is
+	/// found, the function returns None.
 	pub fn find_set(&self) -> Option<usize> {
 		for i in 0..self.len {
 			if self.is_set(i) {
@@ -119,8 +107,6 @@ impl Bitfield {
 		for i in 0..self.data.len() {
 			self.data[i] = 0;
 		}
-
-		self.set_count = 0;
 	}
 
 	/// Clears every elements in the bitfield.
@@ -128,14 +114,13 @@ impl Bitfield {
 		for i in 0..self.data.len() {
 			self.data[i] = !0;
 		}
-
-		self.set_count = self.len();
 	}
 
 	/// Calls the given function `f` for each bits in the field.
 	/// The first argument of the function is the index of the bit.
 	/// The second argument is the value of the bit.
-	/// If the function returns `false`, the iteration stops. Else, it continues.
+	/// If the function returns `false`, the iteration stops. Else, it
+	/// continues.
 	pub fn for_each<F: FnMut(usize, bool) -> bool>(&self, mut f: F) {
 		for i in 0..self.len() {
 			if !f(i, self.is_set(i)) {
@@ -150,7 +135,6 @@ impl FailableClone for Bitfield {
 		Ok(Self {
 			data: self.data.failable_clone()?,
 			len: self.len,
-			set_count: self.set_count,
 		})
 	}
 }

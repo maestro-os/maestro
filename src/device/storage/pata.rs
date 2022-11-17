@@ -1,8 +1,9 @@
 //! This module implements the PATA interface for hard drives.
-//! The PATA interface is an old, deprecated interface that has been replaced by the SATA
-//! interface.
-//! ATA devices may be detected by the PCI, but if not, it doesn't mean that they are not present.
-//! The disk(s) may instead use the standardized IO ports for legacy support.
+//! The PATA interface is an old, deprecated interface that has been replaced by
+//! the SATA interface.
+//! ATA devices may be detected by the PCI, but if not, it doesn't mean that
+//! they are not present. The disk(s) may instead use the standardized IO ports
+//! for legacy support.
 //!
 //! Legacy PATA can support up to two buses, each supporting up to two drives.
 //! Each bus has its own set of ports. Before using a drive, the kernel has to:
@@ -14,12 +15,13 @@
 
 // TODO Add support for third and fourth bus
 
-use core::cmp::min;
-use crate::device::storage::ide;
-use crate::errno::Errno;
-use crate::errno;
-use crate::io;
 use super::StorageInterface;
+use crate::device::storage::ide;
+use crate::errno;
+use crate::errno::Errno;
+use crate::io;
+use crate::util::math;
+use core::cmp::min;
 
 /// Offset to the data register.
 const DATA_REGISTER_OFFSET: u16 = 0;
@@ -61,21 +63,21 @@ const COMMAND_CACHE_FLUSH: u8 = 0xe7;
 const COMMAND_IDENTIFY: u8 = 0xec;
 
 /// Address mark not found.
-const ERROR_AMNF: u8  = 0b00000001;
+const ERROR_AMNF: u8 = 0b00000001;
 /// Track zero not found.
 const ERROR_TKZNF: u8 = 0b00000010;
 /// Aborted command.
-const ERROR_ABRT: u8  = 0b00000100;
+const ERROR_ABRT: u8 = 0b00000100;
 /// Media change request.
-const ERROR_MCR: u8   = 0b00001000;
+const ERROR_MCR: u8 = 0b00001000;
 /// ID not found.
-const ERROR_IDNF: u8  = 0b00010000;
+const ERROR_IDNF: u8 = 0b00010000;
 /// Media changed.
-const ERROR_MC: u8    = 0b00100000;
+const ERROR_MC: u8 = 0b00100000;
 /// Uncorrectable data error.
-const ERROR_UNC: u8   = 0b01000000;
+const ERROR_UNC: u8 = 0b01000000;
 /// Bad block detected.
-const ERROR_BBK: u8   = 0b10000000;
+const ERROR_BBK: u8 = 0b10000000;
 
 /// Indicates an error occurred.
 const STATUS_ERR: u8 = 0b00000001;
@@ -84,7 +86,7 @@ const STATUS_DRQ: u8 = 0b00001000;
 /// Overlapped Mode Service Request.
 const STATUS_SRV: u8 = 0b00010000;
 /// Drive Fault Error.
-const STATUS_DF: u8  = 0b00100000;
+const STATUS_DF: u8 = 0b00100000;
 /// Clear after an error. Set otherwise.
 const STATUS_RDY: u8 = 0b01000000;
 /// Indicates the drive is preparing to send/receive data.
@@ -93,18 +95,32 @@ const STATUS_BSY: u8 = 0b10000000;
 /// The size of a sector in bytes.
 const SECTOR_SIZE: u64 = 512;
 
-// TODO Synchronize both master and slave disks so that another thread cannot trigger a select
-// while operating on a drive
+// TODO Synchronize both master and slave disks so that another thread cannot
+// trigger a select while operating on a drive
 
-/// TODO doc
+/// Applies a delay. `n` determines the amount to wait.
+/// This function is a dirty hack and the actual delay is approximative but
+/// **should** be sufficient.
+fn delay(n: u32) {
+	let n = math::ceil_division(n, 30) * 1000;
+
+	for _ in 0..n {
+		unsafe {
+			io::inb(STATUS_REGISTER_OFFSET);
+		}
+	}
+}
+
+/// An enumeration representing port offset types for ATA.
 enum PortOffset {
-	/// TODO doc
+	/// Port offset on general register ports.
 	ATA(u16),
-	/// TODO doc
+	/// Port offset on control register ports.
 	Control(u16),
 }
 
-/// Structure representing a PATA interface. An instance is associated with a unique disk.
+/// Structure representing a PATA interface. An instance is associated with a
+/// unique disk.
 #[derive(Debug)]
 pub struct PATAInterface {
 	/// The channel on which the disk is located.
@@ -120,8 +136,8 @@ pub struct PATAInterface {
 }
 
 impl PATAInterface {
-	/// Creates a new instance. On error, the function returns a string telling the cause.
-	/// `channel` is the IDE channel of the disk.
+	/// Creates a new instance. On error, the function returns a string telling
+	/// the cause. `channel` is the IDE channel of the disk.
 	/// `slave` tells whether the disk is the slave disk.
 	pub fn new(channel: ide::Channel, slave: bool) -> Result<Self, &'static str> {
 		let mut s = Self {
@@ -137,6 +153,7 @@ impl PATAInterface {
 	}
 
 	/// Reads a byte from the register at offset `port_off`.
+	#[inline(always)]
 	fn inb(&self, port_off: PortOffset) -> u8 {
 		let (bar, off) = match &port_off {
 			PortOffset::ATA(off) => (&self.channel.ata_bar, *off),
@@ -147,6 +164,7 @@ impl PATAInterface {
 	}
 
 	/// Reads a word from the register at offset `port_off`.
+	#[inline(always)]
 	fn inw(&self, port_off: PortOffset) -> u16 {
 		let (bar, off) = match &port_off {
 			PortOffset::ATA(off) => (&self.channel.ata_bar, *off),
@@ -157,6 +175,7 @@ impl PATAInterface {
 	}
 
 	/// Writes a byte into the register at offset `port_off`.
+	#[inline(always)]
 	fn outb(&self, port_off: PortOffset, value: u8) {
 		let (bar, off) = match &port_off {
 			PortOffset::ATA(off) => (&self.channel.ata_bar, *off),
@@ -167,6 +186,7 @@ impl PATAInterface {
 	}
 
 	/// Writes a word into the register at offset `port_off`.
+	#[inline(always)]
 	fn outw(&self, port_off: PortOffset, value: u16) {
 		let (bar, off) = match &port_off {
 			PortOffset::ATA(off) => (&self.channel.ata_bar, *off),
@@ -192,14 +212,14 @@ impl PATAInterface {
 	}
 
 	/// Tells whether the disk's buses are floating.
-	/// A floating bus means there is no hard drive connected. However, if the bus isn't floating,
-	/// it doesn't necessarily mean there is a disk.
+	/// A floating bus means there is no hard drive connected. However, if the
+	/// bus isn't floating, it doesn't necessarily mean there is a disk.
 	fn is_floating(&self) -> bool {
 		self.get_status() == 0xff
 	}
 
-	/// Waits until the drive is not busy anymore. If the drive wasn't busy, the function doesn't
-	/// do anything.
+	/// Waits until the drive is not busy anymore. If the drive wasn't busy, the
+	/// function doesn't do anything.
 	fn wait_busy(&self) {
 		if self.is_floating() {
 			return;
@@ -208,18 +228,20 @@ impl PATAInterface {
 		while self.get_status() & STATUS_BSY != 0 {}
 	}
 
-	/// Sends the given command on the bus. The function doesn't check if the drive is ready since
-	/// it can allow to select the drive.
+	/// Sends the given command on the bus. The function doesn't check if the
+	/// drive is ready since it can allow to select the drive.
 	/// `command` is the command.
 	fn send_command(&self, command: u8) {
 		self.outb(PortOffset::ATA(COMMAND_REGISTER_OFFSET), command);
 	}
 
-	/// Selects the drive. This operation is necessary in order to send command to the drive.
-	/// If the drive is already selected, the function does nothing unless `init` is set.
+	/// Selects the drive. This operation is necessary in order to send command
+	/// to the drive. If the drive is already selected, the function does
+	/// nothing unless `init` is set.
 	fn select(&self, init: bool) {
 		if !init {
-			// TODO If not necessary, return
+			// TODO Select if necessary
+			return;
 		}
 
 		let value = if !self.slave {
@@ -229,21 +251,7 @@ impl PATAInterface {
 		};
 		self.outb(PortOffset::ATA(DRIVE_REGISTER_OFFSET), value);
 
-		self.wait(false);
-	}
-
-	/// Waits at least 420 nanoseconds if `long` is not set, or at least 5 milliseconds if set.
-	fn wait(&self, long: bool) {
-		let count = if long {
-			167
-		} else {
-			14
-		};
-
-		// Individual status read take at least 30ns. 30 * 14 = 420
-		for _ in 0..count {
-			self.inb(PortOffset::ATA(STATUS_REGISTER_OFFSET));
-		}
+		delay(420);
 	}
 
 	/// Flushes the drive's cache. The device is assumed to be selected.
@@ -252,33 +260,18 @@ impl PATAInterface {
 		self.wait_busy();
 	}
 
-	/// Sets the number `count` of sectors to read/write. The device is assumed to be selected.
-	fn set_sectors_count(&self, count: u16) {
-		unsafe {
-			io::outw(SECTORS_COUNT_REGISTER_OFFSET, count);
-		}
-	}
-
-	/// Sets the LBA offset `offset`. The device is assumed to be selected.
-	fn set_lba(&self, offset: u64) {
-		unsafe {
-			io::outw(LBA_LO_REGISTER_OFFSET, ((offset >> 32) & 0xffff) as _);
-			io::outw(LBA_MID_REGISTER_OFFSET, ((offset >> 16) & 0xffff) as _);
-			io::outw(LBA_HI_REGISTER_OFFSET, (offset & 0xffff) as _);
-		}
-	}
-
-	/// Resets both master and slave devices. The current drive may not be selected anymore.
+	/// Resets both master and slave devices. The current drive may not be
+	/// selected anymore.
 	fn reset(&self) {
 		self.outb(PortOffset::Control(0), 1 << 2);
-		self.wait(true);
+		delay(5000);
 
 		self.outb(PortOffset::Control(0), 0);
-		self.wait(true);
+		delay(5000);
 	}
 
-	/// Identifies the drive, retrieving informations about the drive. On error, the function
-	/// returns a string telling the cause.
+	/// Identifies the drive, retrieving informations about the drive. On error,
+	/// the function returns a string telling the cause.
 	fn identify(&mut self) -> Result<(), &'static str> {
 		self.reset();
 		self.select(true);
@@ -287,12 +280,14 @@ impl PATAInterface {
 			return Err("Drive doesn't exist");
 		}
 
-		self.set_sectors_count(0);
-		self.set_lba(0);
-		self.wait(false);
+		self.outb(PortOffset::ATA(SECTORS_COUNT_REGISTER_OFFSET), 0);
+		self.outb(PortOffset::ATA(LBA_LO_REGISTER_OFFSET), 0);
+		self.outb(PortOffset::ATA(LBA_MID_REGISTER_OFFSET), 0);
+		self.outb(PortOffset::ATA(LBA_HI_REGISTER_OFFSET), 0);
+		delay(420);
 
 		self.send_command(COMMAND_IDENTIFY);
-		self.wait(false);
+		delay(420);
 
 		let status = self.get_status();
 		if status == 0 {
@@ -309,12 +304,14 @@ impl PATAInterface {
 
 		loop {
 			let status = self.get_status();
-			if status & STATUS_DRQ != 0 || status & STATUS_ERR != 0 {
+
+			if status & STATUS_ERR != 0 {
+				return Err("Error while identifying the device");
+			}
+
+			if status & STATUS_DRQ != 0 {
 				break;
 			}
-		}
-		if self.get_status() & STATUS_ERR != 0 {
-			return Err("Error while identifying the device");
 		}
 
 		let mut data: [u16; 256] = [0; 256];
@@ -324,8 +321,10 @@ impl PATAInterface {
 
 		let lba48_support = data[83] & (1 << 10) != 0;
 		let lba28_size = (data[60] as u32) | ((data[61] as u32) << 16);
-		let lba48_size = (data[100] as u64) | ((data[101] as u64) << 16)
-			| ((data[102] as u64) << 32) | ((data[103] as u64) << 48);
+		let lba48_size = (data[100] as u64)
+			| ((data[101] as u64) << 16)
+			| ((data[102] as u64) << 32)
+			| ((data[103] as u64) << 48);
 
 		if lba28_size == 0 {
 			return Err("Unsupported disk (too old)");
@@ -338,11 +337,12 @@ impl PATAInterface {
 			lba28_size as _
 		};
 
-		self.wait(false);
+		delay(420);
 		Ok(())
 	}
 
-	/// Waits for the drive to be ready for IO operation. The device is assumed to be selected.
+	/// Waits for the drive to be ready for IO operation. The device is assumed
+	/// to be selected.
 	fn wait_io(&self) -> Result<(), Errno> {
 		loop {
 			let status = self.get_status();
@@ -367,16 +367,17 @@ impl StorageInterface for PATAInterface {
 		self.sectors_count
 	}
 
+	// TODO clean
 	fn read(&mut self, buf: &mut [u8], offset: u64, size: u64) -> Result<(), Errno> {
 		debug_assert!((buf.len() as u64) >= size * SECTOR_SIZE);
 
 		// If the offset and size are out of bounds of the disk, return an error
-		if offset > self.sectors_count || offset + size > self.sectors_count {
+		if offset >= self.sectors_count || offset + size > self.sectors_count {
 			return Err(crate::errno!(EINVAL));
 		}
 
 		// Tells whether to use LBA48
-		let lba48 = (offset + size) >= ((1 << 29) - 1);
+		let lba48 = (offset + size) >= ((1 << 28) - 1);
 
 		// If LBA48 is required but not supported, return an error
 		if lba48 && !self.lba48 {
@@ -394,6 +395,8 @@ impl StorageInterface for PATAInterface {
 
 		let mut i = 0;
 		while i < size {
+			let off = offset + i;
+
 			// The number of blocks for this iteration
 			let mut count = min(size - i, iter_max);
 			if count == iter_max {
@@ -414,7 +417,7 @@ impl StorageInterface for PATAInterface {
 
 			// If LBA28, add the end of the sector offset
 			if !lba48 {
-				drive |= ((offset >> 24) & 0x0f) as u8;
+				drive |= ((off >> 24) & 0x0f) as u8;
 			}
 
 			self.outb(PortOffset::ATA(DRIVE_REGISTER_OFFSET), drive);
@@ -422,9 +425,9 @@ impl StorageInterface for PATAInterface {
 			// If LBA48, write high bytes first
 			if lba48 {
 				let count = ((count >> 8) & 0xff) as u8;
-				let lo_lba = ((offset >> 24) & 0xff) as u8;
-				let mid_lba = ((offset >> 32) & 0xff) as u8;
-				let hi_lba = ((offset >> 40) & 0xff) as u8;
+				let lo_lba = ((off >> 24) & 0xff) as u8;
+				let mid_lba = ((off >> 32) & 0xff) as u8;
+				let hi_lba = ((off >> 40) & 0xff) as u8;
 
 				self.outb(PortOffset::ATA(SECTORS_COUNT_REGISTER_OFFSET), count);
 				self.outb(PortOffset::ATA(LBA_LO_REGISTER_OFFSET), lo_lba);
@@ -432,11 +435,14 @@ impl StorageInterface for PATAInterface {
 				self.outb(PortOffset::ATA(LBA_HI_REGISTER_OFFSET), hi_lba);
 			}
 
-			let lo_lba = (offset & 0xff) as u8;
-			let mid_lba = ((offset >> 8) & 0xff) as u8;
-			let hi_lba = ((offset >> 16) & 0xff) as u8;
+			let lo_lba = (off & 0xff) as u8;
+			let mid_lba = ((off >> 8) & 0xff) as u8;
+			let hi_lba = ((off >> 16) & 0xff) as u8;
 
-			self.outb(PortOffset::ATA(SECTORS_COUNT_REGISTER_OFFSET), (count & 0xff) as u8);
+			self.outb(
+				PortOffset::ATA(SECTORS_COUNT_REGISTER_OFFSET),
+				(count & 0xff) as u8,
+			);
 			self.outb(PortOffset::ATA(LBA_LO_REGISTER_OFFSET), lo_lba);
 			self.outb(PortOffset::ATA(LBA_MID_REGISTER_OFFSET), mid_lba);
 			self.outb(PortOffset::ATA(LBA_HI_REGISTER_OFFSET), hi_lba);
@@ -445,6 +451,10 @@ impl StorageInterface for PATAInterface {
 				self.send_command(COMMAND_READ_SECTORS_EXT);
 			} else {
 				self.send_command(COMMAND_READ_SECTORS);
+			}
+
+			if count == 0 {
+				count = iter_max;
 			}
 
 			for j in 0..count {
@@ -466,16 +476,17 @@ impl StorageInterface for PATAInterface {
 		Ok(())
 	}
 
+	// TODO clean
 	fn write(&mut self, buf: &[u8], offset: u64, size: u64) -> Result<(), Errno> {
 		debug_assert!((buf.len() as u64) >= size * SECTOR_SIZE);
 
 		// If the offset and size are out of bounds of the disk, return an error
-		if offset > self.sectors_count || offset + size > self.sectors_count {
+		if offset >= self.sectors_count || offset + size > self.sectors_count {
 			return Err(crate::errno!(EINVAL));
 		}
 
 		// Tells whether to use LBA48
-		let lba48 = (offset + size) >= ((1 << 29) - 1);
+		let lba48 = (offset + size) >= ((1 << 28) - 1);
 
 		// If LBA48 is required but not supported, return an error
 		if lba48 && !self.lba48 {
@@ -493,6 +504,8 @@ impl StorageInterface for PATAInterface {
 
 		let mut i = 0;
 		while i < size {
+			let off = offset + i;
+
 			// The number of blocks for this iteration
 			let mut count = min(size - i, iter_max);
 			if count == iter_max {
@@ -513,7 +526,7 @@ impl StorageInterface for PATAInterface {
 
 			// If LBA28, add the end of the sector offset
 			if !lba48 {
-				drive |= ((offset >> 24) & 0x0f) as u8;
+				drive |= ((off >> 24) & 0x0f) as u8;
 			}
 
 			self.outb(PortOffset::ATA(DRIVE_REGISTER_OFFSET), drive);
@@ -521,9 +534,9 @@ impl StorageInterface for PATAInterface {
 			// If LBA48, write high bytes first
 			if lba48 {
 				let count = ((count >> 8) & 0xff) as u8;
-				let lo_lba = ((offset >> 24) & 0xff) as u8;
-				let mid_lba = ((offset >> 32) & 0xff) as u8;
-				let hi_lba = ((offset >> 40) & 0xff) as u8;
+				let lo_lba = ((off >> 24) & 0xff) as u8;
+				let mid_lba = ((off >> 32) & 0xff) as u8;
+				let hi_lba = ((off >> 40) & 0xff) as u8;
 
 				self.outb(PortOffset::ATA(SECTORS_COUNT_REGISTER_OFFSET), count);
 				self.outb(PortOffset::ATA(LBA_LO_REGISTER_OFFSET), lo_lba);
@@ -531,11 +544,14 @@ impl StorageInterface for PATAInterface {
 				self.outb(PortOffset::ATA(LBA_HI_REGISTER_OFFSET), hi_lba);
 			}
 
-			let lo_lba = (offset & 0xff) as u8;
-			let mid_lba = ((offset >> 8) & 0xff) as u8;
-			let hi_lba = ((offset >> 16) & 0xff) as u8;
+			let lo_lba = (off & 0xff) as u8;
+			let mid_lba = ((off >> 8) & 0xff) as u8;
+			let hi_lba = ((off >> 16) & 0xff) as u8;
 
-			self.outb(PortOffset::ATA(SECTORS_COUNT_REGISTER_OFFSET), (count & 0xff) as u8);
+			self.outb(
+				PortOffset::ATA(SECTORS_COUNT_REGISTER_OFFSET),
+				(count & 0xff) as u8,
+			);
 			self.outb(PortOffset::ATA(LBA_LO_REGISTER_OFFSET), lo_lba);
 			self.outb(PortOffset::ATA(LBA_MID_REGISTER_OFFSET), mid_lba);
 			self.outb(PortOffset::ATA(LBA_HI_REGISTER_OFFSET), hi_lba);
@@ -544,6 +560,10 @@ impl StorageInterface for PATAInterface {
 				self.send_command(COMMAND_WRITE_SECTORS_EXT);
 			} else {
 				self.send_command(COMMAND_WRITE_SECTORS);
+			}
+
+			if count == 0 {
+				count = iter_max;
 			}
 
 			for j in 0..count {

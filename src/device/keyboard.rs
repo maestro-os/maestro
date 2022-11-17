@@ -140,11 +140,93 @@ pub enum KeyboardKey {
 }
 
 impl KeyboardKey {
-	// TODO Take ctrl state, etc...
+	// TODO Implement correctly with modifiers
 	/// Returns the TTY characters for the given current.
-	/// `shift` tells whether shift is pressed. This value has to be inverted if caps lock is
-	/// enabled.
-	pub fn get_tty_chars(&self, shift: bool) -> Option<&[u8]> {
+	/// `shift` tells whether shift is pressed. This value has to be inverted if
+	/// caps lock is enabled.
+	/// `alt` tells whether alt is pressed.
+	/// `ctrl` tells whether control is pressed.
+	/// `meta` tells whether meta is pressed.
+	pub fn get_tty_chars(&self, shift: bool, _alt: bool, ctrl: bool, _meta: bool) -> Option<&[u8]> {
+		match self {
+			Self::KeyHome => return Some(b"\x1b[1~"),
+			Self::KeyInsert => return Some(b"\x1b[2~"),
+			Self::KeyDelete => return Some(b"\x1b[3~"),
+			Self::KeyEnd => return Some(b"\x1b[4~"),
+			Self::KeyPageUp => return Some(b"\x1b[5~"),
+			Self::KeyPageDown => return Some(b"\x1b[6~"),
+			Self::KeyF1 => return Some(b"\x1b[11~"),
+			Self::KeyF2 => return Some(b"\x1b[12~"),
+			Self::KeyF3 => return Some(b"\x1b[13~"),
+			Self::KeyF4 => return Some(b"\x1b[14~"),
+			Self::KeyF5 => return Some(b"\x1b[15~"),
+			Self::KeyF6 => return Some(b"\x1b[17~"),
+			Self::KeyF7 => return Some(b"\x1b[18~"),
+			Self::KeyF8 => return Some(b"\x1b[19~"),
+			Self::KeyF9 => return Some(b"\x1b[20~"),
+			Self::KeyF10 => return Some(b"\x1b[21~"),
+			Self::KeyF11 => return Some(b"\x1b[23~"),
+			Self::KeyF12 => return Some(b"\x1b[24~"),
+
+			_ => {}
+		}
+
+		if ctrl {
+			match self {
+				Self::KeyA => return Some(&[b'A' - b'A' + 1]),
+				Self::KeyB => return Some(&[b'B' - b'A' + 1]),
+				Self::KeyC => return Some(&[b'C' - b'A' + 1]),
+				Self::KeyD => return Some(&[b'D' - b'A' + 1]),
+				Self::KeyE => return Some(&[b'E' - b'A' + 1]),
+				Self::KeyF => return Some(&[b'F' - b'A' + 1]),
+				Self::KeyG => return Some(&[b'G' - b'A' + 1]),
+				Self::KeyH => return Some(&[b'H' - b'A' + 1]),
+				Self::KeyI => return Some(&[b'I' - b'A' + 1]),
+				Self::KeyJ => return Some(&[b'J' - b'A' + 1]),
+				Self::KeyK => return Some(&[b'K' - b'A' + 1]),
+				Self::KeyL => return Some(&[b'L' - b'A' + 1]),
+				Self::KeyM => return Some(&[b'M' - b'A' + 1]),
+				Self::KeyN => return Some(&[b'N' - b'A' + 1]),
+				Self::KeyO => return Some(&[b'O' - b'A' + 1]),
+				Self::KeyP => return Some(&[b'P' - b'A' + 1]),
+				Self::KeyQ => return Some(&[b'Q' - b'A' + 1]),
+				Self::KeyR => return Some(&[b'R' - b'A' + 1]),
+				Self::KeyS => return Some(&[b'S' - b'A' + 1]),
+				Self::KeyT => return Some(&[b'T' - b'A' + 1]),
+				Self::KeyU => return Some(&[b'U' - b'A' + 1]),
+				Self::KeyV => return Some(&[b'V' - b'A' + 1]),
+				Self::KeyW => return Some(&[b'W' - b'A' + 1]),
+				Self::KeyX => return Some(&[b'X' - b'A' + 1]),
+				Self::KeyY => return Some(&[b'Y' - b'A' + 1]),
+				Self::KeyZ => return Some(&[b'Z' - b'A' + 1]),
+				Self::KeyOpenBrace => return Some(&[b'[' - b'A' + 1]),
+				Self::KeyBackslash => return Some(&[b'\\' - b'A' + 1]),
+				Self::KeyCloseBrace => return Some(&[b']' - b'A' + 1]),
+
+				Self::KeyCursorUp => return Some(b"\x1b[1;5A"),
+				Self::KeyCursorLeft => return Some(b"\x1b[1;5D"),
+				Self::KeyCursorRight => return Some(b"\x1b[1;5C"),
+				Self::KeyCursorDown => return Some(b"\x1b[1;5B"),
+
+				// TODO ^ and _
+				_ => {}
+			}
+		}
+
+		/*let mut modifier = 1;
+		if shift {
+			modifier += 1;
+		}
+		if alt {
+			modifier += 2;
+		}
+		if ctrl {
+			modifier += 4;
+		}
+		if meta {
+			modifier += 8;
+		}*/
+
 		if !shift {
 			match self {
 				Self::KeyEsc => Some(b"\x1b"),
@@ -160,7 +242,7 @@ impl KeyboardKey {
 				Self::Key0 => Some(b"0"),
 				Self::KeyMinus => Some(b"-"),
 				Self::KeyEqual => Some(b"="),
-				Self::KeyBackspace => Some(b"\x08"),
+				Self::KeyBackspace => Some(b"\x7f"),
 				Self::KeyTab => Some(b"\t"),
 				Self::KeyQ => Some(b"q"),
 				Self::KeyW => Some(b"w"),
@@ -200,16 +282,6 @@ impl KeyboardKey {
 				Self::KeySlash => Some(b"/"),
 				Self::KeyKeypadStar => Some(b"*"),
 				Self::KeySpace => Some(b" "),
-				Self::KeyF1 => Some(b"\x1b[[A"),
-				Self::KeyF2 => Some(b"\x1b[[B"),
-				Self::KeyF3 => Some(b"\x1b[[C"),
-				Self::KeyF4 => Some(b"\x1b[[D"),
-				Self::KeyF5 => Some(b"\x1b[[E"),
-				Self::KeyF6 => Some(b"\x1b[17"),
-				Self::KeyF7 => Some(b"\x1b[18"),
-				Self::KeyF8 => Some(b"\x1b[19"),
-				Self::KeyF9 => Some(b"\x1b[20"),
-				Self::KeyF10 => Some(b"\x1b[21"),
 				Self::KeyKeypad7 => Some(b"7"),
 				Self::KeyKeypad8 => Some(b"8"),
 				Self::KeyKeypad9 => Some(b"9"),
@@ -223,19 +295,13 @@ impl KeyboardKey {
 				Self::KeyKeypad3 => Some(b"3"),
 				Self::KeyKeypad0 => Some(b"0"),
 				Self::KeyKeypadDot => Some(b"."),
-				Self::KeyF11 => Some(b"\x1b[23~"),
-				Self::KeyF12 => Some(b"\x1b[24~"),
 
 				Self::KeyKeypadEnter => Some(b"\n"),
 				Self::KeyKeypadSlash => Some(b"/"),
-				Self::KeyHome => Some(b"\x1b[1~"),
 				Self::KeyCursorUp => Some(b"\x1b[A"),
-				Self::KeyPageUp => Some(b"\x1b[5~"),
 				Self::KeyCursorLeft => Some(b"\x1b[D"),
 				Self::KeyCursorRight => Some(b"\x1b[C"),
-				Self::KeyEnd => Some(b"\x1b[4~"),
 				Self::KeyCursorDown => Some(b"\x1b[B"),
-				Self::KeyPageDown => Some(b"\x1b[6~"),
 
 				_ => None,
 			}
@@ -254,7 +320,7 @@ impl KeyboardKey {
 				Self::Key0 => Some(b")"),
 				Self::KeyMinus => Some(b"_"),
 				Self::KeyEqual => Some(b"+"),
-				Self::KeyBackspace => Some(b"\x08"),
+				Self::KeyBackspace => Some(b"\x7f"),
 				Self::KeyTab => Some(b"\t"),
 				Self::KeyQ => Some(b"Q"),
 				Self::KeyW => Some(b"W"),
@@ -294,7 +360,6 @@ impl KeyboardKey {
 				Self::KeySlash => Some(b"?"),
 				Self::KeyKeypadStar => Some(b"*"),
 				Self::KeySpace => Some(b" "),
-				// TODO F1 to F10
 				Self::KeyKeypad7 => Some(b"7"),
 				Self::KeyKeypad8 => Some(b"8"),
 				Self::KeyKeypad9 => Some(b"9"),
@@ -308,20 +373,13 @@ impl KeyboardKey {
 				Self::KeyKeypad3 => Some(b"3"),
 				Self::KeyKeypad0 => Some(b"0"),
 				Self::KeyKeypadDot => Some(b"."),
-				// TODO F11 and F12
 
-				// TODO
-				// Self::KeyKeypadEnter => Some("\n"),
-				// Self::KeyKeypadSlash => Some("/"),
-				// Self::KeyHome => Some("\x1b[1~"),
+				Self::KeyKeypadEnter => Some(b"\n"),
+				Self::KeyKeypadSlash => Some(b"/"),
 				// Self::KeyCursorUp => Some("\x1b[A"),
-				// Self::KeyPageUp => Some("\x1b[5~"),
 				// Self::KeyCursorLeft => Some("\x1b[C"),
 				// Self::KeyCursorRight => Some("\x1b[D"),
-				// Self::KeyEnd => Some("\x1b[4~"),
 				// Self::KeyCursorDown => Some("\x1b[B"),
-				// Self::KeyPageDown => Some("\x1b[6~"),
-
 				_ => None,
 			}
 		}
@@ -346,16 +404,16 @@ pub enum KeyboardLED {
 	CapsLock,
 	/// The scroll lock LED.
 	ScrollLock,
-
 	// TODO Add the japanese keyboard Kana mode
 }
 
-/// Structure representing a key that can enabled, such as caps lock. Such a key is usually
-/// associated with an LED on the keyboard.
+/// Structure representing a key that can enabled, such as caps lock. Such a key
+/// is usually associated with an LED on the keyboard.
 pub struct EnableKey {
 	/// The key's state.
 	state: bool,
-	/// Tells whether to ignore the next pressed actions until a release action is received.
+	/// Tells whether to ignore the next pressed actions until a release action
+	/// is received.
 	ignore: bool,
 }
 
@@ -380,11 +438,11 @@ impl EnableKey {
 
 					return true;
 				}
-			},
+			}
 
 			KeyboardAction::Released => {
 				self.ignore = false;
-			},
+			}
 		}
 
 		false
@@ -470,7 +528,7 @@ impl KeyboardManager {
 			KeyboardKey::KeyRightAlt => self.right_alt = action == KeyboardAction::Pressed,
 			KeyboardKey::KeyRightControl => self.right_ctrl = action == KeyboardAction::Pressed,
 
-			_ => {},
+			_ => {}
 		}
 
 		if key == KeyboardKey::KeyNumberLock && self.number_lock.input(action) {
@@ -498,7 +556,7 @@ impl KeyboardManager {
 					KeyboardKey::KeyF8 => tty::switch(Some(7)),
 					KeyboardKey::KeyF9 => tty::switch(Some(8)),
 
-					_ => {},
+					_ => {}
 				}
 			}
 
@@ -507,25 +565,14 @@ impl KeyboardManager {
 				let tty_guard = tty_mutex.lock();
 				let tty = tty_guard.get_mut();
 
-				if key == KeyboardKey::KeyBackspace {
-					// Erasing from TTY
-					tty.erase(1);
-				} else if (self.ctrl || self.right_ctrl) && !self.alt && !self.right_alt {
-					match key {
-						KeyboardKey::KeyC => tty.input(&[0o3]),
-						KeyboardKey::KeyZ => tty.input(&[0o32]),
-						KeyboardKey::KeyBackslash => tty.input(&[0o34]),
+				let ctrl = self.ctrl || self.right_ctrl;
+				let alt = self.alt || self.right_alt;
+				let shift = (self.left_shift || self.right_shift) != self.caps_lock.is_enabled();
 
-						_ => {},
-					}
-				} else if !self.ctrl && !self.alt && !self.right_alt && !self.right_ctrl {
-					// Writing on TTY
-					let shift = (self.left_shift || self.right_shift)
-						!= self.caps_lock.is_enabled();
-
-					if let Some(tty_chars) = key.get_tty_chars(shift) {
-						tty.input(tty_chars);
-					}
+				// Writing on TTY
+				// TODO Meta
+				if let Some(tty_chars) = key.get_tty_chars(shift, alt, ctrl, false) {
+					tty.input(tty_chars);
 				}
 			}
 		}

@@ -1,6 +1,6 @@
 //! This module implements file descriptors-related features.
-//! A file descriptor is an ID held by a process pointing to an entry in the open file description
-//! table.
+//! A file descriptor is an ID held by a process pointing to an entry in the
+//! open file description table.
 
 use crate::errno::Errno;
 use crate::file::open_file::OpenFile;
@@ -10,15 +10,16 @@ use crate::util::ptr::SharedPtr;
 /// The maximum number of file descriptors that can be open system-wide at once.
 const TOTAL_MAX_FD: usize = 4294967295;
 
-/// File descriptor flag: If set, the file descriptor is closed on successful call to `execve`.
+/// File descriptor flag: If set, the file descriptor is closed on successful
+/// call to `execve`.
 pub const FD_CLOEXEC: i32 = 1;
 
 /// The total number of file descriptors open system-wide.
 static TOTAL_FD: Mutex<usize> = Mutex::new(0);
 
 /// Increments the total number of file descriptors open system-wide.
-/// If the maximum amount of file descriptors is reached, the function does nothing and returns an
-/// error with the appropriate errno.
+/// If the maximum amount of file descriptors is reached, the function does
+/// nothing and returns an error with the appropriate errno.
 fn increment_total() -> Result<(), Errno> {
 	let guard = TOTAL_FD.lock();
 
@@ -55,7 +56,8 @@ pub struct FileDescriptor {
 	/// The FD's flags.
 	flags: i32,
 
-	/// A pointer to the open file description associated with the file descriptor.
+	/// A pointer to the open file description associated with the file
+	/// descriptor.
 	open_file: SharedPtr<OpenFile>,
 }
 
@@ -78,6 +80,11 @@ impl FileDescriptor {
 	/// Returns the file descriptor's flags.
 	pub fn get_flags(&self) -> i32 {
 		self.flags
+	}
+
+	/// Sets the file descriptor's flags.
+	pub fn set_flags(&mut self, flags: i32) {
+		self.flags = flags;
 	}
 
 	/// Returns a pointer to the open file description.

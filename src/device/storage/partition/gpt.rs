@@ -1,12 +1,13 @@
-//! The GUID Partition Table (GPT) is a standard partitions table format. It is a successor of MBR.
+//! The GUID Partition Table (GPT) is a standard partitions table format. It is
+//! a successor of MBR.
 
 use core::mem::size_of;
 use core::slice;
 //use crate::crypto::checksum::compute_crc32;
 //use crate::crypto::checksum::compute_crc32_lookuptable;
 use crate::device::storage::StorageInterface;
-use crate::errno::Errno;
 use crate::errno;
+use crate::errno::Errno;
 use crate::memory::malloc;
 use crate::util::boxed::Box;
 use crate::util::container::vec::Vec;
@@ -27,11 +28,21 @@ type GUID = [u8; 16];
 
 /// Translates the given LBA value `lba` into a positive LBA value.
 /// `storage_size` is the number of blocks on the storage device.
-fn translate_lba(lba: i64, storage_size: u64) -> u64 {
+/// If the LBA is out of bounds of the storage device, the function returns
+/// None.
+fn translate_lba(lba: i64, storage_size: u64) -> Option<u64> {
 	if lba < 0 {
-		storage_size - (-lba as u64) - 1
+		if (-lba as u64) <= storage_size {
+			Some(storage_size - (-lba as u64))
+		} else {
+			None
+		}
 	} else {
-		lba as _
+		if (lba as u64) < storage_size {
+			Some(lba as _)
+		} else {
+			None
+		}
 	}
 }
 
@@ -65,11 +76,15 @@ impl GPTEntry {
 			return false;
 		}
 
-		if translate_lba(self.start, blocks_count) != translate_lba(other.start, blocks_count) {
+		let start = translate_lba(self.start, blocks_count);
+		let other_start = translate_lba(other.start, blocks_count);
+		let end = translate_lba(self.end, blocks_count);
+		let other_end = translate_lba(other.end, blocks_count);
+
+		if start.is_none() || other_start.is_none() || end.is_none() || other_end.is_none() {
 			return false;
 		}
-
-		if translate_lba(self.end, blocks_count) != translate_lba(other.end, blocks_count) {
+		if start.unwrap() != other_start.unwrap() || end.unwrap() != other_end.unwrap() {
 			return false;
 		}
 
@@ -90,9 +105,7 @@ impl GPTEntry {
 
 	/// Tells whether the entry is used.
 	fn is_used(&self) -> bool {
-		!self.partition_type
-			.iter()
-			.all(| b | *b == 0)
+		!self.partition_type.iter().all(|b| *b == 0)
 	}
 }
 
@@ -151,8 +164,8 @@ impl Clone for GPT {
 }
 
 impl GPT {
-	/// Reads the header structure from the given storage interface `storage` at the given LBA
-	/// `lba`.
+	/// Reads the header structure from the given storage interface `storage` at
+	/// the given LBA `lba`.
 	/// If the header is invalid, the function returns an error.
 	fn read_hdr_struct(storage: &mut dyn StorageInterface, lba: i64) -> Result<Self, Errno> {
 		let block_size = storage.get_block_size() as usize;
@@ -162,15 +175,13 @@ impl GPT {
 			return Err(errno!(EINVAL));
 		}
 
-		let mut buff = malloc::Alloc::<u8>::new_default(block_size)?;
-
 		// Reading the first block
-		storage.read(buff.as_slice_mut(), translate_lba(lba, blocks_count), 1)?;
+		let mut buff = malloc::Alloc::<u8>::new_default(block_size)?;
+		let lba = translate_lba(lba, blocks_count).ok_or_else(|| errno!(EINVAL))?;
+		storage.read(buff.as_slice_mut(), lba, 1)?;
 
 		// Valid because the header's size doesn't exceeds the size of the block
-		let gpt_hdr = unsafe {
-			&*(buff.as_ptr() as *const GPT)
-		};
+		let gpt_hdr = unsafe { &*(buff.as_ptr() as *const GPT) };
 		if !gpt_hdr.is_valid() {
 			return Err(errno!(EINVAL));
 		}
@@ -202,14 +213,14 @@ impl GPT {
 
 	/// Returns the list of entries in the table.
 	/// `storage` is the storage device interface.
-	fn get_entries(&self, storage: &mut dyn StorageInterface)
-		-> Result<Vec<Box<GPTEntry>>, Errno> {
+	fn get_entries(&self, storage: &mut dyn StorageInterface) -> Result<Vec<Box<GPTEntry>>, Errno> {
 		let block_size = storage.get_block_size();
 		let blocks_count = storage.get_blocks_count();
 
 		let mut buff = malloc::Alloc::<u8>::new_default(self.entry_size as _)?;
 
-		let entries_start = translate_lba(self.entries_start, blocks_count);
+		let entries_start =
+			translate_lba(self.entries_start, blocks_count).ok_or_else(|| errno!(EINVAL))?;
 		let mut entries = Vec::new();
 
 		for i in 0..self.entries_number {
@@ -231,8 +242,10 @@ impl GPT {
 			}
 
 			// Checking entry correctness
-			if translate_lba(entry.end, blocks_count) < translate_lba(entry.start, blocks_count) {
-				return Err(errno!(EINVAL))
+			let start = translate_lba(entry.start, blocks_count).ok_or_else(|| errno!(EINVAL))?;
+			let end = translate_lba(entry.end, blocks_count).ok_or_else(|| errno!(EINVAL))?;
+			if end < start {
+				return Err(errno!(EINVAL));
 			}
 
 			entries.push(entry)?;
@@ -275,10 +288,10 @@ impl Table for GPT {
 		let mut partitions = Vec::new();
 
 		for e in self.get_entries(storage)? {
-			let start = translate_lba(e.start, blocks_count);
-			let end = translate_lba(e.end, blocks_count);
-			// Doesn't overflow because the condition `end >= start` has already been checked
-			// + 1 is required because the ending LBA is included
+			let start = translate_lba(e.start, blocks_count).ok_or_else(|| errno!(EINVAL))?;
+			let end = translate_lba(e.end, blocks_count).ok_or_else(|| errno!(EINVAL))?;
+			// Doesn't overflow because the condition `end >= start` has already been
+			// checked + 1 is required because the ending LBA is included
 			let size = (end - start) + 1;
 
 			partitions.push(Partition::new(start, size))?;

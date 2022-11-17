@@ -1,9 +1,10 @@
-//! The `mmap2` system call is similar to `mmap`, except it takes a file offset in pages.
+//! The `mmap2` system call is similar to `mmap`, except it takes a file offset
+//! in pages.
 
-use core::ffi::c_void;
+use super::mmap;
 use crate::errno::Errno;
 use crate::process::regs::Regs;
-use super::mmap;
+use core::ffi::c_void;
 
 /// The implementation of the `mmap2` syscall.
 pub fn mmap2(regs: &Regs) -> Result<i32, Errno> {

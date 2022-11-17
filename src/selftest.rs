@@ -1,7 +1,7 @@
-//! This module handles selftesting of the kernel. A selftest can be either a unit test or an
-//! integration test.
-//! The kernel uses the serial communication interface to transmit the results of the selftests to
-//! another machine.
+//! This module handles selftesting of the kernel. A selftest can be either a
+//! unit test or an integration test.
+//! The kernel uses the serial communication interface to transmit the results
+//! of the selftests to another machine.
 
 //use crate::device::serial;
 use core::any::type_name;
@@ -38,36 +38,27 @@ pub trait Testable {
 	fn run(&self);
 }
 
-impl<T> Testable for T where T: Fn() {
-	// TODO Use a special format on serial to be parsed by host?
+impl<T> Testable for T
+where
+	T: Fn(),
+{
 	fn run(&self) {
-		//let serial_guard = serial::get(serial::COM1).lock();
-
 		let name = type_name::<T>();
 		crate::print!("test {} ... ", name);
 
 		self();
 
-		//let status = "ok"; // TODO On panic, retrieve message and print on serial
-		//if let Some(s) = serial {
-		//	// TODO Add an additional message on fail
-		//	s.write(b"{\"name\": \"");
-		//	s.write(name.as_bytes());
-		//	s.write(b"\", \"status\": \"");
-		//	s.write(status.as_bytes());
-		//	s.write(b"\"}\n");
-		//}
-
 		crate::println!("ok");
 	}
 }
 
-/// The test runner for the kernel. This function runs every tests for the kernel and halts the
-/// kernel or exits the emulator if possible.
+/// The test runner for the kernel. This function runs every tests for the
+/// kernel and halts the kernel or exits the emulator if possible.
 pub fn runner(tests: &[&dyn Testable]) {
 	crate::println!("Running {} tests", tests.len());
 
-	unsafe { // Safe because the function is called by only one thread
+	unsafe {
+		// Safe because the function is called by only one thread
 		RUNNING = true;
 	}
 
@@ -75,7 +66,8 @@ pub fn runner(tests: &[&dyn Testable]) {
 		test.run();
 	}
 
-	unsafe { // Safe because the function is called by only one thread
+	unsafe {
+		// Safe because the function is called by only one thread
 		RUNNING = false;
 	}
 
@@ -89,7 +81,8 @@ pub fn runner(tests: &[&dyn Testable]) {
 
 /// Tells whether selftesting is running.
 pub fn is_running() -> bool {
-	unsafe { // Safe because the function is called by only one thread
+	unsafe {
+		// Safe because the function is called by only one thread
 		RUNNING
 	}
 }

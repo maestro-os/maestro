@@ -1,13 +1,16 @@
-//! This module implements the `write` system call, which allows to write data to a file.
+//! This module implements the `write` system call, which allows to write data
+//! to a file.
 
-use core::cmp::min;
-use crate::errno::Errno;
 use crate::errno;
+use crate::errno::Errno;
 use crate::file::open_file::O_NONBLOCK;
-use crate::process::Process;
+use crate::idt;
 use crate::process::mem_space::ptr::SyscallSlice;
 use crate::process::regs::Regs;
+use crate::process::Process;
 use crate::syscall::Signal;
+use crate::util::io::IO;
+use core::cmp::min;
 
 // TODO O_ASYNC
 
@@ -23,16 +26,20 @@ pub fn write(regs: &Regs) -> Result<i32, Errno> {
 	}
 
 	loop {
+		super::util::signal_check(regs);
+
+		let (mem_space, open_file_mutex) = {
+			let mutex = Process::get_current().unwrap();
+			let guard = mutex.lock();
+			let proc = guard.get_mut();
+
+			let mem_space = proc.get_mem_space().unwrap();
+			let open_file_mutex = proc.get_fd(fd).ok_or(errno!(EBADF))?.get_open_file();
+			(mem_space, open_file_mutex)
+		};
+
 		// Trying to write and getting the length of written data
-		let (len, flags) = {
-			let (mem_space, open_file_mutex) = {
-				let mutex = Process::get_current().unwrap();
-				let guard = mutex.lock();
-				let proc = guard.get_mut();
-
-				(proc.get_mem_space().unwrap(), proc.get_fd(fd).ok_or(errno!(EBADF))?.get_open_file())
-			};
-
+		let (len, flags) = idt::wrap_disable_interrupts(|| {
 			let open_file_guard = open_file_mutex.lock();
 			let open_file = open_file_guard.get_mut();
 
@@ -40,12 +47,12 @@ pub fn write(regs: &Regs) -> Result<i32, Errno> {
 			let buf_slice = buf.get(&mem_space_guard, len)?.ok_or(errno!(EFAULT))?;
 
 			let flags = open_file.get_flags();
-			let len = match open_file.write(buf_slice) {
+			let len = match open_file.write(0, buf_slice) {
 				Ok(len) => len,
 
-				Err(err) => {
-					// If the pipe is broken, kill with SIGPIPE
-					if err.as_int() == errno::EPIPE {
+				Err(e) => {
+					// If writing to a broken pipe, kill with SIGPIPE
+					if e.as_int() == errno::EPIPE {
 						let mutex = Process::get_current().unwrap();
 						let guard = mutex.lock();
 						let proc = guard.get_mut();
@@ -53,12 +60,12 @@ pub fn write(regs: &Regs) -> Result<i32, Errno> {
 						proc.kill(&Signal::SIGPIPE, false);
 					}
 
-					return Err(err);
-				},
+					return Err(e);
+				}
 			};
 
-			(len, flags)
-		};
+			Ok((len, flags))
+		})?;
 
 		// TODO Continue until everything was written?
 		// If the length is greater than zero, success

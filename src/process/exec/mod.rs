@@ -2,19 +2,21 @@
 
 pub mod elf;
 
-use core::ffi::c_void;
 use crate::errno::Errno;
 use crate::file::File;
-use crate::process::Gid;
-use crate::process::Process;
-use crate::process::Uid;
 use crate::process::mem_space::MemSpace;
 use crate::process::regs::Regs;
 use crate::process::signal::SignalHandler;
+use crate::process::Gid;
+use crate::process::Process;
+use crate::process::Uid;
+use crate::util::container::string::String;
+use crate::util::container::vec::Vec;
 use crate::util::ptr::IntSharedPtr;
+use core::ffi::c_void;
 
 /// Structure storing informations to prepare a program image to be executed.
-pub struct ExecInfo<'a> {
+pub struct ExecInfo {
 	/// The process's uid.
 	pub uid: Uid,
 	/// The process's euid.
@@ -25,13 +27,16 @@ pub struct ExecInfo<'a> {
 	pub egid: Gid,
 
 	/// The list of arguments.
-	pub argv: &'a [&'a [u8]],
+	pub argv: Vec<String>,
 	/// The list of environment variables.
-	pub envp: &'a [&'a [u8]],
+	pub envp: Vec<String>,
 }
 
 /// Structure representing the loaded image of a program.
 pub struct ProgramImage {
+	/// The argv of the program.
+	argv: Vec<String>,
+
 	/// The image's memory space.
 	mem_space: MemSpace,
 
@@ -47,23 +52,20 @@ pub struct ProgramImage {
 	kernel_stack: *const c_void,
 }
 
-/// Trait representing a program executor, whose role is to load a program and to preprare it for
-/// execution.
-pub trait Executor<'a> {
+/// Trait representing a program executor, whose role is to load a program and
+/// to preprare it for execution.
+pub trait Executor {
 	/// Builds a program image.
 	/// `file` is the program's file.
-	fn build_image(&'a self, file: &mut File) -> Result<ProgramImage, Errno>;
+	fn build_image(&self, file: &mut File) -> Result<ProgramImage, Errno>;
 }
 
 /// Builds a program image from the given executable file.
 /// `file` is the program's file.
-/// `argv` is the list of arguments.
-/// `envp` is the environment.
-/// The function returns a memory space containing the program image and the pointer to the entry
-/// point.
-pub fn build_image(file: &mut File, info: ExecInfo)
-	-> Result<ProgramImage, Errno> {
-
+/// `info` is the set execution informations for the program.
+/// The function returns a memory space containing the program image and the
+/// pointer to the entry point.
+pub fn build_image(file: &mut File, info: ExecInfo) -> Result<ProgramImage, Errno> {
 	// TODO Support other formats than ELF (wasm?)
 
 	let exec = elf::ELFExecutor::new(info)?;
@@ -72,9 +74,12 @@ pub fn build_image(file: &mut File, info: ExecInfo)
 
 /// Executes the program image `image` on the process `proc`.
 pub fn exec(proc: &mut Process, image: ProgramImage) -> Result<(), Errno> {
+	proc.set_argv(image.argv);
+	// TODO Set exec path
+
 	// Duplicate file descriptors
 	proc.duplicate_fds()?; // TODO Undo on fail
-	// Setting the new memory space to the process
+					   // Setting the new memory space to the process
 	proc.set_mem_space(Some(IntSharedPtr::new(image.mem_space)?));
 
 	// Setting the process's stacks

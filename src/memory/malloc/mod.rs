@@ -1,28 +1,29 @@
-//! This module implements the memory allocation utility for kernelside operations.
-//! An unsafe interface is provided, inspired from the C language's malloc interface.
-//! The module also provides the structure `Alloc` which safely manages a memory allocation.
+//! This module implements the memory allocation utility for kernelside
+//! operations. An unsafe interface is provided, inspired from the C language's
+//! malloc interface. The module also provides the structure `Alloc` which
+//! safely manages a memory allocation.
 
 mod block;
 mod chunk;
 
+use crate::errno;
+use crate::errno::Errno;
+use crate::memory;
+use crate::memory::malloc::ptr::NonNull;
+use crate::util;
+use crate::util::list::ListNode;
+use crate::util::lock::IntMutex;
 use block::Block;
 use chunk::Chunk;
-use core::cmp::Ordering;
 use core::cmp::min;
+use core::cmp::Ordering;
 use core::ffi::c_void;
 use core::mem::size_of;
 use core::ops::Index;
 use core::ops::IndexMut;
-use core::ptr::drop_in_place;
 use core::ptr;
+use core::ptr::drop_in_place;
 use core::slice;
-use crate::errno::Errno;
-use crate::errno;
-use crate::memory::malloc::ptr::NonNull;
-use crate::memory;
-use crate::util::list::ListNode;
-use crate::util::lock::IntMutex;
-use crate::util;
 
 /// The allocator's mutex.
 static MUTEX: IntMutex<()> = IntMutex::new(());
@@ -32,13 +33,17 @@ pub fn init() {
 	chunk::init_free_lists();
 }
 
-/// Allocates `n` bytes of kernel memory and returns a pointer to the beginning of the allocated
-/// chunk. If the allocation fails, the function shall return an error.
+/// Allocates `n` bytes of kernel memory and returns a pointer to the beginning
+/// of the allocated chunk. If the allocation fails, the function shall return
+/// an error.
+///
+/// The allocated memory is **not** initialized.
 ///
 /// # Safety
 ///
-/// Allocated pointer must always be freed. Failure to do so results in a memory leak.
-/// Writing outside of the allocated range (buffer overflow) results in an undefined behaviour.
+/// Allocated pointer must always be freed. Failure to do so results in a memory
+/// leak. Writing outside of the allocated range (buffer overflow) results in an
+/// undefined behaviour.
 pub unsafe fn alloc(n: usize) -> Result<*mut c_void, Errno> {
 	let _ = MUTEX.lock();
 
@@ -51,6 +56,7 @@ pub unsafe fn alloc(n: usize) -> Result<*mut c_void, Errno> {
 
 	#[cfg(config_debug_malloc_check)]
 	chunk.check();
+
 	debug_assert!(chunk.get_size() >= n);
 	assert!(!chunk.is_used());
 	chunk.set_used(true);
@@ -62,25 +68,15 @@ pub unsafe fn alloc(n: usize) -> Result<*mut c_void, Errno> {
 	Ok(ptr)
 }
 
-/// Returns the size of the given memory allocation in bytes.
+/// Changes the size of the memory previously allocated with `alloc`. `ptr` is
+/// the pointer to the chunk of memory.
 ///
-/// # Safety
+/// The allocated memory is **not** initialized.
 ///
-/// The pointer `ptr` **must** point to the beginning of a valid, used chunk of memory.
-pub unsafe fn get_size(ptr: *const c_void) -> usize {
-	let _ = MUTEX.lock();
-
-	let chunk = Chunk::from_ptr(ptr as *mut _);
-	#[cfg(config_debug_malloc_check)]
-	chunk.check();
-	assert!(chunk.is_used());
-	chunk.get_size()
-}
-
-/// Changes the size of the memory previously allocated with `alloc`. `ptr` is the pointer to the
-/// chunk of memory.
 /// `n` is the new size of the chunk of memory.
-/// If the reallocation fails, the chunk is left untouched and the function returns an error.
+///
+/// If the reallocation fails, the chunk is left untouched and the function
+/// returns an error.
 pub unsafe fn realloc(ptr: *mut c_void, n: usize) -> Result<*mut c_void, Errno> {
 	let _ = MUTEX.lock();
 
@@ -89,31 +85,34 @@ pub unsafe fn realloc(ptr: *mut c_void, n: usize) -> Result<*mut c_void, Errno> 
 	}
 
 	let chunk = Chunk::from_ptr(ptr);
+	assert!(chunk.is_used());
+
 	#[cfg(config_debug_malloc_check)]
 	chunk.check();
-	assert!(chunk.is_used());
 
 	let chunk_size = chunk.get_size();
 	match n.cmp(&chunk_size) {
 		Ordering::Less => {
 			chunk.shrink(chunk_size - n);
 			Ok(ptr)
-		},
+		}
 
 		Ordering::Greater => {
 			if !chunk.grow(n - chunk_size) {
+				let old_len = min(chunk.get_size(), n);
 				let new_ptr = alloc(n)?;
-				util::memcpy(new_ptr, ptr, min(chunk.get_size(), n));
+
+				ptr::copy_nonoverlapping(ptr, new_ptr, old_len);
+
 				free(ptr);
+
 				Ok(new_ptr)
 			} else {
 				Ok(ptr)
 			}
-		},
+		}
 
-		Ordering::Equal => {
-			Ok(ptr)
-		},
+		Ordering::Equal => Ok(ptr),
 	}
 }
 
@@ -121,19 +120,20 @@ pub unsafe fn realloc(ptr: *mut c_void, n: usize) -> Result<*mut c_void, Errno> 
 ///
 /// # Safety
 ///
-/// If `ptr` doesn't point to a valid chunk of memory allocated with the `alloc` function, the
-/// behaviour is undefined.
+/// If `ptr` doesn't point to a valid chunk of memory allocated with the `alloc`
+/// function, the behaviour is undefined.
 /// Using memory after it was freed causes an undefined behaviour.
 pub unsafe fn free(ptr: *mut c_void) {
 	let _ = MUTEX.lock();
 
 	let chunk = Chunk::from_ptr(ptr);
-	#[cfg(config_debug_malloc_check)]
-	chunk.check();
 	assert!(chunk.is_used());
 
+	#[cfg(config_debug_malloc_check)]
+	chunk.check();
+
 	chunk.set_used(false);
-	ptr::write_volatile(&mut chunk.as_free_chunk().free_list, ListNode::new_single());
+	ptr::write(&mut chunk.as_free_chunk().free_list, ListNode::new_single());
 
 	let c = chunk.coalesce();
 	if c.list.is_single() {
@@ -144,8 +144,8 @@ pub unsafe fn free(ptr: *mut c_void) {
 }
 
 /// Structure representing a kernelside allocation.
-/// The structure holds one or more elements of the given type. Freeing the allocation doesn't call
-/// `drop` on its elements.
+/// The structure holds one or more elements of the given type. Freeing the
+/// allocation doesn't call `drop` on its elements.
 #[derive(Debug)]
 pub struct Alloc<T> {
 	/// Slice representing the allocation.
@@ -153,36 +153,49 @@ pub struct Alloc<T> {
 }
 
 impl<T> Alloc<T> {
-	/// Allocates `size` element in the kernel memory and returns a structure wrapping a slice
-	/// allowing to access it. If the allocation fails, the function shall return an error.
+	/// Allocates `size` element in the kernel memory and returns a structure
+	/// wrapping a slice allowing to access it. If the allocation fails, the
+	/// function shall return an error.
+	///
+	/// The allocated memory is **not** initialized.
 	///
 	/// # Safety
 	///
-	/// To use this function, one must ensure that zero memory is not an inconsistent state for the
-	/// object `T`.
-	pub unsafe fn new_zero(size: usize) -> Result<Self, Errno> {
+	/// Since the memory is not initialized, objects in the allocation might be
+	/// in an inconsistent state.
+	pub unsafe fn new(size: usize) -> Result<Self, Errno> {
 		let slice = NonNull::new({
 			let ptr = alloc(size * size_of::<T>())?;
 			slice::from_raw_parts_mut::<T>(ptr as _, size)
-		}).unwrap();
+		})
+		.unwrap();
 
 		Ok(Self {
 			slice,
 		})
 	}
 
+	/// Same as `new`, except the memory chunk is zero-ed.
+	///
+	/// # Safety
+	///
+	/// Since the memory is zero-ed, objects in the allocation might be in an
+	/// inconsistent state.
+	pub unsafe fn new_zero(size: usize) -> Result<Self, Errno> {
+		let mut alloc = Self::new(size)?;
+		util::bzero(alloc.as_ptr_mut() as *mut _, size * size_of::<T>());
+
+		Ok(alloc)
+	}
+
 	/// Returns an immutable reference to the underlying slice.
 	pub fn as_slice(&self) -> &[T] {
-		unsafe {
-			&*self.slice.as_ref()
-		}
+		unsafe { &*self.slice.as_ref() }
 	}
 
 	/// Returns a mutable reference to the underlying slice.
 	pub fn as_slice_mut(&mut self) -> &mut [T] {
-		unsafe {
-			self.slice.as_mut()
-		}
+		unsafe { self.slice.as_mut() }
 	}
 
 	/// Returns the allocation as pointer.
@@ -200,14 +213,15 @@ impl<T> Alloc<T> {
 		self.slice.len()
 	}
 
-	/// Changes the size of the memory allocation. All new elements are initialized to zero.
-	/// `n` is the new size of the chunk of memory (in number of elements).
-	/// If the reallocation fails, the chunk is left untouched and the function returns an error.
+	/// Changes the size of the memory allocation. All new elements are
+	/// initialized to zero. `n` is the new size of the chunk of memory (in
+	/// number of elements). If the reallocation fails, the chunk is left
+	/// untouched and the function returns an error.
 	///
 	/// # Safety
 	///
-	/// To use this function, one must ensure that zero memory is not an inconsistent state for the
-	/// object `T`.
+	/// To use this function, one must ensure that zero memory is not an
+	/// inconsistent state for the object `T`.
 	pub unsafe fn realloc_zero(&mut self, n: usize) -> Result<(), Errno> {
 		let ptr = realloc(self.as_ptr_mut() as _, n * size_of::<T>())?;
 		self.slice = NonNull::new(slice::from_raw_parts_mut::<T>(ptr as _, n)).unwrap();
@@ -220,36 +234,42 @@ impl<T> Alloc<T> {
 }
 
 impl<T: Default> Alloc<T> {
-	/// Allocates `size` element in the kernel memory and returns a structure wrapping a slice
-	/// allowing to access it. If the allocation fails, the function shall return an error.
-	/// The function will fill the memory with the default value for the object T.
+	/// Allocates `size` element in the kernel memory and returns a structure
+	/// wrapping a slice allowing to access it. If the allocation fails, the
+	/// function shall return an error. The function will fill the memory with
+	/// the default value for the object T.
 	pub fn new_default(size: usize) -> Result<Self, Errno> {
-		let mut alloc = unsafe { // Safe because the memory is set right after
-			Self::new_zero(size)?
+		let mut alloc = unsafe {
+			// Safe because the memory is set right after
+			Self::new(size)?
 		};
-		for i in 0..size {
-			unsafe { // Safe because the index is in bounds
-				ptr::write(&mut alloc[i], T::default());
+		for i in alloc.as_slice_mut().iter_mut() {
+			unsafe {
+				// Safe because the pointer is in the range of the slice
+				ptr::write(i, T::default());
 			}
 		}
 
 		Ok(alloc)
 	}
 
-	/// Resizes the current allocation. If new elements are added, the function initializes them
-	/// with the default value.
+	/// Resizes the current allocation. If new elements are added, the function
+	/// initializes them with the default value.
 	/// `n` is the new size of the chunk of memory (in number of elements).
 	///
 	/// # Safety
 	///
-	/// If elements are removed, the function `drop` is **not** called on them. Thus, the caller
-	/// must take care of dropping the elements first.
+	/// If elements are removed, the function `drop` is **not** called on them.
+	/// Thus, the caller must take care of dropping the elements first.
 	pub unsafe fn realloc_default(&mut self, n: usize) -> Result<(), Errno> {
 		let curr_size = self.len();
 		self.realloc_zero(n)?;
 
 		for i in curr_size..n {
-			self.as_slice_mut()[i] = T::default();
+			unsafe {
+				// Safe because the pointer is in the range of the slice
+				ptr::write(&mut self.as_slice_mut()[i], T::default());
+			}
 		}
 
 		Ok(())
@@ -257,16 +277,19 @@ impl<T: Default> Alloc<T> {
 }
 
 impl<T: Clone> Alloc<T> {
-	/// Allocates `size` element in the kernel memory and returns a structure wrapping a slice
-	/// allowing to access it. If the allocation fails, the function shall return an error.
-	/// `val` is a value that will be cloned to fill the memory.
+	/// Allocates `size` element in the kernel memory and returns a structure
+	/// wrapping a slice allowing to access it. If the allocation fails, the
+	/// function shall return an error. `val` is a value that will be cloned to
+	/// fill the memory.
 	pub fn new_clonable(size: usize, val: T) -> Result<Self, Errno> {
-		let mut alloc = unsafe { // Safe because the memory is set right after
-			Self::new_zero(size)?
+		let mut alloc = unsafe {
+			// Safe because the memory is set right after
+			Self::new(size)?
 		};
-		for i in 0..size {
-			unsafe { // Safe because the index is in bounds
-				ptr::write(&mut alloc[i], val.clone());
+		for i in alloc.as_slice_mut().iter_mut() {
+			unsafe {
+				// Safe because the pointer is in the range of the slice
+				ptr::write(i, val.clone());
 			}
 		}
 
@@ -279,28 +302,14 @@ impl<T> Index<usize> for Alloc<T> {
 
 	#[inline]
 	fn index(&self, index: usize) -> &Self::Output {
-		let slice = self.as_slice();
-
-		#[cfg(config_debug_debug)]
-		if index >= slice.len() {
-			panic!("index out of bounds of memory allocation");
-		}
-
-		&slice[index]
+		&self.as_slice()[index]
 	}
 }
 
 impl<T> IndexMut<usize> for Alloc<T> {
 	#[inline]
 	fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-		let slice = self.as_slice_mut();
-
-		#[cfg(config_debug_debug)]
-		if index >= slice.len() {
-			panic!("index out of bounds of memory allocation");
-		}
-
-		&mut slice[index]
+		&mut self.as_slice_mut()[index]
 	}
 }
 
@@ -314,9 +323,10 @@ impl<T> Drop for Alloc<T> {
 
 #[cfg(test)]
 mod test {
-	use crate::memory;
-	use crate::util::math;
 	use super::*;
+	use crate::memory;
+	use crate::memory::buddy;
+	use crate::util::math;
 
 	#[test_case]
 	fn alloc_free0() {
@@ -327,42 +337,60 @@ mod test {
 
 	#[test_case]
 	fn alloc_free1() {
+		let usage = buddy::allocated_pages_count();
+
 		unsafe {
 			let ptr = alloc(1).unwrap();
 			util::memset(ptr, -1, 1);
 			free(ptr);
 		}
+
+		assert_eq!(usage, buddy::allocated_pages_count());
 	}
 
 	#[test_case]
 	fn alloc_free1() {
+		let usage = buddy::allocated_pages_count();
+
 		unsafe {
 			let ptr = alloc(8).unwrap();
 			util::memset(ptr, -1, 8);
 			free(ptr);
 		}
+
+		assert_eq!(usage, buddy::allocated_pages_count());
 	}
 
 	#[test_case]
 	fn alloc_free2() {
+		let usage = buddy::allocated_pages_count();
+
 		unsafe {
 			let ptr = alloc(memory::PAGE_SIZE).unwrap();
 			util::memset(ptr, -1, memory::PAGE_SIZE);
 			free(ptr);
 		}
+
+		assert_eq!(usage, buddy::allocated_pages_count());
 	}
 
 	#[test_case]
 	fn alloc_free3() {
+		let usage = buddy::allocated_pages_count();
+
 		unsafe {
 			let ptr = alloc(memory::PAGE_SIZE * 10).unwrap();
 			util::memset(ptr, -1, memory::PAGE_SIZE * 10);
 			free(ptr);
 		}
+
+		assert_eq!(usage, buddy::allocated_pages_count());
 	}
 
 	#[test_case]
 	fn alloc_free_fifo() {
+		let usage = buddy::allocated_pages_count();
+
 		unsafe {
 			let mut ptrs: [*mut c_void; 1024] = [0 as _; 1024];
 
@@ -383,6 +411,8 @@ mod test {
 				free(*p);
 			}
 		}
+
+		assert_eq!(usage, buddy::allocated_pages_count());
 	}
 
 	fn lifo_test(i: usize) {
@@ -398,63 +428,56 @@ mod test {
 
 	#[test_case]
 	fn alloc_free_lifo() {
+		let usage = buddy::allocated_pages_count();
+
 		lifo_test(100);
-	}
 
-	#[test_case]
-	fn get_size0() {
-		unsafe {
-			for i in 1..memory::PAGE_SIZE {
-				let ptr = alloc(i).unwrap();
-				assert!(get_size(ptr) >= i);
-				util::memset(ptr, -1, i);
-				assert!(get_size(ptr) >= i);
-				free(ptr);
-			}
-		}
+		assert_eq!(usage, buddy::allocated_pages_count());
 	}
-
-	// TODO More tests on get_size
 
 	// TODO Check the integrity of the data after reallocation
 	#[test_case]
 	fn realloc0() {
+		let usage = buddy::allocated_pages_count();
+
 		unsafe {
 			let mut ptr = alloc(1).unwrap();
-			assert!(get_size(ptr) >= 1);
 
 			for i in 1..memory::PAGE_SIZE {
 				ptr = realloc(ptr, i).unwrap();
-				assert!(get_size(ptr) >= i);
 				util::memset(ptr, -1, i);
-				assert!(get_size(ptr) >= i);
 			}
 
 			free(ptr);
 		}
+
+		assert_eq!(usage, buddy::allocated_pages_count());
 	}
 
 	// TODO Check the integrity of the data after reallocation
 	#[test_case]
 	fn realloc1() {
+		let usage = buddy::allocated_pages_count();
+
 		unsafe {
 			let mut ptr = alloc(memory::PAGE_SIZE).unwrap();
-			assert!(get_size(ptr) >= 1);
 
 			for i in (1..memory::PAGE_SIZE).rev() {
 				ptr = realloc(ptr, i).unwrap();
-				assert!(get_size(ptr) >= i);
 				util::memset(ptr, -1, i);
-				assert!(get_size(ptr) >= i);
 			}
 
 			free(ptr);
 		}
+
+		assert_eq!(usage, buddy::allocated_pages_count());
 	}
 
 	// TODO Check the integrity of the data after reallocation
 	#[test_case]
 	fn realloc2() {
+		let usage = buddy::allocated_pages_count();
+
 		unsafe {
 			let mut ptr0 = alloc(8).unwrap();
 			let mut ptr1 = alloc(8).unwrap();
@@ -463,19 +486,21 @@ mod test {
 
 			for i in 0..8 {
 				ptr0 = realloc(ptr0, math::pow2(i)).unwrap();
-				assert!(get_size(ptr0) >= math::pow2(i));
 				ptr1 = realloc(ptr1, math::pow2(i) + 1).unwrap();
-				assert!(get_size(ptr1) >= math::pow2(i) + 1);
 			}
 
 			free(ptr1);
 			free(ptr0);
 		}
+
+		assert_eq!(usage, buddy::allocated_pages_count());
 	}
 
 	// TODO Check the integrity of the data after reallocation
 	#[test_case]
 	fn realloc3() {
+		let usage = buddy::allocated_pages_count();
+
 		unsafe {
 			let mut ptr0 = alloc(8).unwrap();
 			let mut ptr1 = alloc(8).unwrap();
@@ -484,13 +509,13 @@ mod test {
 
 			for i in (0..8).rev() {
 				ptr0 = realloc(ptr0, math::pow2(i)).unwrap();
-				assert!(get_size(ptr0) >= math::pow2(i));
 				ptr1 = realloc(ptr1, math::pow2(i) + 1).unwrap();
-				assert!(get_size(ptr1) >= math::pow2(i) + 1);
 			}
 
 			free(ptr1);
 			free(ptr0);
 		}
+
+		assert_eq!(usage, buddy::allocated_pages_count());
 	}
 }

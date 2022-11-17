@@ -1,20 +1,18 @@
-//! When booting, the kernel can take command line arguments. This module implements a parse for
-//! these arguments.
+//! When booting, the kernel can take command line arguments. This module
+//! implements a parse for these arguments.
 
-use core::cmp::min;
-use core::str;
-use crate::util::FailableClone;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
+use crate::util::FailableClone;
 use crate::vga;
+use core::cmp::min;
+use core::str;
 
 /// Command line argument parser.
 /// Every bytes in the command line are interpreted as ASCII characters.
 pub struct ArgsParser {
-	/// The root device major number.
-	root_major: u32,
-	/// The root device minor number.
-	root_minor: u32,
+	/// The root device major and minor numbers.
+	root: Option<(u32, u32)>,
 
 	/// The path to the init binary, if specified.
 	init: Option<String>,
@@ -111,7 +109,8 @@ impl ArgsParser {
 		*i = j;
 	}
 
-	/// Creates a new token starting a the given offset `i` in the given command line `cmdline`.
+	/// Creates a new token starting a the given offset `i` in the given command
+	/// line `cmdline`.
 	fn new_token<'a>(cmdline: &'a [u8], i: &mut usize) -> Result<Option<Token>, ParseError<'a>> {
 		Self::skip_spaces(cmdline, i);
 		let mut j = *i;
@@ -136,9 +135,9 @@ impl ArgsParser {
 		}
 	}
 
-	/// Tokenizes the command line arguments and returns an array containing all the tokens.
-	/// Every characters are interpreted as ASCII characters. If a non-ASCII character is passed,
-	/// the function returns an error.
+	/// Tokenizes the command line arguments and returns an array containing all
+	/// the tokens. Every characters are interpreted as ASCII characters. If a
+	/// non-ASCII character is passed, the function returns an error.
 	fn tokenize(cmdline: &[u8]) -> Result<Vec<Token>, ParseError> {
 		let mut tokens = Vec::new();
 		let mut i = 0;
@@ -157,15 +156,12 @@ impl ArgsParser {
 	/// Parses the given command line and returns a new instance.
 	pub fn parse(cmdline: &[u8]) -> Result<Self, ParseError<'_>> {
 		let mut s = Self {
-			root_major: 0,
-			root_minor: 0,
+			root: None,
 
 			init: None,
 
 			silent: false,
 		};
-
-		let mut root_specified = false;
 
 		let tokens = Self::tokenize(cmdline)?;
 		let mut i = 0;
@@ -177,39 +173,44 @@ impl ArgsParser {
 					if tokens.len() < i + 3 {
 						let begin = tokens[i].begin;
 						let size = tokens[i].len();
-						return Err(ParseError::new(cmdline, "Not enough arguments for `-root`",
-							Some((begin, size))));
+						return Err(ParseError::new(
+							cmdline,
+							"Not enough arguments for `-root`",
+							Some((begin, size)),
+						));
 					}
 
-					match tokens[i + 1].s.as_str().unwrap().parse::<u32>() { // TODO Handle properly
-						Ok(n) => {
-							s.root_major = n;
-						},
-						Err(_) => {
-							return Err(ParseError::new(cmdline, "Invalid major number",
-								Some((i + 1, 1))));
-						},
-					};
-					match tokens[i + 2].s.as_str().unwrap().parse::<u32>() { // TODO Handle properly
-						Ok(n) => {
-							s.root_minor = n;
-						},
-						Err(_) => {
-							return Err(ParseError::new(cmdline, "Invalid minor number",
-								Some((i + 2, 1))));
-						},
-					};
+					let major_result = tokens[i + 1].s.as_str().unwrap().parse::<u32>();
+					let minor_result = tokens[i + 2].s.as_str().unwrap().parse::<u32>();
 
+					let Ok(major) = major_result else {
+						return Err(ParseError::new(
+							cmdline,
+							"Invalid major number",
+							Some((i + 1, 1)),
+						));
+					};
+					let Ok(minor) = minor_result else {
+						return Err(ParseError::new(
+							cmdline,
+							"Invalid minor number",
+							Some((i + 2, 1)),
+						));
+					};
 					i += 3;
-					root_specified = true;
-				},
+
+					s.root = Some((major, minor));
+				}
 
 				b"-init" => {
 					if tokens.len() < i + 2 {
 						let begin = tokens[i].begin;
 						let size = tokens[i].len();
-						return Err(ParseError::new(cmdline, "Not enough arguments for `-init`",
-							Some((begin, size))));
+						return Err(ParseError::new(
+							cmdline,
+							"Not enough arguments for `-init`",
+							Some((begin, size)),
+						));
 					}
 
 					if let Ok(init) = tokens[i + 1].s.failable_clone() {
@@ -219,32 +220,32 @@ impl ArgsParser {
 					}
 
 					i += 2;
-				},
+				}
 
 				b"-silent" => {
 					s.silent = true;
 
 					i += 1;
-				},
+				}
 
 				_ => {
 					let begin = tokens[i].begin;
 					let size = tokens[i].len();
-					return Err(ParseError::new(cmdline, "Invalid argument", Some((begin, size))));
+					return Err(ParseError::new(
+						cmdline,
+						"Invalid argument",
+						Some((begin, size)),
+					));
 				}
 			}
-		}
-
-		if !root_specified {
-			return Err(ParseError::new(cmdline, "`-root` not specified", None));
 		}
 
 		Ok(s)
 	}
 
 	/// Returns the major and minor numbers of the root device.
-	pub fn get_root_dev(&self) -> (u32, u32) {
-		(self.root_major, self.root_minor)
+	pub fn get_root_dev(&self) -> Option<(u32, u32)> {
+		self.root
 	}
 
 	/// Returns the init binary path if specified.
@@ -264,46 +265,41 @@ mod test {
 
 	#[test_case]
 	fn cmdline0() {
-		assert!(ArgsParser::parse(b"").is_err());
-	}
-
-	#[test_case]
-	fn cmdline1() {
 		assert!(ArgsParser::parse(b"-bleh").is_err());
 	}
 
 	#[test_case]
-	fn cmdline2() {
+	fn cmdline1() {
 		assert!(ArgsParser::parse(b"-root -bleh").is_err());
 	}
 
 	#[test_case]
-	fn cmdline3() {
+	fn cmdline2() {
 		assert!(ArgsParser::parse(b"-root 1 0 -bleh").is_err());
 	}
 
 	#[test_case]
-	fn cmdline4() {
+	fn cmdline3() {
 		assert!(ArgsParser::parse(b"-root 1 0").is_ok());
 	}
 
 	#[test_case]
-	fn cmdline5() {
+	fn cmdline4() {
 		assert!(ArgsParser::parse(b"-root 1 0 -silent").is_ok());
 	}
 
 	#[test_case]
-	fn cmdline6() {
+	fn cmdline5() {
 		assert!(ArgsParser::parse(b"-root 1 0 -init").is_err());
 	}
 
 	#[test_case]
-	fn cmdline7() {
+	fn cmdline6() {
 		assert!(ArgsParser::parse(b"-root 1 0 -init bleh").is_ok());
 	}
 
 	#[test_case]
-	fn cmdline8() {
+	fn cmdline7() {
 		assert!(ArgsParser::parse(b"-root 1 0 -init bleh -silent").is_ok());
 	}
 }

@@ -1,12 +1,13 @@
 //! This file handles the VGA text mode, allowing to easily write text on the
 //! screen.
-//! This module doesn't support concurrency. It is the callers' reponsibility to handle it.
+//! This module doesn't support concurrency. It is the callers' reponsibility to
+//! handle it.
 //!
 //! Note: The VGA text mode runs only when booting with a Legacy BIOS.
 
 use crate::io;
-use crate::memory::vmem;
 use crate::memory;
+use crate::memory::vmem;
 
 /// Type representing a VGA text mode character.
 pub type Char = u16;
@@ -31,37 +32,37 @@ pub const PIXEL_WIDTH: u32 = 640;
 pub const PIXEL_HEIGHT: u32 = 480;
 
 /// VGA text mode color: Black
-pub const COLOR_BLACK: Color			= 0x0;
+pub const COLOR_BLACK: Color = 0x0;
 /// VGA text mode color: Blue
-pub const COLOR_BLUE: Color			    = 0x1;
+pub const COLOR_BLUE: Color = 0x1;
 /// VGA text mode color: Green
-pub const COLOR_GREEN: Color			= 0x2;
+pub const COLOR_GREEN: Color = 0x2;
 /// VGA text mode color: Cyan
-pub const COLOR_CYAN: Color			    = 0x3;
+pub const COLOR_CYAN: Color = 0x3;
 /// VGA text mode color: Red
-pub const COLOR_RED: Color			    = 0x4;
+pub const COLOR_RED: Color = 0x4;
 /// VGA text mode color: Magenta
-pub const COLOR_MAGENTA: Color		    = 0x5;
+pub const COLOR_MAGENTA: Color = 0x5;
 /// VGA text mode color: Brown
-pub const COLOR_BROWN: Color			= 0x6;
+pub const COLOR_BROWN: Color = 0x6;
 /// VGA text mode color: Light Grey
-pub const COLOR_LIGHT_GREY: Color	    = 0x7;
+pub const COLOR_LIGHT_GREY: Color = 0x7;
 /// VGA text mode color: Dark Grey
-pub const COLOR_DARK_GREY: Color		= 0x8;
+pub const COLOR_DARK_GREY: Color = 0x8;
 /// VGA text mode color: Light Blue
-pub const COLOR_LIGHT_BLUE: Color	    = 0x9;
+pub const COLOR_LIGHT_BLUE: Color = 0x9;
 /// VGA text mode color: Light Green
-pub const COLOR_LIGHT_GREEN: Color	    = 0xa;
+pub const COLOR_LIGHT_GREEN: Color = 0xa;
 /// VGA text mode color: Light Cyan
-pub const COLOR_LIGHT_CYAN: Color	    = 0xb;
+pub const COLOR_LIGHT_CYAN: Color = 0xb;
 /// VGA text mode color: Light Red
-pub const COLOR_LIGHT_RED: Color		= 0xc;
+pub const COLOR_LIGHT_RED: Color = 0xc;
 /// VGA text mode color: Light Magenta
-pub const COLOR_LIGHT_MAGENTA: Color	= 0xd;
+pub const COLOR_LIGHT_MAGENTA: Color = 0xd;
 /// VGA text mode color: Yellow
-pub const COLOR_YELLOW: Color		    = 0xe;
+pub const COLOR_YELLOW: Color = 0xe;
 /// VGA text mode color: White
-pub const COLOR_WHITE: Color			= 0xf;
+pub const COLOR_WHITE: Color = 0xf;
 
 /// VGA text mode default color.
 pub const DEFAULT_COLOR: Color = COLOR_WHITE | (COLOR_BLACK << 4);
@@ -77,7 +78,8 @@ pub fn get_buffer_virt() -> *mut Char {
 	(memory::PROCESS_END as usize + BUFFER_PHYS as usize) as _
 }
 
-/// Returns the value for the given foreground color `fg` and background color `bg`.
+/// Returns the value for the given foreground color `fg` and background color
+/// `bg`.
 #[inline]
 pub fn entry_color(fg: Color, bg: Color) -> Color {
 	fg | (bg << 4)
@@ -138,8 +140,8 @@ pub fn move_cursor(x: Pos, y: Pos) {
 	}
 }
 
-/// Writes the given character `c` at the given position `x`/`y` on the screen with the default
-/// color.
+/// Writes the given character `c` at the given position `x`/`y` on the screen
+/// with the default color.
 pub fn putchar(c: char, x: Pos, y: Pos) {
 	putchar_color(c, DEFAULT_COLOR, x, y);
 }

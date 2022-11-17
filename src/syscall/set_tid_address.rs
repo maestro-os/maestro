@@ -1,10 +1,11 @@
-//! The `set_tid_address` system call sets the `clear_child_tid` attribute with the given pointer.
+//! The `set_tid_address` system call sets the `clear_child_tid` attribute with
+//! the given pointer.
 
-use core::ptr::NonNull;
 use crate::errno::Errno;
-use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::regs::Regs;
+use crate::process::Process;
+use core::ptr::NonNull;
 
 /// The implementation of the `set_tid_address` syscall.
 pub fn set_tid_address(regs: &Regs) -> Result<i32, Errno> {

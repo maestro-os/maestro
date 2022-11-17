@@ -77,7 +77,7 @@ void gdt_copy(void)
 	len = GDT_SIZE;
 	while(i < len)
 	{
-		dest[i] = src[i];
+		*(dest + i) = *(src + i);
 		++i;
 	}
 }

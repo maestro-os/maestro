@@ -1,15 +1,15 @@
-//! The `socketpair` system call creates a pair of file descriptor to an unnamed socket which can
-//! be used for IPC (Inter-Process Communication).
+//! The `socketpair` system call creates a pair of file descriptor to an unnamed
+//! socket which can be used for IPC (Inter-Process Communication).
 
-use crate::errno::Errno;
 use crate::errno;
-use crate::file::open_file::FDTarget;
+use crate::errno::Errno;
 use crate::file::open_file;
+use crate::file::open_file::FDTarget;
 use crate::file::socket::Socket;
 use crate::file::socket::SocketSide;
-use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::regs::Regs;
+use crate::process::Process;
 
 /// The implementation of the `socketpair` syscall.
 pub fn socketpair(regs: &Regs) -> Result<i32, Errno> {
@@ -28,8 +28,14 @@ pub fn socketpair(regs: &Regs) -> Result<i32, Errno> {
 
 	let sock = Socket::new(domain, type_, protocol)?;
 	let sock2 = sock.clone();
-	let fd0 = proc.create_fd(open_file::O_RDWR, FDTarget::Socket(SocketSide::new(sock, false)?))?;
-	let fd1 = proc.create_fd(open_file::O_RDWR, FDTarget::Socket(SocketSide::new(sock2, true)?))?;
+	let fd0 = proc.create_fd(
+		open_file::O_RDWR,
+		FDTarget::Socket(SocketSide::new(sock, false)?),
+	)?;
+	let fd1 = proc.create_fd(
+		open_file::O_RDWR,
+		FDTarget::Socket(SocketSide::new(sock2, true)?),
+	)?;
 
 	sv_slice[0] = fd0.get_id() as _;
 	sv_slice[1] = fd1.get_id() as _;

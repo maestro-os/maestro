@@ -1,28 +1,28 @@
-//! The virtual memory makes the kernel able to isolate processes, which is essential for modern
-//! systems.
+//! The virtual memory makes the kernel able to isolate processes, which is
+//! essential for modern systems.
 
 // TODO Make this file fully cross-platform
 
 #[cfg(config_general_arch = "x86")]
 pub mod x86;
 
-use core::ffi::c_void;
 use crate::cpu;
 use crate::elf;
 use crate::errno::Errno;
 use crate::idt;
 use crate::memory;
 use crate::multiboot;
-use crate::util::FailableClone;
 use crate::util::boxed::Box;
 use crate::util::math;
+use crate::util::FailableClone;
+use core::ffi::c_void;
 
-/// Trait representing virtual memory context handler. This trait is the interface to manipulate
-/// virtual memory on any architecture. Each architecture has its own structure implementing this
-/// trait.
+/// Trait representing virtual memory context handler. This trait is the
+/// interface to manipulate virtual memory on any architecture. Each
+/// architecture has its own structure implementing this trait.
 pub trait VMem: FailableClone {
-	/// Translates the given virtual address `ptr` to the corresponding physical address. If the
-	/// address is not mapped, the function returns None.
+	/// Translates the given virtual address `ptr` to the corresponding physical
+	/// address. If the address is not mapped, the function returns None.
 	fn translate(&self, ptr: *const c_void) -> Option<*const c_void>;
 
 	/// Tells whether the given pointer `ptr` is mapped or not.
@@ -30,24 +30,34 @@ pub trait VMem: FailableClone {
 		self.translate(ptr) != None
 	}
 
-	/// Maps the the given physical address `physaddr` to the given virtual address `virtaddr` with
-	/// the given flags.
+	/// Maps the the given physical address `physaddr` to the given virtual
+	/// address `virtaddr` with the given flags.
 	/// This function automaticaly invalidates the page in the cache.
-	fn map(&mut self, physaddr: *const c_void, virtaddr: *const c_void, flags: u32)
-		-> Result<(), Errno>;
-	/// Maps the given range of physical address `physaddr` to the given range of virtual address
-	/// `virtaddr`. The range is `pages` pages large.
+	fn map(
+		&mut self,
+		physaddr: *const c_void,
+		virtaddr: *const c_void,
+		flags: u32,
+	) -> Result<(), Errno>;
+	/// Maps the given range of physical address `physaddr` to the given range
+	/// of virtual address `virtaddr`. The range is `pages` pages large.
 	/// If the operation fails, the virtual memory is left altered midway.
 	/// This function automaticaly invalidates the page(s) in the cache.
-	fn map_range(&mut self, physaddr: *const c_void, virtaddr: *const c_void, pages: usize,
-		flags: u32) -> Result<(), Errno>;
+	fn map_range(
+		&mut self,
+		physaddr: *const c_void,
+		virtaddr: *const c_void,
+		pages: usize,
+		flags: u32,
+	) -> Result<(), Errno>;
 
 	/// Unmaps the page at virtual address `virtaddr`.
 	/// This function automaticaly invalidates the page in the cache.
 	fn unmap(&mut self, virtaddr: *const c_void) -> Result<(), Errno>;
-	/// Unmaps the given range beginning at virtual address `virtaddr` with size of `pages` pages.
-	/// If the operation fails, the virtual memory is left altered midway.
-	/// This function automaticaly invalidates the page(s) in the cache.
+	/// Unmaps the given range beginning at virtual address `virtaddr` with size
+	/// of `pages` pages. If the operation fails, the virtual memory is left
+	/// altered midway. This function automaticaly invalidates the page(s) in
+	/// the cache.
 	fn unmap_range(&mut self, virtaddr: *const c_void, pages: usize) -> Result<(), Errno>;
 
 	/// Binds the virtual memory context handler.
@@ -57,8 +67,8 @@ pub trait VMem: FailableClone {
 
 	/// Invalides the page at address `addr`.
 	fn invalidate_page(&self, addr: *const c_void);
-	/// Flushes the modifications of the context if bound. This function should be called after
-	/// applying modifications to the context.
+	/// Flushes the modifications of the context if bound. This function should
+	/// be called after applying modifications to the context.
 	fn flush(&self);
 
 	/// Protects the kernel's read-only sections from writing.
@@ -66,9 +76,10 @@ pub trait VMem: FailableClone {
 		let boot_info = multiboot::get_boot_info();
 
 		let mut res = Ok(());
-		let f = | section: &elf::ELF32SectionHeader, _name: &[u8] | {
+		let f = |section: &elf::ELF32SectionHeader, _name: &[u8]| {
 			if section.sh_flags & elf::SHF_WRITE != 0
-				|| section.sh_addralign as usize != memory::PAGE_SIZE {
+				|| section.sh_addralign as usize != memory::PAGE_SIZE
+			{
 				return true;
 			}
 
@@ -84,40 +95,40 @@ pub trait VMem: FailableClone {
 		};
 
 		// Protecting kernel code from writing
-		elf::foreach_sections(memory::kern_to_virt(boot_info.elf_sections),
-			boot_info.elf_num as usize, boot_info.elf_shndx as usize,
-			boot_info.elf_entsize as usize, f);
+		elf::foreach_sections(
+			memory::kern_to_virt(boot_info.elf_sections),
+			boot_info.elf_num as usize,
+			boot_info.elf_shndx as usize,
+			boot_info.elf_entsize as usize,
+			f,
+		);
 
 		res
 	}
 }
 
 /// Creates a new virtual memory context handler for the current architecture.
-pub fn new() -> Result::<Box::<dyn VMem>, Errno> {
-	Ok(Box::new(x86::X86VMem::new()?)? as Box::<dyn VMem>)
+pub fn new() -> Result<Box<dyn VMem>, Errno> {
+	Ok(Box::new(x86::X86VMem::new()?)? as Box<dyn VMem>)
 }
 
 /// Clones the virtual memory context handler `vmem`.
-pub fn clone(vmem: &Box::<dyn VMem>) -> Result::<Box::<dyn VMem>, Errno> {
-	let vmem = unsafe {
-		&*(vmem.as_ptr() as *const x86::X86VMem)
-	};
-	Ok(Box::new(vmem.failable_clone()?)? as Box::<dyn VMem>)
+pub fn clone(vmem: &Box<dyn VMem>) -> Result<Box<dyn VMem>, Errno> {
+	let vmem = unsafe { &*(vmem.as_ptr() as *const x86::X86VMem) };
+	Ok(Box::new(vmem.failable_clone()?)? as Box<dyn VMem>)
 }
 
 /// Tells whether the read-only pages protection is enabled.
 pub fn is_write_lock() -> bool {
-	unsafe {
-		(cpu::cr0_get() & (1 << 16)) != 0
-	}
+	unsafe { (cpu::cr0_get() & (1 << 16)) != 0 }
 }
 
 /// Sets whether the kernel can write to read-only pages.
 ///
 /// # Safety
 ///
-/// This function disables memory protection on the kernel side, which makes read-only data
-/// writable. Writing on read-only data is undefined.
+/// This function disables memory protection on the kernel side, which makes
+/// read-only data writable. Writing on read-only data is undefined.
 pub unsafe fn set_write_lock(lock: bool) {
 	if lock {
 		cpu::cr0_set(1 << 16);
@@ -126,13 +137,14 @@ pub unsafe fn set_write_lock(lock: bool) {
 	}
 }
 
-/// Executes the closure given as parameter. During execution, the kernel can write on read-only
-/// pages. The state of the write lock is restored after the closure's execution.
+/// Executes the closure given as parameter. During execution, the kernel can
+/// write on read-only pages. The state of the write lock is restored after the
+/// closure's execution.
 ///
 /// # Safety
 ///
-/// This function disables memory protection on the kernel side, which makes read-only data
-/// writable. Writing on read-only data is undefined.
+/// This function disables memory protection on the kernel side, which makes
+/// read-only data writable. Writing on read-only data is undefined.
 pub unsafe fn write_lock_wrap<F: FnOnce() -> T, T>(f: F) -> T {
 	let lock = is_write_lock();
 	set_write_lock(false);
@@ -142,22 +154,24 @@ pub unsafe fn write_lock_wrap<F: FnOnce() -> T, T>(f: F) -> T {
 	result
 }
 
-/// Executes the given closure `f` while being bound to the given virtual memory context `vmem`.
-/// After execution, the function restores the previous context.
-/// If the closure changes the current memory context, the behaviour is undefined.
+/// Executes the given closure `f` while being bound to the given virtual memory
+/// context `vmem`. After execution, the function restores the previous context.
+/// If the closure changes the current memory context, the behaviour is
+/// undefined.
 ///
-/// The function disables interruptions while executing the closure. This is due to the fact that
-/// if interruptions were enabled, the scheduler would be able to change the running process, and
-/// thus when resuming execution, the virtual memory context would be changed to the process's
-/// context, making the behaviour undefined.
+/// The function disables interruptions while executing the closure. This is due
+/// to the fact that if interruptions were enabled, the scheduler would be able
+/// to change the running process, and thus when resuming execution, the virtual
+/// memory context would be changed to the process's context, making the
+/// behaviour undefined.
 ///
 /// # Safety
 ///
-/// Special consideration should be taken when using this function since Rust is unable to ensure
-/// its safety.
+/// Special consideration should be taken when using this function since Rust is
+/// unable to ensure its safety.
 ///
-/// For example, the caller must ensure the stack is accessible in both the current and given
-/// virtual memory contexts.
+/// For example, the caller must ensure the stack is accessible in both the
+/// current and given virtual memory contexts.
 ///
 /// TODO
 pub unsafe fn switch<F: FnOnce() -> T, T>(vmem: &dyn VMem, f: F) -> T {

@@ -1,23 +1,24 @@
-//! A ramdisk is a virtual storage device stored on the RAM. From the point of view of the
-//! userspace, it works exactly the same.
-//! Ramdisks are lazily allocated so they do not use much memory as long as they are not used.
+//! A ramdisk is a virtual storage device stored on the RAM. From the point of
+//! view of the userspace, it works exactly the same.
+//! Ramdisks are lazily allocated so they do not use much memory as long as they
+//! are not used.
 
-use core::ffi::c_void;
-use core::mem::ManuallyDrop;
+use super::StorageInterface;
+use crate::device;
+use crate::device::id;
 use crate::device::Device;
 use crate::device::DeviceHandle;
 use crate::device::DeviceType;
-use crate::device::id;
-use crate::device;
-use crate::errno::Errno;
 use crate::errno;
+use crate::errno::Errno;
 use crate::file::path::Path;
 use crate::memory::malloc;
 use crate::process::mem_space::MemSpace;
-use crate::util::IO;
 use crate::util::container::string::String;
+use crate::util::io::IO;
 use crate::util::ptr::IntSharedPtr;
-use super::StorageInterface;
+use core::ffi::c_void;
+use core::mem::ManuallyDrop;
 
 /// The ramdisks' major number.
 const RAM_DISK_MAJOR: u32 = 1;
@@ -131,8 +132,12 @@ impl RAMDiskHandle {
 }
 
 impl DeviceHandle for RAMDiskHandle {
-	fn ioctl(&mut self, _mem_space: IntSharedPtr<MemSpace>, _request: u32, _argp: *const c_void)
-		-> Result<u32, Errno> {
+	fn ioctl(
+		&mut self,
+		_mem_space: IntSharedPtr<MemSpace>,
+		_request: u32,
+		_argp: *const c_void,
+	) -> Result<u32, Errno> {
 		// TODO
 		Err(errno!(EINVAL))
 	}
@@ -143,12 +148,16 @@ impl IO for RAMDiskHandle {
 		RAM_DISK_SIZE as _
 	}
 
-	fn read(&mut self, offset: u64, buff: &mut [u8]) -> Result<u64, Errno> {
+	fn read(&mut self, offset: u64, buff: &mut [u8]) -> Result<(u64, bool), Errno> {
 		self.disk.read_bytes(buff, offset)
 	}
 
 	fn write(&mut self, offset: u64, buff: &[u8]) -> Result<u64, Errno> {
 		self.disk.write_bytes(buff, offset)
+	}
+
+	fn poll(&mut self, _mask: u32) -> Result<u32, Errno> {
+		Ok(0)
 	}
 }
 
@@ -159,14 +168,20 @@ pub fn create() -> Result<(), Errno> {
 
 	for i in 0..RAM_DISK_COUNT {
 		let mut name = String::from(b"ram")?;
-		name.push_str(&String::from_number(i as _)?)?;
+		name.append(crate::format!("{}", i)?)?;
 
 		let mut path = Path::root();
 		path.push(String::from(b"dev")?)?;
 		path.push(name)?;
 
-		let dev = Device::new(RAM_DISK_MAJOR, i as _, path, 0o666, DeviceType::Block,
-			RAMDiskHandle::new())?;
+		let dev = Device::new(
+			RAM_DISK_MAJOR,
+			i as _,
+			path,
+			0o666,
+			DeviceType::Block,
+			RAMDiskHandle::new(),
+		)?;
 		device::register_device(dev)?;
 	}
 

@@ -1,14 +1,53 @@
 //! This module implements types representing timestamps.
 
+use crate::util::math;
 use core::cmp::Ordering;
 use core::ops::Add;
 
 /// Type representing a timestamp in seconds. Equivalent to POSIX's `time_t`.
 pub type Timestamp = u64;
-/// Type representing a timestamp in microseconds. Equivalent to POSIX's `suseconds_t`.
+/// Type representing a timestamp in microseconds. Equivalent to POSIX's
+/// `suseconds_t`.
 pub type UTimestamp = u64;
-/// Type representing an elapsed number of ticks. Equivalent to POSIX's `clock_t`.
+/// Type representing an elapsed number of ticks. Equivalent to POSIX's
+/// `clock_t`.
 pub type Clock = u32;
+
+/// Enumeration of available timestamp scales.
+#[derive(Debug)]
+pub enum TimestampScale {
+	/// The unit is one second.
+	Second,
+	/// The unit is one millisecond.
+	Millisecond,
+	/// The unit is one microsecond.
+	Microsecond,
+	/// The unit is one nanosecond.
+	Nanosecond,
+}
+
+impl TimestampScale {
+	/// Returns the order of the scale as a power of 10.
+	pub fn as_power(&self) -> i64 {
+		match self {
+			Self::Second => 0,
+			Self::Millisecond => -3,
+			Self::Microsecond => -6,
+			Self::Nanosecond => -9,
+		}
+	}
+
+	/// Converts the given value `val` from scale `from` to scale `to`.
+	pub fn convert(val: Timestamp, from: Self, to: Self) -> Timestamp {
+		let delta = -(to.as_power() - from.as_power());
+
+		if delta >= 0 {
+			val * math::pow(10, delta as _)
+		} else {
+			val / math::pow(10, -delta as _)
+		}
+	}
+}
 
 /// Trait to be implement on a structure describing a moment in time.
 pub trait TimeUnit: Sized + Clone + Default + Add<Self, Output = Self> + PartialOrd {
@@ -24,7 +63,7 @@ pub trait TimeUnit: Sized + Clone + Default + Add<Self, Output = Self> + Partial
 }
 
 /// POSIX structure representing a timestamp.
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy, Debug, Default)]
 #[repr(C)]
 pub struct Timeval {
 	/// Seconds
@@ -47,6 +86,10 @@ impl TimeUnit for Timeval {
 	fn to_nano(&self) -> u64 {
 		self.tv_sec * 1000000000 + self.tv_usec * 1000
 	}
+
+	fn is_zero(&self) -> bool {
+		self.tv_sec == 0 && self.tv_usec == 0
+	}
 }
 
 impl Add<Timeval> for Timeval {
@@ -68,12 +111,16 @@ impl PartialEq for Timeval {
 
 impl PartialOrd for Timeval {
 	fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-		Some(self.tv_sec.cmp(&other.tv_sec).then_with(|| self.tv_usec.cmp(&other.tv_usec)))
+		Some(
+			self.tv_sec
+				.cmp(&other.tv_sec)
+				.then_with(|| self.tv_usec.cmp(&other.tv_usec)),
+		)
 	}
 }
 
 /// Same as `Timeval`, but with nanosecond precision.
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy, Debug, Default)]
 #[repr(C)]
 pub struct Timespec {
 	/// Seconds
@@ -96,6 +143,10 @@ impl TimeUnit for Timespec {
 	fn to_nano(&self) -> u64 {
 		self.tv_sec * 1000000000 + self.tv_nsec as u64
 	}
+
+	fn is_zero(&self) -> bool {
+		self.tv_sec == 0 && self.tv_nsec == 0
+	}
 }
 
 impl Add<Timespec> for Timespec {
@@ -117,6 +168,67 @@ impl PartialEq for Timespec {
 
 impl PartialOrd for Timespec {
 	fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-		Some(self.tv_sec.cmp(&other.tv_sec).then_with(|| self.tv_nsec.cmp(&other.tv_nsec)))
+		Some(
+			self.tv_sec
+				.cmp(&other.tv_sec)
+				.then_with(|| self.tv_nsec.cmp(&other.tv_nsec)),
+		)
+	}
+}
+
+/// Same as `Timespec`, but with 32 bits values.
+#[derive(Clone, Copy, Debug, Default)]
+#[repr(C)]
+pub struct Timespec32 {
+	/// Seconds
+	pub tv_sec: u32,
+	/// Nanoseconds
+	pub tv_nsec: u32,
+}
+
+impl TimeUnit for Timespec32 {
+	fn from_nano(timestamp: u64) -> Self {
+		let sec = timestamp / 1000000000;
+		let nsec = timestamp % 1000000000;
+
+		Self {
+			tv_sec: sec as _,
+			tv_nsec: nsec as _,
+		}
+	}
+
+	fn to_nano(&self) -> u64 {
+		self.tv_sec as u64 * 1000000000 + self.tv_nsec as u64
+	}
+
+	fn is_zero(&self) -> bool {
+		self.tv_sec == 0 && self.tv_nsec == 0
+	}
+}
+
+impl Add<Timespec32> for Timespec32 {
+	type Output = Self;
+
+	fn add(self, rhs: Self) -> Self {
+		Self {
+			tv_sec: self.tv_sec + rhs.tv_sec,
+			tv_nsec: self.tv_nsec + rhs.tv_nsec,
+		}
+	}
+}
+
+impl PartialEq for Timespec32 {
+	fn eq(&self, other: &Self) -> bool {
+		self.tv_sec == other.tv_sec && self.tv_nsec == other.tv_nsec
+	}
+}
+
+impl PartialOrd for Timespec32 {
+	fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+		Some(
+			self.tv_sec
+				.cmp(&other.tv_sec)
+				.then_with(|| self.tv_nsec.cmp(&other.tv_nsec)),
+		)
 	}
 }

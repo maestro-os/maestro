@@ -14,8 +14,8 @@ pub struct GenericAddr {
 	address: u8,
 }
 
-/// The Fixed ACPI Description Table. The documentation of every fields can be found in the ACPI
-/// documentation.
+/// The Fixed ACPI Description Table. The documentation of every fields can be
+/// found in the ACPI documentation.
 #[repr(C)]
 pub struct Fadt {
 	/// The table's header.
@@ -110,7 +110,7 @@ impl Fadt {
 }
 
 impl ACPITable for Fadt {
-	fn get_expected_signature() -> [u8; 4] {
-		[b'F', b'A', b'C', b'P']
+	fn get_expected_signature() -> &'static [u8; 4] {
+		&[b'F', b'A', b'C', b'P']
 	}
 }

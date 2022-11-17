@@ -1,11 +1,10 @@
 //! This module implements ACPI related features.
-//! The ACPI interface provides informations about the system, allowing to control components such
-//! as cooling and powering.
+//! The ACPI interface provides informations about the system, allowing to
+//! control components such as cooling and powering.
 //!
-//! The first step in initialization is to read the RSDP table in order to get a pointer to the
-//! RSDT, referring to every other available tables.
+//! The first step in initialization is to read the RSDP table in order to get a
+//! pointer to the RSDT, referring to every other available tables.
 
-use core::intrinsics::wrapping_add;
 use core::mem::size_of;
 use data::ACPIData;
 use dsdt::Dsdt;
@@ -58,7 +57,7 @@ impl ACPITableHeader {
 
 	/// Checks that the table is valid.
 	pub fn check<T: ACPITable + ?Sized>(&self) -> bool {
-		if self.signature != T::get_expected_signature() {
+		if self.signature != *T::get_expected_signature() {
 			return false;
 		}
 
@@ -73,7 +72,7 @@ impl ACPITableHeader {
 			let byte = unsafe { // Safe since every bytes of `self` are readable.
 				*(self as *const Self as *const u8).add(i)
 			};
-			sum = wrapping_add(sum, byte);
+			sum = sum.wrapping_add(byte);
 		}
 
 		sum == 0
@@ -83,7 +82,7 @@ impl ACPITableHeader {
 /// Trait representing an ACPI table.
 pub trait ACPITable {
 	/// Returns the expected signature for the structure.
-	fn get_expected_signature() -> [u8; 4];
+	fn get_expected_signature() -> &'static [u8; 4];
 
 	/// Returns a reference to the table's header.
 	fn get_header(&self) -> &ACPITableHeader {
@@ -107,19 +106,19 @@ pub fn is_century_register_present() -> bool {
 /// This function must be called only once, at boot.
 pub fn init() {
 	// Reading ACPI data
-	let data = ACPIData::read().unwrap_or_else(| _ | {
+	let data = ACPIData::read().unwrap_or_else(|_| {
 		crate::kernel_panic!("Invalid ACPI data!");
 	});
 
 	if let Some(data) = data {
 		if let Some(madt) = data.get_table_sized::<Madt>() {
 			// Registering CPU cores
-			madt.foreach_entry(| e: &madt::EntryHeader | match e.get_type() {
+			madt.foreach_entry(|e: &madt::EntryHeader| match e.get_type() {
 				0 => {
 					// TODO Register a new CPU
-				},
+				}
 
-				_ => {},
+				_ => {}
 			});
 		}
 

@@ -1,6 +1,6 @@
 //! This module handles device and buses.
-//! A device file is an interface with a device of the system, which can be internal or external,
-//! or even virtual such as a TTY.
+//! A device file is an interface with a device of the system, which can be
+//! internal or external, or even virtual such as a TTY.
 
 pub mod bar;
 pub mod bus;
@@ -14,29 +14,29 @@ pub mod serial;
 pub mod storage;
 pub mod tty;
 
-use core::ffi::c_void;
 use crate::device::manager::DeviceManager;
 use crate::errno::Errno;
-use crate::errno;
+use crate::file;
+use crate::file::path::Path;
+use crate::file::vfs;
 use crate::file::FileContent;
 use crate::file::Mode;
-use crate::file::fcache::FCache;
-use crate::file::fcache;
-use crate::file::path::Path;
 use crate::process::mem_space::MemSpace;
-use crate::util::FailableClone;
-use crate::util::IO;
 use crate::util::boxed::Box;
-use crate::util::container::hashmap::HashMap;
 use crate::util::container::vec::Vec;
+use crate::util::io::IO;
 use crate::util::lock::Mutex;
+use crate::util::lock::MutexGuard;
 use crate::util::ptr::IntSharedPtr;
 use crate::util::ptr::SharedPtr;
+use crate::util::FailableClone;
+use core::ffi::c_void;
+use core::fmt;
 use keyboard::KeyboardManager;
 use storage::StorageManager;
 
 /// Enumeration representing the type of the device.
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
 pub enum DeviceType {
 	/// A block device.
 	Block,
@@ -44,18 +44,31 @@ pub enum DeviceType {
 	Char,
 }
 
+impl fmt::Display for DeviceType {
+	fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+		match self {
+			Self::Block => write!(fmt, "Block"),
+			Self::Char => write!(fmt, "Char"),
+		}
+	}
+}
+
 /// Trait providing a interface for device I/O.
 pub trait DeviceHandle: IO {
 	/// Performs an ioctl operation on the device.
-	/// `mem_space` is the memory space on which pointers are to be dereferenced.
-	/// `request` is the ID of the request to perform.
+	/// `mem_space` is the memory space on which pointers are to be
+	/// dereferenced. `request` is the ID of the request to perform.
 	/// `argp` is a pointer to the argument.
-	fn ioctl(&mut self, mem_space: IntSharedPtr<MemSpace>, request: u32, argp: *const c_void)
-		-> Result<u32, Errno>;
+	fn ioctl(
+		&mut self,
+		mem_space: IntSharedPtr<MemSpace>,
+		request: u32,
+		argp: *const c_void,
+	) -> Result<u32, Errno>;
 }
 
-/// Structure representing a device, either a block device or a char device. Each device has a
-/// major and a minor number.
+/// Structure representing a device, either a block device or a char device.
+/// Each device has a major and a minor number.
 pub struct Device {
 	/// The major number.
 	major: u32,
@@ -78,8 +91,14 @@ impl Device {
 	/// `major` and `minor` are the major and minor numbers of the device.
 	/// `type_` is the type of the device.
 	/// `handle` is the handle for I/O operations.
-	pub fn new<H: 'static + DeviceHandle>(major: u32, minor: u32, path: Path, mode: Mode,
-		type_: DeviceType, handle: H) -> Result<Self, Errno> {
+	pub fn new<H: 'static + DeviceHandle>(
+		major: u32,
+		minor: u32,
+		path: Path,
+		mode: Mode,
+		type_: DeviceType,
+		handle: H,
+	) -> Result<Self, Errno> {
 		Ok(Self {
 			major,
 			minor,
@@ -134,103 +153,66 @@ impl Device {
 		self.handle.as_mut()
 	}
 
-	/// Creates the directories necessary to reach path `path`. On success, the function returns
-	/// the number of created directories (without the directories that already existed).
-	/// If relative, the path is taken from the root.
-	fn create_dirs(fcache: &mut FCache, path: &Path) -> Result<usize, Errno> {
-		let path = Path::root().concat(path)?;
-
-		// The path of the parent directory
-		let mut p = Path::root();
-		// The number of created directories
-		let mut created_count = 0;
-
-		for i in 0..path.get_elements_count() {
-			let name = path[i].failable_clone()?;
-
-			if let Ok(parent_mutex) = fcache.get_file_from_path(&p, 0, 0, true) {
-				let parent_guard = parent_mutex.lock();
-				let parent = parent_guard.get_mut();
-
-				match fcache.create_file(parent, name.failable_clone()?, 0, 0, 0o755,
-					FileContent::Directory(HashMap::new())) {
-					Err(e) if e.as_int() != errno::EEXIST => return Err(e),
-					_ => {},
-				}
-
-				created_count += 1;
-			}
-
-			p.push(name)?;
-		}
-
-		Ok(created_count)
-	}
-
-	/// Removes the file at path `path` and its subfiles recursively if it's a directory.
-	/// If relative, the path is taken from the root.
-	fn remove_recursive(_fcache: &mut FCache, path: &Path) -> Result<(), Errno> {
-		let _path = Path::root().concat(path)?;
-
-		// TODO
-		todo!();
-	}
-
 	// TODO Put file creation on the userspace side?
-	/// Creates the device file associated with the structure. If the file already exist, the
-	/// function does nothing.
-	pub fn create_file(&mut self) -> Result<(), Errno> {
-		let file_content = match self.type_ {
+	/// Creates the device file associated with the structure. If the file
+	/// already exist, the function does nothing.
+	/// The function takes a mutex guard because it needs to unlock the device
+	/// in order to create the file without a deadlock.
+	pub fn create_file(guard: MutexGuard<Device, true>) -> Result<(), Errno> {
+		let dev = guard.get_mut();
+
+		let file_content = match dev.type_ {
 			DeviceType::Block => FileContent::BlockDevice {
-				major: self.major,
-				minor: self.minor,
+				major: dev.major,
+				minor: dev.minor,
 			},
 
 			DeviceType::Char => FileContent::CharDevice {
-				major: self.major,
-				minor: self.minor,
+				major: dev.major,
+				minor: dev.minor,
 			},
 		};
 
-		let path_len = self.path.get_elements_count();
-		let filename = self.path[path_len - 1].failable_clone()?;
+		let path = dev.path.failable_clone()?;
+		let mode = dev.mode;
+		drop(guard);
 
-		// Locking the files' cache
-		let mutex = fcache::get();
+		let mutex = vfs::get();
 		let guard = mutex.lock();
-		let files_cache = guard.get_mut().as_mut().unwrap();
+		let vfs = guard.get_mut().as_mut().unwrap();
 
 		// Tells whether the file already exists
-		let file_exists = files_cache.get_file_from_path(&self.path, 0, 0, true).is_ok();
+		let file_exists = vfs.get_file_from_path(&path, 0, 0, true).is_ok();
 
 		if !file_exists {
 			// Creating the directories in which the device file is located
-			let mut dir_path = self.path.failable_clone()?;
-			dir_path.pop();
-			Self::create_dirs(files_cache, &dir_path)?;
+			let mut dir_path = path;
+			let filename = dir_path.pop().unwrap();
+			file::util::create_dirs(vfs, &dir_path)?;
 
 			// Getting the parent directory
-			let parent_mutex = files_cache.get_file_from_path(&dir_path, 0, 0, true)?;
+			let parent_mutex = vfs.get_file_from_path(&dir_path, 0, 0, true)?;
 			let parent_guard = parent_mutex.lock();
 			let parent = parent_guard.get_mut();
 
 			// TODO Cancel directories creation on fail
 			// Creating the device file
-			files_cache.create_file(parent, filename, 0, 0, self.mode, file_content)?;
+			vfs.create_file(parent, filename, 0, 0, mode, file_content)?;
 		}
 
 		Ok(())
 	}
 
-	/// If exists, removes the device file. iF the file doesn't exist, the function does nothing.
+	/// If exists, removes the device file. iF the file doesn't exist, the
+	/// function does nothing.
 	pub fn remove_file(&mut self) -> Result<(), Errno> {
-		let mutex = fcache::get();
+		let mutex = vfs::get();
 		let guard = mutex.lock();
-		let files_cache = guard.get_mut().as_mut().unwrap();
+		let vfs = guard.get_mut().as_mut().unwrap();
 
-		if let Ok(file_mutex) = files_cache.get_file_from_path(&self.path, 0, 0, true) {
+		if let Ok(file_mutex) = vfs.get_file_from_path(&self.path, 0, 0, true) {
 			let file_guard = file_mutex.lock();
-			files_cache.remove_file(file_guard.get(), 0, 0)?;
+			vfs.remove_file(file_guard.get(), 0, 0)?;
 		}
 
 		Ok(())
@@ -242,12 +224,16 @@ impl IO for Device {
 		self.handle.get_size()
 	}
 
-	fn read(&mut self, offset: u64, buff: &mut [u8]) -> Result<u64, Errno> {
+	fn read(&mut self, offset: u64, buff: &mut [u8]) -> Result<(u64, bool), Errno> {
 		self.handle.read(offset, buff)
 	}
 
 	fn write(&mut self, offset: u64, buff: &[u8]) -> Result<u64, Errno> {
 		self.handle.write(offset, buff)
+	}
+
+	fn poll(&mut self, mask: u32) -> Result<u32, Errno> {
+		self.handle.poll(mask)
 	}
 }
 
@@ -264,8 +250,8 @@ static BLOCK_DEVICES: Mutex<Vec<SharedPtr<Device>>> = Mutex::new(Vec::new());
 /// The list of registered block devices.
 static CHAR_DEVICES: Mutex<Vec<SharedPtr<Device>>> = Mutex::new(Vec::new());
 
-/// Registers the given device. If the minor/major number is already used, the function fails.
-/// The function *doesn't* create the device file.
+/// Registers the given device. If the minor/major number is already used, the
+/// function fails. The function *doesn't* create the device file.
 pub fn register_device(device: Device) -> Result<(), Errno> {
 	let guard = match device.get_type() {
 		DeviceType::Block => BLOCK_DEVICES.lock(),
@@ -274,10 +260,8 @@ pub fn register_device(device: Device) -> Result<(), Errno> {
 	let container = guard.get_mut();
 
 	let device_number = device.get_device_number();
-	let index = container.binary_search_by(| d | {
-		let dn = unsafe {
-			d.get_mut().get_mut_payload()
-		}.get_device_number();
+	let index = container.binary_search_by(|d| {
+		let dn = unsafe { d.get().get_mut_payload() }.get_device_number();
 
 		device_number.cmp(&dn)
 	});
@@ -291,8 +275,8 @@ pub fn register_device(device: Device) -> Result<(), Errno> {
 
 // TODO Function to remove a device
 
-/// Returns a mutable reference to the device with the given major number, minor number and type.
-/// If the device doesn't exist, the function returns None.
+/// Returns a mutable reference to the device with the given major number, minor
+/// number and type. If the device doesn't exist, the function returns None.
 pub fn get_device(type_: DeviceType, major: u32, minor: u32) -> Option<SharedPtr<Device>> {
 	let guard = match type_ {
 		DeviceType::Block => BLOCK_DEVICES.lock(),
@@ -301,10 +285,8 @@ pub fn get_device(type_: DeviceType, major: u32, minor: u32) -> Option<SharedPtr
 	let container = guard.get_mut();
 
 	let device_number = id::makedev(major, minor);
-	let index = container.binary_search_by(| d | {
-		let dn = unsafe {
-			d.get_mut().get_mut_payload()
-		}.get_device_number();
+	let index = container.binary_search_by(|d| {
+		let dn = unsafe { d.get().get_mut_payload() }.get_device_number();
 
 		device_number.cmp(&dn)
 	});
@@ -370,14 +352,51 @@ pub fn init() -> Result<(), Errno> {
 	{
 		// Getting back the storage manager since it has been moved
 		let storage_manager = manager::get_by_name("storage").unwrap();
-		let storage_manager = unsafe {
-			storage_manager.get_mut().unwrap().get_mut_payload()
-		};
-		let storage_manager = unsafe {
-			&mut *(storage_manager as *mut _ as *mut StorageManager)
-		};
+		let storage_manager = unsafe { storage_manager.get_mut().unwrap().get_mut_payload() };
+		let storage_manager = unsafe { &mut *(storage_manager as *mut _ as *mut StorageManager) };
 
 		storage_manager.test();
+	}
+
+	Ok(())
+}
+
+/// Creates the files of every devices if they don't exist.
+pub fn create_files() -> Result<(), Errno> {
+	// Containers are locked and unlock at each iterations to avoid a deadlock
+
+	// Creating block devices files
+	let mut i = 0;
+	loop {
+		let devs_guard = BLOCK_DEVICES.lock();
+		let devs = devs_guard.get_mut();
+		if i >= devs.len() {
+			break;
+		}
+
+		let dev_mutex = devs[i].clone();
+		let dev_guard = dev_mutex.lock();
+		drop(devs_guard);
+
+		Device::create_file(dev_guard)?;
+		i += 1;
+	}
+
+	// Creating char devices files
+	let mut i = 0;
+	loop {
+		let devs_guard = CHAR_DEVICES.lock();
+		let devs = devs_guard.get_mut();
+		if i >= devs.len() {
+			break;
+		}
+
+		let dev_mutex = devs[i].clone();
+		let dev_guard = dev_mutex.lock();
+		drop(devs_guard);
+
+		Device::create_file(dev_guard)?;
+		i += 1;
 	}
 
 	Ok(())

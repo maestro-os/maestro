@@ -1,50 +1,52 @@
-//! A ring buffer is a data structure which allows to implement a FIFO structure.
+//! A ring buffer is a data structure which allows to implement a FIFO
+//! structure.
 //!
 //! The buffer works with a linear buffer and two cursors:
 //! - The read cursor, which reads data until it reaches the write cursor
 //! - The write cursor, which writes data until it reaches the read cursor
 //!
-//! When a cursor reaches the end of the linear buffer, it goes back to the beginning. This is why
-//! it's called a "ring".
+//! When a cursor reaches the end of the linear buffer, it goes back to the
+//! beginning. This is why it's called a "ring".
 
 use core::cmp::min;
-use crate::errno::Errno;
-use crate::util::container::vec::Vec;
+use core::marker::PhantomData;
 
-// TODO Refactor to avoid requiring Default and Copy
-
-/// Structure representing a ring buffer. The buffer has a limited size which must be given at
-/// initialization.
+/// Structure representing a ring buffer. The buffer has a limited size which
+/// must be given at initialization.
+/// The buffer used to store the data is specified by the generic argument `B`.
+/// By default, a Vec is used.
 #[derive(Debug)]
-pub struct RingBuffer<T: Default + Copy> {
+pub struct RingBuffer<T, B: AsRef<[T]> + AsMut<[T]>> {
 	/// The linear buffer.
-	buffer: Vec<T>,
+	buffer: B,
 
 	/// The offset of the read cursor in the buffer.
 	read_cursor: usize,
 	/// The offset of the write cursor in the buffer.
 	write_cursor: usize,
+
+	/// Allowing the argument T.
+	_phantom: PhantomData<T>,
 }
 
-impl<T: Default + Copy> RingBuffer<T> {
+impl<T: Default + Copy, B: AsRef<[T]> + AsMut<[T]>> RingBuffer<T, B> {
 	/// Creates a new instance.
-	/// `size` is the size of the buffer.
-	pub fn new(size: usize) -> Result<Self, Errno> {
-		let mut buffer = Vec::<T>::new();
-		buffer.resize(size + 1)?;
-
-		Ok(Self {
+	/// `buffer` is the buffer to be used.
+	pub fn new(buffer: B) -> Self {
+		Self {
 			buffer,
 
 			read_cursor: 0,
 			write_cursor: 0,
-		})
+
+			_phantom: PhantomData,
+		}
 	}
 
 	/// Returns the size of the buffer in bytes.
 	#[inline(always)]
 	pub fn get_size(&self) -> usize {
-		self.buffer.len()
+		self.buffer.as_ref().len()
 	}
 
 	/// Tells whether the ring is empty.
@@ -53,8 +55,8 @@ impl<T: Default + Copy> RingBuffer<T> {
 		self.read_cursor == self.write_cursor
 	}
 
-	/// Returns the length in bytes of the data in the buffer. If the buffer is empty, the function
-	/// returns zero.
+	/// Returns the length in bytes of the data in the buffer. If the buffer is
+	/// empty, the function returns zero.
 	pub fn get_data_len(&self) -> usize {
 		if self.read_cursor <= self.write_cursor {
 			self.write_cursor - self.read_cursor
@@ -72,11 +74,11 @@ impl<T: Default + Copy> RingBuffer<T> {
 	/// Returns a slice representing the ring buffer's linear buffer.
 	#[inline(always)]
 	fn get_buffer(&mut self) -> &mut [T] {
-		self.buffer.as_mut_slice()
+		self.buffer.as_mut()
 	}
 
-	/// Reads data from the buffer and writes it in `buf`. The function returns the number of bytes
-	/// read.
+	/// Reads data from the buffer and writes it in `buf`. The function returns
+	/// the number of bytes read.
 	pub fn read(&mut self, buf: &mut [T]) -> usize {
 		let cursor = self.read_cursor;
 		let len = min(buf.len(), self.get_data_len());
@@ -84,7 +86,8 @@ impl<T: Default + Copy> RingBuffer<T> {
 		let buffer_size = self.get_size();
 		let buffer = self.get_buffer();
 
-		// The length of the first read, before going back to the beginning of the buffer
+		// The length of the first read, before going back to the beginning of the
+		// buffer
 		let l0 = min(cursor + len, buffer_size) - cursor;
 		for i in 0..l0 {
 			buf[i] = buffer[cursor + i];
@@ -100,7 +103,8 @@ impl<T: Default + Copy> RingBuffer<T> {
 		len
 	}
 
-	/// Writes data in `buf` to the buffer. The function returns the number of bytes written.
+	/// Writes data in `buf` to the buffer. The function returns the number of
+	/// bytes written.
 	pub fn write(&mut self, buf: &[T]) -> usize {
 		let cursor = self.write_cursor;
 		let len = min(buf.len(), self.get_available_len());
@@ -108,7 +112,8 @@ impl<T: Default + Copy> RingBuffer<T> {
 		let buffer_size = self.get_size();
 		let buffer = self.get_buffer();
 
-		// The length of the first read, before going back to the beginning of the buffer
+		// The length of the first read, before going back to the beginning of the
+		// buffer
 		let l0 = min(cursor + len, buffer_size) - cursor;
 		for i in 0..l0 {
 			buffer[cursor + i] = buf[i];
@@ -138,39 +143,39 @@ mod test {
 
 	#[test_case]
 	fn ring_buffer0() {
-		let mut rb = RingBuffer::new(10).unwrap();
+		let mut rb = RingBuffer::new([0u8; 10]);
 		let mut buf: [u8; 0] = [0; 0];
 		assert_eq!(rb.read(&mut buf), 0);
 	}
 
 	#[test_case]
 	fn ring_buffer1() {
-		let mut rb = RingBuffer::new(10).unwrap();
+		let mut rb = RingBuffer::new([0u8; 10]);
 		let mut buf: [u8; 10] = [0; 10];
 		assert_eq!(rb.read(&mut buf), 0);
 	}
 
 	#[test_case]
 	fn ring_buffer2() {
-		let mut rb = RingBuffer::new(10).unwrap();
+		let mut rb = RingBuffer::new([0u8; 10]);
 		let mut buf: [u8; 10] = [0; 10];
 		for i in 0..buf.len() {
 			buf[i] = 42;
 		}
 
-		assert_eq!(rb.write(&buf), 10);
-		assert_eq!(rb.get_data_len(), 10);
+		assert_eq!(rb.write(&buf), 9);
+		assert_eq!(rb.get_data_len(), 9);
 		assert_eq!(rb.get_available_len(), 0);
 
 		for i in 0..buf.len() {
 			buf[i] = 0;
 		}
 
-		assert_eq!(rb.read(&mut buf), 10);
+		assert_eq!(rb.read(&mut buf), 9);
 		assert_eq!(rb.get_data_len(), 0);
-		assert_eq!(rb.get_available_len(), 10);
+		assert_eq!(rb.get_available_len(), 9);
 
-		for i in 0..buf.len() {
+		for i in 0..9 {
 			assert_eq!(buf[i], 42);
 		}
 	}

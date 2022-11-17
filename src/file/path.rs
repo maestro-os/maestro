@@ -1,5 +1,11 @@
 //! This module handles files path.
 
+use crate::errno;
+use crate::errno::Errno;
+use crate::limits;
+use crate::util::container::string::String;
+use crate::util::container::vec::Vec;
+use crate::util::FailableClone;
 use core::cmp::min;
 use core::fmt;
 use core::hash::Hash;
@@ -9,12 +15,6 @@ use core::ops::IndexMut;
 use core::ops::Range;
 use core::ops::RangeFrom;
 use core::ops::RangeTo;
-use crate::errno::Errno;
-use crate::errno;
-use crate::limits;
-use crate::util::FailableClone;
-use crate::util::container::string::String;
-use crate::util::container::vec::Vec;
 
 /// The character used as a path separator.
 pub const PATH_SEPARATOR: char = '/';
@@ -24,7 +24,8 @@ pub const PATH_SEPARATOR: char = '/';
 pub struct Path {
 	/// Tells whether the path is absolute or relative.
 	absolute: bool,
-	/// An array containing the different parts of the path which are separated with `/`.
+	/// An array containing the different parts of the path which are separated
+	/// with `/`.
 	parts: Vec<String>,
 }
 
@@ -39,15 +40,15 @@ impl Path {
 
 	/// Creates a new instance from string.
 	/// `path` is the path.
-	/// `user` tells whether the path was supplied by the user (to check the length and return an
-	/// error if too long).
+	/// `user` tells whether the path was supplied by the user (to check the
+	/// length and return an error if too long).
 	pub fn from_str(path: &[u8], user: bool) -> Result<Self, Errno> {
 		if user && path.len() + 1 >= limits::PATH_MAX {
 			return Err(errno!(ENAMETOOLONG));
 		}
 
 		let mut parts = Vec::new();
-		for p in path.split(| c | *c == PATH_SEPARATOR as u8) {
+		for p in path.split(|c| *c == PATH_SEPARATOR as u8) {
 			if p.len() + 1 >= limits::NAME_MAX {
 				return Err(errno!(ENAMETOOLONG));
 			}
@@ -68,13 +69,18 @@ impl Path {
 		self.absolute
 	}
 
+	/// Sets whether the path is absolute.
+	pub fn set_absolute(&mut self, absolute: bool) {
+		self.absolute = absolute;
+	}
+
 	/// Tells whether the path is empty.
 	pub fn is_empty(&self) -> bool {
 		self.parts.is_empty()
 	}
 
-	/// Returns the number of elements in the path, namely, the number of elements separated by
-	/// `/`.
+	/// Returns the number of elements in the path, namely, the number of
+	/// elements separated by `/`.
 	pub fn get_elements_count(&self) -> usize {
 		self.parts.len()
 	}
@@ -87,7 +93,8 @@ impl Path {
 		}
 
 		for (i, p) in self.parts.iter().enumerate() {
-			s.push_str(p)?;
+			s.append(p)?;
+
 			if i + 1 < self.parts.len() {
 				s.push(b'/')?;
 			}
@@ -108,6 +115,12 @@ impl Path {
 	/// Pops the filename on top of the path.
 	pub fn pop(&mut self) -> Option<String> {
 		self.parts.pop()
+	}
+
+	/// Returns a reference to the last element.
+	/// If the path is empty, the function returns None.
+	pub fn last(&self) -> Option<&String> {
+		self.parts.as_slice().last()
 	}
 
 	/// Tells whether the current path begins with the path `other`.
@@ -178,9 +191,10 @@ impl Path {
 		Ok(())
 	}
 
-	/// Concats the current path with another path `other` to create a new path. The path is not
-	/// automaticaly reduced.
-	/// If the `other` path is absolute, the resulting path exactly equals `other`.
+	/// Concats the current path with another path `other` to create a new path.
+	/// The path is not automaticaly reduced.
+	/// If the `other` path is absolute, the resulting path exactly equals
+	/// `other`.
 	pub fn concat(&self, other: &Self) -> Result<Self, Errno> {
 		if other.is_absolute() {
 			other.failable_clone()
@@ -234,6 +248,10 @@ impl Eq for Path {}
 
 impl PartialEq for Path {
 	fn eq(&self, other: &Self) -> bool {
+		if self.parts.len() != other.parts.len() {
+			return false;
+		}
+
 		for i in 0..self.parts.len() {
 			if self.parts[i] != other.parts[i] {
 				return false;
@@ -254,6 +272,7 @@ impl fmt::Display for Path {
 
 		for i in 0..self.get_elements_count() {
 			write!(f, "{}", self[i])?;
+
 			if i + 1 < self.get_elements_count() {
 				write!(f, "/")?;
 			}

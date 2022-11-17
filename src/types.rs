@@ -13,8 +13,6 @@ pub type c_long = i32;
 #[cfg(any(target_pointer_width = "64"))]
 pub type c_long = i64;
 
-
-
 // Unsigned primitives
 
 pub type c_uchar = u8;

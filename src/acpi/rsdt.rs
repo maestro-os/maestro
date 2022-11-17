@@ -22,9 +22,7 @@ impl Rsdt {
 		let entries_ptr = (self as *const _ as usize + size_of::<Rsdt>()) as *const u32;
 
 		for i in 0..entries_count {
-			let header_ptr = unsafe {
-				*entries_ptr.add(i) as *const ACPITableHeader
-			};
+			let header_ptr = unsafe { *entries_ptr.add(i) as *const ACPITableHeader };
 
 			f(header_ptr);
 		}
@@ -32,7 +30,7 @@ impl Rsdt {
 }
 
 impl ACPITable for Rsdt {
-	fn get_expected_signature() -> [u8; 4] {
-		[b'R', b'S', b'D', b'T']
+	fn get_expected_signature() -> &'static [u8; 4] {
+		&[b'R', b'S', b'D', b'T']
 	}
 }

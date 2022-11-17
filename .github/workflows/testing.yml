@@ -1,8 +1,0 @@
-name: Testing
-on: push
-jobs:
-    test:
-        runs-on: [self-hosted, linux]
-        steps:
-            - uses: actions/checkout@v2
-            - run: "testing/test.sh"

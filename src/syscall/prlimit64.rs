@@ -1,16 +1,17 @@
 //! The `prlimit64` syscall returns the limit for a given resource.
 
 use crate::errno::Errno;
-use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::pid::Pid;
 use crate::process::regs::Regs;
+use crate::process::Process;
 
 /// The amount of seconds of CPU time the process can consume.
 const RLIMIT_CPU: i32 = 0;
 /// The maximum size of a file the process may create, in bytes.
 const RLIMIT_FSIZE: i32 = 1;
-/// The maximum size of the process's data segment in bytes, rounded down to the page size.
+/// The maximum size of the process's data segment in bytes, rounded down to the
+/// page size.
 const RLIMIT_DATA: i32 = 2;
 /// TODO doc
 const RLIMIT_STACK: i32 = 3;
@@ -20,15 +21,16 @@ const RLIMIT_CORE: i32 = 4;
 const RLIMIT_RSS: i32 = 5;
 /// TODO doc
 const RLIMIT_NPROC: i32 = 6;
-/// A value one greater than the maximum number of file descriptors that can be open by the
-/// process.
+/// A value one greater than the maximum number of file descriptors that can be
+/// open by the process.
 const RLIMIT_NOFILE: i32 = 7;
 /// TODO doc
 const RLIMIT_MEMLOCK: i32 = 8;
-/// The maximum size of the memory space in bytes, rounded down to the page size.
+/// The maximum size of the memory space in bytes, rounded down to the page
+/// size.
 const RLIMIT_AS: i32 = 9;
-/// The limit on the combined number of flock(2) locks and fcntl(2) leases the process may
-/// establish.
+/// The limit on the combined number of flock(2) locks and fcntl(2) leases the
+/// process may establish.
 const RLIMIT_LOCKS: i32 = 10;
 /// TODO doc
 const RLIMIT_SIGPENDING: i32 = 11;
@@ -80,23 +82,23 @@ pub fn prlimit64(regs: &Regs) -> Result<i32, Errno> {
 
 	// TODO Implement all
 	match resource {
-		RLIMIT_CPU => {},
-		RLIMIT_FSIZE => {},
-		RLIMIT_DATA => {},
-		RLIMIT_STACK => {},
-		RLIMIT_CORE => {},
-		RLIMIT_RSS => {},
-		RLIMIT_NPROC => {},
-		RLIMIT_NOFILE => {},
-		RLIMIT_MEMLOCK => {},
-		RLIMIT_AS => {},
-		RLIMIT_LOCKS => {},
-		RLIMIT_SIGPENDING => {},
-		RLIMIT_MSGQUEUE => {},
-		RLIMIT_NICE => {},
-		RLIMIT_RTPRIO => {},
-		RLIMIT_RTTIME => {},
-		RLIMIT_NLIMITS => {},
+		RLIMIT_CPU => {}
+		RLIMIT_FSIZE => {}
+		RLIMIT_DATA => {}
+		RLIMIT_STACK => {}
+		RLIMIT_CORE => {}
+		RLIMIT_RSS => {}
+		RLIMIT_NPROC => {}
+		RLIMIT_NOFILE => {}
+		RLIMIT_MEMLOCK => {}
+		RLIMIT_AS => {}
+		RLIMIT_LOCKS => {}
+		RLIMIT_SIGPENDING => {}
+		RLIMIT_MSGQUEUE => {}
+		RLIMIT_NICE => {}
+		RLIMIT_RTPRIO => {}
+		RLIMIT_RTTIME => {}
+		RLIMIT_NLIMITS => {}
 
 		_ => return Err(errno!(EINVAL)),
 	}

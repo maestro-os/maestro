@@ -1,21 +1,34 @@
-//! The writev system call allows to write sparse data on a file descriptor in on call.
+//! The `writev` system call allows to write sparse data on a file descriptor.
 
-use core::cmp::min;
-use crate::errno::Errno;
 use crate::errno;
+use crate::errno::Errno;
 use crate::file::open_file::OpenFile;
+use crate::idt;
 use crate::limits;
-use crate::process::Process;
 use crate::process::iovec::IOVec;
-use crate::process::mem_space::MemSpace;
 use crate::process::mem_space::ptr::SyscallSlice;
+use crate::process::mem_space::MemSpace;
 use crate::process::regs::Regs;
+use crate::process::signal::Signal;
+use crate::process::Process;
+use crate::util::io::IO;
 use crate::util::ptr::IntSharedPtr;
+use core::cmp::min;
 
-// TODO Check the operation is atomic on the file
-/// TODO doc
-fn write(mem_space: IntSharedPtr<MemSpace>, iov: SyscallSlice<IOVec>,
-	iovcnt: usize, open_file: &mut OpenFile) -> Result<i32, Errno> {
+// TODO Handle blocking writes (and thus, EINTR)
+
+// TODO Check the operation is atomic on the file?
+/// Writes the given chunks of files to the file.
+/// `mem_space` is the memory space of the current process.
+/// `iov` is the set of chunks.
+/// `iovcnt` is the number of chunks in `iov`.
+/// `open_file` is the file to write to.
+fn write(
+	mem_space: IntSharedPtr<MemSpace>,
+	iov: SyscallSlice<IOVec>,
+	iovcnt: usize,
+	open_file: &mut OpenFile,
+) -> Result<i32, Errno> {
 	let mem_space_guard = mem_space.lock();
 	let iov_slice = iov.get(&mem_space_guard, iovcnt)?.ok_or(errno!(EFAULT))?;
 
@@ -34,7 +47,7 @@ fn write(mem_space: IntSharedPtr<MemSpace>, iov: SyscallSlice<IOVec>,
 
 		if let Some(slice) = ptr.get(&mem_space_guard, l)? {
 			// TODO Handle in a loop like `write`?
-			total_len += open_file.write(slice)?;
+			total_len += open_file.write(0, slice)? as usize;
 		}
 	}
 
@@ -43,8 +56,13 @@ fn write(mem_space: IntSharedPtr<MemSpace>, iov: SyscallSlice<IOVec>,
 
 /// Peforms the writev operation.
 /// TODO doc params
-pub fn do_writev(fd: i32, iov: SyscallSlice<IOVec>, iovcnt: i32, offset: Option<isize>,
-	_flags: Option<i32>) -> Result<i32, Errno> {
+pub fn do_writev(
+	fd: i32,
+	iov: SyscallSlice<IOVec>,
+	iovcnt: i32,
+	offset: Option<isize>,
+	_flags: Option<i32>,
+) -> Result<i32, Errno> {
 	// TODO Handle flags
 
 	// Checking the size of the vector is in bounds
@@ -62,31 +80,45 @@ pub fn do_writev(fd: i32, iov: SyscallSlice<IOVec>, iovcnt: i32, offset: Option<
 		(mem_space, open_file_mutex)
 	};
 
-	let open_file_guard = open_file_mutex.lock();
-	let open_file = open_file_guard.get_mut();
+	idt::wrap_disable_interrupts(|| {
+		let open_file_guard = open_file_mutex.lock();
+		let open_file = open_file_guard.get_mut();
 
-	// The offset to restore on the fd after the write operation
-	let mut prev_off = None;
-	// Setting the offset temporarily
-	if let Some(offset) = offset {
-		if offset < -1 {
-			return Err(errno!(EINVAL));
+		// The offset to restore on the fd after the write operation
+		let mut prev_off = None;
+		// Setting the offset temporarily
+		if let Some(offset) = offset {
+			if offset < -1 {
+				return Err(errno!(EINVAL));
+			}
+
+			if offset != -1 {
+				prev_off = Some(open_file.get_offset());
+				open_file.set_offset(offset as _);
+			}
 		}
 
-		if offset != -1 {
-			prev_off = Some(open_file.get_offset());
-			open_file.set_offset(offset as _);
+		let result = write(mem_space, iov, iovcnt as _, open_file);
+		match &result {
+			// If writing to a broken pipe, kill with SIGPIPE
+			Err(e) if e.as_int() == errno::EPIPE => {
+				let mutex = Process::get_current().unwrap();
+				let guard = mutex.lock();
+				let proc = guard.get_mut();
+
+				proc.kill(&Signal::SIGPIPE, false);
+			}
+
+			_ => {}
 		}
-	}
 
-	let result = write(mem_space, iov, iovcnt as _, open_file);
+		// Restoring previous offset
+		if let Some(prev_off) = prev_off {
+			open_file.set_offset(prev_off);
+		}
 
-	// Restoring previous offset
-	if let Some(prev_off) = prev_off {
-		open_file.set_offset(prev_off);
-	}
-
-	result
+		result
+	})
 }
 
 /// The implementation of the `writev` syscall.

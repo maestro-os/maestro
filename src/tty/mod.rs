@@ -1,28 +1,29 @@
-//! The TeleTypeWriter (TTY) is an electromechanical device that was used in the past to send and
-//! receive typed messages through a communication channel.
+//! The TeleTypeWriter (TTY) is an electromechanical device that was used in the
+//! past to send and receive typed messages through a communication channel.
 //!
-//! At startup, the kernel has one TTY: the init TTY, which is stored separately because at the
-//! time of creation, memory management isn't initialized yet.
+//! This module implements line discipline for TTYs.
+//!
+//! At startup, the kernel has one TTY: the init TTY, which is stored separately
+//! because at the time of creation, memory management isn't initialized yet.
 
 mod ansi;
 pub mod termios;
 
-use core::cmp::*;
-use core::mem::MaybeUninit;
-use core::ptr;
 use crate::device::serial;
 use crate::memory::vmem;
-use crate::pit;
-use crate::process::Process;
 use crate::process::pid::Pid;
 use crate::process::signal::Signal;
+use crate::process::Process;
 use crate::tty::termios::Termios;
+use crate::util;
 use crate::util::container::vec::Vec;
 use crate::util::lock::IntMutex;
 use crate::util::lock::MutexGuard;
 use crate::util::ptr::IntSharedPtr;
-use crate::util;
 use crate::vga;
+use core::cmp::*;
+use core::mem::MaybeUninit;
+use core::ptr;
 
 /// The number of history lines for one TTY.
 const HISTORY_LINES: vga::Pos = 128;
@@ -60,7 +61,8 @@ pub struct WinSize {
 	pub ws_ypixel: u16,
 }
 
-/// Returns the position of the cursor in the history array from `x` and `y` position.
+/// Returns the position of the cursor in the history array from `x` and `y`
+/// position.
 fn get_history_offset(x: vga::Pos, y: vga::Pos) -> usize {
 	let off = (y * vga::WIDTH + x) as usize;
 	debug_assert!(off < HISTORY_SIZE);
@@ -118,12 +120,14 @@ static mut INIT_TTY: MaybeUninit<IntMutex<TTY>> = MaybeUninit::uninit();
 /// The list of every TTYs except the init TTY.
 static TTYS: IntMutex<Vec<IntSharedPtr<TTY>>> = IntMutex::new(Vec::new());
 
-/// The current TTY being displayed on screen. If None, the init TTY is being displayed.
+/// The current TTY being displayed on screen. If None, the init TTY is being
+/// displayed.
 static CURRENT_TTY: IntMutex<Option<usize>> = IntMutex::new(None);
 
 /// Enumeration of the different type of handles for a TTY.
-/// Because the initial TTY is created while memory allocation isn't available yet, the kernel
-/// cannot use shared pointer. So we need different ways to lock the TTY.
+/// Because the initial TTY is created while memory allocation isn't available
+/// yet, the kernel cannot use shared pointer. So we need different ways to lock
+/// the TTY.
 #[derive(Clone)]
 pub enum TTYHandle {
 	/// Handle to the init TTY.
@@ -156,9 +160,7 @@ pub fn get(id: Option<usize>) -> Option<TTYHandle> {
 			None
 		}
 	} else {
-		unsafe {
-			Some(TTYHandle::Init(INIT_TTY.assume_init_ref()))
-		}
+		unsafe { Some(TTYHandle::Init(INIT_TTY.assume_init_ref())) }
 	}
 }
 
@@ -195,9 +197,7 @@ impl TTY {
 	/// Creates a new TTY.
 	/// `id` is the ID of the TTY.
 	pub fn init(&mut self, id: Option<usize>) {
-		unsafe {
-			util::zero_object(self)
-		}
+		unsafe { util::zero_object(self) }
 
 		self.id = id;
 		self.cursor_x = 0;
@@ -236,9 +236,11 @@ impl TTY {
 		let buff = &self.history[get_history_offset(0, self.screen_y)];
 		unsafe {
 			vmem::write_lock_wrap(|| {
-				ptr::copy_nonoverlapping(buff as *const vga::Char,
+				ptr::copy_nonoverlapping(
+					buff as *const vga::Char,
 					vga::get_buffer_virt() as *mut vga::Char,
-					(vga::WIDTH as usize) * (vga::HEIGHT as usize));
+					(vga::WIDTH as usize) * (vga::HEIGHT as usize),
+				);
 			});
 		}
 
@@ -291,8 +293,8 @@ impl TTY {
 		self.set_bgcolor(bg);
 	}
 
-	/// Sets the blinking state of the text for TTY. `true` means blinking text, `false` means not
-	/// blinking.
+	/// Sets the blinking state of the text for TTY. `true` means blinking text,
+	/// `false` means not blinking.
 	pub fn set_blinking(&mut self, blinking: bool) {
 		if blinking {
 			self.current_color |= 0x80;
@@ -315,15 +317,15 @@ impl TTY {
 	/// Fixes the position of the cursor after executing an action.
 	fn fix_pos(&mut self) {
 		if self.cursor_x < 0 {
-			let p = -self.cursor_x;
-			self.cursor_x = vga::WIDTH - (p % vga::WIDTH);
-			self.cursor_y -= p / vga::WIDTH + 1;
+			let off = -self.cursor_x;
+			self.cursor_x = vga::WIDTH - (off % vga::WIDTH);
+			self.cursor_y -= off / vga::WIDTH + 1;
 		}
 
 		if self.cursor_x >= vga::WIDTH {
-			let p = self.cursor_x;
-			self.cursor_x = p % vga::WIDTH;
-			self.cursor_y += p / vga::WIDTH;
+			let off = self.cursor_x;
+			self.cursor_x = off % vga::WIDTH;
+			self.cursor_y += off / vga::WIDTH;
 		}
 
 		if self.cursor_y < self.screen_y {
@@ -336,6 +338,10 @@ impl TTY {
 
 		if self.cursor_y >= HISTORY_LINES {
 			self.cursor_y = HISTORY_LINES - 1;
+		}
+
+		if self.cursor_y < 0 {
+			self.cursor_y = 0;
 		}
 
 		if self.screen_y < 0 {
@@ -361,14 +367,16 @@ impl TTY {
 		debug_assert!(self.cursor_y - self.screen_y < vga::HEIGHT);
 	}
 
-	/// Moves the cursor forward `x` characters horizontally and `y` characters vertically.
+	/// Moves the cursor forward `x` characters horizontally and `y` characters
+	/// vertically.
 	fn cursor_forward(&mut self, x: usize, y: usize) {
 		self.cursor_x += x as vga::Pos;
 		self.cursor_y += y as vga::Pos;
 		self.fix_pos();
 	}
 
-	/// Moves the cursor backwards `x` characters horizontally and `y` characters vertically.
+	/// Moves the cursor backwards `x` characters horizontally and `y`
+	/// characters vertically.
 	fn cursor_backward(&mut self, x: usize, y: usize) {
 		self.cursor_x -= x as vga::Pos;
 		self.cursor_y -= y as vga::Pos;
@@ -384,8 +392,7 @@ impl TTY {
 
 	/// Rings the TTY's bell.
 	fn ring_bell(&self) {
-		// TODO Select the prefered device
-		pit::beep();
+		// TODO
 	}
 
 	/// Writes the character `c` to the TTY.
@@ -393,36 +400,25 @@ impl TTY {
 		if self.termios.c_oflag & termios::OLCUC != 0 && (c as char).is_ascii_uppercase() {
 			c = (c as char).to_ascii_lowercase() as u8;
 		}
+
 		// TODO Implement ONLCR (Map NL to CR-NL)
 		// TODO Implement ONOCR
 		// TODO Implement ONLRET
 
 		match c {
-			0x07 => {
-				self.ring_bell();
-			},
+			0x07 => self.ring_bell(),
 
-			0x08 => {
-				// TODO Backspace
-			},
+			b'\t' => self.cursor_forward(get_tab_size(self.cursor_x), 0),
+			b'\n' => self.newline(1),
 
-			b'\t' => {
-				self.cursor_forward(get_tab_size(self.cursor_x), 0);
-			},
-
-			b'\n' => {
-				self.newline(1);
-			},
-
+			// Form Feed (^L)
 			0x0c => {
-				// TODO Move printer to a top of page
-			},
+				// TODO Move printer to a top of page?
+				//self.clear();
+			}
 
-			b'\r' => {
-				self.cursor_x = 0;
-			},
-
-			0x7f => {}, // Do not print DEL characters
+			b'\r' => self.cursor_x = 0,
+			0x08 | 0x7f => self.cursor_backward(1, 0),
 
 			_ => {
 				let tty_char = (c as vga::Char) | ((self.current_color as vga::Char) << 8);
@@ -435,22 +431,26 @@ impl TTY {
 
 	/// Writes string `buffer` to TTY.
 	pub fn write(&mut self, buffer: &[u8]) {
-		let mut i = 0;
-
-		while i < buffer.len() {
-			let c = buffer[i];
-			if c == ansi::ESCAPE_CHAR {
-				let (_, j) = ansi::handle(self, &buffer[i..buffer.len()]);
-				i += j;
-			} else {
-				self.putchar(c);
-				i += 1;
-			}
-		}
-
 		// TODO Add a compilation and/or runtime option for this
 		if let Some(serial) = serial::get(serial::COM1) {
 			serial.lock().get_mut().write(buffer);
+		}
+
+		let mut i = 0;
+		while i < buffer.len() {
+			let c = buffer[i];
+
+			if c == ansi::ESCAPE_CHAR {
+				let j = ansi::handle(self, &buffer[i..buffer.len()]);
+
+				if j > 0 {
+					i += j;
+					continue;
+				}
+			}
+
+			self.putchar(c);
+			i += 1;
 		}
 
 		self.update();
@@ -463,19 +463,37 @@ impl TTY {
 
 	// TODO Implement IUTF8
 	/// Reads inputs from the TTY and places it into the buffer `buff`.
-	/// The function returns the number of bytes read.
-	pub fn read(&mut self, buff: &mut [u8]) -> usize {
+	/// The function returns the number of bytes read and whether the EOF is
+	/// reached. Note that reaching the EOF doesn't necessary mean the TTY is
+	/// closed. Subsequent calls to this function might still successfully read
+	/// data.
+	pub fn read(&mut self, buff: &mut [u8]) -> (usize, bool) {
 		// The length of data to consume
-		let len = min(buff.len(), self.available_size);
-		if len < self.termios.c_cc[termios::VMIN as usize] as usize {
-			return 0;
+		let mut len = min(buff.len(), self.available_size);
+
+		if self.termios.c_lflag & termios::ICANON != 0 {
+			let eof = self.termios.c_cc[termios::VEOF as usize];
+
+			if buff[0] == eof {
+				// Shifting data
+				self.input_buffer.rotate_left(len);
+				self.input_size -= len;
+				self.available_size -= len;
+
+				return (0, true);
+			} else if let Some(eof_off) = buff[..len].iter().position(|v| *v == eof) {
+				// Making the next call EOF
+				len = eof_off;
+			}
+		} else if len < self.termios.c_cc[termios::VMIN as usize] as usize {
+			return (0, false);
 		}
 
 		// Copying data
 		buff[..len].copy_from_slice(&self.input_buffer[..len]);
-		// Shifting the remaining data of the buffer
-		self.input_buffer.rotate_left(len);
 
+		// Shifting data
+		self.input_buffer.rotate_left(len);
 		self.input_size -= len;
 		self.available_size -= len;
 
@@ -483,11 +501,12 @@ impl TTY {
 			self.ring_bell();
 		}
 
-		len
+		(len, false)
 	}
 
 	// TODO Implement IUTF8
-	/// Takes the given string `buffer` as input, making it available from the terminal input.
+	/// Takes the given string `buffer` as input, making it available from the
+	/// terminal input.
 	pub fn input(&mut self, buffer: &[u8]) {
 		// The length to write to the input buffer
 		let len = min(buffer.len(), self.input_buffer.len() - self.input_size);
@@ -499,7 +518,6 @@ impl TTY {
 			self.write(input);
 		}
 		// TODO If ECHO is disabled but ICANON and ECHONL are set, print newlines
-		// TODO Handle printing Ctrl + key
 
 		// TODO Implement IGNBRK and BRKINT
 		// TODO Implement parity checking
@@ -550,17 +568,18 @@ impl TTY {
 			// Processing input
 			let mut i = self.input_size - len;
 			while i < self.input_size {
-				match self.input_buffer[i] {
-					b'\n' => {
-						// Making the input available for reading
-						self.available_size = i + 1;
+				let b = self.input_buffer[i];
 
-						i += 1;
-					},
+				if b == self.termios.c_cc[termios::VEOF as usize] || b == b'\n' {
+					// Making the input available for reading
+					self.available_size = i + 1;
 
-					// TODO Handle other special characters
-
-					_ => i += 1,
+					i += 1;
+				} else if b == 0xf7 {
+					// TODO Check
+					self.erase(1);
+				} else {
+					i += 1;
 				}
 			}
 		} else {
@@ -571,8 +590,16 @@ impl TTY {
 		// Sending signals if enabled
 		if self.termios.c_lflag & termios::ISIG != 0 {
 			for b in input {
-				// TODO On match, the charactere must not be passed as input
+				// Printing special control characters if enabled
+				if self.termios.c_lflag & termios::ECHO != 0
+					&& self.termios.c_lflag & termios::ECHOCTL != 0
+				{
+					if *b >= 1 && *b < 32 {
+						self.write(&[b'^', b + b'A']);
+					}
+				}
 
+				// TODO Handle every special characters
 				if *b == self.termios.c_cc[termios::VINTR as usize] {
 					self.send_signal(Signal::SIGINT);
 				} else if *b == self.termios.c_cc[termios::VQUIT as usize] {
@@ -652,8 +679,8 @@ impl TTY {
 	}
 
 	/// Sets the window size of the TTY.
-	/// If a foreground process group is set on the TTY, the function shall send it a `SIGWINCH`
-	/// signal.
+	/// If a foreground process group is set on the TTY, the function shall send
+	/// it a `SIGWINCH` signal.
 	pub fn set_winsize(&mut self, mut winsize: WinSize) {
 		// Clamping values
 		if winsize.ws_col > vga::WIDTH as _ {

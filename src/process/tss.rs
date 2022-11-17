@@ -1,12 +1,12 @@
-//! Under the x86 architecture, the TSS (Task State Segment) is a structure that is mostly
-//! deprecated but that must still be used in order to perform software context switching because
-//! it allows to store the pointers to the stacks to use whenever an interruption happens and
-//! requires switching the protection ring, and thus the stack.
-//! The structure has to be registered into the GDT into the TSS segment, and must be loaded using
-//! instruction `ltr`.
+//! Under the x86 architecture, the TSS (Task State Segment) is a structure that
+//! is mostly deprecated but that must still be used in order to perform
+//! software context switching because it allows to store the pointers to the
+//! stacks to use whenever an interruption happens and requires switching the
+//! protection ring, and thus the stack. The structure has to be registered into
+//! the GDT into the TSS segment, and must be loaded using instruction `ltr`.
 
-use core::mem::size_of;
 use crate::gdt;
+use core::mem::size_of;
 
 /// The TSS structure.
 #[repr(C, packed)]
@@ -50,9 +50,7 @@ pub fn init() {
 	let tss_ptr = gdt::get_segment_ptr(gdt::TSS_OFFSET);
 
 	let limit = size_of::<TSSEntry>() as u64;
-	let base = unsafe {
-		tss_get() as u64
-	};
+	let base = unsafe { tss_get() as u64 };
 	let flags = 0b0100000010001001_u64;
 	let tss_value = (limit & 0xffff)
 		| ((base & 0xffffff) << 16)
@@ -76,7 +74,5 @@ pub fn flush() {
 /// Returns a reference to the TSS structure.
 #[inline(always)]
 pub fn get() -> &'static mut TSSEntry {
-	unsafe {
-		&mut *tss_get()
-	}
+	unsafe { &mut *tss_get() }
 }

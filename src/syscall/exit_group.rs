@@ -1,4 +1,5 @@
-//! The exit_group syscall allows to terminate every processes in the current thread group.
+//! The exit_group syscall allows to terminate every processes in the current
+//! thread group.
 
 use crate::errno::Errno;
 use crate::process::regs::Regs;

@@ -1,4 +1,4 @@
-//! TODO doc
+//! The `pwritev2` system call allows to write sparse data on a file descriptor.
 
 use crate::errno::Errno;
 use crate::process::iovec::IOVec;

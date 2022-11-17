@@ -22,15 +22,13 @@ pub struct Version {
 
 impl Version {
 	/// Creates a new instance.
-	pub fn new(major: u16, minor: u16, patch: u16) -> Self {
+	pub const fn new(major: u16, minor: u16, patch: u16) -> Self {
 		Self {
 			major,
 			minor,
 			patch,
 		}
 	}
-
-	// TODO to_string
 }
 
 impl Ord for Version {
@@ -65,4 +63,16 @@ impl Display for Version {
 	fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), Error> {
 		write!(fmt, "{}.{}.{}", self.major, self.minor, self.patch)
 	}
+}
+
+/// Structure representing a dependency of a module.
+#[derive(Clone)]
+pub struct Dependency {
+	/// The name of the module
+	pub name: &'static str,
+
+	/// The version.
+	pub version: Version,
+	/// The constraint on the version.
+	pub constraint: Ordering,
 }

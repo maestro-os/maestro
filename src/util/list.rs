@@ -1,17 +1,18 @@
 //! This module implements the LinkedList utility.
 //!
-//! What's called a "floating linked list" is a linked list which doesn't have a beginning, it may
-//! be accessed only in its middle, through its elements.
+//! What's called a "floating linked list" is a linked list which doesn't have a
+//! beginning, it may be accessed only in its middle, through its elements.
 
 use core::marker::PhantomData;
 use core::ptr::NonNull;
 
-/// A list of elements working with a double linked list. It's important to note that the elements
-/// stored in this container are NOT owned by it, meaning that when the container is destroyed,
-/// the list still exists.
-/// This structure is not totally safe. If the first object is removed while considered into a
-/// floating linked list, then the associated List won't be aware and the overall might result in
-/// a dangling pointer. It especially has to be taken into account when auto-dropping a node.
+/// A list of elements working with a double linked list. It's important to note
+/// that the elements stored in this container are NOT owned by it, meaning that
+/// when the container is destroyed, the list still exists.
+/// This structure is not totally safe. If the first object is removed while
+/// considered into a floating linked list, then the associated List won't be
+/// aware and the overall might result in a dangling pointer. It especially has
+/// to be taken into account when auto-dropping a node.
 pub struct List<T> {
 	/// The front of the list.
 	front: Option<NonNull<ListNode>>,
@@ -23,8 +24,8 @@ pub struct List<T> {
 }
 
 impl<T> List<T> {
-	/// Creates a new List with the given inner offset. This function should not be called directly
-	/// but only through the dedicated macro `list_new`.
+	/// Creates a new List with the given inner offset. This function should not
+	/// be called directly but only through the dedicated macro `list_new`.
 	pub const fn new(inner_offset: usize) -> Self {
 		List::<T> {
 			front: None,
@@ -41,9 +42,7 @@ impl<T> List<T> {
 	/// Returns the number of elements in the list.
 	pub fn size(&self) -> usize {
 		match self.front {
-			Some(front) => unsafe {
-				front.as_ref()
-			}.right_size(),
+			Some(front) => unsafe { front.as_ref() }.right_size(),
 
 			None => 0,
 		}
@@ -56,9 +55,7 @@ impl<T> List<T> {
 
 	/// Returns a mutable reference to the front node if the list is not empty.
 	pub fn get_front(&mut self) -> Option<&'static mut ListNode> {
-		Some(unsafe {
-			&mut *(self.front?.as_ptr())
-		})
+		Some(unsafe { &mut *(self.front?.as_ptr()) })
 	}
 
 	/// Inserts the given element at the front of list.
@@ -74,9 +71,7 @@ impl<T> List<T> {
 	/// Unlinks the first element at the front of the list.
 	pub fn unlink_front(&mut self) {
 		if let Some(mut front) = self.front {
-			let f = unsafe {
-				front.as_mut()
-			};
+			let f = unsafe { front.as_mut() };
 
 			unsafe {
 				f.unlink_floating();
@@ -86,20 +81,22 @@ impl<T> List<T> {
 	}
 
 	/// Executes the given closure `f` for each nodes in the list.
-	pub fn foreach<F>(&self, f: F) where F: Fn(&ListNode) {
+	pub fn foreach<F>(&self, f: F)
+	where
+		F: Fn(&ListNode),
+	{
 		if let Some(front) = self.front {
-			unsafe {
-				front.as_ref()
-			}.foreach(f);
+			unsafe { front.as_ref() }.foreach(f);
 		}
 	}
 
 	/// Same as `foreach` except the nodes are mutable.
-	pub fn foreach_mut<F>(&mut self, f: F) where F: Fn(&mut ListNode) {
+	pub fn foreach_mut<F>(&mut self, f: F)
+	where
+		F: Fn(&mut ListNode),
+	{
 		if let Some(mut front) = self.front {
-			unsafe {
-				front.as_mut()
-			}.foreach_mut(f);
+			unsafe { front.as_mut() }.foreach_mut(f);
 		}
 	}
 }
@@ -115,17 +112,17 @@ impl<T> Clone for List<T> {
 }
 
 /// Creates a new List object for the given type and field.
-/// If the parameter `field` is not the name of a field of type ListNode, the behaviour is
-/// undefined.
+/// If the parameter `field` is not the name of a field of type ListNode, the
+/// behaviour is undefined.
 #[macro_export]
 macro_rules! list_new {
 	($type:ty, $field:ident) => {
 		crate::util::list::List::<$type>::new(crate::offset_of!($type, $field))
-	}
+	};
 }
 
-/// A node of a List. This structure is meant to be used inside of the structure to be stored in
-/// the list.
+/// A node of a List. This structure is meant to be used inside of the structure
+/// to be stored in the list.
 #[derive(Debug)]
 pub struct ListNode {
 	/// Pointer to the previous element in the list
@@ -146,17 +143,13 @@ impl ListNode {
 	/// Returns a reference to the structure storing the node.
 	/// `offset` is the offset of the field of the node in the structure.
 	pub fn get<T>(&self, offset: usize) -> &'static T {
-		unsafe {
-			&*(((self as *const _ as usize) - offset) as *const T)
-		}
+		unsafe { &*(((self as *const _ as usize) - offset) as *const T) }
 	}
 
 	/// Returns a mutable reference to the structure storing the node.
 	/// `offset` is the offset of the field of the node in the structure.
 	pub fn get_mut<T>(&mut self, offset: usize) -> &'static mut T {
-		unsafe {
-			&mut *(((self as *mut _ as usize) - offset) as *mut T)
-		}
+		unsafe { &mut *(((self as *mut _ as usize) - offset) as *mut T) }
 	}
 
 	/// Tells whether the node is single in the list.
@@ -166,16 +159,12 @@ impl ListNode {
 
 	/// Returns the previous element if it exsits, or None.
 	pub fn get_prev(&self) -> Option<&'static mut ListNode> {
-		Some(unsafe {
-			&mut *(self.prev?.as_ptr())
-		})
+		Some(unsafe { &mut *(self.prev?.as_ptr()) })
 	}
 
 	/// Returns the next element if it exsits, or None.
 	pub fn get_next(&self) -> Option<&'static mut ListNode> {
-		Some(unsafe {
-			&mut *(self.next?.as_ptr())
-		})
+		Some(unsafe { &mut *(self.next?.as_ptr()) })
 	}
 
 	/// Returns the size of the linked list, counting previous elements.
@@ -184,9 +173,7 @@ impl ListNode {
 		let mut curr: Option<*const Self> = Some(self);
 
 		while let Some(c) = curr {
-			curr = unsafe {
-				(*c).prev.map(| n | n.as_ptr() as *const _)
-			};
+			curr = unsafe { (*c).prev.map(|n| n.as_ptr() as *const _) };
 
 			i += 1;
 		}
@@ -200,9 +187,7 @@ impl ListNode {
 		let mut curr: Option<*const Self> = Some(self);
 
 		while let Some(c) = curr {
-			curr = unsafe {
-				(*c).next.map(| n | n.as_ptr() as *const _)
-			};
+			curr = unsafe { (*c).next.map(|n| n.as_ptr() as *const _) };
 
 			i += 1;
 		}
@@ -210,27 +195,33 @@ impl ListNode {
 		i
 	}
 
-	/// Executes the given closure `f` for each nodes after the current one, included. The nodes
-	/// are not mutable.
-	pub fn foreach<F>(&self, f: F) where F: Fn(&ListNode) {
+	/// Executes the given closure `f` for each nodes after the current one,
+	/// included. The nodes are not mutable.
+	pub fn foreach<F>(&self, f: F)
+	where
+		F: Fn(&ListNode),
+	{
 		let mut curr: Option<*const Self> = Some(self);
 
 		while let Some(c) = curr {
 			unsafe {
 				f(&*c);
-				curr = (*c).next.map(| n | n.as_ptr() as *const _);
+				curr = (*c).next.map(|n| n.as_ptr() as *const _);
 			}
 		}
 	}
 
 	/// Same as `foreach` except the nodes are mutable.
-	pub fn foreach_mut<F>(&mut self, f: F) where F: Fn(&mut ListNode) {
+	pub fn foreach_mut<F>(&mut self, f: F)
+	where
+		F: Fn(&mut ListNode),
+	{
 		let mut curr: Option<*mut Self> = Some(self);
 
 		while let Some(c) = curr {
 			unsafe {
 				f(&mut *c);
-				curr = (*c).next.map(| n | n.as_ptr());
+				curr = (*c).next.map(|n| n.as_ptr());
 			}
 		}
 	}
@@ -284,8 +275,9 @@ impl ListNode {
 	}
 
 	/// Unlinks the current node from the floating linked list.
-	/// The function is unsafe because if it is called to unlink a node that is owned by a List as
-	/// if it was in a floating-list, the operation might create a dangling pointer on that List.
+	/// The function is unsafe because if it is called to unlink a node that is
+	/// owned by a List as if it was in a floating-list, the operation might
+	/// create a dangling pointer on that List.
 	pub unsafe fn unlink_floating(&mut self) {
 		if let Some(prev) = &mut self.prev {
 			prev.as_mut().next = self.next;
@@ -299,7 +291,7 @@ impl ListNode {
 	}
 
 	/// Unlinks the current node from the given list.
-	pub fn unlink_from<T>(&mut self, list: &mut List::<T>) {
+	pub fn unlink_from<T>(&mut self, list: &mut List<T>) {
 		if let Some(front) = list.front {
 			if front.as_ptr() == self {
 				list.unlink_front();

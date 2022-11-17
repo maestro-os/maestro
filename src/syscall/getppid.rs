@@ -1,8 +1,8 @@
 //! The `getppid` system call returns the PID of the process's parent.
 
 use crate::errno::Errno;
-use crate::process::Process;
 use crate::process::regs::Regs;
+use crate::process::Process;
 
 /// The implementation of the `getppid` syscall.
 pub fn getppid(_regs: &Regs) -> Result<i32, Errno> {

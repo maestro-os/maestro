@@ -1,11 +1,11 @@
 //! `clock_gettime64` is like `clock_gettime` but using 64 bits.
 
 use crate::errno::Errno;
-use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::regs::Regs;
-use crate::time::unit::Timespec;
+use crate::process::Process;
 use crate::time;
+use crate::time::unit::Timespec;
 
 /// The implementation of the `clock_gettime64` syscall.
 pub fn clock_gettime64(regs: &Regs) -> Result<i32, Errno> {
@@ -14,7 +14,7 @@ pub fn clock_gettime64(regs: &Regs) -> Result<i32, Errno> {
 
 	// TODO Get clock according to param
 	let clk = b"TODO";
-	let curr_time = time::get_struct::<Timespec>(clk).ok_or(errno!(EINVAL))?;
+	let curr_time = time::get_struct::<Timespec>(clk, true).ok_or(errno!(EINVAL))?;
 
 	{
 		let proc_mutex = Process::get_current().unwrap();
@@ -29,5 +29,4 @@ pub fn clock_gettime64(regs: &Regs) -> Result<i32, Errno> {
 	}
 
 	Ok(0)
-
 }

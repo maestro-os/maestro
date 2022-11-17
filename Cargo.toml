@@ -12,3 +12,6 @@ crate-type = ["dylib", "staticlib"]
 
 [dependencies]
 derive = { path = "derive/" }
+
+[profile.release]
+lto = true

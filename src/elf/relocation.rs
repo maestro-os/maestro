@@ -1,9 +1,9 @@
 //! This module implements ELF relocations.
 
-use core::ffi::c_void;
+use crate::elf;
 use crate::elf::ELF32SectionHeader;
 use crate::elf::ELF32Sym;
-use crate::elf;
+use core::ffi::c_void;
 
 /// The name of the symbol pointing to the global offset table.
 const GOT_SYM: &str = "_GLOBAL_OFFSET_TABLE_";
@@ -21,22 +21,30 @@ pub trait Relocation {
 	/// `base_addr` is the base address at which the ELF is loaded.
 	/// `rel_section` is the section containing the relocation.
 	/// `get_sym` is a closure returning a symbol from its name.
-	/// `get_sym_val` is a closure returning the value of a symbol. The arguments are:
+	/// `get_sym_val` is a closure returning the value of a symbol. The
+	/// arguments are:
 	///     - The index of the section containing the symbol.
 	///     - The index of the symbol in the section.
-	///     If the symbol is undefined, the function may resolve a symbol from another ELF.
-	/// If the relocation is invalid, the behaviour is undefined.
-	unsafe fn perform<'a, F0, F1>(&self, base_addr: *const c_void,
-		rel_section: &ELF32SectionHeader, get_sym: F0, get_sym_val: F1)
-			where F0: FnOnce(&str) -> Option<&'a ELF32Sym>,
-				F1: FnOnce(u32, u32) -> Option<u32> {
+	///     If the symbol is undefined, the function may resolve a symbol from
+	/// another ELF. If the relocation is invalid, the behaviour is undefined.
+	unsafe fn perform<'a, F0, F1>(
+		&self,
+		base_addr: *const c_void,
+		rel_section: &ELF32SectionHeader,
+		get_sym: F0,
+		get_sym_val: F1,
+	) where
+		F0: FnOnce(&str) -> Option<&'a ELF32Sym>,
+		F1: FnOnce(u32, u32) -> Option<u32>,
+	{
 		// The offset inside of the GOT
 		let got_offset = 0; // TODO
-		// The address of the GOT
-		let got_addr = base_addr as u32 + match get_sym(GOT_SYM) {
-			Some(sym) => sym.st_value,
-			None => 0,
-		};
+					// The address of the GOT
+		let got_addr = base_addr as u32
+			+ match get_sym(GOT_SYM) {
+				Some(sym) => sym.st_value,
+				None => 0,
+			};
 		// The offset of the PLT entry for the symbol.
 		let plt_offset = 0; // TODO
 

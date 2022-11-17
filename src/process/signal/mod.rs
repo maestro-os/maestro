@@ -2,19 +2,19 @@
 
 mod signal_trampoline;
 
-use core::ffi::c_void;
-use core::mem::size_of;
-use core::mem::transmute;
-use core::slice;
-use crate::errno::Errno;
+use super::state::State;
+use super::Process;
 use crate::errno;
+use crate::errno::Errno;
 use crate::file::Uid;
 use crate::process::oom;
 use crate::process::pid::Pid;
 use crate::time::unit::Clock;
+use core::ffi::c_void;
+use core::mem::size_of;
+use core::mem::transmute;
+use core::slice;
 use signal_trampoline::signal_trampoline;
-use super::Process;
-use super::State;
 
 /// Type representing a signal handler.
 pub type SigHandler = extern "C" fn(i32);
@@ -24,9 +24,9 @@ pub const SIG_IGN: *const c_void = 0x0 as _;
 /// The default action for the signal.
 pub const SIG_DFL: *const c_void = 0x1 as _;
 
-/// The size of the signal handlers table (the number of signals + 1, since indexing begins at 1
-/// instead of 0).
-pub const SIGNALS_COUNT: usize = 30;
+/// The size of the signal handlers table (the number of signals + 1, since
+/// indexing begins at 1 instead of 0).
+pub const SIGNALS_COUNT: usize = 32;
 
 /// Enumeration representing the action to perform for a signal.
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -117,7 +117,8 @@ pub struct SigAction {
 	pub sa_handler: Option<SigHandler>,
 	/// Used instead of `sa_handler` if SA_SIGINFO is specified in `sa_flags`.
 	pub sa_sigaction: Option<extern "C" fn(i32, *mut SigInfo, *mut c_void)>,
-	/// A mask of signals that should be masked while executing the signal handler.
+	/// A mask of signals that should be masked while executing the signal
+	/// handler.
 	pub sa_mask: SigSet,
 	/// A set of flags which modifies the behaviour of the signal.
 	pub sa_flags: i32,
@@ -141,23 +142,31 @@ impl SignalHandler {
 	pub fn get_action(&self) -> SigAction {
 		match self {
 			Self::Ignore => SigAction {
-				sa_handler: unsafe {
-					transmute::<_, _>(SIG_IGN)
+				sa_handler: unsafe { transmute::<_, _>(SIG_IGN) },
+				sa_sigaction: #[allow(invalid_value)]
+				unsafe {
+					core::mem::zeroed()
 				},
-				sa_sigaction: #[allow(invalid_value)] unsafe { core::mem::zeroed() },
 				sa_mask: 0,
 				sa_flags: 0,
-				sa_restorer: #[allow(invalid_value)] unsafe { core::mem::zeroed() },
+				sa_restorer: #[allow(invalid_value)]
+				unsafe {
+					core::mem::zeroed()
+				},
 			},
 
 			Self::Default => SigAction {
-				sa_handler: unsafe {
-					transmute::<_, _>(SIG_DFL)
+				sa_handler: unsafe { transmute::<_, _>(SIG_DFL) },
+				sa_sigaction: #[allow(invalid_value)]
+				unsafe {
+					core::mem::zeroed()
 				},
-				sa_sigaction: #[allow(invalid_value)] unsafe { core::mem::zeroed() },
 				sa_mask: 0,
 				sa_flags: 0,
-				sa_restorer: #[allow(invalid_value)] unsafe { core::mem::zeroed() },
+				sa_restorer: #[allow(invalid_value)]
+				unsafe {
+					core::mem::zeroed()
+				},
 			},
 
 			Self::Handler(action) => *action,
@@ -165,10 +174,7 @@ impl SignalHandler {
 	}
 }
 
-/// Array containing the default actions for each signal.
-static DEFAULT_ACTIONS: &[SignalAction] = &[
-];
-
+// TODO reorder
 /// Enumeration of signal types.
 #[derive(Clone, Eq, PartialEq)]
 pub enum Signal {
@@ -237,35 +243,35 @@ impl Signal {
 	/// `id` is the signal ID.
 	pub fn from_id(id: u32) -> Result<Self, Errno> {
 		match id {
-			1 => Ok(Self::SIGABRT),
-			2 => Ok(Self::SIGALRM),
-			3 => Ok(Self::SIGBUS),
-			4 => Ok(Self::SIGCHLD),
-			5 => Ok(Self::SIGCONT),
-			6 => Ok(Self::SIGFPE),
-			7 => Ok(Self::SIGHUP),
-			8 => Ok(Self::SIGILL),
-			9 => Ok(Self::SIGINT),
-			10 => Ok(Self::SIGKILL),
-			11 => Ok(Self::SIGPIPE),
-			12 => Ok(Self::SIGQUIT),
-			13 => Ok(Self::SIGSEGV),
-			14 => Ok(Self::SIGSTOP),
+			1 => Ok(Self::SIGHUP),
+			2 => Ok(Self::SIGINT),
+			3 => Ok(Self::SIGQUIT),
+			4 => Ok(Self::SIGILL),
+			5 => Ok(Self::SIGTRAP),
+			6 => Ok(Self::SIGABRT),
+			7 => Ok(Self::SIGBUS),
+			8 => Ok(Self::SIGFPE),
+			9 => Ok(Self::SIGKILL),
+			10 => Ok(Self::SIGUSR1),
+			11 => Ok(Self::SIGSEGV),
+			12 => Ok(Self::SIGUSR2),
+			13 => Ok(Self::SIGPIPE),
+			14 => Ok(Self::SIGALRM),
 			15 => Ok(Self::SIGTERM),
-			16 => Ok(Self::SIGTSTP),
-			17 => Ok(Self::SIGTTIN),
-			18 => Ok(Self::SIGTTOU),
-			19 => Ok(Self::SIGUSR1),
-			20 => Ok(Self::SIGUSR2),
-			21 => Ok(Self::SIGPOLL),
-			22 => Ok(Self::SIGPROF),
-			23 => Ok(Self::SIGSYS),
-			24 => Ok(Self::SIGTRAP),
-			25 => Ok(Self::SIGURG),
+			17 => Ok(Self::SIGCHLD),
+			18 => Ok(Self::SIGCONT),
+			19 => Ok(Self::SIGSTOP),
+			20 => Ok(Self::SIGTSTP),
+			21 => Ok(Self::SIGTTIN),
+			22 => Ok(Self::SIGTTOU),
+			23 => Ok(Self::SIGURG),
+			24 => Ok(Self::SIGXCPU),
+			25 => Ok(Self::SIGXFSZ),
 			26 => Ok(Self::SIGVTALRM),
-			27 => Ok(Self::SIGXCPU),
-			28 => Ok(Self::SIGXFSZ),
-			29 => Ok(Self::SIGWINCH),
+			27 => Ok(Self::SIGPROF),
+			28 => Ok(Self::SIGWINCH),
+			29 => Ok(Self::SIGPOLL),
+			31 => Ok(Self::SIGSYS),
 
 			_ => Err(errno!(EINVAL)),
 		}
@@ -274,38 +280,39 @@ impl Signal {
 	/// Returns the signal's ID.
 	pub fn get_id(&self) -> u8 {
 		match self {
-			Self::SIGABRT => 1,
-			Self::SIGALRM => 2,
-			Self::SIGBUS => 3,
-			Self::SIGCHLD => 4,
-			Self::SIGCONT => 5,
-			Self::SIGFPE => 6,
-			Self::SIGHUP => 7,
-			Self::SIGILL => 8,
-			Self::SIGINT => 9,
-			Self::SIGKILL => 10,
-			Self::SIGPIPE => 11,
-			Self::SIGQUIT => 12,
-			Self::SIGSEGV => 13,
-			Self::SIGSTOP => 14,
+			Self::SIGHUP => 1,
+			Self::SIGINT => 2,
+			Self::SIGQUIT => 3,
+			Self::SIGILL => 4,
+			Self::SIGTRAP => 5,
+			Self::SIGABRT => 6,
+			Self::SIGBUS => 7,
+			Self::SIGFPE => 8,
+			Self::SIGKILL => 9,
+			Self::SIGUSR1 => 10,
+			Self::SIGSEGV => 11,
+			Self::SIGUSR2 => 12,
+			Self::SIGPIPE => 13,
+			Self::SIGALRM => 14,
 			Self::SIGTERM => 15,
-			Self::SIGTSTP => 16,
-			Self::SIGTTIN => 17,
-			Self::SIGTTOU => 18,
-			Self::SIGUSR1 => 19,
-			Self::SIGUSR2 => 20,
-			Self::SIGPOLL => 21,
-			Self::SIGPROF => 22,
-			Self::SIGSYS => 23,
-			Self::SIGTRAP => 24,
-			Self::SIGURG => 25,
+			Self::SIGCHLD => 17,
+			Self::SIGCONT => 18,
+			Self::SIGSTOP => 19,
+			Self::SIGTSTP => 20,
+			Self::SIGTTIN => 21,
+			Self::SIGTTOU => 22,
+			Self::SIGURG => 23,
+			Self::SIGXCPU => 24,
+			Self::SIGXFSZ => 25,
 			Self::SIGVTALRM => 26,
-			Self::SIGXCPU => 27,
-			Self::SIGXFSZ => 28,
-			Self::SIGWINCH => 29,
+			Self::SIGPROF => 27,
+			Self::SIGWINCH => 28,
+			Self::SIGPOLL => 29,
+			Self::SIGSYS => 31,
 		}
 	}
 
+	// TODO reorder
 	/// Returns the default action for the signal.
 	pub fn get_default_action(&self) -> SignalAction {
 		match self {
@@ -343,18 +350,21 @@ impl Signal {
 
 	/// Tells whether the signal can be caught.
 	pub fn can_catch(&self) -> bool {
-		!matches!(self, Self::SIGKILL | Self::SIGSEGV | Self::SIGSTOP | Self::SIGSYS)
+		!matches!(
+			self,
+			Self::SIGKILL | Self::SIGSEGV | Self::SIGSTOP | Self::SIGSYS
+		)
 	}
 
 	/// Executes the action associated with the signal for process `process`.
 	/// If the process is not the current process, the behaviour is undefined.
-	/// If `no_handler` is true, the function executes the default action of the signal regardless
-	/// the user-specified action.
+	/// If `no_handler` is true, the function executes the default action of the
+	/// signal regardless the user-specified action.
 	pub fn execute_action(&self, process: &mut Process, no_handler: bool) {
 		process.signal_clear(self.clone());
 
 		let process_state = process.get_state();
-		if process_state == State::Zombie {
+		if matches!(process_state, State::Zombie) {
 			return;
 		}
 
@@ -364,97 +374,91 @@ impl Signal {
 			process.get_signal_handler(self)
 		};
 
-		if handler != SignalHandler::Ignore {
-			let action = self.get_default_action();
-			if action == SignalAction::Stop || action == SignalAction::Continue {
-				process.set_waitable(self.get_id());
-			}
-		}
-
 		match handler {
-			SignalHandler::Ignore => {},
+			SignalHandler::Ignore => {}
 			SignalHandler::Default => {
-				// Signals on the init process can be executed only if the process has set a signal
-				// handler
+				// Signals on the init process can be executed only if the process has set a
+				// signal handler
 				if self.can_catch() && process.is_init() {
 					return;
 				}
 
-				let default_action = self.get_default_action();
-				let exit_code = (128 + self.get_id()) as u32;
-
-				match default_action {
+				let action = self.get_default_action();
+				match action {
 					SignalAction::Terminate | SignalAction::Abort => {
-						process.exit(exit_code);
-					},
+						process.exit(self.get_id() as _, true);
+					}
 
-					SignalAction::Ignore => {},
+					SignalAction::Ignore => {}
 
 					SignalAction::Stop => {
 						// TODO Handle semaphores
-						if process_state == State::Running {
+						if matches!(process_state, State::Running) {
 							process.set_state(State::Stopped);
 						}
-					},
+
+						process.set_waitable(self.get_id());
+					}
 
 					SignalAction::Continue => {
 						// TODO Handle semaphores
-						if process_state == State::Stopped {
+						if matches!(process_state, State::Stopped) {
 							process.set_state(State::Running);
 						}
-					},
+
+						process.set_waitable(self.get_id());
+					}
 				}
-			},
+			}
 
 			// TODO Handle sa_sigaction, sa_flags and sa_mask
-			SignalHandler::Handler(action) => {
-				if !process.is_handling_signal() {
-					// TODO Handle the case where an alternate stack is specified (only if the
-					// action has the flag)
-					// The signal handler stack
-					let stack = process.get_signal_stack();
+			SignalHandler::Handler(action) if !process.is_handling_signal() => {
+				// TODO Handle the case where an alternate stack is specified (only if the
+				// action has the flag)
+				// The signal handler stack
+				let stack = process.get_signal_stack();
 
-					let signal_data_size = size_of::<[u32; 2]>();
-					let signal_esp = (stack as usize) - signal_data_size;
+				let signal_data_size = size_of::<[u32; 3]>();
+				let signal_esp = (stack as usize) - signal_data_size;
 
-					// FIXME Don't write data out of the stack
-					oom::wrap(|| {
-						let mem_space = process.get_mem_space().unwrap();
-						let mem_space_guard = mem_space.lock();
-						let mem_space = mem_space_guard.get_mut();
+				// FIXME Don't write data out of the stack
+				oom::wrap(|| {
+					let mem_space = process.get_mem_space().unwrap();
+					let mem_space_guard = mem_space.lock();
+					let mem_space = mem_space_guard.get_mut();
 
-						debug_assert!(mem_space.is_bound());
-						mem_space.alloc(signal_esp as *mut u32, 2)
-					});
-					let signal_data = unsafe {
-						slice::from_raw_parts_mut(signal_esp as *mut u32, 2)
-					};
+					mem_space.bind();
+					mem_space.alloc(signal_esp as *mut u32, 3)
+				});
+				let signal_data = unsafe { slice::from_raw_parts_mut(signal_esp as *mut u32, 3) };
 
-					// The pointer to the signal handler
-					signal_data[1] = action.sa_handler.map(| f | f as usize).unwrap_or(0) as _;
-					// The signal number
-					signal_data[0] = self.get_id() as _;
+				// The signal number
+				signal_data[2] = self.get_id() as _;
+				// The pointer to the signal handler
+				signal_data[1] = action.sa_handler.map(|f| f as usize).unwrap_or(0) as _;
+				// Padding (return pointer)
+				signal_data[0] = 0;
 
-					let signal_trampoline = unsafe {
-						transmute::<
-							extern "C" fn(*const c_void, i32) -> !,
-							*const c_void
-						>(signal_trampoline)
-					};
+				let signal_trampoline = unsafe {
+					transmute::<extern "C" fn(*const c_void, i32) -> !, *const c_void>(
+						signal_trampoline,
+					)
+				};
 
-					let mut regs = process.get_regs().clone();
-					// Setting the stack to point to the signal's data
-					regs.esp = signal_esp as _;
-					// Setting the program counter to point to the signal trampoline
-					regs.eip = signal_trampoline as _;
+				let mut regs = process.get_regs().clone();
+				// Setting the stack to point to the signal's data
+				regs.esp = signal_esp as _;
+				// Setting the program counter to point to the signal trampoline
+				regs.eip = signal_trampoline as _;
 
-					// Saves the current state of the process to be restored when the handler will
-					// return
-					process.signal_save(self.clone());
-					// Setting the process's registers to call the signal handler
-					process.set_regs(regs);
-				}
-			},
+				// Saves the current state of the process to be restored when the handler will
+				// return
+				process.signal_save(self.clone());
+				// Setting the process's registers to call the signal handler
+				process.set_regs(regs);
+			}
+
+			_ => {}
 		}
 	}
 }

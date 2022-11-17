@@ -1,11 +1,13 @@
-//! The Multiboot standard specifies an interface to load and boot the kernel image. It provides
-//! critical informations such as the memory mapping and the ELF structure of the kernel.
+//! The Multiboot standard specifies an interface to load and boot the kernel
+//! image. It provides critical informations such as the memory mapping and the
+//! ELF structure of the kernel.
 
+use crate::memory;
+use crate::util;
 use core::ffi::c_void;
 use core::mem::ManuallyDrop;
 use core::ptr::null;
-use crate::memory;
-use crate::util;
+use core::slice;
 
 pub const BOOTLOADER_MAGIC: u32 = 0x36d76289;
 pub const TAG_ALIGN: usize = 8;
@@ -34,7 +36,6 @@ pub const TAG_TYPE_EFI64_IH: u32 = 20;
 pub const TAG_TYPE_LOAD_BASE_ADDR: u32 = 21;
 
 pub const MEMORY_AVAILABLE: u32 = 1;
-pub const MEMORY_RESERVED: u32 = 2;
 pub const MEMORY_ACPI_RECLAIMABLE: u32 = 3;
 pub const MEMORY_NVS: u32 = 4;
 pub const MEMORY_BADRAM: u32 = 5;
@@ -352,11 +353,11 @@ impl MmapEntry {
 	pub fn get_type_string(&self) -> &'static str {
 		match self.type_ {
 			MEMORY_AVAILABLE => "Available",
-			MEMORY_RESERVED => "Reserved",
 			MEMORY_ACPI_RECLAIMABLE => "ACPI",
 			MEMORY_NVS => "Hibernate",
 			MEMORY_BADRAM => "Bad RAM",
-			_ => "Unknown",
+
+			_ => "Reserved",
 		}
 	}
 }
@@ -394,6 +395,10 @@ pub struct BootInfo {
 	pub elf_shndx: u32,
 	/// A pointer to the kernel's ELF sections.
 	pub elf_sections: *const c_void,
+
+	/// Slice of data representing an initramfs image.
+	/// If None, no initramfs is loaded.
+	pub initramfs: Option<&'static [u8]>,
 }
 
 /// The field storing the informations given to the kernel at boot time.
@@ -411,13 +416,13 @@ static mut BOOT_INFO: BootInfo = BootInfo {
 	elf_entsize: 0,
 	elf_shndx: 0,
 	elf_sections: null(),
+
+	initramfs: None,
 };
 
 /// Returns the boot informations provided by Multiboot.
 pub fn get_boot_info() -> &'static BootInfo {
-	unsafe {
-		&BOOT_INFO
-	}
+	unsafe { &BOOT_INFO }
 }
 
 /// Returns the size in bytes of Multiboot tags pointed by `ptr`.
@@ -436,9 +441,7 @@ pub fn get_tags_size(ptr: *const c_void) -> usize {
 
 /// Reads the given `tag` and fills the boot informations structure accordingly.
 fn handle_tag(boot_info: &mut BootInfo, tag: *const Tag) {
-	let type_ = unsafe {
-		(*tag).type_
-	};
+	let type_ = unsafe { (*tag).type_ };
 
 	match type_ {
 		TAG_TYPE_CMDLINE => {
@@ -448,7 +451,7 @@ fn handle_tag(boot_info: &mut BootInfo, tag: *const Tag) {
 				let ptr = memory::kern_to_virt(&(*t).string as *const _ as *const _) as *const u8;
 				boot_info.cmdline = Some(util::str_from_ptr(ptr));
 			}
-		},
+		}
 
 		TAG_TYPE_BOOT_LOADER_NAME => {
 			let t = tag as *const TagString;
@@ -457,16 +460,31 @@ fn handle_tag(boot_info: &mut BootInfo, tag: *const Tag) {
 				let ptr = memory::kern_to_virt(&(*t).string as *const _ as *const _) as *const u8;
 				boot_info.loader_name = Some(util::str_from_ptr(ptr));
 			}
-		},
+		}
+
+		TAG_TYPE_MODULE => {
+			let t = tag as *const TagModule;
+
+			let (begin, end) = unsafe {
+				let begin = memory::kern_to_virt((*t).mod_start as *const _);
+				let end = memory::kern_to_virt((*t).mod_end as *const _);
+
+				(begin, end)
+			};
+			let size = end as usize - begin as usize;
+			let data = unsafe { slice::from_raw_parts::<u8>(begin as *const _, size) };
+
+			if size > 0 {
+				boot_info.initramfs = Some(data);
+			}
+		}
 
 		TAG_TYPE_BASIC_MEMINFO => {
-			let t = unsafe {
-				&*(tag as *const TagBasicMeminfo)
-			};
+			let t = unsafe { &*(tag as *const TagBasicMeminfo) };
 
 			boot_info.mem_lower = t.mem_lower;
 			boot_info.mem_upper = t.mem_upper;
-		},
+		}
 
 		TAG_TYPE_MMAP => {
 			let t = tag as *const TagMmap;
@@ -476,7 +494,7 @@ fn handle_tag(boot_info: &mut BootInfo, tag: *const Tag) {
 				boot_info.memory_maps_entry_size = (*t).entry_size as usize;
 				boot_info.memory_maps = &(*t).entries as *const _;
 			}
-		},
+		}
 
 		TAG_TYPE_ELF_SECTIONS => {
 			let t = tag as *const TagELFSections;
@@ -487,17 +505,19 @@ fn handle_tag(boot_info: &mut BootInfo, tag: *const Tag) {
 				boot_info.elf_shndx = (*t).shndx;
 				boot_info.elf_sections = (*t).sections.as_ptr() as _;
 			}
-		},
+		}
 
 		_ => {}
 	}
 }
 
-/// Reads the multiboot tags from the given `ptr` and fills the boot informations structure.
+/// Reads the multiboot tags from the given `ptr` and fills the boot
+/// informations structure.
 ///
 /// # Safety
 ///
-/// If the pointer `ptr` doesn't point to valid Multiboot tags, the behaviour is undefined.
+/// If the pointer `ptr` doesn't point to valid Multiboot tags, the behaviour is
+/// undefined.
 pub fn read_tags(ptr: *const c_void) {
 	unsafe {
 		let mut tag = (ptr.offset(8)) as *const Tag;

@@ -1,8 +1,8 @@
-//! The Base Address Register (BAR) is a way to communicate with a device using Direct Access
-//! Memory (DMA).
+//! The Base Address Register (BAR) is a way to communicate with a device using
+//! Direct Access Memory (DMA).
 
-use core::mem::size_of;
 use crate::io;
+use core::mem::size_of;
 
 /// Enumeration of Memory Space BAR types.
 #[derive(Clone, Debug)]
@@ -42,8 +42,16 @@ impl BAR {
 	/// Returns the base address.
 	pub fn get_physical_address(&self) -> Option<*mut ()> {
 		let (addr, size) = match self {
-			Self::MemorySpace { address, size, .. } => (*address, *size),
-			Self::IOSpace { address, size, .. } => (*address, *size),
+			Self::MemorySpace {
+				address,
+				size,
+				..
+			} => (*address, *size),
+			Self::IOSpace {
+				address,
+				size,
+				..
+			} => (*address, *size),
 		};
 
 		if (addr + size as u64) > usize::MAX as u64 {
@@ -56,24 +64,37 @@ impl BAR {
 	/// Returns the amount of memory.
 	pub fn get_size(&self) -> usize {
 		match self {
-			Self::MemorySpace { size, .. } => *size,
-			Self::IOSpace { size, .. } => *size,
+			Self::MemorySpace {
+				size, ..
+			} => *size,
+			Self::IOSpace {
+				size, ..
+			} => *size,
 		}
 	}
 
 	/// Tells whether the memory is prefetchable.
 	pub fn is_prefetchable(&self) -> bool {
 		match self {
-			Self::MemorySpace { prefetchable, .. } => *prefetchable,
-			Self::IOSpace { .. } => false,
+			Self::MemorySpace {
+				prefetchable, ..
+			} => *prefetchable,
+			Self::IOSpace {
+				..
+			} => false,
 		}
 	}
 
 	// TODO Use virtual addresses instead
 	/// Reads a value from the register at offset `off`.
+	#[inline(always)]
 	pub fn read<T>(&self, off: usize) -> u64 {
 		match self {
-			Self::MemorySpace { type_, address, .. } => match type_ {
+			Self::MemorySpace {
+				type_,
+				address,
+				..
+			} => match type_ {
 				BARType::Size32 => unsafe {
 					let addr = (*address as *const u32).add(off);
 					(*addr).into()
@@ -85,33 +106,34 @@ impl BAR {
 				},
 			},
 
-			Self::IOSpace { address, .. } => {
+			Self::IOSpace {
+				address, ..
+			} => {
 				let off = (*address + off as u64) as u16;
 
 				match size_of::<T>() {
-					1 => unsafe {
-						io::inb(off).into()
-					},
+					1 => unsafe { io::inb(off).into() },
 
-					2 => unsafe {
-						io::inw(off).into()
-					},
+					2 => unsafe { io::inw(off).into() },
 
-					4 => unsafe {
-						io::inl(off).into()
-					},
+					4 => unsafe { io::inl(off).into() },
 
 					_ => 0u32.into(),
 				}
-			},
+			}
 		}
 	}
 
 	// TODO Use virtual addresses instead
 	/// Writes a value to the register at offset `off`.
+	#[inline(always)]
 	pub fn write<T>(&self, off: usize, val: u64) {
 		match self {
-			Self::MemorySpace { type_, address, .. } => match type_ {
+			Self::MemorySpace {
+				type_,
+				address,
+				..
+			} => match type_ {
 				BARType::Size32 => unsafe {
 					let addr = (*address as *mut u32).add(off);
 					*addr = val as _;
@@ -123,25 +145,21 @@ impl BAR {
 				},
 			},
 
-			Self::IOSpace { address, .. } => {
+			Self::IOSpace {
+				address, ..
+			} => {
 				let off = (*address + off as u64) as u16;
 
 				match size_of::<T>() {
-					1 => unsafe {
-						io::outb(off, val as _)
-					},
+					1 => unsafe { io::outb(off, val as _) },
 
-					2 => unsafe {
-						io::outw(off, val as _)
-					},
+					2 => unsafe { io::outw(off, val as _) },
 
-					4 => unsafe {
-						io::outl(off, val as _)
-					},
+					4 => unsafe { io::outl(off, val as _) },
 
-					_ => {},
+					_ => {}
 				}
-			},
+			}
 		}
 	}
 }

@@ -35,32 +35,40 @@ const SCRATCH_REG_OFF: u16 = 7;
 
 /// Bit of the Interrupt Enable Register telling whether data is available.
 const INTERRUPT_DATA_AVAILABLE: u8 = 0b1;
-/// Bit of the Interrupt Enable Register telling whether the transmitter is empty.
+/// Bit of the Interrupt Enable Register telling whether the transmitter is
+/// empty.
 const INTERRUPT_TRANSMITTER_EMPTY: u8 = 0b10;
-/// Bit of the Interrupt Enable Register telling whether an interrupt error happened.
+/// Bit of the Interrupt Enable Register telling whether an interrupt error
+/// happened.
 const INTERRUPT_ERROR: u8 = 0b100;
-/// Bit of the Interrupt Enable Register telling whether the interrupt status changed.
+/// Bit of the Interrupt Enable Register telling whether the interrupt status
+/// changed.
 const INTERRUPT_STATUS_CHANGE: u8 = 0b1000;
 
 /// The offset of the DLAB bit in the line control register.
 const DLAB: u8 = 1 << 7;
 
-/// Bit of the Line Status Register telling whether data is available to be read.
+/// Bit of the Line Status Register telling whether data is available to be
+/// read.
 const LINE_STATUS_DR: u8 = 0b1;
 /// Bit of the Line Status Register telling whether data has been lost.
 const LINE_STATUS_OE: u8 = 0b10;
-/// Bit of the Line Status Register telling whether a transmission error was detect by parity.
+/// Bit of the Line Status Register telling whether a transmission error was
+/// detect by parity.
 const LINE_STATUS_PE: u8 = 0b100;
-/// Bit of the Line Status Register telling whether a framing error was detected.
+/// Bit of the Line Status Register telling whether a framing error was
+/// detected.
 const LINE_STATUS_FE: u8 = 0b1000;
-/// Bit of the Line Status Register telling whether there is a break in data input.
+/// Bit of the Line Status Register telling whether there is a break in data
+/// input.
 const LINE_STATUS_BI: u8 = 0b10000;
-/// Bit of the Line Status Register telling whether the transmission buffer is empty.
+/// Bit of the Line Status Register telling whether the transmission buffer is
+/// empty.
 const LINE_STATUS_THRE: u8 = 0b100000;
 /// Bit of the Line Status Register telling whether the transmitter is idling.
 const LINE_STATUS_TEMT: u8 = 0b1000000;
-/// Bit of the Line Status Register telling whether there is an error with a word in the input
-/// buffer.
+/// Bit of the Line Status Register telling whether there is an error with a
+/// word in the input buffer.
 const LINE_STATUS_IE: u8 = 0b10000000;
 
 /// The UART's frequency.
@@ -96,8 +104,8 @@ impl Serial {
 		true
 	}
 
-	/// Creates a new instance for the specified port. If the port doesn't exist, the function
-	/// returns None.
+	/// Creates a new instance for the specified port. If the port doesn't
+	/// exist, the function returns None.
 	fn from_port(port: u16) -> Option<Serial> {
 		let mut s = Self {
 			regs_off: port,
@@ -110,8 +118,8 @@ impl Serial {
 		}
 	}
 
-	/// Sets the port's baud rate. If the baud rate is not supported, the function approximates it
-	/// to the nearest supported value.
+	/// Sets the port's baud rate. If the baud rate is not supported, the
+	/// function approximates it to the nearest supported value.
 	pub fn set_baud_rate(&mut self, baud: u32) {
 		let div = (UART_FREQUENCY / baud) as u16;
 
@@ -128,9 +136,7 @@ impl Serial {
 
 	/// Tells whether the transmission buffer is empty.
 	fn is_transmit_empty(&self) -> bool {
-		(unsafe {
-			io::inb(self.regs_off + LINE_STATUS_REG_OFF)
-		} & LINE_STATUS_THRE) != 0
+		(unsafe { io::inb(self.regs_off + LINE_STATUS_REG_OFF) } & LINE_STATUS_THRE) != 0
 	}
 
 	// TODO read
@@ -148,16 +154,11 @@ impl Serial {
 }
 
 /// The list of serial ports.
-static mut PORTS: [Option<Mutex<Serial>>; 4] = [
-	None,
-	None,
-	None,
-	None,
-];
+static mut PORTS: [Option<Mutex<Serial>>; 4] = [None, None, None, None];
 
-/// Returns an instance to an object allowing to use the given serial communication port. If the
-/// port is not initialized, the function tries to do it. If the port doesn't exist, the function
-/// returns None.
+/// Returns an instance to an object allowing to use the given serial
+/// communication port. If the port is not initialized, the function tries to do
+/// it. If the port doesn't exist, the function returns None.
 pub fn get(port: u16) -> Option<&'static mut Mutex<Serial>> {
 	let i = match port {
 		COM1 => 0,
@@ -168,7 +169,8 @@ pub fn get(port: u16) -> Option<&'static mut Mutex<Serial>> {
 		_ => return None,
 	};
 
-	let ports = unsafe { // Safe because using Mutex
+	let ports = unsafe {
+		// Safe because using Mutex
 		&mut PORTS
 	};
 	if ports[i].is_none() {

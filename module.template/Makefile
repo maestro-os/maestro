@@ -9,9 +9,9 @@ MOD_FILE = $(NAME).kmod
 KERN_SRC ?=
 
 # The architecture to compile for
-CONFIG_ARCH ?= $(shell cd $(KERN_SRC) && scripts/config_attr.sh general_arch)
+CONFIG_ARCH ?= $(shell cd $(KERN_SRC) && scripts/config_attr.sh GENERAL_ARCH)
 # Tells whether to compile in debug mode
-CONFIG_DEBUG := $(shell cd $(KERN_SRC) && scripts/config_attr.sh debug_debug)
+CONFIG_DEBUG := $(shell cd $(KERN_SRC) && scripts/config_attr.sh DEBUG_DEBUG)
 
 # The absolute path to the target file
 TARGET_PATH := $(shell realpath "$(KERN_SRC)/arch/$(CONFIG_ARCH)/target.json")

@@ -1,27 +1,27 @@
-//! The open system call allows a process to open a file and get a file descriptor.
+//! The open system call allows a process to open a file and get a file
+//! descriptor.
 
-use crate::errno::Errno;
 use crate::errno;
+use crate::errno::Errno;
+use crate::file;
+use crate::file::open_file;
+use crate::file::open_file::FDTarget;
+use crate::file::path::Path;
+use crate::file::vfs;
 use crate::file::File;
 use crate::file::FileContent;
 use crate::file::FileType;
 use crate::file::Gid;
 use crate::file::Mode;
 use crate::file::Uid;
-use crate::file::fcache;
-use crate::file::open_file::FDTarget;
-use crate::file::open_file;
-use crate::file::path::Path;
-use crate::file;
-use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::regs::Regs;
-use crate::util::FailableClone;
-use crate::util::container::string::String;
+use crate::process::Process;
 use crate::util::ptr::SharedPtr;
+use crate::util::FailableClone;
 
 /// Mask of status flags to be kept by an open file description.
-const STATUS_FLAGS_MASK: i32 = !(open_file::O_CLOEXEC
+pub const STATUS_FLAGS_MASK: i32 = !(open_file::O_CLOEXEC
 	| open_file::O_CREAT
 	| open_file::O_DIRECTORY
 	| open_file::O_EXCL
@@ -32,53 +32,52 @@ const STATUS_FLAGS_MASK: i32 = !(open_file::O_CLOEXEC
 // TODO Implement all flags
 
 /// Returns the file at the given path `path`.
-/// If the file doesn't exist and the O_CREAT flag is set, the file is created, then the function
-/// returns it. If the flag is not set, the function returns an error with the appropriate errno.
-/// If the file is to be created, the function uses `mode` to set its permissions and `uid and
-/// `gid` to set the user ID and group ID.
-fn get_file(path: Path, flags: i32, mode: Mode, uid: Uid, gid: Gid)
-	-> Result<SharedPtr<File>, Errno> {
+/// If the file doesn't exist and the O_CREAT flag is set, the file is created,
+/// then the function returns it. If the flag is not set, the function returns
+/// an error with the appropriate errno. If the file is to be created, the
+/// function uses `mode` to set its permissions and `uid and `gid` to set the
+/// user ID and group ID.
+fn get_file(
+	path: Path,
+	flags: i32,
+	mode: Mode,
+	uid: Uid,
+	gid: Gid,
+) -> Result<SharedPtr<File>, Errno> {
 	// Tells whether to follow symbolic links on the last component of the path.
 	let follow_links = flags & open_file::O_NOFOLLOW == 0;
 
-	let mutex = fcache::get();
+	let mutex = vfs::get();
 	let guard = mutex.lock();
-	let files_cache = guard.get_mut().as_mut().unwrap();
+	let vfs = guard.get_mut().as_mut().unwrap();
 
-	// Getting the path of the parent directory
-	let mut parent_path = path.failable_clone()?;
-	// The file's basename
-	let name = parent_path.pop();
+	if flags & open_file::O_CREAT != 0 {
+		// Getting the path of the parent directory
+		let mut parent_path = path.failable_clone()?;
+		// The file's basename
+		let name = parent_path.pop().ok_or_else(|| errno!(ENOENT))?;
 
-	// The parent directory
-	let parent_mutex = files_cache.get_file_from_path(&parent_path, uid, gid, true)?;
-	let parent_guard = parent_mutex.lock();
-	let parent = parent_guard.get_mut();
+		// The parent directory
+		let parent_mutex = vfs.get_file_from_path(&parent_path, uid, gid, true)?;
+		let parent_guard = parent_mutex.lock();
+		let parent = parent_guard.get_mut();
 
-	let file_result = match &name {
-		Some(name) => {
-			// The file is not the root directory
-			files_cache.get_file_from_parent(parent, name.failable_clone()?, uid, gid,
-				follow_links)
-		},
+		let file_result =
+			vfs.get_file_from_parent(parent, name.failable_clone()?, uid, gid, follow_links);
+		match file_result {
+			// If the file is found, return it
+			Ok(file) => Ok(file),
 
-		None => {
-			// The file is the root directory
-			files_cache.get_file_from_path(&path, uid, gid, follow_links)
+			Err(e) if e.as_int() == errno::ENOENT => {
+				// Creating the file
+				vfs.create_file(parent, name, uid, gid, mode, FileContent::Regular)
+			}
+
+			Err(e) => Err(e),
 		}
-	};
-
-	match file_result {
-		// If the file is found, return it
-		Ok(file) => Ok(file),
-
-		Err(e) if e.as_int() == errno::ENOENT && flags & open_file::O_CREAT != 0 => {
-			// Creating the file
-			let name = name.unwrap_or_else(|| String::new());
-			files_cache.create_file(parent, name, uid, gid, mode, FileContent::Regular)
-		},
-
-		Err(e) => Err(e),
+	} else {
+		// The file is the root directory
+		vfs.get_file_from_path(&path, uid, gid, follow_links)
 	}
 }
 
@@ -102,21 +101,51 @@ pub fn open_(pathname: SyscallString, flags: i32, mode: file::Mode) -> Result<i3
 		(abs_path, mode, uid, gid)
 	};
 
-
 	// Getting the file
 	let file = get_file(path, flags, mode, uid, gid)?;
 
-	// If O_DIRECTORY is set and the file is not a directory, return an error
-	if flags & open_file::O_DIRECTORY != 0
-		&& file.lock().get().get_file_type() != FileType::Directory {
-		return Err(errno!(ENOTDIR));
+	{
+		let guard = file.lock();
+		let f = guard.get_mut();
+
+		let access = match flags & 0b11 {
+			open_file::O_RDONLY => f.can_read(uid, gid),
+			open_file::O_WRONLY => f.can_write(uid, gid),
+			open_file::O_RDWR => f.can_read(uid, gid) && f.can_write(uid, gid),
+
+			_ => true,
+		};
+		if !access {
+			return Err(errno!(EACCES));
+		}
+
+		// If O_DIRECTORY is set and the file is not a directory, return an error
+		if flags & open_file::O_DIRECTORY != 0 && f.get_type() != FileType::Directory {
+			return Err(errno!(ENOTDIR));
+		}
+
+		// Truncate the file if necessary
+		if flags & open_file::O_TRUNC != 0 {
+			f.set_size(0);
+		}
 	}
 
-	// Create and return the file descriptor
+	// Create the file descriptor
 	let mutex = Process::get_current().unwrap();
 	let guard = mutex.lock();
 	let proc = guard.get_mut();
-	let fd = proc.create_fd(flags & STATUS_FLAGS_MASK, FDTarget::File(file))?;
+	let fd = proc.create_fd(flags & STATUS_FLAGS_MASK, FDTarget::File(file.clone()))?;
+
+	// Flushing file
+	match file.lock().get_mut().sync() {
+		Err(e) => {
+			proc.close_fd(fd.get_id())?;
+			return Err(e);
+		}
+
+		_ => {}
+	}
+
 	Ok(fd.get_id() as _)
 }
 

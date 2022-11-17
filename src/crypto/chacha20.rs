@@ -4,14 +4,20 @@ extern "C" {
 	fn chacha20_encode(buff: *const u8, len: usize, k: *const u32, n: *const u32, out: *mut u8);
 }
 
-/// Encodes the given data in `buff` using ChaCha20, with the given key `k` and the given nonces
-/// `n`.
+/// Encodes the given data in `buff` using ChaCha20, with the given key `k` and
+/// the given nonces `n`.
 /// It is important that nonces are not repeated for the same key.
 /// `out` is the buffer which will contain the result. Its length must be
 /// `ceil(buff.len() / 64) * 64`.
 pub fn encode(buff: &[u8], k: &[u32; 8], n: &[u32; 3], out: &mut [u8]) {
 	unsafe {
-		chacha20_encode(buff.as_ptr(), buff.len(), k.as_ptr(), n.as_ptr(), out.as_mut_ptr());
+		chacha20_encode(
+			buff.as_ptr(),
+			buff.len(),
+			k.as_ptr(),
+			n.as_ptr(),
+			out.as_mut_ptr(),
+		);
 	}
 }
 

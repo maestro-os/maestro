@@ -1,17 +1,17 @@
-//! The `signal` syscall allows to specify a pointer to a function to be called when a specific
-//! signal is received by the current process.
+//! The `signal` syscall allows to specify a pointer to a function to be called
+//! when a specific signal is received by the current process.
 
-use core::ffi::c_void;
-use core::mem::transmute;
-use crate::errno::Errno;
 use crate::errno;
-use crate::process::Process;
+use crate::errno::Errno;
 use crate::process::regs::Regs;
+use crate::process::signal;
 use crate::process::signal::SigAction;
 use crate::process::signal::SigHandler;
 use crate::process::signal::Signal;
 use crate::process::signal::SignalHandler;
-use crate::process::signal;
+use crate::process::Process;
+use core::ffi::c_void;
+use core::mem::transmute;
 
 /// The implementation of the `signal` syscall.
 pub fn signal(regs: &Regs) -> Result<i32, Errno> {
@@ -27,9 +27,7 @@ pub fn signal(regs: &Regs) -> Result<i32, Errno> {
 		signal::SIG_IGN => SignalHandler::Ignore,
 		signal::SIG_DFL => SignalHandler::Default,
 		_ => {
-			let handler_fn = unsafe {
-				transmute::<*const c_void, SigHandler>(handler)
-			};
+			let handler_fn = unsafe { transmute::<*const c_void, SigHandler>(handler) };
 
 			SignalHandler::Handler(SigAction {
 				sa_handler: Some(handler_fn),
@@ -38,7 +36,7 @@ pub fn signal(regs: &Regs) -> Result<i32, Errno> {
 				sa_flags: 0,
 				sa_restorer: None,
 			})
-		},
+		}
 	};
 
 	let old_handler = {
@@ -57,15 +55,13 @@ pub fn signal(regs: &Regs) -> Result<i32, Errno> {
 
 		SignalHandler::Handler(action) => {
 			if let Some(handler) = action.sa_handler {
-				let handler_ptr = unsafe {
-					transmute::<SigHandler, *const c_void>(handler)
-				};
+				let handler_ptr = unsafe { transmute::<SigHandler, *const c_void>(handler) };
 
 				handler_ptr
 			} else {
 				0 as _
 			}
-		},
+		}
 	};
 	Ok(old_handler_ptr as _)
 }

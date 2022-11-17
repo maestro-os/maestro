@@ -6,16 +6,19 @@
 
 pub mod boxed;
 pub mod container;
+pub mod io;
 pub mod list;
 pub mod lock;
 pub mod math;
 pub mod ptr;
 
+use crate::errno::Errno;
 use core::cmp::min;
 use core::ffi::c_void;
+use core::fmt;
+use core::fmt::Write;
 use core::mem::size_of;
 use core::slice;
-use crate::errno::Errno;
 
 /// Tells if pointer `ptr` is aligned on boundary `n`.
 #[inline(always)]
@@ -62,16 +65,16 @@ macro_rules! offset_of {
 			let ptr = core::ptr::NonNull::<core::ffi::c_void>::dangling().as_ptr();
 			(&(*(ptr as *const $type)).$field) as *const _ as usize - ptr as usize
 		}
-	}
+	};
 }
 
-/// Returns the structure of type `type` that contains the structure in field `field` at pointer
-/// `ptr`. The type must be a pointer type.
+/// Returns the structure of type `type` that contains the structure in field
+/// `field` at pointer `ptr`. The type must be a pointer type.
 #[macro_export]
 macro_rules! container_of {
 	($ptr:expr, $type:ty, $field:ident) => {
 		(($ptr as *const _ as usize) - crate::offset_of!($type, $field)) as $type
-	}
+	};
 }
 
 /// Returns the value stored into the specified register.
@@ -103,8 +106,8 @@ extern "C" {
 }
 
 /// Zeroes the given object.
-/// The function is marked unsafe since there exist some objects for which a representation full of
-/// zeros is invalid.
+/// The function is marked unsafe since there exist some objects for which a
+/// representation full of zeros is invalid.
 pub unsafe fn zero_object<T>(obj: &mut T) {
 	let ptr = obj as *mut T as *mut c_void;
 	let size = size_of::<T>();
@@ -144,22 +147,11 @@ pub unsafe fn str_from_ptr(ptr: *const u8) -> &'static [u8] {
 
 /// Returns an immutable slice to the given value.
 pub fn as_slice<'a, T>(val: &'a T) -> &'a [u8] {
-	unsafe {
-		slice::from_raw_parts(&val as *const _ as *const u8, size_of::<T>())
-	}
+	unsafe { slice::from_raw_parts(&val as *const _ as *const u8, size_of::<T>()) }
 }
 
-/// Turns the error into an empty error for the given result.
-pub fn to_empty_error<T, E>(r: Result<T, E>) -> Result<T, ()> {
-	if let Ok(t) = r {
-		Ok(t)
-	} else {
-		Err(())
-	}
-}
-
-/// Returns the length of the string representation of the number at the beginning of the given
-/// string `s`.
+/// Returns the length of the string representation of the number at the
+/// beginning of the given string `s`.
 pub fn nbr_len(s: &[u8]) -> usize {
 	let mut i = 0;
 
@@ -174,22 +166,43 @@ pub fn nbr_len(s: &[u8]) -> usize {
 	i
 }
 
-/// Copies from slice `src` to `dst`. If one slice is smaller than the other, the function stops
-/// when the end of the smallest is reached.
+/// Copies from slice `src` to `dst`. If one slice is smaller than the other,
+/// the function stops when the end of the smallest is reached.
 pub fn slice_copy(src: &[u8], dst: &mut [u8]) {
 	let len = min(src.len(), dst.len());
 	dst[..len].copy_from_slice(&src[..len]);
 }
 
-/// Trait allowing to perform a clone of a structure that can possibly fail (on memory allocation
-/// failure, for example).
-pub trait FailableClone {
-	/// Clones the object. If the clone fails, the function returns Err.
-	fn failable_clone(&self) -> Result<Self, Errno> where Self: Sized;
+/// Reinterprets the given slice of bytes as another type.
+/// If the type is too large in size to fit in the slice, the function returns None.
+///
+/// # Safety
+///
+/// Not every types are defined for every possible memory representations. Thus, some values
+/// passed as input to this function might be invalid for a given type, which is undefined.
+///
+/// The caller must ensure the sanity of the given input.
+pub unsafe fn reinterpret<'a, T>(slice: &'a [u8]) -> Option<&'a T> {
+	if size_of::<T>() <= slice.len() {
+		// Safe because the slice is large enough
+		let val = &*(slice.as_ptr() as *const T);
+		Some(val)
+	} else {
+		None
+	}
 }
 
-/// Implements FailableClone with the default implemention for the given type. The type must
-/// implement Clone.
+/// Trait allowing to perform a clone of a structure that can possibly fail (on
+/// memory allocation failure, for example).
+pub trait FailableClone {
+	/// Clones the object. If the clone fails, the function returns Err.
+	fn failable_clone(&self) -> Result<Self, Errno>
+	where
+		Self: Sized;
+}
+
+/// Implements FailableClone with the default implemention for the given type.
+/// The type must implement Clone.
 #[macro_export]
 macro_rules! failable_clone_impl {
 	($type:ty) => {
@@ -198,7 +211,7 @@ macro_rules! failable_clone_impl {
 				Ok(self.clone())
 			}
 		}
-	}
+	};
 }
 
 failable_clone_impl!(i8);
@@ -215,38 +228,21 @@ failable_clone_impl!(usize);
 failable_clone_impl!(*mut c_void);
 failable_clone_impl!(*const c_void);
 
-/// Trait representing a data I/O.
-pub trait IO {
-	/// Returns the size of the underlying data.
-	fn get_size(&self) -> u64;
-
-	/// Reads data from the I/O and writes it into `buff`.
-	/// `offset` is the offset in the I/O to the beginning of the data to be read.
-	/// The function returns the number of bytes read.
-	fn read(&mut self, offset: u64, buff: &mut [u8]) -> Result<u64, Errno>;
-
-	/// Reads data from `buff` and writes it into the I/O.
-	/// `offset` is the offset in the I/O to the beginning of the data to write.
-	/// The function returns the number of bytes written.
-	fn write(&mut self, offset: u64, buff: &[u8]) -> Result<u64, Errno>;
+/// Wrapper structure allowing to implement the Display trait on the [u8] type
+/// to display it as a string.
+pub struct DisplayableStr<'a> {
+	/// The string to be displayed.
+	pub s: &'a [u8],
 }
 
-/// Structure representing a dummy I/O interface.
-pub struct DummyIO {}
+impl<'a> fmt::Display for DisplayableStr<'a> {
+	fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+		for b in self.s {
+			fmt.write_char(*b as char)?;
+		}
 
-impl IO for DummyIO {
-	fn get_size(&self) -> u64 {
-		0
+		Ok(())
 	}
-
-	fn read(&mut self, _offset: u64, _buff: &mut [u8]) -> Result<u64, Errno> {
-		Ok(0)
-	}
-
-	fn write(&mut self, _offset: u64, _buff: &[u8]) -> Result<u64, Errno> {
-		Ok(0)
-	}
-
 }
 
 #[cfg(test)]
@@ -262,7 +258,11 @@ mod test {
 			src[i] = i;
 		}
 		unsafe {
-			memcpy(dest.as_mut_ptr() as _, src.as_ptr() as _, 100 * size_of::<usize>());
+			memcpy(
+				dest.as_mut_ptr() as _,
+				src.as_ptr() as _,
+				100 * size_of::<usize>(),
+			);
 		}
 		for i in 0..100 {
 			debug_assert_eq!(dest[i], i);
@@ -278,7 +278,11 @@ mod test {
 			src[i] = i;
 		}
 		unsafe {
-			memcpy(dest.as_mut_ptr() as _, src.as_ptr() as _, 100 * size_of::<usize>());
+			memcpy(
+				dest.as_mut_ptr() as _,
+				src.as_ptr() as _,
+				100 * size_of::<usize>(),
+			);
 		}
 		for i in 0..10 {
 			debug_assert_eq!(dest[i], 0);
@@ -300,7 +304,11 @@ mod test {
 			src[i] = i;
 		}
 		unsafe {
-			memmove(dest.as_mut_ptr() as _, src.as_ptr() as _, 100 * size_of::<usize>());
+			memmove(
+				dest.as_mut_ptr() as _,
+				src.as_ptr() as _,
+				100 * size_of::<usize>(),
+			);
 		}
 		for i in 0..100 {
 			debug_assert_eq!(dest[i], i);
@@ -315,7 +323,11 @@ mod test {
 			buff[i] = i;
 		}
 		unsafe {
-			memmove(buff.as_mut_ptr() as _, buff.as_ptr() as _, 100 * size_of::<usize>());
+			memmove(
+				buff.as_mut_ptr() as _,
+				buff.as_ptr() as _,
+				100 * size_of::<usize>(),
+			);
 		}
 		for i in 0..100 {
 			debug_assert_eq!(buff[i], i);
@@ -333,9 +345,7 @@ mod test {
 			b0[i] = i as _;
 			b1[i] = i as _;
 		}
-		let val = unsafe {
-			memcmp(b0.as_mut_ptr() as _, b1.as_ptr() as _, 100)
-		};
+		let val = unsafe { memcmp(b0.as_mut_ptr() as _, b1.as_ptr() as _, 100) };
 		assert_eq!(val, 0);
 	}
 
@@ -348,9 +358,7 @@ mod test {
 			b0[i] = i as _;
 			b1[i] = 0;
 		}
-		let val = unsafe {
-			memcmp(b0.as_mut_ptr() as _, b1.as_ptr() as _, 100)
-		};
+		let val = unsafe { memcmp(b0.as_mut_ptr() as _, b1.as_ptr() as _, 100) };
 		assert_eq!(val, 1);
 	}
 

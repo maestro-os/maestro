@@ -1,11 +1,11 @@
 //! The tkill system call allows to send a signal to a specific thread.
 
-use crate::errno::Errno;
 use crate::errno;
-use crate::process::Process;
-use crate::process::regs::Regs;
+use crate::errno::Errno;
 use crate::process::pid::Pid;
+use crate::process::regs::Regs;
 use crate::process::signal::Signal;
+use crate::process::Process;
 
 /// The implementation of the `tkill` syscall.
 pub fn tkill(regs: &Regs) -> Result<i32, Errno> {
