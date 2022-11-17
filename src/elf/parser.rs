@@ -1,12 +1,12 @@
 //! This module implements the ELF parser.
 
-use core::mem::size_of;
+use super::iter::ELFIterator;
+use super::*;
 use crate::elf::relocation::ELF32Rel;
 use crate::elf::relocation::ELF32Rela;
-use crate::errno::Errno;
 use crate::errno;
-use super::*;
-use super::iter::ELFIterator;
+use crate::errno::Errno;
+use core::mem::size_of;
 
 /// The ELF parser allows to parse an ELF image and retrieve informations on it.
 /// It is especially useful to load a kernel module or a userspace program.
@@ -19,9 +19,7 @@ impl<'a> ELFParser<'a> {
 	/// Returns the image's header.
 	pub fn get_header(&self) -> &ELF32ELFHeader {
 		// Safe because the image is already checked to be large enough on parser instanciation
-		unsafe {
-			util::reinterpret::<ELF32ELFHeader>(self.image)
-		}.unwrap()
+		unsafe { util::reinterpret::<ELF32ELFHeader>(self.image) }.unwrap()
 	}
 
 	/// Returns the offset the content of the section containing section names.
@@ -34,9 +32,8 @@ impl<'a> ELFParser<'a> {
 		let shstr_off = (shoff + shentsize as u32 * ehdr.e_shstrndx as u32) as usize;
 
 		// Safe because the image is already checked to be large enough on parser instanciation
-		let shstr = unsafe {
-			util::reinterpret::<ELF32SectionHeader>(&self.image[shstr_off..])
-		}.unwrap();
+		let shstr =
+			unsafe { util::reinterpret::<ELF32SectionHeader>(&self.image[shstr_off..]) }.unwrap();
 		shstr.sh_offset as usize
 	}
 
@@ -74,14 +71,12 @@ impl<'a> ELFParser<'a> {
 			return Err(errno!(EINVAL));
 		}
 
-		let phdr_end = ehdr.e_phoff as usize
-			+ ehdr.e_phentsize as usize * ehdr.e_phnum as usize;
+		let phdr_end = ehdr.e_phoff as usize + ehdr.e_phentsize as usize * ehdr.e_phnum as usize;
 		if phdr_end > self.image.len() {
 			return Err(errno!(EINVAL));
 		}
 
-		let shdr_end = ehdr.e_shoff as usize
-			+ ehdr.e_shentsize as usize * ehdr.e_shnum as usize;
+		let shdr_end = ehdr.e_shoff as usize + ehdr.e_shentsize as usize * ehdr.e_shnum as usize;
 		if shdr_end > self.image.len() {
 			return Err(errno!(EINVAL));
 		}
@@ -94,7 +89,8 @@ impl<'a> ELFParser<'a> {
 			let phdr = unsafe {
 				// Safe because in range of the slice
 				util::reinterpret::<ELF32ProgramHeader>(&self.image[off..])
-			}.unwrap();
+			}
+			.unwrap();
 
 			phdr.is_valid(self.image.len())?;
 		}
@@ -104,7 +100,8 @@ impl<'a> ELFParser<'a> {
 			let shdr = unsafe {
 				// Safe because in range of the slice
 				util::reinterpret::<ELF32SectionHeader>(&self.image[off..])
-			}.unwrap();
+			}
+			.unwrap();
 
 			shdr.is_valid(self.image.len())?;
 		}
@@ -226,8 +223,8 @@ impl<'a> ELFParser<'a> {
 		let strtab_section = self.get_section_by_name(".strtab")?; // TODO Use sh_link
 
 		self.iter_sections()
-			.map(|s| self.iter_symbols(s)
-				.filter(|sym| {
+			.map(|s| {
+				self.iter_symbols(s).filter(|sym| {
 					let sym_name_begin = strtab_section.sh_offset as usize + sym.st_name as usize;
 					let sym_name_end = name.len();
 
@@ -237,7 +234,8 @@ impl<'a> ELFParser<'a> {
 					} else {
 						false
 					}
-				}))
+				})
+			})
 			.flatten()
 			.next()
 	}

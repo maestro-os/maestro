@@ -1,12 +1,12 @@
 //! TODO doc
 
-use macros::Parseable;
-use super::AMLParseable;
-use super::Error;
 use super::named_obj::NamedObj;
 use super::namespace_modifier::NameSpaceModifierObj;
 use super::type1_opcode::Type1Opcode;
 use super::type2_opcode::Type2Opcode;
+use super::AMLParseable;
+use super::Error;
+use macros::Parseable;
 
 /// TODO doc
 #[derive(Parseable)]

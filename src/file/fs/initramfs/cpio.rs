@@ -93,7 +93,8 @@ impl<'a> CPIOEntry<'a> {
 		unsafe {
 			// Safe because the structure is in range of the slice
 			util::reinterpret::<CPIOHeader>(self.data)
-		}.unwrap()
+		}
+		.unwrap()
 	}
 
 	/// Returns a reference storing the filename.
@@ -158,7 +159,8 @@ impl<'a> Iterator for CPIOParser<'a> {
 		let hdr = unsafe {
 			// Safe because the structure is in range of the slice
 			util::reinterpret::<CPIOHeader>(&self.data[off..])
-		}.unwrap();
+		}
+		.unwrap();
 		// TODO Check magic (if invalid, find out how to move to the next entry)
 
 		let mut namesize = hdr.c_namesize as usize;

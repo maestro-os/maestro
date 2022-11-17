@@ -1,41 +1,41 @@
 //! This module implements ELF program execution with respects the System V ABI.
 
-use core::cmp::max;
-use core::cmp::min;
-use core::ffi::c_void;
-use core::mem::size_of;
-use core::ptr::null;
-use core::ptr;
-use core::slice;
-use core::str;
 use crate::cpu;
-use crate::elf::ELF32ProgramHeader;
+use crate::elf;
 use crate::elf::parser::ELFParser;
 use crate::elf::relocation::Relocation;
-use crate::elf;
-use crate::errno::Errno;
+use crate::elf::ELF32ProgramHeader;
 use crate::errno;
+use crate::errno::Errno;
+use crate::file::path::Path;
+use crate::file::vfs;
 use crate::file::File;
 use crate::file::Gid;
 use crate::file::Uid;
-use crate::file::path::Path;
-use crate::file::vfs;
+use crate::memory;
 use crate::memory::malloc;
 use crate::memory::vmem;
-use crate::memory;
+use crate::process;
 use crate::process::exec::ExecInfo;
 use crate::process::exec::Executor;
 use crate::process::exec::ProgramImage;
+use crate::process::mem_space;
 use crate::process::mem_space::MapConstraint;
 use crate::process::mem_space::MemSpace;
-use crate::process::mem_space;
-use crate::process;
-use crate::util::FailableClone;
+use crate::util;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::io::IO;
 use crate::util::math;
-use crate::util;
+use crate::util::FailableClone;
+use core::cmp::max;
+use core::cmp::min;
+use core::ffi::c_void;
+use core::mem::size_of;
+use core::ptr;
+use core::ptr::null;
+use core::slice;
+use core::str;
 
 /// Used to define the end of the entries list.
 const AT_NULL: i32 = 0;
@@ -552,9 +552,7 @@ impl ELFExecutor {
 			None,
 			0,
 		)?;
-		load_end = unsafe {
-			load_end.add(phdr_pages * memory::PAGE_SIZE)
-		};
+		load_end = unsafe { load_end.add(phdr_pages * memory::PAGE_SIZE) };
 
 		let mut entry_point =
 			(load_base as usize + elf.get_header().e_entry as usize) as *const c_void;

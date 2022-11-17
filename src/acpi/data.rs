@@ -6,21 +6,21 @@
 //! The structure implemented in this module uses a temporary virtual memory
 //! context to get a copy of the data.
 
-use core::ffi::c_void;
-use core::mem::size_of;
-use core::ptr::Pointee;
-use core::ptr::copy_nonoverlapping;
-use core::ptr;
+use crate::acpi::rsdt::Rsdt;
 use crate::acpi::ACPITable;
 use crate::acpi::ACPITableHeader;
-use crate::acpi::rsdt::Rsdt;
 use crate::errno::Errno;
+use crate::memory;
 use crate::memory::malloc;
 use crate::memory::vmem;
-use crate::memory;
+use crate::util;
 use crate::util::boxed::Box;
 use crate::util::container::hashmap::HashMap;
-use crate::util;
+use core::ffi::c_void;
+use core::mem::size_of;
+use core::ptr;
+use core::ptr::copy_nonoverlapping;
+use core::ptr::Pointee;
 
 /// The signature of the RSDP structure.
 const RSDP_SIGNATURE: &[u8] = b"RSD PTR ";
@@ -61,7 +61,8 @@ impl Rsdp {
 		let mut sum: u8 = 0;
 
 		for i in 0..size_of::<Self>() {
-			let byte = unsafe { // Safe since every bytes of `self` are readable.
+			let byte = unsafe {
+				// Safe since every bytes of `self` are readable.
 				*(self as *const Self as *const u8).add(i)
 			};
 			sum = sum.wrapping_add(byte);
@@ -114,7 +115,7 @@ pub struct ACPIData {
 	rsdt: *const Rsdt,
 
 	/// The buffer containing the ACPI data.
-	data: malloc::Alloc::<u8>,
+	data: malloc::Alloc<u8>,
 }
 
 impl ACPIData {
@@ -144,9 +145,10 @@ impl ACPIData {
 
 		tmp_vmem.bind();
 		let (off, data) = {
-			let rsdt_ptr = (memory::PAGE_SIZE
-				+ (rsdt_phys_ptr as usize - rsdt_map_begin as usize)) as *const Rsdt;
-			let rsdt = unsafe { // Safe because the pointer has been mapped before
+			let rsdt_ptr = (memory::PAGE_SIZE + (rsdt_phys_ptr as usize - rsdt_map_begin as usize))
+				as *const Rsdt;
+			let rsdt = unsafe {
+				// Safe because the pointer has been mapped before
 				&*rsdt_ptr
 			};
 
@@ -221,10 +223,10 @@ impl ACPIData {
 	/// The table must be Sized.
 	/// If the table doesn't exist, the function returns None.
 	pub fn get_table_sized<T: ACPITable>(&self) -> Option<&T> {
-		let rsdt_ptr = unsafe {
-			self.data.as_ptr().add(self.rsdt as usize - self.off) as *const Rsdt
-		};
-		let rsdt = unsafe { // Safe because the pointer has been mapped before
+		let rsdt_ptr =
+			unsafe { self.data.as_ptr().add(self.rsdt as usize - self.off) as *const Rsdt };
+		let rsdt = unsafe {
+			// Safe because the pointer has been mapped before
 			&*rsdt_ptr
 		};
 
@@ -234,12 +236,12 @@ impl ACPIData {
 
 		for i in 0..entries_count {
 			let header_ptr = unsafe {
-				(self.data.as_ptr().add(*entries_ptr.add(i) as usize - self.off) as usize)
-					as *const ACPITableHeader
+				(self
+					.data
+					.as_ptr()
+					.add(*entries_ptr.add(i) as usize - self.off) as usize) as *const ACPITableHeader
 			};
-			let header = unsafe {
-				&*header_ptr
-			};
+			let header = unsafe { &*header_ptr };
 
 			if *header.get_signature() == *T::get_expected_signature() {
 				let table = unsafe {
@@ -260,12 +262,13 @@ impl ACPIData {
 	/// Returns a reference to the ACPI table with type T.
 	/// The table must be Unsized.
 	/// If the table doesn't exist, the function returns None.
-	pub fn get_table_unsized<T: ACPITable + ?Sized + Pointee<Metadata = usize>>(&self)
-		-> Option<&T> {
-		let rsdt_ptr = unsafe {
-			self.data.as_ptr().add(self.rsdt as usize - self.off) as *const Rsdt
-		};
-		let rsdt = unsafe { // Safe because the pointer has been mapped before
+	pub fn get_table_unsized<T: ACPITable + ?Sized + Pointee<Metadata = usize>>(
+		&self,
+	) -> Option<&T> {
+		let rsdt_ptr =
+			unsafe { self.data.as_ptr().add(self.rsdt as usize - self.off) as *const Rsdt };
+		let rsdt = unsafe {
+			// Safe because the pointer has been mapped before
 			&*rsdt_ptr
 		};
 
@@ -275,12 +278,12 @@ impl ACPIData {
 
 		for i in 0..entries_count {
 			let header_ptr = unsafe {
-				(self.data.as_ptr().add(*entries_ptr.add(i) as usize - self.off) as usize)
-					as *const ACPITableHeader
+				(self
+					.data
+					.as_ptr()
+					.add(*entries_ptr.add(i) as usize - self.off) as usize) as *const ACPITableHeader
 			};
-			let header = unsafe {
-				&*header_ptr
-			};
+			let header = unsafe { &*header_ptr };
 
 			if *header.get_signature() == *T::get_expected_signature() {
 				let len = header.get_length();

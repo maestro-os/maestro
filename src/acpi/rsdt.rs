@@ -1,8 +1,8 @@
 //! This module handles ACPI's Root System Description Table (RSDT).
 
-use core::mem::size_of;
 use super::ACPITable;
 use super::ACPITableHeader;
+use core::mem::size_of;
 
 /// The Root System Description Table.
 #[repr(C)]

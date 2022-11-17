@@ -1,7 +1,7 @@
 //! This module implements a generic iterator to be used on tables in ELF files.
 
-use core::marker::PhantomData;
 use crate::util;
+use core::marker::PhantomData;
 
 /// A generic iterator for ELF tables.
 ///
@@ -46,9 +46,7 @@ impl<'a, T: 'a> Iterator for ELFIterator<'a, T> {
 
 		// FIXME: Not safety guarantee here. Ask for an empty unsafe trait on T to signal that the
 		// structure has to be valid for every possible memory representations?
-		let entry = unsafe {
-			util::reinterpret::<T>(&self.table[self.curr_off..])
-		}?;
+		let entry = unsafe { util::reinterpret::<T>(&self.table[self.curr_off..]) }?;
 		self.curr_off += self.entsize;
 		Some(entry)
 	}

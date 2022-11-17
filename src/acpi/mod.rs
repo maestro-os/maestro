@@ -69,7 +69,8 @@ impl ACPITableHeader {
 		let mut sum: u8 = 0;
 
 		for i in 0..length {
-			let byte = unsafe { // Safe since every bytes of `self` are readable.
+			let byte = unsafe {
+				// Safe since every bytes of `self` are readable.
 				*(self as *const Self as *const u8).add(i)
 			};
 			sum = sum.wrapping_add(byte);
@@ -86,9 +87,7 @@ pub trait ACPITable {
 
 	/// Returns a reference to the table's header.
 	fn get_header(&self) -> &ACPITableHeader {
-		unsafe {
-			&*(self as *const _ as *const ACPITableHeader)
-		}
+		unsafe { &*(self as *const _ as *const ACPITableHeader) }
 	}
 }
 
@@ -97,7 +96,8 @@ static mut CENTURY_REGISTER: bool = false;
 
 /// Tells whether the century register of the CMOS is present.
 pub fn is_century_register_present() -> bool {
-	unsafe { // Safe because the value is only set once at boot
+	unsafe {
+		// Safe because the value is only set once at boot
 		CENTURY_REGISTER
 	}
 }
@@ -123,13 +123,17 @@ pub fn init() {
 		}
 
 		// Setting the century register value
-		unsafe { // Safe because the value is only set once
-			CENTURY_REGISTER = data.get_table_sized::<Fadt>().map_or(false, | fadt | fadt.century != 0);
+		unsafe {
+			// Safe because the value is only set once
+			CENTURY_REGISTER = data
+				.get_table_sized::<Fadt>()
+				.map_or(false, |fadt| fadt.century != 0);
 		}
 
 		// Getting the DSDT
 		let dsdt = data.get_table_unsized::<Dsdt>().or_else(|| {
-			data.get_table_sized::<Fadt>().and_then(| fadt | fadt.get_dsdt())
+			data.get_table_sized::<Fadt>()
+				.and_then(|fadt| fadt.get_dsdt())
 		});
 		if let Some(dsdt) = dsdt {
 			// Parsing AML code

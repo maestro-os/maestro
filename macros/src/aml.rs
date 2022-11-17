@@ -1,21 +1,21 @@
 //! This module implements macros used to parse AML bytecode.
 
+use proc_macro::TokenStream;
 use proc_macro2::Ident;
 use proc_macro2::Span;
-use proc_macro::TokenStream;
 use quote::quote;
+use syn::parse_macro_input;
 use syn::Data;
 use syn::DataEnum;
 use syn::DataStruct;
 use syn::DeriveInput;
 use syn::Fields;
-use syn::parse_macro_input;
 
 /// Returns the parse code for the given set of fields.
 fn parse_expr(fields: &Fields) -> proc_macro2::TokenStream {
 	match fields {
 		Fields::Named(fields) => {
-			let parse_lines = fields.named.iter().map(| field | {
+			let parse_lines = fields.named.iter().map(|field| {
 				let ident = field.ident.as_ref().unwrap();
 
 				quote! {
@@ -33,10 +33,10 @@ fn parse_expr(fields: &Fields) -> proc_macro2::TokenStream {
 			quote! {
 				#(#parse_lines)*
 			}
-		},
+		}
 
 		Fields::Unnamed(fields) => {
-			let parse_lines = fields.unnamed.iter().enumerate().map(| (i, _) | {
+			let parse_lines = fields.unnamed.iter().enumerate().map(|(i, _)| {
 				// TODO Fix span
 				let ident = Ident::new(format!("field{}", i).as_str(), Span::call_site());
 
@@ -55,7 +55,7 @@ fn parse_expr(fields: &Fields) -> proc_macro2::TokenStream {
 			quote! {
 				#(#parse_lines)*
 			}
-		},
+		}
 
 		Fields::Unit => quote! {},
 	}
@@ -75,7 +75,7 @@ pub fn derive_parseable(input: TokenStream) -> TokenStream {
 			let parse_lines = parse_expr(&Fields::Named(fields.clone()));
 
 			// TODO Streamline
-			let struct_lines = fields.named.iter().map(| field | {
+			let struct_lines = fields.named.iter().map(|field| {
 				let ident = field.ident.as_ref().unwrap();
 				quote! { #ident, }
 			});
@@ -93,37 +93,36 @@ pub fn derive_parseable(input: TokenStream) -> TokenStream {
 					}
 				}
 			}
-		},
+		}
 
 		Data::Enum(DataEnum {
-			variants,
-			..
+			variants, ..
 		}) => {
-			let parse_lines = variants.iter().map(| v | {
+			let parse_lines = variants.iter().map(|v| {
 				let ident = v.ident.clone();
 				let parse_lines = parse_expr(&v.fields);
 
 				// TODO Streamline
 				let struct_lines = match &v.fields {
 					Fields::Named(fields) => {
-						let fields = fields.named.iter().map(| field | {
+						let fields = fields.named.iter().map(|field| {
 							let ident = field.ident.as_ref().unwrap();
 							quote! { #ident, }
 						});
 
 						quote! { #(#fields)* }
-					},
+					}
 
 					Fields::Unnamed(fields) => {
-						let fields = fields.unnamed.iter().enumerate().map(| (i, _) | {
+						let fields = fields.unnamed.iter().enumerate().map(|(i, _)| {
 							// TODO Fix span
-							let ident = Ident::new(format!("field{}", i).as_str(),
-								Span::call_site());
+							let ident =
+								Ident::new(format!("field{}", i).as_str(), Span::call_site());
 							quote! { #ident, }
 						});
 
 						quote! { #(#fields)* }
-					},
+					}
 
 					Fields::Unit => quote! {},
 				};
@@ -172,7 +171,7 @@ pub fn derive_parseable(input: TokenStream) -> TokenStream {
 					}
 				}
 			}
-		},
+		}
 
 		_ => panic!("only structs and enums can be derived with Parseable"),
 	};

@@ -1,8 +1,8 @@
 //! TODO doc
 
-use macros::Parseable;
 use super::AMLParseable;
 use super::Error;
+use macros::Parseable;
 
 /// TODO doc
 #[derive(Parseable)]

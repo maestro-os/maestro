@@ -3,7 +3,6 @@
 
 #![no_std]
 #![no_main]
-
 #![feature(allow_internal_unstable)]
 #![feature(coerce_unsized)]
 #![feature(custom_test_frameworks)]
@@ -14,13 +13,11 @@
 #![feature(stmt_expr_attributes)]
 #![feature(trait_upcasting)]
 #![feature(unsize)]
-
 #![deny(warnings)]
 #![allow(unused_attributes)]
 #![allow(dead_code)]
 #![allow(unused_macros)]
 #![allow(incomplete_features)]
-
 #![test_runner(crate::selftest::runner)]
 #![reexport_test_harness_main = "kernel_selftest"]
 

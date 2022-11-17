@@ -1,9 +1,9 @@
 //! This module handles ACPI's Fixed ACPI Description Table (FADT).
 
-use core::slice;
+use super::dsdt::Dsdt;
 use super::ACPITable;
 use super::ACPITableHeader;
-use super::dsdt::Dsdt;
+use core::slice;
 
 /// TODO doc
 pub struct GenericAddr {

@@ -1,10 +1,10 @@
 //! The _exit syscall allows to terminate the current process with the given
 //! status code.
 
-use core::arch::asm;
-use core::ffi::c_int;
 use crate::errno::Errno;
 use crate::process::Process;
+use core::arch::asm;
+use core::ffi::c_int;
 use macros::syscall;
 
 /// Exits the current process.

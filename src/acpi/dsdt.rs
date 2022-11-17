@@ -1,9 +1,9 @@
 //! TODO doc
 
-use core::mem::size_of;
-use core::slice;
 use super::ACPITable;
 use super::ACPITableHeader;
+use core::mem::size_of;
+use core::slice;
 
 /// The Differentiated System Description Table.
 #[repr(C)]
@@ -21,9 +21,7 @@ impl Dsdt {
 	pub fn get_aml(&self) -> &[u8] {
 		let code_len = self.header.length as usize - size_of::<ACPITableHeader>();
 
-		unsafe {
-			slice::from_raw_parts(&self.definition_block[0], code_len)
-		}
+		unsafe { slice::from_raw_parts(&self.definition_block[0], code_len) }
 	}
 }
 

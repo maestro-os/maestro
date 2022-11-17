@@ -76,7 +76,8 @@ pub struct Module {
 impl Module {
 	/// Returns the size required to load the module image.
 	fn get_load_size(parser: &ELFParser) -> usize {
-		parser.iter_segments()
+		parser
+			.iter_segments()
 			.map(|seg| seg.p_vaddr as usize + seg.p_memsz as usize)
 			.max()
 			.unwrap_or(0)
@@ -140,7 +141,8 @@ impl Module {
 		let load_base = unsafe { mem.as_ptr() as u32 };
 
 		// Copying the module's image
-		parser.iter_segments()
+		parser
+			.iter_segments()
 			.filter(|seg| seg.p_type != elf::PT_NULL)
 			.for_each(|seg| {
 				let len = min(seg.p_memsz, seg.p_filesz) as usize;

@@ -7,8 +7,8 @@ mod term_obj;
 mod type1_opcode;
 mod type2_opcode;
 
-use core::ops::Range;
 use crate::util::container::string::String;
+use core::ops::Range;
 use macros::Parseable;
 use term_obj::TermList;
 
@@ -172,15 +172,15 @@ macro_rules! impl_aml_parseable_primitive {
 				let len = core::mem::size_of::<$type>();
 				if b.len() < len {
 					// TODO Error message
-					let err = String::from(b"TODO").map(| msg | {
-						Error {
+					let err = String::from(b"TODO")
+						.map(|msg| Error {
 							message: ErrorMessage::Allocated(msg),
 							off,
-						}
-					}).unwrap_or_else(| _ | Error {
-						message: ErrorMessage::Static("Allocation error"),
-						off,
-					});
+						})
+						.unwrap_or_else(|_| Error {
+							message: ErrorMessage::Static("Allocation error"),
+							off,
+						});
 
 					return Err(err);
 				}
@@ -193,7 +193,7 @@ macro_rules! impl_aml_parseable_primitive {
 				Ok(Some((n, len)))
 			}
 		}
-	}
+	};
 }
 
 pub type ByteData = u8;
