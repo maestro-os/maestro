@@ -2,6 +2,7 @@
 //! commonly used in UNIX systems. This module implements a parser allowing to
 //! handle this format, including the kernel image itself.
 
+pub mod iter;
 pub mod parser;
 pub mod relocation;
 

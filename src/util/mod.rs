@@ -174,8 +174,22 @@ pub fn slice_copy(src: &[u8], dst: &mut [u8]) {
 }
 
 /// Reinterprets the given slice of bytes as another type.
-pub unsafe fn reinterpret<'a, T>(slice: &'a [u8]) -> &'a T {
-	&*(slice.as_ptr() as *const _)
+/// If the type is too large in size to fit in the slice, the function returns None.
+///
+/// # Safety
+///
+/// Not every types are defined for every possible memory representations. Thus, some values
+/// passed as input to this function might be invalid for a given type, which is undefined.
+///
+/// The caller must ensure the sanity of the given input.
+pub unsafe fn reinterpret<'a, T>(slice: &'a [u8]) -> Option<&'a T> {
+	if size_of::<T>() <= slice.len() {
+		// Safe because the slice is large enough
+		let val = &*(&slice.as_ptr() as *const T);
+		Some(val)
+	} else {
+		None
+	}
 }
 
 /// Trait allowing to perform a clone of a structure that can possibly fail (on

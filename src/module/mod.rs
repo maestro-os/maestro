@@ -165,11 +165,11 @@ impl Module {
 
 		// Closure returning the value of the given symbol
 		let get_sym_val = |sym_section: u32, sym: u32| {
-			let section = parser.get_section_by_index(sym_section)?;
+			let section = parser.iter_sections().nth(sym_section)?;
 			let sym = parser.get_symbol_by_index(section, sym)?;
 
 			if !sym.is_defined() {
-				let strtab = parser.get_section_by_index(section.sh_link)?;
+				let strtab = parser.iter_sections().nth(section.sh_link)?;
 
 				// Looking inside of the kernel image or other modules
 				let name = parser.get_symbol_name(strtab, sym)?;

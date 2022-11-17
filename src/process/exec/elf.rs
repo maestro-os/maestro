@@ -526,26 +526,12 @@ impl ELFExecutor {
 		let mut interp_entry = None;
 
 		// Allocating memory for segments
-		let mut load_end: Result<*const c_void, Errno> = Ok(load_base as _);
-		// The pointer to the program header table in memory
-		let mut phdr: Option<*const c_void> = None;
-		elf.foreach_segments(|seg| {
-			load_end = Self::alloc_segment(load_base, mem_space, seg).map(|end| {
-				if let Some(end) = end {
-					max(end, load_end.unwrap())
-				} else {
-					load_end.unwrap()
-				}
-			});
-
-			// If PHDR, keep the pointer
-			if seg.p_type == elf::PT_PHDR {
-				phdr = Some((load_base as usize + seg.p_vaddr as usize) as _);
+		let mut load_end = load_base;
+		for seg in elf.iter_segments() {
+			if let Some(end) = Self::alloc_segment(load_base, mem_space, seg)? {
+				load_end = max(end, load_end);
 			}
-
-			load_end.is_ok()
-		});
-		let mut load_end = load_end?;
+		}
 
 		// Loading the interpreter, if present
 		if let Some(interp_path) = interp_path {
@@ -616,6 +602,10 @@ impl ELFExecutor {
 				}
 			});
 		}
+
+		// TODO
+		// The pointer to the program header table in memory
+		let mut phdr: Option<*const c_void> = None;
 
 		Ok(ELFLoadInfo {
 			load_base: load_base as _,
