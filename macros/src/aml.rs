@@ -1,8 +1,4 @@
-//! This crate implements derive macros for the Maestro kernel.
-
-#![deny(warnings)]
-
-extern crate proc_macro;
+//! This module implements macros used to parse AML bytecode.
 
 use proc_macro2::Ident;
 use proc_macro2::Span;
@@ -66,10 +62,8 @@ fn parse_expr(fields: &Fields) -> proc_macro2::TokenStream {
 }
 
 // TODO Clean
-/// Definition of a derive macro used to turn a structure into a parsable object for the AML
-/// bytecode.
-#[proc_macro_derive(Parseable)]
-pub fn derive_aml_parseable(input: TokenStream) -> TokenStream {
+/// TODO doc
+pub fn derive_parseable(input: TokenStream) -> TokenStream {
 	let input = parse_macro_input!(input as DeriveInput);
 	let ident = input.ident;
 

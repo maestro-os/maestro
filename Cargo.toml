@@ -11,7 +11,7 @@ path = "src/kernel.rs"
 crate-type = ["dylib", "staticlib"]
 
 [dependencies]
-derive = { path = "derive/" }
+macros = { path = "macros/" }
 
 [profile.release]
 lto = true
