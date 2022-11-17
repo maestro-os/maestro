@@ -1,10 +1,11 @@
 //! The _exit syscall allows to terminate the current process with the given
 //! status code.
 
-use crate::errno::Errno;
-use crate::process::regs::Regs;
-use crate::process::Process;
 use core::arch::asm;
+use core::ffi::c_int;
+use crate::errno::Errno;
+use crate::process::Process;
+use macros::syscall;
 
 /// Exits the current process.
 /// `status` is the exit status.
@@ -35,8 +36,7 @@ pub fn do_exit(status: u32, thread_group: bool) -> ! {
 }
 
 /// The implementation of the `_exit` syscall.
-pub fn _exit(regs: &Regs) -> Result<i32, Errno> {
-	let status = regs.ebx as i32;
-
+#[syscall]
+pub fn _exit(status: c_int) -> Result<i32, Errno> {
 	do_exit(status as _, false);
 }

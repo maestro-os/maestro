@@ -9,7 +9,7 @@ mod type2_opcode;
 
 use core::ops::Range;
 use crate::util::container::string::String;
-use derive::Parseable;
+use macros::Parseable;
 use term_obj::TermList;
 
 const ZERO_OP: u8 = 0x00;

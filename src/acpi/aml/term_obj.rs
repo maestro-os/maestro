@@ -1,6 +1,6 @@
 //! TODO doc
 
-use derive::Parseable;
+use macros::Parseable;
 use super::AMLParseable;
 use super::Error;
 use super::named_obj::NamedObj;
