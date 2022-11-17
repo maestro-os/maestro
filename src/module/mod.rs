@@ -23,7 +23,6 @@ use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::lock::Mutex;
 use crate::util::FailableClone;
-use core::cmp::max;
 use core::cmp::min;
 use core::mem::size_of;
 use core::mem::transmute;
@@ -77,13 +76,10 @@ pub struct Module {
 impl Module {
 	/// Returns the size required to load the module image.
 	fn get_load_size(parser: &ELFParser) -> usize {
-		let mut size = 0;
-		parser.foreach_segments(|seg| {
-			size = max(seg.p_vaddr as usize + seg.p_memsz as usize, size);
-			true
-		});
-
-		size
+		parser.iter_segments()
+			.map(|seg| seg.p_vaddr as usize + seg.p_memsz as usize)
+			.max()
+			.unwrap_or(0)
 	}
 
 	/// Resolves an external symbol from the kernel or another module. If the
@@ -144,9 +140,11 @@ impl Module {
 		let load_base = unsafe { mem.as_ptr() as u32 };
 
 		// Copying the module's image
-		parser.foreach_segments(|seg| {
-			if seg.p_type != elf::PT_NULL {
+		parser.iter_segments()
+			.filter(|seg| seg.p_type != elf::PT_NULL)
+			.for_each(|seg| {
 				let len = min(seg.p_memsz, seg.p_filesz) as usize;
+
 				unsafe {
 					// Safe because the module ELF image is valid
 					ptr::copy_nonoverlapping(
@@ -155,21 +153,18 @@ impl Module {
 						len,
 					);
 				}
-			}
-
-			true
-		});
+			});
 
 		// Closure returning a symbol from its name
 		let get_sym = |name: &str| parser.get_symbol_by_name(name);
 
 		// Closure returning the value of the given symbol
 		let get_sym_val = |sym_section: u32, sym: u32| {
-			let section = parser.iter_sections().nth(sym_section)?;
-			let sym = parser.get_symbol_by_index(section, sym)?;
+			let section = parser.iter_sections().nth(sym_section as usize)?;
+			let sym = parser.iter_symbols(section).nth(sym as usize)?;
 
 			if !sym.is_defined() {
-				let strtab = parser.iter_sections().nth(section.sh_link)?;
+				let strtab = parser.iter_sections().nth(section.sh_link as usize)?;
 
 				// Looking inside of the kernel image or other modules
 				let name = parser.get_symbol_name(strtab, sym)?;
@@ -180,18 +175,19 @@ impl Module {
 			}
 		};
 
-		parser.foreach_rel(|section, rel| {
-			unsafe {
-				rel.perform(load_base as _, section, get_sym, get_sym_val);
+		for section in parser.iter_sections() {
+			for rel in parser.iter_rel(section) {
+				unsafe {
+					rel.perform(load_base as _, section, get_sym, get_sym_val);
+				}
 			}
-			true
-		});
-		parser.foreach_rela(|section, rela| {
-			unsafe {
-				rela.perform(load_base as _, section, get_sym, get_sym_val);
+
+			for rela in parser.iter_rela(section) {
+				unsafe {
+					rela.perform(load_base as _, section, get_sym, get_sym_val);
+				}
 			}
-			true
-		});
+		}
 
 		// Checking the magic number
 		let magic = Self::get_module_attibute::<u64>(mem.as_slice(), &parser, "MOD_MAGIC")

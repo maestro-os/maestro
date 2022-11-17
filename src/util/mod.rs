@@ -185,7 +185,7 @@ pub fn slice_copy(src: &[u8], dst: &mut [u8]) {
 pub unsafe fn reinterpret<'a, T>(slice: &'a [u8]) -> Option<&'a T> {
 	if size_of::<T>() <= slice.len() {
 		// Safe because the slice is large enough
-		let val = &*(&slice.as_ptr() as *const T);
+		let val = &*(slice.as_ptr() as *const T);
 		Some(val)
 	} else {
 		None

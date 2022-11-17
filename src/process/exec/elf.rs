@@ -428,7 +428,7 @@ impl ELFExecutor {
 	/// If loaded, the function return the pointer to the end of the segment in
 	/// virtual memory.
 	fn alloc_segment(
-		load_base: *const u8,
+		load_base: *const c_void,
 		mem_space: &mut MemSpace,
 		seg: &ELF32ProgramHeader,
 	) -> Result<Option<*const c_void>, Errno> {
@@ -460,7 +460,7 @@ impl ELFExecutor {
 
 			// TODO Lazy allocation
 			// Pre-allocating the pages to make them writable
-			mem_space.alloc(mem_begin as *const u8, pages * memory::PAGE_SIZE)?;
+			mem_space.alloc(mem_begin as *const c_void, pages * memory::PAGE_SIZE)?;
 		}
 
 		// The pointer to the end of the virtual memory chunk
@@ -473,7 +473,7 @@ impl ELFExecutor {
 	/// `load_base` is the address at which the executable is loaded.
 	/// `seg` is the segment.
 	/// `image` is the ELF file image.
-	fn copy_segment(load_base: *const u8, seg: &ELF32ProgramHeader, image: &[u8]) {
+	fn copy_segment(load_base: *const c_void, seg: &ELF32ProgramHeader, image: &[u8]) {
 		// Loading only loadable segments
 		if seg.p_type != elf::PT_LOAD {
 			return;
@@ -514,7 +514,7 @@ impl ELFExecutor {
 		&self,
 		elf: &ELFParser,
 		mem_space: &mut MemSpace,
-		load_base: *const u8,
+		load_base: *const c_void,
 		interp: bool,
 	) -> Result<ELFLoadInfo, Errno> {
 		let interp_path = elf.get_interpreter_path();
@@ -569,10 +569,9 @@ impl ELFExecutor {
 		unsafe {
 			vmem::switch(mem_space.get_vmem().as_ref(), move || {
 				// Copying segments' data
-				elf.foreach_segments(|seg| {
+				for seg in elf.iter_segments() {
 					Self::copy_segment(load_base, seg, elf.get_image());
-					true
-				});
+				}
 
 				// Performing relocations if no interpreter is present
 				if interp_path.is_none() {
@@ -581,8 +580,8 @@ impl ELFExecutor {
 
 					// Closure returning the value for a given symbol
 					let get_sym_val = |sym_section: u32, sym: u32| {
-						let section = elf.get_section_by_index(sym_section)?;
-						let sym = elf.get_symbol_by_index(section, sym)?;
+						let section = elf.iter_sections().nth(sym_section as usize)?;
+						let sym = elf.iter_symbols(section).nth(sym as usize)?;
 
 						if sym.is_defined() {
 							Some(load_base as u32 + sym.st_value)
@@ -591,21 +590,22 @@ impl ELFExecutor {
 						}
 					};
 
-					elf.foreach_rel(|section, rel| {
-						rel.perform(load_base as _, section, get_sym, get_sym_val);
-						true
-					});
-					elf.foreach_rela(|section, rela| {
-						rela.perform(load_base as _, section, get_sym, get_sym_val);
-						true
-					});
+					for section in elf.iter_sections() {
+						for rel in elf.iter_rel(section) {
+							rel.perform(load_base as _, section, get_sym, get_sym_val);
+						}
+
+						for rela in elf.iter_rel(section) {
+							rela.perform(load_base as _, section, get_sym, get_sym_val);
+						}
+					}
 				}
 			});
 		}
 
 		// TODO
 		// The pointer to the program header table in memory
-		let mut phdr: Option<*const c_void> = None;
+		let phdr: Option<*const c_void> = None;
 
 		Ok(ELFLoadInfo {
 			load_base: load_base as _,
@@ -633,7 +633,7 @@ impl Executor for ELFExecutor {
 		let mut mem_space = MemSpace::new()?;
 
 		// Loading the ELF
-		let load_info = self.load_elf(&parser, &mut mem_space, null::<u8>(), false)?;
+		let load_info = self.load_elf(&parser, &mut mem_space, null::<c_void>(), false)?;
 
 		// The user stack
 		let user_stack =

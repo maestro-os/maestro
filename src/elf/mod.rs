@@ -13,7 +13,6 @@ use crate::process::mem_space;
 use crate::util;
 use crate::util::math;
 use core::cmp::max;
-use core::cmp::min;
 use core::ffi::c_void;
 
 /// The number of identification bytes in the ELF header.
