@@ -17,7 +17,11 @@ use macros::syscall;
 
 /// The implementation of the `write` syscall.
 #[syscall]
-pub fn write(fd: c_int, buf: SyscallSlice<u8>, count: usize) -> Result<i32, Errno> {
+pub fn write(fd: c_int, buf: SyscallSlice::<u8>, count: usize) -> Result<i32, Errno> {
+	if fd < 0 {
+		return Err(errno!(EBADF));
+	}
+
 	let len = min(count, i32::MAX as usize);
 	if len == 0 {
 		return Ok(0);
@@ -32,7 +36,7 @@ pub fn write(fd: c_int, buf: SyscallSlice<u8>, count: usize) -> Result<i32, Errn
 			let proc = guard.get_mut();
 
 			let mem_space = proc.get_mem_space().unwrap();
-			let open_file_mutex = proc.get_fd(fd).ok_or(errno!(EBADF))?.get_open_file();
+			let open_file_mutex = proc.get_fd(fd as _).ok_or(errno!(EBADF))?.get_open_file();
 			(mem_space, open_file_mutex)
 		};
 

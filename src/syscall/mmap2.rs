@@ -5,9 +5,11 @@ use core::ffi::c_int;
 use super::mmap;
 use crate::errno::Errno;
 use core::ffi::c_void;
+use macros::syscall;
 
 // TODO Check last argument type
 /// The implementation of the `mmap2` syscall.
+#[syscall]
 pub fn mmap2(addr: *mut c_void, length: usize, prot: c_int, flags: c_int, fd: c_int, offset: u64) -> Result<i32, Errno> {
 	mmap::do_mmap(addr, length, prot, flags, fd, (offset as u64) * 4096)
 }

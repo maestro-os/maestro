@@ -10,9 +10,11 @@ use crate::process::Process;
 use crate::util;
 use crate::util::FailableClone;
 use core::cmp::min;
+use macros::syscall;
 
 /// The implementation of the `readlink` syscall.
-pub fn readlink(pathname: SyscallString, buf: SyscallSlice<u8>, bufsiz: usize) -> Result<i32, Errno> {
+#[syscall]
+pub fn readlink(pathname: SyscallString, buf: SyscallSlice::<u8>, bufsiz: usize) -> Result<i32, Errno> {
 	let (path, uid, gid) = {
 		// Getting the process
 		let mutex = Process::get_current().unwrap();

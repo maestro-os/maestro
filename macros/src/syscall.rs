@@ -6,6 +6,9 @@ use proc_macro::TokenStream;
 use quote::quote;
 use syn::FnArg;
 use syn::ItemFn;
+use syn::Path;
+use syn::Type;
+use syn::TypePath;
 use syn::parse_macro_input;
 
 /// The list of register for each argument, in order.
@@ -44,38 +47,30 @@ pub fn syscall(input: TokenStream) -> TokenStream {
 				let pat = typed.pat.clone();
 				let ty = typed.ty.clone();
 
-				// TODO Check type is supported
-				// Supported list:
-				// - c_char
-				// - c_double
-				// - c_float
-				// - c_int
-				// - c_long
-				// - c_longlong
-				// - c_schar
-				// - c_short
-				// - c_uchar
-				// - c_uint
-				// - c_ulong
-				// - c_ulonglong
-				// - c_ushort
-				// - c_void
-				// - u8
-				// - i8
-				// - u16
-				// - i16
-				// - u32
-				// - i32
-				// - u64
-				// - i64
-				// - all pointers
-				// - Syscall*
-
 				let reg_name = Ident::new(REGS[i], Span::call_site());
 
-				proc_macro2::TokenStream::from(quote! {
-					let #pat = regs.#reg_name as #ty;
-				})
+				// TODO make a cleaner check
+				match *ty {
+					// Special cast for pointers
+					Type::Path(TypePath {
+						path: Path {
+							ref segments,
+							..
+						},
+						..
+					}) if segments.last()
+						.map(|s| s.ident.to_string().starts_with("Syscall"))
+						.unwrap_or(false) => {
+						proc_macro2::TokenStream::from(quote! {
+							let #pat = #ty::from(regs.#reg_name as usize);
+						})
+					},
+
+					// Normal, truncating cast
+					_ => proc_macro2::TokenStream::from(quote! {
+						let #pat = regs.#reg_name as #ty;
+					}),
+				}
 			},
 
 			FnArg::Receiver(_) => panic!("a system call handler cannot have a `self` argument"),

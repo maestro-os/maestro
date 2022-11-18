@@ -6,8 +6,10 @@ use crate::errno::Errno;
 use crate::file::vfs;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::Process;
+use macros::syscall;
 
 /// The implementation of the `unlinkat` syscall.
+#[syscall]
 pub fn unlinkat(dirfd: c_int, pathname: SyscallString, flags: c_int) -> Result<i32, Errno> {
 	let (file_mutex, uid, gid) = {
 		let mutex = Process::get_current().unwrap();

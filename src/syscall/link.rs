@@ -4,8 +4,10 @@ use crate::errno::Errno;
 use crate::file::path::Path;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::Process;
+use macros::syscall;
 
 /// The implementation of the `link` syscall.
+#[syscall]
 pub fn link(oldpath: SyscallString, newpath: SyscallString) -> Result<i32, Errno> {
 	let mutex = Process::get_current().unwrap();
 	let guard = mutex.lock();

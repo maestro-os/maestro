@@ -13,7 +13,11 @@ use macros::syscall;
 
 /// The implementation of the `finit_module` syscall.
 #[syscall]
-pub fn finit_module(fd: c_int, param_values: SyscallString, flags: c_int) -> Result<i32, Errno> {
+pub fn finit_module(fd: c_int, _param_values: SyscallString, _flags: c_int) -> Result<i32, Errno> {
+	if fd < 0 {
+		return Err(errno!(EBADF));
+	}
+
 	let image = {
 		let open_file_mutex = {
 			let proc_mutex = Process::get_current().unwrap();
@@ -24,7 +28,7 @@ pub fn finit_module(fd: c_int, param_values: SyscallString, flags: c_int) -> Res
 				return Err(errno!(EPERM));
 			}
 
-			proc.get_fd(fd)
+			proc.get_fd(fd as _)
 				.ok_or_else(|| errno!(EBADF))?
 				.get_open_file()
 		};

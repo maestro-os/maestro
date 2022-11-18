@@ -13,7 +13,7 @@ pub fn close(fd: c_int) -> Result<i32, Errno> {
 	let guard = mutex.lock();
 	let proc = guard.get_mut();
 
-	if proc.close_fd(fd).is_ok() {
+	if fd >= 0 && proc.close_fd(fd as _).is_ok() {
 		Ok(0)
 	} else {
 		Err(errno!(EBADF))

@@ -11,7 +11,7 @@ use macros::syscall;
 
 /// The implementation of the `rt_sigaction` syscall.
 #[syscall]
-pub fn rt_sigaction(signum: c_int, act: SyscallPtr<SigAction>, oldact: SyscallPtr<SigAction>) -> Result<i32, Errno> {
+pub fn rt_sigaction(signum: c_int, act: SyscallPtr::<SigAction>, oldact: SyscallPtr::<SigAction>) -> Result<i32, Errno> {
 	let signal = Signal::from_id(signum as _)?;
 
 	let mutex = Process::get_current().unwrap();

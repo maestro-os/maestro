@@ -10,6 +10,7 @@ use crate::process::pid::Pid;
 use crate::process::signal::Signal;
 use crate::process::state::State;
 use crate::process::Process;
+use macros::syscall;
 
 /// Tries to kill the process with PID `pid` with the signal `sig`.
 /// If `sig` is None, the function doesn't send a signal, but still checks if
@@ -127,7 +128,8 @@ fn send_signal(pid: i32, sig: Option<Signal>) -> Result<(), Errno> {
 }
 
 /// The implementation of the `kill` syscall.
-pub fn kill(pid: Pid, sig: c_int) -> Result<i32, Errno> {
+#[syscall]
+pub fn kill(pid: c_int, sig: c_int) -> Result<i32, Errno> {
 	if sig < 0 {
 		return Err(errno!(EINVAL));
 	}

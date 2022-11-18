@@ -25,8 +25,8 @@ const CMD_SUSPEND: u32 = 3;
 
 /// The implementation of the `reboot` syscall.
 #[syscall]
-pub fn reboot(magic: c_int, magic2: c_int, cmd: c_int, arg: c_void) -> Result<i32, Errno> {
-	if magic != MAGIC || magic2 != MAGIC2 {
+pub fn reboot(magic: c_int, magic2: c_int, cmd: c_int, _arg: *const c_void) -> Result<i32, Errno> {
+	if (magic as u32) != MAGIC || (magic2 as u32) != MAGIC2 {
 		return Err(errno!(EINVAL));
 	}
 
@@ -39,7 +39,7 @@ pub fn reboot(magic: c_int, magic2: c_int, cmd: c_int, arg: c_void) -> Result<i3
 		}
 	}
 
-	match cmd {
+	match cmd as u32 {
 		CMD_POWEROFF => {
 			crate::println!("Power down...");
 

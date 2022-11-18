@@ -7,8 +7,10 @@ use crate::file::FileType;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::Process;
 use crate::types::c_int;
+use macros::syscall;
 
 /// The implementation of the `linkat` system call.
+#[syscall]
 pub fn linkat(olddirfd: c_int, oldpath: SyscallString, newdirfd: c_int, newpath: SyscallString, flags: c_int) -> Result<i32, Errno> {
 	let follow_links = flags & access::AT_SYMLINK_NOFOLLOW == 0;
 

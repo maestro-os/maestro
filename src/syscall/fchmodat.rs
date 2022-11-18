@@ -37,7 +37,7 @@ pub fn fchmodat(dirfd: c_int, pathname: SyscallString, mode: i32, _flags: c_int)
 		return Err(errno!(EPERM));
 	}
 
-	file.set_permissions(mode);
+	file.set_permissions(mode as _);
 	file.sync()?;
 
 	Ok(0)

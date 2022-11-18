@@ -14,7 +14,7 @@ use macros::syscall;
 
 /// The implementation of the `socketpair` syscall.
 #[syscall]
-pub fn socketpair(domain: c_int, r#type: c_int, protocol: c_int, sv: SyscallPtr<[c_int; 2]>) -> Result<i32, Errno> {
+pub fn socketpair(domain: c_int, r#type: c_int, protocol: c_int, sv: SyscallPtr::<[c_int; 2]>) -> Result<i32, Errno> {
 	let mutex = Process::get_current().unwrap();
 	let guard = mutex.lock();
 	let proc = guard.get_mut();

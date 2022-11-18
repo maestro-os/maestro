@@ -12,7 +12,7 @@ use macros::syscall;
 
 /// The implementation of the `init_module` syscall.
 #[syscall]
-pub fn init_module(module_image: SyscallSlice<u8>, len: c_ulong, param_values: SyscallString) -> Result<i32, Errno> {
+pub fn init_module(module_image: SyscallSlice::<u8>, len: c_ulong, _param_values: SyscallString) -> Result<i32, Errno> {
 	let module = {
 		let proc_mutex = Process::get_current().unwrap();
 		let proc_guard = proc_mutex.lock();

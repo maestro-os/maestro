@@ -6,7 +6,7 @@ use macros::syscall;
 
 /// The implementation of the `setuid` syscall.
 #[syscall]
-pub fn setuid(uid: Uid) -> Result<i32, Errno> {
+pub fn setuid(_uid: Uid) -> Result<i32, Errno> {
 	// TODO
 	todo!();
 }

@@ -18,7 +18,7 @@ const SIG_SETMASK: i32 = 2;
 // TODO Use SigSet in crate::process::signal
 /// The implementation of the `rt_sigprocmask` syscall.
 #[syscall]
-pub fn rt_sigprocmask(how: c_int, set: SyscallSlice<u8>, oldset: SyscallSlice<u8>, sigsetsize: usize) -> Result<i32, Errno> {
+pub fn rt_sigprocmask(how: c_int, set: SyscallSlice::<u8>, oldset: SyscallSlice::<u8>, sigsetsize: usize) -> Result<i32, Errno> {
 	let mutex = Process::get_current().unwrap();
 	let guard = mutex.lock();
 	let proc = guard.get_mut();

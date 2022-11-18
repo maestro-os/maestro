@@ -80,7 +80,7 @@ struct Statx {
 
 /// The implementation of the `statx` syscall.
 #[syscall]
-pub fn statx(dirfd: c_int, pathname: SyscallString, flags: c_int, _mask: c_uint, statxbuff: SyscallPtr<Statx>) -> Result<i32, Errno> {
+pub fn statx(dirfd: c_int, pathname: SyscallString, flags: c_int, _mask: c_uint, statxbuff: SyscallPtr::<Statx>) -> Result<i32, Errno> {
 	if pathname.is_null() || statxbuff.is_null() {
 		return Err(errno!(EINVAL));
 	}

@@ -15,7 +15,7 @@ const GRND_NONBLOCK: u32 = 1;
 
 /// Implementation of the `getrandom` syscall.
 #[syscall]
-pub fn getrandom(buf: SyscallSlice<u8>, buflen: usize, flags: c_uint) -> Result<i32, Errno> {
+pub fn getrandom(buf: SyscallSlice::<u8>, buflen: usize, flags: c_uint) -> Result<i32, Errno> {
 	// Getting randomness source
 	let random_source_mutex = match flags & GRND_RANDOM != 0 {
 		// Using random

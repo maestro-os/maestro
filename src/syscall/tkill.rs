@@ -6,8 +6,10 @@ use crate::errno::Errno;
 use crate::process::pid::Pid;
 use crate::process::signal::Signal;
 use crate::process::Process;
+use macros::syscall;
 
 /// The implementation of the `tkill` syscall.
+#[syscall]
 pub fn tkill(tid: Pid, sig: c_int) -> Result<i32, Errno> {
 	if sig < 0 {
 		return Err(errno!(EINVAL));

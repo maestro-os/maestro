@@ -6,7 +6,7 @@ use macros::syscall;
 
 /// The implementation of the `setgid` syscall.
 #[syscall]
-pub fn setgid(gid: Gid) -> Result<i32, Errno> {
+pub fn setgid(_gid: Gid) -> Result<i32, Errno> {
 	// TODO
 	todo!();
 }

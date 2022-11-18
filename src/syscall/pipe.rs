@@ -12,7 +12,7 @@ use macros::syscall;
 
 /// The implementation of the `pipe` syscall.
 #[syscall]
-pub fn pipe(pipefd: SyscallPtr<[c_int; 2]>) -> Result<i32, Errno> {
+pub fn pipe(pipefd: SyscallPtr::<[c_int; 2]>) -> Result<i32, Errno> {
 	let mutex = Process::get_current().unwrap();
 	let guard = mutex.lock();
 	let proc = guard.get_mut();

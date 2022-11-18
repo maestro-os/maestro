@@ -124,6 +124,6 @@ pub fn do_writev(
 
 /// The implementation of the `writev` syscall.
 #[syscall]
-pub fn writev(fd: c_int, iov: SyscallSlice<IOVec>, iovcnt: c_int) -> Result<i32, Errno> {
+pub fn writev(fd: c_int, iov: SyscallSlice::<IOVec>, iovcnt: c_int) -> Result<i32, Errno> {
 	do_writev(fd, iov, iovcnt, None, None)
 }

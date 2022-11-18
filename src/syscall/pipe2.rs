@@ -9,9 +9,11 @@ use crate::file::pipe::PipeBuffer;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::Process;
 use crate::util::ptr::SharedPtr;
+use macros::syscall;
 
 /// The implementation of the `pipe2` syscall.
-pub fn pipe2(pipefd: SyscallPtr<[c_int; 2]>, flags: c_int) -> Result<i32, Errno> {
+#[syscall]
+pub fn pipe2(pipefd: SyscallPtr::<[c_int; 2]>, flags: c_int) -> Result<i32, Errno> {
 	let accepted_flags = open_file::O_CLOEXEC | open_file::O_DIRECT | open_file::O_NONBLOCK;
 	if flags & !accepted_flags != 0 {
 		return Err(errno!(EINVAL));

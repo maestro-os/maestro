@@ -1,13 +1,13 @@
 //! The `getdents64` system call allows to get the list of entries in a given
 //! directory.
 
+use core::ffi::c_void;
+use crate::process::mem_space::ptr::SyscallSlice;
 use core::ffi::c_int;
 use crate::errno::Errno;
 use crate::file::open_file::FDTarget;
 use crate::file::FileContent;
-use crate::process::mem_space::ptr::SyscallSlice;
 use crate::process::Process;
-use core::ffi::c_void;
 use core::mem::size_of;
 use core::ptr;
 use macros::syscall;
@@ -29,7 +29,7 @@ struct LinuxDirent64 {
 
 /// The implementation of the `getdents64` syscall.
 #[syscall]
-pub fn getdents64(fd: c_int, dirp: SyscallSlice<c_void>, count: usize) -> Result<i32, Errno> {
+pub fn getdents64(fd: c_int, dirp: SyscallSlice::<c_void>, count: usize) -> Result<i32, Errno> {
 	if fd < 0 {
 		return Err(errno!(EBADF));
 	}

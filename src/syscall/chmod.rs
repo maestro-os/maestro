@@ -43,7 +43,7 @@ pub fn chmod(pathname: SyscallString, mode: c_int) -> Result<i32, Errno> {
 		return Err(errno!(EPERM));
 	}
 
-	file.set_permissions(mode);
+	file.set_permissions(mode as _);
 	file.sync()?;
 
 	Ok(0)

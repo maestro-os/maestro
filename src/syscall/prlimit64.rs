@@ -61,7 +61,7 @@ struct RLimit {
 // TODO Check args types
 /// The implementation of the `prlimit64` syscall.
 #[syscall]
-pub fn prlimit64(pid: Pid, resource: c_int, _new_limit: SyscallPtr<RLimit>, _old_limit: SyscallPtr<RLimit>) -> Result<i32, Errno> {
+pub fn prlimit64(pid: Pid, resource: c_int, _new_limit: SyscallPtr::<RLimit>, _old_limit: SyscallPtr::<RLimit>) -> Result<i32, Errno> {
 	// The target process. If None, the current process is the target
 	let _target_proc = if pid == 0 {
 		None

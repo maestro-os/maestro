@@ -14,9 +14,11 @@ use crate::process::mem_space::ptr::SyscallString;
 use crate::process::Process;
 use crate::util::FailableClone;
 use core::ffi::c_void;
+use macros::syscall;
 
 /// The implementation of the `mount` syscall.
-pub fn mount(source: SyscallString, target: SyscallString, filesystemtype: SyscallString, mountflags: c_ulong, _data: SyscallPtr<c_void>) -> Result<i32, Errno> {
+#[syscall]
+pub fn mount(source: SyscallString, target: SyscallString, filesystemtype: SyscallString, mountflags: c_ulong, _data: SyscallPtr::<c_void>) -> Result<i32, Errno> {
 	let (mount_source, fs_type, target_path) = {
 		// Getting the process
 		let mutex = Process::get_current().unwrap();

@@ -1,7 +1,6 @@
 //! The `wait4` system call waits for a process to change state.
 
 use core::ffi::c_int;
-use crate::process::pid::Pid;
 use super::waitpid;
 use crate::errno::Errno;
 use crate::process::mem_space::ptr::SyscallPtr;
@@ -10,7 +9,7 @@ use macros::syscall;
 
 /// The implementation of the `wait4` syscall.
 #[syscall]
-pub fn wait4(pid: Pid, wstatus: SyscallPtr<c_int>, options: c_int, rusage: SyscallPtr<RUsage>) -> Result<i32, Errno> {
+pub fn wait4(pid: c_int, wstatus: SyscallPtr::<c_int>, options: c_int, rusage: SyscallPtr::<RUsage>) -> Result<i32, Errno> {
 	if rusage.is_null() {
 		waitpid::do_waitpid(regs, pid, wstatus, options | waitpid::WEXITED, None)
 	} else {
