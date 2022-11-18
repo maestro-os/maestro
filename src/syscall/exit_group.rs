@@ -1,8 +1,8 @@
 //! The exit_group syscall allows to terminate every processes in the current
 //! thread group.
 
-use core::ffi::c_int;
 use crate::errno::Errno;
+use core::ffi::c_int;
 use macros::syscall;
 
 /// The implementation of the `exit_group` syscall.

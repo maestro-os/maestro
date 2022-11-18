@@ -1,7 +1,6 @@
 //! This module implements the `kill` system call, which allows to send a signal
 //! to a process.
 
-use core::ffi::c_int;
 use super::util;
 use crate::errno;
 use crate::errno::Errno;
@@ -10,6 +9,7 @@ use crate::process::pid::Pid;
 use crate::process::signal::Signal;
 use crate::process::state::State;
 use crate::process::Process;
+use core::ffi::c_int;
 use macros::syscall;
 
 /// Tries to kill the process with PID `pid` with the signal `sig`.

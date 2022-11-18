@@ -11,7 +11,14 @@ use macros::syscall;
 
 /// The implementation of the `pselect6` syscall.
 #[syscall]
-pub fn pselect6(nfds: c_int, readfds: SyscallPtr::<FDSet>, writefds: SyscallPtr::<FDSet>, exceptfds: SyscallPtr::<FDSet>, timeout: SyscallPtr::<Timespec>, sigmask: SyscallSlice::<u8>) -> Result<i32, Errno> {
+pub fn pselect6(
+	nfds: c_int,
+	readfds: SyscallPtr<FDSet>,
+	writefds: SyscallPtr<FDSet>,
+	exceptfds: SyscallPtr<FDSet>,
+	timeout: SyscallPtr<Timespec>,
+	sigmask: SyscallSlice<u8>,
+) -> Result<i32, Errno> {
 	do_select(
 		nfds as _,
 		readfds,

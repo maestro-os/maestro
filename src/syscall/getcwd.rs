@@ -9,7 +9,7 @@ use macros::syscall;
 
 /// The implementation of the `getcwd` syscall.
 #[syscall]
-pub fn getcwd(buf: SyscallSlice::<u8>, size: usize) -> Result<i32, Errno> {
+pub fn getcwd(buf: SyscallSlice<u8>, size: usize) -> Result<i32, Errno> {
 	if size == 0 {
 		return Err(errno!(EINVAL));
 	}

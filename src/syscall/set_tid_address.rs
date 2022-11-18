@@ -1,16 +1,16 @@
 //! The `set_tid_address` system call sets the `clear_child_tid` attribute with
 //! the given pointer.
 
-use core::ffi::c_int;
 use crate::errno::Errno;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::Process;
+use core::ffi::c_int;
 use core::ptr::NonNull;
 use macros::syscall;
 
 /// The implementation of the `set_tid_address` syscall.
 #[syscall]
-pub fn set_tid_address(tidptr: SyscallPtr::<c_int>) -> Result<i32, Errno> {
+pub fn set_tid_address(tidptr: SyscallPtr<c_int>) -> Result<i32, Errno> {
 	// Getting process
 	let mutex = Process::get_current().unwrap();
 	let guard = mutex.lock();

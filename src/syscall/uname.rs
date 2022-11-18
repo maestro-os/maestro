@@ -24,7 +24,7 @@ struct Utsname {
 
 /// The implementation of the `uname` syscall.
 #[syscall]
-pub fn uname(buf: SyscallPtr::<Utsname>) -> Result<i32, Errno> {
+pub fn uname(buf: SyscallPtr<Utsname>) -> Result<i32, Errno> {
 	let mutex = Process::get_current().unwrap();
 	let guard = mutex.lock();
 	let proc = guard.get_mut();

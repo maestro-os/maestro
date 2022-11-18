@@ -1,10 +1,10 @@
 //! The `fchmod` system call allows change the permissions on a file.
 
-use core::ffi::c_int;
 use crate::errno::Errno;
 use crate::file;
 use crate::file::open_file::FDTarget;
 use crate::process::Process;
+use core::ffi::c_int;
 use macros::syscall;
 
 // TODO Check args type

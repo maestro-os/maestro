@@ -1,25 +1,18 @@
 //! This module implements the macro used to declare a system call.
 
+use proc_macro::TokenStream;
 use proc_macro2::Ident;
 use proc_macro2::Span;
-use proc_macro::TokenStream;
 use quote::quote;
+use syn::parse_macro_input;
 use syn::FnArg;
 use syn::ItemFn;
 use syn::Path;
 use syn::Type;
 use syn::TypePath;
-use syn::parse_macro_input;
 
 /// The list of register for each argument, in order.
-const REGS: [&'static str; 6] = [
-	"ebx",
-	"ecx",
-	"edx",
-	"esi",
-	"edi",
-	"ebp"
-];
+const REGS: [&'static str; 6] = ["ebx", "ecx", "edx", "esi", "edi", "ebp"];
 
 // TODO Add support for mutable arguments
 
@@ -38,45 +31,54 @@ pub fn syscall(input: TokenStream) -> TokenStream {
 		panic!("a system call handler cannot have variadic arguments");
 	}
 	if input.sig.inputs.len() > REGS.len() {
-		panic!("too many arguments for the current target (max: {})", REGS.len());
+		panic!(
+			"too many arguments for the current target (max: {})",
+			REGS.len()
+		);
 	}
 
 	let mut args = proc_macro2::TokenStream::new();
-	args.extend(input.sig.inputs.iter()
-		.enumerate()
-		.map(|(i, arg)| match arg {
-			FnArg::Typed(typed) => {
-				let pat = typed.pat.clone();
-				let ty = typed.ty.clone();
+	args.extend(
+		input
+			.sig
+			.inputs
+			.iter()
+			.enumerate()
+			.map(|(i, arg)| match arg {
+				FnArg::Typed(typed) => {
+					let pat = typed.pat.clone();
+					let ty = typed.ty.clone();
 
-				let reg_name = Ident::new(REGS[i], Span::call_site());
+					let reg_name = Ident::new(REGS[i], Span::call_site());
 
-				// TODO make a cleaner check
-				match *ty {
-					// Special cast for pointers
-					Type::Path(TypePath {
-						path: Path {
-							ref segments,
+					// TODO make a cleaner check
+					match *ty {
+						// Special cast for pointers
+						Type::Path(TypePath {
+							path: Path {
+								ref segments, ..
+							},
 							..
-						},
-						..
-					}) if segments.last()
-						.map(|s| s.ident.to_string().starts_with("Syscall"))
-						.unwrap_or(false) => {
-						proc_macro2::TokenStream::from(quote! {
-							let #pat = #ty::from(regs.#reg_name as usize);
-						})
-					},
+						}) if segments
+							.last()
+							.map(|s| s.ident.to_string().starts_with("Syscall"))
+							.unwrap_or(false) =>
+						{
+							proc_macro2::TokenStream::from(quote! {
+								let #pat = #ty::from(regs.#reg_name as usize);
+							})
+						}
 
-					// Normal, truncating cast
-					_ => proc_macro2::TokenStream::from(quote! {
-						let #pat = regs.#reg_name as #ty;
-					}),
+						// Normal, truncating cast
+						_ => proc_macro2::TokenStream::from(quote! {
+							let #pat = regs.#reg_name as #ty;
+						}),
+					}
 				}
-			},
 
-			FnArg::Receiver(_) => panic!("a system call handler cannot have a `self` argument"),
-		}));
+				FnArg::Receiver(_) => panic!("a system call handler cannot have a `self` argument"),
+			}),
+	);
 
 	let ident = input.sig.ident;
 	let code = input.block;

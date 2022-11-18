@@ -1,12 +1,12 @@
 //! The `chmod` system call allows change the permissions on a file.
 
-use core::ffi::c_int;
 use crate::errno::Errno;
 use crate::file;
 use crate::file::path::Path;
 use crate::file::vfs;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::Process;
+use core::ffi::c_int;
 use macros::syscall;
 
 /// The implementation of the `chmod` syscall.

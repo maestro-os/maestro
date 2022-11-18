@@ -1,11 +1,11 @@
 //! The `unlinkat` syscall allows to unlink a file.
 
-use core::ffi::c_int;
 use super::util;
 use crate::errno::Errno;
 use crate::file::vfs;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::Process;
+use core::ffi::c_int;
 use macros::syscall;
 
 /// The implementation of the `unlinkat` syscall.

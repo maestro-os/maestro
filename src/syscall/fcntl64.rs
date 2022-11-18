@@ -1,7 +1,7 @@
 //! The `fcntl64` syscall call allows to manipulate a file descriptor.
 
-use core::ffi::c_int;
 use crate::errno::Errno;
+use core::ffi::c_int;
 use core::ffi::c_void;
 use macros::syscall;
 

@@ -11,7 +11,13 @@ use macros::syscall;
 
 /// The implementation of the `linkat` system call.
 #[syscall]
-pub fn linkat(olddirfd: c_int, oldpath: SyscallString, newdirfd: c_int, newpath: SyscallString, flags: c_int) -> Result<i32, Errno> {
+pub fn linkat(
+	olddirfd: c_int,
+	oldpath: SyscallString,
+	newdirfd: c_int,
+	newpath: SyscallString,
+	flags: c_int,
+) -> Result<i32, Errno> {
 	let follow_links = flags & access::AT_SYMLINK_NOFOLLOW == 0;
 
 	let (old_mutex, new_parent_mutex, new_name, uid, gid) = {

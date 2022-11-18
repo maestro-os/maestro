@@ -1,11 +1,11 @@
 //! The `fcntl` syscall call allows to manipulate a file descriptor.
 
-use core::ffi::c_int;
 use crate::errno::Errno;
 use crate::file::fd::NewFDConstraint;
 use crate::file::open_file::FDTarget;
 use crate::file::FileContent;
 use crate::process::Process;
+use core::ffi::c_int;
 use core::ffi::c_void;
 use macros::syscall;
 

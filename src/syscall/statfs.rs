@@ -12,7 +12,7 @@ use macros::syscall;
 
 /// The implementation of the `statfs` syscall.
 #[syscall]
-pub fn statfs(path: SyscallString, buf: SyscallPtr::<Statfs>) -> Result<i32, Errno> {
+pub fn statfs(path: SyscallString, buf: SyscallPtr<Statfs>) -> Result<i32, Errno> {
 	let (path, uid, gid) = {
 		let mutex = Process::get_current().unwrap();
 		let guard = mutex.lock();

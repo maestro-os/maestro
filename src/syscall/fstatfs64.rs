@@ -11,7 +11,7 @@ use macros::syscall;
 
 /// The implementation of the `fstatfs64` syscall.
 #[syscall]
-pub fn fstatfs64(fd: c_int, _sz: usize, buf: SyscallPtr::<Statfs>) -> Result<i32, Errno> {
+pub fn fstatfs64(fd: c_int, _sz: usize, buf: SyscallPtr<Statfs>) -> Result<i32, Errno> {
 	// TODO use `sz`
 
 	if fd < 0 {

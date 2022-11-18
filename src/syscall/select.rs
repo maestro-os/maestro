@@ -211,6 +211,12 @@ pub fn do_select<T: TimeUnit>(
 
 /// The implementation of the `select` system call.
 #[syscall]
-pub fn select(nfds: c_int, readfds: SyscallPtr::<FDSet>, writefds: SyscallPtr::<FDSet>, exceptfds: SyscallPtr::<FDSet>, timeout: SyscallPtr::<Timeval>) -> Result<i32, Errno> {
+pub fn select(
+	nfds: c_int,
+	readfds: SyscallPtr<FDSet>,
+	writefds: SyscallPtr<FDSet>,
+	exceptfds: SyscallPtr<FDSet>,
+	timeout: SyscallPtr<Timeval>,
+) -> Result<i32, Errno> {
 	do_select(nfds as _, readfds, writefds, exceptfds, timeout, None)
 }

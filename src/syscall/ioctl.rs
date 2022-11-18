@@ -1,11 +1,11 @@
 //! The ioctl syscall allows to control a device represented by a file
 //! descriptor.
 
-use core::ffi::c_ulong;
-use core::ffi::c_int;
 use crate::errno;
 use crate::errno::Errno;
 use crate::process::Process;
+use core::ffi::c_int;
+use core::ffi::c_ulong;
 use core::ffi::c_void;
 use macros::syscall;
 

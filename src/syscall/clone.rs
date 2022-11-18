@@ -62,7 +62,13 @@ const CLONE_NEWNET: i32 = 0x40000000;
 // TODO Check args types
 /// The implementation of the `clone` syscall.
 #[syscall]
-pub fn clone(flags: i32, stack: *mut c_void, _parent_tid: SyscallPtr::<i32>, tls: i32, _child_tid: SyscallPtr::<i32>) -> Result<i32, Errno> {
+pub fn clone(
+	flags: i32,
+	stack: *mut c_void,
+	_parent_tid: SyscallPtr<i32>,
+	tls: i32,
+	_child_tid: SyscallPtr<i32>,
+) -> Result<i32, Errno> {
 	let new_tid = {
 		// The current process
 		let curr_mutex = Process::get_current().unwrap();

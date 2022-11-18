@@ -1,8 +1,8 @@
 //! The `madvise` system call gives advices to the kernel about the usage of
 //! memory in order to allow optimizations.
 
-use core::ffi::c_int;
 use crate::errno::Errno;
+use core::ffi::c_int;
 use core::ffi::c_void;
 use macros::syscall;
 

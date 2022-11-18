@@ -1,7 +1,6 @@
 //! This module implements the `write` system call, which allows to write data
 //! to a file.
 
-use core::ffi::c_int;
 use crate::errno;
 use crate::errno::Errno;
 use crate::file::open_file::O_NONBLOCK;
@@ -11,13 +10,14 @@ use crate::process::Process;
 use crate::syscall::Signal;
 use crate::util::io::IO;
 use core::cmp::min;
+use core::ffi::c_int;
 use macros::syscall;
 
 // TODO O_ASYNC
 
 /// The implementation of the `write` syscall.
 #[syscall]
-pub fn write(fd: c_int, buf: SyscallSlice::<u8>, count: usize) -> Result<i32, Errno> {
+pub fn write(fd: c_int, buf: SyscallSlice<u8>, count: usize) -> Result<i32, Errno> {
 	if fd < 0 {
 		return Err(errno!(EBADF));
 	}

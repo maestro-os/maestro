@@ -15,7 +15,7 @@ use macros::syscall;
 // TODO Check args types
 /// The implementation of the `statfs64` syscall.
 #[syscall]
-pub fn statfs64(path: SyscallString, _sz: usize, buf: SyscallPtr::<Statfs>) -> Result<i32, Errno> {
+pub fn statfs64(path: SyscallString, _sz: usize, buf: SyscallPtr<Statfs>) -> Result<i32, Errno> {
 	// TODO Use `sz`
 
 	let (path, uid, gid) = {

@@ -1,17 +1,22 @@
 //! The `fchmodat` system call allows change the permissions on a file.
 
-use core::ffi::c_int;
+use super::util;
 use crate::errno::Errno;
 use crate::file;
-use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallString;
+use crate::process::Process;
+use core::ffi::c_int;
 use macros::syscall;
-use super::util;
 
 // TODO Check args type
 /// The implementation of the `fchmodat` syscall.
 #[syscall]
-pub fn fchmodat(dirfd: c_int, pathname: SyscallString, mode: i32, _flags: c_int) -> Result<i32, Errno> {
+pub fn fchmodat(
+	dirfd: c_int,
+	pathname: SyscallString,
+	mode: i32,
+	_flags: c_int,
+) -> Result<i32, Errno> {
 	let (file_mutex, uid) = {
 		let mutex = Process::get_current().unwrap();
 		let guard = mutex.lock();

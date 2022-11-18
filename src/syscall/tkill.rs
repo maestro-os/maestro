@@ -1,11 +1,11 @@
 //! The tkill system call allows to send a signal to a specific thread.
 
-use core::ffi::c_int;
 use crate::errno;
 use crate::errno::Errno;
 use crate::process::pid::Pid;
 use crate::process::signal::Signal;
 use crate::process::Process;
+use core::ffi::c_int;
 use macros::syscall;
 
 /// The implementation of the `tkill` syscall.

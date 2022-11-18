@@ -1,10 +1,10 @@
 //! The `prlimit64` syscall returns the limit for a given resource.
 
-use core::ffi::c_int;
 use crate::errno::Errno;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::pid::Pid;
 use crate::process::Process;
+use core::ffi::c_int;
 use macros::syscall;
 
 /// The amount of seconds of CPU time the process can consume.
@@ -61,7 +61,12 @@ struct RLimit {
 // TODO Check args types
 /// The implementation of the `prlimit64` syscall.
 #[syscall]
-pub fn prlimit64(pid: Pid, resource: c_int, _new_limit: SyscallPtr::<RLimit>, _old_limit: SyscallPtr::<RLimit>) -> Result<i32, Errno> {
+pub fn prlimit64(
+	pid: Pid,
+	resource: c_int,
+	_new_limit: SyscallPtr<RLimit>,
+	_old_limit: SyscallPtr<RLimit>,
+) -> Result<i32, Errno> {
 	// The target process. If None, the current process is the target
 	let _target_proc = if pid == 0 {
 		None

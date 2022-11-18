@@ -53,7 +53,7 @@ pub fn get_entry<'a>(
 
 /// The implementation of the `set_thread_area` syscall.
 #[syscall]
-pub fn set_thread_area(u_info: SyscallPtr::<UserDesc>) -> Result<i32, Errno> {
+pub fn set_thread_area(u_info: SyscallPtr<UserDesc>) -> Result<i32, Errno> {
 	let mutex = Process::get_current().unwrap();
 	let guard = mutex.lock();
 	let proc = guard.get_mut();

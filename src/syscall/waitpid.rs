@@ -1,6 +1,5 @@
 //! The `waitpid` system call allows to wait for an event from a child process.
 
-use core::ffi::c_int;
 use crate::errno;
 use crate::errno::Errno;
 use crate::process;
@@ -12,6 +11,7 @@ use crate::process::state;
 use crate::process::state::State;
 use crate::process::Process;
 use crate::util::boxed::Box;
+use core::ffi::c_int;
 use macros::syscall;
 
 /// Wait flag. Returns immediately if no child has exited.
@@ -215,6 +215,6 @@ pub fn do_waitpid(
 
 /// The implementation of the `waitpid` syscall.
 #[syscall]
-pub fn waitpid(pid: c_int, wstatus: SyscallPtr::<c_int>, options: c_int) -> Result<i32, Errno> {
+pub fn waitpid(pid: c_int, wstatus: SyscallPtr<c_int>, options: c_int) -> Result<i32, Errno> {
 	do_waitpid(regs, pid, wstatus, options | WEXITED, None)
 }

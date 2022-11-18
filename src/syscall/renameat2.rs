@@ -18,7 +18,13 @@ const RENAME_WHITEOUT: c_int = 4;
 
 /// The implementation of the `renameat2` system call.
 #[syscall]
-pub fn renameat2(olddirfd: c_int, oldpath: SyscallString, newdirfd: c_int, newpath: SyscallString, _flags: c_int) -> Result<i32, Errno> {
+pub fn renameat2(
+	olddirfd: c_int,
+	oldpath: SyscallString,
+	newdirfd: c_int,
+	newpath: SyscallString,
+	_flags: c_int,
+) -> Result<i32, Errno> {
 	let (uid, gid, old_mutex, new_parent_mutex, new_name) = {
 		let proc_mutex = Process::get_current().unwrap();
 		let proc_guard = proc_mutex.lock();

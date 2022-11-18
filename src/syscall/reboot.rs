@@ -1,12 +1,12 @@
 //! The `reboot` system call allows the superuser to power off, reboot, halt or
 //! suspend the system.
 
-use core::ffi::c_int;
-use core::ffi::c_void;
 use crate::errno;
 use crate::errno::Errno;
 use crate::process::Process;
 use core::arch::asm;
+use core::ffi::c_int;
+use core::ffi::c_void;
 use macros::syscall;
 
 /// First magic number.

@@ -148,7 +148,11 @@ fn build_image(
 
 /// The implementation of the `execve` syscall.
 #[syscall]
-pub fn execve(pathname: SyscallString, argv: *const *const u8, envp: *const *const u8) -> Result<i32, Errno> {
+pub fn execve(
+	pathname: SyscallString,
+	argv: *const *const u8,
+	envp: *const *const u8,
+) -> Result<i32, Errno> {
 	let (mut path, mut argv, envp, uid, gid, euid, egid) = {
 		let proc_mutex = Process::get_current().unwrap();
 		let proc_guard = proc_mutex.lock();

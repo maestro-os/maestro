@@ -9,7 +9,7 @@ use macros::syscall;
 
 /// The implementation of the `sethostname` syscall.
 #[syscall]
-pub fn sethostname(name: SyscallSlice::<u8>, len: usize) -> Result<i32, Errno> {
+pub fn sethostname(name: SyscallSlice<u8>, len: usize) -> Result<i32, Errno> {
 	// Check the size of the hostname is in bounds
 	if len > limits::HOST_NAME_MAX {
 		return Err(errno!(EINVAL));

@@ -1,11 +1,11 @@
 //! The `_llseek` system call repositions the offset of a file descriptor.
 
+use crate::errno::Errno;
+use crate::process::mem_space::ptr::SyscallPtr;
+use crate::process::Process;
+use crate::util::io::IO;
 use core::ffi::c_uint;
 use core::ffi::c_ulong;
-use crate::errno::Errno;
-use crate::process::Process;
-use crate::process::mem_space::ptr::SyscallPtr;
-use crate::util::io::IO;
 use macros::syscall;
 
 /// Sets the offset from the given value.
@@ -17,7 +17,13 @@ const SEEK_END: u32 = 2;
 
 /// The implementation of the `_llseek` syscall.
 #[syscall]
-pub fn _llseek(fd: c_uint, offset_high: c_ulong, offset_low: c_ulong, result: SyscallPtr::<u64>, whence: c_uint) -> Result<i32, Errno> {
+pub fn _llseek(
+	fd: c_uint,
+	offset_high: c_ulong,
+	offset_low: c_ulong,
+	result: SyscallPtr<u64>,
+	whence: c_uint,
+) -> Result<i32, Errno> {
 	let (mem_space, open_file_mutex) = {
 		let mutex = Process::get_current().unwrap();
 		let guard = mutex.lock();

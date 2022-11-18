@@ -14,7 +14,11 @@ use macros::syscall;
 
 /// The implementation of the `readlink` syscall.
 #[syscall]
-pub fn readlink(pathname: SyscallString, buf: SyscallSlice::<u8>, bufsiz: usize) -> Result<i32, Errno> {
+pub fn readlink(
+	pathname: SyscallString,
+	buf: SyscallSlice<u8>,
+	bufsiz: usize,
+) -> Result<i32, Errno> {
 	let (path, uid, gid) = {
 		// Getting the process
 		let mutex = Process::get_current().unwrap();

@@ -10,7 +10,7 @@ use macros::syscall;
 // TODO Check first arg
 /// The implementation of the `clock_gettime` syscall.
 #[syscall]
-pub fn clock_gettime(_clock_id: i32, tp: SyscallPtr::<Timespec>) -> Result<i32, Errno> {
+pub fn clock_gettime(_clock_id: i32, tp: SyscallPtr<Timespec>) -> Result<i32, Errno> {
 	// TODO Get clock according to param
 	let clk = b"TODO";
 	let curr_time = time::get_struct::<Timespec>(clk, true).ok_or(errno!(EINVAL))?;

@@ -1,7 +1,6 @@
 //! The open system call allows a process to open a file and get a file
 //! descriptor.
 
-use core::ffi::c_int;
 use crate::errno;
 use crate::errno::Errno;
 use crate::file;
@@ -19,6 +18,7 @@ use crate::process::mem_space::ptr::SyscallString;
 use crate::process::Process;
 use crate::util::ptr::SharedPtr;
 use crate::util::FailableClone;
+use core::ffi::c_int;
 use macros::syscall;
 
 /// Mask of status flags to be kept by an open file description.

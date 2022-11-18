@@ -1,7 +1,7 @@
 //! The `fadvise64_64` syscall gives hints to the kernel about file accesses.
 
-use core::ffi::c_int;
 use crate::errno::Errno;
+use core::ffi::c_int;
 use macros::syscall;
 
 // TODO Check args type

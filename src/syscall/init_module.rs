@@ -1,18 +1,22 @@
 //! The `init_module` system call allows to load a module on the kernel.
 
-use crate::process::mem_space::ptr::SyscallString;
-use core::ffi::c_ulong;
 use crate::errno;
 use crate::errno::Errno;
 use crate::module;
 use crate::module::Module;
 use crate::process::mem_space::ptr::SyscallSlice;
+use crate::process::mem_space::ptr::SyscallString;
 use crate::process::Process;
+use core::ffi::c_ulong;
 use macros::syscall;
 
 /// The implementation of the `init_module` syscall.
 #[syscall]
-pub fn init_module(module_image: SyscallSlice::<u8>, len: c_ulong, _param_values: SyscallString) -> Result<i32, Errno> {
+pub fn init_module(
+	module_image: SyscallSlice<u8>,
+	len: c_ulong,
+	_param_values: SyscallString,
+) -> Result<i32, Errno> {
 	let module = {
 		let proc_mutex = Process::get_current().unwrap();
 		let proc_guard = proc_mutex.lock();
