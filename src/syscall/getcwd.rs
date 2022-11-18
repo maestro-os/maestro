@@ -4,14 +4,12 @@
 use crate::errno;
 use crate::errno::Errno;
 use crate::process::mem_space::ptr::SyscallSlice;
-use crate::process::regs::Regs;
 use crate::process::Process;
+use macros::syscall;
 
 /// The implementation of the `getcwd` syscall.
-pub fn getcwd(regs: &Regs) -> Result<i32, Errno> {
-	let buf: SyscallSlice<u8> = (regs.ebx as usize).into();
-	let size = regs.ecx as u32;
-
+#[syscall]
+pub fn getcwd(buf: SyscallSlice<u8>, size: usize) -> Result<i32, Errno> {
 	if size == 0 {
 		return Err(errno!(EINVAL));
 	}

@@ -1,16 +1,16 @@
 //! The `fchmod` system call allows change the permissions on a file.
 
+use core::ffi::c_int;
 use crate::errno::Errno;
 use crate::file;
 use crate::file::open_file::FDTarget;
-use crate::process::regs::Regs;
 use crate::process::Process;
+use macros::syscall;
 
+// TODO Check args type
 /// The implementation of the `fchmod` syscall.
-pub fn fchmod(regs: &Regs) -> Result<i32, Errno> {
-	let fd = regs.ebx as i32;
-	let mode = regs.ecx as file::Mode;
-
+#[syscall]
+pub fn fchmod(fd: c_int, mode: i32) -> Result<i32, Errno> {
 	if fd < 0 {
 		return Err(errno!(EBADF));
 	}

@@ -1,11 +1,13 @@
 //! The ioctl syscall allows to control a device represented by a file
 //! descriptor.
 
+use core::ffi::c_ulong;
+use core::ffi::c_int;
 use crate::errno;
 use crate::errno::Errno;
-use crate::process::regs::Regs;
 use crate::process::Process;
 use core::ffi::c_void;
+use macros::syscall;
 
 // ioctl requests: TTY
 
@@ -32,11 +34,8 @@ pub const TIOCSWINSZ: u32 = 0x00005414;
 pub const FIONREAD: u32 = 0x0000541b;
 
 /// The implementation of the `ioctl` syscall.
-pub fn ioctl(regs: &Regs) -> Result<i32, Errno> {
-	let fd = regs.ebx as i32;
-	let request = regs.ecx as u32;
-	let argp = regs.edx as *const c_void;
-
+#[syscall]
+pub fn ioctl(fd: c_int, request: c_ulong, argp: *const c_void) -> Result<i32, Errno> {
 	//crate::println!("ioctl: {} {:x} {:p}", fd, request, argp); // TODO rm
 
 	// Getting the memory space and file

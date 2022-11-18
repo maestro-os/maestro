@@ -4,14 +4,12 @@ use crate::errno::Errno;
 use crate::file;
 use crate::limits;
 use crate::process::mem_space::ptr::SyscallSlice;
-use crate::process::regs::Regs;
 use crate::process::Process;
+use macros::syscall;
 
 /// The implementation of the `sethostname` syscall.
-pub fn sethostname(regs: &Regs) -> Result<i32, Errno> {
-	let name: SyscallSlice<u8> = (regs.ebx as usize).into();
-	let len = regs.ecx as usize;
-
+#[syscall]
+pub fn sethostname(name: SyscallSlice<u8>, len: usize) -> Result<i32, Errno> {
 	// Check the size of the hostname is in bounds
 	if len > limits::HOST_NAME_MAX {
 		return Err(errno!(EINVAL));

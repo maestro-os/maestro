@@ -6,10 +6,10 @@ use crate::errno::Errno;
 use crate::gdt;
 use crate::process;
 use crate::process::mem_space::ptr::SyscallPtr;
-use crate::process::regs::Regs;
 use crate::process::user_desc::UserDesc;
 use crate::process::Process;
 use core::mem::size_of;
+use macros::syscall;
 
 /// The index of the first entry for TLS segments in the GDT.
 const TLS_BEGIN_INDEX: usize = gdt::TLS_OFFSET / size_of::<gdt::Entry>();
@@ -52,9 +52,8 @@ pub fn get_entry<'a>(
 }
 
 /// The implementation of the `set_thread_area` syscall.
-pub fn set_thread_area(regs: &Regs) -> Result<i32, Errno> {
-	let u_info: SyscallPtr<UserDesc> = (regs.ebx as usize).into();
-
+#[syscall]
+pub fn set_thread_area(u_info: SyscallPtr<UserDesc>) -> Result<i32, Errno> {
 	let mutex = Process::get_current().unwrap();
 	let guard = mutex.lock();
 	let proc = guard.get_mut();

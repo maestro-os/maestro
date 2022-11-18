@@ -1,14 +1,16 @@
 //! The statx system call returns the extended status of a file.
 
+use core::ffi::c_uint;
+use core::ffi::c_int;
 use super::util;
 use crate::errno::Errno;
 use crate::file::mountpoint::MountSource;
 use crate::file::FileContent;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::mem_space::ptr::SyscallString;
-use crate::process::regs::Regs;
 use crate::process::Process;
 use crate::util::io::IO;
+use macros::syscall;
 
 /// Structure representing a timestamp with the statx syscall.
 #[repr(C)]
@@ -77,13 +79,8 @@ struct Statx {
 }
 
 /// The implementation of the `statx` syscall.
-pub fn statx(regs: &Regs) -> Result<i32, Errno> {
-	let dirfd = regs.ebx as i32;
-	let pathname: SyscallString = (regs.ecx as usize).into();
-	let flags = regs.edx as i32;
-	let _mask = regs.esi as u32;
-	let statxbuff: SyscallPtr<Statx> = (regs.edi as usize).into();
-
+#[syscall]
+pub fn statx(dirfd: c_int, pathname: SyscallString, flags: c_int, _mask: c_uint, statxbuff: SyscallPtr<Statx>) -> Result<i32, Errno> {
 	if pathname.is_null() || statxbuff.is_null() {
 		return Err(errno!(EINVAL));
 	}

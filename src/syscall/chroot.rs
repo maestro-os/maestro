@@ -5,14 +5,13 @@ use crate::errno::Errno;
 use crate::file;
 use crate::file::path::Path;
 use crate::process::mem_space::ptr::SyscallString;
-use crate::process::regs::Regs;
 use crate::process::Process;
 use crate::vfs;
+use macros::syscall;
 
 /// The implementation of the `chroot` syscall.
-pub fn chroot(regs: &Regs) -> Result<i32, Errno> {
-	let path: SyscallString = (regs.ebx as usize).into();
-
+#[syscall]
+pub fn chroot(path: SyscallString) -> Result<i32, Errno> {
 	let proc_mutex = Process::get_current().unwrap();
 	let proc_guard = proc_mutex.lock();
 	let proc = proc_guard.get_mut();

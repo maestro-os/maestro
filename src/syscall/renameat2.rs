@@ -5,9 +5,9 @@ use crate::file;
 use crate::file::vfs;
 use crate::file::FileType;
 use crate::process::mem_space::ptr::SyscallString;
-use crate::process::regs::Regs;
 use crate::process::Process;
 use crate::types::c_int;
+use macros::syscall;
 
 /// Flag: Don't replace new path if it exists. Return an error instead.
 const RENAME_NOREPLACE: c_int = 1;
@@ -17,13 +17,8 @@ const RENAME_EXCHANGE: c_int = 2;
 const RENAME_WHITEOUT: c_int = 4;
 
 /// The implementation of the `renameat2` system call.
-pub fn renameat2(regs: &Regs) -> Result<i32, Errno> {
-	let olddirfd = regs.ebx as c_int;
-	let oldpath: SyscallString = (regs.ecx as usize).into();
-	let newdirfd = regs.edx as c_int;
-	let newpath: SyscallString = (regs.esi as usize).into();
-	let _flags = regs.edi as c_int;
-
+#[syscall]
+pub fn renameat2(olddirfd: c_int, oldpath: SyscallString, newdirfd: c_int, newpath: SyscallString, _flags: c_int) -> Result<i32, Errno> {
 	let (uid, gid, old_mutex, new_parent_mutex, new_name) = {
 		let proc_mutex = Process::get_current().unwrap();
 		let proc_guard = proc_mutex.lock();

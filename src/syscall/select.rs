@@ -5,7 +5,6 @@ use crate::errno::Errno;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::mem_space::ptr::SyscallSlice;
 use crate::process::Process;
-use crate::syscall::Regs;
 use crate::time;
 use crate::time::unit::TimeUnit;
 use crate::time::unit::Timeval;
@@ -14,6 +13,7 @@ use crate::util::io;
 use crate::util::io::IO;
 use core::cmp::min;
 use core::mem::size_of;
+use macros::syscall;
 
 /// The number of file descriptors in FDSet.
 pub const FD_SETSIZE: usize = 1024;
@@ -210,12 +210,7 @@ pub fn do_select<T: TimeUnit>(
 }
 
 /// The implementation of the `select` system call.
-pub fn select(regs: &Regs) -> Result<i32, Errno> {
-	let nfds = regs.ebx as c_int;
-	let readfds: SyscallPtr<FDSet> = (regs.ecx as usize).into();
-	let writefds: SyscallPtr<FDSet> = (regs.edx as usize).into();
-	let exceptfds: SyscallPtr<FDSet> = (regs.esi as usize).into();
-	let timeout: SyscallPtr<Timeval> = (regs.edi as usize).into();
-
+#[syscall]
+pub fn select(nfds: c_int, readfds: SyscallPtr<FDSet>, writefds: SyscallPtr<FDSet>, exceptfds: SyscallPtr<FDSet>, timeout: SyscallPtr<Timeval>) -> Result<i32, Errno> {
 	do_select(nfds as _, readfds, writefds, exceptfds, timeout, None)
 }

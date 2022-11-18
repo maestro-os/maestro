@@ -1,14 +1,14 @@
 //! The `close` system call closes the given file descriptor.
 
+use core::ffi::c_int;
 use crate::errno;
 use crate::errno::Errno;
-use crate::process::regs::Regs;
 use crate::process::Process;
+use macros::syscall;
 
 /// The implementation of the `close` syscall.
-pub fn close(regs: &Regs) -> Result<i32, Errno> {
-	let fd = regs.ebx;
-
+#[syscall]
+pub fn close(fd: c_int) -> Result<i32, Errno> {
 	let mutex = Process::get_current().unwrap();
 	let guard = mutex.lock();
 	let proc = guard.get_mut();

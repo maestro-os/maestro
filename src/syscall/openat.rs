@@ -1,5 +1,6 @@
 //! The `openat` syscall allows to open a file.
 
+use core::ffi::c_int;
 use super::util;
 use crate::errno::Errno;
 use crate::file;
@@ -9,10 +10,10 @@ use crate::file::FileContent;
 use crate::file::FileType;
 use crate::file::Mode;
 use crate::process::mem_space::ptr::SyscallString;
-use crate::process::regs::Regs;
 use crate::process::Process;
 use crate::syscall::openat::open_file::FDTarget;
 use crate::util::ptr::SharedPtr;
+use macros::syscall;
 
 // TODO Implement all flags
 
@@ -57,12 +58,8 @@ fn get_file(
 }
 
 /// The implementation of the `openat` syscall.
-pub fn openat(regs: &Regs) -> Result<i32, Errno> {
-	let dirfd = regs.ebx as i32;
-	let pathname: SyscallString = (regs.ecx as usize).into();
-	let flags = regs.edx as i32;
-	let mode = regs.esi as file::Mode;
-
+#[syscall]
+pub fn openat(dirfd: c_int, pathname: SyscallString, flags: c_int, mode: file::Mode) -> Result<i32, Errno> {
 	// Getting the file
 	let file = get_file(dirfd, pathname, flags, mode)?;
 

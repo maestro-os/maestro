@@ -4,14 +4,10 @@ use crate::errno::Errno;
 use crate::file::path::Path;
 use crate::file::vfs;
 use crate::process::mem_space::ptr::SyscallString;
-use crate::process::regs::Regs;
 use crate::process::Process;
 
 /// The implementation of the `truncate` syscall.
-pub fn truncate(regs: &Regs) -> Result<i32, Errno> {
-	let path: SyscallString = (regs.ebx as usize).into();
-	let length = regs.ecx as usize;
-
+pub fn truncate(path: SyscallString, length: usize) -> Result<i32, Errno> {
 	let mutex = Process::get_current().unwrap();
 	let guard = mutex.lock();
 	let proc = guard.get_mut();

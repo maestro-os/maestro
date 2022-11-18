@@ -3,13 +3,12 @@
 use crate::errno::Errno;
 use crate::file::Gid;
 use crate::file::ROOT_GID;
-use crate::process::regs::Regs;
 use crate::process::Process;
+use macros::syscall;
 
 /// The implementation of the `setgid32` syscall.
-pub fn setgid32(regs: &Regs) -> Result<i32, Errno> {
-	let gid = regs.ebx as Gid;
-
+#[syscall]
+pub fn setgid32(gid: Gid) -> Result<i32, Errno> {
 	let mutex = Process::get_current().unwrap();
 	let guard = mutex.lock();
 	let proc = guard.get_mut();

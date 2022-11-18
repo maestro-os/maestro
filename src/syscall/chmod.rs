@@ -1,18 +1,17 @@
 //! The `chmod` system call allows change the permissions on a file.
 
+use core::ffi::c_int;
 use crate::errno::Errno;
 use crate::file;
 use crate::file::path::Path;
 use crate::file::vfs;
 use crate::process::mem_space::ptr::SyscallString;
-use crate::process::regs::Regs;
 use crate::process::Process;
+use macros::syscall;
 
 /// The implementation of the `chmod` syscall.
-pub fn chmod(regs: &Regs) -> Result<i32, Errno> {
-	let pathname: SyscallString = (regs.ebx as usize).into();
-	let mode = regs.ecx as file::Mode;
-
+#[syscall]
+pub fn chmod(pathname: SyscallString, mode: c_int) -> Result<i32, Errno> {
 	let (path, uid, gid) = {
 		let mutex = Process::get_current().unwrap();
 		let guard = mutex.lock();

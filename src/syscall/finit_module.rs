@@ -1,18 +1,19 @@
 //! The `finit_module` system call allows to load a module on the kernel.
 
-use crate::errno;
+use core::ffi::c_int;
 use crate::errno::Errno;
+use crate::errno;
 use crate::memory::malloc;
-use crate::module;
 use crate::module::Module;
-use crate::process::regs::Regs;
+use crate::module;
 use crate::process::Process;
+use crate::process::mem_space::ptr::SyscallString;
 use crate::util::io::IO;
+use macros::syscall;
 
 /// The implementation of the `finit_module` syscall.
-pub fn finit_module(regs: &Regs) -> Result<i32, Errno> {
-	let fd = regs.ebx as u32;
-
+#[syscall]
+pub fn finit_module(fd: c_int, param_values: SyscallString, flags: c_int) -> Result<i32, Errno> {
 	let image = {
 		let open_file_mutex = {
 			let proc_mutex = Process::get_current().unwrap();

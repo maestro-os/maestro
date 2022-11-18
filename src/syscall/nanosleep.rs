@@ -3,7 +3,6 @@
 
 use crate::errno::Errno;
 use crate::process::mem_space::ptr::SyscallPtr;
-use crate::process::regs::Regs;
 use crate::process::Process;
 use crate::time;
 use crate::time::unit::Timespec32;
@@ -11,10 +10,7 @@ use crate::time::unit::Timespec32;
 // TODO Handle signal interruption (EINTR)
 
 /// The implementation of the `nanosleep` syscall.
-pub fn nanosleep(regs: &Regs) -> Result<i32, Errno> {
-	let req: SyscallPtr<Timespec32> = (regs.ebx as usize).into();
-	let rem: SyscallPtr<Timespec32> = (regs.ecx as usize).into();
-
+pub fn nanosleep(req: SyscallPtr<Timespec32>, rem: SyscallPtr<Timespec32>) -> Result<i32, Errno> {
 	let clk = b"TODO"; // TODO
 	let start_time = time::get_struct::<Timespec32>(clk, true).ok_or(errno!(EINVAL))?;
 

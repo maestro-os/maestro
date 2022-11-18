@@ -7,13 +7,12 @@ use crate::file::path::Path;
 use crate::file::vfs;
 use crate::file::FileType;
 use crate::process::mem_space::ptr::SyscallString;
-use crate::process::regs::Regs;
 use crate::process::Process;
+use macros::syscall;
 
 /// The implementation of the `chdir` syscall.
-pub fn chdir(regs: &Regs) -> Result<i32, Errno> {
-	let path: SyscallString = (regs.ebx as usize).into();
-
+#[syscall]
+pub fn chdir(path: SyscallString) -> Result<i32, Errno> {
 	let (new_cwd, uid, gid) = {
 		let mutex = Process::get_current().unwrap();
 		let guard = mutex.lock();

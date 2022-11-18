@@ -1,14 +1,15 @@
 //! The `delete_module` system call allows to unload a module from the kernel.
 
-use crate::errno;
+use core::ffi::c_uint;
 use crate::errno::Errno;
-use crate::process::regs::Regs;
+use crate::errno;
 use crate::process::Process;
+use crate::process::mem_space::ptr::SyscallString;
+use macros::syscall;
 
 /// The implementation of the `delete_module` syscall.
-pub fn delete_module(regs: &Regs) -> Result<i32, Errno> {
-	let _name = regs.ebx as *const u8;
-
+#[syscall]
+pub fn delete_module(_name: SyscallString, _flags: c_uint) -> Result<i32, Errno> {
 	{
 		let proc_mutex = Process::get_current().unwrap();
 		let proc_guard = proc_mutex.lock();

@@ -1,12 +1,13 @@
 //! The `access` system call allows to check access to a given file.
 
+use core::ffi::c_int;
 use crate::errno::Errno;
 use crate::file::path::Path;
 use crate::file::vfs;
 use crate::process::mem_space::ptr::SyscallString;
-use crate::process::regs::Regs;
 use crate::process::Process;
 use crate::util::FailableClone;
+use macros::syscall;
 
 /// Special value, telling to take the path relative to the current working
 /// directory.
@@ -115,9 +116,7 @@ pub fn do_access(
 }
 
 /// The implementation of the `access` syscall.
-pub fn access(regs: &Regs) -> Result<i32, Errno> {
-	let pathname: SyscallString = (regs.ebx as usize).into();
-	let mode = regs.ecx as i32;
-
+#[syscall]
+pub fn access(pathname: SyscallString, mode: c_int) -> Result<i32, Errno> {
 	do_access(None, pathname, mode, None)
 }

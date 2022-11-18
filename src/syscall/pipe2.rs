@@ -1,20 +1,17 @@
 //! The pipe2 system call allows to create a pipe with given flags.
 
+use core::ffi::c_int;
 use crate::errno;
 use crate::errno::Errno;
 use crate::file::open_file;
 use crate::file::open_file::FDTarget;
 use crate::file::pipe::PipeBuffer;
 use crate::process::mem_space::ptr::SyscallPtr;
-use crate::process::regs::Regs;
 use crate::process::Process;
 use crate::util::ptr::SharedPtr;
 
 /// The implementation of the `pipe2` syscall.
-pub fn pipe2(regs: &Regs) -> Result<i32, Errno> {
-	let pipefd: SyscallPtr<[i32; 2]> = (regs.ebx as usize).into();
-	let flags = regs.ecx as i32;
-
+pub fn pipe2(pipefd: SyscallPtr<[c_int; 2]>, flags: c_int) -> Result<i32, Errno> {
 	let accepted_flags = open_file::O_CLOEXEC | open_file::O_DIRECT | open_file::O_NONBLOCK;
 	if flags & !accepted_flags != 0 {
 		return Err(errno!(EINVAL));

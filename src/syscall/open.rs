@@ -1,6 +1,7 @@
 //! The open system call allows a process to open a file and get a file
 //! descriptor.
 
+use core::ffi::c_int;
 use crate::errno;
 use crate::errno::Errno;
 use crate::file;
@@ -15,10 +16,10 @@ use crate::file::Gid;
 use crate::file::Mode;
 use crate::file::Uid;
 use crate::process::mem_space::ptr::SyscallString;
-use crate::process::regs::Regs;
 use crate::process::Process;
 use crate::util::ptr::SharedPtr;
 use crate::util::FailableClone;
+use macros::syscall;
 
 /// Mask of status flags to be kept by an open file description.
 pub const STATUS_FLAGS_MASK: i32 = !(open_file::O_CLOEXEC
@@ -150,10 +151,7 @@ pub fn open_(pathname: SyscallString, flags: i32, mode: file::Mode) -> Result<i3
 }
 
 /// The implementation of the `open` syscall.
-pub fn open(regs: &Regs) -> Result<i32, Errno> {
-	let pathname: SyscallString = (regs.ebx as usize).into();
-	let flags = regs.ecx as i32;
-	let mode = regs.edx as file::Mode;
-
+#[syscall]
+pub fn open(pathname: SyscallString, flags: c_int, mode: file::Mode) -> Result<i32, Errno> {
 	open_(pathname, flags, mode)
 }

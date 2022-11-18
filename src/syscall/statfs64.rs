@@ -7,16 +7,16 @@ use crate::file::path::Path;
 use crate::file::vfs;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::mem_space::ptr::SyscallString;
-use crate::process::regs::Regs;
 use crate::process::Process;
+use macros::syscall;
 
 // TODO Streamline with `[f]statfs`
 
+// TODO Check args types
 /// The implementation of the `statfs64` syscall.
-pub fn statfs64(regs: &Regs) -> Result<i32, Errno> {
-	let path: SyscallString = (regs.ebx as usize).into();
-	let _sz = regs.ecx as usize; // TODO
-	let buf: SyscallPtr<Statfs> = (regs.edx as usize).into();
+#[syscall]
+pub fn statfs64(path: SyscallString, _sz: usize, buf: SyscallPtr<Statfs>) -> Result<i32, Errno> {
+	// TODO Use `sz`
 
 	let (path, uid, gid) = {
 		let mutex = Process::get_current().unwrap();

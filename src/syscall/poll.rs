@@ -1,14 +1,15 @@
 //! The `poll` system call allows to wait for events on a given set of file
 //! descriptors.
 
+use core::ffi::c_int;
 use crate::errno::Errno;
 use crate::process::mem_space::ptr::SyscallSlice;
-use crate::process::regs::Regs;
 use crate::process::Process;
 use crate::time;
 use crate::time::unit::Timestamp;
 use crate::time::unit::TimestampScale;
 use crate::util::io;
+use macros::syscall;
 
 /// Structure representing a file descriptor passed to the `poll` system call.
 #[repr(C)]
@@ -21,12 +22,10 @@ struct PollFD {
 	revents: i16,
 }
 
+// TODO Check second arg type
 /// The implementation of the `poll` syscall.
-pub fn poll(regs: &Regs) -> Result<i32, Errno> {
-	let fds: SyscallSlice<PollFD> = (regs.ebx as usize).into();
-	let nfds = regs.ecx as usize;
-	let timeout = regs.edx as i32;
-
+#[syscall]
+pub fn poll(fds: SyscallSlice<PollFD>, nfds: usize, timeout: c_int) -> Result<i32, Errno> {
 	// The timeout. None means no timeout
 	let to: Option<Timestamp> = if timeout >= 0 {
 		Some(timeout as _)

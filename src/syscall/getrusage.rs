@@ -1,12 +1,13 @@
 //! The `getrusage` system call returns the system usage for the current
 //! process.
 
+use core::ffi::c_int;
 use crate::errno;
 use crate::errno::Errno;
 use crate::process::mem_space::ptr::SyscallPtr;
-use crate::process::regs::Regs;
 use crate::process::rusage::RUsage;
 use crate::process::Process;
+use macros::syscall;
 
 /// Returns the resource usage of the current process.
 const RUSAGE_SELF: i32 = 0;
@@ -14,10 +15,8 @@ const RUSAGE_SELF: i32 = 0;
 const RUSAGE_CHILDREN: i32 = -1;
 
 /// The implementation of the `getrusage` syscall.
-pub fn getrusage(regs: &Regs) -> Result<i32, Errno> {
-	let who = regs.ebx as i32;
-	let usage: SyscallPtr<RUsage> = (regs.ecx as usize).into();
-
+#[syscall]
+pub fn getrusage(who: c_int, usage: SyscallPtr<RUsage>) -> Result<i32, Errno> {
 	let mutex = Process::get_current().unwrap();
 	let guard = mutex.lock();
 	let proc = guard.get_mut();

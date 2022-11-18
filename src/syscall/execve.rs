@@ -20,6 +20,7 @@ use crate::util::container::vec::Vec;
 use crate::util::io::IO;
 use crate::util::ptr::SharedPtr;
 use core::ops::Range;
+use macros::syscall;
 
 /// The maximum length of the shebang.
 const SHEBANG_MAX: usize = 257;
@@ -146,11 +147,8 @@ fn build_image(
 }
 
 /// The implementation of the `execve` syscall.
-pub fn execve(regs: &Regs) -> Result<i32, Errno> {
-	let pathname: SyscallString = (regs.ebx as usize).into();
-	let argv = regs.ecx as *const () as *const *const u8;
-	let envp = regs.edx as *const () as *const *const u8;
-
+#[syscall]
+pub fn execve(pathname: SyscallString, argv: *const *const u8, envp: *const *const u8) -> Result<i32, Errno> {
 	let (mut path, mut argv, envp, uid, gid, euid, egid) = {
 		let proc_mutex = Process::get_current().unwrap();
 		let proc_guard = proc_mutex.lock();

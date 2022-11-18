@@ -1,18 +1,14 @@
 //! The `unlinkat` syscall allows to unlink a file.
 
+use core::ffi::c_int;
 use super::util;
 use crate::errno::Errno;
 use crate::file::vfs;
 use crate::process::mem_space::ptr::SyscallString;
-use crate::process::regs::Regs;
 use crate::process::Process;
 
 /// The implementation of the `unlinkat` syscall.
-pub fn unlinkat(regs: &Regs) -> Result<i32, Errno> {
-	let dirfd = regs.ebx as i32;
-	let pathname: SyscallString = (regs.ecx as usize).into();
-	let flags = regs.edx as i32;
-
+pub fn unlinkat(dirfd: c_int, pathname: SyscallString, flags: c_int) -> Result<i32, Errno> {
 	let (file_mutex, uid, gid) = {
 		let mutex = Process::get_current().unwrap();
 		let guard = mutex.lock();

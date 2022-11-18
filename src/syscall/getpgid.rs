@@ -4,13 +4,12 @@
 use crate::errno;
 use crate::errno::Errno;
 use crate::process::pid::Pid;
-use crate::process::regs::Regs;
 use crate::process::Process;
+use macros::syscall;
 
 /// The implementation of the `getpgid` syscall.
-pub fn getpgid(regs: &Regs) -> Result<i32, Errno> {
-	let pid = regs.ebx as Pid;
-
+#[syscall]
+pub fn getpgid(pid: Pid) -> Result<i32, Errno> {
 	let mutex = Process::get_current().unwrap();
 	let guard = mutex.lock();
 	let proc = guard.get_mut();

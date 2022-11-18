@@ -4,12 +4,13 @@
 //! space as the parent.
 
 use crate::errno::Errno;
-use crate::process::regs::Regs;
 use crate::process::ForkOptions;
 use crate::process::Process;
+use macros::syscall;
 
 /// The implementation of the `vfork` syscall.
-pub fn vfork(regs: &Regs) -> Result<i32, Errno> {
+#[syscall]
+pub fn vfork() -> Result<i32, Errno> {
 	let new_pid = {
 		// The current process
 		let curr_mutex = Process::get_current().unwrap();

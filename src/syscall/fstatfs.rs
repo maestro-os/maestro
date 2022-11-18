@@ -5,15 +5,13 @@ use crate::errno::Errno;
 use crate::file::fs::Statfs;
 use crate::file::open_file::FDTarget;
 use crate::process::mem_space::ptr::SyscallPtr;
-use crate::process::regs::Regs;
 use crate::process::Process;
 use core::ffi::c_int;
+use macros::syscall;
 
 /// The implementation of the `fstatfs` syscall.
-pub fn fstatfs(regs: &Regs) -> Result<i32, Errno> {
-	let fd = regs.ebx as c_int;
-	let buf: SyscallPtr<Statfs> = (regs.ecx as usize).into();
-
+#[syscall]
+pub fn fstatfs(fd: c_int, buf: SyscallPtr<Statfs>) -> Result<i32, Errno> {
 	if fd < 0 {
 		return Err(errno!(EBADF));
 	}

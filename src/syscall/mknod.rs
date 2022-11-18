@@ -9,16 +9,12 @@ use crate::file::vfs;
 use crate::file::FileContent;
 use crate::file::FileType;
 use crate::process::mem_space::ptr::SyscallString;
-use crate::process::regs::Regs;
 use crate::process::Process;
 use crate::util::FailableClone;
 
+// TODO Check args type
 /// The implementation of the `getuid` syscall.
-pub fn mknod(regs: &Regs) -> Result<i32, Errno> {
-	let pathname: SyscallString = (regs.ebx as usize).into();
-	let mode = regs.ecx as file::Mode;
-	let dev = regs.edx as u64;
-
+pub fn mknod(pathname: SyscallString, mode: file::Mode, dev: u64) -> Result<i32, Errno> {
 	let (path, umask, uid, gid) = {
 		// Getting the process
 		let mutex = Process::get_current().unwrap();

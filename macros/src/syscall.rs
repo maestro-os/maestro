@@ -32,7 +32,7 @@ pub fn syscall(input: TokenStream) -> TokenStream {
 	if input.sig.variadic.is_some() {
 		panic!("a system call handler cannot have variadic arguments");
 	}
-	if input.sig.inputs.len() >= REGS.len() {
+	if input.sig.inputs.len() > REGS.len() {
 		panic!("too many arguments for the current target (max: {})", REGS.len());
 	}
 

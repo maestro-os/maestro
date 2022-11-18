@@ -1,15 +1,16 @@
 //! The `mmap` system call allows the process to allocate memory.
 
+use core::ffi::c_int;
 use crate::errno;
 use crate::errno::Errno;
 use crate::memory;
 use crate::process::mem_space;
-use crate::process::regs::Regs;
 use crate::process::Process;
 use crate::syscall::mmap::mem_space::MapConstraint;
 use crate::util;
 use crate::util::math;
 use core::ffi::c_void;
+use macros::syscall;
 
 /// Data can be read.
 const PROT_READ: i32 = 0b001;
@@ -133,14 +134,9 @@ pub fn do_mmap(
 	Ok(ptr as _)
 }
 
+// TODO Check last arg type
 /// The implementation of the `mmap` syscall.
-pub fn mmap(regs: &Regs) -> Result<i32, Errno> {
-	let addr = regs.ebx as *mut c_void;
-	let length = regs.ecx as usize;
-	let prot = regs.edx as i32;
-	let flags = regs.esi as i32;
-	let fd = regs.edi as i32;
-	let offset = regs.ebp as u32;
-
+#[syscall]
+pub fn mmap(addr: *mut c_void, length: usize, prot: c_int, flags: c_int, fd: c_int, offset: u64) -> Result<i32, Errno> {
 	do_mmap(addr, length, prot, flags, fd, offset as _)
 }

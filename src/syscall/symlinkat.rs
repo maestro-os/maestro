@@ -1,20 +1,18 @@
 //! The `symlinkat` syscall allows to create a symbolic link.
 
+use core::ffi::c_int;
 use super::util;
 use crate::errno::Errno;
 use crate::file::FileContent;
 use crate::limits;
 use crate::process::mem_space::ptr::SyscallString;
-use crate::process::regs::Regs;
 use crate::process::Process;
 use crate::util::container::string::String;
+use macros::syscall;
 
 /// The implementation of the `symlinkat` syscall.
-pub fn symlinkat(regs: &Regs) -> Result<i32, Errno> {
-	let target: SyscallString = (regs.ebx as usize).into();
-	let newdirfd = regs.ecx as i32;
-	let linkpath: SyscallString = (regs.edx as usize).into();
-
+#[syscall]
+pub fn symlinkat(target: SyscallString, newdirfd: c_int, linkpath: SyscallString) -> Result<i32, Errno> {
 	let mutex = Process::get_current().unwrap();
 	let guard = mutex.lock();
 	let proc = guard.get_mut();

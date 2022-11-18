@@ -1,10 +1,11 @@
 //! The `getrandom` system call allows to get random bytes.
 
+use core::ffi::c_uint;
 use crate::crypto::rand;
 use crate::errno::Errno;
 use crate::process::mem_space::ptr::SyscallSlice;
-use crate::process::regs::Regs;
 use crate::process::Process;
+use macros::syscall;
 
 /// If set, bytes are draw from the random source instead of urandom.
 const GRND_RANDOM: u32 = 2;
@@ -13,11 +14,8 @@ const GRND_RANDOM: u32 = 2;
 const GRND_NONBLOCK: u32 = 1;
 
 /// Implementation of the `getrandom` syscall.
-pub fn getrandom(regs: &Regs) -> Result<i32, Errno> {
-	let buf: SyscallSlice<u8> = (regs.ebx as usize).into();
-	let buflen = regs.ecx as usize;
-	let flags = regs.edx as u32;
-
+#[syscall]
+pub fn getrandom(buf: SyscallSlice<u8>, buflen: usize, flags: c_uint) -> Result<i32, Errno> {
 	// Getting randomness source
 	let random_source_mutex = match flags & GRND_RANDOM != 0 {
 		// Using random

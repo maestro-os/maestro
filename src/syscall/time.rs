@@ -3,17 +3,16 @@
 
 use crate::errno::Errno;
 use crate::process::mem_space::ptr::SyscallPtr;
-use crate::process::regs::Regs;
 use crate::process::Process;
 use crate::time;
 use crate::time::unit::TimestampScale;
+use macros::syscall;
 
 // TODO Watch for timestamp overflow
 
 /// The implementation of the `time` syscall.
-pub fn time(regs: &Regs) -> Result<i32, Errno> {
-	let tloc: SyscallPtr<u32> = (regs.ebx as usize).into();
-
+#[syscall]
+pub fn time(tloc: SyscallPtr<u32>) -> Result<i32, Errno> {
 	let mutex = Process::get_current().unwrap();
 	let guard = mutex.lock();
 	let proc = guard.get_mut();

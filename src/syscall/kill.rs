@@ -1,12 +1,12 @@
 //! This module implements the `kill` system call, which allows to send a signal
 //! to a process.
 
+use core::ffi::c_int;
 use super::util;
 use crate::errno;
 use crate::errno::Errno;
 use crate::process;
 use crate::process::pid::Pid;
-use crate::process::regs::Regs;
 use crate::process::signal::Signal;
 use crate::process::state::State;
 use crate::process::Process;
@@ -127,10 +127,7 @@ fn send_signal(pid: i32, sig: Option<Signal>) -> Result<(), Errno> {
 }
 
 /// The implementation of the `kill` syscall.
-pub fn kill(regs: &Regs) -> Result<i32, Errno> {
-	let pid = regs.ebx as i32;
-	let sig = regs.ecx as i32;
-
+pub fn kill(pid: Pid, sig: c_int) -> Result<i32, Errno> {
 	if sig < 0 {
 		return Err(errno!(EINVAL));
 	}

@@ -1,15 +1,15 @@
 //! The `syncfs` system call allows to synchronize the filesystem containing the
 //! file pointed by the given file descriptor.
 
+use core::ffi::c_int;
 use crate::errno::Errno;
 use crate::file::open_file::FDTarget;
-use crate::process::regs::Regs;
 use crate::process::Process;
+use macros::syscall;
 
 /// The implementation of the `syncfs` syscall.
-pub fn syncfs(regs: &Regs) -> Result<i32, Errno> {
-	let fd = regs.ebx as i32;
-
+#[syscall]
+pub fn syncfs(fd: c_int) -> Result<i32, Errno> {
 	if fd < 0 {
 		return Err(errno!(EBADF));
 	}

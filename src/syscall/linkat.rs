@@ -5,18 +5,11 @@ use crate::errno::Errno;
 use crate::file::vfs;
 use crate::file::FileType;
 use crate::process::mem_space::ptr::SyscallString;
-use crate::process::regs::Regs;
 use crate::process::Process;
 use crate::types::c_int;
 
 /// The implementation of the `linkat` system call.
-pub fn linkat(regs: &Regs) -> Result<i32, Errno> {
-	let olddirfd = regs.ebx as c_int;
-	let oldpath: SyscallString = (regs.ecx as usize).into();
-	let newdirfd = regs.edx as c_int;
-	let newpath: SyscallString = (regs.esi as usize).into();
-	let flags = regs.edi as c_int;
-
+pub fn linkat(olddirfd: c_int, oldpath: SyscallString, newdirfd: c_int, newpath: SyscallString, flags: c_int) -> Result<i32, Errno> {
 	let follow_links = flags & access::AT_SYMLINK_NOFOLLOW == 0;
 
 	let (old_mutex, new_parent_mutex, new_name, uid, gid) = {

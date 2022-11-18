@@ -1,13 +1,14 @@
 //! The msync system call synchronizes a memory mapping with its file on the
 //! disk.
 
+use core::ffi::c_int;
 use crate::errno;
 use crate::errno::Errno;
 use crate::memory;
-use crate::process::regs::Regs;
 use crate::process::Process;
 use crate::util;
 use core::ffi::c_void;
+use macros::syscall;
 
 /// Schedules a synchronization and returns directly.
 const MS_ASYNC: i32 = 0b001;
@@ -17,11 +18,8 @@ const MS_SYNC: i32 = 0b010;
 const MS_INVALIDATE: i32 = 0b100;
 
 /// The implementation of the `msync` syscall.
-pub fn msync(regs: &Regs) -> Result<i32, Errno> {
-	let addr = regs.ebx as *mut c_void;
-	let length = regs.ecx as usize;
-	let flags = regs.edx as i32;
-
+#[syscall]
+pub fn msync(addr: *mut c_void, length: usize, flags: c_int) -> Result<i32, Errno> {
 	// Checking address alignment
 	if !util::is_aligned(addr, memory::PAGE_SIZE) {
 		return Err(errno!(EINVAL));

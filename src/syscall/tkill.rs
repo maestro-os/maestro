@@ -1,17 +1,14 @@
 //! The tkill system call allows to send a signal to a specific thread.
 
+use core::ffi::c_int;
 use crate::errno;
 use crate::errno::Errno;
 use crate::process::pid::Pid;
-use crate::process::regs::Regs;
 use crate::process::signal::Signal;
 use crate::process::Process;
 
 /// The implementation of the `tkill` syscall.
-pub fn tkill(regs: &Regs) -> Result<i32, Errno> {
-	let tid = regs.ebx as Pid;
-	let sig = regs.ecx as i32;
-
+pub fn tkill(tid: Pid, sig: c_int) -> Result<i32, Errno> {
 	if sig < 0 {
 		return Err(errno!(EINVAL));
 	}

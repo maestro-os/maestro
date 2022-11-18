@@ -6,16 +6,14 @@ use crate::file::path::Path;
 use crate::file::vfs;
 use crate::file::FileContent;
 use crate::process::mem_space::ptr::SyscallString;
-use crate::process::regs::Regs;
 use crate::process::Process;
 use crate::util::container::hashmap::HashMap;
 use crate::util::FailableClone;
+use macros::syscall;
 
 /// The implementation of the `mkdir` syscall.
-pub fn mkdir(regs: &Regs) -> Result<i32, Errno> {
-	let pathname: SyscallString = (regs.ebx as usize).into();
-	let mode = regs.ecx as file::Mode;
-
+#[syscall]
+pub fn mkdir(pathname: SyscallString, mode: file::Mode) -> Result<i32, Errno> {
 	let (path, mode, uid, gid) = {
 		let mutex = Process::get_current().unwrap();
 		let guard = mutex.lock();

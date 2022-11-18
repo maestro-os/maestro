@@ -5,13 +5,12 @@ use crate::errno::Errno;
 use crate::file::path::Path;
 use crate::file::vfs;
 use crate::process::mem_space::ptr::SyscallString;
-use crate::process::regs::Regs;
 use crate::process::Process;
+use macros::syscall;
 
 /// The implementation of the `unlink` syscall.
-pub fn unlink(regs: &Regs) -> Result<i32, Errno> {
-	let pathname: SyscallString = (regs.ebx as usize).into();
-
+#[syscall]
+pub fn unlink(pathname: SyscallString) -> Result<i32, Errno> {
 	let (path, uid, gid) = {
 		// Getting the process
 		let mutex = Process::get_current().unwrap();

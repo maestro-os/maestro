@@ -1,5 +1,6 @@
 //! The mount system call allows to mount a filesystem on the system.
 
+use core::ffi::c_ulong;
 use crate::errno;
 use crate::errno::Errno;
 use crate::file::fs;
@@ -10,19 +11,12 @@ use crate::file::vfs;
 use crate::file::FileType;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::mem_space::ptr::SyscallString;
-use crate::process::regs::Regs;
 use crate::process::Process;
 use crate::util::FailableClone;
 use core::ffi::c_void;
 
 /// The implementation of the `mount` syscall.
-pub fn mount(regs: &Regs) -> Result<i32, Errno> {
-	let source: SyscallString = (regs.ebx as usize).into();
-	let target: SyscallString = (regs.ecx as usize).into();
-	let filesystemtype: SyscallString = (regs.edx as usize).into();
-	let mountflags = regs.esi as u32;
-	let _data: SyscallPtr<c_void> = (regs.edi as usize).into();
-
+pub fn mount(source: SyscallString, target: SyscallString, filesystemtype: SyscallString, mountflags: c_ulong, _data: SyscallPtr<c_void>) -> Result<i32, Errno> {
 	let (mount_source, fs_type, target_path) = {
 		// Getting the process
 		let mutex = Process::get_current().unwrap();

@@ -1,5 +1,6 @@
 //! The `waitpid` system call allows to wait for an event from a child process.
 
+use core::ffi::c_int;
 use crate::errno;
 use crate::errno::Errno;
 use crate::process;
@@ -11,6 +12,7 @@ use crate::process::state;
 use crate::process::state::State;
 use crate::process::Process;
 use crate::util::boxed::Box;
+use macros::syscall;
 
 /// Wait flag. Returns immediately if no child has exited.
 pub const WNOHANG: i32 = 1;
@@ -212,10 +214,7 @@ pub fn do_waitpid(
 }
 
 /// The implementation of the `waitpid` syscall.
-pub fn waitpid(regs: &Regs) -> Result<i32, Errno> {
-	let pid = regs.ebx as i32;
-	let wstatus: SyscallPtr<i32> = (regs.ecx as usize).into();
-	let options = regs.edx as i32;
-
+#[syscall]
+pub fn waitpid(pid: Pid, wstatus: SyscallPtr<c_int>, options: c_int) -> Result<i32, Errno> {
 	do_waitpid(regs, pid, wstatus, options | WEXITED, None)
 }

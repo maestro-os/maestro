@@ -3,11 +3,12 @@
 //! to allow normal execution.
 
 use crate::errno::Errno;
-use crate::process::regs::Regs;
 use crate::process::Process;
+use macros::syscall;
 
 /// The implementation of the `sigreturn` syscall.
-pub fn sigreturn(_regs: &Regs) -> Result<i32, Errno> {
+#[syscall]
+pub fn sigreturn() -> Result<i32, Errno> {
 	cli!();
 
 	let regs = {

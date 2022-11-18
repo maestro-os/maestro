@@ -7,14 +7,12 @@ use crate::file::path::Path;
 use crate::file::vfs;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::mem_space::ptr::SyscallString;
-use crate::process::regs::Regs;
 use crate::process::Process;
+use macros::syscall;
 
 /// The implementation of the `statfs` syscall.
-pub fn statfs(regs: &Regs) -> Result<i32, Errno> {
-	let path: SyscallString = (regs.ebx as usize).into();
-	let buf: SyscallPtr<Statfs> = (regs.ecx as usize).into();
-
+#[syscall]
+pub fn statfs(path: SyscallString, buf: SyscallPtr<Statfs>) -> Result<i32, Errno> {
 	let (path, uid, gid) = {
 		let mutex = Process::get_current().unwrap();
 		let guard = mutex.lock();

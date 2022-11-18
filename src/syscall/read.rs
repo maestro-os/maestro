@@ -1,23 +1,21 @@
 //! The read system call allows to read the content of an open file.
 
+use core::ffi::c_int;
 use crate::errno;
 use crate::errno::Errno;
 use crate::file::open_file::O_NONBLOCK;
 use crate::idt;
 use crate::process::mem_space::ptr::SyscallSlice;
-use crate::process::regs::Regs;
 use crate::process::Process;
 use crate::util::io::IO;
 use core::cmp::min;
+use macros::syscall;
 
 // TODO O_ASYNC
 
 /// The implementation of the `read` syscall.
-pub fn read(regs: &Regs) -> Result<i32, Errno> {
-	let fd = regs.ebx;
-	let buf: SyscallSlice<u8> = (regs.ecx as usize).into();
-	let count = regs.edx as usize;
-
+#[syscall]
+pub fn read(fd: c_int, buf: SyscallSlice<u8>, count: usize) -> Result<i32, Errno> {
 	let len = min(count, i32::MAX as usize);
 	if len == 0 {
 		return Ok(0);

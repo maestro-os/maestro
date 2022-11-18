@@ -1,19 +1,17 @@
 //! The `rt_sigaction` system call sets the action for a signal.
 
+use core::ffi::c_int;
 use crate::errno::Errno;
 use crate::process::mem_space::ptr::SyscallPtr;
-use crate::process::regs::Regs;
 use crate::process::signal::SigAction;
 use crate::process::signal::SignalHandler;
 use crate::process::Process;
 use crate::syscall::Signal;
+use macros::syscall;
 
 /// The implementation of the `rt_sigaction` syscall.
-pub fn rt_sigaction(regs: &Regs) -> Result<i32, Errno> {
-	let signum = regs.ebx as i32;
-	let act: SyscallPtr<SigAction> = (regs.ecx as usize).into();
-	let oldact: SyscallPtr<SigAction> = (regs.edx as usize).into();
-
+#[syscall]
+pub fn rt_sigaction(signum: c_int, act: SyscallPtr<SigAction>, oldact: SyscallPtr<SigAction>) -> Result<i32, Errno> {
 	let signal = Signal::from_id(signum as _)?;
 
 	let mutex = Process::get_current().unwrap();

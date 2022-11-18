@@ -2,9 +2,9 @@
 
 use crate::errno::Errno;
 use crate::process::mem_space::ptr::SyscallPtr;
-use crate::process::regs::Regs;
 use crate::process::Process;
 use crate::util;
+use macros::syscall;
 
 /// The length of a field of the utsname structure.
 const UTSNAME_LENGTH: usize = 65;
@@ -23,9 +23,8 @@ struct Utsname {
 }
 
 /// The implementation of the `uname` syscall.
-pub fn uname(regs: &Regs) -> Result<i32, Errno> {
-	let buf: SyscallPtr<Utsname> = (regs.ebx as usize).into();
-
+#[syscall]
+pub fn uname(buf: SyscallPtr<Utsname>) -> Result<i32, Errno> {
 	let mutex = Process::get_current().unwrap();
 	let guard = mutex.lock();
 	let proc = guard.get_mut();

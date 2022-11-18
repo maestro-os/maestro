@@ -3,12 +3,13 @@
 //! return value is different to allow differentiation.
 
 use crate::errno::Errno;
-use crate::process::regs::Regs;
 use crate::process::ForkOptions;
 use crate::process::Process;
+use macros::syscall;
 
 /// The implementation of the `fork` syscall.
-pub fn fork(regs: &Regs) -> Result<i32, Errno> {
+#[syscall]
+pub fn fork() -> Result<i32, Errno> {
 	// The current process
 	let curr_mutex = Process::get_current().unwrap();
 	// A weak pointer to the new process's parent

@@ -6,13 +6,12 @@ use crate::errno::Errno;
 use crate::file::mountpoint;
 use crate::file::path::Path;
 use crate::process::mem_space::ptr::SyscallString;
-use crate::process::regs::Regs;
 use crate::process::Process;
+use macros::syscall;
 
 /// The implementation of the `umount` syscall.
-pub fn umount(regs: &Regs) -> Result<i32, Errno> {
-	let target: SyscallString = (regs.ebx as usize).into();
-
+#[syscall]
+pub fn umount(target: SyscallString) -> Result<i32, Errno> {
 	let mutex = Process::get_current().unwrap();
 	let guard = mutex.lock();
 	let proc = guard.get();

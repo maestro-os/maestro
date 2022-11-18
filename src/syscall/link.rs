@@ -3,14 +3,10 @@
 use crate::errno::Errno;
 use crate::file::path::Path;
 use crate::process::mem_space::ptr::SyscallString;
-use crate::process::regs::Regs;
 use crate::process::Process;
 
 /// The implementation of the `link` syscall.
-pub fn link(regs: &Regs) -> Result<i32, Errno> {
-	let oldpath: SyscallString = (regs.ebx as usize).into();
-	let newpath: SyscallString = (regs.ecx as usize).into();
-
+pub fn link(oldpath: SyscallString, newpath: SyscallString) -> Result<i32, Errno> {
 	let mutex = Process::get_current().unwrap();
 	let guard = mutex.lock();
 	let proc = guard.get_mut();

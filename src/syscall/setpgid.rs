@@ -4,14 +4,10 @@
 use crate::errno;
 use crate::errno::Errno;
 use crate::process::pid::Pid;
-use crate::process::regs::Regs;
 use crate::process::Process;
 
 /// The implementation of the `setpgid` syscall.
-pub fn setpgid(regs: &Regs) -> Result<i32, Errno> {
-	let mut pid = regs.ebx as Pid;
-	let mut pgid = regs.ecx as Pid;
-
+pub fn setpgid(pid: Pid, pgid: Pid) -> Result<i32, Errno> {
 	// TODO Check processes SID
 
 	let mutex = Process::get_current().unwrap();

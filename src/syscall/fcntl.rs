@@ -1,12 +1,13 @@
 //! The `fcntl` syscall call allows to manipulate a file descriptor.
 
+use core::ffi::c_int;
 use crate::errno::Errno;
 use crate::file::fd::NewFDConstraint;
 use crate::file::open_file::FDTarget;
 use crate::file::FileContent;
-use crate::process::regs::Regs;
 use crate::process::Process;
 use core::ffi::c_void;
+use macros::syscall;
 
 /// TODO doc
 const F_DUPFD: i32 = 0;
@@ -308,10 +309,7 @@ pub fn do_fcntl(fd: i32, cmd: i32, arg: *mut c_void, _fcntl64: bool) -> Result<i
 }
 
 /// The implementation of the `fcntl` syscall.
-pub fn fcntl(regs: &Regs) -> Result<i32, Errno> {
-	let fd = regs.ebx as i32;
-	let cmd = regs.ecx as i32;
-	let arg = regs.edx as *mut c_void;
-
+#[syscall]
+pub fn fcntl(fd: c_int, cmd: c_int, arg: *mut c_void) -> Result<i32, Errno> {
 	do_fcntl(fd, cmd, arg, false)
 }

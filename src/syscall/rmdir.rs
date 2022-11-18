@@ -6,13 +6,12 @@ use crate::file::path::Path;
 use crate::file::vfs;
 use crate::file::FileContent;
 use crate::process::mem_space::ptr::SyscallString;
-use crate::process::regs::Regs;
 use crate::process::Process;
+use macros::syscall;
 
 /// The implementation of the `rmdir` syscall.
-pub fn rmdir(regs: &Regs) -> Result<i32, Errno> {
-	let pathname: SyscallString = (regs.ebx as usize).into();
-
+#[syscall]
+pub fn rmdir(pathname: SyscallString) -> Result<i32, Errno> {
 	let (path, uid, gid) = {
 		// Getting the process
 		let mutex = Process::get_current().unwrap();

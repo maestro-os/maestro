@@ -1,5 +1,6 @@
 //! The `writev` system call allows to write sparse data on a file descriptor.
 
+use core::ffi::c_int;
 use crate::errno;
 use crate::errno::Errno;
 use crate::file::open_file::OpenFile;
@@ -8,12 +9,12 @@ use crate::limits;
 use crate::process::iovec::IOVec;
 use crate::process::mem_space::ptr::SyscallSlice;
 use crate::process::mem_space::MemSpace;
-use crate::process::regs::Regs;
 use crate::process::signal::Signal;
 use crate::process::Process;
 use crate::util::io::IO;
 use crate::util::ptr::IntSharedPtr;
 use core::cmp::min;
+use macros::syscall;
 
 // TODO Handle blocking writes (and thus, EINTR)
 
@@ -122,10 +123,7 @@ pub fn do_writev(
 }
 
 /// The implementation of the `writev` syscall.
-pub fn writev(regs: &Regs) -> Result<i32, Errno> {
-	let fd = regs.ebx as i32;
-	let iov: SyscallSlice<IOVec> = (regs.ecx as usize).into();
-	let iovcnt = regs.edx as i32;
-
+#[syscall]
+pub fn writev(fd: c_int, iov: SyscallSlice<IOVec>, iovcnt: c_int) -> Result<i32, Errno> {
 	do_writev(fd, iov, iovcnt, None, None)
 }

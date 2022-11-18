@@ -2,16 +2,15 @@
 
 use crate::errno::Errno;
 use crate::process::mem_space::ptr::SyscallPtr;
-use crate::process::regs::Regs;
 use crate::process::Process;
 use crate::time;
 use crate::time::unit::Timespec;
+use macros::syscall;
 
+// TODO Check first arg type
 /// The implementation of the `clock_gettime64` syscall.
-pub fn clock_gettime64(regs: &Regs) -> Result<i32, Errno> {
-	let _clock_id = regs.ebx as i32;
-	let tp: SyscallPtr<Timespec> = (regs.ecx as usize).into();
-
+#[syscall]
+pub fn clock_gettime64(_clock_id: i32, tp: SyscallPtr<Timespec>) -> Result<i32, Errno> {
 	// TODO Get clock according to param
 	let clk = b"TODO";
 	let curr_time = time::get_struct::<Timespec>(clk, true).ok_or(errno!(EINVAL))?;

@@ -1,17 +1,17 @@
 //! The fchdir system call allows to change the current working directory of the
 //! current process.
 
+use core::ffi::c_int;
 use crate::errno;
 use crate::errno::Errno;
 use crate::file::open_file::FDTarget;
 use crate::file::FileType;
-use crate::process::regs::Regs;
 use crate::process::Process;
+use macros::syscall;
 
 /// The implementation of the `fchdir` syscall.
-pub fn fchdir(regs: &Regs) -> Result<i32, Errno> {
-	let fd = regs.ebx as i32;
-
+#[syscall]
+pub fn fchdir(fd: c_int) -> Result<i32, Errno> {
 	if fd < 0 {
 		return Err(errno!(EBADF));
 	}

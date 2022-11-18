@@ -4,17 +4,15 @@
 use crate::errno;
 use crate::errno::Errno;
 use crate::memory;
-use crate::process::regs::Regs;
 use crate::process::Process;
 use crate::util;
 use crate::util::math;
 use core::ffi::c_void;
+use macros::syscall;
 
 /// The implementation of the `munmap` syscall.
-pub fn munmap(regs: &Regs) -> Result<i32, Errno> {
-	let addr = regs.ebx as *mut c_void;
-	let length = regs.ecx as usize;
-
+#[syscall]
+pub fn munmap(addr: *mut c_void, length: usize) -> Result<i32, Errno> {
 	if !util::is_aligned(addr, memory::PAGE_SIZE) || length == 0 {
 		return Err(errno!(EINVAL));
 	}
