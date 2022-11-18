@@ -5,9 +5,13 @@ use proc_macro2::Ident;
 use proc_macro2::Span;
 use quote::quote;
 use syn::parse_macro_input;
+use syn::AngleBracketedGenericArguments;
 use syn::FnArg;
 use syn::ItemFn;
 use syn::Path;
+use syn::PathArguments;
+use syn::PathSegment;
+use syn::Token;
 use syn::Type;
 use syn::TypePath;
 
@@ -47,7 +51,7 @@ pub fn syscall(input: TokenStream) -> TokenStream {
 			.map(|(i, arg)| match arg {
 				FnArg::Typed(typed) => {
 					let pat = typed.pat.clone();
-					let ty = typed.ty.clone();
+					let mut ty = typed.ty.clone();
 
 					let reg_name = Ident::new(REGS[i], Span::call_site());
 
@@ -56,14 +60,27 @@ pub fn syscall(input: TokenStream) -> TokenStream {
 						// Special cast for pointers
 						Type::Path(TypePath {
 							path: Path {
-								ref segments, ..
+								ref mut segments, ..
 							},
 							..
 						}) if segments
-							.last()
+							.first()
 							.map(|s| s.ident.to_string().starts_with("Syscall"))
 							.unwrap_or(false) =>
 						{
+							// Adding colon token to avoid compilation error
+							if let PathSegment {
+								arguments:
+									PathArguments::AngleBracketed(AngleBracketedGenericArguments {
+										ref mut colon2_token,
+										..
+									}),
+								..
+							} = &mut segments[0]
+							{
+								*colon2_token = Some(Token![::](Span::call_site()));
+							}
+
 							proc_macro2::TokenStream::from(quote! {
 								let #pat = #ty::from(regs.#reg_name as usize);
 							})
