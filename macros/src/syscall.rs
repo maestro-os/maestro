@@ -21,6 +21,8 @@ const REGS: [&'static str; 6] = [
 	"ebp"
 ];
 
+// TODO Add support for mutable arguments
+
 /// Implementation of the syscall macro.
 pub fn syscall(input: TokenStream) -> TokenStream {
 	let input = parse_macro_input!(input as ItemFn);

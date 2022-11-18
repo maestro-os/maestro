@@ -10,6 +10,9 @@ use macros::syscall;
 /// The implementation of the `setpgid` syscall.
 #[syscall]
 pub fn setpgid(pid: Pid, pgid: Pid) -> Result<i32, Errno> {
+	let mut pid = pid;
+	let mut pgid = pgid;
+
 	// TODO Check processes SID
 
 	let mutex = Process::get_current().unwrap();
