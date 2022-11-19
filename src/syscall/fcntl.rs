@@ -103,11 +103,15 @@ const F_SEAL_WRITE: i32 = 8;
 /// Performs the fcntl system call.
 /// `fcntl64` tells whether this is the fcntl64 system call.
 pub fn do_fcntl(fd: i32, cmd: i32, arg: *mut c_void, _fcntl64: bool) -> Result<i32, Errno> {
+	if fd < 0 {
+		return Err(errno!(EBADF));
+	}
+
 	let proc_mutex = Process::get_current().unwrap();
 	let proc_guard = proc_mutex.lock();
 	let proc = proc_guard.get_mut();
 
-	//crate::println!("fcntl: {} {} {:p} {}", fd, cmd, arg, _fcntl64); // TODO rm
+	crate::println!("fcntl: {} {} {:p} {}", fd, cmd, arg, _fcntl64); // TODO rm
 
 	match cmd {
 		F_DUPFD => Ok(proc
@@ -120,7 +124,7 @@ pub fn do_fcntl(fd: i32, cmd: i32, arg: *mut c_void, _fcntl64: bool) -> Result<i
 		}
 
 		F_SETFD => {
-			// TODO
+			proc.set_fd_flags(fd as _, arg as _)?;
 			Ok(0)
 		}
 
@@ -145,92 +149,92 @@ pub fn do_fcntl(fd: i32, cmd: i32, arg: *mut c_void, _fcntl64: bool) -> Result<i
 
 		F_GETLK => {
 			// TODO
-			Ok(0)
+			todo!();
 		}
 
 		F_SETLK => {
 			// TODO
-			Ok(0)
+			todo!();
 		}
 
 		F_SETLKW => {
 			// TODO
-			Ok(0)
+			todo!();
 		}
 
 		F_SETOWN => {
 			// TODO
-			Ok(0)
+			todo!();
 		}
 
 		F_GETOWN => {
 			// TODO
-			Ok(0)
+			todo!();
 		}
 
 		F_SETSIG => {
 			// TODO
-			Ok(0)
+			todo!();
 		}
 
 		F_GETSIG => {
 			// TODO
-			Ok(0)
+			todo!();
 		}
 
 		F_GETLK64 => {
 			// TODO
-			Ok(0)
+			todo!();
 		}
 
 		F_SETLK64 => {
 			// TODO
-			Ok(0)
+			todo!();
 		}
 
 		F_SETLKW64 => {
 			// TODO
-			Ok(0)
+			todo!();
 		}
 
 		F_SETOWN_EX => {
 			// TODO
-			Ok(0)
+			todo!();
 		}
 
 		F_GETOWN_EX => {
 			// TODO
-			Ok(0)
+			todo!();
 		}
 
 		F_OFD_GETLK => {
 			// TODO
-			Ok(0)
+			todo!();
 		}
 
 		F_OFD_SETLK => {
 			// TODO
-			Ok(0)
+			todo!();
 		}
 
 		F_OFD_SETLKW => {
 			// TODO
-			Ok(0)
+			todo!();
 		}
 
 		F_SETLEASE => {
 			// TODO
-			Ok(0)
+			todo!();
 		}
 
 		F_GETLEASE => {
 			// TODO
-			Ok(0)
+			todo!();
 		}
 
 		F_NOTIFY => {
 			// TODO
-			Ok(0)
+			todo!();
 		}
 
 		F_DUPFD_CLOEXEC => Ok(proc
@@ -239,7 +243,7 @@ pub fn do_fcntl(fd: i32, cmd: i32, arg: *mut c_void, _fcntl64: bool) -> Result<i
 
 		F_SETPIPE_SZ => {
 			// TODO
-			Ok(0)
+			todo!();
 		}
 
 		F_GETPIPE_SZ => {
@@ -276,32 +280,32 @@ pub fn do_fcntl(fd: i32, cmd: i32, arg: *mut c_void, _fcntl64: bool) -> Result<i
 
 		F_ADD_SEALS => {
 			// TODO
-			Ok(0)
+			todo!();
 		}
 
 		F_GET_SEALS => {
 			// TODO
-			Ok(0)
+			todo!();
 		}
 
 		F_GET_RW_HINT => {
 			// TODO
-			Ok(0)
+			todo!();
 		}
 
 		F_SET_RW_HINT => {
 			// TODO
-			Ok(0)
+			todo!();
 		}
 
 		F_GET_FILE_RW_HINT => {
 			// TODO
-			Ok(0)
+			todo!();
 		}
 
 		F_SET_FILE_RW_HINT => {
 			// TODO
-			Ok(0)
+			todo!();
 		}
 
 		_ => Err(errno!(EINVAL)),

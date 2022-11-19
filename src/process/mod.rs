@@ -1105,6 +1105,16 @@ impl Process {
 		Ok(file_descriptors[i].clone())
 	}
 
+	/// Returns an immutable reference to the file descriptor with ID `id`.
+	///
+	/// `file_descriptors` is the file descriptors table.
+	///
+	/// If the file descriptor doesn't exist, the function returns None.
+	fn get_fd_(file_descriptors: &Vec<FileDescriptor>, id: u32) -> Option<FileDescriptor> {
+		let result = file_descriptors.binary_search_by(|fd| fd.get_id().cmp(&id));
+		result.ok().map(|index| file_descriptors[index].clone())
+	}
+
 	/// Duplicates the file descriptor with id `id`.
 	/// The new file descriptor ID follows the constraint given be `constraint`.
 	/// `cloexec` tells whether the new file descriptor has the O_CLOEXEC flag
@@ -1175,21 +1185,31 @@ impl Process {
 		Ok(())
 	}
 
-	/// Returns the file descriptor with ID `id`.
-	/// `file_descriptors` is the file descriptors table.
-	/// If the file descriptor doesn't exist, the function returns None.
-	fn get_fd_(file_descriptors: &Vec<FileDescriptor>, id: u32) -> Option<FileDescriptor> {
-		let result = file_descriptors.binary_search_by(|fd| fd.get_id().cmp(&id));
-		result.ok().map(|index| file_descriptors[index].clone())
-	}
-
-	/// Returns the file descriptor with ID `id`.
+	/// Returns an immutable reference to the file descriptor with ID `id`.
+	///
 	/// If the file descriptor doesn't exist, the function returns None.
 	pub fn get_fd(&self, id: u32) -> Option<FileDescriptor> {
-		let file_descriptors_guard = self.file_descriptors.as_ref().unwrap().lock();
+		let file_descriptors_guard = self.file_descriptors.as_ref()?.lock();
 		let file_descriptors = file_descriptors_guard.get();
 
 		Self::get_fd_(file_descriptors, id)
+	}
+
+	/// Sets the given flags to the given file descriptor.
+	///
+	/// If the file descriptor doesn't exist, the function returns an error.
+	pub fn set_fd_flags(&mut self, id: u32, flags: i32) -> Result<(), Errno> {
+		let file_descriptors_guard = self.file_descriptors.as_ref()
+			.ok_or_else(|| errno!(EBADF))?
+			.lock();
+		let file_descriptors = file_descriptors_guard.get_mut();
+
+		let Ok(index) = file_descriptors.binary_search_by(|fd| fd.get_id().cmp(&id)) else {
+			return Err(errno!(EBADF));
+		};
+
+		file_descriptors[index].set_flags(flags);
+		Ok(())
 	}
 
 	/// Closes the file descriptor with the ID `id`. The function returns an Err
