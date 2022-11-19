@@ -1,8 +1,9 @@
 //! This module implements types representing timestamps.
 
-use crate::util::math;
 use core::cmp::Ordering;
+use core::ffi::c_long;
 use core::ops::Add;
+use crate::util::math;
 
 /// Type representing a timestamp in seconds. Equivalent to POSIX's `time_t`.
 pub type Timestamp = u64;
@@ -126,7 +127,7 @@ pub struct Timespec {
 	/// Seconds
 	pub tv_sec: Timestamp,
 	/// Nanoseconds
-	pub tv_nsec: u32,
+	pub tv_nsec: c_long,
 }
 
 impl TimeUnit for Timespec {

@@ -15,15 +15,6 @@ use crate::time::unit::TimestampScale;
 use crate::util::io::IO;
 use macros::syscall;
 
-/// Time structure used in `Stat`.
-#[repr(C)]
-struct StatTime {
-	/// TODO doc
-	tv_sec: c_long,
-	/// TODO doc
-	tv_nsec: c_long,
-}
-
 // TODO Check types
 /// Structure containing the informations of a file.
 #[repr(C)]
@@ -34,8 +25,8 @@ struct Stat {
 	/// Padding.
 	__st_dev_padding: c_int,
 
-	/// Truncated inode number (32 bits).
-	__st_ino_truncated: c_long,
+	/// The inode number.
+	st_ino: INode,
 	/// File's mode.
 	st_mode: Mode,
 	/// Number of hard links to the file.
@@ -51,21 +42,11 @@ struct Stat {
 	__st_rdev_padding: c_int,
 
 	/// TODO doc
-	st_size: i64,
+	st_size: u32,
 	/// TODO doc
-	st_blksize: u32,
+	st_blksize: c_long,
 	/// TODO doc
 	st_blocks: u64,
-
-	/// TODO doc
-	__st_atim32: StatTime,
-	/// TODO doc
-	__st_mtim32: StatTime,
-	/// TODO doc
-	__st_ctim32: StatTime,
-
-	/// The inode number.
-	st_ino: INode,
 
 	/// TODO doc
 	st_atim: Timespec,
@@ -78,6 +59,7 @@ struct Stat {
 /// The implementation of the `fstat64` syscall.
 #[syscall]
 pub fn fstat64(fd: c_int, statbuf: SyscallPtr<Stat>) -> Result<i32, Errno> {
+	crate::println!("size: {}", core::mem::size_of::<Stat>()); // TODO rm
 	if fd < 0 {
 		return Err(errno!(EBADF));
 	}
@@ -105,7 +87,7 @@ pub fn fstat64(fd: c_int, statbuf: SyscallPtr<Stat>) -> Result<i32, Errno> {
 
 		__st_dev_padding: 0,
 
-		__st_ino_truncated: inode as _,
+		st_ino: inode,
 		st_mode: file.get_mode(),
 		st_nlink: file.get_hard_links_count() as _,
 		st_uid: file.get_uid(),
@@ -117,22 +99,6 @@ pub fn fstat64(fd: c_int, statbuf: SyscallPtr<Stat>) -> Result<i32, Errno> {
 		st_size: file.get_size() as _,
 		st_blksize: 512, // TODO
 		st_blocks: file.get_blocks_count(),
-
-		// FIXME: overflow (casting to i32)
-		__st_atim32: StatTime {
-			tv_sec: file.get_atime() as _,
-			tv_nsec: 0, // TODO
-		},
-		__st_mtim32: StatTime {
-			tv_sec: file.get_mtime() as _,
-			tv_nsec: 0, // TODO
-		},
-		__st_ctim32: StatTime {
-			tv_sec: file.get_ctime() as _,
-			tv_nsec: 0, // TODO
-		},
-
-		st_ino: inode,
 
 		st_atim: Timespec::from_nano(TimestampScale::convert(
 			file.get_atime(),
