@@ -59,7 +59,6 @@ struct Stat {
 /// The implementation of the `fstat64` syscall.
 #[syscall]
 pub fn fstat64(fd: c_int, statbuf: SyscallPtr<Stat>) -> Result<i32, Errno> {
-	crate::println!("size: {}", core::mem::size_of::<Stat>()); // TODO rm
 	if fd < 0 {
 		return Err(errno!(EBADF));
 	}
