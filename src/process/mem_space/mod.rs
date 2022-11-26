@@ -238,48 +238,39 @@ impl MemSpace {
 			return Err(errno!(EINVAL));
 		}
 
-		enum MappingInfo<'a> {
-			GapPosition(&'a MemGap, usize),
-			Addr(*mut c_void),
-		}
-
 		// Mapping informations matching mapping constraints
-		let mapping_infos = match map_constraint {
-			MapConstraint::Fixed(ptr) => {
-				self.unmap(ptr, size, false)?;
+		let (gap, addr) = match map_constraint {
+			MapConstraint::Fixed(addr) => {
+				self.unmap(addr, size, false)?;
+				let gap = Self::gap_by_ptr(&self.gaps, addr);
 
-				MappingInfo::Addr(ptr as _)
+				(gap, addr as _)
 			}
 
-			MapConstraint::Hint(ptr) => {
+			MapConstraint::Hint(addr) => {
 				// Getting the gap for the pointer
-				let gap = Self::gap_by_ptr(&self.gaps, ptr).ok_or_else(|| errno!(ENOMEM))?;
+				let mut gap = Self::gap_by_ptr(&self.gaps, addr)
+					.ok_or_else(|| errno!(ENOMEM))?;
 
 				// The offset in the gap
-				let off = (ptr as usize - gap.get_begin() as usize) / memory::PAGE_SIZE;
+				let off = (addr as usize - gap.get_begin() as usize) / memory::PAGE_SIZE;
 				if off + size > gap.get_size() {
-					return Err(errno!(ENOMEM));
+					// Hint cannot be satisfied. Get a gap large enough
+					gap = Self::gap_get(&self.gaps, &self.gaps_size, size)
+						.ok_or_else(|| errno!(ENOMEM))?;
 				}
 
-				MappingInfo::GapPosition(gap, off)
+				let addr = unsafe {
+					gap.get_begin().add(off * memory::PAGE_SIZE)
+				};
+				(Some(gap), addr)
 			}
 
 			MapConstraint::None => {
-				// Getting a gap large enough
 				let gap = Self::gap_get(&self.gaps, &self.gaps_size, size)
 					.ok_or_else(|| errno!(ENOMEM))?;
-
-				MappingInfo::GapPosition(gap, 0)
+				(Some(gap), gap.get_begin())
 			}
-		};
-
-		// The address to the beginning of the mapping
-		let addr = match mapping_infos {
-			MappingInfo::GapPosition(gap, off) => {
-				(gap.get_begin() as usize + off * memory::PAGE_SIZE) as *mut c_void
-			}
-
-			MappingInfo::Addr(addr) => addr,
 		};
 
 		// Creating the mapping
@@ -300,28 +291,25 @@ impl MemSpace {
 		}
 
 		// Splitting the old gap to fit the mapping if needed
-		match mapping_infos {
-			MappingInfo::GapPosition(gap, off) => {
-				let (left_gap, right_gap) = gap.consume(off, size);
+		if let Some(gap) = gap {
+			let off = (addr as usize - gap.get_begin() as usize) / memory::PAGE_SIZE;
+			let (left_gap, right_gap) = gap.consume(off, size);
 
-				// Removing the old gap
-				let gap_begin = gap.get_begin();
-				self.gap_remove(gap_begin);
+			// Removing the old gap
+			let gap_begin = gap.get_begin();
+			self.gap_remove(gap_begin);
 
-				// Inserting the new gaps
-				if let Some(new_gap) = left_gap {
-					oom::wrap(|| self.gap_insert(new_gap.clone()));
-				}
-				if let Some(new_gap) = right_gap {
-					oom::wrap(|| self.gap_insert(new_gap.clone()));
-				}
+			// Inserting the new gaps
+			if let Some(new_gap) = left_gap {
+				oom::wrap(|| self.gap_insert(new_gap.clone()));
 			}
-
-			_ => {}
+			if let Some(new_gap) = right_gap {
+				oom::wrap(|| self.gap_insert(new_gap.clone()));
+			}
 		}
 
 		self.vmem_usage += size;
-		Ok(addr)
+		Ok(addr as *mut _)
 	}
 
 	/// Same as `map`, except the function returns a pointer to the end of the

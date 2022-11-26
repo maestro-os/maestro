@@ -1191,6 +1191,33 @@ impl<K: 'static + FailableClone + Ord, V: FailableClone> FailableClone for Map<K
 	}
 }
 
+impl<K: 'static + Ord + fmt::Debug, V> fmt::Debug for Map<K, V> {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		if let Some(mut n) = self.root {
+			Self::foreach_nodes(
+				unsafe { n.as_mut() },
+				&mut |n| {
+					// TODO Optimize
+					for _ in 0..n.get_node_depth() {
+						let _ = write!(f, "\t");
+					}
+
+					let color = if n.color == NodeColor::Red {
+						"red"
+					} else {
+						"black"
+					};
+					let _ = writeln!(f, "{:?} ({:?})", n.key, color);
+				},
+				TraversalType::ReverseInOrder,
+			);
+			Ok(())
+		} else {
+			write!(f, "<Empty tree>")
+		}
+	}
+}
+
 impl<K: 'static + Ord + fmt::Display, V> fmt::Display for Map<K, V> {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		if let Some(mut n) = self.root {
