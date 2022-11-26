@@ -19,7 +19,6 @@ use crate::process;
 use crate::process::exec::ExecInfo;
 use crate::process::exec::Executor;
 use crate::process::exec::ProgramImage;
-use crate::process::mem_space;
 use crate::process::mem_space::MapConstraint;
 use crate::process::mem_space::MemSpace;
 use crate::util;
@@ -32,7 +31,6 @@ use core::cmp::max;
 use core::cmp::min;
 use core::ffi::c_void;
 use core::mem::size_of;
-use core::ptr;
 use core::ptr::null;
 use core::slice;
 use core::str;
@@ -438,7 +436,7 @@ impl ELFExecutor {
 		seg: &ELF32ProgramHeader,
 	) -> Result<Option<*const c_void>, Errno> {
 		// Loading only loadable segments
-		if seg.p_type != elf::PT_LOAD {
+		if seg.p_type != elf::PT_LOAD && seg.p_type != elf::PT_PHDR {
 			return Ok(None);
 		}
 
@@ -480,7 +478,7 @@ impl ELFExecutor {
 	/// `image` is the ELF file image.
 	fn copy_segment(load_base: *const c_void, seg: &ELF32ProgramHeader, image: &[u8]) {
 		// Loading only loadable segments
-		if seg.p_type != elf::PT_LOAD {
+		if seg.p_type != elf::PT_LOAD && seg.p_type != elf::PT_PHDR {
 			return;
 		}
 
@@ -496,27 +494,6 @@ impl ELFExecutor {
 		unsafe {
 			vmem::write_lock_wrap(|| {
 				util::memcpy(begin, file_begin as *const _ as _, len);
-			});
-		}
-	}
-
-	/// Copies the program header table to the given virtual address.
-	///
-	/// Arguments:
-	/// - `parser` is the ELF parser.
-	/// - `phdr` is the virtual address at which the table is to be copied
-	fn copy_phdr(parser: &ELFParser, phdr: *mut c_void) {
-		let ehdr = parser.get_header();
-		let len = ehdr.e_phentsize as usize * ehdr.e_phnum as usize;
-
-		let begin = ehdr.e_phoff as usize;
-		let end = begin + len;
-		let table = &parser.get_image()[begin..end];
-
-		// Copying the program header table
-		unsafe {
-			vmem::write_lock_wrap(|| {
-				ptr::copy_nonoverlapping::<u8>(table.as_ptr(), phdr as *mut _, len);
 			});
 		}
 	}
@@ -542,17 +519,11 @@ impl ELFExecutor {
 		let ehdr = elf.get_header();
 		let phentsize = ehdr.e_phentsize as usize;
 		let phnum = ehdr.e_phnum as usize;
-
-		// Allocating memory for the program header table
-		let phdr_pages = math::ceil_division(phentsize * phnum, memory::PAGE_SIZE);
-		let phdr = mem_space.map(
-			MapConstraint::Fixed(load_end),
-			phdr_pages,
-			mem_space::MAPPING_FLAG_USER | mem_space::MAPPING_FLAG_NOLAZY,
-			None,
-			0,
-		)?;
-		load_end = unsafe { load_end.add(phdr_pages * memory::PAGE_SIZE) };
+		let phdr = elf.iter_segments()
+			.filter(|seg| seg.p_type == elf::PT_PHDR)
+			.map(|seg| seg.p_vaddr as *const c_void)
+			.next()
+			.ok_or_else(|| errno!(EINVAL))?;
 
 		let mut entry_point =
 			(load_base as usize + elf.get_header().e_entry as usize) as *const c_void;
@@ -600,9 +571,6 @@ impl ELFExecutor {
 				for seg in elf.iter_segments() {
 					Self::copy_segment(load_base, seg, elf.get_image());
 				}
-
-				// Copy the program header table
-				Self::copy_phdr(elf, phdr);
 
 				// Performing relocations if no interpreter is present
 				if interp_path.is_none() {
