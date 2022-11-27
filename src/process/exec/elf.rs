@@ -1,39 +1,41 @@
 //! This module implements ELF program execution with respects the System V ABI.
 
-use crate::cpu;
-use crate::elf;
-use crate::elf::parser::ELFParser;
-use crate::elf::relocation::Relocation;
-use crate::elf::ELF32ProgramHeader;
-use crate::errno;
-use crate::errno::Errno;
-use crate::file::path::Path;
-use crate::file::vfs;
-use crate::file::File;
-use crate::file::Gid;
-use crate::file::Uid;
-use crate::memory;
-use crate::memory::malloc;
-use crate::memory::vmem;
-use crate::process;
-use crate::process::exec::ExecInfo;
-use crate::process::exec::Executor;
-use crate::process::exec::ProgramImage;
-use crate::process::mem_space::MapConstraint;
-use crate::process::mem_space::MemSpace;
-use crate::util;
-use crate::util::container::string::String;
-use crate::util::container::vec::Vec;
-use crate::util::io::IO;
-use crate::util::math;
-use crate::util::FailableClone;
 use core::cmp::max;
 use core::cmp::min;
 use core::ffi::c_void;
 use core::mem::size_of;
 use core::ptr::null;
+use core::ptr;
 use core::slice;
 use core::str;
+use crate::cpu;
+use crate::elf::ELF32ProgramHeader;
+use crate::elf::parser::ELFParser;
+use crate::elf::relocation::Relocation;
+use crate::elf;
+use crate::errno::Errno;
+use crate::errno;
+use crate::file::File;
+use crate::file::Gid;
+use crate::file::Uid;
+use crate::file::path::Path;
+use crate::file::vfs;
+use crate::memory::malloc;
+use crate::memory::vmem;
+use crate::memory;
+use crate::process::exec::ExecInfo;
+use crate::process::exec::Executor;
+use crate::process::exec::ProgramImage;
+use crate::process::mem_space::MapConstraint;
+use crate::process::mem_space::MemSpace;
+use crate::process::mem_space;
+use crate::process;
+use crate::util::FailableClone;
+use crate::util::container::string::String;
+use crate::util::container::vec::Vec;
+use crate::util::io::IO;
+use crate::util::math;
+use crate::util;
 
 /// Used to define the end of the entries list.
 const AT_NULL: i32 = 0;
@@ -519,11 +521,31 @@ impl ELFExecutor {
 		let ehdr = elf.get_header();
 		let phentsize = ehdr.e_phentsize as usize;
 		let phnum = ehdr.e_phnum as usize;
+
+		// The size in bytes of the phdr table
+		let phdr_size = phentsize as usize * phnum as usize;
+
 		let phdr = elf.iter_segments()
 			.filter(|seg| seg.p_type == elf::PT_PHDR)
-			.map(|seg| seg.p_vaddr as *const c_void)
-			.next()
-			.ok_or_else(|| errno!(EINVAL))?;
+			.map(|seg| seg.p_vaddr as *mut c_void)
+			.next();
+		let (phdr, phdr_needs_copy) = match phdr {
+			Some(phdr) => (phdr, false),
+
+			// Not phdr segment. Load it manually
+			None => {
+				let page_size = math::ceil_division(phdr_size, memory::PAGE_SIZE);
+				let phdr = mem_space.map(
+					MapConstraint::None,
+					page_size,
+					mem_space::MAPPING_FLAG_USER | mem_space::MAPPING_FLAG_NOLAZY,
+					None,
+					0
+				)?;
+
+				(phdr, true)
+			},
+		};
 
 		let mut entry_point =
 			(load_base as usize + elf.get_header().e_entry as usize) as *const c_void;
@@ -570,6 +592,19 @@ impl ELFExecutor {
 				// Copying segments' data
 				for seg in elf.iter_segments() {
 					Self::copy_segment(load_base, seg, elf.get_image());
+				}
+
+				// Copy phdr's data if necessary
+				if phdr_needs_copy {
+					let image_phdr = &elf.get_image()[(ehdr.e_phoff as usize)..];
+
+					vmem::write_lock_wrap(|| {
+						ptr::copy_nonoverlapping::<u8>(
+							image_phdr.as_ptr(),
+							phdr as _,
+							phdr_size
+						);
+					});
 				}
 
 				// Performing relocations if no interpreter is present
