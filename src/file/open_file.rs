@@ -8,8 +8,7 @@ use crate::errno;
 use crate::file::File;
 use crate::file::FileContent;
 use crate::file::FileLocation;
-use crate::file::pipe::PipeBuffer;
-use crate::file::socket::SocketSide;
+use crate::file::vfs;
 use crate::process::mem_space::MemSpace;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::syscall::ioctl;
@@ -17,7 +16,6 @@ use crate::time::unit::TimestampScale;
 use crate::time;
 use crate::types::c_int;
 use crate::util::container::hashmap::HashMap;
-use crate::util::container::string::String;
 use crate::util::io::IO;
 use crate::util::lock::Mutex;
 use crate::util::ptr::IntSharedPtr;
@@ -123,18 +121,31 @@ impl OpenFile {
 		};
 		let open_file_guard = open_file_mutex.lock();
 		let open_file = open_file_guard.get_mut();
-
-		// Update references count
-		match &open_file.target {
-			FDTarget::File(file) => file.lock().get_mut().increment_open(open_file.can_write())?,
-			FDTarget::Pipe(pipe) => pipe.lock().get_mut().increment_open(open_file.can_write()),
-
-			_ => {}
-		}
-
 		open_file.ref_count += 1;
 
+		// TODO if the file points to a pipe, update the number of ends:
+		/*match &open_file.target {
+			FDTarget::Pipe(pipe) => pipe.lock().get_mut().increment_open(open_file.can_write()),
+			_ => {}
+		}*/
+
 		Ok(open_file_mutex)
+	}
+
+	/// Returns the location of the open file.
+	pub fn get_location(&self) -> &FileLocation {
+		&self.location
+	}
+
+	/// Returns the file.
+	///
+	/// The name of the file is not set since it cannot be known from this structure.
+	pub fn get_file(&self) -> Result<SharedPtr<File>, Errno> {
+		let vfs_mutex = vfs::get();
+		let vfs_guard = vfs_mutex.lock();
+		let vfs = vfs_guard.get_mut().unwrap();
+
+		vfs.get_file_by_location(&self.location)
 	}
 
 	/// Returns the file flags.
@@ -143,6 +154,7 @@ impl OpenFile {
 	}
 
 	/// Sets the open file flags.
+	///
 	/// File access mode (O_RDONLY, O_WRONLY, O_RDWR) and file creation flags
 	/// (O_CREAT, O_EXCL, O_NOCTTY, O_TRUNC) are ignored.
 	pub fn set_flags(&mut self, flags: i32) {
@@ -177,42 +189,29 @@ impl OpenFile {
 		request: u32,
 		argp: *const c_void,
 	) -> Result<u32, Errno> {
-		let size = self.get_size();
+		let file_mutex = self.get_file()?;
+		let file_guard = file_mutex.lock();
+		let file = file_guard.get_mut();
 
-		match &mut self.target {
-			FDTarget::File(file) => {
-				let guard = file.lock();
-				let f = guard.get_mut();
+		match file.get_content() {
+			FileContent::Regular => match request {
+				ioctl::FIONREAD => {
+					let mem_space_guard = mem_space.lock();
+					let count_ptr: SyscallPtr<c_int> = (argp as usize).into();
+					let count_ref = count_ptr
+						.get_mut(&mem_space_guard)?
+						.ok_or_else(|| errno!(EFAULT))?;
 
-				match f.get_content() {
-					FileContent::Regular => match request {
-						ioctl::FIONREAD => {
-							let mem_space_guard = mem_space.lock();
-							let count_ptr: SyscallPtr<c_int> = (argp as usize).into();
-							let count_ref = count_ptr
-								.get_mut(&mem_space_guard)?
-								.ok_or_else(|| errno!(EFAULT))?;
-							*count_ref = (size - min(size, self.curr_off)) as _;
+					let size = file.get_size();
+					*count_ref = (size - min(size, self.curr_off)) as _;
 
-							Ok(0)
-						}
-
-						_ => Err(errno!(EINVAL)),
-					},
-
-					_ => f.ioctl(mem_space, request, argp),
+					Ok(0)
 				}
-			}
 
-			FDTarget::Pipe(pipe) => {
-				let guard = pipe.lock();
-				guard.get_mut().ioctl(mem_space, request, argp)
-			}
+				_ => Err(errno!(EINVAL)),
+			},
 
-			FDTarget::Socket(sock) => {
-				let guard = sock.lock();
-				guard.get_mut().ioctl(mem_space, request, argp)
-			}
+			_ => file.ioctl(mem_space, request, argp),
 		}
 	}
 
@@ -238,11 +237,9 @@ impl OpenFile {
 
 impl IO for OpenFile {
 	fn get_size(&self) -> u64 {
-		if let FDTarget::File(f) = &self.target {
-			f.get().lock().get().get_size()
-		} else {
-			0
-		}
+		self.get_file()
+			.map(|f| f.lock().get().get_size())
+			.unwrap_or(0)
 	}
 
 	/// Note: on this specific implementation, the offset is ignored since
@@ -252,33 +249,20 @@ impl IO for OpenFile {
 			return Err(errno!(EINVAL));
 		}
 
-		let (len, eof) = match &mut self.target {
-			FDTarget::File(f) => {
-				let guard = f.lock();
-				let file = guard.get_mut();
+		let file_mutex = self.get_file()?;
+		let file_guard = file_mutex.lock();
+		let file = file_guard.get_mut();
 
-				if matches!(file.get_content(), FileContent::Directory(_)) {
-					return Err(errno!(EISDIR));
-				}
+		if matches!(file.get_content(), FileContent::Directory(_)) {
+			return Err(errno!(EISDIR));
+		}
 
-				// Updating access timestamp
-				let timestamp = time::get(TimestampScale::Second, true).unwrap_or(0);
-				file.set_atime(timestamp); // TODO Only if the mountpoint has the option enabled
-				file.sync()?; // TODO Lazy
+		// Updating access timestamp
+		let timestamp = time::get(TimestampScale::Second, true).unwrap_or(0);
+		file.set_atime(timestamp); // TODO Only if the mountpoint has the option enabled
+		file.sync()?; // TODO Lazy
 
-				file.read(self.curr_off, buf)
-			}
-
-			FDTarget::Pipe(p) => {
-				let guard = p.lock();
-				guard.get_mut().read(self.curr_off, buf)
-			}
-
-			FDTarget::Socket(s) => {
-				let guard = s.lock();
-				guard.get_mut().read(self.curr_off, buf)
-			}
-		}?;
+		let (len, eof) = file.read(self.curr_off, buf)?;
 
 		self.curr_off += len as u64;
 		Ok((len as _, eof))
@@ -291,74 +275,46 @@ impl IO for OpenFile {
 			return Err(errno!(EINVAL));
 		}
 
-		let len = match &mut self.target {
-			FDTarget::File(f) => {
-				let guard = f.lock();
-				let file = guard.get_mut();
+		let file_mutex = self.get_file()?;
+		let file_guard = file_mutex.lock();
+		let file = file_guard.get_mut();
 
-				if matches!(file.get_content(), FileContent::Directory(_)) {
-					return Err(errno!(EISDIR));
-				}
+		if matches!(file.get_content(), FileContent::Directory(_)) {
+			return Err(errno!(EISDIR));
+		}
 
-				// Appending if enabled
-				if self.flags & O_APPEND != 0 {
-					self.curr_off = file.get_size();
-				}
+		// Appending if enabled
+		if self.flags & O_APPEND != 0 {
+			self.curr_off = file.get_size();
+		}
 
-				// Updating access timestamps
-				let timestamp = time::get(TimestampScale::Second, true).unwrap_or(0);
-				file.set_atime(timestamp); // TODO Only if the mountpoint has the option enabled
-				file.set_mtime(timestamp);
-				file.sync()?; // TODO Lazy
+		// Updating access timestamps
+		let timestamp = time::get(TimestampScale::Second, true).unwrap_or(0);
+		file.set_atime(timestamp); // TODO Only if the mountpoint has the option enabled
+		file.set_mtime(timestamp);
+		file.sync()?; // TODO Lazy
 
-				file.write(self.curr_off, buf)
-			}
-
-			FDTarget::Pipe(p) => {
-				let guard = p.lock();
-				guard.get_mut().write(self.curr_off, buf)
-			}
-
-			FDTarget::Socket(s) => {
-				let guard = s.lock();
-				guard.get_mut().write(self.curr_off, buf)
-			}
-		}?;
+		let len = file.write(self.curr_off, buf)?;
 
 		self.curr_off += len as u64;
 		Ok(len as _)
 	}
 
 	fn poll(&mut self, mask: u32) -> Result<u32, Errno> {
-		match &mut self.target {
-			FDTarget::File(f) => {
-				let guard = f.lock();
-				let file = guard.get_mut();
+		let file_mutex = self.get_file()?;
+		let file_guard = file_mutex.lock();
+		let file = file_guard.get_mut();
 
-				file.poll(mask)
-			}
-
-			FDTarget::Pipe(p) => {
-				let guard = p.lock();
-				guard.get_mut().poll(mask)
-			}
-
-			FDTarget::Socket(s) => {
-				let guard = s.lock();
-				guard.get_mut().poll(mask)
-			}
-		}
+		file.poll(mask)
 	}
 }
 
 impl Drop for OpenFile {
 	fn drop(&mut self) {
-		// Update references count
-		match &self.target {
-			FDTarget::File(file) => file.lock().get_mut().decrement_open(self.can_write()),
+		// TODO
+		/*match &self.target {
 			FDTarget::Pipe(pipe) => pipe.lock().get_mut().decrement_open(self.can_write()),
-
 			_ => {}
-		}
+		}*/
 	}
 }

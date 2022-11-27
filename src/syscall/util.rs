@@ -111,16 +111,11 @@ fn build_path_from_fd(
 		let open_file_guard = open_file_mutex.lock();
 		let open_file = open_file_guard.get();
 
-		match open_file.get_target() {
-			FDTarget::File(file_mutex) => {
-				let file_guard = file_mutex.lock();
-				let file = file_guard.get();
+		let file_mutex = open_file.get_file()?;
+		let file_guard = file_mutex.lock();
+		let file = file_guard.get();
 
-				file.get_path()?.concat(&path)
-			}
-
-			_ => Err(errno!(ENOTDIR)),
-		}
+		file.get_path()?.concat(&path)
 	}
 }
 
@@ -154,7 +149,7 @@ pub fn get_file_at(
 			let open_file_guard = open_file_mutex.lock();
 			let open_file = open_file_guard.get();
 
-			open_file.get_target().get_file()
+			open_file.get_file()
 		} else {
 			Err(errno!(ENOENT))
 		}

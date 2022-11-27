@@ -84,8 +84,11 @@ pub fn do_mmap(
 	let guard = mutex.lock();
 	let proc = guard.get_mut();
 
+	let uid = proc.get_euid();
+	let gid = proc.get_egid();
+
 	// The file the mapping points to
-	let file = if fd >= 0 {
+	let open_file_mutex = if fd >= 0 {
 		proc.get_fd(fd as _).map(|fd| fd.get_open_file())
 	} else {
 		None
@@ -93,23 +96,27 @@ pub fn do_mmap(
 
 	// TODO anon flag
 
-	if let Some(file) = &file {
+	if let Some(open_file_mutex) = &open_file_mutex {
 		// Checking the alignment of the offset
 		if offset as usize % memory::PAGE_SIZE != 0 {
 			return Err(errno!(EINVAL));
 		}
 
-		let file_guard = file.lock();
+		let open_file_guard = open_file_mutex.lock();
+		let open_file = open_file_guard.get();
+
+		let file_mutex = open_file.get_file()?;
+		let file_guard = file_mutex.lock();
 		let file = file_guard.get();
 
-		if !matches!(file.get_file_type(), FileType::Regular) {
+		if !matches!(file.get_type(), FileType::Regular) {
 			return Err(errno!(EACCES));
 		}
 
-		if prot & PROT_READ != 0 && !file.can_read() {
+		if prot & PROT_READ != 0 && !file.can_read(uid, gid) {
 			return Err(errno!(EPERM));
 		}
-		if prot & PROT_WRITE != 0 && !file.can_write() {
+		if prot & PROT_WRITE != 0 && !file.can_write(uid, gid) {
 			return Err(errno!(EPERM));
 		}
 		// TODO check exec
@@ -129,7 +136,7 @@ pub fn do_mmap(
 		addr_hint,
 		pages,
 		flags,
-		file.clone(),
+		open_file_mutex.clone(),
 		offset,
 	);
 
@@ -142,7 +149,7 @@ pub fn do_mmap(
 					MapConstraint::None,
 					pages,
 					flags,
-					file,
+					open_file_mutex,
 					offset,
 				)
 			} else {

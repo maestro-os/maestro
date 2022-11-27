@@ -105,6 +105,6 @@ pub fn openat(
 	let mutex = Process::get_current().unwrap();
 	let guard = mutex.lock();
 	let proc = guard.get_mut();
-	let fd = proc.create_fd(loc, flags & super::open::STATUS_FLAGS_MASK, FDTarget::File(file))?;
+	let fd = proc.create_fd(loc, flags & super::open::STATUS_FLAGS_MASK)?;
 	Ok(fd.get_id() as _)
 }

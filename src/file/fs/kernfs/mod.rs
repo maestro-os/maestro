@@ -255,7 +255,7 @@ impl KernFS {
 		});
 		parent.set_content(parent_content);
 
-		let location = FileLocation {
+		let location = FileLocation::Filesystem {
 			mountpoint_id: None,
 
 			inode,
@@ -321,7 +321,7 @@ impl Filesystem for KernFS {
 	fn load_file(&mut self, _: &mut dyn IO, inode: INode, name: String) -> Result<File, Errno> {
 		let node = self.get_node(inode)?;
 
-		let file_location = FileLocation {
+		let file_location = FileLocation::Filesystem {
 			mountpoint_id: None,
 
 			inode,
@@ -406,7 +406,7 @@ impl Filesystem for KernFS {
 		}
 
 		// Getting node
-		let node = self.get_node_mut(file.get_location().inode)?;
+		let node = self.get_node_mut(file.get_location().get_inode())?;
 
 		// Changing file size if it has been truncated
 		// TODO node.truncate(file.get_size())?;

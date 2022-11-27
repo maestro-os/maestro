@@ -12,26 +12,27 @@ pub mod socket;
 pub mod util;
 pub mod vfs;
 
-use crate::device;
+use core::cmp::max;
+use core::ffi::c_void;
 use crate::device::DeviceType;
-use crate::errno;
+use crate::device;
 use crate::errno::Errno;
-use crate::file::mountpoint::MountPoint;
-use crate::file::mountpoint::MountSource;
-use crate::file::vfs::VFS;
+use crate::errno;
 use crate::process::mem_space::MemSpace;
-use crate::time;
 use crate::time::unit::Timestamp;
 use crate::time::unit::TimestampScale;
+use crate::time;
+use crate::util::FailableClone;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
 use crate::util::io::IO;
 use crate::util::ptr::IntSharedPtr;
 use crate::util::ptr::SharedPtr;
-use crate::util::FailableClone;
-use core::cmp::max;
-use core::ffi::c_void;
+use mountpoint::MountPoint;
+use mountpoint::MountSource;
+use open_file::OpenFile;
 use path::Path;
+use vfs::VFS;
 
 /// Type representing a user ID.
 pub type Uid = u16;
@@ -181,7 +182,6 @@ pub enum FileLocation {
 	Filesystem {
 		/// The ID of the mountpoint of the file.
 		mountpoint_id: Option<u32>,
-
 		/// The file's inode.
 		inode: INode,
 	},
@@ -194,15 +194,32 @@ pub enum FileLocation {
 }
 
 impl FileLocation {
-	/// Returns the mountpoint associated with the file's location.
-	pub fn get_mountpoint(&self) -> Option<SharedPtr<MountPoint>> {
+	/// Returns the Id of the mountpoint.
+	pub fn get_mountpoint_id(&self) -> Option<u32> {
 		match self {
-			Self::FileSystem {
+			Self::Filesystem {
 				mountpoint_id,
 				..
-			} => mountpoint::from_id(self.mountpoint_id?),
+			} => mountpoint_id.clone(),
 
-			Self::Virtual => None,
+			_ => None,
+		}
+	}
+
+	/// Returns the mountpoint.
+	pub fn get_mountpoint(&self) -> Option<SharedPtr<MountPoint>> {
+		mountpoint::from_id(self.get_mountpoint_id()?)
+	}
+
+	/// Returns the inode.
+	pub fn get_inode(&self) -> INode {
+		match self {
+			Self::Filesystem {
+				inode,
+				..
+			} => *inode,
+
+			Self::Virtual { id } => *id as _,
 		}
 	}
 }
@@ -330,10 +347,6 @@ pub struct File {
 	location: FileLocation,
 	/// The content of the file.
 	content: FileContent,
-
-	/// The number of locations where this file being is used. If non-zero, the
-	/// file is considered busy.
-	ref_count: usize,
 }
 
 impl File {
@@ -374,8 +387,6 @@ impl File {
 
 			location,
 			content,
-
-			ref_count: 0,
 		})
 	}
 
@@ -607,7 +618,7 @@ impl File {
 	/// Creates a directory entry corresponding to the current file.
 	pub fn to_dir_entry(&self) -> DirEntry {
 		DirEntry {
-			inode: self.location.inode,
+			inode: self.location.get_inode(),
 			entry_type: self.get_type(),
 		}
 	}
@@ -642,7 +653,7 @@ impl File {
 				let vfs_guard = vfs_mutex.lock();
 				let vfs = vfs_guard.get_mut().as_mut().unwrap();
 
-				let pipe_mutex = vfs.get_named_fifo(self.get_location())?;
+				let pipe_mutex = vfs.get_fifo(self.get_location())?;
 				let pipe_guard = pipe_mutex.lock();
 				let pipe = pipe_guard.get_mut();
 				pipe.ioctl(mem_space, request, argp)
@@ -653,7 +664,7 @@ impl File {
 				let vfs_guard = vfs_mutex.lock();
 				let vfs = vfs_guard.get_mut().as_mut().unwrap();
 
-				let sock_mutex = vfs.get_named_socket(self.get_location())?;
+				let sock_mutex = vfs.get_socket(self.get_location())?;
 				let sock_guard = sock_mutex.lock();
 				let _sock = sock_guard.get_mut();
 
@@ -678,58 +689,9 @@ impl File {
 		}
 	}
 
-	/// Increments the number of times the file is open.
-	/// `write` tells whether the file is open with write permission.
-	pub fn increment_open(&mut self, write: bool) -> Result<(), Errno> {
-		self.ref_count += 1;
-
-		// If the file is a pipe, update the number of ends
-		match self.content {
-			FileContent::Fifo => {
-				let vfs_mutex = vfs::get();
-				let vfs_guard = vfs_mutex.lock();
-				let vfs = vfs_guard.get_mut().as_mut().unwrap();
-
-				let pipe_mutex = vfs.get_named_fifo(self.get_location())?;
-				let pipe_guard = pipe_mutex.lock();
-				let pipe = pipe_guard.get_mut();
-
-				pipe.increment_open(write);
-			}
-
-			_ => {}
-		}
-
-		Ok(())
-	}
-
-	/// Decrements the number of times the file is open.
-	/// `write` tells whether the file is open with write permission.
-	pub fn decrement_open(&mut self, write: bool) {
-		self.ref_count -= 1;
-
-		// If the file is a pipe, update the number of ends
-		match self.content {
-			FileContent::Fifo => {
-				let vfs_mutex = vfs::get();
-				let vfs_guard = vfs_mutex.lock();
-				let vfs = vfs_guard.get_mut().as_mut().unwrap();
-
-				// `unwrap` shouldn't fail since the pipe is supposed to already be allocated
-				let pipe_mutex = vfs.get_named_fifo(self.get_location()).unwrap();
-				let pipe_guard = pipe_mutex.lock();
-				let pipe = pipe_guard.get_mut();
-
-				pipe.decrement_open(write);
-			}
-
-			_ => {}
-		}
-	}
-
 	/// Tells whether the file is busy.
 	pub fn is_busy(&self) -> bool {
-		self.ref_count > 0
+		OpenFile::get(&self.location).is_some()
 	}
 
 	/// Synchronizes the file with the device.
@@ -775,7 +737,7 @@ impl IO for File {
 				let fs_guard = fs_mutex.lock();
 				let fs = fs_guard.get_mut();
 
-				fs.read_node(io, self.location.inode, off, buff)
+				fs.read_node(io, self.location.get_inode(), off, buff)
 			}
 
 			FileContent::Directory(_) => Err(errno!(EISDIR)),
@@ -787,7 +749,7 @@ impl IO for File {
 				let vfs_guard = vfs_mutex.lock();
 				let vfs = vfs_guard.get_mut().as_mut().unwrap();
 
-				let pipe_mutex = vfs.get_named_fifo(self.get_location())?;
+				let pipe_mutex = vfs.get_fifo(self.get_location())?;
 				let pipe_guard = pipe_mutex.lock();
 				let pipe = pipe_guard.get_mut();
 				pipe.read(off as _, buff)
@@ -798,7 +760,7 @@ impl IO for File {
 				let vfs_guard = vfs_mutex.lock();
 				let vfs = vfs_guard.get_mut().as_mut().unwrap();
 
-				let sock_mutex = vfs.get_named_socket(self.get_location())?;
+				let sock_mutex = vfs.get_socket(self.get_location())?;
 				let sock_guard = sock_mutex.lock();
 				let _sock = sock_guard.get_mut();
 
@@ -853,7 +815,7 @@ impl IO for File {
 				let fs_guard = fs_mutex.lock();
 				let fs = fs_guard.get_mut();
 
-				fs.write_node(io, self.location.inode, off, buff)?;
+				fs.write_node(io, self.location.get_inode(), off, buff)?;
 
 				self.size = max(off + buff.len() as u64, self.size);
 				Ok(buff.len() as _)
@@ -868,7 +830,7 @@ impl IO for File {
 				let vfs_guard = vfs_mutex.lock();
 				let vfs = vfs_guard.get_mut().as_mut().unwrap();
 
-				let pipe_mutex = vfs.get_named_fifo(self.get_location())?;
+				let pipe_mutex = vfs.get_fifo(self.get_location())?;
 				let pipe_guard = pipe_mutex.lock();
 				let pipe = pipe_guard.get_mut();
 				pipe.write(off as _, buff)
@@ -879,7 +841,7 @@ impl IO for File {
 				let vfs_guard = vfs_mutex.lock();
 				let vfs = vfs_guard.get_mut().as_mut().unwrap();
 
-				let sock_mutex = vfs.get_named_socket(self.get_location())?;
+				let sock_mutex = vfs.get_socket(self.get_location())?;
 				let sock_guard = sock_mutex.lock();
 				let _sock = sock_guard.get_mut();
 
@@ -947,7 +909,7 @@ impl IO for File {
 				let vfs_guard = vfs_mutex.lock();
 				let vfs = vfs_guard.get_mut().as_mut().unwrap();
 
-				let pipe_mutex = vfs.get_named_fifo(self.get_location())?;
+				let pipe_mutex = vfs.get_fifo(self.get_location())?;
 				let pipe_guard = pipe_mutex.lock();
 				let pipe = pipe_guard.get_mut();
 				pipe.poll(mask)
@@ -958,7 +920,7 @@ impl IO for File {
 				let vfs_guard = vfs_mutex.lock();
 				let vfs = vfs_guard.get_mut().as_mut().unwrap();
 
-				let sock_mutex = vfs.get_named_socket(self.get_location())?;
+				let sock_mutex = vfs.get_socket(self.get_location())?;
 				let sock_guard = sock_mutex.lock();
 				let _sock = sock_guard.get_mut();
 
@@ -1014,7 +976,7 @@ pub fn init(root: Option<(u32, u32)>) -> Result<(), Errno> {
 	mountpoint::create(mount_source, None, 0, Path::root())?;
 
 	// Initializing the VFS
-	let vfs = VFS::new()?;
+	let vfs = VFS::new();
 	let guard = vfs::get().lock();
 	*guard.get_mut() = Some(vfs);
 

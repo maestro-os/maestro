@@ -75,11 +75,11 @@ pub fn fstat64(fd: c_int, statbuf: SyscallPtr<Stat>) -> Result<i32, Errno> {
 	let open_file_guard = open_file_mutex.lock();
 	let open_file = open_file_guard.get();
 
-	let file_mutex = open_file.get_target().get_file()?;
+	let file_mutex = open_file.get_file()?;
 	let file_guard = file_mutex.lock();
 	let file = file_guard.get();
 
-	let inode = file.get_location().inode;
+	let inode = file.get_location().get_inode();
 
 	let stat = Stat {
 		st_dev: 0, // TODO

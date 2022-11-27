@@ -48,14 +48,12 @@ pub fn splice(
 	{
 		let input_type = input_mutex.lock()
 			.get()
-			.get_target()
 			.get_file()?
 			.lock()
 			.get()
 			.get_type();
 		let output_type = output_mutex.lock()
 			.get()
-			.get_target()
 			.get_file()?
 			.lock()
 			.get()

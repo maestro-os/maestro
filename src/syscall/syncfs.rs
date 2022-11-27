@@ -25,19 +25,14 @@ pub fn syncfs(fd: c_int) -> Result<i32, Errno> {
 	let open_file_guard = open_file_mutex.lock();
 	let open_file = open_file_guard.get();
 
-	match open_file.get_target() {
-		FDTarget::File(f) => {
-			let file_guard = f.lock();
-			let file = file_guard.get();
+	let file_mutex = open_file.get_file()?;
+	let file_guard = file_mutex.lock();
+	let file = file_guard.get();
 
-			let location = file.get_location();
-			let _mountpoint = location.get_mountpoint();
+	let location = file.get_location();
+	let _mountpoint = location.get_mountpoint();
 
-			// TODO Sync all files on mountpoint
+	// TODO Sync all files on mountpoint
 
-			Ok(0)
-		}
-
-		_ => Ok(0),
-	}
+	Ok(0)
 }

@@ -57,14 +57,10 @@ pub fn getdents(fd: c_uint, dirp: SyscallSlice<c_void>, count: c_uint) -> Result
 	let start = open_file.get_offset();
 
 	{
-		// Getting entries from the directory
-		let fd_target = open_file.get_target();
-		let file_mutex = match fd_target {
-			FDTarget::File(file) => file,
-			_ => return Err(errno!(ENOTDIR)),
-		};
+		let file_mutex = open_file.get_file()?;
 		let file_guard = file_mutex.lock();
 		let file = file_guard.get();
+
 		let entries = match file.get_content() {
 			FileContent::Directory(entries) => entries,
 			_ => return Err(errno!(ENOTDIR)),

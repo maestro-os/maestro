@@ -829,7 +829,7 @@ impl Filesystem for Ext2Fs {
 			}
 		};
 
-		let file_location = FileLocation {
+		let file_location = FileLocation::Filesystem {
 			mountpoint_id: None,
 
 			inode,
@@ -882,7 +882,7 @@ impl Filesystem for Ext2Fs {
 		}
 
 		let inode_index = self.superblock.get_free_inode(io)?;
-		let location = FileLocation {
+		let location = FileLocation::Filesystem {
 			mountpoint_id: None,
 
 			inode: inode_index as _,
@@ -1064,7 +1064,7 @@ impl Filesystem for Ext2Fs {
 		}
 
 		// The inode number
-		let inode = file.get_location().inode;
+		let inode = file.get_location().get_inode();
 		// The inode
 		let mut inode_ = Ext2INode::read(inode as _, &self.superblock, io)?;
 

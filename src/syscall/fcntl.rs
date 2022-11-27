@@ -251,26 +251,14 @@ pub fn do_fcntl(fd: i32, cmd: i32, arg: *mut c_void, _fcntl64: bool) -> Result<i
 			let open_file_guard = open_file_mutex.lock();
 			let open_file = open_file_guard.get();
 
-			match open_file.get_target() {
-				FDTarget::File(mutex) => {
-					let guard = mutex.lock();
-					let file = guard.get();
+			let file_mutex = open_file.get_file()?;
+			let file_guard = file_mutex.lock();
+			let file = file_guard.get();
 
-					match file.get_content() {
-						FileContent::Fifo => {
-							// TODO
-							todo!();
-						}
-
-						_ => Ok(0),
-					}
-				}
-
-				FDTarget::Pipe(mutex) => {
-					let guard = mutex.lock();
-					let pipe = guard.get();
-
-					Ok(pipe.get_available_len() as _)
+			match file.get_content() {
+				FileContent::Fifo => {
+					// TODO
+					todo!();
 				}
 
 				_ => Ok(0),

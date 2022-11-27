@@ -21,8 +21,8 @@ pub fn pipe(pipefd: SyscallPtr<[c_int; 2]>) -> Result<i32, Errno> {
 	let pipefd_slice = pipefd.get_mut(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
 
 	let pipe = SharedPtr::new(PipeBuffer::new()?)?;
-	let fd0 = proc.create_fd(open_file::O_RDONLY, FDTarget::Pipe(pipe.clone()))?;
-	let fd1 = proc.create_fd(open_file::O_WRONLY, FDTarget::Pipe(pipe.clone()))?;
+	let fd0 = proc.create_fd(open_file::O_RDONLY)?;
+	let fd1 = proc.create_fd(open_file::O_WRONLY)?;
 
 	pipefd_slice[0] = fd0.get_id() as _;
 	pipefd_slice[1] = fd1.get_id() as _;

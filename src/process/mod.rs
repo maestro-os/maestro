@@ -548,7 +548,7 @@ impl Process {
 
 			let loc = tty_file.lock().get().get_location().clone();
 
-			let stdin_fd = process.create_fd(loc, open_file::O_RDWR, FDTarget::File(tty_file))?;
+			let stdin_fd = process.create_fd(loc, open_file::O_RDWR)?;
 			assert_eq!(stdin_fd.get_id(), STDIN_FILENO);
 
 			process.duplicate_fd(STDIN_FILENO, NewFDConstraint::Fixed(STDOUT_FILENO), false)?;
@@ -1085,20 +1085,16 @@ impl Process {
 	/// Arguments:
 	/// - `location` is the location of the file the newly created file descriptor points to.
 	/// - `flags` are the file descriptor's flags.
-	/// - `target` is the target of the newly created file descriptor.
-	///
-	/// If the target is a file and cannot be open, the function returns an Err.
 	pub fn create_fd(
 		&mut self,
 		location: FileLocation,
-		flags: i32,
-		target: FDTarget
+		flags: i32
 	) -> Result<FileDescriptor, Errno> {
 		let file_descriptors_guard = self.file_descriptors.as_ref().unwrap().lock();
 		let file_descriptors = file_descriptors_guard.get_mut();
 
 		let id = Self::get_available_fd(file_descriptors, None)?;
-		let open_file = OpenFile::open(location, flags, target)?;
+		let open_file = OpenFile::open(location, flags)?;
 		let i = file_descriptors
 			.binary_search_by(|fd| fd.get_id().cmp(&id))
 			.unwrap_err();

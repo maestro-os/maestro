@@ -138,7 +138,7 @@ pub fn open_(pathname: SyscallString, flags: i32, mode: file::Mode) -> Result<i3
 	let mutex = Process::get_current().unwrap();
 	let guard = mutex.lock();
 	let proc = guard.get_mut();
-	let fd = proc.create_fd(loc, flags & STATUS_FLAGS_MASK, FDTarget::File(file.clone()))?;
+	let fd = proc.create_fd(loc, flags & STATUS_FLAGS_MASK)?;
 
 	// Flushing file
 	match file.lock().get_mut().sync() {

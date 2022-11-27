@@ -25,10 +25,7 @@ pub fn fstatfs(fd: c_int, buf: SyscallPtr<Statfs>) -> Result<i32, Errno> {
 		let open_file_guard = open_file_mutex.lock();
 		let open_file = open_file_guard.get();
 
-		match open_file.get_target() {
-			FDTarget::File(file) => file.clone(),
-			_ => return Err(errno!(ENOSYS)),
-		}
+		open_file.get_file()?
 	};
 
 	let file_guard = file_mutex.lock();

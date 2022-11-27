@@ -63,7 +63,7 @@ pub fn renameat2(
 	let vfs = vfs.lock();
 	let vfs = vfs.get_mut().as_mut().unwrap();
 
-	if new_parent.get_location().mountpoint_id == old.get_location().mountpoint_id {
+	if new_parent.get_location().get_mountpoint_id() == old.get_location().get_mountpoint_id() {
 		// Old and new are both on the same filesystem
 
 		// TODO On fail, undo
