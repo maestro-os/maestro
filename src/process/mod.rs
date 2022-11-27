@@ -1078,14 +1078,18 @@ impl Process {
 	}
 
 	/// Creates a file descriptor and returns a pointer to it with its ID.
-	/// `flags` are the file descriptor's flags.
-	/// `target` is the target of the newly created file descriptor.
+	///
+	/// Arguments:
+	/// - `flags` are the file descriptor's flags.
+	/// - `target` is the target of the newly created file descriptor.
+	///
 	/// If the target is a file and cannot be open, the function returns an Err.
 	pub fn create_fd(&mut self, flags: i32, target: FDTarget) -> Result<FileDescriptor, Errno> {
 		let file_descriptors_guard = self.file_descriptors.as_ref().unwrap().lock();
 		let file_descriptors = file_descriptors_guard.get_mut();
 
 		let id = Self::get_available_fd(file_descriptors, None)?;
+		// TODO store open files in a global table for them to be used by several processes
 		let open_file = OpenFile::new(flags, target)?;
 		let i = file_descriptors
 			.binary_search_by(|fd| fd.get_id().cmp(&id))

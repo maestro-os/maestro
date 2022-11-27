@@ -206,15 +206,21 @@ impl MemSpace {
 
 	// TODO Fix potential invalid state on fail
 	/// Maps a chunk of memory.
-	/// `map_constraint` is the constraint to fullfill for the allocation.
-	/// `size` represents the size of the mapping in number of memory pages.
-	/// `flags` represents the flags for the mapping.
-	/// `file` is the open file to map to.
-	/// `file_off` is the offset in bytes into the file.
-	/// The underlying physical memory is not allocated directly but only when
-	/// an attempt to write the memory is detected.
-	/// The function returns a pointer to the newly mapped virtual memory.
+	///
 	/// The function has complexity `O(log n)`.
+	///
+	/// Arguments:
+	/// - `map_constraint` is the constraint to fullfill for the allocation.
+	/// - `size` represents the size of the mapping in number of memory pages.
+	/// - `flags` represents the flags for the mapping.
+	/// - `file` is the open file to map to.
+	/// - `file_off` is the offset in bytes into the file.
+	///
+	/// The underlying physical memory is not allocated directly but only when an attempt to write
+	/// the memory is detected, unless MAPPING_FLAG_NOLAZY is specified as a flag.
+	///
+	/// On success, the function returns a pointer to the newly mapped virtual memory.
+	///
 	/// If the given pointer is not page-aligned, the function returns an error.
 	pub fn map(
 		&mut self,
@@ -720,16 +726,16 @@ impl MemSpace {
 	}
 }
 
-impl fmt::Display for MemSpace {
+impl fmt::Debug for MemSpace {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		write!(f, "Mappings:\n")?;
 		for (_, m) in self.mappings.iter() {
-			write!(f, "- {}\n", m)?;
+			write!(f, "- {:?}\n", m)?;
 		}
 
 		write!(f, "\nGaps:\n")?;
 		for (_, g) in self.gaps.iter() {
-			write!(f, "- {}\n", g)?;
+			write!(f, "- {:?}\n", g)?;
 		}
 
 		Ok(())

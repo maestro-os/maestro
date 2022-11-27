@@ -85,22 +85,30 @@ pub fn do_mmap(
 
 	// The file the mapping points to
 	let file = if fd >= 0 {
-		if let Some(fd) = proc.get_fd(fd as _) {
-			Some(fd.get_open_file())
-		} else {
-			None
-		}
+		proc.get_fd(fd as _).map(|fd| fd.get_open_file())
 	} else {
 		None
 	};
 
-	if let Some(_file) = &file {
+	// TODO anon flag
+
+	if let Some(file) = &file {
 		// Checking the alignment of the offset
 		if offset as usize % memory::PAGE_SIZE != 0 {
 			return Err(errno!(EINVAL));
 		}
 
-	// TODO Check the read/write state of the open file matches the mapping
+		let file_guard = file.lock();
+		let file = file_guard.get();
+
+		// Checking open file permissions
+		if prot & PROT_READ != 0 && !file.can_read() {
+			return Err(errno!(EPERM));
+		}
+		if prot & PROT_WRITE != 0 && !file.can_write() {
+			return Err(errno!(EPERM));
+		}
+		// TODO check exec
 	} else {
 		// TODO If the mapping requires a fd, return an error
 	}
@@ -110,28 +118,34 @@ pub fn do_mmap(
 	let mem_space_guard = mem_space.lock();
 	let mem_space = mem_space_guard.get_mut();
 
+	let flags = get_flags(flags, prot);
+
 	// The pointer on the virtual memory to the beginning of the mapping
 	let result = mem_space.map(
 		addr_hint,
 		pages,
-		get_flags(flags, prot),
+		flags,
 		file.clone(),
 		offset,
 	);
-	let ptr = match result {
-		Ok(ptr) => ptr,
 
-		Err(_) if addr_hint != MapConstraint::None => mem_space.map(
-			MapConstraint::None,
-			pages,
-			get_flags(flags, prot),
-			file,
-			offset,
-		)?,
+	match result {
+		Ok(ptr) => Ok(ptr),
 
-		Err(e) => return Err(e),
-	};
-	Ok(ptr as _)
+		Err(e) => {
+			if addr_hint != MapConstraint::None {
+				mem_space.map(
+					MapConstraint::None,
+					pages,
+					flags,
+					file,
+					offset,
+				)
+			} else {
+				Err(e)
+			}
+		},
+	}.map(|ptr| ptr as _)
 }
 
 // TODO Check last arg type

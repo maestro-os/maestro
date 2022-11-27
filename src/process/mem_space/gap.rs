@@ -8,7 +8,7 @@ use core::ffi::c_void;
 use core::fmt;
 
 /// A gap in the memory space that can use for new mappings.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct MemGap {
 	/// Pointer on the virtual memory to the beginning of the gap
 	begin: *const c_void,
@@ -97,7 +97,7 @@ impl MemGap {
 
 crate::failable_clone_impl!(MemGap);
 
-impl fmt::Display for MemGap {
+impl fmt::Debug for MemGap {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		write!(f, "begin: {:p}; end: {:p}", self.begin, self.get_end())
 	}
