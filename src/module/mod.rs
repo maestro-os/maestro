@@ -9,24 +9,25 @@
 
 pub mod version;
 
-use crate::elf;
-use crate::elf::parser::ELFParser;
-use crate::elf::relocation::Relocation;
-use crate::elf::ELF32Sym;
-use crate::errno;
-use crate::errno::Errno;
-use crate::memory;
-use crate::memory::malloc;
-use crate::multiboot;
-use crate::util::container::hashmap::HashMap;
-use crate::util::container::string::String;
-use crate::util::container::vec::Vec;
-use crate::util::lock::Mutex;
-use crate::util::FailableClone;
 use core::cmp::min;
 use core::mem::size_of;
 use core::mem::transmute;
 use core::ptr;
+use crate::elf::ELF32Sym;
+use crate::elf::parser::ELFParser;
+use crate::elf::relocation::Relocation;
+use crate::elf;
+use crate::errno::Errno;
+use crate::errno;
+use crate::memory::malloc;
+use crate::memory;
+use crate::multiboot;
+use crate::util::DisplayableStr;
+use crate::util::FailableClone;
+use crate::util::container::hashmap::HashMap;
+use crate::util::container::string::String;
+use crate::util::container::vec::Vec;
+use crate::util::lock::Mutex;
 use version::Dependency;
 use version::Version;
 
@@ -167,10 +168,17 @@ impl Module {
 
 			if !sym.is_defined() {
 				let strtab = parser.iter_sections().nth(section.sh_link as usize)?;
+				let name = parser.get_symbol_name(strtab, sym)?;
 
 				// Looking inside of the kernel image or other modules
-				let name = parser.get_symbol_name(strtab, sym)?;
-				let other_sym = Self::resolve_symbol(name)?;
+				let Some(other_sym) = Self::resolve_symbol(name) else {
+					crate::println!(
+						"Symbol `{}` not found in kernel or other loaded modules",
+						DisplayableStr(name)
+					);
+					return None;
+				};
+
 				Some(other_sym.st_value)
 			} else {
 				Some(load_base + sym.st_value)
@@ -180,14 +188,16 @@ impl Module {
 		for section in parser.iter_sections() {
 			for rel in parser.iter_rel(section) {
 				unsafe {
-					rel.perform(load_base as _, section, get_sym, get_sym_val);
+					rel.perform(load_base as _, section, get_sym, get_sym_val)
 				}
+					.or_else(|_| Err(errno!(EINVAL)))?;
 			}
 
 			for rela in parser.iter_rela(section) {
 				unsafe {
-					rela.perform(load_base as _, section, get_sym, get_sym_val);
+					rela.perform(load_base as _, section, get_sym, get_sym_val)
 				}
+					.or_else(|_| Err(errno!(EINVAL)))?;
 			}
 		}
 
@@ -205,9 +215,9 @@ impl Module {
 		// Getting the module's name
 		let name = Self::get_module_attibute::<&'static str>(mem.as_slice(), &parser, "MOD_NAME")
 			.ok_or_else(|| {
-			crate::println!("Missing `MOD_NAME` symbol in module image");
-			errno!(EINVAL)
-		})?;
+				crate::println!("Missing `MOD_NAME` symbol in module image");
+				errno!(EINVAL)
+			})?;
 		let name = String::from(name.as_bytes())?;
 
 		// Getting the module's version

@@ -167,7 +167,6 @@ impl<'a> ELFParser<'a> {
 		ELFIterator::<ELF32Rel>::new(table, section.sh_entsize as usize)
 	}
 
-	// FIXME: Passing an invalid section is undefined
 	/// Returns an iterator on the relocations (with addend) of the given section.
 	///
 	/// If the section doesn't have the correct type, the function returns an empty iterator.
@@ -182,14 +181,13 @@ impl<'a> ELFParser<'a> {
 		ELFIterator::<ELF32Rela>::new(table, section.sh_entsize as usize)
 	}
 
-	// FIXME: Passing an invalid section is undefined
 	/// Returns an iterator on the symbols of the given section.
 	///
 	/// If the section doesn't have the correct type, the function returns an empty iterator.
 	pub fn iter_symbols(&self, section: &ELF32SectionHeader) -> ELFIterator<ELF32Sym> {
 		let begin = section.sh_offset as usize;
 		let mut end = begin + section.sh_size as usize;
-		if section.sh_type != SHT_SYMTAB {
+		if section.sh_type != SHT_SYMTAB && section.sh_type != SHT_DYNSYM {
 			end = begin;
 		}
 
@@ -226,7 +224,7 @@ impl<'a> ELFParser<'a> {
 			.map(|s| {
 				self.iter_symbols(s).filter(|sym| {
 					let sym_name_begin = strtab_section.sh_offset as usize + sym.st_name as usize;
-					let sym_name_end = name.len();
+					let sym_name_end = sym_name_begin + name.len();
 
 					if sym_name_end <= self.image.len() {
 						let sym_name = &self.image[sym_name_begin..sym_name_end];
@@ -264,7 +262,7 @@ impl<'a> ELFParser<'a> {
 			.filter(|seg| seg.p_type == PT_INTERP)
 			.map(|seg| {
 				let begin = seg.p_offset as usize;
-				let end = (seg.p_offset + seg.p_filesz) as usize;
+				let end = begin + seg.p_filesz as usize;
 				// The slice won't exceed the size of the image since this is checked at parser
 				// instanciation
 				let path = &self.image[begin..end];

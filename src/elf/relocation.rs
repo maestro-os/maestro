@@ -18,25 +18,25 @@ pub trait Relocation {
 
 	// TODO Disable overflow checks
 	/// Performs the relocation.
-	/// `base_addr` is the base address at which the ELF is loaded.
-	/// `rel_section` is the section containing the relocation.
-	/// `get_sym` is a closure returning a symbol from its name.
-	/// `get_sym_val` is a closure returning the value of a symbol. The
-	/// arguments are:
+	///
+	/// Arguments:
+	/// - `base_addr` is the base address at which the ELF is loaded.
+	/// - `rel_section` is the section containing the relocation.
+	/// - `get_sym` is a closure returning a symbol from its name.
+	/// - `get_sym_val` is a closure returning the value of a symbol. Arguments are:
 	///     - The index of the section containing the symbol.
 	///     - The index of the symbol in the section.
-	///     If the symbol is undefined, the function may resolve a symbol from
-	/// another ELF. If the relocation is invalid, the behaviour is undefined.
+	///
+	/// If the relocation cannot be performed, the function returns an error.
 	unsafe fn perform<'a, F0, F1>(
 		&self,
 		base_addr: *const c_void,
 		rel_section: &ELF32SectionHeader,
 		get_sym: F0,
 		get_sym_val: F1,
-	) where
-		F0: FnOnce(&str) -> Option<&'a ELF32Sym>,
-		F1: FnOnce(u32, u32) -> Option<u32>,
-	{
+	)  -> Result<(), ()>
+		where F0: FnOnce(&str) -> Option<&'a ELF32Sym>,
+			F1: FnOnce(u32, u32) -> Option<u32> {
 		// The offset inside of the GOT
 		let got_offset = 0; // TODO
 					// The address of the GOT
@@ -49,21 +49,20 @@ pub trait Relocation {
 		let plt_offset = 0; // TODO
 
 		// The value of the symbol
-		// TODO Error on None?
-		let sym_val = get_sym_val(rel_section.sh_link, self.get_sym()).unwrap_or(0);
+		let sym_val = get_sym_val(rel_section.sh_link, self.get_sym());
 
 		let value = match self.get_type() {
-			elf::R_386_32 => sym_val + self.get_addend(),
-			elf::R_386_PC32 => sym_val + self.get_addend() - self.get_offset(),
+			elf::R_386_32 => sym_val.ok_or(())? + self.get_addend(),
+			elf::R_386_PC32 => sym_val.ok_or(())? + self.get_addend() - self.get_offset(),
 			elf::R_386_GOT32 => got_offset + self.get_addend(),
 			elf::R_386_PLT32 => plt_offset + self.get_addend() - self.get_offset(),
-			elf::R_386_GLOB_DAT | elf::R_386_JMP_SLOT => sym_val,
+			elf::R_386_GLOB_DAT | elf::R_386_JMP_SLOT => sym_val.ok_or(())?,
 			elf::R_386_RELATIVE => base_addr as u32 + self.get_addend(),
-			elf::R_386_GOTOFF => sym_val + self.get_addend() - got_addr,
+			elf::R_386_GOTOFF => sym_val.ok_or(())? + self.get_addend() - got_addr,
 			elf::R_386_GOTPC => got_addr + self.get_addend() - self.get_offset(),
 
 			_ => {
-				return;
+				return Err(());
 			}
 		};
 
@@ -73,6 +72,8 @@ pub trait Relocation {
 			elf::R_386_RELATIVE => *addr += value,
 			_ => *addr = value,
 		}
+
+		Ok(())
 	}
 
 	/// Returns the relocation's symbol.

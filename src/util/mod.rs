@@ -230,14 +230,11 @@ failable_clone_impl!(*const c_void);
 
 /// Wrapper structure allowing to implement the Display trait on the [u8] type
 /// to display it as a string.
-pub struct DisplayableStr<'a> {
-	/// The string to be displayed.
-	pub s: &'a [u8],
-}
+pub struct DisplayableStr<'a>(pub &'a [u8]);
 
 impl<'a> fmt::Display for DisplayableStr<'a> {
 	fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-		for b in self.s {
+		for b in self.0 {
 			fmt.write_char(*b as char)?;
 		}
 

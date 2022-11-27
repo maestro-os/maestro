@@ -591,15 +591,19 @@ impl ELFExecutor {
 
 					for section in elf.iter_sections() {
 						for rel in elf.iter_rel(section) {
-							rel.perform(load_base as _, section, get_sym, get_sym_val);
+							rel.perform(load_base as _, section, get_sym, get_sym_val)
+								.or_else(|_| Err(errno!(EINVAL)))?;
 						}
 
 						for rela in elf.iter_rel(section) {
-							rela.perform(load_base as _, section, get_sym, get_sym_val);
+							rela.perform(load_base as _, section, get_sym, get_sym_val)
+								.or_else(|_| Err(errno!(EINVAL)))?;
 						}
 					}
 				}
-			});
+
+				Ok(())
+			})?;
 		}
 
 		Ok(ELFLoadInfo {

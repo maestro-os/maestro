@@ -20,9 +20,9 @@ TARGET_PATH := $(shell realpath "$(KERN_SRC)/arch/$(CONFIG_ARCH)/target.json")
 RUSTFLAGS = -Zmacro-backtrace --crate-type dylib -C prefer-dynamic --target $(TARGET_PATH)
 ifeq ($(CONFIG_DEBUG), false)
 RUSTFLAGS += -C opt-level=3
-RUSTFLAGS += -L $(KERN_SRC)/target/target/release -L $(KERN_SRC)/target/target/release/deps
+RUSTFLAGS += -L $(KERN_SRC)/target/release/deps -L $(KERN_SRC)/target/target/release -L $(KERN_SRC)/target/target/release/deps
 else
-RUSTFLAGS += -L $(KERN_SRC)/target/target/debug -L $(KERN_SRC)/target/target/debug/deps
+RUSTFLAGS += -L $(KERN_SRC)/target/debug/deps -L $(KERN_SRC)/target/target/debug -L $(KERN_SRC)/target/target/debug/deps
 endif
 
 ifeq ($(KERN_SRC), )
