@@ -476,10 +476,12 @@ impl VFS {
 		Ok(())
 	}
 
-	/// Returns the pipe associated with the file at location `loc`. If the pipe
-	/// doesn't exist, the function lazily creates it.
+	/// Returns the pipe associated with the file at location `loc`.
+	///
+	/// If the pipe doesn't exist, the function lazily creates it.
+	///
 	/// When the file is removed, the pipe is also removed.
-	pub fn get_named_fifo(&mut self, loc: &FileLocation) -> Result<SharedPtr<PipeBuffer>, Errno> {
+	pub fn get_fifo(&mut self, loc: &FileLocation) -> Result<SharedPtr<PipeBuffer>, Errno> {
 		if let Some(p) = self.named_pipes.get(loc) {
 			Ok(p.clone())
 		} else {
@@ -492,10 +494,12 @@ impl VFS {
 		}
 	}
 
-	/// Returns the socket associated with the file at location `loc`. If the
-	/// pipe doesn't exist, the function lazily creates it.
+	/// Returns the socket associated with the file at location `loc`.
+	///
+	/// If the pipe doesn't exist, the function lazily creates it.
+	///
 	/// When the file is removed, the socket is also removed.
-	pub fn get_named_socket(&mut self, loc: &FileLocation) -> Result<SharedPtr<Socket>, Errno> {
+	pub fn get_socket(&mut self, loc: &FileLocation) -> Result<SharedPtr<Socket>, Errno> {
 		if let Some(s) = self.named_sockets.get(loc) {
 			Ok(s.clone())
 		} else {

@@ -1,15 +1,16 @@
 //! The `mmap` system call allows the process to allocate memory.
 
-use crate::errno;
-use crate::errno::Errno;
-use crate::memory;
-use crate::process::mem_space;
-use crate::process::Process;
-use crate::syscall::mmap::mem_space::MapConstraint;
-use crate::util;
-use crate::util::math;
 use core::ffi::c_int;
 use core::ffi::c_void;
+use crate::errno::Errno;
+use crate::errno;
+use crate::file::FileType;
+use crate::memory;
+use crate::process::Process;
+use crate::process::mem_space;
+use crate::syscall::mmap::mem_space::MapConstraint;
+use crate::util::math;
+use crate::util;
 use macros::syscall;
 
 /// Data can be read.
@@ -101,7 +102,10 @@ pub fn do_mmap(
 		let file_guard = file.lock();
 		let file = file_guard.get();
 
-		// Checking open file permissions
+		if !matches!(file.get_file_type(), FileType::Regular) {
+			return Err(errno!(EACCES));
+		}
+
 		if prot & PROT_READ != 0 && !file.can_read() {
 			return Err(errno!(EPERM));
 		}

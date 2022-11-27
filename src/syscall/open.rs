@@ -5,7 +5,6 @@ use crate::errno;
 use crate::errno::Errno;
 use crate::file;
 use crate::file::open_file;
-use crate::file::open_file::FDTarget;
 use crate::file::path::Path;
 use crate::file::vfs;
 use crate::file::File;
@@ -105,9 +104,11 @@ pub fn open_(pathname: SyscallString, flags: i32, mode: file::Mode) -> Result<i3
 	// Getting the file
 	let file = get_file(path, flags, mode, uid, gid)?;
 
-	{
+	let loc = {
 		let guard = file.lock();
 		let f = guard.get_mut();
+
+		let loc = f.get_location().clone();
 
 		let access = match flags & 0b11 {
 			open_file::O_RDONLY => f.can_read(uid, gid),
@@ -129,13 +130,15 @@ pub fn open_(pathname: SyscallString, flags: i32, mode: file::Mode) -> Result<i3
 		if flags & open_file::O_TRUNC != 0 {
 			f.set_size(0);
 		}
-	}
+
+		loc
+	};
 
 	// Create the file descriptor
 	let mutex = Process::get_current().unwrap();
 	let guard = mutex.lock();
 	let proc = guard.get_mut();
-	let fd = proc.create_fd(flags & STATUS_FLAGS_MASK, FDTarget::File(file.clone()))?;
+	let fd = proc.create_fd(loc, flags & STATUS_FLAGS_MASK, FDTarget::File(file.clone()))?;
 
 	// Flushing file
 	match file.lock().get_mut().sync() {

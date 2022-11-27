@@ -10,7 +10,6 @@ use crate::file::FileType;
 use crate::file::Mode;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::Process;
-use crate::syscall::openat::open_file::FDTarget;
 use crate::util::ptr::SharedPtr;
 use core::ffi::c_int;
 use macros::syscall;
@@ -76,9 +75,11 @@ pub fn openat(
 		(proc.get_euid(), proc.get_egid())
 	};
 
-	{
+	let loc = {
 		let guard = file.lock();
 		let f = guard.get();
+
+		let loc = f.get_location().clone();
 
 		// Checking file permissions
 		let access = match flags & 0b11 {
@@ -96,12 +97,14 @@ pub fn openat(
 		if flags & open_file::O_DIRECTORY != 0 && f.get_type() != FileType::Directory {
 			return Err(errno!(ENOTDIR));
 		}
-	}
+
+		loc
+	};
 
 	// Create and return the file descriptor
 	let mutex = Process::get_current().unwrap();
 	let guard = mutex.lock();
 	let proc = guard.get_mut();
-	let fd = proc.create_fd(flags & super::open::STATUS_FLAGS_MASK, FDTarget::File(file))?;
+	let fd = proc.create_fd(loc, flags & super::open::STATUS_FLAGS_MASK, FDTarget::File(file))?;
 	Ok(fd.get_id() as _)
 }

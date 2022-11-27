@@ -174,20 +174,36 @@ impl FileType {
 	}
 }
 
-/// Structure representing the location of a file on a disk.
+/// The location of a file on a disk.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
-pub struct FileLocation {
-	/// The ID of the mountpoint of the file.
-	pub mountpoint_id: Option<u32>,
+pub enum FileLocation {
+	/// The file is located on a filesystem.
+	Filesystem {
+		/// The ID of the mountpoint of the file.
+		mountpoint_id: Option<u32>,
 
-	/// The file's inode.
-	pub inode: INode,
+		/// The file's inode.
+		inode: INode,
+	},
+
+	/// The file is not located on a filesystem.
+	Virtual {
+		/// The ID of the file.
+		id: usize,
+	},
 }
 
 impl FileLocation {
 	/// Returns the mountpoint associated with the file's location.
 	pub fn get_mountpoint(&self) -> Option<SharedPtr<MountPoint>> {
-		mountpoint::from_id(self.mountpoint_id?)
+		match self {
+			Self::FileSystem {
+				mountpoint_id,
+				..
+			} => mountpoint::from_id(self.mountpoint_id?),
+
+			Self::Virtual => None,
+		}
 	}
 }
 

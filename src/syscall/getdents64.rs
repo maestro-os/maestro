@@ -2,7 +2,6 @@
 //! directory.
 
 use crate::errno::Errno;
-use crate::file::open_file::FDTarget;
 use crate::file::FileContent;
 use crate::process::mem_space::ptr::SyscallSlice;
 use crate::process::Process;

@@ -4,7 +4,6 @@
 use crate::errno;
 use crate::errno::Errno;
 use crate::file::open_file;
-use crate::file::open_file::FDTarget;
 use crate::file::socket::Socket;
 use crate::file::socket::SocketSide;
 use crate::process::mem_space::ptr::SyscallPtr;

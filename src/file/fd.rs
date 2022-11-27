@@ -3,6 +3,7 @@
 //! open file description table.
 
 use crate::errno::Errno;
+use crate::file::FileLocation;
 use crate::file::open_file::OpenFile;
 use crate::util::lock::Mutex;
 use crate::util::ptr::SharedPtr;
@@ -56,19 +57,23 @@ pub struct FileDescriptor {
 	/// The FD's flags.
 	flags: i32,
 
-	/// A pointer to the open file description associated with the file
-	/// descriptor.
-	open_file: SharedPtr<OpenFile>,
+	/// The location of the open file.
+	location: FileLocation,
 }
 
 impl FileDescriptor {
 	/// Creates a new file descriptor.
-	pub fn new(id: u32, flags: i32, open_file: SharedPtr<OpenFile>) -> Self {
+	///
+	/// Arguments:
+	/// - `id` is the ID of the file descriptor.
+	/// - `flags` is the set of flags associated with the file descriptor.
+	/// - `location` is the location of the open file the file descriptor points to.
+	pub fn new(id: u32, flags: i32, location: FileLocation) -> Self {
 		Self {
 			id,
 			flags,
 
-			open_file,
+			location,
 		}
 	}
 
@@ -87,8 +92,21 @@ impl FileDescriptor {
 		self.flags = flags;
 	}
 
-	/// Returns a pointer to the open file description.
+	/// Returns the location of the open file the file descriptor points to.
+	pub fn get_location(&self) -> &FileLocation {
+		&self.location
+	}
+
+	/// Returns the open file associated with the descriptor.
 	pub fn get_open_file(&self) -> SharedPtr<OpenFile> {
-		self.open_file.clone()
+		// Unwrap won't fail since open files are closed only when the corresponding file
+		// descriptors are all closed
+		OpenFile::get(&self.location).unwrap()
+	}
+}
+
+impl Drop for FileDescriptor {
+	fn drop(&mut self) {
+		OpenFile::close(&self.location);
 	}
 }

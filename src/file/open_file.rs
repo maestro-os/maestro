@@ -1,25 +1,27 @@
 //! An open file description is a structure pointing to a file, allowing to
 //! perform operations on it. It is pointed to by file descriptors.
 
-use crate::errno;
+use core::cmp::min;
+use core::ffi::c_void;
 use crate::errno::Errno;
-use crate::file::pipe::PipeBuffer;
-use crate::file::socket::SocketSide;
+use crate::errno;
 use crate::file::File;
 use crate::file::FileContent;
 use crate::file::FileLocation;
-use crate::process::mem_space::ptr::SyscallPtr;
+use crate::file::pipe::PipeBuffer;
+use crate::file::socket::SocketSide;
 use crate::process::mem_space::MemSpace;
+use crate::process::mem_space::ptr::SyscallPtr;
 use crate::syscall::ioctl;
-use crate::time;
 use crate::time::unit::TimestampScale;
+use crate::time;
 use crate::types::c_int;
+use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
 use crate::util::io::IO;
+use crate::util::lock::Mutex;
 use crate::util::ptr::IntSharedPtr;
 use crate::util::ptr::SharedPtr;
-use core::cmp::min;
-use core::ffi::c_void;
 
 /// Read only.
 pub const O_RDONLY: i32 = 0b00000000000000000000000000000000;
@@ -58,83 +60,81 @@ pub const O_SYNC: i32 = 0b00000000000100000001000000000000;
 /// If the file already exists, truncate it to length zero.
 pub const O_TRUNC: i32 = 0b00000000000000000000001000000000;
 
-/// Enumeration of every possible targets for an open file.
-#[derive(Clone, Debug)]
-pub enum FDTarget {
-	/// Points to a file.
-	File(SharedPtr<File>),
-	/// Points to a pipe.
-	Pipe(SharedPtr<PipeBuffer>),
-	/// Points to a socket.
-	Socket(SharedPtr<SocketSide>),
-}
-
-impl FDTarget {
-	/// Returns the file associated with the target.
-	pub fn get_file(&self) -> Result<SharedPtr<File>, Errno> {
-		match self {
-			Self::File(f) => Ok(f.clone()),
-
-			Self::Pipe(_p) => {
-				// TODO
-				let file = File::new(
-					String::from(b"TODO")?,
-					0,
-					0,
-					0o777,
-					FileLocation {
-						mountpoint_id: None,
-
-						inode: 0,
-					},
-					FileContent::Fifo,
-				)?;
-
-				SharedPtr::new(file)
-			}
-
-			Self::Socket(_s) => {
-				// TODO
-				todo!();
-			}
-		}
-	}
-}
+/// The list of currently open files.
+static OPEN_FILES: Mutex<HashMap<FileLocation, SharedPtr<OpenFile>>> = Mutex::new(HashMap::new());
 
 /// An open file description. This structure is pointed to by file descriptors
 /// and point to files. They exist to ensure several file descriptors can share
 /// the same open file.
 #[derive(Debug)]
 pub struct OpenFile {
+	/// The location of the file.
+	location: FileLocation,
+
 	/// The open file description's flags.
 	flags: i32,
-	/// A pointer to the target file.
-	target: FDTarget,
-
 	/// The current offset in the file.
 	/// If pointing to a directory, this is the offset in directory entries.
 	curr_off: u64,
+
+	/// The number of concurrent file descriptors pointing the the current file.
+	ref_count: usize,
 }
 
 impl OpenFile {
-	/// Creates a new open file description.
-	pub fn new(flags: i32, target: FDTarget) -> Result<Self, Errno> {
-		let s = Self {
-			flags,
-			target,
+	/// Returns the open file at the given location.
+	///
+	/// If the location doesn't exist or if the file isn't open, the function returns None.
+	pub fn get(location: &FileLocation) -> Option<SharedPtr<Self>> {
+		OPEN_FILES.lock()
+			.get()
+			.get(location)
+			.cloned()
+	}
 
-			curr_off: 0,
+	/// Creates a new open file description and inserts it into the open files list.
+	///
+	/// Arguments:
+	/// - `location` is the location of the file to be openned.
+	/// - `flags` is the open file's set of flags.
+	pub fn open(
+		location: FileLocation,
+		flags: i32,
+	) -> Result<SharedPtr<Self>, Errno> {
+		let open_file_mutex = match Self::get(&location) {
+			Some(open_file) => open_file,
+
+			// If not open, create a new instance
+			None => {
+				let open_file = SharedPtr::new(Self {
+					location,
+
+					flags,
+					curr_off: 0,
+
+					ref_count: 0,
+				})?;
+				OPEN_FILES.lock()
+					.get_mut()
+					.insert(location, open_file.clone())?;
+
+				open_file
+			},
 		};
+		let open_file_guard = open_file_mutex.lock();
+		let open_file = open_file_guard.get_mut();
 
 		// Update references count
-		match &s.target {
-			FDTarget::File(file) => file.lock().get_mut().increment_open(s.can_write())?,
-			FDTarget::Pipe(pipe) => pipe.lock().get_mut().increment_open(s.can_write()),
+		match &open_file.target {
+			FDTarget::File(file) => file.lock().get_mut().increment_open(open_file.can_write())?,
+			FDTarget::Pipe(pipe) => pipe.lock().get_mut().increment_open(open_file.can_write()),
 
 			_ => {}
 		}
 
-		Ok(s)
+		open_file.ref_count += 1;
+
+		Ok(open_file_mutex)
 	}
 
 	/// Returns the file flags.
@@ -158,16 +158,6 @@ impl OpenFile {
 	/// Tells whether the open file can be written to.
 	pub fn can_write(&self) -> bool {
 		matches!(self.flags & 0b11, O_WRONLY | O_RDWR)
-	}
-
-	/// Returns a mutable reference to the target.
-	pub fn get_target(&self) -> &FDTarget {
-		&self.target
-	}
-
-	/// Returns an immutable reference to the target.
-	pub fn get_target_mut(&mut self) -> &mut FDTarget {
-		&mut self.target
 	}
 
 	/// Returns the current offset in the file.
@@ -223,6 +213,25 @@ impl OpenFile {
 				let guard = sock.lock();
 				guard.get_mut().ioctl(mem_space, request, argp)
 			}
+		}
+	}
+
+	/// Decrements the reference counter of the open file for the given location.
+	///
+	/// If the file is not open, the function does nothing.
+	pub fn close(location: &FileLocation) {
+		let open_files_guard = OPEN_FILES.lock();
+		let open_files = open_files_guard.get_mut();
+
+		let Some(open_file_mutex) = open_files.get(location) else {
+			return;
+		};
+		let open_file_guard = open_file_mutex.lock();
+		let open_file = open_file_guard.get_mut();
+
+		open_file.ref_count -= 1;
+		if open_file.ref_count <= 0 {
+			open_files.remove(location);
 		}
 	}
 }

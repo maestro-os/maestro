@@ -3,7 +3,6 @@
 
 use crate::errno;
 use crate::errno::Errno;
-use crate::file::open_file::FDTarget;
 use crate::file::FileType;
 use crate::process::Process;
 use core::ffi::c_int;

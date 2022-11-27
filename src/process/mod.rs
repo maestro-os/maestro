@@ -18,32 +18,40 @@ pub mod state;
 pub mod tss;
 pub mod user_desc;
 
+use core::any::Any;
+use core::cmp::max;
+use core::ffi::c_void;
+use core::mem::ManuallyDrop;
+use core::mem::MaybeUninit;
+use core::mem::size_of;
+use core::ptr::NonNull;
 use crate::cpu;
-use crate::errno;
 use crate::errno::Errno;
-use crate::event;
+use crate::errno;
 use crate::event::{InterruptResult, InterruptResultAction};
-use crate::file;
+use crate::event;
+use crate::file::FileLocation;
+use crate::file::Gid;
+use crate::file::ROOT_UID;
+use crate::file::Uid;
+use crate::file::fd::FD_CLOEXEC;
 use crate::file::fd::FileDescriptor;
 use crate::file::fd::NewFDConstraint;
-use crate::file::fd::FD_CLOEXEC;
 use crate::file::fs::procfs::ProcFS;
 use crate::file::mountpoint;
-use crate::file::open_file;
-use crate::file::open_file::FDTarget;
 use crate::file::open_file::OpenFile;
+use crate::file::open_file;
 use crate::file::path::Path;
 use crate::file::vfs;
-use crate::file::Gid;
-use crate::file::Uid;
-use crate::file::ROOT_UID;
+use crate::file;
 use crate::gdt;
 use crate::limits;
 use crate::memory;
 use crate::process::mountpoint::MountSource;
 use crate::process::open_file::O_CLOEXEC;
-use crate::tty;
 use crate::tty::TTYHandle;
+use crate::tty;
+use crate::util::FailableClone;
 use crate::util::container::bitfield::Bitfield;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
@@ -51,15 +59,7 @@ use crate::util::lock::*;
 use crate::util::ptr::IntSharedPtr;
 use crate::util::ptr::IntWeakPtr;
 use crate::util::ptr::SharedPtr;
-use crate::util::FailableClone;
 use crate::vec;
-use core::any::Any;
-use core::cmp::max;
-use core::ffi::c_void;
-use core::mem::size_of;
-use core::mem::ManuallyDrop;
-use core::mem::MaybeUninit;
-use core::ptr::NonNull;
 use mem_space::MemSpace;
 use pid::PIDManager;
 use pid::Pid;
@@ -545,7 +545,10 @@ impl Process {
 				process.gid,
 				true,
 			)?;
-			let stdin_fd = process.create_fd(open_file::O_RDWR, FDTarget::File(tty_file))?;
+
+			let loc = tty_file.lock().get().get_location().clone();
+
+			let stdin_fd = process.create_fd(loc, open_file::O_RDWR, FDTarget::File(tty_file))?;
 			assert_eq!(stdin_fd.get_id(), STDIN_FILENO);
 
 			process.duplicate_fd(STDIN_FILENO, NewFDConstraint::Fixed(STDOUT_FILENO), false)?;
@@ -1080,17 +1083,22 @@ impl Process {
 	/// Creates a file descriptor and returns a pointer to it with its ID.
 	///
 	/// Arguments:
+	/// - `location` is the location of the file the newly created file descriptor points to.
 	/// - `flags` are the file descriptor's flags.
 	/// - `target` is the target of the newly created file descriptor.
 	///
 	/// If the target is a file and cannot be open, the function returns an Err.
-	pub fn create_fd(&mut self, flags: i32, target: FDTarget) -> Result<FileDescriptor, Errno> {
+	pub fn create_fd(
+		&mut self,
+		location: FileLocation,
+		flags: i32,
+		target: FDTarget
+	) -> Result<FileDescriptor, Errno> {
 		let file_descriptors_guard = self.file_descriptors.as_ref().unwrap().lock();
 		let file_descriptors = file_descriptors_guard.get_mut();
 
 		let id = Self::get_available_fd(file_descriptors, None)?;
-		// TODO store open files in a global table for them to be used by several processes
-		let open_file = OpenFile::new(flags, target)?;
+		let open_file = OpenFile::open(location, flags, target)?;
 		let i = file_descriptors
 			.binary_search_by(|fd| fd.get_id().cmp(&id))
 			.unwrap_err();
@@ -1104,7 +1112,7 @@ impl Process {
 
 		file_descriptors.insert(
 			i,
-			FileDescriptor::new(id, flags, SharedPtr::new(open_file)?),
+			FileDescriptor::new(id, flags, location),
 		)?;
 		Ok(file_descriptors[i].clone())
 	}
@@ -1120,10 +1128,12 @@ impl Process {
 	}
 
 	/// Duplicates the file descriptor with id `id`.
-	/// The new file descriptor ID follows the constraint given be `constraint`.
-	/// `cloexec` tells whether the new file descriptor has the O_CLOEXEC flag
-	/// enabled. The function returns a pointer to the file descriptor with its
-	/// ID.
+	///
+	/// Arguments:
+	/// - `constraint` is the constraint the new file descriptor ID willl follows.
+	/// - `cloexec` tells whether the new file descriptor has the `O_CLOEXEC` flag enabled.
+	///
+	/// The function returns a pointer to the file descriptor with its ID.
 	pub fn duplicate_fd(
 		&mut self,
 		id: u32,
@@ -1143,13 +1153,14 @@ impl Process {
 		// The flags of the new FD
 		let flags = if cloexec { FD_CLOEXEC } else { 0 };
 
-		// The open file for the new FD
-		let open_file = Self::get_fd_(file_descriptors, id)
+		// The location of the file
+		let location = Self::get_fd_(file_descriptors, id)
 			.ok_or_else(|| errno!(EBADF))?
-			.get_open_file();
+			.get_location()
+			.clone();
 
 		// Creating the FD
-		let fd = FileDescriptor::new(new_id, flags, open_file);
+		let fd = FileDescriptor::new(new_id, flags, location);
 
 		// Inserting the FD
 		let index = file_descriptors.binary_search_by(|fd| fd.get_id().cmp(&new_id));

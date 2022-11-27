@@ -1,6 +1,5 @@
 use crate::errno;
 use crate::errno::Errno;
-use crate::file::open_file::FDTarget;
 use crate::file::path::Path;
 use crate::file::vfs;
 use crate::file::File;

@@ -2,7 +2,6 @@
 
 use crate::errno::Errno;
 use crate::file::fd::NewFDConstraint;
-use crate::file::open_file::FDTarget;
 use crate::file::FileContent;
 use crate::process::Process;
 use core::ffi::c_int;
