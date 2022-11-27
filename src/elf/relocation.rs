@@ -56,14 +56,13 @@ pub trait Relocation {
 			elf::R_386_PC32 => sym_val.ok_or(())? + self.get_addend() - self.get_offset(),
 			elf::R_386_GOT32 => got_offset + self.get_addend(),
 			elf::R_386_PLT32 => plt_offset + self.get_addend() - self.get_offset(),
-			elf::R_386_GLOB_DAT | elf::R_386_JMP_SLOT => sym_val.ok_or(())?,
+			elf::R_386_COPY => return Ok(()),
+			elf::R_386_GLOB_DAT | elf::R_386_JMP_SLOT => sym_val.unwrap_or(0),
 			elf::R_386_RELATIVE => base_addr as u32 + self.get_addend(),
 			elf::R_386_GOTOFF => sym_val.ok_or(())? + self.get_addend() - got_addr,
 			elf::R_386_GOTPC => got_addr + self.get_addend() - self.get_offset(),
 
-			_ => {
-				return Err(());
-			}
+			_ => return Err(()),
 		};
 
 		let addr = (base_addr as u32 + self.get_offset()) as *mut u32;
