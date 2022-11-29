@@ -17,6 +17,8 @@ use crate::device::DeviceType;
 use crate::device;
 use crate::errno::Errno;
 use crate::errno;
+use crate::file::buffer::pipe::PipeBuffer;
+use crate::file::buffer::socket::Socket;
 use crate::process::mem_space::MemSpace;
 use crate::time::unit::Timestamp;
 use crate::time::unit::TimestampScale;
@@ -649,13 +651,20 @@ impl File {
 			FileContent::Directory(_entries) => Err(errno!(EINVAL)),
 			FileContent::Link(_target) => Err(errno!(EINVAL)),
 
-			FileContent::Fifo | FileContent::Socket  => {
-				let pipe_mutex = buffer::get(self.get_location())
-					.ok_or_else(|| errno!(ENOENT))?;
-				let pipe_guard = pipe_mutex.lock();
-				let pipe = pipe_guard.get_mut();
+			FileContent::Fifo => {
+				let buff_mutex = buffer::get_or_default::<PipeBuffer>(self.get_location())?;
+				let buff_guard = buff_mutex.lock();
+				let buff = buff_guard.get_mut();
 
-				pipe.ioctl(mem_space, request, argp)
+				buff.ioctl(mem_space, request, argp)
+			}
+
+			FileContent::Socket => {
+				let buff_mutex = buffer::get_or_default::<Socket>(self.get_location())?;
+				let buff_guard = buff_mutex.lock();
+				let buff = buff_guard.get_mut();
+
+				buff.ioctl(mem_space, request, argp)
 			}
 
 			// TODO Check if correct
@@ -730,13 +739,20 @@ impl IO for File {
 
 			FileContent::Link(_) => Err(errno!(EINVAL)),
 
-			FileContent::Fifo | FileContent::Socket => {
-				let pipe_mutex = buffer::get(self.get_location())
-					.ok_or_else(|| errno!(ENOENT))?;
-				let pipe_guard = pipe_mutex.lock();
-				let pipe = pipe_guard.get_mut();
+			FileContent::Fifo => {
+				let buff_obj_mutex = buffer::get_or_default::<PipeBuffer>(self.get_location())?;
+				let buff_obj_guard = buff_obj_mutex.lock();
+				let buff_obj = buff_obj_guard.get_mut();
 
-				pipe.read(off as _, buff)
+				buff_obj.read(off as _, buff)
+			}
+
+			FileContent::Socket => {
+				let buff_obj_mutex = buffer::get_or_default::<Socket>(self.get_location())?;
+				let buff_obj_guard = buff_obj_mutex.lock();
+				let buff_obj = buff_obj_guard.get_mut();
+
+				buff_obj.read(off as _, buff)
 			}
 
 			FileContent::BlockDevice {
@@ -796,13 +812,20 @@ impl IO for File {
 
 			FileContent::Link(_) => Err(errno!(EINVAL)),
 
-			FileContent::Fifo | FileContent::Socket => {
-				let pipe_mutex = buffer::get(self.get_location())
-					.ok_or_else(|| errno!(ENOENT))?;
-				let pipe_guard = pipe_mutex.lock();
-				let pipe = pipe_guard.get_mut();
+			FileContent::Fifo => {
+				let buff_obj_mutex = buffer::get_or_default::<PipeBuffer>(self.get_location())?;
+				let buff_obj_guard = buff_obj_mutex.lock();
+				let buff_obj = buff_obj_guard.get_mut();
 
-				pipe.write(off as _, buff)
+				buff_obj.write(off as _, buff)
+			}
+
+			FileContent::Socket => {
+				let buff_obj_mutex = buffer::get_or_default::<Socket>(self.get_location())?;
+				let buff_obj_guard = buff_obj_mutex.lock();
+				let buff_obj = buff_obj_guard.get_mut();
+
+				buff_obj.write(off as _, buff)
 			}
 
 			FileContent::BlockDevice {
@@ -860,13 +883,20 @@ impl IO for File {
 
 			FileContent::Link(_) => Err(errno!(EINVAL)),
 
-			FileContent::Fifo | FileContent::Socket => {
-				let pipe_mutex = buffer::get(self.get_location())
-					.ok_or_else(|| errno!(ENOENT))?;
-				let pipe_guard = pipe_mutex.lock();
-				let pipe = pipe_guard.get_mut();
+			FileContent::Fifo => {
+				let buff_obj_mutex = buffer::get_or_default::<PipeBuffer>(self.get_location())?;
+				let buff_obj_guard = buff_obj_mutex.lock();
+				let buff_obj = buff_obj_guard.get_mut();
 
-				pipe.poll(mask)
+				buff_obj.poll(mask)
+			}
+
+			FileContent::Socket => {
+				let buff_obj_mutex = buffer::get_or_default::<Socket>(self.get_location())?;
+				let buff_obj_guard = buff_obj_mutex.lock();
+				let buff_obj = buff_obj_guard.get_mut();
+
+				buff_obj.poll(mask)
 			}
 
 			FileContent::BlockDevice {

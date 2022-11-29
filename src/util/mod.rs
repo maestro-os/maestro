@@ -228,6 +228,14 @@ failable_clone_impl!(usize);
 failable_clone_impl!(*mut c_void);
 failable_clone_impl!(*const c_void);
 
+/// Same as the Default trait, but the operation can possibly fail (on memory allocation failure, for example).
+pub trait FailableDefault {
+	/// Returns the default value. On fail, the function returns Err.
+	fn failable_default() -> Result<Self, Errno>
+	where
+		Self: Sized;
+}
+
 /// Wrapper structure allowing to implement the Display trait on the [u8] type
 /// to display it as a string.
 pub struct DisplayableStr<'a>(pub &'a [u8]);

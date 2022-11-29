@@ -1,19 +1,15 @@
 //! This file implements sockets.
 
+use core::ffi::c_void;
 use crate::errno::Errno;
 use crate::process::mem_space::MemSpace;
-use crate::util::container::ring_buffer::RingBuffer;
-use crate::util::container::vec::Vec;
+use crate::util::FailableDefault;
 use crate::util::io::IO;
 use crate::util::ptr::IntSharedPtr;
-use crate::util::ptr::SharedPtr;
-use core::ffi::c_void;
+use super::Buffer;
 
 /// The maximum size of a socket's buffers.
 const BUFFER_SIZE: usize = 65536;
-
-// TODO Figure out the behaviour when opening socket file more than twice at a
-// time
 
 /// Structure representing a socket.
 #[derive(Debug)]
@@ -24,33 +20,19 @@ pub struct Socket {
 	type_: i32,
 	/// The socket's protocol.
 	protocol: i32,
-
-	// TODO Handle network sockets
-	/// The buffer containing received data.
-	receive_buffer: RingBuffer<u8, Vec<u8>>,
-	/// The buffer containing sent data.
-	send_buffer: RingBuffer<u8, Vec<u8>>,
-
-	/// The list of sides of the socket.
-	sides: Vec<SharedPtr<SocketSide>>,
 }
 
 impl Socket {
 	/// Creates a new instance.
-	pub fn new(domain: i32, type_: i32, protocol: i32) -> Result<SharedPtr<Self>, Errno> {
+	pub fn new(domain: i32, type_: i32, protocol: i32) -> Self {
 		// TODO Check domain, type and protocol. Use EINVAL, EPROTOTYPE and
 		// EPROTONOSUPPORT
 
-		SharedPtr::new(Self {
+		Self {
 			domain,
 			type_,
 			protocol,
-
-			receive_buffer: RingBuffer::new(crate::vec![0; BUFFER_SIZE]?),
-			send_buffer: RingBuffer::new(crate::vec![0; BUFFER_SIZE]?),
-
-			sides: Vec::new(),
-		})
+		}
 	}
 
 	/// Returns the socket's domain.
@@ -72,38 +54,25 @@ impl Socket {
 	}
 }
 
-/// A side of a socket is a structure which allows to read/write from the
-/// socket. It is required to prevent one side from reading the data it wrote
-/// itself.
-#[derive(Debug)]
-pub struct SocketSide {
-	/// The socket.
-	sock: SharedPtr<Socket>,
-
-	/// Tells which side is the current side.
-	other: bool,
+impl FailableDefault for Socket {
+	fn failable_default() -> Result<Self, Errno> {
+		// TODO Put correct params (unix domain)
+		Ok(Self::new(0, 0, 0))
+	}
 }
 
-impl SocketSide {
-	/// Creates a new instance.
-	/// `sock` is the socket associated with the socket side.
-	/// `other` allows to tell on which side is which.
-	pub fn new(sock: SharedPtr<Socket>, other: bool) -> Result<SharedPtr<Self>, Errno> {
-		let s = SharedPtr::new(Self {
-			sock: sock.clone(),
-			other,
-		});
-
-		{
-			let guard = sock.lock();
-			guard.get_mut().sides.push(s.clone()?)?;
-		}
-
-		s
+impl Buffer for Socket {
+	fn increment_open(&mut self, _write: bool) {
+		// TODO
+		todo!();
 	}
 
-	/// Performs an ioctl operation on the socket.
-	pub fn ioctl(
+	fn decrement_open(&mut self, _write: bool) {
+		// TODO
+		todo!();
+	}
+
+	fn ioctl(
 		&mut self,
 		_mem_space: IntSharedPtr<MemSpace>,
 		_request: u32,
@@ -114,34 +83,22 @@ impl SocketSide {
 	}
 }
 
-impl IO for SocketSide {
+impl IO for Socket {
 	fn get_size(&self) -> u64 {
 		// TODO
 		0
 	}
 
 	/// Note: This implemention ignores the offset.
-	fn read(&mut self, _: u64, buf: &mut [u8]) -> Result<(u64, bool), Errno> {
-		let guard = self.sock.lock();
-		let sock = guard.get_mut();
-
-		if self.other {
-			Ok((sock.send_buffer.read(buf) as _, false)) // TODO Handle EOF
-		} else {
-			Ok((sock.receive_buffer.read(buf) as _, false)) // TODO Handle EOF
-		}
+	fn read(&mut self, _: u64, _buf: &mut [u8]) -> Result<(u64, bool), Errno> {
+		// TODO
+		todo!();
 	}
 
 	/// Note: This implemention ignores the offset.
-	fn write(&mut self, _: u64, buf: &[u8]) -> Result<u64, Errno> {
-		let guard = self.sock.lock();
-		let sock = guard.get_mut();
-
-		if self.other {
-			Ok(sock.receive_buffer.write(buf) as _)
-		} else {
-			Ok(sock.send_buffer.write(buf) as _)
-		}
+	fn write(&mut self, _: u64, _buf: &[u8]) -> Result<u64, Errno> {
+		// TODO
+		todo!();
 	}
 
 	fn poll(&mut self, _mask: u32) -> Result<u32, Errno> {

@@ -8,11 +8,13 @@ use crate::process::mem_space::MemSpace;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::syscall::ioctl;
 use crate::types::c_int;
+use crate::util::FailableDefault;
 use crate::util::container::ring_buffer::RingBuffer;
 use crate::util::container::vec::Vec;
 use crate::util::io::IO;
 use crate::util::io;
 use crate::util::ptr::IntSharedPtr;
+use super::Buffer;
 
 /// Structure representing a buffer buffer.
 #[derive(Debug)]
@@ -27,16 +29,6 @@ pub struct PipeBuffer {
 }
 
 impl PipeBuffer {
-	/// Creates a new instance.
-	pub fn new() -> Result<Self, Errno> {
-		Ok(Self {
-			buffer: RingBuffer::new(crate::vec![0; limits::PIPE_BUF]?),
-
-			read_ends: 0,
-			write_ends: 0,
-		})
-	}
-
 	/// Returns the length of the data to be read in the buffer.
 	pub fn get_data_len(&self) -> usize {
 		self.buffer.get_data_len()
@@ -46,10 +38,21 @@ impl PipeBuffer {
 	pub fn get_available_len(&self) -> usize {
 		self.buffer.get_available_len()
 	}
+}
 
-	/// Increments the number open of ends.
-	/// `write` tells whether the end is a writing end.
-	pub fn increment_open(&mut self, write: bool) {
+impl FailableDefault for PipeBuffer {
+	fn failable_default() -> Result<Self, Errno> {
+		Ok(Self {
+			buffer: RingBuffer::new(crate::vec![0; limits::PIPE_BUF]?),
+
+			read_ends: 0,
+			write_ends: 0,
+		})
+	}
+}
+
+impl Buffer for PipeBuffer {
+	fn increment_open(&mut self, write: bool) {
 		if write {
 			self.write_ends += 1;
 		} else {
@@ -57,9 +60,7 @@ impl PipeBuffer {
 		}
 	}
 
-	/// Decrements the number open of ends.
-	/// `write` tells whether the end is a writing end.
-	pub fn decrement_open(&mut self, write: bool) {
+	fn decrement_open(&mut self, write: bool) {
 		if write {
 			self.write_ends -= 1;
 		} else {
@@ -67,8 +68,7 @@ impl PipeBuffer {
 		}
 	}
 
-	/// Performs an ioctl operation on the pipe.
-	pub fn ioctl(
+	fn ioctl(
 		&mut self,
 		mem_space: IntSharedPtr<MemSpace>,
 		request: u32,

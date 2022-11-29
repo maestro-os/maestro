@@ -7,6 +7,7 @@ use core::ffi::c_void;
 use crate::errno::Errno;
 use crate::file::FileLocation;
 use crate::process::mem_space::MemSpace;
+use crate::util::FailableDefault;
 use crate::util::container::hashmap::HashMap;
 use crate::util::io::IO;
 use crate::util::lock::Mutex;
@@ -44,14 +45,35 @@ pub trait Buffer: IO {
 static RESOURCES: Mutex<HashMap<FileLocation, SharedPtr<dyn Buffer>>>
 	= Mutex::new(HashMap::new());
 
-/// Returns the pipe associated with the file at location `loc`.
+/// Returns the buffer associated with the file at location `loc`.
 ///
-/// If the pipe doesn't exist, the function creates it.
+/// If the buffer doesn't exist, the function creates it.
 pub fn get(loc: &FileLocation) -> Option<SharedPtr<dyn Buffer>> {
 	let buffers_guard = RESOURCES.lock();
 	let buffers = buffers_guard.get_mut();
 
 	buffers.get(loc).cloned()
+}
+
+/// Returns the buffer associated with the file at location `loc`.
+///
+/// If the buffer doesn't exist, the function registers a new default buffer.
+pub fn get_or_default<B: Buffer + FailableDefault + 'static>(
+	loc: &FileLocation
+) -> Result<SharedPtr<dyn Buffer>, Errno> {
+	let buffers_guard = RESOURCES.lock();
+	let buffers = buffers_guard.get_mut();
+
+	match buffers.get(loc).cloned() {
+		Some(buff) => Ok(buff),
+
+		None => {
+			let buff = SharedPtr::new(B::failable_default()?)?;
+			buffers.insert(loc.clone(), buff.clone());
+
+			Ok(buff)
+		},
+	}
 }
 
 /// Registers a new buffer.
@@ -63,8 +85,8 @@ pub fn get(loc: &FileLocation) -> Option<SharedPtr<dyn Buffer>> {
 ///
 /// The function returns the location associated with the buffer.
 pub fn register(
-	loc: Option<FileLocation>,
-	res: SharedPtr<dyn Buffer>
+	_loc: Option<FileLocation>,
+	_res: SharedPtr<dyn Buffer>
 ) -> Result<FileLocation, Errno> {
 	// TODO alloc location
 	// TODO register buffer with location

@@ -252,7 +252,7 @@ impl IO for OpenFile {
 
 	/// Note: on this specific implementation, the offset is ignored since
 	/// `set_offset` has to be used to define it.
-	fn read(&mut self, _: u64, buf: &mut [u8]) -> Result<(u64, bool), Errno> {
+	fn read(&mut self, _off: u64, buf: &mut [u8]) -> Result<(u64, bool), Errno> {
 		if !self.can_read() {
 			return Err(errno!(EINVAL));
 		}
@@ -278,7 +278,7 @@ impl IO for OpenFile {
 
 	/// Note: on this specific implementation, the offset is ignored since
 	/// `set_offset` has to be used to define it.
-	fn write(&mut self, _: u64, buf: &[u8]) -> Result<u64, Errno> {
+	fn write(&mut self, _off: u64, buf: &[u8]) -> Result<u64, Errno> {
 		if !self.can_write() {
 			return Err(errno!(EINVAL));
 		}

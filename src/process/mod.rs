@@ -1309,7 +1309,7 @@ impl Process {
 			SharedPtr::new(self.signal_handlers.lock().get().clone())?
 		};
 
-		let process = Self {
+		let mut process = Self {
 			pid,
 			pgid: self.pgid,
 			tid: pid,
