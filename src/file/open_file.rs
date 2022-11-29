@@ -105,7 +105,7 @@ impl OpenFile {
 			// If not open, create a new instance
 			None => {
 				let open_file = SharedPtr::new(Self {
-					location,
+					location: location.clone(),
 
 					flags,
 					curr_off: 0,
@@ -119,15 +119,18 @@ impl OpenFile {
 				open_file
 			},
 		};
-		let open_file_guard = open_file_mutex.lock();
-		let open_file = open_file_guard.get_mut();
-		open_file.ref_count += 1;
 
-		// TODO if the file points to a pipe, update the number of ends:
-		/*match &open_file.target {
-			FDTarget::Pipe(pipe) => pipe.lock().get_mut().increment_open(open_file.can_write()),
-			_ => {}
-		}*/
+		{
+			let open_file_guard = open_file_mutex.lock();
+			let open_file = open_file_guard.get_mut();
+			open_file.ref_count += 1;
+
+			// TODO if the file points to a pipe, update the number of ends:
+			/*match &open_file.target {
+				FDTarget::Pipe(pipe) => pipe.lock().get_mut().increment_open(open_file.can_write()),
+				_ => {}
+			}*/
+		}
 
 		Ok(open_file_mutex)
 	}
@@ -143,7 +146,7 @@ impl OpenFile {
 	pub fn get_file(&self) -> Result<SharedPtr<File>, Errno> {
 		let vfs_mutex = vfs::get();
 		let vfs_guard = vfs_mutex.lock();
-		let vfs = vfs_guard.get_mut().unwrap();
+		let vfs = vfs_guard.get_mut().as_mut().unwrap();
 
 		vfs.get_file_by_location(&self.location)
 	}
@@ -230,6 +233,8 @@ impl OpenFile {
 
 		open_file.ref_count -= 1;
 		if open_file.ref_count <= 0 {
+			drop(open_file_guard);
+
 			open_files.remove(location);
 		}
 	}

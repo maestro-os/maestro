@@ -1094,7 +1094,7 @@ impl Process {
 		let file_descriptors = file_descriptors_guard.get_mut();
 
 		let id = Self::get_available_fd(file_descriptors, None)?;
-		let open_file = OpenFile::open(location, flags)?;
+		OpenFile::open(location.clone(), flags)?;
 		let i = file_descriptors
 			.binary_search_by(|fd| fd.get_id().cmp(&id))
 			.unwrap_err();

@@ -81,7 +81,6 @@ impl VFS {
 					.ok_or_else(|| errno!(ENOENT))?;
 				let mountpoint_guard = mountpoint_mutex.lock();
 				let mountpoint = mountpoint_guard.get_mut();
-				let mountpath = mountpoint.get_path().failable_clone()?;
 
 				// Getting the IO interface
 				let io_mutex = mountpoint.get_source().get_io()?;
@@ -97,7 +96,7 @@ impl VFS {
 				SharedPtr::new(file)
 			},
 
-			FileLocation::Virtual { id } => {
+			FileLocation::Virtual { id: _ } => {
 				// TODO
 				todo!();
 			},
@@ -485,57 +484,68 @@ impl VFS {
 		fs.remove_file(io, parent_inode, file.get_name())?;
 
 		if file.get_hard_links_count() > 1 {
-			// If the file is a named pipe or socket, remove its now unused buffer
-			match file.get_content() {
-				FileContent::Fifo => {
-					let _ = self.pipes.remove(location);
-				},
-				FileContent::Socket => {
-					let _ = self.sockets.remove(location);
-				},
-
-				_ => {}
-			}
+			// If the file is a named pipe or socket, free its now unused buffer
+			self.free_location(location);
 		}
 
 		Ok(())
 	}
 
+	/// Allocates a virtual location.
+	///
+	/// If every possible locations are used (unlikely), the function returns an error.
+	///
+	/// When the file associated with the location is removed, the location is freed automaticaly.
+	pub fn alloc_virt_location(&mut self) -> Result<FileLocation, Errno> {
+		// TODO
+		todo!();
+	}
+
+	/// Frees the given file location and its associated pipe or socket.
+	///
+	/// If the location doesn't exist, the function does nothing.
+	pub fn free_location(&mut self, loc: &FileLocation) {
+		let _ = self.pipes.remove(loc);
+		let _ = self.sockets.remove(loc);
+
+		// TODO free location
+		todo!();
+	}
+
 	/// Returns the pipe associated with the file at location `loc`.
 	///
-	/// If the pipe doesn't exist, the function lazily creates it.
-	///
-	/// When the file with the associated location is removed, the pipe is also removed.
+	/// If the pipe doesn't exist, the function creates it.
 	pub fn get_fifo(&mut self, loc: &FileLocation) -> Result<SharedPtr<PipeBuffer>, Errno> {
-		if let Some(p) = self.pipes.get(loc) {
-			Ok(p.clone())
-		} else {
-			// The pipe buffer doesn't exist, create it
+		match self.pipes.get(loc) {
+			Some(buff) => Ok(buff.clone()),
 
-			let buff = SharedPtr::new(PipeBuffer::new()?)?;
-			self.pipes.insert(loc.clone(), buff.clone())?;
+			None => {
+				// The pipe buffer doesn't exist, create it
+				let buff = SharedPtr::new(PipeBuffer::new()?)?;
+				self.pipes.insert(loc.clone(), buff.clone())?;
 
-			Ok(buff)
+				Ok(buff)
+			},
 		}
 	}
 
 	/// Returns the socket associated with the file at location `loc`.
 	///
-	/// If the pipe doesn't exist, the function lazily creates it.
-	///
-	/// When the file with the associated location is removed, the socket is also removed.
-	pub fn get_socket(&mut self, loc: &FileLocation) -> Result<SharedPtr<Socket>, Errno> {
-		if let Some(s) = self.sockets.get(loc) {
-			Ok(s.clone())
-		} else {
-			// The socket doesn't exist, create it
+	/// If the socket doesn't exist, the function creates it.
+	pub fn get_socket(&mut self, loc: &FileLocation) -> Result<SharedPtr<PipeBuffer>, Errno> {
+		match self.pipes.get(loc) {
+			Some(buff) => Ok(buff.clone()),
 
-			/*let sock = SharedPtr::new(Socket::new()?)?;
-			self.sockets.insert(loc.clone(), sock.clone())?;
+			None => {
+				// The socket buffer doesn't exist, create it
+				/*let buff = SharedPtr::new(Socket::new()?)?;
+				self.sockets.insert(loc.clone(), buff.clone())?;
 
-			Ok(sock)*/
-			// TODO
-			todo!();
+				Ok(buff)*/
+
+				// TODO
+				todo!();
+			},
 		}
 	}
 }
