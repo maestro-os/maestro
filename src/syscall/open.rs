@@ -139,13 +139,17 @@ pub fn open_(pathname: SyscallString, flags: i32, mode: file::Mode) -> Result<i3
 	let guard = mutex.lock();
 	let proc = guard.get_mut();
 
-	let fd = proc.create_fd(loc, flags & STATUS_FLAGS_MASK)?;
+	let fds_mutex = proc.get_fds().unwrap();
+	let fds_guard = fds_mutex.lock();
+	let fds = fds_guard.get_mut();
+
+	let fd = fds.create_fd(loc, flags & STATUS_FLAGS_MASK)?;
 	let fd_id = fd.get_id();
 
 	// Flushing file
 	match file.lock().get_mut().sync() {
 		Err(e) => {
-			proc.close_fd(fd_id)?;
+			fds.close_fd(fd_id)?;
 			return Err(e);
 		}
 

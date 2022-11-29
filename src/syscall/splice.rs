@@ -29,10 +29,14 @@ pub fn splice(
 		let proc_guard = proc_mutex.lock();
 		let proc = proc_guard.get_mut();
 
-		let input = proc.get_fd(fd_in as _)
+		let fds_mutex = proc.get_fds().unwrap();
+		let fds_guard = fds_mutex.lock();
+		let fds = fds_guard.get();
+
+		let input = fds.get_fd(fd_in as _)
 			.ok_or_else(|| errno!(EBADF))?
 			.get_open_file();
-		let output = proc.get_fd(fd_out as _)
+		let output = fds.get_fd(fd_out as _)
 			.ok_or_else(|| errno!(EBADF))?
 			.get_open_file();
 

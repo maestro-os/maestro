@@ -104,7 +104,11 @@ fn build_path_from_fd(
 			return Err(errno!(EBADF));
 		}
 
-		let open_file_mutex = process
+		let fds_mutex = process.get_fds().unwrap();
+		let fds_guard = fds_mutex.lock();
+		let fds = fds_guard.get();
+
+		let open_file_mutex = fds
 			.get_fd(dirfd as _)
 			.ok_or(errno!(EBADF))?
 			.get_open_file();
@@ -142,7 +146,11 @@ pub fn get_file_at(
 				return Err(errno!(EBADF));
 			}
 
-			let open_file_mutex = process
+			let fds_mutex = process.get_fds().unwrap();
+			let fds_guard = fds_mutex.lock();
+			let fds = fds_guard.get();
+
+			let open_file_mutex = fds
 				.get_fd(dirfd as _)
 				.ok_or(errno!(EBADF))?
 				.get_open_file();

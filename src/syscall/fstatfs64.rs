@@ -22,7 +22,12 @@ pub fn fstatfs64(fd: c_int, _sz: usize, buf: SyscallPtr<Statfs>) -> Result<i32, 
 		let guard = mutex.lock();
 		let proc = guard.get_mut();
 
-		let fd = proc.get_fd(fd as _).ok_or_else(|| errno!(EBADF))?;
+		let fds_mutex = proc.get_fds().unwrap();
+		let fds_guard = fds_mutex.lock();
+		let fds = fds_guard.get();
+
+		let fd = fds.get_fd(fd as _).ok_or_else(|| errno!(EBADF))?;
+
 		let open_file_mutex = fd.get_open_file();
 		let open_file_guard = open_file_mutex.lock();
 		let open_file = open_file_guard.get();

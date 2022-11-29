@@ -106,29 +106,35 @@ pub fn do_fcntl(fd: i32, cmd: i32, arg: *mut c_void, _fcntl64: bool) -> Result<i
 		return Err(errno!(EBADF));
 	}
 
-	let proc_mutex = Process::get_current().unwrap();
-	let proc_guard = proc_mutex.lock();
-	let proc = proc_guard.get_mut();
+	let fds_mutex = {
+		let proc_mutex = Process::get_current().unwrap();
+		let proc_guard = proc_mutex.lock();
+		let proc = proc_guard.get_mut();
+
+		proc.get_fds().unwrap()
+	};
+	let fds_guard = fds_mutex.lock();
+	let fds = fds_guard.get_mut();
 
 	//crate::println!("fcntl: {} {} {:p} {}", fd, cmd, arg, _fcntl64); // TODO rm
 
 	match cmd {
-		F_DUPFD => Ok(proc
+		F_DUPFD => Ok(fds
 			.duplicate_fd(fd as _, NewFDConstraint::Min(arg as _), false)?
 			.get_id() as _),
 
 		F_GETFD => {
-			let fd = proc.get_fd(fd as _).ok_or_else(|| errno!(EBADF))?;
+			let fd = fds.get_fd(fd as _).ok_or_else(|| errno!(EBADF))?;
 			Ok(fd.get_flags())
 		}
 
 		F_SETFD => {
-			proc.set_fd_flags(fd as _, arg as _)?;
+			fds.set_fd_flags(fd as _, arg as _)?;
 			Ok(0)
 		}
 
 		F_GETFL => {
-			let fd = proc.get_fd(fd as _).ok_or_else(|| errno!(EBADF))?;
+			let fd = fds.get_fd(fd as _).ok_or_else(|| errno!(EBADF))?;
 			let open_file_mutex = fd.get_open_file();
 			let open_file_guard = open_file_mutex.lock();
 			let open_file = open_file_guard.get();
@@ -137,7 +143,7 @@ pub fn do_fcntl(fd: i32, cmd: i32, arg: *mut c_void, _fcntl64: bool) -> Result<i
 		}
 
 		F_SETFL => {
-			let fd = proc.get_fd(fd as _).ok_or_else(|| errno!(EBADF))?;
+			let fd = fds.get_fd(fd as _).ok_or_else(|| errno!(EBADF))?;
 			let open_file_mutex = fd.get_open_file();
 			let open_file_guard = open_file_mutex.lock();
 			let open_file = open_file_guard.get_mut();
@@ -236,7 +242,7 @@ pub fn do_fcntl(fd: i32, cmd: i32, arg: *mut c_void, _fcntl64: bool) -> Result<i
 			todo!();
 		}
 
-		F_DUPFD_CLOEXEC => Ok(proc
+		F_DUPFD_CLOEXEC => Ok(fds
 			.duplicate_fd(fd as _, NewFDConstraint::Min(arg as _), true)?
 			.get_id() as _),
 
@@ -246,7 +252,8 @@ pub fn do_fcntl(fd: i32, cmd: i32, arg: *mut c_void, _fcntl64: bool) -> Result<i
 		}
 
 		F_GETPIPE_SZ => {
-			let fd = proc.get_fd(fd as _).ok_or_else(|| errno!(EBADF))?;
+			let fd = fds.get_fd(fd as _).ok_or_else(|| errno!(EBADF))?;
+
 			let open_file_mutex = fd.get_open_file();
 			let open_file_guard = open_file_mutex.lock();
 			let open_file = open_file_guard.get();

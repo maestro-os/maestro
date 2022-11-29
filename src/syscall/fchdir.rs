@@ -22,7 +22,12 @@ pub fn fchdir(fd: c_int) -> Result<i32, Errno> {
 
 		let uid = proc.get_euid();
 		let gid = proc.get_egid();
-		let open_file_mutex = proc
+
+		let fds_mutex = proc.get_fds().unwrap();
+		let fds_guard = fds_mutex.lock();
+		let fds = fds_guard.get();
+
+		let open_file_mutex = fds
 			.get_fd(fd as _)
 			.ok_or_else(|| errno!(EBADF))?
 			.get_open_file();

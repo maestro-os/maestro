@@ -77,7 +77,14 @@ pub fn do_writev(
 		let proc = guard.get_mut();
 
 		let mem_space = proc.get_mem_space().unwrap();
-		let open_file_mutex = proc.get_fd(fd as _).ok_or(errno!(EBADF))?.get_open_file();
+
+		let fds_mutex = proc.get_fds().unwrap();
+		let fds_guard = fds_mutex.lock();
+		let fds = fds_guard.get();
+
+		let open_file_mutex = fds.get_fd(fd as _)
+			.ok_or(errno!(EBADF))?
+			.get_open_file();
 		(mem_space, open_file_mutex)
 	};
 

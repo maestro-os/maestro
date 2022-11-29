@@ -68,7 +68,11 @@ pub fn fstat64(fd: c_int, statbuf: SyscallPtr<Stat>) -> Result<i32, Errno> {
 		let proc_guard = proc_mutex.lock();
 		let proc = proc_guard.get_mut();
 
-		proc.get_fd(fd as _)
+		let fds_mutex = proc.get_fds().unwrap();
+		let fds_guard = fds_mutex.lock();
+		let fds = fds_guard.get();
+
+		fds.get_fd(fd as _)
 			.ok_or_else(|| errno!(EBADF))?
 			.get_open_file()
 	};

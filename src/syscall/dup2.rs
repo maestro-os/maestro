@@ -10,14 +10,18 @@ use macros::syscall;
 /// The implementation of the `dup2` syscall.
 #[syscall]
 pub fn dup2(oldfd: c_int, newfd: c_int) -> Result<i32, Errno> {
-	let mutex = Process::get_current().unwrap();
-	let guard = mutex.lock();
-	let proc = guard.get_mut();
-
 	if oldfd < 0 || newfd < 0 {
 		return Err(errno!(EBADF));
 	}
 
-	let newfd = proc.duplicate_fd(oldfd as _, NewFDConstraint::Fixed(newfd as _), false)?;
+	let mutex = Process::get_current().unwrap();
+	let guard = mutex.lock();
+	let proc = guard.get_mut();
+
+	let fds_mutex = proc.get_fds().unwrap();
+	let fds_guard = fds_mutex.lock();
+	let fds = fds_guard.get_mut();
+
+	let newfd = fds.duplicate_fd(oldfd as _, NewFDConstraint::Fixed(newfd as _), false)?;
 	Ok(newfd.get_id() as _)
 }

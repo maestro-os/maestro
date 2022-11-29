@@ -28,14 +28,18 @@ pub fn socketpair(
 	let mem_space_guard = mem_space.lock();
 	let sv_slice = sv.get_mut(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
 
+	let fds_mutex = proc.get_fds().unwrap();
+	let fds_guard = fds_mutex.lock();
+	let fds = fds_guard.get_mut();
+
 	// Create socket
 	let sock = Socket::new(domain, r#type, protocol);
 	let loc = buffer::register(None, SharedPtr::new(sock)?)?;
 
-	let fd0 = proc.create_fd(loc.clone(), open_file::O_RDWR)?;
+	let fd0 = fds.create_fd(loc.clone(), open_file::O_RDWR)?;
 	sv_slice[0] = fd0.get_id() as _;
 
-	let fd1 = proc.create_fd(loc, open_file::O_RDWR)?;
+	let fd1 = fds.create_fd(loc, open_file::O_RDWR)?;
 	sv_slice[1] = fd1.get_id() as _;
 
 	Ok(0)

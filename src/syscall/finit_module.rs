@@ -1,14 +1,14 @@
 //! The `finit_module` system call allows to load a module on the kernel.
 
-use crate::errno;
-use crate::errno::Errno;
-use crate::memory::malloc;
-use crate::module;
-use crate::module::Module;
-use crate::process::mem_space::ptr::SyscallString;
-use crate::process::Process;
-use crate::util::io::IO;
 use core::ffi::c_int;
+use crate::errno::Errno;
+use crate::errno;
+use crate::memory::malloc;
+use crate::module::Module;
+use crate::module;
+use crate::process::Process;
+use crate::process::mem_space::ptr::SyscallString;
+use crate::util::io::IO;
 use macros::syscall;
 
 /// The implementation of the `finit_module` syscall.
@@ -28,7 +28,11 @@ pub fn finit_module(fd: c_int, _param_values: SyscallString, _flags: c_int) -> R
 				return Err(errno!(EPERM));
 			}
 
-			proc.get_fd(fd as _)
+			let fds_mutex = proc.get_fds().unwrap();
+			let fds_guard = fds_mutex.lock();
+			let fds = fds_guard.get();
+
+			fds.get_fd(fd as _)
 				.ok_or_else(|| errno!(EBADF))?
 				.get_open_file()
 		};

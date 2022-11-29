@@ -1,16 +1,16 @@
 //! This module implements the `write` system call, which allows to write data
 //! to a file.
 
-use crate::errno;
-use crate::errno::Errno;
-use crate::file::open_file::O_NONBLOCK;
-use crate::idt;
-use crate::process::mem_space::ptr::SyscallSlice;
-use crate::process::Process;
-use crate::syscall::Signal;
-use crate::util::io::IO;
 use core::cmp::min;
 use core::ffi::c_int;
+use crate::errno::Errno;
+use crate::errno;
+use crate::file::open_file::O_NONBLOCK;
+use crate::idt;
+use crate::process::Process;
+use crate::process::mem_space::ptr::SyscallSlice;
+use crate::syscall::Signal;
+use crate::util::io::IO;
 use macros::syscall;
 
 // TODO O_ASYNC
@@ -36,7 +36,13 @@ pub fn write(fd: c_int, buf: SyscallSlice<u8>, count: usize) -> Result<i32, Errn
 			let proc = guard.get_mut();
 
 			let mem_space = proc.get_mem_space().unwrap();
-			let open_file_mutex = proc.get_fd(fd as _).ok_or(errno!(EBADF))?.get_open_file();
+
+			let fds_mutex = proc.get_fds().unwrap();
+			let fds_guard = fds_mutex.lock();
+			let fds = fds_guard.get();
+
+			let open_file_mutex = fds.get_fd(fd as _).ok_or(errno!(EBADF))?.get_open_file();
+
 			(mem_space, open_file_mutex)
 		};
 

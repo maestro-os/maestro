@@ -1,18 +1,18 @@
 //! `select` waits for a file descriptor in the given sets to be readable,
 //! writable or for an exception to occur.
 
-use crate::errno::Errno;
-use crate::process::mem_space::ptr::SyscallPtr;
-use crate::process::mem_space::ptr::SyscallSlice;
-use crate::process::Process;
-use crate::time;
-use crate::time::unit::TimeUnit;
-use crate::time::unit::Timeval;
-use crate::types::*;
-use crate::util::io;
-use crate::util::io::IO;
 use core::cmp::min;
 use core::mem::size_of;
+use crate::errno::Errno;
+use crate::process::Process;
+use crate::process::mem_space::ptr::SyscallPtr;
+use crate::process::mem_space::ptr::SyscallSlice;
+use crate::time::unit::TimeUnit;
+use crate::time::unit::Timeval;
+use crate::time;
+use crate::types::*;
+use crate::util::io::IO;
+use crate::util::io;
 use macros::syscall;
 
 /// The number of file descriptors in FDSet.
@@ -96,14 +96,15 @@ pub fn do_select<T: TimeUnit>(
 		let mut all_zeros = true;
 
 		for fd_id in 0..min(nfds as u32, FD_SETSIZE as u32) {
-			let (mem_space, fd) = {
+			let (mem_space, fds_mutex) = {
 				let proc_mutex = Process::get_current().unwrap();
 				let proc_guard = proc_mutex.lock();
 				let proc = proc_guard.get();
 
 				let mem_space = proc.get_mem_space().unwrap();
-				let fd = proc.get_fd(fd_id);
-				(mem_space, fd)
+				let fds_mutex = proc.get_fds().unwrap();
+
+				(mem_space, fds_mutex)
 			};
 
 			let (read, write, except) = {
@@ -128,6 +129,10 @@ pub fn do_select<T: TimeUnit>(
 			if read || write || except {
 				all_zeros = false;
 			}
+
+			let fds_guard = fds_mutex.lock();
+			let fds = fds_guard.get();
+			let fd = fds.get_fd(fd_id);
 
 			// Checking the file descriptor exists
 			let fd = match fd {

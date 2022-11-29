@@ -69,7 +69,7 @@ pub fn get_or_default<B: Buffer + FailableDefault + 'static>(
 
 		None => {
 			let buff = SharedPtr::new(B::failable_default()?)?;
-			buffers.insert(loc.clone(), buff.clone());
+			buffers.insert(loc.clone(), buff.clone())?;
 
 			Ok(buff)
 		},

@@ -89,7 +89,11 @@ pub fn do_mmap(
 
 	// The file the mapping points to
 	let open_file_mutex = if fd >= 0 {
-		proc.get_fd(fd as _).map(|fd| fd.get_open_file())
+		let fds_mutex = proc.get_fds().unwrap();
+		let fds_guard = fds_mutex.lock();
+		let fds = fds_guard.get();
+
+		fds.get_fd(fd as _).map(|fd| fd.get_open_file())
 	} else {
 		None
 	};

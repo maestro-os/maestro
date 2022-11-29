@@ -9,13 +9,18 @@ use macros::syscall;
 /// The implementation of the `close` syscall.
 #[syscall]
 pub fn close(fd: c_int) -> Result<i32, Errno> {
+	if fd < 0 {
+		return Err(errno!(EBADF));
+	}
+
 	let mutex = Process::get_current().unwrap();
 	let guard = mutex.lock();
 	let proc = guard.get_mut();
 
-	if fd >= 0 && proc.close_fd(fd as _).is_ok() {
-		Ok(0)
-	} else {
-		Err(errno!(EBADF))
-	}
+	let fds_mutex = proc.get_fds().unwrap();
+	let fds_guard = fds_mutex.lock();
+	let fds = fds_guard.get_mut();
+
+	fds.close_fd(fd as _)?;
+	Ok(0)
 }

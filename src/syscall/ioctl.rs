@@ -45,7 +45,12 @@ pub fn ioctl(fd: c_int, request: c_ulong, argp: *const c_void) -> Result<i32, Er
 		let proc = guard.get_mut();
 
 		let mem_space = proc.get_mem_space().unwrap();
-		let open_file_mutex = proc
+
+		let fds_mutex = proc.get_fds().unwrap();
+		let fds_guard = fds_mutex.lock();
+		let fds = fds_guard.get();
+
+		let open_file_mutex = fds
 			.get_fd(fd as _)
 			.ok_or_else(|| errno!(EBADF))?
 			.get_open_file();
