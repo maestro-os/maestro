@@ -4,9 +4,11 @@ use core::ffi::c_int;
 use crate::errno::Errno;
 use crate::errno;
 use crate::file::open_file;
-use crate::file::vfs;
+use crate::file::pipe::PipeBuffer;
+use crate::file::virt;
 use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallPtr;
+use crate::util::ptr::SharedPtr;
 use macros::syscall;
 
 /// The implementation of the `pipe2` syscall.
@@ -26,16 +28,7 @@ pub fn pipe2(pipefd: SyscallPtr<[c_int; 2]>, flags: c_int) -> Result<i32, Errno>
 	let pipefd_slice = pipefd.get_mut(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
 
 	// Create pipe
-	let loc = {
-		let vfs_mutex = vfs::get();
-		let vfs_guard = vfs_mutex.lock();
-		let vfs = vfs_guard.get_mut().as_mut().unwrap();
-
-		let loc = vfs.alloc_virt_location()?;
-		vfs.get_fifo(&loc)?;
-
-		loc
-	};
+	let loc = virt::register_resource(None, SharedPtr::new(PipeBuffer::new()?)?)?;
 
 	let fd0 = proc.create_fd(loc.clone(), open_file::O_RDONLY | flags)?;
 	let fd1 = proc.create_fd(loc, open_file::O_WRONLY | flags)?;

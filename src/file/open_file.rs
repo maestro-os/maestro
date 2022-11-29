@@ -9,6 +9,7 @@ use crate::file::File;
 use crate::file::FileContent;
 use crate::file::FileLocation;
 use crate::file::vfs;
+use crate::file::virt;
 use crate::process::mem_space::MemSpace;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::syscall::ioctl;
@@ -125,11 +126,13 @@ impl OpenFile {
 			let open_file = open_file_guard.get_mut();
 			open_file.ref_count += 1;
 
-			// TODO if the file points to a pipe, update the number of ends:
-			/*match &open_file.target {
-				FDTarget::Pipe(pipe) => pipe.lock().get_mut().increment_open(open_file.can_write()),
-				_ => {}
-			}*/
+			// If the file points to a virtual resource, increment the number of open ends
+			if let Some(res_mutex) = virt::get_resource(&open_file.location) {
+				let res_guard = res_mutex.lock();
+				let res = res_guard.get_mut();
+
+				res.increment_open(open_file.can_write());
+			}
 		}
 
 		Ok(open_file_mutex)
@@ -316,10 +319,12 @@ impl IO for OpenFile {
 
 impl Drop for OpenFile {
 	fn drop(&mut self) {
-		// TODO
-		/*match &self.target {
-			FDTarget::Pipe(pipe) => pipe.lock().get_mut().decrement_open(self.can_write()),
-			_ => {}
-		}*/
+		// If the file points to a virtual resource, decrement the number of open ends
+		if let Some(res_mutex) = virt::get_resource(&self.location) {
+			let res_guard = res_mutex.lock();
+			let res = res_guard.get_mut();
+
+			res.decrement_open(self.can_write());
+		}
 	}
 }

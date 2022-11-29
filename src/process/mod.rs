@@ -39,7 +39,6 @@ use crate::file::fd::FileDescriptor;
 use crate::file::fd::NewFDConstraint;
 use crate::file::fs::procfs::ProcFS;
 use crate::file::mountpoint;
-use crate::file::open_file::OpenFile;
 use crate::file::open_file;
 use crate::file::path::Path;
 use crate::file::vfs;
@@ -1089,12 +1088,11 @@ impl Process {
 		&mut self,
 		location: FileLocation,
 		flags: i32
-	) -> Result<FileDescriptor, Errno> {
+	) -> Result<&FileDescriptor, Errno> {
 		let file_descriptors_guard = self.file_descriptors.as_ref().unwrap().lock();
 		let file_descriptors = file_descriptors_guard.get_mut();
 
 		let id = Self::get_available_fd(file_descriptors, None)?;
-		OpenFile::open(location.clone(), flags)?;
 		let i = file_descriptors
 			.binary_search_by(|fd| fd.get_id().cmp(&id))
 			.unwrap_err();
@@ -1106,11 +1104,10 @@ impl Process {
 			0
 		};
 
-		file_descriptors.insert(
-			i,
-			FileDescriptor::new(id, flags, location),
-		)?;
-		Ok(file_descriptors[i].clone())
+		let fd = FileDescriptor::new(id, flags, location)?;
+		file_descriptors.insert(i, fd)?;
+
+		Ok(&file_descriptors[i])
 	}
 
 	/// Returns an immutable reference to the file descriptor with ID `id`.
@@ -1118,9 +1115,9 @@ impl Process {
 	/// `file_descriptors` is the file descriptors table.
 	///
 	/// If the file descriptor doesn't exist, the function returns None.
-	fn get_fd_(file_descriptors: &Vec<FileDescriptor>, id: u32) -> Option<FileDescriptor> {
+	fn get_fd_(file_descriptors: &Vec<FileDescriptor>, id: u32) -> Option<&FileDescriptor> {
 		let result = file_descriptors.binary_search_by(|fd| fd.get_id().cmp(&id));
-		result.ok().map(|index| file_descriptors[index].clone())
+		result.ok().map(|index| &file_descriptors[index])
 	}
 
 	/// Duplicates the file descriptor with id `id`.
@@ -1135,7 +1132,7 @@ impl Process {
 		id: u32,
 		constraint: NewFDConstraint,
 		cloexec: bool,
-	) -> Result<FileDescriptor, Errno> {
+	) -> Result<&FileDescriptor, Errno> {
 		let file_descriptors_guard = self.file_descriptors.as_ref().unwrap().lock();
 		let file_descriptors = file_descriptors_guard.get_mut();
 
@@ -1156,7 +1153,7 @@ impl Process {
 			.clone();
 
 		// Creating the FD
-		let fd = FileDescriptor::new(new_id, flags, location);
+		let fd = FileDescriptor::new(new_id, flags, location)?;
 
 		// Inserting the FD
 		let index = file_descriptors.binary_search_by(|fd| fd.get_id().cmp(&new_id));
@@ -1171,11 +1168,13 @@ impl Process {
 			}
 		};
 
-		Ok(file_descriptors[index].clone())
+		Ok(&file_descriptors[index])
 	}
 
-	/// Duplicates file descriptors to make the process have its own copy. This
-	/// function doesn't duplicate open file descriptions.
+	/// Duplicates file descriptors to make the process have its own copy.
+	///
+	/// This function doesn't duplicate open file descriptions.
+	///
 	/// This function is meant to be executed on program execution, meaning that
 	/// file descriptors with the flag FD_CLOEXEC are discarded.
 	pub fn duplicate_fds(&mut self) -> Result<(), Errno> {
@@ -1187,7 +1186,7 @@ impl Process {
 
 			for fd in fds {
 				if fd.get_flags() & FD_CLOEXEC == 0 {
-					new_fds.push(fd.clone())?;
+					new_fds.push(fd.failable_clone()?)?;
 				}
 			}
 		}
@@ -1199,7 +1198,7 @@ impl Process {
 	/// Returns an immutable reference to the file descriptor with ID `id`.
 	///
 	/// If the file descriptor doesn't exist, the function returns None.
-	pub fn get_fd(&self, id: u32) -> Option<FileDescriptor> {
+	pub fn get_fd(&self, id: u32) -> Option<&FileDescriptor> {
 		let file_descriptors_guard = self.file_descriptors.as_ref()?.lock();
 		let file_descriptors = file_descriptors_guard.get();
 
@@ -1303,21 +1302,6 @@ impl Process {
 			}
 		};
 
-		// Cloning file descriptors table
-		let file_descriptors = if fork_options.share_fd {
-			self.file_descriptors.clone()
-		} else {
-			let curr_fds_guard = self.file_descriptors.as_ref().unwrap().lock();
-			let curr_fds = curr_fds_guard.get();
-
-			let mut fds = Vec::with_capacity(curr_fds.len())?;
-			for fd in curr_fds.iter() {
-				fds.push(fd.clone())?;
-			}
-
-			Some(SharedPtr::new(fds)?)
-		};
-
 		// Cloning signal handlers
 		let signal_handlers = if fork_options.share_sighand {
 			self.signal_handlers.clone()
@@ -1370,7 +1354,7 @@ impl Process {
 
 			cwd: self.cwd.failable_clone()?,
 			chroot: self.chroot.failable_clone()?,
-			file_descriptors,
+			file_descriptors: self.file_descriptors.clone(),
 
 			sigmask: self.sigmask.failable_clone()?,
 			sigpending: Bitfield::new(signal::SIGNALS_COUNT)?,
@@ -1386,6 +1370,11 @@ impl Process {
 			exit_status: self.exit_status,
 			termsig: 0,
 		};
+
+		if !fork_options.share_fd {
+			process.duplicate_fds()?;
+		}
+
 		process.register_procfs()?;
 
 		self.add_child(pid)?;

@@ -11,6 +11,7 @@ pub mod pipe;
 pub mod socket;
 pub mod util;
 pub mod vfs;
+pub mod virt;
 
 use core::cmp::max;
 use core::ffi::c_void;
@@ -634,9 +635,11 @@ impl File {
 	}
 
 	/// Performs an ioctl operation on the file.
-	/// `mem_space` is the memory space on which pointers are to be
-	/// dereferenced. `request` is the ID of the request to perform.
-	/// `argp` is a pointer to the argument.
+	///
+	/// Arguments:
+	/// - `mem_space` is the memory space on which pointers are to be dereferenced.
+	/// - `request` is the ID of the request to perform.
+	/// - `argp` is a pointer to the argument.
 	pub fn ioctl(
 		&mut self,
 		mem_space: IntSharedPtr<MemSpace>,
@@ -648,28 +651,13 @@ impl File {
 			FileContent::Directory(_entries) => Err(errno!(EINVAL)),
 			FileContent::Link(_target) => Err(errno!(EINVAL)),
 
-			FileContent::Fifo => {
-				let vfs_mutex = vfs::get();
-				let vfs_guard = vfs_mutex.lock();
-				let vfs = vfs_guard.get_mut().as_mut().unwrap();
-
-				let pipe_mutex = vfs.get_fifo(self.get_location())?;
+			FileContent::Fifo | FileContent::Socket  => {
+				let pipe_mutex = virt::get_resource(self.get_location())
+					.ok_or_else(|| errno!(ENOENT))?;
 				let pipe_guard = pipe_mutex.lock();
 				let pipe = pipe_guard.get_mut();
+
 				pipe.ioctl(mem_space, request, argp)
-			}
-
-			FileContent::Socket => {
-				let vfs_mutex = vfs::get();
-				let vfs_guard = vfs_mutex.lock();
-				let vfs = vfs_guard.get_mut().as_mut().unwrap();
-
-				let sock_mutex = vfs.get_socket(self.get_location())?;
-				let sock_guard = sock_mutex.lock();
-				let _sock = sock_guard.get_mut();
-
-				// TODO
-				todo!();
 			}
 
 			// TODO Check if correct
@@ -744,28 +732,13 @@ impl IO for File {
 
 			FileContent::Link(_) => Err(errno!(EINVAL)),
 
-			FileContent::Fifo => {
-				let vfs_mutex = vfs::get();
-				let vfs_guard = vfs_mutex.lock();
-				let vfs = vfs_guard.get_mut().as_mut().unwrap();
-
-				let pipe_mutex = vfs.get_fifo(self.get_location())?;
+			FileContent::Fifo | FileContent::Socket => {
+				let pipe_mutex = virt::get_resource(self.get_location())
+					.ok_or_else(|| errno!(ENOENT))?;
 				let pipe_guard = pipe_mutex.lock();
 				let pipe = pipe_guard.get_mut();
+
 				pipe.read(off as _, buff)
-			}
-
-			FileContent::Socket => {
-				let vfs_mutex = vfs::get();
-				let vfs_guard = vfs_mutex.lock();
-				let vfs = vfs_guard.get_mut().as_mut().unwrap();
-
-				let sock_mutex = vfs.get_socket(self.get_location())?;
-				let sock_guard = sock_mutex.lock();
-				let _sock = sock_guard.get_mut();
-
-				// TODO
-				todo!();
 			}
 
 			FileContent::BlockDevice {
@@ -825,28 +798,13 @@ impl IO for File {
 
 			FileContent::Link(_) => Err(errno!(EINVAL)),
 
-			FileContent::Fifo => {
-				let vfs_mutex = vfs::get();
-				let vfs_guard = vfs_mutex.lock();
-				let vfs = vfs_guard.get_mut().as_mut().unwrap();
-
-				let pipe_mutex = vfs.get_fifo(self.get_location())?;
+			FileContent::Fifo | FileContent::Socket => {
+				let pipe_mutex = virt::get_resource(self.get_location())
+					.ok_or_else(|| errno!(ENOENT))?;
 				let pipe_guard = pipe_mutex.lock();
 				let pipe = pipe_guard.get_mut();
+
 				pipe.write(off as _, buff)
-			}
-
-			FileContent::Socket => {
-				let vfs_mutex = vfs::get();
-				let vfs_guard = vfs_mutex.lock();
-				let vfs = vfs_guard.get_mut().as_mut().unwrap();
-
-				let sock_mutex = vfs.get_socket(self.get_location())?;
-				let sock_guard = sock_mutex.lock();
-				let _sock = sock_guard.get_mut();
-
-				// TODO
-				todo!();
 			}
 
 			FileContent::BlockDevice {
@@ -904,28 +862,13 @@ impl IO for File {
 
 			FileContent::Link(_) => Err(errno!(EINVAL)),
 
-			FileContent::Fifo => {
-				let vfs_mutex = vfs::get();
-				let vfs_guard = vfs_mutex.lock();
-				let vfs = vfs_guard.get_mut().as_mut().unwrap();
-
-				let pipe_mutex = vfs.get_fifo(self.get_location())?;
+			FileContent::Fifo | FileContent::Socket => {
+				let pipe_mutex = virt::get_resource(self.get_location())
+					.ok_or_else(|| errno!(ENOENT))?;
 				let pipe_guard = pipe_mutex.lock();
 				let pipe = pipe_guard.get_mut();
+
 				pipe.poll(mask)
-			}
-
-			FileContent::Socket => {
-				let vfs_mutex = vfs::get();
-				let vfs_guard = vfs_mutex.lock();
-				let vfs = vfs_guard.get_mut().as_mut().unwrap();
-
-				let sock_mutex = vfs.get_socket(self.get_location())?;
-				let sock_guard = sock_mutex.lock();
-				let _sock = sock_guard.get_mut();
-
-				// TODO
-				todo!();
 			}
 
 			FileContent::BlockDevice {

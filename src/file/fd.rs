@@ -5,6 +5,7 @@
 use crate::errno::Errno;
 use crate::file::FileLocation;
 use crate::file::open_file::OpenFile;
+use crate::util::FailableClone;
 use crate::util::lock::Mutex;
 use crate::util::ptr::SharedPtr;
 
@@ -50,7 +51,6 @@ pub enum NewFDConstraint {
 }
 
 /// Structure representing a file descriptor.
-#[derive(Clone)]
 pub struct FileDescriptor {
 	/// The FD's id.
 	id: u32,
@@ -64,17 +64,22 @@ pub struct FileDescriptor {
 impl FileDescriptor {
 	/// Creates a new file descriptor.
 	///
+	/// If no open file description is associated with the given location, the function creates
+	/// one.
+	///
 	/// Arguments:
 	/// - `id` is the ID of the file descriptor.
 	/// - `flags` is the set of flags associated with the file descriptor.
 	/// - `location` is the location of the open file the file descriptor points to.
-	pub fn new(id: u32, flags: i32, location: FileLocation) -> Self {
-		Self {
+	pub fn new(id: u32, flags: i32, location: FileLocation) -> Result<Self, Errno> {
+		OpenFile::open(location.clone(), flags)?;
+
+		Ok(Self {
 			id,
 			flags,
 
 			location,
-		}
+		})
 	}
 
 	/// Returns the file descriptor's ID.
@@ -102,6 +107,12 @@ impl FileDescriptor {
 		// Unwrap won't fail since open files are closed only when the corresponding file
 		// descriptors are all closed
 		OpenFile::get(&self.location).unwrap()
+	}
+}
+
+impl FailableClone for FileDescriptor {
+	fn failable_clone(&self) -> Result<Self, Errno> {
+		Self::new(self.id, self.flags, self.location.clone())
 	}
 }
 

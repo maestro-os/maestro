@@ -2,13 +2,8 @@
 //! filesystems into one. To manipulate files, the VFS should be used instead of
 //! calling the filesystems' functions directly.
 
-use super::pipe::PipeBuffer;
-use super::socket::Socket;
-use crate::errno;
 use crate::errno::Errno;
-use crate::file;
-use crate::file::mountpoint;
-use crate::file::path::Path;
+use crate::errno;
 use crate::file::File;
 use crate::file::FileContent;
 use crate::file::FileLocation;
@@ -17,12 +12,15 @@ use crate::file::Gid;
 use crate::file::Mode;
 use crate::file::MountPoint;
 use crate::file::Uid;
+use crate::file::mountpoint;
+use crate::file::path::Path;
+use crate::file::virt;
+use crate::file;
 use crate::limits;
-use crate::util::container::hashmap::HashMap;
+use crate::util::FailableClone;
 use crate::util::container::string::String;
 use crate::util::lock::IntMutex;
 use crate::util::ptr::SharedPtr;
-use crate::util::FailableClone;
 
 /// Updates the location of the file `file` according to the given mountpoint
 /// `mountpoint`.
@@ -45,19 +43,13 @@ fn update_location(file: &mut File, mountpoint: &MountPoint) {
 /// as a cache to speedup file accesses.
 pub struct VFS {
 	// TODO Add files caching
-
-	/// All the system's pipes. The key is the location of the file associated with the entry.
-	pipes: HashMap<FileLocation, SharedPtr<PipeBuffer>>,
-	/// All the system's sockets. The key is the location of the file associated with the entry.
-	sockets: HashMap<FileLocation, SharedPtr<Socket>>,
 }
 
 impl VFS {
 	/// Creates a new instance.
 	pub fn new() -> Self {
 		Self {
-			pipes: HashMap::new(),
-			sockets: HashMap::new(),
+			// TODO
 		}
 	}
 
@@ -485,68 +477,10 @@ impl VFS {
 
 		if file.get_hard_links_count() > 1 {
 			// If the file is a named pipe or socket, free its now unused buffer
-			self.free_location(location);
+			virt::free_resource(location);
 		}
 
 		Ok(())
-	}
-
-	/// Allocates a virtual location.
-	///
-	/// If every possible locations are used (unlikely), the function returns an error.
-	///
-	/// When the file associated with the location is removed, the location is freed automaticaly.
-	pub fn alloc_virt_location(&mut self) -> Result<FileLocation, Errno> {
-		// TODO
-		todo!();
-	}
-
-	/// Frees the given file location and its associated pipe or socket.
-	///
-	/// If the location doesn't exist, the function does nothing.
-	pub fn free_location(&mut self, loc: &FileLocation) {
-		let _ = self.pipes.remove(loc);
-		let _ = self.sockets.remove(loc);
-
-		// TODO free location
-		todo!();
-	}
-
-	/// Returns the pipe associated with the file at location `loc`.
-	///
-	/// If the pipe doesn't exist, the function creates it.
-	pub fn get_fifo(&mut self, loc: &FileLocation) -> Result<SharedPtr<PipeBuffer>, Errno> {
-		match self.pipes.get(loc) {
-			Some(buff) => Ok(buff.clone()),
-
-			None => {
-				// The pipe buffer doesn't exist, create it
-				let buff = SharedPtr::new(PipeBuffer::new()?)?;
-				self.pipes.insert(loc.clone(), buff.clone())?;
-
-				Ok(buff)
-			},
-		}
-	}
-
-	/// Returns the socket associated with the file at location `loc`.
-	///
-	/// If the socket doesn't exist, the function creates it.
-	pub fn get_socket(&mut self, loc: &FileLocation) -> Result<SharedPtr<PipeBuffer>, Errno> {
-		match self.pipes.get(loc) {
-			Some(buff) => Ok(buff.clone()),
-
-			None => {
-				// The socket buffer doesn't exist, create it
-				/*let buff = SharedPtr::new(Socket::new()?)?;
-				self.sockets.insert(loc.clone(), buff.clone())?;
-
-				Ok(buff)*/
-
-				// TODO
-				todo!();
-			},
-		}
 	}
 }
 

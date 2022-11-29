@@ -5,9 +5,11 @@ use core::ffi::c_int;
 use crate::errno::Errno;
 use crate::errno;
 use crate::file::open_file;
-use crate::file::vfs;
+use crate::file::socket::Socket;
+use crate::file::virt;
 use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallPtr;
+use crate::util::ptr::SharedPtr;
 use macros::syscall;
 
 /// The implementation of the `socketpair` syscall.
@@ -27,19 +29,8 @@ pub fn socketpair(
 	let sv_slice = sv.get_mut(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
 
 	// Create socket
-	let loc = {
-		let vfs_mutex = vfs::get();
-		let vfs_guard = vfs_mutex.lock();
-		let vfs = vfs_guard.get_mut().as_mut().unwrap();
-
-		// TODO Somehow pass arguments to `get_socket`
-		let _ = crate::file::socket::Socket::new(domain, r#type, protocol)?;
-
-		let loc = vfs.alloc_virt_location()?;
-		vfs.get_socket(&loc)?;
-
-		loc
-	};
+	let sock = Socket::new(domain, r#type, protocol)?;
+	let loc = virt::register_resource(None, SharedPtr::new(sock)?)?;
 
 	let fd0 = proc.create_fd(loc.clone(), open_file::O_RDWR)?;
 	let fd1 = proc.create_fd(loc, open_file::O_RDWR)?;
