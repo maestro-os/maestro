@@ -2,16 +2,14 @@
 //! Virtual FileSystem (VFS). The root filesystem is passed to the kernel as an
 //! argument when booting. Other filesystems are mounted into subdirectories.
 
+pub mod buffer;
 pub mod fd;
 pub mod fs;
 pub mod mountpoint;
 pub mod open_file;
 pub mod path;
-pub mod pipe;
-pub mod socket;
 pub mod util;
 pub mod vfs;
-pub mod virt;
 
 use core::cmp::max;
 use core::ffi::c_void;
@@ -652,7 +650,7 @@ impl File {
 			FileContent::Link(_target) => Err(errno!(EINVAL)),
 
 			FileContent::Fifo | FileContent::Socket  => {
-				let pipe_mutex = virt::get_resource(self.get_location())
+				let pipe_mutex = buffer::get(self.get_location())
 					.ok_or_else(|| errno!(ENOENT))?;
 				let pipe_guard = pipe_mutex.lock();
 				let pipe = pipe_guard.get_mut();
@@ -733,7 +731,7 @@ impl IO for File {
 			FileContent::Link(_) => Err(errno!(EINVAL)),
 
 			FileContent::Fifo | FileContent::Socket => {
-				let pipe_mutex = virt::get_resource(self.get_location())
+				let pipe_mutex = buffer::get(self.get_location())
 					.ok_or_else(|| errno!(ENOENT))?;
 				let pipe_guard = pipe_mutex.lock();
 				let pipe = pipe_guard.get_mut();
@@ -799,7 +797,7 @@ impl IO for File {
 			FileContent::Link(_) => Err(errno!(EINVAL)),
 
 			FileContent::Fifo | FileContent::Socket => {
-				let pipe_mutex = virt::get_resource(self.get_location())
+				let pipe_mutex = buffer::get(self.get_location())
 					.ok_or_else(|| errno!(ENOENT))?;
 				let pipe_guard = pipe_mutex.lock();
 				let pipe = pipe_guard.get_mut();
@@ -863,7 +861,7 @@ impl IO for File {
 			FileContent::Link(_) => Err(errno!(EINVAL)),
 
 			FileContent::Fifo | FileContent::Socket => {
-				let pipe_mutex = virt::get_resource(self.get_location())
+				let pipe_mutex = buffer::get(self.get_location())
 					.ok_or_else(|| errno!(ENOENT))?;
 				let pipe_guard = pipe_mutex.lock();
 				let pipe = pipe_guard.get_mut();

@@ -12,9 +12,9 @@ use crate::file::Gid;
 use crate::file::Mode;
 use crate::file::MountPoint;
 use crate::file::Uid;
+use crate::file::buffer;
 use crate::file::mountpoint;
 use crate::file::path::Path;
-use crate::file::virt;
 use crate::file;
 use crate::limits;
 use crate::util::FailableClone;
@@ -477,7 +477,7 @@ impl VFS {
 
 		if file.get_hard_links_count() > 1 {
 			// If the file is a named pipe or socket, free its now unused buffer
-			virt::free_resource(location);
+			buffer::release(location);
 		}
 
 		Ok(())

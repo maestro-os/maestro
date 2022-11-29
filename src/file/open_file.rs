@@ -8,8 +8,8 @@ use crate::errno;
 use crate::file::File;
 use crate::file::FileContent;
 use crate::file::FileLocation;
+use crate::file::buffer;
 use crate::file::vfs;
-use crate::file::virt;
 use crate::process::mem_space::MemSpace;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::syscall::ioctl;
@@ -126,12 +126,12 @@ impl OpenFile {
 			let open_file = open_file_guard.get_mut();
 			open_file.ref_count += 1;
 
-			// If the file points to a virtual resource, increment the number of open ends
-			if let Some(res_mutex) = virt::get_resource(&open_file.location) {
-				let res_guard = res_mutex.lock();
-				let res = res_guard.get_mut();
+			// If the file points to a buffer, increment the number of open ends
+			if let Some(buff_mutex) = buffer::get(&open_file.location) {
+				let buff_guard = buff_mutex.lock();
+				let buff = buff_guard.get_mut();
 
-				res.increment_open(open_file.can_write());
+				buff.increment_open(open_file.can_write());
 			}
 		}
 
@@ -319,12 +319,12 @@ impl IO for OpenFile {
 
 impl Drop for OpenFile {
 	fn drop(&mut self) {
-		// If the file points to a virtual resource, decrement the number of open ends
-		if let Some(res_mutex) = virt::get_resource(&self.location) {
-			let res_guard = res_mutex.lock();
-			let res = res_guard.get_mut();
+		// If the file points to a buffer, decrement the number of open ends
+		if let Some(buff_mutex) = buffer::get(&self.location) {
+			let buff_guard = buff_mutex.lock();
+			let buff = buff_guard.get_mut();
 
-			res.decrement_open(self.can_write());
+			buff.decrement_open(self.can_write());
 		}
 	}
 }

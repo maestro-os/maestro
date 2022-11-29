@@ -2,9 +2,9 @@
 
 use core::ffi::c_int;
 use crate::errno::Errno;
+use crate::file::buffer::pipe::PipeBuffer;
+use crate::file::buffer;
 use crate::file::open_file;
-use crate::file::pipe::PipeBuffer;
-use crate::file::virt;
 use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::util::ptr::SharedPtr;
@@ -22,7 +22,7 @@ pub fn pipe(pipefd: SyscallPtr<[c_int; 2]>) -> Result<i32, Errno> {
 	let pipefd_slice = pipefd.get_mut(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
 
 	// Create pipe
-	let loc = virt::register_resource(None, SharedPtr::new(PipeBuffer::new()?)?)?;
+	let loc = buffer::register(None, SharedPtr::new(PipeBuffer::new()?)?)?;
 
 	let fd0 = proc.create_fd(loc.clone(), open_file::O_RDONLY)?;
 	let fd1 = proc.create_fd(loc, open_file::O_WRONLY)?;

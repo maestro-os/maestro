@@ -4,9 +4,9 @@
 use core::ffi::c_int;
 use crate::errno::Errno;
 use crate::errno;
+use crate::file::buffer::socket::Socket;
+use crate::file::buffer;
 use crate::file::open_file;
-use crate::file::socket::Socket;
-use crate::file::virt;
 use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::util::ptr::SharedPtr;
@@ -30,7 +30,7 @@ pub fn socketpair(
 
 	// Create socket
 	let sock = Socket::new(domain, r#type, protocol)?;
-	let loc = virt::register_resource(None, SharedPtr::new(sock)?)?;
+	let loc = buffer::register(None, SharedPtr::new(sock)?)?;
 
 	let fd0 = proc.create_fd(loc.clone(), open_file::O_RDWR)?;
 	let fd1 = proc.create_fd(loc, open_file::O_RDWR)?;
