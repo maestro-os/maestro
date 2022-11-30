@@ -80,6 +80,12 @@ impl FileDescriptor {
 	pub fn new(id: u32, flags: i32, location: FileLocation) -> Result<Self, Errno> {
 		OpenFile::open(location.clone(), flags)?;
 
+		let flags = if flags & O_CLOEXEC != 0 {
+			FD_CLOEXEC
+		} else {
+			0
+		};
+
 		Ok(Self {
 			id,
 			flags,
@@ -181,13 +187,6 @@ impl FileDescriptorTable {
 		let i = self.fds
 			.binary_search_by(|fd| fd.get_id().cmp(&id))
 			.unwrap_err();
-
-		// Flags for the fd
-		let flags = if flags & O_CLOEXEC != 0 {
-			FD_CLOEXEC
-		} else {
-			0
-		};
 
 		let fd = FileDescriptor::new(id, flags, location)?;
 		self.fds.insert(i, fd)?;

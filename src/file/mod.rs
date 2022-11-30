@@ -11,7 +11,6 @@ pub mod path;
 pub mod util;
 pub mod vfs;
 
-use core::cmp::max;
 use core::ffi::c_void;
 use crate::device::DeviceType;
 use crate::device;
@@ -19,6 +18,7 @@ use crate::errno::Errno;
 use crate::errno;
 use crate::file::buffer::pipe::PipeBuffer;
 use crate::file::buffer::socket::Socket;
+use crate::file::fs::Filesystem;
 use crate::process::mem_space::MemSpace;
 use crate::time::unit::Timestamp;
 use crate::time::unit::TimestampScale;
@@ -690,20 +690,89 @@ impl File {
 	}
 
 	/// Synchronizes the file with the device.
+	///
+	/// If no device is associated with the file, the function does nothing.
 	pub fn sync(&self) -> Result<(), Errno> {
-		let mountpoint_mutex = self.location.get_mountpoint().ok_or_else(|| errno!(EIO))?;
-		let mountpoint_guard = mountpoint_mutex.lock();
-		let mountpoint = mountpoint_guard.get_mut();
+		if let Some(mountpoint_mutex) = self.location.get_mountpoint() {
+			let mountpoint_guard = mountpoint_mutex.lock();
+			let mountpoint = mountpoint_guard.get_mut();
 
-		let io_mutex = mountpoint.get_source().get_io()?;
-		let io_guard = io_mutex.lock();
-		let io = io_guard.get_mut();
+			let io_mutex = mountpoint.get_source().get_io()?;
+			let io_guard = io_mutex.lock();
+			let io = io_guard.get_mut();
 
-		let fs_mutex = mountpoint.get_filesystem();
-		let fs_guard = fs_mutex.lock();
-		let fs = fs_guard.get_mut();
+			let fs_mutex = mountpoint.get_filesystem();
+			let fs_guard = fs_mutex.lock();
+			let fs = fs_guard.get_mut();
 
-		fs.update_inode(io, self)
+			fs.update_inode(io, self)
+		} else {
+			Ok(())
+		}
+	}
+
+	/// TODO doc
+	fn io_op<R, F>(&self, f: F)-> Result<R, Errno>
+		where F: FnOnce(
+			Option<SharedPtr<dyn IO>>,
+			Option<(SharedPtr<dyn Filesystem>, INode)>
+		) -> Result<R, Errno> {
+		match &self.content {
+			FileContent::Regular => match self.location {
+				FileLocation::Filesystem {
+					inode,
+					..
+				} => {
+					let mountpoint_mutex = self.location.get_mountpoint()
+						.ok_or_else(|| errno!(EIO))?;
+					let mountpoint_guard = mountpoint_mutex.lock();
+					let mountpoint = mountpoint_guard.get_mut();
+
+					let io = mountpoint.get_source().get_io()?;
+					let fs = mountpoint.get_filesystem();
+
+					f(Some(io), Some((fs, inode)))
+				},
+
+				FileLocation::Virtual { .. } => {
+					let io = buffer::get(&self.location)
+						.map(|io| io as _);
+					f(io, None)
+				},
+			}
+
+			FileContent::Directory(_) => Err(errno!(EISDIR)),
+
+			FileContent::Link(_) => Err(errno!(EINVAL)),
+
+			FileContent::Fifo => {
+				let io = buffer::get_or_default::<PipeBuffer>(self.get_location())?;
+				f(Some(io as _), None)
+			},
+
+			FileContent::Socket => {
+				let io = buffer::get_or_default::<Socket>(self.get_location())?;
+				f(Some(io as _), None)
+			},
+
+			FileContent::BlockDevice {
+				major,
+				minor,
+			} => {
+				let io = device::get_device(DeviceType::Block, *major, *minor)
+					.ok_or_else(|| errno!(ENODEV))?;
+				f(Some(io as _), None)
+			},
+
+			FileContent::CharDevice {
+				major,
+				minor,
+			} => {
+				let io = device::get_device(DeviceType::Char, *major, *minor)
+					.ok_or_else(|| errno!(ENODEV))?;
+				f(Some(io as _), None)
+			}
+		}
 	}
 }
 
@@ -713,217 +782,62 @@ impl IO for File {
 	}
 
 	fn read(&mut self, off: u64, buff: &mut [u8]) -> Result<(u64, bool), Errno> {
-		match &self.content {
-			FileContent::Regular => {
-				let (io_mutex, fs_mutex) = {
-					let mountpoint_mutex =
-						self.location.get_mountpoint().ok_or_else(|| errno!(EIO))?;
-					let mountpoint_guard = mountpoint_mutex.lock();
-					let mountpoint = mountpoint_guard.get_mut();
+		self.io_op(|io, fs| {
+			let Some(io_mutex) = io else {
+				return Ok((0, true));
+			};
 
-					let io_mutex = mountpoint.get_source().get_io()?;
-					let fs_mutex = mountpoint.get_filesystem();
-					(io_mutex, fs_mutex)
-				};
+			let io_guard = io_mutex.lock();
+			let io = io_guard.get_mut();
 
-				let io_guard = io_mutex.lock();
-				let io = io_guard.get_mut();
-
+			if let Some((fs_mutex, inode)) = fs {
 				let fs_guard = fs_mutex.lock();
 				let fs = fs_guard.get_mut();
 
-				fs.read_node(io, self.location.get_inode(), off, buff)
+				fs.read_node(io, inode, off, buff)
+			} else {
+				io.read(off, buff)
 			}
-
-			FileContent::Directory(_) => Err(errno!(EISDIR)),
-
-			FileContent::Link(_) => Err(errno!(EINVAL)),
-
-			FileContent::Fifo => {
-				let buff_obj_mutex = buffer::get_or_default::<PipeBuffer>(self.get_location())?;
-				let buff_obj_guard = buff_obj_mutex.lock();
-				let buff_obj = buff_obj_guard.get_mut();
-
-				buff_obj.read(off as _, buff)
-			}
-
-			FileContent::Socket => {
-				let buff_obj_mutex = buffer::get_or_default::<Socket>(self.get_location())?;
-				let buff_obj_guard = buff_obj_mutex.lock();
-				let buff_obj = buff_obj_guard.get_mut();
-
-				buff_obj.read(off as _, buff)
-			}
-
-			FileContent::BlockDevice {
-				..
-			}
-			| FileContent::CharDevice {
-				..
-			} => {
-				let dev = match self.content {
-					FileContent::BlockDevice {
-						major,
-						minor,
-					} => device::get_device(DeviceType::Block, major, minor),
-
-					FileContent::CharDevice {
-						major,
-						minor,
-					} => device::get_device(DeviceType::Char, major, minor),
-
-					_ => unreachable!(),
-				}
-				.ok_or_else(|| errno!(ENODEV))?;
-
-				let guard = dev.lock();
-				guard.get_mut().get_handle().read(off as _, buff)
-			}
-		}
+		})
 	}
 
 	fn write(&mut self, off: u64, buff: &[u8]) -> Result<u64, Errno> {
-		match &self.content {
-			FileContent::Regular => {
-				let (io_mutex, fs_mutex) = {
-					let mountpoint_mutex =
-						self.location.get_mountpoint().ok_or_else(|| errno!(EIO))?;
-					let mountpoint_guard = mountpoint_mutex.lock();
-					let mountpoint = mountpoint_guard.get_mut();
+		self.io_op(|io, fs| {
+			let Some(io_mutex) = io else {
+				return Ok(0);
+			};
 
-					let io_mutex = mountpoint.get_source().get_io()?;
-					let fs_mutex = mountpoint.get_filesystem();
-					(io_mutex, fs_mutex)
-				};
+			let io_guard = io_mutex.lock();
+			let io = io_guard.get_mut();
 
-				let io_guard = io_mutex.lock();
-				let io = io_guard.get_mut();
-
+			if let Some((fs_mutex, inode)) = fs {
 				let fs_guard = fs_mutex.lock();
 				let fs = fs_guard.get_mut();
 
-				fs.write_node(io, self.location.get_inode(), off, buff)?;
-
-				self.size = max(off + buff.len() as u64, self.size);
+				fs.write_node(io, inode, off, buff)?;
 				Ok(buff.len() as _)
+			} else {
+				io.write(off, buff)
 			}
-
-			FileContent::Directory(_) => Err(errno!(EISDIR)),
-
-			FileContent::Link(_) => Err(errno!(EINVAL)),
-
-			FileContent::Fifo => {
-				let buff_obj_mutex = buffer::get_or_default::<PipeBuffer>(self.get_location())?;
-				let buff_obj_guard = buff_obj_mutex.lock();
-				let buff_obj = buff_obj_guard.get_mut();
-
-				buff_obj.write(off as _, buff)
-			}
-
-			FileContent::Socket => {
-				let buff_obj_mutex = buffer::get_or_default::<Socket>(self.get_location())?;
-				let buff_obj_guard = buff_obj_mutex.lock();
-				let buff_obj = buff_obj_guard.get_mut();
-
-				buff_obj.write(off as _, buff)
-			}
-
-			FileContent::BlockDevice {
-				..
-			}
-			| FileContent::CharDevice {
-				..
-			} => {
-				let dev = match self.content {
-					FileContent::BlockDevice {
-						major,
-						minor,
-					} => device::get_device(DeviceType::Block, major, minor),
-
-					FileContent::CharDevice {
-						major,
-						minor,
-					} => device::get_device(DeviceType::Char, major, minor),
-
-					_ => unreachable!(),
-				}
-				.ok_or_else(|| errno!(ENODEV))?;
-
-				let guard = dev.lock();
-				guard.get_mut().get_handle().write(off as _, buff)
-			}
-		}
+		})
 	}
 
 	fn poll(&mut self, mask: u32) -> Result<u32, Errno> {
-		match &self.content {
-			FileContent::Regular => {
-				let (io_mutex, fs_mutex) = {
-					let mountpoint_mutex =
-						self.location.get_mountpoint().ok_or_else(|| errno!(EIO))?;
-					let mountpoint_guard = mountpoint_mutex.lock();
-					let mountpoint = mountpoint_guard.get_mut();
+		self.io_op(|io, fs| {
+			let Some(io_mutex) = io else {
+				return Ok(0);
+			};
 
-					let io_mutex = mountpoint.get_source().get_io()?;
-					let fs_mutex = mountpoint.get_filesystem();
-					(io_mutex, fs_mutex)
-				};
+			let io_guard = io_mutex.lock();
+			let io = io_guard.get_mut();
 
-				let io_guard = io_mutex.lock();
-				let _io = io_guard.get_mut();
-
-				let fs_guard = fs_mutex.lock();
-				let _fs = fs_guard.get_mut();
-
+			if let Some(_) = fs {
 				// TODO
 				todo!();
+			} else {
+				io.poll(mask)
 			}
-
-			FileContent::Directory(_) => Err(errno!(EISDIR)),
-
-			FileContent::Link(_) => Err(errno!(EINVAL)),
-
-			FileContent::Fifo => {
-				let buff_obj_mutex = buffer::get_or_default::<PipeBuffer>(self.get_location())?;
-				let buff_obj_guard = buff_obj_mutex.lock();
-				let buff_obj = buff_obj_guard.get_mut();
-
-				buff_obj.poll(mask)
-			}
-
-			FileContent::Socket => {
-				let buff_obj_mutex = buffer::get_or_default::<Socket>(self.get_location())?;
-				let buff_obj_guard = buff_obj_mutex.lock();
-				let buff_obj = buff_obj_guard.get_mut();
-
-				buff_obj.poll(mask)
-			}
-
-			FileContent::BlockDevice {
-				..
-			}
-			| FileContent::CharDevice {
-				..
-			} => {
-				let dev = match self.content {
-					FileContent::BlockDevice {
-						major,
-						minor,
-					} => device::get_device(DeviceType::Block, major, minor),
-
-					FileContent::CharDevice {
-						major,
-						minor,
-					} => device::get_device(DeviceType::Char, major, minor),
-
-					_ => unreachable!(),
-				}
-				.ok_or_else(|| errno!(ENODEV))?;
-
-				let guard = dev.lock();
-				guard.get_mut().get_handle().poll(mask)
-			}
-		}
+		})
 	}
 }
 
