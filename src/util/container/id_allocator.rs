@@ -13,7 +13,8 @@ pub struct IDAllocator {
 
 impl IDAllocator {
 	/// Creates a new instance.
-	/// `max` is the maximum id.
+	///
+	/// `max` is the maximum ID.
 	pub fn new(max: u32) -> Result<Self, Errno> {
 		Ok(Self {
 			used: Bitfield::new((max + 1) as _)?,
@@ -28,8 +29,10 @@ impl IDAllocator {
 	}
 
 	/// Allocates an identifier.
+	///
 	/// If `id` is not None, the function shall allocate the given id.
-	/// If the allocation fails, the function returns an Err.
+	///
+	/// If the allocation fails, the function returns None.
 	#[must_use = "not freeing a PID shall cause a leak"]
 	pub fn alloc(&mut self, id: Option<u32>) -> Result<u32, Errno> {
 		if let Some(i) = id {

@@ -9,6 +9,7 @@ use crate::file::FileLocation;
 use crate::process::mem_space::MemSpace;
 use crate::util::FailableDefault;
 use crate::util::container::hashmap::HashMap;
+use crate::util::container::id_allocator::IDAllocator;
 use crate::util::io::IO;
 use crate::util::lock::Mutex;
 use crate::util::ptr::IntSharedPtr;
@@ -42,14 +43,33 @@ pub trait Buffer: IO {
 
 /// All the system's buffer. The key is the location of the file associated with the
 /// entry.
-static RESOURCES: Mutex<HashMap<FileLocation, SharedPtr<dyn Buffer>>>
+static BUFFERS: Mutex<HashMap<FileLocation, SharedPtr<dyn Buffer>>>
 	= Mutex::new(HashMap::new());
+/// Buffer ID allocator.
+static ID_ALLOCATOR: Mutex<Option<IDAllocator>> = Mutex::new(None);
+
+/// TODO doc
+fn id_allocator_do<T, F>(f: F) -> Result<T, Errno>
+	where F: FnOnce(&mut IDAllocator) -> Result<T, Errno> {
+	let id_allocator_guard = ID_ALLOCATOR.lock();
+	let id_allocator = id_allocator_guard.get_mut();
+
+	let id_allocator = match id_allocator {
+		Some(id_allocator) => id_allocator,
+		None => {
+			*id_allocator = Some(IDAllocator::new(65536)?);
+			id_allocator.as_mut().unwrap()
+		},
+	};
+
+	f(id_allocator)
+}
 
 /// Returns the buffer associated with the file at location `loc`.
 ///
 /// If the buffer doesn't exist, the function creates it.
 pub fn get(loc: &FileLocation) -> Option<SharedPtr<dyn Buffer>> {
-	let buffers_guard = RESOURCES.lock();
+	let buffers_guard = BUFFERS.lock();
 	let buffers = buffers_guard.get_mut();
 
 	buffers.get(loc).cloned()
@@ -61,7 +81,7 @@ pub fn get(loc: &FileLocation) -> Option<SharedPtr<dyn Buffer>> {
 pub fn get_or_default<B: Buffer + FailableDefault + 'static>(
 	loc: &FileLocation
 ) -> Result<SharedPtr<dyn Buffer>, Errno> {
-	let buffers_guard = RESOURCES.lock();
+	let buffers_guard = BUFFERS.lock();
 	let buffers = buffers_guard.get_mut();
 
 	match buffers.get(loc).cloned() {
@@ -79,29 +99,51 @@ pub fn get_or_default<B: Buffer + FailableDefault + 'static>(
 /// Registers a new buffer.
 ///
 /// If no location is provided, the function allocates a virtual location.
-/// If every possible virtual locations are used (unlikely), the function returns an error.
+/// If every possible virtual locations are used, the function returns an error.
 ///
-/// `res` is the buffer to be registered.
+/// Arguments:
+/// - `loc` is the location of the file.
+/// - `buff` is the buffer to be registered.
 ///
 /// The function returns the location associated with the buffer.
 pub fn register(
-	_loc: Option<FileLocation>,
-	_res: SharedPtr<dyn Buffer>
+	loc: Option<FileLocation>,
+	buff: SharedPtr<dyn Buffer>
 ) -> Result<FileLocation, Errno> {
-	// TODO alloc location
-	// TODO register buffer with location
-	todo!();
+	let loc = id_allocator_do(|id_allocator| match loc {
+		Some(loc) => {
+			if let FileLocation::Virtual { id } = loc {
+				id_allocator.set_used(id);
+			}
+
+			Ok(loc)
+		}
+
+		None => Ok(FileLocation::Virtual {
+			id: id_allocator.alloc(None)?,
+		})
+	})?;
+
+	let buffers_guard = BUFFERS.lock();
+	let buffers = buffers_guard.get_mut();
+	buffers.insert(loc.clone(), buff)?;
+
+	Ok(loc)
 }
 
 /// Frees the buffer with the given location `loc`.
 ///
 /// If the location doesn't exist, the function does nothing.
 pub fn release(loc: &FileLocation) {
-	let buffers_guard = RESOURCES.lock();
+	let buffers_guard = BUFFERS.lock();
 	let buffers = buffers_guard.get_mut();
 
 	let _ = buffers.remove(loc);
 
-	// TODO free location
-	todo!();
+	if let FileLocation::Virtual { id } = loc {
+		let _ = id_allocator_do(|id_allocator| {
+			id_allocator.free(*id);
+			Ok(())
+		});
+	}
 }

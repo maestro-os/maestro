@@ -190,7 +190,7 @@ pub enum FileLocation {
 	/// The file is not located on a filesystem.
 	Virtual {
 		/// The ID of the file.
-		id: usize,
+		id: u32,
 	},
 }
 

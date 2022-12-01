@@ -84,13 +84,24 @@ impl VFS {
 				let fs_guard = fs_mutex.lock();
 				let fs = fs_guard.get_mut();
 
-				let file = fs.load_file(io, *inode, String::new())?;
+				let mut file = fs.load_file(io, *inode, String::new())?;
+
+				update_location(&mut file, &mountpoint);
 				SharedPtr::new(file)
 			},
 
-			FileLocation::Virtual { id: _ } => {
-				// TODO
-				todo!();
+			FileLocation::Virtual { id } => {
+				let name = crate::format!("virtual:{}", id)?;
+				let content = FileContent::Fifo; // TODO
+
+				SharedPtr::new(File::new(
+					name,
+					0, // TODO
+					0, // TODO
+					0o666,
+					location.clone(),
+					content
+				)?)
 			},
 		}
 	}
@@ -135,6 +146,7 @@ impl VFS {
 		// If the path is empty, return the root
 		if inner_path.is_empty() {
 			drop(fs_guard);
+
 			update_location(&mut file, &mountpoint);
 			return SharedPtr::new(file);
 		}
@@ -191,6 +203,7 @@ impl VFS {
 		file.set_parent_path(parent_path);
 
 		drop(fs_guard);
+
 		update_location(&mut file, &mountpoint);
 		SharedPtr::new(file)
 	}
