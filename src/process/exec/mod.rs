@@ -11,7 +11,6 @@ use crate::process::Uid;
 use crate::process::mem_space::MemSpace;
 use crate::process::regs::Regs;
 use crate::process::signal::SignalHandler;
-use crate::util::FailableClone;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::ptr::IntSharedPtr;
@@ -85,7 +84,8 @@ pub fn exec(proc: &mut Process, image: ProgramImage) -> Result<(), Errno> {
 			let fds_guard = fds_mutex.lock();
 			let fds = fds_guard.get();
 
-			SharedPtr::new(fds.failable_clone()?)
+			let new_fds = fds.duplicate(true)?;
+			SharedPtr::new(new_fds)
 		})
 		.transpose()?;
 

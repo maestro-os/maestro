@@ -1118,11 +1118,11 @@ impl Process {
 		} else {
 			self.file_descriptors.as_ref()
 				.map(|fds| {
-					let fds = fds.lock()
-						.get()
-						.failable_clone()?;
+					let fds_guard = fds.lock();
+					let fds = fds_guard.get();
 
-					SharedPtr::new(fds)
+					let new_fds = fds.duplicate(false)?;
+					SharedPtr::new(new_fds)
 				})
 				.transpose()?
 		};

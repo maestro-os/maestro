@@ -55,7 +55,6 @@ macro_rules! vec {
 /// The implementation of vectors for the kernel cannot follow the
 /// implementation of Rust's standard Vec because it must handle properly when a
 /// memory allocation fails.
-#[derive(Debug)]
 pub struct Vec<T> {
 	/// The number of elements present in the vector
 	len: usize,
@@ -643,15 +642,15 @@ impl<T: Hash> Hash for Vec<T> {
 	}
 }
 
-impl<T: fmt::Display> fmt::Display for Vec<T> {
+impl<T: fmt::Debug> fmt::Debug for Vec<T> {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		write!(f, "[")?;
 
 		for (i, e) in self.iter().enumerate() {
 			if i + 1 < self.len() {
-				write!(f, "{}, ", e)?;
+				write!(f, "{:?}, ", e)?;
 			} else {
-				write!(f, "{}", e)?;
+				write!(f, "{:?}", e)?;
 			}
 		}
 

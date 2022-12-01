@@ -57,6 +57,7 @@ pub enum NewFDConstraint {
 }
 
 /// Structure representing a file descriptor.
+#[derive(Debug)]
 pub struct FileDescriptor {
 	/// The FD's id.
 	id: u32,
@@ -135,6 +136,7 @@ impl Drop for FileDescriptor {
 }
 
 /// A table of file descriptors.
+#[derive(Debug)]
 pub struct FileDescriptorTable {
 	/// The list of file descriptors.
 	fds: Vec<FileDescriptor>,
@@ -262,6 +264,24 @@ impl FileDescriptorTable {
 		Ok(&self.fds[index])
 	}
 
+	/// Duplicates the whole file descriptors table.
+	///
+	/// `cloexec` specifies whether the cloexec file must be taken into account. This is the case
+	/// when executing a program.
+	pub fn duplicate(&self, cloexec: bool) -> Result<Self, Errno> {
+		let mut fds = Vec::new();
+
+		for fd in &self.fds {
+			if !cloexec || fd.get_flags() & FD_CLOEXEC == 0 {
+				fds.push(fd.failable_clone()?)?;
+			}
+		}
+
+		Ok(Self {
+			fds,
+		})
+	}
+
 	/// Closes the file descriptor with the ID `id`.
 	///
 	/// The function returns an Err if the file descriptor doesn't exist.
@@ -282,21 +302,5 @@ impl Default for FileDescriptorTable {
 		Self {
 			fds: Vec::new(),
 		}
-	}
-}
-
-impl FailableClone for FileDescriptorTable {
-	fn failable_clone(&self) -> Result<Self, Errno> {
-		let mut fds = Vec::new();
-
-		for fd in &self.fds {
-			if fd.get_flags() & FD_CLOEXEC == 0 {
-				fds.push(fd.failable_clone()?)?;
-			}
-		}
-
-		Ok(Self {
-			fds,
-		})
 	}
 }
