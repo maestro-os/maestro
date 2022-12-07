@@ -7,7 +7,6 @@
 use core::cmp::max;
 use crate::errno::Errno;
 use crate::file::FileLocation;
-use crate::file::open_file::O_CLOEXEC;
 use crate::file::open_file::OpenFile;
 use crate::limits;
 use crate::util::FailableClone;
@@ -79,13 +78,7 @@ impl FileDescriptor {
 	/// - `flags` is the set of flags associated with the file descriptor.
 	/// - `location` is the location of the open file the file descriptor points to.
 	pub fn new(id: u32, flags: i32, location: FileLocation) -> Result<Self, Errno> {
-		OpenFile::open(location.clone(), flags)?;
-
-		let flags = if flags & O_CLOEXEC != 0 {
-			FD_CLOEXEC
-		} else {
-			0
-		};
+		OpenFile::open(location.clone())?;
 
 		Ok(Self {
 			id,
@@ -116,10 +109,10 @@ impl FileDescriptor {
 	}
 
 	/// Returns the open file associated with the descriptor.
-	pub fn get_open_file(&self) -> SharedPtr<OpenFile> {
-		// Unwrap won't fail since open files are closed only when the corresponding file
-		// descriptors are all closed
-		OpenFile::get(&self.location).unwrap()
+	///
+	/// If the open file doesn't exist, the function returns an error.
+	pub fn get_open_file(&self) -> Result<SharedPtr<OpenFile>, Errno> {
+		OpenFile::get(&self.location).ok_or_else(|| errno!(ENOENT))
 	}
 }
 
@@ -216,7 +209,7 @@ impl FileDescriptorTable {
 	///
 	/// Arguments:
 	/// - `constraint` is the constraint the new file descriptor ID willl follows.
-	/// - `cloexec` tells whether the new file descriptor has the `O_CLOEXEC` flag enabled.
+	/// - `cloexec` tells whether the new file descriptor has the `FD_CLOEXEC` flag enabled.
 	///
 	/// The function returns a pointer to the file descriptor with its ID.
 	pub fn duplicate_fd(

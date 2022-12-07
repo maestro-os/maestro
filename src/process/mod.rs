@@ -480,6 +480,8 @@ impl Process {
 
 			let loc = tty_file.get_location().clone();
 
+			open_file::OpenFile::new(loc.clone(), open_file::O_RDWR)?;
+
 			let stdin_fd = fds_table.create_fd(loc, open_file::O_RDWR)?;
 			assert_eq!(stdin_fd.get_id(), STDIN_FILENO);
 

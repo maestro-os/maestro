@@ -53,7 +53,7 @@ pub fn ioctl(fd: c_int, request: c_ulong, argp: *const c_void) -> Result<i32, Er
 		let open_file_mutex = fds
 			.get_fd(fd as _)
 			.ok_or_else(|| errno!(EBADF))?
-			.get_open_file();
+			.get_open_file()?;
 
 		(mem_space, open_file_mutex)
 	};

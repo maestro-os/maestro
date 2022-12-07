@@ -159,7 +159,7 @@ pub fn do_select<T: TimeUnit>(
 				mask |= io::POLLPRI;
 			}
 
-			let open_file_mutex = fd.get_open_file();
+			let open_file_mutex = fd.get_open_file()?;
 			let open_file_guard = open_file_mutex.lock();
 			let open_file = open_file_guard.get_mut();
 

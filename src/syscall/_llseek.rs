@@ -38,7 +38,7 @@ pub fn _llseek(
 		let open_file_mutex = fds
 			.get_fd(fd)
 			.ok_or_else(|| errno!(EBADF))?
-			.get_open_file();
+			.get_open_file()?;
 
 		(mem_space, open_file_mutex)
 	};

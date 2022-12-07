@@ -84,7 +84,7 @@ pub fn do_writev(
 
 		let open_file_mutex = fds.get_fd(fd as _)
 			.ok_or(errno!(EBADF))?
-			.get_open_file();
+			.get_open_file()?;
 		(mem_space, open_file_mutex)
 	};
 

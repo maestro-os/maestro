@@ -1,23 +1,24 @@
 //! The open system call allows a process to open a file and get a file
 //! descriptor.
 
-use crate::errno;
+use core::ffi::c_int;
 use crate::errno::Errno;
-use crate::file;
-use crate::file::open_file;
-use crate::file::path::Path;
-use crate::file::vfs;
+use crate::errno;
 use crate::file::File;
 use crate::file::FileContent;
 use crate::file::FileType;
 use crate::file::Gid;
 use crate::file::Mode;
 use crate::file::Uid;
-use crate::process::mem_space::ptr::SyscallString;
+use crate::file::fd::FD_CLOEXEC;
+use crate::file::open_file;
+use crate::file::path::Path;
+use crate::file::vfs;
+use crate::file;
 use crate::process::Process;
-use crate::util::ptr::SharedPtr;
+use crate::process::mem_space::ptr::SyscallString;
 use crate::util::FailableClone;
-use core::ffi::c_int;
+use crate::util::ptr::SharedPtr;
 use macros::syscall;
 
 /// Mask of status flags to be kept by an open file description.
@@ -134,6 +135,8 @@ pub fn open_(pathname: SyscallString, flags: i32, mode: file::Mode) -> Result<i3
 		loc
 	};
 
+	open_file::OpenFile::new(loc.clone(), flags)?;
+
 	// Create the file descriptor
 	let mutex = Process::get_current().unwrap();
 	let guard = mutex.lock();
@@ -143,7 +146,12 @@ pub fn open_(pathname: SyscallString, flags: i32, mode: file::Mode) -> Result<i3
 	let fds_guard = fds_mutex.lock();
 	let fds = fds_guard.get_mut();
 
-	let fd = fds.create_fd(loc, flags & STATUS_FLAGS_MASK)?;
+	let mut fd_flags = 0;
+	if flags & open_file::O_CLOEXEC != 0 {
+		fd_flags |= FD_CLOEXEC;
+	}
+
+	let fd = fds.create_fd(loc, fd_flags)?;
 	let fd_id = fd.get_id();
 
 	// Flushing file

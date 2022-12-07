@@ -99,30 +99,31 @@ impl OpenFile {
 	/// Arguments:
 	/// - `location` is the location of the file to be openned.
 	/// - `flags` is the open file's set of flags.
-	pub fn open(
+	pub fn new(
 		location: FileLocation,
 		flags: i32,
 	) -> Result<SharedPtr<Self>, Errno> {
-		let open_file_mutex = match Self::get(&location) {
-			Some(open_file) => open_file,
+		let open_file = SharedPtr::new(Self {
+			location: location.clone(),
 
-			// If not open, create a new instance
-			None => {
-				let open_file = SharedPtr::new(Self {
-					location: location.clone(),
+			flags,
+			curr_off: 0,
 
-					flags,
-					curr_off: 0,
+			ref_count: 0,
+		})?;
 
-					ref_count: 0,
-				})?;
-				OPEN_FILES.lock()
-					.get_mut()
-					.insert(location, open_file.clone())?;
+		OPEN_FILES.lock()
+			.get_mut()
+			.insert(location, open_file.clone())?;
 
-				open_file
-			},
-		};
+		Ok(open_file)
+	}
+
+	/// Increments the number of references to the file with the given location.
+	///
+	/// `location` is the location of the file to be openned.
+	pub fn open(location: FileLocation) -> Result<SharedPtr<Self>, Errno> {
+		let open_file_mutex = Self::get(&location).ok_or_else(|| errno!(ENOENT))?;
 
 		{
 			let open_file_guard = open_file_mutex.lock();
@@ -139,6 +140,35 @@ impl OpenFile {
 		}
 
 		Ok(open_file_mutex)
+	}
+
+	/// Decrements the reference counter of the open file for the given location.
+	///
+	/// If the file is not open, the function does nothing.
+	pub fn close(location: &FileLocation) {
+		let open_files_guard = OPEN_FILES.lock();
+		let open_files = open_files_guard.get_mut();
+
+		let Some(open_file_mutex) = open_files.get(location) else {
+			return;
+		};
+		let open_file_guard = open_file_mutex.lock();
+		let open_file = open_file_guard.get_mut();
+
+		// If the file points to a buffer, decrement the number of open ends
+		if let Some(buff_mutex) = buffer::get(&open_file.location) {
+			let buff_guard = buff_mutex.lock();
+			let buff = buff_guard.get_mut();
+
+			buff.decrement_open(open_file.can_write());
+		}
+
+		open_file.ref_count -= 1;
+		if open_file.ref_count <= 0 {
+			drop(open_file_guard);
+
+			open_files.remove(location);
+		}
 	}
 
 	/// Returns the location of the open file.
@@ -221,35 +251,6 @@ impl OpenFile {
 			},
 
 			_ => file.ioctl(mem_space, request, argp),
-		}
-	}
-
-	/// Decrements the reference counter of the open file for the given location.
-	///
-	/// If the file is not open, the function does nothing.
-	pub fn close(location: &FileLocation) {
-		let open_files_guard = OPEN_FILES.lock();
-		let open_files = open_files_guard.get_mut();
-
-		let Some(open_file_mutex) = open_files.get(location) else {
-			return;
-		};
-		let open_file_guard = open_file_mutex.lock();
-		let open_file = open_file_guard.get_mut();
-
-		// If the file points to a buffer, decrement the number of open ends
-		if let Some(buff_mutex) = buffer::get(&open_file.location) {
-			let buff_guard = buff_mutex.lock();
-			let buff = buff_guard.get_mut();
-
-			buff.decrement_open(open_file.can_write());
-		}
-
-		open_file.ref_count -= 1;
-		if open_file.ref_count <= 0 {
-			drop(open_file_guard);
-
-			open_files.remove(location);
 		}
 	}
 }

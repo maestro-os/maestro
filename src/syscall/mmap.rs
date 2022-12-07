@@ -93,7 +93,9 @@ pub fn do_mmap(
 		let fds_guard = fds_mutex.lock();
 		let fds = fds_guard.get();
 
-		fds.get_fd(fd as _).map(|fd| fd.get_open_file())
+		fds.get_fd(fd as _)
+			.map(|fd| fd.get_open_file())
+			.transpose()?
 	} else {
 		None
 	};

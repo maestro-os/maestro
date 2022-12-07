@@ -1,18 +1,19 @@
 //! The `openat` syscall allows to open a file.
 
-use super::util;
+use core::ffi::c_int;
 use crate::errno::Errno;
-use crate::file;
-use crate::file::open_file;
 use crate::file::File;
 use crate::file::FileContent;
 use crate::file::FileType;
 use crate::file::Mode;
-use crate::process::mem_space::ptr::SyscallString;
+use crate::file::fd::FD_CLOEXEC;
+use crate::file::open_file;
+use crate::file;
 use crate::process::Process;
+use crate::process::mem_space::ptr::SyscallString;
 use crate::util::ptr::SharedPtr;
-use core::ffi::c_int;
 use macros::syscall;
+use super::util;
 
 // TODO Implement all flags
 
@@ -101,6 +102,8 @@ pub fn openat(
 		loc
 	};
 
+	open_file::OpenFile::new(loc.clone(), flags)?;
+
 	// Create and return the file descriptor
 	let mutex = Process::get_current().unwrap();
 	let guard = mutex.lock();
@@ -110,7 +113,11 @@ pub fn openat(
 	let fds_guard = fds_mutex.lock();
 	let fds = fds_guard.get_mut();
 
-	let fd = fds.create_fd(loc, flags & super::open::STATUS_FLAGS_MASK)?;
+	let mut fd_flags = 0;
+	if flags & open_file::O_CLOEXEC != 0 {
+		fd_flags |= FD_CLOEXEC;
+	}
 
+	let fd = fds.create_fd(loc, fd_flags)?;
 	Ok(fd.get_id() as _)
 }

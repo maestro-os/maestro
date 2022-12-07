@@ -41,7 +41,9 @@ pub fn write(fd: c_int, buf: SyscallSlice<u8>, count: usize) -> Result<i32, Errn
 			let fds_guard = fds_mutex.lock();
 			let fds = fds_guard.get();
 
-			let open_file_mutex = fds.get_fd(fd as _).ok_or(errno!(EBADF))?.get_open_file();
+			let open_file_mutex = fds.get_fd(fd as _)
+				.ok_or(errno!(EBADF))?
+				.get_open_file()?;
 
 			(mem_space, open_file_mutex)
 		};

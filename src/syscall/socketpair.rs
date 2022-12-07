@@ -35,6 +35,7 @@ pub fn socketpair(
 	// Create socket
 	let sock = Socket::new(domain, r#type, protocol);
 	let loc = buffer::register(None, SharedPtr::new(sock)?)?;
+	open_file::OpenFile::new(loc.clone(), open_file::O_RDWR)?;
 
 	let fd0 = fds.create_fd(loc.clone(), open_file::O_RDWR)?;
 	sv_slice[0] = fd0.get_id() as _;

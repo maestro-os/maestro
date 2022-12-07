@@ -111,7 +111,7 @@ fn build_path_from_fd(
 		let open_file_mutex = fds
 			.get_fd(dirfd as _)
 			.ok_or(errno!(EBADF))?
-			.get_open_file();
+			.get_open_file()?;
 		let open_file_guard = open_file_mutex.lock();
 		let open_file = open_file_guard.get();
 
@@ -153,7 +153,7 @@ pub fn get_file_at(
 			let open_file_mutex = fds
 				.get_fd(dirfd as _)
 				.ok_or(errno!(EBADF))?
-				.get_open_file();
+				.get_open_file()?;
 			let open_file_guard = open_file_mutex.lock();
 			let open_file = open_file_guard.get();
 
