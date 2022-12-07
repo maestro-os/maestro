@@ -204,16 +204,12 @@ impl FileDescriptorTable {
 		result.ok().map(|index| &self.fds[index])
 	}
 
-	/// Sets the given flags to the given file descriptor.
+	/// Returns a mutable reference to the file descriptor with ID `id`.
 	///
-	/// If the file descriptor doesn't exist, the function returns an error.
-	pub fn set_fd_flags(&mut self, id: u32, flags: i32) -> Result<(), Errno> {
-		let Ok(index) = self.fds.binary_search_by(|fd| fd.get_id().cmp(&id)) else {
-			return Err(errno!(EBADF));
-		};
-
-		self.fds[index].set_flags(flags);
-		Ok(())
+	/// If the file descriptor doesn't exist, the function returns None.
+	pub fn get_fd_mut(&mut self, id: u32) -> Option<&mut FileDescriptor> {
+		let result = self.fds.binary_search_by(|fd| fd.get_id().cmp(&id));
+		result.ok().map(|index| &mut self.fds[index])
 	}
 
 	/// Duplicates the file descriptor with id `id`.

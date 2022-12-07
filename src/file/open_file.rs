@@ -62,6 +62,9 @@ pub const O_TRUNC: i32 = 0b00000000000000000000001000000000;
 /// The list of currently open files.
 static OPEN_FILES: Mutex<HashMap<FileLocation, SharedPtr<OpenFile>>> = Mutex::new(HashMap::new());
 
+// TODO Keep a different references counter for read and write.
+// And increment/decrement on open and close (using FD's flags)
+
 /// An open file description. This structure is pointed to by file descriptors
 /// and point to files. They exist to ensure several file descriptors can share
 /// the same open file.
@@ -170,7 +173,7 @@ impl OpenFile {
 
 	/// Tells whether the open file can be read from.
 	pub fn can_read(&self) -> bool {
-		matches!(self.flags & 0b11, O_RDONLY | O_RDWR)
+		!matches!(self.flags & 0b11, O_WRONLY)
 	}
 
 	/// Tells whether the open file can be written to.
@@ -233,6 +236,14 @@ impl OpenFile {
 		};
 		let open_file_guard = open_file_mutex.lock();
 		let open_file = open_file_guard.get_mut();
+
+		// If the file points to a buffer, decrement the number of open ends
+		if let Some(buff_mutex) = buffer::get(&open_file.location) {
+			let buff_guard = buff_mutex.lock();
+			let buff = buff_guard.get_mut();
+
+			buff.decrement_open(open_file.can_write());
+		}
 
 		open_file.ref_count -= 1;
 		if open_file.ref_count <= 0 {
@@ -314,17 +325,5 @@ impl IO for OpenFile {
 		let file = file_guard.get_mut();
 
 		file.poll(mask)
-	}
-}
-
-impl Drop for OpenFile {
-	fn drop(&mut self) {
-		// If the file points to a buffer, decrement the number of open ends
-		if let Some(buff_mutex) = buffer::get(&self.location) {
-			let buff_guard = buff_mutex.lock();
-			let buff = buff_guard.get_mut();
-
-			buff.decrement_open(self.can_write());
-		}
 	}
 }

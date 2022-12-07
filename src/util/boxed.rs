@@ -1,23 +1,24 @@
 //! The Box structure allows to hold an object on the heap and handles its
 //! memory properly.
 
-use crate::errno::Errno;
-use crate::memory;
-use crate::memory::malloc;
-use crate::util::FailableClone;
 use core::ffi::c_void;
+use core::fmt;
 use core::marker::Unsize;
-use core::mem;
-use core::mem::size_of_val;
-use core::mem::transmute;
 use core::mem::ManuallyDrop;
 use core::mem::MaybeUninit;
+use core::mem::size_of_val;
+use core::mem::transmute;
+use core::mem;
 use core::ops::CoerceUnsized;
 use core::ops::DispatchFromDyn;
 use core::ops::{Deref, DerefMut};
+use core::ptr::NonNull;
 use core::ptr::copy_nonoverlapping;
 use core::ptr::drop_in_place;
-use core::ptr::NonNull;
+use crate::errno::Errno;
+use crate::memory::malloc;
+use crate::memory;
+use crate::util::FailableClone;
 
 /// This structure allows to store an object in an allocated region of memory.
 /// The object is owned by the Box and will be freed whenever the Box is
@@ -125,6 +126,18 @@ impl<T: ?Sized + Clone> FailableClone for Box<T> {
 impl<T: ?Sized + Unsize<U>, U: ?Sized> CoerceUnsized<Box<U>> for Box<T> {}
 
 impl<T: ?Sized + Unsize<U>, U: ?Sized> DispatchFromDyn<Box<U>> for Box<T> {}
+
+impl<T: ?Sized + fmt::Display> fmt::Display for Box<T> {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		write!(f, "{}", self.as_ref())
+	}
+}
+
+impl<T: ?Sized + fmt::Debug> fmt::Debug for Box<T> {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		write!(f, "{:?}", self.as_ref())
+	}
+}
 
 impl<T: ?Sized> Drop for Box<T> {
 	fn drop(&mut self) {

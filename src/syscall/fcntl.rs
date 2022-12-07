@@ -129,7 +129,8 @@ pub fn do_fcntl(fd: i32, cmd: i32, arg: *mut c_void, _fcntl64: bool) -> Result<i
 		}
 
 		F_SETFD => {
-			fds.set_fd_flags(fd as _, arg as _)?;
+			let fd = fds.get_fd_mut(fd as _).ok_or_else(|| errno!(EBADF))?;
+			fd.set_flags(arg as _);
 			Ok(0)
 		}
 

@@ -176,7 +176,7 @@ impl SignalHandler {
 
 // TODO reorder
 /// Enumeration of signal types.
-#[derive(Clone, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Signal {
 	/// Process abort.
 	SIGABRT,

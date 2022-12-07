@@ -10,18 +10,20 @@
 //! the process is waiting. To do so, an instance of a structure implementing
 //! `SleepPoll` is passed with the Sleeping state.
 
-use super::Process;
+use core::fmt::Debug;
 use crate::util::boxed::Box;
+use super::Process;
 
 /// Trait used to poll for events on which a process is waiting.
 /// If polling succeeds, the process is woke up in order to continue execution.
-pub trait SleepPoll {
+pub trait SleepPoll: Debug {
 	/// Polls for events. If the process msut wake up, the function returns
 	/// `true`.
 	fn poll(&self, proc: &mut Process) -> bool;
 }
 
 /// An enumeration containing possible states for a process.
+#[derive(Debug)]
 pub enum State {
 	/// The process is running or waiting to run.
 	Running,
@@ -57,6 +59,7 @@ impl State {
 
 /// A structure that represent a state where a process shouldn't be polled but
 /// instead waked up by another process.
+#[derive(Debug)]
 pub struct WakePoll {}
 
 impl SleepPoll for WakePoll {

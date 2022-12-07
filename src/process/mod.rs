@@ -98,6 +98,7 @@ const REDZONE_SIZE: usize = 128;
 type ExitStatus = u8;
 
 /// Structure representing options to be passed to the fork function.
+#[derive(Debug)]
 pub struct ForkOptions {
 	/// If true, the parent and child processes both share the same address
 	/// space.
