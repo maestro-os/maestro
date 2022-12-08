@@ -99,24 +99,60 @@ impl OpenFile {
 	/// Arguments:
 	/// - `location` is the location of the file to be openned.
 	/// - `flags` is the open file's set of flags.
+	///
+	/// If an open file already exists for this location, the function add the given flags to the
+	/// already existing instance and returns it.
 	pub fn new(
 		location: FileLocation,
 		flags: i32,
 	) -> Result<SharedPtr<Self>, Errno> {
-		let open_file = SharedPtr::new(Self {
-			location: location.clone(),
+		let open_file_mutex = match Self::get(&location) {
+			Some(open_file_mutex) => {
+				{
+					let open_file_guard = open_file_mutex.lock();
+					let open_file = open_file_guard.get_mut();
 
-			flags,
-			curr_off: 0,
+					let read = open_file.can_read()
+						|| flags & O_RDONLY != 0
+						|| flags & O_RDWR != 0;
+					let write = open_file.can_write()
+						|| flags & O_WRONLY != 0
+						|| flags & O_RDWR != 0;
 
-			ref_count: 0,
-		})?;
+					let mut new_flags = (open_file.flags & !0b11) | (flags & !0b11);
+					if read && write {
+						new_flags |= O_RDWR;
+					} else if read {
+						new_flags |= O_RDONLY;
+					} else if read {
+						new_flags |= O_WRONLY;
+					}
 
-		OPEN_FILES.lock()
-			.get_mut()
-			.insert(location, open_file.clone())?;
+					open_file.flags = new_flags;
+				}
 
-		Ok(open_file)
+				open_file_mutex
+			},
+
+			None => {
+				let open_file = SharedPtr::new(Self {
+					location: location.clone(),
+
+					flags,
+					curr_off: 0,
+
+					ref_count: 0,
+				})?;
+
+				OPEN_FILES.lock()
+					.get_mut()
+					.insert(location, open_file.clone())?;
+
+				open_file
+			},
+		};
+
+		Ok(open_file_mutex)
 	}
 
 	/// Increments the number of references to the file with the given location.
