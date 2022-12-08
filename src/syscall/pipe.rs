@@ -30,10 +30,10 @@ pub fn pipe(pipefd: SyscallPtr<[c_int; 2]>) -> Result<i32, Errno> {
 	let loc = buffer::register(None, SharedPtr::new(PipeBuffer::failable_default()?)?)?;
 	open_file::OpenFile::new(loc.clone(), open_file::O_RDWR)?;
 
-	let fd0 = fds.create_fd(loc.clone(), open_file::O_RDONLY)?;
+	let fd0 = fds.create_fd(loc.clone(), 0)?;
 	pipefd_slice[0] = fd0.get_id() as _;
 
-	let fd1 = fds.create_fd(loc, open_file::O_WRONLY)?;
+	let fd1 = fds.create_fd(loc, 0)?;
 	pipefd_slice[1] = fd1.get_id() as _;
 
 	Ok(0)

@@ -133,7 +133,7 @@ pub fn register(
 
 /// Frees the buffer with the given location `loc`.
 ///
-/// If the location doesn't exist, the function does nothing.
+/// If the location doesn't exist or doesn't match any existing buffer, the function does nothing.
 pub fn release(loc: &FileLocation) {
 	let buffers_guard = BUFFERS.lock();
 	let buffers = buffers_guard.get_mut();

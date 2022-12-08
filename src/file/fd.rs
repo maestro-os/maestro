@@ -3,7 +3,6 @@
 //! open file description table.
 
 // TODO Maintain the system-wide open file descriptors count
-// TODO allow fds to be read only or write only
 
 use core::cmp::max;
 use crate::errno::Errno;

@@ -165,6 +165,7 @@ impl OpenFile {
 			let open_file_guard = open_file_mutex.lock();
 			let open_file = open_file_guard.get_mut();
 			open_file.ref_count += 1;
+			//crate::println!("open: {:?} {}", location, open_file.ref_count); // TODO rm
 
 			// If the file points to a buffer, increment the number of open ends
 			if let Some(buff_mutex) = buffer::get(&open_file.location) {
@@ -179,6 +180,9 @@ impl OpenFile {
 	}
 
 	/// Decrements the reference counter of the open file for the given location.
+	///
+	/// If the references count reaches zero, the function removes the open file.
+	/// If the file has a virtual location, this location is also freed.
 	///
 	/// If the file is not open, the function does nothing.
 	pub fn close(location: &FileLocation) {
@@ -200,10 +204,12 @@ impl OpenFile {
 		}
 
 		open_file.ref_count -= 1;
+		//crate::println!("close: {:?} {}", location, open_file.ref_count); // TODO rm
 		if open_file.ref_count <= 0 {
 			drop(open_file_guard);
 
 			open_files.remove(location);
+			buffer::release(location);
 		}
 	}
 
