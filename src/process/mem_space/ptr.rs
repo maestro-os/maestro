@@ -7,11 +7,14 @@
 //! share the same memory space, making it possible to revoke the access to the
 //! pointer while it is being used.
 
-use super::MemSpace;
-use crate::errno::Errno;
-use crate::util::lock::MutexGuard;
+use core::fmt;
 use core::mem::size_of;
 use core::slice;
+use crate::errno::Errno;
+use crate::process::Process;
+use crate::util::DisplayableStr;
+use crate::util::lock::MutexGuard;
+use super::MemSpace;
 
 /// Wrapper for a pointer to a simple data.
 pub struct SyscallPtr<T: Sized> {
@@ -93,6 +96,25 @@ impl<T: Sized> SyscallPtr<T> {
 			}))
 		} else {
 			Err(errno!(EFAULT))
+		}
+	}
+}
+
+impl<T: fmt::Debug> fmt::Debug for SyscallPtr<T> {
+	fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
+		let proc_mutex = Process::get_current().unwrap();
+		let proc_guard = proc_mutex.lock();
+		let proc = proc_guard.get();
+
+		let mem_space_mutex = proc.get_mem_space().unwrap();
+		let mem_space_guard = mem_space_mutex.lock();
+
+		match self.get(&mem_space_guard) {
+			Ok(Some(s)) => write!(fmt, "{:p} = {:?}", self.as_ptr(), s),
+
+			Ok(None) => write!(fmt, "NULL"),
+
+			Err(_) => write!(fmt, "{:p} = (cannot read)", self.as_ptr()),
 		}
 	}
 }
@@ -180,6 +202,19 @@ impl<T: Sized> SyscallSlice<T> {
 	}
 }
 
+impl<T: fmt::Debug> fmt::Debug for SyscallSlice<T> {
+	fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
+		// TODO Print value? (how to get the length of the slice?)
+		let ptr = self.as_ptr();
+
+		if !ptr.is_null() {
+			write!(fmt, "{:p}", ptr)
+		} else {
+			write!(fmt, "NULL")
+		}
+	}
+}
+
 /// Wrapper for a string. Internally, the structure contains only a pointer.
 pub struct SyscallString {
 	/// The pointer.
@@ -254,5 +289,29 @@ impl SyscallString {
 			// Safe because access is checked before
 			slice::from_raw_parts_mut(self.ptr, len)
 		}))
+	}
+}
+
+impl fmt::Debug for SyscallString {
+	fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
+		let proc_mutex = Process::get_current().unwrap();
+		let proc_guard = proc_mutex.lock();
+		let proc = proc_guard.get();
+
+		let mem_space_mutex = proc.get_mem_space().unwrap();
+		let mem_space_guard = mem_space_mutex.lock();
+
+		match self.get(&mem_space_guard) {
+			Ok(Some(s)) => {
+				// TODO Add backslashes to escape `"` and `\`
+
+				let s = DisplayableStr(s);
+				write!(fmt, "{:p} = \"{}\"", self.as_ptr(), s)
+			}
+
+			Ok(None) => write!(fmt, "NULL"),
+
+			Err(_) => write!(fmt, "{:p} = (cannot read)", self.as_ptr()),
+		}
 	}
 }
