@@ -41,70 +41,153 @@ pub fn syscall(input: TokenStream) -> TokenStream {
 		);
 	}
 
-	let mut args = proc_macro2::TokenStream::new();
-	args.extend(
-		input
-			.sig
-			.inputs
-			.iter()
-			.enumerate()
-			.map(|(i, arg)| match arg {
-				FnArg::Typed(typed) => {
-					let pat = typed.pat.clone();
-					let mut ty = typed.ty.clone();
+	let args = input
+		.sig
+		.inputs
+		.iter()
+		.enumerate()
+		.map(|(i, arg)| match arg {
+			FnArg::Typed(typed) => {
+				let pat = typed.pat.clone();
+				let ty = typed.ty.clone();
 
-					let reg_name = Ident::new(REGS[i], Span::call_site());
+				let reg_name = Ident::new(REGS[i], Span::call_site());
 
-					// TODO make a cleaner check
-					match *ty {
-						// Special cast for pointers
-						Type::Path(TypePath {
-							path: Path {
-								ref mut segments, ..
-							},
+				(pat, ty, reg_name)
+			}
+
+			FnArg::Receiver(_) => panic!("a system call handler cannot have a `self` argument"),
+		})
+		.collect::<Vec<_>>();
+
+	let mut args_tokens = proc_macro2::TokenStream::new();
+	args_tokens.extend(
+		args.iter()
+			.map(|(pat, ty, reg_name)| {
+				let mut ty = ty.clone();
+
+				// TODO make a cleaner check
+				match *ty {
+					// Special cast for pointers
+					Type::Path(TypePath {
+						path: Path {
+							ref mut segments, ..
+						},
+						..
+					}) if segments
+						.first()
+						.map(|s| s.ident.to_string().starts_with("Syscall"))
+						.unwrap_or(false) =>
+					{
+						// Adding colon token to avoid compilation error
+						if let PathSegment {
+							arguments:
+								PathArguments::AngleBracketed(AngleBracketedGenericArguments {
+									ref mut colon2_token,
+									..
+								}),
 							..
-						}) if segments
-							.first()
-							.map(|s| s.ident.to_string().starts_with("Syscall"))
-							.unwrap_or(false) =>
+						} = &mut segments[0]
 						{
-							// Adding colon token to avoid compilation error
-							if let PathSegment {
-								arguments:
-									PathArguments::AngleBracketed(AngleBracketedGenericArguments {
-										ref mut colon2_token,
-										..
-									}),
-								..
-							} = &mut segments[0]
-							{
-								*colon2_token = Some(Token![::](Span::call_site()));
-							}
-
-							proc_macro2::TokenStream::from(quote! {
-								let #pat = #ty::from(regs.#reg_name as usize);
-							})
+							*colon2_token = Some(Token![::](Span::call_site()));
 						}
 
-						// Normal, truncating cast
-						_ => proc_macro2::TokenStream::from(quote! {
-							let #pat = regs.#reg_name as #ty;
-						}),
+						proc_macro2::TokenStream::from(quote! {
+							let #pat = #ty::from(regs.#reg_name as usize);
+						})
 					}
-				}
 
-				FnArg::Receiver(_) => panic!("a system call handler cannot have a `self` argument"),
-			}),
+					// Normal, truncating cast
+					_ => proc_macro2::TokenStream::from(quote! {
+						let #pat = regs.#reg_name as #ty;
+					}),
+				}
+			})
 	);
 
 	let ident = input.sig.ident;
 	let code = input.block;
 
-	TokenStream::from(quote! {
-		pub fn #ident(regs: &crate::process::regs::Regs) -> Result<i32, Errno> {
-			#args
+	let toks = if !cfg!(strace) {
+		let args_count = input.sig.inputs.len();
 
-			#code
+		let mut strace_call_format = String::from("[strace PID: {}] {}(");
+		for i in 0..args_count {
+			if i + 1 < args_count {
+				strace_call_format += "{:?}, ";
+			} else {
+				strace_call_format += "{:?}";
+			}
 		}
-	})
+		strace_call_format += ")";
+
+		let strace_args = args.iter()
+			.map(|(pat, _, _)| {
+				pat
+			})
+			.collect::<Vec<_>>();
+
+		quote! {
+			pub fn #ident(regs: &crate::process::regs::Regs) -> Result<i32, Errno> {
+				#args_tokens
+
+				crate::idt::wrap_disable_interrupts(|| {
+					let pid = {
+						let proc_mutex = crate::process::Process::get_current().unwrap();
+						let proc_guard = proc_mutex.lock();
+						let proc = proc_guard.get();
+
+						proc.get_pid()
+					};
+
+					println!(
+						#strace_call_format,
+						pid,
+						stringify!(#ident),
+						#(#strace_args),*
+					);
+				});
+
+				let ret = (|| {
+					#code
+				})();
+
+				crate::idt::wrap_disable_interrupts(|| {
+					let pid = {
+						let proc_mutex = crate::process::Process::get_current().unwrap();
+						let proc_guard = proc_mutex.lock();
+						let proc = proc_guard.get();
+
+						proc.get_pid()
+					};
+
+					match ret {
+						Ok(val) => println!(
+							"[strace PID: {}] -> Ok(0x{:x})",
+							pid,
+							val
+						),
+
+						Err(errno) => println!(
+							"[strace PID: {}] -> Err({})",
+							pid,
+							errno
+						),
+					}
+				});
+
+				ret
+			}
+		}
+	} else {
+		quote! {
+			pub fn #ident(regs: &crate::process::regs::Regs) -> Result<i32, Errno> {
+				#args_tokens
+
+				#code
+			}
+		}
+	};
+
+	TokenStream::from(toks)
 }

@@ -18,6 +18,7 @@ use macros::syscall;
 // TODO Check types
 /// Structure containing the informations of a file.
 #[repr(C)]
+#[derive(Debug)]
 struct Stat {
 	/// TODO doc
 	st_dev: u64,
