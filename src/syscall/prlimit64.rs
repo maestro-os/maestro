@@ -51,6 +51,7 @@ type RLim = u64;
 
 /// Structure representing a resource limit.
 #[repr(C)]
+#[derive(Debug)]
 struct RLimit {
 	/// Soft limit
 	rlim_cur: RLim,

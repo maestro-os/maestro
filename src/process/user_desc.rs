@@ -111,7 +111,7 @@ impl UserDesc {
 	}
 }
 
-impl fmt::Display for UserDesc {
+impl fmt::Debug for UserDesc {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		writeln!(f, "entry_number: {}", self.get_entry_number())?;
 		writeln!(f, "base_addr: {:p}", self.get_base_addr() as *const c_void)?;

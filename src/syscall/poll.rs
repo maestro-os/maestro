@@ -13,6 +13,7 @@ use macros::syscall;
 
 /// Structure representing a file descriptor passed to the `poll` system call.
 #[repr(C)]
+#[derive(Debug)]
 struct PollFD {
 	/// The file descriptor.
 	fd: i32,

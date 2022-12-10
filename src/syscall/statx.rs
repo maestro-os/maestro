@@ -14,6 +14,7 @@ use macros::syscall;
 
 /// Structure representing a timestamp with the statx syscall.
 #[repr(C)]
+#[derive(Debug)]
 struct StatxTimestamp {
 	/// Seconds since the Epoch (UNIX time)
 	tv_sec: i64,
@@ -25,6 +26,7 @@ struct StatxTimestamp {
 
 /// Structure containing the extended attributes for a file.
 #[repr(C)]
+#[derive(Debug)]
 struct Statx {
 	/// Mask of bits indicating filled fields
 	stx_mask: u32,

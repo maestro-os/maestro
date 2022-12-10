@@ -3,7 +3,7 @@
 use crate::time::unit::Timeval;
 
 /// Structure storing the usage of each resources by a process.
-#[derive(Clone, Default)]
+#[derive(Clone, Default, Debug)]
 pub struct RUsage {
 	/// User CPU time used.
 	pub ru_utime: Timeval,

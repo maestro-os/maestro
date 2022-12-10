@@ -4,7 +4,7 @@ Maestro is a lightweight Unix-like kernel written in Rust.
 
 This repository is not a full operating system in itself but only the kernel. To build the an operating system with it, check the documentation.
 
-![Continuous Integration](https://github.com/llenotre/maestro/actions/workflows/testing.yml/badge.svg)
+![Continuous Integration](https://github.com/llenotre/maestro/actions/workflows/check.yml/badge.svg)
 ![Rust Version](https://img.shields.io/badge/rust-nightly_2022--08--11-lightgrey.svg)
 [![MIT licensed](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 

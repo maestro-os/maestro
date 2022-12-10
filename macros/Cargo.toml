@@ -10,3 +10,7 @@ proc-macro = true
 proc-macro2 = "1.0.39"
 quote = "1.0.18"
 syn = { version = "1.0.95", features = ["full", "extra-traits"] }
+
+[features]
+default = []
+strace = []

@@ -20,6 +20,7 @@ pub const FD_SETSIZE: usize = 1024;
 
 /// Structure representing `fd_set`.
 #[repr(C)]
+#[derive(Debug)]
 pub struct FDSet {
 	/// The set's bitfield.
 	fds_bits: [c_long; FD_SETSIZE / (8 * size_of::<c_long>())],

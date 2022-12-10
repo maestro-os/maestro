@@ -9,6 +9,9 @@ use macros::syscall;
 /// The length of a field of the utsname structure.
 const UTSNAME_LENGTH: usize = 65;
 
+/// Userspace structure storing uname informations.
+#[repr(C)]
+#[derive(Debug)]
 struct Utsname {
 	/// Operating system name.
 	sysname: [u8; UTSNAME_LENGTH],
