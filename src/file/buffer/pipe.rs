@@ -52,19 +52,23 @@ impl FailableDefault for PipeBuffer {
 }
 
 impl Buffer for PipeBuffer {
-	fn increment_open(&mut self, write: bool) {
+	fn increment_open(&mut self, read: bool, write: bool) {
+		if read {
+			self.read_ends += 1;
+		}
+
 		if write {
 			self.write_ends += 1;
-		} else {
-			self.read_ends += 1;
 		}
 	}
 
-	fn decrement_open(&mut self, write: bool) {
+	fn decrement_open(&mut self, read: bool, write: bool) {
+		if read {
+			self.read_ends -= 1;
+		}
+
 		if write {
 			self.write_ends -= 1;
-		} else {
-			self.read_ends -= 1;
 		}
 	}
 

@@ -82,6 +82,53 @@ fn get_file(
 	}
 }
 
+/// The function handles open flags.
+///
+/// Arguments:
+/// - `file` is the file.
+/// - `flags` is the set of flags provided by userspace.
+/// - `uid` is the UID of the process openning the file.
+/// - `gid` is the GID of the process openning the file.
+///
+/// The following informations are returned:
+/// - Whether the file is open for reading
+/// - Whether the file is open for writing
+/// - Whether the file descriptor is open with close-on-exec.
+pub fn handle_flags(
+	file: &mut File,
+	flags: i32,
+	uid: Uid,
+	gid: Gid
+) -> Result<(bool, bool, bool), Errno> {
+	let (read, write) = match flags & 0b11 {
+		open_file::O_RDONLY => (true, false),
+		open_file::O_WRONLY => (false, true),
+		open_file::O_RDWR => (true, true),
+
+		_ => return Err(errno!(EINVAL)),
+	};
+	if read && !file.can_read(uid, gid) {
+		return Err(errno!(EACCES));
+	}
+	if write && !file.can_write(uid, gid) {
+		return Err(errno!(EACCES));
+	}
+
+	// If O_DIRECTORY is set and the file is not a directory, return an error
+	if flags & open_file::O_DIRECTORY != 0 && file.get_type() != FileType::Directory {
+		return Err(errno!(ENOTDIR));
+	}
+
+	// Truncate the file if necessary
+	if flags & open_file::O_TRUNC != 0 {
+		file.set_size(0);
+	}
+
+	let cloexec = flags & open_file::O_CLOEXEC != 0;
+
+	Ok((read, write, cloexec))
+}
+
 /// Performs the open system call.
 pub fn open_(pathname: SyscallString, flags: i32, mode: file::Mode) -> Result<i32, Errno> {
 	// Getting the path string
@@ -105,34 +152,14 @@ pub fn open_(pathname: SyscallString, flags: i32, mode: file::Mode) -> Result<i3
 	// Getting the file
 	let file = get_file(path, flags, mode, uid, gid)?;
 
-	let loc = {
+	let (loc, read, write, cloexec) = {
 		let guard = file.lock();
 		let f = guard.get_mut();
 
 		let loc = f.get_location().clone();
+		let (read, write, cloexec) = handle_flags(f, flags, uid, gid)?;
 
-		let access = match flags & 0b11 {
-			open_file::O_RDONLY => f.can_read(uid, gid),
-			open_file::O_WRONLY => f.can_write(uid, gid),
-			open_file::O_RDWR => f.can_read(uid, gid) && f.can_write(uid, gid),
-
-			_ => true,
-		};
-		if !access {
-			return Err(errno!(EACCES));
-		}
-
-		// If O_DIRECTORY is set and the file is not a directory, return an error
-		if flags & open_file::O_DIRECTORY != 0 && f.get_type() != FileType::Directory {
-			return Err(errno!(ENOTDIR));
-		}
-
-		// Truncate the file if necessary
-		if flags & open_file::O_TRUNC != 0 {
-			f.set_size(0);
-		}
-
-		loc
+		(loc, read, write, cloexec)
 	};
 
 	open_file::OpenFile::new(loc.clone(), flags)?;
@@ -147,11 +174,11 @@ pub fn open_(pathname: SyscallString, flags: i32, mode: file::Mode) -> Result<i3
 	let fds = fds_guard.get_mut();
 
 	let mut fd_flags = 0;
-	if flags & open_file::O_CLOEXEC != 0 {
+	if cloexec {
 		fd_flags |= FD_CLOEXEC;
 	}
 
-	let fd = fds.create_fd(loc, fd_flags)?;
+	let fd = fds.create_fd(loc, fd_flags, read, write)?;
 	let fd_id = fd.get_id();
 
 	// Flushing file

@@ -482,7 +482,7 @@ impl Process {
 
 			open_file::OpenFile::new(loc.clone(), open_file::O_RDWR)?;
 
-			let stdin_fd = fds_table.create_fd(loc, 0)?;
+			let stdin_fd = fds_table.create_fd(loc, 0, true, true)?;
 			assert_eq!(stdin_fd.get_id(), STDIN_FILENO);
 
 			fds_table.duplicate_fd(STDIN_FILENO, NewFDConstraint::Fixed(STDOUT_FILENO), false)?;

@@ -157,8 +157,15 @@ impl OpenFile {
 
 	/// Increments the number of references to the file with the given location.
 	///
-	/// `location` is the location of the file to be openned.
-	pub fn open(location: FileLocation) -> Result<SharedPtr<Self>, Errno> {
+	/// Arguments:
+	/// - `location` is the location of the file.
+	/// - `read` tells whether the file descriptor is open for reading.
+	/// - `write` tells whether the file descriptor is open for writing.
+	pub fn open(
+		location: FileLocation,
+		read: bool,
+		write: bool
+	) -> Result<SharedPtr<Self>, Errno> {
 		let open_file_mutex = Self::get(&location).ok_or_else(|| errno!(ENOENT))?;
 
 		{
@@ -172,7 +179,7 @@ impl OpenFile {
 				let buff_guard = buff_mutex.lock();
 				let buff = buff_guard.get_mut();
 
-				buff.increment_open(open_file.can_write());
+				buff.increment_open(read, write);
 			}
 		}
 
@@ -184,8 +191,17 @@ impl OpenFile {
 	/// If the references count reaches zero, the function removes the open file.
 	/// If the file has a virtual location, this location is also freed.
 	///
+	/// Arguments:
+	/// - `location` is the location of the file.
+	/// - `read` tells whether the file descriptor is open for reading.
+	/// - `write` tells whether the file descriptor is open for writing.
+	///
 	/// If the file is not open, the function does nothing.
-	pub fn close(location: &FileLocation) {
+	pub fn close(
+		location: &FileLocation,
+		read: bool,
+		write: bool
+	) {
 		let open_files_guard = OPEN_FILES.lock();
 		let open_files = open_files_guard.get_mut();
 
@@ -200,7 +216,7 @@ impl OpenFile {
 			let buff_guard = buff_mutex.lock();
 			let buff = buff_guard.get_mut();
 
-			buff.decrement_open(open_file.can_write());
+			buff.decrement_open(read, write);
 		}
 
 		open_file.ref_count -= 1;

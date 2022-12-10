@@ -62,12 +62,12 @@ impl FailableDefault for Socket {
 }
 
 impl Buffer for Socket {
-	fn increment_open(&mut self, _write: bool) {
+	fn increment_open(&mut self, _read: bool, _write: bool) {
 		// TODO
 		todo!();
 	}
 
-	fn decrement_open(&mut self, _write: bool) {
+	fn decrement_open(&mut self, _read: bool, _write: bool) {
 		// TODO
 		todo!();
 	}

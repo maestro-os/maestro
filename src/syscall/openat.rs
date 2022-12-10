@@ -4,7 +4,6 @@ use core::ffi::c_int;
 use crate::errno::Errno;
 use crate::file::File;
 use crate::file::FileContent;
-use crate::file::FileType;
 use crate::file::Mode;
 use crate::file::fd::FD_CLOEXEC;
 use crate::file::open_file;
@@ -76,30 +75,14 @@ pub fn openat(
 		(proc.get_euid(), proc.get_egid())
 	};
 
-	let loc = {
+	let (loc, read, write, cloexec) = {
 		let guard = file.lock();
-		let f = guard.get();
+		let f = guard.get_mut();
 
 		let loc = f.get_location().clone();
+		let (read, write, cloexec) = super::open::handle_flags(f, flags, uid, gid)?;
 
-		// Checking file permissions
-		let access = match flags & 0b11 {
-			open_file::O_RDONLY => f.can_read(uid, gid),
-			open_file::O_WRONLY => f.can_write(uid, gid),
-			open_file::O_RDWR => f.can_read(uid, gid) && f.can_write(uid, gid),
-
-			_ => true,
-		};
-		if !access {
-			return Err(errno!(EACCES));
-		}
-
-		// If O_DIRECTORY is set and the file is not a directory, return an error
-		if flags & open_file::O_DIRECTORY != 0 && f.get_type() != FileType::Directory {
-			return Err(errno!(ENOTDIR));
-		}
-
-		loc
+		(loc, read, write, cloexec)
 	};
 
 	open_file::OpenFile::new(loc.clone(), flags)?;
@@ -114,10 +97,10 @@ pub fn openat(
 	let fds = fds_guard.get_mut();
 
 	let mut fd_flags = 0;
-	if flags & open_file::O_CLOEXEC != 0 {
+	if cloexec {
 		fd_flags |= FD_CLOEXEC;
 	}
 
-	let fd = fds.create_fd(loc, fd_flags)?;
+	let fd = fds.create_fd(loc, fd_flags, read, write)?;
 	Ok(fd.get_id() as _)
 }

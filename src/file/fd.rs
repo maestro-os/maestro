@@ -3,6 +3,7 @@
 //! open file description table.
 
 // TODO Maintain the system-wide open file descriptors count
+// TODO Modify system calls to use the IO interface on the file descriptor directly instead of the open file
 
 use core::cmp::max;
 use crate::errno::Errno;
@@ -11,6 +12,7 @@ use crate::file::open_file::OpenFile;
 use crate::limits;
 use crate::util::FailableClone;
 use crate::util::container::vec::Vec;
+use crate::util::io::IO;
 use crate::util::lock::Mutex;
 use crate::util::ptr::SharedPtr;
 
@@ -63,6 +65,11 @@ pub struct FileDescriptor {
 	/// The FD's flags.
 	flags: i32,
 
+	/// Tells whether the file descriptor is open for reading.
+	read: bool,
+	/// Tells whether the file descriptor is open for writing.
+	write: bool,
+
 	/// The location of the open file.
 	location: FileLocation,
 }
@@ -76,13 +83,24 @@ impl FileDescriptor {
 	/// Arguments:
 	/// - `id` is the ID of the file descriptor.
 	/// - `flags` is the set of flags associated with the file descriptor.
+	/// - `read` tells whether the file descriptor is open for reading.
+	/// - `write` tells whether the file descriptor is open for writing.
 	/// - `location` is the location of the open file the file descriptor points to.
-	pub fn new(id: u32, flags: i32, location: FileLocation) -> Result<Self, Errno> {
-		OpenFile::open(location.clone())?;
+	pub fn new(
+		id: u32,
+		flags: i32,
+		read: bool,
+		write: bool,
+		location: FileLocation,
+	) -> Result<Self, Errno> {
+		OpenFile::open(location.clone(), read, write)?;
 
 		Ok(Self {
 			id,
 			flags,
+
+			read,
+			write,
 
 			location,
 		})
@@ -103,6 +121,16 @@ impl FileDescriptor {
 		self.flags = flags;
 	}
 
+	/// Tells whether the file descriptor is open for reading.
+	pub fn can_read(&self) -> bool {
+		self.read
+	}
+
+	/// Tells whether the file descriptor is open for writing.
+	pub fn can_write(&self) -> bool {
+		self.write
+	}
+
 	/// Returns the location of the open file the file descriptor points to.
 	pub fn get_location(&self) -> &FileLocation {
 		&self.location
@@ -118,13 +146,59 @@ impl FileDescriptor {
 
 impl FailableClone for FileDescriptor {
 	fn failable_clone(&self) -> Result<Self, Errno> {
-		Self::new(self.id, self.flags, self.location.clone())
+		Self::new(self.id, self.flags, self.read, self.write, self.location.clone())
 	}
+}
+
+impl IO for FileDescriptor {
+	fn get_size(&self) -> u64 {
+		if let Ok(open_file_mutex) = self.get_open_file() {
+			let open_file_guard = open_file_mutex.lock();
+			let open_file = open_file_guard.get();
+
+			open_file.get_size()
+		} else {
+			0
+		}
+	}
+
+	fn read(&mut self, off: u64, buf: &mut [u8]) -> Result<(u64, bool), Errno> {
+		if !self.can_read() {
+			return Err(errno!(EBADF));
+		}
+
+		let open_file_mutex = self.get_open_file()?;
+		let open_file_guard = open_file_mutex.lock();
+		let open_file = open_file_guard.get_mut();
+
+		open_file.read(off, buf)
+	}
+
+	fn write(&mut self, off: u64, buf: &[u8]) -> Result<u64, Errno> {
+		if !self.can_write() {
+			return Err(errno!(EBADF));
+		}
+
+		let open_file_mutex = self.get_open_file()?;
+		let open_file_guard = open_file_mutex.lock();
+		let open_file = open_file_guard.get_mut();
+
+		open_file.write(off, buf)
+	}
+
+	fn poll(&mut self, mask: u32) -> Result<u32, Errno> {
+		let open_file_mutex = self.get_open_file()?;
+		let open_file_guard = open_file_mutex.lock();
+		let open_file = open_file_guard.get_mut();
+
+		open_file.poll(mask)
+	}
+
 }
 
 impl Drop for FileDescriptor {
 	fn drop(&mut self) {
-		OpenFile::close(&self.location);
+		OpenFile::close(&self.location, self.read, self.write);
 	}
 }
 
@@ -173,17 +247,21 @@ impl FileDescriptorTable {
 	/// Arguments:
 	/// - `location` is the location of the file the newly created file descriptor points to.
 	/// - `flags` are the file descriptor's flags.
+	/// - `read` tells whether the file descriptor is open for reading.
+	/// - `write` tells whether the file descriptor is open for writing.
 	pub fn create_fd(
 		&mut self,
 		location: FileLocation,
-		flags: i32
+		flags: i32,
+		read: bool,
+		write: bool,
 	) -> Result<&FileDescriptor, Errno> {
 		let id = self.get_available_fd(None)?;
 		let i = self.fds
 			.binary_search_by(|fd| fd.get_id().cmp(&id))
 			.unwrap_err();
 
-		let fd = FileDescriptor::new(id, flags, location)?;
+		let fd = FileDescriptor::new(id, flags, read, write, location)?;
 		self.fds.insert(i, fd)?;
 
 		Ok(&self.fds[i])
@@ -228,24 +306,27 @@ impl FileDescriptorTable {
 		// The flags of the new FD
 		let flags = if cloexec { FD_CLOEXEC } else { 0 };
 
-		// The location of the file
-		let location = self.get_fd(id)
-			.ok_or_else(|| errno!(EBADF))?
-			.get_location()
-			.clone();
+		// The old FD
+		let old_fd = self.get_fd(id).ok_or_else(|| errno!(EBADF))?;
 
-		// Creating the FD
-		let fd = FileDescriptor::new(new_id, flags, location)?;
+		// Creating the new FD
+		let new_fd = FileDescriptor::new(
+			new_id,
+			flags,
+			old_fd.can_read(),
+			old_fd.can_write(),
+			old_fd.get_location().clone()
+		)?;
 
 		// Inserting the FD
 		let index = self.fds.binary_search_by(|fd| fd.get_id().cmp(&new_id));
 		let index = {
 			if let Ok(i) = index {
-				self.fds[i] = fd;
+				self.fds[i] = new_fd;
 				i
 			} else {
 				let i = index.unwrap_err();
-				self.fds.insert(i, fd)?;
+				self.fds.insert(i, new_fd)?;
 				i
 			}
 		};

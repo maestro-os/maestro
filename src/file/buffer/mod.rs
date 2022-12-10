@@ -19,13 +19,17 @@ use crate::util::ptr::SharedPtr;
 pub trait Buffer: IO {
 	/// Increments the number of open ends.
 	///
-	/// `write` tells whether writing is enabled on the opened end.
-	fn increment_open(&mut self, write: bool);
+	/// Arguments:
+	/// - `read` tells whether the open end allows reading.
+	/// - `write` tells whether the open end allows writing.
+	fn increment_open(&mut self, read: bool, write: bool);
 
 	/// Decrements the number of open ends.
 	///
-	/// `write` tells whether writing is enabled on the closed end.
-	fn decrement_open(&mut self, write: bool);
+	/// Arguments:
+	/// - `read` tells whether the open end allows reading.
+	/// - `write` tells whether the open end allows writing.
+	fn decrement_open(&mut self, read: bool, write: bool);
 
 	/// Performs an ioctl operation on the file.
 	///

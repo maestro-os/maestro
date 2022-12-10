@@ -37,10 +37,10 @@ pub fn socketpair(
 	let loc = buffer::register(None, SharedPtr::new(sock)?)?;
 	open_file::OpenFile::new(loc.clone(), open_file::O_RDWR)?;
 
-	let fd0 = fds.create_fd(loc.clone(), 0)?;
+	let fd0 = fds.create_fd(loc.clone(), 0, true, true)?;
 	sv_slice[0] = fd0.get_id() as _;
 
-	let fd1 = fds.create_fd(loc, 0)?;
+	let fd1 = fds.create_fd(loc, 0, true, true)?;
 	sv_slice[1] = fd1.get_id() as _;
 
 	Ok(0)
