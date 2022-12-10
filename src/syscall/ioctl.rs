@@ -36,8 +36,6 @@ pub const FIONREAD: u32 = 0x0000541b;
 /// The implementation of the `ioctl` syscall.
 #[syscall]
 pub fn ioctl(fd: c_int, request: c_ulong, argp: *const c_void) -> Result<i32, Errno> {
-	//crate::println!("ioctl: {} {:x} {:p}", fd, request, argp); // TODO rm
-
 	// Getting the memory space and file
 	let (mem_space, open_file_mutex) = {
 		let mutex = Process::get_current().unwrap();

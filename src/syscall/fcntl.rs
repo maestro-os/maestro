@@ -116,8 +116,6 @@ pub fn do_fcntl(fd: i32, cmd: i32, arg: *mut c_void, _fcntl64: bool) -> Result<i
 	let fds_guard = fds_mutex.lock();
 	let fds = fds_guard.get_mut();
 
-	//crate::println!("fcntl: {} {} {:p} {}", fd, cmd, arg, _fcntl64); // TODO rm
-
 	match cmd {
 		F_DUPFD => Ok(fds
 			.duplicate_fd(fd as _, NewFDConstraint::Min(arg as _), false)?
