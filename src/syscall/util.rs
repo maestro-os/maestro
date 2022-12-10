@@ -18,8 +18,11 @@ use crate::util::FailableClone;
 use core::mem::size_of;
 
 /// Returns the absolute path according to the process's current working
-/// directory. `process` is the process.
-/// `path` is the path.
+/// directory.
+///
+/// Arguments:
+/// - `process` is the process.
+/// - `path` is the path.
 pub fn get_absolute_path(process: &Process, path: Path) -> Result<Path, Errno> {
 	let path = if !path.is_absolute() {
 		let cwd = process.get_cwd();
@@ -35,6 +38,7 @@ pub fn get_absolute_path(process: &Process, path: Path) -> Result<Path, Errno> {
 // TODO Find a safer and cleaner solution
 /// Checks that the given array of strings at pointer `ptr` is accessible to
 /// process `proc`, then returns its content.
+///
 /// If the array or its content strings are not accessible by the process, the
 /// function returns an error.
 pub unsafe fn get_str_array(
@@ -80,6 +84,7 @@ pub unsafe fn get_str_array(
 
 /// Builds a path with the given directory file descriptor `dirfd` as a base,
 /// concatenated with the given pathname `pathname`.
+///
 /// `process_guard` is the guard of the current process.
 fn build_path_from_fd(
 	process_guard: &MutexGuard<Process, false>,
@@ -112,6 +117,10 @@ fn build_path_from_fd(
 			.get_fd(dirfd as _)
 			.ok_or(errno!(EBADF))?
 			.get_open_file()?;
+
+		// Unlocking to avoid deadlock with procfs
+		drop(process_guard);
+
 		let open_file_guard = open_file_mutex.lock();
 		let open_file = open_file_guard.get();
 
@@ -124,11 +133,13 @@ fn build_path_from_fd(
 }
 
 /// Returns the file for the given path `pathname`.
-/// `process_guard` is the mutex guard of the current process.
-/// `follow_links` tells whether symbolic links may be followed.
-/// `dirfd` is the file descriptor of the parent directory.
-/// `pathname` is the path relative to the parent directory.
-/// `flags` is an integer containing AT_* flags.
+///
+/// Arguments:
+/// - `process_guard` is the mutex guard of the current process.
+/// - `follow_links` tells whether symbolic links may be followed.
+/// - `dirfd` is the file descriptor of the parent directory.
+/// - `pathname` is the path relative to the parent directory.
+/// - `flags` is an integer containing AT_* flags.
 pub fn get_file_at(
 	process_guard: MutexGuard<Process, false>,
 	follow_links: bool,
@@ -154,6 +165,10 @@ pub fn get_file_at(
 				.get_fd(dirfd as _)
 				.ok_or(errno!(EBADF))?
 				.get_open_file()?;
+
+			// Unlocking to avoid deadlock with procfs
+			drop(process_guard);
+
 			let open_file_guard = open_file_mutex.lock();
 			let open_file = open_file_guard.get();
 
