@@ -13,5 +13,9 @@ crate-type = ["dylib", "staticlib"]
 [dependencies]
 macros = { path = "macros/" }
 
+[features]
+default = []
+strace = ["macros/strace"]
+
 [profile.release]
 lto = true

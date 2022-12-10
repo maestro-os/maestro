@@ -108,7 +108,7 @@ pub fn syscall(input: TokenStream) -> TokenStream {
 	let ident = input.sig.ident;
 	let code = input.block;
 
-	let toks = if !cfg!(strace) {
+	let toks = if cfg!(feature = "strace") {
 		let args_count = input.sig.inputs.len();
 
 		let mut strace_call_format = String::from("[strace PID: {}] {}(");
