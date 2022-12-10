@@ -48,6 +48,37 @@ fn get_default_page() -> *const c_void {
 	}
 }
 
+// TODO update the number of reference to the open file when necessary
+
+/// Enumeration of map residences.
+/// A map residence is where a memory mapping may be backed, for both saving memory and staying in
+/// sync with storage.
+///
+/// A mapping may be switched from `MainMemory` to `Swap` and vice-versa.
+#[derive(Clone, Debug)]
+enum MapResidence {
+	/// The mapping does not reside anywhere except on the main memory.
+	None,
+
+	/// The mapping resides in a file.
+	File {
+		/// The location of the file.
+		file: SharedPtr<OpenFile>,
+
+		/// The offset of the mapping in the file.
+		off: u64,
+	},
+
+	/// The mapping resides in swap space.
+	Swap {
+		/// The location of the swap space.
+		swap_file: SharedPtr<OpenFile>,
+
+		/// The ID of the slot occupied by the mapping.
+		slot_id: u32,
+	},
+}
+
 /// A mapping in the memory space.
 ///
 /// **Warning**: When dropped, mappings do not unmap themselves. It is the
@@ -62,12 +93,8 @@ pub struct MemMapping {
 	/// The mapping's flags.
 	flags: u8,
 
-	/// The file the mapping points to. If None, the mapping doesn't point to
-	/// any file.
-	file: Option<SharedPtr<OpenFile>>,
-	/// The offset inside of the file pointed to by the file. If there is no file, the value is
-	/// undefined.
-	off: u64,
+	/// The residence of the mapping.
+	residence: MapResidence,
 
 	/// Pointer to the virtual memory context handler.
 	vmem: NonNull<dyn VMem>,
@@ -98,13 +125,22 @@ impl MemMapping {
 		debug_assert!(util::is_aligned(begin, memory::PAGE_SIZE));
 		debug_assert!(size > 0);
 
+		let residence = match file {
+			Some(file) => MapResidence::File {
+				file,
+
+				off,
+			},
+
+			None => MapResidence::None,
+		};
+
 		Self {
 			begin,
 			size,
 			flags,
 
-			file,
-			off,
+			residence,
 
 			vmem,
 		}
