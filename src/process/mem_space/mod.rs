@@ -48,6 +48,9 @@ pub const MAPPING_FLAG_USER: u8 = 0b00100;
 pub const MAPPING_FLAG_NOLAZY: u8 = 0b01000;
 /// Flag telling that a memory mapping has its physical memory shared with one
 /// or more other mappings.
+///
+/// If the mapping is associated with a file, modifications made to the mapping are update to the
+/// file.
 pub const MAPPING_FLAG_SHARED: u8 = 0b10000;
 
 /// The physical pages reference counter.

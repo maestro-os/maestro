@@ -76,6 +76,8 @@ enum MapResidence {
 
 		/// The ID of the slot occupied by the mapping.
 		slot_id: u32,
+		/// The page offset in the slot.
+		page_off: usize,
 	},
 }
 
@@ -109,24 +111,21 @@ impl MemMapping {
 	/// - `size` is the size of the mapping in pages. The size must be greater
 	/// than 0.
 	/// - `flags` the mapping's flags.
-	/// - `file` is the open file the mapping points to. If None, the mapping
-	/// doesn't point to any file.
-	/// - `off` is the offset inside of the file pointed to by the given file
-	/// descriptor. If no file is given, this argument is ignored.
+	/// - `file` is the open file the mapping points to, with an offset in it.
+	/// If None, the mapping doesn't point to any file.
 	/// - `vmem` is the virtual memory context handler associated with the mapping.
 	pub fn new(
 		begin: *const c_void,
 		size: usize,
 		flags: u8,
-		file: Option<SharedPtr<OpenFile>>,
-		off: u64,
+		file: Option<(SharedPtr<OpenFile>, u64)>,
 		vmem: NonNull<dyn VMem>,
 	) -> Self {
 		debug_assert!(util::is_aligned(begin, memory::PAGE_SIZE));
 		debug_assert!(size > 0);
 
 		let residence = match file {
-			Some(file) => MapResidence::File {
+			Some((file, off)) => MapResidence::File {
 				file,
 
 				off,
@@ -414,14 +413,15 @@ impl MemMapping {
 		// The mapping located before the gap to be created
 		let prev = {
 			if begin > 0 {
-				Some(Self::new(
-					self.begin,
-					begin,
-					self.flags,
-					self.file.clone(),
-					self.off,
-					self.vmem,
-				))
+				Some(Self {
+					begin: self.begin,
+					size: begin,
+					flags: self.flags,
+
+					residence: self.residence.clone(),
+
+					vmem: self.vmem,
+				})
 			} else {
 				None
 			}
@@ -444,14 +444,16 @@ impl MemMapping {
 				let map_size = self.size - end;
 
 				let off = self.off + (end * memory::PAGE_SIZE) as u64;
-				Some(Self::new(
-					map_begin,
-					map_size,
-					self.flags,
-					self.file.clone(),
-					off,
-					self.vmem,
-				))
+
+				Some(Self {
+					begin: map_begin,
+					size: map_size,
+					flags: self.flags,
+
+					residence: self.residence.clone(), // TODO shift with offset
+
+					vmem: self.vmem,
+				})
 			} else {
 				None
 			}
@@ -546,32 +548,33 @@ impl MemMapping {
 	///
 	/// The function does nothing if the mapping is not shared or not associated with a file.
 	pub fn fs_sync(&mut self) -> Result<(), Errno> {
-		if self.flags & super::MAPPING_FLAG_SHARED != 0 {
+		if self.flags & super::MAPPING_FLAG_SHARED == 0 {
 			return Ok(());
 		}
+		let Some(file) = &self.file else {
+			return Ok(());
+		};
 
-		if let Some(file) = &self.file {
-			unsafe {
-				vmem::switch(self.get_vmem(), || {
-					let file_guard = file.lock();
-					let file = file_guard.get_mut();
+		unsafe {
+			vmem::switch(self.get_vmem(), || {
+				let file_guard = file.lock();
+				let file = file_guard.get_mut();
 
-					let slice = slice::from_raw_parts(
-						self.begin as *mut u8,
-						self.size * memory::PAGE_SIZE
-					);
+				// TODO Make use of dirty flag if present on the current architecure to update
+				// only pages that have been modified
+				let slice = slice::from_raw_parts(
+					self.begin as *mut u8,
+					self.size * memory::PAGE_SIZE
+				);
 
-					let mut i = 0;
-					while i < slice.len() {
-						let l = file.write(self.off, &slice[i..])?;
-						i += l as usize;
-					}
+				let mut i = 0;
+				while i < slice.len() {
+					let l = file.write(self.off, &slice[i..])?;
+					i += l as usize;
+				}
 
-					Ok(())
-				})
-			}
-		} else {
-			Ok(())
+				Ok(())
+			})
 		}
 	}
 }
