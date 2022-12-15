@@ -202,14 +202,33 @@ impl MemMapping {
 	///
 	/// If no page is associated, the function returns None.
 	pub fn get_physical_page(&self, offset: usize) -> Option<*const c_void> {
+		if offset >= self.size {
+			return None;
+		}
+
 		let vmem = self.get_vmem();
 		let virt_ptr = (self.begin as usize + offset * memory::PAGE_SIZE) as *const c_void;
-		let phys_ptr = vmem.translate(virt_ptr)?;
 
-		if phys_ptr != get_default_page() {
-			Some(phys_ptr)
-		} else {
-			None
+		match self.residence {
+			MapResidence::None => {
+				let phys_ptr = vmem.translate(virt_ptr)?;
+
+				if phys_ptr != get_default_page() {
+					Some(phys_ptr)
+				} else {
+					None
+				}
+			}
+
+			MapResidence::File { .. } => {
+				// TODO
+				todo!();
+			}
+
+			MapResidence::Swap { .. } => {
+				// TODO
+				todo!();
+			}
 		}
 	}
 
