@@ -50,6 +50,7 @@ fn get_default_page() -> *const c_void {
 
 // TODO update the number of reference to the open file when necessary
 
+// TODO Disallow clone and use a special function + Drop to increment/decrement reference counters
 /// Enumeration of map residences.
 /// A map residence is where a memory mapping may be backed, for both saving memory and staying in
 /// sync with storage.
@@ -79,6 +80,19 @@ enum MapResidence {
 		/// The page offset in the slot.
 		page_off: usize,
 	},
+}
+
+impl MapResidence {
+	/// Adds a value of `pages` pages to the offset of the residence, if applicable.
+	pub fn offset_add(&mut self, pages: usize) {
+		match self {
+			Self::File { off, ..  } => *off += pages as u64 * memory::PAGE_SIZE as u64,
+
+			Self::Swap { page_off, ..  } => *page_off += pages,
+
+			_ => {},
+		}
+	}
 }
 
 /// A mapping in the memory space.
@@ -443,14 +457,15 @@ impl MemMapping {
 				let map_begin = unsafe { self.begin.add(end * memory::PAGE_SIZE) };
 				let map_size = self.size - end;
 
-				let off = self.off + (end * memory::PAGE_SIZE) as u64;
+				let mut residence = self.residence.clone();
+				residence.offset_add(end);
 
 				Some(Self {
 					begin: map_begin,
 					size: map_size,
 					flags: self.flags,
 
-					residence: self.residence.clone(), // TODO shift with offset
+					residence,
 
 					vmem: self.vmem,
 				})
@@ -489,7 +504,7 @@ impl MemMapping {
 	/// allocated.
 	///
 	/// `n` is the number of pages to free from the beginning.
-	pub fn fork_fail_clean(&self, ref_counter: &mut PhysRefCounter, n: usize) {
+	fn fork_fail_clean(&self, ref_counter: &mut PhysRefCounter, n: usize) {
 		for i in 0..n {
 			if let Some(phys_ptr) = self.get_physical_page(i) {
 				ref_counter.decrement(phys_ptr);
@@ -512,8 +527,7 @@ impl MemMapping {
 			size: self.size,
 			flags: self.flags,
 
-			file: self.file.clone(),
-			off: self.off,
+			residence: self.residence.clone(),
 
 			vmem: NonNull::new(mem_space.get_vmem().as_mut()).unwrap(),
 		};
@@ -551,7 +565,11 @@ impl MemMapping {
 		if self.flags & super::MAPPING_FLAG_SHARED == 0 {
 			return Ok(());
 		}
-		let Some(file) = &self.file else {
+		let MapResidence::File {
+			file,
+
+			off,
+		} = &self.residence else {
 			return Ok(());
 		};
 
@@ -569,7 +587,7 @@ impl MemMapping {
 
 				let mut i = 0;
 				while i < slice.len() {
-					let l = file.write(self.off, &slice[i..])?;
+					let l = file.write(*off, &slice[i..])?;
 					i += l as usize;
 				}
 
@@ -585,12 +603,11 @@ impl fmt::Debug for MemMapping {
 
 		write!(
 			f,
-			"begin: {:p}; end: {:p}; flags: {}; file: {}; off: {}",
+			"begin: {:p}; end: {:p}; flags: {}; residence: {:?}",
 			self.begin,
 			end,
 			self.flags,
-			self.file.is_some(),
-			self.off
+			self.residence,
 		)
 	}
 }

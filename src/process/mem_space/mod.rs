@@ -216,8 +216,7 @@ impl MemSpace {
 	/// - `map_constraint` is the constraint to fullfill for the allocation.
 	/// - `size` represents the size of the mapping in number of memory pages.
 	/// - `flags` represents the flags for the mapping.
-	/// - `file` is the open file to map to.
-	/// - `file_off` is the offset in bytes into the file.
+	/// - `file` is the open file to map to, along with an offset in this file.
 	///
 	/// The underlying physical memory is not allocated directly but only when an attempt to write
 	/// the memory is detected, unless MAPPING_FLAG_NOLAZY is specified as a flag.
@@ -230,8 +229,7 @@ impl MemSpace {
 		map_constraint: MapConstraint,
 		size: usize,
 		flags: u8,
-		file: Option<SharedPtr<OpenFile>>,
-		file_off: u64,
+		file: Option<(SharedPtr<OpenFile>, u64)>,
 	) -> Result<*mut c_void, Errno> {
 		// Checking arguments are valid
 		match map_constraint {
@@ -288,7 +286,6 @@ impl MemSpace {
 			size,
 			flags,
 			file,
-			file_off,
 			NonNull::new(self.vmem.as_mut_ptr()).unwrap(),
 		);
 		let m = self.mappings.insert(addr, mapping)?;
@@ -324,7 +321,7 @@ impl MemSpace {
 	/// Same as `map`, except the function returns a pointer to the end of the
 	/// memory mapping.
 	pub fn map_stack(&mut self, size: usize, flags: u8) -> Result<*mut c_void, Errno> {
-		let mapping_ptr = self.map(MapConstraint::None, size, flags, None, 0)?;
+		let mapping_ptr = self.map(MapConstraint::None, size, flags, None)?;
 
 		Ok(unsafe {
 			// Safe because the new pointer stays in the range of the allocated mapping
@@ -682,7 +679,7 @@ impl MemSpace {
 			let pages = math::ceil_division(ptr as usize - begin as usize, memory::PAGE_SIZE);
 			let flags = MAPPING_FLAG_WRITE | MAPPING_FLAG_USER;
 
-			self.map(MapConstraint::Fixed(begin), pages, flags, None, 0)?;
+			self.map(MapConstraint::Fixed(begin), pages, flags, None)?;
 		} else {
 			// Free memory
 

@@ -460,7 +460,6 @@ impl ELFExecutor {
 				pages,
 				seg.get_mem_space_flags(),
 				None,
-				0,
 			)?;
 
 			// TODO Lazy allocation
@@ -540,7 +539,6 @@ impl ELFExecutor {
 					page_size,
 					mem_space::MAPPING_FLAG_USER | mem_space::MAPPING_FLAG_NOLAZY,
 					None,
-					0
 				)?;
 
 				(phdr, true)

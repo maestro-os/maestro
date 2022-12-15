@@ -129,6 +129,7 @@ pub fn do_mmap(
 	} else {
 		// TODO If the mapping requires a fd, return an error
 	}
+	let file = open_file_mutex.map(|file| (file, offset));
 
 	// The process's memory space
 	let mem_space = proc.get_mem_space().unwrap();
@@ -142,8 +143,7 @@ pub fn do_mmap(
 		addr_hint,
 		pages,
 		flags,
-		open_file_mutex.clone(),
-		offset,
+		file.clone(),
 	);
 
 	match result {
@@ -155,8 +155,7 @@ pub fn do_mmap(
 					MapConstraint::None,
 					pages,
 					flags,
-					open_file_mutex,
-					offset,
+					file,
 				)
 			} else {
 				Err(e)
