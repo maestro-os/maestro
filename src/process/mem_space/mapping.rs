@@ -11,10 +11,10 @@ use crate::errno::Errno;
 use crate::file::open_file::OpenFile;
 use crate::memory::buddy;
 use crate::memory::malloc;
+use crate::memory::physical_ref_counter::PhysRefCounter;
 use crate::memory::vmem::VMem;
 use crate::memory::vmem;
 use crate::memory;
-use crate::process::mem_space::physical_ref_counter::PhysRefCounter;
 use crate::process::oom;
 use crate::util::io::IO;
 use crate::util::lock::*;
@@ -209,26 +209,11 @@ impl MemMapping {
 		let vmem = self.get_vmem();
 		let virt_ptr = (self.begin as usize + offset * memory::PAGE_SIZE) as *const c_void;
 
-		match self.residence {
-			MapResidence::None => {
-				let phys_ptr = vmem.translate(virt_ptr)?;
-
-				if phys_ptr != get_default_page() {
-					Some(phys_ptr)
-				} else {
-					None
-				}
-			}
-
-			MapResidence::File { .. } => {
-				// TODO
-				todo!();
-			}
-
-			MapResidence::Swap { .. } => {
-				// TODO
-				todo!();
-			}
+		let phys_ptr = vmem.translate(virt_ptr)?;
+		if phys_ptr != get_default_page() {
+			Some(phys_ptr)
+		} else {
+			None
 		}
 	}
 
@@ -265,45 +250,6 @@ impl MemMapping {
 		}
 
 		flags
-	}
-
-	/// Maps the mapping to the given virtual memory context with the default page.
-	///
-	/// If the mapping is marked as nolazy, the function allocates physical memory and maps it
-	/// instead of the default page.
-	pub fn map_default(&mut self) -> Result<(), Errno> {
-		let vmem = self.get_mut_vmem();
-		let nolazy = (self.flags & super::MAPPING_FLAG_NOLAZY) != 0;
-		let default_page = get_default_page();
-
-		for i in 0..self.size {
-			let phys_ptr = {
-				if nolazy {
-					match buddy::alloc(0, buddy::FLAG_ZONE_TYPE_USER) {
-						Ok(ptr) => ptr,
-						Err(e) => {
-							self.unmap()?;
-							return Err(e);
-						}
-					}
-				} else {
-					default_page
-				}
-			};
-			let virt_ptr = ((self.begin as usize) + (i * memory::PAGE_SIZE)) as *const c_void;
-			let flags = self.get_vmem_flags(nolazy, i);
-
-			if let Err(errno) = vmem.map(phys_ptr, virt_ptr, flags) {
-				if nolazy {
-					buddy::free(phys_ptr, 0);
-				}
-				self.unmap()?;
-
-				return Err(errno);
-			}
-		}
-
-		Ok(())
 	}
 
 	// TODO Add support for file descriptors
@@ -345,19 +291,24 @@ impl MemMapping {
 		let flags = self.get_vmem_flags(true, offset);
 
 		{
-			let ref_counter = super::PHYSICAL_REF_COUNTER.lock();
-			if let Err(errno) = ref_counter.get_mut().increment(new_phys_ptr) {
+			let ref_counter_guard = super::PHYSICAL_REF_COUNTER.lock();
+			let ref_counter = ref_counter_guard.get_mut();
+
+			if let Err(errno) = ref_counter.increment(new_phys_ptr) {
 				buddy::free(new_phys_ptr, 0);
 				return Err(errno);
 			}
 			if let Err(errno) = vmem.map(new_phys_ptr, virt_ptr, flags) {
-				ref_counter.get_mut().decrement(new_phys_ptr);
+				ref_counter.decrement(new_phys_ptr);
 				buddy::free(new_phys_ptr, 0);
 				return Err(errno);
 			}
 
 			if let Some(prev_phys_ptr) = prev_phys_ptr {
-				ref_counter.get_mut().decrement(prev_phys_ptr);
+				ref_counter.decrement(prev_phys_ptr);
+				if ref_counter.can_free(prev_phys_ptr) {
+					buddy::free(prev_phys_ptr, 0);
+				}
 			}
 		}
 
@@ -381,6 +332,33 @@ impl MemMapping {
 		Ok(())
 	}
 
+	/// Maps the mapping to the given virtual memory context with the default page.
+	///
+	/// If the mapping is marked as nolazy, the function allocates physical memory and maps it
+	/// instead of the default page.
+	pub fn map_default(&mut self) -> Result<(), Errno> {
+		if self.flags & super::MAPPING_FLAG_NOLAZY != 0 {
+			for i in 0..self.size {
+				if let Err(errno) = self.map(i) {
+					self.unmap()?;
+					return Err(errno);
+				}
+			}
+		} else {
+			let vmem = self.get_mut_vmem();
+			let default_page = get_default_page();
+
+			for i in 0..self.size {
+				let virt_ptr = ((self.begin as usize) + (i * memory::PAGE_SIZE)) as *const c_void;
+				let flags = self.get_vmem_flags(false, i);
+
+				vmem.map(default_page, virt_ptr, flags)?;
+			}
+		}
+
+		Ok(())
+	}
+
 	/// Frees the physical page at offset `offset` of the mapping.
 	///
 	/// If the page is shared, it is not freed but the reference counter is decreased.
@@ -394,10 +372,11 @@ impl MemMapping {
 			}
 
 			let can_free = {
-				let ref_counter = super::PHYSICAL_REF_COUNTER.lock();
+				let ref_counter_guard = super::PHYSICAL_REF_COUNTER.lock();
+				let ref_counter = ref_counter_guard.get_mut();
 
-				ref_counter.get_mut().decrement(phys_ptr);
-				ref_counter.get().can_free(phys_ptr)
+				ref_counter.decrement(phys_ptr);
+				ref_counter.can_free(phys_ptr)
 			};
 
 			if can_free {
