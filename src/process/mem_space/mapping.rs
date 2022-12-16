@@ -65,7 +65,6 @@ enum MapResidence {
 	File {
 		/// The location of the file.
 		file: SharedPtr<OpenFile>,
-
 		/// The offset of the mapping in the file.
 		off: u64,
 	},
@@ -74,7 +73,6 @@ enum MapResidence {
 	Swap {
 		/// The location of the swap space.
 		swap_file: SharedPtr<OpenFile>,
-
 		/// The ID of the slot occupied by the mapping.
 		slot_id: u32,
 		/// The page offset in the slot.
@@ -141,7 +139,6 @@ impl MemMapping {
 		let residence = match file {
 			Some((file, off)) => MapResidence::File {
 				file,
-
 				off,
 			},
 
@@ -287,7 +284,22 @@ impl MemMapping {
 			return Ok(());
 		}
 
-		let new_phys_ptr = buddy::alloc(0, buddy::FLAG_ZONE_TYPE_USER)?;
+		let new_phys_ptr = match self.residence {
+			MapResidence::None => buddy::alloc(0, buddy::FLAG_ZONE_TYPE_USER)?,
+
+			MapResidence::File {
+				file: _,
+				off: _,
+			} => {
+				// TODO get physical page for this offset
+				todo!();
+			}
+
+			MapResidence::Swap { .. } => {
+				// TODO
+				todo!();
+			}
+		};
 		let flags = self.get_vmem_flags(true, offset);
 
 		{
@@ -565,7 +577,6 @@ impl MemMapping {
 		}
 		let MapResidence::File {
 			file,
-
 			off,
 		} = &self.residence else {
 			return Ok(());

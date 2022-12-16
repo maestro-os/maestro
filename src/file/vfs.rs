@@ -13,6 +13,7 @@ use crate::file::Mode;
 use crate::file::MountPoint;
 use crate::file::Uid;
 use crate::file::buffer;
+use crate::file::file_mapping::FileMappingManager;
 use crate::file::mountpoint;
 use crate::file::path::Path;
 use crate::file;
@@ -43,13 +44,16 @@ fn update_location(file: &mut File, mountpoint: &MountPoint) {
 /// as a cache to speedup file accesses.
 pub struct VFS {
 	// TODO Add files caching
+
+	/// Structure managing file mappings.
+	file_mappings_manager: FileMappingManager,
 }
 
 impl VFS {
 	/// Creates a new instance.
 	pub fn new() -> Self {
 		Self {
-			// TODO
+			file_mappings_manager: FileMappingManager::new(),
 		}
 	}
 
