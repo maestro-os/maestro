@@ -4,6 +4,7 @@
 use core::cmp::Ordering;
 use core::ptr::NonNull;
 use core::slice;
+use crate::errno::Errno;
 use crate::file::FileLocation;
 use crate::memory;
 use crate::util::container::hashmap::HashMap;
@@ -16,6 +17,7 @@ struct FileMapping {
 	/// The length of the mapping in number of pages.
 	len: usize,
 
+	// TODO Use a vector of pages instead to allow sharing more easily
 	/// The content of the mapping.
 	content: NonNull<u8>,
 }
@@ -121,6 +123,36 @@ impl FileMappingManager {
 		self.file_mappings.get_mut(loc)
 	}
 
-	// TODO create_mapping (reference counting)
-	// TODO remove_mapping (reference counting)
+	/// Maps the the file at the given location.
+	///
+	/// Arguments:
+	/// - `loc` is the location to the file.
+	/// - `offset` is the beginning offset of the chunk to map.
+	/// - `size` is the size of the chunk to map in pages.
+	pub fn map(&mut self, _loc: FileLocation, _offset: u64, _len: usize) -> Result<(), Errno> {
+		// TODO Check if the file mapping exists. If not, create it
+
+		// TODO Check if mapping with same offset and len exist:
+		// - If yes: increment references count and return
+		// - If not: check if mapping with same offset but NOT len exist
+		//	- If yes: TODO: figure out how to share pages
+		//	- If no: create the mapping
+
+		todo!();
+	}
+
+	/// Unmaps the file at the given location.
+	///
+	/// Arguments:
+	/// - `loc` is the location to the file.
+	/// - `offset` is the beginning offset of the chunk to map.
+	/// - `size` is the size of the chunk to map in pages.
+	///
+	/// If the file mapping doesn't exist, the function does nothing.
+	pub fn unmap(&mut self, _loc: &FileLocation, _offset: u64, _len: usize) {
+		// TODO If the file mapping doesn't exist, do nothing and return
+
+		// TODO
+		todo!();
+	}
 }
