@@ -2,6 +2,7 @@
 //! etc...
 
 use core::cmp::Ordering;
+use core::cmp::min;
 use core::ptr::NonNull;
 use core::slice;
 use crate::errno::Errno;
@@ -9,6 +10,8 @@ use crate::file::FileLocation;
 use crate::memory;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::map::Map;
+use crate::util::container::vec::Vec;
+use crate::util::math;
 
 /// A mapping on a file.
 struct FileMapping {
@@ -17,9 +20,64 @@ struct FileMapping {
 	/// The length of the mapping in number of pages.
 	len: usize,
 
-	// TODO Use a vector of pages instead to allow sharing more easily
-	/// The content of the mapping.
-	content: NonNull<u8>,
+	/// The list of physical pages of the mapping.
+	pages: Vec<NonNull<u8>>,
+}
+
+impl FileMapping {
+	/// TODO doc
+	pub fn read(&self, offset: usize, buff: &mut [u8]) -> usize {
+		// The total length in bytes
+		let total_len = self.pages.len() * memory::PAGE_SIZE;
+
+		let end = min(offset + buff.len(), total_len);
+
+		let begin_page = offset / memory::PAGE_SIZE;
+		let end_page = math::ceil_division(end, memory::PAGE_SIZE);
+
+		self.pages[begin_page..end_page]
+			.iter()
+			.enumerate()
+			.map(|(i, page)| (i * memory::PAGE_SIZE, page))
+			.map(|(page_off, page)| {
+				let len = min(page_off + memory::PAGE_SIZE, end);
+
+				let page_slice = unsafe {
+					slice::from_raw_parts(page.as_ref(), len)
+				};
+				buff[page_off..(page_off + len)].copy_from_slice(&page_slice);
+
+				len
+			})
+			.sum()
+	}
+
+	/// TODO doc
+	pub fn write(&mut self, offset: usize, buff: &[u8]) -> usize {
+		// The total length in bytes
+		let total_len = self.pages.len() * memory::PAGE_SIZE;
+
+		let end = min(offset + buff.len(), total_len);
+
+		let begin_page = offset / memory::PAGE_SIZE;
+		let end_page = math::ceil_division(end, memory::PAGE_SIZE);
+
+		self.pages[begin_page..end_page]
+			.iter_mut()
+			.enumerate()
+			.map(|(i, page)| (i * memory::PAGE_SIZE, page))
+			.map(|(page_off, page)| {
+				let len = min(page_off + memory::PAGE_SIZE, end);
+
+				let page_slice = unsafe {
+					slice::from_raw_parts_mut(page.as_mut(), len)
+				};
+				page_slice.copy_from_slice(&buff[page_off..(page_off + len)]);
+
+				len
+			})
+			.sum()
+	}
 }
 
 /// A file mapped partially or totally into memory.
@@ -51,27 +109,20 @@ impl MappedFile {
 	///
 	/// `offset` is the offset in the mapped file to the beginning of the data to be read.
 	///
-	/// On success, the function returns the number of read bytes.
-	/// If the chunk of data is out of bounds on loaded mappings, the function returns None.
-	pub fn read(&mut self, offset: u64, buff: &mut [u8]) -> Option<u64> {
-		let mapping = self.get_mapping_for(offset)?;
-		let mapping_len = mapping.len * memory::PAGE_SIZE;
+	/// The function returns the number of read bytes.
+	pub fn read(&mut self, offset: u64, buff: &mut [u8]) -> usize {
+		let mut i = 0;
 
-		// The begin offset inside of the mapping
-		let begin = offset - mapping.begin;
-		// The end offset inside of the mapping
-		let end = begin + buff.len() as u64;
-
-		if end <= mapping_len as u64 {
-			let content_slice = unsafe {
-				slice::from_raw_parts(mapping.content.as_mut(), mapping_len)
+		while i < buff.len() {
+			let off = offset + i as u64;
+			let Some(mapping) = self.get_mapping_for(off) else {
+				break;
 			};
 
-			buff.copy_from_slice(&content_slice[(begin as usize)..(end as usize)]);
-			Some(end - begin)
-		} else {
-			None
+			i += mapping.read((offset - i as u64) as usize, &mut buff[i..]);
 		}
+
+		i
 	}
 
 	/// Reads data from `buff` and writes it into the mapped file.
@@ -80,39 +131,33 @@ impl MappedFile {
 	///
 	/// On success, the function returns the number of written bytes.
 	/// If the chunk of data is out of bounds on loaded mappings, the function returns None.
-	pub fn write(&mut self, offset: u64, buff: &[u8]) -> Option<u64> {
-		let mapping = self.get_mapping_for(offset)?;
-		let mapping_len = mapping.len * memory::PAGE_SIZE;
+	pub fn write(&mut self, offset: u64, buff: &[u8]) -> usize {
+		let mut i = 0;
 
-		// The begin offset inside of the mapping
-		let begin = offset - mapping.begin;
-		// The end offset inside of the mapping
-		let end = begin + buff.len() as u64;
-
-		if end <= mapping_len as u64 {
-			let content_slice = unsafe {
-				slice::from_raw_parts_mut(mapping.content.as_mut(), mapping_len)
+		while i < buff.len() {
+			let off = offset + i as u64;
+			let Some(mapping) = self.get_mapping_for(off) else {
+				break;
 			};
 
-			content_slice[(begin as usize)..(end as usize)].copy_from_slice(&buff);
-			Some(end - begin)
-		} else {
-			None
+			i += mapping.write((offset - i as u64) as usize, &buff[i..]);
 		}
+
+		i
 	}
 }
 
 /// Structure managing file mappings.
 pub struct FileMappingManager {
 	/// The list of mapped files, by location.
-	file_mappings: HashMap<FileLocation, MappedFile>,
+	mapped_files: HashMap<FileLocation, MappedFile>,
 }
 
 impl FileMappingManager {
 	/// Creates a new instance.
 	pub fn new() -> Self {
 		Self {
-			file_mappings: HashMap::new(),
+			mapped_files: HashMap::new(),
 		}
 	}
 
@@ -120,7 +165,7 @@ impl FileMappingManager {
 	///
 	/// If the file is not mapped, the function returns None.
 	pub fn get_mapped_file(&mut self, loc: &FileLocation) -> Option<&mut MappedFile> {
-		self.file_mappings.get_mut(loc)
+		self.mapped_files.get_mut(loc)
 	}
 
 	/// Maps the the file at the given location.
@@ -149,8 +194,10 @@ impl FileMappingManager {
 	/// - `size` is the size of the chunk to map in pages.
 	///
 	/// If the file mapping doesn't exist, the function does nothing.
-	pub fn unmap(&mut self, _loc: &FileLocation, _offset: u64, _len: usize) {
-		// TODO If the file mapping doesn't exist, do nothing and return
+	pub fn unmap(&mut self, loc: &FileLocation, _offset: u64, _len: usize) {
+		let Some(_mapped_file) = self.mapped_files.get(loc) else {
+			return;
+		};
 
 		// TODO
 		todo!();

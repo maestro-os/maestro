@@ -13,7 +13,7 @@ use crate::file::Mode;
 use crate::file::MountPoint;
 use crate::file::Uid;
 use crate::file::buffer;
-use crate::file::file_mapping::FileMappingManager;
+use crate::file::mapping::FileMappingManager;
 use crate::file::mountpoint;
 use crate::file::path::Path;
 use crate::file;

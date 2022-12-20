@@ -486,6 +486,54 @@ impl<T> IndexMut<usize> for Vec<T> {
 	}
 }
 
+impl<T> Index<Range<usize>> for Vec<T> {
+	type Output = [T];
+
+	#[inline]
+	fn index(&self, range: Range<usize>) -> &Self::Output {
+		&self.as_slice()[range]
+	}
+}
+
+impl<T> IndexMut<Range<usize>> for Vec<T> {
+	#[inline]
+	fn index_mut(&mut self, range: Range<usize>) -> &mut Self::Output {
+		&mut self.as_mut_slice()[range]
+	}
+}
+
+impl<T> Index<RangeFrom<usize>> for Vec<T> {
+	type Output = [T];
+
+	#[inline]
+	fn index(&self, range: RangeFrom<usize>) -> &Self::Output {
+		&self.as_slice()[range]
+	}
+}
+
+impl<T> IndexMut<RangeFrom<usize>> for Vec<T> {
+	#[inline]
+	fn index_mut(&mut self, range: RangeFrom<usize>) -> &mut Self::Output {
+		&mut self.as_mut_slice()[range]
+	}
+}
+
+impl<T> Index<RangeTo<usize>> for Vec<T> {
+	type Output = [T];
+
+	#[inline]
+	fn index(&self, range: RangeTo<usize>) -> &Self::Output {
+		&self.as_slice()[range]
+	}
+}
+
+impl<T> IndexMut<RangeTo<usize>> for Vec<T> {
+	#[inline]
+	fn index_mut(&mut self, range: RangeTo<usize>) -> &mut Self::Output {
+		&mut self.as_mut_slice()[range]
+	}
+}
+
 impl<T: Ord> Vec<T> {
 	pub fn binary_search(&self, x: &T) -> Result<usize, usize> {
 		self.binary_search_by(move |y| y.cmp(x))
