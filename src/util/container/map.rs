@@ -427,6 +427,12 @@ pub struct Map<K: 'static + Ord, V: 'static> {
 	root: Option<NonNull<Node<K, V>>>,
 }
 
+impl<K: 'static + Ord, V: 'static> Default for Map<K, V> {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl<K: 'static + Ord, V: 'static> Map<K, V> {
 	/// Creates a new binary tree.
 	pub const fn new() -> Self {

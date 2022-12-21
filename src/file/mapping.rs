@@ -16,7 +16,7 @@ use crate::util::math;
 /// A mapping on a file.
 struct FileMapping {
 	/// The offset to the beginning of the mapping in bytes.
-	begin: u64,
+	offset: u64,
 	/// The length of the mapping in number of pages.
 	len: usize,
 
@@ -81,6 +81,7 @@ impl FileMapping {
 }
 
 /// A file mapped partially or totally into memory.
+#[derive(Default)]
 pub struct MappedFile {
 	/// The list of mappings, ordered by offset.
 	mappings: Map<u64, FileMapping>,
@@ -174,8 +175,15 @@ impl FileMappingManager {
 	/// - `loc` is the location to the file.
 	/// - `offset` is the beginning offset of the chunk to map.
 	/// - `size` is the size of the chunk to map in pages.
-	pub fn map(&mut self, _loc: FileLocation, _offset: u64, _len: usize) -> Result<(), Errno> {
-		// TODO Check if the file mapping exists. If not, create it
+	pub fn map(&mut self, loc: FileLocation, _offset: u64, _len: usize) -> Result<(), Errno> {
+		let _mapped_file = match self.mapped_files.get_mut(&loc) {
+			Some(f) => f,
+
+			None => {
+				self.mapped_files.insert(loc.clone(), MappedFile::default())?;
+				self.mapped_files.get_mut(&loc).unwrap()
+			},
+		};
 
 		// TODO Check if mapping with same offset and len exist:
 		// - If yes: increment references count and return
