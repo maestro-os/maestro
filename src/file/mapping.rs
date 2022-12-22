@@ -16,7 +16,7 @@ use crate::util::math;
 /// A mapping on a file.
 struct FileMapping {
 	/// The offset to the beginning of the mapping in bytes.
-	offset: u64,
+	off: u64,
 	/// The length of the mapping in number of pages.
 	len: usize,
 
@@ -26,13 +26,13 @@ struct FileMapping {
 
 impl FileMapping {
 	/// TODO doc
-	pub fn read(&self, offset: usize, buff: &mut [u8]) -> usize {
+	pub fn read(&self, off: usize, buff: &mut [u8]) -> usize {
 		// The total length in bytes
 		let total_len = self.pages.len() * memory::PAGE_SIZE;
 
-		let end = min(offset + buff.len(), total_len);
+		let end = min(off + buff.len(), total_len);
 
-		let begin_page = offset / memory::PAGE_SIZE;
+		let begin_page = off / memory::PAGE_SIZE;
 		let end_page = math::ceil_division(end, memory::PAGE_SIZE);
 
 		self.pages[begin_page..end_page]
@@ -53,13 +53,13 @@ impl FileMapping {
 	}
 
 	/// TODO doc
-	pub fn write(&mut self, offset: usize, buff: &[u8]) -> usize {
+	pub fn write(&mut self, off: usize, buff: &[u8]) -> usize {
 		// The total length in bytes
 		let total_len = self.pages.len() * memory::PAGE_SIZE;
 
-		let end = min(offset + buff.len(), total_len);
+		let end = min(off + buff.len(), total_len);
 
-		let begin_page = offset / memory::PAGE_SIZE;
+		let begin_page = off / memory::PAGE_SIZE;
 		let end_page = math::ceil_division(end, memory::PAGE_SIZE);
 
 		self.pages[begin_page..end_page]
@@ -108,19 +108,19 @@ impl MappedFile {
 
 	/// Reads data from the mapped file and writes it into `buff`.
 	///
-	/// `offset` is the offset in the mapped file to the beginning of the data to be read.
+	/// `off` is the offset in the mapped file to the beginning of the data to be read.
 	///
 	/// The function returns the number of read bytes.
-	pub fn read(&mut self, offset: u64, buff: &mut [u8]) -> usize {
+	pub fn read(&mut self, off: u64, buff: &mut [u8]) -> usize {
 		let mut i = 0;
 
 		while i < buff.len() {
-			let off = offset + i as u64;
+			let off = off + i as u64;
 			let Some(mapping) = self.get_mapping_for(off) else {
 				break;
 			};
 
-			i += mapping.read((offset - i as u64) as usize, &mut buff[i..]);
+			i += mapping.read((off - i as u64) as usize, &mut buff[i..]);
 		}
 
 		i
@@ -128,20 +128,20 @@ impl MappedFile {
 
 	/// Reads data from `buff` and writes it into the mapped file.
 	///
-	/// `offset` is the offset in the mapped file to the beginning of the data to write.
+	/// `off` is the offset in the mapped file to the beginning of the data to write.
 	///
 	/// On success, the function returns the number of written bytes.
 	/// If the chunk of data is out of bounds on loaded mappings, the function returns None.
-	pub fn write(&mut self, offset: u64, buff: &[u8]) -> usize {
+	pub fn write(&mut self, off: u64, buff: &[u8]) -> usize {
 		let mut i = 0;
 
 		while i < buff.len() {
-			let off = offset + i as u64;
+			let off = off + i as u64;
 			let Some(mapping) = self.get_mapping_for(off) else {
 				break;
 			};
 
-			i += mapping.write((offset - i as u64) as usize, &buff[i..]);
+			i += mapping.write((off - i as u64) as usize, &buff[i..]);
 		}
 
 		i
@@ -173,10 +173,10 @@ impl FileMappingManager {
 	///
 	/// Arguments:
 	/// - `loc` is the location to the file.
-	/// - `offset` is the beginning offset of the chunk to map.
+	/// - `off` is the beginning offset of the chunk to map.
 	/// - `size` is the size of the chunk to map in pages.
-	pub fn map(&mut self, loc: FileLocation, _offset: u64, _len: usize) -> Result<(), Errno> {
-		let _mapped_file = match self.mapped_files.get_mut(&loc) {
+	pub fn map(&mut self, loc: FileLocation, off: u64, len: usize) -> Result<(), Errno> {
+		let mapped_file = match self.mapped_files.get_mut(&loc) {
 			Some(f) => f,
 
 			None => {
@@ -185,29 +185,52 @@ impl FileMappingManager {
 			},
 		};
 
-		// TODO Check if mapping with same offset and len exist:
-		// - If yes: increment references count and return
-		// - If not: check if mapping with same offset but NOT len exist
-		//	- If yes: TODO: figure out how to share pages
-		//	- If no: create the mapping
+		let mut i = 0;
+		while i < len {
+			match mapped_file.get_mapping_for(off) {
+				Some(mapping) => {
+					// TODO increment references count and return
 
-		todo!();
+					i += mapping.len;
+				},
+
+				None => {
+					// No mapping match. Create one
+					// TODO Handle overlapping
+					let mapping_off = off + i as u64 * memory::PAGE_SIZE as u64;
+					mapped_file.mappings.insert(mapping_off, FileMapping {
+						off: mapping_off,
+						len: len - i,
+
+						pages: Vec::new(),
+					})?;
+
+					break;
+				}
+			}
+		}
+
+		Ok(())
 	}
 
 	/// Unmaps the file at the given location.
 	///
 	/// Arguments:
 	/// - `loc` is the location to the file.
-	/// - `offset` is the beginning offset of the chunk to map.
+	/// - `off` is the beginning offset of the chunk to map.
 	/// - `size` is the size of the chunk to map in pages.
 	///
 	/// If the file mapping doesn't exist, the function does nothing.
-	pub fn unmap(&mut self, loc: &FileLocation, _offset: u64, _len: usize) {
-		let Some(_mapped_file) = self.mapped_files.get(loc) else {
+	pub fn unmap(&mut self, loc: &FileLocation, _off: u64, _len: usize) {
+		let Some(mapped_file) = self.mapped_files.get(loc) else {
 			return;
 		};
 
-		// TODO
-		todo!();
+		// TODO remove mapping(s)
+
+		// If no mapping is left for the file, remove it
+		if mapped_file.mappings.is_empty() {
+			self.mapped_files.remove(loc);
+		}
 	}
 }
