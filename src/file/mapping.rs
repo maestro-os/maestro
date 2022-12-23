@@ -185,30 +185,21 @@ impl FileMappingManager {
 			},
 		};
 
-		let mut i = 0;
-		while i < len {
-			match mapped_file.get_mapping_for(off) {
-				Some(mapping) => {
-					// TODO increment references count and return
-
-					i += mapping.len;
-				},
-
-				None => {
-					// No mapping match. Create one
-					// TODO Handle overlapping
-					let mapping_off = off + i as u64 * memory::PAGE_SIZE as u64;
-					mapped_file.mappings.insert(mapping_off, FileMapping {
-						off: mapping_off,
-						len: len - i,
-
-						pages: Vec::new(),
-					})?;
-
-					break;
-				}
-			}
+		// Iterating on mappings
+		let end = off + len as u64 * memory::PAGE_SIZE as u64;
+		for (_mapping_off, _mapping) in mapped_file.mappings.range(off..end) {
+			// TODO Increment references count if on the same file offset boundary
+			todo!();
 		}
+
+		// TODO On hole:
+		/*let mapping_off = off + i as u64 * memory::PAGE_SIZE as u64;
+		mapped_file.mappings.insert(mapping_off, FileMapping {
+			off: mapping_off,
+			len: len - i,
+
+			pages: Vec::new(),
+		})?;*/
 
 		Ok(())
 	}
