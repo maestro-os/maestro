@@ -129,7 +129,7 @@ impl MemSpace {
 		gaps_size: &Map<(usize, *const c_void), ()>,
 		size: usize,
 	) -> Option<&'a MemGap> {
-		let (_, ptr) = gaps_size.get_min((size, 0 as _))?.0;
+		let (_, ptr) = gaps_size.range((size, 0 as _)..).next()?.0;
 		let gap = gaps.get(*ptr).unwrap();
 		debug_assert!(gap.get_size() >= size);
 

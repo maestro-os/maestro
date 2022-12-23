@@ -212,59 +212,38 @@ impl Scheduler {
 		let priority_sum = self.priority_sum;
 		let priority_max = self.priority_max;
 		let processes_count = self.processes.count();
-		// If no process exist, nothing to run
-		if processes_count == 0 {
-			return None;
-		}
 
 		// Getting the current process, or take the first process in the list if no
 		// process is running
 		let (curr_pid, curr_proc) = self.curr_proc.clone().or_else(|| {
-			let (pid, proc) = self.processes.get_min(0)?;
-			Some((*pid, proc.clone()))
+			self.processes.iter()
+				.next()
+				.map(|(pid, proc)| (*pid, proc.clone()))
 		})?;
 
-		// Closure iterating the tree to find an available process
-		let next = |iter: MapIterator<Pid, IntSharedPtr<Process>>| {
-			let mut proc: Option<(Pid, IntSharedPtr<Process>)> = None;
-
-			// Iterating over processes
-			for (pid, process) in iter {
-				let runnable = {
-					let guard = process.lock();
-					Self::can_run(guard.get(), priority_sum, priority_max, processes_count)
-				};
-
-				// FIXME Potenial race condition? (checking if runnable, then unlocking and
-				// using the result of the check)
-				if runnable {
-					proc = Some((*pid, process.clone()));
-					break;
-				}
-			}
-
-			proc
+		let process_filter = |(_, proc): &(&Pid, &IntSharedPtr<Process>)| {
+			let guard = proc.lock();
+			Self::can_run(guard.get(), priority_sum, priority_max, processes_count)
 		};
 
-		let mut iter = self.processes.iter();
-		// Setting the iterator next to the current running process
-		iter.jump(&curr_pid);
-		iter.next();
+		let next_proc = self.processes.range(curr_pid..)
+			.filter(process_filter)
+			.next()
+			.or_else(|| {
+				// If no suitable process is found, go back to the beginning to check processes
+				// located before the previous process (looping)
 
-		// Running the loop to reach the end of processes list
-		let mut next_proc = next(iter);
-		// If no suitable process is found, going back to the beginning to check the
-		// processes located before the previous process
-		if next_proc.is_none() {
-			next_proc = next(self.processes.iter());
-		}
+				self.processes.iter()
+					.filter(process_filter)
+					.next()
+			})
+			.map(|(pid, proc)| (*pid, proc));
 
 		let (next_pid, next_proc) = next_proc?;
-
 		if next_pid != curr_pid || processes_count == 1 {
 			curr_proc.lock().get_mut().quantum_count = 0;
 		}
-		Some((next_pid, next_proc))
+		Some((next_pid, next_proc.clone()))
 	}
 
 	/// Ticking the scheduler. This function saves the data of the currently
