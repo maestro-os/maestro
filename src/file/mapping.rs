@@ -106,7 +106,7 @@ impl FileMappingManager {
 		};
 
 		// Increment references count
-		mapped_file.pages.range(off..(off + len))
+		mapped_file.pages.range_mut(off..(off + len))
 			.for_each(|(_, p)| p.ref_count += 1);
 
 		Ok(())
@@ -121,17 +121,16 @@ impl FileMappingManager {
 	///
 	/// If the file mapping doesn't exist, the function does nothing.
 	pub fn unmap(&mut self, loc: &FileLocation, off: usize, len: usize) {
-		let Some(mapped_file) = self.mapped_files.get(loc) else {
+		let Some(mapped_file) = self.mapped_files.get_mut(loc) else {
 			return;
 		};
 
-
 		// Decrement references count
-		mapped_file.pages.range(off..(off + len))
+		mapped_file.pages.range_mut(off..(off + len))
 			.for_each(|(_, p)| p.ref_count -= 1);
 
 		// Remove mapping that are not referenced
-		// TODO mapped_file.pages.retain(|p| p.ref_count <= 0);
+		mapped_file.pages.retain(|_, p| p.ref_count <= 0);
 
 		// If no mapping is left for the file, remove it
 		if mapped_file.pages.is_empty() {

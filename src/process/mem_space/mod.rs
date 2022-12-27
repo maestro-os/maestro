@@ -102,7 +102,7 @@ impl MemSpace {
 		let g = self.gaps.insert(gap_ptr, gap)?;
 
 		if let Err(e) = self.gaps_size.insert((g.get_size(), gap_ptr), ()) {
-			self.gaps.remove(gap_ptr);
+			self.gaps.remove(&gap_ptr);
 			return Err(e);
 		}
 
@@ -113,8 +113,8 @@ impl MemSpace {
 	/// The function returns the removed gap. If the gap didn't exist, the
 	/// function returns None.
 	fn gap_remove(&mut self, gap_begin: *const c_void) -> Option<MemGap> {
-		let g = self.gaps.remove(gap_begin)?;
-		self.gaps_size.remove((g.get_size(), gap_begin));
+		let g = self.gaps.remove(&gap_begin)?;
+		self.gaps_size.remove(&(g.get_size(), gap_begin));
 
 		Some(g)
 	}
@@ -291,7 +291,7 @@ impl MemSpace {
 
 		// Mapping the default page
 		if let Err(e) = m.map_default() {
-			self.mappings.remove(addr);
+			self.mappings.remove(&addr);
 			return Err(e);
 		}
 
@@ -421,7 +421,7 @@ impl MemSpace {
 				let pages = min(size - i, mapping.get_size() - begin);
 
 				// Removing the mapping
-				let mapping = self.mappings.remove(mapping_ptr).unwrap();
+				let mapping = self.mappings.remove(&mapping_ptr).unwrap();
 
 				// Newly created mappings and gap after removing parts of the previous one
 				let (prev, gap, next) = mapping.partial_unmap(begin, pages);

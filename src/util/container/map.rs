@@ -905,10 +905,12 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 
 	/// Removes a value from the tree. If the value is present several times in
 	/// the tree, only one node is removed.
+	///
 	/// `key` is the key to select the node to remove.
+	///
 	/// If the key exists, the function returns the value of the removed node.
-	pub fn remove(&mut self, key: K) -> Option<V> {
-		let node = self.get_mut_node(&key)?;
+	pub fn remove(&mut self, key: &K) -> Option<V> {
+		let node = self.get_mut_node(key)?;
 		let value = self.remove_node(node);
 
 		//#[cfg(config_debug_debug)]
@@ -1066,12 +1068,21 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 		MapMutIterator::new(self)
 	}
 
-	/// TODO doc
+	/// Returns an immutable iterator on the given range of keys.
 	pub fn range<R: RangeBounds<K>>(&self, range: R) -> MapRange<'_, K, V, R> {
 		MapRange::new(self, range)
 	}
 
-	// TODO range_mut
+	/// Returns a mutable iterator on the given range of keys.
+	pub fn range_mut<R: RangeBounds<K>>(&mut self, range: R) -> MapMutRange<'_, K, V, R> {
+		MapMutRange::new(self, range)
+	}
+
+	/// Retains only the elements specified by the predicate.
+	pub fn retain<F: FnMut(&K, &mut V) -> bool>(&mut self, mut _f: F) {
+		// TODO
+		todo!();
+	}
 }
 
 /// An iterator for the Map structure. This iterator traverses the tree in pre
@@ -1195,6 +1206,15 @@ impl<'a, K: 'static + Ord, V> Iterator for MapMutIterator<'a, K, V> {
 	}
 }
 
+impl<'a, K: 'static + Ord, V> IntoIterator for &'a mut Map<K, V> {
+	type IntoIter = MapMutIterator<'a, K, V>;
+	type Item = (&'a K, &'a mut V);
+
+	fn into_iter(self) -> Self::IntoIter {
+		MapMutIterator::new(self)
+	}
+}
+
 /// Iterator over a range of keys in a map.
 pub struct MapRange<'m, K: 'static + Ord, V: 'static, R: RangeBounds<K>> {
 	/// Inner iterator.
@@ -1222,6 +1242,45 @@ impl<'m, K: 'static + Ord, V: 'static, R: RangeBounds<K>> MapRange<'m, K, V, R> 
 
 impl<'m, K: 'static + Ord, V: 'static, R: RangeBounds<K>> Iterator for MapRange<'m, K, V, R> {
 	type Item = (&'m K, &'m V);
+
+	fn next(&mut self) -> Option<Self::Item> {
+		let (key, value) = self.iter.next()?;
+
+		if self.range.contains(key) {
+			Some((key, value))
+		} else {
+			None
+		}
+	}
+}
+
+/// Iterator over a range of keys in a map (mutably).
+pub struct MapMutRange<'m, K: 'static + Ord, V: 'static, R: RangeBounds<K>> {
+	/// Inner iterator.
+	iter: MapMutIterator<'m, K, V>,
+	/// The range to iterate on.
+	range: R,
+}
+
+impl<'m, K: 'static + Ord, V: 'static, R: RangeBounds<K>> MapMutRange<'m, K, V, R> {
+	/// Creates an iterator for the given reference.
+	fn new(tree: &'m mut Map<K, V>, range: R) -> Self {
+		let node = tree.get_start_node(range.start_bound());
+
+		let iter = MapMutIterator {
+			tree,
+			node,
+		};
+
+		Self {
+			iter,
+			range,
+		}
+	}
+}
+
+impl<'m, K: 'static + Ord, V: 'static, R: RangeBounds<K>> Iterator for MapMutRange<'m, K, V, R> {
+	type Item = (&'m K, &'m mut V);
 
 	fn next(&mut self) -> Option<Self::Item> {
 		let (key, value) = self.iter.next()?;

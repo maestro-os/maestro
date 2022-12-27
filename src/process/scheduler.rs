@@ -152,7 +152,7 @@ impl Scheduler {
 			let process = guard.get();
 
 			let priority = process.get_priority();
-			self.processes.remove(pid);
+			self.processes.remove(&pid);
 			self.update_priority(priority, 0);
 		}
 	}
