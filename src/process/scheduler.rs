@@ -226,7 +226,7 @@ impl Scheduler {
 			Self::can_run(guard.get(), priority_sum, priority_max, processes_count)
 		};
 
-		let next_proc = self.processes.range(curr_pid..)
+		let next_proc = self.processes.range((curr_pid + 1)..)
 			.filter(process_filter)
 			.next()
 			.or_else(|| {
