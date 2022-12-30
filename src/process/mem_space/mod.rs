@@ -178,6 +178,7 @@ impl MapResidence {
 	}
 }
 
+// TODO Add a variant for ASLR
 /// Enumeration of constraints for memory mapping.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum MapConstraint {

@@ -9,15 +9,19 @@ use crate::elf::parser::ELFParser;
 use crate::errno::Errno;
 use crate::memory::buddy;
 use crate::memory;
+use crate::process::mem_space::MapConstraint;
+use crate::process::mem_space::MapResidence;
 use crate::process::mem_space::MemSpace;
+use crate::process::mem_space;
 use crate::util::container::vec::Vec;
 use crate::util::lock::Mutex;
 use crate::util::math;
+use crate::util::ptr::SharedPtr;
 
 /// Structure storing informations on the vDSO ELF image.
 struct VDSO {
 	/// The list of pages on which the image is loaded.
-	img: Vec<NonNull<c_void>>,
+	pages: SharedPtr<Vec<NonNull<[u8; memory::PAGE_SIZE]>>>,
 	/// The length of the ELF image in bytes.
 	len: usize,
 
@@ -28,10 +32,9 @@ struct VDSO {
 /// Informations about the mapped vDSO.
 pub struct MappedVDSOInfo {
 	/// The pointer to the mapped image.
-	ptr: NonNull<c_void>,
-
+	pub ptr: NonNull<c_void>,
 	/// The pointer to the entry point.
-	entry: NonNull<c_void>,
+	pub entry: NonNull<c_void>,
 }
 
 /// The info of the vDSO. If None, the vDSO is not loaded yet.
@@ -42,7 +45,7 @@ fn load_image() -> Result<VDSO, Errno> {
 	let const_img = include_bytes!("../../../vdso.so");
 
 	// Load image into pages
-	let mut img = Vec::new();
+	let mut pages = Vec::new();
 	for i in 0..math::ceil_division(const_img.len(), memory::PAGE_SIZE) {
 		// Alloc page
 		let ptr = buddy::alloc(0, buddy::FLAG_ZONE_TYPE_KERNEL)?;
@@ -54,7 +57,7 @@ fn load_image() -> Result<VDSO, Errno> {
 			ptr::copy_nonoverlapping(const_img[off..].as_ptr() as *const c_void, ptr, len);
 		}
 
-		img.push(NonNull::new(ptr).unwrap())?;
+		pages.push(NonNull::new(ptr as *mut [u8; memory::PAGE_SIZE]).unwrap())?;
 	}
 
 	// Getting entry point
@@ -62,7 +65,7 @@ fn load_image() -> Result<VDSO, Errno> {
 	let entry_off = parser.get_header().e_entry as usize;
 
 	Ok(VDSO {
-		img,
+		pages: SharedPtr::new(pages)?,
 		len: const_img.len(),
 
 		entry_off,
@@ -72,7 +75,7 @@ fn load_image() -> Result<VDSO, Errno> {
 /// Maps the vDSO into the given memory space.
 ///
 /// The function returns a structure containing informations about the mapped image.
-pub fn map_vdso(_mem_space: &mut MemSpace) -> Result<MappedVDSOInfo, Errno> {
+pub fn map(mem_space: &mut MemSpace) -> Result<MappedVDSOInfo, Errno> {
 	let elf_image_guard = ELF_IMAGE.lock();
 	let elf_image = elf_image_guard.get_mut();
 
@@ -80,9 +83,24 @@ pub fn map_vdso(_mem_space: &mut MemSpace) -> Result<MappedVDSOInfo, Errno> {
 		let img = load_image().expect("Failed to load vDSO");
 		*elf_image = Some(img);
 	}
-	let _img = elf_image.as_ref().unwrap();
+	let img = elf_image.as_ref().unwrap();
 
-	// TODO map
-	// TODO return info
-	todo!();
+	// TODO ASLR
+	let ptr = mem_space.map(
+		MapConstraint::None,
+		math::ceil_division(img.len, memory::PAGE_SIZE),
+		mem_space::MAPPING_FLAG_USER,
+		MapResidence::Static {
+			pages: img.pages.clone(),
+		}
+	)?;
+
+	let entry = unsafe {
+		ptr.add(img.entry_off)
+	};
+
+	Ok(MappedVDSOInfo {
+		ptr: NonNull::new(ptr).unwrap(),
+		entry: NonNull::new(entry).unwrap(),
+	})
 }

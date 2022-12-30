@@ -37,6 +37,8 @@ use crate::util::container::vec::Vec;
 use crate::util::io::IO;
 use crate::util::math;
 use crate::util;
+use super::vdso::MappedVDSOInfo;
+use super::vdso;
 
 /// Used to define the end of the entries list.
 const AT_NULL: i32 = 0;
@@ -87,6 +89,10 @@ const AT_RANDOM: i32 = 25;
 const AT_HWCAP2: i32 = 26;
 /// A pointer to the filename of the executed program.
 const AT_EXECFN: i32 = 31;
+/// A pointer to the entry point of the vDSO.
+const AT_SYSINFO: i32 = 32;
+/// A pointer to the beginning of the vDSO ELF image.
+const AT_SYSINFO_EHDR: i32 = 33;
 
 /// Informations returned after loading an ELF program used to finish
 /// initialization.
@@ -148,12 +154,16 @@ impl AuxEntryDesc {
 	}
 }
 
-/// Builds an auxilary vector with execution informations `exec_info` and load
-/// informations `load_info`.
-/// `parser` is a reference to the ELF parser.
+/// Builds an auxilary vector.
+///
+/// Arguments:
+/// - `exec_info` is the set of execution informations.
+/// - `load_info` is the set of ELF load informations.
+/// - `vdso_info` is the set of vDSO informations.
 fn build_auxilary(
 	exec_info: &ExecInfo,
 	load_info: &ELFLoadInfo,
+	vdso_info: &MappedVDSOInfo,
 ) -> Result<Vec<AuxEntryDesc>, Errno> {
 	let mut aux = Vec::new();
 
@@ -230,6 +240,18 @@ fn build_auxilary(
 		AT_EXECFN,
 		AuxEntryDescValue::String("TODO\0".as_bytes()),
 	))?; // TODO
+
+	// vDSO
+	aux.push(AuxEntryDesc::new(
+		AT_SYSINFO,
+		AuxEntryDescValue::Number(vdso_info.entry.as_ptr() as _)
+	))?;
+	aux.push(AuxEntryDesc::new(
+		AT_SYSINFO_EHDR,
+		AuxEntryDescValue::Number(vdso_info.ptr.as_ptr() as _)
+	))?;
+
+	// End
 	aux.push(AuxEntryDesc::new(AT_NULL, AuxEntryDescValue::Number(0)))?;
 
 	Ok(aux)
@@ -686,8 +708,11 @@ impl Executor for ELFExecutor {
 		let user_stack =
 			mem_space.map_stack(process::USER_STACK_SIZE, process::USER_STACK_FLAGS)?;
 
+		// Map the vDSO
+		let vdso_info = vdso::map(&mut mem_space)?;
+
 		// The auxilary vector
-		let aux = build_auxilary(&self.info, &load_info)?;
+		let aux = build_auxilary(&self.info, &load_info, &vdso_info)?;
 
 		// The size in bytes of the initial data on the stack
 		let total_size = Self::get_init_stack_size(&self.info.argv, &self.info.envp, &aux).1;
