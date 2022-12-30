@@ -303,17 +303,7 @@ impl MemMapping {
 				return;
 			}
 
-			let can_free = {
-				let ref_counter_guard = super::PHYSICAL_REF_COUNTER.lock();
-				let ref_counter = ref_counter_guard.get_mut();
-
-				ref_counter.decrement(phys_ptr);
-				ref_counter.can_free(phys_ptr)
-			};
-
-			if can_free {
-				buddy::free(phys_ptr, 0);
-			}
+			self.residence.free_page(offset, phys_ptr);
 		}
 	}
 
