@@ -18,17 +18,19 @@ use core::ptr::NonNull;
 use core::ptr::null;
 use crate::errno::Errno;
 use crate::errno;
-use crate::file::open_file::OpenFile;
 use crate::idt;
+use crate::memory::buddy;
 use crate::memory::physical_ref_counter::PhysRefCounter;
 use crate::memory::stack;
 use crate::memory::vmem::VMem;
 use crate::memory::vmem;
 use crate::memory;
 use crate::process::oom;
+use crate::process::open_file::OpenFile;
 use crate::util::FailableClone;
 use crate::util::boxed::Box;
 use crate::util::container::map::Map;
+use crate::util::container::vec::Vec;
 use crate::util::lock::Mutex;
 use crate::util::math;
 use crate::util::ptr::SharedPtr;
@@ -54,6 +56,127 @@ pub const MAPPING_FLAG_SHARED: u8 = 0b10000;
 
 /// The physical pages reference counter.
 pub static PHYSICAL_REF_COUNTER: Mutex<PhysRefCounter> = Mutex::new(PhysRefCounter::new());
+
+// TODO update the number of reference to the open file when necessary
+
+// TODO Disallow clone and use a special function + Drop to increment/decrement reference counters
+/// Enumeration of map residences.
+///
+/// A map residence is the location where the physical memory of a mapping is stored.
+#[derive(Clone, Debug)]
+pub enum MapResidence {
+	/// The mapping does not reside anywhere except on the main memory.
+	Normal,
+
+	/// The mapping points to a static location, which may or may not be shared between several
+	/// memory spaces.
+	Static {
+		/// The list of memory pages, in order.
+		pages: SharedPtr<Vec<NonNull<[u8; memory::PAGE_SIZE]>>>,
+	},
+
+	/// The mapping resides in a file.
+	File {
+		/// The location of the file.
+		file: SharedPtr<OpenFile>,
+		/// The offset of the mapping in the file.
+		off: u64,
+	},
+
+	/// The mapping resides in swap space.
+	Swap {
+		/// The location of the swap space.
+		swap_file: SharedPtr<OpenFile>,
+		/// The ID of the slot occupied by the mapping.
+		slot_id: u32,
+		/// The page offset in the slot.
+		page_off: usize,
+	},
+}
+
+impl MapResidence {
+	/// Adds a value of `pages` pages to the offset of the residence, if applicable.
+	pub fn offset_add(&mut self, pages: usize) {
+		match self {
+			Self::File { off, ..  } => *off += pages as u64 * memory::PAGE_SIZE as u64,
+
+			Self::Swap { page_off, ..  } => *page_off += pages,
+
+			_ => {},
+		}
+	}
+
+	/// TODO doc
+	fn alloc() -> Result<*const c_void, Errno> {
+		let ref_counter_guard = PHYSICAL_REF_COUNTER.lock();
+		let ref_counter = ref_counter_guard.get_mut();
+
+		let ptr = buddy::alloc(0, buddy::FLAG_ZONE_TYPE_USER)?;
+
+		match ref_counter.increment(ptr) {
+			Ok(()) => Ok(ptr),
+
+			Err(errno) => {
+				buddy::free(ptr, 0);
+				Err(errno)
+			}
+		}
+	}
+
+	/// TODO doc
+	fn free(ptr: *const c_void) {
+		let ref_counter_guard = PHYSICAL_REF_COUNTER.lock();
+		let ref_counter = ref_counter_guard.get_mut();
+
+		ref_counter.decrement(ptr);
+
+		if ref_counter.can_free(ptr) {
+			buddy::free(ptr, 0);
+		}
+	}
+
+	/// Allocates a physical page for the given offset.
+	///
+	/// Since the function might reuse the same page for several allocation, the page must be freed
+	/// only using the `free_page` function associated with the current instance.
+	pub fn alloc_page(&self, off: usize) -> Result<*const c_void, Errno> {
+		match self {
+			MapResidence::Normal => Self::alloc(),
+
+			MapResidence::Static {
+				pages,
+			} => {
+				let pages_guard = pages.lock();
+				let pages = pages_guard.get();
+
+				if off < pages.len() {
+					Ok(pages[off].as_ptr() as *mut c_void)
+				} else {
+					Self::alloc()
+				}
+			}
+
+			MapResidence::File {
+				file: _,
+				off: _,
+			} => {
+				// TODO get physical page for this offset
+				todo!();
+			}
+
+			MapResidence::Swap { .. } => {
+				// TODO
+				todo!();
+			}
+		}
+	}
+
+	/// Frees the page allocated with `alloc_page`.
+	pub fn free_page(&self, _off: usize, _ptr: *const c_void) {
+		// TODO
+		todo!();
+	}
+}
 
 /// Enumeration of constraints for memory mapping.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -215,7 +338,7 @@ impl MemSpace {
 	/// - `map_constraint` is the constraint to fullfill for the allocation.
 	/// - `size` represents the size of the mapping in number of memory pages.
 	/// - `flags` represents the flags for the mapping.
-	/// - `file` is the open file to map to, along with an offset in this file.
+	/// - `residence` is the residence of the mapping to be created.
 	///
 	/// The underlying physical memory is not allocated directly but only when an attempt to write
 	/// the memory is detected, unless MAPPING_FLAG_NOLAZY is specified as a flag.
@@ -228,7 +351,7 @@ impl MemSpace {
 		map_constraint: MapConstraint,
 		size: usize,
 		flags: u8,
-		file: Option<(SharedPtr<OpenFile>, u64)>,
+		residence: MapResidence,
 	) -> Result<*mut c_void, Errno> {
 		// Checking arguments are valid
 		match map_constraint {
@@ -284,7 +407,7 @@ impl MemSpace {
 			addr,
 			size,
 			flags,
-			file,
+			residence,
 			NonNull::new(self.vmem.as_mut_ptr()).unwrap(),
 		);
 		let m = self.mappings.insert(addr, mapping)?;
@@ -320,7 +443,7 @@ impl MemSpace {
 	/// Same as `map`, except the function returns a pointer to the end of the
 	/// memory mapping.
 	pub fn map_stack(&mut self, size: usize, flags: u8) -> Result<*mut c_void, Errno> {
-		let mapping_ptr = self.map(MapConstraint::None, size, flags, None)?;
+		let mapping_ptr = self.map(MapConstraint::None, size, flags, MapResidence::Normal)?;
 
 		Ok(unsafe {
 			// Safe because the new pointer stays in the range of the allocated mapping
@@ -678,7 +801,7 @@ impl MemSpace {
 			let pages = math::ceil_division(ptr as usize - begin as usize, memory::PAGE_SIZE);
 			let flags = MAPPING_FLAG_WRITE | MAPPING_FLAG_USER;
 
-			self.map(MapConstraint::Fixed(begin), pages, flags, None)?;
+			self.map(MapConstraint::Fixed(begin), pages, flags, MapResidence::Normal)?;
 		} else {
 			// Free memory
 

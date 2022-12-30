@@ -7,6 +7,7 @@ use crate::errno;
 use crate::file::FileType;
 use crate::memory;
 use crate::process::Process;
+use crate::process::mem_space::MapResidence;
 use crate::process::mem_space;
 use crate::syscall::mmap::mem_space::MapConstraint;
 use crate::util::math;
@@ -129,7 +130,14 @@ pub fn do_mmap(
 	} else {
 		// TODO If the mapping requires a fd, return an error
 	}
-	let file = open_file_mutex.map(|file| (file, offset));
+	let residence = match open_file_mutex {
+		Some(file) => MapResidence::File {
+			file,
+			off: offset,
+		},
+
+		None => MapResidence::Normal,
+	};
 
 	// The process's memory space
 	let mem_space = proc.get_mem_space().unwrap();
@@ -143,7 +151,7 @@ pub fn do_mmap(
 		addr_hint,
 		pages,
 		flags,
-		file.clone(),
+		residence.clone(),
 	);
 
 	match result {
@@ -155,7 +163,7 @@ pub fn do_mmap(
 					MapConstraint::None,
 					pages,
 					flags,
-					file,
+					residence,
 				)
 			} else {
 				Err(e)

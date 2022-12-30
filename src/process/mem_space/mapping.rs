@@ -8,7 +8,6 @@ use core::ptr::NonNull;
 use core::ptr;
 use core::slice;
 use crate::errno::Errno;
-use crate::file::open_file::OpenFile;
 use crate::memory::buddy;
 use crate::memory::malloc;
 use crate::memory::physical_ref_counter::PhysRefCounter;
@@ -18,13 +17,15 @@ use crate::memory;
 use crate::process::oom;
 use crate::util::io::IO;
 use crate::util::lock::*;
-use crate::util::ptr::SharedPtr;
 use crate::util;
+use super::MapResidence;
 use super::MemSpace;
 use super::gap::MemGap;
 
-/// A pointer to the default physical page of memory. This page is meant to be
-/// mapped in read-only and is a placeholder for pages that are accessed without
+/// A pointer to the default physical page of memory.
+///
+/// This page is meant to be mapped in read-only and is a placeholder for pages that are accessed
+/// without
 /// being allocated nor written.
 static DEFAULT_PAGE: Mutex<Option<*const c_void>> = Mutex::new(None);
 
@@ -45,51 +46,6 @@ fn get_default_page() -> *const c_void {
 			*default_page = Some(ptr);
 			ptr
 		},
-	}
-}
-
-// TODO update the number of reference to the open file when necessary
-
-// TODO Disallow clone and use a special function + Drop to increment/decrement reference counters
-/// Enumeration of map residences.
-/// A map residence is where a memory mapping may be backed, for both saving memory and staying in
-/// sync with storage.
-///
-/// A mapping may be switched from `MainMemory` to `Swap` and vice-versa.
-#[derive(Clone, Debug)]
-enum MapResidence {
-	/// The mapping does not reside anywhere except on the main memory.
-	None,
-
-	/// The mapping resides in a file.
-	File {
-		/// The location of the file.
-		file: SharedPtr<OpenFile>,
-		/// The offset of the mapping in the file.
-		off: u64,
-	},
-
-	/// The mapping resides in swap space.
-	Swap {
-		/// The location of the swap space.
-		swap_file: SharedPtr<OpenFile>,
-		/// The ID of the slot occupied by the mapping.
-		slot_id: u32,
-		/// The page offset in the slot.
-		page_off: usize,
-	},
-}
-
-impl MapResidence {
-	/// Adds a value of `pages` pages to the offset of the residence, if applicable.
-	pub fn offset_add(&mut self, pages: usize) {
-		match self {
-			Self::File { off, ..  } => *off += pages as u64 * memory::PAGE_SIZE as u64,
-
-			Self::Swap { page_off, ..  } => *page_off += pages,
-
-			_ => {},
-		}
 	}
 }
 
@@ -130,20 +86,11 @@ impl MemMapping {
 		begin: *const c_void,
 		size: usize,
 		flags: u8,
-		file: Option<(SharedPtr<OpenFile>, u64)>,
+		residence: MapResidence,
 		vmem: NonNull<dyn VMem>,
 	) -> Self {
 		debug_assert!(util::is_aligned(begin, memory::PAGE_SIZE));
 		debug_assert!(size > 0);
-
-		let residence = match file {
-			Some((file, off)) => MapResidence::File {
-				file,
-				off,
-			},
-
-			None => MapResidence::None,
-		};
 
 		Self {
 			begin,
@@ -284,44 +231,17 @@ impl MemMapping {
 			return Ok(());
 		}
 
-		let new_phys_ptr = match self.residence {
-			MapResidence::None => buddy::alloc(0, buddy::FLAG_ZONE_TYPE_USER)?,
-
-			MapResidence::File {
-				file: _,
-				off: _,
-			} => {
-				// TODO get physical page for this offset
-				todo!();
-			}
-
-			MapResidence::Swap { .. } => {
-				// TODO
-				todo!();
-			}
-		};
+		// Map new page
+		let new_phys_ptr = self.residence.alloc_page(offset)?;
 		let flags = self.get_vmem_flags(true, offset);
+		if let Err(errno) = vmem.map(new_phys_ptr, virt_ptr, flags) {
+			self.residence.free_page(offset, new_phys_ptr);
+			return Err(errno);
+		}
 
-		{
-			let ref_counter_guard = super::PHYSICAL_REF_COUNTER.lock();
-			let ref_counter = ref_counter_guard.get_mut();
-
-			if let Err(errno) = ref_counter.increment(new_phys_ptr) {
-				buddy::free(new_phys_ptr, 0);
-				return Err(errno);
-			}
-			if let Err(errno) = vmem.map(new_phys_ptr, virt_ptr, flags) {
-				ref_counter.decrement(new_phys_ptr);
-				buddy::free(new_phys_ptr, 0);
-				return Err(errno);
-			}
-
-			if let Some(prev_phys_ptr) = prev_phys_ptr {
-				ref_counter.decrement(prev_phys_ptr);
-				if ref_counter.can_free(prev_phys_ptr) {
-					buddy::free(prev_phys_ptr, 0);
-				}
-			}
+		// Free previous page
+		if let Some(prev_phys_ptr) = prev_phys_ptr {
+			self.residence.free_page(offset, prev_phys_ptr);
 		}
 
 		// Copying data if necessary

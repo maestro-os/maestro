@@ -27,6 +27,7 @@ use crate::process::exec::ExecInfo;
 use crate::process::exec::Executor;
 use crate::process::exec::ProgramImage;
 use crate::process::mem_space::MapConstraint;
+use crate::process::mem_space::MapResidence;
 use crate::process::mem_space::MemSpace;
 use crate::process::mem_space;
 use crate::process;
@@ -465,7 +466,7 @@ impl ELFExecutor {
 				MapConstraint::Fixed(mem_begin as _),
 				pages,
 				seg.get_mem_space_flags(),
-				None,
+				MapResidence::Normal,
 			)?;
 
 			// TODO Lazy allocation
@@ -548,7 +549,7 @@ impl ELFExecutor {
 					MapConstraint::None,
 					page_size,
 					mem_space::MAPPING_FLAG_USER | mem_space::MAPPING_FLAG_NOLAZY,
-					None,
+					MapResidence::Normal,
 				)?;
 
 				(phdr, true)
