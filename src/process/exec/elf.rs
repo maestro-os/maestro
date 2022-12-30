@@ -27,6 +27,7 @@ use crate::process::exec::ExecInfo;
 use crate::process::exec::Executor;
 use crate::process::exec::ProgramImage;
 use crate::process::mem_space::MapConstraint;
+use crate::process::mem_space::MapResidence;
 use crate::process::mem_space::MemSpace;
 use crate::process::mem_space;
 use crate::process;
@@ -313,10 +314,13 @@ impl ELFExecutor {
 
 	// TODO Clean
 	/// Initializes the stack data of the process according to the System V ABI.
-	/// `user_stack` the pointer to the user stack.
-	/// `argv` is the list of arguments.
-	/// `envp` is the environment.
-	/// `aux` is the auxilary vector.
+	///
+	/// Arguments:
+	/// - `user_stack` the pointer to the user stack.
+	/// - `argv` is the list of arguments.
+	/// - `envp` is the environment.
+	/// - `aux` is the auxilary vector.
+	///
 	/// The function returns the distance between the top of the stack and the
 	/// new bottom after the data has been written.
 	fn init_stack(
@@ -427,9 +431,12 @@ impl ELFExecutor {
 
 	/// Allocates memory in userspace for an ELF segment.
 	/// If the segment isn't loadable, the function does nothing.
-	/// `load_base` is the address at which the executable is loaded.
-	/// `mem_space` is the memory space to allocate into.
-	/// `seg` is the segment for which the memory is allocated.
+	///
+	/// Arguments:
+	/// - `load_base` is the address at which the executable is loaded.
+	/// - `mem_space` is the memory space to allocate into.
+	/// - `seg` is the segment for which the memory is allocated.
+	///
 	/// If loaded, the function return the pointer to the end of the segment in
 	/// virtual memory.
 	fn alloc_segment(
@@ -459,8 +466,7 @@ impl ELFExecutor {
 				MapConstraint::Fixed(mem_begin as _),
 				pages,
 				seg.get_mem_space_flags(),
-				None,
-				0,
+				MapResidence::Normal,
 			)?;
 
 			// TODO Lazy allocation
@@ -475,9 +481,11 @@ impl ELFExecutor {
 
 	/// Copies the segment's data into memory.
 	/// If the segment isn't loadable, the function does nothing.
-	/// `load_base` is the address at which the executable is loaded.
-	/// `seg` is the segment.
-	/// `image` is the ELF file image.
+	///
+	/// Arguments:
+	/// - `load_base` is the address at which the executable is loaded.
+	/// - `seg` is the segment.
+	/// - `image` is the ELF file image.
 	fn copy_segment(load_base: *const c_void, seg: &ELF32ProgramHeader, image: &[u8]) {
 		// Loading only loadable segments
 		if seg.p_type != elf::PT_LOAD && seg.p_type != elf::PT_PHDR {
@@ -501,8 +509,10 @@ impl ELFExecutor {
 	}
 
 	/// Loads the ELF file parsed by `elf` into the memory space `mem_space`.
-	/// `load_base` is the base address at which the ELF is loaded.
-	/// `interp` tells whether the function loads an interpreter.
+	///
+	/// Arguments:
+	/// - `load_base` is the base address at which the ELF is loaded.
+	/// - `interp` tells whether the function loads an interpreter.
 	fn load_elf(
 		&self,
 		elf: &ELFParser,
@@ -539,8 +549,7 @@ impl ELFExecutor {
 					MapConstraint::None,
 					page_size,
 					mem_space::MAPPING_FLAG_USER | mem_space::MAPPING_FLAG_NOLAZY,
-					None,
-					0
+					MapResidence::Normal,
 				)?;
 
 				(phdr, true)

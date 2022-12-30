@@ -112,7 +112,7 @@ impl KernFS {
 		if self.nodes.is_empty() {
 			self.nodes.push(Some(root))?;
 		} else {
-			self.nodes[ROOT_INODE as _] = Some(root);
+			self.nodes[ROOT_INODE as usize] = Some(root);
 		}
 
 		Ok(())
@@ -147,7 +147,7 @@ impl KernFS {
 	pub fn add_node(&mut self, node: Box<dyn KernFSNode>) -> Result<INode, Errno> {
 		if let Some(free_node) = self.free_nodes.pop() {
 			// Using an existing slot
-			self.nodes[free_node as _] = Some(node);
+			self.nodes[free_node as usize] = Some(node);
 
 			Ok(free_node)
 		} else {

@@ -1,5 +1,6 @@
 //! This module implements ELF relocations.
 
+use core::ptr;
 use crate::elf;
 use crate::elf::ELF32SectionHeader;
 use crate::elf::ELF32Sym;
@@ -39,12 +40,10 @@ pub trait Relocation {
 			F1: FnOnce(u32, u32) -> Option<u32> {
 		// The offset inside of the GOT
 		let got_offset = 0; // TODO
-					// The address of the GOT
-		let got_addr = base_addr as u32
-			+ match get_sym(GOT_SYM) {
-				Some(sym) => sym.st_value,
-				None => 0,
-			};
+		// The address of the GOT
+		let got_addr = base_addr as u32 + get_sym(GOT_SYM)
+			.map(|sym| sym.st_value)
+			.unwrap_or(0);
 		// The offset of the PLT entry for the symbol.
 		let plt_offset = 0; // TODO
 
@@ -57,7 +56,7 @@ pub trait Relocation {
 			elf::R_386_GOT32 => got_offset + self.get_addend(),
 			elf::R_386_PLT32 => plt_offset + self.get_addend() - self.get_offset(),
 			elf::R_386_COPY => return Ok(()),
-			elf::R_386_GLOB_DAT | elf::R_386_JMP_SLOT => sym_val.unwrap_or(0),
+			elf::R_386_GLOB_DAT | elf::R_386_JMP_SLOT => sym_val.ok_or(())?,
 			elf::R_386_RELATIVE => base_addr as u32 + self.get_addend(),
 			elf::R_386_GOTOFF => sym_val.ok_or(())? + self.get_addend() - got_addr,
 			elf::R_386_GOTPC => got_addr + self.get_addend() - self.get_offset(),
@@ -67,9 +66,10 @@ pub trait Relocation {
 
 		let addr = (base_addr as u32 + self.get_offset()) as *mut u32;
 		// TODO Check the address is accessible
+
 		match self.get_type() {
-			elf::R_386_RELATIVE => *addr += value,
-			_ => *addr = value,
+			elf::R_386_RELATIVE => ptr::write_volatile(addr, ptr::read_volatile(addr) + value),
+			_ => ptr::write_volatile(addr, value),
 		}
 
 		Ok(())

@@ -8,23 +8,24 @@ use core::ptr::NonNull;
 use core::ptr;
 use core::slice;
 use crate::errno::Errno;
-use crate::file::open_file::OpenFile;
 use crate::memory::buddy;
 use crate::memory::malloc;
+use crate::memory::physical_ref_counter::PhysRefCounter;
 use crate::memory::vmem::VMem;
 use crate::memory::vmem;
 use crate::memory;
-use crate::process::mem_space::physical_ref_counter::PhysRefCounter;
 use crate::process::oom;
 use crate::util::io::IO;
 use crate::util::lock::*;
-use crate::util::ptr::SharedPtr;
 use crate::util;
+use super::MapResidence;
 use super::MemSpace;
 use super::gap::MemGap;
 
-/// A pointer to the default physical page of memory. This page is meant to be
-/// mapped in read-only and is a placeholder for pages that are accessed without
+/// A pointer to the default physical page of memory.
+///
+/// This page is meant to be mapped in read-only and is a placeholder for pages that are accessed
+/// without
 /// being allocated nor written.
 static DEFAULT_PAGE: Mutex<Option<*const c_void>> = Mutex::new(None);
 
@@ -62,12 +63,8 @@ pub struct MemMapping {
 	/// The mapping's flags.
 	flags: u8,
 
-	/// The file the mapping points to. If None, the mapping doesn't point to
-	/// any file.
-	file: Option<SharedPtr<OpenFile>>,
-	/// The offset inside of the file pointed to by the file. If there is no file, the value is
-	/// undefined.
-	off: u64,
+	/// The residence of the mapping.
+	residence: MapResidence,
 
 	/// Pointer to the virtual memory context handler.
 	vmem: NonNull<dyn VMem>,
@@ -82,17 +79,14 @@ impl MemMapping {
 	/// - `size` is the size of the mapping in pages. The size must be greater
 	/// than 0.
 	/// - `flags` the mapping's flags.
-	/// - `file` is the open file the mapping points to. If None, the mapping
-	/// doesn't point to any file.
-	/// - `off` is the offset inside of the file pointed to by the given file
-	/// descriptor. If no file is given, this argument is ignored.
+	/// - `file` is the open file the mapping points to, with an offset in it.
+	/// If None, the mapping doesn't point to any file.
 	/// - `vmem` is the virtual memory context handler associated with the mapping.
 	pub fn new(
 		begin: *const c_void,
 		size: usize,
 		flags: u8,
-		file: Option<SharedPtr<OpenFile>>,
-		off: u64,
+		residence: MapResidence,
 		vmem: NonNull<dyn VMem>,
 	) -> Self {
 		debug_assert!(util::is_aligned(begin, memory::PAGE_SIZE));
@@ -103,8 +97,7 @@ impl MemMapping {
 			size,
 			flags,
 
-			file,
-			off,
+			residence,
 
 			vmem,
 		}
@@ -153,10 +146,14 @@ impl MemMapping {
 	///
 	/// If no page is associated, the function returns None.
 	pub fn get_physical_page(&self, offset: usize) -> Option<*const c_void> {
+		if offset >= self.size {
+			return None;
+		}
+
 		let vmem = self.get_vmem();
 		let virt_ptr = (self.begin as usize + offset * memory::PAGE_SIZE) as *const c_void;
-		let phys_ptr = vmem.translate(virt_ptr)?;
 
+		let phys_ptr = vmem.translate(virt_ptr)?;
 		if phys_ptr != get_default_page() {
 			Some(phys_ptr)
 		} else {
@@ -199,45 +196,6 @@ impl MemMapping {
 		flags
 	}
 
-	/// Maps the mapping to the given virtual memory context with the default page.
-	///
-	/// If the mapping is marked as nolazy, the function allocates physical memory and maps it
-	/// instead of the default page.
-	pub fn map_default(&mut self) -> Result<(), Errno> {
-		let vmem = self.get_mut_vmem();
-		let nolazy = (self.flags & super::MAPPING_FLAG_NOLAZY) != 0;
-		let default_page = get_default_page();
-
-		for i in 0..self.size {
-			let phys_ptr = {
-				if nolazy {
-					match buddy::alloc(0, buddy::FLAG_ZONE_TYPE_USER) {
-						Ok(ptr) => ptr,
-						Err(e) => {
-							self.unmap()?;
-							return Err(e);
-						}
-					}
-				} else {
-					default_page
-				}
-			};
-			let virt_ptr = ((self.begin as usize) + (i * memory::PAGE_SIZE)) as *const c_void;
-			let flags = self.get_vmem_flags(nolazy, i);
-
-			if let Err(errno) = vmem.map(phys_ptr, virt_ptr, flags) {
-				if nolazy {
-					buddy::free(phys_ptr, 0);
-				}
-				self.unmap()?;
-
-				return Err(errno);
-			}
-		}
-
-		Ok(())
-	}
-
 	// TODO Add support for file descriptors
 	/// Maps the page at offset `offset` in the mapping to the virtual memory
 	/// context.
@@ -273,24 +231,17 @@ impl MemMapping {
 			return Ok(());
 		}
 
-		let new_phys_ptr = buddy::alloc(0, buddy::FLAG_ZONE_TYPE_USER)?;
+		// Map new page
+		let new_phys_ptr = self.residence.alloc_page(offset)?;
 		let flags = self.get_vmem_flags(true, offset);
+		if let Err(errno) = vmem.map(new_phys_ptr, virt_ptr, flags) {
+			self.residence.free_page(offset, new_phys_ptr);
+			return Err(errno);
+		}
 
-		{
-			let ref_counter = super::PHYSICAL_REF_COUNTER.lock();
-			if let Err(errno) = ref_counter.get_mut().increment(new_phys_ptr) {
-				buddy::free(new_phys_ptr, 0);
-				return Err(errno);
-			}
-			if let Err(errno) = vmem.map(new_phys_ptr, virt_ptr, flags) {
-				ref_counter.get_mut().decrement(new_phys_ptr);
-				buddy::free(new_phys_ptr, 0);
-				return Err(errno);
-			}
-
-			if let Some(prev_phys_ptr) = prev_phys_ptr {
-				ref_counter.get_mut().decrement(prev_phys_ptr);
-			}
+		// Free previous page
+		if let Some(prev_phys_ptr) = prev_phys_ptr {
+			self.residence.free_page(offset, prev_phys_ptr);
 		}
 
 		// Copying data if necessary
@@ -313,6 +264,33 @@ impl MemMapping {
 		Ok(())
 	}
 
+	/// Maps the mapping to the given virtual memory context with the default page.
+	///
+	/// If the mapping is marked as nolazy, the function allocates physical memory and maps it
+	/// instead of the default page.
+	pub fn map_default(&mut self) -> Result<(), Errno> {
+		if self.flags & super::MAPPING_FLAG_NOLAZY != 0 {
+			for i in 0..self.size {
+				if let Err(errno) = self.map(i) {
+					self.unmap()?;
+					return Err(errno);
+				}
+			}
+		} else {
+			let vmem = self.get_mut_vmem();
+			let default_page = get_default_page();
+
+			for i in 0..self.size {
+				let virt_ptr = ((self.begin as usize) + (i * memory::PAGE_SIZE)) as *const c_void;
+				let flags = self.get_vmem_flags(false, i);
+
+				vmem.map(default_page, virt_ptr, flags)?;
+			}
+		}
+
+		Ok(())
+	}
+
 	/// Frees the physical page at offset `offset` of the mapping.
 	///
 	/// If the page is shared, it is not freed but the reference counter is decreased.
@@ -325,16 +303,7 @@ impl MemMapping {
 				return;
 			}
 
-			let can_free = {
-				let ref_counter = super::PHYSICAL_REF_COUNTER.lock();
-
-				ref_counter.get_mut().decrement(phys_ptr);
-				ref_counter.get().can_free(phys_ptr)
-			};
-
-			if can_free {
-				buddy::free(phys_ptr, 0);
-			}
+			self.residence.free_page(offset, phys_ptr);
 		}
 	}
 
@@ -378,14 +347,15 @@ impl MemMapping {
 		// The mapping located before the gap to be created
 		let prev = {
 			if begin > 0 {
-				Some(Self::new(
-					self.begin,
-					begin,
-					self.flags,
-					self.file.clone(),
-					self.off,
-					self.vmem,
-				))
+				Some(Self {
+					begin: self.begin,
+					size: begin,
+					flags: self.flags,
+
+					residence: self.residence.clone(),
+
+					vmem: self.vmem,
+				})
 			} else {
 				None
 			}
@@ -407,15 +377,18 @@ impl MemMapping {
 				let map_begin = unsafe { self.begin.add(end * memory::PAGE_SIZE) };
 				let map_size = self.size - end;
 
-				let off = self.off + (end * memory::PAGE_SIZE) as u64;
-				Some(Self::new(
-					map_begin,
-					map_size,
-					self.flags,
-					self.file.clone(),
-					off,
-					self.vmem,
-				))
+				let mut residence = self.residence.clone();
+				residence.offset_add(end);
+
+				Some(Self {
+					begin: map_begin,
+					size: map_size,
+					flags: self.flags,
+
+					residence,
+
+					vmem: self.vmem,
+				})
 			} else {
 				None
 			}
@@ -451,7 +424,7 @@ impl MemMapping {
 	/// allocated.
 	///
 	/// `n` is the number of pages to free from the beginning.
-	pub fn fork_fail_clean(&self, ref_counter: &mut PhysRefCounter, n: usize) {
+	fn fork_fail_clean(&self, ref_counter: &mut PhysRefCounter, n: usize) {
 		for i in 0..n {
 			if let Some(phys_ptr) = self.get_physical_page(i) {
 				ref_counter.decrement(phys_ptr);
@@ -474,8 +447,7 @@ impl MemMapping {
 			size: self.size,
 			flags: self.flags,
 
-			file: self.file.clone(),
-			off: self.off,
+			residence: self.residence.clone(),
 
 			vmem: NonNull::new(mem_space.get_vmem().as_mut()).unwrap(),
 		};
@@ -510,32 +482,36 @@ impl MemMapping {
 	///
 	/// The function does nothing if the mapping is not shared or not associated with a file.
 	pub fn fs_sync(&mut self) -> Result<(), Errno> {
-		if self.flags & super::MAPPING_FLAG_SHARED != 0 {
+		if self.flags & super::MAPPING_FLAG_SHARED == 0 {
 			return Ok(());
 		}
+		let MapResidence::File {
+			file,
+			off,
+		} = &self.residence else {
+			return Ok(());
+		};
 
-		if let Some(file) = &self.file {
-			unsafe {
-				vmem::switch(self.get_vmem(), || {
-					let file_guard = file.lock();
-					let file = file_guard.get_mut();
+		unsafe {
+			vmem::switch(self.get_vmem(), || {
+				let file_guard = file.lock();
+				let file = file_guard.get_mut();
 
-					let slice = slice::from_raw_parts(
-						self.begin as *mut u8,
-						self.size * memory::PAGE_SIZE
-					);
+				// TODO Make use of dirty flag if present on the current architecure to update
+				// only pages that have been modified
+				let slice = slice::from_raw_parts(
+					self.begin as *mut u8,
+					self.size * memory::PAGE_SIZE
+				);
 
-					let mut i = 0;
-					while i < slice.len() {
-						let l = file.write(self.off, &slice[i..])?;
-						i += l as usize;
-					}
+				let mut i = 0;
+				while i < slice.len() {
+					let l = file.write(*off, &slice[i..])?;
+					i += l as usize;
+				}
 
-					Ok(())
-				})
-			}
-		} else {
-			Ok(())
+				Ok(())
+			})
 		}
 	}
 }
@@ -546,12 +522,11 @@ impl fmt::Debug for MemMapping {
 
 		write!(
 			f,
-			"begin: {:p}; end: {:p}; flags: {}; file: {}; off: {}",
+			"begin: {:p}; end: {:p}; flags: {}; residence: {:?}",
 			self.begin,
 			end,
 			self.flags,
-			self.file.is_some(),
-			self.off
+			self.residence,
 		)
 	}
 }
