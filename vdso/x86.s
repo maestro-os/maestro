@@ -1,3 +1,5 @@
+.section .text
+
 .global _start
 .global __kernel_vsyscall
 .global __kernel_rt_sigreturn
@@ -5,8 +7,6 @@
 .global __vdso_clock_gettime
 .global __vdso_gettimeofday
 .global __vdso_time
-
-.section .text
 
 _start:
 	jmp __kernel_vsyscall

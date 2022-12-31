@@ -252,7 +252,7 @@ tags: $(SRC)
 
 # Compiles the vdso
 vdso.so: vdso/$(CONFIG_ARCH).s
-	$(CC) $(CFLAGS) -shared -c $< -o $@
+	$(CC) -shared -fPIC $< -o $@
 
 
 
