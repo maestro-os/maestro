@@ -172,9 +172,35 @@ impl MapResidence {
 	}
 
 	/// Frees the page allocated with `alloc_page`.
-	pub fn free_page(&self, _off: usize, _ptr: *const c_void) {
-		// TODO
-		todo!();
+	pub fn free_page(&self, off: usize, ptr: *const c_void) {
+		match self {
+			MapResidence::Normal => Self::free(ptr),
+
+			MapResidence::Static {
+				pages,
+			} => {
+				let pages_guard = pages.lock();
+				let pages = pages_guard.get();
+
+				if off >= pages.len() {
+					Self::free(ptr)
+				}
+			}
+
+			MapResidence::File {
+				file: _,
+				off: _,
+			} => {
+				// TODO
+				todo!();
+			}
+
+			MapResidence::Swap { .. } => {
+				// TODO
+				todo!();
+			}
+		}
+
 	}
 }
 
