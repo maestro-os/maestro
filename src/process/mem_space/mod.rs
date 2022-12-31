@@ -848,21 +848,34 @@ impl MemSpace {
 	}
 
 	/// Function called whenever the CPU triggered a page fault for the context.
-	/// This function determines whether the process should continue or not. If
-	/// continuing, the function must resolve the issue before returning.
-	/// A typical situation where is function is usefull is for Copy-On-Write
-	/// allocations.
 	///
-	/// `virt_addr` is the virtual address of the wrong memory access that
-	/// caused the fault. `code` is the error code given along with the error.
-	/// If the process should continue, the function returns `true`, else
-	/// `false`.
+	/// This function determines whether the process should continue or not.
+	/// If continuing, the function must resolve the issue before returning.
+	/// A typical situation where is function is usefull is for Copy-On-Write allocations.
+	///
+	/// Arguments:
+	/// - `virt_addr` is the virtual address of the wrong memory access that caused the fault.
+	/// - `code` is the error code given along with the error.
+	///
+	/// If the process should continue, the function returns `true`, else `false`.
 	pub fn handle_page_fault(&mut self, virt_addr: *const c_void, code: u32) -> bool {
 		if code & vmem::x86::PAGE_FAULT_PRESENT == 0 {
 			return false;
 		}
 
 		if let Some(mapping) = Self::get_mapping_mut_for_(&mut self.mappings, virt_addr) {
+			let can_write_mapping = mapping.get_flags() & MAPPING_FLAG_WRITE != 0;
+			if code & vmem::x86::PAGE_FAULT_WRITE != 0 && !can_write_mapping {
+				return false;
+			}
+
+			// TODO check exec
+
+			let userspace_mapping = mapping.get_flags() & MAPPING_FLAG_USER != 0;
+			if code & vmem::x86::PAGE_FAULT_USER != 0 && !userspace_mapping {
+				return false;
+			}
+
 			let page_offset =
 				(virt_addr as usize - mapping.get_begin() as usize) / memory::PAGE_SIZE;
 			oom::wrap(|| mapping.map(page_offset));
