@@ -69,12 +69,13 @@ pub fn do_mmap(
 		return Err(errno!(EINVAL));
 	}
 
-	let addr_hint = {
-		if !addr.is_null()
-			&& (addr as usize) < (memory::PROCESS_END as usize)
-			&& end <= (memory::PROCESS_END as usize)
-		{
-			MapConstraint::Hint(addr as *const c_void)
+	let constraint = {
+		if !addr.is_null() {
+			if flags & MAP_FIXED != 0 {
+				MapConstraint::Fixed(addr as *const c_void)
+			} else {
+				MapConstraint::Hint(addr as *const c_void)
+			}
 		} else {
 			MapConstraint::None
 		}
@@ -148,7 +149,7 @@ pub fn do_mmap(
 
 	// The pointer on the virtual memory to the beginning of the mapping
 	let result = mem_space.map(
-		addr_hint,
+		constraint,
 		pages,
 		flags,
 		residence.clone(),
@@ -158,7 +159,7 @@ pub fn do_mmap(
 		Ok(ptr) => Ok(ptr),
 
 		Err(e) => {
-			if addr_hint != MapConstraint::None {
+			if constraint != MapConstraint::None {
 				mem_space.map(
 					MapConstraint::None,
 					pages,

@@ -215,12 +215,14 @@ impl MapResidence {
 /// Enumeration of constraints for memory mapping.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum MapConstraint {
-	/// The mapping is done at a fixed address. Previous allocations at the same
-	/// place are unmapped.
+	/// The mapping is done at a fixed address.
+	///
+	/// Previous allocations at the same place are unmapped.
 	Fixed(*const c_void),
 
-	/// The mapping is done at a fixed address. If the address range is already
-	/// in use, the allocation fails.
+	/// The mapping is done at a fixed address.
+	///
+	/// If the address range is already in use, the allocation fails.
 	Hint(*const c_void),
 
 	/// No constraint.
@@ -410,6 +412,8 @@ impl MemSpace {
 				(gap, addr as _)
 			}
 
+			// TODO check correctness (had a case where the address of the created mapping didn't
+			// match the address returned by the `mmap` syscall)
 			MapConstraint::Hint(addr) => {
 				// Getting the gap for the pointer
 				let mut gap = Self::gap_by_ptr(&self.gaps, addr)
