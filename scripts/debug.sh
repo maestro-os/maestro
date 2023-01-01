@@ -9,7 +9,7 @@ setsid make debug &
 QEMU_PID=$!
 
 if [ "$AUX_ELF" != "" ]; then
-	gdb maestro -ex 'target remote :1234' -ex 'set confirm off' -ex "add-symbol-file $AUX_ELF" -ex 'set confirm on'
+	gdb maestro -ex 'target remote :1234' -ex 'set confirm off' -ex "add-symbol-file -o 0x19c000 $AUX_ELF" -ex 'set confirm on'
 else
 	gdb maestro -ex 'target remote :1234'
 fi

@@ -15,11 +15,11 @@ use crate::util;
 use macros::syscall;
 
 /// Data can be read.
-const PROT_READ: i32 = 0b001;
+pub const PROT_READ: i32 = 0b001;
 /// Data can be written.
-const PROT_WRITE: i32 = 0b010;
+pub const PROT_WRITE: i32 = 0b010;
 /// Data can be executed.
-const PROT_EXEC: i32 = 0b100;
+pub const PROT_EXEC: i32 = 0b100;
 
 /// Changes are shared.
 const MAP_SHARED: i32 = 0b001;

@@ -3,6 +3,7 @@
 //! a scheduler.
 
 // TODO Do not reallocate a PID of used as a pgid
+// TODO When a process receives a signal, log it if the `strace` feature is enabled
 
 pub mod exec;
 pub mod iovec;

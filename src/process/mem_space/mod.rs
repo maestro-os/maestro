@@ -18,6 +18,8 @@ use core::ptr::NonNull;
 use core::ptr::null;
 use crate::errno::Errno;
 use crate::errno;
+use crate::file::Gid;
+use crate::file::Uid;
 use crate::idt;
 use crate::memory::buddy;
 use crate::memory::physical_ref_counter::PhysRefCounter;
@@ -807,6 +809,35 @@ impl MemSpace {
 
 			off += util::up_align(virt_addr, memory::PAGE_SIZE) as usize - virt_addr as usize;
 		}
+
+		Ok(())
+	}
+
+	/// Sets protection for the given range of memory.
+	///
+	/// Arguments:
+	/// - `addr` is the address to the beginning of the range to be set.
+	/// - `len` is the length of the range in bytes.
+	/// - `prot` is a set of mapping flags.
+	/// - `uid` is the user ID of the process's owner.
+	/// - `gid` is the group ID of the process's owner.
+	///
+	/// If a mapping to be modified is associated with a file, and the file doesn't have the
+	/// matching permissions, the function returns an error.
+	pub fn set_prot(
+		&mut self,
+		_addr: *mut c_void,
+		_len: usize,
+		_prot: u8,
+		_uid: Uid,
+		_gid: Gid
+	) -> Result<(), Errno> {
+		// TODO Iterate on mappings in the range:
+		//		If the mapping is shared and associated to a file, check file permissions match
+		// `prot` (only write)
+		//		Split the mapping if needed
+		//		Set permissions
+		//		Update vmem
 
 		Ok(())
 	}

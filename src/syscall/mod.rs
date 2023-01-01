@@ -62,6 +62,7 @@ mod mknod;
 mod mmap2;
 mod mmap;
 mod mount;
+mod mprotect;
 mod msync;
 mod munmap;
 mod nanosleep;
@@ -182,6 +183,7 @@ use mknod::mknod;
 use mmap2::mmap2;
 use mmap::mmap;
 use mount::mount;
+use mprotect::mprotect;
 use msync::msync;
 use munmap::munmap;
 use nanosleep::nanosleep;
@@ -364,7 +366,7 @@ fn get_syscall(id: u32) -> Option<SyscallHandler> {
 		// TODO 0x079 => Some(&setdomainname),
 		0x07a => Some(&uname),
 		// TODO 0x07c => Some(&adjtimex),
-		// TODO 0x07d => Some(&mprotect),
+		0x07d => Some(&mprotect),
 		// TODO 0x07e => Some(&sigprocmask),
 		// TODO 0x07f => Some(&create_module),
 		0x080 => Some(&init_module),
@@ -696,6 +698,10 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 				let mutex = Process::get_current().unwrap();
 				let guard = mutex.lock();
 				let curr_proc = guard.get_mut();
+
+				if cfg!(strace) {
+					println!("[strace PID: {}] invalid syscall `{:x}`", curr_proc.get_pid(), id);
+				}
 
 				// SIGSYS cannot be caught, thus the process will be terminated
 				curr_proc.kill(&Signal::SIGSYS, true);
