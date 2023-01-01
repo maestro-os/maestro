@@ -95,6 +95,14 @@ pub enum MapResidence {
 }
 
 impl MapResidence {
+	/// Tells whether the residence is normal.
+	pub fn is_normal(&self) -> bool {
+		match self {
+			MapResidence::Normal => true,
+			_ => false,
+		}
+	}
+
 	/// Adds a value of `pages` pages to the offset of the residence, if applicable.
 	pub fn offset_add(&mut self, pages: usize) {
 		match self {
@@ -200,7 +208,6 @@ impl MapResidence {
 				todo!();
 			}
 		}
-
 	}
 }
 
@@ -439,7 +446,7 @@ impl MemSpace {
 		);
 		let m = self.mappings.insert(addr, mapping)?;
 
-		// Mapping the default page
+		// Mapping default pages
 		if let Err(e) = m.map_default() {
 			self.mappings.remove(&addr);
 			return Err(e);
@@ -772,8 +779,11 @@ impl MemSpace {
 	}
 
 	/// Allocates the physical pages to write on the given pointer.
+	///
 	/// `virt_addr` is the address to allocate.
+	///
 	/// The size of the memory chunk to allocated equals `size_of::<T>() * len`.
+	///
 	/// If the mapping doesn't exist, the function returns an error.
 	pub fn alloc<T>(&mut self, virt_addr: *const T, len: usize) -> Result<(), Errno> {
 		let mut off = 0;

@@ -174,7 +174,9 @@ impl MemMapping {
 
 	/// Tells whether the page at offset `offset` is waiting for Copy-On-Write.
 	pub fn is_cow(&self, offset: usize) -> bool {
-		self.flags & super::MAPPING_FLAG_SHARED == 0 && self.is_shared(offset)
+		self.flags & super::MAPPING_FLAG_SHARED == 0
+			&& self.residence.is_normal()
+			&& self.is_shared(offset)
 	}
 
 	// TODO Move into architecture-specific code
@@ -209,9 +211,11 @@ impl MemMapping {
 	pub fn map(&mut self, offset: usize) -> Result<(), Errno> {
 		let vmem = self.get_mut_vmem();
 		let virt_ptr = (self.begin as usize + offset * memory::PAGE_SIZE) as *mut c_void;
+
 		let cow_buffer = {
 			if self.is_cow(offset) {
 				let mut cow_buffer = malloc::Alloc::<u8>::new_default(memory::PAGE_SIZE)?;
+
 				unsafe {
 					ptr::copy_nonoverlapping(
 						virt_ptr,
@@ -227,7 +231,7 @@ impl MemMapping {
 		};
 
 		let prev_phys_ptr = self.get_physical_page(offset);
-		if cow_buffer.is_none() && prev_phys_ptr.is_some() {
+		if self.residence.is_normal() && cow_buffer.is_none() && prev_phys_ptr.is_some() {
 			return Ok(());
 		}
 
@@ -245,20 +249,23 @@ impl MemMapping {
 		}
 
 		// Copying data if necessary
-		unsafe {
-			vmem::switch(vmem, move || {
-				vmem::write_lock_wrap(|| {
-					if let Some(buffer) = cow_buffer {
-						ptr::copy_nonoverlapping(
-							buffer.as_ptr() as *const c_void,
-							virt_ptr as *mut c_void,
-							memory::PAGE_SIZE,
-						);
-					} else {
-						util::bzero(virt_ptr, memory::PAGE_SIZE);
-					}
+		if self.residence.is_normal() {
+			unsafe {
+				// FIXME: switching vmem at each call to `map` is suboptimal (try to batch)
+				vmem::switch(vmem, move || {
+					vmem::write_lock_wrap(|| {
+						if let Some(buffer) = cow_buffer {
+							ptr::copy_nonoverlapping(
+								buffer.as_ptr() as *const c_void,
+								virt_ptr as *mut c_void,
+								memory::PAGE_SIZE,
+							);
+						} else {
+							util::bzero(virt_ptr, memory::PAGE_SIZE);
+						}
+					});
 				});
-			});
+			}
 		}
 
 		Ok(())
@@ -268,23 +275,30 @@ impl MemMapping {
 	///
 	/// If the mapping is marked as nolazy, the function allocates physical memory and maps it
 	/// instead of the default page.
+	///
+	/// The default page is dependent on the nature of the mapping's residence.
 	pub fn map_default(&mut self) -> Result<(), Errno> {
-		if self.flags & super::MAPPING_FLAG_NOLAZY != 0 {
+		let use_default = self.flags & super::MAPPING_FLAG_NOLAZY == 0
+			&& self.residence.is_normal();
+
+		if use_default {
+			let vmem = self.get_mut_vmem();
+			let default_page = get_default_page();
+
+			for i in 0..self.size {
+				let virt_ptr = unsafe {
+					self.begin.add(i * memory::PAGE_SIZE)
+				};
+				let flags = self.get_vmem_flags(false, i);
+
+				vmem.map(default_page, virt_ptr, flags)?;
+			}
+		} else {
 			for i in 0..self.size {
 				if let Err(errno) = self.map(i) {
 					self.unmap()?;
 					return Err(errno);
 				}
-			}
-		} else {
-			let vmem = self.get_mut_vmem();
-			let default_page = get_default_page();
-
-			for i in 0..self.size {
-				let virt_ptr = ((self.begin as usize) + (i * memory::PAGE_SIZE)) as *const c_void;
-				let flags = self.get_vmem_flags(false, i);
-
-				vmem.map(default_page, virt_ptr, flags)?;
 			}
 		}
 

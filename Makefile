@@ -122,7 +122,7 @@ OBJ := $(ASM_OBJ) $(C_OBJ)
 # Cargo
 CARGO = cargo +nightly
 # Cargo flags
-CARGOFLAGS = --verbose -Zbuild-std=core --target $(TARGET)
+CARGOFLAGS = --verbose -Zbuild-std=core --target $(TARGET) --features strace
 ifeq ($(CONFIG_DEBUG), false)
 CARGOFLAGS += --release
 endif
@@ -251,8 +251,8 @@ tags: $(SRC)
 
 
 # Compiles the vdso
-vdso.so: vdso/$(CONFIG_ARCH).s
-	$(CC) -shared -fPIC $< -o $@
+vdso.so: Makefile vdso/linker.ld vdso/$(CONFIG_ARCH).s
+	$(CC) -nostdlib -ffreestanding -shared -fPIC -Tvdso/linker.ld -o $@ vdso/$(CONFIG_ARCH).s
 
 
 

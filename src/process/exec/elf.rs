@@ -4,7 +4,6 @@ use core::cmp::max;
 use core::cmp::min;
 use core::ffi::c_void;
 use core::mem::size_of;
-use core::ptr::NonNull;
 use core::ptr::null;
 use core::ptr;
 use core::slice;
@@ -16,6 +15,7 @@ use crate::elf::relocation::Relocation;
 use crate::elf;
 use crate::errno::Errno;
 use crate::errno;
+use crate::exec::vdso::MappedVDSO;
 use crate::file::File;
 use crate::file::Gid;
 use crate::file::Uid;
@@ -159,11 +159,11 @@ impl AuxEntryDesc {
 /// Arguments:
 /// - `exec_info` is the set of execution informations.
 /// - `load_info` is the set of ELF load informations.
-/// - `vdso_ptr` is the pointer to the beginning of the loaded vDSO.
+/// - `vdso` is the set of vDSO informations.
 fn build_auxilary(
 	exec_info: &ExecInfo,
 	load_info: &ELFLoadInfo,
-	vdso_ptr: NonNull<c_void>,
+	vdso: &MappedVDSO,
 ) -> Result<Vec<AuxEntryDesc>, Errno> {
 	let mut aux = Vec::new();
 
@@ -242,10 +242,13 @@ fn build_auxilary(
 	))?; // TODO
 
 	// vDSO
-	aux.push(AuxEntryDesc::new(AT_SYSINFO, AuxEntryDescValue::Number(0)))?;
+	aux.push(AuxEntryDesc::new(
+		AT_SYSINFO,
+		AuxEntryDescValue::Number(vdso.entry.as_ptr() as _)
+	))?;
 	aux.push(AuxEntryDesc::new(
 		AT_SYSINFO_EHDR,
-		AuxEntryDescValue::Number(vdso_ptr.as_ptr() as _)
+		AuxEntryDescValue::Number(vdso.ptr.as_ptr() as _)
 	))?;
 
 	// End
@@ -706,10 +709,10 @@ impl Executor for ELFExecutor {
 			mem_space.map_stack(process::USER_STACK_SIZE, process::USER_STACK_FLAGS)?;
 
 		// Map the vDSO
-		let vdso_ptr = vdso::map(&mut mem_space)?;
+		let vdso = vdso::map(&mut mem_space)?;
 
 		// The auxilary vector
-		let aux = build_auxilary(&self.info, &load_info, vdso_ptr)?;
+		let aux = build_auxilary(&self.info, &load_info, &vdso)?;
 
 		// The size in bytes of the initial data on the stack
 		let total_size = Self::get_init_stack_size(&self.info.argv, &self.info.envp, &aux).1;
