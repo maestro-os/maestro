@@ -98,7 +98,6 @@ pub fn map(mem_space: &mut MemSpace) -> Result<MappedVDSO, Errno> {
 	let entry = unsafe {
 		ptr.add(img.entry_off)
 	};
-	println!("-> {:p} {:p}", ptr, entry); // TODO rm
 
 	Ok(MappedVDSO {
 		ptr: NonNull::new(ptr).unwrap(),

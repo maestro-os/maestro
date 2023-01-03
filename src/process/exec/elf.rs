@@ -639,7 +639,7 @@ impl ELFExecutor {
 				}
 
 				// Performing relocations if no interpreter is present
-				if interp_path.is_none() {
+				if !interp && interp_path.is_none() {
 					// Closure returning a symbol from its name
 					let get_sym = |name: &str| elf.get_symbol_by_name(name);
 
