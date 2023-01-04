@@ -23,7 +23,8 @@ pub const TYPE_SYMLINK: u16 = 0xa000;
 pub const TYPE_SOCKET: u16 = 0xc000;
 
 /// Rotates the given 4 bytes value from PDP-endian.
-/// On PDP computers, long values (4 bytes) were stored as big endian, which means these values
+///
+/// On PDP systems, long values (4 bytes) were stored as big endian, which means these values
 /// need to be rotated to be read correctly.
 pub fn rot_u32(v: u32) -> u32 {
 	(v >> 16) | (v << 16)
@@ -161,7 +162,12 @@ impl<'a> Iterator for CPIOParser<'a> {
 			util::reinterpret::<CPIOHeader>(&self.data[off..])
 		}
 		.unwrap();
-		// TODO Check magic (if invalid, find out how to move to the next entry)
+
+		// TODO: If invalid, check 0o707070. If valid, then data needs conversion (endianess)
+		// Check magic
+		if hdr.c_magic != 0o070707 {
+			return None;
+		}
 
 		let mut namesize = hdr.c_namesize as usize;
 		if namesize % 2 != 0 {
