@@ -117,7 +117,11 @@ impl<'a> CPIOEntry<'a> {
 	pub fn get_content(&self) -> &'a [u8] {
 		let hdr = self.get_hdr();
 
-		let start = size_of::<CPIOHeader>() + hdr.c_namesize as usize;
+		let mut start = size_of::<CPIOHeader>() + hdr.c_namesize as usize;
+		if start % 2 != 0 {
+			start += 1;
+		}
+
 		let filesize = rot_u32(hdr.c_filesize);
 		&self.data[start..(start + filesize as usize)]
 	}
