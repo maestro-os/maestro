@@ -20,11 +20,13 @@ use crate::util::container::string::String;
 use crate::util::io::IO;
 use crate::util::ptr::SharedPtr;
 
-/// Updates the current parent.
+/// Updates the current parent used for the unpacking operation.
 ///
 /// Arguments:
 /// - `vfs` is the VFS.
-/// - TODO
+/// - `new` is the new parent's path.
+/// - `stored` is the current parent. The tuple contains the path and the file.
+/// - `retry` tells whether the function is called as a second try.
 fn update_parent(
 	vfs: &mut VFS,
 	curr: &Path,
@@ -33,8 +35,8 @@ fn update_parent(
 ) -> Result<(), Errno> {
 	// Getting the parent
 	let result = match stored {
-		Some((path, file)) if curr.begins_with(path) => {
-			let name = match curr.failable_clone()?.pop() {
+		Some((path, file)) if new.begins_with(path) => {
+			let name = match new.failable_clone()?.pop() {
 				Some(name) => name,
 				None => return Ok(()),
 			};
@@ -45,18 +47,18 @@ fn update_parent(
 			vfs.get_file_from_parent(f, name, file::ROOT_UID, file::ROOT_GID, false)
 		}
 
-		Some(_) | None => vfs.get_file_from_path(curr, file::ROOT_UID, file::ROOT_GID, false),
+		Some(_) | None => vfs.get_file_from_path(new, file::ROOT_UID, file::ROOT_GID, false),
 	};
 
 	match result {
 		Ok(file) => {
-			*stored = Some((curr.failable_clone()?, file));
+			*stored = Some((new.failable_clone()?, file));
 		}
 
 		// If the directory doesn't exist, create recursively
 		Err(e) if !retry && e.as_int() == errno::ENOENT => {
-			file::util::create_dirs(vfs, curr)?;
-			return update_parent(vfs, curr, stored, true);
+			file::util::create_dirs(vfs, new)?;
+			return update_parent(vfs, new, stored, true);
 		}
 
 		Err(e) => return Err(e),
