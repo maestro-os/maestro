@@ -155,7 +155,7 @@ pub fn do_mmap(
 		residence.clone(),
 	);
 
-	match result {
+	let result = match result {
 		Ok(ptr) => Ok(ptr),
 
 		Err(e) => {
@@ -169,8 +169,10 @@ pub fn do_mmap(
 			} else {
 				Err(e)
 			}
-		},
-	}.map(|ptr| ptr as _)
+		}
+	};
+
+	result.map(|ptr| ptr as _)
 }
 
 // TODO Check last arg type
