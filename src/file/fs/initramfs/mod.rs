@@ -29,7 +29,7 @@ use crate::util::ptr::SharedPtr;
 /// - `retry` tells whether the function is called as a second try.
 fn update_parent(
 	vfs: &mut VFS,
-	curr: &Path,
+	new: &Path,
 	stored: &mut Option<(Path, SharedPtr<File>)>,
 	retry: bool,
 ) -> Result<(), Errno> {
