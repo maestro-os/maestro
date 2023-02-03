@@ -668,10 +668,15 @@ impl File {
 				buff.ioctl(mem_space, request, argp)
 			}
 
-			// TODO Check if correct
 			FileContent::BlockDevice {
-				..
-			} => Err(errno!(ENOTTY)),
+				major,
+				minor,
+			} => {
+				let dev = device::get_device(DeviceType::Block, *major, *minor)
+					.ok_or_else(|| errno!(ENODEV))?;
+				let guard = dev.lock();
+				guard.get_mut().get_handle().ioctl(mem_space, request, argp)
+			},
 
 			FileContent::CharDevice {
 				major,
