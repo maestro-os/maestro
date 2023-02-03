@@ -95,7 +95,7 @@ impl DeviceHandle for TTYDeviceHandle {
 	fn ioctl(
 		&mut self,
 		mem_space: IntSharedPtr<MemSpace>,
-		request: u32,
+		request: ioctl::Request,
 		argp: *const c_void,
 	) -> Result<u32, Errno> {
 		let (proc_mutex, tty_mutex) = self.get_tty()?;
@@ -104,7 +104,7 @@ impl DeviceHandle for TTYDeviceHandle {
 		let tty_guard = tty_mutex.lock();
 		let tty = tty_guard.get_mut();
 
-		match request {
+		match request.get_old_format() {
 			ioctl::TCGETS => {
 				let mem_space_guard = mem_space.lock();
 				let termios_ptr: SyscallPtr<Termios> = (argp as usize).into();

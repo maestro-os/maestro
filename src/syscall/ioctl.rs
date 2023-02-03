@@ -33,9 +33,69 @@ pub const TIOCSWINSZ: u32 = 0x00005414;
 /// ioctl request: Returns the number of bytes available on the file descriptor.
 pub const FIONREAD: u32 = 0x0000541b;
 
+/// Enumeration of IO directions for ioctl requests.
+pub enum Direction {
+	/// No data to be transferred.
+	None,
+	/// The userspace requires information.
+	Read,
+	/// The userspace transmits information.
+	Write,
+}
+
+impl TryFrom<c_ulong> for Direction {
+	type Error = ();
+
+	fn try_from(n: c_ulong) -> Result<Self, Self::Error> {
+		match n {
+			0 => Ok(Self::None),
+			2 => Ok(Self::Read),
+			1 => Ok(Self::Write),
+
+			_ => Err(()),
+		}
+	}
+}
+
+/// Structure representing an `ioctl` request.
+pub struct Request {
+	/// Major number of the request.
+	major: u8,
+	/// Minor number of the request.
+	minor: u8,
+
+	/// The size of the data treated by the request in bytes.
+	size: usize,
+
+	/// Tells whether IO direction of the ioctl request.
+	io_type: Direction,
+}
+
+impl From<c_ulong> for Request {
+	fn from(req: c_ulong) -> Self {
+		Self {
+			major: ((req >> 8) & 0xff) as u8,
+			minor: (req & 0xff) as u8,
+
+			size: ((req >> 16) & 0x3f) as usize,
+
+			io_type: ((req >> 30) & 0x03).try_into().unwrap(),
+		}
+	}
+}
+
+impl Request {
+	/// Returns the value as the old format for ioctl.
+	pub fn get_old_format(&self) -> c_ulong {
+		((self.major as u32) << 8) | self.minor as u32
+	}
+}
+
 /// The implementation of the `ioctl` syscall.
 #[syscall]
 pub fn ioctl(fd: c_int, request: c_ulong, argp: *const c_void) -> Result<i32, Errno> {
+	let request = Request::from(request);
+
 	// Getting the memory space and file
 	let (mem_space, open_file_mutex) = {
 		let mutex = Process::get_current().unwrap();

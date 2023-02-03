@@ -3,6 +3,7 @@
 use core::ffi::c_void;
 use crate::errno::Errno;
 use crate::process::mem_space::MemSpace;
+use crate::syscall::ioctl;
 use crate::util::FailableDefault;
 use crate::util::io::IO;
 use crate::util::ptr::IntSharedPtr;
@@ -75,7 +76,7 @@ impl Buffer for Socket {
 	fn ioctl(
 		&mut self,
 		_mem_space: IntSharedPtr<MemSpace>,
-		_request: u32,
+		_request: ioctl::Request,
 		_argp: *const c_void,
 	) -> Result<u32, Errno> {
 		// TODO

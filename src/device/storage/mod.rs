@@ -6,22 +6,26 @@ pub mod partition;
 pub mod pata;
 pub mod ramdisk;
 
-use crate::device;
-use crate::device::bus::pci;
-use crate::device::id;
-use crate::device::id::MajorBlock;
-use crate::device::manager::DeviceManager;
-use crate::device::manager::PhysicalDevice;
+use core::cmp::min;
+use core::ffi::c_void;
 use crate::device::Device;
 use crate::device::DeviceHandle;
 use crate::device::DeviceType;
-use crate::errno;
+use crate::device::bus::pci;
+use crate::device::id::MajorBlock;
+use crate::device::id;
+use crate::device::manager::DeviceManager;
+use crate::device::manager::PhysicalDevice;
+use crate::device;
 use crate::errno::Errno;
-use crate::file::path::Path;
+use crate::errno;
 use crate::file::Mode;
+use crate::file::path::Path;
 use crate::memory::malloc;
 use crate::process::mem_space::MemSpace;
 use crate::process::oom;
+use crate::syscall::ioctl;
+use crate::util::FailableClone;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::io::IO;
@@ -29,9 +33,6 @@ use crate::util::math;
 use crate::util::ptr::IntSharedPtr;
 use crate::util::ptr::SharedPtr;
 use crate::util::ptr::WeakPtr;
-use crate::util::FailableClone;
-use core::cmp::min;
-use core::ffi::c_void;
 use partition::Partition;
 
 /// The major number for storage devices.
@@ -215,7 +216,7 @@ impl DeviceHandle for StorageDeviceHandle {
 	fn ioctl(
 		&mut self,
 		_mem_space: IntSharedPtr<MemSpace>,
-		_request: u32,
+		_request: ioctl::Request,
 		_argp: *const c_void,
 	) -> Result<u32, Errno> {
 		// TODO

@@ -1,23 +1,24 @@
 //! This module implements default devices.
 
-use super::id;
-use super::DeviceType;
-use crate::crypto::rand;
-use crate::device;
-use crate::device::tty::TTYDeviceHandle;
-use crate::device::Device;
-use crate::device::DeviceHandle;
-use crate::errno;
-use crate::errno::Errno;
-use crate::file::path::Path;
-use crate::logger;
-use crate::process::mem_space::MemSpace;
-use crate::util::io;
-use crate::util::io::IO;
-use crate::util::ptr::IntSharedPtr;
 use core::cmp::min;
 use core::ffi::c_void;
 use core::mem::ManuallyDrop;
+use crate::crypto::rand;
+use crate::device::Device;
+use crate::device::DeviceHandle;
+use crate::device::tty::TTYDeviceHandle;
+use crate::device;
+use crate::errno::Errno;
+use crate::errno;
+use crate::file::path::Path;
+use crate::logger;
+use crate::process::mem_space::MemSpace;
+use crate::syscall::ioctl;
+use crate::util::io::IO;
+use crate::util::io;
+use crate::util::ptr::IntSharedPtr;
+use super::DeviceType;
+use super::id;
 
 /// Structure representing a device which does nothing.
 pub struct NullDeviceHandle {}
@@ -26,7 +27,7 @@ impl DeviceHandle for NullDeviceHandle {
 	fn ioctl(
 		&mut self,
 		_mem_space: IntSharedPtr<MemSpace>,
-		_request: u32,
+		_request: ioctl::Request,
 		_argp: *const c_void,
 	) -> Result<u32, Errno> {
 		// TODO
@@ -59,7 +60,7 @@ impl DeviceHandle for ZeroDeviceHandle {
 	fn ioctl(
 		&mut self,
 		_mem_space: IntSharedPtr<MemSpace>,
-		_request: u32,
+		_request: ioctl::Request,
 		_argp: *const c_void,
 	) -> Result<u32, Errno> {
 		// TODO
@@ -96,7 +97,7 @@ impl DeviceHandle for KMsgDeviceHandle {
 	fn ioctl(
 		&mut self,
 		_mem_space: IntSharedPtr<MemSpace>,
-		_request: u32,
+		_request: ioctl::Request,
 		_argp: *const c_void,
 	) -> Result<u32, Errno> {
 		// TODO
@@ -150,7 +151,7 @@ impl DeviceHandle for RandomDeviceHandle {
 	fn ioctl(
 		&mut self,
 		_mem_space: IntSharedPtr<MemSpace>,
-		_request: u32,
+		_request: ioctl::Request,
 		_argp: *const c_void,
 	) -> Result<u32, Errno> {
 		// TODO
@@ -198,7 +199,7 @@ impl DeviceHandle for URandomDeviceHandle {
 	fn ioctl(
 		&mut self,
 		_mem_space: IntSharedPtr<MemSpace>,
-		_request: u32,
+		_request: ioctl::Request,
 		_argp: *const c_void,
 	) -> Result<u32, Errno> {
 		// TODO

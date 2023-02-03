@@ -14,14 +14,18 @@ pub mod serial;
 pub mod storage;
 pub mod tty;
 
+use core::ffi::c_void;
+use core::fmt;
 use crate::device::manager::DeviceManager;
 use crate::errno::Errno;
-use crate::file;
-use crate::file::path::Path;
-use crate::file::vfs;
 use crate::file::FileContent;
 use crate::file::Mode;
+use crate::file::path::Path;
+use crate::file::vfs;
+use crate::file;
 use crate::process::mem_space::MemSpace;
+use crate::syscall::ioctl;
+use crate::util::FailableClone;
 use crate::util::boxed::Box;
 use crate::util::container::vec::Vec;
 use crate::util::io::IO;
@@ -29,9 +33,6 @@ use crate::util::lock::Mutex;
 use crate::util::lock::MutexGuard;
 use crate::util::ptr::IntSharedPtr;
 use crate::util::ptr::SharedPtr;
-use crate::util::FailableClone;
-use core::ffi::c_void;
-use core::fmt;
 use keyboard::KeyboardManager;
 use storage::StorageManager;
 
@@ -62,7 +63,7 @@ pub trait DeviceHandle: IO {
 	fn ioctl(
 		&mut self,
 		mem_space: IntSharedPtr<MemSpace>,
-		request: u32,
+		request: ioctl::Request,
 		argp: *const c_void,
 	) -> Result<u32, Errno>;
 }

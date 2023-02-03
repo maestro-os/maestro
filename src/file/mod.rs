@@ -20,6 +20,7 @@ use crate::file::buffer::pipe::PipeBuffer;
 use crate::file::buffer::socket::Socket;
 use crate::file::fs::Filesystem;
 use crate::process::mem_space::MemSpace;
+use crate::syscall::ioctl;
 use crate::time::unit::Timestamp;
 use crate::time::unit::TimestampScale;
 use crate::time;
@@ -643,7 +644,7 @@ impl File {
 	pub fn ioctl(
 		&mut self,
 		mem_space: IntSharedPtr<MemSpace>,
-		request: u32,
+		request: ioctl::Request,
 		argp: *const c_void,
 	) -> Result<u32, Errno> {
 		match &self.content {
