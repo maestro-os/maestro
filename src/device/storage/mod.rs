@@ -23,6 +23,7 @@ use crate::file::Mode;
 use crate::file::path::Path;
 use crate::memory::malloc;
 use crate::process::mem_space::MemSpace;
+use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::oom;
 use crate::syscall::ioctl;
 use crate::util::FailableClone;
@@ -200,8 +201,11 @@ pub struct StorageDeviceHandle {
 
 impl StorageDeviceHandle {
 	/// Creates a new instance for the given storage interface and the given
-	/// partition number. `interface` is the storage interface.
-	/// `partition` is the partition. If None, the handle works on the whole
+	/// partition number.
+	///
+	/// Arguments:
+	/// - `interface` is the storage interface.
+	/// - `partition` is the partition. If None, the handle works on the whole
 	/// storage device.
 	pub fn new(interface: WeakPtr<dyn StorageInterface>, partition: Option<Partition>) -> Self {
 		Self {
@@ -215,12 +219,31 @@ impl StorageDeviceHandle {
 impl DeviceHandle for StorageDeviceHandle {
 	fn ioctl(
 		&mut self,
-		_mem_space: IntSharedPtr<MemSpace>,
-		_request: ioctl::Request,
-		_argp: *const c_void,
+		mem_space: IntSharedPtr<MemSpace>,
+		request: ioctl::Request,
+		argp: *const c_void,
 	) -> Result<u32, Errno> {
-		// TODO
-		Err(errno!(EINVAL))
+		match request.get_old_format() {
+			ioctl::BLKRRPART => {
+				// TODO re-read partition table on disk and update device files accordingly
+				todo!();
+			}
+
+			ioctl::BLKGETSIZE64 => {
+				let size = self.get_size();
+
+				let mem_space_guard = mem_space.lock();
+				let size_ptr: SyscallPtr<u64> = (argp as usize).into();
+				let size_ref = size_ptr
+					.get_mut(&mem_space_guard)?
+					.ok_or_else(|| errno!(EFAULT))?;
+				*size_ref = size;
+
+				Ok(0)
+			}
+
+			_ => Err(errno!(EINVAL)),
+		}
 	}
 }
 

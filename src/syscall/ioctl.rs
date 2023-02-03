@@ -1,12 +1,12 @@
 //! The ioctl syscall allows to control a device represented by a file
 //! descriptor.
 
-use crate::errno;
-use crate::errno::Errno;
-use crate::process::Process;
 use core::ffi::c_int;
 use core::ffi::c_ulong;
 use core::ffi::c_void;
+use crate::errno::Errno;
+use crate::errno;
+use crate::process::Process;
 use macros::syscall;
 
 // ioctl requests: TTY
@@ -33,7 +33,15 @@ pub const TIOCSWINSZ: u32 = 0x00005414;
 /// ioctl request: Returns the number of bytes available on the file descriptor.
 pub const FIONREAD: u32 = 0x0000541b;
 
+// ioctl requests: storage
+
+/// ioctl request: re-read partition table.
+pub const BLKRRPART: u32 = 0x0000125f;
+/// ioctl request: get storage size in bytes.
+pub const BLKGETSIZE64: u32 = 0x00001272;
+
 /// Enumeration of IO directions for ioctl requests.
+#[derive(Eq, PartialEq)]
 pub enum Direction {
 	/// No data to be transferred.
 	None,
@@ -60,15 +68,14 @@ impl TryFrom<c_ulong> for Direction {
 /// Structure representing an `ioctl` request.
 pub struct Request {
 	/// Major number of the request.
-	major: u8,
+	pub major: u8,
 	/// Minor number of the request.
-	minor: u8,
+	pub minor: u8,
 
 	/// The size of the data treated by the request in bytes.
-	size: usize,
-
+	pub size: usize,
 	/// Tells whether IO direction of the ioctl request.
-	io_type: Direction,
+	pub direction: Direction,
 }
 
 impl From<c_ulong> for Request {
@@ -78,8 +85,7 @@ impl From<c_ulong> for Request {
 			minor: (req & 0xff) as u8,
 
 			size: ((req >> 16) & 0x3f) as usize,
-
-			io_type: ((req >> 30) & 0x03).try_into().unwrap(),
+			direction: ((req >> 30) & 0x03).try_into().unwrap(),
 		}
 	}
 }
