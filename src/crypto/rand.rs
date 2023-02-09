@@ -18,9 +18,11 @@ pub struct EntropyPool {
 	/// Data pending to be treated. This buffer is used as a cache when input data is not large
 	/// enough.
 	pending: RingBuffer<u8, Vec<u8>>,
-
 	/// The buffer containing entropy.
 	buff: RingBuffer<u8, Vec<u8>>,
+
+	/// The ChaCha20 counter.
+	counter: u64,
 
 	/// The seed to be used for pseudo-random generation (when the pool runs out of entropy).
 	pseudo_seed: u64,
@@ -31,8 +33,9 @@ impl EntropyPool {
 	pub fn new() -> Result<Self, Errno> {
 		Ok(Self {
 			pending: RingBuffer::new(crate::vec![0; 56]?),
-
 			buff: RingBuffer::new(crate::vec![0; ENTROPY_BUFFER_SIZE]?),
+
+			counter: 0,
 
 			pseudo_seed: 0,
 		})
@@ -57,11 +60,27 @@ impl EntropyPool {
 				return 0;
 			}
 
-			// TODO use pseudo-random
-			todo!();
+			let mut seed = self.pseudo_seed;
+			for b in buff.iter_mut() {
+				seed = 6364136223846793005u64.wrapping_mul(seed).wrapping_add(1);
+				*b = (seed & 0xff) as _;
+			}
+			self.pseudo_seed = seed;
+
+			buff.len()
 		} else {
 			self.buff.read(buff)
 		}
+	}
+
+	/// Upddates the seed for the pseudorandom generator.
+	fn update_seed(&mut self, buff: &[u8; 8]) {
+		let mut seed = 0;
+		for (i, b) in buff.iter().enumerate() {
+			seed |= (*b as u64) << (i * 8);
+		}
+
+		self.pseudo_seed = seed;
 	}
 
 	/// Writes entropy to the pool.
@@ -70,8 +89,6 @@ impl EntropyPool {
 	pub fn write(&mut self, buff: &[u8]) -> usize {
 		let mut off = 0;
 		let mut total = 0;
-
-		let mut counter: u64 = 0;
 
 		let mut input: [u8; 64] = [0; 64];
 		let mut output: [u8; 64] = [0; 64];
@@ -84,7 +101,7 @@ impl EntropyPool {
 
 			// Add counter to buffer
 			for i in 0..8 {
-				input[48 + i] = ((counter >> (i * 8)) & 0xff) as _;
+				input[48 + i] = ((self.counter >> (i * 8)) & 0xff) as _;
 			}
 			off += 8;
 
@@ -95,7 +112,10 @@ impl EntropyPool {
 			// Encode
 			chacha20::block(&input, &mut output);
 
-			// TODO update pseudo_seed
+			// Update pseudo seed
+			let mut seed_in: [u8; 8] = [0; 8];
+			seed_in.copy_from_slice(&input[0..8]);
+			self.update_seed(&seed_in);
 
 			let l = self.buff.write(&output);
 			if l == 0 {
@@ -103,7 +123,7 @@ impl EntropyPool {
 			}
 
 			total += l;
-			counter += 1;
+			self.counter += 1;
 		}
 
 		// Put remaining bytes into pending buffer
