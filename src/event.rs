@@ -2,17 +2,21 @@
 //! register callbacks for each interrupts. Each callback has a priority number
 //! and is called in descreasing order.
 
+use core::ffi::c_void;
+use core::mem::MaybeUninit;
+use core::mem::size_of;
+use core::slice;
+use crate::crypto::rand::EntropyPool;
+use crate::crypto::rand;
 use crate::errno::Errno;
-use crate::idt;
 use crate::idt::pic;
+use crate::idt;
 use crate::panic;
 use crate::process::regs::Regs;
 use crate::process::tss;
 use crate::util::boxed::Box;
 use crate::util::container::vec::Vec;
 use crate::util::lock::*;
-use core::ffi::c_void;
-use core::mem::MaybeUninit;
 
 /// The list of interrupt error messages ordered by index of the corresponding
 /// interrupt vector.
@@ -157,9 +161,11 @@ pub fn init() {
 }
 
 /// Registers the given callback and returns a reference to it.
-/// `id` is the id of the interrupt to watch.
-/// `priority` is the priority for the callback. Higher value means higher
-/// priority. `callback` is the callback to register.
+///
+/// Arguments:
+/// - `id` is the id of the interrupt to watch.
+/// - `priority` is the priority for the callback. Higher value means higher priority.
+/// - `callback` is the callback to register.
 ///
 /// If the `id` is invalid or if an allocation fails, the function shall return
 /// an error.
@@ -230,14 +236,39 @@ pub unsafe extern "C" fn unlock_callbacks(id: usize) {
 	CALLBACKS.assume_init_mut()[id as usize].unlock();
 }
 
+/// Feeds the entropy pool using the given data.
+fn feed_entropy<T>(pool: &mut EntropyPool, val: &T) {
+	let buff = unsafe {
+		slice::from_raw_parts(val as *const _ as *const u8, size_of::<T>())
+	};
+
+	pool.write(buff);
+}
+
 /// This function is called whenever an interruption is triggered.
-/// `id` is the identifier of the interrupt type. This value is
-/// architecture-dependent. `code` is an optional code associated with the
-/// interrupt. If the interrupt type doesn't have a code, the value is `0`.
-/// `regs` is the state of the registers at the moment of the interrupt.
-/// `ring` tells the ring at which the code was running.
+///
+/// Arguments:
+/// - `id` is the identifier of the interrupt type.
+/// This value is architecture-dependent.
+/// - `code` is an optional code associated with the interrupt.
+/// If the interrupt type doesn't have a code, the value is `0`.
+/// - `regs` is the state of the registers at the moment of the interrupt.
+/// - `ring` tells the ring at which the code was running.
 #[no_mangle]
 pub extern "C" fn event_handler(id: u32, code: u32, ring: u32, regs: &Regs) {
+	// Feed entropy pool
+	{
+		let pool_guard = rand::ENTROPY_POOL.lock();
+		let pool = pool_guard.get_mut();
+
+		if let Some(pool) = pool {
+			feed_entropy(pool, &id);
+			feed_entropy(pool, &code);
+			feed_entropy(pool, &ring);
+			feed_entropy(pool, regs);
+		}
+	}
+
 	let action = {
 		let guard = unsafe { &mut CALLBACKS.assume_init_mut()[id as usize] }.lock();
 		let callbacks = guard.get_mut();

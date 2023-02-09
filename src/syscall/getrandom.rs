@@ -16,22 +16,15 @@ const GRND_NONBLOCK: u32 = 1;
 /// Implementation of the `getrandom` syscall.
 #[syscall]
 pub fn getrandom(buf: SyscallSlice<u8>, buflen: usize, flags: c_uint) -> Result<i32, Errno> {
-	// Getting randomness source
-	let random_source_mutex = match flags & GRND_RANDOM != 0 {
-		// Using random
-		true => rand::get_source("random"),
-
-		// Using urandom
-		false => rand::get_source("urandom"),
-	};
-	let random_source_guard = random_source_mutex
-		.as_ref()
-		.ok_or_else(|| errno!(EAGAIN))?
-		.lock();
-	let random_source = random_source_guard.get_mut();
-
+	let bypass_threshold = flags & GRND_RANDOM == 0;
 	let nonblock = flags & GRND_NONBLOCK != 0;
-	if nonblock && buflen > random_source.available_bytes() {
+
+	let pool_guard = rand::ENTROPY_POOL.lock();
+	let Some(pool) = pool_guard.get_mut() else {
+		return Ok(0);
+	};
+
+	if nonblock && buflen > pool.available_bytes() {
 		return Err(errno!(EAGAIN));
 	}
 
@@ -46,7 +39,7 @@ pub fn getrandom(buf: SyscallSlice<u8>, buflen: usize, flags: c_uint) -> Result<
 	if let Some(buf) = buf.get_mut(&mem_space_guard, buflen)? {
 		let mut i = 0;
 		while i < buf.len() {
-			i += random_source.consume_entropy(&mut buf[i..]);
+			i += pool.read(&mut buf[i..], bypass_threshold);
 		}
 
 		Ok(buf.len() as _)

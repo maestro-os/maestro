@@ -132,9 +132,9 @@ impl IO for KMsgDeviceHandle {
 		Ok((len as _, eof))
 	}
 
-	fn write(&mut self, _offset: u64, buff: &[u8]) -> Result<u64, Errno> {
-		// TODO Write to logger
-		Ok(buff.len() as _)
+	fn write(&mut self, _offset: u64, _buff: &[u8]) -> Result<u64, Errno> {
+		// TODO
+		todo!();
 	}
 
 	fn poll(&mut self, _mask: u32) -> Result<u32, Errno> {
@@ -165,24 +165,27 @@ impl IO for RandomDeviceHandle {
 	}
 
 	fn read(&mut self, _: u64, buff: &mut [u8]) -> Result<(u64, bool), Errno> {
-		if let Some(source_mutex) = rand::get_source("random") {
-			let source_guard = source_mutex.lock();
-			let source = source_guard.get_mut();
+		let pool_guard = rand::ENTROPY_POOL.lock();
+		let pool = pool_guard.get_mut();
 
-			let mut i = 0;
-			while i < buff.len() {
-				i += source.consume_entropy(&mut buff[i..]);
-			}
-
-			Ok((buff.len() as _, false))
+		if let Some(pool) = pool {
+			let len = pool.read(buff, false);
+			Ok((len as _, false))
 		} else {
 			Ok((0, true))
 		}
 	}
 
-	fn write(&mut self, _offset: u64, _buff: &[u8]) -> Result<u64, Errno> {
-		// TODO Feed entropy?
-		todo!();
+	fn write(&mut self, _: u64, buff: &[u8]) -> Result<u64, Errno> {
+		let pool_guard = rand::ENTROPY_POOL.lock();
+		let pool = pool_guard.get_mut();
+
+		if let Some(pool) = pool {
+			let len = pool.write(&buff);
+			Ok(len as _)
+		} else {
+			Err(errno!(EINVAL))
+		}
 	}
 
 	fn poll(&mut self, _mask: u32) -> Result<u32, Errno> {
@@ -213,24 +216,27 @@ impl IO for URandomDeviceHandle {
 	}
 
 	fn read(&mut self, _: u64, buff: &mut [u8]) -> Result<(u64, bool), Errno> {
-		if let Some(source_mutex) = rand::get_source("urandom") {
-			let source_guard = source_mutex.lock();
-			let source = source_guard.get_mut();
+		let pool_guard = rand::ENTROPY_POOL.lock();
+		let pool = pool_guard.get_mut();
 
-			let mut i = 0;
-			while i < buff.len() {
-				i += source.consume_entropy(&mut buff[i..]);
-			}
-
-			Ok((buff.len() as _, false))
+		if let Some(pool) = pool {
+			let len = pool.read(buff, true);
+			Ok((len as _, false))
 		} else {
 			Ok((0, true))
 		}
 	}
 
-	fn write(&mut self, _offset: u64, _buff: &[u8]) -> Result<u64, Errno> {
-		// TODO Feed entropy?
-		todo!();
+	fn write(&mut self, _: u64, buff: &[u8]) -> Result<u64, Errno> {
+		let pool_guard = rand::ENTROPY_POOL.lock();
+		let pool = pool_guard.get_mut();
+
+		if let Some(pool) = pool {
+			let len = pool.write(&buff);
+			Ok(len as _)
+		} else {
+			Err(errno!(EINVAL))
+		}
 	}
 
 	fn poll(&mut self, _mask: u32) -> Result<u32, Errno> {
@@ -264,8 +270,7 @@ pub fn create() -> Result<(), Errno> {
 	)?;
 	device::register_device(zero_device)?;
 
-	// TODO
-	/*let random_path = Path::from_str(b"/dev/random", false)?;
+	let random_path = Path::from_str(b"/dev/random", false)?;
 	let random_device = Device::new(
 		1,
 		8,
@@ -285,7 +290,7 @@ pub fn create() -> Result<(), Errno> {
 		DeviceType::Char,
 		URandomDeviceHandle {},
 	)?;
-	device::register_device(urandom_device)?;*/
+	device::register_device(urandom_device)?;
 
 	let kmsg_path = Path::from_str(b"/dev/kmsg", false)?;
 	let kmsg_device = Device::new(
