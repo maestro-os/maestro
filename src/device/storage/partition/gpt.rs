@@ -3,24 +3,23 @@
 
 use core::mem::size_of;
 use core::slice;
-//use crate::crypto::checksum::compute_crc32;
-//use crate::crypto::checksum::compute_crc32_lookuptable;
+use crate::crypto::checksum::compute_crc32;
+use crate::crypto::checksum::compute_crc32_lookuptable;
 use crate::device::storage::StorageInterface;
-use crate::errno;
 use crate::errno::Errno;
+use crate::errno;
 use crate::memory::malloc;
 use crate::util::boxed::Box;
 use crate::util::container::vec::Vec;
-//use crate::util;
+use crate::util;
 use super::Partition;
 use super::Table;
 
 /// The signature in the GPT header.
 const GPT_SIGNATURE: &[u8] = b"EFI PART";
 /// The polynom used in the computation of the CRC32 checksum.
-const CHECKSUM_POLYNOM: u32 = 0x4c11db7;
+const CHECKSUM_POLYNOM: u32 = 0xedb88320;
 
-// TODO Check checksum of entries array
 // TODO Add GPT restoring from alternate table (requires user confirmation)
 
 /// Type representing a Globally Unique IDentifier.
@@ -47,6 +46,7 @@ fn translate_lba(lba: i64, storage_size: u64) -> Option<u64> {
 }
 
 /// Structure representing a GPT entry.
+#[derive(Clone)]
 #[repr(C, packed)]
 struct GPTEntry {
 	/// The partition type's GUID.
@@ -60,13 +60,15 @@ struct GPTEntry {
 	/// Entry's attributes.
 	attributes: u64,
 	/// The partition's name.
-	name: [u16],
+	name: [u16; 36],
 }
 
 impl GPTEntry {
 	/// Tells whether the given entry `other` equals the current entry.
-	/// `entry_size` is the size of an entry.
-	/// `blocks_count` is the number of blocks on the storage device.
+	///
+	/// Arguments:
+	/// - `entry_size` is the size of an entry.
+	/// - `blocks_count` is the number of blocks on the storage device.
 	fn eq(&self, other: &Self, entry_size: usize, blocks_count: u64) -> bool {
 		if self.partition_type != other.partition_type {
 			return false;
@@ -110,6 +112,7 @@ impl GPTEntry {
 }
 
 /// Structure representing the GPT header.
+#[derive(Clone)]
 #[repr(C, packed)]
 pub struct GPT {
 	/// The header's signature.
@@ -142,30 +145,10 @@ pub struct GPT {
 	entries_checksum: u32,
 }
 
-impl Clone for GPT {
-	fn clone(&self) -> Self {
-		Self {
-			signature: self.signature,
-			revision: self.revision,
-			hdr_size: self.hdr_size,
-			checksum: self.checksum,
-			reserved: self.reserved,
-			hdr_lba: self.hdr_lba,
-			alternate_hdr_lba: self.alternate_hdr_lba,
-			first_usable: self.first_usable,
-			last_usable: self.last_usable,
-			disk_guid: self.disk_guid,
-			entries_start: self.entries_start,
-			entries_number: self.entries_number,
-			entry_size: self.entry_size,
-			entries_checksum: self.entries_checksum,
-		}
-	}
-}
-
 impl GPT {
 	/// Reads the header structure from the given storage interface `storage` at
 	/// the given LBA `lba`.
+	///
 	/// If the header is invalid, the function returns an error.
 	fn read_hdr_struct(storage: &mut dyn StorageInterface, lba: i64) -> Result<Self, Errno> {
 		let block_size = storage.get_block_size() as usize;
@@ -198,20 +181,23 @@ impl GPT {
 
 		// TODO Check current header LBA
 
-		// Checking checksum
-		// TODO Fix
-		/*let mut tmp = self.clone();
-		tmp.checksum = 0;
 		let mut lookup_table = [0; 256];
 		compute_crc32_lookuptable(&mut lookup_table, CHECKSUM_POLYNOM);
+
+		// Checking checksum
+		let mut tmp = self.clone();
+		tmp.checksum = 0;
 		if compute_crc32(util::as_slice(&tmp), &lookup_table) != self.checksum {
 			return false;
-		}*/
+		}
+
+		// TODO check entries checksum
 
 		true
 	}
 
 	/// Returns the list of entries in the table.
+	///
 	/// `storage` is the storage device interface.
 	fn get_entries(&self, storage: &mut dyn StorageInterface) -> Result<Vec<Box<GPTEntry>>, Errno> {
 		let block_size = storage.get_block_size();
