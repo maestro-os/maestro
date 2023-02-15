@@ -12,6 +12,7 @@ pub mod util;
 pub mod vfs;
 
 use core::ffi::c_void;
+use crate::device::DeviceID;
 use crate::device::DeviceType;
 use crate::device;
 use crate::errno::Errno;
@@ -672,8 +673,12 @@ impl File {
 				major,
 				minor,
 			} => {
-				let dev = device::get_device(DeviceType::Block, *major, *minor)
-					.ok_or_else(|| errno!(ENODEV))?;
+				let dev = device::get_device(&DeviceID {
+					type_: DeviceType::Block,
+					major: *major,
+					minor: *minor
+				}).ok_or_else(|| errno!(ENODEV))?;
+
 				let guard = dev.lock();
 				guard.get_mut().get_handle().ioctl(mem_space, request, argp)
 			},
@@ -682,8 +687,12 @@ impl File {
 				major,
 				minor,
 			} => {
-				let dev = device::get_device(DeviceType::Char, *major, *minor)
-					.ok_or_else(|| errno!(ENODEV))?;
+				let dev = device::get_device(&DeviceID {
+					type_: DeviceType::Char,
+					major: *major,
+					minor: *minor,
+				}).ok_or_else(|| errno!(ENODEV))?;
+
 				let guard = dev.lock();
 				guard.get_mut().get_handle().ioctl(mem_space, request, argp)
 			}
@@ -765,8 +774,12 @@ impl File {
 				major,
 				minor,
 			} => {
-				let io = device::get_device(DeviceType::Block, *major, *minor)
-					.ok_or_else(|| errno!(ENODEV))?;
+				let io = device::get_device(&DeviceID {
+					type_: DeviceType::Block,
+					major: *major,
+					minor: *minor
+				}).ok_or_else(|| errno!(ENODEV))?;
+
 				f(Some(io as _), None)
 			},
 
@@ -774,8 +787,12 @@ impl File {
 				major,
 				minor,
 			} => {
-				let io = device::get_device(DeviceType::Char, *major, *minor)
-					.ok_or_else(|| errno!(ENODEV))?;
+				let io = device::get_device(&DeviceID {
+					type_: DeviceType::Char,
+					major: *major,
+					minor: *minor
+				}).ok_or_else(|| errno!(ENODEV))?;
+
 				f(Some(io as _), None)
 			}
 		}

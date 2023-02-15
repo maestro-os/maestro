@@ -10,6 +10,7 @@ use core::cmp::min;
 use core::ffi::c_void;
 use crate::device::Device;
 use crate::device::DeviceHandle;
+use crate::device::DeviceID;
 use crate::device::DeviceType;
 use crate::device::bus::pci;
 use crate::device::id::MajorBlock;
@@ -225,8 +226,10 @@ impl DeviceHandle for StorageDeviceHandle {
 	) -> Result<u32, Errno> {
 		match request.get_old_format() {
 			ioctl::BLKRRPART => {
-				// TODO re-read partition table on disk and update device files accordingly
-				todo!();
+				// TODO StorageManager::clear_partitions(major);
+				StorageManager::read_partitions(self.interface)?;
+
+				Ok(0)
 			}
 
 			ioctl::BLKGETSIZE64 => {
@@ -334,10 +337,63 @@ impl StorageManager {
 		})
 	}
 
+	/// Creates device files for every partitions on the storage device, within the limit of
+	/// `MAX_PARTITIONS`.
+	pub fn read_partitions(storage: SharedPtr<dyn StorageInterface>) -> Result<(), Errno> {
+		let storage_guard = storage.lock();
+		let s = storage_guard.get_mut();
+
+		if let Some(partitions_table) = partition::read(s)? {
+			let partitions = partitions_table.get_partitions(s)?;
+
+			let iter = partitions.into_iter().take(MAX_PARTITIONS - 1);
+			for (i, partition) in iter.enumerate() {
+				let part_nbr = (i + 1) as u32;
+
+				// Adding the partition number to the path
+				let path_str = (prefix.failable_clone()? + crate::format!("{}", part_nbr)?)?;
+				let path = Path::from_str(path_str.as_bytes(), false)?;
+
+				// Creating the partition's device file
+				let handle = StorageDeviceHandle::new(storage.new_weak(), Some(partition));
+				let device = Device::new(
+					DeviceID {
+						type_: DeviceType::Block,
+						major,
+						minor: storage_id * MAX_PARTITIONS as u32 + part_nbr,
+					},
+					path.failable_clone()?,
+					STORAGE_MODE,
+					handle,
+				)?;
+				device::register_device(device)?;
+
+				// TODO if vfs is fully init, create device file
+			}
+		}
+
+		Ok(())
+	}
+
+	/// Clears device files for every partitions.
+	///
+	/// `major` is the major number of the devices to be removed.
+	pub fn clear_partitions(major: u32) {
+		for i in 1..MAX_PARTITIONS {
+			// TODO if vfs is fully init, remove device file
+
+			device::unregister_device(&DeviceID {
+				type_: DeviceType::Block,
+				major,
+				minor: i as _,
+			});
+		}
+	}
+
 	// TODO Handle the case where there is more devices that the number of devices
 	// that can be handled in the range of minor numbers
 	// TODO When failing, remove previously registered devices
-	/// Adds a storage device.
+	/// Adds the given storage device to the manager.
 	fn add(&mut self, storage: SharedPtr<dyn StorageInterface>) -> Result<(), Errno> {
 		// The device files' major number
 		let major = self.major_block.get_major();
@@ -346,52 +402,26 @@ impl StorageManager {
 
 		// The prefix is the path of the main device file
 		let mut prefix = String::from(b"/dev/sd")?;
-		prefix.push(b'a' + (storage_id as u8))?; // TODO Handle if out of the alphabet
-										 // The path of the main device file
+		// TODO Handle if out of the alphabet
+		prefix.push(b'a' + (storage_id as u8))?;
+		// The path of the main device file
 		let main_path = Path::from_str(prefix.as_bytes(), false)?;
 
 		// Creating the main device file
-		let main_handle = StorageDeviceHandle::new(storage.new_weak(), None);
+		let main_handle = StorageDeviceHandle::new(storage.new_weak(), partition);
 		let main_device = Device::new(
-			major,
-			storage_id * MAX_PARTITIONS as u32,
+			DeviceID {
+				type_: DeviceType::Block,
+				major,
+				minor: storage_id * MAX_PARTITIONS as u32,
+			},
 			main_path,
 			STORAGE_MODE,
-			DeviceType::Block,
 			main_handle,
 		)?;
 		device::register_device(main_device)?;
 
-		// Creating device files for every partitions (within the limit of
-		// MAX_PARTITIONS)
-		{
-			let storage_guard = storage.lock();
-			let s = storage_guard.get_mut();
-
-			if let Some(partitions_table) = partition::read(s)? {
-				let partitions = partitions_table.get_partitions(s)?;
-
-				for (i, partition) in partitions.into_iter().take(MAX_PARTITIONS).enumerate() {
-					let i = i + 1;
-
-					// Adding the partition number to the path
-					let path_str = (prefix.failable_clone()? + crate::format!("{}", i)?)?;
-					let path = Path::from_str(path_str.as_bytes(), false)?;
-
-					// Creating the partition's device file
-					let handle = StorageDeviceHandle::new(storage.new_weak(), Some(partition));
-					let device = Device::new(
-						major,
-						storage_id * MAX_PARTITIONS as u32 + i as u32,
-						path.failable_clone()?,
-						STORAGE_MODE,
-						DeviceType::Block,
-						handle,
-					)?;
-					device::register_device(device)?;
-				}
-			}
-		}
+		Self::read_partitions(storage)?;
 
 		self.interfaces.push(storage)
 	}

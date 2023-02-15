@@ -1,5 +1,6 @@
 //! A ramdisk is a virtual storage device stored on the RAM. From the point of
 //! view of the userspace, it works exactly the same.
+//!
 //! Ramdisks are lazily allocated so they do not use much memory as long as they
 //! are not used.
 
@@ -7,6 +8,7 @@ use core::ffi::c_void;
 use core::mem::ManuallyDrop;
 use crate::device::Device;
 use crate::device::DeviceHandle;
+use crate::device::DeviceID;
 use crate::device::DeviceType;
 use crate::device::id;
 use crate::device;
@@ -176,11 +178,13 @@ pub fn create() -> Result<(), Errno> {
 		path.push(name)?;
 
 		let dev = Device::new(
-			RAM_DISK_MAJOR,
-			i as _,
+			DeviceID {
+				type_: DeviceType::Block,
+				major: RAM_DISK_MAJOR, 
+				minor: i as _,
+			},
 			path,
 			0o666,
-			DeviceType::Block,
 			RAMDiskHandle::new(),
 		)?;
 		device::register_device(dev)?;

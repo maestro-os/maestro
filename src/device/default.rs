@@ -6,6 +6,7 @@ use core::mem::ManuallyDrop;
 use crate::crypto::rand;
 use crate::device::Device;
 use crate::device::DeviceHandle;
+use crate::device::DeviceID;
 use crate::device::tty::TTYDeviceHandle;
 use crate::device;
 use crate::errno::Errno;
@@ -250,55 +251,65 @@ pub fn create() -> Result<(), Errno> {
 
 	let null_path = Path::from_str(b"/dev/null", false)?;
 	let null_device = Device::new(
-		1,
-		3,
+		DeviceID {
+			type_: DeviceType::Char,
+			major: 1,
+			minor: 3,
+		},
 		null_path,
 		0o666,
-		DeviceType::Char,
 		NullDeviceHandle {},
 	)?;
 	device::register_device(null_device)?;
 
 	let zero_path = Path::from_str(b"/dev/zero", false)?;
 	let zero_device = Device::new(
-		1,
-		5,
+		DeviceID {
+			type_: DeviceType::Char,
+			major: 1,
+			minor: 5,
+		},
 		zero_path,
 		0o666,
-		DeviceType::Char,
 		ZeroDeviceHandle {},
 	)?;
 	device::register_device(zero_device)?;
 
 	let random_path = Path::from_str(b"/dev/random", false)?;
 	let random_device = Device::new(
-		1,
-		8,
+		DeviceID {
+			type_: DeviceType::Char,
+			major: 1,
+			minor: 8,
+		},
 		random_path,
 		0o666,
-		DeviceType::Char,
 		RandomDeviceHandle {},
 	)?;
 	device::register_device(random_device)?;
 
 	let urandom_path = Path::from_str(b"/dev/urandom", false)?;
 	let urandom_device = Device::new(
-		1,
-		9,
+		DeviceID {
+			type_: DeviceType::Char,
+			major: 1,
+			minor: 9,
+		},
 		urandom_path,
 		0o666,
-		DeviceType::Char,
 		URandomDeviceHandle {},
 	)?;
 	device::register_device(urandom_device)?;
 
 	let kmsg_path = Path::from_str(b"/dev/kmsg", false)?;
 	let kmsg_device = Device::new(
-		1,
-		11,
+		DeviceID {
+			type_: DeviceType::Char,
+			major: 1,
+			minor: 11,
+		},
 		kmsg_path,
 		0o600,
-		DeviceType::Char,
 		KMsgDeviceHandle {},
 	)?;
 	device::register_device(kmsg_device)?;
@@ -307,11 +318,13 @@ pub fn create() -> Result<(), Errno> {
 
 	let current_tty_path = Path::from_str(b"/dev/tty", false)?;
 	let current_tty_device = Device::new(
-		5,
-		0,
+		DeviceID {
+			type_: DeviceType::Char,
+			major: 5,
+			minor: 0,
+		},
 		current_tty_path,
 		0o666,
-		DeviceType::Char,
 		TTYDeviceHandle::new(None),
 	)?;
 	device::register_device(current_tty_device)?;

@@ -180,21 +180,32 @@ impl<T: ?Sized, const INT: bool> Mutex<T, INT> {
 		MutexGuard::new(self)
 	}
 
-	/// Returns an immutable reference to the payload. This function is unsafe
-	/// because it can return the payload while the Mutex isn't locked.
+	/// Returns an immutable reference to the payload.
+	///
+	/// # Safety
+	///
+	/// When using this function one, must be careful that another thread cannot access the resource simultaneously, which would result in an undefined behaviour.
 	pub unsafe fn get_payload(&self) -> &T {
 		&(*self.inner.get()).data
 	}
 
-	/// Returns a mutable reference to the payload. This function is unsafe
-	/// because it can return the payload while the Mutex isn't locked.
+	/// Returns a mutable reference to the payload.
+	///
+	/// # Safety
+	///
+	/// When using this function one, must be careful that another thread cannot access the resource simultaneously, which would result in an undefined behaviour.
 	pub unsafe fn get_mut_payload(&self) -> &mut T {
 		&mut (*self.inner.get()).data
 	}
 
-	/// Unlocks the mutex. The function is unsafe because it may lead to
-	/// concurrency issues if not used properly.
+	/// Unlocks the mutex. This function shouldn't be used directly since it is called when the
+	/// mutex guard is dropped.
+	///
+	/// # Safety
+	///
 	/// If the mutex is not locked, the behaviour is undefined.
+	///
+	/// Unlocking the mutex while the resource is being used may result in concurrent access.
 	pub unsafe fn unlock(&self) {
 		let inner = &mut (*self.inner.get());
 

@@ -1,13 +1,16 @@
 //! A mount point is a directory in which a filesystem is mounted.
 
-use super::path::Path;
-use crate::device;
+use core::cmp::max;
+use core::fmt;
+use crate::device::DeviceID;
 use crate::device::DeviceType;
+use crate::device;
 use crate::errno::Errno;
-use crate::file::fs;
 use crate::file::fs::Filesystem;
 use crate::file::fs::FilesystemType;
+use crate::file::fs;
 use crate::file::vfs;
+use crate::util::FailableClone;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
@@ -15,9 +18,7 @@ use crate::util::io::DummyIO;
 use crate::util::io::IO;
 use crate::util::lock::Mutex;
 use crate::util::ptr::SharedPtr;
-use crate::util::FailableClone;
-use core::cmp::max;
-use core::fmt;
+use super::path::Path;
 
 /// Permits mandatory locking on files.
 const FLAG_MANDLOCK: u32 = 0b000000000001;
@@ -101,8 +102,11 @@ impl MountSource {
 				major,
 				minor,
 			} => {
-				let dev =
-					device::get_device(*dev_type, *major, *minor).ok_or_else(|| errno!(ENODEV))?;
+				let dev = device::get_device(&DeviceID {
+					type_: *dev_type,
+					major: *major,
+					minor: *minor,
+				}).ok_or_else(|| errno!(ENODEV))?;
 				Ok(dev as _)
 			}
 
