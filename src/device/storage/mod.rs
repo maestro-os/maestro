@@ -227,9 +227,10 @@ impl DeviceHandle for StorageDeviceHandle {
 		match request.get_old_format() {
 			ioctl::BLKRRPART => {
 				// TODO StorageManager::clear_partitions(major);
-				StorageManager::read_partitions(self.interface)?;
+				// TODO StorageManager::read_partitions(self.interface)?;
 
-				Ok(0)
+				//Ok(0)
+				todo!();
 			}
 
 			ioctl::BLKGETSIZE64 => {
@@ -339,36 +340,48 @@ impl StorageManager {
 
 	/// Creates device files for every partitions on the storage device, within the limit of
 	/// `MAX_PARTITIONS`.
-	pub fn read_partitions(storage: SharedPtr<dyn StorageInterface>) -> Result<(), Errno> {
-		let storage_guard = storage.lock();
-		let s = storage_guard.get_mut();
+	///
+	/// Arguments:
+	/// - `storage` is the storage interface.
+	/// - `prefix` is the path to the file of the main device containing the partition table.
+	/// - `storage_id` is the ID of the storage device in the manager.
+	pub fn read_partitions(
+		storage: WeakPtr<dyn StorageInterface>,
+		prefix: String,
+		storage_id: u32,
+	) -> Result<(), Errno> {
+		if let Some(storage_mutex) = storage.get() {
+			let storage_guard = storage_mutex.lock();
+			let s = storage_guard.get_mut();
 
-		if let Some(partitions_table) = partition::read(s)? {
-			let partitions = partitions_table.get_partitions(s)?;
+			if let Some(partitions_table) = partition::read(s)? {
+				let partitions = partitions_table.get_partitions(s)?;
 
-			let iter = partitions.into_iter().take(MAX_PARTITIONS - 1);
-			for (i, partition) in iter.enumerate() {
-				let part_nbr = (i + 1) as u32;
+				let iter = partitions.into_iter().take(MAX_PARTITIONS - 1);
+				for (i, partition) in iter.enumerate() {
+					let part_nbr = (i + 1) as u32;
 
-				// Adding the partition number to the path
-				let path_str = (prefix.failable_clone()? + crate::format!("{}", part_nbr)?)?;
-				let path = Path::from_str(path_str.as_bytes(), false)?;
+					// Adding the partition number to the path
+					let path_str = (prefix.failable_clone()? + crate::format!("{}", part_nbr)?)?;
+					let path = Path::from_str(path_str.as_bytes(), false)?;
 
-				// Creating the partition's device file
-				let handle = StorageDeviceHandle::new(storage.new_weak(), Some(partition));
-				let device = Device::new(
-					DeviceID {
-						type_: DeviceType::Block,
-						major,
-						minor: storage_id * MAX_PARTITIONS as u32 + part_nbr,
-					},
-					path.failable_clone()?,
-					STORAGE_MODE,
-					handle,
-				)?;
-				device::register_device(device)?;
+					// Creating the partition's device file
+					let handle = StorageDeviceHandle::new(storage.clone(), Some(partition));
+					let device = Device::new(
+						DeviceID {
+							type_: DeviceType::Block,
+							// TODO use a different major for different storage device types
+							major: STORAGE_MAJOR,
+							minor: storage_id * MAX_PARTITIONS as u32 + part_nbr,
+						},
+						path.failable_clone()?,
+						STORAGE_MODE,
+						handle,
+					)?;
+					device::register_device(device)?;
 
-				// TODO if vfs is fully init, create device file
+					// TODO if vfs is fully init, create device file
+				}
 			}
 		}
 
@@ -408,7 +421,7 @@ impl StorageManager {
 		let main_path = Path::from_str(prefix.as_bytes(), false)?;
 
 		// Creating the main device file
-		let main_handle = StorageDeviceHandle::new(storage.new_weak(), partition);
+		let main_handle = StorageDeviceHandle::new(storage.new_weak(), None);
 		let main_device = Device::new(
 			DeviceID {
 				type_: DeviceType::Block,
@@ -421,7 +434,11 @@ impl StorageManager {
 		)?;
 		device::register_device(main_device)?;
 
-		Self::read_partitions(storage)?;
+		Self::read_partitions(
+			storage.new_weak(),
+			prefix,
+			storage_id
+		)?;
 
 		self.interfaces.push(storage)
 	}

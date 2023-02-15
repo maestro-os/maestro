@@ -59,11 +59,11 @@ impl fmt::Display for DeviceType {
 #[derive(Clone, Eq, Hash, PartialEq)]
 pub struct DeviceID {
 	/// The type of the device.
-	type_: DeviceType,
+	pub type_: DeviceType,
 	/// The major number.
-	major: u32,
+	pub major: u32,
 	/// The minor number.
-	minor: u32,
+	pub minor: u32,
 }
 
 impl DeviceID {
