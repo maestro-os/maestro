@@ -12,19 +12,19 @@ macro_rules! rotl {
 /// Performs a quarter round on the given values.
 macro_rules! quarter_round {
 	($a:expr, $b:expr, $c:expr, $d:expr) => {
-		$a += $b;
+		$a = $a.wrapping_add($b);
 		$d ^= $a;
 		$d = rotl!($d, 16);
 
-		$c += $d;
+		$c = $c.wrapping_add($d);
 		$b ^= $c;
 		$b = rotl!($b, 12);
 
-		$a += $b;
+		$a = $a.wrapping_add($b);
 		$d ^= $a;
 		$d = rotl!($d, 8);
 
-		$c += $d;
+		$c = $c.wrapping_add($d);
 		$b ^= $c;
 		$b = rotl!($b, 7);
 	};

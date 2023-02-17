@@ -271,12 +271,14 @@ static DEVICES: Mutex<HashMap<DeviceID, SharedPtr<Device>>> = Mutex::new(HashMap
 ///
 /// If files management is initialized, the function creates the associated device file.
 pub fn register(device: Device) -> Result<(), Errno> {
-	let guard = DEVICES.lock();
-	let devs = guard.get_mut();
-
 	let id = device.id.clone();
 	let dev_mutex = SharedPtr::new(device)?;
-	devs.insert(id, dev_mutex.clone())?;
+
+	{
+		let devs_guard = DEVICES.lock();
+		let devs = devs_guard.get_mut();
+		devs.insert(id, dev_mutex.clone())?;
+	}
 
 	// Create file
 	let dev_guard = dev_mutex.lock();
@@ -291,14 +293,17 @@ pub fn register(device: Device) -> Result<(), Errno> {
 ///
 /// If files management is initialized, the function removes the associated device file.
 pub fn unregister(id: &DeviceID) -> Result<(), Errno> {
-	let guard = DEVICES.lock();
-	let devs = guard.get_mut();
+	let dev_mutex = {
+		let devs_guard = DEVICES.lock();
+		let devs = devs_guard.get_mut();
+		devs.remove(id)
+	};
 
-	if let Some(dev_mutex) = devs.get(id) {
+	if let Some(dev_mutex) = dev_mutex {
 		// Remove file
-		dev_mutex.lock().get_mut().remove_file()?;
-
-		devs.remove(id);
+		let dev_guard = dev_mutex.lock();
+		let dev = dev_guard.get_mut();
+		dev.remove_file()?;
 	}
 
 	Ok(())
