@@ -260,7 +260,7 @@ pub fn create() -> Result<(), Errno> {
 		0o666,
 		NullDeviceHandle {},
 	)?;
-	device::register_device(null_device)?;
+	device::register(null_device)?;
 
 	let zero_path = Path::from_str(b"/dev/zero", false)?;
 	let zero_device = Device::new(
@@ -273,7 +273,7 @@ pub fn create() -> Result<(), Errno> {
 		0o666,
 		ZeroDeviceHandle {},
 	)?;
-	device::register_device(zero_device)?;
+	device::register(zero_device)?;
 
 	let random_path = Path::from_str(b"/dev/random", false)?;
 	let random_device = Device::new(
@@ -286,7 +286,7 @@ pub fn create() -> Result<(), Errno> {
 		0o666,
 		RandomDeviceHandle {},
 	)?;
-	device::register_device(random_device)?;
+	device::register(random_device)?;
 
 	let urandom_path = Path::from_str(b"/dev/urandom", false)?;
 	let urandom_device = Device::new(
@@ -299,7 +299,7 @@ pub fn create() -> Result<(), Errno> {
 		0o666,
 		URandomDeviceHandle {},
 	)?;
-	device::register_device(urandom_device)?;
+	device::register(urandom_device)?;
 
 	let kmsg_path = Path::from_str(b"/dev/kmsg", false)?;
 	let kmsg_device = Device::new(
@@ -312,7 +312,7 @@ pub fn create() -> Result<(), Errno> {
 		0o600,
 		KMsgDeviceHandle {},
 	)?;
-	device::register_device(kmsg_device)?;
+	device::register(kmsg_device)?;
 
 	let _fifth_major = ManuallyDrop::new(id::alloc_major(DeviceType::Char, Some(5))?);
 
@@ -327,7 +327,7 @@ pub fn create() -> Result<(), Errno> {
 		0o666,
 		TTYDeviceHandle::new(None),
 	)?;
-	device::register_device(current_tty_device)?;
+	device::register(current_tty_device)?;
 
 	Ok(())
 }

@@ -1,6 +1,16 @@
 //! This module handles device and buses.
 //! A device file is an interface with a device of the system, which can be
 //! internal or external, or even virtual such as a TTY.
+//!
+//! Since files management requires devices to be initialized in order to access filesystems, the
+//! system first needs to initialize devices. However, at that stage, device files cannot be
+//! created.
+//!
+//! Thus, devices are initialized in two stages:
+//! - **stage 1**: files management is not yet initialized, which means device files are not
+//! created when devices are registered
+//! - **stage 2**: files management is initialized, device files can be created. When switching to
+//! that stage, the files of all device that are already registered are created
 
 pub mod bar;
 pub mod bus;
@@ -166,55 +176,60 @@ impl Device {
 		self.handle.as_mut()
 	}
 
-	// TODO Put file creation on the userspace side?
-	/// Creates the device file associated with the structure. If the file
-	/// already exist, the function does nothing.
+	/// Creates the device file associated with the structure.
+	///
+	/// If the file already exist, the function does nothing.
+	///
 	/// The function takes a mutex guard because it needs to unlock the device
-	/// in order to create the file without a deadlock.
+	/// in order to create the file without a deadlock since the VFS accesses a device to write on
+	/// the filesystem.
 	pub fn create_file(guard: MutexGuard<Device, true>) -> Result<(), Errno> {
 		let dev = guard.get_mut();
 
 		let file_content = dev.id.to_file_content();
-
 		let path = dev.path.failable_clone()?;
 		let mode = dev.mode;
+
 		drop(guard);
 
-		let mutex = vfs::get();
-		let guard = mutex.lock();
-		let vfs = guard.get_mut().as_mut().unwrap();
+		let vfs_mutex = vfs::get();
+		let vfs_guard = vfs_mutex.lock();
 
-		// Tells whether the file already exists
-		let file_exists = vfs.get_file_from_path(&path, 0, 0, true).is_ok();
+		if let Some(vfs) = vfs_guard.get_mut().as_mut() {
+			// Tells whether the file already exists
+			let file_exists = vfs.get_file_from_path(&path, 0, 0, true).is_ok();
 
-		if !file_exists {
-			// Creating the directories in which the device file is located
-			let mut dir_path = path;
-			let filename = dir_path.pop().unwrap();
-			file::util::create_dirs(vfs, &dir_path)?;
+			if !file_exists {
+				// Creating the directories in which the device file is located
+				let mut dir_path = path;
+				let filename = dir_path.pop().unwrap();
+				file::util::create_dirs(vfs, &dir_path)?;
 
-			// Getting the parent directory
-			let parent_mutex = vfs.get_file_from_path(&dir_path, 0, 0, true)?;
-			let parent_guard = parent_mutex.lock();
-			let parent = parent_guard.get_mut();
+				// Getting the parent directory
+				let parent_mutex = vfs.get_file_from_path(&dir_path, 0, 0, true)?;
+				let parent_guard = parent_mutex.lock();
+				let parent = parent_guard.get_mut();
 
-			// Creating the device file
-			vfs.create_file(parent, filename, 0, 0, mode, file_content)?;
+				// Creating the device file
+				vfs.create_file(parent, filename, 0, 0, mode, file_content)?;
+			}
 		}
 
 		Ok(())
 	}
 
-	/// If exists, removes the device file. iF the file doesn't exist, the
-	/// function does nothing.
+	/// If exists, removes the device file.
+	///
+	/// If the file doesn't exist, the function does nothing.
 	pub fn remove_file(&mut self) -> Result<(), Errno> {
-		let mutex = vfs::get();
-		let guard = mutex.lock();
-		let vfs = guard.get_mut().as_mut().unwrap();
+		let vfs_mutex = vfs::get();
+		let vfs_guard = vfs_mutex.lock();
 
-		if let Ok(file_mutex) = vfs.get_file_from_path(&self.path, 0, 0, true) {
-			let file_guard = file_mutex.lock();
-			vfs.remove_file(file_guard.get(), 0, 0)?;
+		if let Some(vfs) = vfs_guard.get_mut().as_mut() {
+			if let Ok(file_mutex) = vfs.get_file_from_path(&self.path, 0, 0, true) {
+				let file_guard = file_mutex.lock();
+				vfs.remove_file(file_guard.get(), 0, 0)?;
+			}
 		}
 
 		Ok(())
@@ -251,14 +266,22 @@ impl Drop for Device {
 static DEVICES: Mutex<HashMap<DeviceID, SharedPtr<Device>>> = Mutex::new(HashMap::new());
 
 /// Registers the given device.
-/// If the minor/major number is already used, the function fails.
 ///
-/// The function *doesn't* create the device file.
-pub fn register_device(device: Device) -> Result<(), Errno> {
+/// If the device ID is already used, the function fails.
+///
+/// If files management is initialized, the function creates the associated device file.
+pub fn register(device: Device) -> Result<(), Errno> {
 	let guard = DEVICES.lock();
 	let devs = guard.get_mut();
 
-	devs.insert(device.id.clone(), SharedPtr::new(device)?)?;
+	let id = device.id.clone();
+	let dev_mutex = SharedPtr::new(device)?;
+	devs.insert(id, dev_mutex.clone())?;
+
+	// Create file
+	let dev_guard = dev_mutex.lock();
+	Device::create_file(dev_guard)?;
+
 	Ok(())
 }
 
@@ -266,18 +289,25 @@ pub fn register_device(device: Device) -> Result<(), Errno> {
 ///
 /// If the device doesn't exist, the function does nothing.
 ///
-/// The function *doesn't* remove the device file.
-pub fn unregister_device(id: &DeviceID) {
+/// If files management is initialized, the function removes the associated device file.
+pub fn unregister(id: &DeviceID) -> Result<(), Errno> {
 	let guard = DEVICES.lock();
 	let devs = guard.get_mut();
 
-	devs.remove(id);
+	if let Some(dev_mutex) = devs.get(id) {
+		// Remove file
+		dev_mutex.lock().get_mut().remove_file()?;
+
+		devs.remove(id);
+	}
+
+	Ok(())
 }
 
 /// Returns a mutable reference to the device with the given ID.
 ///
 /// If the device doesn't exist, the function returns `None`.
-pub fn get_device(id: &DeviceID) -> Option<SharedPtr<Device>> {
+pub fn get(id: &DeviceID) -> Option<SharedPtr<Device>> {
 	let guard = DEVICES.lock();
 	let devs = guard.get_mut();
 
@@ -286,12 +316,10 @@ pub fn get_device(id: &DeviceID) -> Option<SharedPtr<Device>> {
 
 /// Initializes devices management.
 pub fn init() -> Result<(), Errno> {
-	let mut keyboard_manager = KeyboardManager::new();
-	keyboard_manager.legacy_detect()?;
+	let keyboard_manager = KeyboardManager::new();
 	manager::register_manager(keyboard_manager)?;
 
 	let storage_manager = StorageManager::new()?;
-	//storage_manager.legacy_detect()?;
 	manager::register_manager(storage_manager)?;
 
 	bus::detect()?;
@@ -310,8 +338,10 @@ pub fn init() -> Result<(), Errno> {
 	Ok(())
 }
 
-/// Creates the files of every devices if they don't exist.
-pub fn create_files() -> Result<(), Errno> {
+/// Switches to stage 2, creating device files of devices that are already registered.
+///
+/// This function must be used only once at boot, after files management has been initialized.
+pub fn stage2() -> Result<(), Errno> {
 	// Unsafe access is made to avoid a deadlock
 	// This is acceptable since the container is not borrowed as mutable, both here and further
 	// into the function

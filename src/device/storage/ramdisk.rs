@@ -187,7 +187,7 @@ pub fn create() -> Result<(), Errno> {
 			0o666,
 			RAMDiskHandle::new(),
 		)?;
-		device::register_device(dev)?;
+		device::register(dev)?;
 	}
 
 	Ok(())

@@ -102,7 +102,7 @@ impl MountSource {
 				major,
 				minor,
 			} => {
-				let dev = device::get_device(&DeviceID {
+				let dev = device::get(&DeviceID {
 					type_: *dev_type,
 					major: *major,
 					minor: *minor,

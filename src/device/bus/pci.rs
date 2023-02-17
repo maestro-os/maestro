@@ -453,10 +453,6 @@ impl DeviceManager for PCIManager {
 		"PCI"
 	}
 
-	fn legacy_detect(&mut self) -> Result<(), Errno> {
-		Ok(())
-	}
-
 	fn on_plug(&mut self, _dev: &dyn PhysicalDevice) -> Result<(), Errno> {
 		Ok(())
 	}

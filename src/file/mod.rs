@@ -673,7 +673,7 @@ impl File {
 				major,
 				minor,
 			} => {
-				let dev = device::get_device(&DeviceID {
+				let dev = device::get(&DeviceID {
 					type_: DeviceType::Block,
 					major: *major,
 					minor: *minor
@@ -687,7 +687,7 @@ impl File {
 				major,
 				minor,
 			} => {
-				let dev = device::get_device(&DeviceID {
+				let dev = device::get(&DeviceID {
 					type_: DeviceType::Char,
 					major: *major,
 					minor: *minor,
@@ -774,7 +774,7 @@ impl File {
 				major,
 				minor,
 			} => {
-				let io = device::get_device(&DeviceID {
+				let io = device::get(&DeviceID {
 					type_: DeviceType::Block,
 					major: *major,
 					minor: *minor
@@ -787,7 +787,7 @@ impl File {
 				major,
 				minor,
 			} => {
-				let io = device::get_device(&DeviceID {
+				let io = device::get(&DeviceID {
 					type_: DeviceType::Char,
 					major: *major,
 					minor: *minor

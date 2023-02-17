@@ -195,9 +195,15 @@ pub trait StorageInterface {
 pub struct StorageDeviceHandle {
 	/// A reference to the storage interface.
 	interface: WeakPtr<dyn StorageInterface>,
-
-	/// The partition associated with the handle.
+	/// The partition associated with the handle. If `None`, the handle covers the whole device.
 	partition: Option<Partition>,
+
+	/// The major number of the device.
+	major: u32,
+	/// The ID of the storage device in the manager.
+	storage_id: u32,
+	/// The path to the file of the main device containing the partition table.
+	path_prefix: String,
 }
 
 impl StorageDeviceHandle {
@@ -206,13 +212,24 @@ impl StorageDeviceHandle {
 	///
 	/// Arguments:
 	/// - `interface` is the storage interface.
-	/// - `partition` is the partition. If None, the handle works on the whole
-	/// storage device.
-	pub fn new(interface: WeakPtr<dyn StorageInterface>, partition: Option<Partition>) -> Self {
+	/// - `partition` is the partition. If `None`, the handle works on the whole storage device.
+	/// - `major` is the major number of the device.
+	/// - `storage_id` is the ID of the storage device in the manager.
+	/// - `path_prefix` is the path to the file of the main device containing the partition table.
+	pub fn new(
+		interface: WeakPtr<dyn StorageInterface>,
+		partition: Option<Partition>,
+		major: u32,
+		storage_id: u32,
+		path_prefix: String
+	) -> Self {
 		Self {
 			interface,
-
 			partition,
+
+			major,
+			storage_id,
+			path_prefix
 		}
 	}
 }
@@ -226,11 +243,15 @@ impl DeviceHandle for StorageDeviceHandle {
 	) -> Result<u32, Errno> {
 		match request.get_old_format() {
 			ioctl::BLKRRPART => {
-				// TODO StorageManager::clear_partitions(major);
-				// TODO StorageManager::read_partitions(self.interface)?;
+				StorageManager::clear_partitions(self.major)?;
+				StorageManager::read_partitions(
+					self.interface.clone(),
+					self.major,
+					self.storage_id,
+					self.path_prefix.failable_clone()?
+				)?;
 
-				//Ok(0)
-				todo!();
+				Ok(0)
 			}
 
 			ioctl::BLKGETSIZE64 => {
@@ -338,17 +359,20 @@ impl StorageManager {
 		})
 	}
 
+	// TODO When failing, remove previously registered devices
 	/// Creates device files for every partitions on the storage device, within the limit of
 	/// `MAX_PARTITIONS`.
 	///
 	/// Arguments:
 	/// - `storage` is the storage interface.
-	/// - `prefix` is the path to the file of the main device containing the partition table.
+	/// - `major` is the major number of the device.
 	/// - `storage_id` is the ID of the storage device in the manager.
+	/// - `path_prefix` is the path to the file of the main device containing the partition table.
 	pub fn read_partitions(
 		storage: WeakPtr<dyn StorageInterface>,
-		prefix: String,
+		major: u32,
 		storage_id: u32,
+		path_prefix: String,
 	) -> Result<(), Errno> {
 		if let Some(storage_mutex) = storage.get() {
 			let storage_guard = storage_mutex.lock();
@@ -362,11 +386,19 @@ impl StorageManager {
 					let part_nbr = (i + 1) as u32;
 
 					// Adding the partition number to the path
-					let path_str = (prefix.failable_clone()? + crate::format!("{}", part_nbr)?)?;
+					let path_str = (
+						path_prefix.failable_clone()? + crate::format!("{}", part_nbr)?
+					)?;
 					let path = Path::from_str(path_str.as_bytes(), false)?;
 
 					// Creating the partition's device file
-					let handle = StorageDeviceHandle::new(storage.clone(), Some(partition));
+					let handle = StorageDeviceHandle::new(
+						storage.clone(),
+						Some(partition),
+						major,
+						storage_id,
+						path_prefix.failable_clone()?
+					);
 					let device = Device::new(
 						DeviceID {
 							type_: DeviceType::Block,
@@ -378,9 +410,7 @@ impl StorageManager {
 						STORAGE_MODE,
 						handle,
 					)?;
-					device::register_device(device)?;
-
-					// TODO if vfs is fully init, create device file
+					device::register(device)?;
 				}
 			}
 		}
@@ -391,16 +421,16 @@ impl StorageManager {
 	/// Clears device files for every partitions.
 	///
 	/// `major` is the major number of the devices to be removed.
-	pub fn clear_partitions(major: u32) {
+	pub fn clear_partitions(major: u32) -> Result<(), Errno> {
 		for i in 1..MAX_PARTITIONS {
-			// TODO if vfs is fully init, remove device file
-
-			device::unregister_device(&DeviceID {
+			device::unregister(&DeviceID {
 				type_: DeviceType::Block,
 				major,
 				minor: i as _,
-			});
+			})?;
 		}
+
+		Ok(())
 	}
 
 	// TODO Handle the case where there is more devices that the number of devices
@@ -421,7 +451,13 @@ impl StorageManager {
 		let main_path = Path::from_str(prefix.as_bytes(), false)?;
 
 		// Creating the main device file
-		let main_handle = StorageDeviceHandle::new(storage.new_weak(), None);
+		let main_handle = StorageDeviceHandle::new(
+			storage.new_weak(),
+			None,
+			major,
+			storage_id,
+			prefix.failable_clone()?
+		);
 		let main_device = Device::new(
 			DeviceID {
 				type_: DeviceType::Block,
@@ -432,12 +468,13 @@ impl StorageManager {
 			STORAGE_MODE,
 			main_handle,
 		)?;
-		device::register_device(main_device)?;
+		device::register(main_device)?;
 
 		Self::read_partitions(
 			storage.new_weak(),
-			prefix,
-			storage_id
+			major,
+			storage_id,
+			prefix
 		)?;
 
 		self.interfaces.push(storage)
@@ -556,26 +593,6 @@ impl DeviceManager for StorageManager {
 		"storage"
 	}
 
-	fn legacy_detect(&mut self) -> Result<(), Errno> {
-		// TODO Detect floppy disks
-
-		// TODO rm?
-		/*for i in 0..4 {
-			let secondary = (i & 0b10) != 0;
-			let slave = (i & 0b01) != 0;
-
-			if let Ok(dev) = PATAInterface::new(secondary, slave) {
-				let interface = Box::new(dev)?;
-				// TODO Use a constant for the sectors count
-				let cached_interface = CachedStorageInterface::new(interface, 128)?;
-
-				self.add(Box::new(cached_interface)?)?;
-			}
-		}*/
-
-		Ok(())
-	}
-
 	fn on_plug(&mut self, dev: &dyn PhysicalDevice) -> Result<(), Errno> {
 		// Ignoring non-storage devices
 		if dev.get_class() != pci::CLASS_MASS_STORAGE_CONTROLLER {
@@ -609,7 +626,7 @@ impl DeviceManager for StorageManager {
 	}
 
 	fn on_unplug(&mut self, _dev: &dyn PhysicalDevice) -> Result<(), Errno> {
-		// TODO
-		Ok(())
+		// TODO remove device
+		todo!();
 	}
 }
