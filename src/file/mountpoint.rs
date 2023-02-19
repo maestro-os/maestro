@@ -13,7 +13,6 @@ use crate::file::vfs;
 use crate::util::FailableClone;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
-use crate::util::container::vec::Vec;
 use crate::util::io::DummyIO;
 use crate::util::io::IO;
 use crate::util::lock::Mutex;
@@ -366,45 +365,87 @@ impl Drop for MountPoint {
 	}
 }
 
-// TODO Optimize container accesses
 /// The list of mountpoints with their respective ID.
-pub static MOUNT_POINTS: Mutex<Vec<(u32, SharedPtr<MountPoint>)>> = Mutex::new(Vec::new());
+pub static MOUNT_POINTS: Mutex<HashMap<u32, SharedPtr<MountPoint>>> = Mutex::new(HashMap::new());
+/// A map from mountpoint paths to mountpoint IDs.
+pub static PATH_TO_ID: Mutex<HashMap<Path, u32>> = Mutex::new(HashMap::new());
 
-/// Creates a new mountpoint. If a mountpoint is already present at the same
-/// path, the function fails.
-/// `source` is the source of the mountpoint.
-/// `fs_type` is the filesystem type. If None, the function tries to detect it
-/// automaticaly. `flags` are the mount flags.
-/// `path` is the path on which the filesystem is to be mounted.
+/// Creates a new mountpoint.
+///
+/// If a mountpoint is already present at the same path, the function fails.
+///
+/// Arguments:
+/// - `source` is the source of the mountpoint.
+/// - `fs_type` is the filesystem type. If `None`, the function tries to detect it automaticaly.
+/// - `flags` are the mount flags.
+/// - `path` is the path on which the filesystem is to be mounted.
 pub fn create(
 	source: MountSource,
 	fs_type: Option<SharedPtr<dyn FilesystemType>>,
 	flags: u32,
 	path: Path,
 ) -> Result<SharedPtr<MountPoint>, Errno> {
-	let guard = MOUNT_POINTS.lock();
-	let container = guard.get_mut();
-
 	// TODO Allocate cleanly
 	let id = {
 		let mut id = 0;
 
-		for (i, _) in container.iter() {
+		for (i, _) in MOUNT_POINTS.lock().get().iter() { // FIXME: race condition
 			id = max(*i, id);
 		}
 
 		id + 1
 	};
 
-	let mountpoint = MountPoint::new(id, source, fs_type, flags, path)?;
+	let mountpoint = SharedPtr::new(MountPoint::new(
+		id,
+		source,
+		fs_type,
+		flags,
+		path.failable_clone()?
+	)?)?;
 
-	let shared_ptr = SharedPtr::new(mountpoint)?;
-	container.push((id, shared_ptr.clone()))?;
-	Ok(shared_ptr)
+	// Insertion
+	{
+		let mount_points_guard = MOUNT_POINTS.lock();
+		let path_to_id_guard = PATH_TO_ID.lock();
+
+		mount_points_guard.get_mut().insert(id, mountpoint.clone())?;
+		if let Err(e) = path_to_id_guard.get_mut().insert(path, id) {
+			mount_points_guard.get_mut().remove(&id);
+			return Err(e);
+		}
+	}
+
+	Ok(mountpoint)
 }
 
-/// Returns the deepest mountpoint in the path `path`. If no mountpoint is in
-/// the path, the function returns None.
+/// Removes the mountpoint at the given path `path`.
+///
+/// Data is sychronized to the associated storage device, if any, before removing the mountpoint.
+///
+/// If the mountpoint doesn't exist, the function returns `EINVAL`.
+///
+/// If the mountpoint is busy, the function returns `EBUSY`.
+pub fn remove(path: &Path) -> Result<(), Errno> {
+	let mount_points_guard = MOUNT_POINTS.lock();
+	let path_to_id_guard = PATH_TO_ID.lock();
+
+	let id = path_to_id_guard.get().get(path).ok_or(errno!(EINVAL))?;
+	let _mountpoint = mount_points_guard.get().get(id).ok_or(errno!(EINVAL))?;
+
+	// TODO Check if busy (EBUSY)
+
+	// TODO sync fs
+
+	path_to_id_guard.get_mut().remove(path);
+	mount_points_guard.get_mut().remove(&id);
+
+	Ok(())
+}
+
+/// Returns the deepest mountpoint in the path `path`.
+///
+/// If no mountpoint is in the path, the function returns `None`.
 pub fn get_deepest(path: &Path) -> Option<SharedPtr<MountPoint>> {
 	let guard = MOUNT_POINTS.lock();
 	let container = guard.get_mut();
@@ -431,8 +472,9 @@ pub fn get_deepest(path: &Path) -> Option<SharedPtr<MountPoint>> {
 	max
 }
 
-/// Returns the mountpoint with id `id`. If it doesn't exist, the function
-/// returns None.
+/// Returns the mountpoint with id `id`.
+///
+/// If it doesn't exist, the function returns `None`.
 pub fn from_id(id: u32) -> Option<SharedPtr<MountPoint>> {
 	let guard = MOUNT_POINTS.lock();
 	let container = guard.get_mut();
@@ -446,8 +488,9 @@ pub fn from_id(id: u32) -> Option<SharedPtr<MountPoint>> {
 	None
 }
 
-/// Returns the mountpoint with path `path`. If it doesn't exist, the function
-/// returns None.
+/// Returns the mountpoint with path `path`.
+///
+/// If it doesn't exist, the function returns `None`.
 pub fn from_path(path: &Path) -> Option<SharedPtr<MountPoint>> {
 	let guard = MOUNT_POINTS.lock();
 	let container = guard.get_mut();

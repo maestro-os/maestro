@@ -23,10 +23,7 @@ pub fn umount(target: SyscallString) -> Result<i32, Errno> {
 
 	// Getting the mountpoint
 	let target_path = Path::from_str(target_slice, true)?;
-	let _mountpoint = mountpoint::from_path(&target_path).ok_or(errno!(EINVAL))?;
-
-	// TODO Check if busy (EBUSY)
-	// TODO If not, sync and unmount
+	mountpoint::remove(&target_path)?;
 
 	Ok(0)
 }
