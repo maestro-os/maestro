@@ -147,7 +147,7 @@ pub unsafe fn str_from_ptr(ptr: *const u8) -> &'static [u8] {
 
 /// Returns an immutable slice to the given value.
 pub fn as_slice<'a, T>(val: &'a T) -> &'a [u8] {
-	unsafe { slice::from_raw_parts(&val as *const _ as *const u8, size_of::<T>()) }
+	unsafe { slice::from_raw_parts(val as *const _ as *const u8, size_of::<T>()) }
 }
 
 /// Returns the length of the string representation of the number at the
