@@ -406,7 +406,7 @@ impl StorageManager {
 							major: STORAGE_MAJOR,
 							minor: storage_id * MAX_PARTITIONS as u32 + part_nbr,
 						},
-						path.failable_clone()?,
+						path,
 						STORAGE_MODE,
 						handle,
 					)?;

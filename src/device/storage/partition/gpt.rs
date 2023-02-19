@@ -37,7 +37,7 @@ fn translate_lba(lba: i64, storage_size: u64) -> Option<u64> {
 			None
 		}
 	} else {
-		if (lba as u64) < storage_size {
+		if (lba as u64) <= storage_size {
 			Some(lba as _)
 		} else {
 			None
