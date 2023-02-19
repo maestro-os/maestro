@@ -385,11 +385,17 @@ pub fn create(
 	flags: u32,
 	path: Path,
 ) -> Result<SharedPtr<MountPoint>, Errno> {
-	// TODO Allocate cleanly
+	// TODO clean
+	// PATH_TO_ID is locked first and during the whole function to prevent a race condition between
+	// the locks of MOUNT_POINTS
+	let path_to_id_guard = PATH_TO_ID.lock();
+
+	// TODO clean
+	// ID allocation
 	let id = {
 		let mut id = 0;
 
-		for (i, _) in MOUNT_POINTS.lock().get().iter() { // FIXME: race condition
+		for (i, _) in MOUNT_POINTS.lock().get().iter() {
 			id = max(*i, id);
 		}
 
@@ -407,7 +413,6 @@ pub fn create(
 	// Insertion
 	{
 		let mount_points_guard = MOUNT_POINTS.lock();
-		let path_to_id_guard = PATH_TO_ID.lock();
 
 		mount_points_guard.get_mut().insert(id, mountpoint.clone())?;
 		if let Err(e) = path_to_id_guard.get_mut().insert(path, id) {
@@ -427,8 +432,8 @@ pub fn create(
 ///
 /// If the mountpoint is busy, the function returns `EBUSY`.
 pub fn remove(path: &Path) -> Result<(), Errno> {
-	let mount_points_guard = MOUNT_POINTS.lock();
 	let path_to_id_guard = PATH_TO_ID.lock();
+	let mount_points_guard = MOUNT_POINTS.lock();
 
 	let id = path_to_id_guard.get().get(path).ok_or(errno!(EINVAL))?;
 	let _mountpoint = mount_points_guard.get().get(id).ok_or(errno!(EINVAL))?;
