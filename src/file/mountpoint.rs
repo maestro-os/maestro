@@ -6,10 +6,6 @@ use crate::device::DeviceID;
 use crate::device::DeviceType;
 use crate::device;
 use crate::errno::Errno;
-use crate::file::fs::Filesystem;
-use crate::file::fs::FilesystemType;
-use crate::file::fs;
-use crate::file::vfs;
 use crate::util::FailableClone;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
@@ -17,7 +13,12 @@ use crate::util::io::DummyIO;
 use crate::util::io::IO;
 use crate::util::lock::Mutex;
 use crate::util::ptr::SharedPtr;
+use super::FileContent;
+use super::fs::Filesystem;
+use super::fs::FilesystemType;
+use super::fs;
 use super::path::Path;
+use super::vfs;
 
 /// Permits mandatory locking on files.
 const FLAG_MANDLOCK: u32 = 0b000000000001;
@@ -62,9 +63,6 @@ pub enum MountSource {
 		minor: u32,
 	},
 
-	/// The mountpoint is mounted from a file.
-	File(Path),
-
 	/// The mountpoint is bound to a virtual filesystem and thus isn't
 	/// associated with any device. The string value is the name of the source.
 	NoDev(String),
@@ -72,8 +70,11 @@ pub enum MountSource {
 
 impl MountSource {
 	/// Creates a mount source from a dummy string.
+	///
 	/// The string `string` might be either a kernfs name, a relative path or an
-	/// absolute path. `cwd` is the current working directory.
+	/// absolute path.
+	///
+	/// `cwd` is the current working directory.
 	pub fn from_str(string: &[u8], cwd: Path) -> Result<Self, Errno> {
 		let path = Path::from_str(string, true)?;
 		let path = cwd.concat(&path)?;
@@ -86,8 +87,31 @@ impl MountSource {
 		};
 
 		match result {
-			Ok(_) => Ok(Self::File(path)),
+			Ok(file_mutex) => {
+				let file_guard = file_mutex.lock();
+				let file = file_guard.get();
+
+				match file.get_content() {
+					FileContent::BlockDevice { major, minor } => Ok(Self::Device {
+						dev_type: DeviceType::Block,
+
+						major: *major,
+						minor: *minor,
+					}),
+
+					FileContent::CharDevice { major, minor } => Ok(Self::Device {
+						dev_type: DeviceType::Char,
+
+						major: *major,
+						minor: *minor,
+					}),
+
+					_ => Err(errno!(EINVAL)),
+				}
+			},
+
 			Err(err) if err == errno!(ENOENT) => Ok(Self::NoDev(String::from(string)?)),
+
 			Err(err) => Err(err),
 		}
 	}
@@ -109,15 +133,6 @@ impl MountSource {
 				Ok(dev as _)
 			}
 
-			Self::File(path) => {
-				let vfs_mutex = vfs::get();
-				let vfs_guard = vfs_mutex.lock();
-				let vfs = vfs_guard.get_mut().as_mut().unwrap();
-
-				let file = vfs.get_file_from_path(path, 0, 0, true)?;
-				Ok(file as _)
-			}
-
 			Self::NoDev(_) => Ok(SharedPtr::new(DummyIO {})? as _),
 		}
 	}
@@ -136,8 +151,6 @@ impl FailableClone for MountSource {
 				minor: *minor,
 			},
 
-			Self::File(path) => Self::File(path.failable_clone()?),
-
 			Self::NoDev(name) => Self::NoDev(name.failable_clone()?),
 		})
 	}
@@ -152,8 +165,6 @@ impl fmt::Display for MountSource {
 				major,
 				minor,
 			} => write!(fmt, "{}.{}.{}", dev_type, major, minor),
-
-			Self::File(path) => write!(fmt, "{}", path),
 
 			Self::NoDev(name) => write!(fmt, "{}", name),
 		}
