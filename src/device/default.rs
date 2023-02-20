@@ -1,23 +1,25 @@
 //! This module implements default devices.
 
-use super::id;
-use super::DeviceType;
-use crate::crypto::rand;
-use crate::device;
-use crate::device::tty::TTYDeviceHandle;
-use crate::device::Device;
-use crate::device::DeviceHandle;
-use crate::errno;
-use crate::errno::Errno;
-use crate::file::path::Path;
-use crate::logger;
-use crate::process::mem_space::MemSpace;
-use crate::util::io;
-use crate::util::io::IO;
-use crate::util::ptr::IntSharedPtr;
 use core::cmp::min;
 use core::ffi::c_void;
 use core::mem::ManuallyDrop;
+use crate::crypto::rand;
+use crate::device::Device;
+use crate::device::DeviceHandle;
+use crate::device::DeviceID;
+use crate::device::tty::TTYDeviceHandle;
+use crate::device;
+use crate::errno::Errno;
+use crate::errno;
+use crate::file::path::Path;
+use crate::logger;
+use crate::process::mem_space::MemSpace;
+use crate::syscall::ioctl;
+use crate::util::io::IO;
+use crate::util::io;
+use crate::util::ptr::IntSharedPtr;
+use super::DeviceType;
+use super::id;
 
 /// Structure representing a device which does nothing.
 pub struct NullDeviceHandle {}
@@ -26,7 +28,7 @@ impl DeviceHandle for NullDeviceHandle {
 	fn ioctl(
 		&mut self,
 		_mem_space: IntSharedPtr<MemSpace>,
-		_request: u32,
+		_request: ioctl::Request,
 		_argp: *const c_void,
 	) -> Result<u32, Errno> {
 		// TODO
@@ -59,7 +61,7 @@ impl DeviceHandle for ZeroDeviceHandle {
 	fn ioctl(
 		&mut self,
 		_mem_space: IntSharedPtr<MemSpace>,
-		_request: u32,
+		_request: ioctl::Request,
 		_argp: *const c_void,
 	) -> Result<u32, Errno> {
 		// TODO
@@ -96,7 +98,7 @@ impl DeviceHandle for KMsgDeviceHandle {
 	fn ioctl(
 		&mut self,
 		_mem_space: IntSharedPtr<MemSpace>,
-		_request: u32,
+		_request: ioctl::Request,
 		_argp: *const c_void,
 	) -> Result<u32, Errno> {
 		// TODO
@@ -131,9 +133,9 @@ impl IO for KMsgDeviceHandle {
 		Ok((len as _, eof))
 	}
 
-	fn write(&mut self, _offset: u64, buff: &[u8]) -> Result<u64, Errno> {
-		// TODO Write to logger
-		Ok(buff.len() as _)
+	fn write(&mut self, _offset: u64, _buff: &[u8]) -> Result<u64, Errno> {
+		// TODO
+		todo!();
 	}
 
 	fn poll(&mut self, _mask: u32) -> Result<u32, Errno> {
@@ -150,7 +152,7 @@ impl DeviceHandle for RandomDeviceHandle {
 	fn ioctl(
 		&mut self,
 		_mem_space: IntSharedPtr<MemSpace>,
-		_request: u32,
+		_request: ioctl::Request,
 		_argp: *const c_void,
 	) -> Result<u32, Errno> {
 		// TODO
@@ -164,24 +166,27 @@ impl IO for RandomDeviceHandle {
 	}
 
 	fn read(&mut self, _: u64, buff: &mut [u8]) -> Result<(u64, bool), Errno> {
-		if let Some(source_mutex) = rand::get_source("random") {
-			let source_guard = source_mutex.lock();
-			let source = source_guard.get_mut();
+		let pool_guard = rand::ENTROPY_POOL.lock();
+		let pool = pool_guard.get_mut();
 
-			let mut i = 0;
-			while i < buff.len() {
-				i += source.consume_entropy(&mut buff[i..]);
-			}
-
-			Ok((buff.len() as _, false))
+		if let Some(pool) = pool {
+			let len = pool.read(buff, false);
+			Ok((len as _, false))
 		} else {
 			Ok((0, true))
 		}
 	}
 
-	fn write(&mut self, _offset: u64, _buff: &[u8]) -> Result<u64, Errno> {
-		// TODO Feed entropy?
-		todo!();
+	fn write(&mut self, _: u64, buff: &[u8]) -> Result<u64, Errno> {
+		let pool_guard = rand::ENTROPY_POOL.lock();
+		let pool = pool_guard.get_mut();
+
+		if let Some(pool) = pool {
+			let len = pool.write(&buff);
+			Ok(len as _)
+		} else {
+			Err(errno!(EINVAL))
+		}
 	}
 
 	fn poll(&mut self, _mask: u32) -> Result<u32, Errno> {
@@ -198,7 +203,7 @@ impl DeviceHandle for URandomDeviceHandle {
 	fn ioctl(
 		&mut self,
 		_mem_space: IntSharedPtr<MemSpace>,
-		_request: u32,
+		_request: ioctl::Request,
 		_argp: *const c_void,
 	) -> Result<u32, Errno> {
 		// TODO
@@ -212,24 +217,27 @@ impl IO for URandomDeviceHandle {
 	}
 
 	fn read(&mut self, _: u64, buff: &mut [u8]) -> Result<(u64, bool), Errno> {
-		if let Some(source_mutex) = rand::get_source("urandom") {
-			let source_guard = source_mutex.lock();
-			let source = source_guard.get_mut();
+		let pool_guard = rand::ENTROPY_POOL.lock();
+		let pool = pool_guard.get_mut();
 
-			let mut i = 0;
-			while i < buff.len() {
-				i += source.consume_entropy(&mut buff[i..]);
-			}
-
-			Ok((buff.len() as _, false))
+		if let Some(pool) = pool {
+			let len = pool.read(buff, true);
+			Ok((len as _, false))
 		} else {
 			Ok((0, true))
 		}
 	}
 
-	fn write(&mut self, _offset: u64, _buff: &[u8]) -> Result<u64, Errno> {
-		// TODO Feed entropy?
-		todo!();
+	fn write(&mut self, _: u64, buff: &[u8]) -> Result<u64, Errno> {
+		let pool_guard = rand::ENTROPY_POOL.lock();
+		let pool = pool_guard.get_mut();
+
+		if let Some(pool) = pool {
+			let len = pool.write(&buff);
+			Ok(len as _)
+		} else {
+			Err(errno!(EINVAL))
+		}
 	}
 
 	fn poll(&mut self, _mask: u32) -> Result<u32, Errno> {
@@ -243,72 +251,83 @@ pub fn create() -> Result<(), Errno> {
 
 	let null_path = Path::from_str(b"/dev/null", false)?;
 	let null_device = Device::new(
-		1,
-		3,
+		DeviceID {
+			type_: DeviceType::Char,
+			major: 1,
+			minor: 3,
+		},
 		null_path,
 		0o666,
-		DeviceType::Char,
 		NullDeviceHandle {},
 	)?;
-	device::register_device(null_device)?;
+	device::register(null_device)?;
 
 	let zero_path = Path::from_str(b"/dev/zero", false)?;
 	let zero_device = Device::new(
-		1,
-		5,
+		DeviceID {
+			type_: DeviceType::Char,
+			major: 1,
+			minor: 5,
+		},
 		zero_path,
 		0o666,
-		DeviceType::Char,
 		ZeroDeviceHandle {},
 	)?;
-	device::register_device(zero_device)?;
+	device::register(zero_device)?;
 
-	// TODO
-	/*let random_path = Path::from_str(b"/dev/random", false)?;
+	let random_path = Path::from_str(b"/dev/random", false)?;
 	let random_device = Device::new(
-		1,
-		8,
+		DeviceID {
+			type_: DeviceType::Char,
+			major: 1,
+			minor: 8,
+		},
 		random_path,
 		0o666,
-		DeviceType::Char,
 		RandomDeviceHandle {},
 	)?;
-	device::register_device(random_device)?;
+	device::register(random_device)?;
 
 	let urandom_path = Path::from_str(b"/dev/urandom", false)?;
 	let urandom_device = Device::new(
-		1,
-		9,
+		DeviceID {
+			type_: DeviceType::Char,
+			major: 1,
+			minor: 9,
+		},
 		urandom_path,
 		0o666,
-		DeviceType::Char,
 		URandomDeviceHandle {},
 	)?;
-	device::register_device(urandom_device)?;*/
+	device::register(urandom_device)?;
 
 	let kmsg_path = Path::from_str(b"/dev/kmsg", false)?;
 	let kmsg_device = Device::new(
-		1,
-		11,
+		DeviceID {
+			type_: DeviceType::Char,
+			major: 1,
+			minor: 11,
+		},
 		kmsg_path,
 		0o600,
-		DeviceType::Char,
 		KMsgDeviceHandle {},
 	)?;
-	device::register_device(kmsg_device)?;
+	device::register(kmsg_device)?;
 
 	let _fifth_major = ManuallyDrop::new(id::alloc_major(DeviceType::Char, Some(5))?);
 
 	let current_tty_path = Path::from_str(b"/dev/tty", false)?;
 	let current_tty_device = Device::new(
-		5,
-		0,
+		DeviceID {
+			type_: DeviceType::Char,
+			major: 5,
+			minor: 0,
+		},
 		current_tty_path,
 		0o666,
-		DeviceType::Char,
 		TTYDeviceHandle::new(None),
 	)?;
-	device::register_device(current_tty_device)?;
+	device::register(current_tty_device)?;
 
 	Ok(())
 }

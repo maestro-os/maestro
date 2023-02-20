@@ -13,6 +13,7 @@ pub mod util;
 pub mod vfs;
 
 use core::ffi::c_void;
+use crate::device::DeviceID;
 use crate::device::DeviceType;
 use crate::device;
 use crate::errno::Errno;
@@ -21,6 +22,7 @@ use crate::file::buffer::pipe::PipeBuffer;
 use crate::file::buffer::socket::Socket;
 use crate::file::fs::Filesystem;
 use crate::process::mem_space::MemSpace;
+use crate::syscall::ioctl;
 use crate::time::unit::Timestamp;
 use crate::time::unit::TimestampScale;
 use crate::time;
@@ -644,7 +646,7 @@ impl File {
 	pub fn ioctl(
 		&mut self,
 		mem_space: IntSharedPtr<MemSpace>,
-		request: u32,
+		request: ioctl::Request,
 		argp: *const c_void,
 	) -> Result<u32, Errno> {
 		match &self.content {
@@ -668,17 +670,30 @@ impl File {
 				buff.ioctl(mem_space, request, argp)
 			}
 
-			// TODO Check if correct
 			FileContent::BlockDevice {
-				..
-			} => Err(errno!(ENOTTY)),
+				major,
+				minor,
+			} => {
+				let dev = device::get(&DeviceID {
+					type_: DeviceType::Block,
+					major: *major,
+					minor: *minor
+				}).ok_or_else(|| errno!(ENODEV))?;
+
+				let guard = dev.lock();
+				guard.get_mut().get_handle().ioctl(mem_space, request, argp)
+			},
 
 			FileContent::CharDevice {
 				major,
 				minor,
 			} => {
-				let dev = device::get_device(DeviceType::Char, *major, *minor)
-					.ok_or_else(|| errno!(ENODEV))?;
+				let dev = device::get(&DeviceID {
+					type_: DeviceType::Char,
+					major: *major,
+					minor: *minor,
+				}).ok_or_else(|| errno!(ENODEV))?;
+
 				let guard = dev.lock();
 				guard.get_mut().get_handle().ioctl(mem_space, request, argp)
 			}
@@ -760,8 +775,12 @@ impl File {
 				major,
 				minor,
 			} => {
-				let io = device::get_device(DeviceType::Block, *major, *minor)
-					.ok_or_else(|| errno!(ENODEV))?;
+				let io = device::get(&DeviceID {
+					type_: DeviceType::Block,
+					major: *major,
+					minor: *minor
+				}).ok_or_else(|| errno!(ENODEV))?;
+
 				f(Some(io as _), None)
 			},
 
@@ -769,8 +788,12 @@ impl File {
 				major,
 				minor,
 			} => {
-				let io = device::get_device(DeviceType::Char, *major, *minor)
-					.ok_or_else(|| errno!(ENODEV))?;
+				let io = device::get(&DeviceID {
+					type_: DeviceType::Char,
+					major: *major,
+					minor: *minor
+				}).ok_or_else(|| errno!(ENODEV))?;
+
 				f(Some(io as _), None)
 			}
 		}

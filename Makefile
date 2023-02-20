@@ -54,6 +54,8 @@ CONFIG_ARCH := $(shell $(CONFIG_ATTR_SCRIPT) GENERAL_ARCH)
 CONFIG_DEBUG := $(shell $(CONFIG_ATTR_SCRIPT) DEBUG_DEBUG)
 # Tells whether to compile for unit testing
 CONFIG_DEBUG_TEST := $(shell $(CONFIG_ATTR_SCRIPT) DEBUG_TEST)
+# Tells whether to compile with the strace feature
+CONFIG_DEBUG_STRACE := $(shell $(CONFIG_ATTR_SCRIPT) DEBUG_STRACE)
 
 
 
@@ -128,6 +130,9 @@ CARGOFLAGS += --release
 endif
 ifeq ($(CONFIG_DEBUG_TEST), true)
 CARGOFLAGS += --tests
+endif
+ifeq ($(CONFIG_DEBUG_STRACE), true)
+CARGOFLAGS += --features strace
 endif
 
 # The Rust language compiler flags

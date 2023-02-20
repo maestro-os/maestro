@@ -3,36 +3,40 @@
 
 mod cpio;
 
-use crate::errno;
+use cpio::CPIOParser;
+use crate::device;
 use crate::errno::Errno;
-use crate::file;
-use crate::file::path::Path;
-use crate::file::vfs;
+use crate::errno;
 use crate::file::File;
 use crate::file::FileContent;
 use crate::file::FileType;
 use crate::file::VFS;
+use crate::file::path::Path;
+use crate::file::vfs;
+use crate::file;
+use crate::util::FailableClone;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
 use crate::util::io::IO;
 use crate::util::ptr::SharedPtr;
-use crate::util::FailableClone;
-use cpio::CPIOParser;
 
-/// Updates the current parent.
+/// Updates the current parent used for the unpacking operation.
 ///
 /// Arguments:
-/// TODO
+/// - `vfs` is the VFS.
+/// - `new` is the new parent's path.
+/// - `stored` is the current parent. The tuple contains the path and the file.
+/// - `retry` tells whether the function is called as a second try.
 fn update_parent(
 	vfs: &mut VFS,
-	curr: &Path,
+	new: &Path,
 	stored: &mut Option<(Path, SharedPtr<File>)>,
 	retry: bool,
 ) -> Result<(), Errno> {
 	// Getting the parent
 	let result = match stored {
-		Some((path, file)) if curr.begins_with(path) => {
-			let name = match curr.failable_clone()?.pop() {
+		Some((path, file)) if new.begins_with(path) => {
+			let name = match new.failable_clone()?.pop() {
 				Some(name) => name,
 				None => return Ok(()),
 			};
@@ -43,18 +47,18 @@ fn update_parent(
 			vfs.get_file_from_parent(f, name, file::ROOT_UID, file::ROOT_GID, false)
 		}
 
-		Some(_) | None => vfs.get_file_from_path(curr, file::ROOT_UID, file::ROOT_GID, false),
+		Some(_) | None => vfs.get_file_from_path(new, file::ROOT_UID, file::ROOT_GID, false),
 	};
 
 	match result {
 		Ok(file) => {
-			*stored = Some((curr.failable_clone()?, file));
+			*stored = Some((new.failable_clone()?, file));
 		}
 
 		// If the directory doesn't exist, create recursively
 		Err(e) if !retry && e.as_int() == errno::ENOENT => {
-			file::util::create_dirs(vfs, curr)?;
-			return update_parent(vfs, curr, stored, true);
+			file::util::create_dirs(vfs, new)?;
+			return update_parent(vfs, new, stored, true);
 		}
 
 		Err(e) => return Err(e),
@@ -97,13 +101,13 @@ pub fn load(data: &[u8]) -> Result<(), Errno> {
 			FileType::Fifo => FileContent::Fifo,
 			FileType::Socket => FileContent::Socket,
 			FileType::BlockDevice => FileContent::BlockDevice {
-				major: 0,
-				minor: 0,
-			}, // TODO
+				major: device::id::major(hdr.c_rdev as _),
+				minor: device::id::minor(hdr.c_rdev as _),
+			},
 			FileType::CharDevice => FileContent::CharDevice {
-				major: 0,
-				minor: 0,
-			}, // TODO
+				major: device::id::major(hdr.c_rdev as _),
+				minor: device::id::minor(hdr.c_rdev as _),
+			},
 		};
 
 		// Telling whether the parent directory must be changed
@@ -124,8 +128,8 @@ pub fn load(data: &[u8]) -> Result<(), Errno> {
 		let create_result = vfs.create_file(
 			parent,
 			name,
-			file::ROOT_UID, // TODO Put the entry's id instead
-			file::ROOT_GID, // TODO Put the entry's id instead
+			file::ROOT_UID,
+			file::ROOT_GID,
 			perm,
 			content,
 		);
@@ -135,14 +139,19 @@ pub fn load(data: &[u8]) -> Result<(), Errno> {
 			Err(e) => return Err(e),
 		};
 
-		// Writing content if the file is a regular file
-		let content = entry.get_content();
-		if file_type == FileType::Regular {
-			let file_guard = file_mutex.lock();
-			let file = file_guard.get_mut();
+		let file_guard = file_mutex.lock();
+		let file = file_guard.get_mut();
 
+		file.set_uid(hdr.c_uid);
+		file.set_gid(hdr.c_gid);
+
+		// Writing content if the file is a regular file
+		if file_type == FileType::Regular {
+			let content = entry.get_content();
 			file.write(0, content)?;
 		}
+
+		file.sync()?;
 	}
 
 	Ok(())

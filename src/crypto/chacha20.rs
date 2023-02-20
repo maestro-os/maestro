@@ -1,38 +1,64 @@
-//! Implementation of the ChaCha20 algorithm according to RFC 8439.
+//! Implementation of the ChaCha20 algorithm.
 
-extern "C" {
-	fn chacha20_encode(buff: *const u8, len: usize, k: *const u32, n: *const u32, out: *mut u8);
+use core::ptr;
+
+/// Performs a left rotation of `b` bits on the value `a`.
+macro_rules! rotl {
+	($a:expr, $b:expr) => {
+		($a << $b) | ($a >> (32 - $b))
+	};
 }
 
-/// Encodes the given data in `buff` using ChaCha20, with the given key `k` and
-/// the given nonces `n`.
-/// It is important that nonces are not repeated for the same key.
-/// `out` is the buffer which will contain the result. Its length must be
-/// `ceil(buff.len() / 64) * 64`.
-pub fn encode(buff: &[u8], k: &[u32; 8], n: &[u32; 3], out: &mut [u8]) {
+/// Performs a quarter round on the given values.
+macro_rules! quarter_round {
+	($a:expr, $b:expr, $c:expr, $d:expr) => {
+		$a = $a.wrapping_add($b);
+		$d ^= $a;
+		$d = rotl!($d, 16);
+
+		$c = $c.wrapping_add($d);
+		$b ^= $c;
+		$b = rotl!($b, 12);
+
+		$a = $a.wrapping_add($b);
+		$d ^= $a;
+		$d = rotl!($d, 8);
+
+		$c = $c.wrapping_add($d);
+		$b ^= $c;
+		$b = rotl!($b, 7);
+	};
+}
+
+/// Computes a ChaCha20 block.
+///
+/// Arguments:
+/// - `input` is the input block.
+/// - `output` is the output block.
+pub fn block(input: &[u8; 64], output: &mut [u8; 64]) {
+	let mut buff: [u32; 16] = [0; 16];
+
 	unsafe {
-		chacha20_encode(
-			buff.as_ptr(),
-			buff.len(),
-			k.as_ptr(),
-			n.as_ptr(),
-			out.as_mut_ptr(),
-		);
+		ptr::copy_nonoverlapping(input.as_ptr(), buff.as_mut_ptr() as *mut u8, 64);
+	}
+
+	for _ in (0..20).step_by(2) {
+		// Odd round
+		quarter_round!(buff[0], buff[4], buff[8],  buff[12]);
+		quarter_round!(buff[1], buff[5], buff[9],  buff[13]);
+		quarter_round!(buff[2], buff[6], buff[10], buff[14]);
+		quarter_round!(buff[3], buff[7], buff[11], buff[15]);
+
+		// Even round
+		quarter_round!(buff[0], buff[5], buff[10], buff[15]);
+		quarter_round!(buff[1], buff[6], buff[11], buff[12]);
+		quarter_round!(buff[2], buff[7], buff[8],  buff[13]);
+		quarter_round!(buff[3], buff[4], buff[9],  buff[14]);
+	}
+
+	unsafe {
+		ptr::copy_nonoverlapping(buff.as_ptr() as *mut u8, output.as_mut_ptr(), 64);
 	}
 }
 
-// TODO Use with C code
-/*#[cfg(test)]
-mod test {
-	use super::*;
-
-	#[test_case]
-	fn quarter_round0() {
-		let (a, b, c, d) = quarter_round(0x11111111, 0x01020304, 0x9b8d6f43, 0x01234567);
-
-		assert_eq!(a, 0xea2a92f4);
-		assert_eq!(b, 0xcb1cf8ce);
-		assert_eq!(c, 0x4581472e);
-		assert_eq!(d, 0x5881c4bb);
-	}
-}*/
+// TODO unit tests

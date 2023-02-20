@@ -594,10 +594,6 @@ impl DeviceManager for KeyboardManager {
 		"kbd"
 	}
 
-	fn legacy_detect(&mut self) -> Result<(), Errno> {
-		Ok(())
-	}
-
 	fn on_plug(&mut self, _dev: &dyn PhysicalDevice) -> Result<(), Errno> {
 		// TODO (When plugging a keyboard, don't forget to set the LEDs state)
 		Ok(())

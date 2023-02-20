@@ -7,6 +7,7 @@ use core::ffi::c_void;
 use crate::errno::Errno;
 use crate::file::FileLocation;
 use crate::process::mem_space::MemSpace;
+use crate::syscall::ioctl;
 use crate::util::FailableDefault;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::id_allocator::IDAllocator;
@@ -40,7 +41,7 @@ pub trait Buffer: IO {
 	fn ioctl(
 		&mut self,
 		mem_space: IntSharedPtr<MemSpace>,
-		request: u32,
+		request: ioctl::Request,
 		argp: *const c_void,
 	) -> Result<u32, Errno>;
 }

@@ -6,22 +6,28 @@ pub mod partition;
 pub mod pata;
 pub mod ramdisk;
 
-use crate::device;
-use crate::device::bus::pci;
-use crate::device::id;
-use crate::device::id::MajorBlock;
-use crate::device::manager::DeviceManager;
-use crate::device::manager::PhysicalDevice;
+use core::cmp::min;
+use core::ffi::c_void;
 use crate::device::Device;
 use crate::device::DeviceHandle;
+use crate::device::DeviceID;
 use crate::device::DeviceType;
-use crate::errno;
+use crate::device::bus::pci;
+use crate::device::id::MajorBlock;
+use crate::device::id;
+use crate::device::manager::DeviceManager;
+use crate::device::manager::PhysicalDevice;
+use crate::device;
 use crate::errno::Errno;
-use crate::file::path::Path;
+use crate::errno;
 use crate::file::Mode;
+use crate::file::path::Path;
 use crate::memory::malloc;
 use crate::process::mem_space::MemSpace;
+use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::oom;
+use crate::syscall::ioctl;
+use crate::util::FailableClone;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::io::IO;
@@ -29,9 +35,6 @@ use crate::util::math;
 use crate::util::ptr::IntSharedPtr;
 use crate::util::ptr::SharedPtr;
 use crate::util::ptr::WeakPtr;
-use crate::util::FailableClone;
-use core::cmp::min;
-use core::ffi::c_void;
 use partition::Partition;
 
 /// The major number for storage devices.
@@ -192,21 +195,41 @@ pub trait StorageInterface {
 pub struct StorageDeviceHandle {
 	/// A reference to the storage interface.
 	interface: WeakPtr<dyn StorageInterface>,
-
-	/// The partition associated with the handle.
+	/// The partition associated with the handle. If `None`, the handle covers the whole device.
 	partition: Option<Partition>,
+
+	/// The major number of the device.
+	major: u32,
+	/// The ID of the storage device in the manager.
+	storage_id: u32,
+	/// The path to the file of the main device containing the partition table.
+	path_prefix: String,
 }
 
 impl StorageDeviceHandle {
 	/// Creates a new instance for the given storage interface and the given
-	/// partition number. `interface` is the storage interface.
-	/// `partition` is the partition. If None, the handle works on the whole
-	/// storage device.
-	pub fn new(interface: WeakPtr<dyn StorageInterface>, partition: Option<Partition>) -> Self {
+	/// partition number.
+	///
+	/// Arguments:
+	/// - `interface` is the storage interface.
+	/// - `partition` is the partition. If `None`, the handle works on the whole storage device.
+	/// - `major` is the major number of the device.
+	/// - `storage_id` is the ID of the storage device in the manager.
+	/// - `path_prefix` is the path to the file of the main device containing the partition table.
+	pub fn new(
+		interface: WeakPtr<dyn StorageInterface>,
+		partition: Option<Partition>,
+		major: u32,
+		storage_id: u32,
+		path_prefix: String
+	) -> Self {
 		Self {
 			interface,
-
 			partition,
+
+			major,
+			storage_id,
+			path_prefix
 		}
 	}
 }
@@ -214,12 +237,38 @@ impl StorageDeviceHandle {
 impl DeviceHandle for StorageDeviceHandle {
 	fn ioctl(
 		&mut self,
-		_mem_space: IntSharedPtr<MemSpace>,
-		_request: u32,
-		_argp: *const c_void,
+		mem_space: IntSharedPtr<MemSpace>,
+		request: ioctl::Request,
+		argp: *const c_void,
 	) -> Result<u32, Errno> {
-		// TODO
-		Err(errno!(EINVAL))
+		match request.get_old_format() {
+			ioctl::BLKRRPART => {
+				StorageManager::clear_partitions(self.major)?;
+				StorageManager::read_partitions(
+					self.interface.clone(),
+					self.major,
+					self.storage_id,
+					self.path_prefix.failable_clone()?
+				)?;
+
+				Ok(0)
+			}
+
+			ioctl::BLKGETSIZE64 => {
+				let size = self.get_size();
+
+				let mem_space_guard = mem_space.lock();
+				let size_ptr: SyscallPtr<u64> = (argp as usize).into();
+				let size_ref = size_ptr
+					.get_mut(&mem_space_guard)?
+					.ok_or_else(|| errno!(EFAULT))?;
+				*size_ref = size;
+
+				Ok(0)
+			}
+
+			_ => Err(errno!(EINVAL)),
+		}
 	}
 }
 
@@ -310,10 +359,84 @@ impl StorageManager {
 		})
 	}
 
+	// TODO When failing, remove previously registered devices
+	/// Creates device files for every partitions on the storage device, within the limit of
+	/// `MAX_PARTITIONS`.
+	///
+	/// Arguments:
+	/// - `storage` is the storage interface.
+	/// - `major` is the major number of the device.
+	/// - `storage_id` is the ID of the storage device in the manager.
+	/// - `path_prefix` is the path to the file of the main device containing the partition table.
+	pub fn read_partitions(
+		storage: WeakPtr<dyn StorageInterface>,
+		major: u32,
+		storage_id: u32,
+		path_prefix: String,
+	) -> Result<(), Errno> {
+		if let Some(storage_mutex) = storage.get() {
+			let storage_guard = storage_mutex.lock();
+			let s = storage_guard.get_mut();
+
+			if let Some(partitions_table) = partition::read(s)? {
+				let partitions = partitions_table.get_partitions(s)?;
+
+				let iter = partitions.into_iter().take(MAX_PARTITIONS - 1);
+				for (i, partition) in iter.enumerate() {
+					let part_nbr = (i + 1) as u32;
+
+					// Adding the partition number to the path
+					let path_str = (
+						path_prefix.failable_clone()? + crate::format!("{}", part_nbr)?
+					)?;
+					let path = Path::from_str(path_str.as_bytes(), false)?;
+
+					// Creating the partition's device file
+					let handle = StorageDeviceHandle::new(
+						storage.clone(),
+						Some(partition),
+						major,
+						storage_id,
+						path_prefix.failable_clone()?
+					);
+					let device = Device::new(
+						DeviceID {
+							type_: DeviceType::Block,
+							// TODO use a different major for different storage device types
+							major: STORAGE_MAJOR,
+							minor: storage_id * MAX_PARTITIONS as u32 + part_nbr,
+						},
+						path,
+						STORAGE_MODE,
+						handle,
+					)?;
+					device::register(device)?;
+				}
+			}
+		}
+
+		Ok(())
+	}
+
+	/// Clears device files for every partitions.
+	///
+	/// `major` is the major number of the devices to be removed.
+	pub fn clear_partitions(major: u32) -> Result<(), Errno> {
+		for i in 1..MAX_PARTITIONS {
+			device::unregister(&DeviceID {
+				type_: DeviceType::Block,
+				major,
+				minor: i as _,
+			})?;
+		}
+
+		Ok(())
+	}
+
 	// TODO Handle the case where there is more devices that the number of devices
 	// that can be handled in the range of minor numbers
 	// TODO When failing, remove previously registered devices
-	/// Adds a storage device.
+	/// Adds the given storage device to the manager.
 	fn add(&mut self, storage: SharedPtr<dyn StorageInterface>) -> Result<(), Errno> {
 		// The device files' major number
 		let major = self.major_block.get_major();
@@ -322,52 +445,37 @@ impl StorageManager {
 
 		// The prefix is the path of the main device file
 		let mut prefix = String::from(b"/dev/sd")?;
-		prefix.push(b'a' + (storage_id as u8))?; // TODO Handle if out of the alphabet
-										 // The path of the main device file
+		// TODO Handle if out of the alphabet
+		prefix.push(b'a' + (storage_id as u8))?;
+		// The path of the main device file
 		let main_path = Path::from_str(prefix.as_bytes(), false)?;
 
 		// Creating the main device file
-		let main_handle = StorageDeviceHandle::new(storage.new_weak(), None);
-		let main_device = Device::new(
+		let main_handle = StorageDeviceHandle::new(
+			storage.new_weak(),
+			None,
 			major,
-			storage_id * MAX_PARTITIONS as u32,
+			storage_id,
+			prefix.failable_clone()?
+		);
+		let main_device = Device::new(
+			DeviceID {
+				type_: DeviceType::Block,
+				major,
+				minor: storage_id * MAX_PARTITIONS as u32,
+			},
 			main_path,
 			STORAGE_MODE,
-			DeviceType::Block,
 			main_handle,
 		)?;
-		device::register_device(main_device)?;
+		device::register(main_device)?;
 
-		// Creating device files for every partitions (within the limit of
-		// MAX_PARTITIONS)
-		{
-			let storage_guard = storage.lock();
-			let s = storage_guard.get_mut();
-
-			if let Some(partitions_table) = partition::read(s)? {
-				let partitions = partitions_table.get_partitions(s)?;
-
-				for (i, partition) in partitions.into_iter().take(MAX_PARTITIONS).enumerate() {
-					let i = i + 1;
-
-					// Adding the partition number to the path
-					let path_str = (prefix.failable_clone()? + crate::format!("{}", i)?)?;
-					let path = Path::from_str(path_str.as_bytes(), false)?;
-
-					// Creating the partition's device file
-					let handle = StorageDeviceHandle::new(storage.new_weak(), Some(partition));
-					let device = Device::new(
-						major,
-						storage_id * MAX_PARTITIONS as u32 + i as u32,
-						path.failable_clone()?,
-						STORAGE_MODE,
-						DeviceType::Block,
-						handle,
-					)?;
-					device::register_device(device)?;
-				}
-			}
-		}
+		Self::read_partitions(
+			storage.new_weak(),
+			major,
+			storage_id,
+			prefix
+		)?;
 
 		self.interfaces.push(storage)
 	}
@@ -485,26 +593,6 @@ impl DeviceManager for StorageManager {
 		"storage"
 	}
 
-	fn legacy_detect(&mut self) -> Result<(), Errno> {
-		// TODO Detect floppy disks
-
-		// TODO rm?
-		/*for i in 0..4 {
-			let secondary = (i & 0b10) != 0;
-			let slave = (i & 0b01) != 0;
-
-			if let Ok(dev) = PATAInterface::new(secondary, slave) {
-				let interface = Box::new(dev)?;
-				// TODO Use a constant for the sectors count
-				let cached_interface = CachedStorageInterface::new(interface, 128)?;
-
-				self.add(Box::new(cached_interface)?)?;
-			}
-		}*/
-
-		Ok(())
-	}
-
 	fn on_plug(&mut self, dev: &dyn PhysicalDevice) -> Result<(), Errno> {
 		// Ignoring non-storage devices
 		if dev.get_class() != pci::CLASS_MASS_STORAGE_CONTROLLER {
@@ -538,7 +626,7 @@ impl DeviceManager for StorageManager {
 	}
 
 	fn on_unplug(&mut self, _dev: &dyn PhysicalDevice) -> Result<(), Errno> {
-		// TODO
-		Ok(())
+		// TODO remove device
+		todo!();
 	}
 }

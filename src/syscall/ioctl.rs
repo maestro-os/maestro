@@ -1,12 +1,12 @@
 //! The ioctl syscall allows to control a device represented by a file
 //! descriptor.
 
-use crate::errno;
-use crate::errno::Errno;
-use crate::process::Process;
 use core::ffi::c_int;
 use core::ffi::c_ulong;
 use core::ffi::c_void;
+use crate::errno::Errno;
+use crate::errno;
+use crate::process::Process;
 use macros::syscall;
 
 // ioctl requests: TTY
@@ -33,9 +33,75 @@ pub const TIOCSWINSZ: u32 = 0x00005414;
 /// ioctl request: Returns the number of bytes available on the file descriptor.
 pub const FIONREAD: u32 = 0x0000541b;
 
+// ioctl requests: storage
+
+/// ioctl request: re-read partition table.
+pub const BLKRRPART: u32 = 0x0000125f;
+/// ioctl request: get storage size in bytes.
+pub const BLKGETSIZE64: u32 = 0x00001272;
+
+/// Enumeration of IO directions for ioctl requests.
+#[derive(Eq, PartialEq)]
+pub enum Direction {
+	/// No data to be transferred.
+	None,
+	/// The userspace requires information.
+	Read,
+	/// The userspace transmits information.
+	Write,
+}
+
+impl TryFrom<c_ulong> for Direction {
+	type Error = ();
+
+	fn try_from(n: c_ulong) -> Result<Self, Self::Error> {
+		match n {
+			0 => Ok(Self::None),
+			2 => Ok(Self::Read),
+			1 => Ok(Self::Write),
+
+			_ => Err(()),
+		}
+	}
+}
+
+/// Structure representing an `ioctl` request.
+pub struct Request {
+	/// Major number of the request.
+	pub major: u8,
+	/// Minor number of the request.
+	pub minor: u8,
+
+	/// The size of the data treated by the request in bytes.
+	pub size: usize,
+	/// Tells whether IO direction of the ioctl request.
+	pub direction: Direction,
+}
+
+impl From<c_ulong> for Request {
+	fn from(req: c_ulong) -> Self {
+		Self {
+			major: ((req >> 8) & 0xff) as u8,
+			minor: (req & 0xff) as u8,
+
+			size: ((req >> 16) & 0x3f) as usize,
+			direction: ((req >> 30) & 0x03).try_into().unwrap(),
+		}
+	}
+}
+
+impl Request {
+	/// Returns the value as the old format for ioctl.
+	pub fn get_old_format(&self) -> c_ulong {
+		((self.major as u32) << 8) | self.minor as u32
+	}
+}
+
 /// The implementation of the `ioctl` syscall.
 #[syscall]
 pub fn ioctl(fd: c_int, request: c_ulong, argp: *const c_void) -> Result<i32, Errno> {
+	let request = Request::from(request);
+
 	// Getting the memory space and file
 	let (mem_space, open_file_mutex) = {
 		let mutex = Process::get_current().unwrap();

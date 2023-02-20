@@ -43,10 +43,6 @@ pub trait DeviceManager {
 	/// Returns the manager's name. This name must not change.
 	fn get_name(&self) -> &'static str;
 
-	/// Detects devices the legacy way.
-	/// **WARNING**: This function must be called only once.
-	fn legacy_detect(&mut self) -> Result<(), Errno>;
-
 	/// Function called when a new device is plugged in.
 	fn on_plug(&mut self, dev: &dyn PhysicalDevice) -> Result<(), Errno>;
 

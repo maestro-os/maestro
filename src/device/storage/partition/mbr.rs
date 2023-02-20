@@ -10,9 +10,10 @@ use crate::errno::Errno;
 use crate::util::container::vec::Vec;
 
 /// The signature of the MBR partition table.
-const MBR_SIGNATURE: u16 = 0x55aa;
+const MBR_SIGNATURE: u16 = 0xaa55;
 
 /// Structure representing a partition.
+#[derive(Clone)]
 #[repr(C, packed)]
 struct MBRPartition {
 	/// Partition attributes.
@@ -20,33 +21,13 @@ struct MBRPartition {
 	/// CHS address of partition start.
 	chs_start: [u8; 3],
 	/// The type of the partition.
-	parition_type: u8,
+	partition_type: u8,
 	/// CHS address of partition end.
 	chs_end: [u8; 3],
 	/// LBA address of partition start.
 	lba_start: u32,
 	/// The number of sectors in the partition.
 	sectors_count: u32,
-}
-
-impl MBRPartition {
-	/// Tells whether the partition is active.
-	pub fn is_active(&self) -> bool {
-		self.attrs & (1 << 7) != 0
-	}
-}
-
-impl Clone for MBRPartition {
-	fn clone(&self) -> Self {
-		Self {
-			attrs: self.attrs,
-			chs_start: self.chs_start,
-			parition_type: self.parition_type,
-			chs_end: self.chs_end,
-			lba_start: self.lba_start,
-			sectors_count: self.sectors_count,
-		}
-	}
 }
 
 /// Structure representing the partition table.
@@ -67,7 +48,7 @@ pub struct MBRTable {
 impl Clone for MBRTable {
 	fn clone(&self) -> Self {
 		Self {
-			boot: self.boot,
+			boot: self.boot.clone(),
 			disk_signature: self.disk_signature,
 			zero: self.zero,
 			partitions: self.partitions.clone(),
@@ -103,7 +84,7 @@ impl Table for MBRTable {
 		let mut partitions = Vec::<Partition>::new();
 
 		for mbr_partition in self.partitions.iter() {
-			if mbr_partition.is_active() {
+			if mbr_partition.partition_type != 0 {
 				let partition = Partition::new(
 					mbr_partition.lba_start as _,
 					mbr_partition.sectors_count as _,

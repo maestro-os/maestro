@@ -145,7 +145,8 @@ pub fn statx(
 						minor,
 						..
 					} => (*major, *minor),
-					MountSource::File(_) | MountSource::NoDev(_) => (0, 0),
+
+					_ => (0, 0),
 				}
 			})
 		} else {

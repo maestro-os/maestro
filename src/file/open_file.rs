@@ -283,7 +283,7 @@ impl OpenFile {
 	pub fn ioctl(
 		&mut self,
 		mem_space: IntSharedPtr<MemSpace>,
-		request: u32,
+		request: ioctl::Request,
 		argp: *const c_void,
 	) -> Result<u32, Errno> {
 		let file_mutex = self.get_file()?;
@@ -291,7 +291,7 @@ impl OpenFile {
 		let file = file_guard.get_mut();
 
 		match file.get_content() {
-			FileContent::Regular => match request {
+			FileContent::Regular => match request.get_old_format() {
 				ioctl::FIONREAD => {
 					let mem_space_guard = mem_space.lock();
 					let count_ptr: SyscallPtr<c_int> = (argp as usize).into();
