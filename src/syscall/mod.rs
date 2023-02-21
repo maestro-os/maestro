@@ -109,6 +109,7 @@ mod uname;
 mod unlink;
 mod unlinkat;
 mod util;
+mod utimensat;
 mod vfork;
 mod wait4;
 mod wait;
@@ -228,6 +229,7 @@ use umount::umount;
 use uname::uname;
 use unlink::unlink;
 use unlinkat::unlinkat;
+use utimensat::utimensat;
 use vfork::vfork;
 use wait4::wait4;
 use waitpid::waitpid;
@@ -554,7 +556,7 @@ fn get_syscall(id: u32) -> Option<SyscallHandler> {
 		// TODO 0x13d => Some(&move_pages),
 		// TODO 0x13e => Some(&getcpu),
 		// TODO 0x13f => Some(&epoll_pwait),
-		// TODO 0x140 => Some(&utimensat),
+		0x140 => Some(&utimensat),
 		// TODO 0x141 => Some(&signalfd),
 		// TODO 0x142 => Some(&timerfd_create),
 		// TODO 0x143 => Some(&eventfd),
@@ -696,6 +698,14 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 				let mutex = Process::get_current().unwrap();
 				let guard = mutex.lock();
 				let curr_proc = guard.get_mut();
+
+				if cfg!(feature = "strace") {
+					crate::println!(
+						"[strace PID: {}] unknown syscall (ID: {})",
+						curr_proc.get_pid(),
+						id
+					);
+				}
 
 				// SIGSYS cannot be caught, thus the process will be terminated
 				curr_proc.kill(&Signal::SIGSYS, true);
