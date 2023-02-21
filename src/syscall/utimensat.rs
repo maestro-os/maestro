@@ -8,6 +8,7 @@ use crate::process::mem_space::ptr::SyscallString;
 use crate::time::unit::TimeUnit;
 use crate::time::unit::Timespec;
 use macros::syscall;
+use super::access::AT_FDCWD;
 use super::util;
 
 #[syscall]
@@ -24,9 +25,29 @@ pub fn utimensat(
 
 		let mem_space = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space.lock();
-		let path = pathname.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
 
-		let file_mutex = util::get_file_at(proc_guard, true, dirfd, path, flags)?;
+		let file_mutex = match pathname.get(&mem_space_guard)? {
+			Some(pathname) => util::get_file_at(proc_guard, true, dirfd, pathname, flags)?,
+
+			None if dirfd != AT_FDCWD => {
+				if dirfd < 0 {
+					return Err(errno!(EBADF));
+				}
+
+				proc.get_fds()
+					.unwrap()
+					.lock()
+					.get()
+					.get_fd(dirfd as _)
+					.ok_or(errno!(EBADF))?
+					.get_open_file()?
+					.lock()
+					.get()
+					.get_file()?
+			}
+
+			_ => return Err(errno!(EFAULT)),
+		};
 
 		let times_val = times.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
 
