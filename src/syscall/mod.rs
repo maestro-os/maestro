@@ -98,6 +98,7 @@ mod splice;
 mod statfs64;
 mod statfs;
 mod statx;
+mod symlink;
 mod symlinkat;
 mod syncfs;
 mod time;
@@ -219,6 +220,7 @@ use splice::splice;
 use statfs64::statfs64;
 use statfs::statfs;
 use statx::statx;
+use symlink::symlink;
 use symlinkat::symlinkat;
 use syncfs::syncfs;
 use time::time;
@@ -325,7 +327,7 @@ fn get_syscall(id: u32) -> Option<SyscallHandler> {
 		// TODO 0x050 => Some(&getgroups),
 		// TODO 0x051 => Some(&setgroups),
 		0x052 => Some(&select),
-		// TODO 0x053 => Some(&symlink),
+		0x053 => Some(&symlink),
 		// TODO 0x054 => Some(&oldlstat),
 		0x055 => Some(&readlink),
 		// TODO 0x056 => Some(&uselib),
@@ -701,7 +703,7 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 
 				if cfg!(feature = "strace") {
 					crate::println!(
-						"[strace PID: {}] unknown syscall (ID: {})",
+						"[strace PID: {}] unknown syscall (ID: 0x{:x})",
 						curr_proc.get_pid(),
 						id
 					);
