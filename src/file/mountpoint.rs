@@ -450,6 +450,7 @@ pub fn remove(path: &Path) -> Result<(), Errno> {
 	let _mountpoint = mount_points_guard.get().get(id).ok_or(errno!(EINVAL))?;
 
 	// TODO Check if busy (EBUSY)
+	// TODO Check if another mount point is present in a subdirectory (EBUSY)
 
 	// TODO sync fs
 
