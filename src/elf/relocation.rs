@@ -62,6 +62,9 @@ pub trait Relocation {
 			elf::R_386_GOTOFF => sym_val.ok_or(())? + self.get_addend() - got_addr,
 			elf::R_386_GOTPC => got_addr + self.get_addend() - self.get_offset(),
 
+			// Ignored relocations
+			elf::R_386_IRELATIVE => return Ok(()),
+
 			_ => return Err(()),
 		};
 

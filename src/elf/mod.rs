@@ -169,6 +169,8 @@ pub const R_386_RELATIVE: u8 = 8;
 pub const R_386_GOTOFF: u8 = 9;
 /// Relocation type.
 pub const R_386_GOTPC: u8 = 10;
+/// Relocation type.
+pub const R_386_IRELATIVE: u8 = 42;
 
 /// Structure representing an ELF header.
 #[derive(Clone, Debug)]
