@@ -8,6 +8,7 @@ mod _exit;
 mod _llseek;
 mod _newselect;
 mod access;
+mod arch_prctl;
 mod brk;
 mod chdir;
 mod chmod;
@@ -129,6 +130,7 @@ use _exit::_exit;
 use _llseek::_llseek;
 use _newselect::_newselect;
 use access::access;
+use arch_prctl::arch_prctl;
 use brk::brk;
 use chdir::chdir;
 use chmod::chmod;
@@ -622,7 +624,7 @@ fn get_syscall(id: u32) -> Option<SyscallHandler> {
 		// TODO 0x17d => Some(&pkey_alloc),
 		// TODO 0x17e => Some(&pkey_free),
 		0x17f => Some(&statx),
-		// TODO 0x180 => Some(&arch_prctl),
+		0x180 => Some(&arch_prctl),
 		// TODO 0x181 => Some(&io_pgetevents),
 		// TODO 0x182 => Some(&rseq),
 		// TODO 0x189 => Some(&semget),
