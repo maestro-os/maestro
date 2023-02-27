@@ -7,5 +7,5 @@ use macros::syscall;
 #[syscall]
 pub fn arch_prctl(_code: c_int, _addr: usize) -> Result<i32, Errno> {
 	// TODO
-	Ok(0)
+	Err(errno!(EINVAL))
 }
