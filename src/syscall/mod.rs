@@ -80,6 +80,7 @@ mod r#break;
 mod read;
 mod readlink;
 mod reboot;
+mod rename;
 mod renameat2;
 mod rmdir;
 mod rt_sigaction;
@@ -204,6 +205,7 @@ use r#break::r#break;
 use read::read;
 use readlink::readlink;
 use reboot::reboot;
+use rename::rename;
 use renameat2::renameat2;
 use rmdir::rmdir;
 use rt_sigaction::rt_sigaction;
@@ -286,7 +288,7 @@ fn get_syscall(id: u32) -> Option<SyscallHandler> {
 		// TODO 0x023 => Some(&ftime),
 		// TODO 0x024 => Some(&sync),
 		0x025 => Some(&kill),
-		// TODO 0x026 => Some(&rename),
+		0x026 => Some(&rename),
 		0x027 => Some(&mkdir),
 		0x028 => Some(&rmdir),
 		0x029 => Some(&dup),
