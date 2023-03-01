@@ -36,6 +36,7 @@ mod fork;
 mod fstat64;
 mod fstatfs64;
 mod fstatfs;
+mod fsync;
 mod getcwd;
 mod getdents64;
 mod getdents;
@@ -158,6 +159,7 @@ use fork::fork;
 use fstat64::fstat64;
 use fstatfs64::fstatfs64;
 use fstatfs::fstatfs;
+use fsync::fsync;
 use getcwd::getcwd;
 use getdents64::getdents64;
 use getdents::getdents;
@@ -364,7 +366,7 @@ fn get_syscall(id: u32) -> Option<SyscallHandler> {
 		// TODO 0x073 => Some(&swapoff),
 		// TODO 0x074 => Some(&sysinfo),
 		// TODO 0x075 => Some(&ipc),
-		// TODO 0x076 => Some(&fsync),
+		0x076 => Some(&fsync),
 		0x077 => Some(&sigreturn),
 		0x078 => Some(&clone),
 		// TODO 0x079 => Some(&setdomainname),
