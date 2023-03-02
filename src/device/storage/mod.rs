@@ -318,7 +318,7 @@ impl DeviceHandle for StorageDeviceHandle {
 						let interface_guard = interface.lock();
 						let interface = interface_guard.get();
 
-						interface.get_blocks_count()
+						interface.get_block_size()
 					} else {
 						0
 					}
