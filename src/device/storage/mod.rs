@@ -312,6 +312,28 @@ impl DeviceHandle for StorageDeviceHandle {
 				Ok(0)
 			}
 
+			ioctl::BLKSSZGET => {
+				let blk_size = {
+					if let Some(interface) = self.interface.get() {
+						let interface_guard = interface.lock();
+						let interface = interface_guard.get();
+
+						interface.get_blocks_count()
+					} else {
+						0
+					}
+				};
+
+				let mem_space_guard = mem_space.lock();
+				let size_ptr: SyscallPtr<u64> = (argp as usize).into();
+				let size_ref = size_ptr
+					.get_mut(&mem_space_guard)?
+					.ok_or_else(|| errno!(EFAULT))?;
+				*size_ref = blk_size;
+
+				Ok(0)
+			}
+
 			ioctl::BLKGETSIZE64 => {
 				let size = self.get_size();
 

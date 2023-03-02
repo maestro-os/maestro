@@ -18,6 +18,8 @@ pub const HDIO_GETGEO: u32 = 0x00000301;
 
 /// ioctl request: re-read partition table.
 pub const BLKRRPART: u32 = 0x0000125f;
+/// ioctl request: get block size.
+pub const BLKSSZGET: u32 = 0x00001268;
 /// ioctl request: get storage size in bytes.
 pub const BLKGETSIZE64: u32 = 0x00001272;
 
