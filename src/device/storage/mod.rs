@@ -7,6 +7,9 @@ pub mod pata;
 pub mod ramdisk;
 
 use core::cmp::min;
+use core::ffi::c_uchar;
+use core::ffi::c_ulong;
+use core::ffi::c_ushort;
 use core::ffi::c_void;
 use crate::device::Device;
 use crate::device::DeviceHandle;
@@ -43,6 +46,20 @@ const STORAGE_MAJOR: u32 = 8;
 const STORAGE_MODE: Mode = 0o660;
 /// The maximum number of partitions in a disk.
 const MAX_PARTITIONS: usize = 16;
+
+/// Hard drive geometry.
+#[derive(Default)]
+#[repr(C)]
+struct HdGeometry {
+	/// The number of heads (CHS).
+	heads: c_uchar,
+	/// The number of sectors (CHS).
+	sectors: c_uchar,
+	/// The number of cylinders (CHS).
+	cylinders: c_ushort,
+	/// Starting LBA of the device.
+	start: c_ulong,
+}
 
 /// Trait representing a storage interface. A storage block is the atomic unit
 /// for I/O access on the storage device.
@@ -242,6 +259,22 @@ impl DeviceHandle for StorageDeviceHandle {
 		argp: *const c_void,
 	) -> Result<u32, Errno> {
 		match request.get_old_format() {
+			ioctl::HDIO_GETGEO => {
+				let mut hd_geo = HdGeometry::default();
+				hd_geo.start = self.partition.as_ref()
+					.map(|p| p.get_offset())
+					.unwrap_or(0) as _;
+
+				let mem_space_guard = mem_space.lock();
+				let hd_geo_ptr: SyscallPtr<HdGeometry> = (argp as usize).into();
+				let hd_geo_ref = hd_geo_ptr
+					.get_mut(&mem_space_guard)?
+					.ok_or_else(|| errno!(EFAULT))?;
+				*hd_geo_ref = hd_geo;
+
+				Ok(0)
+			}
+
 			ioctl::BLKRRPART => {
 				StorageManager::clear_partitions(self.major)?;
 				StorageManager::read_partitions(

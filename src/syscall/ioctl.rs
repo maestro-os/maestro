@@ -9,6 +9,18 @@ use crate::errno;
 use crate::process::Process;
 use macros::syscall;
 
+// ioctl requests: hard drive
+
+/// ioctl request: get device geometry.
+pub const HDIO_GETGEO: u32 = 0x00000301;
+
+// ioctl requests: storage
+
+/// ioctl request: re-read partition table.
+pub const BLKRRPART: u32 = 0x0000125f;
+/// ioctl request: get storage size in bytes.
+pub const BLKGETSIZE64: u32 = 0x00001272;
+
 // ioctl requests: TTY
 
 /// ioctl request: Returns the current serial port settings.
@@ -32,13 +44,6 @@ pub const TIOCGWINSZ: u32 = 0x00005413;
 pub const TIOCSWINSZ: u32 = 0x00005414;
 /// ioctl request: Returns the number of bytes available on the file descriptor.
 pub const FIONREAD: u32 = 0x0000541b;
-
-// ioctl requests: storage
-
-/// ioctl request: re-read partition table.
-pub const BLKRRPART: u32 = 0x0000125f;
-/// ioctl request: get storage size in bytes.
-pub const BLKGETSIZE64: u32 = 0x00001272;
 
 /// Enumeration of IO directions for ioctl requests.
 #[derive(Eq, PartialEq)]
