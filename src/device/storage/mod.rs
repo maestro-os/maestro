@@ -48,7 +48,7 @@ const STORAGE_MODE: Mode = 0o660;
 const MAX_PARTITIONS: usize = 16;
 
 /// Hard drive geometry.
-#[derive(Default)]
+#[derive(Debug)]
 #[repr(C)]
 struct HdGeometry {
 	/// The number of heads (CHS).
@@ -260,11 +260,36 @@ impl DeviceHandle for StorageDeviceHandle {
 	) -> Result<u32, Errno> {
 		match request.get_old_format() {
 			ioctl::HDIO_GETGEO => {
-				let mut hd_geo = HdGeometry::default();
-				hd_geo.start = self.partition.as_ref()
+				// The total size of the disk
+				let size = {
+					if let Some(interface) = self.interface.get() {
+						let interface_guard = interface.lock();
+						let interface = interface_guard.get();
+
+						interface.get_block_size() * interface.get_blocks_count()
+					} else {
+						0
+					}
+				};
+
+				// Translate from LBA to CHS
+				let s = (size % c_uchar::MAX as u64) as _;
+				let h = ((size - s as u64) / c_uchar::MAX as u64 % c_uchar::MAX as u64) as _;
+				let c = ((size - s as u64) / c_uchar::MAX as u64 / c_uchar::MAX as u64) as _;
+
+				// Starting LBA of the partition
+				let start = self.partition.as_ref()
 					.map(|p| p.get_offset())
 					.unwrap_or(0) as _;
 
+				let hd_geo = HdGeometry {
+					heads: h,
+					sectors: s,
+					cylinders: c,
+					start,
+				};
+
+				// Write to userspace
 				let mem_space_guard = mem_space.lock();
 				let hd_geo_ptr: SyscallPtr<HdGeometry> = (argp as usize).into();
 				let hd_geo_ref = hd_geo_ptr
@@ -311,7 +336,10 @@ impl IO for StorageDeviceHandle {
 			let interface_guard = interface.lock();
 			let interface = interface_guard.get();
 
-			interface.get_block_size() * interface.get_blocks_count()
+			let blocks_count = self.partition.as_ref()
+				.map(|p| p.get_size())
+				.unwrap_or_else(|| interface.get_blocks_count());
+			interface.get_block_size() * blocks_count
 		} else {
 			0
 		}
