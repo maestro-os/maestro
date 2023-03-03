@@ -364,7 +364,7 @@ impl X86VMem {
 			return Some(obj_get_ptr(self.page_dir, dir_entry_index));
 		}
 
-		let table = memory::kern_to_virt((dir_entry_value & ADDR_MASK) as _) as *const u32;
+		let table = memory::kern_to_virt((dir_entry_value & ADDR_MASK) as *const u32);
 		let table_entry_index = Self::get_addr_element_index(ptr, 0);
 		let table_entry_value = obj_get(table, table_entry_index);
 		if table_entry_value & FLAG_PRESENT == 0 {

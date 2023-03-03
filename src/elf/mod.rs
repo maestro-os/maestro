@@ -344,13 +344,16 @@ impl ELF32Sym {
 	}
 }
 
-/// Returns a reference to the kernel section with name `name`. If the section
-/// is not found, returns None.
-/// `sections` is a pointer to the ELF sections of the kernel in the virtual
-/// memory. `sections_count` is the number of sections in the kernel.
-/// `shndx` is the index of the section containing section names.
-/// `entsize` is the size of section entries.
-/// `name` is the name of the required section.
+/// Returns a reference to the kernel section with name `name`.
+///
+/// Arguments:
+/// - `sections` is a pointer to the ELF sections of the kernel in the virtual memory.
+/// - `sections_count` is the number of sections in the kernel.
+/// - `shndx` is the index of the section containing section names.
+/// - `entsize` is the size of section entries.
+/// - `name` is the name of the required section.
+///
+/// If the section is not found, returns `None`.
 pub fn get_section(
 	sections: *const c_void,
 	sections_count: usize,
@@ -363,7 +366,7 @@ pub fn get_section(
 
 	for i in 0..sections_count {
 		let hdr = unsafe { &*(sections.add(i * entsize) as *const ELF32SectionHeader) };
-		let ptr = memory::kern_to_virt((names_section.sh_addr + hdr.sh_name) as _) as _;
+		let ptr = memory::kern_to_virt((names_section.sh_addr + hdr.sh_name) as *const u8);
 		let n = unsafe { util::str_from_ptr(ptr) };
 
 		if n == name {
@@ -376,11 +379,14 @@ pub fn get_section(
 
 /// Iterates over the given kernel section headers list `sections`, calling the
 /// given closure `f` for every elements with a reference and the name of the
-/// section. `sections` is a pointer to the ELF sections of the kernel in the
-/// virtual memory. `sections_count` is the number of sections in the kernel.
-/// `shndx` is the index of the section containing section names.
-/// `entsize` is the size of section entries.
-/// `f` is the closure to be called for each sections.
+/// section.
+///
+/// Arguments:
+/// - `sections` is a pointer to the ELF sections of the kernel in the virtual memory.
+/// - `sections_count` is the number of sections in the kernel.
+/// - `shndx` is the index of the section containing section names.
+/// - `entsize` is the size of section entries.
+/// - `f` is the closure to be called for each sections.
 pub fn foreach_sections<F>(
 	sections: *const c_void,
 	sections_count: usize,
@@ -395,7 +401,7 @@ pub fn foreach_sections<F>(
 	for i in 0..sections_count {
 		let hdr_offset = i * entsize;
 		let hdr = unsafe { &*(sections.add(hdr_offset) as *const ELF32SectionHeader) };
-		let ptr = memory::kern_to_virt((names_section.sh_addr + hdr.sh_name) as _) as _;
+		let ptr = memory::kern_to_virt((names_section.sh_addr + hdr.sh_name) as *const u8);
 		let n = unsafe { util::str_from_ptr(ptr) };
 
 		if !f(hdr, n) {
@@ -405,9 +411,11 @@ pub fn foreach_sections<F>(
 }
 
 /// Returns the size of the kernel ELF sections' content.
-/// `sections` is a pointer to the ELF sections of the kernel in the virtual
-/// memory. `sections_count` is the number of sections in the kernel.
-/// `entsize` is the size of section entries.
+///
+/// Arguments:
+/// - `sections` is a pointer to the ELF sections of the kernel in the virtual memory.
+/// - `sections_count` is the number of sections in the kernel.
+/// - `entsize` is the size of section entries.
 pub fn get_sections_end(
 	sections: *const c_void,
 	sections_count: usize,
@@ -419,7 +427,9 @@ pub fn get_sections_end(
 		let hdr_offset = i * entsize;
 		let hdr = unsafe { &*(sections.add(hdr_offset) as *const ELF32SectionHeader) };
 
-		let addr = unsafe { memory::kern_to_phys(hdr.sh_addr as _).add(hdr.sh_size as _) };
+		let addr = unsafe {
+			memory::kern_to_phys(hdr.sh_addr as *const c_void).add(hdr.sh_size as _)
+		};
 		end = max(end, addr as usize);
 	}
 
@@ -427,23 +437,30 @@ pub fn get_sections_end(
 }
 
 /// Returns the name of the kernel symbol at the given offset.
-/// `strtab_section` is a reference to the .strtab section, containing symbol
-/// names. `offset` is the offset of the symbol in the section.
-/// If the offset is invalid or outside of the section, the behaviour is
-/// undefined.
+///
+/// Arguments:
+/// - `strtab_section` is a reference to the `.strtab` section, containing symbol names.
+/// - `offset` is the offset of the symbol in the section.
+///
+/// If the offset is invalid or outside of the section, the behaviour is undefined.
 pub fn get_symbol_name(strtab_section: &ELF32SectionHeader, offset: u32) -> &'static [u8] {
 	debug_assert!(offset < strtab_section.sh_size);
 
-	unsafe { util::str_from_ptr(memory::kern_to_virt((strtab_section.sh_addr + offset) as _) as _) }
+	unsafe {
+		util::str_from_ptr(memory::kern_to_virt((strtab_section.sh_addr + offset) as *const u8))
+	}
 }
 
 /// Returns the name of the kernel function for the given instruction pointer.
-/// If the name cannot be retrieved, the function returns None.
-/// `sections` is a pointer to the ELF sections of the kernel in the virtual
-/// memory. `sections_count` is the number of sections in the kernel.
-/// `shndx` is the index of the section containing section names.
-/// `entsize` is the size of section entries.
-/// `inst` is the pointer to the instruction on the virtual memory.
+///
+/// Arguments:
+/// - `sections` is a pointer to the ELF sections of the kernel in the virtual memory.
+/// - `sections_count` is the number of sections in the kernel.
+/// - `shndx` is the index of the section containing section names.
+/// - `entsize` is the size of section entries.
+/// - `inst` is the pointer to the instruction on the virtual memory.
+///
+/// If the name cannot be retrieved, the function returns `None`.
 pub fn get_function_name(
 	sections: *const c_void,
 	sections_count: usize,
@@ -470,7 +487,7 @@ pub fn get_function_name(
 				return true;
 			}
 
-			let ptr = memory::kern_to_virt(hdr.sh_addr as _) as *const u8;
+			let ptr = memory::kern_to_virt(hdr.sh_addr as *const u8);
 			debug_assert!(hdr.sh_entsize > 0);
 
 			let mut i: usize = 0;
@@ -497,13 +514,16 @@ pub fn get_function_name(
 	func_name
 }
 
-/// Returns the kernel symbol with the name `name`. If the symbol doesn't exist,
-/// the function returns None.
-/// `sections` is a pointer to the ELF sections of the kernel in the virtual
-/// memory. `sections_count` is the number of sections in the kernel.
-/// `shndx` is the index of the section containing section names.
-/// `entsize` is the size of section entries.
-/// `name` is the name of the symbol to get.
+/// Returns the kernel symbol with the name `name`.
+///
+/// Arguments:
+/// - `sections` is a pointer to the ELF sections of the kernel in the virtual memory.
+/// - `sections_count` is the number of sections in the kernel.
+/// - `shndx` is the index of the section containing section names.
+/// - `entsize` is the size of section entries.
+/// - `name` is the name of the symbol to get.
+///
+/// If the symbol doesn't exist, the function returns `None`.
 pub fn get_kernel_symbol(
 	sections: *const c_void,
 	sections_count: usize,
@@ -524,7 +544,7 @@ pub fn get_kernel_symbol(
 				return true;
 			}
 
-			let ptr = memory::kern_to_virt(hdr.sh_addr as _) as *const u8;
+			let ptr = memory::kern_to_virt(hdr.sh_addr as *const u8);
 			debug_assert!(hdr.sh_entsize > 0);
 
 			let mut i: usize = 0;

@@ -448,7 +448,7 @@ fn handle_tag(boot_info: &mut BootInfo, tag: *const Tag) {
 			let t = tag as *const TagString;
 
 			unsafe {
-				let ptr = memory::kern_to_virt(&(*t).string as *const _ as *const _) as *const u8;
+				let ptr = memory::kern_to_virt(&(*t).string as *const _ as *const u8);
 				boot_info.cmdline = Some(util::str_from_ptr(ptr));
 			}
 		}
@@ -457,7 +457,7 @@ fn handle_tag(boot_info: &mut BootInfo, tag: *const Tag) {
 			let t = tag as *const TagString;
 
 			unsafe {
-				let ptr = memory::kern_to_virt(&(*t).string as *const _ as *const _) as *const u8;
+				let ptr = memory::kern_to_virt(&(*t).string as *const _ as *const u8);
 				boot_info.loader_name = Some(util::str_from_ptr(ptr));
 			}
 		}
@@ -466,13 +466,13 @@ fn handle_tag(boot_info: &mut BootInfo, tag: *const Tag) {
 			let t = tag as *const TagModule;
 
 			let (begin, end) = unsafe {
-				let begin = memory::kern_to_virt((*t).mod_start as *const _);
-				let end = memory::kern_to_virt((*t).mod_end as *const _);
+				let begin = memory::kern_to_virt((*t).mod_start as *const u8);
+				let end = memory::kern_to_virt((*t).mod_end as *const u8);
 
 				(begin, end)
 			};
 			let size = end as usize - begin as usize;
-			let data = unsafe { slice::from_raw_parts::<u8>(begin as *const _, size) };
+			let data = unsafe { slice::from_raw_parts::<u8>(begin, size) };
 
 			if size > 0 {
 				boot_info.initramfs = Some(data);

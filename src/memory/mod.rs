@@ -33,12 +33,14 @@ pub const PROCESS_END: *const c_void = 0xc0000000 as *const _;
 
 extern "C" {
 	/// The kernel begin symbol, giving the pointer to the begin of the kernel
-	/// image in the virtual memory. This memory location should never be
-	/// accessed using this symbol.
+	/// image in the virtual memory.
+	///
+	/// This memory location should never be accessed using this symbol.
 	static kernel_begin: c_void;
 	/// The kernel end symbol, giving the pointer to the end of the kernel image
-	/// in the virtual memory. This memory location should never be accessed
-	/// using this symbol.
+	/// in the virtual memory.
+	///
+	/// This memory location should never be accessed using this symbol.
 	static kernel_end: c_void;
 }
 
@@ -74,18 +76,18 @@ pub fn get_kernel_virtual_end() -> *const c_void {
 }
 
 /// Converts a kernel physical address to a virtual address.
-pub fn kern_to_virt(ptr: *const c_void) -> *const c_void {
+pub fn kern_to_virt<T>(ptr: *const T) -> *const T {
 	if (ptr as usize) < get_kernelspace_size() {
-		((ptr as usize) + (PROCESS_END as usize)) as *const _
+		((ptr as usize) + (PROCESS_END as usize)) as *const T
 	} else {
 		ptr
 	}
 }
 
 /// Converts a kernel virtual address to a physical address.
-pub fn kern_to_phys(ptr: *const c_void) -> *const c_void {
+pub fn kern_to_phys<T>(ptr: *const T) -> *const T {
 	if ptr as usize >= PROCESS_END as usize {
-		((ptr as usize) - (PROCESS_END as usize)) as *const _
+		((ptr as usize) - (PROCESS_END as usize)) as *const T
 	} else {
 		ptr
 	}
