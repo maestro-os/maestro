@@ -170,10 +170,8 @@ pub unsafe fn write_lock_wrap<F: FnOnce() -> T, T>(f: F) -> T {
 /// Special consideration should be taken when using this function since Rust is
 /// unable to ensure its safety.
 ///
-/// For example, the caller must ensure the stack is accessible in both the
-/// current and given virtual memory contexts.
-///
-/// TODO
+/// The caller must ensure that the stack is accessible in both the current and given virtual
+/// memory contexts.
 pub unsafe fn switch<F: FnOnce() -> T, T>(vmem: &dyn VMem, f: F) -> T {
 	idt::wrap_disable_interrupts(|| {
 		if vmem.is_bound() {

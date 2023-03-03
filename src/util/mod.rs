@@ -23,7 +23,8 @@ use crate::errno::Errno;
 
 // C functions required by LLVM
 extern "C" {
-	fn memcpy(dest: *mut c_void, src: *const c_void, n: usize);
+	fn memcpy(dest: *mut c_void, src: *const c_void, n: usize) -> *const c_void;
+	fn memmove(dest: *mut c_void, src: *const c_void, n: usize) -> *const c_void;
 	fn memcmp(dest: *const c_void, src: *const c_void, n: usize) -> c_int;
 	fn memset(s: *mut c_void, c: c_int, n: usize) -> *mut c_void;
 	fn strlen(s: *const c_void) -> usize;
