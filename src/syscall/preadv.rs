@@ -1,4 +1,4 @@
-//! The `pwritev` system call allows to write sparse data on a file descriptor.
+//! The `readv` system call allows to read from file descriptor and write it into a sparse buffer.
 
 use crate::errno::Errno;
 use crate::process::iovec::IOVec;
@@ -7,11 +7,11 @@ use core::ffi::c_int;
 use macros::syscall;
 
 #[syscall]
-pub fn pwritev(
+pub fn preadv(
 	fd: c_int,
 	iov: SyscallSlice<IOVec>,
 	iovcnt: c_int,
 	offset: isize,
 ) -> Result<i32, Errno> {
-	super::writev::do_writev(fd, iov, iovcnt, Some(offset), None)
+	super::readv::do_readv(fd, iov, iovcnt, Some(offset), None)
 }

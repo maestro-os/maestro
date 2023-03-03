@@ -72,6 +72,8 @@ mod openat;
 mod pipe2;
 mod pipe;
 mod poll;
+mod preadv2;
+mod preadv;
 mod prlimit64;
 mod pselect6;
 mod pwritev2;
@@ -79,6 +81,7 @@ mod pwritev;
 mod r#break;
 mod read;
 mod readlink;
+mod readv;
 mod reboot;
 mod rename;
 mod renameat2;
@@ -197,6 +200,8 @@ use openat::openat;
 use pipe2::pipe2;
 use pipe::pipe;
 use poll::poll;
+use preadv2::preadv2;
+use preadv::preadv;
 use prlimit64::prlimit64;
 use pselect6::pselect6;
 use pwritev2::pwritev2;
@@ -204,6 +209,7 @@ use pwritev::pwritev;
 use r#break::r#break;
 use read::read;
 use readlink::readlink;
+use readv::readv;
 use reboot::reboot;
 use rename::rename;
 use renameat2::renameat2;
@@ -393,7 +399,7 @@ fn get_syscall(id: u32) -> Option<SyscallHandler> {
 		0x08e => Some(&_newselect),
 		// TODO 0x08f => Some(&flock),
 		0x090 => Some(&msync),
-		// TODO 0x091 => Some(&readv),
+		0x091 => Some(&readv),
 		0x092 => Some(&writev),
 		// TODO 0x093 => Some(&getsid),
 		// TODO 0x094 => Some(&fdatasync),
@@ -577,7 +583,7 @@ fn get_syscall(id: u32) -> Option<SyscallHandler> {
 		// TODO 0x14a => Some(&dup3),
 		0x14b => Some(&pipe2),
 		// TODO 0x14c => Some(&inotify_init1),
-		// TODO 0x14d => Some(&preadv),
+		0x14d => Some(&preadv),
 		0x14e => Some(&pwritev),
 		// TODO 0x14f => Some(&rt_tgsigqueueinfo),
 		// TODO 0x150 => Some(&perf_event_open),
@@ -622,7 +628,7 @@ fn get_syscall(id: u32) -> Option<SyscallHandler> {
 		// TODO 0x177 => Some(&membarrier),
 		// TODO 0x178 => Some(&mlock2),
 		// TODO 0x179 => Some(&copy_file_range),
-		// TODO 0x17a => Some(&preadv2),
+		0x17a => Some(&preadv2),
 		0x17b => Some(&pwritev2),
 		// TODO 0x17c => Some(&pkey_mprotect),
 		// TODO 0x17d => Some(&pkey_alloc),
