@@ -2,6 +2,8 @@
 //! writable or for an exception to occur.
 
 use core::cmp::min;
+use core::ffi::c_int;
+use core::ffi::c_long;
 use core::mem::size_of;
 use crate::errno::Errno;
 use crate::process::Process;
@@ -10,7 +12,6 @@ use crate::process::mem_space::ptr::SyscallSlice;
 use crate::time::unit::TimeUnit;
 use crate::time::unit::Timeval;
 use crate::time;
-use crate::types::*;
 use crate::util::io::IO;
 use crate::util::io;
 use macros::syscall;
