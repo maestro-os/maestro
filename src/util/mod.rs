@@ -12,21 +12,22 @@ pub mod lock;
 pub mod math;
 pub mod ptr;
 
-use crate::errno::Errno;
 use core::cmp::min;
+use core::ffi::c_int;
 use core::ffi::c_void;
-use core::fmt;
 use core::fmt::Write;
+use core::fmt;
 use core::mem::size_of;
 use core::slice;
+use crate::errno::Errno;
 
 // C functions required by LLVM
-/*extern "C" {
+extern "C" {
 	fn memcpy(dest: *mut c_void, src: *const c_void, n: usize);
 	fn memcmp(dest: *const c_void, src: *const c_void, n: usize) -> c_int;
 	fn memset(s: *mut c_void, c: c_int, n: usize) -> *mut c_void;
 	fn strlen(s: *const c_void) -> usize;
-}*/
+}
 
 /// Tells if pointer `ptr` is aligned on boundary `n`.
 #[inline(always)]
@@ -110,23 +111,6 @@ pub unsafe fn zero_object<T>(obj: &mut T) {
 	slice.fill(0);
 }
 
-/// Returns the length of the string `s`.
-///
-/// # Safety
-///
-/// The caller must ensure the pointer points to a valid chunk of memory, ending with at least one
-/// 0 byte.
-#[no_mangle]
-pub unsafe extern "C" fn strlen(s: *const u8) -> usize {
-	let mut i = 0;
-
-	while *s.add(i) != b'\0' {
-		i += 1;
-	}
-
-	i
-}
-
 /// Returns the length of the C-style string pointed to by `s`, but limited to the first `n` bytes.
 ///
 /// # Safety
@@ -145,7 +129,7 @@ pub unsafe fn strnlen(s: *const u8, n: usize) -> usize {
 
 /// Returns a slice representing a C string beginning at the given pointer.
 pub unsafe fn str_from_ptr(ptr: *const u8) -> &'static [u8] {
-	slice::from_raw_parts(ptr, strlen(ptr))
+	slice::from_raw_parts(ptr, strlen(ptr as *const _))
 }
 
 /// Returns an immutable slice to the given value.
@@ -254,7 +238,7 @@ impl<'a> fmt::Display for DisplayableStr<'a> {
 	}
 }
 
-/*#[cfg(test)]
+#[cfg(test)]
 mod test {
 	use super::*;
 
@@ -333,4 +317,4 @@ mod test {
 	// TODO More tests on memcmp
 
 	// TODO Test `memset`
-}*/
+}
