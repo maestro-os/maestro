@@ -443,7 +443,7 @@ impl ELFExecutor {
 		}
 
 		// Checking the alignment is correct
-		if !math::is_power_of_two(seg.p_align) {
+		if !seg.p_align.is_power_of_two() {
 			return Err(errno!(EINVAL));
 		}
 
@@ -452,7 +452,7 @@ impl ELFExecutor {
 		// The pointer to the beginning of the segment in memory
 		let mem_begin = unsafe { load_base.add(seg.p_vaddr as usize - pad) };
 		// The length of the memory to allocate in pages
-		let pages = math::ceil_division(pad + seg.p_memsz as usize, memory::PAGE_SIZE);
+		let pages = math::ceil_div(pad + seg.p_memsz as usize, memory::PAGE_SIZE);
 
 		if pages > 0 {
 			mem_space.map(
@@ -494,15 +494,17 @@ impl ELFExecutor {
 
 		// Copying the segment's data
 		unsafe {
-			vmem::write_lock_wrap(|| {
-				util::memcpy(begin, file_begin as *const _ as _, len);
-			});
+			vmem::write_lock_wrap(|| ptr::copy_nonoverlapping(file_begin, begin, len));
 		}
 	}
 
 	/// Loads the ELF file parsed by `elf` into the memory space `mem_space`.
-	/// `load_base` is the base address at which the ELF is loaded.
-	/// `interp` tells whether the function loads an interpreter.
+	///
+	/// Arguments:
+	/// - `elf` is the ELF image.
+	/// - `mem_space` is the memory space.
+	/// - `load_base` is the base address at which the ELF is loaded.
+	/// - `interp` tells whether the function loads an interpreter.
 	fn load_elf(
 		&self,
 		elf: &ELFParser,
@@ -534,7 +536,7 @@ impl ELFExecutor {
 
 			// Not phdr segment. Load it manually
 			None => {
-				let page_size = math::ceil_division(phdr_size, memory::PAGE_SIZE);
+				let page_size = math::ceil_div(phdr_size, memory::PAGE_SIZE);
 				let phdr = mem_space.map(
 					MapConstraint::None,
 					page_size,
@@ -685,7 +687,7 @@ impl Executor for ELFExecutor {
 		// Pre-allocating pages on the user stack to write the initial data
 		{
 			// The number of pages to allocate on the user stack to write the initial data
-			let pages_count = math::ceil_division(total_size, memory::PAGE_SIZE);
+			let pages_count = math::ceil_div(total_size, memory::PAGE_SIZE);
 			// Checking that the data doesn't exceed the stack's size
 			if pages_count >= process::USER_STACK_SIZE {
 				return Err(errno!(ENOMEM));

@@ -85,7 +85,7 @@ pub trait VMem: FailableClone {
 
 			let phys_addr = memory::kern_to_phys(section.sh_addr as _);
 			let virt_addr = memory::kern_to_virt(section.sh_addr as _);
-			let pages = math::ceil_division(section.sh_size, memory::PAGE_SIZE as _) as usize;
+			let pages = math::ceil_div(section.sh_size, memory::PAGE_SIZE as _) as usize;
 			if let Err(e) = self.map_range(phys_addr, virt_addr, pages as usize, x86::FLAG_USER) {
 				res = Err(e);
 				return false;

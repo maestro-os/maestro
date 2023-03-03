@@ -3,7 +3,7 @@
 use crate::errno::Errno;
 use crate::util::bit_size_of;
 use crate::util::container::vec::Vec;
-use crate::util::math::ceil_division;
+use crate::util::math::ceil_div;
 use crate::util::FailableClone;
 
 /// A bitfield is a data structure meant to contain only boolean values.
@@ -18,7 +18,7 @@ pub struct Bitfield {
 impl Bitfield {
 	/// Creates a new bitfield with the given number of bits `len`.
 	pub fn new(len: usize) -> Result<Self, Errno> {
-		let size = ceil_division(len, bit_size_of::<u8>());
+		let size = ceil_div(len, bit_size_of::<u8>());
 
 		let mut bitfield = Self {
 			data: Vec::with_capacity(size)?,
@@ -49,7 +49,7 @@ impl Bitfield {
 
 	/// Returns the size of the memory region of the bitfield in bytes.
 	pub fn mem_size(&self) -> usize {
-		ceil_division(self.len, bit_size_of::<u8>())
+		ceil_div(self.len, bit_size_of::<u8>())
 	}
 
 	/// Tells whether bit `index` is set.

@@ -11,7 +11,6 @@ use crate::list_new;
 use crate::util;
 use crate::util::list::List;
 use crate::util::list::ListNode;
-use crate::util::math;
 use core::cmp::{max, min};
 use core::ffi::c_void;
 use core::mem::size_of;
@@ -435,14 +434,18 @@ fn check_free_lists() {
 	}
 }
 
-/// Returns the free list for the given size `size`. If `insert` is not set, the
-/// function may return a free list that contain chunks greater than the
-/// required size so that it can be split.
+/// Returns the free list for the given size `size`.
+///
+/// If `insert` is not set, the function may return a free list that contain chunks greater than
+/// the required size so that it can be split.
 fn get_free_list(size: usize, insert: bool) -> Option<&'static mut FreeList> {
 	#[cfg(config_debug_malloc_check)]
 	check_free_lists();
 
-	let mut i = math::log2(size / FREE_LIST_SMALLEST_SIZE);
+	let mut i = size / FREE_LIST_SMALLEST_SIZE;
+	if i > 0 {
+		i = i.ilog2() as usize;
+	}
 	i = min(i, FREE_LIST_BINS - 1);
 
 	let free_lists = unsafe { FREE_LISTS.assume_init_mut() };

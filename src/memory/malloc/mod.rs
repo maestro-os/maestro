@@ -34,10 +34,13 @@ pub fn init() {
 }
 
 /// Allocates `n` bytes of kernel memory and returns a pointer to the beginning
-/// of the allocated chunk. If the allocation fails, the function shall return
-/// an error.
+/// of the allocated chunk.
 ///
-/// The allocated memory is **not** initialized.
+/// If the allocation fails, the function returns an error.
+///
+/// The allocated memory is **not** initialized, meaning it may contain garbage, or even
+/// sensitive informations.
+/// It is the caller's responsibility to ensure the chunk of memory is correctly initialized.
 ///
 /// # Safety
 ///
@@ -64,7 +67,7 @@ pub unsafe fn alloc(n: usize) -> Result<*mut c_void, Errno> {
 	let ptr = chunk.get_ptr();
 	debug_assert!(util::is_aligned(ptr, chunk::ALIGNEMENT));
 	debug_assert!(ptr as usize >= memory::PROCESS_END as usize);
-	util::bzero(ptr, n);
+
 	Ok(ptr)
 }
 
@@ -157,7 +160,9 @@ impl<T> Alloc<T> {
 	/// wrapping a slice allowing to access it. If the allocation fails, the
 	/// function shall return an error.
 	///
-	/// The allocated memory is **not** initialized.
+	/// The allocated memory is **not** initialized, meaning it may contain garbage, or even
+	/// sensitive informations.
+	/// It is the caller's responsibility to ensure the chunk of memory is correctly initialized.
 	///
 	/// # Safety
 	///
@@ -183,7 +188,10 @@ impl<T> Alloc<T> {
 	/// inconsistent state.
 	pub unsafe fn new_zero(size: usize) -> Result<Self, Errno> {
 		let mut alloc = Self::new(size)?;
-		util::bzero(alloc.as_ptr_mut() as *mut _, size * size_of::<T>());
+
+		// Zero memory
+		let slice = slice::from_raw_parts_mut(alloc.as_ptr_mut() as *mut u8, size);
+		slice.fill(0);
 
 		Ok(alloc)
 	}
@@ -341,7 +349,8 @@ mod test {
 
 		unsafe {
 			let ptr = alloc(1).unwrap();
-			util::memset(ptr, -1, 1);
+			core::slice::from_raw_parts_mut(ptr as *mut u8, 1).fill(!0);
+
 			free(ptr);
 		}
 
@@ -354,7 +363,8 @@ mod test {
 
 		unsafe {
 			let ptr = alloc(8).unwrap();
-			util::memset(ptr, -1, 8);
+			core::slice::from_raw_parts_mut(ptr as *mut u8, 8).fill(!0);
+
 			free(ptr);
 		}
 
@@ -367,7 +377,8 @@ mod test {
 
 		unsafe {
 			let ptr = alloc(memory::PAGE_SIZE).unwrap();
-			util::memset(ptr, -1, memory::PAGE_SIZE);
+			core::slice::from_raw_parts_mut(ptr as *mut u8, memory::PAGE_SIZE).fill(!0);
+
 			free(ptr);
 		}
 
@@ -380,7 +391,8 @@ mod test {
 
 		unsafe {
 			let ptr = alloc(memory::PAGE_SIZE * 10).unwrap();
-			util::memset(ptr, -1, memory::PAGE_SIZE * 10);
+			core::slice::from_raw_parts_mut(ptr as *mut u8, memory::PAGE_SIZE * 10).fill(!0);
+
 			free(ptr);
 		}
 
@@ -397,7 +409,8 @@ mod test {
 			for i in 0..ptrs.len() {
 				let size = i + 1;
 				let ptr = alloc(size).unwrap();
-				util::memset(ptr, -1, size);
+				core::slice::from_raw_parts_mut(ptr as *mut u8, size).fill(!0);
+
 				ptrs[i] = ptr;
 			}
 
@@ -418,7 +431,8 @@ mod test {
 	fn lifo_test(i: usize) {
 		unsafe {
 			let ptr = alloc(i).unwrap();
-			util::memset(ptr, -1, i);
+			core::slice::from_raw_parts_mut(ptr as *mut u8, i).fill(!0);
+
 			if i > 1 {
 				lifo_test(i - 1);
 			}
@@ -445,7 +459,7 @@ mod test {
 
 			for i in 1..memory::PAGE_SIZE {
 				ptr = realloc(ptr, i).unwrap();
-				util::memset(ptr, -1, i);
+				core::slice::from_raw_parts_mut(ptr as *mut u8, i).fill(!0);
 			}
 
 			free(ptr);
@@ -464,7 +478,7 @@ mod test {
 
 			for i in (1..memory::PAGE_SIZE).rev() {
 				ptr = realloc(ptr, i).unwrap();
-				util::memset(ptr, -1, i);
+				core::slice::from_raw_parts_mut(ptr as *mut u8, i).fill(!0);
 			}
 
 			free(ptr);
@@ -480,9 +494,9 @@ mod test {
 
 		unsafe {
 			let mut ptr0 = alloc(8).unwrap();
+			core::slice::from_raw_parts_mut(ptr0 as *mut u8, 8).fill(!0);
 			let mut ptr1 = alloc(8).unwrap();
-			util::memset(ptr0, -1, 8);
-			util::memset(ptr1, -1, 8);
+			core::slice::from_raw_parts_mut(ptr1 as *mut u8, 8).fill(!0);
 
 			for i in 0..8 {
 				ptr0 = realloc(ptr0, math::pow2(i)).unwrap();
@@ -503,9 +517,9 @@ mod test {
 
 		unsafe {
 			let mut ptr0 = alloc(8).unwrap();
+			core::slice::from_raw_parts_mut(ptr0 as *mut u8, 8).fill(!0);
 			let mut ptr1 = alloc(8).unwrap();
-			util::memset(ptr0, -1, 8);
-			util::memset(ptr1, -1, 8);
+			core::slice::from_raw_parts_mut(ptr1 as *mut u8, 8).fill(!0);
 
 			for i in (0..8).rev() {
 				ptr0 = realloc(ptr0, math::pow2(i)).unwrap();

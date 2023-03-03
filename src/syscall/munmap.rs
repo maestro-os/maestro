@@ -20,7 +20,7 @@ pub fn munmap(addr: *mut c_void, length: usize) -> Result<i32, Errno> {
 	let guard = mutex.lock();
 	let proc = guard.get_mut();
 
-	let pages = math::ceil_division(length, memory::PAGE_SIZE);
+	let pages = math::ceil_div(length, memory::PAGE_SIZE);
 	let length = pages * memory::PAGE_SIZE;
 
 	// Checking for overflow

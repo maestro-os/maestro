@@ -304,7 +304,12 @@ impl MemMapping {
 							memory::PAGE_SIZE,
 						);
 					} else {
-						util::bzero(virt_ptr, memory::PAGE_SIZE);
+						// Zero memory
+						let slice = slice::from_raw_parts_mut::<u8>(
+							virt_ptr as *mut _,
+							memory::PAGE_SIZE
+						);
+						slice.fill(0);
 					}
 				});
 			});

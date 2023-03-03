@@ -19,6 +19,8 @@ pub mod vmem;
 use core::ffi::c_void;
 
 /// The size of a page in bytes.
+///
+/// If the architecture supports several page sizes, this constants gives the minimum.
 pub const PAGE_SIZE: usize = 0x1000;
 
 /// The physical pointer to the beginning of the kernel.

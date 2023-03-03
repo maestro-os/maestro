@@ -1,12 +1,11 @@
+//! The functions in this module implement utilities for integer mathematics.
+//!
 //! Since floating point numbers are slow, unprecise and may even disabled by
-//! default, the kernel
-/// uses! only integers. The functions in this module implement utilities for
-/// integer mathematics.
+//! default, the kernel uses only integers.
+
 pub mod rational;
 
-use crate::util;
 use core::ops::Add;
-use core::ops::BitAnd;
 use core::ops::Div;
 use core::ops::Mul;
 use core::ops::Neg;
@@ -14,20 +13,9 @@ use core::ops::Rem;
 use core::ops::Shl;
 use core::ops::Sub;
 
-/// Clamps the given value `n` between `min` and `max`.
-pub fn clamp<T: PartialOrd>(n: T, min: T, max: T) -> T {
-	if n < min {
-		min
-	} else if n > max {
-		max
-	} else {
-		n
-	}
-}
-
 /// Computes ceil(n0 / n1) without using floating point numbers.
 #[inline(always)]
-pub fn ceil_division<T>(n0: T, n1: T) -> T
+pub fn ceil_div<T>(n0: T, n1: T) -> T
 where
 	T: From<u8> + Copy + Add<Output = T> + Div<Output = T> + Rem<Output = T> + PartialEq,
 {
@@ -38,7 +26,8 @@ where
 	}
 }
 
-/// Computes 2^^n on unsigned integers (where `^^` is an exponent).
+/// Computes `pow(2, n)` where `n` is unsigned.
+///
 /// The behaviour is undefined for n < 0.
 #[inline(always)]
 pub fn pow2<T>(n: T) -> T
@@ -48,50 +37,9 @@ where
 	T::from(1) << n
 }
 
-/// Computes a^^b on integers (where `^^` is an exponent).
-#[inline(always)]
-pub fn pow<T>(a: T, b: usize) -> T
-where
-	T: From<u8> + Mul<Output = T> + Copy,
-{
-	if b == 0 {
-		T::from(1)
-	} else if b == 1 {
-		a
-	} else if b % 2 == 0 {
-		pow(a * a, b / 2)
-	} else {
-		a * pow(a * a, b / 2)
-	}
-}
-
-/// Computes floor(log2(n)) on unsigned integers without using floating-point
-/// numbers. Because the logarithm is undefined for n <= 0, the function returns
-/// `0` in this case.
-#[inline(always)]
-pub fn log2<T>(n: T) -> T
-where
-	T: From<usize> + Into<usize> + PartialOrd + Sub<Output = T>,
-{
-	if n > T::from(0) {
-		T::from(util::bit_size_of::<T>()) - T::from(n.into().leading_zeros() as _) - T::from(1)
-	} else {
-		T::from(0)
-	}
-}
-
-/// Tells whether the given number is a power of two.
-/// If `n` is zero, the behaviour is undefined.
-pub fn is_power_of_two<T>(n: T) -> bool
-where
-	T: Copy + From<u8> + BitAnd<Output = T> + Sub<Output = T> + PartialEq,
-{
-	n == T::from(0) || n & (n - T::from(1)) == T::from(0)
-}
-
 /// Computes a linear interpolation over integers.
-/// The function computes the interpolation coefficient relative to the
-/// parameters `x`, `a_x` and `b_x`.
+///
+/// FIXME: doc is unclear
 #[inline(always)]
 pub fn integer_linear_interpolation<T>(x: T, a_x: T, a_y: T, b_x: T, b_y: T) -> T
 where
@@ -126,49 +74,12 @@ where
 		b = r;
 	}
 
-	return a;
+	a
 }
 
 #[cfg(test)]
 mod test {
 	use super::*;
-
-	#[test_case]
-	fn log2_0() {
-		assert_eq!(log2(0), 0);
-		//assert_eq!(log2(-1), 0);
-	}
-
-	#[test_case]
-	fn log2_1() {
-		for i in 1..util::bit_size_of::<usize>() {
-			assert_eq!(log2(pow2(i)), i);
-		}
-	}
-
-	#[test_case]
-	fn pow0() {
-		for i in 0..10 {
-			assert_eq!(pow::<u32>(1, i), 1);
-		}
-	}
-
-	#[test_case]
-	fn pow1() {
-		for i in 0..10 {
-			assert_eq!(pow::<u32>(2, i), pow2::<u32>(i as _));
-		}
-	}
-
-	#[test_case]
-	fn pow2() {
-		assert_eq!(pow::<u32>(10, 0), 1);
-		assert_eq!(pow::<u32>(10, 1), 10);
-		assert_eq!(pow::<u32>(10, 2), 100);
-		assert_eq!(pow::<u32>(10, 3), 1000);
-		assert_eq!(pow::<u32>(10, 4), 10000);
-		assert_eq!(pow::<u32>(10, 5), 100000);
-	}
 
 	#[test_case]
 	fn gcd() {
@@ -177,14 +88,5 @@ mod test {
 		assert_eq!(gcd(4, 4), 4);
 		assert_eq!(gcd(8, 12), 4);
 		assert_eq!(gcd(48, 18), 6);
-	}
-
-	#[test_case]
-	fn is_power_of_two() {
-		for i in 0..31 {
-			let n = (1 as u32) << i;
-			debug_assert!(is_power_of_two(n));
-			debug_assert!(!is_power_of_two(!n));
-		}
 	}
 }

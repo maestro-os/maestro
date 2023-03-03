@@ -11,7 +11,6 @@ use crate::errno::Errno;
 use crate::memory;
 use crate::process::mem_space;
 use crate::util;
-use crate::util::math;
 use core::cmp::max;
 use core::ffi::c_void;
 
@@ -251,7 +250,7 @@ impl ELF32ProgramHeader {
 			return Err(errno!(EINVAL));
 		}
 
-		if self.p_align != 0 && !math::is_power_of_two(self.p_align) {
+		if self.p_align != 0 && !self.p_align.is_power_of_two() {
 			return Err(errno!(EINVAL));
 		}
 
@@ -312,7 +311,7 @@ impl ELF32SectionHeader {
 			return Err(errno!(EINVAL));
 		}
 
-		if self.sh_addralign != 0 && !math::is_power_of_two(self.sh_addralign) {
+		if self.sh_addralign != 0 && !self.sh_addralign.is_power_of_two() {
 			return Err(errno!(EINVAL));
 		}
 

@@ -42,7 +42,7 @@ pub fn init() {
 	let phys_metadata_end = memory::kern_to_phys(metadata_end);
 
 	// Updating the number of available pages
-	available_pages -= math::ceil_division(metadata_size, memory::PAGE_SIZE);
+	available_pages -= math::ceil_div(metadata_size, memory::PAGE_SIZE);
 
 	// The beginning of the kernel's zone
 	let kernel_zone_begin = util::align(phys_metadata_end, memory::PAGE_SIZE) as *mut c_void;
