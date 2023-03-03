@@ -9,7 +9,6 @@ use crate::process::mem_space::ptr::SyscallString;
 use crate::process::Process;
 use macros::syscall;
 
-/// The implementation of the `rmdir` syscall.
 #[syscall]
 pub fn rmdir(pathname: SyscallString) -> Result<i32, Errno> {
 	let (path, uid, gid) = {

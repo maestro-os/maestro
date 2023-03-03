@@ -104,7 +104,6 @@ impl Request {
 	}
 }
 
-/// The implementation of the `ioctl` syscall.
 #[syscall]
 pub fn ioctl(fd: c_int, request: c_ulong, argp: *const c_void) -> Result<i32, Errno> {
 	let request = Request::from(request);

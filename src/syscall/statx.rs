@@ -80,7 +80,6 @@ struct Statx {
 	__padding1: [u64; 13],
 }
 
-/// The implementation of the `statx` syscall.
 #[syscall]
 pub fn statx(
 	dirfd: c_int,

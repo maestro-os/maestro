@@ -6,7 +6,6 @@ use crate::process::mem_space::ptr::SyscallPtr;
 use core::ffi::c_int;
 use macros::syscall;
 
-/// The implementation of the `wait` syscall.
 #[syscall]
 pub fn wait(wstatus: SyscallPtr<c_int>) -> Result<i32, Errno> {
 	waitpid::do_waitpid(regs, -1, wstatus, waitpid::WEXITED, None)

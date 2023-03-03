@@ -16,7 +16,6 @@ const RENAME_EXCHANGE: c_int = 2;
 /// TODO doc
 const RENAME_WHITEOUT: c_int = 4;
 
-/// The implementation of the `renameat2` system call.
 #[syscall]
 pub fn renameat2(
 	olddirfd: c_int,

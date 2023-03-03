@@ -6,7 +6,6 @@ use crate::process::Process;
 use core::ffi::c_int;
 use macros::syscall;
 
-/// The implementation of the `dup` syscall.
 #[syscall]
 pub fn dup(oldfd: c_int) -> Result<i32, Errno> {
 	if oldfd < 0 {

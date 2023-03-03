@@ -7,7 +7,6 @@ use crate::process::pid::Pid;
 use crate::process::Process;
 use macros::syscall;
 
-/// The implementation of the `getpgid` syscall.
 #[syscall]
 pub fn getpgid(pid: Pid) -> Result<i32, Errno> {
 	let mutex = Process::get_current().unwrap();

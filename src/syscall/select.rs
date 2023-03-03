@@ -215,7 +215,6 @@ pub fn do_select<T: TimeUnit>(
 	}
 }
 
-/// The implementation of the `select` system call.
 #[syscall]
 pub fn select(
 	nfds: c_int,

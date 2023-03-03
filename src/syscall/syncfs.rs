@@ -6,7 +6,6 @@ use crate::process::Process;
 use core::ffi::c_int;
 use macros::syscall;
 
-/// The implementation of the `syncfs` syscall.
 #[syscall]
 pub fn syncfs(fd: c_int) -> Result<i32, Errno> {
 	if fd < 0 {

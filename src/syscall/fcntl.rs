@@ -305,7 +305,6 @@ pub fn do_fcntl(fd: i32, cmd: i32, arg: *mut c_void, _fcntl64: bool) -> Result<i
 	}
 }
 
-/// The implementation of the `fcntl` syscall.
 #[syscall]
 pub fn fcntl(fd: c_int, cmd: c_int, arg: *mut c_void) -> Result<i32, Errno> {
 	do_fcntl(fd, cmd, arg, false)

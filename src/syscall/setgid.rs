@@ -4,7 +4,6 @@ use crate::errno::Errno;
 use crate::file::Gid;
 use macros::syscall;
 
-/// The implementation of the `setgid` syscall.
 #[syscall]
 pub fn setgid(_gid: Gid) -> Result<i32, Errno> {
 	// TODO

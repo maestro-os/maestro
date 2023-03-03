@@ -4,7 +4,6 @@ use crate::errno::Errno;
 use crate::process::Process;
 use macros::syscall;
 
-/// The implementation of the `getgid` syscall.
 #[syscall]
 pub fn getgid() -> Result<i32, Errno> {
 	let mutex = Process::get_current().unwrap();

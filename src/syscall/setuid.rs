@@ -4,7 +4,6 @@ use crate::errno::Errno;
 use crate::file::Uid;
 use macros::syscall;
 
-/// The implementation of the `setuid` syscall.
 #[syscall]
 pub fn setuid(_uid: Uid) -> Result<i32, Errno> {
 	// TODO

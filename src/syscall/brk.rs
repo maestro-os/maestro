@@ -6,7 +6,6 @@ use crate::process::regs::Regs;
 use crate::process::Process;
 use core::ffi::c_void;
 
-/// The implementation of the `brk` syscall.
 pub fn brk(regs: &Regs) -> Result<i32, Errno> {
 	let addr = regs.ebx as *mut c_void;
 

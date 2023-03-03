@@ -60,7 +60,6 @@ struct RLimit {
 }
 
 // TODO Check args types
-/// The implementation of the `prlimit64` syscall.
 #[syscall]
 pub fn prlimit64(
 	pid: Pid,

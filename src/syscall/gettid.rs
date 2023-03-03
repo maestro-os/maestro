@@ -4,7 +4,6 @@ use crate::errno::Errno;
 use crate::process::Process;
 use macros::syscall;
 
-/// The implementation of the `gettid` syscall.
 #[syscall]
 pub fn gettid() -> Result<i32, Errno> {
 	let mutex = Process::get_current().unwrap();

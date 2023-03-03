@@ -56,7 +56,6 @@ fn get_file(
 	}
 }
 
-/// The implementation of the `openat` syscall.
 #[syscall]
 pub fn openat(
 	dirfd: c_int,

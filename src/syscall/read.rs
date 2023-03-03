@@ -13,7 +13,6 @@ use macros::syscall;
 
 // TODO O_ASYNC
 
-/// The implementation of the `read` syscall.
 #[syscall]
 pub fn read(fd: c_int, buf: SyscallSlice<u8>, count: usize) -> Result<i32, Errno> {
 	if fd < 0 {

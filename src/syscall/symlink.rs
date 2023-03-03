@@ -10,7 +10,6 @@ use crate::process::mem_space::ptr::SyscallString;
 use crate::util::container::string::String;
 use macros::syscall;
 
-/// The implementation of the `symlink` syscall.
 #[syscall]
 pub fn symlink(
 	target: SyscallString,

@@ -10,7 +10,6 @@ use crate::process::mem_space::ptr::SyscallString;
 use crate::process::Process;
 use macros::syscall;
 
-/// The implementation of the `statfs` syscall.
 #[syscall]
 pub fn statfs(path: SyscallString, buf: SyscallPtr<Statfs>) -> Result<i32, Errno> {
 	let (path, uid, gid) = {

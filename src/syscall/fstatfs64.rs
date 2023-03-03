@@ -8,7 +8,6 @@ use crate::process::Process;
 use core::ffi::c_int;
 use macros::syscall;
 
-/// The implementation of the `fstatfs64` syscall.
 #[syscall]
 pub fn fstatfs64(fd: c_int, _sz: usize, buf: SyscallPtr<Statfs>) -> Result<i32, Errno> {
 	// TODO use `sz`

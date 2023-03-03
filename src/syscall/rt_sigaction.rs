@@ -9,7 +9,6 @@ use crate::syscall::Signal;
 use core::ffi::c_int;
 use macros::syscall;
 
-/// The implementation of the `rt_sigaction` syscall.
 #[syscall]
 pub fn rt_sigaction(
 	signum: c_int,

@@ -166,7 +166,6 @@ pub fn do_mmap(
 }
 
 // TODO Check last arg type
-/// The implementation of the `mmap` syscall.
 #[syscall]
 pub fn mmap(
 	addr: *mut c_void,

@@ -9,7 +9,6 @@ use core::ffi::c_int;
 use macros::syscall;
 
 // TODO Check args type
-/// The implementation of the `fchmodat` syscall.
 #[syscall]
 pub fn fchmodat(
 	dirfd: c_int,

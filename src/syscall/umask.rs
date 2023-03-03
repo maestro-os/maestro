@@ -5,7 +5,6 @@ use crate::file;
 use crate::process::Process;
 use macros::syscall;
 
-/// The implementation of the `umask` syscall.
 #[syscall]
 pub fn umask(mask: file::Mode) -> Result<i32, Errno> {
 	let mutex = Process::get_current().unwrap();

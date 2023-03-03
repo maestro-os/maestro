@@ -5,7 +5,6 @@ use crate::process::mem_space::ptr::SyscallString;
 use core::ffi::c_int;
 use macros::syscall;
 
-/// The implementation of the `faccessat2` syscall.
 #[syscall]
 pub fn faccessat2(
 	dir_fd: c_int,

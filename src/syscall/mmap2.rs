@@ -8,7 +8,6 @@ use core::ffi::c_void;
 use macros::syscall;
 
 // TODO Check last argument type
-/// The implementation of the `mmap2` syscall.
 #[syscall]
 pub fn mmap2(
 	addr: *mut c_void,

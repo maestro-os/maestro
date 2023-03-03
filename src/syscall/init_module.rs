@@ -10,7 +10,6 @@ use crate::process::Process;
 use core::ffi::c_ulong;
 use macros::syscall;
 
-/// The implementation of the `init_module` syscall.
 #[syscall]
 pub fn init_module(
 	module_image: SyscallSlice<u8>,

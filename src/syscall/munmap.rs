@@ -10,7 +10,6 @@ use crate::util::math;
 use core::ffi::c_void;
 use macros::syscall;
 
-/// The implementation of the `munmap` syscall.
 #[syscall]
 pub fn munmap(addr: *mut c_void, length: usize) -> Result<i32, Errno> {
 	if !util::is_aligned(addr, memory::PAGE_SIZE) || length == 0 {

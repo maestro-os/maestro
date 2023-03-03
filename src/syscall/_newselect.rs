@@ -8,7 +8,6 @@ use crate::time::unit::Timeval;
 use crate::types::*;
 use macros::syscall;
 
-/// The implementation of the `_newselect` system call.
 #[syscall]
 pub fn _newselect(
 	nfds: c_int,

@@ -4,7 +4,6 @@ use crate::errno::Errno;
 use crate::process::Process;
 use macros::syscall;
 
-/// The implementation of the `geteuid32` syscall.
 #[syscall]
 pub fn geteuid32() -> Result<i32, Errno> {
 	let mutex = Process::get_current().unwrap();

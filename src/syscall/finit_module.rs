@@ -11,7 +11,6 @@ use crate::process::mem_space::ptr::SyscallString;
 use crate::util::io::IO;
 use macros::syscall;
 
-/// The implementation of the `finit_module` syscall.
 #[syscall]
 pub fn finit_module(fd: c_int, _param_values: SyscallString, _flags: c_int) -> Result<i32, Errno> {
 	if fd < 0 {

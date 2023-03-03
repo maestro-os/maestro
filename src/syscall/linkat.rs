@@ -9,7 +9,6 @@ use crate::process::Process;
 use crate::types::c_int;
 use macros::syscall;
 
-/// The implementation of the `linkat` system call.
 #[syscall]
 pub fn linkat(
 	olddirfd: c_int,

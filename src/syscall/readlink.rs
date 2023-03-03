@@ -12,7 +12,6 @@ use crate::util::FailableClone;
 use core::cmp::min;
 use macros::syscall;
 
-/// The implementation of the `readlink` syscall.
 #[syscall]
 pub fn readlink(
 	pathname: SyscallString,

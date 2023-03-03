@@ -35,7 +35,6 @@ pub fn do_exit(status: u32, thread_group: bool) -> ! {
 	loop {}
 }
 
-/// The implementation of the `_exit` syscall.
 #[syscall]
 pub fn _exit(status: c_int) -> Result<i32, Errno> {
 	do_exit(status as _, false);

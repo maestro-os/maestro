@@ -17,7 +17,6 @@ const MS_SYNC: i32 = 0b010;
 /// Invalides other mappings of the same file so they can be updated.
 const MS_INVALIDATE: i32 = 0b100;
 
-/// The implementation of the `msync` syscall.
 #[syscall]
 pub fn msync(addr: *mut c_void, length: usize, flags: c_int) -> Result<i32, Errno> {
 	// Checking address alignment

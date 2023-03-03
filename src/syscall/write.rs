@@ -15,7 +15,6 @@ use macros::syscall;
 
 // TODO O_ASYNC
 
-/// The implementation of the `write` syscall.
 #[syscall]
 pub fn write(fd: c_int, buf: SyscallSlice<u8>, count: usize) -> Result<i32, Errno> {
 	if fd < 0 {

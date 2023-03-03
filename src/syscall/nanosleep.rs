@@ -10,7 +10,6 @@ use macros::syscall;
 
 // TODO Handle signal interruption (EINTR)
 
-/// The implementation of the `nanosleep` syscall.
 #[syscall]
 pub fn nanosleep(req: SyscallPtr<Timespec32>, rem: SyscallPtr<Timespec32>) -> Result<i32, Errno> {
 	let clk = b"TODO"; // TODO

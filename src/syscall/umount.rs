@@ -9,7 +9,6 @@ use crate::process::mem_space::ptr::SyscallString;
 use crate::process::Process;
 use macros::syscall;
 
-/// The implementation of the `umount` syscall.
 #[syscall]
 pub fn umount(target: SyscallString) -> Result<i32, Errno> {
 	let mutex = Process::get_current().unwrap();

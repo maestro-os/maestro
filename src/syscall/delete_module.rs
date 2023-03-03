@@ -7,7 +7,6 @@ use crate::process::Process;
 use core::ffi::c_uint;
 use macros::syscall;
 
-/// The implementation of the `delete_module` syscall.
 #[syscall]
 pub fn delete_module(_name: SyscallString, _flags: c_uint) -> Result<i32, Errno> {
 	{

@@ -8,7 +8,6 @@ use core::ffi::c_int;
 use core::ptr::NonNull;
 use macros::syscall;
 
-/// The implementation of the `set_tid_address` syscall.
 #[syscall]
 pub fn set_tid_address(tidptr: SyscallPtr<c_int>) -> Result<i32, Errno> {
 	// Getting process

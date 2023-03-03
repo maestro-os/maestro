@@ -9,7 +9,6 @@ use crate::time::unit::Timespec;
 use crate::types::*;
 use macros::syscall;
 
-/// The implementation of the `pselect6` syscall.
 #[syscall]
 pub fn pselect6(
 	nfds: c_int,
