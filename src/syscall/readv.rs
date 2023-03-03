@@ -1,31 +1,32 @@
-//! The `writev` system call allows to write sparse data on a file descriptor.
+//! The `readv` system call allows to read from file descriptor and write it into a sparse buffer.
 
-use crate::errno;
+use core::cmp::min;
+use core::ffi::c_int;
 use crate::errno::Errno;
+use crate::errno;
+use crate::file::open_file::O_NONBLOCK;
 use crate::file::open_file::OpenFile;
 use crate::idt;
 use crate::limits;
-use crate::process::iovec::IOVec;
-use crate::process::mem_space::ptr::SyscallSlice;
-use crate::process::mem_space::MemSpace;
-use crate::process::signal::Signal;
 use crate::process::Process;
+use crate::process::iovec::IOVec;
+use crate::process::mem_space::MemSpace;
+use crate::process::mem_space::ptr::SyscallSlice;
+use crate::process::signal::Signal;
 use crate::util::io::IO;
 use crate::util::ptr::IntSharedPtr;
-use core::cmp::min;
-use core::ffi::c_int;
 use macros::syscall;
 
 // TODO Handle blocking writes (and thus, EINTR)
 
-/// Writes the given chunks to the file.
+/// Reads the given chunks from the file.
 ///
 /// Arguments:
 /// - `mem_space` is the memory space of the current process.
 /// - `iov` is the set of chunks.
 /// - `iovcnt` is the number of chunks in `iov`.
 /// - `open_file` is the file to write to.
-fn write(
+fn read(
 	mem_space: IntSharedPtr<MemSpace>,
 	iov: SyscallSlice<IOVec>,
 	iovcnt: usize,
@@ -34,6 +35,7 @@ fn write(
 	let mem_space_guard = mem_space.lock();
 	let iov_slice = iov.get(&mem_space_guard, iovcnt)?.ok_or(errno!(EFAULT))?;
 
+	let nonblock = open_file.get_flags() & O_NONBLOCK != 0;
 	let mut total_len = 0;
 
 	for i in iov_slice {
@@ -42,20 +44,25 @@ fn write(
 			continue;
 		}
 
-		// The size to write. This is limited to avoid an overflow on the total length
+		// The size to read. This is limited to avoid an overflow on the total length
 		let l = min(i.iov_len, i32::MAX as usize - total_len);
 		let ptr = SyscallSlice::<u8>::from(i.iov_base as usize);
 
-		if let Some(slice) = ptr.get(&mem_space_guard, l)? {
+		if let Some(slice) = ptr.get_mut(&mem_space_guard, l)? {
 			// TODO Handle in a loop?
-			total_len += open_file.write(0, slice)? as usize;
+			let (len, eof) = open_file.read(0, slice)?;
+			if len == 0 && (eof || nonblock) {
+				return Ok(0);
+			}
+
+			total_len += len as usize;
 		}
 	}
 
 	Ok(total_len as _)
 }
 
-/// Peforms the writev operation.
+/// Performs the readv operation.
 ///
 /// Arguments:
 /// - `fd` is the file descriptor.
@@ -63,10 +70,10 @@ fn write(
 /// - `iovcnt` the number of entries in the IO vector.
 /// - `offset` is the offset in the file.
 /// - `flags` is the set of flags.
-pub fn do_writev(
-	fd: i32,
+pub fn do_readv(
+	fd: c_int,
 	iov: SyscallSlice<IOVec>,
-	iovcnt: i32,
+	iovcnt: c_int,
 	offset: Option<isize>,
 	_flags: Option<i32>,
 ) -> Result<i32, Errno> {
@@ -116,7 +123,7 @@ pub fn do_writev(
 			}
 		}
 
-		let result = write(mem_space, iov, iovcnt as _, open_file);
+		let result = read(mem_space, iov, iovcnt as _, open_file);
 		match &result {
 			// If writing to a broken pipe, kill with SIGPIPE
 			Err(e) if e.as_int() == errno::EPIPE => {
@@ -140,6 +147,6 @@ pub fn do_writev(
 }
 
 #[syscall]
-pub fn writev(fd: c_int, iov: SyscallSlice<IOVec>, iovcnt: c_int) -> Result<i32, Errno> {
-	do_writev(fd, iov, iovcnt, None, None)
+pub fn readv(fd: c_int, iov: SyscallSlice<IOVec>, iovcnt: c_int) -> Result<i32, Errno> {
+	do_readv(fd, iov, iovcnt, None, None)
 }

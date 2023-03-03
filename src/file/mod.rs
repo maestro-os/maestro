@@ -739,13 +739,17 @@ impl File {
 					inode,
 					..
 				} => {
-					let mountpoint_mutex = self.location.get_mountpoint()
-						.ok_or_else(|| errno!(EIO))?;
-					let mountpoint_guard = mountpoint_mutex.lock();
-					let mountpoint = mountpoint_guard.get_mut();
+					let (io, fs) = {
+						let mountpoint_mutex = self.location.get_mountpoint()
+							.ok_or_else(|| errno!(EIO))?;
+						let mountpoint_guard = mountpoint_mutex.lock();
+						let mountpoint = mountpoint_guard.get_mut();
 
-					let io = mountpoint.get_source().get_io()?;
-					let fs = mountpoint.get_filesystem();
+						let io = mountpoint.get_source().get_io()?;
+						let fs = mountpoint.get_filesystem();
+
+						(io, fs)
+					};
 
 					f(Some(io), Some((fs, inode)))
 				},

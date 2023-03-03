@@ -8,6 +8,7 @@ mod _exit;
 mod _llseek;
 mod _newselect;
 mod access;
+mod arch_prctl;
 mod brk;
 mod chdir;
 mod chmod;
@@ -35,6 +36,7 @@ mod fork;
 mod fstat64;
 mod fstatfs64;
 mod fstatfs;
+mod fsync;
 mod getcwd;
 mod getdents64;
 mod getdents;
@@ -71,6 +73,8 @@ mod openat;
 mod pipe2;
 mod pipe;
 mod poll;
+mod preadv2;
+mod preadv;
 mod prlimit64;
 mod pselect6;
 mod pwritev2;
@@ -78,7 +82,9 @@ mod pwritev;
 mod r#break;
 mod read;
 mod readlink;
+mod readv;
 mod reboot;
+mod rename;
 mod renameat2;
 mod rmdir;
 mod rt_sigaction;
@@ -99,6 +105,7 @@ mod splice;
 mod statfs64;
 mod statfs;
 mod statx;
+mod symlink;
 mod symlinkat;
 mod syncfs;
 mod time;
@@ -110,6 +117,7 @@ mod uname;
 mod unlink;
 mod unlinkat;
 mod util;
+mod utimensat;
 mod vfork;
 mod wait4;
 mod wait;
@@ -128,6 +136,7 @@ use _exit::_exit;
 use _llseek::_llseek;
 use _newselect::_newselect;
 use access::access;
+use arch_prctl::arch_prctl;
 use brk::brk;
 use chdir::chdir;
 use chmod::chmod;
@@ -155,6 +164,7 @@ use fork::fork;
 use fstat64::fstat64;
 use fstatfs64::fstatfs64;
 use fstatfs::fstatfs;
+use fsync::fsync;
 use getcwd::getcwd;
 use getdents64::getdents64;
 use getdents::getdents;
@@ -192,6 +202,8 @@ use openat::openat;
 use pipe2::pipe2;
 use pipe::pipe;
 use poll::poll;
+use preadv2::preadv2;
+use preadv::preadv;
 use prlimit64::prlimit64;
 use pselect6::pselect6;
 use pwritev2::pwritev2;
@@ -199,7 +211,9 @@ use pwritev::pwritev;
 use r#break::r#break;
 use read::read;
 use readlink::readlink;
+use readv::readv;
 use reboot::reboot;
+use rename::rename;
 use renameat2::renameat2;
 use rmdir::rmdir;
 use rt_sigaction::rt_sigaction;
@@ -220,6 +234,7 @@ use splice::splice;
 use statfs64::statfs64;
 use statfs::statfs;
 use statx::statx;
+use symlink::symlink;
 use symlinkat::symlinkat;
 use syncfs::syncfs;
 use time::time;
@@ -230,6 +245,7 @@ use umount::umount;
 use uname::uname;
 use unlink::unlink;
 use unlinkat::unlinkat;
+use utimensat::utimensat;
 use vfork::vfork;
 use wait4::wait4;
 use waitpid::waitpid;
@@ -280,7 +296,7 @@ fn get_syscall(id: u32) -> Option<SyscallHandler> {
 		// TODO 0x023 => Some(&ftime),
 		// TODO 0x024 => Some(&sync),
 		0x025 => Some(&kill),
-		// TODO 0x026 => Some(&rename),
+		0x026 => Some(&rename),
 		0x027 => Some(&mkdir),
 		0x028 => Some(&rmdir),
 		0x029 => Some(&dup),
@@ -325,7 +341,7 @@ fn get_syscall(id: u32) -> Option<SyscallHandler> {
 		// TODO 0x050 => Some(&getgroups),
 		// TODO 0x051 => Some(&setgroups),
 		0x052 => Some(&select),
-		// TODO 0x053 => Some(&symlink),
+		0x053 => Some(&symlink),
 		// TODO 0x054 => Some(&oldlstat),
 		0x055 => Some(&readlink),
 		// TODO 0x056 => Some(&uselib),
@@ -360,7 +376,7 @@ fn get_syscall(id: u32) -> Option<SyscallHandler> {
 		// TODO 0x073 => Some(&swapoff),
 		// TODO 0x074 => Some(&sysinfo),
 		// TODO 0x075 => Some(&ipc),
-		// TODO 0x076 => Some(&fsync),
+		0x076 => Some(&fsync),
 		0x077 => Some(&sigreturn),
 		0x078 => Some(&clone),
 		// TODO 0x079 => Some(&setdomainname),
@@ -385,7 +401,7 @@ fn get_syscall(id: u32) -> Option<SyscallHandler> {
 		0x08e => Some(&_newselect),
 		// TODO 0x08f => Some(&flock),
 		0x090 => Some(&msync),
-		// TODO 0x091 => Some(&readv),
+		0x091 => Some(&readv),
 		0x092 => Some(&writev),
 		// TODO 0x093 => Some(&getsid),
 		// TODO 0x094 => Some(&fdatasync),
@@ -556,7 +572,7 @@ fn get_syscall(id: u32) -> Option<SyscallHandler> {
 		// TODO 0x13d => Some(&move_pages),
 		// TODO 0x13e => Some(&getcpu),
 		// TODO 0x13f => Some(&epoll_pwait),
-		// TODO 0x140 => Some(&utimensat),
+		0x140 => Some(&utimensat),
 		// TODO 0x141 => Some(&signalfd),
 		// TODO 0x142 => Some(&timerfd_create),
 		// TODO 0x143 => Some(&eventfd),
@@ -569,7 +585,7 @@ fn get_syscall(id: u32) -> Option<SyscallHandler> {
 		// TODO 0x14a => Some(&dup3),
 		0x14b => Some(&pipe2),
 		// TODO 0x14c => Some(&inotify_init1),
-		// TODO 0x14d => Some(&preadv),
+		0x14d => Some(&preadv),
 		0x14e => Some(&pwritev),
 		// TODO 0x14f => Some(&rt_tgsigqueueinfo),
 		// TODO 0x150 => Some(&perf_event_open),
@@ -614,13 +630,13 @@ fn get_syscall(id: u32) -> Option<SyscallHandler> {
 		// TODO 0x177 => Some(&membarrier),
 		// TODO 0x178 => Some(&mlock2),
 		// TODO 0x179 => Some(&copy_file_range),
-		// TODO 0x17a => Some(&preadv2),
+		0x17a => Some(&preadv2),
 		0x17b => Some(&pwritev2),
 		// TODO 0x17c => Some(&pkey_mprotect),
 		// TODO 0x17d => Some(&pkey_alloc),
 		// TODO 0x17e => Some(&pkey_free),
 		0x17f => Some(&statx),
-		// TODO 0x180 => Some(&arch_prctl),
+		0x180 => Some(&arch_prctl),
 		// TODO 0x181 => Some(&io_pgetevents),
 		// TODO 0x182 => Some(&rseq),
 		// TODO 0x189 => Some(&semget),
@@ -699,8 +715,12 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 				let guard = mutex.lock();
 				let curr_proc = guard.get_mut();
 
-				if cfg!(strace) {
-					println!("[strace PID: {}] invalid syscall `{:x}`", curr_proc.get_pid(), id);
+				if cfg!(feature = "strace") {
+					crate::println!(
+						"[strace PID: {}] invalid syscall (ID: 0x{:x})",
+						curr_proc.get_pid(),
+						id
+					);
 				}
 
 				// SIGSYS cannot be caught, thus the process will be terminated

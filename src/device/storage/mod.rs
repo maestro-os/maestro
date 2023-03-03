@@ -7,6 +7,9 @@ pub mod pata;
 pub mod ramdisk;
 
 use core::cmp::min;
+use core::ffi::c_uchar;
+use core::ffi::c_ulong;
+use core::ffi::c_ushort;
 use core::ffi::c_void;
 use crate::device::Device;
 use crate::device::DeviceHandle;
@@ -43,6 +46,20 @@ const STORAGE_MAJOR: u32 = 8;
 const STORAGE_MODE: Mode = 0o660;
 /// The maximum number of partitions in a disk.
 const MAX_PARTITIONS: usize = 16;
+
+/// Hard drive geometry.
+#[derive(Debug)]
+#[repr(C)]
+struct HdGeometry {
+	/// The number of heads (CHS).
+	heads: c_uchar,
+	/// The number of sectors (CHS).
+	sectors: c_uchar,
+	/// The number of cylinders (CHS).
+	cylinders: c_ushort,
+	/// Starting LBA of the device.
+	start: c_ulong,
+}
 
 /// Trait representing a storage interface. A storage block is the atomic unit
 /// for I/O access on the storage device.
@@ -242,6 +259,47 @@ impl DeviceHandle for StorageDeviceHandle {
 		argp: *const c_void,
 	) -> Result<u32, Errno> {
 		match request.get_old_format() {
+			ioctl::HDIO_GETGEO => {
+				// The total size of the disk
+				let size = {
+					if let Some(interface) = self.interface.get() {
+						let interface_guard = interface.lock();
+						let interface = interface_guard.get();
+
+						interface.get_block_size() * interface.get_blocks_count()
+					} else {
+						0
+					}
+				};
+
+				// Translate from LBA to CHS
+				let s = (size % c_uchar::MAX as u64) as _;
+				let h = ((size - s as u64) / c_uchar::MAX as u64 % c_uchar::MAX as u64) as _;
+				let c = ((size - s as u64) / c_uchar::MAX as u64 / c_uchar::MAX as u64) as _;
+
+				// Starting LBA of the partition
+				let start = self.partition.as_ref()
+					.map(|p| p.get_offset())
+					.unwrap_or(0) as _;
+
+				let hd_geo = HdGeometry {
+					heads: h,
+					sectors: s,
+					cylinders: c,
+					start,
+				};
+
+				// Write to userspace
+				let mem_space_guard = mem_space.lock();
+				let hd_geo_ptr: SyscallPtr<HdGeometry> = (argp as usize).into();
+				let hd_geo_ref = hd_geo_ptr
+					.get_mut(&mem_space_guard)?
+					.ok_or_else(|| errno!(EFAULT))?;
+				*hd_geo_ref = hd_geo;
+
+				Ok(0)
+			}
+
 			ioctl::BLKRRPART => {
 				StorageManager::clear_partitions(self.major)?;
 				StorageManager::read_partitions(
@@ -250,6 +308,28 @@ impl DeviceHandle for StorageDeviceHandle {
 					self.storage_id,
 					self.path_prefix.failable_clone()?
 				)?;
+
+				Ok(0)
+			}
+
+			ioctl::BLKSSZGET => {
+				let blk_size = {
+					if let Some(interface) = self.interface.get() {
+						let interface_guard = interface.lock();
+						let interface = interface_guard.get();
+
+						interface.get_block_size()
+					} else {
+						0
+					}
+				};
+
+				let mem_space_guard = mem_space.lock();
+				let size_ptr: SyscallPtr<u32> = (argp as usize).into();
+				let size_ref = size_ptr
+					.get_mut(&mem_space_guard)?
+					.ok_or_else(|| errno!(EFAULT))?;
+				*size_ref = blk_size as _;
 
 				Ok(0)
 			}
@@ -278,7 +358,10 @@ impl IO for StorageDeviceHandle {
 			let interface_guard = interface.lock();
 			let interface = interface_guard.get();
 
-			interface.get_block_size() * interface.get_blocks_count()
+			let blocks_count = self.partition.as_ref()
+				.map(|p| p.get_size())
+				.unwrap_or_else(|| interface.get_blocks_count());
+			interface.get_block_size() * blocks_count
 		} else {
 			0
 		}

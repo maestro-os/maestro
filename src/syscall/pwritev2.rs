@@ -6,7 +6,6 @@ use crate::process::mem_space::ptr::SyscallSlice;
 use core::ffi::c_int;
 use macros::syscall;
 
-/// The implementation of the `pwritev2` syscall.
 #[syscall]
 pub fn pwritev2(
 	fd: c_int,
