@@ -1,12 +1,13 @@
 //! When booting, the kernel can take command line arguments. This module
 //! implements a parse for these arguments.
 
-use crate::util::container::string::String;
-use crate::util::container::vec::Vec;
-use crate::util::FailableClone;
-use crate::vga;
 use core::cmp::min;
 use core::str;
+use crate::util::DisplayableStr;
+use crate::util::FailableClone;
+use crate::util::container::string::String;
+use crate::util::container::vec::Vec;
+use crate::vga;
 
 /// Command line argument parser.
 /// Every bytes in the command line are interpreted as ASCII characters.
@@ -67,8 +68,7 @@ impl<'a> ParseError<'a> {
 			let mut i = 0;
 			while i < self.cmdline.len() {
 				let l = min(self.cmdline.len() - i, vga::WIDTH as usize - 1);
-				let s = str::from_utf8(&self.cmdline[i..(i + l)]).unwrap(); // TODO Handle properly
-				crate::println!("{}", s);
+				crate::println!("{}", DisplayableStr(&self.cmdline[i..(i + l)]));
 
 				let mut j = i;
 				while j < i + l {
@@ -119,7 +119,7 @@ impl ArgsParser {
 		}
 
 		if j > *i {
-			if let Ok(s) = String::from(&cmdline[*i..j]) {
+			if let Ok(s) = String::try_from(&cmdline[*i..j]) {
 				let tok = Token {
 					s,
 					begin: *i,

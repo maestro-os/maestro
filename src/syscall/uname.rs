@@ -51,7 +51,7 @@ pub fn uname(buf: SyscallPtr<Utsname>) -> Result<i32, Errno> {
 
 	util::slice_copy(&crate::VERSION.as_bytes(), &mut utsname.release);
 	util::slice_copy(&[], &mut utsname.version);
-	util::slice_copy(&"x86".as_bytes(), &mut utsname.machine); // TODO Adapt to current architecture
+	util::slice_copy(&crate::ARCH.as_bytes(), &mut utsname.machine);
 
 	Ok(0)
 }

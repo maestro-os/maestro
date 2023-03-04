@@ -16,12 +16,18 @@ use super::util;
 
 // TODO Implement all flags
 
-/// Returns the file at the given path `path`.
-/// TODO doc all args
-/// If the file doesn't exist and the O_CREAT flag is set, the file is created,
-/// then the function returns it. If the flag is not set, the function returns
-/// an error with the appropriate errno. If the file is to be created, the
-/// function uses `mode` to set its permissions.
+/// Returns the file at the given path.
+///
+/// Arguments:
+/// - `dirfd` a file descriptor to the directory from which the file will be searched.
+/// - `pathname` the path relative to the directory.
+/// - `flags` is a set of open file flags.
+/// - `mode` is the set of permissions to use if the file needs to be created.
+///
+/// If the file doesn't exist and the `O_CREAT` flag is set, the file is created,
+/// then the function returns it.
+/// If the flag is not set, the function returns an error with the appropriate errno.
+/// If the file is to be created, the function uses `mode` to set its permissions.
 fn get_file(
 	dirfd: i32,
 	pathname: SyscallString,

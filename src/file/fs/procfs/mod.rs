@@ -52,7 +52,7 @@ impl ProcFS {
 	/// `mountpath` is the path at which the filesystem is mounted.
 	pub fn new(readonly: bool, mountpath: Path) -> Result<Self, Errno> {
 		let mut fs = Self {
-			fs: KernFS::new(String::from(b"procfs")?, readonly, mountpath)?,
+			fs: KernFS::new(b"procfs".try_into()?, readonly, mountpath)?,
 
 			procs: HashMap::new(),
 		};
@@ -63,7 +63,7 @@ impl ProcFS {
 		let node = MemInfo {};
 		let inode = fs.fs.add_node(Box::new(node)?)?;
 		entries.insert(
-			String::from(b"meminfo")?,
+			b"meminfo".try_into()?,
 			DirEntry {
 				inode,
 				entry_type: FileType::Regular,
@@ -75,11 +75,11 @@ impl ProcFS {
 			0o777,
 			0,
 			0,
-			FileContent::Link(String::from(b"self/mounts")?),
+			FileContent::Link(b"self/mounts".try_into()?),
 		);
 		let inode = fs.fs.add_node(Box::new(node)?)?;
 		entries.insert(
-			String::from(b"mounts")?,
+			b"mounts".try_into()?,
 			DirEntry {
 				inode,
 				entry_type: FileType::Link,
@@ -90,7 +90,7 @@ impl ProcFS {
 		let node = SelfNode {};
 		let inode = fs.fs.add_node(Box::new(node)?)?;
 		entries.insert(
-			String::from(b"self")?,
+			b"self".try_into()?,
 			DirEntry {
 				inode,
 				entry_type: FileType::Link,
@@ -101,7 +101,7 @@ impl ProcFS {
 		let node = SysDir::new(&mut fs.fs)?;
 		let inode = fs.fs.add_node(Box::new(node)?)?;
 		entries.insert(
-			String::from(b"sys")?,
+			b"sys".try_into()?,
 			DirEntry {
 				inode,
 				entry_type: FileType::Directory,
@@ -208,7 +208,7 @@ impl Filesystem for ProcFS {
 		&mut self,
 		io: &mut dyn IO,
 		parent: Option<INode>,
-		name: &String,
+		name: &[u8],
 	) -> Result<INode, Errno> {
 		self.fs.get_inode(io, parent, name)
 	}
@@ -234,7 +234,7 @@ impl Filesystem for ProcFS {
 		&mut self,
 		_io: &mut dyn IO,
 		_parent_inode: INode,
-		_name: &String,
+		_name: &[u8],
 		_inode: INode,
 	) -> Result<(), Errno> {
 		Err(errno!(EACCES))
@@ -248,7 +248,7 @@ impl Filesystem for ProcFS {
 		&mut self,
 		_io: &mut dyn IO,
 		_parent_inode: INode,
-		_name: &String,
+		_name: &[u8],
 	) -> Result<(), Errno> {
 		Err(errno!(EACCES))
 	}

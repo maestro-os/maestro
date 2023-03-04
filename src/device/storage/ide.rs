@@ -131,8 +131,6 @@ impl Controller {
 		channel: Channel,
 		slave: bool,
 	) -> Result<Option<SharedPtr<dyn StorageInterface>>, Errno> {
-		// TODO Add support for SATA
-
 		match PATAInterface::new(channel, slave) {
 			Ok(interface) => {
 				let interface = SharedPtr::new(interface)?;

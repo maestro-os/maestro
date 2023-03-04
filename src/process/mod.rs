@@ -426,7 +426,7 @@ impl Process {
 	/// Registers the current process to the procfs.
 	fn register_procfs(&self) -> Result<(), Errno> {
 		// TODO Avoid allocation
-		let procfs_source = MountSource::NoDev(String::from(b"procfs")?);
+		let procfs_source = MountSource::NoDev(b"procfs".try_into()?);
 
 		if let Some(fs) = mountpoint::get_fs(&procfs_source) {
 			let fs_guard = fs.lock();
@@ -443,7 +443,7 @@ impl Process {
 	/// Unregisters the current process from the procfs.
 	fn unregister_procfs(&self) -> Result<(), Errno> {
 		// TODO Avoid allocation
-		let procfs_source = MountSource::NoDev(String::from(b"procfs")?);
+		let procfs_source = MountSource::NoDev(b"procfs".try_into()?);
 
 		if let Some(fs) = mountpoint::get_fs(&procfs_source) {
 			let fs_guard = fs.lock();

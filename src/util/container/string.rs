@@ -28,18 +28,6 @@ impl String {
 		}
 	}
 
-	/// Creates a new instance from the given byte slice.
-	pub fn from(s: &[u8]) -> Result<Self, Errno> {
-		let mut v = Vec::with_capacity(s.len())?;
-		for b in s {
-			v.push(*b)?;
-		}
-
-		Ok(Self {
-			data: v,
-		})
-	}
-
 	/// Returns a slice containing the bytes representation of the string.
 	pub fn as_bytes(&self) -> &[u8] {
 		self.data.as_slice()
@@ -128,6 +116,32 @@ impl String {
 	}
 }
 
+impl TryFrom<&[u8]> for String {
+	type Error = Errno;
+
+	fn try_from(s: &[u8]) -> Result<Self, Self::Error> {
+		Ok(Self {
+			data: Vec::from_slice(s)?,
+		})
+	}
+}
+
+impl<const N: usize> TryFrom<&[u8; N]> for String {
+	type Error = Errno;
+
+	fn try_from(s: &[u8; N]) -> Result<Self, Self::Error> {
+		Self::try_from(s.as_slice())
+	}
+}
+
+impl TryFrom<&str> for String {
+	type Error = Errno;
+
+	fn try_from(s: &str) -> Result<Self, Self::Error> {
+		Self::try_from(s.as_bytes())
+	}
+}
+
 impl Deref for String {
 	type Target = [u8];
 
@@ -171,15 +185,14 @@ impl PartialEq for String {
 	}
 }
 
-impl PartialEq<str> for String {
-	fn eq(&self, other: &str) -> bool {
+impl PartialEq<[u8]> for String {
+	fn eq(&self, other: &[u8]) -> bool {
 		if self.len() != other.len() {
 			return false;
 		}
 
-		let bytes = other.as_bytes();
-		for i in 0..bytes.len() {
-			if self.data[i] != bytes[i] {
+		for (a, b) in self.data.iter().zip(other.iter()) {
+			if a != b {
 				return false;
 			}
 		}
@@ -188,9 +201,15 @@ impl PartialEq<str> for String {
 	}
 }
 
+impl PartialEq<str> for String {
+	fn eq(&self, other: &str) -> bool {
+		self.eq(other.as_bytes())
+	}
+}
+
 impl PartialEq<&str> for String {
 	fn eq(&self, other: &&str) -> bool {
-		self == *other
+		self.eq(other.as_bytes())
 	}
 }
 
@@ -244,7 +263,7 @@ impl Write for StringWriter {
 				_ => {}
 			},
 
-			None => self.final_str = Some(String::from(s.as_bytes())),
+			None => self.final_str = Some(String::try_from(s)),
 			_ => {}
 		}
 

@@ -7,10 +7,9 @@ pub mod kernfs;
 pub mod procfs;
 pub mod tmp;
 
-use super::path::Path;
-use super::File;
-use crate::errno;
+use core::any::Any;
 use crate::errno::Errno;
+use crate::errno;
 use crate::file::FileContent;
 use crate::file::Gid;
 use crate::file::INode;
@@ -21,7 +20,8 @@ use crate::util::container::vec::Vec;
 use crate::util::io::IO;
 use crate::util::lock::Mutex;
 use crate::util::ptr::SharedPtr;
-use core::any::Any;
+use super::File;
+use super::path::Path;
 
 /// This structure is used in the f_fsid field of statfs. It is currently
 /// unused.
@@ -78,32 +78,42 @@ pub trait Filesystem: Any {
 
 	/// Returns the inode of the file with name `name`, located in the directory
 	/// with inode `parent`.
-	/// `io` is the IO interface.
-	/// `parent` is the inode's parent. If none, the function uses the root of
-	/// the filesystem. `name` is the name of the file.
+	///
+	/// Arguments:
+	/// - `io` is the IO interface.
+	/// - `parent` is the inode's parent. If `None`, the function uses the root of
+	/// the filesystem.
+	/// - `name` is the name of the file.
+	///
 	/// If the parent is not a directory, the function returns an error.
 	fn get_inode(
 		&mut self,
 		io: &mut dyn IO,
 		parent: Option<INode>,
-		name: &String,
+		name: &[u8],
 	) -> Result<INode, Errno>;
 
 	/// Loads the file at inode `inode`.
-	/// `io` is the IO interface.
-	/// `inode` is the file's inode.
-	/// `name` is the file's name.
+	///
+	/// Arguments:
+	/// - `io` is the IO interface.
+	/// - `inode` is the file's inode.
+	/// - `name` is the file's name.
 	fn load_file(&mut self, io: &mut dyn IO, inode: INode, name: String) -> Result<File, Errno>;
 
 	/// Adds a file to the filesystem at inode `inode`.
-	/// `io` is the IO interface.
-	/// `parent_inode` is the parent file's inode.
-	/// `name` is the name of the file.
-	/// `uid` is the id of the owner user.
-	/// `gid` is the id of the owner group.
-	/// `mode` is the permission of the file.
-	/// `content` is the content of the file. This value also determines the
-	/// file type. On success, the function returns the newly created file.
+	///
+	/// Arguments:
+	/// - `io` is the IO interface.
+	/// - `parent_inode` is the parent file's inode.
+	/// - `name` is the name of the file.
+	/// - `uid` is the id of the owner user.
+	/// - `gid` is the id of the owner group.
+	/// - `mode` is the permission of the file.
+	/// - `content` is the content of the file. This value also determines the
+	/// file type.
+	///
+	/// On success, the function returns the newly created file.
 	fn add_file(
 		&mut self,
 		io: &mut dyn IO,
@@ -116,38 +126,53 @@ pub trait Filesystem: Any {
 	) -> Result<File, Errno>;
 
 	/// Adds a hard link to the filesystem.
+	///
+	/// Arguments:
+	/// - `io` is the IO interface.
+	/// - `parent_inode` is the parent file's inode.
+	/// - `name` is the name of the link.
+	/// - `inode` is the inode the link points to.
+	///
 	/// If this feature is not supported by the filesystem, the function returns
-	/// an error. `io` is the IO interface.
-	/// `parent_inode` is the parent file's inode.
-	/// `name` is the name of the link.
-	/// `inode` is the inode the link points to.
+	/// an error.
 	fn add_link(
 		&mut self,
 		io: &mut dyn IO,
 		parent_inode: INode,
-		name: &String,
+		name: &[u8],
 		inode: INode,
 	) -> Result<(), Errno>;
 
 	/// Updates the given inode.
-	/// `io` is the IO interface.
-	/// `file` the file structure containing the new values for the inode.
+	///
+	/// Arguments:
+	/// - `io` is the IO interface.
+	/// - `file` the file structure containing the new values for the inode.
 	fn update_inode(&mut self, io: &mut dyn IO, file: &File) -> Result<(), Errno>;
 
 	/// Removes a file from the filesystem. If the links count of the inode
 	/// reaches zero, the inode is also removed.
-	/// `io` is the IO interface.
-	/// `parent_inode` is the parent file's inode.
-	/// `name` is the file's name.
+	///
+	/// Arguments:
+	/// - `io` is the IO interface.
+	/// - `parent_inode` is the parent file's inode.
+	/// - `name` is the file's name.
 	fn remove_file(
 		&mut self,
 		io: &mut dyn IO,
 		parent_inode: INode,
-		name: &String,
+		name: &[u8],
 	) -> Result<(), Errno>;
 
 	/// Reads from the given inode `inode` into the buffer `buf`.
-	/// `off` is the offset from which the data will be read from the node.
+	///
+	/// Arguments:
+	/// - `io` is the IO interface.
+	/// - `inode` is the file's inode.
+	/// - `off` is the offset from which the data will be read from the node.
+	/// - `buf` is the buffer in which the data is the be written. The length of the buffer is the
+	/// number of bytes to read.
+	///
 	/// The function returns a tuple containing:
 	/// - The number of bytes read.
 	/// - Whether the End Of File (EOF) has been reached.
@@ -160,7 +185,13 @@ pub trait Filesystem: Any {
 	) -> Result<(u64, bool), Errno>;
 
 	/// Writes to the given inode `inode` from the buffer `buf`.
-	/// `off` is the offset at which the data will be written in the node.
+	///
+	/// Arguments:
+	/// - `io` is the IO interface.
+	/// - `inode` is the file's inode.
+	/// - `off` is the offset at which the data will be written in the node.
+	/// - `buf` is the buffer in which the data is the be written. The length of the buffer is the
+	/// number of bytes to read.
 	fn write_node(
 		&mut self,
 		io: &mut dyn IO,

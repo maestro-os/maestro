@@ -1,30 +1,37 @@
 //! The `delete_module` system call allows to unload a module from the kernel.
 
-use crate::errno;
-use crate::errno::Errno;
-use crate::process::mem_space::ptr::SyscallString;
-use crate::process::Process;
 use core::ffi::c_uint;
+use crate::errno::Errno;
+use crate::errno;
+use crate::module;
+use crate::process::Process;
+use crate::process::mem_space::ptr::SyscallString;
+use crate::util::container::string::String;
 use macros::syscall;
 
+// TODO handle flags
+
 #[syscall]
-pub fn delete_module(_name: SyscallString, _flags: c_uint) -> Result<i32, Errno> {
-	{
+pub fn delete_module(name: SyscallString, _flags: c_uint) -> Result<i32, Errno> {
+	let name = {
 		let proc_mutex = Process::get_current().unwrap();
 		let proc_guard = proc_mutex.lock();
 		let proc = proc_guard.get();
 
-		if proc.get_uid() != 0 {
+		if proc.get_euid() != 0 {
 			return Err(errno!(EPERM));
 		}
 
-		// TODO Check the name is accessible to the process
-	}
+		let mem_space = proc.get_mem_space().unwrap();
+		let mem_space_guard = mem_space.lock();
 
-	// TODO Turn the name into a string
-	// TODO Get the module with the given name
-	// TODO If the module doesn't exist, return an error
-	// TODO If the module exists, call its `fini` function if it exists, then unload
-	// the module
+		let name = name.get(&mem_space_guard)?.ok_or_else(|| errno!(EFAULT))?;
+
+		String::try_from(name)?
+	};
+
+	// TODO handle dependency (don't unload a module that is required by another)
+	module::remove(&name);
+
 	Ok(0)
 }

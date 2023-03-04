@@ -3,7 +3,8 @@
 
 use crate::device::bar::BAR;
 use crate::errno::Errno;
-use crate::util::container::vec::Vec;
+use crate::util::container::hashmap::HashMap;
+use crate::util::container::string::String;
 use crate::util::lock::Mutex;
 use crate::util::ptr::SharedPtr;
 use crate::util::ptr::WeakPtr;
@@ -50,17 +51,21 @@ pub trait DeviceManager {
 	fn on_unplug(&mut self, dev: &dyn PhysicalDevice) -> Result<(), Errno>;
 }
 
-// TODO Order by name
 /// The list of device managers.
-static DEVICE_MANAGERS: Mutex<Vec<SharedPtr<dyn DeviceManager>>> = Mutex::new(Vec::new());
+static DEVICE_MANAGERS: Mutex<HashMap<String, SharedPtr<dyn DeviceManager>>>
+	= Mutex::new(HashMap::new());
 
 /// Registers the given device manager.
 pub fn register_manager<M: 'static + DeviceManager>(manager: M) -> Result<(), Errno> {
 	let guard = DEVICE_MANAGERS.lock();
 	let device_managers = guard.get_mut();
 
+	let name = String::try_from(manager.get_name())?;
+
 	let m = SharedPtr::new(manager)?;
-	device_managers.push(m)
+	device_managers.insert(name, m)?;
+
+	Ok(())
 }
 
 /// Returns the device manager with name `name`.
@@ -68,27 +73,20 @@ pub fn get_by_name(name: &str) -> Option<WeakPtr<dyn DeviceManager>> {
 	let guard = DEVICE_MANAGERS.lock();
 	let device_managers = guard.get_mut();
 
-	for i in 0..device_managers.len() {
-		let guard = device_managers[i].lock();
-
-		if guard.get().get_name() == name {
-			drop(guard);
-			return Some(device_managers[i].new_weak());
-		}
-	}
-
-	None
+	Some(device_managers.get(name.as_bytes())?.new_weak())
 }
 
 /// Function that is called when a new device is plugged in.
+///
 /// `dev` is the device that has been plugged in.
 pub fn on_plug(dev: &dyn PhysicalDevice) -> Result<(), Errno> {
 	let guard = DEVICE_MANAGERS.lock();
 	let device_managers = guard.get_mut();
 
-	for i in 0..device_managers.len() {
-		let guard = device_managers[i].lock();
+	for (_, m) in device_managers.iter() {
+		let guard = m.lock();
 		let manager = guard.get_mut();
+
 		manager.on_plug(dev)?;
 	}
 
@@ -96,14 +94,16 @@ pub fn on_plug(dev: &dyn PhysicalDevice) -> Result<(), Errno> {
 }
 
 /// Function that is called when a device is plugged out.
+///
 /// `dev` is the device that has been plugged out.
 pub fn on_unplug(dev: &dyn PhysicalDevice) -> Result<(), Errno> {
 	let guard = DEVICE_MANAGERS.lock();
 	let device_managers = guard.get_mut();
 
-	for i in 0..device_managers.len() {
-		let guard = device_managers[i].lock();
+	for (_, m) in device_managers.iter() {
+		let guard = m.lock();
 		let manager = guard.get_mut();
+
 		manager.on_unplug(dev)?;
 	}
 

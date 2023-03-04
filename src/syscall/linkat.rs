@@ -59,6 +59,6 @@ pub fn linkat(
 	let vfs_guard = vfs_mutex.lock();
 	let vfs = vfs_guard.get_mut().as_mut().unwrap();
 
-	vfs.create_link(old, new_parent, new_name, uid, gid)?;
+	vfs.create_link(old, new_parent, &new_name, uid, gid)?;
 	Ok(0)
 }

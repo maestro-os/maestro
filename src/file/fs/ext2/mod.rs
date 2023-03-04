@@ -742,7 +742,7 @@ impl Filesystem for Ext2Fs {
 		&mut self,
 		io: &mut dyn IO,
 		parent: Option<INode>,
-		name: &String,
+		name: &[u8],
 	) -> Result<INode, Errno> {
 		let parent_inode = parent.unwrap_or(inode::ROOT_DIRECTORY_INODE as _);
 
@@ -753,7 +753,7 @@ impl Filesystem for Ext2Fs {
 		}
 
 		// Getting the entry with the given name
-		if let Some((_, entry)) = parent.get_dirent(name.as_bytes(), &self.superblock, io)? {
+		if let Some((_, entry)) = parent.get_dirent(name, &self.superblock, io)? {
 			Ok(entry.get_inode() as _)
 		} else {
 			Err(errno!(ENOENT))
@@ -779,7 +779,7 @@ impl Filesystem for Ext2Fs {
 					entries.push((
 						entry.get_inode(),
 						entry.get_type(&self.superblock),
-						String::from(entry.get_name(&self.superblock))?,
+						String::try_from(entry.get_name(&self.superblock))?,
 					))?;
 				}
 
@@ -875,7 +875,7 @@ impl Filesystem for Ext2Fs {
 
 		// Checking if the file already exists
 		if parent
-			.get_dirent(name.as_bytes(), &self.superblock, io)?
+			.get_dirent(&name, &self.superblock, io)?
 			.is_some()
 		{
 			return Err(errno!(EEXIST));
@@ -922,7 +922,7 @@ impl Filesystem for Ext2Fs {
 					&mut self.superblock,
 					io,
 					inode_index,
-					&String::from(b".")?,
+					b".",
 					FileType::Directory,
 				)?;
 				inode.hard_links_count += 1;
@@ -932,7 +932,7 @@ impl Filesystem for Ext2Fs {
 					&mut self.superblock,
 					io,
 					parent_inode as _,
-					&String::from(b"..")?,
+					b"..",
 					FileType::Directory,
 				)?;
 				parent.hard_links_count += 1;
@@ -981,7 +981,7 @@ impl Filesystem for Ext2Fs {
 		&mut self,
 		io: &mut dyn IO,
 		parent_inode: INode,
-		name: &String,
+		name: &[u8],
 		inode: INode,
 	) -> Result<(), Errno> {
 		if self.readonly {
@@ -1085,7 +1085,7 @@ impl Filesystem for Ext2Fs {
 		&mut self,
 		io: &mut dyn IO,
 		parent_inode: INode,
-		name: &String,
+		name: &[u8],
 	) -> Result<(), Errno> {
 		if self.readonly {
 			return Err(errno!(EROFS));
@@ -1094,7 +1094,7 @@ impl Filesystem for Ext2Fs {
 			return Err(errno!(EINVAL));
 		}
 
-		if name.as_bytes() == b"." || name.as_bytes() == b".." {
+		if name == b"." || name == b".." {
 			return Err(errno!(EINVAL));
 		}
 
@@ -1108,7 +1108,7 @@ impl Filesystem for Ext2Fs {
 
 		// The inode number
 		let inode = parent
-			.get_dirent(name.as_bytes(), &self.superblock, io)?
+			.get_dirent(name, &self.superblock, io)?
 			.map(|(_, ent)| ent)
 			.ok_or_else(|| errno!(ENOENT))?
 			.get_inode();

@@ -49,15 +49,17 @@ pub struct TmpFS {
 
 impl TmpFS {
 	/// Creates a new instance.
-	/// `max_size` is the maximum amount of memory the filesystem can use in
-	/// bytes. `readonly` tells whether the filesystem is readonly.
-	/// `mountpath` is the path at which the filesystem is mounted.
+	///
+	/// Arguments:
+	/// - `max_size` is the maximum amount of memory the filesystem can use in bytes.
+	/// - `readonly` tells whether the filesystem is readonly.
+	/// - `mountpath` is the path at which the filesystem is mounted.
 	pub fn new(max_size: usize, readonly: bool, mountpath: Path) -> Result<Self, Errno> {
 		let mut fs = Self {
 			max_size,
 			size: 0,
 
-			fs: KernFS::new(String::from(b"tmpfs")?, readonly, mountpath)?,
+			fs: KernFS::new(b"tmpfs".try_into()?, readonly, mountpath)?,
 		};
 
 		// Adding the root node
@@ -70,10 +72,14 @@ impl TmpFS {
 		Ok(fs)
 	}
 
-	/// Executes the given function `f`. On success, the function adds `s` to
-	/// the total size of the filesystem.
+	/// Executes the given function `f`.
+	///
+	/// On success, the function adds `s` to the total size of the filesystem.
+	///
 	/// If `f` fails, the function doesn't change the total size and returns the
-	/// error. If the new total size is too large, `f` is not executed and the
+	/// error.
+	///
+	/// If the new total size is too large, `f` is not executed and the
 	/// function returns an error.
 	fn update_size<F: FnOnce(&mut Self) -> Result<(), Errno>>(
 		&mut self,
@@ -127,7 +133,7 @@ impl Filesystem for TmpFS {
 		&mut self,
 		io: &mut dyn IO,
 		parent: Option<INode>,
-		name: &String,
+		name: &[u8],
 	) -> Result<INode, Errno> {
 		self.fs.get_inode(io, parent, name)
 	}
@@ -164,7 +170,7 @@ impl Filesystem for TmpFS {
 		&mut self,
 		io: &mut dyn IO,
 		parent_inode: INode,
-		name: &String,
+		name: &[u8],
 		inode: INode,
 	) -> Result<(), Errno> {
 		// TODO Update fs's size
@@ -180,7 +186,7 @@ impl Filesystem for TmpFS {
 		&mut self,
 		io: &mut dyn IO,
 		parent_inode: INode,
-		name: &String,
+		name: &[u8],
 	) -> Result<(), Errno> {
 		// TODO Update fs's size
 		self.fs.remove_file(io, parent_inode, name)
