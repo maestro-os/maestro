@@ -1418,7 +1418,7 @@ mod test {
 				assert_eq!(*b.get(i).unwrap(), i);
 			}
 
-			b.remove(i);
+			b.remove(&i);
 
 			assert!(b.get(i).is_none());
 			for i in (i + 1)..10 {
@@ -1439,7 +1439,7 @@ mod test {
 
 		for i in (-9..10).rev() {
 			assert_eq!(*b.get(i).unwrap(), i);
-			b.remove(i);
+			b.remove(&i);
 			assert!(b.get(i).is_none());
 		}
 
@@ -1456,7 +1456,7 @@ mod test {
 
 		for i in (-9..10).rev() {
 			assert_eq!(*b.get(i).unwrap(), i);
-			b.remove(i);
+			b.remove(&i);
 			assert!(b.get(i).is_none());
 		}
 
@@ -1473,7 +1473,7 @@ mod test {
 
 		for i in -9..10 {
 			assert_eq!(*b.get(i).unwrap(), i);
-			assert_eq!(b.remove(i).unwrap(), i);
+			assert_eq!(b.remove(&i).unwrap(), i);
 			assert!(b.get(i).is_none());
 		}
 
@@ -1486,7 +1486,7 @@ mod test {
 
 		for i in -9..10 {
 			b.insert(i, i).unwrap();
-			assert_eq!(b.remove(i).unwrap(), i);
+			assert_eq!(b.remove(&i).unwrap(), i);
 		}
 
 		assert!(b.is_empty());
@@ -1503,7 +1503,7 @@ mod test {
 		for i in -9..10 {
 			if i % 2 == 0 {
 				assert_eq!(*b.get(i).unwrap(), i);
-				assert_eq!(b.remove(i).unwrap(), i);
+				assert_eq!(b.remove(&i).unwrap(), i);
 				assert!(b.get(i).is_none());
 			}
 		}
@@ -1513,64 +1513,12 @@ mod test {
 		for i in -9..10 {
 			if i % 2 != 0 {
 				assert_eq!(*b.get(i).unwrap(), i);
-				assert_eq!(b.remove(i).unwrap(), i);
+				assert_eq!(b.remove(&i).unwrap(), i);
 				assert!(b.get(i).is_none());
 			}
 		}
 
 		assert!(b.is_empty());
-	}
-
-	#[test_case]
-	fn binary_tree_get_min0() {
-		let b = Map::<i32, i32>::new();
-		assert!(b.get_min(0).is_none());
-	}
-
-	#[test_case]
-	fn binary_tree_get_min1() {
-		let mut b = Map::<i32, i32>::new();
-		b.insert(0, 0).unwrap();
-		assert!(*b.get_min(0).unwrap().0 >= 0);
-	}
-
-	#[test_case]
-	fn binary_tree_get_min2() {
-		let mut b = Map::<i32, i32>::new();
-		b.insert(0, 0).unwrap();
-		assert!(b.get_min(1).is_none());
-	}
-
-	#[test_case]
-	fn binary_tree_get_min3() {
-		let mut b = Map::<i32, i32>::new();
-		b.insert(-1, -1).unwrap();
-		b.insert(0, 0).unwrap();
-		b.insert(1, 1).unwrap();
-		assert!(*b.get_min(0).unwrap().0 >= 0);
-	}
-
-	#[test_case]
-	fn binary_tree_get_min4() {
-		let mut b = Map::<i32, i32>::new();
-		b.insert(0, 0).unwrap();
-		b.insert(1, 1).unwrap();
-		assert!(*b.get_min(0).unwrap().0 >= 0);
-	}
-
-	#[test_case]
-	fn binary_tree_get_min5() {
-		let mut b = Map::<i32, i32>::new();
-		b.insert(1, 1).unwrap();
-		assert!(*b.get_min(0).unwrap().0 >= 0);
-	}
-
-	#[test_case]
-	fn binary_tree_get_min6() {
-		let mut b = Map::<i32, i32>::new();
-		b.insert(-1, -1).unwrap();
-		b.insert(1, 1).unwrap();
-		assert!(*b.get_min(0).unwrap().0 >= 0);
 	}
 
 	#[test_case]

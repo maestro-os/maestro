@@ -124,7 +124,7 @@ OBJ := $(ASM_OBJ) $(C_OBJ)
 # Cargo
 CARGO = cargo +nightly
 # Cargo flags
-CARGOFLAGS = --verbose -Zbuild-std=core --target $(TARGET) --features strace
+CARGOFLAGS = --verbose -Zbuild-std=core --target $(TARGET)
 ifeq ($(CONFIG_DEBUG), false)
 CARGOFLAGS += --release
 endif
