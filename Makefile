@@ -165,12 +165,18 @@ DOC_DIR = doc/book/
 
 
 ifeq ($(CONFIG_EXISTS), 0)
-# The rule to compile everything
- ifeq ($(CONFIG_DEBUG_TEST), false)
-all: $(NAME) iso doc
+# The rule to compile the kernel image
+$(NAME): $(LIB_NAME) $(RUST_SRC) $(LINKER) $(TOUCH_UPDATE_FILES)
+	$(CONFIG_ENV) RUSTFLAGS='$(RUSTFLAGS)' $(CARGO) build $(CARGOFLAGS)
+ifeq ($(CONFIG_DEBUG_TEST), false)
+ ifeq ($(CONFIG_DEBUG), false)
+	$(CC) $(CFLAGS) -o $(NAME) target/target/release/libkernel.a -T$(LINKER)
  else
-all: $(NAME) iso
+	$(CC) $(CFLAGS) -o $(NAME) target/target/debug/libkernel.a -T$(LINKER)
  endif
+else
+	cp `find target/target/debug/deps/ -name 'kernel-*' -executable` maestro
+endif
 
 # Builds the documentation
 doc: $(SRC) $(DOC_SRC)
@@ -178,14 +184,17 @@ doc: $(SRC) $(DOC_SRC)
 	mdbook build doc/
 	rm -rf $(DOC_DIR)/references/
 	cp -r target/target/doc/ $(DOC_DIR)/references/
+
+all: iso doc
 else
-all:
+noconf:
 	echo "File $(CONFIG_FILE) doesn't exist. Create it from file `default.config`"
 	false
 
-doc: all
+doc: noconf
 
-.SILENT: all doc
+.PHONY: noconf
+.SILENT: noconf doc
 endif
 
 .PHONY: all doc
@@ -213,19 +222,6 @@ $(OBJ_DIR)%.s.o: $(SRC_DIR)%.s $(HDR) $(TOUCH_UPDATE_FILES)
 # The rule to compile C language objects
 $(OBJ_DIR)%.c.o: $(SRC_DIR)%.c $(HDR) $(TOUCH_UPDATE_FILES)
 	$(CC) $(CFLAGS) -I $(SRC_DIR) -c $< -o $@
-
-# The rule to compile the kernel image
-$(NAME): $(LIB_NAME) $(RUST_SRC) $(LINKER) $(TOUCH_UPDATE_FILES)
-	$(CONFIG_ENV) RUSTFLAGS='$(RUSTFLAGS)' $(CARGO) build $(CARGOFLAGS)
-ifeq ($(CONFIG_DEBUG_TEST), false)
- ifeq ($(CONFIG_DEBUG), false)
-	$(CC) $(CFLAGS) -o $(NAME) target/target/release/libkernel.a -T$(LINKER)
- else
-	$(CC) $(CFLAGS) -o $(NAME) target/target/debug/libkernel.a -T$(LINKER)
- endif
-else
-	cp `find target/target/debug/deps/ -name 'kernel-*' -executable` maestro
-endif
 
 # Alias for $(NAME).iso
 iso: $(NAME).iso
