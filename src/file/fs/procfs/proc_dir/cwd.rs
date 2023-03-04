@@ -52,7 +52,7 @@ impl KernFSNode for Cwd {
 			let proc_guard = proc_mutex.lock();
 			let proc = proc_guard.get();
 
-			let s = oom::wrap(|| proc.get_cwd().as_string());
+			let s = oom::wrap(|| crate::format!("{}", proc.get_cwd()));
 			Cow::from(FileContent::Link(s))
 		} else {
 			Cow::from(FileContent::Link(String::new()))

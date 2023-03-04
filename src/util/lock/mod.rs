@@ -145,20 +145,18 @@ impl<T: ?Sized, const INT: bool> Mutex<T, INT> {
 			&mut *self.inner.get()
 		};
 
-		let state = idt::is_interrupt_enabled();
-
-		// Here is assumed that no interruption will change eflags' INT. Which could
-		// cause a race condition
-
 		if !INT {
+			let state = idt::is_interrupt_enabled();
+
+			// Here is assumed that no interruption will change eflags' INT. Which could
+			// cause a race condition
+
 			// Disabling interrupts before locking to ensure no interrupt will occure while
 			// locking
 			crate::cli!();
-		}
 
-		inner.spin.lock();
+			inner.spin.lock();
 
-		if !INT {
 			// Updating the current thread's state
 			// Safe because interrupts are disabled and the value can be accessed only by
 			// the current core
@@ -168,6 +166,8 @@ impl<T: ?Sized, const INT: bool> Mutex<T, INT> {
 				}
 				INT_DISABLE_REFS.ref_count += 1;
 			}
+		} else {
+			inner.spin.lock();
 		}
 
 		// If enabled, save the stack to debug deadlocks
