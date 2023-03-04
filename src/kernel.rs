@@ -77,6 +77,9 @@ pub const NAME: &str = "maestro";
 /// Current kernel version.
 pub const VERSION: &str = "1.0";
 
+/// The name of the current architecture.
+pub const ARCH: &str = "x86";
+
 /// The path to the init process binary.
 const INIT_PATH: &[u8] = b"/sbin/init";
 

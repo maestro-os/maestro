@@ -21,7 +21,7 @@ pub fn init_module(
 		let proc_guard = proc_mutex.lock();
 		let proc = proc_guard.get();
 
-		if proc.get_uid() != 0 {
+		if proc.get_euid() != 0 {
 			return Err(errno!(EPERM));
 		}
 

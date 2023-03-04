@@ -1,12 +1,16 @@
 //! This module implements the PATA interface for hard drives.
+//!
 //! The PATA interface is an old, deprecated interface that has been replaced by
 //! the SATA interface.
+//!
 //! ATA devices may be detected by the PCI, but if not, it doesn't mean that
 //! they are not present. The disk(s) may instead use the standardized IO ports
 //! for legacy support.
 //!
 //! Legacy PATA can support up to two buses, each supporting up to two drives.
-//! Each bus has its own set of ports. Before using a drive, the kernel has to:
+//! Each bus has its own set of ports.
+//!
+//! Before using a drive, the kernel has to:
 //! - Reset the ATA controller
 //! - Select the drive (with the dedicated command)
 //! - Identify it to retrieve informations, such as whether the drives support LBA48

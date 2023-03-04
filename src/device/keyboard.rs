@@ -142,11 +142,13 @@ pub enum KeyboardKey {
 impl KeyboardKey {
 	// TODO Implement correctly with modifiers
 	/// Returns the TTY characters for the given current.
-	/// `shift` tells whether shift is pressed. This value has to be inverted if
+	///
+	/// Arguments:
+	/// - `shift` tells whether shift is pressed. This value has to be inverted if
 	/// caps lock is enabled.
-	/// `alt` tells whether alt is pressed.
-	/// `ctrl` tells whether control is pressed.
-	/// `meta` tells whether meta is pressed.
+	/// - `alt` tells whether alt is pressed.
+	/// - `ctrl` tells whether control is pressed.
+	/// - `meta` tells whether meta is pressed.
 	pub fn get_tty_chars(&self, shift: bool, _alt: bool, ctrl: bool, _meta: bool) -> Option<&[u8]> {
 		match self {
 			Self::KeyHome => return Some(b"\x1b[1~"),
@@ -579,8 +581,10 @@ impl KeyboardManager {
 	}
 
 	/// Sets the state of the LED on every keyboards.
-	/// `led` is the keyboard LED.
-	/// `enabled` tells whether the LED is lit.
+	///
+	/// Arguments:
+	/// - `led` is the keyboard LED.
+	/// - `enabled` tells whether the LED is lit.
 	pub fn set_led(&mut self, _led: KeyboardLED, _enabled: bool) {
 		// TODO Iterate on keyboards
 		/*if let Some(ps2) = &mut self.ps2_keyboard {

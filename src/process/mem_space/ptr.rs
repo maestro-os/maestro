@@ -246,6 +246,7 @@ impl SyscallString {
 	}
 
 	/// Returns an immutable reference to the string.
+	///
 	/// If the string is not accessible, the function returns an error.
 	pub fn get<'a, const INT: bool>(
 		&self,
@@ -266,9 +267,11 @@ impl SyscallString {
 	}
 
 	/// Returns a mutable reference to the string.
-	/// If the string is not accessible, the function returns an error.
+	///
 	///	If the string is located on lazily allocated pages, the function
 	/// allocates physical pages in order to allow writing.
+	///
+	/// If the string is not accessible, the function returns an error.
 	pub fn get_mut<'a, const INT: bool>(
 		&self,
 		mem_space: &'a MutexGuard<MemSpace, INT>,
