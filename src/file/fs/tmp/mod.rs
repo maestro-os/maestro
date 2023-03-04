@@ -133,7 +133,7 @@ impl Filesystem for TmpFS {
 		&mut self,
 		io: &mut dyn IO,
 		parent: Option<INode>,
-		name: &String,
+		name: &[u8],
 	) -> Result<INode, Errno> {
 		self.fs.get_inode(io, parent, name)
 	}
@@ -170,7 +170,7 @@ impl Filesystem for TmpFS {
 		&mut self,
 		io: &mut dyn IO,
 		parent_inode: INode,
-		name: &String,
+		name: &[u8],
 		inode: INode,
 	) -> Result<(), Errno> {
 		// TODO Update fs's size
@@ -186,7 +186,7 @@ impl Filesystem for TmpFS {
 		&mut self,
 		io: &mut dyn IO,
 		parent_inode: INode,
-		name: &String,
+		name: &[u8],
 	) -> Result<(), Errno> {
 		// TODO Update fs's size
 		self.fs.remove_file(io, parent_inode, name)

@@ -208,7 +208,7 @@ impl Filesystem for ProcFS {
 		&mut self,
 		io: &mut dyn IO,
 		parent: Option<INode>,
-		name: &String,
+		name: &[u8],
 	) -> Result<INode, Errno> {
 		self.fs.get_inode(io, parent, name)
 	}
@@ -234,7 +234,7 @@ impl Filesystem for ProcFS {
 		&mut self,
 		_io: &mut dyn IO,
 		_parent_inode: INode,
-		_name: &String,
+		_name: &[u8],
 		_inode: INode,
 	) -> Result<(), Errno> {
 		Err(errno!(EACCES))
@@ -248,7 +248,7 @@ impl Filesystem for ProcFS {
 		&mut self,
 		_io: &mut dyn IO,
 		_parent_inode: INode,
-		_name: &String,
+		_name: &[u8],
 	) -> Result<(), Errno> {
 		Err(errno!(EACCES))
 	}

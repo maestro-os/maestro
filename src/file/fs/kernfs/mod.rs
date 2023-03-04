@@ -297,7 +297,7 @@ impl Filesystem for KernFS {
 		&mut self,
 		_io: &mut dyn IO,
 		parent: Option<INode>,
-		name: &String,
+		name: &[u8],
 	) -> Result<INode, Errno> {
 		let parent = parent.unwrap_or(ROOT_INODE);
 
@@ -359,7 +359,7 @@ impl Filesystem for KernFS {
 		&mut self,
 		_: &mut dyn IO,
 		parent_inode: INode,
-		name: &String,
+		name: &[u8],
 		inode: INode,
 	) -> Result<(), Errno> {
 		if self.readonly {
@@ -376,7 +376,7 @@ impl Filesystem for KernFS {
 		match &mut parent_content {
 			FileContent::Directory(entries) => {
 				entries.insert(
-					name.failable_clone()?,
+					name.try_into()?,
 					DirEntry {
 						inode,
 						entry_type,
@@ -422,7 +422,7 @@ impl Filesystem for KernFS {
 		&mut self,
 		_: &mut dyn IO,
 		parent_inode: INode,
-		name: &String,
+		name: &[u8],
 	) -> Result<(), Errno> {
 		if self.readonly {
 			return Err(errno!(EROFS));
