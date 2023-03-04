@@ -669,7 +669,7 @@ impl Ext2Fs {
 
 		// Setting the last mount path
 		{
-			let mountpath_str = mountpath.as_string()?;
+			let mountpath_str = crate::format!("{}", mountpath)?;
 			let mountpath_bytes = mountpath_str.as_bytes();
 
 			let mut i = 0;

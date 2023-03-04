@@ -210,9 +210,9 @@ pub fn execve(
 
 			// Adding the script to arguments
 			if argv.is_empty() {
-				argv.push(path.as_string()?)?;
+				argv.push(crate::format!("{}", path)?)?;
 			} else {
-				argv[0] = path.as_string()?;
+				argv[0] = crate::format!("{}", path)?;
 			}
 
 			// Setting interpreter to arguments
