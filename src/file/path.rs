@@ -61,7 +61,7 @@ impl Path {
 		}
 
 		Ok(Self {
-			absolute: path == &[PATH_SEPARATOR as u8],
+			absolute: path.first() == Some(&(PATH_SEPARATOR as u8)),
 			parts,
 		})
 	}
