@@ -388,7 +388,7 @@ impl VFS {
 		&mut self,
 		target: &mut File,
 		parent: &mut File,
-		name: String,
+		name: &[u8],
 		uid: Uid,
 		gid: Gid,
 	) -> Result<(), Errno> {
@@ -431,7 +431,7 @@ impl VFS {
 		fs.add_link(
 			io,
 			parent.get_location().get_inode(),
-			&name,
+			name,
 			target.get_location().get_inode(),
 		)
 		// TODO Update file
