@@ -7,7 +7,6 @@ use crate::process::mem_space::ptr::SyscallSlice;
 use crate::process::Process;
 use macros::syscall;
 
-/// The implementation of the `getcwd` syscall.
 #[syscall]
 pub fn getcwd(buf: SyscallSlice<u8>, size: usize) -> Result<i32, Errno> {
 	if size == 0 {

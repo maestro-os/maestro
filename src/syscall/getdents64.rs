@@ -26,7 +26,6 @@ struct LinuxDirent64 {
 	d_name: [u8; 0],
 }
 
-/// The implementation of the `getdents64` syscall.
 #[syscall]
 pub fn getdents64(fd: c_int, dirp: SyscallSlice<c_void>, count: usize) -> Result<i32, Errno> {
 	if fd < 0 {

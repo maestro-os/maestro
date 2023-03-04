@@ -10,7 +10,6 @@ use macros::syscall;
 
 // TODO Watch for timestamp overflow
 
-/// The implementation of the `time` syscall.
 #[syscall]
 pub fn time(tloc: SyscallPtr<u32>) -> Result<i32, Errno> {
 	let mutex = Process::get_current().unwrap();

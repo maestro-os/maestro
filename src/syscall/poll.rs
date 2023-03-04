@@ -24,7 +24,6 @@ struct PollFD {
 }
 
 // TODO Check second arg type
-/// The implementation of the `poll` syscall.
 #[syscall]
 pub fn poll(fds: SyscallSlice<PollFD>, nfds: usize, timeout: c_int) -> Result<i32, Errno> {
 	// The timeout. None means no timeout

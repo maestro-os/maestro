@@ -51,7 +51,6 @@ pub fn get_entry<'a>(
 	Ok((id, &mut proc.get_tls_entries()[id]))
 }
 
-/// The implementation of the `set_thread_area` syscall.
 #[syscall]
 pub fn set_thread_area(u_info: SyscallPtr<UserDesc>) -> Result<i32, Errno> {
 	let mutex = Process::get_current().unwrap();

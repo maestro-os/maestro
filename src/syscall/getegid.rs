@@ -4,7 +4,6 @@ use crate::errno::Errno;
 use crate::process::regs::Regs;
 use crate::process::Process;
 
-/// The implementation of the `getegid` syscall.
 pub fn getegid(_: &Regs) -> Result<i32, Errno> {
 	let mutex = Process::get_current().unwrap();
 	let guard = mutex.lock();

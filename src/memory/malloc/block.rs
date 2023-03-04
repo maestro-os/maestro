@@ -34,7 +34,7 @@ impl Block {
 	/// **not** inserted into the free list.
 	pub fn new(min_size: usize) -> Result<&'static mut Self, Errno> {
 		let total_min_size = size_of::<Block>() + min_size;
-		let order = buddy::get_order(math::ceil_division(total_min_size, memory::PAGE_SIZE));
+		let order = buddy::get_order(math::ceil_div(total_min_size, memory::PAGE_SIZE));
 		let first_chunk_size = buddy::get_frame_size(order) - size_of::<Block>();
 		debug_assert!(first_chunk_size >= min_size);
 

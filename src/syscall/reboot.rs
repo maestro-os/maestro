@@ -23,7 +23,6 @@ const CMD_HALT: u32 = 2;
 /// Command to suspend the system.
 const CMD_SUSPEND: u32 = 3;
 
-/// The implementation of the `reboot` syscall.
 #[syscall]
 pub fn reboot(magic: c_int, magic2: c_int, cmd: c_int, _arg: *const c_void) -> Result<i32, Errno> {
 	if (magic as u32) != MAGIC || (magic2 as u32) != MAGIC2 {

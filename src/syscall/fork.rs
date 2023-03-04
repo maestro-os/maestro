@@ -7,7 +7,6 @@ use crate::process::ForkOptions;
 use crate::process::Process;
 use macros::syscall;
 
-/// The implementation of the `fork` syscall.
 #[syscall]
 pub fn fork() -> Result<i32, Errno> {
 	// The current process

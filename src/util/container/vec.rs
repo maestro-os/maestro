@@ -5,7 +5,6 @@ use crate::memory::malloc;
 use crate::util::FailableClone;
 use core::cmp::max;
 use core::cmp::min;
-use core::cmp::Ordering;
 use core::fmt;
 use core::hash::Hash;
 use core::hash::Hasher;
@@ -18,8 +17,6 @@ use core::ops::RangeFrom;
 use core::ops::RangeTo;
 use core::ptr;
 use core::ptr::drop_in_place;
-use core::ptr::NonNull;
-use core::slice;
 
 /// Macro allowing to create a vector with the given set of values.
 #[macro_export]
@@ -50,10 +47,12 @@ macro_rules! vec {
 }
 
 /// A vector container is a dynamically-resizable array of elements.
+///
 /// When resizing a vector, the elements can be moved, thus the callee should
 /// not rely on pointers to elements inside a vector.
+///
 /// The implementation of vectors for the kernel cannot follow the
-/// implementation of Rust's standard Vec because it must handle properly when a
+/// implementation of Rust's standard Vec because it must not panic when a
 /// memory allocation fails.
 pub struct Vec<T> {
 	/// The number of elements present in the vector
@@ -72,6 +71,7 @@ impl<T> Vec<T> {
 	}
 
 	/// Reallocates the vector's data with the vector's capacity.
+	///
 	/// `capacity` is the new capacity in number of elements.
 	fn realloc(&mut self, capacity: usize) -> Result<(), Errno> {
 		if capacity == 0 {
@@ -133,24 +133,26 @@ impl<T> Vec<T> {
 	/// without needing to reallocate the memory.
 	#[inline(always)]
 	pub fn capacity(&self) -> usize {
-		self.data.as_ref().map(|d| d.len()).unwrap_or(0)
+		self.data.as_ref()
+			.map(|d| d.len())
+			.unwrap_or(0)
 	}
 
 	/// Returns a slice containing the data.
 	pub fn as_slice(&self) -> &[T] {
 		if let Some(p) = &self.data {
-			unsafe { slice::from_raw_parts(p.as_ptr(), self.len) }
+			&p.as_slice()[..self.len]
 		} else {
-			unsafe { slice::from_raw_parts(NonNull::dangling().as_ptr(), 0) }
+			&[]
 		}
 	}
 
 	/// Returns a mutable slice containing the data.
 	pub fn as_mut_slice(&mut self) -> &mut [T] {
 		if let Some(p) = &mut self.data {
-			unsafe { slice::from_raw_parts_mut(p.as_ptr_mut(), self.len) }
+			&mut p.as_slice_mut()[..self.len]
 		} else {
-			unsafe { slice::from_raw_parts_mut(NonNull::dangling().as_ptr(), 0) }
+			&mut []
 		}
 	}
 
@@ -162,26 +164,12 @@ impl<T> Vec<T> {
 		);
 	}
 
-	/// Returns the first element of the vector.
-	pub fn first(&self) -> T {
-		if self.is_empty() {
-			self.vector_panic(0);
-		}
-
-		unsafe { ptr::read(&self.data.as_ref().unwrap()[0] as _) }
-	}
-
-	/// Returns the first element of the vector.
-	pub fn last(&self) -> T {
-		if self.is_empty() {
-			self.vector_panic(0);
-		}
-
-		unsafe { ptr::read(&self.data.as_ref().unwrap()[self.len - 1] as _) }
-	}
-
 	/// Inserts an element at position index within the vector, shifting all
 	/// elements after it to the right.
+	///
+	/// # Panics
+	///
+	/// Panics if `index > len`.
 	pub fn insert(&mut self, index: usize, element: T) -> Result<(), Errno> {
 		if index > self.len() {
 			self.vector_panic(index);
@@ -190,39 +178,50 @@ impl<T> Vec<T> {
 		self.increase_capacity(1)?;
 		debug_assert!(self.capacity() > self.len);
 
+		let data = self.data.as_mut().unwrap();
 		unsafe {
-			let ptr = self.data.as_mut().unwrap().as_ptr_mut();
+			// Shift
+			let ptr = data.as_ptr_mut();
 			ptr::copy(
 				ptr.offset(index as _),
 				ptr.offset((index + 1) as _),
 				self.len - index,
 			);
-			ptr::write(&mut self.data.as_mut().unwrap()[index] as _, element);
+
+			ptr::write(&mut data[index], element);
 		}
+
 		self.len += 1;
 		Ok(())
 	}
 
 	/// Removes and returns the element at position index within the vector,
 	/// shifting all elements after it to the left.
+	///
+	/// # Panics
+	///
+	/// Panics if `index >= len`.
 	pub fn remove(&mut self, index: usize) -> T {
 		if index >= self.len() {
 			self.vector_panic(index);
 		}
 
 		let data = self.data.as_mut().unwrap();
-		let v = unsafe { ptr::read(&data[index]) };
-		unsafe {
+		let v = unsafe {
+			let v = ptr::read(&data[index]);
+
+			// Shift
 			let ptr = data.as_ptr_mut();
 			ptr::copy(
 				ptr.offset((index + 1) as _),
 				ptr.offset(index as _),
 				self.len - index - 1,
 			);
-		}
+
+			v
+		};
 
 		self.len -= 1;
-
 		v
 	}
 
@@ -236,7 +235,11 @@ impl<T> Vec<T> {
 
 		unsafe {
 			let self_ptr = self.data.as_mut().unwrap().as_ptr_mut();
-			ptr::copy(other.as_ptr(), self_ptr.offset(self.len as _), other.len());
+			ptr::copy(
+				other.as_ptr(),
+				self_ptr.offset(self.len as _),
+				other.len()
+			);
 		}
 
 		self.len += other.len();
@@ -254,18 +257,19 @@ impl<T> Vec<T> {
 		debug_assert!(self.capacity() > self.len);
 
 		unsafe {
-			ptr::write(&mut self.data.as_mut().unwrap()[self.len] as _, value);
+			ptr::write(&mut self.data.as_mut().unwrap()[self.len], value);
 		}
+
 		self.len += 1;
 		Ok(())
 	}
 
-	/// Removes the last element from a vector and returns it, or None if it is
+	/// Removes the last element from a vector and returns it, or `None` if it is
 	/// empty.
 	pub fn pop(&mut self) -> Option<T> {
 		if !self.is_empty() {
 			self.len -= 1;
-			unsafe { Some(ptr::read(&self.data.as_ref().unwrap()[self.len] as _)) }
+			unsafe { Some(ptr::read(&self.data.as_ref().unwrap()[self.len])) }
 		} else {
 			None
 		}
@@ -276,8 +280,9 @@ impl<T> Vec<T> {
 		VecIterator::new(self)
 	}
 
-	/// Truncates the vector to the given new len `len`. If `len` is greater
-	/// than the current length, the function has no effect.
+	/// Truncates the vector to the given new len `len`.
+	///
+	/// If `len` is greater than the current length, the function has no effect.
 	pub fn truncate(&mut self, len: usize) {
 		if len < self.len() {
 			for e in &mut self.as_mut_slice()[len..] {
@@ -304,8 +309,9 @@ impl<T> Vec<T> {
 }
 
 impl<T: Default> Vec<T> {
-	/// Resizes the vector to the given length `new_len`. If new elements have
-	/// to be created, the default value is used.
+	/// Resizes the vector to the given length `new_len`.
+	///
+	/// If new elements have to be created, the default value is used.
 	pub fn resize(&mut self, new_len: usize) -> Result<(), Errno> {
 		if new_len < self.len() {
 			self.truncate(new_len);
@@ -350,8 +356,8 @@ impl<T: PartialEq> PartialEq for Vec<T> {
 			return false;
 		}
 
-		for i in 0..self.len() {
-			if self[i] != other[i] {
+		for (e0, e1) in self.iter().zip(other.iter()) {
+			if e0 != e1 {
 				return false;
 			}
 		}
@@ -531,49 +537,6 @@ impl<T> IndexMut<RangeTo<usize>> for Vec<T> {
 	#[inline]
 	fn index_mut(&mut self, range: RangeTo<usize>) -> &mut Self::Output {
 		&mut self.as_mut_slice()[range]
-	}
-}
-
-impl<T: Ord> Vec<T> {
-	pub fn binary_search(&self, x: &T) -> Result<usize, usize> {
-		self.binary_search_by(move |y| y.cmp(x))
-	}
-}
-
-impl<T> Vec<T> {
-	pub fn binary_search_by<'a, F>(&'a self, mut f: F) -> Result<usize, usize>
-	where
-		F: FnMut(&'a T) -> Ordering,
-	{
-		let mut l = 0;
-		let mut r = self.len();
-
-		while l < r {
-			let i = (l + r) / 2;
-			if i >= self.len() {
-				return Err(i);
-			}
-
-			let ord = f(&self[i]);
-			match ord {
-				Ordering::Less => {
-					l = i + 1;
-				}
-				Ordering::Greater => {
-					r = i;
-				}
-				_ => {
-					break;
-				}
-			}
-		}
-
-		let i = (l + r) / 2;
-		if i < self.len() && f(&self[i]) == Ordering::Equal {
-			Ok(i)
-		} else {
-			Err(i)
-		}
 	}
 }
 
@@ -775,74 +738,9 @@ mod test {
 		for i in 0..100 {
 			v.push(i).unwrap();
 			debug_assert_eq!(v.len(), 1);
-			debug_assert_eq!(v.first(), i);
+			debug_assert_eq!(v[0], i);
 			v.pop();
 			debug_assert_eq!(v.len(), 0);
-		}
-	}
-
-	#[test_case]
-	fn vec_binary_search0() {
-		let v = Vec::<usize>::new();
-
-		if let Err(v) = v.binary_search(&0) {
-			assert_eq!(v, 0);
-		} else {
-			assert!(false);
-		}
-	}
-
-	#[test_case]
-	fn vec_binary_search1() {
-		let mut v = Vec::<usize>::new();
-		v.push(0).unwrap();
-
-		if let Ok(v) = v.binary_search(&0) {
-			assert_eq!(v, 0);
-		} else {
-			assert!(false);
-		}
-	}
-
-	#[test_case]
-	fn vec_binary_search2() {
-		let mut v = Vec::<usize>::new();
-		v.push(1).unwrap();
-
-		if let Err(v) = v.binary_search(&0) {
-			assert_eq!(v, 0);
-		} else {
-			assert!(false);
-		}
-	}
-
-	#[test_case]
-	fn vec_binary_search3() {
-		let mut v = Vec::<usize>::new();
-		v.push(1).unwrap();
-		v.push(2).unwrap();
-		v.push(3).unwrap();
-
-		if let Ok(v) = v.binary_search(&2) {
-			assert_eq!(v, 1);
-		} else {
-			assert!(false);
-		}
-	}
-
-	#[test_case]
-	fn vec_binary_search4() {
-		let mut v = Vec::<usize>::new();
-		v.push(0).unwrap();
-		v.push(2).unwrap();
-		v.push(4).unwrap();
-		v.push(6).unwrap();
-		v.push(8).unwrap();
-
-		if let Ok(v) = v.binary_search(&6) {
-			assert_eq!(v, 3);
-		} else {
-			assert!(false);
 		}
 	}
 

@@ -16,7 +16,6 @@ const SIG_UNBLOCK: i32 = 1;
 const SIG_SETMASK: i32 = 2;
 
 // TODO Use SigSet in crate::process::signal
-/// The implementation of the `rt_sigprocmask` syscall.
 #[syscall]
 pub fn rt_sigprocmask(
 	how: c_int,

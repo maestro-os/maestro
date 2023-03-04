@@ -7,7 +7,6 @@ use crate::process::mem_space::ptr::SyscallString;
 use crate::process::Process;
 use macros::syscall;
 
-/// The implementation of the `truncate` syscall.
 #[syscall]
 pub fn truncate(path: SyscallString, length: usize) -> Result<i32, Errno> {
 	let mutex = Process::get_current().unwrap();

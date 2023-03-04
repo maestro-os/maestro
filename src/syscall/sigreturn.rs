@@ -6,7 +6,6 @@ use crate::errno::Errno;
 use crate::process::Process;
 use macros::syscall;
 
-/// The implementation of the `sigreturn` syscall.
 #[syscall]
 pub fn sigreturn() -> Result<i32, Errno> {
 	cli!();

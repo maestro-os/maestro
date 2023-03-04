@@ -6,21 +6,22 @@
 //! The structure implemented in this module uses a temporary virtual memory
 //! context to get a copy of the data.
 
-use crate::acpi::rsdt::Rsdt;
-use crate::acpi::ACPITable;
-use crate::acpi::ACPITableHeader;
-use crate::errno::Errno;
-use crate::memory;
-use crate::memory::malloc;
-use crate::memory::vmem;
-use crate::util;
-use crate::util::boxed::Box;
-use crate::util::container::hashmap::HashMap;
 use core::ffi::c_void;
 use core::mem::size_of;
-use core::ptr;
-use core::ptr::copy_nonoverlapping;
 use core::ptr::Pointee;
+use core::ptr::copy_nonoverlapping;
+use core::ptr;
+use core::slice;
+use crate::acpi::ACPITable;
+use crate::acpi::ACPITableHeader;
+use crate::acpi::rsdt::Rsdt;
+use crate::errno::Errno;
+use crate::memory::malloc;
+use crate::memory::vmem;
+use crate::memory;
+use crate::util::boxed::Box;
+use crate::util::container::hashmap::HashMap;
+use crate::util;
 
 /// The signature of the RSDP structure.
 const RSDP_SIGNATURE: &[u8] = b"RSD PTR ";
@@ -96,7 +97,9 @@ unsafe fn find_rsdp() -> Option<&'static mut Rsdp> {
 	let mut ptr = begin;
 
 	while ptr < end {
-		if util::memcmp(ptr, RSDP_SIGNATURE.as_ptr() as _, RSDP_SIGNATURE.len()) == 0 {
+		let signature_slice = slice::from_raw_parts(ptr as *const u8, RSDP_SIGNATURE.len());
+
+		if signature_slice == RSDP_SIGNATURE {
 			return Some(&mut *(ptr as *mut Rsdp));
 		}
 

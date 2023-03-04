@@ -12,13 +12,23 @@ pub mod lock;
 pub mod math;
 pub mod ptr;
 
-use crate::errno::Errno;
 use core::cmp::min;
+use core::ffi::c_int;
 use core::ffi::c_void;
-use core::fmt;
 use core::fmt::Write;
+use core::fmt;
 use core::mem::size_of;
 use core::slice;
+use crate::errno::Errno;
+
+// C functions required by LLVM
+extern "C" {
+	fn memcpy(dest: *mut c_void, src: *const c_void, n: usize) -> *const c_void;
+	fn memmove(dest: *mut c_void, src: *const c_void, n: usize) -> *const c_void;
+	fn memcmp(dest: *const c_void, src: *const c_void, n: usize) -> c_int;
+	fn memset(s: *mut c_void, c: c_int, n: usize) -> *mut c_void;
+	fn strlen(s: *const c_void) -> usize;
+}
 
 /// Tells if pointer `ptr` is aligned on boundary `n`.
 #[inline(always)]
@@ -52,7 +62,7 @@ pub fn align<T>(ptr: *const T, n: usize) -> *const T {
 
 /// Returns the of a type in bits.
 #[inline(always)]
-pub fn bit_size_of<T>() -> usize {
+pub const fn bit_size_of<T>() -> usize {
 	size_of::<T>() * 8
 }
 
@@ -63,7 +73,7 @@ macro_rules! offset_of {
 		#[allow(unused_unsafe)]
 		unsafe {
 			let ptr = core::ptr::NonNull::<core::ffi::c_void>::dangling().as_ptr();
-			(&(*(ptr as *const $type)).$field) as *const _ as usize - ptr as usize
+			(&(*(ptr as *const $type)).$field) as *const _ as usize - (ptr as usize)
 		}
 	};
 }
@@ -88,48 +98,26 @@ macro_rules! register_get {
 	}};
 }
 
-extern "C" {
-	/// Copies the given memory area `src` to `dest` with size `n`.
-	/// If the given memory areas are overlapping, the behaviour is undefined.
-	pub fn memcpy(dest: *mut c_void, src: *const c_void, n: usize) -> *mut c_void;
-	/// Same as memcpy, except the function can handle overlapping memory areas.
-	pub fn memmove(dest: *mut c_void, src: *const c_void, n: usize) -> *mut c_void;
-	/// Compares strings of byte `s1` and `s2` with length `n` and returns the
-	/// diffence between the first bytes that differ.
-	pub fn memcmp(s1: *const c_void, s2: *const c_void, n: usize) -> i32;
-	/// Fills the `n` first bytes of the memory area pointed to by `s`, with the
-	/// value `c`.
-	pub fn memset(s: *mut c_void, c: i32, n: usize) -> *mut c_void;
-
-	/// Zeros the given chunk of memory `s` with the given size `n`.
-	pub fn bzero(s: *mut c_void, n: usize);
-}
-
 /// Zeroes the given object.
-/// The function is marked unsafe since there exist some objects for which a
-/// representation full of zeros is invalid.
+///
+/// # Safety
+///
+/// The caller must ensure an object with type `T` represented with only zeros is valid.
+/// If not, the behaviour is undefined.
 pub unsafe fn zero_object<T>(obj: &mut T) {
-	let ptr = obj as *mut T as *mut c_void;
+	let ptr = obj as *mut T as *mut u8;
 	let size = size_of::<T>();
 
-	bzero(ptr, size);
+	let slice = slice::from_raw_parts_mut(ptr, size);
+	slice.fill(0);
 }
 
-/// Returns the length of the string `s`.
-/// If the pointer or the string is invalid, the behaviour is undefined.
-#[no_mangle]
-pub unsafe extern "C" fn strlen(s: *const u8) -> usize {
-	let mut i = 0;
-
-	while *s.add(i) != b'\0' {
-		i += 1;
-	}
-
-	i
-}
-
-/// Like `strlen`, but limited to the first `n` bytes.
-/// If the pointer or the string is invalid, the behaviour is undefined.
+/// Returns the length of the C-style string pointed to by `s`, but limited to the first `n` bytes.
+///
+/// # Safety
+///
+/// The caller must ensure the pointer points to a valid chunk of memory, ending with at least one
+/// 0 byte.
 pub unsafe fn strnlen(s: *const u8, n: usize) -> usize {
 	let mut i = 0;
 
@@ -142,7 +130,7 @@ pub unsafe fn strnlen(s: *const u8, n: usize) -> usize {
 
 /// Returns a slice representing a C string beginning at the given pointer.
 pub unsafe fn str_from_ptr(ptr: *const u8) -> &'static [u8] {
-	slice::from_raw_parts(ptr, strlen(ptr))
+	slice::from_raw_parts(ptr, strlen(ptr as *const _))
 }
 
 /// Returns an immutable slice to the given value.
@@ -166,8 +154,9 @@ pub fn nbr_len(s: &[u8]) -> usize {
 	i
 }
 
-/// Copies from slice `src` to `dst`. If one slice is smaller than the other,
-/// the function stops when the end of the smallest is reached.
+/// Copies from slice `src` to `dst`.
+///
+/// If slice are not of the same length, the function copies only up to the length of the smallest.
 pub fn slice_copy(src: &[u8], dst: &mut [u8]) {
 	let len = min(src.len(), dst.len());
 	dst[..len].copy_from_slice(&src[..len]);
@@ -301,47 +290,6 @@ mod test {
 	}
 
 	#[test_case]
-	fn memmove0() {
-		let mut dest: [usize; 100] = [0; 100];
-		let mut src: [usize; 100] = [0; 100];
-
-		for i in 0..100 {
-			src[i] = i;
-		}
-		unsafe {
-			memmove(
-				dest.as_mut_ptr() as _,
-				src.as_ptr() as _,
-				100 * size_of::<usize>(),
-			);
-		}
-		for i in 0..100 {
-			debug_assert_eq!(dest[i], i);
-		}
-	}
-
-	#[test_case]
-	fn memmove1() {
-		let mut buff: [usize; 100] = [0; 100];
-
-		for i in 0..100 {
-			buff[i] = i;
-		}
-		unsafe {
-			memmove(
-				buff.as_mut_ptr() as _,
-				buff.as_ptr() as _,
-				100 * size_of::<usize>(),
-			);
-		}
-		for i in 0..100 {
-			debug_assert_eq!(buff[i], i);
-		}
-	}
-
-	// TODO More tests on memmove
-
-	#[test_case]
 	fn memcmp0() {
 		let mut b0: [u8; 100] = [0; 100];
 		let mut b1: [u8; 100] = [0; 100];
@@ -370,21 +318,4 @@ mod test {
 	// TODO More tests on memcmp
 
 	// TODO Test `memset`
-
-	#[test_case]
-	fn memmove0() {
-		let mut buff: [u8; 100] = [0; 100];
-
-		for i in 0..100 {
-			buff[i] = i as _;
-		}
-		unsafe {
-			bzero(buff.as_mut_ptr() as _, 100);
-		}
-		for i in 0..100 {
-			debug_assert_eq!(buff[i], 0);
-		}
-	}
-
-	// TODO More tests on memmove
 }

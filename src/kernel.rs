@@ -50,7 +50,6 @@ pub mod selftest;
 pub mod syscall;
 pub mod time;
 pub mod tty;
-pub mod types;
 #[macro_use]
 pub mod util;
 #[macro_use]

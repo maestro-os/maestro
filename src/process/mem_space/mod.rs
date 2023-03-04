@@ -870,7 +870,7 @@ impl MemSpace {
 			}
 
 			let begin = util::align(self.brk_ptr, memory::PAGE_SIZE);
-			let pages = math::ceil_division(ptr as usize - begin as usize, memory::PAGE_SIZE);
+			let pages = math::ceil_div(ptr as usize - begin as usize, memory::PAGE_SIZE);
 			let flags = MAPPING_FLAG_WRITE | MAPPING_FLAG_USER;
 
 			self.map(MapConstraint::Fixed(begin), pages, flags, MapResidence::Normal)?;
@@ -883,7 +883,7 @@ impl MemSpace {
 			}
 
 			let begin = util::align(ptr, memory::PAGE_SIZE);
-			let pages = math::ceil_division(begin as usize - ptr as usize, memory::PAGE_SIZE);
+			let pages = math::ceil_div(begin as usize - ptr as usize, memory::PAGE_SIZE);
 
 			self.unmap(begin, pages, true)?;
 		}

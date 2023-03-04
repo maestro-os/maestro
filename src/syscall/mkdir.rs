@@ -11,7 +11,6 @@ use crate::util::container::hashmap::HashMap;
 use crate::util::FailableClone;
 use macros::syscall;
 
-/// The implementation of the `mkdir` syscall.
 #[syscall]
 pub fn mkdir(pathname: SyscallString, mode: file::Mode) -> Result<i32, Errno> {
 	let (path, mode, uid, gid) = {

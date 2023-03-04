@@ -13,7 +13,6 @@ const GRND_RANDOM: u32 = 2;
 /// returns EAGAIN.
 const GRND_NONBLOCK: u32 = 1;
 
-/// Implementation of the `getrandom` syscall.
 #[syscall]
 pub fn getrandom(buf: SyscallSlice<u8>, buflen: usize, flags: c_uint) -> Result<i32, Errno> {
 	let bypass_threshold = flags & GRND_RANDOM == 0;

@@ -8,7 +8,6 @@ use crate::process::Process;
 use core::ffi::c_int;
 use macros::syscall;
 
-/// The implementation of the `tkill` syscall.
 #[syscall]
 pub fn tkill(tid: Pid, sig: c_int) -> Result<i32, Errno> {
 	if sig < 0 {

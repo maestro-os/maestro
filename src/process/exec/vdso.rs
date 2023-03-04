@@ -49,7 +49,7 @@ fn load_image() -> Result<VDSO, Errno> {
 
 	// Load image into pages
 	let mut pages = Vec::new();
-	for i in 0..math::ceil_division(const_img.len(), memory::PAGE_SIZE) {
+	for i in 0..math::ceil_div(const_img.len(), memory::PAGE_SIZE) {
 		// Alloc page
 		let ptr = buddy::alloc(0, buddy::FLAG_ZONE_TYPE_KERNEL)?;
 		let virt_ptr = memory::kern_to_virt(ptr) as _;
@@ -88,7 +88,7 @@ pub fn map(mem_space: &mut MemSpace) -> Result<MappedVDSO, Errno> {
 	// TODO ASLR
 	let ptr = mem_space.map(
 		MapConstraint::None,
-		math::ceil_division(img.len, memory::PAGE_SIZE),
+		math::ceil_div(img.len, memory::PAGE_SIZE),
 		mem_space::MAPPING_FLAG_USER,
 		MapResidence::Static {
 			pages: img.pages.clone(),

@@ -194,7 +194,6 @@ pub fn open_(pathname: SyscallString, flags: i32, mode: file::Mode) -> Result<i3
 	Ok(fd.get_id() as _)
 }
 
-/// The implementation of the `open` syscall.
 #[syscall]
 pub fn open(pathname: SyscallString, flags: c_int, mode: file::Mode) -> Result<i32, Errno> {
 	open_(pathname, flags, mode)

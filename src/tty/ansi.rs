@@ -2,7 +2,6 @@
 
 use super::TTY;
 use crate::util;
-use crate::util::math;
 use crate::vga;
 use core::cmp::min;
 use core::str;
@@ -261,7 +260,7 @@ fn parse_csi(tty: &mut TTY) -> (ANSIState, usize) {
 		}
 
 		'G' => {
-			tty.cursor_y = math::clamp(nbr.unwrap_or(1), 0, vga::WIDTH);
+			tty.cursor_y = nbr.unwrap_or(1).clamp(0, vga::WIDTH);
 			ANSIState::Valid
 		}
 

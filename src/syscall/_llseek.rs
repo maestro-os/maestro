@@ -15,7 +15,6 @@ const SEEK_CUR: u32 = 1;
 /// Sets the offset relative to the end of the file.
 const SEEK_END: u32 = 2;
 
-/// The implementation of the `_llseek` syscall.
 #[syscall]
 pub fn _llseek(
 	fd: c_uint,

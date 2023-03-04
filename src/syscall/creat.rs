@@ -8,7 +8,6 @@ use core::ffi::c_int;
 use macros::syscall;
 
 // TODO Check args type
-/// The implementation of the `creat` syscall.
 #[syscall]
 pub fn creat(pathname: SyscallString, mode: c_int) -> Result<i32, Errno> {
 	let flags = open_file::O_CREAT | open_file::O_WRONLY | open_file::O_TRUNC;

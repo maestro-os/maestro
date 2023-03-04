@@ -61,7 +61,7 @@ pub fn do_mmap(
 	}
 
 	// The length in number of pages
-	let pages = math::ceil_division(length, memory::PAGE_SIZE);
+	let pages = math::ceil_div(length, memory::PAGE_SIZE);
 
 	// Checking for overflow
 	let end = (addr as usize).wrapping_add(pages * memory::PAGE_SIZE);
@@ -176,7 +176,6 @@ pub fn do_mmap(
 }
 
 // TODO Check last arg type
-/// The implementation of the `mmap` syscall.
 #[syscall]
 pub fn mmap(
 	addr: *mut c_void,

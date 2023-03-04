@@ -8,7 +8,6 @@ use crate::process::Process;
 use core::ffi::c_int;
 use macros::syscall;
 
-/// The implementation of the `unlinkat` syscall.
 #[syscall]
 pub fn unlinkat(dirfd: c_int, pathname: SyscallString, flags: c_int) -> Result<i32, Errno> {
 	let (file_mutex, uid, gid) = {

@@ -9,7 +9,6 @@ use crate::process::Process;
 use crate::vfs;
 use macros::syscall;
 
-/// The implementation of the `chroot` syscall.
 #[syscall]
 pub fn chroot(path: SyscallString) -> Result<i32, Errno> {
 	let proc_mutex = Process::get_current().unwrap();

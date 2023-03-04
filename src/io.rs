@@ -8,6 +8,7 @@ use core::arch::asm;
 /// # Safety
 ///
 /// Reading from an invalid port has an undefined behaviour.
+///
 /// This function is not thread safe.
 #[inline(always)]
 pub unsafe fn inb(port: u16) -> u8 {
@@ -22,6 +23,7 @@ pub unsafe fn inb(port: u16) -> u8 {
 /// # Safety
 ///
 /// Reading from an invalid port has an undefined behaviour.
+///
 /// This function is not thread safe.
 #[inline(always)]
 pub unsafe fn inw(port: u16) -> u16 {
@@ -36,6 +38,7 @@ pub unsafe fn inw(port: u16) -> u16 {
 /// # Safety
 ///
 /// Reading from an invalid port has an undefined behaviour.
+///
 /// This function is not thread safe.
 #[inline(always)]
 pub unsafe fn inl(port: u16) -> u32 {
@@ -50,6 +53,7 @@ pub unsafe fn inl(port: u16) -> u32 {
 /// # Safety
 ///
 /// Writing to an invalid port has an undefined behaviour.
+///
 /// This function is not thread safe.
 #[inline(always)]
 pub unsafe fn outb(port: u16, value: u8) {
@@ -61,6 +65,7 @@ pub unsafe fn outb(port: u16, value: u8) {
 /// # Safety
 ///
 /// Writing to an invalid port has an undefined behaviour.
+///
 /// This function is not thread safe.
 #[inline(always)]
 pub unsafe fn outw(port: u16, value: u16) {
@@ -72,6 +77,7 @@ pub unsafe fn outw(port: u16, value: u16) {
 /// # Safety
 ///
 /// Writing to an invalid port has an undefined behaviour.
+///
 /// This function is not thread safe.
 #[inline(always)]
 pub unsafe fn outl(port: u16, value: u32) {

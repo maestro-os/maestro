@@ -8,7 +8,6 @@ use crate::process::mem_space::ptr::SyscallString;
 use crate::process::Process;
 use macros::syscall;
 
-/// The implementation of the `unlink` syscall.
 #[syscall]
 pub fn unlink(pathname: SyscallString) -> Result<i32, Errno> {
 	let (path, uid, gid) = {

@@ -85,7 +85,7 @@ pub trait VMem: FailableClone {
 
 			let phys_addr = memory::kern_to_phys(section.sh_addr as _);
 			let virt_addr = memory::kern_to_virt(section.sh_addr as _);
-			let pages = math::ceil_division(section.sh_size, memory::PAGE_SIZE as _) as usize;
+			let pages = math::ceil_div(section.sh_size, memory::PAGE_SIZE as _) as usize;
 			if let Err(e) = self.map_range(phys_addr, virt_addr, pages as usize, x86::FLAG_USER) {
 				res = Err(e);
 				return false;
@@ -170,10 +170,8 @@ pub unsafe fn write_lock_wrap<F: FnOnce() -> T, T>(f: F) -> T {
 /// Special consideration should be taken when using this function since Rust is
 /// unable to ensure its safety.
 ///
-/// For example, the caller must ensure the stack is accessible in both the
-/// current and given virtual memory contexts.
-///
-/// TODO
+/// The caller must ensure that the stack is accessible in both the current and given virtual
+/// memory contexts.
 pub unsafe fn switch<F: FnOnce() -> T, T>(vmem: &dyn VMem, f: F) -> T {
 	idt::wrap_disable_interrupts(|| {
 		if vmem.is_bound() {

@@ -94,7 +94,7 @@ pub trait StorageInterface {
 		let blocks_count = self.get_blocks_count();
 
 		let blk_begin = offset / block_size;
-		let blk_end = math::ceil_division(offset + buf.len() as u64, block_size);
+		let blk_end = math::ceil_div(offset + buf.len() as u64, block_size);
 		if blk_begin > blocks_count || blk_end > blocks_count {
 			return Err(errno!(EINVAL));
 		}
@@ -153,7 +153,7 @@ pub trait StorageInterface {
 		let blocks_count = self.get_blocks_count();
 
 		let blk_begin = offset / block_size;
-		let blk_end = math::ceil_division(offset + buf.len() as u64, block_size);
+		let blk_end = math::ceil_div(offset + buf.len() as u64, block_size);
 		if blk_begin > blocks_count || blk_end > blocks_count {
 			return Err(errno!(EINVAL));
 		}

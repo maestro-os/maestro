@@ -146,7 +146,6 @@ fn build_image(
 	exec::build_image(file, exec_info)
 }
 
-/// The implementation of the `execve` syscall.
 #[syscall]
 pub fn execve(
 	pathname: SyscallString,

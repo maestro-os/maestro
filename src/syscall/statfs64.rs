@@ -13,7 +13,6 @@ use macros::syscall;
 // TODO Streamline with `[f]statfs`
 
 // TODO Check args types
-/// The implementation of the `statfs64` syscall.
 #[syscall]
 pub fn statfs64(path: SyscallString, _sz: usize, buf: SyscallPtr<Statfs>) -> Result<i32, Errno> {
 	// TODO Use `sz`

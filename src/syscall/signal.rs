@@ -14,7 +14,6 @@ use core::ffi::c_void;
 use core::mem::transmute;
 use macros::syscall;
 
-/// The implementation of the `signal` syscall.
 #[syscall]
 pub fn signal(signum: c_int, handler: *const c_void) -> Result<i32, Errno> {
 	if signum < 0 {

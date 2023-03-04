@@ -644,9 +644,11 @@ mod test {
 		let alloc_pages = allocated_pages_count();
 
 		if let Ok(p) = alloc_kernel(0) {
-			unsafe {
-				util::memset(p, -1, get_frame_size(0));
-			}
+			let slice = unsafe {
+				core::slice::from_raw_parts_mut(p as *mut u8, get_frame_size(0))
+			};
+			slice.fill(!0);
+
 			free_kernel(p, 0);
 		} else {
 			assert!(false);
@@ -660,9 +662,11 @@ mod test {
 		let alloc_pages = allocated_pages_count();
 
 		if let Ok(p) = alloc_kernel(1) {
-			unsafe {
-				util::memset(p, -1, get_frame_size(1));
-			}
+			let slice = unsafe {
+				core::slice::from_raw_parts_mut(p as *mut u8, get_frame_size(0))
+			};
+			slice.fill(!0);
+
 			free_kernel(p, 1);
 		} else {
 			assert!(false);
@@ -673,9 +677,11 @@ mod test {
 
 	fn lifo_test(i: usize) {
 		if let Ok(p) = alloc_kernel(0) {
-			unsafe {
-				util::memset(p, -1, get_frame_size(0));
-			}
+			let slice = unsafe {
+				core::slice::from_raw_parts_mut(p as *mut u8, get_frame_size(0))
+			};
+			slice.fill(!0);
+
 			if i > 0 {
 				lifo_test(i - 1);
 			}
@@ -717,9 +723,11 @@ mod test {
 
 	fn get_dangling(order: FrameOrder) -> *mut c_void {
 		if let Ok(p) = alloc_kernel(order) {
-			unsafe {
-				util::memset(p, -1, get_frame_size(order));
-			}
+			let slice = unsafe {
+				core::slice::from_raw_parts_mut(p as *mut u8, get_frame_size(0))
+			};
+			slice.fill(!0);
+
 			free_kernel(p, 0);
 			p
 		} else {
@@ -765,6 +773,7 @@ mod test {
 		tortoise == hoare
 	}
 
+	/// Testing whether the allocator returns pages that are already allocated
 	#[test_case]
 	fn buddy_full_duplicate() {
 		let alloc_pages = allocated_pages_count();

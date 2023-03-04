@@ -102,7 +102,7 @@ const SECTOR_SIZE: u64 = 512;
 /// This function is a dirty hack and the actual delay is approximative but
 /// **should** be sufficient.
 fn delay(n: u32) {
-	let n = math::ceil_division(n, 30) * 1000;
+	let n = math::ceil_div(n, 30) * 1000;
 
 	for _ in 0..n {
 		unsafe {

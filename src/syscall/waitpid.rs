@@ -213,7 +213,6 @@ pub fn do_waitpid(
 	}
 }
 
-/// The implementation of the `waitpid` syscall.
 #[syscall]
 pub fn waitpid(pid: c_int, wstatus: SyscallPtr<c_int>, options: c_int) -> Result<i32, Errno> {
 	do_waitpid(regs, pid, wstatus, options | WEXITED, None)

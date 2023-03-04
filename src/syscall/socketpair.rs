@@ -12,7 +12,6 @@ use crate::process::mem_space::ptr::SyscallPtr;
 use crate::util::ptr::SharedPtr;
 use macros::syscall;
 
-/// The implementation of the `socketpair` syscall.
 #[syscall]
 pub fn socketpair(
 	domain: c_int,

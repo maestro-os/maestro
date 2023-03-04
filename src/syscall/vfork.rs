@@ -8,7 +8,6 @@ use crate::process::ForkOptions;
 use crate::process::Process;
 use macros::syscall;
 
-/// The implementation of the `vfork` syscall.
 #[syscall]
 pub fn vfork() -> Result<i32, Errno> {
 	let new_pid = {

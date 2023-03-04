@@ -10,7 +10,6 @@ use crate::process::mem_space::ptr::SyscallString;
 use crate::process::Process;
 use macros::syscall;
 
-/// The implementation of the `chdir` syscall.
 #[syscall]
 pub fn chdir(path: SyscallString) -> Result<i32, Errno> {
 	let (new_cwd, uid, gid) = {

@@ -7,7 +7,6 @@ use crate::process::rusage::RUsage;
 use core::ffi::c_int;
 use macros::syscall;
 
-/// The implementation of the `wait4` syscall.
 #[syscall]
 pub fn wait4(
 	pid: c_int,

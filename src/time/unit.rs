@@ -3,7 +3,6 @@
 use core::cmp::Ordering;
 use core::ffi::c_long;
 use core::ops::Add;
-use crate::util::math;
 
 /// Type representing a timestamp in seconds. Equivalent to POSIX's `time_t`.
 pub type Timestamp = u64;
@@ -28,24 +27,25 @@ pub enum TimestampScale {
 }
 
 impl TimestampScale {
-	/// Returns the order of the scale as a power of 10.
-	pub fn as_power(&self) -> i64 {
+	/// Returns the order of the scale as a power of `10`.
+	pub fn as_power(&self) -> u32 {
 		match self {
 			Self::Second => 0,
-			Self::Millisecond => -3,
-			Self::Microsecond => -6,
-			Self::Nanosecond => -9,
+			Self::Millisecond => 3,
+			Self::Microsecond => 6,
+			Self::Nanosecond => 9,
 		}
 	}
 
 	/// Converts the given value `val` from scale `from` to scale `to`.
 	pub fn convert(val: Timestamp, from: Self, to: Self) -> Timestamp {
-		let delta = -(to.as_power() - from.as_power());
+		let to_power = to.as_power();
+		let from_power = from.as_power();
 
-		if delta >= 0 {
-			val * math::pow(10, delta as _)
+		if to_power > from_power {
+			val * 10_u64.pow(to_power - from_power)
 		} else {
-			val / math::pow(10, -delta as _)
+			val / 10_u64.pow(from_power - to_power)
 		}
 	}
 }

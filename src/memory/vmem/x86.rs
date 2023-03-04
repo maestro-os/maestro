@@ -20,17 +20,17 @@
 //! The Page Size Extension (PSE) allows to map 4MB large blocks without using a
 //! page table.
 
-use crate::cpu;
-use crate::errno::Errno;
-use crate::memory;
-use crate::memory::buddy;
-use crate::memory::vmem::VMem;
-use crate::util;
-use crate::util::lock::Mutex;
-use crate::util::FailableClone;
 use core::ffi::c_void;
 use core::ptr;
-use core::result::Result;
+use core::slice;
+use crate::cpu;
+use crate::errno::Errno;
+use crate::memory::buddy;
+use crate::memory::vmem::VMem;
+use crate::memory;
+use crate::util::FailableClone;
+use crate::util::lock::Mutex;
+use crate::util;
 
 /// x86 paging flag. If set, prevents the CPU from updating the associated
 /// addresses when the TLB is flushed.
@@ -114,6 +114,9 @@ unsafe fn get_kernel_tables() -> Result<&'static [*mut u32; 256], Errno> {
 }
 
 /// Returns the physical address to the `n`th kernel space paging table.
+///
+/// # Safety
+///
 /// The first time this function is called, it is **not** thread safe.
 unsafe fn get_kernel_table(n: usize) -> Result<*mut u32, Errno> {
 	let tables = get_kernel_tables()?;
@@ -123,12 +126,17 @@ unsafe fn get_kernel_table(n: usize) -> Result<*mut u32, Errno> {
 }
 
 /// Allocates a paging object and returns its virtual address.
-/// Returns Err if the allocation fails.
+///
+/// If the allocation fails, the function returns an error.
 fn alloc_obj() -> Result<*mut u32, Errno> {
-	let ptr = buddy::alloc_kernel(0)? as *mut c_void;
-	unsafe {
-		util::bzero(ptr as _, buddy::get_frame_size(0));
-	}
+	let ptr = buddy::alloc_kernel(0)? as *mut u8;
+
+	// Zero memory
+	let slice = unsafe {
+		slice::from_raw_parts_mut(ptr, buddy::get_frame_size(0))
+	};
+	slice.fill(0);
+
 	Ok(ptr as _)
 }
 
@@ -356,7 +364,7 @@ impl X86VMem {
 			return Some(obj_get_ptr(self.page_dir, dir_entry_index));
 		}
 
-		let table = memory::kern_to_virt((dir_entry_value & ADDR_MASK) as _) as *const u32;
+		let table = memory::kern_to_virt((dir_entry_value & ADDR_MASK) as *const u32);
 		let table_entry_index = Self::get_addr_element_index(ptr, 0);
 		let table_entry_value = obj_get(table, table_entry_index);
 		if table_entry_value & FLAG_PRESENT == 0 {

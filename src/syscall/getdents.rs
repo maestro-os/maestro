@@ -26,7 +26,6 @@ struct LinuxDirent {
 	d_name: [u8; 0],
 }
 
-/// The implementation of the `getdents` syscall.
 #[syscall]
 pub fn getdents(fd: c_uint, dirp: SyscallSlice<c_void>, count: c_uint) -> Result<i32, Errno> {
 	let (mem_space, open_file_mutex) = {

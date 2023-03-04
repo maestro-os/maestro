@@ -58,8 +58,7 @@ impl String {
 	}
 
 	/// Same as `as_str` except the function doesn't check the string is a
-	/// correct UTF-8 sequence. If the string is invalid, the behaviour is
-	/// undefined.
+	/// correct UTF-8 sequence. If invalid, the behaviour is undefined.
 	pub unsafe fn as_str_unchecked(&self) -> &str {
 		str::from_utf8_unchecked(self.as_bytes())
 	}
@@ -70,7 +69,8 @@ impl String {
 	}
 
 	/// Returns the length of the String in characters count.
-	/// If the string isn't a valid UTF-8 string, the function returns None.
+	///
+	/// If the string isn't a valid UTF-8 string, the function returns `None`.
 	pub fn strlen(&self) -> Option<usize> {
 		Some(self.as_str()?.len())
 	}
@@ -111,7 +111,8 @@ impl String {
 	}
 
 	/// Removes the last byte from the string and returns it.
-	/// If the string is empty, the function returns None.
+	///
+	/// If the string is empty, the function returns `None`.
 	pub fn pop(&mut self) -> Option<u8> {
 		self.data.pop()
 	}

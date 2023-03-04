@@ -2,6 +2,7 @@
 //! perform operations on it. It is pointed to by file descriptors.
 
 use core::cmp::min;
+use core::ffi::c_int;
 use core::ffi::c_void;
 use crate::errno::Errno;
 use crate::errno;
@@ -15,7 +16,6 @@ use crate::process::mem_space::ptr::SyscallPtr;
 use crate::syscall::ioctl;
 use crate::time::unit::TimestampScale;
 use crate::time;
-use crate::types::c_int;
 use crate::util::container::hashmap::HashMap;
 use crate::util::io::IO;
 use crate::util::lock::Mutex;

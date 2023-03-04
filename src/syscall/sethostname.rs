@@ -7,7 +7,6 @@ use crate::process::mem_space::ptr::SyscallSlice;
 use crate::process::Process;
 use macros::syscall;
 
-/// The implementation of the `sethostname` syscall.
 #[syscall]
 pub fn sethostname(name: SyscallSlice<u8>, len: usize) -> Result<i32, Errno> {
 	// Check the size of the hostname is in bounds

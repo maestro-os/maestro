@@ -4,8 +4,6 @@
 
 use core::ffi::c_void;
 use core::mem::MaybeUninit;
-use core::mem::size_of;
-use core::slice;
 use crate::crypto::rand::EntropyPool;
 use crate::crypto::rand;
 use crate::errno::Errno;
@@ -17,6 +15,7 @@ use crate::process::tss;
 use crate::util::boxed::Box;
 use crate::util::container::vec::Vec;
 use crate::util::lock::*;
+use crate::util;
 
 /// The list of interrupt error messages ordered by index of the corresponding
 /// interrupt vector.
@@ -238,10 +237,7 @@ pub unsafe extern "C" fn unlock_callbacks(id: usize) {
 
 /// Feeds the entropy pool using the given data.
 fn feed_entropy<T>(pool: &mut EntropyPool, val: &T) {
-	let buff = unsafe {
-		slice::from_raw_parts(val as *const _ as *const u8, size_of::<T>())
-	};
-
+	let buff = util::as_slice(val);
 	pool.write(buff);
 }
 

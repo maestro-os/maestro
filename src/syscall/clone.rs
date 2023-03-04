@@ -60,7 +60,6 @@ const CLONE_NEWPID: i32 = 0x20000000;
 const CLONE_NEWNET: i32 = 0x40000000;
 
 // TODO Check args types
-/// The implementation of the `clone` syscall.
 #[syscall]
 pub fn clone(
 	flags: i32,

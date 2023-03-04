@@ -278,14 +278,14 @@ impl Ext2INode {
 	/// Increments the number of used sectors of one block.
 	/// `blk_size` is the size of a block.
 	fn increment_used_sectors(&mut self, blk_size: u32) {
-		self.used_sectors += math::ceil_division(blk_size, SECTOR_SIZE);
+		self.used_sectors += math::ceil_div(blk_size, SECTOR_SIZE);
 	}
 
 	/// Decrements the number of used sectors of one block.
 	/// `blk_size` is the size of a block.
 	fn decrement_used_sectors(&mut self, blk_size: u32) {
 		if self.used_sectors > 0 {
-			self.used_sectors -= math::ceil_division(blk_size, SECTOR_SIZE);
+			self.used_sectors -= math::ceil_div(blk_size, SECTOR_SIZE);
 		}
 	}
 
@@ -336,7 +336,7 @@ impl Ext2INode {
 		let entries_per_blk = blk_size / size_of::<u32>() as u32;
 
 		if n > 0 {
-			let blk_per_blk = math::pow(entries_per_blk as u32, (n - 1) as _);
+			let blk_per_blk = (entries_per_blk as u32).pow((n - 1) as _);
 			let inner_index = off / blk_per_blk;
 			let inner_off = inner_index as u64 * size_of::<u32>() as u64;
 			debug_assert!(inner_off < blk_size as u64);
@@ -428,7 +428,7 @@ impl Ext2INode {
 		let entries_per_blk = blk_size / size_of::<u32>() as u32;
 
 		if n > 0 {
-			let blk_per_blk = math::pow(entries_per_blk as u32, (n - 1) as _);
+			let blk_per_blk = (entries_per_blk as u32).pow((n - 1) as _);
 			let inner_index = off / blk_per_blk;
 			let inner_off = inner_index as u64 * size_of::<u32>() as u64;
 			debug_assert!(inner_off < blk_size as u64);
@@ -581,7 +581,7 @@ impl Ext2INode {
 		let entries_per_blk = blk_size / size_of::<u32>() as u32;
 
 		if n > 0 {
-			let blk_per_blk = math::pow(entries_per_blk as u32, (n - 1) as _);
+			let blk_per_blk = (entries_per_blk as u32).pow((n - 1) as _);
 			let inner_index = off / blk_per_blk;
 			let inner_off = inner_index as u64 * size_of::<u32>() as u64;
 			debug_assert!(inner_off < blk_size as u64);
@@ -807,9 +807,9 @@ impl Ext2INode {
 		let blk_size = superblock.get_block_size();
 
 		// The index of the beginning block to free
-		let begin = math::ceil_division(size, blk_size as _) as u32;
+		let begin = math::ceil_div(size, blk_size as _) as u32;
 		// The index of the end block to free
-		let end = math::ceil_division(old_size, blk_size as _) as u32;
+		let end = math::ceil_div(old_size, blk_size as _) as u32;
 		for i in begin..end {
 			// TODO Optimize
 			self.free_content_block(i, superblock, io)?;
@@ -1156,9 +1156,9 @@ impl Ext2INode {
 		// If the last content blocks can be freed, free them
 		if let Some((last_free_off, _)) = prev_free {
 			// The first content block that can be freed
-			let first_free_blk = math::ceil_division(last_free_off, blk_size as u64) as u32;
+			let first_free_blk = math::ceil_div(last_free_off, blk_size as u64) as u32;
 			// The number of content blocks in the inode
-			let blk_count = math::ceil_division(self.get_size(superblock), blk_size as u64) as u32;
+			let blk_count = math::ceil_div(self.get_size(superblock), blk_size as u64) as u32;
 
 			for i in first_free_blk..blk_count {
 				self.free_content_block(i, superblock, io)?;

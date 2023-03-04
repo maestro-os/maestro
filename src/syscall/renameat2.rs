@@ -1,12 +1,12 @@
 //! The `renameat2` allows to rename a file.
 
+use core::ffi::c_int;
 use crate::errno::Errno;
-use crate::file;
-use crate::file::vfs;
 use crate::file::FileType;
-use crate::process::mem_space::ptr::SyscallString;
+use crate::file::vfs;
+use crate::file;
 use crate::process::Process;
-use crate::types::c_int;
+use crate::process::mem_space::ptr::SyscallString;
 use macros::syscall;
 
 /// Flag: Don't replace new path if it exists. Return an error instead.
@@ -16,7 +16,6 @@ const RENAME_EXCHANGE: c_int = 2;
 /// TODO doc
 const RENAME_WHITEOUT: c_int = 4;
 
-/// The implementation of the `renameat2` system call.
 #[syscall]
 pub fn renameat2(
 	olddirfd: c_int,

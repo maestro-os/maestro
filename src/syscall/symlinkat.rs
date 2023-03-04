@@ -10,7 +10,6 @@ use crate::util::container::string::String;
 use core::ffi::c_int;
 use macros::syscall;
 
-/// The implementation of the `symlinkat` syscall.
 #[syscall]
 pub fn symlinkat(
 	target: SyscallString,

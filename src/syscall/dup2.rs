@@ -7,7 +7,6 @@ use crate::process::Process;
 use core::ffi::c_int;
 use macros::syscall;
 
-/// The implementation of the `dup2` syscall.
 #[syscall]
 pub fn dup2(oldfd: c_int, newfd: c_int) -> Result<i32, Errno> {
 	if oldfd < 0 || newfd < 0 {

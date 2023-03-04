@@ -57,7 +57,6 @@ struct Stat {
 	st_ctim: Timespec,
 }
 
-/// The implementation of the `fstat64` syscall.
 #[syscall]
 pub fn fstat64(fd: c_int, statbuf: SyscallPtr<Stat>) -> Result<i32, Errno> {
 	if fd < 0 {

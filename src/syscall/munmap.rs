@@ -10,7 +10,6 @@ use crate::util::math;
 use core::ffi::c_void;
 use macros::syscall;
 
-/// The implementation of the `munmap` syscall.
 #[syscall]
 pub fn munmap(addr: *mut c_void, length: usize) -> Result<i32, Errno> {
 	if !util::is_aligned(addr, memory::PAGE_SIZE) || length == 0 {
@@ -21,7 +20,7 @@ pub fn munmap(addr: *mut c_void, length: usize) -> Result<i32, Errno> {
 	let guard = mutex.lock();
 	let proc = guard.get_mut();
 
-	let pages = math::ceil_division(length, memory::PAGE_SIZE);
+	let pages = math::ceil_div(length, memory::PAGE_SIZE);
 	let length = pages * memory::PAGE_SIZE;
 
 	// Checking for overflow

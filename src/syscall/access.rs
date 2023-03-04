@@ -115,7 +115,6 @@ pub fn do_access(
 	return Ok(0);
 }
 
-/// The implementation of the `access` syscall.
 #[syscall]
 pub fn access(pathname: SyscallString, mode: c_int) -> Result<i32, Errno> {
 	do_access(None, pathname, mode, None)

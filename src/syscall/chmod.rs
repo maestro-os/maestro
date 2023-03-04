@@ -9,7 +9,6 @@ use crate::process::Process;
 use core::ffi::c_int;
 use macros::syscall;
 
-/// The implementation of the `chmod` syscall.
 #[syscall]
 pub fn chmod(pathname: SyscallString, mode: c_int) -> Result<i32, Errno> {
 	let (path, uid, gid) = {

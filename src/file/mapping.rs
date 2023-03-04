@@ -32,7 +32,7 @@ impl MappedFile {
 	///
 	/// The function returns the number of read bytes.
 	pub fn read(&mut self, off: usize, buff: &mut [u8]) -> usize {
-		let pages_count = math::ceil_division(buff.len(), memory::PAGE_SIZE);
+		let pages_count = math::ceil_div(buff.len(), memory::PAGE_SIZE);
 		let iter = self.pages.range(off..(off + pages_count));
 
 		buff.fill(0);
@@ -54,7 +54,7 @@ impl MappedFile {
 	/// On success, the function returns the number of written bytes.
 	/// If the chunk of data is out of bounds on loaded mappings, the function returns None.
 	pub fn write(&mut self, off: usize, buff: &[u8]) -> usize {
-		let pages_count = math::ceil_division(buff.len(), memory::PAGE_SIZE);
+		let pages_count = math::ceil_div(buff.len(), memory::PAGE_SIZE);
 		let iter = self.pages.range(off..(off + pages_count));
 
 		let len = 0;

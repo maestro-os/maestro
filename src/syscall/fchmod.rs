@@ -7,7 +7,6 @@ use core::ffi::c_int;
 use macros::syscall;
 
 // TODO Check args type
-/// The implementation of the `fchmod` syscall.
 #[syscall]
 pub fn fchmod(fd: c_int, mode: i32) -> Result<i32, Errno> {
 	if fd < 0 {

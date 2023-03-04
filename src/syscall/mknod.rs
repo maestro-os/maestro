@@ -14,7 +14,6 @@ use crate::util::FailableClone;
 use macros::syscall;
 
 // TODO Check args type
-/// The implementation of the `getuid` syscall.
 #[syscall]
 pub fn mknod(pathname: SyscallString, mode: file::Mode, dev: u64) -> Result<i32, Errno> {
 	let (path, umask, uid, gid) = {

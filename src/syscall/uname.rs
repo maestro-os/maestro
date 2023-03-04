@@ -25,7 +25,6 @@ struct Utsname {
 	machine: [u8; UTSNAME_LENGTH],
 }
 
-/// The implementation of the `uname` syscall.
 #[syscall]
 pub fn uname(buf: SyscallPtr<Utsname>) -> Result<i32, Errno> {
 	let mutex = Process::get_current().unwrap();

@@ -16,7 +16,6 @@ use core::ffi::c_ulong;
 use core::ffi::c_void;
 use macros::syscall;
 
-/// The implementation of the `mount` syscall.
 #[syscall]
 pub fn mount(
 	source: SyscallString,

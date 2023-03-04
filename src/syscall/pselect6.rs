@@ -1,15 +1,14 @@
 //! `pselect6` is similar to `select`.
 
-use super::select::do_select;
-use super::select::FDSet;
+use core::ffi::c_int;
 use crate::errno::Errno;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::mem_space::ptr::SyscallSlice;
 use crate::time::unit::Timespec;
-use crate::types::*;
 use macros::syscall;
+use super::select::FDSet;
+use super::select::do_select;
 
-/// The implementation of the `pselect6` syscall.
 #[syscall]
 pub fn pselect6(
 	nfds: c_int,

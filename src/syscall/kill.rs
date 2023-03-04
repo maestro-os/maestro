@@ -127,7 +127,6 @@ fn send_signal(pid: i32, sig: Option<Signal>) -> Result<(), Errno> {
 	}
 }
 
-/// The implementation of the `kill` syscall.
 #[syscall]
 pub fn kill(pid: c_int, sig: c_int) -> Result<i32, Errno> {
 	if sig < 0 {

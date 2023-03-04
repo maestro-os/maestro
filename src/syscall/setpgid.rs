@@ -7,7 +7,6 @@ use crate::process::pid::Pid;
 use crate::process::Process;
 use macros::syscall;
 
-/// The implementation of the `setpgid` syscall.
 #[syscall]
 pub fn setpgid(pid: Pid, pgid: Pid) -> Result<i32, Errno> {
 	let mut pid = pid;

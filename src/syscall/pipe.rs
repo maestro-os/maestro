@@ -11,7 +11,6 @@ use crate::util::FailableDefault;
 use crate::util::ptr::SharedPtr;
 use macros::syscall;
 
-/// The implementation of the `pipe` syscall.
 #[syscall]
 pub fn pipe(pipefd: SyscallPtr<[c_int; 2]>) -> Result<i32, Errno> {
 	let mutex = Process::get_current().unwrap();
