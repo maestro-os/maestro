@@ -1,6 +1,8 @@
 //! This module handles filesystems. Every filesystems are unified by the
-//! Virtual FileSystem (VFS). The root filesystem is passed to the kernel as an
-//! argument when booting. Other filesystems are mounted into subdirectories.
+//! Virtual FileSystem (VFS).
+//!
+//! The root filesystem is passed to the kernel as an argument when booting.
+//! Other filesystems are mounted into subdirectories.
 
 pub mod buffer;
 pub mod fd;
@@ -197,7 +199,7 @@ pub enum FileLocation {
 }
 
 impl FileLocation {
-	/// Returns the Id of the mountpoint.
+	/// Returns the ID of the mountpoint.
 	pub fn get_mountpoint_id(&self) -> Option<u32> {
 		match self {
 			Self::Filesystem {

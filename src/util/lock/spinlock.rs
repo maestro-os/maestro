@@ -3,14 +3,15 @@
 //! instead.
 
 extern "C" {
-	pub fn spin_lock(lock: *mut i32);
-	pub fn spin_unlock(lock: *mut i32);
+	fn spin_lock(lock: *mut i32);
+	fn spin_unlock(lock: *mut i32);
 }
 
 /// A spinlock is a lock that is used to prevent a specific piece of code from
-/// being accessed by more than one thread at a time. It works by storing a
-/// value telling whether a thread is already in that piece of code. To avoid
-/// race conditions, the implementation uses an atomic exchange instruction to
+/// being accessed by more than one thread at a time.
+///
+/// It works by storing a value telling whether a thread is already in that piece of code.
+/// To avoid race conditions, the implementation uses an atomic exchange instruction to
 /// check/lock the structure. If a threads tries to lock the structure while
 /// already being locked, the thread shall wait in a loop (spin) until the
 /// structure is unlocked.
@@ -31,22 +32,25 @@ impl Spinlock {
 		}
 	}
 
-	/// Tells whether the spinlock is already locked. This function should not
-	/// be called to check if the spinlock is ready to be locked before locking
-	/// it, since it may cause race conditions. In this case, prefer using
-	/// `lock` directly.
+	/// Tells whether the spinlock is already locked.
+	///
+	/// This function should not be called to check if the spinlock is ready to be locked before
+	/// locking it, since it may cause race conditions. In this case, prefer using `lock` directly.
+	#[inline(always)]
 	pub fn is_locked(&self) -> bool {
 		self.locked != 0
 	}
 
-	/// Wrapper for `spin_lock`. Locks the spinlock.
+	/// Locks the spinlock.
+	#[inline(always)]
 	pub fn lock(&mut self) {
 		unsafe {
 			spin_lock(&mut self.locked);
 		}
 	}
 
-	/// Wrapper for `spin_unlock`. Unlocks the spinlock.
+	/// Unlocks the spinlock.
+	#[inline(always)]
 	pub unsafe fn unlock(&mut self) {
 		spin_unlock(&mut self.locked);
 	}
