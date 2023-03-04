@@ -168,16 +168,17 @@ ifeq ($(CONFIG_EXISTS), 0)
 # The rule to compile the kernel image
 $(NAME): $(LIB_NAME) $(RUST_SRC) $(LINKER) $(TOUCH_UPDATE_FILES)
 	$(CONFIG_ENV) RUSTFLAGS='$(RUSTFLAGS)' $(CARGO) build $(CARGOFLAGS)
-ifeq ($(CONFIG_DEBUG_TEST), false)
- ifeq ($(CONFIG_DEBUG), false)
+ ifeq ($(CONFIG_DEBUG_TEST), false)
+  ifeq ($(CONFIG_DEBUG), false)
 	$(CC) $(CFLAGS) -o $(NAME) target/target/release/libkernel.a -T$(LINKER)
- else
+  else
 	$(CC) $(CFLAGS) -o $(NAME) target/target/debug/libkernel.a -T$(LINKER)
- endif
-else
+  endif
+ else
 	cp `find target/target/debug/deps/ -name 'kernel-*' -executable` maestro
-endif
+ endif
 
+ ifeq ($(CONFIG_DEBUG_TEST), false)
 # Builds the documentation
 doc: $(SRC) $(DOC_SRC)
 	$(CONFIG_ENV) RUSTFLAGS='$(RUSTFLAGS)' $(CARGO) doc $(CARGOFLAGS) --document-private-items
@@ -186,6 +187,14 @@ doc: $(SRC) $(DOC_SRC)
 	cp -r target/target/doc/ $(DOC_DIR)/references/
 
 all: iso doc
+ else
+doc:
+	echo "Documentation cannot be built when building unit tests"
+
+.SILENT: doc
+
+all: iso
+ endif
 else
 noconf:
 	echo "File $(CONFIG_FILE) doesn't exist. Create it from file `default.config`"
