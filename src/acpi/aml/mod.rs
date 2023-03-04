@@ -172,7 +172,7 @@ macro_rules! impl_aml_parseable_primitive {
 				let len = core::mem::size_of::<$type>();
 				if b.len() < len {
 					// TODO Error message
-					let err = String::from(b"TODO")
+					let err = String::try_from(b"TODO")
 						.map(|msg| Error {
 							message: ErrorMessage::Allocated(msg),
 							off,

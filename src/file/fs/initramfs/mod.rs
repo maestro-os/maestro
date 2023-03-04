@@ -16,7 +16,6 @@ use crate::file::vfs;
 use crate::file;
 use crate::util::FailableClone;
 use crate::util::container::hashmap::HashMap;
-use crate::util::container::string::String;
 use crate::util::io::IO;
 use crate::util::ptr::SharedPtr;
 
@@ -97,7 +96,7 @@ pub fn load(data: &[u8]) -> Result<(), Errno> {
 		let content = match file_type {
 			FileType::Regular => FileContent::Regular,
 			FileType::Directory => FileContent::Directory(HashMap::new()),
-			FileType::Link => FileContent::Link(String::from(entry.get_content())?),
+			FileType::Link => FileContent::Link(entry.get_content().try_into()?),
 			FileType::Fifo => FileContent::Fifo,
 			FileType::Socket => FileContent::Socket,
 			FileType::BlockDevice => FileContent::BlockDevice {

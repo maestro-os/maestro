@@ -29,7 +29,7 @@ pub fn symlinkat(
 	if target_slice.len() > limits::SYMLINK_MAX {
 		return Err(errno!(ENAMETOOLONG));
 	}
-	let target = String::from(target_slice)?;
+	let target = String::try_from(target_slice)?;
 
 	let linkpath = linkpath
 		.get(&mem_space_guard)?

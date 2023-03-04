@@ -204,12 +204,12 @@ fn init(init_path: String) -> Result<(), Errno> {
 		let path = Path::from_str(INIT_PATH, false)?;
 
 		// The initial environment
-		let mut env = vec![
-			String::from(b"PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin")?,
-			String::from(b"TERM=maestro")?,
+		let mut env: Vec<String> = vec![
+			b"PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin".try_into()?,
+			b"TERM=maestro".try_into()?,
 		]?;
 		if cfg!(config_debug_rust_backtrace) {
-			env.push(String::from(b"RUST_BACKTRACE=full")?)?;
+			env.push(b"RUST_BACKTRACE=full".try_into()?)?;
 		}
 
 		let file = {
@@ -333,7 +333,7 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 		.as_ref()
 		.map(|s| s.as_bytes())
 		.unwrap_or(INIT_PATH);
-	let init_path = String::from(init_path).unwrap();
+	let init_path = String::try_from(init_path).unwrap();
 	init(init_path).unwrap_or_else(|e| kernel_panic!("Cannot execute init process: {}", e));
 
 	drop(args_parser);

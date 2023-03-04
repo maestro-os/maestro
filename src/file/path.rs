@@ -39,8 +39,10 @@ impl Path {
 	}
 
 	/// Creates a new instance from string.
-	/// `path` is the path.
-	/// `user` tells whether the path was supplied by the user (to check the
+	///
+	/// Arguments:
+	/// - `path` is the path.
+	/// - `user` tells whether the path was supplied by the user (to check the
 	/// length and return an error if too long).
 	pub fn from_str(path: &[u8], user: bool) -> Result<Self, Errno> {
 		if user && path.len() + 1 >= limits::PATH_MAX {
@@ -54,12 +56,12 @@ impl Path {
 			}
 
 			if !p.is_empty() {
-				parts.push(String::from(p)?)?;
+				parts.push(p.try_into()?)?;
 			}
 		}
 
 		Ok(Self {
-			absolute: !path.is_empty() && path[0] == PATH_SEPARATOR as u8,
+			absolute: path == &[PATH_SEPARATOR as u8],
 			parts,
 		})
 	}
@@ -178,6 +180,7 @@ impl Path {
 			} else if part == ".." && i > 0 && self.parts[i - 1] != ".." {
 				self.parts.remove(i);
 				self.parts.remove(i - 1);
+
 				i -= 1;
 			} else {
 				i += 1;
@@ -185,7 +188,7 @@ impl Path {
 		}
 
 		if !self.absolute && self.parts.is_empty() {
-			self.parts.push(String::from(b".")?)?;
+			self.parts.push(String::try_from(b".")?)?;
 		}
 
 		Ok(())

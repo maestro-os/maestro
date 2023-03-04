@@ -13,7 +13,6 @@ use crate::file::Mode;
 use crate::file::Uid;
 use crate::util::boxed::Box;
 use crate::util::container::hashmap::HashMap;
-use crate::util::container::string::String;
 use crate::util::io::IO;
 use crate::util::ptr::cow::Cow;
 use osrelease::OsRelease;
@@ -38,7 +37,7 @@ impl KernelDir {
 		let node = OsRelease {};
 		let inode = fs.add_node(Box::new(node)?)?;
 		entries.insert(
-			String::from(b"osrelease")?,
+			b"osrelease".try_into()?,
 			DirEntry {
 				inode,
 				entry_type: FileType::Regular,

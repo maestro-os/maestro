@@ -119,7 +119,7 @@ impl ArgsParser {
 		}
 
 		if j > *i {
-			if let Ok(s) = String::from(&cmdline[*i..j]) {
+			if let Ok(s) = String::try_from(&cmdline[*i..j]) {
 				let tok = Token {
 					s,
 					begin: *i,

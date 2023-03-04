@@ -21,7 +21,6 @@ use crate::process::pid::Pid;
 use crate::process::Process;
 use crate::util::boxed::Box;
 use crate::util::container::hashmap::HashMap;
-use crate::util::container::string::String;
 use crate::util::io::IO;
 use crate::util::ptr::cow::Cow;
 use cmdline::Cmdline;
@@ -55,7 +54,7 @@ impl ProcDir {
 		};
 		let inode = fs.add_node(Box::new(node)?)?;
 		entries.insert(
-			String::from(b"cmdline")?,
+			b"cmdline".try_into()?,
 			DirEntry {
 				inode,
 				entry_type: FileType::Regular,
@@ -68,7 +67,7 @@ impl ProcDir {
 		};
 		let inode = fs.add_node(Box::new(node)?)?;
 		entries.insert(
-			String::from(b"cwd")?,
+			b"cwd".try_into()?,
 			DirEntry {
 				inode,
 				entry_type: FileType::Link,
@@ -81,7 +80,7 @@ impl ProcDir {
 		};
 		let inode = fs.add_node(Box::new(node)?)?;
 		entries.insert(
-			String::from(b"exe")?,
+			b"exe".try_into()?,
 			DirEntry {
 				inode,
 				entry_type: FileType::Link,
@@ -94,7 +93,7 @@ impl ProcDir {
 		};
 		let inode = fs.add_node(Box::new(node)?)?;
 		entries.insert(
-			String::from(b"mounts")?,
+			b"mounts".try_into()?,
 			DirEntry {
 				inode,
 				entry_type: FileType::Regular,
@@ -107,7 +106,7 @@ impl ProcDir {
 		};
 		let inode = fs.add_node(Box::new(node)?)?;
 		entries.insert(
-			String::from(b"stat")?,
+			b"stat".try_into()?,
 			DirEntry {
 				inode,
 				entry_type: FileType::Regular,
@@ -120,7 +119,7 @@ impl ProcDir {
 		};
 		let inode = fs.add_node(Box::new(node)?)?;
 		entries.insert(
-			String::from(b"status")?,
+			b"status".try_into()?,
 			DirEntry {
 				inode,
 				entry_type: FileType::Regular,
@@ -135,8 +134,11 @@ impl ProcDir {
 	}
 
 	/// Removes inner nodes in order to drop the current node.
+	///
 	/// If this function isn't called, the the kernel will be leaking the nodes
-	/// (which is bad). `fs` is the procfs.
+	/// (which is bad).
+	///
+	/// `fs` is the procfs.
 	pub fn drop_inner(&mut self, fs: &mut KernFS) {
 		match &mut self.content {
 			FileContent::Directory(entries) => {

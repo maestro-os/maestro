@@ -27,7 +27,7 @@ pub fn delete_module(name: SyscallString, _flags: c_uint) -> Result<i32, Errno> 
 
 		let name = name.get(&mem_space_guard)?.ok_or_else(|| errno!(EFAULT))?;
 
-		String::from(name)?
+		String::try_from(name)?
 	};
 
 	// TODO handle dependency (don't unload a module that is required by another)

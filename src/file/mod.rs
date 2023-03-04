@@ -885,7 +885,7 @@ pub fn init(root: Option<(u32, u32)>) -> Result<(), Errno> {
 			minor,
 		},
 
-		None => MountSource::NoDev(String::from(b"tmpfs")?),
+		None => MountSource::NoDev(String::try_from(b"tmpfs")?),
 	};
 	mountpoint::create(mount_source, None, 0, Path::root())?;
 

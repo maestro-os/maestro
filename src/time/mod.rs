@@ -41,7 +41,7 @@ pub fn add_clock_source<T: 'static + ClockSource>(source: T) -> Result<(), Errno
 	let guard = CLOCK_SOURCES.lock();
 	let sources = guard.get_mut();
 
-	let name = String::from(source.get_name().as_bytes())?;
+	let name = String::try_from(source.get_name())?;
 	sources.insert(
 		name,
 		ClockSourceWrapper {

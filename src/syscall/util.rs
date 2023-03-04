@@ -76,7 +76,7 @@ pub unsafe fn get_str_array(
 		let elem = *ptr.add(i);
 		let s: SyscallString = (elem as usize).into();
 
-		arr.push(String::from(s.get(&mem_space_guard)?.unwrap())?)?;
+		arr.push(String::try_from(s.get(&mem_space_guard)?.unwrap())?)?;
 	}
 
 	Ok(arr)

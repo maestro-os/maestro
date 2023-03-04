@@ -76,10 +76,9 @@ impl KernFS {
 		let mut content = root.get_content().into_owned()?;
 		match content {
 			FileContent::Directory(ref mut entries) => {
-				let name = String::from(b".")?;
-				if entries.get(&name).is_none() {
+				if entries.get(b".".as_slice()).is_none() {
 					entries.insert(
-						name,
+						b".".as_slice().try_into()?,
 						DirEntry {
 							inode: ROOT_INODE,
 							entry_type: FileType::Directory,
@@ -90,10 +89,9 @@ impl KernFS {
 					root.set_hard_links_count(new_cnt);
 				}
 
-				let name = String::from(b"..")?;
-				if entries.get(&name).is_none() {
+				if entries.get(b"..".as_slice()).is_none() {
 					entries.insert(
-						name,
+						b"..".as_slice().try_into()?,
 						DirEntry {
 							inode: ROOT_INODE,
 							entry_type: FileType::Directory,
@@ -200,10 +198,9 @@ impl KernFS {
 		// Adding `.` and `..` entries if the new file is a directory
 		match file_content {
 			FileContent::Directory(ref mut entries) => {
-				let name = String::from(b".")?;
-				if entries.get(&name).is_none() {
+				if entries.get(b".".as_slice()).is_none() {
 					entries.insert(
-						name,
+						b".".as_slice().try_into()?,
 						DirEntry {
 							inode,
 							entry_type: FileType::Directory,
@@ -215,10 +212,9 @@ impl KernFS {
 					node.set_hard_links_count(new_cnt);
 				}
 
-				let name = String::from(b"..")?;
-				if entries.get(&name).is_none() {
+				if entries.get(b"..".as_slice()).is_none() {
 					entries.insert(
-						name,
+						b"..".as_slice().try_into()?,
 						DirEntry {
 							inode: parent_inode,
 							entry_type: FileType::Directory,

@@ -527,7 +527,7 @@ impl StorageManager {
 		let storage_id = self.interfaces.len() as u32;
 
 		// The prefix is the path of the main device file
-		let mut prefix = String::from(b"/dev/sd")?;
+		let mut prefix = String::try_from(b"/dev/sd")?;
 		// TODO Handle if out of the alphabet
 		prefix.push(b'a' + (storage_id as u8))?;
 		// The path of the main device file

@@ -779,7 +779,7 @@ impl Filesystem for Ext2Fs {
 					entries.push((
 						entry.get_inode(),
 						entry.get_type(&self.superblock),
-						String::from(entry.get_name(&self.superblock))?,
+						String::try_from(entry.get_name(&self.superblock))?,
 					))?;
 				}
 
@@ -922,7 +922,7 @@ impl Filesystem for Ext2Fs {
 					&mut self.superblock,
 					io,
 					inode_index,
-					&String::from(b".")?,
+					b".",
 					FileType::Directory,
 				)?;
 				inode.hard_links_count += 1;
@@ -932,7 +932,7 @@ impl Filesystem for Ext2Fs {
 					&mut self.superblock,
 					io,
 					parent_inode as _,
-					&String::from(b"..")?,
+					b"..",
 					FileType::Directory,
 				)?;
 				parent.hard_links_count += 1;

@@ -110,7 +110,7 @@ impl MountSource {
 				}
 			},
 
-			Err(err) if err == errno!(ENOENT) => Ok(Self::NoDev(String::from(string)?)),
+			Err(err) if err == errno!(ENOENT) => Ok(Self::NoDev(String::try_from(string)?)),
 
 			Err(err) => Err(err),
 		}
@@ -184,12 +184,15 @@ struct LoadedFS {
 static FILESYSTEMS: Mutex<HashMap<MountSource, LoadedFS>> = Mutex::new(HashMap::new());
 
 /// Loads a filesystem.
-/// `source` is the source of the mountpoint.
-/// `fs_type` is the filesystem type. If None, the function tries to detect it
-/// automaticaly. `path` is the path to the directory on which the filesystem is
-/// mounted. `readonly` tells whether the filesystem is mount in readonly.
+///
+/// Arguments:
+/// - `source` is the source of the mountpoint.
+/// - `fs_type` is the filesystem type. If `None`, the function tries to detect it
+/// automaticaly.
+/// - `path` is the path to the directory on which the filesystem is mounted.
+/// - `readonly` tells whether the filesystem is mount in readonly.
+///
 /// On success, the function returns the loaded filesystem.
-/// A newly loaded filesystem is initialized with a single reference.
 fn load_fs(
 	source: MountSource,
 	fs_type: Option<SharedPtr<dyn FilesystemType>>,
@@ -213,7 +216,6 @@ fn load_fs(
 	let fs_type_guard = fs_type_mutex.lock();
 	let fs_type = fs_type_guard.get();
 
-	// Loading filesystem
 	let fs = fs_type.load_filesystem(io, path, readonly)?;
 
 	// Inserting new filesystem into filesystems list
@@ -281,19 +283,22 @@ pub struct MountPoint {
 
 	/// The source of the mountpoint.
 	source: MountSource,
-	/// The filesystem type.
-	fs_type: String,
 	/// The filesystem associated with the mountpoint.
 	fs: SharedPtr<dyn Filesystem>,
+	/// The name of the filesystem's type.
+	fs_type_name: String,
 }
 
 impl MountPoint {
 	/// Creates a new instance.
-	/// `id` is the ID of the mountpoint.
-	/// `source` is the source of the mountpoint.
-	/// `fs_type` is the filesystem type. If None, the function tries to detect
-	/// it automaticaly. `flags` are the mount flags.
-	/// `path` is the path on which the filesystem is to be mounted.
+	///
+	/// Arguments:
+	/// - `id` is the ID of the mountpoint.
+	/// - `source` is the source of the mountpoint.
+	/// - `fs_type` is the filesystem type. If `None`, the function tries to detect it
+	/// automaticaly.
+	/// - `flags` are the mount flags.
+	/// - `path` is the path on which the filesystem is to be mounted.
 	fn new(
 		id: u32,
 		source: MountSource,
@@ -304,9 +309,7 @@ impl MountPoint {
 		// Tells whether the filesystem will be mounted in read-only
 		let readonly = flags & FLAG_RDONLY != 0;
 
-		let fs_type_name = String::from(b"TODO")?; // TODO
-										   // TODO Check if a mountpoint at the same path is already present
-		let fs = match get_fs_(&source, true) {
+		let fs_mutex = match get_fs_(&source, true) {
 			// Filesystem exists, do nothing
 			Some(fs) => fs,
 
@@ -319,7 +322,14 @@ impl MountPoint {
 			)?,
 		};
 
-		// TODO Increment number of references
+		// TODO Increment number of references to the filesystem
+
+		let fs_type_name = {
+			let fs_guard = fs_mutex.lock();
+			let fs = fs_guard.get();
+
+			String::try_from(fs.get_name())?
+		};
 
 		Ok(Self {
 			id,
@@ -328,8 +338,8 @@ impl MountPoint {
 			path,
 
 			source,
-			fs_type: fs_type_name,
-			fs,
+			fs: fs_mutex,
+			fs_type_name,
 		})
 	}
 
@@ -338,14 +348,24 @@ impl MountPoint {
 		self.id
 	}
 
+	/// Returns the mountpoint's flags.
+	pub fn get_flags(&self) -> u32 {
+		self.flags
+	}
+
+	/// Tells whether the mountpoint's is mounted in read-only.
+	pub fn is_readonly(&self) -> bool {
+		self.flags & FLAG_RDONLY != 0
+	}
+
+	/// Returns a reference to the path where the filesystem is mounted.
+	pub fn get_path(&self) -> &Path {
+		&self.path
+	}
+
 	/// Returns the source of the mountpoint.
 	pub fn get_source(&self) -> &MountSource {
 		&self.source
-	}
-
-	/// Returns the type of the filesystem associated with the mountpoint.
-	pub fn get_filesystem_type(&self) -> &String {
-		&self.fs_type
 	}
 
 	/// Returns a mutable reference to the filesystem associated with the
@@ -354,19 +374,9 @@ impl MountPoint {
 		self.fs.clone()
 	}
 
-	/// Returns the mountpoint's flags.
-	pub fn get_flags(&self) -> u32 {
-		self.flags
-	}
-
-	/// Returns a reference to the path where the filesystem is mounted.
-	pub fn get_path(&self) -> &Path {
-		&self.path
-	}
-
-	/// Tells whether the mountpoint's is mounted in read-only.
-	pub fn is_readonly(&self) -> bool {
-		self.flags & FLAG_RDONLY != 0
+	/// Returns the name of the filesystem's type.
+	pub fn get_filesystem_type(&self) -> &String {
+		&self.fs_type_name
 	}
 }
 

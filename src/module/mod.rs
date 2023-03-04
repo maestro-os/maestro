@@ -218,7 +218,7 @@ impl Module {
 				crate::println!("Missing `MOD_NAME` symbol in module image");
 				errno!(EINVAL)
 			})?;
-		let name = String::from(name.as_bytes())?;
+		let name = String::try_from(name)?;
 
 		// Getting the module's version
 		let version = Self::get_module_attibute::<Version>(mem.as_slice(), &parser, "MOD_VERSION")

@@ -60,7 +60,7 @@ pub fn register_manager<M: 'static + DeviceManager>(manager: M) -> Result<(), Er
 	let guard = DEVICE_MANAGERS.lock();
 	let device_managers = guard.get_mut();
 
-	let name = String::from(manager.get_name().as_bytes())?;
+	let name = String::try_from(manager.get_name())?;
 
 	let m = SharedPtr::new(manager)?;
 	device_managers.insert(name, m)?;

@@ -1189,12 +1189,12 @@ impl Ext2INode {
 				slice::from_raw_parts(ptr, len as usize)
 			};
 
-			String::from(buff)
+			String::try_from(buff)
 		} else {
 			let mut buff = malloc::Alloc::<u8>::new_default(limits::SYMLINK_MAX)?;
 			self.read_content(0, buff.as_slice_mut(), superblock, io)?;
 
-			String::from(&buff.as_slice()[..(len as usize)])
+			String::try_from(&buff.as_slice()[..(len as usize)])
 		}
 	}
 
