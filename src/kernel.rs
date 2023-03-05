@@ -8,6 +8,7 @@
 #![feature(custom_test_frameworks)]
 #![feature(dispatch_from_dyn)]
 #![feature(lang_items)]
+#![feature(nonzero_ops)]
 #![feature(panic_info_message)]
 #![feature(ptr_metadata)]
 #![feature(stmt_expr_attributes)]

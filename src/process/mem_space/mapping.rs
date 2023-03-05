@@ -4,6 +4,7 @@
 
 use core::ffi::c_void;
 use core::fmt;
+use core::num::NonZeroUsize;
 use core::ptr::NonNull;
 use core::ptr;
 use core::slice;
@@ -387,13 +388,8 @@ impl MemMapping {
 			}
 		};
 
-		let gap = {
-			if size > 0 {
-				Some(MemGap::new(begin_ptr, size))
-			} else {
-				None
-			}
-		};
+		let gap = NonZeroUsize::new(size)
+			.map(|size| MemGap::new(begin_ptr, size));
 
 		// The mapping located after the gap to be created
 		let next = {

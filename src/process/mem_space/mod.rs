@@ -14,6 +14,7 @@ use core::cmp::min;
 use core::ffi::c_void;
 use core::fmt;
 use core::mem::size_of;
+use core::num::NonZeroUsize;
 use core::ptr::NonNull;
 use core::ptr::null;
 use crate::errno::Errno;
@@ -271,8 +272,10 @@ impl MemSpace {
 	}
 
 	/// Removes the given gap from the memory space's structures.
-	/// The function returns the removed gap. If the gap didn't exist, the
-	/// function returns None.
+	///
+	/// The function returns the removed gap.
+	///
+	/// If the gap didn't exist, the function returns `None`.
 	fn gap_remove(&mut self, gap_begin: *const c_void) -> Option<MemGap> {
 		let g = self.gaps.remove(&gap_begin)?;
 		self.gaps_size.remove(&(g.get_size(), gap_begin));
@@ -281,10 +284,13 @@ impl MemSpace {
 	}
 
 	/// Returns a reference to a gap with at least size `size`.
-	/// `gaps` is the binary tree storing gaps, sorted by pointer to their
-	/// respective beginnings. `gaps_size` is the binary tree storing pointers
-	/// to gaps, sorted by gap sizes. `size` is the minimum size of the gap.
-	/// If no gap large enough is available, the function returns None.
+	///
+	/// Arguments:
+	/// - `gaps` is the binary tree storing gaps, sorted by pointer to their respective beginnings.
+	/// - `gaps_size` is the binary tree storing pointers to gaps, sorted by gap sizes.
+	/// - `size` is the minimum size of the gap.
+	///
+	/// If no gap large enough is available, the function returns `None`.
 	fn gap_get<'a>(
 		gaps: &'a Map<*const c_void, MemGap>,
 		gaps_size: &Map<(usize, *const c_void), ()>,
@@ -298,9 +304,13 @@ impl MemSpace {
 	}
 
 	/// Returns a reference to the gap containing the pointer `ptr`.
-	/// `gaps` is the binary tree storing gaps, sorted by pointer to their
-	/// respective beginnings. `ptr` is the pointer.
-	/// If no gap contain the pointer, the function returns None.
+	///
+	/// Arguments:
+	/// - `gaps` is the binary tree storing gaps, sorted by pointer to their
+	/// respective beginnings.
+	/// - `ptr` is the pointer.
+	///
+	/// If no gap contain the pointer, the function returns `None`.
 	fn gap_by_ptr<'a>(
 		gaps: &'a Map<*const c_void, MemGap>,
 		ptr: *const c_void,
@@ -324,7 +334,8 @@ impl MemSpace {
 	fn create_default_gaps(&mut self) -> Result<(), Errno> {
 		let begin = memory::ALLOC_BEGIN;
 		let size = (memory::PROCESS_END as usize - begin as usize) / memory::PAGE_SIZE;
-		self.gap_insert(MemGap::new(begin, size))
+
+		self.gap_insert(MemGap::new(begin, NonZeroUsize::new(size).unwrap()))
 	}
 
 	/// Clones the `gaps_size` field.
@@ -338,6 +349,7 @@ impl MemSpace {
 	}
 
 	/// Creates a new virtual memory object.
+	///
 	/// `brk_ptr` is the initial pointer for the `brk` syscall.
 	pub fn new() -> Result<Self, Errno> {
 		let mut s = Self {
@@ -501,8 +513,9 @@ impl MemSpace {
 	}
 
 	/// Returns a reference to the memory mapping containing the given virtual
-	/// address `ptr` from mappings container `mappings`. If no mapping contains
-	/// the address, the function returns None.
+	/// address `ptr` from mappings container `mappings`.
+	///
+	/// If no mapping contains the address, the function returns `None`.
 	fn get_mapping_for_(
 		mappings: &Map<*const c_void, MemMapping>,
 		ptr: *const c_void,
@@ -522,8 +535,9 @@ impl MemSpace {
 	}
 
 	/// Returns a mutable reference to the memory mapping containing the given
-	/// virtual address `ptr` from mappings container `mappings`. If no mapping
-	/// contains the address, the function returns None.
+	/// virtual address `ptr` from mappings container `mappings`.
+	///
+	/// If no mapping contains the address, the function returns `None`.
 	fn get_mapping_mut_for_(
 		mappings: &mut Map<*const c_void, MemMapping>,
 		ptr: *const c_void,
@@ -543,19 +557,24 @@ impl MemSpace {
 	}
 
 	/// Returns a mutable reference to the memory mapping containing the given
-	/// virtual address `ptr`. If no mapping contains the address, the function
-	/// returns None.
+	/// virtual address `ptr`.
+	///
+	/// If no mapping contains the address, the function returns `None`.
 	pub fn get_mapping_mut_for(&mut self, ptr: *const c_void) -> Option<&mut MemMapping> {
 		Self::get_mapping_mut_for_(&mut self.mappings, ptr)
 	}
 
 	// TODO Optimize (currently O(n log n))
 	/// Unmaps the given mapping of memory.
-	/// `ptr` represents the aligned address of the beginning of the chunk to
-	/// unmap. `size` represents the size of the mapping in number of memory
-	/// pages. `brk` tells whether the function is called through the `brk`
-	/// syscall. The function frees the physical memory the mapping points to
+	///
+	/// Arguments:
+	/// - `ptr` represents the aligned address of the beginning of the chunk to unmap.
+	/// - `size` represents the size of the mapping in number of memory pages.
+	/// - `brk` tells whether the function is called through the `brk` syscall.
+	///
+	/// The function frees the physical memory the mapping points to
 	/// unless shared by one or several other memory mappings.
+	///
 	/// After this function returns, the access to the mapping of memory shall
 	/// be revoked and further attempts to access it shall result in a page
 	/// fault.
@@ -651,9 +670,11 @@ impl MemSpace {
 
 	// TODO Optimize (use MMU)
 	/// Tells whether the given mapping of memory `ptr` of size `size` in bytes
-	/// can be accessed. `user` tells whether the memory must be accessible from
-	/// userspace or just kernelspace. `write` tells whether to check for write
-	/// permission.
+	/// can be accessed.
+	///
+	/// Arguments:
+	/// - `user` tells whether the memory must be accessible from userspace or just kernelspace.
+	/// - `write` tells whether to check for write permission.
 	pub fn can_access(&self, ptr: *const u8, size: usize, user: bool, write: bool) -> bool {
 		// TODO Allow reading kernelspace data that is available to userspace
 
@@ -683,11 +704,16 @@ impl MemSpace {
 
 	// TODO Optimize (use MMU)
 	/// Tells whether the given zero-terminated string beginning at `ptr` can be
-	/// accessed. `user` tells whether the memory must be accessible from
-	/// userspace or just kernelspace. `write` tells whether to check for write
-	/// permission. If the memory cannot be accessed, the function returns None.
-	/// If it can be accessed, it returns the length of the string located at
+	/// accessed.
+	///
+	/// Arguments:
+	/// - `user` tells whether the memory must be accessible from userspace or just kernelspace.
+	/// - `write` tells whether to check for write permission.
+	///
+	/// If the memory can be accessed, the function returns the length of the string located at
 	/// the pointer `ptr`.
+	///
+	/// If the memory cannot be accessed, the function returns `None`.
 	pub fn can_access_string(&self, ptr: *const u8, user: bool, write: bool) -> Option<usize> {
 		// TODO Allow reading kernelspace data that is available to userspace
 
@@ -848,7 +874,9 @@ impl MemSpace {
 	}
 
 	/// Sets the initial pointer for the `brk` syscall.
-	/// This function MUST be called only once, before the program starts.
+	///
+	/// This function MUST be called *only once*, before the program starts.
+	///
 	/// `ptr` MUST be page-aligned.
 	pub fn set_brk_init(&mut self, ptr: *const c_void) {
 		debug_assert!(util::is_aligned(ptr, memory::PAGE_SIZE));
@@ -857,9 +885,9 @@ impl MemSpace {
 		self.brk_ptr = ptr;
 	}
 
-	/// Sets the pointer for the `brk` syscall. If `alloc` is true, this
-	/// function will allocate or free virtual memory if needed. If the memory
-	/// cannot be allocated, the function returns an error.
+	/// Sets the pointer for the `brk` syscall.
+	///
+	/// If the memory cannot be allocated, the function returns an error.
 	pub fn set_brk_ptr(&mut self, ptr: *const c_void) -> Result<(), Errno> {
 		if ptr >= self.brk_ptr {
 			// Allocate memory
