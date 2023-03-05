@@ -44,10 +44,24 @@ impl<'a, T: 'a> Iterator for ELFIterator<'a, T> {
 			return None;
 		}
 
-		// FIXME: Not safety guarantee here. Ask for an empty unsafe trait on T to signal that the
+		// FIXME: No safety guarantee here. Ask for an empty unsafe trait on T to signal that the
 		// structure has to be valid for every possible memory representations?
 		let entry = unsafe { util::reinterpret::<T>(&self.table[self.curr_off..]) }?;
 		self.curr_off += self.entsize;
 		Some(entry)
+	}
+
+	fn count(self) -> usize {
+		self.table.len() / self.entsize
+	}
+
+	fn size_hint(&self) -> (usize, Option<usize>) {
+		let len = self.table.len() / self.entsize;
+		(len, Some(len))
+	}
+
+	fn nth(&mut self, n: usize) -> Option<Self::Item> {
+		self.curr_off += n * self.entsize;
+		self.next()
 	}
 }
