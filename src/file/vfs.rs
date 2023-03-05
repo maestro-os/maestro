@@ -2,6 +2,7 @@
 //! filesystems into one. To manipulate files, the VFS should be used instead of
 //! calling the filesystems' functions directly.
 
+use core::ptr::NonNull;
 use crate::errno::Errno;
 use crate::errno;
 use crate::file::File;
@@ -498,6 +499,30 @@ impl VFS {
 		}
 
 		Ok(())
+	}
+
+	/// Maps the page at offset `off` in the file at location `loc`.
+	///
+	/// On success, the function returns a reference to the page.
+	///
+	/// If the file doesn't exist, the function returns an error.
+	pub fn map_file(
+		&mut self,
+		loc: FileLocation,
+		off: usize
+	) -> Result<NonNull<u8>, Errno> {
+		// TODO if the page is being init, read from disk
+		self.file_mappings_manager.map(loc, off)?;
+
+		todo!();
+	}
+
+	/// Maps the page at offset `off` in the file at location `loc`.
+	///
+	/// If the page is not mapped, the function does nothing.
+	pub fn unmap_file(&mut self, loc: &FileLocation, off: usize) {
+		// TODO sync to disk if necessary
+		self.file_mappings_manager.unmap(loc, off);
 	}
 }
 

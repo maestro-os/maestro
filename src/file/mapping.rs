@@ -4,13 +4,12 @@
 use core::ptr::NonNull;
 use crate::errno::Errno;
 use crate::file::FileLocation;
+use crate::memory::buddy;
 use crate::memory;
 use crate::util::container::hashmap::HashMap;
-use crate::util::container::map::Map;
-use crate::util::math;
 
 /// Structure representing a mapped page for a file.
-pub struct Page {
+struct Page {
 	/// The pointer to the page.
 	ptr: NonNull<[u8; memory::PAGE_SIZE]>,
 
@@ -20,51 +19,49 @@ pub struct Page {
 
 /// A file mapped partially or totally into memory.
 #[derive(Default)]
-pub struct MappedFile {
+struct MappedFile {
 	/// The list of mappings, ordered by offset in pages.
-	pages: Map<usize, Page>,
+	pages: HashMap<usize, Page>,
 }
 
 impl MappedFile {
-	/// Reads data from the mapped file and writes it into `buff`.
+	/// Acquires the page at the given offset, incrementing the number of referencces to it.
 	///
-	/// `off` is the offset in the mapped file to the beginning of the data to be read.
+	/// If the page is not mapped, the function maps it.
 	///
-	/// The function returns the number of read bytes.
-	pub fn read(&mut self, off: usize, buff: &mut [u8]) -> usize {
-		let pages_count = math::ceil_div(buff.len(), memory::PAGE_SIZE);
-		let iter = self.pages.range(off..(off + pages_count));
+	/// `off` is the offset of the page in pages count.
+	pub fn acquire_page(&mut self, off: usize) -> Result<&mut Page, Errno> {
+		if !self.pages.contains_key(&off) {
+			self.pages.insert(off, Page {
+				ptr: NonNull::new(buddy::alloc_kernel(0)? as *mut _).unwrap(),
 
-		buff.fill(0);
-
-		let len = 0;
-
-		for (_mapping_off, _mapping) in iter {
-			// TODO
-			todo!();
+				ref_count: 1,
+			})?;
 		}
 
-		len
+		let page = self.pages.get_mut(&off).unwrap();
+		page.ref_count += 1;
+
+		Ok(page)
 	}
 
-	/// Reads data from `buff` and writes it into the mapped file.
+	/// Releases the page at the given offset, decrementing the number of references to it.
 	///
-	/// `off` is the offset in the mapped file to the beginning of the data to write.
+	/// If the references count reaches zero, the function synchonizes the page to the disk and
+	/// unmaps it.
 	///
-	/// On success, the function returns the number of written bytes.
-	/// If the chunk of data is out of bounds on loaded mappings, the function returns None.
-	pub fn write(&mut self, off: usize, buff: &[u8]) -> usize {
-		let pages_count = math::ceil_div(buff.len(), memory::PAGE_SIZE);
-		let iter = self.pages.range(off..(off + pages_count));
+	/// `off` is the offset of the page in pages count.
+	///
+	/// If the page is not mapped, the function does nothing.
+	pub fn release_page(&mut self, off: usize) {
+		let Some(page) = self.pages.get_mut(&off) else {
+			return;
+		};
 
-		let len = 0;
-
-		for (_mapping_off, _mapping) in iter {
-			// TODO
-			todo!();
+		page.ref_count -= 1;
+		if page.ref_count == 0 {
+			self.pages.remove(&off);
 		}
-
-		len
 	}
 }
 
@@ -82,21 +79,33 @@ impl FileMappingManager {
 		}
 	}
 
-	/// Returns a mutable reference to a mapped file.
+	/// Returns a reference to a mapped page.
 	///
-	/// If the file is not mapped, the function returns None.
-	pub fn get_mapped_file(&mut self, loc: &FileLocation) -> Option<&mut MappedFile> {
-		self.mapped_files.get_mut(loc)
+	/// Arguments:
+	/// - `loc` is the location to the file.
+	/// - `off` is the offset of the page.
+	///
+	/// If the page is not mapped, the function returns `None`.
+	pub fn get_page(
+		&mut self,
+		loc: &FileLocation,
+		off: usize
+	) -> Option<&mut [u8; memory::PAGE_SIZE]> {
+		let file = self.mapped_files.get_mut(loc)?;
+		let page = file.pages.get_mut(&off)?;
+
+		Some(unsafe {
+			page.ptr.as_mut()
+		})
 	}
 
 	/// Maps the the file at the given location.
 	///
 	/// Arguments:
 	/// - `loc` is the location to the file.
-	/// - `off` is the beginning offset of the chunk to map in pages.
-	/// - `size` is the size of the chunk to map in pages.
-	pub fn map(&mut self, loc: FileLocation, off: usize, len: usize) -> Result<(), Errno> {
-		let mapped_file = match self.mapped_files.get_mut(&loc) {
+	/// - `off` is the offset of the page to map.
+	pub fn map(&mut self, loc: FileLocation, _off: usize) -> Result<(), Errno> {
+		let _mapped_file = match self.mapped_files.get_mut(&loc) {
 			Some(f) => f,
 
 			None => {
@@ -105,9 +114,7 @@ impl FileMappingManager {
 			},
 		};
 
-		// Increment references count
-		mapped_file.pages.range_mut(off..(off + len))
-			.for_each(|(_, p)| p.ref_count += 1);
+		// TODO increment references count on page
 
 		Ok(())
 	}
@@ -116,21 +123,18 @@ impl FileMappingManager {
 	///
 	/// Arguments:
 	/// - `loc` is the location to the file.
-	/// - `off` is the beginning offset of the chunk to map in pages.
-	/// - `size` is the size of the chunk to map in pages.
+	/// - `off` is the offset of the page to unmap.
 	///
-	/// If the file mapping doesn't exist, the function does nothing.
-	pub fn unmap(&mut self, loc: &FileLocation, off: usize, len: usize) {
+	/// If the file mapping doesn't exist or the page isn't mapped, the function does nothing.
+	pub fn unmap(&mut self, loc: &FileLocation, _off: usize) {
 		let Some(mapped_file) = self.mapped_files.get_mut(loc) else {
 			return;
 		};
 
-		// Decrement references count
-		mapped_file.pages.range_mut(off..(off + len))
-			.for_each(|(_, p)| p.ref_count -= 1);
+		// TODO decrement ref count on page
 
 		// Remove mapping that are not referenced
-		mapped_file.pages.retain(|_, p| p.ref_count <= 0);
+		// TODO mapped_file.pages.retain(|_, p| p.ref_count <= 0);
 
 		// If no mapping is left for the file, remove it
 		if mapped_file.pages.is_empty() {
