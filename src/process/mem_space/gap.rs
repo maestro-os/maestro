@@ -72,12 +72,12 @@ impl MemGap {
 		// The new gap located after the mapping
 		let right = self.size.get().checked_sub(off + size)
 			.and_then(|size| NonZeroUsize::new(size))
-			.map(|size| {
+			.map(|gap_size| {
 				let addr = unsafe {
-					self.begin.add((off + size.get()) * memory::PAGE_SIZE)
+					self.begin.add((off + size) * memory::PAGE_SIZE)
 				};
 
-				Self::new(addr, size)
+				Self::new(addr, gap_size)
 			});
 
 		(left, right)

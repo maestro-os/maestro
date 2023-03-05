@@ -296,7 +296,7 @@ impl MemSpace {
 		gaps_size: &Map<(NonZeroUsize, *const c_void), ()>,
 		size: NonZeroUsize,
 	) -> Option<&'a MemGap> {
-		let (_, ptr) = gaps_size.range((size, null::<c_void>())..).next()?.0;
+		let ((_, ptr), _) = gaps_size.range((size, null::<c_void>())..).next()?;
 		let gap = gaps.get(*ptr).unwrap();
 		debug_assert!(gap.get_size() >= size);
 
