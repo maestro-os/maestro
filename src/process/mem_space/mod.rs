@@ -239,7 +239,7 @@ pub struct MemSpace {
 	gaps: Map<*const c_void, MemGap>,
 	/// Binary tree storing the list of memory gaps, sorted by size and then by
 	/// beginning address.
-	gaps_size: Map<(usize, *const c_void), ()>,
+	gaps_size: Map<(NonZeroUsize, *const c_void), ()>,
 
 	/// Binary tree storing the list of memory mappings. Sorted by pointer to
 	/// the beginning of the mapping on the virtual memory.
@@ -293,10 +293,10 @@ impl MemSpace {
 	/// If no gap large enough is available, the function returns `None`.
 	fn gap_get<'a>(
 		gaps: &'a Map<*const c_void, MemGap>,
-		gaps_size: &Map<(usize, *const c_void), ()>,
-		size: usize,
+		gaps_size: &Map<(NonZeroUsize, *const c_void), ()>,
+		size: NonZeroUsize,
 	) -> Option<&'a MemGap> {
-		let (_, ptr) = gaps_size.range((size, 0 as _)..).next()?.0;
+		let (_, ptr) = gaps_size.range((size, null::<c_void>())..).next()?.0;
 		let gap = gaps.get(*ptr).unwrap();
 		debug_assert!(gap.get_size() >= size);
 
@@ -317,7 +317,9 @@ impl MemSpace {
 	) -> Option<&'a MemGap> {
 		gaps.cmp_get(|key, value| {
 			let begin = *key;
-			let end = (begin as usize + value.get_size() * memory::PAGE_SIZE) as *const c_void;
+			let end = unsafe {
+				begin.add(value.get_size().get() * memory::PAGE_SIZE)
+			};
 
 			if ptr >= begin && ptr < end {
 				Ordering::Equal
@@ -329,17 +331,8 @@ impl MemSpace {
 		})
 	}
 
-	/// Returns a new binary tree containing the default gaps for a memory
-	/// space.
-	fn create_default_gaps(&mut self) -> Result<(), Errno> {
-		let begin = memory::ALLOC_BEGIN;
-		let size = (memory::PROCESS_END as usize - begin as usize) / memory::PAGE_SIZE;
-
-		self.gap_insert(MemGap::new(begin, NonZeroUsize::new(size).unwrap()))
-	}
-
 	/// Clones the `gaps_size` field.
-	fn gaps_size_clone(&self) -> Result<Map<(usize, *const c_void), ()>, Errno> {
+	fn gaps_size_clone(&self) -> Result<Map<(NonZeroUsize, *const c_void), ()>, Errno> {
 		let mut gaps_size = Map::new();
 		for (g, _) in &self.gaps_size {
 			gaps_size.insert(g.clone(), ())?;
@@ -365,7 +358,12 @@ impl MemSpace {
 
 			vmem: vmem::new()?,
 		};
-		s.create_default_gaps()?;
+
+		// Create the default gap of memory which is present at the beginning
+		let begin = memory::ALLOC_BEGIN;
+		let size = (memory::PROCESS_END as usize - begin as usize) / memory::PAGE_SIZE;
+		s.gap_insert(MemGap::new(begin, NonZeroUsize::new(size).unwrap()))?;
+
 		Ok(s)
 	}
 
@@ -413,14 +411,12 @@ impl MemSpace {
 
 			_ => {}
 		}
-		if size == 0 {
-			return Err(errno!(EINVAL));
-		}
+		let size = NonZeroUsize::new(size).ok_or_else(|| errno!(EINVAL))?;
 
 		// Mapping informations matching mapping constraints
 		let (gap, addr) = match map_constraint {
 			MapConstraint::Fixed(addr) => {
-				self.unmap(addr, size, false)?;
+				self.unmap(addr, size.get(), false)?;
 				let gap = Self::gap_by_ptr(&self.gaps, addr);
 
 				(gap, addr as _)
@@ -435,7 +431,12 @@ impl MemSpace {
 
 				// The offset in the gap
 				let off = (addr as usize - gap.get_begin() as usize) / memory::PAGE_SIZE;
-				if off + size > gap.get_size() {
+				// The end of the gap
+				let end = unsafe {
+					size.unchecked_add(off)
+				};
+
+				if end > gap.get_size() {
 					// Hint cannot be satisfied. Get a gap large enough
 					gap = Self::gap_get(&self.gaps, &self.gaps_size, size)
 						.ok_or_else(|| errno!(ENOMEM))?;
@@ -473,7 +474,7 @@ impl MemSpace {
 		// Splitting the old gap to fit the mapping if needed
 		if let Some(gap) = gap {
 			let off = (addr as usize - gap.get_begin() as usize) / memory::PAGE_SIZE;
-			let (left_gap, right_gap) = gap.consume(off, size);
+			let (left_gap, right_gap) = gap.consume(off, size.get());
 
 			// Removing the old gap
 			let gap_begin = gap.get_begin();
@@ -488,7 +489,7 @@ impl MemSpace {
 			}
 		}
 
-		self.vmem_usage += size;
+		self.vmem_usage += size.get();
 		Ok(addr as *mut _)
 	}
 
@@ -522,7 +523,9 @@ impl MemSpace {
 	) -> Option<&MemMapping> {
 		mappings.cmp_get(|key, value| {
 			let begin = *key;
-			let end = (begin as usize + value.get_size() * memory::PAGE_SIZE) as *const c_void;
+			let end = unsafe {
+				begin.add(value.get_size().get() * memory::PAGE_SIZE)
+			};
 
 			if ptr >= begin && ptr < end {
 				Ordering::Equal
@@ -544,7 +547,9 @@ impl MemSpace {
 	) -> Option<&mut MemMapping> {
 		mappings.cmp_get_mut(|key, value| {
 			let begin = *key;
-			let end = (begin as usize + value.get_size() * memory::PAGE_SIZE) as *const c_void;
+			let end = unsafe {
+				begin.add(value.get_size().get() * memory::PAGE_SIZE)
+			};
 
 			if ptr >= begin && ptr < end {
 				Ordering::Equal
@@ -582,15 +587,17 @@ impl MemSpace {
 		if !util::is_aligned(ptr, memory::PAGE_SIZE) {
 			return Err(errno!(EINVAL));
 		}
-		if size == 0 {
+		let Some(size) = NonZeroUsize::new(size) else {
 			return Ok(());
-		}
+		};
 
 		// Removing every mappings in the chunk to unmap
 		let mut i = 0;
-		while i < size {
+		while i < size.get() {
 			// The pointer of the page
-			let page_ptr = (ptr as usize + i * memory::PAGE_SIZE) as *const _;
+			let page_ptr = unsafe {
+				ptr.add(i * memory::PAGE_SIZE)
+			};
 
 			// The mapping containing the page
 			if let Some(mapping) = Self::get_mapping_mut_for_(&mut self.mappings, page_ptr) {
@@ -600,7 +607,7 @@ impl MemSpace {
 				// The offset in the mapping of the beginning of pages to unmap
 				let begin = (page_ptr as usize - mapping_ptr as usize) / memory::PAGE_SIZE;
 				// The number of pages to unmap in the mapping
-				let pages = min(size - i, mapping.get_size() - begin);
+				let pages = min(size.get() - i, mapping.get_size().get() - begin);
 
 				// Removing the mapping
 				let mapping = self.mappings.remove(&mapping_ptr).unwrap();
@@ -621,7 +628,7 @@ impl MemSpace {
 				if !brk {
 					// Inserting gap
 					if let Some(mut gap) = gap {
-						self.vmem_usage -= gap.get_size();
+						self.vmem_usage -= gap.get_size().get();
 
 						// Merging previous gap
 						if !gap.get_begin().is_null() {
@@ -693,7 +700,7 @@ impl MemSpace {
 					return false;
 				}
 
-				i += mapping.get_size() * memory::PAGE_SIZE;
+				i += mapping.get_size().get() * memory::PAGE_SIZE;
 			} else {
 				return false;
 			}
@@ -788,7 +795,7 @@ impl MemSpace {
 		for (_, m) in self.mappings.iter_mut() {
 			let new_mapping = m.fork(&mut mem_space)?;
 
-			for i in 0..new_mapping.get_size() {
+			for i in 0..new_mapping.get_size().get() {
 				m.update_vmem(i);
 				new_mapping.update_vmem(i);
 			}

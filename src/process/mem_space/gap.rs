@@ -43,8 +43,8 @@ impl MemGap {
 	}
 
 	/// Returns the size of the gap in memory pages.
-	pub fn get_size(&self) -> usize {
-		self.size.get()
+	pub fn get_size(&self) -> NonZeroUsize {
+		self.size
 	}
 
 	/// Creates new gaps to replace the current one after mapping memory onto
