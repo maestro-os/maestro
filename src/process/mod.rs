@@ -13,7 +13,6 @@ pub mod regs;
 pub mod rusage;
 pub mod scheduler;
 pub mod signal;
-pub mod state;
 pub mod tss;
 pub mod user_desc;
 
@@ -61,7 +60,6 @@ use scheduler::Scheduler;
 use signal::Signal;
 use signal::SignalAction;
 use signal::SignalHandler;
-use state::State;
 
 /// The opcode of the `hlt` instruction.
 const HLT_INSTRUCTION: u8 = 0xf4;
@@ -93,6 +91,41 @@ pub const TLS_ENTRIES_COUNT: usize = 3;
 
 /// The size of the redzone in userspace, in bytes.
 const REDZONE_SIZE: usize = 128;
+
+/// An enumeration containing possible states for a process.
+#[derive(Debug)]
+pub enum State {
+	/// The process is running or waiting to run.
+	Running,
+	/// The process is waiting for an event.
+	Sleeping,
+	/// The process has been stopped by a signal or by tracing.
+	Stopped,
+	/// The process has been killed.
+	Zombie,
+}
+
+impl State {
+	/// Returns the character associated with the state.
+	pub fn get_char(&self) -> char {
+		match self {
+			Self::Running => 'R',
+			Self::Sleeping => 'S',
+			Self::Stopped => 'T',
+			Self::Zombie => 'Z',
+		}
+	}
+
+	/// Returns the name of the state as string.
+	pub fn as_str(&self) -> &'static str {
+		match self {
+			Self::Running => "running",
+			Self::Sleeping => "sleeping",
+			Self::Stopped => "stopped",
+			Self::Zombie => "zombie",
+		}
+	}
+}
 
 /// Type representing an exit status.
 type ExitStatus = u8;
@@ -814,7 +847,7 @@ impl Process {
 	/// Wakes the process if sleeping.
 	pub fn wake(&mut self) {
 		match self.state {
-			State::Sleeping(..) => self.set_state(State::Running),
+			State::Sleeping => self.set_state(State::Running),
 			_ => {}
 		}
 	}

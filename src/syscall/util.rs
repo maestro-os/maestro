@@ -1,21 +1,22 @@
-use crate::errno;
+/// This module implements utility functions for system calls.
+
+use core::mem::size_of;
 use crate::errno::Errno;
-use crate::file::path::Path;
-use crate::file::vfs;
+use crate::errno;
 use crate::file::File;
 use crate::file::FileContent;
 use crate::file::Mode;
+use crate::file::path::Path;
+use crate::file::vfs;
+use crate::process::Process;
+use crate::process::State;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::regs::Regs;
-use crate::process::state::State;
-use crate::process::Process;
+use crate::util::FailableClone;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::lock::MutexGuard;
 use crate::util::ptr::SharedPtr;
-use crate::util::FailableClone;
-/// This module implements utility functions for system calls.
-use core::mem::size_of;
 
 /// Returns the absolute path according to the process's current working
 /// directory.
@@ -261,7 +262,7 @@ pub fn create_file_at(
 /// Updates the execution flow of the current process according to its state.
 ///
 /// When the state of the current process has been changed, execution may not
-/// resume. In which case, the current function handles the execcution flow
+/// resume. In which case, the current function handles the execution flow
 /// accordingly.
 ///
 /// The functions locks the mutex of the current process. Thus, the caller must
@@ -288,7 +289,7 @@ pub fn handle_proc_state() {
 		}
 
 		// The process is sleeping or has been stopped. Waiting until wakeup
-		State::Sleeping(_) | State::Stopped => {
+		State::Sleeping | State::Stopped => {
 			drop(proc_guard);
 			drop(proc_mutex);
 

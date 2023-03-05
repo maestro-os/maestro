@@ -1,17 +1,15 @@
 //! The `waitpid` system call allows to wait for an event from a child process.
 
-use crate::errno;
+use core::ffi::c_int;
 use crate::errno::Errno;
-use crate::process;
+use crate::errno;
+use crate::process::Process;
+use crate::process::State;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::pid::Pid;
 use crate::process::regs::Regs;
 use crate::process::rusage::RUsage;
-use crate::process::state;
-use crate::process::state::State;
-use crate::process::Process;
-use crate::util::boxed::Box;
-use core::ffi::c_int;
+use crate::process;
 use macros::syscall;
 
 /// Wait flag. Returns immediately if no child has exited.
@@ -71,7 +69,7 @@ fn get_wstatus(proc: &Process) -> i32 {
 	let termsig = proc.get_termsig();
 
 	let wstatus = match proc.get_state() {
-		State::Running | State::Sleeping(..) => 0xffff,
+		State::Running | State::Sleeping => 0xffff,
 		State::Stopped => ((termsig as i32 & 0xff) << 8) | 0x7f,
 		State::Zombie => ((status as i32 & 0xff) << 8) | (termsig as i32 & 0x7f),
 	};
@@ -110,7 +108,7 @@ fn check_waitable(
 
 			let stopped = matches!(p.get_state(), State::Stopped);
 			let zombie = matches!(p.get_state(), State::Zombie);
-			let running = matches!(p.get_state(), State::Running | State::Sleeping(..));
+			let running = matches!(p.get_state(), State::Running | State::Sleeping);
 
 			let stop_check = stopped && options & WUNTRACED != 0;
 			let exit_check = zombie && options & WEXITED != 0;
@@ -206,7 +204,7 @@ pub fn do_waitpid(
 
 			// When a child process is paused or resumed by a signal or is terminated, it
 			// changes the state of the current process to wake it up
-			proc.set_state(State::Sleeping(Box::new(state::WakePoll {})?));
+			proc.set_state(State::Sleeping);
 		}
 
 		crate::wait();

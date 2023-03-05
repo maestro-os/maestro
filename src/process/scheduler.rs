@@ -8,26 +8,29 @@
 //! This number represents the number of ticks during which the process keeps
 //! running until switching to the next process.
 
+// TODO disable scheduler ticking if the number of processes <= 1
+// TODO adapt the frequency of ticking to the number of processes
+
+use core::cmp::max;
+use core::ffi::c_void;
 use crate::errno::Errno;
-use crate::event;
 use crate::event::CallbackHook;
+use crate::event;
 use crate::idt::pic;
-use crate::memory;
 use crate::memory::malloc;
 use crate::memory::stack;
-use crate::process;
+use crate::memory;
+use crate::process::Process;
+use crate::process::State;
 use crate::process::pid::Pid;
 use crate::process::regs::Regs;
-use crate::process::state::State;
-use crate::process::Process;
+use crate::process;
 use crate::util::container::map::Map;
 use crate::util::container::map::MapIterator;
 use crate::util::container::vec::Vec;
 use crate::util::lock::*;
 use crate::util::math;
 use crate::util::ptr::IntSharedPtr;
-use core::cmp::max;
-use core::ffi::c_void;
 
 /// The size of the temporary stack for context switching.
 const TMP_STACK_SIZE: usize = 16 * memory::PAGE_SIZE;
@@ -267,11 +270,17 @@ impl Scheduler {
 		Some((next_pid, next_proc))
 	}
 
-	/// Ticking the scheduler. This function saves the data of the currently
-	/// running process, then switches to the next process to run.
-	/// `sched_mutex` is the scheduler's mutex.
-	/// `regs` is the state of the registers from the paused context.
-	/// `ring` is the ring of the paused context.
+	/// Ticking the scheduler.
+	///
+	/// This function saves the data of the currently running process, then switches to the next
+	/// process to run.
+	///
+	/// If no process is ready to run, the scheduler halts the system until a process is runnable.
+	///
+	/// Arguments:
+	/// - `sched_mutex` is the scheduler's mutex.
+	/// - `regs` is the state of the registers from the paused context.
+	/// - `ring` is the ring of the paused context.
 	fn tick(sched_mutex: &IntMutex<Self>, regs: &Regs, ring: u32) -> ! {
 		// Disabling interrupts to avoid getting one right after unlocking mutexes
 		cli!();
@@ -292,7 +301,7 @@ impl Scheduler {
 
 			// The current core ID
 			let core_id = 0; // TODO
-				 // Getting the temporary stack
+			 // Getting the temporary stack
 			let tmp_stack = scheduler.get_tmp_stack(core_id);
 
 			tmp_stack
