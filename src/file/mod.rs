@@ -728,7 +728,11 @@ impl File {
 		}
 	}
 
-	/// TODO doc
+	/// Wrapper for I/O operations on files.
+	///
+	/// For the current file, the function takes a closure which provides the following arguments:
+	/// - The I/O interface to write the file, if any.
+	/// - The filesystem of the file, if any.
 	fn io_op<R, F>(&self, f: F)-> Result<R, Errno>
 		where F: FnOnce(
 			Option<SharedPtr<dyn IO>>,
@@ -852,7 +856,7 @@ impl IO for File {
 	}
 
 	fn poll(&mut self, mask: u32) -> Result<u32, Errno> {
-		self.io_op(|io, fs| {
+		self.io_op(|io, _| {
 			let Some(io_mutex) = io else {
 				return Ok(0);
 			};
@@ -860,12 +864,7 @@ impl IO for File {
 			let io_guard = io_mutex.lock();
 			let io = io_guard.get_mut();
 
-			if let Some(_) = fs {
-				// TODO
-				todo!();
-			} else {
-				io.poll(mask)
-			}
+			io.poll(mask)
 		})
 	}
 }

@@ -73,7 +73,6 @@ pub fn do_writev(
 	if fd < 0 {
 		return Err(errno!(EBADF));
 	}
-
 	// Checking the size of the vector is in bounds
 	if iovcnt < 0 || iovcnt as usize > limits::IOV_MAX {
 		return Err(errno!(EINVAL));

@@ -988,6 +988,26 @@ impl Process {
 		self.file_descriptors = fds;
 	}
 
+	/// Makes the process wait on the file descriptor `fd` for events in the mask `mask`.
+	///
+	/// The function changes the state of the process to `Sleeping`.
+	/// Thus the caller should halt execution after return.
+	pub fn wait_on(&mut self, fd: u32, mask: u32) -> Result<(), Errno> {
+		let fds_mutex = self.get_fds().unwrap();
+		let fds_guard = fds_mutex.lock();
+		let fds = fds_guard.get();
+
+		let open_file_mutex = fds.get_fd(fd)
+			.ok_or(errno!(EBADF))?
+			.get_open_file()?;
+		let open_file_guard = open_file_mutex.lock();
+		let open_file = open_file_guard.get_mut();
+		open_file.add_waiting_process(self.pid, mask)?;
+
+		self.set_state(State::Sleeping);
+		Ok(())
+	}
+
 	/// Returns the process's saved state registers.
 	#[inline(always)]
 	pub fn get_regs(&self) -> &Regs {

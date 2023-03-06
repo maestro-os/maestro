@@ -250,8 +250,9 @@ impl<K: Eq + Hash, V> HashMap<K, V> {
 		Ok(result)
 	}
 
-	/// Removes an element from the hash map. If the key was present, the
-	/// function returns the value.
+	/// Removes an element from the hash map.
+	///
+	/// If the key was present, the function returns the previous value.
 	pub fn remove<Q: ?Sized>(&mut self, k: &Q) -> Option<V>
 	where
 		K: Borrow<Q>,
@@ -270,6 +271,12 @@ impl<K: Eq + Hash, V> HashMap<K, V> {
 		} else {
 			None
 		}
+	}
+
+	/// Retains only the elements for which the given predicate returns `true`.
+	pub fn retain<F: FnMut(&K, &mut V) -> bool>(&mut self, mut _f: F) {
+		// TODO
+		todo!();
 	}
 
 	/// Drops all elements in the hash map.

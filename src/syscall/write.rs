@@ -11,6 +11,7 @@ use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallSlice;
 use crate::syscall::Signal;
 use crate::util::io::IO;
+use crate::util::io;
 use macros::syscall;
 
 // TODO O_ASYNC
@@ -87,7 +88,14 @@ pub fn write(fd: c_int, buf: SyscallSlice<u8>, count: usize) -> Result<i32, Errn
 			return Err(errno!(EAGAIN));
 		}
 
-		// TODO Mark the process as Sleeping and wake it up when data can be written?
+		// Make process sleep
+		{
+			let mutex = Process::get_current().unwrap();
+			let guard = mutex.lock();
+			let proc = guard.get_mut();
+
+			proc.wait_on(fd as _, io::POLLOUT)?;
+		}
 		crate::wait();
 	}
 }

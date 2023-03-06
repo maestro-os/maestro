@@ -9,6 +9,7 @@ use crate::idt;
 use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallSlice;
 use crate::util::io::IO;
+use crate::util::io;
 use macros::syscall;
 
 // TODO O_ASYNC
@@ -70,7 +71,14 @@ pub fn read(fd: c_int, buf: SyscallSlice<u8>, count: usize) -> Result<i32, Errno
 			return Ok(len as _);
 		}
 
-		// TODO Mark the process as Sleeping and wake it up when data is available?
+		// Make process sleep
+		{
+			let mutex = Process::get_current().unwrap();
+			let guard = mutex.lock();
+			let proc = guard.get_mut();
+
+			proc.wait_on(fd as _, io::POLLIN)?;
+		}
 		crate::wait();
 	}
 }

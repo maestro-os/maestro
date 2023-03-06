@@ -11,8 +11,10 @@ use crate::file::FileContent;
 use crate::file::FileLocation;
 use crate::file::buffer;
 use crate::file::vfs;
+use crate::process::Process;
 use crate::process::mem_space::MemSpace;
 use crate::process::mem_space::ptr::SyscallPtr;
+use crate::process::pid::Pid;
 use crate::syscall::ioctl;
 use crate::time::unit::TimestampScale;
 use crate::time;
@@ -81,6 +83,9 @@ pub struct OpenFile {
 
 	/// The number of concurrent file descriptors pointing the the current file.
 	ref_count: usize,
+
+	/// The list of processes waiting on the file, along with the mask of events to wait for.
+	waiting_procs: HashMap<Pid, u32>,
 }
 
 impl OpenFile {
@@ -142,6 +147,8 @@ impl OpenFile {
 					curr_off: 0,
 
 					ref_count: 0,
+
+					waiting_procs: HashMap::new(),
 				})?;
 
 				OPEN_FILES.lock()
@@ -277,6 +284,33 @@ impl OpenFile {
 	/// Sets the current offset in the file.
 	pub fn set_offset(&mut self, off: u64) {
 		self.curr_off = off;
+	}
+
+	/// Adds process with the given PID to the list of processes waiting on the file.
+	///
+	/// `mask` is the mask of poll event to wait for.
+	///
+	/// When the event occurs, the process will be woken up.
+	pub fn add_waiting_process(&mut self, pid: Pid, mask: u32) -> Result<(), Errno> {
+		self.waiting_procs.insert(pid, mask)?;
+		Ok(())
+	}
+
+	/// Wakes processes for the events in the given mask.
+	pub fn wake_processes(&mut self, mask: u32) {
+		self.waiting_procs.retain(|pid, m| {
+			let wake = mask & *m != 0;
+			if !wake {
+				return true;
+			}
+
+			if let Some(proc_mutex) = Process::get_by_pid(*pid) {
+				let proc_guard = proc_mutex.lock();
+				proc_guard.get_mut().wake();
+			}
+
+			false
+		});
 	}
 
 	/// Performs an ioctl operation on the file.
