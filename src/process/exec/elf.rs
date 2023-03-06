@@ -15,6 +15,7 @@ use crate::elf::relocation::Relocation;
 use crate::elf;
 use crate::errno::Errno;
 use crate::errno;
+use crate::exec::vdso::MappedVDSO;
 use crate::file::File;
 use crate::file::Gid;
 use crate::file::Uid;
@@ -27,6 +28,7 @@ use crate::process::exec::ExecInfo;
 use crate::process::exec::Executor;
 use crate::process::exec::ProgramImage;
 use crate::process::mem_space::MapConstraint;
+use crate::process::mem_space::MapResidence;
 use crate::process::mem_space::MemSpace;
 use crate::process::mem_space;
 use crate::process;
@@ -36,6 +38,7 @@ use crate::util::container::vec::Vec;
 use crate::util::io::IO;
 use crate::util::math;
 use crate::util;
+use super::vdso;
 
 /// Used to define the end of the entries list.
 const AT_NULL: i32 = 0;
@@ -86,6 +89,10 @@ const AT_RANDOM: i32 = 25;
 const AT_HWCAP2: i32 = 26;
 /// A pointer to the filename of the executed program.
 const AT_EXECFN: i32 = 31;
+/// A pointer to the entry point of the vDSO.
+const AT_SYSINFO: i32 = 32;
+/// A pointer to the beginning of the vDSO ELF image.
+const AT_SYSINFO_EHDR: i32 = 33;
 
 /// Informations returned after loading an ELF program used to finish
 /// initialization.
@@ -147,12 +154,16 @@ impl AuxEntryDesc {
 	}
 }
 
-/// Builds an auxilary vector with execution informations `exec_info` and load
-/// informations `load_info`.
-/// `parser` is a reference to the ELF parser.
+/// Builds an auxilary vector.
+///
+/// Arguments:
+/// - `exec_info` is the set of execution informations.
+/// - `load_info` is the set of ELF load informations.
+/// - `vdso` is the set of vDSO informations.
 fn build_auxilary(
 	exec_info: &ExecInfo,
 	load_info: &ELFLoadInfo,
+	vdso: &MappedVDSO,
 ) -> Result<Vec<AuxEntryDesc>, Errno> {
 	let mut aux = Vec::new();
 
@@ -229,6 +240,18 @@ fn build_auxilary(
 		AT_EXECFN,
 		AuxEntryDescValue::String("TODO\0".as_bytes()),
 	))?; // TODO
+
+	// vDSO
+	aux.push(AuxEntryDesc::new(
+		AT_SYSINFO,
+		AuxEntryDescValue::Number(vdso.entry.as_ptr() as _)
+	))?;
+	aux.push(AuxEntryDesc::new(
+		AT_SYSINFO_EHDR,
+		AuxEntryDescValue::Number(vdso.ptr.as_ptr() as _)
+	))?;
+
+	// End
 	aux.push(AuxEntryDesc::new(AT_NULL, AuxEntryDescValue::Number(0)))?;
 
 	Ok(aux)
@@ -313,10 +336,13 @@ impl ELFExecutor {
 
 	// TODO Clean
 	/// Initializes the stack data of the process according to the System V ABI.
-	/// `user_stack` the pointer to the user stack.
-	/// `argv` is the list of arguments.
-	/// `envp` is the environment.
-	/// `aux` is the auxilary vector.
+	///
+	/// Arguments:
+	/// - `user_stack` the pointer to the user stack.
+	/// - `argv` is the list of arguments.
+	/// - `envp` is the environment.
+	/// - `aux` is the auxilary vector.
+	///
 	/// The function returns the distance between the top of the stack and the
 	/// new bottom after the data has been written.
 	fn init_stack(
@@ -427,9 +453,12 @@ impl ELFExecutor {
 
 	/// Allocates memory in userspace for an ELF segment.
 	/// If the segment isn't loadable, the function does nothing.
-	/// `load_base` is the address at which the executable is loaded.
-	/// `mem_space` is the memory space to allocate into.
-	/// `seg` is the segment for which the memory is allocated.
+	///
+	/// Arguments:
+	/// - `load_base` is the address at which the executable is loaded.
+	/// - `mem_space` is the memory space to allocate into.
+	/// - `seg` is the segment for which the memory is allocated.
+	///
 	/// If loaded, the function return the pointer to the end of the segment in
 	/// virtual memory.
 	fn alloc_segment(
@@ -459,8 +488,7 @@ impl ELFExecutor {
 				MapConstraint::Fixed(mem_begin as _),
 				pages,
 				seg.get_mem_space_flags(),
-				None,
-				0,
+				MapResidence::Normal,
 			)?;
 
 			// TODO Lazy allocation
@@ -475,9 +503,11 @@ impl ELFExecutor {
 
 	/// Copies the segment's data into memory.
 	/// If the segment isn't loadable, the function does nothing.
-	/// `load_base` is the address at which the executable is loaded.
-	/// `seg` is the segment.
-	/// `image` is the ELF file image.
+	///
+	/// Arguments:
+	/// - `load_base` is the address at which the executable is loaded.
+	/// - `seg` is the segment.
+	/// - `image` is the ELF file image.
 	fn copy_segment(load_base: *const c_void, seg: &ELF32ProgramHeader, image: &[u8]) {
 		// Loading only loadable segments
 		if seg.p_type != elf::PT_LOAD && seg.p_type != elf::PT_PHDR {
@@ -541,8 +571,7 @@ impl ELFExecutor {
 					MapConstraint::None,
 					page_size,
 					mem_space::MAPPING_FLAG_USER | mem_space::MAPPING_FLAG_NOLAZY,
-					None,
-					0
+					MapResidence::Normal,
 				)?;
 
 				(phdr, true)
@@ -610,7 +639,7 @@ impl ELFExecutor {
 				}
 
 				// Performing relocations if no interpreter is present
-				if interp_path.is_none() {
+				if !interp && interp_path.is_none() {
 					// Closure returning a symbol from its name
 					let get_sym = |name: &str| elf.get_symbol_by_name(name);
 
@@ -632,7 +661,7 @@ impl ELFExecutor {
 								.or_else(|_| Err(errno!(EINVAL)))?;
 						}
 
-						for rela in elf.iter_rel(section) {
+						for rela in elf.iter_rela(section) {
 							rela.perform(load_base as _, section, get_sym, get_sym_val)
 								.or_else(|_| Err(errno!(EINVAL)))?;
 						}
@@ -679,8 +708,11 @@ impl Executor for ELFExecutor {
 		let user_stack =
 			mem_space.map_stack(process::USER_STACK_SIZE, process::USER_STACK_FLAGS)?;
 
+		// Map the vDSO
+		let vdso = vdso::map(&mut mem_space)?;
+
 		// The auxilary vector
-		let aux = build_auxilary(&self.info, &load_info)?;
+		let aux = build_auxilary(&self.info, &load_info, &vdso)?;
 
 		// The size in bytes of the initial data on the stack
 		let total_size = Self::get_init_stack_size(&self.info.argv, &self.info.envp, &aux).1;

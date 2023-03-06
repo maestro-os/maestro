@@ -7,6 +7,7 @@
 pub mod buffer;
 pub mod fd;
 pub mod fs;
+pub mod mapping;
 pub mod mountpoint;
 pub mod open_file;
 pub mod path;

@@ -2,6 +2,7 @@
 //! filesystems into one. To manipulate files, the VFS should be used instead of
 //! calling the filesystems' functions directly.
 
+use core::ptr::NonNull;
 use crate::errno::Errno;
 use crate::errno;
 use crate::file::File;
@@ -13,6 +14,7 @@ use crate::file::Mode;
 use crate::file::MountPoint;
 use crate::file::Uid;
 use crate::file::buffer;
+use crate::file::mapping::FileMappingManager;
 use crate::file::mountpoint;
 use crate::file::path::Path;
 use crate::file;
@@ -43,13 +45,16 @@ fn update_location(file: &mut File, mountpoint: &MountPoint) {
 /// as a cache to speedup file accesses.
 pub struct VFS {
 	// TODO Add files caching
+
+	/// Structure managing file mappings.
+	file_mappings_manager: FileMappingManager,
 }
 
 impl VFS {
 	/// Creates a new instance.
 	pub fn new() -> Self {
 		Self {
-			// TODO
+			file_mappings_manager: FileMappingManager::new(),
 		}
 	}
 
@@ -494,6 +499,30 @@ impl VFS {
 		}
 
 		Ok(())
+	}
+
+	/// Maps the page at offset `off` in the file at location `loc`.
+	///
+	/// On success, the function returns a reference to the page.
+	///
+	/// If the file doesn't exist, the function returns an error.
+	pub fn map_file(
+		&mut self,
+		loc: FileLocation,
+		off: usize
+	) -> Result<NonNull<u8>, Errno> {
+		// TODO if the page is being init, read from disk
+		self.file_mappings_manager.map(loc, off)?;
+
+		todo!();
+	}
+
+	/// Maps the page at offset `off` in the file at location `loc`.
+	///
+	/// If the page is not mapped, the function does nothing.
+	pub fn unmap_file(&mut self, loc: &FileLocation, off: usize) {
+		// TODO sync to disk if necessary
+		self.file_mappings_manager.unmap(loc, off);
 	}
 }
 

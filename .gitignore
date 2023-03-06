@@ -2,8 +2,9 @@
 .config
 
 # Compiled object files
-*.a
 *.o
+*.a
+*.so
 
 # Random garbage
 *.gch

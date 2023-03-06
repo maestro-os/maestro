@@ -7,6 +7,7 @@ use crate::errno;
 use crate::file::FileType;
 use crate::memory;
 use crate::process::Process;
+use crate::process::mem_space::MapResidence;
 use crate::process::mem_space;
 use crate::syscall::mmap::mem_space::MapConstraint;
 use crate::util::math;
@@ -14,11 +15,11 @@ use crate::util;
 use macros::syscall;
 
 /// Data can be read.
-const PROT_READ: i32 = 0b001;
+pub const PROT_READ: i32 = 0b001;
 /// Data can be written.
-const PROT_WRITE: i32 = 0b010;
+pub const PROT_WRITE: i32 = 0b010;
 /// Data can be executed.
-const PROT_EXEC: i32 = 0b100;
+pub const PROT_EXEC: i32 = 0b100;
 
 /// Changes are shared.
 const MAP_SHARED: i32 = 0b001;
@@ -68,12 +69,13 @@ pub fn do_mmap(
 		return Err(errno!(EINVAL));
 	}
 
-	let addr_hint = {
-		if !addr.is_null()
-			&& (addr as usize) < (memory::PROCESS_END as usize)
-			&& end <= (memory::PROCESS_END as usize)
-		{
-			MapConstraint::Hint(addr as *const c_void)
+	let constraint = {
+		if !addr.is_null() {
+			if flags & MAP_FIXED != 0 {
+				MapConstraint::Fixed(addr as *const c_void)
+			} else {
+				MapConstraint::Hint(addr as *const c_void)
+			}
 		} else {
 			MapConstraint::None
 		}
@@ -129,6 +131,14 @@ pub fn do_mmap(
 	} else {
 		// TODO If the mapping requires a fd, return an error
 	}
+	let residence = match open_file_mutex {
+		Some(file) => MapResidence::File {
+			file,
+			off: offset,
+		},
+
+		None => MapResidence::Normal,
+	};
 
 	// The process's memory space
 	let mem_space = proc.get_mem_space().unwrap();
@@ -139,30 +149,30 @@ pub fn do_mmap(
 
 	// The pointer on the virtual memory to the beginning of the mapping
 	let result = mem_space.map(
-		addr_hint,
+		constraint,
 		pages,
 		flags,
-		open_file_mutex.clone(),
-		offset,
+		residence.clone(),
 	);
 
-	match result {
+	let result = match result {
 		Ok(ptr) => Ok(ptr),
 
 		Err(e) => {
-			if addr_hint != MapConstraint::None {
+			if constraint != MapConstraint::None {
 				mem_space.map(
 					MapConstraint::None,
 					pages,
 					flags,
-					open_file_mutex,
-					offset,
+					residence,
 				)
 			} else {
 				Err(e)
 			}
-		},
-	}.map(|ptr| ptr as _)
+		}
+	};
+
+	result.map(|ptr| ptr as _)
 }
 
 // TODO Check last arg type

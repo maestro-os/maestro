@@ -54,7 +54,7 @@ impl Bitfield {
 
 	/// Tells whether bit `index` is set.
 	pub fn is_set(&self, index: usize) -> bool {
-		let unit = self.data[(index / bit_size_of::<u8>()) as _];
+		let unit = self.data[(index / bit_size_of::<u8>()) as usize];
 		(unit >> (index % bit_size_of::<u8>())) & 1 == 1
 	}
 
@@ -63,7 +63,7 @@ impl Bitfield {
 		debug_assert!(index < self.len);
 
 		if !self.is_set(index) {
-			let unit = &mut self.data[(index / bit_size_of::<u8>()) as _];
+			let unit = &mut self.data[(index / bit_size_of::<u8>()) as usize];
 			*unit |= 1 << (index % bit_size_of::<u8>());
 		}
 	}
@@ -73,7 +73,7 @@ impl Bitfield {
 		debug_assert!(index < self.len);
 
 		if self.is_set(index) {
-			let unit = &mut self.data[(index / bit_size_of::<u8>()) as _];
+			let unit = &mut self.data[(index / bit_size_of::<u8>()) as usize];
 			*unit &= !(1 << (index % bit_size_of::<u8>()));
 		}
 	}

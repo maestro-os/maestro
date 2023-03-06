@@ -221,7 +221,7 @@ $(OBJ_DIRS):
 	mkdir -p $(OBJ_DIRS)
 
 # The rule to build the library
-$(LIB_NAME): $(OBJ_DIRS) $(OBJ)
+$(LIB_NAME): vdso.so $(OBJ_DIRS) $(OBJ)
 	$(AR) $(ARFLAGS) $@ $(OBJ)
 
 # The rule to compile assembly objects
@@ -251,6 +251,18 @@ tags: $(SRC)
 	ctags --languages=+rust $(SRC)
 
 .PHONY: iso clippy
+
+
+
+# ------------------------------------------------------------------------------
+#    Kernel compilation
+# ------------------------------------------------------------------------------
+
+
+
+# Compiles the vdso
+vdso.so: Makefile vdso/linker.ld vdso/$(CONFIG_ARCH).s
+	$(CC) -nostdlib -ffreestanding -shared -fPIC -Tvdso/linker.ld -o $@ vdso/$(CONFIG_ARCH).s
 
 
 
@@ -322,6 +334,7 @@ clean:
 fclean: clean
 	rm -rf target/
 	rm -f $(NAME)
+	rm -f vdso.so
 	rm -f $(NAME).iso
 	rm -rf $(DOC_DIR)
 

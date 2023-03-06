@@ -145,6 +145,12 @@ pub struct HashMap<K: Eq + Hash, V> {
 	len: usize,
 }
 
+impl<K: Eq + Hash, V> Default for HashMap<K, V> {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl<K: Eq + Hash, V> HashMap<K, V> {
 	/// Creates a new instance with the default number of buckets.
 	pub const fn new() -> Self {
@@ -222,6 +228,15 @@ impl<K: Eq + Hash, V> HashMap<K, V> {
 		} else {
 			None
 		}
+	}
+
+	/// Tells whether the hash map contains the given key `k`.
+	pub fn contains_key<Q: ?Sized>(&self, k: &Q) -> bool
+	where
+		K: Borrow<Q>,
+		Q: Hash + Eq,
+	{
+		self.get(k).is_some()
 	}
 
 	/// Creates an iterator for the hash map.

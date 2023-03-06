@@ -12,6 +12,7 @@ pub mod buddy;
 pub mod malloc;
 pub mod memmap;
 pub mod mmio;
+pub mod physical_ref_counter;
 pub mod stack;
 pub mod stats;
 pub mod vmem;

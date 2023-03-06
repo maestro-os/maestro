@@ -1,22 +1,26 @@
 //! This module implements a binary tree container.
 
-use crate::errno::Errno;
-use crate::memory;
-use crate::memory::malloc;
-use crate::util::FailableClone;
-use core::cmp::max;
 use core::cmp::Ordering;
+use core::cmp::max;
 use core::fmt;
-use core::mem;
 use core::mem::size_of;
-use core::ptr;
-use core::ptr::drop_in_place;
+use core::mem;
+use core::ops::Bound;
+use core::ops::RangeBounds;
 use core::ptr::NonNull;
+use core::ptr::drop_in_place;
+use core::ptr;
+use crate::errno::Errno;
+use crate::memory::malloc;
+use crate::memory;
+use crate::util::FailableClone;
 
 #[cfg(config_debug_debug)]
 use crate::util::container::vec::Vec;
 #[cfg(config_debug_debug)]
 use core::ffi::c_void;
+
+// FIXME abusive use of `'static` lifetime results in UBs
 
 /// The color of a binary tree node.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -427,6 +431,12 @@ pub struct Map<K: 'static + Ord, V: 'static> {
 	root: Option<NonNull<Node<K, V>>>,
 }
 
+impl<K: 'static + Ord, V: 'static> Default for Map<K, V> {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl<K: 'static + Ord, V: 'static> Map<K, V> {
 	/// Creates a new binary tree.
 	pub const fn new() -> Self {
@@ -501,7 +511,34 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 		None
 	}
 
+	/// Returns the start node for a range iterator starting at `start`.
+	fn get_start_node(&self, start: Bound<&K>) -> Option<NonNull<Node<K, V>>> {
+		let mut node = self.root.map(|mut p| unsafe { p.as_mut() });
+
+		match start {
+			Bound::Included(key) => {
+				while let Some(n) = node {
+					if key.cmp(&n.key) == Ordering::Greater {
+						node = n.get_right_mut();
+					} else {
+						return NonNull::new(n);
+					}
+				}
+
+				None
+			},
+
+			Bound::Excluded(_key) => {
+				// TODO
+				todo!();
+			},
+
+			Bound::Unbounded => NonNull::new(Self::get_leftmost_node(node?)),
+		}
+	}
+
 	/// Searches for the given key in the tree and returns a reference.
+	///
 	/// `key` is the key to find.
 	#[inline]
 	pub fn get<'a>(&'a self, key: K) -> Option<&'a V> {
@@ -536,6 +573,7 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 	}
 
 	/// Searches for a node in the tree using the given comparison function
+	///
 	/// `cmp` instead of the Ord trait and returns a mutable reference.
 	pub fn cmp_get_mut<'a, F: Fn(&K, &V) -> Ordering>(&'a mut self, cmp: F) -> Option<&'a mut V> {
 		let mut node = self.get_root_mut();
@@ -553,25 +591,8 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 		None
 	}
 
-	/// Searches in the tree for a key greater or equal to the given key.
-	/// `key` is the key to find.
-	pub fn get_min<'a>(&'a self, key: K) -> Option<(&'a K, &'a V)> {
-		let mut node = self.get_root();
-
-		while let Some(n) = node {
-			if key.cmp(&n.key) == Ordering::Greater {
-				node = n.get_right();
-			} else {
-				return Some((&n.key, &n.value));
-			}
-		}
-
-		None
-	}
-
-	// TODO get_max?
-
 	/// Updates the root of the tree.
+	///
 	/// `node` is a node of the tree.
 	fn update_root(&mut self, node: &mut Node<K, V>) {
 		let mut root = NonNull::new(node as *mut Node<K, V>);
@@ -786,6 +807,7 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 	}
 
 	/// Removes the given node `node` from the tree.
+	///
 	/// The function returns the value of the removed node.
 	fn remove_node(&mut self, node: &mut Node<K, V>) -> V {
 		let replacement = {
@@ -883,10 +905,12 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 
 	/// Removes a value from the tree. If the value is present several times in
 	/// the tree, only one node is removed.
+	///
 	/// `key` is the key to select the node to remove.
+	///
 	/// If the key exists, the function returns the value of the removed node.
-	pub fn remove(&mut self, key: K) -> Option<V> {
-		let node = self.get_mut_node(&key)?;
+	pub fn remove(&mut self, key: &K) -> Option<V> {
+		let node = self.get_mut_node(key)?;
 		let value = self.remove_node(node);
 
 		//#[cfg(config_debug_debug)]
@@ -1043,6 +1067,22 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 	pub fn iter_mut(&mut self) -> MapMutIterator<K, V> {
 		MapMutIterator::new(self)
 	}
+
+	/// Returns an immutable iterator on the given range of keys.
+	pub fn range<R: RangeBounds<K>>(&self, range: R) -> MapRange<'_, K, V, R> {
+		MapRange::new(self, range)
+	}
+
+	/// Returns a mutable iterator on the given range of keys.
+	pub fn range_mut<R: RangeBounds<K>>(&mut self, range: R) -> MapMutRange<'_, K, V, R> {
+		MapMutRange::new(self, range)
+	}
+
+	/// Retains only the elements specified by the predicate.
+	pub fn retain<F: FnMut(&K, &mut V) -> bool>(&mut self, mut _f: F) {
+		// TODO
+		todo!();
+	}
 }
 
 /// An iterator for the Map structure. This iterator traverses the tree in pre
@@ -1055,7 +1095,7 @@ pub struct MapIterator<'a, K: 'static + Ord, V: 'static> {
 }
 
 impl<'a, K: Ord, V> MapIterator<'a, K, V> {
-	/// Creates a binary tree iterator for the given reference.
+	/// Creates an iterator for the given reference.
 	fn new(tree: &'a Map<K, V>) -> Self {
 		MapIterator {
 			tree,
@@ -1063,15 +1103,6 @@ impl<'a, K: Ord, V> MapIterator<'a, K, V> {
 				.root
 				.map(|mut n| unsafe { NonNull::new(Map::get_leftmost_node(n.as_mut())).unwrap() }),
 		}
-	}
-
-	/// Makes the iterator jump to the given key. If the key doesn't exist, the
-	/// iterator ends.
-	pub fn jump(&mut self, key: &K) {
-		self.node = self
-			.tree
-			.get_node(key)
-			.and_then(|v| NonNull::new(v as *const _ as *mut _));
 	}
 }
 
@@ -1128,7 +1159,7 @@ pub struct MapMutIterator<'a, K: 'static + Ord, V: 'static> {
 }
 
 impl<'a, K: Ord, V> MapMutIterator<'a, K, V> {
-	/// Creates a binary tree iterator for the given reference.
+	/// Creates an iterator for the given reference.
 	fn new(tree: &'a mut Map<K, V>) -> Self {
 		let node = tree
 			.root
@@ -1138,12 +1169,6 @@ impl<'a, K: Ord, V> MapMutIterator<'a, K, V> {
 			tree,
 			node,
 		}
-	}
-
-	/// Makes the iterator jump to the given key. If the key doesn't exist, the
-	/// iterator ends.
-	pub fn jump(&mut self, key: &K) {
-		self.node = self.tree.get_mut_node(key).and_then(|v| NonNull::new(v));
 	}
 }
 
@@ -1181,6 +1206,93 @@ impl<'a, K: 'static + Ord, V> Iterator for MapMutIterator<'a, K, V> {
 	}
 }
 
+impl<'a, K: 'static + Ord, V> IntoIterator for &'a mut Map<K, V> {
+	type IntoIter = MapMutIterator<'a, K, V>;
+	type Item = (&'a K, &'a mut V);
+
+	fn into_iter(self) -> Self::IntoIter {
+		MapMutIterator::new(self)
+	}
+}
+
+/// Iterator over a range of keys in a map.
+pub struct MapRange<'m, K: 'static + Ord, V: 'static, R: RangeBounds<K>> {
+	/// Inner iterator.
+	iter: MapIterator<'m, K, V>,
+	/// The range to iterate on.
+	range: R,
+}
+
+impl<'m, K: 'static + Ord, V: 'static, R: RangeBounds<K>> MapRange<'m, K, V, R> {
+	/// Creates an iterator for the given reference.
+	fn new(tree: &'m Map<K, V>, range: R) -> Self {
+		let node = tree.get_start_node(range.start_bound());
+
+		let iter = MapIterator {
+			tree,
+			node,
+		};
+
+		Self {
+			iter,
+			range,
+		}
+	}
+}
+
+impl<'m, K: 'static + Ord, V: 'static, R: RangeBounds<K>> Iterator for MapRange<'m, K, V, R> {
+	type Item = (&'m K, &'m V);
+
+	fn next(&mut self) -> Option<Self::Item> {
+		let (key, value) = self.iter.next()?;
+
+		if self.range.contains(key) {
+			Some((key, value))
+		} else {
+			None
+		}
+	}
+}
+
+/// Iterator over a range of keys in a map (mutably).
+pub struct MapMutRange<'m, K: 'static + Ord, V: 'static, R: RangeBounds<K>> {
+	/// Inner iterator.
+	iter: MapMutIterator<'m, K, V>,
+	/// The range to iterate on.
+	range: R,
+}
+
+impl<'m, K: 'static + Ord, V: 'static, R: RangeBounds<K>> MapMutRange<'m, K, V, R> {
+	/// Creates an iterator for the given reference.
+	fn new(tree: &'m mut Map<K, V>, range: R) -> Self {
+		let node = tree.get_start_node(range.start_bound());
+
+		let iter = MapMutIterator {
+			tree,
+			node,
+		};
+
+		Self {
+			iter,
+			range,
+		}
+	}
+}
+
+impl<'m, K: 'static + Ord, V: 'static, R: RangeBounds<K>> Iterator for MapMutRange<'m, K, V, R> {
+	type Item = (&'m K, &'m mut V);
+
+	fn next(&mut self) -> Option<Self::Item> {
+		let (key, value) = self.iter.next()?;
+
+		if self.range.contains(key) {
+			Some((key, value))
+		} else {
+			None
+		}
+	}
+}
+
 impl<K: 'static + FailableClone + Ord, V: FailableClone> FailableClone for Map<K, V> {
 	fn failable_clone(&self) -> Result<Self, Errno> {
 		let mut new = Self::new();
@@ -1208,33 +1320,6 @@ impl<K: 'static + Ord + fmt::Debug, V> fmt::Debug for Map<K, V> {
 						"black"
 					};
 					let _ = writeln!(f, "{:?} ({:?})", n.key, color);
-				},
-				TraversalType::ReverseInOrder,
-			);
-			Ok(())
-		} else {
-			write!(f, "<Empty tree>")
-		}
-	}
-}
-
-impl<K: 'static + Ord + fmt::Display, V> fmt::Display for Map<K, V> {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		if let Some(mut n) = self.root {
-			Self::foreach_nodes(
-				unsafe { n.as_mut() },
-				&mut |n| {
-					// TODO Optimize
-					for _ in 0..n.get_node_depth() {
-						let _ = write!(f, "\t");
-					}
-
-					let color = if n.color == NodeColor::Red {
-						"red"
-					} else {
-						"black"
-					};
-					let _ = writeln!(f, "{} ({})", n.key, color);
 				},
 				TraversalType::ReverseInOrder,
 			);
@@ -1333,7 +1418,7 @@ mod test {
 				assert_eq!(*b.get(i).unwrap(), i);
 			}
 
-			b.remove(i);
+			b.remove(&i);
 
 			assert!(b.get(i).is_none());
 			for i in (i + 1)..10 {
@@ -1354,7 +1439,7 @@ mod test {
 
 		for i in (-9..10).rev() {
 			assert_eq!(*b.get(i).unwrap(), i);
-			b.remove(i);
+			b.remove(&i);
 			assert!(b.get(i).is_none());
 		}
 
@@ -1371,7 +1456,7 @@ mod test {
 
 		for i in (-9..10).rev() {
 			assert_eq!(*b.get(i).unwrap(), i);
-			b.remove(i);
+			b.remove(&i);
 			assert!(b.get(i).is_none());
 		}
 
@@ -1388,7 +1473,7 @@ mod test {
 
 		for i in -9..10 {
 			assert_eq!(*b.get(i).unwrap(), i);
-			assert_eq!(b.remove(i).unwrap(), i);
+			assert_eq!(b.remove(&i).unwrap(), i);
 			assert!(b.get(i).is_none());
 		}
 
@@ -1401,7 +1486,7 @@ mod test {
 
 		for i in -9..10 {
 			b.insert(i, i).unwrap();
-			assert_eq!(b.remove(i).unwrap(), i);
+			assert_eq!(b.remove(&i).unwrap(), i);
 		}
 
 		assert!(b.is_empty());
@@ -1418,7 +1503,7 @@ mod test {
 		for i in -9..10 {
 			if i % 2 == 0 {
 				assert_eq!(*b.get(i).unwrap(), i);
-				assert_eq!(b.remove(i).unwrap(), i);
+				assert_eq!(b.remove(&i).unwrap(), i);
 				assert!(b.get(i).is_none());
 			}
 		}
@@ -1428,64 +1513,12 @@ mod test {
 		for i in -9..10 {
 			if i % 2 != 0 {
 				assert_eq!(*b.get(i).unwrap(), i);
-				assert_eq!(b.remove(i).unwrap(), i);
+				assert_eq!(b.remove(&i).unwrap(), i);
 				assert!(b.get(i).is_none());
 			}
 		}
 
 		assert!(b.is_empty());
-	}
-
-	#[test_case]
-	fn binary_tree_get_min0() {
-		let b = Map::<i32, i32>::new();
-		assert!(b.get_min(0).is_none());
-	}
-
-	#[test_case]
-	fn binary_tree_get_min1() {
-		let mut b = Map::<i32, i32>::new();
-		b.insert(0, 0).unwrap();
-		assert!(*b.get_min(0).unwrap().0 >= 0);
-	}
-
-	#[test_case]
-	fn binary_tree_get_min2() {
-		let mut b = Map::<i32, i32>::new();
-		b.insert(0, 0).unwrap();
-		assert!(b.get_min(1).is_none());
-	}
-
-	#[test_case]
-	fn binary_tree_get_min3() {
-		let mut b = Map::<i32, i32>::new();
-		b.insert(-1, -1).unwrap();
-		b.insert(0, 0).unwrap();
-		b.insert(1, 1).unwrap();
-		assert!(*b.get_min(0).unwrap().0 >= 0);
-	}
-
-	#[test_case]
-	fn binary_tree_get_min4() {
-		let mut b = Map::<i32, i32>::new();
-		b.insert(0, 0).unwrap();
-		b.insert(1, 1).unwrap();
-		assert!(*b.get_min(0).unwrap().0 >= 0);
-	}
-
-	#[test_case]
-	fn binary_tree_get_min5() {
-		let mut b = Map::<i32, i32>::new();
-		b.insert(1, 1).unwrap();
-		assert!(*b.get_min(0).unwrap().0 >= 0);
-	}
-
-	#[test_case]
-	fn binary_tree_get_min6() {
-		let mut b = Map::<i32, i32>::new();
-		b.insert(-1, -1).unwrap();
-		b.insert(1, 1).unwrap();
-		assert!(*b.get_min(0).unwrap().0 >= 0);
 	}
 
 	#[test_case]
@@ -1516,5 +1549,5 @@ mod test {
 		assert!(passed);
 	}
 
-	// TODO More foreach tests
+	// TODO test iterators (both exhaustive and range)
 }

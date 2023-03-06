@@ -1,5 +1,6 @@
 //! This module implements ELF relocations.
 
+use core::ptr;
 use crate::elf;
 use crate::elf::ELF32SectionHeader;
 use crate::elf::ELF32Sym;
@@ -39,12 +40,10 @@ pub trait Relocation {
 			F1: FnOnce(u32, u32) -> Option<u32> {
 		// The offset inside of the GOT
 		let got_offset = 0; // TODO
-					// The address of the GOT
-		let got_addr = base_addr as u32
-			+ match get_sym(GOT_SYM) {
-				Some(sym) => sym.st_value,
-				None => 0,
-			};
+		// The address of the GOT
+		let got_addr = base_addr as u32 + get_sym(GOT_SYM)
+			.map(|sym| sym.st_value)
+			.unwrap_or(0);
 		// The offset of the PLT entry for the symbol.
 		let plt_offset = 0; // TODO
 
@@ -70,9 +69,10 @@ pub trait Relocation {
 
 		let addr = (base_addr as u32 + self.get_offset()) as *mut u32;
 		// TODO Check the address is accessible
+
 		match self.get_type() {
-			elf::R_386_RELATIVE => *addr += value,
-			_ => *addr = value,
+			elf::R_386_RELATIVE => ptr::write_volatile(addr, ptr::read_volatile(addr) + value),
+			_ => ptr::write_volatile(addr, value),
 		}
 
 		Ok(())

@@ -1,6 +1,7 @@
 //! This module implements program execution.
 
 pub mod elf;
+pub mod vdso;
 
 use core::ffi::c_void;
 use crate::errno::Errno;
