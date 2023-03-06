@@ -8,8 +8,8 @@
 //! This number represents the number of ticks during which the process keeps
 //! running until switching to the next process.
 
-// TODO disable scheduler ticking if the number of processes <= 1
-// TODO adapt the frequency of ticking to the number of processes
+// TODO disable scheduler ticking if the number of running processes <= 1
+// TODO adapt the frequency of ticking to the number of running processes
 
 use core::cmp::max;
 use core::ffi::c_void;
@@ -98,6 +98,12 @@ impl Scheduler {
 		}
 	}
 
+	/// Returns the total number of ticks since the instanciation of the
+	/// scheduler.
+	pub fn get_total_ticks(&self) -> u64 {
+		self.total_ticks
+	}
+
 	/// Returns an iterator on the scheduler's processes.
 	pub fn iter_process<'a>(&'a mut self) -> MapIterator<'a, Pid, IntSharedPtr<Process>> {
 		self.processes.iter()
@@ -141,6 +147,7 @@ impl Scheduler {
 	pub fn add_process(&mut self, process: Process) -> Result<IntSharedPtr<Process>, Errno> {
 		let pid = process.get_pid();
 		let priority = process.get_priority();
+
 		let ptr = IntSharedPtr::new(process)?;
 		self.processes.insert(pid, ptr.clone())?;
 		self.update_priority(0, priority);
@@ -162,18 +169,22 @@ impl Scheduler {
 
 	// TODO Clean
 	/// Returns the average priority of a process.
-	/// `priority_sum` is the sum of all processes' priorities.
-	/// `processes_count` is the number of processes.
+	///
+	/// Arguments:
+	/// - `priority_sum` is the sum of all processes' priorities.
+	/// - `processes_count` is the number of processes.
 	fn get_average_priority(priority_sum: usize, processes_count: usize) -> usize {
 		priority_sum / processes_count
 	}
 
 	// TODO Clean
 	/// Returns the number of quantum for the given priority.
-	/// `priority` is the process's priority.
-	/// `priority_sum` is the sum of all processes' priorities.
-	/// `priority_max` is the highest priority a process currently has.
-	/// `processes_count` is the number of processes.
+	///
+	/// Arguments:
+	/// - `priority` is the process's priority.
+	/// - `priority_sum` is the sum of all processes' priorities.
+	/// - `priority_max` is the highest priority a process currently has.
+	/// - `processes_count` is the number of processes.
 	fn get_quantum_count(
 		priority: usize,
 		priority_sum: usize,
@@ -209,8 +220,9 @@ impl Scheduler {
 	}
 
 	// TODO Clean
-	/// Returns the next process to run with its PID. If the process is changed,
-	/// the quantum count of the previous process is reset.
+	/// Returns the next process to run with its PID.
+	///
+	/// If the process is changed, the quantum count of the previous process is reset.
 	fn get_next_process(&self) -> Option<(Pid, IntSharedPtr<Process>)> {
 		let priority_sum = self.priority_sum;
 		let priority_max = self.priority_max;
@@ -353,11 +365,5 @@ impl Scheduler {
 			pic::end_of_interrupt(0x0);
 			crate::loop_reset(tmp_stack);
 		}
-	}
-
-	/// Returns the total number of ticks since the instanciation of the
-	/// scheduler.
-	pub fn get_total_ticks(&self) -> u64 {
-		self.total_ticks
 	}
 }

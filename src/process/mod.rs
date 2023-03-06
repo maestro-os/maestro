@@ -93,7 +93,7 @@ pub const TLS_ENTRIES_COUNT: usize = 3;
 const REDZONE_SIZE: usize = 128;
 
 /// An enumeration containing possible states for a process.
-#[derive(Debug)]
+#[derive(Eq, Debug, PartialEq)]
 pub enum State {
 	/// The process is running or waiting to run.
 	Running,
@@ -802,7 +802,7 @@ impl Process {
 
 	/// Sets the process's state to `new_state`.
 	pub fn set_state(&mut self, new_state: State) {
-		if matches!(self.state, State::Zombie) {
+		if self.state == new_state || matches!(self.state, State::Zombie) {
 			return;
 		}
 
