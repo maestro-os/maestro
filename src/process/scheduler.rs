@@ -56,6 +56,9 @@ pub struct Scheduler {
 	/// The currently running process with its PID.
 	curr_proc: Option<(Pid, IntSharedPtr<Process>)>,
 
+	/// The current number of running processes.
+	pub running_procs: usize,
+
 	/// The sum of all priorities, used to compute the average priority.
 	priority_sum: usize,
 	/// The priority of the processs which has the current highest priority.
@@ -83,6 +86,8 @@ impl Scheduler {
 
 			processes: Map::new(),
 			curr_proc: None,
+
+			running_procs: 0,
 
 			priority_sum: 0,
 			priority_max: 0,
@@ -148,6 +153,10 @@ impl Scheduler {
 		let pid = process.get_pid();
 		let priority = process.get_priority();
 
+		if *process.get_state() == State::Running {
+			self.running_procs += 1;
+		}
+
 		let ptr = IntSharedPtr::new(process)?;
 		self.processes.insert(pid, ptr.clone())?;
 		self.update_priority(0, priority);
@@ -160,6 +169,10 @@ impl Scheduler {
 		if let Some(proc_mutex) = self.get_by_pid(pid) {
 			let guard = proc_mutex.lock();
 			let process = guard.get();
+
+			if *process.get_state() == State::Running {
+				self.running_procs -= 1;
+			}
 
 			let priority = process.get_priority();
 			self.processes.remove(&pid);

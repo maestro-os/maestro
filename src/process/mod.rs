@@ -807,6 +807,13 @@ impl Process {
 			return;
 		}
 
+		// Update the number of running processes
+		if self.state != State::Running && new_state == State::Running {
+			get_scheduler().lock().get_mut().running_procs += 1;
+		} else if self.state == State::Running {
+			get_scheduler().lock().get_mut().running_procs -= 1;
+		}
+
 		self.state = new_state;
 
 		if matches!(self.state, State::Zombie) {
