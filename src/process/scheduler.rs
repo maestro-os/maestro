@@ -183,6 +183,12 @@ impl Scheduler {
 	pub fn increment_running(&mut self) {
 		self.running_procs += 1;
 
+		// Enable ticking if necessary
+		if self.running_procs == 1 {
+			pic::enable_irq(0x20);
+		}
+
+		// Set ticking frequency
 		let freq = Rational::from_integer((10 * (self.running_procs - 1)) as _);
 		pit::set_frequency(freq);
 	}
@@ -192,8 +198,10 @@ impl Scheduler {
 		self.running_procs -= 1;
 
 		if self.running_procs == 0 {
-			// TODO disable PIT
+			// Disable ticking
+			pic::disable_irq(0x20);
 		} else {
+			// Set ticking frequency
 			let freq = Rational::from_integer((10 * (self.running_procs - 1)) as _);
 			pit::set_frequency(freq);
 		}

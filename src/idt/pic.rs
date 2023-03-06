@@ -66,6 +66,36 @@ pub fn init(offset1: u8, offset2: u8) {
 	}
 }
 
+/// Enable interruptions on the given IRQ.
+pub fn enable_irq(mut n: u8) {
+	let port = if n < 8 {
+		MASTER_DATA
+	} else {
+		n -= 8;
+		SLAVE_DATA
+	};
+
+	unsafe {
+		let value = io::inb(port) | (1 << n);
+		io::outb(port, value);
+	}
+}
+
+/// Disable interruptions on the given IRQ.
+pub fn disable_irq(mut n: u8) {
+	let port = if n < 8 {
+		MASTER_DATA
+	} else {
+		n -= 8;
+		SLAVE_DATA
+	};
+
+	unsafe {
+		let value = io::inb(port) & !(1 << n);
+		io::outb(port, value);
+	}
+}
+
 /// Sends an End-Of-Interrupt message to the PIC for the given interrupt `irq`.
 #[no_mangle]
 pub extern "C" fn end_of_interrupt(irq: u8) {
