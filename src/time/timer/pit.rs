@@ -63,6 +63,8 @@ pub fn init() {
 			PIT_COMMAND,
 			SELECT_CHANNEL_0 | ACCESS_LOBYTE_HIBYTE | MODE_3,
 		);
+
+		set_frequency(Rational::from_integer(1));
 	});
 }
 
@@ -75,7 +77,7 @@ fn set_value(count: u16) {
 }
 
 /// Sets the current frequency of the PIT.
-pub fn set_curr_frequency(frequency: Rational) {
+pub fn set_frequency(frequency: Rational) {
 	let mut c = {
 		if frequency != From::from(0) {
 			(BASE_FREQUENCY / frequency).as_integer()

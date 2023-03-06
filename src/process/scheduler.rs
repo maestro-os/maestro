@@ -8,9 +8,6 @@
 //! This number represents the number of ticks during which the process keeps
 //! running until switching to the next process.
 
-// TODO disable scheduler ticking if the number of running processes <= 1
-// TODO adapt the frequency of ticking to the number of running processes
-
 use core::cmp::max;
 use core::ffi::c_void;
 use crate::errno::Errno;
@@ -25,10 +22,12 @@ use crate::process::State;
 use crate::process::pid::Pid;
 use crate::process::regs::Regs;
 use crate::process;
+use crate::time::timer::pit;
 use crate::util::container::map::Map;
 use crate::util::container::map::MapIterator;
 use crate::util::container::vec::Vec;
 use crate::util::lock::*;
+use crate::util::math::rational::Rational;
 use crate::util::math;
 use crate::util::ptr::IntSharedPtr;
 
@@ -57,7 +56,7 @@ pub struct Scheduler {
 	curr_proc: Option<(Pid, IntSharedPtr<Process>)>,
 
 	/// The current number of running processes.
-	pub running_procs: usize,
+	running_procs: usize,
 
 	/// The sum of all priorities, used to compute the average priority.
 	priority_sum: usize,
@@ -177,6 +176,26 @@ impl Scheduler {
 			let priority = process.get_priority();
 			self.processes.remove(&pid);
 			self.update_priority(priority, 0);
+		}
+	}
+
+	/// Increments the number of running processes.
+	pub fn increment_running(&mut self) {
+		self.running_procs += 1;
+
+		let freq = Rational::from_integer((10 * (self.running_procs - 1)) as _);
+		pit::set_frequency(freq);
+	}
+
+	/// Decrements the number of running processes.
+	pub fn decrement_running(&mut self) {
+		self.running_procs -= 1;
+
+		if self.running_procs == 0 {
+			// TODO disable PIT
+		} else {
+			let freq = Rational::from_integer((10 * (self.running_procs - 1)) as _);
+			pit::set_frequency(freq);
 		}
 	}
 
