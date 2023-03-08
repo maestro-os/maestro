@@ -280,6 +280,72 @@ impl<T> Vec<T> {
 		VecIterator::new(self)
 	}
 
+	/// Retains only the elements for which the given closure returns `true`.
+	///
+	/// The function visit each elements exactly once, in order.
+	pub fn retain<F: FnMut(&mut T) -> bool>(&mut self, mut f: F) {
+		let len = self.len();
+		let Some(data) = self.data.as_mut() else {
+			return;
+		};
+
+		// The function looks for sequences of delete-keep groups, then shifts elements
+		//
+		// For example, for the following array:
+		// [Keep, Delete, Delete, Keep, Keep, Delete]
+		//
+		// The sequence starts at element `1` and ends at element `4` (included)
+
+		let mut i = 0;
+		let mut new_len = 0;
+
+		let mut deleted_count = 0;
+		let mut kept_count = 0;
+
+		while i < len {
+			let cur = unsafe {
+				&mut *data.as_ptr_mut().add(i)
+			};
+			let keep = f(cur);
+
+			crate::println!("{} -> {} {} {}", i, keep, deleted_count, kept_count);
+
+			// If reaching the end of a delete-keep sequence, shift elements
+			if deleted_count > 0 && kept_count > 0 && !keep {
+				let shift_count = min(deleted_count, kept_count);
+
+				unsafe {
+					let src = data.as_ptr().add(i - kept_count);
+					let dst = data.as_ptr_mut().add(i - kept_count - shift_count);
+
+					ptr::copy_nonoverlapping(src, dst, shift_count);
+				}
+				crate::println!("{} {} {}", i, kept_count, shift_count); // TODO rm
+				crate::println!("copy - src:{} dst:{} cnt:{}", i - kept_count, i - kept_count - shift_count, shift_count); // TODO rm
+
+				kept_count = 0;
+			}
+
+			if !keep {
+				deleted_count += 1;
+
+				unsafe {
+					ptr::drop_in_place(cur);
+				}
+			} else {
+				if deleted_count > 0 {
+					kept_count += 1;
+				}
+
+				new_len += 1;
+			}
+
+			i += 1;
+		}
+
+		self.len = new_len;
+	}
+
 	/// Truncates the vector to the given new len `len`.
 	///
 	/// If `len` is greater than the current length, the function has no effect.
@@ -742,6 +808,30 @@ mod test {
 			v.pop();
 			debug_assert_eq!(v.len(), 0);
 		}
+	}
+
+	#[test_case]
+	fn vec_retain0() {
+		let mut v = Vec::<usize>::new();
+
+		v.retain(|_| true);
+		assert!(v.is_empty());
+
+		v.retain(|_| false);
+		assert!(v.is_empty());
+	}
+
+	#[test_case]
+	fn vec_retain1() {
+		let v: Result<Vec<usize>, Errno> = vec![0usize, 1, 2, 3, 4];
+		let mut v = v.unwrap();
+		v.retain(|i| *i % 2 == 0);
+		assert_eq!(v.as_slice(), &[0, 2, 4]);
+
+		let v: Result<Vec<usize>, Errno> = vec![0usize, 1, 2, 3, 4];
+		let mut v = v.unwrap();
+		v.retain(|i| *i % 2 == 1);
+		assert_eq!(v.as_slice(), &[1, 3]);
 	}
 
 	#[test_case]

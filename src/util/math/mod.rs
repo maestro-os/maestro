@@ -13,7 +13,7 @@ use core::ops::Rem;
 use core::ops::Shl;
 use core::ops::Sub;
 
-/// Computes ceil(n0 / n1) without using floating point numbers.
+/// Computes `ceil(n0 / n1)` without using floating point numbers.
 #[inline(always)]
 pub fn ceil_div<T>(n0: T, n1: T) -> T
 where

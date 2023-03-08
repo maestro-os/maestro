@@ -239,9 +239,9 @@ impl<K: Eq + Hash, V> HashMap<K, V> {
 		self.get(k).is_some()
 	}
 
-	/// Creates an iterator for the hash map.
-	pub fn iter(&self) -> HashMapIterator<K, V> {
-		HashMapIterator::new(self)
+	/// Creates an iterator of immutable references for the hash map.
+	pub fn iter(&self) -> Iter<K, V> {
+		Iter::new(self)
 	}
 
 	/// Inserts a new element into the hash map. If the key was already present,
@@ -289,9 +289,15 @@ impl<K: Eq + Hash, V> HashMap<K, V> {
 	}
 
 	/// Retains only the elements for which the given predicate returns `true`.
-	pub fn retain<F: FnMut(&K, &mut V) -> bool>(&mut self, mut _f: F) {
-		// TODO
-		todo!();
+	pub fn retain<F: FnMut(&K, &mut V) -> bool>(&mut self, mut f: F) {
+		let mut len = 0;
+
+		for b in self.buckets.iter_mut() {
+			b.elements.retain(|(k, v): &mut (K, V)| f(&k, &mut *v));
+			len += b.elements.len();
+		}
+
+		self.len = len;
 	}
 
 	/// Drops all elements in the hash map.
@@ -331,8 +337,8 @@ impl<K: Eq + Hash + FailableClone, V: FailableClone> FailableClone for HashMap<K
 	}
 }
 
-/// An iterator for the Vec structure.
-pub struct HashMapIterator<'a, K: Hash + Eq, V> {
+/// An iterator for the HashMap structure.
+pub struct Iter<'a, K: Hash + Eq, V> {
 	/// The hash map to iterate into.
 	hm: &'a HashMap<K, V>,
 
@@ -342,7 +348,7 @@ pub struct HashMapIterator<'a, K: Hash + Eq, V> {
 	curr_element: usize,
 }
 
-impl<'a, K: Hash + Eq, V> HashMapIterator<'a, K, V> {
+impl<'a, K: Hash + Eq, V> Iter<'a, K, V> {
 	/// Creates a hash map iterator for the given reference.
 	fn new(hm: &'a HashMap<K, V>) -> Self {
 		Self {
@@ -354,8 +360,8 @@ impl<'a, K: Hash + Eq, V> HashMapIterator<'a, K, V> {
 	}
 }
 
-impl<'a, K: Hash + Eq, V> Iterator for HashMapIterator<'a, K, V> {
-	type Item = &'a (K, V);
+impl<'a, K: Hash + Eq, V> Iterator for Iter<'a, K, V> {
+	type Item = (&'a K, &'a V);
 
 	fn next(&mut self) -> Option<Self::Item> {
 		if self.curr_bucket >= self.hm.buckets.len() {
@@ -380,13 +386,18 @@ impl<'a, K: Hash + Eq, V> Iterator for HashMapIterator<'a, K, V> {
 			}
 		}
 
-		let e = &self.hm.buckets[self.curr_bucket].elements[self.curr_element];
+		let (k, v) = self.hm.buckets[self.curr_bucket].elements.index(self.curr_element);
 		self.curr_element += 1;
-		Some(e)
+		Some((k, v))
 	}
 
 	fn count(self) -> usize {
 		self.hm.len()
+	}
+
+	fn size_hint(&self) -> (usize, Option<usize>) {
+		let len = self.hm.len();
+		(len, Some(len))
 	}
 }
 
