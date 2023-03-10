@@ -296,42 +296,37 @@ impl<T> Vec<T> {
 		//
 		// The sequence starts at element `1` and ends at element `4` (included)
 
-		let mut i = 0;
-		let mut new_len = 0;
-
+		let mut processed = 0;
 		let mut deleted_count = 0;
 		let mut kept_count = 0;
 
-		while i < len {
+		let mut new_len = 0;
+
+		while processed < len {
 			let cur = unsafe {
-				&mut *data.as_ptr_mut().add(i)
+				&mut *data.as_ptr_mut().add(processed)
 			};
 			let keep = f(cur);
-
-			crate::println!("{} -> {} {} {}", i, keep, deleted_count, kept_count);
-
-			// If reaching the end of a delete-keep sequence, shift elements
-			if deleted_count > 0 && kept_count > 0 && !keep {
-				let shift_count = min(deleted_count, kept_count);
-
-				unsafe {
-					let src = data.as_ptr().add(i - kept_count);
-					let dst = data.as_ptr_mut().add(i - kept_count - shift_count);
-
-					ptr::copy_nonoverlapping(src, dst, shift_count);
-				}
-				crate::println!("{} {} {}", i, kept_count, shift_count); // TODO rm
-				crate::println!("copy - src:{} dst:{} cnt:{}", i - kept_count, i - kept_count - shift_count, shift_count); // TODO rm
-
-				kept_count = 0;
-			}
+			processed += 1;
 
 			if !keep {
-				deleted_count += 1;
-
 				unsafe {
 					ptr::drop_in_place(cur);
 				}
+
+				// If reaching the end of a delete-keep sequence, shift elements
+				if kept_count > 0 {
+					unsafe {
+						let src = data.as_ptr().add(processed - kept_count - 1);
+						let dst = data.as_ptr_mut().add(processed - kept_count - deleted_count - 1);
+
+						ptr::copy(src, dst, kept_count);
+					}
+
+					kept_count = 0;
+				}
+
+				deleted_count += 1;
 			} else {
 				if deleted_count > 0 {
 					kept_count += 1;
@@ -339,8 +334,16 @@ impl<T> Vec<T> {
 
 				new_len += 1;
 			}
+		}
 
-			i += 1;
+		// If a sequence remains after the end, shift it
+		if deleted_count > 0 && kept_count > 0 {
+			unsafe {
+				let src = data.as_ptr().add(processed - kept_count);
+				let dst = data.as_ptr_mut().add(processed - kept_count - deleted_count);
+
+				ptr::copy(src, dst, kept_count);
+			}
 		}
 
 		self.len = new_len;
@@ -823,6 +826,19 @@ mod test {
 
 	#[test_case]
 	fn vec_retain1() {
+		let v: Result<Vec<usize>, Errno> = vec![0usize, 1, 2, 3, 4];
+		let mut v = v.unwrap();
+		v.retain(|_| true);
+		assert_eq!(v.as_slice(), &[0, 1, 2, 3, 4]);
+
+		let v: Result<Vec<usize>, Errno> = vec![0usize, 1, 2, 3, 4];
+		let mut v = v.unwrap();
+		v.retain(|_| false);
+		assert_eq!(v.as_slice(), &[]);
+	}
+
+	#[test_case]
+	fn vec_retain2() {
 		let v: Result<Vec<usize>, Errno> = vec![0usize, 1, 2, 3, 4];
 		let mut v = v.unwrap();
 		v.retain(|i| *i % 2 == 0);
