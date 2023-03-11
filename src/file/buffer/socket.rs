@@ -2,6 +2,7 @@
 
 use core::ffi::c_void;
 use crate::errno::Errno;
+use crate::file::buffer::BlockHandler;
 use crate::process::mem_space::MemSpace;
 use crate::syscall::ioctl;
 use crate::util::FailableDefault;
@@ -21,6 +22,9 @@ pub struct Socket {
 	type_: i32,
 	/// The socket's protocol.
 	protocol: i32,
+
+	/// The socket's block handler.
+	block_handler: BlockHandler,
 }
 
 impl Socket {
@@ -33,6 +37,8 @@ impl Socket {
 			domain,
 			type_,
 			protocol,
+
+			block_handler: BlockHandler::new(),
 		}
 	}
 
@@ -71,6 +77,10 @@ impl Buffer for Socket {
 	fn decrement_open(&mut self, _read: bool, _write: bool) {
 		// TODO
 		todo!();
+	}
+
+	fn get_block_handler(&mut self) -> &mut BlockHandler {
+		&mut self.block_handler
 	}
 
 	fn ioctl(

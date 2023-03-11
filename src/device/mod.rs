@@ -30,6 +30,7 @@ use crate::device::manager::DeviceManager;
 use crate::errno::Errno;
 use crate::file::FileContent;
 use crate::file::Mode;
+use crate::file::blocking::BlockHandler;
 use crate::file::path::Path;
 use crate::file::vfs;
 use crate::file;
@@ -101,15 +102,23 @@ impl DeviceID {
 /// Trait providing a interface for device I/O.
 pub trait DeviceHandle: IO {
 	/// Performs an ioctl operation on the device.
-	/// `mem_space` is the memory space on which pointers are to be
-	/// dereferenced. `request` is the ID of the request to perform.
-	/// `argp` is a pointer to the argument.
+	///
+	/// Arguments:
+	/// - `mem_space` is the memory space on which pointers are to be
+	/// dereferenced.
+	/// - `request` is the ID of the request to perform.
+	/// - `argp` is a pointer to the argument.
 	fn ioctl(
 		&mut self,
 		mem_space: IntSharedPtr<MemSpace>,
 		request: ioctl::Request,
 		argp: *const c_void,
 	) -> Result<u32, Errno>;
+
+	/// Returns the block handler of the device.
+	fn get_block_handler(&mut self) -> Option<&mut BlockHandler> {
+		None
+	}
 }
 
 /// Structure representing a device, either a block device or a char device.

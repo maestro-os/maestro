@@ -4,6 +4,7 @@
 //! The root filesystem is passed to the kernel as an argument when booting.
 //! Other filesystems are mounted into subdirectories.
 
+pub mod blocking;
 pub mod buffer;
 pub mod fd;
 pub mod fs;

@@ -4,6 +4,7 @@
 use core::ffi::c_int;
 use core::ffi::c_void;
 use crate::file::Errno;
+use crate::file::buffer::BlockHandler;
 use crate::limits;
 use crate::process::mem_space::MemSpace;
 use crate::process::mem_space::ptr::SyscallPtr;
@@ -26,6 +27,9 @@ pub struct PipeBuffer {
 	read_ends: u32,
 	/// The number of writing ends attached to the pipe.
 	write_ends: u32,
+
+	/// The pipe's block handler.
+	block_handler: BlockHandler,
 }
 
 impl PipeBuffer {
@@ -47,6 +51,8 @@ impl FailableDefault for PipeBuffer {
 
 			read_ends: 0,
 			write_ends: 0,
+
+			block_handler: BlockHandler::new(),
 		})
 	}
 }
@@ -70,6 +76,10 @@ impl Buffer for PipeBuffer {
 		if write {
 			self.write_ends -= 1;
 		}
+	}
+
+	fn get_block_handler(&mut self) -> &mut BlockHandler {
+		&mut self.block_handler
 	}
 
 	fn ioctl(

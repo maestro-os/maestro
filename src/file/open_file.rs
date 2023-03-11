@@ -4,8 +4,11 @@
 use core::cmp::min;
 use core::ffi::c_int;
 use core::ffi::c_void;
+use crate::device::DeviceType;
+use crate::device;
 use crate::errno::Errno;
 use crate::errno;
+use crate::file::DeviceID;
 use crate::file::File;
 use crate::file::FileContent;
 use crate::file::FileLocation;
@@ -14,7 +17,6 @@ use crate::file::vfs;
 use crate::process::Process;
 use crate::process::mem_space::MemSpace;
 use crate::process::mem_space::ptr::SyscallPtr;
-use crate::process::pid::Pid;
 use crate::syscall::ioctl;
 use crate::time::unit::TimestampScale;
 use crate::time;
@@ -83,9 +85,6 @@ pub struct OpenFile {
 
 	/// The number of concurrent file descriptors pointing the the current file.
 	ref_count: usize,
-
-	/// The list of processes waiting on the file, along with the mask of events to wait for.
-	waiting_procs: HashMap<Pid, u32>,
 }
 
 impl OpenFile {
@@ -147,8 +146,6 @@ impl OpenFile {
 					curr_off: 0,
 
 					ref_count: 0,
-
-					waiting_procs: HashMap::new(),
 				})?;
 
 				OPEN_FILES.lock()
@@ -286,33 +283,6 @@ impl OpenFile {
 		self.curr_off = off;
 	}
 
-	/// Adds process with the given PID to the list of processes waiting on the file.
-	///
-	/// `mask` is the mask of poll event to wait for.
-	///
-	/// When the event occurs, the process will be woken up.
-	pub fn add_waiting_process(&mut self, pid: Pid, mask: u32) -> Result<(), Errno> {
-		self.waiting_procs.insert(pid, mask)?;
-		Ok(())
-	}
-
-	/// Wakes processes for the events in the given mask.
-	pub fn wake_processes(&mut self, mask: u32) {
-		self.waiting_procs.retain(|pid, m| {
-			let wake = mask & *m != 0;
-			if !wake {
-				return true;
-			}
-
-			if let Some(proc_mutex) = Process::get_by_pid(*pid) {
-				let proc_guard = proc_mutex.lock();
-				proc_guard.get_mut().wake();
-			}
-
-			false
-		});
-	}
-
 	/// Performs an ioctl operation on the file.
 	pub fn ioctl(
 		&mut self,
@@ -344,6 +314,75 @@ impl OpenFile {
 
 			_ => file.ioctl(mem_space, request, argp),
 		}
+	}
+
+	/// Adds the given process to the list of processes waiting on the file.
+	///
+	/// The function sets the state of the process to `Sleeping`.
+	/// When the event occurs, the process will be woken up.
+	///
+	/// `mask` is the mask of poll event to wait for.
+	///
+	/// If the file cannot block, the function does nothing.
+	pub fn add_waiting_process(&mut self, proc: &mut Process, mask: u32) -> Result<(), Errno> {
+		let file_mutex = self.get_file()?;
+		let file_guard = file_mutex.lock();
+		let file = file_guard.get_mut();
+
+		match file.get_content() {
+			FileContent::Fifo | FileContent::Socket => {
+				if let Some(buff_mutex) = buffer::get(self.get_location()) {
+					let buff_guard = buff_mutex.lock();
+					let buff = buff_guard.get_mut();
+
+					return buff.get_block_handler().add_waiting_process(proc, mask);
+				}
+			}
+
+			FileContent::BlockDevice {
+				major,
+				minor
+			} => {
+				let dev_mutex = device::get(&DeviceID {
+					type_: DeviceType::Block,
+					major: *major,
+					minor: *minor
+				});
+
+				if let Some(dev_mutex) = dev_mutex {
+					let dev_guard = dev_mutex.lock();
+					let dev = dev_guard.get_mut();
+
+					if let Some(h) = dev.get_handle().get_block_handler() {
+						return h.add_waiting_process(proc, mask);
+					}
+				}
+			}
+
+			FileContent::CharDevice {
+				major,
+				minor
+			} => {
+				let dev_mutex = device::get(&DeviceID {
+					type_: DeviceType::Char,
+					major: *major,
+					minor: *minor
+				});
+
+				if let Some(dev_mutex) = dev_mutex {
+					let dev_guard = dev_mutex.lock();
+					let dev = dev_guard.get_mut();
+
+					if let Some(h) = dev.get_handle().get_block_handler() {
+						return h.add_waiting_process(proc, mask);
+					}
+				}
+			}
+
+			_ => {},
+		}
+
+		Ok(())
 	}
 }
 

@@ -25,28 +25,28 @@ pub fn read(fd: c_int, buf: SyscallSlice<u8>, count: usize) -> Result<i32, Errno
 		return Ok(0);
 	}
 
+	let (mem_space, open_file_mutex) = {
+		let mutex = Process::get_current().unwrap();
+		let guard = mutex.lock();
+		let proc = guard.get_mut();
+
+		let mem_space = proc.get_mem_space().unwrap();
+
+		let fds_mutex = proc.get_fds().unwrap();
+		let fds_guard = fds_mutex.lock();
+		let fds = fds_guard.get();
+
+		let open_file_mutex = fds.get_fd(fd as _)
+			.ok_or(errno!(EBADF))?
+			.get_open_file()?;
+
+		(mem_space, open_file_mutex)
+	};
+
 	loop {
 		super::util::signal_check(regs);
 
 		let (len, flags) = {
-			let (mem_space, open_file_mutex) = {
-				let mutex = Process::get_current().unwrap();
-				let guard = mutex.lock();
-				let proc = guard.get_mut();
-
-				let mem_space = proc.get_mem_space().unwrap();
-
-				let fds_mutex = proc.get_fds().unwrap();
-				let fds_guard = fds_mutex.lock();
-				let fds = fds_guard.get();
-
-				let open_file_mutex = fds.get_fd(fd as _)
-					.ok_or(errno!(EBADF))?
-					.get_open_file()?;
-
-				(mem_space, open_file_mutex)
-			};
-
 			let (len, eof, flags) = idt::wrap_disable_interrupts(|| {
 				let open_file_guard = open_file_mutex.lock();
 				let open_file = open_file_guard.get_mut();
@@ -77,7 +77,10 @@ pub fn read(fd: c_int, buf: SyscallSlice<u8>, count: usize) -> Result<i32, Errno
 			let guard = mutex.lock();
 			let proc = guard.get_mut();
 
-			proc.wait_on(fd as _, io::POLLIN)?;
+			let open_file_guard = open_file_mutex.lock();
+			let open_file = open_file_guard.get_mut();
+
+			open_file.add_waiting_process(proc, io::POLLIN)?;
 		}
 		crate::wait();
 	}

@@ -1,4 +1,4 @@
-//! TODO doc
+//! A buffer is an FIFO resource which may be blocking. The resource is represented by a file.
 
 pub mod pipe;
 pub mod socket;
@@ -6,6 +6,7 @@ pub mod socket;
 use core::ffi::c_void;
 use crate::errno::Errno;
 use crate::file::FileLocation;
+use crate::file::blocking::BlockHandler;
 use crate::process::mem_space::MemSpace;
 use crate::syscall::ioctl;
 use crate::util::FailableDefault;
@@ -31,6 +32,9 @@ pub trait Buffer: IO {
 	/// - `read` tells whether the open end allows reading.
 	/// - `write` tells whether the open end allows writing.
 	fn decrement_open(&mut self, read: bool, write: bool);
+
+	/// Returns the block handler for the buffer.
+	fn get_block_handler(&mut self) -> &mut BlockHandler;
 
 	/// Performs an ioctl operation on the file.
 	///
