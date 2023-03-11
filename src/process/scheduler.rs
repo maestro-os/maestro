@@ -153,7 +153,7 @@ impl Scheduler {
 		let priority = process.get_priority();
 
 		if *process.get_state() == State::Running {
-			self.running_procs += 1;
+			self.increment_running();
 		}
 
 		let ptr = IntSharedPtr::new(process)?;
@@ -170,7 +170,7 @@ impl Scheduler {
 			let process = guard.get();
 
 			if *process.get_state() == State::Running {
-				self.running_procs -= 1;
+				self.decrement_running();
 			}
 
 			let priority = process.get_priority();
@@ -184,22 +184,22 @@ impl Scheduler {
 		self.running_procs += 1;
 
 		// Enable ticking if necessary
-		if self.running_procs == 1 {
-			pic::enable_irq(0x20);
-		}
+		if self.running_procs > 1 {
+			pic::enable_irq(0x0);
 
-		// Set ticking frequency
-		let freq = Rational::from_integer((10 * (self.running_procs - 1)) as _);
-		pit::set_frequency(freq);
+			// Set ticking frequency
+			let freq = Rational::from_integer((10 * (self.running_procs - 1)) as _);
+			pit::set_frequency(freq);
+		}
 	}
 
 	/// Decrements the number of running processes.
 	pub fn decrement_running(&mut self) {
 		self.running_procs -= 1;
 
-		if self.running_procs == 0 {
+		if self.running_procs <= 1 {
 			// Disable ticking
-			pic::disable_irq(0x20);
+			pic::disable_irq(0x0);
 		} else {
 			// Set ticking frequency
 			let freq = Rational::from_integer((10 * (self.running_procs - 1)) as _);
