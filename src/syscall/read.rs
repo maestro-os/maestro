@@ -8,6 +8,7 @@ use crate::file::open_file::O_NONBLOCK;
 use crate::idt;
 use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallSlice;
+use crate::process::scheduler;
 use crate::util::io::IO;
 use crate::util::io;
 use macros::syscall;
@@ -80,8 +81,10 @@ pub fn read(fd: c_int, buf: SyscallSlice<u8>, count: usize) -> Result<i32, Errno
 			let open_file_guard = open_file_mutex.lock();
 			let open_file = open_file_guard.get_mut();
 
-			open_file.add_waiting_process(proc, io::POLLIN)?;
+			open_file.add_waiting_process(proc, io::POLLIN | io::POLLERR)?;
 		}
-		crate::wait();
+		unsafe {
+			scheduler::end_tick();
+		}
 	}
 }

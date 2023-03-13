@@ -9,6 +9,7 @@ use crate::errno::Errno;
 use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::mem_space::ptr::SyscallSlice;
+use crate::process::scheduler;
 use crate::time::unit::TimeUnit;
 use crate::time::unit::Timeval;
 use crate::time;
@@ -212,7 +213,9 @@ pub fn do_select<T: TimeUnit>(
 		}
 
 		// TODO Make the process sleep?
-		crate::wait();
+		unsafe {
+			scheduler::end_tick();
+		}
 	}
 }
 

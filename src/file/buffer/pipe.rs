@@ -71,6 +71,12 @@ impl Buffer for PipeBuffer {
 	fn decrement_open(&mut self, read: bool, write: bool) {
 		if read {
 			self.read_ends -= 1;
+
+			crate::println!("A: {}", self.read_ends); // TODO rm
+			if self.read_ends == 0 {
+				crate::println!("pipe closed"); // TODO rm
+				self.block_handler.wake_processes(io::POLLERR);
+			}
 		}
 
 		if write {
@@ -115,13 +121,19 @@ impl IO for PipeBuffer {
 		let len = self.buffer.read(buf);
 		let eof = self.write_ends == 0 && self.get_data_len() == 0;
 
+		self.block_handler.wake_processes(io::POLLOUT);
+
 		Ok((len as _, eof))
 	}
 
 	/// Note: This implemention ignores the offset.
 	fn write(&mut self, _: u64, buf: &[u8]) -> Result<u64, Errno> {
 		if self.read_ends > 0 {
-			Ok(self.buffer.write(buf) as _)
+			let len = self.buffer.write(buf);
+
+			self.block_handler.wake_processes(io::POLLIN);
+
+			Ok(len as _)
 		} else {
 			Err(errno!(EPIPE))
 		}

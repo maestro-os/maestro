@@ -1,11 +1,12 @@
 //! The `clone` system call creates a child process.
 
+use core::ffi::c_void;
 use crate::errno::Errno;
-use crate::process::mem_space::ptr::SyscallPtr;
-use crate::process::user_desc::UserDesc;
 use crate::process::ForkOptions;
 use crate::process::Process;
-use core::ffi::c_void;
+use crate::process::mem_space::ptr::SyscallPtr;
+use crate::process::scheduler;
+use crate::process::user_desc::UserDesc;
 use macros::syscall;
 
 /// TODO doc
@@ -127,7 +128,9 @@ pub fn clone(
 	if flags & CLONE_VFORK != 0 {
 		// Letting another process run instead of the current. Because the current
 		// process must now wait for the child process to terminate or execute a program
-		crate::wait();
+		unsafe {
+			scheduler::end_tick();
+		}
 	}
 
 	Ok(new_tid as _)

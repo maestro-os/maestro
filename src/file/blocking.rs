@@ -6,10 +6,11 @@ use crate::process::Process;
 use crate::process::pid::Pid;
 use crate::process;
 use crate::util::container::hashmap::HashMap;
+use crate::util::io;
 
 /// Handler allowing to make a process sleep when waiting on a resource, then resume its execution
 /// when the resource is available.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct BlockHandler {
 	/// The list of processes waiting on the resource, along with the mask of events to wait for.
 	waiting_procs: HashMap<Pid, u32>,
@@ -54,5 +55,11 @@ impl BlockHandler {
 
 			false
 		});
+	}
+}
+
+impl Drop for BlockHandler {
+	fn drop(&mut self) {
+		self.wake_processes(io::POLLERR);
 	}
 }

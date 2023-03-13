@@ -547,19 +547,20 @@ impl KeyboardManager {
 			if self.ctrl && self.alt {
 				// TODO TTYs must be allocated first
 				// Switching TTY
-				match key {
-					KeyboardKey::KeyF1 => tty::switch(Some(0)),
-					KeyboardKey::KeyF2 => tty::switch(Some(1)),
-					KeyboardKey::KeyF3 => tty::switch(Some(2)),
-					KeyboardKey::KeyF4 => tty::switch(Some(3)),
-					KeyboardKey::KeyF5 => tty::switch(Some(4)),
-					KeyboardKey::KeyF6 => tty::switch(Some(5)),
-					KeyboardKey::KeyF7 => tty::switch(Some(6)),
-					KeyboardKey::KeyF8 => tty::switch(Some(7)),
-					KeyboardKey::KeyF9 => tty::switch(Some(8)),
+				let id = match key {
+					KeyboardKey::KeyF1 => Some(0),
+					KeyboardKey::KeyF2 => Some(1),
+					KeyboardKey::KeyF3 => Some(2),
+					KeyboardKey::KeyF4 => Some(3),
+					KeyboardKey::KeyF5 => Some(4),
+					KeyboardKey::KeyF6 => Some(5),
+					KeyboardKey::KeyF7 => Some(6),
+					KeyboardKey::KeyF8 => Some(7),
+					KeyboardKey::KeyF9 => Some(8),
 
-					_ => {}
-				}
+					_ => None,
+				};
+				tty::switch(id);
 			}
 
 			// Getting the tty

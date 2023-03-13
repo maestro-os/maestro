@@ -9,6 +9,7 @@ use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::pid::Pid;
 use crate::process::regs::Regs;
 use crate::process::rusage::RUsage;
+use crate::process::scheduler;
 use crate::process;
 use macros::syscall;
 
@@ -207,7 +208,9 @@ pub fn do_waitpid(
 			proc.set_state(State::Sleeping);
 		}
 
-		crate::wait();
+		unsafe {
+			scheduler::end_tick();
+		}
 	}
 }
 

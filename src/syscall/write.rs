@@ -9,6 +9,7 @@ use crate::file::open_file::O_NONBLOCK;
 use crate::idt;
 use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallSlice;
+use crate::process::scheduler;
 use crate::syscall::Signal;
 use crate::util::io::IO;
 use crate::util::io;
@@ -96,8 +97,10 @@ pub fn write(fd: c_int, buf: SyscallSlice<u8>, count: usize) -> Result<i32, Errn
 			let open_file_guard = open_file_mutex.lock();
 			let open_file = open_file_guard.get_mut();
 
-			open_file.add_waiting_process(proc, io::POLLOUT)?;
+			open_file.add_waiting_process(proc, io::POLLOUT | io::POLLERR)?;
 		}
-		crate::wait();
+		unsafe {
+			scheduler::end_tick();
+		}
 	}
 }

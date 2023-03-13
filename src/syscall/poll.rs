@@ -1,14 +1,15 @@
 //! The `poll` system call allows to wait for events on a given set of file
 //! descriptors.
 
+use core::ffi::c_int;
 use crate::errno::Errno;
-use crate::process::mem_space::ptr::SyscallSlice;
 use crate::process::Process;
-use crate::time;
+use crate::process::mem_space::ptr::SyscallSlice;
+use crate::process::scheduler;
 use crate::time::unit::Timestamp;
 use crate::time::unit::TimestampScale;
+use crate::time;
 use crate::util::io;
-use core::ffi::c_int;
 use macros::syscall;
 
 /// Structure representing a file descriptor passed to the `poll` system call.
@@ -105,6 +106,8 @@ pub fn poll(fds: SyscallSlice<PollFD>, nfds: usize, timeout: c_int) -> Result<i3
 
 		// TODO Make process Sleeping until an event happens on a file descriptor in
 		// `fds`
-		crate::wait();
+		unsafe {
+			scheduler::end_tick();
+		}
 	}
 }

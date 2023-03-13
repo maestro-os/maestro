@@ -176,7 +176,6 @@ impl OpenFile {
 			let open_file_guard = open_file_mutex.lock();
 			let open_file = open_file_guard.get_mut();
 			open_file.ref_count += 1;
-			//crate::println!("open: {:?} {}", location, open_file.ref_count); // TODO rm
 
 			// If the file points to a buffer, increment the number of open ends
 			if let Some(buff_mutex) = buffer::get(&open_file.location) {
@@ -224,7 +223,6 @@ impl OpenFile {
 		}
 
 		open_file.ref_count -= 1;
-		//crate::println!("close: {:?} {}", location, open_file.ref_count); // TODO rm
 		if open_file.ref_count <= 0 {
 			drop(open_file_guard);
 

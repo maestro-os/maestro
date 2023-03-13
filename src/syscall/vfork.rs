@@ -6,6 +6,7 @@
 use crate::errno::Errno;
 use crate::process::ForkOptions;
 use crate::process::Process;
+use crate::process::scheduler;
 use macros::syscall;
 
 #[syscall]
@@ -38,7 +39,9 @@ pub fn vfork() -> Result<i32, Errno> {
 
 	// Letting another process run instead of the current. Because the current
 	// process must now wait for the child process to terminate or execute a program
-	crate::wait();
+	unsafe {
+		scheduler::end_tick();
+	}
 
 	Ok(new_pid as _)
 }

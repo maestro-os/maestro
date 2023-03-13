@@ -12,6 +12,7 @@ use crate::process::Process;
 use crate::process::State;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::regs::Regs;
+use crate::process::scheduler;
 use crate::util::FailableClone;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
@@ -293,7 +294,9 @@ pub fn handle_proc_state() {
 			drop(proc_guard);
 			drop(proc_mutex);
 
-			crate::wait();
+			unsafe {
+				scheduler::end_tick();
+			}
 		}
 
 		// The process has been killed. Stopping execution and waiting for the next tick
@@ -301,7 +304,9 @@ pub fn handle_proc_state() {
 			drop(proc_guard);
 			drop(proc_mutex);
 
-			crate::enter_loop();
+			unsafe {
+				scheduler::end_tick();
+			}
 		}
 	}
 }

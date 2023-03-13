@@ -11,6 +11,7 @@ use crate::device::tty::TTYDeviceHandle;
 use crate::device;
 use crate::errno::Errno;
 use crate::errno;
+use crate::file::blocking::BlockHandler;
 use crate::file::path::Path;
 use crate::logger;
 use crate::process::mem_space::MemSpace;
@@ -91,59 +92,6 @@ impl IO for ZeroDeviceHandle {
 	}
 }
 
-/// Structure representing the kernel logs.
-pub struct KMsgDeviceHandle {}
-
-impl DeviceHandle for KMsgDeviceHandle {
-	fn ioctl(
-		&mut self,
-		_mem_space: IntSharedPtr<MemSpace>,
-		_request: ioctl::Request,
-		_argp: *const c_void,
-	) -> Result<u32, Errno> {
-		// TODO
-		Err(errno!(EINVAL))
-	}
-}
-
-impl IO for KMsgDeviceHandle {
-	fn get_size(&self) -> u64 {
-		let mutex = logger::get();
-		let guard = mutex.lock();
-
-		guard.get().get_size() as _
-	}
-
-	fn read(&mut self, offset: u64, buff: &mut [u8]) -> Result<(u64, bool), Errno> {
-		if offset > (usize::MAX as u64) {
-			return Err(errno!(EINVAL));
-		}
-
-		let mutex = logger::get();
-		let guard = mutex.lock();
-		let logger = guard.get();
-
-		let size = logger.get_size();
-		let content = logger.get_content();
-
-		let len = min(size - offset as usize, buff.len());
-		buff[..len].copy_from_slice(&content[(offset as usize)..(offset as usize + len)]);
-
-		let eof = offset as usize + len >= size;
-		Ok((len as _, eof))
-	}
-
-	fn write(&mut self, _offset: u64, _buff: &[u8]) -> Result<u64, Errno> {
-		// TODO
-		todo!();
-	}
-
-	fn poll(&mut self, _mask: u32) -> Result<u32, Errno> {
-		// TODO
-		todo!();
-	}
-}
-
 /// The random device allows to get random bytes. This device will block reading
 /// until enough entropy is available.
 pub struct RandomDeviceHandle {}
@@ -157,6 +105,11 @@ impl DeviceHandle for RandomDeviceHandle {
 	) -> Result<u32, Errno> {
 		// TODO
 		Err(errno!(EINVAL))
+	}
+
+	fn get_block_handler(&mut self) -> Option<&mut BlockHandler> {
+		// TODO
+		todo!();
 	}
 }
 
@@ -238,6 +191,58 @@ impl IO for URandomDeviceHandle {
 		} else {
 			Err(errno!(EINVAL))
 		}
+	}
+
+	fn poll(&mut self, _mask: u32) -> Result<u32, Errno> {
+		Ok(io::POLLIN | io::POLLOUT)
+	}
+}
+
+/// Structure representing the kernel logs.
+pub struct KMsgDeviceHandle {}
+
+impl DeviceHandle for KMsgDeviceHandle {
+	fn ioctl(
+		&mut self,
+		_mem_space: IntSharedPtr<MemSpace>,
+		_request: ioctl::Request,
+		_argp: *const c_void,
+	) -> Result<u32, Errno> {
+		// TODO
+		Err(errno!(EINVAL))
+	}
+}
+
+impl IO for KMsgDeviceHandle {
+	fn get_size(&self) -> u64 {
+		let mutex = logger::get();
+		let guard = mutex.lock();
+
+		guard.get().get_size() as _
+	}
+
+	fn read(&mut self, offset: u64, buff: &mut [u8]) -> Result<(u64, bool), Errno> {
+		if offset > (usize::MAX as u64) {
+			return Err(errno!(EINVAL));
+		}
+
+		let mutex = logger::get();
+		let guard = mutex.lock();
+		let logger = guard.get();
+
+		let size = logger.get_size();
+		let content = logger.get_content();
+
+		let len = min(size - offset as usize, buff.len());
+		buff[..len].copy_from_slice(&content[(offset as usize)..(offset as usize + len)]);
+
+		let eof = offset as usize + len >= size;
+		Ok((len as _, eof))
+	}
+
+	fn write(&mut self, _offset: u64, _buff: &[u8]) -> Result<u64, Errno> {
+		// TODO
+		todo!();
 	}
 
 	fn poll(&mut self, _mask: u32) -> Result<u32, Errno> {

@@ -807,6 +807,8 @@ impl Process {
 			return;
 		}
 
+		crate::println!("{}: {:?} -> {:?}", self.pid, self.state, new_state); // TODO rm
+
 		// Update the number of running processes
 		if self.state != State::Running && new_state == State::Running {
 			get_scheduler().lock().get_mut().increment_running();
