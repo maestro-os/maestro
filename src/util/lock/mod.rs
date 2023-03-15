@@ -42,10 +42,8 @@ static mut INT_DISABLE_REFS: State = State {
 	enabled: false,
 };
 
-/// Type used to declare a guard meant to unlock the associated Mutex at the
-/// moment the execution gets out of the scope of its declaration. This
-/// structure is useful to ensure that the mutex doesen't stay locked after the
-/// exectution of a function ended.
+/// Type used to declare a guard meant to unlock the associated `Mutex` at the
+/// moment the execution gets out of the scope of its declaration.
 pub struct MutexGuard<'a, T: ?Sized, const INT: bool> {
 	/// The mutex associated to the guard
 	mutex: &'a Mutex<T, INT>,
@@ -100,9 +98,9 @@ struct MutexIn<T: ?Sized, const INT: bool> {
 	data: T,
 }
 
-/// Structure representing a Mutex.
-/// The object wrapped in this structure can be accessed by only one thread at a
-/// time. The `INT` generic parameter tells whether interrupts are allowed while
+/// The object wrapped in a `Mutex` can be accessed by only one thread at a time.
+///
+/// The `INT` generic parameter tells whether interrupts are allowed while
 /// the mutex is locked. The default value is `true`.
 pub struct Mutex<T: ?Sized, const INT: bool = true> {
 	/// An unsafe cell to the inner structure of the Mutex.
@@ -125,20 +123,32 @@ impl<T, const INT: bool> Mutex<T, INT> {
 }
 
 impl<T: ?Sized, const INT: bool> Mutex<T, INT> {
-	/// Tells whether the mutex is already locked. This function should not be
-	/// called to check if the mutex is ready to be locked before locking it,
-	/// since it may cause race conditions. In this case, prefer using `lock`
-	/// directly.
-	pub fn is_locked(&self) -> bool {
-		unsafe {
-			// Safe because using the spinlock
-			(*self.inner.get()).spin.is_locked()
-		}
+	/// Returns an immutable reference to the payload.
+	///
+	/// # Safety
+	///
+	/// When using this function one, must be careful that another thread cannot access the
+	/// resource simultaneously, which would result in an undefined behaviour.
+	pub unsafe fn get_payload(&self) -> &T {
+		&(*self.inner.get()).data
 	}
 
-	/// Locks the mutex. If the mutex is already locked, the thread shall wait
-	/// until it becomes available.
-	/// The function returns a MutexGuard associated with the Mutex.
+	/// Returns a mutable reference to the payload.
+	///
+	/// # Safety
+	///
+	/// When using this function one, must be careful that another thread cannot access the
+	/// resource simultaneously, which would result in an undefined behaviour.
+	pub unsafe fn get_mut_payload(&self) -> &mut T {
+		&mut (*self.inner.get()).data
+	}
+
+	/// Locks the mutex.
+	///
+	/// If the mutex is already locked, the thread shall wait until it becomes available.
+	///
+	/// The function returns a `MutexGuard` associated with the `Mutex`. When dropped, the mutex is
+	/// unlocked.
 	pub fn lock(&self) -> MutexGuard<T, INT> {
 		let inner = unsafe {
 			// Safe because using the spinlock later
@@ -180,24 +190,6 @@ impl<T: ?Sized, const INT: bool> Mutex<T, INT> {
 		MutexGuard::new(self)
 	}
 
-	/// Returns an immutable reference to the payload.
-	///
-	/// # Safety
-	///
-	/// When using this function one, must be careful that another thread cannot access the resource simultaneously, which would result in an undefined behaviour.
-	pub unsafe fn get_payload(&self) -> &T {
-		&(*self.inner.get()).data
-	}
-
-	/// Returns a mutable reference to the payload.
-	///
-	/// # Safety
-	///
-	/// When using this function one, must be careful that another thread cannot access the resource simultaneously, which would result in an undefined behaviour.
-	pub unsafe fn get_mut_payload(&self) -> &mut T {
-		&mut (*self.inner.get()).data
-	}
-
 	/// Unlocks the mutex. This function shouldn't be used directly since it is called when the
 	/// mutex guard is dropped.
 	///
@@ -234,16 +226,6 @@ impl<T: ?Sized, const INT: bool> Mutex<T, INT> {
 }
 
 unsafe impl<T, const INT: bool> Sync for Mutex<T, INT> {}
-
-impl<T: ?Sized, const INT: bool> Drop for Mutex<T, INT> {
-	fn drop(&mut self) {
-		// This condition should never be fulfilled without using `unsafe` since
-		// lifetimes ensure the lock guard has to be dropped before the mutex
-		if self.is_locked() {
-			panic!("Dropping a locked mutex");
-		}
-	}
-}
 
 /// Type alias on Mutex representing a mutex which blocks interrupts.
 pub type IntMutex<T> = Mutex<T, false>;
