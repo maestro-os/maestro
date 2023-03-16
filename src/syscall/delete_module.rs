@@ -15,8 +15,7 @@ use macros::syscall;
 pub fn delete_module(name: SyscallString, _flags: c_uint) -> Result<i32, Errno> {
 	let name = {
 		let proc_mutex = Process::get_current().unwrap();
-		let proc_guard = proc_mutex.lock();
-		let proc = proc_guard.get();
+		let proc = proc_mutex.lock();
 
 		if proc.get_euid() != 0 {
 			return Err(errno!(EPERM));

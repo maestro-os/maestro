@@ -119,8 +119,7 @@ impl MapResidence {
 
 	/// TODO doc
 	fn alloc() -> Result<*const c_void, Errno> {
-		let ref_counter_guard = PHYSICAL_REF_COUNTER.lock();
-		let ref_counter = ref_counter_guard.get_mut();
+		let ref_counter = PHYSICAL_REF_COUNTER.lock();
 
 		let ptr = buddy::alloc(0, buddy::FLAG_ZONE_TYPE_USER)?;
 
@@ -136,9 +135,7 @@ impl MapResidence {
 
 	/// TODO doc
 	fn free(ptr: *const c_void) {
-		let ref_counter_guard = PHYSICAL_REF_COUNTER.lock();
-		let ref_counter = ref_counter_guard.get_mut();
-
+		let ref_counter = PHYSICAL_REF_COUNTER.lock();
 		ref_counter.decrement(ptr);
 
 		if ref_counter.can_free(ptr) {
@@ -157,8 +154,7 @@ impl MapResidence {
 			MapResidence::Static {
 				pages,
 			} => {
-				let pages_guard = pages.lock();
-				let pages = pages_guard.get();
+				let pages = pages.lock();
 
 				if off < pages.len() {
 					Ok(pages[off].as_ptr() as *mut c_void)
@@ -190,8 +186,7 @@ impl MapResidence {
 			MapResidence::Static {
 				pages,
 			} => {
-				let pages_guard = pages.lock();
-				let pages = pages_guard.get();
+				let pages = pages.lock();
 
 				if off >= pages.len() {
 					Self::free(ptr)

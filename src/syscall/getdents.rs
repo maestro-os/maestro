@@ -29,15 +29,13 @@ struct LinuxDirent {
 #[syscall]
 pub fn getdents(fd: c_uint, dirp: SyscallSlice<c_void>, count: c_uint) -> Result<i32, Errno> {
 	let (mem_space, open_file_mutex) = {
-		let mutex = Process::get_current().unwrap();
-		let guard = mutex.lock();
-		let proc = guard.get_mut();
+		let proc_mutex = Process::get_current().unwrap();
+		let proc = proc_mutex.lock();
 
 		let mem_space = proc.get_mem_space().unwrap();
 
 		let fds_mutex = proc.get_fds().unwrap();
-		let fds_guard = fds_mutex.lock();
-		let fds = fds_guard.get();
+		let fds = fds_mutex.lock();
 
 		let open_file_mutex = fds
 			.get_fd(fd as _)
@@ -48,8 +46,7 @@ pub fn getdents(fd: c_uint, dirp: SyscallSlice<c_void>, count: c_uint) -> Result
 	};
 
 	// Getting file
-	let open_file_guard = open_file_mutex.lock();
-	let open_file = open_file_guard.get_mut();
+	let open_file = open_file_mutex.lock();
 
 	let mem_space_guard = mem_space.lock();
 	let dirp_slice = dirp
@@ -62,8 +59,7 @@ pub fn getdents(fd: c_uint, dirp: SyscallSlice<c_void>, count: c_uint) -> Result
 
 	{
 		let file_mutex = open_file.get_file()?;
-		let file_guard = file_mutex.lock();
-		let file = file_guard.get();
+		let file = file_mutex.lock();
 
 		let entries = match file.get_content() {
 			FileContent::Directory(entries) => entries,

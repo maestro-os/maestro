@@ -57,8 +57,7 @@ static DEVICE_MANAGERS: Mutex<HashMap<String, SharedPtr<dyn DeviceManager>>>
 
 /// Registers the given device manager.
 pub fn register_manager<M: 'static + DeviceManager>(manager: M) -> Result<(), Errno> {
-	let guard = DEVICE_MANAGERS.lock();
-	let device_managers = guard.get_mut();
+	let device_managers = DEVICE_MANAGERS.lock();
 
 	let name = String::try_from(manager.get_name())?;
 
@@ -70,8 +69,7 @@ pub fn register_manager<M: 'static + DeviceManager>(manager: M) -> Result<(), Er
 
 /// Returns the device manager with name `name`.
 pub fn get_by_name(name: &str) -> Option<WeakPtr<dyn DeviceManager>> {
-	let guard = DEVICE_MANAGERS.lock();
-	let device_managers = guard.get_mut();
+	let device_managers = DEVICE_MANAGERS.lock();
 
 	Some(device_managers.get(name.as_bytes())?.new_weak())
 }
@@ -80,13 +78,10 @@ pub fn get_by_name(name: &str) -> Option<WeakPtr<dyn DeviceManager>> {
 ///
 /// `dev` is the device that has been plugged in.
 pub fn on_plug(dev: &dyn PhysicalDevice) -> Result<(), Errno> {
-	let guard = DEVICE_MANAGERS.lock();
-	let device_managers = guard.get_mut();
+	let device_managers = DEVICE_MANAGERS.lock();
 
 	for (_, m) in device_managers.iter() {
-		let guard = m.lock();
-		let manager = guard.get_mut();
-
+		let manager = m.lock();
 		manager.on_plug(dev)?;
 	}
 
@@ -97,13 +92,10 @@ pub fn on_plug(dev: &dyn PhysicalDevice) -> Result<(), Errno> {
 ///
 /// `dev` is the device that has been plugged out.
 pub fn on_unplug(dev: &dyn PhysicalDevice) -> Result<(), Errno> {
-	let guard = DEVICE_MANAGERS.lock();
-	let device_managers = guard.get_mut();
+	let device_managers = DEVICE_MANAGERS.lock();
 
 	for (_, m) in device_managers.iter() {
-		let guard = m.lock();
-		let manager = guard.get_mut();
-
+		let manager = m.lock();
 		manager.on_unplug(dev)?;
 	}
 

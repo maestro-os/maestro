@@ -30,20 +30,19 @@ static TOTAL_FD: Mutex<usize> = Mutex::new(0);
 /// If the maximum amount of file descriptors is reached, the function does
 /// nothing and returns an error with the appropriate errno.
 fn increment_total() -> Result<(), Errno> {
-	let guard = TOTAL_FD.lock();
+	let total_fd = TOTAL_FD.lock();
 
-	if *guard.get() >= TOTAL_MAX_FD {
+	if *total_fd >= TOTAL_MAX_FD {
 		return Err(errno!(ENFILE));
 	}
-	*guard.get_mut() += 1;
+	*total_fd += 1;
 
 	Ok(())
 }
 
 /// Decrements the total number of file descriptors open system-wide.
 fn decrement_total() {
-	let guard = TOTAL_FD.lock();
-	*guard.get_mut() -= 1;
+	*TOTAL_FD.lock() -= 1;
 }
 
 /// Constraints to be respected when creating a new file descriptor.
@@ -153,9 +152,7 @@ impl FailableClone for FileDescriptor {
 impl IO for FileDescriptor {
 	fn get_size(&self) -> u64 {
 		if let Ok(open_file_mutex) = self.get_open_file() {
-			let open_file_guard = open_file_mutex.lock();
-			let open_file = open_file_guard.get();
-
+			let open_file = open_file_mutex.lock();
 			open_file.get_size()
 		} else {
 			0
@@ -168,8 +165,7 @@ impl IO for FileDescriptor {
 		}
 
 		let open_file_mutex = self.get_open_file()?;
-		let open_file_guard = open_file_mutex.lock();
-		let open_file = open_file_guard.get_mut();
+		let open_file = open_file_mutex.lock();
 
 		open_file.read(off, buf)
 	}
@@ -180,16 +176,14 @@ impl IO for FileDescriptor {
 		}
 
 		let open_file_mutex = self.get_open_file()?;
-		let open_file_guard = open_file_mutex.lock();
-		let open_file = open_file_guard.get_mut();
+		let open_file = open_file_mutex.lock();
 
 		open_file.write(off, buf)
 	}
 
 	fn poll(&mut self, mask: u32) -> Result<u32, Errno> {
 		let open_file_mutex = self.get_open_file()?;
-		let open_file_guard = open_file_mutex.lock();
-		let open_file = open_file_guard.get_mut();
+		let open_file = open_file_mutex.lock();
 
 		open_file.poll(mask)
 	}

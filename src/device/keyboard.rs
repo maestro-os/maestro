@@ -565,8 +565,7 @@ impl KeyboardManager {
 
 			// Getting the tty
 			if let Some(tty_mutex) = tty::current() {
-				let tty_guard = tty_mutex.lock();
-				let tty = tty_guard.get_mut();
+				let tty = tty_mutex.lock();
 
 				let ctrl = self.ctrl || self.right_ctrl;
 				let alt = self.alt || self.right_alt;

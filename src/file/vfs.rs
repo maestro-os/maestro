@@ -76,20 +76,17 @@ impl VFS {
 				// Getting the mountpoint
 				let mountpoint_mutex = location.get_mountpoint()
 					.ok_or_else(|| errno!(ENOENT))?;
-				let mountpoint_guard = mountpoint_mutex.lock();
-				let mountpoint = mountpoint_guard.get_mut();
+				let mountpoint = mountpoint_mutex.lock();
 
 				// Getting the IO interface
 				let io_mutex = mountpoint.get_source().get_io()?;
-				let io_guard = io_mutex.lock();
-				let io = io_guard.get_mut();
+				let io = io_mutex.lock();
 
 				// The filesystem
 				let fs_mutex = mountpoint.get_filesystem();
-				let fs_guard = fs_mutex.lock();
-				let fs = fs_guard.get_mut();
+				let fs = fs_mutex.lock();
 
-				let mut file = fs.load_file(io, *inode, String::new())?;
+				let mut file = fs.load_file(&mut *io, *inode, String::new())?;
 
 				update_location(&mut file, &mountpoint);
 				SharedPtr::new(file)
@@ -128,29 +125,26 @@ impl VFS {
 
 		// Getting the path's deepest mountpoint
 		let mountpoint_mutex = mountpoint::get_deepest(&path).ok_or_else(|| errno!(ENOENT))?;
-		let mountpoint_guard = mountpoint_mutex.lock();
-		let mountpoint = mountpoint_guard.get_mut();
+		let mountpoint = mountpoint_mutex.lock();
 		let mountpath = mountpoint.get_path().failable_clone()?;
 
 		// Getting the IO interface
 		let io_mutex = mountpoint.get_source().get_io()?;
-		let io_guard = io_mutex.lock();
-		let io = io_guard.get_mut();
+		let io = io_mutex.lock();
 
 		// Getting the path from the start of the filesystem to the file
 		let inner_path = path.range_from(mountpoint.get_path().get_elements_count()..)?;
 
 		// The filesystem
 		let fs_mutex = mountpoint.get_filesystem();
-		let fs_guard = fs_mutex.lock();
-		let fs = fs_guard.get_mut();
+		let fs = fs_mutex.lock();
 
 		// The root inode
-		let mut inode = fs.get_root_inode(io)?;
-		let mut file = fs.load_file(io, inode, String::new())?;
+		let mut inode = fs.get_root_inode(&mut *io)?;
+		let mut file = fs.load_file(&mut *io, inode, String::new())?;
 		// If the path is empty, return the root
 		if inner_path.is_empty() {
-			drop(fs_guard);
+			drop(fs);
 
 			update_location(&mut file, &mountpoint);
 			return SharedPtr::new(file);
@@ -161,10 +155,10 @@ impl VFS {
 		}
 
 		for i in 0..inner_path.get_elements_count() {
-			inode = fs.get_inode(io, Some(inode), &inner_path[i])?;
+			inode = fs.get_inode(&mut *io, Some(inode), &inner_path[i])?;
 
 			// Checking permissions
-			file = fs.load_file(io, inode, inner_path[i].failable_clone()?)?;
+			file = fs.load_file(&mut *io, inode, inner_path[i].failable_clone()?)?;
 			if i < inner_path.get_elements_count() - 1 && !file.can_execute(uid, gid) {
 				return Err(errno!(EACCES));
 			}
@@ -189,9 +183,9 @@ impl VFS {
 					let new_path = parent_path.concat(&link_path)?;
 					let new_path = new_path.concat(&suffix)?;
 
-					drop(fs_guard);
-					drop(io_guard);
-					drop(mountpoint_guard);
+					drop(fs);
+					drop(io);
+					drop(mountpoint);
 					return self.get_file_from_path_(
 						&new_path,
 						uid,
@@ -207,7 +201,7 @@ impl VFS {
 		parent_path.pop();
 		file.set_parent_path(parent_path);
 
-		drop(fs_guard);
+		drop(fs);
 
 		update_location(&mut file, &mountpoint);
 		SharedPtr::new(file)
@@ -266,30 +260,27 @@ impl VFS {
 			.get_location()
 			.get_mountpoint()
 			.ok_or_else(|| errno!(ENOENT))?;
-		let mountpoint_guard = mountpoint_mutex.lock();
-		let mountpoint = mountpoint_guard.get_mut();
+		let mountpoint = mountpoint_mutex.lock();
 
 		// Getting the IO interface
 		let io_mutex = mountpoint.get_source().get_io()?;
-		let io_guard = io_mutex.lock();
-		let io = io_guard.get_mut();
+		let io = io_mutex.lock();
 
 		// The filesystem
 		let fs_mutex = mountpoint.get_filesystem();
-		let fs_guard = fs_mutex.lock();
-		let fs = fs_guard.get_mut();
+		let fs = fs_mutex.lock();
 
-		let inode = fs.get_inode(io, Some(parent.get_location().get_inode()), &name)?;
-		let mut file = fs.load_file(io, inode, name)?;
+		let inode = fs.get_inode(&mut *io, Some(parent.get_location().get_inode()), &name)?;
+		let mut file = fs.load_file(&mut *io, inode, name)?;
 
 		if follow_links {
 			if let FileContent::Link(link_path) = file.get_content() {
 				let link_path = Path::from_str(link_path.as_bytes(), false)?;
 				let new_path = parent.get_path()?.concat(&link_path)?;
 
-				drop(fs_guard);
-				drop(io_guard);
-				drop(mountpoint_guard);
+				drop(fs);
+				drop(io);
+				drop(mountpoint);
 				return self.get_file_from_path_(&new_path, uid, gid, follow_links, 1);
 			}
 		}
@@ -347,21 +338,18 @@ impl VFS {
 			.get_location()
 			.get_mountpoint()
 			.ok_or_else(|| errno!(ENOENT))?;
-		let mountpoint_guard = mountpoint_mutex.lock();
-		let mountpoint = mountpoint_guard.get_mut();
+		let mountpoint = mountpoint_mutex.lock();
 		if mountpoint.is_readonly() {
 			return Err(errno!(EROFS));
 		}
 
 		// Getting the IO interface
 		let io_mutex = mountpoint.get_source().get_io()?;
-		let io_guard = io_mutex.lock();
-		let io = io_guard.get_mut();
+		let io = io_mutex.lock();
 
 		// Getting the filesystem
 		let fs_mutex = mountpoint.get_filesystem();
-		let fs_guard = fs_mutex.lock();
-		let fs = fs_guard.get_mut();
+		let fs = fs_mutex.lock();
 		if fs.is_readonly() {
 			return Err(errno!(EROFS));
 		}
@@ -370,13 +358,13 @@ impl VFS {
 		let parent_inode = parent.get_location().get_inode();
 
 		// Adding the file to the filesystem
-		let mut file = fs.add_file(io, parent_inode, name, uid, gid, mode, content)?;
+		let mut file = fs.add_file(&mut *io, parent_inode, name, uid, gid, mode, content)?;
 
 		// Adding the file to the parent's entries
 		file.set_parent_path(parent.get_path()?);
 		parent.add_entry(file.get_name().failable_clone()?, file.to_dir_entry())?;
 
-		drop(fs_guard);
+		drop(fs);
 		update_location(&mut file, &mountpoint);
 		SharedPtr::new(file)
 	}
@@ -414,27 +402,24 @@ impl VFS {
 			.get_location()
 			.get_mountpoint()
 			.ok_or_else(|| errno!(ENOENT))?;
-		let mountpoint_guard = mountpoint_mutex.lock();
-		let mountpoint = mountpoint_guard.get_mut();
+		let mountpoint = mountpoint_mutex.lock();
 		if mountpoint.is_readonly() {
 			return Err(errno!(EROFS));
 		}
 
 		// Getting the IO interface
 		let io_mutex = mountpoint.get_source().get_io()?;
-		let io_guard = io_mutex.lock();
-		let io = io_guard.get_mut();
+		let io = io_mutex.lock();
 
 		// Getting the filesystem
 		let fs_mutex = mountpoint.get_filesystem();
-		let fs_guard = fs_mutex.lock();
-		let fs = fs_guard.get_mut();
+		let fs = fs_mutex.lock();
 		if fs.is_readonly() {
 			return Err(errno!(EROFS));
 		}
 
 		fs.add_link(
-			io,
+			&mut *io,
 			parent.get_location().get_inode(),
 			name,
 			target.get_location().get_inode(),
@@ -459,8 +444,7 @@ impl VFS {
 
 		// The parent directory.
 		let parent_mutex = self.get_file_from_path(file.get_parent_path(), uid, gid, true)?;
-		let parent_guard = parent_mutex.lock();
-		let parent = parent_guard.get();
+		let parent = parent_mutex.lock();
 		let parent_inode = parent.get_location().get_inode();
 
 		// Checking permissions
@@ -471,27 +455,24 @@ impl VFS {
 		// Getting the mountpoint
 		let location = file.get_location();
 		let mountpoint_mutex = location.get_mountpoint().ok_or_else(|| errno!(ENOENT))?;
-		let mountpoint_guard = mountpoint_mutex.lock();
-		let mountpoint = mountpoint_guard.get_mut();
+		let mountpoint = mountpoint_mutex.lock();
 		if mountpoint.is_readonly() {
 			return Err(errno!(EROFS));
 		}
 
 		// Getting the IO interface
 		let io_mutex = mountpoint.get_source().get_io()?;
-		let io_guard = io_mutex.lock();
-		let io = io_guard.get_mut();
+		let io = io_mutex.lock();
 
 		// Getting the filesystem
 		let fs_mutex = mountpoint.get_filesystem();
-		let fs_guard = fs_mutex.lock();
-		let fs = fs_guard.get_mut();
+		let fs = fs_mutex.lock();
 		if fs.is_readonly() {
 			return Err(errno!(EROFS));
 		}
 
 		// Removing the file
-		fs.remove_file(io, parent_inode, file.get_name())?;
+		fs.remove_file(&mut *io, parent_inode, file.get_name())?;
 
 		if file.get_hard_links_count() > 1 {
 			// If the file is a named pipe or socket, free its now unused buffer

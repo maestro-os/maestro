@@ -82,10 +82,9 @@ pub fn exec(proc: &mut Process, image: ProgramImage) -> Result<(), Errno> {
 	// Duplicate file descriptor table
 	let fds = proc.get_fds()
 		.map(|fds_mutex| {
-			let fds_guard = fds_mutex.lock();
-			let fds = fds_guard.get();
-
+			let fds = fds_mutex.lock();
 			let new_fds = fds.duplicate(true)?;
+
 			SharedPtr::new(new_fds)
 		})
 		.transpose()?;
@@ -104,8 +103,7 @@ pub fn exec(proc: &mut Process, image: ProgramImage) -> Result<(), Errno> {
 	// Resetting signals
 	proc.sigmask.clear_all();
 	{
-		let handlers_guard = proc.signal_handlers.lock();
-		let handlers = handlers_guard.get_mut();
+		let handlers = proc.signal_handlers.lock();
 
 		for i in 0..handlers.len() {
 			handlers[i] = SignalHandler::Default;

@@ -108,13 +108,11 @@ pub fn do_fcntl(fd: i32, cmd: i32, arg: *mut c_void, _fcntl64: bool) -> Result<i
 
 	let fds_mutex = {
 		let proc_mutex = Process::get_current().unwrap();
-		let proc_guard = proc_mutex.lock();
-		let proc = proc_guard.get_mut();
+		let proc = proc_mutex.lock();
 
 		proc.get_fds().unwrap()
 	};
-	let fds_guard = fds_mutex.lock();
-	let fds = fds_guard.get_mut();
+	let fds = fds_mutex.lock();
 
 	match cmd {
 		F_DUPFD => Ok(fds
@@ -135,8 +133,7 @@ pub fn do_fcntl(fd: i32, cmd: i32, arg: *mut c_void, _fcntl64: bool) -> Result<i
 		F_GETFL => {
 			let fd = fds.get_fd(fd as _).ok_or_else(|| errno!(EBADF))?;
 			let open_file_mutex = fd.get_open_file()?;
-			let open_file_guard = open_file_mutex.lock();
-			let open_file = open_file_guard.get();
+			let open_file = open_file_mutex.lock();
 
 			Ok(open_file.get_flags())
 		}
@@ -144,8 +141,7 @@ pub fn do_fcntl(fd: i32, cmd: i32, arg: *mut c_void, _fcntl64: bool) -> Result<i
 		F_SETFL => {
 			let fd = fds.get_fd(fd as _).ok_or_else(|| errno!(EBADF))?;
 			let open_file_mutex = fd.get_open_file()?;
-			let open_file_guard = open_file_mutex.lock();
-			let open_file = open_file_guard.get_mut();
+			let open_file = open_file_mutex.lock();
 
 			open_file.set_flags(arg as _);
 			Ok(0)
@@ -254,12 +250,10 @@ pub fn do_fcntl(fd: i32, cmd: i32, arg: *mut c_void, _fcntl64: bool) -> Result<i
 			let fd = fds.get_fd(fd as _).ok_or_else(|| errno!(EBADF))?;
 
 			let open_file_mutex = fd.get_open_file()?;
-			let open_file_guard = open_file_mutex.lock();
-			let open_file = open_file_guard.get();
+			let open_file = open_file_mutex.lock();
 
 			let file_mutex = open_file.get_file()?;
-			let file_guard = file_mutex.lock();
-			let file = file_guard.get();
+			let file = file_mutex.lock();
 
 			match file.get_content() {
 				FileContent::Fifo => {

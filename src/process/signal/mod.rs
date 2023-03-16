@@ -424,8 +424,7 @@ impl Signal {
 				// FIXME Don't write data out of the stack
 				oom::wrap(|| {
 					let mem_space = process.get_mem_space().unwrap();
-					let mem_space_guard = mem_space.lock();
-					let mem_space = mem_space_guard.get_mut();
+					let mem_space = mem_space.lock();
 
 					mem_space.bind();
 					mem_space.alloc(signal_esp as *mut u32, 3)

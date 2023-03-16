@@ -17,8 +17,7 @@ pub fn nanosleep(req: SyscallPtr<Timespec32>, rem: SyscallPtr<Timespec32>) -> Re
 
 	let delay = {
 		let proc_mutex = Process::get_current().unwrap();
-		let proc_guard = proc_mutex.lock();
-		let proc = proc_guard.get();
+		let proc = proc_mutex.lock();
 
 		let mem_space = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space.lock();
@@ -43,8 +42,7 @@ pub fn nanosleep(req: SyscallPtr<Timespec32>, rem: SyscallPtr<Timespec32>) -> Re
 	// Setting remaining time to zero
 	{
 		let proc_mutex = Process::get_current().unwrap();
-		let proc_guard = proc_mutex.lock();
-		let proc = proc_guard.get();
+		let proc = proc_mutex.lock();
 
 		let mem_space = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space.lock();

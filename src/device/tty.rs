@@ -40,11 +40,10 @@ impl TTYDeviceHandle {
 	/// Returns the current process and its associated TTY.
 	fn get_tty(&self) -> Result<(IntSharedPtr<Process>, TTYHandle), Errno> {
 		let proc_mutex = Process::get_current().unwrap();
-		let proc_guard = proc_mutex.lock();
-		let proc = proc_guard.get();
+		let proc = proc_mutex.lock();
 
 		let tty_mutex = self.tty.clone().unwrap_or_else(|| proc.get_tty());
-		drop(proc_guard);
+		drop(proc);
 
 		Ok((proc_mutex, tty_mutex))
 	}
@@ -100,10 +99,8 @@ impl DeviceHandle for TTYDeviceHandle {
 		argp: *const c_void,
 	) -> Result<u32, Errno> {
 		let (proc_mutex, tty_mutex) = self.get_tty()?;
-		let proc_guard = proc_mutex.lock();
-		let proc = proc_guard.get_mut();
-		let tty_guard = tty_mutex.lock();
-		let tty = tty_guard.get_mut();
+		let proc = proc_mutex.lock();
+		let tty = tty_mutex.lock();
 
 		match request.get_old_format() {
 			ioctl::TCGETS => {
@@ -119,7 +116,7 @@ impl DeviceHandle for TTYDeviceHandle {
 
 			// TODO Implement correct behaviours for each
 			ioctl::TCSETS | ioctl::TCSETSW | ioctl::TCSETSF => {
-				self.check_sigttou(proc, tty)?;
+				self.check_sigttou(&mut *proc, &*tty)?;
 
 				let mem_space_guard = mem_space.lock();
 				let termios_ptr: SyscallPtr<Termios> = (argp as usize).into();
@@ -143,7 +140,7 @@ impl DeviceHandle for TTYDeviceHandle {
 			}
 
 			ioctl::TIOCSPGRP => {
-				self.check_sigttou(proc, tty)?;
+				self.check_sigttou(&mut *proc, &*tty)?;
 
 				let mem_space_guard = mem_space.lock();
 				let pgid_ptr: SyscallPtr<Pid> = (argp as usize).into();
@@ -174,7 +171,7 @@ impl DeviceHandle for TTYDeviceHandle {
 					.ok_or_else(|| errno!(EFAULT))?;
 
 				// Dropping to avoid deadlock since `set_winsize` sends the SIGWINCH signal
-				drop(proc_guard);
+				drop(proc);
 				tty.set_winsize(winsize.clone());
 
 				Ok(0)
@@ -193,9 +190,7 @@ impl DeviceHandle for TTYDeviceHandle {
 impl IO for TTYDeviceHandle {
 	fn get_size(&self) -> u64 {
 		if let Ok((_, tty_mutex)) = self.get_tty() {
-			let tty_guard = tty_mutex.lock();
-			let tty = tty_guard.get_mut();
-
+			let tty = tty_mutex.lock();
 			tty.get_available_size() as _
 		} else {
 			0
@@ -204,12 +199,10 @@ impl IO for TTYDeviceHandle {
 
 	fn read(&mut self, _offset: u64, buff: &mut [u8]) -> Result<(u64, bool), Errno> {
 		let (proc_mutex, tty_mutex) = self.get_tty()?;
-		let proc_guard = proc_mutex.lock();
-		let proc = proc_guard.get_mut();
-		let tty_guard = tty_mutex.lock();
-		let tty = tty_guard.get_mut();
+		let proc = proc_mutex.lock();
+		let tty = tty_mutex.lock();
 
-		self.check_sigttin(proc, tty)?;
+		self.check_sigttin(&mut *proc, &*tty)?;
 
 		let (len, eof) = tty.read(buff);
 		Ok((len as _, eof))
@@ -217,12 +210,10 @@ impl IO for TTYDeviceHandle {
 
 	fn write(&mut self, _offset: u64, buff: &[u8]) -> Result<u64, Errno> {
 		let (proc_mutex, tty_mutex) = self.get_tty()?;
-		let proc_guard = proc_mutex.lock();
-		let proc = proc_guard.get_mut();
-		let tty_guard = tty_mutex.lock();
-		let tty = tty_guard.get_mut();
+		let proc = proc_mutex.lock();
+		let tty = tty_mutex.lock();
 
-		self.check_sigttou(proc, tty)?;
+		self.check_sigttou(&mut *proc, &*tty)?;
 
 		tty.write(buff);
 		Ok(buff.len() as _)
@@ -230,8 +221,7 @@ impl IO for TTYDeviceHandle {
 
 	fn poll(&mut self, mask: u32) -> Result<u32, Errno> {
 		let (_, tty_mutex) = self.get_tty()?;
-		let tty_guard = tty_mutex.lock();
-		let tty = tty_guard.get_mut();
+		let tty = tty_mutex.lock();
 
 		let mut result = 0;
 		if mask & io::POLLIN != 0 && tty.get_available_size() > 0 {

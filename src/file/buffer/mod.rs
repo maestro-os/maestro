@@ -60,10 +60,9 @@ static ID_ALLOCATOR: Mutex<Option<IDAllocator>> = Mutex::new(None);
 /// TODO doc
 fn id_allocator_do<T, F>(f: F) -> Result<T, Errno>
 	where F: FnOnce(&mut IDAllocator) -> Result<T, Errno> {
-	let id_allocator_guard = ID_ALLOCATOR.lock();
-	let id_allocator = id_allocator_guard.get_mut();
+	let id_allocator = ID_ALLOCATOR.lock();
 
-	let id_allocator = match id_allocator {
+	let id_allocator = match &mut *id_allocator {
 		Some(id_allocator) => id_allocator,
 		None => {
 			*id_allocator = Some(IDAllocator::new(65536)?);
@@ -78,9 +77,7 @@ fn id_allocator_do<T, F>(f: F) -> Result<T, Errno>
 ///
 /// If the buffer doesn't exist, the function creates it.
 pub fn get(loc: &FileLocation) -> Option<SharedPtr<dyn Buffer>> {
-	let buffers_guard = BUFFERS.lock();
-	let buffers = buffers_guard.get_mut();
-
+	let buffers = BUFFERS.lock();
 	buffers.get(loc).cloned()
 }
 
@@ -90,8 +87,7 @@ pub fn get(loc: &FileLocation) -> Option<SharedPtr<dyn Buffer>> {
 pub fn get_or_default<B: Buffer + FailableDefault + 'static>(
 	loc: &FileLocation
 ) -> Result<SharedPtr<dyn Buffer>, Errno> {
-	let buffers_guard = BUFFERS.lock();
-	let buffers = buffers_guard.get_mut();
+	let buffers = BUFFERS.lock();
 
 	match buffers.get(loc).cloned() {
 		Some(buff) => Ok(buff),
@@ -133,8 +129,7 @@ pub fn register(
 		})
 	})?;
 
-	let buffers_guard = BUFFERS.lock();
-	let buffers = buffers_guard.get_mut();
+	let buffers = BUFFERS.lock();
 	buffers.insert(loc.clone(), buff)?;
 
 	Ok(loc)
@@ -144,8 +139,7 @@ pub fn register(
 ///
 /// If the location doesn't exist or doesn't match any existing buffer, the function does nothing.
 pub fn release(loc: &FileLocation) {
-	let buffers_guard = BUFFERS.lock();
-	let buffers = buffers_guard.get_mut();
+	let buffers = BUFFERS.lock();
 
 	let _ = buffers.remove(loc);
 

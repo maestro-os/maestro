@@ -16,8 +16,7 @@ pub fn clock_gettime(_clock_id: i32, tp: SyscallPtr<Timespec>) -> Result<i32, Er
 
 	{
 		let proc_mutex = Process::get_current().unwrap();
-		let proc_guard = proc_mutex.lock();
-		let proc = proc_guard.get();
+		let proc = proc_mutex.lock();
 
 		let mem_space = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space.lock();

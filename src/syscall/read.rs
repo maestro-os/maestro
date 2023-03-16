@@ -27,15 +27,13 @@ pub fn read(fd: c_int, buf: SyscallSlice<u8>, count: usize) -> Result<i32, Errno
 	}
 
 	let (mem_space, open_file_mutex) = {
-		let mutex = Process::get_current().unwrap();
-		let guard = mutex.lock();
-		let proc = guard.get_mut();
+		let proc_mutex = Process::get_current().unwrap();
+		let proc = proc_mutex.lock();
 
 		let mem_space = proc.get_mem_space().unwrap();
 
 		let fds_mutex = proc.get_fds().unwrap();
-		let fds_guard = fds_mutex.lock();
-		let fds = fds_guard.get();
+		let fds = fds_mutex.lock();
 
 		let open_file_mutex = fds.get_fd(fd as _)
 			.ok_or(errno!(EBADF))?
@@ -49,8 +47,7 @@ pub fn read(fd: c_int, buf: SyscallSlice<u8>, count: usize) -> Result<i32, Errno
 
 		let (len, flags) = {
 			let (len, eof, flags) = idt::wrap_disable_interrupts(|| {
-				let open_file_guard = open_file_mutex.lock();
-				let open_file = open_file_guard.get_mut();
+				let open_file = open_file_mutex.lock();
 
 				let mem_space_guard = mem_space.lock();
 				let buf_slice = buf.get_mut(&mem_space_guard, len)?.ok_or(errno!(EFAULT))?;
@@ -74,14 +71,11 @@ pub fn read(fd: c_int, buf: SyscallSlice<u8>, count: usize) -> Result<i32, Errno
 
 		// Make process sleep
 		{
-			let mutex = Process::get_current().unwrap();
-			let guard = mutex.lock();
-			let proc = guard.get_mut();
+			let proc_mutex = Process::get_current().unwrap();
+			let proc = proc_mutex.lock();
 
-			let open_file_guard = open_file_mutex.lock();
-			let open_file = open_file_guard.get_mut();
-
-			open_file.add_waiting_process(proc, io::POLLIN | io::POLLERR)?;
+			let open_file = open_file_mutex.lock();
+			open_file.add_waiting_process(&mut *proc, io::POLLIN | io::POLLERR)?;
 		}
 		unsafe {
 			scheduler::end_tick();

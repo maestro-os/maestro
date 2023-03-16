@@ -145,9 +145,7 @@ pub static ENTROPY_POOL: IntMutex<Option<EntropyPool>> = IntMutex::new(None);
 
 /// Initializes randomness sources.
 pub fn init() -> Result<(), Errno> {
-	let guard = ENTROPY_POOL.lock();
-	let pool = guard.get_mut();
-	*pool = Some(EntropyPool::new()?);
+	*ENTROPY_POOL.lock() = Some(EntropyPool::new()?);
 
 	Ok(())
 }

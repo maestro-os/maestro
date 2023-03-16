@@ -9,22 +9,20 @@ use macros::syscall;
 
 #[syscall]
 pub fn getpgid(pid: Pid) -> Result<i32, Errno> {
-	let mutex = Process::get_current().unwrap();
-	let guard = mutex.lock();
-	let proc = guard.get_mut();
+	let proc_mutex = Process::get_current().unwrap();
+	let proc = proc_mutex.lock();
 
 	if pid == 0 {
 		Ok(proc.get_pgid() as _)
 	} else {
-		let mutex = {
+		let proc_mutex = {
 			if let Some(proc) = Process::get_by_pid(pid) {
 				proc
 			} else {
 				return Err(errno!(ESRCH));
 			}
 		};
-		let guard = mutex.lock();
-		let proc = guard.get_mut();
+		let proc = proc_mutex.lock();
 
 		Ok(proc.get_pgid() as _)
 	}

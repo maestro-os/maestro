@@ -77,8 +77,7 @@ pub fn do_select<T: TimeUnit>(
 	// Getting timeout
 	let timeout = {
 		let proc_mutex = Process::get_current().unwrap();
-		let proc_guard = proc_mutex.lock();
-		let proc = proc_guard.get();
+		let proc = proc_mutex.lock();
 
 		let mem_space = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space.lock();
@@ -101,8 +100,7 @@ pub fn do_select<T: TimeUnit>(
 		for fd_id in 0..min(nfds as u32, FD_SETSIZE as u32) {
 			let (mem_space, fds_mutex) = {
 				let proc_mutex = Process::get_current().unwrap();
-				let proc_guard = proc_mutex.lock();
-				let proc = proc_guard.get();
+				let proc = proc_mutex.lock();
 
 				let mem_space = proc.get_mem_space().unwrap();
 				let fds_mutex = proc.get_fds().unwrap();
@@ -133,8 +131,7 @@ pub fn do_select<T: TimeUnit>(
 				all_zeros = false;
 			}
 
-			let fds_guard = fds_mutex.lock();
-			let fds = fds_guard.get();
+			let fds = fds_mutex.lock();
 			let fd = fds.get_fd(fd_id);
 
 			// Checking the file descriptor exists
@@ -163,8 +160,7 @@ pub fn do_select<T: TimeUnit>(
 			}
 
 			let open_file_mutex = fd.get_open_file()?;
-			let open_file_guard = open_file_mutex.lock();
-			let open_file = open_file_guard.get_mut();
+			let open_file = open_file_mutex.lock();
 
 			let result = open_file.poll(mask)?;
 

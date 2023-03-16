@@ -14,9 +14,8 @@ use macros::syscall;
 #[syscall]
 pub fn mkdir(pathname: SyscallString, mode: file::Mode) -> Result<i32, Errno> {
 	let (path, mode, uid, gid) = {
-		let mutex = Process::get_current().unwrap();
-		let guard = mutex.lock();
-		let proc = guard.get_mut();
+		let proc_mutex = Process::get_current().unwrap();
+		let proc = proc_mutex.lock();
 
 		let mode = mode & !proc.get_umask();
 		let uid = proc.get_uid();
@@ -28,7 +27,7 @@ pub fn mkdir(pathname: SyscallString, mode: file::Mode) -> Result<i32, Errno> {
 		// The path to the directory to create
 		let mut path =
 			Path::from_str(pathname.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?, true)?;
-		path = super::util::get_absolute_path(proc, path)?;
+		path = super::util::get_absolute_path(&*proc, path)?;
 
 		(path, mode, uid, gid)
 	};
@@ -40,17 +39,16 @@ pub fn mkdir(pathname: SyscallString, mode: file::Mode) -> Result<i32, Errno> {
 	if let Some(name) = parent_path.pop() {
 		// Creating the directory
 		{
-			let mutex = vfs::get();
-			let guard = mutex.lock();
-			let vfs = guard.get_mut().as_mut().unwrap();
+			let vfs_mutex = vfs::get();
+			let vfs = vfs_mutex.lock();
+			let vfs = vfs.as_mut().unwrap();
 
 			// Getting parent directory
 			let parent_mutex = vfs.get_file_from_path(&parent_path, uid, gid, true)?;
-			let parent_guard = parent_mutex.lock();
-			let parent = parent_guard.get_mut();
+			let parent = parent_mutex.lock();
 
 			vfs.create_file(
-				parent,
+				&mut *parent,
 				name,
 				uid,
 				gid,

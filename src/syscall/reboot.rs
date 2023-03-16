@@ -30,9 +30,9 @@ pub fn reboot(magic: c_int, magic2: c_int, cmd: c_int, _arg: *const c_void) -> R
 	}
 
 	{
-		let mutex = Process::get_current().unwrap();
-		let guard = mutex.lock();
-		let proc = guard.get_mut();
+		let proc_mutex = Process::get_current().unwrap();
+		let proc = proc_mutex.lock();
+
 		if proc.get_uid() != 0 {
 			return Err(errno!(EPERM));
 		}

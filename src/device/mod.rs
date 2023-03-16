@@ -192,19 +192,17 @@ impl Device {
 	/// The function takes a mutex guard because it needs to unlock the device
 	/// in order to create the file without a deadlock since the VFS accesses a device to write on
 	/// the filesystem.
-	pub fn create_file(guard: MutexGuard<Device, true>) -> Result<(), Errno> {
-		let dev = guard.get_mut();
-
+	pub fn create_file(dev: MutexGuard<Device, true>) -> Result<(), Errno> {
 		let file_content = dev.id.to_file_content();
 		let path = dev.path.failable_clone()?;
 		let mode = dev.mode;
 
-		drop(guard);
+		drop(dev);
 
 		let vfs_mutex = vfs::get();
 		let vfs_guard = vfs_mutex.lock();
 
-		if let Some(vfs) = vfs_guard.get_mut().as_mut() {
+		if let Some(vfs) = vfs_guard.as_mut() {
 			// Tells whether the file already exists
 			let file_exists = vfs.get_file_from_path(&path, 0, 0, true).is_ok();
 
@@ -216,11 +214,10 @@ impl Device {
 
 				// Getting the parent directory
 				let parent_mutex = vfs.get_file_from_path(&dir_path, 0, 0, true)?;
-				let parent_guard = parent_mutex.lock();
-				let parent = parent_guard.get_mut();
+				let parent = parent_mutex.lock();
 
 				// Creating the device file
-				vfs.create_file(parent, filename, 0, 0, mode, file_content)?;
+				vfs.create_file(&mut *parent, filename, 0, 0, mode, file_content)?;
 			}
 		}
 
@@ -234,10 +231,10 @@ impl Device {
 		let vfs_mutex = vfs::get();
 		let vfs_guard = vfs_mutex.lock();
 
-		if let Some(vfs) = vfs_guard.get_mut().as_mut() {
+		if let Some(vfs) = vfs_guard.as_mut() {
 			if let Ok(file_mutex) = vfs.get_file_from_path(&self.path, 0, 0, true) {
-				let file_guard = file_mutex.lock();
-				vfs.remove_file(file_guard.get(), 0, 0)?;
+				let file = file_mutex.lock();
+				vfs.remove_file(&*file, 0, 0)?;
 			}
 		}
 
@@ -284,14 +281,12 @@ pub fn register(device: Device) -> Result<(), Errno> {
 	let dev_mutex = SharedPtr::new(device)?;
 
 	{
-		let devs_guard = DEVICES.lock();
-		let devs = devs_guard.get_mut();
+		let devs = DEVICES.lock();
 		devs.insert(id, dev_mutex.clone())?;
 	}
 
 	// Create file
-	let dev_guard = dev_mutex.lock();
-	Device::create_file(dev_guard)?;
+	Device::create_file(dev_mutex.lock())?;
 
 	Ok(())
 }
@@ -303,15 +298,13 @@ pub fn register(device: Device) -> Result<(), Errno> {
 /// If files management is initialized, the function removes the associated device file.
 pub fn unregister(id: &DeviceID) -> Result<(), Errno> {
 	let dev_mutex = {
-		let devs_guard = DEVICES.lock();
-		let devs = devs_guard.get_mut();
+		let devs = DEVICES.lock();
 		devs.remove(id)
 	};
 
 	if let Some(dev_mutex) = dev_mutex {
 		// Remove file
-		let dev_guard = dev_mutex.lock();
-		let dev = dev_guard.get_mut();
+		let dev = dev_mutex.lock();
 		dev.remove_file()?;
 	}
 
@@ -322,9 +315,7 @@ pub fn unregister(id: &DeviceID) -> Result<(), Errno> {
 ///
 /// If the device doesn't exist, the function returns `None`.
 pub fn get(id: &DeviceID) -> Option<SharedPtr<Device>> {
-	let guard = DEVICES.lock();
-	let devs = guard.get_mut();
-
+	let devs = DEVICES.lock();
 	devs.get(id).cloned()
 }
 

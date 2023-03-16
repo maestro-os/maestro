@@ -13,25 +13,21 @@ pub fn fsync(fd: c_int) -> Result<i32, Errno> {
 	}
 
 	let file_mutex = {
-		let mutex = Process::get_current().unwrap();
-		let guard = mutex.lock();
-		let proc = guard.get_mut();
+		let proc_mutex = Process::get_current().unwrap();
+		let proc = proc_mutex.lock();
 
 		let fds_mutex = proc.get_fds().unwrap();
-		let fds_guard = fds_mutex.lock();
-		let fds = fds_guard.get_mut();
+		let fds = fds_mutex.lock();
 
 		let fd = fds.get_fd(fd as _).ok_or_else(|| errno!(EBADF))?;
 
 		let open_file_mutex = fd.get_open_file()?;
-		let open_file_guard = open_file_mutex.lock();
-		let open_file = open_file_guard.get();
+		let open_file = open_file_mutex.lock();
 
 		open_file.get_file()?
 	};
 
-	let file_guard = file_mutex.lock();
-	let file = file_guard.get();
+	let file = file_mutex.lock();
 	file.sync()?;
 
 	Ok(0)

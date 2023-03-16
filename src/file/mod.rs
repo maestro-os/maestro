@@ -659,16 +659,14 @@ impl File {
 
 			FileContent::Fifo => {
 				let buff_mutex = buffer::get_or_default::<PipeBuffer>(self.get_location())?;
-				let buff_guard = buff_mutex.lock();
-				let buff = buff_guard.get_mut();
+				let buff = buff_mutex.lock();
 
 				buff.ioctl(mem_space, request, argp)
 			}
 
 			FileContent::Socket => {
 				let buff_mutex = buffer::get_or_default::<Socket>(self.get_location())?;
-				let buff_guard = buff_mutex.lock();
-				let buff = buff_guard.get_mut();
+				let buff = buff_mutex.lock();
 
 				buff.ioctl(mem_space, request, argp)
 			}
@@ -683,8 +681,7 @@ impl File {
 					minor: *minor
 				}).ok_or_else(|| errno!(ENODEV))?;
 
-				let guard = dev.lock();
-				guard.get_mut().get_handle().ioctl(mem_space, request, argp)
+				dev.lock().get_handle().ioctl(mem_space, request, argp)
 			},
 
 			FileContent::CharDevice {
@@ -697,8 +694,7 @@ impl File {
 					minor: *minor,
 				}).ok_or_else(|| errno!(ENODEV))?;
 
-				let guard = dev.lock();
-				guard.get_mut().get_handle().ioctl(mem_space, request, argp)
+				dev.lock().get_handle().ioctl(mem_space, request, argp)
 			}
 		}
 	}
@@ -713,18 +709,15 @@ impl File {
 	/// If no device is associated with the file, the function does nothing.
 	pub fn sync(&self) -> Result<(), Errno> {
 		if let Some(mountpoint_mutex) = self.location.get_mountpoint() {
-			let mountpoint_guard = mountpoint_mutex.lock();
-			let mountpoint = mountpoint_guard.get_mut();
+			let mountpoint = mountpoint_mutex.lock();
 
 			let io_mutex = mountpoint.get_source().get_io()?;
-			let io_guard = io_mutex.lock();
-			let io = io_guard.get_mut();
+			let io = io_mutex.lock();
 
 			let fs_mutex = mountpoint.get_filesystem();
-			let fs_guard = fs_mutex.lock();
-			let fs = fs_guard.get_mut();
+			let fs = fs_mutex.lock();
 
-			fs.update_inode(io, self)
+			fs.update_inode(&mut *io, self)
 		} else {
 			Ok(())
 		}
@@ -749,8 +742,7 @@ impl File {
 					let (io, fs) = {
 						let mountpoint_mutex = self.location.get_mountpoint()
 							.ok_or_else(|| errno!(EIO))?;
-						let mountpoint_guard = mountpoint_mutex.lock();
-						let mountpoint = mountpoint_guard.get_mut();
+						let mountpoint = mountpoint_mutex.lock();
 
 						let io = mountpoint.get_source().get_io()?;
 						let fs = mountpoint.get_filesystem();
@@ -822,14 +814,11 @@ impl IO for File {
 				return Ok((0, true));
 			};
 
-			let io_guard = io_mutex.lock();
-			let io = io_guard.get_mut();
+			let io = io_mutex.lock();
 
 			if let Some((fs_mutex, inode)) = fs {
-				let fs_guard = fs_mutex.lock();
-				let fs = fs_guard.get_mut();
-
-				fs.read_node(io, inode, off, buff)
+				let fs = fs_mutex.lock();
+				fs.read_node(&mut *io, inode, off, buff)
 			} else {
 				io.read(off, buff)
 			}
@@ -842,14 +831,11 @@ impl IO for File {
 				return Ok(0);
 			};
 
-			let io_guard = io_mutex.lock();
-			let io = io_guard.get_mut();
+			let io = io_mutex.lock();
 
 			if let Some((fs_mutex, inode)) = fs {
-				let fs_guard = fs_mutex.lock();
-				let fs = fs_guard.get_mut();
-
-				fs.write_node(io, inode, off, buff)?;
+				let fs = fs_mutex.lock();
+				fs.write_node(&mut *io, inode, off, buff)?;
 				Ok(buff.len() as _)
 			} else {
 				io.write(off, buff)
@@ -863,9 +849,7 @@ impl IO for File {
 				return Ok(0);
 			};
 
-			let io_guard = io_mutex.lock();
-			let io = io_guard.get_mut();
-
+			let io = io_mutex.lock();
 			io.poll(mask)
 		})
 	}
@@ -891,9 +875,7 @@ pub fn init(root: Option<(u32, u32)>) -> Result<(), Errno> {
 	mountpoint::create(mount_source, None, 0, Path::root())?;
 
 	// Initializing the VFS
-	let vfs = VFS::new();
-	let guard = vfs::get().lock();
-	*guard.get_mut() = Some(vfs);
+	*vfs::get().lock() = Some(VFS::new());
 
 	Ok(())
 }

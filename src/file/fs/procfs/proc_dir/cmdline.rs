@@ -27,10 +27,8 @@ impl KernFSNode for Cmdline {
 
 	fn get_uid(&self) -> Uid {
 		if let Some(proc_mutex) = Process::get_by_pid(self.pid) {
-			let proc_guard = proc_mutex.lock();
-			let proc = proc_guard.get();
-
-			proc.get_euid()
+			proc_mutex.lock().get_euid()
+			
 		} else {
 			0
 		}
@@ -38,10 +36,7 @@ impl KernFSNode for Cmdline {
 
 	fn get_gid(&self) -> Gid {
 		if let Some(proc_mutex) = Process::get_by_pid(self.pid) {
-			let proc_guard = proc_mutex.lock();
-			let proc = proc_guard.get();
-
-			proc.get_egid()
+			proc_mutex.lock().get_egid()
 		} else {
 			0
 		}
@@ -63,8 +58,7 @@ impl IO for Cmdline {
 		}
 
 		let proc_mutex = Process::get_by_pid(self.pid).ok_or_else(|| errno!(ENOENT))?;
-		let proc_guard = proc_mutex.lock();
-		let proc = proc_guard.get();
+		let proc = proc_mutex.lock();
 
 		// Generating content
 		let mut content = String::new();

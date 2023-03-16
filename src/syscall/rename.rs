@@ -16,12 +16,11 @@ pub fn rename(
 ) -> Result<i32, Errno> {
 	let vfs = vfs::get();
 	let vfs = vfs.lock();
-	let vfs = vfs.get_mut().as_mut().unwrap();
+	let vfs = vfs.as_mut().unwrap();
 
 	let (uid, gid, old_mutex, new_parent_mutex, new_name) = {
 		let proc_mutex = Process::get_current().unwrap();
-		let proc_guard = proc_mutex.lock();
-		let proc = proc_guard.get();
+		let proc = proc_mutex.lock();
 
 		let uid = proc.get_euid();
 		let gid = proc.get_egid();
@@ -45,11 +44,8 @@ pub fn rename(
 		(uid, gid, old, new_parent, new_name)
 	};
 
-	let old_guard = old_mutex.lock();
-	let old = old_guard.get_mut();
-
-	let new_parent_guard = new_parent_mutex.lock();
-	let new_parent = new_parent_guard.get_mut();
+	let old = old_mutex.lock();
+	let new_parent = new_parent_mutex.lock();
 
 	// TODO Check permissions if sticky bit is set
 
@@ -61,18 +57,18 @@ pub fn rename(
 		// Create link at new location
 		// The `..` entry is already updated by the file system since having the same
 		// directory in several locations is not allowed
-		vfs.create_link(old, new_parent, &new_name, uid, gid)?;
+		vfs.create_link(&mut *old, &mut *new_parent, &new_name, uid, gid)?;
 
 		if old.get_type() != FileType::Directory {
-			vfs.remove_file(old, uid, gid)?;
+			vfs.remove_file(&*old, uid, gid)?;
 		}
 	} else {
 		// Old and new are on different filesystems.
 
 		// TODO On fail, undo
 
-		file::util::copy_file(vfs, old, new_parent, new_name)?;
-		file::util::remove_recursive(vfs, old, uid, gid)?;
+		file::util::copy_file(vfs, &mut *old, &mut *new_parent, new_name)?;
+		file::util::remove_recursive(vfs, &mut *old, uid, gid)?;
 	}
 
 	Ok(0)

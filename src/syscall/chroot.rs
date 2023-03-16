@@ -12,8 +12,7 @@ use macros::syscall;
 #[syscall]
 pub fn chroot(path: SyscallString) -> Result<i32, Errno> {
 	let proc_mutex = Process::get_current().unwrap();
-	let proc_guard = proc_mutex.lock();
-	let proc = proc_guard.get_mut();
+	let proc = proc_mutex.lock();
 
 	let uid = proc.get_euid();
 	let gid = proc.get_egid();
@@ -30,8 +29,8 @@ pub fn chroot(path: SyscallString) -> Result<i32, Errno> {
 
 	// Checking access to file
 	let vfs_mutex = vfs::get();
-	let vfs_guard = vfs_mutex.lock();
-	let vfs = vfs_guard.get_mut().as_mut().unwrap();
+	let vfs = vfs_mutex.lock();
+	let vfs = vfs.as_mut().unwrap();
 	vfs.get_file_from_path(&path, uid, gid, true)?;
 
 	proc.set_chroot(path);

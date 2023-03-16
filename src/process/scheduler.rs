@@ -166,14 +166,13 @@ impl Scheduler {
 	/// Removes the process with the given pid `pid`.
 	pub fn remove_process(&mut self, pid: Pid) {
 		if let Some(proc_mutex) = self.get_by_pid(pid) {
-			let guard = proc_mutex.lock();
-			let process = guard.get();
+			let proc = proc_mutex.lock();
 
-			if *process.get_state() == State::Running {
+			if *proc.get_state() == State::Running {
 				self.decrement_running();
 			}
 
-			let priority = process.get_priority();
+			let priority = proc.get_priority();
 			self.processes.remove(&pid);
 			self.update_priority(priority, 0);
 		}
@@ -282,7 +281,7 @@ impl Scheduler {
 
 		let process_filter = |(_, proc): &(&Pid, &IntSharedPtr<Process>)| {
 			let guard = proc.lock();
-			Self::can_run(guard.get(), priority_sum, priority_max, processes_count)
+			Self::can_run(&*guard, priority_sum, priority_max, processes_count)
 		};
 
 		let next_proc = self.processes.range((curr_pid + 1)..)
@@ -300,7 +299,7 @@ impl Scheduler {
 
 		let (next_pid, next_proc) = next_proc?;
 		if next_pid != curr_pid || processes_count == 1 {
-			curr_proc.lock().get_mut().quantum_count = 0;
+			curr_proc.lock().quantum_count = 0;
 		}
 		Some((next_pid, next_proc.clone()))
 	}
@@ -321,14 +320,12 @@ impl Scheduler {
 		cli!();
 
 		let tmp_stack = {
-			let sched_guard = sched_mutex.lock();
-			let scheduler = sched_guard.get_mut();
-			scheduler.total_ticks += 1;
+			let sched = sched_mutex.lock();
+			sched.total_ticks += 1;
 
 			// If a process is running, save its registers
-			if let Some(curr_proc) = scheduler.get_current_process() {
-				let guard = curr_proc.lock();
-				let curr_proc = guard.get_mut();
+			if let Some(curr_proc) = sched.get_current_process() {
+				let curr_proc = curr_proc.lock();
 
 				curr_proc.set_regs(*regs);
 				curr_proc.syscalling = ring < 3;
@@ -337,31 +334,29 @@ impl Scheduler {
 			// The current core ID
 			let core_id = 0; // TODO
 			 // Getting the temporary stack
-			let tmp_stack = scheduler.get_tmp_stack(core_id);
+			let tmp_stack = sched.get_tmp_stack(core_id);
 
 			tmp_stack
 		};
 
 		loop {
-			let sched_guard = sched_mutex.lock();
-			let scheduler = sched_guard.get_mut();
+			let sched = sched_mutex.lock();
 
-			if let Some(next_proc) = scheduler.get_next_process() {
+			if let Some(next_proc) = sched.get_next_process() {
 				// Set the process as current
-				scheduler.curr_proc = Some(next_proc.clone());
+				sched.curr_proc = Some(next_proc.clone());
 
-				drop(sched_guard);
+				drop(sched);
 
 				unsafe {
 					stack::switch(Some(tmp_stack), move || {
 						let (resume, syscalling, regs) = {
-							let next_proc_guard = next_proc.1.lock();
-							let proc = next_proc_guard.get_mut();
+							let next_proc = next_proc.1.lock();
 
-							proc.prepare_switch();
+							next_proc.prepare_switch();
 
-							let resume = matches!(proc.get_state(), State::Running);
-							(resume, proc.is_syscalling(), proc.regs)
+							let resume = matches!(next_proc.get_state(), State::Running);
+							(resume, next_proc.is_syscalling(), next_proc.regs)
 						};
 						drop(next_proc);
 

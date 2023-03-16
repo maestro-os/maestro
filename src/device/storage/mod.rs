@@ -263,9 +263,7 @@ impl DeviceHandle for StorageDeviceHandle {
 				// The total size of the disk
 				let size = {
 					if let Some(interface) = self.interface.get() {
-						let interface_guard = interface.lock();
-						let interface = interface_guard.get();
-
+						let interface = interface.lock();
 						interface.get_block_size() * interface.get_blocks_count()
 					} else {
 						0
@@ -315,9 +313,7 @@ impl DeviceHandle for StorageDeviceHandle {
 			ioctl::BLKSSZGET => {
 				let blk_size = {
 					if let Some(interface) = self.interface.get() {
-						let interface_guard = interface.lock();
-						let interface = interface_guard.get();
-
+						let interface = interface.lock();
 						interface.get_block_size()
 					} else {
 						0
@@ -355,8 +351,7 @@ impl DeviceHandle for StorageDeviceHandle {
 impl IO for StorageDeviceHandle {
 	fn get_size(&self) -> u64 {
 		if let Some(interface) = self.interface.get() {
-			let interface_guard = interface.lock();
-			let interface = interface_guard.get();
+			let interface = interface.lock();
 
 			let blocks_count = self.partition.as_ref()
 				.map(|p| p.get_size())
@@ -369,8 +364,7 @@ impl IO for StorageDeviceHandle {
 
 	fn read(&mut self, offset: u64, buff: &mut [u8]) -> Result<(u64, bool), Errno> {
 		if let Some(interface) = self.interface.get() {
-			let interface_guard = interface.lock();
-			let interface = interface_guard.get_mut();
+			let interface = interface.lock();
 
 			// Check offset
 			let (start, size) = match &self.partition {
@@ -395,8 +389,7 @@ impl IO for StorageDeviceHandle {
 
 	fn write(&mut self, offset: u64, buff: &[u8]) -> Result<u64, Errno> {
 		if let Some(interface) = self.interface.get() {
-			let interface_guard = interface.lock();
-			let interface = interface_guard.get_mut();
+			let interface = interface.lock();
 
 			// Check offset
 			let (start, size) = match &self.partition {
@@ -458,11 +451,10 @@ impl StorageManager {
 		path_prefix: String,
 	) -> Result<(), Errno> {
 		if let Some(storage_mutex) = storage.get() {
-			let storage_guard = storage_mutex.lock();
-			let s = storage_guard.get_mut();
+			let s = storage_mutex.lock();
 
-			if let Some(partitions_table) = partition::read(s)? {
-				let partitions = partitions_table.get_partitions(s)?;
+			if let Some(partitions_table) = partition::read(&mut *s)? {
+				let partitions = partitions_table.get_partitions(&mut *s)?;
 
 				let iter = partitions.into_iter().take(MAX_PARTITIONS - 1);
 				for (i, partition) in iter.enumerate() {

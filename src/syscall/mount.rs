@@ -25,10 +25,8 @@ pub fn mount(
 	_data: SyscallPtr<c_void>,
 ) -> Result<i32, Errno> {
 	let (mount_source, fs_type, target_path) = {
-		// Getting the process
-		let mutex = Process::get_current().unwrap();
-		let guard = mutex.lock();
-		let proc = guard.get();
+		let proc_mutex = Process::get_current().unwrap();
+		let proc = proc_mutex.lock();
 
 		let mem_space = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space.lock();
@@ -47,15 +45,14 @@ pub fn mount(
 
 		// Getting the target file
 		let target_path = Path::from_str(target_slice, true)?;
-		let target_path = super::util::get_absolute_path(proc, target_path)?;
+		let target_path = super::util::get_absolute_path(&*proc, target_path)?;
 		let target_mutex = {
-			let guard = vfs::get().lock();
-			let vfs = guard.get_mut().as_mut().unwrap();
+			let vfs = vfs::get().lock();
+			let vfs = vfs.as_mut().unwrap();
 
 			vfs.get_file_from_path(&target_path, proc.get_euid(), proc.get_egid(), true)?
 		};
-		let target_guard = target_mutex.lock();
-		let target_file = target_guard.get();
+		let target_file = target_mutex.lock();
 
 		// Checking the target is a directory
 		if target_file.get_type() != FileType::Directory {

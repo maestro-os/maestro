@@ -32,9 +32,8 @@ pub fn mprotect(addr: *mut c_void, len: usize, prot: c_int) -> Result<i32, Errno
 	let flags = prot_to_flags(prot);
 
 	let (uid, gid, mem_space_mutex) = {
-		let mutex = Process::get_current().unwrap();
-		let guard = mutex.lock();
-		let proc = guard.get_mut();
+		let proc_mutex = Process::get_current().unwrap();
+		let proc = proc_mutex.lock();
 
 		let uid = proc.get_uid();
 		let gid = proc.get_gid();
@@ -44,9 +43,7 @@ pub fn mprotect(addr: *mut c_void, len: usize, prot: c_int) -> Result<i32, Errno
 		(uid, gid, mem_space)
 	};
 
-	let mem_space_guard = mem_space_mutex.lock();
-	let mem_space = mem_space_guard.get_mut();
-
+	let mem_space = mem_space_mutex.lock();
 	mem_space.set_prot(addr, len, flags, uid, gid)?;
 
 	Ok(0)

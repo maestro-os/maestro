@@ -14,9 +14,8 @@ pub fn sethostname(name: SyscallSlice<u8>, len: usize) -> Result<i32, Errno> {
 		return Err(errno!(EINVAL));
 	}
 
-	let mutex = Process::get_current().unwrap();
-	let guard = mutex.lock();
-	let proc = guard.get_mut();
+	let proc_mutex = Process::get_current().unwrap();
+	let proc = proc_mutex.lock();
 
 	// Checking permission
 	if proc.get_euid() != file::ROOT_UID {
@@ -27,8 +26,7 @@ pub fn sethostname(name: SyscallSlice<u8>, len: usize) -> Result<i32, Errno> {
 	let mem_space_guard = mem_space.lock();
 	let name_slice = name.get(&mem_space_guard, len)?.ok_or(errno!(EFAULT))?;
 
-	let hostname_guard = crate::HOSTNAME.lock();
-	let hostname = hostname_guard.get_mut();
+	let hostname = crate::HOSTNAME.lock();
 	hostname.resize(len)?;
 	hostname.as_mut_slice().copy_from_slice(name_slice);
 

@@ -40,10 +40,8 @@ fn update_parent(
 				None => return Ok(()),
 			};
 
-			let file_guard = file.lock();
-			let f = file_guard.get_mut();
-
-			vfs.get_file_from_parent(f, name, file::ROOT_UID, file::ROOT_GID, false)
+			let f = file.lock();
+			vfs.get_file_from_parent(&mut *f, name, file::ROOT_UID, file::ROOT_GID, false)
 		}
 
 		Some(_) | None => vfs.get_file_from_path(new, file::ROOT_UID, file::ROOT_GID, false),
@@ -73,8 +71,8 @@ fn update_parent(
 /// `data` is the slice of data representing the initramfs image.
 pub fn load(data: &[u8]) -> Result<(), Errno> {
 	let vfs_mutex = vfs::get();
-	let vfs_guard = vfs_mutex.lock();
-	let vfs = vfs_guard.get_mut().as_mut().unwrap();
+	let vfs = vfs_mutex.lock();
+	let vfs = vfs.as_mut().unwrap();
 
 	// TODO Use a stack instead?
 	// The stored parent directory
@@ -120,12 +118,11 @@ pub fn load(data: &[u8]) -> Result<(), Errno> {
 		}
 
 		let parent_mutex = &stored_parent.as_ref().unwrap().1;
-		let parent_guard = parent_mutex.lock();
-		let parent = parent_guard.get_mut();
+		let parent = parent_mutex.lock();
 
 		// Creating file
 		let create_result = vfs.create_file(
-			parent,
+			&mut *parent,
 			name,
 			file::ROOT_UID,
 			file::ROOT_GID,
@@ -138,8 +135,7 @@ pub fn load(data: &[u8]) -> Result<(), Errno> {
 			Err(e) => return Err(e),
 		};
 
-		let file_guard = file_mutex.lock();
-		let file = file_guard.get_mut();
+		let file = file_mutex.lock();
 
 		file.set_uid(hdr.c_uid);
 		file.set_gid(hdr.c_gid);

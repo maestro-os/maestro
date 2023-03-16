@@ -32,10 +32,9 @@ static DEFAULT_PAGE: Mutex<Option<*const c_void>> = Mutex::new(None);
 
 /// Returns a physical pointer to the default page.
 fn get_default_page() -> *const c_void {
-	let guard = DEFAULT_PAGE.lock();
-	let default_page = guard.get_mut();
+	let default_page = DEFAULT_PAGE.lock();
 
-	match default_page {
+	match &mut *default_page {
 		Some(ptr) => *ptr,
 
 		// Lazy allocation
@@ -174,7 +173,7 @@ impl MemMapping {
 	pub fn is_shared(&self, offset: usize) -> bool {
 		if let Some(phys_ptr) = self.get_physical_page(offset) {
 			let ref_counter = super::PHYSICAL_REF_COUNTER.lock();
-			ref_counter.get_mut().is_shared(phys_ptr)
+			ref_counter.is_shared(phys_ptr)
 		} else {
 			false
 		}
@@ -480,13 +479,12 @@ impl MemMapping {
 				new_mapping.map(i)?;
 			}
 		} else {
-			let ref_counter_guard = super::PHYSICAL_REF_COUNTER.lock();
-			let ref_counter = ref_counter_guard.get_mut();
+			let ref_counter = super::PHYSICAL_REF_COUNTER.lock();
 
 			for i in 0..self.size.get() {
 				if let Some(phys_ptr) = self.get_physical_page(i) {
 					if let Err(errno) = ref_counter.increment(phys_ptr) {
-						self.fork_fail_clean(ref_counter, i);
+						self.fork_fail_clean(&mut *ref_counter, i);
 						return Err(errno);
 					}
 				}
@@ -514,8 +512,7 @@ impl MemMapping {
 
 		unsafe {
 			vmem::switch(self.get_vmem(), || {
-				let file_guard = file.lock();
-				let file = file_guard.get_mut();
+				let file = file.lock();
 
 				// TODO Make use of dirty flag if present on the current architecure to update
 				// only pages that have been modified

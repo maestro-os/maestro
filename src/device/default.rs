@@ -119,10 +119,9 @@ impl IO for RandomDeviceHandle {
 	}
 
 	fn read(&mut self, _: u64, buff: &mut [u8]) -> Result<(u64, bool), Errno> {
-		let pool_guard = rand::ENTROPY_POOL.lock();
-		let pool = pool_guard.get_mut();
+		let pool = rand::ENTROPY_POOL.lock();
 
-		if let Some(pool) = pool {
+		if let Some(pool) = &mut *pool {
 			let len = pool.read(buff, false);
 			Ok((len as _, false))
 		} else {
@@ -131,10 +130,9 @@ impl IO for RandomDeviceHandle {
 	}
 
 	fn write(&mut self, _: u64, buff: &[u8]) -> Result<u64, Errno> {
-		let pool_guard = rand::ENTROPY_POOL.lock();
-		let pool = pool_guard.get_mut();
+		let pool = rand::ENTROPY_POOL.lock();
 
-		if let Some(pool) = pool {
+		if let Some(pool) = &mut *pool {
 			let len = pool.write(&buff);
 			Ok(len as _)
 		} else {
@@ -170,10 +168,9 @@ impl IO for URandomDeviceHandle {
 	}
 
 	fn read(&mut self, _: u64, buff: &mut [u8]) -> Result<(u64, bool), Errno> {
-		let pool_guard = rand::ENTROPY_POOL.lock();
-		let pool = pool_guard.get_mut();
+		let pool = rand::ENTROPY_POOL.lock();
 
-		if let Some(pool) = pool {
+		if let Some(pool) = &mut *pool {
 			let len = pool.read(buff, true);
 			Ok((len as _, false))
 		} else {
@@ -182,10 +179,9 @@ impl IO for URandomDeviceHandle {
 	}
 
 	fn write(&mut self, _: u64, buff: &[u8]) -> Result<u64, Errno> {
-		let pool_guard = rand::ENTROPY_POOL.lock();
-		let pool = pool_guard.get_mut();
+		let pool = rand::ENTROPY_POOL.lock();
 
-		if let Some(pool) = pool {
+		if let Some(pool) = &mut *pool {
 			let len = pool.write(&buff);
 			Ok(len as _)
 		} else {
@@ -215,10 +211,8 @@ impl DeviceHandle for KMsgDeviceHandle {
 
 impl IO for KMsgDeviceHandle {
 	fn get_size(&self) -> u64 {
-		let mutex = logger::get();
-		let guard = mutex.lock();
-
-		guard.get().get_size() as _
+		let logger = logger::get().lock();
+		logger.get_size() as _
 	}
 
 	fn read(&mut self, offset: u64, buff: &mut [u8]) -> Result<(u64, bool), Errno> {
@@ -226,9 +220,7 @@ impl IO for KMsgDeviceHandle {
 			return Err(errno!(EINVAL));
 		}
 
-		let mutex = logger::get();
-		let guard = mutex.lock();
-		let logger = guard.get();
+		let logger = logger::get().lock();
 
 		let size = logger.get_size();
 		let content = logger.get_content();

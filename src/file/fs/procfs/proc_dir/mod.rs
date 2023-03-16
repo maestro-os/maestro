@@ -161,10 +161,7 @@ impl KernFSNode for ProcDir {
 
 	fn get_uid(&self) -> Uid {
 		if let Some(proc_mutex) = Process::get_by_pid(self.pid) {
-			let proc_guard = proc_mutex.lock();
-			let proc = proc_guard.get();
-
-			proc.get_euid()
+			proc_mutex.lock().get_euid()
 		} else {
 			0
 		}
@@ -172,10 +169,7 @@ impl KernFSNode for ProcDir {
 
 	fn get_gid(&self) -> Gid {
 		if let Some(proc_mutex) = Process::get_by_pid(self.pid) {
-			let proc_guard = proc_mutex.lock();
-			let proc = proc_guard.get();
-
-			proc.get_egid()
+			proc_mutex.lock().get_egid()
 		} else {
 			0
 		}

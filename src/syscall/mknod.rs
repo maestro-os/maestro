@@ -17,20 +17,19 @@ use macros::syscall;
 #[syscall]
 pub fn mknod(pathname: SyscallString, mode: file::Mode, dev: u64) -> Result<i32, Errno> {
 	let (path, umask, uid, gid) = {
-		// Getting the process
-		let mutex = Process::get_current().unwrap();
-		let guard = mutex.lock();
-		let proc = guard.get_mut();
+		let proc_mutex = Process::get_current().unwrap();
+		let proc = proc_mutex.lock();
 
 		let mem_space = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space.lock();
 
 		let path = Path::from_str(pathname.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?, true)?;
-		let path = super::util::get_absolute_path(proc, path)?;
+		let path = super::util::get_absolute_path(&*proc, path)?;
 
 		let umask = proc.get_umask();
 		let uid = proc.get_uid();
 		let gid = proc.get_gid();
+
 		(path, umask, uid, gid)
 	};
 
@@ -71,16 +70,15 @@ pub fn mknod(pathname: SyscallString, mode: file::Mode, dev: u64) -> Result<i32,
 
 	// Creating the node
 	{
-		let mutex = vfs::get();
-		let guard = mutex.lock();
-		let vfs = guard.get_mut().as_mut().unwrap();
+		let vfs_mutex = vfs::get();
+		let vfs = vfs_mutex.lock();
+		let vfs = vfs.as_mut().unwrap();
 
 		// Getting parent directory
 		let parent_mutex = vfs.get_file_from_path(&parent_path, uid, gid, true)?;
-		let parent_guard = parent_mutex.lock();
-		let parent = parent_guard.get_mut();
+		let parent = parent_mutex.lock();
 
-		vfs.create_file(parent, name, uid, gid, mode, file_content)?;
+		vfs.create_file(&mut *parent, name, uid, gid, mode, file_content)?;
 	}
 
 	Ok(0)

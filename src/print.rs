@@ -9,9 +9,8 @@ use core::fmt;
 /// Prints the specified message on the current TTY. This function is meant to
 /// be used through `print!` and `println!` macros only.
 pub fn _print(args: fmt::Arguments) {
-	let mutex = logger::get();
-	let guard = mutex.lock();
-	fmt::write(guard.get_mut(), args).ok();
+	let logger = logger::get().lock();
+	fmt::write(&mut *logger, args).ok();
 }
 
 /// Prints the given formatted string with the given values.

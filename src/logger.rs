@@ -16,8 +16,7 @@ static LOGGER: IntMutex<Logger> = IntMutex::new(Logger::new());
 /// Initializes logging.
 /// `silent` tells whether the logger is silent.
 pub fn init(silent: bool) {
-	let guard = LOGGER.lock();
-	guard.get_mut().set_silent(silent);
+	LOGGER.lock().set_silent(silent);
 }
 
 /// Returns a mutable reference to the logger's Mutex.
@@ -128,7 +127,7 @@ impl Logger {
 impl Write for Logger {
 	fn write_str(&mut self, s: &str) -> Result<(), core::fmt::Error> {
 		if !self.is_silent() {
-			tty::get(None).unwrap().lock().get_mut().write(s.as_bytes());
+			tty::get(None).unwrap().lock().write(s.as_bytes());
 		}
 		self.push(s.as_bytes());
 

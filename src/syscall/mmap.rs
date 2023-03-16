@@ -82,9 +82,8 @@ pub fn do_mmap(
 	};
 
 	// Getting the current process
-	let mutex = Process::get_current().unwrap();
-	let guard = mutex.lock();
-	let proc = guard.get_mut();
+	let proc_mutex = Process::get_current().unwrap();
+	let proc = proc_mutex.lock();
 
 	let uid = proc.get_euid();
 	let gid = proc.get_egid();
@@ -92,8 +91,7 @@ pub fn do_mmap(
 	// The file the mapping points to
 	let open_file_mutex = if fd >= 0 {
 		let fds_mutex = proc.get_fds().unwrap();
-		let fds_guard = fds_mutex.lock();
-		let fds = fds_guard.get();
+		let fds = fds_mutex.lock();
 
 		fds.get_fd(fd as _)
 			.map(|fd| fd.get_open_file())
@@ -110,12 +108,10 @@ pub fn do_mmap(
 			return Err(errno!(EINVAL));
 		}
 
-		let open_file_guard = open_file_mutex.lock();
-		let open_file = open_file_guard.get();
+		let open_file = open_file_mutex.lock();
 
 		let file_mutex = open_file.get_file()?;
-		let file_guard = file_mutex.lock();
-		let file = file_guard.get();
+		let file = file_mutex.lock();
 
 		if !matches!(file.get_type(), FileType::Regular) {
 			return Err(errno!(EACCES));
@@ -141,9 +137,8 @@ pub fn do_mmap(
 	};
 
 	// The process's memory space
-	let mem_space = proc.get_mem_space().unwrap();
-	let mem_space_guard = mem_space.lock();
-	let mem_space = mem_space_guard.get_mut();
+	let mem_space_mutex = proc.get_mem_space().unwrap();
+	let mem_space = mem_space_mutex.lock();
 
 	let flags = get_flags(flags, prot);
 

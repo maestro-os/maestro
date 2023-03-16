@@ -114,8 +114,7 @@ impl ProcFS {
 
 		// Adding existing processes
 		{
-			let scheduler_guard = process::get_scheduler().lock();
-			let scheduler = scheduler_guard.get_mut();
+			let scheduler = process::get_scheduler().lock();
 
 			for (pid, _) in scheduler.iter_process() {
 				fs.add_process(*pid)?;

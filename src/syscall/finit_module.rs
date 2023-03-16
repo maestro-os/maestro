@@ -20,23 +20,20 @@ pub fn finit_module(fd: c_int, _param_values: SyscallString, _flags: c_int) -> R
 	let image = {
 		let open_file_mutex = {
 			let proc_mutex = Process::get_current().unwrap();
-			let proc_guard = proc_mutex.lock();
-			let proc = proc_guard.get_mut();
+			let proc = proc_mutex.lock();
 
 			if proc.get_uid() != 0 {
 				return Err(errno!(EPERM));
 			}
 
 			let fds_mutex = proc.get_fds().unwrap();
-			let fds_guard = fds_mutex.lock();
-			let fds = fds_guard.get();
+			let fds = fds_mutex.lock();
 
 			fds.get_fd(fd as _)
 				.ok_or_else(|| errno!(EBADF))?
 				.get_open_file()?
 		};
-		let open_file_guard = open_file_mutex.lock();
-		let open_file = open_file_guard.get_mut();
+		let open_file = open_file_mutex.lock();
 
 		let len = open_file.get_size(); // TODO Error if file is too large for 32bit?
 		let mut image = malloc::Alloc::new_default(len as usize)?;

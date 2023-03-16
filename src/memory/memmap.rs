@@ -118,8 +118,7 @@ pub fn init(multiboot_ptr: *const c_void) {
 	mem_info.phys_main_pages = main_pages;
 
 	// Setting memory stats
-	let mem_info_guard = stats::MEM_INFO.lock();
-	let mem_info = mem_info_guard.get_mut();
+	let mem_info = stats::MEM_INFO.lock();
 	mem_info.mem_total = min(boot_info.mem_upper, 4194304) as _; // TODO Handle 64-bits systems
 	mem_info.mem_free = main_pages * 4;
 }

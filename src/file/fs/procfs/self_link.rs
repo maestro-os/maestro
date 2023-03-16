@@ -62,10 +62,7 @@ impl KernFSNode for SelfNode {
 
 	fn get_content<'a>(&'a self) -> Cow<'a, FileContent> {
 		let pid = if let Some(proc_mutex) = Process::get_current() {
-			let proc_guard = proc_mutex.lock();
-			let proc = proc_guard.get();
-
-			proc.get_pid()
+			proc_mutex.lock().get_pid()
 		} else {
 			0
 		};

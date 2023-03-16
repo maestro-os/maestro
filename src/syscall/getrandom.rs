@@ -19,7 +19,7 @@ pub fn getrandom(buf: SyscallSlice<u8>, buflen: usize, flags: c_uint) -> Result<
 	let nonblock = flags & GRND_NONBLOCK != 0;
 
 	let pool_guard = rand::ENTROPY_POOL.lock();
-	let Some(pool) = pool_guard.get_mut() else {
+	let Some(pool) = &mut *pool_guard else {
 		return Ok(0);
 	};
 
@@ -29,8 +29,7 @@ pub fn getrandom(buf: SyscallSlice<u8>, buflen: usize, flags: c_uint) -> Result<
 
 	// Getting current process
 	let proc_mutex = Process::get_current().unwrap();
-	let proc_guard = proc_mutex.lock();
-	let proc = proc_guard.get();
+	let proc = proc_mutex.lock();
 
 	let mem_space_mutex = proc.get_mem_space().unwrap();
 	let mem_space_guard = mem_space_mutex.lock();

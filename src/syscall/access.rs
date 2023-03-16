@@ -54,8 +54,7 @@ pub fn do_access(
 
 	let (path, uid, gid, cwd) = {
 		let proc_mutex = Process::get_current().unwrap();
-		let proc_guard = proc_mutex.lock();
-		let proc = proc_guard.get();
+		let proc = proc_mutex.lock();
 
 		let mem_space_mutex = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space_mutex.lock();
@@ -91,14 +90,13 @@ pub fn do_access(
 			}
 		}
 
-		let vfs_guard = vfs::get().lock();
-		let vfs = vfs_guard.get_mut().as_mut().unwrap();
+		let vfs = vfs::get().lock();
+		let vfs = vfs.as_mut().unwrap();
 		vfs.get_file_from_path(&path, uid, gid, follow_symlinks)?
 	};
 
 	{
-		let file_guard = file.lock();
-		let file = file_guard.get();
+		let file = file.lock();
 
 		// Do access checks
 		if (mode & R_OK != 0) && !file.can_read(uid, gid) {

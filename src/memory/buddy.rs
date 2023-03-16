@@ -138,8 +138,7 @@ fn get_suitable_zone(type_: usize) -> Option<&'static mut IntMutex<Zone>> {
 	#[allow(clippy::needless_range_loop)]
 	for i in 0..zones.len() {
 		let is_valid = {
-			let guard = zones[i].lock();
-			let zone = guard.get();
+			let zone = zones[i].lock();
 			zone.type_ == type_ as _
 		};
 		if is_valid {
@@ -156,8 +155,7 @@ fn get_zone_for_pointer(ptr: *const c_void) -> Option<&'static mut IntMutex<Zone
 	#[allow(clippy::needless_range_loop)]
 	for i in 0..zones.len() {
 		let is_valid = {
-			let guard = zones[i].lock();
-			let zone = guard.get();
+			let zone = zones[i].lock();
 			ptr >= zone.begin && (ptr as usize) < (zone.begin as usize) + zone.get_size()
 		};
 		if is_valid {
@@ -178,15 +176,14 @@ pub fn alloc(order: FrameOrder, flags: Flags) -> Result<*mut c_void, Errno> {
 		let z = get_suitable_zone(i);
 
 		if let Some(z) = z {
-			let guard = z.lock();
-			let zone = guard.get_mut();
+			let zone = z.lock();
 
 			let frame = zone.get_available_frame(order);
 			if let Some(f) = frame {
 				debug_assert!(!f.is_used());
-				f.split(zone, order);
+				f.split(&mut *zone, order);
 
-				let ptr = f.get_ptr(zone);
+				let ptr = f.get_ptr(&*zone);
 				debug_assert!(util::is_aligned(ptr, memory::PAGE_SIZE));
 				debug_assert!(
 					ptr >= zone.begin && ptr < (zone.begin as usize + zone.get_size()) as _
@@ -221,8 +218,7 @@ pub fn free(ptr: *const c_void, order: FrameOrder) {
 	debug_assert!(order <= MAX_ORDER);
 
 	let z = get_zone_for_pointer(ptr).unwrap();
-	let guard = z.lock();
-	let zone = guard.get_mut();
+	let zone = z.lock();
 
 	let frame_id = zone.get_frame_id_from_ptr(ptr);
 	debug_assert!(frame_id < zone.get_pages_count());
@@ -230,8 +226,8 @@ pub fn free(ptr: *const c_void, order: FrameOrder) {
 	let frame = zone.get_frame(frame_id);
 	unsafe {
 		debug_assert!((*frame).is_used());
-		(*frame).mark_free(zone);
-		(*frame).coalesce(zone);
+		(*frame).mark_free(&*zone);
+		(*frame).coalesce(&mut *zone);
 	}
 
 	zone.allocated_pages -= math::pow2(order as usize);
@@ -249,8 +245,7 @@ pub fn free_kernel(ptr: *const c_void, order: FrameOrder) {
 /// - Positive value: The number of newly allocated chunks
 /// - Negative value: The absolute value is a the number of newly freed chunks
 pub fn update_stats(n: isize) {
-	let mem_info_guard = stats::MEM_INFO.lock();
-	let mem_info = mem_info_guard.get_mut();
+	let mem_info = stats::MEM_INFO.lock();
 
 	if n >= 0 {
 		mem_info.mem_free -= n as usize;
@@ -266,8 +261,7 @@ pub fn allocated_pages_count() -> usize {
 	let z = unsafe { ZONES.assume_init_mut() };
 	#[allow(clippy::needless_range_loop)]
 	for i in 0..z.len() {
-		let guard = z[i].lock();
-		n += guard.get().get_allocated_pages();
+		n += z[i].lock().get_allocated_pages();
 	}
 	n
 }

@@ -24,15 +24,13 @@ pub fn _llseek(
 	whence: c_uint,
 ) -> Result<i32, Errno> {
 	let (mem_space, open_file_mutex) = {
-		let mutex = Process::get_current().unwrap();
-		let guard = mutex.lock();
-		let proc = guard.get_mut();
+		let proc_mutex = Process::get_current().unwrap();
+		let proc = proc_mutex.lock();
 
 		let mem_space = proc.get_mem_space().unwrap();
 
 		let fds_mutex = proc.get_fds().unwrap();
-		let fds_guard = fds_mutex.lock();
-		let fds = fds_guard.get();
+		let fds = fds_mutex.lock();
 
 		let open_file_mutex = fds
 			.get_fd(fd)
@@ -43,8 +41,7 @@ pub fn _llseek(
 	};
 
 	// Getting file
-	let open_file_guard = open_file_mutex.lock();
-	let open_file = open_file_guard.get_mut();
+	let open_file = open_file_mutex.lock();
 
 	// Computing the offset
 	let off = ((offset_high as u64) << 32) | (offset_low as u64);

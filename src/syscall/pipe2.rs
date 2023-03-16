@@ -19,17 +19,15 @@ pub fn pipe2(pipefd: SyscallPtr<[c_int; 2]>, flags: c_int) -> Result<i32, Errno>
 		return Err(errno!(EINVAL));
 	}
 
-	let mutex = Process::get_current().unwrap();
-	let guard = mutex.lock();
-	let proc = guard.get_mut();
+	let proc_mutex = Process::get_current().unwrap();
+	let proc = proc_mutex.lock();
 
 	let mem_space = proc.get_mem_space().unwrap();
 	let mem_space_guard = mem_space.lock();
 	let pipefd_slice = pipefd.get_mut(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
 
 	let fds_mutex = proc.get_fds().unwrap();
-	let fds_guard = fds_mutex.lock();
-	let fds = fds_guard.get_mut();
+	let fds = fds_mutex.lock();
 
 	// Create pipe
 	let loc = buffer::register(None, SharedPtr::new(PipeBuffer::failable_default()?)?)?;

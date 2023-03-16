@@ -57,10 +57,7 @@ impl<T: Sized> SyscallPtr<T> {
 			return Ok(None);
 		}
 
-		if mem_space
-			.get()
-			.can_access(self.ptr as _, size_of::<T>(), true, false)
-		{
+		if mem_space.can_access(self.ptr as _, size_of::<T>(), true, false) {
 			Ok(Some(unsafe {
 				// Safe because access is checked before
 				&*self.ptr
@@ -83,12 +80,9 @@ impl<T: Sized> SyscallPtr<T> {
 			return Ok(None);
 		}
 
-		if mem_space
-			.get()
-			.can_access(self.ptr as _, size_of::<T>(), true, true)
-		{
+		if mem_space.can_access(self.ptr as _, size_of::<T>(), true, true) {
 			// Allocating physical pages if necessary
-			mem_space.get_mut().alloc(self.ptr, 1)?;
+			mem_space.alloc(self.ptr, 1)?;
 
 			Ok(Some(unsafe {
 				// Safe because access is checked before
@@ -103,13 +97,12 @@ impl<T: Sized> SyscallPtr<T> {
 impl<T: fmt::Debug> fmt::Debug for SyscallPtr<T> {
 	fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
 		let proc_mutex = Process::get_current().unwrap();
-		let proc_guard = proc_mutex.lock();
-		let proc = proc_guard.get();
+		let proc = proc_mutex.lock();
 
 		let mem_space_mutex = proc.get_mem_space().unwrap();
-		let mem_space_guard = mem_space_mutex.lock();
+		let mem_space = mem_space_mutex.lock();
 
-		match self.get(&mem_space_guard) {
+		match self.get(&mem_space) {
 			Ok(Some(s)) => write!(fmt, "{:p} = {:?}", self.as_ptr(), s),
 
 			Ok(None) => write!(fmt, "NULL"),
@@ -163,7 +156,7 @@ impl<T: Sized> SyscallSlice<T> {
 		}
 
 		let size = size_of::<T>() * len;
-		if mem_space.get().can_access(self.ptr as _, size, true, false) {
+		if mem_space.can_access(self.ptr as _, size, true, false) {
 			Ok(Some(unsafe {
 				// Safe because access is checked before
 				slice::from_raw_parts(self.ptr, len)
@@ -188,9 +181,9 @@ impl<T: Sized> SyscallSlice<T> {
 		}
 
 		let size = size_of::<T>() * len;
-		if mem_space.get().can_access(self.ptr as _, size, true, true) {
+		if mem_space.can_access(self.ptr as _, size, true, true) {
 			// Allocating physical pages if necessary
-			mem_space.get_mut().alloc(self.ptr as *const u8, len)?;
+			mem_space.alloc(self.ptr as *const u8, len)?;
 
 			Ok(Some(unsafe {
 				// Safe because access is checked before
@@ -256,9 +249,7 @@ impl SyscallString {
 			return Ok(None);
 		}
 
-		let len = mem_space
-			.get()
-			.can_access_string(self.ptr, true, false)
+		let len = mem_space.can_access_string(self.ptr, true, false)
 			.ok_or_else(|| errno!(EFAULT))?;
 		Ok(Some(unsafe {
 			// Safe because access is checked before
@@ -280,13 +271,11 @@ impl SyscallString {
 			return Ok(None);
 		}
 
-		let len = mem_space
-			.get()
-			.can_access_string(self.ptr, true, true)
+		let len = mem_space.can_access_string(self.ptr, true, true)
 			.ok_or_else(|| errno!(EFAULT))?;
 
 		// Allocating physical pages if necessary
-		mem_space.get_mut().alloc(self.ptr as *const u8, len)?;
+		mem_space.alloc(self.ptr as *const u8, len)?;
 
 		Ok(Some(unsafe {
 			// Safe because access is checked before
@@ -298,13 +287,12 @@ impl SyscallString {
 impl fmt::Debug for SyscallString {
 	fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
 		let proc_mutex = Process::get_current().unwrap();
-		let proc_guard = proc_mutex.lock();
-		let proc = proc_guard.get();
+		let proc = proc_mutex.lock();
 
 		let mem_space_mutex = proc.get_mem_space().unwrap();
-		let mem_space_guard = mem_space_mutex.lock();
+		let mem_space = mem_space_mutex.lock();
 
-		match self.get(&mem_space_guard) {
+		match self.get(&mem_space) {
 			Ok(Some(s)) => {
 				// TODO Add backslashes to escape `"` and `\`
 

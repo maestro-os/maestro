@@ -48,9 +48,9 @@ fn get_file(
 	// Tells whether to follow symbolic links on the last component of the path.
 	let follow_links = flags & open_file::O_NOFOLLOW == 0;
 
-	let mutex = vfs::get();
-	let guard = mutex.lock();
-	let vfs = guard.get_mut().as_mut().unwrap();
+	let vfs_mutex = vfs::get();
+	let vfs = vfs_mutex.lock();
+	let vfs = vfs.as_mut().unwrap();
 
 	if flags & open_file::O_CREAT != 0 {
 		// Getting the path of the parent directory
@@ -60,18 +60,17 @@ fn get_file(
 
 		// The parent directory
 		let parent_mutex = vfs.get_file_from_path(&parent_path, uid, gid, true)?;
-		let parent_guard = parent_mutex.lock();
-		let parent = parent_guard.get_mut();
+		let parent = parent_mutex.lock();
 
 		let file_result =
-			vfs.get_file_from_parent(parent, name.failable_clone()?, uid, gid, follow_links);
+			vfs.get_file_from_parent(&mut *parent, name.failable_clone()?, uid, gid, follow_links);
 		match file_result {
 			// If the file is found, return it
 			Ok(file) => Ok(file),
 
 			Err(e) if e.as_int() == errno::ENOENT => {
 				// Creating the file
-				vfs.create_file(parent, name, uid, gid, mode, FileContent::Regular)
+				vfs.create_file(&mut *parent, name, uid, gid, mode, FileContent::Regular)
 			}
 
 			Err(e) => Err(e),
@@ -133,9 +132,8 @@ pub fn handle_flags(
 pub fn open_(pathname: SyscallString, flags: i32, mode: file::Mode) -> Result<i32, Errno> {
 	// Getting the path string
 	let (path, mode, uid, gid) = {
-		let mutex = Process::get_current().unwrap();
-		let guard = mutex.lock();
-		let proc = guard.get_mut();
+		let proc_mutex = Process::get_current().unwrap();
+		let proc = proc_mutex.lock();
 
 		let mem_space = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space.lock();
@@ -153,25 +151,21 @@ pub fn open_(pathname: SyscallString, flags: i32, mode: file::Mode) -> Result<i3
 	let file = get_file(path, flags, mode, uid, gid)?;
 
 	let (loc, read, write, cloexec) = {
-		let guard = file.lock();
-		let f = guard.get_mut();
+		let f = file.lock();
 
 		let loc = f.get_location().clone();
-		let (read, write, cloexec) = handle_flags(f, flags, uid, gid)?;
+		let (read, write, cloexec) = handle_flags(&mut *f, flags, uid, gid)?;
 
 		(loc, read, write, cloexec)
 	};
 
 	open_file::OpenFile::new(loc.clone(), flags)?;
 
-	// Create the file descriptor
-	let mutex = Process::get_current().unwrap();
-	let guard = mutex.lock();
-	let proc = guard.get_mut();
+	let proc_mutex = Process::get_current().unwrap();
+	let proc = proc_mutex.lock();
 
 	let fds_mutex = proc.get_fds().unwrap();
-	let fds_guard = fds_mutex.lock();
-	let fds = fds_guard.get_mut();
+	let fds = fds_mutex.lock();
 
 	let mut fd_flags = 0;
 	if cloexec {
@@ -182,7 +176,7 @@ pub fn open_(pathname: SyscallString, flags: i32, mode: file::Mode) -> Result<i3
 	let fd_id = fd.get_id();
 
 	// Flushing file
-	match file.lock().get_mut().sync() {
+	match file.lock().sync() {
 		Err(e) => {
 			fds.close_fd(fd_id)?;
 			return Err(e);

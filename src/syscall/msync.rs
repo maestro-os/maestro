@@ -28,15 +28,12 @@ pub fn msync(addr: *mut c_void, length: usize, flags: c_int) -> Result<i32, Errn
 		return Err(errno!(EINVAL));
 	}
 
-	// Getting the current process
-	let mutex = Process::get_current().unwrap();
-	let guard = mutex.lock();
-	let proc = guard.get_mut();
+	let proc_mutex = Process::get_current().unwrap();
+	let proc = proc_mutex.lock();
 
 	// The process's memory space
 	let mem_space = proc.get_mem_space().unwrap();
-	let mem_space_guard = mem_space.lock();
-	let mem_space = mem_space_guard.get_mut();
+	let mem_space = mem_space.lock();
 
 	let mut i = 0;
 	while i < length {

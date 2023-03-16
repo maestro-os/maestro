@@ -101,11 +101,10 @@ fn peek_shebang(file: &mut File) -> Result<Option<Shebang>, Errno> {
 /// Performs the execution on the current process.
 fn do_exec(program_image: ProgramImage) -> Result<Regs, Errno> {
 	let proc_mutex = Process::get_current().unwrap();
-	let proc_guard = proc_mutex.lock();
-	let proc = proc_guard.get_mut();
+	let proc = proc_mutex.lock();
 
 	// Executing the program
-	exec::exec(proc, program_image)?;
+	exec::exec(&mut *proc, program_image)?;
 	Ok(*proc.get_regs())
 }
 
@@ -127,8 +126,7 @@ fn build_image(
 	argv: Vec<String>,
 	envp: Vec<String>,
 ) -> Result<ProgramImage, Errno> {
-	let file_guard = file.lock();
-	let file = file_guard.get_mut();
+	let file = file.lock();
 	if !file.can_execute(euid, egid) {
 		return Err(errno!(EACCES));
 	}
@@ -143,7 +141,7 @@ fn build_image(
 		envp,
 	};
 
-	exec::build_image(file, exec_info)
+	exec::build_image(&mut *file, exec_info)
 }
 
 #[syscall]
@@ -154,8 +152,7 @@ pub fn execve(
 ) -> Result<i32, Errno> {
 	let (mut path, mut argv, envp, uid, gid, euid, egid) = {
 		let proc_mutex = Process::get_current().unwrap();
-		let proc_guard = proc_mutex.lock();
-		let proc = proc_guard.get_mut();
+		let proc = proc_mutex.lock();
 
 		let path = {
 			let mem_space = proc.get_mem_space().unwrap();
@@ -168,10 +165,10 @@ pub fn execve(
 				true,
 			)?
 		};
-		let path = super::util::get_absolute_path(proc, path)?;
+		let path = super::util::get_absolute_path(&*proc, path)?;
 
-		let argv = unsafe { super::util::get_str_array(proc, argv)? };
-		let envp = unsafe { super::util::get_str_array(proc, envp)? };
+		let argv = unsafe { super::util::get_str_array(&*proc, argv)? };
+		let envp = unsafe { super::util::get_str_array(&*proc, envp)? };
 
 		let uid = proc.get_uid();
 		let gid = proc.get_gid();
@@ -186,23 +183,20 @@ pub fn execve(
 	while i < INTERP_MAX + 1 {
 		// The file
 		let file = {
-			let files_mutex = vfs::get();
-			let files_guard = files_mutex.lock();
-			let vfs = files_guard.get_mut();
+			let vfs_mutex = vfs::get();
+			let vfs = vfs_mutex.lock();
+			let vfs = vfs.as_mut().unwrap();
 
-			vfs.as_mut()
-				.unwrap()
-				.get_file_from_path(&path, uid, gid, true)?
+			vfs.get_file_from_path(&path, uid, gid, true)?
 		};
-		let guard = file.lock();
-		let f = guard.get_mut();
+		let f = file.lock();
 
 		if !f.can_execute(euid, egid) {
 			return Err(errno!(EACCES));
 		}
 
 		// If the file has a shebang, process it
-		if let Some(shebang) = peek_shebang(f)? {
+		if let Some(shebang) = peek_shebang(&mut *f)? {
 			// If too many interpreter recursions, abort
 			if i == INTERP_MAX {
 				return Err(errno!(ELOOP));
@@ -236,13 +230,11 @@ pub fn execve(
 
 	// The file
 	let file = {
-		let files_mutex = vfs::get();
-		let files_guard = files_mutex.lock();
-		let vfs = files_guard.get_mut();
+		let vfs_mutex = vfs::get();
+		let vfs = vfs_mutex.lock();
+		let vfs = vfs.as_mut().unwrap();
 
-		vfs.as_mut()
-			.unwrap()
-			.get_file_from_path(&path, uid, gid, true)?
+		vfs.get_file_from_path(&path, uid, gid, true)?
 	};
 
 	// Dropping path to avoid memory leak
@@ -268,7 +260,6 @@ pub fn execve(
 		let core = 0; // TODO Get current core ID
 		process::get_scheduler()
 			.lock()
-			.get_mut()
 			.get_tmp_stack(core)
 	};
 

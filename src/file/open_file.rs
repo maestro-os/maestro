@@ -93,7 +93,6 @@ impl OpenFile {
 	/// If the location doesn't exist or if the file isn't open, the function returns None.
 	pub fn get(location: &FileLocation) -> Option<SharedPtr<Self>> {
 		OPEN_FILES.lock()
-			.get()
 			.get(location)
 			.cloned()
 	}
@@ -113,8 +112,7 @@ impl OpenFile {
 		let open_file_mutex = match Self::get(&location) {
 			Some(open_file_mutex) => {
 				{
-					let open_file_guard = open_file_mutex.lock();
-					let open_file = open_file_guard.get_mut();
+					let open_file = open_file_mutex.lock();
 
 					let read = open_file.can_read()
 						|| flags & O_RDONLY != 0
@@ -149,7 +147,6 @@ impl OpenFile {
 				})?;
 
 				OPEN_FILES.lock()
-					.get_mut()
 					.insert(location, open_file.clone())?;
 
 				open_file
@@ -173,15 +170,12 @@ impl OpenFile {
 		let open_file_mutex = Self::get(&location).ok_or_else(|| errno!(ENOENT))?;
 
 		{
-			let open_file_guard = open_file_mutex.lock();
-			let open_file = open_file_guard.get_mut();
+			let open_file = open_file_mutex.lock();
 			open_file.ref_count += 1;
 
 			// If the file points to a buffer, increment the number of open ends
 			if let Some(buff_mutex) = buffer::get(&open_file.location) {
-				let buff_guard = buff_mutex.lock();
-				let buff = buff_guard.get_mut();
-
+				let buff = buff_mutex.lock();
 				buff.increment_open(read, write);
 			}
 		}
@@ -205,26 +199,22 @@ impl OpenFile {
 		read: bool,
 		write: bool
 	) {
-		let open_files_guard = OPEN_FILES.lock();
-		let open_files = open_files_guard.get_mut();
+		let open_files = OPEN_FILES.lock();
 
 		let Some(open_file_mutex) = open_files.get(location) else {
 			return;
 		};
-		let open_file_guard = open_file_mutex.lock();
-		let open_file = open_file_guard.get_mut();
+		let open_file = open_file_mutex.lock();
 
 		// If the file points to a buffer, decrement the number of open ends
 		if let Some(buff_mutex) = buffer::get(&open_file.location) {
-			let buff_guard = buff_mutex.lock();
-			let buff = buff_guard.get_mut();
-
+			let buff = buff_mutex.lock();
 			buff.decrement_open(read, write);
 		}
 
 		open_file.ref_count -= 1;
 		if open_file.ref_count <= 0 {
-			drop(open_file_guard);
+			drop(open_file);
 
 			open_files.remove(location);
 			buffer::release(location);
@@ -241,8 +231,8 @@ impl OpenFile {
 	/// The name of the file is not set since it cannot be known from this structure.
 	pub fn get_file(&self) -> Result<SharedPtr<File>, Errno> {
 		let vfs_mutex = vfs::get();
-		let vfs_guard = vfs_mutex.lock();
-		let vfs = vfs_guard.get_mut().as_mut().unwrap();
+		let vfs = vfs_mutex.lock();
+		let vfs = vfs.as_mut().unwrap();
 
 		vfs.get_file_by_location(&self.location)
 	}
@@ -289,8 +279,7 @@ impl OpenFile {
 		argp: *const c_void,
 	) -> Result<u32, Errno> {
 		let file_mutex = self.get_file()?;
-		let file_guard = file_mutex.lock();
-		let file = file_guard.get_mut();
+		let file = file_mutex.lock();
 
 		match file.get_content() {
 			FileContent::Regular => match request.get_old_format() {
@@ -324,15 +313,12 @@ impl OpenFile {
 	/// If the file cannot block, the function does nothing.
 	pub fn add_waiting_process(&mut self, proc: &mut Process, mask: u32) -> Result<(), Errno> {
 		let file_mutex = self.get_file()?;
-		let file_guard = file_mutex.lock();
-		let file = file_guard.get_mut();
+		let file = file_mutex.lock();
 
 		match file.get_content() {
 			FileContent::Fifo | FileContent::Socket => {
 				if let Some(buff_mutex) = buffer::get(self.get_location()) {
-					let buff_guard = buff_mutex.lock();
-					let buff = buff_guard.get_mut();
-
+					let buff = buff_mutex.lock();
 					return buff.get_block_handler().add_waiting_process(proc, mask);
 				}
 			}
@@ -348,8 +334,7 @@ impl OpenFile {
 				});
 
 				if let Some(dev_mutex) = dev_mutex {
-					let dev_guard = dev_mutex.lock();
-					let dev = dev_guard.get_mut();
+					let dev = dev_mutex.lock();
 
 					if let Some(h) = dev.get_handle().get_block_handler() {
 						return h.add_waiting_process(proc, mask);
@@ -368,8 +353,7 @@ impl OpenFile {
 				});
 
 				if let Some(dev_mutex) = dev_mutex {
-					let dev_guard = dev_mutex.lock();
-					let dev = dev_guard.get_mut();
+					let dev = dev_mutex.lock();
 
 					if let Some(h) = dev.get_handle().get_block_handler() {
 						return h.add_waiting_process(proc, mask);
@@ -387,7 +371,7 @@ impl OpenFile {
 impl IO for OpenFile {
 	fn get_size(&self) -> u64 {
 		self.get_file()
-			.map(|f| f.lock().get().get_size())
+			.map(|f| f.lock().get_size())
 			.unwrap_or(0)
 	}
 
@@ -399,8 +383,7 @@ impl IO for OpenFile {
 		}
 
 		let file_mutex = self.get_file()?;
-		let file_guard = file_mutex.lock();
-		let file = file_guard.get_mut();
+		let file = file_mutex.lock();
 
 		if matches!(file.get_content(), FileContent::Directory(_)) {
 			return Err(errno!(EISDIR));
@@ -425,8 +408,7 @@ impl IO for OpenFile {
 		}
 
 		let file_mutex = self.get_file()?;
-		let file_guard = file_mutex.lock();
-		let file = file_guard.get_mut();
+		let file = file_mutex.lock();
 
 		if matches!(file.get_content(), FileContent::Directory(_)) {
 			return Err(errno!(EISDIR));
@@ -451,8 +433,7 @@ impl IO for OpenFile {
 
 	fn poll(&mut self, mask: u32) -> Result<u32, Errno> {
 		let file_mutex = self.get_file()?;
-		let file_guard = file_mutex.lock();
-		let file = file_guard.get_mut();
+		let file = file_mutex.lock();
 
 		file.poll(mask)
 	}

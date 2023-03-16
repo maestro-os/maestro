@@ -17,9 +17,8 @@ pub fn rt_sigaction(
 ) -> Result<i32, Errno> {
 	let signal = Signal::from_id(signum as _)?;
 
-	let mutex = Process::get_current().unwrap();
-	let guard = mutex.lock();
-	let proc = guard.get_mut();
+	let proc_mutex = Process::get_current().unwrap();
+	let proc = proc_mutex.lock();
 
 	let mem_space = proc.get_mem_space().unwrap();
 	let mem_space_guard = mem_space.lock();

@@ -75,10 +75,8 @@ pub fn prlimit64(
 		Some(Process::get_by_pid(pid).ok_or_else(|| errno!(ESRCH))?)
 	};
 
-	// The current process
-	let mutex = Process::get_current().unwrap();
-	let guard = mutex.lock();
-	let proc = guard.get_mut();
+	let proc_mutex = Process::get_current().unwrap();
+	let proc = proc_mutex.lock();
 
 	let mem_space_mutex = proc.get_mem_space().unwrap();
 	let _mem_space_guard = mem_space_mutex.lock();

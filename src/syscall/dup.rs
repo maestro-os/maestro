@@ -12,13 +12,11 @@ pub fn dup(oldfd: c_int) -> Result<i32, Errno> {
 		return Err(errno!(EBADF));
 	}
 
-	let mutex = Process::get_current().unwrap();
-	let guard = mutex.lock();
-	let proc = guard.get_mut();
+	let proc_mutex = Process::get_current().unwrap();
+	let proc = proc_mutex.lock();
 
 	let fds_mutex = proc.get_fds().unwrap();
-	let fds_guard = fds_mutex.lock();
-	let fds = fds_guard.get_mut();
+	let fds = fds_mutex.lock();
 
 	let newfd = fds.duplicate_fd(oldfd as _, NewFDConstraint::None, false)?;
 	Ok(newfd.get_id() as _)

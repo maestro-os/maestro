@@ -12,30 +12,27 @@ use macros::syscall;
 #[syscall]
 pub fn rmdir(pathname: SyscallString) -> Result<i32, Errno> {
 	let (path, uid, gid) = {
-		// Getting the process
-		let mutex = Process::get_current().unwrap();
-		let guard = mutex.lock();
-		let proc = guard.get_mut();
+		let proc_mutex = Process::get_current().unwrap();
+		let proc = proc_mutex.lock();
 
 		let mem_space = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space.lock();
 
 		let path = Path::from_str(pathname.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?, true)?;
-		let path = super::util::get_absolute_path(proc, path)?;
+		let path = super::util::get_absolute_path(&*proc, path)?;
 
 		(path, proc.get_euid(), proc.get_egid())
 	};
 
 	// Removing the directory
 	{
-		let mutex = vfs::get();
-		let guard = mutex.lock();
-		let vfs = guard.get_mut().as_mut().unwrap();
+		let vfs_mutex = vfs::get();
+		let vfs = vfs_mutex.lock();
+		let vfs = vfs.as_mut().unwrap();
 
 		// Getting directory
 		let file_mutex = vfs.get_file_from_path(&path, uid, gid, true)?;
-		let file_guard = file_mutex.lock();
-		let file = file_guard.get_mut();
+		let file = file_mutex.lock();
 
 		match file.get_content() {
 			FileContent::Directory(entries) if entries.len() > 2 => return Err(errno!(ENOTEMPTY)),
@@ -44,7 +41,7 @@ pub fn rmdir(pathname: SyscallString) -> Result<i32, Errno> {
 			_ => return Err(errno!(ENOTDIR)),
 		}
 
-		vfs.remove_file(file, uid, gid)?;
+		vfs.remove_file(&*file, uid, gid)?;
 	}
 
 	Ok(0)

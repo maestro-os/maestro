@@ -9,13 +9,12 @@ use core::ffi::c_void;
 pub fn brk(regs: &Regs) -> Result<i32, Errno> {
 	let addr = regs.ebx as *mut c_void;
 
-	let mutex = Process::get_current().unwrap();
-	let guard = mutex.lock();
-	let proc = guard.get_mut();
+	let proc_mutex = Process::get_current().unwrap();
+	let proc = proc_mutex.lock();
 
 	let mem_space = proc.get_mem_space().unwrap();
-	let mem_space_guard = mem_space.lock();
-	let mem_space = mem_space_guard.get_mut();
+	let mem_space = mem_space.lock();
+
 	let old = mem_space.get_brk_ptr();
 
 	if mem_space.set_brk_ptr(addr).is_ok() {

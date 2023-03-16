@@ -14,9 +14,8 @@ pub fn setpgid(pid: Pid, pgid: Pid) -> Result<i32, Errno> {
 
 	// TODO Check processes SID
 
-	let mutex = Process::get_current().unwrap();
-	let guard = mutex.lock();
-	let proc = guard.get_mut();
+	let proc_mutex = Process::get_current().unwrap();
+	let proc = proc_mutex.lock();
 
 	if pid == 0 {
 		pid = proc.get_pid();
@@ -28,11 +27,10 @@ pub fn setpgid(pid: Pid, pgid: Pid) -> Result<i32, Errno> {
 	if pid == proc.get_pid() {
 		proc.set_pgid(pgid)?;
 	} else {
-		drop(guard);
+		drop(proc);
 
-		let mutex = Process::get_by_pid(pid).ok_or_else(|| errno!(ESRCH))?;
-		let guard = mutex.lock();
-		let proc = guard.get_mut();
+		let proc_mutex = Process::get_by_pid(pid).ok_or_else(|| errno!(ESRCH))?;
+		let proc = proc_mutex.lock();
 
 		proc.set_pgid(pgid)?;
 	}

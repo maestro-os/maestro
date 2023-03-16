@@ -26,12 +26,10 @@ pub fn splice(
 
 	let (input_mutex, off_in, output_mutex, off_out) = {
 		let proc_mutex = Process::get_current().unwrap();
-		let proc_guard = proc_mutex.lock();
-		let proc = proc_guard.get_mut();
+		let proc = proc_mutex.lock();
 
 		let fds_mutex = proc.get_fds().unwrap();
-		let fds_guard = fds_mutex.lock();
-		let fds = fds_guard.get();
+		let fds = fds_mutex.lock();
 
 		let input = fds.get_fd(fd_in as _)
 			.ok_or_else(|| errno!(EBADF))?

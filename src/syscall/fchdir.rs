@@ -15,16 +15,14 @@ pub fn fchdir(fd: c_int) -> Result<i32, Errno> {
 	}
 
 	let (uid, gid, open_file_mutex) = {
-		let mutex = Process::get_current().unwrap();
-		let guard = mutex.lock();
-		let proc = guard.get_mut();
+		let proc_mutex = Process::get_current().unwrap();
+		let proc = proc_mutex.lock();
 
 		let uid = proc.get_euid();
 		let gid = proc.get_egid();
 
 		let fds_mutex = proc.get_fds().unwrap();
-		let fds_guard = fds_mutex.lock();
-		let fds = fds_guard.get();
+		let fds = fds_mutex.lock();
 
 		let open_file_mutex = fds
 			.get_fd(fd as _)
@@ -34,13 +32,11 @@ pub fn fchdir(fd: c_int) -> Result<i32, Errno> {
 		(uid, gid, open_file_mutex)
 	};
 
-	let open_file_guard = open_file_mutex.lock();
-	let open_file = open_file_guard.get_mut();
+	let open_file = open_file_mutex.lock();
 
 	let new_cwd = {
 		let file_mutex = open_file.get_file()?;
-		let file_guard = file_mutex.lock();
-		let file = file_guard.get_mut();
+		let file = file_mutex.lock();
 
 		// Checking for errors
 		if !file.can_read(uid, gid) {
@@ -54,11 +50,10 @@ pub fn fchdir(fd: c_int) -> Result<i32, Errno> {
 	}?;
 
 	{
-		let mutex = Process::get_current().unwrap();
-		let guard = mutex.lock();
-		let proc = guard.get_mut();
+		let proc_mutex = Process::get_current().unwrap();
+		let proc = proc_mutex.lock();
 
-		let new_cwd = super::util::get_absolute_path(proc, new_cwd)?;
+		let new_cwd = super::util::get_absolute_path(&*proc, new_cwd)?;
 		proc.set_cwd(new_cwd)?;
 	}
 

@@ -16,9 +16,8 @@ use super::util;
 /// If `sig` is None, the function doesn't send a signal, but still checks if
 /// there is a process that could be killed.
 fn try_kill(pid: Pid, sig: &Option<Signal>) -> Result<(), Errno> {
-	let curr_mutex = Process::get_current().unwrap();
-	let curr_guard = curr_mutex.lock();
-	let curr_proc = curr_guard.get_mut();
+	let proc_mutex = Process::get_current().unwrap();
+	let curr_proc = proc_mutex.lock();
 
 	let uid = curr_proc.get_uid();
 	let euid = curr_proc.get_euid();
@@ -40,13 +39,12 @@ fn try_kill(pid: Pid, sig: &Option<Signal>) -> Result<(), Errno> {
 	};
 
 	if pid == curr_proc.get_pid() {
-		f(curr_proc)?;
+		f(&mut *curr_proc)?;
 	} else {
 		let target_mutex = Process::get_by_pid(pid).ok_or_else(|| errno!(ESRCH))?;
-		let target_guard = target_mutex.lock();
-		let target_proc = target_guard.get_mut();
+		let target_proc = target_mutex.lock();
 
-		f(target_proc)?;
+		f(&mut *target_proc)?;
 	}
 
 	Ok(())
@@ -61,8 +59,7 @@ fn try_kill_group(pid: i32, sig: &Option<Signal>) -> Result<(), Errno> {
 	let pgid = match pid {
 		0 => {
 			let curr_mutex = Process::get_current().unwrap();
-			let curr_guard = curr_mutex.lock();
-			let curr_proc = curr_guard.get_mut();
+			let curr_proc = curr_mutex.lock();
 
 			curr_proc.get_pgid()
 		}
@@ -73,9 +70,8 @@ fn try_kill_group(pid: i32, sig: &Option<Signal>) -> Result<(), Errno> {
 
 	// Killing process group
 	{
-		let mutex = Process::get_by_pid(pgid).ok_or_else(|| errno!(ESRCH))?;
-		let guard = mutex.lock();
-		let proc = guard.get_mut();
+		let proc_mutex = Process::get_by_pid(pgid).ok_or_else(|| errno!(ESRCH))?;
+		let proc = proc_mutex.lock();
 
 		let group = proc.get_group_processes();
 
@@ -106,10 +102,9 @@ fn send_signal(pid: i32, sig: Option<Signal>) -> Result<(), Errno> {
 		try_kill_group(0, &sig)
 	} else if pid == -1 {
 		// Kill all processes for which the current process has the permission
-		let scheduler_guard = process::get_scheduler().lock();
-		let scheduler = scheduler_guard.get_mut();
+		let sched = process::get_scheduler().lock();
 
-		for (pid, _) in scheduler.iter_process() {
+		for (pid, _) in sched.iter_process() {
 			if *pid == process::pid::INIT_PID {
 				continue;
 			}
@@ -143,9 +138,8 @@ pub fn kill(pid: c_int, sig: c_int) -> Result<i32, Errno> {
 	send_signal(pid, sig)?;
 
 	{
-		let mutex = Process::get_current().unwrap();
-		let guard = mutex.lock();
-		let proc = guard.get_mut();
+		let proc_mutex = Process::get_current().unwrap();
+		let proc = proc_mutex.lock();
 
 		// POSIX requires that at least one pending signal is executed before returning
 		if proc.has_signal_pending() {

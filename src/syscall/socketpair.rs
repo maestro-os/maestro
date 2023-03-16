@@ -19,17 +19,15 @@ pub fn socketpair(
 	protocol: c_int,
 	sv: SyscallPtr<[c_int; 2]>,
 ) -> Result<i32, Errno> {
-	let mutex = Process::get_current().unwrap();
-	let guard = mutex.lock();
-	let proc = guard.get_mut();
+	let proc_mutex = Process::get_current().unwrap();
+	let proc = proc_mutex.lock();
 
 	let mem_space = proc.get_mem_space().unwrap();
 	let mem_space_guard = mem_space.lock();
 	let sv_slice = sv.get_mut(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
 
 	let fds_mutex = proc.get_fds().unwrap();
-	let fds_guard = fds_mutex.lock();
-	let fds = fds_guard.get_mut();
+	let fds = fds_mutex.lock();
 
 	// Create socket
 	let sock = Socket::new(domain, r#type, protocol);

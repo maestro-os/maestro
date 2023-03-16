@@ -23,9 +23,8 @@ pub fn rt_sigprocmask(
 	oldset: SyscallSlice<u8>,
 	sigsetsize: usize,
 ) -> Result<i32, Errno> {
-	let mutex = Process::get_current().unwrap();
-	let guard = mutex.lock();
-	let proc = guard.get_mut();
+	let proc_mutex = Process::get_current().unwrap();
+	let proc = proc_mutex.lock();
 
 	let mem_space = proc.get_mem_space().unwrap();
 	let mem_space_guard = mem_space.lock();

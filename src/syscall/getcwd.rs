@@ -14,9 +14,8 @@ pub fn getcwd(buf: SyscallSlice<u8>, size: usize) -> Result<i32, Errno> {
 		return Err(errno!(EINVAL));
 	}
 
-	let mutex = Process::get_current().unwrap();
-	let guard = mutex.lock();
-	let proc = guard.get_mut();
+	let proc_mutex = Process::get_current().unwrap();
+	let proc = proc_mutex.lock();
 
 	let cwd = crate::format!("{}", proc.get_cwd())?;
 

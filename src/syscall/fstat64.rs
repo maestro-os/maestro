@@ -65,23 +65,19 @@ pub fn fstat64(fd: c_int, statbuf: SyscallPtr<Stat>) -> Result<i32, Errno> {
 
 	let open_file_mutex = {
 		let proc_mutex = Process::get_current().unwrap();
-		let proc_guard = proc_mutex.lock();
-		let proc = proc_guard.get_mut();
+		let proc = proc_mutex.lock();
 
 		let fds_mutex = proc.get_fds().unwrap();
-		let fds_guard = fds_mutex.lock();
-		let fds = fds_guard.get();
+		let fds = fds_mutex.lock();
 
 		fds.get_fd(fd as _)
 			.ok_or_else(|| errno!(EBADF))?
 			.get_open_file()?
 	};
-	let open_file_guard = open_file_mutex.lock();
-	let open_file = open_file_guard.get();
+	let open_file = open_file_mutex.lock();
 
 	let file_mutex = open_file.get_file()?;
-	let file_guard = file_mutex.lock();
-	let file = file_guard.get();
+	let file = file_mutex.lock();
 
 	let inode = file.get_location().get_inode();
 
@@ -122,8 +118,7 @@ pub fn fstat64(fd: c_int, statbuf: SyscallPtr<Stat>) -> Result<i32, Errno> {
 
 	{
 		let proc_mutex = Process::get_current().unwrap();
-		let proc_guard = proc_mutex.lock();
-		let proc = proc_guard.get_mut();
+		let proc = proc_mutex.lock();
 
 		let mem_space = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space.lock();

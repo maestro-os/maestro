@@ -46,9 +46,8 @@ pub fn poll(fds: SyscallSlice<PollFD>, nfds: usize, timeout: c_int) -> Result<i3
 		}
 
 		{
-			let mutex = Process::get_current().unwrap();
-			let guard = mutex.lock();
-			let proc = guard.get_mut();
+			let proc_mutex = Process::get_current().unwrap();
+			let proc = proc_mutex.lock();
 
 			let mem_space = proc.get_mem_space().unwrap();
 			let mem_space_guard = mem_space.lock();

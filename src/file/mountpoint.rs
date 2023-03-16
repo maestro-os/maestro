@@ -79,17 +79,16 @@ impl MountSource {
 		let path = Path::from_str(string, true)?;
 		let path = cwd.concat(&path)?;
 		let result = {
-			let mutex = vfs::get();
-			let guard = mutex.lock();
-			let vfs = guard.get_mut().as_mut().unwrap();
+			let vfs_mutex = vfs::get();
+			let vfs = vfs_mutex.lock();
+			let vfs = vfs.as_mut().unwrap();
 
 			vfs.get_file_from_path(&path, 0, 0, true)
 		};
 
 		match result {
 			Ok(file_mutex) => {
-				let file_guard = file_mutex.lock();
-				let file = file_guard.get();
+				let file = file_mutex.lock();
 
 				match file.get_content() {
 					FileContent::BlockDevice { major, minor } => Ok(Self::Device {
@@ -201,8 +200,7 @@ fn load_fs(
 ) -> Result<SharedPtr<dyn Filesystem>, Errno> {
 	// Getting the I/O interface
 	let io_mutex = source.get_io()?;
-	let io_guard = io_mutex.lock();
-	let io = io_guard.get_mut();
+	let io = io_mutex.lock();
 
 	// Getting the filesystem type
 	let fs_type_mutex = match fs_type {
@@ -210,17 +208,15 @@ fn load_fs(
 
 		None => match source {
 			MountSource::NoDev(ref name) => fs::get_fs(name).ok_or_else(|| errno!(ENODEV))?,
-			_ => fs::detect(io)?,
+			_ => fs::detect(&mut *io)?,
 		},
 	};
-	let fs_type_guard = fs_type_mutex.lock();
-	let fs_type = fs_type_guard.get();
+	let fs_type = fs_type_mutex.lock();
 
-	let fs = fs_type.load_filesystem(io, path, readonly)?;
+	let fs = fs_type.load_filesystem(&mut *io, path, readonly)?;
 
 	// Inserting new filesystem into filesystems list
-	let guard = FILESYSTEMS.lock();
-	let container = guard.get_mut();
+	let container = FILESYSTEMS.lock();
 	container.insert(
 		source,
 		LoadedFS {
@@ -237,8 +233,7 @@ fn load_fs(
 /// `take` tells whether the function increments the references count.
 /// If the filesystem isn't loaded, the function returns None.
 fn get_fs_(source: &MountSource, take: bool) -> Option<SharedPtr<dyn Filesystem>> {
-	let guard = FILESYSTEMS.lock();
-	let container = guard.get_mut();
+	let container = FILESYSTEMS.lock();
 
 	let fs = container.get_mut(source)?;
 	if take {
@@ -258,8 +253,7 @@ pub fn get_fs(source: &MountSource) -> Option<SharedPtr<dyn Filesystem>> {
 /// If no reference on the filesystem is left, the function unloads it.
 /// If the filesystem doesn't exist, the function does nothing.
 fn drop_fs(source: &MountSource) {
-	let guard = FILESYSTEMS.lock();
-	let container = guard.get_mut();
+	let container = FILESYSTEMS.lock();
 
 	if let Some(fs) = container.get_mut(source) {
 		fs.ref_count -= 1;
@@ -325,9 +319,7 @@ impl MountPoint {
 		// TODO Increment number of references to the filesystem
 
 		let fs_type_name = {
-			let fs_guard = fs_mutex.lock();
-			let fs = fs_guard.get();
-
+			let fs = fs_mutex.lock();
 			String::try_from(fs.get_name())?
 		};
 
@@ -409,14 +401,14 @@ pub fn create(
 	// TODO clean
 	// PATH_TO_ID is locked first and during the whole function to prevent a race condition between
 	// the locks of MOUNT_POINTS
-	let path_to_id_guard = PATH_TO_ID.lock();
+	let path_to_id = PATH_TO_ID.lock();
 
 	// TODO clean
 	// ID allocation
 	let id = {
 		let mut id = 0;
 
-		for (i, _) in MOUNT_POINTS.lock().get().iter() {
+		for (i, _) in MOUNT_POINTS.lock().iter() {
 			id = max(*i, id);
 		}
 
@@ -433,11 +425,11 @@ pub fn create(
 
 	// Insertion
 	{
-		let mount_points_guard = MOUNT_POINTS.lock();
+		let mount_points = MOUNT_POINTS.lock();
 
-		mount_points_guard.get_mut().insert(id, mountpoint.clone())?;
-		if let Err(e) = path_to_id_guard.get_mut().insert(path, id) {
-			mount_points_guard.get_mut().remove(&id);
+		mount_points.insert(id, mountpoint.clone())?;
+		if let Err(e) = path_to_id.insert(path, id) {
+			mount_points.remove(&id);
 			return Err(e);
 		}
 	}
@@ -453,19 +445,19 @@ pub fn create(
 ///
 /// If the mountpoint is busy, the function returns `EBUSY`.
 pub fn remove(path: &Path) -> Result<(), Errno> {
-	let path_to_id_guard = PATH_TO_ID.lock();
-	let mount_points_guard = MOUNT_POINTS.lock();
+	let path_to_id = PATH_TO_ID.lock();
+	let mount_points = MOUNT_POINTS.lock();
 
-	let id = path_to_id_guard.get().get(path).ok_or(errno!(EINVAL))?;
-	let _mountpoint = mount_points_guard.get().get(id).ok_or(errno!(EINVAL))?;
+	let id = path_to_id.get(path).ok_or(errno!(EINVAL))?;
+	let _mountpoint = mount_points.get(id).ok_or(errno!(EINVAL))?;
 
 	// TODO Check if busy (EBUSY)
 	// TODO Check if another mount point is present in a subdirectory (EBUSY)
 
 	// TODO sync fs
 
-	path_to_id_guard.get_mut().remove(path);
-	mount_points_guard.get_mut().remove(&id);
+	path_to_id.remove(path);
+	mount_points.remove(&id);
 
 	Ok(())
 }
@@ -474,17 +466,16 @@ pub fn remove(path: &Path) -> Result<(), Errno> {
 ///
 /// If no mountpoint is in the path, the function returns `None`.
 pub fn get_deepest(path: &Path) -> Option<SharedPtr<MountPoint>> {
-	let guard = MOUNT_POINTS.lock();
-	let container = guard.get_mut();
+	let container = MOUNT_POINTS.lock();
 
 	let mut max: Option<SharedPtr<MountPoint>> = None;
 	for (_, mp) in container.iter() {
 		let mp_guard = mp.lock();
-		let mount_path = mp_guard.get().get_path();
+		let mount_path = mp_guard.get_path();
 
 		if let Some(max) = max.as_mut() {
-			let max_guard = max.lock();
-			let max_path = max_guard.get().get_path();
+			let max = max.lock();
+			let max_path = max.get_path();
 
 			if max_path.get_elements_count() >= mount_path.get_elements_count() {
 				continue;
@@ -503,8 +494,7 @@ pub fn get_deepest(path: &Path) -> Option<SharedPtr<MountPoint>> {
 ///
 /// If it doesn't exist, the function returns `None`.
 pub fn from_id(id: u32) -> Option<SharedPtr<MountPoint>> {
-	let guard = MOUNT_POINTS.lock();
-	let container = guard.get_mut();
+	let container = MOUNT_POINTS.lock();
 
 	for (mp_id, mp) in container.iter() {
 		if *mp_id == id {
@@ -519,12 +509,11 @@ pub fn from_id(id: u32) -> Option<SharedPtr<MountPoint>> {
 ///
 /// If it doesn't exist, the function returns `None`.
 pub fn from_path(path: &Path) -> Option<SharedPtr<MountPoint>> {
-	let guard = MOUNT_POINTS.lock();
-	let container = guard.get_mut();
+	let container = MOUNT_POINTS.lock();
 
 	for (_, mp) in container.iter() {
 		let mp_guard = mp.lock();
-		let mountpoint_path = mp_guard.get().get_path();
+		let mountpoint_path = mp_guard.get_path();
 
 		if mountpoint_path == path {
 			return Some(mp.clone());

@@ -34,8 +34,7 @@ impl IO for MemInfo {
 		}
 
 		// Generating content
-		let mem_info_guard = memory::stats::MEM_INFO.lock();
-		let mem_info = mem_info_guard.get();
+		let mem_info = memory::stats::MEM_INFO.lock();
 		let content = mem_info.to_string()?;
 
 		// Copying content to userspace buffer

@@ -38,8 +38,7 @@ fn get_file(
 	let follow_links = flags & open_file::O_NOFOLLOW == 0;
 
 	let proc_mutex = Process::get_current().unwrap();
-	let proc_guard = proc_mutex.lock();
-	let proc = proc_guard.get_mut();
+	let proc = proc_mutex.lock();
 
 	let mem_space = proc.get_mem_space().unwrap();
 	let mem_space_guard = mem_space.lock();
@@ -50,7 +49,7 @@ fn get_file(
 
 	if flags & open_file::O_CREAT != 0 {
 		util::create_file_at(
-			proc_guard,
+			proc,
 			follow_links,
 			dirfd,
 			pathname,
@@ -58,7 +57,7 @@ fn get_file(
 			FileContent::Regular,
 		)
 	} else {
-		util::get_file_at(proc_guard, true, dirfd, pathname, 0)
+		util::get_file_at(proc, true, dirfd, pathname, 0)
 	}
 }
 
@@ -73,33 +72,28 @@ pub fn openat(
 	let file = get_file(dirfd, pathname, flags, mode)?;
 
 	let (uid, gid) = {
-		let mutex = Process::get_current().unwrap();
-		let guard = mutex.lock();
-		let proc = guard.get_mut();
+		let proc_mutex = Process::get_current().unwrap();
+		let proc = proc_mutex.lock();
 
 		(proc.get_euid(), proc.get_egid())
 	};
 
 	let (loc, read, write, cloexec) = {
-		let guard = file.lock();
-		let f = guard.get_mut();
+		let f = file.lock();
 
 		let loc = f.get_location().clone();
-		let (read, write, cloexec) = super::open::handle_flags(f, flags, uid, gid)?;
+		let (read, write, cloexec) = super::open::handle_flags(&mut *f, flags, uid, gid)?;
 
 		(loc, read, write, cloexec)
 	};
 
 	open_file::OpenFile::new(loc.clone(), flags)?;
 
-	// Create and return the file descriptor
-	let mutex = Process::get_current().unwrap();
-	let guard = mutex.lock();
-	let proc = guard.get_mut();
+	let proc_mutex = Process::get_current().unwrap();
+	let proc = proc_mutex.lock();
 
 	let fds_mutex = proc.get_fds().unwrap();
-	let fds_guard = fds_mutex.lock();
-	let fds = fds_guard.get_mut();
+	let fds = fds_mutex.lock();
 
 	let mut fd_flags = 0;
 	if cloexec {

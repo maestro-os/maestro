@@ -18,8 +18,7 @@ pub fn init_module(
 ) -> Result<i32, Errno> {
 	let module = {
 		let proc_mutex = Process::get_current().unwrap();
-		let proc_guard = proc_mutex.lock();
-		let proc = proc_guard.get();
+		let proc = proc_mutex.lock();
 
 		if proc.get_euid() != 0 {
 			return Err(errno!(EPERM));

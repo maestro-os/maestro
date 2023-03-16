@@ -312,25 +312,20 @@ static MODULES: Mutex<HashMap<String, Module>> = Mutex::new(HashMap::new());
 
 /// Tells whether a module with the given name is loaded.
 pub fn is_loaded(name: &[u8]) -> bool {
-	let modules_guard = MODULES.lock();
-	let modules = modules_guard.get();
-
+	let modules = MODULES.lock();
 	modules.get(name).is_some()
 }
 
 /// Adds the given module to the modules list.
 pub fn add(module: Module) -> Result<(), Errno> {
-	let modules_guard = MODULES.lock();
-	let modules = modules_guard.get_mut();
-
+	let modules = MODULES.lock();
 	modules.insert(module.name.failable_clone()?, module)?;
+
 	Ok(())
 }
 
 /// Removes the module with name `name`.
 pub fn remove(name: &[u8]) {
-	let modules_guard = MODULES.lock();
-	let modules = modules_guard.get_mut();
-
+	let modules = MODULES.lock();
 	modules.remove(name);
 }

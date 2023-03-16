@@ -51,26 +51,6 @@ pub struct MutexGuard<'a, T: ?Sized, const INT: bool> {
 	mutex: &'a Mutex<T, INT>,
 }
 
-impl<'a, T: ?Sized, const INT: bool> MutexGuard<'a, T, INT> {
-	/// Returns an immutable reference to the data owned by the associated
-	/// Mutex.
-	pub fn get(&self) -> &T {
-		unsafe {
-			self.mutex.get_payload()
-		}
-	}
-
-	/// Returns a mutable reference to the data owned by the associated Mutex.
-	pub fn get_mut(&self) -> &mut T {
-		unsafe {
-			self.mutex.get_mut_payload()
-		}
-	}
-
-	/// Unlocks the Mutex.
-	pub fn unlock(self) {}
-}
-
 impl<'a, T: ?Sized + 'a, const INT: bool> Deref for MutexGuard<'a, T, INT> {
 	type Target = T;
 
