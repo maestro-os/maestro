@@ -18,9 +18,11 @@
 
 pub mod spinlock;
 
+use core::cell::UnsafeCell;
+use core::ops::Deref;
+use core::ops::DerefMut;
 use crate::idt;
 use crate::util::lock::spinlock::Spinlock;
-use core::cell::UnsafeCell;
 
 /// Structure representing the saved state of interruptions for the current
 /// thread.
@@ -50,31 +52,41 @@ pub struct MutexGuard<'a, T: ?Sized, const INT: bool> {
 }
 
 impl<'a, T: ?Sized, const INT: bool> MutexGuard<'a, T, INT> {
-	/// Creates an instance of MutexGuard for the given mutex `mutex`.
-	fn new(mutex: &'a Mutex<T, INT>) -> Self {
-		Self {
-			mutex,
-		}
-	}
-
-	/// Returns the mutex associated with the current guard.
-	pub fn get_mutex(&self) -> &'a Mutex<T, INT> {
-		self.mutex
-	}
-
 	/// Returns an immutable reference to the data owned by the associated
 	/// Mutex.
 	pub fn get(&self) -> &T {
-		unsafe { self.mutex.get_payload() }
+		unsafe {
+			self.mutex.get_payload()
+		}
 	}
 
 	/// Returns a mutable reference to the data owned by the associated Mutex.
 	pub fn get_mut(&self) -> &mut T {
-		unsafe { self.mutex.get_mut_payload() }
+		unsafe {
+			self.mutex.get_mut_payload()
+		}
 	}
 
 	/// Unlocks the Mutex.
 	pub fn unlock(self) {}
+}
+
+impl<'a, T: ?Sized + 'a, const INT: bool> Deref for MutexGuard<'a, T, INT> {
+	type Target = T;
+
+	fn deref(&self) -> &Self::Target {
+		unsafe {
+			self.mutex.get_payload()
+		}
+	}
+}
+
+impl<'a, T: ?Sized + 'a, const INT: bool> DerefMut for MutexGuard<'a, T, INT> {
+	fn deref_mut(&mut self) -> &mut Self::Target {
+		unsafe {
+			self.mutex.get_mut_payload()
+		}
+	}
 }
 
 impl<'a, T: ?Sized, const INT: bool> Drop for MutexGuard<'a, T, INT> {
@@ -187,7 +199,9 @@ impl<T: ?Sized, const INT: bool> Mutex<T, INT> {
 			crate::debug::get_callstack(ebp, &mut inner.saved_stack);
 		}
 
-		MutexGuard::new(self)
+		MutexGuard {
+			mutex: self,
+		}
 	}
 
 	/// Unlocks the mutex. This function shouldn't be used directly since it is called when the
